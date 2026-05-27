@@ -15,8 +15,6 @@ import type { UnifiedFixture } from "../types/fixtures";
 
 // ─── Status computation ──────────────────────────────────────────────────────
 
-const TODAY = new Date();
-
 type DisplayStatus =
   | "active"
   | "expiring"
@@ -39,8 +37,13 @@ function displayStatus(f: UnifiedFixture): DisplayStatus {
 }
 
 function daysUntil(dateStr: string): number {
-  const d = new Date(dateStr);
-  return Math.floor((d.getTime() - TODAY.getTime()) / 86_400_000);
+  // Parse both sides as local date components to avoid UTC-vs-local off-by-one.
+  // new Date("YYYY-MM-DD") is UTC midnight; new Date(y, m-1, d) is local midnight.
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const target = new Date(y, m - 1, d);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - today.getTime()) / 86_400_000);
 }
 
 function daysUntilEnd(f: UnifiedFixture): number | null {

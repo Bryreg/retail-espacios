@@ -302,11 +302,13 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
 
   // CHANGE 2: use commit() so items sync is undoable for all user-initiated mutations.
   // Debounced (16 ms) so rapid mousemove events during drag collapse into one commit (B1).
+  // Snapshot existingStore BEFORE the timeout to avoid reading a stale store value
+  // if another commit lands in those 16 ms.
   useEffect(() => {
     if (isFirstRender.current) { isFirstRender.current = false; return; }
+    const snapshot = selectFixtures(useFixtureStore.getState());
     const timer = setTimeout(() => {
-      const existingStore = selectFixtures(useFixtureStore.getState());
-      commit(itemsToStore(items, existingStore));
+      commit(itemsToStore(items, snapshot));
     }, 16);
     return () => clearTimeout(timer);
   }, [items, commit]);
@@ -420,10 +422,11 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     let snappedX = Math.abs(bestDX) < EDGE_SNAP_M ? snapTo(x + bestDX) : x;
     let snappedY = Math.abs(bestDY) < EDGE_SNAP_M ? snapTo(y + bestDY) : y;
 
-    // Compound snap: when attached to a fixture's left/right side, also pull Y
-    // to align with that fixture (top / center / bottom) with a larger radius.
+    // Compound snap: when X side-snapped and Y didn't primary-snap, pull Y to
+    // align with the side-snapped fixture (top / center / bottom).
+    // Guard: skip compound if Y already has a primary snap — don't overwrite it.
     const COMPOUND = 0.5;
-    if (xSideFixture && Math.abs(bestDX) < EDGE_SNAP_M) {
+    if (xSideFixture && Math.abs(bestDX) < EDGE_SNAP_M && Math.abs(bestDY) >= EDGE_SNAP_M) {
       const o = xSideFixture;
       let bestCY = COMPOUND;
       for (const cy of [o.y, o.y + (o.h - item.h) / 2, o.y + o.h - item.h]) {
@@ -433,8 +436,9 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
       if (Math.abs(bestCY) < COMPOUND) snappedY = snapTo(y + bestCY);
     }
 
-    // Compound snap: when attached to a fixture's top/bottom, also pull X to align
-    if (ySideFixture && Math.abs(bestDY) < EDGE_SNAP_M) {
+    // Compound snap: when Y side-snapped and X didn't primary-snap, pull X to align.
+    // Guard: skip compound if X already has a primary snap — don't overwrite it.
+    if (ySideFixture && Math.abs(bestDY) < EDGE_SNAP_M && Math.abs(bestDX) >= EDGE_SNAP_M) {
       const o = ySideFixture;
       let bestCX = COMPOUND;
       for (const cx of [o.x, o.x + (o.w - item.w) / 2, o.x + o.w - item.w]) {
@@ -495,7 +499,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     setItems((prev) =>
       prev.map((i) =>
         i.id === id
-          ? { ...i, w: i.h, h: i.w, rotY: (i.rotY ?? 0) + Math.PI / 2 }
+          ? { ...i, w: i.h, h: i.w, rotY: ((i.rotY ?? 0) + Math.PI / 2) % (2 * Math.PI) }
           : i
       )
     );
@@ -515,6 +519,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           x: src.x + 0.5,
           y: src.y + 0.5,
         };
+        // Reject if the offset copy would overlap an existing fixture
+        if (hasCollision(copy, prev)) return prev;
         setSelectedIds(new Set([copy.id]));
         return [...prev, copy];
       });

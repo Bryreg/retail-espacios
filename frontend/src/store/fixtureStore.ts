@@ -151,9 +151,15 @@ export const useFixtureStore = create<FixtureStore>()(
         }),
 
       setCatalogLabel: (type, label) =>
-        set((state) => ({
-          catalogLabels: { ...state.catalogLabels, [type]: label.trim() || undefined as any },
-        })),
+        set((state) => {
+          const next = { ...state.catalogLabels };
+          if (label.trim()) {
+            next[type] = label.trim();
+          } else {
+            delete next[type];
+          }
+          return { catalogLabels: next };
+        }),
 
       // ── Undoable mutation ─────────────────────────────────────────────────
       commit: (nextFixtures) =>

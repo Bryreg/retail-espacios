@@ -1,5 +1,6 @@
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.models.models import Space, SpaceLease, Supplier, SpaceStatus
@@ -24,6 +25,7 @@ def expire_leases(db: Session) -> int:
     count = 0
     for lease in expired:
         lease.is_active = False
+        db.flush()  # ensure the query below sees the updated flag
         # Only set space to free if no other active lease remains
         remaining = (
             db.query(SpaceLease)
@@ -89,7 +91,18 @@ def find_or_create_space(payload: SpaceFindOrCreate, db: Session = Depends(get_d
         status=SpaceStatus.free,
     )
     db.add(space)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Concurrent insert (race condition): roll back and fetch the winner's row.
+        db.rollback()
+        space = (
+            db.query(Space)
+            .options(joinedload(Space.leases).joinedload(SpaceLease.supplier))
+            .filter(Space.code == payload.code)
+            .first()
+        )
+        return space
 
     # Re-query to load relationships (needed for SpaceOut serialization)
     space = (
