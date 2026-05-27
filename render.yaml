@@ -1,12 +1,9 @@
 services:
   - type: web
-    name: retail-espacios-api
-    runtime: python
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    name: retail-espacios
+    runtime: docker
+    branch: main
+    healthCheckPath: /api/health
     envVars:
-      - key: ALLOWED_ORIGINS
-        value: https://retail-espacios.pages.dev
       - key: DATABASE_URL
         value: sqlite:///./retail_espacios.db

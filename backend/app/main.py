@@ -108,13 +108,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(spaces.router)
-app.include_router(suppliers.router)
-app.include_router(dashboard.router)
+app.include_router(spaces.router,    prefix="/api")
+app.include_router(suppliers.router, prefix="/api")
+app.include_router(dashboard.router, prefix="/api")
 
 
-@app.get("/")
-def root():
+@app.get("/api/health")
+def health():
     return {"status": "ok", "app": "Retail Espacios API"}
 
 
