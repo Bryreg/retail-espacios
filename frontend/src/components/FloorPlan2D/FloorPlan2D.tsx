@@ -387,25 +387,64 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     let { x, y } = item;
     let bestDX = EDGE_SNAP_M;
     let bestDY = EDGE_SNAP_M;
+    // Track which fixture triggered a side-adjacency snap (not just alignment)
+    let xSideFixture: PlacedItem2D | null = null;
+    let ySideFixture: PlacedItem2D | null = null;
 
     for (const o of others) {
       if (o.id === item.id) continue;
-      // X candidates: item left/right flush with o left/right
-      for (const cx of [o.x - item.w, o.x + o.w, o.x, o.x + o.w - item.w]) {
+
+      // X: side-adjacency candidates (touch left/right edge) — tracked separately
+      for (const cx of [o.x - item.w, o.x + o.w]) {
         const d = cx - x;
-        if (Math.abs(d) < Math.abs(bestDX)) bestDX = d;
+        if (Math.abs(d) < Math.abs(bestDX)) { bestDX = d; xSideFixture = o; }
       }
-      // Y candidates: item top/bottom flush with o top/bottom
-      for (const cy of [o.y - item.h, o.y + o.h, o.y, o.y + o.h - item.h]) {
+      // X: alignment candidates (same left/right edge) — clears the fixture tracker
+      for (const cx of [o.x, o.x + o.w - item.w]) {
+        const d = cx - x;
+        if (Math.abs(d) < Math.abs(bestDX)) { bestDX = d; xSideFixture = null; }
+      }
+
+      // Y: side-adjacency candidates
+      for (const cy of [o.y - item.h, o.y + o.h]) {
         const d = cy - y;
-        if (Math.abs(d) < Math.abs(bestDY)) bestDY = d;
+        if (Math.abs(d) < Math.abs(bestDY)) { bestDY = d; ySideFixture = o; }
+      }
+      // Y: alignment candidates
+      for (const cy of [o.y, o.y + o.h - item.h]) {
+        const d = cy - y;
+        if (Math.abs(d) < Math.abs(bestDY)) { bestDY = d; ySideFixture = null; }
       }
     }
 
-    return {
-      x: Math.abs(bestDX) < EDGE_SNAP_M ? snapTo(x + bestDX) : x,
-      y: Math.abs(bestDY) < EDGE_SNAP_M ? snapTo(y + bestDY) : y,
-    };
+    let snappedX = Math.abs(bestDX) < EDGE_SNAP_M ? snapTo(x + bestDX) : x;
+    let snappedY = Math.abs(bestDY) < EDGE_SNAP_M ? snapTo(y + bestDY) : y;
+
+    // Compound snap: when attached to a fixture's left/right side, also pull Y
+    // to align with that fixture (top / center / bottom) with a larger radius.
+    const COMPOUND = 0.5;
+    if (xSideFixture && Math.abs(bestDX) < EDGE_SNAP_M) {
+      const o = xSideFixture;
+      let bestCY = COMPOUND;
+      for (const cy of [o.y, o.y + (o.h - item.h) / 2, o.y + o.h - item.h]) {
+        const d = cy - y;
+        if (Math.abs(d) < Math.abs(bestCY)) bestCY = d;
+      }
+      if (Math.abs(bestCY) < COMPOUND) snappedY = snapTo(y + bestCY);
+    }
+
+    // Compound snap: when attached to a fixture's top/bottom, also pull X to align
+    if (ySideFixture && Math.abs(bestDY) < EDGE_SNAP_M) {
+      const o = ySideFixture;
+      let bestCX = COMPOUND;
+      for (const cx of [o.x, o.x + (o.w - item.w) / 2, o.x + o.w - item.w]) {
+        const d = cx - x;
+        if (Math.abs(d) < Math.abs(bestCX)) bestCX = d;
+      }
+      if (Math.abs(bestCX) < COMPOUND) snappedX = snapTo(x + bestCX);
+    }
+
+    return { x: snappedX, y: snappedY };
   }
 
   // ── Place item ───────────────────────────────────────────────────────────────
