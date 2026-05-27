@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Geist font feature settings ─────────────────────────────────────── */
+@layer base {
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "cv11", "ss01", "ss03";
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.005em;
+    color: #1A1814;
+    background: #F8F6F1;
+  }
+}
+
+/* ─── Design tokens (CSS custom properties) ────────────────────────────── */
+:root {
+  --font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+
+  /* Warm neutrals */
+  --bg:           #F8F6F1;
+  --surface:      #FFFFFF;
+  --surface-2:    #FBF9F4;
+  --surface-3:    #EFEAE0;
+  --line:         #E5DFD1;
+  --line-soft:    #EEE8DA;
+  --line-strong:  #D9D1BE;
+
+  /* Text */
+  --ink-1: #1A1814;
+  --ink-2: #4A463C;
+  --ink-3: #807A6B;
+  --ink-4: #B5AE9C;
+
+  /* Accent — violet */
+  --accent:      #7C3AED;
+  --accent-50:   #F5F0FF;
+  --accent-100:  #EAE0FE;
+  --accent-200:  #D5C2FE;
+  --accent-600:  #6D28D9;
+  --accent-700:  #5B21B6;
+  --accent-ink:  #FFFFFF;
+
+  /* Semantic */
+  --success:      #15803D;
+  --success-50:   #EAF6EE;
+  --success-100:  #D1E9D9;
+  --warning:      #B45309;
+  --warning-50:   #FDF6E3;
+  --warning-100:  #FBE9B7;
+  --danger:       #B91C1C;
+  --danger-50:    #FCEEEE;
+  --danger-100:   #F8D5D5;
+  --muted-status: #94917F;
+
+  /* Dark drawer */
+  --dark-bg:        #14130F;
+  --dark-surface:   #1C1B16;
+  --dark-surface-2: #25241E;
+  --dark-line:      #2F2D26;
+  --dark-line-2:    #3F3D35;
+  --dark-ink-1:     #F2EFE8;
+  --dark-ink-2:     #BBB6A6;
+  --dark-ink-3:     #807B6B;
+
+  /* Radii */
+  --r-xs:  4px;
+  --r-sm:  6px;
+  --r-md:  8px;
+  --r-lg:  10px;
+  --r-xl:  14px;
+  --r-2xl: 18px;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 0 rgba(31,27,18,0.04);
+  --shadow-sm: 0 1px 2px rgba(31,27,18,0.05), 0 1px 1px rgba(31,27,18,0.03);
+  --shadow-md: 0 2px 6px rgba(31,27,18,0.05), 0 1px 2px rgba(31,27,18,0.04);
+  --shadow-lg: 0 12px 28px rgba(31,27,18,0.10), 0 4px 10px rgba(31,27,18,0.05);
+}
+
+/* ─── Scrollbars ────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-4); }
+
+/* ─── Skeleton shimmer ──────────────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: calc(400px + 100%) 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface-3) 0px,
+    var(--surface-2) 80px,
+    var(--surface-3) 160px
+  );
+  background-size: 400px 100%;
+  animation: shimmer 1.4s linear infinite;
+  border-radius: var(--r-sm);
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+.pulse-soft { animation: pulse-soft 2s ease-in-out infinite; }
+
+* {
+  box-sizing: border-box;
+}

@@ -1,0 +1,31 @@
+version: "3.9"
+
+# ── PRODUCCIÓN ────────────────────────────────────────────────────────────────
+# URL pública: https://retail.tudominio.com  (nginx del VPS expone 80/443)
+# Deploy: push a rama 'main' → GitHub Actions ejecuta este compose
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: retail-espacios:prod
+    container_name: retail_prod
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: sqlite:////app/backend/data/retail.db
+      ALLOWED_ORIGINS: https://retail.tudominio.com
+    volumes:
+      # SQLite persistente (sobrevive a rebuilds y reinicios)
+      - retail_db:/app/backend/data
+    networks:
+      - cafe_net
+    # Sin 'ports': nginx del VPS es el único que habla con este contenedor
+
+networks:
+  cafe_net:
+    external: true   # la misma red que usa cafe-sistema
+
+volumes:
+  retail_db:
