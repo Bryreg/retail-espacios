@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { Grid2x2, Box, BarChart2, MapPin, Search } from "lucide-react";
+import { Grid2x2, Box, BarChart2, Search } from "lucide-react";
 import StoreEditor3D from "../components/StoreEditor3D/StoreEditor3D";
 import FloorPlan2D from "../components/FloorPlan2D/FloorPlan2D";
 import DashboardView from "./DashboardView";
-import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,8 +44,6 @@ interface TopbarProps {
 }
 
 function Topbar({ viewMode, setViewMode }: TopbarProps) {
-  const fixtures = useFixtureStore(selectFixtures);
-  const { sedes, sede, setSede } = useFixtureStore();
 
   return (
     <header
@@ -113,44 +110,6 @@ function Topbar({ viewMode, setViewMode }: TopbarProps) {
 
       {/* Right side */}
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-        {/* Sede selector */}
-        <div
-          style={{
-            display: "flex", alignItems: "center", gap: 8,
-            padding: "5px 10px",
-            borderRadius: "var(--r-md)",
-            background: "var(--surface-2)",
-            border: "1px solid var(--line)",
-            fontSize: 12,
-          }}
-        >
-          <MapPin size={12} style={{ color: "var(--accent)", flexShrink: 0 }} />
-          <select
-            value={sede}
-            onChange={(e) => setSede(e.target.value)}
-            style={{
-              background: "transparent", border: "none", outline: "none",
-              fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 12,
-              color: "var(--ink-1)", cursor: "pointer",
-              padding: 0, margin: 0,
-            }}
-          >
-            {sedes.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-          <span
-            style={{
-              display: "inline-flex", alignItems: "center",
-              fontSize: 9.5, fontWeight: 600,
-              padding: "2px 7px", borderRadius: 999,
-              background: "var(--accent-100)", color: "var(--accent-700)",
-            }}
-          >
-            {fixtures.length}
-          </span>
-        </div>
-
         {/* Search */}
         <button
           title="Búsqueda"
