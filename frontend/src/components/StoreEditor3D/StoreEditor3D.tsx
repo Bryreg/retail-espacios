@@ -2241,12 +2241,10 @@ function storeToFixtures(unifiedList: UnifiedFixture[]): PlacedFixture[] {
         gondolaType:     f.gondolaType,
         slots:           f.slots ?? defaultSlots({ type, w: f.w, h: f.h, code: f.code }),
         x:               f.cx,
-        // Flip Z so the 3D view matches the 2D plan orientation.
-        // In 2D, Y increases downward (small Y = top of plan).
-        // In 3D, the camera looks from negative Z → small Z appears near the
-        // camera (bottom of viewport), large Z appears far (top of viewport).
-        // Flipping maps 2D top → 3D top (far), 2D bottom → 3D bottom (near).
-        z:               STORE_D - f.cz,
+        // Direct Z mapping — camera is on the north side (Z = STORE_D + 8),
+        // so small Z = far from camera = top of viewport, which already matches
+        // the 2D convention (small Y = top of canvas). No flip needed.
+        z:               f.cz,
         rotY:            f.rotY,
         w:               f.w,
         d:               f.d,
@@ -2283,7 +2281,7 @@ function fixturesToStore(
     gondolaType:     f.gondolaType,
     label:           f.label,
     cx:              f.x,
-    cz:              STORE_D - f.z, // un-flip Z back to 2D/unified coordinates
+    cz:              f.z, // direct mapping — no flip since camera moved to north side
     rotY:            f.rotY,
     w:               f.w,
     d:               f.d,
