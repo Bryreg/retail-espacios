@@ -1275,53 +1275,70 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                       </text>
                     )}
 
-                    {/* Emoji */}
-                    {pw > 20 / zoom && ph > 14 / zoom && (
-                      <text
-                        x={px + 4 / zoom}
-                        y={py + ph / 2}
-                        dominantBaseline="middle"
-                        fontSize={Math.max(8, 12 / zoom)}
-                        style={{ userSelect: "none", pointerEvents: "none" }}
-                      >
-                        {catDef?.emoji ?? ""}
-                      </text>
-                    )}
-                    {/* Code label */}
-                    {editingCodeId === item.id ? (
-                      <foreignObject
-                        x={px + pw / 2 - 30}
-                        y={py + ph / 2 - 10}
-                        width={60}
-                        height={20}
-                      >
-                        <input
-                          className="w-full h-full text-center text-xs border border-accent rounded-sm bg-white outline-none px-1"
-                          value={editingCodeVal}
-                          onChange={(e) => setEditingCodeVal(e.target.value)}
-                          onBlur={commitCodeEdit}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") commitCodeEdit();
-                            if (e.key === "Escape") { setEditingCodeId(null); }
-                          }}
-                          autoFocus
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      </foreignObject>
-                    ) : (
-                      <text
-                        x={px + pw / 2}
-                        y={py + ph / 2}
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        fontSize={Math.max(9, 11 / zoom)}
-                        fill="#1e293b"
-                        fontWeight="600"
-                        style={{ userSelect: "none", pointerEvents: "none" }}
-                      >
-                        {item.code}
-                      </text>
-                    )}
+                    {/* Labels — progressive disclosure based on on-screen size.
+                        pw/ph are SVG coords; multiply by zoom for screen pixels.
+                        Emoji: show only when code isn't visible (avoids double clutter).
+                        Code: show only when fixture is at least 46 px wide on screen. */}
+                    {(() => {
+                      const screenW = pw * zoom;
+                      const screenH = ph * zoom;
+                      const showCode = screenW > 46 && screenH > 12;
+                      const showEmoji = !showCode && screenW > 22 && screenH > 16;
+                      // Font size: stays ~11 px on screen but capped to 45 % of fixture width
+                      const fs = Math.min(11 / zoom, pw * 0.45, ph * 0.7);
+                      return (
+                        <>
+                          {showEmoji && (
+                            <text
+                              x={px + pw / 2}
+                              y={py + ph / 2}
+                              textAnchor="middle"
+                              dominantBaseline="middle"
+                              fontSize={Math.min(10 / zoom, pw * 0.6, ph * 0.7)}
+                              style={{ userSelect: "none", pointerEvents: "none" }}
+                            >
+                              {catDef?.emoji ?? ""}
+                            </text>
+                          )}
+                          {showCode && (
+                            editingCodeId === item.id ? (
+                              <foreignObject
+                                x={px + pw / 2 - 30}
+                                y={py + ph / 2 - 10}
+                                width={60}
+                                height={20}
+                              >
+                                <input
+                                  className="w-full h-full text-center text-xs border border-accent rounded-sm bg-white outline-none px-1"
+                                  value={editingCodeVal}
+                                  onChange={(e) => setEditingCodeVal(e.target.value)}
+                                  onBlur={commitCodeEdit}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") commitCodeEdit();
+                                    if (e.key === "Escape") { setEditingCodeId(null); }
+                                  }}
+                                  autoFocus
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </foreignObject>
+                            ) : (
+                              <text
+                                x={px + pw / 2}
+                                y={py + ph / 2}
+                                textAnchor="middle"
+                                dominantBaseline="middle"
+                                fontSize={fs}
+                                fill="#1e293b"
+                                fontWeight="600"
+                                style={{ userSelect: "none", pointerEvents: "none" }}
+                              >
+                                {item.code}
+                              </text>
+                            )
+                          )}
+                        </>
+                      );
+                    })()}
 
                     {/* CHANGE 4: Unauthorized placement badge */}
                     {item.status === "occupied" && (
