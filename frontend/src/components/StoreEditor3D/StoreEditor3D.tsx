@@ -347,10 +347,13 @@ const GondolaMesh = memo(function GondolaMesh({
         </group>
       ))}
 
-      {/* End-cap uprights */}
+      {/* End-cap uprights.
+          Wall gondola  → full-depth slab (the upright runs along the wall).
+          Double gondola → thin post (≈ 5 cm × 5 cm cross-section) so adjacent
+          modules don't create visible vertical dividers between them. */}
       {([-1, 1] as const).map(side => (
         <mesh key={`up${side}`} position={[side * (w / 2 - 0.026), h / 2, 0]} castShadow>
-          <boxGeometry args={[0.052, h, d]} />
+          <boxGeometry args={[0.052, h, isWall ? d : 0.058]} />
           <meshStandardMaterial color={G_FRAME} metalness={0.15} roughness={0.72} transparent opacity={op} />
         </mesh>
       ))}
@@ -374,15 +377,15 @@ const GondolaMesh = memo(function GondolaMesh({
               <meshLambertMaterial color={G_FRAME} transparent opacity={op} />
             </mesh>
           ))
-        : ([-1, 1] as const).flatMap(sx =>
-            ([-1, 1] as const).map(sz => (
-              <mesh key={`ft${sx}${sz}`}
-                position={[sx * (w / 2 - 0.10), 0.055, sz * (d / 2 - 0.09)]} castShadow>
-                <boxGeometry args={[0.18, 0.11, 0.15]} />
-                <meshLambertMaterial color={G_FRAME} transparent opacity={op} />
-              </mesh>
-            ))
-          )
+        // Double gondola: two base feet centred on each side (matching the spine),
+        // not four corner feet (which would visually close both end faces).
+        : ([-1, 1] as const).map(sx => (
+            <mesh key={`ft${sx}`}
+              position={[sx * (w / 2 - 0.10), 0.055, 0]} castShadow>
+              <boxGeometry args={[0.18, 0.11, d * 0.45]} />
+              <meshLambertMaterial color={G_FRAME} transparent opacity={op} />
+            </mesh>
+          ))
       }
 
       {/* Slot panels */}
