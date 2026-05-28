@@ -1924,10 +1924,10 @@ function Scene({
   // B3: Returns a disposer so the caller can remove the listener on unmount.
   const handleOrbitReady = useCallback((ctrl: ThreeOrbitControls) => {
     const { camera3D: c3d } = useFixtureStore.getState();
-    // Migrate old camera states that were saved with the previous south-facing position
-    // (posZ < 0). Reset to the new north-facing default so the scene orientation matches
-    // the 2D floor plan without requiring the user to manually reset the view.
-    const needsMigration = c3d.posZ <= 0;
+    // Migrate old camera states. The new correct position is north of the store
+    // at posZ = STORE_D + 8 = 50. Any saved posZ < STORE_D (42) means the camera
+    // was saved from the old south-facing setup (including any in-store orbit positions).
+    const needsMigration = c3d.posZ < STORE_D;
     const posX = needsMigration ? STORE_W / 2 : c3d.posX;
     const posY = needsMigration ? 28 : c3d.posY;
     const posZ = needsMigration ? STORE_D + 8 : c3d.posZ;
