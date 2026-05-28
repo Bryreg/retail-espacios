@@ -1130,14 +1130,14 @@ function BateaMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number
 
 function IslaFriaMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
   const op      = ghost ? 0.42 : 1;
-  const BODY    = "#f3f4f6";   // blanco/gris claro
+  const BODY    = "#f3f4f6";   // blanco/gris claro — cuerpo superior
   const COMP    = "#374151";   // compresor oscuro
   const FRAME   = "#9ca3af";   // rim de acero
   const GLASS_C = "#bae6fd";   // guarda de acrílico
   const INNER   = "#dbeafe";   // interior frío
   const compH   = h * 0.30;
   const wellH   = h - compH;
-  const guardH  = Math.min(0.22, wellH * 0.28);
+  const guardH  = 0.20;        // guarda siempre 20 cm, se posa sobre el borde
   const PRODS   = ["#facc15","#f97316","#a78bfa","#ec4899","#34d399","#60a5fa"];
 
   return (
@@ -1148,25 +1148,29 @@ function IslaFriaMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:num
         <meshStandardMaterial color={COMP} roughness={0.60} metalness={0.25} transparent opacity={op} />
       </mesh>
 
-      {/* Rejillas de ventilación perimetrales en las 4 caras del compresor */}
-      {Array.from({ length: 6 }, (_, i) => {
-        const yp = compH * 0.12 + i * (compH * 0.15);
+      {/* Rejillas de ventilación — 5 tiras por las 4 caras del compresor */}
+      {Array.from({ length: 5 }, (_, i) => {
+        const yp = compH * 0.10 + i * (compH * 0.18);
         return (
           <group key={i}>
-            <mesh position={[0, yp, -(d / 2 + 0.004)]}>
-              <boxGeometry args={[w * 0.80, 0.011, 0.008]} />
+            {/* frente */}
+            <mesh position={[0, yp, -(d / 2 - 0.002)]}>
+              <boxGeometry args={[w * 0.82, 0.012, 0.006]} />
               <meshStandardMaterial color="#1f2937" metalness={0.45} transparent opacity={op} />
             </mesh>
-            <mesh position={[0, yp, d / 2 + 0.004]}>
-              <boxGeometry args={[w * 0.80, 0.011, 0.008]} />
+            {/* atrás */}
+            <mesh position={[0, yp, d / 2 - 0.002]}>
+              <boxGeometry args={[w * 0.82, 0.012, 0.006]} />
               <meshStandardMaterial color="#1f2937" metalness={0.45} transparent opacity={op} />
             </mesh>
-            <mesh position={[-(w / 2 + 0.004), yp, 0]}>
-              <boxGeometry args={[0.008, 0.011, d * 0.80]} />
+            {/* izquierda */}
+            <mesh position={[-(w / 2 - 0.002), yp, 0]}>
+              <boxGeometry args={[0.006, 0.012, d * 0.82]} />
               <meshStandardMaterial color="#1f2937" metalness={0.45} transparent opacity={op} />
             </mesh>
-            <mesh position={[w / 2 + 0.004, yp, 0]}>
-              <boxGeometry args={[0.008, 0.011, d * 0.80]} />
+            {/* derecha */}
+            <mesh position={[w / 2 - 0.002, yp, 0]}>
+              <boxGeometry args={[0.006, 0.012, d * 0.82]} />
               <meshStandardMaterial color="#1f2937" metalness={0.45} transparent opacity={op} />
             </mesh>
           </group>
@@ -1179,46 +1183,50 @@ function IslaFriaMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:num
         <meshStandardMaterial color={BODY} roughness={0.55} metalness={0.10} transparent opacity={op} />
       </mesh>
 
-      {/* Interior del pozo (tinte frío) */}
-      <mesh position={[0, compH + wellH - 0.09, 0]}>
-        <boxGeometry args={[w - 0.10, 0.26, d - 0.10]} />
-        <meshStandardMaterial color={INNER} transparent opacity={0.50 * op} roughness={0.05} />
+      {/* Interior del pozo (tinte frío azulado) */}
+      <mesh position={[0, h - 0.10, 0]}>
+        <boxGeometry args={[w - 0.10, 0.24, d - 0.10]} />
+        <meshStandardMaterial color={INNER} transparent opacity={0.55 * op} roughness={0.05} />
       </mesh>
 
-      {/* Productos dentro de la isla (cajas de helado) */}
+      {/* Productos dentro de la isla (cajas de helado coloridas) */}
       {Array.from({ length: Math.floor((w - 0.14) / 0.28) }, (_, i) => {
         const px  = -w / 2 + 0.12 + i * 0.28 + 0.09;
         const col = PRODS[i % PRODS.length];
         return (
-          <mesh key={i} position={[px, compH + wellH - 0.16, 0]}>
-            <boxGeometry args={[0.22, 0.13, d * 0.55]} />
-            <meshStandardMaterial color={col} roughness={0.55} transparent opacity={0.72 * op} />
+          <mesh key={i} position={[px, h - 0.17, 0]}>
+            <boxGeometry args={[0.22, 0.14, d * 0.55]} />
+            <meshStandardMaterial color={col} roughness={0.55} transparent opacity={0.75 * op} />
           </mesh>
         );
       })}
 
-      {/* Borde superior / rim de acero */}
+      {/* Borde superior / rim de acero — a ras del cuerpo */}
       <mesh position={[0, h + 0.008, 0]}>
         <boxGeometry args={[w + 0.012, 0.016, d + 0.012]} />
         <meshStandardMaterial color={FRAME} metalness={0.50} roughness={0.30} transparent opacity={op} />
       </mesh>
 
-      {/* Guarda de acrílico — 4 paneles perimetrales verticales */}
+      {/* Guarda de acrílico — 4 paneles verticales que ARRANCAN en y=h (borde del cuerpo) */}
+      {/* Frente */}
       <mesh position={[0, h + guardH / 2, -(d / 2 - 0.010)]}>
         <boxGeometry args={[w - 0.020, guardH, 0.008]} />
         <meshStandardMaterial color={GLASS_C} roughness={0.04} metalness={0.01}
           transparent opacity={0.35 * op} />
       </mesh>
+      {/* Atrás */}
       <mesh position={[0, h + guardH / 2, d / 2 - 0.010]}>
         <boxGeometry args={[w - 0.020, guardH, 0.008]} />
         <meshStandardMaterial color={GLASS_C} roughness={0.04} metalness={0.01}
           transparent opacity={0.35 * op} />
       </mesh>
+      {/* Izquierda */}
       <mesh position={[-(w / 2 - 0.010), h + guardH / 2, 0]}>
         <boxGeometry args={[0.008, guardH, d - 0.020]} />
         <meshStandardMaterial color={GLASS_C} roughness={0.04} metalness={0.01}
           transparent opacity={0.35 * op} />
       </mesh>
+      {/* Derecha */}
       <mesh position={[w / 2 - 0.010, h + guardH / 2, 0]}>
         <boxGeometry args={[0.008, guardH, d - 0.020]} />
         <meshStandardMaterial color={GLASS_C} roughness={0.04} metalness={0.01}
@@ -1245,21 +1253,8 @@ function NeveraCarnesMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h
   const GLASS = "#bae6fd";
   const MEAT  = "#f87171";  // color de la carne expuesta
 
-  const bodyH = h * 0.50;  // cuerpo bajo oscuro
-
-  // Geometría del vidrio curvo (dos paneles planos que aproximan la curva)
-  // Panel inferior: más inclinado (desde el frente del cuerpo hacia arriba)
-  const gLowH   = h * 0.28;
-  const gLowAng = 0.82;   // rad desde vertical → ~47°
-  const gLowCY  = bodyH + gLowH / 2 * Math.cos(gLowAng);
-  const gLowCZ  = -(d / 2) + gLowH / 2 * Math.sin(gLowAng);
-  // Panel superior: casi vertical
-  const gUpH    = h * 0.30;
-  const gUpAng  = 0.18;
-  const gLowEndY = bodyH + gLowH * Math.cos(gLowAng);
-  const gLowEndZ = -(d / 2) + gLowH * Math.sin(gLowAng);
-  const gUpCY   = gLowEndY + gUpH / 2 * Math.cos(gUpAng);
-  const gUpCZ   = gLowEndZ + gUpH / 2 * Math.sin(gUpAng);
+  const bodyH  = h * 0.52;                   // cuerpo bajo oscuro
+  const glassH = h - bodyH + 0.05;           // panel de vidrio, solapa ligeramente el borde
 
   return (
     <group>
@@ -1275,57 +1270,60 @@ function NeveraCarnesMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h
         <meshStandardMaterial color={MEAT} roughness={0.80} transparent opacity={0.75 * op} />
       </mesh>
 
-      {/* Borde superior del cuerpo */}
-      <mesh position={[0, bodyH + 0.008, 0]}>
-        <boxGeometry args={[w + 0.010, 0.014, d + 0.010]} />
-        <meshStandardMaterial color="#374151" metalness={0.55} roughness={0.30} transparent opacity={op} />
-      </mesh>
-
-      {/* Rejilla de compresor en el frente inferior */}
-      {Array.from({ length: 5 }, (_, i) => (
-        <mesh key={i} position={[0, bodyH * 0.14 + i * (bodyH * 0.14), -(d / 2 + 0.005)]}>
-          <boxGeometry args={[w * 0.72, 0.010, 0.009]} />
+      {/* Rejillas de ventilación en el frente inferior del cuerpo */}
+      {Array.from({ length: 4 }, (_, i) => (
+        <mesh key={i} position={[0, bodyH * 0.12 + i * (bodyH * 0.16), -(d / 2 - 0.002)]}>
+          <boxGeometry args={[w * 0.70, 0.010, 0.006]} />
           <meshStandardMaterial color={FRAME} metalness={0.50} transparent opacity={op} />
         </mesh>
       ))}
 
-      {/* Panel de vidrio inferior (más curvo, hacia el cliente) */}
-      <mesh position={[0, gLowCY, gLowCZ]} rotation={[-gLowAng, 0, 0]}>
-        <boxGeometry args={[w - 0.022, gLowH, 0.007]} />
+      {/* Borde superior del cuerpo */}
+      <mesh position={[0, bodyH + 0.007, 0]}>
+        <boxGeometry args={[w + 0.010, 0.014, d + 0.010]} />
+        <meshStandardMaterial color="#374151" metalness={0.55} roughness={0.30} transparent opacity={op} />
+      </mesh>
+
+      {/* Panel de vidrio PLANO vertical al frente — SIN rotación */}
+      <mesh position={[0, bodyH + glassH / 2, -(d / 2 - 0.005)]}>
+        <boxGeometry args={[w - 0.020, glassH, 0.008]} />
         <meshStandardMaterial color={GLASS} roughness={0.03} metalness={0.01}
           transparent opacity={0.28 * op} />
       </mesh>
 
-      {/* Panel de vidrio superior (casi vertical) */}
-      <mesh position={[0, gUpCY, gUpCZ]} rotation={[-gUpAng, 0, 0]}>
-        <boxGeometry args={[w - 0.022, gUpH, 0.007]} />
-        <meshStandardMaterial color={GLASS} roughness={0.03} metalness={0.01}
-          transparent opacity={0.28 * op} />
+      {/* Marco del vidrio — 4 perfiles delgados oscuros alrededor del panel */}
+      {/* Riel superior */}
+      <mesh position={[0, h + 0.007, -(d / 2 - 0.005)]}>
+        <boxGeometry args={[w, 0.014, 0.014]} />
+        <meshStandardMaterial color={DARK} metalness={0.55} roughness={0.30} transparent opacity={op} />
+      </mesh>
+      {/* Riel inferior (sobre el borde del cuerpo) */}
+      <mesh position={[0, bodyH + 0.007, -(d / 2 - 0.005)]}>
+        <boxGeometry args={[w, 0.014, 0.014]} />
+        <meshStandardMaterial color={DARK} metalness={0.55} roughness={0.30} transparent opacity={op} />
+      </mesh>
+      {/* Poste izquierdo */}
+      <mesh position={[-(w / 2 - 0.015), bodyH + glassH / 2, -(d / 2 - 0.005)]}>
+        <boxGeometry args={[0.016, glassH, 0.014]} />
+        <meshStandardMaterial color={DARK} metalness={0.55} roughness={0.30} transparent opacity={op} />
+      </mesh>
+      {/* Poste derecho */}
+      <mesh position={[w / 2 - 0.015, bodyH + glassH / 2, -(d / 2 - 0.005)]}>
+        <boxGeometry args={[0.016, glassH, 0.014]} />
+        <meshStandardMaterial color={DARK} metalness={0.55} roughness={0.30} transparent opacity={op} />
       </mesh>
 
-      {/* Arcos laterales de metal negro (izquierdo y derecho) */}
-      {([-1, 1] as const).map(side => (
-        <group key={side}>
-          <mesh position={[side * (w / 2 - 0.018), gLowCY, gLowCZ]} rotation={[-gLowAng, 0, 0]}>
-            <boxGeometry args={[0.032, gLowH + 0.025, 0.022]} />
-            <meshStandardMaterial color={DARK} metalness={0.50} roughness={0.30} transparent opacity={op} />
-          </mesh>
-          <mesh position={[side * (w / 2 - 0.018), gUpCY, gUpCZ]} rotation={[-gUpAng, 0, 0]}>
-            <boxGeometry args={[0.032, gUpH + 0.025, 0.022]} />
-            <meshStandardMaterial color={DARK} metalness={0.50} roughness={0.30} transparent opacity={op} />
-          </mesh>
-        </group>
-      ))}
+      {/* Tapas laterales sólidas oscuras (cierran los costados del área del vidrio) */}
+      <mesh position={[-(w / 2 - 0.015), bodyH + glassH / 2, 0]}>
+        <boxGeometry args={[0.030, glassH, d]} />
+        <meshStandardMaterial color={DARK} roughness={0.55} metalness={0.25} transparent opacity={op} />
+      </mesh>
+      <mesh position={[w / 2 - 0.015, bodyH + glassH / 2, 0]}>
+        <boxGeometry args={[0.030, glassH, d]} />
+        <meshStandardMaterial color={DARK} roughness={0.55} metalness={0.25} transparent opacity={op} />
+      </mesh>
 
-      {/* Ruedas (4 esquinas) */}
-      {([[-1,-1],[-1,1],[1,-1],[1,1]] as [number,number][]).map(([sx, sz]) => (
-        <mesh key={`${sx}${sz}`} position={[sx * (w / 2 - 0.10), 0.032, sz * (d / 2 - 0.10)]}>
-          <cylinderGeometry args={[0.036, 0.036, 0.040, 8]} />
-          <meshStandardMaterial color="#1f2937" roughness={0.85} transparent opacity={op} />
-        </mesh>
-      ))}
-
-      {/* Indicador de estado en frente del cuerpo */}
+      {/* Indicador de estado en el frente inferior */}
       <mesh position={[0, 0.08, -(d / 2 + 0.008)]}>
         <boxGeometry args={[w * 0.60, 0.032, 0.010]} />
         <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
