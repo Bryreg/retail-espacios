@@ -278,7 +278,7 @@ const GondolaMesh = memo(function GondolaMesh({
   const nMidPosts  = Math.max(0, Math.round(w / 2) - 1);
 
   function renderSlotFace(faceSign: -1 | 1) {
-    if (!slots || ghost) return null;
+    if (!slots || ghost || !onSlotClick) return null; // slots disabled → skip
     const panelZ = faceSign * (d / 2 + SLOT_PROTO);
     return slots.map(slot => {
       const sw    = slot.w * w - 0.04;
@@ -470,8 +470,8 @@ function PuntaMesh({ w, d, h, ghost, slots, selectedSlotId, hoveredSlotId, onSlo
         </mesh>
       ))}
 
-      {/* Slot panels (same as GondolaMesh pattern) */}
-      {!ghost && slots?.map(slot => {
+      {/* Slot panels (same as GondolaMesh pattern) — disabled when onSlotClick is absent */}
+      {!ghost && !!onSlotClick && slots?.map(slot => {
         const sw    = slot.w * w - 0.04;
         const sh    = slot.h * slotAreaH - 0.025;
         const cx    = (slot.x + slot.w * 0.5) * w - w / 2;
@@ -1645,7 +1645,7 @@ function CameraControls({
   orbitRef: React.MutableRefObject<ThreeOrbitControls|null>;
   onReady?: (ctrl: ThreeOrbitControls) => (() => void) | void;
 }) {
-  const { camera, gl } = useThree();
+  const { camera, gl, invalidate } = useThree();
   useEffect(() => {
     const ctrl = new ThreeOrbitControls(camera, gl.domElement);
     ctrl.target.set(...CAM_TARGET);
@@ -1657,12 +1657,21 @@ function CameraControls({
     ctrl.panSpeed      = 1.4;
     ctrl.update();
     orbitRef.current   = ctrl;
+    // With frameloop="demand", re-render only when the camera actually moves.
+    const onCtrlChange = () => invalidate();
+    ctrl.addEventListener('change', onCtrlChange);
     // B3: capture the disposer returned by onReady (removes the 'change' listener)
     const disposeListener = onReady?.(ctrl);
-    return () => { disposeListener?.(); ctrl.dispose(); orbitRef.current = null; };
+    return () => {
+      ctrl.removeEventListener('change', onCtrlChange);
+      disposeListener?.();
+      ctrl.dispose();
+      orbitRef.current = null;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  useFrame(() => { orbitRef.current?.update(); });
+  // No useFrame needed — OrbitControls fires 'change' on every user interaction
+  // (already calls update() internally), and we invalidate from that event.
   return null;
 }
 
@@ -1832,7 +1841,7 @@ function FirstPersonControls({
   orbitRef: React.MutableRefObject<ThreeOrbitControls|null>;
   active: boolean;
 }) {
-  const { camera, gl } = useThree();
+  const { camera, gl, invalidate } = useThree();
   const ctrlRef = useRef<PointerLockControls|null>(null);
   const keys    = useRef<Record<string, boolean>>({});
   const SPEED   = 0.08;
@@ -1851,7 +1860,11 @@ function FirstPersonControls({
     const lockOnClick = () => ctrl.lock();
     gl.domElement.addEventListener('click', lockOnClick);
 
-    const onKey = (e: KeyboardEvent) => { keys.current[e.code] = e.type === 'keydown'; };
+    const onKey = (e: KeyboardEvent) => {
+      keys.current[e.code] = e.type === 'keydown';
+      // Kickstart the render loop when a movement key is pressed in first-person mode.
+      if (e.type === 'keydown' && ctrl.isLocked) invalidate();
+    };
     document.addEventListener('keydown', onKey);
     document.addEventListener('keyup',   onKey);
 
@@ -1866,10 +1879,16 @@ function FirstPersonControls({
       camera.position.set(...CAM_POS);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, camera, gl]);
+  }, [active, camera, gl, invalidate]);
 
   useFrame(() => {
     if (!active || !ctrlRef.current?.isLocked) return;
+    const anyKey =
+      keys.current['KeyW'] || keys.current['ArrowUp']    ||
+      keys.current['KeyS'] || keys.current['ArrowDown']  ||
+      keys.current['KeyA'] || keys.current['ArrowLeft']  ||
+      keys.current['KeyD'] || keys.current['ArrowRight'];
+    if (!anyKey) return;
     if (keys.current['KeyW'] || keys.current['ArrowUp'])    ctrlRef.current.moveForward(SPEED);
     if (keys.current['KeyS'] || keys.current['ArrowDown'])  ctrlRef.current.moveForward(-SPEED);
     if (keys.current['KeyA'] || keys.current['ArrowLeft'])  ctrlRef.current.moveRight(-SPEED);
@@ -1877,6 +1896,7 @@ function FirstPersonControls({
     camera.position.y = CAM_Y;
     camera.position.x = Math.max(-2, Math.min(STORE_W+2, camera.position.x));
     camera.position.z = Math.max(-2, Math.min(STORE_D+2, camera.position.z));
+    invalidate(); // sustain the loop while keys are held
   });
 
   return null;
@@ -1910,10 +1930,10 @@ interface SceneProps {
 }
 
 function Scene({
-  placedFixtures, selectedId, selectedSlotId, hoveredSlotId, setHoveredSlotId,
+  placedFixtures, selectedId, selectedSlotId,
   placingDef, ghostX, ghostZ, ghostRotY, ghostCollides,
   draggingId, orbitRef, onFloorMove, onFloorClick,
-  onSelectFixture, onSelectSlot, setPlacedFixtures,
+  onSelectFixture, setPlacedFixtures,
   screenshotReady, topViewReady, firstPerson, onHoverFixture, fixtures,
 }: SceneProps) {
   const { gl, camera } = useThree();
@@ -2099,10 +2119,7 @@ function Scene({
           <group key={fix.id} position={[fix.x,0,fix.z]} rotation={[0,fix.rotY,0]}>
             <FixtureMesh
               fixture={fix}
-              selectedSlotId={fix.id===selectedId ? selectedSlotId : null}
-              hoveredSlotId={fix.id===selectedId ? hoveredSlotId : null}
-              onSlotClick={slotId=>onSelectSlot(fix.id, slotId)}
-              onSlotHover={slotId=>setHoveredSlotId(slotId)}
+              /* slots disabled — omit onSlotClick/onSlotHover to skip all slot meshes */
             />
             {fix.id===selectedId && !selectedSlotId && <SelectionBox w={fix.w} d={fix.d} h={fix.h} />}
             {/* CHANGE 4 — Unauthorized placement badge */}
@@ -3049,6 +3066,8 @@ export default function StoreEditor3D() {
           onCreated={({ camera })=>{ camera.lookAt(...CAM_TARGET); }}
           gl={{ antialias:true, preserveDrawingBuffer: true }}
           shadows={{ type: THREE.PCFSoftShadowMap }}
+          frameloop="demand"
+          dpr={[1, 1.5]}
           style={{ background:"#e8e4dc", width:"100%", height:"100%" }}
         >
           <Scene
