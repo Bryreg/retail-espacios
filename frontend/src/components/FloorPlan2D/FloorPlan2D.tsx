@@ -32,6 +32,9 @@ type FixType2D =
   | "batea"
   | "nevera_mural"
   | "isla_fria"
+  | "nevera_carnes"
+  | "nevera_refrescos"
+  | "isla_nevera"
   | "stand_frutas"
   | "checkout"
   | "columna"
@@ -86,7 +89,10 @@ const CATALOG: {
   { type: "batea",         label: "Batea",             w: 0.80, h: 0.60, emoji: "🧺", prefix: "BAT", category: "Muebles" },
   // ── Refrigeración ─────────────────────────────────────────────────────
   { type: "nevera_mural",  label: "Nevera Mural",      w: 1.00, h: 0.60, emoji: "🧊", prefix: "NEV", category: "Refrigeración" },
-  { type: "isla_fria",     label: "Isla Fría",         w: 1.20, h: 0.80, emoji: "❄️",  prefix: "IFR", category: "Refrigeración" },
+  { type: "isla_fria",        label: "Isla Fría",          w: 1.20, h: 0.80, emoji: "❄️",  prefix: "IFR", category: "Refrigeración" },
+  { type: "nevera_carnes",    label: "Nevera Carnes",      w: 1.50, h: 0.85, emoji: "🥩", prefix: "CAR", category: "Refrigeración" },
+  { type: "nevera_refrescos", label: "Nevera Refrescos",   w: 1.20, h: 0.75, emoji: "🥤", prefix: "BEB", category: "Refrigeración" },
+  { type: "isla_nevera",      label: "Isla Nevera",        w: 1.50, h: 1.00, emoji: "🧊", prefix: "INV", category: "Refrigeración" },
   // ── Servicio ──────────────────────────────────────────────────────────
   { type: "stand_frutas",  label: "Stand Frutas/Verd", w: 1.50, h: 1.20, emoji: "🍎", prefix: "FRU", category: "Frescos" },
   { type: "checkout",      label: "Checkout / Caja",   w: 1.80, h: 0.70, emoji: "🛒", prefix: "CAJ", category: "Servicio" },
@@ -139,6 +145,7 @@ const H_DEFAULTS: Record<string, number> = {
   cross: 1.80, metro: 0.05, mueble: 2.00, exhibicion: 1.50,
   isla: 1.40, impulsador: 1.50,
   batea: 0.80, nevera_mural: 2.20, isla_fria: 0.90,
+  nevera_carnes: 1.10, nevera_refrescos: 1.80, isla_nevera: 0.95,
   stand_frutas: 0.95, checkout: 0.90, columna: 3.00,
 };
 
@@ -148,7 +155,8 @@ const COLOR_DEFAULTS: Record<string, string> = {
   ristra: "#d97706", cross: "#0891b2", impulsador: "#e11d48", metro: "#64748b",
   mueble: "#475569", exhibicion: "#ec4899",
   isla: "#f59e0b", batea: "#84cc16", nevera_mural: "#06b6d4",
-  isla_fria: "#0ea5e9", stand_frutas: "#84cc16",
+  isla_fria: "#0ea5e9", nevera_carnes: "#94a3b8", nevera_refrescos: "#1e293b", isla_nevera: "#374151",
+  stand_frutas: "#84cc16",
   checkout: "#8b5cf6", columna: "#94a3b8",
 };
 
