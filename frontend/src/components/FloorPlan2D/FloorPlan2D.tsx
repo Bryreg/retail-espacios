@@ -1196,6 +1196,24 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                       rx={4 / zoom}
                     />
 
+                    {/* Front-face indicator — colored stripe on the accessible/product face.
+                        Convention: rotY=0 → south (bottom); rotates clockwise each 90°.
+                        Hidden for types where orientation has no customer-facing meaning. */}
+                    {item.type !== "metro" && item.type !== "columna" && (() => {
+                      const steps = Math.round(((item.rotY ?? 0) % (2 * Math.PI)) / (Math.PI / 2)) % 4;
+                      const sw = Math.max(2.5, 4 / zoom);
+                      const inset = sw / 2;
+                      const stroke = "rgba(99,102,241,0.85)";
+                      const lp = { stroke, strokeWidth: sw, strokeLinecap: "round" as const, style: { pointerEvents: "none" as const } };
+                      switch (steps) {
+                        case 0: return <line x1={px + inset} y1={py + ph - inset} x2={px + pw - inset} y2={py + ph - inset} {...lp} />;
+                        case 1: return <line x1={px + inset} y1={py + inset} x2={px + inset} y2={py + ph - inset} {...lp} />;
+                        case 2: return <line x1={px + inset} y1={py + inset} x2={px + pw - inset} y2={py + inset} {...lp} />;
+                        case 3: return <line x1={px + pw - inset} y1={py + inset} x2={px + pw - inset} y2={py + ph - inset} {...lp} />;
+                        default: return null;
+                      }
+                    })()}
+
                     {/* CHANGE 3: Dimension label during resize */}
                     {resizeState?.id === item.id && (
                       <text
