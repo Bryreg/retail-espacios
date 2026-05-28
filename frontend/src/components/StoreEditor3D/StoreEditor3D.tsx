@@ -20,7 +20,10 @@ import { findOrCreateSupplier } from "../../api/suppliers";
 const STORE_W = 30;
 const STORE_D = 42;
 const SNAP    = 0.05;   // matches FloorPlan2D's snapTo grid (5 cm)
-const CAM_POS: [number, number, number] = [STORE_W / 2, 28, -8];
+// Camera is placed on the far (north) side so that the Z axis matches the 2D view:
+// small Z (2D-top) → far from camera → appears at top of 3D scene.
+// Previously the camera was at Z=-8 (south side), which flipped the 2D/3D relationship.
+const CAM_POS: [number, number, number] = [STORE_W / 2, 28, STORE_D + 8];
 const CAM_TARGET: [number, number, number] = [STORE_W / 2, 0, STORE_D / 2];
 
 function snap(v: number) { return Math.round(v / SNAP) * SNAP; }
@@ -1921,8 +1924,18 @@ function Scene({
   // B3: Returns a disposer so the caller can remove the listener on unmount.
   const handleOrbitReady = useCallback((ctrl: ThreeOrbitControls) => {
     const { camera3D: c3d } = useFixtureStore.getState();
-    camera.position.set(c3d.posX, c3d.posY, c3d.posZ);
-    ctrl.target.set(c3d.targetX, c3d.targetY, c3d.targetZ);
+    // Migrate old camera states that were saved with the previous south-facing position
+    // (posZ < 0). Reset to the new north-facing default so the scene orientation matches
+    // the 2D floor plan without requiring the user to manually reset the view.
+    const needsMigration = c3d.posZ <= 0;
+    const posX = needsMigration ? STORE_W / 2 : c3d.posX;
+    const posY = needsMigration ? 28 : c3d.posY;
+    const posZ = needsMigration ? STORE_D + 8 : c3d.posZ;
+    const targetX = needsMigration ? STORE_W / 2 : c3d.targetX;
+    const targetY = needsMigration ? 0 : c3d.targetY;
+    const targetZ = needsMigration ? STORE_D / 2 : c3d.targetZ;
+    camera.position.set(posX, posY, posZ);
+    ctrl.target.set(targetX, targetY, targetZ);
     ctrl.update();
     const handler = () => {
       const p = camera.position;

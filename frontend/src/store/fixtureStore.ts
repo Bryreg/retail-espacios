@@ -22,13 +22,16 @@ export interface Camera3D {
 }
 
 const DEFAULT_CAMERA_2D: Camera2D = { panX: 80, panY: 80, zoom: 1 };
+// Camera positioned north of the store (large +Z) looking toward scene center.
+// This matches the 2D floor plan orientation: small Z = far (top), large Z = near (bottom).
+// STORE_W=30, STORE_D=42 → north side at Z=50, center target at (15,0,21).
 const DEFAULT_CAMERA_3D: Camera3D = {
-  posX: 0,
-  posY: 12,
-  posZ: -8,
-  targetX: 0,
+  posX: 15,
+  posY: 28,
+  posZ: 50,
+  targetX: 15,
   targetY: 0,
-  targetZ: 0,
+  targetZ: 21,
 };
 
 // ─── Store ────────────────────────────────────────────────────────────────────
