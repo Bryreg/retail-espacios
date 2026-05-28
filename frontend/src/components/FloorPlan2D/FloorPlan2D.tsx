@@ -291,6 +291,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   const [editingSedeVal, setEditingSedeVal]       = useState("");
   const [addingNewSede, setAddingNewSede]         = useState(false);
   const [newSedeVal, setNewSedeVal]               = useState("");
+  const [clipboard, setClipboard]               = useState<PlacedItem2D[]>([]);
   // Catalog label editing state
   const [editingCatalogType, setEditingCatalogType] = useState<string | null>(null);
   const [editingCatalogVal, setEditingCatalogVal]   = useState("");
@@ -505,28 +506,65 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     );
   }, []);
 
-  const duplicateItem = useCallback(
-    (id: string | null) => {
-      if (!id) return;
+  /** Duplicate one or more fixtures, shifting each by 0.5m. Supports multi-selection. */
+  const duplicateSelected = useCallback(
+    (ids: Set<string>) => {
+      if (ids.size === 0) return;
       setItems((prev) => {
-        const src = prev.find((i) => i.id === id);
-        if (!src) return prev;
-        const code = nextCode(src.type, prev);
-        const copy: PlacedItem2D = {
-          ...src,
-          id: `${src.type}-${Date.now()}`,
-          code,
-          x: src.x + 0.5,
-          y: src.y + 0.5,
-        };
-        // Reject if the offset copy would overlap an existing fixture
-        if (hasCollision(copy, prev)) return prev;
-        setSelectedIds(new Set([copy.id]));
-        return [...prev, copy];
+        const sources = prev.filter((i) => ids.has(i.id));
+        if (sources.length === 0) return prev;
+        const nextItems = [...prev];
+        const newIds: string[] = [];
+        for (const src of sources) {
+          const code = nextCode(src.type, nextItems);
+          const copy: PlacedItem2D = {
+            ...src,
+            id: `${src.type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            code,
+            x: src.x + 0.5,
+            y: src.y + 0.5,
+          };
+          if (!hasCollision(copy, nextItems)) {
+            nextItems.push(copy);
+            newIds.push(copy.id);
+          }
+        }
+        if (newIds.length === 0) return prev;
+        setSelectedIds(new Set(newIds));
+        return nextItems;
       });
     },
     [nextCode]
   );
+
+  /** Copy selected items to clipboard. */
+  const copySelected = useCallback(() => {
+    const selected = items.filter((i) => selectedIds.has(i.id));
+    if (selected.length > 0) setClipboard(selected);
+  }, [items, selectedIds]);
+
+  /** Paste clipboard items at a small offset (no collision guard — user repositions). */
+  const pasteClipboard = useCallback(() => {
+    if (clipboard.length === 0) return;
+    setItems((prev) => {
+      const nextItems = [...prev];
+      const newIds: string[] = [];
+      for (const src of clipboard) {
+        const code = nextCode(src.type, nextItems);
+        const copy: PlacedItem2D = {
+          ...src,
+          id: `${src.type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          code,
+          x: src.x + 1,
+          y: src.y + 1,
+        };
+        nextItems.push(copy);
+        newIds.push(copy.id);
+      }
+      setSelectedIds(new Set(newIds));
+      return nextItems;
+    });
+  }, [clipboard, nextCode]);
 
   // ── Keyboard shortcuts ───────────────────────────────────────────────────────
 
@@ -562,7 +600,15 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
         setSelectedIds(new Set(items.map((i) => i.id)));
       }
       if ((e.ctrlKey || e.metaKey) && e.key === "d") {
-        duplicateItem(singleId);
+        duplicateSelected(selectedIds);
+        e.preventDefault();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+        copySelected();
+        e.preventDefault();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "v") {
+        pasteClipboard();
         e.preventDefault();
       }
     }
@@ -575,7 +621,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [editMode, selectedIds, items, deleteItem, rotateItem, duplicateItem, undo, redo]);
+  }, [editMode, selectedIds, items, deleteItem, rotateItem, duplicateSelected, copySelected, pasteClipboard, undo, redo]);
 
   // ── SVG mouse handlers ───────────────────────────────────────────────────────
 
@@ -1494,7 +1540,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               editMode={editMode}
               onUpdate={updateSelected}
               onDelete={() => { deleteItem(selectedItem.id); }}
-              onDuplicate={() => duplicateItem(selectedItem.id)}
+              onDuplicate={() => duplicateSelected(new Set([selectedItem.id]))}
               onClose={() => setSelectedIds(new Set())}
             />
           </div>
