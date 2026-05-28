@@ -26,7 +26,7 @@ export type FixType =
   | "batea"
   | "nevera_mural"
   | "isla_fria"
-  | "mostrador_deli"
+  | "stand_frutas"
   | "checkout"
   | "columna"
   | "exhibicion";   // legacy 2D-only type — kept for backward compat

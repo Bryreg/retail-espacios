@@ -32,7 +32,7 @@ type FixType2D =
   | "batea"
   | "nevera_mural"
   | "isla_fria"
-  | "mostrador_deli"
+  | "stand_frutas"
   | "checkout"
   | "columna"
   | "exhibicion";   // legacy — kept for backward compat, not in catalog
@@ -88,7 +88,7 @@ const CATALOG: {
   { type: "nevera_mural",  label: "Nevera Mural",      w: 1.00, h: 0.60, emoji: "🧊", prefix: "NEV", category: "Refrigeración" },
   { type: "isla_fria",     label: "Isla Fría",         w: 1.20, h: 0.80, emoji: "❄️",  prefix: "IFR", category: "Refrigeración" },
   // ── Servicio ──────────────────────────────────────────────────────────
-  { type: "mostrador_deli",label: "Mostrador Deli",    w: 2.00, h: 1.00, emoji: "🥗", prefix: "DEL", category: "Servicio" },
+  { type: "stand_frutas",  label: "Stand Frutas/Verd", w: 1.50, h: 1.20, emoji: "🍎", prefix: "FRU", category: "Frescos" },
   { type: "checkout",      label: "Checkout / Caja",   w: 1.80, h: 0.70, emoji: "🛒", prefix: "CAJ", category: "Servicio" },
   // ── Infraestructura ───────────────────────────────────────────────────
   { type: "metro",         label: "Zona Libre",        w: 1.00, h: 1.00, emoji: "⬜", prefix: "MET", category: "Infraestructura" },
@@ -139,7 +139,7 @@ const H_DEFAULTS: Record<string, number> = {
   cross: 1.80, metro: 0.05, mueble: 2.00, exhibicion: 1.50,
   isla: 1.40, impulsador: 1.50,
   batea: 0.80, nevera_mural: 2.20, isla_fria: 0.90,
-  mostrador_deli: 1.00, checkout: 0.90, columna: 3.00,
+  stand_frutas: 0.95, checkout: 0.90, columna: 3.00,
 };
 
 const COLOR_DEFAULTS: Record<string, string> = {
@@ -148,7 +148,7 @@ const COLOR_DEFAULTS: Record<string, string> = {
   ristra: "#d97706", cross: "#0891b2", impulsador: "#e11d48", metro: "#64748b",
   mueble: "#475569", exhibicion: "#ec4899",
   isla: "#f59e0b", batea: "#84cc16", nevera_mural: "#06b6d4",
-  isla_fria: "#0ea5e9", mostrador_deli: "#f97316",
+  isla_fria: "#0ea5e9", stand_frutas: "#84cc16",
   checkout: "#8b5cf6", columna: "#94a3b8",
 };
 

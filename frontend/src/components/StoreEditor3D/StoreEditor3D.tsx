@@ -44,7 +44,7 @@ function euclidean(ax: number, az: number, bx: number, bz: number) {
 
 type FixType =
   | "gondola" | "punta" | "robatope" | "ristra" | "cross" | "metro" | "mueble"
-  | "isla" | "impulsador" | "batea" | "nevera_mural" | "isla_fria" | "mostrador_deli" | "checkout" | "columna"
+  | "isla" | "impulsador" | "batea" | "nevera_mural" | "isla_fria" | "stand_frutas" | "checkout" | "columna"
   | "exhibicion";  // legacy
 type GondolaType = "double" | "wall";
 type SpaceStatus = "free" | "occupied" | "reserved" | "maintenance";
@@ -120,7 +120,7 @@ const FIXTURE_DEFS: FixtureDef[] = [
   { type:"nevera_mural",                  label:"Nevera Mural",     w:1.00, d:0.60, h:2.20, color:"#06b6d4", emoji:"🧊", desc:"Refrigerador mural con puertas de vidrio", code:"NEV" },
   { type:"isla_fria",                     label:"Isla Fría",        w:1.20, d:0.80, h:0.90, color:"#0ea5e9", emoji:"❄️",  desc:"Congelador horizontal tipo isla",          code:"IFR" },
   // ── Servicio ──────────────────────────────────────────────────────────────
-  { type:"mostrador_deli",                label:"Mostrador Deli",   w:2.00, d:1.00, h:1.00, color:"#f97316", emoji:"🥗", desc:"Mostrador refrigerado con frente vidriado", code:"DEL" },
+  { type:"stand_frutas",                  label:"Stand Frutas/Verd",w:1.50, d:1.20, h:0.95, color:"#84cc16", emoji:"🍎", desc:"Cajón expositor de frutas y verduras", code:"FRU" },
   { type:"checkout",                      label:"Checkout / Caja",  w:1.80, d:0.70, h:0.90, color:"#8b5cf6", emoji:"🛒", desc:"Caja registradora con cinta transportadora", code:"CAJ" },
   // ── Infraestructura ───────────────────────────────────────────────────────
   { type:"metro",                         label:"Zona Libre",       w:1.00, d:1.00, h:0.05, color:"#64748b", emoji:"⬜", desc:"Área de suelo demarcada",                  code:"MET" },
@@ -1355,71 +1355,104 @@ function IslaFriaMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:num
   );
 }
 
-// ─── Mesh: Mostrador Deli ─────────────────────────────────────────────────────
+// ─── Mesh: Stand Frutas / Verduras ───────────────────────────────────────────
+// Cajón estilo madera (tipo Alkosto): costillas horizontales, esquineros metálicos,
+// patas cortas, relleno de producto con tinte verde/amarillo.
 
-function MostradorDeliMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
+function StandFrutasMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
   const op      = ghost ? 0.42 : 1;
-  const topH    = 0.040;             // counter surface thickness
-  const glassAngle = -0.30;          // radians — angled toward viewer
-  const bodyH   = h - topH;
-  const STEEL   = "#9ca3af";
-  const STEEL_D = "#6b7280";
-  const GLASS_C = "#bae6fd";
+  const WOOD    = "#c8a465";   // madera clara
+  const WOOD_D  = "#a07c3a";   // madera oscura (costillas)
+  const METAL   = "#1f2937";   // esquineros / ángulos metálicos negros
+  const PRODUCE = "#8fbc52";   // relleno producto (mezcla verde-amarillo)
+
+  // Patas cortas en las 4 esquinas
+  const legH  = 0.12;
+  const legSz = 0.06;
+  const legY  = legH / 2;
+  const legs  = [
+    [-w / 2 + legSz / 2,  -d / 2 + legSz / 2],
+    [ w / 2 - legSz / 2,  -d / 2 + legSz / 2],
+    [-w / 2 + legSz / 2,   d / 2 - legSz / 2],
+    [ w / 2 - legSz / 2,   d / 2 - legSz / 2],
+  ] as const;
+
+  // Costillas horizontales: N tablas apiladas en cada cara
+  const plankT = 0.028;   // grosor de cada tabla
+  const gap    = 0.018;   // hueco entre tablas
+  const pitch  = plankT + gap;
+  const boxH   = h - legH;
+  const nPlanks = Math.max(2, Math.floor(boxH / pitch));
+  const planks  = Array.from({ length: nPlanks }, (_, i) => legH + i * pitch + plankT / 2);
+
+  // Esquineros metálicos verticales (8 aristas del cajón)
+  const crnW = 0.030;
+  const corners = [
+    [-w / 2,  -d / 2],
+    [ w / 2,  -d / 2],
+    [-w / 2,   d / 2],
+    [ w / 2,   d / 2],
+  ] as const;
 
   return (
     <group>
-      {/* Solid rear body */}
-      <mesh position={[0, bodyH / 2, d * 0.15]} castShadow>
-        <boxGeometry args={[w, bodyH, d * 0.40]} />
-        <meshStandardMaterial color={STEEL_D} metalness={0.35} roughness={0.55} transparent opacity={op} />
-      </mesh>
-
-      {/* Angled glass front panel */}
-      <mesh position={[0, bodyH * 0.45, -(d * 0.22)]}
-        rotation={[glassAngle, 0, 0]}>
-        <boxGeometry args={[w - 0.020, bodyH * 0.75, 0.010]} />
-        <meshStandardMaterial color={GLASS_C} roughness={0.04} metalness={0.02}
-          transparent opacity={0.28 * op} />
-      </mesh>
-
-      {/* Glass frame rails top & bottom */}
-      <mesh position={[0, bodyH * 0.82, -(d * 0.35)]}>
-        <boxGeometry args={[w, 0.025, 0.025]} />
-        <meshStandardMaterial color={STEEL} metalness={0.50} roughness={0.30} transparent opacity={op} />
-      </mesh>
-      <mesh position={[0, bodyH * 0.10, -(d * 0.38)]}>
-        <boxGeometry args={[w, 0.025, 0.025]} />
-        <meshStandardMaterial color={STEEL} metalness={0.50} roughness={0.30} transparent opacity={op} />
-      </mesh>
-
-      {/* Product display interior */}
-      <mesh position={[0, bodyH * 0.40, -(d * 0.10)]}>
-        <boxGeometry args={[w - 0.040, bodyH * 0.50, d * 0.35]} />
-        <meshStandardMaterial color="#f8f8f6" transparent opacity={0.65 * op} />
-      </mesh>
-      {/* Internal shelf */}
-      <mesh position={[0, bodyH * 0.28, -(d * 0.10)]}>
-        <boxGeometry args={[w - 0.050, 0.012, d * 0.32]} />
-        <meshLambertMaterial color="#e8e8e5" transparent opacity={op} />
-      </mesh>
-
-      {/* Counter top surface */}
-      <mesh position={[0, h - topH / 2, d * 0.10]} castShadow>
-        <boxGeometry args={[w, topH, d * 0.80]} />
-        <meshStandardMaterial color="#e5e5e2" metalness={0.20} roughness={0.45} transparent opacity={op} />
-      </mesh>
-
-      {/* Left & right end panels */}
-      {([-1, 1] as const).map(side => (
-        <mesh key={side} position={[side * (w / 2 - 0.015), h / 2, 0]} castShadow>
-          <boxGeometry args={[0.030, h, d]} />
-          <meshStandardMaterial color={STEEL_D} metalness={0.35} roughness={0.55} transparent opacity={op} />
+      {/* Patas */}
+      {legs.map(([lx, lz], i) => (
+        <mesh key={`leg${i}`} position={[lx, legY, lz]} castShadow>
+          <boxGeometry args={[legSz, legH, legSz]} />
+          <meshStandardMaterial color={WOOD_D} roughness={0.8} transparent opacity={op} />
         </mesh>
       ))}
 
-      {/* Status indicator on front lower body */}
-      <mesh position={[0, 0.055, -(d / 2 + 0.008)]}>
-        <boxGeometry args={[w * 0.70, 0.042, 0.012]} />
+      {/* Costillas horizontales — cara delantera y trasera */}
+      {planks.map((py, i) => (
+        <group key={`plk${i}`}>
+          {/* Delantera */}
+          <mesh position={[0, py, -d / 2 + plankT / 2]} castShadow>
+            <boxGeometry args={[w, plankT, plankT]} />
+            <meshStandardMaterial color={WOOD} roughness={0.75} transparent opacity={op} />
+          </mesh>
+          {/* Trasera */}
+          <mesh position={[0, py, d / 2 - plankT / 2]} castShadow>
+            <boxGeometry args={[w, plankT, plankT]} />
+            <meshStandardMaterial color={WOOD} roughness={0.75} transparent opacity={op} />
+          </mesh>
+          {/* Lateral izquierdo */}
+          <mesh position={[-w / 2 + plankT / 2, py, 0]} castShadow>
+            <boxGeometry args={[plankT, plankT, d]} />
+            <meshStandardMaterial color={WOOD} roughness={0.75} transparent opacity={op} />
+          </mesh>
+          {/* Lateral derecho */}
+          <mesh position={[w / 2 - plankT / 2, py, 0]} castShadow>
+            <boxGeometry args={[plankT, plankT, d]} />
+            <meshStandardMaterial color={WOOD} roughness={0.75} transparent opacity={op} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Esquineros metálicos verticales */}
+      {corners.map(([cx, cz], i) => (
+        <mesh key={`crn${i}`} position={[cx, legH + boxH / 2, cz]} castShadow>
+          <boxGeometry args={[crnW, boxH, crnW]} />
+          <meshStandardMaterial color={METAL} metalness={0.6} roughness={0.3} transparent opacity={op} />
+        </mesh>
+      ))}
+
+      {/* Fondo del cajón */}
+      <mesh position={[0, legH + 0.010, 0]}>
+        <boxGeometry args={[w - 0.04, 0.018, d - 0.04]} />
+        <meshStandardMaterial color={WOOD_D} roughness={0.9} transparent opacity={op} />
+      </mesh>
+
+      {/* Relleno de producto (fruta/verdura) — ligeramente por encima del borde */}
+      <mesh position={[0, h + 0.04, 0]}>
+        <boxGeometry args={[w - 0.06, 0.12, d - 0.06]} />
+        <meshStandardMaterial color={PRODUCE} roughness={1.0} transparent opacity={0.82 * op} />
+      </mesh>
+
+      {/* Indicador de estado en la cara delantera */}
+      <mesh position={[0, legH + 0.045, -(d / 2 + 0.008)]}>
+        <boxGeometry args={[w * 0.60, 0.036, 0.010]} />
         <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
       </mesh>
     </group>
@@ -1578,7 +1611,7 @@ function FixtureMesh({ fixture, ghost, selectedSlotId, hoveredSlotId, onSlotClic
     case "batea":         return <BateaMesh          {...base} />;
     case "nevera_mural":  return <NeveraMuralMesh    {...base} />;
     case "isla_fria":     return <IslaFriaMesh       {...base} />;
-    case "mostrador_deli":return <MostradorDeliMesh  {...base} />;
+    case "stand_frutas":  return <StandFrutasMesh    {...base} />;
     case "checkout":      return <CheckoutMesh       {...base} />;
     case "columna":       return <ColumnaMesh        {...base} />;
     default:              return <IslaMesh           {...base} />;  // legacy exhibicion + unknown
