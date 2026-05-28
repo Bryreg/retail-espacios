@@ -44,7 +44,7 @@ function euclidean(ax: number, az: number, bx: number, bz: number) {
 
 type FixType =
   | "gondola" | "punta" | "robatope" | "ristra" | "cross" | "metro" | "mueble"
-  | "isla" | "impulsador" | "batea" | "nevera_mural" | "isla_fria" | "nevera_carnes" | "nevera_refrescos" | "isla_nevera" | "stand_frutas" | "checkout" | "columna"
+  | "isla" | "impulsador" | "batea" | "isla_fria" | "nevera_carnes" | "nevera_refrescos" | "stand_frutas" | "checkout" | "columna"
   | "exhibicion";  // legacy
 type GondolaType = "double" | "wall";
 type SpaceStatus = "free" | "occupied" | "reserved" | "maintenance";
@@ -117,11 +117,9 @@ const FIXTURE_DEFS: FixtureDef[] = [
   { type:"impulsador",                    label:"Impulsador Marca",  w:0.60, d:0.40, h:1.50, color:"#e11d48", emoji:"🏷️",  desc:"Display compacto de impulso de marca",         code:"IMP" },
   { type:"batea",                         label:"Batea",            w:0.80, d:0.60, h:0.80, color:"#84cc16", emoji:"🧺", desc:"Canasto metálico con ruedas",              code:"BAT" },
   // ── Refrigeración ─────────────────────────────────────────────────────────
-  { type:"nevera_mural",                  label:"Nevera Mural",     w:1.00, d:0.60, h:2.20, color:"#06b6d4", emoji:"🧊", desc:"Refrigerador mural con puertas de vidrio", code:"NEV" },
-  { type:"isla_fria",                     label:"Isla Fría",           w:1.20, d:0.80, h:0.90, color:"#0ea5e9", emoji:"❄️",  desc:"Congelador horizontal tipo isla",                code:"IFR" },
-  { type:"nevera_carnes",                 label:"Nevera Carnes",       w:1.50, d:0.85, h:1.10, color:"#94a3b8", emoji:"🥩", desc:"Mostrador abierto refrigerado para carnes/deli", code:"CAR" },
-  { type:"nevera_refrescos",              label:"Nevera Refrescos",    w:1.20, d:0.75, h:1.80, color:"#1e293b", emoji:"🥤", desc:"Vitrina multideck abierta para bebidas",         code:"BEB" },
-  { type:"isla_nevera",                   label:"Isla Nevera",         w:1.50, d:1.00, h:0.95, color:"#374151", emoji:"🧊", desc:"Congelador tipo isla con tapa de vidrio",        code:"INV" },
+  { type:"isla_fria",        label:"Isla Helados/Cong.",  w:1.80, d:1.00, h:0.90, color:"#e5e7eb", emoji:"🍦", desc:"Isla abierta refrigerada con guarda de acrílico",code:"ISL" },
+  { type:"nevera_carnes",    label:"Nevera Carnes",       w:2.00, d:0.90, h:1.05, color:"#111827", emoji:"🥩", desc:"Mostrador con vidrio curvo para carnes y deli",  code:"CAR" },
+  { type:"nevera_refrescos", label:"Nevera Refrescos",    w:1.20, d:0.75, h:1.80, color:"#1e293b", emoji:"🥤", desc:"Vitrina multideck abierta para bebidas",         code:"BEB" },
   // ── Servicio ──────────────────────────────────────────────────────────────
   { type:"stand_frutas",                  label:"Stand Frutas/Verd",w:1.50, d:1.20, h:0.95, color:"#84cc16", emoji:"🍎", desc:"Cajón expositor de frutas y verduras", code:"FRU" },
   { type:"checkout",                      label:"Checkout / Caja",  w:1.80, d:0.70, h:0.90, color:"#8b5cf6", emoji:"🛒", desc:"Caja registradora con cinta transportadora", code:"CAJ" },
@@ -194,13 +192,6 @@ function validatePlacement(
                      pos.z < margin || pos.z > STORE_D - margin;
     if (!nearWall)
       return "⚠️ Góndola Mural recomendada cerca de una pared";
-  }
-  if (def.type === "nevera_mural") {
-    const margin = 3;
-    const nearWall = pos.x < margin || pos.x > STORE_W - margin ||
-                     pos.z < margin || pos.z > STORE_D - margin;
-    if (!nearWall)
-      return "⚠️ Nevera Mural recomendada cerca de una pared";
   }
   if (def.type === "columna") {
     // Columns are fine anywhere — no validation needed
@@ -1133,225 +1124,110 @@ function BateaMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number
 // Branded glass-door refrigerator: dark body, large topper, wheels, cans & bottles
 // visible on wire shelves through semi-transparent glass doors.
 
-function NeveraMuralMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
-  const op       = ghost ? 0.42 : 1;
-  const wheelR   = 0.045;
-  const bottomH  = wheelR * 2 + 0.06;   // plinth + wheels clearance
-  const topperH  = Math.max(0.28, h * 0.16);  // large branded topper
-  const doorH    = h - topperH - bottomH;
-  const nDoors   = Math.max(1, Math.round(w / 0.68));
-  const doorW    = w / nDoors;
-  const FRAME    = "#111827";            // near-black body
-  const FRAME_M  = "#1f2937";
-  const SILVER   = "#9ca3af";
-  const GLASS    = "#bfdbfe";            // light blue glass tint
-  const nShelves = 4;
-  // Alternating can rows + bottle row at bottom
-  const CONTENT_C = ["#dc2626","#dc2626","#1e3a5f","#dc2626"];   // soda cans (red/dark)
+// ─── Mesh: Isla Fría / Helados ────────────────────────────────────────────────
+// Isla abierta refrigerada (tipo supermercado): cuerpo blanco con sección
+// inferior oscura de compresor, rejillas perimetrales y guarda de acrílico.
+
+function IslaFriaMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
+  const op      = ghost ? 0.42 : 1;
+  const BODY    = "#f3f4f6";   // blanco/gris claro
+  const COMP    = "#374151";   // compresor oscuro
+  const FRAME   = "#9ca3af";   // rim de acero
+  const GLASS_C = "#bae6fd";   // guarda de acrílico
+  const INNER   = "#dbeafe";   // interior frío
+  const compH   = h * 0.30;
+  const wellH   = h - compH;
+  const guardH  = Math.min(0.22, wellH * 0.28);
+  const PRODS   = ["#facc15","#f97316","#a78bfa","#ec4899","#34d399","#60a5fa"];
 
   return (
     <group>
-      {/* ── Wheels (4 corners) ── */}
-      {([-1,1] as const).flatMap(sx => ([-1,1] as const).map(sz => (
-        <mesh key={`w${sx}${sz}`}
-          position={[sx*(w/2-0.08), wheelR, sz*(d/2-0.07)]}
-          rotation={[0,0,Math.PI/2]} castShadow>
-          <cylinderGeometry args={[wheelR, wheelR, 0.030, 14]} />
-          <meshStandardMaterial color="#374151" metalness={0.55} roughness={0.40} transparent opacity={op} />
-        </mesh>
-      )))}
-
-      {/* ── Bottom plinth / base grille ── */}
-      <mesh position={[0, wheelR*2 + 0.030, 0]} castShadow>
-        <boxGeometry args={[w, 0.055, d]} />
-        <meshStandardMaterial color={FRAME} metalness={0.50} roughness={0.45} transparent opacity={op} />
+      {/* Bloque compresor inferior (oscuro) */}
+      <mesh position={[0, compH / 2, 0]} castShadow>
+        <boxGeometry args={[w, compH, d]} />
+        <meshStandardMaterial color={COMP} roughness={0.60} metalness={0.25} transparent opacity={op} />
       </mesh>
-      {/* Grille slots on front of plinth */}
-      {Array.from({ length: Math.max(4, Math.floor(w / 0.12)) }, (_, i) => {
-        const gx = -w/2 + 0.07 + i * (w / Math.max(4, Math.floor(w/0.12)));
+
+      {/* Rejillas de ventilación perimetrales en las 4 caras del compresor */}
+      {Array.from({ length: 6 }, (_, i) => {
+        const yp = compH * 0.12 + i * (compH * 0.15);
         return (
-          <mesh key={i} position={[gx, wheelR*2 + 0.030, -(d/2 - 0.006)]}>
-            <boxGeometry args={[0.080, 0.028, 0.007]} />
-            <meshStandardMaterial color={FRAME_M} metalness={0.45} roughness={0.50} transparent opacity={op} />
+          <group key={i}>
+            <mesh position={[0, yp, -(d / 2 + 0.004)]}>
+              <boxGeometry args={[w * 0.80, 0.011, 0.008]} />
+              <meshStandardMaterial color="#1f2937" metalness={0.45} transparent opacity={op} />
+            </mesh>
+            <mesh position={[0, yp, d / 2 + 0.004]}>
+              <boxGeometry args={[w * 0.80, 0.011, 0.008]} />
+              <meshStandardMaterial color="#1f2937" metalness={0.45} transparent opacity={op} />
+            </mesh>
+            <mesh position={[-(w / 2 + 0.004), yp, 0]}>
+              <boxGeometry args={[0.008, 0.011, d * 0.80]} />
+              <meshStandardMaterial color="#1f2937" metalness={0.45} transparent opacity={op} />
+            </mesh>
+            <mesh position={[w / 2 + 0.004, yp, 0]}>
+              <boxGeometry args={[0.008, 0.011, d * 0.80]} />
+              <meshStandardMaterial color="#1f2937" metalness={0.45} transparent opacity={op} />
+            </mesh>
+          </group>
+        );
+      })}
+
+      {/* Cuerpo superior blanco (pozo frío) */}
+      <mesh position={[0, compH + wellH / 2, 0]} castShadow>
+        <boxGeometry args={[w, wellH, d]} />
+        <meshStandardMaterial color={BODY} roughness={0.55} metalness={0.10} transparent opacity={op} />
+      </mesh>
+
+      {/* Interior del pozo (tinte frío) */}
+      <mesh position={[0, compH + wellH - 0.09, 0]}>
+        <boxGeometry args={[w - 0.10, 0.26, d - 0.10]} />
+        <meshStandardMaterial color={INNER} transparent opacity={0.50 * op} roughness={0.05} />
+      </mesh>
+
+      {/* Productos dentro de la isla (cajas de helado) */}
+      {Array.from({ length: Math.floor((w - 0.14) / 0.28) }, (_, i) => {
+        const px  = -w / 2 + 0.12 + i * 0.28 + 0.09;
+        const col = PRODS[i % PRODS.length];
+        return (
+          <mesh key={i} position={[px, compH + wellH - 0.16, 0]}>
+            <boxGeometry args={[0.22, 0.13, d * 0.55]} />
+            <meshStandardMaterial color={col} roughness={0.55} transparent opacity={0.72 * op} />
           </mesh>
         );
       })}
 
-      {/* ── Left + right body panels (sides) ── */}
-      {([-1,1] as const).map(side => (
-        <mesh key={side} position={[side*(w/2-0.018), bottomH + doorH/2, 0]} castShadow>
-          <boxGeometry args={[0.035, doorH, d]} />
-          <meshStandardMaterial color={FRAME} metalness={0.40} roughness={0.55} transparent opacity={op} />
-        </mesh>
-      ))}
-      {/* Side brand panels — colored wrap like the real Coke fridge */}
-      {([-1,1] as const).map(side => (
-        <mesh key={`brand${side}`} position={[side*(w/2-0.008), bottomH + doorH*0.50, 0]}>
-          <boxGeometry args={[0.010, doorH*0.90, d*0.96]} />
-          <meshLambertMaterial color={statusColor} transparent opacity={0.70 * op} />
-        </mesh>
-      ))}
-
-      {/* ── Back structural panel ── */}
-      <mesh position={[0, bottomH + doorH/2, d/2 - 0.018]} castShadow>
-        <boxGeometry args={[w, doorH, 0.032]} />
-        <meshStandardMaterial color={FRAME} metalness={0.35} roughness={0.60} transparent opacity={op} />
+      {/* Borde superior / rim de acero */}
+      <mesh position={[0, h + 0.008, 0]}>
+        <boxGeometry args={[w + 0.012, 0.016, d + 0.012]} />
+        <meshStandardMaterial color={FRAME} metalness={0.50} roughness={0.30} transparent opacity={op} />
       </mesh>
 
-      {/* ── Interior blue LED backlight ── */}
-      <mesh position={[0, bottomH + doorH*0.50, d/2 - 0.055]}>
-        <boxGeometry args={[w - 0.042, doorH - 0.05, 0.004]} />
-        <meshStandardMaterial color="#dbeafe" emissive="#93c5fd" emissiveIntensity={0.65}
-          transparent opacity={0.50 * op} />
+      {/* Guarda de acrílico — 4 paneles perimetrales verticales */}
+      <mesh position={[0, h + guardH / 2, -(d / 2 - 0.010)]}>
+        <boxGeometry args={[w - 0.020, guardH, 0.008]} />
+        <meshStandardMaterial color={GLASS_C} roughness={0.04} metalness={0.01}
+          transparent opacity={0.35 * op} />
+      </mesh>
+      <mesh position={[0, h + guardH / 2, d / 2 - 0.010]}>
+        <boxGeometry args={[w - 0.020, guardH, 0.008]} />
+        <meshStandardMaterial color={GLASS_C} roughness={0.04} metalness={0.01}
+          transparent opacity={0.35 * op} />
+      </mesh>
+      <mesh position={[-(w / 2 - 0.010), h + guardH / 2, 0]}>
+        <boxGeometry args={[0.008, guardH, d - 0.020]} />
+        <meshStandardMaterial color={GLASS_C} roughness={0.04} metalness={0.01}
+          transparent opacity={0.35 * op} />
+      </mesh>
+      <mesh position={[w / 2 - 0.010, h + guardH / 2, 0]}>
+        <boxGeometry args={[0.008, guardH, d - 0.020]} />
+        <meshStandardMaterial color={GLASS_C} roughness={0.04} metalness={0.01}
+          transparent opacity={0.35 * op} />
       </mesh>
 
-      {/* ── Wire shelves + product rows (cans + 1 bottle row) ── */}
-      {Array.from({ length: nShelves }, (_, si) => {
-        const sy      = bottomH + 0.06 + (si + 1) * (doorH - 0.09) / (nShelves + 1);
-        const isBottleRow = si === 0;   // bottom shelf = bottles
-        const rowColor = CONTENT_C[si % CONTENT_C.length];
-        const nItems   = Math.max(2, Math.floor((w - 0.06) / (isBottleRow ? 0.10 : 0.065)));
-        return (
-          <group key={si}>
-            {/* Wire shelf */}
-            <mesh position={[0, sy, d/2 - 0.055]} castShadow>
-              <boxGeometry args={[w - 0.040, 0.008, d - 0.075]} />
-              <meshStandardMaterial color={SILVER} metalness={0.60} roughness={0.35}
-                transparent opacity={0.88 * op} />
-            </mesh>
-            {/* Product items */}
-            {Array.from({ length: nItems }, (_, bi) => {
-              const bx = -w/2 + 0.04 + bi * ((w-0.05)/nItems) + (w-0.05)/nItems/2;
-              return isBottleRow ? (
-                // 500ml bottle shape
-                <mesh key={bi} position={[bx, sy + 0.125, d/2 - 0.072]} castShadow>
-                  <cylinderGeometry args={[0.036, 0.042, 0.22, 8]} />
-                  <meshStandardMaterial color={rowColor} roughness={0.14} metalness={0.04}
-                    transparent opacity={0.85 * op} />
-                </mesh>
-              ) : (
-                // 330ml can shape — short fat cylinder
-                <mesh key={bi} position={[bx, sy + 0.065, d/2 - 0.072]} castShadow>
-                  <cylinderGeometry args={[0.028, 0.028, 0.115, 10]} />
-                  <meshStandardMaterial color={rowColor} roughness={0.12} metalness={0.18}
-                    transparent opacity={0.90 * op} />
-                </mesh>
-              );
-            })}
-          </group>
-        );
-      })}
-
-      {/* ── Door frames + glass panels + handles ── */}
-      {Array.from({ length: nDoors }, (_, i) => {
-        const dx = (i + 0.5) * doorW - w/2;
-        return (
-          <group key={i}>
-            {/* Inter-door divider */}
-            {i > 0 && (
-              <mesh position={[dx - doorW/2, bottomH + doorH/2, -(d/2 - 0.016)]}>
-                <boxGeometry args={[0.022, doorH, 0.022]} />
-                <meshStandardMaterial color={FRAME} metalness={0.40} roughness={0.50} transparent opacity={op} />
-              </mesh>
-            )}
-            {/* Glass door */}
-            <mesh position={[dx, bottomH + doorH/2, -(d/2 - 0.014)]}>
-              <boxGeometry args={[doorW - 0.026, doorH - 0.008, 0.008]} />
-              <meshStandardMaterial color={GLASS} roughness={0.04} metalness={0.05}
-                transparent opacity={0.28 * op} />
-            </mesh>
-            {/* Handle */}
-            <mesh position={[dx + doorW*0.34, bottomH + doorH*0.55, -(d/2 - 0.030)]}>
-              <boxGeometry args={[0.009, 0.170, 0.012]} />
-              <meshStandardMaterial color={SILVER} metalness={0.72} roughness={0.12} transparent opacity={op} />
-            </mesh>
-            {/* Door bottom rail */}
-            <mesh position={[dx, bottomH + 0.020, -(d/2 - 0.014)]}>
-              <boxGeometry args={[doorW - 0.026, 0.022, 0.012]} />
-              <meshStandardMaterial color={FRAME} roughness={0.55} transparent opacity={op} />
-            </mesh>
-          </group>
-        );
-      })}
-
-      {/* ── Top branded topper ── */}
-      {/* Topper body */}
-      <mesh position={[0, h - topperH/2, 0]} castShadow>
-        <boxGeometry args={[w, topperH, d]} />
-        <meshLambertMaterial color={statusColor} transparent opacity={op} />
-      </mesh>
-      {/* Topper front face — white brand logo area */}
-      <mesh position={[0, h - topperH/2, -(d/2 - 0.008)]}>
-        <boxGeometry args={[w * 0.90, topperH * 0.72, 0.010]} />
-        <meshStandardMaterial color="#ffffff" roughness={0.80} transparent opacity={0.85 * op} />
-      </mesh>
-      {/* LED accent strip at bottom of topper */}
-      <mesh position={[0, h - topperH - 0.008, -(d/2 - 0.010)]}>
-        <boxGeometry args={[w, 0.014, 0.010]} />
-        <meshStandardMaterial color="#e0f2fe" emissive="#bae6fd" emissiveIntensity={0.40}
-          transparent opacity={0.70 * op} />
-      </mesh>
-
-      {/* Status strip front-bottom */}
-      <mesh position={[0, bottomH - 0.015, -(d/2 + 0.006)]}>
-        <boxGeometry args={[w * 0.70, 0.030, 0.009]} />
-        <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
-      </mesh>
-    </group>
-  );
-}
-
-// ─── Mesh: Isla Fría ──────────────────────────────────────────────────────────
-
-function IslaFriaMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
-  const op    = ghost ? 0.42 : 1;
-  const wallT = 0.070;
-  const STEEL = "#9ca3af";
-  const INNER = "#dbeafe";  // interior light blue (cold)
-  const compW = Math.min(w * 0.22, 0.35);
-
-  return (
-    <group>
-      {/* Outer body */}
-      <mesh position={[0, h / 2, 0]} castShadow>
-        <boxGeometry args={[w, h, d]} />
-        <meshStandardMaterial color="#e5e7eb" metalness={0.25} roughness={0.55} transparent opacity={op} />
-      </mesh>
-
-      {/* Inner cavity (cold) */}
-      <mesh position={[0, h / 2 - wallT * 0.5, 0]}>
-        <boxGeometry args={[w - wallT * 2, h - wallT, d - wallT * 2]} />
-        <meshStandardMaterial color={INNER} transparent opacity={0.55 * op} />
-      </mesh>
-
-      {/* Top rim */}
-      <mesh position={[0, h - wallT / 2, 0]}>
-        <boxGeometry args={[w + 0.010, wallT, d + 0.010]} />
-        <meshStandardMaterial color={STEEL} metalness={0.45} roughness={0.35} transparent opacity={op} />
-      </mesh>
-
-      {/* Compressor box (on one side) */}
-      <mesh position={[w / 2 - compW / 2, h * 0.35, 0]} castShadow>
-        <boxGeometry args={[compW, h * 0.50, d * 0.90]} />
-        <meshStandardMaterial color="#6b7280" metalness={0.40} roughness={0.50} transparent opacity={op} />
-      </mesh>
-      {/* Vent grille on compressor */}
-      {Array.from({ length: 4 }, (_, i) => (
-        <mesh key={i} position={[w / 2 - compW / 2, h * 0.35 + (i - 1.5) * 0.065, -(d * 0.45 - 0.010)]}>
-          <boxGeometry args={[compW * 0.70, 0.020, 0.009]} />
-          <meshStandardMaterial color="#374151" metalness={0.50} roughness={0.40} transparent opacity={op} />
-        </mesh>
-      ))}
-
-      {/* Frost effect (thin translucent layer on inner walls) */}
-      <mesh position={[0, h * 0.40, 0]}>
-        <boxGeometry args={[w - wallT * 2 - 0.008, h * 0.50, d - wallT * 2 - 0.008]} />
-        <meshStandardMaterial color="#f0f9ff" transparent opacity={0.30 * op} roughness={0.05} />
-      </mesh>
-
-      {/* Status indicator on front face */}
-      <mesh position={[0, h * 0.20, -(d / 2 + 0.008)]}>
-        <boxGeometry args={[w * 0.55, 0.036, 0.010]} />
+      {/* Indicador de estado en frente del compresor */}
+      <mesh position={[0, compH * 0.50, -(d / 2 + 0.008)]}>
+        <boxGeometry args={[w * 0.60, 0.034, 0.010]} />
         <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
       </mesh>
     </group>
@@ -1359,80 +1235,99 @@ function IslaFriaMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:num
 }
 
 // ─── Mesh: Nevera Carnes ──────────────────────────────────────────────────────
-// Mostrador refrigerado abierto estilo deli/carnes: cuerpo de acero inox,
-// bandeja GN en el interior frío, protector de vidrio inclinado al frente.
+// Mostrador negro con gran vidrio curvo al frente (foto real): cuerpo oscuro bajo,
+// dos paneles de vidrio simulando la curva, arcos laterales de metal negro.
 
 function NeveraCarnesMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
-  const op      = ghost ? 0.42 : 1;
-  const STEEL   = "#9ca3af";
-  const STEEL_D = "#6b7280";
-  const GLASS_C = "#bae6fd";
-  const bodyH   = h * 0.72;
-  const nPans   = Math.max(2, Math.floor(w / 0.30));
-  const panW    = (w - 0.06) / nPans;
+  const op    = ghost ? 0.42 : 1;
+  const DARK  = "#111827";
+  const FRAME = "#1f2937";
+  const GLASS = "#bae6fd";
+  const MEAT  = "#f87171";  // color de la carne expuesta
+
+  const bodyH = h * 0.50;  // cuerpo bajo oscuro
+
+  // Geometría del vidrio curvo (dos paneles planos que aproximan la curva)
+  // Panel inferior: más inclinado (desde el frente del cuerpo hacia arriba)
+  const gLowH   = h * 0.28;
+  const gLowAng = 0.82;   // rad desde vertical → ~47°
+  const gLowCY  = bodyH + gLowH / 2 * Math.cos(gLowAng);
+  const gLowCZ  = -(d / 2) + gLowH / 2 * Math.sin(gLowAng);
+  // Panel superior: casi vertical
+  const gUpH    = h * 0.30;
+  const gUpAng  = 0.18;
+  const gLowEndY = bodyH + gLowH * Math.cos(gLowAng);
+  const gLowEndZ = -(d / 2) + gLowH * Math.sin(gLowAng);
+  const gUpCY   = gLowEndY + gUpH / 2 * Math.cos(gUpAng);
+  const gUpCZ   = gLowEndZ + gUpH / 2 * Math.sin(gUpAng);
 
   return (
     <group>
-      {/* Cuerpo principal de acero inox */}
+      {/* Cuerpo principal oscuro */}
       <mesh position={[0, bodyH / 2, 0]} castShadow>
         <boxGeometry args={[w, bodyH, d]} />
-        <meshStandardMaterial color={STEEL} metalness={0.50} roughness={0.35} transparent opacity={op} />
+        <meshStandardMaterial color={DARK} roughness={0.55} metalness={0.25} transparent opacity={op} />
       </mesh>
 
-      {/* Interior frío (pozo abierto en la parte superior) */}
-      <mesh position={[0, bodyH - 0.08, 0]}>
-        <boxGeometry args={[w - 0.06, 0.22, d * 0.85]} />
-        <meshStandardMaterial color="#dbeafe" transparent opacity={0.40 * op} roughness={0.05} />
+      {/* Interior frío con carnes expuestas */}
+      <mesh position={[0, bodyH - 0.07, 0]}>
+        <boxGeometry args={[w - 0.08, 0.20, d - 0.06]} />
+        <meshStandardMaterial color={MEAT} roughness={0.80} transparent opacity={0.75 * op} />
       </mesh>
 
-      {/* Bandejas GN de acero (una fila distribuida a lo ancho) */}
-      {Array.from({ length: nPans }, (_, i) => {
-        const px = -w / 2 + 0.04 + (i + 0.5) * panW;
-        return (
-          <mesh key={i} position={[px, bodyH - 0.16, 0]}>
-            <boxGeometry args={[panW - 0.014, 0.18, d * 0.75]} />
-            <meshStandardMaterial color={STEEL_D} metalness={0.65} roughness={0.22} transparent opacity={op} />
-          </mesh>
-        );
-      })}
-
-      {/* Marco superior (rim) */}
-      <mesh position={[0, bodyH + 0.012, 0]}>
-        <boxGeometry args={[w + 0.010, 0.020, d + 0.010]} />
-        <meshStandardMaterial color={STEEL_D} metalness={0.55} roughness={0.28} transparent opacity={op} />
+      {/* Borde superior del cuerpo */}
+      <mesh position={[0, bodyH + 0.008, 0]}>
+        <boxGeometry args={[w + 0.010, 0.014, d + 0.010]} />
+        <meshStandardMaterial color="#374151" metalness={0.55} roughness={0.30} transparent opacity={op} />
       </mesh>
 
-      {/* Protector de vidrio inclinado (sneeze guard) al frente */}
-      <mesh position={[0, bodyH + 0.17, -(d * 0.30)]} rotation={[-0.52, 0, 0]}>
-        <boxGeometry args={[w - 0.022, 0.38, 0.007]} />
-        <meshStandardMaterial color={GLASS_C} roughness={0.03} metalness={0.02}
+      {/* Rejilla de compresor en el frente inferior */}
+      {Array.from({ length: 5 }, (_, i) => (
+        <mesh key={i} position={[0, bodyH * 0.14 + i * (bodyH * 0.14), -(d / 2 + 0.005)]}>
+          <boxGeometry args={[w * 0.72, 0.010, 0.009]} />
+          <meshStandardMaterial color={FRAME} metalness={0.50} transparent opacity={op} />
+        </mesh>
+      ))}
+
+      {/* Panel de vidrio inferior (más curvo, hacia el cliente) */}
+      <mesh position={[0, gLowCY, gLowCZ]} rotation={[-gLowAng, 0, 0]}>
+        <boxGeometry args={[w - 0.022, gLowH, 0.007]} />
+        <meshStandardMaterial color={GLASS} roughness={0.03} metalness={0.01}
           transparent opacity={0.28 * op} />
       </mesh>
-      {/* Perfil superior del protector */}
-      <mesh position={[0, bodyH + 0.33, -(d * 0.09)]} rotation={[-0.52, 0, 0]}>
-        <boxGeometry args={[w, 0.018, 0.018]} />
-        <meshStandardMaterial color="#374151" metalness={0.60} roughness={0.25} transparent opacity={op} />
+
+      {/* Panel de vidrio superior (casi vertical) */}
+      <mesh position={[0, gUpCY, gUpCZ]} rotation={[-gUpAng, 0, 0]}>
+        <boxGeometry args={[w - 0.022, gUpH, 0.007]} />
+        <meshStandardMaterial color={GLASS} roughness={0.03} metalness={0.01}
+          transparent opacity={0.28 * op} />
       </mesh>
 
-      {/* Rejilla de ventilación en la pared posterior */}
-      {Array.from({ length: 4 }, (_, i) => (
-        <mesh key={i} position={[0, bodyH * 0.25 + i * 0.068, d / 2 + 0.005]}>
-          <boxGeometry args={[w * 0.60, 0.016, 0.009]} />
-          <meshStandardMaterial color={STEEL_D} metalness={0.45} roughness={0.40} transparent opacity={op} />
-        </mesh>
+      {/* Arcos laterales de metal negro (izquierdo y derecho) */}
+      {([-1, 1] as const).map(side => (
+        <group key={side}>
+          <mesh position={[side * (w / 2 - 0.018), gLowCY, gLowCZ]} rotation={[-gLowAng, 0, 0]}>
+            <boxGeometry args={[0.032, gLowH + 0.025, 0.022]} />
+            <meshStandardMaterial color={DARK} metalness={0.50} roughness={0.30} transparent opacity={op} />
+          </mesh>
+          <mesh position={[side * (w / 2 - 0.018), gUpCY, gUpCZ]} rotation={[-gUpAng, 0, 0]}>
+            <boxGeometry args={[0.032, gUpH + 0.025, 0.022]} />
+            <meshStandardMaterial color={DARK} metalness={0.50} roughness={0.30} transparent opacity={op} />
+          </mesh>
+        </group>
       ))}
 
       {/* Ruedas (4 esquinas) */}
       {([[-1,-1],[-1,1],[1,-1],[1,1]] as [number,number][]).map(([sx, sz]) => (
-        <mesh key={`${sx}${sz}`} position={[sx * (w / 2 - 0.09), 0.028, sz * (d / 2 - 0.09)]}>
-          <cylinderGeometry args={[0.034, 0.034, 0.036, 8]} />
+        <mesh key={`${sx}${sz}`} position={[sx * (w / 2 - 0.10), 0.032, sz * (d / 2 - 0.10)]}>
+          <cylinderGeometry args={[0.036, 0.036, 0.040, 8]} />
           <meshStandardMaterial color="#1f2937" roughness={0.85} transparent opacity={op} />
         </mesh>
       ))}
 
-      {/* Indicador de estado en frente */}
+      {/* Indicador de estado en frente del cuerpo */}
       <mesh position={[0, 0.08, -(d / 2 + 0.008)]}>
-        <boxGeometry args={[w * 0.65, 0.034, 0.010]} />
+        <boxGeometry args={[w * 0.60, 0.032, 0.010]} />
         <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
       </mesh>
     </group>
@@ -1528,84 +1423,6 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost }: { w:number;d:numbe
       {/* Indicador de estado — parte frontal inferior */}
       <mesh position={[0, compH * 0.50, -(d / 2 + 0.008)]}>
         <boxGeometry args={[w * 0.60, 0.028, 0.010]} />
-        <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
-      </mesh>
-    </group>
-  );
-}
-
-// ─── Mesh: Isla Nevera ────────────────────────────────────────────────────────
-// Congelador horizontal tipo isla con tapa de vidrio deslizante:
-// cuerpo oscuro bajo, tapa transparente, productos congelados visibles.
-
-function IslaNeveraMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
-  const op      = ghost ? 0.42 : 1;
-  const BODY    = "#1e293b";
-  const FRAME   = "#374151";
-  const GLASS_C = "#bae6fd";
-  const lidH    = 0.055;
-  const bodyH   = h - lidH;
-  const nPanels = Math.max(2, Math.round(w / 0.80));
-  const panelW  = (w - 0.040) / nPanels;
-  const PRODS   = ["#60a5fa","#a78bfa","#34d399","#f472b6","#facc15","#94a3b8"];
-
-  return (
-    <group>
-      {/* Cuerpo principal */}
-      <mesh position={[0, bodyH / 2, 0]} castShadow>
-        <boxGeometry args={[w, bodyH, d]} />
-        <meshStandardMaterial color={BODY} roughness={0.55} metalness={0.20} transparent opacity={op} />
-      </mesh>
-
-      {/* Interior frío (visible a través del vidrio) */}
-      <mesh position={[0, bodyH - 0.09, 0]}>
-        <boxGeometry args={[w - 0.08, 0.20, d - 0.08]} />
-        <meshStandardMaterial color="#dbeafe" transparent opacity={0.45 * op} roughness={0.05} />
-      </mesh>
-
-      {/* Productos congelados dentro de la isla */}
-      {Array.from({ length: Math.floor((w - 0.12) / 0.28) }, (_, i) => {
-        const px  = -w / 2 + 0.10 + i * 0.28 + 0.09;
-        const col = PRODS[i % PRODS.length];
-        return (
-          <mesh key={i} position={[px, bodyH - 0.15, 0]}>
-            <boxGeometry args={[0.22, 0.13, d * 0.60]} />
-            <meshStandardMaterial color={col} roughness={0.55} transparent opacity={0.70 * op} />
-          </mesh>
-        );
-      })}
-
-      {/* Borde superior (rim) */}
-      <mesh position={[0, bodyH + 0.010, 0]}>
-        <boxGeometry args={[w + 0.012, 0.018, d + 0.012]} />
-        <meshStandardMaterial color={FRAME} metalness={0.50} roughness={0.30} transparent opacity={op} />
-      </mesh>
-
-      {/* Paneles de vidrio de la tapa (deslizantes) */}
-      {Array.from({ length: nPanels }, (_, i) => {
-        const px = -w / 2 + 0.020 + (i + 0.5) * panelW;
-        return (
-          <mesh key={i} position={[px, bodyH + lidH / 2, 0]}>
-            <boxGeometry args={[panelW - 0.016, lidH * 0.55, d - 0.040]} />
-            <meshStandardMaterial color={GLASS_C} roughness={0.04} metalness={0.02}
-              transparent opacity={0.30 * op} />
-          </mesh>
-        );
-      })}
-
-      {/* Rejillas de ventilación laterales */}
-      {Array.from({ length: 5 }, (_, i) =>
-        ([-1, 1] as const).map(side => (
-          <mesh key={`${i}${side}`} position={[side * (w / 2 + 0.005), bodyH * 0.30 + i * bodyH * 0.12, 0]}>
-            <boxGeometry args={[0.009, 0.014, d * 0.55]} />
-            <meshStandardMaterial color={FRAME} metalness={0.40} roughness={0.45} transparent opacity={op} />
-          </mesh>
-        ))
-      )}
-
-      {/* Indicador de estado en frente */}
-      <mesh position={[0, bodyH * 0.15, -(d / 2 + 0.008)]}>
-        <boxGeometry args={[w * 0.60, 0.034, 0.010]} />
         <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
       </mesh>
     </group>
@@ -1866,12 +1683,10 @@ function FixtureMesh({ fixture, ghost, selectedSlotId, hoveredSlotId, onSlotClic
     case "isla":          return <IslaMesh           {...base} />;
     case "impulsador":    return <ImpulsadorMesh     {...base} />;
     case "batea":         return <BateaMesh          {...base} />;
-    case "nevera_mural":  return <NeveraMuralMesh    {...base} />;
-    case "isla_fria":        return <IslaFriaMesh          {...base} />;
-    case "nevera_carnes":    return <NeveraCarnesMesh      {...base} />;
-    case "nevera_refrescos": return <NeveraRefrescosMesh   {...base} />;
-    case "isla_nevera":      return <IslaNeveraMesh         {...base} />;
-    case "stand_frutas":     return <StandFrutasMesh        {...base} />;
+    case "isla_fria":        return <IslaFriaMesh         {...base} />;
+    case "nevera_carnes":    return <NeveraCarnesMesh     {...base} />;
+    case "nevera_refrescos": return <NeveraRefrescosMesh  {...base} />;
+    case "stand_frutas":     return <StandFrutasMesh       {...base} />;
     case "checkout":      return <CheckoutMesh       {...base} />;
     case "columna":       return <ColumnaMesh        {...base} />;
     default:              return <IslaMesh           {...base} />;  // legacy exhibicion + unknown
