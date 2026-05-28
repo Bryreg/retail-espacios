@@ -273,9 +273,13 @@ const GondolaMesh = memo(function GondolaMesh({
 
   const slotAreaH  = h - topH - 0.06;
   const SLOT_PROTO = 0.12;
-  const backT      = isWall ? d * 0.42 : 0.055;
-  const backPosZ   = d / 2 - backT / 2;
-  const nMidPosts  = Math.max(0, Math.round(w / 2) - 1);
+  const backT = isWall ? d * 0.42 : 0.055;
+  // Wall gondola: solid back panel flush with rear face (goes against the wall).
+  // Double gondola: thin center spine at z=0 so both faces are open (symmetric).
+  const backPosZ = isWall ? d / 2 - backT / 2 : 0;
+  // No mid-posts — gondola modules only have structural uprights at each end,
+  // not internal vertical dividers.
+  const nMidPosts = 0;
 
   function renderSlotFace(faceSign: -1 | 1) {
     if (!slots || ghost || !onSlotClick) return null; // slots disabled → skip
@@ -311,8 +315,8 @@ const GondolaMesh = memo(function GondolaMesh({
 
   return (
     <group>
-      {/* Top light rail */}
-      <mesh position={[0, h + 0.045, -d * 0.08]} castShadow>
+      {/* Top light rail — centered for double gondola, front-offset for wall gondola */}
+      <mesh position={[0, h + 0.045, isWall ? -(d * 0.08) : 0]} castShadow>
         <boxGeometry args={[w + 0.02, 0.065, 0.14]} />
         <meshStandardMaterial color="#f2f2f0" metalness={0.05} roughness={0.30} transparent opacity={op} />
       </mesh>
