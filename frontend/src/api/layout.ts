@@ -8,7 +8,7 @@ export interface LayoutEntry {
 }
 
 export const fetchAllLayouts = (): Promise<LayoutEntry[]> =>
-  client.get("/layout").then((r) => r.data);
+  client.get("/layout/").then((r) => r.data);
 
 export const saveLayout = (sede: string, fixtures: UnifiedFixture[]): Promise<void> =>
   client.put(`/layout/${encodeURIComponent(sede)}`, { fixtures }).then(() => {});
