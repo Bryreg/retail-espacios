@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.database import engine, Base
-from app.routers import spaces, suppliers, dashboard
+from app.routers import spaces, suppliers, dashboard, layout
 from app.models.models import Space, SpaceStatus
 
 
@@ -111,6 +111,7 @@ app.add_middleware(
 app.include_router(spaces.router,    prefix="/api")
 app.include_router(suppliers.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
+app.include_router(layout.router,    prefix="/api")
 
 
 @app.get("/api/health")

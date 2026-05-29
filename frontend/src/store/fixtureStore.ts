@@ -1,8 +1,23 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { UnifiedFixture } from "../types/fixtures";
+import { fetchAllLayouts, saveLayout } from "../api/layout";
 
 const MAX_UNDO = 50;
+
+// ─── Debounced server save ────────────────────────────────────────────────────
+// Batches rapid changes (dragging, typing) into a single PUT every 1.5 s.
+
+let _saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleSave(sede: string, fixtures: UnifiedFixture[]) {
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => {
+    saveLayout(sede, fixtures).catch((err) =>
+      console.warn("[layout sync] save failed:", err)
+    );
+  }, 1500);
+}
 
 // ─── Camera state ─────────────────────────────────────────────────────────────
 
@@ -82,6 +97,12 @@ interface FixtureStore {
   // Camera persistence
   setCamera2D: (c: Partial<Camera2D>) => void;
   setCamera3D: (c: Partial<Camera3D>) => void;
+
+  /**
+   * Load all sede layouts from the server and merge into local state.
+   * Server data wins — call once on app startup.
+   */
+  syncFromServer: () => Promise<void>;
 }
 
 // ─── Selector ─────────────────────────────────────────────────────────────────
@@ -166,17 +187,20 @@ export const useFixtureStore = create<FixtureStore>()(
 
       // ── Undoable mutation ─────────────────────────────────────────────────
       commit: (nextFixtures) =>
-        set((state) => ({
-          fixturesBySede: {
-            ...state.fixturesBySede,
-            [state.sede]: nextFixtures,
-          },
-          past: [
-            ...state.past.slice(-(MAX_UNDO - 1)),
-            state.fixturesBySede[state.sede] ?? [],
-          ],
-          future: [],
-        })),
+        set((state) => {
+          scheduleSave(state.sede, nextFixtures);
+          return {
+            fixturesBySede: {
+              ...state.fixturesBySede,
+              [state.sede]: nextFixtures,
+            },
+            past: [
+              ...state.past.slice(-(MAX_UNDO - 1)),
+              state.fixturesBySede[state.sede] ?? [],
+            ],
+            future: [],
+          };
+        }),
 
       undo: () =>
         set((state) => {
@@ -207,6 +231,27 @@ export const useFixtureStore = create<FixtureStore>()(
         set((state) => ({ camera2D: { ...state.camera2D, ...c } })),
       setCamera3D: (c) =>
         set((state) => ({ camera3D: { ...state.camera3D, ...c } })),
+
+      // ── Server sync ───────────────────────────────────────────────────────
+      syncFromServer: () =>
+        fetchAllLayouts()
+          .then((entries) => {
+            const fromServer: Record<string, UnifiedFixture[]> = {};
+            for (const entry of entries) {
+              if (Array.isArray(entry.fixtures) && entry.fixtures.length > 0) {
+                fromServer[entry.sede] = entry.fixtures;
+              }
+            }
+            if (Object.keys(fromServer).length > 0) {
+              // Server wins — overwrite local data for any sede that has server data
+              set((state) => ({
+                fixturesBySede: { ...state.fixturesBySede, ...fromServer },
+              }));
+            }
+          })
+          .catch((err) =>
+            console.warn("[layout sync] initial load failed, using localStorage:", err)
+          ),
     }),
     {
       name: "retail-fixtures-v1",

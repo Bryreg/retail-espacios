@@ -1,6 +1,6 @@
 import enum
-from datetime import date
-from sqlalchemy import Column, Integer, String, Float, Boolean, Date, ForeignKey, Enum as SAEnum, Text
+from datetime import date, datetime
+from sqlalchemy import Column, Integer, String, Float, Boolean, Date, DateTime, ForeignKey, Enum as SAEnum, Text
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -63,3 +63,17 @@ class SpaceLease(Base):
 
     space = relationship("Space", back_populates="leases")
     supplier = relationship("Supplier", back_populates="leases")
+
+
+class LayoutSnapshot(Base):
+    """Persists the full fixture layout for one sede.
+
+    One row per sede — upserted on every save so the table never grows unbounded.
+    ``fixtures_json`` stores the UnifiedFixture array serialised as a JSON string.
+    """
+    __tablename__ = "layout_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sede = Column(String, unique=True, nullable=False, index=True)
+    fixtures_json = Column(Text, nullable=False, default="[]")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
