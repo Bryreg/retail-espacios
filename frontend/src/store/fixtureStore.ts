@@ -118,7 +118,7 @@ export const selectFixtures = (state: FixtureStore): UnifiedFixture[] =>
 
 export const useFixtureStore = create<FixtureStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       fixturesBySede: {},
       sedes: DEFAULT_SEDES,
       sede: "TERRON",
@@ -242,11 +242,33 @@ export const useFixtureStore = create<FixtureStore>()(
                 fromServer[entry.sede] = entry.fixtures;
               }
             }
+
+            // Snapshot local state BEFORE any merge so we can detect what to push.
+            const localBySede = get().fixturesBySede;
+
             if (Object.keys(fromServer).length > 0) {
               // Server wins — overwrite local data for any sede that has server data
               set((state) => ({
                 fixturesBySede: { ...state.fixturesBySede, ...fromServer },
               }));
+            }
+
+            // Initial upload: push any local sede that the server doesn't know about yet.
+            const toPush = Object.entries(localBySede).filter(
+              ([sede, fixtures]) =>
+                !fromServer[sede] && Array.isArray(fixtures) && fixtures.length > 0
+            );
+            if (toPush.length > 0) {
+              console.info(
+                `[layout sync] uploading ${toPush.length} local sede(s) to server for the first time…`
+              );
+              return Promise.all(
+                toPush.map(([sede, fixtures]) =>
+                  saveLayout(sede, fixtures).catch((err) =>
+                    console.warn(`[layout sync] initial push for "${sede}" failed:`, err)
+                  )
+                )
+              );
             }
           })
           .catch((err) =>
