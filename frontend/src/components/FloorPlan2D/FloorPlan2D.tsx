@@ -11,6 +11,7 @@ import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import type { UnifiedFixture, FixType, GondolaType } from "../../types/fixtures";
 import { findOrCreateSpace, createLease } from "../../api/spaces";
 import { findOrCreateSupplier } from "../../api/suppliers";
+import { saveLayout } from "../../api/layout";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -1695,6 +1696,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           )}
         </div>
 
+        <SyncButton sede={sede} fixtures={items} />
+
         <div style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--ink-3)" }}>
           {editMode
             ? "Rueda: zoom · Espacio+drag: mover · Shift+clic: multi-sel · Ctrl+A: todos · R: rotar · Del: eliminar"
@@ -1702,6 +1705,48 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Sync Button ─────────────────────────────────────────────────────────────
+
+function SyncButton({ sede, fixtures }: { sede: string; fixtures: UnifiedFixture[] }) {
+  const [status, setStatus] = useState<"idle" | "saving" | "ok" | "error">("idle");
+
+  const handleSync = () => {
+    if (status === "saving") return;
+    setStatus("saving");
+    saveLayout(sede, fixtures)
+      .then(() => {
+        setStatus("ok");
+        setTimeout(() => setStatus("idle"), 2000);
+      })
+      .catch(() => {
+        setStatus("error");
+        setTimeout(() => setStatus("idle"), 3000);
+      });
+  };
+
+  const label = status === "saving" ? "Subiendo…" : status === "ok" ? "✓ Sincronizado" : status === "error" ? "Error al subir" : "↑ Subir al servidor";
+  const color = status === "ok" ? "var(--success)" : status === "error" ? "#ef4444" : "var(--ink-2)";
+
+  return (
+    <button
+      onClick={handleSync}
+      disabled={status === "saving"}
+      style={{
+        display: "flex", alignItems: "center", gap: 4,
+        padding: "2px 8px", borderRadius: "var(--r-md)",
+        border: "1px solid var(--line)", fontSize: 11.5, fontWeight: 500,
+        cursor: status === "saving" ? "wait" : "pointer",
+        fontFamily: "inherit",
+        background: "var(--surface-2)",
+        color,
+        transition: "all .15s",
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
