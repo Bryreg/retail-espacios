@@ -1696,7 +1696,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           )}
         </div>
 
-        <SyncButton sede={sede} fixtures={items} />
+        <SyncButton />
 
         <div style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--ink-3)" }}>
           {editMode
@@ -1710,7 +1710,9 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
 
 // ─── Sync Button ─────────────────────────────────────────────────────────────
 
-function SyncButton({ sede, fixtures }: { sede: string; fixtures: UnifiedFixture[] }) {
+function SyncButton() {
+  const sede = useFixtureStore((s) => s.sede);
+  const fixtures = useFixtureStore(selectFixtures);
   const [status, setStatus] = useState<"idle" | "saving" | "ok" | "error">("idle");
 
   const handleSync = () => {
