@@ -262,7 +262,7 @@ export const useFixtureStore = create<FixtureStore>()(
               console.info(
                 `[layout sync] uploading ${toPush.length} local sede(s) to server for the first time…`
               );
-              return Promise.all(
+              void Promise.all(
                 toPush.map(([sede, fixtures]) =>
                   saveLayout(sede, fixtures).catch((err) =>
                     console.warn(`[layout sync] initial push for "${sede}" failed:`, err)
