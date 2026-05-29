@@ -6,4 +6,4 @@ services:
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
-        value: sqlite:///./retail_espacios.db
+        sync: false
