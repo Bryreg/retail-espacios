@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, memo, useCallback } from "react";
+import React, { useState, useRef, useEffect, useMemo, memo, useCallback } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { OrbitControls as ThreeOrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Html } from "@react-three/drei";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
-import type { UnifiedFixture } from "../../types/fixtures";
+import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
 import { findOrCreateSpace, createLease } from "../../api/spaces";
 import { findOrCreateSupplier } from "../../api/suppliers";
 
@@ -42,12 +42,7 @@ function euclidean(ax: number, az: number, bx: number, bz: number) {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type FixType =
-  | "gondola" | "punta" | "robatope" | "ristra" | "cross" | "metro" | "mueble"
-  | "isla" | "impulsador" | "batea" | "isla_fria" | "nevera_carnes" | "nevera_refrescos" | "stand_frutas" | "checkout" | "columna"
-  | "exhibicion";  // legacy
-type GondolaType = "double" | "wall";
-type SpaceStatus = "free" | "occupied" | "reserved" | "maintenance";
+// FixType, GondolaType, SpaceStatus imported from ../../types/fixtures
 
 const STATUS_COLORS: Record<SpaceStatus, string> = {
   free:        "#22c55e",
@@ -2771,11 +2766,51 @@ function CommercialPanel({
   );
 }
 
+// ─── Canvas error boundary ────────────────────────────────────────────────────
+
+class CanvasErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          display: "flex", flexDirection: "column", alignItems: "center",
+          justifyContent: "center", height: "100%", gap: 12, color: "var(--ink-2)",
+        }}>
+          <span style={{ fontSize: 32 }}>⚠️</span>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>Error en el editor 3D</span>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            style={{
+              padding: "6px 16px", borderRadius: 6, border: "1px solid var(--line)",
+              background: "var(--surface-2)", cursor: "pointer", fontSize: 13,
+            }}
+          >
+            Reintentar
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function StoreEditor3D() {
   // ── Unified store (read once on mount; write on every change) ────────────────
   const { setFixtures: pushToStore, setSede: pushSedeToStore, commit, undo, redo } = useFixtureStore();
+  // Reactive subscription — re-renders when fixtures change (replaces getState() calls in JSX)
+  const fixtures = useFixtureStore(selectFixtures);
 
   const [placedFixtures, setPlacedFixtures] = useState<PlacedFixture[]>(() =>
     storeToFixtures(selectFixtures(useFixtureStore.getState()))
@@ -2832,8 +2867,15 @@ export default function StoreEditor3D() {
   const prevSede3DRef = useRef(sede);
   useEffect(() => {
     const existingStore = selectFixtures(useFixtureStore.getState());
-    pushToStore(fixturesToStore(placedFixtures, sede, existingStore));
-  }, [placedFixtures, sede, pushToStore]);
+    const converted = fixturesToStore(placedFixtures, sede, existingStore);
+    if (draggingId.current) {
+      // During drag: update display without creating an undo entry or triggering server sync
+      pushToStore(converted);
+    } else {
+      // Drag ended or fixtures changed outside drag: commit properly (undoable, server sync)
+      commit(converted);
+    }
+  }, [placedFixtures, sede, pushToStore, commit]);
 
   useEffect(() => {
     if (prevSede3DRef.current === sede) return;
@@ -3176,40 +3218,42 @@ export default function StoreEditor3D() {
           </div>
         )}
 
-        <Canvas
-          camera={{ position:CAM_POS, fov:50, near:0.1, far:500 }}
-          onCreated={({ camera })=>{ camera.lookAt(...CAM_TARGET); }}
-          gl={{ antialias:true, preserveDrawingBuffer: true }}
-          shadows={{ type: THREE.PCFSoftShadowMap }}
-          frameloop="demand"
-          dpr={[1, 1.5]}
-          style={{ background:"#e8e4dc", width:"100%", height:"100%" }}
-        >
-          <Scene
-            placedFixtures={placedFixtures}
-            selectedId={selectedId}
-            selectedSlotId={selectedSlotId}
-            hoveredSlotId={hoveredSlotId}
-            setHoveredSlotId={setHoveredSlotId}
-            placingDef={placingDef}
-            ghostX={ghostX}
-            ghostZ={ghostZ}
-            ghostRotY={ghostRotY}
-            ghostCollides={ghostCollides}
-            draggingId={draggingId}
-            orbitRef={orbitRef}
-            onFloorMove={onFloorMove}
-            onFloorClick={onFloorClick}
-            onSelectFixture={onSelectFixture}
-            onSelectSlot={onSelectSlot}
-            setPlacedFixtures={setPlacedFixtures}
-            screenshotReady={setScreenshotFn}
-            topViewReady={setTopViewFn}
-            firstPerson={firstPerson}
-            onHoverFixture={onHoverFixture}
-            fixtures={selectFixtures(useFixtureStore.getState())}
-          />
-        </Canvas>
+        <CanvasErrorBoundary>
+          <Canvas
+            camera={{ position:CAM_POS, fov:50, near:0.1, far:500 }}
+            onCreated={({ camera })=>{ camera.lookAt(...CAM_TARGET); }}
+            gl={{ antialias:true, preserveDrawingBuffer: true }}
+            shadows={{ type: THREE.PCFSoftShadowMap }}
+            frameloop="demand"
+            dpr={[1, 1.5]}
+            style={{ background:"#e8e4dc", width:"100%", height:"100%" }}
+          >
+            <Scene
+              placedFixtures={placedFixtures}
+              selectedId={selectedId}
+              selectedSlotId={selectedSlotId}
+              hoveredSlotId={hoveredSlotId}
+              setHoveredSlotId={setHoveredSlotId}
+              placingDef={placingDef}
+              ghostX={ghostX}
+              ghostZ={ghostZ}
+              ghostRotY={ghostRotY}
+              ghostCollides={ghostCollides}
+              draggingId={draggingId}
+              orbitRef={orbitRef}
+              onFloorMove={onFloorMove}
+              onFloorClick={onFloorClick}
+              onSelectFixture={onSelectFixture}
+              onSelectSlot={onSelectSlot}
+              setPlacedFixtures={setPlacedFixtures}
+              screenshotReady={setScreenshotFn}
+              topViewReady={setTopViewFn}
+              firstPerson={firstPerson}
+              onHoverFixture={onHoverFixture}
+              fixtures={fixtures}
+            />
+          </Canvas>
+        </CanvasErrorBoundary>
 
         {/* MEJORA 9: Tooltip on hover */}
         {hoveredFixtureId && (() => {

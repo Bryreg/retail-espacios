@@ -1,6 +1,6 @@
 from datetime import date
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.models.models import SpaceStatus
 
 
@@ -27,7 +27,7 @@ class LeaseBase(BaseModel):
     marca: Optional[str] = None
     start_date: date
     end_date: date
-    monthly_rent: float
+    monthly_rent: float = Field(ge=0)
     notes: Optional[str] = None
 
 

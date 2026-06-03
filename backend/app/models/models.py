@@ -1,5 +1,5 @@
 import enum
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from sqlalchemy import Column, Integer, String, Float, Boolean, Date, DateTime, ForeignKey, Enum as SAEnum, Text
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -16,7 +16,7 @@ class Supplier(Base):
     __tablename__ = "suppliers"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=False)
+    name = Column(String, nullable=False, unique=True)
     contact_name = Column(String)
     phone = Column(String)
     email = Column(String)
@@ -33,7 +33,7 @@ class Space(Base):
     svg_id = Column(String, unique=True, nullable=False)
     name = Column(String, nullable=False)
     zone = Column(String, nullable=False)
-    sede = Column(String, nullable=True)
+    sede = Column(String, nullable=True, index=True)
     area_m2 = Column(Float, nullable=False)
     status = Column(SAEnum(SpaceStatus), default=SpaceStatus.free, nullable=False)
     notes = Column(Text)
@@ -76,4 +76,4 @@ class LayoutSnapshot(Base):
     id = Column(Integer, primary_key=True, index=True)
     sede = Column(String, unique=True, nullable=False, index=True)
     fixtures_json = Column(Text, nullable=False, default="[]")
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

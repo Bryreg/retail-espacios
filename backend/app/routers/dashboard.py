@@ -4,12 +4,14 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.models.models import Space, SpaceLease, Supplier
+from app.routers.spaces import expire_leases
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 @router.get("/kpis")
 def get_kpis(db: Session = Depends(get_db)):
+    expire_leases(db)
     today = date.today()
     expiry_threshold = today + timedelta(days=30)
 
@@ -83,6 +85,7 @@ def get_spaces(db: Session = Depends(get_db)):
     Returns all spaces with their active lease info and an 'unauthorized' flag
     (status=occupied but no active lease).
     """
+    expire_leases(db)
     today = date.today()
     spaces = (
         db.query(Space)

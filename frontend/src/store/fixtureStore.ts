@@ -151,6 +151,11 @@ export const useFixtureStore = create<FixtureStore>()(
             newFixturesBySede[newName] = newFixturesBySede[oldName];
             delete newFixturesBySede[oldName];
           }
+          // Schedule server save for the new sede name
+          const fixtures = newFixturesBySede[newName];
+          if (fixtures && fixtures.length > 0) {
+            scheduleSave(newName, fixtures);
+          }
           return {
             sedes: state.sedes.map((s) => (s === oldName ? newName : s)),
             fixturesBySede: newFixturesBySede,
@@ -247,10 +252,18 @@ export const useFixtureStore = create<FixtureStore>()(
             const localBySede = get().fixturesBySede;
 
             if (Object.keys(fromServer).length > 0) {
-              // Server wins — overwrite local data for any sede that has server data
-              set((state) => ({
-                fixturesBySede: { ...state.fixturesBySede, ...fromServer },
-              }));
+              set((state) => {
+                const merged = { ...state.fixturesBySede };
+                for (const [sede, serverFixtures] of Object.entries(fromServer)) {
+                  const localFixtures = state.fixturesBySede[sede] ?? [];
+                  // Server wins only if local has no data or same/fewer count
+                  // This prevents overwriting local edits made during the fetch
+                  if (localFixtures.length === 0 || serverFixtures.length >= localFixtures.length) {
+                    merged[sede] = serverFixtures;
+                  }
+                }
+                return { fixturesBySede: merged };
+              });
             }
 
             // Initial upload: push any local sede that the server doesn't know about yet.

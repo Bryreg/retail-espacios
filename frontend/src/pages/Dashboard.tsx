@@ -151,7 +151,7 @@ export default function Dashboard() {
     <div
       style={{
         display: "flex", flexDirection: "column",
-        height: "100vh", overflow: "hidden",
+        height: "100dvh", overflow: "hidden",
         background: "var(--bg)",
       }}
     >

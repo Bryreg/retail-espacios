@@ -342,8 +342,12 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
 
   const nextCode = useCallback((type: FixType2D, currentItems: PlacedItem2D[]): string => {
     const prefix = CATALOG.find((c) => c.type === type)?.prefix ?? "SPC";
-    const count = currentItems.filter((i) => i.code.startsWith(prefix)).length;
-    return `${prefix}-${String(count + 1).padStart(2, "0")}`;
+    const nums = currentItems
+      .filter((i) => i.code.startsWith(prefix + "-"))
+      .map((i) => parseInt(i.code.slice(prefix.length + 1), 10))
+      .filter((n) => !isNaN(n));
+    const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+    return `${prefix}-${String(next).padStart(2, "0")}`;
   }, []);
 
   // ── Helper: SVG point from mouse event ──────────────────────────────────────
@@ -548,10 +552,21 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     if (selected.length > 0) setClipboard(selected);
   }, [items, selectedIds]);
 
-  /** Paste clipboard items at a small offset (no collision guard — user repositions). */
+  /** Paste clipboard items with a collision-aware offset. */
   const pasteClipboard = useCallback(() => {
     if (clipboard.length === 0) return;
     setItems((prev) => {
+      // Find an offset that avoids collisions with existing items (try +1 up to +5)
+      let offsetX = 1, offsetY = 1;
+      while (offsetX < 6) {
+        const trial = clipboard.map((src) => ({ ...src, x: src.x + offsetX, y: src.y + offsetY }));
+        const anyCollides = trial.some((t) =>
+          hasCollision(t, prev.filter((i) => !clipboard.some((c) => c.id === i.id)))
+        );
+        if (!anyCollides) break;
+        offsetX++; offsetY++;
+      }
+
       const nextItems = [...prev];
       const newIds: string[] = [];
       for (const src of clipboard) {
@@ -560,8 +575,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           ...src,
           id: `${src.type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           code,
-          x: src.x + 1,
-          y: src.y + 1,
+          x: src.x + offsetX,
+          y: src.y + offsetY,
         };
         nextItems.push(copy);
         newIds.push(copy.id);
@@ -575,6 +590,9 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement).tagName.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+
       if (e.key === " ") { setSpaceDown(true); e.preventDefault(); return; }
 
       // CHANGE 2: undo/redo shortcuts (work regardless of editMode)
@@ -582,8 +600,6 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
       if (e.ctrlKey && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); return; }
 
       if (!editMode) return;
-      const tag = (e.target as HTMLElement).tagName.toLowerCase();
-      if (tag === "input" || tag === "select" || tag === "textarea") return;
 
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedIds.size > 0) {
@@ -1584,6 +1600,11 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
             setEditMode((m) => !m);
             setActiveTool("select");
             setPendingType(null);
+            setDragState(null);
+            setDragOrigPositions(null);
+            setResizeState(null);
+            setSelectionRect(null);
+            setSelectedIds(new Set());
           }}
           style={{
             display: "flex", alignItems: "center", gap: 5,
@@ -1714,18 +1735,26 @@ function SyncButton() {
   const sede = useFixtureStore((s) => s.sede);
   const fixtures = useFixtureStore(selectFixtures);
   const [status, setStatus] = useState<"idle" | "saving" | "ok" | "error">("idle");
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   const handleSync = () => {
     if (status === "saving") return;
+    if (timerRef.current) clearTimeout(timerRef.current);
     setStatus("saving");
     saveLayout(sede, fixtures)
       .then(() => {
         setStatus("ok");
-        setTimeout(() => setStatus("idle"), 2000);
+        timerRef.current = setTimeout(() => setStatus("idle"), 2000);
       })
       .catch(() => {
         setStatus("error");
-        setTimeout(() => setStatus("idle"), 3000);
+        timerRef.current = setTimeout(() => setStatus("idle"), 3000);
       });
   };
 

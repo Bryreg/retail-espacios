@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.models import Supplier, SpaceLease
@@ -18,10 +19,14 @@ def find_or_create_supplier(payload: SupplierCreate, db: Session = Depends(get_d
     supplier = db.query(Supplier).filter(Supplier.name == payload.name).first()
     if supplier:
         return supplier
-    supplier = Supplier(**payload.model_dump())
-    db.add(supplier)
-    db.commit()
-    db.refresh(supplier)
+    try:
+        supplier = Supplier(**payload.model_dump())
+        db.add(supplier)
+        db.commit()
+        db.refresh(supplier)
+    except IntegrityError:
+        db.rollback()
+        supplier = db.query(Supplier).filter(Supplier.name == payload.name).first()
     return supplier
 
 

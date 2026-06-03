@@ -1,10 +1,10 @@
 from datetime import datetime
 from typing import Any
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class LayoutIn(BaseModel):
-    fixtures: list[Any]
+    fixtures: list[Any] = Field(default=[], max_length=2000)
 
 
 class LayoutOut(BaseModel):
