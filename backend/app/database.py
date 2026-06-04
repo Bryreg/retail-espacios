@@ -2,7 +2,9 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./retail_espacios.db")
+_raw_url = os.getenv("DATABASE_URL", "sqlite:///./retail_espacios.db")
+# Render provides "postgres://" but SQLAlchemy 2.0+ requires "postgresql://"
+SQLALCHEMY_DATABASE_URL = _raw_url.replace("postgres://", "postgresql://", 1) if _raw_url.startswith("postgres://") else _raw_url
 
 # check_same_thread is SQLite-only; PostgreSQL doesn't accept it
 _connect_args = {"check_same_thread": False} if SQLALCHEMY_DATABASE_URL.startswith("sqlite") else {}
