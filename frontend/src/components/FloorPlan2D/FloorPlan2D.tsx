@@ -301,8 +301,24 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   const [editingCatalogType, setEditingCatalogType] = useState<string | null>(null);
   const [editingCatalogVal, setEditingCatalogVal]   = useState("");
   const svgRef = useRef<SVGSVGElement>(null);
+  const cachedSvgRect = useRef<DOMRect | null>(null);
   // Skip the initial mount sync so it doesn't create a spurious undo entry (I3)
   const isFirstRender = useRef(true);
+  // Prevents the store→items sync from firing after our own commit (avoids loop)
+  const justCommittedRef = useRef(false);
+
+  // ── Sync store → items (for undo/redo/syncFromServer) ────────────────────────
+  // When the store changes from outside (undo, redo, server sync), update local items.
+  const storeFixtures = useFixtureStore(selectFixtures);
+  useEffect(() => {
+    if (justCommittedRef.current) {
+      justCommittedRef.current = false;
+      return;
+    }
+    // External change (undo/redo/sync) — update canvas to match
+    isFirstRender.current = true; // suppress the next items→store echo
+    setItems(storeToItems(storeFixtures));
+  }, [storeFixtures]);
 
   // ── Sync items → unified store ───────────────────────────────────────────────
 
@@ -314,6 +330,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     if (isFirstRender.current) { isFirstRender.current = false; return; }
     const snapshot = selectFixtures(useFixtureStore.getState());
     const timer = setTimeout(() => {
+      justCommittedRef.current = true;
       commit(itemsToStore(items, snapshot));
     }, 16);
     return () => clearTimeout(timer);
@@ -350,11 +367,20 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     return `${prefix}-${String(next).padStart(2, "0")}`;
   }, []);
 
+  // ── Invalidate cached rect on container resize ───────────────────────────────
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const observer = new ResizeObserver(() => { cachedSvgRect.current = null; });
+    observer.observe(svgRef.current);
+    return () => observer.disconnect();
+  }, []);
+
   // ── Helper: SVG point from mouse event ──────────────────────────────────────
 
   const svgPoint = useCallback(
     (e: React.MouseEvent): { x: number; y: number } => {
-      const rect = svgRef.current!.getBoundingClientRect();
+      const rect = cachedSvgRect.current ?? svgRef.current!.getBoundingClientRect();
+      if (!cachedSvgRect.current) cachedSvgRect.current = rect;
       return {
         x: (e.clientX - rect.left - panOffset.x) / (PX_PER_M * zoom),
         y: (e.clientY - rect.top  - panOffset.y) / (PX_PER_M * zoom),
@@ -519,31 +545,30 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   const duplicateSelected = useCallback(
     (ids: Set<string>) => {
       if (ids.size === 0) return;
-      setItems((prev) => {
-        const sources = prev.filter((i) => ids.has(i.id));
-        if (sources.length === 0) return prev;
-        const nextItems = [...prev];
-        const newIds: string[] = [];
-        for (const src of sources) {
-          const code = nextCode(src.type, nextItems);
-          const copy: PlacedItem2D = {
-            ...src,
-            id: `${src.type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            code,
-            x: src.x + 0.5,
-            y: src.y + 0.5,
-          };
-          if (!hasCollision(copy, nextItems)) {
-            nextItems.push(copy);
-            newIds.push(copy.id);
-          }
+      const sources = items.filter((i) => ids.has(i.id));
+      if (sources.length === 0) return;
+      const nextItems = [...items];
+      const newIds: string[] = [];
+      for (const src of sources) {
+        const code = nextCode(src.type, nextItems);
+        const copy: PlacedItem2D = {
+          ...src,
+          id: `${src.type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          code,
+          x: src.x + 0.5,
+          y: src.y + 0.5,
+        };
+        if (!hasCollision(copy, nextItems)) {
+          nextItems.push(copy);
+          newIds.push(copy.id);
         }
-        if (newIds.length === 0) return prev;
-        setSelectedIds(new Set(newIds));
-        return nextItems;
-      });
+      }
+      if (newIds.length === 0) return;
+      // Set both states outside any updater to avoid React violation
+      setItems(nextItems);
+      setSelectedIds(new Set(newIds));
     },
-    [nextCode]
+    [items, nextCode]
   );
 
   /** Copy selected items to clipboard. */
@@ -555,36 +580,32 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   /** Paste clipboard items with a collision-aware offset. */
   const pasteClipboard = useCallback(() => {
     if (clipboard.length === 0) return;
-    setItems((prev) => {
-      // Find an offset that avoids collisions with existing items (try +1 up to +5)
-      let offsetX = 1, offsetY = 1;
-      while (offsetX < 6) {
-        const trial = clipboard.map((src) => ({ ...src, x: src.x + offsetX, y: src.y + offsetY }));
-        const anyCollides = trial.some((t) =>
-          hasCollision(t, prev.filter((i) => !clipboard.some((c) => c.id === i.id)))
-        );
-        if (!anyCollides) break;
-        offsetX++; offsetY++;
-      }
-
-      const nextItems = [...prev];
-      const newIds: string[] = [];
-      for (const src of clipboard) {
-        const code = nextCode(src.type, nextItems);
-        const copy: PlacedItem2D = {
-          ...src,
-          id: `${src.type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          code,
-          x: src.x + offsetX,
-          y: src.y + offsetY,
-        };
-        nextItems.push(copy);
-        newIds.push(copy.id);
-      }
-      setSelectedIds(new Set(newIds));
-      return nextItems;
-    });
-  }, [clipboard, nextCode]);
+    // Find an offset that avoids collisions (try +1 up to +5)
+    let offsetX = 1, offsetY = 1;
+    const others = items.filter((i) => !clipboard.some((c) => c.id === i.id));
+    while (offsetX < 6) {
+      const trial = clipboard.map((src) => ({ ...src, x: src.x + offsetX, y: src.y + offsetY }));
+      if (!trial.some((t) => hasCollision(t, others))) break;
+      offsetX++; offsetY++;
+    }
+    const nextItems = [...items];
+    const newIds: string[] = [];
+    for (const src of clipboard) {
+      const code = nextCode(src.type, nextItems);
+      const copy: PlacedItem2D = {
+        ...src,
+        id: `${src.type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        code,
+        x: src.x + offsetX,
+        y: src.y + offsetY,
+      };
+      nextItems.push(copy);
+      newIds.push(copy.id);
+    }
+    // Set both states outside any updater to avoid React violation
+    setItems(nextItems);
+    setSelectedIds(new Set(newIds));
+  }, [clipboard, items, nextCode]);
 
   // ── Keyboard shortcuts ───────────────────────────────────────────────────────
 
@@ -1868,6 +1889,8 @@ function AssignmentPanel({
   // ── Contract persistence ──────────────────────────────────────────────────
   const [saveState, setSaveState] = useState<"idle" | "saving" | "ok" | "error">("idle");
   const [saveError, setSaveError] = useState("");
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
 
   const canSave =
     item.supplierName.trim().length > 0 &&
@@ -1898,14 +1921,16 @@ function AssignmentPanel({
       });
       onUpdate({ status: "occupied" });
       setSaveState("ok");
-      setTimeout(() => setSaveState("idle"), 3500);
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => setSaveState("idle"), 3500);
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
         "Error al guardar el contrato";
       setSaveError(msg);
       setSaveState("error");
-      setTimeout(() => setSaveState("idle"), 5000);
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => setSaveState("idle"), 5000);
     }
   }
 
