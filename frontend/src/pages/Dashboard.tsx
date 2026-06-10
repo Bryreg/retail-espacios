@@ -53,6 +53,8 @@ function Topbar({ viewMode, setViewMode }: TopbarProps) {
         background: "var(--surface)",
         borderBottom: "1px solid var(--line)",
         flexShrink: 0,
+        overflow: "hidden",
+        minWidth: 0,
       }}
     >
       {/* Logo + wordmark */}

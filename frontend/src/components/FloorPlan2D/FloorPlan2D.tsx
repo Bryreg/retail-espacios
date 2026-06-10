@@ -1567,7 +1567,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
         {selectedIds.size > 1 ? (
           <div
             style={{
-              width: 280, flexShrink: 0,
+              width: "clamp(200px, 24vw, 280px)", flexShrink: 0,
               overflow: "hidden", display: "flex", flexDirection: "column",
               background: "var(--dark-bg)",
               borderLeft: "1px solid var(--dark-line)",
@@ -1586,7 +1586,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
         ) : selectedItem ? (
           <div
             style={{
-              width: 300, flexShrink: 0,
+              width: "clamp(220px, 26vw, 300px)", flexShrink: 0,
               overflow: "hidden", display: "flex", flexDirection: "column",
               background: "var(--dark-bg)",
               borderLeft: "1px solid var(--dark-line)",
@@ -1614,6 +1614,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           background: "var(--surface)",
           borderTop: "1px solid var(--line)",
           fontSize: 11.5,
+          overflow: "hidden",
+          minWidth: 0,
         }}
       >
         <button
@@ -1740,7 +1742,11 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
 
         <SyncButton />
 
-        <div style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--ink-3)" }}>
+        <div style={{
+          marginLeft: "auto", fontSize: 10.5, color: "var(--ink-3)",
+          overflow: "hidden", minWidth: 0, whiteSpace: "nowrap", textOverflow: "ellipsis",
+          flexShrink: 1,
+        }}>
           {editMode
             ? "Rueda: zoom · Espacio+drag: mover · Shift+clic: multi-sel · Ctrl+A: todos · R: rotar · Del: eliminar"
             : "Clic en fixture para ver detalles"}

@@ -222,8 +222,15 @@ export default function SpacePanel({ svgId, zoneDef, onClose, onRefresh }: Props
     "#e2e8f0";
 
   return (
-    <div className="flex h-full w-80 flex-col border-l border-slate-200 bg-white shadow-lg"
-      style={{ borderLeftWidth: "4px", borderLeftColor: space ? panelBorderColor : "#e2e8f0" }}>
+    <div
+      className="flex h-full flex-col border-l border-slate-200 bg-white shadow-lg"
+      style={{
+        width: "clamp(260px, 28vw, 320px)",
+        borderLeftWidth: "4px",
+        borderLeftColor: space ? panelBorderColor : "#e2e8f0",
+        flexShrink: 0,
+      }}
+    >
 
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
