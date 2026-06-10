@@ -1568,7 +1568,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           <div
             style={{
               width: "clamp(200px, 24vw, 280px)", flexShrink: 0,
-              overflow: "hidden", display: "flex", flexDirection: "column",
+              overflowX: "hidden", overflowY: "auto", display: "flex", flexDirection: "column",
               background: "var(--dark-bg)",
               borderLeft: "1px solid var(--dark-line)",
             }}
@@ -1587,7 +1587,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           <div
             style={{
               width: "clamp(220px, 26vw, 300px)", flexShrink: 0,
-              overflow: "hidden", display: "flex", flexDirection: "column",
+              overflowX: "hidden", overflowY: "auto", display: "flex", flexDirection: "column",
               background: "var(--dark-bg)",
               borderLeft: "1px solid var(--dark-line)",
             }}
