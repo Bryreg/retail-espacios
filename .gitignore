@@ -23,3 +23,9 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Logs
+*.log
+
+# Tooling
+.engram/

@@ -34,6 +34,24 @@ export type FixType =
 
 export type GondolaType = "double" | "wall";
 
+/** Shared double-gondola check — single source of truth for every editor/view.
+ *  An undefined gondolaType defaults to "double" (matches both editors' behavior). */
+export function isDoubleGondola(f: { type: FixType; gondolaType?: GondolaType }): boolean {
+  return f.type === "gondola" && (f.gondolaType ?? "double") === "double";
+}
+
+/** Commercial data for one face of a double gondola.
+ *  Face A is the fixture's existing top-level fields; face B lives here. */
+export interface FaceData {
+  supplierName: string;
+  brandCategory: string;
+  negotiatedValue: number;
+  startDate: string;
+  endDate: string;
+  observation: string;
+  status: SpaceStatus;
+}
+
 export interface ShelfSlot {
   id: string;
   x: number;
@@ -78,6 +96,14 @@ export interface UnifiedFixture {
   startDate: string;
   endDate: string;
   observation: string;
+
+  /** Short label rendered OUTSIDE the shape in the 2D plan so it stays legible
+   *  from afar even on tiny fixtures. Optional — falls back to nothing. */
+  nomenclatura?: string;
+
+  /** Second face of a double gondola (type === "gondola" && gondolaType === "double").
+   *  Top-level commercial fields represent face A; this holds face B. */
+  faceB?: FaceData;
 
   // ── 3D-specific ───────────────────────────────────────────────────────────
   slots?: ShelfSlot[];

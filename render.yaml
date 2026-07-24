@@ -16,3 +16,12 @@ services:
           property: connectionString
       - key: ALLOWED_ORIGINS
         sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      # Notificaciones — descomentar y definir los valores en el dashboard de Render:
+      # - key: SMTP_USER
+      #   sync: false
+      # - key: SMTP_PASSWORD
+      #   sync: false
+      # - key: MAIL_FROM
+      #   sync: false

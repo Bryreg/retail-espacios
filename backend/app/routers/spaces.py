@@ -1,12 +1,27 @@
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
+from app.auth import require_admin, require_auth
 from app.database import get_db
 from app.models.models import Space, SpaceLease, Supplier, SpaceStatus
 from app.schemas.spaces import SpaceOut, SpaceCreate, SpaceStatusUpdate, LeaseCreate, LeaseOut, SpaceMapItem, SpaceFindOrCreate
+from app.services.mailer import format_cop, html_shell, send_mail_bg
 
-router = APIRouter(prefix="/spaces", tags=["spaces"])
+# Every route requires a valid token; mutations additionally require admin.
+router = APIRouter(prefix="/spaces", tags=["spaces"], dependencies=[Depends(require_auth)])
+
+
+def _space_out_for_role(space: Space, role: str) -> SpaceOut:
+    """Serialize a Space, hiding the lease amount from non-admin roles.
+
+    Redaction happens on the pydantic copy so the ORM objects (and therefore
+    the session) are never mutated.
+    """
+    out = SpaceOut.model_validate(space, from_attributes=True)
+    if role != "admin" and out.active_lease is not None:
+        out.active_lease.monthly_rent = None
+    return out
 
 
 # ─── Lease expiry helper ──────────────────────────────────────────────────────
@@ -65,7 +80,7 @@ def get_map_status(db: Session = Depends(get_db)):
     return result
 
 
-@router.post("/find-or-create", response_model=SpaceOut, status_code=200)
+@router.post("/find-or-create", response_model=SpaceOut, status_code=200, dependencies=[Depends(require_admin)])
 def find_or_create_space(payload: SpaceFindOrCreate, db: Session = Depends(get_db)):
     """Return the existing Space whose code matches, or create a new one on the fly.
 
@@ -114,7 +129,7 @@ def find_or_create_space(payload: SpaceFindOrCreate, db: Session = Depends(get_d
     return space
 
 
-@router.post("/", response_model=SpaceOut, status_code=201)
+@router.post("/", response_model=SpaceOut, status_code=201, dependencies=[Depends(require_admin)])
 def create_space(payload: SpaceCreate, db: Session = Depends(get_db)):
     existing = db.query(Space).filter(Space.svg_id == payload.svg_id).first()
     if existing:
@@ -127,33 +142,44 @@ def create_space(payload: SpaceCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/", response_model=list[SpaceOut])
-def list_spaces(db: Session = Depends(get_db)):
-    return db.query(Space).options(
+def list_spaces(role: str = Depends(require_auth), db: Session = Depends(get_db)):
+    spaces = db.query(Space).options(
         joinedload(Space.leases).joinedload(SpaceLease.supplier)
     ).order_by(Space.zone, Space.code).all()
+    return [_space_out_for_role(space, role) for space in spaces]
 
 
 @router.get("/{space_id}", response_model=SpaceOut)
-def get_space(space_id: int, db: Session = Depends(get_db)):
+def get_space(space_id: int, role: str = Depends(require_auth), db: Session = Depends(get_db)):
     space = db.query(Space).options(
         joinedload(Space.leases).joinedload(SpaceLease.supplier)
     ).filter(Space.id == space_id).first()
     if not space:
         raise HTTPException(status_code=404, detail="Espacio no encontrado")
-    return space
+    return _space_out_for_role(space, role)
 
 
 @router.get("/by-svg/{svg_id}", response_model=SpaceOut)
-def get_space_by_svg(svg_id: str, db: Session = Depends(get_db)):
+def get_space_by_svg(svg_id: str, role: str = Depends(require_auth), db: Session = Depends(get_db)):
     space = db.query(Space).options(
         joinedload(Space.leases).joinedload(SpaceLease.supplier)
     ).filter(Space.svg_id == svg_id).first()
     if not space:
         raise HTTPException(status_code=404, detail="Espacio no encontrado")
-    return space
+    return _space_out_for_role(space, role)
 
 
-@router.patch("/{space_id}/status", response_model=SpaceOut)
+@router.get("/by-code/{code}", response_model=SpaceOut)
+def get_space_by_code(code: str, role: str = Depends(require_auth), db: Session = Depends(get_db)):
+    space = db.query(Space).options(
+        joinedload(Space.leases).joinedload(SpaceLease.supplier)
+    ).filter(Space.code == code).first()
+    if not space:
+        raise HTTPException(status_code=404, detail="Espacio no encontrado")
+    return _space_out_for_role(space, role)
+
+
+@router.patch("/{space_id}/status", response_model=SpaceOut, dependencies=[Depends(require_admin)])
 def update_status(space_id: int, payload: SpaceStatusUpdate, db: Session = Depends(get_db)):
     space = db.query(Space).filter(Space.id == space_id).first()
     if not space:
@@ -166,8 +192,8 @@ def update_status(space_id: int, payload: SpaceStatusUpdate, db: Session = Depen
     return space
 
 
-@router.post("/{space_id}/leases", response_model=LeaseOut, status_code=201)
-def create_lease(space_id: int, payload: LeaseCreate, db: Session = Depends(get_db)):
+@router.post("/{space_id}/leases", response_model=LeaseOut, status_code=201, dependencies=[Depends(require_admin)])
+def create_lease(space_id: int, payload: LeaseCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     # Date sanity check
     if payload.start_date >= payload.end_date:
         raise HTTPException(status_code=422, detail="start_date debe ser anterior a end_date")
@@ -204,10 +230,26 @@ def create_lease(space_id: int, payload: LeaseCreate, db: Session = Depends(get_
     space.status = SpaceStatus.occupied
     db.commit()
     db.refresh(lease)
+
+    # Email notification — sent after the response, best-effort (never blocks the request)
+    duration_days = (lease.end_date - lease.start_date).days
+    subject = f"Nuevo contrato — {space.code}"
+    rows = [
+        ("Sede", space.sede or "—"),
+        ("Espacio", f"{space.code} — {space.name}"),
+        ("Proveedor", supplier.name),
+        ("Marca", lease.marca or "—"),
+        ("Inicio", str(lease.start_date)),
+        ("Fin", str(lease.end_date)),
+        ("Valor mensual", format_cop(lease.monthly_rent)),
+        ("Duración", f"{duration_days} días"),
+    ]
+    background_tasks.add_task(send_mail_bg, subject, html_shell(subject, rows))
+
     return lease
 
 
-@router.delete("/{space_id}/leases/{lease_id}", status_code=204)
+@router.delete("/{space_id}/leases/{lease_id}", status_code=204, dependencies=[Depends(require_admin)])
 def cancel_lease(space_id: int, lease_id: int, db: Session = Depends(get_db)):
     lease = db.query(SpaceLease).filter(
         SpaceLease.id == lease_id,

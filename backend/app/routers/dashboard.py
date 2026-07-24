@@ -2,15 +2,17 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
+from app.auth import require_auth
 from app.database import get_db
 from app.models.models import Space, SpaceLease, Supplier
 from app.routers.spaces import expire_leases
 
-router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+# Read-only router: any authenticated role may consult the dashboard.
+router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depends(require_auth)])
 
 
 @router.get("/kpis")
-def get_kpis(db: Session = Depends(get_db)):
+def get_kpis(role: str = Depends(require_auth), db: Session = Depends(get_db)):
     expire_leases(db)
     today = date.today()
     expiry_threshold = today + timedelta(days=30)
@@ -59,19 +61,21 @@ def get_kpis(db: Session = Depends(get_db)):
         .all()
     )
 
+    # Workers never receive negotiated amounts — zero out every revenue field.
+    is_admin = role == "admin"
     return {
         "total_spaces": total,
         "occupied": counts.get("occupied", 0),
         "free": counts.get("free", 0),
         "reserved": counts.get("reserved", 0),
         "maintenance": counts.get("maintenance", 0),
-        "monthly_revenue": monthly_revenue,
+        "monthly_revenue": monthly_revenue if is_admin else 0.0,
         "expiring_soon": expiring_soon,
         "top_suppliers": [
             {
                 "name": r.name,
                 "leases": r.leases,
-                "revenue": float(r.revenue or 0),
+                "revenue": float(r.revenue or 0) if is_admin else 0.0,
             }
             for r in top_suppliers
         ],
@@ -79,7 +83,7 @@ def get_kpis(db: Session = Depends(get_db)):
 
 
 @router.get("/spaces")
-def get_spaces(db: Session = Depends(get_db)):
+def get_spaces(role: str = Depends(require_auth), db: Session = Depends(get_db)):
     """
     Per-space occupancy data for the manager dashboard.
     Returns all spaces with their active lease info and an 'unauthorized' flag
@@ -118,7 +122,8 @@ def get_spaces(db: Session = Depends(get_db)):
                 "start_date": str(active_lease.start_date) if active_lease else None,
                 "end_date": str(active_lease.end_date) if active_lease else None,
                 "days_remaining": days_remaining,
-                "monthly_rent": float(active_lease.monthly_rent) if active_lease else None,
+                # Rent is admin-only — workers get null
+                "monthly_rent": float(active_lease.monthly_rent) if (active_lease and role == "admin") else None,
             } if active_lease else None,
         })
 

@@ -1,6 +1,6 @@
 import enum
 from datetime import date, datetime, timezone
-from sqlalchemy import Column, Integer, String, Float, Boolean, Date, DateTime, ForeignKey, Enum as SAEnum, Text
+from sqlalchemy import Column, Integer, String, Float, Boolean, Date, DateTime, ForeignKey, Enum as SAEnum, Text, LargeBinary
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -77,3 +77,40 @@ class LayoutSnapshot(Base):
     sede = Column(String, unique=True, nullable=False, index=True)
     fixtures_json = Column(Text, nullable=False, default="[]")
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class AppConfig(Base):
+    """Key/value application configuration (passwords, notification settings).
+
+    Seeded at startup with defaults — see ``app.auth.ensure_default_config``.
+    """
+    __tablename__ = "app_config"
+
+    key = Column(String, primary_key=True)
+    value = Column(Text, nullable=True)
+
+
+class SpaceFile(Base):
+    """Binary attachment (contract PDF / Excel / CSV) linked to a Space.
+
+    Stored in the database because Render's disk is ephemeral.
+    """
+    __tablename__ = "space_files"
+
+    id = Column(Integer, primary_key=True, index=True)
+    space_id = Column(Integer, ForeignKey("spaces.id"), nullable=False, index=True)
+    filename = Column(String, nullable=False)
+    content_type = Column(String, nullable=False)
+    size = Column(Integer, nullable=False)
+    data = Column(LargeBinary, nullable=False)
+    uploaded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class NotificationLog(Base):
+    """Deduplication log for sent notifications (one row per lease + kind)."""
+    __tablename__ = "notification_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lease_id = Column(Integer, ForeignKey("space_leases.id"), nullable=False, index=True)
+    kind = Column(String, nullable=False)
+    sent_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

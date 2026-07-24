@@ -8,10 +8,14 @@ import {
   EyeOff,
 } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
-import type { UnifiedFixture, FixType, GondolaType } from "../../types/fixtures";
+import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types/fixtures";
+import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 import { findOrCreateSpace, createLease } from "../../api/spaces";
 import { findOrCreateSupplier } from "../../api/suppliers";
 import { saveLayout } from "../../api/layout";
+import { listSpaceFiles, uploadSpaceFile, deleteSpaceFile, fileUrl } from "../../api/files";
+import type { SpaceFileMeta } from "../../api/files";
+import client from "../../api/client";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -60,6 +64,10 @@ interface PlacedItem2D {
   endDate: string;
   observation: string;
   sede: string;
+  /** Short label rendered OUTSIDE the shape as a pill above the rect. */
+  nomenclatura?: string;
+  /** Face B commercial data (gondola_doble only); face A = top-level fields. */
+  faceB?: FaceData;
 }
 
 // ─── Catalog ──────────────────────────────────────────────────────────────────
@@ -134,6 +142,11 @@ function isRotated90(rotY: number): boolean {
   return Math.abs(r - Math.PI / 2) < 0.15;
 }
 
+/** Quantize rotY to quarter-turn steps (0 = south, 1 = west, 2 = north, 3 = east). */
+function rotationSteps(rotY?: number): number {
+  return Math.round(((rotY ?? 0) % (2 * Math.PI)) / (Math.PI / 2)) % 4;
+}
+
 /** 3D height defaults (used when promoting a 2D item to a UnifiedFixture).
  *  Keys match FixType2D so gondola_doble / gondola_mural can be distinguished. */
 const H_DEFAULTS: Record<string, number> = {
@@ -162,6 +175,7 @@ function storeToItems(fixtures: UnifiedFixture[]): PlacedItem2D[] {
   return fixtures.map((f) => {
     let type2D: FixType2D;
     if (f.type === "gondola") {
+      // Same undefined-defaults-to-double rule as isDoubleGondola() in types/fixtures.
       type2D = f.gondolaType === "wall" ? "gondola_mural" : "gondola_doble";
     } else {
       // All other types exist 1-to-1 in FixType2D (including new types + legacy exhibicion)
@@ -185,11 +199,14 @@ function storeToItems(fixtures: UnifiedFixture[]): PlacedItem2D[] {
       status: f.status,
       supplierName: f.supplierName,
       brandCategory: f.brandCategory,
-      negotiatedValue: f.negotiatedValue,
+      // Worker layout responses omit negotiatedValue — default to 0 locally.
+      negotiatedValue: f.negotiatedValue ?? 0,
       startDate: f.startDate,
       endDate: f.endDate,
       observation: f.observation,
       sede: f.sede,
+      nomenclatura: f.nomenclatura,
+      faceB: f.faceB,
     };
   });
 }
@@ -241,6 +258,8 @@ function itemsToStore(
       startDate: item.startDate,
       endDate: item.endDate,
       observation: item.observation,
+      nomenclatura: item.nomenclatura,
+      faceB: item.faceB,
     };
   });
 }
@@ -300,12 +319,22 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   // Catalog label editing state
   const [editingCatalogType, setEditingCatalogType] = useState<string | null>(null);
   const [editingCatalogVal, setEditingCatalogVal]   = useState("");
+  // Nomenclatura pills visibility (bottom-bar "Etiquetas" toggle, default ON)
+  const [showLabels, setShowLabels] = useState(true);
+  // Which face of a double gondola the panel opens on (set by half-click detection)
+  const [panelFace, setPanelFace] = useState<"A" | "B">("A");
   const svgRef = useRef<SVGSVGElement>(null);
   const cachedSvgRect = useRef<DOMRect | null>(null);
   // Skip the initial mount sync so it doesn't create a spurious undo entry (I3)
   const isFirstRender = useRef(true);
   // Prevents the store→items sync from firing after our own commit (avoids loop)
   const justCommittedRef = useRef(false);
+
+  // ── Role gating: workers get a strictly read-only plan ───────────────────────
+  const isAdmin = useAuthStore(selectIsAdmin);
+  useEffect(() => {
+    if (!isAdmin && editMode) setEditMode(false);
+  }, [isAdmin, editMode]);
 
   // ── Sync store → items (for undo/redo/syncFromServer) ────────────────────────
   // When the store changes from outside (undo, redo, server sync), update local items.
@@ -1265,6 +1294,24 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                           return next;
                         });
                       } else {
+                        // Double gondola: detect which half was clicked so the
+                        // panel opens with that face pre-selected.
+                        if (item.type === "gondola_doble") {
+                          const pt = svgPoint(e);
+                          const steps = rotationSteps(item.rotY);
+                          const relX = pt.x - item.x;
+                          const relY = pt.y - item.y;
+                          let face: "A" | "B";
+                          switch (steps) {
+                            case 0:  face = relY >= item.h / 2 ? "A" : "B"; break; // stripe south
+                            case 1:  face = relX <  item.w / 2 ? "A" : "B"; break; // stripe west
+                            case 2:  face = relY <  item.h / 2 ? "A" : "B"; break; // stripe north
+                            default: face = relX >= item.w / 2 ? "A" : "B"; break; // stripe east
+                          }
+                          setPanelFace(face);
+                        } else {
+                          setPanelFace("A");
+                        }
                         setSelectedIds(new Set([item.id]));
                       }
                     }}
@@ -1272,12 +1319,50 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                     onDoubleClick={(e) => editMode && handleItemDblClick(e, item.id)}
                     style={{ cursor: editMode ? "move" : "pointer" }}
                   >
+                    {/* Double gondola: two halves colored per face.
+                        Face A = half on the front-stripe side (rotY convention below);
+                        Face B = opposite half, colored by faceB.status. */}
+                    {item.type === "gondola_doble" && !isCollidingDrag && (() => {
+                      const steps = rotationSteps(item.rotY);
+                      const aFill = STATUS_FILL[item.status];
+                      const bFill = STATUS_FILL[item.faceB?.status ?? "free"];
+                      const noPtr = { style: { pointerEvents: "none" as const } };
+                      const dividerStroke = "rgba(28,27,22,0.30)";
+                      if (steps === 0 || steps === 2) {
+                        // Divider parallel to X — split top/bottom (stripe south → A = bottom)
+                        const topFill = steps === 2 ? aFill : bFill;
+                        const botFill = steps === 2 ? bFill : aFill;
+                        return (
+                          <>
+                            <rect x={px} y={py} width={pw} height={ph / 2} fill={topFill} rx={3 / zoom} {...noPtr} />
+                            <rect x={px} y={py + ph / 2} width={pw} height={ph / 2} fill={botFill} rx={3 / zoom} {...noPtr} />
+                            <line x1={px} y1={py + ph / 2} x2={px + pw} y2={py + ph / 2} stroke={dividerStroke} strokeWidth={1 / zoom} {...noPtr} />
+                          </>
+                        );
+                      }
+                      // Divider parallel to Y — split left/right (stripe west → A = left)
+                      const leftFill  = steps === 1 ? aFill : bFill;
+                      const rightFill = steps === 1 ? bFill : aFill;
+                      return (
+                        <>
+                          <rect x={px} y={py} width={pw / 2} height={ph} fill={leftFill} rx={3 / zoom} {...noPtr} />
+                          <rect x={px + pw / 2} y={py} width={pw / 2} height={ph} fill={rightFill} rx={3 / zoom} {...noPtr} />
+                          <line x1={px + pw / 2} y1={py} x2={px + pw / 2} y2={py + ph} stroke={dividerStroke} strokeWidth={1 / zoom} {...noPtr} />
+                        </>
+                      );
+                    })()}
                     <rect
                       x={px}
                       y={py}
                       width={pw}
                       height={ph}
-                      fill={isCollidingDrag ? "rgba(185,28,28,0.18)" : STATUS_FILL[item.status]}
+                      fill={
+                        isCollidingDrag
+                          ? "rgba(185,28,28,0.18)"
+                          : item.type === "gondola_doble"
+                          ? "transparent" // halves painted above; keep pointer target
+                          : STATUS_FILL[item.status]
+                      }
                       stroke={isCollidingDrag ? "var(--danger)" : isSelected ? "var(--accent)" : STATUS_COLORS[item.status]}
                       strokeWidth={(isSelected || isCollidingDrag ? 2.5 : 1.5) / zoom}
                       strokeDasharray={isCollidingDrag ? `${4 / zoom},${2 / zoom}` : undefined}
@@ -1288,7 +1373,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                         Convention: rotY=0 → south (bottom); rotates clockwise each 90°.
                         Hidden for types where orientation has no customer-facing meaning. */}
                     {item.type !== "metro" && item.type !== "columna" && (() => {
-                      const steps = Math.round(((item.rotY ?? 0) % (2 * Math.PI)) / (Math.PI / 2)) % 4;
+                      const steps = rotationSteps(item.rotY);
                       const sw = Math.max(2.5, 4 / zoom);
                       const inset = sw / 2;
                       const stroke = "rgba(99,102,241,0.85)";
@@ -1300,6 +1385,41 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                         case 3: return <line x1={px + pw - inset} y1={py + inset} x2={px + pw - inset} y2={py + ph - inset} {...lp} />;
                         default: return null;
                       }
+                    })()}
+
+                    {/* Nomenclatura pill — floats above the rect at constant screen
+                        size, with a small leader line down to the top edge. */}
+                    {showLabels && item.nomenclatura && (() => {
+                      // Property narrowing doesn't cross the closure — re-default here.
+                      const text = item.nomenclatura ?? "";
+                      const fs = 10.5 / zoom;
+                      const padX = 7 / zoom;
+                      const bh = 16 / zoom;
+                      const bw = text.length * fs * 0.62 + padX * 2;
+                      const leader = 6 / zoom;
+                      const cxPx = px + pw / 2;
+                      const by = py - leader - bh;
+                      return (
+                        <g style={{ pointerEvents: "none" }}>
+                          <line
+                            x1={cxPx} y1={py} x2={cxPx} y2={py - leader}
+                            stroke="var(--line-strong)" strokeWidth={1 / zoom}
+                          />
+                          <rect
+                            x={cxPx - bw / 2} y={by} width={bw} height={bh}
+                            rx={bh / 2}
+                            fill="var(--surface)" stroke="var(--line-strong)" strokeWidth={1 / zoom}
+                          />
+                          <text
+                            x={cxPx} y={by + bh / 2}
+                            textAnchor="middle" dominantBaseline="central"
+                            fontSize={fs} fontWeight={600} fill="var(--ink-1)"
+                            style={{ userSelect: "none" }}
+                          >
+                            {text}
+                          </text>
+                        </g>
+                      );
                     })()}
 
                     {/* CHANGE 3: Dimension label during resize */}
@@ -1597,6 +1717,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               sede={sede}
               sedes={storeSedeList}
               editMode={editMode}
+              isAdmin={isAdmin}
+              initialFace={panelFace}
               onUpdate={updateSelected}
               onDelete={() => { deleteItem(selectedItem.id); }}
               onDuplicate={() => duplicateSelected(new Set([selectedItem.id]))}
@@ -1618,35 +1740,39 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           minWidth: 0,
         }}
       >
-        <button
-          onClick={() => {
-            setEditMode((m) => !m);
-            setActiveTool("select");
-            setPendingType(null);
-            setDragState(null);
-            setDragOrigPositions(null);
-            setResizeState(null);
-            setSelectionRect(null);
-            setSelectedIds(new Set());
-          }}
-          style={{
-            display: "flex", alignItems: "center", gap: 5,
-            height: 26, padding: "0 10px",
-            borderRadius: "var(--r-md)",
-            border: "1px solid",
-            fontSize: 11.5, fontWeight: 500, cursor: "pointer",
-            fontFamily: "inherit",
-            background: editMode ? "var(--accent)" : "var(--surface-2)",
-            color: editMode ? "#fff" : "var(--ink-2)",
-            borderColor: editMode ? "var(--accent)" : "var(--line)",
-            transition: "all .12s",
-          }}
-        >
-          {editMode ? <EyeOff size={12} /> : <Eye size={12} />}
-          {editMode ? "Vista previa" : "Editar plano"}
-        </button>
+        {isAdmin && (
+          <>
+            <button
+              onClick={() => {
+                setEditMode((m) => !m);
+                setActiveTool("select");
+                setPendingType(null);
+                setDragState(null);
+                setDragOrigPositions(null);
+                setResizeState(null);
+                setSelectionRect(null);
+                setSelectedIds(new Set());
+              }}
+              style={{
+                display: "flex", alignItems: "center", gap: 5,
+                height: 26, padding: "0 10px",
+                borderRadius: "var(--r-md)",
+                border: "1px solid",
+                fontSize: 11.5, fontWeight: 500, cursor: "pointer",
+                fontFamily: "inherit",
+                background: editMode ? "var(--accent)" : "var(--surface-2)",
+                color: editMode ? "#fff" : "var(--ink-2)",
+                borderColor: editMode ? "var(--accent)" : "var(--line)",
+                transition: "all .12s",
+              }}
+            >
+              {editMode ? <EyeOff size={12} /> : <Eye size={12} />}
+              {editMode ? "Vista previa" : "Editar plano"}
+            </button>
 
-        <div style={{ width: 1, height: 14, background: "var(--line)" }} />
+            <div style={{ width: 1, height: 14, background: "var(--line)" }} />
+          </>
+        )}
         <span style={{ color: "var(--ink-3)" }}>
           <span style={{ color: "var(--ink-1)", fontWeight: 600 }}>{items.length}</span>{" "}
           fixture{items.length !== 1 ? "s" : ""}
@@ -1740,7 +1866,24 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           )}
         </div>
 
-        <SyncButton />
+        <div style={{ width: 1, height: 14, background: "var(--line)" }} />
+        <button
+          onClick={() => setShowLabels((v) => !v)}
+          title={showLabels ? "Ocultar etiquetas de nomenclatura" : "Mostrar etiquetas de nomenclatura"}
+          style={{
+            display: "flex", alignItems: "center", gap: 4,
+            padding: "2px 8px", borderRadius: "var(--r-md)",
+            border: "1px solid var(--line)", fontSize: 11.5, fontWeight: 500,
+            cursor: "pointer", fontFamily: "inherit",
+            background: showLabels ? "var(--accent-50)" : "var(--surface-2)",
+            color: showLabels ? "var(--accent-700)" : "var(--ink-3)",
+            transition: "all .12s",
+          }}
+        >
+          {showLabels ? <Eye size={12} /> : <EyeOff size={12} />} Etiquetas
+        </button>
+
+        {isAdmin && <SyncButton />}
 
         <div style={{
           marginLeft: "auto", fontSize: 10.5, color: "var(--ink-3)",
@@ -1875,13 +2018,256 @@ function Field({ label, icon, children }: { label: string; icon?: string; childr
   );
 }
 
+// ─── Days-left strip (contract dates emphasis) ────────────────────────────────
+
+function DaysLeftStrip({ startDate, endDate }: { startDate: string; endDate: string }) {
+  const MS_PER_DAY = 86_400_000;
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const totalDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / MS_PER_DAY));
+  const elapsedDays = Math.min(totalDays, Math.max(0, Math.round((today.getTime() - start.getTime()) / MS_PER_DAY)));
+  const daysLeft = Math.round((end.getTime() - today.getTime()) / MS_PER_DAY);
+  const pct = Math.min(100, Math.max(0, (elapsedDays / totalDays) * 100));
+  const expired = daysLeft < 0;
+  const critical = expired || daysLeft <= 7;
+  const color = critical ? "var(--danger)" : daysLeft <= 30 ? "var(--warning)" : "var(--success)";
+  // Same visual language as the status badges
+  const badge = critical
+    ? STATUS_BADGE_STYLE.occupied
+    : daysLeft <= 30
+    ? STATUS_BADGE_STYLE.reserved
+    : STATUS_BADGE_STYLE.free;
+  const label = expired
+    ? `Vencido hace ${Math.abs(daysLeft)} día${Math.abs(daysLeft) === 1 ? "" : "s"}`
+    : `${daysLeft} día${daysLeft === 1 ? "" : "s"} restantes`;
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ height: 4, borderRadius: 999, background: "var(--dark-surface-2)", overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 999, transition: "width .2s" }} />
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+        {daysLeft <= 30 && (
+          <span className="animate-pulse" style={{ width: 6, height: 6, borderRadius: "50%", background: color, flexShrink: 0 }} />
+        )}
+        <span style={{ ...badge, display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "1px 8px", fontSize: 10.5, fontWeight: 600 }}>
+          {label}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Files section (contract documents per space) ─────────────────────────────
+
+const ALLOWED_FILE_EXTS = [".pdf", ".xls", ".xlsx", ".csv"];
+
+function FilesSection({
+  code, name, zone, sedeName, areaM2, isAdmin, editMode,
+}: {
+  code: string;
+  name: string;
+  zone: string;
+  sedeName: string;
+  areaM2: number;
+  isAdmin: boolean;
+  editMode: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [files, setFiles] = useState<SpaceFileMeta[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+  // Space id resolved lazily on first expand/upload — ref so callbacks stay stable
+  const spaceIdRef = useRef<number | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const resolveSpaceId = useCallback(async (): Promise<number | null> => {
+    if (spaceIdRef.current != null) return spaceIdRef.current;
+    try {
+      if (isAdmin) {
+        const space = await findOrCreateSpace({ code, name, zone, sede: sedeName, area_m2: areaM2 });
+        spaceIdRef.current = space.id;
+      } else {
+        // Workers cannot create spaces — only resolve existing ones by code.
+        const r = await client.get<{ id: number }>(`/spaces/by-code/${encodeURIComponent(code)}`);
+        spaceIdRef.current = r.data.id;
+      }
+      return spaceIdRef.current;
+    } catch {
+      return null;
+    }
+  }, [isAdmin, code, name, zone, sedeName, areaM2]);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    const id = await resolveSpaceId();
+    if (id == null) {
+      setFiles([]);
+      setLoading(false);
+      return;
+    }
+    try {
+      setFiles(await listSpaceFiles(id));
+    } catch {
+      setError("No se pudieron cargar los archivos");
+    } finally {
+      setLoading(false);
+    }
+  }, [resolveSpaceId]);
+
+  useEffect(() => {
+    if (expanded) void refresh();
+  }, [expanded, refresh]);
+
+  async function handleUpload(file: File) {
+    const dot = file.name.lastIndexOf(".");
+    const ext = dot >= 0 ? file.name.slice(dot).toLowerCase() : "";
+    if (!ALLOWED_FILE_EXTS.includes(ext)) {
+      setError("Formato no permitido (.pdf, .xls, .xlsx, .csv)");
+      return;
+    }
+    setUploading(true);
+    setError("");
+    try {
+      const id = await resolveSpaceId();
+      if (id == null) throw new Error("space unresolved");
+      await uploadSpaceFile(id, file);
+      setFiles(await listSpaceFiles(id));
+    } catch {
+      setError("Error al subir el archivo");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleDelete(fileId: number) {
+    try {
+      await deleteSpaceFile(fileId);
+      setFiles((prev) => prev.filter((f) => f.id !== fileId));
+    } catch {
+      setError("No se pudo eliminar el archivo");
+    }
+  }
+
+  return (
+    <div
+      style={{ borderBottom: "1px solid var(--dark-line)" }}
+      onDragOver={isAdmin ? (e) => e.preventDefault() : undefined}
+      onDrop={isAdmin ? (e) => {
+        e.preventDefault();
+        if (!expanded) setExpanded(true);
+        const file = e.dataTransfer.files?.[0];
+        if (file) void handleUpload(file);
+      } : undefined}
+    >
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        style={{
+          width: "100%", textAlign: "left", padding: "10px 16px",
+          background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
+          fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em",
+          color: "var(--dark-ink-3)", display: "flex", alignItems: "center", gap: 4,
+        }}
+      >
+        <span>📎</span>Archivos
+        <span style={{ marginLeft: "auto", fontSize: 11 }}>{expanded ? "▾" : "▸"}</span>
+      </button>
+      {expanded && (
+        <div style={{ padding: "0 16px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+          {loading ? (
+            <p style={{ fontSize: 11, color: "var(--dark-ink-3)" }}>Cargando…</p>
+          ) : files.length === 0 ? (
+            <p style={{ fontSize: 11, color: "var(--dark-ink-3)" }}>Sin archivos adjuntos</p>
+          ) : (
+            files.map((f) => (
+              <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                <button
+                  onClick={() => window.open(fileUrl(f.id), "_blank")}
+                  title={f.filename}
+                  style={{
+                    flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6,
+                    background: "none", border: "none", cursor: "pointer", padding: 0,
+                    fontFamily: "inherit", textAlign: "left",
+                  }}
+                >
+                  <span style={{ fontSize: 12, flexShrink: 0 }}>📄</span>
+                  <span style={{ fontSize: 12, color: "var(--dark-ink-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {f.filename}
+                  </span>
+                  <span style={{ fontSize: 10, color: "var(--dark-ink-3)", flexShrink: 0, fontFamily: "var(--font-mono)" }}>
+                    {Math.max(1, Math.round(f.size / 1024))} KB
+                  </span>
+                </button>
+                {isAdmin && editMode && (
+                  <button
+                    onClick={() => void handleDelete(f.id)}
+                    title="Eliminar archivo"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", fontSize: 12, padding: "0 2px", flexShrink: 0 }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+          {error && <p style={{ fontSize: 10, color: "var(--danger)" }}>{error}</p>}
+          {isAdmin && (
+            <>
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".pdf,.xls,.xlsx,.csv"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleUpload(file);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                onClick={() => inputRef.current?.click()}
+                disabled={uploading}
+                style={{
+                  marginTop: 2, borderRadius: "var(--r-sm)", border: "1px dashed var(--dark-line-2)",
+                  background: "transparent", color: uploading ? "var(--dark-ink-3)" : "var(--dark-ink-2)",
+                  padding: "6px 0", fontSize: 11.5, fontWeight: 500,
+                  cursor: uploading ? "wait" : "pointer", fontFamily: "inherit",
+                }}
+              >
+                {uploading ? "Subiendo…" : "＋ Subir archivo"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Empty defaults used when face B is edited for the first time. */
+const EMPTY_FACE: FaceData = {
+  supplierName: "",
+  brandCategory: "",
+  negotiatedValue: 0,
+  startDate: "",
+  endDate: "",
+  observation: "",
+  status: "free",
+};
+
 function AssignmentPanel({
-  item, sede, sedes, editMode, onUpdate, onDelete, onDuplicate, onClose,
+  item, sede, sedes, editMode, isAdmin, initialFace, onUpdate, onDelete, onDuplicate, onClose,
 }: {
   item: PlacedItem2D;
   sede: string;
   sedes: string[];
   editMode: boolean;
+  isAdmin: boolean;
+  initialFace?: "A" | "B";
   onUpdate: (patch: Partial<PlacedItem2D>) => void;
   onDelete: () => void;
   onDuplicate: () => void;
@@ -1892,6 +2278,36 @@ function AssignmentPanel({
   const inp = "w-full bg-transparent border-b border-dark-line-2 text-dark-ink-1 text-sm py-1 focus:outline-none focus:border-accent placeholder:text-dark-ink-3";
   const sel = "w-full bg-dark-surface-2 border border-dark-line-2 text-dark-ink-1 text-sm rounded px-2 py-1.5 focus:outline-none focus:border-accent";
 
+  // ── Faces (gondola doble) ─────────────────────────────────────────────────
+  // Face A maps to the item's top-level commercial fields; face B lives in
+  // item.faceB. Backend space code for face B is fullCode + "-B".
+  const isDouble = item.type === "gondola_doble";
+  const [activeFace, setActiveFace] = useState<"A" | "B">(isDouble ? (initialFace ?? "A") : "A");
+  useEffect(() => {
+    setActiveFace(isDouble ? (initialFace ?? "A") : "A");
+  }, [item.id, initialFace, isDouble]);
+
+  const face: FaceData = activeFace === "B"
+    ? (item.faceB ?? EMPTY_FACE)
+    : {
+        supplierName: item.supplierName,
+        brandCategory: item.brandCategory,
+        negotiatedValue: item.negotiatedValue,
+        startDate: item.startDate,
+        endDate: item.endDate,
+        observation: item.observation,
+        status: item.status,
+      };
+  const activeCode = activeFace === "B" ? `${fullCode}-B` : fullCode;
+
+  function updateFace(patch: Partial<FaceData>) {
+    if (activeFace === "B") {
+      onUpdate({ faceB: { ...(item.faceB ?? EMPTY_FACE), ...patch } });
+    } else {
+      onUpdate(patch as Partial<PlacedItem2D>);
+    }
+  }
+
   // ── Contract persistence ──────────────────────────────────────────────────
   const [saveState, setSaveState] = useState<"idle" | "saving" | "ok" | "error">("idle");
   const [saveError, setSaveError] = useState("");
@@ -1899,10 +2315,10 @@ function AssignmentPanel({
   useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
 
   const canSave =
-    item.supplierName.trim().length > 0 &&
-    item.startDate.length > 0 &&
-    item.endDate.length > 0 &&
-    (item.negotiatedValue ?? 0) > 0;
+    face.supplierName.trim().length > 0 &&
+    face.startDate.length > 0 &&
+    face.endDate.length > 0 &&
+    (face.negotiatedValue ?? 0) > 0;
 
   async function handleSaveContract() {
     if (!canSave) return;
@@ -1910,22 +2326,22 @@ function AssignmentPanel({
     setSaveError("");
     try {
       const space = await findOrCreateSpace({
-        code: fullCode,
+        code: activeCode,
         name: catDef?.label ?? item.code,
         zone: item.type,
         sede: item.sede || sede,
         area_m2: parseFloat((item.w * item.h).toFixed(2)),
       });
-      const supplier = await findOrCreateSupplier(item.supplierName.trim());
+      const supplier = await findOrCreateSupplier(face.supplierName.trim());
       await createLease(space.id, {
         supplier_id: supplier.id,
-        marca: item.brandCategory || undefined,
-        start_date: item.startDate,
-        end_date: item.endDate,
-        monthly_rent: item.negotiatedValue,
-        notes: item.observation || undefined,
+        marca: face.brandCategory || undefined,
+        start_date: face.startDate,
+        end_date: face.endDate,
+        monthly_rent: face.negotiatedValue,
+        notes: face.observation || undefined,
       });
-      onUpdate({ status: "occupied" });
+      updateFace({ status: "occupied" });
       setSaveState("ok");
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => setSaveState("idle"), 3500);
@@ -1946,7 +2362,7 @@ function AssignmentPanel({
       {/* Header */}
       <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid var(--dark-line)", display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
         <div>
-          <p style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--dark-ink-3)", marginBottom: 2 }}>{fullCode}</p>
+          <p style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--dark-ink-3)", marginBottom: 2 }}>{activeCode}</p>
           <p style={{ fontSize: 14, fontWeight: 600, color: "var(--dark-ink-1)" }}>
             {catDef?.emoji} {catDef?.label}
           </p>
@@ -1954,25 +2370,47 @@ function AssignmentPanel({
         <button onClick={onClose} style={{ color: "var(--dark-ink-3)", fontSize: 18, lineHeight: 1, marginTop: 2, background: "none", border: "none", cursor: "pointer" }}>×</button>
       </div>
 
+      {/* Face tabs (gondola doble) */}
+      {isDouble && (
+        <div style={{ display: "flex", borderBottom: "1px solid var(--dark-line)" }}>
+          {(["A", "B"] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => setActiveFace(f)}
+              style={{
+                flex: 1, padding: "9px 0", fontSize: 12, fontWeight: 600,
+                background: "none", border: "none", cursor: "pointer",
+                fontFamily: "inherit",
+                color: activeFace === f ? "var(--accent)" : "var(--dark-ink-3)",
+                borderBottom: activeFace === f ? "2px solid var(--accent)" : "2px solid transparent",
+                transition: "color .12s, border-color .12s",
+              }}
+            >
+              Cara {f}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Status badge */}
       <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--dark-line)" }}>
-        <span style={{ ...STATUS_BADGE_STYLE[item.status], display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 600 }}>
-          {STATUS_LABELS[item.status]}
+        <span style={{ ...STATUS_BADGE_STYLE[face.status], display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 600 }}>
+          {STATUS_LABELS[face.status]}
         </span>
       </div>
 
       {/* Estado */}
       <Field label="Estado del espacio" icon="◉">
         {editMode ? (
-          <select className={sel} value={item.status}
-            onChange={(e) => onUpdate({ status: e.target.value as SpaceStatus })}>
+          <select className={sel} value={face.status}
+            onChange={(e) => updateFace({ status: e.target.value as SpaceStatus })}>
             <option value="free">Disponible</option>
             <option value="occupied">Ocupado</option>
             <option value="reserved">Reservado</option>
             <option value="maintenance">Mantenimiento</option>
           </select>
         ) : (
-          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{STATUS_LABELS[item.status]}</p>
+          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{STATUS_LABELS[face.status]}</p>
         )}
       </Field>
 
@@ -1988,14 +2426,25 @@ function AssignmentPanel({
         )}
       </Field>
 
+      {/* Nomenclatura (per fixture, rendered as a pill on the plan) */}
+      <Field label="Nomenclatura" icon="🔖">
+        {editMode ? (
+          <input className={inp} placeholder="ej: FRU-01 · visible en el plano"
+            value={item.nomenclatura ?? ""}
+            onChange={(e) => onUpdate({ nomenclatura: e.target.value })} />
+        ) : (
+          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{item.nomenclatura || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}</p>
+        )}
+      </Field>
+
       {/* Proveedor */}
       <Field label="Proveedor" icon="🏭">
         {editMode ? (
           <input className={inp} placeholder="Nombre del proveedor"
-            value={item.supplierName}
-            onChange={(e) => onUpdate({ supplierName: e.target.value })} />
+            value={face.supplierName}
+            onChange={(e) => updateFace({ supplierName: e.target.value })} />
         ) : (
-          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{item.supplierName || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}</p>
+          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{face.supplierName || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}</p>
         )}
       </Field>
 
@@ -2003,25 +2452,27 @@ function AssignmentPanel({
       <Field label="Categoría" icon="🏷️">
         {editMode ? (
           <input className={inp} placeholder="Marca / rubro"
-            value={item.brandCategory}
-            onChange={(e) => onUpdate({ brandCategory: e.target.value })} />
+            value={face.brandCategory}
+            onChange={(e) => updateFace({ brandCategory: e.target.value })} />
         ) : (
-          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{item.brandCategory || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}</p>
+          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{face.brandCategory || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}</p>
         )}
       </Field>
 
-      {/* Valor */}
-      <Field label="$ Valor (COP/mes)" icon="">
-        {editMode ? (
-          <input type="number" className={inp} placeholder="0"
-            value={item.negotiatedValue || ""}
-            onChange={(e) => onUpdate({ negotiatedValue: parseFloat(e.target.value) || 0 })} />
-        ) : (
-          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>
-            {item.negotiatedValue ? `$${item.negotiatedValue.toLocaleString()}` : <span style={{ color: "var(--dark-ink-3)" }}>—</span>}
-          </p>
-        )}
-      </Field>
+      {/* Valor — hidden entirely for workers */}
+      {isAdmin && (
+        <Field label="$ Valor (COP/mes)" icon="">
+          {editMode ? (
+            <input type="number" className={inp} placeholder="0"
+              value={face.negotiatedValue || ""}
+              onChange={(e) => updateFace({ negotiatedValue: parseFloat(e.target.value) || 0 })} />
+          ) : (
+            <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>
+              {face.negotiatedValue ? `$${face.negotiatedValue.toLocaleString()}` : <span style={{ color: "var(--dark-ink-3)" }}>—</span>}
+            </p>
+          )}
+        </Field>
+      )}
 
       {/* Fechas */}
       <Field label="Periodo" icon="📅">
@@ -2030,23 +2481,26 @@ function AssignmentPanel({
             <p style={{ fontSize: 10, color: "var(--dark-ink-3)", marginBottom: 4 }}>INICIO</p>
             {editMode ? (
               <input type="date" className={inp}
-                value={item.startDate}
-                onChange={(e) => onUpdate({ startDate: e.target.value })} />
+                value={face.startDate}
+                onChange={(e) => updateFace({ startDate: e.target.value })} />
             ) : (
-              <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{item.startDate || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}</p>
+              <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{face.startDate || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}</p>
             )}
           </div>
           <div>
             <p style={{ fontSize: 10, color: "var(--dark-ink-3)", marginBottom: 4 }}>FIN</p>
             {editMode ? (
               <input type="date" className={inp}
-                value={item.endDate}
-                onChange={(e) => onUpdate({ endDate: e.target.value })} />
+                value={face.endDate}
+                onChange={(e) => updateFace({ endDate: e.target.value })} />
             ) : (
-              <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{item.endDate || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}</p>
+              <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{face.endDate || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}</p>
             )}
           </div>
         </div>
+        {face.startDate && face.endDate && (
+          <DaysLeftStrip startDate={face.startDate} endDate={face.endDate} />
+        )}
       </Field>
 
       {/* Dimensiones */}
@@ -2075,14 +2529,27 @@ function AssignmentPanel({
           <textarea rows={2} className={`${inp} resize-none`}
             style={{ border: "1px solid var(--dark-line-2)", borderRadius: "var(--r-sm)", padding: "4px 8px" }}
             placeholder="Notas adicionales"
-            value={item.observation}
-            onChange={(e) => onUpdate({ observation: e.target.value })} />
+            value={face.observation}
+            onChange={(e) => updateFace({ observation: e.target.value })} />
         ) : (
-          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{item.observation || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}</p>
+          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{face.observation || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}</p>
         )}
       </Field>
 
-      {/* Save contract */}
+      {/* Archivos — keyed by active face code so state resets on face switch */}
+      <FilesSection
+        key={activeCode}
+        code={activeCode}
+        name={catDef?.label ?? item.code}
+        zone={item.type}
+        sedeName={item.sede || sede}
+        areaM2={parseFloat((item.w * item.h).toFixed(2))}
+        isAdmin={isAdmin}
+        editMode={editMode}
+      />
+
+      {/* Save contract (admin only — mutations are admin-gated) */}
+      {isAdmin && (
       <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--dark-line)" }}>
         <button
           onClick={handleSaveContract}
@@ -2121,16 +2588,17 @@ function AssignmentPanel({
           </p>
         )}
       </div>
+      )}
 
       {/* Code chip */}
       <div style={{ padding: "12px 16px", marginTop: "auto" }}>
         <span style={{ display: "inline-block", borderRadius: "var(--r-sm)", background: "var(--dark-surface-2)", padding: "4px 10px", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--dark-ink-2)" }}>
-          {fullCode}
+          {activeCode}
         </span>
       </div>
 
-      {/* Actions (edit mode only) */}
-      {editMode && (
+      {/* Actions (admin edit mode only) */}
+      {editMode && isAdmin && (
         <div style={{ padding: "0 16px 16px", display: "flex", gap: 8 }}>
           <button onClick={onDuplicate}
             style={{ flex: 1, borderRadius: "var(--r-sm)", border: "1px solid var(--dark-line-2)", padding: "6px 0", fontSize: 12, fontWeight: 500, color: "var(--dark-ink-2)", background: "transparent", cursor: "pointer", transition: "background .12s" }}>

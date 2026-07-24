@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import os
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -5,9 +7,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from app.auth import ensure_default_config
 from app.database import engine, Base
-from app.routers import spaces, suppliers, dashboard, layout
+from app.routers import spaces, suppliers, dashboard, layout, files, notifications
+from app.routers import auth as auth_routes
 from app.models.models import Space, SpaceStatus
+
+logger = logging.getLogger("retail.main")
 
 
 # ─── Seed ─────────────────────────────────────────────────────────────────────
@@ -74,21 +80,55 @@ def seed_spaces(db):
     db.commit()
 
 
+# ─── Lease maintenance loop ───────────────────────────────────────────────────
+
+REMINDER_INTERVAL_SECONDS = 12 * 60 * 60  # every 12 hours
+
+
+def _run_lease_maintenance():
+    """Expire stale leases and send expiry reminders (runs in a worker thread)."""
+    from app.database import SessionLocal
+    from app.routers.spaces import expire_leases
+    from app.services.reminders import check_expiring_leases
+    db = SessionLocal()
+    try:
+        expire_leases(db)
+        check_expiring_leases(db)
+    finally:
+        db.close()
+
+
+async def _lease_maintenance_loop():
+    """Run maintenance at startup and then every 12 hours. Never dies on errors."""
+    while True:
+        try:
+            await asyncio.to_thread(_run_lease_maintenance)
+        except Exception:
+            logger.exception("Error en el ciclo de mantenimiento de contratos")
+        await asyncio.sleep(REMINDER_INTERVAL_SECONDS)
+
+
 # ─── Lifespan ─────────────────────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
     from app.database import SessionLocal
-    from app.routers.spaces import expire_leases
     db = SessionLocal()
     try:
+        ensure_default_config(db)
         if db.query(Space).count() == 0:
             seed_spaces(db)
-        expire_leases(db)
     finally:
         db.close()
+    # Background task: lease expiry + email reminders (runs immediately, then every 12 h)
+    maintenance_task = asyncio.create_task(_lease_maintenance_loop())
     yield
+    maintenance_task.cancel()
+    try:
+        await maintenance_task
+    except asyncio.CancelledError:
+        pass
 
 
 # ─── App ──────────────────────────────────────────────────────────────────────
@@ -108,10 +148,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(spaces.router,    prefix="/api")
-app.include_router(suppliers.router, prefix="/api")
-app.include_router(dashboard.router, prefix="/api")
-app.include_router(layout.router,    prefix="/api")
+app.include_router(auth_routes.router,   prefix="/api")
+app.include_router(spaces.router,        prefix="/api")
+app.include_router(suppliers.router,     prefix="/api")
+app.include_router(dashboard.router,     prefix="/api")
+app.include_router(layout.router,        prefix="/api")
+app.include_router(files.router,         prefix="/api")
+app.include_router(notifications.router, prefix="/api")
 
 
 @app.get("/api/health")

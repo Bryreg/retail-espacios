@@ -40,6 +40,8 @@ class LeaseOut(LeaseBase):
     space_id: int
     is_active: bool
     supplier: SupplierOut
+    # Overridden as Optional so responses for non-admin roles can redact the amount.
+    monthly_rent: Optional[float] = None
 
     model_config = {"from_attributes": True}
 

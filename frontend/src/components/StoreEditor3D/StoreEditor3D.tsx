@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Html } from "@react-three/drei";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
+import { isDoubleGondola } from "../../types/fixtures";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
 import { findOrCreateSpace, createLease } from "../../api/spaces";
 import { findOrCreateSupplier } from "../../api/suppliers";
@@ -2012,6 +2013,379 @@ function FirstPersonControls({
   return null;
 }
 
+// ─── Product fill (Sims-supermarket style) ───────────────────────────────────
+// Fills shelf-like fixtures that have a commercial category with instanced
+// product meshes. Purely visual: raycast is disabled so clicks still hit the
+// fixture hit-volumes, and nothing here participates in selection or gizmos.
+
+type ProductArchetype = "bag" | "bottle" | "carton" | "can" | "box" | "jug" | "produce";
+
+const PRODUCT_CAP = 12000; // silent global instance cap
+
+const SHELF_LIKE_TYPES = new Set<string>([
+  "gondola", "punta", "mueble", "isla", "batea", "robatope",
+  "isla_fria", "nevera_carnes", "nevera_refrescos", "stand_frutas", "exhibicion",
+]);
+
+/** Lowercase + strip accents so "Lácteos" matches "lacteo". */
+function normalizeText(s: string): string {
+  // NFD splits accented letters into base char + combining mark (U+0300..U+036F);
+  // drop the marks so "lácteo" -> "lacteo".
+  let out = "";
+  for (const ch of s.toLowerCase().normalize("NFD")) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (cp < 0x0300 || cp > 0x036f) out += ch;
+  }
+  return out;
+}
+
+const ARCHETYPE_KEYWORDS: [ProductArchetype, string[]][] = [
+  ["bag",     ["papas", "snack", "chips", "frito"]],
+  ["bottle",  ["bebida", "gaseosa", "refresco", "agua", "jugo", "cerveza"]],
+  ["carton",  ["leche", "lacteo", "yogur", "queso", "huevo"]],
+  ["can",     ["enlatado", "conserva", "atun", "lata"]],
+  ["box",     ["galleta", "cereal", "pasta", "harina", "arroz", "grano"]],
+  ["jug",     ["detergente", "aseo", "jabon", "limpia", "suavizante", "cloro"]],
+  ["produce", ["fruta", "verdura", "fruver"]],
+];
+
+/** Keyword match on the category (fallback: fixture label). Default: "box". */
+function archetypeFor(category: string, label: string): ProductArchetype {
+  const text = normalizeText(category || label);
+  for (const [arch, kws] of ARCHETYPE_KEYWORDS) {
+    if (kws.some(k => text.includes(k))) return arch;
+  }
+  return "box";
+}
+
+// Deterministic pseudo-random: mulberry32 seeded from a string hash of fixture.id
+function hashSeed(str: string): number {
+  let h = 1779033703 ^ str.length;
+  for (let i = 0; i < str.length; i++) {
+    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return h >>> 0;
+}
+
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+interface ProductPart {
+  geomKey:     string;
+  makeGeom:    () => THREE.BufferGeometry;
+  offset:      [number, number, number]; // from product base, at scale 1
+  fixedColor?: string;                   // part ignores palette (e.g. bottle cap)
+}
+
+interface ProductSpec {
+  parts:   ProductPart[];
+  height:  number;   // total product height at scale 1
+  spaceX:  number;   // grid pitch (includes breathing room)
+  spaceZ:  number;
+  lean:    number;   // max random lean in radians
+  palette: string[];
+}
+
+const PRODUCT_SPECS: Record<ProductArchetype, ProductSpec> = {
+  bag: {
+    parts: [{ geomKey: "bag", makeGeom: () => new THREE.BoxGeometry(0.13, 0.19, 0.05), offset: [0, 0.095, 0] }],
+    height: 0.19, spaceX: 0.16, spaceZ: 0.09, lean: 0.12,
+    palette: ["#dc2626", "#f59e0b", "#ea580c", "#facc15", "#b91c1c"],
+  },
+  bottle: {
+    parts: [
+      { geomKey: "bottleBody", makeGeom: () => new THREE.CylinderGeometry(0.032, 0.035, 0.16, 10), offset: [0, 0.08, 0] },
+      { geomKey: "bottleNeck", makeGeom: () => new THREE.CylinderGeometry(0.012, 0.024, 0.05, 8),  offset: [0, 0.185, 0] },
+      { geomKey: "bottleCap",  makeGeom: () => new THREE.CylinderGeometry(0.013, 0.013, 0.02, 8),  offset: [0, 0.22, 0], fixedColor: "#e5e7eb" },
+    ],
+    height: 0.23, spaceX: 0.085, spaceZ: 0.085, lean: 0.02,
+    palette: ["#dc2626", "#f97316", "#16a34a", "#7dd3fc"],
+  },
+  carton: {
+    // 4-sided frustum ≈ tall box with slightly tapered top
+    parts: [{
+      geomKey: "carton",
+      makeGeom: () => { const g = new THREE.CylinderGeometry(0.042, 0.052, 0.20, 4); g.rotateY(Math.PI / 4); return g; },
+      offset: [0, 0.10, 0],
+    }],
+    height: 0.20, spaceX: 0.095, spaceZ: 0.095, lean: 0.03,
+    palette: ["#f8fafc", "#7dd3fc", "#e0f2fe"],
+  },
+  can: {
+    parts: [{ geomKey: "can", makeGeom: () => new THREE.CylinderGeometry(0.033, 0.033, 0.11, 10), offset: [0, 0.055, 0] }],
+    height: 0.11, spaceX: 0.08, spaceZ: 0.08, lean: 0,
+    palette: ["#d1d5db", "#dc2626", "#facc15"],
+  },
+  box: {
+    parts: [{ geomKey: "box", makeGeom: () => new THREE.BoxGeometry(0.11, 0.17, 0.055), offset: [0, 0.085, 0] }],
+    height: 0.17, spaceX: 0.13, spaceZ: 0.075, lean: 0.02,
+    palette: ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#0891b2"],
+  },
+  jug: {
+    parts: [
+      { geomKey: "jugBody", makeGeom: () => new THREE.BoxGeometry(0.10, 0.20, 0.085), offset: [0, 0.10, 0] },
+      { geomKey: "jugCap",  makeGeom: () => new THREE.CylinderGeometry(0.018, 0.018, 0.03, 8), offset: [0.024, 0.215, 0], fixedColor: "#e2e8f0" },
+    ],
+    height: 0.23, spaceX: 0.13, spaceZ: 0.11, lean: 0.02,
+    palette: ["#f8fafc", "#84cc16", "#ec4899"],
+  },
+  produce: {
+    parts: [{ geomKey: "produce", makeGeom: () => new THREE.SphereGeometry(0.045, 8, 6), offset: [0, 0.045, 0] }],
+    height: 0.09, spaceX: 0.10, spaceZ: 0.10, lean: 0,
+    palette: ["#65a30d", "#dc2626", "#f97316", "#facc15", "#16a34a"],
+  },
+};
+
+// Shared caches — geometries/materials live for the app session (tiny finite sets)
+const productGeomCache = new Map<string, THREE.BufferGeometry>();
+function getProductGeom(part: ProductPart): THREE.BufferGeometry {
+  let g = productGeomCache.get(part.geomKey);
+  if (!g) { g = part.makeGeom(); productGeomCache.set(part.geomKey, g); }
+  return g;
+}
+
+const productMatCache = new Map<string, THREE.MeshStandardMaterial>();
+function getProductMat(color: string): THREE.MeshStandardMaterial {
+  let m = productMatCache.get(color);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.05 });
+    productMatCache.set(color, m);
+  }
+  return m;
+}
+
+interface LevelPlane {
+  y:               number; // shelf plane height (product base sits here)
+  gap:             number; // vertical clearance available for the product
+  footprintFactor: number; // horizontal shrink for stepped/solid fixtures
+}
+
+/**
+ * Shelf planes per fixture. Default: levels = clamp(floor(h / 0.45), 1, 5),
+ * one plane every h/levels. Solid-bodied fixtures (freezers, produce stand,
+ * counters…) get planes only where products don't intersect the solid body.
+ */
+function levelPlanesFor(fix: PlacedFixture): LevelPlane[] {
+  const { h } = fix;
+  const nLevels = Math.min(5, Math.max(1, Math.floor(h / 0.45)));
+  const step = h / nLevels;
+  switch (fix.type as string) {
+    case "isla_fria":     return [{ y: h - 0.14, gap: 0.30, footprintFactor: 0.80 }];
+    case "nevera_carnes": return [{ y: h * 0.52, gap: h * 0.40, footprintFactor: 0.80 }];
+    case "stand_frutas":  return [{ y: h - 0.02, gap: 0.30, footprintFactor: 0.85 }];
+    case "batea":         return [{ y: 0.12, gap: Math.max(0.20, h - 0.10), footprintFactor: 0.85 }];
+    case "mueble": {
+      const baseH  = Math.min(h * 0.22, 0.40);   // solid plinth — skip it
+      const stepM  = (h - baseH) / nLevels;
+      return Array.from({ length: nLevels }, (_, i) => ({
+        y: baseH + i * stepM + 0.02, gap: stepM - 0.02, footprintFactor: 0.90,
+      }));
+    }
+    case "nevera_refrescos": {
+      const compH = h * 0.14;                    // compressor block — skip it
+      const stepN = (h - compH - h * 0.05) / nLevels;
+      return Array.from({ length: nLevels }, (_, i) => ({
+        y: compH + i * stepN + 0.02, gap: stepN - 0.02, footprintFactor: 0.85,
+      }));
+    }
+    case "isla":
+      // Stepped display: each level narrows ~15% and sits on a cardboard base
+      return Array.from({ length: nLevels }, (_, i) => ({
+        y: i * step + 0.14, gap: step - 0.14, footprintFactor: 1 - i * 0.15,
+      }));
+    default:
+      return Array.from({ length: nLevels }, (_, i) => ({
+        y: i * step + 0.02, gap: step - 0.02, footprintFactor: 1,
+      }));
+  }
+}
+
+interface FaceFill {
+  fix:  PlacedFixture;
+  arch: ProductArchetype;
+  xMin: number; xMax: number;
+  zMin: number; zMax: number;
+  seed: string;
+}
+
+const FILL_MARGIN = 0.06; // ~6 cm inset from the footprint edge
+
+function faceFillsFor(fix: PlacedFixture, faceBCategory: string): FaceFill[] {
+  if (!SHELF_LIKE_TYPES.has(fix.type as string)) return [];
+  const catA = (fix.brandCategory || "").trim();
+  const catB = (faceBCategory || "").trim();
+  if (!catA && !catB) return [];
+
+  const { w, d } = fix;
+  const xMin = -w / 2 + FILL_MARGIN;
+  const xMax =  w / 2 - FILL_MARGIN;
+  if (xMax <= xMin) return [];
+
+  // Shared check + legacy "gondola_doble" type kept for old persisted layouts.
+  const isDouble =
+    isDoubleGondola(fix) || (fix.type as string) === "gondola_doble";
+
+  const out: FaceFill[] = [];
+  if (isDouble) {
+    // Half depth per face, split by the central spine. Mesh convention: front face
+    // (price rails / status strip) is -Z, so face A goes on the -Z half.
+    const inner = 0.05; // clearance around the spine
+    if (catA) out.push({ fix, arch: archetypeFor(catA, fix.label), xMin, xMax, zMin: -d / 2 + 0.03, zMax: -inner, seed: `${fix.id}|A` });
+    if (catB) out.push({ fix, arch: archetypeFor(catB, fix.label), xMin, xMax, zMin: inner, zMax: d / 2 - 0.03, seed: `${fix.id}|B` });
+    return out;
+  }
+
+  const cat  = catA || catB;
+  let   zMin = -d / 2 + FILL_MARGIN;
+  let   zMax =  d / 2 - FILL_MARGIN;
+  if (fix.type === "gondola") {
+    zMax = d / 2 - d * 0.42 - 0.02;              // wall gondola: solid back panel
+  } else if (fix.type === "punta" || fix.type === "robatope") {
+    zMax = d * 0.25;                             // structural back plate at +Z
+  }
+  if (zMax <= zMin) return [];
+  out.push({ fix, arch: archetypeFor(cat, fix.label), xMin, xMax, zMin, zMax, seed: `${fix.id}|A` });
+  return out;
+}
+
+interface ProductBatch {
+  geom:     THREE.BufferGeometry;
+  color:    string;
+  matrices: THREE.Matrix4[];
+}
+
+function buildProductBatches(placed: PlacedFixture[], unified: UnifiedFixture[]): ProductBatch[] {
+  const faceBById = new Map<string, string>();
+  unified.forEach(f => {
+    if (f.faceB?.brandCategory) faceBById.set(f.id, f.faceB.brandCategory);
+  });
+
+  const fills: FaceFill[] = [];
+  placed.forEach(fix => { fills.push(...faceFillsFor(fix, faceBById.get(fix.id) ?? "")); });
+
+  // Pass 1 — estimate the total count to derive a silent proportional density cap.
+  interface Est { fill: FaceFill; levels: LevelPlane[]; grids: { nx: number; nz: number }[] }
+  let total = 0;
+  const est: Est[] = fills.map(fill => {
+    const spec   = PRODUCT_SPECS[fill.arch];
+    const levels = levelPlanesFor(fill.fix);
+    const grids  = levels.map(lv => {
+      const availX = (fill.xMax - fill.xMin) * lv.footprintFactor;
+      const availZ = (fill.zMax - fill.zMin) * lv.footprintFactor;
+      const nx = availX >= spec.spaceX * 0.8 ? Math.max(1, Math.floor(availX / spec.spaceX)) : 0;
+      const nz = availZ >= spec.spaceZ * 0.8 ? Math.max(1, Math.floor(availZ / spec.spaceZ)) : 0;
+      total += nx * nz;
+      return { nx, nz };
+    });
+    return { fill, levels, grids };
+  });
+  const axisScale = total > PRODUCT_CAP ? Math.sqrt(PRODUCT_CAP / total) : 1;
+
+  // Pass 2 — generate matrices grouped by (geometry part × color bucket).
+  const buckets = new Map<string, ProductBatch>();
+  const pos = new THREE.Vector3();
+  const off = new THREE.Vector3();
+  const scl = new THREE.Vector3();
+  const quat = new THREE.Quaternion();
+  const euler = new THREE.Euler();
+
+  est.forEach(({ fill, levels, grids }) => {
+    const spec = PRODUCT_SPECS[fill.arch];
+    const rng  = mulberry32(hashSeed(fill.seed));
+    const { fix } = fill;
+    const cos = Math.cos(fix.rotY);
+    const sin = Math.sin(fix.rotY);
+    const cxMid = (fill.xMin + fill.xMax) / 2;
+    const czMid = (fill.zMin + fill.zMax) / 2;
+
+    levels.forEach((lv, li) => {
+      let { nx, nz } = grids[li];
+      if (axisScale < 1) {
+        nx = nx > 0 ? Math.max(1, Math.floor(nx * axisScale)) : 0;
+        nz = nz > 0 ? Math.max(1, Math.floor(nz * axisScale)) : 0;
+      }
+      if (!nx || !nz) return;
+
+      const spanX = (fill.xMax - fill.xMin) * lv.footprintFactor;
+      const spanZ = (fill.zMax - fill.zMin) * lv.footprintFactor;
+      const stepX = spanX / nx;
+      const stepZ = spanZ / nz;
+      // Shrink the product if the shelf gap is tighter than its natural height
+      const s = Math.max(0.4, Math.min(1, (lv.gap - 0.05) / spec.height));
+
+      for (let ix = 0; ix < nx; ix++) {
+        for (let iz = 0; iz < nz; iz++) {
+          const lx = cxMid - spanX / 2 + (ix + 0.5) * stepX + (rng() - 0.5) * 0.012;
+          const lz = czMid - spanZ / 2 + (iz + 0.5) * stepZ + (rng() - 0.5) * 0.012;
+          const leanX = (rng() - 0.5) * 2 * spec.lean;
+          const leanZ = (rng() - 0.5) * 2 * spec.lean;
+          const yaw   = fix.rotY + (rng() - 0.5) * 0.10;
+          const color = spec.palette[Math.floor(rng() * spec.palette.length)];
+          // Rotate the local offset by the fixture yaw around its centre
+          const wx = fix.x + lx * cos + lz * sin;
+          const wz = fix.z - lx * sin + lz * cos;
+          euler.set(leanX, yaw, leanZ);
+          quat.setFromEuler(euler);
+          scl.setScalar(s);
+          for (const part of spec.parts) {
+            off.set(part.offset[0] * s, part.offset[1] * s, part.offset[2] * s).applyQuaternion(quat);
+            pos.set(wx + off.x, lv.y + off.y, wz + off.z);
+            const partColor = part.fixedColor ?? color;
+            const key = `${part.geomKey}|${partColor}`;
+            let bucket = buckets.get(key);
+            if (!bucket) {
+              bucket = { geom: getProductGeom(part), color: partColor, matrices: [] };
+              buckets.set(key, bucket);
+            }
+            bucket.matrices.push(new THREE.Matrix4().compose(pos, quat, scl));
+          }
+        }
+      }
+    });
+  });
+
+  return Array.from(buckets.values());
+}
+
+/** ONE InstancedMesh per (archetype part geometry × color) across the whole scene. */
+const ProductFillLayer = memo(function ProductFillLayer({
+  placedFixtures, unifiedFixtures,
+}: {
+  placedFixtures:  PlacedFixture[];
+  unifiedFixtures: UnifiedFixture[];
+}) {
+  const { invalidate } = useThree();
+
+  const meshes = useMemo(() => {
+    const batches = buildProductBatches(placedFixtures, unifiedFixtures);
+    return batches.map(b => {
+      const mesh = new THREE.InstancedMesh(b.geom, getProductMat(b.color), b.matrices.length);
+      b.matrices.forEach((m, i) => mesh.setMatrixAt(i, m));
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.raycast = () => {};     // purely visual — clicks pass through to fixtures
+      mesh.frustumCulled = false;  // bounding sphere doesn't track instances
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      return mesh;
+    });
+  }, [placedFixtures, unifiedFixtures]);
+
+  useEffect(() => {
+    invalidate(); // frameloop="demand": redraw after a rebuild
+    return () => { meshes.forEach(m => m.dispose()); }; // geometries/materials are cached — only instance buffers die
+  }, [meshes, invalidate]);
+
+  return <>{meshes.map(m => <primitive key={m.uuid} object={m} />)}</>;
+});
+
 // ─── Scene ───────────────────────────────────────────────────────────────────
 
 interface SceneProps {
@@ -2297,6 +2671,9 @@ function Scene({
           </group>
         );
       })}
+
+      {/* Product fill — Sims-style, purely visual (raycast disabled, non-interactive) */}
+      <ProductFillLayer placedFixtures={placedFixtures} unifiedFixtures={fixtures} />
 
       {/* MEJORA 2: Ghost with collision overlay — only when not in first-person */}
       {ghostFixture && !firstPerson && (
