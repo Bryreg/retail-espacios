@@ -2013,14 +2013,12 @@ function FirstPersonControls({
   return null;
 }
 
-// ─── Product fill (Sims-supermarket style) ───────────────────────────────────
-// Fills shelf-like fixtures that have a commercial category with instanced
-// product meshes. Purely visual: raycast is disabled so clicks still hit the
-// fixture hit-volumes, and nothing here participates in selection or gizmos.
-
-type ProductArchetype = "bag" | "bottle" | "carton" | "can" | "box" | "jug" | "produce";
-
-const PRODUCT_CAP = 12000; // silent global instance cap
+// ─── Category strips (flat 2D product fill) ──────────────────────────────────
+// Replaces the old 3D InstancedMesh product system. Every shelf-like fixture
+// with a commercial category gets ONE textured plane per shelf level and face:
+// a horizontal strip of stylized package tiles drawn on a cached CanvasTexture.
+// Purely visual — raycast is disabled so clicks still hit the fixture
+// hit-volumes, and all strip dimensions derive from the fixture's own w/d/h.
 
 const SHELF_LIKE_TYPES = new Set<string>([
   "gondola", "punta", "mueble", "isla", "batea", "robatope",
@@ -2039,351 +2037,234 @@ function normalizeText(s: string): string {
   return out;
 }
 
-const ARCHETYPE_KEYWORDS: [ProductArchetype, string[]][] = [
-  ["bag",     ["papas", "snack", "chips", "frito"]],
-  ["bottle",  ["bebida", "gaseosa", "refresco", "agua", "jugo", "cerveza"]],
-  ["carton",  ["leche", "lacteo", "yogur", "queso", "huevo"]],
-  ["can",     ["enlatado", "conserva", "atun", "lata"]],
-  ["box",     ["galleta", "cereal", "pasta", "harina", "arroz", "grano"]],
-  ["jug",     ["detergente", "aseo", "jabon", "limpia", "suavizante", "cloro"]],
-  ["produce", ["fruta", "verdura", "fruver"]],
+type CategoryKey =
+  | "snacks" | "bebidas" | "lacteos" | "enlatados"
+  | "abarrotes" | "aseo" | "fruver" | "generico";
+
+const CATEGORY_KEYWORDS: [CategoryKey, string[]][] = [
+  ["snacks",    ["papas", "snack", "chips", "frito"]],
+  ["bebidas",   ["bebida", "gaseosa", "refresco", "agua", "jugo", "cerveza"]],
+  ["lacteos",   ["leche", "lacteo", "yogur", "queso", "huevo"]],
+  ["enlatados", ["enlatado", "conserva", "atun", "lata"]],
+  ["abarrotes", ["galleta", "cereal", "pasta", "harina", "arroz", "grano"]],
+  ["aseo",      ["detergente", "aseo", "jabon", "limpia", "suavizante", "cloro"]],
+  ["fruver",    ["fruta", "verdura", "fruver"]],
 ];
 
-/** Keyword match on the category (fallback: fixture label). Default: "box". */
-function archetypeFor(category: string, label: string): ProductArchetype {
+/** Keyword match on the category (fallback: fixture label). Default: "generico". */
+function categoryKeyFor(category: string, label: string): CategoryKey {
   const text = normalizeText(category || label);
-  for (const [arch, kws] of ARCHETYPE_KEYWORDS) {
-    if (kws.some(k => text.includes(k))) return arch;
+  for (const [key, kws] of CATEGORY_KEYWORDS) {
+    if (kws.some(k => text.includes(k))) return key;
   }
-  return "box";
+  return "generico";
 }
 
-// Deterministic pseudo-random: mulberry32 seeded from a string hash of fixture.id
-function hashSeed(str: string): number {
-  let h = 1779033703 ^ str.length;
-  for (let i = 0; i < str.length; i++) {
-    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
-    h = (h << 13) | (h >>> 19);
-  }
-  return h >>> 0;
-}
-
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a |= 0; a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-interface ProductPart {
-  geomKey:     string;
-  makeGeom:    () => THREE.BufferGeometry;
-  offset:      [number, number, number]; // from product base, at scale 1
-  fixedColor?: string;                   // part ignores palette (e.g. bottle cap)
-}
-
-interface ProductSpec {
-  parts:   ProductPart[];
-  height:  number;   // total product height at scale 1
-  spaceX:  number;   // grid pitch (includes breathing room)
-  spaceZ:  number;
-  lean:    number;   // max random lean in radians
-  palette: string[];
-}
-
-const PRODUCT_SPECS: Record<ProductArchetype, ProductSpec> = {
-  bag: {
-    parts: [{ geomKey: "bag", makeGeom: () => new THREE.BoxGeometry(0.13, 0.19, 0.05), offset: [0, 0.095, 0] }],
-    height: 0.19, spaceX: 0.16, spaceZ: 0.09, lean: 0.12,
-    palette: ["#dc2626", "#f59e0b", "#ea580c", "#facc15", "#b91c1c"],
-  },
-  bottle: {
-    parts: [
-      { geomKey: "bottleBody", makeGeom: () => new THREE.CylinderGeometry(0.032, 0.035, 0.16, 10), offset: [0, 0.08, 0] },
-      { geomKey: "bottleNeck", makeGeom: () => new THREE.CylinderGeometry(0.012, 0.024, 0.05, 8),  offset: [0, 0.185, 0] },
-      { geomKey: "bottleCap",  makeGeom: () => new THREE.CylinderGeometry(0.013, 0.013, 0.02, 8),  offset: [0, 0.22, 0], fixedColor: "#e5e7eb" },
-    ],
-    height: 0.23, spaceX: 0.085, spaceZ: 0.085, lean: 0.02,
-    palette: ["#dc2626", "#f97316", "#16a34a", "#7dd3fc"],
-  },
-  carton: {
-    // 4-sided frustum ≈ tall box with slightly tapered top
-    parts: [{
-      geomKey: "carton",
-      makeGeom: () => { const g = new THREE.CylinderGeometry(0.042, 0.052, 0.20, 4); g.rotateY(Math.PI / 4); return g; },
-      offset: [0, 0.10, 0],
-    }],
-    height: 0.20, spaceX: 0.095, spaceZ: 0.095, lean: 0.03,
-    palette: ["#f8fafc", "#7dd3fc", "#e0f2fe"],
-  },
-  can: {
-    parts: [{ geomKey: "can", makeGeom: () => new THREE.CylinderGeometry(0.033, 0.033, 0.11, 10), offset: [0, 0.055, 0] }],
-    height: 0.11, spaceX: 0.08, spaceZ: 0.08, lean: 0,
-    palette: ["#d1d5db", "#dc2626", "#facc15"],
-  },
-  box: {
-    parts: [{ geomKey: "box", makeGeom: () => new THREE.BoxGeometry(0.11, 0.17, 0.055), offset: [0, 0.085, 0] }],
-    height: 0.17, spaceX: 0.13, spaceZ: 0.075, lean: 0.02,
-    palette: ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#0891b2"],
-  },
-  jug: {
-    parts: [
-      { geomKey: "jugBody", makeGeom: () => new THREE.BoxGeometry(0.10, 0.20, 0.085), offset: [0, 0.10, 0] },
-      { geomKey: "jugCap",  makeGeom: () => new THREE.CylinderGeometry(0.018, 0.018, 0.03, 8), offset: [0.024, 0.215, 0], fixedColor: "#e2e8f0" },
-    ],
-    height: 0.23, spaceX: 0.13, spaceZ: 0.11, lean: 0.02,
-    palette: ["#f8fafc", "#84cc16", "#ec4899"],
-  },
-  produce: {
-    parts: [{ geomKey: "produce", makeGeom: () => new THREE.SphereGeometry(0.045, 8, 6), offset: [0, 0.045, 0] }],
-    height: 0.09, spaceX: 0.10, spaceZ: 0.10, lean: 0,
-    palette: ["#65a30d", "#dc2626", "#f97316", "#facc15", "#16a34a"],
-  },
+// Per-category look: large emoji + subdued (saturated but not neon) palette.
+const CATEGORY_STYLE: Record<CategoryKey, { emoji: string; palette: string[] }> = {
+  snacks:    { emoji: "🍟", palette: ["#c2703d", "#b3543a", "#c9932f", "#a34b2e"] },
+  bebidas:   { emoji: "🥤", palette: ["#b13a3a", "#2f6f4f", "#3a5fa8", "#c07a2c"] },
+  lacteos:   { emoji: "🥛", palette: ["#7fa3c4", "#a4b8cc", "#8caf9f", "#b9c4d6"] },
+  enlatados: { emoji: "🥫", palette: ["#a84a3b", "#8a8f96", "#b98a3a", "#6f7d6a"] },
+  abarrotes: { emoji: "🍪", palette: ["#a5793c", "#8a5f3c", "#b3924f", "#7d6748"] },
+  aseo:      { emoji: "🧴", palette: ["#4f8fae", "#6aa8a0", "#7f6fae", "#5b9c7a"] },
+  fruver:    { emoji: "🍎", palette: ["#5f8f3f", "#b0522f", "#c9932f", "#4f7d4a"] },
+  generico:  { emoji: "📦", palette: ["#9a8f80", "#8a7f70", "#a89c88", "#7f7568"] },
 };
 
-// Shared caches — geometries/materials live for the app session (tiny finite sets)
-const productGeomCache = new Map<string, THREE.BufferGeometry>();
-function getProductGeom(part: ProductPart): THREE.BufferGeometry {
-  let g = productGeomCache.get(part.geomKey);
-  if (!g) { g = part.makeGeom(); productGeomCache.set(part.geomKey, g); }
-  return g;
+function traceRoundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number, r: number,
+) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.lineTo(x + w - rr, y);
+  ctx.arcTo(x + w, y, x + w, y + rr, rr);
+  ctx.lineTo(x + w, y + h - rr);
+  ctx.arcTo(x + w, y + h, x + w - rr, y + h, rr);
+  ctx.lineTo(x + rr, y + h);
+  ctx.arcTo(x, y + h, x, y + h - rr, rr);
+  ctx.lineTo(x, y + rr);
+  ctx.arcTo(x, y, x + rr, y, rr);
+  ctx.closePath();
 }
 
-const productMatCache = new Map<string, THREE.MeshStandardMaterial>();
-function getProductMat(color: string): THREE.MeshStandardMaterial {
-  let m = productMatCache.get(color);
-  if (!m) {
-    m = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.05 });
-    productMatCache.set(color, m);
+// Deterministic per-tile height factors → slightly irregular "product skyline".
+const TILE_HEIGHT_VAR = [0.86, 0.97, 0.90, 1.00, 0.84, 0.94, 0.88, 0.99];
+
+/** Base strip texture per category — module-level cache, lives for the session. */
+const stripTextureCache = new Map<CategoryKey, THREE.CanvasTexture>();
+
+function getStripTexture(key: CategoryKey): THREE.CanvasTexture {
+  const cached = stripTextureCache.get(key);
+  if (cached) return cached;
+
+  const W = 1024, H = 256, TILES = 8;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  ctx.clearRect(0, 0, W, H); // transparent background
+
+  const { emoji, palette } = CATEGORY_STYLE[key];
+  const tileW = W / TILES;
+  const baseline = H - 12; // common baseline: tiles "stand" on the shelf
+
+  for (let i = 0; i < TILES; i++) {
+    const tileH = (H - 34) * TILE_HEIGHT_VAR[i % TILE_HEIGHT_VAR.length];
+    const x = i * tileW + 10;
+    const bw = tileW - 20;
+    const y = baseline - tileH;
+
+    // Package silhouette (rounded rect)
+    ctx.fillStyle = palette[i % palette.length];
+    traceRoundedRect(ctx, x, y, bw, tileH, 14);
+    ctx.fill();
+
+    // Subtle top highlight → reads as a lid / label band
+    ctx.fillStyle = "rgba(255,255,255,0.16)";
+    traceRoundedRect(ctx, x + 6, y + 6, bw - 12, Math.max(10, tileH * 0.16), 8);
+    ctx.fill();
+
+    // Large centered emoji
+    ctx.font = `${Math.round(tileH * 0.52)}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(emoji, x + bw / 2, y + tileH * 0.56);
   }
-  return m;
-}
 
-interface LevelPlane {
-  y:               number; // shelf plane height (product base sits here)
-  gap:             number; // vertical clearance available for the product
-  footprintFactor: number; // horizontal shrink for stepped/solid fixtures
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  stripTextureCache.set(key, tex);
+  return tex;
 }
 
 /**
- * Shelf planes per fixture. Default: levels = clamp(floor(h / 0.45), 1, 5),
- * one plane every h/levels. Solid-bodied fixtures (freezers, produce stand,
- * counters…) get planes only where products don't intersect the solid body.
+ * Material per (category × width bucket). Widths are bucketed in 0.5 m steps so
+ * texture/material instances stay low (~30 for a full store). Each bucket gets
+ * a cloned texture with repeat.x = bucket → tiles keep a constant world size.
  */
-function levelPlanesFor(fix: PlacedFixture): LevelPlane[] {
-  const { h } = fix;
-  const nLevels = Math.min(5, Math.max(1, Math.floor(h / 0.45)));
-  const step = h / nLevels;
-  switch (fix.type as string) {
-    case "isla_fria":     return [{ y: h - 0.14, gap: 0.30, footprintFactor: 0.80 }];
-    case "nevera_carnes": return [{ y: h * 0.52, gap: h * 0.40, footprintFactor: 0.80 }];
-    case "stand_frutas":  return [{ y: h - 0.02, gap: 0.30, footprintFactor: 0.85 }];
-    case "batea":         return [{ y: 0.12, gap: Math.max(0.20, h - 0.10), footprintFactor: 0.85 }];
-    case "mueble": {
-      const baseH  = Math.min(h * 0.22, 0.40);   // solid plinth — skip it
-      const stepM  = (h - baseH) / nLevels;
-      return Array.from({ length: nLevels }, (_, i) => ({
-        y: baseH + i * stepM + 0.02, gap: stepM - 0.02, footprintFactor: 0.90,
-      }));
-    }
-    case "nevera_refrescos": {
-      const compH = h * 0.14;                    // compressor block — skip it
-      const stepN = (h - compH - h * 0.05) / nLevels;
-      return Array.from({ length: nLevels }, (_, i) => ({
-        y: compH + i * stepN + 0.02, gap: stepN - 0.02, footprintFactor: 0.85,
-      }));
-    }
-    case "isla":
-      // Stepped display: each level narrows ~15% and sits on a cardboard base
-      return Array.from({ length: nLevels }, (_, i) => ({
-        y: i * step + 0.14, gap: step - 0.14, footprintFactor: 1 - i * 0.15,
-      }));
-    default:
-      return Array.from({ length: nLevels }, (_, i) => ({
-        y: i * step + 0.02, gap: step - 0.02, footprintFactor: 1,
-      }));
+const stripMaterialCache = new Map<string, THREE.MeshBasicMaterial>();
+
+function getStripMaterial(key: CategoryKey, width: number): THREE.MeshBasicMaterial {
+  const bucket = Math.max(1, Math.round(width / 0.5));
+  const cacheKey = `${key}|${bucket}`;
+  let mat = stripMaterialCache.get(cacheKey);
+  if (!mat) {
+    const tex = getStripTexture(key).clone();
+    tex.repeat.x = bucket;
+    tex.needsUpdate = true;
+    mat = new THREE.MeshBasicMaterial({
+      map:         tex,
+      transparent: true,
+      side:        THREE.FrontSide,
+      toneMapped:  false,
+      depthWrite:  true,
+    });
+    stripMaterialCache.set(cacheKey, mat);
   }
+  return mat;
 }
 
-interface FaceFill {
-  fix:  PlacedFixture;
-  arch: ProductArchetype;
-  xMin: number; xMax: number;
-  zMin: number; zMax: number;
-  seed: string;
+// One shared unit plane — every strip is this geometry scaled to (width, height).
+const STRIP_GEOM = new THREE.PlaneGeometry(1, 1);
+const noRaycast = () => {}; // strips are purely visual — clicks pass through
+
+interface StripPlane {
+  key:      string;
+  y:        number;
+  z:        number;
+  rotY:     number;
+  width:    number;
+  height:   number;
+  material: THREE.MeshBasicMaterial;
 }
 
-const FILL_MARGIN = 0.06; // ~6 cm inset from the footprint edge
-
-function faceFillsFor(fix: PlacedFixture, faceBCategory: string): FaceFill[] {
+/**
+ * Strip planes for one fixture, in the fixture's LOCAL space. They are rendered
+ * inside the same <group position rotation> as the fixture mesh itself, so they
+ * inherit rotY and can never drift off the fixture. All dimensions derive from
+ * the fixture's own w/d/h only — never world constants.
+ */
+function stripPlanesFor(fix: PlacedFixture, faceBCategory: string): StripPlane[] {
   if (!SHELF_LIKE_TYPES.has(fix.type as string)) return [];
   const catA = (fix.brandCategory || "").trim();
   const catB = (faceBCategory || "").trim();
   if (!catA && !catB) return [];
 
-  const { w, d } = fix;
-  const xMin = -w / 2 + FILL_MARGIN;
-  const xMax =  w / 2 - FILL_MARGIN;
-  if (xMax <= xMin) return [];
+  const { w, d, h } = fix;
+  const width    = Math.max(0.2, w - 0.06);
+  const levels   = Math.min(5, Math.max(1, Math.floor(h / 0.45)));
+  const levelGap = h / levels;
+  const stripH   = levelGap * 0.72;
+  // Mesh convention in this file: the "front" face (price rails / status strip)
+  // is -Z, so face A lives on the -Z side; face B (double gondolas) on +Z.
+  const zFront = -(d / 2 - 0.02);
+  const zBack  =   d / 2 - 0.02;
 
   // Shared check + legacy "gondola_doble" type kept for old persisted layouts.
-  const isDouble =
-    isDoubleGondola(fix) || (fix.type as string) === "gondola_doble";
+  const isDouble = isDoubleGondola(fix) || (fix.type as string) === "gondola_doble";
 
-  const out: FaceFill[] = [];
+  const faces: { cat: string; z: number; rotY: number; tag: string }[] = [];
   if (isDouble) {
-    // Half depth per face, split by the central spine. Mesh convention: front face
-    // (price rails / status strip) is -Z, so face A goes on the -Z half.
-    const inner = 0.05; // clearance around the spine
-    if (catA) out.push({ fix, arch: archetypeFor(catA, fix.label), xMin, xMax, zMin: -d / 2 + 0.03, zMax: -inner, seed: `${fix.id}|A` });
-    if (catB) out.push({ fix, arch: archetypeFor(catB, fix.label), xMin, xMax, zMin: inner, zMax: d / 2 - 0.03, seed: `${fix.id}|B` });
-    return out;
+    // One strip per face per level, each with its own category texture.
+    // rotY = π flips the -Z plane so it faces outward (FrontSide material).
+    if (catA) faces.push({ cat: catA, z: zFront, rotY: Math.PI, tag: "A" });
+    if (catB) faces.push({ cat: catB, z: zBack,  rotY: 0,       tag: "B" });
+  } else {
+    // Single-face fixtures: ONE strip per level on the front face only.
+    faces.push({ cat: catA || catB, z: zFront, rotY: Math.PI, tag: "A" });
   }
 
-  const cat  = catA || catB;
-  let   zMin = -d / 2 + FILL_MARGIN;
-  let   zMax =  d / 2 - FILL_MARGIN;
-  if (fix.type === "gondola") {
-    zMax = d / 2 - d * 0.42 - 0.02;              // wall gondola: solid back panel
-  } else if (fix.type === "punta" || fix.type === "robatope") {
-    zMax = d * 0.25;                             // structural back plate at +Z
+  const out: StripPlane[] = [];
+  for (const face of faces) {
+    const material = getStripMaterial(categoryKeyFor(face.cat, fix.label), width);
+    for (let level = 0; level < levels; level++) {
+      out.push({
+        key:    `${face.tag}|${level}`,
+        // Plane bottom sits ON the shelf surface (+2 cm epsilon).
+        y:      level * levelGap + 0.02 + stripH / 2,
+        z:      face.z,
+        rotY:   face.rotY,
+        width,
+        height: stripH,
+        material,
+      });
+    }
   }
-  if (zMax <= zMin) return [];
-  out.push({ fix, arch: archetypeFor(cat, fix.label), xMin, xMax, zMin, zMax, seed: `${fix.id}|A` });
   return out;
 }
 
-interface ProductBatch {
-  geom:     THREE.BufferGeometry;
-  color:    string;
-  matrices: THREE.Matrix4[];
-}
-
-function buildProductBatches(placed: PlacedFixture[], unified: UnifiedFixture[]): ProductBatch[] {
-  const faceBById = new Map<string, string>();
-  unified.forEach(f => {
-    if (f.faceB?.brandCategory) faceBById.set(f.id, f.faceB.brandCategory);
-  });
-
-  const fills: FaceFill[] = [];
-  placed.forEach(fix => { fills.push(...faceFillsFor(fix, faceBById.get(fix.id) ?? "")); });
-
-  // Pass 1 — estimate the total count to derive a silent proportional density cap.
-  interface Est { fill: FaceFill; levels: LevelPlane[]; grids: { nx: number; nz: number }[] }
-  let total = 0;
-  const est: Est[] = fills.map(fill => {
-    const spec   = PRODUCT_SPECS[fill.arch];
-    const levels = levelPlanesFor(fill.fix);
-    const grids  = levels.map(lv => {
-      const availX = (fill.xMax - fill.xMin) * lv.footprintFactor;
-      const availZ = (fill.zMax - fill.zMin) * lv.footprintFactor;
-      const nx = availX >= spec.spaceX * 0.8 ? Math.max(1, Math.floor(availX / spec.spaceX)) : 0;
-      const nz = availZ >= spec.spaceZ * 0.8 ? Math.max(1, Math.floor(availZ / spec.spaceZ)) : 0;
-      total += nx * nz;
-      return { nx, nz };
-    });
-    return { fill, levels, grids };
-  });
-  const axisScale = total > PRODUCT_CAP ? Math.sqrt(PRODUCT_CAP / total) : 1;
-
-  // Pass 2 — generate matrices grouped by (geometry part × color bucket).
-  const buckets = new Map<string, ProductBatch>();
-  const pos = new THREE.Vector3();
-  const off = new THREE.Vector3();
-  const scl = new THREE.Vector3();
-  const quat = new THREE.Quaternion();
-  const euler = new THREE.Euler();
-
-  est.forEach(({ fill, levels, grids }) => {
-    const spec = PRODUCT_SPECS[fill.arch];
-    const rng  = mulberry32(hashSeed(fill.seed));
-    const { fix } = fill;
-    const cos = Math.cos(fix.rotY);
-    const sin = Math.sin(fix.rotY);
-    const cxMid = (fill.xMin + fill.xMax) / 2;
-    const czMid = (fill.zMin + fill.zMax) / 2;
-
-    levels.forEach((lv, li) => {
-      let { nx, nz } = grids[li];
-      if (axisScale < 1) {
-        nx = nx > 0 ? Math.max(1, Math.floor(nx * axisScale)) : 0;
-        nz = nz > 0 ? Math.max(1, Math.floor(nz * axisScale)) : 0;
-      }
-      if (!nx || !nz) return;
-
-      const spanX = (fill.xMax - fill.xMin) * lv.footprintFactor;
-      const spanZ = (fill.zMax - fill.zMin) * lv.footprintFactor;
-      const stepX = spanX / nx;
-      const stepZ = spanZ / nz;
-      // Shrink the product if the shelf gap is tighter than its natural height
-      const s = Math.max(0.4, Math.min(1, (lv.gap - 0.05) / spec.height));
-
-      for (let ix = 0; ix < nx; ix++) {
-        for (let iz = 0; iz < nz; iz++) {
-          const lx = cxMid - spanX / 2 + (ix + 0.5) * stepX + (rng() - 0.5) * 0.012;
-          const lz = czMid - spanZ / 2 + (iz + 0.5) * stepZ + (rng() - 0.5) * 0.012;
-          const leanX = (rng() - 0.5) * 2 * spec.lean;
-          const leanZ = (rng() - 0.5) * 2 * spec.lean;
-          const yaw   = fix.rotY + (rng() - 0.5) * 0.10;
-          const color = spec.palette[Math.floor(rng() * spec.palette.length)];
-          // Rotate the local offset by the fixture yaw around its centre
-          const wx = fix.x + lx * cos + lz * sin;
-          const wz = fix.z - lx * sin + lz * cos;
-          euler.set(leanX, yaw, leanZ);
-          quat.setFromEuler(euler);
-          scl.setScalar(s);
-          for (const part of spec.parts) {
-            off.set(part.offset[0] * s, part.offset[1] * s, part.offset[2] * s).applyQuaternion(quat);
-            pos.set(wx + off.x, lv.y + off.y, wz + off.z);
-            const partColor = part.fixedColor ?? color;
-            const key = `${part.geomKey}|${partColor}`;
-            let bucket = buckets.get(key);
-            if (!bucket) {
-              bucket = { geom: getProductGeom(part), color: partColor, matrices: [] };
-              buckets.set(key, bucket);
-            }
-            bucket.matrices.push(new THREE.Matrix4().compose(pos, quat, scl));
-          }
-        }
-      }
-    });
-  });
-
-  return Array.from(buckets.values());
-}
-
-/** ONE InstancedMesh per (archetype part geometry × color) across the whole scene. */
-const ProductFillLayer = memo(function ProductFillLayer({
-  placedFixtures, unifiedFixtures,
+/** Flat category strips for one fixture — rendered inside the fixture's group. */
+const CategoryStrips = memo(function CategoryStrips({
+  fixture, faceBCategory,
 }: {
-  placedFixtures:  PlacedFixture[];
-  unifiedFixtures: UnifiedFixture[];
+  fixture:       PlacedFixture;
+  faceBCategory: string;
 }) {
-  const { invalidate } = useThree();
-
-  const meshes = useMemo(() => {
-    const batches = buildProductBatches(placedFixtures, unifiedFixtures);
-    return batches.map(b => {
-      const mesh = new THREE.InstancedMesh(b.geom, getProductMat(b.color), b.matrices.length);
-      b.matrices.forEach((m, i) => mesh.setMatrixAt(i, m));
-      mesh.instanceMatrix.needsUpdate = true;
-      mesh.raycast = () => {};     // purely visual — clicks pass through to fixtures
-      mesh.frustumCulled = false;  // bounding sphere doesn't track instances
-      mesh.castShadow = false;
-      mesh.receiveShadow = false;
-      return mesh;
-    });
-  }, [placedFixtures, unifiedFixtures]);
-
-  useEffect(() => {
-    invalidate(); // frameloop="demand": redraw after a rebuild
-    return () => { meshes.forEach(m => m.dispose()); }; // geometries/materials are cached — only instance buffers die
-  }, [meshes, invalidate]);
-
-  return <>{meshes.map(m => <primitive key={m.uuid} object={m} />)}</>;
+  const planes = useMemo(
+    () => stripPlanesFor(fixture, faceBCategory),
+    [fixture, faceBCategory],
+  );
+  if (planes.length === 0) return null;
+  return (
+    <>
+      {planes.map(p => (
+        <mesh
+          key={p.key}
+          geometry={STRIP_GEOM}
+          material={p.material}
+          position={[0, p.y, p.z]}
+          rotation={[0, p.rotY, 0]}
+          scale={[p.width, p.height, 1]}
+          raycast={noRaycast}
+        />
+      ))}
+    </>
+  );
 });
 
 // ─── Scene ───────────────────────────────────────────────────────────────────
@@ -2422,6 +2303,13 @@ function Scene({
 }: SceneProps) {
   const { gl, camera } = useThree();
   const { setCamera3D } = useFixtureStore();
+
+  // Face-B categories (double gondolas) come from the unified store fixtures.
+  const faceBById = useMemo(() => {
+    const m = new Map<string, string>();
+    fixtures.forEach(f => { if (f.faceB?.brandCategory) m.set(f.id, f.faceB.brandCategory); });
+    return m;
+  }, [fixtures]);
 
   // CHANGE 1 — Restore camera + wire persistence once OrbitControls are ready.
   // W1: Read camera3D from getState() at call time (not from closure) to avoid stale values.
@@ -2605,6 +2493,8 @@ function Scene({
               fixture={fix}
               /* slots disabled — omit onSlotClick/onSlotHover to skip all slot meshes */
             />
+            {/* Flat category strips — inside the same group, so they inherit rotY */}
+            <CategoryStrips fixture={fix} faceBCategory={faceBById.get(fix.id) ?? ""} />
             {fix.id===selectedId && !selectedSlotId && <SelectionBox w={fix.w} d={fix.d} h={fix.h} />}
             {/* CHANGE 4 — Unauthorized placement badge */}
             {(() => {
@@ -2671,9 +2561,6 @@ function Scene({
           </group>
         );
       })}
-
-      {/* Product fill — Sims-style, purely visual (raycast disabled, non-interactive) */}
-      <ProductFillLayer placedFixtures={placedFixtures} unifiedFixtures={fixtures} />
 
       {/* MEJORA 2: Ghost with collision overlay — only when not in first-person */}
       {ghostFixture && !firstPerson && (

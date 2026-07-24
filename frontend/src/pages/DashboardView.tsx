@@ -13,6 +13,7 @@ import {
   FileText,
   Percent,
   ChevronRight,
+  Search,
 } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
@@ -134,6 +135,49 @@ const STATUS_LABEL: Record<SpaceStatus, string> = {
   reserved: "Reservado",
   maintenance: "Mantenimiento",
 };
+
+// ─── Map search + status filter (product geolocation) ────────────────────────
+
+type MapFilter = "todos" | "free" | "occupied" | "expiring" | "expired";
+
+const FILTER_CHIPS: { id: MapFilter; label: string; ring: string; fill: string }[] = [
+  { id: "todos",    label: "Todos",           ring: "var(--ink-2)",      fill: "var(--surface-3)" },
+  { id: "free",     label: "Disponibles",     ring: "var(--success)",    fill: "rgba(21,128,61,0.10)" },
+  { id: "occupied", label: "Ocupados",        ring: "var(--accent-700)", fill: "var(--accent-50)" },
+  { id: "expiring", label: "Por vencer ≤30d", ring: "var(--warning)",    fill: "rgba(180,83,9,0.12)" },
+  { id: "expired",  label: "Vencidos",        ring: "var(--danger)",     fill: "rgba(185,28,28,0.10)" },
+];
+
+/** Accent- and case-insensitive comparison base. */
+function normalizeText(s: string): string {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
+/** `q` must already be normalized. Checks face fields plus fixture identity. */
+function faceMatchesQuery(entry: FaceEntry, q: string): boolean {
+  return [
+    entry.brandCategory,
+    entry.supplierName,
+    entry.fixture.label,
+    entry.fixture.nomenclatura ?? "",
+    entry.code,
+  ].some((s) => s && normalizeText(s).includes(q));
+}
+
+function faceMatchesFilter(entry: FaceEntry, filter: MapFilter): boolean {
+  if (filter === "todos") return true;
+  if (filter === "occupied") return entry.status === "occupied";
+  const ds = displayStatus(entry);
+  if (filter === "free") return ds === "free";
+  if (filter === "expiring") return ds === "expiring";
+  return ds === "expired";
+}
+
+/** Per-fixture face flags (aligned with facesOf order) + matched-face count. */
+interface MapMatch {
+  faceFlags: Map<string, boolean[]>;
+  count: number;
+}
 
 // ─── Card shell ───────────────────────────────────────────────────────────────
 
@@ -284,9 +328,11 @@ interface IsoMapProps {
   fixtures: UnifiedFixture[];
   selectedId: string | null;
   onSelect: (f: UnifiedFixture | null) => void;
+  /** Active search/filter result — null when no query or filter applies. */
+  match: MapMatch | null;
 }
 
-function IsoMap({ fixtures, selectedId, onSelect }: IsoMapProps) {
+function IsoMap({ fixtures, selectedId, onSelect, match }: IsoMapProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [tip, setTip] = useState<{ x: number; y: number; title: string; sub: string } | null>(null);
@@ -354,11 +400,12 @@ function IsoMap({ fixtures, selectedId, onSelect }: IsoMapProps) {
         topHalves = [{ color: topA, points: pts(tA, tB, tC, tD) }];
       }
 
-      // Label above the prism
+      // Label above the prism — small unlabeled fixtures still get one while matched
       const area = f.w * f.d;
-      const labelText = f.nomenclatura || (area > 1.5 ? f.code : "");
+      const defaultVisible = Boolean(f.nomenclatura) || area > 1.5;
+      const labelText = f.nomenclatura || f.code;
       const [lcx, lcy] = iso(f.cx, f.cz, h);
-      const label = labelText ? { text: labelText, x: lcx, y: lcy - 7 } : null;
+      const label = labelText ? { text: labelText, x: lcx, y: lcy - 7, defaultVisible } : null;
       if (label) addPt([label.x, label.y - 8]);
 
       const tooltipSub = double
@@ -416,6 +463,9 @@ function IsoMap({ fixtures, selectedId, onSelect }: IsoMapProps) {
         {scene.prisms.map(({ f, topHalves, left, right, sideL, sideR, stroke, topOutline, label, tooltipSub }) => {
           const hovered = hoverId === f.id;
           const selected = selectedId === f.id;
+          const flags = match?.faceFlags.get(f.id);
+          const matched = !match || (flags?.some(Boolean) ?? false);
+          const dimmed = match !== null && !matched;
           return (
             <g
               key={f.id}
@@ -429,26 +479,48 @@ function IsoMap({ fixtures, selectedId, onSelect }: IsoMapProps) {
                 setHoverId(null);
                 setTip(null);
               }}
+              opacity={dimmed ? 0.18 : 1}
               style={{
                 cursor: "pointer",
                 filter: hovered ? "brightness(1.12)" : undefined,
-                transition: "filter .12s",
+                transition: "filter .12s, opacity .15s",
               }}
             >
               {/* Side faces */}
               <polygon points={left} fill={sideL} stroke={stroke} strokeWidth={0.5} strokeLinejoin="round" />
               <polygon points={right} fill={sideR} stroke={stroke} strokeWidth={0.5} strokeLinejoin="round" />
-              {/* Top face (1 or 2 halves) */}
+              {/* Top face (1 or 2 halves) — non-matching halves of a double dim per face */}
               {topHalves.map((th, i) => (
                 <polygon
                   key={i}
                   points={th.points}
                   fill={th.color}
+                  fillOpacity={match && matched && topHalves.length > 1 && flags && !flags[i] ? 0.25 : 1}
                   stroke={stroke}
                   strokeWidth={0.5}
                   strokeLinejoin="round"
                 />
               ))}
+              {/* Match highlight — accent glow + outline */}
+              {match !== null && matched && !selected && (
+                <>
+                  <polygon
+                    points={topOutline}
+                    fill="none"
+                    stroke="var(--accent)"
+                    strokeWidth={3.4}
+                    opacity={0.3}
+                    strokeLinejoin="round"
+                  />
+                  <polygon
+                    points={topOutline}
+                    fill="none"
+                    stroke="var(--accent)"
+                    strokeWidth={1.3}
+                    strokeLinejoin="round"
+                  />
+                </>
+              )}
               {/* Selection ring */}
               {selected && (
                 <polygon
@@ -459,8 +531,8 @@ function IsoMap({ fixtures, selectedId, onSelect }: IsoMapProps) {
                   strokeLinejoin="round"
                 />
               )}
-              {/* Floating label */}
-              {label && (
+              {/* Floating label — always visible on matches */}
+              {label && (label.defaultVisible || (match !== null && matched)) && (
                 <text
                   x={label.x}
                   y={label.y}
@@ -1204,7 +1276,7 @@ function SpacesTable({ fixtures, isAdmin }: { fixtures: UnifiedFixture[]; isAdmi
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
-function EmptyDashboard({ sede }: { sede: string }) {
+function EmptyDashboard({ sede, isAdmin }: { sede: string; isAdmin: boolean }) {
   return (
     <div
       style={{
@@ -1234,22 +1306,25 @@ function EmptyDashboard({ sede }: { sede: string }) {
         <span style={{ fontFamily: "var(--font-mono)" }}>{sede}</span>
       </p>
       <p style={{ fontSize: 12.5, color: "var(--ink-3)", maxWidth: 360, marginBottom: 18 }}>
-        Diseñá el plano desde la pestaña Plano para ver KPIs, mapa de
-        ocupación y el detalle por espacio.
+        {isAdmin
+          ? "Diseñá el plano desde la pestaña Plano para ver KPIs, mapa de ocupación y el detalle por espacio."
+          : "Todavía no hay un plano cargado para esta sede. Pedile a un administrador que lo diseñe."}
       </p>
-      <button
-        style={{
-          display: "inline-flex", alignItems: "center", gap: 6,
-          height: 36, padding: "0 16px",
-          borderRadius: "var(--r-md)",
-          background: "var(--accent)", color: "#fff",
-          border: "none", cursor: "pointer",
-          fontSize: 12, fontWeight: 500, fontFamily: "inherit",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      >
-        <Plus size={14} /> Diseñar plano
-      </button>
+      {isAdmin && (
+        <button
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            height: 36, padding: "0 16px",
+            borderRadius: "var(--r-md)",
+            background: "var(--accent)", color: "#fff",
+            border: "none", cursor: "pointer",
+            fontSize: 12, fontWeight: 500, fontFamily: "inherit",
+            boxShadow: "var(--shadow-sm)",
+          }}
+        >
+          <Plus size={14} /> Diseñar plano
+        </button>
+      )}
     </div>
   );
 }
@@ -1263,11 +1338,30 @@ export default function DashboardView() {
 
   const [selected, setSelected] = useState<UnifiedFixture | null>(null);
   const [viewerFile, setViewerFile] = useState<SpaceFileMeta | null>(null);
+  const [mapQuery, setMapQuery] = useState("");
+  const [mapFilter, setMapFilter] = useState<MapFilter>("todos");
 
   // Deselect when switching sedes
   useEffect(() => {
     setSelected(null);
   }, [sede]);
+
+  // ── Map search / status filter (per rentable face) ──
+  const mapMatch = useMemo<MapMatch | null>(() => {
+    const q = normalizeText(mapQuery.trim());
+    if (!q && mapFilter === "todos") return null;
+    const faceFlags = new Map<string, boolean[]>();
+    let count = 0;
+    fixtures.forEach((f) => {
+      const flags = facesOf(f).map((entry) => {
+        const ok = (!q || faceMatchesQuery(entry, q)) && faceMatchesFilter(entry, mapFilter);
+        if (ok) count++;
+        return ok;
+      });
+      faceFlags.set(f.id, flags);
+    });
+    return { faceFlags, count };
+  }, [fixtures, mapQuery, mapFilter]);
 
   // ── KPI computation (per rentable face — doubles count as 2 units) ──
   const kpis = useMemo(() => {
@@ -1415,7 +1509,7 @@ export default function DashboardView() {
       </div>
 
       {fixtures.length === 0 ? (
-        <EmptyDashboard sede={sede} />
+        <EmptyDashboard sede={sede} isAdmin={isAdmin} />
       ) : (
         <>
           {/* ── HERO: isometric occupancy map ─────────────────────────────── */}
@@ -1436,10 +1530,97 @@ export default function DashboardView() {
                 — {sede} · clic en un espacio para ver su contrato
               </span>
             </div>
+
+            {/* Search + status filter (product geolocation) */}
+            <div
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                flexWrap: "wrap", marginBottom: 8,
+              }}
+            >
+              <div style={{ position: "relative", flex: "1 1 240px", minWidth: 200, maxWidth: 380 }}>
+                <Search
+                  size={13}
+                  style={{
+                    position: "absolute", left: 10, top: "50%",
+                    transform: "translateY(-50%)",
+                    color: "var(--ink-3)", pointerEvents: "none",
+                  }}
+                />
+                <input
+                  type="text"
+                  value={mapQuery}
+                  onChange={(e) => setMapQuery(e.target.value)}
+                  placeholder="Buscar producto, categoría, proveedor o espacio…"
+                  style={{
+                    width: "100%", height: 32, padding: "0 30px",
+                    borderRadius: "var(--r-md)", border: "1px solid var(--line)",
+                    background: "var(--surface-2)", color: "var(--ink-1)",
+                    fontSize: 12, fontFamily: "inherit", outline: "none",
+                  }}
+                />
+                {mapQuery && (
+                  <button
+                    onClick={() => setMapQuery("")}
+                    title="Limpiar búsqueda"
+                    style={{
+                      position: "absolute", right: 6, top: "50%",
+                      transform: "translateY(-50%)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      width: 20, height: 20, borderRadius: 99,
+                      background: "var(--surface-3)", border: "none",
+                      color: "var(--ink-2)", cursor: "pointer",
+                    }}
+                  >
+                    <X size={11} />
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {FILTER_CHIPS.map((c) => {
+                  const active = mapFilter === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => setMapFilter(c.id)}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 5,
+                        height: 26, padding: "0 10px", borderRadius: 999,
+                        fontSize: 11, fontWeight: 600, fontFamily: "inherit",
+                        border: `1px solid ${active ? c.ring : "var(--line)"}`,
+                        background: active ? c.fill : "var(--surface)",
+                        color: active ? c.ring : "var(--ink-2)",
+                        cursor: "pointer",
+                        transition: "background .12s, color .12s, border-color .12s",
+                      }}
+                    >
+                      {c.id !== "todos" && (
+                        <span
+                          style={{
+                            width: 6, height: 6, borderRadius: 99,
+                            background: active ? c.ring : "var(--ink-4)", flexShrink: 0,
+                          }}
+                        />
+                      )}
+                      {c.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {mapMatch && (
+                <span style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-2)", marginLeft: "auto" }}>
+                  {mapMatch.count} espacio{mapMatch.count !== 1 ? "s" : ""} encontrado{mapMatch.count !== 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+
             <IsoMap
               fixtures={fixtures}
               selectedId={selected?.id ?? null}
               onSelect={setSelected}
+              match={mapMatch}
             />
             <div style={{ marginTop: 8 }}>
               <MapLegend />

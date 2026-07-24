@@ -333,8 +333,8 @@ interface TopbarProps {
 }
 
 function Topbar({ viewMode, setViewMode, isAdmin, onOpenSettings, onLogout }: TopbarProps) {
-  // Workers only get the floor-plan tab; admins see everything.
-  const visibleTabs = isAdmin ? TABS : TABS.filter((t) => t.id === "map");
+  // Workers only get the dashboard tab; admins see everything.
+  const visibleTabs = isAdmin ? TABS : TABS.filter((t) => t.id === "kpis");
 
   const iconButtonStyle: React.CSSProperties = {
     display: "flex", alignItems: "center", justifyContent: "center",
@@ -468,10 +468,15 @@ export default function Dashboard() {
   const [viewMode, setViewMode] = useState<ViewMode>("map");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const isAdmin = useAuthStore(selectIsAdmin);
+  const role = useAuthStore((s) => s.role);
   const logout = useAuthStore((s) => s.logout);
 
-  // Workers can never land on an admin-only view.
-  const effectiveMode: ViewMode = isAdmin ? viewMode : "map";
+  // Workers only see the dashboard — force it as the active view.
+  useEffect(() => {
+    if (role === "worker" && viewMode !== "kpis") setViewMode("kpis");
+  }, [role, viewMode]);
+
+  const effectiveMode: ViewMode = isAdmin ? viewMode : "kpis";
 
   return (
     <div
