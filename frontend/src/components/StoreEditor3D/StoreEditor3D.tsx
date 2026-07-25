@@ -306,6 +306,7 @@ const GondolaMesh = memo(function GondolaMesh({
   const G_PANEL = isWall ? "#d5d5d2" : "#dcdcda";
   const G_RAIL  = "#b8b8b5";
 
+  // Board layout mirrored by getPanelShelfSpan("gondola") — keep in sync.
   const { shelves, topH, shelfT } = useMemo(() => {
     const topH   = 0.08;
     const shelfT = 0.022;
@@ -473,6 +474,7 @@ interface PuntaMeshProps {
 
 function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: PuntaMeshProps) {
   const op      = ghost ? 0.42 : 1;
+  // Board layout mirrored by getPanelShelfSpan("punta") — keep in sync.
   const topperH = 0.36;              // promotional header height
   const bodyH   = h - topperH;
   const nShelves = Math.max(3, Math.round(bodyH / 0.38));
@@ -588,6 +590,7 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
 
 function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
   const op      = ghost ? 0.42 : 1;
+  // Board layout mirrored by getPanelShelfSpan("robatope") — keep in sync.
   const capH    = 0.055;                 // thin dark cap at top (no promotional topper)
   const bodyH   = h - capH;
   const nShelves = Math.max(2, Math.round(bodyH / 0.40));
@@ -862,6 +865,7 @@ function MetroMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number
 
 function MuebleMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
   const op        = ghost ? 0.42 : 1;
+  // Board layout mirrored by getPanelShelfSpan("mueble") — keep in sync.
   const baseH     = Math.min(h * 0.22, 0.40);   // solid plinth
   const doorH     = h - baseH;
   const nShelves  = Math.max(2, Math.round(doorH / 0.38));
@@ -1444,6 +1448,7 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:num
   const BODY    = "#1e293b";
   const SHELF_C = "#334155";
   const LED_C   = "#e0f2fe";
+  // Board layout mirrored by getPanelShelfSpan("nevera_refrescos") — keep in sync.
   const compH   = h * 0.14;
   const topH    = h * 0.05;
   const dispH   = h - compH - topH;
@@ -2283,6 +2288,12 @@ function getCategoryFaceTexture(key: CategoryKey): THREE.CanvasTexture {
  * Category material per (category × face-aspect bucket). repeat.x tracks the
  * face's w/h so package tiles keep a roughly square world shape instead of
  * stretching with the panel. Aspect is bucketed (0.25 steps) to bound cache size.
+ *
+ * NOTE: unlike photo faces (getPhotoFaceMaterial), category patterns are NOT
+ * board-aligned — they tile a pre-drawn decorative square canvas whose row
+ * artwork (packages + painted board) is baked in. Aligning them would mean
+ * regenerating that canvas per fixture span, a separate generator change; the
+ * abstract pattern reads fine slightly offset, so it keeps whole-face tiling.
  */
 const categoryFaceMaterialCache = new Map<string, THREE.MeshBasicMaterial>();
 
@@ -2329,7 +2340,7 @@ function evictOldestPhotoIfFull(): void {
   photoTexCache.get(oldestId)?.texture?.dispose();
   photoTexCache.delete(oldestId);
   // Drop every derived material for that file — photoMatCache keys are
-  // `${fileId}|${bucket}`, so match on the fileId prefix.
+  // `${fileId}|${type}|<span>`, so match on the fileId prefix.
   const prefix = `${oldestId}|`;
   for (const [key, mat] of photoMatCache) {
     if (key.startsWith(prefix)) {
@@ -2340,15 +2351,111 @@ function evictOldestPhotoIfFull(): void {
   }
 }
 
+// ─── Painted-panel shelf spans (per fixture type) ────────────────────────────
+// The planogram texture rows must land EXACTLY on the shelf boards each mesh
+// component draws, or products cross the boards mid-body and the stocked-shelf
+// illusion dies. These formulas mirror the board math inside each mesh — every
+// mirrored mesh carries a matching "keep in sync" reminder next to its layout.
+//
+// All values are in the painted panel's LOCAL space (metres, 0 = panel bottom):
+//   panelW/panelH — size of the box face that receives the material (NOT
+//                   always the full fixture w×h — punta/robatope/mueble/nevera
+//                   paint a sub-panel)
+//   rowBottom     — top surface of the lowest shelf board (first row's floor)
+//   rowPitch      — uniform board spacing = row cell height
+//   rows          — number of product rows (board gaps that display product)
+// Bands outside [rowBottom, rowBottom + rows·rowPitch] (plinth, header) stay
+// transparent so the plain panel color shows through — no floating products.
+
+interface PanelShelfSpan {
+  panelW:    number;
+  panelH:    number;
+  rowBottom: number;
+  rowPitch:  number;
+  rows:      number;
+}
+
+function getPanelShelfSpan(type: string, w: number, h: number): PanelShelfSpan {
+  switch (type) {
+    case "gondola":
+    case "gondola_doble": {
+      // GondolaMesh — painted panel: back/spine box [w, h] spanning 0..h.
+      // Boards: n = max(4, round((h-topH)/0.38)) centres at
+      // 0.14 + i·(h-topH-0.16)/(n-1); topH = 0.08, shelfT = 0.022.
+      // The top board (h-0.10) has no display room above it → rows = n-1
+      // (the gaps BETWEEN boards); wall and double share the same layout.
+      const topH = 0.08, shelfT = 0.022;
+      const n     = Math.max(4, Math.round((h - topH) / 0.38));
+      const pitch = (h - topH - 0.16) / Math.max(n - 1, 1);
+      return { panelW: w, panelH: h, rowBottom: 0.14 + shelfT / 2, rowPitch: pitch, rows: Math.max(1, n - 1) };
+    }
+    case "punta": {
+      // PuntaMesh — painted panel: back plate [w, bodyH] spanning 0..bodyH,
+      // bodyH = h - topperH (0.36). Boards: n = max(3, round(bodyH/0.38))
+      // centres at 0.12 + (i+1)·(bodyH-0.16)/(n+1), thickness 0.022 (the
+      // -0.08 rad board tilt shifts edges <1 cm — visually negligible).
+      // Every board incl. the top one has display room above it → rows = n.
+      const bodyH = h - 0.36;
+      const n     = Math.max(3, Math.round(bodyH / 0.38));
+      const pitch = (bodyH - 0.16) / (n + 1);
+      return { panelW: w, panelH: bodyH, rowBottom: 0.12 + pitch + 0.011, rowPitch: pitch, rows: n };
+    }
+    case "robatope": {
+      // RobatopeMesh — same layout language as PuntaMesh: panel [w, bodyH],
+      // bodyH = h - capH (0.055). Boards: n = max(2, round(bodyH/0.40))
+      // centres at 0.12 + (i+1)·(bodyH-0.16)/(n+1), thickness 0.022 → rows = n.
+      const bodyH = h - 0.055;
+      const n     = Math.max(2, Math.round(bodyH / 0.40));
+      const pitch = (bodyH - 0.16) / (n + 1);
+      return { panelW: w, panelH: bodyH, rowBottom: 0.12 + pitch + 0.011, rowPitch: pitch, rows: n };
+    }
+    case "mueble": {
+      // MuebleMesh — painted panel: inner back [w-0.036, doorH-0.036] whose
+      // bottom sits at world baseH+0.018 (panel centred at baseH+doorH/2);
+      // baseH = min(0.22h, 0.40), doorH = h - baseH. Shelves:
+      // n = max(2, round(doorH/0.38)) at baseH + 0.10 + i·(doorH-0.12)/(n-1),
+      // thickness 0.014; the top shelf is the cabinet ceiling (h-0.02) →
+      // rows = n-1 gaps. rowBottom = (baseH+0.10) - (baseH+0.018) + 0.007.
+      const baseH = Math.min(h * 0.22, 0.40);
+      const doorH = h - baseH;
+      const n     = Math.max(2, Math.round(doorH / 0.38));
+      const pitch = (doorH - 0.12) / Math.max(n - 1, 1);
+      return { panelW: w - 0.036, panelH: doorH - 0.036, rowBottom: 0.10 - 0.018 + 0.007, rowPitch: pitch, rows: Math.max(1, n - 1) };
+    }
+    case "nevera_refrescos": {
+      // NeveraRefrescosMesh — painted panel: lit back wall [w-0.040, dispH]
+      // whose bottom sits at world compH; compH = 0.14h, topH = 0.05h,
+      // dispH = h - compH - topH. Shelves: n = max(3, floor(dispH/0.35)) at
+      // compH + 0.06 + (i+1)·dispH/(n+1), thickness 0.010. The 3D product
+      // boxes stand on every shelf → rows = n (top row shrinks to fit the
+      // panel top; see getPhotoFaceMaterial).
+      const dispH = h - h * 0.14 - h * 0.05;
+      const n     = Math.max(3, Math.floor(dispH / 0.35));
+      const pitch = dispH / (n + 1);
+      return { panelW: w - 0.040, panelH: dispH, rowBottom: 0.06 + pitch + 0.005, rowPitch: pitch, rows: n };
+    }
+    default: {
+      // Unknown paintable type — legacy whole-face grid (pre-alignment rules).
+      const rows = Math.min(5, Math.max(1, Math.floor(h / 0.45)));
+      return { panelW: w, panelH: h, rowBottom: 0, rowPitch: h / Math.max(rows, 1), rows };
+    }
+  }
+}
+
 /**
- * Returns the photo material tiled as a PLANOGRAM GRID — one row of product
- * images per shelf level, columns sized so the product keeps its real aspect
- * (the last column may be cut at the fixture edge, like a real shelf).
+ * Returns the photo material as a PLANOGRAM GRID aligned to the REAL shelf
+ * boards of the fixture type (getPanelShelfSpan): one row per board gap, each
+ * product image bottom-anchored so it "stands" on its board. The grid is
+ * composited onto a canvas so the plinth/header bands outside the shelf region
+ * stay fully transparent (plain wrap modes cannot mask sub-ranges of V).
+ * Columns keep the product's real aspect; the last one may be cut at the
+ * fixture edge, like a real shelf.
  * Null while the texture is still loading / after a load error (callers fall
  * through to the category pattern). `notify` fires once when the load settles.
  */
 function getPhotoFaceMaterial(
   fileId: number,
+  fixType: string,
   faceW: number,
   faceH: number,
   notify: () => void,
@@ -2383,26 +2490,55 @@ function getPhotoFaceMaterial(
   }
   if (entry.status === "loading") { entry.waiters.add(notify); return null; }
   if (entry.status === "error" || !entry.texture) return null;
+  const image = entry.texture.image as CanvasImageSource | undefined;
+  if (!image) return null;
 
-  // Planogram grid: rows follow the shelf levels (same formula as the shelf
-  // meshes), columns keep the product's own aspect so bags never stretch.
-  const rows  = Math.min(5, Math.max(1, Math.floor(faceH / 0.45)));
-  const cellH = faceH / rows;
-  const cellW = Math.max(0.05, cellH * entry.aspect);
-  const repeatX = Math.max(1, faceW / cellW); // non-integer → edge product cut naturally
-  const rxBucket = Math.round(repeatX * 8) / 8;
-  const key = `${fileId}|${rows}|${rxBucket}`;
+  // Board-aligned span for THIS fixture type, quantised to 5 mm buckets so
+  // near-identical fixtures share a canvas (bounds the cache like the old
+  // repeatX bucketing did). Boards are 10-22 mm thick and occlude the row
+  // boundary, so 5 mm of quantisation error is invisible.
+  const q   = (v: number) => Math.round(v / 0.005) * 0.005;
+  const raw = getPanelShelfSpan(fixType, faceW, faceH);
+  const span: PanelShelfSpan = {
+    panelW:    Math.max(0.05, q(raw.panelW)),
+    panelH:    Math.max(0.05, q(raw.panelH)),
+    rowBottom: q(raw.rowBottom),
+    rowPitch:  Math.max(0.05, q(raw.rowPitch)),
+    rows:      raw.rows,
+  };
+  // Key carries the type + full span: types with different board layouts must
+  // never share a wrongly-offset canvas for the same photo.
+  const key = `${fileId}|${fixType}|${span.rows}|${span.panelW}|${span.panelH}|${span.rowBottom}|${span.rowPitch}`;
   let mat = photoMatCache.get(key);
   if (!mat) {
-    const tex = entry.texture.clone(); // clone shares the image — cheap
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.center.set(0, 0);
-    tex.offset.set(0, 0);
-    tex.repeat.set(rxBucket, rows);
-    tex.needsUpdate = true;
-    // transparent: real-alpha PNGs show the panel color behind each product,
-    // reading as stocked shelves instead of a stretched poster.
+    const PPM = 512; // texture pixels per metre, capped so no side exceeds 2048
+    const px  = Math.min(PPM, 2048 / span.panelW, 2048 / span.panelH);
+    const canvas = document.createElement("canvas");
+    canvas.width  = Math.max(2, Math.round(span.panelW * px));
+    canvas.height = Math.max(2, Math.round(span.panelH * px));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.imageSmoothingQuality = "high";
+    for (let r = 0; r < span.rows; r++) {
+      const rowFloor = span.rowBottom + r * span.rowPitch; // board top surface (m)
+      // Each row cell fills its board gap. A cell that would poke past the
+      // panel top (constrained top shelves) shrinks to fit — the bottom stays
+      // anchored on the board; spare room only ever appears at the cell TOP.
+      const cellH = Math.min(span.rowPitch, span.panelH - rowFloor);
+      if (cellH < 0.02) continue;
+      const cellW = Math.max(0.05, cellH * entry.aspect); // real product aspect
+      const yTop  = canvas.height - (rowFloor + cellH) * px; // canvas Y is top-down
+      for (let x = 0; x < canvas.width; x += cellW * px) {
+        ctx.drawImage(image, x, yTop, cellW * px, cellH * px); // last column cut at edge
+      }
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    // transparent: the plinth/header bands (and real-alpha PNG margins) show
+    // the panel color behind each product, reading as stocked shelves.
     mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, transparent: true });
     photoMatCache.set(key, mat);
   }
@@ -2420,6 +2556,7 @@ const FACE_PAINTABLE_TYPES = new Set<string>([
  */
 function resolveFaceMaterial(
   faceCode: string | null,
+  fixType:  string,
   category: string,
   label:    string,
   faceW:    number,
@@ -2431,7 +2568,7 @@ function resolveFaceMaterial(
   if (faceCode && faceImages) {
     const fileId = faceImages.get(faceCode);
     if (fileId !== undefined) {
-      const photo = getPhotoFaceMaterial(fileId, faceW, faceH, notify);
+      const photo = getPhotoFaceMaterial(fileId, fixType, faceW, faceH, notify);
       if (photo) return photo;
       // still loading or failed → fall through to the category pattern
     }
@@ -2582,12 +2719,12 @@ function Scene({
           : primary;
       const isDouble = isDoubleGondola(fix) || type === "gondola_doble";
       const front = resolveFaceMaterial(
-        pickCode(fullCode, codeUC), fix.brandCategory, fix.label,
+        pickCode(fullCode, codeUC), type, fix.brandCategory, fix.label,
         fix.w, fix.h, faceImages, notifyTexLoaded,
       );
       const back = isDouble
         ? resolveFaceMaterial(
-            pickCode(`${fullCode}-B`, `${codeUC}-B`), uf?.faceB?.brandCategory ?? "", fix.label,
+            pickCode(`${fullCode}-B`, `${codeUC}-B`), type, uf?.faceB?.brandCategory ?? "", fix.label,
             fix.w, fix.h, faceImages, notifyTexLoaded,
           )
         : null;
