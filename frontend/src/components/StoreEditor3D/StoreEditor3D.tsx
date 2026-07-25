@@ -2341,13 +2341,16 @@ function evictOldestPhotoIfFull(): void {
 }
 
 /**
- * Returns the cover-fitted photo material, or null while the texture is still
- * loading / after a load error (callers fall through to the category pattern).
- * `notify` is invoked once when the async load settles so React can re-resolve.
+ * Returns the photo material tiled as a PLANOGRAM GRID — one row of product
+ * images per shelf level, columns sized so the product keeps its real aspect
+ * (the last column may be cut at the fixture edge, like a real shelf).
+ * Null while the texture is still loading / after a load error (callers fall
+ * through to the category pattern). `notify` fires once when the load settles.
  */
 function getPhotoFaceMaterial(
   fileId: number,
-  faceAspect: number,
+  faceW: number,
+  faceH: number,
   notify: () => void,
 ): THREE.MeshBasicMaterial | null {
   let entry = photoTexCache.get(fileId);
@@ -2381,17 +2384,26 @@ function getPhotoFaceMaterial(
   if (entry.status === "loading") { entry.waiters.add(notify); return null; }
   if (entry.status === "error" || !entry.texture) return null;
 
-  const bucket = Math.max(0.25, Math.round(faceAspect * 8) / 8);
-  const key = `${fileId}|${bucket}`;
+  // Planogram grid: rows follow the shelf levels (same formula as the shelf
+  // meshes), columns keep the product's own aspect so bags never stretch.
+  const rows  = Math.min(5, Math.max(1, Math.floor(faceH / 0.45)));
+  const cellH = faceH / rows;
+  const cellW = Math.max(0.05, cellH * entry.aspect);
+  const repeatX = Math.max(1, faceW / cellW); // non-integer → edge product cut naturally
+  const rxBucket = Math.round(repeatX * 8) / 8;
+  const key = `${fileId}|${rows}|${rxBucket}`;
   let mat = photoMatCache.get(key);
   if (!mat) {
     const tex = entry.texture.clone(); // clone shares the image — cheap
-    // Cover-fit: crop (never stretch) the photo to the face's aspect ratio.
-    if (entry.aspect > bucket) tex.repeat.set(bucket / entry.aspect, 1);
-    else                       tex.repeat.set(1, entry.aspect / bucket);
-    tex.offset.set((1 - tex.repeat.x) / 2, (1 - tex.repeat.y) / 2);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.center.set(0, 0);
+    tex.offset.set(0, 0);
+    tex.repeat.set(rxBucket, rows);
     tex.needsUpdate = true;
-    mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+    // transparent: real-alpha PNGs show the panel color behind each product,
+    // reading as stocked shelves instead of a stretched poster.
+    mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, transparent: true });
     photoMatCache.set(key, mat);
   }
   return mat;
@@ -2419,7 +2431,7 @@ function resolveFaceMaterial(
   if (faceCode && faceImages) {
     const fileId = faceImages.get(faceCode);
     if (fileId !== undefined) {
-      const photo = getPhotoFaceMaterial(fileId, aspect, notify);
+      const photo = getPhotoFaceMaterial(fileId, faceW, faceH, notify);
       if (photo) return photo;
       // still loading or failed → fall through to the category pattern
     }
