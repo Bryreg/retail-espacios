@@ -5,13 +5,9 @@ import {
   RefreshCw,
   MapPin,
   Building2,
-  Clock,
-  DoorOpen,
   Plus,
-  Star,
   X,
   FileText,
-  Percent,
   ChevronRight,
   Search,
 } from "lucide-react";
@@ -47,6 +43,16 @@ function formatDate(s: string): string {
   const [y, m, d] = s.split("-").map(Number);
   if (!y || !m || !d || m < 1 || m > 12) return s;
   return `${d} ${MONTHS_ES[m - 1]} ${y}`;
+}
+
+/** Compact contract period for one-line rows: "8 jul → 15 jul 2026". */
+function formatRange(start: string, end: string): string {
+  if (!start && !end) return "—";
+  const short = (s: string) => {
+    const [, m, d] = s.split("-").map(Number);
+    return d && m >= 1 && m <= 12 ? `${d} ${MONTHS_ES[m - 1]}` : s;
+  };
+  return `${start ? short(start) : "—"} → ${end ? formatDate(end) : "—"}`;
 }
 
 // ─── Faces (a double gondola counts as 2 rentable units) ─────────────────────
@@ -203,69 +209,59 @@ function Card({
   );
 }
 
-// ─── KPI Card ─────────────────────────────────────────────────────────────────
+// ─── KPI strip tile (single compact strip replaces padded cards) ─────────────
 
-function KpiCard({
+function KpiTile({
   label,
   value,
-  valueColor,
-  hint,
-  icon,
-  iconBg,
-  iconColor,
-  bg,
-  borderColor,
+  sub,
+  color,
+  divider = false,
 }: {
   label: string;
   value: string | number;
-  valueColor: string;
-  hint: string;
-  icon: React.ReactNode;
-  iconBg: string;
-  iconColor: string;
-  bg?: string;
-  borderColor?: string;
+  sub?: string;
+  color: string;
+  divider?: boolean;
 }) {
   return (
-    <Card
+    <div
       style={{
-        padding: 16,
-        background: bg ?? "var(--surface)",
-        borderColor: borderColor ?? "var(--line)",
+        padding: "10px 14px",
+        flex: "1 1 auto", minWidth: 100,
+        borderLeft: divider ? "1px solid var(--line-soft)" : "none",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-        <span
-          style={{
-            fontSize: 10, fontWeight: 600,
-            textTransform: "uppercase", letterSpacing: "0.08em",
-            color: "var(--ink-3)",
-          }}
-        >
-          {label}
-        </span>
-        <span
-          style={{
-            width: 26, height: 26, borderRadius: "var(--r-md)",
-            background: iconBg, color: iconColor,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
-          {icon}
-        </span>
-      </div>
       <div
         style={{
-          fontSize: 24, fontWeight: 700, color: valueColor,
-          letterSpacing: "-0.02em", lineHeight: 1.1,
-          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          fontSize: 9.5, fontWeight: 700,
+          textTransform: "uppercase", letterSpacing: "0.08em",
+          color: "var(--ink-3)", whiteSpace: "nowrap",
         }}
       >
-        {value}
+        {label}
       </div>
-      <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 5 }}>{hint}</div>
-    </Card>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 2 }}>
+        <span
+          style={{
+            fontSize: 20, fontWeight: 700, lineHeight: 1.15,
+            letterSpacing: "-0.02em", color, whiteSpace: "nowrap",
+          }}
+        >
+          {value}
+        </span>
+        {sub && (
+          <span
+            style={{
+              fontSize: 10.5, color: "var(--ink-3)",
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+            }}
+          >
+            {sub}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -283,14 +279,14 @@ function CardHeader({
   return (
     <div
       style={{
-        display: "flex", alignItems: "center", gap: 8,
-        padding: "12px 16px",
+        display: "flex", alignItems: "center", gap: 6,
+        padding: "10px 14px",
         borderBottom: "1px solid var(--line-soft)",
       }}
     >
       {icon}
-      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-1)" }}>{title}</span>
-      {sub && <span style={{ fontSize: 11, color: "var(--ink-3)" }}>{sub}</span>}
+      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-1)" }}>{title}</span>
+      {sub && <span style={{ fontSize: 11, color: "var(--ink-3)" }}>· {sub}</span>}
     </div>
   );
 }
@@ -924,214 +920,151 @@ function FixtureDetailPanel({ fixture, isAdmin, onClose, onOpenFile }: FixtureDe
   );
 }
 
-// ─── Contratos por vencer ────────────────────────────────────────────────────
+// ─── Atención (vencidos + por vencer + anomalías, one-line rows) ─────────────
 
 interface ContractEntry extends FaceEntry {
   days: number;
 }
 
-function ExpiringRow({ entry, last }: { entry: ContractEntry; last: boolean }) {
-  const d = entry.days;
-  const critical = d <= 7;
-  const soon = d <= 30;
-  const color = critical ? "var(--danger)" : soon ? "var(--warning)" : "var(--ink-2)";
-  const bg = critical ? "var(--danger-50)" : soon ? "var(--warning-50)" : "transparent";
-
+function AtencionSection({ label, color }: { label: string; color: string }) {
   return (
     <div
       style={{
-        display: "flex", alignItems: "center", gap: 14,
-        padding: "12px 16px",
-        background: bg,
-        borderBottom: last ? "none" : "1px solid var(--line-soft)",
+        padding: "7px 14px 4px",
+        fontSize: 9.5, fontWeight: 700,
+        textTransform: "uppercase", letterSpacing: "0.08em",
+        color,
       }}
     >
-      {/* Big days-left number */}
-      <div style={{ width: 64, textAlign: "center", flexShrink: 0 }}>
-        <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1, color, letterSpacing: "-0.02em" }}>
-          {d < 0 ? Math.abs(d) : d}
-        </div>
-        <div
-          style={{
-            fontSize: 8.5, fontWeight: 700, marginTop: 2,
-            textTransform: "uppercase", letterSpacing: "0.08em",
-            color: d < 0 ? "var(--danger)" : "var(--ink-3)",
-          }}
-        >
-          {d < 0 ? "d. vencido" : "días"}
-        </div>
-      </div>
-
-      {/* Space + supplier */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 12.5, fontWeight: 600, color: "var(--ink-1)",
-            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-          }}
-        >
-          {entry.fixture.label || entry.fixture.code}
-          {entry.face === "B" && (
-            <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent-700)" }}> · Cara B</span>
-          )}
-        </div>
-        <div style={{ fontSize: 10.5, color: "var(--ink-3)", marginTop: 1 }}>
-          <span style={{ fontFamily: "var(--font-mono)" }}>{entry.code}</span>
-          {entry.supplierName ? ` · ${entry.supplierName}` : ""}
-        </div>
-      </div>
-
-      {/* INICIO / FIN dates — prominent */}
-      <div style={{ display: "flex", gap: 16, flexShrink: 0 }}>
-        <div>
-          <div style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.1em", color: "var(--ink-3)" }}>
-            INICIO
-          </div>
-          <div style={{ fontSize: 12.5, fontWeight: 700, fontFamily: "var(--font-mono)", color: "var(--ink-1)", marginTop: 1 }}>
-            {formatDate(entry.startDate)}
-          </div>
-        </div>
-        <div>
-          <div style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.1em", color: "var(--ink-3)" }}>
-            FIN
-          </div>
-          <div style={{ fontSize: 12.5, fontWeight: 700, fontFamily: "var(--font-mono)", color, marginTop: 1 }}>
-            {formatDate(entry.endDate)}
-          </div>
-        </div>
-      </div>
+      {label}
     </div>
   );
 }
 
-// ─── Supplier row (top proveedores) ──────────────────────────────────────────
+function AtencionRow({
+  entry,
+  chip,
+  chipColor,
+  bg,
+  dates,
+  last,
+}: {
+  entry: FaceEntry;
+  chip: string;
+  chipColor: string;
+  bg: string;
+  dates: string;
+  last: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex", alignItems: "center", gap: 10,
+        height: 34, padding: "0 14px",
+        background: bg,
+        borderBottom: last ? "none" : "1px solid var(--line-soft)",
+      }}
+    >
+      <span
+        style={{
+          width: 38, flexShrink: 0, textAlign: "right",
+          fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700,
+          color: chipColor,
+        }}
+      >
+        {chip}
+      </span>
+      <span style={{ flexShrink: 0, fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-2)" }}>
+        {entry.code}
+      </span>
+      <span
+        style={{
+          flex: 1, minWidth: 0, fontSize: 11.5, color: "var(--ink-1)",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        }}
+      >
+        {entry.fixture.label || entry.fixture.code}
+        {entry.supplierName ? ` · ${entry.supplierName}` : ""}
+      </span>
+      <span
+        style={{
+          flexShrink: 0, textAlign: "right",
+          fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-3)",
+        }}
+      >
+        {dates}
+      </span>
+    </div>
+  );
+}
+
+// ─── Supplier row (top proveedores, compact ranked) ──────────────────────────
 
 function SupplierRow({
   name,
   revenue,
   count,
   rank,
-  pct,
 }: {
   name: string;
   revenue: number;
   count: number;
   rank: number;
-  pct: number;
 }) {
-  const isFirst = rank === 0;
   return (
-    <div
-      style={{
-        display: "flex", alignItems: "center", gap: 10,
-        padding: "8px 10px", borderRadius: "var(--r-md)",
-        background: isFirst ? "rgba(180,83,9,0.06)" : "transparent",
-      }}
-    >
-      <div
+    <div style={{ display: "flex", alignItems: "center", gap: 8, height: 28, padding: "0 14px" }}>
+      <span
         style={{
-          width: 24, height: 24, borderRadius: 99, flexShrink: 0,
-          background: isFirst ? "#D97706" : "var(--surface-3)",
-          color: isFirst ? "#fff" : "var(--ink-3)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 10, fontWeight: 700,
+          width: 16, flexShrink: 0, textAlign: "right",
+          fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-4)",
         }}
       >
-        {isFirst ? <Star size={11} strokeWidth={2.5} /> : rank + 1}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-          <span
-            style={{
-              fontSize: 12, fontWeight: 600,
-              color: isFirst ? "#92400E" : "var(--ink-1)",
-              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-            }}
-          >
-            {name}
-          </span>
-          <span
-            style={{
-              fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600,
-              color: "var(--success)", flexShrink: 0,
-            }}
-          >
-            {formatCOP(revenue)}
-          </span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-          <div
-            style={{
-              flex: 1, height: 4, borderRadius: 2,
-              background: "var(--surface-3)", overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                width: `${pct}%`, height: "100%",
-                background: isFirst ? "#D97706" : "var(--accent)",
-                borderRadius: 2,
-                transition: "width .4s ease",
-              }}
-            />
-          </div>
-          <span style={{ fontSize: 10, color: "var(--ink-3)", flexShrink: 0 }}>
-            {count} contrato{count !== 1 ? "s" : ""}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Action row (requiere atención) ──────────────────────────────────────────
-
-function ActionRow({
-  tone,
-  active,
-  title,
-  detail,
-  last = false,
-}: {
-  tone: "danger" | "warning" | "success";
-  active: boolean;
-  title: string;
-  detail: string;
-  last?: boolean;
-}) {
-  const Icon = tone === "danger" ? AlertTriangle : tone === "warning" ? Clock : DoorOpen;
-  const bg = active
-    ? tone === "danger" ? "var(--danger-50)"
-    : tone === "warning" ? "var(--warning-50)"
-    : "var(--success-50)"
-    : "transparent";
-  const color = active
-    ? tone === "danger" ? "var(--danger)"
-    : tone === "warning" ? "var(--warning)"
-    : "var(--success)"
-    : "var(--ink-4)";
-
-  return (
-    <div
-      style={{
-        padding: "12px 16px",
-        display: "flex", alignItems: "flex-start", gap: 10,
-        background: bg,
-        borderBottom: last ? "none" : "1px solid var(--line-soft)",
-      }}
-    >
-      <Icon size={14} style={{ color, marginTop: 1, flexShrink: 0 }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-1)" }}>{title}</div>
-        <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{detail}</div>
-      </div>
+        {rank + 1}
+      </span>
+      <span
+        style={{
+          flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, color: "var(--ink-1)",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        }}
+      >
+        {name}
+      </span>
+      <span style={{ flexShrink: 0, fontSize: 10.5, color: "var(--ink-3)" }}>
+        {count} contrato{count !== 1 ? "s" : ""}
+      </span>
+      <span
+        style={{
+          flexShrink: 0, fontFamily: "var(--font-mono)", fontSize: 11.5,
+          fontWeight: 600, color: "var(--success)",
+        }}
+      >
+        {formatCOP(revenue)}
+      </span>
     </div>
   );
 }
 
 // ─── Spaces table ─────────────────────────────────────────────────────────────
 
+const TABLE_CHIP_LABELS: Record<MapFilter, string> = {
+  todos: "Todos",
+  free: "Libres",
+  occupied: "Ocupados",
+  expired: "Vencidos",
+  expiring: "Por vencer",
+};
+
+/** Same colors + face-level logic as the map's chips, shorter labels. */
+const TABLE_CHIPS: { id: MapFilter; label: string; ring: string; fill: string }[] =
+  (["todos", "free", "occupied", "expired", "expiring"] as MapFilter[]).map((id) => {
+    const base = FILTER_CHIPS.find((c) => c.id === id)!;
+    return { ...base, label: TABLE_CHIP_LABELS[id] };
+  });
+
 function SpacesTable({ fixtures, isAdmin }: { fixtures: UnifiedFixture[]; isAdmin: boolean }) {
+  // Independent from the map's chip state.
+  const [filter, setFilter] = useState<MapFilter>("todos");
+
   // One row per rentable face — doubles expand to A + B, matching the KPIs.
   const rows = useMemo(
     () =>
@@ -1143,134 +1076,202 @@ function SpacesTable({ fixtures, isAdmin }: { fixtures: UnifiedFixture[]; isAdmi
     [fixtures],
   );
 
+  const filtered = useMemo(
+    () => (filter === "todos" ? rows : rows.filter((e) => faceMatchesFilter(e, filter))),
+    [rows, filter],
+  );
+
   const headers = ["Código", "Tipo", "Proveedor", "Estado", "Días"];
   if (isAdmin) headers.push("Renta / mes");
 
   return (
-    <div style={{ maxHeight: 320, overflowY: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}>
-        <thead style={{ position: "sticky", top: 0, zIndex: 1 }}>
-          <tr style={{ background: "var(--surface-2)" }}>
-            {headers.map((h, i) => (
-              <th
-                key={h}
-                style={{
-                  padding: "8px 14px",
-                  textAlign: i >= 4 ? "right" : "left",
-                  fontSize: 9.5, fontWeight: 700,
-                  color: "var(--ink-3)",
-                  textTransform: "uppercase", letterSpacing: "0.08em",
-                  borderBottom: "1px solid var(--line)",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((entry) => {
-            const ds = displayStatus(entry);
-            const meta = STATUS_META[ds];
-            const days = entry.endDate ? daysUntil(entry.endDate) : null;
-            const isDanger = ds === "expired" || ds === "no_contract";
+    <>
+      {/* Count + status filter chips */}
+      <div
+        style={{
+          display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
+          padding: "8px 10px",
+          borderBottom: "1px solid var(--line-soft)",
+        }}
+      >
+        {TABLE_CHIPS.map((c) => {
+          const active = filter === c.id;
+          return (
+            <button
+              key={c.id}
+              onClick={() => setFilter(c.id)}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 5,
+                height: 24, padding: "0 9px", borderRadius: 999,
+                fontSize: 10.5, fontWeight: 600, fontFamily: "inherit",
+                border: `1px solid ${active ? c.ring : "var(--line)"}`,
+                background: active ? c.fill : "var(--surface)",
+                color: active ? c.ring : "var(--ink-2)",
+                cursor: "pointer",
+                transition: "background .12s, color .12s, border-color .12s",
+              }}
+            >
+              {c.id !== "todos" && (
+                <span
+                  style={{
+                    width: 6, height: 6, borderRadius: 99,
+                    background: active ? c.ring : "var(--ink-4)", flexShrink: 0,
+                  }}
+                />
+              )}
+              {c.label}
+            </button>
+          );
+        })}
+        <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, color: "var(--ink-3)" }}>
+          {filtered.length} espacio{filtered.length !== 1 ? "s" : ""}
+        </span>
+      </div>
 
-            return (
-              <tr
-                key={`${entry.fixture.id}-${entry.face}`}
-                style={{
-                  borderBottom: "1px solid var(--line-soft)",
-                  background: isDanger ? "rgba(185,28,28,0.04)" : "transparent",
-                }}
-              >
-                <td
+      <div style={{ maxHeight: 360, overflowY: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 12 }}>
+          <thead style={{ position: "sticky", top: 0, zIndex: 1 }}>
+            <tr style={{ background: "var(--surface)" }}>
+              {headers.map((h, i) => (
+                <th
+                  key={h}
                   style={{
-                    padding: "10px 14px",
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 11.5,
-                    color: "var(--ink-2)",
+                    padding: "7px 10px",
+                    textAlign: i >= 4 ? "right" : "left",
+                    fontSize: 9.5, fontWeight: 700,
+                    color: "var(--ink-3)",
+                    textTransform: "uppercase", letterSpacing: "0.08em",
+                    boxShadow: "inset 0 -1px 0 var(--line-strong)",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  {entry.code}
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={headers.length} style={{ padding: "10px 14px", fontSize: 12, color: "var(--ink-3)" }}>
+                  Sin espacios con este estado.
                 </td>
-                <td style={{ padding: "10px 14px", color: "var(--ink-2)" }}>
-                  {entry.fixture.label}
-                  {entry.face === "B" && (
-                    <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent-700)" }}> · Cara B</span>
-                  )}
-                </td>
-                <td style={{ padding: "10px 14px" }}>
-                  {entry.supplierName ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span
-                        style={{
-                          width: 16, height: 16, borderRadius: 3,
-                          background: "var(--accent-100)", color: "var(--accent-700)",
-                          display: "inline-flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 9, fontWeight: 700, flexShrink: 0,
-                        }}
-                      >
-                        {entry.supplierName[0]?.toUpperCase()}
-                      </span>
-                      <span style={{ color: "var(--ink-1)", fontSize: 11.5 }}>{entry.supplierName}</span>
-                    </div>
-                  ) : ds === "no_contract" ? (
-                    <span style={{ color: "var(--danger)", fontWeight: 600, fontSize: 11.5 }}>
-                      ⚠ Sin contrato
-                    </span>
-                  ) : (
-                    <span style={{ color: "var(--ink-4)", fontSize: 11.5 }}>—</span>
-                  )}
-                </td>
-                <td style={{ padding: "10px 14px" }}>
-                  <span
-                    style={{
-                      display: "inline-flex", alignItems: "center", gap: 4,
-                      fontSize: 10.5, fontWeight: 600,
-                      padding: "2px 8px", borderRadius: 999,
-                      background: meta.fill, color: meta.ring,
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 5, height: 5, borderRadius: 99,
-                        background: meta.ring, flexShrink: 0,
-                      }}
-                    />
-                    {meta.label}
-                  </span>
-                </td>
-                <td
-                  style={{
-                    padding: "10px 14px", textAlign: "right",
-                    fontFamily: "var(--font-mono)", fontSize: 11.5, fontWeight: 600,
-                    color:
-                      days === null ? "var(--ink-4)"
-                      : days < 0 ? "var(--danger)"
-                      : days <= 30 ? "var(--warning)"
-                      : "var(--success)",
-                  }}
+              </tr>
+            )}
+            {filtered.map((entry) => {
+              const ds = displayStatus(entry);
+              const meta = STATUS_META[ds];
+              const days = entry.endDate ? daysUntil(entry.endDate) : null;
+              const isDanger = ds === "expired" || ds === "no_contract";
+              // Libre with stale past contract data → muted note instead of red days
+              const staleFreeDays = ds === "free" && days !== null && days < 0 ? Math.abs(days) : null;
+              // ANY free face must not look like an active contract row: leftover
+              // supplier/date data renders muted (history), días always "—".
+              const freeRow = ds === "free";
+              const cell: React.CSSProperties = {
+                padding: "7px 10px",
+                borderBottom: "1px solid var(--line-soft)",
+              };
+
+              return (
+                <tr
+                  key={`${entry.fixture.id}-${entry.face}`}
+                  style={{ background: isDanger ? "rgba(185,28,28,0.04)" : "transparent" }}
                 >
-                  {days === null ? "—" : `${days}d`}
-                </td>
-                {isAdmin && (
                   <td
                     style={{
-                      padding: "10px 14px", textAlign: "right",
-                      fontFamily: "var(--font-mono)", fontSize: 11.5,
-                      color: "var(--success)", fontWeight: 600,
+                      ...cell,
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 11.5,
+                      color: "var(--ink-2)",
                     }}
                   >
-                    {entry.negotiatedValue > 0 ? formatCOP(entry.negotiatedValue) : "—"}
+                    {entry.code}
                   </td>
-                )}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+                  <td style={{ ...cell, color: "var(--ink-2)" }}>
+                    {entry.fixture.label}
+                    {entry.face === "B" && (
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent-700)" }}> · Cara B</span>
+                    )}
+                  </td>
+                  <td style={cell}>
+                    {staleFreeDays !== null ? (
+                      <span style={{ color: "var(--ink-4)", fontSize: 11.5 }}>
+                        venció hace {staleFreeDays}d{entry.supplierName ? ` · ${entry.supplierName}` : ""}
+                      </span>
+                    ) : freeRow && entry.supplierName ? (
+                      <span style={{ color: "var(--ink-4)", fontSize: 11.5 }}>
+                        último: {entry.supplierName}
+                      </span>
+                    ) : entry.supplierName ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span
+                          style={{
+                            width: 16, height: 16, borderRadius: 3,
+                            background: "var(--accent-100)", color: "var(--accent-700)",
+                            display: "inline-flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 9, fontWeight: 700, flexShrink: 0,
+                          }}
+                        >
+                          {entry.supplierName[0]?.toUpperCase()}
+                        </span>
+                        <span style={{ color: "var(--ink-1)", fontSize: 11.5 }}>{entry.supplierName}</span>
+                      </div>
+                    ) : ds === "no_contract" ? (
+                      <span style={{ color: "var(--danger)", fontWeight: 600, fontSize: 11.5 }}>
+                        ⚠ Sin contrato
+                      </span>
+                    ) : (
+                      <span style={{ color: "var(--ink-4)", fontSize: 11.5 }}>—</span>
+                    )}
+                  </td>
+                  <td style={cell}>
+                    <span
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 5,
+                        fontSize: 11.5, fontWeight: 600, color: meta.ring,
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 6, height: 6, borderRadius: 99,
+                          background: meta.ring, flexShrink: 0,
+                        }}
+                      />
+                      {meta.label}
+                    </span>
+                  </td>
+                  <td
+                    style={{
+                      ...cell, textAlign: "right",
+                      fontFamily: "var(--font-mono)", fontSize: 11.5, fontWeight: 600,
+                      color:
+                        days === null || freeRow ? "var(--ink-4)"
+                        : days < 0 ? "var(--danger)"
+                        : days <= 30 ? "var(--warning)"
+                        : "var(--success)",
+                    }}
+                  >
+                    {days === null || freeRow ? "—" : `${days}d`}
+                  </td>
+                  {isAdmin && (
+                    <td
+                      style={{
+                        ...cell, textAlign: "right",
+                        fontFamily: "var(--font-mono)", fontSize: 11.5,
+                        color: "var(--success)", fontWeight: 600,
+                      }}
+                    >
+                      {entry.negotiatedValue > 0 ? formatCOP(entry.negotiatedValue) : "—"}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
@@ -1364,26 +1365,31 @@ export default function DashboardView() {
   }, [fixtures, mapQuery, mapFilter]);
 
   // ── KPI computation (per rentable face — doubles count as 2 units) ──
+  // Buckets use displayStatus() so KPIs, Atención, map chips and table agree.
   const kpis = useMemo(() => {
     const faces = fixtures.flatMap(facesOf);
     const total = faces.length;
-    const occupied    = faces.filter((x) => x.status === "occupied").length;
-    const free        = faces.filter((x) => x.status === "free").length;
-    const reserved    = faces.filter((x) => x.status === "reserved").length;
-    const maintenance = faces.filter((x) => x.status === "maintenance").length;
+    const occupied = faces.filter((x) => x.status === "occupied").length;
+    const free     = faces.filter((x) => x.status === "free").length;
+    // reserved + maintenance would otherwise vanish from the strip and
+    // total would never reconcile with Libres + Ocupados.
+    const held     = total - occupied - free;
     const occPct = total ? Math.round((occupied / total) * 100) : 0;
     const revenue = faces
       .filter((x) => x.status === "occupied")
       .reduce((s, x) => s + (x.negotiatedValue ?? 0), 0);
 
-    const withEnd: ContractEntry[] = faces
-      .filter((x) => x.endDate && (x.status === "occupied" || x.status === "reserved"))
-      .map((x) => ({ ...x, days: daysUntil(x.endDate) }))
-      .sort((a, b) => a.days - b.days);
-
-    const expiringSoon = withEnd.filter((x) => x.days >= 0 && x.days <= 30).length;
-    const expired = withEnd.filter((x) => x.days < 0 && x.status === "occupied");
-    const noContract = faces.filter((x) => x.status === "occupied" && !x.endDate).length;
+    const expired: ContractEntry[] = [];
+    const expiring: ContractEntry[] = [];
+    const noContract: FaceEntry[] = [];
+    faces.forEach((x) => {
+      const ds = displayStatus(x);
+      if (ds === "expired") expired.push({ ...x, days: daysUntil(x.endDate) });
+      else if (ds === "expiring") expiring.push({ ...x, days: daysUntil(x.endDate) });
+      else if (ds === "no_contract") noContract.push(x);
+    });
+    expired.sort((a, b) => a.days - b.days);
+    expiring.sort((a, b) => a.days - b.days);
 
     // Top suppliers (occupied faces with value)
     const supplierMap: Record<string, { revenue: number; count: number }> = {};
@@ -1397,21 +1403,21 @@ export default function DashboardView() {
       .map(([name, { revenue: r, count }]) => ({ name, revenue: r, count }))
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 6);
-    const topRevenue = topSuppliers[0]?.revenue || 1;
 
     return {
-      total, occupied, free, reserved, maintenance,
-      occPct, revenue,
-      contracts: withEnd,
-      expiringSoon,
-      expired: expired.length,
-      expiredCodes: expired.slice(0, 4).map((x) => x.code).join(", "),
-      noContract,
-      topSuppliers, topRevenue,
+      total, occupied, free, held, occPct, revenue,
+      expired, expiring, noContract,
+      topSuppliers,
     };
   }, [fixtures]);
 
   const activeSedeCount = sedes.filter((s) => (fixturesBySede[s] ?? []).length > 0).length;
+
+  const attentionCount = kpis.expired.length + kpis.expiring.length + kpis.noContract.length;
+  const lastAttentionSection =
+    kpis.noContract.length > 0 ? "noContract"
+    : kpis.expiring.length > 0 ? "expiring"
+    : "expired";
 
   return (
     <div
@@ -1627,177 +1633,158 @@ export default function DashboardView() {
             </div>
           </Card>
 
-          {/* ── KPI row ──────────────────────────────────────────────────── */}
-          <div
+          {/* ── KPI strip ────────────────────────────────────────────────── */}
+          <Card
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
-              gap: 12,
-              marginBottom: 16,
+              display: "flex", flexWrap: "wrap", alignItems: "stretch",
+              borderRadius: "var(--r-lg)", overflow: "hidden",
+              marginBottom: 14,
             }}
           >
-            <KpiCard
-              label="Total espacios"
+            <KpiTile
+              label="Espacios"
               value={kpis.total}
-              valueColor="var(--ink-1)"
-              hint={`${fixtures.length} fixtures · caras dobles ×2`}
-              icon={<Building2 size={14} />}
-              iconBg="var(--accent-100)"
-              iconColor="var(--accent-700)"
+              sub={`${fixtures.length} fixtures · dobles ×2`}
+              color="var(--ink-1)"
             />
-            <KpiCard
+            <KpiTile
+              divider
+              label="Libres"
+              value={kpis.free}
+              color="var(--success)"
+            />
+            <KpiTile
+              divider
               label="Ocupados"
-              value={kpis.occupied}
-              valueColor="var(--accent-700)"
-              hint={`${kpis.free} libres · ${kpis.reserved} reservados`}
-              icon={<DoorOpen size={14} />}
-              iconBg="var(--accent-100)"
-              iconColor="var(--accent-700)"
+              value={`${kpis.occupied} · ${kpis.occPct}%`}
+              sub="ocupación"
+              color="var(--accent-700)"
             />
-            <KpiCard
-              label="Ocupación"
-              value={`${kpis.occPct}%`}
-              valueColor={
-                kpis.occPct >= 80 ? "var(--success)"
-                : kpis.occPct >= 50 ? "var(--accent-700)"
-                : kpis.occPct >= 20 ? "var(--warning)"
-                : "var(--danger)"
-              }
-              hint={`${kpis.occupied} de ${kpis.total} espacios`}
-              icon={<Percent size={14} />}
-              iconBg="var(--success-100)"
-              iconColor="var(--success)"
-            />
-            {isAdmin && (
-              <KpiCard
-                label="Ingreso mensual"
-                value={formatCOP(kpis.revenue)}
-                valueColor="var(--success)"
-                hint="COP · caras ocupadas"
-                icon={<TrendingUp size={14} />}
-                iconBg="var(--success-100)"
-                iconColor="var(--success)"
+            {kpis.held > 0 && (
+              <KpiTile
+                divider
+                label="Reserv. / Mant."
+                value={kpis.held}
+                color="var(--warning)"
               />
             )}
-            <KpiCard
+            <KpiTile
+              divider
+              label="Vencidos"
+              value={kpis.expired.length}
+              color={kpis.expired.length > 0 ? "var(--danger)" : "var(--ink-4)"}
+            />
+            <KpiTile
+              divider
               label="Por vencer ≤30d"
-              value={kpis.expiringSoon}
-              valueColor={kpis.expiringSoon > 0 ? "var(--warning)" : "var(--ink-4)"}
-              hint={
-                kpis.expiringSoon > 0
-                  ? "Revisá renovaciones pronto"
-                  : "Sin vencimientos próximos ✓"
-              }
-              icon={<Clock size={14} />}
-              iconBg={kpis.expiringSoon > 0 ? "var(--warning-100)" : "var(--surface-3)"}
-              iconColor={kpis.expiringSoon > 0 ? "var(--warning)" : "var(--ink-4)"}
-              bg={kpis.expiringSoon > 0 ? "var(--warning-50)" : undefined}
-              borderColor={kpis.expiringSoon > 0 ? "rgba(180,83,9,0.2)" : undefined}
+              value={kpis.expiring.length}
+              color={kpis.expiring.length > 0 ? "var(--warning)" : "var(--ink-4)"}
             />
-          </div>
-
-          {/* ── Contratos por vencer ─────────────────────────────────────── */}
-          <Card style={{ padding: 0, overflow: "hidden", marginBottom: 16 }}>
-            <CardHeader
-              icon={<Clock size={13} style={{ color: "var(--warning)" }} />}
-              title="Contratos por vencer"
-              sub="· ordenados por días restantes"
-            />
-            {kpis.contracts.length === 0 ? (
-              <div style={{ padding: 24, textAlign: "center", fontSize: 12, color: "var(--ink-3)" }}>
-                Sin contratos con fecha de fin registrada.
-              </div>
-            ) : (
-              <div style={{ maxHeight: 320, overflowY: "auto" }}>
-                {kpis.contracts.map((entry, i) => (
-                  <ExpiringRow
-                    key={`${entry.fixture.id}-${entry.face}`}
-                    entry={entry}
-                    last={i === kpis.contracts.length - 1}
-                  />
-                ))}
-              </div>
+            {isAdmin && (
+              <KpiTile
+                divider
+                label="Ingreso mensual"
+                value={formatCOP(kpis.revenue)}
+                sub="COP · caras ocupadas"
+                color="var(--success)"
+              />
             )}
           </Card>
 
-          {/* ── Requiere atención + Top proveedores ──────────────────────── */}
+          {/* ── Atención + Top proveedores ───────────────────────────────── */}
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: isAdmin ? "1fr 1fr" : "1fr",
-              gap: 16,
-              marginBottom: 16,
+              display: "flex", flexWrap: "wrap", alignItems: "flex-start",
+              gap: 14, marginBottom: 14,
             }}
           >
-            <Card style={{ padding: 0, overflow: "hidden" }}>
+            <Card style={{ padding: 0, overflow: "hidden", flex: isAdmin ? "58 1 380px" : "1 1 100%", minWidth: 0 }}>
               <CardHeader
-                icon={<AlertTriangle size={13} style={{ color: "var(--warning)" }} />}
-                title="Requiere atención"
-              />
-              <ActionRow
-                tone="danger"
-                active={kpis.expired > 0 || kpis.noContract > 0}
-                title={
-                  kpis.expired > 0 || kpis.noContract > 0
-                    ? `${kpis.expired + kpis.noContract} espacio${kpis.expired + kpis.noContract !== 1 ? "s" : ""} ocupado${kpis.expired + kpis.noContract !== 1 ? "s" : ""} con contrato vencido o sin registrar`
-                    : "Sin espacios ocupados irregulares"
+                icon={
+                  <AlertTriangle
+                    size={13}
+                    style={{ color: attentionCount > 0 ? "var(--danger)" : "var(--success)" }}
+                  />
                 }
-                detail={
-                  kpis.expired > 0
-                    ? kpis.expiredCodes + (kpis.expired > 4 ? "…" : "")
-                    : kpis.noContract > 0
-                    ? "Espacios ocupados sin fecha de fin"
-                    : "Todos los espacios ocupados tienen contrato ✓"
+                title="Atención"
+                sub={
+                  attentionCount > 0
+                    ? `${attentionCount} pendiente${attentionCount !== 1 ? "s" : ""}`
+                    : undefined
                 }
               />
-              <ActionRow
-                tone="warning"
-                active={kpis.expiringSoon > 0}
-                title={
-                  kpis.expiringSoon > 0
-                    ? `${kpis.expiringSoon} contrato${kpis.expiringSoon !== 1 ? "s" : ""} vence${kpis.expiringSoon !== 1 ? "n" : ""} en ≤30 días`
-                    : "Sin contratos por vencer"
-                }
-                detail={
-                  kpis.expiringSoon > 0
-                    ? "Revisá renovaciones antes del vencimiento"
-                    : "Ningún contrato vence en los próximos 30 días ✓"
-                }
-              />
-              <ActionRow
-                tone="success"
-                active={kpis.free > 0}
-                title={
-                  kpis.free > 0
-                    ? `${kpis.free} espacio${kpis.free !== 1 ? "s" : ""} disponible${kpis.free !== 1 ? "s" : ""} para arrendar`
-                    : "Toda la planta asignada"
-                }
-                detail={
-                  kpis.free > 0
-                    ? "Oportunidad de ingresos — asigná un proveedor"
-                    : "Sin espacios libres"
-                }
-                last
-              />
+              {attentionCount === 0 ? (
+                <div style={{ padding: "10px 14px", fontSize: 12, fontWeight: 500, color: "var(--success)" }}>
+                  ✓ Sin contratos vencidos ni próximos a vencer
+                </div>
+              ) : (
+                <div style={{ maxHeight: 340, overflowY: "auto" }}>
+                  {kpis.expired.length > 0 && (
+                    <>
+                      <AtencionSection label={`Vencidos · ${kpis.expired.length}`} color="var(--danger)" />
+                      {kpis.expired.map((entry, i) => (
+                        <AtencionRow
+                          key={`${entry.fixture.id}-${entry.face}`}
+                          entry={entry}
+                          chip={`${entry.days}d`}
+                          chipColor="var(--danger)"
+                          bg="var(--danger-50)"
+                          dates={formatRange(entry.startDate, entry.endDate)}
+                          last={lastAttentionSection === "expired" && i === kpis.expired.length - 1}
+                        />
+                      ))}
+                    </>
+                  )}
+                  {kpis.expiring.length > 0 && (
+                    <>
+                      <AtencionSection label={`Por vencer ≤30d · ${kpis.expiring.length}`} color="var(--warning)" />
+                      {kpis.expiring.map((entry, i) => (
+                        <AtencionRow
+                          key={`${entry.fixture.id}-${entry.face}`}
+                          entry={entry}
+                          chip={`${entry.days}d`}
+                          chipColor="var(--warning)"
+                          bg="var(--warning-50)"
+                          dates={formatRange(entry.startDate, entry.endDate)}
+                          last={lastAttentionSection === "expiring" && i === kpis.expiring.length - 1}
+                        />
+                      ))}
+                    </>
+                  )}
+                  {kpis.noContract.length > 0 && (
+                    <>
+                      <AtencionSection
+                        label={`Ocupados sin contrato registrado · ${kpis.noContract.length}`}
+                        color="var(--danger)"
+                      />
+                      {kpis.noContract.map((entry, i) => (
+                        <AtencionRow
+                          key={`${entry.fixture.id}-${entry.face}`}
+                          entry={entry}
+                          chip="—"
+                          chipColor="var(--ink-4)"
+                          bg="transparent"
+                          dates="sin fechas"
+                          last={lastAttentionSection === "noContract" && i === kpis.noContract.length - 1}
+                        />
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
             </Card>
 
             {isAdmin && (
-              <Card style={{ padding: 0, overflow: "hidden" }}>
+              <Card style={{ padding: 0, overflow: "hidden", flex: "42 1 300px", minWidth: 0 }}>
                 <CardHeader
                   icon={<TrendingUp size={13} style={{ color: "var(--accent)" }} />}
                   title="Top proveedores"
-                  sub="· por ingreso mensual"
+                  sub="por ingreso mensual"
                 />
-                <div style={{ padding: 8 }}>
+                <div style={{ padding: "6px 0" }}>
                   {kpis.topSuppliers.length === 0 ? (
-                    <div style={{ padding: 24, textAlign: "center" }}>
-                      <div style={{ fontSize: 24, marginBottom: 6 }}>📋</div>
-                      <div style={{ fontSize: 12, fontWeight: 500, color: "var(--ink-2)" }}>
-                        Sin contratos activos
-                      </div>
-                      <div style={{ fontSize: 11, marginTop: 2, color: "var(--ink-3)" }}>
-                        Asigná proveedores desde el Plano
-                      </div>
+                    <div style={{ padding: "4px 14px 8px", fontSize: 12, color: "var(--ink-3)" }}>
+                      Sin contratos activos con valor registrado.
                     </div>
                   ) : (
                     kpis.topSuppliers.map((s, i) => (
@@ -1807,7 +1794,6 @@ export default function DashboardView() {
                         revenue={s.revenue}
                         count={s.count}
                         rank={i}
-                        pct={(s.revenue / kpis.topRevenue) * 100}
                       />
                     ))
                   )}
@@ -1821,7 +1807,7 @@ export default function DashboardView() {
             <CardHeader
               icon={null}
               title="Estado por espacio"
-              sub={`— ${sede} · ${fixtures.length} fixture${fixtures.length !== 1 ? "s" : ""}`}
+              sub={`${sede} · ${kpis.total} espacio${kpis.total !== 1 ? "s" : ""}`}
             />
             <SpacesTable fixtures={fixtures} isAdmin={isAdmin} />
           </Card>
