@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   MousePointer2,
   RotateCw,
@@ -6,6 +6,8 @@ import {
   Save,
   Eye,
   EyeOff,
+  Search,
+  X,
 } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types/fixtures";
@@ -127,6 +129,66 @@ const STATUS_LABELS: Record<SpaceStatus, string> = {
   reserved:    "Reservado",
   maintenance: "Mantenimiento",
 };
+
+// ─── Search + status filter (canvas control bar) ─────────────────────────────
+
+type StatusFilter2D = "all" | "free" | "occupied" | "expiring" | "expired";
+
+/** Accent/case-insensitive normalization: NFD + strip combining marks. */
+function normalizeText(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+/** Whole days from today (local midnight) until `dateStr`; null when unset/invalid.
+ *  Same date math as DaysLeftStrip (T00:00:00 parse, round by MS_PER_DAY). */
+function daysUntil(dateStr: string): number | null {
+  if (!dateStr) return null;
+  const end = new Date(`${dateStr}T00:00:00`);
+  if (isNaN(end.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((end.getTime() - today.getTime()) / 86_400_000);
+}
+
+/** True when ANY face (A = top-level fields, B = faceB) passes the chip filter. */
+function matchesStatusFilter(item: PlacedItem2D, filter: StatusFilter2D): boolean {
+  if (filter === "all") return true;
+  const faces: { status: SpaceStatus; endDate: string }[] = [
+    { status: item.status, endDate: item.endDate },
+  ];
+  if (item.faceB) faces.push({ status: item.faceB.status, endDate: item.faceB.endDate });
+  return faces.some((f) => {
+    if (filter === "free")     return f.status === "free";
+    if (filter === "occupied") return f.status === "occupied";
+    const d = daysUntil(f.endDate);
+    if (d === null) return false;
+    if (filter === "expiring") return d >= 0 && d <= 30;
+    return d < 0 && f.status === "occupied"; // "expired"
+  });
+}
+
+/** True when the pre-normalized query matches any searchable field on either face. */
+function matchesQuery(item: PlacedItem2D, normalizedQuery: string): boolean {
+  if (!normalizedQuery) return true;
+  const fields = [
+    item.code,
+    item.label,
+    item.nomenclatura ?? "",
+    item.supplierName,
+    item.brandCategory,
+    item.faceB?.supplierName ?? "",
+    item.faceB?.brandCategory ?? "",
+  ];
+  return fields.some((f) => normalizeText(f).includes(normalizedQuery));
+}
+
+const STATUS_FILTER_CHIPS: { value: StatusFilter2D; label: string; color: string; fill: string }[] = [
+  { value: "all",      label: "Todos",      color: "var(--accent)",        fill: "var(--accent-50)" },
+  { value: "free",     label: "Libres",     color: STATUS_COLORS.free,     fill: STATUS_FILL.free },
+  { value: "occupied", label: "Ocupados",   color: STATUS_COLORS.occupied, fill: STATUS_FILL.occupied },
+  { value: "expiring", label: "Por vencer", color: STATUS_COLORS.reserved, fill: STATUS_FILL.reserved },
+  { value: "expired",  label: "Vencidos",   color: STATUS_COLORS.occupied, fill: STATUS_FILL.occupied },
+];
 
 // SEDES is now managed in the store — see storeSedeList below.
 
@@ -321,6 +383,9 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   const [editingCatalogVal, setEditingCatalogVal]   = useState("");
   // Nomenclatura pills visibility (bottom-bar "Etiquetas" toggle, default ON)
   const [showLabels, setShowLabels] = useState(true);
+  // Canvas search + status filter (local UI state — never touches the store)
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter2D>("all");
   // Which face of a double gondola the panel opens on (set by half-click detection)
   const [panelFace, setPanelFace] = useState<"A" | "B">("A");
   const svgRef = useRef<SVGSVGElement>(null);
@@ -984,6 +1049,20 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   const selectedItem = selectedId ? (items.find((i) => i.id === selectedId) ?? null) : null;
   const ghostDef = pendingType ? CATALOG.find((c) => c.type === pendingType) : null;
 
+  // Search + status filter matching (AND-combined); null set = no filter active
+  const normalizedQuery = normalizeText(searchQuery.trim());
+  const filterActive = normalizedQuery.length > 0 || statusFilter !== "all";
+  const matchedIds = useMemo<Set<string> | null>(() => {
+    if (!filterActive) return null;
+    const s = new Set<string>();
+    for (const it of items) {
+      if (matchesQuery(it, normalizedQuery) && matchesStatusFilter(it, statusFilter)) {
+        s.add(it.id);
+      }
+    }
+    return s;
+  }, [items, normalizedQuery, statusFilter, filterActive]);
+
   // ── Grid pattern defs ────────────────────────────────────────────────────────
 
   const gridCell = PX_PER_M; // 1m in px (at zoom=1)
@@ -1280,10 +1359,13 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                 const isSelected = selectedIds.has(item.id);
                 const isCollidingDrag = isColliding && dragState?.id === item.id;
                 const catDef = CATALOG.find((c) => c.type === item.type);
+                const isFilterMatch = matchedIds === null || matchedIds.has(item.id);
+                const isDimmed = filterActive && !isFilterMatch;
 
                 return (
                   <g
                     key={item.id}
+                    opacity={isDimmed ? 0.15 : 1}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (e.shiftKey) {
@@ -1369,6 +1451,26 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                       rx={4 / zoom}
                     />
 
+                    {/* Search/filter match highlight — accent outline + soft outer glow */}
+                    {filterActive && isFilterMatch && (
+                      <>
+                        <rect
+                          x={px} y={py} width={pw} height={ph}
+                          fill="none" stroke="var(--accent)"
+                          strokeWidth={6 / zoom} opacity={0.22}
+                          rx={4 / zoom}
+                          style={{ pointerEvents: "none" }}
+                        />
+                        <rect
+                          x={px} y={py} width={pw} height={ph}
+                          fill="none" stroke="var(--accent)"
+                          strokeWidth={2.5 / zoom}
+                          rx={4 / zoom}
+                          style={{ pointerEvents: "none" }}
+                        />
+                      </>
+                    )}
+
                     {/* Front-face indicator — colored stripe on the accessible/product face.
                         Convention: rotY=0 → south (bottom); rotates clockwise each 90°.
                         Hidden for types where orientation has no customer-facing meaning. */}
@@ -1388,8 +1490,9 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                     })()}
 
                     {/* Nomenclatura pill — floats above the rect at constant screen
-                        size, with a small leader line down to the top edge. */}
-                    {showLabels && item.nomenclatura && (() => {
+                        size, with a small leader line down to the top edge.
+                        Filter matches always show their pill, Etiquetas toggle aside. */}
+                    {(showLabels || (filterActive && isFilterMatch)) && item.nomenclatura && (() => {
                       // Property narrowing doesn't cross the closure — re-default here.
                       const text = item.nomenclatura ?? "";
                       const fs = 10.5 / zoom;
@@ -1592,6 +1695,82 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
 
             </g>
           </svg>
+
+          {/* Search + status filter — floating card, top-left over the canvas */}
+          <div
+            style={{
+              position: "absolute", top: 12, left: 12, zIndex: 10,
+              maxWidth: "calc(100% - 24px)",
+              display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6,
+              background: "var(--surface)", border: "1px solid var(--line)",
+              borderRadius: "var(--r-lg)", padding: "6px 8px",
+              boxShadow: "var(--shadow-md)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
+              <Search size={13} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setSearchQuery("");
+                    e.currentTarget.blur();
+                    e.stopPropagation();
+                  }
+                }}
+                placeholder="Buscar espacio, categoría o proveedor…"
+                style={{
+                  width: 230, fontSize: 12, background: "transparent",
+                  border: "none", outline: "none", color: "var(--ink-1)",
+                  fontFamily: "inherit",
+                }}
+              />
+              {searchQuery.length > 0 && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  title="Limpiar búsqueda"
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    padding: 2, borderRadius: 4, border: "none",
+                    background: "transparent", cursor: "pointer", color: "var(--ink-4)",
+                    flexShrink: 0,
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-4)"; }}
+                >
+                  <X size={12} />
+                </button>
+              )}
+              {filterActive && (
+                <span style={{ fontSize: 10.5, color: "var(--ink-3)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                  {matchedIds?.size ?? 0} de {items.length}
+                </span>
+              )}
+            </div>
+
+            <div style={{ width: 1, height: 16, background: "var(--line)", flexShrink: 0 }} />
+
+            {STATUS_FILTER_CHIPS.map((chip) => {
+              const active = statusFilter === chip.value;
+              return (
+                <button
+                  key={chip.value}
+                  onClick={() => setStatusFilter(chip.value)}
+                  style={{
+                    fontSize: 11, fontWeight: 500, fontFamily: "inherit",
+                    padding: "2px 9px", borderRadius: 999, cursor: "pointer",
+                    border: `1px solid ${active ? chip.color : "var(--line)"}`,
+                    background: active ? chip.fill : "transparent",
+                    color: active ? chip.color : "var(--ink-3)",
+                    transition: "all .12s", whiteSpace: "nowrap",
+                  }}
+                >
+                  {chip.label}
+                </button>
+              );
+            })}
+          </div>
 
           {/* Zoom indicator */}
           <div

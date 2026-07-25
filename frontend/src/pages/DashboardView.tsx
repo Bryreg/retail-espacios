@@ -1064,6 +1064,8 @@ const TABLE_CHIPS: { id: MapFilter; label: string; ring: string; fill: string }[
 function SpacesTable({ fixtures, isAdmin }: { fixtures: UnifiedFixture[]; isAdmin: boolean }) {
   // Independent from the map's chip state.
   const [filter, setFilter] = useState<MapFilter>("todos");
+  const [query, setQuery] = useState("");
+  const [searchFocus, setSearchFocus] = useState(false);
 
   // One row per rentable face — doubles expand to A + B, matching the KPIs.
   const rows = useMemo(
@@ -1076,17 +1078,20 @@ function SpacesTable({ fixtures, isAdmin }: { fixtures: UnifiedFixture[]; isAdmi
     [fixtures],
   );
 
-  const filtered = useMemo(
-    () => (filter === "todos" ? rows : rows.filter((e) => faceMatchesFilter(e, filter))),
-    [rows, filter],
-  );
+  // Text search AND status chip (same face-level matcher as the map's search).
+  const filtered = useMemo(() => {
+    const q = normalizeText(query.trim());
+    return rows.filter(
+      (e) => (!q || faceMatchesQuery(e, q)) && faceMatchesFilter(e, filter),
+    );
+  }, [rows, filter, query]);
 
   const headers = ["Código", "Tipo", "Proveedor", "Estado", "Días"];
   if (isAdmin) headers.push("Renta / mes");
 
   return (
     <>
-      {/* Count + status filter chips */}
+      {/* Search + count + status filter chips */}
       <div
         style={{
           display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
@@ -1094,6 +1099,45 @@ function SpacesTable({ fixtures, isAdmin }: { fixtures: UnifiedFixture[]; isAdmi
           borderBottom: "1px solid var(--line-soft)",
         }}
       >
+        <div
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            width: 200, padding: "4px 8px", flexShrink: 0,
+            background: "var(--surface-2)",
+            border: `1px solid ${searchFocus ? "var(--accent)" : "var(--line)"}`,
+            borderRadius: "var(--r-md)",
+            transition: "border-color .12s",
+          }}
+        >
+          <Search size={13} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onFocus={() => setSearchFocus(true)}
+            onBlur={() => setSearchFocus(false)}
+            placeholder="Buscar…"
+            style={{
+              flex: 1, minWidth: 0, padding: 0,
+              border: "none", outline: "none", background: "transparent",
+              fontSize: 12, fontFamily: "inherit", color: "var(--ink-1)",
+            }}
+          />
+          {query && (
+            <button
+              onClick={() => setQuery("")}
+              title="Limpiar búsqueda"
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 16, height: 16, borderRadius: 99, flexShrink: 0,
+                background: "var(--surface-3)", border: "none",
+                color: "var(--ink-2)", cursor: "pointer", padding: 0,
+              }}
+            >
+              <X size={10} />
+            </button>
+          )}
+        </div>
         {TABLE_CHIPS.map((c) => {
           const active = filter === c.id;
           return (
@@ -1154,7 +1198,9 @@ function SpacesTable({ fixtures, isAdmin }: { fixtures: UnifiedFixture[]; isAdmi
             {filtered.length === 0 && (
               <tr>
                 <td colSpan={headers.length} style={{ padding: "10px 14px", fontSize: 12, color: "var(--ink-3)" }}>
-                  Sin espacios con este estado.
+                  {query.trim()
+                    ? <>Sin resultados para «{query.trim()}»</>
+                    : "Sin espacios con este estado."}
                 </td>
               </tr>
             )}
