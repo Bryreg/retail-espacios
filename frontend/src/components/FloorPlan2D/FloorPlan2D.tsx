@@ -2062,7 +2062,7 @@ function DaysLeftStrip({ startDate, endDate }: { startDate: string; endDate: str
 
 // ─── Files section (contract documents per space) ─────────────────────────────
 
-const ALLOWED_FILE_EXTS = [".pdf", ".xls", ".xlsx", ".csv"];
+const ALLOWED_FILE_EXTS = [".pdf", ".xls", ".xlsx", ".csv", ".jpg", ".jpeg", ".png", ".webp"];
 
 function FilesSection({
   code, name, zone, sedeName, areaM2, isAdmin, editMode,
@@ -2127,7 +2127,7 @@ function FilesSection({
     const dot = file.name.lastIndexOf(".");
     const ext = dot >= 0 ? file.name.slice(dot).toLowerCase() : "";
     if (!ALLOWED_FILE_EXTS.includes(ext)) {
-      setError("Formato no permitido (.pdf, .xls, .xlsx, .csv)");
+      setError("Formato no permitido (.pdf, .xls, .xlsx, .csv, .jpg, .jpeg, .png, .webp)");
       return;
     }
     setUploading(true);
@@ -2220,7 +2220,7 @@ function FilesSection({
               <input
                 ref={inputRef}
                 type="file"
-                accept=".pdf,.xls,.xlsx,.csv"
+                accept=".pdf,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.webp"
                 style={{ display: "none" }}
                 onChange={(e) => {
                   const file = e.target.files?.[0];

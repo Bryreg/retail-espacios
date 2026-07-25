@@ -15,6 +15,7 @@ import { isDoubleGondola } from "../../types/fixtures";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
 import { findOrCreateSpace, createLease } from "../../api/spaces";
 import { findOrCreateSupplier } from "../../api/suppliers";
+import { fileUrl, getFaceImages } from "../../api/files";
 
 // ─── Scene constants ──────────────────────────────────────────────────────────
 
@@ -39,6 +40,58 @@ function computeDays(start: string, end: string): number {
 
 function euclidean(ax: number, az: number, bx: number, bz: number) {
   return Math.sqrt((ax-bx)**2+(az-bz)**2);
+}
+
+// ─── Face paint (per-face material arrays) ───────────────────────────────────
+// Imagery (supplier photo or category pattern) is painted ONTO an existing box
+// of the fixture mesh via a material array — never onto new positioned
+// geometry — so it inherits the fixture group's transform and cannot float.
+
+interface FacePaint {
+  /** Material for the fixture's FRONT face (this file's convention: -Z at rotY 0). */
+  front: THREE.Material | null;
+  /** Material for the BACK face (+Z) — only set for double gondolas (face B). */
+  back:  THREE.Material | null;
+}
+
+/** Cached plain Lambert materials — the "everything else stays as today" faces. */
+const plainLambertCache = new Map<string, THREE.MeshLambertMaterial>();
+function getPlainLambert(color: string): THREE.MeshLambertMaterial {
+  let m = plainLambertCache.get(color);
+  if (!m) {
+    m = new THREE.MeshLambertMaterial({ color });
+    plainLambertCache.set(color, m);
+  }
+  return m;
+}
+
+/** Cached plain Standard materials (for panels that use emissive/standard). */
+const plainStandardCache = new Map<string, THREE.MeshStandardMaterial>();
+function getPlainStandard(
+  color: string, emissive: string, emissiveIntensity: number, opacity: number,
+): THREE.MeshStandardMaterial {
+  const key = `${color}|${emissive}|${emissiveIntensity}|${opacity}`;
+  let m = plainStandardCache.get(key);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({
+      color, emissive, emissiveIntensity, transparent: true, opacity,
+    });
+    plainStandardCache.set(key, m);
+  }
+  return m;
+}
+
+/**
+ * Build the 6-material array for a painted box.
+ * BoxGeometry face order: [+X, -X, +Y, -Y, +Z, -Z].
+ * Front (-Z, index 5) ← face A texture; back (+Z, index 4) ← face B texture.
+ */
+function facePaintArray(
+  plain: THREE.Material,
+  front: THREE.Material | null,
+  back:  THREE.Material | null,
+): THREE.Material[] {
+  return [plain, plain, plain, plain, back ?? plain, front ?? plain];
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -230,6 +283,7 @@ interface GondolaMeshProps {
   statusColor: string;
   ghost?:         boolean;
   gondolaType?:   GondolaType;
+  facePaint?:     FacePaint | null;
   slots?:         ShelfSlot[];
   selectedSlotId?: string | null;
   hoveredSlotId?:  string | null;
@@ -240,6 +294,7 @@ interface GondolaMeshProps {
 const GondolaMesh = memo(function GondolaMesh({
   w, d, h, ghost,
   gondolaType = "double",
+  facePaint,
   slots, selectedSlotId, hoveredSlotId,
   onSlotClick, onSlotHover,
 }: GondolaMeshProps) {
@@ -267,6 +322,18 @@ const GondolaMesh = memo(function GondolaMesh({
   // Wall gondola: solid back panel flush with rear face (goes against the wall).
   // Double gondola: thin center spine at z=0 so both faces are open (symmetric).
   const backPosZ = isWall ? d / 2 - backT / 2 : 0;
+
+  // Painted panel materials: front (-Z) ← face A, back (+Z) ← face B (double
+  // only). All remaining faces keep the plain panel color. The paint lives on
+  // the gondola's OWN back/spine panel, so it inherits every transform.
+  const panelMats = useMemo(() => {
+    if (ghost || !facePaint || (!facePaint.front && !facePaint.back)) return null;
+    return facePaintArray(
+      getPlainLambert(G_PANEL),
+      facePaint.front,
+      isWall ? null : facePaint.back,
+    );
+  }, [ghost, facePaint, isWall, G_PANEL]);
   // No mid-posts — gondola modules only have structural uprights at each end,
   // not internal vertical dividers.
   const nMidPosts = 0;
@@ -311,11 +378,17 @@ const GondolaMesh = memo(function GondolaMesh({
         <meshStandardMaterial color="#f2f2f0" metalness={0.05} roughness={0.30} transparent opacity={op} />
       </mesh>
 
-      {/* Back / wall panel */}
-      <mesh position={[0, h / 2, backPosZ]} castShadow>
-        <boxGeometry args={[w, h, backT]} />
-        <meshLambertMaterial color={G_PANEL} transparent opacity={op} />
-      </mesh>
+      {/* Back / wall panel — painted with face imagery when available */}
+      {panelMats ? (
+        <mesh position={[0, h / 2, backPosZ]} castShadow material={panelMats}>
+          <boxGeometry args={[w, h, backT]} />
+        </mesh>
+      ) : (
+        <mesh position={[0, h / 2, backPosZ]} castShadow>
+          <boxGeometry args={[w, h, backT]} />
+          <meshLambertMaterial color={G_PANEL} transparent opacity={op} />
+        </mesh>
+      )}
 
       {/* Shelf boards + price rails */}
       {shelves.map((sy, i) => (
@@ -390,6 +463,7 @@ const GondolaMesh = memo(function GondolaMesh({
 interface PuntaMeshProps {
   w: number; d: number; h: number;
   statusColor: string; ghost?: boolean;
+  facePaint?: FacePaint | null;
   slots?: ShelfSlot[];
   selectedSlotId?: string | null;
   hoveredSlotId?:  string | null;
@@ -397,7 +471,7 @@ interface PuntaMeshProps {
   onSlotHover?:    (slotId: string | null) => void;
 }
 
-function PuntaMesh({ w, d, h, ghost, slots, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: PuntaMeshProps) {
+function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: PuntaMeshProps) {
   const op      = ghost ? 0.42 : 1;
   const topperH = 0.36;              // promotional header height
   const bodyH   = h - topperH;
@@ -409,13 +483,24 @@ function PuntaMesh({ w, d, h, ghost, slots, selectedSlotId, hoveredSlotId, onSlo
   const G_FRAME = "#c0c0bc";
   const G_BACK  = "#d8d8d5";
 
+  const plateMats = useMemo(() => {
+    if (ghost || !facePaint?.front) return null;
+    return facePaintArray(getPlainLambert(G_BACK), facePaint.front, null);
+  }, [ghost, facePaint, G_BACK]);
+
   return (
     <group>
-      {/* Structural back plate (faces the gondola) */}
-      <mesh position={[0, bodyH / 2, d * 0.40]} castShadow>
-        <boxGeometry args={[w, bodyH, d * 0.22]} />
-        <meshLambertMaterial color={G_BACK} transparent opacity={op} />
-      </mesh>
+      {/* Structural back plate (faces the gondola) — front (-Z) face painted */}
+      {plateMats ? (
+        <mesh position={[0, bodyH / 2, d * 0.40]} castShadow material={plateMats}>
+          <boxGeometry args={[w, bodyH, d * 0.22]} />
+        </mesh>
+      ) : (
+        <mesh position={[0, bodyH / 2, d * 0.40]} castShadow>
+          <boxGeometry args={[w, bodyH, d * 0.22]} />
+          <meshLambertMaterial color={G_BACK} transparent opacity={op} />
+        </mesh>
+      )}
 
       {/* Left & right uprights */}
       {([-1, 1] as const).map(side => (
@@ -501,7 +586,7 @@ function PuntaMesh({ w, d, h, ghost, slots, selectedSlotId, hoveredSlotId, onSlo
 // que al colocarlo junto a la Punta forme una unidad coherente.
 // Dimensiones: w=0.30 (ancho panel), d=0.40 (= profundidad Punta → encaja ras)
 
-function RobatopeMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
+function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
   const op      = ghost ? 0.42 : 1;
   const capH    = 0.055;                 // thin dark cap at top (no promotional topper)
   const bodyH   = h - capH;
@@ -512,13 +597,24 @@ function RobatopeMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:num
   const G_FRAME = "#c0c0bc";
   const G_BACK  = "#d8d8d5";
 
+  const panelMats = useMemo(() => {
+    if (ghost || !facePaint?.front) return null;
+    return facePaintArray(getPlainLambert(G_BACK), facePaint.front, null);
+  }, [ghost, facePaint, G_BACK]);
+
   return (
     <group>
-      {/* Back structural panel (faces the gondola aisle) */}
-      <mesh position={[0, bodyH / 2, d * 0.40]} castShadow>
-        <boxGeometry args={[w, bodyH, d * 0.20]} />
-        <meshLambertMaterial color={G_BACK} transparent opacity={op} />
-      </mesh>
+      {/* Back structural panel (faces the gondola aisle) — front face painted */}
+      {panelMats ? (
+        <mesh position={[0, bodyH / 2, d * 0.40]} castShadow material={panelMats}>
+          <boxGeometry args={[w, bodyH, d * 0.20]} />
+        </mesh>
+      ) : (
+        <mesh position={[0, bodyH / 2, d * 0.40]} castShadow>
+          <boxGeometry args={[w, bodyH, d * 0.20]} />
+          <meshLambertMaterial color={G_BACK} transparent opacity={op} />
+        </mesh>
+      )}
 
       {/* Left & right uprights — identical profile to PuntaMesh */}
       {([-1, 1] as const).map(side => (
@@ -764,7 +860,7 @@ function MetroMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number
 
 // ─── Mesh: Mueble ─────────────────────────────────────────────────────────────
 
-function MuebleMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
+function MuebleMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
   const op        = ghost ? 0.42 : 1;
   const baseH     = Math.min(h * 0.22, 0.40);   // solid plinth
   const doorH     = h - baseH;
@@ -839,11 +935,20 @@ function MuebleMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:numbe
         );
       })}
 
-      {/* Back panel (inside) */}
-      <mesh position={[0, baseH + doorH / 2, d / 2 - 0.020]}>
-        <boxGeometry args={[w - 0.036, doorH - 0.036, 0.018]} />
-        <meshLambertMaterial color="#f0f0ee" transparent opacity={op} />
-      </mesh>
+      {/* Back panel (inside) — front (-Z) face painted, visible through glass */}
+      {!ghost && facePaint?.front ? (
+        <mesh
+          position={[0, baseH + doorH / 2, d / 2 - 0.020]}
+          material={facePaintArray(getPlainLambert("#f0f0ee"), facePaint.front, null)}
+        >
+          <boxGeometry args={[w - 0.036, doorH - 0.036, 0.018]} />
+        </mesh>
+      ) : (
+        <mesh position={[0, baseH + doorH / 2, d / 2 - 0.020]}>
+          <boxGeometry args={[w - 0.036, doorH - 0.036, 0.018]} />
+          <meshLambertMaterial color="#f0f0ee" transparent opacity={op} />
+        </mesh>
+      )}
 
       {/* Internal LED lighting strip (top) */}
       <mesh position={[0, baseH + doorH - 0.055, 0]}>
@@ -1334,7 +1439,7 @@ function NeveraCarnesMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h
 // Vitrina multideck de frente abierto para bebidas y lácteos: cuerpo oscuro,
 // estantes iluminados con tiras LED, productos visibles desde el pasillo.
 
-function NeveraRefrescosMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
+function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
   const op      = ghost ? 0.42 : 1;
   const BODY    = "#1e293b";
   const SHELF_C = "#334155";
@@ -1377,12 +1482,25 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost }: { w:number;d:numbe
         </mesh>
       ))}
 
-      {/* Pared interior iluminada (back wall de la zona fría) */}
-      <mesh position={[0, compH + dispH / 2, d / 2 - 0.055]}>
-        <boxGeometry args={[w - 0.040, dispH, 0.010]} />
-        <meshStandardMaterial color="#f0f9ff" emissive={LED_C} emissiveIntensity={0.30}
-          transparent opacity={0.85 * op} />
-      </mesh>
+      {/* Pared interior iluminada (back wall de la zona fría) — cara frontal pintada */}
+      {!ghost && facePaint?.front ? (
+        <mesh
+          position={[0, compH + dispH / 2, d / 2 - 0.055]}
+          material={facePaintArray(
+            getPlainStandard("#f0f9ff", LED_C, 0.30, 0.85),
+            facePaint.front,
+            null,
+          )}
+        >
+          <boxGeometry args={[w - 0.040, dispH, 0.010]} />
+        </mesh>
+      ) : (
+        <mesh position={[0, compH + dispH / 2, d / 2 - 0.055]}>
+          <boxGeometry args={[w - 0.040, dispH, 0.010]} />
+          <meshStandardMaterial color="#f0f9ff" emissive={LED_C} emissiveIntensity={0.30}
+            transparent opacity={0.85 * op} />
+        </mesh>
+      )}
 
       {/* Estantes + tira LED + productos */}
       {Array.from({ length: nShelves }, (_, si) => {
@@ -1642,19 +1760,21 @@ function ColumnaMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:numb
 interface FixtureMeshProps {
   fixture:         PlacedFixture;
   ghost?:          boolean;
+  facePaint?:      FacePaint | null;
   selectedSlotId?: string | null;
   hoveredSlotId?:  string | null;
   onSlotClick?:    (slotId: string) => void;
   onSlotHover?:    (slotId: string | null) => void;
 }
 
-function FixtureMesh({ fixture, ghost, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: FixtureMeshProps) {
+function FixtureMesh({ fixture, ghost, facePaint, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: FixtureMeshProps) {
   const sc = STATUS_COLORS[fixture.status] ?? STATUS_COLORS.free;
   const base = { w:fixture.w, d:fixture.d, h:fixture.h, statusColor:sc, ghost };
   switch (fixture.type) {
     case "gondola": return (
       <GondolaMesh {...base}
         gondolaType={fixture.gondolaType ?? "double"}
+        facePaint={facePaint}
         slots={fixture.slots}
         selectedSlotId={selectedSlotId}
         hoveredSlotId={hoveredSlotId}
@@ -1664,6 +1784,7 @@ function FixtureMesh({ fixture, ghost, selectedSlotId, hoveredSlotId, onSlotClic
     );
     case "punta": return (
       <PuntaMesh {...base}
+        facePaint={facePaint}
         slots={fixture.slots}
         selectedSlotId={selectedSlotId}
         hoveredSlotId={hoveredSlotId}
@@ -1671,17 +1792,17 @@ function FixtureMesh({ fixture, ghost, selectedSlotId, hoveredSlotId, onSlotClic
         onSlotHover={onSlotHover}
       />
     );
-    case "robatope":      return <RobatopeMesh      {...base} />;
+    case "robatope":      return <RobatopeMesh      {...base} facePaint={facePaint} />;
     case "ristra":        return <RistraMesh         {...base} />;
     case "cross":         return <CrossMesh          {...base} />;
     case "metro":         return <MetroMesh          {...base} />;
-    case "mueble":        return <MuebleMesh         {...base} />;
+    case "mueble":        return <MuebleMesh         {...base} facePaint={facePaint} />;
     case "isla":          return <IslaMesh           {...base} />;
     case "impulsador":    return <ImpulsadorMesh     {...base} />;
     case "batea":         return <BateaMesh          {...base} />;
     case "isla_fria":        return <IslaFriaMesh         {...base} />;
     case "nevera_carnes":    return <NeveraCarnesMesh     {...base} />;
-    case "nevera_refrescos": return <NeveraRefrescosMesh  {...base} />;
+    case "nevera_refrescos": return <NeveraRefrescosMesh  {...base} facePaint={facePaint} />;
     case "stand_frutas":     return <StandFrutasMesh       {...base} />;
     case "checkout":      return <CheckoutMesh       {...base} />;
     case "columna":       return <ColumnaMesh        {...base} />;
@@ -2013,12 +2134,16 @@ function FirstPersonControls({
   return null;
 }
 
-// ─── Category strips (flat 2D product fill) ──────────────────────────────────
-// Replaces the old 3D InstancedMesh product system. Every shelf-like fixture
-// with a commercial category gets ONE textured plane per shelf level and face:
-// a horizontal strip of stylized package tiles drawn on a cached CanvasTexture.
-// Purely visual — raycast is disabled so clicks still hit the fixture
-// hit-volumes, and all strip dimensions derive from the fixture's own w/d/h.
+// ─── Face imagery sources (photos + category patterns) ───────────────────────
+// Replaces BOTH earlier attempts (InstancedMesh products, CategoryStrips
+// planes): any NEW positioned geometry had to replicate the fixture placement
+// math and kept floating detached. Now the imagery is painted directly onto an
+// EXISTING box of each fixture through a per-face material array (see
+// facePaintArray above), so it inherits the fixture group's full transform and
+// cannot misalign. Texture priority per face:
+//   1. supplier photo   — GET /api/spaces/face-images, loaded via fileUrl()
+//   2. category pattern — square canvas texture, "stocked shelves" look
+//   3. none             — plain color material, exactly as today
 
 const SHELF_LIKE_TYPES = new Set<string>([
   "gondola", "punta", "mueble", "isla", "batea", "robatope",
@@ -2093,179 +2218,263 @@ function traceRoundedRect(
 // Deterministic per-tile height factors → slightly irregular "product skyline".
 const TILE_HEIGHT_VAR = [0.86, 0.97, 0.90, 1.00, 0.84, 0.94, 0.88, 0.99];
 
-/** Base strip texture per category — module-level cache, lives for the session. */
-const stripTextureCache = new Map<CategoryKey, THREE.CanvasTexture>();
+/** Square "stocked shelves" face texture per category — session-level cache. */
+const faceTextureCache = new Map<CategoryKey, THREE.CanvasTexture>();
 
-function getStripTexture(key: CategoryKey): THREE.CanvasTexture {
-  const cached = stripTextureCache.get(key);
+function getCategoryFaceTexture(key: CategoryKey): THREE.CanvasTexture {
+  const cached = faceTextureCache.get(key);
   if (cached) return cached;
 
-  const W = 1024, H = 256, TILES = 8;
+  const S = 512, ROWS = 4, COLS = 4;
   const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
+  canvas.width = S;
+  canvas.height = S;
   const ctx = canvas.getContext("2d")!;
-  ctx.clearRect(0, 0, W, H); // transparent background
+
+  // Opaque neutral background — the texture replaces the panel color entirely.
+  ctx.fillStyle = "#e3e0da";
+  ctx.fillRect(0, 0, S, S);
 
   const { emoji, palette } = CATEGORY_STYLE[key];
-  const tileW = W / TILES;
-  const baseline = H - 12; // common baseline: tiles "stand" on the shelf
+  const rowH  = S / ROWS;
+  const tileW = S / COLS;
 
-  for (let i = 0; i < TILES; i++) {
-    const tileH = (H - 34) * TILE_HEIGHT_VAR[i % TILE_HEIGHT_VAR.length];
-    const x = i * tileW + 10;
-    const bw = tileW - 20;
-    const y = baseline - tileH;
+  for (let r = 0; r < ROWS; r++) {
+    const baseline = (r + 1) * rowH - 10;
 
-    // Package silhouette (rounded rect)
-    ctx.fillStyle = palette[i % palette.length];
-    traceRoundedRect(ctx, x, y, bw, tileH, 14);
-    ctx.fill();
+    // Shelf board under each row of packages
+    ctx.fillStyle = "#b7b3ab";
+    ctx.fillRect(0, baseline, S, 7);
 
-    // Subtle top highlight → reads as a lid / label band
-    ctx.fillStyle = "rgba(255,255,255,0.16)";
-    traceRoundedRect(ctx, x + 6, y + 6, bw - 12, Math.max(10, tileH * 0.16), 8);
-    ctx.fill();
+    for (let c = 0; c < COLS; c++) {
+      const idx   = r * COLS + c;
+      const tileH = (rowH - 26) * TILE_HEIGHT_VAR[idx % TILE_HEIGHT_VAR.length];
+      const x     = c * tileW + 8;
+      const bw    = tileW - 16;
+      const y     = baseline - tileH;
 
-    // Large centered emoji
-    ctx.font = `${Math.round(tileH * 0.52)}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(emoji, x + bw / 2, y + tileH * 0.56);
+      // Package silhouette (rounded rect)
+      ctx.fillStyle = palette[idx % palette.length];
+      traceRoundedRect(ctx, x, y, bw, tileH, 10);
+      ctx.fill();
+
+      // Subtle top highlight → reads as a lid / label band
+      ctx.fillStyle = "rgba(255,255,255,0.16)";
+      traceRoundedRect(ctx, x + 5, y + 5, bw - 10, Math.max(8, tileH * 0.16), 6);
+      ctx.fill();
+
+      // Large centered emoji
+      ctx.font = `${Math.round(tileH * 0.50)}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(emoji, x + bw / 2, y + tileH * 0.55);
+    }
   }
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.ClampToEdgeWrapping;
-  stripTextureCache.set(key, tex);
+  faceTextureCache.set(key, tex);
   return tex;
 }
 
 /**
- * Material per (category × width bucket). Widths are bucketed in 0.5 m steps so
- * texture/material instances stay low (~30 for a full store). Each bucket gets
- * a cloned texture with repeat.x = bucket → tiles keep a constant world size.
+ * Category material per (category × face-aspect bucket). repeat.x tracks the
+ * face's w/h so package tiles keep a roughly square world shape instead of
+ * stretching with the panel. Aspect is bucketed (0.25 steps) to bound cache size.
  */
-const stripMaterialCache = new Map<string, THREE.MeshBasicMaterial>();
+const categoryFaceMaterialCache = new Map<string, THREE.MeshBasicMaterial>();
 
-function getStripMaterial(key: CategoryKey, width: number): THREE.MeshBasicMaterial {
-  const bucket = Math.max(1, Math.round(width / 0.5));
+function getCategoryFaceMaterial(key: CategoryKey, faceAspect: number): THREE.MeshBasicMaterial {
+  const bucket = Math.max(0.25, Math.round(faceAspect * 4) / 4);
   const cacheKey = `${key}|${bucket}`;
-  let mat = stripMaterialCache.get(cacheKey);
+  let mat = categoryFaceMaterialCache.get(cacheKey);
   if (!mat) {
-    const tex = getStripTexture(key).clone();
+    const tex = getCategoryFaceTexture(key).clone();
     tex.repeat.x = bucket;
+    tex.offset.x = bucket < 1 ? (1 - bucket) / 2 : 0;
     tex.needsUpdate = true;
-    mat = new THREE.MeshBasicMaterial({
-      map:         tex,
-      transparent: true,
-      side:        THREE.FrontSide,
-      toneMapped:  false,
-      depthWrite:  true,
-    });
-    stripMaterialCache.set(cacheKey, mat);
+    mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+    categoryFaceMaterialCache.set(cacheKey, mat);
   }
   return mat;
 }
 
-// One shared unit plane — every strip is this geometry scaled to (width, height).
-const STRIP_GEOM = new THREE.PlaneGeometry(1, 1);
-const noRaycast = () => {}; // strips are purely visual — clicks pass through
+// ─── Supplier photo textures (lazy, deduped, async) ──────────────────────────
 
-interface StripPlane {
-  key:      string;
-  y:        number;
-  z:        number;
-  rotY:     number;
-  width:    number;
-  height:   number;
-  material: THREE.MeshBasicMaterial;
+interface PhotoTexEntry {
+  status:   "loading" | "ok" | "error";
+  texture?: THREE.Texture;
+  aspect:   number;
+  waiters:  Set<() => void>;
+}
+
+/** Base photo texture per file_id — loaded at most once per session. */
+const photoTexCache = new Map<number, PhotoTexEntry>();
+/** Cover-fitted photo material per (file_id × face-aspect bucket). */
+const photoMatCache = new Map<string, THREE.MeshBasicMaterial>();
+
+/**
+ * Cap the photo caches: long sessions browsing many supplier photos would
+ * otherwise accumulate GPU textures without bound (nothing ever disposed).
+ * Insertion-order eviction — Map preserves it, so the first key is the oldest.
+ */
+const MAX_PHOTO_TEX = 64;
+
+function evictOldestPhotoIfFull(): void {
+  if (photoTexCache.size < MAX_PHOTO_TEX) return;
+  const oldestId = photoTexCache.keys().next().value;
+  if (oldestId === undefined) return;
+  photoTexCache.get(oldestId)?.texture?.dispose();
+  photoTexCache.delete(oldestId);
+  // Drop every derived material for that file — photoMatCache keys are
+  // `${fileId}|${bucket}`, so match on the fileId prefix.
+  const prefix = `${oldestId}|`;
+  for (const [key, mat] of photoMatCache) {
+    if (key.startsWith(prefix)) {
+      mat.map?.dispose(); // cloned texture owned by this material
+      mat.dispose();
+      photoMatCache.delete(key);
+    }
+  }
 }
 
 /**
- * Strip planes for one fixture, in the fixture's LOCAL space. They are rendered
- * inside the same <group position rotation> as the fixture mesh itself, so they
- * inherit rotY and can never drift off the fixture. All dimensions derive from
- * the fixture's own w/d/h only — never world constants.
+ * Returns the cover-fitted photo material, or null while the texture is still
+ * loading / after a load error (callers fall through to the category pattern).
+ * `notify` is invoked once when the async load settles so React can re-resolve.
  */
-function stripPlanesFor(fix: PlacedFixture, faceBCategory: string): StripPlane[] {
-  if (!SHELF_LIKE_TYPES.has(fix.type as string)) return [];
-  const catA = (fix.brandCategory || "").trim();
-  const catB = (faceBCategory || "").trim();
-  if (!catA && !catB) return [];
-
-  const { w, d, h } = fix;
-  const width    = Math.max(0.2, w - 0.06);
-  const levels   = Math.min(5, Math.max(1, Math.floor(h / 0.45)));
-  const levelGap = h / levels;
-  const stripH   = levelGap * 0.72;
-  // Mesh convention in this file: the "front" face (price rails / status strip)
-  // is -Z, so face A lives on the -Z side; face B (double gondolas) on +Z.
-  const zFront = -(d / 2 - 0.02);
-  const zBack  =   d / 2 - 0.02;
-
-  // Shared check + legacy "gondola_doble" type kept for old persisted layouts.
-  const isDouble = isDoubleGondola(fix) || (fix.type as string) === "gondola_doble";
-
-  const faces: { cat: string; z: number; rotY: number; tag: string }[] = [];
-  if (isDouble) {
-    // One strip per face per level, each with its own category texture.
-    // rotY = π flips the -Z plane so it faces outward (FrontSide material).
-    if (catA) faces.push({ cat: catA, z: zFront, rotY: Math.PI, tag: "A" });
-    if (catB) faces.push({ cat: catB, z: zBack,  rotY: 0,       tag: "B" });
-  } else {
-    // Single-face fixtures: ONE strip per level on the front face only.
-    faces.push({ cat: catA || catB, z: zFront, rotY: Math.PI, tag: "A" });
+function getPhotoFaceMaterial(
+  fileId: number,
+  faceAspect: number,
+  notify: () => void,
+): THREE.MeshBasicMaterial | null {
+  let entry = photoTexCache.get(fileId);
+  if (!entry) {
+    evictOldestPhotoIfFull();
+    const fresh: PhotoTexEntry = { status: "loading", aspect: 1, waiters: new Set() };
+    photoTexCache.set(fileId, fresh);
+    entry = fresh;
+    // Same-origin URL; the JWT rides in the ?token= query (fileUrl helper).
+    new THREE.TextureLoader().load(
+      fileUrl(fileId),
+      tex => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 4;
+        tex.center.set(0.5, 0.5);
+        const img = tex.image as { width?: number; height?: number } | undefined;
+        fresh.aspect  = img?.width && img?.height ? img.width / img.height : 1;
+        fresh.texture = tex;
+        fresh.status  = "ok";
+        fresh.waiters.forEach(w => w());
+        fresh.waiters.clear();
+      },
+      undefined,
+      () => {
+        fresh.status = "error";
+        fresh.waiters.forEach(w => w());
+        fresh.waiters.clear();
+      },
+    );
   }
+  if (entry.status === "loading") { entry.waiters.add(notify); return null; }
+  if (entry.status === "error" || !entry.texture) return null;
 
-  const out: StripPlane[] = [];
-  for (const face of faces) {
-    const material = getStripMaterial(categoryKeyFor(face.cat, fix.label), width);
-    for (let level = 0; level < levels; level++) {
-      out.push({
-        key:    `${face.tag}|${level}`,
-        // Plane bottom sits ON the shelf surface (+2 cm epsilon).
-        y:      level * levelGap + 0.02 + stripH / 2,
-        z:      face.z,
-        rotY:   face.rotY,
-        width,
-        height: stripH,
-        material,
-      });
-    }
+  const bucket = Math.max(0.25, Math.round(faceAspect * 8) / 8);
+  const key = `${fileId}|${bucket}`;
+  let mat = photoMatCache.get(key);
+  if (!mat) {
+    const tex = entry.texture.clone(); // clone shares the image — cheap
+    // Cover-fit: crop (never stretch) the photo to the face's aspect ratio.
+    if (entry.aspect > bucket) tex.repeat.set(bucket / entry.aspect, 1);
+    else                       tex.repeat.set(1, entry.aspect / bucket);
+    tex.offset.set((1 - tex.repeat.x) / 2, (1 - tex.repeat.y) / 2);
+    tex.needsUpdate = true;
+    mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+    photoMatCache.set(key, mat);
   }
-  return out;
+  return mat;
 }
 
-/** Flat category strips for one fixture — rendered inside the fixture's group. */
-const CategoryStrips = memo(function CategoryStrips({
-  fixture, faceBCategory,
-}: {
-  fixture:       PlacedFixture;
-  faceBCategory: string;
-}) {
-  const planes = useMemo(
-    () => stripPlanesFor(fixture, faceBCategory),
-    [fixture, faceBCategory],
-  );
-  if (planes.length === 0) return null;
+/** Shelf-like types whose mesh has a paintable full-face panel. */
+const FACE_PAINTABLE_TYPES = new Set<string>([
+  "gondola", "gondola_doble", "punta", "robatope", "mueble", "nevera_refrescos",
+]);
+
+/**
+ * Resolve the material for ONE face, by priority:
+ *   supplier photo → category pattern → null (keep plain color).
+ */
+function resolveFaceMaterial(
+  faceCode: string | null,
+  category: string,
+  label:    string,
+  faceW:    number,
+  faceH:    number,
+  faceImages: Map<string, number> | null,
+  notify:     () => void,
+): THREE.Material | null {
+  const aspect = faceW / Math.max(0.05, faceH);
+  if (faceCode && faceImages) {
+    const fileId = faceImages.get(faceCode);
+    if (fileId !== undefined) {
+      const photo = getPhotoFaceMaterial(fileId, aspect, notify);
+      if (photo) return photo;
+      // still loading or failed → fall through to the category pattern
+    }
+  }
+  const cat = (category || "").trim();
+  if (cat) return getCategoryFaceMaterial(categoryKeyFor(cat, label), aspect);
+  return null;
+}
+
+// ─── "Sin contrato" badge ────────────────────────────────────────────────────
+// Anchored INSIDE the fixture's group (top center), scales with distance,
+// occluded by geometry, and hidden entirely beyond BADGE_MAX_DIST so the
+// scene never fills with billboards.
+
+const BADGE_MAX_DIST = 25; // metres
+
+function FixtureBadge({ x, z, h }: { x: number; z: number; h: number }) {
+  const [visible, setVisible] = useState(false);
+  useFrame(({ camera }) => {
+    // Scalar math only — no allocations in the frame loop.
+    const dx = camera.position.x - x;
+    const dy = camera.position.y - h;
+    const dz = camera.position.z - z;
+    const near = dx * dx + dy * dy + dz * dz < BADGE_MAX_DIST * BADGE_MAX_DIST;
+    setVisible(v => (v === near ? v : near));
+  });
+  if (!visible) return null;
   return (
-    <>
-      {planes.map(p => (
-        <mesh
-          key={p.key}
-          geometry={STRIP_GEOM}
-          material={p.material}
-          position={[0, p.y, p.z]}
-          rotation={[0, p.rotY, 0]}
-          scale={[p.width, p.height, 1]}
-          raycast={noRaycast}
-        />
-      ))}
-    </>
+    <Html
+      position={[0, h + 0.35, 0]}
+      center
+      distanceFactor={6}
+      occlude
+      zIndexRange={[5, 0]}
+      style={{ pointerEvents: "none" }}
+    >
+      <div style={{
+        background: "#ef4444",
+        color: "#fff",
+        fontSize: 11,
+        fontWeight: 700,
+        padding: "2px 6px",
+        borderRadius: 4,
+        whiteSpace: "nowrap",
+        maxWidth: 90,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        pointerEvents: "none",
+        boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
+      }}>
+        ⚠ Sin contrato
+      </div>
+    </Html>
   );
-});
+}
 
 // ─── Scene ───────────────────────────────────────────────────────────────────
 
@@ -2301,15 +2510,81 @@ function Scene({
   onSelectFixture, setPlacedFixtures,
   screenshotReady, topViewReady, firstPerson, onHoverFixture, fixtures,
 }: SceneProps) {
-  const { gl, camera } = useThree();
+  const { gl, camera, invalidate } = useThree();
   const { setCamera3D } = useFixtureStore();
 
-  // Face-B categories (double gondolas) come from the unified store fixtures.
-  const faceBById = useMemo(() => {
-    const m = new Map<string, string>();
-    fixtures.forEach(f => { if (f.faceB?.brandCategory) m.set(f.id, f.faceB.brandCategory); });
+  // Unified fixtures by id — sede/code/faceB metadata + badge checks.
+  const unifiedById = useMemo(() => {
+    const m = new Map<string, UnifiedFixture>();
+    fixtures.forEach(f => m.set(f.id, f));
     return m;
   }, [fixtures]);
+
+  // Supplier face images: code → file_id (most recent image per space).
+  // null until the fetch settles; failures degrade to category patterns.
+  const [faceImages, setFaceImages] = useState<Map<string, number> | null>(null);
+  useEffect(() => {
+    let alive = true;
+    getFaceImages()
+      .then((rows: { code: string; file_id: number }[]) => {
+        if (alive) setFaceImages(new Map(rows.map(r => [r.code.toUpperCase(), r.file_id])));
+      })
+      .catch(() => { if (alive) setFaceImages(new Map()); });
+    return () => { alive = false; };
+  }, []);
+
+  // Bumped when an async photo texture settles → re-resolve materials + redraw.
+  const [texVersion, setTexVersion] = useState(0);
+  const notifyTexLoaded = useCallback(() => {
+    setTexVersion(v => v + 1);
+    invalidate();
+  }, [invalidate]);
+
+  // Face-paint materials per fixture id (photo → category pattern → plain).
+  const facePaintById = useMemo(() => {
+    const map = new Map<string, FacePaint>();
+    const storeSede = useFixtureStore.getState().sede;
+    for (const fix of placedFixtures) {
+      const type = fix.type as string;
+      if (!SHELF_LIKE_TYPES.has(type) || !FACE_PAINTABLE_TYPES.has(type)) continue;
+      const uf = unifiedById.get(fix.id);
+      // Contract-save convention (FloorPlan2D AssignmentPanel):
+      //   fullCode = `${item.sede || sede}-${item.code}`; face B appends "-B".
+      // 3D-generated codes already embed the sede prefix — guard against
+      // double-prefixing so both editors' fixtures resolve their space code.
+      const sedeVal = uf?.sede || storeSede;
+      // Case-insensitive: generateCode embeds the sede UPPERCASED in fix.code,
+      // so compare/compose in uppercase on both sides (faceImages keys are
+      // uppercased too) — a raw-case sede must never double-prefix the code.
+      const codeUC = fix.code.toUpperCase();
+      const sedeUC = (sedeVal ?? "").toUpperCase();
+      const fullCode = sedeUC && !codeUC.startsWith(`${sedeUC}-`)
+        ? `${sedeUC}-${codeUC}`
+        : codeUC;
+      // Fallback: 2D-created spaces saved with a raw-case sede prefix may
+      // uppercase to a key that differs from the computed fullCode — try the
+      // bare uppercased code too. First hit wins.
+      const pickCode = (primary: string, fallback: string) =>
+        faceImages && !faceImages.has(primary) && faceImages.has(fallback)
+          ? fallback
+          : primary;
+      const isDouble = isDoubleGondola(fix) || type === "gondola_doble";
+      const front = resolveFaceMaterial(
+        pickCode(fullCode, codeUC), fix.brandCategory, fix.label,
+        fix.w, fix.h, faceImages, notifyTexLoaded,
+      );
+      const back = isDouble
+        ? resolveFaceMaterial(
+            pickCode(`${fullCode}-B`, `${codeUC}-B`), uf?.faceB?.brandCategory ?? "", fix.label,
+            fix.w, fix.h, faceImages, notifyTexLoaded,
+          )
+        : null;
+      if (front || back) map.set(fix.id, { front, back });
+    }
+    return map;
+  // texVersion re-runs this memo when an async photo texture settles
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placedFixtures, unifiedById, faceImages, texVersion, notifyTexLoaded]);
 
   // CHANGE 1 — Restore camera + wire persistence once OrbitControls are ready.
   // W1: Read camera3D from getState() at call time (not from closure) to avoid stale values.
@@ -2491,36 +2766,19 @@ function Scene({
           <group key={fix.id} position={[fix.x,0,fix.z]} rotation={[0,fix.rotY,0]}>
             <FixtureMesh
               fixture={fix}
+              facePaint={facePaintById.get(fix.id) ?? null}
               /* slots disabled — omit onSlotClick/onSlotHover to skip all slot meshes */
             />
-            {/* Flat category strips — inside the same group, so they inherit rotY */}
-            <CategoryStrips fixture={fix} faceBCategory={faceBById.get(fix.id) ?? ""} />
             {fix.id===selectedId && !selectedSlotId && <SelectionBox w={fix.w} d={fix.d} h={fix.h} />}
-            {/* CHANGE 4 — Unauthorized placement badge */}
+            {/* CHANGE 4 — Unauthorized placement badge (distance-gated + occluded) */}
             {(() => {
-              const unifiedFix = fixtures.find(f => f.id === fix.id);
+              const unifiedFix = unifiedById.get(fix.id);
               if (!unifiedFix) return null;
               const isUnauthorized =
                 unifiedFix.status === "occupied" &&
                 (!unifiedFix.supplierName || !unifiedFix.endDate || new Date(unifiedFix.endDate) < new Date());
               if (!isUnauthorized) return null;
-              return (
-                <Html position={[0, fix.h + 0.4, 0]} center distanceFactor={10}>
-                  <div style={{
-                    background: "#ef4444",
-                    color: "#fff",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    padding: "2px 6px",
-                    borderRadius: 4,
-                    whiteSpace: "nowrap",
-                    pointerEvents: "none",
-                    boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
-                  }}>
-                    ⚠ Sin contrato
-                  </div>
-                </Html>
-              );
+              return <FixtureBadge x={fix.x} z={fix.z} h={fix.h} />;
             })()}
             {/* Hit volume */}
             <mesh

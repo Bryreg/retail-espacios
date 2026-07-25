@@ -13,12 +13,16 @@ from app.models.models import Space, SpaceFile
 router = APIRouter(tags=["files"])
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
-ALLOWED_EXTENSIONS = {".pdf", ".xls", ".xlsx", ".csv"}
+ALLOWED_EXTENSIONS = {".pdf", ".xls", ".xlsx", ".csv", ".jpg", ".jpeg", ".png", ".webp"}
 MEDIA_TYPES = {
     ".pdf": "application/pdf",
     ".xls": "application/vnd.ms-excel",
     ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     ".csv": "text/csv",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
 }
 
 
@@ -55,7 +59,7 @@ async def upload_space_file(
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=422,
-            detail="Extensión no permitida. Solo se aceptan archivos PDF, XLS, XLSX o CSV.",
+            detail="Extensión no permitida. Solo se aceptan archivos PDF, XLS, XLSX, CSV o imágenes JPG, PNG y WEBP.",
         )
 
     data = await file.read()

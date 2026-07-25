@@ -1,10 +1,12 @@
 from datetime import date
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from app.auth import require_admin, require_auth
 from app.database import get_db
-from app.models.models import Space, SpaceLease, Supplier, SpaceStatus
+from app.models.models import Space, SpaceFile, SpaceLease, Supplier, SpaceStatus
 from app.schemas.spaces import SpaceOut, SpaceCreate, SpaceStatusUpdate, LeaseCreate, LeaseOut, SpaceMapItem, SpaceFindOrCreate
 from app.services.mailer import format_cop, html_shell, send_mail_bg
 
@@ -147,6 +149,49 @@ def list_spaces(role: str = Depends(require_auth), db: Session = Depends(get_db)
         joinedload(Space.leases).joinedload(SpaceLease.supplier)
     ).order_by(Space.zone, Space.code).all()
     return [_space_out_for_role(space, role) for space in spaces]
+
+
+class FaceImageOut(BaseModel):
+    code: str
+    file_id: int
+
+
+# Route-order gotcha: this literal path MUST be declared ABOVE "/{space_id}".
+# Starlette matches routes in registration order, so the catch-all would
+# otherwise swallow "/spaces/face-images" (422 "space_id must be int").
+@router.get("/face-images", response_model=list[FaceImageOut])
+def list_face_images(db: Session = Depends(get_db)):
+    """Latest image per space: [{code, file_id}] for every space with ≥1 image.
+
+    Single query, no N+1: a window function ranks each space's image files by
+    recency (uploaded_at, id as tiebreaker) and the outer join keeps only rank 1.
+    Only metadata columns are selected, so the LargeBinary ``data`` column is
+    never loaded.
+    """
+    rn = (
+        func.row_number()
+        .over(
+            partition_by=SpaceFile.space_id,
+            order_by=(SpaceFile.uploaded_at.desc(), SpaceFile.id.desc()),
+        )
+        .label("rn")
+    )
+    latest_images = (
+        db.query(
+            SpaceFile.id.label("file_id"),
+            SpaceFile.space_id.label("space_id"),
+            rn,
+        )
+        .filter(SpaceFile.content_type.like("image/%"))
+        .subquery()
+    )
+    rows = (
+        db.query(Space.code, latest_images.c.file_id)
+        .join(latest_images, latest_images.c.space_id == Space.id)
+        .filter(latest_images.c.rn == 1)
+        .all()
+    )
+    return [FaceImageOut(code=code, file_id=file_id) for code, file_id in rows]
 
 
 @router.get("/{space_id}", response_model=SpaceOut)

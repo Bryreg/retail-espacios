@@ -5,13 +5,14 @@ import { fileUrl, fetchFileBlob, type SpaceFileMeta } from "../api/files";
 
 // ─── File kind detection ─────────────────────────────────────────────────────
 
-type FileKind = "pdf" | "excel" | "csv" | "other";
+type FileKind = "pdf" | "excel" | "csv" | "image" | "other";
 
 function kindOf(file: SpaceFileMeta): FileKind {
   const name = file.filename.toLowerCase();
   if (name.endsWith(".pdf") || file.content_type === "application/pdf") return "pdf";
   if (name.endsWith(".xlsx") || name.endsWith(".xls")) return "excel";
   if (name.endsWith(".csv")) return "csv";
+  if (file.content_type.startsWith("image/")) return "image";
   return "other";
 }
 
@@ -158,6 +159,14 @@ export default function FileViewerModal({ file, onClose }: FileViewerModalProps)
   const [totalRows, setTotalRows] = useState(0);
   const [loading, setLoading] = useState(kind === "excel" || kind === "csv");
   const [error, setError] = useState(false);
+  const [imgLoading, setImgLoading] = useState(true);
+  const [imgError, setImgError] = useState(false);
+
+  // Reset image state when the viewed file changes (modal instance may be reused)
+  useEffect(() => {
+    setImgLoading(true);
+    setImgError(false);
+  }, [file.id]);
 
   // Close on Escape
   useEffect(() => {
@@ -284,6 +293,56 @@ export default function FileViewerModal({ file, onClose }: FileViewerModalProps)
               title={file.filename}
               style={{ width: "100%", height: "100%", border: "none", display: "block" }}
             />
+          ) : kind === "image" ? (
+            <div
+              style={{
+                height: "100%",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                overflow: "hidden", position: "relative",
+                // Dark checkerboard so transparent PNG/WebP areas stay readable
+                backgroundColor: "#1b1c1f",
+                backgroundImage:
+                  "linear-gradient(45deg, rgba(255,255,255,0.05) 25%, transparent 25%)," +
+                  "linear-gradient(-45deg, rgba(255,255,255,0.05) 25%, transparent 25%)," +
+                  "linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.05) 75%)," +
+                  "linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.05) 75%)",
+                backgroundSize: "24px 24px",
+                backgroundPosition: "0 0, 0 12px, 12px -12px, -12px 0",
+              }}
+            >
+              {imgError ? (
+                <span style={{ fontSize: 12.5, color: "var(--danger)" }}>
+                  No se pudo cargar la imagen.
+                </span>
+              ) : (
+                <>
+                  {imgLoading && (
+                    <span
+                      style={{
+                        position: "absolute", inset: 0,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 12.5, color: "rgba(255,255,255,0.55)",
+                      }}
+                    >
+                      Cargando imagen…
+                    </span>
+                  )}
+                  <img
+                    key={file.id}
+                    src={fileUrl(file.id)}
+                    alt={file.filename}
+                    onLoad={() => { setImgLoading(false); setImgError(false); }}
+                    onError={() => { setImgLoading(false); setImgError(true); }}
+                    style={{
+                      maxWidth: "100%", maxHeight: "100%",
+                      objectFit: "contain", display: "block",
+                      opacity: imgLoading ? 0 : 1,
+                      transition: "opacity 0.15s ease",
+                    }}
+                  />
+                </>
+              )}
+            </div>
           ) : kind === "excel" || kind === "csv" ? (
             loading ? (
               <div style={{ padding: 40, textAlign: "center", fontSize: 12.5, color: "var(--ink-3)" }}>

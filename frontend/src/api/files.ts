@@ -28,6 +28,15 @@ export const uploadSpaceFile = (
 export const deleteSpaceFile = (fileId: number): Promise<void> =>
   client.delete(`/files/${fileId}`).then(() => undefined);
 
+export interface SpaceFaceImage {
+  code: string;
+  file_id: number;
+}
+
+/** Latest image per space (spaces with ≥1 image only) — for painting faces on the plan. */
+export const getFaceImages = (): Promise<SpaceFaceImage[]> =>
+  client.get<SpaceFaceImage[]>("/spaces/face-images").then((r) => r.data);
+
 /** Direct URL for viewing/embedding a stored file (PDF iframe, download link).
  *  Iframes can't send Authorization headers, so the token rides as a query param —
  *  the backend accepts it for this endpoint only. */
