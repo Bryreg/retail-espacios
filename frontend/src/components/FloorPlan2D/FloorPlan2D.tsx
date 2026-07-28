@@ -326,6 +326,123 @@ function itemsToStore(
   });
 }
 
+// ─── Smart alignment guides (PowerPoint-style) ───────────────────────────────
+
+const ALIGN_TOL_M = 0.005;    // exactness tolerance for active alignment (post-snap)
+const GUIDE_EXTEND_M = 0.4;   // guide line overshoot past both items (m)
+const MAX_GUIDES = 4;         // clutter cap — nearest alignments win
+
+interface AlignmentGuide {
+  axis: "v" | "h";
+  /** Aligned coordinate in metres (x for vertical guides, y for horizontal). */
+  pos: number;
+  /** Span along the other axis (m), already extended by GUIDE_EXTEND_M. */
+  start: number;
+  end: number;
+  /** Center-center alignment → render ⊕ markers at both item centers. */
+  isCenter: boolean;
+  centers: { x: number; y: number }[];
+}
+
+/**
+ * Detect the alignments EXACTLY in effect (±ALIGN_TOL_M, i.e. after snapping)
+ * between the active item (drag leader / resized item) and every other
+ * non-dragged item. Per axis+type only the nearest neighbor (perpendicular
+ * gap) is kept; the result is capped to the MAX_GUIDES nearest guides.
+ * O(n) over items, no state — derived in render via useMemo.
+ */
+function computeAlignmentGuides(
+  active: { id: string; x: number; y: number; w: number; h: number },
+  others: PlacedItem2D[],
+  excludeIds: Set<string> | null,
+  mode: "drag" | "resize",
+): AlignmentGuide[] {
+  const aL = active.x, aR = active.x + active.w, aCX = active.x + active.w / 2;
+  const aT = active.y, aB = active.y + active.h, aCY = active.y + active.h / 2;
+
+  const best = new Map<string, { dist: number; guide: AlignmentGuide }>();
+
+  for (const o of others) {
+    if (o.id === active.id || excludeIds?.has(o.id)) continue;
+    const oL = o.x, oR = o.x + o.w, oCX = o.x + o.w / 2;
+    const oT = o.y, oB = o.y + o.h, oCY = o.y + o.h / 2;
+    // Perpendicular rect-to-rect gaps (0 when overlapping on that axis)
+    const gapY = Math.max(oT - aB, aT - oB, 0);
+    const gapX = Math.max(oL - aR, aL - oR, 0);
+
+    // Vertical guides (constant X): left-left, right-right, centerX-centerX,
+    // left-right / right-left (adjacency). Resize: right edge only.
+    const vPairs: { type: string; a: number; o: number; center?: boolean }[] =
+      mode === "drag"
+        ? [
+            { type: "ll", a: aL, o: oL },
+            { type: "rr", a: aR, o: oR },
+            { type: "cc", a: aCX, o: oCX, center: true },
+            { type: "lr", a: aL, o: oR },
+            { type: "rl", a: aR, o: oL },
+          ]
+        : [
+            { type: "rr", a: aR, o: oR },
+            { type: "rl", a: aR, o: oL },
+          ];
+    for (const p of vPairs) {
+      if (Math.abs(p.a - p.o) > ALIGN_TOL_M) continue;
+      const key = `v:${p.type}`;
+      const prev = best.get(key);
+      if (prev && prev.dist <= gapY) continue;
+      best.set(key, {
+        dist: gapY,
+        guide: {
+          axis: "v",
+          pos: p.o,
+          start: Math.min(aT, oT) - GUIDE_EXTEND_M,
+          end: Math.max(aB, oB) + GUIDE_EXTEND_M,
+          isCenter: !!p.center,
+          centers: p.center ? [{ x: p.o, y: aCY }, { x: p.o, y: oCY }] : [],
+        },
+      });
+    }
+
+    // Horizontal guides (constant Y): top-top, bottom-bottom, centerY-centerY,
+    // top-bottom / bottom-top (adjacency). Resize: bottom edge only.
+    const hPairs: { type: string; a: number; o: number; center?: boolean }[] =
+      mode === "drag"
+        ? [
+            { type: "tt", a: aT, o: oT },
+            { type: "bb", a: aB, o: oB },
+            { type: "cc", a: aCY, o: oCY, center: true },
+            { type: "tb", a: aT, o: oB },
+            { type: "bt", a: aB, o: oT },
+          ]
+        : [
+            { type: "bb", a: aB, o: oB },
+            { type: "bt", a: aB, o: oT },
+          ];
+    for (const p of hPairs) {
+      if (Math.abs(p.a - p.o) > ALIGN_TOL_M) continue;
+      const key = `h:${p.type}`;
+      const prev = best.get(key);
+      if (prev && prev.dist <= gapX) continue;
+      best.set(key, {
+        dist: gapX,
+        guide: {
+          axis: "h",
+          pos: p.o,
+          start: Math.min(aL, oL) - GUIDE_EXTEND_M,
+          end: Math.max(aR, oR) + GUIDE_EXTEND_M,
+          isCenter: !!p.center,
+          centers: p.center ? [{ x: aCX, y: p.o }, { x: oCX, y: p.o }] : [],
+        },
+      });
+    }
+  }
+
+  return [...best.values()]
+    .sort((e1, e2) => e1.dist - e2.dist)
+    .slice(0, MAX_GUIDES)
+    .map((e) => e.guide);
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface FloorPlan2DProps {
@@ -531,8 +648,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
         const d = cx - x;
         if (Math.abs(d) < Math.abs(bestDX)) { bestDX = d; xSideFixture = o; }
       }
-      // X: alignment candidates (same left/right edge) — clears the fixture tracker
-      for (const cx of [o.x, o.x + o.w - item.w]) {
+      // X: alignment candidates (same left/right edge or centerX) — clears the fixture tracker
+      for (const cx of [o.x, o.x + o.w - item.w, o.x + (o.w - item.w) / 2]) {
         const d = cx - x;
         if (Math.abs(d) < Math.abs(bestDX)) { bestDX = d; xSideFixture = null; }
       }
@@ -542,8 +659,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
         const d = cy - y;
         if (Math.abs(d) < Math.abs(bestDY)) { bestDY = d; ySideFixture = o; }
       }
-      // Y: alignment candidates
-      for (const cy of [o.y, o.y + o.h - item.h]) {
+      // Y: alignment candidates (same top/bottom edge or centerY)
+      for (const cy of [o.y, o.y + o.h - item.h, o.y + (o.h - item.h) / 2]) {
         const d = cy - y;
         if (Math.abs(d) < Math.abs(bestDY)) { bestDY = d; ySideFixture = null; }
       }
@@ -1062,6 +1179,27 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     }
     return s;
   }, [items, normalizedQuery, statusFilter, filterActive]);
+
+  // Smart alignment guides — derived from the live drag/resize state so no
+  // extra setState happens inside mousemove. Empty outside drag/resize (and
+  // in view mode), so guides vanish on mouseup. Multi-drag: leader only.
+  const alignmentGuides = useMemo<AlignmentGuide[]>(() => {
+    if (!editMode) return [];
+    if (dragState) {
+      const leader = items.find((i) => i.id === dragState.id);
+      if (!leader) return [];
+      const excludeIds = dragOrigPositions && dragOrigPositions.size > 1
+        ? new Set(dragOrigPositions.keys())
+        : null;
+      return computeAlignmentGuides(leader, items, excludeIds, "drag");
+    }
+    if (resizeState) {
+      const active = items.find((i) => i.id === resizeState.id);
+      if (!active) return [];
+      return computeAlignmentGuides(active, items, null, "resize");
+    }
+    return [];
+  }, [items, dragState, resizeState, dragOrigPositions, editMode]);
 
   // ── Grid pattern defs ────────────────────────────────────────────────────────
 
@@ -1638,6 +1776,53 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                   </g>
                 );
               })}
+
+              {/* Smart alignment guides — only while dragging/resizing */}
+              {alignmentGuides.length > 0 && (
+                <g style={{ pointerEvents: "none" }} opacity={0.9}>
+                  {alignmentGuides.map((g, idx) => {
+                    const stroke = "#E11D8F";           // smart-guide magenta
+                    const sw = 1.25 / zoom;
+                    const dash = `${5 / zoom},${3 / zoom}`;
+                    const tick = 4 / zoom;              // perpendicular end-tick size
+                    const r = 3 / zoom;                 // ⊕ center-marker radius
+                    if (g.axis === "v") {
+                      const gx = g.pos * PX_PER_M;
+                      const gy1 = g.start * PX_PER_M;
+                      const gy2 = g.end * PX_PER_M;
+                      return (
+                        <g key={`guide-v-${idx}`}>
+                          <line x1={gx} y1={gy1} x2={gx} y2={gy2} stroke={stroke} strokeWidth={sw} strokeDasharray={dash} />
+                          <line x1={gx - tick / 2} y1={gy1} x2={gx + tick / 2} y2={gy1} stroke={stroke} strokeWidth={sw} />
+                          <line x1={gx - tick / 2} y1={gy2} x2={gx + tick / 2} y2={gy2} stroke={stroke} strokeWidth={sw} />
+                          {g.isCenter && g.centers.map((c, ci) => (
+                            <g key={ci}>
+                              <circle cx={c.x * PX_PER_M} cy={c.y * PX_PER_M} r={r} fill="none" stroke={stroke} strokeWidth={sw} />
+                              <line x1={c.x * PX_PER_M - r} y1={c.y * PX_PER_M} x2={c.x * PX_PER_M + r} y2={c.y * PX_PER_M} stroke={stroke} strokeWidth={sw} />
+                            </g>
+                          ))}
+                        </g>
+                      );
+                    }
+                    const gy = g.pos * PX_PER_M;
+                    const gx1 = g.start * PX_PER_M;
+                    const gx2 = g.end * PX_PER_M;
+                    return (
+                      <g key={`guide-h-${idx}`}>
+                        <line x1={gx1} y1={gy} x2={gx2} y2={gy} stroke={stroke} strokeWidth={sw} strokeDasharray={dash} />
+                        <line x1={gx1} y1={gy - tick / 2} x2={gx1} y2={gy + tick / 2} stroke={stroke} strokeWidth={sw} />
+                        <line x1={gx2} y1={gy - tick / 2} x2={gx2} y2={gy + tick / 2} stroke={stroke} strokeWidth={sw} />
+                        {g.isCenter && g.centers.map((c, ci) => (
+                          <g key={ci}>
+                            <circle cx={c.x * PX_PER_M} cy={c.y * PX_PER_M} r={r} fill="none" stroke={stroke} strokeWidth={sw} />
+                            <line x1={c.x * PX_PER_M} y1={c.y * PX_PER_M - r} x2={c.x * PX_PER_M} y2={c.y * PX_PER_M + r} stroke={stroke} strokeWidth={sw} />
+                          </g>
+                        ))}
+                      </g>
+                    );
+                  })}
+                </g>
+              )}
 
               {/* Drawing preview rect */}
               {drawing && (() => {
