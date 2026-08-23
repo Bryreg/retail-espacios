@@ -28,4 +28,5 @@ Thumbs.db
 *.log
 
 # Tooling
-.engram/
+.engram/*
+!.engram/config.json
