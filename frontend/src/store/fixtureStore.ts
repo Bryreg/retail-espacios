@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { UnifiedFixture } from "../types/fixtures";
 import {
+  deleteLayout,
   fetchAllLayouts,
   fetchLayoutSettings,
   fetchRevisions,
@@ -260,9 +261,15 @@ export const useFixtureStore = create<FixtureStore>()(
             delete newFixturesBySede[oldName];
           }
           // The renamed sede is a brand new snapshot server-side: it has no
-          // revision yet, and its fixtures still need to be uploaded.
+          // revision yet, and its fixtures still need to be uploaded. The old
+          // snapshot has to go, or both names would keep coming back on pull.
           delete newRev[oldName];
           delete newDirty[oldName];
+          if (canWrite()) {
+            void deleteLayout(oldName).catch((err) =>
+              console.warn(`[layout sync] no se pudo eliminar «${oldName}» del servidor:`, err),
+            );
+          }
           if (newFixturesBySede[newName]?.length) {
             newDirty[newName] = true;
             scheduleSave(newName);
@@ -285,12 +292,22 @@ export const useFixtureStore = create<FixtureStore>()(
           const newDirty = { ...state.dirty };
           delete newDirty[name];
           cancelScheduledSave(name);
+          // Drop the snapshot too. Removing the sede from the shared list is not
+          // enough: every workstation would keep downloading its fixtures.
+          if (canWrite()) {
+            void deleteLayout(name).catch((err) =>
+              console.warn(`[layout sync] no se pudo eliminar «${name}» del servidor:`, err),
+            );
+          }
           const newSede =
             state.sede === name ? (remaining[0] ?? "TERRON") : state.sede;
+          const newRev = { ...state.serverRev };
+          delete newRev[name];
           scheduleSettingsSave();
           return {
             sedes: remaining.length > 0 ? remaining : ["TERRON"],
             fixturesBySede: newFixturesBySede,
+            serverRev: newRev,
             dirty: newDirty,
             sede: newSede,
             past: [],
@@ -427,8 +444,16 @@ export const useFixtureStore = create<FixtureStore>()(
         const { sedes, catalogLabels } = get();
         try {
           await saveLayoutSettings(sedes, catalogLabels);
-        } catch (err) {
+        } catch (err: any) {
+          const status = err?.response?.status;
+          if (status === 401 || status === 403) return;
           console.warn("[layout sync] no se pudieron guardar las sedes:", err);
+          // Same rule as pushSede: a failure the user cannot see is a failure
+          // they will discover as missing data on the other workstation.
+          set({
+            syncState: "error",
+            syncMessage: "No se pudo guardar la lista de sedes en el servidor.",
+          });
         }
       },
 

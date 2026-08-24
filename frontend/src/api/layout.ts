@@ -46,6 +46,10 @@ export const saveLayout = (
     })
     .then((r) => r.data);
 
+/** Drop a sede's snapshot so it stops coming back on every pull. */
+export const deleteLayout = (sede: string): Promise<void> =>
+  client.delete(`/layout/${encodeURIComponent(sede)}`).then(() => {});
+
 export const fetchLayoutSettings = (): Promise<LayoutSettings> =>
   client.get("/layout/settings").then((r) => r.data);
 

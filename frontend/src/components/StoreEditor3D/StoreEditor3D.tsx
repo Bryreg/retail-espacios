@@ -3849,6 +3849,13 @@ export default function StoreEditor3D() {
                 </span>
               );
             })}
+            <span
+              className="flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-medium"
+              style={{ background: "rgba(100,116,139,0.18)", color: "#94A3B8" }}
+            >
+              <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: NON_RENTABLE_COLOR }} />
+              No comercializable
+            </span>
           </div>
         </div>
 
