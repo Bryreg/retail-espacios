@@ -32,6 +32,15 @@ def smtp_settings() -> dict:
     }
 
 
+def app_base_url() -> str:
+    """De dónde cuelgan los enlaces que van en los correos.
+
+    Configurable porque el mismo código corre en Render y en una máquina local;
+    sin barra final para que quien concatene no genere doble barra.
+    """
+    return os.getenv("APP_URL", "https://retail-espacios.onrender.com").rstrip("/")
+
+
 def smtp_configured() -> bool:
     settings = smtp_settings()
     return bool(settings["user"] and settings["password"])

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Grid2x2, Box, BarChart2, Search, Settings, LogOut, X, Send } from "lucide-react";
+import { Grid2x2, Box, BarChart2, Camera, Search, Settings, LogOut, X, Send } from "lucide-react";
 import StoreEditor3D from "../components/StoreEditor3D/StoreEditor3D";
 import FloorPlan2D from "../components/FloorPlan2D/FloorPlan2D";
 import DashboardView from "./DashboardView";
+import MountView from "./MountView";
 import SyncStatus from "../components/SyncStatus/SyncStatus";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
 import {
@@ -18,7 +19,27 @@ import { useFixtureStore } from "../store/fixtureStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ViewMode = "map" | "store" | "kpis";
+type ViewMode = "map" | "store" | "kpis" | "montaje";
+
+/** Código que venía en el enlace del correo de montaje (`?montar=NAVE-PUN-01`).
+ *
+ *  Se lee AL CARGAR EL MÓDULO y no dentro de un componente. La primera versión
+ *  lo hacía en un inicializador de `useState`, y bajo StrictMode React invoca
+ *  ese inicializador dos veces: la primera leía el código y limpiaba la URL, la
+ *  segunda ya no encontraba nada, y ese null era el valor que quedaba. El
+ *  enlace del correo abría el resumen en vez del espacio.
+ *
+ *  Leerlo acá ocurre exactamente una vez, antes de que React renderice, y la
+ *  URL queda limpia para que recargar no reabra siempre el mismo espacio. */
+const MOUNT_DEEP_LINK: string | null = (() => {
+  if (typeof window === "undefined") return null;
+  const code = new URLSearchParams(window.location.search).get("montar");
+  if (!code) return null;
+  const url = new URL(window.location.href);
+  url.searchParams.delete("montar");
+  window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+  return code;
+})();
 
 // ─── Logo mark ────────────────────────────────────────────────────────────────
 
@@ -461,9 +482,10 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
 // ─── Topbar ───────────────────────────────────────────────────────────────────
 
 const TABS: { id: ViewMode; label: string; Icon: typeof Grid2x2 }[] = [
-  { id: "map",   label: "Plano",     Icon: Grid2x2  },
-  { id: "store", label: "Editor 3D", Icon: Box       },
-  { id: "kpis",  label: "Dashboard", Icon: BarChart2  },
+  { id: "map",     label: "Plano",     Icon: Grid2x2   },
+  { id: "store",   label: "Editor 3D", Icon: Box       },
+  { id: "kpis",    label: "Dashboard", Icon: BarChart2 },
+  { id: "montaje", label: "Montajes",  Icon: Camera    },
 ];
 
 interface TopbarProps {
@@ -475,8 +497,11 @@ interface TopbarProps {
 }
 
 function Topbar({ viewMode, setViewMode, isAdmin, onOpenSettings, onLogout }: TopbarProps) {
-  // Workers only get the dashboard tab; admins see everything.
-  const visibleTabs = isAdmin ? TABS : TABS.filter((t) => t.id === "kpis");
+  // A worker gets the dashboard and the mount screen: confirming a mount is
+  // literally their job, and it is the one thing they are allowed to write.
+  const visibleTabs = isAdmin
+    ? TABS
+    : TABS.filter((t) => t.id === "kpis" || t.id === "montaje");
 
   const iconButtonStyle: React.CSSProperties = {
     display: "flex", alignItems: "center", justifyContent: "center",
@@ -610,18 +635,24 @@ function Topbar({ viewMode, setViewMode, isAdmin, onOpenSettings, onLogout }: To
 // ─── Dashboard shell ──────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const [viewMode, setViewMode] = useState<ViewMode>("map");
+  // Arriving from the mount email opens that screen straight away, on the
+  // space the email was about.
+  const mountCode = MOUNT_DEEP_LINK;
+  const [viewMode, setViewMode] = useState<ViewMode>(mountCode ? "montaje" : "map");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const isAdmin = useAuthStore(selectIsAdmin);
   const role = useAuthStore((s) => s.role);
   const logout = useAuthStore((s) => s.logout);
 
-  // Workers only see the dashboard — force it as the active view.
+  // A worker may only be on the dashboard or the mount screen.
   useEffect(() => {
-    if (role === "worker" && viewMode !== "kpis") setViewMode("kpis");
+    if (role === "worker" && viewMode !== "kpis" && viewMode !== "montaje") {
+      setViewMode("kpis");
+    }
   }, [role, viewMode]);
 
-  const effectiveMode: ViewMode = isAdmin ? viewMode : "kpis";
+  const effectiveMode: ViewMode =
+    isAdmin || viewMode === "montaje" ? viewMode : "kpis";
 
   return (
     <div
@@ -642,6 +673,8 @@ export default function Dashboard() {
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         {effectiveMode === "store" ? (
           <StoreEditor3D />
+        ) : effectiveMode === "montaje" ? (
+          <MountView initialCode={mountCode} onDone={() => setViewMode("kpis")} />
         ) : effectiveMode === "kpis" ? (
           <DashboardView />
         ) : (

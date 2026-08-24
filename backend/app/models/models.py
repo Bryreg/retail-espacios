@@ -130,6 +130,47 @@ class SpaceFile(Base):
     uploaded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+class MountConfirmation(Base):
+    """Prueba de que el espacio contratado se montó — o de por qué no.
+
+    Tabla NUEVA a propósito. La regla del proyecto prohíbe columnas nuevas en
+    tablas existentes porque ``create_all`` no las agrega, pero sí crea tablas
+    que no existían; y guardar esto acá evita lo alternativo, que era darle al
+    mercaderista permiso de escritura sobre el JSON del layout para marcar un
+    par de campos.
+
+    Se guarda una fila por confirmación, no una por espacio: el histórico de
+    quién dijo qué y cuándo es justamente lo que sirve cuando el proveedor
+    reclama que su exhibición nunca se armó.
+    """
+    __tablename__ = "mount_confirmations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    # Se guarda el CÓDIGO y no un FK a spaces: un espacio solo existe en esa
+    # tabla si alguna vez se le guardó un contrato, y el montaje puede
+    # confirmarse antes de eso.
+    space_code = Column(String, nullable=False, index=True)
+    sede = Column(String, nullable=True, index=True)
+    # "montado" | "no_montado"
+    estado = Column(String, nullable=False)
+    # Por qué no se pudo, cuando aplica: el proveedor no entregó material, no
+    # llegó producto, se cayó por operación de la tienda.
+    motivo = Column(String, nullable=True)
+    nota = Column(Text, nullable=True)
+    # Foto en space_files. Opcional: un "no montado" no siempre tiene qué
+    # fotografiar.
+    file_id = Column(Integer, ForeignKey("space_files.id"), nullable=True)
+    # Rol que reportó. No hay tabla de usuarios; el nombre lo escribe quien
+    # confirma, para que el registro diga algo más que "worker".
+    reportado_por = Column(String, nullable=True)
+    rol = Column(String, nullable=True)
+    # La pone el SERVIDOR al recibir, nunca el dispositivo: el EXIF de un
+    # celular se edita y no defiende nada ante un reclamo.
+    confirmado_en = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True
+    )
+
+
 class NotificationLog(Base):
     """Deduplication log for sent notifications (one row per lease + kind)."""
     __tablename__ = "notification_logs"
