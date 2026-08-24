@@ -1,6 +1,8 @@
-import { useMemo } from "react";
-import { CalendarRange, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { CalendarRange, SlidersHorizontal, X } from "lucide-react";
 import { useFixtureStore } from "../../store/fixtureStore";
+import { useAuthStore, selectIsAdmin } from "../../store/authStore";
+import SeasonsModal from "./SeasonsModal";
 import {
   toISODate,
   parseISODate,
@@ -44,6 +46,8 @@ export default function SeasonPicker({
   onChange: (r: DateRange | null) => void;
 }) {
   const seasonWindows = useFixtureStore((s) => s.seasonWindows);
+  const isAdmin = useAuthStore(selectIsAdmin);
+  const [editing, setEditing] = useState(false);
 
   // Only what is still ahead: a season that already ended cannot be sold.
   const seasons = useMemo<SeasonOccurrence[]>(
@@ -150,6 +154,27 @@ export default function SeasonPicker({
           </button>
         )}
       </span>
+
+      {/* Adjusting a window belongs right here, where you notice it is wrong —
+          "navidad debería arrancar antes" is a thought you have while looking
+          at the chip, not one you take to a settings screen. */}
+      {isAdmin && (
+        <button
+          onClick={() => setEditing(true)}
+          title="Ajustar los días de cada temporada"
+          aria-label="Ajustar temporadas"
+          style={{
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            width: 25, height: 25, borderRadius: 99,
+            background: "transparent", border: "1px solid var(--line)",
+            color: "var(--ink-3)", cursor: "pointer",
+          }}
+        >
+          <SlidersHorizontal size={12} />
+        </button>
+      )}
+
+      {editing && isAdmin && <SeasonsModal onClose={() => setEditing(false)} />}
     </div>
   );
 }
