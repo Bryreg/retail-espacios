@@ -219,62 +219,6 @@ function Card({
   );
 }
 
-// ─── KPI strip tile (single compact strip replaces padded cards) ─────────────
-
-function KpiTile({
-  label,
-  value,
-  sub,
-  color,
-  divider = false,
-}: {
-  label: string;
-  value: string | number;
-  sub?: string;
-  color: string;
-  divider?: boolean;
-}) {
-  return (
-    <div
-      style={{
-        padding: "10px 14px",
-        flex: "1 1 auto", minWidth: 100,
-        borderLeft: divider ? "1px solid var(--line-soft)" : "none",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 9.5, fontWeight: 700,
-          textTransform: "uppercase", letterSpacing: "0.08em",
-          color: "var(--ink-3)", whiteSpace: "nowrap",
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 2 }}>
-        <span
-          style={{
-            fontSize: 20, fontWeight: 700, lineHeight: 1.15,
-            letterSpacing: "-0.02em", color, whiteSpace: "nowrap",
-          }}
-        >
-          {value}
-        </span>
-        {sub && (
-          <span
-            style={{
-              fontSize: 10.5, color: "var(--ink-3)",
-              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-            }}
-          >
-            {sub}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ─── Card header divider ──────────────────────────────────────────────────────
 
 function CardHeader({
@@ -297,6 +241,74 @@ function CardHeader({
       {icon}
       <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-1)" }}>{title}</span>
       {sub && <span style={{ fontSize: 11, color: "var(--ink-3)" }}>· {sub}</span>}
+    </div>
+  );
+}
+
+// ─── Stat card (headline metrics) ────────────────────────────────────────────
+
+/** One headline number. `meter` (0-100) draws a progress bar under the value —
+ *  used for occupancy, where the ratio matters more than the raw count. */
+function StatCard({
+  label, value, sub, color, meter, tone = "plain", onClick, active,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  color: string;
+  meter?: number;
+  tone?: "plain" | "alert";
+  onClick?: () => void;
+  active?: boolean;
+}) {
+  const interactive = !!onClick;
+  return (
+    <div
+      onClick={onClick}
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onKeyDown={interactive ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick!(); } } : undefined}
+      style={{
+        flex: "1 1 150px", minWidth: 140,
+        padding: "12px 14px 13px",
+        borderRadius: "var(--r-lg)",
+        background: tone === "alert" ? "var(--surface)" : "var(--surface)",
+        border: `1px solid ${active ? color : "var(--line)"}`,
+        boxShadow: active ? `0 0 0 2px ${color}22` : "var(--shadow-xs)",
+        cursor: interactive ? "pointer" : "default",
+        transition: "border-color .12s, box-shadow .12s",
+        outline: "none",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 9.5, fontWeight: 700, textTransform: "uppercase",
+          letterSpacing: "0.08em", color: "var(--ink-3)", whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 4 }}>
+        <span style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.05, letterSpacing: "-0.03em", color }}>
+          {value}
+        </span>
+        {sub && <span style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 500 }}>{sub}</span>}
+      </div>
+      {meter !== undefined && (
+        <div
+          style={{
+            marginTop: 9, height: 5, borderRadius: 99,
+            background: "var(--surface-3)", overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              width: `${Math.max(0, Math.min(100, meter))}%`, height: "100%",
+              background: color, borderRadius: 99, transition: "width .3s",
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -1099,27 +1111,16 @@ function SupplierRow({
 
 // ─── Spaces table ─────────────────────────────────────────────────────────────
 
-const TABLE_CHIP_LABELS: Record<MapFilter, string> = {
-  todos: "Todos",
-  free: "Libres",
-  occupied: "Ocupados",
-  expired: "Vencidos",
-  expiring: "Por vencer",
-};
-
-/** Same colors + face-level logic as the map's chips, shorter labels. */
-const TABLE_CHIPS: { id: MapFilter; label: string; ring: string; fill: string }[] =
-  (["todos", "free", "occupied", "expired", "expiring"] as MapFilter[]).map((id) => {
-    const base = FILTER_CHIPS.find((c) => c.id === id)!;
-    return { ...base, label: TABLE_CHIP_LABELS[id] };
-  });
-
-function SpacesTable({ fixtures, isAdmin }: { fixtures: UnifiedFixture[]; isAdmin: boolean }) {
-  // Independent from the map's chip state.
-  const [filter, setFilter] = useState<MapFilter>("todos");
-  const [query, setQuery] = useState("");
-  const [searchFocus, setSearchFocus] = useState(false);
-
+function SpacesTable({
+  fixtures, isAdmin, query, filter,
+}: {
+  fixtures: UnifiedFixture[];
+  isAdmin: boolean;
+  /** Driven by the page-level control bar — the table no longer owns a second
+   *  search box and a second row of chips doing the same job as the map's. */
+  query: string;
+  filter: MapFilter;
+}) {
   // One row per rentable face — doubles expand to A + B, matching the KPIs.
   const rows = useMemo(
     () =>
@@ -1144,87 +1145,11 @@ function SpacesTable({ fixtures, isAdmin }: { fixtures: UnifiedFixture[]; isAdmi
 
   return (
     <>
-      {/* Search + count + status filter chips */}
-      <div
-        style={{
-          display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
-          padding: "8px 10px",
-          borderBottom: "1px solid var(--line-soft)",
-        }}
-      >
-        <div
-          style={{
-            display: "inline-flex", alignItems: "center", gap: 6,
-            width: 200, padding: "4px 8px", flexShrink: 0,
-            background: "var(--surface-2)",
-            border: `1px solid ${searchFocus ? "var(--accent)" : "var(--line)"}`,
-            borderRadius: "var(--r-md)",
-            transition: "border-color .12s",
-          }}
-        >
-          <Search size={13} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onFocus={() => setSearchFocus(true)}
-            onBlur={() => setSearchFocus(false)}
-            placeholder="Buscar…"
-            style={{
-              flex: 1, minWidth: 0, padding: 0,
-              border: "none", outline: "none", background: "transparent",
-              fontSize: 12, fontFamily: "inherit", color: "var(--ink-1)",
-            }}
-          />
-          {query && (
-            <button
-              onClick={() => setQuery("")}
-              title="Limpiar búsqueda"
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                width: 16, height: 16, borderRadius: 99, flexShrink: 0,
-                background: "var(--surface-3)", border: "none",
-                color: "var(--ink-2)", cursor: "pointer", padding: 0,
-              }}
-            >
-              <X size={10} />
-            </button>
-          )}
+      {filtered.length === 0 && (
+        <div style={{ padding: "18px 14px", fontSize: 12, color: "var(--ink-3)" }}>
+          Ningún espacio coincide con la búsqueda.
         </div>
-        {TABLE_CHIPS.map((c) => {
-          const active = filter === c.id;
-          return (
-            <button
-              key={c.id}
-              onClick={() => setFilter(c.id)}
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 5,
-                height: 24, padding: "0 9px", borderRadius: 999,
-                fontSize: 10.5, fontWeight: 600, fontFamily: "inherit",
-                border: `1px solid ${active ? c.ring : "var(--line)"}`,
-                background: active ? c.fill : "var(--surface)",
-                color: active ? c.ring : "var(--ink-2)",
-                cursor: "pointer",
-                transition: "background .12s, color .12s, border-color .12s",
-              }}
-            >
-              {c.id !== "todos" && (
-                <span
-                  style={{
-                    width: 6, height: 6, borderRadius: 99,
-                    background: active ? c.ring : "var(--ink-4)", flexShrink: 0,
-                  }}
-                />
-              )}
-              {c.label}
-            </button>
-          );
-        })}
-        <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, color: "var(--ink-3)" }}>
-          {filtered.length} espacio{filtered.length !== 1 ? "s" : ""}
-        </span>
-      </div>
-
+      )}
       <div style={{ maxHeight: 360, overflowY: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 12 }}>
           <thead style={{ position: "sticky", top: 0, zIndex: 1 }}>
@@ -1622,292 +1547,329 @@ export default function DashboardView() {
         <EmptyDashboard sede={sede} isAdmin={isAdmin} />
       ) : (
         <>
-          {/* ── HERO: isometric occupancy map ─────────────────────────────── */}
+          {/* ── Control bar: ONE search + ONE set of chips for the whole page ──
+              Previously the map and the table each had their own, so the same
+              question had to be asked twice and the two could disagree. */}
           <Card
             style={{
-              minHeight: "62vh",
-              boxShadow: "var(--shadow-md)",
-              display: "flex", flexDirection: "column",
-              padding: "14px 16px 12px",
-              marginBottom: 16,
+              display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+              padding: "9px 12px", marginBottom: 12,
             }}
           >
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-1)" }}>
-                Mapa de ocupación
-              </span>
-              <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
-                — {sede} · clic en un espacio para ver su contrato
-              </span>
+            <div style={{ position: "relative", flex: "1 1 260px", minWidth: 210, maxWidth: 420 }}>
+              <Search
+                size={13}
+                style={{
+                  position: "absolute", left: 10, top: "50%",
+                  transform: "translateY(-50%)",
+                  color: "var(--ink-3)", pointerEvents: "none",
+                }}
+              />
+              <input
+                type="text"
+                value={mapQuery}
+                onChange={(e) => setMapQuery(e.target.value)}
+                placeholder="Buscar producto, categoría, proveedor o espacio…"
+                style={{
+                  width: "100%", height: 32, padding: "0 30px",
+                  borderRadius: "var(--r-md)", border: "1px solid var(--line)",
+                  background: "var(--surface-2)", color: "var(--ink-1)",
+                  fontSize: 12, fontFamily: "inherit", outline: "none",
+                }}
+              />
+              {mapQuery && (
+                <button
+                  onClick={() => setMapQuery("")}
+                  title="Limpiar búsqueda"
+                  style={{
+                    position: "absolute", right: 6, top: "50%",
+                    transform: "translateY(-50%)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 20, height: 20, borderRadius: 99,
+                    background: "var(--surface-3)", border: "none",
+                    color: "var(--ink-2)", cursor: "pointer",
+                  }}
+                >
+                  <X size={11} />
+                </button>
+              )}
             </div>
 
-            {/* Search + status filter (product geolocation) */}
-            <div
-              style={{
-                display: "flex", alignItems: "center", gap: 8,
-                flexWrap: "wrap", marginBottom: 8,
-              }}
-            >
-              <div style={{ position: "relative", flex: "1 1 240px", minWidth: 200, maxWidth: 380 }}>
-                <Search
-                  size={13}
-                  style={{
-                    position: "absolute", left: 10, top: "50%",
-                    transform: "translateY(-50%)",
-                    color: "var(--ink-3)", pointerEvents: "none",
-                  }}
-                />
-                <input
-                  type="text"
-                  value={mapQuery}
-                  onChange={(e) => setMapQuery(e.target.value)}
-                  placeholder="Buscar producto, categoría, proveedor o espacio…"
-                  style={{
-                    width: "100%", height: 32, padding: "0 30px",
-                    borderRadius: "var(--r-md)", border: "1px solid var(--line)",
-                    background: "var(--surface-2)", color: "var(--ink-1)",
-                    fontSize: 12, fontFamily: "inherit", outline: "none",
-                  }}
-                />
-                {mapQuery && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {FILTER_CHIPS.map((c) => {
+                const active = mapFilter === c.id;
+                return (
                   <button
-                    onClick={() => setMapQuery("")}
-                    title="Limpiar búsqueda"
+                    key={c.id}
+                    onClick={() => setMapFilter(c.id)}
                     style={{
-                      position: "absolute", right: 6, top: "50%",
-                      transform: "translateY(-50%)",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      width: 20, height: 20, borderRadius: 99,
-                      background: "var(--surface-3)", border: "none",
-                      color: "var(--ink-2)", cursor: "pointer",
+                      display: "inline-flex", alignItems: "center", gap: 5,
+                      height: 27, padding: "0 11px", borderRadius: 999,
+                      fontSize: 11, fontWeight: 600, fontFamily: "inherit",
+                      border: `1px solid ${active ? c.ring : "var(--line)"}`,
+                      background: active ? c.fill : "var(--surface)",
+                      color: active ? c.ring : "var(--ink-2)",
+                      cursor: "pointer",
+                      transition: "background .12s, color .12s, border-color .12s",
                     }}
                   >
-                    <X size={11} />
+                    {c.id !== "todos" && (
+                      <span
+                        style={{
+                          width: 6, height: 6, borderRadius: 99,
+                          background: active ? c.ring : "var(--ink-4)", flexShrink: 0,
+                        }}
+                      />
+                    )}
+                    {c.label}
                   </button>
-                )}
-              </div>
-
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {FILTER_CHIPS.map((c) => {
-                  const active = mapFilter === c.id;
-                  return (
-                    <button
-                      key={c.id}
-                      onClick={() => setMapFilter(c.id)}
-                      style={{
-                        display: "inline-flex", alignItems: "center", gap: 5,
-                        height: 26, padding: "0 10px", borderRadius: 999,
-                        fontSize: 11, fontWeight: 600, fontFamily: "inherit",
-                        border: `1px solid ${active ? c.ring : "var(--line)"}`,
-                        background: active ? c.fill : "var(--surface)",
-                        color: active ? c.ring : "var(--ink-2)",
-                        cursor: "pointer",
-                        transition: "background .12s, color .12s, border-color .12s",
-                      }}
-                    >
-                      {c.id !== "todos" && (
-                        <span
-                          style={{
-                            width: 6, height: 6, borderRadius: 99,
-                            background: active ? c.ring : "var(--ink-4)", flexShrink: 0,
-                          }}
-                        />
-                      )}
-                      {c.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {mapMatch && (
-                <span style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-2)", marginLeft: "auto" }}>
-                  {mapMatch.count} espacio{mapMatch.count !== 1 ? "s" : ""} encontrado{mapMatch.count !== 1 ? "s" : ""}
-                </span>
-              )}
+                );
+              })}
             </div>
 
-            <IsoMap
-              fixtures={fixtures}
-              selectedId={selected?.id ?? null}
-              onSelect={setSelected}
-              match={mapMatch}
-            />
-            <div style={{ marginTop: 8 }}>
-              <MapLegend />
-            </div>
-          </Card>
-
-          {/* ── KPI strip ────────────────────────────────────────────────── */}
-          <Card
-            style={{
-              display: "flex", flexWrap: "wrap", alignItems: "stretch",
-              borderRadius: "var(--r-lg)", overflow: "hidden",
-              marginBottom: 14,
-            }}
-          >
-            <KpiTile
-              label="Espacios"
-              value={kpis.total}
-              sub={
-                kpis.nonRentable > 0
-                  ? `${kpis.rentableFixtures} comercializables · ${kpis.nonRentable} no`
-                  : `${fixtures.length} fixtures · dobles ×2`
-              }
-              color="var(--ink-1)"
-            />
-            <KpiTile
-              divider
-              label="Libres"
-              value={kpis.free}
-              color="var(--success)"
-            />
-            <KpiTile
-              divider
-              label="Ocupados"
-              value={`${kpis.occupied} · ${kpis.occPct}%`}
-              sub="ocupación"
-              color="var(--accent-700)"
-            />
-            {kpis.held > 0 && (
-              <KpiTile
-                divider
-                label="Reserv. / Mant."
-                value={kpis.held}
-                color="var(--warning)"
-              />
-            )}
-            <KpiTile
-              divider
-              label="Vencidos"
-              value={kpis.expired.length}
-              color={kpis.expired.length > 0 ? "var(--danger)" : "var(--ink-4)"}
-            />
-            <KpiTile
-              divider
-              label="Por vencer ≤30d"
-              value={kpis.expiring.length}
-              color={kpis.expiring.length > 0 ? "var(--warning)" : "var(--ink-4)"}
-            />
-            {isAdmin && (
-              <KpiTile
-                divider
-                label="Ingreso mensual"
-                value={formatCOP(kpis.revenue)}
-                sub="COP · caras ocupadas"
-                color="var(--success)"
-              />
+            {mapMatch && (
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-2)", marginLeft: "auto" }}>
+                {mapMatch.count} espacio{mapMatch.count !== 1 ? "s" : ""} · mapa y tabla filtrados
+              </span>
             )}
           </Card>
 
-          {/* ── Atención + Top proveedores ───────────────────────────────── */}
+          {/* ── Headline metrics, above the fold ───────────────────────────
+              These used to sit BELOW a full-screen map, so the numbers the page
+              exists for were the last thing anyone saw. Admin leads with
+              occupancy and money; a worker cannot see money and leads with what
+              is available and what needs attention. */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+            {isAdmin ? (
+              <>
+                <StatCard
+                  label="Ocupación"
+                  value={`${kpis.occPct}%`}
+                  sub={`${kpis.occupied} de ${kpis.total}`}
+                  color="var(--accent-700)"
+                  meter={kpis.occPct}
+                />
+                <StatCard
+                  label="Disponibles"
+                  value={kpis.free}
+                  sub="para vender"
+                  color="var(--success)"
+                  onClick={() => setMapFilter(mapFilter === "free" ? "todos" : "free")}
+                  active={mapFilter === "free"}
+                />
+                <StatCard
+                  label="Vencidos"
+                  value={kpis.expired.length}
+                  color={kpis.expired.length > 0 ? "var(--danger)" : "var(--ink-4)"}
+                  onClick={() => setMapFilter(mapFilter === "expired" ? "todos" : "expired")}
+                  active={mapFilter === "expired"}
+                />
+                <StatCard
+                  label="Por vencer ≤30d"
+                  value={kpis.expiring.length}
+                  color={kpis.expiring.length > 0 ? "var(--warning)" : "var(--ink-4)"}
+                  onClick={() => setMapFilter(mapFilter === "expiring" ? "todos" : "expiring")}
+                  active={mapFilter === "expiring"}
+                />
+                <StatCard
+                  label="Ingreso mensual"
+                  value={formatCOP(kpis.revenue)}
+                  sub="COP"
+                  color="var(--success)"
+                />
+              </>
+            ) : (
+              <>
+                <StatCard
+                  label="Espacios disponibles"
+                  value={kpis.free}
+                  sub={`de ${kpis.total}`}
+                  color="var(--success)"
+                  meter={kpis.total ? Math.round((kpis.free / kpis.total) * 100) : 0}
+                  onClick={() => setMapFilter(mapFilter === "free" ? "todos" : "free")}
+                  active={mapFilter === "free"}
+                />
+                <StatCard
+                  label="Vencidos"
+                  value={kpis.expired.length}
+                  sub="liberar o renovar"
+                  color={kpis.expired.length > 0 ? "var(--danger)" : "var(--ink-4)"}
+                  onClick={() => setMapFilter(mapFilter === "expired" ? "todos" : "expired")}
+                  active={mapFilter === "expired"}
+                />
+                <StatCard
+                  label="Por vencer ≤30d"
+                  value={kpis.expiring.length}
+                  sub="avisar al proveedor"
+                  color={kpis.expiring.length > 0 ? "var(--warning)" : "var(--ink-4)"}
+                  onClick={() => setMapFilter(mapFilter === "expiring" ? "todos" : "expiring")}
+                  active={mapFilter === "expiring"}
+                />
+                <StatCard
+                  label="Ocupados"
+                  value={kpis.occupied}
+                  sub={`${kpis.occPct}% de ocupación`}
+                  color="var(--accent-700)"
+                />
+              </>
+            )}
+          </div>
+
+          {/* ── Map + side rail ────────────────────────────────────────────
+              Side by side instead of stacked: the map used to reserve 62vh and
+              leave roughly half of it empty, pushing everything else off
+              screen. */}
           <div
             style={{
-              display: "flex", flexWrap: "wrap", alignItems: "flex-start",
-              gap: 14, marginBottom: 14,
+              display: "flex", flexWrap: "wrap", alignItems: "stretch",
+              gap: 12, marginBottom: 12,
             }}
           >
-            <Card style={{ padding: 0, overflow: "hidden", flex: isAdmin ? "58 1 380px" : "1 1 100%", minWidth: 0 }}>
-              <CardHeader
-                icon={
-                  <AlertTriangle
-                    size={13}
-                    style={{ color: attentionCount > 0 ? "var(--danger)" : "var(--success)" }}
-                  />
-                }
-                title="Atención"
-                sub={
-                  attentionCount > 0
-                    ? `${attentionCount} pendiente${attentionCount !== 1 ? "s" : ""}`
-                    : undefined
-                }
+            <Card
+              style={{
+                flex: isAdmin ? "62 1 480px" : "66 1 480px",
+                minWidth: 0,
+                display: "flex", flexDirection: "column",
+                padding: "12px 14px 10px",
+                minHeight: 460,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  flexWrap: "wrap", marginBottom: 8,
+                }}
+              >
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink-1)" }}>
+                  Mapa de ocupación
+                </span>
+                <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
+                  {sede} · clic para ver el contrato
+                </span>
+                {/* Legend next to what it explains, not stranded at the bottom */}
+                <div style={{ marginLeft: "auto" }}>
+                  <MapLegend />
+                </div>
+              </div>
+
+              <IsoMap
+                fixtures={fixtures}
+                selectedId={selected?.id ?? null}
+                onSelect={setSelected}
+                match={mapMatch}
               />
-              {attentionCount === 0 ? (
-                <div style={{ padding: "10px 14px", fontSize: 12, fontWeight: 500, color: "var(--success)" }}>
-                  ✓ Sin contratos vencidos ni próximos a vencer
-                </div>
-              ) : (
-                <div style={{ maxHeight: 340, overflowY: "auto" }}>
-                  {kpis.expired.length > 0 && (
-                    <>
-                      <AtencionSection label={`Vencidos · ${kpis.expired.length}`} color="var(--danger)" />
-                      {kpis.expired.map((entry, i) => (
-                        <AtencionRow
-                          key={`${entry.fixture.id}-${entry.face}`}
-                          entry={entry}
-                          chip={`${entry.days}d`}
-                          chipColor="var(--danger)"
-                          bg="var(--danger-50)"
-                          dates={formatRange(entry.startDate, entry.endDate)}
-                          last={lastAttentionSection === "expired" && i === kpis.expired.length - 1}
-                        />
-                      ))}
-                    </>
-                  )}
-                  {kpis.expiring.length > 0 && (
-                    <>
-                      <AtencionSection label={`Por vencer ≤30d · ${kpis.expiring.length}`} color="var(--warning)" />
-                      {kpis.expiring.map((entry, i) => (
-                        <AtencionRow
-                          key={`${entry.fixture.id}-${entry.face}`}
-                          entry={entry}
-                          chip={`${entry.days}d`}
-                          chipColor="var(--warning)"
-                          bg="var(--warning-50)"
-                          dates={formatRange(entry.startDate, entry.endDate)}
-                          last={lastAttentionSection === "expiring" && i === kpis.expiring.length - 1}
-                        />
-                      ))}
-                    </>
-                  )}
-                  {kpis.noContract.length > 0 && (
-                    <>
-                      <AtencionSection
-                        label={`Ocupados sin contrato registrado · ${kpis.noContract.length}`}
-                        color="var(--danger)"
-                      />
-                      {kpis.noContract.map((entry, i) => (
-                        <AtencionRow
-                          key={`${entry.fixture.id}-${entry.face}`}
-                          entry={entry}
-                          chip="—"
-                          chipColor="var(--ink-4)"
-                          bg="transparent"
-                          dates="sin fechas"
-                          last={lastAttentionSection === "noContract" && i === kpis.noContract.length - 1}
-                        />
-                      ))}
-                    </>
-                  )}
-                </div>
-              )}
             </Card>
 
-            {isAdmin && (
-              <Card style={{ padding: 0, overflow: "hidden", flex: "42 1 300px", minWidth: 0 }}>
+            {/* Rail: what needs action, always visible next to the map */}
+            <div
+              style={{
+                flex: isAdmin ? "38 1 320px" : "34 1 300px",
+                minWidth: 0, display: "flex", flexDirection: "column", gap: 12,
+              }}
+            >
+              <Card style={{ padding: 0, overflow: "hidden" }}>
                 <CardHeader
-                  icon={<TrendingUp size={13} style={{ color: "var(--accent)" }} />}
-                  title="Top proveedores"
-                  sub="por ingreso mensual"
+                  icon={
+                    <AlertTriangle
+                      size={13}
+                      style={{ color: attentionCount > 0 ? "var(--danger)" : "var(--success)" }}
+                    />
+                  }
+                  title="Atención"
+                  sub={
+                    attentionCount > 0
+                      ? `${attentionCount} pendiente${attentionCount !== 1 ? "s" : ""}`
+                      : undefined
+                  }
                 />
-                <div style={{ padding: "6px 0" }}>
-                  {kpis.topSuppliers.length === 0 ? (
-                    <div style={{ padding: "4px 14px 8px", fontSize: 12, color: "var(--ink-3)" }}>
-                      Sin contratos activos con valor registrado.
-                    </div>
-                  ) : (
-                    kpis.topSuppliers.map((s, i) => (
-                      <SupplierRow
-                        key={s.name}
-                        name={s.name}
-                        revenue={s.revenue}
-                        count={s.count}
-                        rank={i}
-                      />
-                    ))
-                  )}
-                </div>
+                {attentionCount === 0 ? (
+                  <div style={{ padding: "12px 14px", fontSize: 12, fontWeight: 500, color: "var(--success)" }}>
+                    ✓ Sin contratos vencidos ni próximos a vencer
+                  </div>
+                ) : (
+                  <div style={{ maxHeight: isAdmin ? 300 : 420, overflowY: "auto" }}>
+                    {kpis.expired.length > 0 && (
+                      <>
+                        <AtencionSection label={`Vencidos · ${kpis.expired.length}`} color="var(--danger)" />
+                        {kpis.expired.map((entry, i) => (
+                          <AtencionRow
+                            key={`${entry.fixture.id}-${entry.face}`}
+                            entry={entry}
+                            chip={`${entry.days}d`}
+                            chipColor="var(--danger)"
+                            bg="var(--danger-50)"
+                            dates={formatRange(entry.startDate, entry.endDate)}
+                            last={lastAttentionSection === "expired" && i === kpis.expired.length - 1}
+                          />
+                        ))}
+                      </>
+                    )}
+                    {kpis.expiring.length > 0 && (
+                      <>
+                        <AtencionSection label={`Por vencer ≤30d · ${kpis.expiring.length}`} color="var(--warning)" />
+                        {kpis.expiring.map((entry, i) => (
+                          <AtencionRow
+                            key={`${entry.fixture.id}-${entry.face}`}
+                            entry={entry}
+                            chip={`${entry.days}d`}
+                            chipColor="var(--warning)"
+                            bg="var(--warning-50)"
+                            dates={formatRange(entry.startDate, entry.endDate)}
+                            last={lastAttentionSection === "expiring" && i === kpis.expiring.length - 1}
+                          />
+                        ))}
+                      </>
+                    )}
+                    {kpis.noContract.length > 0 && (
+                      <>
+                        <AtencionSection
+                          label={`Ocupados sin contrato registrado · ${kpis.noContract.length}`}
+                          color="var(--danger)"
+                        />
+                        {kpis.noContract.map((entry, i) => (
+                          <AtencionRow
+                            key={`${entry.fixture.id}-${entry.face}`}
+                            entry={entry}
+                            chip="—"
+                            chipColor="var(--ink-4)"
+                            bg="transparent"
+                            dates="sin fechas"
+                            last={lastAttentionSection === "noContract" && i === kpis.noContract.length - 1}
+                          />
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
               </Card>
-            )}
+
+              {isAdmin && (
+                <Card style={{ padding: 0, overflow: "hidden" }}>
+                  <CardHeader
+                    icon={<TrendingUp size={13} style={{ color: "var(--accent)" }} />}
+                    title="Top proveedores"
+                    sub="por ingreso mensual"
+                  />
+                  <div style={{ padding: "6px 0", maxHeight: 260, overflowY: "auto" }}>
+                    {kpis.topSuppliers.length === 0 ? (
+                      <div style={{ padding: "4px 14px 8px", fontSize: 12, color: "var(--ink-3)" }}>
+                        Sin contratos activos con valor registrado.
+                      </div>
+                    ) : (
+                      kpis.topSuppliers.map((s, i) => (
+                        <SupplierRow
+                          key={s.name}
+                          name={s.name}
+                          revenue={s.revenue}
+                          count={s.count}
+                          rank={i}
+                        />
+                      ))
+                    )}
+                  </div>
+                </Card>
+              )}
+            </div>
           </div>
 
           {/* ── Full-width spaces table ──────────────────────────────────── */}
@@ -1915,9 +1877,18 @@ export default function DashboardView() {
             <CardHeader
               icon={null}
               title="Estado por espacio"
-              sub={`${sede} · ${kpis.total} espacio${kpis.total !== 1 ? "s" : ""}`}
+              sub={
+                mapMatch
+                  ? `${sede} · ${mapMatch.count} de ${kpis.total} (filtrado)`
+                  : `${sede} · ${kpis.total} espacio${kpis.total !== 1 ? "s" : ""}`
+              }
             />
-            <SpacesTable fixtures={fixtures} isAdmin={isAdmin} />
+            <SpacesTable
+              fixtures={fixtures}
+              isAdmin={isAdmin}
+              query={mapQuery}
+              filter={mapFilter}
+            />
           </Card>
         </>
       )}
