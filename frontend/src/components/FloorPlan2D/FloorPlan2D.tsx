@@ -14,6 +14,8 @@ import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types
 import { isRentable, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 import { findOrCreateSpace, createLease } from "../../api/spaces";
+import { fetchDeleteImpact } from "../../api/layout";
+import type { DeleteImpact } from "../../api/layout";
 import { findOrCreateSupplier } from "../../api/suppliers";
 import { listSpaceFiles, uploadSpaceFile, deleteSpaceFile, fileUrl } from "../../api/files";
 import type { SpaceFileMeta } from "../../api/files";
@@ -2424,6 +2426,18 @@ function DeleteSedeDialog({
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Contracts saved with "Guardar contrato" live in the normalised tables, a
+  // different set from the layout snapshot this dialog counts. Deleting the
+  // sede closes them, so the number belongs here — and only the server has it.
+  const [impact, setImpact] = useState<DeleteImpact | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    fetchDeleteImpact(sede)
+      .then((r) => { if (live) setImpact(r); })
+      .catch(() => { /* the counts below still stand on their own */ });
+    return () => { live = false; };
+  }, [sede]);
 
   // Contracts hide in three places: the fixture itself (face A), `faceB` on a
   // double gondola, and one per shelf in `slots` when the mueble is
@@ -2502,12 +2516,20 @@ function DeleteSedeDialog({
                 {slotsWithContract} balda{slotsWithContract !== 1 ? "s" : ""} con proveedor asignado
               </div>
             )}
+            {impact !== null && impact.active_leases > 0 && (
+              <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 3 }}>
+                {impact.active_leases} contrato{impact.active_leases !== 1 ? "s" : ""} activo
+                {impact.active_leases !== 1 ? "s" : ""} se cerrará
+                {impact.active_leases !== 1 ? "n" : ""}
+              </div>
+            )}
           </div>
 
           <p style={{ margin: "0 0 12px" }}>
+            {impact !== null && impact.active_leases > 0
+              ? "Los contratos se cierran y quedan archivados: siguen en la base de datos con su valor y sus fechas, pero dejan de avisar por vencimiento. "
+              : ""}
             El tablero pierde los ingresos, la ocupación y los vencimientos de esta sede.
-            Los contratos guardados con «Guardar contrato» quedan en la base de datos, pero
-            hoy no hay ninguna pantalla para consultarlos.
           </p>
 
           <label style={{ display: "block", fontSize: 11.5, color: "var(--ink-3)", marginBottom: 6 }}>

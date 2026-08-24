@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -6,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_config, require_admin, require_auth, set_config
 from app.database import get_db
 from app.models.models import LayoutSnapshot
+from app.services.sede_archive import archive_sede_spaces, count_commercial_rows
 from app.schemas.layout import (
     LayoutIn,
     LayoutOut,
@@ -13,6 +15,8 @@ from app.schemas.layout import (
     LayoutSettingsIn,
     LayoutSettingsOut,
 )
+
+logger = logging.getLogger(__name__)
 
 # Every route requires a valid token; saving a layout additionally requires admin.
 router = APIRouter(prefix="/layout", tags=["layout"], dependencies=[Depends(require_auth)])
@@ -38,6 +42,17 @@ def _to_out(snap: LayoutSnapshot) -> LayoutOut:
         fixtures=json.loads(snap.fixtures_json or "[]"),
         updated_at=snap.updated_at,
     )
+
+
+def _stored_settings_revision(db: Session) -> datetime | None:
+    """The revision currently stored for the shared settings, as aware UTC."""
+    raw = get_config(db, SETTINGS_UPDATED_KEY)
+    if not raw:
+        return None
+    try:
+        return _as_utc(datetime.fromisoformat(raw))
+    except ValueError:
+        return None
 
 
 def _as_utc(value: datetime | None) -> datetime | None:
@@ -180,13 +195,7 @@ def get_settings(response: Response, db: Session = Depends(get_db)):
         labels = json.loads(get_config(db, CATALOG_LABELS_KEY) or "{}")
     except ValueError:
         labels = {}
-    raw_updated = get_config(db, SETTINGS_UPDATED_KEY)
-    updated_at = None
-    if raw_updated:
-        try:
-            updated_at = datetime.fromisoformat(raw_updated)
-        except ValueError:
-            updated_at = None
+    updated_at = _stored_settings_revision(db)
     return LayoutSettingsOut(
         sedes=[s for s in sedes if isinstance(s, str)],
         catalog_labels={k: v for k, v in labels.items() if isinstance(v, str)} if isinstance(labels, dict) else {},
@@ -196,7 +205,36 @@ def get_settings(response: Response, db: Session = Depends(get_db)):
 
 @router.put("/settings", response_model=LayoutSettingsOut, dependencies=[Depends(require_admin)])
 def save_settings(payload: LayoutSettingsIn, db: Session = Depends(get_db)):
-    """Replace the shared sede list and catalog labels."""
+    """Replace the shared sede list and catalog labels.
+
+    The sede list is a single value replaced whole, so two admins touching
+    sedes inside the same poll window used to silently overwrite each other.
+    That is worse than it sounds: the list is only ever unioned on pull, never
+    trimmed, so a stale copy could put a deleted sede back for everyone with no
+    way to remove it again. When the client echoes the revision it read, a
+    write made against an older one is rejected instead of applied.
+    """
+    stored = _stored_settings_revision(db)
+    base = _as_utc(payload.base_updated_at)
+    # Once the server holds a revision, a write must name it. Treating a missing
+    # base as "overwrite unconditionally" left the door open at exactly the
+    # point this check exists to close: a workstation that had never read the
+    # settings — or had not read them since — published its own list over
+    # everyone else's, deleted sedes included. A genuine first publish is the
+    # case where the server has no revision either, and that still goes through.
+    if stored is not None:
+        if base is None or _truncate_ms(stored) != _truncate_ms(base):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "settings_conflict",
+                    "message": (
+                        "Otro equipo cambió la lista de sedes mientras editabas."
+                    ),
+                    "server_updated_at": stored.isoformat(),
+                },
+            )
+
     now = datetime.now(timezone.utc)
     set_config(db, SEDES_KEY, json.dumps(payload.sedes))
     set_config(db, CATALOG_LABELS_KEY, json.dumps(payload.catalog_labels))
@@ -283,6 +321,22 @@ def save_layout(sede: str, payload: LayoutIn, db: Session = Depends(get_db)):
     return _to_out(snap)
 
 
+@router.get("/{sede}/impact", dependencies=[Depends(require_admin)])
+def delete_impact(sede: str, db: Session = Depends(get_db)):
+    """What deleting this sede would close on the commercial side.
+
+    The confirmation dialog counts fixtures and shelves out of the layout
+    snapshot, which is a different set from the normalised spaces: only a
+    fixture someone pressed "Guardar contrato" on has rows here. Both numbers
+    matter, and only the server knows this one.
+
+    Two segments, so unlike ``/revisions`` and ``/settings`` this one does not
+    have to be declared before the ``/{sede}`` catch-all: that route matches a
+    single segment and cannot swallow this path.
+    """
+    return count_commercial_rows(db, sede)
+
+
 @router.delete("/{sede}", status_code=204, dependencies=[Depends(require_admin)])
 def delete_layout(sede: str, db: Session = Depends(get_db)):
     """Drop a sede's snapshot entirely.
@@ -294,6 +348,12 @@ def delete_layout(sede: str, db: Session = Depends(get_db)):
     snap = db.query(LayoutSnapshot).filter(LayoutSnapshot.sede == sede).first()
     if snap:
         db.delete(snap)
+
+    # Close the sede's commercial rows in the same transaction. They are not
+    # deleted — they are billing history — but leaving them live meant expiry
+    # emails for a sede nobody could open, and a sede recreated under the same
+    # name inheriting the old one's contracts through find_or_create_space.
+    archived = archive_sede_spaces(db, sede)
 
     # Drop the name from the shared list too, in the same commit. Leaving that
     # to a separate settings PUT from the client made the deletion two
@@ -311,4 +371,9 @@ def delete_layout(sede: str, db: Session = Depends(get_db)):
         set_config(db, SETTINGS_UPDATED_KEY, datetime.now(timezone.utc).isoformat())
 
     db.commit()
+    if archived["spaces"]:
+        logger.info(
+            "sede %s eliminada: %s espacios archivados, %s contratos cerrados",
+            sede, archived["spaces"], archived["leases_closed"],
+        )
     return Response(status_code=204)
