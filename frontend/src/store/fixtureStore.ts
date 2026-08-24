@@ -484,6 +484,7 @@ export const useFixtureStore = create<FixtureStore>()(
           ]);
 
           const bootstrap: string[] = [];
+          let settingsNeedPush = false;
 
           set((state) => {
             const fixturesBySede = { ...state.fixturesBySede };
@@ -537,16 +538,42 @@ export const useFixtureStore = create<FixtureStore>()(
               lastSyncedAt: Date.now(),
             };
 
-            // Shared sede list / labels. An empty server list means "never
-            // configured" — keep ours and let the bootstrap push seed it.
-            // A queued local settings change always wins: adopting here would
-            // silently undo a sede the user just added.
-            if (settings && settings.sedes.length > 0 && !_settingsTimer) {
-              next.sedes = settings.sedes;
-              if (!settings.sedes.includes(state.sede)) {
-                next.sede = settings.sedes[0];
-              }
+            // Shared sede list.
+            //
+            // The visible list is the UNION of the configured order and every
+            // sede the server actually holds a snapshot for. Two reasons:
+            //
+            //  · A sede must never become invisible just because the shared
+            //    settings do not mention it. Its fixtures were adopted right
+            //    above, but the selector only lists `sedes`, so without the
+            //    union a sede created before this endpoint existed would have
+            //    its data downloaded and then be impossible to open.
+            //  · The settings start out empty on every existing deployment, so
+            //    whichever workstation happened to sync first would otherwise
+            //    publish ITS local list as canonical and erase everyone else's
+            //    sede names on their next pull.
+            //
+            // A queued local settings change still wins for the configured
+            // part: adopting there would undo a sede the user just added.
+            const configured =
+              settings && settings.sedes.length > 0 && !_settingsTimer
+                ? settings.sedes
+                : state.sedes;
+            const visible = [...configured];
+            for (const entry of entries) {
+              if (!visible.includes(entry.sede)) visible.push(entry.sede);
             }
+            next.sedes = visible;
+            if (!visible.includes(state.sede) && visible.length > 0) {
+              next.sede = visible[0];
+            }
+            // Republish when the union added something the server did not have,
+            // so every workstation converges on the complete list.
+            settingsNeedPush =
+              !_settingsTimer &&
+              (!settings || visible.length !== settings.sedes.length ||
+                visible.some((x, i) => settings.sedes[i] !== x));
+
             if (settings && settings.catalog_labels && !_settingsTimer) {
               next.catalogLabels = settings.catalog_labels;
             }
@@ -559,8 +586,9 @@ export const useFixtureStore = create<FixtureStore>()(
             );
             await Promise.all(bootstrap.map((sede) => get().pushSede(sede, { force: true })));
           }
-          // Seed the shared settings the first time an admin connects.
-          if (settings && settings.sedes.length === 0 && canWrite()) {
+          // Publish the reconciled sede list (first seeding, or a sede the
+          // shared settings did not know about yet).
+          if (settingsNeedPush && canWrite()) {
             await get().pushSettings();
           }
         } catch (err: any) {
