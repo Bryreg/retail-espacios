@@ -118,3 +118,8 @@
 * {
   box-sizing: border-box;
 }
+
+/* Spinner used by the sync status indicator in the header. */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

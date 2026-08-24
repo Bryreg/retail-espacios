@@ -40,6 +40,25 @@ export function isDoubleGondola(f: { type: FixType; gondolaType?: GondolaType })
   return f.type === "gondola" && (f.gondolaType ?? "double") === "double";
 }
 
+/** Fixture types that are infrastructure by nature — never rented to a supplier.
+ *  Used only as the default when a fixture is first created; the user can always
+ *  override the flag per fixture from the editor panels. */
+export const NON_RENTABLE_BY_DEFAULT: ReadonlySet<string> = new Set<FixType>([
+  "metro",
+  "columna",
+  "checkout",
+]);
+
+/** True when the fixture can hold a commercial contract.
+ *
+ *  Backward compatible on purpose: fixtures saved before this flag existed have
+ *  no `rentable` property, and every one of them must stay rentable. Only an
+ *  explicit `false` marks a fixture as infrastructure.
+ */
+export function isRentable(f: { rentable?: boolean }): boolean {
+  return f.rentable !== false;
+}
+
 /** Commercial data for one face of a double gondola.
  *  Face A is the fixture's existing top-level fields; face B lives here. */
 export interface FaceData {
@@ -96,6 +115,12 @@ export interface UnifiedFixture {
   startDate: string;
   endDate: string;
   observation: string;
+
+  /** Whether this fixture may be rented out / hold a contract.
+   *  Absent means rentable (see `isRentable`) so pre-existing layouts keep
+   *  working unchanged. Set to `false` for infrastructure: columns, checkouts,
+   *  free zones — anything that is part of the store but never sold as space. */
+  rentable?: boolean;
 
   /** Short label rendered OUTSIDE the shape in the 2D plan so it stays legible
    *  from afar even on tiny fixtures. Optional — falls back to nothing. */

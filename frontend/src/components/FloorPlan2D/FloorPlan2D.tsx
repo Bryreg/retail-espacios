@@ -9,12 +9,12 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
+import { useFixtureStore, selectFixtures, selectHasPendingWork } from "../../store/fixtureStore";
 import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types/fixtures";
+import { isRentable, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 import { findOrCreateSpace, createLease } from "../../api/spaces";
 import { findOrCreateSupplier } from "../../api/suppliers";
-import { saveLayout } from "../../api/layout";
 import { listSpaceFiles, uploadSpaceFile, deleteSpaceFile, fileUrl } from "../../api/files";
 import type { SpaceFileMeta } from "../../api/files";
 import client from "../../api/client";
@@ -70,6 +70,8 @@ interface PlacedItem2D {
   nomenclatura?: string;
   /** Face B commercial data (gondola_doble only); face A = top-level fields. */
   faceB?: FaceData;
+  /** False marks infrastructure that is never rented out. Undefined = rentable. */
+  rentable?: boolean;
 }
 
 // ─── Catalog ──────────────────────────────────────────────────────────────────
@@ -130,6 +132,17 @@ const STATUS_LABELS: Record<SpaceStatus, string> = {
   maintenance: "Mantenimiento",
 };
 
+// Non-rentable fixtures are store infrastructure, not sellable space. They get
+// a neutral slate treatment so they read as "background" against the coloured
+// commercial states instead of competing with them.
+const NON_RENTABLE_LABEL = "No comercializable";
+const NON_RENTABLE_STROKE = "#64748B";
+const NON_RENTABLE_FILL = "rgba(100,116,139,0.10)";
+const NON_RENTABLE_BADGE_STYLE: React.CSSProperties = {
+  background: "rgba(100,116,139,0.18)",
+  color: "#94A3B8",
+};
+
 // ─── Search + status filter (canvas control bar) ─────────────────────────────
 
 type StatusFilter2D = "all" | "free" | "occupied" | "expiring" | "expired";
@@ -153,6 +166,9 @@ function daysUntil(dateStr: string): number | null {
 /** True when ANY face (A = top-level fields, B = faceB) passes the chip filter. */
 function matchesStatusFilter(item: PlacedItem2D, filter: StatusFilter2D): boolean {
   if (filter === "all") return true;
+  // A non-rentable fixture has no contract state — it can never match a
+  // commercial filter like "libres" or "por vencer".
+  if (!isRentable(item)) return false;
   const faces: { status: SpaceStatus; endDate: string }[] = [
     { status: item.status, endDate: item.endDate },
   ];
@@ -269,6 +285,7 @@ function storeToItems(fixtures: UnifiedFixture[]): PlacedItem2D[] {
       sede: f.sede,
       nomenclatura: f.nomenclatura,
       faceB: f.faceB,
+      rentable: f.rentable,
     };
   });
 }
@@ -322,6 +339,7 @@ function itemsToStore(
       observation: item.observation,
       nomenclatura: item.nomenclatura,
       faceB: item.faceB,
+      rentable: item.rentable,
     };
   });
 }
@@ -509,8 +527,12 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   const cachedSvgRect = useRef<DOMRect | null>(null);
   // Skip the initial mount sync so it doesn't create a spurious undo entry (I3)
   const isFirstRender = useRef(true);
-  // Prevents the store→items sync from firing after our own commit (avoids loop)
-  const justCommittedRef = useRef(false);
+  // Holds the exact array we last pushed to the store, so the store→items
+  // effect can tell our own echo apart from a genuine external change. A plain
+  // boolean could not: it was consumed by whichever update arrived first, so a
+  // layout pulled from the server while we were editing got swallowed and the
+  // canvas kept showing stale fixtures.
+  const lastCommittedRef = useRef<UnifiedFixture[] | null>(null);
 
   // ── Role gating: workers get a strictly read-only plan ───────────────────────
   const isAdmin = useAuthStore(selectIsAdmin);
@@ -522,11 +544,10 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   // When the store changes from outside (undo, redo, server sync), update local items.
   const storeFixtures = useFixtureStore(selectFixtures);
   useEffect(() => {
-    if (justCommittedRef.current) {
-      justCommittedRef.current = false;
-      return;
-    }
-    // External change (undo/redo/sync) — update canvas to match
+    // commit() stores the array by reference, so identity equality means this
+    // update is the echo of our own commit and must not rebuild the canvas.
+    if (lastCommittedRef.current === storeFixtures) return;
+    // External change (undo/redo/server sync) — update canvas to match
     isFirstRender.current = true; // suppress the next items→store echo
     setItems(storeToItems(storeFixtures));
   }, [storeFixtures]);
@@ -541,8 +562,9 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     if (isFirstRender.current) { isFirstRender.current = false; return; }
     const snapshot = selectFixtures(useFixtureStore.getState());
     const timer = setTimeout(() => {
-      justCommittedRef.current = true;
-      commit(itemsToStore(items, snapshot));
+      const converted = itemsToStore(items, snapshot);
+      lastCommittedRef.current = converted;
+      commit(converted);
     }, 16);
     return () => clearTimeout(timer);
   }, [items, commit]);
@@ -723,6 +745,10 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           endDate: "",
           observation: "",
           sede,
+          // Columns, checkouts and free zones are part of the store, not stock
+          // to sell. Everything else stays rentable (flag left absent) so the
+          // saved payload keeps its historical shape.
+          ...(NON_RENTABLE_BY_DEFAULT.has(type) ? { rentable: false } : {}),
         };
         // Reject placement if it would overlap an existing fixture
         if (hasCollision(newItem, prev)) return prev;
@@ -1542,7 +1568,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                     {/* Double gondola: two halves colored per face.
                         Face A = half on the front-stripe side (rotY convention below);
                         Face B = opposite half, colored by faceB.status. */}
-                    {item.type === "gondola_doble" && !isCollidingDrag && (() => {
+                    {item.type === "gondola_doble" && isRentable(item) && !isCollidingDrag && (() => {
                       const steps = rotationSteps(item.rotY);
                       const aFill = STATUS_FILL[item.status];
                       const bFill = STATUS_FILL[item.faceB?.status ?? "free"];
@@ -1579,13 +1605,31 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                       fill={
                         isCollidingDrag
                           ? "rgba(185,28,28,0.18)"
+                          : !isRentable(item)
+                          ? NON_RENTABLE_FILL
                           : item.type === "gondola_doble"
                           ? "transparent" // halves painted above; keep pointer target
                           : STATUS_FILL[item.status]
                       }
-                      stroke={isCollidingDrag ? "var(--danger)" : isSelected ? "var(--accent)" : STATUS_COLORS[item.status]}
+                      stroke={
+                        isCollidingDrag
+                          ? "var(--danger)"
+                          : isSelected
+                          ? "var(--accent)"
+                          : !isRentable(item)
+                          ? NON_RENTABLE_STROKE
+                          : STATUS_COLORS[item.status]
+                      }
                       strokeWidth={(isSelected || isCollidingDrag ? 2.5 : 1.5) / zoom}
-                      strokeDasharray={isCollidingDrag ? `${4 / zoom},${2 / zoom}` : undefined}
+                      strokeDasharray={
+                        isCollidingDrag
+                          ? `${4 / zoom},${2 / zoom}`
+                          : !isRentable(item)
+                          // Dashed outline reads as "not part of the sellable
+                          // inventory" even in greyscale printouts.
+                          ? `${5 / zoom},${3 / zoom}`
+                          : undefined
+                      }
                       rx={4 / zoom}
                     />
 
@@ -2266,44 +2310,52 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
 // ─── Sync Button ─────────────────────────────────────────────────────────────
 
 function SyncButton() {
-  const sede = useFixtureStore((s) => s.sede);
-  const fixtures = useFixtureStore(selectFixtures);
-  const [status, setStatus] = useState<"idle" | "saving" | "ok" | "error">("idle");
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Two-way on purpose. The old version only PUT the active sede and always
+  // ended up showing "✓ Sincronizado", even when the request failed or when
+  // another workstation held newer data this tab had never downloaded.
+  const syncState = useFixtureStore((s) => s.syncState);
+  const hasPending = useFixtureStore(selectHasPendingWork);
+  const lastSyncedAt = useFixtureStore((s) => s.lastSyncedAt);
+  const conflictCount = useFixtureStore((s) => Object.keys(s.conflicts).length);
+  const isAdmin = useAuthStore(selectIsAdmin);
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
+  const busy = syncState === "pulling" || syncState === "pushing";
 
-  const handleSync = () => {
-    if (status === "saving") return;
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setStatus("saving");
-    saveLayout(sede, fixtures)
-      .then(() => {
-        setStatus("ok");
-        timerRef.current = setTimeout(() => setStatus("idle"), 2000);
-      })
-      .catch(() => {
-        setStatus("error");
-        timerRef.current = setTimeout(() => setStatus("idle"), 3000);
-      });
+  const handleSync = async () => {
+    if (busy) return;
+    const store = useFixtureStore.getState();
+    if (isAdmin) await store.flushPending();
+    await store.syncFromServer();
   };
 
-  const label = status === "saving" ? "Subiendo…" : status === "ok" ? "✓ Sincronizado" : status === "error" ? "Error al subir" : "↑ Subir al servidor";
-  const color = status === "ok" ? "var(--success)" : status === "error" ? "#ef4444" : "var(--ink-2)";
+  const label =
+    conflictCount > 0 ? "⚠ Conflicto"
+    : syncState === "pushing" ? "Subiendo…"
+    : syncState === "pulling" ? "Actualizando…"
+    : syncState === "error" ? "Sin conexión"
+    : hasPending ? "↑ Cambios sin subir"
+    : "✓ Sincronizado";
+
+  const color =
+    conflictCount > 0 ? "var(--warning)"
+    : syncState === "error" ? "#ef4444"
+    : !hasPending && syncState === "idle" ? "var(--success)"
+    : "var(--ink-2)";
 
   return (
     <button
       onClick={handleSync}
-      disabled={status === "saving"}
+      disabled={busy}
+      title={
+        lastSyncedAt
+          ? `Última sincronización ${new Date(lastSyncedAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}`
+          : "Sincronizar con el servidor"
+      }
       style={{
         display: "flex", alignItems: "center", gap: 4,
         padding: "2px 8px", borderRadius: "var(--r-md)",
         border: "1px solid var(--line)", fontSize: 11.5, fontWeight: 500,
-        cursor: status === "saving" ? "wait" : "pointer",
+        cursor: busy ? "wait" : "pointer",
         fontFamily: "inherit",
         background: "var(--surface-2)",
         color,
@@ -2646,6 +2698,9 @@ function AssignmentPanel({
   // Face A maps to the item's top-level commercial fields; face B lives in
   // item.faceB. Backend space code for face B is fullCode + "-B".
   const isDouble = item.type === "gondola_doble";
+  // Infrastructure fixtures hold no contract, so the whole commercial half of
+  // this panel collapses for them.
+  const rentable = isRentable(item);
   const [activeFace, setActiveFace] = useState<"A" | "B">(isDouble ? (initialFace ?? "A") : "A");
   useEffect(() => {
     setActiveFace(isDouble ? (initialFace ?? "A") : "A");
@@ -2735,7 +2790,7 @@ function AssignmentPanel({
       </div>
 
       {/* Face tabs (gondola doble) */}
-      {isDouble && (
+      {isDouble && rentable && (
         <div style={{ display: "flex", borderBottom: "1px solid var(--dark-line)" }}>
           {(["A", "B"] as const).map((f) => (
             <button
@@ -2758,12 +2813,52 @@ function AssignmentPanel({
 
       {/* Status badge */}
       <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--dark-line)" }}>
-        <span style={{ ...STATUS_BADGE_STYLE[face.status], display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 600 }}>
-          {STATUS_LABELS[face.status]}
+        <span style={{
+          ...(rentable ? STATUS_BADGE_STYLE[face.status] : NON_RENTABLE_BADGE_STYLE),
+          display: "inline-flex", alignItems: "center", borderRadius: 999,
+          padding: "2px 10px", fontSize: 11, fontWeight: 600,
+        }}>
+          {rentable ? STATUS_LABELS[face.status] : NON_RENTABLE_LABEL}
         </span>
       </div>
 
+      {/* Destino del mueble — decides whether it can ever hold a contract */}
+      <Field label="Destino del mueble" icon="🎯">
+        {editMode && isAdmin ? (
+          <div style={{ display: "flex", gap: 6 }}>
+            {([true, false] as const).map((value) => (
+              <button
+                key={String(value)}
+                onClick={() => onUpdate({ rentable: value })}
+                style={{
+                  flex: 1, padding: "7px 4px", borderRadius: "var(--r-sm)",
+                  fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+                  fontFamily: "inherit", transition: "background .12s, border-color .12s",
+                  border: rentable === value
+                    ? "1px solid var(--accent)"
+                    : "1px solid var(--dark-line-2)",
+                  background: rentable === value ? "var(--accent)" : "transparent",
+                  color: rentable === value ? "var(--accent-ink)" : "var(--dark-ink-3)",
+                }}
+              >
+                {value ? "Comercializable" : "No comercializable"}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>
+            {rentable ? "Comercializable" : "No comercializable"}
+          </p>
+        )}
+        <p style={{ marginTop: 6, fontSize: 10, color: "var(--dark-ink-3)", lineHeight: 1.45 }}>
+          {rentable
+            ? "Se puede alquilar y cuenta en la disponibilidad de la sede."
+            : "Mobiliario propio del local: no admite contrato y queda fuera de la ocupación."}
+        </p>
+      </Field>
+
       {/* Estado */}
+      {rentable && (
       <Field label="Estado del espacio" icon="◉">
         {editMode ? (
           <select className={sel} value={face.status}
@@ -2777,6 +2872,7 @@ function AssignmentPanel({
           <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{STATUS_LABELS[face.status]}</p>
         )}
       </Field>
+      )}
 
       {/* Sede */}
       <Field label="Sede" icon="🏢">
@@ -2802,6 +2898,7 @@ function AssignmentPanel({
       </Field>
 
       {/* Proveedor */}
+      {rentable && (
       <Field label="Proveedor" icon="🏭">
         {editMode ? (
           <input className={inp} placeholder="Nombre del proveedor"
@@ -2811,8 +2908,10 @@ function AssignmentPanel({
           <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{face.supplierName || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}</p>
         )}
       </Field>
+      )}
 
       {/* Categoría */}
+      {rentable && (
       <Field label="Categoría" icon="🏷️">
         {editMode ? (
           <input className={inp} placeholder="Marca / rubro"
@@ -2822,9 +2921,10 @@ function AssignmentPanel({
           <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{face.brandCategory || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}</p>
         )}
       </Field>
+      )}
 
       {/* Valor — hidden entirely for workers */}
-      {isAdmin && (
+      {isAdmin && rentable && (
         <Field label="$ Valor (COP/mes)" icon="">
           {editMode ? (
             <input type="number" className={inp} placeholder="0"
@@ -2839,6 +2939,7 @@ function AssignmentPanel({
       )}
 
       {/* Fechas */}
+      {rentable && (
       <Field label="Periodo" icon="📅">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div>
@@ -2866,6 +2967,7 @@ function AssignmentPanel({
           <DaysLeftStrip startDate={face.startDate} endDate={face.endDate} />
         )}
       </Field>
+      )}
 
       {/* Dimensiones */}
       {editMode && (
@@ -2901,6 +3003,7 @@ function AssignmentPanel({
       </Field>
 
       {/* Archivos — keyed by active face code so state resets on face switch */}
+      {rentable && (
       <FilesSection
         key={activeCode}
         code={activeCode}
@@ -2911,9 +3014,10 @@ function AssignmentPanel({
         isAdmin={isAdmin}
         editMode={editMode}
       />
+      )}
 
       {/* Save contract (admin only — mutations are admin-gated) */}
-      {isAdmin && (
+      {isAdmin && rentable && (
       <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--dark-line)" }}>
         <button
           onClick={handleSaveContract}

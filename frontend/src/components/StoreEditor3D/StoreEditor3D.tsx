@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Html } from "@react-three/drei";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
-import { isDoubleGondola } from "../../types/fixtures";
+import { isDoubleGondola, isRentable, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
 import { findOrCreateSpace, createLease } from "../../api/spaces";
 import { findOrCreateSupplier } from "../../api/suppliers";
@@ -105,6 +105,11 @@ const STATUS_COLORS: Record<SpaceStatus, string> = {
   maintenance: "#94a3b8",
 };
 
+// Non-rentable fixtures are store infrastructure. Painting them slate keeps the
+// commercial colour language (green/red/amber) meaningful: every coloured mesh
+// in the scene is sellable space.
+const NON_RENTABLE_COLOR = "#64748b";
+
 interface ShelfSlot {
   id:              string;
   x:               number;
@@ -148,6 +153,8 @@ interface PlacedFixture {
   startDate:       string;
   endDate:         string;
   observation:     string;
+  /** False marks infrastructure that is never rented out. Undefined = rentable. */
+  rentable?:       boolean;
 }
 
 // ─── Fixture catalogue ────────────────────────────────────────────────────────
@@ -1773,7 +1780,9 @@ interface FixtureMeshProps {
 }
 
 function FixtureMesh({ fixture, ghost, facePaint, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: FixtureMeshProps) {
-  const sc = STATUS_COLORS[fixture.status] ?? STATUS_COLORS.free;
+  const sc = isRentable(fixture)
+    ? (STATUS_COLORS[fixture.status] ?? STATUS_COLORS.free)
+    : NON_RENTABLE_COLOR;
   const base = { w:fixture.w, d:fixture.d, h:fixture.h, statusColor:sc, ghost };
   switch (fixture.type) {
     case "gondola": return (
@@ -2696,6 +2705,8 @@ function Scene({
     for (const fix of placedFixtures) {
       const type = fix.type as string;
       if (!SHELF_LIKE_TYPES.has(type) || !FACE_PAINTABLE_TYPES.has(type)) continue;
+      // Infrastructure never carries a supplier planogram.
+      if (!isRentable(fix)) continue;
       const uf = unifiedById.get(fix.id);
       // Contract-save convention (FloorPlan2D AssignmentPanel):
       //   fullCode = `${item.sede || sede}-${item.code}`; face B appends "-B".
@@ -2824,6 +2835,7 @@ function Scene({
     supplierName:"", brandCategory:"",
     status:"free", negotiatedValue:0,
     startDate:"", endDate:"", observation:"",
+    ...(NON_RENTABLE_BY_DEFAULT.has(placingDef.type) ? { rentable: false } : {}),
   } : null;
 
   return (
@@ -2924,6 +2936,7 @@ function Scene({
               const unifiedFix = unifiedById.get(fix.id);
               if (!unifiedFix) return null;
               const isUnauthorized =
+                isRentable(unifiedFix) &&
                 unifiedFix.status === "occupied" &&
                 (!unifiedFix.supplierName || !unifiedFix.endDate || new Date(unifiedFix.endDate) < new Date());
               if (!isUnauthorized) return null;
@@ -3056,6 +3069,7 @@ function storeToFixtures(unifiedList: UnifiedFixture[]): PlacedFixture[] {
         startDate:       f.startDate,
         endDate:         f.endDate,
         observation:     f.observation,
+        rentable:        f.rentable,
       };
     });
 }
@@ -3072,29 +3086,42 @@ function fixturesToStore(
   // Keep 2D-only fixtures (exhibicion) so the 2D editor doesn't lose them
   const exhibicion = existingStore.filter((f) => f.type === "exhibicion");
 
-  const updated: UnifiedFixture[] = fixtures.map((f) => ({
-    id:              f.id,
-    code:            f.code,
-    type:            f.type,
-    gondolaType:     f.gondolaType,
-    label:           f.label,
-    cx:              f.x,
-    cz:              f.z, // direct mapping — no flip since camera moved to north side
-    rotY:            f.rotY,
-    w:               f.w,
-    d:               f.d,
-    h:               f.h,
-    color:           f.color,
-    status:          f.status,
-    sede,
-    supplierName:    f.supplierName,
-    brandCategory:   f.brandCategory,
-    negotiatedValue: f.negotiatedValue,
-    startDate:       f.startDate,
-    endDate:         f.endDate,
-    observation:     f.observation,
-    slots:           f.slots,
-  }));
+  // PlacedFixture models only what the 3D scene needs. Any UnifiedFixture field
+  // the 3D editor does not know about (face B contracts, the 2D nomenclatura
+  // pill) must be carried over from the store, otherwise simply opening this
+  // editor would blank it out for every fixture and push the loss to the server.
+  const existingMap = new Map(existingStore.map((f) => [f.id, f]));
+
+  const updated: UnifiedFixture[] = fixtures.map((f) => {
+    const existing = existingMap.get(f.id);
+    return {
+      id:              f.id,
+      code:            f.code,
+      type:            f.type,
+      gondolaType:     f.gondolaType,
+      label:           f.label,
+      cx:              f.x,
+      cz:              f.z, // direct mapping — no flip since camera moved to north side
+      rotY:            f.rotY,
+      w:               f.w,
+      d:               f.d,
+      h:               f.h,
+      color:           f.color,
+      status:          f.status,
+      sede,
+      supplierName:    f.supplierName,
+      brandCategory:   f.brandCategory,
+      negotiatedValue: f.negotiatedValue,
+      startDate:       f.startDate,
+      endDate:         f.endDate,
+      observation:     f.observation,
+      slots:           f.slots,
+      rentable:        f.rentable,
+      // ── Preserved from the store (not modelled in 3D) ──────────────────────
+      nomenclatura:    existing?.nomenclatura,
+      faceB:           existing?.faceB,
+    };
+  });
 
   return [...exhibicion, ...updated];
 }
@@ -3123,6 +3150,8 @@ function CommercialPanel({
 
   const sm  = STATUS_META[fix.status];
   const def = FIXTURE_DEFS.find(d=>d.type===fix.type && (fix.type!=="gondola"||d.gondolaType===fix.gondolaType)) ?? FIXTURE_DEFS[0];
+  // Infrastructure holds no contract: the commercial half of the panel hides.
+  const rentable = isRentable(fix);
 
   // ── Contract persistence ──────────────────────────────────────────────────
   const [saveState, setSaveState] = useState<"idle"|"saving"|"ok"|"error">("idle");
@@ -3284,7 +3313,7 @@ function CommercialPanel({
 
   return (
     <div className="flex w-64 flex-shrink-0 flex-col overflow-y-auto border-l border-dark-line bg-dark-surface"
-      style={{ borderLeftWidth: "4px", borderLeftColor: STATUS_COLORS[fix.status] }}>
+      style={{ borderLeftWidth: "4px", borderLeftColor: rentable ? STATUS_COLORS[fix.status] : NON_RENTABLE_COLOR }}>
 
       <div className="flex items-center gap-2 border-b border-dark-line p-3">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl bg-dark-surface-2 flex-shrink-0">
@@ -3298,10 +3327,16 @@ function CommercialPanel({
       </div>
 
       <div className="flex items-center gap-2 border-b border-dark-line px-3 py-2">
-        <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold flex items-center gap-1 ${sm.bg} ${sm.text}`}>
-          {fix.status === "occupied" && <span className="animate-pulse inline-block w-2 h-2 rounded-full mr-0.5" style={{ background: STATUS_COLORS[fix.status] }}/>}
-          {sm.label}
-        </span>
+        {rentable ? (
+          <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold flex items-center gap-1 ${sm.bg} ${sm.text}`}>
+            {fix.status === "occupied" && <span className="animate-pulse inline-block w-2 h-2 rounded-full mr-0.5" style={{ background: STATUS_COLORS[fix.status] }}/>}
+            {sm.label}
+          </span>
+        ) : (
+          <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "rgba(100,116,139,0.18)", color: "#94A3B8" }}>
+            No comercializable
+          </span>
+        )}
         <div className="ml-auto flex gap-1">
           <button onClick={onRotate} title="Rotar 90° (R)"
             className="rounded border border-dark-line-2 bg-dark-surface-2 p-1 text-dark-ink-2 hover:bg-dark-line hover:text-dark-ink-1 active:scale-90 transition-transform duration-100">
@@ -3340,6 +3375,31 @@ function CommercialPanel({
         )}
 
         <div>
+          <label className={labelCls}>Destino del mueble</label>
+          <div className="flex gap-1.5">
+            {([true, false] as const).map((value) => (
+              <button
+                key={String(value)}
+                onClick={() => u({ rentable: value })}
+                className={`flex-1 rounded px-1 py-1.5 text-[10.5px] font-semibold transition-colors ${
+                  rentable === value
+                    ? "bg-accent text-white"
+                    : "border border-dark-line-2 text-dark-ink-3 hover:text-dark-ink-1"
+                }`}
+              >
+                {value ? "Comercializable" : "No comercial."}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[9.5px] leading-relaxed text-dark-ink-3">
+            {rentable
+              ? "Se puede alquilar y cuenta en la disponibilidad de la sede."
+              : "Mobiliario propio del local: no admite contrato y queda fuera de la ocupación."}
+          </p>
+        </div>
+
+        {rentable && (
+        <div>
           <label className={labelCls}><Info size={9} className="inline mr-1"/>Estado fixture</label>
           <select value={fix.status} onChange={e=>u({status:e.target.value as SpaceStatus})}
             className="w-full rounded border border-dark-line-2 bg-dark-bg px-2 py-1 text-xs text-dark-ink-1 focus:border-accent focus:outline-none">
@@ -3349,6 +3409,9 @@ function CommercialPanel({
             <option value="maintenance">Mantenimiento</option>
           </select>
         </div>
+        )}
+
+        {rentable && (<>
 
         <div>
           <label className={labelCls}><Building2 size={9} className="inline mr-1"/>Proveedor</label>
@@ -3426,6 +3489,7 @@ function CommercialPanel({
             </p>
           )}
         </div>
+        </>)}
 
         <div className="rounded-lg border border-dark-line/50 bg-dark-bg/60 p-2 font-mono text-[10px] text-dark-ink-3">
           <p>{fix.w.toFixed(1)} × {fix.d.toFixed(1)} × {fix.h.toFixed(1)} m</p>
@@ -3535,10 +3599,22 @@ export default function StoreEditor3D() {
   }, [commit]);
 
   // ── Sync fixtures + sede → unified store ─────────────────────────────────────
+  // The exact array we last wrote to the store, so the mirror effect below can
+  // recognise its own echo by identity.
+  const lastCommittedRef = useRef<UnifiedFixture[] | null>(null);
+  // Set right after adopting server state, so re-serialising it does not bounce
+  // straight back to the server (two open 3D editors would ping-pong forever).
+  const suppressCommitRef = useRef(false);
+  // Merely opening this editor must not dirty the layout.
+  const isFirstRender3D = useRef(true);
+
   const prevSede3DRef = useRef(sede);
   useEffect(() => {
+    if (isFirstRender3D.current) { isFirstRender3D.current = false; return; }
+    if (suppressCommitRef.current) { suppressCommitRef.current = false; return; }
     const existingStore = selectFixtures(useFixtureStore.getState());
     const converted = fixturesToStore(placedFixtures, sede, existingStore);
+    lastCommittedRef.current = converted;
     if (draggingId.current) {
       // During drag: update display without creating an undo entry or triggering server sync
       pushToStore(converted);
@@ -3547,6 +3623,16 @@ export default function StoreEditor3D() {
       commit(converted);
     }
   }, [placedFixtures, sede, pushToStore, commit]);
+
+  // ── Sync unified store → fixtures (server pulls, undo/redo) ─────────────────
+  // Without this the 3D canvas kept rendering whatever it loaded on mount, so a
+  // layout saved on another workstation never appeared here.
+  useEffect(() => {
+    if (lastCommittedRef.current === fixtures) return; // our own echo
+    if (draggingId.current) return;                    // never yank geometry mid-drag
+    suppressCommitRef.current = true;
+    setPlacedFixtures(storeToFixtures(fixtures));
+  }, [fixtures]);
 
   useEffect(() => {
     if (prevSede3DRef.current === sede) return;
@@ -3648,6 +3734,9 @@ export default function StoreEditor3D() {
         startDate:       "",
         endDate:         "",
         observation:     "",
+        // Columns, checkouts and free zones are part of the store, not stock to
+        // sell. Everything else stays rentable (flag left absent).
+        ...(NON_RENTABLE_BY_DEFAULT.has(placingDef.type) ? { rentable: false } : {}),
       };
       newFix.slots = defaultSlots({ type:newFix.type, w:newFix.w, h:newFix.h, code:newCode });
       u(prev=>[...prev,newFix]);
