@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Grid2x2, Box, BarChart2, Camera, Search, Settings, LogOut, X, Send } from "lucide-react";
+import { Grid2x2, Box, BarChart2, Camera, Handshake, Search, Settings, LogOut, X, Send } from "lucide-react";
 import StoreEditor3D from "../components/StoreEditor3D/StoreEditor3D";
 import FloorPlan2D from "../components/FloorPlan2D/FloorPlan2D";
 import DashboardView from "./DashboardView";
+import NegotiateView from "./NegotiateView";
 import MountView from "./MountView";
 import SyncStatus from "../components/SyncStatus/SyncStatus";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
@@ -19,7 +20,7 @@ import { useFixtureStore } from "../store/fixtureStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ViewMode = "map" | "store" | "kpis" | "montaje";
+type ViewMode = "negociar" | "map" | "store" | "kpis" | "montaje";
 
 /** Código que venía en el enlace del correo de montaje (`?montar=NAVE-PUN-01`).
  *
@@ -481,11 +482,26 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
 
 // ─── Topbar ───────────────────────────────────────────────────────────────────
 
-const TABS: { id: ViewMode; label: string; Icon: typeof Grid2x2 }[] = [
-  { id: "map",     label: "Plano",     Icon: Grid2x2   },
-  { id: "store",   label: "Editor 3D", Icon: Box       },
-  { id: "kpis",    label: "Dashboard", Icon: BarChart2 },
-  { id: "montaje", label: "Montajes",  Icon: Camera    },
+/** Las pestañas, con una frase que dice para qué sirve cada una.
+ *
+ *  Los nombres solos no alcanzaban: "Plano" y "Editor 3D" suenan a lo mismo, y
+ *  desde ninguno de los dos se adivina que el contrato se llena ahí adentro.
+ *  El orden es el del trabajo diario —vender, mirar cómo va, montar— y el
+ *  diseño de la tienda queda separado al final, que es donde se entra una vez
+ *  cada tanto y no todos los días. */
+const TABS: {
+  id: ViewMode; label: string; Icon: typeof Grid2x2; para: string; grupo: "operar" | "diseñar";
+}[] = [
+  { id: "negociar", label: "Negociar",  Icon: Handshake, grupo: "operar",
+    para: "Vender un espacio: elegís el periodo, ves lo disponible y llenás el contrato" },
+  { id: "kpis",     label: "Resumen",   Icon: BarChart2, grupo: "operar",
+    para: "Cómo va la sede: ocupación, ingresos, lo que vence y lo que falta montar" },
+  { id: "montaje",  label: "Montajes",  Icon: Camera,    grupo: "operar",
+    para: "Confirmar con foto que la exhibición quedó armada" },
+  { id: "map",      label: "Plano",     Icon: Grid2x2,   grupo: "diseñar",
+    para: "Dibujar la tienda vista desde arriba y editar los muebles" },
+  { id: "store",    label: "Editor 3D", Icon: Box,       grupo: "diseñar",
+    para: "Ver la tienda en 3D y aplicar las artes del proveedor" },
 ];
 
 interface TopbarProps {
@@ -550,12 +566,25 @@ function Topbar({ viewMode, setViewMode, isAdmin, onOpenSettings, onLogout }: To
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 2 }}>
-        {visibleTabs.map(({ id, label, Icon }) => {
+        {visibleTabs.map(({ id, label, Icon, para, grupo }, i) => {
           const active = viewMode === id;
+          // Una línea fina separa "operar" de "diseñar la tienda": son dos
+          // trabajos distintos y mezclarlos era parte de la confusión.
+          const abreGrupo = i > 0 && visibleTabs[i - 1].grupo !== grupo;
           return (
+            <span key={id} style={{ display: "flex", alignItems: "center" }}>
+            {abreGrupo && (
+              <span
+                aria-hidden
+                style={{
+                  width: 1, height: 18, margin: "0 7px",
+                  background: "var(--line)", flexShrink: 0,
+                }}
+              />
+            )}
             <button
-              key={id}
               onClick={() => setViewMode(id)}
+              title={para}
               style={{
                 display: "flex", alignItems: "center", gap: 5,
                 height: 30, padding: "0 12px",
@@ -572,6 +601,7 @@ function Topbar({ viewMode, setViewMode, isAdmin, onOpenSettings, onLogout }: To
               <Icon size={13} />
               {label}
             </button>
+            </span>
           );
         })}
       </div>
@@ -638,7 +668,7 @@ export default function Dashboard() {
   // Arriving from the mount email opens that screen straight away, on the
   // space the email was about.
   const mountCode = MOUNT_DEEP_LINK;
-  const [viewMode, setViewMode] = useState<ViewMode>(mountCode ? "montaje" : "map");
+  const [viewMode, setViewMode] = useState<ViewMode>(mountCode ? "montaje" : "negociar");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const isAdmin = useAuthStore(selectIsAdmin);
   const role = useAuthStore((s) => s.role);
@@ -671,7 +701,9 @@ export default function Dashboard() {
       />
 
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        {effectiveMode === "store" ? (
+        {effectiveMode === "negociar" ? (
+          <NegotiateView onIrAlPlano={() => setViewMode("map")} />
+        ) : effectiveMode === "store" ? (
           <StoreEditor3D />
         ) : effectiveMode === "montaje" ? (
           <MountView initialCode={mountCode} onDone={() => setViewMode("kpis")} />

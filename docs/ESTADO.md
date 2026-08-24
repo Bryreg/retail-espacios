@@ -218,6 +218,43 @@ es un viernes suelto).
 que incluya hoy, pero **no** uno enteramente futuro — bloquearlo escondería inventario
 vendible detrás de una bandera puesta meses antes.
 
+### Pantalla Negociar
+
+El contrato se llenaba en un panel angosto adentro del **editor del plano**, y la
+disponibilidad se miraba en el Dashboard. Para vender un espacio había que saltar entre
+dos pestañas y, peor, saber dónde estaba dibujado cada mueble. La pestaña **Negociar**
+(`frontend/src/pages/NegotiateView.tsx`) pone las tres cosas seguidas, en el orden en que
+ocurre una negociación de verdad:
+
+1. **¿Para cuándo?** — los chips de temporada o dos fechas. Dice cuántos espacios quedan
+   libres todo el periodo.
+2. **¿Cuál espacio?** — solo lo disponible para ese rango, con su tarifa de referencia.
+   Lo parcialmente vendido queda escondido detrás de una casilla, marcado.
+3. **El contrato** — formulario amplio, con la comparación contra la referencia debajo del
+   valor y las fechas **ya puestas** con el periodo elegido arriba. Reescribirlas a mano
+   era el paso que más se equivocaba, y es información que la pantalla ya tenía.
+
+Al guardar hace lo mismo que el panel del plano —`find-or-create` del espacio y del
+proveedor, `POST /leases`, y escribe el contrato en el JSON del layout— y muestra una
+confirmación que **se queda hasta que la cierren**: al cerrar un trato lo que hay que ver
+es a quién le llegó el aviso, y un mensaje que se va solo a los dos segundos no lo dice.
+Esa confirmación vive en la pantalla y no en el formulario, porque al guardar el espacio
+sale de la lista de disponibles y eso desmontaba el mensaje justo cuando había que leerlo.
+
+El panel del plano sigue existiendo para editar un contrato sobre el mueble; Negociar es
+el camino para vender.
+
+**Las pestañas dicen para qué sirven.** Los nombres solos no alcanzaban —"Plano" y
+"Editor 3D" suenan a lo mismo, y desde ninguno se adivina que el contrato se llenaba ahí
+adentro—. Ahora hay una frase en el tooltip de cada una y una línea que separa el trabajo
+diario (Negociar · Resumen · Montajes) del diseño de la tienda (Plano · Editor 3D), que es
+donde se entra una vez cada tanto. El admin aterriza en **Negociar**.
+
+**El correo del proveedor ya se puede cargar.** El formulario lo pide, y
+`/suppliers/find-or-create` **completa** el que falta sin pisar el que ya está. Antes no
+había forma de cargarlo desde la interfaz, así que el tercer aviso —la constancia al
+proveedor— no salía nunca.
+
 ### Pantalla de negociación: del contrato al montaje
 
 Guardar un contrato ya no termina en la base: dispara **tres correos distintos según a
@@ -404,15 +441,10 @@ Procedimiento de recuperación, en orden:
 
 ## Backlog
 
-1. **"Contratado, pendiente de montaje" en el tablero del admin.** El mercaderista ya
-   confirma desde el celular y el reporte se guarda, pero el Dashboard todavía no lo lee:
-   falta pintar el estado del montaje leyendo `GET /mounts/` (`latestByCode` ya está en
-   `frontend/src/api/mounts.ts`). Es la mitad que le falta al ciclo para cerrarse a la
-   vista de quien vende.
-2. **Estado de renovación** (en negociación / renovado / no renueva). Lo que lo vuelve
+1. **Estado de renovación** (en negociación / renovado / no renueva). Lo que lo vuelve
    accionable no es el estado sino el **valor propuesto** al lado del vigente: el tablero
    deja de decir "8 contratos por vencer" y pasa a decir cuánta plata está en juego.
-3. **Histórico por espacio**. Es además prerrequisito de la tarifa de referencia: no hay
+2. **Histórico por espacio**. Es además prerrequisito de la tarifa de referencia: no hay
    tarifario público de exhibición en Colombia (los acuerdos son confidenciales), así que
    la única referencia calibrable es "a cuánto se cerró este mueble en esta sede antes".
 

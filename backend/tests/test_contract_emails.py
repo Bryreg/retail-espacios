@@ -229,3 +229,37 @@ def test_the_location_is_measured_edge_to_edge(client, admin, enviados):
     assert r2.status_code == 201, r2.text
     texto = _texto(_por_destinatario(enviados, "merca@galerias.co")["html"])
     assert "2 m de las neveras" in texto, texto
+
+
+def test_an_existing_supplier_gets_its_missing_email_filled_in(client, admin):
+    """Sin esto, un proveedor creado antes de que existiera el campo se quedaba
+    sin correo para siempre y su constancia no salía nunca: la única forma de
+    cargarlo habría sido tocar la base a mano."""
+    primero = client.post(
+        "/api/suppliers/find-or-create", json={"name": "Bavaria"}, headers=admin
+    ).json()
+    assert primero["email"] in (None, "")
+
+    segundo = client.post(
+        "/api/suppliers/find-or-create",
+        json={"name": "Bavaria", "email": "trade@bavaria.co"},
+        headers=admin,
+    ).json()
+    assert segundo["id"] == primero["id"], "creó un proveedor duplicado"
+    assert segundo["email"] == "trade@bavaria.co"
+
+
+def test_an_existing_email_is_never_overwritten(client, admin):
+    """Pisarlo dejaría que un contrato cualquiera le cambie la dirección a un
+    proveedor sin que nadie se entere."""
+    client.post(
+        "/api/suppliers/find-or-create",
+        json={"name": "Nutresa", "email": "trade@nutresa.co"},
+        headers=admin,
+    )
+    otro = client.post(
+        "/api/suppliers/find-or-create",
+        json={"name": "Nutresa", "email": "otro@dominio.co"},
+        headers=admin,
+    ).json()
+    assert otro["email"] == "trade@nutresa.co"

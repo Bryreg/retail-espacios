@@ -20,6 +20,16 @@ def find_or_create_supplier(payload: SupplierCreate, db: Session = Depends(get_d
     """Return existing Supplier by name, or create one.  Idempotent."""
     supplier = db.query(Supplier).filter(Supplier.name == payload.name).first()
     if supplier:
+        # Completar el correo que falta, nunca pisar el que ya está. Sin esto,
+        # un proveedor creado antes de que existiera el campo se quedaba sin
+        # correo para siempre y su constancia de contrato no salía nunca: la
+        # única forma de cargarlo habría sido tocar la base a mano. Pisarlo, en
+        # cambio, dejaría que un contrato cualquiera le cambie la dirección a
+        # un proveedor sin que nadie se entere.
+        if payload.email and not supplier.email:
+            supplier.email = payload.email
+            db.commit()
+            db.refresh(supplier)
         return supplier
     try:
         supplier = Supplier(**payload.model_dump())
