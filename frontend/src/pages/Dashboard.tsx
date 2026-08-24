@@ -3,6 +3,7 @@ import { Grid2x2, Box, BarChart2, Search, Settings, LogOut, X, Send } from "luci
 import StoreEditor3D from "../components/StoreEditor3D/StoreEditor3D";
 import FloorPlan2D from "../components/FloorPlan2D/FloorPlan2D";
 import DashboardView from "./DashboardView";
+import SyncStatus from "../components/SyncStatus/SyncStatus";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
 import {
   updatePasswords,
@@ -411,6 +412,9 @@ function Topbar({ viewMode, setViewMode, isAdmin, onOpenSettings, onLogout }: To
 
       {/* Right side */}
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+        {/* Server sync state — click to sync now */}
+        <SyncStatus />
+
         {/* Search */}
         <button
           title="Búsqueda"

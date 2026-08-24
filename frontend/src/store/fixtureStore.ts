@@ -1,22 +1,80 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { UnifiedFixture } from "../types/fixtures";
-import { fetchAllLayouts, saveLayout } from "../api/layout";
+import {
+  fetchAllLayouts,
+  fetchLayoutSettings,
+  fetchRevisions,
+  saveLayout,
+  saveLayoutSettings,
+} from "../api/layout";
+import { useAuthStore } from "./authStore";
 
 const MAX_UNDO = 50;
 
+/** Debounce before a local edit is pushed. Batches dragging and typing. */
+const SAVE_DEBOUNCE_MS = 1200;
+/** How often an idle tab checks whether another workstation saved something. */
+const POLL_INTERVAL_MS = 20_000;
+
 // ─── Debounced server save ────────────────────────────────────────────────────
-// Batches rapid changes (dragging, typing) into a single PUT every 1.5 s.
+// One timer PER SEDE. A single shared timer used to cancel the pending save of
+// sede A when the user switched to sede B within the debounce window, silently
+// dropping A's edits.
 
-let _saveTimer: ReturnType<typeof setTimeout> | null = null;
+const _saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-function scheduleSave(sede: string, fixtures: UnifiedFixture[]) {
-  if (_saveTimer) clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(() => {
-    saveLayout(sede, fixtures).catch((err) =>
-      console.warn("[layout sync] save failed:", err)
-    );
-  }, 1500);
+function scheduleSave(sede: string) {
+  const existing = _saveTimers.get(sede);
+  if (existing) clearTimeout(existing);
+  _saveTimers.set(
+    sede,
+    setTimeout(() => {
+      _saveTimers.delete(sede);
+      void useFixtureStore.getState().pushSede(sede);
+    }, SAVE_DEBOUNCE_MS),
+  );
+}
+
+function cancelScheduledSave(sede: string) {
+  const existing = _saveTimers.get(sede);
+  if (existing) {
+    clearTimeout(existing);
+    _saveTimers.delete(sede);
+  }
+}
+
+/** Only an admin session may write; anything else would just collect 401/403s. */
+function canWrite(): boolean {
+  const { token, role } = useAuthStore.getState();
+  return !!token && role === "admin";
+}
+
+function canRead(): boolean {
+  return !!useAuthStore.getState().token;
+}
+
+function currentRole(): string | null {
+  return useAuthStore.getState().role;
+}
+
+/** Sede names are identifiers: they key the server snapshot and prefix every
+ *  space code ("SEDE-CODE"). Normalising here stops "Terron" and "TERRON" from
+ *  becoming two separate rows that each workstation sees differently. */
+function normalizeSede(name: string): string {
+  return name.trim().toUpperCase();
+}
+
+// ─── Settings (sede list + catalog labels) ────────────────────────────────────
+
+let _settingsTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleSettingsSave() {
+  if (_settingsTimer) clearTimeout(_settingsTimer);
+  _settingsTimer = setTimeout(() => {
+    _settingsTimer = null;
+    void useFixtureStore.getState().pushSettings();
+  }, SAVE_DEBOUNCE_MS);
 }
 
 // ─── Camera state ─────────────────────────────────────────────────────────────
@@ -53,6 +111,8 @@ const DEFAULT_CAMERA_3D: Camera3D = {
 
 export const DEFAULT_SEDES = ["TERRON", "CENTRO", "NORTE", "SUR"];
 
+export type SyncState = "idle" | "pulling" | "pushing" | "error" | "conflict";
+
 interface FixtureStore {
   /** Fixtures stored per-sede — each sede has its own independent floor plan. */
   fixturesBySede: Record<string, UnifiedFixture[]>;
@@ -63,6 +123,20 @@ interface FixtureStore {
   catalogLabels: Record<string, string>;
   camera2D: Camera2D;
   camera3D: Camera3D;
+
+  // ── Sync bookkeeping ────────────────────────────────────────────────────────
+  /** Server revision (updated_at) last seen for each sede. */
+  serverRev: Record<string, string>;
+  /** Sedes holding local edits the server has not acknowledged yet. */
+  dirty: Record<string, boolean>;
+  /** Sedes another workstation modified while we held unsaved edits. */
+  conflicts: Record<string, string>;
+  syncState: SyncState;
+  syncMessage: string | null;
+  lastSyncedAt: number | null;
+  /** Role whose (possibly redacted) data is currently cached. A worker never
+   *  receives negotiatedValue, so that cache must not be reused by an admin. */
+  dataRole: string | null;
 
   // Undo / redo (session-only — not persisted to localStorage)
   past: UnifiedFixture[][];
@@ -98,11 +172,23 @@ interface FixtureStore {
   setCamera2D: (c: Partial<Camera2D>) => void;
   setCamera3D: (c: Partial<Camera3D>) => void;
 
-  /**
-   * Load all sede layouts from the server and merge into local state.
-   * Server data wins — call once on app startup.
-   */
+  // ── Sync actions ────────────────────────────────────────────────────────────
+  /** Pull every sede from the server and adopt whatever changed. */
   syncFromServer: () => Promise<void>;
+  /** Push one sede now, bypassing the debounce. */
+  pushSede: (sede: string, opts?: { force?: boolean }) => Promise<void>;
+  /** Push the shared sede list / catalog labels. */
+  pushSettings: () => Promise<void>;
+  /** Flush every pending debounced save immediately. */
+  flushPending: () => Promise<void>;
+  /** Cheap revision check; pulls only when something actually moved. */
+  pollForChanges: () => Promise<void>;
+  /** Resolve a conflict by keeping either the server copy or ours. */
+  resolveConflict: (sede: string, keep: "server" | "mine") => Promise<void>;
+  /** Begin background sync (poll + refocus). Idempotent. */
+  startAutoSync: () => void;
+  /** Stop background sync. */
+  stopAutoSync: () => void;
 }
 
 // ─── Selector ─────────────────────────────────────────────────────────────────
@@ -113,6 +199,10 @@ const EMPTY_FIXTURES: UnifiedFixture[] = [];
 /** Returns the fixtures for the currently active sede. */
 export const selectFixtures = (state: FixtureStore): UnifiedFixture[] =>
   state.fixturesBySede[state.sede] ?? EMPTY_FIXTURES;
+
+/** True when some sede still holds edits the server has not acknowledged. */
+export const selectHasPendingWork = (state: FixtureStore): boolean =>
+  Object.values(state.dirty).some(Boolean);
 
 // ─── Store implementation ─────────────────────────────────────────────────────
 
@@ -125,6 +215,13 @@ export const useFixtureStore = create<FixtureStore>()(
       catalogLabels: {},
       camera2D: DEFAULT_CAMERA_2D,
       camera3D: DEFAULT_CAMERA_3D,
+      serverRev: {},
+      dirty: {},
+      conflicts: {},
+      syncState: "idle",
+      syncMessage: null,
+      lastSyncedAt: null,
+      dataRole: null,
       past: [],
       future: [],
 
@@ -138,27 +235,44 @@ export const useFixtureStore = create<FixtureStore>()(
         // Clear undo/redo when switching sedes — each floor plan is independent
         set({ sede, past: [], future: [] }),
 
-      addSede: (name) =>
-        set((state) => ({
-          sedes: state.sedes.includes(name) ? state.sedes : [...state.sedes, name],
-        })),
-
-      renameSede: (oldName, newName) =>
+      addSede: (rawName) =>
         set((state) => {
-          if (!newName.trim() || newName === oldName) return state;
+          const name = normalizeSede(rawName);
+          if (!name || state.sedes.includes(name)) return state;
+          scheduleSettingsSave();
+          return { sedes: [...state.sedes, name] };
+        }),
+
+      renameSede: (oldName, rawNewName) =>
+        set((state) => {
+          const newName = normalizeSede(rawNewName);
+          if (!newName || newName === oldName) return state;
           const newFixturesBySede = { ...state.fixturesBySede };
+          const newDirty = { ...state.dirty };
+          const newRev = { ...state.serverRev };
           if (newFixturesBySede[oldName]) {
-            newFixturesBySede[newName] = newFixturesBySede[oldName];
+            // Each fixture also carries its own sede, and that field is what
+            // builds the "SEDE-CODE" space code used for contracts and files.
+            // Leaving it behind would point the renamed sede at the old codes.
+            newFixturesBySede[newName] = newFixturesBySede[oldName].map((f) =>
+              f.sede === oldName ? { ...f, sede: newName } : f,
+            );
             delete newFixturesBySede[oldName];
           }
-          // Schedule server save for the new sede name
-          const fixtures = newFixturesBySede[newName];
-          if (fixtures && fixtures.length > 0) {
-            scheduleSave(newName, fixtures);
+          // The renamed sede is a brand new snapshot server-side: it has no
+          // revision yet, and its fixtures still need to be uploaded.
+          delete newRev[oldName];
+          delete newDirty[oldName];
+          if (newFixturesBySede[newName]?.length) {
+            newDirty[newName] = true;
+            scheduleSave(newName);
           }
+          scheduleSettingsSave();
           return {
             sedes: state.sedes.map((s) => (s === oldName ? newName : s)),
             fixturesBySede: newFixturesBySede,
+            serverRev: newRev,
+            dirty: newDirty,
             sede: state.sede === oldName ? newName : state.sede,
           };
         }),
@@ -168,11 +282,16 @@ export const useFixtureStore = create<FixtureStore>()(
           const remaining = state.sedes.filter((s) => s !== name);
           const newFixturesBySede = { ...state.fixturesBySede };
           delete newFixturesBySede[name];
+          const newDirty = { ...state.dirty };
+          delete newDirty[name];
+          cancelScheduledSave(name);
           const newSede =
             state.sede === name ? (remaining[0] ?? "TERRON") : state.sede;
+          scheduleSettingsSave();
           return {
             sedes: remaining.length > 0 ? remaining : ["TERRON"],
             fixturesBySede: newFixturesBySede,
+            dirty: newDirty,
             sede: newSede,
             past: [],
             future: [],
@@ -187,18 +306,20 @@ export const useFixtureStore = create<FixtureStore>()(
           } else {
             delete next[type];
           }
+          scheduleSettingsSave();
           return { catalogLabels: next };
         }),
 
       // ── Undoable mutation ─────────────────────────────────────────────────
       commit: (nextFixtures) =>
         set((state) => {
-          scheduleSave(state.sede, nextFixtures);
+          scheduleSave(state.sede);
           return {
             fixturesBySede: {
               ...state.fixturesBySede,
               [state.sede]: nextFixtures,
             },
+            dirty: { ...state.dirty, [state.sede]: true },
             past: [
               ...state.past.slice(-(MAX_UNDO - 1)),
               state.fixturesBySede[state.sede] ?? [],
@@ -212,8 +333,10 @@ export const useFixtureStore = create<FixtureStore>()(
           if (state.past.length === 0) return state;
           const prev = state.past[state.past.length - 1];
           const current = state.fixturesBySede[state.sede] ?? [];
+          scheduleSave(state.sede);
           return {
             fixturesBySede: { ...state.fixturesBySede, [state.sede]: prev },
+            dirty: { ...state.dirty, [state.sede]: true },
             past: state.past.slice(0, -1),
             future: [current, ...state.future.slice(0, MAX_UNDO - 1)],
           };
@@ -224,8 +347,10 @@ export const useFixtureStore = create<FixtureStore>()(
           if (state.future.length === 0) return state;
           const next = state.future[0];
           const current = state.fixturesBySede[state.sede] ?? [];
+          scheduleSave(state.sede);
           return {
             fixturesBySede: { ...state.fixturesBySede, [state.sede]: next },
+            dirty: { ...state.dirty, [state.sede]: true },
             past: [...state.past.slice(-(MAX_UNDO - 1)), current],
             future: state.future.slice(1),
           };
@@ -237,56 +362,226 @@ export const useFixtureStore = create<FixtureStore>()(
       setCamera3D: (c) =>
         set((state) => ({ camera3D: { ...state.camera3D, ...c } })),
 
-      // ── Server sync ───────────────────────────────────────────────────────
-      syncFromServer: () =>
-        fetchAllLayouts()
-          .then((entries) => {
-            const fromServer: Record<string, UnifiedFixture[]> = {};
+      // ── Push one sede ─────────────────────────────────────────────────────
+      pushSede: async (sede, opts) => {
+        if (!canWrite()) return;
+        cancelScheduledSave(sede);
+        const state = get();
+        const fixtures = state.fixturesBySede[sede] ?? [];
+        // `force` resolves a conflict in our favour: overwrite whatever is there.
+        const base = opts?.force ? null : (state.serverRev[sede] ?? null);
+
+        set({ syncState: "pushing", syncMessage: null });
+        try {
+          const saved = await saveLayout(sede, fixtures, base);
+          set((s) => {
+            const dirty = { ...s.dirty };
+            const conflicts = { ...s.conflicts };
+            delete conflicts[sede];
+            // Another edit landed while the request was in flight — stay dirty
+            // so the follow-up save still happens.
+            if (s.fixturesBySede[sede] === fixtures) delete dirty[sede];
+            return {
+              dirty,
+              conflicts,
+              serverRev: { ...s.serverRev, [sede]: saved.updated_at ?? "" },
+              syncState: Object.keys(conflicts).length ? "conflict" : "idle",
+              syncMessage: null,
+              lastSyncedAt: Date.now(),
+            };
+          });
+        } catch (err: any) {
+          const status = err?.response?.status;
+          if (status === 409) {
+            const detail = err.response?.data?.detail;
+            const message =
+              (typeof detail === "object" && detail?.message) ||
+              `Otro equipo modificó «${sede}» mientras editabas.`;
+            set((s) => ({
+              conflicts: { ...s.conflicts, [sede]: message },
+              syncState: "conflict",
+              syncMessage: message,
+            }));
+            return;
+          }
+          if (status === 401 || status === 403) return; // session gone / read-only role
+          console.warn(`[layout sync] no se pudo guardar «${sede}»:`, err);
+          set({
+            syncState: "error",
+            syncMessage: "No se pudo guardar en el servidor. Se reintentará.",
+          });
+        }
+      },
+
+      // ── Push shared settings ──────────────────────────────────────────────
+      pushSettings: async () => {
+        if (!canWrite()) return;
+        const { sedes, catalogLabels } = get();
+        try {
+          await saveLayoutSettings(sedes, catalogLabels);
+        } catch (err) {
+          console.warn("[layout sync] no se pudieron guardar las sedes:", err);
+        }
+      },
+
+      flushPending: async () => {
+        const pending = Object.keys(get().dirty).filter((s) => get().dirty[s]);
+        if (_settingsTimer) {
+          clearTimeout(_settingsTimer);
+          _settingsTimer = null;
+          await get().pushSettings();
+        }
+        await Promise.all(pending.map((sede) => get().pushSede(sede)));
+      },
+
+      // ── Pull everything ───────────────────────────────────────────────────
+      syncFromServer: async () => {
+        if (!canRead()) return;
+        set({ syncState: "pulling" });
+        const role = currentRole();
+        // A worker's copy has negotiatedValue stripped server-side. If that copy
+        // is what localStorage holds, an admin logging in on the same machine
+        // must re-download everything instead of reusing zeroed prices — and
+        // above all must not push them back.
+        const roleChanged = get().dataRole !== role;
+        try {
+          const [entries, settings] = await Promise.all([
+            fetchAllLayouts(),
+            fetchLayoutSettings().catch(() => null),
+          ]);
+
+          const bootstrap: string[] = [];
+
+          set((state) => {
+            const fixturesBySede = { ...state.fixturesBySede };
+            const serverRev = { ...state.serverRev };
+            const seen = new Set<string>();
+
             for (const entry of entries) {
-              if (Array.isArray(entry.fixtures) && entry.fixtures.length > 0) {
-                fromServer[entry.sede] = entry.fixtures;
+              seen.add(entry.sede);
+              const rev = entry.updated_at ?? "";
+              // Never overwrite a sede that still holds unsaved local edits —
+              // its pending push (and the server's conflict check) decides.
+              if (state.dirty[entry.sede]) continue;
+              const known = Object.prototype.hasOwnProperty.call(
+                state.fixturesBySede,
+                entry.sede,
+              );
+              // Adopt on any revision change. Unconditionally, including a
+              // SMALLER or empty array — that is what makes deletions made on
+              // another workstation actually propagate here.
+              if (roleChanged || !known || serverRev[entry.sede] !== rev) {
+                fixturesBySede[entry.sede] = entry.fixtures;
+                serverRev[entry.sede] = rev;
               }
             }
 
-            // Snapshot local state BEFORE any merge so we can detect what to push.
-            const localBySede = get().fixturesBySede;
-
-            if (Object.keys(fromServer).length > 0) {
-              set((state) => {
-                const merged = { ...state.fixturesBySede };
-                for (const [sede, serverFixtures] of Object.entries(fromServer)) {
-                  const localFixtures = state.fixturesBySede[sede] ?? [];
-                  // Server wins only if local has no data or same/fewer count
-                  // This prevents overwriting local edits made during the fetch
-                  if (localFixtures.length === 0 || serverFixtures.length >= localFixtures.length) {
-                    merged[sede] = serverFixtures;
-                  }
-                }
-                return { fixturesBySede: merged };
-              });
+            // Local sedes the server has never heard of. Upload them once so a
+            // workstation that predates server sync seeds its work, but drop
+            // any sede we *used* to know server-side: that one was deleted.
+            for (const [sede, fixtures] of Object.entries(state.fixturesBySede)) {
+              if (seen.has(sede) || !Array.isArray(fixtures) || fixtures.length === 0) continue;
+              if (Object.prototype.hasOwnProperty.call(serverRev, sede)) {
+                delete fixturesBySede[sede];
+                delete serverRev[sede];
+              } else {
+                bootstrap.push(sede);
+              }
             }
 
-            // Initial upload: push any local sede that the server doesn't know about yet.
-            const toPush = Object.entries(localBySede).filter(
-              ([sede, fixtures]) =>
-                !fromServer[sede] && Array.isArray(fixtures) && fixtures.length > 0
+            const next: Partial<FixtureStore> = {
+              fixturesBySede,
+              serverRev,
+              dataRole: role,
+              syncState: Object.keys(state.conflicts).length ? "conflict" : "idle",
+              lastSyncedAt: Date.now(),
+            };
+
+            // Shared sede list / labels. An empty server list means "never
+            // configured" — keep ours and let the bootstrap push seed it.
+            // A queued local settings change always wins: adopting here would
+            // silently undo a sede the user just added.
+            if (settings && settings.sedes.length > 0 && !_settingsTimer) {
+              next.sedes = settings.sedes;
+              if (!settings.sedes.includes(state.sede)) {
+                next.sede = settings.sedes[0];
+              }
+            }
+            if (settings && settings.catalog_labels && !_settingsTimer) {
+              next.catalogLabels = settings.catalog_labels;
+            }
+            return next as FixtureStore;
+          });
+
+          if (bootstrap.length > 0 && canWrite()) {
+            console.info(
+              `[layout sync] subiendo ${bootstrap.length} sede(s) local(es) por primera vez…`,
             );
-            if (toPush.length > 0) {
-              console.info(
-                `[layout sync] uploading ${toPush.length} local sede(s) to server for the first time…`
-              );
-              void Promise.all(
-                toPush.map(([sede, fixtures]) =>
-                  saveLayout(sede, fixtures).catch((err) =>
-                    console.warn(`[layout sync] initial push for "${sede}" failed:`, err)
-                  )
-                )
-              );
-            }
-          })
-          .catch((err) =>
-            console.warn("[layout sync] initial load failed, using localStorage:", err)
-          ),
+            await Promise.all(bootstrap.map((sede) => get().pushSede(sede, { force: true })));
+          }
+          // Seed the shared settings the first time an admin connects.
+          if (settings && settings.sedes.length === 0 && canWrite()) {
+            await get().pushSettings();
+          }
+        } catch (err: any) {
+          if (err?.response?.status === 401) return; // handled by the auth interceptor
+          console.warn("[layout sync] no se pudo leer del servidor:", err);
+          set({
+            syncState: "error",
+            syncMessage: "Sin conexión con el servidor. Mostrando la copia local.",
+          });
+        }
+      },
+
+      // ── Cheap change detection ────────────────────────────────────────────
+      pollForChanges: async () => {
+        if (!canRead()) return;
+        // Never pull over the top of unsaved work. Retry pushing it instead —
+        // otherwise one failed save would freeze this tab out of sync forever.
+        if (Object.values(get().dirty).some(Boolean)) {
+          await get().flushPending();
+          return;
+        }
+        try {
+          const revisions = await fetchRevisions();
+          const { serverRev } = get();
+          const changed =
+            revisions.some((r) => (serverRev[r.sede] ?? null) !== (r.updated_at ?? "")) ||
+            // A sede vanished server-side.
+            Object.keys(serverRev).some((s) => !revisions.find((r) => r.sede === s));
+          if (changed) await get().syncFromServer();
+        } catch {
+          /* offline or transient — the next tick retries */
+        }
+      },
+
+      resolveConflict: async (sede, keep) => {
+        if (keep === "mine") {
+          await get().pushSede(sede, { force: true });
+          return;
+        }
+        // Keep the server copy: drop our unsaved delta for this sede, then pull.
+        cancelScheduledSave(sede);
+        set((s) => {
+          const dirty = { ...s.dirty };
+          const conflicts = { ...s.conflicts };
+          const serverRev = { ...s.serverRev };
+          delete dirty[sede];
+          delete conflicts[sede];
+          // Force the next pull to adopt whatever the server holds.
+          delete serverRev[sede];
+          return { dirty, conflicts, serverRev, syncState: "idle", syncMessage: null };
+        });
+        await get().syncFromServer();
+      },
+
+      startAutoSync: () => {
+        startAutoSync();
+      },
+
+      stopAutoSync: () => {
+        stopAutoSync();
+      },
     }),
     {
       name: "retail-fixtures-v1",
@@ -298,6 +593,11 @@ export const useFixtureStore = create<FixtureStore>()(
         catalogLabels: state.catalogLabels,
         camera2D: state.camera2D,
         camera3D: state.camera3D,
+        // Persisted so a reload knows what the server already has and which
+        // sedes still carry unsaved work.
+        serverRev: state.serverRev,
+        dirty: state.dirty,
+        dataRole: state.dataRole,
       }),
       // Handles both:
       //   • v1 format: { fixtures: [...], sede: "X" }  → migrates into fixturesBySede
@@ -324,6 +624,13 @@ export const useFixtureStore = create<FixtureStore>()(
           fixturesBySede,
           sedes: p.sedes ?? DEFAULT_SEDES,
           catalogLabels: p.catalogLabels ?? {},
+          serverRev: p.serverRev ?? {},
+          dirty: p.dirty ?? {},
+          dataRole: p.dataRole ?? null,
+          conflicts: {},
+          syncState: "idle",
+          syncMessage: null,
+          lastSyncedAt: null,
           camera2D: { ...current.camera2D, ...(p.camera2D ?? {}) },
           camera3D: { ...current.camera3D, ...(p.camera3D ?? {}) },
         };
@@ -331,6 +638,55 @@ export const useFixtureStore = create<FixtureStore>()(
     }
   )
 );
+
+// ─── Background sync lifecycle ────────────────────────────────────────────────
+// Started once the session is authenticated (see App.tsx) — never at module
+// load, because back then there is no token and every request 401s.
+
+let _pollTimer: ReturnType<typeof setInterval> | null = null;
+let _listenersBound = false;
+
+function onFocus() {
+  void useFixtureStore.getState().pollForChanges();
+}
+
+function onVisibility() {
+  if (document.visibilityState === "visible") {
+    void useFixtureStore.getState().pollForChanges();
+  }
+}
+
+function onOnline() {
+  const store = useFixtureStore.getState();
+  void store.flushPending().then(() => store.pollForChanges());
+}
+
+export function startAutoSync(): void {
+  if (_pollTimer) return;
+  void useFixtureStore.getState().syncFromServer();
+  _pollTimer = setInterval(() => {
+    void useFixtureStore.getState().pollForChanges();
+  }, POLL_INTERVAL_MS);
+  if (!_listenersBound) {
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("online", onOnline);
+    _listenersBound = true;
+  }
+}
+
+export function stopAutoSync(): void {
+  if (_pollTimer) {
+    clearInterval(_pollTimer);
+    _pollTimer = null;
+  }
+  if (_listenersBound) {
+    window.removeEventListener("focus", onFocus);
+    document.removeEventListener("visibilitychange", onVisibility);
+    window.removeEventListener("online", onOnline);
+    _listenersBound = false;
+  }
+}
 
 // ─── Legacy migration ─────────────────────────────────────────────────────────
 

@@ -17,7 +17,7 @@ import client from "../api/client";
 import { listSpaceFiles, type SpaceFileMeta } from "../api/files";
 import FileViewerModal from "../components/FileViewerModal";
 import type { Space } from "../types";
-import { isDoubleGondola as isDoubleGondolaShared } from "../types/fixtures";
+import { isDoubleGondola as isDoubleGondolaShared, isRentable } from "../types/fixtures";
 import type { UnifiedFixture, SpaceStatus, FaceData } from "../types/fixtures";
 
 // ─── Date / money helpers ────────────────────────────────────────────────────
@@ -102,6 +102,16 @@ function facesOf(f: UnifiedFixture): FaceEntry[] {
       startDate: b.startDate, endDate: b.endDate, observation: b.observation,
     },
   ];
+}
+
+/** Faces that take part in the COMMERCIAL picture.
+ *
+ *  A non-rentable fixture (a column, a checkout, a free zone) is part of the
+ *  store but is not sellable space, so it must not inflate the totals, dilute
+ *  the occupancy percentage or turn up as an available space in search. It is
+ *  still drawn on the map — see `facesOf`, which every render path uses. */
+function commercialFacesOf(f: UnifiedFixture): FaceEntry[] {
+  return isRentable(f) ? facesOf(f) : [];
 }
 
 // ─── Display status (used by the table) ──────────────────────────────────────
@@ -316,6 +326,9 @@ const STATUS_TOP: Record<SpaceStatus, string> = {
   maintenance: "#A8A29E",
 };
 
+/** Infrastructure on the isometric map: present, but visibly not for sale. */
+const NON_RENTABLE_TOP = "#94A3B8";
+
 function pts(...points: [number, number][]): string {
   return points.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
 }
@@ -367,10 +380,13 @@ function IsoMap({ fixtures, selectedId, onSelect, match }: IsoMapProps) {
       const bB = iso(x1, z0, 0), bC = iso(x1, z1, 0), bD = iso(x0, z1, 0);
       [tA, tB, tC, tD, bB, bC, bD].forEach(addPt);
 
-      const double = isDoubleGondola(f);
+      const rentable = isRentable(f);
+      // A non-rentable fixture is drawn as one neutral block: no face split, no
+      // commercial hue.
+      const double = isDoubleGondola(f) && rentable;
       const faces = facesOf(f);
-      const topA = STATUS_TOP[faces[0].status];
-      const topB = STATUS_TOP[faces[1]?.status ?? "free"];
+      const topA = rentable ? STATUS_TOP[faces[0].status] : NON_RENTABLE_TOP;
+      const topB = rentable ? STATUS_TOP[faces[1]?.status ?? "free"] : NON_RENTABLE_TOP;
       // Sides follow the dominant (face A) hue
       const sideL = darken(topA, 0.18);
       const sideR = darken(topA, 0.3);
@@ -581,6 +597,7 @@ function MapLegend() {
     { c: STATUS_TOP.occupied,    l: "Ocupado" },
     { c: STATUS_TOP.reserved,    l: "Reservado" },
     { c: STATUS_TOP.maintenance, l: "Mantenimiento" },
+    { c: NON_RENTABLE_TOP,       l: "No comercializable" },
   ];
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center" }}>
@@ -1070,7 +1087,7 @@ function SpacesTable({ fixtures, isAdmin }: { fixtures: UnifiedFixture[]; isAdmi
   // One row per rentable face — doubles expand to A + B, matching the KPIs.
   const rows = useMemo(
     () =>
-      fixtures.flatMap(facesOf).sort((a, b) => {
+      fixtures.flatMap(commercialFacesOf).sort((a, b) => {
         const ad = a.endDate ? daysUntil(a.endDate) : 99999;
         const bd = b.endDate ? daysUntil(b.endDate) : 99999;
         return ad - bd;
@@ -1400,7 +1417,7 @@ export default function DashboardView() {
     const faceFlags = new Map<string, boolean[]>();
     let count = 0;
     fixtures.forEach((f) => {
-      const flags = facesOf(f).map((entry) => {
+      const flags = commercialFacesOf(f).map((entry) => {
         const ok = (!q || faceMatchesQuery(entry, q)) && faceMatchesFilter(entry, mapFilter);
         if (ok) count++;
         return ok;
@@ -1413,8 +1430,12 @@ export default function DashboardView() {
   // ── KPI computation (per rentable face — doubles count as 2 units) ──
   // Buckets use displayStatus() so KPIs, Atención, map chips and table agree.
   const kpis = useMemo(() => {
-    const faces = fixtures.flatMap(facesOf);
+    const faces = fixtures.flatMap(commercialFacesOf);
     const total = faces.length;
+    // Kept separate so the strip can explain why "Espacios" is lower than the
+    // number of fixtures drawn on the plan.
+    const rentableFixtures = fixtures.filter(isRentable).length;
+    const nonRentable = fixtures.length - rentableFixtures;
     const occupied = faces.filter((x) => x.status === "occupied").length;
     const free     = faces.filter((x) => x.status === "free").length;
     // reserved + maintenance would otherwise vanish from the strip and
@@ -1452,6 +1473,7 @@ export default function DashboardView() {
 
     return {
       total, occupied, free, held, occPct, revenue,
+      rentableFixtures, nonRentable,
       expired, expiring, noContract,
       topSuppliers,
     };
@@ -1690,7 +1712,11 @@ export default function DashboardView() {
             <KpiTile
               label="Espacios"
               value={kpis.total}
-              sub={`${fixtures.length} fixtures · dobles ×2`}
+              sub={
+                kpis.nonRentable > 0
+                  ? `${kpis.rentableFixtures} comercializables · ${kpis.nonRentable} no`
+                  : `${fixtures.length} fixtures · dobles ×2`
+              }
               color="var(--ink-1)"
             />
             <KpiTile

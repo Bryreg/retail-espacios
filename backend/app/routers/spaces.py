@@ -8,6 +8,7 @@ from app.auth import require_admin, require_auth
 from app.database import get_db
 from app.models.models import Space, SpaceFile, SpaceLease, Supplier, SpaceStatus
 from app.schemas.spaces import SpaceOut, SpaceCreate, SpaceStatusUpdate, LeaseCreate, LeaseOut, SpaceMapItem, SpaceFindOrCreate
+from app.services.layout_lookup import is_space_rentable
 from app.services.mailer import format_cop, html_shell, send_mail_bg
 
 # Every route requires a valid token; mutations additionally require admin.
@@ -246,6 +247,19 @@ def create_lease(space_id: int, payload: LeaseCreate, background_tasks: Backgrou
     space = db.query(Space).filter(Space.id == space_id).first()
     if not space:
         raise HTTPException(status_code=404, detail="Espacio no encontrado")
+
+    # The UI hides the contract form for infrastructure, but the rule belongs
+    # here too: a stale tab or a direct API call must not create a lease on a
+    # fixture the user marked as not for rent.
+    if not is_space_rentable(db, space.code):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"«{space.code}» está marcado como no comercializable. "
+                "Cambiá su destino a «Comercializable» en el plano para poder asignarle un contrato."
+            ),
+        )
+
     supplier = db.query(Supplier).filter(Supplier.id == payload.supplier_id).first()
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
