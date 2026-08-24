@@ -14,6 +14,9 @@ export interface MountConfirmation {
   motivo?: MountMotivo | null;
   nota?: string | null;
   file_id?: number | null;
+  /** Nombre y tipo de la foto, para poder abrirla sin otra llamada. */
+  foto_nombre?: string | null;
+  foto_tipo?: string | null;
   reportado_por?: string | null;
   rol?: string | null;
   /** Hora del servidor, no del dispositivo. */
@@ -70,4 +73,27 @@ export function latestByCode(
     if (!out[m.space_code]) out[m.space_code] = m;
   }
   return out;
+}
+
+
+/** Por qué no se pudo montar, en palabras. El código se guarda para poder
+ *  contarlos; esto es lo que se le muestra a quien tiene que resolverlo. */
+export const MOTIVO_LABEL: Record<MountMotivo, string> = {
+  sin_material: "El proveedor no entregó el material",
+  sin_producto: "No llegó el producto",
+  espacio_ocupado: "El espacio está ocupado por otra cosa",
+  otro: "Otro motivo",
+};
+
+/** Estado de montaje de un espacio, tal como lo tiene que leer quien vende.
+ *
+ *  `pendiente` es el que importa y el que no existía: el contrato ya arrancó y
+ *  nadie reportó nada. Ese espacio se está cobrando sin prueba de que exista. */
+export type EstadoMontaje = "montado" | "no_montado" | "pendiente";
+
+export function estadoMontaje(
+  ultimo: MountConfirmation | undefined,
+): EstadoMontaje {
+  if (!ultimo) return "pendiente";
+  return ultimo.estado === "montado" ? "montado" : "no_montado";
 }

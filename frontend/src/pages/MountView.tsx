@@ -29,8 +29,27 @@ interface Pendiente {
   proveedor: string;
   desde: string;
   hasta: string;
-  /** El contrato ya arrancó: montarlo tarde es plata que el proveedor reclama. */
+  /** El contrato ya arrancó hace poco: montarlo tarde es plata que el proveedor
+   *  reclama. */
   urgente: boolean;
+  /** Arrancó hace más de un mes y nunca se reportó. La exhibición está armada
+   *  hace rato — lo que falta es el papel. Se deja en la lista para poder
+   *  reportarlo, pero al final: si va arriba, entierra el trabajo de hoy. */
+  viejo: boolean;
+}
+
+/** Días hacia atrás en que todavía tiene sentido tratar un montaje como
+ *  pendiente de verdad. Espeja la ventana del tablero. */
+const VENTANA_DIAS = 30;
+
+function diasDesde(iso: string): number {
+  if (!iso) return 0;
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return 0;
+  const inicio = Date.UTC(y, m - 1, d);
+  const hoy = new Date();
+  const cero = Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  return Math.round((cero - inicio) / 86_400_000);
 }
 
 const MOTIVOS: { id: MountMotivo; label: string }[] = [
@@ -131,11 +150,16 @@ export default function MountView({
           proveedor: (data.supplierName as string) || "",
           desde: data.startDate ?? "",
           hasta: data.endDate ?? "",
-          urgente: fase === "vigente",
+          urgente: fase === "vigente" && diasDesde(data.startDate ?? "") <= VENTANA_DIAS,
+          viejo: fase === "vigente" && diasDesde(data.startDate ?? "") > VENTANA_DIAS,
         });
       }
     }
-    out.sort((a, b) => Number(b.urgente) - Number(a.urgente) || a.desde.localeCompare(b.desde));
+    // Tres tramos: lo que arrancó y hay que montar ya, lo que viene, y al final
+    // lo viejo sin reportar. Ordenar solo por fecha ponía arriba contratos de
+    // enero y enterraba el trabajo de esta semana.
+    const tramo = (p: Pendiente) => (p.urgente ? 0 : p.viejo ? 2 : 1);
+    out.sort((a, b) => tramo(a) - tramo(b) || a.desde.localeCompare(b.desde));
     return out;
   }, [fixturesBySede, sedes, fixtures, activeSede, ultimo]);
 
@@ -170,6 +194,7 @@ export default function MountView({
           desde: data?.startDate ?? "",
           hasta: data?.endDate ?? "",
           urgente: false,
+          viejo: false,
         };
       }
     }

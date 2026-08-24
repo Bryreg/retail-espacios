@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   TrendingUp,
   AlertTriangle,
+  Camera,
   RefreshCw,
   MapPin,
   Building2,
@@ -17,12 +18,17 @@ import { useAuthStore, selectIsAdmin } from "../store/authStore";
 import client from "../api/client";
 import { listSpaceFiles, type SpaceFileMeta } from "../api/files";
 import FileViewerModal from "../components/FileViewerModal";
+import {
+  fetchMounts, latestByCode, estadoMontaje, MOTIVO_LABEL,
+  type MountConfirmation, type MountMotivo,
+} from "../api/mounts";
 import RatesModal from "../components/RatesModal/RatesModal";
 import type { Space } from "../types";
 import {
   contractPhase,
   daysTakenInRange,
   footprint2D,
+  fullSpaceCode,
   isDoubleGondola as isDoubleGondolaShared,
   isRentable,
   rangeAvailability,
@@ -138,6 +144,12 @@ function facesOf(f: UnifiedFixture): FaceEntry[] {
 function commercialFacesOf(f: UnifiedFixture): FaceEntry[] {
   return isRentable(f) ? facesOf(f) : [];
 }
+
+/** Cuántos días atrás sigue teniendo sentido reclamar un montaje sin reportar.
+ *
+ *  Pasado ese plazo el espacio está armado hace rato y lo que falta es el
+ *  papel, no la exhibición. */
+const VENTANA_MONTAJE_DIAS = 30;
 
 // ─── Display status (used by the table) ──────────────────────────────────────
 
@@ -1263,6 +1275,7 @@ function AtencionRow({
   bg,
   dates,
   last,
+  onFoto,
 }: {
   entry: FaceEntry;
   chip: string;
@@ -1270,6 +1283,8 @@ function AtencionRow({
   bg: string;
   dates: string;
   last: boolean;
+  /** Abre la foto del montaje. Solo la traen las filas que tienen prueba. */
+  onFoto?: () => void;
 }) {
   return (
     <div
@@ -1309,7 +1324,65 @@ function AtencionRow({
       >
         {dates}
       </span>
+      {onFoto && (
+        <button
+          onClick={onFoto}
+          title="Ver la foto del reporte"
+          aria-label="Ver la foto del reporte"
+          style={{
+            flexShrink: 0, display: "inline-flex", alignItems: "center",
+            background: "none", border: "none", padding: 0, cursor: "pointer",
+            color: "var(--ink-3)",
+          }}
+        >
+          <Camera size={12} />
+        </button>
+      )}
     </div>
+  );
+}
+
+/** Estado de montaje de una cara, en la tabla.
+ *
+ *  Solo dice algo cuando hay algo que decir: un espacio libre, uno vencido o
+ *  uno cuyo contrato todavía no arrancó no están "sin montar" — no les toca
+ *  todavía, y marcarlos llenaría la columna de ruido. */
+function MontajeChip({
+  entry, reporte,
+}: {
+  entry: FaceEntry;
+  reporte: MountConfirmation | undefined;
+}) {
+  const fase = contractPhase(entry);
+  const aplica = fase === "vigente" || fase === "pendiente";
+  if (!aplica && !reporte) {
+    return <span style={{ color: "var(--ink-4)", fontSize: 11.5 }}>—</span>;
+  }
+  const estado = estadoMontaje(reporte);
+  // Firmado pero sin arrancar y sin reporte: no le toca todavía.
+  if (estado === "pendiente" && fase !== "vigente") {
+    return <span style={{ color: "var(--ink-4)", fontSize: 11.5 }}>—</span>;
+  }
+  const pinta =
+    estado === "montado" ? { c: "var(--success)", t: "Montado" }
+    : estado === "no_montado" ? { c: "var(--danger)", t: "No se pudo" }
+    : { c: "var(--warning)", t: "Pendiente" };
+  return (
+    <span
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 5,
+        fontSize: 11.5, fontWeight: 600, color: pinta.c,
+      }}
+      title={
+        reporte
+          ? [reporte.reportado_por, reporte.motivo ? MOTIVO_LABEL[reporte.motivo as MountMotivo] : "",
+             reporte.nota].filter(Boolean).join(" · ")
+          : "El contrato ya arrancó y nadie reportó el montaje"
+      }
+    >
+      <span style={{ width: 6, height: 6, borderRadius: 99, background: pinta.c, flexShrink: 0 }} />
+      {pinta.t}
+    </span>
   );
 }
 
@@ -1362,10 +1435,12 @@ function SupplierRow({
 // ─── Spaces table ─────────────────────────────────────────────────────────────
 
 function SpacesTable({
-  fixtures, isAdmin, query, filter,
+  fixtures, isAdmin, query, filter, montajeDe,
 }: {
   fixtures: UnifiedFixture[];
   isAdmin: boolean;
+  /** El último reporte de montaje de esa cara, si lo hay. */
+  montajeDe: (entry: FaceEntry) => MountConfirmation | undefined;
   /** Driven by the page-level control bar — the table no longer owns a second
    *  search box and a second row of chips doing the same job as the map's. */
   query: string;
@@ -1390,7 +1465,7 @@ function SpacesTable({
     );
   }, [rows, filter, query]);
 
-  const headers = ["Código", "Tipo", "Proveedor", "Estado", "Días"];
+  const headers = ["Código", "Tipo", "Proveedor", "Estado", "Montaje", "Días"];
   if (isAdmin) headers.push("Renta / mes");
 
   return (
@@ -1515,6 +1590,9 @@ function SpacesTable({
                       {meta.label}
                     </span>
                   </td>
+                  <td style={cell}>
+                    <MontajeChip entry={entry} reporte={montajeDe(entry)} />
+                  </td>
                   <td
                     style={{
                       ...cell, textAlign: "right",
@@ -1632,6 +1710,33 @@ export default function DashboardView() {
     setDetailFull(false);
   };
   const [viewerFile, setViewerFile] = useState<SpaceFileMeta | null>(null);
+
+  // ── Estado de montaje ────────────────────────────────────────────────────
+  // El mercaderista ya reportaba y nadie leía: el reporte caía en una tabla que
+  // ninguna pantalla mostraba. Se pide una sola vez, para todas las sedes —
+  // son unas pocas filas y el enlace del correo puede apuntar a cualquiera.
+  const [montajes, setMontajes] = useState<MountConfirmation[]>([]);
+  useEffect(() => {
+    let vivo = true;
+    fetchMounts()
+      .then((m) => { if (vivo) setMontajes(m); })
+      .catch(() => { if (vivo) setMontajes([]); });
+    return () => { vivo = false; };
+  }, []);
+  const ultimoMontaje = useMemo(() => latestByCode(montajes), [montajes]);
+
+  /** El último reporte de una cara, buscado por su código COMPLETO.
+   *
+   *  `FaceEntry.code` es la nomenclatura corta, que se repite entre sedes; los
+   *  reportes se guardan con la sede adentro. Buscar por el corto mezclaría
+   *  tiendas — es el mismo error que ya costó un arreglo en la pantalla del
+   *  mercaderista. */
+  const montajeDe = useCallback(
+    (entry: FaceEntry): MountConfirmation | undefined =>
+      ultimoMontaje[fullSpaceCode(entry.fixture.sede || sede, entry.code)],
+    [ultimoMontaje, sede],
+  );
+
   const [mapQuery, setMapQuery] = useState("");
   const [mapFilter, setMapFilter] = useState<MapFilter>("todos");
   /** Period the map answers for; null = today. */
@@ -1753,13 +1858,56 @@ export default function DashboardView() {
     return { libres, parciales, tomados };
   }, [fixtures, mapRange]);
 
+  // ── Montaje: lo que hay que mirar ────────────────────────────────────────
+  //
+  // Dos listas distintas porque piden dos cosas distintas. "No se pudo" es un
+  // problema que alguien tiene que resolver hoy —el proveedor no entregó, el
+  // espacio está ocupado por otra cosa— y trae su motivo. "Sin montar" es
+  // silencio: el contrato ya arrancó, se está cobrando, y nadie dijo nada.
+  const montaje = useMemo(() => {
+    const noMontado: (FaceEntry & { reporte: MountConfirmation })[] = [];
+    const sinMontar: (FaceEntry & { dias: number })[] = [];
+    let viejosSinReporte = 0;
+    fixtures.flatMap(commercialFacesOf).forEach((entry) => {
+      const fase = contractPhase(entry);
+      // Lo vencido ya no se monta y lo libre no tiene qué montar.
+      if (fase !== "vigente" && fase !== "pendiente") return;
+      const reporte = montajeDe(entry);
+      if (reporte && reporte.estado === "no_montado") {
+        noMontado.push({ ...entry, reporte });
+        return;
+      }
+      if (reporte) return; // montado
+      // Solo lo que YA arrancó: un contrato que empieza en tres semanas no
+      // está sin montar, está esperando.
+      if (fase !== "vigente") return;
+      const dias = Math.max(0, -daysUntil(entry.startDate));
+      // Un contrato que arrancó hace meses y sigue corriendo se montó hace
+      // meses: lo que falta es el reporte, no la exhibición. Nadie va a ir a
+      // fotografiarlo ahora. Mezclarlos con los de esta semana enterraría lo
+      // accionable — en NAVE hay contratos de enero, de antes de que el
+      // montaje existiera. No se descartan en silencio: se cuentan aparte.
+      if (dias > VENTANA_MONTAJE_DIAS) {
+        viejosSinReporte++;
+        return;
+      }
+      sinMontar.push({ ...entry, dias });
+    });
+    noMontado.sort((a, b) =>
+      (b.reporte.confirmado_en ?? "").localeCompare(a.reporte.confirmado_en ?? ""));
+    sinMontar.sort((a, b) => b.dias - a.dias);
+    return { noMontado, sinMontar, viejosSinReporte };
+  }, [fixtures, montajeDe]);
+
   const activeSedeCount = sedes.filter((s) => (fixturesBySede[s] ?? []).length > 0).length;
 
   const attentionCount =
     kpis.expired.length + kpis.expiring.length + kpis.noContract.length +
-    kpis.belowReference.length;
+    (isAdmin ? kpis.belowReference.length + montaje.noMontado.length + montaje.sinMontar.length : 0);
   const lastAttentionSection =
     kpis.belowReference.length > 0 ? "belowRef"
+    : montaje.sinMontar.length > 0 || montaje.viejosSinReporte > 0 ? "sinMontar"
+    : montaje.noMontado.length > 0 ? "noMontado"
     : kpis.noContract.length > 0 ? "noContract"
     : kpis.expiring.length > 0 ? "expiring"
     : "expired";
@@ -2247,6 +2395,83 @@ export default function DashboardView() {
                         ))}
                       </>
                     )}
+                    {isAdmin && montaje.noMontado.length > 0 && (
+                      <>
+                        <AtencionSection
+                          label={`No se pudo montar · ${montaje.noMontado.length}`}
+                          color="var(--danger)"
+                        />
+                        {montaje.noMontado.map((entry, i) => (
+                          <AtencionRow
+                            key={`nm-${entry.fixture.id}-${entry.face}`}
+                            entry={entry}
+                            chip="!"
+                            chipColor="var(--danger)"
+                            bg="var(--danger-50)"
+                            dates={
+                              (entry.reporte.motivo
+                                ? MOTIVO_LABEL[entry.reporte.motivo as MountMotivo]
+                                : "Sin motivo") +
+                              (entry.reporte.reportado_por ? ` · ${entry.reporte.reportado_por}` : "")
+                            }
+                            last={lastAttentionSection === "noMontado" && i === montaje.noMontado.length - 1}
+                            onFoto={
+                              entry.reporte.file_id
+                                ? () => setViewerFile({
+                                    id: entry.reporte.file_id as number,
+                                    filename: entry.reporte.foto_nombre ?? "montaje.jpg",
+                                    content_type: entry.reporte.foto_tipo ?? "image/jpeg",
+                                    size: 0,
+                                    uploaded_at: entry.reporte.confirmado_en ?? "",
+                                  })
+                                : undefined
+                            }
+                          />
+                        ))}
+                      </>
+                    )}
+                    {isAdmin && montaje.sinMontar.length > 0 && (
+                      <>
+                        <AtencionSection
+                          label={`Contratado, sin montar · ${montaje.sinMontar.length}`}
+                          color="var(--warning)"
+                        />
+                        {montaje.sinMontar.map((entry, i) => (
+                          <AtencionRow
+                            key={`sm-${entry.fixture.id}-${entry.face}`}
+                            entry={entry}
+                            chip={entry.dias === 0 ? "hoy" : `${entry.dias}d`}
+                            chipColor="var(--warning)"
+                            bg="var(--warning-50)"
+                            dates={
+                              entry.dias === 0
+                                ? "Arrancó hoy · sin reporte"
+                                : `Arrancó hace ${entry.dias} día${entry.dias === 1 ? "" : "s"} · sin reporte`
+                            }
+                            last={
+                              lastAttentionSection === "sinMontar" &&
+                              montaje.viejosSinReporte === 0 &&
+                              i === montaje.sinMontar.length - 1
+                            }
+                          />
+                        ))}
+                      </>
+                    )}
+                    {isAdmin && montaje.viejosSinReporte > 0 && (
+                      <div
+                        style={{
+                          padding: "8px 14px", fontSize: 11, color: "var(--ink-3)",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        Además, {montaje.viejosSinReporte} contrato
+                        {montaje.viejosSinReporte === 1 ? "" : "s"} que arrancó
+                        {montaje.viejosSinReporte === 1 ? "" : "n"} hace más de{" "}
+                        {VENTANA_MONTAJE_DIAS} días nunca se reportó
+                        {montaje.viejosSinReporte === 1 ? "" : "n"}. A esa altura el
+                        espacio ya está armado: lo que falta es el reporte.
+                      </div>
+                    )}
                     {isAdmin && kpis.belowReference.length > 0 && (
                       <>
                         <AtencionSection
@@ -2317,6 +2542,7 @@ export default function DashboardView() {
               isAdmin={isAdmin}
               query={mapQuery}
               filter={mapFilter}
+              montajeDe={montajeDe}
             />
           </Card>
         </>

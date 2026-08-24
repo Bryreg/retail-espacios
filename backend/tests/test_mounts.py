@@ -234,3 +234,24 @@ def test_the_mount_photo_is_not_a_planogram(client, admin, worker):
     despues = client.get("/api/spaces/face-images", headers=admin).json()
     fila = next(x for x in despues if x["code"] == "NAVE-GON-01")
     assert fila["file_id"] == arte_id, "la foto del montaje se robó el planograma"
+
+
+def test_the_report_carries_enough_to_open_the_photo(client, worker):
+    """La prueba no sirve si cuesta trabajo mirarla: el tablero necesita el
+    nombre y el tipo para abrirla sin una segunda llamada por fila."""
+    r = _confirm(client, worker, "NAVE-GON-01", foto=("IMG_0042.jpg", FOTO, "image/jpeg"))
+    assert r.status_code == 201, r.text
+    assert r.json()["foto_tipo"] == "image/jpeg"
+    assert "IMG_0042.jpg" in r.json()["foto_nombre"]
+
+    fila = client.get("/api/mounts/", headers=worker).json()[0]
+    assert fila["foto_tipo"] == "image/jpeg"
+    assert fila["file_id"]
+
+
+def test_a_report_without_a_photo_says_so(client, worker):
+    _confirm(client, worker, "NAVE-GON-01", estado="no_montado",
+             motivo="sin_material", foto=None)
+    fila = client.get("/api/mounts/", headers=worker).json()[0]
+    assert fila["file_id"] is None
+    assert fila["foto_nombre"] is None

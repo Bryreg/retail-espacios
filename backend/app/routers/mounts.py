@@ -48,11 +48,24 @@ class MountOut(BaseModel):
     motivo: Optional[str] = None
     nota: Optional[str] = None
     file_id: Optional[int] = None
+    # Nombre y tipo de la foto. Van acá para que el tablero pueda abrirla sin
+    # una segunda llamada: el visor necesita el tipo para saber cómo pintarla,
+    # y la prueba no sirve de nada si cuesta trabajo mirarla.
+    foto_nombre: Optional[str] = None
+    foto_tipo: Optional[str] = None
     reportado_por: Optional[str] = None
     rol: Optional[str] = None
     confirmado_en: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+
+def _con_foto(conf: MountConfirmation, archivo: Optional[SpaceFile]) -> MountOut:
+    salida = MountOut.model_validate(conf)
+    if archivo is not None:
+        salida.foto_nombre = archivo.filename
+        salida.foto_tipo = archivo.content_type
+    return salida
 
 
 @router.get("/", response_model=list[MountOut])
@@ -68,7 +81,22 @@ def list_mounts(sede: Optional[str] = None, db: Session = Depends(get_db)):
     q = db.query(MountConfirmation).filter(MountConfirmation.archivado_en.is_(None))
     if sede:
         q = q.filter(MountConfirmation.sede == sede.strip().upper())
-    return q.order_by(MountConfirmation.confirmado_en.desc(), MountConfirmation.id.desc()).all()
+    filas = q.order_by(
+        MountConfirmation.confirmado_en.desc(), MountConfirmation.id.desc()
+    ).all()
+
+    # Los datos de las fotos en UNA consulta, sin traer los binarios: son
+    # megabytes por fila y acá solo hace falta el nombre y el tipo.
+    ids = [f.file_id for f in filas if f.file_id]
+    archivos = {}
+    if ids:
+        archivos = {
+            fid: SpaceFile(id=fid, filename=nombre, content_type=tipo)
+            for fid, nombre, tipo in db.query(
+                SpaceFile.id, SpaceFile.filename, SpaceFile.content_type
+            ).filter(SpaceFile.id.in_(ids)).all()
+        }
+    return [_con_foto(f, archivos.get(f.file_id)) for f in filas]
 
 
 @router.post("/", response_model=MountOut, status_code=201)
@@ -111,6 +139,7 @@ async def confirm_mount(
         )
 
     file_id = None
+    row = None
     if foto is not None and foto.filename:
         # La extensión es la primera señal, pero no siempre viene: hay cámaras
         # y navegadores que mandan el archivo con un nombre sin punto. Cuando
@@ -181,7 +210,7 @@ async def confirm_mount(
     db.add(conf)
     db.commit()
     db.refresh(conf)
-    return conf
+    return _con_foto(conf, row)
 
 
 @router.get("/files/{file_id}/exists", response_model=dict)
