@@ -10,7 +10,6 @@ import {
   FileText,
   ChevronRight,
   Search,
-  Gauge,
   SlidersHorizontal,
 } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
@@ -21,6 +20,7 @@ import FileViewerModal from "../components/FileViewerModal";
 import RatesModal from "../components/RatesModal/RatesModal";
 import type { Space } from "../types";
 import {
+  contractPhase,
   isDoubleGondola as isDoubleGondolaShared,
   isRentable,
   rateTypeOf,
@@ -135,19 +135,26 @@ function commercialFacesOf(f: UnifiedFixture): FaceEntry[] {
 // ─── Display status (used by the table) ──────────────────────────────────────
 
 type DisplayStatus =
-  | "active" | "expiring" | "expired" | "no_contract"
+  | "active" | "committed" | "expiring" | "expired" | "no_contract"
   | "reserved" | "maintenance" | "free";
 
-function displayStatus(f: { status: SpaceStatus; endDate: string }): DisplayStatus {
+/** Reading of one face TODAY.
+ *
+ *  `committed` is the state that used to be missing: a contract that is signed
+ *  but has not started yet. Without it, booking a December end-cap in August
+ *  painted the space occupied for four months — the plan said "taken" while
+ *  the backend would happily have sold those months to someone else. */
+function displayStatus(f: { status: SpaceStatus; startDate?: string; endDate: string }): DisplayStatus {
   if (f.status === "free")        return "free";
   if (f.status === "reserved")    return "reserved";
   if (f.status === "maintenance") return "maintenance";
   if (f.status !== "occupied")    return "free";
+  const phase = contractPhase(f);
+  if (phase === "sin_contrato")   return "no_contract";
+  if (phase === "pendiente")      return "committed";
+  if (phase === "vencido")        return "expired";
   if (!f.endDate)                 return "no_contract";
-  const days = daysUntil(f.endDate);
-  if (days < 0)   return "expired";
-  if (days <= 30) return "expiring";
-  return "active";
+  return daysUntil(f.endDate) <= 30 ? "expiring" : "active";
 }
 
 const STATUS_META: Record<
@@ -155,6 +162,7 @@ const STATUS_META: Record<
   { ring: string; fill: string; label: string }
 > = {
   active:      { ring: "var(--success)", fill: "rgba(21,128,61,0.10)",        label: "Activo" },
+  committed:   { ring: "var(--accent-700)", fill: "var(--accent-50)",         label: "Contratado" },
   expiring:    { ring: "var(--warning)", fill: "rgba(180,83,9,0.12)",         label: "Por vencer" },
   expired:     { ring: "var(--danger)",  fill: "rgba(185,28,28,0.10)",        label: "Vencido" },
   no_contract: { ring: "var(--danger)",  fill: "rgba(185,28,28,0.10)",        label: "Sin contrato" },
@@ -163,23 +171,17 @@ const STATUS_META: Record<
   free:        { ring: "var(--ink-4)",   fill: "rgba(181,174,156,0.10)",      label: "Libre" },
 };
 
-const STATUS_LABEL: Record<SpaceStatus, string> = {
-  free: "Libre",
-  occupied: "Ocupado",
-  reserved: "Reservado",
-  maintenance: "Mantenimiento",
-};
-
 // ─── Map search + status filter (product geolocation) ────────────────────────
 
-type MapFilter = "todos" | "free" | "occupied" | "expiring" | "expired";
+type MapFilter = "todos" | "free" | "occupied" | "committed" | "expiring" | "expired";
 
 const FILTER_CHIPS: { id: MapFilter; label: string; ring: string; fill: string }[] = [
-  { id: "todos",    label: "Todos",           ring: "var(--ink-2)",      fill: "var(--surface-3)" },
-  { id: "free",     label: "Disponibles",     ring: "var(--success)",    fill: "rgba(21,128,61,0.10)" },
-  { id: "occupied", label: "Ocupados",        ring: "var(--accent-700)", fill: "var(--accent-50)" },
-  { id: "expiring", label: "Por vencer ≤30d", ring: "var(--warning)",    fill: "rgba(180,83,9,0.12)" },
-  { id: "expired",  label: "Vencidos",        ring: "var(--danger)",     fill: "rgba(185,28,28,0.10)" },
+  { id: "todos",     label: "Todos",           ring: "var(--ink-2)",      fill: "var(--surface-3)" },
+  { id: "free",      label: "Disponibles",     ring: "var(--success)",    fill: "rgba(21,128,61,0.10)" },
+  { id: "occupied",  label: "Ocupados",        ring: "var(--accent-700)", fill: "var(--accent-50)" },
+  { id: "committed", label: "Contratados",     ring: "var(--accent-700)", fill: "var(--accent-50)" },
+  { id: "expiring",  label: "Por vencer ≤30d", ring: "var(--warning)",    fill: "rgba(180,83,9,0.12)" },
+  { id: "expired",   label: "Vencidos",        ring: "var(--danger)",     fill: "rgba(185,28,28,0.10)" },
 ];
 
 /** Accent- and case-insensitive comparison base. */
@@ -200,8 +202,11 @@ function faceMatchesQuery(entry: FaceEntry, q: string): boolean {
 
 function faceMatchesFilter(entry: FaceEntry, filter: MapFilter): boolean {
   if (filter === "todos") return true;
-  if (filter === "occupied") return entry.status === "occupied";
   const ds = displayStatus(entry);
+  // "Ocupados" means earning today. A committed-but-not-started contract is
+  // neither occupied nor available, so it answers to its own chip.
+  if (filter === "occupied") return ds === "active" || ds === "expiring";
+  if (filter === "committed") return ds === "committed";
   if (filter === "free") return ds === "free";
   if (filter === "expiring") return ds === "expiring";
   return ds === "expired";
@@ -266,13 +271,16 @@ function CardHeader({
 // ─── Stat card (headline metrics) ────────────────────────────────────────────
 
 /** One headline number. `meter` (0-100) draws a progress bar under the value —
- *  used for occupancy, where the ratio matters more than the raw count. */
+ *  used for occupancy, where the ratio matters more than the raw count.
+ *  `note` is a second fact on its own line: `sub` sits inline beside the value
+ *  and a long one breaks across three lines in a card this narrow. */
 function StatCard({
-  label, value, sub, color, meter, tone = "plain", onClick, active,
+  label, value, sub, note, color, meter, tone = "plain", onClick, active,
 }: {
   label: string;
   value: string | number;
   sub?: string;
+  note?: string;
   color: string;
   meter?: number;
   tone?: "plain" | "alert";
@@ -312,6 +320,11 @@ function StatCard({
         </span>
         {sub && <span style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 500 }}>{sub}</span>}
       </div>
+      {note && (
+        <div style={{ marginTop: 3, fontSize: 10.5, color: "var(--ink-3)", whiteSpace: "nowrap" }}>
+          {note}
+        </div>
+      )}
       {meter !== undefined && (
         <div
           style={{
@@ -347,14 +360,28 @@ function darken(hex: string, amt: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-/** Top-face color families per status: free → success, occupied → violet,
- *  reserved → amber, maintenance → gray. */
-const STATUS_TOP: Record<SpaceStatus, string> = {
+/** What the map paints, keyed on the READING of the face rather than its
+ *  stored status — so the plan tells the same story as the cards.
+ *
+ *  `committed` is the same violet family as occupied, one step lighter: the
+ *  space is sold, just not yet live. Expired turns red because the project's
+ *  palette reserves red for what is wrong, and a contract past its end date
+ *  is exactly that — painting it as plain "occupied" hid the problem on the
+ *  one screen where it should be most visible. */
+const DISPLAY_TOP: Record<DisplayStatus, string> = {
   free:        "#4CC38A",
-  occupied:    "#8B5CF6",
+  committed:   "#A78BFA",
+  active:      "#8B5CF6",
+  expiring:    "#8B5CF6",
+  expired:     "#E5484D",
+  no_contract: "#E5484D",
   reserved:    "#F0B429",
   maintenance: "#A8A29E",
 };
+
+function topColorFor(face: FaceEntry): string {
+  return DISPLAY_TOP[displayStatus(face)];
+}
 
 /** Infrastructure on the isometric map: present, but visibly not for sale. */
 const NON_RENTABLE_TOP = "#94A3B8";
@@ -424,8 +451,8 @@ function IsoMap({ fixtures, selectedId, onSelect, match }: IsoMapProps) {
       // commercial hue.
       const double = isDoubleGondola(f) && rentable;
       const faces = facesOf(f);
-      const topA = rentable ? STATUS_TOP[faces[0].status] : NON_RENTABLE_TOP;
-      const topB = rentable ? STATUS_TOP[faces[1]?.status ?? "free"] : NON_RENTABLE_TOP;
+      const topA = rentable ? topColorFor(faces[0]) : NON_RENTABLE_TOP;
+      const topB = rentable && faces[1] ? topColorFor(faces[1]) : NON_RENTABLE_TOP;
       // Sides follow the dominant (face A) hue
       const sideL = darken(topA, 0.18);
       const sideR = darken(topA, 0.3);
@@ -648,11 +675,13 @@ function IsoMap({ fixtures, selectedId, onSelect, match }: IsoMapProps) {
 
 function MapLegend() {
   const items: { c: string; l: string }[] = [
-    { c: STATUS_TOP.free,        l: "Libre" },
-    { c: STATUS_TOP.occupied,    l: "Ocupado" },
-    { c: STATUS_TOP.reserved,    l: "Reservado" },
-    { c: STATUS_TOP.maintenance, l: "Mantenimiento" },
-    { c: NON_RENTABLE_TOP,       l: "No comercializable" },
+    { c: DISPLAY_TOP.free,        l: "Libre" },
+    { c: DISPLAY_TOP.committed,   l: "Contratado" },
+    { c: DISPLAY_TOP.active,      l: "Ocupado" },
+    { c: DISPLAY_TOP.expired,     l: "Vencido" },
+    { c: DISPLAY_TOP.reserved,    l: "Reservado" },
+    { c: DISPLAY_TOP.maintenance, l: "Mantenimiento" },
+    { c: NON_RENTABLE_TOP,        l: "No comercializable" },
   ];
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center" }}>
@@ -743,10 +772,13 @@ function FileRow({ file, onOpen }: { file: SpaceFileMeta; onOpen: () => void }) 
   );
 }
 
-/** Status pill in the page's light theme (the old panel was dark-on-light). */
-function StatusPill({ fixture, status }: { fixture: UnifiedFixture; status: SpaceStatus }) {
+/** Status pill in the page's light theme (the old panel was dark-on-light).
+ *  Reads the face, not the raw status, so a contract signed for later says
+ *  "Contratado" here exactly as it does on the map and in the cards. */
+function StatusPill({ fixture, face }: { fixture: UnifiedFixture; face: FaceEntry }) {
   const rentable = isRentable(fixture);
-  const ring = rentable ? STATUS_TOP[status] : NON_RENTABLE_TOP;
+  const ds = displayStatus(face);
+  const ring = rentable ? DISPLAY_TOP[ds] : NON_RENTABLE_TOP;
   return (
     <span
       style={{
@@ -757,7 +789,7 @@ function StatusPill({ fixture, status }: { fixture: UnifiedFixture; status: Spac
       }}
     >
       <span style={{ width: 6, height: 6, borderRadius: 99, background: ring }} />
-      {rentable ? STATUS_LABEL[status] : "No comercializable"}
+      {rentable ? STATUS_META[ds].label : "No comercializable"}
     </span>
   );
 }
@@ -942,7 +974,7 @@ function FixturePopover({
             {entry.code} · {fixture.sede}
           </div>
           <div style={{ marginTop: 7 }}>
-            <StatusPill fixture={fixture} status={entry.status} />
+            <StatusPill fixture={fixture} face={entry} />
           </div>
         </div>
         <button
@@ -1056,7 +1088,7 @@ function FixtureDetailCard({
             {entry.code} · {fixture.sede}
           </div>
         </div>
-        <StatusPill fixture={fixture} status={entry.status} />
+        <StatusPill fixture={fixture} face={entry} />
       </div>
 
       {double && (
@@ -1263,55 +1295,6 @@ function SupplierRow({
         }}
       >
         {formatCOP(revenue)}
-      </span>
-    </div>
-  );
-}
-
-// ─── $/m² row (rendimiento por mueble, compact ranked) ───────────────────────
-
-export interface PerM2Entry {
-  fixture: UnifiedFixture;
-  /** Sum of the occupied faces' monthly values. */
-  total: number;
-  /** Floor footprint in m² (w × d) — the space the fixture actually takes. */
-  area: number;
-  perM2: number;
-}
-
-function PerM2Row({ entry, rank }: { entry: PerM2Entry; rank: number }) {
-  const f = entry.fixture;
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, height: 28, padding: "0 14px" }}>
-      <span
-        style={{
-          width: 16, flexShrink: 0, textAlign: "right",
-          fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-4)",
-        }}
-      >
-        {rank + 1}
-      </span>
-      <span style={{ flexShrink: 0, fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-2)" }}>
-        {f.nomenclatura || f.code}
-      </span>
-      <span
-        style={{
-          flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, color: "var(--ink-1)",
-          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-        }}
-      >
-        {f.label || f.code}
-      </span>
-      <span style={{ flexShrink: 0, fontSize: 10.5, color: "var(--ink-3)" }}>
-        {entry.area.toLocaleString("es-CO", { maximumFractionDigits: 1 })} m²
-      </span>
-      <span
-        style={{
-          flexShrink: 0, fontFamily: "var(--font-mono)", fontSize: 11.5,
-          fontWeight: 600, color: "var(--success)",
-        }}
-      >
-        {compactCOP(entry.perM2)}/m²
       </span>
     </div>
   );
@@ -1624,32 +1607,44 @@ export default function DashboardView() {
     // number of fixtures drawn on the plan.
     const rentableFixtures = fixtures.filter(isRentable).length;
     const nonRentable = fixtures.length - rentableFixtures;
-    const occupied = faces.filter((x) => x.status === "occupied").length;
-    const free     = faces.filter((x) => x.status === "free").length;
-    // reserved + maintenance would otherwise vanish from the strip and
-    // total would never reconcile with Libres + Ocupados.
-    const held     = total - occupied - free;
+    // Every bucket comes from displayStatus(), which now reads the contract's
+    // dates. That single source is what keeps the cards, the map chips and the
+    // table agreeing — counting "expired" as available here while the chip of
+    // the same name excluded it made the two disagree on screen.
+    const ds = faces.map((x) => displayStatus(x));
+    const phases = faces.map((x) => contractPhase(x));
+    const occupied  = ds.filter((s) => s === "active" || s === "expiring").length;
+    const committed = ds.filter((s) => s === "committed").length;
+    const free      = ds.filter((s) => s === "free").length;
+    // reserved + maintenance + expired + occupied-without-dates. Kept as the
+    // remainder so Libres + Ocupados + Contratados never overstate the total.
+    const held = total - occupied - committed - free;
     const occPct = total ? Math.round((occupied / total) * 100) : 0;
+    // Money actually being earned this month — a signed contract that has not
+    // started yet is not revenue, and counting it overstated the monthly income.
     const revenue = faces
-      .filter((x) => x.status === "occupied")
+      .filter((_, i) => phases[i] === "vigente")
+      .reduce((s, x) => s + (x.negotiatedValue ?? 0), 0);
+    const committedRevenue = faces
+      .filter((_, i) => phases[i] === "pendiente")
       .reduce((s, x) => s + (x.negotiatedValue ?? 0), 0);
 
     const expired: ContractEntry[] = [];
     const expiring: ContractEntry[] = [];
     const noContract: FaceEntry[] = [];
-    faces.forEach((x) => {
-      const ds = displayStatus(x);
-      if (ds === "expired") expired.push({ ...x, days: daysUntil(x.endDate) });
-      else if (ds === "expiring") expiring.push({ ...x, days: daysUntil(x.endDate) });
-      else if (ds === "no_contract") noContract.push(x);
+    faces.forEach((x, i) => {
+      if (ds[i] === "expired") expired.push({ ...x, days: daysUntil(x.endDate) });
+      else if (ds[i] === "expiring") expiring.push({ ...x, days: daysUntil(x.endDate) });
+      else if (ds[i] === "no_contract") noContract.push(x);
     });
     expired.sort((a, b) => a.days - b.days);
     expiring.sort((a, b) => a.days - b.days);
 
-    // Top suppliers (occupied faces with value)
+    // Top suppliers — by what they are paying NOW, so the ranking matches the
+    // monthly revenue figure above instead of mixing in future commitments.
     const supplierMap: Record<string, { revenue: number; count: number }> = {};
-    faces.forEach((x) => {
-      if (!x.supplierName || !x.negotiatedValue || x.status !== "occupied") return;
+    faces.forEach((x, i) => {
+      if (!x.supplierName || !x.negotiatedValue || phases[i] !== "vigente") return;
       if (!supplierMap[x.supplierName]) supplierMap[x.supplierName] = { revenue: 0, count: 0 };
       supplierMap[x.supplierName].revenue += x.negotiatedValue;
       supplierMap[x.supplierName].count++;
@@ -1662,9 +1657,12 @@ export default function DashboardView() {
     // Contracts paying below the reference rate for their type + sede.
     // Only meaningful gaps (≥1%) — a peso of rounding is not an anomaly.
     // Workers hold no rates, so for them this list is always empty.
+    // Includes contracts already signed for a future period: catching an
+    // under-priced deal before it starts is the only moment it can still be
+    // renegotiated.
     const belowReference: (FaceEntry & { ref: number; gapPct: number })[] = [];
-    faces.forEach((x) => {
-      if (x.status !== "occupied" || !(x.negotiatedValue > 0)) return;
+    faces.forEach((x, i) => {
+      if ((phases[i] !== "vigente" && phases[i] !== "pendiente") || !(x.negotiatedValue > 0)) return;
       const ref = referenceRateFor(referenceRates, x.fixture.sede || sede, rateTypeOf(x.fixture));
       if (ref === null) return;
       const gapPct = Math.round((1 - x.negotiatedValue / ref) * 100);
@@ -1672,28 +1670,11 @@ export default function DashboardView() {
     });
     belowReference.sort((a, b) => b.gapPct - a.gapPct);
 
-    // $/m² per fixture: what each occupied mueble yields for the floor it
-    // takes. Whole-fixture footprint against the sum of its occupied faces —
-    // no per-face area split to argue about.
-    const perM2: PerM2Entry[] = [];
-    fixtures.forEach((f) => {
-      if (!isRentable(f)) return;
-      const occupiedFaces = facesOf(f).filter(
-        (x) => x.status === "occupied" && x.negotiatedValue > 0,
-      );
-      if (occupiedFaces.length === 0) return;
-      const area = f.w * f.d;
-      if (!(area > 0)) return;
-      const totalValue = occupiedFaces.reduce((s, x) => s + x.negotiatedValue, 0);
-      perM2.push({ fixture: f, total: totalValue, area, perM2: totalValue / area });
-    });
-    perM2.sort((a, b) => b.perM2 - a.perM2);
-
     return {
-      total, occupied, free, held, occPct, revenue,
+      total, occupied, committed, free, held, occPct, revenue, committedRevenue,
       rentableFixtures, nonRentable,
       expired, expiring, noContract,
-      topSuppliers, belowReference, perM2,
+      topSuppliers, belowReference,
     };
   }, [fixtures, referenceRates, sede]);
 
@@ -1937,6 +1918,14 @@ export default function DashboardView() {
                   active={mapFilter === "free"}
                 />
                 <StatCard
+                  label="Contratados"
+                  value={kpis.committed}
+                  sub="aún no inician"
+                  color={kpis.committed > 0 ? "var(--accent-700)" : "var(--ink-4)"}
+                  onClick={() => setMapFilter(mapFilter === "committed" ? "todos" : "committed")}
+                  active={mapFilter === "committed"}
+                />
+                <StatCard
                   label="Vencidos"
                   value={kpis.expired.length}
                   color={kpis.expired.length > 0 ? "var(--danger)" : "var(--ink-4)"}
@@ -1954,6 +1943,14 @@ export default function DashboardView() {
                   label="Ingreso mensual"
                   value={formatCOP(kpis.revenue)}
                   sub="COP"
+                  // Only contracts running today count above. What is signed
+                  // for later gets its own line so the two are never added up
+                  // by eye.
+                  note={
+                    kpis.committedRevenue > 0
+                      ? `+ ${compactCOP(kpis.committedRevenue)} ya pactado`
+                      : undefined
+                  }
                   color="var(--success)"
                 />
               </>
@@ -2192,23 +2189,6 @@ export default function DashboardView() {
                 </Card>
               )}
 
-              {/* Which muebles earn their floor: monthly $ per m² of footprint.
-                  The full ranking scrolls, so the laggards at the bottom are
-                  as visible as the winners — that contrast is the point. */}
-              {isAdmin && !(selected && detailFull) && kpis.perM2.length > 0 && (
-                <Card style={{ padding: 0, overflow: "hidden" }}>
-                  <CardHeader
-                    icon={<Gauge size={13} style={{ color: "var(--accent)" }} />}
-                    title="Rendimiento $/m²"
-                    sub="canon mensual por m² de piso"
-                  />
-                  <div style={{ padding: "6px 0", maxHeight: 260, overflowY: "auto" }}>
-                    {kpis.perM2.map((entry, i) => (
-                      <PerM2Row key={entry.fixture.id} entry={entry} rank={i} />
-                    ))}
-                  </div>
-                </Card>
-              )}
             </div>
           </div>
 

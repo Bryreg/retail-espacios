@@ -73,7 +73,9 @@ def get_map_status(db: Session = Depends(get_db)):
     ).all()
     result = []
     for space in spaces:
-        active_lease = next((l for l in space.leases if l.is_active), None)
+        # Space.active_lease is date-aware: a lease signed for a future period
+        # is deliberately not reported here.
+        active_lease = space.active_lease
         result.append(SpaceMapItem(
             svg_id=space.svg_id,
             status=space.status,
@@ -286,7 +288,11 @@ def create_lease(space_id: int, payload: LeaseCreate, background_tasks: Backgrou
 
     lease = SpaceLease(space_id=space_id, **payload.model_dump())
     db.add(lease)
-    space.status = SpaceStatus.occupied
+    # Only a contract that is already running makes the space occupied. Signing
+    # in August for December used to flip the space to "occupied" on the spot,
+    # which hid four sellable months behind a status that was simply wrong.
+    if payload.start_date <= date.today():
+        space.status = SpaceStatus.occupied
     db.commit()
     db.refresh(lease)
 

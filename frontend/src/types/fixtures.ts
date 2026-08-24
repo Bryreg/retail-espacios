@@ -118,8 +118,73 @@ export function rateTypeLabel(type: string): string {
   return RATE_TYPES.find((t) => t.type === type)?.label ?? type;
 }
 
+// ─── Contract phase (derived from the dates, never stored) ───────────────────
+
+/** Where a face's contract sits in time, relative to today.
+ *
+ *  DERIVED on purpose. `status === "occupied"` only means "this face has a
+ *  contract"; whether that contract already started is a question the dates
+ *  answer, and they are already saved per face. Storing a phase instead would
+ *  need something to flip it when the start date arrives — and until it ran,
+ *  the map would lie. Deriving is also retroactive: layouts saved before this
+ *  existed get the right reading with no migration and no backfill. */
+export type ContractPhase =
+  | "sin_contrato"   // marked occupied but no dates recorded
+  | "pendiente"      // signed, starts in the future — committed, not yet live
+  | "vigente"        // running today
+  | "vencido";       // end date already passed
+
+/** Local-date parse: "2026-12-01" as local midnight, never UTC.
+ *  Using `new Date(str)` would shift the day in negative-offset zones like
+ *  Colombia (UTC-5) and a contract could read as started a day early. */
+function parseLocalDate(value: string): Date | null {
+  const [y, m, d] = value.split("-").map(Number);
+  if (!y || !m || !d || m < 1 || m > 12) return null;
+  return new Date(y, m - 1, d);
+}
+
+export function contractPhase(
+  face: { status: SpaceStatus; startDate?: string; endDate?: string },
+  today: Date = new Date(),
+): ContractPhase {
+  if (face.status !== "occupied") return "sin_contrato";
+  const ref = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const start = face.startDate ? parseLocalDate(face.startDate) : null;
+  const end = face.endDate ? parseLocalDate(face.endDate) : null;
+  if (!start && !end) return "sin_contrato";
+  if (end && end < ref) return "vencido";
+  if (start && start > ref) return "pendiente";
+  return "vigente";
+}
+
+/** True when the face holds a contract that is actually running today.
+ *  This is the test for "is this space earning money right now". */
+export function isCurrentlyOccupied(
+  face: { status: SpaceStatus; startDate?: string; endDate?: string },
+  today?: Date,
+): boolean {
+  return contractPhase(face, today) === "vigente";
+}
+
+/** True when the space can be sold for a period starting today — no contract,
+ *  or one that already ended. A "pendiente" face is NOT free: it is committed. */
+export function isSellableToday(
+  face: { status: SpaceStatus; startDate?: string; endDate?: string },
+  today?: Date,
+): boolean {
+  if (face.status !== "free") {
+    const phase = contractPhase(face, today);
+    return phase === "vencido";
+  }
+  return true;
+}
+
 /** Commercial data for one face of a double gondola.
- *  Face A is the fixture's existing top-level fields; face B lives here. */
+ *  Face A is the fixture's existing top-level fields; face B lives here.
+ *
+ *  `mountedAt` / `mountedBy` record the physical assembly — the one fact the
+ *  dates cannot derive. A contract can be running while nothing is on the
+ *  shelf yet, and that gap is exactly what the merchandiser confirms. */
 export interface FaceData {
   supplierName: string;
   brandCategory: string;
@@ -128,6 +193,12 @@ export interface FaceData {
   endDate: string;
   observation: string;
   status: SpaceStatus;
+
+  /** Physical assembly confirmed: ISO timestamp and who reported it.
+   *  Absent means "not mounted yet" — which is the honest default for every
+   *  layout saved before this existed, since nobody confirmed anything. */
+  mountedAt?: string;
+  mountedBy?: string;
 }
 
 export interface ShelfSlot {
@@ -184,6 +255,10 @@ export interface UnifiedFixture {
   /** Short label rendered OUTSIDE the shape in the 2D plan so it stays legible
    *  from afar even on tiny fixtures. Optional — falls back to nothing. */
   nomenclatura?: string;
+
+  /** Physical assembly of face A — see FaceData.mountedAt. */
+  mountedAt?: string;
+  mountedBy?: string;
 
   /** Second face of a double gondola (type === "gondola" && gondolaType === "double").
    *  Top-level commercial fields represent face A; this holds face B. */

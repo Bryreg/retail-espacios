@@ -42,10 +42,34 @@ class Space(Base):
 
     @property
     def active_lease(self):
+        """The lease RUNNING TODAY, or None.
+
+        ``is_active`` alone is not enough: it stays True from the moment a
+        lease is created, so a contract signed in August for December used to
+        answer here and the space read as occupied for four months it was
+        actually free. The dates are the truth; the flag only says the lease
+        was not cancelled.
+        """
+        today = date.today()
         for lease in self.leases:
-            if lease.is_active:
+            if lease.is_active and lease.start_date <= today <= lease.end_date:
                 return lease
         return None
+
+    @property
+    def upcoming_lease(self):
+        """The next lease already signed but not yet started — earliest first.
+
+        Kept separate from ``active_lease`` so "committed" never gets counted
+        as "earning". Callers that need to know the space is not sellable for
+        that period must consult both.
+        """
+        today = date.today()
+        future = [
+            lease for lease in self.leases
+            if lease.is_active and lease.start_date > today
+        ]
+        return min(future, key=lambda x: x.start_date) if future else None
 
 
 class SpaceLease(Base):
