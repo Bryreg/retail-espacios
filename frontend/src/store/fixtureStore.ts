@@ -367,6 +367,9 @@ export const useFixtureStore = create<FixtureStore>()(
         if (!canWrite()) return;
         cancelScheduledSave(sede);
         const state = get();
+        // A sede awaiting conflict resolution would just 409 again on every
+        // poll; only an explicit resolution (force) may push it.
+        if (state.conflicts[sede] && !opts?.force) return;
         const fixtures = state.fixturesBySede[sede] ?? [];
         // `force` resolves a conflict in our favour: overwrite whatever is there.
         const base = opts?.force ? null : (state.serverRev[sede] ?? null);
@@ -404,7 +407,12 @@ export const useFixtureStore = create<FixtureStore>()(
             }));
             return;
           }
-          if (status === 401 || status === 403) return; // session gone / read-only role
+          if (status === 401 || status === 403) {
+            // Session expired or read-only role — nothing to retry, but the
+            // indicator must not stay stuck on "Guardando…".
+            set({ syncState: "idle", syncMessage: null });
+            return;
+          }
           console.warn(`[layout sync] no se pudo guardar «${sede}»:`, err);
           set({
             syncState: "error",
@@ -479,9 +487,16 @@ export const useFixtureStore = create<FixtureStore>()(
             // Local sedes the server has never heard of. Upload them once so a
             // workstation that predates server sync seeds its work, but drop
             // any sede we *used* to know server-side: that one was deleted.
+            //
+            // Guarded on a non-empty response: a server whose database was
+            // reset (or restored from a backup) answers with an empty list, and
+            // treating that as "everything was deleted" would wipe the only
+            // remaining copy of the layout. An empty response means "the server
+            // has nothing yet", so we bootstrap into it instead.
+            const serverHasData = entries.length > 0;
             for (const [sede, fixtures] of Object.entries(state.fixturesBySede)) {
               if (seen.has(sede) || !Array.isArray(fixtures) || fixtures.length === 0) continue;
-              if (Object.prototype.hasOwnProperty.call(serverRev, sede)) {
+              if (serverHasData && Object.prototype.hasOwnProperty.call(serverRev, sede)) {
                 delete fixturesBySede[sede];
                 delete serverRev[sede];
               } else {
@@ -524,7 +539,12 @@ export const useFixtureStore = create<FixtureStore>()(
             await get().pushSettings();
           }
         } catch (err: any) {
-          if (err?.response?.status === 401) return; // handled by the auth interceptor
+          if (err?.response?.status === 401) {
+            // The auth interceptor already dropped the session; just clear the
+            // spinner so the indicator does not hang on "Actualizando…".
+            set({ syncState: "idle", syncMessage: null });
+            return;
+          }
           console.warn("[layout sync] no se pudo leer del servidor:", err);
           set({
             syncState: "error",
