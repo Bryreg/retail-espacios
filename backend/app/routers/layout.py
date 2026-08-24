@@ -233,6 +233,21 @@ def save_layout(sede: str, payload: LayoutIn, db: Session = Depends(get_db)):
     """
     snap = db.query(LayoutSnapshot).filter(LayoutSnapshot.sede == sede).first()
 
+    # The row is gone but this client is saving on top of a revision it once
+    # read: the sede was deleted from another workstation while it held a copy.
+    # Falling through would upsert the row back — the deletion undone silently,
+    # on every workstation, by whoever happened to have unsaved edits. Only a
+    # genuine first write (no base revision: bootstrap or an explicit force)
+    # may create a snapshot.
+    if snap is None and payload.base_updated_at is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "layout_deleted",
+                "message": f"«{sede}» fue eliminada desde otro equipo.",
+            },
+        )
+
     if snap and payload.base_updated_at is not None:
         stored = _as_utc(snap.updated_at)
         base = _as_utc(payload.base_updated_at)
@@ -279,5 +294,21 @@ def delete_layout(sede: str, db: Session = Depends(get_db)):
     snap = db.query(LayoutSnapshot).filter(LayoutSnapshot.sede == sede).first()
     if snap:
         db.delete(snap)
-        db.commit()
+
+    # Drop the name from the shared list too, in the same commit. Leaving that
+    # to a separate settings PUT from the client made the deletion two
+    # independent writes that could half-land: the snapshot gone but the name
+    # still listed (a phantom sede nobody can remove, since the sede list is
+    # only ever unioned, never trimmed), or the name gone but the snapshot
+    # alive, which the next pull re-adopts and re-publishes.
+    try:
+        sedes = json.loads(get_config(db, SEDES_KEY) or "[]")
+    except (ValueError, TypeError):
+        sedes = []
+    remaining = [s for s in sedes if s != sede]
+    if remaining != sedes:
+        set_config(db, SEDES_KEY, json.dumps(remaining))
+        set_config(db, SETTINGS_UPDATED_KEY, datetime.now(timezone.utc).isoformat())
+
+    db.commit()
     return Response(status_code=204)
