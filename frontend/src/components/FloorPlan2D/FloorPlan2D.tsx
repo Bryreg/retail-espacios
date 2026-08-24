@@ -9,7 +9,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { useFixtureStore, selectFixtures, selectHasPendingWork } from "../../store/fixtureStore";
+import { useFixtureStore, selectFixtures, selectHasPendingWork, normalizeSede } from "../../store/fixtureStore";
 import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types/fixtures";
 import { isRentable, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
@@ -588,6 +588,24 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     }, 16);
     return () => clearTimeout(timer);
   }, [items, commit]);
+
+  // The sede mirror used to run one way only (local -> store), which was fine
+  // while the local select was the only thing that could change it. Deleting a
+  // sede broke that: when another workstation removes the one we are viewing,
+  // syncFromServer moves the store onto a survivor, and without this the local
+  // state stayed on the dead name — the select showed a value with no matching
+  // option, and anything placed on the canvas was stamped with a sede that no
+  // longer exists (its contracts would be filed under it).
+  const storeSede = useFixtureStore((s) => s.sede);
+  useEffect(() => {
+    setSede((current) => (storeSede !== current ? storeSede : current));
+  }, [storeSede]);
+
+  // ...and if the sede vanishes underfoot, the confirmation dialog is about a
+  // sede that is already gone.
+  useEffect(() => {
+    if (!storeSedeList.includes(sede)) setConfirmDeleteSede(false);
+  }, [storeSedeList, sede]);
 
   // When sede changes: push to store AND reinitialize canvas with that sede's fixtures.
   // The identity ref above prevents the re-init from echoing back to the store.
@@ -2232,11 +2250,12 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               value={editingSedeVal}
               onChange={(e) => setEditingSedeVal(e.target.value)}
               onBlur={() => {
-                if (editingSedeVal.trim() && editingSedeVal !== sede) { renameSede(sede, editingSedeVal.trim()); setSede(editingSedeVal.trim()); }
+                const n = normalizeSede(editingSedeVal);
+                if (n && n !== sede) { renameSede(sede, n); setSede(n); }
                 setEditingSedeInline(false);
               }}
               onKeyDown={(e) => {
-                if (e.key === "Enter") { if (editingSedeVal.trim() && editingSedeVal !== sede) { renameSede(sede, editingSedeVal.trim()); setSede(editingSedeVal.trim()); } setEditingSedeInline(false); }
+                if (e.key === "Enter") { const n = normalizeSede(editingSedeVal); if (n && n !== sede) { renameSede(sede, n); setSede(n); } setEditingSedeInline(false); }
                 if (e.key === "Escape") setEditingSedeInline(false);
               }}
               autoFocus
@@ -2297,11 +2316,12 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               value={newSedeVal}
               onChange={(e) => setNewSedeVal(e.target.value)}
               onBlur={() => {
-                if (newSedeVal.trim()) { addSede(newSedeVal.trim()); setSede(newSedeVal.trim()); }
+                const n = normalizeSede(newSedeVal);
+                if (n) { addSede(n); setSede(n); }
                 setAddingNewSede(false); setNewSedeVal("");
               }}
               onKeyDown={(e) => {
-                if (e.key === "Enter") { if (newSedeVal.trim()) { addSede(newSedeVal.trim()); setSede(newSedeVal.trim()); } setAddingNewSede(false); setNewSedeVal(""); }
+                if (e.key === "Enter") { const n = normalizeSede(newSedeVal); if (n) { addSede(n); setSede(n); } setAddingNewSede(false); setNewSedeVal(""); }
                 if (e.key === "Escape") { setAddingNewSede(false); setNewSedeVal(""); }
               }}
               autoFocus
@@ -2355,19 +2375,28 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
       {confirmDeleteSede && (
         <DeleteSedeDialog
           sede={sede}
-          fixtures={items}
+          // The canonical fixtures, not `items`: PlacedItem2D has no `slots`,
+          // and a gondola commercialised shelf by shelf carries every one of
+          // its contracts there. Counting the 2D projection reported "0 con
+          // proveedor" for a fully booked sede — in the one number whose whole
+          // job is informed consent.
+          fixtures={useFixtureStore.getState().fixturesBySede[sede] ?? []}
           onCancel={() => setConfirmDeleteSede(false)}
-          onConfirm={() => {
+          onConfirm={async () => {
             // Pick the survivor BEFORE the store mutates, and move this
             // component's local `sede` onto it in the same event. Without that
             // the canvas would keep the deleted sede selected while the store
             // had already switched, and the next commit would write these
             // fixtures back into the wrong floor plan.
             const next = storeSedeList.find((s) => s !== sede) ?? "TERRON";
-            removeSede(sede);
+            const result = await removeSede(sede);
+            // The server refused and nothing was removed. Say so and stay open
+            // rather than closing as if it had worked.
+            if (!result.ok) return result.error ?? "No se pudo eliminar la sede.";
             setSelectedIds(new Set());
             setConfirmDeleteSede(false);
             setSede(next);
+            return null;
           }}
         />
       )}
@@ -2387,25 +2416,47 @@ function DeleteSedeDialog({
   sede, fixtures, onCancel, onConfirm,
 }: {
   sede: string;
-  fixtures: PlacedItem2D[];
+  fixtures: UnifiedFixture[];
+  /** Resolves to an error message when the deletion failed, or null on success. */
+  onConfirm: () => Promise<string | null>;
   onCancel: () => void;
-  onConfirm: () => void;
 }) {
   const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Contracts hide in three places: the fixture itself (face A), `faceB` on a
+  // double gondola, and one per shelf in `slots` when the mueble is
+  // commercialised shelf by shelf. Counting only the first two reported zero
+  // for a sede whose every shelf was sold.
+  const filled = (v?: string) => (v ?? "").trim().length > 0;
   const withContract = fixtures.filter(
-    (f) => f.supplierName.trim().length > 0 || (f.faceB?.supplierName ?? "").trim().length > 0,
+    (f) => filled(f.supplierName) || filled(f.faceB?.supplierName),
   ).length;
-  const armed = typed.trim().toUpperCase() === sede.toUpperCase();
+  const slotsWithContract = fixtures.reduce(
+    (n, f) => n + (f.slots ?? []).filter((sl) => filled(sl.supplierName)).length,
+    0,
+  );
+  const armed = typed.trim().toUpperCase() === sede.trim().toUpperCase();
+
+  const confirm = async () => {
+    if (!armed || busy) return;
+    setBusy(true);
+    setError(null);
+    const err = await onConfirm();
+    // On success the dialog is unmounted by the parent; only a failure returns.
+    if (err) { setError(err); setBusy(false); }
+  };
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onCancel(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
+  }, [onCancel, busy]);
 
   return (
     <div
-      onClick={onCancel}
+      onClick={() => { if (!busy) onCancel(); }}
       style={{
         position: "fixed", inset: 0, zIndex: 200,
         background: "rgba(26,24,20,0.45)",
@@ -2446,11 +2497,17 @@ function DeleteSedeDialog({
                 {withContract} con proveedor asignado
               </div>
             )}
+            {slotsWithContract > 0 && (
+              <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 3 }}>
+                {slotsWithContract} balda{slotsWithContract !== 1 ? "s" : ""} con proveedor asignado
+              </div>
+            )}
           </div>
 
           <p style={{ margin: "0 0 12px" }}>
-            Los contratos ya guardados siguen registrados en el histórico comercial: esto
-            borra el plano, no la facturación.
+            El tablero pierde los ingresos, la ocupación y los vencimientos de esta sede.
+            Los contratos guardados con «Guardar contrato» quedan en la base de datos, pero
+            hoy no hay ninguna pantalla para consultarlos.
           </p>
 
           <label style={{ display: "block", fontSize: 11.5, color: "var(--ink-3)", marginBottom: 6 }}>
@@ -2459,8 +2516,9 @@ function DeleteSedeDialog({
           <input
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && armed) onConfirm(); }}
+            onKeyDown={(e) => { if (e.key === "Enter") void confirm(); }}
             autoFocus
+            disabled={busy}
             style={{
               width: "100%", height: 34, padding: "0 10px", boxSizing: "border-box",
               borderRadius: "var(--r-md)", border: `1px solid ${armed ? "var(--danger)" : "var(--line)"}`,
@@ -2468,11 +2526,25 @@ function DeleteSedeDialog({
               fontSize: 12.5, fontFamily: "var(--font-mono)", outline: "none",
             }}
           />
+
+          {error && (
+            <div
+              role="alert"
+              style={{
+                marginTop: 10, padding: "8px 10px", borderRadius: "var(--r-md)",
+                border: "1px solid var(--danger-100)", background: "var(--danger-50)",
+                fontSize: 12, color: "var(--danger)", lineHeight: 1.5,
+              }}
+            >
+              {error}
+            </div>
+          )}
         </div>
 
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", padding: "14px 18px 16px" }}>
           <button
             onClick={onCancel}
+            disabled={busy}
             style={{
               height: 32, padding: "0 14px", borderRadius: "var(--r-md)",
               border: "1px solid var(--line)", background: "var(--surface)",
@@ -2483,17 +2555,17 @@ function DeleteSedeDialog({
             Cancelar
           </button>
           <button
-            onClick={onConfirm}
-            disabled={!armed}
+            onClick={() => void confirm()}
+            disabled={!armed || busy}
             style={{
               height: 32, padding: "0 14px", borderRadius: "var(--r-md)", border: "none",
-              background: armed ? "var(--danger)" : "var(--surface-3)",
-              color: armed ? "#fff" : "var(--ink-4)",
+              background: armed && !busy ? "var(--danger)" : "var(--surface-3)",
+              color: armed && !busy ? "#fff" : "var(--ink-4)",
               fontSize: 12.5, fontWeight: 600, fontFamily: "inherit",
-              cursor: armed ? "pointer" : "not-allowed",
+              cursor: armed && !busy ? "pointer" : "not-allowed",
             }}
           >
-            Eliminar sede
+            {busy ? "Eliminando…" : "Eliminar sede"}
           </button>
         </div>
       </div>
