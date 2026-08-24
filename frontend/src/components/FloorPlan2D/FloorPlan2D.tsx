@@ -484,6 +484,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     sedes: storeSedeList,
     addSede,
     renameSede,
+    removeSede,
     catalogLabels,
     setCatalogLabel,
   } = useFixtureStore();
@@ -518,6 +519,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   const [editingSedeInline, setEditingSedeInline] = useState(false);
   const [editingSedeVal, setEditingSedeVal]       = useState("");
   const [addingNewSede, setAddingNewSede]         = useState(false);
+  const [confirmDeleteSede, setConfirmDeleteSede] = useState(false);
   const [newSedeVal, setNewSedeVal]               = useState("");
   const [clipboard, setClipboard]               = useState<PlacedItem2D[]>([]);
   // Catalog label editing state
@@ -2268,6 +2270,21 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             </button>
           )}
+          {/* Delete sede — admin only, and never the last one standing */}
+          {!editingSedeInline && isAdmin && storeSedeList.length > 1 && (
+            <button
+              onClick={() => setConfirmDeleteSede(true)}
+              style={{
+                padding: 2, borderRadius: 4, border: "none",
+                background: "transparent", cursor: "pointer", color: "var(--ink-4)",
+              }}
+              title="Eliminar sede"
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--danger)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-4)"; }}
+            >
+              <Trash2 size={11} />
+            </button>
+          )}
           {/* Add sede */}
           {addingNewSede ? (
             <input
@@ -2332,6 +2349,152 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           {editMode
             ? "Rueda: zoom · Espacio+drag: mover · Shift+clic: multi-sel · Ctrl+A: todos · R: rotar · Del: eliminar"
             : "Clic en fixture para ver detalles"}
+        </div>
+      </div>
+
+      {confirmDeleteSede && (
+        <DeleteSedeDialog
+          sede={sede}
+          fixtures={items}
+          onCancel={() => setConfirmDeleteSede(false)}
+          onConfirm={() => {
+            // Pick the survivor BEFORE the store mutates, and move this
+            // component's local `sede` onto it in the same event. Without that
+            // the canvas would keep the deleted sede selected while the store
+            // had already switched, and the next commit would write these
+            // fixtures back into the wrong floor plan.
+            const next = storeSedeList.find((s) => s !== sede) ?? "TERRON";
+            removeSede(sede);
+            setSelectedIds(new Set());
+            setConfirmDeleteSede(false);
+            setSede(next);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Delete sede confirmation ────────────────────────────────────────────────
+
+/**
+ * Deleting a sede drops its whole floor plan, for everyone, and cannot be
+ * undone. It asks for the name to be typed back on purpose: this project has
+ * already lost a sede's real data to an accidental wipe, and a one-click bin
+ * next to the rename pencil is exactly how that happens again.
+ */
+function DeleteSedeDialog({
+  sede, fixtures, onCancel, onConfirm,
+}: {
+  sede: string;
+  fixtures: PlacedItem2D[];
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const [typed, setTyped] = useState("");
+  const withContract = fixtures.filter(
+    (f) => f.supplierName.trim().length > 0 || (f.faceB?.supplierName ?? "").trim().length > 0,
+  ).length;
+  const armed = typed.trim().toUpperCase() === sede.toUpperCase();
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  return (
+    <div
+      onClick={onCancel}
+      style={{
+        position: "fixed", inset: 0, zIndex: 200,
+        background: "rgba(26,24,20,0.45)",
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 440, maxWidth: "100%", background: "var(--surface)",
+          border: "1px solid var(--line)", borderRadius: "var(--r-xl)",
+          boxShadow: "var(--shadow-lg)", overflow: "hidden",
+        }}
+      >
+        <div style={{ padding: "16px 18px 12px", borderBottom: "1px solid var(--line-soft)" }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--ink-1)", letterSpacing: "-0.01em" }}>
+            Eliminar la sede «{sede}»
+          </div>
+        </div>
+
+        <div style={{ padding: "14px 18px 4px", fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6 }}>
+          <p style={{ margin: 0 }}>
+            Se borra el plano completo de esta sede{" "}
+            <strong style={{ color: "var(--ink-1)" }}>en todos los computadores</strong>. No se puede deshacer.
+          </p>
+
+          <div
+            style={{
+              margin: "12px 0", padding: "10px 12px", borderRadius: "var(--r-lg)",
+              border: "1px solid var(--danger-100)", background: "var(--danger-50)",
+            }}
+          >
+            <div style={{ fontSize: 12.5, color: "var(--ink-1)", fontWeight: 600 }}>
+              {fixtures.length} mueble{fixtures.length !== 1 ? "s" : ""} en el plano
+            </div>
+            {withContract > 0 && (
+              <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 3 }}>
+                {withContract} con proveedor asignado
+              </div>
+            )}
+          </div>
+
+          <p style={{ margin: "0 0 12px" }}>
+            Los contratos ya guardados siguen registrados en el histórico comercial: esto
+            borra el plano, no la facturación.
+          </p>
+
+          <label style={{ display: "block", fontSize: 11.5, color: "var(--ink-3)", marginBottom: 6 }}>
+            Escribí <strong style={{ fontFamily: "var(--font-mono)", color: "var(--ink-1)" }}>{sede}</strong> para confirmar:
+          </label>
+          <input
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && armed) onConfirm(); }}
+            autoFocus
+            style={{
+              width: "100%", height: 34, padding: "0 10px", boxSizing: "border-box",
+              borderRadius: "var(--r-md)", border: `1px solid ${armed ? "var(--danger)" : "var(--line)"}`,
+              background: "var(--surface-2)", color: "var(--ink-1)",
+              fontSize: 12.5, fontFamily: "var(--font-mono)", outline: "none",
+            }}
+          />
+        </div>
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", padding: "14px 18px 16px" }}>
+          <button
+            onClick={onCancel}
+            style={{
+              height: 32, padding: "0 14px", borderRadius: "var(--r-md)",
+              border: "1px solid var(--line)", background: "var(--surface)",
+              color: "var(--ink-2)", fontSize: 12.5, fontWeight: 500,
+              fontFamily: "inherit", cursor: "pointer",
+            }}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={!armed}
+            style={{
+              height: 32, padding: "0 14px", borderRadius: "var(--r-md)", border: "none",
+              background: armed ? "var(--danger)" : "var(--surface-3)",
+              color: armed ? "#fff" : "var(--ink-4)",
+              fontSize: 12.5, fontWeight: 600, fontFamily: "inherit",
+              cursor: armed ? "pointer" : "not-allowed",
+            }}
+          >
+            Eliminar sede
+          </button>
         </div>
       </div>
     </div>
