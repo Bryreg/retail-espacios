@@ -110,19 +110,22 @@ const CATALOG: {
   { type: "columna",       label: "Columna",           w: 0.30, h: 0.30, emoji: "🏛️", prefix: "COL", category: "Infraestructura" },
 ];
 
-// Warm semantic palette — matches design tokens
+// Status palette, shared with the Dashboard's occupancy map (STATUS_TOP in
+// pages/DashboardView.tsx) and with the 3D editor. Occupied used to be red on
+// the plan and violet on the Dashboard, so the same colour meant two different
+// things depending on the tab you were looking at.
 const STATUS_COLORS: Record<SpaceStatus, string> = {
-  free:        "#15803D",   // --success
-  occupied:    "#B91C1C",   // --danger
-  reserved:    "#B45309",   // --warning
-  maintenance: "#94917F",   // --muted-status
+  free:        "#2E9E6B",   // green  — available
+  occupied:    "#7C4DEC",   // violet — under contract
+  reserved:    "#D19A17",   // amber  — held
+  maintenance: "#8A8578",   // warm grey
 };
 
 const STATUS_FILL: Record<SpaceStatus, string> = {
-  free:        "rgba(21,128,61,0.10)",
-  occupied:    "rgba(185,28,28,0.12)",
-  reserved:    "rgba(180,83,9,0.10)",
-  maintenance: "rgba(148,145,127,0.10)",
+  free:        "rgba(76,195,138,0.16)",
+  occupied:    "rgba(139,92,246,0.16)",
+  reserved:    "rgba(240,180,41,0.16)",
+  maintenance: "rgba(168,162,158,0.14)",
 };
 
 const STATUS_LABELS: Record<SpaceStatus, string> = {
@@ -2473,11 +2476,13 @@ function MultiSelectPanel({
 
 // ─── Assignment Panel (dark, unified edit + view) ─────────────────────────────
 
+// Badges follow STATUS_COLORS: occupied is violet everywhere, so red stays
+// reserved for what is actually wrong (an expired contract — see DaysLeftStrip).
 const STATUS_BADGE_STYLE: Record<SpaceStatus, React.CSSProperties> = {
-  free:        { background: "rgba(21,128,61,0.15)",   color: "var(--success)",      border: "1px solid rgba(21,128,61,0.35)" },
-  occupied:    { background: "rgba(185,28,28,0.15)",   color: "var(--danger)",       border: "1px solid rgba(185,28,28,0.35)" },
-  reserved:    { background: "rgba(180,83,9,0.15)",    color: "var(--warning)",      border: "1px solid rgba(180,83,9,0.35)" },
-  maintenance: { background: "rgba(148,145,127,0.12)", color: "var(--muted-status)", border: "1px solid rgba(148,145,127,0.3)" },
+  free:        { background: "rgba(76,195,138,0.18)",  color: "#4CC38A",             border: "1px solid rgba(76,195,138,0.40)" },
+  occupied:    { background: "rgba(139,92,246,0.20)",  color: "#A78BFA",             border: "1px solid rgba(139,92,246,0.42)" },
+  reserved:    { background: "rgba(240,180,41,0.18)",  color: "#F0B429",             border: "1px solid rgba(240,180,41,0.40)" },
+  maintenance: { background: "rgba(168,162,158,0.14)", color: "var(--muted-status)", border: "1px solid rgba(168,162,158,0.32)" },
 };
 
 function Field({ label, icon, children }: { label: string; icon?: string; children: React.ReactNode }) {

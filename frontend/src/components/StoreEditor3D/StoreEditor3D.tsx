@@ -98,11 +98,14 @@ function facePaintArray(
 
 // FixType, GondolaType, SpaceStatus imported from ../../types/fixtures
 
+// Same palette as the 2D plan and the Dashboard map — one colour language for
+// the whole app. Slightly brighter values than the 2D strokes because these are
+// lit 3D materials, not flat SVG fills.
 const STATUS_COLORS: Record<SpaceStatus, string> = {
-  free:        "#22c55e",
-  occupied:    "#ef4444",
-  reserved:    "#f59e0b",
-  maintenance: "#94a3b8",
+  free:        "#4CC38A",
+  occupied:    "#8B5CF6",
+  reserved:    "#F0B429",
+  maintenance: "#A8A29E",
 };
 
 // Non-rentable fixtures are store infrastructure. Painting them slate keeps the
@@ -187,9 +190,10 @@ const FIXTURE_DEFS: FixtureDef[] = [
   { type:"robatope",                      label:"Robatope",         w:0.30, d:0.40, h:1.60, color:"#c0c0bc", emoji:"🛡️", desc:"Panel lateral de protección — flanquea la Punta de Góndola", code:"ROB" },
 ];
 
+// Chip styling mirrors STATUS_COLORS: occupied reads violet (accent), not red.
 const STATUS_META: Record<SpaceStatus, { bg: string; text: string; label: string }> = {
   free:        { bg:"bg-success/20",  text:"text-success",  label:"Disponible"    },
-  occupied:    { bg:"bg-danger/20",   text:"text-danger",   label:"Ocupado"       },
+  occupied:    { bg:"bg-accent/20",   text:"text-accent",   label:"Ocupado"       },
   reserved:    { bg:"bg-warning/20",  text:"text-warning",  label:"Reservado"     },
   maintenance: { bg:"bg-dark-surface-2", text:"text-dark-ink-2", label:"Mantenimiento" },
 };
