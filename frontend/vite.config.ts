@@ -21,10 +21,11 @@ export default defineConfig(({ mode }) => {
           target: apiTarget,
           changeOrigin: true,
           secure: true,
-          // The local dev backend serves the API at the root, while a deployed
-          // instance already serves it under /api — keep the prefix for those.
-          rewrite: (path) =>
-            apiTarget.includes("localhost") ? path.replace(/^\/api/, "") : path,
+          // No rewrite: backend/app/main.py mounts every router with
+          // prefix="/api", so the prefix must survive the proxy — locally and
+          // against a deployed instance alike. Stripping it (as this config
+          // used to) made every dev-server call 404, or 405 once a built
+          // frontend/dist existed and the SPA catch-all began swallowing them.
         },
       },
     },
