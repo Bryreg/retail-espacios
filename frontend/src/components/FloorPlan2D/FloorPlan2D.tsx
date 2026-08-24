@@ -2104,9 +2104,21 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
             <MultiSelectPanel
               count={selectedIds.size}
               editMode={editMode}
+              isAdmin={isAdmin}
               onDelete={() => {
                 setItems((prev) => prev.filter((i) => !selectedIds.has(i.id)));
                 setSelectedIds(new Set());
+              }}
+              onSetRentable={(rentable) => {
+                setItems((prev) =>
+                  prev.map((i) =>
+                    selectedIds.has(i.id)
+                      // Store `undefined` rather than `true` so a rentable
+                      // fixture keeps the shape it had before the flag existed.
+                      ? { ...i, rentable: rentable ? undefined : false }
+                      : i,
+                  ),
+                );
               }}
               onClose={() => setSelectedIds(new Set())}
             />
@@ -2372,12 +2384,16 @@ function SyncButton() {
 function MultiSelectPanel({
   count,
   editMode,
+  isAdmin,
   onDelete,
+  onSetRentable,
   onClose,
 }: {
   count: number;
   editMode: boolean;
+  isAdmin: boolean;
   onDelete: () => void;
+  onSetRentable: (rentable: boolean) => void;
   onClose: () => void;
 }) {
   return (
@@ -2390,6 +2406,31 @@ function MultiSelectPanel({
         <button onClick={onClose} style={{ color: "var(--dark-ink-3)", fontSize: 18, lineHeight: 1, marginTop: 2, background: "none", border: "none", cursor: "pointer" }}>×</button>
       </div>
       <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: 12 }}>
+        {editMode && isAdmin && (
+          <div>
+            <p style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--dark-ink-3)", marginBottom: 6 }}>
+              Destino de los {count}
+            </p>
+            <div style={{ display: "flex", gap: 6 }}>
+              {([true, false] as const).map((value) => (
+                <button
+                  key={String(value)}
+                  onClick={() => onSetRentable(value)}
+                  style={{
+                    flex: 1, padding: "7px 4px", borderRadius: "var(--r-sm)",
+                    fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                    border: "1px solid var(--dark-line-2)",
+                    background: "transparent",
+                    color: "var(--dark-ink-2)",
+                  }}
+                >
+                  {value ? "Comercializable" : "No comercial."}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {editMode && (
           <button
             onClick={onDelete}

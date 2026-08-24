@@ -661,7 +661,8 @@ interface FixtureDetailPanelProps {
 
 function FixtureDetailPanel({ fixture, isAdmin, onClose, onOpenFile }: FixtureDetailPanelProps) {
   const [face, setFace] = useState<"A" | "B">("A");
-  const double = isDoubleGondola(fixture);
+  const rentable = isRentable(fixture);
+  const double = isDoubleGondola(fixture) && rentable;
   const faces = facesOf(fixture);
   const current = face === "B" && faces.length > 1 ? faces[1] : faces[0];
 
@@ -672,6 +673,10 @@ function FixtureDetailPanel({ fixture, isAdmin, onClose, onOpenFile }: FixtureDe
 
   useEffect(() => {
     let cancelled = false;
+    if (!rentable) {
+      setSpaceState("none");
+      return;
+    }
     setSpaceState("loading");
     setFiles([]);
     client
@@ -689,7 +694,7 @@ function FixtureDetailPanel({ fixture, isAdmin, onClose, onOpenFile }: FixtureDe
     return () => {
       cancelled = true;
     };
-  }, [current.code]);
+  }, [current.code, rentable]);
 
   const days = current.endDate ? daysUntil(current.endDate) : null;
   const chip = daysChip(days);
@@ -771,6 +776,36 @@ function FixtureDetailPanel({ fixture, isAdmin, onClose, onOpenFile }: FixtureDe
       )}
 
       <div style={{ padding: "16px 18px", flex: 1 }}>
+        {!rentable ? (
+          <div
+            style={{
+              background: "var(--dark-surface)",
+              border: "1px solid var(--dark-line)",
+              borderRadius: "var(--r-lg)",
+              padding: "14px 16px",
+            }}
+          >
+            <span
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                fontSize: 11.5, fontWeight: 600,
+                padding: "3px 10px", borderRadius: 999,
+                background: "rgba(148,163,184,0.18)", color: "#94A3B8",
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: 99, background: "#94A3B8" }} />
+              No comercializable
+            </span>
+            <p style={{ marginTop: 10, fontSize: 12, lineHeight: 1.55, color: "var(--dark-ink-2)" }}>
+              Este mueble está marcado como parte del local, no como espacio a
+              la venta. No admite contrato y no entra en los indicadores de
+              disponibilidad ni de ocupación.
+            </p>
+            <p style={{ marginTop: 8, fontSize: 11, color: "var(--dark-ink-3)" }}>
+              Para alquilarlo, cambiá su destino a «Comercializable» desde el plano.
+            </p>
+          </div>
+        ) : (<>
         {/* Estado */}
         <PanelRow label="Estado">
           <span
@@ -932,6 +967,7 @@ function FixtureDetailPanel({ fixture, isAdmin, onClose, onOpenFile }: FixtureDe
               </button>
             ))}
         </div>
+        </>)}
       </div>
     </aside>
   );
