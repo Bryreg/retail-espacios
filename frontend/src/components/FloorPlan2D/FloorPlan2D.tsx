@@ -11,8 +11,9 @@ import {
 } from "lucide-react";
 import { useFixtureStore, selectFixtures, selectHasPendingWork } from "../../store/fixtureStore";
 import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types/fixtures";
-import { isRentable, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
+import { isRentable, NON_RENTABLE_BY_DEFAULT, rateTypeOf } from "../../types/fixtures";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
+import ReferenceRateHint from "../ReferenceRateHint";
 import { findOrCreateSpace, createLease } from "../../api/spaces";
 import { findOrCreateSupplier } from "../../api/suppliers";
 import { listSpaceFiles, uploadSpaceFile, deleteSpaceFile, fileUrl } from "../../api/files";
@@ -2997,6 +2998,11 @@ function AssignmentPanel({
               {face.negotiatedValue ? `$${face.negotiatedValue.toLocaleString()}` : <span style={{ color: "var(--dark-ink-3)" }}>—</span>}
             </p>
           )}
+          <ReferenceRateHint
+            sede={item.sede || sede}
+            rateType={rateTypeOf(item)}
+            value={face.negotiatedValue || 0}
+          />
         </Field>
       )}
 

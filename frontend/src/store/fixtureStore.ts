@@ -1,13 +1,15 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { UnifiedFixture } from "../types/fixtures";
+import type { ReferenceRates, UnifiedFixture } from "../types/fixtures";
 import {
   deleteLayout,
   fetchAllLayouts,
   fetchLayoutSettings,
+  fetchReferenceRates,
   fetchRevisions,
   saveLayout,
   saveLayoutSettings,
+  saveReferenceRates,
 } from "../api/layout";
 import { useAuthStore } from "./authStore";
 
@@ -78,6 +80,18 @@ function scheduleSettingsSave() {
   }, SAVE_DEBOUNCE_MS);
 }
 
+// ─── Reference rates (admin-only money) ───────────────────────────────────────
+
+let _ratesTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleRatesSave() {
+  if (_ratesTimer) clearTimeout(_ratesTimer);
+  _ratesTimer = setTimeout(() => {
+    _ratesTimer = null;
+    void useFixtureStore.getState().pushRates();
+  }, SAVE_DEBOUNCE_MS);
+}
+
 // ─── Camera state ─────────────────────────────────────────────────────────────
 
 export interface Camera2D {
@@ -122,6 +136,10 @@ interface FixtureStore {
   sede: string;
   /** User-defined labels for catalog types (overrides the hardcoded defaults). */
   catalogLabels: Record<string, string>;
+  /** Monthly reference rate per fixture type (tarifa de referencia).
+   *  Admin-only money: `null` for workers, fetched fresh each session and kept
+   *  OUT of localStorage so a shared machine never leaks it to the next login. */
+  referenceRates: ReferenceRates | null;
   camera2D: Camera2D;
   camera3D: Camera3D;
 
@@ -164,6 +182,10 @@ interface FixtureStore {
   /** Override the display label for a catalog fixture type. */
   setCatalogLabel: (type: string, label: string) => void;
 
+  /** Set one reference rate. `sede === null` edits the general rate; a value
+   *  of 0 (or less) clears the entry. Admin-only — no-ops otherwise. */
+  setReferenceRate: (sede: string | null, type: string, value: number) => void;
+
   // Undoable mutation — use this for all user-initiated changes
   commit: (fixtures: UnifiedFixture[]) => void;
   undo: () => void;
@@ -180,6 +202,11 @@ interface FixtureStore {
   pushSede: (sede: string, opts?: { force?: boolean }) => Promise<void>;
   /** Push the shared sede list / catalog labels. */
   pushSettings: () => Promise<void>;
+  /** Push the reference rates (admin-only endpoint). */
+  pushRates: () => Promise<void>;
+  /** Fetch the rates once (e.g. when the tariff editor opens and the initial
+   *  sync hasn't landed yet). Never clobbers an edit waiting in the debounce. */
+  loadRates: () => Promise<void>;
   /** Flush every pending debounced save immediately. */
   flushPending: () => Promise<void>;
   /** Cheap revision check; pulls only when something actually moved. */
@@ -214,6 +241,7 @@ export const useFixtureStore = create<FixtureStore>()(
       sedes: DEFAULT_SEDES,
       sede: "TERRON",
       catalogLabels: {},
+      referenceRates: null,
       camera2D: DEFAULT_CAMERA_2D,
       camera3D: DEFAULT_CAMERA_3D,
       serverRev: {},
@@ -325,6 +353,29 @@ export const useFixtureStore = create<FixtureStore>()(
           }
           scheduleSettingsSave();
           return { catalogLabels: next };
+        }),
+
+      setReferenceRate: (sedeOrNull, type, value) =>
+        set((state) => {
+          if (!canWrite()) return state;
+          const rates: ReferenceRates = state.referenceRates ?? { default: {}, by_sede: {} };
+          const next: ReferenceRates = {
+            default: { ...rates.default },
+            by_sede: { ...rates.by_sede },
+          };
+          if (sedeOrNull === null) {
+            if (value > 0) next.default[type] = value;
+            else delete next.default[type];
+          } else {
+            const sede = normalizeSede(sedeOrNull);
+            const forSede = { ...(next.by_sede[sede] ?? {}) };
+            if (value > 0) forSede[type] = value;
+            else delete forSede[type];
+            if (Object.keys(forSede).length > 0) next.by_sede[sede] = forSede;
+            else delete next.by_sede[sede];
+          }
+          scheduleRatesSave();
+          return { referenceRates: next };
         }),
 
       // ── Undoable mutation ─────────────────────────────────────────────────
@@ -457,12 +508,52 @@ export const useFixtureStore = create<FixtureStore>()(
         }
       },
 
+      pushRates: async () => {
+        if (!canWrite()) return;
+        const rates = get().referenceRates;
+        if (!rates) return;
+        try {
+          // Adopt the server's normalised copy (sede keys uppercased, zeros
+          // dropped) so what this tab shows is exactly what everyone else pulls.
+          const saved = await saveReferenceRates(rates);
+          set((s) => (s.referenceRates === rates ? { referenceRates: saved } : s));
+        } catch (err: any) {
+          const status = err?.response?.status;
+          if (status === 401 || status === 403) return;
+          console.warn("[layout sync] no se pudieron guardar las tarifas:", err);
+          set({
+            syncState: "error",
+            syncMessage: "No se pudieron guardar las tarifas de referencia.",
+          });
+        }
+      },
+
+      loadRates: async () => {
+        if (!canWrite()) return;
+        if (_ratesTimer) return;
+        try {
+          const rates = await fetchReferenceRates();
+          // Re-check after the await: an edit made while the request was in
+          // flight owns the truth until its push resolves.
+          if (!_ratesTimer) {
+            set({ referenceRates: { default: rates.default, by_sede: rates.by_sede } });
+          }
+        } catch {
+          /* keep whatever we hold; the next syncFromServer retries */
+        }
+      },
+
       flushPending: async () => {
         const pending = Object.keys(get().dirty).filter((s) => get().dirty[s]);
         if (_settingsTimer) {
           clearTimeout(_settingsTimer);
           _settingsTimer = null;
           await get().pushSettings();
+        }
+        if (_ratesTimer) {
+          clearTimeout(_ratesTimer);
+          _ratesTimer = null;
+          await get().pushRates();
         }
         await Promise.all(pending.map((sede) => get().pushSede(sede)));
       },
@@ -478,9 +569,14 @@ export const useFixtureStore = create<FixtureStore>()(
         // above all must not push them back.
         const roleChanged = get().dataRole !== role;
         try {
-          const [entries, settings] = await Promise.all([
+          const [entries, settings, rates] = await Promise.all([
             fetchAllLayouts(),
             fetchLayoutSettings().catch(() => null),
+            // The rates endpoint is admin-only (it's money) — a worker session
+            // must not even ask for it, and always holds null.
+            role === "admin"
+              ? fetchReferenceRates().catch(() => null)
+              : Promise.resolve(null),
           ]);
 
           const bootstrap: string[] = [];
@@ -577,6 +673,15 @@ export const useFixtureStore = create<FixtureStore>()(
             if (settings && settings.catalog_labels && !_settingsTimer) {
               next.catalogLabels = settings.catalog_labels;
             }
+
+            // Reference rates: adopt the server copy unless an edit of ours is
+            // still waiting in the debounce. A worker never holds rates — clear
+            // any leftover from a previous admin login in this same tab.
+            if (role !== "admin") {
+              next.referenceRates = null;
+            } else if (rates && !_ratesTimer) {
+              next.referenceRates = { default: rates.default, by_sede: rates.by_sede };
+            }
             return next as FixtureStore;
           });
 
@@ -671,6 +776,8 @@ export const useFixtureStore = create<FixtureStore>()(
         serverRev: state.serverRev,
         dirty: state.dirty,
         dataRole: state.dataRole,
+        // referenceRates stays out on purpose: it's admin-only money, and this
+        // key survives logout — a worker on the same machine must not find it.
       }),
       // Handles both:
       //   • v1 format: { fixtures: [...], sede: "X" }  → migrates into fixturesBySede

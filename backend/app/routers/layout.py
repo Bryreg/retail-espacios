@@ -12,6 +12,8 @@ from app.schemas.layout import (
     LayoutRevision,
     LayoutSettingsIn,
     LayoutSettingsOut,
+    ReferenceRatesIn,
+    ReferenceRatesOut,
 )
 
 # Every route requires a valid token; saving a layout additionally requires admin.
@@ -21,6 +23,8 @@ router = APIRouter(prefix="/layout", tags=["layout"], dependencies=[Depends(requ
 SEDES_KEY = "layout_sedes"
 CATALOG_LABELS_KEY = "layout_catalog_labels"
 SETTINGS_UPDATED_KEY = "layout_settings_updated_at"
+RATES_KEY = "layout_reference_rates"
+RATES_UPDATED_KEY = "layout_reference_rates_updated_at"
 
 # Revisions are compared exactly: the client echoes back verbatim the string it
 # received, and the JSON round-trip preserves microseconds. Sub-millisecond
@@ -207,6 +211,78 @@ def save_settings(payload: LayoutSettingsIn, db: Session = Depends(get_db)):
         catalog_labels=payload.catalog_labels,
         updated_at=now,
     )
+
+
+# ─── Reference rates (admin-only, both directions) ────────────────────────────
+# Rates are money: they never travel to a worker, so unlike /settings even the
+# GET requires admin. Stored in app_config — the schema rule of this project is
+# "no migrations", and a key/value row is how non-fixture state gets persisted.
+
+
+def _clean_rates(raw: dict) -> dict[str, float]:
+    """Keep only {type: positive amount} pairs — sending 0 clears a rate."""
+    clean: dict[str, float] = {}
+    if not isinstance(raw, dict):
+        return clean
+    for key, value in raw.items():
+        if not isinstance(key, str) or not key.strip():
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        if number > 0:
+            clean[key.strip()] = number
+    return clean
+
+
+@router.get("/rates", response_model=ReferenceRatesOut, dependencies=[Depends(require_admin)])
+def get_reference_rates(response: Response, db: Session = Depends(get_db)):
+    """Monthly reference rate per fixture type, with per-sede overrides."""
+    _no_store(response)
+    try:
+        stored = json.loads(get_config(db, RATES_KEY) or "{}")
+    except ValueError:
+        stored = {}
+    if not isinstance(stored, dict):
+        stored = {}
+    by_sede_raw = stored.get("by_sede")
+    by_sede = (
+        {sede: _clean_rates(rates) for sede, rates in by_sede_raw.items() if isinstance(sede, str)}
+        if isinstance(by_sede_raw, dict)
+        else {}
+    )
+    raw_updated = get_config(db, RATES_UPDATED_KEY)
+    updated_at = None
+    if raw_updated:
+        try:
+            updated_at = datetime.fromisoformat(raw_updated)
+        except ValueError:
+            updated_at = None
+    return ReferenceRatesOut(
+        default=_clean_rates(stored.get("default")),
+        by_sede={sede: rates for sede, rates in by_sede.items() if rates},
+        updated_at=updated_at,
+    )
+
+
+@router.put("/rates", response_model=ReferenceRatesOut, dependencies=[Depends(require_admin)])
+def save_reference_rates(payload: ReferenceRatesIn, db: Session = Depends(get_db)):
+    """Replace the reference rates. Sede keys are normalised like sede names."""
+    now = datetime.now(timezone.utc)
+    default = _clean_rates(payload.default)
+    by_sede: dict[str, dict[str, float]] = {}
+    for sede, rates in payload.by_sede.items():
+        # Same normalisation as the client's normalizeSede — "Nave" and "NAVE"
+        # must not accumulate as two different override sets.
+        name = sede.strip().upper()
+        clean = _clean_rates(rates)
+        if name and clean:
+            by_sede[name] = clean
+    set_config(db, RATES_KEY, json.dumps({"default": default, "by_sede": by_sede}))
+    set_config(db, RATES_UPDATED_KEY, now.isoformat())
+    db.commit()
+    return ReferenceRatesOut(default=default, by_sede=by_sede, updated_at=now)
 
 
 @router.get("/{sede}", response_model=LayoutOut)

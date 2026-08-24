@@ -36,3 +36,18 @@ class LayoutSettingsIn(BaseModel):
 
 class LayoutSettingsOut(LayoutSettingsIn):
     updated_at: datetime | None = None
+
+
+class ReferenceRatesIn(BaseModel):
+    """Monthly reference rate (COP) per fixture type.
+
+    ``default`` applies everywhere; ``by_sede`` overrides one type's rate for a
+    single sede. Rates are money, so unlike the layout settings these are
+    admin-only in BOTH directions — a worker must never read them.
+    """
+    default: dict[str, float] = Field(default={})
+    by_sede: dict[str, dict[str, float]] = Field(default={})
+
+
+class ReferenceRatesOut(ReferenceRatesIn):
+    updated_at: datetime | None = None

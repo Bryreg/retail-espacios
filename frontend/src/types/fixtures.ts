@@ -59,6 +59,65 @@ export function isRentable(f: { rentable?: boolean }): boolean {
   return f.rentable !== false;
 }
 
+// ─── Reference rates (tarifa de referencia) ──────────────────────────────────
+
+/** Monthly reference rate (COP) per fixture type. `default` applies everywhere;
+ *  `by_sede[sede]` overrides individual types for one sede. This mirrors the
+ *  backend wire format verbatim (snake_case included) so the two never drift.
+ *
+ *  Rates are money: the backend serves them admin-only, the store never
+ *  persists them to localStorage, and a worker session always holds `null`. */
+export interface ReferenceRates {
+  default: Record<string, number>;
+  by_sede: Record<string, Record<string, number>>;
+}
+
+/** Rate-table key for a fixture. `negotiatedValue` is per face/contract, so
+ *  double and wall gondolas (and the legacy 2D-only type names) share one
+ *  per-face "gondola" rate instead of three diverging ones. */
+export function rateTypeOf(f: { type: string }): string {
+  return f.type === "gondola_doble" || f.type === "gondola_mural" ? "gondola" : f.type;
+}
+
+/** Effective reference for one sede + rate type, or null when none is set.
+ *  A sede override wins over the general rate. */
+export function referenceRateFor(
+  rates: ReferenceRates | null,
+  sede: string,
+  type: string,
+): number | null {
+  if (!rates) return null;
+  const override = rates.by_sede[sede]?.[type];
+  if (typeof override === "number" && override > 0) return override;
+  const base = rates.default[type];
+  return typeof base === "number" && base > 0 ? base : null;
+}
+
+/** Rate types offered in the tariff editor, in display order. Infrastructure
+ *  types are still listed (any fixture can be flipped to "comercializable"),
+ *  columns excepted — a column is never sellable space. */
+export const RATE_TYPES: { type: string; label: string }[] = [
+  { type: "gondola",          label: "Góndola (por cara)" },
+  { type: "punta",            label: "Punta Góndola" },
+  { type: "robatope",         label: "Robatope" },
+  { type: "ristra",           label: "Ristra" },
+  { type: "cross",            label: "Exhibidor Cruz" },
+  { type: "impulsador",       label: "Impulsador Marca" },
+  { type: "mueble",           label: "Vitrina" },
+  { type: "isla",             label: "Exhib. de Piso" },
+  { type: "batea",            label: "Batea" },
+  { type: "isla_fria",        label: "Isla Helados/Cong." },
+  { type: "nevera_carnes",    label: "Nevera Carnes" },
+  { type: "nevera_refrescos", label: "Nevera Refrescos" },
+  { type: "stand_frutas",     label: "Stand Frutas/Verd" },
+  { type: "checkout",         label: "Checkout / Caja" },
+  { type: "metro",            label: "Zona Libre" },
+];
+
+export function rateTypeLabel(type: string): string {
+  return RATE_TYPES.find((t) => t.type === type)?.label ?? type;
+}
+
 /** Commercial data for one face of a double gondola.
  *  Face A is the fixture's existing top-level fields; face B lives here. */
 export interface FaceData {

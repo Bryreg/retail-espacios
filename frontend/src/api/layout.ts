@@ -1,5 +1,5 @@
 import client from "./client";
-import type { UnifiedFixture } from "../types/fixtures";
+import type { ReferenceRates, UnifiedFixture } from "../types/fixtures";
 
 export interface LayoutEntry {
   sede: string;
@@ -52,6 +52,16 @@ export const deleteLayout = (sede: string): Promise<void> =>
 
 export const fetchLayoutSettings = (): Promise<LayoutSettings> =>
   client.get("/layout/settings").then((r) => r.data);
+
+/** Admin-only in both directions — a worker request gets 403, so only call
+ *  these from an admin session. */
+export const fetchReferenceRates = (): Promise<ReferenceRates> =>
+  client.get("/layout/rates").then((r) => r.data);
+
+export const saveReferenceRates = (rates: ReferenceRates): Promise<ReferenceRates> =>
+  client
+    .put("/layout/rates", { default: rates.default, by_sede: rates.by_sede })
+    .then((r) => r.data);
 
 export const saveLayoutSettings = (
   sedes: string[],

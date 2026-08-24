@@ -1,7 +1,7 @@
 # Galerías — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: agosto 2026 (`main` en `c9edf93`).
+Última actualización: agosto 2026 (tarifas de referencia y $/m² recién incorporados).
 
 Gestión de espacios comerciales en supermercados: se dibuja el plano de cada sede, se
 marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
@@ -71,6 +71,12 @@ Nunca crear geometría nueva posicionada para esto: se intentó dos veces y fall
 paramétricas y del catch-all, o éste se las traga. Aplica en `layout.py`
 (`/revisions`, `/settings`) y en `spaces.py` (`/face-images`).
 
+**El dinero no viaja al worker.** `negotiatedValue` se redacta server-side en las
+respuestas de layout, `monthly_rent` en las de spaces, y las tarifas de referencia
+exigen admin **también para leer**. En el cliente, las tarifas quedan fuera de
+`partialize` a propósito: la clave `retail-fixtures-v1` sobrevive al logout, y una
+máquina compartida no debe entregarle precios al siguiente turno.
+
 **Los espejos comparan identidad, no booleanos.** El plano 2D y el editor 3D mantienen
 una copia local del store. Los guards que evitan el eco comparan la *identidad del array*,
 no una bandera: un booleano lo consume la pasada equivocada del ciclo de montaje, y eso
@@ -134,6 +140,30 @@ Un solo lenguaje de color en Dashboard, plano 2D y editor 3D:
 
 El rojo queda reservado para lo que está mal (un contrato vencido).
 
+### Tarifa de referencia y rendimiento $/m²
+
+Eran los dos primeros del backlog; salieron juntos porque comparten dominio (dinero).
+
+- **Tarifa de referencia** por tipo de mueble: una general + ajuste opcional por sede
+  (`app_config`, clave `layout_reference_rates` — sin migraciones, como manda la regla).
+  Se edita desde el botón **Tarifas** del Dashboard; guardado automático con el mismo
+  debounce que las settings. La tarifa de góndola es **por cara** (doble y mural
+  comparten tarifa, porque el valor negociado también es por cara).
+- Endpoints `GET/PUT /layout/rates`, declarados antes del catch-all. A diferencia de
+  `/layout/settings`, acá **también el GET exige admin**: es dinero. En el cliente las
+  tarifas nunca tocan `localStorage` y un login de worker las deja en `null`, así que
+  una máquina compartida no filtra nada.
+- En los paneles de contrato (2D y 3D) el campo de valor muestra la referencia del
+  tipo+sede y el desvío (`−17% vs referencia`, ámbar por debajo / verde en línea o
+  arriba).
+- En el Dashboard admin: sección **"Bajo tarifa de referencia"** en Atención (con el
+  desvío y `pagado · ref` en compacto), y tarjeta **"Rendimiento $/m²"** — canon
+  mensual de las caras ocupadas dividido por la huella del mueble (`w × d`), ranking
+  completo con scroll para que la cola rinda tan visible como la punta.
+- El helper es `referenceRateFor(rates, sede, type)` y la clave de tipo
+  `rateTypeOf()` (normaliza los tipos 2D legados `gondola_doble`/`gondola_mural` a
+  `gondola`). Umbral de marcado: desvío ≥ 1 % — un peso de redondeo no es anomalía.
+
 ### Bugs preexistentes corregidos
 
 Los tres se encontraron levantando la app contra datos sembrados, no leyendo código:
@@ -180,19 +210,17 @@ Ordenado por impacto sobre esfuerzo. Fundamentado en cómo la industria gestiona
 espacios: las puntas de góndola ocupan menos del 5 % del piso pero mueven cerca del 30 %
 de las ventas de la categoría, con aumentos medidos de 150–400 % frente al anaquel normal.
 
-1. **Tarifa de referencia** por tipo de mueble y sede. Hoy "valor negociado" es un campo
-   libre sin referencia; si una punta rinde 3–4× más que una góndola, debería costar
-   distinto y de forma consistente. Permite ver quién paga por debajo.
-2. **$/m² por mueble** y ranking de rendimiento. Hoy solo se mide ingreso total. Los datos
-   ya están (`area_m2` y el valor): falta la cuenta.
-3. **Calendario de disponibilidad**. El backend ya rechaza solapamientos con 409, pero no
+1. **Calendario de disponibilidad**. El backend ya rechaza solapamientos con 409, pero no
    se puede responder "¿qué tengo libre en noviembre?".
-4. **Verificación de ejecución**: convertir las fotos por espacio en auditoría, con fecha,
+2. **Verificación de ejecución**: convertir las fotos por espacio en auditoría, con fecha,
    autor y estado montado/no montado. Una foto sin metadatos no es evidencia.
-5. **Estado de renovación** (en negociación / renovado / no renueva) para que "por vencer"
+3. **Estado de renovación** (en negociación / renovado / no renueva) para que "por vencer"
    sea un embudo y no solo una alarma.
-6. **Histórico por espacio**: los contratos viejos ya están en `space_leases`, la interfaz
+4. **Histórico por espacio**: los contratos viejos ya están en `space_leases`, la interfaz
    no los muestra.
+
+Hecho en agosto 2026 (eran los puestos 1 y 2): tarifa de referencia por tipo y sede, y
+$/m² con ranking — ver "Qué está hecho".
 
 No perseguir: pantallas digitales, sensores de impresiones y compra programática. Tienen
 sentido con cientos de tiendas y un equipo comercial dedicado.
@@ -206,11 +234,11 @@ sentido con cientos de tiendas y un equipo comercial dedicado.
 - `JWT_SECRET` es una variable de entorno manual en Render, no viene del Blueprint.
 - El login tiene rate limit: 10 intentos por IP cada 15 minutos, en memoria. Reiniciar el
   backend lo limpia (útil al automatizar pruebas).
-- `.github/workflows/deploy.yml` despliega **por SSH a un VPS, no a Render**, y falla desde
-  junio con `Error: missing server host` (el secret `VPS_HOST` está vacío). Sale en rojo en
-  cada merge sin afectar a Render. Queda decidir si borrarlo o restringirlo a
-  `workflow_dispatch`.
-- No hay CI en pull requests: el único workflow corre al pushear a `main`.
+- `.github/workflows/deploy.yml` despliega **por SSH a un VPS, no a Render**. Fallaba en
+  rojo en cada merge desde junio (`VPS_HOST` vacío); quedó restringido a
+  `workflow_dispatch` — si el VPS revive, cargar los secrets y dispararlo a mano desde
+  Actions.
+- No hay CI en pull requests ni en push (el único workflow es el manual de arriba).
 - `nginx/retail.conf` es para el despliegue en VPS, no para Render. Si ese VPS se reactiva,
   hay que copiar el archivo al host a mano — el workflow no lo despliega.
 

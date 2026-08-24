@@ -11,8 +11,9 @@ import {
 } from "lucide-react";
 import { Html } from "@react-three/drei";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
-import { isDoubleGondola, isRentable, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
+import { isDoubleGondola, isRentable, NON_RENTABLE_BY_DEFAULT, rateTypeOf } from "../../types/fixtures";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
+import ReferenceRateHint from "../ReferenceRateHint";
 import { findOrCreateSpace, createLease } from "../../api/spaces";
 import { findOrCreateSupplier } from "../../api/suppliers";
 import { fileUrl, getFaceImages } from "../../api/files";
@@ -3264,7 +3265,7 @@ function CommercialPanel({
           </div>
 
           <div>
-            <label className={labelCls}><DollarSign size={9} className="inline mr-1"/>Valor (USD/mes)</label>
+            <label className={labelCls}><DollarSign size={9} className="inline mr-1"/>Valor (COP/mes)</label>
             <input type="number" min={0} value={selectedSlot.negotiatedValue||""}
               onChange={e=>us({negotiatedValue:parseFloat(e.target.value)||0})}
               className={`${inputCls} ${selectedSlot.negotiatedValue > 0 ? "text-success text-base font-bold" : ""}`} />
@@ -3430,10 +3431,11 @@ function CommercialPanel({
         </div>
 
         <div>
-          <label className={labelCls}><DollarSign size={9} className="inline mr-1"/>Valor (USD/mes)</label>
+          <label className={labelCls}><DollarSign size={9} className="inline mr-1"/>Valor (COP/mes)</label>
           <input type="number" min={0} value={fix.negotiatedValue||""}
             onChange={e=>u({negotiatedValue:parseFloat(e.target.value)||0})}
             className={`${inputCls} ${fix.negotiatedValue > 0 ? "text-success text-base font-bold" : ""}`} />
+          <ReferenceRateHint sede={sede} rateType={rateTypeOf(fix)} value={fix.negotiatedValue || 0} />
         </div>
 
         <div className="grid grid-cols-2 gap-2">

@@ -10,14 +10,22 @@ import {
   FileText,
   ChevronRight,
   Search,
+  Gauge,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
 import client from "../api/client";
 import { listSpaceFiles, type SpaceFileMeta } from "../api/files";
 import FileViewerModal from "../components/FileViewerModal";
+import RatesModal from "../components/RatesModal/RatesModal";
 import type { Space } from "../types";
-import { isDoubleGondola as isDoubleGondolaShared, isRentable } from "../types/fixtures";
+import {
+  isDoubleGondola as isDoubleGondolaShared,
+  isRentable,
+  rateTypeOf,
+  referenceRateFor,
+} from "../types/fixtures";
 import type { UnifiedFixture, SpaceStatus, FaceData } from "../types/fixtures";
 
 // ─── Date / money helpers ────────────────────────────────────────────────────
@@ -33,6 +41,16 @@ function daysUntil(dateStr: string): number {
 
 function formatCOP(n: number): string {
   if (!n) return "—";
+  return "$" + n.toLocaleString("es-CO");
+}
+
+/** "$1,4 M" / "$850 k" — for narrow columns where full amounts collide. */
+function compactCOP(n: number): string {
+  if (!n) return "—";
+  if (n >= 995_000) {
+    return "$" + (n / 1e6).toLocaleString("es-CO", { maximumFractionDigits: 1 }) + " M";
+  }
+  if (n >= 1_000) return "$" + Math.round(n / 1e3).toLocaleString("es-CO") + " k";
   return "$" + n.toLocaleString("es-CO");
 }
 
@@ -1250,6 +1268,55 @@ function SupplierRow({
   );
 }
 
+// ─── $/m² row (rendimiento por mueble, compact ranked) ───────────────────────
+
+export interface PerM2Entry {
+  fixture: UnifiedFixture;
+  /** Sum of the occupied faces' monthly values. */
+  total: number;
+  /** Floor footprint in m² (w × d) — the space the fixture actually takes. */
+  area: number;
+  perM2: number;
+}
+
+function PerM2Row({ entry, rank }: { entry: PerM2Entry; rank: number }) {
+  const f = entry.fixture;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, height: 28, padding: "0 14px" }}>
+      <span
+        style={{
+          width: 16, flexShrink: 0, textAlign: "right",
+          fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-4)",
+        }}
+      >
+        {rank + 1}
+      </span>
+      <span style={{ flexShrink: 0, fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-2)" }}>
+        {f.nomenclatura || f.code}
+      </span>
+      <span
+        style={{
+          flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, color: "var(--ink-1)",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        }}
+      >
+        {f.label || f.code}
+      </span>
+      <span style={{ flexShrink: 0, fontSize: 10.5, color: "var(--ink-3)" }}>
+        {entry.area.toLocaleString("es-CO", { maximumFractionDigits: 1 })} m²
+      </span>
+      <span
+        style={{
+          flexShrink: 0, fontFamily: "var(--font-mono)", fontSize: 11.5,
+          fontWeight: 600, color: "var(--success)",
+        }}
+      >
+        {compactCOP(entry.perM2)}/m²
+      </span>
+    </div>
+  );
+}
+
 // ─── Spaces table ─────────────────────────────────────────────────────────────
 
 function SpacesTable({
@@ -1500,7 +1567,9 @@ function EmptyDashboard({ sede, isAdmin }: { sede: string; isAdmin: boolean }) {
 export default function DashboardView() {
   const fixtures = useFixtureStore(selectFixtures);
   const { sedes, sede, setSede, fixturesBySede, syncFromServer } = useFixtureStore();
+  const referenceRates = useFixtureStore((s) => s.referenceRates);
   const isAdmin = useAuthStore(selectIsAdmin);
+  const [ratesOpen, setRatesOpen] = useState(false);
 
   const [selected, setSelected] = useState<UnifiedFixture | null>(null);
   // Where on the map the click landed (anchors the quick-look popover).
@@ -1590,19 +1659,52 @@ export default function DashboardView() {
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 6);
 
+    // Contracts paying below the reference rate for their type + sede.
+    // Only meaningful gaps (≥1%) — a peso of rounding is not an anomaly.
+    // Workers hold no rates, so for them this list is always empty.
+    const belowReference: (FaceEntry & { ref: number; gapPct: number })[] = [];
+    faces.forEach((x) => {
+      if (x.status !== "occupied" || !(x.negotiatedValue > 0)) return;
+      const ref = referenceRateFor(referenceRates, x.fixture.sede || sede, rateTypeOf(x.fixture));
+      if (ref === null) return;
+      const gapPct = Math.round((1 - x.negotiatedValue / ref) * 100);
+      if (gapPct >= 1) belowReference.push({ ...x, ref, gapPct });
+    });
+    belowReference.sort((a, b) => b.gapPct - a.gapPct);
+
+    // $/m² per fixture: what each occupied mueble yields for the floor it
+    // takes. Whole-fixture footprint against the sum of its occupied faces —
+    // no per-face area split to argue about.
+    const perM2: PerM2Entry[] = [];
+    fixtures.forEach((f) => {
+      if (!isRentable(f)) return;
+      const occupiedFaces = facesOf(f).filter(
+        (x) => x.status === "occupied" && x.negotiatedValue > 0,
+      );
+      if (occupiedFaces.length === 0) return;
+      const area = f.w * f.d;
+      if (!(area > 0)) return;
+      const totalValue = occupiedFaces.reduce((s, x) => s + x.negotiatedValue, 0);
+      perM2.push({ fixture: f, total: totalValue, area, perM2: totalValue / area });
+    });
+    perM2.sort((a, b) => b.perM2 - a.perM2);
+
     return {
       total, occupied, free, held, occPct, revenue,
       rentableFixtures, nonRentable,
       expired, expiring, noContract,
-      topSuppliers,
+      topSuppliers, belowReference, perM2,
     };
-  }, [fixtures]);
+  }, [fixtures, referenceRates, sede]);
 
   const activeSedeCount = sedes.filter((s) => (fixturesBySede[s] ?? []).length > 0).length;
 
-  const attentionCount = kpis.expired.length + kpis.expiring.length + kpis.noContract.length;
+  const attentionCount =
+    kpis.expired.length + kpis.expiring.length + kpis.noContract.length +
+    kpis.belowReference.length;
   const lastAttentionSection =
-    kpis.noContract.length > 0 ? "noContract"
+    kpis.belowReference.length > 0 ? "belowRef"
+    : kpis.noContract.length > 0 ? "noContract"
     : kpis.expiring.length > 0 ? "expiring"
     : "expired";
 
@@ -1682,6 +1784,25 @@ export default function DashboardView() {
               {fixtures.length} fixtures
             </span>
           </Card>
+
+          {isAdmin && (
+            <button
+              onClick={() => setRatesOpen(true)}
+              title="Tarifas de referencia por tipo de mueble"
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                height: 34, padding: "0 12px",
+                borderRadius: "var(--r-lg)",
+                background: "var(--surface)", color: "var(--ink-2)",
+                border: "1px solid var(--line)",
+                cursor: "pointer", fontSize: 12, fontWeight: 500,
+                fontFamily: "inherit",
+                boxShadow: "var(--shadow-xs)",
+              }}
+            >
+              <SlidersHorizontal size={13} /> Tarifas
+            </button>
+          )}
 
           <button
             onClick={() => syncFromServer()}
@@ -2020,6 +2141,25 @@ export default function DashboardView() {
                         ))}
                       </>
                     )}
+                    {isAdmin && kpis.belowReference.length > 0 && (
+                      <>
+                        <AtencionSection
+                          label={`Bajo tarifa de referencia · ${kpis.belowReference.length}`}
+                          color="var(--warning)"
+                        />
+                        {kpis.belowReference.map((entry, i) => (
+                          <AtencionRow
+                            key={`${entry.fixture.id}-${entry.face}`}
+                            entry={entry}
+                            chip={`−${entry.gapPct}%`}
+                            chipColor="var(--warning)"
+                            bg="transparent"
+                            dates={`${compactCOP(entry.negotiatedValue)} · ref ${compactCOP(entry.ref)}`}
+                            last={lastAttentionSection === "belowRef" && i === kpis.belowReference.length - 1}
+                          />
+                        ))}
+                      </>
+                    )}
                   </div>
                 )}
               </Card>
@@ -2051,6 +2191,24 @@ export default function DashboardView() {
                   </div>
                 </Card>
               )}
+
+              {/* Which muebles earn their floor: monthly $ per m² of footprint.
+                  The full ranking scrolls, so the laggards at the bottom are
+                  as visible as the winners — that contrast is the point. */}
+              {isAdmin && !(selected && detailFull) && kpis.perM2.length > 0 && (
+                <Card style={{ padding: 0, overflow: "hidden" }}>
+                  <CardHeader
+                    icon={<Gauge size={13} style={{ color: "var(--accent)" }} />}
+                    title="Rendimiento $/m²"
+                    sub="canon mensual por m² de piso"
+                  />
+                  <div style={{ padding: "6px 0", maxHeight: 260, overflowY: "auto" }}>
+                    {kpis.perM2.map((entry, i) => (
+                      <PerM2Row key={entry.fixture.id} entry={entry} rank={i} />
+                    ))}
+                  </div>
+                </Card>
+              )}
             </div>
           </div>
 
@@ -2079,6 +2237,7 @@ export default function DashboardView() {
       {viewerFile && (
         <FileViewerModal file={viewerFile} onClose={() => setViewerFile(null)} />
       )}
+      {ratesOpen && isAdmin && <RatesModal onClose={() => setRatesOpen(false)} />}
     </div>
   );
 }

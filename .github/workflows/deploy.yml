@@ -1,8 +1,11 @@
 name: Deploy → Producción
 
+# Manual only. Producción real corre en Render (auto-deploy desde main); este
+# workflow apunta a un VPS cuyo secret VPS_HOST está vacío desde junio, así que
+# en cada push a main fallaba en rojo sin desplegar nada. Si el VPS se
+# reactiva: cargar los secrets y dispararlo desde la pestaña Actions.
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   deploy:
