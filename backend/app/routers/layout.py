@@ -14,6 +14,9 @@ from app.schemas.layout import (
     LayoutSettingsOut,
     ReferenceRatesIn,
     ReferenceRatesOut,
+    SeasonWindow,
+    SeasonWindowsIn,
+    SeasonWindowsOut,
 )
 
 # Every route requires a valid token; saving a layout additionally requires admin.
@@ -25,6 +28,8 @@ CATALOG_LABELS_KEY = "layout_catalog_labels"
 SETTINGS_UPDATED_KEY = "layout_settings_updated_at"
 RATES_KEY = "layout_reference_rates"
 RATES_UPDATED_KEY = "layout_reference_rates_updated_at"
+SEASONS_KEY = "layout_season_windows"
+SEASONS_UPDATED_KEY = "layout_season_windows_updated_at"
 
 # Revisions are compared exactly: the client echoes back verbatim the string it
 # received, and the JSON round-trip preserves microseconds. Sub-millisecond
@@ -209,6 +214,60 @@ def save_settings(payload: LayoutSettingsIn, db: Session = Depends(get_db)):
     return LayoutSettingsOut(
         sedes=payload.sedes,
         catalog_labels=payload.catalog_labels,
+        updated_at=now,
+    )
+
+
+# ─── Season windows (shared, read by anyone authenticated) ────────────────────
+# Unlike the rates these are not money — a worker looking at what is free for
+# Christmas needs the same season dates the admin sees. Route order: literal
+# paths stay above "/{sede}".
+
+
+@router.get("/seasons", response_model=SeasonWindowsOut)
+def get_season_windows(response: Response, db: Session = Depends(get_db)):
+    """Días de venta antes y después del ancla, por temporada."""
+    _no_store(response)
+    try:
+        stored = json.loads(get_config(db, SEASONS_KEY) or "{}")
+    except ValueError:
+        stored = {}
+    windows: dict[str, SeasonWindow] = {}
+    if isinstance(stored, dict):
+        for key, value in stored.items():
+            if not isinstance(key, str) or not isinstance(value, dict):
+                continue
+            try:
+                windows[key] = SeasonWindow(
+                    before=int(value.get("before", 0)),
+                    after=int(value.get("after", 0)),
+                )
+            except (TypeError, ValueError):
+                continue
+    raw_updated = get_config(db, SEASONS_UPDATED_KEY)
+    updated_at = None
+    if raw_updated:
+        try:
+            updated_at = datetime.fromisoformat(raw_updated)
+        except ValueError:
+            updated_at = None
+    return SeasonWindowsOut(windows=windows, updated_at=updated_at)
+
+
+@router.put("/seasons", response_model=SeasonWindowsOut, dependencies=[Depends(require_admin)])
+def save_season_windows(payload: SeasonWindowsIn, db: Session = Depends(get_db)):
+    """Replace the season windows. Same for every sede — they are not per-store."""
+    now = datetime.now(timezone.utc)
+    clean = {
+        key.strip(): {"before": w.before, "after": w.after}
+        for key, w in payload.windows.items()
+        if key.strip()
+    }
+    set_config(db, SEASONS_KEY, json.dumps(clean))
+    set_config(db, SEASONS_UPDATED_KEY, now.isoformat())
+    db.commit()
+    return SeasonWindowsOut(
+        windows={k: SeasonWindow(**v) for k, v in clean.items()},
         updated_at=now,
     )
 

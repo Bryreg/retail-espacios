@@ -21,12 +21,18 @@ import RatesModal from "../components/RatesModal/RatesModal";
 import type { Space } from "../types";
 import {
   contractPhase,
+  daysTakenInRange,
   isDoubleGondola as isDoubleGondolaShared,
   isRentable,
+  rangeAvailability,
   rateTypeOf,
   referenceRateFor,
 } from "../types/fixtures";
-import type { UnifiedFixture, SpaceStatus, FaceData } from "../types/fixtures";
+import type {
+  UnifiedFixture, SpaceStatus, FaceData, RangeAvailability,
+} from "../types/fixtures";
+import SeasonPicker, { describeRange, type DateRange } from "../components/SeasonPicker/SeasonPicker";
+import { inclusiveDays } from "../types/seasons";
 
 // ─── Date / money helpers ────────────────────────────────────────────────────
 
@@ -383,6 +389,21 @@ function topColorFor(face: FaceEntry): string {
   return DISPLAY_TOP[displayStatus(face)];
 }
 
+/** Colours for the "available for this period" reading, which answers a
+ *  different question than "what is happening today" and therefore uses its
+ *  own three-way scale: sellable, negotiable, taken. */
+const RANGE_TOP: Record<RangeAvailability, string> = {
+  libre: "#4CC38A",
+  parcial: "#F0B429",
+  tomado: "#8B5CF6",
+};
+
+const RANGE_LABEL: Record<RangeAvailability, string> = {
+  libre: "Libre todo el periodo",
+  parcial: "Libre parte del periodo",
+  tomado: "Tomado",
+};
+
 /** Infrastructure on the isometric map: present, but visibly not for sale. */
 const NON_RENTABLE_TOP = "#94A3B8";
 
@@ -405,9 +426,12 @@ interface IsoMapProps {
   onSelect: (f: UnifiedFixture | null, point?: MapAnchor) => void;
   /** Active search/filter result — null when no query or filter applies. */
   match: MapMatch | null;
+  /** When set, faces are painted by availability over this period instead of
+   *  by what is happening today. */
+  range: DateRange | null;
 }
 
-function IsoMap({ fixtures, selectedId, onSelect, match }: IsoMapProps) {
+function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [tip, setTip] = useState<{ x: number; y: number; title: string; sub: string } | null>(null);
@@ -451,8 +475,10 @@ function IsoMap({ fixtures, selectedId, onSelect, match }: IsoMapProps) {
       // commercial hue.
       const double = isDoubleGondola(f) && rentable;
       const faces = facesOf(f);
-      const topA = rentable ? topColorFor(faces[0]) : NON_RENTABLE_TOP;
-      const topB = rentable && faces[1] ? topColorFor(faces[1]) : NON_RENTABLE_TOP;
+      const paint = (face: FaceEntry) =>
+        range ? RANGE_TOP[rangeAvailability(face, range.from, range.to)] : topColorFor(face);
+      const topA = rentable ? paint(faces[0]) : NON_RENTABLE_TOP;
+      const topB = rentable && faces[1] ? paint(faces[1]) : NON_RENTABLE_TOP;
       // Sides follow the dominant (face A) hue
       const sideL = darken(topA, 0.18);
       const sideR = darken(topA, 0.3);
@@ -486,9 +512,19 @@ function IsoMap({ fixtures, selectedId, onSelect, match }: IsoMapProps) {
       const label = labelText ? { text: labelText, x: lcx, y: lcy - 7, defaultVisible } : null;
       if (label) addPt([label.x, label.y - 8]);
 
+      // Asking about a period changes the question the tooltip should answer:
+      // not "who is here" but "can I sell this, and if not, how much of it".
+      const rangeSub = (face: FaceEntry) => {
+        if (!range) return face.supplierName || "Sin proveedor";
+        const total = inclusiveDays(range.from, range.to);
+        const taken = daysTakenInRange(face, range.from, range.to);
+        if (taken <= 0) return `libre los ${total} día${total === 1 ? "" : "s"}`;
+        if (taken >= total) return `tomado${face.supplierName ? ` · ${face.supplierName}` : ""}`;
+        return `libre ${total - taken} de ${total} días`;
+      };
       const tooltipSub = double
-        ? `A: ${faces[0].supplierName || "—"} · B: ${faces[1]?.supplierName || "—"}`
-        : faces[0].supplierName || "Sin proveedor";
+        ? `A: ${rangeSub(faces[0])} · B: ${faces[1] ? rangeSub(faces[1]) : "—"}`
+        : rangeSub(faces[0]);
 
       return {
         f,
@@ -509,7 +545,7 @@ function IsoMap({ fixtures, selectedId, onSelect, match }: IsoMapProps) {
       groundPts: pts(...groundPts),
       viewBox: `${(minX - pad).toFixed(1)} ${(minY - pad).toFixed(1)} ${(maxX - minX + pad * 2).toFixed(1)} ${(maxY - minY + pad * 2).toFixed(1)}`,
     };
-  }, [fixtures]);
+  }, [fixtures, range]);
 
   if (!scene) return null;
 
@@ -673,8 +709,17 @@ function IsoMap({ fixtures, selectedId, onSelect, match }: IsoMapProps) {
   );
 }
 
-function MapLegend() {
-  const items: { c: string; l: string }[] = [
+function MapLegend({ range }: { range?: DateRange | null }) {
+  // The legend has to describe whatever the map is actually painting: asking
+  // about a period replaces the six states of "today" with a three-way answer.
+  const items: { c: string; l: string }[] = range
+    ? [
+        { c: RANGE_TOP.libre,   l: RANGE_LABEL.libre },
+        { c: RANGE_TOP.parcial, l: RANGE_LABEL.parcial },
+        { c: RANGE_TOP.tomado,  l: RANGE_LABEL.tomado },
+        { c: NON_RENTABLE_TOP,  l: "No comercializable" },
+      ]
+    : [
     { c: DISPLAY_TOP.free,        l: "Libre" },
     { c: DISPLAY_TOP.committed,   l: "Contratado" },
     { c: DISPLAY_TOP.active,      l: "Ocupado" },
@@ -1575,6 +1620,8 @@ export default function DashboardView() {
   const [viewerFile, setViewerFile] = useState<SpaceFileMeta | null>(null);
   const [mapQuery, setMapQuery] = useState("");
   const [mapFilter, setMapFilter] = useState<MapFilter>("todos");
+  /** Period the map answers for; null = today. */
+  const [mapRange, setMapRange] = useState<DateRange | null>(null);
 
   // Deselect when switching sedes
   useEffect(() => {
@@ -1677,6 +1724,20 @@ export default function DashboardView() {
       topSuppliers, belowReference,
     };
   }, [fixtures, referenceRates, sede]);
+
+  // How much of the sede can actually be sold for the chosen period. Counted
+  // per face, like every other total on this page.
+  const rangeTally = useMemo(() => {
+    if (!mapRange) return { libres: 0, parciales: 0, tomados: 0 };
+    let libres = 0, parciales = 0, tomados = 0;
+    fixtures.flatMap(commercialFacesOf).forEach((face) => {
+      const a = rangeAvailability(face, mapRange.from, mapRange.to);
+      if (a === "libre") libres++;
+      else if (a === "parcial") parciales++;
+      else tomados++;
+    });
+    return { libres, parciales, tomados };
+  }, [fixtures, mapRange]);
 
   const activeSedeCount = sedes.filter((s) => (fixturesBySede[s] ?? []).length > 0).length;
 
@@ -2021,12 +2082,45 @@ export default function DashboardView() {
                   Mapa de ocupación
                 </span>
                 <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
-                  {sede} · clic para ver el contrato
+                  {sede} · {mapRange ? describeRange(mapRange) : "clic para ver el contrato"}
                 </span>
                 {/* Legend next to what it explains, not stranded at the bottom */}
                 <div style={{ marginLeft: "auto" }}>
-                  <MapLegend />
+                  <MapLegend range={mapRange} />
                 </div>
+              </div>
+
+              {/* The period the map answers for. Sits on the map and nowhere
+                  else: the cards above keep reporting today, so the two are
+                  never confused for one another. */}
+              <div
+                style={{
+                  display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+                  padding: "7px 9px", marginBottom: 8,
+                  borderRadius: "var(--r-md)",
+                  background: mapRange ? "var(--accent-50)" : "var(--surface-2)",
+                  border: `1px solid ${mapRange ? "var(--accent-200)" : "var(--line-soft)"}`,
+                }}
+              >
+                <SeasonPicker range={mapRange} onChange={setMapRange} />
+                {mapRange && (
+                  <span
+                    style={{
+                      marginLeft: "auto", fontSize: 11.5, fontWeight: 600,
+                      color: "var(--ink-2)", whiteSpace: "nowrap",
+                    }}
+                  >
+                    <span style={{ fontFamily: "var(--font-mono)", color: "var(--success)" }}>
+                      {rangeTally.libres}
+                    </span>{" "}
+                    de {kpis.total} libres todo el periodo
+                    {rangeTally.parciales > 0 && (
+                      <span style={{ color: "var(--ink-3)", fontWeight: 500 }}>
+                        {" "}· {rangeTally.parciales} parcial{rangeTally.parciales === 1 ? "" : "es"}
+                      </span>
+                    )}
+                  </span>
+                )}
               </div>
 
               <IsoMap
@@ -2034,6 +2128,7 @@ export default function DashboardView() {
                 selectedId={selected?.id ?? null}
                 onSelect={selectFixture}
                 match={mapMatch}
+                range={mapRange}
               />
 
               {/* Quick look, anchored to the fixture. Hidden once the full

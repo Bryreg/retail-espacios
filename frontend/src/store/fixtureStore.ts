@@ -1,15 +1,18 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ReferenceRates, UnifiedFixture } from "../types/fixtures";
+import type { SeasonWindows } from "../types/seasons";
 import {
   deleteLayout,
   fetchAllLayouts,
   fetchLayoutSettings,
   fetchReferenceRates,
   fetchRevisions,
+  fetchSeasonWindows,
   saveLayout,
   saveLayoutSettings,
   saveReferenceRates,
+  saveSeasonWindows,
 } from "../api/layout";
 import { useAuthStore } from "./authStore";
 
@@ -80,6 +83,18 @@ function scheduleSettingsSave() {
   }, SAVE_DEBOUNCE_MS);
 }
 
+// ─── Season windows (shared, same for every sede) ─────────────────────────────
+
+let _seasonsTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleSeasonsSave() {
+  if (_seasonsTimer) clearTimeout(_seasonsTimer);
+  _seasonsTimer = setTimeout(() => {
+    _seasonsTimer = null;
+    void useFixtureStore.getState().pushSeasons();
+  }, SAVE_DEBOUNCE_MS);
+}
+
 // ─── Reference rates (admin-only money) ───────────────────────────────────────
 
 let _ratesTimer: ReturnType<typeof setTimeout> | null = null;
@@ -140,6 +155,9 @@ interface FixtureStore {
    *  Admin-only money: `null` for workers, fetched fresh each session and kept
    *  OUT of localStorage so a shared machine never leaks it to the next login. */
   referenceRates: ReferenceRates | null;
+  /** Sales window (days before/after the anchor) per commercial season.
+   *  Shared across every sede — the seasons are the same in all three. */
+  seasonWindows: SeasonWindows;
   camera2D: Camera2D;
   camera3D: Camera3D;
 
@@ -186,6 +204,9 @@ interface FixtureStore {
    *  of 0 (or less) clears the entry. Admin-only — no-ops otherwise. */
   setReferenceRate: (sede: string | null, type: string, value: number) => void;
 
+  /** Adjust one season's sales window. Admin-only — no-ops otherwise. */
+  setSeasonWindow: (id: string, before: number, after: number) => void;
+
   // Undoable mutation — use this for all user-initiated changes
   commit: (fixtures: UnifiedFixture[]) => void;
   undo: () => void;
@@ -204,6 +225,8 @@ interface FixtureStore {
   pushSettings: () => Promise<void>;
   /** Push the reference rates (admin-only endpoint). */
   pushRates: () => Promise<void>;
+  /** Push the season windows (admin-only endpoint). */
+  pushSeasons: () => Promise<void>;
   /** Fetch the rates once (e.g. when the tariff editor opens and the initial
    *  sync hasn't landed yet). Never clobbers an edit waiting in the debounce. */
   loadRates: () => Promise<void>;
@@ -242,6 +265,7 @@ export const useFixtureStore = create<FixtureStore>()(
       sede: "TERRON",
       catalogLabels: {},
       referenceRates: null,
+      seasonWindows: {},
       camera2D: DEFAULT_CAMERA_2D,
       camera3D: DEFAULT_CAMERA_3D,
       serverRev: {},
@@ -353,6 +377,19 @@ export const useFixtureStore = create<FixtureStore>()(
           }
           scheduleSettingsSave();
           return { catalogLabels: next };
+        }),
+
+      setSeasonWindow: (id, before, after) =>
+        set((state) => {
+          if (!canWrite()) return state;
+          const clean = (n: number) => Math.max(0, Math.min(180, Math.round(n) || 0));
+          scheduleSeasonsSave();
+          return {
+            seasonWindows: {
+              ...state.seasonWindows,
+              [id]: { before: clean(before), after: clean(after) },
+            },
+          };
         }),
 
       setReferenceRate: (sedeOrNull, type, value) =>
@@ -528,6 +565,21 @@ export const useFixtureStore = create<FixtureStore>()(
         }
       },
 
+      pushSeasons: async () => {
+        if (!canWrite()) return;
+        try {
+          await saveSeasonWindows(get().seasonWindows);
+        } catch (err: any) {
+          const status = err?.response?.status;
+          if (status === 401 || status === 403) return;
+          console.warn("[layout sync] no se pudieron guardar las temporadas:", err);
+          set({
+            syncState: "error",
+            syncMessage: "No se pudieron guardar las temporadas.",
+          });
+        }
+      },
+
       loadRates: async () => {
         if (!canWrite()) return;
         if (_ratesTimer) return;
@@ -555,6 +607,11 @@ export const useFixtureStore = create<FixtureStore>()(
           _ratesTimer = null;
           await get().pushRates();
         }
+        if (_seasonsTimer) {
+          clearTimeout(_seasonsTimer);
+          _seasonsTimer = null;
+          await get().pushSeasons();
+        }
         await Promise.all(pending.map((sede) => get().pushSede(sede)));
       },
 
@@ -569,7 +626,7 @@ export const useFixtureStore = create<FixtureStore>()(
         // above all must not push them back.
         const roleChanged = get().dataRole !== role;
         try {
-          const [entries, settings, rates] = await Promise.all([
+          const [entries, settings, rates, seasons] = await Promise.all([
             fetchAllLayouts(),
             fetchLayoutSettings().catch(() => null),
             // The rates endpoint is admin-only (it's money) — a worker session
@@ -577,6 +634,8 @@ export const useFixtureStore = create<FixtureStore>()(
             role === "admin"
               ? fetchReferenceRates().catch(() => null)
               : Promise.resolve(null),
+            // Seasons are dates, not money: every role reads them.
+            fetchSeasonWindows().catch(() => null),
           ]);
 
           const bootstrap: string[] = [];
@@ -682,6 +741,10 @@ export const useFixtureStore = create<FixtureStore>()(
             } else if (rates && !_ratesTimer) {
               next.referenceRates = { default: rates.default, by_sede: rates.by_sede };
             }
+
+            if (seasons && !_seasonsTimer) {
+              next.seasonWindows = seasons.windows ?? {};
+            }
             return next as FixtureStore;
           });
 
@@ -769,6 +832,8 @@ export const useFixtureStore = create<FixtureStore>()(
         sedes: state.sedes,
         sede: state.sede,
         catalogLabels: state.catalogLabels,
+        // Dates, not money — safe to keep so the map still answers offline.
+        seasonWindows: state.seasonWindows,
         camera2D: state.camera2D,
         camera3D: state.camera3D,
         // Persisted so a reload knows what the server already has and which
@@ -804,6 +869,7 @@ export const useFixtureStore = create<FixtureStore>()(
           fixturesBySede,
           sedes: p.sedes ?? DEFAULT_SEDES,
           catalogLabels: p.catalogLabels ?? {},
+          seasonWindows: p.seasonWindows ?? {},
           serverRev: p.serverRev ?? {},
           dirty: p.dirty ?? {},
           dataRole: p.dataRole ?? null,

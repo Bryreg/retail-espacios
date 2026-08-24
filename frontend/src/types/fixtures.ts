@@ -11,6 +11,8 @@
  * 3D render:   position (cx, 0, cz)  with scale (w, h, d)
  */
 
+import { dayNumber, inclusiveDays, parseISODate } from "./seasons";
+
 export type SpaceStatus = "free" | "occupied" | "reserved" | "maintenance";
 
 export type FixType =
@@ -134,14 +136,7 @@ export type ContractPhase =
   | "vigente"        // running today
   | "vencido";       // end date already passed
 
-/** Local-date parse: "2026-12-01" as local midnight, never UTC.
- *  Using `new Date(str)` would shift the day in negative-offset zones like
- *  Colombia (UTC-5) and a contract could read as started a day early. */
-function parseLocalDate(value: string): Date | null {
-  const [y, m, d] = value.split("-").map(Number);
-  if (!y || !m || !d || m < 1 || m > 12) return null;
-  return new Date(y, m - 1, d);
-}
+const parseLocalDate = parseISODate;
 
 export function contractPhase(
   face: { status: SpaceStatus; startDate?: string; endDate?: string },
@@ -177,6 +172,65 @@ export function isSellableToday(
     return phase === "vencido";
   }
   return true;
+}
+
+// ─── Availability over a date RANGE ──────────────────────────────────────────
+
+export type RangeAvailability = "libre" | "parcial" | "tomado";
+
+/** How much of [from, to] this face already has committed.
+ *
+ *  Both ends are INCLUSIVE on purpose. A shelf is not a hotel room: the
+ *  supplier going out and the one coming in cannot share the last day, because
+ *  somebody has to physically dismount one display and mount the other. So a
+ *  contract ending the 30th blocks the 30th, and the next one starts the 31st.
+ *
+ *  Reserved and maintenance also block: they are not for sale either. */
+export function daysTakenInRange(
+  face: { status: SpaceStatus; startDate?: string; endDate?: string },
+  from: Date,
+  to: Date,
+  today: Date = new Date(),
+): number {
+  const total = inclusiveDays(from, to);
+  if (total <= 0) return 0;
+
+  // "Reservado" and "mantenimiento" carry no dates: they describe the state
+  // right now, not a period. So they block a span that includes today — we
+  // cannot promise a space that is held as we speak — but they say nothing
+  // about December, and blocking the future on them would hide sellable
+  // inventory behind a flag someone set months earlier and forgot.
+  if (face.status === "reserved" || face.status === "maintenance") {
+    const t = dayNumber(today);
+    return t >= dayNumber(from) && t <= dayNumber(to) ? total : 0;
+  }
+  if (face.status !== "occupied") return 0;
+
+  const start = face.startDate ? parseISODate(face.startDate) : null;
+  const end = face.endDate ? parseISODate(face.endDate) : null;
+  // Marked occupied with no dates recorded: treat it as taken rather than
+  // offering a space someone may physically be using.
+  if (!start && !end) return total;
+
+  const a = Math.max(dayNumber(from), start ? dayNumber(start) : -Infinity);
+  const b = Math.min(dayNumber(to), end ? dayNumber(end) : Infinity);
+  return b < a ? 0 : b - a + 1;
+}
+
+/** Reading of one face for a whole period: only "libre" is sellable as asked.
+ *  "parcial" is a real answer, not a fudge — it tells the operator there is a
+ *  conversation to have ("te lo puedo dar 5 de los 7 días"). */
+export function rangeAvailability(
+  face: { status: SpaceStatus; startDate?: string; endDate?: string },
+  from: Date,
+  to: Date,
+  today?: Date,
+): RangeAvailability {
+  const total = inclusiveDays(from, to);
+  if (total <= 0) return "libre";
+  const taken = daysTakenInRange(face, from, to, today);
+  if (taken <= 0) return "libre";
+  return taken >= total ? "tomado" : "parcial";
 }
 
 /** Commercial data for one face of a double gondola.

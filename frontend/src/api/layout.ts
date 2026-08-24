@@ -1,5 +1,6 @@
 import client from "./client";
 import type { ReferenceRates, UnifiedFixture } from "../types/fixtures";
+import type { SeasonWindows } from "../types/seasons";
 
 export interface LayoutEntry {
   sede: string;
@@ -52,6 +53,16 @@ export const deleteLayout = (sede: string): Promise<void> =>
 
 export const fetchLayoutSettings = (): Promise<LayoutSettings> =>
   client.get("/layout/settings").then((r) => r.data);
+
+/** Season sales windows — shared by every sede. Readable by any role (they are
+ *  dates, not money); only an admin may write. */
+export const fetchSeasonWindows = (): Promise<{ windows: SeasonWindows }> =>
+  client.get("/layout/seasons").then((r) => r.data);
+
+export const saveSeasonWindows = (
+  windows: SeasonWindows,
+): Promise<{ windows: SeasonWindows }> =>
+  client.put("/layout/seasons", { windows }).then((r) => r.data);
 
 /** Admin-only in both directions — a worker request gets 403, so only call
  *  these from an admin session. */
