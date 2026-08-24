@@ -42,3 +42,39 @@ class LayoutSettingsOut(BaseModel):
     sedes: list[str] = Field(default=[], max_length=100)
     catalog_labels: dict[str, str] = Field(default={})
     updated_at: datetime | None = None
+
+
+class SeasonWindow(BaseModel):
+    """Días de venta alrededor del ancla de una temporada."""
+    before: int = Field(default=0, ge=0, le=180)
+    after: int = Field(default=0, ge=0, le=180)
+
+
+class SeasonWindowsIn(BaseModel):
+    """Ventanas de venta por temporada, iguales para todas las sedes.
+
+    El ANCLA (tercer domingo de junio, domingo de pascua…) la calcula el
+    cliente porque es un hecho del calendario y no cambia. Acá solo viaja la
+    decisión comercial: cuántos días antes y después se vende. No es dinero,
+    así que la lectura es para cualquier rol; escribir requiere admin.
+    """
+    windows: dict[str, SeasonWindow] = Field(default={})
+
+
+class SeasonWindowsOut(SeasonWindowsIn):
+    updated_at: datetime | None = None
+
+
+class ReferenceRatesIn(BaseModel):
+    """Monthly reference rate (COP) per fixture type.
+
+    ``default`` applies everywhere; ``by_sede`` overrides one type's rate for a
+    single sede. Rates are money, so unlike the layout settings these are
+    admin-only in BOTH directions — a worker must never read them.
+    """
+    default: dict[str, float] = Field(default={})
+    by_sede: dict[str, dict[str, float]] = Field(default={})
+
+
+class ReferenceRatesOut(ReferenceRatesIn):
+    updated_at: datetime | None = None

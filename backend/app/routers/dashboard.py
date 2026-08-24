@@ -26,10 +26,17 @@ def get_kpis(role: str = Depends(require_auth), db: Session = Depends(get_db)):
     counts: dict = {r.status.value: r.cnt for r in status_counts}
     total = sum(counts.values())
 
-    # Total monthly revenue from all active leases
+    # Monthly revenue from leases RUNNING TODAY. Filtering on is_active alone
+    # also summed contracts signed for a future period, overstating income by
+    # whatever had been pre-sold.
+    running = (
+        SpaceLease.is_active.is_(True),
+        SpaceLease.start_date <= today,
+        SpaceLease.end_date >= today,
+    )
     monthly_revenue = float(
         db.query(func.coalesce(func.sum(SpaceLease.monthly_rent), 0.0))
-        .filter(SpaceLease.is_active.is_(True))
+        .filter(*running)
         .scalar()
         or 0.0
     )
@@ -54,7 +61,7 @@ def get_kpis(role: str = Depends(require_auth), db: Session = Depends(get_db)):
             func.sum(SpaceLease.monthly_rent).label("revenue"),
         )
         .join(SpaceLease, SpaceLease.supplier_id == Supplier.id)
-        .filter(SpaceLease.is_active.is_(True))
+        .filter(*running)
         .group_by(Supplier.id, Supplier.name)
         .order_by(func.sum(SpaceLease.monthly_rent).desc())
         .limit(5)
@@ -101,14 +108,19 @@ def get_spaces(role: str = Depends(require_auth), db: Session = Depends(get_db))
 
     result = []
     for space in spaces:
-        active_lease = next(
-            (l for l in space.leases if l.is_active), None
-        )
+        # Date-aware: a lease signed for a future period is not "active" today.
+        active_lease = space.active_lease
         days_remaining: int | None = None
         if active_lease:
             days_remaining = (active_lease.end_date - today).days
 
-        unauthorized = (space.status.value == "occupied") and (active_lease is None)
+        # A space flagged occupied with a contract that only starts later is
+        # committed, not unauthorised — flagging it would cry wolf.
+        unauthorized = (
+            space.status.value == "occupied"
+            and active_lease is None
+            and space.upcoming_lease is None
+        )
 
         result.append({
             "id": space.id,

@@ -14,6 +14,11 @@ from app.schemas.layout import (
     LayoutRevision,
     LayoutSettingsIn,
     LayoutSettingsOut,
+    ReferenceRatesIn,
+    ReferenceRatesOut,
+    SeasonWindow,
+    SeasonWindowsIn,
+    SeasonWindowsOut,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,6 +30,10 @@ router = APIRouter(prefix="/layout", tags=["layout"], dependencies=[Depends(requ
 SEDES_KEY = "layout_sedes"
 CATALOG_LABELS_KEY = "layout_catalog_labels"
 SETTINGS_UPDATED_KEY = "layout_settings_updated_at"
+RATES_KEY = "layout_reference_rates"
+RATES_UPDATED_KEY = "layout_reference_rates_updated_at"
+SEASONS_KEY = "layout_season_windows"
+SEASONS_UPDATED_KEY = "layout_season_windows_updated_at"
 
 # Revisions are compared exactly: the client echoes back verbatim the string it
 # received, and the JSON round-trip preserves microseconds. Sub-millisecond
@@ -247,6 +256,132 @@ def save_settings(payload: LayoutSettingsIn, db: Session = Depends(get_db)):
     )
 
 
+# ─── Season windows (shared, read by anyone authenticated) ────────────────────
+# Unlike the rates these are not money — a worker looking at what is free for
+# Christmas needs the same season dates the admin sees. Route order: literal
+# paths stay above "/{sede}".
+
+
+@router.get("/seasons", response_model=SeasonWindowsOut)
+def get_season_windows(response: Response, db: Session = Depends(get_db)):
+    """Días de venta antes y después del ancla, por temporada."""
+    _no_store(response)
+    try:
+        stored = json.loads(get_config(db, SEASONS_KEY) or "{}")
+    except ValueError:
+        stored = {}
+    windows: dict[str, SeasonWindow] = {}
+    if isinstance(stored, dict):
+        for key, value in stored.items():
+            if not isinstance(key, str) or not isinstance(value, dict):
+                continue
+            try:
+                windows[key] = SeasonWindow(
+                    before=int(value.get("before", 0)),
+                    after=int(value.get("after", 0)),
+                )
+            except (TypeError, ValueError):
+                continue
+    raw_updated = get_config(db, SEASONS_UPDATED_KEY)
+    updated_at = None
+    if raw_updated:
+        try:
+            updated_at = datetime.fromisoformat(raw_updated)
+        except ValueError:
+            updated_at = None
+    return SeasonWindowsOut(windows=windows, updated_at=updated_at)
+
+
+@router.put("/seasons", response_model=SeasonWindowsOut, dependencies=[Depends(require_admin)])
+def save_season_windows(payload: SeasonWindowsIn, db: Session = Depends(get_db)):
+    """Replace the season windows. Same for every sede — they are not per-store."""
+    now = datetime.now(timezone.utc)
+    clean = {
+        key.strip(): {"before": w.before, "after": w.after}
+        for key, w in payload.windows.items()
+        if key.strip()
+    }
+    set_config(db, SEASONS_KEY, json.dumps(clean))
+    set_config(db, SEASONS_UPDATED_KEY, now.isoformat())
+    db.commit()
+    return SeasonWindowsOut(
+        windows={k: SeasonWindow(**v) for k, v in clean.items()},
+        updated_at=now,
+    )
+
+
+# ─── Reference rates (admin-only, both directions) ────────────────────────────
+# Rates are money: they never travel to a worker, so unlike /settings even the
+# GET requires admin. Stored in app_config — the schema rule of this project is
+# "no migrations", and a key/value row is how non-fixture state gets persisted.
+
+
+def _clean_rates(raw: dict) -> dict[str, float]:
+    """Keep only {type: positive amount} pairs — sending 0 clears a rate."""
+    clean: dict[str, float] = {}
+    if not isinstance(raw, dict):
+        return clean
+    for key, value in raw.items():
+        if not isinstance(key, str) or not key.strip():
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        if number > 0:
+            clean[key.strip()] = number
+    return clean
+
+
+@router.get("/rates", response_model=ReferenceRatesOut, dependencies=[Depends(require_admin)])
+def get_reference_rates(response: Response, db: Session = Depends(get_db)):
+    """Monthly reference rate per fixture type, with per-sede overrides."""
+    _no_store(response)
+    try:
+        stored = json.loads(get_config(db, RATES_KEY) or "{}")
+    except ValueError:
+        stored = {}
+    if not isinstance(stored, dict):
+        stored = {}
+    by_sede_raw = stored.get("by_sede")
+    by_sede = (
+        {sede: _clean_rates(rates) for sede, rates in by_sede_raw.items() if isinstance(sede, str)}
+        if isinstance(by_sede_raw, dict)
+        else {}
+    )
+    raw_updated = get_config(db, RATES_UPDATED_KEY)
+    updated_at = None
+    if raw_updated:
+        try:
+            updated_at = datetime.fromisoformat(raw_updated)
+        except ValueError:
+            updated_at = None
+    return ReferenceRatesOut(
+        default=_clean_rates(stored.get("default")),
+        by_sede={sede: rates for sede, rates in by_sede.items() if rates},
+        updated_at=updated_at,
+    )
+
+
+@router.put("/rates", response_model=ReferenceRatesOut, dependencies=[Depends(require_admin)])
+def save_reference_rates(payload: ReferenceRatesIn, db: Session = Depends(get_db)):
+    """Replace the reference rates. Sede keys are normalised like sede names."""
+    now = datetime.now(timezone.utc)
+    default = _clean_rates(payload.default)
+    by_sede: dict[str, dict[str, float]] = {}
+    for sede, rates in payload.by_sede.items():
+        # Same normalisation as the client's normalizeSede — "Nave" and "NAVE"
+        # must not accumulate as two different override sets.
+        name = sede.strip().upper()
+        clean = _clean_rates(rates)
+        if name and clean:
+            by_sede[name] = clean
+    set_config(db, RATES_KEY, json.dumps({"default": default, "by_sede": by_sede}))
+    set_config(db, RATES_UPDATED_KEY, now.isoformat())
+    db.commit()
+    return ReferenceRatesOut(default=default, by_sede=by_sede, updated_at=now)
+
+
 @router.get("/{sede}", response_model=LayoutOut)
 def get_layout(sede: str, response: Response, role: str = Depends(require_auth), db: Session = Depends(get_db)):
     """Return the fixture layout for a single sede (empty list if none saved yet)."""
@@ -371,9 +506,11 @@ def delete_layout(sede: str, db: Session = Depends(get_db)):
         set_config(db, SETTINGS_UPDATED_KEY, datetime.now(timezone.utc).isoformat())
 
     db.commit()
-    if archived["spaces"]:
+    if archived["spaces"] or archived["mounts_archived"]:
         logger.info(
-            "sede %s eliminada: %s espacios archivados, %s contratos cerrados",
+            "sede %s eliminada: %s espacios archivados, %s contratos cerrados, "
+            "%s montajes archivados",
             sede, archived["spaces"], archived["leases_closed"],
+            archived["mounts_archived"],
         )
     return Response(status_code=204)

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   TrendingUp,
   AlertTriangle,
+  Camera,
   RefreshCw,
   MapPin,
   Building2,
@@ -10,15 +11,35 @@ import {
   FileText,
   ChevronRight,
   Search,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
 import client from "../api/client";
 import { listSpaceFiles, type SpaceFileMeta } from "../api/files";
 import FileViewerModal from "../components/FileViewerModal";
+import {
+  fetchMounts, latestByCode, estadoMontaje, MOTIVO_LABEL,
+  type MountConfirmation, type MountMotivo,
+} from "../api/mounts";
+import RatesModal from "../components/RatesModal/RatesModal";
 import type { Space } from "../types";
-import { isDoubleGondola as isDoubleGondolaShared, isRentable } from "../types/fixtures";
-import type { UnifiedFixture, SpaceStatus, FaceData } from "../types/fixtures";
+import {
+  contractPhase,
+  daysTakenInRange,
+  footprint2D,
+  fullSpaceCode,
+  isDoubleGondola as isDoubleGondolaShared,
+  isRentable,
+  rangeAvailability,
+  rateTypeOf,
+  referenceRateFor,
+} from "../types/fixtures";
+import type {
+  UnifiedFixture, SpaceStatus, FaceData, RangeAvailability,
+} from "../types/fixtures";
+import SeasonPicker, { describeRange, type DateRange } from "../components/SeasonPicker/SeasonPicker";
+import { inclusiveDays } from "../types/seasons";
 
 // ─── Date / money helpers ────────────────────────────────────────────────────
 
@@ -33,6 +54,16 @@ function daysUntil(dateStr: string): number {
 
 function formatCOP(n: number): string {
   if (!n) return "—";
+  return "$" + n.toLocaleString("es-CO");
+}
+
+/** "$1,4 M" / "$850 k" — for narrow columns where full amounts collide. */
+function compactCOP(n: number): string {
+  if (!n) return "—";
+  if (n >= 995_000) {
+    return "$" + (n / 1e6).toLocaleString("es-CO", { maximumFractionDigits: 1 }) + " M";
+  }
+  if (n >= 1_000) return "$" + Math.round(n / 1e3).toLocaleString("es-CO") + " k";
   return "$" + n.toLocaleString("es-CO");
 }
 
@@ -114,22 +145,39 @@ function commercialFacesOf(f: UnifiedFixture): FaceEntry[] {
   return isRentable(f) ? facesOf(f) : [];
 }
 
+/** Cuántos días atrás sigue teniendo sentido reclamar un montaje sin reportar.
+ *
+ *  Pasado ese plazo el espacio está armado hace rato y lo que falta es el
+ *  papel, no la exhibición. */
+const VENTANA_MONTAJE_DIAS = 30;
+
 // ─── Display status (used by the table) ──────────────────────────────────────
 
 type DisplayStatus =
-  | "active" | "expiring" | "expired" | "no_contract"
+  | "active" | "committed" | "expiring" | "expired" | "no_contract"
   | "reserved" | "maintenance" | "free";
 
-function displayStatus(f: { status: SpaceStatus; endDate: string }): DisplayStatus {
+/** Reading of one face TODAY.
+ *
+ *  `committed` is the state that used to be missing: a contract that is signed
+ *  but has not started yet. Without it, booking a December end-cap in August
+ *  painted the space occupied for four months — the plan said "taken" while
+ *  the backend would happily have sold those months to someone else. */
+function displayStatus(f: { status: SpaceStatus; startDate?: string; endDate: string }): DisplayStatus {
   if (f.status === "free")        return "free";
   if (f.status === "reserved")    return "reserved";
   if (f.status === "maintenance") return "maintenance";
   if (f.status !== "occupied")    return "free";
-  if (!f.endDate)                 return "no_contract";
-  const days = daysUntil(f.endDate);
-  if (days < 0)   return "expired";
-  if (days <= 30) return "expiring";
-  return "active";
+  const phase = contractPhase(f);
+  if (phase === "sin_contrato")   return "no_contract";
+  if (phase === "pendiente")      return "committed";
+  if (phase === "vencido")        return "expired";
+  // Running with a start date but no end: an open-ended contract, not a
+  // missing one. Calling it "no_contract" here contradicted contractPhase,
+  // which already counted its money as current revenue, and polluted the
+  // very alert meant to surface spaces occupied without paperwork.
+  if (!f.endDate)                 return "active";
+  return daysUntil(f.endDate) <= 30 ? "expiring" : "active";
 }
 
 const STATUS_META: Record<
@@ -137,6 +185,7 @@ const STATUS_META: Record<
   { ring: string; fill: string; label: string }
 > = {
   active:      { ring: "var(--success)", fill: "rgba(21,128,61,0.10)",        label: "Activo" },
+  committed:   { ring: "var(--accent-700)", fill: "var(--accent-50)",         label: "Contratado" },
   expiring:    { ring: "var(--warning)", fill: "rgba(180,83,9,0.12)",         label: "Por vencer" },
   expired:     { ring: "var(--danger)",  fill: "rgba(185,28,28,0.10)",        label: "Vencido" },
   no_contract: { ring: "var(--danger)",  fill: "rgba(185,28,28,0.10)",        label: "Sin contrato" },
@@ -145,23 +194,17 @@ const STATUS_META: Record<
   free:        { ring: "var(--ink-4)",   fill: "rgba(181,174,156,0.10)",      label: "Libre" },
 };
 
-const STATUS_LABEL: Record<SpaceStatus, string> = {
-  free: "Libre",
-  occupied: "Ocupado",
-  reserved: "Reservado",
-  maintenance: "Mantenimiento",
-};
-
 // ─── Map search + status filter (product geolocation) ────────────────────────
 
-type MapFilter = "todos" | "free" | "occupied" | "expiring" | "expired";
+type MapFilter = "todos" | "free" | "occupied" | "committed" | "expiring" | "expired";
 
 const FILTER_CHIPS: { id: MapFilter; label: string; ring: string; fill: string }[] = [
-  { id: "todos",    label: "Todos",           ring: "var(--ink-2)",      fill: "var(--surface-3)" },
-  { id: "free",     label: "Disponibles",     ring: "var(--success)",    fill: "rgba(21,128,61,0.10)" },
-  { id: "occupied", label: "Ocupados",        ring: "var(--accent-700)", fill: "var(--accent-50)" },
-  { id: "expiring", label: "Por vencer ≤30d", ring: "var(--warning)",    fill: "rgba(180,83,9,0.12)" },
-  { id: "expired",  label: "Vencidos",        ring: "var(--danger)",     fill: "rgba(185,28,28,0.10)" },
+  { id: "todos",     label: "Todos",           ring: "var(--ink-2)",      fill: "var(--surface-3)" },
+  { id: "free",      label: "Disponibles",     ring: "var(--success)",    fill: "rgba(21,128,61,0.10)" },
+  { id: "occupied",  label: "Ocupados",        ring: "var(--accent-700)", fill: "var(--accent-50)" },
+  { id: "committed", label: "Contratados",     ring: "var(--accent-700)", fill: "var(--accent-50)" },
+  { id: "expiring",  label: "Por vencer ≤30d", ring: "var(--warning)",    fill: "rgba(180,83,9,0.12)" },
+  { id: "expired",   label: "Vencidos",        ring: "var(--danger)",     fill: "rgba(185,28,28,0.10)" },
 ];
 
 /** Accent- and case-insensitive comparison base. */
@@ -182,8 +225,11 @@ function faceMatchesQuery(entry: FaceEntry, q: string): boolean {
 
 function faceMatchesFilter(entry: FaceEntry, filter: MapFilter): boolean {
   if (filter === "todos") return true;
-  if (filter === "occupied") return entry.status === "occupied";
   const ds = displayStatus(entry);
+  // "Ocupados" means earning today. A committed-but-not-started contract is
+  // neither occupied nor available, so it answers to its own chip.
+  if (filter === "occupied") return ds === "active" || ds === "expiring";
+  if (filter === "committed") return ds === "committed";
   if (filter === "free") return ds === "free";
   if (filter === "expiring") return ds === "expiring";
   return ds === "expired";
@@ -248,13 +294,16 @@ function CardHeader({
 // ─── Stat card (headline metrics) ────────────────────────────────────────────
 
 /** One headline number. `meter` (0-100) draws a progress bar under the value —
- *  used for occupancy, where the ratio matters more than the raw count. */
+ *  used for occupancy, where the ratio matters more than the raw count.
+ *  `note` is a second fact on its own line: `sub` sits inline beside the value
+ *  and a long one breaks across three lines in a card this narrow. */
 function StatCard({
-  label, value, sub, color, meter, tone = "plain", onClick, active,
+  label, value, sub, note, color, meter, tone = "plain", onClick, active,
 }: {
   label: string;
   value: string | number;
   sub?: string;
+  note?: string;
   color: string;
   meter?: number;
   tone?: "plain" | "alert";
@@ -294,6 +343,11 @@ function StatCard({
         </span>
         {sub && <span style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 500 }}>{sub}</span>}
       </div>
+      {note && (
+        <div style={{ marginTop: 3, fontSize: 10.5, color: "var(--ink-3)", whiteSpace: "nowrap" }}>
+          {note}
+        </div>
+      )}
       {meter !== undefined && (
         <div
           style={{
@@ -329,17 +383,47 @@ function darken(hex: string, amt: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-/** Top-face color families per status: free → success, occupied → violet,
- *  reserved → amber, maintenance → gray. */
-const STATUS_TOP: Record<SpaceStatus, string> = {
+/** What the map paints, keyed on the READING of the face rather than its
+ *  stored status — so the plan tells the same story as the cards.
+ *
+ *  `committed` is the same violet family as occupied, one step lighter: the
+ *  space is sold, just not yet live. Expired turns red because the project's
+ *  palette reserves red for what is wrong, and a contract past its end date
+ *  is exactly that — painting it as plain "occupied" hid the problem on the
+ *  one screen where it should be most visible. */
+const DISPLAY_TOP: Record<DisplayStatus, string> = {
   free:        "#4CC38A",
-  occupied:    "#8B5CF6",
+  committed:   "#A78BFA",
+  active:      "#8B5CF6",
+  expiring:    "#8B5CF6",
+  expired:     "#E5484D",
+  no_contract: "#E5484D",
   reserved:    "#F0B429",
   maintenance: "#A8A29E",
 };
 
+function topColorFor(face: FaceEntry): string {
+  return DISPLAY_TOP[displayStatus(face)];
+}
+
+/** Colours for the "available for this period" reading, which answers a
+ *  different question than "what is happening today" and therefore uses its
+ *  own three-way scale: sellable, negotiable, taken. */
+const RANGE_TOP: Record<RangeAvailability, string> = {
+  libre: "#4CC38A",
+  parcial: "#F0B429",
+  tomado: "#8B5CF6",
+};
+
+const RANGE_LABEL: Record<RangeAvailability, string> = {
+  libre: "Libre todo el periodo",
+  parcial: "Libre parte del periodo",
+  tomado: "Tomado",
+};
+
 /** Infrastructure on the isometric map: present, but visibly not for sale. */
 const NON_RENTABLE_TOP = "#94A3B8";
+const NON_RENTABLE_LABEL = "No comercializable";
 
 function pts(...points: [number, number][]): string {
   return points.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
@@ -360,9 +444,12 @@ interface IsoMapProps {
   onSelect: (f: UnifiedFixture | null, point?: MapAnchor) => void;
   /** Active search/filter result — null when no query or filter applies. */
   match: MapMatch | null;
+  /** When set, faces are painted by availability over this period instead of
+   *  by what is happening today. */
+  range: DateRange | null;
 }
 
-function IsoMap({ fixtures, selectedId, onSelect, match }: IsoMapProps) {
+function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [tip, setTip] = useState<{ x: number; y: number; title: string; sub: string } | null>(null);
@@ -392,8 +479,12 @@ function IsoMap({ fixtures, selectedId, onSelect, match }: IsoMapProps) {
     const sorted = [...fixtures].sort((a, b) => a.cx + a.cz - (b.cx + b.cz));
 
     const prisms = sorted.map((f) => {
-      const x0 = f.cx - f.w / 2, x1 = f.cx + f.w / 2;
-      const z0 = f.cz - f.d / 2, z1 = f.cz + f.d / 2;
+      // La huella va con el giro aplicado. Sin esto, una góndola rotada un
+      // cuarto de vuelta —un pasillo cruzado, que es común— se dibujaba
+      // atravesada respecto del plano real.
+      const fp = footprint2D(f);
+      const x0 = f.cx - fp.w / 2, x1 = f.cx + fp.w / 2;
+      const z0 = f.cz - fp.d / 2, z1 = f.cz + fp.d / 2;
       const h = Math.max(f.h || 1, 0.4);
 
       const tA = iso(x0, z0, h), tB = iso(x1, z0, h);
@@ -406,8 +497,10 @@ function IsoMap({ fixtures, selectedId, onSelect, match }: IsoMapProps) {
       // commercial hue.
       const double = isDoubleGondola(f) && rentable;
       const faces = facesOf(f);
-      const topA = rentable ? STATUS_TOP[faces[0].status] : NON_RENTABLE_TOP;
-      const topB = rentable ? STATUS_TOP[faces[1]?.status ?? "free"] : NON_RENTABLE_TOP;
+      const paint = (face: FaceEntry) =>
+        range ? RANGE_TOP[rangeAvailability(face, range.from, range.to)] : topColorFor(face);
+      const topA = rentable ? paint(faces[0]) : NON_RENTABLE_TOP;
+      const topB = rentable && faces[1] ? paint(faces[1]) : NON_RENTABLE_TOP;
       // Sides follow the dominant (face A) hue
       const sideL = darken(topA, 0.18);
       const sideR = darken(topA, 0.3);
@@ -441,9 +534,23 @@ function IsoMap({ fixtures, selectedId, onSelect, match }: IsoMapProps) {
       const label = labelText ? { text: labelText, x: lcx, y: lcy - 7, defaultVisible } : null;
       if (label) addPt([label.x, label.y - 8]);
 
+      // Asking about a period changes the question the tooltip should answer:
+      // not "who is here" but "can I sell this, and if not, how much of it".
+      const rangeSub = (face: FaceEntry) => {
+        if (!range) return face.supplierName || "Sin proveedor";
+        // A column or a checkout is not for sale, so it must never answer
+        // "libre los 24 días" — the colour already excludes it, the words
+        // have to as well.
+        if (!rentable) return NON_RENTABLE_LABEL;
+        const total = inclusiveDays(range.from, range.to);
+        const taken = daysTakenInRange(face, range.from, range.to);
+        if (taken <= 0) return `libre los ${total} día${total === 1 ? "" : "s"}`;
+        if (taken >= total) return `tomado${face.supplierName ? ` · ${face.supplierName}` : ""}`;
+        return `libre ${total - taken} de ${total} días`;
+      };
       const tooltipSub = double
-        ? `A: ${faces[0].supplierName || "—"} · B: ${faces[1]?.supplierName || "—"}`
-        : faces[0].supplierName || "Sin proveedor";
+        ? `A: ${rangeSub(faces[0])} · B: ${faces[1] ? rangeSub(faces[1]) : "—"}`
+        : rangeSub(faces[0]);
 
       return {
         f,
@@ -464,7 +571,7 @@ function IsoMap({ fixtures, selectedId, onSelect, match }: IsoMapProps) {
       groundPts: pts(...groundPts),
       viewBox: `${(minX - pad).toFixed(1)} ${(minY - pad).toFixed(1)} ${(maxX - minX + pad * 2).toFixed(1)} ${(maxY - minY + pad * 2).toFixed(1)}`,
     };
-  }, [fixtures]);
+  }, [fixtures, range]);
 
   if (!scene) return null;
 
@@ -628,13 +735,24 @@ function IsoMap({ fixtures, selectedId, onSelect, match }: IsoMapProps) {
   );
 }
 
-function MapLegend() {
-  const items: { c: string; l: string }[] = [
-    { c: STATUS_TOP.free,        l: "Libre" },
-    { c: STATUS_TOP.occupied,    l: "Ocupado" },
-    { c: STATUS_TOP.reserved,    l: "Reservado" },
-    { c: STATUS_TOP.maintenance, l: "Mantenimiento" },
-    { c: NON_RENTABLE_TOP,       l: "No comercializable" },
+function MapLegend({ range }: { range?: DateRange | null }) {
+  // The legend has to describe whatever the map is actually painting: asking
+  // about a period replaces the six states of "today" with a three-way answer.
+  const items: { c: string; l: string }[] = range
+    ? [
+        { c: RANGE_TOP.libre,   l: RANGE_LABEL.libre },
+        { c: RANGE_TOP.parcial, l: RANGE_LABEL.parcial },
+        { c: RANGE_TOP.tomado,  l: RANGE_LABEL.tomado },
+        { c: NON_RENTABLE_TOP,  l: NON_RENTABLE_LABEL },
+      ]
+    : [
+    { c: DISPLAY_TOP.free,        l: "Libre" },
+    { c: DISPLAY_TOP.committed,   l: "Contratado" },
+    { c: DISPLAY_TOP.active,      l: "Ocupado" },
+    { c: DISPLAY_TOP.expired,     l: "Vencido" },
+    { c: DISPLAY_TOP.reserved,    l: "Reservado" },
+    { c: DISPLAY_TOP.maintenance, l: "Mantenimiento" },
+    { c: NON_RENTABLE_TOP,        l: NON_RENTABLE_LABEL },
   ];
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center" }}>
@@ -725,10 +843,13 @@ function FileRow({ file, onOpen }: { file: SpaceFileMeta; onOpen: () => void }) 
   );
 }
 
-/** Status pill in the page's light theme (the old panel was dark-on-light). */
-function StatusPill({ fixture, status }: { fixture: UnifiedFixture; status: SpaceStatus }) {
+/** Status pill in the page's light theme (the old panel was dark-on-light).
+ *  Reads the face, not the raw status, so a contract signed for later says
+ *  "Contratado" here exactly as it does on the map and in the cards. */
+function StatusPill({ fixture, face }: { fixture: UnifiedFixture; face: FaceEntry }) {
   const rentable = isRentable(fixture);
-  const ring = rentable ? STATUS_TOP[status] : NON_RENTABLE_TOP;
+  const ds = displayStatus(face);
+  const ring = rentable ? DISPLAY_TOP[ds] : NON_RENTABLE_TOP;
   return (
     <span
       style={{
@@ -739,7 +860,7 @@ function StatusPill({ fixture, status }: { fixture: UnifiedFixture; status: Spac
       }}
     >
       <span style={{ width: 6, height: 6, borderRadius: 99, background: ring }} />
-      {rentable ? STATUS_LABEL[status] : "No comercializable"}
+      {rentable ? STATUS_META[ds].label : NON_RENTABLE_LABEL}
     </span>
   );
 }
@@ -924,7 +1045,7 @@ function FixturePopover({
             {entry.code} · {fixture.sede}
           </div>
           <div style={{ marginTop: 7 }}>
-            <StatusPill fixture={fixture} status={entry.status} />
+            <StatusPill fixture={fixture} face={entry} />
           </div>
         </div>
         <button
@@ -1038,7 +1159,7 @@ function FixtureDetailCard({
             {entry.code} · {fixture.sede}
           </div>
         </div>
-        <StatusPill fixture={fixture} status={entry.status} />
+        <StatusPill fixture={fixture} face={entry} />
       </div>
 
       {double && (
@@ -1154,6 +1275,7 @@ function AtencionRow({
   bg,
   dates,
   last,
+  onFoto,
 }: {
   entry: FaceEntry;
   chip: string;
@@ -1161,6 +1283,8 @@ function AtencionRow({
   bg: string;
   dates: string;
   last: boolean;
+  /** Abre la foto del montaje. Solo la traen las filas que tienen prueba. */
+  onFoto?: () => void;
 }) {
   return (
     <div
@@ -1200,7 +1324,65 @@ function AtencionRow({
       >
         {dates}
       </span>
+      {onFoto && (
+        <button
+          onClick={onFoto}
+          title="Ver la foto del reporte"
+          aria-label="Ver la foto del reporte"
+          style={{
+            flexShrink: 0, display: "inline-flex", alignItems: "center",
+            background: "none", border: "none", padding: 0, cursor: "pointer",
+            color: "var(--ink-3)",
+          }}
+        >
+          <Camera size={12} />
+        </button>
+      )}
     </div>
+  );
+}
+
+/** Estado de montaje de una cara, en la tabla.
+ *
+ *  Solo dice algo cuando hay algo que decir: un espacio libre, uno vencido o
+ *  uno cuyo contrato todavía no arrancó no están "sin montar" — no les toca
+ *  todavía, y marcarlos llenaría la columna de ruido. */
+function MontajeChip({
+  entry, reporte,
+}: {
+  entry: FaceEntry;
+  reporte: MountConfirmation | undefined;
+}) {
+  const fase = contractPhase(entry);
+  const aplica = fase === "vigente" || fase === "pendiente";
+  if (!aplica && !reporte) {
+    return <span style={{ color: "var(--ink-4)", fontSize: 11.5 }}>—</span>;
+  }
+  const estado = estadoMontaje(reporte);
+  // Firmado pero sin arrancar y sin reporte: no le toca todavía.
+  if (estado === "pendiente" && fase !== "vigente") {
+    return <span style={{ color: "var(--ink-4)", fontSize: 11.5 }}>—</span>;
+  }
+  const pinta =
+    estado === "montado" ? { c: "var(--success)", t: "Montado" }
+    : estado === "no_montado" ? { c: "var(--danger)", t: "No se pudo" }
+    : { c: "var(--warning)", t: "Pendiente" };
+  return (
+    <span
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 5,
+        fontSize: 11.5, fontWeight: 600, color: pinta.c,
+      }}
+      title={
+        reporte
+          ? [reporte.reportado_por, reporte.motivo ? MOTIVO_LABEL[reporte.motivo as MountMotivo] : "",
+             reporte.nota].filter(Boolean).join(" · ")
+          : "El contrato ya arrancó y nadie reportó el montaje"
+      }
+    >
+      <span style={{ width: 6, height: 6, borderRadius: 99, background: pinta.c, flexShrink: 0 }} />
+      {pinta.t}
+    </span>
   );
 }
 
@@ -1253,10 +1435,12 @@ function SupplierRow({
 // ─── Spaces table ─────────────────────────────────────────────────────────────
 
 function SpacesTable({
-  fixtures, isAdmin, query, filter,
+  fixtures, isAdmin, query, filter, montajeDe,
 }: {
   fixtures: UnifiedFixture[];
   isAdmin: boolean;
+  /** El último reporte de montaje de esa cara, si lo hay. */
+  montajeDe: (entry: FaceEntry) => MountConfirmation | undefined;
   /** Driven by the page-level control bar — the table no longer owns a second
    *  search box and a second row of chips doing the same job as the map's. */
   query: string;
@@ -1281,7 +1465,7 @@ function SpacesTable({
     );
   }, [rows, filter, query]);
 
-  const headers = ["Código", "Tipo", "Proveedor", "Estado", "Días"];
+  const headers = ["Código", "Tipo", "Proveedor", "Estado", "Montaje", "Días"];
   if (isAdmin) headers.push("Renta / mes");
 
   return (
@@ -1406,6 +1590,9 @@ function SpacesTable({
                       {meta.label}
                     </span>
                   </td>
+                  <td style={cell}>
+                    <MontajeChip entry={entry} reporte={montajeDe(entry)} />
+                  </td>
                   <td
                     style={{
                       ...cell, textAlign: "right",
@@ -1500,7 +1687,9 @@ function EmptyDashboard({ sede, isAdmin }: { sede: string; isAdmin: boolean }) {
 export default function DashboardView() {
   const fixtures = useFixtureStore(selectFixtures);
   const { sedes, sede, setSede, fixturesBySede, syncFromServer } = useFixtureStore();
+  const referenceRates = useFixtureStore((s) => s.referenceRates);
   const isAdmin = useAuthStore(selectIsAdmin);
+  const [ratesOpen, setRatesOpen] = useState(false);
 
   const [selected, setSelected] = useState<UnifiedFixture | null>(null);
   // Where on the map the click landed (anchors the quick-look popover).
@@ -1521,8 +1710,37 @@ export default function DashboardView() {
     setDetailFull(false);
   };
   const [viewerFile, setViewerFile] = useState<SpaceFileMeta | null>(null);
+
+  // ── Estado de montaje ────────────────────────────────────────────────────
+  // El mercaderista ya reportaba y nadie leía: el reporte caía en una tabla que
+  // ninguna pantalla mostraba. Se pide una sola vez, para todas las sedes —
+  // son unas pocas filas y el enlace del correo puede apuntar a cualquiera.
+  const [montajes, setMontajes] = useState<MountConfirmation[]>([]);
+  useEffect(() => {
+    let vivo = true;
+    fetchMounts()
+      .then((m) => { if (vivo) setMontajes(m); })
+      .catch(() => { if (vivo) setMontajes([]); });
+    return () => { vivo = false; };
+  }, []);
+  const ultimoMontaje = useMemo(() => latestByCode(montajes), [montajes]);
+
+  /** El último reporte de una cara, buscado por su código COMPLETO.
+   *
+   *  `FaceEntry.code` es la nomenclatura corta, que se repite entre sedes; los
+   *  reportes se guardan con la sede adentro. Buscar por el corto mezclaría
+   *  tiendas — es el mismo error que ya costó un arreglo en la pantalla del
+   *  mercaderista. */
+  const montajeDe = useCallback(
+    (entry: FaceEntry): MountConfirmation | undefined =>
+      ultimoMontaje[fullSpaceCode(entry.fixture.sede || sede, entry.code)],
+    [ultimoMontaje, sede],
+  );
+
   const [mapQuery, setMapQuery] = useState("");
   const [mapFilter, setMapFilter] = useState<MapFilter>("todos");
+  /** Period the map answers for; null = today. */
+  const [mapRange, setMapRange] = useState<DateRange | null>(null);
 
   // Deselect when switching sedes
   useEffect(() => {
@@ -1555,32 +1773,44 @@ export default function DashboardView() {
     // number of fixtures drawn on the plan.
     const rentableFixtures = fixtures.filter(isRentable).length;
     const nonRentable = fixtures.length - rentableFixtures;
-    const occupied = faces.filter((x) => x.status === "occupied").length;
-    const free     = faces.filter((x) => x.status === "free").length;
-    // reserved + maintenance would otherwise vanish from the strip and
-    // total would never reconcile with Libres + Ocupados.
-    const held     = total - occupied - free;
+    // Every bucket comes from displayStatus(), which now reads the contract's
+    // dates. That single source is what keeps the cards, the map chips and the
+    // table agreeing — counting "expired" as available here while the chip of
+    // the same name excluded it made the two disagree on screen.
+    const ds = faces.map((x) => displayStatus(x));
+    const phases = faces.map((x) => contractPhase(x));
+    const occupied  = ds.filter((s) => s === "active" || s === "expiring").length;
+    const committed = ds.filter((s) => s === "committed").length;
+    const free      = ds.filter((s) => s === "free").length;
+    // reserved + maintenance + expired + occupied-without-dates. Kept as the
+    // remainder so Libres + Ocupados + Contratados never overstate the total.
+    const held = total - occupied - committed - free;
     const occPct = total ? Math.round((occupied / total) * 100) : 0;
+    // Money actually being earned this month — a signed contract that has not
+    // started yet is not revenue, and counting it overstated the monthly income.
     const revenue = faces
-      .filter((x) => x.status === "occupied")
+      .filter((_, i) => phases[i] === "vigente")
+      .reduce((s, x) => s + (x.negotiatedValue ?? 0), 0);
+    const committedRevenue = faces
+      .filter((_, i) => phases[i] === "pendiente")
       .reduce((s, x) => s + (x.negotiatedValue ?? 0), 0);
 
     const expired: ContractEntry[] = [];
     const expiring: ContractEntry[] = [];
     const noContract: FaceEntry[] = [];
-    faces.forEach((x) => {
-      const ds = displayStatus(x);
-      if (ds === "expired") expired.push({ ...x, days: daysUntil(x.endDate) });
-      else if (ds === "expiring") expiring.push({ ...x, days: daysUntil(x.endDate) });
-      else if (ds === "no_contract") noContract.push(x);
+    faces.forEach((x, i) => {
+      if (ds[i] === "expired") expired.push({ ...x, days: daysUntil(x.endDate) });
+      else if (ds[i] === "expiring") expiring.push({ ...x, days: daysUntil(x.endDate) });
+      else if (ds[i] === "no_contract") noContract.push(x);
     });
     expired.sort((a, b) => a.days - b.days);
     expiring.sort((a, b) => a.days - b.days);
 
-    // Top suppliers (occupied faces with value)
+    // Top suppliers — by what they are paying NOW, so the ranking matches the
+    // monthly revenue figure above instead of mixing in future commitments.
     const supplierMap: Record<string, { revenue: number; count: number }> = {};
-    faces.forEach((x) => {
-      if (!x.supplierName || !x.negotiatedValue || x.status !== "occupied") return;
+    faces.forEach((x, i) => {
+      if (!x.supplierName || !x.negotiatedValue || phases[i] !== "vigente") return;
       if (!supplierMap[x.supplierName]) supplierMap[x.supplierName] = { revenue: 0, count: 0 };
       supplierMap[x.supplierName].revenue += x.negotiatedValue;
       supplierMap[x.supplierName].count++;
@@ -1590,19 +1820,95 @@ export default function DashboardView() {
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 6);
 
+    // Contracts paying below the reference rate for their type + sede.
+    // Only meaningful gaps (≥1%) — a peso of rounding is not an anomaly.
+    // Workers hold no rates, so for them this list is always empty.
+    // Includes contracts already signed for a future period: catching an
+    // under-priced deal before it starts is the only moment it can still be
+    // renegotiated.
+    const belowReference: (FaceEntry & { ref: number; gapPct: number })[] = [];
+    faces.forEach((x, i) => {
+      if ((phases[i] !== "vigente" && phases[i] !== "pendiente") || !(x.negotiatedValue > 0)) return;
+      const ref = referenceRateFor(referenceRates, x.fixture.sede || sede, rateTypeOf(x.fixture));
+      if (ref === null) return;
+      const gapPct = Math.round((1 - x.negotiatedValue / ref) * 100);
+      if (gapPct >= 1) belowReference.push({ ...x, ref, gapPct });
+    });
+    belowReference.sort((a, b) => b.gapPct - a.gapPct);
+
     return {
-      total, occupied, free, held, occPct, revenue,
+      total, occupied, committed, free, held, occPct, revenue, committedRevenue,
       rentableFixtures, nonRentable,
       expired, expiring, noContract,
-      topSuppliers,
+      topSuppliers, belowReference,
     };
-  }, [fixtures]);
+  }, [fixtures, referenceRates, sede]);
+
+  // How much of the sede can actually be sold for the chosen period. Counted
+  // per face, like every other total on this page.
+  const rangeTally = useMemo(() => {
+    if (!mapRange) return { libres: 0, parciales: 0, tomados: 0 };
+    let libres = 0, parciales = 0, tomados = 0;
+    fixtures.flatMap(commercialFacesOf).forEach((face) => {
+      const a = rangeAvailability(face, mapRange.from, mapRange.to);
+      if (a === "libre") libres++;
+      else if (a === "parcial") parciales++;
+      else tomados++;
+    });
+    return { libres, parciales, tomados };
+  }, [fixtures, mapRange]);
+
+  // ── Montaje: lo que hay que mirar ────────────────────────────────────────
+  //
+  // Dos listas distintas porque piden dos cosas distintas. "No se pudo" es un
+  // problema que alguien tiene que resolver hoy —el proveedor no entregó, el
+  // espacio está ocupado por otra cosa— y trae su motivo. "Sin montar" es
+  // silencio: el contrato ya arrancó, se está cobrando, y nadie dijo nada.
+  const montaje = useMemo(() => {
+    const noMontado: (FaceEntry & { reporte: MountConfirmation })[] = [];
+    const sinMontar: (FaceEntry & { dias: number })[] = [];
+    let viejosSinReporte = 0;
+    fixtures.flatMap(commercialFacesOf).forEach((entry) => {
+      const fase = contractPhase(entry);
+      // Lo vencido ya no se monta y lo libre no tiene qué montar.
+      if (fase !== "vigente" && fase !== "pendiente") return;
+      const reporte = montajeDe(entry);
+      if (reporte && reporte.estado === "no_montado") {
+        noMontado.push({ ...entry, reporte });
+        return;
+      }
+      if (reporte) return; // montado
+      // Solo lo que YA arrancó: un contrato que empieza en tres semanas no
+      // está sin montar, está esperando.
+      if (fase !== "vigente") return;
+      const dias = Math.max(0, -daysUntil(entry.startDate));
+      // Un contrato que arrancó hace meses y sigue corriendo se montó hace
+      // meses: lo que falta es el reporte, no la exhibición. Nadie va a ir a
+      // fotografiarlo ahora. Mezclarlos con los de esta semana enterraría lo
+      // accionable — en NAVE hay contratos de enero, de antes de que el
+      // montaje existiera. No se descartan en silencio: se cuentan aparte.
+      if (dias > VENTANA_MONTAJE_DIAS) {
+        viejosSinReporte++;
+        return;
+      }
+      sinMontar.push({ ...entry, dias });
+    });
+    noMontado.sort((a, b) =>
+      (b.reporte.confirmado_en ?? "").localeCompare(a.reporte.confirmado_en ?? ""));
+    sinMontar.sort((a, b) => b.dias - a.dias);
+    return { noMontado, sinMontar, viejosSinReporte };
+  }, [fixtures, montajeDe]);
 
   const activeSedeCount = sedes.filter((s) => (fixturesBySede[s] ?? []).length > 0).length;
 
-  const attentionCount = kpis.expired.length + kpis.expiring.length + kpis.noContract.length;
+  const attentionCount =
+    kpis.expired.length + kpis.expiring.length + kpis.noContract.length +
+    (isAdmin ? kpis.belowReference.length + montaje.noMontado.length + montaje.sinMontar.length : 0);
   const lastAttentionSection =
-    kpis.noContract.length > 0 ? "noContract"
+    kpis.belowReference.length > 0 ? "belowRef"
+    : montaje.sinMontar.length > 0 || montaje.viejosSinReporte > 0 ? "sinMontar"
+    : montaje.noMontado.length > 0 ? "noMontado"
+    : kpis.noContract.length > 0 ? "noContract"
     : kpis.expiring.length > 0 ? "expiring"
     : "expired";
 
@@ -1682,6 +1988,25 @@ export default function DashboardView() {
               {fixtures.length} fixtures
             </span>
           </Card>
+
+          {isAdmin && (
+            <button
+              onClick={() => setRatesOpen(true)}
+              title="Tarifas de referencia por tipo de mueble"
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                height: 34, padding: "0 12px",
+                borderRadius: "var(--r-lg)",
+                background: "var(--surface)", color: "var(--ink-2)",
+                border: "1px solid var(--line)",
+                cursor: "pointer", fontSize: 12, fontWeight: 500,
+                fontFamily: "inherit",
+                boxShadow: "var(--shadow-xs)",
+              }}
+            >
+              <SlidersHorizontal size={13} /> Tarifas
+            </button>
+          )}
 
           <button
             onClick={() => syncFromServer()}
@@ -1816,6 +2141,14 @@ export default function DashboardView() {
                   active={mapFilter === "free"}
                 />
                 <StatCard
+                  label="Contratados"
+                  value={kpis.committed}
+                  sub="aún no inician"
+                  color={kpis.committed > 0 ? "var(--accent-700)" : "var(--ink-4)"}
+                  onClick={() => setMapFilter(mapFilter === "committed" ? "todos" : "committed")}
+                  active={mapFilter === "committed"}
+                />
+                <StatCard
                   label="Vencidos"
                   value={kpis.expired.length}
                   color={kpis.expired.length > 0 ? "var(--danger)" : "var(--ink-4)"}
@@ -1833,6 +2166,14 @@ export default function DashboardView() {
                   label="Ingreso mensual"
                   value={formatCOP(kpis.revenue)}
                   sub="COP"
+                  // Only contracts running today count above. What is signed
+                  // for later gets its own line so the two are never added up
+                  // by eye.
+                  note={
+                    kpis.committedRevenue > 0
+                      ? `+ ${compactCOP(kpis.committedRevenue)} ya pactado`
+                      : undefined
+                  }
                   color="var(--success)"
                 />
               </>
@@ -1903,12 +2244,45 @@ export default function DashboardView() {
                   Mapa de ocupación
                 </span>
                 <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
-                  {sede} · clic para ver el contrato
+                  {sede} · {mapRange ? describeRange(mapRange) : "clic para ver el contrato"}
                 </span>
                 {/* Legend next to what it explains, not stranded at the bottom */}
                 <div style={{ marginLeft: "auto" }}>
-                  <MapLegend />
+                  <MapLegend range={mapRange} />
                 </div>
+              </div>
+
+              {/* The period the map answers for. Sits on the map and nowhere
+                  else: the cards above keep reporting today, so the two are
+                  never confused for one another. */}
+              <div
+                style={{
+                  display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+                  padding: "7px 9px", marginBottom: 8,
+                  borderRadius: "var(--r-md)",
+                  background: mapRange ? "var(--accent-50)" : "var(--surface-2)",
+                  border: `1px solid ${mapRange ? "var(--accent-200)" : "var(--line-soft)"}`,
+                }}
+              >
+                <SeasonPicker range={mapRange} onChange={setMapRange} />
+                {mapRange && (
+                  <span
+                    style={{
+                      marginLeft: "auto", fontSize: 11.5, fontWeight: 600,
+                      color: "var(--ink-2)", whiteSpace: "nowrap",
+                    }}
+                  >
+                    <span style={{ fontFamily: "var(--font-mono)", color: "var(--success)" }}>
+                      {rangeTally.libres}
+                    </span>{" "}
+                    de {kpis.total} libres todo el periodo
+                    {rangeTally.parciales > 0 && (
+                      <span style={{ color: "var(--ink-3)", fontWeight: 500 }}>
+                        {" "}· {rangeTally.parciales} parcial{rangeTally.parciales === 1 ? "" : "es"}
+                      </span>
+                    )}
+                  </span>
+                )}
               </div>
 
               <IsoMap
@@ -1916,6 +2290,7 @@ export default function DashboardView() {
                 selectedId={selected?.id ?? null}
                 onSelect={selectFixture}
                 match={mapMatch}
+                range={mapRange}
               />
 
               {/* Quick look, anchored to the fixture. Hidden once the full
@@ -2014,8 +2389,104 @@ export default function DashboardView() {
                             chip="—"
                             chipColor="var(--ink-4)"
                             bg="transparent"
-                            dates="sin fechas"
+                            dates={formatRange(entry.startDate, entry.endDate)}
                             last={lastAttentionSection === "noContract" && i === kpis.noContract.length - 1}
+                          />
+                        ))}
+                      </>
+                    )}
+                    {isAdmin && montaje.noMontado.length > 0 && (
+                      <>
+                        <AtencionSection
+                          label={`No se pudo montar · ${montaje.noMontado.length}`}
+                          color="var(--danger)"
+                        />
+                        {montaje.noMontado.map((entry, i) => (
+                          <AtencionRow
+                            key={`nm-${entry.fixture.id}-${entry.face}`}
+                            entry={entry}
+                            chip="!"
+                            chipColor="var(--danger)"
+                            bg="var(--danger-50)"
+                            dates={
+                              (entry.reporte.motivo
+                                ? MOTIVO_LABEL[entry.reporte.motivo as MountMotivo]
+                                : "Sin motivo") +
+                              (entry.reporte.reportado_por ? ` · ${entry.reporte.reportado_por}` : "")
+                            }
+                            last={lastAttentionSection === "noMontado" && i === montaje.noMontado.length - 1}
+                            onFoto={
+                              entry.reporte.file_id
+                                ? () => setViewerFile({
+                                    id: entry.reporte.file_id as number,
+                                    filename: entry.reporte.foto_nombre ?? "montaje.jpg",
+                                    content_type: entry.reporte.foto_tipo ?? "image/jpeg",
+                                    size: 0,
+                                    uploaded_at: entry.reporte.confirmado_en ?? "",
+                                  })
+                                : undefined
+                            }
+                          />
+                        ))}
+                      </>
+                    )}
+                    {isAdmin && montaje.sinMontar.length > 0 && (
+                      <>
+                        <AtencionSection
+                          label={`Contratado, sin montar · ${montaje.sinMontar.length}`}
+                          color="var(--warning)"
+                        />
+                        {montaje.sinMontar.map((entry, i) => (
+                          <AtencionRow
+                            key={`sm-${entry.fixture.id}-${entry.face}`}
+                            entry={entry}
+                            chip={entry.dias === 0 ? "hoy" : `${entry.dias}d`}
+                            chipColor="var(--warning)"
+                            bg="var(--warning-50)"
+                            dates={
+                              entry.dias === 0
+                                ? "Arrancó hoy · sin reporte"
+                                : `Arrancó hace ${entry.dias} día${entry.dias === 1 ? "" : "s"} · sin reporte`
+                            }
+                            last={
+                              lastAttentionSection === "sinMontar" &&
+                              montaje.viejosSinReporte === 0 &&
+                              i === montaje.sinMontar.length - 1
+                            }
+                          />
+                        ))}
+                      </>
+                    )}
+                    {isAdmin && montaje.viejosSinReporte > 0 && (
+                      <div
+                        style={{
+                          padding: "8px 14px", fontSize: 11, color: "var(--ink-3)",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        Además, {montaje.viejosSinReporte} contrato
+                        {montaje.viejosSinReporte === 1 ? "" : "s"} que arrancó
+                        {montaje.viejosSinReporte === 1 ? "" : "n"} hace más de{" "}
+                        {VENTANA_MONTAJE_DIAS} días nunca se reportó
+                        {montaje.viejosSinReporte === 1 ? "" : "n"}. A esa altura el
+                        espacio ya está armado: lo que falta es el reporte.
+                      </div>
+                    )}
+                    {isAdmin && kpis.belowReference.length > 0 && (
+                      <>
+                        <AtencionSection
+                          label={`Bajo tarifa de referencia · ${kpis.belowReference.length}`}
+                          color="var(--warning)"
+                        />
+                        {kpis.belowReference.map((entry, i) => (
+                          <AtencionRow
+                            key={`${entry.fixture.id}-${entry.face}`}
+                            entry={entry}
+                            chip={`−${entry.gapPct}%`}
+                            chipColor="var(--warning)"
+                            bg="transparent"
+                            dates={`${compactCOP(entry.negotiatedValue)} · ref ${compactCOP(entry.ref)}`}
+                            last={lastAttentionSection === "belowRef" && i === kpis.belowReference.length - 1}
                           />
                         ))}
                       </>
@@ -2051,6 +2522,7 @@ export default function DashboardView() {
                   </div>
                 </Card>
               )}
+
             </div>
           </div>
 
@@ -2070,6 +2542,7 @@ export default function DashboardView() {
               isAdmin={isAdmin}
               query={mapQuery}
               filter={mapFilter}
+              montajeDe={montajeDe}
             />
           </Card>
         </>
@@ -2079,6 +2552,7 @@ export default function DashboardView() {
       {viewerFile && (
         <FileViewerModal file={viewerFile} onClose={() => setViewerFile(null)} />
       )}
+      {ratesOpen && isAdmin && <RatesModal onClose={() => setRatesOpen(false)} />}
     </div>
   );
 }

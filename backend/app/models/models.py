@@ -42,10 +42,34 @@ class Space(Base):
 
     @property
     def active_lease(self):
+        """The lease RUNNING TODAY, or None.
+
+        ``is_active`` alone is not enough: it stays True from the moment a
+        lease is created, so a contract signed in August for December used to
+        answer here and the space read as occupied for four months it was
+        actually free. The dates are the truth; the flag only says the lease
+        was not cancelled.
+        """
+        today = date.today()
         for lease in self.leases:
-            if lease.is_active:
+            if lease.is_active and lease.start_date <= today <= lease.end_date:
                 return lease
         return None
+
+    @property
+    def upcoming_lease(self):
+        """The next lease already signed but not yet started — earliest first.
+
+        Kept separate from ``active_lease`` so "committed" never gets counted
+        as "earning". Callers that need to know the space is not sellable for
+        that period must consult both.
+        """
+        today = date.today()
+        future = [
+            lease for lease in self.leases
+            if lease.is_active and lease.start_date > today
+        ]
+        return min(future, key=lambda x: x.start_date) if future else None
 
 
 class SpaceLease(Base):
@@ -104,6 +128,52 @@ class SpaceFile(Base):
     size = Column(Integer, nullable=False)
     data = Column(LargeBinary, nullable=False)
     uploaded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class MountConfirmation(Base):
+    """Prueba de que el espacio contratado se montó — o de por qué no.
+
+    Tabla NUEVA a propósito. La regla del proyecto prohíbe columnas nuevas en
+    tablas existentes porque ``create_all`` no las agrega, pero sí crea tablas
+    que no existían; y guardar esto acá evita lo alternativo, que era darle al
+    mercaderista permiso de escritura sobre el JSON del layout para marcar un
+    par de campos.
+
+    Se guarda una fila por confirmación, no una por espacio: el histórico de
+    quién dijo qué y cuándo es justamente lo que sirve cuando el proveedor
+    reclama que su exhibición nunca se armó.
+    """
+    __tablename__ = "mount_confirmations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    # Se guarda el CÓDIGO y no un FK a spaces: un espacio solo existe en esa
+    # tabla si alguna vez se le guardó un contrato, y el montaje puede
+    # confirmarse antes de eso.
+    space_code = Column(String, nullable=False, index=True)
+    sede = Column(String, nullable=True, index=True)
+    # "montado" | "no_montado"
+    estado = Column(String, nullable=False)
+    # Por qué no se pudo, cuando aplica: el proveedor no entregó material, no
+    # llegó producto, se cayó por operación de la tienda.
+    motivo = Column(String, nullable=True)
+    nota = Column(Text, nullable=True)
+    # Foto en space_files. Opcional: un "no montado" no siempre tiene qué
+    # fotografiar.
+    file_id = Column(Integer, ForeignKey("space_files.id"), nullable=True)
+    # Rol que reportó. No hay tabla de usuarios; el nombre lo escribe quien
+    # confirma, para que el registro diga algo más que "worker".
+    reportado_por = Column(String, nullable=True)
+    rol = Column(String, nullable=True)
+    # La pone el SERVIDOR al recibir, nunca el dispositivo: el EXIF de un
+    # celular se edita y no defiende nada ante un reclamo.
+    confirmado_en = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True
+    )
+    # Se llena cuando se borra la sede. La fila no se elimina — es la prueba de
+    # que algo se montó, y sirve meses después ante un reclamo — pero deja de
+    # contar: una sede recreada con el mismo nombre vuelve a usar los mismos
+    # códigos, y sin esto heredaría los "montado" de la sede anterior.
+    archivado_en = Column(DateTime(timezone=True), nullable=True, index=True)
 
 
 class ArchivedSpace(Base):

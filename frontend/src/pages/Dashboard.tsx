@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { Grid2x2, Box, BarChart2, Search, Settings, LogOut, X, Send } from "lucide-react";
+import { Grid2x2, Box, BarChart2, Camera, Handshake, Search, Settings, LogOut, X, Send } from "lucide-react";
 import StoreEditor3D from "../components/StoreEditor3D/StoreEditor3D";
 import FloorPlan2D from "../components/FloorPlan2D/FloorPlan2D";
 import DashboardView from "./DashboardView";
+import NegotiateView from "./NegotiateView";
+import MountView from "./MountView";
 import SyncStatus from "../components/SyncStatus/SyncStatus";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
 import {
@@ -10,11 +12,35 @@ import {
   getNotificationConfig,
   updateNotificationConfig,
   sendTestNotification,
+  getContacts,
+  saveContacts,
+  type ContactBook,
 } from "../api/auth";
+import { useFixtureStore } from "../store/fixtureStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ViewMode = "map" | "store" | "kpis";
+type ViewMode = "negociar" | "map" | "store" | "kpis" | "montaje";
+
+/** Código que venía en el enlace del correo de montaje (`?montar=NAVE-PUN-01`).
+ *
+ *  Se lee AL CARGAR EL MÓDULO y no dentro de un componente. La primera versión
+ *  lo hacía en un inicializador de `useState`, y bajo StrictMode React invoca
+ *  ese inicializador dos veces: la primera leía el código y limpiaba la URL, la
+ *  segunda ya no encontraba nada, y ese null era el valor que quedaba. El
+ *  enlace del correo abría el resumen en vez del espacio.
+ *
+ *  Leerlo acá ocurre exactamente una vez, antes de que React renderice, y la
+ *  URL queda limpia para que recargar no reabra siempre el mismo espacio. */
+const MOUNT_DEEP_LINK: string | null = (() => {
+  if (typeof window === "undefined") return null;
+  const code = new URLSearchParams(window.location.search).get("montar");
+  if (!code) return null;
+  const url = new URL(window.location.href);
+  url.searchParams.delete("montar");
+  window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+  return code;
+})();
 
 // ─── Logo mark ────────────────────────────────────────────────────────────────
 
@@ -108,6 +134,137 @@ function FeedbackNote({ msg }: { msg: Feedback }) {
   );
 }
 
+/** Comma-separated text ⇄ address list. The book is typed by hand by one
+ *  person, so a text field beats any chip widget for the amount of editing
+ *  this actually gets — once a year, when someone changes job. */
+const asText = (list?: string[]) => (list ?? []).join(", ");
+const asList = (text: string) =>
+  text.split(",").map((s) => s.trim()).filter(Boolean);
+
+/** Who gets told when a contract is saved.
+ *
+ *  Split by role because the messages differ, not just the addresses: the
+ *  merchandiser receives a work order with no money in it. Before this, one
+ *  global list got a single email carrying the negotiated value — which handed
+ *  prices to the person whose job is to mount the display. */
+function ContactsSection({ sedes }: { sedes: string[] }) {
+  const [book, setBook] = useState<ContactBook | null>(null);
+  const [msg, setMsg] = useState<Feedback>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    getContacts()
+      .then(setBook)
+      .catch(() => setMsg({ ok: false, text: "No se pudo cargar la libreta de contactos." }));
+  }, []);
+
+  if (!book) {
+    return (
+      <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }}>
+        <div style={sectionLabelStyle}>Quién recibe los avisos</div>
+        <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Cargando…</div>
+      </div>
+    );
+  }
+
+  const setSedeRole = (sede: string, role: "admin" | "mercaderista", text: string) =>
+    setBook({
+      ...book,
+      by_sede: {
+        ...book.by_sede,
+        [sede]: {
+          admin: book.by_sede[sede]?.admin ?? [],
+          mercaderista: book.by_sede[sede]?.mercaderista ?? [],
+          [role]: asList(text),
+        },
+      },
+    });
+
+  const save = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      setBook(await saveContacts(book));
+      setMsg({ ok: true, text: "Contactos guardados." });
+    } catch {
+      setMsg({ ok: false, text: "No se pudieron guardar los contactos." });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }}>
+      <div style={sectionLabelStyle}>Quién recibe los avisos</div>
+      <p style={{ fontSize: 11.5, color: "var(--ink-2)", margin: "-4px 0 12px", lineHeight: 1.5 }}>
+        Al guardar un contrato sale un aviso por rol. El gerente y el administrador de la
+        sede reciben el resumen comercial con el valor; el mercaderista recibe la orden de
+        montaje <strong>sin valores</strong>. Varios correos separados por coma.
+      </p>
+
+      <div style={{ marginBottom: 12 }}>
+        <label style={fieldLabelStyle}>Gerente operacional · recibe todas las sedes</label>
+        <input
+          type="text"
+          value={asText(book.gerente)}
+          onChange={(e) => setBook({ ...book, gerente: asList(e.target.value) })}
+          placeholder="gerente@empresa.com"
+          style={inputStyle}
+        />
+      </div>
+
+      {sedes.map((sede) => (
+        <div
+          key={sede}
+          style={{
+            marginBottom: 10, padding: "10px 12px",
+            border: "1px solid var(--line)", borderRadius: "var(--r-md)",
+            background: "var(--surface-2)",
+          }}
+        >
+          <div
+            style={{
+              fontFamily: "var(--font-mono)", fontSize: 11.5, fontWeight: 600,
+              color: "var(--ink-1)", marginBottom: 8,
+            }}
+          >
+            {sede}
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            <div>
+              <label style={fieldLabelStyle}>Administrador de sede</label>
+              <input
+                type="text"
+                value={asText(book.by_sede[sede]?.admin)}
+                onChange={(e) => setSedeRole(sede, "admin", e.target.value)}
+                placeholder="admin.sede@empresa.com"
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label style={fieldLabelStyle}>Mercaderista · sin valores</label>
+              <input
+                type="text"
+                value={asText(book.by_sede[sede]?.mercaderista)}
+                onChange={(e) => setSedeRole(sede, "mercaderista", e.target.value)}
+                placeholder="mercaderista@empresa.com"
+                style={inputStyle}
+              />
+            </div>
+          </div>
+        </div>
+      ))}
+
+      <div style={{ marginTop: 12 }}>
+        <ActionButton onClick={save} disabled={busy} primary>
+          {busy ? "Guardando…" : "Guardar contactos"}
+        </ActionButton>
+      </div>
+      <FeedbackNote msg={msg} />
+    </div>
+  );
+}
+
 function SettingsModal({ onClose }: { onClose: () => void }) {
   // Passwords
   const [adminPw, setAdminPw] = useState("");
@@ -122,6 +279,10 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
   const [testMsg, setTestMsg] = useState<Feedback>(null);
 
   const [busy, setBusy] = useState<"pw" | "cfg" | "test" | null>(null);
+
+  // The contact book is keyed by sede, so it needs the same list the rest of
+  // the app uses rather than a second one that could drift out of step.
+  const sedes = useFixtureStore((s) => s.sedes);
 
   useEffect(() => {
     getNotificationConfig()
@@ -312,6 +473,8 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
             </>
           )}
         </div>
+
+        <ContactsSection sedes={sedes} />
       </div>
     </div>
   );
@@ -319,10 +482,26 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
 
 // ─── Topbar ───────────────────────────────────────────────────────────────────
 
-const TABS: { id: ViewMode; label: string; Icon: typeof Grid2x2 }[] = [
-  { id: "map",   label: "Plano",     Icon: Grid2x2  },
-  { id: "store", label: "Editor 3D", Icon: Box       },
-  { id: "kpis",  label: "Dashboard", Icon: BarChart2  },
+/** Las pestañas, con una frase que dice para qué sirve cada una.
+ *
+ *  Los nombres solos no alcanzaban: "Plano" y "Editor 3D" suenan a lo mismo, y
+ *  desde ninguno de los dos se adivina que el contrato se llena ahí adentro.
+ *  El orden es el del trabajo diario —vender, mirar cómo va, montar— y el
+ *  diseño de la tienda queda separado al final, que es donde se entra una vez
+ *  cada tanto y no todos los días. */
+const TABS: {
+  id: ViewMode; label: string; Icon: typeof Grid2x2; para: string; grupo: "operar" | "diseñar";
+}[] = [
+  { id: "negociar", label: "Negociar",  Icon: Handshake, grupo: "operar",
+    para: "Vender un espacio: elegís el periodo, ves lo disponible y llenás el contrato" },
+  { id: "kpis",     label: "Resumen",   Icon: BarChart2, grupo: "operar",
+    para: "Cómo va la sede: ocupación, ingresos, lo que vence y lo que falta montar" },
+  { id: "montaje",  label: "Montajes",  Icon: Camera,    grupo: "operar",
+    para: "Confirmar con foto que la exhibición quedó armada" },
+  { id: "map",      label: "Plano",     Icon: Grid2x2,   grupo: "diseñar",
+    para: "Dibujar la tienda vista desde arriba y editar los muebles" },
+  { id: "store",    label: "Editor 3D", Icon: Box,       grupo: "diseñar",
+    para: "Ver la tienda en 3D y aplicar las artes del proveedor" },
 ];
 
 interface TopbarProps {
@@ -334,8 +513,11 @@ interface TopbarProps {
 }
 
 function Topbar({ viewMode, setViewMode, isAdmin, onOpenSettings, onLogout }: TopbarProps) {
-  // Workers only get the dashboard tab; admins see everything.
-  const visibleTabs = isAdmin ? TABS : TABS.filter((t) => t.id === "kpis");
+  // A worker gets the dashboard and the mount screen: confirming a mount is
+  // literally their job, and it is the one thing they are allowed to write.
+  const visibleTabs = isAdmin
+    ? TABS
+    : TABS.filter((t) => t.id === "kpis" || t.id === "montaje");
 
   const iconButtonStyle: React.CSSProperties = {
     display: "flex", alignItems: "center", justifyContent: "center",
@@ -384,12 +566,25 @@ function Topbar({ viewMode, setViewMode, isAdmin, onOpenSettings, onLogout }: To
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 2 }}>
-        {visibleTabs.map(({ id, label, Icon }) => {
+        {visibleTabs.map(({ id, label, Icon, para, grupo }, i) => {
           const active = viewMode === id;
+          // Una línea fina separa "operar" de "diseñar la tienda": son dos
+          // trabajos distintos y mezclarlos era parte de la confusión.
+          const abreGrupo = i > 0 && visibleTabs[i - 1].grupo !== grupo;
           return (
+            <span key={id} style={{ display: "flex", alignItems: "center" }}>
+            {abreGrupo && (
+              <span
+                aria-hidden
+                style={{
+                  width: 1, height: 18, margin: "0 7px",
+                  background: "var(--line)", flexShrink: 0,
+                }}
+              />
+            )}
             <button
-              key={id}
               onClick={() => setViewMode(id)}
+              title={para}
               style={{
                 display: "flex", alignItems: "center", gap: 5,
                 height: 30, padding: "0 12px",
@@ -406,6 +601,7 @@ function Topbar({ viewMode, setViewMode, isAdmin, onOpenSettings, onLogout }: To
               <Icon size={13} />
               {label}
             </button>
+            </span>
           );
         })}
       </div>
@@ -469,18 +665,24 @@ function Topbar({ viewMode, setViewMode, isAdmin, onOpenSettings, onLogout }: To
 // ─── Dashboard shell ──────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const [viewMode, setViewMode] = useState<ViewMode>("map");
+  // Arriving from the mount email opens that screen straight away, on the
+  // space the email was about.
+  const mountCode = MOUNT_DEEP_LINK;
+  const [viewMode, setViewMode] = useState<ViewMode>(mountCode ? "montaje" : "negociar");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const isAdmin = useAuthStore(selectIsAdmin);
   const role = useAuthStore((s) => s.role);
   const logout = useAuthStore((s) => s.logout);
 
-  // Workers only see the dashboard — force it as the active view.
+  // A worker may only be on the dashboard or the mount screen.
   useEffect(() => {
-    if (role === "worker" && viewMode !== "kpis") setViewMode("kpis");
+    if (role === "worker" && viewMode !== "kpis" && viewMode !== "montaje") {
+      setViewMode("kpis");
+    }
   }, [role, viewMode]);
 
-  const effectiveMode: ViewMode = isAdmin ? viewMode : "kpis";
+  const effectiveMode: ViewMode =
+    isAdmin || viewMode === "montaje" ? viewMode : "kpis";
 
   return (
     <div
@@ -499,8 +701,12 @@ export default function Dashboard() {
       />
 
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        {effectiveMode === "store" ? (
+        {effectiveMode === "negociar" ? (
+          <NegotiateView onIrAlPlano={() => setViewMode("map")} />
+        ) : effectiveMode === "store" ? (
           <StoreEditor3D />
+        ) : effectiveMode === "montaje" ? (
+          <MountView initialCode={mountCode} onDone={() => setViewMode("kpis")} />
         ) : effectiveMode === "kpis" ? (
           <DashboardView />
         ) : (

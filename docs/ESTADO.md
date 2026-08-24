@@ -1,7 +1,7 @@
 # Galerías — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: agosto 2026 (`main` en `c9edf93`).
+Última actualización: agosto 2026 (disponibilidad por fechas y calendario por temporada).
 
 Gestión de espacios comerciales en supermercados: se dibuja el plano de cada sede, se
 marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
@@ -63,6 +63,13 @@ El código de espacio es `"SEDE-CODE"` en mayúsculas. La cara B de una góndola
 sufijo `-B`; los campos top-level del fixture son la Cara A y `fixture.faceB` es la B
 (helper `isDoubleGondola`).
 
+**Dentro del plano el código es corto; afuera lleva la sede.** `PUN-01` es nomenclatura
+de sede y se repite en las tres tiendas. Todo lo que salga del layout — la fila en
+`spaces`, el enlace del correo, el reporte de montaje — usa el código completo, que arma
+`fullSpaceCode(sede, code)` en `frontend/src/types/fixtures.ts`. Indexar por el código
+corto es un bug silencioso: parece funcionar con una sola sede y con dos empieza a
+mezclar tiendas.
+
 **El 3D pinta, no construye.** La foto del proveedor se aplica *como material* de la cara
 del mesh, tileada como planograma y alineada a las tablas reales vía `getPanelShelfSpan`.
 Nunca crear geometría nueva posicionada para esto: se intentó dos veces y falló las dos.
@@ -70,6 +77,12 @@ Nunca crear geometría nueva posicionada para esto: se intentó dos veces y fall
 **Orden de rutas en FastAPI.** Las rutas literales van declaradas **antes** de las
 paramétricas y del catch-all, o éste se las traga. Aplica en `layout.py`
 (`/revisions`, `/settings`) y en `spaces.py` (`/face-images`).
+
+**El dinero no viaja al worker.** `negotiatedValue` se redacta server-side en las
+respuestas de layout, `monthly_rent` en las de spaces, y las tarifas de referencia
+exigen admin **también para leer**. En el cliente, las tarifas quedan fuera de
+`partialize` a propósito: la clave `retail-fixtures-v1` sobrevive al logout, y una
+máquina compartida no debe entregarle precios al siguiente turno.
 
 **Los espejos comparan identidad, no booleanos.** El plano 2D y el editor 3D mantienen
 una copia local del store. Los guards que evitan el eco comparan la *identidad del array*,
@@ -134,6 +147,220 @@ Un solo lenguaje de color en Dashboard, plano 2D y editor 3D:
 
 El rojo queda reservado para lo que está mal (un contrato vencido).
 
+### Tarifa de referencia y rendimiento $/m²
+
+Eran los dos primeros del backlog; salieron juntos porque comparten dominio (dinero).
+
+- **Tarifa de referencia** por tipo de mueble: una general + ajuste opcional por sede
+  (`app_config`, clave `layout_reference_rates` — sin migraciones, como manda la regla).
+  Se edita desde el botón **Tarifas** del Dashboard; guardado automático con el mismo
+  debounce que las settings. La tarifa de góndola es **por cara** (doble y mural
+  comparten tarifa, porque el valor negociado también es por cara).
+- Endpoints `GET/PUT /layout/rates`, declarados antes del catch-all. A diferencia de
+  `/layout/settings`, acá **también el GET exige admin**: es dinero. En el cliente las
+  tarifas nunca tocan `localStorage` y un login de worker las deja en `null`, así que
+  una máquina compartida no filtra nada.
+- En los paneles de contrato (2D y 3D) el campo de valor muestra la referencia del
+  tipo+sede y el desvío (`−17% vs referencia`, ámbar por debajo / verde en línea o
+  arriba).
+- En el Dashboard admin: sección **"Bajo tarifa de referencia"** en Atención, con el
+  desvío y `pagado · ref` en compacto.
+- **No hay ranking de $/m²** y no debe volver: el precio se cuadra internamente, y además
+  medía el plano equivocado. La industria mide anaquel en metros lineales y facings (el
+  informe de la FTC de 2003 pide "linear feet" y "facings"; "square feet" no aparece), y
+  la huella de piso es cero o casi cero para ristra, robatope y exhibidor cruz. La tarifa
+  plana por mueble/sede sí es la convención real: la rate card publicada de Albert Heijn
+  cobra por mueble, por tienda, por unidad de tiempo, sin mencionar área.
+- El helper es `referenceRateFor(rates, sede, type)` y la clave de tipo
+  `rateTypeOf()` (normaliza los tipos 2D legados `gondola_doble`/`gondola_mural` a
+  `gondola`). Umbral de marcado: desvío ≥ 1 % — un peso de redondeo no es anomalía.
+
+### Disponibilidad por fechas y calendario por temporada
+
+Un contrato cargado para diciembre marcaba el espacio como ocupado **desde el momento de
+guardarlo** y sumaba su valor al ingreso mensual. Lo peor no era el número sino la venta
+perdida: el backend sí razonaba por fechas y aceptaba vender los meses previos, pero nadie
+lo intentaba porque la pantalla decía "ocupado".
+
+- La ocupación se **deriva** de `startDate`/`endDate`, que ya viajaban en el JSON del
+  layout (`contractPhase`). Derivar en vez de guardar evita tener que correr algo que
+  voltee el estado al llegar la fecha, y funciona sobre los planos ya guardados: sin
+  migración ni backfill.
+- Estado **"Contratado"** para lo firmado que aún no arranca: tarjeta, chip de filtro y
+  color propio en el mapa (violeta claro). El ingreso mensual cuenta solo lo vigente; lo
+  pactado va en su propia línea.
+- El mapa pinta de **rojo lo vencido**, que la paleta ya pedía y no estaba implementado.
+- `Space.active_lease` devuelve el contrato vigente HOY y se agregó `upcoming_lease`.
+
+Sobre el mapa hay un control **"Disponible para"**: chips de temporada más dos campos de
+fecha. Con un periodo elegido cambia la lectura entera — la leyenda pasa a tres estados
+(libre todo el periodo / libre parte / tomado) y aparece el conteo de lo vendible. Las
+tarjetas de arriba **siguen reportando hoy**, a propósito, y el encabezado del mapa dice
+cuál contesta qué.
+
+### Temporadas comerciales
+
+Separación que hace que esto no se pudra: el **ancla** es un hecho del calendario y se
+calcula (tercer domingo de junio, pascua por Meeus/Jones/Butcher, viernes tras el cuarto
+jueves de noviembre); la **ventana de venta** —días antes y después— es decisión comercial
+y se guarda en `app_config`, global para las tres sedes. El año entrante las anclas se
+mueven solas y las ventanas siguen puestas. Se editan desde el ícono junto a los chips
+(admin). `GET /layout/seasons` lo lee cualquier rol: son fechas, no dinero.
+
+**Aritmética de días** (`types/seasons.ts`): todo pasa por un entero calculado con
+`Date.UTC` sobre los componentes civiles, y el parseo de `"YYYY-MM-DD"` es propio —
+`new Date(str)` lo toma como UTC y en Colombia retrocede un día. Los rangos son
+**inclusivos en ambos extremos**, igual que el chequeo de solapamiento del backend: un
+mueble necesita día de desmontaje. Un contrato de **un solo día es válido** (Black Friday
+es un viernes suelto).
+
+`reservado` y `mantenimiento` no tienen fechas: describen el presente. Bloquean un periodo
+que incluya hoy, pero **no** uno enteramente futuro — bloquearlo escondería inventario
+vendible detrás de una bandera puesta meses antes.
+
+### Pantalla Negociar
+
+El contrato se llenaba en un panel angosto adentro del **editor del plano**, y la
+disponibilidad se miraba en el Dashboard. Para vender un espacio había que saltar entre
+dos pestañas y, peor, saber dónde estaba dibujado cada mueble. La pestaña **Negociar**
+(`frontend/src/pages/NegotiateView.tsx`) pone las tres cosas seguidas, en el orden en que
+ocurre una negociación de verdad:
+
+1. **¿Para cuándo?** — los chips de temporada o dos fechas. Dice cuántos espacios quedan
+   libres todo el periodo.
+2. **¿Cuál espacio?** — solo lo disponible para ese rango, con su tarifa de referencia.
+   Lo parcialmente vendido queda escondido detrás de una casilla, marcado.
+3. **El contrato** — formulario amplio, con la comparación contra la referencia debajo del
+   valor y las fechas **ya puestas** con el periodo elegido arriba. Reescribirlas a mano
+   era el paso que más se equivocaba, y es información que la pantalla ya tenía.
+
+Al guardar hace lo mismo que el panel del plano —`find-or-create` del espacio y del
+proveedor, `POST /leases`, y escribe el contrato en el JSON del layout— y muestra una
+confirmación que **se queda hasta que la cierren**: al cerrar un trato lo que hay que ver
+es a quién le llegó el aviso, y un mensaje que se va solo a los dos segundos no lo dice.
+Esa confirmación vive en la pantalla y no en el formulario, porque al guardar el espacio
+sale de la lista de disponibles y eso desmontaba el mensaje justo cuando había que leerlo.
+
+El panel del plano sigue existiendo para editar un contrato sobre el mueble; Negociar es
+el camino para vender.
+
+**Las pestañas dicen para qué sirven.** Los nombres solos no alcanzaban —"Plano" y
+"Editor 3D" suenan a lo mismo, y desde ninguno se adivina que el contrato se llenaba ahí
+adentro—. Ahora hay una frase en el tooltip de cada una y una línea que separa el trabajo
+diario (Negociar · Resumen · Montajes) del diseño de la tienda (Plano · Editor 3D), que es
+donde se entra una vez cada tanto. El admin aterriza en **Negociar**.
+
+**El correo del proveedor ya se puede cargar.** El formulario lo pide, y
+`/suppliers/find-or-create` **completa** el que falta sin pisar el que ya está. Antes no
+había forma de cargarlo desde la interfaz, así que el tercer aviso —la constancia al
+proveedor— no salía nunca.
+
+### Pantalla de negociación: del contrato al montaje
+
+Guardar un contrato ya no termina en la base: dispara **tres correos distintos según a
+quién le sirve qué** (`backend/app/routers/spaces.py`).
+
+- **Comercial** (administrador de sede, gerente operacional): el contrato completo, con
+  el valor.
+- **Montaje** (el mercaderista): el mismo espacio **sin un solo monto**, y un enlace
+  directo `.../?montar=SEDE-CODE`.
+- **Proveedor**, si tiene correo cargado: confirmación de lo suyo.
+
+Los destinatarios viven en `app_config` bajo `notify_contacts`, por sede y por rol
+(`backend/app/services/contacts.py`), y se editan desde Configuración. Si están vacíos
+cae al `notify_emails` de siempre.
+
+El enlace abre `MountView` (`frontend/src/pages/MountView.tsx`) en el celular: tarjetas
+grandes ordenadas por urgencia — lo que ya arrancó primero —, dos botones del tamaño de
+un pulgar y la cámara a un toque. El worker es el único rol que escribe algo en el
+sistema, y solo esto: `POST /mounts/`. Un "no pude" **exige motivo**, porque sin motivo no
+se sabe a quién reclamarle.
+
+**Dónde queda.** Antes de preguntar nada, la pantalla muestra el plano de la tienda con el
+mueble señalado (`components/MiniMapa/`) y la ubicación escrita — *"A unos 4 m de las
+cajas"*. Tres decisiones que vale la pena conservar:
+
+- **Cenital, no isométrico.** El mapa isométrico del Dashboard extruye por altura y pinta
+  de atrás hacia adelante, así que tapa justo los muebles chicos —bateas, ristras— que son
+  los que cuesta encontrar. Y para "estoy acá, tengo que llegar allá" la convención que
+  todo el mundo ya sabe leer es la del directorio de centro comercial.
+- **El alto sale de la forma de la planta**, no es fijo. Con alto fijo, una tienda larga y
+  angosta —la forma normal de un supermercado— se dibujaba a menos de 5 px por metro y una
+  punta de góndola quedaba de cuatro píxeles: se veía, no se podía usar.
+- **Las referencias salen de los datos, no del aire.** Las cajas y las neveras se etiquetan
+  porque existen como muebles. No hay flecha de norte ni "entrada" porque el sistema no
+  guarda ninguna de las dos cosas, y ponerlas sería inventarle información a alguien que
+  está parado en un pasillo.
+
+El mapa busca por el código CRUDO del mueble contra el mismo arreglo del que salió, nunca
+por el `SEDE-CODE`: la nomenclatura corta se repite entre tiendas y buscar suelto devuelve
+el mueble de la sede equivocada. Si el mueble no está en el layout —contrato sobre un
+espacio que después se borró del plano— el mapa se omite entero en vez de mostrar uno que
+no señala nada.
+
+**La distancia se mide de borde a borde, nunca de centro a centro.** No es una sutileza de
+implementación: en NAVE la pared de refrigerados está dibujada como UN mueble de 26 m de
+ancho, así que su centro queda a media tienda de sus propios extremos. Midiendo al centro,
+a una punta que está a 3 m de la nevera se le decía "a 8 m" — y con esa frase se camina
+para el lado equivocado. Con los datos reales de NAVE, el centro se equivocaba en **11 de
+los 19** espacios alquilables. Por lo mismo el encuadre del plano usa la huella de cada eje
+por separado: usar `max(w, d)` para los dos lados —que parecía lo seguro— inflaba el
+recinto al doble de alto por culpa de ese mismo mueble, y dibujaba todo más chico de lo
+necesario justo donde hay que encontrar una punta de 90 cm.
+
+El correo de montaje lleva la ubicación **escrita**, no dibujada: Gmail descarta el SVG
+embebido, un PNG obligaría a rasterizar en el servidor y una imagen servida por la app
+pediría token. El texto llega intacto a cualquier cliente, y el plano vive del otro lado
+del enlace. La frase la calcula `describe_location` en `services/layout_lookup.py`, que
+espeja `describirUbicacion` del cliente — si las dos se separan, el mercaderista lee una
+cosa en el correo y otra en la pantalla.
+
+**La foto es obligatoria** cuando se reporta "montado", en el servidor y en la pantalla:
+"montado" sin foto es una afirmación sin respaldo, y es exactamente lo que el proveedor
+discute meses después. Al "no pude" **no** se le exige: si el material nunca llegó puede no
+haber qué fotografiar, y dejar sin reportar un problema es peor que quedarse sin la foto.
+
+Alrededor de esa regla hay cuatro defensas, todas porque bloquear al mercaderista es peor
+que no tener la función:
+
+- Se aceptan **HEIC/HEIF**: es lo que sale de un iPhone cuando iOS no convierte al subir.
+  Rechazarlo dejaría a esa persona sin poder reportar nada desde su propio teléfono.
+- La foto se **reduce en el navegador** a 1600 px y JPEG antes de salir (`utils/foto.ts`),
+  con red: ante cualquier error se sube el original. Incluye un chequeo de lienzo uniforme,
+  porque un HEIC que no se decodifica no lanza error — produce un JPEG negro perfectamente
+  válido, y eso es peor que un rechazo: la prueba queda guardada y no muestra nada.
+- Hay **timeout de subida**; sin él, una conexión colgada dejaba el botón muerto para
+  siempre y la única salida era recargar, que perdía la foto.
+- Se puede **elegir de la galería**, no solo tomarla: `capture` manda directo a la cámara y
+  en Android saca la opción de galería, lo que dejaba atrapado a quien montó sin señal y
+  volvió a reportar más tarde.
+
+Y como la foto movida es lo más normal del mundo, el aviso de "ya se reportó" ofrece
+**corregir el reporte**: el histórico guarda todos y vale el último. Sin eso, la prueba que
+el proveedor va a discutir en tres meses queda siendo la primera que salió.
+
+Dos detalles que no son obvios y que conviene no deshacer:
+
+- **El tipo de archivo se valida contra una lista cerrada, nunca contra `image/*`.** Un SVG
+  es una imagen para el navegador y un documento con scripts para todo lo demás; guardado
+  como foto y servido inline desde el mismo origen que la aplicación, ejecutaría JavaScript
+  con la sesión de quien lo abra.
+- **La foto de montaje lleva un prefijo reservado en el nombre** (`montaje--`) y
+  `list_face_images` la excluye. Se cuelga del mismo `Space` que las artes del proveedor, y
+  el editor 3D usa la imagen *más reciente* de cada espacio como planograma: sin la marca,
+  la foto del anaquel tomada de costado reemplazaba la textura de la góndola en la pantalla
+  del comercial — y con la foto obligatoria, en cada contrato.
+
+Se guarda **una fila por reporte**, no una por espacio (tabla nueva `mount_confirmations`,
+permitida por la regla: `create_all` sí crea tablas). El histórico de quién dijo qué y
+cuándo es justamente lo que contesta cuando el proveedor reclama meses después. La hora la
+pone el servidor: el EXIF de un celular se edita.
+
+Borrar una sede **archiva** sus confirmaciones (`archivado_en`) en la misma transacción que
+archiva sus contratos. No se borran —son prueba— pero dejan de contar: una sede recreada
+con el mismo nombre reusa los mismos códigos y heredaría los "montado" de la anterior.
+Cubierto en `backend/tests/test_mounts.py`.
+
 ### Bugs preexistentes corregidos
 
 Los tres se encontraron levantando la app contra datos sembrados, no leyendo código:
@@ -146,6 +373,44 @@ Los tres se encontraron levantando la app contra datos sembrados, no leyendo có
   y subía la pérdida.
 - **El proxy de Vite quitaba el prefijo `/api`** que el backend sí monta, así que
   `npm run dev` nunca pudo hablar con un backend local.
+
+---
+
+### Qué hay de verdad en los planos (agosto 2026)
+
+Medido contra producción, porque el mapa del montaje vale lo que valga la fidelidad del
+plano y eso no se puede suponer:
+
+| Sede | Muebles |
+|---|---|
+| NAVE | 104 |
+| POBLADO | 104 |
+| CENTRO | 48 |
+| NORTE | 6 |
+| ciudad jardin | 1 |
+| TERRON | **0** |
+| SUR | 0 |
+
+**NAVE está a escala, y bien.** Huella de 42,4 × 15,8 m (669 m²), con los muebles ocupando
+el 29 % del recinto — proporción normal de un supermercado con sus pasillos. El 92 % de los
+muebles tiene medidas propias, no la del catálogo: alguien midió. Las coordenadas caen en
+la grilla de 5 cm del editor (86 %) y **ninguna** en metros enteros, que es la firma de un
+plano medido y no de uno acomodado para que se vea lindo. Solo 2 pares de góndolas se pisan
+(GON-46/GON-48 y GON-60/GON-67) y no hay muebles apilados en la misma coordenada.
+
+Dos cosas que conviene saber antes de tocar el mapa:
+
+- **Los muebles largos se dibujaron como uno solo.** La pared de refrigerados es un único
+  `nevera_refrescos` de 26,05 m; hay otro de 10,05 m y un `nevera_carnes` de 6,05 m. Es una
+  representación razonable de una corrida continua, pero rompe cualquier cálculo que trate
+  al mueble como un punto.
+- **Hay 12 muebles de referencia** en NAVE (5 cajas, 3 neveras de refrescos, 3 stands de
+  frutas, 1 mostrador de carnes), así que la frase de ubicación y las etiquetas del mapa
+  tienen de dónde salir. En una sede donde solo se dibuje lo alquilable no habría ninguna:
+  ahí el mapa sigue funcionando, pero sin etiquetas ni frase.
+
+De los 104 muebles de NAVE, **19 son comercializables**. El resto es infraestructura, que es
+justo lo que hace legible el mapa: contexto en gris y todo el color en el destino.
 
 ---
 
@@ -176,26 +441,40 @@ Procedimiento de recuperación, en orden:
 
 ## Backlog
 
-Ordenado por impacto sobre esfuerzo. Fundamentado en cómo la industria gestiona estos
-espacios: las puntas de góndola ocupan menos del 5 % del piso pero mueven cerca del 30 %
-de las ventas de la categoría, con aumentos medidos de 150–400 % frente al anaquel normal.
+1. **Estado de renovación** (en negociación / renovado / no renueva). Lo que lo vuelve
+   accionable no es el estado sino el **valor propuesto** al lado del vigente: el tablero
+   deja de decir "8 contratos por vencer" y pasa a decir cuánta plata está en juego.
+2. **Histórico por espacio**. Es además prerrequisito de la tarifa de referencia: no hay
+   tarifario público de exhibición en Colombia (los acuerdos son confidenciales), así que
+   la única referencia calibrable es "a cuánto se cerró este mueble en esta sede antes".
 
-1. **Tarifa de referencia** por tipo de mueble y sede. Hoy "valor negociado" es un campo
-   libre sin referencia; si una punta rinde 3–4× más que una góndola, debería costar
-   distinto y de forma consistente. Permite ver quién paga por debajo.
-2. **$/m² por mueble** y ranking de rendimiento. Hoy solo se mide ingreso total. Los datos
-   ya están (`area_m2` y el valor): falta la cuenta.
-3. **Calendario de disponibilidad**. El backend ya rechaza solapamientos con 409, pero no
-   se puede responder "¿qué tengo libre en noviembre?".
-4. **Verificación de ejecución**: convertir las fotos por espacio en auditoría, con fecha,
-   autor y estado montado/no montado. Una foto sin metadatos no es evidencia.
-5. **Estado de renovación** (en negociación / renovado / no renueva) para que "por vencer"
-   sea un embudo y no solo una alarma.
-6. **Histórico por espacio**: los contratos viejos ya están en `space_leases`, la interfaz
-   no los muestra.
+Hecho en agosto 2026: tarifa de referencia por tipo y sede, disponibilidad por fechas,
+calendario por temporada sobre el mapa, correos por rol y confirmación de montaje desde
+el celular — ver "Qué está hecho".
 
-No perseguir: pantallas digitales, sensores de impresiones y compra programática. Tienen
-sentido con cientos de tiendas y un equipo comercial dedicado.
+No perseguir: pantallas digitales, sensores de impresiones, compra programática,
+reconocimiento de imagen para auditar anaquel, y scorings de "tienda perfecta". Los tres
+primeros porque el in-store retail media no llega al 1 % del gasto de retail media ni
+siquiera para las cadenas grandes; el cuarto porque a tres tiendas gana un humano mirando;
+el quinto porque mide la salud de la marca del proveedor, que no es trabajo del retailer.
+
+### Sobre las cifras que solían estar acá
+
+Este documento afirmaba que las puntas de góndola ocupan menos del 5 % del piso y mueven
+el 30 % de las ventas de la categoría, con aumentos de 150–400 %. Se verificaron una por
+una y **ninguna se sostiene**: el "30 %" se rastrea hasta un artículo de opinión que cita
+un libro comercial sin metodología, el "5 % del piso" no aparece en ninguna fuente, y el
+rango "150–400 %" sale de un blog de software que lo atribuye a *"industry data"*.
+
+Lo que sí está medido (Nakamura et al., *Social Science & Medicine* 108, 2014, acceso
+abierto): aislando la ubicación del descuento, el efecto de una punta va de **+23 % a
++114 %** según la categoría — y entre la mitad y dos tercios de la diferencia bruta que se
+ve no es la ubicación sino el descuento y los facings extra que la acompañan. El gobierno
+británico, con miles de millones de libras en juego, usó **55 %**.
+
+Nada de esto cambia el backlog, que se justifica solo con inventario escaso y contratado.
+Pero sirve en una negociación: si un proveedor llega con que la punta le multiplica las
+ventas por cuatro, el número honesto es otro.
 
 ---
 
@@ -206,11 +485,23 @@ sentido con cientos de tiendas y un equipo comercial dedicado.
 - `JWT_SECRET` es una variable de entorno manual en Render, no viene del Blueprint.
 - El login tiene rate limit: 10 intentos por IP cada 15 minutos, en memoria. Reiniciar el
   backend lo limpia (útil al automatizar pruebas).
-- `.github/workflows/deploy.yml` despliega **por SSH a un VPS, no a Render**, y falla desde
-  junio con `Error: missing server host` (el secret `VPS_HOST` está vacío). Sale en rojo en
-  cada merge sin afectar a Render. Queda decidir si borrarlo o restringirlo a
-  `workflow_dispatch`.
-- No hay CI en pull requests: el único workflow corre al pushear a `main`.
+- `/spaces/map`, `/dashboard/kpis` y `/dashboard/spaces` **existen pero no los llama
+  nadie**: todo lo que se ve sale del JSON del layout, calculado en el navegador.
+  `SpacePanel`, `StoreView` y `Legend` son componentes huérfanos. Antes de conectar esos
+  endpoints hay que revisar que sus números coincidan con los del cliente.
+- Quedan dos deudas que la revisión de fechas marcó como no urgentes: nada recalcula al
+  **cruzar la medianoche** (una estación abierta todo el día queda anclada al día en que
+  se montó la pantalla), y conviven **dos definiciones de "duración"** — el editor 3D y el
+  correo de contrato nuevo cuentan exclusivo, así que un contrato del 1 al 24 de diciembre
+  se anuncia como "23 días". Si se toca, hay que tocar los tres lugares juntos.
+- `.github/workflows/deploy.yml` hace dos cosas distintas. En cada push y cada PR corre el
+  **CI de verdad**: typecheck y build del frontend, `pytest` del backend. El **despliegue
+  por SSH a un VPS** (no a Render) es opt-in: solo corre si la variable de repositorio
+  `DEPLOY_TARGET` vale `vps`, junto con los secrets `VPS_HOST`, `VPS_USER` y `VPS_SSH_KEY`.
+  Sin eso se salta, no falla — que es lo que hacía desde junio y tenía los checks en rojo
+  permanente.
+- `npm ci` a secas falla acá: hay que usar `--legacy-peer-deps`, igual que el Dockerfile.
+  `@react-three/drei@10` pide `fiber@^9` y el editor 3D está escrito contra `fiber@8`.
 - `nginx/retail.conf` es para el despliegue en VPS, no para Render. Si ese VPS se reactiva,
   hay que copiar el archivo al host a mano — el workflow no lo despliega.
 
@@ -230,3 +521,13 @@ Para la sincronización, la prueba que importa es la de **dos clientes**: sembra
 servidor, simular dos estaciones y verificar que las altas *y las bajas* viajan en ambos
 sentidos, que un conflicto no pisa el trabajo del otro, y que una respuesta vacía del
 servidor no borra la copia local.
+
+**Sembrar siempre dos sedes con la misma nomenclatura.** `PUN-01` existe en NAVE y en
+TERRON, y con una sola sede sembrada todo lo que confunde el código corto con el completo
+pasa las pruebas. Así se encontró que el enlace del correo de montaje apuntaba a un código
+que la pantalla nunca iba a encontrar.
+
+Lo del mercaderista se prueba en **viewport de celular** (390×844) y con el enlace del
+correo, no navegando a mano: entrar por `/?montar=SEDE-CODE` es el camino real, y ahí
+aparecieron el `Content-Type` que rompía la foto y el doble montaje de StrictMode que se
+comía el enlace.

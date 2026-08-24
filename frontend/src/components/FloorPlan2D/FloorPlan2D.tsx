@@ -11,8 +11,10 @@ import {
 } from "lucide-react";
 import { useFixtureStore, selectFixtures, selectHasPendingWork, normalizeSede } from "../../store/fixtureStore";
 import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types/fixtures";
-import { isRentable, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
+import { isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT, rateTypeOf } from "../../types/fixtures";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
+import ReferenceRateHint from "../ReferenceRateHint";
+import NotifyPreview from "../NotifyPreview";
 import { findOrCreateSpace, createLease } from "../../api/spaces";
 import { fetchDeleteImpact } from "../../api/layout";
 import type { DeleteImpact } from "../../api/layout";
@@ -219,11 +221,9 @@ const STATUS_FILTER_CHIPS: { value: StatusFilter2D; label: string; color: string
  * Returns true when the fixture is visually rotated 90° or 270°.
  * In that case `w` and `d` must be swapped to get the 2D visual footprint.
  */
-function isRotated90(rotY: number): boolean {
-  // Normalize to [0, π) then check proximity to π/2
-  const r = ((rotY % Math.PI) + Math.PI) % Math.PI;
-  return Math.abs(r - Math.PI / 2) < 0.15;
-}
+// La definición vive en types/fixtures.ts: el mapa isométrico del Dashboard y
+// el mini-plano del montaje necesitan la misma, y tenerla acá adentro fue la
+// razón de que el Dashboard dibujara mal los muebles rotados.
 
 /** Quantize rotY to quarter-turn steps (0 = south, 1 = west, 2 = north, 3 = east). */
 function rotationSteps(rotY?: number): number {
@@ -3052,10 +3052,18 @@ function AssignmentPanel({
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
 
-  const canSave =
-    face.supplierName.trim().length > 0 &&
+  // Dates entered backwards are rejected here and not just by the backend:
+  // the layout JSON is what the map and the availability view read, and it
+  // accepts anything, so a reversed pair would quietly make the space look
+  // free for every period asked about.
+  const datesInOrder =
     face.startDate.length > 0 &&
     face.endDate.length > 0 &&
+    face.startDate <= face.endDate;
+
+  const canSave =
+    face.supplierName.trim().length > 0 &&
+    datesInOrder &&
     (face.negotiatedValue ?? 0) > 0;
 
   async function handleSaveContract() {
@@ -3254,6 +3262,11 @@ function AssignmentPanel({
               {face.negotiatedValue ? `$${face.negotiatedValue.toLocaleString()}` : <span style={{ color: "var(--dark-ink-3)" }}>—</span>}
             </p>
           )}
+          <ReferenceRateHint
+            sede={item.sede || sede}
+            rateType={rateTypeOf(item)}
+            value={face.negotiatedValue || 0}
+          />
         </Field>
       )}
 
@@ -3371,9 +3384,12 @@ function AssignmentPanel({
         )}
         {!canSave && saveState === "idle" && (
           <p style={{ marginTop: 4, fontSize: 10, color: "var(--dark-ink-3)" }}>
-            Requiere proveedor, fechas y valor &gt; 0.
+            {face.startDate && face.endDate && face.startDate > face.endDate
+              ? "La fecha de inicio quedó después de la de fin."
+              : "Requiere proveedor, fechas y valor > 0."}
           </p>
         )}
+        {canSave && saveState === "idle" && <NotifyPreview sede={item.sede || sede} />}
       </div>
       )}
 

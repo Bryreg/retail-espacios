@@ -1,4 +1,5 @@
 from datetime import date
+from urllib.parse import quote
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func
@@ -8,8 +9,10 @@ from app.auth import require_admin, require_auth
 from app.database import get_db
 from app.models.models import Space, SpaceFile, SpaceLease, Supplier, SpaceStatus
 from app.schemas.spaces import SpaceOut, SpaceCreate, SpaceStatusUpdate, LeaseCreate, LeaseOut, SpaceMapItem, SpaceFindOrCreate
-from app.services.layout_lookup import is_space_rentable
-from app.services.mailer import format_cop, html_shell, send_mail_bg
+from app.routers.mounts import MOUNT_FILE_PREFIX
+from app.services.contacts import recipients_for
+from app.services.layout_lookup import describe_location, is_space_rentable
+from app.services.mailer import app_base_url, format_cop, html_shell, send_mail_to_bg
 
 # Every route requires a valid token; mutations additionally require admin.
 router = APIRouter(prefix="/spaces", tags=["spaces"], dependencies=[Depends(require_auth)])
@@ -73,7 +76,9 @@ def get_map_status(db: Session = Depends(get_db)):
     ).all()
     result = []
     for space in spaces:
-        active_lease = next((l for l in space.leases if l.is_active), None)
+        # Space.active_lease is date-aware: a lease signed for a future period
+        # is deliberately not reported here.
+        active_lease = space.active_lease
         result.append(SpaceMapItem(
             svg_id=space.svg_id,
             status=space.status,
@@ -183,7 +188,14 @@ def list_face_images(db: Session = Depends(get_db)):
             SpaceFile.space_id.label("space_id"),
             rn,
         )
-        .filter(SpaceFile.content_type.like("image/%"))
+        .filter(
+            SpaceFile.content_type.like("image/%"),
+            # La foto de montaje NO es un planograma. Se guarda contra el mismo
+            # espacio pero con un prefijo reservado en el nombre (ver
+            # routers/mounts.py); sin excluirla, la última foto del
+            # mercaderista se convertía en la textura del mueble en el 3D.
+            ~SpaceFile.filename.like(f"{MOUNT_FILE_PREFIX}%"),
+        )
         .subquery()
     )
     rows = (
@@ -240,9 +252,15 @@ def update_status(space_id: int, payload: SpaceStatusUpdate, db: Session = Depen
 
 @router.post("/{space_id}/leases", response_model=LeaseOut, status_code=201, dependencies=[Depends(require_admin)])
 def create_lease(space_id: int, payload: LeaseCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    # Date sanity check
-    if payload.start_date >= payload.end_date:
-        raise HTTPException(status_code=422, detail="start_date debe ser anterior a end_date")
+    # Date sanity check. Equal dates are VALID: a one-day rental is a real
+    # product here — Black Friday is a single Friday — and rejecting it made
+    # the shortest, best-paid periods impossible to record. Everything else in
+    # this file treats ranges as inclusive on both ends, so this must too.
+    if payload.start_date > payload.end_date:
+        raise HTTPException(
+            status_code=422,
+            detail="La fecha de inicio no puede ser posterior a la de fin",
+        )
 
     space = db.query(Space).filter(Space.id == space_id).first()
     if not space:
@@ -286,24 +304,91 @@ def create_lease(space_id: int, payload: LeaseCreate, background_tasks: Backgrou
 
     lease = SpaceLease(space_id=space_id, **payload.model_dump())
     db.add(lease)
-    space.status = SpaceStatus.occupied
+    # Only a contract that is already running makes the space occupied. Signing
+    # in August for December used to flip the space to "occupied" on the spot,
+    # which hid four sellable months behind a status that was simply wrong.
+    if payload.start_date <= date.today():
+        space.status = SpaceStatus.occupied
     db.commit()
     db.refresh(lease)
 
-    # Email notification — sent after the response, best-effort (never blocks the request)
-    duration_days = (lease.end_date - lease.start_date).days
-    subject = f"Nuevo contrato — {space.code}"
-    rows = [
-        ("Sede", space.sede or "—"),
-        ("Espacio", f"{space.code} — {space.name}"),
-        ("Proveedor", supplier.name),
-        ("Marca", lease.marca or "—"),
-        ("Inicio", str(lease.start_date)),
-        ("Fin", str(lease.end_date)),
-        ("Valor mensual", format_cop(lease.monthly_rent)),
-        ("Duración", f"{duration_days} días"),
-    ]
-    background_tasks.add_task(send_mail_bg, subject, html_shell(subject, rows))
+    # ── Avisos, uno por rol ───────────────────────────────────────────────────
+    # Antes salía UN correo con el valor negociado a una lista global, así que
+    # el mercaderista que va a montar el espacio recibía el precio. Toda la app
+    # está construida para que un worker nunca vea plata; el correo se saltaba
+    # esa regla. Ahora cada rol recibe lo que le corresponde.
+    #
+    # Inclusive en ambos extremos, como el resto del archivo: un contrato que
+    # empieza y termina el mismo día dura un día, no cero.
+    duration_days = (lease.end_date - lease.start_date).days + 1
+    who = recipients_for(db, space.sede)
+    periodo = f"{lease.start_date} → {lease.end_date}"
+
+    # Comercial: gerente operacional + administrador de la sede.
+    if who["comercial"]:
+        subject = f"Nuevo contrato — {space.code}"
+        rows = [
+            ("Sede", space.sede or "—"),
+            ("Espacio", f"{space.code} — {space.name}"),
+            ("Proveedor", supplier.name),
+            ("Marca", lease.marca or "—"),
+            ("Periodo", periodo),
+            ("Duración", f"{duration_days} día{'s' if duration_days != 1 else ''}"),
+            ("Valor mensual", format_cop(lease.monthly_rent)),
+        ]
+        background_tasks.add_task(
+            send_mail_to_bg, who["comercial"], subject, html_shell(subject, rows)
+        )
+
+    # Montaje: orden de trabajo para el mercaderista. SIN valores.
+    if who["montaje"]:
+        subject = f"Montar {space.code} — {space.sede or 'sede'}"
+        # Dónde queda, en palabras. Se calcula ACÁ y no dentro del
+        # BackgroundTask: la tarea corre después de que la sesión de la request
+        # se cerró y no abre una propia. El plano dibujado vive del otro lado
+        # del enlace — Gmail descarta el SVG embebido, así que un mapa dentro
+        # del correo llegaría como un hueco.
+        ubicacion = describe_location(db, space.code, space.sede or "")
+        rows = [
+            ("Sede", space.sede or "—"),
+            ("Espacio", f"{space.code} — {space.name}"),
+            ("Qué va", f"{supplier.name}{f' · {lease.marca}' if lease.marca else ''}"),
+            ("Desde", str(lease.start_date)),
+            ("Hasta", str(lease.end_date)),
+        ]
+        if ubicacion:
+            rows.insert(2, ("Dónde queda", ubicacion))
+        # Enlace directo al espacio. El mercaderista trabaja desde el celular:
+        # un toque desde el correo y, si no tiene sesión, la inicia una vez y
+        # aterriza en el espacio correcto en vez de buscarlo en una lista.
+        link = f"{app_base_url()}/?montar={quote(space.code)}"
+        footer = (
+            "El enlace abre el plano de la tienda con el espacio señalado, y ahí "
+            "mismo se confirma el montaje. "
+            "<strong>La foto es obligatoria</strong>: es la prueba de que la "
+            "exhibición quedó armada.<br><br>"
+            f'<a href="{link}" '
+            'style="color:#7C3AED;font-weight:600;">Ver dónde queda y confirmar</a>'
+        )
+        background_tasks.add_task(
+            send_mail_to_bg, who["montaje"], subject, html_shell(subject, rows, footer)
+        )
+
+    # Proveedor: constancia de lo acordado. Es el único que sale de la empresa,
+    # así que solo se envía si el proveedor tiene correo cargado.
+    if supplier.email:
+        subject = f"Confirmación de espacio — {space.sede or ''} {space.code}".strip()
+        rows = [
+            ("Espacio", f"{space.code} — {space.name}"),
+            ("Sede", space.sede or "—"),
+            ("Marca", lease.marca or "—"),
+            ("Periodo", periodo),
+            ("Valor mensual", format_cop(lease.monthly_rent)),
+        ]
+        footer = "Cualquier ajuste sobre lo acordado, respondé este correo."
+        background_tasks.add_task(
+            send_mail_to_bg, [supplier.email], subject, html_shell(subject, rows, footer)
+        )
 
     return lease
 

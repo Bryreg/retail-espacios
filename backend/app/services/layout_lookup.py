@@ -11,6 +11,7 @@ This module bridges the two so the API can refuse a contract on a fixture the
 user marked as infrastructure.
 """
 import json
+import math
 
 from sqlalchemy.orm import Session
 
@@ -72,3 +73,120 @@ def is_space_rentable(db: Session, space_code: str) -> bool:
     if fixture is None:
         return True
     return fixture.get("rentable") is not False
+
+
+# ── Dónde queda el mueble, en palabras ───────────────────────────────────────
+#
+# El correo de montaje viaja a un celular y se abre en Gmail, que descarta el
+# SVG embebido; un PNG obligaría a rasterizar en el servidor —una dependencia
+# de imágenes para tres tiendas— y una imagen servida por la app pediría token.
+# El plano de verdad vive del otro lado del enlace, en la pantalla. Lo que sí
+# llega intacto a cualquier cliente de correo es el texto, así que el correo
+# lleva la ubicación escrita y la misma frase que el mercaderista va a ver
+# arriba del plano cuando toque el enlace.
+
+#: Muebles que sirven de referencia para alguien parado en la tienda. Son los
+#: que cualquiera ubica sin mirar un plano.
+_REFERENCIAS = {
+    "checkout": "las cajas",
+    "nevera_refrescos": "las neveras",
+    "nevera_carnes": "el mostrador de carnes",
+    "stand_frutas": "las frutas",
+}
+
+
+def _huella(fixture: dict) -> tuple[float, float]:
+    """Ancho y fondo vistos desde arriba, con el giro aplicado.
+
+    ``rotY`` está en RADIANES. Un mueble girado un cuarto de vuelta tiene el
+    ancho y el fondo intercambiados; espeja ``footprint2D`` del cliente.
+    """
+    w = float(fixture.get("w") or 0)
+    d = float(fixture.get("d") or 0)
+    r = (float(fixture.get("rotY") or 0) % math.pi + math.pi) % math.pi
+    return (d, w) if abs(r - math.pi / 2) < 0.15 else (w, d)
+
+
+def _fixtures_de_sede(db: Session, sede: str) -> list[dict]:
+    """Los muebles de UNA sede. Acotar a la sede no es un detalle: la
+    nomenclatura corta se repite entre tiendas, y buscar en todas devolvería el
+    mueble de la sede equivocada."""
+    target = (sede or "").strip().upper()
+    if not target:
+        return []
+    for snap in db.query(LayoutSnapshot).all():
+        if (snap.sede or "").strip().upper() != target:
+            continue
+        try:
+            fixtures = json.loads(snap.fixtures_json or "[]")
+        except (ValueError, TypeError):
+            return []
+        return [f for f in fixtures if isinstance(f, dict)]
+    return []
+
+
+def describe_location(db: Session, space_code: str, sede: str) -> str | None:
+    """Frase corta de ubicación, o None si no hay con qué armarla.
+
+    Devuelve algo como ``"A unos 4 m de las cajas"``. Espeja
+    ``describirUbicacion`` de ``frontend/src/components/MiniMapa/MiniMapa.tsx``:
+    si las dos frases no coinciden, el mercaderista lee una cosa en el correo y
+    otra en la pantalla.
+
+    Solo lee geometría —``cx``, ``cz`` y ``type``—: este correo es el que no
+    puede llevar plata, y el fixture crudo trae ``negotiatedValue``.
+    """
+    code = (space_code or "").strip().upper()
+    if not code:
+        return None
+    base = code[:-2] if code.endswith("-B") else code
+    sede_uc = (sede or "").strip().upper()
+
+    fixtures = _fixtures_de_sede(db, sede)
+    if not fixtures:
+        return None
+
+    target = None
+    for fixture in fixtures:
+        raw = str(fixture.get("code") or "").strip().upper()
+        if not raw:
+            continue
+        propia = str(fixture.get("sede") or sede_uc or "").strip()
+        if base in (_full_code(raw, propia), raw):
+            target = fixture
+            break
+    if target is None:
+        return None
+
+    try:
+        tx = float(target.get("cx"))
+        tz = float(target.get("cz"))
+        tw, td = _huella(target)
+    except (TypeError, ValueError):
+        return None
+
+    # De BORDE a borde, no de centro a centro. En NAVE la pared de refrigerados
+    # está dibujada como UN mueble de 26 metros de ancho: midiendo al centro, a
+    # una punta que está a 3 m de la nevera se le decía "a 8 m", y con esa frase
+    # se camina para el lado equivocado. Con los datos reales de esa sede, el
+    # centro se equivocaba en 11 de los 19 espacios alquilables.
+    mejor: tuple[str, float] | None = None
+    for fixture in fixtures:
+        frase = _REFERENCIAS.get(str(fixture.get("type") or ""))
+        if not frase or fixture is target:
+            continue
+        try:
+            ow, od = _huella(fixture)
+            dx = max(0.0, abs(float(fixture.get("cx")) - tx) - (ow + tw) / 2)
+            dz = max(0.0, abs(float(fixture.get("cz")) - tz) - (od + td) / 2)
+        except (TypeError, ValueError):
+            continue
+        dist = (dx * dx + dz * dz) ** 0.5
+        if mejor is None or dist < mejor[1]:
+            mejor = (frase, dist)
+
+    if mejor is None:
+        return None
+    if mejor[1] < 0.6:
+        return f"Pegado a {mejor[0]}"
+    return f"A unos {max(1, round(mejor[1]))} m de {mejor[0]}"

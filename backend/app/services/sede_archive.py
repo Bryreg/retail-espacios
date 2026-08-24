@@ -19,10 +19,18 @@ visible consequences:
 Archiving closes the lease, frees the unique code and keeps the row.
 """
 
+from datetime import datetime, timezone
+
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models.models import ArchivedSpace, Space, SpaceLease, SpaceStatus
+from app.models.models import (
+    ArchivedSpace,
+    MountConfirmation,
+    Space,
+    SpaceLease,
+    SpaceStatus,
+)
 
 
 def _spaces_of_sede(db: Session, sede: str) -> list[Space]:
@@ -46,6 +54,36 @@ def _spaces_of_sede(db: Session, sede: str) -> list[Space]:
     )
 
 
+def _archive_mount_confirmations(db: Session, sede: str) -> int:
+    """Stamp the sede's mount reports as archived. Returns how many were stamped.
+
+    They are not deleted: a mount confirmation is the evidence that what was
+    charged was actually built, and it is what answers a supplier months later.
+    But it has to stop counting, because a sede recreated under the same name
+    reuses the same space codes — and ``latestByCode`` on the client keys on the
+    code alone, so a brand new gondola would open already marked as mounted.
+
+    Matched the same two ways as the spaces: by the column, and by the code
+    prefix for the rows whose ``sede`` was never filled in.
+    """
+    target = sede.strip().upper()
+    if not target:
+        return 0
+    rows = (
+        db.query(MountConfirmation)
+        .filter(
+            MountConfirmation.archivado_en.is_(None),
+            (func.upper(func.trim(func.coalesce(MountConfirmation.sede, ""))) == target)
+            | (MountConfirmation.space_code.like(f"{target}-%")),
+        )
+        .all()
+    )
+    now = datetime.now(timezone.utc)
+    for row in rows:
+        row.archivado_en = now
+    return len(rows)
+
+
 def archive_sede_spaces(db: Session, sede: str) -> dict:
     """Archive every Space of ``sede``. Flushes but does not commit.
 
@@ -54,9 +92,14 @@ def archive_sede_spaces(db: Session, sede: str) -> dict:
 
     Returns a summary of what was archived.
     """
+    # Before the early return below: a "no pude montar" report never creates a
+    # Space row, so a sede can have confirmations to archive and no spaces.
+    mounts_archived = _archive_mount_confirmations(db, sede)
+
     spaces = _spaces_of_sede(db, sede)
     if not spaces:
-        return {"spaces": 0, "leases_closed": 0}
+        db.flush()
+        return {"spaces": 0, "leases_closed": 0, "mounts_archived": mounts_archived}
 
     already = {
         row.space_id
@@ -100,7 +143,11 @@ def archive_sede_spaces(db: Session, sede: str) -> dict:
         archived_count += 1
 
     db.flush()
-    return {"spaces": archived_count, "leases_closed": closed_count}
+    return {
+        "spaces": archived_count,
+        "leases_closed": closed_count,
+        "mounts_archived": mounts_archived,
+    }
 
 
 def count_commercial_rows(db: Session, sede: str) -> dict:
