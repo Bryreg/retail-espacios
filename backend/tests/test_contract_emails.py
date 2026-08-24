@@ -183,3 +183,49 @@ def test_a_space_with_no_fixture_still_sends_the_email(client, admin, enviados):
     montaje = _por_destinatario(enviados, "merca@galerias.co")
     assert montaje is not None
     assert "Dónde queda" not in _texto(montaje["html"])
+
+
+def test_the_location_is_measured_edge_to_edge(client, admin, enviados):
+    """En NAVE la pared de refrigerados está dibujada como UN mueble de 26 m de
+    ancho. Midiendo de centro a centro, a una punta pegada a la nevera se le
+    decía "a 13 m", y con esa frase se camina para el lado equivocado."""
+    pared = {
+        "id": "n1", "code": "NEV-01", "nomenclatura": "NEV-01", "sede": "NAVE",
+        "type": "nevera_refrescos", "label": "Refrigerados", "rentable": False,
+        # 26 m de ancho: su centro queda lejísimos de sus propios extremos.
+        "cx": 0.0, "cz": 12.0, "rotY": 0, "w": 26.0, "d": 1.2, "h": 2.0,
+        "color": "#1e293b", "status": "free", "supplierName": "",
+        "brandCategory": "", "negotiatedValue": 0, "startDate": "",
+        "endDate": "", "observation": "",
+    }
+    # La punta está a 2 m de la pared, pero a 13 m de su centro.
+    punta = dict(FIXTURES[0], cx=13.0, cz=9.4)
+    client.put(
+        "/api/layout/NAVE",
+        json={"fixtures": [punta, pared], "base_updated_at": None},
+        headers=admin,
+    )
+    client.put(
+        "/api/notifications/contacts",
+        json={"gerente": [], "by_sede": {"NAVE": {"mercaderista": ["merca@galerias.co"]}}},
+        headers=admin,
+    )
+    r = client.post(
+        "/api/spaces/find-or-create",
+        json={"code": "NAVE-PUN-01", "name": "Punta", "zone": "Z",
+              "sede": "NAVE", "area_m2": 0.6},
+        headers=admin,
+    )
+    sup = client.post("/api/suppliers/find-or-create", json={"name": "N"}, headers=admin).json()
+    hoy = date.today()
+    r2 = client.post(
+        f"/api/spaces/{r.json()['id']}/leases",
+        json={"supplier_id": sup["id"], "marca": "M",
+              "start_date": hoy.isoformat(),
+              "end_date": (hoy + timedelta(days=5)).isoformat(),
+              "monthly_rent": 100_000},
+        headers=admin,
+    )
+    assert r2.status_code == 201, r2.text
+    texto = _texto(_por_destinatario(enviados, "merca@galerias.co")["html"])
+    assert "2 m de las neveras" in texto, texto

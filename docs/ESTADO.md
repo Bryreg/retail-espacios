@@ -261,6 +261,16 @@ el mueble de la sede equivocada. Si el mueble no está en el layout —contrato 
 espacio que después se borró del plano— el mapa se omite entero en vez de mostrar uno que
 no señala nada.
 
+**La distancia se mide de borde a borde, nunca de centro a centro.** No es una sutileza de
+implementación: en NAVE la pared de refrigerados está dibujada como UN mueble de 26 m de
+ancho, así que su centro queda a media tienda de sus propios extremos. Midiendo al centro,
+a una punta que está a 3 m de la nevera se le decía "a 8 m" — y con esa frase se camina
+para el lado equivocado. Con los datos reales de NAVE, el centro se equivocaba en **11 de
+los 19** espacios alquilables. Por lo mismo el encuadre del plano usa la huella de cada eje
+por separado: usar `max(w, d)` para los dos lados —que parecía lo seguro— inflaba el
+recinto al doble de alto por culpa de ese mismo mueble, y dibujaba todo más chico de lo
+necesario justo donde hay que encontrar una punta de 90 cm.
+
 El correo de montaje lleva la ubicación **escrita**, no dibujada: Gmail descarta el SVG
 embebido, un PNG obligaría a rasterizar en el servidor y una imagen servida por la app
 pediría token. El texto llega intacto a cualquier cliente, y el plano vive del otro lado
@@ -326,6 +336,44 @@ Los tres se encontraron levantando la app contra datos sembrados, no leyendo có
   y subía la pérdida.
 - **El proxy de Vite quitaba el prefijo `/api`** que el backend sí monta, así que
   `npm run dev` nunca pudo hablar con un backend local.
+
+---
+
+### Qué hay de verdad en los planos (agosto 2026)
+
+Medido contra producción, porque el mapa del montaje vale lo que valga la fidelidad del
+plano y eso no se puede suponer:
+
+| Sede | Muebles |
+|---|---|
+| NAVE | 104 |
+| POBLADO | 104 |
+| CENTRO | 48 |
+| NORTE | 6 |
+| ciudad jardin | 1 |
+| TERRON | **0** |
+| SUR | 0 |
+
+**NAVE está a escala, y bien.** Huella de 42,4 × 15,8 m (669 m²), con los muebles ocupando
+el 29 % del recinto — proporción normal de un supermercado con sus pasillos. El 92 % de los
+muebles tiene medidas propias, no la del catálogo: alguien midió. Las coordenadas caen en
+la grilla de 5 cm del editor (86 %) y **ninguna** en metros enteros, que es la firma de un
+plano medido y no de uno acomodado para que se vea lindo. Solo 2 pares de góndolas se pisan
+(GON-46/GON-48 y GON-60/GON-67) y no hay muebles apilados en la misma coordenada.
+
+Dos cosas que conviene saber antes de tocar el mapa:
+
+- **Los muebles largos se dibujaron como uno solo.** La pared de refrigerados es un único
+  `nevera_refrescos` de 26,05 m; hay otro de 10,05 m y un `nevera_carnes` de 6,05 m. Es una
+  representación razonable de una corrida continua, pero rompe cualquier cálculo que trate
+  al mueble como un punto.
+- **Hay 12 muebles de referencia** en NAVE (5 cajas, 3 neveras de refrescos, 3 stands de
+  frutas, 1 mostrador de carnes), así que la frase de ubicación y las etiquetas del mapa
+  tienen de dónde salir. En una sede donde solo se dibuje lo alquilable no habría ninguna:
+  ahí el mapa sigue funcionando, pero sin etiquetas ni frase.
+
+De los 104 muebles de NAVE, **19 son comercializables**. El resto es infraestructura, que es
+justo lo que hace legible el mapa: contexto en gris y todo el color en el destino.
 
 ---
 

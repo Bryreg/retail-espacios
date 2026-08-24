@@ -11,6 +11,7 @@ This module bridges the two so the API can refuse a contract on a fixture the
 user marked as infrastructure.
 """
 import json
+import math
 
 from sqlalchemy.orm import Session
 
@@ -94,6 +95,18 @@ _REFERENCIAS = {
 }
 
 
+def _huella(fixture: dict) -> tuple[float, float]:
+    """Ancho y fondo vistos desde arriba, con el giro aplicado.
+
+    ``rotY`` está en RADIANES. Un mueble girado un cuarto de vuelta tiene el
+    ancho y el fondo intercambiados; espeja ``footprint2D`` del cliente.
+    """
+    w = float(fixture.get("w") or 0)
+    d = float(fixture.get("d") or 0)
+    r = (float(fixture.get("rotY") or 0) % math.pi + math.pi) % math.pi
+    return (d, w) if abs(r - math.pi / 2) < 0.15 else (w, d)
+
+
 def _fixtures_de_sede(db: Session, sede: str) -> list[dict]:
     """Los muebles de UNA sede. Acotar a la sede no es un detalle: la
     nomenclatura corta se repite entre tiendas, y buscar en todas devolvería el
@@ -148,17 +161,24 @@ def describe_location(db: Session, space_code: str, sede: str) -> str | None:
     try:
         tx = float(target.get("cx"))
         tz = float(target.get("cz"))
+        tw, td = _huella(target)
     except (TypeError, ValueError):
         return None
 
+    # De BORDE a borde, no de centro a centro. En NAVE la pared de refrigerados
+    # está dibujada como UN mueble de 26 metros de ancho: midiendo al centro, a
+    # una punta que está a 3 m de la nevera se le decía "a 8 m", y con esa frase
+    # se camina para el lado equivocado. Con los datos reales de esa sede, el
+    # centro se equivocaba en 11 de los 19 espacios alquilables.
     mejor: tuple[str, float] | None = None
     for fixture in fixtures:
         frase = _REFERENCIAS.get(str(fixture.get("type") or ""))
         if not frase or fixture is target:
             continue
         try:
-            dx = float(fixture.get("cx")) - tx
-            dz = float(fixture.get("cz")) - tz
+            ow, od = _huella(fixture)
+            dx = max(0.0, abs(float(fixture.get("cx")) - tx) - (ow + tw) / 2)
+            dz = max(0.0, abs(float(fixture.get("cz")) - tz) - (od + td) / 2)
         except (TypeError, ValueError):
             continue
         dist = (dx * dx + dz * dz) ** 0.5
@@ -167,7 +187,6 @@ def describe_location(db: Session, space_code: str, sede: str) -> str | None:
 
     if mejor is None:
         return None
-    metros = round(mejor[1])
-    if metros <= 1:
+    if mejor[1] < 0.6:
         return f"Pegado a {mejor[0]}"
-    return f"A unos {metros} m de {mejor[0]}"
+    return f"A unos {max(1, round(mejor[1]))} m de {mejor[0]}"

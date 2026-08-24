@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { isRentable, type UnifiedFixture } from "../../types/fixtures";
+import { footprint2D, isRentable, type UnifiedFixture } from "../../types/fixtures";
 
 /**
  * El plano de la tienda visto desde arriba, con UN mueble señalado.
@@ -44,18 +44,25 @@ export interface MiniMapaProps {
  *  quedaba de cuatro píxeles. El mapa se veía; no se podía usar. El tope de
  *  arriba existe porque abajo del mapa todavía tienen que caber los dos
  *  botones grandes sin hacer scroll. */
-const ALTO_MIN = 150;
+const ALTO_MIN = 125;
 const ALTO_MAX = 320;
 
 interface Caja {
   f: UnifiedFixture;
   x: number;
   y: number;
+  /** Ya con el giro aplicado, igual que el plano 2D: se intercambian ancho y
+   *  fondo en vez de rotar el rectángulo, para que las dos vistas dibujen la
+   *  misma huella. */
   w: number;
   h: number;
-  deg: number;
   destino: boolean;
   color: string;
+}
+
+/** Huella vista desde arriba, con el giro aplicado. */
+function huellaDe(f: { w: number; d: number; rotY?: number }): { w: number; d: number } {
+  return footprint2D(f);
 }
 
 /** Describe en palabras dónde queda el mueble, para quien no mire el dibujo.
@@ -68,18 +75,31 @@ export function describirUbicacion(
   const target = fixtures.find((f) => f.code.toUpperCase() === code);
   if (!target) return null;
 
-  // La referencia más cercana que un humano reconozca sin plano.
+  // La referencia más cercana que un humano reconozca sin plano, medida de
+  // BORDE a borde y no de centro a centro.
+  //
+  // No es una sutileza: en NAVE la pared de refrigerados está dibujada como UN
+  // mueble de 26 metros de ancho. Midiendo al centro, a una punta que está a
+  // 3 m de la nevera se le decía "a 8 m", y con esa frase se camina para el
+  // lado equivocado. Con datos reales, medir al centro se equivocaba en 11 de
+  // los 19 espacios alquilables de esa sede.
+  const t = huellaDe(target);
   let mejor: { frase: string; dist: number } | null = null;
   for (const f of fixtures) {
     if (f.id === target.id) continue;
     const ref = REFERENCIAS[f.type];
     if (!ref) continue;
-    const dist = Math.hypot(f.cx - target.cx, f.cz - target.cz);
+    const o = huellaDe(f);
+    const dx = Math.max(0, Math.abs(f.cx - target.cx) - (o.w + t.w) / 2);
+    const dz = Math.max(0, Math.abs(f.cz - target.cz) - (o.d + t.d) / 2);
+    const dist = Math.hypot(dx, dz);
     if (!mejor || dist < mejor.dist) mejor = { frase: ref.frase, dist };
   }
   if (!mejor) return null;
-  const metros = Math.round(mejor.dist);
-  if (metros <= 1) return `Pegado a ${mejor.frase}`;
+  // Ahora la distancia es el hueco real entre los dos muebles, así que
+  // "pegado" quiere decir pegado.
+  if (mejor.dist < 0.6) return `Pegado a ${mejor.frase}`;
+  const metros = Math.max(1, Math.round(mejor.dist));
   return `A unos ${metros} m de ${mejor.frase}`;
 }
 
@@ -94,11 +114,21 @@ export default function MiniMapa({
 
     // Encuadre: todo lo que hay en la sede, más un metro de aire para que
     // nada quede pegado al borde.
+    // Cada eje con SU medida, no con la mayor de las dos. Usar max(w, d) para
+    // los dos lados parecía la opción segura y en NAVE infla el recinto casi al
+    // doble de alto: la pared de refrigerados mide 26 m de ancho, así que
+    // aportaba 13 m de margen también hacia arriba y hacia abajo. El plano
+    // terminaba dibujado en la mitad del cuadro, con todo más chico de lo
+    // necesario justo donde hay que encontrar una punta de 90 cm.
     const M = 1;
-    const minX = Math.min(...fixtures.map((f) => f.cx - Math.max(f.w, f.d) / 2)) - M;
-    const maxX = Math.max(...fixtures.map((f) => f.cx + Math.max(f.w, f.d) / 2)) + M;
-    const minZ = Math.min(...fixtures.map((f) => f.cz - Math.max(f.w, f.d) / 2)) - M;
-    const maxZ = Math.max(...fixtures.map((f) => f.cz + Math.max(f.w, f.d) / 2)) + M;
+    const cajas0 = fixtures.map((f) => {
+      const fp = footprint2D(f);
+      return { x0: f.cx - fp.w / 2, x1: f.cx + fp.w / 2, z0: f.cz - fp.d / 2, z1: f.cz + fp.d / 2 };
+    });
+    const minX = Math.min(...cajas0.map((c) => c.x0)) - M;
+    const maxX = Math.max(...cajas0.map((c) => c.x1)) + M;
+    const minZ = Math.min(...cajas0.map((c) => c.z0)) - M;
+    const maxZ = Math.max(...cajas0.map((c) => c.z1)) + M;
 
     const anchoM = Math.max(maxX - minX, 0.1);
     const fondoM = Math.max(maxZ - minZ, 0.1);
@@ -122,15 +152,15 @@ export default function MiniMapa({
     let destino: Caja | null = null;
     const cajas: Caja[] = fixtures.map((f) => {
       const esDestino = f.code.toUpperCase() === code;
-      const w = Math.max(f.w * escala, 3);
-      const h = Math.max(f.d * escala, 3);
+      const fp = footprint2D(f);
+      const w = Math.max(fp.w * escala, 3);
+      const h = Math.max(fp.d * escala, 3);
       const caja: Caja = {
         f,
         x: px(f.cx) - w / 2,
         y: py(f.cz) - h / 2,
         w,
         h,
-        deg: ((f.rotY ?? 0) * 180) / Math.PI,
         destino: esDestino,
         color: esDestino
           ? "var(--accent)"
@@ -144,13 +174,24 @@ export default function MiniMapa({
 
     // Etiquetas de referencia: una sola por tipo, sobre el grupo más grande.
     // Repetir "Cajas" cinco veces sobre cinco cajas no orienta, ensucia.
-    const etiquetas: { x: number; y: number; texto: string }[] = [];
+    const etiquetas: { x: number; y: number; texto: string; ancho: number }[] = [];
     for (const [tipo, ref] of Object.entries(REFERENCIAS)) {
       const grupo = fixtures.filter((f) => f.type === tipo);
       if (grupo.length === 0) continue;
       const cx = grupo.reduce((a, f) => a + f.cx, 0) / grupo.length;
       const cz = grupo.reduce((a, f) => a + f.cz, 0) / grupo.length;
-      etiquetas.push({ x: px(cx), y: py(cz), texto: ref.corto });
+      const x = px(cx);
+      const y = py(cz);
+      // Una etiqueta encima de otra no orienta a nadie: en NAVE "CARNES" y
+      // "NEVERAS" caían en el mismo lugar y se leían como una sola palabra.
+      // Ante choque gana la primera y la segunda no se dibuja: el mapa igual
+      // muestra el mueble, y una referencia clara vale más que dos ilegibles.
+      const ancho = ref.corto.length * 5 + 6;
+      const choca = etiquetas.some(
+        (e) => Math.abs(e.x - x) < (ancho + e.ancho) / 2 && Math.abs(e.y - y) < 11,
+      );
+      if (choca) continue;
+      etiquetas.push({ x, y, texto: ref.corto, ancho });
     }
 
     return { cajas, destino: destino as Caja | null, etiquetas, height };
@@ -184,7 +225,6 @@ export default function MiniMapa({
             rx={1.5}
             fill={c.color}
             opacity={0.55}
-            transform={`rotate(${c.deg} ${c.x + c.w / 2} ${c.y + c.h / 2})`}
           />
         ))}
 
@@ -232,7 +272,6 @@ export default function MiniMapa({
             height={destino.h}
             rx={1.5}
             fill="var(--accent)"
-            transform={`rotate(${destino.deg} ${destino.x + destino.w / 2} ${destino.y + destino.h / 2})`}
           />
           {/* La etiqueta va sobre una pastilla opaca: sin fondo se montaba
               encima de los muebles vecinos y se volvía ilegible justo en la
