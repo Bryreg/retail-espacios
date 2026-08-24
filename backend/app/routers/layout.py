@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
@@ -22,9 +22,14 @@ SEDES_KEY = "layout_sedes"
 CATALOG_LABELS_KEY = "layout_catalog_labels"
 SETTINGS_UPDATED_KEY = "layout_settings_updated_at"
 
-# Clocks and serialisation round-trips cost sub-second precision, so a write is
-# only treated as conflicting when the stored revision is meaningfully newer.
-CONFLICT_TOLERANCE = timedelta(seconds=1)
+# Revisions are compared exactly: the client echoes back verbatim the string it
+# received, and the JSON round-trip preserves microseconds. Sub-millisecond
+# truncation is the only slack allowed, in case a backend ever rounds. An
+# earlier version tolerated a whole second, which silently accepted a stale
+# write made inside that window — exactly the overwrite this check exists to
+# prevent.
+def _truncate_ms(value: datetime) -> datetime:
+    return value.replace(microsecond=(value.microsecond // 1000) * 1000)
 
 
 def _to_out(snap: LayoutSnapshot) -> LayoutOut:
@@ -59,6 +64,65 @@ def _redact_fixtures_for_worker(fixtures: list) -> None:
             for slot in fixture.get("slots") or []:
                 if isinstance(slot, dict):
                     slot.pop("negotiatedValue", None)
+
+
+def _price_map(fixtures: list) -> dict:
+    """Index the stored negotiated amounts by fixture id.
+
+    Shape: {fixture_id: {"top": value, "faceB": value, "slots": {slot_id: value}}}
+    """
+    index: dict = {}
+    for fixture in fixtures:
+        if not isinstance(fixture, dict) or not fixture.get("id"):
+            continue
+        entry: dict = {}
+        if "negotiatedValue" in fixture:
+            entry["top"] = fixture["negotiatedValue"]
+        face_b = fixture.get("faceB")
+        if isinstance(face_b, dict) and "negotiatedValue" in face_b:
+            entry["faceB"] = face_b["negotiatedValue"]
+        slots = {}
+        for slot in fixture.get("slots") or []:
+            if isinstance(slot, dict) and slot.get("id") and "negotiatedValue" in slot:
+                slots[slot["id"]] = slot["negotiatedValue"]
+        if slots:
+            entry["slots"] = slots
+        if entry:
+            index[fixture["id"]] = entry
+    return index
+
+
+def _restore_missing_prices(incoming: list, stored: list) -> None:
+    """Refill negotiated amounts the client did not send, in place.
+
+    Worker responses have every ``negotiatedValue`` stripped server-side. Only
+    an admin may write, so a redacted payload should never come back — but if
+    one ever did, silently zeroing every contract in a sede would be
+    unrecoverable. An ABSENT key is refilled from the stored snapshot; an
+    explicit value (including 0) is a real edit and is always honoured.
+    """
+    if not stored:
+        return
+    index = _price_map(stored)
+    if not index:
+        return
+    for fixture in incoming:
+        if not isinstance(fixture, dict):
+            continue
+        entry = index.get(fixture.get("id"))
+        if not entry:
+            continue
+        if "top" in entry and "negotiatedValue" not in fixture:
+            fixture["negotiatedValue"] = entry["top"]
+        face_b = fixture.get("faceB")
+        if isinstance(face_b, dict) and "faceB" in entry and "negotiatedValue" not in face_b:
+            face_b["negotiatedValue"] = entry["faceB"]
+        for slot in fixture.get("slots") or []:
+            if not isinstance(slot, dict):
+                continue
+            value = (entry.get("slots") or {}).get(slot.get("id"))
+            if value is not None and "negotiatedValue" not in slot:
+                slot["negotiatedValue"] = value
 
 
 def _no_store(response: Response) -> None:
@@ -172,7 +236,7 @@ def save_layout(sede: str, payload: LayoutIn, db: Session = Depends(get_db)):
     if snap and payload.base_updated_at is not None:
         stored = _as_utc(snap.updated_at)
         base = _as_utc(payload.base_updated_at)
-        if stored and base and stored - base > CONFLICT_TOLERANCE:
+        if stored and base and _truncate_ms(stored) != _truncate_ms(base):
             raise HTTPException(
                 status_code=409,
                 detail={
@@ -185,14 +249,35 @@ def save_layout(sede: str, payload: LayoutIn, db: Session = Depends(get_db)):
                 },
             )
 
+    fixtures = payload.fixtures
     if snap:
-        snap.fixtures_json = json.dumps(payload.fixtures)
+        try:
+            previous = json.loads(snap.fixtures_json or "[]")
+        except (ValueError, TypeError):
+            previous = []
+        _restore_missing_prices(fixtures, previous)
+        snap.fixtures_json = json.dumps(fixtures)
         # fixtures_json is unchanged when a client re-saves identical data, and
         # SQLAlchemy would then skip the UPDATE and leave updated_at stale.
         snap.updated_at = datetime.now(timezone.utc)
     else:
-        snap = LayoutSnapshot(sede=sede, fixtures_json=json.dumps(payload.fixtures))
+        snap = LayoutSnapshot(sede=sede, fixtures_json=json.dumps(fixtures))
         db.add(snap)
     db.commit()
     db.refresh(snap)
     return _to_out(snap)
+
+
+@router.delete("/{sede}", status_code=204, dependencies=[Depends(require_admin)])
+def delete_layout(sede: str, db: Session = Depends(get_db)):
+    """Drop a sede's snapshot entirely.
+
+    Without this, removing a sede only took it out of the shared list while its
+    snapshot lived on, so every other workstation kept downloading the fixtures
+    of a sede that no longer exists.
+    """
+    snap = db.query(LayoutSnapshot).filter(LayoutSnapshot.sede == sede).first()
+    if snap:
+        db.delete(snap)
+        db.commit()
+    return Response(status_code=204)
