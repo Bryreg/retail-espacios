@@ -106,6 +106,35 @@ class SpaceFile(Base):
     uploaded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+class ArchivedSpace(Base):
+    """A Space whose sede was deleted from the floor plan.
+
+    Deleting a sede drops its layout, but the rows in ``spaces`` and
+    ``space_leases`` are commercial history and are not deleted with it. They
+    are archived instead, which does three things the plain delete did not:
+
+    · the active lease is closed, so expiry reminder emails stop going out for
+      a sede nobody can see any more;
+    · the space's unique ``code`` is freed, so a sede recreated under the same
+      name starts clean instead of inheriting the previous one's contracts
+      through ``find_or_create_space``, which matches on code alone;
+    · ``original_code`` keeps the name the space had, so the history stays
+      readable.
+
+    This is a new table on purpose. The schema is created with
+    ``Base.metadata.create_all()``, which creates missing tables but never adds
+    a column to an existing one, so an ``archived`` flag on ``spaces`` would
+    silently never appear on the deployed database.
+    """
+    __tablename__ = "archived_spaces"
+
+    id = Column(Integer, primary_key=True, index=True)
+    space_id = Column(Integer, ForeignKey("spaces.id"), nullable=False, unique=True, index=True)
+    sede = Column(String, nullable=False, index=True)
+    original_code = Column(String, nullable=False)
+    archived_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class NotificationLog(Base):
     """Deduplication log for sent notifications (one row per lease + kind)."""
     __tablename__ = "notification_logs"
