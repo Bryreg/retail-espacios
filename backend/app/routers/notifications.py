@@ -1,11 +1,12 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth import get_config, require_admin, require_auth, set_config
 from app.database import get_db
+from app.services.contacts import get_contacts, recipients_for, save_contacts
 from app.services.mailer import html_shell, send_mail, smtp_configured
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -21,6 +22,27 @@ class NotificationConfigOut(BaseModel):
 class NotificationConfigIn(BaseModel):
     notify_emails: Optional[str] = None
     reminder_days: Optional[str] = None
+
+
+class SedeContacts(BaseModel):
+    """Quién recibe aviso en una sede. El mercaderista nunca recibe valores."""
+    admin: list[str] = Field(default=[], max_length=20)
+    mercaderista: list[str] = Field(default=[], max_length=20)
+
+
+class ContactBook(BaseModel):
+    """El gerente operacional supervisa a los administradores, así que es uno
+    solo para todas las sedes y recibe todo lo comercial."""
+    gerente: list[str] = Field(default=[], max_length=20)
+    by_sede: dict[str, SedeContacts] = Field(default={})
+
+
+class RecipientPreview(BaseModel):
+    """A quién le llegaría el aviso de un contrato en esta sede."""
+    sede: Optional[str] = None
+    comercial: list[str] = []
+    montaje: list[str] = []
+    smtp_listo: bool = False
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
@@ -51,6 +73,51 @@ def update_notification_config(payload: NotificationConfigIn, db: Session = Depe
 
     db.commit()
     return get_notification_config(db)
+
+
+# ─── Contact book ─────────────────────────────────────────────────────────────
+# Route order: literal paths only in this router, no catch-all, so order is
+# free. Admin-only in both directions: these are staff addresses.
+
+
+@router.get("/contacts", response_model=ContactBook, dependencies=[Depends(require_admin)])
+def read_contacts(db: Session = Depends(get_db)):
+    book = get_contacts(db)
+    return ContactBook(
+        gerente=book["gerente"],
+        by_sede={s: SedeContacts(**roles) for s, roles in book["by_sede"].items()},
+    )
+
+
+@router.put("/contacts", response_model=ContactBook, dependencies=[Depends(require_admin)])
+def write_contacts(payload: ContactBook, db: Session = Depends(get_db)):
+    saved = save_contacts(
+        db,
+        payload.gerente,
+        {s: r.model_dump() for s, r in payload.by_sede.items()},
+    )
+    db.commit()
+    return ContactBook(
+        gerente=saved["gerente"],
+        by_sede={s: SedeContacts(**roles) for s, roles in saved["by_sede"].items()},
+    )
+
+
+@router.get("/recipients", response_model=RecipientPreview, dependencies=[Depends(require_admin)])
+def preview_recipients(sede: Optional[str] = None, db: Session = Depends(get_db)):
+    """Quién recibiría el aviso si se guardara un contrato en esta sede.
+
+    Existe para que el panel lo muestre ANTES de guardar: cerrar una llamada
+    creyendo que se avisó al mercaderista y que no se haya avisado a nadie es
+    el modo de falla que vuelve inútil a la herramienta.
+    """
+    who = recipients_for(db, sede)
+    return RecipientPreview(
+        sede=sede,
+        comercial=who["comercial"],
+        montaje=who["montaje"],
+        smtp_listo=smtp_configured(),
+    )
 
 
 @router.post("/test", dependencies=[Depends(require_admin)])

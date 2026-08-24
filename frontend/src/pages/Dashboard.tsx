@@ -10,7 +10,11 @@ import {
   getNotificationConfig,
   updateNotificationConfig,
   sendTestNotification,
+  getContacts,
+  saveContacts,
+  type ContactBook,
 } from "../api/auth";
+import { useFixtureStore } from "../store/fixtureStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -108,6 +112,137 @@ function FeedbackNote({ msg }: { msg: Feedback }) {
   );
 }
 
+/** Comma-separated text ⇄ address list. The book is typed by hand by one
+ *  person, so a text field beats any chip widget for the amount of editing
+ *  this actually gets — once a year, when someone changes job. */
+const asText = (list?: string[]) => (list ?? []).join(", ");
+const asList = (text: string) =>
+  text.split(",").map((s) => s.trim()).filter(Boolean);
+
+/** Who gets told when a contract is saved.
+ *
+ *  Split by role because the messages differ, not just the addresses: the
+ *  merchandiser receives a work order with no money in it. Before this, one
+ *  global list got a single email carrying the negotiated value — which handed
+ *  prices to the person whose job is to mount the display. */
+function ContactsSection({ sedes }: { sedes: string[] }) {
+  const [book, setBook] = useState<ContactBook | null>(null);
+  const [msg, setMsg] = useState<Feedback>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    getContacts()
+      .then(setBook)
+      .catch(() => setMsg({ ok: false, text: "No se pudo cargar la libreta de contactos." }));
+  }, []);
+
+  if (!book) {
+    return (
+      <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }}>
+        <div style={sectionLabelStyle}>Quién recibe los avisos</div>
+        <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Cargando…</div>
+      </div>
+    );
+  }
+
+  const setSedeRole = (sede: string, role: "admin" | "mercaderista", text: string) =>
+    setBook({
+      ...book,
+      by_sede: {
+        ...book.by_sede,
+        [sede]: {
+          admin: book.by_sede[sede]?.admin ?? [],
+          mercaderista: book.by_sede[sede]?.mercaderista ?? [],
+          [role]: asList(text),
+        },
+      },
+    });
+
+  const save = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      setBook(await saveContacts(book));
+      setMsg({ ok: true, text: "Contactos guardados." });
+    } catch {
+      setMsg({ ok: false, text: "No se pudieron guardar los contactos." });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }}>
+      <div style={sectionLabelStyle}>Quién recibe los avisos</div>
+      <p style={{ fontSize: 11.5, color: "var(--ink-2)", margin: "-4px 0 12px", lineHeight: 1.5 }}>
+        Al guardar un contrato sale un aviso por rol. El gerente y el administrador de la
+        sede reciben el resumen comercial con el valor; el mercaderista recibe la orden de
+        montaje <strong>sin valores</strong>. Varios correos separados por coma.
+      </p>
+
+      <div style={{ marginBottom: 12 }}>
+        <label style={fieldLabelStyle}>Gerente operacional · recibe todas las sedes</label>
+        <input
+          type="text"
+          value={asText(book.gerente)}
+          onChange={(e) => setBook({ ...book, gerente: asList(e.target.value) })}
+          placeholder="gerente@empresa.com"
+          style={inputStyle}
+        />
+      </div>
+
+      {sedes.map((sede) => (
+        <div
+          key={sede}
+          style={{
+            marginBottom: 10, padding: "10px 12px",
+            border: "1px solid var(--line)", borderRadius: "var(--r-md)",
+            background: "var(--surface-2)",
+          }}
+        >
+          <div
+            style={{
+              fontFamily: "var(--font-mono)", fontSize: 11.5, fontWeight: 600,
+              color: "var(--ink-1)", marginBottom: 8,
+            }}
+          >
+            {sede}
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            <div>
+              <label style={fieldLabelStyle}>Administrador de sede</label>
+              <input
+                type="text"
+                value={asText(book.by_sede[sede]?.admin)}
+                onChange={(e) => setSedeRole(sede, "admin", e.target.value)}
+                placeholder="admin.sede@empresa.com"
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label style={fieldLabelStyle}>Mercaderista · sin valores</label>
+              <input
+                type="text"
+                value={asText(book.by_sede[sede]?.mercaderista)}
+                onChange={(e) => setSedeRole(sede, "mercaderista", e.target.value)}
+                placeholder="mercaderista@empresa.com"
+                style={inputStyle}
+              />
+            </div>
+          </div>
+        </div>
+      ))}
+
+      <div style={{ marginTop: 12 }}>
+        <ActionButton onClick={save} disabled={busy} primary>
+          {busy ? "Guardando…" : "Guardar contactos"}
+        </ActionButton>
+      </div>
+      <FeedbackNote msg={msg} />
+    </div>
+  );
+}
+
 function SettingsModal({ onClose }: { onClose: () => void }) {
   // Passwords
   const [adminPw, setAdminPw] = useState("");
@@ -122,6 +257,10 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
   const [testMsg, setTestMsg] = useState<Feedback>(null);
 
   const [busy, setBusy] = useState<"pw" | "cfg" | "test" | null>(null);
+
+  // The contact book is keyed by sede, so it needs the same list the rest of
+  // the app uses rather than a second one that could drift out of step.
+  const sedes = useFixtureStore((s) => s.sedes);
 
   useEffect(() => {
     getNotificationConfig()
@@ -312,6 +451,8 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
             </>
           )}
         </div>
+
+        <ContactsSection sedes={sedes} />
       </div>
     </div>
   );

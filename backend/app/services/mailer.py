@@ -71,6 +71,67 @@ def html_shell(title: str, rows: list[tuple[str, str]], footer: str = "") -> str
 
 # ─── Sending ──────────────────────────────────────────────────────────────────
 
+def clean_recipients(values) -> list[str]:
+    """Keep plausible addresses, de-duplicated, order preserved.
+
+    Deliberately loose — this is an internal address book typed by hand, not a
+    signup form. The only thing worth rejecting is what would make the SMTP
+    envelope invalid.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in values or []:
+        if not isinstance(raw, str):
+            continue
+        addr = raw.strip()
+        if not addr or "@" not in addr or " " in addr:
+            continue
+        key = addr.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(addr)
+    return out
+
+
+def send_mail_to(recipients: list[str], subject: str, html_body: str) -> bool:
+    """Send one HTML email to an explicit recipient list.
+
+    Split out from ``send_mail`` because a contract now produces DIFFERENT
+    messages for different people — the merchandiser gets a work order with no
+    money in it — so the recipients can no longer come from one global config
+    key.
+    """
+    recipients = clean_recipients(recipients)
+    if not recipients:
+        logger.info("Correo omitido (%s): sin destinatarios", subject)
+        return False
+
+    settings = smtp_settings()
+    if not settings["user"] or not settings["password"]:
+        logger.info("Correo omitido (%s): faltan SMTP_USER / SMTP_PASSWORD", subject)
+        return False
+
+    try:
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = settings["mail_from"]
+        msg["To"] = ", ".join(recipients)
+        msg.set_content("Este mensaje contiene contenido HTML. Use un cliente de correo compatible.")
+        msg.add_alternative(html_body, subtype="html")
+
+        with smtplib.SMTP(settings["host"], settings["port"], timeout=30) as smtp:
+            smtp.starttls()
+            smtp.login(settings["user"], settings["password"])
+            smtp.send_message(msg)
+
+        logger.info("Correo enviado (%s) a %s", subject, ", ".join(recipients))
+        return True
+    except Exception:
+        logger.exception("Error enviando correo (%s)", subject)
+        return False
+
+
 def send_mail(db: Session, subject: str, html_body: str) -> bool:
     """Send an HTML email to the configured recipients. Returns True on success.
 
@@ -106,6 +167,15 @@ def send_mail(db: Session, subject: str, html_body: str) -> bool:
     except Exception:
         logger.exception("Error enviando correo (%s)", subject)
         return False
+
+
+def send_mail_to_bg(recipients: list[str], subject: str, html_body: str) -> None:
+    """Entry point for FastAPI BackgroundTasks with explicit recipients.
+
+    Needs no DB session: the addresses were already resolved while handling the
+    request, which also means the caller could show them to the user first.
+    """
+    send_mail_to(recipients, subject, html_body)
 
 
 def send_mail_bg(subject: str, html_body: str) -> None:

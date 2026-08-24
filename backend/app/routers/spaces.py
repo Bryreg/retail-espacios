@@ -8,8 +8,9 @@ from app.auth import require_admin, require_auth
 from app.database import get_db
 from app.models.models import Space, SpaceFile, SpaceLease, Supplier, SpaceStatus
 from app.schemas.spaces import SpaceOut, SpaceCreate, SpaceStatusUpdate, LeaseCreate, LeaseOut, SpaceMapItem, SpaceFindOrCreate
+from app.services.contacts import recipients_for
 from app.services.layout_lookup import is_space_rentable
-from app.services.mailer import format_cop, html_shell, send_mail_bg
+from app.services.mailer import format_cop, html_shell, send_mail_to_bg
 
 # Every route requires a valid token; mutations additionally require admin.
 router = APIRouter(prefix="/spaces", tags=["spaces"], dependencies=[Depends(require_auth)])
@@ -302,20 +303,67 @@ def create_lease(space_id: int, payload: LeaseCreate, background_tasks: Backgrou
     db.commit()
     db.refresh(lease)
 
-    # Email notification — sent after the response, best-effort (never blocks the request)
-    duration_days = (lease.end_date - lease.start_date).days
-    subject = f"Nuevo contrato — {space.code}"
-    rows = [
-        ("Sede", space.sede or "—"),
-        ("Espacio", f"{space.code} — {space.name}"),
-        ("Proveedor", supplier.name),
-        ("Marca", lease.marca or "—"),
-        ("Inicio", str(lease.start_date)),
-        ("Fin", str(lease.end_date)),
-        ("Valor mensual", format_cop(lease.monthly_rent)),
-        ("Duración", f"{duration_days} días"),
-    ]
-    background_tasks.add_task(send_mail_bg, subject, html_shell(subject, rows))
+    # ── Avisos, uno por rol ───────────────────────────────────────────────────
+    # Antes salía UN correo con el valor negociado a una lista global, así que
+    # el mercaderista que va a montar el espacio recibía el precio. Toda la app
+    # está construida para que un worker nunca vea plata; el correo se saltaba
+    # esa regla. Ahora cada rol recibe lo que le corresponde.
+    #
+    # Inclusive en ambos extremos, como el resto del archivo: un contrato que
+    # empieza y termina el mismo día dura un día, no cero.
+    duration_days = (lease.end_date - lease.start_date).days + 1
+    who = recipients_for(db, space.sede)
+    periodo = f"{lease.start_date} → {lease.end_date}"
+
+    # Comercial: gerente operacional + administrador de la sede.
+    if who["comercial"]:
+        subject = f"Nuevo contrato — {space.code}"
+        rows = [
+            ("Sede", space.sede or "—"),
+            ("Espacio", f"{space.code} — {space.name}"),
+            ("Proveedor", supplier.name),
+            ("Marca", lease.marca or "—"),
+            ("Periodo", periodo),
+            ("Duración", f"{duration_days} día{'s' if duration_days != 1 else ''}"),
+            ("Valor mensual", format_cop(lease.monthly_rent)),
+        ]
+        background_tasks.add_task(
+            send_mail_to_bg, who["comercial"], subject, html_shell(subject, rows)
+        )
+
+    # Montaje: orden de trabajo para el mercaderista. SIN valores.
+    if who["montaje"]:
+        subject = f"Montar {space.code} — {space.sede or 'sede'}"
+        rows = [
+            ("Sede", space.sede or "—"),
+            ("Espacio", f"{space.code} — {space.name}"),
+            ("Qué va", f"{supplier.name}{f' · {lease.marca}' if lease.marca else ''}"),
+            ("Desde", str(lease.start_date)),
+            ("Hasta", str(lease.end_date)),
+        ]
+        footer = (
+            "Montá la exhibición antes de la fecha de inicio y confirmá el montaje "
+            "en el sistema con una foto del espacio ya armado."
+        )
+        background_tasks.add_task(
+            send_mail_to_bg, who["montaje"], subject, html_shell(subject, rows, footer)
+        )
+
+    # Proveedor: constancia de lo acordado. Es el único que sale de la empresa,
+    # así que solo se envía si el proveedor tiene correo cargado.
+    if supplier.email:
+        subject = f"Confirmación de espacio — {space.sede or ''} {space.code}".strip()
+        rows = [
+            ("Espacio", f"{space.code} — {space.name}"),
+            ("Sede", space.sede or "—"),
+            ("Marca", lease.marca or "—"),
+            ("Periodo", periodo),
+            ("Valor mensual", format_cop(lease.monthly_rent)),
+        ]
+        footer = "Cualquier ajuste sobre lo acordado, respondé este correo."
+        background_tasks.add_task(
+            send_mail_to_bg, [supplier.email], subject, html_shell(subject, rows, footer)
+        )
 
     return lease
 

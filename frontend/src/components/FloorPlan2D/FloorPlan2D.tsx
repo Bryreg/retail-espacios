@@ -14,6 +14,7 @@ import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types
 import { isRentable, NON_RENTABLE_BY_DEFAULT, rateTypeOf } from "../../types/fixtures";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 import ReferenceRateHint from "../ReferenceRateHint";
+import NotifyPreview from "../NotifyPreview";
 import { findOrCreateSpace, createLease } from "../../api/spaces";
 import { findOrCreateSupplier } from "../../api/suppliers";
 import { listSpaceFiles, uploadSpaceFile, deleteSpaceFile, fileUrl } from "../../api/files";
@@ -3133,6 +3134,7 @@ function AssignmentPanel({
               : "Requiere proveedor, fechas y valor > 0."}
           </p>
         )}
+        {canSave && saveState === "idle" && <NotifyPreview sede={item.sede || sede} />}
       </div>
       )}
 

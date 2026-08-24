@@ -14,6 +14,7 @@ import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { isDoubleGondola, isRentable, NON_RENTABLE_BY_DEFAULT, rateTypeOf } from "../../types/fixtures";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
 import ReferenceRateHint from "../ReferenceRateHint";
+import NotifyPreview from "../NotifyPreview";
 import { findOrCreateSpace, createLease } from "../../api/spaces";
 import { findOrCreateSupplier } from "../../api/suppliers";
 import { fileUrl, getFaceImages } from "../../api/files";
@@ -3497,9 +3498,12 @@ function CommercialPanel({
           )}
           {!canSave && saveState==="idle" && (
             <p className="mt-1 text-[10px] text-dark-ink-3">
-              Requiere proveedor, fechas y valor &gt; 0.
+              {fix.startDate && fix.endDate && fix.startDate > fix.endDate
+                ? "La fecha de inicio quedó después de la de fin."
+                : "Requiere proveedor, fechas y valor > 0."}
             </p>
           )}
+          {canSave && saveState==="idle" && <NotifyPreview sede={sede} />}
         </div>
         </>)}
 
