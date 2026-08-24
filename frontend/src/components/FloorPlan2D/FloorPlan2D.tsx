@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useFixtureStore, selectFixtures, selectHasPendingWork, normalizeSede } from "../../store/fixtureStore";
 import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types/fixtures";
-import { isRentable, NON_RENTABLE_BY_DEFAULT, rateTypeOf } from "../../types/fixtures";
+import { isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT, rateTypeOf } from "../../types/fixtures";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 import ReferenceRateHint from "../ReferenceRateHint";
 import NotifyPreview from "../NotifyPreview";
@@ -221,11 +221,9 @@ const STATUS_FILTER_CHIPS: { value: StatusFilter2D; label: string; color: string
  * Returns true when the fixture is visually rotated 90° or 270°.
  * In that case `w` and `d` must be swapped to get the 2D visual footprint.
  */
-function isRotated90(rotY: number): boolean {
-  // Normalize to [0, π) then check proximity to π/2
-  const r = ((rotY % Math.PI) + Math.PI) % Math.PI;
-  return Math.abs(r - Math.PI / 2) < 0.15;
-}
+// La definición vive en types/fixtures.ts: el mapa isométrico del Dashboard y
+// el mini-plano del montaje necesitan la misma, y tenerla acá adentro fue la
+// razón de que el Dashboard dibujara mal los muebles rotados.
 
 /** Quantize rotY to quarter-turn steps (0 = south, 1 = west, 2 = north, 3 = east). */
 function rotationSteps(rotY?: number): number {

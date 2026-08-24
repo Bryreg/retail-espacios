@@ -10,7 +10,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
-from sqlalchemy.orm import Session, defer
+from sqlalchemy.orm import Session
 
 from app.auth import require_auth
 from app.database import get_db
@@ -19,7 +19,22 @@ from app.models.models import MountConfirmation, Space, SpaceFile
 router = APIRouter(prefix="/mounts", tags=["mounts"], dependencies=[Depends(require_auth)])
 
 MAX_PHOTO = 10 * 1024 * 1024
-PHOTO_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+# Los tres primeros son lo que manda un navegador. HEIC/HEIF es lo que sale de
+# un iPhone cuando iOS NO convierte al subir — pasa según versión y según si la
+# foto se toma o se elige de la galería. Rechazarlo dejaría al mercaderista sin
+# poder reportar desde su propio teléfono, que es peor que guardar un archivo
+# que el navegador no previsualiza: el archivo igual queda como prueba y se
+# abre desde el celular que lo tomó.
+PHOTO_TYPES = {
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".png": "image/png", ".webp": "image/webp",
+    ".heic": "image/heic", ".heif": "image/heif",
+}
+
+#: Marca en el nombre del archivo que separa la foto-prueba del montaje de las
+#: artes que el proveedor manda para el planograma. Va en el nombre porque la
+#: regla del proyecto prohíbe columnas nuevas en tablas existentes.
+MOUNT_FILE_PREFIX = "montaje--"
 
 ESTADOS = ("montado", "no_montado")
 MOTIVOS = ("sin_material", "sin_producto", "espacio_ocupado", "otro")
@@ -81,12 +96,42 @@ async def confirm_mount(
             status_code=422,
             detail="Un espacio sin montar necesita motivo: sirve para saber a quién reclamarle",
         )
+    # "Montado" sin foto es una afirmación sin respaldo, y es exactamente lo que
+    # el proveedor discute meses después. La regla vive acá y no solo en la
+    # pantalla: el endpoint queda abierto a cualquier cliente.
+    #
+    # Al "no pude" NO se le exige: si el material nunca llegó puede no haber
+    # nada que fotografiar, y dejar sin reportar un problema es peor que
+    # quedarse sin la foto. El campo sigue disponible para quien quiera
+    # mostrar el espacio vacío.
+    if estado == "montado" and not (foto is not None and foto.filename):
+        raise HTTPException(
+            status_code=422,
+            detail="La foto del montaje es obligatoria: es la prueba de que la exhibición quedó armada",
+        )
 
     file_id = None
     if foto is not None and foto.filename:
+        # La extensión es la primera señal, pero no siempre viene: hay cámaras
+        # y navegadores que mandan el archivo con un nombre sin punto. Cuando
+        # falta, vale el tipo que declara el navegador. Si tampoco es una
+        # imagen, ahí sí se rechaza — pero nunca por un nombre raro.
         ext = Path(foto.filename).suffix.lower()
-        if ext not in PHOTO_TYPES:
-            raise HTTPException(status_code=422, detail="La foto debe ser JPG, PNG o WEBP")
+        declarado = (foto.content_type or "").lower().split(";")[0].strip()
+        if ext in PHOTO_TYPES:
+            content_type = PHOTO_TYPES[ext]
+        elif declarado in set(PHOTO_TYPES.values()):
+            # Se compara contra la lista de arriba y NO contra "image/*": un
+            # SVG es una imagen para el navegador y un documento con scripts
+            # para todo lo demás. Guardado como foto y servido inline desde el
+            # mismo origen que la aplicación, ejecutaría JavaScript con la
+            # sesión del admin que lo abra.
+            content_type = declarado
+        else:
+            raise HTTPException(
+                status_code=422,
+                detail="El archivo tiene que ser una imagen (JPG, PNG, WEBP o HEIC)",
+            )
         data = await foto.read()
         if len(data) > MAX_PHOTO:
             raise HTTPException(status_code=413, detail="La foto supera el límite de 10 MB")
@@ -103,10 +148,17 @@ async def confirm_mount(
             )
             db.add(space)
             db.flush()
+        # El nombre lleva un prefijo reservado, y no es cosmético: la foto se
+        # cuelga del mismo Space que las artes del proveedor, y
+        # `list_face_images` toma la imagen MÁS RECIENTE de cada espacio para
+        # usarla como planograma en el editor 3D. Sin esta marca, la foto del
+        # montaje —un anaquel fotografiado de costado, con medio pasillo
+        # adentro— reemplazaba la textura de la góndola en la pantalla del
+        # comercial, y con la foto obligatoria eso pasaría en cada contrato.
         row = SpaceFile(
             space_id=space.id,
-            filename=foto.filename,
-            content_type=PHOTO_TYPES[ext],
+            filename=f"{MOUNT_FILE_PREFIX}{code}--{foto.filename}",
+            content_type=content_type,
             size=len(data),
             data=data,
         )
@@ -135,10 +187,9 @@ async def confirm_mount(
 @router.get("/files/{file_id}/exists", response_model=dict)
 def photo_exists(file_id: int, db: Session = Depends(get_db)):
     """Chequeo barato para la interfaz — no descarga el binario."""
-    found = (
-        db.query(SpaceFile.id)
-        .options(defer(SpaceFile.data))
-        .filter(SpaceFile.id == file_id)
-        .first()
-    )
+    # Se selecciona SOLO la columna id: eso ya deja el binario fuera del SELECT.
+    # El defer() que había acá además reventaba — SQLAlchemy no acepta opciones
+    # de carga de atributos sobre una consulta que no trae la entidad — así que
+    # este endpoint devolvía 500 en cada llamada.
+    found = db.query(SpaceFile.id).filter(SpaceFile.id == file_id).first()
     return {"exists": bool(found)}

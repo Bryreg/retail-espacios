@@ -22,6 +22,7 @@ import type { Space } from "../types";
 import {
   contractPhase,
   daysTakenInRange,
+  footprint2D,
   isDoubleGondola as isDoubleGondolaShared,
   isRentable,
   rangeAvailability,
@@ -466,8 +467,12 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
     const sorted = [...fixtures].sort((a, b) => a.cx + a.cz - (b.cx + b.cz));
 
     const prisms = sorted.map((f) => {
-      const x0 = f.cx - f.w / 2, x1 = f.cx + f.w / 2;
-      const z0 = f.cz - f.d / 2, z1 = f.cz + f.d / 2;
+      // La huella va con el giro aplicado. Sin esto, una góndola rotada un
+      // cuarto de vuelta —un pasillo cruzado, que es común— se dibujaba
+      // atravesada respecto del plano real.
+      const fp = footprint2D(f);
+      const x0 = f.cx - fp.w / 2, x1 = f.cx + fp.w / 2;
+      const z0 = f.cz - fp.d / 2, z1 = f.cz + fp.d / 2;
       const h = Math.max(f.h || 1, 0.4);
 
       const tA = iso(x0, z0, h), tB = iso(x1, z0, h);

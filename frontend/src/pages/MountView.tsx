@@ -7,6 +7,8 @@ import {
   type MountConfirmation, type MountMotivo,
 } from "../api/mounts";
 import { contractPhase, fullSpaceCode, isRentable, isDoubleGondola } from "../types/fixtures";
+import MiniMapa, { describirUbicacion } from "../components/MiniMapa/MiniMapa";
+import { prepararFoto, MAX_SUBIDA } from "../utils/foto";
 import type { UnifiedFixture } from "../types/fixtures";
 
 /** Una cara de un mueble que hay que montar. */
@@ -16,6 +18,10 @@ interface Pendiente {
   code: string;
   /** Lo que se le muestra al mercaderista: `PUN-01`, no `NAVE-PUN-01`. */
   corto: string;
+  /** El código del MUEBLE en el layout, sin el sufijo de cara. La cara B se
+   *  reporta como `PUN-01-B` pero en el plano no hay dos muebles: hay uno con
+   *  dos caras, y es ese el que hay que señalar. */
+  fixtureCode: string;
   sede: string;
   label: string;
   nomenclatura?: string;
@@ -61,6 +67,9 @@ export default function MountView({
   const fixtures = useFixtureStore(selectFixtures);
   /** El primer pull del servidor ya terminó — antes de eso no hay espacios. */
   const layoutListo = useFixtureStore((s) => s.lastSyncedAt) !== null;
+  /** La última sincronización falló: una lista vacía puede ser falta de señal
+   *  y no falta de trabajo. */
+  const sinConexion = useFixtureStore((s) => s.syncState) === "error";
 
   const [mounts, setMounts] = useState<MountConfirmation[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -114,6 +123,7 @@ export default function MountView({
         out.push({
           code,
           corto,
+          fixtureCode: f.code,
           sede: (data.sede as string) || sede,
           label: f.label || f.code,
           nomenclatura: f.nomenclatura,
@@ -131,6 +141,40 @@ export default function MountView({
 
   // Enlace del correo: abrir directamente ese espacio.
   const [yaConfirmado, setYaConfirmado] = useState<MountConfirmation | null>(null);
+
+  /** El espacio ya reportado, reconstruido para poder volver a abrirlo.
+   *
+   *  No está en `pendientes` justamente porque ya se reportó, así que se arma
+   *  de nuevo desde el layout. Sin esto no hay forma de corregir una foto
+   *  movida: el espacio desaparece de la lista y el enlace del correo solo
+   *  dice "ya se reportó". */
+  const reportarDeNuevo = useMemo<Pendiente | null>(() => {
+    if (!yaConfirmado) return null;
+    const code = yaConfirmado.space_code.toUpperCase();
+    const base = code.endsWith("-B") ? code.slice(0, -2) : code;
+    for (const [sede, lista] of Object.entries(fixturesBySede)) {
+      for (const f of lista) {
+        const completo = fullSpaceCode((f.sede as string) || sede, f.code);
+        if (completo !== base) continue;
+        const caraB = code.endsWith("-B");
+        const data = (caraB ? f.faceB : f) as Partial<UnifiedFixture>;
+        return {
+          code,
+          corto: caraB ? `${f.code}-B` : f.code,
+          fixtureCode: f.code,
+          sede: (data?.sede as string) || (f.sede as string) || sede,
+          label: f.label || f.code,
+          nomenclatura: f.nomenclatura,
+          marca: (data?.brandCategory as string) || "",
+          proveedor: (data?.supplierName as string) || "",
+          desde: data?.startDate ?? "",
+          hasta: data?.endDate ?? "",
+          urgente: false,
+        };
+      }
+    }
+    return null;
+  }, [yaConfirmado, fixturesBySede]);
   const abiertoPorEnlace = useRef(false);
   useEffect(() => {
     // Esperar a que el layout haya llegado del servidor. Sin esta condición el
@@ -155,6 +199,7 @@ export default function MountView({
     return (
       <MountForm
         item={abierto}
+        vecinos={fixturesDeSede(fixturesBySede, abierto.sede)}
         onCancel={() => setAbierto(null)}
         onSaved={(m) => {
           setMounts((prev) => [m, ...prev]);
@@ -182,13 +227,23 @@ export default function MountView({
           </button>
         )}
       </div>
+      {/* Tres estados, no dos. `cargando` era solo el fetch de confirmaciones:
+          mientras el layout todavía venía en camino —o si la sincronización
+          falló por falta de señal— la pantalla decía "no hay espacios
+          pendientes", y con eso el mercaderista guarda el celular y se va. */}
       <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--ink-3)" }}>
-        {cargando
-          ? "Cargando…"
+        {cargando || !layoutListo
+          ? "Cargando espacios…"
           : pendientes.length === 0
           ? "No hay espacios pendientes de montaje."
           : `${pendientes.length} espacio${pendientes.length === 1 ? "" : "s"} por montar`}
       </p>
+      {!cargando && layoutListo && pendientes.length === 0 && sinConexion && (
+        <p style={{ margin: "-8px 0 16px", fontSize: 13, color: "var(--warning)" }}>
+          La lista no se pudo actualizar. Buscá señal y volvé a entrar antes de dar por
+          hecho que no hay nada.
+        </p>
+      )}
 
       {yaConfirmado && (
         <div
@@ -204,6 +259,25 @@ export default function MountView({
             <b style={{ fontFamily: "var(--font-mono)" }}>{yaConfirmado.space_code}</b> ya se
             reportó como {yaConfirmado.estado === "montado" ? "montado" : "no montado"}
             {yaConfirmado.reportado_por ? ` por ${yaConfirmado.reportado_por}` : ""}.
+            {/* Una foto movida, con guantes y una mano, es lo más normal del
+                mundo — y es la prueba que el proveedor va a discutir en tres
+                meses. El histórico guarda todos los reportes y vale el último,
+                así que corregir es volver a reportar. */}
+            {reportarDeNuevo && (
+              <>
+                {" "}
+                <button
+                  onClick={() => { setAbierto(reportarDeNuevo); setYaConfirmado(null); }}
+                  style={{
+                    background: "none", border: "none", padding: 0,
+                    color: "var(--accent-700)", fontWeight: 600, fontSize: 13,
+                    fontFamily: "inherit", cursor: "pointer", textDecoration: "underline",
+                  }}
+                >
+                  Corregir el reporte
+                </button>
+              </>
+            )}
           </div>
           <button
             onClick={() => setYaConfirmado(null)}
@@ -275,10 +349,25 @@ export default function MountView({
 
 // ─── Formulario de una confirmación ──────────────────────────────────────────
 
+/** Los muebles de una sede, tolerando que la clave del mapa y la sede escrita
+ *  dentro del mueble difieran en mayúsculas o espacios. */
+function fixturesDeSede(
+  porSede: Record<string, UnifiedFixture[]>,
+  sede: string,
+): UnifiedFixture[] {
+  const directo = porSede[sede];
+  if (directo) return directo;
+  const buscada = (sede ?? "").trim().toUpperCase();
+  const clave = Object.keys(porSede).find((k) => k.trim().toUpperCase() === buscada);
+  return clave ? porSede[clave] : [];
+}
+
 function MountForm({
-  item, onCancel, onSaved,
+  item, vecinos, onCancel, onSaved,
 }: {
   item: Pendiente;
+  /** Todos los muebles de la sede: el plano necesita el contexto, no solo el destino. */
+  vecinos: UnifiedFixture[];
   onCancel: () => void;
   onSaved: (m: MountConfirmation) => void;
 }) {
@@ -288,24 +377,85 @@ function MountForm({
   const [motivo, setMotivo] = useState<MountMotivo | null>(null);
   const [nota, setNota] = useState("");
   const [modo, setModo] = useState<"montado" | "no_montado" | null>(null);
+  /** La foto se está achicando. Dura menos de un segundo, pero enviar en ese
+   *  hueco subiría el archivo sin reducir. */
+  const [preparando, setPreparando] = useState(false);
+  const galeriaRef = useRef<HTMLInputElement>(null);
+  const enviandoRef = useRef(false);
+
+  // El mueble puede no estar en el layout: un contrato guardado sobre un
+  // espacio que después se borró del plano deja el reporte válido pero sin
+  // dónde dibujarlo. Mejor omitir el mapa que mostrar uno que no señala nada.
+  const tieneMapa = useMemo(
+    () => vecinos.some((f) => f.code.toUpperCase() === item.fixtureCode.trim().toUpperCase()),
+    [vecinos, item.fixtureCode],
+  );
+  const ubicacion = useMemo(
+    () => (tieneMapa ? describirUbicacion(vecinos, item.fixtureCode) : null),
+    [tieneMapa, vecinos, item.fixtureCode],
+  );
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => () => { if (vista) URL.revokeObjectURL(vista); }, [vista]);
 
-  function elegirFoto(f: File | null) {
+  async function elegirFoto(f: File | null) {
     if (vista) URL.revokeObjectURL(vista);
-    setFoto(f);
-    setVista(f ? URL.createObjectURL(f) : null);
+    if (!f) {
+      setFoto(null);
+      setVista(null);
+      return;
+    }
+    // Se muestra la vista previa del archivo ORIGINAL: es instantánea y es lo
+    // que la persona acaba de ver por la cámara. La reducción corre detrás.
+    const vistaNueva = URL.createObjectURL(f);
+    setVista(vistaNueva);
+    setPreparando(true);
+    setError("");
+    try {
+      const lista = await prepararFoto(f);
+      if (lista.size > MAX_SUBIDA) {
+        // Se limpia también la vista previa. Dejarla puesta mostraba la foto en
+        // pantalla mientras la app insistía en que faltaba: parece un error de
+        // la aplicación y no hay forma de darse cuenta de qué pasó.
+        URL.revokeObjectURL(vistaNueva);
+        setFoto(null);
+        setVista(null);
+        setError(
+          "El teléfono no pudo achicar esta foto y pesa más de lo que el servidor acepta. " +
+          "Tomala otra vez desde la app en vez de elegirla de la galería.",
+        );
+        return;
+      }
+      setFoto(lista);
+    } finally {
+      setPreparando(false);
+    }
   }
 
   async function enviar() {
     if (!modo) return;
+    // Ref y no estado: `enviando` es el MISMO valor de closure con el que se
+    // calculó `disabled` en el render, así que dos toques seguidos antes del
+    // siguiente render pasaban los dos, subían la foto dos veces por datos
+    // móviles y creaban dos reportes del mismo montaje.
+    if (enviandoRef.current) return;
     if (modo === "no_montado" && !motivo) {
       setError("Elegí el motivo para que quede claro a quién reclamarle.");
       return;
     }
+    // El servidor también lo exige. Acá se repite para no gastarle al
+    // mercaderista una subida y una espera para decirle que falta la foto.
+    if (preparando) {
+      setError("La foto se está preparando, un segundo.");
+      return;
+    }
+    if (modo === "montado" && !foto) {
+      setError("Falta la foto. Es la prueba de que la exhibición quedó armada.");
+      return;
+    }
+    enviandoRef.current = true;
     setEnviando(true);
     setError("");
     try {
@@ -320,7 +470,16 @@ function MountForm({
       });
       onSaved(saved);
     } catch (e: any) {
-      setError(describeError(e));
+      // Un tiempo agotado no trae `detail`, y "No se pudo completar la
+      // operación" no le dice a nadie qué hacer. Acá sí: reintentar sirve,
+      // y el formulario quedó lleno.
+      const timeout = e?.code === "ECONNABORTED" || /timeout/i.test(e?.message ?? "");
+      setError(
+        timeout
+          ? "La subida tardó demasiado. Buscá mejor señal y volvé a intentar: no se perdió nada."
+          : describeError(e),
+      );
+      enviandoRef.current = false;
       setEnviando(false);
     }
   }
@@ -363,6 +522,36 @@ function MountForm({
           Del {fecha(item.desde)} al {fecha(item.hasta)}
         </div>
       </div>
+
+      {/* Dónde queda. Va antes de la pregunta a propósito: primero se camina
+          hasta el mueble, después se responde. El plano se dibuja con los
+          muebles de la sede, y si el destino no aparece en el layout se omite
+          entero en vez de mostrar un plano sin señalar nada. */}
+      {tieneMapa && (
+        <div
+          style={{
+            padding: "12px 12px 10px", borderRadius: "var(--r-lg)",
+            background: "var(--surface)", border: "1px solid var(--line)",
+            marginBottom: 16,
+          }}
+        >
+          <div
+            style={{
+              display: "flex", alignItems: "center", gap: 5, marginBottom: 8,
+              fontSize: 11.5, fontWeight: 700, color: "var(--ink-3)",
+              letterSpacing: "0.03em", textTransform: "uppercase",
+            }}
+          >
+            <MapPin size={12} /> Dónde queda
+          </div>
+          <MiniMapa fixtures={vecinos} targetCode={item.fixtureCode} />
+          {ubicacion && (
+            <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 8, textAlign: "center" }}>
+              {ubicacion}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* La pregunta, en botones grandes para el pulgar */}
       <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
@@ -418,15 +607,27 @@ function MountForm({
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)", marginBottom: 7 }}>
               Foto {modo === "montado" ? "del espacio armado" : "de cómo quedó"}
-              {modo === "montado" && (
-                <span style={{ fontWeight: 400, color: "var(--ink-3)" }}> · es la prueba</span>
-              )}
+              <span style={{ fontWeight: 400, color: modo === "montado" ? "var(--accent-700)" : "var(--ink-3)" }}>
+                {modo === "montado" ? " · obligatoria" : " · opcional"}
+              </span>
             </div>
+            {/* Dos entradas separadas a propósito. `capture` manda a la
+                cámara de una, que es el camino rápido; pero en Android saca la
+                opción de galería, y con la foto obligatoria eso deja atrapado
+                a quien ya la tomó antes — por ejemplo cuando montó sin señal y
+                volvió a reportar más tarde. */}
             <input
               ref={inputRef}
               type="file"
               accept="image/*"
               capture="environment"
+              style={{ display: "none" }}
+              onChange={(e) => elegirFoto(e.target.files?.[0] ?? null)}
+            />
+            <input
+              ref={galeriaRef}
+              type="file"
+              accept="image/*"
               style={{ display: "none" }}
               onChange={(e) => elegirFoto(e.target.files?.[0] ?? null)}
             />
@@ -459,15 +660,27 @@ function MountForm({
                 style={{
                   width: "100%", minHeight: 92, display: "flex", flexDirection: "column",
                   alignItems: "center", justifyContent: "center", gap: 6,
-                  borderRadius: "var(--r-lg)", border: "1.5px dashed var(--line-strong)",
-                  background: "var(--surface-2)", color: "var(--ink-2)",
+                  borderRadius: "var(--r-lg)",
+                  border: `1.5px dashed ${modo === "montado" ? "var(--accent-200)" : "var(--line-strong)"}`,
+                  background: modo === "montado" ? "var(--accent-50)" : "var(--surface-2)",
+                  color: modo === "montado" ? "var(--accent-700)" : "var(--ink-2)",
                   fontSize: 14, fontFamily: "inherit", cursor: "pointer",
                 }}
               >
                 <Camera size={22} />
-                Tomar foto
+                {preparando ? "Preparando…" : "Tomar foto"}
               </button>
             )}
+            <button
+              onClick={() => galeriaRef.current?.click()}
+              style={{
+                width: "100%", marginTop: 8, padding: "9px 0",
+                background: "none", border: "none", color: "var(--ink-3)",
+                fontSize: 13, fontFamily: "inherit", cursor: "pointer",
+              }}
+            >
+              {vista ? "Cambiar por otra de la galería" : "o elegir una de la galería"}
+            </button>
           </div>
 
           <div style={{ marginBottom: 12 }}>

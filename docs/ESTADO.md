@@ -236,8 +236,73 @@ cae al `notify_emails` de siempre.
 El enlace abre `MountView` (`frontend/src/pages/MountView.tsx`) en el celular: tarjetas
 grandes ordenadas por urgencia — lo que ya arrancó primero —, dos botones del tamaño de
 un pulgar y la cámara a un toque. El worker es el único rol que escribe algo en el
-sistema, y solo esto: `POST /mounts/`, con foto opcional; un "no pude" **exige motivo**,
-porque sin motivo no se sabe a quién reclamarle.
+sistema, y solo esto: `POST /mounts/`. Un "no pude" **exige motivo**, porque sin motivo no
+se sabe a quién reclamarle.
+
+**Dónde queda.** Antes de preguntar nada, la pantalla muestra el plano de la tienda con el
+mueble señalado (`components/MiniMapa/`) y la ubicación escrita — *"A unos 4 m de las
+cajas"*. Tres decisiones que vale la pena conservar:
+
+- **Cenital, no isométrico.** El mapa isométrico del Dashboard extruye por altura y pinta
+  de atrás hacia adelante, así que tapa justo los muebles chicos —bateas, ristras— que son
+  los que cuesta encontrar. Y para "estoy acá, tengo que llegar allá" la convención que
+  todo el mundo ya sabe leer es la del directorio de centro comercial.
+- **El alto sale de la forma de la planta**, no es fijo. Con alto fijo, una tienda larga y
+  angosta —la forma normal de un supermercado— se dibujaba a menos de 5 px por metro y una
+  punta de góndola quedaba de cuatro píxeles: se veía, no se podía usar.
+- **Las referencias salen de los datos, no del aire.** Las cajas y las neveras se etiquetan
+  porque existen como muebles. No hay flecha de norte ni "entrada" porque el sistema no
+  guarda ninguna de las dos cosas, y ponerlas sería inventarle información a alguien que
+  está parado en un pasillo.
+
+El mapa busca por el código CRUDO del mueble contra el mismo arreglo del que salió, nunca
+por el `SEDE-CODE`: la nomenclatura corta se repite entre tiendas y buscar suelto devuelve
+el mueble de la sede equivocada. Si el mueble no está en el layout —contrato sobre un
+espacio que después se borró del plano— el mapa se omite entero en vez de mostrar uno que
+no señala nada.
+
+El correo de montaje lleva la ubicación **escrita**, no dibujada: Gmail descarta el SVG
+embebido, un PNG obligaría a rasterizar en el servidor y una imagen servida por la app
+pediría token. El texto llega intacto a cualquier cliente, y el plano vive del otro lado
+del enlace. La frase la calcula `describe_location` en `services/layout_lookup.py`, que
+espeja `describirUbicacion` del cliente — si las dos se separan, el mercaderista lee una
+cosa en el correo y otra en la pantalla.
+
+**La foto es obligatoria** cuando se reporta "montado", en el servidor y en la pantalla:
+"montado" sin foto es una afirmación sin respaldo, y es exactamente lo que el proveedor
+discute meses después. Al "no pude" **no** se le exige: si el material nunca llegó puede no
+haber qué fotografiar, y dejar sin reportar un problema es peor que quedarse sin la foto.
+
+Alrededor de esa regla hay cuatro defensas, todas porque bloquear al mercaderista es peor
+que no tener la función:
+
+- Se aceptan **HEIC/HEIF**: es lo que sale de un iPhone cuando iOS no convierte al subir.
+  Rechazarlo dejaría a esa persona sin poder reportar nada desde su propio teléfono.
+- La foto se **reduce en el navegador** a 1600 px y JPEG antes de salir (`utils/foto.ts`),
+  con red: ante cualquier error se sube el original. Incluye un chequeo de lienzo uniforme,
+  porque un HEIC que no se decodifica no lanza error — produce un JPEG negro perfectamente
+  válido, y eso es peor que un rechazo: la prueba queda guardada y no muestra nada.
+- Hay **timeout de subida**; sin él, una conexión colgada dejaba el botón muerto para
+  siempre y la única salida era recargar, que perdía la foto.
+- Se puede **elegir de la galería**, no solo tomarla: `capture` manda directo a la cámara y
+  en Android saca la opción de galería, lo que dejaba atrapado a quien montó sin señal y
+  volvió a reportar más tarde.
+
+Y como la foto movida es lo más normal del mundo, el aviso de "ya se reportó" ofrece
+**corregir el reporte**: el histórico guarda todos y vale el último. Sin eso, la prueba que
+el proveedor va a discutir en tres meses queda siendo la primera que salió.
+
+Dos detalles que no son obvios y que conviene no deshacer:
+
+- **El tipo de archivo se valida contra una lista cerrada, nunca contra `image/*`.** Un SVG
+  es una imagen para el navegador y un documento con scripts para todo lo demás; guardado
+  como foto y servido inline desde el mismo origen que la aplicación, ejecutaría JavaScript
+  con la sesión de quien lo abra.
+- **La foto de montaje lleva un prefijo reservado en el nombre** (`montaje--`) y
+  `list_face_images` la excluye. Se cuelga del mismo `Space` que las artes del proveedor, y
+  el editor 3D usa la imagen *más reciente* de cada espacio como planograma: sin la marca,
+  la foto del anaquel tomada de costado reemplazaba la textura de la góndola en la pantalla
+  del comercial — y con la foto obligatoria, en cada contrato.
 
 Se guarda **una fila por reporte**, no una por espacio (tabla nueva `mount_confirmations`,
 permitida por la regla: `create_all` sí crea tablas). El histórico de quién dijo qué y

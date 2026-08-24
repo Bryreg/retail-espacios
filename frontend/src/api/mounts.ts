@@ -35,6 +35,15 @@ export interface ConfirmMountInput {
   foto?: File | null;
 }
 
+/** Cuánto se espera una subida antes de darla por perdida.
+ *
+ *  El axios del proyecto no tiene timeout, o sea que espera para siempre. En
+ *  una tienda con señal irregular eso deja el botón deshabilitado sin salida:
+ *  la única forma de volver a intentar era recargar, y recargar pierde la
+ *  foto. Con un tope, el error llega, el formulario sigue lleno y el botón
+ *  vuelve a andar. */
+const TIMEOUT_SUBIDA = 90_000;
+
 /** Multipart porque lleva la foto. Abierto a worker: es su trabajo. */
 export const confirmMount = (input: ConfirmMountInput): Promise<MountConfirmation> => {
   const form = new FormData();
@@ -45,7 +54,9 @@ export const confirmMount = (input: ConfirmMountInput): Promise<MountConfirmatio
   if (input.nota) form.append("nota", input.nota);
   if (input.reportadoPor) form.append("reportado_por", input.reportadoPor);
   if (input.foto) form.append("foto", input.foto);
-  return client.post<MountConfirmation>("/mounts/", form).then((r) => r.data);
+  return client
+    .post<MountConfirmation>("/mounts/", form, { timeout: TIMEOUT_SUBIDA })
+    .then((r) => r.data);
 };
 
 /** El último reporte de cada espacio, indexado por código.

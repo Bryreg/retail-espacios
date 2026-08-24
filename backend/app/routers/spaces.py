@@ -9,8 +9,9 @@ from app.auth import require_admin, require_auth
 from app.database import get_db
 from app.models.models import Space, SpaceFile, SpaceLease, Supplier, SpaceStatus
 from app.schemas.spaces import SpaceOut, SpaceCreate, SpaceStatusUpdate, LeaseCreate, LeaseOut, SpaceMapItem, SpaceFindOrCreate
+from app.routers.mounts import MOUNT_FILE_PREFIX
 from app.services.contacts import recipients_for
-from app.services.layout_lookup import is_space_rentable
+from app.services.layout_lookup import describe_location, is_space_rentable
 from app.services.mailer import app_base_url, format_cop, html_shell, send_mail_to_bg
 
 # Every route requires a valid token; mutations additionally require admin.
@@ -187,7 +188,14 @@ def list_face_images(db: Session = Depends(get_db)):
             SpaceFile.space_id.label("space_id"),
             rn,
         )
-        .filter(SpaceFile.content_type.like("image/%"))
+        .filter(
+            SpaceFile.content_type.like("image/%"),
+            # La foto de montaje NO es un planograma. Se guarda contra el mismo
+            # espacio pero con un prefijo reservado en el nombre (ver
+            # routers/mounts.py); sin excluirla, la última foto del
+            # mercaderista se convertía en la textura del mueble en el 3D.
+            ~SpaceFile.filename.like(f"{MOUNT_FILE_PREFIX}%"),
+        )
         .subquery()
     )
     rows = (
@@ -335,6 +343,12 @@ def create_lease(space_id: int, payload: LeaseCreate, background_tasks: Backgrou
     # Montaje: orden de trabajo para el mercaderista. SIN valores.
     if who["montaje"]:
         subject = f"Montar {space.code} — {space.sede or 'sede'}"
+        # Dónde queda, en palabras. Se calcula ACÁ y no dentro del
+        # BackgroundTask: la tarea corre después de que la sesión de la request
+        # se cerró y no abre una propia. El plano dibujado vive del otro lado
+        # del enlace — Gmail descarta el SVG embebido, así que un mapa dentro
+        # del correo llegaría como un hueco.
+        ubicacion = describe_location(db, space.code, space.sede or "")
         rows = [
             ("Sede", space.sede or "—"),
             ("Espacio", f"{space.code} — {space.name}"),
@@ -342,14 +356,19 @@ def create_lease(space_id: int, payload: LeaseCreate, background_tasks: Backgrou
             ("Desde", str(lease.start_date)),
             ("Hasta", str(lease.end_date)),
         ]
+        if ubicacion:
+            rows.insert(2, ("Dónde queda", ubicacion))
         # Enlace directo al espacio. El mercaderista trabaja desde el celular:
         # un toque desde el correo y, si no tiene sesión, la inicia una vez y
         # aterriza en el espacio correcto en vez de buscarlo en una lista.
         link = f"{app_base_url()}/?montar={quote(space.code)}"
         footer = (
-            "Montá la exhibición antes de la fecha de inicio y confirmá el montaje "
-            f'con una foto: <a href="{link}" '
-            'style="color:#7C3AED;font-weight:600;">confirmar montaje</a>'
+            "El enlace abre el plano de la tienda con el espacio señalado, y ahí "
+            "mismo se confirma el montaje. "
+            "<strong>La foto es obligatoria</strong>: es la prueba de que la "
+            "exhibición quedó armada.<br><br>"
+            f'<a href="{link}" '
+            'style="color:#7C3AED;font-weight:600;">Ver dónde queda y confirmar</a>'
         )
         background_tasks.add_task(
             send_mail_to_bg, who["montaje"], subject, html_shell(subject, rows, footer)

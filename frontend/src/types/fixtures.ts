@@ -61,6 +61,26 @@ export function isRentable(f: { rentable?: boolean }): boolean {
   return f.rentable !== false;
 }
 
+/** ¿El mueble está girado un cuarto de vuelta?
+ *
+ *  En ese caso su huella vista desde arriba tiene el ancho y el fondo
+ *  intercambiados. Vivía privada dentro de FloorPlan2D, y por eso el mapa
+ *  isométrico del Dashboard —que no la tenía— dibujaba cualquier mueble
+ *  rotado con la huella equivocada: en un mapa cuyo único trabajo es decir
+ *  dónde están las cosas, ese es justo el error que no se puede cometer.
+ *
+ *  `rotY` está en RADIANES, no en grados. La tolerancia absorbe el error de
+ *  redondeo que deja rotar el mueble muchas veces seguidas. */
+export function isRotated90(rotY: number): boolean {
+  const r = ((rotY % Math.PI) + Math.PI) % Math.PI;
+  return Math.abs(r - Math.PI / 2) < 0.15;
+}
+
+/** Ancho y fondo de la huella vista desde arriba, ya con el giro aplicado. */
+export function footprint2D(f: { w: number; d: number; rotY?: number }): { w: number; d: number } {
+  return isRotated90(f.rotY ?? 0) ? { w: f.d, d: f.w } : { w: f.w, d: f.d };
+}
+
 /** El código con el que el espacio existe FUERA del plano: `SEDE-CODIGO`.
  *
  *  Dentro del layout un mueble se llama por su nomenclatura corta (`PUN-01`),
