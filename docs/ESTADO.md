@@ -1,7 +1,7 @@
 # Galerías — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: agosto 2026 (tarifas de referencia y $/m² recién incorporados).
+Última actualización: agosto 2026 (disponibilidad por fechas y calendario por temporada).
 
 Gestión de espacios comerciales en supermercados: se dibuja el plano de cada sede, se
 marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
@@ -156,13 +156,60 @@ Eran los dos primeros del backlog; salieron juntos porque comparten dominio (din
 - En los paneles de contrato (2D y 3D) el campo de valor muestra la referencia del
   tipo+sede y el desvío (`−17% vs referencia`, ámbar por debajo / verde en línea o
   arriba).
-- En el Dashboard admin: sección **"Bajo tarifa de referencia"** en Atención (con el
-  desvío y `pagado · ref` en compacto), y tarjeta **"Rendimiento $/m²"** — canon
-  mensual de las caras ocupadas dividido por la huella del mueble (`w × d`), ranking
-  completo con scroll para que la cola rinda tan visible como la punta.
+- En el Dashboard admin: sección **"Bajo tarifa de referencia"** en Atención, con el
+  desvío y `pagado · ref` en compacto.
+- **No hay ranking de $/m²** y no debe volver: el precio se cuadra internamente, y además
+  medía el plano equivocado. La industria mide anaquel en metros lineales y facings (el
+  informe de la FTC de 2003 pide "linear feet" y "facings"; "square feet" no aparece), y
+  la huella de piso es cero o casi cero para ristra, robatope y exhibidor cruz. La tarifa
+  plana por mueble/sede sí es la convención real: la rate card publicada de Albert Heijn
+  cobra por mueble, por tienda, por unidad de tiempo, sin mencionar área.
 - El helper es `referenceRateFor(rates, sede, type)` y la clave de tipo
   `rateTypeOf()` (normaliza los tipos 2D legados `gondola_doble`/`gondola_mural` a
   `gondola`). Umbral de marcado: desvío ≥ 1 % — un peso de redondeo no es anomalía.
+
+### Disponibilidad por fechas y calendario por temporada
+
+Un contrato cargado para diciembre marcaba el espacio como ocupado **desde el momento de
+guardarlo** y sumaba su valor al ingreso mensual. Lo peor no era el número sino la venta
+perdida: el backend sí razonaba por fechas y aceptaba vender los meses previos, pero nadie
+lo intentaba porque la pantalla decía "ocupado".
+
+- La ocupación se **deriva** de `startDate`/`endDate`, que ya viajaban en el JSON del
+  layout (`contractPhase`). Derivar en vez de guardar evita tener que correr algo que
+  voltee el estado al llegar la fecha, y funciona sobre los planos ya guardados: sin
+  migración ni backfill.
+- Estado **"Contratado"** para lo firmado que aún no arranca: tarjeta, chip de filtro y
+  color propio en el mapa (violeta claro). El ingreso mensual cuenta solo lo vigente; lo
+  pactado va en su propia línea.
+- El mapa pinta de **rojo lo vencido**, que la paleta ya pedía y no estaba implementado.
+- `Space.active_lease` devuelve el contrato vigente HOY y se agregó `upcoming_lease`.
+
+Sobre el mapa hay un control **"Disponible para"**: chips de temporada más dos campos de
+fecha. Con un periodo elegido cambia la lectura entera — la leyenda pasa a tres estados
+(libre todo el periodo / libre parte / tomado) y aparece el conteo de lo vendible. Las
+tarjetas de arriba **siguen reportando hoy**, a propósito, y el encabezado del mapa dice
+cuál contesta qué.
+
+### Temporadas comerciales
+
+Separación que hace que esto no se pudra: el **ancla** es un hecho del calendario y se
+calcula (tercer domingo de junio, pascua por Meeus/Jones/Butcher, viernes tras el cuarto
+jueves de noviembre); la **ventana de venta** —días antes y después— es decisión comercial
+y se guarda en `app_config`, global para las tres sedes. El año entrante las anclas se
+mueven solas y las ventanas siguen puestas. Se editan desde el ícono junto a los chips
+(admin). `GET /layout/seasons` lo lee cualquier rol: son fechas, no dinero.
+
+**Aritmética de días** (`types/seasons.ts`): todo pasa por un entero calculado con
+`Date.UTC` sobre los componentes civiles, y el parseo de `"YYYY-MM-DD"` es propio —
+`new Date(str)` lo toma como UTC y en Colombia retrocede un día. Los rangos son
+**inclusivos en ambos extremos**, igual que el chequeo de solapamiento del backend: un
+mueble necesita día de desmontaje. Un contrato de **un solo día es válido** (Black Friday
+es un viernes suelto).
+
+`reservado` y `mantenimiento` no tienen fechas: describen el presente. Bloquean un periodo
+que incluya hoy, pero **no** uno enteramente futuro — bloquearlo escondería inventario
+vendible detrás de una bandera puesta meses antes.
 
 ### Bugs preexistentes corregidos
 
@@ -206,24 +253,47 @@ Procedimiento de recuperación, en orden:
 
 ## Backlog
 
-Ordenado por impacto sobre esfuerzo. Fundamentado en cómo la industria gestiona estos
-espacios: las puntas de góndola ocupan menos del 5 % del piso pero mueven cerca del 30 %
-de las ventas de la categoría, con aumentos medidos de 150–400 % frente al anaquel normal.
+1. **Pantalla de negociación**: llenar el contrato y que salga solo el aviso al
+   administrador de la sede, al gerente operacional y al mercaderista, cada uno con lo
+   suyo — el mercaderista recibe una orden de trabajo **sin plata**, porque hoy el correo
+   de contrato nuevo le manda el valor negociado a todos y eso se salta la regla del
+   worker. El espacio pasa a "contratado, pendiente de montaje".
+2. **Confirmación de montaje desde el celular**, con foto. Cierra el ciclo anterior y de
+   paso resuelve la verificación de ejecución: fecha del servidor (no del EXIF, que se
+   edita), autor y estado. Ningún estándar exige geolocalización — se buscó y no existe.
+3. **Estado de renovación** (en negociación / renovado / no renueva). Lo que lo vuelve
+   accionable no es el estado sino el **valor propuesto** al lado del vigente: el tablero
+   deja de decir "8 contratos por vencer" y pasa a decir cuánta plata está en juego.
+4. **Histórico por espacio**. Es además prerrequisito de la tarifa de referencia: no hay
+   tarifario público de exhibición en Colombia (los acuerdos son confidenciales), así que
+   la única referencia calibrable es "a cuánto se cerró este mueble en esta sede antes".
 
-1. **Calendario de disponibilidad**. El backend ya rechaza solapamientos con 409, pero no
-   se puede responder "¿qué tengo libre en noviembre?".
-2. **Verificación de ejecución**: convertir las fotos por espacio en auditoría, con fecha,
-   autor y estado montado/no montado. Una foto sin metadatos no es evidencia.
-3. **Estado de renovación** (en negociación / renovado / no renueva) para que "por vencer"
-   sea un embudo y no solo una alarma.
-4. **Histórico por espacio**: los contratos viejos ya están en `space_leases`, la interfaz
-   no los muestra.
+Hecho en agosto 2026: tarifa de referencia por tipo y sede, disponibilidad por fechas,
+calendario por temporada sobre el mapa — ver "Qué está hecho".
 
-Hecho en agosto 2026 (eran los puestos 1 y 2): tarifa de referencia por tipo y sede, y
-$/m² con ranking — ver "Qué está hecho".
+No perseguir: pantallas digitales, sensores de impresiones, compra programática,
+reconocimiento de imagen para auditar anaquel, y scorings de "tienda perfecta". Los tres
+primeros porque el in-store retail media no llega al 1 % del gasto de retail media ni
+siquiera para las cadenas grandes; el cuarto porque a tres tiendas gana un humano mirando;
+el quinto porque mide la salud de la marca del proveedor, que no es trabajo del retailer.
 
-No perseguir: pantallas digitales, sensores de impresiones y compra programática. Tienen
-sentido con cientos de tiendas y un equipo comercial dedicado.
+### Sobre las cifras que solían estar acá
+
+Este documento afirmaba que las puntas de góndola ocupan menos del 5 % del piso y mueven
+el 30 % de las ventas de la categoría, con aumentos de 150–400 %. Se verificaron una por
+una y **ninguna se sostiene**: el "30 %" se rastrea hasta un artículo de opinión que cita
+un libro comercial sin metodología, el "5 % del piso" no aparece en ninguna fuente, y el
+rango "150–400 %" sale de un blog de software que lo atribuye a *"industry data"*.
+
+Lo que sí está medido (Nakamura et al., *Social Science & Medicine* 108, 2014, acceso
+abierto): aislando la ubicación del descuento, el efecto de una punta va de **+23 % a
++114 %** según la categoría — y entre la mitad y dos tercios de la diferencia bruta que se
+ve no es la ubicación sino el descuento y los facings extra que la acompañan. El gobierno
+británico, con miles de millones de libras en juego, usó **55 %**.
+
+Nada de esto cambia el backlog, que se justifica solo con inventario escaso y contratado.
+Pero sirve en una negociación: si un proveedor llega con que la punta le multiplica las
+ventas por cuatro, el número honesto es otro.
 
 ---
 
@@ -234,6 +304,15 @@ sentido con cientos de tiendas y un equipo comercial dedicado.
 - `JWT_SECRET` es una variable de entorno manual en Render, no viene del Blueprint.
 - El login tiene rate limit: 10 intentos por IP cada 15 minutos, en memoria. Reiniciar el
   backend lo limpia (útil al automatizar pruebas).
+- `/spaces/map`, `/dashboard/kpis` y `/dashboard/spaces` **existen pero no los llama
+  nadie**: todo lo que se ve sale del JSON del layout, calculado en el navegador.
+  `SpacePanel`, `StoreView` y `Legend` son componentes huérfanos. Antes de conectar esos
+  endpoints hay que revisar que sus números coincidan con los del cliente.
+- Quedan dos deudas que la revisión de fechas marcó como no urgentes: nada recalcula al
+  **cruzar la medianoche** (una estación abierta todo el día queda anclada al día en que
+  se montó la pantalla), y conviven **dos definiciones de "duración"** — el editor 3D y el
+  correo de contrato nuevo cuentan exclusivo, así que un contrato del 1 al 24 de diciembre
+  se anuncia como "23 días". Si se toca, hay que tocar los tres lugares juntos.
 - `.github/workflows/deploy.yml` despliega **por SSH a un VPS, no a Render**. Fallaba en
   rojo en cada merge desde junio (`VPS_HOST` vacío); quedó restringido a
   `workflow_dispatch` — si el VPS revive, cargar los secrets y dispararlo a mano desde
