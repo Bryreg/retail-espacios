@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
-import { Check, Search, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Check, MapPin, Search, X } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
 import SeasonPicker, { describeRange, type DateRange } from "../components/SeasonPicker/SeasonPicker";
+import MiniMapa from "../components/MiniMapa/MiniMapa";
 import { findOrCreateSpace, createLease } from "../api/spaces";
 import { findOrCreateSupplier } from "../api/suppliers";
 import { describeError } from "../api/client";
@@ -24,6 +25,10 @@ import { inclusiveDays } from "../types/seasons";
 
 const HOY = new Date();
 
+/** Ancho del plano en la columna izquierda. El alto lo decide la forma de la
+ *  tienda; ver MiniMapa. */
+const ANCHO_PLANO = 520;
+
 function iso(d: Date): string {
   const m = `${d.getMonth() + 1}`.padStart(2, "0");
   const dd = `${d.getDate()}`.padStart(2, "0");
@@ -39,6 +44,15 @@ function rangoInicial(): DateRange {
 }
 
 const money = (n: number) => "$" + Math.round(n).toLocaleString("es-CO");
+
+/** Cómo se pinta el plano en esta pantalla. Un espacio no se puede negociar sin
+ *  verlo: la lista de códigos no dice si la punta está en la entrada o contra
+ *  la pared del fondo, y esa es media negociación. */
+const PINTA = {
+  libre: "#4CC38A",
+  parcial: "#F0B429",
+  tomado: "#CBD5E1",
+};
 
 interface Cara {
   fixture: UnifiedFixture;
@@ -67,6 +81,8 @@ function carasDe(f: UnifiedFixture): Cara[] {
 export default function NegotiateView({ onIrAlPlano }: { onIrAlPlano?: () => void }) {
   const fixtures = useFixtureStore(selectFixtures);
   const sede = useFixtureStore((s) => s.sede);
+  const sedes = useFixtureStore((s) => s.sedes);
+  const setSede = useFixtureStore((s) => s.setSede);
   const commit = useFixtureStore((s) => s.commit);
   const referenceRates = useFixtureStore((s) => s.referenceRates);
 
@@ -80,6 +96,12 @@ export default function NegotiateView({ onIrAlPlano }: { onIrAlPlano?: () => voi
   const [cerrado, setCerrado] = useState<
     { corto: string; proveedor: string; desde: string; hasta: string } | null
   >(null);
+
+  // Cambiar de sede invalida lo elegido: ese espacio es de la otra tienda.
+  useEffect(() => {
+    setElegido(null);
+    setCerrado(null);
+  }, [sede]);
 
   // ── Paso 2: qué se puede vender para ese periodo ──────────────────────────
   const candidatos = useMemo(() => {
@@ -114,17 +136,58 @@ export default function NegotiateView({ onIrAlPlano }: { onIrAlPlano?: () => voi
   }, [fixtures, sede, rango, busqueda, incluirParciales, referenceRates]);
 
   const seleccion = candidatos.find((c) => c.codigo === elegido) ?? null;
+
+  /** El color de cada mueble en el plano: verde lo que se puede vender para el
+   *  periodo elegido, ámbar lo que está libre solo una parte, gris lo demás.
+   *  Solo lo elegible recibe color, y el mapa hace clicable exactamente eso. */
+  const pintarMueble = useCallback(
+    (f: UnifiedFixture): string | null => {
+      if (!isRentable(f)) return null;
+      const propio = candidatos.filter((c) => c.fixture.id === f.id);
+      if (propio.length === 0) return PINTA.tomado;
+      return propio.some((c) => c.disponibilidad === "libre") ? PINTA.libre : PINTA.parcial;
+    },
+    [candidatos],
+  );
   const totalLibres = candidatos.filter((c) => c.disponibilidad === "libre").length;
 
   return (
     <div style={{ flex: 1, overflowY: "auto", background: "var(--bg)", padding: 20 }}>
       <div style={{ maxWidth: 1180, margin: "0 auto" }}>
-        <h2 style={{ margin: "0 0 2px", fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em" }}>
-          Negociar un espacio
-        </h2>
-        <p style={{ margin: "0 0 18px", fontSize: 13, color: "var(--ink-3)" }}>
-          {sede} · elegí el periodo, después el espacio, y llená el contrato acá mismo.
-        </p>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 18 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 style={{ margin: "0 0 2px", fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em" }}>
+              Negociar un espacio
+            </h2>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--ink-3)" }}>
+              Elegí el periodo, después el espacio en el plano, y llená el contrato acá mismo.
+            </p>
+          </div>
+          {/* La sede se elegía en otra pantalla: para negociar en POBLADO había
+              que ir al tablero, cambiarla y volver. */}
+          <label
+            style={{
+              display: "flex", alignItems: "center", gap: 7, flexShrink: 0,
+              padding: "7px 11px", borderRadius: "var(--r-md)",
+              background: "var(--surface)", border: "1px solid var(--line)",
+            }}
+          >
+            <MapPin size={13} style={{ color: "var(--accent)" }} />
+            <select
+              value={sede}
+              onChange={(e) => setSede(e.target.value)}
+              style={{
+                border: "none", background: "transparent", color: "var(--ink-1)",
+                fontSize: 13.5, fontWeight: 600, fontFamily: "inherit",
+                outline: "none", cursor: "pointer",
+              }}
+            >
+              {sedes.map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </label>
+        </div>
 
         {/* ── Paso 1 ───────────────────────────────────────────────────── */}
         <Paso n={1} titulo="¿Para cuándo?" />
@@ -150,8 +213,49 @@ export default function NegotiateView({ onIrAlPlano }: { onIrAlPlano?: () => voi
 
         <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
           {/* ── Paso 2 ─────────────────────────────────────────────────── */}
-          <div style={{ flex: "1 1 340px", minWidth: 320 }}>
+          <div style={{ flex: "1.25 1 460px", minWidth: 420 }}>
             <Paso n={2} titulo="¿Cuál espacio?" />
+            <div
+              style={{
+                borderRadius: "var(--r-lg)", background: "var(--surface)",
+                border: "1px solid var(--line)", overflow: "hidden",
+                marginBottom: 12,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+                  padding: "9px 12px", borderBottom: "1px solid var(--line-soft)",
+                  fontSize: 11.5, color: "var(--ink-3)",
+                }}
+              >
+                <span style={{ fontWeight: 600, color: "var(--ink-2)" }}>
+                  Tocá el espacio en el plano
+                </span>
+                <Punto color={PINTA.libre} texto="Libre" />
+                <Punto color={PINTA.parcial} texto="Parcial" />
+                <Punto color={PINTA.tomado} texto="Tomado" />
+              </div>
+              <div style={{ padding: "10px 12px 12px" }}>
+                {fixtures.length === 0 ? (
+                  <div style={{ padding: "24px 6px", fontSize: 12.5, color: "var(--ink-3)", textAlign: "center" }}>
+                    Esta sede todavía no tiene plano.
+                  </div>
+                ) : (
+                  <MiniMapa
+                    fixtures={fixtures}
+                    targetCode={seleccion?.corto ?? ""}
+                    ancho={ANCHO_PLANO}
+                    altoMax={330}
+                    colorDe={pintarMueble}
+                    onElegir={(corto) => {
+                      const c = candidatos.find((x) => x.corto === corto);
+                      if (c) { setElegido(c.codigo); setCerrado(null); }
+                    }}
+                  />
+                )}
+              </div>
+            </div>
             <div
               style={{
                 borderRadius: "var(--r-lg)", background: "var(--surface)",
@@ -191,7 +295,7 @@ export default function NegotiateView({ onIrAlPlano }: { onIrAlPlano?: () => voi
                 </label>
               </div>
 
-              <div style={{ maxHeight: 420, overflowY: "auto" }}>
+              <div style={{ maxHeight: 240, overflowY: "auto" }}>
                 {candidatos.length === 0 && (
                   <div style={{ padding: "18px 14px", fontSize: 12.5, color: "var(--ink-3)" }}>
                     {fixtures.length === 0
@@ -257,6 +361,7 @@ export default function NegotiateView({ onIrAlPlano }: { onIrAlPlano?: () => voi
                 cara={seleccion}
                 sede={sede}
                 rango={rango}
+                vecinos={fixtures}
                 onCerrar={() => setElegido(null)}
                 onGuardado={(patch, resumen) => {
                   // El JSON del layout es lo que pinta el mapa y responde la
@@ -342,11 +447,13 @@ function Etiqueta({ children, hint }: { children: React.ReactNode; hint?: string
 }
 
 function FormularioContrato({
-  cara, sede, rango, onGuardado, onCerrar,
+  cara, sede, rango, vecinos, onGuardado, onCerrar,
 }: {
   cara: Cara & { disponibilidad: "libre" | "parcial" | "tomado"; ref: number | null };
   sede: string;
   rango: DateRange | null;
+  /** Los muebles de la sede, para el plano chico del encabezado. */
+  vecinos: UnifiedFixture[];
   /** El contrato quedó guardado: acá se escribe en el JSON del layout y se
    *  muestra la confirmación, que vive en la pantalla y no en este formulario. */
   onGuardado: (
@@ -460,6 +567,20 @@ function FormularioContrato({
           <X size={16} />
         </button>
       </div>
+
+      {/* Dónde queda, sin salir del contrato. Mientras se negocia un valor hay
+          que poder decir "es la punta de la entrada, no la del fondo" sin
+          cambiar de pantalla. */}
+      {vecinos.length > 0 && (
+        <div
+          style={{
+            marginBottom: 14, padding: 8, borderRadius: "var(--r-md)",
+            background: "var(--surface-2)", border: "1px solid var(--line-soft)",
+          }}
+        >
+          <MiniMapa fixtures={vecinos} targetCode={cara.corto} ancho={360} altoMax={150} />
+        </div>
+      )}
 
       {cara.disponibilidad === "parcial" && (
         <div
@@ -628,5 +749,16 @@ function Cerrado({
         Negociar otro espacio
       </button>
     </div>
+  );
+}
+
+
+/** Un punto de color con su etiqueta, para la leyenda del plano. */
+function Punto({ color, texto }: { color: string; texto: string }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+      <span style={{ width: 8, height: 8, borderRadius: 99, background: color, flexShrink: 0 }} />
+      {texto}
+    </span>
   );
 }

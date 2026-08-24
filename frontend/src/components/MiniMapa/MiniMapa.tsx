@@ -34,6 +34,16 @@ export interface MiniMapaProps {
   targetCode: string;
   /** Ancho del lienzo en px. El alto se calcula según la forma de la tienda. */
   ancho?: number;
+  /** Tope de alto. Sube cuando el plano es el instrumento de trabajo y no una
+   *  miniatura de referencia. */
+  altoMax?: number;
+  /** Color de cada mueble que NO es el destino. Devolver null deja el gris.
+   *  Sirve para pintar disponibilidad sin que este componente sepa nada de
+   *  contratos ni de fechas. */
+  colorDe?: (f: UnifiedFixture) => string | null;
+  /** Hace el plano elegible: se recibe el código corto del mueble tocado.
+   *  Sin esto el mapa es de solo lectura, como en la pantalla del montaje. */
+  onElegir?: (codigoCorto: string) => void;
 }
 
 /** Alto mínimo y máximo del dibujo.
@@ -107,6 +117,9 @@ export default function MiniMapa({
   fixtures,
   targetCode,
   ancho = 330,
+  altoMax = ALTO_MAX,
+  colorDe,
+  onElegir,
 }: MiniMapaProps) {
   const escena = useMemo(() => {
     if (fixtures.length === 0) return null;
@@ -135,7 +148,7 @@ export default function MiniMapa({
     // El lienzo toma la forma de la tienda, dentro de los topes. Así la escala
     // la fija el ancho disponible y no se desperdicia mitad del dibujo en aire.
     const height = Math.round(
-      Math.min(ALTO_MAX, Math.max(ALTO_MIN, (ancho * fondoM) / anchoM)),
+      Math.min(altoMax, Math.max(ALTO_MIN, (ancho * fondoM) / anchoM)),
     );
     // Una sola escala para los dos ejes: un plano deformado desorienta más de
     // lo que ayuda.
@@ -164,9 +177,7 @@ export default function MiniMapa({
         destino: esDestino,
         color: esDestino
           ? "var(--accent)"
-          : isRentable(f)
-          ? GRIS_OTROS
-          : GRIS_INFRA,
+          : colorDe?.(f) ?? (isRentable(f) ? GRIS_OTROS : GRIS_INFRA),
       };
       if (esDestino) destino = caja;
       return caja;
@@ -195,7 +206,7 @@ export default function MiniMapa({
     }
 
     return { cajas, destino: destino as Caja | null, etiquetas, height };
-  }, [fixtures, targetCode, ancho]);
+  }, [fixtures, targetCode, ancho, altoMax, colorDe]);
 
   if (!escena) return null;
   const { cajas, destino, etiquetas, height } = escena;
@@ -224,8 +235,14 @@ export default function MiniMapa({
             height={c.h}
             rx={1.5}
             fill={c.color}
-            opacity={0.55}
-          />
+            opacity={onElegir && colorDe?.(c.f) ? 0.9 : 0.55}
+            style={onElegir && colorDe?.(c.f) ? { cursor: "pointer" } : undefined}
+            onClick={onElegir && colorDe?.(c.f) ? () => onElegir(c.f.code) : undefined}
+          >
+            {onElegir && colorDe?.(c.f) && (
+              <title>{`${c.f.nomenclatura || c.f.code} · ${c.f.label ?? ""}`}</title>
+            )}
+          </rect>
         ))}
 
       {etiquetas.map((e) => (
