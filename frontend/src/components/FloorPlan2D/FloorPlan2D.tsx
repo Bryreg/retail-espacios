@@ -485,9 +485,13 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     setCatalogLabel,
   } = useFixtureStore();
 
-  const [items, setItems]             = useState<PlacedItem2D[]>(() =>
-    storeToItems(selectFixtures(useFixtureStore.getState()))
+  // Same array object seeds the state AND the "came from the store" ref below,
+  // so the first items→store effect recognises it as an echo and stays quiet.
+  const initialItems = useMemo(
+    () => storeToItems(selectFixtures(useFixtureStore.getState())),
+    [],
   );
+  const [items, setItems]             = useState<PlacedItem2D[]>(initialItems);
   const [selectedIds, setSelectedIds]   = useState<Set<string>>(new Set());
   const [editMode, setEditMode]       = useState(defaultEditMode);
   const [activeTool, setActiveTool]   = useState<"select" | "place" | "draw">("select");
@@ -525,8 +529,17 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   const [panelFace, setPanelFace] = useState<"A" | "B">("A");
   const svgRef = useRef<SVGSVGElement>(null);
   const cachedSvgRect = useRef<DOMRect | null>(null);
-  // Skip the initial mount sync so it doesn't create a spurious undo entry (I3)
-  const isFirstRender = useRef(true);
+  // The exact items array we last derived FROM the store. Sending it back would
+  // be an echo, so the items→store effect skips it by identity.
+  //
+  // This replaces a single `isFirstRender` boolean that could not survive the
+  // mount sequence: the store→items effect calls setItems() with a fresh array,
+  // which re-runs the items→store effect a second time — and the boolean had
+  // already been consumed by the first run. On a browser with empty
+  // localStorage that second run committed an EMPTY layout ~16 ms after mount
+  // and pushed it, wiping the sede on the server before the pull had even
+  // landed. Identity comparison cannot be consumed by the wrong pass.
+  const itemsFromStoreRef = useRef<PlacedItem2D[] | null>(initialItems);
   // Holds the exact array we last pushed to the store, so the store→items
   // effect can tell our own echo apart from a genuine external change. A plain
   // boolean could not: it was consumed by whichever update arrived first, so a
@@ -548,8 +561,9 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     // update is the echo of our own commit and must not rebuild the canvas.
     if (lastCommittedRef.current === storeFixtures) return;
     // External change (undo/redo/server sync) — update canvas to match
-    isFirstRender.current = true; // suppress the next items→store echo
-    setItems(storeToItems(storeFixtures));
+    const next = storeToItems(storeFixtures);
+    itemsFromStoreRef.current = next; // suppress the items→store echo
+    setItems(next);
   }, [storeFixtures]);
 
   // ── Sync items → unified store ───────────────────────────────────────────────
@@ -559,7 +573,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   // Snapshot existingStore BEFORE the timeout to avoid reading a stale store value
   // if another commit lands in those 16 ms.
   useEffect(() => {
-    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    // These items came from the store, not from the user — do not send them back.
+    if (itemsFromStoreRef.current === items) return;
     const snapshot = selectFixtures(useFixtureStore.getState());
     const timer = setTimeout(() => {
       const converted = itemsToStore(items, snapshot);
@@ -570,7 +585,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   }, [items, commit]);
 
   // When sede changes: push to store AND reinitialize canvas with that sede's fixtures.
-  // isFirstRender guard prevents double-init on mount.
+  // The identity ref above prevents the re-init from echoing back to the store.
   const prevSedeRef = useRef(sede);
   useEffect(() => {
     if (prevSedeRef.current === sede) return;
@@ -579,8 +594,9 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     pushSedeToStore(sede);
     // Re-init canvas from the new sede's saved fixtures (may be empty = blank canvas).
     const newFixtures = useFixtureStore.getState().fixturesBySede[sede] ?? [];
-    isFirstRender.current = true;   // suppress the next items→store sync
-    setItems(storeToItems(newFixtures));
+    const next = storeToItems(newFixtures);
+    itemsFromStoreRef.current = next;   // suppress the items→store echo
+    setItems(next);
   }, [sede, pushSedeToStore]);
 
   // CHANGE 1: persist camera state to store so view survives tab switches
