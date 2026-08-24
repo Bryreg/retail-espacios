@@ -63,6 +63,13 @@ El código de espacio es `"SEDE-CODE"` en mayúsculas. La cara B de una góndola
 sufijo `-B`; los campos top-level del fixture son la Cara A y `fixture.faceB` es la B
 (helper `isDoubleGondola`).
 
+**Dentro del plano el código es corto; afuera lleva la sede.** `PUN-01` es nomenclatura
+de sede y se repite en las tres tiendas. Todo lo que salga del layout — la fila en
+`spaces`, el enlace del correo, el reporte de montaje — usa el código completo, que arma
+`fullSpaceCode(sede, code)` en `frontend/src/types/fixtures.ts`. Indexar por el código
+corto es un bug silencioso: parece funcionar con una sola sede y con dos empieza a
+mezclar tiendas.
+
 **El 3D pinta, no construye.** La foto del proveedor se aplica *como material* de la cara
 del mesh, tileada como planograma y alineada a las tablas reales vía `getPanelShelfSpan`.
 Nunca crear geometría nueva posicionada para esto: se intentó dos veces y falló las dos.
@@ -211,6 +218,37 @@ es un viernes suelto).
 que incluya hoy, pero **no** uno enteramente futuro — bloquearlo escondería inventario
 vendible detrás de una bandera puesta meses antes.
 
+### Pantalla de negociación: del contrato al montaje
+
+Guardar un contrato ya no termina en la base: dispara **tres correos distintos según a
+quién le sirve qué** (`backend/app/routers/spaces.py`).
+
+- **Comercial** (administrador de sede, gerente operacional): el contrato completo, con
+  el valor.
+- **Montaje** (el mercaderista): el mismo espacio **sin un solo monto**, y un enlace
+  directo `.../?montar=SEDE-CODE`.
+- **Proveedor**, si tiene correo cargado: confirmación de lo suyo.
+
+Los destinatarios viven en `app_config` bajo `notify_contacts`, por sede y por rol
+(`backend/app/services/contacts.py`), y se editan desde Configuración. Si están vacíos
+cae al `notify_emails` de siempre.
+
+El enlace abre `MountView` (`frontend/src/pages/MountView.tsx`) en el celular: tarjetas
+grandes ordenadas por urgencia — lo que ya arrancó primero —, dos botones del tamaño de
+un pulgar y la cámara a un toque. El worker es el único rol que escribe algo en el
+sistema, y solo esto: `POST /mounts/`, con foto opcional; un "no pude" **exige motivo**,
+porque sin motivo no se sabe a quién reclamarle.
+
+Se guarda **una fila por reporte**, no una por espacio (tabla nueva `mount_confirmations`,
+permitida por la regla: `create_all` sí crea tablas). El histórico de quién dijo qué y
+cuándo es justamente lo que contesta cuando el proveedor reclama meses después. La hora la
+pone el servidor: el EXIF de un celular se edita.
+
+Borrar una sede **archiva** sus confirmaciones (`archivado_en`) en la misma transacción que
+archiva sus contratos. No se borran —son prueba— pero dejan de contar: una sede recreada
+con el mismo nombre reusa los mismos códigos y heredaría los "montado" de la anterior.
+Cubierto en `backend/tests/test_mounts.py`.
+
 ### Bugs preexistentes corregidos
 
 Los tres se encontraron levantando la app contra datos sembrados, no leyendo código:
@@ -253,23 +291,21 @@ Procedimiento de recuperación, en orden:
 
 ## Backlog
 
-1. **Pantalla de negociación**: llenar el contrato y que salga solo el aviso al
-   administrador de la sede, al gerente operacional y al mercaderista, cada uno con lo
-   suyo — el mercaderista recibe una orden de trabajo **sin plata**, porque hoy el correo
-   de contrato nuevo le manda el valor negociado a todos y eso se salta la regla del
-   worker. El espacio pasa a "contratado, pendiente de montaje".
-2. **Confirmación de montaje desde el celular**, con foto. Cierra el ciclo anterior y de
-   paso resuelve la verificación de ejecución: fecha del servidor (no del EXIF, que se
-   edita), autor y estado. Ningún estándar exige geolocalización — se buscó y no existe.
-3. **Estado de renovación** (en negociación / renovado / no renueva). Lo que lo vuelve
+1. **"Contratado, pendiente de montaje" en el tablero del admin.** El mercaderista ya
+   confirma desde el celular y el reporte se guarda, pero el Dashboard todavía no lo lee:
+   falta pintar el estado del montaje leyendo `GET /mounts/` (`latestByCode` ya está en
+   `frontend/src/api/mounts.ts`). Es la mitad que le falta al ciclo para cerrarse a la
+   vista de quien vende.
+2. **Estado de renovación** (en negociación / renovado / no renueva). Lo que lo vuelve
    accionable no es el estado sino el **valor propuesto** al lado del vigente: el tablero
    deja de decir "8 contratos por vencer" y pasa a decir cuánta plata está en juego.
-4. **Histórico por espacio**. Es además prerrequisito de la tarifa de referencia: no hay
+3. **Histórico por espacio**. Es además prerrequisito de la tarifa de referencia: no hay
    tarifario público de exhibición en Colombia (los acuerdos son confidenciales), así que
    la única referencia calibrable es "a cuánto se cerró este mueble en esta sede antes".
 
 Hecho en agosto 2026: tarifa de referencia por tipo y sede, disponibilidad por fechas,
-calendario por temporada sobre el mapa — ver "Qué está hecho".
+calendario por temporada sobre el mapa, correos por rol y confirmación de montaje desde
+el celular — ver "Qué está hecho".
 
 No perseguir: pantallas digitales, sensores de impresiones, compra programática,
 reconocimiento de imagen para auditar anaquel, y scorings de "tienda perfecta". Los tres
@@ -313,11 +349,14 @@ ventas por cuatro, el número honesto es otro.
   se montó la pantalla), y conviven **dos definiciones de "duración"** — el editor 3D y el
   correo de contrato nuevo cuentan exclusivo, así que un contrato del 1 al 24 de diciembre
   se anuncia como "23 días". Si se toca, hay que tocar los tres lugares juntos.
-- `.github/workflows/deploy.yml` despliega **por SSH a un VPS, no a Render**. Fallaba en
-  rojo en cada merge desde junio (`VPS_HOST` vacío); quedó restringido a
-  `workflow_dispatch` — si el VPS revive, cargar los secrets y dispararlo a mano desde
-  Actions.
-- No hay CI en pull requests ni en push (el único workflow es el manual de arriba).
+- `.github/workflows/deploy.yml` hace dos cosas distintas. En cada push y cada PR corre el
+  **CI de verdad**: typecheck y build del frontend, `pytest` del backend. El **despliegue
+  por SSH a un VPS** (no a Render) es opt-in: solo corre si la variable de repositorio
+  `DEPLOY_TARGET` vale `vps`, junto con los secrets `VPS_HOST`, `VPS_USER` y `VPS_SSH_KEY`.
+  Sin eso se salta, no falla — que es lo que hacía desde junio y tenía los checks en rojo
+  permanente.
+- `npm ci` a secas falla acá: hay que usar `--legacy-peer-deps`, igual que el Dockerfile.
+  `@react-three/drei@10` pide `fiber@^9` y el editor 3D está escrito contra `fiber@8`.
 - `nginx/retail.conf` es para el despliegue en VPS, no para Render. Si ese VPS se reactiva,
   hay que copiar el archivo al host a mano — el workflow no lo despliega.
 
@@ -337,3 +376,13 @@ Para la sincronización, la prueba que importa es la de **dos clientes**: sembra
 servidor, simular dos estaciones y verificar que las altas *y las bajas* viajan en ambos
 sentidos, que un conflicto no pisa el trabajo del otro, y que una respuesta vacía del
 servidor no borra la copia local.
+
+**Sembrar siempre dos sedes con la misma nomenclatura.** `PUN-01` existe en NAVE y en
+TERRON, y con una sola sede sembrada todo lo que confunde el código corto con el completo
+pasa las pruebas. Así se encontró que el enlace del correo de montaje apuntaba a un código
+que la pantalla nunca iba a encontrar.
+
+Lo del mercaderista se prueba en **viewport de celular** (390×844) y con el enlace del
+correo, no navegando a mano: entrar por `/?montar=SEDE-CODE` es el camino real, y ahí
+aparecieron el `Content-Type` que rompía la foto y el doble montaje de StrictMode que se
+comía el enlace.

@@ -6,12 +6,16 @@ import {
   confirmMount, fetchMounts, latestByCode,
   type MountConfirmation, type MountMotivo,
 } from "../api/mounts";
-import { contractPhase, isRentable, isDoubleGondola } from "../types/fixtures";
+import { contractPhase, fullSpaceCode, isRentable, isDoubleGondola } from "../types/fixtures";
 import type { UnifiedFixture } from "../types/fixtures";
 
 /** Una cara de un mueble que hay que montar. */
 interface Pendiente {
+  /** `SEDE-CODIGO`: el mismo que viaja en el enlace del correo y el que se
+   *  reporta. La nomenclatura corta se repite entre sedes y no sirve de llave. */
   code: string;
+  /** Lo que se le muestra al mercaderista: `PUN-01`, no `NAVE-PUN-01`. */
+  corto: string;
   sede: string;
   label: string;
   nomenclatura?: string;
@@ -81,13 +85,21 @@ export default function MountView({
 
     for (const [sede, f] of universo) {
       if (!isRentable(f)) continue;
-      const caras: { code: string; data: Partial<UnifiedFixture> }[] = [
-        { code: f.code, data: f },
+      // El código completo se arma con la sede del propio mueble cuando la
+      // trae, igual que al guardar el contrato: un mueble puede haber quedado
+      // con la sede escrita adentro y no coincidir con la clave del mapa.
+      const base = fullSpaceCode((f.sede as string) || sede, f.code);
+      const caras: { code: string; corto: string; data: Partial<UnifiedFixture> }[] = [
+        { code: base, corto: f.code, data: f },
       ];
       if (isDoubleGondola(f) && f.faceB) {
-        caras.push({ code: `${f.code}-B`, data: f.faceB as Partial<UnifiedFixture> });
+        caras.push({
+          code: `${base}-B`,
+          corto: `${f.code}-B`,
+          data: f.faceB as Partial<UnifiedFixture>,
+        });
       }
-      for (const { code, data } of caras) {
+      for (const { code, corto, data } of caras) {
         const cara = {
           status: (data.status ?? "free") as UnifiedFixture["status"],
           startDate: data.startDate ?? "",
@@ -101,6 +113,7 @@ export default function MountView({
         if (ultimo[code]?.estado === "montado") continue;
         out.push({
           code,
+          corto,
           sede: (data.sede as string) || sede,
           label: f.label || f.code,
           nomenclatura: f.nomenclatura,
@@ -225,7 +238,7 @@ export default function MountView({
                   color: "var(--ink-1)",
                 }}
               >
-                {p.nomenclatura || p.code}
+                {p.nomenclatura || p.corto}
               </span>
               {p.urgente && (
                 <span
@@ -338,7 +351,7 @@ function MountForm({
         }}
       >
         <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink-3)" }}>
-          {item.sede} · {item.code}
+          {item.sede} · {item.corto}
         </div>
         <div style={{ fontSize: 18, fontWeight: 700, marginTop: 2, letterSpacing: "-0.02em" }}>
           {item.proveedor || "Sin proveedor"}

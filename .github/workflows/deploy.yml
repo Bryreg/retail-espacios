@@ -1,15 +1,71 @@
-name: Deploy → Producción
+name: CI · Deploy
 
-# Manual only. Producción real corre en Render (auto-deploy desde main); este
-# workflow apunta a un VPS cuyo secret VPS_HOST está vacío desde junio, así que
-# en cada push a main fallaba en rojo sin desplegar nada. Si el VPS se
-# reactiva: cargar los secrets y dispararlo desde la pestaña Actions.
+# The live site is on Render, which builds from `main` on its own the moment a
+# commit lands (see render.yaml) — nothing here triggers it and nothing here can
+# break it.
+#
+# The VPS job below is the repo's other deployment path (docker-compose.prod.yml
+# + nginx/retail.conf). It is real, but its secrets were never configured, so it
+# failed on every single push from June onwards and turned the checks permanently
+# red — which is how a genuine failure would have gone unnoticed. It is opt-in
+# now: set the repository variable DEPLOY_TARGET to "vps" (Settings → Secrets and
+# variables → Actions → Variables) together with VPS_HOST, VPS_USER and
+# VPS_SSH_KEY, and it runs. Leave it unset and it is skipped, not failed.
+
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
 
 jobs:
-  deploy:
-    name: Build & Deploy (zero-downtime)
+  frontend:
+    name: Frontend · typecheck + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20          # matches the Dockerfile's frontend stage
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      # --legacy-peer-deps because that is what the Dockerfile uses, and CI has
+      # to install the same tree production builds from. The conflict is real:
+      # @react-three/drei@10 wants @react-three/fiber@^9 and this project is
+      # pinned to fiber@8 (the 3D editor is written against v8). Plain `npm ci`
+      # fails outright here.
+      - run: npm ci --legacy-peer-deps
+        working-directory: frontend
+      - name: Typecheck
+        run: npx tsc --noEmit
+        working-directory: frontend
+      - name: Build
+        run: npm run build
+        working-directory: frontend
+
+  backend:
+    name: Backend · pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"    # matches the Dockerfile's runtime stage
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+        working-directory: backend
+      - run: python -m pytest
+        working-directory: backend
+        env:
+          JWT_SECRET: ci-secret
+
+  deploy-vps:
+    name: Deploy al VPS vía SSH
+    needs: [frontend, backend]
+    if: >-
+      github.event_name == 'push'
+      && github.ref == 'refs/heads/main'
+      && vars.DEPLOY_TARGET == 'vps'
     runs-on: ubuntu-latest
     environment: production
 

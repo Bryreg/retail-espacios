@@ -61,6 +61,25 @@ export function isRentable(f: { rentable?: boolean }): boolean {
   return f.rentable !== false;
 }
 
+/** El código con el que el espacio existe FUERA del plano: `SEDE-CODIGO`.
+ *
+ *  Dentro del layout un mueble se llama por su nomenclatura corta (`PUN-01`),
+ *  que se repite en las tres sedes. Lo que se guarda en `spaces`, lo que viaja
+ *  en el enlace de los correos y lo que se reporta como montado es siempre el
+ *  código con sede, porque es el único único.
+ *
+ *  Convención de guardado de contratos (AssignmentPanel de FloorPlan2D):
+ *  `` `${item.sede || sede}-${item.code}` ``, con `-B` para la cara B. Los
+ *  códigos que genera el editor 3D ya traen la sede adentro, así que el guard
+ *  evita el doble prefijo — y todo se compara en mayúsculas porque el prefijo
+ *  se genera en mayúsculas pero la sede puede venir escrita como sea. */
+export function fullSpaceCode(sede: string | undefined, code: string): string {
+  const codeUC = (code ?? "").trim().toUpperCase();
+  const sedeUC = (sede ?? "").trim().toUpperCase();
+  if (!sedeUC || codeUC.startsWith(`${sedeUC}-`)) return codeUC;
+  return `${sedeUC}-${codeUC}`;
+}
+
 // ─── Reference rates (tarifa de referencia) ──────────────────────────────────
 
 /** Monthly reference rate (COP) per fixture type. `default` applies everywhere;

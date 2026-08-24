@@ -77,7 +77,21 @@ export const saveReferenceRates = (rates: ReferenceRates): Promise<ReferenceRate
 export const saveLayoutSettings = (
   sedes: string[],
   catalogLabels: Record<string, string>,
+  baseUpdatedAt?: string | null,
 ): Promise<LayoutSettings> =>
   client
-    .put("/layout/settings", { sedes, catalog_labels: catalogLabels })
+    .put("/layout/settings", {
+      sedes,
+      catalog_labels: catalogLabels,
+      base_updated_at: baseUpdatedAt ?? null,
+    })
     .then((r) => r.data);
+
+export interface DeleteImpact {
+  spaces: number;
+  active_leases: number;
+}
+
+/** What deleting a sede would close on the commercial side. Admin only. */
+export const fetchDeleteImpact = (sede: string): Promise<DeleteImpact> =>
+  client.get(`/layout/${encodeURIComponent(sede)}/impact`).then((r) => r.data);

@@ -48,7 +48,9 @@ def list_mounts(sede: Optional[str] = None, db: Session = Depends(get_db)):
     cliente necesita el historial completo para saber cuál fue el último
     reporte de cada uno.
     """
-    q = db.query(MountConfirmation)
+    # Lo archivado no sale: pertenece a una sede que ya se borró, y su código
+    # puede estar en uso otra vez por una sede recreada con el mismo nombre.
+    q = db.query(MountConfirmation).filter(MountConfirmation.archivado_en.is_(None))
     if sede:
         q = q.filter(MountConfirmation.sede == sede.strip().upper())
     return q.order_by(MountConfirmation.confirmado_en.desc(), MountConfirmation.id.desc()).all()

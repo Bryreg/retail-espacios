@@ -50,6 +50,29 @@ function cancelScheduledSave(sede: string) {
   }
 }
 
+// Pushes currently awaiting a server response, per sede. Cancelling the timer
+// is not enough to stop a save: a PUT already in flight lands whenever it
+// lands, and one that arrives after a DELETE re-creates the snapshot it was
+// meant to replace. Deleting a sede waits on this first.
+const _inFlight = new Map<string, Promise<void>>();
+
+// Sedes deleted during this session, normalised. The shared sede list is one
+// value replaced whole and is only ever unioned on pull, never trimmed, so any
+// copy still holding a deleted name can put it back for everyone — permanently.
+// These names are subtracted whenever a list from the server is adopted or
+// merged. In memory only: a reload starts from a server list that no longer
+// contains them.
+const _removedSedes = new Set<string>();
+
+// Sedes added (or renamed into) during this session, normalised. The mirror of
+// the set above, and needed for the same reason: when a settings write is
+// rejected and the two lists have to be merged, "NAVE is in my list" is
+// ambiguous on its own — it means either "I just added it" or "I have not seen
+// that someone deleted it yet". Only names this session actually introduced may
+// be re-added to the server's list; anything else the server dropped stays
+// dropped.
+const _addedSedes = new Set<string>();
+
 /** Only an admin session may write; anything else would just collect 401/403s. */
 function canWrite(): boolean {
   const { token, role } = useAuthStore.getState();
@@ -67,7 +90,7 @@ function currentRole(): string | null {
 /** Sede names are identifiers: they key the server snapshot and prefix every
  *  space code ("SEDE-CODE"). Normalising here stops "Terron" and "TERRON" from
  *  becoming two separate rows that each workstation sees differently. */
-function normalizeSede(name: string): string {
+export function normalizeSede(name: string): string {
   return name.trim().toUpperCase();
 }
 
@@ -164,6 +187,9 @@ interface FixtureStore {
   // ── Sync bookkeeping ────────────────────────────────────────────────────────
   /** Server revision (updated_at) last seen for each sede. */
   serverRev: Record<string, string>;
+  /** Server revision last seen for the shared settings (sede list + labels).
+   *  Echoed back on write so a stale copy is rejected instead of applied. */
+  settingsRev: string | null;
   /** Sedes holding local edits the server has not acknowledged yet. */
   dirty: Record<string, boolean>;
   /** Sedes another workstation modified while we held unsaved edits. */
@@ -195,7 +221,9 @@ interface FixtureStore {
   renameSede: (oldName: string, newName: string) => void;
 
   /** Remove a sede (clears its fixtures). The active sede is moved to the first available. */
-  removeSede: (name: string) => void;
+  /** Delete a sede everywhere. Resolves `{ ok: false, error }` when the server
+   *  refused, in which case NOTHING was removed locally either. */
+  removeSede: (name: string) => Promise<{ ok: boolean; error?: string }>;
 
   /** Override the display label for a catalog fixture type. */
   setCatalogLabel: (type: string, label: string) => void;
@@ -269,6 +297,7 @@ export const useFixtureStore = create<FixtureStore>()(
       camera2D: DEFAULT_CAMERA_2D,
       camera3D: DEFAULT_CAMERA_3D,
       serverRev: {},
+      settingsRev: null,
       dirty: {},
       conflicts: {},
       syncState: "idle",
@@ -292,6 +321,8 @@ export const useFixtureStore = create<FixtureStore>()(
         set((state) => {
           const name = normalizeSede(rawName);
           if (!name || state.sedes.includes(name)) return state;
+          _addedSedes.add(name);
+          _removedSedes.delete(name);
           scheduleSettingsSave();
           return { sedes: [...state.sedes, name] };
         }),
@@ -300,6 +331,12 @@ export const useFixtureStore = create<FixtureStore>()(
         set((state) => {
           const newName = normalizeSede(rawNewName);
           if (!newName || newName === oldName) return state;
+          // A rename is a removal plus an addition, and the merge has to see it
+          // as both or it will bring the old name back from a stale list.
+          _addedSedes.add(newName);
+          _removedSedes.delete(newName);
+          _removedSedes.add(normalizeSede(oldName));
+          _addedSedes.delete(normalizeSede(oldName));
           const newFixturesBySede = { ...state.fixturesBySede };
           const newDirty = { ...state.dirty };
           const newRev = { ...state.serverRev };
@@ -336,36 +373,94 @@ export const useFixtureStore = create<FixtureStore>()(
           };
         }),
 
-      removeSede: (name) =>
-        set((state) => {
-          const remaining = state.sedes.filter((s) => s !== name);
-          const newFixturesBySede = { ...state.fixturesBySede };
-          delete newFixturesBySede[name];
-          const newDirty = { ...state.dirty };
-          delete newDirty[name];
-          cancelScheduledSave(name);
-          // Drop the snapshot too. Removing the sede from the shared list is not
-          // enough: every workstation would keep downloading its fixtures.
-          if (canWrite()) {
-            void deleteLayout(name).catch((err) =>
-              console.warn(`[layout sync] no se pudo eliminar «${name}» del servidor:`, err),
-            );
+      removeSede: async (name) => {
+        const target = normalizeSede(name);
+        const state = get();
+        // Match case-insensitively. The sede bar can leave the active sede in
+        // whatever casing the user typed while the shared list holds the
+        // normalised name, and an exact filter would then delete the fixtures
+        // but leave the name listed — a phantom sede nobody can remove, since
+        // the sede list is only ever unioned on pull, never trimmed.
+        const keys = new Set<string>();
+        for (const s of state.sedes) if (normalizeSede(s) === target) keys.add(s);
+        for (const s of Object.keys(state.fixturesBySede)) {
+          if (normalizeSede(s) === target) keys.add(s);
+        }
+        if (keys.size === 0) return { ok: true };
+
+        // Stop anything that would re-create the snapshot behind our back, and
+        // let an already-issued PUT land BEFORE the DELETE: cancelling the
+        // timer cannot recall a request that is already in flight, and one
+        // arriving after the DELETE would upsert the sede straight back.
+        for (const key of keys) {
+          cancelScheduledSave(key);
+          const flight = _inFlight.get(key);
+          if (flight) await flight.catch(() => {});
+        }
+
+        // The server decides. A fire-and-forget DELETE that failed used to
+        // leave the sede alive for everyone else while this screen showed it
+        // gone — and the next pull re-adopted it and re-published the name, so
+        // the sede came back ~20s later with no error shown anywhere. The
+        // dialog promises "no se puede deshacer"; that has to be true before
+        // anything local is touched.
+        if (canWrite()) {
+          try {
+            for (const key of keys) await deleteLayout(key);
+          } catch (err: any) {
+            const status = err?.response?.status;
+            const error =
+              status === 401 || status === 403
+                ? `No tenés permiso para eliminar «${target}».`
+                : `No se pudo eliminar «${target}» en el servidor. Sigue disponible para los demás equipos.`;
+            set({ syncState: "error", syncMessage: error });
+            return { ok: false, error };
           }
-          const newSede =
-            state.sede === name ? (remaining[0] ?? "TERRON") : state.sede;
-          const newRev = { ...state.serverRev };
-          delete newRev[name];
-          scheduleSettingsSave();
+        }
+
+        // The server has confirmed. Remember the name so a settings list from
+        // another workstation — or a queued push holding the old list — cannot
+        // reinstate it before everyone has converged.
+        _removedSedes.add(target);
+        _addedSedes.delete(target);
+
+        set((state) => {
+          const fixturesBySede = { ...state.fixturesBySede };
+          const dirty = { ...state.dirty };
+          const serverRev = { ...state.serverRev };
+          // A leftover conflict entry keeps the sync indicator stuck on
+          // "Conflicto" forever, and its "Conservar la mía" button calls
+          // pushSede(force) on a sede whose fixtures are gone — writing an
+          // empty layout that resurrects the row we just deleted.
+          const conflicts = { ...state.conflicts };
+          for (const key of keys) {
+            delete fixturesBySede[key];
+            delete dirty[key];
+            delete serverRev[key];
+            delete conflicts[key];
+          }
+          const remaining = state.sedes.filter((s) => !keys.has(s));
+          const sedes = remaining.length > 0 ? remaining : ["TERRON"];
+          const sede = keys.has(state.sede) || normalizeSede(state.sede) === target
+            ? sedes[0]
+            : state.sede;
+          const conflictCount = Object.keys(conflicts).length;
           return {
-            sedes: remaining.length > 0 ? remaining : ["TERRON"],
-            fixturesBySede: newFixturesBySede,
-            serverRev: newRev,
-            dirty: newDirty,
-            sede: newSede,
+            sedes,
+            fixturesBySede,
+            serverRev,
+            dirty,
+            conflicts,
+            sede,
             past: [],
             future: [],
+            syncState: conflictCount ? "conflict" : "idle",
+            syncMessage: conflictCount ? state.syncMessage : null,
           };
-        }),
+        });
+        scheduleSettingsSave();
+        return { ok: true };
+      },
 
       setCatalogLabel: (type, label) =>
         set((state) => {
@@ -472,6 +567,14 @@ export const useFixtureStore = create<FixtureStore>()(
         if (!canWrite()) return;
         cancelScheduledSave(sede);
         const state = get();
+        // Never re-create a sede the store no longer knows. It was deleted —
+        // here or from another workstation — and a stray push (a queued
+        // flushPending, a bootstrap, a conflict resolution) would upsert the
+        // whole snapshot back and undo the deletion for everyone.
+        const stillKnown = (st: FixtureStore) =>
+          st.sedes.includes(sede) ||
+          Object.prototype.hasOwnProperty.call(st.fixturesBySede, sede);
+        if (!stillKnown(state)) return;
         // A sede awaiting conflict resolution would just 409 again on every
         // poll; only an explicit resolution (force) may push it.
         if (state.conflicts[sede] && !opts?.force) return;
@@ -480,8 +583,13 @@ export const useFixtureStore = create<FixtureStore>()(
         const base = opts?.force ? null : (state.serverRev[sede] ?? null);
 
         set({ syncState: "pushing", syncMessage: null });
+        const run = (async () => {
         try {
           const saved = await saveLayout(sede, fixtures, base);
+          // The sede may have been deleted while this request was in flight.
+          // Writing serverRev/dirty back would leave bookkeeping for a sede
+          // that is gone, and the next pull would read it as live again.
+          if (!stillKnown(get())) return;
           set((s) => {
             const dirty = { ...s.dirty };
             const conflicts = { ...s.conflicts };
@@ -502,6 +610,34 @@ export const useFixtureStore = create<FixtureStore>()(
           const status = err?.response?.status;
           if (status === 409) {
             const detail = err.response?.data?.detail;
+            if (typeof detail === "object" && detail?.code === "layout_deleted") {
+              // Someone deleted this sede while we held unsaved edits. Raising
+              // a conflict here would offer "Conservar la mía", and taking it
+              // would push our copy back and undo their deletion. Accept it.
+              cancelScheduledSave(sede);
+              set((s) => {
+                const fixturesBySede = { ...s.fixturesBySede };
+                const dirty = { ...s.dirty };
+                const serverRev = { ...s.serverRev };
+                const conflicts = { ...s.conflicts };
+                delete fixturesBySede[sede];
+                delete dirty[sede];
+                delete serverRev[sede];
+                delete conflicts[sede];
+                const sedes = s.sedes.filter((x) => x !== sede);
+                return {
+                  fixturesBySede,
+                  dirty,
+                  serverRev,
+                  conflicts,
+                  sedes: sedes.length > 0 ? sedes : s.sedes,
+                  sede: s.sede === sede ? (sedes[0] ?? s.sede) : s.sede,
+                  syncState: Object.keys(conflicts).length ? "conflict" : "idle",
+                  syncMessage: `«${sede}» fue eliminada desde otro equipo.`,
+                };
+              });
+              return;
+            }
             const message =
               (typeof detail === "object" && detail?.message) ||
               `Otro equipo modificó «${sede}» mientras editabas.`;
@@ -524,17 +660,72 @@ export const useFixtureStore = create<FixtureStore>()(
             syncMessage: "No se pudo guardar en el servidor. Se reintentará.",
           });
         }
+        })();
+        // Published before the await so a concurrent removeSede can wait for
+        // this request instead of racing it.
+        _inFlight.set(sede, run);
+        try {
+          await run;
+        } finally {
+          if (_inFlight.get(sede) === run) _inFlight.delete(sede);
+        }
       },
 
       // ── Push shared settings ──────────────────────────────────────────────
       pushSettings: async () => {
         if (!canWrite()) return;
-        const { sedes, catalogLabels } = get();
+        const { sedes, catalogLabels, settingsRev } = get();
         try {
-          await saveLayoutSettings(sedes, catalogLabels);
+          const saved = await saveLayoutSettings(sedes, catalogLabels, settingsRev);
+          set({ settingsRev: saved.updated_at ?? null });
         } catch (err: any) {
           const status = err?.response?.status;
           if (status === 401 || status === 403) return;
+          if (status === 409) {
+            // Someone else changed the shared list while we held an older copy.
+            // Retrying with ours would undo their change; adopting theirs would
+            // undo ours. Merge, then write once against their revision.
+            try {
+              const fresh = await fetchLayoutSettings();
+              const local = get();
+              // Their list is the base — minus anything deleted here, which is
+              // the one direction a merge cannot infer from the lists alone.
+              const merged = fresh.sedes.filter(
+                (name) => !_removedSedes.has(normalizeSede(name)),
+              );
+              // Only names this session introduced. Re-adding every local name
+              // would reinstate a sede another workstation deleted while this
+              // one still listed it — the exact overwrite this merge exists to
+              // prevent, just arriving from the other side.
+              for (const name of local.sedes) {
+                const key = normalizeSede(name);
+                if (_removedSedes.has(key) || !_addedSedes.has(key)) continue;
+                if (!merged.includes(name)) merged.push(name);
+              }
+              // Labels are display names: last writer wins per key, and ours is
+              // the edit that just happened.
+              const labels = { ...fresh.catalog_labels, ...local.catalogLabels };
+              const saved = await saveLayoutSettings(
+                merged, labels, fresh.updated_at ?? null,
+              );
+              set({
+                sedes: merged,
+                catalogLabels: labels,
+                settingsRev: saved.updated_at ?? null,
+                syncState: Object.keys(get().conflicts).length ? "conflict" : "idle",
+                syncMessage: null,
+              });
+              return;
+            } catch (retryErr) {
+              console.warn("[layout sync] no se pudo fusionar la lista de sedes:", retryErr);
+              set({
+                syncState: "error",
+                syncMessage:
+                  "Otro equipo cambió la lista de sedes. Actualizá para ver la versión del servidor.",
+              });
+              return;
+            }
+          }
           console.warn("[layout sync] no se pudieron guardar las sedes:", err);
           // Same rule as pushSede: a failure the user cannot see is a failure
           // they will discover as missing data on the other workstation.
@@ -714,8 +905,20 @@ export const useFixtureStore = create<FixtureStore>()(
               settings && settings.sedes.length > 0 && !_settingsTimer
                 ? settings.sedes
                 : state.sedes;
-            const visible = [...configured];
+            // A sede this session deleted is dropped from the configured part.
+            // Nothing else trims that list, so a copy published by a
+            // workstation that had not yet seen the deletion would otherwise
+            // reinstate the name for everyone, with no snapshot behind it and
+            // no way to remove it again.
+            const visible = configured.filter(
+              (name) => !_removedSedes.has(normalizeSede(name)),
+            );
             for (const entry of entries) {
+              // The server holds a snapshot under this name again, so the sede
+              // genuinely exists — recreated, or seeded by a workstation that
+              // was offline during the deletion. Stop suppressing it: the
+              // tombstone guards the name in the list, not real data.
+              _removedSedes.delete(normalizeSede(entry.sede));
               if (!visible.includes(entry.sede)) visible.push(entry.sede);
             }
             next.sedes = visible;
@@ -732,6 +935,7 @@ export const useFixtureStore = create<FixtureStore>()(
             if (settings && settings.catalog_labels && !_settingsTimer) {
               next.catalogLabels = settings.catalog_labels;
             }
+            if (settings) next.settingsRev = settings.updated_at ?? null;
 
             // Reference rates: adopt the server copy unless an edit of ours is
             // still waiting in the debounce. A worker never holds rates — clear
@@ -839,6 +1043,7 @@ export const useFixtureStore = create<FixtureStore>()(
         // Persisted so a reload knows what the server already has and which
         // sedes still carry unsaved work.
         serverRev: state.serverRev,
+        settingsRev: state.settingsRev,
         dirty: state.dirty,
         dataRole: state.dataRole,
         // referenceRates stays out on purpose: it's admin-only money, and this

@@ -32,9 +32,15 @@ class LayoutSettingsIn(BaseModel):
     """Shared, non-fixture layout state that every workstation must agree on."""
     sedes: list[str] = Field(default=[], max_length=100)
     catalog_labels: dict[str, str] = Field(default={})
+    # Same optimistic-concurrency contract as LayoutIn: the revision this write
+    # is based on. Absent means "overwrite unconditionally", which is what a
+    # first-ever publish sends.
+    base_updated_at: datetime | None = None
 
 
-class LayoutSettingsOut(LayoutSettingsIn):
+class LayoutSettingsOut(BaseModel):
+    sedes: list[str] = Field(default=[], max_length=100)
+    catalog_labels: dict[str, str] = Field(default={})
     updated_at: datetime | None = None
 
 
