@@ -3162,10 +3162,16 @@ function CommercialPanel({
   const [saveState, setSaveState] = useState<"idle"|"saving"|"ok"|"error">("idle");
   const [saveError, setSaveError] = useState("");
 
-  const canSave =
-    fix.supplierName.trim().length > 0 &&
+  // Same guard as the 2D panel: a reversed pair of dates would make the space
+  // read as free for every period in the availability view.
+  const datesInOrder =
     fix.startDate.length > 0 &&
     fix.endDate.length > 0 &&
+    fix.startDate <= fix.endDate;
+
+  const canSave =
+    fix.supplierName.trim().length > 0 &&
+    datesInOrder &&
     (fix.negotiatedValue ?? 0) > 0;
 
   async function handleSaveContract() {

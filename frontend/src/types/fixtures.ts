@@ -211,6 +211,11 @@ export function daysTakenInRange(
   // Marked occupied with no dates recorded: treat it as taken rather than
   // offering a space someone may physically be using.
   if (!start && !end) return total;
+  // Dates entered backwards. The intersection below would come out empty and
+  // the space would read as free for every period ever asked about, which is
+  // the expensive direction of being wrong. Same policy as above: if the data
+  // makes no sense, assume the space is in use.
+  if (start && end && dayNumber(end) < dayNumber(start)) return total;
 
   const a = Math.max(dayNumber(from), start ? dayNumber(start) : -Infinity);
   const b = Math.min(dayNumber(to), end ? dayNumber(end) : Infinity);

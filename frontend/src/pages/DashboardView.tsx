@@ -159,7 +159,11 @@ function displayStatus(f: { status: SpaceStatus; startDate?: string; endDate: st
   if (phase === "sin_contrato")   return "no_contract";
   if (phase === "pendiente")      return "committed";
   if (phase === "vencido")        return "expired";
-  if (!f.endDate)                 return "no_contract";
+  // Running with a start date but no end: an open-ended contract, not a
+  // missing one. Calling it "no_contract" here contradicted contractPhase,
+  // which already counted its money as current revenue, and polluted the
+  // very alert meant to surface spaces occupied without paperwork.
+  if (!f.endDate)                 return "active";
   return daysUntil(f.endDate) <= 30 ? "expiring" : "active";
 }
 
@@ -406,6 +410,7 @@ const RANGE_LABEL: Record<RangeAvailability, string> = {
 
 /** Infrastructure on the isometric map: present, but visibly not for sale. */
 const NON_RENTABLE_TOP = "#94A3B8";
+const NON_RENTABLE_LABEL = "No comercializable";
 
 function pts(...points: [number, number][]): string {
   return points.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
@@ -516,6 +521,10 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
       // not "who is here" but "can I sell this, and if not, how much of it".
       const rangeSub = (face: FaceEntry) => {
         if (!range) return face.supplierName || "Sin proveedor";
+        // A column or a checkout is not for sale, so it must never answer
+        // "libre los 24 días" — the colour already excludes it, the words
+        // have to as well.
+        if (!rentable) return NON_RENTABLE_LABEL;
         const total = inclusiveDays(range.from, range.to);
         const taken = daysTakenInRange(face, range.from, range.to);
         if (taken <= 0) return `libre los ${total} día${total === 1 ? "" : "s"}`;
@@ -717,7 +726,7 @@ function MapLegend({ range }: { range?: DateRange | null }) {
         { c: RANGE_TOP.libre,   l: RANGE_LABEL.libre },
         { c: RANGE_TOP.parcial, l: RANGE_LABEL.parcial },
         { c: RANGE_TOP.tomado,  l: RANGE_LABEL.tomado },
-        { c: NON_RENTABLE_TOP,  l: "No comercializable" },
+        { c: NON_RENTABLE_TOP,  l: NON_RENTABLE_LABEL },
       ]
     : [
     { c: DISPLAY_TOP.free,        l: "Libre" },
@@ -726,7 +735,7 @@ function MapLegend({ range }: { range?: DateRange | null }) {
     { c: DISPLAY_TOP.expired,     l: "Vencido" },
     { c: DISPLAY_TOP.reserved,    l: "Reservado" },
     { c: DISPLAY_TOP.maintenance, l: "Mantenimiento" },
-    { c: NON_RENTABLE_TOP,        l: "No comercializable" },
+    { c: NON_RENTABLE_TOP,        l: NON_RENTABLE_LABEL },
   ];
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center" }}>
@@ -834,7 +843,7 @@ function StatusPill({ fixture, face }: { fixture: UnifiedFixture; face: FaceEntr
       }}
     >
       <span style={{ width: 6, height: 6, borderRadius: 99, background: ring }} />
-      {rentable ? STATUS_META[ds].label : "No comercializable"}
+      {rentable ? STATUS_META[ds].label : NON_RENTABLE_LABEL}
     </span>
   );
 }
@@ -2227,7 +2236,7 @@ export default function DashboardView() {
                             chip="—"
                             chipColor="var(--ink-4)"
                             bg="transparent"
-                            dates="sin fechas"
+                            dates={formatRange(entry.startDate, entry.endDate)}
                             last={lastAttentionSection === "noContract" && i === kpis.noContract.length - 1}
                           />
                         ))}

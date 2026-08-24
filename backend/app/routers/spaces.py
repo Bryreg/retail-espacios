@@ -242,9 +242,15 @@ def update_status(space_id: int, payload: SpaceStatusUpdate, db: Session = Depen
 
 @router.post("/{space_id}/leases", response_model=LeaseOut, status_code=201, dependencies=[Depends(require_admin)])
 def create_lease(space_id: int, payload: LeaseCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    # Date sanity check
-    if payload.start_date >= payload.end_date:
-        raise HTTPException(status_code=422, detail="start_date debe ser anterior a end_date")
+    # Date sanity check. Equal dates are VALID: a one-day rental is a real
+    # product here — Black Friday is a single Friday — and rejecting it made
+    # the shortest, best-paid periods impossible to record. Everything else in
+    # this file treats ranges as inclusive on both ends, so this must too.
+    if payload.start_date > payload.end_date:
+        raise HTTPException(
+            status_code=422,
+            detail="La fecha de inicio no puede ser posterior a la de fin",
+        )
 
     space = db.query(Space).filter(Space.id == space_id).first()
     if not space:

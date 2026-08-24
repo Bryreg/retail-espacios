@@ -2796,10 +2796,18 @@ function AssignmentPanel({
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
 
-  const canSave =
-    face.supplierName.trim().length > 0 &&
+  // Dates entered backwards are rejected here and not just by the backend:
+  // the layout JSON is what the map and the availability view read, and it
+  // accepts anything, so a reversed pair would quietly make the space look
+  // free for every period asked about.
+  const datesInOrder =
     face.startDate.length > 0 &&
     face.endDate.length > 0 &&
+    face.startDate <= face.endDate;
+
+  const canSave =
+    face.supplierName.trim().length > 0 &&
+    datesInOrder &&
     (face.negotiatedValue ?? 0) > 0;
 
   async function handleSaveContract() {
@@ -3120,7 +3128,9 @@ function AssignmentPanel({
         )}
         {!canSave && saveState === "idle" && (
           <p style={{ marginTop: 4, fontSize: 10, color: "var(--dark-ink-3)" }}>
-            Requiere proveedor, fechas y valor &gt; 0.
+            {face.startDate && face.endDate && face.startDate > face.endDate
+              ? "La fecha de inicio quedó después de la de fin."
+              : "Requiere proveedor, fechas y valor > 0."}
           </p>
         )}
       </div>
