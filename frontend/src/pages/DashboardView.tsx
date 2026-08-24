@@ -345,10 +345,19 @@ function pts(...points: [number, number][]): string {
   return points.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
 }
 
+export interface MapAnchor {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 interface IsoMapProps {
   fixtures: UnifiedFixture[];
   selectedId: string | null;
-  onSelect: (f: UnifiedFixture | null) => void;
+  /** `point` is relative to the map wrapper, and carries the wrapper's own
+   *  size so the popover can flip sides and stay inside the card. */
+  onSelect: (f: UnifiedFixture | null, point?: MapAnchor) => void;
   /** Active search/filter result — null when no query or filter applies. */
   match: MapMatch | null;
 }
@@ -495,10 +504,26 @@ function IsoMap({ fixtures, selectedId, onSelect, match }: IsoMapProps) {
               key={f.id}
               onClick={(e) => {
                 e.stopPropagation();
-                onSelect(f);
+                const rect = wrapRef.current?.getBoundingClientRect();
+                onSelect(
+                  f,
+                  rect
+                    ? {
+                        x: e.clientX - rect.left,
+                        y: e.clientY - rect.top,
+                        w: rect.width,
+                        h: rect.height,
+                      }
+                    : undefined,
+                );
               }}
               onMouseEnter={() => setHoverId(f.id)}
-              onMouseMove={(e) => handleMove(e, f.label || f.code, tooltipSub)}
+              onMouseMove={(e) => {
+                // The popover already describes this one — a tooltip on top of
+                // it would just be two cards saying the same thing.
+                if (f.id === selectedId) { setTip(null); return; }
+                handleMove(e, f.label || f.code, tooltipSub);
+              }}
               onMouseLeave={() => {
                 setHoverId(null);
                 setTip(null);
@@ -628,122 +653,278 @@ function MapLegend() {
 
 // ─── Fixture detail drawer (dark, right side) ────────────────────────────────
 
-const DARK_STATUS: Record<SpaceStatus, string> = {
-  free: "#4ADE80",
-  occupied: "#A78BFA",
-  reserved: "#FBBF24",
-  maintenance: "#A8A29E",
-};
+// ─── Space files (shared by the popover and the full detail) ────────────────
 
-function daysChip(days: number | null): { text: string; color: string; bg: string } {
-  if (days === null)
-    return { text: "Sin periodo", color: "var(--dark-ink-3)", bg: "rgba(255,255,255,0.06)" };
-  if (days < 0)
-    return { text: `Vencido hace ${Math.abs(days)}d`, color: "#F87171", bg: "rgba(248,113,113,0.14)" };
-  if (days <= 7)
-    return { text: `Vence en ${days}d`, color: "#F87171", bg: "rgba(248,113,113,0.14)" };
-  if (days <= 30)
-    return { text: `Vence en ${days}d`, color: "#FBBF24", bg: "rgba(251,191,36,0.14)" };
-  return { text: `${days}d restantes`, color: "#4ADE80", bg: "rgba(74,222,128,0.12)" };
-}
+type FilesState = "loading" | "ok" | "none" | "error";
 
-function PanelRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <div
-        style={{
-          fontSize: 9.5, fontWeight: 700,
-          textTransform: "uppercase", letterSpacing: "0.08em",
-          color: "var(--dark-ink-3)", marginBottom: 3,
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ fontSize: 12.5, color: "var(--dark-ink-1)" }}>{children}</div>
-    </div>
-  );
-}
-
-interface FixtureDetailPanelProps {
-  fixture: UnifiedFixture;
-  isAdmin: boolean;
-  onClose: () => void;
-  onOpenFile: (file: SpaceFileMeta) => void;
-}
-
-function FixtureDetailPanel({ fixture, isAdmin, onClose, onOpenFile }: FixtureDetailPanelProps) {
-  const [face, setFace] = useState<"A" | "B">("A");
-  const rentable = isRentable(fixture);
-  const double = isDoubleGondola(fixture) && rentable;
-  const faces = facesOf(fixture);
-  const current = face === "B" && faces.length > 1 ? faces[1] : faces[0];
-
-  const [spaceState, setSpaceState] = useState<"loading" | "ok" | "none" | "error">("loading");
+/** Look up the Space behind a face code and list its contract files.
+ *  Skipped entirely when the fixture cannot hold a contract. */
+function useSpaceFiles(code: string, enabled: boolean) {
+  const [state, setState] = useState<FilesState>("loading");
   const [files, setFiles] = useState<SpaceFileMeta[]>([]);
 
-  useEffect(() => setFace("A"), [fixture.id]);
-
   useEffect(() => {
-    let cancelled = false;
-    if (!rentable) {
-      setSpaceState("none");
+    if (!enabled) {
+      setState("none");
+      setFiles([]);
       return;
     }
-    setSpaceState("loading");
+    let cancelled = false;
+    setState("loading");
     setFiles([]);
     client
-      .get<Space>(`/spaces/by-code/${encodeURIComponent(current.code)}`)
+      .get<Space>(`/spaces/by-code/${encodeURIComponent(code)}`)
       .then(async (r) => {
         const fl = await listSpaceFiles(r.data.id);
         if (cancelled) return;
         setFiles(fl);
-        setSpaceState("ok");
+        setState("ok");
       })
       .catch((err) => {
         if (cancelled) return;
-        setSpaceState(err?.response?.status === 404 ? "none" : "error");
+        setState(err?.response?.status === 404 ? "none" : "error");
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [current.code, rentable]);
+    return () => { cancelled = true; };
+  }, [code, enabled]);
 
-  const days = current.endDate ? daysUntil(current.endDate) : null;
-  const chip = daysChip(days);
+  return { state, files };
+}
 
+function fileTint(f: SpaceFileMeta): string {
+  if (f.content_type?.startsWith("image/")) return "var(--accent)";
+  if (/sheet|excel|csv/i.test(f.content_type ?? "")) return "var(--success)";
+  return "var(--danger)";
+}
+
+function FileRow({ file, onOpen }: { file: SpaceFileMeta; onOpen: () => void }) {
   return (
-    <aside
+    <button
+      onClick={onOpen}
       style={{
-        position: "fixed", top: 0, right: 0, bottom: 0,
-        width: 340, maxWidth: "92vw", zIndex: 120,
-        background: "var(--dark-bg)",
-        borderLeft: "1px solid var(--dark-line)",
-        boxShadow: "-12px 0 32px rgba(0,0,0,0.4)",
-        display: "flex", flexDirection: "column",
-        overflowY: "auto",
+        display: "flex", alignItems: "center", gap: 8, width: "100%",
+        padding: "8px 10px", borderRadius: "var(--r-md)",
+        border: "1px solid var(--line)", background: "var(--surface)",
+        cursor: "pointer", textAlign: "left", fontFamily: "inherit",
       }}
     >
-      {/* Header */}
-      <div
+      <FileText size={13} style={{ color: fileTint(file), flexShrink: 0 }} />
+      <span
         style={{
-          display: "flex", alignItems: "flex-start", gap: 10,
-          padding: "16px 18px 12px",
-          borderBottom: "1px solid var(--dark-line)",
-          position: "sticky", top: 0, background: "var(--dark-bg)", zIndex: 2,
+          flex: 1, minWidth: 0, fontSize: 11.5, fontWeight: 500, color: "var(--ink-1)",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
         }}
       >
+        {file.filename}
+      </span>
+      <span style={{ fontSize: 10, color: "var(--ink-3)", flexShrink: 0, fontFamily: "var(--font-mono)" }}>
+        {file.size >= 1024 * 1024
+          ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+          : `${Math.max(1, Math.round(file.size / 1024))} KB`}
+      </span>
+    </button>
+  );
+}
+
+/** Status pill in the page's light theme (the old panel was dark-on-light). */
+function StatusPill({ fixture, status }: { fixture: UnifiedFixture; status: SpaceStatus }) {
+  const rentable = isRentable(fixture);
+  const ring = rentable ? STATUS_TOP[status] : NON_RENTABLE_TOP;
+  return (
+    <span
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0,
+        fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 999,
+        background: rentable ? "var(--accent-50)" : "var(--surface-3)",
+        color: rentable ? "var(--accent-700)" : "var(--ink-2)",
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: 99, background: ring }} />
+      {rentable ? STATUS_LABEL[status] : "No comercializable"}
+    </span>
+  );
+}
+
+function SupplierLine({ entry, size = 34 }: { entry: FaceEntry; size?: number }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+      <div
+        style={{
+          width: size, height: size, borderRadius: "var(--r-lg)", flexShrink: 0,
+          background: "var(--accent-100)", color: "var(--accent-700)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: size * 0.42, fontWeight: 700,
+        }}
+      >
+        {entry.supplierName.trim().charAt(0).toUpperCase() || "—"}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 14, fontWeight: 600, color: "var(--ink-1)",
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          }}
+        >
+          {entry.supplierName}
+        </div>
+        {entry.brandCategory && (
+          <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{entry.brandCategory}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Light-theme day chip — replaces the dark drawer's daysChip(). */
+function daysPill(days: number | null): { text: string; color: string; bg: string } | null {
+  if (days === null) return null;
+  if (days < 0)
+    return { text: `Vencido hace ${Math.abs(days)}d`, color: "var(--danger)", bg: "var(--danger-100)" };
+  if (days <= 30)
+    return { text: `Vence en ${days}d`, color: "var(--warning)", bg: "var(--warning-100)" };
+  return { text: `${days}d restantes`, color: "var(--success)", bg: "var(--success-100)" };
+}
+
+function PeriodBox({ entry }: { entry: FaceEntry }) {
+  const pill = daysPill(entry.endDate ? daysUntil(entry.endDate) : null);
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: 9.5, fontWeight: 700, textTransform: "uppercase",
+          letterSpacing: "0.08em", color: "var(--ink-3)", marginBottom: 6,
+        }}
+      >
+        Periodo
+      </div>
+      <div
+        style={{
+          border: "1px solid var(--line)", background: "var(--surface-2)",
+          borderRadius: "var(--r-lg)", padding: "10px 12px",
+          display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8,
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.1em", color: "var(--ink-3)" }}>INICIO</div>
+          <div style={{ fontSize: 13.5, fontWeight: 600, fontFamily: "var(--font-mono)", color: "var(--ink-1)", marginTop: 2 }}>
+            {formatDate(entry.startDate)}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.1em", color: "var(--ink-3)" }}>FIN</div>
+          <div style={{ fontSize: 13.5, fontWeight: 600, fontFamily: "var(--font-mono)", color: pill?.color ?? "var(--ink-1)", marginTop: 2 }}>
+            {formatDate(entry.endDate)}
+          </div>
+        </div>
+        {pill && (
+          <div style={{ gridColumn: "1 / -1" }}>
+            <span
+              style={{
+                display: "inline-flex", alignItems: "center", fontSize: 11, fontWeight: 700,
+                padding: "3px 10px", borderRadius: 999, background: pill.bg, color: pill.color,
+              }}
+            >
+              {pill.text}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Shown instead of a wall of "—" when there is nothing to report. */
+function NoContractState({ fixture, isAdmin }: { fixture: UnifiedFixture; isAdmin: boolean }) {
+  const rentable = isRentable(fixture);
+  return (
+    <div style={{ padding: "22px 4px 8px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+      <div
+        style={{
+          width: 46, height: 46, borderRadius: "var(--r-xl)", marginBottom: 13,
+          background: rentable ? "var(--success-50)" : "var(--surface-3)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}
+      >
+        <Building2 size={22} style={{ color: rentable ? "var(--success)" : "var(--ink-2)" }} />
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink-1)" }}>
+        {rentable ? "Disponible para vender" : "Parte del local"}
+      </div>
+      <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55, marginTop: 6 }}>
+        {rentable
+          ? "Este espacio no tiene contrato activo."
+          : "Está marcado como no comercializable: no admite contrato y no cuenta en la ocupación."}
+      </div>
+      {isAdmin && (
+        <div style={{ fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.5, marginTop: 10 }}>
+          {rentable
+            ? "Asignale un proveedor desde la pestaña Plano."
+            : "Para alquilarlo, cambiá su destino a «Comercializable» desde el plano."}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Quick-look popover, anchored to the fixture on the map ─────────────────
+
+function FixturePopover({
+  fixture, anchor, isAdmin, onExpand, onClose,
+}: {
+  fixture: UnifiedFixture;
+  anchor: MapAnchor;
+  isAdmin: boolean;
+  onExpand: () => void;
+  onClose: () => void;
+}) {
+  const rentable = isRentable(fixture);
+  const faces = facesOf(fixture);
+  const entry = faces[0];
+  const { files } = useSpaceFiles(entry.code, rentable && entry.status === "occupied");
+  const pill = daysPill(entry.endDate ? daysUntil(entry.endDate) : null);
+  const hasContract = rentable && entry.supplierName.trim().length > 0;
+
+  const W = 296;
+  const EST_H = 250;
+  // Flip to whichever side has room, measured against the real map width.
+  const flip = anchor.x + 18 + W > anchor.w - 8;
+  const left = Math.max(8, flip ? anchor.x - W - 18 : anchor.x + 18);
+  const top = Math.min(Math.max(8, anchor.y - 70), Math.max(8, anchor.h - EST_H));
+
+  return (
+    <div
+      style={{
+        position: "absolute", left, top, width: W, zIndex: 30,
+        background: "var(--surface)", border: "1px solid var(--line-strong)",
+        borderRadius: "var(--r-xl)", boxShadow: "var(--shadow-lg)",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute", [flip ? "right" : "left"]: -7, top: 82,
+          width: 12, height: 12, background: "var(--surface)",
+          borderLeft: flip ? "none" : "1px solid var(--line-strong)",
+          borderBottom: flip ? "none" : "1px solid var(--line-strong)",
+          borderRight: flip ? "1px solid var(--line-strong)" : "none",
+          borderTop: flip ? "1px solid var(--line-strong)" : "none",
+          transform: "rotate(45deg)",
+        } as React.CSSProperties}
+      />
+
+      <div style={{ padding: "12px 14px 11px", borderBottom: "1px solid var(--line-soft)", display: "flex", alignItems: "flex-start", gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--ink-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {fixture.label || fixture.code}
+          </div>
           <div
             style={{
-              fontSize: 14.5, fontWeight: 700, color: "var(--dark-ink-1)",
-              letterSpacing: "-0.01em",
+              fontSize: 10.5, fontFamily: "var(--font-mono)", color: "var(--ink-3)", marginTop: 2,
               whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
             }}
           >
-            {fixture.label || fixture.code}
+            {entry.code} · {fixture.sede}
           </div>
-          <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--dark-ink-3)", marginTop: 2 }}>
-            {current.code} · {fixture.sede}
+          <div style={{ marginTop: 7 }}>
+            <StatusPill fixture={fixture} status={entry.status} />
           </div>
         </div>
         <button
@@ -751,237 +932,197 @@ function FixtureDetailPanel({ fixture, isAdmin, onClose, onOpenFile }: FixtureDe
           title="Cerrar"
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
-            width: 26, height: 26, borderRadius: "var(--r-md)", flexShrink: 0,
-            background: "var(--dark-surface-2)", border: "1px solid var(--dark-line)",
-            color: "var(--dark-ink-2)", cursor: "pointer",
+            width: 22, height: 22, flexShrink: 0, borderRadius: "var(--r-sm)",
+            border: "1px solid var(--line)", background: "var(--surface-2)",
+            color: "var(--ink-2)", cursor: "pointer", padding: 0,
           }}
         >
-          <X size={13} />
+          <X size={11} />
         </button>
       </div>
 
-      {/* Face tabs for double gondolas */}
+      <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 11 }}>
+        {hasContract ? (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+              <SupplierLine entry={entry} size={30} />
+              {isAdmin && entry.negotiatedValue > 0 && (
+                <span style={{ marginLeft: "auto", fontSize: 13, fontWeight: 700, fontFamily: "var(--font-mono)", color: "var(--success)" }}>
+                  {formatCOP(entry.negotiatedValue)}
+                </span>
+              )}
+            </div>
+            {(entry.startDate || entry.endDate) && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 11.5, fontFamily: "var(--font-mono)", color: "var(--ink-2)" }}>
+                  {formatRange(entry.startDate, entry.endDate)}
+                </span>
+                {pill && (
+                  <span style={{ marginLeft: "auto", fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: pill.bg, color: pill.color }}>
+                    {pill.text}
+                  </span>
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
+            {rentable ? "Sin contrato activo — disponible para vender." : "Parte del local, no admite contrato."}
+          </div>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 6, borderTop: "1px solid var(--line-soft)", paddingTop: 10 }}>
+          {rentable && (
+            <>
+              <FileText size={13} style={{ color: "var(--ink-3)" }} />
+              <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
+                {files.length > 0 ? `${files.length} archivo${files.length !== 1 ? "s" : ""}` : "Sin archivos"}
+              </span>
+            </>
+          )}
+          <button
+            onClick={onExpand}
+            style={{
+              marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 4,
+              background: "none", border: "none", padding: 0, cursor: "pointer",
+              fontSize: 11.5, fontWeight: 600, fontFamily: "inherit", color: "var(--accent-700)",
+            }}
+          >
+            Ver todo <ChevronRight size={12} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Full detail, rendered in the right-hand rail ────────────────────────────
+
+function FixtureDetailCard({
+  fixture, isAdmin, face, onFace, onBack, onOpenFile,
+}: {
+  fixture: UnifiedFixture;
+  isAdmin: boolean;
+  face: "A" | "B";
+  onFace: (f: "A" | "B") => void;
+  onBack: () => void;
+  onOpenFile: (f: SpaceFileMeta) => void;
+}) {
+  const rentable = isRentable(fixture);
+  const faces = facesOf(fixture);
+  const double = isDoubleGondola(fixture) && rentable;
+  const entry = face === "B" && faces.length > 1 ? faces[1] : faces[0];
+  const { state, files } = useSpaceFiles(entry.code, rentable);
+  const hasContract = rentable && entry.supplierName.trim().length > 0;
+
+  return (
+    <Card style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 14px", borderBottom: "1px solid var(--line-soft)" }}>
+        <button
+          onClick={onBack}
+          title="Volver"
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: 26, height: 26, flexShrink: 0, marginTop: 1, borderRadius: "var(--r-md)",
+            border: "1px solid var(--line)", background: "var(--surface-2)",
+            color: "var(--ink-2)", cursor: "pointer", padding: 0,
+          }}
+        >
+          <ChevronRight size={14} style={{ transform: "rotate(180deg)" }} />
+        </button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink-1)", letterSpacing: "-0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {fixture.label || fixture.code}
+          </div>
+          <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--ink-3)", marginTop: 2 }}>
+            {entry.code} · {fixture.sede}
+          </div>
+        </div>
+        <StatusPill fixture={fixture} status={entry.status} />
+      </div>
+
       {double && (
-        <div style={{ display: "flex", gap: 6, padding: "12px 18px 0" }}>
+        <div style={{ display: "flex", gap: 6, padding: "10px 14px 0" }}>
           {(["A", "B"] as const).map((id) => {
             const active = face === id;
+            const other = faces[id === "A" ? 0 : 1];
             return (
               <button
                 key={id}
-                onClick={() => setFace(id)}
+                onClick={() => onFace(id)}
                 style={{
-                  flex: 1, height: 28,
-                  borderRadius: "var(--r-md)",
-                  fontSize: 11.5, fontWeight: 600, fontFamily: "inherit",
-                  border: `1px solid ${active ? "var(--accent)" : "var(--dark-line-2)"}`,
-                  background: active ? "rgba(124,58,237,0.22)" : "var(--dark-surface)",
-                  color: active ? "#C4B5FD" : "var(--dark-ink-2)",
-                  cursor: "pointer",
-                  transition: "background .12s, color .12s",
+                  flex: 1, minWidth: 0, height: 28, borderRadius: "var(--r-md)",
+                  fontSize: 11.5, fontWeight: 600, fontFamily: "inherit", cursor: "pointer",
+                  border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`,
+                  background: active ? "var(--accent-50)" : "var(--surface)",
+                  color: active ? "var(--accent-700)" : "var(--ink-2)",
+                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                 }}
               >
-                Cara {id}
+                {/* The supplier on the tab saves a click just to find out
+                    whether the other face holds anything. */}
+                Cara {id}{other?.supplierName ? ` · ${other.supplierName}` : ""}
               </button>
             );
           })}
         </div>
       )}
 
-      <div style={{ padding: "16px 18px", flex: 1 }}>
-        {!rentable ? (
-          <div
-            style={{
-              background: "var(--dark-surface)",
-              border: "1px solid var(--dark-line)",
-              borderRadius: "var(--r-lg)",
-              padding: "14px 16px",
-            }}
-          >
-            <span
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 6,
-                fontSize: 11.5, fontWeight: 600,
-                padding: "3px 10px", borderRadius: 999,
-                background: "rgba(148,163,184,0.18)", color: "#94A3B8",
-              }}
-            >
-              <span style={{ width: 6, height: 6, borderRadius: 99, background: "#94A3B8" }} />
-              No comercializable
-            </span>
-            <p style={{ marginTop: 10, fontSize: 12, lineHeight: 1.55, color: "var(--dark-ink-2)" }}>
-              Este mueble está marcado como parte del local, no como espacio a
-              la venta. No admite contrato y no entra en los indicadores de
-              disponibilidad ni de ocupación.
-            </p>
-            <p style={{ marginTop: 8, fontSize: 11, color: "var(--dark-ink-3)" }}>
-              Para alquilarlo, cambiá su destino a «Comercializable» desde el plano.
-            </p>
-          </div>
-        ) : (<>
-        {/* Estado */}
-        <PanelRow label="Estado">
-          <span
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              fontSize: 11.5, fontWeight: 600,
-              padding: "3px 10px", borderRadius: 999,
-              background: "rgba(255,255,255,0.06)",
-              color: DARK_STATUS[current.status],
-            }}
-          >
-            <span
-              style={{
-                width: 6, height: 6, borderRadius: 99,
-                background: DARK_STATUS[current.status], flexShrink: 0,
-              }}
-            />
-            {STATUS_LABEL[current.status]}
-          </span>
-        </PanelRow>
-
-        {/* Proveedor / marca */}
-        <PanelRow label="Proveedor">
-          {current.supplierName || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}
-        </PanelRow>
-        <PanelRow label="Marca / categoría">
-          {current.brandCategory || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}
-        </PanelRow>
-
-        {/* Periodo */}
-        <div style={{ marginBottom: 12 }}>
-          <div
-            style={{
-              fontSize: 9.5, fontWeight: 700,
-              textTransform: "uppercase", letterSpacing: "0.08em",
-              color: "var(--dark-ink-3)", marginBottom: 6,
-            }}
-          >
-            Periodo
-          </div>
-          <div
-            style={{
-              display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8,
-              background: "var(--dark-surface)",
-              border: "1px solid var(--dark-line)",
-              borderRadius: "var(--r-lg)",
-              padding: "10px 12px",
-            }}
-          >
-            <div>
-              <div style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.1em", color: "var(--dark-ink-3)" }}>
-                INICIO
-              </div>
-              <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "var(--font-mono)", color: "var(--dark-ink-1)", marginTop: 2 }}>
-                {formatDate(current.startDate)}
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.1em", color: "var(--dark-ink-3)" }}>
-                FIN
-              </div>
-              <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "var(--font-mono)", color: chip.color, marginTop: 2 }}>
-                {formatDate(current.endDate)}
-              </div>
-            </div>
-            <div style={{ gridColumn: "1 / -1" }}>
-              <span
+      <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 13, overflowY: "auto" }}>
+        {!hasContract ? (
+          <NoContractState fixture={fixture} isAdmin={isAdmin} />
+        ) : (
+          <>
+            <SupplierLine entry={entry} />
+            {(entry.startDate || entry.endDate) && <PeriodBox entry={entry} />}
+            {isAdmin && entry.negotiatedValue > 0 && (
+              <div
                 style={{
-                  display: "inline-flex", alignItems: "center",
-                  fontSize: 11, fontWeight: 700,
-                  padding: "3px 10px", borderRadius: 999,
-                  background: chip.bg, color: chip.color,
+                  display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8,
+                  padding: "10px 12px", border: "1px solid var(--success-100)",
+                  background: "var(--success-50)", borderRadius: "var(--r-lg)",
                 }}
               >
-                {chip.text}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Valor — admin only */}
-        {isAdmin && (
-          <PanelRow label="Valor negociado / mes">
-            <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "#4ADE80", fontSize: 14 }}>
-              {formatCOP(current.negotiatedValue)}
-            </span>
-          </PanelRow>
+                <span style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--success)" }}>
+                  Valor / mes
+                </span>
+                <span style={{ fontSize: 16, fontWeight: 700, fontFamily: "var(--font-mono)", color: "var(--success)" }}>
+                  {formatCOP(entry.negotiatedValue)}
+                </span>
+              </div>
+            )}
+            {entry.observation && (
+              <div>
+                <div style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--ink-3)", marginBottom: 5 }}>
+                  Observación
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55 }}>{entry.observation}</div>
+              </div>
+            )}
+          </>
         )}
 
-        {/* Observación */}
-        <PanelRow label="Observación">
-          {current.observation
-            ? <span style={{ color: "var(--dark-ink-2)", fontSize: 12 }}>{current.observation}</span>
-            : <span style={{ color: "var(--dark-ink-3)" }}>—</span>}
-        </PanelRow>
-
-        {/* Archivos */}
-        <div style={{ marginTop: 16 }}>
-          <div
-            style={{
-              fontSize: 9.5, fontWeight: 700,
-              textTransform: "uppercase", letterSpacing: "0.08em",
-              color: "var(--dark-ink-3)", marginBottom: 8,
-            }}
-          >
-            Archivos del contrato
+        {rentable && (state === "loading" || files.length > 0) && (
+          <div>
+            <div style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--ink-3)", marginBottom: 7 }}>
+              Archivos del contrato
+            </div>
+            {state === "loading" ? (
+              <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>Cargando…</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {files.map((f) => (
+                  <FileRow key={f.id} file={f} onOpen={() => onOpenFile(f)} />
+                ))}
+              </div>
+            )}
           </div>
-
-          {spaceState === "loading" && (
-            <div style={{ fontSize: 11.5, color: "var(--dark-ink-3)" }}>Cargando…</div>
-          )}
-          {spaceState === "none" && (
-            <div style={{ fontSize: 11.5, color: "var(--dark-ink-3)" }}>
-              Sin contrato registrado en el servidor.
-            </div>
-          )}
-          {spaceState === "error" && (
-            <div style={{ fontSize: 11.5, color: "#F87171" }}>
-              No se pudo consultar el servidor.
-            </div>
-          )}
-          {spaceState === "ok" && files.length === 0 && (
-            <div style={{ fontSize: 11.5, color: "var(--dark-ink-3)" }}>Sin archivos adjuntos.</div>
-          )}
-          {spaceState === "ok" &&
-            files.map((file) => (
-              <button
-                key={file.id}
-                onClick={() => onOpenFile(file)}
-                style={{
-                  display: "flex", alignItems: "center", gap: 8,
-                  width: "100%", padding: "8px 10px", marginBottom: 6,
-                  borderRadius: "var(--r-md)",
-                  background: "var(--dark-surface)",
-                  border: "1px solid var(--dark-line)",
-                  color: "var(--dark-ink-1)",
-                  cursor: "pointer", textAlign: "left",
-                  fontFamily: "inherit",
-                  transition: "background .12s",
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--dark-surface-2)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--dark-surface)"; }}
-              >
-                <FileText size={13} style={{ color: "#A78BFA", flexShrink: 0 }} />
-                <span
-                  style={{
-                    flex: 1, minWidth: 0, fontSize: 11.5, fontWeight: 500,
-                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                  }}
-                >
-                  {file.filename}
-                </span>
-                <span style={{ fontSize: 10, color: "var(--dark-ink-3)", flexShrink: 0, fontFamily: "var(--font-mono)" }}>
-                  {file.size >= 1024 * 1024
-                    ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
-                    : `${Math.max(1, Math.round(file.size / 1024))} KB`}
-                </span>
-                <ChevronRight size={12} style={{ color: "var(--dark-ink-3)", flexShrink: 0 }} />
-              </button>
-            ))}
-        </div>
-        </>)}
+        )}
+        {rentable && state === "error" && (
+          <div style={{ fontSize: 11.5, color: "var(--danger)" }}>No se pudo consultar el servidor.</div>
+        )}
       </div>
-    </aside>
+    </Card>
   );
 }
 
@@ -1362,6 +1503,23 @@ export default function DashboardView() {
   const isAdmin = useAuthStore(selectIsAdmin);
 
   const [selected, setSelected] = useState<UnifiedFixture | null>(null);
+  // Where on the map the click landed (anchors the quick-look popover).
+  const [anchor, setAnchor] = useState<MapAnchor | null>(null);
+  // false = quick popover, true = full detail in the rail ("Ver todo").
+  const [detailFull, setDetailFull] = useState(false);
+  const [detailFace, setDetailFace] = useState<"A" | "B">("A");
+
+  const selectFixture = (f: UnifiedFixture | null, point?: MapAnchor) => {
+    setSelected(f);
+    setAnchor(point ?? null);
+    setDetailFull(false);
+    setDetailFace("A");
+  };
+  const closeDetail = () => {
+    setSelected(null);
+    setAnchor(null);
+    setDetailFull(false);
+  };
   const [viewerFile, setViewerFile] = useState<SpaceFileMeta | null>(null);
   const [mapQuery, setMapQuery] = useState("");
   const [mapFilter, setMapFilter] = useState<MapFilter>("todos");
@@ -1727,6 +1885,7 @@ export default function DashboardView() {
           >
             <Card
               style={{
+                position: "relative",
                 flex: isAdmin ? "62 1 480px" : "66 1 480px",
                 minWidth: 0,
                 display: "flex", flexDirection: "column",
@@ -1755,9 +1914,21 @@ export default function DashboardView() {
               <IsoMap
                 fixtures={fixtures}
                 selectedId={selected?.id ?? null}
-                onSelect={setSelected}
+                onSelect={selectFixture}
                 match={mapMatch}
               />
+
+              {/* Quick look, anchored to the fixture. Hidden once the full
+                  detail takes over the rail so the two never compete. */}
+              {selected && anchor && !detailFull && (
+                <FixturePopover
+                  fixture={selected}
+                  anchor={anchor}
+                  isAdmin={isAdmin}
+                  onExpand={() => setDetailFull(true)}
+                  onClose={closeDetail}
+                />
+              )}
             </Card>
 
             {/* Rail: what needs action, always visible next to the map */}
@@ -1767,6 +1938,16 @@ export default function DashboardView() {
                 minWidth: 0, display: "flex", flexDirection: "column", gap: 12,
               }}
             >
+              {selected && detailFull ? (
+                <FixtureDetailCard
+                  fixture={selected}
+                  isAdmin={isAdmin}
+                  face={detailFace}
+                  onFace={setDetailFace}
+                  onBack={closeDetail}
+                  onOpenFile={setViewerFile}
+                />
+              ) : (
               <Card style={{ padding: 0, overflow: "hidden" }}>
                 <CardHeader
                   icon={
@@ -1842,8 +2023,9 @@ export default function DashboardView() {
                   </div>
                 )}
               </Card>
+              )}
 
-              {isAdmin && (
+              {isAdmin && !(selected && detailFull) && (
                 <Card style={{ padding: 0, overflow: "hidden" }}>
                   <CardHeader
                     icon={<TrendingUp size={13} style={{ color: "var(--accent)" }} />}
@@ -1894,14 +2076,6 @@ export default function DashboardView() {
       )}
 
       {/* ── Overlays ──────────────────────────────────────────────────────── */}
-      {selected && (
-        <FixtureDetailPanel
-          fixture={selected}
-          isAdmin={isAdmin}
-          onClose={() => setSelected(null)}
-          onOpenFile={setViewerFile}
-        />
-      )}
       {viewerFile && (
         <FileViewerModal file={viewerFile} onClose={() => setViewerFile(null)} />
       )}
