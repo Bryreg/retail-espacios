@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.auth import ensure_default_config
 from app.database import engine, Base
-from app.routers import spaces, suppliers, dashboard, layout, files, notifications, mounts, planograms, bulk_leases
+from app.routers import spaces, suppliers, dashboard, layout, files, notifications, mounts, montaje, planograms, bulk_leases
 from app.routers import auth as auth_routes
 from app.models.models import Space, SpaceStatus
 
@@ -156,6 +156,9 @@ app.include_router(layout.router,        prefix="/api")
 app.include_router(files.router,         prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 app.include_router(mounts.router,        prefix="/api")
+# El enlace firmado de la mercaderista. Es lo ÚNICO que alcanza ese token: el
+# resto de la app lo rechaza en `require_auth`.
+app.include_router(montaje.router,       prefix="/api")
 app.include_router(planograms.router,    prefix="/api")
 app.include_router(bulk_leases.router,   prefix="/api")
 

@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
-from app.auth import require_admin, require_auth
+from app.auth import MONTAJE_TTL_DAYS, create_mount_token, require_admin, require_auth
 from app.database import get_db
 from app.models.models import Space, SpaceFile, SpaceLease, Supplier, SpaceStatus
 from app.schemas.spaces import (
@@ -379,17 +379,27 @@ def create_lease(space_id: int, payload: LeaseCreate, background_tasks: Backgrou
         ]
         if ubicacion:
             rows.insert(2, ("Dónde queda", ubicacion))
-        # Enlace directo al espacio. El mercaderista trabaja desde el celular:
-        # un toque desde el correo y, si no tiene sesión, la inicia una vez y
-        # aterriza en el espacio correcto en vez de buscarlo en una lista.
-        link = f"{app_base_url()}/?montar={quote(space.code)}"
+        # Enlace directo al espacio, FIRMADO. El token va en el enlace y no hay
+        # contraseña de por medio: quien monta abre el correo, toca y está
+        # adentro de la pantalla de ese espacio y de ningún otro.
+        #
+        # Antes el enlace era pelado y del otro lado había un login con la
+        # contraseña compartida del rol worker. Eso ponía a la mercaderista
+        # dentro del tablero —el mapa de la sede entera, la tabla con el
+        # proveedor y el período de cada espacio— para responder una sola
+        # pregunta, y dejaba una contraseña compartida circulando por correo
+        # que sobrevive a la persona que deja de trabajar ahí.
+        token = create_mount_token(space.code)
+        link = f"{app_base_url()}/?montar={quote(space.code)}&t={quote(token)}"
         footer = (
-            "El enlace abre el plano de la tienda con el espacio señalado, y ahí "
-            "mismo se confirma el montaje. "
+            "El enlace abre el espacio señalado en el plano, y ahí mismo se "
+            "confirma el montaje — sin contraseña. "
             "<strong>La foto es obligatoria</strong>: es la prueba de que la "
             "exhibición quedó armada.<br><br>"
             f'<a href="{link}" '
             'style="color:#7C3AED;font-weight:600;">Ver dónde queda y confirmar</a>'
+            f'<br><br><span style="color:#94A3B8;font-size:12px;">'
+            f"El enlace es personal y vence en {MONTAJE_TTL_DAYS} días.</span>"
         )
         background_tasks.add_task(
             send_mail_to_bg, who["montaje"], subject, html_shell(subject, rows, footer)

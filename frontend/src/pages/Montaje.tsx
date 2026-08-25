@@ -1,0 +1,275 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Check, Clock, MapPin, RefreshCw } from "lucide-react";
+import { describeError } from "../api/client";
+import { miEspacio, planometriaUrl, reportar, type EspacioMontaje } from "../api/montaje";
+import FormularioMontaje, {
+  type EspacioAMontar, type PlanoDelEspacio,
+} from "../components/Montaje/FormularioMontaje";
+import type { MountConfirmation } from "../api/mounts";
+import type { UnifiedFixture } from "../types/fixtures";
+
+/**
+ * La pantalla que abre el enlace del correo. Un espacio y nada más.
+ *
+ * Antes este enlace llevaba al login, y la mercaderista entraba con la
+ * contraseña compartida del rol `worker`: aterrizaba en el tablero, con el mapa
+ * de la sede entera y la tabla del proveedor, el período y el estado de cada
+ * espacio, para responder una sola pregunta. Ahora el enlace viene firmado y
+ * esto es todo lo que hay del otro lado.
+ *
+ * No monta la sincronización del layout ni el store: el servidor manda en una
+ * sola respuesta lo poco que esta pantalla necesita —su espacio, y los vecinos
+ * como pura geometría para dibujar dónde queda—.
+ */
+
+/** Desde cuántos días antes se avisa que el enlace se está por vencer.
+ *  Antes de salir a la tienda, no con el celular en la mano frente al mueble. */
+const AVISO_VENCIMIENTO_DIAS = 5;
+
+const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+  "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+
+function diasHasta(iso: string): number {
+  const cuando = new Date(iso).getTime();
+  if (Number.isNaN(cuando)) return Infinity;
+  return Math.ceil((cuando - Date.now()) / 86_400_000);
+}
+
+function fechaLarga(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : `${d.getDate()} de ${MESES[d.getMonth()]}`;
+}
+
+type Estado = "cargando" | "listo" | "vencido" | "error";
+
+export default function Montaje() {
+  const [espacio, setEspacio] = useState<EspacioMontaje | null>(null);
+  const [estado, setEstado] = useState<Estado>("cargando");
+  const [error, setError] = useState("");
+  /** El reporte que se acaba de guardar en esta pantalla. */
+  const [recien, setRecien] = useState<MountConfirmation | null>(null);
+  /** Se pidió corregir un reporte anterior: se vuelve a abrir el formulario. */
+  const [corrigiendo, setCorrigiendo] = useState(false);
+
+  const cargar = useCallback(() => {
+    setEstado("cargando");
+    setError("");
+    miEspacio()
+      .then((e) => { setEspacio(e); setEstado("listo"); })
+      .catch((e: unknown) => {
+        // Un 401 acá no es "no iniciaste sesión": es el enlace vencido, y hay
+        // que decirlo con esas palabras. Lo otro que puede ser es que no haya
+        // señal, y eso se resuelve reintentando.
+        const codigo = (e as { response?: { status?: number } })?.response?.status;
+        if (codigo === 401) {
+          setEstado("vencido");
+          return;
+        }
+        setError(describeError(e, "No se pudo cargar el espacio."));
+        setEstado("error");
+      });
+  }, []);
+
+  useEffect(cargar, [cargar]);
+
+  const item = useMemo<EspacioAMontar | null>(() => {
+    if (!espacio) return null;
+    return {
+      code: espacio.code,
+      corto: espacio.corto,
+      fixtureCode: espacio.fixture_code,
+      sede: espacio.sede,
+      label: espacio.label,
+      nomenclatura: espacio.nomenclatura ?? undefined,
+      marca: espacio.marca,
+      proveedor: espacio.proveedor,
+      desde: espacio.desde ?? "",
+      hasta: espacio.hasta ?? "",
+    };
+  }, [espacio]);
+
+  const plano = useMemo<PlanoDelEspacio | null>(
+    () =>
+      espacio?.tiene_planometria
+        ? { url: planometriaUrl(), tipo: espacio.planometria_tipo ?? "image/jpeg" }
+        : null,
+    [espacio],
+  );
+
+  if (estado === "cargando") return <Aviso texto="Cargando el espacio…" />;
+
+  if (estado === "vencido") {
+    return (
+      <Aviso
+        titulo="Este enlace ya no sirve"
+        texto={
+          "Los enlaces de montaje vencen para que no queden dando vueltas por correo. " +
+          "Pedí que te reenvíen el aviso de este espacio y vas a recibir uno nuevo."
+        }
+      />
+    );
+  }
+
+  if (estado === "error" || !espacio || !item) {
+    return (
+      <Aviso titulo="No se pudo cargar" texto={error || "Probá de nuevo cuando tengas señal."}>
+        <button onClick={cargar} style={BOTON}>
+          <RefreshCw size={15} /> Reintentar
+        </button>
+      </Aviso>
+    );
+  }
+
+  // Ya se reportó: puede ser de antes o recién, y en los dos casos lo que hace
+  // falta es lo mismo — confirmar que quedó, y poder corregirlo. Una foto
+  // movida, con guantes y una mano, es lo más normal del mundo, y es la prueba
+  // que el proveedor va a discutir en tres meses.
+  const reportado = recien ?? espacio.ultimo ?? null;
+  if (reportado && !corrigiendo) {
+    return (
+      <Marco espacio={espacio}>
+        <div style={{ ...TARJETA, borderColor: "var(--success-100)", background: "var(--success-50)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <Check size={18} style={{ color: "var(--success)" }} />
+            <b style={{ fontSize: 16 }}>
+              {recien
+                ? "Listo, quedó reportado"
+                : reportado.estado === "montado"
+                ? "Este espacio ya se reportó como montado"
+                : "Este espacio ya se reportó como no montado"}
+            </b>
+          </div>
+          <div style={{ fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
+            {reportado.estado === "montado"
+              ? "La foto quedó guardada como prueba de que la exhibición está armada."
+              : "Quedó registrado el motivo para que se pueda reclamar."}
+            {reportado.reportado_por ? ` Lo reportó ${reportado.reportado_por}.` : ""}
+          </div>
+          <button
+            onClick={() => { setCorrigiendo(true); setRecien(null); }}
+            style={{
+              marginTop: 12, background: "none", border: "none", padding: 0,
+              color: "var(--accent-700)", fontWeight: 600, fontSize: 13.5,
+              fontFamily: "inherit", cursor: "pointer", textDecoration: "underline",
+            }}
+          >
+            {recien ? "Corregir lo que acabo de reportar" : "Corregir el reporte"}
+          </button>
+        </div>
+      </Marco>
+    );
+  }
+
+  return (
+    <Marco espacio={espacio}>
+      <FormularioMontaje
+        item={item}
+        vecinos={espacio.vecinos as UnifiedFixture[]}
+        plano={plano}
+        donde={espacio.donde}
+        onEnviar={reportar}
+        onCancel={corrigiendo ? () => setCorrigiendo(false) : undefined}
+        onSaved={(m) => { setRecien(m); setCorrigiendo(false); }}
+      />
+    </Marco>
+  );
+}
+
+// ─── Envoltorio ───────────────────────────────────────────────────────────────
+
+const TARJETA: React.CSSProperties = {
+  padding: 14,
+  borderRadius: "var(--r-lg)",
+  background: "var(--surface)",
+  border: "1px solid var(--line)",
+};
+
+const BOTON: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", gap: 6,
+  marginTop: 14, padding: "10px 16px", borderRadius: "var(--r-lg)",
+  background: "var(--accent)", color: "#fff", border: "none",
+  fontSize: 14.5, fontWeight: 600, fontFamily: "inherit", cursor: "pointer",
+};
+
+/** Encabezado propio: sin esto la pantalla arranca en un formulario suelto y no
+ *  se sabe de qué tienda se está hablando. No lleva navegación a ninguna otra
+ *  parte porque no hay ninguna otra parte a la que este enlace dé acceso. */
+function Marco({ espacio, children }: { espacio: EspacioMontaje; children: React.ReactNode }) {
+  const quedan = espacio.vence ? diasHasta(espacio.vence) : Infinity;
+  return (
+    <div
+      style={{
+        minHeight: "100dvh", background: "var(--bg)", color: "var(--ink-1)",
+        display: "flex", flexDirection: "column",
+      }}
+    >
+      <header
+        style={{
+          padding: "14px 14px 12px", background: "var(--surface)",
+          borderBottom: "1px solid var(--line)",
+        }}
+      >
+        <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: "0.06em",
+          textTransform: "uppercase", color: "var(--ink-3)" }}>
+          Montaje
+        </div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 3 }}>
+          <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.02em" }}>
+            {espacio.nomenclatura || espacio.corto}
+          </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 3,
+            fontSize: 12, color: "var(--ink-3)" }}>
+            <MapPin size={11} /> {espacio.sede}
+          </span>
+        </div>
+      </header>
+
+      {quedan <= AVISO_VENCIMIENTO_DIAS && espacio.vence && (
+        <div
+          style={{
+            display: "flex", gap: 7, alignItems: "center", padding: "9px 14px",
+            background: "var(--warning-50)", color: "var(--warning)", fontSize: 12.5,
+          }}
+        >
+          <Clock size={13} style={{ flexShrink: 0 }} />
+          {quedan <= 0
+            ? "Este enlace se vence hoy."
+            : `Este enlace se vence el ${fechaLarga(espacio.vence)}.`}
+        </div>
+      )}
+
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "14px 14px 40px" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** Pantalla completa con un solo mensaje: cargando, vencido o sin señal. */
+function Aviso({
+  titulo, texto, children,
+}: {
+  titulo?: string;
+  texto: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        minHeight: "100dvh", background: "var(--bg)", color: "var(--ink-1)",
+        display: "flex", flexDirection: "column", alignItems: "center",
+        justifyContent: "center", padding: "24px 22px", textAlign: "center",
+      }}
+    >
+      {titulo && (
+        <h1 style={{ margin: "0 0 8px", fontSize: 19, fontWeight: 700, letterSpacing: "-0.02em" }}>
+          {titulo}
+        </h1>
+      )}
+      <p style={{ margin: 0, maxWidth: 380, fontSize: 14, lineHeight: 1.55, color: "var(--ink-2)" }}>
+        {texto}
+      </p>
+      {children}
+    </div>
+  );
+}

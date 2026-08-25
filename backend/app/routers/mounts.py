@@ -99,19 +99,25 @@ def list_mounts(sede: Optional[str] = None, db: Session = Depends(get_db)):
     return [_con_foto(f, archivos.get(f.file_id)) for f in filas]
 
 
-@router.post("/", response_model=MountOut, status_code=201)
-async def confirm_mount(
-    space_code: str = Form(...),
-    estado: str = Form(...),
-    sede: Optional[str] = Form(None),
-    motivo: Optional[str] = Form(None),
-    nota: Optional[str] = Form(None),
-    reportado_por: Optional[str] = Form(None),
-    foto: Optional[UploadFile] = File(None),
-    role: str = Depends(require_auth),
-    db: Session = Depends(get_db),
-):
-    """Reporta el montaje de un espacio. Abierto a worker: es su trabajo."""
+async def registrar_montaje(
+    db: Session,
+    *,
+    space_code: str,
+    estado: str,
+    rol: str,
+    sede: Optional[str] = None,
+    motivo: Optional[str] = None,
+    nota: Optional[str] = None,
+    reportado_por: Optional[str] = None,
+    foto: Optional[UploadFile] = None,
+) -> MountOut:
+    """Guarda un reporte de montaje. Sin auth: la decide quien llama.
+
+    Vive afuera del endpoint porque hay dos puertas al mismo acto —el tablero,
+    con sesión, y el enlace firmado del correo, sin contraseña— y las reglas de
+    qué es un reporte válido tienen que ser una sola. Duplicadas, la que se
+    olvide de exigir la foto es justo la que usa quien monta.
+    """
     code = (space_code or "").strip().upper()
     if not code:
         raise HTTPException(status_code=422, detail="Falta el código del espacio")
@@ -203,7 +209,7 @@ async def confirm_mount(
         nota=(nota or "").strip() or None,
         file_id=file_id,
         reportado_por=(reportado_por or "").strip() or None,
-        rol=role,
+        rol=rol,
         # Hora del servidor, no del dispositivo.
         confirmado_en=datetime.now(timezone.utc),
     )
@@ -211,6 +217,32 @@ async def confirm_mount(
     db.commit()
     db.refresh(conf)
     return _con_foto(conf, row)
+
+
+@router.post("/", response_model=MountOut, status_code=201)
+async def confirm_mount(
+    space_code: str = Form(...),
+    estado: str = Form(...),
+    sede: Optional[str] = Form(None),
+    motivo: Optional[str] = Form(None),
+    nota: Optional[str] = Form(None),
+    reportado_por: Optional[str] = Form(None),
+    foto: Optional[UploadFile] = File(None),
+    role: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """Reporta el montaje de un espacio. Abierto a worker: es su trabajo."""
+    return await registrar_montaje(
+        db,
+        space_code=space_code,
+        estado=estado,
+        rol=role,
+        sede=sede,
+        motivo=motivo,
+        nota=nota,
+        reportado_por=reportado_por,
+        foto=foto,
+    )
 
 
 @router.get("/files/{file_id}/exists", response_model=dict)

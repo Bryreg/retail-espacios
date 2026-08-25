@@ -13,7 +13,7 @@ Tres lectores, tres necesidades distintas:
   archivo no se borra al vencer el contrato.
 """
 
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session, defer
 from app.auth import require_admin, require_auth, require_auth_or_query_token
 from app.database import get_db
 from app.models.models import LeaseFile, Space, SpaceLease
+from app.services.contratos import contrato_para_montar
 
 router = APIRouter(tags=["planometrias"])
 
@@ -175,23 +176,11 @@ def planometria_del_espacio(
     if not space:
         raise HTTPException(status_code=404, detail="Espacio no encontrado")
 
-    hoy = date.today()
-    activos = [l for l in space.leases if l.is_active]
-    # Por FECHAS y no sólo por la bandera: `is_active` se queda en True desde
-    # que el contrato se crea.
-    corriendo = [l for l in activos if l.start_date <= hoy <= l.end_date]
-    proximos = [l for l in activos if l.start_date > hoy]
-
-    # El que corre hoy manda; si no hay, el próximo que arranca. Mirar sólo
-    # "hoy" dejaba sin planometría justo al contrato recién vendido para la
-    # temporada que viene —que es cuando más se mira, para preparar el montaje
-    # y para revisar qué fue lo que se acordó—. Los vencidos no responden acá:
-    # "así debe quedar" de algo que ya se desmontó no es una respuesta.
-    if corriendo:
-        elegido = max(corriendo, key=lambda l: l.start_date)
-    elif proximos:
-        elegido = min(proximos, key=lambda l: l.start_date)
-    else:
+    # Qué contrato manda hoy sobre el espacio es una regla sola, compartida con
+    # la pantalla de montaje: si cada uno eligiera por su cuenta, el enlace del
+    # correo mostraría "así debe quedar" de un contrato y los datos de otro.
+    elegido = contrato_para_montar(space)
+    if elegido is None:
         raise HTTPException(
             status_code=404,
             detail="Ese espacio no tiene contrato vigente ni próximo",
