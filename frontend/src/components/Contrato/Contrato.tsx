@@ -8,6 +8,8 @@ import { findOrCreateSpace, createLease } from "../../api/spaces";
 import { subirPlanometria } from "../../api/planograms";
 import { findOrCreateSupplier } from "../../api/suppliers";
 import { describeError } from "../../api/client";
+import type { AvisosContrato } from "../../types";
+import NotifyPreview from "../NotifyPreview";
 import {
   fullSpaceCode, isDoubleGondola, rangeAvailability, rateTypeOf, referenceRateFor,
   type FaceData, type RangeAvailability, type UnifiedFixture,
@@ -35,6 +37,8 @@ export interface ResumenContrato {
    *  confirmación: callarlo dejaría al mercaderista sin la única imagen de
    *  cómo debe quedar el mueble, y nadie se enteraría hasta el montaje. */
   avisoPlanometria?: string;
+  /** A quién avisó el servidor. Ausente = no se pudo saber. */
+  avisos?: AvisosContrato;
 }
 
 export interface ArgsContrato {
@@ -233,6 +237,7 @@ export function useContrato({ fixture, face, sede, rango, onGuardado }: ArgsCont
           desde,
           hasta,
           avisoPlanometria,
+          avisos: lease.avisos ?? undefined,
         },
       );
     } catch (e) {
@@ -242,6 +247,9 @@ export function useContrato({ fixture, face, sede, rango, onGuardado }: ArgsCont
   }
 
   return {
+    // La sede efectiva: los muebles dibujados antes de que existiera esa
+    // columna no la traen, y ahí manda la sede activa.
+    sede: fixture.sede || sede,
     fixture, face, corto, codigo, doble, ubicacion, ref, disponibilidad,
     desde, setDesde, hasta, setHasta,
     proveedor, setProveedor, correo, setCorreo, marca, setMarca,
@@ -553,6 +561,11 @@ export function CamposContrato({ c }: { c: Contrato }) {
           style={{ ...campo, height: "auto", padding: "9px 10px", resize: "none", lineHeight: 1.45 }}
         />
       </div>
+
+      {/* Quién se va a enterar, ANTES de guardar. Justo encima del botón, que
+          es donde se toma la decisión: enterarse después de haber cerrado la
+          llamada no sirve de nada. */}
+      <NotifyPreview sede={c.sede} />
 
     </div>
   );

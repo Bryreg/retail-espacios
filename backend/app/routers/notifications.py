@@ -7,7 +7,9 @@ from sqlalchemy.orm import Session
 from app.auth import get_config, require_admin, require_auth, set_config
 from app.database import get_db
 from app.services.contacts import get_contacts, recipients_for, save_contacts
-from app.services.mailer import html_shell, send_mail, smtp_configured
+from app.services.mailer import (
+    clean_recipients, html_shell, send_mail_to, smtp_configured, smtp_settings,
+)
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -131,20 +133,38 @@ def send_test_notification(db: Session = Depends(get_db)):
             ),
         }
 
-    recipients = (get_config(db, "notify_emails", "") or "").strip()
-    if not recipients:
+    # Antes miraba SÓLO la clave vieja `notify_emails`, así que con la libreta
+    # de contactos llena —que es de donde salen los avisos de verdad— la prueba
+    # respondía «no hay destinatarios» y nadie entendía por qué.
+    libro = get_contacts(db)
+    de_libreta = clean_recipients([
+        *libro["gerente"],
+        *[a for roles in libro["by_sede"].values() for lista in roles.values() for a in lista],
+    ])
+    legacy = clean_recipients((get_config(db, "notify_emails", "") or "").split(","))
+    destinos = clean_recipients([*de_libreta, *legacy])
+    if not destinos:
         return {
             "ok": False,
-            "detail": "No hay destinatarios configurados. Agregue correos de notificación antes de enviar la prueba.",
+            "detail": (
+                "No hay destinatarios configurados. Cargá los contactos de la sede "
+                "—o la lista de notificación— antes de enviar la prueba."
+            ),
         }
 
     subject = "Correo de prueba — Galerías"
+    ajustes = smtp_settings()
     html = html_shell(
         subject,
-        [("Estado", "Configuración SMTP correcta")],
+        [
+            ("Estado", "Configuración SMTP correcta"),
+            ("Servidor", f"{ajustes['host']}:{ajustes['port']}"),
+            ("Remitente", ajustes["mail_from"] or "—"),
+            ("Destinatarios", ", ".join(destinos)),
+        ],
         "Si recibió este mensaje, las notificaciones del sistema están funcionando correctamente.",
     )
-    ok = send_mail(db, subject, html)
+    ok = send_mail_to(destinos, subject, html)
     detail = (
         "Correo de prueba enviado correctamente."
         if ok

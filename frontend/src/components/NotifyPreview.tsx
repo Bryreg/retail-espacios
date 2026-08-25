@@ -9,7 +9,12 @@ import { previewRecipients, type RecipientPreview } from "../api/auth";
  * configured, and the send failed silently in a background task. A tool you
  * cannot trust on that point stops being used.
  *
- * Styled for the dark editor panels, the only place contracts are typed in.
+ * Vivía en los paneles oscuros del editor de plano. Al fusionar Negociar y
+ * Resumen en una sola pantalla (commit 12695c2) el contrato se partió en un
+ * hook más piezas de presentación y este aviso quedó sin montar: el componente
+ * siguió existiendo, nadie lo importó, y la pantalla pasó a afirmar que los
+ * avisos salían sin poder saberlo. Ahora vive en la ficha de Vender, con los
+ * tokens claros de esa pantalla.
  */
 export default function NotifyPreview({ sede }: { sede: string }) {
   const [data, setData] = useState<RecipientPreview | null>(null);
@@ -28,14 +33,14 @@ export default function NotifyPreview({ sede }: { sede: string }) {
   if (failed) return null;
   if (!data) {
     return (
-      <p style={{ margin: "6px 0 0", fontSize: 10.5, color: "var(--dark-ink-3)" }}>
+      <p style={{ margin: "6px 0 0", fontSize: 10.5, color: "var(--ink-3)" }}>
         Consultando destinatarios…
       </p>
     );
   }
 
   const total = data.comercial.length + data.montaje.length;
-  const warn = "#F0B429";
+  const warn = "var(--warning)";
 
   if (!data.smtp_listo) {
     return (
@@ -58,17 +63,17 @@ export default function NotifyPreview({ sede }: { sede: string }) {
   const line = (label: string, list: string[], note?: string) =>
     list.length > 0 && (
       <div style={{ display: "flex", gap: 5, marginTop: 2 }}>
-        <span style={{ color: "var(--dark-ink-3)", flexShrink: 0 }}>{label}</span>
-        <span style={{ color: "var(--dark-ink-2)", wordBreak: "break-word" }}>
+        <span style={{ color: "var(--ink-3)", flexShrink: 0 }}>{label}</span>
+        <span style={{ color: "var(--ink-2)", wordBreak: "break-word" }}>
           {list.join(", ")}
-          {note && <span style={{ color: "var(--dark-ink-3)" }}> {note}</span>}
+          {note && <span style={{ color: "var(--ink-3)" }}> {note}</span>}
         </span>
       </div>
     );
 
   return (
     <div style={{ margin: "6px 0 0", fontSize: 10.5, lineHeight: 1.45 }}>
-      <span style={{ color: "var(--dark-ink-3)" }}>Al guardar se avisa a:</span>
+      <span style={{ color: "var(--ink-3)" }}>Al guardar se avisa a:</span>
       {line("Comercial", data.comercial)}
       {line("Montaje", data.montaje, "· sin valores")}
     </div>

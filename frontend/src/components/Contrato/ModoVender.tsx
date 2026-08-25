@@ -158,6 +158,76 @@ function NoComercializable({ fixture }: { fixture: UnifiedFixture }) {
   );
 }
 
+/**
+ * A quién se le avisó, de verdad.
+ *
+ * Acá había una frase fija —«Ya salieron los avisos: …»— que se mostraba pase
+ * lo que pase. Con el SMTP sin configurar en el servidor, o sin contactos
+ * cargados para la sede, decía exactamente lo mismo y no salía ni un correo.
+ * Cerrar una negociación creyendo que se avisó al mercaderista, y que no se
+ * haya avisado a nadie, es el modo de falla que vuelve inútil la herramienta.
+ *
+ * El servidor informa lo ENCOLADO, no lo entregado: los envíos corren en
+ * segundo plano después de responder. Es la diferencia entre «se intentó» y
+ * «se afirmó sin intentar».
+ */
+function Avisos({ avisos }: { avisos?: ResumenContrato["avisos"] }) {
+  const alerta: React.CSSProperties = {
+    marginTop: 4, padding: "9px 11px", borderRadius: "var(--r-md)",
+    background: "var(--warning-50)", color: "var(--warning)",
+    fontSize: 12.5, lineHeight: 1.5,
+  };
+
+  // Un servidor viejo no manda el campo: no se afirma nada.
+  if (!avisos) return <>El contrato quedó guardado.</>;
+
+  if (!avisos.smtp_listo) {
+    return (
+      <div style={alerta}>
+        <b>No se avisó a nadie.</b> El correo no está configurado en el
+        servidor, así que el contrato quedó guardado pero no salió ningún
+        mensaje. Se configura con las variables <code>SMTP_USER</code> y{" "}
+        <code>SMTP_PASSWORD</code>.
+      </div>
+    );
+  }
+
+  const total = avisos.comercial.length + avisos.montaje.length + avisos.proveedor.length;
+  if (total === 0) {
+    return (
+      <div style={alerta}>
+        <b>No se avisó a nadie.</b> No hay contactos cargados para esta sede.
+        Se configuran en el ícono de ajustes del encabezado.
+      </div>
+    );
+  }
+
+  const linea = (etiqueta: string, lista: string[], nota?: string) =>
+    lista.length > 0 && (
+      <div style={{ display: "flex", gap: 6, marginTop: 3 }}>
+        <span style={{ color: "var(--ink-3)", flexShrink: 0, minWidth: 78 }}>{etiqueta}</span>
+        <span style={{ color: "var(--ink-2)", wordBreak: "break-word" }}>
+          {lista.join(", ")}
+          {nota && <span style={{ color: "var(--ink-3)" }}> {nota}</span>}
+        </span>
+      </div>
+    );
+
+  return (
+    <>
+      <span style={{ color: "var(--ink-3)" }}>Salieron los avisos a:</span>
+      {linea("Comercial", avisos.comercial, "· con el valor")}
+      {linea("Montaje", avisos.montaje, "· sin valores")}
+      {linea("Proveedor", avisos.proveedor)}
+      {avisos.montaje.length === 0 && (
+        <div style={{ ...alerta, marginTop: 8 }}>
+          Nadie va a montar: no hay mercaderista cargado para esta sede.
+        </div>
+      )}
+    </>
+  );
+}
+
 function Cerrado({ datos, onSeguir }: { datos: ResumenContrato; onSeguir: () => void }) {
   return (
     <div
@@ -176,9 +246,7 @@ function Cerrado({ datos, onSeguir }: { datos: ResumenContrato; onSeguir: () => 
         {fechaCorta(datos.desde)} al {fechaCorta(datos.hasta)}.
         <br />
         <br />
-        Ya salieron los avisos: el resumen con el valor al comercial, la orden de
-        montaje <b>sin valores</b> al mercaderista —con el plano del espacio
-        señalado— y la constancia al proveedor si tiene correo cargado.
+        <Avisos avisos={datos.avisos} />
       </div>
       {datos.avisoPlanometria && (
         <div

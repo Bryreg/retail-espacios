@@ -23,6 +23,16 @@ export interface Lease {
   monthly_rent: number;
   is_active: boolean;
   notes: string | null;
+  /** A quién se le avisó. Sólo viene al CREAR el contrato. */
+  avisos?: AvisosContrato | null;
+}
+
+/** Lo que el servidor encoló al guardar un contrato. */
+export interface AvisosContrato {
+  smtp_listo: boolean;
+  comercial: string[];
+  montaje: string[];
+  proveedor: string[];
 }
 
 export interface Space {
