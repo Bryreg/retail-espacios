@@ -13,6 +13,7 @@ import {
   Search,
   SlidersHorizontal,
   Handshake,
+  FileSpreadsheet,
 } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
@@ -44,6 +45,7 @@ import ModoVender from "../components/Contrato/ModoVender";
 import type { ResumenContrato } from "../components/Contrato/Contrato";
 import Planometria from "../components/Contrato/Planometria";
 import CancelarContrato from "../components/Contrato/CancelarContrato";
+import CargaMasiva from "../components/CargaMasiva/CargaMasiva";
 import { inclusiveDays } from "../types/seasons";
 
 // ─── Date / money helpers ────────────────────────────────────────────────────
@@ -1793,6 +1795,8 @@ export default function DashboardView() {
    *  el mueble cambia de estado y el formulario se desmontaría con el mensaje
    *  adentro, justo cuando hay que leer a quién le llegó el aviso. */
   const [cerrado, setCerrado] = useState<ResumenContrato | null>(null);
+  /** La planilla de la reunión comercial, cargada de una tanda. */
+  const [cargaAbierta, setCargaAbierta] = useState(false);
 
   const selectFixture = (f: UnifiedFixture | null, point?: MapAnchor) => {
     setSelected(f);
@@ -2267,7 +2271,24 @@ export default function DashboardView() {
                 </div>
               )}
 
-              <div style={{ position: "relative", flex: "1 1 240px", minWidth: 200, maxWidth: 380, marginLeft: "auto" }}>
+              {isAdmin && (
+                <button
+                  onClick={() => setCargaAbierta(true)}
+                  title="Cargar una tanda de contratos desde un Excel o un CSV"
+                  style={{
+                    marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 7,
+                    height: 32, padding: "0 13px", borderRadius: "var(--r-md)",
+                    border: "1px solid var(--line)", background: "var(--surface)",
+                    color: "var(--ink-2)", fontSize: 12.5, fontWeight: 600,
+                    fontFamily: "inherit", cursor: "pointer",
+                  }}
+                >
+                  <FileSpreadsheet size={14} style={{ color: "var(--accent)" }} />
+                  Cargar planilla
+                </button>
+              )}
+
+              <div style={{ position: "relative", flex: "1 1 240px", minWidth: 200, maxWidth: 380 }}>
                 <Search
                   size={13}
                   style={{
@@ -2806,6 +2827,52 @@ export default function DashboardView() {
         <FileViewerModal file={viewerFile} onClose={() => setViewerFile(null)} />
       )}
       {ratesOpen && isAdmin && <RatesModal onClose={() => setRatesOpen(false)} />}
+      {cargaAbierta && isAdmin && (
+        <CargaMasiva
+          sede={sede}
+          onCerrar={() => setCargaAbierta(false)}
+          onGuardado={({ creados }) => {
+            // Igual que al vender de a uno: el JSON del layout es lo que pinta
+            // el mapa y responde la disponibilidad. Sin esto los contratos
+            // existirían en la base y los espacios seguirían viéndose libres.
+            const patches = new Map<string, { face: "A" | "B"; patch: Partial<FaceData> }[]>();
+            for (const c of creados) {
+              const completo = (c.codigo || "").toUpperCase();
+              const sedeFila = (c.sede || sede || "").toUpperCase();
+              const corto = sedeFila && completo.startsWith(`${sedeFila}-`)
+                ? completo.slice(sedeFila.length + 1)
+                : completo;
+              const face: "A" | "B" = corto.endsWith("-B") ? "B" : "A";
+              const base = face === "B" ? corto.slice(0, -2) : corto;
+              const patch = {
+                status: "occupied",
+                supplierName: c.proveedor || "",
+                brandCategory: c.marca || "",
+                negotiatedValue: c.valor || 0,
+                startDate: c.desde || "",
+                endDate: c.hasta || "",
+                observation: c.nota || "",
+              } as Partial<FaceData>;
+              patches.set(base, [...(patches.get(base) ?? []), { face, patch }]);
+            }
+            if (patches.size) {
+              commit(
+                fixtures.map((f) => {
+                  const suyos = patches.get(f.code.toUpperCase());
+                  if (!suyos) return f;
+                  let siguiente = f;
+                  for (const { face, patch } of suyos) {
+                    siguiente = face === "B"
+                      ? { ...siguiente, faceB: { ...(siguiente.faceB ?? {}), ...patch } as FaceData }
+                      : { ...siguiente, ...patch };
+                  }
+                  return siguiente;
+                }),
+              );
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

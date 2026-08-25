@@ -290,6 +290,61 @@ Salieron recorriendo la negociación completa como la haría una persona, no ley
   cuando más se consulta— no tenía ninguna. Ahora responde el vigente o, si no hay, el
   próximo. Los vencidos no: «así debe quedar» de algo ya desmontado no es una respuesta.
 
+### Carga masiva desde una planilla
+
+La temporada se negocia en una reunión y queda en un Excel con cuarenta filas. Cargarlas de
+a una por el mapa es media tarde de trabajo y, peor, media tarde de oportunidades de
+equivocarse.
+
+**El archivo lo lee el navegador** (`frontend/src/utils/planilla.ts`, con la librería de
+Excel que la app ya usaba para ver adjuntos) y al servidor le llegan filas en JSON. Así el
+backend no aprende a abrir hojas de cálculo —una dependencia más para tres tiendas— y de
+paso un CSV entra por el mismo camino sin escribir nada.
+
+**Dos pasos, `validar` y `confirmar`** (`backend/app/routers/bulk_leases.py`):
+
+- `validar` **no escribe nada**. Devuelve un veredicto por fila —qué mueble resolvió, qué le
+  falta, con qué choca— para que la revisión ocurra antes de crear cuarenta contratos y
+  disparar los correos. Una importación a ciegas que sale mal no se deshace con un botón.
+- `confirmar` **vuelve a validar**: entre la revisión y el botón alguien pudo vender uno de
+  esos espacios desde el mapa, y crearlo igual dejaría dos proveedores en la misma punta.
+  Crea sólo lo que pasa; una fila mala no tira abajo las treinta y nueve buenas.
+
+**La planilla es la que trae la gente, no un formato.** Los encabezados se reconocen por
+sinónimos (`Código`/`Espacio`, `Renta`/`Valor mensual`, `Fecha inicio`/`Desde`), la fila de
+títulos no tiene que ser la primera —las planillas suelen arrancar con un título—, y hay
+plantilla descargable para quien la quiera.
+
+Las fechas se leen **día primero**: `03/04/2026` es el 3 de abril. Es la convención local, y
+leerlo al revés no falla ruidosamente: crea un contrato de tres meses en el mes equivocado
+sin que nada avise. Los montos aceptan `$1.800.000`, `1800000` y `1,800,000`; un separador
+único seguido de exactamente tres dígitos es de miles, porque `1.800` son mil ochocientos
+pesos y no un peso con ochocientas milésimas.
+
+**Qué se rechaza y qué sólo se avisa.** Error (la fila no entra): código que no existe en el
+plano, mueble no comercializable, falta proveedor/valor/fechas, fechas al revés, choque con
+un contrato existente y **choque con otra fila del mismo archivo** —el error más fácil de
+cometer en una planilla y el más difícil de ver leyéndola—. Aviso (entra, pero se mira): el
+valor 15% o más por debajo de la tarifa de referencia, y un correo con formato dudoso, que
+se descarta en vez de guardarse mal.
+
+Acá se es **más estricto que en el alta de a uno**: ahí un código sin mueble en el plano se
+acepta —hay filas sembradas y muebles borrados después del contrato— pero en una planilla es
+un tipeo, y crearlo callado deja un contrato colgado de un espacio fantasma que nadie va a
+montar.
+
+«Proveedor nuevo» se dice pero **no pinta la fila**. En una planilla de temporada casi todos
+lo son, y cuarenta filas en amarillo entrenan a la gente a ignorar el amarillo —que es el
+color reservado para lo que sí hay que mirar—.
+
+**Los avisos van agrupados**: un correo al comercial con la tanda completa, uno al
+mercaderista con la lista a montar (sin valores) y una constancia por proveedor con todos
+sus espacios. Cuarenta contratos por el camino de a uno serían ciento veinte correos en un
+minuto: nadie los lee y el proveedor de correo los trata como spam.
+
+Tope de 300 filas por archivo. No es una limitación técnica: una planilla que no se puede
+revisar en pantalla no se puede aprobar con criterio.
+
 ### La planometría
 
 Cómo debe quedar armada la exhibición: la foto o el PDF que manda el proveedor.
@@ -609,6 +664,14 @@ ventas por cuatro, el número honesto es otro.
 ---
 
 ## Gotchas
+
+**La librería de Excel está vieja.** `xlsx@0.18.5` en npm arrastra vulnerabilidades
+conocidas (prototype pollution, ReDoS) que sólo están corregidas en versiones que SheetJS
+publica **fuera de npm**, en su propio CDN. Ya estaba en el proyecto para abrir adjuntos, y
+la carga masiva le agrega una segunda entrada: siempre archivos que sube un admin
+autenticado, nunca de terceros. Actualizarla implica cambiar el origen del paquete, así que
+queda anotado y no hecho.
+
 
 - `npm install` requiere `--legacy-peer-deps`.
 - Las rutas de lista llevan barra final: `/api/spaces/`, `/api/layout/`.

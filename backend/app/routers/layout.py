@@ -333,6 +333,20 @@ def _clean_rates(raw: dict) -> dict[str, float]:
     return clean
 
 
+def reference_rates_raw(db: Session) -> dict:
+    """Las tarifas como están guardadas: ``{"default": {...}, "by_sede": {...}}``.
+
+    Sin el envoltorio del endpoint, para que otros módulos —la carga masiva, por
+    ejemplo— puedan comparar contra la referencia sin volver a leer la config a
+    mano y sin arrastrarse el `Response` de FastAPI.
+    """
+    try:
+        stored = json.loads(get_config(db, RATES_KEY) or "{}")
+    except ValueError:
+        stored = {}
+    return stored if isinstance(stored, dict) else {}
+
+
 @router.get("/rates", response_model=ReferenceRatesOut, dependencies=[Depends(require_admin)])
 def get_reference_rates(response: Response, db: Session = Depends(get_db)):
     """Monthly reference rate per fixture type, with per-sede overrides."""
