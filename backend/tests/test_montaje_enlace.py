@@ -129,6 +129,7 @@ def test_el_token_no_abre_ningun_otro_endpoint(client, admin):
         "sede": "NAVE", "space_code": "NAVE-PUN-04", "code": "NAVE-PUN-04",
         "space_id": "1", "lease_id": "1", "file_id": "1", "supplier_id": "1",
         "id": "1", "svg_id": "fix-NAVE-PUN-04", "key": "reminder_days",
+        "arte_id": "1",
     }
     # Lo abierto a propósito, escrito acá para que agregar algo público sea una
     # decisión visible y no un test que se acomoda solo.
@@ -150,7 +151,7 @@ def test_el_token_no_abre_ningun_otro_endpoint(client, admin):
         assert r.status_code == 401, f"{url} respondió {r.status_code} a un token de montaje"
         revisadas += 1
     # Si el barrido no probó nada, el test pasa sin haber comprobado nada.
-    assert revisadas >= 25, f"sólo se barrieron {revisadas} rutas"
+    assert revisadas >= 27, f"sólo se barrieron {revisadas} rutas"
 
 
 def test_el_token_tampoco_escribe_por_la_puerta_general(client, admin):
