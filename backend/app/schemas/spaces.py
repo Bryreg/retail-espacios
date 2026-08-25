@@ -35,6 +35,24 @@ class LeaseCreate(LeaseBase):
     pass
 
 
+class AvisosContrato(BaseModel):
+    """A quién se le avisó al guardar el contrato.
+
+    Existe porque la pantalla decía «Ya salieron los avisos» como frase fija,
+    aunque el SMTP no estuviera configurado y no hubiera salido ni un correo.
+    Cerrar una negociación creyendo que se avisó al mercaderista, y que no se
+    haya avisado a nadie, es el modo de falla que vuelve inútil la herramienta.
+
+    Reporta lo ENCOLADO, no lo entregado: los envíos son tareas en segundo
+    plano que corren después de responder. Si el servidor no puede entregar,
+    queda en su log — pero al menos ya no se afirma lo que no se hizo.
+    """
+    smtp_listo: bool = False
+    comercial: list[str] = []
+    montaje: list[str] = []
+    proveedor: list[str] = []
+
+
 class LeaseOut(LeaseBase):
     id: int
     space_id: int
@@ -42,6 +60,8 @@ class LeaseOut(LeaseBase):
     supplier: SupplierOut
     # Overridden as Optional so responses for non-admin roles can redact the amount.
     monthly_rent: Optional[float] = None
+    # Sólo viene al CREAR el contrato; al listar no tiene sentido.
+    avisos: Optional[AvisosContrato] = None
 
     model_config = {"from_attributes": True}
 

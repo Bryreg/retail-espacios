@@ -263,3 +263,58 @@ def test_an_existing_email_is_never_overwritten(client, admin):
         headers=admin,
     ).json()
     assert otro["email"] == "trade@nutresa.co"
+
+
+# ─── Lo que la pantalla puede afirmar ────────────────────────────────────────
+#
+# La confirmación decía «Ya salieron los avisos» como frase fija: con el SMTP
+# sin configurar en el servidor, y sin un solo contacto cargado, decía
+# exactamente lo mismo. Cerrar una negociación creyendo que se avisó al
+# mercaderista, y que no se haya avisado a nadie, es el modo de falla que
+# vuelve inútil la herramienta. Ahora la respuesta dice a quién se avisó.
+
+
+def test_la_respuesta_dice_a_quien_se_aviso(client, admin, enviados, monkeypatch):
+    import app.routers.spaces as spaces
+
+    monkeypatch.setattr(spaces, "smtp_configured", lambda: True)
+    lease = _contratar(client, admin).json()
+
+    avisos = lease["avisos"]
+    assert avisos["smtp_listo"] is True
+    assert avisos["comercial"], "el comercial debía estar en la lista"
+    assert avisos["montaje"], "el mercaderista debía estar en la lista"
+    # Y coincide con lo que de verdad se encoló.
+    encolados = {d for e in enviados for d in e["to"]}
+    prometidos = set(avisos["comercial"]) | set(avisos["montaje"]) | set(avisos["proveedor"])
+    assert prometidos <= encolados, "prometió avisar a alguien que no recibió nada"
+
+
+def test_sin_smtp_no_promete_nada(client, admin, enviados, monkeypatch):
+    import app.routers.spaces as spaces
+
+    monkeypatch.setattr(spaces, "smtp_configured", lambda: False)
+    lease = _contratar(client, admin).json()
+
+    avisos = lease["avisos"]
+    assert avisos["smtp_listo"] is False
+    assert avisos["comercial"] == []
+    assert avisos["montaje"] == []
+    assert avisos["proveedor"] == []
+
+
+def test_el_contrato_se_guarda_igual_sin_correo(client, admin, enviados, monkeypatch):
+    """El correo es un aviso, no una condición: sin SMTP el contrato queda."""
+    import app.routers.spaces as spaces
+
+    monkeypatch.setattr(spaces, "smtp_configured", lambda: False)
+    r = _contratar(client, admin)
+    assert r.status_code == 201
+    assert r.json()["id"] > 0
+
+
+def test_al_listar_contratos_no_viene_el_bloque_de_avisos(client, admin, enviados):
+    """`avisos` es del momento de crear: en un listado no significa nada."""
+    _contratar(client, admin)
+    espacio = client.get("/api/spaces/by-code/NAVE-PUN-01", headers=admin).json()
+    assert espacio["active_lease"] is None or espacio["active_lease"].get("avisos") is None

@@ -917,6 +917,70 @@ nadie.)
 
 ---
 
+## El correo de un contrato
+
+Guardar un contrato dispara **tres** correos, uno por rol:
+
+| Para | Qué lleva |
+|---|---|
+| **Comercial** (gerente + admin de la sede) | resumen con el **valor mensual** |
+| **Montaje** (mercaderista de la sede) | orden de trabajo **sin valores**, con dónde queda en palabras y el enlace `/?montar=SEDE-CODE` |
+| **Proveedor** | constancia de lo acordado, con el valor. Sólo si tiene correo cargado |
+
+Los destinatarios salen de la libreta (`notify_contacts` en `app_config`), por sede
+y por rol. Si está vacía se cae a la lista global vieja (`notify_emails`).
+
+### La pantalla afirmaba lo que no había pasado
+
+La confirmación decía **«Ya salieron los avisos: …»** como frase fija. Con el SMTP
+sin configurar en el servidor —que es como viene `render.yaml`— o sin un solo
+contacto cargado, decía exactamente lo mismo y no salía ni un correo.
+
+Cerrar una negociación creyendo que se avisó al mercaderista, y que no se haya
+avisado a nadie, es el modo de falla que vuelve inútil la herramienta.
+
+Ahora `POST /spaces/{id}/leases` devuelve un bloque `avisos` con `smtp_listo` y las
+direcciones por rol, y la pantalla dice lo que de verdad pasó: a quién se le avisó,
+o que **no se avisó a nadie** y por qué. Reporta lo **encolado**, no lo entregado —
+los envíos son tareas en segundo plano que corren después de responder— pero eso ya
+es la diferencia entre «se intentó» y «se afirmó sin intentar».
+
+### El aviso previo estaba muerto
+
+`NotifyPreview` avisa **antes** de guardar si el correo no está configurado o si no
+hay contactos para esa sede. Estuvo vivo hasta `64a30d2` y **quedó sin montar en
+`12695c2`**, el commit que partió el contrato en un hook más piezas de
+presentación: el componente siguió existiendo, nadie lo importó, y la pantalla pasó
+a afirmar los avisos sin poder saberlo. Ahora vive en la ficha de Vender, justo
+encima del botón de guardar, con los tokens claros de esa pantalla.
+
+### El correo de prueba miraba la clave equivocada
+
+`POST /notifications/test` leía **sólo** `notify_emails`, la lista global vieja, y
+no la libreta de contactos de donde salen los avisos de verdad: con la libreta
+llena respondía «no hay destinatarios» y nadie entendía por qué. Ahora junta las
+dos y el mensaje incluye servidor, remitente y destinatarios, para poder verificar
+la configuración sin adivinar.
+
+### Configurar el envío
+
+Dos lados, y ninguno se hace desde el código:
+
+1. **El remitente**, en las variables de entorno del servidor (Render → Environment):
+   `SMTP_USER` y `SMTP_PASSWORD`, y opcionalmente `MAIL_FROM`, `SMTP_HOST`
+   (por defecto `smtp.gmail.com`) y `SMTP_PORT` (por defecto `587`).
+   Con Gmail, `SMTP_PASSWORD` **no** es la contraseña de la cuenta: es una
+   **contraseña de aplicación** de 16 caracteres, que exige tener la verificación
+   en dos pasos activada.
+2. **Los destinatarios**, desde el ícono de ajustes del encabezado: gerente
+   operacional, y por sede el administrador y el mercaderista.
+
+**`send_mail_to` siempre hace `starttls()`**, así que sólo funciona con un puerto de
+STARTTLS (587). Si se configura `SMTP_PORT=465` —el puerto de SSL implícito, que es
+una elección habitual— el envío falla y queda en el log, no en la pantalla.
+
+---
+
 ## Pendiente urgente: datos de TERRON
 
 TERRON tenía datos reales y **quedó vacía en el servidor**, vaciada por el bug del layout

@@ -8,11 +8,16 @@ from sqlalchemy.orm import Session, joinedload
 from app.auth import require_admin, require_auth
 from app.database import get_db
 from app.models.models import Space, SpaceFile, SpaceLease, Supplier, SpaceStatus
-from app.schemas.spaces import SpaceOut, SpaceCreate, SpaceStatusUpdate, LeaseCreate, LeaseOut, SpaceMapItem, SpaceFindOrCreate
+from app.schemas.spaces import (
+    SpaceOut, SpaceCreate, SpaceStatusUpdate, LeaseCreate, LeaseOut, SpaceMapItem,
+    SpaceFindOrCreate, AvisosContrato,
+)
 from app.routers.mounts import MOUNT_FILE_PREFIX
 from app.services.contacts import recipients_for
 from app.services.layout_lookup import describe_location, is_space_rentable
-from app.services.mailer import app_base_url, format_cop, html_shell, send_mail_to_bg
+from app.services.mailer import (
+    app_base_url, format_cop, html_shell, send_mail_to_bg, smtp_configured,
+)
 
 # Every route requires a valid token; mutations additionally require admin.
 router = APIRouter(prefix="/spaces", tags=["spaces"], dependencies=[Depends(require_auth)])
@@ -329,6 +334,17 @@ def create_lease(space_id: int, payload: LeaseCreate, background_tasks: Backgrou
     who = recipients_for(db, space.sede)
     periodo = f"{lease.start_date} → {lease.end_date}"
 
+    # Lo que se va a intentar mandar, para devolvérselo a la pantalla. Antes la
+    # confirmación afirmaba «Ya salieron los avisos» pase lo que pase: sin SMTP
+    # configurado y sin contactos cargados decía exactamente lo mismo.
+    listo = smtp_configured()
+    avisos = AvisosContrato(
+        smtp_listo=listo,
+        comercial=who["comercial"] if listo else [],
+        montaje=who["montaje"] if listo else [],
+        proveedor=[supplier.email] if (listo and supplier.email) else [],
+    )
+
     # Comercial: gerente operacional + administrador de la sede.
     if who["comercial"]:
         subject = f"Nuevo contrato — {space.code}"
@@ -395,6 +411,9 @@ def create_lease(space_id: int, payload: LeaseCreate, background_tasks: Backgrou
             send_mail_to_bg, [supplier.email], subject, html_shell(subject, rows, footer)
         )
 
+    # `avisos` no es una columna: se cuelga del objeto para que Pydantic lo
+    # serialice en ESTA respuesta. Al listar contratos no aparece.
+    lease.avisos = avisos  # type: ignore[attr-defined]
     return lease
 
 
