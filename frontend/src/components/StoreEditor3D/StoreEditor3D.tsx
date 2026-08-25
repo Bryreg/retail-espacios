@@ -17,7 +17,8 @@ import { fileUrl, getFaceImages } from "../../api/files";
 // Extensión real del local y física de la caminata — geometría pura, probada
 // aparte. STORE_W/STORE_D describen una tienda ficticia que ninguna sede ocupa.
 import {
-  limitesDePlanta, murosDeCaminata, puntoDeEntrada, puntoLibreCerca, resolverPaso,
+  huella, limitesDePlanta, murosDeCaminata, puntoDeEntrada, puntoLibreCerca, resolverPaso,
+  TOLERANCIA_CONTACTO,
   vistaGeneral, miradaSensata, vistaDeCara,
   type Vista3D,
   VEL_CAMINANDO, VEL_APURADA,
@@ -26,6 +27,7 @@ import {
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 import MiniMapa, { type CamaraEnPlanta } from "../MiniMapa/MiniMapa";
 import { componerPropuesta, descargar, nombreDeArchivo } from "../../utils/propuesta";
+import { siguienteCodigo } from "../../utils/nomenclatura";
 
 // ─── Scene constants ──────────────────────────────────────────────────────────
 
@@ -212,10 +214,21 @@ const STATUS_META: Record<SpaceStatus, { bg: string; text: string; label: string
 
 // ─── Code & slot generation ───────────────────────────────────────────────────
 
-function generateCode(sede: string, def: FixtureDef, existing: PlacedFixture[]): string {
-  const prefix = `${sede.toUpperCase()}-${def.code}-`;
-  const count  = existing.filter(f => f.code.startsWith(prefix)).length;
-  return `${prefix}${String(count + 1).padStart(3,"0")}`;
+/**
+ * El código de un mueble nuevo.
+ *
+ * Antes acá se CONTABA cuántos había del mismo prefijo y se sumaba uno, y
+ * además se anteponía la sede: dos problemas. Borrar `GON-02` hacía que el
+ * siguiente volviera a ser `GON-02` —dos muebles con el mismo código, y con
+ * eso dos espacios compartiendo contratos y correos— y el plano 2D generaba
+ * `GON-01` donde éste generaba `NAVE-GON-001`, así que el mismo plano quedaba
+ * con dos nomenclaturas según por dónde se hubiera dibujado.
+ *
+ * La sede no va en el código: se antepone al guardar el espacio
+ * (`fullSpaceCode`), que es donde hace falta que sea único entre sedes.
+ */
+function generateCode(_sede: string, def: FixtureDef, existing: PlacedFixture[]): string {
+  return siguienteCodigo(def.gondolaType ? "gondola" : def.type, existing);
 }
 
 function defaultSlots(fix: { type: FixType; w: number; h: number; code: string }): ShelfSlot[] {
@@ -276,25 +289,30 @@ function validatePlacement(
 
 // ─── MEJORA 2: AABB collision helpers ────────────────────────────────────────
 
-function getAABB(x: number, z: number, w: number, d: number) {
-  return { minX: x - w/2, maxX: x + w/2, minZ: z - d/2, maxZ: z + d/2 };
-}
-
+/**
+ * ¿Este mueble se monta encima de otro?
+ *
+ * Mide la huella YA ROTADA. Antes comparaba `w` y `d` crudos, y la mayoría de
+ * las góndolas de una sede real están giradas 90°: una góndola de 3,6 × 0,9 se
+ * leía como 0,9 de ancho, así que se podía soltar atravesada sobre otra y el
+ * editor no decía nada. (El plano 2D nunca tuvo el problema porque intercambia
+ * ancho y alto al rotar, así que ahí las medidas ya venían giradas.)
+ */
 function hasAABBCollision(
   pos: {x:number; z:number},
-  def: { w:number; d:number },
+  def: { w:number; d:number; rotY?: number },
   existing: PlacedFixture[],
   excludeId?: string
 ): boolean {
-  // TOL: 1 mm tolerance so that fixtures touching exactly at their boundary
-  // (overlap = 0) don't falsely trigger due to IEEE-754 floating-point noise.
-  // Only real overlaps (> 1 mm) are flagged.
-  const TOL = 0.001;
-  const a = getAABB(pos.x, pos.z, def.w, def.d);
+  // Pegados sí, encimados no: hasta TOLERANCIA_CONTACTO es contacto. Era 1 mm,
+  // que no alcanza para absorber el ruido de las rotaciones ni el redondeo de
+  // la grilla, así que armar una corrida al ras podía rebotar sin motivo.
+  const TOL = TOLERANCIA_CONTACTO;
+  const a = huella({ x: pos.x, z: pos.z, w: def.w, d: def.d, rotY: def.rotY ?? 0 });
   return existing
     .filter(f => f.id !== excludeId)
     .some(f => {
-      const b = getAABB(f.x, f.z, f.w, f.d);
+      const b = huella({ x: f.x, z: f.z, w: f.w, d: f.d, rotY: f.rotY });
       return (
         a.minX < b.maxX - TOL && a.maxX > b.minX + TOL &&
         a.minZ < b.maxZ - TOL && a.maxZ > b.minZ + TOL
@@ -3968,14 +3986,26 @@ export default function StoreEditor3D() {
     setGhostX(x);
     setGhostZ(z);
     if (placingDef) {
-      const collides = hasAABBCollision({x, z}, placingDef, placedFixtures);
+      // Con el giro del fantasma: se puede rotar ANTES de soltar, y sin esto la
+      // vista previa se pintaba en verde mientras el mueble ya pisaba a otro.
+      const collides = hasAABBCollision(
+        {x, z}, { ...placingDef, rotY: ghostRotY }, placedFixtures,
+      );
       setGhostCollides(collides);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [placingDef, placedFixtures]);
+  }, [placingDef, placedFixtures, ghostRotY]);
 
   function onFloorClick(x:number, z:number){
     if(placingDef){
+      // El fantasma se pintaba rojo al pisar a otro mueble y el clic lo soltaba
+      // igual: el aviso era decorativo. El plano 2D siempre lo bloqueó; acá no.
+      // Un mueble encima de otro rompe el plano para todo lo que viene después
+      // —la caminata, el encuadre del proveedor, el metraje que se cobra.
+      if (hasAABBCollision({x, z}, { ...placingDef, rotY: ghostRotY }, placedFixtures)) {
+        setWarning("⚠️ Ahí se monta sobre otro mueble — movelo o giralo (R)");
+        return;
+      }
       const warn = validatePlacement(placingDef, {x,z}, placedFixtures);
       if(warn) setWarning(warn);
       const newCode = generateCode(sede, placingDef, placedFixtures);

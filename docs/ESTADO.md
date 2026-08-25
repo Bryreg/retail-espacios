@@ -793,6 +793,130 @@ primera.
 
 ---
 
+## El plano, que es donde empieza todo
+
+De acá salen los espacios que se venden, el metraje que se cobra, el recorrido
+que se le muestra al proveedor y el mapa con el que el mercaderista encuentra la
+exhibición. Un error acá no se nota hasta que ya viajó a un contrato.
+
+**El plano de NAVE está sano** — se midió antes de tocar nada: 104 muebles, 0
+códigos repetidos, 0 prefijos mal puestos, se camina entero con hombro de 1,20 m
+y sólo dos roces de 0,01 y 0,03 m². El problema no eran los datos: era que el
+editor no protegía lo que alguien había hecho a mano.
+
+### Una sola nomenclatura
+
+Había dos, una por editor. El plano 2D generaba `GON-01` con `max + 1`; el editor
+3D generaba `NAVE-GON-001` **contando** cuántos había. Contar no es lo mismo que
+buscar el siguiente libre: con `GON-01` y `GON-03` en el plano, contaba 2 y
+devolvía `GON-03` otra vez. **Dos muebles con el mismo código son dos espacios
+compartiendo contratos, archivos y correos de montaje.**
+
+Ahora viven en `utils/nomenclatura.ts`, los usan los dos editores, y el código
+devuelto es el primer número **libre** —no `max + 1`, que bastaba una edición
+manual para hacerlo chocar. La sede no va en el código: se antepone al guardar el
+espacio (`fullSpaceCode`), que es donde hace falta que sea único entre sedes.
+
+Editar un código a mano tampoco puede pisar a otro: el campo se tiñe y no cierra.
+
+### Juntos sí, encima no
+
+Los dos editores comparaban cajas **sin rotar**. El 2D zafaba porque intercambia
+ancho y alto al girar, así que sus medidas ya vienen giradas; el 3D no, y la
+mayoría de las góndolas de una sede real están giradas 90°: una de 3,6 × 0,9 se
+leía como 0,9 de ancho y se podía soltar atravesada sobre otra.
+
+Peor: en el 3D **el fantasma se pintaba rojo y el clic soltaba el mueble igual**.
+El aviso era decorativo. El plano 2D siempre lo bloqueó.
+
+La regla ahora es una y explícita, en `TOLERANCIA_CONTACTO` (2 cm):
+
+- **Hasta 2 cm es contacto.** Una corrida se arma poniendo las góndolas al ras y
+  eso tiene que salir siempre. Con «cero solape» bastaba el ruido de coma
+  flotante de una rotación —`cos(90°)` da 6·10⁻¹⁷, no 0— para que el editor se
+  negara a dejarlas juntas. Dos centímetros es menos que la grilla de 5 cm con la
+  que se dibuja: por debajo de eso nadie lo puso ahí a propósito.
+- **Por encima es un mueble sobre otro**, y se bloquea.
+
+### Pasillos
+
+Un supermercado no se recorre por códigos sueltos. Quien negocia dice «la punta
+del pasillo 3», no «PUN-07».
+
+El plano ya tenía esa estructura y el editor no la conocía: las 56 góndolas
+principales de NAVE forman **10 corridas limpias**, y quien lo dibujó las numeró
+en orden. `utils/pasillos.ts` lo deduce de la geometría agrupando por la
+coordenada perpendicular, y el resultado **coincide con lo que hizo la persona a
+mano**: nueve de las diez corridas calzan exactamente con los códigos existentes,
+y cada pasillo recibe sus dos puntas, una por cabecera. Los 18 muebles sin
+pasillo son la pared perimetral, las cajas y las zonas libres — que efectivamente
+no están en ningún pasillo.
+
+**No se guarda: se deduce.** Mover una góndola cambia su pasillo, y un dato
+guardado se quedaría viejo sin que nadie se entere.
+
+**El código no lleva el pasillo, a propósito.** El código es la llave de los
+contratos, los archivos, los correos de montaje y los enlaces ya enviados:
+renombrar `GON-17` a `P03-GON-05` huerfaniza todo eso y obliga a migrar `spaces`,
+`space_files` y `space_leases`. El pasillo se muestra al lado.
+
+### Revisar antes de negociar
+
+Un botón en la barra del plano abre `utils/revision.ts`, que reporta:
+
+| | |
+|---|---|
+| Códigos repetidos | error — dos espacios compartiendo historia |
+| Muebles encimados | error arriba de 0,05 m², aviso debajo |
+| Pasillos angostos | error si no pasa una persona (0,56 m), aviso si no pasa un carrito (0,90 m) |
+| Prefijo que no corresponde al tipo | aviso |
+| Piso encerrado entre muebles | aviso — se ve en el plano pero no se puede caminar |
+
+Cada hallazgo salta al mueble. Sobre NAVE reporta exactamente los dos roces
+reales y nada más; los huecos entre sus pasillos van de 1,30 a 2,80 m.
+
+### Los atajos: por qué «a veces andaban»
+
+**Duplicar fallaba para 11 de los 17 tipos del catálogo, en silencio.** `Ctrl+D`
+desplazaba la copia 0,5 m en los dos ejes y la descartaba si chocaba. Una Góndola
+Doble mide 0,90 × 0,90: la copia siempre se solapaba con su original, se tiraba, y
+no pasaba nada ni se avisaba. Andaba sólo para los seis tipos que miden menos de
+50 cm en alguno de sus lados (mural, punta, robatope, ristra, impulsador,
+columna). De ahí el «a veces funciona».
+
+Ahora la copia cae **al ras al lado**, que es para lo que se usa el atajo: seguir
+armando una corrida. Si no hay lugar, lo dice.
+
+**Pegar pegaba encima.** `Ctrl+V` probaba cinco desplazamientos en diagonal y, si
+ninguno servía, pegaba igual sobre lo que hubiera. Ahora busca de verdad y el
+grupo se mueve entero, así que media corrida copiada vuelve como media corrida.
+
+**⌘Z no andaba en Mac.** Deshacer y rehacer miraban sólo `ctrlKey`, mientras que
+⌘A, ⌘D, ⌘C y ⌘V sí aceptaban `metaKey`. Ahora todos aceptan los dos.
+
+**`R` rotaba de más y de menos.** Sin guarda de modificadores, `Ctrl+R` (recargar)
+también rotaba; y sólo giraba si había EXACTAMENTE un mueble elegido, así que con
+dos o más no hacía nada y no decía por qué. Ahora exige que no haya modificadores
+y gira toda la selección.
+
+**El plano no tenía ningún aviso.** Un atajo que no hacía nada era indistinguible
+de uno que no existía. Ahora cada acción confirma en pantalla —«3 muebles
+duplicados», «No hay lugar libre cerca»— y borrar recuerda que `Ctrl+Z` existe.
+
+### Dónde están escritos
+
+Un botón **Atajos** en la barra del plano abre la lista completa, agrupada por
+para qué sirve. La barra de estado muestra un resumen **sacado de la misma
+constante**, así que no se pueden desfasar.
+
+Antes la única ayuda era esa línea de la barra: con `white-space: nowrap` y
+`text-overflow: ellipsis` se cortaba en una ventana angosta, y de entrada no
+mencionaba deshacer, duplicar, copiar, pegar ni Escape. (Hay un `ZoneEditorPanel`
+con una lista de atajos en `components/FloorMap/`: es código muerto, no lo importa
+nadie.)
+
+---
+
 ## Pendiente urgente: datos de TERRON
 
 TERRON tenía datos reales y **quedó vacía en el servidor**, vaciada por el bug del layout
@@ -904,8 +1028,8 @@ código. Vale la pena el rato que toma:
 3. Conducir el navegador con Playwright y capturar. Chromium ya está instalado en
    `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`.
 
-**Lo que es geometría pura, probarlo aparte.** `npm run probar:planta` (27 pruebas) y
-`npm run probar:propuesta` (15) corren sin navegador: transpila el `.ts` con el esbuild que ya trae vite y
+**Lo que es geometría pura, probarlo aparte.** `npm run probar` corre las cinco suites
+sin navegador (100 pruebas: planta, propuesta, nomenclatura, pasillos, revisión, acomodar): transpila el `.ts` con el esbuild que ya trae vite y
 afirma en node. No hay runner de pruebas en el frontend y no valía la pena montar uno para
 esto. Ahí se encontró que un paso largo saltaba por encima de un mueble.
 

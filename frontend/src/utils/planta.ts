@@ -30,6 +30,19 @@ export interface LimitesPlanta extends Caja {
   w: number; d: number;
 }
 
+/**
+ * Hasta cuánto se pueden meter dos muebles uno en otro y seguir siendo
+ * «pegados» y no «encimados».
+ *
+ * Una corrida de góndolas se arma poniéndolas al ras, y eso tiene que salir
+ * siempre: si la regla fuera «cero solape» bastaría el ruido de coma flotante
+ * de una rotación —cos(90°) da 6·10⁻¹⁷, no 0— o medio milímetro de redondeo
+ * para que el editor se negara a dejarlas juntas. Dos centímetros es menos que
+ * la grilla de 5 cm con la que se dibuja: por debajo de eso nadie lo puso ahí a
+ * propósito. Por encima ya es un mueble sobre otro, y eso se bloquea.
+ */
+export const TOLERANCIA_CONTACTO = 0.02;  // m
+
 /** Por debajo de esta altura un mueble se pisa en vez de estorbar (Zona Libre mide 5 cm). */
 export const ALTURA_PISABLE = 0.25;
 /** Radio del cuerpo: mantiene la cámara despegada de la cara del mueble. */
