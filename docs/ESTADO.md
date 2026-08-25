@@ -273,7 +273,27 @@ cambia de estado y eso desmontaba el mensaje justo cuando había que leerlo.
 Desde **Supervisar** también se vende: el popover del mapa y el panel de detalle traen
 "Negociar este espacio", que cambia de modo con ese espacio ya elegido.
 
-El panel del plano sigue existiendo para editar un contrato sobre el mueble.
+### El contrato tiene un solo dueño
+
+El contrato se llenaba en **tres** lugares: el panel del plano 2D, el panel del editor 3D
+y la pantalla de venta. Los dos primeros ya no lo hacen, y no era una duplicación inocente:
+
+- los campos escribían el **JSON del layout** sin tocar la base, así que se podía dejar un
+  proveedor y un valor puestos en el mapa sin que existiera ningún `SpaceLease`;
+- el botón "Guardar contrato" llamaba a `createLease` **cada vez que se tocaba**. No editaba
+  nada: corregir una fecha y volver a guardar creaba un segundo contrato sobre el mismo
+  espacio. No hay endpoint de edición de contratos —sólo alta y baja—, así que la
+  "edición" que se perdió al sacarlos nunca existió.
+
+Ahora la división es por lo que cada pantalla sabe:
+
+| | Plano 2D · Editor 3D | Sede → Vender |
+|---|---|---|
+| Diseño | destino, sede, nomenclatura, dimensiones, rotación, artes/archivos, observación | — |
+| Comercial | lo contratado, **de sólo lectura**, con un puntero a dónde se cambia | proveedor, marca, correo, valor, fechas, nota |
+
+El panel del plano muestra quién tiene el espacio, hasta cuándo y por cuánto (esto último
+sólo para el admin), y dice que se cambia en Sede → Vender. El editor 3D, igual.
 
 **Las pestañas dicen para qué sirven.** Los nombres solos no alcanzaban —"Plano" y
 "Editor 3D" suenan a lo mismo, y desde ninguno se adivina que el contrato se llenaba ahí

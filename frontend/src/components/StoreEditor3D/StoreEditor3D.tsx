@@ -11,13 +11,10 @@ import {
 } from "lucide-react";
 import { Html } from "@react-three/drei";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
-import { isDoubleGondola, isRentable, NON_RENTABLE_BY_DEFAULT, rateTypeOf } from "../../types/fixtures";
+import { isDoubleGondola, isRentable, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
-import ReferenceRateHint from "../ReferenceRateHint";
-import NotifyPreview from "../NotifyPreview";
-import { findOrCreateSpace, createLease } from "../../api/spaces";
-import { findOrCreateSupplier } from "../../api/suppliers";
 import { fileUrl, getFaceImages } from "../../api/files";
+import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 
 // ─── Scene constants ──────────────────────────────────────────────────────────
 
@@ -3136,7 +3133,6 @@ function fixturesToStore(
 
 interface CommercialPanelProps {
   fix:           PlacedFixture;
-  sede:          string;
   selectedSlot:  ShelfSlot | null;
   onUpdate:      (id:string, u:Partial<PlacedFixture>) => void;
   onUpdateSlot:  (fixtureId:string, slotId:string, u:Partial<ShelfSlot>) => void;
@@ -3148,9 +3144,10 @@ interface CommercialPanelProps {
 }
 
 function CommercialPanel({
-  fix, sede, selectedSlot, onUpdate, onUpdateSlot,
+  fix, selectedSlot, onUpdate, onUpdateSlot,
   onRotate, onFlip, onDelete, onClose, onSlotClose,
 }: CommercialPanelProps) {
+  const isAdmin = useAuthStore(selectIsAdmin);
   const u  = useCallback((up: Partial<PlacedFixture>) => onUpdate(fix.id, up), [fix.id, onUpdate]);
   const us = useCallback((up: Partial<ShelfSlot>) => selectedSlot && onUpdateSlot(fix.id, selectedSlot.id, up), [fix.id, selectedSlot, onUpdateSlot]);
 
@@ -3158,56 +3155,6 @@ function CommercialPanel({
   const def = FIXTURE_DEFS.find(d=>d.type===fix.type && (fix.type!=="gondola"||d.gondolaType===fix.gondolaType)) ?? FIXTURE_DEFS[0];
   // Infrastructure holds no contract: the commercial half of the panel hides.
   const rentable = isRentable(fix);
-
-  // ── Contract persistence ──────────────────────────────────────────────────
-  const [saveState, setSaveState] = useState<"idle"|"saving"|"ok"|"error">("idle");
-  const [saveError, setSaveError] = useState("");
-
-  // Same guard as the 2D panel: a reversed pair of dates would make the space
-  // read as free for every period in the availability view.
-  const datesInOrder =
-    fix.startDate.length > 0 &&
-    fix.endDate.length > 0 &&
-    fix.startDate <= fix.endDate;
-
-  const canSave =
-    fix.supplierName.trim().length > 0 &&
-    datesInOrder &&
-    (fix.negotiatedValue ?? 0) > 0;
-
-  async function handleSaveContract() {
-    if (!canSave) return;
-    setSaveState("saving");
-    setSaveError("");
-    try {
-      const space = await findOrCreateSpace({
-        code: fix.code,
-        name: fix.label,
-        zone: fix.type,
-        sede,
-        area_m2: parseFloat((fix.w * fix.d).toFixed(2)),
-      });
-      const supplier = await findOrCreateSupplier(fix.supplierName.trim());
-      await createLease(space.id, {
-        supplier_id: supplier.id,
-        marca: fix.brandCategory || undefined,
-        start_date: fix.startDate,
-        end_date: fix.endDate,
-        monthly_rent: fix.negotiatedValue,
-        notes: fix.observation || undefined,
-      });
-      u({ status: "occupied" });
-      setSaveState("ok");
-      setTimeout(() => setSaveState("idle"), 3500);
-    } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
-        "Error al guardar el contrato";
-      setSaveError(msg);
-      setSaveState("error");
-      setTimeout(() => setSaveState("idle"), 5000);
-    }
-  }
 
   const inputCls = "w-full border-0 border-b border-dark-line-2 bg-transparent rounded-none px-0 py-1 text-sm text-dark-ink-1 focus:border-accent focus:outline-none placeholder:text-dark-ink-3 transition-colors";
   const labelCls = "mb-0.5 block text-[10px] uppercase tracking-widest text-dark-ink-3 font-medium";
@@ -3425,85 +3372,55 @@ function CommercialPanel({
 
         {rentable && (<>
 
-        <div>
-          <label className={labelCls}><Building2 size={9} className="inline mr-1"/>Proveedor</label>
-          <input type="text" value={fix.supplierName} placeholder="Nombre del proveedor"
-            onChange={e=>u({supplierName:e.target.value})} className={inputCls} />
+        {/* Lo contratado, de sólo lectura. El editor 3D es de diseño: las artes,
+            las dimensiones, dónde va cada mueble. El contrato se hace en
+            Sede → Vender, que es donde está el mapa con la disponibilidad del
+            periodo. Antes se podía llenar acá, en el plano 2D y en Sede: tres
+            lugares para lo mismo, y los de acá creaban un contrato nuevo cada
+            vez que se tocaba el botón en vez de editar el que había. */}
+        <div className="rounded-lg border border-dark-line/50 bg-dark-bg/60 p-3">
+          <p className={labelCls}><Building2 size={9} className="inline mr-1"/>Contratado</p>
+          {fix.supplierName ? (
+            <>
+              <p className="text-sm font-semibold text-dark-ink-1">{fix.supplierName}</p>
+              {fix.brandCategory && (
+                <p className="text-xs text-dark-ink-2 mt-0.5">{fix.brandCategory}</p>
+              )}
+              {fix.startDate && fix.endDate && (
+                <>
+                  <p className="mt-1.5 font-mono text-[11px] text-dark-ink-2">
+                    {fix.startDate} → {fix.endDate}
+                  </p>
+                  {days > 0 && (
+                    <>
+                      <div className="mt-1.5 h-1.5 rounded-full bg-dark-surface-2">
+                        <div className={`rounded-full h-full transition-all ${progressColor}`} style={{ width: `${progressPct}%` }} />
+                      </div>
+                      <p className={`mt-1 text-[10px] ${daysLeftColor}`}>{daysLeft} días restantes</p>
+                    </>
+                  )}
+                </>
+              )}
+              {isAdmin && fix.negotiatedValue > 0 && (
+                <p className="mt-2 font-mono text-sm font-bold text-success">
+                  ${fix.negotiatedValue.toLocaleString()} / mes
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-dark-ink-3">Sin contrato activo.</p>
+          )}
+          {isAdmin && (
+            <p className="mt-2 text-[10px] leading-relaxed text-dark-ink-3">
+              Los contratos se hacen en <b className="text-dark-ink-2">Sede → Vender</b>, sobre el mapa.
+            </p>
+          )}
         </div>
-
-        <div>
-          <label className={labelCls}><Tag size={9} className="inline mr-1"/>Marca / Categoría</label>
-          <input type="text" value={fix.brandCategory} placeholder="Marca o rubro"
-            onChange={e=>u({brandCategory:e.target.value})} className={inputCls} />
-        </div>
-
-        <div>
-          <label className={labelCls}><DollarSign size={9} className="inline mr-1"/>Valor (COP/mes)</label>
-          <input type="number" min={0} value={fix.negotiatedValue||""}
-            onChange={e=>u({negotiatedValue:parseFloat(e.target.value)||0})}
-            className={`${inputCls} ${fix.negotiatedValue > 0 ? "text-success text-base font-bold" : ""}`} />
-          <ReferenceRateHint sede={sede} rateType={rateTypeOf(fix)} value={fix.negotiatedValue || 0} />
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className={labelCls}><Calendar size={9} className="inline mr-1"/>Inicio</label>
-            <input type="date" value={fix.startDate} onChange={e=>u({startDate:e.target.value})} className={inputCls} />
-          </div>
-          <div>
-            <label className={labelCls}>Fin</label>
-            <input type="date" value={fix.endDate} onChange={e=>u({endDate:e.target.value})} className={inputCls} />
-          </div>
-        </div>
-
-        {fix.startDate && fix.endDate && days > 0 && (
-          <div>
-            <div className="h-1.5 rounded-full bg-dark-surface-2">
-              <div className={`rounded-full h-full transition-all ${progressColor}`} style={{ width: `${progressPct}%` }} />
-            </div>
-            <p className={`mt-1 text-[10px] ${daysLeftColor}`}>{daysLeft} días restantes</p>
-          </div>
-        )}
 
         <div>
           <label className={labelCls}>Observaciones</label>
           <textarea rows={2} value={fix.observation} placeholder="Notas…"
             onChange={e=>u({observation:e.target.value})} className={`${inputCls} resize-none`} />
-        </div>
-
-        {/* Save contract */}
-        <div>
-          <button
-            onClick={handleSaveContract}
-            disabled={!canSave || saveState==="saving"}
-            className={`w-full rounded py-2 text-xs font-semibold transition-colors ${
-              !canSave
-                ? "bg-dark-surface-2 text-dark-ink-3 cursor-not-allowed"
-                : saveState==="ok"
-                ? "bg-success/20 text-success"
-                : saveState==="error"
-                ? "bg-danger/20 text-danger"
-                : saveState==="saving"
-                ? "bg-accent/70 text-white cursor-wait"
-                : "bg-accent hover:bg-accent-600 text-white"
-            }`}
-          >
-            {saveState==="saving" ? "Guardando…"
-             : saveState==="ok"   ? "✓ Contrato guardado"
-             : saveState==="error"? "Error — reintentar"
-             : "Guardar contrato"}
-          </button>
-          {saveState==="error" && (
-            <p className="mt-1 text-[10px] text-danger">{saveError}</p>
-          )}
-          {!canSave && saveState==="idle" && (
-            <p className="mt-1 text-[10px] text-dark-ink-3">
-              {fix.startDate && fix.endDate && fix.startDate > fix.endDate
-                ? "La fecha de inicio quedó después de la de fin."
-                : "Requiere proveedor, fechas y valor > 0."}
-            </p>
-          )}
-          {canSave && saveState==="idle" && <NotifyPreview sede={sede} />}
         </div>
         </>)}
 
@@ -4090,7 +4007,6 @@ export default function StoreEditor3D() {
       {selectedFix && !presentationMode && (
         <CommercialPanel
           fix={selectedFix}
-          sede={sede}
           selectedSlot={selectedSlot}
           onUpdate={updateFixture}
           onUpdateSlot={updateSlot}

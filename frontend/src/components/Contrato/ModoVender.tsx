@@ -47,9 +47,13 @@ function Armazon({
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", gap: 12, alignItems: "stretch" }}>
         {mapa}
+        {/* La ficha mide lo que mide su contenido y se queda pegada arriba: el
+            mapa es mucho más alto que el formulario, y estirar la tarjeta hasta
+            abajo sólo repartía aire entre los campos. */}
         <div
           style={{
             width: ANCHO_FICHA, flexShrink: 0, minWidth: 0,
+            alignSelf: "flex-start", position: "sticky", top: 0,
             display: "flex", flexDirection: "column",
           }}
         >
@@ -62,7 +66,7 @@ function Armazon({
 }
 
 const tarjeta: React.CSSProperties = {
-  flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
+  display: "flex", flexDirection: "column",
   borderRadius: "var(--r-xl)", background: "var(--surface)",
   border: "1px solid var(--line)", boxShadow: "var(--shadow-xs)",
   overflow: "hidden",

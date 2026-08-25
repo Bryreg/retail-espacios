@@ -307,7 +307,14 @@ export function CabezaContrato({
 /** Los campos. Sin botón de guardar: ese vive en la barra del pie. */
 export function CamposContrato({ c }: { c: Contrato }) {
   return (
-    <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "13px 14px", display: "grid", gap: 12 }}>
+    // `alignContent: start` no es cosmético: en un grid que crece con el alto de
+    // la columna, las filas implícitas se estiran para repartirse el sobrante y
+    // los campos quedaban separados por medio dedo de aire cada uno.
+    <div
+      style={{
+        padding: "13px 14px", display: "grid", gap: 12, alignContent: "start",
+      }}
+    >
       {c.disponibilidad !== "libre" && (
         <div
           style={{
