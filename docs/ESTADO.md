@@ -703,6 +703,96 @@ choque en NAVE y se dibujaban una encima de la otra igual. Ahora son 6,5.
 
 ---
 
+## Las cuatro del proveedor
+
+El 3D dejó de ser una maqueta bonita: es con lo que se le muestra a un proveedor
+qué está comprando.
+
+### Ver la exhibición en 3D
+
+Un botón en la ficha del espacio —tanto en el formulario de negociación como en la
+ficha de detalle— lleva al Editor 3D **encuadrando ese espacio**. Antes había que
+entrar a mano y buscarlo entre 104 muebles.
+
+El pedido viaja por el store (`enfoque3D`) porque la pantalla de sede y el editor 3D
+son pestañas hermanas sin props entre ellas. Se identifica **por id de mueble y no
+por código**: el código corto se repite entre sedes y a veces llega con el prefijo
+puesto y a veces no.
+
+**Cómo se calcula el encuadre.** En la caja de Three.js el orden de materiales es
+`[+X, −X, +Y, −Y, +Z, −Z]`, y el editor pinta la cara A en el índice 5 y la B en el
+4: la **cara A mira a −Z y la B a +Z** en coordenadas locales, y después el mueble
+gira `rotY`. La cámara se para de ese lado, a la distancia que necesita el campo
+visual para que la exhibición entre llena, y nunca por debajo de 1,65 m — una batea
+de 80 cm mirada desde 40 parece una foto tomada en el piso.
+
+Un detalle que costó una prueba: **la cara mide `w` × `h` siempre**. Es una cara de
+la caja, abarca los ejes locales del mueble; girarlo cambia hacia dónde apunta, no
+cuánto mide. No confundir con `huella`, que sí intercambia ancho y fondo porque
+describe la caja alineada al mundo.
+
+### Vistas guardadas por espacio
+
+Con un mueble seleccionado, el panel derecho ofrece guardar la cámara actual como
+**la** vista de ese espacio y esa cara. Al enfocarlo de nuevo abre en ese ángulo; sin
+vista guardada, en el encuadre calculado. Se puede olvidar.
+
+Vive en el JSON del layout (`vista3D` por mueble, por cara), así que viaja al
+servidor y aparece en la laptop del que arma la propuesta. **Sin migración.**
+
+Dos cuidados:
+
+- `fixturesToStore` tiene que arrastrarla. El 3D no la modela, y sin esa línea
+  **mover un mueble borraba todos los encuadres de la sede** y le mandaba la pérdida
+  al servidor.
+- Guardar y borrar escriben el layout pero **no entran al historial**: que Ctrl+Z
+  deshaga un encuadre de cámara mezcla dos cosas que no tienen nada que ver.
+
+Se guarda la cámara ORBITAL. En primera persona la cámara no se persiste —la
+caminata escribiría cientos de veces por recorrido— así que el botón lo avisa en vez
+de guardar algo viejo.
+
+### Antes / después del arte
+
+Un interruptor en la barra apaga las artes del proveedor. El «antes» es el mueble
+**pelado**: ni la foto ni el patrón de categoría, que es contra lo que se compara la
+marca puesta.
+
+### La lámina para el proveedor
+
+El botón de captura bajaba un volcado crudo del lienzo. Un PNG suelto sin sede, sin
+código de espacio y sin período no se puede adjuntar a nada: el que lo recibe no sabe
+si es su punta de góndola o la de al lado.
+
+Ahora, con un mueble elegido, saca **dos tomas desde la misma cámara** —sin arte y
+con arte— y las compone con un pie que dice proveedor, categoría, período, valor y
+mueble. La plata se tacha para el rol trabajador, igual que en el resto: una lámina
+es un archivo que se reenvía.
+
+Tres cosas que sólo se vieron mirando el archivo que salía:
+
+- **El PNG salía en blanco.** El lienzo no se creó con `preserveDrawingBuffer`, así
+  que el búfer se limpia al componer y un `toDataURL` suelto no lee nada. Hay que
+  dibujar y leer en el mismo turno.
+- **El gizmo y la caja de selección salían en la foto.** Apagarlos por estado de
+  React deja la captura a merced de cuándo React confirma el cambio, y el gizmo
+  aparecía en la primera de las dos tomas. Se marcan con `userData.chrome` y los
+  esconde la propia captura, sincrónicamente.
+- **Sin arte cargada las dos tomas salen idénticas.** Mostrar el mismo dibujo dos
+  veces rotulado «Hoy» y «Con la marca» es mentirle al que recibe la lámina: ahí va
+  una sola imagen.
+
+### Y un gizmo que nunca se dibujó
+
+`TransformControls` dejó de ser un `Object3D`: en three 0.184 extiende `Controls`, y
+lo que va a la escena es su ayudante (`getHelper()`). El `as unknown as THREE.Object3D`
+que había silenciaba el error de tipos pero no el de runtime — la escena rechazaba el
+objeto y **la flecha para mover un mueble nunca se dibujó**. Sólo se veía al
+seleccionar, que hasta ahora era raro; con «Ver en 3D» seleccionando solo, saltó a la
+primera.
+
+---
+
 ## Pendiente urgente: datos de TERRON
 
 TERRON tenía datos reales y **quedó vacía en el servidor**, vaciada por el bug del layout
@@ -814,8 +904,8 @@ código. Vale la pena el rato que toma:
 3. Conducir el navegador con Playwright y capturar. Chromium ya está instalado en
    `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`.
 
-**Lo que es geometría pura, probarlo aparte.** `npm run probar:planta` corre las 15 pruebas
-de `src/utils/planta.ts` sin navegador: transpila el `.ts` con el esbuild que ya trae vite y
+**Lo que es geometría pura, probarlo aparte.** `npm run probar:planta` (27 pruebas) y
+`npm run probar:propuesta` (15) corren sin navegador: transpila el `.ts` con el esbuild que ya trae vite y
 afirma en node. No hay runner de pruebas en el frontend y no valía la pena montar uno para
 esto. Ahí se encontró que un paso largo saltaba por encima de un mueble.
 

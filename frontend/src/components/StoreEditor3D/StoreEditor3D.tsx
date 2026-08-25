@@ -11,19 +11,21 @@ import {
 } from "lucide-react";
 import { Html } from "@react-three/drei";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
-import { isDoubleGondola, isRentable, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
+import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
 import { fileUrl, getFaceImages } from "../../api/files";
 // Extensión real del local y física de la caminata — geometría pura, probada
 // aparte. STORE_W/STORE_D describen una tienda ficticia que ninguna sede ocupa.
 import {
   limitesDePlanta, murosDeCaminata, puntoDeEntrada, puntoLibreCerca, resolverPaso,
-  vistaGeneral, miradaSensata,
+  vistaGeneral, miradaSensata, vistaDeCara,
+  type Vista3D,
   VEL_CAMINANDO, VEL_APURADA,
   type LimitesPlanta,
 } from "../../utils/planta";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 import MiniMapa, { type CamaraEnPlanta } from "../MiniMapa/MiniMapa";
+import { componerPropuesta, descargar, nombreDeArchivo } from "../../utils/propuesta";
 
 // ─── Scene constants ──────────────────────────────────────────────────────────
 
@@ -1890,9 +1892,12 @@ function StoreRoom({ fixtures }: { fixtures: PlacedFixture[] }) {
 
 // ─── Selection wireframe ──────────────────────────────────────────────────────
 
+/** Marca lo que NO debe salir en una captura: es herramienta, no tienda. */
+const CHROME = { chrome: true };
+
 function SelectionBox({ w, d, h }: { w:number;d:number;h:number }) {
   return (
-    <mesh position={[0,h/2,0]}>
+    <mesh position={[0,h/2,0]} userData={CHROME}>
       <boxGeometry args={[w+0.24, h+0.24, d+0.24]} />
       <meshBasicMaterial color="#818cf8" wireframe />
     </mesh>
@@ -1940,18 +1945,121 @@ function CameraControls({
 
 // ─── MEJORA 5: Screenshot capture ────────────────────────────────────────────
 
-function ScreenshotCapture({ onReady }: { onReady: (fn: () => void) => void }) {
-  const { gl } = useThree();
+function ScreenshotCapture({ onReady }: { onReady: (fn: () => string) => void }) {
+  const { gl, scene, camera } = useThree();
   useEffect(() => {
     onReady(() => {
-      const link = document.createElement('a');
-      link.download = `tienda-${new Date().toISOString().slice(0,10)}.png`;
-      link.href = gl.domElement.toDataURL('image/png');
-      link.click();
+      // Esconder el gizmo y la caja de selección ACÁ, y no con un estado de
+      // React, es lo único que funciona: apagarlos por estado deja la captura
+      // a merced de cuándo React confirma el cambio, y el gizmo salía dibujado
+      // en la primera de las dos tomas. Esto es sincrónico y no falla.
+      const ocultos: THREE.Object3D[] = [];
+      scene.traverse((o) => {
+        if (o.userData?.chrome && o.visible) { o.visible = false; ocultos.push(o); }
+      });
+      try {
+        // Dibujar y leer en el MISMO turno. El lienzo no se creó con
+        // preserveDrawingBuffer, así que el búfer se limpia al componer y un
+        // toDataURL suelto devuelve una imagen en blanco — que es lo que venía
+        // bajando el botón de captura.
+        gl.render(scene, camera);
+        return gl.domElement.toDataURL('image/png');
+      } finally {
+        ocultos.forEach((o) => { o.visible = true; });
+      }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gl, onReady]);
+  }, [gl, scene, camera, onReady]);
   return null;
+}
+
+/** Estilo de las etiquetas del panel derecho, compartido por sus bloques. */
+const ETIQUETA_CLS = "mb-0.5 block text-[10px] uppercase tracking-widest text-dark-ink-3 font-medium";
+
+/**
+ * La vista con la que se le muestra este espacio a un proveedor.
+ *
+ * Sin esto, cada vez que alguien arma una propuesta tiene que volver a buscar
+ * el ángulo a mano, y dos propuestas del mismo espacio salen distintas. La
+ * cámara se guarda en el layout, así que viaja al servidor y aparece en la
+ * laptop del que arma la propuesta.
+ *
+ * Se guarda la cámara ORBITAL. En primera persona la cámara no se persiste —
+ * la caminata escribiría cientos de veces por recorrido — así que el botón
+ * avisa en vez de guardar algo viejo.
+ */
+function VistaProveedor({ fix, enCaminata }: { fix: PlacedFixture; enCaminata: boolean }) {
+  const camara3D      = useFixtureStore((s) => s.camera3D);
+  const guardarVista  = useFixtureStore((s) => s.guardarVista3D);
+  const borrarVista   = useFixtureStore((s) => s.borrarVista3D);
+  const pedirEnfoque  = useFixtureStore((s) => s.pedirEnfoque3D);
+  const unificados    = useFixtureStore(selectFixtures);
+
+  const uf     = unificados.find((f) => f.id === fix.id);
+  const doble  = isDoubleGondola(fix);
+  const [cara, setCara] = useState<"A" | "B">("A");
+  const caraUsada = doble ? cara : "A";
+  const guardada = uf?.vista3D?.[caraUsada];
+
+  if (!uf || !isRentable(fix)) return null;
+
+  return (
+    <div className="rounded-lg border border-dark-line/50 bg-dark-bg/60 p-3">
+      <p className={ETIQUETA_CLS}><Eye size={9} className="inline mr-1"/>Vista para el proveedor</p>
+
+      {doble && (
+        <div className="mb-2 flex gap-1.5">
+          {(["A", "B"] as const).map((id) => (
+            <button
+              key={id}
+              onClick={() => setCara(id)}
+              className={`flex-1 rounded px-1 py-1 text-[10.5px] font-semibold transition-colors ${
+                caraUsada === id ? "bg-accent text-white"
+                                 : "border border-dark-line-2 text-dark-ink-3 hover:text-dark-ink-1"
+              }`}
+            >
+              Cara {id}{uf.vista3D?.[id] ? " ✓" : ""}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1.5">
+        <button
+          onClick={() => pedirEnfoque(fix.id, caraUsada)}
+          className="rounded border border-dark-line-2 bg-dark-surface-2 px-2 py-1.5 text-[11px] font-semibold text-dark-ink-2 hover:text-dark-ink-1">
+          Encuadrar esta cara
+        </button>
+
+        {enCaminata ? (
+          <p className="text-[10px] leading-relaxed text-dark-ink-3">
+            Salí de la caminata para guardar una vista: en primera persona la
+            cámara no se guarda.
+          </p>
+        ) : (
+          <button
+            onClick={() => guardarVista(fix.id, caraUsada, { ...camara3D })}
+            className="rounded bg-accent px-2 py-1.5 text-[11px] font-semibold text-white hover:opacity-90">
+            {guardada ? "Reemplazar por la vista actual" : "Guardar esta vista"}
+          </button>
+        )}
+
+        {guardada && (
+          <button
+            onClick={() => borrarVista(fix.id, caraUsada)}
+            className="rounded border border-dark-line-2 px-2 py-1 text-[10px] text-dark-ink-3 hover:text-dark-ink-1">
+            Olvidar la vista guardada
+          </button>
+        )}
+      </div>
+
+      <p className="mt-2 text-[10px] leading-relaxed text-dark-ink-3">
+        {guardada
+          ? "Esta cara abre siempre en el ángulo guardado."
+          : "Sin vista guardada abre de frente a la exhibición, calculado."}
+      </p>
+    </div>
+  );
 }
 
 // ─── MEJORA 6: Transform Controls (Gizmo) ────────────────────────────────────
@@ -1975,7 +2083,14 @@ function FixtureTransformControls({
     ctrl.setSpace('world');
     ctrl.showY = false;
     ctrl.attach(groupRef.current);
-    scene.add(ctrl as unknown as THREE.Object3D);
+    // TransformControls dejó de ser un Object3D: en three 0.184 extiende
+    // Controls, y lo que va a la escena es su ayudante. El `as unknown as`
+    // que había acá silenciaba el error de tipos pero no el de runtime — la
+    // escena rechazaba el objeto y **el gizmo nunca se dibujó**. Sólo se veía
+    // al seleccionar un mueble, que hasta ahora era raro.
+    const ayudante = ctrl.getHelper();
+    ayudante.userData.chrome = true;   // fuera de las capturas
+    scene.add(ayudante);
     ctrlRef.current = ctrl;
 
     const onDragging = (e: THREE.Event) => {
@@ -1999,7 +2114,7 @@ function FixtureTransformControls({
       ctrl.removeEventListener('dragging-changed', onDragging);
       ctrl.removeEventListener('objectChange', onObjectChange);
       ctrl.detach();
-      scene.remove(ctrl as unknown as THREE.Object3D);
+      scene.remove(ayudante);
       ctrl.dispose();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2761,9 +2876,11 @@ interface SceneProps {
   onSelectFixture:   (id:string) => void;
   onSelectSlot:      (fixtureId:string, slotId:string) => void;
   setPlacedFixtures: React.Dispatch<React.SetStateAction<PlacedFixture[]>>;
-  screenshotReady:   (fn: () => void) => void;
+  screenshotReady:   (fn: () => string) => void;
   topViewReady:      (fn: () => void) => void;
   firstPerson:       boolean;
+  /** Apaga las artes del proveedor: el «antes» del antes y después. */
+  sinArte:           boolean;
   onCamaraFP:        (c: CamaraEnPlanta | null) => void;
   saltarA:           { x: number; z: number; n: number } | null;
   onHoverFixture:    (id: string|null, x: number, y: number) => void;
@@ -2775,7 +2892,7 @@ function Scene({
   placingDef, ghostX, ghostZ, ghostRotY, ghostCollides,
   draggingId, orbitRef, onFloorMove, onFloorClick,
   onSelectFixture, setPlacedFixtures,
-  screenshotReady, topViewReady, firstPerson, onCamaraFP, saltarA,
+  screenshotReady, topViewReady, firstPerson, sinArte, onCamaraFP, saltarA,
   onHoverFixture, fixtures,
 }: SceneProps) {
   const { gl, camera, invalidate } = useThree();
@@ -2815,6 +2932,10 @@ function Scene({
   // Face-paint materials per fixture id (photo → category pattern → plain).
   const facePaintById = useMemo(() => {
     const map = new Map<string, FacePaint>();
+    // Sin arte no se pinta NADA sobre las caras: ni la foto del proveedor ni el
+    // patrón de categoría. El «antes» tiene que ser el mueble pelado, que es
+    // contra lo que se compara la marca puesta.
+    if (sinArte) return map;
     const storeSede = useFixtureStore.getState().sede;
     for (const fix of placedFixtures) {
       const type = fix.type as string;
@@ -2858,7 +2979,7 @@ function Scene({
     return map;
   // texVersion re-runs this memo when an async photo texture settles
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [placedFixtures, unifiedById, faceImages, texVersion, notifyTexLoaded]);
+  }, [placedFixtures, unifiedById, faceImages, texVersion, notifyTexLoaded, sinArte]);
 
   // CHANGE 1 — Restore camera + wire persistence once OrbitControls are ready.
   // W1: Read camera3D from getState() at call time (not from closure) to avoid stale values.
@@ -2920,6 +3041,36 @@ function Scene({
     invalidate();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [placedFixtures, limites]);
+
+  /** Deja la cámara en una vista concreta y redibuja. */
+  const aplicarVista = useCallback((v: Vista3D) => {
+    const orbit = orbitRef.current;
+    camera.position.set(v.posX, v.posY, v.posZ);
+    if (orbit) {
+      orbit.target.set(v.targetX, v.targetY, v.targetZ);
+      orbit.update();
+    }
+    invalidate();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [camera, invalidate]);
+
+  // Encuadrar el espacio que se pidió desde la pantalla de sede.
+  //
+  // Se espera a estar fuera de la primera persona: al salir de la caminata su
+  // limpieza también mueve la cámara, y las dos escrituras en el mismo commit
+  // se pisan. Con el pedido atendido por número, entrar y salir de la caminata
+  // no vuelve a encuadrar solo.
+  const enfoque3D = useFixtureStore((st) => st.enfoque3D);
+  const enfoqueAtendido = useRef<number>(-1);
+  useEffect(() => {
+    if (!enfoque3D || firstPerson) return;
+    if (enfoqueAtendido.current === enfoque3D.n) return;
+    const uf = fixtures.find((f) => f.id === enfoque3D.fixtureId);
+    if (!uf) return;   // todavía no cargó la sede — se reintenta al llegar
+    enfoqueAtendido.current = enfoque3D.n;
+    // La vista guardada manda: alguien la eligió a mano para este espacio.
+    aplicarVista(uf.vista3D?.[enfoque3D.cara] ?? vistaDeCara(uf, enfoque3D.cara));
+  }, [enfoque3D, firstPerson, fixtures, aplicarVista]);
 
   // CHANGE 2B — Double-click to reset orbit pivot to clicked point
   function handleSceneDoubleClick(e: any) {
@@ -3262,6 +3413,10 @@ function fixturesToStore(
       // ── Preserved from the store (not modelled in 3D) ──────────────────────
       nomenclatura:    existing?.nomenclatura,
       faceB:           existing?.faceB,
+      // Las vistas guardadas viven en el layout pero no las modela el 3D: sin
+      // esta línea, mover un mueble borraba todos los encuadres de la sede y
+      // le mandaba la pérdida al servidor.
+      vista3D:         existing?.vista3D,
     };
   });
 
@@ -3272,6 +3427,8 @@ function fixturesToStore(
 
 interface CommercialPanelProps {
   fix:           PlacedFixture;
+  /** En primera persona la cámara no se persiste: el bloque de vista lo avisa. */
+  enCaminata:    boolean;
   selectedSlot:  ShelfSlot | null;
   onUpdate:      (id:string, u:Partial<PlacedFixture>) => void;
   onUpdateSlot:  (fixtureId:string, slotId:string, u:Partial<ShelfSlot>) => void;
@@ -3283,7 +3440,7 @@ interface CommercialPanelProps {
 }
 
 function CommercialPanel({
-  fix, selectedSlot, onUpdate, onUpdateSlot,
+  fix, enCaminata, selectedSlot, onUpdate, onUpdateSlot,
   onRotate, onFlip, onDelete, onClose, onSlotClose,
 }: CommercialPanelProps) {
   const isAdmin = useAuthStore(selectIsAdmin);
@@ -3296,7 +3453,7 @@ function CommercialPanel({
   const rentable = isRentable(fix);
 
   const inputCls = "w-full border-0 border-b border-dark-line-2 bg-transparent rounded-none px-0 py-1 text-sm text-dark-ink-1 focus:border-accent focus:outline-none placeholder:text-dark-ink-3 transition-colors";
-  const labelCls = "mb-0.5 block text-[10px] uppercase tracking-widest text-dark-ink-3 font-medium";
+  const labelCls = ETIQUETA_CLS;
 
   function handleSlotStatusChange(newStatus: SpaceStatus) {
     if (!selectedSlot) return;
@@ -3556,6 +3713,8 @@ function CommercialPanel({
           )}
         </div>
 
+        <VistaProveedor fix={fix} enCaminata={enCaminata} />
+
         <div>
           <label className={labelCls}>Observaciones</label>
           <textarea rows={2} value={fix.observation} placeholder="Notas…"
@@ -3637,6 +3796,9 @@ export default function StoreEditor3D() {
 
   // MEJORA 4: Presentation mode
   const [presentationMode, setPresentationMode] = useState(false);
+  // Antes y después: apagar las artes muestra el espacio como está hoy, que es
+  // contra lo que el proveedor compara su marca puesta.
+  const [sinArte, setSinArte] = useState(false);
 
   // MEJORA 8: First-person mode
   const [firstPerson, setFirstPerson] = useState(false);
@@ -3653,6 +3815,17 @@ export default function StoreEditor3D() {
   // sede remonta la escena y al volver a entrar uno aparecía en el punto que
   // había tocado en el plano de la sede anterior.
   useEffect(() => { if (!firstPerson) setSaltarA(null); }, [firstPerson]);
+
+  // Al pedir «Ver la exhibición en 3D» se selecciona el mueble —así el panel
+  // de la derecha ya habla de ese espacio— y se sale de la caminata, que tiene
+  // su propia cámara. El encuadre lo aplica la escena.
+  const enfoquePedido = useFixtureStore((s) => s.enfoque3D);
+  useEffect(() => {
+    if (!enfoquePedido) return;
+    setFirstPerson(false);
+    setSelectedId(enfoquePedido.fixtureId);
+    setSelectedSlotId(null);
+  }, [enfoquePedido]);
   useEffect(() => {
     const alCambiar = () => setMouseSuelto(document.pointerLockElement === null);
     document.addEventListener("pointerlockchange", alCambiar);
@@ -3665,9 +3838,8 @@ export default function StoreEditor3D() {
   const [tooltipPos, setTooltipPos]             = useState<{x:number;y:number}>({x:0,y:0});
 
   // MEJORA 5: Screenshot
-  const screenshotFnRef = useRef<(() => void) | null>(null);
-  const handleScreenshot = useCallback(() => { screenshotFnRef.current?.(); }, []);
-  const setScreenshotFn  = useCallback((fn: () => void) => { screenshotFnRef.current = fn; }, []);
+  const screenshotFnRef = useRef<(() => string) | null>(null);
+  const setScreenshotFn  = useCallback((fn: () => string) => { screenshotFnRef.current = fn; }, []);
 
   // Vista superior: same pattern — Scene registers the fn, toolbar button calls it
   const topViewFnRef = useRef<(() => void) | null>(null);
@@ -3876,6 +4048,7 @@ export default function StoreEditor3D() {
     if(confirm("¿Limpiar todo el espacio?")){ setPlacedFixtures([]); setSelectedId(null); setSelectedSlotId(null); setSavedAt(null); }
   }
 
+
   // MEJORA 9: hover callback
   const onHoverFixture = useCallback((id: string|null, x: number, y: number) => {
     setHoveredFixtureId(id);
@@ -3883,6 +4056,79 @@ export default function StoreEditor3D() {
   }, []);
 
   const selectedFix  = placedFixtures.find(f=>f.id===selectedId)??null;
+  const isAdmin      = useAuthStore(selectIsAdmin);
+
+  /**
+   * Baja la lámina para el proveedor.
+   *
+   * Con un mueble seleccionado saca DOS tomas desde la misma cámara —sin arte
+   * y con arte— porque la comparación es lo que cierra la negociación. Sin
+   * selección se queda con la vista de pantalla, que sigue sirviendo para
+   * mostrar la sede entera.
+   */
+  const [exportando, setExportando] = useState(false);
+  const exportarPropuesta = useCallback(async () => {
+    const capturar = screenshotFnRef.current;
+    if (!capturar || exportando) return;
+    setExportando(true);
+    const arteOriginal = sinArte;
+    try {
+      const fix = selectedFix;
+      const uf  = fix ? fixtures.find(f => f.id === fix.id) : null;
+
+      // Sin mueble elegido: una sola toma de lo que se ve.
+      if (!fix || !uf) {
+        const blob = await componerPropuesta(
+          [{ titulo: "Vista general", dataUrl: capturar() }],
+          { sede, espacio: sede, mueble: "", proveedor: "", categoria: "",
+            desde: "", hasta: "", valorMensual: null },
+        );
+        descargar(blob, `${sede}_vista.png`);
+        return;
+      }
+
+      // Con mueble elegido: el par. Entre toma y toma hay que dejar que React
+      // rearme los materiales y que el lienzo vuelva a dibujar.
+      const esperarCuadro = () =>
+        new Promise<void>(ok => requestAnimationFrame(() => requestAnimationFrame(() => ok())));
+
+      setSinArte(true);
+      await esperarCuadro();
+      const antes = capturar();
+
+      setSinArte(false);
+      await esperarCuadro();
+      const despues = capturar();
+
+      const datos = {
+        sede,
+        espacio: fullSpaceCode(uf.sede || sede, uf.code),
+        mueble: uf.label || uf.code,
+        proveedor: uf.supplierName ?? "",
+        categoria: uf.brandCategory ?? "",
+        desde: uf.startDate ?? "",
+        hasta: uf.endDate ?? "",
+        // La plata se tacha para el trabajador, igual que en todas las demás
+        // pantallas. Una lámina es un archivo que se reenvía.
+        valorMensual: isAdmin ? (uf.negotiatedValue || null) : null,
+      };
+      // Sin arte cargada las dos tomas salen idénticas: mostrar el mismo
+      // dibujo dos veces con los rótulos «Hoy» y «Con la marca» es mentirle
+      // al que recibe la lámina. Ahí va una sola imagen.
+      const hayComparacion = antes !== despues;
+      const tomas = hayComparacion
+        ? [{ titulo: "Hoy", dataUrl: antes }, { titulo: "Con la marca", dataUrl: despues }]
+        : [{ titulo: "El espacio hoy", dataUrl: despues }];
+      const blob = await componerPropuesta(tomas, datos);
+      descargar(blob, nombreDeArchivo(datos, hayComparacion));
+    } catch {
+      // Sin alertas: el botón vuelve a su estado y se puede reintentar.
+    } finally {
+      setSinArte(arteOriginal);
+      setExportando(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exportando, sinArte, selectedFix, fixtures, sede, isAdmin]);
   const selectedSlot = selectedFix?.slots?.find(s=>s.id===selectedSlotId)??null;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -4029,10 +4275,29 @@ export default function StoreEditor3D() {
               <User size={10}/> {firstPerson ? 'Orbital' : '1ª Persona'}
             </button>
 
-            {/* MEJORA 5: Screenshot button */}
-            <button onClick={handleScreenshot} title="Capturar imagen"
-              className="flex items-center gap-1 rounded border border-dark-line-2 bg-dark-surface px-2 py-0.5 text-[10px] text-dark-ink-2 hover:bg-dark-surface-2 transition-colors">
-              <Camera size={10}/> PNG
+            {/* Antes y después: el mismo encuadre con la marca puesta y sin
+                ella. Es la comparación que cierra una negociación, y hasta
+                ahora había que imaginársela. */}
+            <button onClick={() => setSinArte(p => !p)}
+              title={sinArte ? "Volver a mostrar las artes del proveedor" : "Ver el espacio sin las artes (el «antes»)"}
+              className={`flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] transition-all ${
+                sinArte
+                  ? 'border-warning/50 bg-warning/15 text-warning'
+                  : 'border-dark-line-2 bg-dark-surface text-dark-ink-2 hover:bg-dark-surface-2'
+              }`}>
+              {sinArte ? <EyeOff size={10}/> : <Eye size={10}/>} {sinArte ? 'Sin arte' : 'Con arte'}
+            </button>
+
+            {/* La lámina para el proveedor: la exhibición encuadrada con un
+                pie que dice de qué espacio se habla. Con un mueble
+                seleccionado sale el par antes/después; sin selección, la
+                imagen sola de lo que hay en pantalla. */}
+            <button onClick={exportarPropuesta} disabled={exportando}
+              title={selectedFix
+                ? "Bajar la lámina de este espacio, con el antes y el después"
+                : "Bajar la vista actual como imagen"}
+              className="flex items-center gap-1 rounded border border-dark-line-2 bg-dark-surface px-2 py-0.5 text-[10px] text-dark-ink-2 hover:bg-dark-surface-2 transition-colors disabled:opacity-50">
+              <Camera size={10}/> {exportando ? "Armando…" : selectedFix ? "Propuesta" : "PNG"}
             </button>
 
             {/* MEJORA 4: Presentation mode button */}
@@ -4107,6 +4372,7 @@ export default function StoreEditor3D() {
               screenshotReady={setScreenshotFn}
               topViewReady={setTopViewFn}
               firstPerson={firstPerson}
+              sinArte={sinArte}
               onCamaraFP={setCamaraFP}
               saltarA={saltarA}
               onHoverFixture={onHoverFixture}
@@ -4192,6 +4458,7 @@ export default function StoreEditor3D() {
       {selectedFix && !presentationMode && (
         <CommercialPanel
           fix={selectedFix}
+          enCaminata={firstPerson}
           selectedSlot={selectedSlot}
           onUpdate={updateFixture}
           onUpdateSlot={updateSlot}

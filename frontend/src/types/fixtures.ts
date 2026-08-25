@@ -12,6 +12,7 @@
  */
 
 import { dayNumber, inclusiveDays, parseISODate } from "./seasons";
+import type { Vista3D } from "../utils/planta";
 
 export type SpaceStatus = "free" | "occupied" | "reserved" | "maintenance";
 
@@ -364,4 +365,12 @@ export interface UnifiedFixture {
 
   // ── 3D-specific ───────────────────────────────────────────────────────────
   slots?: ShelfSlot[];
+
+  /** Cámara guardada para mostrarle este espacio a un proveedor, por cara.
+   *
+   *  Vive acá y no en una tabla nueva porque el JSON del layout ya viaja al
+   *  servidor y ya se sincroniza entre estaciones: una vista guardada en la
+   *  reunión aparece en la laptop del que arma la propuesta. Ausente = se usa
+   *  el encuadre calculado (`vistaDeCara`). */
+  vista3D?: Partial<Record<"A" | "B", Vista3D>>;
 }

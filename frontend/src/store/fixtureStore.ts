@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ReferenceRates, UnifiedFixture } from "../types/fixtures";
 import type { SeasonWindows } from "../types/seasons";
+import type { Vista3D } from "../utils/planta";
 import {
   deleteLayout,
   fetchAllLayouts,
@@ -184,6 +185,15 @@ interface FixtureStore {
   camera2D: Camera2D;
   camera3D: Camera3D;
 
+  /** Pedido de abrir el Editor 3D encuadrando un espacio.
+   *
+   *  La pantalla de sede y el editor 3D son pestañas hermanas sin props entre
+   *  ellas, así que el pedido viaja por acá. Se identifica por id de mueble y
+   *  no por código: el código corto se repite entre sedes y a veces llega con
+   *  el prefijo puesto y a veces no. `n` sube en cada pedido para que volver a
+   *  tocar el mismo espacio vuelva a encuadrar. */
+  enfoque3D: { fixtureId: string; cara: "A" | "B"; n: number } | null;
+
   // ── Sync bookkeeping ────────────────────────────────────────────────────────
   /** Server revision (updated_at) last seen for each sede. */
   serverRev: Record<string, string>;
@@ -244,6 +254,13 @@ interface FixtureStore {
   setCamera2D: (c: Partial<Camera2D>) => void;
   setCamera3D: (c: Partial<Camera3D>) => void;
 
+  /** Pedir el 3D encuadrando este espacio. Lo consume StoreEditor3D. */
+  pedirEnfoque3D: (fixtureId: string, cara: "A" | "B") => void;
+  /** Guardar la cámara actual como la vista de este espacio. */
+  guardarVista3D: (fixtureId: string, cara: "A" | "B", vista: Vista3D) => void;
+  /** Olvidar la vista guardada: se vuelve al encuadre calculado. */
+  borrarVista3D: (fixtureId: string, cara: "A" | "B") => void;
+
   // ── Sync actions ────────────────────────────────────────────────────────────
   /** Pull every sede from the server and adopt whatever changed. */
   syncFromServer: () => Promise<void>;
@@ -296,6 +313,7 @@ export const useFixtureStore = create<FixtureStore>()(
       seasonWindows: {},
       camera2D: DEFAULT_CAMERA_2D,
       camera3D: DEFAULT_CAMERA_3D,
+      enfoque3D: null,
       serverRev: {},
       settingsRev: null,
       dirty: {},
@@ -561,6 +579,49 @@ export const useFixtureStore = create<FixtureStore>()(
         set((state) => ({ camera2D: { ...state.camera2D, ...c } })),
       setCamera3D: (c) =>
         set((state) => ({ camera3D: { ...state.camera3D, ...c } })),
+
+      pedirEnfoque3D: (fixtureId, cara) =>
+        set((state) => ({
+          enfoque3D: { fixtureId, cara, n: (state.enfoque3D?.n ?? 0) + 1 },
+        })),
+
+      // Guardar y borrar escriben el layout y lo mandan al servidor, pero NO
+      // entran al historial: que Ctrl+Z deshaga un encuadre de cámara mezcla
+      // dos cosas que no tienen nada que ver.
+      guardarVista3D: (fixtureId, cara, vista) =>
+        set((state) => {
+          const sede = state.sede;
+          const actuales = state.fixturesBySede[sede] ?? [];
+          if (!actuales.some((f) => f.id === fixtureId)) return {};
+          const siguientes = actuales.map((f) =>
+            f.id === fixtureId
+              ? { ...f, vista3D: { ...(f.vista3D ?? {}), [cara]: vista } }
+              : f,
+          );
+          scheduleSave(sede);
+          return {
+            fixturesBySede: { ...state.fixturesBySede, [sede]: siguientes },
+            dirty: { ...state.dirty, [sede]: true },
+          };
+        }),
+
+      borrarVista3D: (fixtureId, cara) =>
+        set((state) => {
+          const sede = state.sede;
+          const actuales = state.fixturesBySede[sede] ?? [];
+          const objetivo = actuales.find((f) => f.id === fixtureId);
+          if (!objetivo?.vista3D?.[cara]) return {};
+          const siguientes = actuales.map((f) => {
+            if (f.id !== fixtureId) return f;
+            const { [cara]: _fuera, ...resto } = f.vista3D ?? {};
+            return { ...f, vista3D: Object.keys(resto).length ? resto : undefined };
+          });
+          scheduleSave(sede);
+          return {
+            fixturesBySede: { ...state.fixturesBySede, [sede]: siguientes },
+            dirty: { ...state.dirty, [sede]: true },
+          };
+        }),
 
       // ── Push one sede ─────────────────────────────────────────────────────
       pushSede: async (sede, opts) => {

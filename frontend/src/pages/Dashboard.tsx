@@ -685,6 +685,14 @@ export default function Dashboard() {
     }
   }, [role, viewMode]);
 
+  // «Ver la exhibición en 3D» se pide desde la pantalla de sede, que es una
+  // pestaña hermana del editor: el pedido viaja por el store y acá se cambia
+  // de pestaña. El encuadre lo resuelve el propio editor.
+  const enfoque3D = useFixtureStore((s) => s.enfoque3D);
+  useEffect(() => {
+    if (enfoque3D && isAdmin) setViewMode("store");
+  }, [enfoque3D, isAdmin]);
+
   const effectiveMode: ViewMode =
     isAdmin || viewMode === "montaje" ? viewMode : "kpis";
 
