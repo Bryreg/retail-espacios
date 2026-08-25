@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { AlertTriangle, ImageUp, MapPin, X } from "lucide-react";
+import { AlertTriangle, Box, ImageUp, MapPin, X } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { describirUbicacion } from "../MiniMapa/MiniMapa";
 import type { DateRange } from "../SeasonPicker/SeasonPicker";
@@ -281,6 +281,7 @@ export function CabezaContrato({
   onFace: (f: "A" | "B") => void;
 }) {
   const pinta = DISPONIBILIDAD[c.disponibilidad];
+  const pedirEnfoque3D = useFixtureStore((s) => s.pedirEnfoque3D);
   return (
     <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--line-soft)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
@@ -308,6 +309,23 @@ export function CabezaContrato({
           </>
         )}
       </div>
+
+      {/* Mostrarle al proveedor cómo se ve su exhibición mientras se negocia.
+          El 3D es la única pantalla que pone el arte sobre el mueble, y sin
+          esto había que entrar a mano y buscarlo entre 104 muebles. */}
+      <button
+        onClick={() => pedirEnfoque3D(c.fixture.id, c.face)}
+        style={{
+          marginTop: 9, width: "100%", height: 30, borderRadius: "var(--r-md)",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+          border: "1px solid var(--line)", background: "var(--surface-2)",
+          color: "var(--ink-2)", fontSize: 12, fontWeight: 600,
+          fontFamily: "inherit", cursor: "pointer",
+        }}
+      >
+        <Box size={13} />
+        Ver la exhibición en 3D
+      </button>
 
       {/* Una góndola doble son DOS espacios que se venden por separado. Sin
           este selector la cara B era invendible desde el mapa. */}

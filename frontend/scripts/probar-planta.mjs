@@ -27,6 +27,7 @@ const {
   huella, limitesDePlanta, murosDeCaminata, chocaEn,
   puntoDeEntrada, puntoLibreCerca, resolverPaso,
   ALTURA_PISABLE, VEL_CAMINANDO, VEL_APURADA, PASO_MAXIMO, RADIO_PERSONA,
+  normalDeCara, vistaDeCara,
 } = await import(pathToFileURL(salida).href);
 
 let hechas = 0;
@@ -193,6 +194,71 @@ prueba("el aterrizaje cae cerca de donde se apuntó", () => {
   // No sirve un salto que te deje en la otra punta de la tienda.
   const d = puntoLibreCerca(limites, muros, 0, 0);
   assert.ok(Math.hypot(d.x, d.z) < 3, "aterrizó demasiado lejos del punto tocado");
+});
+
+console.log("\nplanta · el encuadre de una cara");
+
+const cerca = (a, b, tol = 1e-6) => Math.abs(a - b) < tol;
+
+prueba("sin girar, la cara A mira a −Z y la B a +Z", () => {
+  // Es la convención del editor: en la caja de Three.js la cara A se pinta en
+  // el índice 5 (−Z) y la B en el 4 (+Z).
+  const a = normalDeCara(0, "A"), b = normalDeCara(0, "B");
+  assert.ok(cerca(a.x, 0) && cerca(a.z, -1), `cara A dio (${a.x}, ${a.z})`);
+  assert.ok(cerca(b.x, 0) && cerca(b.z, 1), `cara B dio (${b.x}, ${b.z})`);
+});
+
+prueba("girado 90°, la cara A mira a −X", () => {
+  const a = normalDeCara(Math.PI / 2, "A");
+  assert.ok(cerca(a.x, -1) && cerca(a.z, 0), `dio (${a.x}, ${a.z})`);
+});
+
+prueba("las dos caras son opuestas, gire lo que gire", () => {
+  for (const r of [0, 0.7, Math.PI / 2, 2.3, Math.PI, 4.71238898038469]) {
+    const a = normalDeCara(r, "A"), b = normalDeCara(r, "B");
+    assert.ok(cerca(a.x + b.x, 0) && cerca(a.z + b.z, 0), `en rotY=${r} no son opuestas`);
+  }
+});
+
+prueba("la cámara se para del lado de la cara que se pide", () => {
+  const g = { cx: 0, cz: 0, w: 3.6, d: 0.9, h: 1.8, rotY: 0 };
+  const a = vistaDeCara(g, "A"), b = vistaDeCara(g, "B");
+  assert.ok(a.posZ < 0, "la cara A debía verse desde −Z");
+  assert.ok(b.posZ > 0, "la cara B debía verse desde +Z");
+  // Las dos miran al mismo mueble.
+  assert.ok(cerca(a.targetX, 0) && cerca(a.targetZ, 0));
+  assert.ok(cerca(b.targetX, 0) && cerca(b.targetZ, 0));
+});
+
+prueba("un mueble más ancho se mira desde más lejos", () => {
+  const base = { cx: 0, cz: 0, d: 0.9, h: 1.8, rotY: 0 };
+  const punta   = vistaDeCara({ ...base, w: 0.9 }, "A");
+  const gondola = vistaDeCara({ ...base, w: 3.6 }, "A");
+  const larga   = vistaDeCara({ ...base, w: 10.0 }, "A");
+  assert.ok(Math.abs(larga.posZ) > Math.abs(gondola.posZ), "la góndola larga necesita más aire");
+  assert.ok(Math.abs(gondola.posZ) >= Math.abs(punta.posZ), "la punta no debería quedar más lejos");
+});
+
+prueba("la cara que se mide es la que se ve, no la del catálogo", () => {
+  // Girada 90°, el frente de una góndola de 3,6 × 0,9 sigue siendo el lado
+  // largo: la distancia tiene que ser la misma que sin girar.
+  const recto  = vistaDeCara({ cx: 0, cz: 0, w: 3.6, d: 0.9, h: 1.8, rotY: 0 }, "A");
+  const girado = vistaDeCara({ cx: 0, cz: 0, w: 3.6, d: 0.9, h: 1.8, rotY: Math.PI / 2 }, "A");
+  const dRecto  = Math.hypot(recto.posX, recto.posZ);
+  const dGirado = Math.hypot(girado.posX, girado.posZ);
+  assert.ok(cerca(dRecto, dGirado, 1e-9), `${dRecto} vs ${dGirado}`);
+});
+
+prueba("nunca se mira desde el piso", () => {
+  // Una batea de 80 cm mirada desde 40 cm parece una foto tomada en el suelo.
+  const batea = vistaDeCara({ cx: 0, cz: 0, w: 0.8, d: 0.6, h: 0.8, rotY: 0 }, "A");
+  assert.ok(batea.posY >= 1.6, `la cámara quedó a ${batea.posY} m`);
+  assert.ok(batea.targetY >= 1.0, "mira demasiado abajo");
+});
+
+prueba("el encuadre respeta el desplazamiento del mueble", () => {
+  const lejos = vistaDeCara({ cx: -20, cz: 7, w: 3.6, d: 0.9, h: 1.8, rotY: 0 }, "A");
+  assert.ok(cerca(lejos.targetX, -20) && cerca(lejos.targetZ, 7));
 });
 
 console.log("\nplanta · velocidades");

@@ -90,6 +90,74 @@ export function vistaGeneral(limites: LimitesPlanta) {
   };
 }
 
+/** Una cámara: dónde está parada y adónde mira. */
+export interface Vista3D {
+  posX: number; posY: number; posZ: number;
+  targetX: number; targetY: number; targetZ: number;
+}
+
+/**
+ * Hacia dónde da una cara del mueble, en coordenadas del local.
+ *
+ * En la caja de Three.js el orden de materiales es [+X, −X, +Y, −Y, +Z, −Z], y
+ * el editor pinta la cara A en el índice 5 y la B en el 4. O sea: **la cara A
+ * mira a −Z y la B a +Z en coordenadas locales**, y después el mueble entero
+ * gira `rotY` alrededor de Y.
+ */
+export function normalDeCara(rotY: number, cara: "A" | "B"): { x: number; z: number } {
+  const signo = cara === "A" ? 1 : -1;
+  return { x: signo * -Math.sin(rotY), z: signo * -Math.cos(rotY) };
+}
+
+/**
+ * Encuadre de una cara del mueble: de frente, llena y a la altura de una
+ * persona. Es la foto que se le manda al proveedor.
+ *
+ * La distancia sale del campo visual de la cámara y de lo que hay que meter en
+ * el cuadro: una góndola de 3,6 m y una punta de 0,9 m no se miran desde la
+ * misma distancia. Se toma el lado más grande entre el ancho de la cara y su
+ * alto, con un margen para que la exhibición no quede pegada al borde.
+ */
+export function vistaDeCara(
+  mueble: { cx: number; cz: number; w: number; d: number; h: number; rotY?: number },
+  cara: "A" | "B",
+  fovGrados = 50,
+  margen = 1.35,
+): Vista3D {
+  const rotY = mueble.rotY ?? 0;
+  const n = normalDeCara(rotY, cara);
+
+  // La cara mide `w` de ancho y `h` de alto SIEMPRE: es una cara de la caja,
+  // abarca los ejes locales X e Y del mueble. Girarlo cambia hacia dónde
+  // apunta, no cuánto mide. (No confundir con `huella`, que sí intercambia
+  // ancho y fondo porque describe la caja alineada al MUNDO.)
+  const anchoCara = mueble.w;
+  const fondoCara = mueble.d;
+
+  const fov = (fovGrados * Math.PI) / 180;
+  // La cámara es horizontal, así que el límite real suele ser el alto; se toma
+  // el mayor de los dos y se encuadra contra el campo vertical.
+  const aCubrir = Math.max(anchoCara, mueble.h) * margen;
+  // Distancia desde la CARA, no desde el centro: media profundidad no cuenta.
+  const distancia = Math.max(1.6, aCubrir / (2 * Math.tan(fov / 2)));
+
+  // Altura de mirada: el medio del mueble, pero nunca por debajo de la vista de
+  // una persona — una batea de 80 cm mirada desde 40 cm de altura parece una
+  // foto tomada desde el piso.
+  const alturaMirada = Math.max(mueble.h / 2, 1.2);
+  const alturaCamara = Math.max(alturaMirada, 1.65);
+
+  const desdeCara = fondoCara / 2 + distancia;
+  return {
+    posX: mueble.cx + n.x * desdeCara,
+    posY: alturaCamara,
+    posZ: mueble.cz + n.z * desdeCara,
+    targetX: mueble.cx,
+    targetY: alturaMirada,
+    targetZ: mueble.cz,
+  };
+}
+
 /** ¿Ese punto de mira cae dentro del local? */
 export function miradaSensata(limites: Caja, x: number, z: number): boolean {
   return x >= limites.minX && x <= limites.maxX && z >= limites.minZ && z <= limites.maxZ;

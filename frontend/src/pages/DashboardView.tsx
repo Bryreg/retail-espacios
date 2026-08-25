@@ -14,6 +14,7 @@ import {
   SlidersHorizontal,
   Handshake,
   FileSpreadsheet,
+  Box,
 } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
@@ -1178,6 +1179,7 @@ function FixtureDetailCard({
   // invisibles acá. El corto además se repite entre sedes.
   const { state, files } = useSpaceFiles(fullSpaceCode(fixture.sede, entry.code), rentable);
   const hasContract = rentable && entry.supplierName.trim().length > 0;
+  const pedirEnfoque3D = useFixtureStore((s) => s.pedirEnfoque3D);
 
   return (
     <Card style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
@@ -1246,6 +1248,25 @@ function FixtureDetailCard({
           >
             <Handshake size={14} />
             {hasContract ? "Nuevo contrato para esta cara" : "Negociar este espacio"}
+          </button>
+        )}
+
+        {/* Ver la exhibición como la va a ver el proveedor. El 3D es la única
+            pantalla que muestra el arte puesto sobre el mueble, y hasta ahora
+            había que entrar a mano y buscar el espacio entre 104 muebles. */}
+        {rentable && (
+          <button
+            onClick={() => pedirEnfoque3D(fixture.id, face)}
+            style={{
+              width: "100%", height: 32, borderRadius: "var(--r-md)",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+              border: "1px solid var(--line)", background: "var(--surface-2)",
+              color: "var(--ink-2)", fontSize: 12, fontWeight: 600,
+              fontFamily: "inherit", cursor: "pointer",
+            }}
+          >
+            <Box size={13} />
+            Ver la exhibición en 3D
           </button>
         )}
         {!hasContract ? (
