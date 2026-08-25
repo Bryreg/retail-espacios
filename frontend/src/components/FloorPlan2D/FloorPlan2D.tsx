@@ -11,14 +11,11 @@ import {
 } from "lucide-react";
 import { useFixtureStore, selectFixtures, selectHasPendingWork, normalizeSede } from "../../store/fixtureStore";
 import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types/fixtures";
-import { isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT, rateTypeOf } from "../../types/fixtures";
+import { isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
-import ReferenceRateHint from "../ReferenceRateHint";
-import NotifyPreview from "../NotifyPreview";
-import { findOrCreateSpace, createLease } from "../../api/spaces";
+import { findOrCreateSpace } from "../../api/spaces";
 import { fetchDeleteImpact } from "../../api/layout";
 import type { DeleteImpact } from "../../api/layout";
-import { findOrCreateSupplier } from "../../api/suppliers";
 import { listSpaceFiles, uploadSpaceFile, deleteSpaceFile, fileUrl } from "../../api/files";
 import type { SpaceFileMeta } from "../../api/files";
 import client from "../../api/client";
@@ -3046,62 +3043,6 @@ function AssignmentPanel({
     }
   }
 
-  // ── Contract persistence ──────────────────────────────────────────────────
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "ok" | "error">("idle");
-  const [saveError, setSaveError] = useState("");
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
-
-  // Dates entered backwards are rejected here and not just by the backend:
-  // the layout JSON is what the map and the availability view read, and it
-  // accepts anything, so a reversed pair would quietly make the space look
-  // free for every period asked about.
-  const datesInOrder =
-    face.startDate.length > 0 &&
-    face.endDate.length > 0 &&
-    face.startDate <= face.endDate;
-
-  const canSave =
-    face.supplierName.trim().length > 0 &&
-    datesInOrder &&
-    (face.negotiatedValue ?? 0) > 0;
-
-  async function handleSaveContract() {
-    if (!canSave) return;
-    setSaveState("saving");
-    setSaveError("");
-    try {
-      const space = await findOrCreateSpace({
-        code: activeCode,
-        name: catDef?.label ?? item.code,
-        zone: item.type,
-        sede: item.sede || sede,
-        area_m2: parseFloat((item.w * item.h).toFixed(2)),
-      });
-      const supplier = await findOrCreateSupplier(face.supplierName.trim());
-      await createLease(space.id, {
-        supplier_id: supplier.id,
-        marca: face.brandCategory || undefined,
-        start_date: face.startDate,
-        end_date: face.endDate,
-        monthly_rent: face.negotiatedValue,
-        notes: face.observation || undefined,
-      });
-      updateFace({ status: "occupied" });
-      setSaveState("ok");
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(() => setSaveState("idle"), 3500);
-    } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
-        "Error al guardar el contrato";
-      setSaveError(msg);
-      setSaveState("error");
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(() => setSaveState("idle"), 5000);
-    }
-  }
-
   return (
     <div style={{ display: "flex", flexDirection: "column", color: "var(--dark-ink-1)", minHeight: "100%" }}>
 
@@ -3224,81 +3165,49 @@ function AssignmentPanel({
         )}
       </Field>
 
-      {/* Proveedor */}
-      {rentable && (
-      <Field label="Proveedor" icon="🏭">
-        {editMode ? (
-          <input className={inp} placeholder="Nombre del proveedor"
-            value={face.supplierName}
-            onChange={(e) => updateFace({ supplierName: e.target.value })} />
-        ) : (
-          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{face.supplierName || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}</p>
-        )}
-      </Field>
-      )}
+      {/* Lo contratado, de sólo lectura ─────────────────────────────────────
+          El plano es el lugar del DISEÑO: qué mueble es, cuánto mide, dónde
+          está, qué artes lleva. El contrato se hace en Sede → Vender, sobre el
+          mapa y con la disponibilidad del periodo a la vista.
 
-      {/* Categoría */}
+          Tenerlo editable acá no era "también se puede": los campos escribían
+          el JSON del layout sin tocar la base, y el botón de guardar creaba un
+          contrato NUEVO cada vez —nunca editó ninguno—. Dos lugares para lo
+          mismo, y uno de los dos mentía. */}
       {rentable && (
-      <Field label="Categoría" icon="🏷️">
-        {editMode ? (
-          <input className={inp} placeholder="Marca / rubro"
-            value={face.brandCategory}
-            onChange={(e) => updateFace({ brandCategory: e.target.value })} />
-        ) : (
-          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{face.brandCategory || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}</p>
-        )}
-      </Field>
-      )}
-
-      {/* Valor — hidden entirely for workers */}
-      {isAdmin && rentable && (
-        <Field label="$ Valor (COP/mes)" icon="">
-          {editMode ? (
-            <input type="number" className={inp} placeholder="0"
-              value={face.negotiatedValue || ""}
-              onChange={(e) => updateFace({ negotiatedValue: parseFloat(e.target.value) || 0 })} />
+        <Field label="Contratado" icon="🤝">
+          {face.supplierName ? (
+            <>
+              <p style={{ fontSize: 14, fontWeight: 600, color: "var(--dark-ink-1)" }}>
+                {face.supplierName}
+                {face.brandCategory && (
+                  <span style={{ fontWeight: 400, color: "var(--dark-ink-2)" }}> · {face.brandCategory}</span>
+                )}
+              </p>
+              {face.startDate && face.endDate && (
+                <>
+                  <p style={{ fontSize: 12, color: "var(--dark-ink-2)", marginTop: 3, fontFamily: "var(--font-mono)" }}>
+                    {face.startDate} → {face.endDate}
+                  </p>
+                  <DaysLeftStrip startDate={face.startDate} endDate={face.endDate} />
+                </>
+              )}
+              {isAdmin && face.negotiatedValue > 0 && (
+                <p style={{ fontSize: 13, fontWeight: 600, color: "var(--success)", marginTop: 6, fontFamily: "var(--font-mono)" }}>
+                  ${face.negotiatedValue.toLocaleString()} / mes
+                </p>
+              )}
+            </>
           ) : (
-            <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>
-              {face.negotiatedValue ? `$${face.negotiatedValue.toLocaleString()}` : <span style={{ color: "var(--dark-ink-3)" }}>—</span>}
+            <p style={{ fontSize: 13, color: "var(--dark-ink-3)" }}>Sin contrato activo.</p>
+          )}
+          {isAdmin && (
+            <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 8, lineHeight: 1.45 }}>
+              Los contratos se hacen en <b style={{ color: "var(--dark-ink-2)" }}>Sede → Vender</b>, sobre el
+              mapa y con la disponibilidad del periodo a la vista.
             </p>
           )}
-          <ReferenceRateHint
-            sede={item.sede || sede}
-            rateType={rateTypeOf(item)}
-            value={face.negotiatedValue || 0}
-          />
         </Field>
-      )}
-
-      {/* Fechas */}
-      {rentable && (
-      <Field label="Periodo" icon="📅">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <div>
-            <p style={{ fontSize: 10, color: "var(--dark-ink-3)", marginBottom: 4 }}>INICIO</p>
-            {editMode ? (
-              <input type="date" className={inp}
-                value={face.startDate}
-                onChange={(e) => updateFace({ startDate: e.target.value })} />
-            ) : (
-              <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{face.startDate || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}</p>
-            )}
-          </div>
-          <div>
-            <p style={{ fontSize: 10, color: "var(--dark-ink-3)", marginBottom: 4 }}>FIN</p>
-            {editMode ? (
-              <input type="date" className={inp}
-                value={face.endDate}
-                onChange={(e) => updateFace({ endDate: e.target.value })} />
-            ) : (
-              <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{face.endDate || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}</p>
-            )}
-          </div>
-        </div>
-        {face.startDate && face.endDate && (
-          <DaysLeftStrip startDate={face.startDate} endDate={face.endDate} />
-        )}
-      </Field>
       )}
 
       {/* Dimensiones */}
@@ -3346,51 +3255,6 @@ function AssignmentPanel({
         isAdmin={isAdmin}
         editMode={editMode}
       />
-      )}
-
-      {/* Save contract (admin only — mutations are admin-gated) */}
-      {isAdmin && rentable && (
-      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--dark-line)" }}>
-        <button
-          onClick={handleSaveContract}
-          disabled={!canSave || saveState === "saving"}
-          style={{
-            width: "100%", borderRadius: "var(--r-sm)", padding: "8px 0",
-            fontSize: 12, fontWeight: 600, cursor: !canSave ? "not-allowed" : saveState === "saving" ? "wait" : "pointer",
-            transition: "background .12s", border: "none",
-            ...(
-              !canSave
-                ? { background: "var(--dark-surface-2)", color: "var(--dark-ink-3)" }
-                : saveState === "ok"
-                ? { background: "rgba(21,128,61,0.25)", color: "var(--success)" }
-                : saveState === "error"
-                ? { background: "rgba(185,28,28,0.2)", color: "var(--danger)" }
-                : saveState === "saving"
-                ? { background: "var(--accent)", color: "var(--accent-ink)", opacity: 0.7 }
-                : { background: "var(--accent)", color: "var(--accent-ink)" }
-            ),
-          }}
-        >
-          {saveState === "saving"
-            ? "Guardando…"
-            : saveState === "ok"
-            ? "✓ Contrato guardado"
-            : saveState === "error"
-            ? "Error — reintentar"
-            : "Guardar contrato"}
-        </button>
-        {saveState === "error" && (
-          <p style={{ marginTop: 4, fontSize: 10, color: "var(--danger)" }}>{saveError}</p>
-        )}
-        {!canSave && saveState === "idle" && (
-          <p style={{ marginTop: 4, fontSize: 10, color: "var(--dark-ink-3)" }}>
-            {face.startDate && face.endDate && face.startDate > face.endDate
-              ? "La fecha de inicio quedó después de la de fin."
-              : "Requiere proveedor, fechas y valor > 0."}
-          </p>
-        )}
-        {canSave && saveState === "idle" && <NotifyPreview sede={item.sede || sede} />}
-      </div>
       )}
 
       {/* Code chip */}

@@ -36,6 +36,9 @@ export interface Space {
   status: SpaceStatus;
   notes: string | null;
   active_lease: Lease | null;
+  /** El firmado que todavía no arranca. Separado de `active_lease` para que lo
+   *  comprometido nunca se cuente como lo que está facturando. */
+  upcoming_lease?: Lease | null;
 }
 
 export interface SpaceMapItem {

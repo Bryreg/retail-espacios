@@ -25,8 +25,13 @@ def _space_out_for_role(space: Space, role: str) -> SpaceOut:
     the session) are never mutated.
     """
     out = SpaceOut.model_validate(space, from_attributes=True)
-    if role != "admin" and out.active_lease is not None:
-        out.active_lease.monthly_rent = None
+    if role != "admin":
+        # Las DOS: el contrato próximo lleva el mismo valor negociado, y
+        # agregarlo al esquema sin tacharlo acá habría abierto por la ventana
+        # justo lo que la app cierra por la puerta.
+        for lease in (out.active_lease, out.upcoming_lease):
+            if lease is not None:
+                lease.monthly_rent = None
     return out
 
 

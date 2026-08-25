@@ -213,3 +213,39 @@ class NotificationLog(Base):
     lease_id = Column(Integer, ForeignKey("space_leases.id"), nullable=False, index=True)
     kind = Column(String, nullable=False)
     sent_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class LeaseFile(Base):
+    """La planometría de UN contrato: cómo debe quedar armada esa exhibición.
+
+    Cuelga del CONTRATO y no del mueble a propósito. La misma punta de góndola
+    recibe una planometría distinta cada vez que se alquila —cambia con el
+    proveedor y con la temporada—, así que guardarla en el mueble dejaría un
+    solo casillero que se sobreescribe: al entrar Nutresa se pierde la de
+    Alpina, y con ella la única prueba de qué se acordó armar.
+
+    Tabla nueva y no ``space_files`` con una marca en el nombre, aunque eso ya
+    se hizo una vez para las fotos de montaje: ``list_face_images`` toma la
+    imagen más reciente de un espacio para pintar el panel del 3D, y una
+    planometría ahí adentro volvería a secuestrar las artes del proveedor. Con
+    tabla propia eso es imposible por construcción, no por convención de
+    nombres.
+
+    ``create_all`` crea tablas que faltan pero nunca agrega columnas a una que
+    ya existe, así que esto es de las cosas que sí se pueden hacer sin
+    migración.
+    """
+    __tablename__ = "lease_files"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lease_id = Column(Integer, ForeignKey("space_leases.id"), nullable=False, index=True)
+    # Por ahora sólo "planometria". La columna existe para no necesitar otra
+    # tabla el día que el contrato cargue también el PDF firmado.
+    kind = Column(String, nullable=False, default="planometria")
+    filename = Column(String, nullable=False)
+    content_type = Column(String, nullable=False)
+    size = Column(Integer, nullable=False)
+    data = Column(LargeBinary, nullable=False)
+    # Quién la cargó, para que el histórico diga algo más que "admin".
+    subido_por = Column(String, nullable=True)
+    uploaded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

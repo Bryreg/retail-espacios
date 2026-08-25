@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Check, ChevronLeft, MapPin, X } from "lucide-react";
+import { Camera, Check, ChevronLeft, FileText, Image as ImageIcon, MapPin, X } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
 import { describeError } from "../api/client";
 import {
@@ -8,6 +8,7 @@ import {
 } from "../api/mounts";
 import { contractPhase, fullSpaceCode, isRentable, isDoubleGondola } from "../types/fixtures";
 import MiniMapa, { describirUbicacion } from "../components/MiniMapa/MiniMapa";
+import { planometriaDelEspacio, planometriaUrl, type Planometria } from "../api/planograms";
 import { prepararFoto, MAX_SUBIDA } from "../utils/foto";
 import type { UnifiedFixture } from "../types/fixtures";
 
@@ -423,6 +424,19 @@ function MountForm({
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  /** Cómo debe quedar armada la exhibición, según lo que el proveedor mandó.
+   *
+   *  Se busca por el CÓDIGO del espacio y no por el id del contrato: el enlace
+   *  del correo trae el código, y el mercaderista no tiene por qué saber que
+   *  existen contratos. Que no haya es normal —no todos traen planometría—, así
+   *  que la ausencia no se anuncia como un error. */
+  const [plano, setPlano] = useState<Planometria | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    planometriaDelEspacio(item.code).then((p) => { if (vivo) setPlano(p); });
+    return () => { vivo = false; };
+  }, [item.code]);
+
   useEffect(() => () => { if (vista) URL.revokeObjectURL(vista); }, [vista]);
 
   async function elegirFoto(f: File | null) {
@@ -552,6 +566,55 @@ function MountForm({
           hasta el mueble, después se responde. El plano se dibuja con los
           muebles de la sede, y si el destino no aparece en el layout se omite
           entero en vez de mostrar un plano sin señalar nada. */}
+      {/* Cómo debe quedar. Va ARRIBA del mapa y de la cámara: es lo que hay que
+          mirar antes de armar, no después. */}
+      {plano && (
+        <a
+          href={planometriaUrl(plano.id)}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            display: "block", textDecoration: "none", marginBottom: 16,
+            padding: "12px 12px 10px", borderRadius: "var(--r-lg)",
+            background: "var(--surface)", border: "1px solid var(--accent-200)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex", alignItems: "center", gap: 5, marginBottom: 8,
+              fontSize: 11.5, fontWeight: 700, color: "var(--accent-700)",
+              letterSpacing: "0.03em", textTransform: "uppercase",
+            }}
+          >
+            <ImageIcon size={12} /> Así debe quedar
+          </div>
+          {plano.content_type === "application/pdf" ? (
+            <div
+              style={{
+                display: "flex", alignItems: "center", gap: 9, padding: "12px 11px",
+                borderRadius: "var(--r-md)", background: "var(--accent-50)",
+                color: "var(--accent-700)", fontSize: 13, fontWeight: 600,
+              }}
+            >
+              <FileText size={17} />
+              Abrir la planometría (PDF)
+            </div>
+          ) : (
+            <img
+              src={planometriaUrl(plano.id)}
+              alt="Cómo debe quedar la exhibición"
+              style={{
+                display: "block", width: "100%", maxHeight: 260, objectFit: "contain",
+                borderRadius: "var(--r-md)", background: "var(--surface-2)",
+              }}
+            />
+          )}
+          <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 8, textAlign: "center" }}>
+            Tocá para verla en grande
+          </div>
+        </a>
+      )}
+
       {tieneMapa && (
         <div
           style={{

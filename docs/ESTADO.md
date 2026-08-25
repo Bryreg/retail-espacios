@@ -273,7 +273,106 @@ cambia de estado y eso desmontaba el mensaje justo cuando había que leerlo.
 Desde **Supervisar** también se vende: el popover del mapa y el panel de detalle traen
 "Negociar este espacio", que cambia de modo con ese espacio ya elegido.
 
-El panel del plano sigue existiendo para editar un contrato sobre el mueble.
+### Tres cosas que estaban rotas y no se veían
+
+Salieron recorriendo la negociación completa como la haría una persona, no leyendo código:
+
+- **Los archivos del contrato nunca aparecían.** El popover y el panel de detalle buscaban
+  el espacio por el código **corto** (`PUN-04`) mientras la base lo guarda completo
+  (`NAVE-PUN-04`), así que `by-code` contestaba 404 siempre y la sección se rendía en
+  silencio. El corto además se repite entre sedes.
+- **El error al guardar era invisible.** Salía al pie del formulario, debajo de la nota y
+  fuera de la parte visible de la ficha, mientras el botón que lo provoca vive en la barra
+  de abajo: se tocaba «Guardar», el backend rechazaba el choque de fechas y en pantalla no
+  pasaba nada. Ahora sale en la barra, al lado del botón.
+- **La planometría de un contrato futuro no se veía.** El endpoint respondía sólo por el
+  contrato que corre hoy, así que el recién vendido para la temporada que viene —que es
+  cuando más se consulta— no tenía ninguna. Ahora responde el vigente o, si no hay, el
+  próximo. Los vencidos no: «así debe quedar» de algo ya desmontado no es una respuesta.
+
+### La planometría
+
+Cómo debe quedar armada la exhibición: la foto o el PDF que manda el proveedor.
+**Cuelga del contrato, no del mueble** (`lease_files`, tabla nueva).
+
+La misma punta de góndola recibe una planometría distinta cada vez que se alquila —cambia
+con el proveedor y con la temporada—, así que guardada en el mueble habría **un solo
+casillero que se sobreescribe**: al entrar Nutresa se pierde la de Alpina, y con ella la
+única prueba de qué se acordó armar en septiembre. Colgada del contrato, cada acuerdo
+lleva la suya y el histórico queda.
+
+Tabla propia y no `space_files` con una marca en el nombre, aunque eso ya se hizo una vez
+para las fotos de montaje: `list_face_images` toma la imagen más reciente de un espacio
+para pintar el panel del 3D, y una planometría ahí adentro volvería a secuestrar las artes
+del proveedor. Con tabla propia eso es imposible por construcción, no por convención.
+
+Quién la ve, y por dónde llega:
+
+| Quién | Cuándo | Cómo la encuentra |
+|---|---|---|
+| Admin | al cerrar el trato | la adjunta en el formulario; se sube después de crear el contrato |
+| Admin | después | detalle del espacio en Supervisar — puede cambiarla o quitarla |
+| Mercaderista | al montar | `GET /planometrias/por-espacio/{code}` |
+
+El mercaderista llega **por el código del espacio**, no por el id del contrato: el enlace
+del correo trae el código y no tiene por qué saber que existen contratos. El backend hace
+el salto espacio → contrato **que corre hoy** → archivo, y por fechas y no por la bandera
+`is_active`, que se queda en True desde que el contrato se crea.
+
+Detalles que se ganaron el lugar:
+
+- **Una por contrato.** Cargar otra reemplaza la anterior: dos verdades sobre cómo debe
+  quedar el mismo mueble es justo lo que este archivo existe para evitar.
+- **Si la subida falla, el contrato igual queda.** Ya se guardó y los correos ya salieron;
+  se avisa en la confirmación y se puede cargar después desde el detalle del espacio. Ese
+  mismo camino es el único que tienen los contratos anteriores a que esto existiera.
+- **Se acepta PDF además de imagen.** La mitad de los proveedores manda la exhibición en
+  PDF. El filtro compara contra una lista **cerrada** y nunca contra `image/*`: un SVG es
+  una imagen para el navegador y un documento con scripts para todo lo demás, y esto se
+  sirve inline desde el mismo origen que la app.
+- **El archivo no se borra al vencer el contrato.** Es la prueba que responde un reclamo
+  meses después, igual que la confirmación de montaje.
+
+### Cancelar un contrato
+
+`DELETE /spaces/{id}/leases/{id}` existía desde siempre y **ninguna pantalla lo llamaba**.
+El agujero se veía en el propio mensaje de choque de fechas —«Cancelalo primero o ajustá
+las fechas»— que mandaba a hacer algo que la aplicación no permitía.
+
+Ahora está en el detalle del espacio (Supervisar → tocar el mueble → Ver todo), sólo para
+admin y con confirmación. Cancela el que corre hoy o, si no hay, **el que ya está firmado
+y todavía no arranca**: ése es el que hay que soltar cuando un proveedor se cae antes de
+empezar, y era el más difícil de alcanzar porque su id no salía en ninguna respuesta —
+`SpaceOut` ahora expone `upcoming_lease`, que sale de una property del modelo y **no es
+una columna nueva**. La redacción para el mercaderista cubre las dos: agregar el próximo
+sin tacharle el valor habría abierto por la ventana lo que la app cierra por la puerta.
+
+Al cancelar se escribe también el JSON del layout. Sin eso el contrato desaparece de la
+base y el mueble sigue pintado como vendido en el mapa, que es de donde salen todas las
+pantallas. La planometría y el reporte de montaje **no se borran**: son la prueba de lo
+que se acordó y de lo que se armó.
+
+### El contrato tiene un solo dueño
+
+El contrato se llenaba en **tres** lugares: el panel del plano 2D, el panel del editor 3D
+y la pantalla de venta. Los dos primeros ya no lo hacen, y no era una duplicación inocente:
+
+- los campos escribían el **JSON del layout** sin tocar la base, así que se podía dejar un
+  proveedor y un valor puestos en el mapa sin que existiera ningún `SpaceLease`;
+- el botón "Guardar contrato" llamaba a `createLease` **cada vez que se tocaba**. No editaba
+  nada: corregir una fecha y volver a guardar creaba un segundo contrato sobre el mismo
+  espacio. No hay endpoint de edición de contratos —sólo alta y baja—, así que la
+  "edición" que se perdió al sacarlos nunca existió.
+
+Ahora la división es por lo que cada pantalla sabe:
+
+| | Plano 2D · Editor 3D | Sede → Vender |
+|---|---|---|
+| Diseño | destino, sede, nomenclatura, dimensiones, rotación, artes/archivos, observación | — |
+| Comercial | lo contratado, **de sólo lectura**, con un puntero a dónde se cambia | proveedor, marca, correo, valor, fechas, nota |
+
+El panel del plano muestra quién tiene el espacio, hasta cuándo y por cuánto (esto último
+sólo para el admin), y dice que se cambia en Sede → Vender. El editor 3D, igual.
 
 **Las pestañas dicen para qué sirven.** Los nombres solos no alcanzaban —"Plano" y
 "Editor 3D" suenan a lo mismo, y desde ninguno se adivina que el contrato se llenaba ahí

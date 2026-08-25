@@ -1,4 +1,4 @@
-import { Check, Handshake, Loader2, Lock, X } from "lucide-react";
+import { AlertTriangle, Check, Handshake, Loader2, Lock, X } from "lucide-react";
 import type { DateRange } from "../SeasonPicker/SeasonPicker";
 import { isRentable, type FaceData, type UnifiedFixture } from "../../types/fixtures";
 import {
@@ -47,9 +47,13 @@ function Armazon({
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", gap: 12, alignItems: "stretch" }}>
         {mapa}
+        {/* La ficha mide lo que mide su contenido y se queda pegada arriba: el
+            mapa es mucho más alto que el formulario, y estirar la tarjeta hasta
+            abajo sólo repartía aire entre los campos. */}
         <div
           style={{
             width: ANCHO_FICHA, flexShrink: 0, minWidth: 0,
+            alignSelf: "flex-start", position: "sticky", top: 0,
             display: "flex", flexDirection: "column",
           }}
         >
@@ -62,7 +66,7 @@ function Armazon({
 }
 
 const tarjeta: React.CSSProperties = {
-  flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
+  display: "flex", flexDirection: "column",
   borderRadius: "var(--r-xl)", background: "var(--surface)",
   border: "1px solid var(--line)", boxShadow: "var(--shadow-xs)",
   overflow: "hidden",
@@ -176,6 +180,17 @@ function Cerrado({ datos, onSeguir }: { datos: ResumenContrato; onSeguir: () => 
         montaje <b>sin valores</b> al mercaderista —con el plano del espacio
         señalado— y la constancia al proveedor si tiene correo cargado.
       </div>
+      {datos.avisoPlanometria && (
+        <div
+          style={{
+            marginTop: 12, padding: "9px 11px", borderRadius: "var(--r-md)",
+            background: "var(--warning-50)", color: "var(--warning)",
+            fontSize: 12.5, lineHeight: 1.45,
+          }}
+        >
+          {datos.avisoPlanometria}
+        </div>
+      )}
       <button
         onClick={onSeguir}
         style={{
@@ -242,9 +257,26 @@ function ConEspacio({
           </div>
 
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
-            {c.falta && (
+            {/* El error del servidor va ACÁ y no al pie del formulario.
+                Estaba abajo de la nota, fuera de la parte visible de la ficha,
+                mientras el botón que lo provoca vive en esta barra: se tocaba
+                "Guardar", el backend rechazaba el choque de fechas y en
+                pantalla no pasaba nada. */}
+            {c.error ? (
+              <span
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  maxWidth: 460, padding: "6px 10px", borderRadius: "var(--r-md)",
+                  background: "var(--danger-50)", color: "var(--danger)",
+                  fontSize: 12, fontWeight: 500, lineHeight: 1.4,
+                }}
+              >
+                <AlertTriangle size={13} style={{ flexShrink: 0 }} />
+                {c.error}
+              </span>
+            ) : c.falta ? (
               <span style={{ fontSize: 12, color: "var(--ink-3)" }}>{c.falta}</span>
-            )}
+            ) : null}
             <button
               onClick={onCancelar}
               disabled={guardando}

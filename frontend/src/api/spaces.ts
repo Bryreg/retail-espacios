@@ -30,6 +30,17 @@ export const findOrCreateSpace = (payload: {
 }): Promise<Space> =>
   client.post<Space>("/spaces/find-or-create", payload).then((r) => r.data);
 
+/** El espacio por su código `SEDE-CODIGO`, o null si nunca se le guardó un
+ *  contrato (sólo existe en `spaces` cuando alguno lo creó).
+ *
+ *  Sirve para llegar al id del contrato vigente, que el JSON del layout no
+ *  guarda: ahí está el estado comercial denormalizado, no las filas. */
+export const getSpaceByCode = (code: string): Promise<Space | null> =>
+  client
+    .get<Space>(`/spaces/by-code/${encodeURIComponent(code)}`)
+    .then((r) => r.data)
+    .catch(() => null);
+
 export const updateSpaceStatus = (spaceId: number, status: SpaceStatus, notes?: string) =>
   client.patch<Space>(`/spaces/${spaceId}/status`, { status, notes }).then((r) => r.data);
 
