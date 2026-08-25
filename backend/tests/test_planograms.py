@@ -166,11 +166,43 @@ def test_por_espacio_responde_por_el_contrato_que_corre_hoy(client, admin, worke
     assert r.json()["filename"] == "hoy.jpg"
 
 
-def test_por_espacio_sin_contrato_vigente_da_404(client, admin, worker):
+def test_un_contrato_futuro_ya_muestra_su_planometria(client, admin, worker):
+    """Vendido en agosto para septiembre: la planometría se mira JUSTO ahí.
+
+    Responder sólo por el contrato que corre hoy dejaba sin nada al recién
+    vendido, que es cuando más se consulta —para preparar el montaje y para
+    revisar qué fue lo que se acordó armar—.
+    """
     space_id = _espacio(client, admin)
     futuro = _contrato(client, admin, space_id, _proveedor(client, admin),
                        desde=HOY + timedelta(days=30), hasta=HOY + timedelta(days=60))
-    _subir(client, admin, futuro)
+    _subir(client, admin, futuro, archivo=("septiembre.jpg", JPG, "image/jpeg"))
+
+    r = client.get("/api/planometrias/por-espacio/NAVE-PUN-04", headers=worker)
+    assert r.status_code == 200, r.text
+    assert r.json()["lease_id"] == futuro
+
+
+def test_el_que_corre_hoy_le_gana_al_proximo(client, admin, worker):
+    space_id = _espacio(client, admin)
+    hoy = _contrato(client, admin, space_id, _proveedor(client, admin, "Alpina"),
+                    desde=HOY - timedelta(days=2), hasta=HOY + timedelta(days=5))
+    futuro = _contrato(client, admin, space_id, _proveedor(client, admin, "Nutresa"),
+                       desde=HOY + timedelta(days=30), hasta=HOY + timedelta(days=60))
+    _subir(client, admin, hoy, archivo=("hoy.jpg", JPG, "image/jpeg"))
+    _subir(client, admin, futuro, archivo=("despues.jpg", JPG, "image/jpeg"))
+
+    r = client.get("/api/planometrias/por-espacio/NAVE-PUN-04", headers=worker)
+    assert r.status_code == 200
+    assert r.json()["lease_id"] == hoy
+
+
+def test_un_contrato_vencido_no_responde(client, admin, worker):
+    """«Así debe quedar» de algo que ya se desmontó no es una respuesta."""
+    space_id = _espacio(client, admin)
+    viejo = _contrato(client, admin, space_id, _proveedor(client, admin),
+                      desde=HOY - timedelta(days=60), hasta=HOY - timedelta(days=31))
+    _subir(client, admin, viejo)
     assert client.get("/api/planometrias/por-espacio/NAVE-PUN-04", headers=worker).status_code == 404
 
 

@@ -156,7 +156,7 @@ def planometria_del_espacio(
     db: Session = Depends(get_db),
     _=Depends(require_auth),
 ):
-    """La planometría del contrato QUE CORRE HOY sobre ese espacio.
+    """La planometría del contrato vigente —o del próximo— sobre ese espacio.
 
     Es el camino del mercaderista: el enlace del correo de montaje trae el
     código del espacio, no el id de un contrato. Deliberadamente no devuelve
@@ -176,17 +176,28 @@ def planometria_del_espacio(
         raise HTTPException(status_code=404, detail="Espacio no encontrado")
 
     hoy = date.today()
-    # El contrato vigente, por FECHAS y no sólo por la bandera: `is_active` se
-    # queda en True desde que se crea, así que uno firmado en agosto para
-    # diciembre respondería acá durante cuatro meses.
-    vigente = [
-        l for l in space.leases
-        if l.is_active and l.start_date <= hoy <= l.end_date
-    ]
-    if not vigente:
-        raise HTTPException(status_code=404, detail="Ese espacio no tiene contrato corriendo hoy")
+    activos = [l for l in space.leases if l.is_active]
+    # Por FECHAS y no sólo por la bandera: `is_active` se queda en True desde
+    # que el contrato se crea.
+    corriendo = [l for l in activos if l.start_date <= hoy <= l.end_date]
+    proximos = [l for l in activos if l.start_date > hoy]
 
-    row = _de_contrato(db, max(vigente, key=lambda l: l.start_date).id)
+    # El que corre hoy manda; si no hay, el próximo que arranca. Mirar sólo
+    # "hoy" dejaba sin planometría justo al contrato recién vendido para la
+    # temporada que viene —que es cuando más se mira, para preparar el montaje
+    # y para revisar qué fue lo que se acordó—. Los vencidos no responden acá:
+    # "así debe quedar" de algo que ya se desmontó no es una respuesta.
+    if corriendo:
+        elegido = max(corriendo, key=lambda l: l.start_date)
+    elif proximos:
+        elegido = min(proximos, key=lambda l: l.start_date)
+    else:
+        raise HTTPException(
+            status_code=404,
+            detail="Ese espacio no tiene contrato vigente ni próximo",
+        )
+
+    row = _de_contrato(db, elegido.id)
     if not row:
         raise HTTPException(status_code=404, detail="Ese contrato no tiene planometría cargada")
     return row

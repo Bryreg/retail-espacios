@@ -43,6 +43,7 @@ import SeasonPicker, { describeRange, type DateRange } from "../components/Seaso
 import ModoVender from "../components/Contrato/ModoVender";
 import type { ResumenContrato } from "../components/Contrato/Contrato";
 import Planometria from "../components/Contrato/Planometria";
+import CancelarContrato from "../components/Contrato/CancelarContrato";
 import { inclusiveDays } from "../types/seasons";
 
 // ─── Date / money helpers ────────────────────────────────────────────────────
@@ -1006,7 +1007,13 @@ function FixturePopover({
   const rentable = isRentable(fixture);
   const faces = facesOf(fixture);
   const entry = faces[0];
-  const { files } = useSpaceFiles(entry.code, rentable && entry.status === "occupied");
+  // Por el código COMPLETO, igual que el panel de detalle: `by-code` guarda
+  // `NAVE-PUN-04`, y buscando `PUN-04` contestaba 404 siempre — el contador de
+  // archivos decía "Sin archivos" aunque hubiera.
+  const { files } = useSpaceFiles(
+    fullSpaceCode(fixture.sede, entry.code),
+    rentable && entry.status === "occupied",
+  );
   const pill = daysPill(entry.endDate ? daysUntil(entry.endDate) : null);
   const hasContract = rentable && entry.supplierName.trim().length > 0;
 
@@ -1145,7 +1152,7 @@ function FixturePopover({
 // ─── Full detail, rendered in the right-hand rail ────────────────────────────
 
 function FixtureDetailCard({
-  fixture, isAdmin, face, onFace, onBack, onNegociar, onOpenFile,
+  fixture, isAdmin, face, onFace, onBack, onNegociar, onCancelado, onOpenFile,
 }: {
   fixture: UnifiedFixture;
   isAdmin: boolean;
@@ -1154,13 +1161,20 @@ function FixtureDetailCard({
   onBack: () => void;
   /** Cambia este panel por el del contrato, sobre la cara que se está viendo. */
   onNegociar?: () => void;
+  /** El contrato se canceló: hay que escribir el JSON del layout para que el
+   *  mapa repinte el mueble como libre. */
+  onCancelado?: (patch: Partial<FaceData>) => void;
   onOpenFile: (f: SpaceFileMeta) => void;
 }) {
   const rentable = isRentable(fixture);
   const faces = facesOf(fixture);
   const double = isDoubleGondola(fixture) && rentable;
   const entry = face === "B" && faces.length > 1 ? faces[1] : faces[0];
-  const { state, files } = useSpaceFiles(entry.code, rentable);
+  // Por el código COMPLETO. Buscaba por el corto —`PUN-04` en vez de
+  // `NAVE-PUN-04`— y `by-code` devolvía 404 siempre, así que "Archivos del
+  // contrato" nunca mostró nada: los que se suben desde el plano quedaban
+  // invisibles acá. El corto además se repite entre sedes.
+  const { state, files } = useSpaceFiles(fullSpaceCode(fixture.sede, entry.code), rentable);
   const hasContract = rentable && entry.supplierName.trim().length > 0;
 
   return (
@@ -1294,6 +1308,18 @@ function FixtureDetailCard({
         )}
         {rentable && state === "error" && (
           <div style={{ fontSize: 11.5, color: "var(--danger)" }}>No se pudo consultar el servidor.</div>
+        )}
+
+        {/* Soltar el espacio. Al final del panel y con confirmación: es
+            destructivo, y hasta ahora no existía en ninguna pantalla pese a que
+            el backend lo soporta —el mensaje de choque de fechas mandaba a
+            «cancelalo primero» señalando algo que no se podía hacer. */}
+        {isAdmin && rentable && hasContract && onCancelado && (
+          <CancelarContrato
+            key={entry.code}
+            spaceCode={fullSpaceCode(fixture.sede, entry.code)}
+            onCancelado={onCancelado}
+          />
         )}
       </div>
     </Card>
@@ -2528,6 +2554,23 @@ export default function DashboardView() {
                     onFace={setDetailFace}
                     onBack={closeDetail}
                     onNegociar={isAdmin ? () => negociar(selected, detailFace) : undefined}
+                    onCancelado={(patch) => {
+                      // Igual que al guardar: el JSON del layout es lo que
+                      // pinta el mapa, así que soltar el contrato en la base
+                      // sin tocarlo dejaría el mueble vendido en pantalla.
+                      const objetivo = selected;
+                      const cara = detailFace;
+                      commit(
+                        fixtures.map((f) =>
+                          f.id !== objetivo.id
+                            ? f
+                            : cara === "B"
+                            ? { ...f, faceB: { ...(f.faceB ?? {}), ...patch } as FaceData }
+                            : { ...f, ...patch },
+                        ),
+                      );
+                      closeDetail();
+                    }}
                     onOpenFile={setViewerFile}
                   />
                 ) : (

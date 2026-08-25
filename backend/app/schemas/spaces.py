@@ -81,6 +81,12 @@ class SpaceOut(BaseModel):
     status: SpaceStatus
     notes: Optional[str] = None
     active_lease: Optional[LeaseOut] = None
+    #: El firmado que todavía no arranca. Sale de la property del modelo, así
+    #: que no hay columna nueva. Hace falta para poder CANCELARLO: sin esto, un
+    #: contrato vendido para la temporada que viene no tenía id alcanzable
+    #: desde la interfaz, y el mensaje de choque de fechas decía "cancelalo
+    #: primero" señalando algo que no se podía hacer.
+    upcoming_lease: Optional[LeaseOut] = None
 
     model_config = {"from_attributes": True}
 

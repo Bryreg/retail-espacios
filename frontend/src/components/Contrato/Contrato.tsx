@@ -536,7 +536,6 @@ export function CamposContrato({ c }: { c: Contrato }) {
         />
       </div>
 
-      {c.error && <div style={{ fontSize: 12.5, color: "var(--danger)" }}>{c.error}</div>}
     </div>
   );
 }

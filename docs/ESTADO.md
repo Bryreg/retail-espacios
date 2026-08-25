@@ -273,6 +273,23 @@ cambia de estado y eso desmontaba el mensaje justo cuando había que leerlo.
 Desde **Supervisar** también se vende: el popover del mapa y el panel de detalle traen
 "Negociar este espacio", que cambia de modo con ese espacio ya elegido.
 
+### Tres cosas que estaban rotas y no se veían
+
+Salieron recorriendo la negociación completa como la haría una persona, no leyendo código:
+
+- **Los archivos del contrato nunca aparecían.** El popover y el panel de detalle buscaban
+  el espacio por el código **corto** (`PUN-04`) mientras la base lo guarda completo
+  (`NAVE-PUN-04`), así que `by-code` contestaba 404 siempre y la sección se rendía en
+  silencio. El corto además se repite entre sedes.
+- **El error al guardar era invisible.** Salía al pie del formulario, debajo de la nota y
+  fuera de la parte visible de la ficha, mientras el botón que lo provoca vive en la barra
+  de abajo: se tocaba «Guardar», el backend rechazaba el choque de fechas y en pantalla no
+  pasaba nada. Ahora sale en la barra, al lado del botón.
+- **La planometría de un contrato futuro no se veía.** El endpoint respondía sólo por el
+  contrato que corre hoy, así que el recién vendido para la temporada que viene —que es
+  cuando más se consulta— no tenía ninguna. Ahora responde el vigente o, si no hay, el
+  próximo. Los vencidos no: «así debe quedar» de algo ya desmontado no es una respuesta.
+
 ### La planometría
 
 Cómo debe quedar armada la exhibición: la foto o el PDF que manda el proveedor.
@@ -315,6 +332,25 @@ Detalles que se ganaron el lugar:
   sirve inline desde el mismo origen que la app.
 - **El archivo no se borra al vencer el contrato.** Es la prueba que responde un reclamo
   meses después, igual que la confirmación de montaje.
+
+### Cancelar un contrato
+
+`DELETE /spaces/{id}/leases/{id}` existía desde siempre y **ninguna pantalla lo llamaba**.
+El agujero se veía en el propio mensaje de choque de fechas —«Cancelalo primero o ajustá
+las fechas»— que mandaba a hacer algo que la aplicación no permitía.
+
+Ahora está en el detalle del espacio (Supervisar → tocar el mueble → Ver todo), sólo para
+admin y con confirmación. Cancela el que corre hoy o, si no hay, **el que ya está firmado
+y todavía no arranca**: ése es el que hay que soltar cuando un proveedor se cae antes de
+empezar, y era el más difícil de alcanzar porque su id no salía en ninguna respuesta —
+`SpaceOut` ahora expone `upcoming_lease`, que sale de una property del modelo y **no es
+una columna nueva**. La redacción para el mercaderista cubre las dos: agregar el próximo
+sin tacharle el valor habría abierto por la ventana lo que la app cierra por la puerta.
+
+Al cancelar se escribe también el JSON del layout. Sin eso el contrato desaparece de la
+base y el mueble sigue pintado como vendido en el mapa, que es de donde salen todas las
+pantallas. La planometría y el reporte de montaje **no se borran**: son la prueba de lo
+que se acordó y de lo que se armó.
 
 ### El contrato tiene un solo dueño
 

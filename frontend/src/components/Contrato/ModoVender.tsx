@@ -1,4 +1,4 @@
-import { Check, Handshake, Loader2, Lock, X } from "lucide-react";
+import { AlertTriangle, Check, Handshake, Loader2, Lock, X } from "lucide-react";
 import type { DateRange } from "../SeasonPicker/SeasonPicker";
 import { isRentable, type FaceData, type UnifiedFixture } from "../../types/fixtures";
 import {
@@ -257,9 +257,26 @@ function ConEspacio({
           </div>
 
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
-            {c.falta && (
+            {/* El error del servidor va ACÁ y no al pie del formulario.
+                Estaba abajo de la nota, fuera de la parte visible de la ficha,
+                mientras el botón que lo provoca vive en esta barra: se tocaba
+                "Guardar", el backend rechazaba el choque de fechas y en
+                pantalla no pasaba nada. */}
+            {c.error ? (
+              <span
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  maxWidth: 460, padding: "6px 10px", borderRadius: "var(--r-md)",
+                  background: "var(--danger-50)", color: "var(--danger)",
+                  fontSize: 12, fontWeight: 500, lineHeight: 1.4,
+                }}
+              >
+                <AlertTriangle size={13} style={{ flexShrink: 0 }} />
+                {c.error}
+              </span>
+            ) : c.falta ? (
               <span style={{ fontSize: 12, color: "var(--ink-3)" }}>{c.falta}</span>
-            )}
+            ) : null}
             <button
               onClick={onCancelar}
               disabled={guardando}
