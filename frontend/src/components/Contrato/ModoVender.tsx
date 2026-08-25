@@ -186,8 +186,8 @@ function Avisos({ avisos }: { avisos?: ResumenContrato["avisos"] }) {
       <div style={alerta}>
         <b>No se avisó a nadie.</b> El correo no está configurado en el
         servidor, así que el contrato quedó guardado pero no salió ningún
-        mensaje. Se configura con las variables <code>SMTP_USER</code> y{" "}
-        <code>SMTP_PASSWORD</code>.
+        mensaje. Se configura en las variables de entorno del servidor; el
+        botón de prueba, en ajustes, dice exactamente qué falta.
       </div>
     );
   }

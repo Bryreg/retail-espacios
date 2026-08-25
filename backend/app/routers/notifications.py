@@ -8,7 +8,7 @@ from app.auth import get_config, require_admin, require_auth, set_config
 from app.database import get_db
 from app.services.contacts import get_contacts, recipients_for, save_contacts
 from app.services.mailer import (
-    clean_recipients, html_shell, send_mail_to, smtp_configured, smtp_settings,
+    clean_recipients, enviar_con_diagnostico, html_shell, correo_configurado, smtp_settings,
 )
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -118,18 +118,20 @@ def preview_recipients(sede: Optional[str] = None, db: Session = Depends(get_db)
         sede=sede,
         comercial=who["comercial"],
         montaje=who["montaje"],
-        smtp_listo=smtp_configured(),
+        smtp_listo=correo_configurado(),
     )
 
 
 @router.post("/test", dependencies=[Depends(require_admin)])
 def send_test_notification(db: Session = Depends(get_db)):
-    if not smtp_configured():
+    if not correo_configurado():
         return {
             "ok": False,
             "detail": (
-                "SMTP no configurado. Defina las variables de entorno SMTP_USER y "
-                "SMTP_PASSWORD (y opcionalmente SMTP_HOST, SMTP_PORT y MAIL_FROM) en el servidor."
+                "El correo no está configurado en el servidor. Por SMTP hacen falta "
+                "SMTP_USER y SMTP_PASSWORD; por HTTPS, EMAIL_PROVIDER (brevo o sendgrid), "
+                "EMAIL_API_KEY y MAIL_FROM. Si el hosting bloquea la salida SMTP —Render "
+                "en plan gratuito la bloquea— el único camino que funciona es el de HTTPS."
             ),
         }
 
@@ -164,10 +166,20 @@ def send_test_notification(db: Session = Depends(get_db)):
         ],
         "Si recibió este mensaje, las notificaciones del sistema están funcionando correctamente.",
     )
-    ok = send_mail_to(destinos, subject, html)
+    # El motivo real, no «revise las credenciales». Un botón de prueba que no
+    # dice qué falló no prueba nada: una contraseña rechazada y un puerto
+    # bloqueado por la red daban exactamente el mismo texto, y para
+    # distinguirlos había que entrar a los registros del servidor.
+    ok, motivo, segundos = enviar_con_diagnostico(destinos, subject, html)
     detail = (
-        "Correo de prueba enviado correctamente."
-        if ok
-        else "No se pudo enviar el correo de prueba. Revise las credenciales SMTP y los registros del servidor."
+        f"Correo de prueba enviado a {', '.join(destinos)}."
+        if ok else motivo
     )
-    return {"ok": ok, "detail": detail}
+    return {
+        "ok": ok,
+        "detail": detail,
+        "servidor": f"{ajustes['host']}:{ajustes['port']}",
+        "remitente": ajustes["mail_from"],
+        "destinatarios": destinos,
+        "segundos": round(segundos, 2),
+    }
