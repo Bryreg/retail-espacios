@@ -18,7 +18,19 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
-      # Notificaciones — descomentar y definir los valores en el dashboard de Render:
+      # Correo. DOS caminos, y en el plan gratuito de Render sólo sirve el segundo:
+      # el plan gratuito bloquea la salida SMTP y connect() devuelve
+      # "[Errno 101] Network is unreachable" antes de intentar autenticarse, así
+      # que ninguna credencial de Gmail funciona ahí. El puerto 443 sí sale.
+      #
+      #   Por HTTPS (recomendado acá): EMAIL_PROVIDER=brevo|sendgrid,
+      #   EMAIL_API_KEY y MAIL_FROM. Los dos proveedores permiten verificar una
+      #   dirección suelta como remitente, sin dominio propio.
+      #
+      #   Por SMTP (necesita salida SMTP abierta): SMTP_USER y SMTP_PASSWORD,
+      #   más SMTP_HOST y SMTP_PORT si no es Gmail en 587.
+      #
+      # Todas se definen en el dashboard de Render, no acá:
       # - key: SMTP_USER
       #   sync: false
       # - key: SMTP_PASSWORD

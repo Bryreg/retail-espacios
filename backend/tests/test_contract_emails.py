@@ -277,7 +277,7 @@ def test_an_existing_email_is_never_overwritten(client, admin):
 def test_la_respuesta_dice_a_quien_se_aviso(client, admin, enviados, monkeypatch):
     import app.routers.spaces as spaces
 
-    monkeypatch.setattr(spaces, "smtp_configured", lambda: True)
+    monkeypatch.setattr(spaces, "correo_configurado", lambda: True)
     lease = _contratar(client, admin).json()
 
     avisos = lease["avisos"]
@@ -293,7 +293,7 @@ def test_la_respuesta_dice_a_quien_se_aviso(client, admin, enviados, monkeypatch
 def test_sin_smtp_no_promete_nada(client, admin, enviados, monkeypatch):
     import app.routers.spaces as spaces
 
-    monkeypatch.setattr(spaces, "smtp_configured", lambda: False)
+    monkeypatch.setattr(spaces, "correo_configurado", lambda: False)
     lease = _contratar(client, admin).json()
 
     avisos = lease["avisos"]
@@ -307,7 +307,7 @@ def test_el_contrato_se_guarda_igual_sin_correo(client, admin, enviados, monkeyp
     """El correo es un aviso, no una condición: sin SMTP el contrato queda."""
     import app.routers.spaces as spaces
 
-    monkeypatch.setattr(spaces, "smtp_configured", lambda: False)
+    monkeypatch.setattr(spaces, "correo_configurado", lambda: False)
     r = _contratar(client, admin)
     assert r.status_code == 201
     assert r.json()["id"] > 0

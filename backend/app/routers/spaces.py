@@ -16,7 +16,7 @@ from app.routers.mounts import MOUNT_FILE_PREFIX
 from app.services.contacts import recipients_for
 from app.services.layout_lookup import describe_location, is_space_rentable
 from app.services.mailer import (
-    app_base_url, format_cop, html_shell, send_mail_to_bg, smtp_configured,
+    app_base_url, format_cop, html_shell, send_mail_to_bg, correo_configurado,
 )
 
 # Every route requires a valid token; mutations additionally require admin.
@@ -337,7 +337,7 @@ def create_lease(space_id: int, payload: LeaseCreate, background_tasks: Backgrou
     # Lo que se va a intentar mandar, para devolvérselo a la pantalla. Antes la
     # confirmación afirmaba «Ya salieron los avisos» pase lo que pase: sin SMTP
     # configurado y sin contactos cargados decía exactamente lo mismo.
-    listo = smtp_configured()
+    listo = correo_configurado()
     avisos = AvisosContrato(
         smtp_listo=listo,
         comercial=who["comercial"] if listo else [],

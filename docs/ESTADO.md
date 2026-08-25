@@ -962,22 +962,78 @@ llena respondía «no hay destinatarios» y nadie entendía por qué. Ahora junt
 dos y el mensaje incluye servidor, remitente y destinatarios, para poder verificar
 la configuración sin adivinar.
 
+### El hosting bloquea la salida SMTP
+
+Se cargaron las credenciales de Gmail en Render y el botón de prueba falló. El log
+del servidor lo resolvió en una línea:
+
+```
+File "smtplib.py", line 312, in _get_socket
+  return socket.create_connection((host, port), timeout, ...
+OSError: [Errno 101] Network is unreachable
+```
+
+Falló en `create_connection`: **nunca llegó a autenticarse**. No era la contraseña.
+Render en plan gratuito cierra la salida SMTP, así que ninguna credencial de Gmail
+funciona ahí. El puerto 443 sí sale.
+
+### Dos caminos, elegidos con `EMAIL_PROVIDER`
+
+| | |
+|---|---|
+| `smtp` **(por defecto)** | `smtplib` contra un servidor de correo. Necesita salida SMTP abierta |
+| `brevo` / `sendgrid` | una llamada HTTPS a la API del proveedor |
+
+**El SMTP no se reemplazó, se le sumó una alternativa.** Sin `EMAIL_PROVIDER` nada
+cambia: una instalación existente no se entera. Si mañana el plan de Render permite
+salida SMTP, se borra esa variable y las credenciales que ya estaban vuelven a
+funcionar solas — hay una prueba que lo fija.
+
+Se usa `urllib.request` y no `httpx` ni `requests` a propósito: `requirements.txt`
+no trae ningún cliente HTTP, y una dependencia nueva es una forma de romper el
+despliegue.
+
+Los dos proveedores permiten verificar **una dirección suelta** como remitente
+—`bmgpersonal99@gmail.com`, sin dominio propio—, que es lo que hacía falta acá.
+
 ### Configurar el envío
 
-Dos lados, y ninguno se hace desde el código:
+**Por HTTPS** (lo que funciona en el plan gratuito):
+`EMAIL_PROVIDER=brevo`, `EMAIL_API_KEY`, `MAIL_FROM` y opcionalmente
+`MAIL_FROM_NAME`. La dirección de `MAIL_FROM` tiene que estar verificada como
+remitente en el proveedor.
 
-1. **El remitente**, en las variables de entorno del servidor (Render → Environment):
-   `SMTP_USER` y `SMTP_PASSWORD`, y opcionalmente `MAIL_FROM`, `SMTP_HOST`
-   (por defecto `smtp.gmail.com`) y `SMTP_PORT` (por defecto `587`).
-   Con Gmail, `SMTP_PASSWORD` **no** es la contraseña de la cuenta: es una
-   **contraseña de aplicación** de 16 caracteres, que exige tener la verificación
-   en dos pasos activada.
-2. **Los destinatarios**, desde el ícono de ajustes del encabezado: gerente
-   operacional, y por sede el administrador y el mercaderista.
+**Por SMTP**: `SMTP_USER` y `SMTP_PASSWORD`, más `SMTP_HOST` (por defecto
+`smtp.gmail.com`) y `SMTP_PORT` (por defecto `587`). Con Gmail, `SMTP_PASSWORD` no
+es la contraseña de la cuenta sino una **contraseña de aplicación** de 16
+caracteres, que exige verificación en dos pasos. Google la muestra en cuatro grupos
+separados por espacios y quien la copia se los lleva puestos: **el módulo se los
+saca**, porque el servidor la rechazaba con un error de credenciales que no
+mencionaba los espacios.
 
-**`send_mail_to` siempre hace `starttls()`**, así que sólo funciona con un puerto de
-STARTTLS (587). Si se configura `SMTP_PORT=465` —el puerto de SSL implícito, que es
-una elección habitual— el envío falla y queda en el log, no en la pantalla.
+**El puerto decide el modo**: 465 abre SSL desde el saludo y 587 hace STARTTLS.
+Antes se hacía `starttls()` siempre, así que configurar 465 —una elección
+habitual— fallaba con un error que no mencionaba el puerto.
+
+**Los destinatarios** se cargan desde el ícono de ajustes del encabezado: gerente
+operacional, y por sede el administrador y el mercaderista.
+
+### El botón de prueba ahora sirve para probar
+
+Respondía «No se pudo enviar el correo de prueba. Revise las credenciales SMTP y
+los registros del servidor» pasara lo que pasara: una contraseña rechazada y un
+puerto bloqueado por la red daban el mismo texto, y para distinguirlos había que
+entrar a los logs del servidor. Un botón de prueba que no dice qué falló no prueba
+nada.
+
+Ahora devuelve el motivo real, más el servidor, el remitente, los destinatarios y
+**cuántos segundos tardó** — que distingue una autenticación rechazada (vuelve en
+menos de un segundo) de un puerto bloqueado (tarda hasta que corta el temporizador)
+sin leer un solo log.
+
+Un detalle de orden que costaría encontrar: **`smtplib.SMTPException` hereda de
+`OSError`**, así que un `except OSError` puesto antes se traga también los errores
+de autenticación y los reporta como problema de red.
 
 ---
 
