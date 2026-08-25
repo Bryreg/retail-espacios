@@ -117,24 +117,40 @@ export function chocaEn(muros: Caja[], x: number, z: number): boolean {
 }
 
 /**
- * Punto de entrada: el centro de la planta, o el primer lugar libre buscando
- * en espiral hacia afuera. Nadie debe aparecer dentro de una góndola.
+ * El lugar despejado más cercano a un punto, buscando en espiral hacia afuera.
+ *
+ * Sirve para entrar a la caminata y para aterrizar un salto: nadie debe quedar
+ * parado dentro de una góndola, y quien apunta al medio de un mueble en el
+ * plano quiere llegar al pasillo de al lado, no que no pase nada.
  */
-export function puntoDeEntrada(limites: LimitesPlanta, muros: Caja[]): { x: number; z: number } {
-  const { cx, cz } = limites;
+export function puntoLibreCerca(
+  limites: LimitesPlanta,
+  muros: Caja[],
+  x: number,
+  z: number,
+): { x: number; z: number } {
+  const dentro = (px: number, pz: number) =>
+    px > limites.minX && px < limites.maxX && pz > limites.minZ && pz < limites.maxZ;
+
+  const cx = Math.max(limites.minX, Math.min(limites.maxX, x));
+  const cz = Math.max(limites.minZ, Math.min(limites.maxZ, z));
   if (!chocaEn(muros, cx, cz)) return { x: cx, z: cz };
+
   const alcance = Math.max(limites.w, limites.d);
   for (let r = 0.5; r <= alcance; r += 0.5) {
     for (let a = 0; a < 16; a++) {
       const t = (a / 16) * Math.PI * 2;
-      const x = cx + Math.cos(t) * r;
-      const z = cz + Math.sin(t) * r;
-      const dentro = x > limites.minX && x < limites.maxX &&
-                     z > limites.minZ && z < limites.maxZ;
-      if (dentro && !chocaEn(muros, x, z)) return { x, z };
+      const px = cx + Math.cos(t) * r;
+      const pz = cz + Math.sin(t) * r;
+      if (dentro(px, pz) && !chocaEn(muros, px, pz)) return { x: px, z: pz };
     }
   }
   return { x: cx, z: cz };
+}
+
+/** Por dónde se entra a la caminata: el centro del local, o lo más cerca que se pueda. */
+export function puntoDeEntrada(limites: LimitesPlanta, muros: Caja[]): { x: number; z: number } {
+  return puntoLibreCerca(limites, muros, limites.cx, limites.cz);
 }
 
 /**

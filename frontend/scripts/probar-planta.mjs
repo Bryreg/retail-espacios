@@ -25,7 +25,7 @@ writeFileSync(salida, outputFiles[0].text);
 
 const {
   huella, limitesDePlanta, murosDeCaminata, chocaEn,
-  puntoDeEntrada, resolverPaso,
+  puntoDeEntrada, puntoLibreCerca, resolverPaso,
   ALTURA_PISABLE, VEL_CAMINANDO, VEL_APURADA, PASO_MAXIMO, RADIO_PERSONA,
 } = await import(pathToFileURL(salida).href);
 
@@ -166,6 +166,36 @@ prueba("la entrada de una planta despejada es el centro", () => {
   const m = murosDeCaminata([gondola(-10, 0), gondola(10, 0)]);
   assert.deepEqual(puntoDeEntrada(l, m), { x: l.cx, z: l.cz });
 });
+
+console.log("\nplanta · el teletransporte");
+
+prueba("apuntar al medio de una góndola aterriza al lado, no adentro", () => {
+  // Quien toca una góndola en el plano quiere el pasillo de al lado.
+  const centro = { x: 0, z: 0 };
+  assert.ok(chocaEn(muros, centro.x, centro.z), "el supuesto de la prueba ya no aplica");
+  const d = puntoLibreCerca(limites, muros, centro.x, centro.z);
+  assert.ok(!chocaEn(muros, d.x, d.z), "aterrizó dentro del mueble");
+});
+
+prueba("apuntar a un pasillo libre aterriza exactamente ahí", () => {
+  const libre = { x: 0, z: limites.maxZ - 0.5 };
+  assert.ok(!chocaEn(muros, libre.x, libre.z), "el supuesto de la prueba ya no aplica");
+  assert.deepEqual(puntoLibreCerca(limites, muros, libre.x, libre.z), libre);
+});
+
+prueba("apuntar fuera del local aterriza dentro", () => {
+  const d = puntoLibreCerca(limites, muros, limites.maxX + 40, limites.maxZ + 40);
+  assert.ok(d.x <= limites.maxX && d.z <= limites.maxZ, "quedó fuera del local");
+  assert.ok(d.x >= limites.minX && d.z >= limites.minZ, "quedó fuera del local");
+});
+
+prueba("el aterrizaje cae cerca de donde se apuntó", () => {
+  // No sirve un salto que te deje en la otra punta de la tienda.
+  const d = puntoLibreCerca(limites, muros, 0, 0);
+  assert.ok(Math.hypot(d.x, d.z) < 3, "aterrizó demasiado lejos del punto tocado");
+});
+
+console.log("\nplanta · velocidades");
 
 prueba("la velocidad es de caminata, no de trote", () => {
   // Antes: 0.08 m por frame × 60 fps = 4.8 m/s. Una persona camina a ~1.4.

@@ -27,11 +27,31 @@ const REFERENCIAS: Record<string, { corto: string; frase: string }> = {
   stand_frutas: { corto: "Frutas", frase: "las frutas" },
 };
 
+/** Dónde está parado quien camina y hacia dónde mira. */
+export interface CamaraEnPlanta {
+  /** Posición en metros, misma convención que cx/cz de los muebles. */
+  x: number;
+  z: number;
+  /** Hacia dónde mira, como vector en el plano. No hace falta normalizarlo.
+   *  Se pasa el vector y no un ángulo a propósito: el 3D lo saca de
+   *  `camera.getWorldDirection()` y así nadie tiene que acertarle a la
+   *  convención de Euler de Three.js desde este lado. */
+  dirX: number;
+  dirZ: number;
+}
+
 export interface MiniMapaProps {
   /** Todos los muebles de la sede, no solo el de destino. */
   fixtures: UnifiedFixture[];
-  /** Código corto del mueble a señalar (el del layout, no el `SEDE-CODE`). */
-  targetCode: string;
+  /** Código corto del mueble a señalar (el del layout, no el `SEDE-CODE`).
+   *  Sin esto el plano no señala nada, que es lo que quiere la caminata. */
+  targetCode?: string;
+  /** Dibuja el "usted está aquí" con su cono de visión. */
+  camara?: CamaraEnPlanta;
+  /** Hace el plano entero elegible por posición, no por mueble: devuelve el
+   *  punto en METROS donde se tocó. Es el teletransporte — clic en el plano y
+   *  la caminata aterriza ahí. */
+  onIrA?: (x: number, z: number) => void;
   /** Ancho del lienzo en px. El alto se calcula según la forma de la tienda. */
   ancho?: number;
   /** Tope de alto. Sube cuando el plano es el instrumento de trabajo y no una
@@ -116,6 +136,8 @@ export function describirUbicacion(
 export default function MiniMapa({
   fixtures,
   targetCode,
+  camara,
+  onIrA,
   ancho = 330,
   altoMax = ALTO_MAX,
   colorDe,
@@ -123,7 +145,7 @@ export default function MiniMapa({
 }: MiniMapaProps) {
   const escena = useMemo(() => {
     if (fixtures.length === 0) return null;
-    const code = targetCode.trim().toUpperCase();
+    const code = (targetCode ?? "").trim().toUpperCase();
 
     // Encuadre: todo lo que hay en la sede, más un metro de aire para que
     // nada quede pegado al borde.
@@ -197,25 +219,55 @@ export default function MiniMapa({
       // "NEVERAS" caían en el mismo lugar y se leían como una sola palabra.
       // Ante choque gana la primera y la segunda no se dibuja: el mapa igual
       // muestra el mueble, y una referencia clara vale más que dos ilegibles.
-      const ancho = ref.corto.length * 5 + 6;
+      // 5 px por letra se quedaba corto: el texto va en negrita, en
+      // mayúsculas y con letter-spacing, así que ocupa cerca de 6,5 px por
+      // letra a 8,5 px de cuerpo. Con la cuenta vieja "CARNES" y "NEVERAS"
+      // pasaban el filtro en NAVE y se dibujaban una encima de la otra igual.
+      const ancho = ref.corto.length * 6.5 + 8;
       const choca = etiquetas.some(
-        (e) => Math.abs(e.x - x) < (ancho + e.ancho) / 2 && Math.abs(e.y - y) < 11,
+        (e) => Math.abs(e.x - x) < (ancho + e.ancho) / 2 && Math.abs(e.y - y) < 13,
       );
       if (choca) continue;
       etiquetas.push({ x, y, texto: ref.corto, ancho });
     }
 
-    return { cajas, destino: destino as Caja | null, etiquetas, height };
+    // La vuelta de px a metros: la necesita el teletransporte para saber a
+    // dónde apuntó el dedo, y el marcador de cámara para ubicarse.
+    const mx = (xPx: number) => minX + (xPx - offX) / escala;
+    const mz = (yPx: number) => minZ + (yPx - offY) / escala;
+
+    return { cajas, destino: destino as Caja | null, etiquetas, height, px, py, mx, mz, escala };
   }, [fixtures, targetCode, ancho, altoMax, colorDe]);
 
   if (!escena) return null;
-  const { cajas, destino, etiquetas, height } = escena;
+  const { cajas, destino, etiquetas, height, px, py, mx, mz } = escena;
+
+  /** Traduce el clic del navegador a metros de la tienda.
+   *
+   *  Va por getBoundingClientRect y no por e.nativeEvent.offsetX: el SVG se
+   *  dibuja con width="100%" y un viewBox fijo, así que el píxel de pantalla y
+   *  el del viewBox no son el mismo número salvo que el ancho coincida por
+   *  casualidad. */
+  const irAlPunto = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!onIrA) return;
+    const caja = e.currentTarget.getBoundingClientRect();
+    if (caja.width === 0 || caja.height === 0) return;
+    const xPx = ((e.clientX - caja.left) / caja.width) * ancho;
+    const yPx = ((e.clientY - caja.top) / caja.height) * height;
+    onIrA(mx(xPx), mz(yPx));
+  };
 
   return (
     <svg
       width="100%"
       viewBox={`0 0 ${ancho} ${height}`}
-      style={{ display: "block", borderRadius: "var(--r-md)", background: "var(--surface-2)" }}
+      style={{
+        display: "block",
+        borderRadius: "var(--r-md)",
+        background: "var(--surface-2)",
+        cursor: onIrA ? "crosshair" : undefined,
+      }}
+      onClick={onIrA ? irAlPunto : undefined}
       role="img"
       aria-label={
         destino
@@ -262,6 +314,39 @@ export default function MiniMapa({
           {e.texto}
         </text>
       ))}
+
+      {/* Usted está aquí, con el cono de visión.
+          Es el préstamo más directo que hay de los videojuegos y resuelve lo
+          que hace abandonar un recorrido en primera persona: no saber para
+          dónde se está mirando. El cono se dibuja antes que el punto para que
+          el punto quede encima y siempre se lea. */}
+      {camara && (() => {
+        const cx = px(camara.x);
+        const cy = py(camara.z);
+        const largo = Math.hypot(camara.dirX, camara.dirZ) || 1;
+        const ux = camara.dirX / largo;
+        const uz = camara.dirZ / largo;
+        // Un cono de ±28°, parecido al campo de visión de la cámara 3D.
+        const ALCANCE = 34;
+        const SENO = Math.sin((28 * Math.PI) / 180);
+        const COSENO = Math.cos((28 * Math.PI) / 180);
+        const punta = (giro: number) => {
+          const gx = ux * COSENO - uz * giro * SENO;
+          const gz = ux * giro * SENO + uz * COSENO;
+          return `${cx + gx * ALCANCE},${cy + gz * ALCANCE}`;
+        };
+        return (
+          <g style={{ pointerEvents: "none" }}>
+            <polygon
+              points={`${cx},${cy} ${punta(1)} ${punta(-1)}`}
+              fill="var(--accent)"
+              opacity={0.22}
+            />
+            <circle cx={cx} cy={cy} r={5.5} fill="#fff" opacity={0.9} />
+            <circle cx={cx} cy={cy} r={4} fill="var(--accent)" />
+          </g>
+        );
+      })()}
 
       {/* El destino: anillo, relleno y etiqueta. Todo el color del dibujo se
           gasta acá, que es lo único que hay que encontrar. */}

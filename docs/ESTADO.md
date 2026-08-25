@@ -658,6 +658,49 @@ muebles de NAVE son góndolas y la mayoría están giradas 90°. Sin la rotació
   mirando la góndola que uno tenía enfrente— y un `invalidate()`, porque el lienzo sólo
   renderiza bajo demanda y el cuadro nuevo nunca se dibujaba.
 
+### El minimapa y el teletransporte
+
+Lo que hace abandonar un recorrido en primera persona no es que se vea feo: es no
+saber dónde uno está parado. El minimapa es el préstamo más directo que hay de los
+videojuegos y resuelve exactamente eso.
+
+**Es el mismo `MiniMapa` de la pantalla del montaje**, no uno nuevo. Se le agregaron dos
+cosas y el resto quedó igual:
+
+- `camara={{ x, z, dirX, dirZ }}` dibuja el "usted está aquí" con su cono de visión. Se le
+  pasa el **vector** de dirección y no un ángulo a propósito: el 3D lo saca de
+  `camera.getWorldDirection()` y así nadie tiene que acertarle desde afuera a la convención
+  de Euler de Three.js.
+- `onIrA(x, z)` vuelve el plano entero elegible **por posición y no por mueble**, y devuelve
+  metros. Ése es el teletransporte.
+
+`targetCode` pasó a ser opcional: la caminata no señala ningún mueble en particular.
+
+**Dónde aterriza el salto.** En el lugar despejado más cercano a lo que se tocó
+(`puntoLibreCerca`, el mismo que elige por dónde se entra). Quien apunta al medio de una
+góndola quiere el pasillo de al lado, no que no pase nada. La mirada no se toca: uno salta,
+no gira.
+
+**Por qué el salto pide soltar el mouse.** Con el puntero capturado el navegador lo esconde
+y manda todo al lienzo: no hay cursor que pueda tocar un `<div>`. Así que el minimapa
+siempre orienta, pero sólo se vuelve clickeable con el mouse suelto — `Esc`, clic en el
+plano, y clic en el lienzo para seguir caminando. Es el mismo patrón de cualquier juego que
+abre el mapa grande soltando el control.
+
+**Un bug que sólo se veía estando quieto.** El lienzo corre con `frameloop="demand"`:
+dibuja cuando alguien se lo pide. `PointerLockControls` mueve la cámara en el `mousemove`,
+fuera del bucle de cuadros, y nadie pedía el redibujo — así que **parado y mirando alrededor
+la imagen quedaba congelada** hasta tocar una tecla de movimiento. Caminando no se notaba,
+porque el propio paso pedía el cuadro. Se arregla enganchando `invalidate()` al `change` del
+control.
+
+**El minimapa no re-renderiza 60 veces por segundo.** La posición se informa sólo cuando uno
+se movió más de 12 cm o giró lo suficiente; caminando eso son unas pocas veces por metro.
+
+Y de paso: las etiquetas de referencia se calculaban 5 px por letra, pero van en negrita, en
+mayúsculas y con `letter-spacing`. Con esa cuenta "CARNES" y "NEVERAS" pasaban el filtro de
+choque en NAVE y se dibujaban una encima de la otra igual. Ahora son 6,5.
+
 ---
 
 ## Pendiente urgente: datos de TERRON

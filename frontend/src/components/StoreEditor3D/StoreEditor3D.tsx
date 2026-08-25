@@ -17,12 +17,13 @@ import { fileUrl, getFaceImages } from "../../api/files";
 // Extensión real del local y física de la caminata — geometría pura, probada
 // aparte. STORE_W/STORE_D describen una tienda ficticia que ninguna sede ocupa.
 import {
-  limitesDePlanta, murosDeCaminata, puntoDeEntrada, resolverPaso,
+  limitesDePlanta, murosDeCaminata, puntoDeEntrada, puntoLibreCerca, resolverPaso,
   vistaGeneral, miradaSensata,
   VEL_CAMINANDO, VEL_APURADA,
   type LimitesPlanta,
 } from "../../utils/planta";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
+import MiniMapa, { type CamaraEnPlanta } from "../MiniMapa/MiniMapa";
 
 // ─── Scene constants ──────────────────────────────────────────────────────────
 
@@ -2104,12 +2105,17 @@ function AlignmentGuides({
 // mide en metros por segundo en vez de metros por frame.
 
 function FirstPersonControls({
-  orbitRef, active, fixtures, limites
+  orbitRef, active, fixtures, limites, onCamara, saltarA
 }: {
   orbitRef: React.MutableRefObject<ThreeOrbitControls|null>;
   active:   boolean;
   fixtures: PlacedFixture[];
   limites:  LimitesPlanta;
+  /** Avisa dónde está y hacia dónde mira, para el minimapa. */
+  onCamara: (c: CamaraEnPlanta | null) => void;
+  /** Pedido de teletransporte. `n` cambia en cada clic para que tocar dos
+   *  veces el mismo punto del plano vuelva a saltar. */
+  saltarA:  { x: number; z: number; n: number } | null;
 }) {
   const { camera, gl, invalidate } = useThree();
   const ctrlRef = useRef<PointerLockControls|null>(null);
@@ -2118,6 +2124,24 @@ function FirstPersonControls({
 
   const muros   = useMemo(() => murosDeCaminata(fixtures), [fixtures]);
   const entrada = useMemo(() => puntoDeEntrada(limites, muros), [limites, muros]);
+
+  /** Último estado informado al minimapa, para no re-renderizar en cada cuadro. */
+  const ultimo = useRef<CamaraEnPlanta | null>(null);
+  const avisar = useCallback(() => {
+    const d = camera.getWorldDirection(new THREE.Vector3());
+    const p = camera.position;
+    const previo = ultimo.current;
+    // Un umbral por posición y otro por giro: caminar redibuja el minimapa unas
+    // pocas veces por metro en vez de 60 veces por segundo.
+    if (previo) {
+      const movio = Math.hypot(p.x - previo.x, p.z - previo.z) > 0.12;
+      const giro  = Math.hypot(d.x - previo.dirX, d.z - previo.dirZ) > 0.04;
+      if (!movio && !giro) return;
+    }
+    const c = { x: p.x, z: p.z, dirX: d.x, dirZ: d.z };
+    ultimo.current = c;
+    onCamara(c);
+  }, [camera, onCamara]);
 
   useEffect(() => {
     if (!active) return;
@@ -2130,7 +2154,15 @@ function FirstPersonControls({
     const ctrl = new PointerLockControls(camera, gl.domElement);
     ctrlRef.current = ctrl;
 
+    // Con frameloop="demand" el lienzo sólo dibuja cuando se lo pide alguien.
+    // PointerLockControls mueve la cámara en el mousemove, fuera del bucle de
+    // cuadros: sin esto, parado y mirando alrededor la imagen quedaba
+    // congelada hasta que uno tocaba una tecla de movimiento.
+    const alMirar = () => { invalidate(); avisar(); };
+    ctrl.addEventListener('change', alMirar);
+
     if (orbitRef.current) orbitRef.current.enabled = false;
+    avisar();
 
     const lockOnClick = () => ctrl.lock();
     gl.domElement.addEventListener('click', lockOnClick);
@@ -2144,10 +2176,13 @@ function FirstPersonControls({
     document.addEventListener('keyup',   onKey);
 
     return () => {
+      ctrl.removeEventListener('change', alMirar);
       ctrl.unlock();
       ctrl.dispose();
       ctrlRef.current = null;
       keys.current = {};
+      ultimo.current = null;
+      onCamara(null);
       gl.domElement.removeEventListener('click', lockOnClick);
       document.removeEventListener('keydown', onKey);
       document.removeEventListener('keyup',   onKey);
@@ -2169,7 +2204,20 @@ function FirstPersonControls({
       invalidate();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, camera, gl, invalidate, entrada, limites]);
+  }, [active, camera, gl, invalidate, entrada, limites, avisar, onCamara]);
+
+  // Teletransporte: aterriza en el lugar despejado más cercano a lo que se
+  // tocó en el plano. Quien apunta al medio de una góndola quiere el pasillo
+  // de al lado, no que no pase nada. La mirada no se toca: uno salta, no gira.
+  const saltoAtendido = useRef<number>(-1);
+  useEffect(() => {
+    if (!active || !saltarA || saltoAtendido.current === saltarA.n) return;
+    saltoAtendido.current = saltarA.n;
+    const destino = puntoLibreCerca(limites, muros, saltarA.x, saltarA.z);
+    camera.position.set(destino.x, CAM_Y, destino.z);
+    avisar();
+    invalidate();
+  }, [active, saltarA, limites, muros, camera, avisar, invalidate]);
 
   useFrame((_, delta) => {
     if (!active || !ctrlRef.current?.isLocked) return;
@@ -2200,6 +2248,7 @@ function FirstPersonControls({
     );
 
     camera.position.set(x, CAM_Y, z);
+    avisar();
     invalidate(); // sustain the loop while keys are held
   });
 
@@ -2715,6 +2764,8 @@ interface SceneProps {
   screenshotReady:   (fn: () => void) => void;
   topViewReady:      (fn: () => void) => void;
   firstPerson:       boolean;
+  onCamaraFP:        (c: CamaraEnPlanta | null) => void;
+  saltarA:           { x: number; z: number; n: number } | null;
   onHoverFixture:    (id: string|null, x: number, y: number) => void;
   fixtures:          import("../../types/fixtures").UnifiedFixture[];
 }
@@ -2724,7 +2775,8 @@ function Scene({
   placingDef, ghostX, ghostZ, ghostRotY, ghostCollides,
   draggingId, orbitRef, onFloorMove, onFloorClick,
   onSelectFixture, setPlacedFixtures,
-  screenshotReady, topViewReady, firstPerson, onHoverFixture, fixtures,
+  screenshotReady, topViewReady, firstPerson, onCamaraFP, saltarA,
+  onHoverFixture, fixtures,
 }: SceneProps) {
   const { gl, camera, invalidate } = useThree();
   const { setCamera3D } = useFixtureStore();
@@ -3107,6 +3159,8 @@ function Scene({
         active={firstPerson}
         fixtures={placedFixtures}
         limites={limites}
+        onCamara={onCamaraFP}
+        saltarA={saltarA}
       />
 
       {/* MEJORA 5: Screenshot capture */}
@@ -3586,6 +3640,25 @@ export default function StoreEditor3D() {
 
   // MEJORA 8: First-person mode
   const [firstPerson, setFirstPerson] = useState(false);
+  // Dónde está y hacia dónde mira quien camina — lo dibuja el minimapa.
+  const [camaraFP, setCamaraFP] = useState<CamaraEnPlanta | null>(null);
+  // Pedido de teletransporte. El contador hace que tocar dos veces el mismo
+  // punto del plano vuelva a saltar, en vez de quedarse quieto.
+  const [saltarA, setSaltarA] = useState<{ x: number; z: number; n: number } | null>(null);
+  // Con el mouse capturado no hay puntero que pueda tocar el plano: el
+  // navegador lo esconde y manda todo al lienzo. El minimapa sigue orientando,
+  // pero el salto sólo se ofrece cuando el mouse está suelto.
+  const [mouseSuelto, setMouseSuelto] = useState(true);
+  // Al salir de la caminata se olvida el último salto pedido. Si no, cambiar de
+  // sede remonta la escena y al volver a entrar uno aparecía en el punto que
+  // había tocado en el plano de la sede anterior.
+  useEffect(() => { if (!firstPerson) setSaltarA(null); }, [firstPerson]);
+  useEffect(() => {
+    const alCambiar = () => setMouseSuelto(document.pointerLockElement === null);
+    document.addEventListener("pointerlockchange", alCambiar);
+    alCambiar();
+    return () => document.removeEventListener("pointerlockchange", alCambiar);
+  }, []);
 
   // MEJORA 9: Hover tooltip
   const [hoveredFixtureId, setHoveredFixtureId] = useState<string|null>(null);
@@ -4034,6 +4107,8 @@ export default function StoreEditor3D() {
               screenshotReady={setScreenshotFn}
               topViewReady={setTopViewFn}
               firstPerson={firstPerson}
+              onCamaraFP={setCamaraFP}
+              saltarA={saltarA}
               onHoverFixture={onHoverFixture}
               fixtures={fixtures}
             />
@@ -4081,10 +4156,34 @@ export default function StoreEditor3D() {
               <p><kbd className="bg-white/10 rounded px-1">WASD</kbd> para caminar</p>
               <p><kbd className="bg-white/10 rounded px-1">Shift</kbd> para ir más rápido</p>
               <p><kbd className="bg-white/10 rounded px-1">Esc</kbd> para soltar el mouse</p>
+              <p><kbd className="bg-white/10 rounded px-1">Esc</kbd> y clic en el plano para saltar ahí</p>
               <button onClick={() => setFirstPerson(false)} className="pointer-events-auto mt-2 w-full rounded bg-white/10 hover:bg-white/20 px-2 py-1 text-center">
                 Volver a vista orbital
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Minimapa: dónde estoy y para dónde miro.
+            Es lo que evita perderse en primera persona, y además es el atajo
+            para moverse: con el mouse suelto, un clic en el plano teletransporta.
+            Caminar 40 m con WASD para ver la otra punta no lo hace nadie. */}
+        {firstPerson && fixtures.length > 0 && (
+          <div className="absolute bottom-4 left-4 z-10 w-[316px] overflow-hidden rounded-xl border border-white/10 bg-black/50 p-2 backdrop-blur-sm">
+            <MiniMapa
+              fixtures={fixtures}
+              ancho={300}
+              altoMax={240}
+              camara={camaraFP ?? undefined}
+              onIrA={mouseSuelto
+                ? (x, z) => setSaltarA(p => ({ x, z, n: (p?.n ?? 0) + 1 }))
+                : undefined}
+            />
+            <p className="mt-1.5 text-center text-[10px] leading-tight text-white/60">
+              {mouseSuelto
+                ? "Clic en el plano para ir ahí"
+                : "Esc suelta el mouse y el plano se vuelve clickeable"}
+            </p>
           </div>
         )}
       </div>
