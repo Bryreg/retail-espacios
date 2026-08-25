@@ -14,6 +14,14 @@ import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { isDoubleGondola, isRentable, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
 import { fileUrl, getFaceImages } from "../../api/files";
+// Extensión real del local y física de la caminata — geometría pura, probada
+// aparte. STORE_W/STORE_D describen una tienda ficticia que ninguna sede ocupa.
+import {
+  limitesDePlanta, murosDeCaminata, puntoDeEntrada, resolverPaso,
+  vistaGeneral, miradaSensata,
+  VEL_CAMINANDO, VEL_APURADA,
+  type LimitesPlanta,
+} from "../../utils/planta";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 
 // ─── Scene constants ──────────────────────────────────────────────────────────
@@ -24,6 +32,8 @@ const SNAP    = 0.05;   // matches FloorPlan2D's snapTo grid (5 cm)
 // Camera is placed on the far (north) side so that the Z axis matches the 2D view:
 // small Z (2D-top) → far from camera → appears at top of 3D scene.
 // Previously the camera was at Z=-8 (south side), which flipped the 2D/3D relationship.
+/** Caja de respaldo cuando la planta está vacía: no hay muebles de donde deducirla. */
+const PLANTA_NOMINAL = { minX: 0, maxX: STORE_W, minZ: 0, maxZ: STORE_D };
 const CAM_POS: [number, number, number] = [STORE_W / 2, 28, STORE_D + 8];
 const CAM_TARGET: [number, number, number] = [STORE_W / 2, 0, STORE_D / 2];
 
@@ -246,9 +256,12 @@ function validatePlacement(
       return "⚠️ Un Cross debe estar cerca de una Góndola";
   }
   if (def.type === "gondola" && def.gondolaType === "wall") {
+    // Contra la caja nominal, en una sede real esta advertencia salía siempre:
+    // las paredes están donde terminan los muebles, no en x = 30 / z = 42.
     const margin = 3;
-    const nearWall = pos.x < margin || pos.x > STORE_W - margin ||
-                     pos.z < margin || pos.z > STORE_D - margin;
+    const lim = limitesDePlanta(existing, 0, PLANTA_NOMINAL);
+    const nearWall = pos.x < lim.minX + margin || pos.x > lim.maxX - margin ||
+                     pos.z < lim.minZ + margin || pos.z > lim.maxZ - margin;
     if (!nearWall)
       return "⚠️ Góndola Mural recomendada cerca de una pared";
   }
@@ -1943,11 +1956,12 @@ function ScreenshotCapture({ onReady }: { onReady: (fn: () => void) => void }) {
 // ─── MEJORA 6: Transform Controls (Gizmo) ────────────────────────────────────
 
 function FixtureTransformControls({
-  fixture, orbitRef, onMove
+  fixture, orbitRef, onMove, limites
 }: {
   fixture: PlacedFixture;
   orbitRef: React.MutableRefObject<ThreeOrbitControls|null>;
   onMove: (id: string, x: number, z: number) => void;
+  limites: LimitesPlanta;
 }) {
   const { camera, gl, scene } = useThree();
   const groupRef = useRef<THREE.Group>(null);
@@ -1970,8 +1984,10 @@ function FixtureTransformControls({
       if (!groupRef.current) return;
       const p = groupRef.current.position;
       onMove(fixture.id, snap(p.x), snap(p.z));
-      p.x = Math.max(0, Math.min(STORE_W, p.x));
-      p.z = Math.max(0, Math.min(STORE_D, p.z));
+      // Contra STORE_W/STORE_D esto encerraba el gizmo en x ≥ 0, y la mitad
+      // izquierda de una sede real quedaba fuera de alcance al arrastrar.
+      p.x = Math.max(limites.minX, Math.min(limites.maxX, p.x));
+      p.z = Math.max(limites.minZ, Math.min(limites.maxZ, p.z));
       p.y = 0;
     };
 
@@ -2083,23 +2099,33 @@ function AlignmentGuides({
 }
 
 // ─── MEJORA 8: First-person controls ─────────────────────────────────────────
+// La caminata se apoya en tres cosas que antes no existían: los límites salen
+// de la planta real (no de STORE_W/STORE_D), los muebles frenan, y el paso se
+// mide en metros por segundo en vez de metros por frame.
 
 function FirstPersonControls({
-  orbitRef, active
+  orbitRef, active, fixtures, limites
 }: {
   orbitRef: React.MutableRefObject<ThreeOrbitControls|null>;
-  active: boolean;
+  active:   boolean;
+  fixtures: PlacedFixture[];
+  limites:  LimitesPlanta;
 }) {
   const { camera, gl, invalidate } = useThree();
   const ctrlRef = useRef<PointerLockControls|null>(null);
   const keys    = useRef<Record<string, boolean>>({});
-  const SPEED   = 0.08;
   const CAM_Y   = 1.65;
+
+  const muros   = useMemo(() => murosDeCaminata(fixtures), [fixtures]);
+  const entrada = useMemo(() => puntoDeEntrada(limites, muros), [limites, muros]);
 
   useEffect(() => {
     if (!active) return;
 
-    camera.position.set(STORE_W/2, CAM_Y, STORE_D/4);
+    camera.position.set(entrada.x, CAM_Y, entrada.z);
+    // Mirar a lo largo del lado más largo del local, no contra una pared.
+    if (limites.w >= limites.d) camera.lookAt(limites.maxX, CAM_Y, entrada.z);
+    else                        camera.lookAt(entrada.x, CAM_Y, limites.maxZ);
 
     const ctrl = new PointerLockControls(camera, gl.domElement);
     ctrlRef.current = ctrl;
@@ -2121,30 +2147,59 @@ function FirstPersonControls({
       ctrl.unlock();
       ctrl.dispose();
       ctrlRef.current = null;
+      keys.current = {};
       gl.domElement.removeEventListener('click', lockOnClick);
       document.removeEventListener('keydown', onKey);
       document.removeEventListener('keyup',   onKey);
-      if (orbitRef.current) orbitRef.current.enabled = true;
-      camera.position.set(...CAM_POS);
+      // Volver a una vista general de ESTA planta. CAM_POS apunta al centro de
+      // la tienda ficticia; en una sede real dejaba la cámara mirando al vacío.
+      const { pos, mirada } = vistaGeneral(limites);
+      camera.position.set(pos.x, pos.y, pos.z);
+      const orbit = orbitRef.current;
+      if (orbit) {
+        orbit.enabled = true;
+        // Apuntar al centro real del local. Una cámara guardada de antes trae
+        // el centro de la tienda ficticia y deja la sede corrida a un lado.
+        orbit.target.set(mirada.x, mirada.y, mirada.z);
+        // Sin update() la cámara conserva la rotación de la caminata y sigue
+        // mirando la góndola que uno tenía enfrente; sin invalidate() el cuadro
+        // nuevo nunca se dibuja, porque el lienzo sólo renderiza bajo demanda.
+        orbit.update();
+      }
+      invalidate();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, camera, gl, invalidate]);
+  }, [active, camera, gl, invalidate, entrada, limites]);
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     if (!active || !ctrlRef.current?.isLocked) return;
-    const anyKey =
-      keys.current['KeyW'] || keys.current['ArrowUp']    ||
-      keys.current['KeyS'] || keys.current['ArrowDown']  ||
-      keys.current['KeyA'] || keys.current['ArrowLeft']  ||
-      keys.current['KeyD'] || keys.current['ArrowRight'];
-    if (!anyKey) return;
-    if (keys.current['KeyW'] || keys.current['ArrowUp'])    ctrlRef.current.moveForward(SPEED);
-    if (keys.current['KeyS'] || keys.current['ArrowDown'])  ctrlRef.current.moveForward(-SPEED);
-    if (keys.current['KeyA'] || keys.current['ArrowLeft'])  ctrlRef.current.moveRight(-SPEED);
-    if (keys.current['KeyD'] || keys.current['ArrowRight']) ctrlRef.current.moveRight(SPEED);
-    camera.position.y = CAM_Y;
-    camera.position.x = Math.max(-2, Math.min(STORE_W+2, camera.position.x));
-    camera.position.z = Math.max(-2, Math.min(STORE_D+2, camera.position.z));
+    const k = keys.current;
+    const adelante = k['KeyW'] || k['ArrowUp'];
+    const atras    = k['KeyS'] || k['ArrowDown'];
+    const izq      = k['KeyA'] || k['ArrowLeft'];
+    const der      = k['KeyD'] || k['ArrowRight'];
+    if (!adelante && !atras && !izq && !der) return;
+
+    // delta acotado: si la pestaña estuvo en segundo plano, un salto de varios
+    // segundos atravesaría media tienda de un tirón.
+    const vel  = (k['ShiftLeft'] || k['ShiftRight']) ? VEL_APURADA : VEL_CAMINANDO;
+    const paso = vel * Math.min(delta, 0.1);
+
+    const antesX = camera.position.x;
+    const antesZ = camera.position.z;
+
+    if (adelante) ctrlRef.current.moveForward(paso);
+    if (atras)    ctrlRef.current.moveForward(-paso);
+    if (izq)      ctrlRef.current.moveRight(-paso);
+    if (der)      ctrlRef.current.moveRight(paso);
+
+    const { x, z } = resolverPaso(
+      { x: antesX, z: antesZ },
+      { x: camera.position.x, z: camera.position.z },
+      limites, muros,
+    );
+
+    camera.position.set(x, CAM_Y, z);
     invalidate(); // sustain the loop while keys are held
   });
 
@@ -2674,6 +2729,10 @@ function Scene({
   const { gl, camera, invalidate } = useThree();
   const { setCamera3D } = useFixtureStore();
 
+  // Extensión real del local. De aquí salen la grilla, el piso que recibe
+  // clics, la vista superior y los límites de la caminata en primera persona.
+  const limites = useMemo(() => limitesDePlanta(placedFixtures, 2.5, PLANTA_NOMINAL), [placedFixtures]);
+
   // Unified fixtures by id — sede/code/faceB metadata + badge checks.
   const unifiedById = useMemo(() => {
     const m = new Map<string, UnifiedFixture>();
@@ -2783,26 +2842,32 @@ function Scene({
     topViewReady(() => {
       const ctrl = orbitRef.current;
       if (!ctrl) return;
-      const cx = STORE_W / 2;
-      const cz = STORE_D / 2;
-      camera.position.set(cx, Math.max(STORE_W, STORE_D) * 0.9, cz);
-      ctrl.target.set(cx, 0, cz);
+      camera.position.set(limites.cx, Math.max(limites.w, limites.d) * 0.9, limites.cz);
+      ctrl.target.set(limites.cx, 0, limites.cz);
       ctrl.update();
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topViewReady]);
+  }, [topViewReady, limites]);
 
-  // CHANGE 2A — Auto-center orbit target on fixture centroid (only when target is at origin)
+  // CHANGE 2A — Encuadrar el local al abrir.
+  //
+  // Antes esto sólo actuaba si el punto de mira estaba exactamente en el
+  // origen. Una cámara guardada apuntando al centro de la tienda ficticia
+  // (15, 21) pasaba el filtro y la sede quedaba arrinconada en una esquina de
+  // la pantalla al entrar. Ahora se reencuadra siempre que la mira caiga fuera
+  // del local; si el usuario la dejó adentro, se respeta su encuadre.
   useEffect(() => {
-    if (!orbitRef.current || placedFixtures.length === 0) return;
-    const cx = placedFixtures.reduce((s, f) => s + f.x, 0) / placedFixtures.length;
-    const cz = placedFixtures.reduce((s, f) => s + f.z, 0) / placedFixtures.length;
-    const t = orbitRef.current.target;
-    if (Math.abs(t.x) < 0.01 && Math.abs(t.z) < 0.01) {
-      orbitRef.current.target.set(cx, 0, cz);
-      orbitRef.current.update();
-    }
-  }, [placedFixtures]);
+    const orbit = orbitRef.current;
+    if (!orbit || placedFixtures.length === 0) return;
+    const t = orbit.target;
+    if (miradaSensata(limites, t.x, t.z)) return;
+    const { pos, mirada } = vistaGeneral(limites);
+    camera.position.set(pos.x, pos.y, pos.z);
+    orbit.target.set(mirada.x, mirada.y, mirada.z);
+    orbit.update();
+    invalidate();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placedFixtures, limites]);
 
   // CHANGE 2B — Double-click to reset orbit pivot to clicked point
   function handleSceneDoubleClick(e: any) {
@@ -2812,22 +2877,33 @@ function Scene({
   }
 
   // Two-level grid: major 1 m lines (visible) + minor 0.5 m lines (faint).
-  // Size is capped to store bounds + a small margin to avoid drawing unnecessary geometry.
+  // Se dimensiona y se centra sobre la planta real. El centro y el tamaño se
+  // redondean a 1 m para no reconstruir la grilla en cada frame de un arrastre.
+  const gridCX   = Math.round(limites.cx);
+  const gridCZ   = Math.round(limites.cz);
+  const gridSize = Math.ceil(Math.max(limites.w, limites.d)) + 4;
   const { gridMajor, gridMinor } = useMemo(() => {
-    const SIZE = Math.ceil(Math.max(STORE_W, STORE_D)) + 4; // ~46 instead of 120
-    const DIVS = SIZE; // 1 m per cell
-    const major = new THREE.GridHelper(SIZE, DIVS, "#a09890", "#cbc6be");
-    major.position.set(STORE_W/2, 0.004, STORE_D/2);
+    const DIVS = gridSize; // 1 m per cell
+    const major = new THREE.GridHelper(gridSize, DIVS, "#a09890", "#cbc6be");
+    major.position.set(gridCX, 0.004, gridCZ);
     (major.material as THREE.LineBasicMaterial).transparent = true;
     (major.material as THREE.LineBasicMaterial).opacity = 0.55;
 
-    const minor = new THREE.GridHelper(SIZE, DIVS * 2, "#dbd8d4", "#dbd8d4");
-    minor.position.set(STORE_W/2, 0.002, STORE_D/2);
+    const minor = new THREE.GridHelper(gridSize, DIVS * 2, "#dbd8d4", "#dbd8d4");
+    minor.position.set(gridCX, 0.002, gridCZ);
     (minor.material as THREE.LineBasicMaterial).transparent = true;
     (minor.material as THREE.LineBasicMaterial).opacity = 0.35;
 
     return { gridMajor: major, gridMinor: minor };
-  }, []);
+  }, [gridCX, gridCZ, gridSize]);
+
+  // Liberar la grilla anterior cuando cambia el tamaño de la planta.
+  useEffect(() => () => {
+    [gridMajor, gridMinor].forEach(g => {
+      g.geometry.dispose();
+      (g.material as THREE.Material).dispose();
+    });
+  }, [gridMajor, gridMinor]);
 
   const ghostFixture: PlacedFixture | null = placingDef ? {
     id:"ghost", code:"", type:placingDef.type,
@@ -2845,13 +2921,16 @@ function Scene({
     <>
       {/* MEJORA 1: Rebalanced lights */}
       <ambientLight intensity={0.55} color="#fff8f0" />
-      <directionalLight position={[STORE_W/2,40,STORE_D/2]} intensity={1.6} castShadow
+      {/* La luz principal y su cámara de sombras se cuelgan de la planta real:
+          ancladas a STORE_W/STORE_D iluminaban una tienda que no existe y
+          recortaban la sombra justo donde empieza la mitad izquierda de NAVE. */}
+      <directionalLight position={[limites.cx,40,limites.cz]} intensity={1.6} castShadow
         shadow-mapSize-width={1024} shadow-mapSize-height={1024}
         shadow-camera-near={0.5} shadow-camera-far={120}
-        shadow-camera-left={-STORE_W/2 - 4} shadow-camera-right={STORE_W/2 + 4}
-        shadow-camera-top={STORE_D/2 + 4} shadow-camera-bottom={-STORE_D/2 - 4} />
-      <directionalLight position={[0,25,0]} intensity={0.3} color="#fffaee" />
-      <directionalLight position={[STORE_W,25,STORE_D]} intensity={0.2} color="#e0eeff" />
+        shadow-camera-left={-limites.w/2 - 4} shadow-camera-right={limites.w/2 + 4}
+        shadow-camera-top={limites.d/2 + 4} shadow-camera-bottom={-limites.d/2 - 4} />
+      <directionalLight position={[limites.minX,25,limites.minZ]} intensity={0.3} color="#fffaee" />
+      <directionalLight position={[limites.maxX,25,limites.maxZ]} intensity={0.2} color="#e0eeff" />
 
       <StoreRoom fixtures={placedFixtures} />
       <primitive object={gridMinor} />
@@ -2884,12 +2963,12 @@ function Scene({
       {/* Invisible raycast floor */}
       <mesh
         rotation={[-Math.PI/2,0,0]}
-        position={[STORE_W/2,0.005,STORE_D/2]}
+        position={[limites.cx,0.005,limites.cz]}
         onDoubleClick={handleSceneDoubleClick}
         onPointerMove={e=>{
           e.stopPropagation();
-          const cx=Math.max(0,Math.min(STORE_W,snap(e.point.x)));
-          const cz=Math.max(0,Math.min(STORE_D,snap(e.point.z)));
+          const cx=Math.max(limites.minX,Math.min(limites.maxX,snap(e.point.x)));
+          const cz=Math.max(limites.minZ,Math.min(limites.maxZ,snap(e.point.z)));
           if(draggingId.current) {
             const id = draggingId.current;
             setPlacedFixtures(prev => {
@@ -2913,13 +2992,13 @@ function Scene({
         onClick={e=>{
           e.stopPropagation();
           if(!draggingId.current){
-            const cx=Math.max(0,Math.min(STORE_W,snap(e.point.x)));
-            const cz=Math.max(0,Math.min(STORE_D,snap(e.point.z)));
+            const cx=Math.max(limites.minX,Math.min(limites.maxX,snap(e.point.x)));
+            const cz=Math.max(limites.minZ,Math.min(limites.maxZ,snap(e.point.z)));
             onFloorClick(cx,cz);
           }
         }}
       >
-        <planeGeometry args={[STORE_W+40,STORE_D+40]} />
+        <planeGeometry args={[limites.w+40,limites.d+40]} />
         <meshBasicMaterial visible={false} side={THREE.DoubleSide} />
       </mesh>
 
@@ -3011,6 +3090,7 @@ function Scene({
           <FixtureTransformControls
             fixture={fix}
             orbitRef={orbitRef}
+            limites={limites}
             onMove={(id, x, z) => setPlacedFixtures(prev => {
               const dragged = prev.find(f => f.id === id);
               if (!dragged) return prev;
@@ -3022,7 +3102,12 @@ function Scene({
       })()}
 
       {/* MEJORA 8: First-person controls */}
-      <FirstPersonControls orbitRef={orbitRef} active={firstPerson} />
+      <FirstPersonControls
+        orbitRef={orbitRef}
+        active={firstPerson}
+        fixtures={placedFixtures}
+        limites={limites}
+      />
 
       {/* MEJORA 5: Screenshot capture */}
       <ScreenshotCapture onReady={screenshotReady} />
@@ -3993,7 +4078,8 @@ export default function StoreEditor3D() {
             <div className="rounded-xl border border-white/10 bg-black/50 p-3 backdrop-blur-sm text-xs text-white/70 space-y-1">
               <p className="font-semibold text-white/90 mb-2">Modo Primera Persona</p>
               <p><kbd className="bg-white/10 rounded px-1">Clic</kbd> para capturar el mouse</p>
-              <p><kbd className="bg-white/10 rounded px-1">WASD</kbd> para moverse</p>
+              <p><kbd className="bg-white/10 rounded px-1">WASD</kbd> para caminar</p>
+              <p><kbd className="bg-white/10 rounded px-1">Shift</kbd> para ir más rápido</p>
               <p><kbd className="bg-white/10 rounded px-1">Esc</kbd> para soltar el mouse</p>
               <button onClick={() => setFirstPerson(false)} className="pointer-events-auto mt-2 w-full rounded bg-white/10 hover:bg-white/20 px-2 py-1 text-center">
                 Volver a vista orbital
