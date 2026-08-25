@@ -1037,6 +1037,102 @@ de autenticación y los reporta como problema de red.
 
 ---
 
+## La mercaderista ya no entra con contraseña
+
+El correo de montaje llevaba un enlace pelado y del otro lado había un login. La
+mercaderista entraba con la **contraseña compartida del rol `worker`** y
+aterrizaba en el tablero: el mapa de la sede entera, la tabla con el proveedor,
+el período y el estado de cada espacio. Todo eso para responder una sola
+pregunta — ¿lo montaste? —. Y una contraseña compartida repartida por correo
+sobrevive a la persona que deja de trabajar ahí.
+
+Ahora el correo lleva un **enlace firmado**: un JWT de rol `montaje`, acotado a
+ESE espacio y con vencimiento a 30 días (`MONTAJE_TTL_DAYS`). Se toca y se está
+adentro, sin contraseña, en una pantalla que sólo tiene ese espacio.
+
+### La regla de la que cuelga todo: cerrado por defecto
+
+`decode_token` **no reconoce el rol `montaje`**, así que `require_auth` lo
+rechaza en toda la aplicación. Lo abre `require_montaje`, y sólo está puesto en
+un router nuevo —`/api/montaje`— que es todo lo que ese token alcanza.
+
+Es a propósito y al revés de lo que sale natural: dejarlo pasar por la puerta
+general y filtrar endpoint por endpoint significa que el endpoint que alguien
+agregue mañana nace abierto. Así nace cerrado.
+
+`test_el_token_no_abre_ningun_otro_endpoint` recorre **las rutas de verdad** de
+la app —26 hoy, con `/api/health` como única excepción escrita a mano— y exige
+401 en todas. Si alguien agrega un endpoint, el barrido lo prueba solo; si
+agrega uno con un parámetro que el test no sabe rellenar, falla pidiendo que se
+lo enseñen, en vez de saltárselo en silencio.
+
+### Tres endpoints, ni uno más
+
+* `GET /montaje/mi-espacio` — todo lo que la pantalla muestra, en **una sola
+  llamada**: su espacio con proveedor, marca y fechas; los vecinos como **pura
+  geometría** para dibujar dónde queda; si hay planometría; y el último reporte.
+  Una y no cuatro porque del otro lado hay un celular con señal de supermercado.
+* `GET /montaje/planometria` — el archivo de "así debe quedar". Se sirve desde
+  acá y no por `/planometrias/{id}` para no tener que abrir ese endpoint: allá
+  el id viene del pedido y habría que confiar en una comprobación; acá el
+  archivo se resuelve **desde el token** y no hay id que cambiar en la barra de
+  direcciones.
+* `POST /montaje/reportar` — el reporte. El código del espacio **no se toma del
+  formulario**: sale del token. Un campo del formulario lo escribe el cliente, y
+  con un enlace repartido por correo eso alcanza para escribir sobre el espacio
+  de otro proveedor.
+
+Los vecinos pasan por una **lista blanca** (`_GEOMETRIA`) y no por una negra: un
+campo comercial que se agregue mañana al layout no se filtra por olvido.
+
+### Una sola definición de qué es un reporte válido
+
+Hay dos puertas al mismo acto —el tablero con sesión y el enlace firmado— y las
+reglas (foto obligatoria si "montado", motivo obligatorio si "no pude", tipos de
+imagen aceptados, el prefijo `montaje--` que evita secuestrar la textura del 3D)
+viven en **una** función: `registrar_montaje` en `routers/mounts.py`. Duplicadas,
+la copia que se olvide de exigir la foto es justo la que usa quien monta.
+
+Lo mismo del lado del navegador: el formulario salió de `MountView.tsx` a
+`components/Montaje/FormularioMontaje.tsx` y lo usan las dos pantallas. Lo que
+cambia entre ellas entra por props — a dónde se manda el reporte, de dónde sale
+la planometría, y si hay una lista a la que volver.
+
+Y qué contrato manda hoy sobre un espacio es **una** regla
+(`services/contratos.py`), compartida con la planometría por código: si cada uno
+eligiera por su cuenta, el enlace mostraría "así debe quedar" de un contrato y
+los datos de otro.
+
+### Del lado del navegador
+
+`App.tsx` lee `?t=` **una vez, al arrancar**, antes de cualquier sesión: con ese
+token no hay tablero, no hay sincronización de layout y no hay login. El token
+se queda en la URL a propósito —es la credencial del enlace, y ahí sobrevive a
+una recarga—.
+
+`api/montaje.ts` es un cliente axios **aparte** del de la sesión y guarda el
+token **sólo en memoria**. Meterlo donde vive el de la sesión tendría dos
+costos: al admin que abre el enlace en su propio computador para revisar algo lo
+sacaría de su sesión, y dejaría la credencial de un enlace repartido por correo
+en el `localStorage` del navegador. Verificado en el navegador: el admin abre el
+enlace, ve la pantalla de montaje, vuelve a `/` y sigue siendo admin.
+
+Un enlace inválido o vencido **no dice «iniciá sesión»** — dice que el enlace ya
+no sirve y que pida que se lo reenvíen. Decirle a alguien que inicie sesión es
+mandarlo a buscar una contraseña que ya no necesita tener.
+
+### Lo que NO cambió
+
+El rol `worker` sigue existiendo y la pestaña *Montajes* del tablero sigue ahí:
+quien tenga la contraseña puede seguir entrando por ese camino. Lo que cambió es
+que la mercaderista **ya no la necesita**. Cuando esto esté rodando, la
+contraseña de worker se le puede dejar de dar.
+
+Los correos ya enviados llevan enlaces sin `?t=`: siguen cayendo en el login y
+funcionando como antes.
+
+---
+
 ## Pendiente urgente: datos de TERRON
 
 TERRON tenía datos reales y **quedó vacía en el servidor**, vaciada por el bug del layout
