@@ -273,6 +273,49 @@ cambia de estado y eso desmontaba el mensaje justo cuando había que leerlo.
 Desde **Supervisar** también se vende: el popover del mapa y el panel de detalle traen
 "Negociar este espacio", que cambia de modo con ese espacio ya elegido.
 
+### La planometría
+
+Cómo debe quedar armada la exhibición: la foto o el PDF que manda el proveedor.
+**Cuelga del contrato, no del mueble** (`lease_files`, tabla nueva).
+
+La misma punta de góndola recibe una planometría distinta cada vez que se alquila —cambia
+con el proveedor y con la temporada—, así que guardada en el mueble habría **un solo
+casillero que se sobreescribe**: al entrar Nutresa se pierde la de Alpina, y con ella la
+única prueba de qué se acordó armar en septiembre. Colgada del contrato, cada acuerdo
+lleva la suya y el histórico queda.
+
+Tabla propia y no `space_files` con una marca en el nombre, aunque eso ya se hizo una vez
+para las fotos de montaje: `list_face_images` toma la imagen más reciente de un espacio
+para pintar el panel del 3D, y una planometría ahí adentro volvería a secuestrar las artes
+del proveedor. Con tabla propia eso es imposible por construcción, no por convención.
+
+Quién la ve, y por dónde llega:
+
+| Quién | Cuándo | Cómo la encuentra |
+|---|---|---|
+| Admin | al cerrar el trato | la adjunta en el formulario; se sube después de crear el contrato |
+| Admin | después | detalle del espacio en Supervisar — puede cambiarla o quitarla |
+| Mercaderista | al montar | `GET /planometrias/por-espacio/{code}` |
+
+El mercaderista llega **por el código del espacio**, no por el id del contrato: el enlace
+del correo trae el código y no tiene por qué saber que existen contratos. El backend hace
+el salto espacio → contrato **que corre hoy** → archivo, y por fechas y no por la bandera
+`is_active`, que se queda en True desde que el contrato se crea.
+
+Detalles que se ganaron el lugar:
+
+- **Una por contrato.** Cargar otra reemplaza la anterior: dos verdades sobre cómo debe
+  quedar el mismo mueble es justo lo que este archivo existe para evitar.
+- **Si la subida falla, el contrato igual queda.** Ya se guardó y los correos ya salieron;
+  se avisa en la confirmación y se puede cargar después desde el detalle del espacio. Ese
+  mismo camino es el único que tienen los contratos anteriores a que esto existiera.
+- **Se acepta PDF además de imagen.** La mitad de los proveedores manda la exhibición en
+  PDF. El filtro compara contra una lista **cerrada** y nunca contra `image/*`: un SVG es
+  una imagen para el navegador y un documento con scripts para todo lo demás, y esto se
+  sirve inline desde el mismo origen que la app.
+- **El archivo no se borra al vencer el contrato.** Es la prueba que responde un reclamo
+  meses después, igual que la confirmación de montaje.
+
 ### El contrato tiene un solo dueño
 
 El contrato se llenaba en **tres** lugares: el panel del plano 2D, el panel del editor 3D

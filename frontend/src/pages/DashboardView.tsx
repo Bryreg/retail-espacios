@@ -42,6 +42,7 @@ import type {
 import SeasonPicker, { describeRange, type DateRange } from "../components/SeasonPicker/SeasonPicker";
 import ModoVender from "../components/Contrato/ModoVender";
 import type { ResumenContrato } from "../components/Contrato/Contrato";
+import Planometria from "../components/Contrato/Planometria";
 import { inclusiveDays } from "../types/seasons";
 
 // ─── Date / money helpers ────────────────────────────────────────────────────
@@ -1262,6 +1263,17 @@ function FixtureDetailCard({
               </div>
             )}
           </>
+        )}
+
+        {/* Qué le prometimos armar al proveedor. Se resuelve por el código del
+            espacio —el layout no guarda ids de contrato— y sólo aparece si hay
+            algo que mostrar o algo a lo que adjuntarle. */}
+        {rentable && hasContract && (
+          <Planometria
+            key={entry.code}
+            spaceCode={fullSpaceCode(fixture.sede, entry.code)}
+            isAdmin={isAdmin}
+          />
         )}
 
         {rentable && (state === "loading" || files.length > 0) && (

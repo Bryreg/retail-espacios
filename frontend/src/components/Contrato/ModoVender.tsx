@@ -180,6 +180,17 @@ function Cerrado({ datos, onSeguir }: { datos: ResumenContrato; onSeguir: () => 
         montaje <b>sin valores</b> al mercaderista —con el plano del espacio
         señalado— y la constancia al proveedor si tiene correo cargado.
       </div>
+      {datos.avisoPlanometria && (
+        <div
+          style={{
+            marginTop: 12, padding: "9px 11px", borderRadius: "var(--r-md)",
+            background: "var(--warning-50)", color: "var(--warning)",
+            fontSize: 12.5, lineHeight: 1.45,
+          }}
+        >
+          {datos.avisoPlanometria}
+        </div>
+      )}
       <button
         onClick={onSeguir}
         style={{

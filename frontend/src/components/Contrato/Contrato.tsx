@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useState } from "react";
-import { AlertTriangle, MapPin } from "lucide-react";
+import { AlertTriangle, ImageUp, MapPin, X } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { describirUbicacion } from "../MiniMapa/MiniMapa";
 import type { DateRange } from "../SeasonPicker/SeasonPicker";
 import { parseISODate } from "../../types/seasons";
 import { findOrCreateSpace, createLease } from "../../api/spaces";
+import { subirPlanometria } from "../../api/planograms";
 import { findOrCreateSupplier } from "../../api/suppliers";
 import { describeError } from "../../api/client";
 import {
@@ -30,6 +31,10 @@ export interface ResumenContrato {
   proveedor: string;
   desde: string;
   hasta: string;
+  /** El contrato quedó pero la planometría no subió. Se dice en la
+   *  confirmación: callarlo dejaría al mercaderista sin la única imagen de
+   *  cómo debe quedar el mueble, y nadie se enteraría hasta el montaje. */
+  avisoPlanometria?: string;
 }
 
 export interface ArgsContrato {
@@ -122,6 +127,9 @@ export function useContrato({ fixture, face, sede, rango, onGuardado }: ArgsCont
   const [marca, setMarca] = useState("");
   const [valor, setValor] = useState("");
   const [nota, setNota] = useState("");
+  /** La planometría que el proveedor mandó: cómo debe quedar armada la
+   *  exhibición. Se sube DESPUÉS de crear el contrato, porque cuelga de él. */
+  const [planometria, setPlanometria] = useState<File | null>(null);
   const [estado, setEstado] = useState<"idle" | "guardando" | "error">("idle");
   const [error, setError] = useState("");
 
@@ -183,7 +191,7 @@ export function useContrato({ fixture, face, sede, rango, onGuardado }: ArgsCont
         area_m2: parseFloat((fixture.w * fixture.d).toFixed(2)),
       });
       const prov = await findOrCreateSupplier(proveedor.trim(), correo.trim() || undefined);
-      await createLease(espacio.id, {
+      const lease = await createLease(espacio.id, {
         supplier_id: prov.id,
         marca: marca.trim() || undefined,
         start_date: desde,
@@ -191,6 +199,23 @@ export function useContrato({ fixture, face, sede, rango, onGuardado }: ArgsCont
         monthly_rent: monto,
         notes: nota.trim() || undefined,
       });
+
+      // La planometría va aparte y DESPUÉS: cuelga del contrato, que hasta esta
+      // línea no existía. Si falla no se tira abajo el contrato —ya está
+      // guardado y los correos ya salieron—; se avisa y se puede volver a
+      // cargar desde el detalle del espacio.
+      let avisoPlanometria: string | undefined;
+      if (planometria) {
+        try {
+          await subirPlanometria((lease as { id: number }).id, planometria);
+        } catch (e) {
+          avisoPlanometria = describeError(
+            e,
+            "La planometría no se pudo subir. El contrato quedó guardado; cargala desde el detalle del espacio.",
+          );
+        }
+      }
+
       onGuardado(
         {
           status: "occupied",
@@ -201,7 +226,14 @@ export function useContrato({ fixture, face, sede, rango, onGuardado }: ArgsCont
           endDate: hasta,
           observation: nota.trim(),
         } as Partial<FaceData>,
-        { corto: fixture.nomenclatura || corto, codigo, proveedor: proveedor.trim(), desde, hasta },
+        {
+          corto: fixture.nomenclatura || corto,
+          codigo,
+          proveedor: proveedor.trim(),
+          desde,
+          hasta,
+          avisoPlanometria,
+        },
       );
     } catch (e) {
       setError(describeError(e, "No se pudo guardar el contrato."));
@@ -214,6 +246,7 @@ export function useContrato({ fixture, face, sede, rango, onGuardado }: ArgsCont
     desde, setDesde, hasta, setHasta,
     proveedor, setProveedor, correo, setCorreo, marca, setMarca,
     valor, escribirValor, monto, nota, setNota,
+    planometria, setPlanometria,
     desvio, dias, fechasEnOrden, puedeGuardar, falta,
     vienenDelPeriodo: !!rango && desde === iso(rango.from) && hasta === iso(rango.to),
     estado, error, guardar,
@@ -428,6 +461,67 @@ export function CamposContrato({ c }: { c: Contrato }) {
               )}
             </>
           )}
+        </div>
+      </div>
+
+      {/* La planometría: qué le prometimos armar al proveedor.
+          Va acá y no en el plano porque cuelga de ESTE contrato — la misma
+          punta recibe una distinta cada temporada, y en el mueble habría un
+          solo casillero que se sobreescribe. */}
+      <div>
+        <Etiqueta hint="foto o PDF del proveedor">Planometría</Etiqueta>
+        {c.planometria ? (
+          <div
+            style={{
+              display: "flex", alignItems: "center", gap: 9,
+              padding: "8px 10px", borderRadius: "var(--r-md)",
+              border: "1px solid var(--accent-200)", background: "var(--accent-50)",
+            }}
+          >
+            <ImageUp size={15} style={{ color: "var(--accent-700)", flexShrink: 0 }} />
+            <span
+              style={{
+                flex: 1, minWidth: 0, fontSize: 12.5, color: "var(--ink-1)",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}
+            >
+              {c.planometria.name}
+            </span>
+            <span style={{ fontSize: 11, color: "var(--ink-3)", flexShrink: 0 }}>
+              {Math.max(1, Math.round(c.planometria.size / 1024))} KB
+            </span>
+            <button
+              onClick={() => c.setPlanometria(null)}
+              aria-label="Quitar la planometría"
+              style={{
+                display: "flex", alignItems: "center", background: "none",
+                border: "none", padding: 2, cursor: "pointer", color: "var(--ink-3)",
+              }}
+            >
+              <X size={13} />
+            </button>
+          </div>
+        ) : (
+          <label
+            style={{
+              display: "flex", alignItems: "center", gap: 8,
+              height: 38, padding: "0 11px", cursor: "pointer",
+              borderRadius: "var(--r-md)", border: "1px dashed var(--line-strong)",
+              background: "var(--surface-2)", color: "var(--ink-3)", fontSize: 12.5,
+            }}
+          >
+            <ImageUp size={15} />
+            Adjuntar cómo debe quedar la exhibición
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+              style={{ display: "none" }}
+              onChange={(e) => c.setPlanometria(e.target.files?.[0] ?? null)}
+            />
+          </label>
+        )}
+        <div style={{ marginTop: 5, fontSize: 11, color: "var(--ink-4)", lineHeight: 1.4 }}>
+          La ve el mercaderista al montar, y sirve de prueba si el proveedor reclama.
         </div>
       </div>
 
