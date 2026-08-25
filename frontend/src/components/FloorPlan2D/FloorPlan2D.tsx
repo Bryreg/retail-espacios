@@ -9,9 +9,14 @@ import {
   Search,
   X,
 } from "lucide-react";
+import { ClipboardCheck } from "lucide-react";
 import { useFixtureStore, selectFixtures, selectHasPendingWork, normalizeSede } from "../../store/fixtureStore";
 import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types/fixtures";
 import { isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
+import { siguienteCodigo, codigoRepetido } from "../../utils/nomenclatura";
+import { revisarPlano } from "../../utils/revision";
+import { TOLERANCIA_CONTACTO } from "../../utils/planta";
+import { detectarCorridas, pasilloPorMueble } from "../../utils/pasillos";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 import { findOrCreateSpace } from "../../api/spaces";
 import { fetchDeleteImpact } from "../../api/layout";
@@ -501,6 +506,9 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   const [pendingType, setPendingType] = useState<FixType2D | null>(null);
   const [editingCodeId, setEditingCodeId] = useState<string | null>(null);
   const [editingCodeVal, setEditingCodeVal] = useState("");
+  /** Código tecleado a mano que ya es de otro mueble. Tiñe el campo. */
+  const [codigoChocado, setCodigoChocado] = useState<string | null>(null);
+  const [revisionAbierta, setRevisionAbierta] = useState(false);
   // CHANGE 1: initialize pan/zoom from store so view is preserved on tab switch
   const [panOffset, setPanOffset]     = useState(() => ({ x: camera2D.panX, y: camera2D.panY }));
   const [zoom, setZoom]               = useState(() => camera2D.zoom);
@@ -628,15 +636,14 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
 
   // ── Helper: compute next code for a type ────────────────────────────────────
 
-  const nextCode = useCallback((type: FixType2D, currentItems: PlacedItem2D[]): string => {
-    const prefix = CATALOG.find((c) => c.type === type)?.prefix ?? "SPC";
-    const nums = currentItems
-      .filter((i) => i.code.startsWith(prefix + "-"))
-      .map((i) => parseInt(i.code.slice(prefix.length + 1), 10))
-      .filter((n) => !isNaN(n));
-    const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
-    return `${prefix}-${String(next).padStart(2, "0")}`;
-  }, []);
+  // Un solo generador para los dos editores (utils/nomenclatura). Devuelve el
+  // primer número LIBRE, no `max + 1`: con `max + 1` bastaba una edición manual
+  // para que el siguiente mueble chocara con un código ya escrito a mano.
+  const nextCode = useCallback(
+    (type: FixType2D, currentItems: PlacedItem2D[]): string =>
+      siguienteCodigo(type, currentItems),
+    [],
+  );
 
   // ── Invalidate cached rect on container resize ───────────────────────────────
   useEffect(() => {
@@ -670,10 +677,17 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
 
   // ── Helper: collision detection ───────────────────────────────────────────────
 
+  /**
+   * ¿Este mueble se monta sobre otro?
+   *
+   * Pegados sí, encimados no: una corrida se arma poniendo las góndolas al ras
+   * y eso tiene que salir siempre, así que hasta TOLERANCIA_CONTACTO se
+   * considera contacto y no solape. La misma regla rige en el editor 3D.
+   */
   function hasCollision(
     item: { id: string; x: number; y: number; w: number; h: number },
     others: PlacedItem2D[],
-    tol = 0.01,
+    tol = TOLERANCIA_CONTACTO,
   ): boolean {
     return others.some(
       (o) =>
@@ -1204,13 +1218,20 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   function commitCodeEdit() {
     if (!editingCodeId) return;
     const val = editingCodeVal.trim();
-    if (val) {
-      setItems((prev) =>
-        prev.map((i) => (i.id === editingCodeId ? { ...i, code: val } : i))
-      );
+    if (!val) { setEditingCodeId(null); setEditingCodeVal(""); setCodigoChocado(null); return; }
+    // Se aceptaba cualquier texto. Dos muebles con el mismo código son dos
+    // espacios distintos compartiendo contratos, archivos y correos de montaje:
+    // se rechaza y se deja el campo abierto para corregirlo.
+    if (codigoRepetido(val, items, editingCodeId)) {
+      setCodigoChocado(val.toUpperCase());
+      return;
     }
+    setItems((prev) =>
+      prev.map((i) => (i.id === editingCodeId ? { ...i, code: val } : i))
+    );
     setEditingCodeId(null);
     setEditingCodeVal("");
+    setCodigoChocado(null);
   }
 
   // ── Panel update helper ──────────────────────────────────────────────────────
@@ -1228,6 +1249,22 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   // ── Derived ──────────────────────────────────────────────────────────────────
 
   const selectedItem = selectedId ? (items.find((i) => i.id === selectedId) ?? null) : null;
+
+  // En qué pasillo está cada mueble. Se deduce de la geometría en vez de
+  // guardarse: mover una góndola cambia su pasillo, y un dato guardado se
+  // quedaría viejo sin que nadie se entere.
+  const enPlanta = useMemo(
+    () => items.map((i) => ({
+      id: i.id, type: i.type,
+      cx: i.x + i.w / 2, cz: i.y + i.h / 2,
+      w: isRotated90(i.rotY ?? 0) ? i.h : i.w,
+      d: isRotated90(i.rotY ?? 0) ? i.w : i.h,
+      rotY: i.rotY ?? 0,
+    })),
+    [items],
+  );
+  const corridas = useMemo(() => detectarCorridas(enPlanta), [enPlanta]);
+  const pasilloDe = useMemo(() => pasilloPorMueble(enPlanta, corridas), [enPlanta, corridas]);
   const ghostDef = pendingType ? CATALOG.find((c) => c.type === pendingType) : null;
 
   // Search + status filter matching (AND-combined); null set = no filter active
@@ -1794,13 +1831,18 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                                 height={20}
                               >
                                 <input
-                                  className="w-full h-full text-center text-xs border border-accent rounded-sm bg-white outline-none px-1"
+                                  className={`w-full h-full text-center text-xs rounded-sm outline-none px-1 border ${
+                                    codigoChocado
+                                      ? "border-danger bg-danger-50 text-danger"
+                                      : "border-accent bg-white"
+                                  }`}
+                                  title={codigoChocado ? `${codigoChocado} ya es de otro mueble` : undefined}
                                   value={editingCodeVal}
-                                  onChange={(e) => setEditingCodeVal(e.target.value)}
+                                  onChange={(e) => { setEditingCodeVal(e.target.value); setCodigoChocado(null); }}
                                   onBlur={commitCodeEdit}
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter") commitCodeEdit();
-                                    if (e.key === "Escape") { setEditingCodeId(null); }
+                                    if (e.key === "Escape") { setEditingCodeId(null); setCodigoChocado(null); }
                                   }}
                                   autoFocus
                                   onClick={(e) => e.stopPropagation()}
@@ -2161,6 +2203,13 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               onClose={() => setSelectedIds(new Set())}
             />
           </div>
+        ) : revisionAbierta ? (
+          <RevisionPanel
+            items={items}
+            corridas={corridas.length}
+            onIr={(ids) => { setSelectedIds(new Set(ids)); }}
+            onClose={() => setRevisionAbierta(false)}
+          />
         ) : selectedItem ? (
           <div
             style={{
@@ -2177,6 +2226,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               editMode={editMode}
               isAdmin={isAdmin}
               initialFace={panelFace}
+              pasillo={pasilloDe.get(selectedItem.id)}
               onUpdate={updateSelected}
               onDelete={() => { deleteItem(selectedItem.id); }}
               onDuplicate={() => duplicateSelected(new Set([selectedItem.id]))}
@@ -2342,6 +2392,22 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
         </div>
 
         <div style={{ width: 1, height: 14, background: "var(--line)" }} />
+        <button
+          onClick={() => { setRevisionAbierta((v) => !v); setSelectedIds(new Set()); }}
+          title="Revisar el plano: códigos repetidos, muebles encimados y pasillos angostos"
+          style={{
+            display: "flex", alignItems: "center", gap: 4,
+            padding: "2px 8px", borderRadius: "var(--r-md)",
+            border: "1px solid var(--line)", fontSize: 11.5, fontWeight: 500,
+            cursor: "pointer", fontFamily: "inherit",
+            background: revisionAbierta ? "var(--accent-50)" : "var(--surface-2)",
+            color: revisionAbierta ? "var(--accent-700)" : "var(--ink-3)",
+            transition: "all .12s",
+          }}
+        >
+          <ClipboardCheck size={12} /> Revisar
+        </button>
+
         <button
           onClick={() => setShowLabels((v) => !v)}
           title={showLabels ? "Ocultar etiquetas de nomenclatura" : "Mostrar etiquetas de nomenclatura"}
@@ -2653,6 +2719,100 @@ function SyncButton() {
 }
 
 // ─── Multi-select Panel ───────────────────────────────────────────────────────
+
+/**
+ * Qué está mal en el plano, antes de que se use para negociar.
+ *
+ * De acá salen los espacios que se venden, el metraje que se cobra y el
+ * recorrido que se le muestra al proveedor: un código repetido o un mueble
+ * encima de otro no se nota hasta que ya viajó a un contrato.
+ */
+function RevisionPanel({
+  items, corridas, onIr, onClose,
+}: {
+  items: PlacedItem2D[];
+  corridas: number;
+  onIr: (ids: string[]) => void;
+  onClose: () => void;
+}) {
+  const hallazgos = useMemo(
+    () => revisarPlano(items.map((i) => ({
+      id: i.id, code: i.code, type: i.type,
+      // El plano 2D guarda esquina + huella ya girada; la revisión trabaja con
+      // centro + medidas sin girar, igual que el resto del sistema.
+      cx: i.x + i.w / 2, cz: i.y + i.h / 2,
+      w: isRotated90(i.rotY ?? 0) ? i.h : i.w,
+      d: isRotated90(i.rotY ?? 0) ? i.w : i.h,
+      h: H_DEFAULTS[i.type] ?? 1.8,
+      rotY: i.rotY ?? 0,
+    }))),
+    [items],
+  );
+  const errores = hallazgos.filter((h) => h.severidad === "error").length;
+
+  return (
+    <div style={{
+      width: "clamp(240px, 28vw, 340px)", flexShrink: 0,
+      overflowX: "hidden", overflowY: "auto", display: "flex", flexDirection: "column",
+      background: "var(--dark-bg)", borderLeft: "1px solid var(--dark-line)",
+    }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8, padding: "11px 13px",
+        borderBottom: "1px solid var(--dark-line)",
+      }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: "var(--dark-ink-1)" }}>Revisión del plano</p>
+          <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 2 }}>
+            {items.length} muebles · {corridas} pasillo{corridas === 1 ? "" : "s"}
+          </p>
+        </div>
+        <button onClick={onClose} title="Cerrar"
+          style={{ background: "none", border: "none", color: "var(--dark-ink-3)", cursor: "pointer", padding: 2 }}>
+          <X size={14} />
+        </button>
+      </div>
+
+      <div style={{ padding: 13, display: "flex", flexDirection: "column", gap: 8 }}>
+        {hallazgos.length === 0 ? (
+          <p style={{ fontSize: 12.5, color: "var(--success)", lineHeight: 1.5 }}>
+            El plano está limpio: sin códigos repetidos, sin muebles encimados y
+            con pasillos por donde se puede caminar.
+          </p>
+        ) : (
+          <>
+            <p style={{ fontSize: 11.5, color: "var(--dark-ink-3)", lineHeight: 1.5 }}>
+              {errores > 0
+                ? `${errores} ${errores === 1 ? "cosa rompe" : "cosas rompen"} algo aguas abajo.`
+                : "Nada roto; lo de abajo puede ser deliberado."}
+            </p>
+            {hallazgos.map((h, i) => (
+              <button
+                key={i}
+                onClick={() => h.ids.length && onIr(h.ids)}
+                disabled={h.ids.length === 0}
+                style={{
+                  textAlign: "left", padding: "8px 10px", borderRadius: "var(--r-md)",
+                  border: `1px solid ${h.severidad === "error" ? "var(--danger)" : "var(--dark-line-2)"}`,
+                  background: h.severidad === "error" ? "var(--danger-50)" : "var(--dark-surface)",
+                  color: h.severidad === "error" ? "var(--danger)" : "var(--dark-ink-2)",
+                  fontSize: 11.5, lineHeight: 1.45, fontFamily: "inherit",
+                  cursor: h.ids.length ? "pointer" : "default",
+                }}
+              >
+                {h.texto}
+                {h.ids.length > 0 && (
+                  <span style={{ display: "block", marginTop: 3, fontSize: 10, opacity: 0.75 }}>
+                    Tocá para ir
+                  </span>
+                )}
+              </button>
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function MultiSelectPanel({
   count,
@@ -2992,8 +3152,10 @@ const EMPTY_FACE: FaceData = {
 };
 
 function AssignmentPanel({
-  item, sede, sedes, editMode, isAdmin, initialFace, onUpdate, onDelete, onDuplicate, onClose,
+  item, sede, sedes, editMode, isAdmin, initialFace, pasillo, onUpdate, onDelete, onDuplicate, onClose,
 }: {
+  /** En qué pasillo cae, deducido de la geometría. */
+  pasillo?: number;
   item: PlacedItem2D;
   sede: string;
   sedes: string[];
@@ -3053,6 +3215,17 @@ function AssignmentPanel({
           <p style={{ fontSize: 14, fontWeight: 600, color: "var(--dark-ink-1)" }}>
             {catDef?.emoji} {catDef?.label}
           </p>
+          {/* Nadie dice «PUN-07» en una reunión: dice «la punta del pasillo 4».
+              Sale de la geometría, así que mover el mueble lo actualiza solo. */}
+          {pasillo !== undefined && (
+            <p style={{
+              display: "inline-block", marginTop: 6, padding: "2px 8px", borderRadius: 999,
+              background: "var(--accent-50)", color: "var(--accent-700)",
+              fontSize: 11, fontWeight: 700,
+            }}>
+              Pasillo {pasillo}
+            </p>
+          )}
         </div>
         <button onClick={onClose} style={{ color: "var(--dark-ink-3)", fontSize: 18, lineHeight: 1, marginTop: 2, background: "none", border: "none", cursor: "pointer" }}>×</button>
       </div>
