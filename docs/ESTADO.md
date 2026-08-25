@@ -599,6 +599,110 @@ justo lo que hace legible el mapa: contexto en gris y todo el color en el destin
 
 ---
 
+## El 3D asumía una tienda que no existe
+
+El editor 3D nació con un local ficticio de **30 × 42 m anclado en el origen**, en dos
+constantes: `STORE_W` y `STORE_D`. Todo colgaba de ahí — por dónde se puede caminar, dónde
+se dibuja la grilla, hasta dónde llega el piso que recibe los clics, adónde apunta la luz.
+
+Ninguna sede real cabe en esa caja. NAVE ocupa **47,4 × 20,8 m y empieza en x = −25,4**: de
+sus 104 muebles, **48 (el 46 %) quedaban fuera** y eran literalmente inalcanzables a pie. La
+mitad izquierda del supermercado no se podía visitar. Al mismo tiempo sobraban 30 m de piso
+vacío hacia el fondo, porque la caja se estiraba hasta z = 44 donde la tienda termina en
+13,3.
+
+Ahora la extensión del local **se deduce de los muebles**, en `frontend/src/utils/planta.ts`.
+El módulo es geometría pura y vive fuera del componente a propósito: así se puede probar sin
+montar Three.js ni un navegador (`npm run probar:planta`, 15 pruebas).
+
+**La huella de un mueble se calcula rotada.** El helper de colocación (`getAABB`) ignora
+`rotY` porque los muebles se colocan sin girar, pero para caminar no se puede: 63 de los 104
+muebles de NAVE son góndolas y la mayoría están giradas 90°. Sin la rotación, una góndola de
+3,6 m de largo se lee como si midiera 0,9 m y uno la atraviesa caminando.
+
+### Caminar
+
+- **Los muebles frenan.** Antes no había colisión de ninguna clase: se atravesaban las
+  góndolas. El choque se resuelve **por eje**, así que uno resbala a lo largo de la góndola
+  en vez de clavarse contra ella.
+- **El paso se mide en metros por segundo**, no por frame. Eran `0,08` por frame — a 60 fps,
+  4,8 m/s, o sea trotando, y en una pantalla más rápida iba más rápido todavía. Ahora son
+  1,4 m/s caminando y 3,2 con Shift.
+- **El paso se recorre en tramos cortos** (`PASO_MAXIMO = 0,2 m`). El choque se mide punto a
+  punto, así que un paso más largo que el obstáculo lo saltaba limpio. Hoy un paso dura como
+  mucho 0,32 m y lo más delgado que hay —una columna de 30 cm— mide 0,86 m ya inflada por el
+  radio del cuerpo, así que no pasaría; pero eso dependía de que nadie subiera la velocidad.
+- **Se entra por un lugar libre.** El centro del local, o el primer punto despejado buscando
+  en espiral: nadie aparece dentro de una góndola.
+- **La Zona Libre se pisa.** Lo que mide menos de 25 cm de alto es una marca en el piso, no
+  un obstáculo. Es una regla por altura, no una lista de tipos, así que un mueble bajo nuevo
+  queda bien solo.
+- **Quien queda dentro de un mueble puede salir.** Si alguien coloca una góndola encima
+  mientras se camina, frenarlo ahí lo dejaría atrapado para siempre.
+
+### Lo que se veía mal por lo mismo
+
+- **La grilla y el piso que recibe clics** estaban centrados en la tienda ficticia. Un
+  pedazo del local quedaba sin piso: hacer clic ahí no hacía nada.
+- **Arrastrar un mueble** estaba topado en `x ≥ 0`, así que la mitad izquierda de una sede
+  real no se podía editar.
+- **La luz y su cámara de sombras** apuntaban al centro de la caja: la sombra se recortaba
+  justo donde empieza la mitad izquierda de NAVE.
+- **La advertencia de "góndola mural cerca de una pared"** salía siempre, porque medía
+  contra x = 30 / z = 42 en vez de contra donde terminan los muebles.
+- **El encuadre al abrir.** Una cámara guardada apuntando al centro de la tienda ficticia
+  (15, 21) dejaba la sede arrinconada en una esquina de la pantalla. Ahora se reencuadra
+  siempre que la mira caiga fuera del local; si el usuario la dejó adentro, se respeta.
+- **Salir de la caminata no devolvía la vista.** Faltaban dos cosas que ya faltaban antes:
+  `update()` en los controles —sin él la cámara conserva la rotación de la caminata y sigue
+  mirando la góndola que uno tenía enfrente— y un `invalidate()`, porque el lienzo sólo
+  renderiza bajo demanda y el cuadro nuevo nunca se dibujaba.
+
+### El minimapa y el teletransporte
+
+Lo que hace abandonar un recorrido en primera persona no es que se vea feo: es no
+saber dónde uno está parado. El minimapa es el préstamo más directo que hay de los
+videojuegos y resuelve exactamente eso.
+
+**Es el mismo `MiniMapa` de la pantalla del montaje**, no uno nuevo. Se le agregaron dos
+cosas y el resto quedó igual:
+
+- `camara={{ x, z, dirX, dirZ }}` dibuja el "usted está aquí" con su cono de visión. Se le
+  pasa el **vector** de dirección y no un ángulo a propósito: el 3D lo saca de
+  `camera.getWorldDirection()` y así nadie tiene que acertarle desde afuera a la convención
+  de Euler de Three.js.
+- `onIrA(x, z)` vuelve el plano entero elegible **por posición y no por mueble**, y devuelve
+  metros. Ése es el teletransporte.
+
+`targetCode` pasó a ser opcional: la caminata no señala ningún mueble en particular.
+
+**Dónde aterriza el salto.** En el lugar despejado más cercano a lo que se tocó
+(`puntoLibreCerca`, el mismo que elige por dónde se entra). Quien apunta al medio de una
+góndola quiere el pasillo de al lado, no que no pase nada. La mirada no se toca: uno salta,
+no gira.
+
+**Por qué el salto pide soltar el mouse.** Con el puntero capturado el navegador lo esconde
+y manda todo al lienzo: no hay cursor que pueda tocar un `<div>`. Así que el minimapa
+siempre orienta, pero sólo se vuelve clickeable con el mouse suelto — `Esc`, clic en el
+plano, y clic en el lienzo para seguir caminando. Es el mismo patrón de cualquier juego que
+abre el mapa grande soltando el control.
+
+**Un bug que sólo se veía estando quieto.** El lienzo corre con `frameloop="demand"`:
+dibuja cuando alguien se lo pide. `PointerLockControls` mueve la cámara en el `mousemove`,
+fuera del bucle de cuadros, y nadie pedía el redibujo — así que **parado y mirando alrededor
+la imagen quedaba congelada** hasta tocar una tecla de movimiento. Caminando no se notaba,
+porque el propio paso pedía el cuadro. Se arregla enganchando `invalidate()` al `change` del
+control.
+
+**El minimapa no re-renderiza 60 veces por segundo.** La posición se informa sólo cuando uno
+se movió más de 12 cm o giró lo suficiente; caminando eso son unas pocas veces por metro.
+
+Y de paso: las etiquetas de referencia se calculaban 5 px por letra, pero van en negrita, en
+mayúsculas y con `letter-spacing`. Con esa cuenta "CARNES" y "NEVERAS" pasaban el filtro de
+choque en NAVE y se dibujaban una encima de la otra igual. Ahora son 6,5.
+
+---
+
 ## Pendiente urgente: datos de TERRON
 
 TERRON tenía datos reales y **quedó vacía en el servidor**, vaciada por el bug del layout
@@ -709,6 +813,15 @@ código. Vale la pena el rato que toma:
 2. Levantar backend (`:8000`) y Vite (`:5173`).
 3. Conducir el navegador con Playwright y capturar. Chromium ya está instalado en
    `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`.
+
+**Lo que es geometría pura, probarlo aparte.** `npm run probar:planta` corre las 15 pruebas
+de `src/utils/planta.ts` sin navegador: transpila el `.ts` con el esbuild que ya trae vite y
+afirma en node. No hay runner de pruebas en el frontend y no valía la pena montar uno para
+esto. Ahí se encontró que un paso largo saltaba por encima de un mueble.
+
+**Después del 3D, los locators de Playwright dejan de resolver** aunque el DOM esté intacto:
+el lienzo redibuja sin parar y el framework nunca lo considera estable. `page.evaluate` sigue
+funcionando — despachar el clic sobre el nodo real ejecuta el mismo handler de React.
 
 Para la sincronización, la prueba que importa es la de **dos clientes**: sembrar el
 servidor, simular dos estaciones y verificar que las altas *y las bajas* viajan en ambos
