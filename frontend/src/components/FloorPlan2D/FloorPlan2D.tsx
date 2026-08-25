@@ -9,13 +9,14 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { ClipboardCheck } from "lucide-react";
+import { ClipboardCheck, Keyboard } from "lucide-react";
 import { useFixtureStore, selectFixtures, selectHasPendingWork, normalizeSede } from "../../store/fixtureStore";
 import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types/fixtures";
 import { isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
 import { siguienteCodigo, codigoRepetido } from "../../utils/nomenclatura";
 import { revisarPlano } from "../../utils/revision";
 import { TOLERANCIA_CONTACTO } from "../../utils/planta";
+import { buscarHuecoGrupo } from "../../utils/acomodar";
 import { detectarCorridas, pasilloPorMueble } from "../../utils/pasillos";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 import { findOrCreateSpace } from "../../api/spaces";
@@ -509,6 +510,15 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   /** Código tecleado a mano que ya es de otro mueble. Tiñe el campo. */
   const [codigoChocado, setCodigoChocado] = useState<string | null>(null);
   const [revisionAbierta, setRevisionAbierta] = useState(false);
+  const [atajosAbiertos, setAtajosAbiertos] = useState(false);
+  /** Mensaje corto de lo que acaba de pasar. El plano no tenía ninguno: un
+   *  atajo que no hacía nada no se distinguía de uno que no existía. */
+  const [aviso, setAviso] = useState<string | null>(null);
+  useEffect(() => {
+    if (!aviso) return;
+    const t = setTimeout(() => setAviso(null), 2600);
+    return () => clearTimeout(t);
+  }, [aviso]);
   // CHANGE 1: initialize pan/zoom from store so view is preserved on tab switch
   const [panOffset, setPanOffset]     = useState(() => ({ x: camera2D.panX, y: camera2D.panY }));
   const [zoom, setZoom]               = useState(() => camera2D.zoom);
@@ -830,12 +840,40 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     );
   }, []);
 
-  /** Duplicate one or more fixtures, shifting each by 0.5m. Supports multi-selection. */
+  /** Rotar todo lo seleccionado. Antes sólo giraba si había EXACTAMENTE un
+   *  mueble elegido: con dos o más, la R no hacía nada y no decía por qué. */
+  const rotarSeleccion = useCallback((ids: Set<string>) => {
+    if (ids.size === 0) return;
+    setItems((prev) =>
+      prev.map((i) =>
+        ids.has(i.id)
+          ? { ...i, w: i.h, h: i.w, rotY: ((i.rotY ?? 0) + Math.PI / 2) % (2 * Math.PI) }
+          : i,
+      ),
+    );
+  }, []);
+
+  /**
+   * Duplicar. La copia cae al ras al lado, que es para lo que se usa: seguir
+   * armando una corrida.
+   *
+   * Antes se desplazaba 0,5 m en los dos ejes y se descartaba si chocaba. Una
+   * Góndola Doble mide 0,90 × 0,90, así que la copia siempre se solapaba con su
+   * original y se tiraba **sin decir nada**: fallaba para 11 de los 17 tipos
+   * del catálogo y andaba para los seis flacos. De ahí el «a veces funciona».
+   */
   const duplicateSelected = useCallback(
     (ids: Set<string>) => {
       if (ids.size === 0) return;
       const sources = items.filter((i) => ids.has(i.id));
       if (sources.length === 0) return;
+
+      const desplazo = buscarHuecoGrupo(sources, items);
+      if (!desplazo) {
+        setAviso("No hay lugar libre cerca para la copia — hacé espacio y probá de nuevo");
+        return;
+      }
+
       const nextItems = [...items];
       const newIds: string[] = [];
       for (const src of sources) {
@@ -844,18 +882,16 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           ...src,
           id: `${src.type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           code,
-          x: src.x + 0.5,
-          y: src.y + 0.5,
+          x: +(src.x + desplazo.dx).toFixed(4),
+          y: +(src.y + desplazo.dy).toFixed(4),
         };
-        if (!hasCollision(copy, nextItems)) {
-          nextItems.push(copy);
-          newIds.push(copy.id);
-        }
+        nextItems.push(copy);
+        newIds.push(copy.id);
       }
-      if (newIds.length === 0) return;
       // Set both states outside any updater to avoid React violation
       setItems(nextItems);
       setSelectedIds(new Set(newIds));
+      setAviso(`${newIds.length} ${newIds.length === 1 ? "mueble duplicado" : "muebles duplicados"}`);
     },
     [items, nextCode]
   );
@@ -863,19 +899,27 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   /** Copy selected items to clipboard. */
   const copySelected = useCallback(() => {
     const selected = items.filter((i) => selectedIds.has(i.id));
-    if (selected.length > 0) setClipboard(selected);
+    if (selected.length === 0) { setAviso("Elegí un mueble primero"); return; }
+    setClipboard(selected);
+    setAviso(`${selected.length} ${selected.length === 1 ? "mueble copiado" : "muebles copiados"}`);
   }, [items, selectedIds]);
 
-  /** Paste clipboard items with a collision-aware offset. */
+  /**
+   * Pegar. El grupo se mueve entero por el mismo vector, así que media corrida
+   * copiada vuelve como media corrida y no como muebles sueltos.
+   *
+   * Antes se probaban cinco desplazamientos en diagonal y, si ninguno servía,
+   * **se pegaba igual encima de lo que hubiera**.
+   */
   const pasteClipboard = useCallback(() => {
-    if (clipboard.length === 0) return;
-    // Find an offset that avoids collisions (try +1 up to +5)
-    let offsetX = 1, offsetY = 1;
-    const others = items.filter((i) => !clipboard.some((c) => c.id === i.id));
-    while (offsetX < 6) {
-      const trial = clipboard.map((src) => ({ ...src, x: src.x + offsetX, y: src.y + offsetY }));
-      if (!trial.some((t) => hasCollision(t, others))) break;
-      offsetX++; offsetY++;
+    if (clipboard.length === 0) {
+      setAviso("No hay nada copiado — Ctrl+C primero");
+      return;
+    }
+    const desplazo = buscarHuecoGrupo(clipboard, items);
+    if (!desplazo) {
+      setAviso("No hay lugar libre cerca para pegar — hacé espacio y probá de nuevo");
+      return;
     }
     const nextItems = [...items];
     const newIds: string[] = [];
@@ -885,8 +929,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
         ...src,
         id: `${src.type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         code,
-        x: src.x + offsetX,
-        y: src.y + offsetY,
+        x: +(src.x + desplazo.dx).toFixed(4),
+        y: +(src.y + desplazo.dy).toFixed(4),
       };
       nextItems.push(copy);
       newIds.push(copy.id);
@@ -894,6 +938,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     // Set both states outside any updater to avoid React violation
     setItems(nextItems);
     setSelectedIds(new Set(newIds));
+    setAviso(`${newIds.length} ${newIds.length === 1 ? "mueble pegado" : "muebles pegados"}`);
   }, [clipboard, items, nextCode]);
 
   // ── Keyboard shortcuts ───────────────────────────────────────────────────────
@@ -905,20 +950,31 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
 
       if (e.key === " ") { setSpaceDown(true); e.preventDefault(); return; }
 
-      // CHANGE 2: undo/redo shortcuts (work regardless of editMode)
-      if (e.ctrlKey && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); return; }
-      if (e.ctrlKey && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); return; }
+      // Deshacer y rehacer andan siempre, con o sin modo edición.
+      // Aceptan Cmd además de Ctrl: los otros atajos ya lo hacían, y con sólo
+      // ctrlKey ⌘Z no hacía nada en Mac mientras ⌘A, ⌘D, ⌘C y ⌘V sí andaban.
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) { e.preventDefault(); undo(); return; }
+      if (mod && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) {
+        e.preventDefault(); redo(); return;
+      }
 
       if (!editMode) return;
 
       if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();   // Backspace no debe navegar hacia atrás
         if (selectedIds.size > 0) {
+          const cuantos = selectedIds.size;
           setItems((prev) => prev.filter((i) => !selectedIds.has(i.id)));
           setSelectedIds(new Set());
+          setAviso(`${cuantos} ${cuantos === 1 ? "mueble eliminado" : "muebles eliminados"} · Ctrl+Z para volver atrás`);
         }
       }
-      const singleId = selectedIds.size === 1 ? [...selectedIds][0] : null;
-      if (e.key === "r" || e.key === "R") rotateItem(singleId);
+      // Rotar: sin modificadores —si no, Ctrl+R (recargar) también rotaba— y
+      // sobre TODA la selección, no sólo cuando hay exactamente un mueble.
+      if (!mod && !e.altKey && e.key.toLowerCase() === "r" && selectedIds.size > 0) {
+        rotarSeleccion(selectedIds);
+      }
       if (e.key === "Escape") {
         setSelectedIds(new Set());
         setSelectionRect(null);
@@ -926,22 +982,13 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
         setPendingType(null);
         setDrawing(null);
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === "a") {
+      if (mod && e.key.toLowerCase() === "a") {
         e.preventDefault();
         setSelectedIds(new Set(items.map((i) => i.id)));
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === "d") {
-        duplicateSelected(selectedIds);
-        e.preventDefault();
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === "c") {
-        copySelected();
-        e.preventDefault();
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === "v") {
-        pasteClipboard();
-        e.preventDefault();
-      }
+      if (mod && e.key.toLowerCase() === "d") { e.preventDefault(); duplicateSelected(selectedIds); }
+      if (mod && e.key.toLowerCase() === "c") { e.preventDefault(); copySelected(); }
+      if (mod && e.key.toLowerCase() === "v") { e.preventDefault(); pasteClipboard(); }
     }
     function onKeyUp(e: KeyboardEvent) {
       if (e.key === " ") setSpaceDown(false);
@@ -952,7 +999,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [editMode, selectedIds, items, deleteItem, rotateItem, duplicateSelected, copySelected, pasteClipboard, undo, redo]);
+  }, [editMode, selectedIds, items, deleteItem, rotarSeleccion, duplicateSelected, copySelected, pasteClipboard, undo, redo]);
 
   // ── SVG mouse handlers ───────────────────────────────────────────────────────
 
@@ -2005,6 +2052,21 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
             </g>
           </svg>
 
+          {/* Lo que acaba de pasar. Antes no había ninguno: un atajo que no
+              hacía nada era indistinguible de uno que no existía. */}
+          {aviso && (
+            <div style={{
+              position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)",
+              zIndex: 20, pointerEvents: "none",
+              padding: "7px 14px", borderRadius: 999,
+              background: "var(--ink-1)", color: "var(--surface)",
+              fontSize: 12, fontWeight: 600, whiteSpace: "nowrap",
+              boxShadow: "0 4px 14px rgba(0,0,0,.18)",
+            }}>
+              {aviso}
+            </div>
+          )}
+
           {/* Search + status filter — floating card, top-left over the canvas */}
           <div
             style={{
@@ -2203,6 +2265,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               onClose={() => setSelectedIds(new Set())}
             />
           </div>
+        ) : atajosAbiertos ? (
+          <AtajosPanel onClose={() => setAtajosAbiertos(false)} />
         ) : revisionAbierta ? (
           <RevisionPanel
             items={items}
@@ -2393,7 +2457,23 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
 
         <div style={{ width: 1, height: 14, background: "var(--line)" }} />
         <button
-          onClick={() => { setRevisionAbierta((v) => !v); setSelectedIds(new Set()); }}
+          onClick={() => { setAtajosAbiertos((v) => !v); setRevisionAbierta(false); setSelectedIds(new Set()); }}
+          title="Ver todos los atajos de teclado"
+          style={{
+            display: "flex", alignItems: "center", gap: 4,
+            padding: "2px 8px", borderRadius: "var(--r-md)",
+            border: "1px solid var(--line)", fontSize: 11.5, fontWeight: 500,
+            cursor: "pointer", fontFamily: "inherit",
+            background: atajosAbiertos ? "var(--accent-50)" : "var(--surface-2)",
+            color: atajosAbiertos ? "var(--accent-700)" : "var(--ink-3)",
+            transition: "all .12s",
+          }}
+        >
+          <Keyboard size={12} /> Atajos
+        </button>
+
+        <button
+          onClick={() => { setRevisionAbierta((v) => !v); setAtajosAbiertos(false); setSelectedIds(new Set()); }}
           title="Revisar el plano: códigos repetidos, muebles encimados y pasillos angostos"
           style={{
             display: "flex", alignItems: "center", gap: 4,
@@ -2431,9 +2511,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           overflow: "hidden", minWidth: 0, whiteSpace: "nowrap", textOverflow: "ellipsis",
           flexShrink: 1,
         }}>
-          {editMode
-            ? "Rueda: zoom · Espacio+drag: mover · Shift+clic: multi-sel · Ctrl+A: todos · R: rotar · Del: eliminar"
-            : "Clic en fixture para ver detalles"}
+          {editMode ? RESUMEN_ATAJOS : "Clic en fixture para ver detalles"}
         </div>
       </div>
 
@@ -2727,6 +2805,113 @@ function SyncButton() {
  * recorrido que se le muestra al proveedor: un código repetido o un mueble
  * encima de otro no se nota hasta que ya viajó a un contrato.
  */
+/**
+ * Los atajos, escritos en un solo lugar.
+ *
+ * Hasta ahora la única ayuda era una línea en la barra de estado, con
+ * `white-space: nowrap` y `text-overflow: ellipsis`: en una ventana angosta se
+ * cortaba, y de entrada no mencionaba deshacer, duplicar, copiar, pegar ni
+ * Escape. Esta lista es la fuente única — la barra muestra un resumen sacado de
+ * acá, así que no se pueden desfasar.
+ */
+const ATAJOS: { grupo: string; filas: [string, string][] }[] = [
+  {
+    grupo: "Moverse por el plano",
+    filas: [
+      ["Rueda", "Acercar y alejar"],
+      ["Espacio + arrastrar", "Desplazar el plano"],
+      ["Botón del medio", "Desplazar el plano"],
+    ],
+  },
+  {
+    grupo: "Elegir",
+    filas: [
+      ["Clic", "Elegir un mueble"],
+      ["Shift + clic", "Sumar o quitar de la selección"],
+      ["Shift + arrastrar", "Elegir por área"],
+      ["Ctrl / ⌘ + A", "Elegir todo"],
+      ["Esc", "Soltar la selección y la herramienta"],
+    ],
+  },
+  {
+    grupo: "Editar",
+    filas: [
+      ["R", "Rotar 90° lo elegido"],
+      ["Doble clic", "Cambiar el código"],
+      ["Supr o Retroceso", "Eliminar lo elegido"],
+      ["Ctrl / ⌘ + D", "Duplicar al lado"],
+      ["Ctrl / ⌘ + C", "Copiar"],
+      ["Ctrl / ⌘ + V", "Pegar"],
+      ["Arrastrar", "Mover — se pega a los bordes vecinos"],
+    ],
+  },
+  {
+    grupo: "Deshacer",
+    filas: [
+      ["Ctrl / ⌘ + Z", "Deshacer"],
+      ["Ctrl / ⌘ + Y", "Rehacer"],
+      ["Ctrl / ⌘ + Shift + Z", "Rehacer"],
+    ],
+  },
+];
+
+/** El resumen de la barra de estado, sacado de la misma lista. */
+const RESUMEN_ATAJOS = [
+  "Rueda: zoom",
+  "Espacio+arrastrar: mover",
+  "Shift+clic: multi",
+  "R: rotar",
+  "Ctrl+D: duplicar",
+  "Ctrl+Z: deshacer",
+].join(" · ");
+
+function AtajosPanel({ onClose }: { onClose: () => void }) {
+  return (
+    <div style={{
+      width: "clamp(240px, 28vw, 340px)", flexShrink: 0,
+      overflowX: "hidden", overflowY: "auto", display: "flex", flexDirection: "column",
+      background: "var(--dark-bg)", borderLeft: "1px solid var(--dark-line)",
+    }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8, padding: "11px 13px",
+        borderBottom: "1px solid var(--dark-line)",
+      }}>
+        <p style={{ flex: 1, fontSize: 13, fontWeight: 700, color: "var(--dark-ink-1)" }}>Atajos</p>
+        <button onClick={onClose} title="Cerrar"
+          style={{ background: "none", border: "none", color: "var(--dark-ink-3)", cursor: "pointer", padding: 2 }}>
+          <X size={14} />
+        </button>
+      </div>
+      <div style={{ padding: 13, display: "flex", flexDirection: "column", gap: 14 }}>
+        {ATAJOS.map((g) => (
+          <div key={g.grupo}>
+            <p style={{
+              fontSize: 9.5, fontWeight: 700, textTransform: "uppercase",
+              letterSpacing: "0.08em", color: "var(--dark-ink-3)", marginBottom: 6,
+            }}>{g.grupo}</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {g.filas.map(([tecla, que]) => (
+                <div key={tecla} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                  <kbd style={{
+                    flexShrink: 0, minWidth: 92, padding: "2px 6px", borderRadius: 4,
+                    border: "1px solid var(--dark-line-2)", background: "var(--dark-surface)",
+                    color: "var(--dark-ink-2)", fontSize: 10.5,
+                    fontFamily: "var(--font-mono)", textAlign: "center",
+                  }}>{tecla}</kbd>
+                  <span style={{ fontSize: 11.5, color: "var(--dark-ink-2)", lineHeight: 1.4 }}>{que}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        <p style={{ fontSize: 10.5, color: "var(--dark-ink-3)", lineHeight: 1.5 }}>
+          Casi todo pide el modo edición. Deshacer y rehacer andan siempre.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function RevisionPanel({
   items, corridas, onIr, onClose,
 }: {

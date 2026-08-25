@@ -12,7 +12,8 @@
     "probar:nomenclatura": "node scripts/probar-nomenclatura.mjs",
     "probar:pasillos": "node scripts/probar-pasillos.mjs",
     "probar:revision": "node scripts/probar-revision.mjs",
-    "probar": "npm run probar:planta && npm run probar:propuesta && npm run probar:nomenclatura && npm run probar:pasillos && npm run probar:revision"
+    "probar": "npm run probar:planta && npm run probar:propuesta && npm run probar:nomenclatura && npm run probar:pasillos && npm run probar:revision && npm run probar:acomodar",
+    "probar:acomodar": "node scripts/probar-acomodar.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",

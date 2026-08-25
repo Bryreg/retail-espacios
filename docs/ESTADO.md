@@ -875,6 +875,46 @@ Un botón en la barra del plano abre `utils/revision.ts`, que reporta:
 Cada hallazgo salta al mueble. Sobre NAVE reporta exactamente los dos roces
 reales y nada más; los huecos entre sus pasillos van de 1,30 a 2,80 m.
 
+### Los atajos: por qué «a veces andaban»
+
+**Duplicar fallaba para 11 de los 17 tipos del catálogo, en silencio.** `Ctrl+D`
+desplazaba la copia 0,5 m en los dos ejes y la descartaba si chocaba. Una Góndola
+Doble mide 0,90 × 0,90: la copia siempre se solapaba con su original, se tiraba, y
+no pasaba nada ni se avisaba. Andaba sólo para los seis tipos que miden menos de
+50 cm en alguno de sus lados (mural, punta, robatope, ristra, impulsador,
+columna). De ahí el «a veces funciona».
+
+Ahora la copia cae **al ras al lado**, que es para lo que se usa el atajo: seguir
+armando una corrida. Si no hay lugar, lo dice.
+
+**Pegar pegaba encima.** `Ctrl+V` probaba cinco desplazamientos en diagonal y, si
+ninguno servía, pegaba igual sobre lo que hubiera. Ahora busca de verdad y el
+grupo se mueve entero, así que media corrida copiada vuelve como media corrida.
+
+**⌘Z no andaba en Mac.** Deshacer y rehacer miraban sólo `ctrlKey`, mientras que
+⌘A, ⌘D, ⌘C y ⌘V sí aceptaban `metaKey`. Ahora todos aceptan los dos.
+
+**`R` rotaba de más y de menos.** Sin guarda de modificadores, `Ctrl+R` (recargar)
+también rotaba; y sólo giraba si había EXACTAMENTE un mueble elegido, así que con
+dos o más no hacía nada y no decía por qué. Ahora exige que no haya modificadores
+y gira toda la selección.
+
+**El plano no tenía ningún aviso.** Un atajo que no hacía nada era indistinguible
+de uno que no existía. Ahora cada acción confirma en pantalla —«3 muebles
+duplicados», «No hay lugar libre cerca»— y borrar recuerda que `Ctrl+Z` existe.
+
+### Dónde están escritos
+
+Un botón **Atajos** en la barra del plano abre la lista completa, agrupada por
+para qué sirve. La barra de estado muestra un resumen **sacado de la misma
+constante**, así que no se pueden desfasar.
+
+Antes la única ayuda era esa línea de la barra: con `white-space: nowrap` y
+`text-overflow: ellipsis` se cortaba en una ventana angosta, y de entrada no
+mencionaba deshacer, duplicar, copiar, pegar ni Escape. (Hay un `ZoneEditorPanel`
+con una lista de atajos en `components/FloorMap/`: es código muerto, no lo importa
+nadie.)
+
 ---
 
 ## Pendiente urgente: datos de TERRON
@@ -989,7 +1029,7 @@ código. Vale la pena el rato que toma:
    `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`.
 
 **Lo que es geometría pura, probarlo aparte.** `npm run probar` corre las cinco suites
-sin navegador (89 pruebas: planta, propuesta, nomenclatura, pasillos, revisión): transpila el `.ts` con el esbuild que ya trae vite y
+sin navegador (100 pruebas: planta, propuesta, nomenclatura, pasillos, revisión, acomodar): transpila el `.ts` con el esbuild que ya trae vite y
 afirma en node. No hay runner de pruebas en el frontend y no valía la pena montar uno para
 esto. Ahí se encontró que un paso largo saltaba por encima de un mueble.
 
