@@ -218,37 +218,68 @@ es un viernes suelto).
 que incluya hoy, pero **no** uno enteramente futuro — bloquearlo escondería inventario
 vendible detrás de una bandera puesta meses antes.
 
-### Pantalla Negociar
+### Una pantalla de sede, dos modos
 
-El contrato se llenaba en un panel angosto adentro del **editor del plano**, y la
-disponibilidad se miraba en el Dashboard. Para vender un espacio había que saltar entre
-dos pestañas y, peor, saber dónde estaba dibujado cada mueble. La pestaña **Negociar**
-(`frontend/src/pages/NegotiateView.tsx`) pone las tres cosas seguidas, en el orden en que
-ocurre una negociación de verdad:
+Había dos pestañas —**Negociar** y **Resumen**— que abrían las dos con el plano de la
+misma sede y se diferenciaban en poco más que el orden de las tarjetas. La pregunta "¿en
+cuál de las dos hago el contrato?" no tenía buena respuesta, y quien entraba a Negociar
+elegía el espacio de **una lista de códigos**: `PUN-04` no dice si la punta está en la
+entrada o contra la pared del fondo, y esa es media negociación.
 
-1. **¿Para cuándo?** — los chips de temporada o dos fechas. Dice cuántos espacios quedan
-   libres todo el periodo.
-2. **¿Cuál espacio?** — solo lo disponible para ese rango, con su tarifa de referencia.
-   Lo parcialmente vendido queda escondido detrás de una casilla, marcado.
-3. **El contrato** — formulario amplio, con la comparación contra la referencia debajo del
-   valor y las fechas **ya puestas** con el periodo elegido arriba. Reescribirlas a mano
-   era el paso que más se equivocaba, y es información que la pantalla ya tenía.
+Ahora es **una sola pestaña (Sede)** con un interruptor arriba que declara para qué está
+abierta la pantalla:
 
-Al guardar hace lo mismo que el panel del plano —`find-or-create` del espacio y del
+- **Vender** — el mapa se lleva la pantalla, pintado por disponibilidad del periodo, y la
+  ficha del contrato va al lado. Sin KPIs: para poner un precio no sirve la ocupación de
+  hoy, sirve ver qué hay libre en el periodo y dónde queda.
+- **Supervisar** — el tablero de siempre: KPIs, filtros por estado, mapa con el panel de
+  Atención al lado y la tabla por espacio. Lleva un contador de pendientes en el
+  interruptor, así que invita solo.
+
+El mercaderista **no ve el interruptor**: no vende, y su pantalla es Supervisar.
+
+**El periodo es uno solo.** La misma tira de temporadas que pinta el mapa llena después
+las fechas del contrato, así no hay dos calendarios que puedan discrepar. Al entrar a
+Vender se pone solo en hoy→30 días si no había ninguno: "hoy" no es una pregunta
+comercial, lo que se vende es una temporada.
+
+**El contrato** (`frontend/src/components/Contrato/`) está partido en un hook con el
+estado (`useContrato`) y dos piezas para dibujarlo. El botón de guardar **no vive adentro
+del formulario** sino en una barra pegada al pie de la pantalla, que resume de corrido lo
+que va a quedar escrito —espacio → proveedor → valor → fechas— y dice qué falta antes de
+que nadie busque el botón. Para algo que escribe plata, esa relectura vale el espacio.
+
+Detalles que sobrevivieron de la pantalla anterior porque se ganaron el lugar:
+
+- Las fechas vienen **ya puestas** con el periodo elegido arriba, y se congelan al abrir
+  la ficha: cambiar la temporada mientras alguien teclea no le reescribe el acuerdo.
+- El semáforo del encabezado (`Libre todo el periodo` / `Parte del periodo vendida`)
+  responde por **las fechas que están escritas**, no por el periodo con el que abrió. Si
+  se corre el "hasta" hasta pisar un contrato que ya existe, el aviso aparece ahí mismo.
+- Debajo del valor va la comparación contra la **tarifa de referencia**.
+- Al lado del código va **dónde queda** en palabras ("A unos 3 m de las neveras"), medido
+  de borde a borde. El mapa está al lado, pero al teléfono con el proveedor hay que poder
+  decir "es la punta de la entrada, no la del fondo".
+- Una **góndola doble son dos espacios**: la ficha trae el selector de cara A/B.
+- Un mueble no comercializable no abre contrato: la ficha explica que es parte del local.
+
+Al guardar hace lo mismo que hacía el panel del plano —`find-or-create` del espacio y del
 proveedor, `POST /leases`, y escribe el contrato en el JSON del layout— y muestra una
 confirmación que **se queda hasta que la cierren**: al cerrar un trato lo que hay que ver
 es a quién le llegó el aviso, y un mensaje que se va solo a los dos segundos no lo dice.
-Esa confirmación vive en la pantalla y no en el formulario, porque al guardar el espacio
-sale de la lista de disponibles y eso desmontaba el mensaje justo cuando había que leerlo.
+Esa confirmación vive en la pantalla y no en el formulario, porque al guardar el mueble
+cambia de estado y eso desmontaba el mensaje justo cuando había que leerlo.
 
-El panel del plano sigue existiendo para editar un contrato sobre el mueble; Negociar es
-el camino para vender.
+Desde **Supervisar** también se vende: el popover del mapa y el panel de detalle traen
+"Negociar este espacio", que cambia de modo con ese espacio ya elegido.
+
+El panel del plano sigue existiendo para editar un contrato sobre el mueble.
 
 **Las pestañas dicen para qué sirven.** Los nombres solos no alcanzaban —"Plano" y
 "Editor 3D" suenan a lo mismo, y desde ninguno se adivina que el contrato se llenaba ahí
-adentro—. Ahora hay una frase en el tooltip de cada una y una línea que separa el trabajo
-diario (Negociar · Resumen · Montajes) del diseño de la tienda (Plano · Editor 3D), que es
-donde se entra una vez cada tanto. El admin aterriza en **Negociar**.
+adentro—. Hay una frase en el tooltip de cada una y una línea que separa el trabajo diario
+(Sede · Montajes) del diseño de la tienda (Plano · Editor 3D), que es donde se entra una
+vez cada tanto. El admin aterriza en **Sede**, modo Vender.
 
 **El correo del proveedor ya se puede cargar.** El formulario lo pide, y
 `/suppliers/find-or-create` **completa** el que falta sin pisar el que ya está. Antes no

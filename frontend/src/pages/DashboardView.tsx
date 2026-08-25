@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Search,
   SlidersHorizontal,
+  Handshake,
 } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
@@ -39,6 +40,8 @@ import type {
   UnifiedFixture, SpaceStatus, FaceData, RangeAvailability,
 } from "../types/fixtures";
 import SeasonPicker, { describeRange, type DateRange } from "../components/SeasonPicker/SeasonPicker";
+import ModoVender from "../components/Contrato/ModoVender";
+import type { ResumenContrato } from "../components/Contrato/Contrato";
 import { inclusiveDays } from "../types/seasons";
 
 // ─── Date / money helpers ────────────────────────────────────────────────────
@@ -978,7 +981,7 @@ function NoContractState({ fixture, isAdmin }: { fixture: UnifiedFixture; isAdmi
       {isAdmin && (
         <div style={{ fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.5, marginTop: 10 }}>
           {rentable
-            ? "Asignale un proveedor desde la pestaña Plano."
+            ? "Con «Negociar este espacio» llenás el contrato acá mismo."
             : "Para alquilarlo, cambiá su destino a «Comercializable» desde el plano."}
         </div>
       )}
@@ -989,12 +992,14 @@ function NoContractState({ fixture, isAdmin }: { fixture: UnifiedFixture; isAdmi
 // ─── Quick-look popover, anchored to the fixture on the map ─────────────────
 
 function FixturePopover({
-  fixture, anchor, isAdmin, onExpand, onClose,
+  fixture, anchor, isAdmin, onExpand, onNegociar, onClose,
 }: {
   fixture: UnifiedFixture;
   anchor: MapAnchor;
   isAdmin: boolean;
   onExpand: () => void;
+  /** Abre el contrato en el riel. Ausente para el mercaderista, que no vende. */
+  onNegociar?: () => void;
   onClose: () => void;
 }) {
   const rentable = isRentable(fixture);
@@ -1005,7 +1010,9 @@ function FixturePopover({
   const hasContract = rentable && entry.supplierName.trim().length > 0;
 
   const W = 296;
-  const EST_H = 250;
+  // Alto estimado, sólo para no dejarlo colgando fuera del mapa. Creció con el
+  // botón de negociar; si se queda corto el popover se sale por abajo.
+  const EST_H = rentable && isAdmin ? 296 : 250;
   // Flip to whichever side has room, measured against the real map width.
   const flip = anchor.x + 18 + W > anchor.w - 8;
   const left = Math.max(8, flip ? anchor.x - W - 18 : anchor.x + 18);
@@ -1092,6 +1099,23 @@ function FixturePopover({
           </div>
         )}
 
+        {/* La acción principal del mapa es vender: el popover es lo que se abre
+            al tocar un espacio, y antes lo único que ofrecía era mirar. */}
+        {rentable && onNegociar && (
+          <button
+            onClick={onNegociar}
+            style={{
+              width: "100%", height: 34, borderRadius: "var(--r-md)", border: "none",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              background: "var(--accent)", color: "#fff",
+              fontSize: 12.5, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
+            }}
+          >
+            <Handshake size={13} />
+            {hasContract ? "Nuevo contrato" : "Negociar este espacio"}
+          </button>
+        )}
+
         <div style={{ display: "flex", alignItems: "center", gap: 6, borderTop: "1px solid var(--line-soft)", paddingTop: 10 }}>
           {rentable && (
             <>
@@ -1120,13 +1144,15 @@ function FixturePopover({
 // ─── Full detail, rendered in the right-hand rail ────────────────────────────
 
 function FixtureDetailCard({
-  fixture, isAdmin, face, onFace, onBack, onOpenFile,
+  fixture, isAdmin, face, onFace, onBack, onNegociar, onOpenFile,
 }: {
   fixture: UnifiedFixture;
   isAdmin: boolean;
   face: "A" | "B";
   onFace: (f: "A" | "B") => void;
   onBack: () => void;
+  /** Cambia este panel por el del contrato, sobre la cara que se está viendo. */
+  onNegociar?: () => void;
   onOpenFile: (f: SpaceFileMeta) => void;
 }) {
   const rentable = isRentable(fixture);
@@ -1190,6 +1216,21 @@ function FixtureDetailCard({
       )}
 
       <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 13, overflowY: "auto" }}>
+        {rentable && onNegociar && (
+          <button
+            onClick={onNegociar}
+            style={{
+              width: "100%", height: 36, borderRadius: "var(--r-md)", border: "none",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+              background: hasContract ? "var(--accent-50)" : "var(--accent)",
+              color: hasContract ? "var(--accent-700)" : "#fff",
+              fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
+            }}
+          >
+            <Handshake size={14} />
+            {hasContract ? "Nuevo contrato para esta cara" : "Negociar este espacio"}
+          </button>
+        )}
         {!hasContract ? (
           <NoContractState fixture={fixture} isAdmin={isAdmin} />
         ) : (
@@ -1688,6 +1729,7 @@ export default function DashboardView() {
   const fixtures = useFixtureStore(selectFixtures);
   const { sedes, sede, setSede, fixturesBySede, syncFromServer } = useFixtureStore();
   const referenceRates = useFixtureStore((s) => s.referenceRates);
+  const commit = useFixtureStore((s) => s.commit);
   const isAdmin = useAuthStore(selectIsAdmin);
   const [ratesOpen, setRatesOpen] = useState(false);
 
@@ -1697,17 +1739,46 @@ export default function DashboardView() {
   // false = quick popover, true = full detail in the rail ("Ver todo").
   const [detailFull, setDetailFull] = useState(false);
   const [detailFace, setDetailFace] = useState<"A" | "B">("A");
+  /** Para qué está abierta la pantalla ahora mismo.
+   *
+   *  Negociar y Resumen eran dos pestañas que abrían las dos con el plano de la
+   *  misma sede, y la pregunta "¿en cuál de las dos hago el contrato?" no tenía
+   *  buena respuesta. Es una sola pantalla con dos modos declarados: en Vender
+   *  el mapa manda y el contrato va al lado; en Supervisar mandan los números y
+   *  lo que está pendiente. El mercaderista no vende, así que sólo ve el
+   *  segundo. */
+  const [modo, setModo] = useState<"vender" | "supervisar">("vender");
+  const modoEfectivo: "vender" | "supervisar" = isAdmin ? modo : "supervisar";
+  /** El contrato que se acaba de cerrar.
+   *
+   *  Vive en la pantalla y no adentro del formulario a propósito: al guardar,
+   *  el mueble cambia de estado y el formulario se desmontaría con el mensaje
+   *  adentro, justo cuando hay que leer a quién le llegó el aviso. */
+  const [cerrado, setCerrado] = useState<ResumenContrato | null>(null);
 
   const selectFixture = (f: UnifiedFixture | null, point?: MapAnchor) => {
     setSelected(f);
-    setAnchor(point ?? null);
+    // En Vender el popover sobra: la ficha de la derecha ya dice todo lo que
+    // ese globito decía, y encima tapa el mapa que se está mirando.
+    setAnchor(modoEfectivo === "vender" ? null : point ?? null);
     setDetailFull(false);
     setDetailFace("A");
+    setCerrado(null);
   };
   const closeDetail = () => {
     setSelected(null);
     setAnchor(null);
     setDetailFull(false);
+  };
+  /** Pasar a vender ese espacio, venga de donde venga: del popover del mapa o
+   *  del panel de detalle en Supervisar. */
+  const negociar = (f: UnifiedFixture, face: "A" | "B" = "A") => {
+    setSelected(f);
+    setDetailFace(face);
+    setDetailFull(false);
+    setAnchor(null);
+    setCerrado(null);
+    setModo("vender");
   };
   const [viewerFile, setViewerFile] = useState<SpaceFileMeta | null>(null);
 
@@ -1742,10 +1813,25 @@ export default function DashboardView() {
   /** Period the map answers for; null = today. */
   const [mapRange, setMapRange] = useState<DateRange | null>(null);
 
-  // Deselect when switching sedes
+  // Deselect when switching sedes: ese mueble es de la otra tienda, y un
+  // contrato a medio llenar apuntaría al espacio equivocado.
   useEffect(() => {
     setSelected(null);
+    setCerrado(null);
   }, [sede]);
+
+  /** Vender siempre tiene un periodo puesto.
+   *
+   *  El mapa sin rango responde por hoy, y "hoy" no es una pregunta comercial:
+   *  lo que se vende es una temporada. Sin esto, entrar a Vender mostraba el
+   *  mapa pintado por estado de hoy y el contador de libres en cero. */
+  useEffect(() => {
+    if (modoEfectivo !== "vender" || mapRange) return;
+    const from = new Date();
+    const to = new Date(from);
+    to.setDate(to.getDate() + 30);
+    setMapRange({ from, to });
+  }, [modoEfectivo, mapRange]);
 
   // ── Map search / status filter (per rentable face) ──
   const mapMatch = useMemo<MapMatch | null>(() => {
@@ -1912,6 +1998,66 @@ export default function DashboardView() {
     : kpis.expiring.length > 0 ? "expiring"
     : "expired";
 
+  /** La tarjeta del mapa. Es la MISMA en los dos modos —el mapa no cambia
+   *  porque cambie para qué estás mirándolo—; sólo cambia cuánto espacio se
+   *  lleva al lado de lo que tenga a la derecha. */
+  const tarjetaMapa = (flex: string) => (
+        <Card
+          style={{
+            position: "relative",
+            flex,
+            minWidth: 0,
+            display: "flex", flexDirection: "column",
+            padding: "12px 14px 10px",
+            minHeight: 460,
+          }}
+        >
+          <div
+            style={{
+              display: "flex", alignItems: "center", gap: 8,
+              flexWrap: "wrap", marginBottom: 8,
+            }}
+          >
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink-1)" }}>
+              Mapa de la sede
+            </span>
+            <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
+              {sede} ·{" "}
+              {mapRange
+                ? describeRange(mapRange)
+                : isAdmin
+                ? "tocá un espacio para venderlo o ver su contrato"
+                : "clic para ver el contrato"}
+            </span>
+            {/* Legend next to what it explains, not stranded at the bottom */}
+            <div style={{ marginLeft: "auto" }}>
+              <MapLegend range={mapRange} />
+            </div>
+          </div>
+
+          <IsoMap
+            fixtures={fixtures}
+            selectedId={selected?.id ?? null}
+            onSelect={selectFixture}
+            match={mapMatch}
+            range={mapRange}
+          />
+
+          {/* Quick look, anchored to the fixture. Hidden once the full
+              detail takes over the rail so the two never compete. */}
+          {selected && anchor && !detailFull && (
+            <FixturePopover
+              fixture={selected}
+              anchor={anchor}
+              isAdmin={isAdmin}
+              onExpand={() => setDetailFull(true)}
+              onNegociar={isAdmin ? () => negociar(selected) : undefined}
+              onClose={closeDetail}
+            />
+          )}
+        </Card>
+  );
+
   return (
     <div
       style={{
@@ -1946,10 +2092,13 @@ export default function DashboardView() {
                 letterSpacing: "-0.02em", color: "var(--ink-1)",
               }}
             >
-              Resumen operativo
+              Sede {sede}
             </h2>
             <p style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 2 }}>
-              {activeSedeCount} sede{activeSedeCount !== 1 ? "s" : ""} · {kpis.total} espacio{kpis.total !== 1 ? "s" : ""} arrendable{kpis.total !== 1 ? "s" : ""}
+              {kpis.total} espacio{kpis.total !== 1 ? "s" : ""} comercializable{kpis.total !== 1 ? "s" : ""}
+              {" · "}
+              {fixtures.length} mueble{fixtures.length !== 1 ? "s" : ""} en el plano
+              {activeSedeCount > 1 && ` · ${activeSedeCount} sedes activas`}
             </p>
           </div>
         </div>
@@ -2030,521 +2179,570 @@ export default function DashboardView() {
         <EmptyDashboard sede={sede} isAdmin={isAdmin} />
       ) : (
         <>
-          {/* ── Control bar: ONE search + ONE set of chips for the whole page ──
-              Previously the map and the table each had their own, so the same
-              question had to be asked twice and the two could disagree. */}
-          <Card
-            style={{
-              display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
-              padding: "9px 12px", marginBottom: 12,
-            }}
-          >
-            <div style={{ position: "relative", flex: "1 1 260px", minWidth: 210, maxWidth: 420 }}>
-              <Search
-                size={13}
-                style={{
-                  position: "absolute", left: 10, top: "50%",
-                  transform: "translateY(-50%)",
-                  color: "var(--ink-3)", pointerEvents: "none",
-                }}
-              />
-              <input
-                type="text"
-                value={mapQuery}
-                onChange={(e) => setMapQuery(e.target.value)}
-                placeholder="Buscar producto, categoría, proveedor o espacio…"
-                style={{
-                  width: "100%", height: 32, padding: "0 30px",
-                  borderRadius: "var(--r-md)", border: "1px solid var(--line)",
-                  background: "var(--surface-2)", color: "var(--ink-1)",
-                  fontSize: 12, fontFamily: "inherit", outline: "none",
-                }}
-              />
-              {mapQuery && (
-                <button
-                  onClick={() => setMapQuery("")}
-                  title="Limpiar búsqueda"
-                  style={{
-                    position: "absolute", right: 6, top: "50%",
-                    transform: "translateY(-50%)",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    width: 20, height: 20, borderRadius: 99,
-                    background: "var(--surface-3)", border: "none",
-                    color: "var(--ink-2)", cursor: "pointer",
-                  }}
-                >
-                  <X size={11} />
-                </button>
-              )}
-            </div>
-
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {FILTER_CHIPS.map((c) => {
-                const active = mapFilter === c.id;
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => setMapFilter(c.id)}
-                    style={{
-                      display: "inline-flex", alignItems: "center", gap: 5,
-                      height: 27, padding: "0 11px", borderRadius: 999,
-                      fontSize: 11, fontWeight: 600, fontFamily: "inherit",
-                      border: `1px solid ${active ? c.ring : "var(--line)"}`,
-                      background: active ? c.fill : "var(--surface)",
-                      color: active ? c.ring : "var(--ink-2)",
-                      cursor: "pointer",
-                      transition: "background .12s, color .12s, border-color .12s",
-                    }}
-                  >
-                    {c.id !== "todos" && (
-                      <span
+          {/* ── Para qué, y para cuándo ────────────────────────────────────
+              Las dos preguntas que ordenan la pantalla, juntas y arriba. El
+              modo dice qué se está haciendo —vender o supervisar— y el periodo
+              es uno solo: el mismo que pinta el mapa llena después las fechas
+              del contrato, así no hay dos calendarios que puedan discrepar. */}
+          <Card style={{ padding: "10px 12px", marginBottom: 12, display: "flex", flexDirection: "column", gap: 9 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              {isAdmin && (
+                <div style={{ display: "flex", gap: 3, padding: 3, borderRadius: "var(--r-lg)", background: "var(--surface-3)" }}>
+                  {([
+                    { id: "vender", label: "Vender", Icon: Handshake, badge: 0 },
+                    { id: "supervisar", label: "Supervisar", Icon: TrendingUp, badge: attentionCount },
+                  ] as const).map(({ id, label, Icon, badge }) => {
+                    const activo = modoEfectivo === id;
+                    return (
+                      <button
+                        key={id}
+                        onClick={() => setModo(id)}
                         style={{
-                          width: 6, height: 6, borderRadius: 99,
-                          background: active ? c.ring : "var(--ink-4)", flexShrink: 0,
+                          display: "inline-flex", alignItems: "center", gap: 7,
+                          height: 32, padding: "0 15px", borderRadius: "var(--r-md)",
+                          border: "none", cursor: "pointer", fontFamily: "inherit",
+                          fontSize: 13.5, fontWeight: activo ? 700 : 600,
+                          background: activo ? "var(--accent)" : "transparent",
+                          color: activo ? "#fff" : "var(--ink-2)",
+                          boxShadow: activo ? "var(--shadow-sm)" : "none",
+                          transition: "background .12s, color .12s",
                         }}
-                      />
-                    )}
-                    {c.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {mapMatch && (
-              <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-2)", marginLeft: "auto" }}>
-                {mapMatch.count} espacio{mapMatch.count !== 1 ? "s" : ""} · mapa y tabla filtrados
-              </span>
-            )}
-          </Card>
-
-          {/* ── Headline metrics, above the fold ───────────────────────────
-              These used to sit BELOW a full-screen map, so the numbers the page
-              exists for were the last thing anyone saw. Admin leads with
-              occupancy and money; a worker cannot see money and leads with what
-              is available and what needs attention. */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
-            {isAdmin ? (
-              <>
-                <StatCard
-                  label="Ocupación"
-                  value={`${kpis.occPct}%`}
-                  sub={`${kpis.occupied} de ${kpis.total}`}
-                  color="var(--accent-700)"
-                  meter={kpis.occPct}
-                />
-                <StatCard
-                  label="Disponibles"
-                  value={kpis.free}
-                  sub="para vender"
-                  color="var(--success)"
-                  onClick={() => setMapFilter(mapFilter === "free" ? "todos" : "free")}
-                  active={mapFilter === "free"}
-                />
-                <StatCard
-                  label="Contratados"
-                  value={kpis.committed}
-                  sub="aún no inician"
-                  color={kpis.committed > 0 ? "var(--accent-700)" : "var(--ink-4)"}
-                  onClick={() => setMapFilter(mapFilter === "committed" ? "todos" : "committed")}
-                  active={mapFilter === "committed"}
-                />
-                <StatCard
-                  label="Vencidos"
-                  value={kpis.expired.length}
-                  color={kpis.expired.length > 0 ? "var(--danger)" : "var(--ink-4)"}
-                  onClick={() => setMapFilter(mapFilter === "expired" ? "todos" : "expired")}
-                  active={mapFilter === "expired"}
-                />
-                <StatCard
-                  label="Por vencer ≤30d"
-                  value={kpis.expiring.length}
-                  color={kpis.expiring.length > 0 ? "var(--warning)" : "var(--ink-4)"}
-                  onClick={() => setMapFilter(mapFilter === "expiring" ? "todos" : "expiring")}
-                  active={mapFilter === "expiring"}
-                />
-                <StatCard
-                  label="Ingreso mensual"
-                  value={formatCOP(kpis.revenue)}
-                  sub="COP"
-                  // Only contracts running today count above. What is signed
-                  // for later gets its own line so the two are never added up
-                  // by eye.
-                  note={
-                    kpis.committedRevenue > 0
-                      ? `+ ${compactCOP(kpis.committedRevenue)} ya pactado`
-                      : undefined
-                  }
-                  color="var(--success)"
-                />
-              </>
-            ) : (
-              <>
-                <StatCard
-                  label="Espacios disponibles"
-                  value={kpis.free}
-                  sub={`de ${kpis.total}`}
-                  color="var(--success)"
-                  meter={kpis.total ? Math.round((kpis.free / kpis.total) * 100) : 0}
-                  onClick={() => setMapFilter(mapFilter === "free" ? "todos" : "free")}
-                  active={mapFilter === "free"}
-                />
-                <StatCard
-                  label="Vencidos"
-                  value={kpis.expired.length}
-                  sub="liberar o renovar"
-                  color={kpis.expired.length > 0 ? "var(--danger)" : "var(--ink-4)"}
-                  onClick={() => setMapFilter(mapFilter === "expired" ? "todos" : "expired")}
-                  active={mapFilter === "expired"}
-                />
-                <StatCard
-                  label="Por vencer ≤30d"
-                  value={kpis.expiring.length}
-                  sub="avisar al proveedor"
-                  color={kpis.expiring.length > 0 ? "var(--warning)" : "var(--ink-4)"}
-                  onClick={() => setMapFilter(mapFilter === "expiring" ? "todos" : "expiring")}
-                  active={mapFilter === "expiring"}
-                />
-                <StatCard
-                  label="Ocupados"
-                  value={kpis.occupied}
-                  sub={`${kpis.occPct}% de ocupación`}
-                  color="var(--accent-700)"
-                />
-              </>
-            )}
-          </div>
-
-          {/* ── Map + side rail ────────────────────────────────────────────
-              Side by side instead of stacked: the map used to reserve 62vh and
-              leave roughly half of it empty, pushing everything else off
-              screen. */}
-          <div
-            style={{
-              display: "flex", flexWrap: "wrap", alignItems: "stretch",
-              gap: 12, marginBottom: 12,
-            }}
-          >
-            <Card
-              style={{
-                position: "relative",
-                flex: isAdmin ? "62 1 480px" : "66 1 480px",
-                minWidth: 0,
-                display: "flex", flexDirection: "column",
-                padding: "12px 14px 10px",
-                minHeight: 460,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex", alignItems: "center", gap: 8,
-                  flexWrap: "wrap", marginBottom: 8,
-                }}
-              >
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink-1)" }}>
-                  Mapa de ocupación
-                </span>
-                <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
-                  {sede} · {mapRange ? describeRange(mapRange) : "clic para ver el contrato"}
-                </span>
-                {/* Legend next to what it explains, not stranded at the bottom */}
-                <div style={{ marginLeft: "auto" }}>
-                  <MapLegend range={mapRange} />
+                      >
+                        <Icon size={14} />
+                        {label}
+                        {badge > 0 && (
+                          <span
+                            style={{
+                              minWidth: 17, height: 17, padding: "0 4px", borderRadius: 999,
+                              display: "inline-flex", alignItems: "center", justifyContent: "center",
+                              fontSize: 10, fontWeight: 700,
+                              background: activo ? "rgba(255,255,255,.22)" : "var(--danger-50)",
+                              color: activo ? "#fff" : "var(--danger)",
+                            }}
+                          >
+                            {badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
-              </div>
+              )}
 
-              {/* The period the map answers for. Sits on the map and nowhere
-                  else: the cards above keep reporting today, so the two are
-                  never confused for one another. */}
-              <div
-                style={{
-                  display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-                  padding: "7px 9px", marginBottom: 8,
-                  borderRadius: "var(--r-md)",
-                  background: mapRange ? "var(--accent-50)" : "var(--surface-2)",
-                  border: `1px solid ${mapRange ? "var(--accent-200)" : "var(--line-soft)"}`,
-                }}
-              >
-                <SeasonPicker range={mapRange} onChange={setMapRange} />
-                {mapRange && (
-                  <span
+              <div style={{ position: "relative", flex: "1 1 240px", minWidth: 200, maxWidth: 380, marginLeft: "auto" }}>
+                <Search
+                  size={13}
+                  style={{
+                    position: "absolute", left: 10, top: "50%",
+                    transform: "translateY(-50%)", color: "var(--ink-3)", pointerEvents: "none",
+                  }}
+                />
+                <input
+                  type="text"
+                  value={mapQuery}
+                  onChange={(e) => setMapQuery(e.target.value)}
+                  placeholder="Buscar espacio, proveedor o categoría…"
+                  style={{
+                    width: "100%", height: 32, padding: "0 30px",
+                    borderRadius: "var(--r-md)", border: "1px solid var(--line)",
+                    background: "var(--surface-2)", color: "var(--ink-1)",
+                    fontSize: 12, fontFamily: "inherit", outline: "none",
+                  }}
+                />
+                {mapQuery && (
+                  <button
+                    onClick={() => setMapQuery("")}
+                    title="Limpiar búsqueda"
                     style={{
-                      marginLeft: "auto", fontSize: 11.5, fontWeight: 600,
-                      color: "var(--ink-2)", whiteSpace: "nowrap",
+                      position: "absolute", right: 6, top: "50%",
+                      transform: "translateY(-50%)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      width: 20, height: 20, borderRadius: 99,
+                      background: "var(--surface-3)", border: "none",
+                      color: "var(--ink-2)", cursor: "pointer",
                     }}
                   >
-                    <span style={{ fontFamily: "var(--font-mono)", color: "var(--success)" }}>
-                      {rangeTally.libres}
-                    </span>{" "}
-                    de {kpis.total} libres todo el periodo
-                    {rangeTally.parciales > 0 && (
-                      <span style={{ color: "var(--ink-3)", fontWeight: 500 }}>
-                        {" "}· {rangeTally.parciales} parcial{rangeTally.parciales === 1 ? "" : "es"}
-                      </span>
-                    )}
-                  </span>
+                    <X size={11} />
+                  </button>
                 )}
               </div>
+            </div>
 
-              <IsoMap
-                fixtures={fixtures}
-                selectedId={selected?.id ?? null}
-                onSelect={selectFixture}
-                match={mapMatch}
-                range={mapRange}
-              />
+            <div
+              style={{
+                display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+                paddingTop: 9, borderTop: "1px solid var(--line-soft)",
+              }}
+            >
+              <SeasonPicker range={mapRange} onChange={setMapRange} />
+              {mapRange && (
+                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 9, fontSize: 12.5, whiteSpace: "nowrap" }}>
+                  <span>
+                    <b style={{ fontFamily: "var(--font-mono)", fontSize: 15, color: "var(--success)" }}>
+                      {rangeTally.libres}
+                    </b>{" "}
+                    <span style={{ color: "var(--ink-3)" }}>libres</span>
+                  </span>
+                  <span style={{ color: "var(--line-strong)" }}>·</span>
+                  <span>
+                    <b style={{ fontFamily: "var(--font-mono)", fontSize: 15, color: "var(--warning)" }}>
+                      {rangeTally.parciales}
+                    </b>{" "}
+                    <span style={{ color: "var(--ink-3)" }}>parciales</span>
+                  </span>
+                  <span style={{ color: "var(--line-strong)" }}>·</span>
+                  <span>
+                    <b style={{ fontFamily: "var(--font-mono)", fontSize: 15, color: "var(--ink-2)" }}>
+                      {rangeTally.tomados}
+                    </b>{" "}
+                    <span style={{ color: "var(--ink-3)" }}>vendidos</span>
+                  </span>
+                </div>
+              )}
+            </div>
+          </Card>
 
-              {/* Quick look, anchored to the fixture. Hidden once the full
-                  detail takes over the rail so the two never compete. */}
-              {selected && anchor && !detailFull && (
-                <FixturePopover
-                  fixture={selected}
-                  anchor={anchor}
-                  isAdmin={isAdmin}
-                  onExpand={() => setDetailFull(true)}
-                  onClose={closeDetail}
-                />
+          {modoEfectivo === "vender" ? (
+            /* Vender: el mapa se lleva la pantalla y el contrato va al lado.
+               Sin KPIs — para decidir un precio no sirve la ocupación de hoy,
+               sirve ver qué hay libre en el periodo y dónde queda. */
+            <ModoVender
+              fixture={selected}
+              face={detailFace}
+              onFace={setDetailFace}
+              sede={sede}
+              rango={mapRange}
+              cerrado={cerrado}
+              onGuardado={(patch, resumen) => {
+                // El JSON del layout es lo que pinta el mapa y responde la
+                // disponibilidad; sin esto el contrato existiría en la base y
+                // el espacio seguiría viéndose libre.
+                const objetivo = selected;
+                const cara = detailFace;
+                if (objetivo) {
+                  commit(
+                    fixtures.map((f) =>
+                      f.id !== objetivo.id
+                        ? f
+                        : cara === "B"
+                        ? { ...f, faceB: { ...(f.faceB ?? {}), ...patch } as FaceData }
+                        : { ...f, ...patch },
+                    ),
+                  );
+                }
+                setSelected(null);
+                setAnchor(null);
+                setCerrado(resumen);
+              }}
+              onCancelar={closeDetail}
+              onSeguir={() => setCerrado(null)}
+            >
+              {tarjetaMapa("1 1 520px")}
+            </ModoVender>
+          ) : (
+            <>
+            {/* ── Filtros por estado ─────────────────────────────────────────
+                Filtran el mapa Y la tabla a la vez: antes cada uno tenía los
+                suyos y los dos podían contestar cosas distintas a la misma
+                pregunta. Sólo en Supervisar — miran el estado de HOY, y en
+                Vender el mapa está pintado por disponibilidad del periodo, así
+                que juntos se contradirían. */}
+            <Card
+              style={{
+                display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+                padding: "9px 12px", marginBottom: 12,
+              }}
+            >
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {FILTER_CHIPS.map((c) => {
+                  const active = mapFilter === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => setMapFilter(c.id)}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 5,
+                        height: 27, padding: "0 11px", borderRadius: 999,
+                        fontSize: 11, fontWeight: 600, fontFamily: "inherit",
+                        border: `1px solid ${active ? c.ring : "var(--line)"}`,
+                        background: active ? c.fill : "var(--surface)",
+                        color: active ? c.ring : "var(--ink-2)",
+                        cursor: "pointer",
+                        transition: "background .12s, color .12s, border-color .12s",
+                      }}
+                    >
+                      {c.id !== "todos" && (
+                        <span
+                          style={{
+                            width: 6, height: 6, borderRadius: 99,
+                            background: active ? c.ring : "var(--ink-4)", flexShrink: 0,
+                          }}
+                        />
+                      )}
+                      {c.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {mapMatch && (
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-2)", marginLeft: "auto" }}>
+                  {mapMatch.count} espacio{mapMatch.count !== 1 ? "s" : ""} · mapa y tabla filtrados
+                </span>
               )}
             </Card>
 
-            {/* Rail: what needs action, always visible next to the map */}
+            {/* ── Headline metrics, above the fold ───────────────────────────
+                These used to sit BELOW a full-screen map, so the numbers the page
+                exists for were the last thing anyone saw. Admin leads with
+                occupancy and money; a worker cannot see money and leads with what
+                is available and what needs attention. */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+              {isAdmin ? (
+                <>
+                  <StatCard
+                    label="Ocupación"
+                    value={`${kpis.occPct}%`}
+                    sub={`${kpis.occupied} de ${kpis.total}`}
+                    color="var(--accent-700)"
+                    meter={kpis.occPct}
+                  />
+                  <StatCard
+                    label="Disponibles"
+                    value={kpis.free}
+                    sub="para vender"
+                    color="var(--success)"
+                    onClick={() => setMapFilter(mapFilter === "free" ? "todos" : "free")}
+                    active={mapFilter === "free"}
+                  />
+                  <StatCard
+                    label="Contratados"
+                    value={kpis.committed}
+                    sub="aún no inician"
+                    color={kpis.committed > 0 ? "var(--accent-700)" : "var(--ink-4)"}
+                    onClick={() => setMapFilter(mapFilter === "committed" ? "todos" : "committed")}
+                    active={mapFilter === "committed"}
+                  />
+                  <StatCard
+                    label="Vencidos"
+                    value={kpis.expired.length}
+                    color={kpis.expired.length > 0 ? "var(--danger)" : "var(--ink-4)"}
+                    onClick={() => setMapFilter(mapFilter === "expired" ? "todos" : "expired")}
+                    active={mapFilter === "expired"}
+                  />
+                  <StatCard
+                    label="Por vencer ≤30d"
+                    value={kpis.expiring.length}
+                    color={kpis.expiring.length > 0 ? "var(--warning)" : "var(--ink-4)"}
+                    onClick={() => setMapFilter(mapFilter === "expiring" ? "todos" : "expiring")}
+                    active={mapFilter === "expiring"}
+                  />
+                  <StatCard
+                    label="Ingreso mensual"
+                    value={formatCOP(kpis.revenue)}
+                    sub="COP"
+                    // Only contracts running today count above. What is signed
+                    // for later gets its own line so the two are never added up
+                    // by eye.
+                    note={
+                      kpis.committedRevenue > 0
+                        ? `+ ${compactCOP(kpis.committedRevenue)} ya pactado`
+                        : undefined
+                    }
+                    color="var(--success)"
+                  />
+                </>
+              ) : (
+                <>
+                  <StatCard
+                    label="Espacios disponibles"
+                    value={kpis.free}
+                    sub={`de ${kpis.total}`}
+                    color="var(--success)"
+                    meter={kpis.total ? Math.round((kpis.free / kpis.total) * 100) : 0}
+                    onClick={() => setMapFilter(mapFilter === "free" ? "todos" : "free")}
+                    active={mapFilter === "free"}
+                  />
+                  <StatCard
+                    label="Vencidos"
+                    value={kpis.expired.length}
+                    sub="liberar o renovar"
+                    color={kpis.expired.length > 0 ? "var(--danger)" : "var(--ink-4)"}
+                    onClick={() => setMapFilter(mapFilter === "expired" ? "todos" : "expired")}
+                    active={mapFilter === "expired"}
+                  />
+                  <StatCard
+                    label="Por vencer ≤30d"
+                    value={kpis.expiring.length}
+                    sub="avisar al proveedor"
+                    color={kpis.expiring.length > 0 ? "var(--warning)" : "var(--ink-4)"}
+                    onClick={() => setMapFilter(mapFilter === "expiring" ? "todos" : "expiring")}
+                    active={mapFilter === "expiring"}
+                  />
+                  <StatCard
+                    label="Ocupados"
+                    value={kpis.occupied}
+                    sub={`${kpis.occPct}% de ocupación`}
+                    color="var(--accent-700)"
+                  />
+                </>
+              )}
+            </div>
+
+            {/* ── Map + side rail ────────────────────────────────────────────
+                Side by side instead of stacked: the map used to reserve 62vh and
+                leave roughly half of it empty, pushing everything else off
+                screen. */}
             <div
               style={{
-                flex: isAdmin ? "38 1 320px" : "34 1 300px",
-                minWidth: 0, display: "flex", flexDirection: "column", gap: 12,
+                display: "flex", flexWrap: "wrap", alignItems: "stretch",
+                gap: 12, marginBottom: 12,
               }}
             >
-              {selected && detailFull ? (
-                <FixtureDetailCard
-                  fixture={selected}
-                  isAdmin={isAdmin}
-                  face={detailFace}
-                  onFace={setDetailFace}
-                  onBack={closeDetail}
-                  onOpenFile={setViewerFile}
-                />
-              ) : (
-              <Card style={{ padding: 0, overflow: "hidden" }}>
-                <CardHeader
-                  icon={
-                    <AlertTriangle
-                      size={13}
-                      style={{ color: attentionCount > 0 ? "var(--danger)" : "var(--success)" }}
-                    />
-                  }
-                  title="Atención"
-                  sub={
-                    attentionCount > 0
-                      ? `${attentionCount} pendiente${attentionCount !== 1 ? "s" : ""}`
-                      : undefined
-                  }
-                />
-                {attentionCount === 0 ? (
-                  <div style={{ padding: "12px 14px", fontSize: 12, fontWeight: 500, color: "var(--success)" }}>
-                    ✓ Sin contratos vencidos ni próximos a vencer
-                  </div>
-                ) : (
-                  <div style={{ maxHeight: isAdmin ? 300 : 420, overflowY: "auto" }}>
-                    {kpis.expired.length > 0 && (
-                      <>
-                        <AtencionSection label={`Vencidos · ${kpis.expired.length}`} color="var(--danger)" />
-                        {kpis.expired.map((entry, i) => (
-                          <AtencionRow
-                            key={`${entry.fixture.id}-${entry.face}`}
-                            entry={entry}
-                            chip={`${entry.days}d`}
-                            chipColor="var(--danger)"
-                            bg="var(--danger-50)"
-                            dates={formatRange(entry.startDate, entry.endDate)}
-                            last={lastAttentionSection === "expired" && i === kpis.expired.length - 1}
-                          />
-                        ))}
-                      </>
-                    )}
-                    {kpis.expiring.length > 0 && (
-                      <>
-                        <AtencionSection label={`Por vencer ≤30d · ${kpis.expiring.length}`} color="var(--warning)" />
-                        {kpis.expiring.map((entry, i) => (
-                          <AtencionRow
-                            key={`${entry.fixture.id}-${entry.face}`}
-                            entry={entry}
-                            chip={`${entry.days}d`}
-                            chipColor="var(--warning)"
-                            bg="var(--warning-50)"
-                            dates={formatRange(entry.startDate, entry.endDate)}
-                            last={lastAttentionSection === "expiring" && i === kpis.expiring.length - 1}
-                          />
-                        ))}
-                      </>
-                    )}
-                    {kpis.noContract.length > 0 && (
-                      <>
-                        <AtencionSection
-                          label={`Ocupados sin contrato registrado · ${kpis.noContract.length}`}
-                          color="var(--danger)"
-                        />
-                        {kpis.noContract.map((entry, i) => (
-                          <AtencionRow
-                            key={`${entry.fixture.id}-${entry.face}`}
-                            entry={entry}
-                            chip="—"
-                            chipColor="var(--ink-4)"
-                            bg="transparent"
-                            dates={formatRange(entry.startDate, entry.endDate)}
-                            last={lastAttentionSection === "noContract" && i === kpis.noContract.length - 1}
-                          />
-                        ))}
-                      </>
-                    )}
-                    {isAdmin && montaje.noMontado.length > 0 && (
-                      <>
-                        <AtencionSection
-                          label={`No se pudo montar · ${montaje.noMontado.length}`}
-                          color="var(--danger)"
-                        />
-                        {montaje.noMontado.map((entry, i) => (
-                          <AtencionRow
-                            key={`nm-${entry.fixture.id}-${entry.face}`}
-                            entry={entry}
-                            chip="!"
-                            chipColor="var(--danger)"
-                            bg="var(--danger-50)"
-                            dates={
-                              (entry.reporte.motivo
-                                ? MOTIVO_LABEL[entry.reporte.motivo as MountMotivo]
-                                : "Sin motivo") +
-                              (entry.reporte.reportado_por ? ` · ${entry.reporte.reportado_por}` : "")
-                            }
-                            last={lastAttentionSection === "noMontado" && i === montaje.noMontado.length - 1}
-                            onFoto={
-                              entry.reporte.file_id
-                                ? () => setViewerFile({
-                                    id: entry.reporte.file_id as number,
-                                    filename: entry.reporte.foto_nombre ?? "montaje.jpg",
-                                    content_type: entry.reporte.foto_tipo ?? "image/jpeg",
-                                    size: 0,
-                                    uploaded_at: entry.reporte.confirmado_en ?? "",
-                                  })
-                                : undefined
-                            }
-                          />
-                        ))}
-                      </>
-                    )}
-                    {isAdmin && montaje.sinMontar.length > 0 && (
-                      <>
-                        <AtencionSection
-                          label={`Contratado, sin montar · ${montaje.sinMontar.length}`}
-                          color="var(--warning)"
-                        />
-                        {montaje.sinMontar.map((entry, i) => (
-                          <AtencionRow
-                            key={`sm-${entry.fixture.id}-${entry.face}`}
-                            entry={entry}
-                            chip={entry.dias === 0 ? "hoy" : `${entry.dias}d`}
-                            chipColor="var(--warning)"
-                            bg="var(--warning-50)"
-                            dates={
-                              entry.dias === 0
-                                ? "Arrancó hoy · sin reporte"
-                                : `Arrancó hace ${entry.dias} día${entry.dias === 1 ? "" : "s"} · sin reporte`
-                            }
-                            last={
-                              lastAttentionSection === "sinMontar" &&
-                              montaje.viejosSinReporte === 0 &&
-                              i === montaje.sinMontar.length - 1
-                            }
-                          />
-                        ))}
-                      </>
-                    )}
-                    {isAdmin && montaje.viejosSinReporte > 0 && (
-                      <div
-                        style={{
-                          padding: "8px 14px", fontSize: 11, color: "var(--ink-3)",
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        Además, {montaje.viejosSinReporte} contrato
-                        {montaje.viejosSinReporte === 1 ? "" : "s"} que arrancó
-                        {montaje.viejosSinReporte === 1 ? "" : "n"} hace más de{" "}
-                        {VENTANA_MONTAJE_DIAS} días nunca se reportó
-                        {montaje.viejosSinReporte === 1 ? "" : "n"}. A esa altura el
-                        espacio ya está armado: lo que falta es el reporte.
-                      </div>
-                    )}
-                    {isAdmin && kpis.belowReference.length > 0 && (
-                      <>
-                        <AtencionSection
-                          label={`Bajo tarifa de referencia · ${kpis.belowReference.length}`}
-                          color="var(--warning)"
-                        />
-                        {kpis.belowReference.map((entry, i) => (
-                          <AtencionRow
-                            key={`${entry.fixture.id}-${entry.face}`}
-                            entry={entry}
-                            chip={`−${entry.gapPct}%`}
-                            chipColor="var(--warning)"
-                            bg="transparent"
-                            dates={`${compactCOP(entry.negotiatedValue)} · ref ${compactCOP(entry.ref)}`}
-                            last={lastAttentionSection === "belowRef" && i === kpis.belowReference.length - 1}
-                          />
-                        ))}
-                      </>
-                    )}
-                  </div>
-                )}
-              </Card>
-              )}
+              {tarjetaMapa(isAdmin ? "62 1 480px" : "66 1 480px")}
 
-              {isAdmin && !(selected && detailFull) && (
+              {/* Rail: what needs action, always visible next to the map */}
+              <div
+                style={{
+                  flex: isAdmin ? "38 1 320px" : "34 1 300px",
+                  minWidth: 0, display: "flex", flexDirection: "column", gap: 12,
+                }}
+              >
+                {selected && detailFull ? (
+                  <FixtureDetailCard
+                    fixture={selected}
+                    isAdmin={isAdmin}
+                    face={detailFace}
+                    onFace={setDetailFace}
+                    onBack={closeDetail}
+                    onNegociar={isAdmin ? () => negociar(selected, detailFace) : undefined}
+                    onOpenFile={setViewerFile}
+                  />
+                ) : (
                 <Card style={{ padding: 0, overflow: "hidden" }}>
                   <CardHeader
-                    icon={<TrendingUp size={13} style={{ color: "var(--accent)" }} />}
-                    title="Top proveedores"
-                    sub="por ingreso mensual"
+                    icon={
+                      <AlertTriangle
+                        size={13}
+                        style={{ color: attentionCount > 0 ? "var(--danger)" : "var(--success)" }}
+                      />
+                    }
+                    title="Atención"
+                    sub={
+                      attentionCount > 0
+                        ? `${attentionCount} pendiente${attentionCount !== 1 ? "s" : ""}`
+                        : undefined
+                    }
                   />
-                  <div style={{ padding: "6px 0", maxHeight: 260, overflowY: "auto" }}>
-                    {kpis.topSuppliers.length === 0 ? (
-                      <div style={{ padding: "4px 14px 8px", fontSize: 12, color: "var(--ink-3)" }}>
-                        Sin contratos activos con valor registrado.
-                      </div>
-                    ) : (
-                      kpis.topSuppliers.map((s, i) => (
-                        <SupplierRow
-                          key={s.name}
-                          name={s.name}
-                          revenue={s.revenue}
-                          count={s.count}
-                          rank={i}
-                        />
-                      ))
-                    )}
-                  </div>
+                  {attentionCount === 0 ? (
+                    <div style={{ padding: "12px 14px", fontSize: 12, fontWeight: 500, color: "var(--success)" }}>
+                      ✓ Sin contratos vencidos ni próximos a vencer
+                    </div>
+                  ) : (
+                    <div style={{ maxHeight: isAdmin ? 300 : 420, overflowY: "auto" }}>
+                      {kpis.expired.length > 0 && (
+                        <>
+                          <AtencionSection label={`Vencidos · ${kpis.expired.length}`} color="var(--danger)" />
+                          {kpis.expired.map((entry, i) => (
+                            <AtencionRow
+                              key={`${entry.fixture.id}-${entry.face}`}
+                              entry={entry}
+                              chip={`${entry.days}d`}
+                              chipColor="var(--danger)"
+                              bg="var(--danger-50)"
+                              dates={formatRange(entry.startDate, entry.endDate)}
+                              last={lastAttentionSection === "expired" && i === kpis.expired.length - 1}
+                            />
+                          ))}
+                        </>
+                      )}
+                      {kpis.expiring.length > 0 && (
+                        <>
+                          <AtencionSection label={`Por vencer ≤30d · ${kpis.expiring.length}`} color="var(--warning)" />
+                          {kpis.expiring.map((entry, i) => (
+                            <AtencionRow
+                              key={`${entry.fixture.id}-${entry.face}`}
+                              entry={entry}
+                              chip={`${entry.days}d`}
+                              chipColor="var(--warning)"
+                              bg="var(--warning-50)"
+                              dates={formatRange(entry.startDate, entry.endDate)}
+                              last={lastAttentionSection === "expiring" && i === kpis.expiring.length - 1}
+                            />
+                          ))}
+                        </>
+                      )}
+                      {kpis.noContract.length > 0 && (
+                        <>
+                          <AtencionSection
+                            label={`Ocupados sin contrato registrado · ${kpis.noContract.length}`}
+                            color="var(--danger)"
+                          />
+                          {kpis.noContract.map((entry, i) => (
+                            <AtencionRow
+                              key={`${entry.fixture.id}-${entry.face}`}
+                              entry={entry}
+                              chip="—"
+                              chipColor="var(--ink-4)"
+                              bg="transparent"
+                              dates={formatRange(entry.startDate, entry.endDate)}
+                              last={lastAttentionSection === "noContract" && i === kpis.noContract.length - 1}
+                            />
+                          ))}
+                        </>
+                      )}
+                      {isAdmin && montaje.noMontado.length > 0 && (
+                        <>
+                          <AtencionSection
+                            label={`No se pudo montar · ${montaje.noMontado.length}`}
+                            color="var(--danger)"
+                          />
+                          {montaje.noMontado.map((entry, i) => (
+                            <AtencionRow
+                              key={`nm-${entry.fixture.id}-${entry.face}`}
+                              entry={entry}
+                              chip="!"
+                              chipColor="var(--danger)"
+                              bg="var(--danger-50)"
+                              dates={
+                                (entry.reporte.motivo
+                                  ? MOTIVO_LABEL[entry.reporte.motivo as MountMotivo]
+                                  : "Sin motivo") +
+                                (entry.reporte.reportado_por ? ` · ${entry.reporte.reportado_por}` : "")
+                              }
+                              last={lastAttentionSection === "noMontado" && i === montaje.noMontado.length - 1}
+                              onFoto={
+                                entry.reporte.file_id
+                                  ? () => setViewerFile({
+                                      id: entry.reporte.file_id as number,
+                                      filename: entry.reporte.foto_nombre ?? "montaje.jpg",
+                                      content_type: entry.reporte.foto_tipo ?? "image/jpeg",
+                                      size: 0,
+                                      uploaded_at: entry.reporte.confirmado_en ?? "",
+                                    })
+                                  : undefined
+                              }
+                            />
+                          ))}
+                        </>
+                      )}
+                      {isAdmin && montaje.sinMontar.length > 0 && (
+                        <>
+                          <AtencionSection
+                            label={`Contratado, sin montar · ${montaje.sinMontar.length}`}
+                            color="var(--warning)"
+                          />
+                          {montaje.sinMontar.map((entry, i) => (
+                            <AtencionRow
+                              key={`sm-${entry.fixture.id}-${entry.face}`}
+                              entry={entry}
+                              chip={entry.dias === 0 ? "hoy" : `${entry.dias}d`}
+                              chipColor="var(--warning)"
+                              bg="var(--warning-50)"
+                              dates={
+                                entry.dias === 0
+                                  ? "Arrancó hoy · sin reporte"
+                                  : `Arrancó hace ${entry.dias} día${entry.dias === 1 ? "" : "s"} · sin reporte`
+                              }
+                              last={
+                                lastAttentionSection === "sinMontar" &&
+                                montaje.viejosSinReporte === 0 &&
+                                i === montaje.sinMontar.length - 1
+                              }
+                            />
+                          ))}
+                        </>
+                      )}
+                      {isAdmin && montaje.viejosSinReporte > 0 && (
+                        <div
+                          style={{
+                            padding: "8px 14px", fontSize: 11, color: "var(--ink-3)",
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          Además, {montaje.viejosSinReporte} contrato
+                          {montaje.viejosSinReporte === 1 ? "" : "s"} que arrancó
+                          {montaje.viejosSinReporte === 1 ? "" : "n"} hace más de{" "}
+                          {VENTANA_MONTAJE_DIAS} días nunca se reportó
+                          {montaje.viejosSinReporte === 1 ? "" : "n"}. A esa altura el
+                          espacio ya está armado: lo que falta es el reporte.
+                        </div>
+                      )}
+                      {isAdmin && kpis.belowReference.length > 0 && (
+                        <>
+                          <AtencionSection
+                            label={`Bajo tarifa de referencia · ${kpis.belowReference.length}`}
+                            color="var(--warning)"
+                          />
+                          {kpis.belowReference.map((entry, i) => (
+                            <AtencionRow
+                              key={`${entry.fixture.id}-${entry.face}`}
+                              entry={entry}
+                              chip={`−${entry.gapPct}%`}
+                              chipColor="var(--warning)"
+                              bg="transparent"
+                              dates={`${compactCOP(entry.negotiatedValue)} · ref ${compactCOP(entry.ref)}`}
+                              last={lastAttentionSection === "belowRef" && i === kpis.belowReference.length - 1}
+                            />
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  )}
                 </Card>
-              )}
+                )}
 
+                {isAdmin && !(selected && detailFull) && (
+                  <Card style={{ padding: 0, overflow: "hidden" }}>
+                    <CardHeader
+                      icon={<TrendingUp size={13} style={{ color: "var(--accent)" }} />}
+                      title="Top proveedores"
+                      sub="por ingreso mensual"
+                    />
+                    <div style={{ padding: "6px 0", maxHeight: 260, overflowY: "auto" }}>
+                      {kpis.topSuppliers.length === 0 ? (
+                        <div style={{ padding: "4px 14px 8px", fontSize: 12, color: "var(--ink-3)" }}>
+                          Sin contratos activos con valor registrado.
+                        </div>
+                      ) : (
+                        kpis.topSuppliers.map((s, i) => (
+                          <SupplierRow
+                            key={s.name}
+                            name={s.name}
+                            revenue={s.revenue}
+                            count={s.count}
+                            rank={i}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </Card>
+                )}
+
+              </div>
             </div>
-          </div>
 
-          {/* ── Full-width spaces table ──────────────────────────────────── */}
-          <Card style={{ padding: 0, overflow: "hidden" }}>
-            <CardHeader
-              icon={null}
-              title="Estado por espacio"
-              sub={
-                mapMatch
-                  ? `${sede} · ${mapMatch.count} de ${kpis.total} (filtrado)`
-                  : `${sede} · ${kpis.total} espacio${kpis.total !== 1 ? "s" : ""}`
-              }
-            />
-            <SpacesTable
-              fixtures={fixtures}
-              isAdmin={isAdmin}
-              query={mapQuery}
-              filter={mapFilter}
-              montajeDe={montajeDe}
-            />
-          </Card>
+            {/* ── Full-width spaces table ──────────────────────────────────── */}
+            <Card style={{ padding: 0, overflow: "hidden" }}>
+              <CardHeader
+                icon={null}
+                title="Estado por espacio"
+                sub={
+                  mapMatch
+                    ? `${sede} · ${mapMatch.count} de ${kpis.total} (filtrado)`
+                    : `${sede} · ${kpis.total} espacio${kpis.total !== 1 ? "s" : ""}`
+                }
+              />
+              <SpacesTable
+                fixtures={fixtures}
+                isAdmin={isAdmin}
+                query={mapQuery}
+                filter={mapFilter}
+                montajeDe={montajeDe}
+              />
+            </Card>
+            </>
+          )}
         </>
       )}
 

@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
-import { Grid2x2, Box, BarChart2, Camera, Handshake, Search, Settings, LogOut, X, Send } from "lucide-react";
+import { Grid2x2, Box, Camera, Handshake, Search, Settings, LogOut, X, Send } from "lucide-react";
 import StoreEditor3D from "../components/StoreEditor3D/StoreEditor3D";
 import FloorPlan2D from "../components/FloorPlan2D/FloorPlan2D";
 import DashboardView from "./DashboardView";
-import NegotiateView from "./NegotiateView";
 import MountView from "./MountView";
 import SyncStatus from "../components/SyncStatus/SyncStatus";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
@@ -20,7 +19,7 @@ import { useFixtureStore } from "../store/fixtureStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ViewMode = "negociar" | "map" | "store" | "kpis" | "montaje";
+type ViewMode = "map" | "store" | "kpis" | "montaje";
 
 /** Código que venía en el enlace del correo de montaje (`?montar=NAVE-PUN-01`).
  *
@@ -486,16 +485,21 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
  *
  *  Los nombres solos no alcanzaban: "Plano" y "Editor 3D" suenan a lo mismo, y
  *  desde ninguno de los dos se adivina que el contrato se llena ahí adentro.
- *  El orden es el del trabajo diario —vender, mirar cómo va, montar— y el
- *  diseño de la tienda queda separado al final, que es donde se entra una vez
- *  cada tanto y no todos los días. */
+ *  Quedan tres del trabajo diario —la sede, los montajes— separadas del diseño
+ *  de la tienda, que es donde se entra una vez cada tanto y no todos los días.
+ *
+ *  Eran cuatro. Negociar y Resumen abrían las dos con el plano de la misma
+ *  sede y se diferenciaban en poco más que el orden de las tarjetas, así que
+ *  la pregunta "¿en cuál de las dos hago el contrato?" no tenía buena
+ *  respuesta. Ahora hay una sola, y el contrato vive al lado del mapa. */
 const TABS: {
   id: ViewMode; label: string; Icon: typeof Grid2x2; para: string; grupo: "operar" | "diseñar";
 }[] = [
-  { id: "negociar", label: "Negociar",  Icon: Handshake, grupo: "operar",
-    para: "Vender un espacio: elegís el periodo, ves lo disponible y llenás el contrato" },
-  { id: "kpis",     label: "Resumen",   Icon: BarChart2, grupo: "operar",
-    para: "Cómo va la sede: ocupación, ingresos, lo que vence y lo que falta montar" },
+  // Negociar y Resumen eran dos pestañas que mostraban casi lo mismo: las dos
+  // abrían con el plano de la sede. Ahora son una sola — el mapa es el mismo y
+  // el contrato se llena en el riel de la derecha, sin cambiar de pantalla.
+  { id: "kpis",     label: "Sede",      Icon: Handshake, grupo: "operar",
+    para: "Cómo va la sede y dónde se vende: tocás un espacio en el mapa y llenás el contrato ahí mismo" },
   { id: "montaje",  label: "Montajes",  Icon: Camera,    grupo: "operar",
     para: "Confirmar con foto que la exhibición quedó armada" },
   { id: "map",      label: "Plano",     Icon: Grid2x2,   grupo: "diseñar",
@@ -668,7 +672,7 @@ export default function Dashboard() {
   // Arriving from the mount email opens that screen straight away, on the
   // space the email was about.
   const mountCode = MOUNT_DEEP_LINK;
-  const [viewMode, setViewMode] = useState<ViewMode>(mountCode ? "montaje" : "negociar");
+  const [viewMode, setViewMode] = useState<ViewMode>(mountCode ? "montaje" : "kpis");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const isAdmin = useAuthStore(selectIsAdmin);
   const role = useAuthStore((s) => s.role);
@@ -701,9 +705,7 @@ export default function Dashboard() {
       />
 
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        {effectiveMode === "negociar" ? (
-          <NegotiateView onIrAlPlano={() => setViewMode("map")} />
-        ) : effectiveMode === "store" ? (
+        {effectiveMode === "store" ? (
           <StoreEditor3D />
         ) : effectiveMode === "montaje" ? (
           <MountView initialCode={mountCode} onDone={() => setViewMode("kpis")} />
