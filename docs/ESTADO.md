@@ -1267,6 +1267,55 @@ del empaque, que hoy no se pide al cargar el arte.
 
 ---
 
+## Un solo nombre para el mueble
+
+El panel del plano decía **«—»** en Nomenclatura mientras el plano dibujaba
+`GON-800` sobre el mismo mueble. No era un bug de dibujo: eran **dos campos
+distintos**.
+
+* El **código** (`GON-800`) lo genera el sistema, se dibuja dentro del mueble y
+  es la llave: forma el código de espacio que viaja al contrato, al correo del
+  mercaderista y a la lámina.
+* La **nomenclatura** era texto libre, opcional y aparte. Vacía en los 109
+  muebles del plano real. Sólo se dibujaba como una píldora encima del mueble, y
+  sólo si tenía valor — así que prender «Etiquetas» sobre un plano recién hecho
+  no mostraba **ni una etiqueta**.
+
+Lo que decidió el arreglo: **el resto de la app ya los trataba como uno solo.**
+El minimapa, la pantalla de montaje, el tablero y el 3D mostraban
+`nomenclatura || código`. El plano 2D era el único que los separaba, y su panel
+el único lugar donde se veía «—» cuando el nombre efectivo era `GON-800`.
+
+### La regla
+
+`nombreDeMueble(mueble)` en `utils/nomenclatura.ts`: el nombre es el código que
+puso el sistema, y escribir una nomenclatura lo **reemplaza**. Una sola
+respuesta a «¿cómo se llama este mueble?», y es la que se ve en el plano, en el
+3D, en el montaje, en el tablero y en la lámina. Los seis lugares que resolvían
+`nomenclatura || code` a mano ahora llaman a esta función.
+
+El código nunca se toca: sigue siendo la llave del espacio. Lo que cambia es
+cómo se lo nombra.
+
+### La píldora sólo dice lo que la caja no dice
+
+Al principio la píldora se dibujó siempre con el nombre efectivo. Resultado: el
+nombre aparecía **dos veces** por mueble —adentro de la caja y en la píldora
+encima— y las píldoras chocaban con el mueble de arriba. Peor que antes.
+
+Ahora sale sólo cuando el nombre **no** es el del sistema (`nombrePropio`). Si
+es el heredado, la caja ya lo dice. Y escribir en el campo exactamente el mismo
+código tampoco cuenta como nombre propio: no es un nombre nuevo, es el mismo.
+
+### Lo que ve el usuario
+
+* Sin nombre escrito: el panel dice `GON-800 · del sistema` en vez de «—».
+* Con nombre escrito: el panel dice `P1-A`, y `P1-A` aparece sobre el mueble.
+* Vaciar el campo devuelve el nombre del sistema; el placeholder del input es el
+  propio código, para que se vea qué se hereda.
+
+---
+
 ## Pendiente urgente: datos de TERRON
 
 TERRON tenía datos reales y **quedó vacía en el servidor**, vaciada por el bug del layout

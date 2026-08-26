@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { footprint2D, isRentable, type UnifiedFixture } from "../../types/fixtures";
+import { nombreDeMueble } from "../../utils/nomenclatura";
 
 /**
  * El plano de la tienda visto desde arriba, con UN mueble señalado.
@@ -271,7 +272,7 @@ export default function MiniMapa({
       role="img"
       aria-label={
         destino
-          ? `Plano de la tienda con ${destino.f.nomenclatura || destino.f.code} señalado`
+          ? `Plano de la tienda con ${nombreDeMueble(destino.f)} señalado`
           : "Plano de la tienda"
       }
     >
@@ -292,7 +293,7 @@ export default function MiniMapa({
             onClick={onElegir && colorDe?.(c.f) ? () => onElegir(c.f.code) : undefined}
           >
             {onElegir && colorDe?.(c.f) && (
-              <title>{`${c.f.nomenclatura || c.f.code} · ${c.f.label ?? ""}`}</title>
+              <title>{`${nombreDeMueble(c.f)} · ${c.f.label ?? ""}`}</title>
             )}
           </rect>
         ))}
@@ -379,7 +380,7 @@ export default function MiniMapa({
               encima de los muebles vecinos y se volvía ilegible justo en la
               zona más cargada del plano, que es la que hay que leer. */}
           {(() => {
-            const texto = destino.f.nomenclatura || destino.f.code;
+            const texto = nombreDeMueble(destino.f);
             const anchoPastilla = texto.length * 5.6 + 10;
             const cxD = destino.x + destino.w / 2;
             const radio = Math.max(destino.w, destino.h) / 2 + 11;

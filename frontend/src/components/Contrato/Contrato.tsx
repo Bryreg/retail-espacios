@@ -14,6 +14,7 @@ import {
   fullSpaceCode, isDoubleGondola, rangeAvailability, rateTypeOf, referenceRateFor,
   type FaceData, type RangeAvailability, type UnifiedFixture,
 } from "../../types/fixtures";
+import { nombreDeMueble } from "../../utils/nomenclatura";
 
 /**
  * El contrato: un hook con todo el estado y dos piezas para dibujarlo.
@@ -231,7 +232,7 @@ export function useContrato({ fixture, face, sede, rango, onGuardado }: ArgsCont
           observation: nota.trim(),
         } as Partial<FaceData>,
         {
-          corto: fixture.nomenclatura || corto,
+          corto: nombreDeMueble({ code: corto, nomenclatura: fixture.nomenclatura }),
           codigo,
           proveedor: proveedor.trim(),
           desde,
@@ -294,7 +295,7 @@ export function CabezaContrato({
     <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--line-soft)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 16.5, fontWeight: 700, color: "var(--ink-1)" }}>
-          {c.fixture.nomenclatura || c.corto}
+          {nombreDeMueble({ code: c.corto, nomenclatura: c.fixture.nomenclatura })}
         </span>
         <span
           style={{

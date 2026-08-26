@@ -48,6 +48,7 @@ import Planometria from "../components/Contrato/Planometria";
 import CancelarContrato from "../components/Contrato/CancelarContrato";
 import CargaMasiva from "../components/CargaMasiva/CargaMasiva";
 import { inclusiveDays } from "../types/seasons";
+import { nombreDeMueble } from "../utils/nomenclatura";
 
 // ─── Date / money helpers ────────────────────────────────────────────────────
 
@@ -537,7 +538,7 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
       // Label above the prism — small unlabeled fixtures still get one while matched
       const area = f.w * f.d;
       const defaultVisible = Boolean(f.nomenclatura) || area > 1.5;
-      const labelText = f.nomenclatura || f.code;
+      const labelText = nombreDeMueble(f);
       const [lcx, lcy] = iso(f.cx, f.cz, h);
       const label = labelText ? { text: labelText, x: lcx, y: lcy - 7, defaultVisible } : null;
       if (label) addPt([label.x, label.y - 8]);

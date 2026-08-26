@@ -5,6 +5,7 @@ import {
   CabezaContrato, CamposContrato, fechaCorta, money, useContrato,
   type ResumenContrato,
 } from "./Contrato";
+import { nombreDeMueble } from "../../utils/nomenclatura";
 
 /**
  * El modo Vender: el mapa grande a la izquierda, la ficha del contrato a la
@@ -301,7 +302,7 @@ function ConEspacio({
                 background: "var(--accent-50)", color: "var(--accent-700)",
               }}
             >
-              {c.fixture.nomenclatura || c.corto}
+              {nombreDeMueble({ code: c.corto, nomenclatura: c.fixture.nomenclatura })}
             </span>
             <span style={{ color: "var(--ink-4)" }}>→</span>
             <span style={{ fontSize: 13.5, fontWeight: 600, color: c.proveedor ? "var(--ink-1)" : "var(--ink-4)" }}>
