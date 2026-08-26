@@ -1364,6 +1364,102 @@ suspendido se veía suelto en el aire.
 
 ---
 
+## Los muebles se dibujaron a ciegas
+
+El catálogo 3D se escribió a partir de la descripción de cada mueble, sin una
+sola foto ni una referencia de otro programa. Eso dejó dos problemas de
+distinta naturaleza, y el segundo es el que importaba.
+
+### Ocho de los trece no se podían vestir
+
+Probarle el producto del proveedor al mueble —la función por la que se cierra
+un trato— **sólo funcionaba en cinco tipos**: góndola (doble y mural), punta,
+robatope, vitrina y nevera de refrescos. Los otros ocho quedaban afuera, y no
+por un olvido: el compositor sabía hacer una sola cosa, apilar filas de
+facings sobre entrepaños. Una batea no tiene ninguna cara vertical que pintar.
+
+Ahora hay **tres formas** de llevar producto, y cada tipo declara la suya en
+`getPanelShelfSpan`:
+
+| forma | qué es | quiénes |
+|---|---|---|
+| `estante` | filas de facings sobre entrepaños | góndola, punta, robatope, vitrina, nevera de refrescos, cruz, impulsador |
+| `volcado` | producto a granel visto **desde arriba** | isla de piso, batea, isla fría, nevera de carnes, stand de frutas |
+| `tira` | una columna de unidades colgadas | ristra |
+
+`volcado` es la que faltaba, y es justo la mitad promocional del catálogo. Se
+compone en el mismo canvas que las otras dos, tejiendo unidades de 13 cm con
+las filas desfasadas y una rotación por celda —determinística, derivada de
+`(fila, columna)`— para que se lea como un montón y no como una grilla.
+
+### Ningún mueble inventa producto
+
+La regla vieja era que cada malla traía su propio relleno: cajas de helado de
+colores en la isla fría, un bloque verde en el stand de frutas, una losa roja
+en la nevera de carnes, botellas rojas / naranjas / verdes / azules en la de
+refrescos. Con el arte del proveedor cargado, **ese relleno se veía por los
+huecos entre facings** y competía con la marca que acababa de pagar por estar
+ahí.
+
+Ahora el producto inventado se borró de todos, con una sola excepción
+deliberada: la nevera de refrescos conserva botellas **mudas, de un solo tono
+frío**, y sólo mientras el espacio esté sin vender. Una nevera vacía no se lee
+como nevera; una nevera con seis colores de marcas que no existen le roba el
+protagonismo a la que sí.
+
+### Mueble por mueble
+
+- **Isla fría.** Era un cajón macizo con un vidrio azulado adentro fingiendo
+  el pozo, así que el producto quedaba enterrado en geometría y no se veía.
+  Ahora el hueco es geometría de verdad: cuatro paredes de 5,5 cm sobre un
+  cuerpo más bajo, y el producto apoyado en el piso del pozo.
+- **Stand de frutas.** Dieciocho tablas apiladas hasta un metro: una ruma de
+  madera. Un stand de verdad es un mesón con un cajón **poco profundo** arriba,
+  para que la fruta quede a la vista y al alcance de la mano. El producto va
+  adentro del cajón, no al ras del borde —al ras se veía como una tapa impresa—.
+- **Exhibidor cruz.** Dos paneles del fondo entero, en gris casi negro, que
+  enmarcaban el producto como dos paredes. Ahora se para en cuatro postes de
+  esquina con travesaños, en metal claro, y lleva fondo: sin fondo, detrás del
+  producto quedaba un hueco negro.
+- **Góndola.** Se paraba en dos patitas, con el pasillo visible por debajo, y
+  llevaba una barra blanca suspendida por encima sin apoyarse en nada. Ahora
+  tiene zócalo corrido de punta a punta y un remate al ras sobre los montantes.
+- **Batea.** El volcado flotaba en el aire, en el medio de la jaula. Se le
+  agregó el **fondo falso** que toda batea tiene, que es lo que sube el producto
+  cerca del borde. De paso, el riel de arriba cerraba 4,5 cm por encima del
+  montante: era un aro suelto.
+- **Vitrina.** En gris pizarra se leía como un electrodoméstico negro y le
+  robaba el contraste al producto. Acero claro, y la tira LED del techo —que era
+  una losa del fondo entero tapando el estante de arriba— quedó donde va, pegada
+  al frente.
+- **Isla de piso.** Tres bandejas de 10 cm flotando una sobre otra. Ahora es
+  cartón escalonado macizo, cada andén una caja de altura completa, con el
+  producto volcado sobre cada uno.
+- **Ristra.** Se leía como un panel. Ahora es lo que dice el nombre: una
+  columna de unidades colgadas.
+- **Nevera de carnes** e **isla fría**: el volcado se había puesto *debajo* de
+  una superficie interior que ya existía, así que no aparecía nada. Va sobre el
+  cuerpo, bajo el vidrio.
+- **Robatope.** El indicador de estado se montaba al 90 % de la altura, encima
+  del producto. El estado es del sistema y no tiene por qué taparle la cara al
+  proveedor: va abajo, como en todos los demás.
+
+### Cómo se comprobó
+
+Sembrando **los catorce del catálogo** (los trece que se venden más el mural)
+en una escena y mirándola dos veces: una con el mismo arte cargado en todos
+—para ver que ninguno queda sin vestir—, y otra con los espacios vacíos, que es
+el estado en el que están casi siempre. Las dos capturas están en la conversación.
+
+### Lo que sigue debiendo
+
+El producto **se estira para llenar el hueco entre entrepaños**: el compositor
+sabe cuántas filas caben pero no cuánto mide el empaque, así que una chocolatina
+en una góndola de 38 cm de paso se dibuja de 38 cm de alto. Arreglarlo pide un
+campo «alto del empaque» en el arte, no un cambio en las mallas.
+
+---
+
 ## Pendiente urgente: datos de TERRON
 
 TERRON tenía datos reales y **quedó vacía en el servidor**, vaciada por el bug del layout
@@ -1475,8 +1571,8 @@ código. Vale la pena el rato que toma:
 3. Conducir el navegador con Playwright y capturar. Chromium ya está instalado en
    `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`.
 
-**Lo que es geometría pura, probarlo aparte.** `npm run probar` corre las cinco suites
-sin navegador (100 pruebas: planta, propuesta, nomenclatura, pasillos, revisión, acomodar): transpila el `.ts` con el esbuild que ya trae vite y
+**Lo que es geometría pura, probarlo aparte.** `npm run probar` corre las seis suites
+sin navegador (107 pruebas: planta, propuesta, nomenclatura, pasillos, revisión, acomodar): transpila el `.ts` con el esbuild que ya trae vite y
 afirma en node. No hay runner de pruebas en el frontend y no valía la pena montar uno para
 esto. Ahí se encontró que un paso largo saltaba por encima de un mueble.
 
