@@ -27,7 +27,7 @@ const {
   huella, limitesDePlanta, murosDeCaminata, chocaEn,
   puntoDeEntrada, puntoLibreCerca, resolverPaso,
   ALTURA_PISABLE, VEL_CAMINANDO, VEL_APURADA, PASO_MAXIMO, RADIO_PERSONA,
-  normalDeCara, vistaDeCara,
+  normalDeCara, vistaDeCara, lugarDeLaFigura,
 } = await import(pathToFileURL(salida).href);
 
 let hechas = 0;
@@ -267,6 +267,58 @@ prueba("la velocidad es de caminata, no de trote", () => {
   // Antes: 0.08 m por frame × 60 fps = 4.8 m/s. Una persona camina a ~1.4.
   assert.ok(VEL_CAMINANDO >= 1.0 && VEL_CAMINANDO <= 1.8, "fuera del paso humano");
   assert.ok(VEL_APURADA > VEL_CAMINANDO && VEL_APURADA < 0.08 * 60);
+});
+
+console.log("\nplanta · la figura de escala");
+
+prueba("con lugar a los dos lados se para a la derecha del mueble", () => {
+  const f = { x: 0, z: 0, w: 0.9, rotY: 0 };
+  const p = lugarDeLaFigura(f, []);
+  assert.ok(p, "tendría que haber lugar");
+  // Local (+w/2 + 0.45, ·, −0.35) sin rotación = ese mismo punto en mundo.
+  assert.ok(cerca(p.x, 0.9), `x=${p.x}`);
+  assert.ok(cerca(p.z, -0.35), `z=${p.z}`);
+});
+
+prueba("si la derecha está tapada se pasa a la izquierda", () => {
+  const f = { x: 0, z: 0, w: 0.9, rotY: 0 };
+  // Un mueble pegado al costado derecho: su huella inflada cubre x ≈ 0.9.
+  const muros = murosDeCaminata([{ x: 1.6, z: 0, w: 1.0, d: 1.0, h: 1.8, rotY: 0 }]);
+  const p = lugarDeLaFigura(f, muros);
+  assert.ok(p, "la izquierda seguía libre");
+  assert.ok(p.x < 0, `debía irse a la izquierda, quedó en x=${p.x}`);
+});
+
+prueba("encajonado por los dos lados NO planta a nadie adentro de un estante", () => {
+  const f = { x: 0, z: 0, w: 0.9, rotY: 0 };
+  const muros = murosDeCaminata([
+    { x:  1.6, z: 0, w: 1.0, d: 1.0, h: 1.8, rotY: 0 },
+    { x: -1.6, z: 0, w: 1.0, d: 1.0, h: 1.8, rotY: 0 },
+  ]);
+  assert.equal(lugarDeLaFigura(f, muros), null);
+});
+
+prueba("el costado sigue la rotación del mueble", () => {
+  // Girado un cuarto de vuelta, el costado derecho local cae sobre −Z.
+  const p = lugarDeLaFigura({ x: 0, z: 0, w: 0.9, rotY: Math.PI / 2 }, []);
+  assert.ok(p, "tendría que haber lugar");
+  assert.ok(cerca(p.x, -0.35), `x=${p.x}`);
+  assert.ok(cerca(p.z, -0.9), `z=${p.z}`);
+});
+
+prueba("se separa lo mismo de un mueble angosto que de uno ancho", () => {
+  const angosto = lugarDeLaFigura({ x: 0, z: 0, w: 0.4, rotY: 0 }, []);
+  const ancho   = lugarDeLaFigura({ x: 0, z: 0, w: 3.6, rotY: 0 }, []);
+  assert.ok(cerca(angosto.x - 0.4 / 2, 0.45));
+  assert.ok(cerca(ancho.x   - 3.6 / 2, 0.45));
+});
+
+prueba("la figura se para donde podría pararse una persona", () => {
+  // El mismo test que usa la caminata: si `chocaEn` la rechaza, no va.
+  const muros = murosDeCaminata([{ x: 1.2, z: 0, w: 0.9, d: 0.9, h: 1.8, rotY: 0 }]);
+  const p = lugarDeLaFigura({ x: 0, z: 0, w: 0.9, rotY: 0 }, muros);
+  assert.ok(p, "quedaba la izquierda");
+  assert.ok(!chocaEn(muros, p.x, p.z), "la plantó dentro de un mueble");
 });
 
 console.log("\n" + hechas + " pruebas" + (process.exitCode ? " · CON FALLAS" : " · todo en orden") + "\n");

@@ -294,3 +294,34 @@ export function resolverPaso(
   }
   return actual;
 }
+
+// ─── La figura de escala ──────────────────────────────────────────────────────
+
+/**
+ * Dónde se para: al costado del mueble, un poco adelantada.
+ *
+ * Prueba derecha y después izquierda, y si en ninguna hay lugar devuelve
+ * `null` en vez de plantarla igual. En una sede sembrada con doce góndolas
+ * sueltas cualquier lado sirve; en una de ciento veintiséis, un costado da al
+ * pasillo y el otro a la góndola de al lado, y una persona metida adentro de
+ * un estante no aclara la escala: la arruina.
+ *
+ * El test es el mismo con el que se camina (`murosDeCaminata` ya infla cada
+ * huella por `RADIO_PERSONA`, y respeta la rotación), así que la figura se para
+ * exactamente donde podría pararse alguien.
+ */
+export function lugarDeLaFigura(
+  f: { x: number; z: number; w: number; rotY: number },
+  muros: Caja[],
+): { x: number; z: number; rotY: number } | null {
+  const cos = Math.cos(f.rotY), sen = Math.sin(f.rotY);
+  const aMundo = (lx: number, lz: number) => ({
+    x: f.x + lx * cos + lz * sen,
+    z: f.z - lx * sen + lz * cos,
+  });
+  for (const lado of [1, -1] as const) {
+    const p = aMundo(lado * (f.w / 2 + 0.45), -0.35);
+    if (!chocaEn(muros, p.x, p.z)) return { ...p, rotY: f.rotY };
+  }
+  return null;
+}
