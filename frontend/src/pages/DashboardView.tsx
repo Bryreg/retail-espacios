@@ -190,18 +190,28 @@ function displayStatus(f: { status: SpaceStatus; startDate?: string; endDate: st
   return daysUntil(f.endDate) <= 30 ? "expiring" : "active";
 }
 
+/** Cada estado con su terna: color de tinta, fondo tintado y borde.
+ *
+ *  `fill` estaba declarado desde siempre y no lo usaba nadie: la pastilla de
+ *  estado salía del MISMO fondo para los ocho, y lo único que cambiaba era un
+ *  punto de 6 px. Un «Vencido» y un «Activo» se veían iguales de reojo, que es
+ *  justo como se mira una tabla de 126 filas.
+ *
+ *  Fondo tintado MÁS borde —y no fondo solo— es el patrón que usan los
+ *  tableros comerciales que se ven caros; el borde es lo que le da el canto y
+ *  evita que la pastilla se disuelva contra la fila. */
 const STATUS_META: Record<
   DisplayStatus,
-  { ring: string; fill: string; label: string }
+  { ring: string; fill: string; edge: string; label: string }
 > = {
-  active:      { ring: "var(--success)", fill: "rgba(21,128,61,0.10)",        label: "Activo" },
-  committed:   { ring: "var(--accent-700)", fill: "var(--accent-50)",         label: "Contratado" },
-  expiring:    { ring: "var(--warning)", fill: "rgba(180,83,9,0.12)",         label: "Por vencer" },
-  expired:     { ring: "var(--danger)",  fill: "rgba(185,28,28,0.10)",        label: "Vencido" },
-  no_contract: { ring: "var(--danger)",  fill: "rgba(185,28,28,0.10)",        label: "Sin contrato" },
-  reserved:    { ring: "var(--warning)", fill: "rgba(180,83,9,0.08)",         label: "Reservado" },
-  maintenance: { ring: "var(--muted-status)", fill: "rgba(148,145,127,0.10)", label: "Mantenim." },
-  free:        { ring: "var(--ink-4)",   fill: "rgba(181,174,156,0.10)",      label: "Libre" },
+  active:      { ring: "var(--success)",      fill: "var(--success-50)", edge: "var(--success-100)", label: "Activo" },
+  committed:   { ring: "var(--accent-700)",   fill: "var(--accent-50)",  edge: "var(--accent-100)",  label: "Contratado" },
+  expiring:    { ring: "var(--warning)",      fill: "var(--warning-50)", edge: "var(--warning-100)", label: "Por vencer" },
+  expired:     { ring: "var(--danger)",       fill: "var(--danger-50)",  edge: "var(--danger-100)",  label: "Vencido" },
+  no_contract: { ring: "var(--danger)",       fill: "var(--danger-50)",  edge: "var(--danger-100)",  label: "Sin contrato" },
+  reserved:    { ring: "var(--warning)",      fill: "var(--warning-50)", edge: "var(--warning-100)", label: "Reservado" },
+  maintenance: { ring: "var(--muted-status)", fill: "var(--surface-3)",  edge: "var(--line)",        label: "Mantenim." },
+  free:        { ring: "var(--ink-3)",        fill: "var(--surface-2)",  edge: "var(--line)",        label: "Libre" },
 };
 
 // ─── Map search + status filter (product geolocation) ────────────────────────
@@ -867,17 +877,19 @@ function StatusPill({ fixture, face }: { fixture: UnifiedFixture; face: FaceEntr
   const rentable = isRentable(fixture);
   const ds = displayStatus(face);
   const ring = rentable ? DISPLAY_TOP[ds] : NON_RENTABLE_TOP;
+  const meta = STATUS_META[ds];
   return (
     <span
       style={{
         display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0,
-        fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 999,
-        background: rentable ? "var(--accent-50)" : "var(--surface-3)",
-        color: rentable ? "var(--accent-700)" : "var(--ink-2)",
+        fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 999,
+        background: rentable ? meta.fill : "var(--surface-3)",
+        color:      rentable ? meta.ring : "var(--ink-2)",
+        border: `1px solid ${rentable ? meta.edge : "var(--line)"}`,
       }}
     >
       <span style={{ width: 6, height: 6, borderRadius: 99, background: ring }} />
-      {rentable ? STATUS_META[ds].label : NON_RENTABLE_LABEL}
+      {rentable ? meta.label : NON_RENTABLE_LABEL}
     </span>
   );
 }

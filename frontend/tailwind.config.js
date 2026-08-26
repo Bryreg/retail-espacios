@@ -5,37 +5,37 @@ export default {
     extend: {
       // ── Typography ──────────────────────────────────────────────────────────
       fontFamily: {
-        sans: ["Geist", "ui-sans-serif", "system-ui", "sans-serif"],
-        mono: ["Geist Mono", "ui-monospace", "monospace"],
+        sans: ["IBM Plex Sans", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["IBM Plex Mono", "ui-monospace", "monospace"],
       },
 
       // ── Colors ──────────────────────────────────────────────────────────────
       colors: {
         // Backgrounds
-        bg:        "#F8F6F1",
+        bg:        "#F2F4F7",
         surface:   "#FFFFFF",
-        "surface-2": "#FBF9F4",
-        "surface-3": "#EFEAE0",
+        "surface-2": "#F8FAFC",
+        "surface-3": "#EEF1F5",
 
         // Borders
-        line:        "#E5DFD1",
-        "line-soft": "#EEE8DA",
-        "line-strong": "#D9D1BE",
+        line:        "#E1E6EC",
+        "line-soft": "#EDF0F4",
+        "line-strong": "#CFD6DF",
 
         // Text
-        "ink-1": "#1A1814",
-        "ink-2": "#4A463C",
-        "ink-3": "#807A6B",
-        "ink-4": "#B5AE9C",
+        "ink-1": "#0B1220",
+        "ink-2": "#3F4A5A",
+        "ink-3": "#6B7688",
+        "ink-4": "#A3ACBB",
 
-        // Accent — violet (default)
+        // Acento — navy del tema «Morgen Capital» (21st.dev)
         accent: {
-          DEFAULT: "#7C3AED",
-          50:      "#F5F0FF",
-          100:     "#EAE0FE",
-          200:     "#D5C2FE",
-          600:     "#6D28D9",
-          700:     "#5B21B6",
+          DEFAULT: "#00004D",
+          50:      "#EFEFF7",
+          100:     "#DCDCEF",
+          200:     "#B4B4DF",
+          600:     "#00003B",
+          700:     "#00002B",
           ink:     "#FFFFFF",
         },
 
@@ -67,32 +67,32 @@ export default {
 
         // Semantic
         success: {
-          DEFAULT: "#15803D",
-          50:      "#EAF6EE",
-          100:     "#D1E9D9",
+          DEFAULT: "#0F7B4F",
+          50:      "#E7F4ED",
+          100:     "#BEE0CE",
         },
         warning: {
-          DEFAULT: "#B45309",
-          50:      "#FDF6E3",
-          100:     "#FBE9B7",
+          DEFAULT: "#9A6B0E",
+          50:      "#FBF3E2",
+          100:     "#EEDCAE",
         },
         danger: {
-          DEFAULT: "#B91C1C",
-          50:      "#FCEEEE",
-          100:     "#F8D5D5",
+          DEFAULT: "#C0392E",
+          50:      "#FBECEA",
+          100:     "#F0CCC7",
         },
-        "muted-status": "#94917F",
+        "muted-status": "#8A93A1",
 
         // Dark drawer / dark surfaces
         dark: {
-          bg:        "#14130F",
-          surface:   "#1C1B16",
-          "surface-2": "#25241E",
-          line:      "#2F2D26",
-          "line-2":  "#3F3D35",
-          "ink-1":   "#F2EFE8",
-          "ink-2":   "#BBB6A6",
-          "ink-3":   "#807B6B",
+          bg:        "#0C1017",
+          surface:   "#141A23",
+          "surface-2": "#1B222D",
+          line:      "#262F3B",
+          "line-2":  "#35404F",
+          "ink-1":   "#EDF1F6",
+          "ink-2":   "#AEB8C6",
+          "ink-3":   "#77828F",
         },
       },
 
@@ -106,12 +106,12 @@ export default {
         "2xl": "18px",
       },
 
-      // ── Box shadows (warm — rgba(31,27,18,...)) ──────────────────────────────
+      // ── Box shadows (warm — rgba(11,18,32,...)) ──────────────────────────────
       boxShadow: {
-        xs:  "0 1px 0 rgba(31,27,18,0.04)",
-        sm:  "0 1px 2px rgba(31,27,18,0.05), 0 1px 1px rgba(31,27,18,0.03)",
-        md:  "0 2px 6px rgba(31,27,18,0.05), 0 1px 2px rgba(31,27,18,0.04)",
-        lg:  "0 12px 28px rgba(31,27,18,0.10), 0 4px 10px rgba(31,27,18,0.05)",
+        xs:  "0 1px 0 rgba(11,18,32,0.04)",
+        sm:  "0 1px 2px rgba(11,18,32,0.05), 0 1px 1px rgba(11,18,32,0.03)",
+        md:  "0 2px 6px rgba(11,18,32,0.05), 0 1px 2px rgba(11,18,32,0.04)",
+        lg:  "0 12px 28px rgba(11,18,32,0.10), 0 4px 10px rgba(11,18,32,0.05)",
       },
 
       // ── Spacing (design-system multiples — 4px base) ────────────────────────

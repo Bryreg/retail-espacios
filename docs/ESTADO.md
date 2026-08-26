@@ -1636,6 +1636,57 @@ ventas por cuatro, el número honesto es otro.
 
 ---
 
+## La identidad, elegida en vez de heredada
+
+Toda la paleta salía de los valores por defecto de Tailwind: `#7C3AED` era
+`violet-500` sin tocar, los semánticos eran `green-700`, `amber-700` y
+`red-700`, y el fondo `#F8F6F1` es el crema de la mitad de lo generado por IA.
+La tipografía era **Geist**, que junto con Inter es la fuente por defecto de
+los productos de IA de estos años. No estaba mal combinado: **no estaba
+elegido**, y por eso se leía como plantilla.
+
+Nada de lo nuevo salió de mi criterio. Cada valor tiene procedencia:
+
+| Qué | De dónde |
+|---|---|
+| Tipografía **IBM Plex Sans / Mono** | `ui-ux-pro-max`, primer resultado de `--domain typography` para «professional data dense financial»: *financial, trustworthy, banking, enterprise* |
+| Acento **`#00004D`** | Tema «Morgen Capital» de 21st.dev (`get_theme`, gratis) |
+| Neutros fríos, acromáticos | Tema «PayMongo» de 21st.dev — su modo claro lleva croma 0 en todos los grises |
+| Pastilla de estado con **fondo tintado + borde** | Componente «Leads Data Table» de 21st.dev (`get_component`) |
+
+### Lo que enseñó el componente real
+
+Mis propuestas anteriores eran **planas y tipográficas**; un tablero comercial
+que se ve caro es **estratificado**. La diferencia concreta, sacada de leer el
+código de un componente publicado:
+
+- Cada estado lleva **terna**: tinta, fondo tintado y borde. No fondo solo.
+- El borde es lo que le da canto a la pastilla y evita que se disuelva en la fila.
+
+Eso destapó un defecto de información que llevaba tiempo ahí: `STATUS_META`
+declaraba un campo `fill` que **no consumía nadie**, así que las ocho pastillas
+de estado salían del mismo violeta y lo único que las distinguía era un punto
+de 6 px. Un «Vencido» y un «Activo» se veían iguales de reojo — que es
+exactamente como se mira una tabla de 126 filas.
+
+### Detalles
+
+- `tnum` y `font-variant-numeric: tabular-nums` van en el `body`, no sueltos:
+  la mitad de lo que se lee acá son códigos, fechas y plata en columna, y con
+  cifras proporcionales las columnas bailan al cambiar de valor.
+- Las sombras pasaron de `rgba(31,27,18,…)` —marrón— a `rgba(11,18,32,…)`.
+  Una sombra cálida bajo una superficie fría se ve sucia.
+- El cajón oscuro también se enfrió, para que no convivan un gris cálido y uno
+  frío en la misma pantalla.
+- **La paleta del 3D no se tocó.** Los grises del acero, la madera del cajón y
+  el piso de baldosa son mundo físico, no cromo: tienen que seguir
+  pareciéndose a una tienda.
+- **El semáforo conserva su significado.** Verde se puede vender, ámbar
+  comprometido, rojo ocupado. Se recalibraron los valores para el papel frío;
+  la convención no se movió.
+
+---
+
 ## Herramientas de diseño en el repo
 
 `.claude/skills/` trae **ui-ux-pro-max** (MIT, `nextlevelbuilder/ui-ux-pro-max-skill`),

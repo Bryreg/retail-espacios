@@ -2,7 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── Geist font feature settings ─────────────────────────────────────── */
+/* ─── Tipografía ────────────────────────────────────────────────────────
+   IBM Plex, no Geist. Geist junto con Inter es la fuente por defecto de los
+   productos de IA de estos años, y era parte de por qué el sistema se leía
+   como plantilla. Plex está dibujada para una empresa industrial y el
+   catálogo de `ui-ux-pro-max` la da como primera opción para «financial,
+   trustworthy, banking, enterprise».
+
+   `tnum` va en el body y no suelto: la mitad de lo que se lee acá son
+   códigos, fechas y plata en columna, y con cifras proporcionales las
+   columnas bailan al cambiar de valor.                                     */
 @layer base {
   html, body, #root {
     height: 100%;
@@ -11,65 +20,73 @@
   }
 
   body {
-    font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
-    font-feature-settings: "cv11", "ss01", "ss03";
+    font-family: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "tnum", "cv02", "cv03", "cv04";
+    font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
-    letter-spacing: -0.005em;
-    color: #1A1814;
-    background: #F8F6F1;
+    letter-spacing: -0.004em;
+    color: #0B1220;
+    background: #F2F4F7;
   }
 }
 
 /* ─── Design tokens (CSS custom properties) ────────────────────────────── */
 :root {
-  --font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 
-  /* Warm neutrals */
-  --bg:           #F8F6F1;
+  /* Neutros fríos, acromáticos salvo un rastro de azul.
+     Antes eran cálidos y el fondo era el crema #F8F6F1 — el mismo de la mitad
+     de lo generado por IA. */
+  --bg:           #F2F4F7;
   --surface:      #FFFFFF;
-  --surface-2:    #FBF9F4;
-  --surface-3:    #EFEAE0;
-  --line:         #E5DFD1;
-  --line-soft:    #EEE8DA;
-  --line-strong:  #D9D1BE;
+  --surface-2:    #F8FAFC;
+  --surface-3:    #EEF1F5;
+  --line:         #E1E6EC;
+  --line-soft:    #EDF0F4;
+  --line-strong:  #CFD6DF;
 
   /* Text */
-  --ink-1: #1A1814;
-  --ink-2: #4A463C;
-  --ink-3: #807A6B;
-  --ink-4: #B5AE9C;
+  --ink-1: #0B1220;
+  --ink-2: #3F4A5A;
+  --ink-3: #6B7688;
+  --ink-4: #A3ACBB;
 
-  /* Accent — violet */
-  --accent:      #7C3AED;
-  --accent-50:   #F5F0FF;
-  --accent-100:  #EAE0FE;
-  --accent-200:  #D5C2FE;
-  --accent-600:  #6D28D9;
-  --accent-700:  #5B21B6;
+  /* Acento — el navy del tema «Morgen Capital» de 21st.dev.
+     No es un gris azulado de framework: es tinta azul, y a esa profundidad
+     nunca compite con el verde/ámbar/rojo del semáforo. */
+  --accent:      #00004D;
+  --accent-50:   #EFEFF7;
+  --accent-100:  #DCDCEF;
+  --accent-200:  #B4B4DF;
+  --accent-600:  #00003B;
+  --accent-700:  #00002B;
   --accent-ink:  #FFFFFF;
 
-  /* Semantic */
-  --success:      #15803D;
-  --success-50:   #EAF6EE;
-  --success-100:  #D1E9D9;
-  --warning:      #B45309;
-  --warning-50:   #FDF6E3;
-  --warning-100:  #FBE9B7;
-  --danger:       #B91C1C;
-  --danger-50:    #FCEEEE;
-  --danger-100:   #F8D5D5;
-  --muted-status: #94917F;
+  /* Semantic — mismo significado, calibrado al papel frío. Cada uno con su
+     tinte 50 y su borde 100: una pastilla de estado se lee mucho más nítida
+     con fondo tintado MÁS borde que con fondo solo. */
+  --success:      #0F7B4F;
+  --success-50:   #E7F4ED;
+  --success-100:  #BEE0CE;
+  --warning:      #9A6B0E;
+  --warning-50:   #FBF3E2;
+  --warning-100:  #EEDCAE;
+  --danger:       #C0392E;
+  --danger-50:    #FBECEA;
+  --danger-100:   #F0CCC7;
+  --muted-status: #8A93A1;
 
-  /* Dark drawer */
-  --dark-bg:        #14130F;
-  --dark-surface:   #1C1B16;
-  --dark-surface-2: #25241E;
-  --dark-line:      #2F2D26;
-  --dark-line-2:    #3F3D35;
-  --dark-ink-1:     #F2EFE8;
-  --dark-ink-2:     #BBB6A6;
-  --dark-ink-3:     #807B6B;
+  /* Dark drawer — frío también, para que no conviva un gris cálido con uno
+     frío en la misma pantalla. */
+  --dark-bg:        #0C1017;
+  --dark-surface:   #141A23;
+  --dark-surface-2: #1B222D;
+  --dark-line:      #262F3B;
+  --dark-line-2:    #35404F;
+  --dark-ink-1:     #EDF1F6;
+  --dark-ink-2:     #AEB8C6;
+  --dark-ink-3:     #77828F;
 
   /* Radii */
   --r-xs:  4px;
@@ -80,10 +97,10 @@
   --r-2xl: 18px;
 
   /* Shadows */
-  --shadow-xs: 0 1px 0 rgba(31,27,18,0.04);
-  --shadow-sm: 0 1px 2px rgba(31,27,18,0.05), 0 1px 1px rgba(31,27,18,0.03);
-  --shadow-md: 0 2px 6px rgba(31,27,18,0.05), 0 1px 2px rgba(31,27,18,0.04);
-  --shadow-lg: 0 12px 28px rgba(31,27,18,0.10), 0 4px 10px rgba(31,27,18,0.05);
+  --shadow-xs: 0 1px 0 rgba(11,18,32,0.04);
+  --shadow-sm: 0 1px 2px rgba(11,18,32,0.05), 0 1px 1px rgba(11,18,32,0.03);
+  --shadow-md: 0 2px 6px rgba(11,18,32,0.05), 0 1px 2px rgba(11,18,32,0.04);
+  --shadow-lg: 0 12px 28px rgba(11,18,32,0.10), 0 4px 10px rgba(11,18,32,0.05);
 }
 
 /* ─── Scrollbars ────────────────────────────────────────────────────────── */
