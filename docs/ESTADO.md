@@ -1636,6 +1636,38 @@ ventas por cuatro, el número honesto es otro.
 
 ---
 
+## Herramientas de diseño en el repo
+
+`.claude/skills/` trae **ui-ux-pro-max** (MIT, `nextlevelbuilder/ui-ux-pro-max-skill`),
+instalada con `npx ui-ux-pro-max-cli` → `uipro init --ai claude`. Son siete
+skills —`ui-ux-pro-max`, `design-system`, `ui-styling`, `brand`, `slides`,
+`banner-design`, `design`— con un catálogo local que se consulta con Python 3
+de la librería estándar: **79 estilos, 192 paletas de producto, 74 pares
+tipográficos, 119 guías de UX, 105 iconos, 25 tipos de gráfico y 22 stacks**.
+
+```bash
+# Dirección visual completa para un producto
+python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<producto> <rubro> <claves>" --design-system -p "Galerías"
+# Un solo tema
+python3 .claude/skills/ui-ux-pro-max/scripts/search.py "elegant serif" --domain typography
+python3 .claude/skills/ui-ux-pro-max/scripts/search.py "glassmorphism"  --domain style
+```
+
+Los scripts **no instalan nada y no hacen llamadas de red**: leen los CSV de
+`data/`. Para actualizar, `uipro update`.
+
+Está commiteada a propósito y no en `.gitignore`: el contenedor de una sesión
+remota es efímero, así que si no vive en el repo hay que reinstalarla cada vez.
+
+**Por qué está acá.** La paleta del sistema salía entera de los valores por
+defecto de Tailwind —`#7C3AED` es `violet-500` sin tocar, los semánticos son
+`green-700`, `amber-700` y `red-700`, el fondo es el crema de la mitad de lo
+generado por IA—, y ese es el motivo de que se lea como plantilla. El catálogo
+existe para que la dirección visual se elija de una lista razonada en vez de
+inventarse. **La decisión de qué dirección tomar sigue sin estar tomada.**
+
+---
+
 ## Gotchas
 
 **La librería de Excel está vieja.** `xlsx@0.18.5` en npm arrastra vulnerabilidades
