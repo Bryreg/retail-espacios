@@ -1133,6 +1133,90 @@ funcionando como antes.
 
 ---
 
+## Probarle el producto al mueble, delante del proveedor
+
+El 3D mostraba lo que YA está contratado. Para cerrar un trato tiene que
+mostrar lo que **podría** estar: el proveedor pregunta «¿y cómo se vería mi
+producto acá?» y la respuesta tiene que salir en la pantalla, en esa reunión.
+
+### Por qué el arte no podía seguir colgando del espacio
+
+El arte entraba por los archivos del espacio en el plano 2D, y el 3D tomaba la
+imagen **más reciente** de ese espacio (`list_face_images`). Tres consecuencias:
+
+* No había botón en el 3D, que es justo donde se está negociando.
+* El arte quedaba atada al espacio: el mismo producto había que **resubirlo en
+  cada punta** que se quisiera mostrar.
+* Cualquier imagen subida al espacio se convertía en el producto del mueble —un
+  contrato escaneado en JPG, la foto de un pasillo—. Ya se había reservado el
+  prefijo `montaje--` para que la foto de la mercaderista dejara de secuestrar
+  la textura, y ese parche tapa **un** caso de los muchos posibles.
+
+Ahora hay tabla propia (`supplier_assets`, sin migración: `create_all` sí crea
+tablas nuevas) y el arte cuelga del **proveedor**. Se carga una vez y se le
+prueba a cualquier mueble, de cualquier sede. El camino viejo sigue andando
+para lo que ya está cargado.
+
+### La prueba NO se guarda en el layout
+
+Es la decisión de fondo y va contra lo que sale natural. El layout es lo que
+está montado **de verdad**: si probar un producto lo escribiera ahí, la góndola
+que Nutresa tiene alquilada aparecería con producto de Alpina en la pantalla de
+todos, y el 3D dejaría de servir para saber qué hay puesto en la tienda.
+
+La prueba vive en la sesión, indexada por `${fixtureId}|A` — por **id de mueble
+y cara**, no por código de espacio: el código se compone en tres lugares con
+reglas de prefijo y mayúsculas, y basta que una difiera para pintar el mueble
+equivocado.
+
+Prioridad de la cara: `producto en prueba → foto del espacio → patrón de
+categoría → color plano`. La prueba va primero porque es una elección explícita
+hecha en ese momento, delante del proveedor: tiene que ganarle a lo que haya
+cargado de antes, que es justamente lo que se está proponiendo reemplazar.
+
+### La lámina ya no le miente al proveedor
+
+Es el arreglo más importante de todo esto. La lámina tomaba el proveedor, la
+categoría, las fechas y el valor **del contrato vigente sobre ese espacio**.
+Probándole un producto de Alpina a una punta alquilada por Nutresa, salía la
+foto del yogur de Alpina y, debajo, «Proveedor: Nutresa» con las fechas y el
+valor de Nutresa. El error más caro posible en el único papel que el proveedor
+se lleva.
+
+Ahora, cuando se está proponiendo, el pie habla de la propuesta: proveedor y
+producto del arte que se está probando, y **sin período ni valor** — de lo
+propuesto todavía no hay nada acordado, y poner las fechas del contrato de al
+lado sería inventarlas. El rótulo de la segunda toma dice «Con Alpina» en vez
+de «Con la marca», y el archivo sale `NAVE-PUN-01_Alpina_antes-despues.png`.
+
+### Un bug viejo que salió al probar esto
+
+**El panel comercial del 3D no se abría haciendo clic en un mueble.** El mueble
+se selecciona en `pointerdown`, pero el `click` que viene después seguía bajando
+hasta el piso —que está detrás y sí tiene `onClick`— y ahí `onFloorClick` hacía
+`setSelectedId(null)`. Un clic seleccionaba y deseleccionaba en el mismo gesto.
+
+Se notaba poco porque al panel se llega también desde **Vender**, que fija la
+selección desde afuera. Se arregla cortando la propagación en el `onClick` del
+mueble; mientras se está **colocando** uno no se corta, porque ahí el clic tiene
+que llegar al piso, que es quien detecta que se está montando sobre otro.
+
+### Cómo se comprobó
+
+16 pruebas nuevas del catálogo (quién carga, quién mira, el SVG rechazado, el
+arte que no se pisa con los archivos del espacio) y 3 del pie de la lámina.
+Y manejando Chromium contra un backend real: cargar el arte, elegirla del
+selector, ver la góndola surtida con el producto parado sobre cada entrepaño,
+apagar las artes para el «antes», y exportar la lámina de una punta alquilada
+por Nutresa comprobando que el papel dice **Alpina**.
+
+Un detalle de las pruebas que casi manda a arreglar algo que no estaba roto: una
+punta sembrada con 0.9 m de fondo (las reales tienen 0.4) hace que sus propios
+entrepaños tapen el panel pintado y sólo se vea producto en el hueco de arriba.
+Con medidas reales llena los cuatro.
+
+---
+
 ## Pendiente urgente: datos de TERRON
 
 TERRON tenía datos reales y **quedó vacía en el servidor**, vaciada por el bug del layout

@@ -18,6 +18,16 @@ export interface DatosPropuesta {
   mueble: string;
   proveedor: string;
   categoria: string;
+  /**
+   * El producto que se está mostrando en la exhibición, cuando se está
+   * probando uno del catálogo.
+   *
+   * No es lo mismo que la categoría, y la diferencia importa: la lámina de una
+   * propuesta muestra el producto de quien todavía no firmó, sobre un espacio
+   * que puede tener otro contrato encima. Sin este renglón, la lámina decía el
+   * proveedor del contrato vigente al lado de la foto del producto de otro.
+   */
+  producto?: string;
   desde: string;
   hasta: string;
   /**
@@ -55,6 +65,7 @@ export function montoCorto(v: number): string {
 export function lineasDePie(d: DatosPropuesta): Renglon[] {
   const filas: Renglon[] = [];
   if (d.proveedor.trim()) filas.push({ etiqueta: "Proveedor", valor: d.proveedor.trim() });
+  if ((d.producto ?? "").trim()) filas.push({ etiqueta: "Producto", valor: d.producto!.trim() });
   if (d.categoria.trim()) filas.push({ etiqueta: "Categoría", valor: d.categoria.trim() });
   if (d.desde && d.hasta) {
     filas.push({ etiqueta: "Período", valor: `${fechaCorta(d.desde)} → ${fechaCorta(d.hasta)}` });

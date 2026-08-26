@@ -249,3 +249,42 @@ class LeaseFile(Base):
     # Quién la cargó, para que el histórico diga algo más que "admin".
     subido_por = Column(String, nullable=True)
     uploaded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class SupplierAsset(Base):
+    """El arte de UN producto de un proveedor: la imagen que se le pone al mueble.
+
+    Existe para poder responder en la reunión «¿y cómo se vería mi producto
+    acá?» sin ir a buscar un archivo. El arte se carga UNA vez contra el
+    proveedor y desde ahí se le prueba a cualquier mueble.
+
+    Antes esto viajaba por ``space_files``: se subía una imagen al espacio y
+    ``list_face_images`` tomaba la MÁS RECIENTE para pintar la cara en el 3D.
+    Dos problemas de fondo. Uno, el arte quedaba atada al espacio, así que el
+    mismo producto había que resubirlo en cada punta que se quisiera mostrar.
+    Dos, cualquier imagen que alguien subiera al espacio —el contrato escaneado
+    en JPG, una foto del pasillo— se convertía en el producto del mueble; ya
+    hubo que reservar el prefijo ``montaje--`` para que la foto de la
+    mercaderista dejara de secuestrar la textura, y ese parche sólo tapa un
+    caso de los muchos posibles.
+
+    Con tabla propia el arte comercial y los archivos del espacio dejan de
+    pisarse por construcción, no por convención de nombres.
+
+    ``create_all`` crea tablas que faltan pero nunca agrega columnas a una que
+    ya existe, así que esto es de lo que sí se puede hacer sin migración.
+    """
+    __tablename__ = "supplier_assets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False, index=True)
+    # Cómo se llama el producto para quien lo elige de la lista: "Yogurt Griego
+    # 150g". No es la marca —esa es el proveedor— ni el archivo.
+    nombre = Column(String, nullable=False)
+    # Opcional, para agrupar cuando un proveedor tiene muchos productos.
+    categoria = Column(String, nullable=True)
+    filename = Column(String, nullable=False)
+    content_type = Column(String, nullable=False)
+    size = Column(Integer, nullable=False)
+    data = Column(LargeBinary, nullable=False)
+    uploaded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

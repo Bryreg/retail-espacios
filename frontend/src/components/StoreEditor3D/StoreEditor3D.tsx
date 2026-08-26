@@ -7,13 +7,16 @@ import { PointerLockControls } from "three/examples/jsm/controls/PointerLockCont
 import {
   Trash2, RotateCw, FlipHorizontal2, Save, X,
   Building2, DollarSign, Calendar, Tag, Info, AlertTriangle, Boxes,
-  Eye, EyeOff, Camera, User,
+  Eye, EyeOff, Camera, User, Package, Plus, Search, Upload, Loader2,
 } from "lucide-react";
 import { Html } from "@react-three/drei";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
 import { fileUrl, getFaceImages } from "../../api/files";
+import { arteUrl, listarCatalogo, subirArte, type Arte } from "../../api/catalogo";
+import { getSuppliers } from "../../api/suppliers";
+import { describeError } from "../../api/client";
 // Extensión real del local y física de la caminata — geometría pura, probada
 // aparte. STORE_W/STORE_D describen una tienda ficticia que ninguna sede ocupa.
 import {
@@ -2006,18 +2009,283 @@ const ETIQUETA_CLS = "mb-0.5 block text-[10px] uppercase tracking-widest text-da
  * la caminata escribiría cientos de veces por recorrido — así que el botón
  * avisa en vez de guardar algo viejo.
  */
-function VistaProveedor({ fix, enCaminata }: { fix: PlacedFixture; enCaminata: boolean }) {
+/**
+ * Elegir qué producto se le prueba a la cara del mueble.
+ *
+ * Se abre como ventana y no dentro de la barra lateral porque acá se elige
+ * MIRANDO: la barra tiene 208 px y una miniatura de producto ahí no se
+ * distingue de la de al lado. En una reunión, esta ventana es lo que se
+ * proyecta mientras el proveedor decide.
+ */
+function SelectorDeProducto({
+  catalogo, cargando, isAdmin, onElegir, onCerrar, onSubido,
+}: {
+  catalogo: Arte[];
+  cargando: boolean;
+  isAdmin: boolean;
+  onElegir: (arteId: number) => void;
+  onCerrar: () => void;
+  onSubido: () => void;
+}) {
+  const [busca, setBusca] = useState("");
+  const [subiendo, setSubiendo] = useState(false);
+  const [error, setError] = useState("");
+  const [abrirCarga, setAbrirCarga] = useState(false);
+
+  const filtrado = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    if (!q) return catalogo;
+    return catalogo.filter(a =>
+      `${a.proveedor} ${a.nombre} ${a.categoria ?? ""}`.toLowerCase().includes(q));
+  }, [catalogo, busca]);
+
+  // Agrupado por proveedor: es como se piensa el catálogo cuando se está
+  // negociando con uno de ellos.
+  const porProveedor = useMemo(() => {
+    const m = new Map<string, Arte[]>();
+    for (const a of filtrado) {
+      const lista = m.get(a.proveedor) ?? [];
+      lista.push(a);
+      m.set(a.proveedor, lista);
+    }
+    return [...m.entries()];
+  }, [filtrado]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
+      onClick={onCerrar}
+    >
+      <div
+        className="flex max-h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-dark-line bg-dark-surface shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3 border-b border-dark-line px-4 py-3">
+          <Package size={15} className="text-accent" />
+          <h3 className="text-sm font-semibold text-dark-ink-1">Probar un producto</h3>
+          <div className="relative ml-auto">
+            <Search size={12} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-dark-ink-3" />
+            <input
+              autoFocus
+              value={busca}
+              onChange={e => setBusca(e.target.value)}
+              placeholder="Proveedor o producto"
+              className="w-52 rounded border border-dark-line-2 bg-dark-bg py-1.5 pl-7 pr-2 text-xs text-dark-ink-1 placeholder:text-dark-ink-3 focus:border-accent focus:outline-none"
+            />
+          </div>
+          <button onClick={onCerrar} className="text-dark-ink-3 hover:text-dark-ink-1" aria-label="Cerrar">
+            <X size={15} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          {cargando ? (
+            <p className="py-10 text-center text-xs text-dark-ink-3">Cargando el catálogo…</p>
+          ) : catalogo.length === 0 ? (
+            <div className="py-10 text-center">
+              <p className="text-sm text-dark-ink-2">Todavía no hay artes cargadas.</p>
+              <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-dark-ink-3">
+                Subí la imagen del producto —la que manda el proveedor— y desde
+                acá se la probás a cualquier mueble, en cualquier sede.
+              </p>
+            </div>
+          ) : porProveedor.length === 0 ? (
+            <p className="py-10 text-center text-xs text-dark-ink-3">
+              Nada que coincida con «{busca}».
+            </p>
+          ) : (
+            porProveedor.map(([proveedor, artes]) => (
+              <div key={proveedor} className="mb-5 last:mb-0">
+                <p className={ETIQUETA_CLS}>{proveedor}</p>
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(116px,1fr))] gap-2.5">
+                  {artes.map(a => (
+                    <button
+                      key={a.id}
+                      onClick={() => onElegir(a.id)}
+                      className="group overflow-hidden rounded-lg border border-dark-line-2 bg-dark-bg text-left transition-colors hover:border-accent"
+                    >
+                      <div className="flex h-20 items-center justify-center bg-dark-surface-2 p-1.5">
+                        <img
+                          src={arteUrl(a.id)}
+                          alt={a.nombre}
+                          loading="lazy"
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      </div>
+                      <div className="px-2 py-1.5">
+                        <p className="truncate text-[11px] font-semibold text-dark-ink-1" title={a.nombre}>
+                          {a.nombre}
+                        </p>
+                        {a.categoria && (
+                          <p className="truncate text-[10px] text-dark-ink-3">{a.categoria}</p>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {isAdmin && (
+          <div className="border-t border-dark-line px-4 py-3">
+            {abrirCarga ? (
+              <FormularioDeArte
+                subiendo={subiendo}
+                error={error}
+                onError={setError}
+                onSubiendo={setSubiendo}
+                onListo={() => { setAbrirCarga(false); setError(""); onSubido(); }}
+                onCancelar={() => { setAbrirCarga(false); setError(""); }}
+              />
+            ) : (
+              <button
+                onClick={() => setAbrirCarga(true)}
+                className="flex items-center gap-1.5 text-xs font-semibold text-accent hover:opacity-80"
+              >
+                <Plus size={13} /> Subir el arte de un producto
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Cargar un arte nueva sin salir de la ventana.
+ *
+ *  Va acá y no en otra pantalla porque el momento en que se descubre que falta
+ *  es este: el proveedor pregunta cómo se vería su producto y no está cargado.
+ *  Mandarlo a otro lado a subirlo termina la demostración. */
+function FormularioDeArte({
+  subiendo, error, onError, onSubiendo, onListo, onCancelar,
+}: {
+  subiendo: boolean;
+  error: string;
+  onError: (m: string) => void;
+  onSubiendo: (v: boolean) => void;
+  onListo: () => void;
+  onCancelar: () => void;
+}) {
+  const [proveedores, setProveedores] = useState<{ id: number; name: string }[]>([]);
+  const [supplierId, setSupplierId] = useState<number | "">("");
+  const [nombre, setNombre] = useState("");
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    getSuppliers()
+      .then(list => setProveedores(list.map(p => ({ id: p.id, name: p.name }))))
+      .catch(() => setProveedores([]));
+  }, []);
+
+  const campo = "rounded border border-dark-line-2 bg-dark-bg px-2 py-1.5 text-xs text-dark-ink-1 placeholder:text-dark-ink-3 focus:border-accent focus:outline-none";
+
+  async function enviar() {
+    if (subiendo) return;
+    if (supplierId === "") { onError("Elegí de qué proveedor es."); return; }
+    if (!nombre.trim())    { onError("Ponele nombre al producto: es lo que se elige de la lista."); return; }
+    if (!archivo)          { onError("Falta la imagen del producto."); return; }
+    onSubiendo(true);
+    onError("");
+    try {
+      await subirArte({ supplierId, nombre: nombre.trim(), archivo });
+      setNombre("");
+      setArchivo(null);
+      onListo();
+    } catch (e) {
+      onError(describeError(e, "No se pudo subir el arte."));
+    } finally {
+      onSubiendo(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={supplierId}
+          onChange={e => setSupplierId(e.target.value ? Number(e.target.value) : "")}
+          className={campo}
+        >
+          <option value="">Proveedor…</option>
+          {proveedores.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <input
+          value={nombre}
+          onChange={e => setNombre(e.target.value)}
+          placeholder="Nombre del producto"
+          className={`${campo} flex-1 min-w-[10rem]`}
+        />
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={e => { setArchivo(e.target.files?.[0] ?? null); onError(""); }}
+        />
+        <button
+          onClick={() => fileRef.current?.click()}
+          className="flex items-center gap-1.5 rounded border border-dark-line-2 px-2 py-1.5 text-xs text-dark-ink-2 hover:text-dark-ink-1"
+        >
+          <Upload size={12} /> {archivo ? "Cambiar" : "Imagen"}
+        </button>
+        {archivo && (
+          <span className="max-w-[9rem] truncate text-[11px] text-dark-ink-3" title={archivo.name}>
+            {archivo.name}
+          </span>
+        )}
+        <button
+          onClick={enviar}
+          disabled={subiendo}
+          className="flex items-center gap-1.5 rounded bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+        >
+          {subiendo && <Loader2 size={12} className="animate-spin" />}
+          {subiendo ? "Subiendo…" : "Guardar"}
+        </button>
+        <button onClick={onCancelar} className="text-xs text-dark-ink-3 hover:text-dark-ink-1">
+          Cancelar
+        </button>
+      </div>
+      {error && <p className="text-[11px] text-danger">{error}</p>}
+      <p className="text-[10px] leading-relaxed text-dark-ink-3">
+        Una foto del empaque de frente, sin fondo si se puede (PNG con
+        transparencia). El 3D la repite sobre cada entrepaño del mueble, así que
+        una sola unidad basta — no hace falta una foto de la góndola llena.
+      </p>
+    </div>
+  );
+}
+
+function VistaProveedor({
+  fix, enCaminata, catalogo, cargandoCatalogo, prueba, onProbar, onRecargarCatalogo,
+}: {
+  fix: PlacedFixture;
+  enCaminata: boolean;
+  catalogo: Arte[];
+  cargandoCatalogo: boolean;
+  /** `${fixtureId}|A` → id del arte que se está probando en esa cara. */
+  prueba: Map<string, number>;
+  onProbar: (fixtureId: string, cara: "A" | "B", arteId: number | null) => void;
+  onRecargarCatalogo: () => void;
+}) {
   const camara3D      = useFixtureStore((s) => s.camera3D);
   const guardarVista  = useFixtureStore((s) => s.guardarVista3D);
   const borrarVista   = useFixtureStore((s) => s.borrarVista3D);
   const pedirEnfoque  = useFixtureStore((s) => s.pedirEnfoque3D);
   const unificados    = useFixtureStore(selectFixtures);
+  const isAdmin       = useAuthStore(selectIsAdmin);
 
   const uf     = unificados.find((f) => f.id === fix.id);
   const doble  = isDoubleGondola(fix);
   const [cara, setCara] = useState<"A" | "B">("A");
+  const [eligiendo, setEligiendo] = useState(false);
   const caraUsada = doble ? cara : "A";
   const guardada = uf?.vista3D?.[caraUsada];
+  const probandoId = prueba.get(`${fix.id}|${caraUsada}`);
+  const probando = probandoId != null ? catalogo.find(a => a.id === probandoId) : undefined;
 
   if (!uf || !isRentable(fix)) return null;
 
@@ -2040,6 +2308,60 @@ function VistaProveedor({ fix, enCaminata }: { fix: PlacedFixture; enCaminata: b
             </button>
           ))}
         </div>
+      )}
+
+      {/* Qué producto se está probando. Va ARRIBA del encuadre: primero se
+          pone el producto y después se busca el ángulo desde donde se lo
+          muestra, no al revés. */}
+      <div className="mb-2 border-b border-dark-line/50 pb-2">
+        {probando ? (
+          <div className="flex items-center gap-2">
+            <img
+              src={arteUrl(probando.id)}
+              alt=""
+              className="h-9 w-9 flex-shrink-0 rounded bg-dark-surface-2 object-contain p-0.5"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[11px] font-semibold text-dark-ink-1" title={probando.nombre}>
+                {probando.nombre}
+              </p>
+              <p className="truncate text-[10px] text-dark-ink-3">{probando.proveedor}</p>
+            </div>
+            <button
+              onClick={() => onProbar(fix.id, caraUsada, null)}
+              aria-label="Quitar el producto de prueba"
+              className="flex-shrink-0 text-dark-ink-3 hover:text-dark-ink-1"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setEligiendo(true)}
+            className="flex w-full items-center justify-center gap-1.5 rounded border border-dashed border-dark-line-2 px-2 py-2 text-[11px] font-semibold text-dark-ink-2 hover:border-accent hover:text-dark-ink-1"
+          >
+            <Package size={12} /> Probar un producto
+          </button>
+        )}
+        {probando && (
+          <button
+            onClick={() => setEligiendo(true)}
+            className="mt-1.5 w-full text-[10px] text-dark-ink-3 hover:text-dark-ink-1"
+          >
+            Probar otro
+          </button>
+        )}
+      </div>
+
+      {eligiendo && (
+        <SelectorDeProducto
+          catalogo={catalogo}
+          cargando={cargandoCatalogo}
+          isAdmin={isAdmin}
+          onElegir={(arteId) => { onProbar(fix.id, caraUsada, arteId); setEligiendo(false); }}
+          onCerrar={() => setEligiendo(false)}
+          onSubido={onRecargarCatalogo}
+        />
       )}
 
       <div className="flex flex-col gap-1.5">
@@ -2570,9 +2892,20 @@ interface PhotoTexEntry {
   waiters:  Set<() => void>;
 }
 
-/** Base photo texture per file_id — loaded at most once per session. */
-const photoTexCache = new Map<number, PhotoTexEntry>();
-/** Cover-fitted photo material per (file_id × face-aspect bucket). */
+/** De dónde sale una textura de producto.
+ *
+ *  Hay dos orígenes y el compositor no distingue entre ellos: el archivo del
+ *  espacio (`archivo:<id>`, el camino viejo) y el catálogo del proveedor
+ *  (`catalogo:<id>`, el que se usa para vender). La clave NO puede llevar `|`
+ *  porque la evicción borra los materiales derivados por prefijo. */
+interface FuenteTextura {
+  clave: string;
+  url:   string;
+}
+
+/** Base photo texture per source — loaded at most once per session. */
+const photoTexCache = new Map<string, PhotoTexEntry>();
+/** Cover-fitted photo material per (source × face-aspect bucket). */
 const photoMatCache = new Map<string, THREE.MeshBasicMaterial>();
 
 /**
@@ -2588,8 +2921,8 @@ function evictOldestPhotoIfFull(): void {
   if (oldestId === undefined) return;
   photoTexCache.get(oldestId)?.texture?.dispose();
   photoTexCache.delete(oldestId);
-  // Drop every derived material for that file — photoMatCache keys are
-  // `${fileId}|${type}|<span>`, so match on the fileId prefix.
+  // Drop every derived material for that source — photoMatCache keys are
+  // `${clave}|${type}|<span>`, so match on the clave prefix.
   const prefix = `${oldestId}|`;
   for (const [key, mat] of photoMatCache) {
     if (key.startsWith(prefix)) {
@@ -2703,21 +3036,21 @@ function getPanelShelfSpan(type: string, w: number, h: number): PanelShelfSpan {
  * through to the category pattern). `notify` fires once when the load settles.
  */
 function getPhotoFaceMaterial(
-  fileId: number,
+  fuente: FuenteTextura,
   fixType: string,
   faceW: number,
   faceH: number,
   notify: () => void,
 ): THREE.MeshBasicMaterial | null {
-  let entry = photoTexCache.get(fileId);
+  let entry = photoTexCache.get(fuente.clave);
   if (!entry) {
     evictOldestPhotoIfFull();
     const fresh: PhotoTexEntry = { status: "loading", aspect: 1, waiters: new Set() };
-    photoTexCache.set(fileId, fresh);
+    photoTexCache.set(fuente.clave, fresh);
     entry = fresh;
-    // Same-origin URL; the JWT rides in the ?token= query (fileUrl helper).
+    // Same-origin URL; the JWT rides in the ?token= query.
     new THREE.TextureLoader().load(
-      fileUrl(fileId),
+      fuente.url,
       tex => {
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.anisotropy = 4;
@@ -2757,7 +3090,7 @@ function getPhotoFaceMaterial(
   };
   // Key carries the type + full span: types with different board layouts must
   // never share a wrongly-offset canvas for the same photo.
-  const key = `${fileId}|${fixType}|${span.rows}|${span.panelW}|${span.panelH}|${span.rowBottom}|${span.rowPitch}`;
+  const key = `${fuente.clave}|${fixType}|${span.rows}|${span.panelW}|${span.panelH}|${span.rowBottom}|${span.rowPitch}`;
   let mat = photoMatCache.get(key);
   if (!mat) {
     const PPM = 512; // texture pixels per metre, capped so no side exceeds 2048
@@ -2801,9 +3134,14 @@ const FACE_PAINTABLE_TYPES = new Set<string>([
 
 /**
  * Resolve the material for ONE face, by priority:
- *   supplier photo → category pattern → null (keep plain color).
+ *   producto en prueba → supplier photo → category pattern → null (plain color).
+ *
+ * El producto en prueba va PRIMERO porque es una elección explícita hecha en
+ * ese momento, delante del proveedor: tiene que ganarle a lo que haya cargado
+ * de antes, que es justamente lo que se está proponiendo reemplazar.
  */
 function resolveFaceMaterial(
+  arteId:   number | null,
   faceCode: string | null,
   fixType:  string,
   category: string,
@@ -2814,10 +3152,23 @@ function resolveFaceMaterial(
   notify:     () => void,
 ): THREE.Material | null {
   const aspect = faceW / Math.max(0.05, faceH);
+  if (arteId != null) {
+    const arte = getPhotoFaceMaterial(
+      { clave: `catalogo:${arteId}`, url: arteUrl(arteId) },
+      fixType, faceW, faceH, notify,
+    );
+    // Si todavía carga —o si alguien borró el arte del catálogo— se cae al
+    // camino de siempre en vez de dejar el mueble pelado a mitad de una
+    // reunión.
+    if (arte) return arte;
+  }
   if (faceCode && faceImages) {
     const fileId = faceImages.get(faceCode);
     if (fileId !== undefined) {
-      const photo = getPhotoFaceMaterial(fileId, fixType, faceW, faceH, notify);
+      const photo = getPhotoFaceMaterial(
+        { clave: `archivo:${fileId}`, url: fileUrl(fileId) },
+        fixType, faceW, faceH, notify,
+      );
       if (photo) return photo;
       // still loading or failed → fall through to the category pattern
     }
@@ -2899,6 +3250,11 @@ interface SceneProps {
   firstPerson:       boolean;
   /** Apaga las artes del proveedor: el «antes» del antes y después. */
   sinArte:           boolean;
+  /** Producto que se está probando en cada cara: `${fixtureId}|A` → id del
+   *  arte del catálogo. Se indexa por id de mueble y cara, y NO por código de
+   *  espacio: el código se compone en tres lugares con reglas de prefijo y
+   *  mayúsculas, y basta que una difiera para pintar el mueble equivocado. */
+  prueba:            Map<string, number>;
   onCamaraFP:        (c: CamaraEnPlanta | null) => void;
   saltarA:           { x: number; z: number; n: number } | null;
   onHoverFixture:    (id: string|null, x: number, y: number) => void;
@@ -2910,7 +3266,7 @@ function Scene({
   placingDef, ghostX, ghostZ, ghostRotY, ghostCollides,
   draggingId, orbitRef, onFloorMove, onFloorClick,
   onSelectFixture, setPlacedFixtures,
-  screenshotReady, topViewReady, firstPerson, sinArte, onCamaraFP, saltarA,
+  screenshotReady, topViewReady, firstPerson, sinArte, prueba, onCamaraFP, saltarA,
   onHoverFixture, fixtures,
 }: SceneProps) {
   const { gl, camera, invalidate } = useThree();
@@ -2983,11 +3339,13 @@ function Scene({
           : primary;
       const isDouble = isDoubleGondola(fix) || type === "gondola_doble";
       const front = resolveFaceMaterial(
+        prueba.get(`${fix.id}|A`) ?? null,
         pickCode(fullCode, codeUC), type, fix.brandCategory, fix.label,
         fix.w, fix.h, faceImages, notifyTexLoaded,
       );
       const back = isDouble
         ? resolveFaceMaterial(
+            prueba.get(`${fix.id}|B`) ?? null,
             pickCode(`${fullCode}-B`, `${codeUC}-B`), type, uf?.faceB?.brandCategory ?? "", fix.label,
             fix.w, fix.h, faceImages, notifyTexLoaded,
           )
@@ -2997,7 +3355,7 @@ function Scene({
     return map;
   // texVersion re-runs this memo when an async photo texture settles
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [placedFixtures, unifiedById, faceImages, texVersion, notifyTexLoaded, sinArte]);
+  }, [placedFixtures, unifiedById, faceImages, texVersion, notifyTexLoaded, sinArte, prueba]);
 
   // CHANGE 1 — Restore camera + wire persistence once OrbitControls are ready.
   // W1: Read camera3D from getState() at call time (not from closure) to avoid stale values.
@@ -3256,6 +3614,21 @@ function Scene({
                 draggingId.current=fix.id;
                 if(orbitRef.current) orbitRef.current.enabled=false;
               }}
+              // El mueble se selecciona en `pointerdown`, pero el `click` que
+              // viene después seguía bajando hasta el piso —que está detrás y
+              // sí tiene onClick— y ahí `onFloorClick` hacía `setSelectedId(null)`.
+              // O sea: un clic sobre un mueble lo seleccionaba y lo
+              // deseleccionaba en el mismo gesto, y el panel comercial del 3D
+              // no se abría nunca por ese camino. Cortar la propagación acá lo
+              // arregla sin tocar ninguna de las dos puntas.
+              //
+              // Mientras se está COLOCANDO un mueble no se corta: ahí el clic
+              // tiene que llegar al piso, que es quien detecta que se está
+              // montando sobre otro y lo avisa.
+              onClick={e=>{
+                if (placingDef || firstPerson) return;
+                e.stopPropagation();
+              }}
               onPointerOver={e=>{
                 e.stopPropagation();
                 if (!draggingId.current && !placingDef && !firstPerson) {
@@ -3447,6 +3820,11 @@ interface CommercialPanelProps {
   fix:           PlacedFixture;
   /** En primera persona la cámara no se persiste: el bloque de vista lo avisa. */
   enCaminata:    boolean;
+  catalogo:          Arte[];
+  cargandoCatalogo:  boolean;
+  prueba:            Map<string, number>;
+  onProbar:          (fixtureId: string, cara: "A" | "B", arteId: number | null) => void;
+  onRecargarCatalogo: () => void;
   selectedSlot:  ShelfSlot | null;
   onUpdate:      (id:string, u:Partial<PlacedFixture>) => void;
   onUpdateSlot:  (fixtureId:string, slotId:string, u:Partial<ShelfSlot>) => void;
@@ -3458,7 +3836,8 @@ interface CommercialPanelProps {
 }
 
 function CommercialPanel({
-  fix, enCaminata, selectedSlot, onUpdate, onUpdateSlot,
+  fix, enCaminata, catalogo, cargandoCatalogo, prueba, onProbar, onRecargarCatalogo,
+  selectedSlot, onUpdate, onUpdateSlot,
   onRotate, onFlip, onDelete, onClose, onSlotClose,
 }: CommercialPanelProps) {
   const isAdmin = useAuthStore(selectIsAdmin);
@@ -3731,7 +4110,15 @@ function CommercialPanel({
           )}
         </div>
 
-        <VistaProveedor fix={fix} enCaminata={enCaminata} />
+        <VistaProveedor
+          fix={fix}
+          enCaminata={enCaminata}
+          catalogo={catalogo}
+          cargandoCatalogo={cargandoCatalogo}
+          prueba={prueba}
+          onProbar={onProbar}
+          onRecargarCatalogo={onRecargarCatalogo}
+        />
 
         <div>
           <label className={labelCls}>Observaciones</label>
@@ -3817,6 +4204,39 @@ export default function StoreEditor3D() {
   // Antes y después: apagar las artes muestra el espacio como está hoy, que es
   // contra lo que el proveedor compara su marca puesta.
   const [sinArte, setSinArte] = useState(false);
+
+  // ── El producto que se está probando ──────────────────────────────────────
+  // Vive en la sesión y NO en el layout, a propósito. El layout es lo que está
+  // montado de verdad: si probar un producto lo escribiera ahí, la góndola que
+  // Nutresa tiene alquilada aparecería con producto de Alpina en la pantalla de
+  // todos, y el 3D dejaría de servir para saber qué hay puesto en la tienda.
+  // Acá se prueban tres ubicaciones en una reunión y al cerrar no queda nada.
+  const [prueba, setPrueba] = useState<Map<string, number>>(new Map());
+  const [catalogo, setCatalogo] = useState<Arte[]>([]);
+  const [cargandoCatalogo, setCargandoCatalogo] = useState(true);
+
+  const recargarCatalogo = useCallback(() => {
+    setCargandoCatalogo(true);
+    listarCatalogo()
+      .then(setCatalogo)
+      .catch(() => setCatalogo([]))
+      .finally(() => setCargandoCatalogo(false));
+  }, []);
+  useEffect(recargarCatalogo, [recargarCatalogo]);
+
+  const probarProducto = useCallback(
+    (fixtureId: string, cara: "A" | "B", arteId: number | null) => {
+      setPrueba(prev => {
+        const siguiente = new Map(prev);
+        // Mapa nuevo y no mutación: el memo de materiales compara por
+        // identidad, y mutar el mismo Map no repinta nada.
+        if (arteId == null) siguiente.delete(`${fixtureId}|${cara}`);
+        else siguiente.set(`${fixtureId}|${cara}`, arteId);
+        return siguiente;
+      });
+    },
+    [],
+  );
 
   // MEJORA 8: First-person mode
   const [firstPerson, setFirstPerson] = useState(false);
@@ -4130,24 +4550,49 @@ export default function StoreEditor3D() {
       await esperarCuadro();
       const despues = capturar();
 
+      // Qué producto se está probando en este mueble. Cualquiera de las dos
+      // caras sirve: la lámina muestra la que quedó encuadrada.
+      const arte = (["A", "B"] as const)
+        .map(c => prueba.get(`${fix.id}|${c}`))
+        .filter((id): id is number => id != null)
+        .map(id => catalogo.find(a => a.id === id))
+        .find(Boolean);
+
+      // Cuando se está PROPONIENDO un producto, el pie habla de esa propuesta y
+      // no del contrato que hoy ocupa el espacio. Sin esto la lámina salía con
+      // la foto del yogur de Alpina y, debajo, «Proveedor: Nutresa» con las
+      // fechas del contrato de Nutresa: el error más caro posible en el único
+      // papel que el proveedor se lleva.
+      //
+      // El período y el valor se omiten a propósito: de lo que se está
+      // proponiendo todavía no hay nada acordado, y poner las fechas del
+      // contrato de al lado sería inventarlas. Se negocian en la reunión.
+      const mismoProveedor =
+        !!arte && (uf.supplierName ?? "").trim().toLowerCase() === arte.proveedor.trim().toLowerCase();
+      const proponiendo = !!arte && !mismoProveedor;
+
       const datos = {
         sede,
         espacio: fullSpaceCode(uf.sede || sede, uf.code),
         mueble: uf.label || uf.code,
-        proveedor: uf.supplierName ?? "",
-        categoria: uf.brandCategory ?? "",
-        desde: uf.startDate ?? "",
-        hasta: uf.endDate ?? "",
+        proveedor: arte ? arte.proveedor : (uf.supplierName ?? ""),
+        producto: arte?.nombre,
+        categoria: proponiendo ? (arte?.categoria ?? "") : (uf.brandCategory ?? ""),
+        desde: proponiendo ? "" : (uf.startDate ?? ""),
+        hasta: proponiendo ? "" : (uf.endDate ?? ""),
         // La plata se tacha para el trabajador, igual que en todas las demás
         // pantallas. Una lámina es un archivo que se reenvía.
-        valorMensual: isAdmin ? (uf.negotiatedValue || null) : null,
+        valorMensual: proponiendo ? null : (isAdmin ? (uf.negotiatedValue || null) : null),
       };
       // Sin arte cargada las dos tomas salen idénticas: mostrar el mismo
       // dibujo dos veces con los rótulos «Hoy» y «Con la marca» es mentirle
       // al que recibe la lámina. Ahí va una sola imagen.
       const hayComparacion = antes !== despues;
       const tomas = hayComparacion
-        ? [{ titulo: "Hoy", dataUrl: antes }, { titulo: "Con la marca", dataUrl: despues }]
+        ? [
+            { titulo: "Hoy", dataUrl: antes },
+            { titulo: arte ? `Con ${arte.proveedor}` : "Con la marca", dataUrl: despues },
+          ]
         : [{ titulo: "El espacio hoy", dataUrl: despues }];
       const blob = await componerPropuesta(tomas, datos);
       descargar(blob, nombreDeArchivo(datos, hayComparacion));
@@ -4158,7 +4603,7 @@ export default function StoreEditor3D() {
       setExportando(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exportando, sinArte, selectedFix, fixtures, sede, isAdmin]);
+  }, [exportando, sinArte, selectedFix, fixtures, sede, isAdmin, prueba, catalogo]);
   const selectedSlot = selectedFix?.slots?.find(s=>s.id===selectedSlotId)??null;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -4403,6 +4848,7 @@ export default function StoreEditor3D() {
               topViewReady={setTopViewFn}
               firstPerson={firstPerson}
               sinArte={sinArte}
+              prueba={prueba}
               onCamaraFP={setCamaraFP}
               saltarA={saltarA}
               onHoverFixture={onHoverFixture}
@@ -4489,6 +4935,11 @@ export default function StoreEditor3D() {
         <CommercialPanel
           fix={selectedFix}
           enCaminata={firstPerson}
+          catalogo={catalogo}
+          cargandoCatalogo={cargandoCatalogo}
+          prueba={prueba}
+          onProbar={probarProducto}
+          onRecargarCatalogo={recargarCatalogo}
           selectedSlot={selectedSlot}
           onUpdate={updateFixture}
           onUpdateSlot={updateSlot}

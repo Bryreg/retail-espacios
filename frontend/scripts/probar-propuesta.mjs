@@ -41,6 +41,36 @@ prueba("dice de qué espacio y de qué contrato se habla", () => {
   assert.ok(et.includes("Proveedor") && et.includes("Categoría") && et.includes("Período"));
 });
 
+prueba("el producto que se está probando sale como su propio renglón", () => {
+  // La categoría del contrato y el producto que se muestra son cosas
+  // distintas, y en una propuesta suelen ser de proveedores distintos.
+  const f = lineasDePie({ ...base, producto: "Yogurt Griego 150g" });
+  const producto = f.find(x => x.etiqueta === "Producto");
+  assert.equal(producto?.valor, "Yogurt Griego 150g");
+  // Y va ANTES de la categoría: es lo que el proveedor está mirando.
+  assert.ok(f.indexOf(producto) < f.findIndex(x => x.etiqueta === "Categoría"));
+});
+
+prueba("sin producto el pie queda como estaba", () => {
+  const sin = lineasDePie(base);
+  const vacio = lineasDePie({ ...base, producto: "   " });
+  assert.ok(!sin.some(x => x.etiqueta === "Producto"));
+  assert.ok(!vacio.some(x => x.etiqueta === "Producto"));
+  assert.equal(vacio.length, sin.length);
+});
+
+prueba("una propuesta sin período ni valor no los inventa", () => {
+  // Es el caso de probarle un producto a un espacio con otro contrato encima:
+  // de lo propuesto no hay fechas acordadas, y poner las del contrato de al
+  // lado sería inventarlas.
+  const f = lineasDePie({
+    ...base, proveedor: "Alpina", producto: "Yogurt Griego 150g",
+    categoria: "", desde: "", hasta: "", valorMensual: null,
+  });
+  const et = f.map(x => x.etiqueta);
+  assert.deepEqual(et, ["Proveedor", "Producto", "Mueble"]);
+});
+
 prueba("la plata sólo aparece si quien llama la pasa", () => {
   // La redacción por rol es de la pantalla y del servidor. Este módulo no
   // decide: si le pasan null, no dibuja plata en ningún lado.
