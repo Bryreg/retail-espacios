@@ -2183,14 +2183,14 @@ export default function DashboardView() {
       <div
         style={{
           display: "flex", justifyContent: "space-between",
-          alignItems: "flex-start", marginBottom: 16, gap: 12,
+          alignItems: "flex-start", marginBottom: 26, gap: 16,
           flexWrap: "wrap",
         }}
       >
-        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
           <div
             style={{
-              width: 40, height: 40, borderRadius: "var(--r-lg)",
+              width: 44, height: 44, borderRadius: "var(--r-md)",
               background: "var(--accent)", color: "#fff",
               display: "flex", alignItems: "center", justifyContent: "center",
               boxShadow: "var(--shadow-md)",
@@ -2200,21 +2200,65 @@ export default function DashboardView() {
             <Building2 size={18} />
           </div>
           <div>
+            {/* Antes esto era un h2 de 17 px y una línea de 11,5. TODO en la
+                pantalla vivía entre 11 y 13 px, así que no había jerarquía: el
+                nombre de la sede pesaba lo mismo que una observación. */}
+            <div style={{
+              fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 500,
+              letterSpacing: "0.14em", textTransform: "uppercase",
+              color: "var(--ink-3)", marginBottom: 3,
+            }}>
+              Sede
+            </div>
             <h2
               style={{
-                margin: 0, fontSize: 17, fontWeight: 700,
-                letterSpacing: "-0.02em", color: "var(--ink-1)",
+                margin: 0, fontSize: 32, fontWeight: 600,
+                letterSpacing: "-0.035em", lineHeight: 1, color: "var(--ink-1)",
               }}
             >
-              Sede {sede}
+              {sede}
             </h2>
-            <p style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 2 }}>
+            <p style={{ fontSize: 12.5, color: "var(--ink-3)", marginTop: 7 }}>
               {kpis.total} espacio{kpis.total !== 1 ? "s" : ""} comercializable{kpis.total !== 1 ? "s" : ""}
               {" · "}
               {fixtures.length} mueble{fixtures.length !== 1 ? "s" : ""} en el plano
               {activeSedeCount > 1 && ` · ${activeSedeCount} sedes activas`}
             </p>
           </div>
+
+          {/* La plata que mueve la sede. `kpis.revenue` existía desde siempre y
+              no se mostraba en ninguna parte de esta pantalla: había que bajar
+              a las tarjetas para enterarse de cuánto entra por mes. Es la cifra
+              por la que existe el sistema y ahora es lo segundo que se lee.
+              Sólo admin: para el rol trabajador la plata va tachada en todo el
+              resto y acá no puede ser la excepción. */}
+          {isAdmin && kpis.revenue > 0 && (
+            <div style={{
+              paddingLeft: 20, marginLeft: 8,
+              borderLeft: "1px solid var(--line)", alignSelf: "stretch",
+              display: "flex", flexDirection: "column", justifyContent: "center",
+            }}>
+              <div style={{
+                fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 500,
+                letterSpacing: "0.14em", textTransform: "uppercase",
+                color: "var(--ink-3)", marginBottom: 5,
+              }}>
+                Canon vigente
+              </div>
+              <div style={{
+                fontSize: 30, fontWeight: 600, letterSpacing: "-0.035em",
+                lineHeight: 1, color: "var(--ink-1)", whiteSpace: "nowrap",
+              }}>
+                ${kpis.revenue.toLocaleString("es-CO")}
+                <span style={{ fontSize: 14, fontWeight: 500, color: "var(--ink-3)" }}> /mes</span>
+              </div>
+              {kpis.committedRevenue > 0 && (
+                <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 6 }}>
+                  + ${kpis.committedRevenue.toLocaleString("es-CO")} contratado sin arrancar
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
