@@ -49,6 +49,7 @@ import CancelarContrato from "../components/Contrato/CancelarContrato";
 import CargaMasiva from "../components/CargaMasiva/CargaMasiva";
 import { inclusiveDays } from "../types/seasons";
 import { nombreDeMueble } from "../utils/nomenclatura";
+import { fechaCorta } from "../utils/propuesta";
 
 // ─── Date / money helpers ────────────────────────────────────────────────────
 
@@ -210,7 +211,11 @@ type MapFilter = "todos" | "free" | "occupied" | "committed" | "expiring" | "exp
 const FILTER_CHIPS: { id: MapFilter; label: string; ring: string; fill: string }[] = [
   { id: "todos",     label: "Todos",           ring: "var(--ink-2)",      fill: "var(--surface-3)" },
   { id: "free",      label: "Disponibles",     ring: "var(--success)",    fill: "rgba(21,128,61,0.10)" },
-  { id: "occupied",  label: "Ocupados",        ring: "var(--accent-700)", fill: "var(--accent-50)" },
+  // Ocupado es rojo en el plano, en el 3D y en el mapa de la sede; el chip que
+  // lo filtra tiene que ser del mismo color o el filtro no se asocia con lo que
+  // pinta. «Vencidos» comparte el rojo pero no compite: es un subconjunto de lo
+  // ocupado, y se distingue por la etiqueta y por la columna Días.
+  { id: "occupied",  label: "Ocupados",        ring: "var(--danger)",     fill: "rgba(185,28,28,0.10)" },
   { id: "committed", label: "Contratados",     ring: "var(--accent-700)", fill: "var(--accent-50)" },
   { id: "expiring",  label: "Por vencer ≤30d", ring: "var(--warning)",    fill: "rgba(180,83,9,0.12)" },
   { id: "expired",   label: "Vencidos",        ring: "var(--danger)",     fill: "rgba(185,28,28,0.10)" },
@@ -421,7 +426,10 @@ function topColorFor(face: FaceEntry): string {
 const RANGE_TOP: Record<RangeAvailability, string> = {
   libre: "#4CC38A",
   parcial: "#F0B429",
-  tomado: "#8B5CF6",
+  // Rojo, igual que «ocupado» en el plano, el 3D y el mapa de la sede: es el
+  // mismo hecho —ese espacio no se puede vender— con otra etiqueta. En violeta
+  // el único lugar donde de verdad se vende leía distinto que todos los demás.
+  tomado: "#D93A3A",
 };
 
 const RANGE_LABEL: Record<RangeAvailability, string> = {
@@ -1568,8 +1576,21 @@ function SpacesTable({
     );
   }, [rows, filter, query]);
 
-  const headers = ["Código", "Tipo", "Proveedor", "Estado", "Montaje", "Días"];
-  if (isAdmin) headers.push("Renta / mes");
+  // Con alineación explícita y no por índice: la regla vieja era `i >= 4`, así
+  // que agregar una columna en el medio corría la alineación de todas las de
+  // atrás — y ya dejaba «Montaje» con el título a la derecha y el contenido a
+  // la izquierda.
+  const columnas: { etiqueta: string; derecha?: boolean }[] = [
+    { etiqueta: "Código" },
+    { etiqueta: "Tipo" },
+    { etiqueta: "Proveedor" },
+    { etiqueta: "Estado" },
+    { etiqueta: "Montaje" },
+    { etiqueta: "Desde", derecha: true },
+    { etiqueta: "Hasta", derecha: true },
+    { etiqueta: "Días",  derecha: true },
+  ];
+  if (isAdmin) columnas.push({ etiqueta: "Renta / mes", derecha: true });
 
   return (
     <>
@@ -1582,12 +1603,12 @@ function SpacesTable({
         <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 12 }}>
           <thead style={{ position: "sticky", top: 0, zIndex: 1 }}>
             <tr style={{ background: "var(--surface)" }}>
-              {headers.map((h, i) => (
+              {columnas.map((c) => (
                 <th
-                  key={h}
+                  key={c.etiqueta}
                   style={{
                     padding: "7px 10px",
-                    textAlign: i >= 4 ? "right" : "left",
+                    textAlign: c.derecha ? "right" : "left",
                     fontSize: 9.5, fontWeight: 700,
                     color: "var(--ink-3)",
                     textTransform: "uppercase", letterSpacing: "0.08em",
@@ -1595,7 +1616,7 @@ function SpacesTable({
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {h}
+                  {c.etiqueta}
                 </th>
               ))}
             </tr>
@@ -1603,7 +1624,7 @@ function SpacesTable({
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={headers.length} style={{ padding: "10px 14px", fontSize: 12, color: "var(--ink-3)" }}>
+                <td colSpan={columnas.length} style={{ padding: "10px 14px", fontSize: 12, color: "var(--ink-3)" }}>
                   {query.trim()
                     ? <>Sin resultados para «{query.trim()}»</>
                     : "Sin espacios con este estado."}
@@ -1696,6 +1717,23 @@ function SpacesTable({
                   <td style={cell}>
                     <MontajeChip entry={entry} reporte={montajeDe(entry)} />
                   </td>
+                  {/* El período. La tabla ya ordenaba por fecha de fin y contaba
+                      los días, pero no decía DESDE ni HASTA cuándo — y eso es lo
+                      que se necesita para renovar o para reclamar. En una cara
+                      libre se muestran apagadas: son historia, igual que el
+                      «último: proveedor» de la columna de al lado. */}
+                  {([entry.startDate, entry.endDate] as const).map((iso, i) => (
+                    <td
+                      key={i}
+                      style={{
+                        ...cell, textAlign: "right", whiteSpace: "nowrap",
+                        fontFamily: "var(--font-mono)", fontSize: 11,
+                        color: !iso ? "var(--ink-4)" : freeRow ? "var(--ink-4)" : "var(--ink-2)",
+                      }}
+                    >
+                      {iso ? fechaCorta(iso) : "—"}
+                    </td>
+                  ))}
                   <td
                     style={{
                       ...cell, textAlign: "right",

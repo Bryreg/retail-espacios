@@ -49,6 +49,7 @@ type FixType2D =
   | "nevera_refrescos"
   | "stand_frutas"
   | "checkout"
+  | "servicio_cliente"
   | "columna"
   | "exhibicion";   // legacy — kept for backward compat, not in catalog
 
@@ -112,25 +113,31 @@ const CATALOG: {
   // ── Servicio ──────────────────────────────────────────────────────────
   { type: "stand_frutas",  label: "Stand Frutas/Verd", w: 1.50, h: 1.20, emoji: "🍎", prefix: "FRU", category: "Frescos" },
   { type: "checkout",      label: "Checkout / Caja",   w: 1.80, h: 0.70, emoji: "🛒", prefix: "CAJ", category: "Servicio" },
+  { type: "servicio_cliente", label: "Servicio al Cliente", w: 1.60, h: 0.70, emoji: "💁", prefix: "SAC", category: "Servicio" },
   // ── Infraestructura ───────────────────────────────────────────────────
   { type: "metro",         label: "Zona Libre",        w: 1.00, h: 1.00, emoji: "⬜", prefix: "MET", category: "Infraestructura" },
   { type: "columna",       label: "Columna",           w: 0.30, h: 0.30, emoji: "🏛️", prefix: "COL", category: "Infraestructura" },
 ];
 
-// Status palette, shared with the Dashboard's occupancy map (STATUS_TOP in
-// pages/DashboardView.tsx) and with the 3D editor. Occupied used to be red on
-// the plan and violet on the Dashboard, so the same colour meant two different
-// things depending on the tab you were looking at.
+// Status palette, shared with the Dashboard's occupancy map, con el editor 3D y
+// con el mapa de la sede (components/FloorMap/zones.ts).
+//
+// Ocupado es ROJO: es la convención de cualquier mapa de disponibilidad —verde
+// se puede vender, rojo no—. Estuvo un tiempo en violeta para no chocar con el
+// rojo de «vencido», pero el mapa de la sede nunca dejó de pintarlo rojo, así
+// que el mismo estado tenía dos colores según la pestaña. Vencido se distingue
+// por otro lado: la tabla lo dice con todas las letras y el filtro «Vencidos»
+// lo aísla.
 const STATUS_COLORS: Record<SpaceStatus, string> = {
   free:        "#2E9E6B",   // green  — available
-  occupied:    "#7C4DEC",   // violet — under contract
+  occupied:    "#D93A3A",   // red    — under contract, no se puede vender
   reserved:    "#D19A17",   // amber  — held
   maintenance: "#8A8578",   // warm grey
 };
 
 const STATUS_FILL: Record<SpaceStatus, string> = {
   free:        "rgba(76,195,138,0.16)",
-  occupied:    "rgba(139,92,246,0.16)",
+  occupied:    "rgba(217,58,58,0.16)",
   reserved:    "rgba(240,180,41,0.16)",
   maintenance: "rgba(168,162,158,0.14)",
 };

@@ -32,6 +32,7 @@ export type FixType =
   | "nevera_refrescos"
   | "stand_frutas"
   | "checkout"
+  | "servicio_cliente"
   | "columna"
   | "exhibicion";   // legacy 2D-only type — kept for backward compat
 
@@ -50,6 +51,10 @@ export const NON_RENTABLE_BY_DEFAULT: ReadonlySet<string> = new Set<FixType>([
   "metro",
   "columna",
   "checkout",
+  // El punto de servicio al cliente es operación de la tienda, no espacio que
+  // se le venda a un proveedor. Como con las cajas, la bandera se puede
+  // cambiar a mano si alguna sede decide alquilar ese frente.
+  "servicio_cliente",
 ]);
 
 /** True when the fixture can hold a commercial contract.
