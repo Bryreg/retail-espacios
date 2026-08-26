@@ -131,4 +131,39 @@ prueba("NAVE no tiene ninguno desalineado", () => {
   assert.deepEqual(N.prefijoDesalineado(reales), []);
 });
 
+
+
+console.log("\nnomenclatura · el nombre del mueble");
+
+prueba("sin nomenclatura escrita, el nombre es el del sistema", () => {
+  // Es el caso de los 109 muebles del plano real: el panel decía «—» mientras
+  // el plano mostraba el código. Son la misma cosa.
+  assert.equal(N.nombreDeMueble({ code: "GON-800" }), "GON-800");
+  assert.equal(N.nombreDeMueble({ code: "GON-800", nomenclatura: "" }), "GON-800");
+  assert.equal(N.nombreDeMueble({ code: "GON-800", nomenclatura: "   " }), "GON-800");
+  assert.equal(N.nombreDeMueble({ code: "GON-800", nomenclatura: null }), "GON-800");
+});
+
+prueba("escribir una nomenclatura reemplaza el nombre", () => {
+  assert.equal(N.nombreDeMueble({ code: "GON-800", nomenclatura: "P1-A" }), "P1-A");
+  assert.equal(N.nombreDeMueble({ code: "GON-800", nomenclatura: "  P1-A  " }), "P1-A");
+});
+
+prueba("se distingue el nombre puesto a mano del heredado", () => {
+  // Sirve para poder decir «· del sistema» sin mentir, y para saber que vaciar
+  // el campo devuelve al código.
+  assert.equal(N.nombrePropio({ code: "GON-800" }), false);
+  assert.equal(N.nombrePropio({ code: "GON-800", nomenclatura: "" }), false);
+  assert.equal(N.nombrePropio({ code: "GON-800", nomenclatura: "P1-A" }), true);
+  // Escribir exactamente el código NO es un nombre propio: es el mismo.
+  assert.equal(N.nombrePropio({ code: "GON-800", nomenclatura: "GON-800" }), false);
+});
+
+prueba("vaciar el campo devuelve el nombre del sistema", () => {
+  const antes = { code: "GON-800", nomenclatura: "P1-A" };
+  assert.equal(N.nombreDeMueble(antes), "P1-A");
+  assert.equal(N.nombreDeMueble({ ...antes, nomenclatura: "" }), "GON-800");
+});
+
+
 console.log("\n" + hechas + " pruebas" + (process.exitCode ? " · CON FALLAS" : " · todo en orden") + "\n");

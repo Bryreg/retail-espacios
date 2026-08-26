@@ -8,6 +8,7 @@ import FormularioMontaje, {
   type EspacioAMontar, type PlanoDelEspacio,
 } from "../components/Montaje/FormularioMontaje";
 import type { UnifiedFixture } from "../types/fixtures";
+import { nombreDeMueble } from "../utils/nomenclatura";
 
 /** Una cara de un mueble que hay que montar, con lo que ordena la lista. */
 interface Pendiente extends EspacioAMontar {
@@ -312,7 +313,7 @@ export default function MountView({
                   color: "var(--ink-1)",
                 }}
               >
-                {p.nomenclatura || p.corto}
+                {nombreDeMueble({ code: p.corto, nomenclatura: p.nomenclatura })}
               </span>
               {p.urgente && (
                 <span

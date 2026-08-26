@@ -1217,6 +1217,105 @@ Con medidas reales llena los cuatro.
 
 ---
 
+## El producto estaba pintado al fondo del mueble
+
+Al ver la primera góndola vestida en producción saltó lo que ninguna prueba
+podía atrapar: el producto **quedaba perdido al fondo**. Se veía un estante
+vacío con algo dibujado atrás.
+
+No era el arte. La imagen se pintaba sobre el panel **trasero** de cada mueble
+—la espina de la góndola, la placa de la punta, la pared de la nevera—. Es el
+sitio cómodo: esos paneles ya existen y ya heredan la transformación del
+mueble, que es justo lo que hundió los dos intentos anteriores de poner
+geometría nueva (replicaban la matemática de ubicación y se despegaban).
+
+Pero en una góndola de 0.9 m de fondo eso deja el producto **44 cm detrás del
+filo del entrepaño**. En una tienda el producto está adelante: eso es lo que
+significa un *facing*, y es literalmente lo que el proveedor viene a comprar.
+
+### La lámina
+
+Ahora la imagen va en una lámina propia (`LaminaDeProducto`), parada a 5 cm del
+plano exterior del mueble — lo justo para que el riel de precio y el filo del
+entrepaño queden por delante, como en un lineal de verdad.
+
+No repite la matemática de ubicación: es **hija del mismo grupo** que el mueble,
+así que sólo conoce coordenadas locales. Ese era el error de los intentos
+viejos, no la idea de tener geometría propia.
+
+Dos detalles que la hacen funcionar:
+
+* **El fondo de la lámina es invisible**, no del color del panel. Con un
+  material opaco sería una placa tapando el estante entero; con
+  `opacity: 0, depthWrite: false` sólo se ve donde hay producto.
+* **`y` y `alto` son los mismos que tenía el panel pintado.** La textura viene
+  compuesta con las filas alineadas a los entrepaños reales en el espacio local
+  de ese panel, así que moverla en Z no toca la alineación — moverla en Y sí la
+  rompería.
+
+Se aplicó a los cinco tipos que se pintan: góndola (doble y mural), punta,
+robatope, vitrina y nevera de refrescos. Los paneles estructurales volvieron a
+ser lisos, y con eso `getPlainLambert` y `getPlainStandard` quedaron sin uso
+—existían sólo para ser el fondo de una caja pintada— y se borraron.
+
+### Lo que queda sabido
+
+El producto se estira hasta llenar el alto del entrepaño: una bolsa de café de
+25 cm ocupa los 39 cm del hueco. Es la convención del compositor de planograma
+y para vender se ve bien, pero no es fiel. Arreglarlo pide saber el alto real
+del empaque, que hoy no se pide al cargar el arte.
+
+---
+
+## Un solo nombre para el mueble
+
+El panel del plano decía **«—»** en Nomenclatura mientras el plano dibujaba
+`GON-800` sobre el mismo mueble. No era un bug de dibujo: eran **dos campos
+distintos**.
+
+* El **código** (`GON-800`) lo genera el sistema, se dibuja dentro del mueble y
+  es la llave: forma el código de espacio que viaja al contrato, al correo del
+  mercaderista y a la lámina.
+* La **nomenclatura** era texto libre, opcional y aparte. Vacía en los 109
+  muebles del plano real. Sólo se dibujaba como una píldora encima del mueble, y
+  sólo si tenía valor — así que prender «Etiquetas» sobre un plano recién hecho
+  no mostraba **ni una etiqueta**.
+
+Lo que decidió el arreglo: **el resto de la app ya los trataba como uno solo.**
+El minimapa, la pantalla de montaje, el tablero y el 3D mostraban
+`nomenclatura || código`. El plano 2D era el único que los separaba, y su panel
+el único lugar donde se veía «—» cuando el nombre efectivo era `GON-800`.
+
+### La regla
+
+`nombreDeMueble(mueble)` en `utils/nomenclatura.ts`: el nombre es el código que
+puso el sistema, y escribir una nomenclatura lo **reemplaza**. Una sola
+respuesta a «¿cómo se llama este mueble?», y es la que se ve en el plano, en el
+3D, en el montaje, en el tablero y en la lámina. Los seis lugares que resolvían
+`nomenclatura || code` a mano ahora llaman a esta función.
+
+El código nunca se toca: sigue siendo la llave del espacio. Lo que cambia es
+cómo se lo nombra.
+
+### La píldora sólo dice lo que la caja no dice
+
+Al principio la píldora se dibujó siempre con el nombre efectivo. Resultado: el
+nombre aparecía **dos veces** por mueble —adentro de la caja y en la píldora
+encima— y las píldoras chocaban con el mueble de arriba. Peor que antes.
+
+Ahora sale sólo cuando el nombre **no** es el del sistema (`nombrePropio`). Si
+es el heredado, la caja ya lo dice. Y escribir en el campo exactamente el mismo
+código tampoco cuenta como nombre propio: no es un nombre nuevo, es el mismo.
+
+### Lo que ve el usuario
+
+* Sin nombre escrito: el panel dice `GON-800 · del sistema` en vez de «—».
+* Con nombre escrito: el panel dice `P1-A`, y `P1-A` aparece sobre el mueble.
+* Vaciar el campo devuelve el nombre del sistema; el placeholder del input es el
+  propio código, para que se vea qué se hereda.
+
+---
+
 ## Pendiente urgente: datos de TERRON
 
 TERRON tenía datos reales y **quedó vacía en el servidor**, vaciada por el bug del layout

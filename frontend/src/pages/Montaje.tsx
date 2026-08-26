@@ -7,6 +7,7 @@ import FormularioMontaje, {
 } from "../components/Montaje/FormularioMontaje";
 import type { MountConfirmation } from "../api/mounts";
 import type { UnifiedFixture } from "../types/fixtures";
+import { nombreDeMueble } from "../utils/nomenclatura";
 
 /**
  * La pantalla que abre el enlace del correo. Un espacio y nada más.
@@ -215,7 +216,7 @@ function Marco({ espacio, children }: { espacio: EspacioMontaje; children: React
         </div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 3 }}>
           <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.02em" }}>
-            {espacio.nomenclatura || espacio.corto}
+            {nombreDeMueble({ code: espacio.corto, nomenclatura: espacio.nomenclatura })}
           </span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 3,
             fontSize: 12, color: "var(--ink-3)" }}>

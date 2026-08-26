@@ -71,33 +71,6 @@ interface FacePaint {
   back:  THREE.Material | null;
 }
 
-/** Cached plain Lambert materials — the "everything else stays as today" faces. */
-const plainLambertCache = new Map<string, THREE.MeshLambertMaterial>();
-function getPlainLambert(color: string): THREE.MeshLambertMaterial {
-  let m = plainLambertCache.get(color);
-  if (!m) {
-    m = new THREE.MeshLambertMaterial({ color });
-    plainLambertCache.set(color, m);
-  }
-  return m;
-}
-
-/** Cached plain Standard materials (for panels that use emissive/standard). */
-const plainStandardCache = new Map<string, THREE.MeshStandardMaterial>();
-function getPlainStandard(
-  color: string, emissive: string, emissiveIntensity: number, opacity: number,
-): THREE.MeshStandardMaterial {
-  const key = `${color}|${emissive}|${emissiveIntensity}|${opacity}`;
-  let m = plainStandardCache.get(key);
-  if (!m) {
-    m = new THREE.MeshStandardMaterial({
-      color, emissive, emissiveIntensity, transparent: true, opacity,
-    });
-    plainStandardCache.set(key, m);
-  }
-  return m;
-}
-
 /**
  * Build the 6-material array for a painted box.
  * BoxGeometry face order: [+X, -X, +Y, -Y, +Z, -Z].
@@ -109,6 +82,94 @@ function facePaintArray(
   back:  THREE.Material | null,
 ): THREE.Material[] {
   return [plain, plain, plain, plain, back ?? plain, front ?? plain];
+}
+
+// ─── La lámina de producto ───────────────────────────────────────────────────
+//
+// El producto se pintaba sobre el panel TRASERO de cada mueble —la espina de la
+// góndola, la placa de la punta, la pared de la nevera—. Es el sitio cómodo:
+// esos paneles ya existen y ya heredan la transformación del mueble. Pero en
+// una góndola de 0.9 m de fondo eso deja el producto **44 cm detrás del filo
+// del entrepaño**, y al mirarla de frente se ve un estante vacío con algo
+// pintado al fondo. En una tienda el producto está adelante: eso es lo que
+// significa un «facing», y es lo que el proveedor viene a comprar.
+//
+// Ahora la imagen va en una lámina propia, parada al frente del entrepaño. No
+// repite la matemática de ubicación del mueble —el error que hundió los dos
+// intentos anteriores de poner geometría nueva—: es hija del mismo grupo, así
+// que sólo conoce coordenadas locales.
+
+/** Cuánto atrás del plano exterior del mueble se para el producto.
+ *  Cinco centímetros: lo justo para que el riel de precio y el filo del
+ *  entrepaño queden por delante, como en un lineal de verdad. */
+const RETRANQUEO = 0.05;
+/** Espesor de la lámina. No es el envase: es lo mínimo para que de perfil no
+ *  se vea un papel. */
+const ESPESOR_LAMINA = 0.03;
+
+/** Material invisible para las caras de la lámina que NO llevan la textura.
+ *  Sin esto la lámina sería una placa opaca tapando el estante entero. */
+let matInvisible: THREE.MeshBasicMaterial | null = null;
+function getInvisible(): THREE.MeshBasicMaterial {
+  if (!matInvisible) {
+    matInvisible = new THREE.MeshBasicMaterial({
+      transparent: true, opacity: 0, depthWrite: false,
+    });
+  }
+  return matInvisible;
+}
+
+/**
+ * El producto parado al frente del mueble, en una o en las dos caras.
+ *
+ * `y` y `alto` son los MISMOS que tenía el panel pintado de antes: la textura
+ * viene compuesta con las filas alineadas a los entrepaños reales
+ * (`getPanelShelfSpan`) en el espacio local de ese panel, así que mover la
+ * lámina en Z no toca la alineación. Cambiar `y` o `alto` sí la rompería.
+ */
+function LaminaDeProducto({
+  ancho, alto, y, fondo, doble = false, facePaint,
+}: {
+  ancho: number;
+  alto: number;
+  /** Centro vertical del panel, en local. */
+  y: number;
+  /** Fondo del mueble: la lámina se para a `RETRANQUEO` de su plano exterior. */
+  fondo: number;
+  /** El mueble se vende por las dos caras (góndola doble). */
+  doble?: boolean;
+  facePaint?: FacePaint | null;
+}) {
+  const caraA = facePaint?.front ?? null;
+  const caraB = doble ? (facePaint?.back ?? null) : null;
+
+  // La cara pintada es la EXTERIOR de la lámina (índice 5 = -Z, 4 = +Z), así
+  // que el centro se corre medio espesor hacia adentro para que la imagen
+  // quede exactamente sobre el retranqueo.
+  const zA = -(fondo / 2 - RETRANQUEO) + ESPESOR_LAMINA / 2;
+  const zB =  (fondo / 2 - RETRANQUEO) - ESPESOR_LAMINA / 2;
+
+  const matsA = useMemo(
+    () => (caraA ? facePaintArray(getInvisible(), caraA, null) : null), [caraA],
+  );
+  const matsB = useMemo(
+    () => (caraB ? facePaintArray(getInvisible(), null, caraB) : null), [caraB],
+  );
+
+  return (
+    <>
+      {matsA && (
+        <mesh position={[0, y, zA]} material={matsA}>
+          <boxGeometry args={[ancho, alto, ESPESOR_LAMINA]} />
+        </mesh>
+      )}
+      {matsB && (
+        <mesh position={[0, y, zB]} material={matsB}>
+          <boxGeometry args={[ancho, alto, ESPESOR_LAMINA]} />
+        </mesh>
+      )}
+    </>
+  );
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -371,17 +432,9 @@ const GondolaMesh = memo(function GondolaMesh({
   // Double gondola: thin center spine at z=0 so both faces are open (symmetric).
   const backPosZ = isWall ? d / 2 - backT / 2 : 0;
 
-  // Painted panel materials: front (-Z) ← face A, back (+Z) ← face B (double
-  // only). All remaining faces keep the plain panel color. The paint lives on
-  // the gondola's OWN back/spine panel, so it inherits every transform.
-  const panelMats = useMemo(() => {
-    if (ghost || !facePaint || (!facePaint.front && !facePaint.back)) return null;
-    return facePaintArray(
-      getPlainLambert(G_PANEL),
-      facePaint.front,
-      isWall ? null : facePaint.back,
-    );
-  }, [ghost, facePaint, isWall, G_PANEL]);
+  // El producto ya NO se pinta acá: la espina es estructura y queda al fondo
+  // del estante. Va en `LaminaDeProducto`, parado al frente del entrepaño.
+  const pinta = !ghost && !!facePaint && !!(facePaint.front || facePaint.back);
   // No mid-posts — gondola modules only have structural uprights at each end,
   // not internal vertical dividers.
   const nMidPosts = 0;
@@ -426,16 +479,19 @@ const GondolaMesh = memo(function GondolaMesh({
         <meshStandardMaterial color="#f2f2f0" metalness={0.05} roughness={0.30} transparent opacity={op} />
       </mesh>
 
-      {/* Back / wall panel — painted with face imagery when available */}
-      {panelMats ? (
-        <mesh position={[0, h / 2, backPosZ]} castShadow material={panelMats}>
-          <boxGeometry args={[w, h, backT]} />
-        </mesh>
-      ) : (
-        <mesh position={[0, h / 2, backPosZ]} castShadow>
-          <boxGeometry args={[w, h, backT]} />
-          <meshLambertMaterial color={G_PANEL} transparent opacity={op} />
-        </mesh>
+      {/* Back / wall panel — estructura, siempre lisa */}
+      <mesh position={[0, h / 2, backPosZ]} castShadow>
+        <boxGeometry args={[w, h, backT]} />
+        <meshLambertMaterial color={G_PANEL} transparent opacity={op} />
+      </mesh>
+
+      {/* El producto, al frente del entrepaño. La góndola mural va contra la
+          pared: sólo se vende su cara de adelante. */}
+      {pinta && (
+        <LaminaDeProducto
+          ancho={w} alto={h} y={h / 2} fondo={d}
+          doble={!isWall} facePaint={facePaint}
+        />
       )}
 
       {/* Shelf boards + price rails */}
@@ -532,23 +588,19 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
   const G_FRAME = "#c0c0bc";
   const G_BACK  = "#d8d8d5";
 
-  const plateMats = useMemo(() => {
-    if (ghost || !facePaint?.front) return null;
-    return facePaintArray(getPlainLambert(G_BACK), facePaint.front, null);
-  }, [ghost, facePaint, G_BACK]);
+  const pinta = !ghost && !!facePaint?.front;
 
   return (
     <group>
-      {/* Structural back plate (faces the gondola) — front (-Z) face painted */}
-      {plateMats ? (
-        <mesh position={[0, bodyH / 2, d * 0.40]} castShadow material={plateMats}>
-          <boxGeometry args={[w, bodyH, d * 0.22]} />
-        </mesh>
-      ) : (
-        <mesh position={[0, bodyH / 2, d * 0.40]} castShadow>
-          <boxGeometry args={[w, bodyH, d * 0.22]} />
-          <meshLambertMaterial color={G_BACK} transparent opacity={op} />
-        </mesh>
+      {/* Structural back plate (faces the gondola) — estructura, lisa */}
+      <mesh position={[0, bodyH / 2, d * 0.40]} castShadow>
+        <boxGeometry args={[w, bodyH, d * 0.22]} />
+        <meshLambertMaterial color={G_BACK} transparent opacity={op} />
+      </mesh>
+
+      {/* El producto, al frente del entrepaño */}
+      {pinta && (
+        <LaminaDeProducto ancho={w} alto={bodyH} y={bodyH / 2} fondo={d} facePaint={facePaint} />
       )}
 
       {/* Left & right uprights */}
@@ -647,23 +699,19 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:n
   const G_FRAME = "#c0c0bc";
   const G_BACK  = "#d8d8d5";
 
-  const panelMats = useMemo(() => {
-    if (ghost || !facePaint?.front) return null;
-    return facePaintArray(getPlainLambert(G_BACK), facePaint.front, null);
-  }, [ghost, facePaint, G_BACK]);
+  const pinta = !ghost && !!facePaint?.front;
 
   return (
     <group>
-      {/* Back structural panel (faces the gondola aisle) — front face painted */}
-      {panelMats ? (
-        <mesh position={[0, bodyH / 2, d * 0.40]} castShadow material={panelMats}>
-          <boxGeometry args={[w, bodyH, d * 0.20]} />
-        </mesh>
-      ) : (
-        <mesh position={[0, bodyH / 2, d * 0.40]} castShadow>
-          <boxGeometry args={[w, bodyH, d * 0.20]} />
-          <meshLambertMaterial color={G_BACK} transparent opacity={op} />
-        </mesh>
+      {/* Back structural panel (faces the gondola aisle) — estructura, lisa */}
+      <mesh position={[0, bodyH / 2, d * 0.40]} castShadow>
+        <boxGeometry args={[w, bodyH, d * 0.20]} />
+        <meshLambertMaterial color={G_BACK} transparent opacity={op} />
+      </mesh>
+
+      {/* El producto, al frente del entrepaño */}
+      {pinta && (
+        <LaminaDeProducto ancho={w} alto={bodyH} y={bodyH / 2} fondo={d} facePaint={facePaint} />
       )}
 
       {/* Left & right uprights — identical profile to PuntaMesh */}
@@ -986,14 +1034,19 @@ function MuebleMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:num
         );
       })}
 
-      {/* Back panel (inside) — front (-Z) face painted, visible through glass */}
+      {/* Back panel (inside) — estructura, lisa. El producto va adelante, contra
+          el vidrio, que es donde se lo ve. */}
       {!ghost && facePaint?.front ? (
-        <mesh
-          position={[0, baseH + doorH / 2, d / 2 - 0.020]}
-          material={facePaintArray(getPlainLambert("#f0f0ee"), facePaint.front, null)}
-        >
-          <boxGeometry args={[w - 0.036, doorH - 0.036, 0.018]} />
-        </mesh>
+        <>
+          <mesh position={[0, baseH + doorH / 2, d / 2 - 0.020]}>
+            <boxGeometry args={[w - 0.036, doorH - 0.036, 0.018]} />
+            <meshLambertMaterial color="#f0f0ee" transparent opacity={op} />
+          </mesh>
+          <LaminaDeProducto
+            ancho={w - 0.036} alto={doorH - 0.036}
+            y={baseH + doorH / 2} fondo={d} facePaint={facePaint}
+          />
+        </>
       ) : (
         <mesh position={[0, baseH + doorH / 2, d / 2 - 0.020]}>
           <boxGeometry args={[w - 0.036, doorH - 0.036, 0.018]} />
@@ -1534,18 +1587,20 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:num
         </mesh>
       ))}
 
-      {/* Pared interior iluminada (back wall de la zona fría) — cara frontal pintada */}
+      {/* Pared interior iluminada (back wall de la zona fría) — queda lisa: el
+          producto va adelante, contra el vidrio, no pegado al fondo. */}
       {!ghost && facePaint?.front ? (
-        <mesh
-          position={[0, compH + dispH / 2, d / 2 - 0.055]}
-          material={facePaintArray(
-            getPlainStandard("#f0f9ff", LED_C, 0.30, 0.85),
-            facePaint.front,
-            null,
-          )}
-        >
-          <boxGeometry args={[w - 0.040, dispH, 0.010]} />
-        </mesh>
+        <>
+          <mesh position={[0, compH + dispH / 2, d / 2 - 0.055]}>
+            <boxGeometry args={[w - 0.040, dispH, 0.010]} />
+            <meshStandardMaterial color="#f0f9ff" emissive={LED_C} emissiveIntensity={0.30}
+              transparent opacity={0.85 * op} />
+          </mesh>
+          <LaminaDeProducto
+            ancho={w - 0.040} alto={dispH}
+            y={compH + dispH / 2} fondo={d} facePaint={facePaint}
+          />
+        </>
       ) : (
         <mesh position={[0, compH + dispH / 2, d / 2 - 0.055]}>
           <boxGeometry args={[w - 0.040, dispH, 0.010]} />

@@ -126,3 +126,37 @@ export function prefijoDesalineado(
     })
     .map((f) => ({ id: f.id, code: f.code, esperado: prefijoDe(f.type) }));
 }
+
+// ─── El nombre del mueble ────────────────────────────────────────────────────
+
+/**
+ * Cómo se llama un mueble. Uno solo, no dos.
+ *
+ * Había dos campos en paralelo: el **código** que genera el sistema (`GON-800`,
+ * dibujado dentro del mueble en el plano y usado para armar el código de
+ * espacio que viaja al contrato) y una **nomenclatura** de texto libre,
+ * opcional, que casi nadie llenaba. El panel del plano mostraba «—» mientras el
+ * plano mostraba `GON-800`: dos nombres para la misma cosa, y ninguno de los
+ * dos era «el» nombre.
+ *
+ * El nombre efectivo es el código que puso el sistema, y escribir una
+ * nomenclatura lo REEMPLAZA. Así hay una sola respuesta a «¿cómo se llama este
+ * mueble?», y es la que se ve en el plano, en el 3D, en la pantalla de montaje
+ * y en la lámina del proveedor.
+ *
+ * El código nunca se toca: sigue siendo la llave del espacio. Lo que cambia es
+ * cómo se lo nombra.
+ */
+export function nombreDeMueble(
+  mueble: { code: string; nomenclatura?: string | null },
+): string {
+  return (mueble.nomenclatura ?? "").trim() || mueble.code;
+}
+
+/** ¿El nombre lo puso una persona, o se heredó del código del sistema? */
+export function nombrePropio(
+  mueble: { code: string; nomenclatura?: string | null },
+): boolean {
+  const puesto = (mueble.nomenclatura ?? "").trim();
+  return puesto !== "" && puesto !== mueble.code;
+}

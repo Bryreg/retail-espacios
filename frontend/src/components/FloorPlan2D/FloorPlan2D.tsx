@@ -13,7 +13,7 @@ import { ClipboardCheck, Keyboard } from "lucide-react";
 import { useFixtureStore, selectFixtures, selectHasPendingWork, normalizeSede } from "../../store/fixtureStore";
 import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types/fixtures";
 import { isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
-import { siguienteCodigo, codigoRepetido } from "../../utils/nomenclatura";
+import { siguienteCodigo, codigoRepetido, nombreDeMueble, nombrePropio } from "../../utils/nomenclatura";
 import { revisarPlano } from "../../utils/revision";
 import { TOLERANCIA_CONTACTO } from "../../utils/planta";
 import { buscarHuecoGrupo } from "../../utils/acomodar";
@@ -1796,9 +1796,13 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                     {/* Nomenclatura pill — floats above the rect at constant screen
                         size, with a small leader line down to the top edge.
                         Filter matches always show their pill, Etiquetas toggle aside. */}
-                    {(showLabels || (filterActive && isFilterMatch)) && item.nomenclatura && (() => {
-                      // Property narrowing doesn't cross the closure — re-default here.
-                      const text = item.nomenclatura ?? "";
+                    {(showLabels || (filterActive && isFilterMatch)) && nombrePropio(item) && (() => {
+                      // Sólo cuando el nombre NO es el que puso el sistema: si
+                      // lo es, la caja ya lo dice adentro y la píldora quedaba
+                      // repitiéndolo encima, chocando con el mueble de arriba.
+                      // Acá la píldora existe para decir algo que la caja no
+                      // dice: el nombre que alguien le puso.
+                      const text = nombreDeMueble(item);
                       const fs = 10.5 / zoom;
                       const padX = 7 / zoom;
                       const bh = 16 / zoom;
@@ -3512,14 +3516,31 @@ function AssignmentPanel({
         )}
       </Field>
 
-      {/* Nomenclatura (per fixture, rendered as a pill on the plan) */}
+      {/* Nomenclatura — el NOMBRE del mueble, no un campo aparte.
+          Decía «—» mientras el plano mostraba `GON-800`: dos nombres para la
+          misma cosa. Ahora hereda el que puso el sistema, y escribir uno lo
+          reemplaza en el plano, en el 3D, en el montaje y en la lámina. */}
       <Field label="Nomenclatura" icon="🔖">
         {editMode ? (
-          <input className={inp} placeholder="ej: FRU-01 · visible en el plano"
-            value={item.nomenclatura ?? ""}
-            onChange={(e) => onUpdate({ nomenclatura: e.target.value })} />
+          <>
+            <input className={inp} placeholder={item.code}
+              value={item.nomenclatura ?? ""}
+              onChange={(e) => onUpdate({ nomenclatura: e.target.value })} />
+            <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 4 }}>
+              {nombrePropio(item)
+                ? `El sistema lo llamó ${item.code}. Vaciá el campo para volver a ese nombre.`
+                : `Heredada del nombre que le dio el sistema. Escribí uno para reemplazarlo.`}
+            </p>
+          </>
         ) : (
-          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{item.nomenclatura || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}</p>
+          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>
+            {nombreDeMueble(item)}
+            {!nombrePropio(item) && (
+              <span style={{ fontSize: 11, color: "var(--dark-ink-3)", marginLeft: 6 }}>
+                · del sistema
+              </span>
+            )}
+          </p>
         )}
       </Field>
 
