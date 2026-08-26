@@ -1364,6 +1364,42 @@ suspendido se veía suelto en el aire.
 
 ---
 
+## El conflicto no se podía resolver
+
+El panel que ofrece «Usar la del servidor» / «Conservar la mía» se dibujaba
+`position: absolute` dentro del `<header>`, y ese header lleva `overflow:
+hidden` —está ahí para que la fila de pestañas no lo desborde en pantallas
+angostas—. Resultado: del panel se veía **la tirita de arriba** y los dos
+botones quedaban recortados fuera de la caja.
+
+O sea que una sede en conflicto **no se podía resolver desde la interfaz**.
+El indicador decía «Conflicto» para siempre, cada guardado seguía dando 409
+(`pushSede` no reintenta una sede en conflicto sin `force`) y la única salida
+era la consola del navegador. Le pasó a alguien con la única copia buena de
+una sede encima.
+
+Ahora el panel va por **portal a `document.body`**, `position: fixed`, anclado
+al botón con `getBoundingClientRect` y reubicado en `resize` y `scroll`. Así
+ningún contenedor lo puede recortar, sea cual sea el `overflow` de la cadena
+de padres.
+
+### Y dice los números
+
+Elegir entre «la mía» y «la del servidor» a ciegas es lo que da miedo, y el
+miedo es lo que deja una sede en conflicto durante días. El panel ahora
+muestra **cuántos muebles hay de cada lado** —los locales salen del store, los
+del servidor de `GET /layout/revisions`, que ya devolvía `count`— y una línea
+que dice lo que el usuario necesita saber para animarse: *«Conservar la mía»
+sube lo de esta computadora y pisa lo del servidor. No borra nada de acá.*
+
+Es cierto y es la asimetría que importa: `resolveConflict(sede, "mine")` hace
+un `pushSede` con `base_updated_at: null` y **no lee nada del servidor**;
+`"server"` es el que descarta el trabajo local. `PUT /layout/{sede}` sólo
+reemplaza el JSON de muebles de esa sede: espacios, contratos y montajes viven
+en otras tablas y no los toca ninguna de las dos ramas.
+
+---
+
 ## Los muebles se dibujaron a ciegas
 
 El catálogo 3D se escribió a partir de la descripción de cada mueble, sin una
