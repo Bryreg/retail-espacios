@@ -1217,6 +1217,56 @@ Con medidas reales llena los cuatro.
 
 ---
 
+## El producto estaba pintado al fondo del mueble
+
+Al ver la primera góndola vestida en producción saltó lo que ninguna prueba
+podía atrapar: el producto **quedaba perdido al fondo**. Se veía un estante
+vacío con algo dibujado atrás.
+
+No era el arte. La imagen se pintaba sobre el panel **trasero** de cada mueble
+—la espina de la góndola, la placa de la punta, la pared de la nevera—. Es el
+sitio cómodo: esos paneles ya existen y ya heredan la transformación del
+mueble, que es justo lo que hundió los dos intentos anteriores de poner
+geometría nueva (replicaban la matemática de ubicación y se despegaban).
+
+Pero en una góndola de 0.9 m de fondo eso deja el producto **44 cm detrás del
+filo del entrepaño**. En una tienda el producto está adelante: eso es lo que
+significa un *facing*, y es literalmente lo que el proveedor viene a comprar.
+
+### La lámina
+
+Ahora la imagen va en una lámina propia (`LaminaDeProducto`), parada a 5 cm del
+plano exterior del mueble — lo justo para que el riel de precio y el filo del
+entrepaño queden por delante, como en un lineal de verdad.
+
+No repite la matemática de ubicación: es **hija del mismo grupo** que el mueble,
+así que sólo conoce coordenadas locales. Ese era el error de los intentos
+viejos, no la idea de tener geometría propia.
+
+Dos detalles que la hacen funcionar:
+
+* **El fondo de la lámina es invisible**, no del color del panel. Con un
+  material opaco sería una placa tapando el estante entero; con
+  `opacity: 0, depthWrite: false` sólo se ve donde hay producto.
+* **`y` y `alto` son los mismos que tenía el panel pintado.** La textura viene
+  compuesta con las filas alineadas a los entrepaños reales en el espacio local
+  de ese panel, así que moverla en Z no toca la alineación — moverla en Y sí la
+  rompería.
+
+Se aplicó a los cinco tipos que se pintan: góndola (doble y mural), punta,
+robatope, vitrina y nevera de refrescos. Los paneles estructurales volvieron a
+ser lisos, y con eso `getPlainLambert` y `getPlainStandard` quedaron sin uso
+—existían sólo para ser el fondo de una caja pintada— y se borraron.
+
+### Lo que queda sabido
+
+El producto se estira hasta llenar el alto del entrepaño: una bolsa de café de
+25 cm ocupa los 39 cm del hueco. Es la convención del compositor de planograma
+y para vender se ve bien, pero no es fiel. Arreglarlo pide saber el alto real
+del empaque, que hoy no se pide al cargar el arte.
+
+---
+
 ## Pendiente urgente: datos de TERRON
 
 TERRON tenía datos reales y **quedó vacía en el servidor**, vaciada por el bug del layout
