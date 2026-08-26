@@ -181,7 +181,7 @@ function LaminaDeProducto({
 // lit 3D materials, not flat SVG fills.
 const STATUS_COLORS: Record<SpaceStatus, string> = {
   free:        "#4CC38A",
-  occupied:    "#8B5CF6",
+  occupied:    "#E24B4B",   // rojo: ocupado no se puede vender
   reserved:    "#F0B429",
   maintenance: "#A8A29E",
 };
@@ -260,6 +260,7 @@ const FIXTURE_DEFS: FixtureDef[] = [
   // ── Servicio ──────────────────────────────────────────────────────────────
   { type:"stand_frutas",                  label:"Stand Frutas/Verd",w:1.50, d:1.20, h:0.95, color:"#84cc16", emoji:"🍎", desc:"Cajón expositor de frutas y verduras", code:"FRU" },
   { type:"checkout",                      label:"Checkout / Caja",  w:1.80, d:0.70, h:0.90, color:"#8b5cf6", emoji:"🛒", desc:"Caja registradora con cinta transportadora", code:"CAJ" },
+  { type:"servicio_cliente",              label:"Servicio al Cliente", w:1.60, d:0.70, h:1.10, color:"#0ea5e9", emoji:"💁", desc:"Mostrador de atención: devoluciones, reclamos e información", code:"SAC" },
   // ── Infraestructura ───────────────────────────────────────────────────────
   { type:"metro",                         label:"Zona Libre",       w:1.00, d:1.00, h:0.05, color:"#64748b", emoji:"⬜", desc:"Área de suelo demarcada",                  code:"MET" },
   { type:"columna",                       label:"Columna",          w:0.30, d:0.30, h:3.00, color:"#94a3b8", emoji:"🏛️", desc:"Columna estructural",                      code:"COL" },
@@ -268,10 +269,10 @@ const FIXTURE_DEFS: FixtureDef[] = [
   { type:"robatope",                      label:"Robatope",         w:0.30, d:0.40, h:1.60, color:"#c0c0bc", emoji:"🛡️", desc:"Panel lateral de protección — flanquea la Punta de Góndola", code:"ROB" },
 ];
 
-// Chip styling mirrors STATUS_COLORS: occupied reads violet (accent), not red.
+// Chip styling mirrors STATUS_COLORS: ocupado se lee rojo, igual que el mueble.
 const STATUS_META: Record<SpaceStatus, { bg: string; text: string; label: string }> = {
   free:        { bg:"bg-success/20",  text:"text-success",  label:"Disponible"    },
-  occupied:    { bg:"bg-accent/20",   text:"text-accent",   label:"Ocupado"       },
+  occupied:    { bg:"bg-danger/20",   text:"text-danger",   label:"Ocupado"       },
   reserved:    { bg:"bg-warning/20",  text:"text-warning",  label:"Reservado"     },
   maintenance: { bg:"bg-dark-surface-2", text:"text-dark-ink-2", label:"Mantenimiento" },
 };
@@ -1874,6 +1875,92 @@ interface FixtureMeshProps {
   onSlotHover?:    (slotId: string | null) => void;
 }
 
+/**
+ * Mostrador de servicio al cliente: devoluciones, reclamos e información.
+ *
+ * Es más alto que una caja (1.10 m contra 0.90) porque se atiende de pie y de
+ * frente, no de costado con una cinta; lleva un mostrador bajo accesible de un
+ * lado y un cartel colgante, que es como se lo reconoce desde el pasillo.
+ */
+function ServicioClienteMesh({ w, d, h, ghost }: { w:number;d:number;h:number;ghost?:boolean }) {
+  const op    = ghost ? 0.42 : 1;
+  const BODY  = "#e8eef3";
+  const TAPA  = "#8fa3b0";
+  const SENAL = "#0ea5e9";
+  const TINTA = "#0b3d54";
+  // Tramo bajo accesible: un tercio del frente a la altura de una silla de
+  // ruedas. No es adorno — es lo que distingue este mueble de una caja.
+  const bajoW = w * 0.34;
+  const bajoH = h - 0.28;
+
+  return (
+    <group>
+      {/* Cuerpo del mostrador */}
+      <mesh position={[bajoW / 2, h / 2, 0]} castShadow>
+        <boxGeometry args={[w - bajoW, h, d]} />
+        <meshStandardMaterial color={BODY} metalness={0.10} roughness={0.65} transparent opacity={op} />
+      </mesh>
+      {/* Tramo bajo accesible */}
+      <mesh position={[-(w / 2 - bajoW / 2), bajoH / 2, 0]} castShadow>
+        <boxGeometry args={[bajoW, bajoH, d]} />
+        <meshStandardMaterial color={BODY} metalness={0.10} roughness={0.65} transparent opacity={op} />
+      </mesh>
+
+      {/* Tapas */}
+      <mesh position={[bajoW / 2, h + 0.012, 0]} castShadow>
+        <boxGeometry args={[w - bajoW + 0.05, 0.024, d + 0.05]} />
+        <meshStandardMaterial color={TAPA} metalness={0.35} roughness={0.40} transparent opacity={op} />
+      </mesh>
+      <mesh position={[-(w / 2 - bajoW / 2), bajoH + 0.012, 0]} castShadow>
+        <boxGeometry args={[bajoW + 0.05, 0.024, d + 0.05]} />
+        <meshStandardMaterial color={TAPA} metalness={0.35} roughness={0.40} transparent opacity={op} />
+      </mesh>
+
+      {/* Franja de color al frente: lo que hace que se lea «acá se pregunta» */}
+      <mesh position={[0, h * 0.62, -(d / 2 + 0.004)]}>
+        <boxGeometry args={[w * 0.98, 0.09, 0.010]} />
+        <meshStandardMaterial color={SENAL} emissive={SENAL} emissiveIntensity={0.18}
+          transparent opacity={op} />
+      </mesh>
+
+      {/* Cartel, montado sobre parantes que salen del propio mostrador.
+          Colgado del techo quedaba flotando: acá no se dibuja techo, así que un
+          cartel suspendido se ve suelto en el aire. */}
+      {([-1, 1] as const).map(sx => (
+        <mesh key={sx} position={[sx * (w * 0.30), h + 0.235, 0]} castShadow>
+          <boxGeometry args={[0.030, 0.47, 0.030]} />
+          <meshStandardMaterial color={TAPA} metalness={0.45} roughness={0.35} transparent opacity={op} />
+        </mesh>
+      ))}
+      <mesh position={[0, h + 0.62, 0]} castShadow>
+        <boxGeometry args={[w * 0.72, 0.30, 0.05]} />
+        <meshStandardMaterial color={SENAL} metalness={0.20} roughness={0.50} transparent opacity={op} />
+      </mesh>
+      {/* Renglón oscuro del cartel: de lejos se lee como un letrero escrito */}
+      <mesh position={[0, h + 0.62, -(0.028)]}>
+        <boxGeometry args={[w * 0.58, 0.13, 0.006]} />
+        <meshStandardMaterial color={TINTA} transparent opacity={0.85 * op} />
+      </mesh>
+
+      {/* Monitor de consulta */}
+      <mesh position={[w * 0.22, h + 0.20, d * 0.10]} rotation={[0.22, 0, 0]} castShadow>
+        <boxGeometry args={[0.26, 0.17, 0.030]} />
+        <meshStandardMaterial color="#1f2937" metalness={0.45} roughness={0.35} transparent opacity={op} />
+      </mesh>
+      <mesh position={[w * 0.22, h + 0.11, d * 0.10]}>
+        <boxGeometry args={[0.10, 0.020, 0.10]} />
+        <meshStandardMaterial color={TAPA} metalness={0.40} roughness={0.40} transparent opacity={op} />
+      </mesh>
+
+      {/* Zócalo */}
+      <mesh position={[0, 0.045, 0]}>
+        <boxGeometry args={[w - 0.06, 0.09, d - 0.06]} />
+        <meshStandardMaterial color="#6b7785" metalness={0.20} roughness={0.70} transparent opacity={op} />
+      </mesh>
+    </group>
+  );
+}
+
 function FixtureMesh({ fixture, ghost, facePaint, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: FixtureMeshProps) {
   const sc = isRentable(fixture)
     ? (STATUS_COLORS[fixture.status] ?? STATUS_COLORS.free)
@@ -1914,6 +2001,7 @@ function FixtureMesh({ fixture, ghost, facePaint, selectedSlotId, hoveredSlotId,
     case "nevera_refrescos": return <NeveraRefrescosMesh  {...base} facePaint={facePaint} />;
     case "stand_frutas":     return <StandFrutasMesh       {...base} />;
     case "checkout":      return <CheckoutMesh       {...base} />;
+    case "servicio_cliente": return <ServicioClienteMesh {...base} />;
     case "columna":       return <ColumnaMesh        {...base} />;
     default:              return <IslaMesh           {...base} />;  // legacy exhibicion + unknown
   }

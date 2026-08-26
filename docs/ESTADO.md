@@ -1316,6 +1316,54 @@ código tampoco cuenta como nombre propio: no es un nombre nuevo, es el mismo.
 
 ---
 
+## Tres pedidos del uso diario
+
+### El período, en «Estado por espacio»
+
+La tabla **ordenaba por fecha de fin** y calculaba los días restantes, pero no
+mostraba ni el inicio ni el fin. Para renovar —o para reclamarle a un
+proveedor— hace falta saber desde y hasta cuándo, no sólo cuántos días quedan.
+Ahora hay dos columnas, `Desde` y `Hasta`, apagadas cuando la cara está libre
+(son historia, igual que el «último: proveedor» de al lado).
+
+De paso: los encabezados alineaban por índice (`i >= 4` → derecha). Agregar una
+columna en el medio corría la alineación de todas las de atrás, y ya dejaba
+«Montaje» con el título a la derecha y el contenido a la izquierda. Ahora cada
+columna declara su alineación.
+
+### Ocupado es rojo
+
+Es la convención de cualquier mapa de disponibilidad: verde se puede vender,
+rojo no. Estuvo un tiempo en violeta para no chocar con el rojo de «vencido»,
+pero **el mapa de la sede nunca dejó de pintarlo rojo**
+(`components/FloorMap/zones.ts`), así que el mismo estado tenía dos colores
+según la pestaña. Ahora es rojo en los cuatro lugares: plano 2D, editor 3D,
+mapa de la sede y el chip que lo filtra en el tablero.
+
+También el «Tomado» del mapa de Vender, que es el mismo hecho con otra
+etiqueta: ese mapa queda verde / ámbar / rojo, que se lee sin leyenda.
+
+Vencido comparte el rojo y no compite: es un subconjunto de lo ocupado, la
+tabla lo dice con todas las letras y el filtro «Vencidos» lo aísla.
+
+### El mostrador de servicio al cliente
+
+Faltaba en el catálogo. Es `servicio_cliente`, prefijo `SAC`, 1.60 × 0.70 ×
+1.10 m, y nace **no comercializable** —como las cajas— porque es operación de
+la tienda y no espacio que se le venda a un proveedor; la bandera se puede
+cambiar a mano si alguna sede decide alquilar ese frente.
+
+Es más alto que una caja (1.10 contra 0.90) porque se atiende de pie y de
+frente, no de costado con una cinta, y lleva un tramo bajo accesible en un
+tercio del frente. Eso último no es adorno: es lo que lo distingue de una caja
+al mirar el plano.
+
+El cartel se monta sobre parantes que salen del propio mostrador. Colgado del
+techo quedaba flotando —en el 3D no se dibuja techo—, así que un cartel
+suspendido se veía suelto en el aire.
+
+---
+
 ## Pendiente urgente: datos de TERRON
 
 TERRON tenía datos reales y **quedó vacía en el servidor**, vaciada por el bug del layout

@@ -35,6 +35,7 @@ export const PREFIJO_POR_TIPO: Record<string, string> = {
   nevera_refrescos: "BEB",
   stand_frutas: "FRU",
   checkout: "CAJ",
+  servicio_cliente: "SAC",
   columna: "COL",
   exhibicion: "EXH",
   // Nombres que sólo usa el plano 2D: la góndola se parte en dos tipos
