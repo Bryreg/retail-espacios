@@ -20,7 +20,7 @@ import { describeError } from "../../api/client";
 // Extensión real del local y física de la caminata — geometría pura, probada
 // aparte. STORE_W/STORE_D describen una tienda ficticia que ninguna sede ocupa.
 import {
-  huella, limitesDePlanta, murosDeCaminata, puntoDeEntrada, puntoLibreCerca, resolverPaso,
+  huella, limitesDePlanta, lugarDeLaFigura, murosDeCaminata, puntoDeEntrada, puntoLibreCerca, resolverPaso,
   TOLERANCIA_CONTACTO,
   vistaGeneral, miradaSensata, vistaDeCara,
   type Vista3D,
@@ -2118,10 +2118,56 @@ function FixtureMesh({ fixture, ghost, facePaint, selectedSlotId, hoveredSlotId,
 
 // ─── Store room ───────────────────────────────────────────────────────────────
 
-/** Floor + border that adapts to the bounding box of all placed fixtures. */
-function StoreRoom({ fixtures }: { fixtures: PlacedFixture[] }) {
+/** Lado de la baldosa, en metros. Es la medida de una baldosa de piso comercial,
+ *  y de paso la unidad con la que el ojo mide distancias al caminar: sin una
+ *  retícula en el suelo, avanzar por la tienda se siente como flotar porque no
+ *  hay contra qué comparar el paso. */
+const LADO_BALDOSA = 0.60;
+
+/** La textura del piso: baldosa con junta, dibujada una sola vez en un canvas.
+ *
+ *  Dos baldosas por lado en la imagen y no una: así las juntas quedan por
+ *  dentro del dibujo y no sobre el borde, que es donde el filtrado bilineal
+ *  deja costura al repetir. Las líneas de los bordes se dibujan a media caña,
+ *  y al repetirse se suman en una junta completa.
+ */
+function usarTexturaDePiso(): THREE.Texture {
+  const { gl } = useThree();
+  return useMemo(() => {
+    const CELDA = 256;                 // px por baldosa
+    const lienzo = document.createElement("canvas");
+    lienzo.width = lienzo.height = CELDA * 2;
+    const c = lienzo.getContext("2d")!;
+    c.fillStyle = "#ddd8cc";           // el mismo tono que tenía el piso liso
+    c.fillRect(0, 0, lienzo.width, lienzo.height);
+    c.strokeStyle = "#cbc5b6";         // junta: apenas más oscura, no un enrejado
+    c.lineWidth = 5;
+    for (const v of [0, CELDA, CELDA * 2]) {
+      c.beginPath(); c.moveTo(v, 0); c.lineTo(v, lienzo.height); c.stroke();
+      c.beginPath(); c.moveTo(0, v); c.lineTo(lienzo.width, v); c.stroke();
+    }
+    const t = new THREE.CanvasTexture(lienzo);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.colorSpace = THREE.SRGBColorSpace;
+    // Sin anisotropía, mirando el piso casi de canto —que es todo el rato en
+    // primera persona— la retícula lejana se deshace en moaré.
+    t.anisotropy = gl.capabilities.getMaxAnisotropy();
+    return t;
+  }, [gl]);
+}
+
+/** Floor + border that adapts to the bounding box of all placed fixtures.
+ *  `muros` los levanta sólo en primera persona: al caminar ya te frena
+ *  `murosDeCaminata` en el perímetro, y hasta ahora ese tope era invisible —
+ *  chocabas contra nada. En la vista orbital estorban, así que ahí no van. */
+function StoreRoom({ fixtures, muros = false }: { fixtures: PlacedFixture[]; muros?: boolean }) {
   const PAD = 2.5; // metres of padding around fixture bbox
   const MIN_SIZE = 8;
+  // 4,5 m: la altura de un supermercado de verdad, y suficiente para que el
+  // remate del muro salga del cuadro salvo mirando de lejos.
+  const ALTO_MURO = 4.5;
+  const ESPESOR    = 0.12;
+  const ZOCALO     = 0.12;
 
   const { cx, cz, fw, fd } = useMemo(() => {
     if (fixtures.length === 0) {
@@ -2141,12 +2187,22 @@ function StoreRoom({ fixtures }: { fixtures: PlacedFixture[] }) {
     };
   }, [fixtures]);
 
+  const piso = usarTexturaDePiso();
+  const { invalidate } = useThree();
+  useEffect(() => {
+    // Repetir por metro real, no por lámina: la baldosa mide lo mismo en una
+    // sede de 12 m que en una de 40.
+    piso.repeat.set(fw / (LADO_BALDOSA * 2), fd / (LADO_BALDOSA * 2));
+    piso.needsUpdate = true;
+    invalidate();
+  }, [piso, fw, fd, invalidate]);
+
   type V3 = [number, number, number];
   return (
     <group>
       <mesh rotation={[-Math.PI/2,0,0]} position={[cx,0,cz] as V3} receiveShadow>
         <planeGeometry args={[fw,fd]} />
-        <meshLambertMaterial color="#ddd8cc" />
+        <meshLambertMaterial map={piso} />
       </mesh>
       {[
         { pos:[cx,       0.001, cz-fd/2] as V3, args:[fw,   0.001, 0.06] as V3 },
@@ -2159,9 +2215,87 @@ function StoreRoom({ fixtures }: { fixtures: PlacedFixture[] }) {
           <meshLambertMaterial color="#b8b0a4" />
         </mesh>
       ))}
+
+      {/* Los muros, con su zócalo. La cara interior queda justo sobre el borde
+          del piso, y los del eje X se alargan un espesor para cerrar esquina. */}
+      {muros && ([
+        { pos:[cx, ALTO_MURO/2, cz - fd/2 - ESPESOR/2] as V3, args:[fw + ESPESOR*2, ALTO_MURO, ESPESOR] as V3,
+          zoc:[cx, ZOCALO/2, cz - fd/2 + 0.012] as V3,        zargs:[fw, ZOCALO, 0.024] as V3 },
+        { pos:[cx, ALTO_MURO/2, cz + fd/2 + ESPESOR/2] as V3, args:[fw + ESPESOR*2, ALTO_MURO, ESPESOR] as V3,
+          zoc:[cx, ZOCALO/2, cz + fd/2 - 0.012] as V3,        zargs:[fw, ZOCALO, 0.024] as V3 },
+        { pos:[cx - fw/2 - ESPESOR/2, ALTO_MURO/2, cz] as V3, args:[ESPESOR, ALTO_MURO, fd] as V3,
+          zoc:[cx - fw/2 + 0.012, ZOCALO/2, cz] as V3,        zargs:[0.024, ZOCALO, fd] as V3 },
+        { pos:[cx + fw/2 + ESPESOR/2, ALTO_MURO/2, cz] as V3, args:[ESPESOR, ALTO_MURO, fd] as V3,
+          zoc:[cx + fw/2 - 0.012, ZOCALO/2, cz] as V3,        zargs:[0.024, ZOCALO, fd] as V3 },
+      ]).map((m, i) => (
+        <group key={`mu${i}`}>
+          {/* El `emissive` no es un efecto: la direccional principal cuelga a
+              40 m casi a plomo, así que una cara vertical recibe N·L ≈ 0 y el
+              muro quedaba sólo con el ambiente —marrón sucio, más oscuro que
+              el piso, al revés de cualquier tienda—. Levantarlo acá lo arregla
+              sin tocar la luz de la escena, que ya está calibrada para los
+              muebles. */}
+          <mesh position={m.pos} receiveShadow>
+            <boxGeometry args={m.args} />
+            <meshLambertMaterial color="#efeae0" emissive="#a8a294" />
+          </mesh>
+          <mesh position={m.zoc}>
+            <boxGeometry args={m.zargs} />
+            <meshLambertMaterial color="#b9b2a3" emissive="#6e695d" />
+          </mesh>
+        </group>
+      ))}
     </group>
   );
 }
+
+// ─── Figura humana ────────────────────────────────────────────────────────────
+
+/**
+ * Una persona de 1,70 m al lado del mueble elegido.
+ *
+ * Es lo que vuelve legible la escala. Un render sin nada humano al lado se ve
+ * como una maqueta: el proveedor no sabe si su exhibidor le llega al pecho o a
+ * la rodilla, y «1,80 m de alto» escrito en una ficha no se lee igual que
+ * verlo. Va al COSTADO y no adelante a propósito —adelante taparía justo la
+ * cara que se está vendiendo, que es lo único que la lámina tiene que mostrar—.
+ *
+ * No es chrome: sale en la captura para el proveedor, que es donde hace falta.
+ */
+const ALTURA_PERSONA = 1.70;
+
+function FiguraHumana({ x, z, rotY }: { x: number; z: number; rotY: number }) {
+  // Proporciones que suman exactamente 1,70: piernas 0→0,85, torso 0,85→1,50,
+  // cabeza 1,50→1,70.
+  const PIEL = "#8b9096";
+  return (
+    <group position={[x, 0, z]} rotation={[0, rotY, 0]}>
+      {([-1, 1] as const).map((s) => (
+        <mesh key={`p${s}`} position={[s * 0.092, 0.425, 0]} castShadow>
+          <capsuleGeometry args={[0.085, 0.68, 4, 12]} />
+          <meshStandardMaterial color={PIEL} roughness={0.85} metalness={0.02} />
+        </mesh>
+      ))}
+      <mesh position={[0, 1.175, 0]} castShadow>
+        <capsuleGeometry args={[0.155, 0.34, 4, 16]} />
+        <meshStandardMaterial color={PIEL} roughness={0.85} metalness={0.02} />
+      </mesh>
+      {([-1, 1] as const).map((s) => (
+        <mesh key={`b${s}`} position={[s * 0.205, 1.18, 0]} castShadow>
+          <capsuleGeometry args={[0.052, 0.40, 4, 10]} />
+          <meshStandardMaterial color={PIEL} roughness={0.85} metalness={0.02} />
+        </mesh>
+      ))}
+      {/* La coronilla cae exactamente en ALTURA_PERSONA: si alguien toca una
+          proporción, que sea la altura la que mande y no al revés. */}
+      <mesh position={[0, ALTURA_PERSONA - 0.10, 0]} castShadow>
+        <sphereGeometry args={[0.10, 20, 16]} />
+        <meshStandardMaterial color={PIEL} roughness={0.85} metalness={0.02} />
+      </mesh>
+    </group>
+  );
+}
+
 
 // ─── Selection wireframe ──────────────────────────────────────────────────────
 
@@ -3898,7 +4032,20 @@ function Scene({
       <directionalLight position={[limites.minX,25,limites.minZ]} intensity={0.3} color="#fffaee" />
       <directionalLight position={[limites.maxX,25,limites.maxZ]} intensity={0.2} color="#e0eeff" />
 
-      <StoreRoom fixtures={placedFixtures} />
+      <StoreRoom fixtures={placedFixtures} muros={firstPerson} />
+
+      {/* La persona, al lado del mueble elegido. En primera persona no va: la
+          persona sos vos, y una segunda parada al lado del estante distrae. */}
+      {!firstPerson && (() => {
+        const sel = placedFixtures.find((f) => f.id === selectedId);
+        if (!sel) return null;
+        // Sin el propio mueble: su huella inflada cubre justo el costado donde
+        // la figura tiene que pararse, y se bloquearía a sí misma.
+        const p = lugarDeLaFigura(sel, murosDeCaminata(
+          placedFixtures.filter((f) => f.id !== sel.id),
+        ));
+        return p ? <FiguraHumana x={p.x} z={p.z} rotY={p.rotY} /> : null;
+      })()}
       <primitive object={gridMinor} />
       <primitive object={gridMajor} />
 

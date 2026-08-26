@@ -1364,6 +1364,82 @@ suspendido se veía suelto en el aire.
 
 ---
 
+## La tienda no se parecía a una tienda
+
+Tres cosas que faltaban para que el 3D aguante una reunión con un proveedor.
+Ninguna cambia lo que el sistema hace: cambian si le creés.
+
+### Piso de baldosa
+
+El piso era una lámina de un solo color. Al caminar no había contra qué medir
+el paso, así que avanzar por la tienda se sentía como flotar: no se sabía si la
+punta estaba a tres metros o a diez.
+
+Ahora es una textura de baldosa de 60 cm con junta, dibujada en un canvas y
+repetida **por metro real** —la baldosa mide lo mismo en una sede de 12 m que
+en una de 40—. La imagen lleva dos baldosas por lado y no una: así las juntas
+quedan por dentro del dibujo y no sobre el borde, que es donde el filtrado
+bilineal deja costura al repetir; las líneas de los bordes van a media caña y
+al repetirse se suman en una junta completa.
+
+Lleva **anisotropía al máximo del equipo**. Sin eso, mirando el piso casi de
+canto —que es todo el rato en primera persona— la retícula lejana se deshace
+en moaré.
+
+### Muros, y sólo al caminar
+
+Al caminar ya te frenaba `murosDeCaminata` en el perímetro, pero ese tope era
+**invisible**: chocabas contra nada y te detenías. Eso no se lee como «llegué a
+la pared», se lee como que el programa se trabó. El muro no agrega realismo:
+hace honesto un límite que ya existía.
+
+Van a 4,5 m —la altura de un supermercado de verdad—, con zócalo, y **sólo en
+primera persona**: en la vista orbital, que es la que se usa para negociar,
+taparían el plano.
+
+Un detalle que sólo se vio mirando: quedaron **marrón sucio, más oscuros que el
+piso**, al revés de cualquier tienda. La direccional principal cuelga a 40 m
+casi a plomo, así que una cara vertical recibe N·L ≈ 0 y el muro se quedaba
+sólo con el ambiente. Se levanta con `emissive` en el material del muro y no
+tocando la luz de la escena, que ya está calibrada para los muebles. Medido
+sobre la captura: muro (204, 200, 190) contra piso (205, 202, 195) — parejos,
+que es como se ven de verdad.
+
+**Techo no**, y es una decisión, no un olvido: taparía la única direccional
+fuerte y habría que rehacer la iluminación entera; escondería el plano en la
+vista orbital, obligando a mantener dos montajes de luz; y a 1,65 m de ojo con
+fov 50° casi no entra en cuadro.
+
+### Una persona de 1,70 m
+
+Es lo que vuelve legible la escala. Un render sin nada humano al lado se ve
+como una maqueta: el proveedor no sabe si su exhibidor le llega al pecho o a la
+rodilla, y «1,80 m de alto» escrito en una ficha no se lee igual que verlo.
+
+Aparece al lado del **mueble elegido**, no siempre. Va al COSTADO y no adelante
+a propósito: adelante taparía justo la cara que se está vendiendo. Y no es
+chrome — sale en la captura para el proveedor, que es donde hace falta.
+
+`lugarDeLaFigura` vive en `utils/planta.ts` y está probada, porque el caso que
+importa no es el de la sede de demostración. Prueba derecha, después izquierda,
+y si en ninguna hay lugar **devuelve `null` en vez de plantarla igual**: con
+doce góndolas sueltas cualquier lado sirve, pero en una sede de ciento
+veintiséis un costado da al pasillo y el otro a la góndola de al lado, y una
+persona metida adentro de un estante no aclara la escala — la arruina. El test
+es el mismo con el que se camina (`chocaEn` sobre `murosDeCaminata`, que ya
+infla cada huella por `RADIO_PERSONA` y respeta la rotación), así que la figura
+se para exactamente donde podría pararse alguien.
+
+### Lo que queda sabido
+
+El remate del muro se ve desde lejos: sin techo, a más de unos metros el ojo
+pasa por encima de los 4,5 m y aparece el fondo del lienzo. Es una transición
+suave y no se lee como agujero, pero está. Subir el muro no lo resuelve —a 12 m
+de distancia el cuadro llega a 7 m de alto—; lo resuelve un techo, y el techo
+cuesta la iluminación.
+
+---
+
 ## El conflicto no se podía resolver
 
 El panel que ofrece «Usar la del servidor» / «Conservar la mía» se dibujaba
@@ -1608,7 +1684,7 @@ código. Vale la pena el rato que toma:
    `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`.
 
 **Lo que es geometría pura, probarlo aparte.** `npm run probar` corre las seis suites
-sin navegador (107 pruebas: planta, propuesta, nomenclatura, pasillos, revisión, acomodar): transpila el `.ts` con el esbuild que ya trae vite y
+sin navegador (113 pruebas: planta, propuesta, nomenclatura, pasillos, revisión, acomodar): transpila el `.ts` con el esbuild que ya trae vite y
 afirma en node. No hay runner de pruebas en el frontend y no valía la pena montar uno para
 esto. Ahí se encontró que un paso largo saltaba por encima de un mueble.
 
