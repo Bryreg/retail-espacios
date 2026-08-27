@@ -548,11 +548,11 @@ function Topbar({ viewMode, setViewMode, isAdmin, onOpenSettings, onLogout }: To
         <LogoMark />
         <span
           style={{
-            fontSize: 14, fontWeight: 700, letterSpacing: "-0.015em",
+            fontSize: 14, fontWeight: 800, letterSpacing: "0.055em",
             color: "var(--ink-1)",
           }}
         >
-          Galerías
+          RECABRA
         </span>
         <span
           style={{

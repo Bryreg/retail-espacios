@@ -397,7 +397,7 @@ def create_lease(space_id: int, payload: LeaseCreate, background_tasks: Backgrou
             "<strong>La foto es obligatoria</strong>: es la prueba de que la "
             "exhibición quedó armada.<br><br>"
             f'<a href="{link}" '
-            'style="color:#7C3AED;font-weight:600;">Ver dónde queda y confirmar</a>'
+            'style="color:#0369A1;font-weight:600;">Ver dónde queda y confirmar</a>'
             f'<br><br><span style="color:#94A3B8;font-size:12px;">'
             f"El enlace es personal y vence en {MONTAJE_TTL_DAYS} días.</span>"
         )

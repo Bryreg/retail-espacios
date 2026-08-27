@@ -258,5 +258,5 @@ export function descargarPlantilla(sede: string) {
   ];
   const libro = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(libro, hoja, "Contratos");
-  XLSX.writeFile(libro, "plantilla-contratos-galerias.xlsx");
+  XLSX.writeFile(libro, "plantilla-contratos-recabra.xlsx");
 }

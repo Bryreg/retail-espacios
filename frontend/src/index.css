@@ -3,11 +3,11 @@
 @tailwind utilities;
 
 /* ─── Tipografía ────────────────────────────────────────────────────────
-   IBM Plex, no Geist. Geist junto con Inter es la fuente por defecto de los
-   productos de IA de estos años, y era parte de por qué el sistema se leía
-   como plantilla. Plex está dibujada para una empresa industrial y el
-   catálogo de `ui-ux-pro-max` la da como primera opción para «financial,
-   trustworthy, banking, enterprise».
+   Plus Jakarta Sans para todo lo que se lee, IBM Plex Mono sólo para
+   códigos y campos numéricos. La línea «Empresarial» del prototipo usaba
+   una sola familia; acá se separa el mono a propósito, porque `font-mono`
+   está aplicado a los chips de código (ALF-GON-21), a los ids de zona y a
+   los inputs de tarifa, y ahí una retícula fija sí paga.
 
    `tnum` va en el body y no suelto: la mitad de lo que se lee acá son
    códigos, fechas y plata en columna, y con cifras proporcionales las
@@ -20,73 +20,74 @@
   }
 
   body {
-    font-family: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
     font-feature-settings: "tnum", "cv02", "cv03", "cv04";
     font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
     letter-spacing: -0.004em;
-    color: #0B1220;
-    background: #F2F4F7;
+    color: #020617;
+    background: #F8FAFC;
   }
 }
 
 /* ─── Design tokens (CSS custom properties) ────────────────────────────── */
 :root {
-  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 
-  /* Neutros fríos, acromáticos salvo un rastro de azul.
-     Antes eran cálidos y el fondo era el crema #F8F6F1 — el mismo de la mitad
-     de lo generado por IA. */
-  --bg:           #F2F4F7;
+  /* Papel frío con una escalera de cuatro peldaños: blanco para las tarjetas,
+     y tres grises cada vez más hondos para el fondo, los rellenos suaves y el
+     piso del plano. Que sean cuatro y no dos es lo que deja apilar paneles sin
+     que se pierda el borde entre uno y otro. */
+  --bg:           #F8FAFC;
   --surface:      #FFFFFF;
-  --surface-2:    #F8FAFC;
-  --surface-3:    #EEF1F5;
-  --line:         #E1E6EC;
-  --line-soft:    #EDF0F4;
-  --line-strong:  #CFD6DF;
+  --surface-2:    #F1F5F9;
+  --surface-3:    #E8EEF5;
+  --line:         #E2E8F0;
+  --line-soft:    #EFF3F7;
+  --line-strong:  #CBD5E1;
 
   /* Text */
-  --ink-1: #0B1220;
-  --ink-2: #3F4A5A;
-  --ink-3: #6B7688;
-  --ink-4: #A3ACBB;
+  --ink-1: #020617;
+  --ink-2: #334155;
+  --ink-3: #475569;
+  --ink-4: #94A3B8;
 
-  /* Acento — el navy del tema «Morgen Capital» de 21st.dev.
-     No es un gris azulado de framework: es tinta azul, y a esa profundidad
-     nunca compite con el verde/ámbar/rojo del semáforo. */
-  --accent:      #00004D;
-  --accent-50:   #EFEFF7;
-  --accent-100:  #DCDCEF;
-  --accent-200:  #B4B4DF;
-  --accent-600:  #00003B;
-  --accent-700:  #00002B;
+  /* Acento — azul de oficina, no azul de marca de software. Se usa para lo
+     que se puede tocar (botones, pestaña activa, foco) y para el aro de
+     ocupación; nunca para estado, que es competencia del semáforo. */
+  --accent:      #0369A1;
+  --accent-50:   #EFF7FC;
+  --accent-100:  #D7EBF6;
+  --accent-200:  #A6D2E9;
+  --accent-600:  #02598A;
+  --accent-700:  #024A73;
   --accent-ink:  #FFFFFF;
 
-  /* Semantic — mismo significado, calibrado al papel frío. Cada uno con su
-     tinte 50 y su borde 100: una pastilla de estado se lee mucho más nítida
-     con fondo tintado MÁS borde que con fondo solo. */
-  --success:      #0F7B4F;
-  --success-50:   #E7F4ED;
-  --success-100:  #BEE0CE;
-  --warning:      #9A6B0E;
-  --warning-50:   #FBF3E2;
-  --warning-100:  #EEDCAE;
-  --danger:       #C0392E;
-  --danger-50:    #FBECEA;
-  --danger-100:   #F0CCC7;
-  --muted-status: #8A93A1;
+  /* Semantic — cada uno con su tinte 50 y su borde 100: una pastilla de
+     estado se lee mucho más nítida con fondo tintado MÁS borde que con
+     fondo solo. */
+  --success:      #15803D;
+  --success-50:   #EAF5EE;
+  --success-100:  #C4E2CF;
+  --warning:      #B45309;
+  --warning-50:   #FCF2E5;
+  --warning-100:  #F2DBB6;
+  --danger:       #DC2626;
+  --danger-50:    #FDEDED;
+  --danger-100:   #F8CCCC;
+  --muted-status: #94A3B8;
 
   /* Dark drawer — frío también, para que no conviva un gris cálido con uno
      frío en la misma pantalla. */
-  --dark-bg:        #0C1017;
-  --dark-surface:   #141A23;
-  --dark-surface-2: #1B222D;
-  --dark-line:      #262F3B;
-  --dark-line-2:    #35404F;
-  --dark-ink-1:     #EDF1F6;
-  --dark-ink-2:     #AEB8C6;
-  --dark-ink-3:     #77828F;
+  --dark-bg:        #0F172A;
+  --dark-surface:   #1E293B;
+  --dark-surface-2: #273548;
+  --dark-line:      #334155;
+  --dark-line-2:    #475569;
+  --dark-ink-1:     #F1F5F9;
+  --dark-ink-2:     #CBD5E1;
+  --dark-ink-3:     #94A3B8;
 
   /* Radii */
   --r-xs:  4px;
@@ -97,10 +98,10 @@
   --r-2xl: 18px;
 
   /* Shadows */
-  --shadow-xs: 0 1px 0 rgba(11,18,32,0.04);
-  --shadow-sm: 0 1px 2px rgba(11,18,32,0.05), 0 1px 1px rgba(11,18,32,0.03);
-  --shadow-md: 0 2px 6px rgba(11,18,32,0.05), 0 1px 2px rgba(11,18,32,0.04);
-  --shadow-lg: 0 12px 28px rgba(11,18,32,0.10), 0 4px 10px rgba(11,18,32,0.05);
+  --shadow-xs: 0 1px 0 rgba(2,6,23,0.04);
+  --shadow-sm: 0 1px 2px rgba(2,6,23,0.05), 0 1px 1px rgba(2,6,23,0.03);
+  --shadow-md: 0 2px 6px rgba(2,6,23,0.05), 0 1px 2px rgba(2,6,23,0.04);
+  --shadow-lg: 0 12px 28px rgba(2,6,23,0.10), 0 4px 10px rgba(2,6,23,0.05);
 }
 
 /* ─── Scrollbars ────────────────────────────────────────────────────────── */

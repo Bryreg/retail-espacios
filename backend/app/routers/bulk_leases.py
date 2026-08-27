@@ -430,7 +430,7 @@ def _avisar(db: Session, background_tasks: BackgroundTasks, sede_lote, creados: 
             ]
             pie = (
                 "Cada espacio se confirma desde la pantalla de Montajes, con foto. "
-                f'<a href="{app_base_url()}/" style="color:#7C3AED;font-weight:600;">Abrir Galerías</a>'
+                f'<a href="{app_base_url()}/" style="color:#0369A1;font-weight:600;">Abrir RECABRA</a>'
             )
             background_tasks.add_task(
                 send_mail_to_bg, who["montaje"], asunto,

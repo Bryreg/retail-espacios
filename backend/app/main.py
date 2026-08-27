@@ -133,7 +133,7 @@ async def lifespan(_app: FastAPI):
 
 # ─── App ──────────────────────────────────────────────────────────────────────
 
-app = FastAPI(title="Retail Espacios API", lifespan=lifespan)
+app = FastAPI(title="RECABRA API", lifespan=lifespan)
 
 # CORS: set ALLOWED_ORIGINS env var in production (comma-separated).
 # Falls back to localhost dev ports so the app works out of the box.
@@ -167,7 +167,7 @@ app.include_router(catalogo.router,      prefix="/api")
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "app": "Retail Espacios API"}
+    return {"status": "ok", "app": "RECABRA API"}
 
 
 # ─── Static frontend (production only) ───────────────────────────────────────

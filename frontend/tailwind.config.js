@@ -5,37 +5,37 @@ export default {
     extend: {
       // ── Typography ──────────────────────────────────────────────────────────
       fontFamily: {
-        sans: ["IBM Plex Sans", "ui-sans-serif", "system-ui", "sans-serif"],
+        sans: ["Plus Jakarta Sans", "ui-sans-serif", "system-ui", "sans-serif"],
         mono: ["IBM Plex Mono", "ui-monospace", "monospace"],
       },
 
       // ── Colors ──────────────────────────────────────────────────────────────
       colors: {
         // Backgrounds
-        bg:        "#F2F4F7",
+        bg:        "#F8FAFC",
         surface:   "#FFFFFF",
-        "surface-2": "#F8FAFC",
-        "surface-3": "#EEF1F5",
+        "surface-2": "#F1F5F9",
+        "surface-3": "#E8EEF5",
 
         // Borders
-        line:        "#E1E6EC",
-        "line-soft": "#EDF0F4",
-        "line-strong": "#CFD6DF",
+        line:        "#E2E8F0",
+        "line-soft": "#EFF3F7",
+        "line-strong": "#CBD5E1",
 
         // Text
-        "ink-1": "#0B1220",
-        "ink-2": "#3F4A5A",
-        "ink-3": "#6B7688",
-        "ink-4": "#A3ACBB",
+        "ink-1": "#020617",
+        "ink-2": "#334155",
+        "ink-3": "#475569",
+        "ink-4": "#94A3B8",
 
-        // Acento — navy del tema «Morgen Capital» (21st.dev)
+        // Acento — azul de oficina. Sólo para lo que se puede tocar.
         accent: {
-          DEFAULT: "#00004D",
-          50:      "#EFEFF7",
-          100:     "#DCDCEF",
-          200:     "#B4B4DF",
-          600:     "#00003B",
-          700:     "#00002B",
+          DEFAULT: "#0369A1",
+          50:      "#EFF7FC",
+          100:     "#D7EBF6",
+          200:     "#A6D2E9",
+          600:     "#02598A",
+          700:     "#024A73",
           ink:     "#FFFFFF",
         },
 
@@ -67,32 +67,32 @@ export default {
 
         // Semantic
         success: {
-          DEFAULT: "#0F7B4F",
-          50:      "#E7F4ED",
-          100:     "#BEE0CE",
+          DEFAULT: "#15803D",
+          50:      "#EAF5EE",
+          100:     "#C4E2CF",
         },
         warning: {
-          DEFAULT: "#9A6B0E",
-          50:      "#FBF3E2",
-          100:     "#EEDCAE",
+          DEFAULT: "#B45309",
+          50:      "#FCF2E5",
+          100:     "#F2DBB6",
         },
         danger: {
-          DEFAULT: "#C0392E",
-          50:      "#FBECEA",
-          100:     "#F0CCC7",
+          DEFAULT: "#DC2626",
+          50:      "#FDEDED",
+          100:     "#F8CCCC",
         },
-        "muted-status": "#8A93A1",
+        "muted-status": "#94A3B8",
 
         // Dark drawer / dark surfaces
         dark: {
-          bg:        "#0C1017",
-          surface:   "#141A23",
-          "surface-2": "#1B222D",
-          line:      "#262F3B",
-          "line-2":  "#35404F",
-          "ink-1":   "#EDF1F6",
-          "ink-2":   "#AEB8C6",
-          "ink-3":   "#77828F",
+          bg:        "#0F172A",
+          surface:   "#1E293B",
+          "surface-2": "#273548",
+          line:      "#334155",
+          "line-2":  "#475569",
+          "ink-1":   "#F1F5F9",
+          "ink-2":   "#CBD5E1",
+          "ink-3":   "#94A3B8",
         },
       },
 
@@ -106,12 +106,12 @@ export default {
         "2xl": "18px",
       },
 
-      // ── Box shadows (warm — rgba(11,18,32,...)) ──────────────────────────────
+      // ── Box shadows — sombra de la tinta, no gris neutro ─────────────────────
       boxShadow: {
-        xs:  "0 1px 0 rgba(11,18,32,0.04)",
-        sm:  "0 1px 2px rgba(11,18,32,0.05), 0 1px 1px rgba(11,18,32,0.03)",
-        md:  "0 2px 6px rgba(11,18,32,0.05), 0 1px 2px rgba(11,18,32,0.04)",
-        lg:  "0 12px 28px rgba(11,18,32,0.10), 0 4px 10px rgba(11,18,32,0.05)",
+        xs:  "0 1px 0 rgba(2,6,23,0.04)",
+        sm:  "0 1px 2px rgba(2,6,23,0.05), 0 1px 1px rgba(2,6,23,0.03)",
+        md:  "0 2px 6px rgba(2,6,23,0.05), 0 1px 2px rgba(2,6,23,0.04)",
+        lg:  "0 12px 28px rgba(2,6,23,0.10), 0 4px 10px rgba(2,6,23,0.05)",
       },
 
       // ── Spacing (design-system multiples — 4px base) ────────────────────────

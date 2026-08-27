@@ -1,4 +1,4 @@
-# Galerías — estado del proyecto
+# RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
 Última actualización: agosto 2026 (disponibilidad por fechas y calendario por temporada).
@@ -1684,6 +1684,83 @@ exactamente como se mira una tabla de 126 filas.
 - **El semáforo conserva su significado.** Verde se puede vender, ámbar
   comprometido, rojo ocupado. Se recalibraron los valores para el papel frío;
   la convención no se movió.
+
+---
+
+## El sistema se llama RECABRA
+
+Se llamaba **Galerías**, que es el nombre del cliente. Un sistema no puede
+llevar el nombre de uno de sus clientes: el día que entre la segunda cadena,
+el producto queda con la marca del competidor en la barra.
+
+El nombre nuevo es **RECABRA**. Lo puso el dueño del producto. Queda dicho de
+una vez lo único que hay que saber: la sílaba tónica es re-**CA**-bra, y
+alguien va a hacer el chiste.
+
+También se descartó **SIRESA** (*Sistema Retail Espacios Adicionales*), que era
+la primera idea. La razón no fue de gusto: [Siesa](https://www.siesa.com/) es el
+ERP líder de Colombia — 45 años, más de 10.000 clientes en Colombia, Perú,
+Ecuador y México — y una cadena de supermercados colombiana probablemente ya lo
+tiene instalado. Una letra de diferencia, mismo país, mismo comprador.
+
+### Dónde estaba el nombre
+
+Fue superficial, y conviene que siga así:
+
+| Archivo | Qué |
+|---|---|
+| `frontend/index.html` | `<title>` — la pestaña |
+| `frontend/src/pages/Dashboard.tsx` | la marca en la barra |
+| `frontend/src/pages/Login.tsx` | la marca en el ingreso |
+| `frontend/src/utils/planilla.ts` | nombre del Excel exportado |
+| `backend/app/main.py` | título de la API y `/api/health` |
+| `backend/app/services/mailer.py` | `MAIL_FROM_NAME` y el pie de los correos |
+| `backend/app/routers/bulk_leases.py`, `notifications.py` | texto de los correos |
+
+De paso salieron dos `#7C3AED` **hardcodeados** en plantillas de correo
+(`bulk_leases.py`, `spaces.py`): el violeta viejo, que ya no existía en ningún
+token. Quedaron en el acento nuevo. Los correos no pasan por Tailwind, así que
+un cambio de paleta no los alcanza — cada vez que se toque la identidad hay que
+revisarlos a mano.
+
+### Lo que NO se tocó, a propósito
+
+`backend/app/auth.py:49` tiene `"worker_password": "galerias"` como valor por
+defecto, y `routers/auth.py:65` lo lee con `get_config(db, "worker_password",
+"galerias")`. **Es la contraseña viva de los mercaderistas** si nadie la
+cambió desde configuración. Tocar ese default deja a la gente afuera de un
+día para otro. Se cambia desde la pantalla de configuración, no desde el
+código, y conviene hacerlo avisando.
+
+---
+
+## La línea visual: Empresarial
+
+De seis líneas armadas en el prototipo, la elegida fue **Empresarial**.
+
+| Token | Antes | Ahora |
+|---|---|---|
+| `--font-sans` | IBM Plex Sans | **Plus Jakarta Sans** |
+| `--font-mono` | IBM Plex Mono | IBM Plex Mono *(sin cambio)* |
+| `--accent` | `#00004D` navy | **`#0369A1`** azul de oficina |
+| `--bg` | `#F2F4F7` | `#F8FAFC` |
+| `--ink-1` | `#0B1220` | `#020617` |
+| `--success` / `--warning` / `--danger` | `#0F7B4F` / `#9A6B0E` / `#C0392E` | `#15803D` / `#B45309` / `#DC2626` |
+| Sombras | `rgba(11,18,32,…)` | `rgba(2,6,23,…)` |
+
+**Una diferencia deliberada con el prototipo.** La línea Empresarial usaba
+*una sola familia* — Plus Jakarta Sans también para el mono. Acá se mantuvo
+IBM Plex Mono, porque `var(--font-mono)` está aplicado a los chips de código
+(`ALF-GON-21`), a los ids de zona y a los inputs de tarifa, y ahí una retícula
+fija sí paga. Además desde este contenedor no se puede verificar si Plus
+Jakarta trae cifras tabulares, y si no las trae las columnas bailan — que es
+justo lo que el `tnum` del `body` está ahí para evitar. Si se quiere una sola
+familia, es cambiar un token.
+
+**La marca en caps quiere tracking positivo.** `RECABRA` iba a heredar el
+`letter-spacing: -0.015em` del nombre anterior, que está calculado para
+minúsculas. En versales apretadas se lee como un error de impresión. Quedó en
+`+0.055em` con peso 800.
 
 ---
 
