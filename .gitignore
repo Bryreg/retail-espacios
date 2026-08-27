@@ -30,3 +30,7 @@ Thumbs.db
 # Tooling
 .engram/*
 !.engram/config.json
+
+# Copias de datos que deja scripts/respaldo.py. Nunca al repositorio: llevan
+# contratos, proveedores y adjuntos de clientes.
+respaldos/
