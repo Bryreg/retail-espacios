@@ -104,6 +104,11 @@
   --shadow-lg: 0 12px 28px rgba(2,6,23,0.10), 0 4px 10px rgba(2,6,23,0.05);
 }
 
+/* La cámara del mapa de la sede. Quien pidió menos movimiento, sin viaje. */
+@media (prefers-reduced-motion: reduce) {
+  .mapa-camara { transition: none !important; }
+}
+
 /* ─── Scrollbars ────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
