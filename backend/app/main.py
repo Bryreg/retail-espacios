@@ -148,6 +148,47 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ─── Cabeceras de seguridad ──────────────────────────────────────────────────
+#
+# La misma aplicación sirve la API y el frontend, así que estas cabeceras cubren
+# las dos cosas. La política de contenido está escrita contra lo que la app
+# realmente usa —tipografías de Google, PDFs en un iframe del mismo origen,
+# imágenes en blob: y data: para el 3D y las fotos de montaje— y no más que eso.
+#
+# `unsafe-inline` en los estilos es inevitable hoy: media aplicación pinta con
+# `style={{...}}` de React, que son atributos inline. En los SCRIPTS no está, que
+# es donde de verdad importa.
+CSP = "; ".join([
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com data:",
+    "img-src 'self' data: blob:",
+    "connect-src 'self'",
+    "worker-src 'self' blob:",
+    "frame-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+])
+
+
+@app.middleware("http")
+async def cabeceras_de_seguridad(request, call_next):
+    respuesta = await call_next(request)
+    respuesta.headers["Content-Security-Policy"] = CSP
+    respuesta.headers["X-Content-Type-Options"] = "nosniff"
+    # Redundante con frame-ancestors, para navegadores que no la apliquen.
+    respuesta.headers["X-Frame-Options"] = "DENY"
+    respuesta.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    respuesta.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    # HSTS sólo donde hay TLS: en desarrollo se entra por http y esto rompería.
+    if request.url.scheme == "https":
+        respuesta.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return respuesta
+
+
 app.include_router(auth_routes.router,   prefix="/api")
 app.include_router(spaces.router,        prefix="/api")
 app.include_router(suppliers.router,     prefix="/api")
