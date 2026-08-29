@@ -71,11 +71,11 @@ export default function Login() {
 
         <h1
           style={{
-            margin: "16px 0 4px", fontSize: 20, fontWeight: 700,
-            letterSpacing: "-0.02em", color: "var(--ink-1)",
+            margin: "16px 0 4px", fontSize: 20, fontWeight: 800,
+            letterSpacing: "0.06em", color: "var(--ink-1)",
           }}
         >
-          Galerías
+          RECABRA
         </h1>
         <p style={{ margin: "0 0 24px", fontSize: 12, color: "var(--ink-3)" }}>
           Gestión de espacios comerciales

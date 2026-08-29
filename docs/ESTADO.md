@@ -1,4 +1,4 @@
-# Galerías — estado del proyecto
+# RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
 Última actualización: agosto 2026 (disponibilidad por fechas y calendario por temporada).
@@ -1633,6 +1633,166 @@ británico, con miles de millones de libras en juego, usó **55 %**.
 Nada de esto cambia el backlog, que se justifica solo con inventario escaso y contratado.
 Pero sirve en una negociación: si un proveedor llega con que la punta le multiplica las
 ventas por cuatro, el número honesto es otro.
+
+---
+
+## La identidad, elegida en vez de heredada
+
+Toda la paleta salía de los valores por defecto de Tailwind: `#7C3AED` era
+`violet-500` sin tocar, los semánticos eran `green-700`, `amber-700` y
+`red-700`, y el fondo `#F8F6F1` es el crema de la mitad de lo generado por IA.
+La tipografía era **Geist**, que junto con Inter es la fuente por defecto de
+los productos de IA de estos años. No estaba mal combinado: **no estaba
+elegido**, y por eso se leía como plantilla.
+
+Nada de lo nuevo salió de mi criterio. Cada valor tiene procedencia:
+
+| Qué | De dónde |
+|---|---|
+| Tipografía **IBM Plex Sans / Mono** | `ui-ux-pro-max`, primer resultado de `--domain typography` para «professional data dense financial»: *financial, trustworthy, banking, enterprise* |
+| Acento **`#00004D`** | Tema «Morgen Capital» de 21st.dev (`get_theme`, gratis) |
+| Neutros fríos, acromáticos | Tema «PayMongo» de 21st.dev — su modo claro lleva croma 0 en todos los grises |
+| Pastilla de estado con **fondo tintado + borde** | Componente «Leads Data Table» de 21st.dev (`get_component`) |
+
+### Lo que enseñó el componente real
+
+Mis propuestas anteriores eran **planas y tipográficas**; un tablero comercial
+que se ve caro es **estratificado**. La diferencia concreta, sacada de leer el
+código de un componente publicado:
+
+- Cada estado lleva **terna**: tinta, fondo tintado y borde. No fondo solo.
+- El borde es lo que le da canto a la pastilla y evita que se disuelva en la fila.
+
+Eso destapó un defecto de información que llevaba tiempo ahí: `STATUS_META`
+declaraba un campo `fill` que **no consumía nadie**, así que las ocho pastillas
+de estado salían del mismo violeta y lo único que las distinguía era un punto
+de 6 px. Un «Vencido» y un «Activo» se veían iguales de reojo — que es
+exactamente como se mira una tabla de 126 filas.
+
+### Detalles
+
+- `tnum` y `font-variant-numeric: tabular-nums` van en el `body`, no sueltos:
+  la mitad de lo que se lee acá son códigos, fechas y plata en columna, y con
+  cifras proporcionales las columnas bailan al cambiar de valor.
+- Las sombras pasaron de `rgba(31,27,18,…)` —marrón— a `rgba(11,18,32,…)`.
+  Una sombra cálida bajo una superficie fría se ve sucia.
+- El cajón oscuro también se enfrió, para que no convivan un gris cálido y uno
+  frío en la misma pantalla.
+- **La paleta del 3D no se tocó.** Los grises del acero, la madera del cajón y
+  el piso de baldosa son mundo físico, no cromo: tienen que seguir
+  pareciéndose a una tienda.
+- **El semáforo conserva su significado.** Verde se puede vender, ámbar
+  comprometido, rojo ocupado. Se recalibraron los valores para el papel frío;
+  la convención no se movió.
+
+---
+
+## El sistema se llama RECABRA
+
+Se llamaba **Galerías**, que es el nombre del cliente. Un sistema no puede
+llevar el nombre de uno de sus clientes: el día que entre la segunda cadena,
+el producto queda con la marca del competidor en la barra.
+
+El nombre nuevo es **RECABRA**. Lo puso el dueño del producto. Queda dicho de
+una vez lo único que hay que saber: la sílaba tónica es re-**CA**-bra, y
+alguien va a hacer el chiste.
+
+También se descartó **SIRESA** (*Sistema Retail Espacios Adicionales*), que era
+la primera idea. La razón no fue de gusto: [Siesa](https://www.siesa.com/) es el
+ERP líder de Colombia — 45 años, más de 10.000 clientes en Colombia, Perú,
+Ecuador y México — y una cadena de supermercados colombiana probablemente ya lo
+tiene instalado. Una letra de diferencia, mismo país, mismo comprador.
+
+### Dónde estaba el nombre
+
+Fue superficial, y conviene que siga así:
+
+| Archivo | Qué |
+|---|---|
+| `frontend/index.html` | `<title>` — la pestaña |
+| `frontend/src/pages/Dashboard.tsx` | la marca en la barra |
+| `frontend/src/pages/Login.tsx` | la marca en el ingreso |
+| `frontend/src/utils/planilla.ts` | nombre del Excel exportado |
+| `backend/app/main.py` | título de la API y `/api/health` |
+| `backend/app/services/mailer.py` | `MAIL_FROM_NAME` y el pie de los correos |
+| `backend/app/routers/bulk_leases.py`, `notifications.py` | texto de los correos |
+
+De paso salieron dos `#7C3AED` **hardcodeados** en plantillas de correo
+(`bulk_leases.py`, `spaces.py`): el violeta viejo, que ya no existía en ningún
+token. Quedaron en el acento nuevo. Los correos no pasan por Tailwind, así que
+un cambio de paleta no los alcanza — cada vez que se toque la identidad hay que
+revisarlos a mano.
+
+### Lo que NO se tocó, a propósito
+
+`backend/app/auth.py:49` tiene `"worker_password": "galerias"` como valor por
+defecto, y `routers/auth.py:65` lo lee con `get_config(db, "worker_password",
+"galerias")`. **Es la contraseña viva de los mercaderistas** si nadie la
+cambió desde configuración. Tocar ese default deja a la gente afuera de un
+día para otro. Se cambia desde la pantalla de configuración, no desde el
+código, y conviene hacerlo avisando.
+
+---
+
+## La línea visual: Empresarial
+
+De seis líneas armadas en el prototipo, la elegida fue **Empresarial**.
+
+| Token | Antes | Ahora |
+|---|---|---|
+| `--font-sans` | IBM Plex Sans | **Plus Jakarta Sans** |
+| `--font-mono` | IBM Plex Mono | IBM Plex Mono *(sin cambio)* |
+| `--accent` | `#00004D` navy | **`#0369A1`** azul de oficina |
+| `--bg` | `#F2F4F7` | `#F8FAFC` |
+| `--ink-1` | `#0B1220` | `#020617` |
+| `--success` / `--warning` / `--danger` | `#0F7B4F` / `#9A6B0E` / `#C0392E` | `#15803D` / `#B45309` / `#DC2626` |
+| Sombras | `rgba(11,18,32,…)` | `rgba(2,6,23,…)` |
+
+**Una diferencia deliberada con el prototipo.** La línea Empresarial usaba
+*una sola familia* — Plus Jakarta Sans también para el mono. Acá se mantuvo
+IBM Plex Mono, porque `var(--font-mono)` está aplicado a los chips de código
+(`ALF-GON-21`), a los ids de zona y a los inputs de tarifa, y ahí una retícula
+fija sí paga. Además desde este contenedor no se puede verificar si Plus
+Jakarta trae cifras tabulares, y si no las trae las columnas bailan — que es
+justo lo que el `tnum` del `body` está ahí para evitar. Si se quiere una sola
+familia, es cambiar un token.
+
+**La marca en caps quiere tracking positivo.** `RECABRA` iba a heredar el
+`letter-spacing: -0.015em` del nombre anterior, que está calculado para
+minúsculas. En versales apretadas se lee como un error de impresión. Quedó en
+`+0.055em` con peso 800.
+
+---
+
+## Herramientas de diseño en el repo
+
+`.claude/skills/` trae **ui-ux-pro-max** (MIT, `nextlevelbuilder/ui-ux-pro-max-skill`),
+instalada con `npx ui-ux-pro-max-cli` → `uipro init --ai claude`. Son siete
+skills —`ui-ux-pro-max`, `design-system`, `ui-styling`, `brand`, `slides`,
+`banner-design`, `design`— con un catálogo local que se consulta con Python 3
+de la librería estándar: **79 estilos, 192 paletas de producto, 74 pares
+tipográficos, 119 guías de UX, 105 iconos, 25 tipos de gráfico y 22 stacks**.
+
+```bash
+# Dirección visual completa para un producto
+python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<producto> <rubro> <claves>" --design-system -p "Galerías"
+# Un solo tema
+python3 .claude/skills/ui-ux-pro-max/scripts/search.py "elegant serif" --domain typography
+python3 .claude/skills/ui-ux-pro-max/scripts/search.py "glassmorphism"  --domain style
+```
+
+Los scripts **no instalan nada y no hacen llamadas de red**: leen los CSV de
+`data/`. Para actualizar, `uipro update`.
+
+Está commiteada a propósito y no en `.gitignore`: el contenedor de una sesión
+remota es efímero, así que si no vive en el repo hay que reinstalarla cada vez.
+
+**Por qué está acá.** La paleta del sistema salía entera de los valores por
+defecto de Tailwind —`#7C3AED` es `violet-500` sin tocar, los semánticos son
+`green-700`, `amber-700` y `red-700`, el fondo es el crema de la mitad de lo
+generado por IA—, y ese es el motivo de que se lea como plantilla. El catálogo
+existe para que la dirección visual se elija de una lista razonada en vez de
+inventarse. **La decisión de qué dirección tomar sigue sin estar tomada.**
 
 ---
 

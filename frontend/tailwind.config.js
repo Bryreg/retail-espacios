@@ -5,37 +5,37 @@ export default {
     extend: {
       // ── Typography ──────────────────────────────────────────────────────────
       fontFamily: {
-        sans: ["Geist", "ui-sans-serif", "system-ui", "sans-serif"],
-        mono: ["Geist Mono", "ui-monospace", "monospace"],
+        sans: ["Plus Jakarta Sans", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["IBM Plex Mono", "ui-monospace", "monospace"],
       },
 
       // ── Colors ──────────────────────────────────────────────────────────────
       colors: {
         // Backgrounds
-        bg:        "#F8F6F1",
+        bg:        "#F8FAFC",
         surface:   "#FFFFFF",
-        "surface-2": "#FBF9F4",
-        "surface-3": "#EFEAE0",
+        "surface-2": "#F1F5F9",
+        "surface-3": "#E8EEF5",
 
         // Borders
-        line:        "#E5DFD1",
-        "line-soft": "#EEE8DA",
-        "line-strong": "#D9D1BE",
+        line:        "#E2E8F0",
+        "line-soft": "#EFF3F7",
+        "line-strong": "#CBD5E1",
 
         // Text
-        "ink-1": "#1A1814",
-        "ink-2": "#4A463C",
-        "ink-3": "#807A6B",
-        "ink-4": "#B5AE9C",
+        "ink-1": "#020617",
+        "ink-2": "#334155",
+        "ink-3": "#475569",
+        "ink-4": "#94A3B8",
 
-        // Accent — violet (default)
+        // Acento — azul de oficina. Sólo para lo que se puede tocar.
         accent: {
-          DEFAULT: "#7C3AED",
-          50:      "#F5F0FF",
-          100:     "#EAE0FE",
-          200:     "#D5C2FE",
-          600:     "#6D28D9",
-          700:     "#5B21B6",
+          DEFAULT: "#0369A1",
+          50:      "#EFF7FC",
+          100:     "#D7EBF6",
+          200:     "#A6D2E9",
+          600:     "#02598A",
+          700:     "#024A73",
           ink:     "#FFFFFF",
         },
 
@@ -68,31 +68,31 @@ export default {
         // Semantic
         success: {
           DEFAULT: "#15803D",
-          50:      "#EAF6EE",
-          100:     "#D1E9D9",
+          50:      "#EAF5EE",
+          100:     "#C4E2CF",
         },
         warning: {
           DEFAULT: "#B45309",
-          50:      "#FDF6E3",
-          100:     "#FBE9B7",
+          50:      "#FCF2E5",
+          100:     "#F2DBB6",
         },
         danger: {
-          DEFAULT: "#B91C1C",
-          50:      "#FCEEEE",
-          100:     "#F8D5D5",
+          DEFAULT: "#DC2626",
+          50:      "#FDEDED",
+          100:     "#F8CCCC",
         },
-        "muted-status": "#94917F",
+        "muted-status": "#94A3B8",
 
         // Dark drawer / dark surfaces
         dark: {
-          bg:        "#14130F",
-          surface:   "#1C1B16",
-          "surface-2": "#25241E",
-          line:      "#2F2D26",
-          "line-2":  "#3F3D35",
-          "ink-1":   "#F2EFE8",
-          "ink-2":   "#BBB6A6",
-          "ink-3":   "#807B6B",
+          bg:        "#0F172A",
+          surface:   "#1E293B",
+          "surface-2": "#273548",
+          line:      "#334155",
+          "line-2":  "#475569",
+          "ink-1":   "#F1F5F9",
+          "ink-2":   "#CBD5E1",
+          "ink-3":   "#94A3B8",
         },
       },
 
@@ -106,12 +106,12 @@ export default {
         "2xl": "18px",
       },
 
-      // ── Box shadows (warm — rgba(31,27,18,...)) ──────────────────────────────
+      // ── Box shadows — sombra de la tinta, no gris neutro ─────────────────────
       boxShadow: {
-        xs:  "0 1px 0 rgba(31,27,18,0.04)",
-        sm:  "0 1px 2px rgba(31,27,18,0.05), 0 1px 1px rgba(31,27,18,0.03)",
-        md:  "0 2px 6px rgba(31,27,18,0.05), 0 1px 2px rgba(31,27,18,0.04)",
-        lg:  "0 12px 28px rgba(31,27,18,0.10), 0 4px 10px rgba(31,27,18,0.05)",
+        xs:  "0 1px 0 rgba(2,6,23,0.04)",
+        sm:  "0 1px 2px rgba(2,6,23,0.05), 0 1px 1px rgba(2,6,23,0.03)",
+        md:  "0 2px 6px rgba(2,6,23,0.05), 0 1px 2px rgba(2,6,23,0.04)",
+        lg:  "0 12px 28px rgba(2,6,23,0.10), 0 4px 10px rgba(2,6,23,0.05)",
       },
 
       // ── Spacing (design-system multiples — 4px base) ────────────────────────

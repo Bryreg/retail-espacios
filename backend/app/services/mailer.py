@@ -54,7 +54,7 @@ def api_key() -> str:
 
 
 def nombre_remitente() -> str:
-    return os.getenv("MAIL_FROM_NAME", "Galerías").strip() or "Galerías"
+    return os.getenv("MAIL_FROM_NAME", "RECABRA").strip() or "RECABRA"
 
 
 def smtp_settings() -> dict:
@@ -123,7 +123,7 @@ def html_shell(title: str, rows: list[tuple[str, str]], footer: str = "") -> str
         f"{rows_html}</table>"
         f"{footer_html}"
         '<p style="margin:24px 0 0;font-size:11px;color:#9ca3af;">'
-        "Mensaje automático del sistema de gestión de espacios — Galerías.</p>"
+        "Mensaje automático del sistema de gestión de espacios — RECABRA.</p>"
         "</div>"
     )
 

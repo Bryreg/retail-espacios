@@ -161,6 +161,24 @@ export const RATE_TYPES: { type: string; label: string }[] = [
   { type: "metro",            label: "Zona Libre" },
 ];
 
+/** La familia comercial de cada tipo. Es el vocabulario que ya usa la
+ *  biblioteca del plano (FloorPlan2D): góndolas, displays, muebles,
+ *  refrigeración, frescos. Sirve para contestar «qué me queda por vender»
+ *  agrupado, sin inventar un campo de zona que el mueble no tiene. */
+export const CATEGORIA_DE_TIPO: Record<string, string> = {
+  gondola: "Góndolas", punta: "Góndolas", robatope: "Góndolas",
+  ristra: "Displays", cross: "Displays", impulsador: "Displays",
+  mueble: "Muebles", isla: "Muebles", batea: "Muebles",
+  isla_fria: "Refrigeración", nevera_carnes: "Refrigeración",
+  nevera_refrescos: "Refrigeración",
+  stand_frutas: "Frescos",
+  metro: "Zona libre",
+};
+
+export function categoriaDeTipo(type: string): string {
+  return CATEGORIA_DE_TIPO[type] ?? "Otros";
+}
+
 export function rateTypeLabel(type: string): string {
   return RATE_TYPES.find((t) => t.type === type)?.label ?? type;
 }

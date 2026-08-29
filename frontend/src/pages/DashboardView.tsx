@@ -37,6 +37,7 @@ import {
   rangeAvailability,
   rateTypeOf,
   referenceRateFor,
+  categoriaDeTipo,
 } from "../types/fixtures";
 import type {
   UnifiedFixture, SpaceStatus, FaceData, RangeAvailability,
@@ -190,18 +191,28 @@ function displayStatus(f: { status: SpaceStatus; startDate?: string; endDate: st
   return daysUntil(f.endDate) <= 30 ? "expiring" : "active";
 }
 
+/** Cada estado con su terna: color de tinta, fondo tintado y borde.
+ *
+ *  `fill` estaba declarado desde siempre y no lo usaba nadie: la pastilla de
+ *  estado salía del MISMO fondo para los ocho, y lo único que cambiaba era un
+ *  punto de 6 px. Un «Vencido» y un «Activo» se veían iguales de reojo, que es
+ *  justo como se mira una tabla de 126 filas.
+ *
+ *  Fondo tintado MÁS borde —y no fondo solo— es el patrón que usan los
+ *  tableros comerciales que se ven caros; el borde es lo que le da el canto y
+ *  evita que la pastilla se disuelva contra la fila. */
 const STATUS_META: Record<
   DisplayStatus,
-  { ring: string; fill: string; label: string }
+  { ring: string; fill: string; edge: string; label: string }
 > = {
-  active:      { ring: "var(--success)", fill: "rgba(21,128,61,0.10)",        label: "Activo" },
-  committed:   { ring: "var(--accent-700)", fill: "var(--accent-50)",         label: "Contratado" },
-  expiring:    { ring: "var(--warning)", fill: "rgba(180,83,9,0.12)",         label: "Por vencer" },
-  expired:     { ring: "var(--danger)",  fill: "rgba(185,28,28,0.10)",        label: "Vencido" },
-  no_contract: { ring: "var(--danger)",  fill: "rgba(185,28,28,0.10)",        label: "Sin contrato" },
-  reserved:    { ring: "var(--warning)", fill: "rgba(180,83,9,0.08)",         label: "Reservado" },
-  maintenance: { ring: "var(--muted-status)", fill: "rgba(148,145,127,0.10)", label: "Mantenim." },
-  free:        { ring: "var(--ink-4)",   fill: "rgba(181,174,156,0.10)",      label: "Libre" },
+  active:      { ring: "var(--success)",      fill: "var(--success-50)", edge: "var(--success-100)", label: "Activo" },
+  committed:   { ring: "var(--accent-700)",   fill: "var(--accent-50)",  edge: "var(--accent-100)",  label: "Contratado" },
+  expiring:    { ring: "var(--warning)",      fill: "var(--warning-50)", edge: "var(--warning-100)", label: "Por vencer" },
+  expired:     { ring: "var(--danger)",       fill: "var(--danger-50)",  edge: "var(--danger-100)",  label: "Vencido" },
+  no_contract: { ring: "var(--danger)",       fill: "var(--danger-50)",  edge: "var(--danger-100)",  label: "Sin contrato" },
+  reserved:    { ring: "var(--warning)",      fill: "var(--warning-50)", edge: "var(--warning-100)", label: "Reservado" },
+  maintenance: { ring: "var(--muted-status)", fill: "var(--surface-3)",  edge: "var(--line)",        label: "Mantenim." },
+  free:        { ring: "var(--ink-3)",        fill: "var(--surface-2)",  edge: "var(--line)",        label: "Libre" },
 };
 
 // ─── Map search + status filter (product geolocation) ────────────────────────
@@ -440,6 +451,13 @@ const RANGE_LABEL: Record<RangeAvailability, string> = {
 
 /** Infrastructure on the isometric map: present, but visibly not for sale. */
 const NON_RENTABLE_TOP = "#94A3B8";
+
+/** El material del mueble. El cuerpo ya no toma el color del estado: se queda
+ *  en el gris del acero y el color va en la CARA, que es lo que de verdad se
+ *  vende. Una góndola doble con la cara A libre y la B tomada se veía toda
+ *  roja; ahora se ve el mueble, y el rojo sólo en el lado que está tomado. */
+const CUERPO = "#CBD5E1";
+const CUERPO_LN = "#8FA0B4";
 const NON_RENTABLE_LABEL = "No comercializable";
 
 function pts(...points: [number, number][]): string {
@@ -518,29 +536,42 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
         range ? RANGE_TOP[rangeAvailability(face, range.from, range.to)] : topColorFor(face);
       const topA = rentable ? paint(faces[0]) : NON_RENTABLE_TOP;
       const topB = rentable && faces[1] ? paint(faces[1]) : NON_RENTABLE_TOP;
-      // Sides follow the dominant (face A) hue
-      const sideL = darken(topA, 0.18);
-      const sideR = darken(topA, 0.3);
-      const stroke = darken(topA, 0.45);
+      // La cara que da al frente en isométrico: cuando el mueble es más ancho
+      // que hondo el corte va por Z y la mitad de adelante es la B; si es más
+      // hondo que ancho el corte va por X y la B queda a la derecha. El otro
+      // lado visible es la tapa, que no se vende y va del color del material.
+      const anchoManda = f.w >= f.d;
+      const cuerpo = rentable ? CUERPO : NON_RENTABLE_TOP;
+      const caraFrente = double ? topB : topA;
+      const pintaCara = rentable ? caraFrente : cuerpo;
+      const sideL = anchoManda ? darken(pintaCara, 0.14) : darken(cuerpo, 0.14);
+      const sideR = anchoManda ? darken(cuerpo, 0.26) : darken(pintaCara, 0.26);
+      const stroke = rentable ? CUERPO_LN : darken(NON_RENTABLE_TOP, 0.42);
 
       // Top face — split into two halves for double gondolas
-      let topHalves: { color: string; points: string }[];
+      const mitad = (color: string, esquinas: [number, number][]) => ({
+        color,
+        points: pts(...esquinas),
+        cx: esquinas.reduce((a, q) => a + q[0], 0) / esquinas.length,
+        cy: esquinas.reduce((a, q) => a + q[1], 0) / esquinas.length,
+      });
+      let topHalves: { color: string; points: string; cx: number; cy: number }[];
       if (double) {
         if (f.w >= f.d) {
           const zm = (z0 + z1) / 2;
           topHalves = [
-            { color: topA, points: pts(iso(x0, z0, h), iso(x1, z0, h), iso(x1, zm, h), iso(x0, zm, h)) },
-            { color: topB, points: pts(iso(x0, zm, h), iso(x1, zm, h), iso(x1, z1, h), iso(x0, z1, h)) },
+            mitad(topA, [iso(x0, z0, h), iso(x1, z0, h), iso(x1, zm, h), iso(x0, zm, h)]),
+            mitad(topB, [iso(x0, zm, h), iso(x1, zm, h), iso(x1, z1, h), iso(x0, z1, h)]),
           ];
         } else {
           const xm = (x0 + x1) / 2;
           topHalves = [
-            { color: topA, points: pts(iso(x0, z0, h), iso(xm, z0, h), iso(xm, z1, h), iso(x0, z1, h)) },
-            { color: topB, points: pts(iso(xm, z0, h), iso(x1, z0, h), iso(x1, z1, h), iso(xm, z1, h)) },
+            mitad(topA, [iso(x0, z0, h), iso(xm, z0, h), iso(xm, z1, h), iso(x0, z1, h)]),
+            mitad(topB, [iso(xm, z0, h), iso(x1, z0, h), iso(x1, z1, h), iso(xm, z1, h)]),
           ];
         }
       } else {
-        topHalves = [{ color: topA, points: pts(tA, tB, tC, tD) }];
+        topHalves = [mitad(topA, [tA, tB, tC, tD])];
       }
 
       // Label above the prism — small unlabeled fixtures still get one while matched
@@ -548,7 +579,7 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
       const defaultVisible = Boolean(f.nomenclatura) || area > 1.5;
       const labelText = nombreDeMueble(f);
       const [lcx, lcy] = iso(f.cx, f.cz, h);
-      const label = labelText ? { text: labelText, x: lcx, y: lcy - 7, defaultVisible } : null;
+      const label = labelText ? { text: labelText, x: lcx, y: lcy, defaultVisible } : null;
       if (label) addPt([label.x, label.y - 8]);
 
       // Asking about a period changes the question the tooltip should answer:
@@ -569,8 +600,19 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
         ? `A: ${rangeSub(faces[0])} · B: ${faces[1] ? rangeSub(faces[1]) : "—"}`
         : rangeSub(faces[0]);
 
+      // Dónde cae el mueble ya proyectado, para poder encuadrarlo.
+      const proy = [tA, tB, tC, tD, bB, bC, bD];
+      const ex0 = Math.min(...proy.map((q) => q[0])), ex1 = Math.max(...proy.map((q) => q[0]));
+      const ey0 = Math.min(...proy.map((q) => q[1])), ey1 = Math.max(...proy.map((q) => q[1]));
+      const foco = {
+        x: (ex0 + ex1) / 2,
+        y: (ey0 + ey1) / 2,
+        r: Math.max(ex1 - ex0, ey1 - ey0, 1) / 2,
+      };
+
       return {
         f,
+        foco,
         topHalves,
         // Visible sides: the z1 face (front-left) and the x1 face (front-right)
         left:  pts(tD, tC, bC, bD),
@@ -583,14 +625,38 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
     });
 
     const pad = 26;
+    const vb = {
+      x: minX - pad, y: minY - pad,
+      w: maxX - minX + pad * 2, h: maxY - minY + pad * 2,
+    };
     return {
       prisms,
       groundPts: pts(...groundPts),
-      viewBox: `${(minX - pad).toFixed(1)} ${(minY - pad).toFixed(1)} ${(maxX - minX + pad * 2).toFixed(1)} ${(maxY - minY + pad * 2).toFixed(1)}`,
+      vb,
+      viewBox: `${vb.x.toFixed(1)} ${vb.y.toFixed(1)} ${vb.w.toFixed(1)} ${vb.h.toFixed(1)}`,
     };
   }, [fixtures, range]);
 
   if (!scene) return null;
+
+  // Al elegir un mueble el mapa se le acerca. `k` es cuánto se agranda; todo
+  // lo que tiene que seguir midiendo lo mismo en pantalla —rótulos, anillos,
+  // las pastillas de cara— se divide por él.
+  const enfocado = selectedId
+    ? scene.prisms.find((q) => q.f.id === selectedId)?.foco ?? null
+    : null;
+  // El tope importa más que la fórmula: una punta de góndola es tan chica que
+  // encuadrarla sola deja a los vecinos gigantes y cortados. Con 3.4 se ve el
+  // mueble y el pasillo alrededor, que es lo que hace falta para ubicarse.
+  const k = enfocado
+    ? Math.min(3.4, Math.max(1, 0.17 * Math.min(scene.vb.w, scene.vb.h) / enfocado.r))
+    : 1;
+  // Sintaxis CSS, no de atributo SVG: `translate(10 20)` sin unidades ni coma
+  // es válido como atributo pero inválido como propiedad, y el navegador
+  // descarta la declaración entera sin decir nada.
+  const camara = enfocado
+    ? `translate(${(scene.vb.x + scene.vb.w / 2 - enfocado.x * k).toFixed(2)}px, ${(scene.vb.y + scene.vb.h / 2 - enfocado.y * k).toFixed(2)}px) scale(${k.toFixed(3)})`
+    : "translate(0px, 0px) scale(1)";
 
   const handleMove = (e: React.MouseEvent, title: string, sub: string) => {
     const rect = wrapRef.current?.getBoundingClientRect();
@@ -609,6 +675,15 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
         style={{ width: "100%", height: "100%", display: "block" }}
         onClick={() => onSelect(null)}
       >
+        <g
+          className="mapa-camara"
+          style={{
+            transform: camara,
+            transformBox: "view-box",
+            transformOrigin: "0 0",
+            transition: "transform 620ms cubic-bezier(.22,.72,.24,1)",
+          }}
+        >
         {/* Ground */}
         <polygon
           points={scene.groundPts}
@@ -652,7 +727,7 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
                 setHoverId(null);
                 setTip(null);
               }}
-              opacity={dimmed ? 0.18 : 1}
+              opacity={dimmed ? 0.18 : selectedId && !selected ? 0.2 : 1}
               style={{
                 cursor: "pointer",
                 filter: hovered ? "brightness(1.12)" : undefined,
@@ -660,8 +735,8 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
               }}
             >
               {/* Side faces */}
-              <polygon points={left} fill={sideL} stroke={stroke} strokeWidth={0.5} strokeLinejoin="round" />
-              <polygon points={right} fill={sideR} stroke={stroke} strokeWidth={0.5} strokeLinejoin="round" />
+              <polygon points={left} fill={sideL} stroke={stroke} strokeWidth={0.5 / k} strokeLinejoin="round" />
+              <polygon points={right} fill={sideR} stroke={stroke} strokeWidth={0.5 / k} strokeLinejoin="round" />
               {/* Top face (1 or 2 halves) — non-matching halves of a double dim per face */}
               {topHalves.map((th, i) => (
                 <polygon
@@ -670,7 +745,7 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
                   fill={th.color}
                   fillOpacity={match && matched && topHalves.length > 1 && flags && !flags[i] ? 0.25 : 1}
                   stroke={stroke}
-                  strokeWidth={0.5}
+                  strokeWidth={0.5 / k}
                   strokeLinejoin="round"
                 />
               ))}
@@ -681,7 +756,7 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
                     points={topOutline}
                     fill="none"
                     stroke="var(--accent)"
-                    strokeWidth={3.4}
+                    strokeWidth={3.4 / k}
                     opacity={0.3}
                     strokeLinejoin="round"
                   />
@@ -689,7 +764,7 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
                     points={topOutline}
                     fill="none"
                     stroke="var(--accent)"
-                    strokeWidth={1.3}
+                    strokeWidth={1.3 / k}
                     strokeLinejoin="round"
                   />
                 </>
@@ -700,22 +775,41 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
                   points={topOutline}
                   fill="none"
                   stroke="var(--accent)"
-                  strokeWidth={1.6}
+                  strokeWidth={1.6 / k}
                   strokeLinejoin="round"
                 />
               )}
+              {/* Cuál cara es cuál. Sólo al acercarse, que es cuando hay
+                  espacio y cuando de verdad hace falta saberlo. */}
+              {selected && k > 1.6 && topHalves.length > 1 && topHalves.map((th, i) => (
+                <g key={`cara-${i}`} style={{ pointerEvents: "none" }}>
+                  <circle
+                    cx={th.cx} cy={th.cy} r={9 / k}
+                    fill="var(--surface)" stroke={th.color} strokeWidth={2.2 / k}
+                  />
+                  <text
+                    x={th.cx} y={th.cy + 3 / k}
+                    textAnchor="middle" fontSize={9 / k} fontWeight={700}
+                    fontFamily="var(--font-mono)" fill="var(--ink-1)"
+                  >
+                    {i === 0 ? "A" : "B"}
+                  </text>
+                </g>
+              ))}
               {/* Floating label — always visible on matches */}
-              {label && (label.defaultVisible || (match !== null && matched)) && (
+              {label
+                && (label.defaultVisible || (match !== null && matched))
+                && !(selected && k > 1.6 && topHalves.length > 1) && (
                 <text
                   x={label.x}
-                  y={label.y}
+                  y={label.y - 7 / k}
                   textAnchor="middle"
-                  fontSize={8.5}
+                  fontSize={8.5 / k}
                   fontWeight={600}
                   fontFamily="var(--font-mono)"
                   fill="var(--ink-2)"
                   stroke="#FFFFFF"
-                  strokeWidth={2.4}
+                  strokeWidth={2.4 / k}
                   paintOrder="stroke"
                   style={{ pointerEvents: "none", userSelect: "none" }}
                 >
@@ -725,7 +819,24 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
             </g>
           );
         })}
+        </g>
       </svg>
+
+      {/* Volver a ver la sede entera. Sólo aparece cuando hay algo enfocado. */}
+      {selectedId && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onSelect(null); }}
+          style={{
+            position: "absolute", left: 8, top: 8, zIndex: 4,
+            background: "var(--surface)", border: "1px solid var(--line)",
+            borderRadius: "var(--r-sm)", padding: "4px 10px",
+            fontSize: 11.5, color: "var(--ink-2)", cursor: "pointer",
+            boxShadow: "var(--shadow-sm)",
+          }}
+        >
+          ‹ Ver la sede
+        </button>
+      )}
 
       {/* Tooltip */}
       {tip && (
@@ -867,17 +978,19 @@ function StatusPill({ fixture, face }: { fixture: UnifiedFixture; face: FaceEntr
   const rentable = isRentable(fixture);
   const ds = displayStatus(face);
   const ring = rentable ? DISPLAY_TOP[ds] : NON_RENTABLE_TOP;
+  const meta = STATUS_META[ds];
   return (
     <span
       style={{
         display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0,
-        fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 999,
-        background: rentable ? "var(--accent-50)" : "var(--surface-3)",
-        color: rentable ? "var(--accent-700)" : "var(--ink-2)",
+        fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 999,
+        background: rentable ? meta.fill : "var(--surface-3)",
+        color:      rentable ? meta.ring : "var(--ink-2)",
+        border: `1px solid ${rentable ? meta.edge : "var(--line)"}`,
       }}
     >
       <span style={{ width: 6, height: 6, borderRadius: 99, background: ring }} />
-      {rentable ? STATUS_META[ds].label : NON_RENTABLE_LABEL}
+      {rentable ? meta.label : NON_RENTABLE_LABEL}
     </span>
   );
 }
@@ -1912,6 +2025,7 @@ export default function DashboardView() {
 
   const [mapQuery, setMapQuery] = useState("");
   const [mapFilter, setMapFilter] = useState<MapFilter>("todos");
+  const [mapCategoria, setMapCategoria] = useState<string | null>(null);
   /** Period the map answers for; null = today. */
   const [mapRange, setMapRange] = useState<DateRange | null>(null);
 
@@ -1938,19 +2052,43 @@ export default function DashboardView() {
   // ── Map search / status filter (per rentable face) ──
   const mapMatch = useMemo<MapMatch | null>(() => {
     const q = normalizeText(mapQuery.trim());
-    if (!q && mapFilter === "todos") return null;
+    if (!q && mapFilter === "todos" && !mapCategoria) return null;
     const faceFlags = new Map<string, boolean[]>();
     let count = 0;
     fixtures.forEach((f) => {
+      const deLaCategoria = !mapCategoria || categoriaDeTipo(f.type) === mapCategoria;
       const flags = commercialFacesOf(f).map((entry) => {
-        const ok = (!q || faceMatchesQuery(entry, q)) && faceMatchesFilter(entry, mapFilter);
+        const ok = deLaCategoria
+          && (!q || faceMatchesQuery(entry, q))
+          && faceMatchesFilter(entry, mapFilter);
         if (ok) count++;
         return ok;
       });
       faceFlags.set(f.id, flags);
     });
     return { faceFlags, count };
-  }, [fixtures, mapQuery, mapFilter]);
+  }, [fixtures, mapQuery, mapFilter, mapCategoria]);
+
+  // Qué queda por vender, agrupado por familia de mueble. Usa la misma
+  // `rangeAvailability` que el mapa y que la tira de arriba, así que los
+  // números no pueden discrepar entre sí.
+  const porCategoria = useMemo(() => {
+    if (!mapRange) return [];
+    const acum = new Map<string, { libres: number; parciales: number; total: number }>();
+    fixtures.forEach((f) => {
+      const cat = categoriaDeTipo(f.type);
+      commercialFacesOf(f).forEach((face) => {
+        const e = acum.get(cat) ?? { libres: 0, parciales: 0, total: 0 };
+        const a = rangeAvailability(face, mapRange.from, mapRange.to);
+        if (a === "libre") e.libres++;
+        else if (a === "parcial") e.parciales++;
+        e.total++;
+        acum.set(cat, e);
+      });
+    });
+    return [...acum].map(([cat, v]) => ({ cat, ...v }))
+      .sort((a, b) => b.libres + b.parciales - (a.libres + a.parciales));
+  }, [fixtures, mapRange]);
 
   // ── KPI computation (per rentable face — doubles count as 2 units) ──
   // Buckets use displayStatus() so KPIs, Atención, map chips and table agree.
@@ -2171,14 +2309,14 @@ export default function DashboardView() {
       <div
         style={{
           display: "flex", justifyContent: "space-between",
-          alignItems: "flex-start", marginBottom: 16, gap: 12,
+          alignItems: "flex-start", marginBottom: 26, gap: 16,
           flexWrap: "wrap",
         }}
       >
-        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
           <div
             style={{
-              width: 40, height: 40, borderRadius: "var(--r-lg)",
+              width: 44, height: 44, borderRadius: "var(--r-md)",
               background: "var(--accent)", color: "#fff",
               display: "flex", alignItems: "center", justifyContent: "center",
               boxShadow: "var(--shadow-md)",
@@ -2188,21 +2326,65 @@ export default function DashboardView() {
             <Building2 size={18} />
           </div>
           <div>
+            {/* Antes esto era un h2 de 17 px y una línea de 11,5. TODO en la
+                pantalla vivía entre 11 y 13 px, así que no había jerarquía: el
+                nombre de la sede pesaba lo mismo que una observación. */}
+            <div style={{
+              fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 500,
+              letterSpacing: "0.14em", textTransform: "uppercase",
+              color: "var(--ink-3)", marginBottom: 3,
+            }}>
+              Sede
+            </div>
             <h2
               style={{
-                margin: 0, fontSize: 17, fontWeight: 700,
-                letterSpacing: "-0.02em", color: "var(--ink-1)",
+                margin: 0, fontSize: 32, fontWeight: 600,
+                letterSpacing: "-0.035em", lineHeight: 1, color: "var(--ink-1)",
               }}
             >
-              Sede {sede}
+              {sede}
             </h2>
-            <p style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 2 }}>
+            <p style={{ fontSize: 12.5, color: "var(--ink-3)", marginTop: 7 }}>
               {kpis.total} espacio{kpis.total !== 1 ? "s" : ""} comercializable{kpis.total !== 1 ? "s" : ""}
               {" · "}
               {fixtures.length} mueble{fixtures.length !== 1 ? "s" : ""} en el plano
               {activeSedeCount > 1 && ` · ${activeSedeCount} sedes activas`}
             </p>
           </div>
+
+          {/* La plata que mueve la sede. `kpis.revenue` existía desde siempre y
+              no se mostraba en ninguna parte de esta pantalla: había que bajar
+              a las tarjetas para enterarse de cuánto entra por mes. Es la cifra
+              por la que existe el sistema y ahora es lo segundo que se lee.
+              Sólo admin: para el rol trabajador la plata va tachada en todo el
+              resto y acá no puede ser la excepción. */}
+          {isAdmin && kpis.revenue > 0 && (
+            <div style={{
+              paddingLeft: 20, marginLeft: 8,
+              borderLeft: "1px solid var(--line)", alignSelf: "stretch",
+              display: "flex", flexDirection: "column", justifyContent: "center",
+            }}>
+              <div style={{
+                fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 500,
+                letterSpacing: "0.14em", textTransform: "uppercase",
+                color: "var(--ink-3)", marginBottom: 5,
+              }}>
+                Canon vigente
+              </div>
+              <div style={{
+                fontSize: 30, fontWeight: 600, letterSpacing: "-0.035em",
+                lineHeight: 1, color: "var(--ink-1)", whiteSpace: "nowrap",
+              }}>
+                ${kpis.revenue.toLocaleString("es-CO")}
+                <span style={{ fontSize: 14, fontWeight: 500, color: "var(--ink-3)" }}> /mes</span>
+              </div>
+              {kpis.committedRevenue > 0 && (
+                <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 6 }}>
+                  + ${kpis.committedRevenue.toLocaleString("es-CO")} contratado sin arrancar
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -2419,6 +2601,72 @@ export default function DashboardView() {
                 </div>
               )}
             </div>
+
+            {/* Qué queda por vender, por familia de mueble. Va acá y no en una
+                tarjeta aparte porque depende del periodo de arriba, y tocar
+                una familia filtra el mapa y la tabla: el dato sirve para algo,
+                no sólo para mirarlo. */}
+            {modoEfectivo === "vender" && porCategoria.length > 1 && (
+              <div
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+                  marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line-soft)",
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: "0.13em",
+                    textTransform: "uppercase", color: "var(--ink-3)", marginRight: 2,
+                  }}
+                >
+                  Libre por familia
+                </span>
+                {porCategoria.map(({ cat, libres, parciales, total }) => {
+                  const activa = mapCategoria === cat;
+                  const disponibles = libres + parciales;
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => setMapCategoria(activa ? null : cat)}
+                      title={`${libres} libre${libres === 1 ? "" : "s"} todo el periodo · ${parciales} parcial${parciales === 1 ? "" : "es"} · ${total} en total`}
+                      style={{
+                        display: "inline-flex", alignItems: "baseline", gap: 6,
+                        padding: "4px 10px", cursor: "pointer",
+                        borderRadius: "var(--r-sm)",
+                        border: `1px solid ${activa ? "var(--accent)" : "var(--line)"}`,
+                        background: activa ? "var(--accent-50)" : "var(--surface)",
+                        color: "var(--ink-1)", fontFamily: "inherit",
+                      }}
+                    >
+                      <b
+                        style={{
+                          fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 700,
+                          color: disponibles === 0 ? "var(--ink-4)" : "var(--success)",
+                        }}
+                      >
+                        {disponibles}
+                      </b>
+                      <span style={{ fontSize: 12 }}>{cat}</span>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-4)" }}>
+                        de {total}
+                      </span>
+                    </button>
+                  );
+                })}
+                {mapCategoria && (
+                  <button
+                    onClick={() => setMapCategoria(null)}
+                    style={{
+                      background: "none", border: "none", cursor: "pointer",
+                      fontSize: 11.5, color: "var(--ink-3)", fontFamily: "inherit",
+                      textDecoration: "underline", padding: "4px 2px",
+                    }}
+                  >
+                    ver todas
+                  </button>
+                )}
+              </div>
+            )}
           </Card>
 
           {modoEfectivo === "vender" ? (

@@ -154,7 +154,7 @@ def send_test_notification(db: Session = Depends(get_db)):
             ),
         }
 
-    subject = "Correo de prueba — Galerías"
+    subject = "Correo de prueba — RECABRA"
     ajustes = smtp_settings()
     html = html_shell(
         subject,
