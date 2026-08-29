@@ -2069,26 +2069,93 @@ export default function DashboardView() {
     return { faceFlags, count };
   }, [fixtures, mapQuery, mapFilter, mapCategoria]);
 
-  // Qué queda por vender, agrupado por familia de mueble. Usa la misma
-  // `rangeAvailability` que el mapa y que la tira de arriba, así que los
-  // números no pueden discrepar entre sí.
+  // Qué queda por vender, agrupado por familia de mueble, y cuánto vale.
+  //
+  // Usa la misma `rangeAvailability` que el mapa y que la tira de arriba, así
+  // que los números no pueden discrepar entre sí.
+  //
+  // Lo que NO se vendió se valora a la TARIFA DE REFERENCIA del tipo, prorrateada
+  // por día libre. Es la única base honesta: un espacio libre no tiene precio
+  // negociado, justamente porque nadie lo negoció. Y como `referenceRateFor`
+  // devuelve null para los tipos sin tarifa cargada, hay que contar aparte esas
+  // caras: si no se dicen, el total parece chico y nadie sabe por qué.
   const porCategoria = useMemo(() => {
     if (!mapRange) return [];
-    const acum = new Map<string, { libres: number; parciales: number; total: number }>();
+    const dias = inclusiveDays(mapRange.from, mapRange.to);
+    const acum = new Map<string, {
+      libres: number; parciales: number; total: number;
+      sinVender: number; carasSinTarifa: number;
+    }>();
     fixtures.forEach((f) => {
       const cat = categoriaDeTipo(f.type);
+      const ref = referenceRateFor(referenceRates, f.sede || sede, rateTypeOf(f));
       commercialFacesOf(f).forEach((face) => {
-        const e = acum.get(cat) ?? { libres: 0, parciales: 0, total: 0 };
+        const e = acum.get(cat)
+          ?? { libres: 0, parciales: 0, total: 0, sinVender: 0, carasSinTarifa: 0 };
         const a = rangeAvailability(face, mapRange.from, mapRange.to);
         if (a === "libre") e.libres++;
         else if (a === "parcial") e.parciales++;
         e.total++;
+        const diasLibres = dias - daysTakenInRange(face, mapRange.from, mapRange.to);
+        if (diasLibres > 0) {
+          if (ref) e.sinVender += (ref / 30) * diasLibres;
+          else e.carasSinTarifa++;
+        }
         acum.set(cat, e);
       });
     });
-    return [...acum].map(([cat, v]) => ({ cat, ...v }))
+    // Ordenado por cantidad y no por plata: la cantidad es lo que el chip
+    // muestra, y un orden que no se explica con el número visible se lee como
+    // arbitrario. La plata de cada familia va en el título al pasar por encima.
+    return [...acum].map(([cat, v]) => ({ cat, ...v, sinVender: Math.round(v.sinVender) }))
       .sort((a, b) => b.libres + b.parciales - (a.libres + a.parciales));
-  }, [fixtures, mapRange]);
+  }, [fixtures, mapRange, referenceRates, sede]);
+
+  // El total del periodo: lo que se está cobrando y lo que se está dejando de
+  // cobrar, en la misma unidad. Un «no percibido» suelto no dice nada; al lado
+  // de lo vendido sí, porque recién ahí se ve de qué tamaño es.
+  const plataDelPeriodo = useMemo(() => {
+    if (!mapRange) return null;
+    const dias = inclusiveDays(mapRange.from, mapRange.to);
+
+    // Partir la ventana en hoy. Un día libre que ya pasó es plata que no se
+    // recupera; uno que viene todavía se puede vender. Sin esta división, mover
+    // el rango a marzo del año que viene dispara el «sin vender» y parece una
+    // alarma, cuando lo único que pasa es que el futuro no ocurrió.
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    const ayer = new Date(hoy); ayer.setDate(ayer.getDate() - 1);
+    const finPasado = mapRange.to < ayer ? mapRange.to : ayer;
+    const iniFuturo = mapRange.from > hoy ? mapRange.from : hoy;
+    const hayPasado = mapRange.from <= finPasado;
+    const hayFuturo = iniFuturo <= mapRange.to;
+    const diasPasado = hayPasado ? inclusiveDays(mapRange.from, finPasado) : 0;
+    const diasFuturo = hayFuturo ? inclusiveDays(iniFuturo, mapRange.to) : 0;
+
+    let vendido = 0, sinVender = 0, sinVenderIdo = 0;
+    let carasSinTarifa = 0, carasConTarifa = 0;
+    fixtures.forEach((f) => {
+      const ref = referenceRateFor(referenceRates, f.sede || sede, rateTypeOf(f));
+      commercialFacesOf(f).forEach((face) => {
+        const tomados = daysTakenInRange(face, mapRange.from, mapRange.to);
+        vendido += ((face.negotiatedValue ?? 0) / 30) * tomados;
+        const libres = dias - tomados;
+        if (libres <= 0) return;
+        if (!ref) { carasSinTarifa++; return; }
+        carasConTarifa++;
+        sinVender += (ref / 30) * libres;
+        if (hayPasado) {
+          const diasIdos = diasPasado - daysTakenInRange(face, mapRange.from, finPasado);
+          if (diasIdos > 0) sinVenderIdo += (ref / 30) * diasIdos;
+        }
+      });
+    });
+    return {
+      dias, diasPasado, diasFuturo, carasSinTarifa, carasConTarifa,
+      vendido: Math.round(vendido),
+      sinVender: Math.round(sinVender),
+      sinVenderIdo: Math.round(sinVenderIdo),
+    };
+  }, [fixtures, mapRange, referenceRates, sede]);
 
   // ── KPI computation (per rentable face — doubles count as 2 units) ──
   // Buckets use displayStatus() so KPIs, Atención, map chips and table agree.
@@ -2577,28 +2644,53 @@ export default function DashboardView() {
             >
               <SeasonPicker range={mapRange} onChange={setMapRange} />
               {mapRange && (
-                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 9, fontSize: 12.5, whiteSpace: "nowrap" }}>
-                  <span>
-                    <b style={{ fontFamily: "var(--font-mono)", fontSize: 15, color: "var(--success)" }}>
-                      {rangeTally.libres}
-                    </b>{" "}
-                    <span style={{ color: "var(--ink-3)" }}>libres</span>
-                  </span>
-                  <span style={{ color: "var(--line-strong)" }}>·</span>
-                  <span>
-                    <b style={{ fontFamily: "var(--font-mono)", fontSize: 15, color: "var(--warning)" }}>
-                      {rangeTally.parciales}
-                    </b>{" "}
-                    <span style={{ color: "var(--ink-3)" }}>parciales</span>
-                  </span>
-                  <span style={{ color: "var(--line-strong)" }}>·</span>
-                  <span>
-                    <b style={{ fontFamily: "var(--font-mono)", fontSize: 15, color: "var(--ink-2)" }}>
-                      {rangeTally.tomados}
-                    </b>{" "}
-                    <span style={{ color: "var(--ink-3)" }}>vendidos</span>
-                  </span>
-                </div>
+                /* Las tres cifras son las partes de UN total, no tres datos
+                   sueltos: sumadas dan las caras comercializables de la sede.
+                   Dibujadas como barra, el total deja de ser algo que el lector
+                   tiene que reconstruir de cabeza. */
+                (() => {
+                  const t = rangeTally.libres + rangeTally.parciales + rangeTally.tomados;
+                  const pct = (n: number) => (t ? (n / t) * 100 : 0);
+                  const partes = [
+                    { n: rangeTally.libres,    c: "var(--success)", r: "libres" },
+                    { n: rangeTally.parciales, c: "var(--warning)", r: "parciales" },
+                    { n: rangeTally.tomados,   c: "var(--muted-status)", r: "vendidos" },
+                  ];
+                  return (
+                    <div style={{ marginLeft: "auto", minWidth: 260, maxWidth: 340 }}>
+                      <div
+                        style={{ display: "flex", height: 8, borderRadius: 4, overflow: "hidden", gap: 1 }}
+                        role="img"
+                        aria-label={partes.map((p) => `${p.n} ${p.r}`).join(", ") + `, de ${t} caras`}
+                      >
+                        {partes.map((p) => (
+                          <span key={p.r} style={{ width: `${pct(p.n)}%`, background: p.c }} />
+                        ))}
+                      </div>
+                      <div style={{
+                        display: "flex", alignItems: "baseline", gap: 11,
+                        marginTop: 6, fontSize: 11.5, whiteSpace: "nowrap",
+                      }}>
+                        {partes.map((p) => (
+                          <span key={p.r} style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
+                            <span style={{
+                              width: 8, height: 8, borderRadius: 2, background: p.c,
+                              alignSelf: "center", flexShrink: 0,
+                            }} />
+                            <b style={{ fontFamily: "var(--font-mono)", fontSize: 13.5 }}>{p.n}</b>
+                            <span style={{ color: "var(--ink-3)" }}>{p.r}</span>
+                          </span>
+                        ))}
+                        <span style={{
+                          marginLeft: "auto", fontFamily: "var(--font-mono)",
+                          fontSize: 11, color: "var(--ink-4)",
+                        }}>
+                          {t} caras
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()
               )}
             </div>
 
@@ -2621,14 +2713,17 @@ export default function DashboardView() {
                 >
                   Libre por familia
                 </span>
-                {porCategoria.map(({ cat, libres, parciales, total }) => {
+                {porCategoria.map(({ cat, libres, parciales, total, sinVender, carasSinTarifa }) => {
                   const activa = mapCategoria === cat;
                   const disponibles = libres + parciales;
                   return (
                     <button
                       key={cat}
                       onClick={() => setMapCategoria(activa ? null : cat)}
-                      title={`${libres} libre${libres === 1 ? "" : "s"} todo el periodo · ${parciales} parcial${parciales === 1 ? "" : "es"} · ${total} en total`}
+                      title={`${libres} libre${libres === 1 ? "" : "s"} todo el periodo · `
+                           + `${parciales} parcial${parciales === 1 ? "" : "es"} · ${total} en total`
+                           + (sinVender > 0 ? `\n${formatCOP(sinVender)} sin vender en el periodo` : "")
+                           + (carasSinTarifa > 0 ? `\n${carasSinTarifa} cara(s) sin tarifa de referencia, fuera del cálculo` : "")}
                       style={{
                         display: "inline-flex", alignItems: "baseline", gap: 6,
                         padding: "4px 10px", cursor: "pointer",
@@ -2636,18 +2731,35 @@ export default function DashboardView() {
                         border: `1px solid ${activa ? "var(--accent)" : "var(--line)"}`,
                         background: activa ? "var(--accent-50)" : "var(--surface)",
                         color: "var(--ink-1)", fontFamily: "inherit",
+                        position: "relative", overflow: "hidden",
                       }}
                     >
+                      {/* La tasa, detrás del número. 46 de 70 y 6 de 9 son 66% y
+                          67%: puestas en fila como cifras sueltas, la primera
+                          parece la gran oportunidad y no lo es. */}
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          position: "absolute", inset: 0,
+                          right: `${100 - (total ? (disponibles / total) * 100 : 0)}%`,
+                          background: "var(--success)", opacity: activa ? 0.1 : 0.13,
+                          pointerEvents: "none",
+                        }}
+                      />
                       <b
                         style={{
                           fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 700,
                           color: disponibles === 0 ? "var(--ink-4)" : "var(--success)",
+                          position: "relative",
                         }}
                       >
                         {disponibles}
                       </b>
-                      <span style={{ fontSize: 12 }}>{cat}</span>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-4)" }}>
+                      <span style={{ fontSize: 12, position: "relative" }}>{cat}</span>
+                      <span style={{
+                        fontFamily: "var(--font-mono)", fontSize: 10,
+                        color: "var(--ink-4)", position: "relative",
+                      }}>
                         de {total}
                       </span>
                     </button>
@@ -2664,6 +2776,68 @@ export default function DashboardView() {
                   >
                     ver todas
                   </button>
+                )}
+
+                {/* Cuánto vale lo que está libre. Va al lado de las familias
+                    porque es la misma pregunta con otra unidad: no cuántas
+                    caras quedan, sino de qué tamaño es lo que queda. */}
+                {plataDelPeriodo && (
+                  <div style={{ marginLeft: "auto", textAlign: "right" }}>
+                    {plataDelPeriodo.carasConTarifa > 0 ? (
+                      <>
+                        <div style={{ fontSize: 12.5, whiteSpace: "nowrap" }}>
+                          <b style={{ fontFamily: "var(--font-mono)", fontSize: 15, color: "var(--warning)" }}>
+                            {formatCOP(plataDelPeriodo.sinVender)}
+                          </b>{" "}
+                          <span style={{ color: "var(--ink-3)" }}>sin vender</span>
+                          <span style={{ color: "var(--line-strong)", margin: "0 7px" }}>·</span>
+                          <b style={{ fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--ink-2)" }}>
+                            {formatCOP(plataDelPeriodo.vendido)}
+                          </b>{" "}
+                          <span style={{ color: "var(--ink-3)" }}>vendido</span>
+                        </div>
+                        <div style={{ fontSize: 10.5, color: "var(--ink-4)", marginTop: 2 }}>
+                          {plataDelPeriodo.diasPasado === 0
+                            ? `los ${plataDelPeriodo.dias} días están por delante`
+                            : plataDelPeriodo.diasFuturo === 0
+                            ? `los ${plataDelPeriodo.dias} días ya pasaron`
+                            : `${plataDelPeriodo.diasPasado} día${plataDelPeriodo.diasPasado === 1 ? "" : "s"} ya pasaron, ${plataDelPeriodo.diasFuturo} por delante`}
+                          {plataDelPeriodo.sinVenderIdo > 0 && (
+                            <>
+                              {" · "}
+                              <span
+                                style={{ color: "var(--ink-3)" }}
+                                title={"Esa parte del «sin vender» corresponde a días que ya "
+                                     + "pasaron: no se puede recuperar. El resto todavía se "
+                                     + "puede vender."}
+                              >
+                                {formatCOP(plataDelPeriodo.sinVenderIdo)} ya no se recupera
+                              </span>
+                            </>
+                          )}
+                          {" · a tarifa de referencia"}
+                          {plataDelPeriodo.carasSinTarifa > 0 && (
+                            <>
+                              {" · "}
+                              <span
+                                style={{ color: "var(--warning)" }}
+                                title={"Esas caras tienen días libres pero su tipo de mueble no "
+                                     + "tiene tarifa de referencia cargada, así que no suman. "
+                                     + "El verdadero sin vender es mayor."}
+                              >
+                                {plataDelPeriodo.carasSinTarifa} sin tarifa, fuera del cálculo
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <div style={{ fontSize: 11.5, color: "var(--ink-3)", maxWidth: 260 }}>
+                        Sin tarifas de referencia cargadas no se puede valorar lo libre.
+                        Se cargan en <b style={{ color: "var(--ink-2)" }}>Tarifas</b>.
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             )}
