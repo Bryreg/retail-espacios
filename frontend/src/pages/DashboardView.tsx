@@ -2069,26 +2069,71 @@ export default function DashboardView() {
     return { faceFlags, count };
   }, [fixtures, mapQuery, mapFilter, mapCategoria]);
 
-  // Qué queda por vender, agrupado por familia de mueble. Usa la misma
-  // `rangeAvailability` que el mapa y que la tira de arriba, así que los
-  // números no pueden discrepar entre sí.
+  // Qué queda por vender, agrupado por familia de mueble, y cuánto vale.
+  //
+  // Usa la misma `rangeAvailability` que el mapa y que la tira de arriba, así
+  // que los números no pueden discrepar entre sí.
+  //
+  // Lo que NO se vendió se valora a la TARIFA DE REFERENCIA del tipo, prorrateada
+  // por día libre. Es la única base honesta: un espacio libre no tiene precio
+  // negociado, justamente porque nadie lo negoció. Y como `referenceRateFor`
+  // devuelve null para los tipos sin tarifa cargada, hay que contar aparte esas
+  // caras: si no se dicen, el total parece chico y nadie sabe por qué.
   const porCategoria = useMemo(() => {
     if (!mapRange) return [];
-    const acum = new Map<string, { libres: number; parciales: number; total: number }>();
+    const dias = inclusiveDays(mapRange.from, mapRange.to);
+    const acum = new Map<string, {
+      libres: number; parciales: number; total: number;
+      sinVender: number; carasSinTarifa: number;
+    }>();
     fixtures.forEach((f) => {
       const cat = categoriaDeTipo(f.type);
+      const ref = referenceRateFor(referenceRates, f.sede || sede, rateTypeOf(f));
       commercialFacesOf(f).forEach((face) => {
-        const e = acum.get(cat) ?? { libres: 0, parciales: 0, total: 0 };
+        const e = acum.get(cat)
+          ?? { libres: 0, parciales: 0, total: 0, sinVender: 0, carasSinTarifa: 0 };
         const a = rangeAvailability(face, mapRange.from, mapRange.to);
         if (a === "libre") e.libres++;
         else if (a === "parcial") e.parciales++;
         e.total++;
+        const diasLibres = dias - daysTakenInRange(face, mapRange.from, mapRange.to);
+        if (diasLibres > 0) {
+          if (ref) e.sinVender += (ref / 30) * diasLibres;
+          else e.carasSinTarifa++;
+        }
         acum.set(cat, e);
       });
     });
-    return [...acum].map(([cat, v]) => ({ cat, ...v }))
+    // Ordenado por cantidad y no por plata: la cantidad es lo que el chip
+    // muestra, y un orden que no se explica con el número visible se lee como
+    // arbitrario. La plata de cada familia va en el título al pasar por encima.
+    return [...acum].map(([cat, v]) => ({ cat, ...v, sinVender: Math.round(v.sinVender) }))
       .sort((a, b) => b.libres + b.parciales - (a.libres + a.parciales));
-  }, [fixtures, mapRange]);
+  }, [fixtures, mapRange, referenceRates, sede]);
+
+  // El total del periodo: lo que se está cobrando y lo que se está dejando de
+  // cobrar, en la misma unidad. Un «no percibido» suelto no dice nada; al lado
+  // de lo vendido sí, porque recién ahí se ve de qué tamaño es.
+  const plataDelPeriodo = useMemo(() => {
+    if (!mapRange) return null;
+    const dias = inclusiveDays(mapRange.from, mapRange.to);
+    let vendido = 0, sinVender = 0, carasSinTarifa = 0, carasConTarifa = 0;
+    fixtures.forEach((f) => {
+      const ref = referenceRateFor(referenceRates, f.sede || sede, rateTypeOf(f));
+      commercialFacesOf(f).forEach((face) => {
+        const tomados = daysTakenInRange(face, mapRange.from, mapRange.to);
+        vendido += ((face.negotiatedValue ?? 0) / 30) * tomados;
+        const libres = dias - tomados;
+        if (libres <= 0) return;
+        if (ref) { sinVender += (ref / 30) * libres; carasConTarifa++; }
+        else carasSinTarifa++;
+      });
+    });
+    return {
+      dias, carasSinTarifa, carasConTarifa,
+      vendido: Math.round(vendido), sinVender: Math.round(sinVender),
+    };
+  }, [fixtures, mapRange, referenceRates, sede]);
 
   // ── KPI computation (per rentable face — doubles count as 2 units) ──
   // Buckets use displayStatus() so KPIs, Atención, map chips and table agree.
@@ -2621,14 +2666,17 @@ export default function DashboardView() {
                 >
                   Libre por familia
                 </span>
-                {porCategoria.map(({ cat, libres, parciales, total }) => {
+                {porCategoria.map(({ cat, libres, parciales, total, sinVender, carasSinTarifa }) => {
                   const activa = mapCategoria === cat;
                   const disponibles = libres + parciales;
                   return (
                     <button
                       key={cat}
                       onClick={() => setMapCategoria(activa ? null : cat)}
-                      title={`${libres} libre${libres === 1 ? "" : "s"} todo el periodo · ${parciales} parcial${parciales === 1 ? "" : "es"} · ${total} en total`}
+                      title={`${libres} libre${libres === 1 ? "" : "s"} todo el periodo · `
+                           + `${parciales} parcial${parciales === 1 ? "" : "es"} · ${total} en total`
+                           + (sinVender > 0 ? `\n${formatCOP(sinVender)} sin vender en el periodo` : "")
+                           + (carasSinTarifa > 0 ? `\n${carasSinTarifa} cara(s) sin tarifa de referencia, fuera del cálculo` : "")}
                       style={{
                         display: "inline-flex", alignItems: "baseline", gap: 6,
                         padding: "4px 10px", cursor: "pointer",
@@ -2664,6 +2712,50 @@ export default function DashboardView() {
                   >
                     ver todas
                   </button>
+                )}
+
+                {/* Cuánto vale lo que está libre. Va al lado de las familias
+                    porque es la misma pregunta con otra unidad: no cuántas
+                    caras quedan, sino de qué tamaño es lo que queda. */}
+                {plataDelPeriodo && (
+                  <div style={{ marginLeft: "auto", textAlign: "right" }}>
+                    {plataDelPeriodo.carasConTarifa > 0 ? (
+                      <>
+                        <div style={{ fontSize: 12.5, whiteSpace: "nowrap" }}>
+                          <b style={{ fontFamily: "var(--font-mono)", fontSize: 15, color: "var(--warning)" }}>
+                            {formatCOP(plataDelPeriodo.sinVender)}
+                          </b>{" "}
+                          <span style={{ color: "var(--ink-3)" }}>sin vender</span>
+                          <span style={{ color: "var(--line-strong)", margin: "0 7px" }}>·</span>
+                          <b style={{ fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--ink-2)" }}>
+                            {formatCOP(plataDelPeriodo.vendido)}
+                          </b>{" "}
+                          <span style={{ color: "var(--ink-3)" }}>vendido</span>
+                        </div>
+                        <div style={{ fontSize: 10.5, color: "var(--ink-4)", marginTop: 2 }}>
+                          en los {plataDelPeriodo.dias} días, a tarifa de referencia
+                          {plataDelPeriodo.carasSinTarifa > 0 && (
+                            <>
+                              {" · "}
+                              <span
+                                style={{ color: "var(--warning)" }}
+                                title={"Esas caras tienen días libres pero su tipo de mueble no "
+                                     + "tiene tarifa de referencia cargada, así que no suman. "
+                                     + "El verdadero sin vender es mayor."}
+                              >
+                                {plataDelPeriodo.carasSinTarifa} sin tarifa, fuera del cálculo
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <div style={{ fontSize: 11.5, color: "var(--ink-3)", maxWidth: 260 }}>
+                        Sin tarifas de referencia cargadas no se puede valorar lo libre.
+                        Se cargan en <b style={{ color: "var(--ink-2)" }}>Tarifas</b>.
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             )}
