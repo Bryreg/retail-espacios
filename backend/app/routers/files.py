@@ -38,6 +38,35 @@ class SpaceFileOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ─── Quién puede ver qué ──────────────────────────────────────────────────────
+#
+# Los adjuntos de un espacio son dos cosas muy distintas metidas en la misma
+# tabla: FOTOS —la cara del mueble que pinta el plano, la prueba del montaje— y
+# DOCUMENTOS —el contrato en PDF, la planilla del acuerdo—.
+#
+# El rol `worker` es de sólo lectura y, por diseño, NUNCA VE PLATA. Pero podía
+# listar y descargar los contratos: `require_auth` comprobaba que hubiera
+# credencial y nadie comprobaba que ese archivo fuera para esos ojos. Con la
+# clave de trabajador —que conoce todo el personal— alcanzaba con numerar
+# /api/files/1, /api/files/2 para bajarse la cartera entera.
+#
+# Se parte por tipo de contenido y no por rol a secas porque el trabajador SÍ
+# necesita las fotos: son las que el mapa de la sede le muestra.
+#
+# Cuando exista `tenant_id`, la comprobación de pertenencia va acá también: es
+# el único lugar por el que pasan las descargas.
+
+IMAGENES = {"image/jpeg", "image/png", "image/webp"}
+
+
+def _es_documento(content_type: str | None) -> bool:
+    return (content_type or "") not in IMAGENES
+
+
+def _puede_ver(rol: str, content_type: str | None) -> bool:
+    return rol == "admin" or not _es_documento(content_type)
+
+
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 @router.post(
@@ -83,30 +112,41 @@ async def upload_space_file(
     return row
 
 
-@router.get(
-    "/spaces/{space_id}/files",
-    response_model=list[SpaceFileOut],
-    dependencies=[Depends(require_auth)],
-)
-def list_space_files(space_id: int, db: Session = Depends(get_db)):
+@router.get("/spaces/{space_id}/files", response_model=list[SpaceFileOut])
+def list_space_files(
+    space_id: int,
+    db: Session = Depends(get_db),
+    rol: str = Depends(require_auth),
+):
     space = db.query(Space).filter(Space.id == space_id).first()
     if not space:
         raise HTTPException(status_code=404, detail="Espacio no encontrado")
     # defer(data): metadata listing must not pull every blob into memory
-    return (
+    filas = (
         db.query(SpaceFile)
         .options(defer(SpaceFile.data))
         .filter(SpaceFile.space_id == space_id)
         .order_by(SpaceFile.uploaded_at.desc())
         .all()
     )
+    # Se filtra en vez de rechazar: el panel del trabajador sigue funcionando y
+    # los contratos simplemente no existen para él.
+    return [f for f in filas if _puede_ver(rol, f.content_type)]
 
 
-@router.get("/files/{file_id}", dependencies=[Depends(require_auth_or_query_token)])
-def download_file(file_id: int, db: Session = Depends(get_db)):
+@router.get("/files/{file_id}")
+def download_file(
+    file_id: int,
+    db: Session = Depends(get_db),
+    rol: str = Depends(require_auth_or_query_token),
+):
     """Serve the binary inline. Auth via Bearer header OR ?token= (for iframes)."""
     row = db.query(SpaceFile).filter(SpaceFile.id == file_id).first()
     if not row:
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    # 404 y no 403 a propósito: un 403 confirma que ese archivo existe, y
+    # numerando se puede levantar el inventario de contratos sin bajar ninguno.
+    if not _puede_ver(rol, row.content_type):
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
 
     # Content-Disposition is latin-1 only; degrade non-encodable characters
