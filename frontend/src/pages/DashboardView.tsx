@@ -540,7 +540,11 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
       // que hondo el corte va por Z y la mitad de adelante es la B; si es más
       // hondo que ancho el corte va por X y la B queda a la derecha. El otro
       // lado visible es la tapa, que no se vende y va del color del material.
-      const anchoManda = f.w >= f.d;
+      // Sobre la huella GIRADA, no sobre las medidas crudas. El prisma se
+      // dibuja con `fp`, así que preguntarle a `f.w`/`f.d` por el eje largo
+      // deja el color en la cara equivocada en todo mueble rotado un cuarto
+      // de vuelta —un pasillo cruzado, que es común.
+      const anchoManda = fp.w >= fp.d;
       const cuerpo = rentable ? CUERPO : NON_RENTABLE_TOP;
       const caraFrente = double ? topB : topA;
       const pintaCara = rentable ? caraFrente : cuerpo;
@@ -557,7 +561,7 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
       });
       let topHalves: { color: string; points: string; cx: number; cy: number }[];
       if (double) {
-        if (f.w >= f.d) {
+        if (anchoManda) {
           const zm = (z0 + z1) / 2;
           topHalves = [
             mitad(topA, [iso(x0, z0, h), iso(x1, z0, h), iso(x1, zm, h), iso(x0, zm, h)]),
