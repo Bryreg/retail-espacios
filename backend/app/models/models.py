@@ -288,3 +288,62 @@ class SupplierAsset(Base):
     size = Column(Integer, nullable=False)
     data = Column(LargeBinary, nullable=False)
     uploaded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class LoginAttempt(Base):
+    """Un intento de entrar que falló, con la IP y la hora.
+
+    El freno a la fuerza bruta vivía en un diccionario en memoria. Se borraba
+    entero en cada despliegue y en cada reinicio —y Render reinicia el servicio
+    gratuito cuando se queda quieto—, así que bastaba con esperar, o con
+    provocar el reinicio, para volver a tener los diez intentos. En la base
+    sobrevive a los dos.
+
+    Sólo se anotan los FALLOS: contar también los aciertos castigaba a quien
+    entra y sale varias veces en la mañana, que es exactamente lo que hace un
+    administrador. Un acierto borra los fallos de esa IP.
+
+    ``create_all`` crea tablas que faltan pero nunca agrega columnas, así que
+    una tabla nueva es de lo que sí se puede hacer sin migración.
+    """
+    __tablename__ = "login_attempts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ip = Column(String, nullable=False, index=True)
+    at = Column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class AuditEntry(Base):
+    """Quién hizo qué, cuándo y desde dónde.
+
+    No había ninguna. Si mañana falta un contrato o cambia un valor, hoy no hay
+    forma de saber quién ni cuándo — y un supermercado que maneja contratos lo
+    va a pedir, con razón.
+
+    Con contraseñas compartidas el "quién" es un rol, no una persona, así que
+    esto no reemplaza a las cuentas de usuario: **es lo que las cuentas van a
+    llenar**. Aun así el rol, la IP y la hora ya contestan la mayoría de las
+    preguntas que se hacen cuando algo se pierde.
+
+    Se anota **sólo lo que cambia algo o abre una puerta**: contratos,
+    documentos, borrados, ingresos y cambios de contraseña. Los listados y las
+    consultas no, o el ruido se come lo que importa.
+
+    ``create_all`` crea tablas que faltan pero nunca agrega columnas, así que
+    una tabla nueva es de lo que sí se puede hacer sin migración.
+    """
+    __tablename__ = "audit_log"
+
+    id = Column(Integer, primary_key=True, index=True)
+    at = Column(DateTime(timezone=True), nullable=False, index=True)
+    # "admin", "worker", "montaje" o "anónimo" en un intento de login fallido.
+    rol = Column(String, nullable=False)
+    ip = Column(String, nullable=False)
+    # Código estable, tipo `contrato.alta`. El texto se arma al mostrarlo: si se
+    # guardara la frase, cambiar la redacción reescribiría el pasado.
+    accion = Column(String, nullable=False, index=True)
+    entidad = Column(String, nullable=True)
+    entidad_id = Column(String, nullable=True)
+    # Lo mínimo para entender la línea sin ir a buscar: "Alpina · NAVE-PUN-01".
+    # Nunca una contraseña, ni el contenido de un archivo.
+    detalle = Column(Text, nullable=True)

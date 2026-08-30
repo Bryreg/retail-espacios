@@ -7,20 +7,58 @@ import { usarToken } from "./api/montaje";
 import { useAuthStore } from "./store/authStore";
 import { startAutoSync, stopAutoSync } from "./store/fixtureStore";
 
+/** Dónde queda el enlace de montaje entre una recarga y la siguiente. */
+const LLAVE_MONTAJE = "recabra-montaje";
+
 /**
  * El enlace firmado del correo de montaje (`?t=…`), leído UNA vez al arrancar.
  *
  * Se lee acá arriba y no adentro de un componente porque decide qué aplicación
  * se monta: con este token no hay tablero, no hay sincronización del layout y
- * no hay login. El token se queda en la URL a propósito — es la credencial del
- * enlace, igual que en cualquier enlace mágico, y ahí sobrevive a una recarga.
+ * no hay login.
+ *
+ * **El token sale de la barra de direcciones apenas se lee.** Antes se quedaba
+ * ahí a propósito, para sobrevivir a una recarga, y ese era el costo: la
+ * credencial quedaba en el historial del navegador y en cualquier captura de
+ * pantalla de la mercaderista. Ahora pasa a `sessionStorage` —que muere al
+ * cerrar la pestaña, a diferencia del `localStorage` donde vive la sesión del
+ * tablero— y la URL queda en `?montaje=1`.
+ *
+ * Esa marca hace falta y no es cosmética: sin ella, recargar y escribir la
+ * dirección pelada serían indistinguibles, y el admin que abre el enlace en su
+ * computador quedaría encerrado en la pantalla de montaje. Con la marca, ir a
+ * `/` sale de ahí como siempre.
  */
 const TOKEN_MONTAJE = (() => {
   if (typeof window === "undefined") return null;
-  const t = (new URLSearchParams(window.location.search).get("t") ?? "").trim();
-  if (!t) return null;
-  usarToken(t);
-  return t;
+  const params = new URLSearchParams(window.location.search);
+
+  const t = (params.get("t") ?? "").trim();
+  if (t) {
+    try {
+      window.sessionStorage.setItem(LLAVE_MONTAJE, t);
+    } catch {
+      // Navegación privada o almacenamiento bloqueado: sin guardarlo la
+      // pantalla igual funciona, sólo que una recarga vuelve a pedir el correo.
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.delete("t");
+    url.searchParams.set("montaje", "1");
+    window.history.replaceState(null, "", url.toString());
+    usarToken(t);
+    return t;
+  }
+
+  if (params.get("montaje") !== "1") return null;
+  let guardado = "";
+  try {
+    guardado = (window.sessionStorage.getItem(LLAVE_MONTAJE) ?? "").trim();
+  } catch {
+    guardado = "";
+  }
+  if (!guardado) return null;
+  usarToken(guardado);
+  return guardado;
 })();
 
 export default function App() {

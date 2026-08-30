@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from app.auth import ensure_default_config
 from app.database import engine, Base
 from app.routers import spaces, suppliers, dashboard, layout, files, notifications, mounts, montaje, planograms, bulk_leases, catalogo
+from app.routers import bitacora as bitacora_routes
 from app.routers import auth as auth_routes
 from app.models.models import Space, SpaceStatus
 
@@ -89,11 +90,15 @@ def _run_lease_maintenance():
     """Expire stale leases and send expiry reminders (runs in a worker thread)."""
     from app.database import SessionLocal
     from app.routers.spaces import expire_leases
+    from app.services.bitacora import purgar
     from app.services.reminders import check_expiring_leases
     db = SessionLocal()
     try:
         expire_leases(db)
         check_expiring_leases(db)
+        # La bitácora no puede crecer para siempre en una base de plan gratuito,
+        # y guardar más de lo necesario es su propio riesgo.
+        purgar(db)
     finally:
         db.close()
 
@@ -204,6 +209,8 @@ app.include_router(planograms.router,    prefix="/api")
 app.include_router(bulk_leases.router,   prefix="/api")
 # Las artes de los proveedores: qué producto se le prueba a un mueble en el 3D.
 app.include_router(catalogo.router,      prefix="/api")
+# Quién hizo qué. Sólo la lee el administrador.
+app.include_router(bitacora_routes.router, prefix="/api")
 
 
 @app.get("/api/health")

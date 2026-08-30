@@ -1725,12 +1725,17 @@ revisarlos a mano.
 
 ### Lo que NO se tocó, a propósito
 
-`backend/app/auth.py:49` tiene `"worker_password": "galerias"` como valor por
-defecto, y `routers/auth.py:65` lo lee con `get_config(db, "worker_password",
-"galerias")`. **Es la contraseña viva de los mercaderistas** si nadie la
-cambió desde configuración. Tocar ese default deja a la gente afuera de un
-día para otro. Se cambia desde la pantalla de configuración, no desde el
-código, y conviene hacerlo avisando.
+`backend/app/auth.py` tenía `"worker_password": "galerias"` como valor por
+defecto, y `routers/auth.py` lo leía con `get_config(db, "worker_password",
+"galerias")`. **Era la contraseña viva de los mercaderistas** si nadie la
+cambió desde configuración, así que en el cambio de identidad no se tocó:
+borrar ese default dejaba a la gente afuera de un día para otro.
+
+*Actualización (fase 2 de seguridad, más abajo).* El default salió del código
+—era la misma clave para todos los supermercados que instalen esto— pero la
+contraseña **viva no cambió**: la que esté en la base sigue funcionando y se
+convierte sola a Argon2 en el primer ingreso. Se cambia desde la pantalla de
+configuración, no desde el código, y conviene hacerlo avisando.
 
 ---
 
@@ -1793,6 +1798,181 @@ defecto de Tailwind —`#7C3AED` es `violet-500` sin tocar, los semánticos son
 generado por IA—, y ese es el motivo de que se lea como plantilla. El catálogo
 existe para que la dirección visual se elija de una lista razonada en vez de
 inventarse. **La decisión de qué dirección tomar sigue sin estar tomada.**
+
+---
+
+## Seguridad: lo que dejó el vibecoding
+
+La auditoría salió de una pregunta concreta —esto se le va a vender a varios
+supermercados, con contratos y planos adentro— y de lo que se lee afuera sobre
+código generado con IA: la [Cloud Security Alliance](https://labs.cloudsecurityalliance.org/research/csa-research-note-ai-generated-code-vulnerability-surge-2026/)
+mide 62% de aplicaciones con al menos una vulnerabilidad seria, y
+[Georgia Tech](https://news.research.gatech.edu/2026/04/13/bad-vibes-ai-generated-code-vulnerable-researchers-warn)
+encontró 86% de fallas de XSS en lo generado. Doce hallazgos, ordenados por lo
+que costaría que pasen.
+
+### Fase 1 — lo que no necesitaba que nadie decidiera
+
+* **El IDOR de los archivos** (`routers/files.py`). Un `worker` autenticado
+  podía listar y bajar **cualquier** adjunto por id: los contratos con las
+  cifras del negocio incluidos. Ahora `list_space_files` **filtra** en vez de
+  rechazar —así el panel del mercaderista sigue funcionando— y `download_file`
+  contesta **404, no 403**: un 403 confirma que el archivo existe.
+* **CVE-2024-53981** en `python-multipart` 0.0.9 → 0.0.20. Al parsear un
+  multipart recorría byte a byte lo que viniera antes del primer delimitador y
+  registraba cada uno; con `--workers 1` una sola petición tumba el servicio.
+* **La cadena del `xlsx`** y las cabeceras de seguridad (CSP, `nosniff`,
+  `frame-ancestors`, HSTS sólo bajo TLS) en `main.py`.
+
+### Fase 2 — las contraseñas
+
+Cuatro cosas, y las cuatro se probaron fallando contra el código anterior antes
+de escribir el arreglo (`backend/tests/test_claves.py`, 19 pruebas).
+
+**Estaban en texto plano.** `app_config` guardaba `admin_password` y
+`worker_password` tal cual, y se comparaban con `==` —que además tarda distinto
+según cuántos caracteres coincidan—. Un respaldo de la base las entregaba todas.
+Ahora se guarda el hash **Argon2id** bajo una clave nueva.
+
+> Se puede hacer **sin migración** porque `app_config` es clave/valor: una clave
+> nueva es una fila nueva. `create_all` crea tablas que faltan pero nunca agrega
+> columnas — la regla que sigue bloqueando el `tenant_id` de la fase 3.
+
+**Migra sola.** En producción esas contraseñas están en claro desde hace meses.
+Si el arreglo pidiera un paso manual, alguien se queda sin entrar el lunes:
+`verificar_clave` acepta el texto heredado, escribe el hash y borra la fila en
+claro **en el mismo movimiento**. Nadie hace nada, nadie queda afuera.
+
+*Ahí aparecieron dos bugs que habrían tumbado el despliegue entero,* y los dos
+son el mismo error de forma: una excepción que no era la que parecía.
+
+1. `secrets.compare_digest` con cadenas **exige ASCII** y lanza `TypeError` con
+   una tilde o una eñe. Una contraseña colombiana perfectamente normal
+   —`señora-galerías`— no daba "clave incorrecta" sino un 500. Se compara en
+   bytes.
+2. `InvalidHashError` de Argon2 **no hereda de `Argon2Error`** sino de
+   `ValueError`, así que el `except` obvio no lo atrapa. Un hash ilegible en la
+   base —un respaldo a medias, alguien editando `app_config` a mano— convertía
+   el login en un 500 para todo el mundo. Ahora es un 401 del rol afectado, con
+   una línea de error en el log, y el otro rol sigue entrando.
+
+**Las claves por defecto salieron del código.** `admin123` y `galerias` estaban
+publicadas en el repositorio y eran las mismas para cada supermercado que
+instalara esto. Una instalación nueva las toma de `ADMIN_PASSWORD` /
+`WORKER_PASSWORD`, y si no están genera una al azar y la escribe en el log del
+arranque. **La base manda:** si el rol ya tiene contraseña no se pisa aunque la
+variable de entorno diga otra cosa, o cada reinicio revertiría lo que se cambió
+desde la pantalla de configuración.
+
+**El freno de intentos vivía en memoria** (`defaultdict` de `deque`). Se borraba
+en cada despliegue, y Render reinicia el servicio gratuito cuando se queda
+quieto: bastaba con esperar para tener los diez intentos otra vez. Ahora es una
+tabla, `login_attempts`, y anota **sólo los fallos** —contar los aciertos
+castigaba a quien entra y sale varias veces en la mañana, que es lo que hace un
+administrador—. Un ingreso correcto borra la cuenta de esa IP.
+
+**Y la IP tenía que ser la de verdad.** Detrás del proxy de Render todas las
+peticiones llegan desde la misma dirección interna: el freno era decorativo. La
+lista de `X-Forwarded-For` se lee **de derecha a izquierda** buscando la primera
+pública, porque el principio de esa cabecera lo escribe el cliente y el final lo
+escribe el proxy — leyéndola al derecho, cambiar la primera IP en cada intento
+daba intentos infinitos. Si la conexión llega directa (el peer ya es público, no
+hay proxy adelante) la cabecera se ignora entera.
+
+**Cambiar la contraseña ahora echa a la gente.** Antes no: los JWT ya emitidos
+valían hasta doce horas más, justo lo contrario de para qué se cambia una
+contraseña. Cada rol lleva un contador de época en `app_config` y el token
+guarda con cuál nació. Es **por rol** a propósito, y con una consecuencia de
+pantalla: cuando el admin cambia su propia clave se cierra también su sesión, así
+que la respuesta trae un token nuevo para no expulsarlo de la pantalla en la que
+acaba de guardar.
+
+**Los parámetros de Argon2 son los mínimos de OWASP** (19 MiB, dos pasadas, un
+hilo), no los de la librería (64 MiB, cuatro hilos). El servicio corre en una
+instancia de 512 MB: con los de fábrica, un puñado de intentos simultáneos
+—exactamente lo que hace un ataque de fuerza bruta— se come la memoria de la
+máquina. Defenderse de que adivinen la contraseña no puede costar el servidor.
+
+### Fase 3 — lo que sí se podía hacer sin decidir nada
+
+De la fase 3 quedaban dos hallazgos que no dependen de la decisión grande. Los
+dos están hechos.
+
+**El enlace de montaje salió de la barra de direcciones.** Viajaba como
+`?t=<jwt>` y se quedaba ahí a propósito, para sobrevivir a una recarga; el costo
+era que la credencial quedaba en el historial del navegador y en cualquier
+captura de pantalla de la mercaderista. Ahora pasa a `sessionStorage` —que muere
+al cerrar la pestaña, a diferencia del `localStorage` donde vive la sesión del
+tablero— y la URL queda en `?montaje=1`.
+
+Esa marca no es cosmética: sin ella, recargar y escribir la dirección pelada
+serían indistinguibles, y el admin que abre el enlace en su computador quedaría
+encerrado en la pantalla de montaje. Probado en navegador, con contrato real y
+viewport de celular: llega, recarga, y `/` a secas vuelve al login.
+
+*Lo que NO se tocó:* los 30 días de vigencia. Es una decisión de operación —el
+correo sale al firmar y la exhibición se arma en los días siguientes—, no un
+descuido. Y el `Referrer-Policy` de la fase 1 ya evita que el token se filtre por
+la cabecera `referer`.
+
+**La bitácora.** No había ninguna: si faltaba un contrato o cambiaba un valor,
+no había forma de saber quién ni cuándo. Tabla nueva `audit_log` —otra vez, sin
+migración—, con lectura sólo para el administrador en Configuración.
+
+Se anota **lo que cambia algo o abre una puerta**: contratos creados y
+cancelados, documentos subidos, bajados y borrados, sedes eliminadas, cambios de
+contraseña, ingresos y ingresos fallidos. Los listados y las consultas no —si
+cada pantalla dejara línea, lo que importa se pierde en el ruido—, y de los
+archivos sólo se anota la bajada de **documentos**: la foto del montaje se abre
+decenas de veces por día.
+
+Tres decisiones que valen más de lo que parecen:
+
+* **`anotar` no hace commit.** Viaja en la transacción del endpoint, así que la
+  línea y el cambio caen juntos o no cae ninguno. Una bitácora que dice que se
+  canceló un contrato que sigue vivo manda a buscar donde no hay nada.
+* **Nunca entra un secreto.** Ni la contraseña que se intentó —media bitácora
+  serían claves casi correctas de gente que se equivocó una letra—, ni el valor
+  del contrato, ni el contenido del archivo. La bitácora la lee más gente que la
+  base.
+* **El título se arma al leer,** desde un código estable (`contrato.alta`). Si se
+  guardara la frase, cambiar la redacción reescribiría el pasado.
+
+Se purga a los 365 días, en el ciclo de mantenimiento que ya corría cada 12
+horas: en una base de plan gratuito no puede crecer sin techo, y guardar de más
+es su propio riesgo.
+
+*Un bug encontrado al probarlo en pantalla:* SQLite guarda la fecha **sin huso**,
+y el navegador lee eso como hora local. En Colombia son cinco horas: la bitácora
+decía "recién" para algo de la madrugada. La hora sale marcada como UTC desde el
+endpoint, que es donde se sabe qué es lo guardado.
+
+### Lo que sigue pendiente, y por qué
+
+* **Aislamiento entre supermercados (fase 3).** Es el hallazgo crítico que
+  queda. `tenant_id` en las tablas que ya existen **necesita migraciones**, y la
+  regla de este repo es que no hay. Hay que elegir: adoptar Alembic (base
+  compartida con RLS) o una base por cliente. Es una decisión de producto, no
+  técnica.
+* **Cuentas de usuario.** La tabla `users` sí se puede crear sin migración, pero
+  pasar de dos contraseñas compartidas a cuentas nominales es un cambio
+  operativo para siete tiendas vivas: se coordina, no se despliega de sorpresa.
+* **Pagos (fase 4).** Falta elegir proveedor —Stripe o MercadoPago para
+  Colombia— y las llaves, que no viajan por chat: van en el panel de Render.
+* **Dos avisos `moderate` de `react-router`** (open redirect). El arreglo es un
+  salto de versión mayor; se dejó afuera a propósito de la fase 1.
+
+Con eso, de los doce hallazgos quedan **dos**, y los dos son los que necesitan
+una decisión: el aislamiento entre supermercados y las cuentas nominales. El
+resto —el DoS, el IDOR, las contraseñas, las claves por defecto, el freno de
+intentos, la revocación de sesiones, las cabeceras, el enlace en la URL y la
+bitácora— está cerrado.
+
+### Lo que hay que hacer a mano después de desplegar
+
+**Cambiar la contraseña de administrador desde la pantalla de configuración.**
+`admin123` está en el historial de git. La migración la mantiene funcionando
+—por eso nadie queda afuera— pero mantenerla es dejar la puerta abierta.
 
 ---
 

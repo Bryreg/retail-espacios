@@ -9,3 +9,8 @@ pydantic==2.8.2
 python-multipart==0.0.20
 psycopg2-binary==2.9.9
 PyJWT==2.9.0
+# Las contraseñas se guardaban en texto plano en `app_config`: un volcado de
+# la base las entregaba todas. Argon2id es el algoritmo que recomienda OWASP
+# para contraseñas —costo en memoria, no sólo en CPU, que es lo que arruina
+# el ataque con GPU.
+argon2-cffi==23.1.0

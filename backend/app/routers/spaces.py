@@ -1,6 +1,6 @@
 from datetime import date
 from urllib.parse import quote
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.auth import MONTAJE_TTL_DAYS, create_mount_token, require_admin, require_auth
 from app.database import get_db
 from app.models.models import Space, SpaceFile, SpaceLease, Supplier, SpaceStatus
+from app.services.bitacora import anotar
 from app.schemas.spaces import (
     SpaceOut, SpaceCreate, SpaceStatusUpdate, LeaseCreate, LeaseOut, SpaceMapItem,
     SpaceFindOrCreate, AvisosContrato,
@@ -247,21 +248,40 @@ def get_space_by_code(code: str, role: str = Depends(require_auth), db: Session 
     return _space_out_for_role(space, role)
 
 
-@router.patch("/{space_id}/status", response_model=SpaceOut, dependencies=[Depends(require_admin)])
-def update_status(space_id: int, payload: SpaceStatusUpdate, db: Session = Depends(get_db)):
+@router.patch("/{space_id}/status", response_model=SpaceOut)
+def update_status(
+    space_id: int,
+    payload: SpaceStatusUpdate,
+    request: Request,
+    rol: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     space = db.query(Space).filter(Space.id == space_id).first()
     if not space:
         raise HTTPException(status_code=404, detail="Espacio no encontrado")
+    antes = space.status.value if space.status else "—"
     space.status = payload.status
     if payload.notes is not None:
         space.notes = payload.notes
+    anotar(
+        db, request, rol, "espacio.estado",
+        entidad="espacio", entidad_id=space.code,
+        detalle=f"{antes} → {payload.status.value}",
+    )
     db.commit()
     db.refresh(space)
     return space
 
 
-@router.post("/{space_id}/leases", response_model=LeaseOut, status_code=201, dependencies=[Depends(require_admin)])
-def create_lease(space_id: int, payload: LeaseCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+@router.post("/{space_id}/leases", response_model=LeaseOut, status_code=201)
+def create_lease(
+    space_id: int,
+    payload: LeaseCreate,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    rol: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     # Date sanity check. Equal dates are VALID: a one-day rental is a real
     # product here — Black Friday is a single Friday — and rejecting it made
     # the shortest, best-paid periods impossible to record. Everything else in
@@ -319,6 +339,14 @@ def create_lease(space_id: int, payload: LeaseCreate, background_tasks: Backgrou
     # which hid four sellable months behind a status that was simply wrong.
     if payload.start_date <= date.today():
         space.status = SpaceStatus.occupied
+    # `flush` asigna el id sin cerrar la transacción, así que la bitácora puede
+    # nombrar el contrato y seguir viajando con el mismo commit.
+    db.flush()
+    anotar(
+        db, request, rol, "contrato.alta",
+        entidad="contrato", entidad_id=lease.id,
+        detalle=f"{space.code} · {supplier.name} · {payload.start_date}→{payload.end_date}",
+    )
     db.commit()
     db.refresh(lease)
 
@@ -427,8 +455,14 @@ def create_lease(space_id: int, payload: LeaseCreate, background_tasks: Backgrou
     return lease
 
 
-@router.delete("/{space_id}/leases/{lease_id}", status_code=204, dependencies=[Depends(require_admin)])
-def cancel_lease(space_id: int, lease_id: int, db: Session = Depends(get_db)):
+@router.delete("/{space_id}/leases/{lease_id}", status_code=204)
+def cancel_lease(
+    space_id: int,
+    lease_id: int,
+    request: Request,
+    rol: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     lease = db.query(SpaceLease).filter(
         SpaceLease.id == lease_id,
         SpaceLease.space_id == space_id,
@@ -454,4 +488,9 @@ def cancel_lease(space_id: int, lease_id: int, db: Session = Depends(get_db)):
     if space and remaining == 0:
         space.status = SpaceStatus.free
 
+    anotar(
+        db, request, rol, "contrato.baja",
+        entidad="contrato", entidad_id=lease.id,
+        detalle=f"{space.code if space else space_id} · {lease.marca or '—'}",
+    )
     db.commit()
