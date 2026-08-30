@@ -8,7 +8,6 @@ escribió para una sola tienda y ahora se vende a varias—:
   cada despliegue;
 * cambiar una contraseña cierra las sesiones abiertas de ese rol.
 """
-import ipaddress
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -26,6 +25,8 @@ from app.auth import (
 )
 from app.database import get_db
 from app.models.models import LoginAttempt
+from app.red import ip_del_cliente
+from app.services.bitacora import anotar
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -35,65 +36,6 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_MAX_ATTEMPTS = 10
 LARGO_MINIMO = 8
-
-
-def _parsear(bruto: str):
-    """Una IP de la cadena `X-Forwarded-For`, con o sin puerto, o None."""
-    bruto = bruto.strip().strip('"')
-    try:
-        return ipaddress.ip_address(bruto)
-    except ValueError:
-        pass
-    # "1.2.3.4:5678" y "[::1]:5678"
-    if bruto.startswith("[") and "]" in bruto:
-        bruto = bruto[1:bruto.index("]")]
-    elif bruto.count(":") == 1:
-        bruto = bruto.rsplit(":", 1)[0]
-    try:
-        return ipaddress.ip_address(bruto)
-    except ValueError:
-        return None
-
-
-def _es_interna(ip) -> bool:
-    return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
-
-
-def ip_del_cliente(request: Request) -> str:
-    """La IP real de quien pide, detrás del proxy de Render.
-
-    Sin esto el freno de intentos era decorativo en producción: todas las
-    peticiones llegan desde la misma dirección interna del balanceador, así que
-    o se contaban todas juntas —y el primer atacante dejaba afuera a los
-    supermercados— o se contaba una sola IP para todo el mundo.
-
-    `X-Forwarded-For` es una lista y **el cliente puede inventar el principio**:
-    manda `X-Forwarded-For: 1.2.3.4` y el proxy le agrega atrás la dirección
-    desde la que realmente se conectó. Por eso se lee de derecha a izquierda y
-    se toma la primera pública: las de la izquierda son las que se pueden
-    falsificar, las internas son saltos del propio proxy.
-
-    Y si la conexión llega directa —el peer ya es una dirección pública, no hay
-    proxy adelante— la cabecera se ignora entera, porque ahí sí sería puro
-    invento del cliente.
-    """
-    peer = _parsear(request.client.host) if request.client else None
-    if peer is not None and not _es_interna(peer):
-        return str(peer)
-
-    cadena = request.headers.get("x-forwarded-for", "")
-    candidatos = [p for p in (t.strip() for t in cadena.split(",")) if p]
-    for bruto in reversed(candidatos):
-        ip = _parsear(bruto)
-        if ip is not None and not _es_interna(ip):
-            return str(ip)
-
-    # Todo interno: red privada o desarrollo. Sirve igual para separar máquinas.
-    for bruto in reversed(candidatos):
-        ip = _parsear(bruto)
-        if ip is not None:
-            return str(ip)
-    return str(peer) if peer is not None else "desconocida"
 
 
 def _desde(segundos: int) -> datetime:
@@ -166,16 +108,24 @@ def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)):
     elif verificar_clave(db, "worker", payload.password):
         role = "worker"
     else:
+        anotar(db, request, "anónimo", "login.fallo")
+        # `anotar_fallo` cierra la transacción, así que la línea de la bitácora
+        # viaja con ella. La contraseña que se intentó NO se guarda: media
+        # bitácora se llenaría de contraseñas casi correctas de gente que se
+        # equivocó una letra.
         anotar_fallo(db, ip)
         raise HTTPException(status_code=401, detail="Contraseña incorrecta")
 
     borrar_fallos(db, ip)
+    anotar(db, request, role, "login.ok")
+    db.commit()
     return LoginOut(token=create_token(role, epoca_de(db, role)), role=role)
 
 
 @router.put("/passwords", response_model=PasswordsOut)
 def update_passwords(
     payload: PasswordsUpdate,
+    request: Request,
     rol: str = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -207,6 +157,7 @@ def update_passwords(
         # tokens que ya andan dando vueltas siguieran valiendo doce horas más,
         # no serviría para eso.
         invalidar_sesiones(db, quien)
+        anotar(db, request, rol, "clave.cambio", entidad="rol", entidad_id=quien)
     db.commit()
 
     nuevo = create_token(rol, epoca_de(db, rol)) if rol in nuevas else None

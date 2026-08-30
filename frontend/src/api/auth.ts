@@ -82,3 +82,28 @@ export const previewRecipients = (sede: string): Promise<RecipientPreview> =>
   client
     .get<RecipientPreview>("/notifications/recipients", { params: { sede } })
     .then((r) => r.data);
+
+// ─── Bitácora ────────────────────────────────────────────────────────────────
+
+/** Una línea de "quién hizo qué".
+ *
+ *  El `titulo` viene armado del servidor a partir del código: si la frase se
+ *  guardara al escribir, cambiar la redacción reescribiría el pasado. */
+export interface LineaBitacora {
+  id: number;
+  at: string;
+  rol: string;
+  ip: string;
+  accion: string;
+  titulo: string;
+  entidad?: string | null;
+  entidad_id?: string | null;
+  detalle?: string | null;
+}
+
+export const getBitacora = (params?: { limite?: number; accion?: string }): Promise<LineaBitacora[]> =>
+  client.get<LineaBitacora[]>("/bitacora/", { params }).then((r) => r.data);
+
+/** Código → nombre en español, para el filtro. */
+export const getAccionesBitacora = (): Promise<Record<string, string>> =>
+  client.get<Record<string, string>>("/bitacora/acciones").then((r) => r.data);

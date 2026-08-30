@@ -2,13 +2,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, defer
 
 from app.auth import require_admin, require_auth, require_auth_or_query_token
 from app.database import get_db
 from app.models.models import Space, SpaceFile
+from app.services.bitacora import anotar
 
 router = APIRouter(tags=["files"])
 
@@ -73,11 +74,12 @@ def _puede_ver(rol: str, content_type: str | None) -> bool:
     "/spaces/{space_id}/files",
     response_model=SpaceFileOut,
     status_code=201,
-    dependencies=[Depends(require_admin)],
 )
 async def upload_space_file(
     space_id: int,
+    request: Request,
     file: UploadFile = File(...),
+    rol: str = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     space = db.query(Space).filter(Space.id == space_id).first()
@@ -107,6 +109,12 @@ async def upload_space_file(
         data=data,
     )
     db.add(row)
+    db.flush()
+    anotar(
+        db, request, rol, "archivo.alta",
+        entidad="archivo", entidad_id=row.id,
+        detalle=f"{space.code} · {row.filename}",
+    )
     db.commit()
     db.refresh(row)
     return row
@@ -137,6 +145,7 @@ def list_space_files(
 @router.get("/files/{file_id}")
 def download_file(
     file_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     rol: str = Depends(require_auth_or_query_token),
 ):
@@ -148,6 +157,16 @@ def download_file(
     # numerando se puede levantar el inventario de contratos sin bajar ninguno.
     if not _puede_ver(rol, row.content_type):
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    # Se anota la bajada del DOCUMENTO, no la de las imágenes: la foto del
+    # montaje y las artes se abren decenas de veces por día y ahogarían la
+    # bitácora. Lo que hay que poder contestar es quién se llevó un contrato.
+    if _es_documento(row.content_type):
+        anotar(
+            db, request, rol, "archivo.descarga",
+            entidad="archivo", entidad_id=row.id, detalle=row.filename,
+        )
+        db.commit()
 
     # Content-Disposition is latin-1 only; degrade non-encodable characters
     safe_name = (row.filename or "archivo").replace('"', "'")
@@ -163,10 +182,19 @@ def download_file(
     )
 
 
-@router.delete("/files/{file_id}", status_code=204, dependencies=[Depends(require_admin)])
-def delete_file(file_id: int, db: Session = Depends(get_db)):
+@router.delete("/files/{file_id}", status_code=204)
+def delete_file(
+    file_id: int,
+    request: Request,
+    rol: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     row = db.query(SpaceFile).options(defer(SpaceFile.data)).filter(SpaceFile.id == file_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    anotar(
+        db, request, rol, "archivo.baja",
+        entidad="archivo", entidad_id=row.id, detalle=row.filename,
+    )
     db.delete(row)
     db.commit()

@@ -1893,6 +1893,60 @@ instancia de 512 MB: con los de fábrica, un puñado de intentos simultáneos
 —exactamente lo que hace un ataque de fuerza bruta— se come la memoria de la
 máquina. Defenderse de que adivinen la contraseña no puede costar el servidor.
 
+### Fase 3 — lo que sí se podía hacer sin decidir nada
+
+De la fase 3 quedaban dos hallazgos que no dependen de la decisión grande. Los
+dos están hechos.
+
+**El enlace de montaje salió de la barra de direcciones.** Viajaba como
+`?t=<jwt>` y se quedaba ahí a propósito, para sobrevivir a una recarga; el costo
+era que la credencial quedaba en el historial del navegador y en cualquier
+captura de pantalla de la mercaderista. Ahora pasa a `sessionStorage` —que muere
+al cerrar la pestaña, a diferencia del `localStorage` donde vive la sesión del
+tablero— y la URL queda en `?montaje=1`.
+
+Esa marca no es cosmética: sin ella, recargar y escribir la dirección pelada
+serían indistinguibles, y el admin que abre el enlace en su computador quedaría
+encerrado en la pantalla de montaje. Probado en navegador, con contrato real y
+viewport de celular: llega, recarga, y `/` a secas vuelve al login.
+
+*Lo que NO se tocó:* los 30 días de vigencia. Es una decisión de operación —el
+correo sale al firmar y la exhibición se arma en los días siguientes—, no un
+descuido. Y el `Referrer-Policy` de la fase 1 ya evita que el token se filtre por
+la cabecera `referer`.
+
+**La bitácora.** No había ninguna: si faltaba un contrato o cambiaba un valor,
+no había forma de saber quién ni cuándo. Tabla nueva `audit_log` —otra vez, sin
+migración—, con lectura sólo para el administrador en Configuración.
+
+Se anota **lo que cambia algo o abre una puerta**: contratos creados y
+cancelados, documentos subidos, bajados y borrados, sedes eliminadas, cambios de
+contraseña, ingresos y ingresos fallidos. Los listados y las consultas no —si
+cada pantalla dejara línea, lo que importa se pierde en el ruido—, y de los
+archivos sólo se anota la bajada de **documentos**: la foto del montaje se abre
+decenas de veces por día.
+
+Tres decisiones que valen más de lo que parecen:
+
+* **`anotar` no hace commit.** Viaja en la transacción del endpoint, así que la
+  línea y el cambio caen juntos o no cae ninguno. Una bitácora que dice que se
+  canceló un contrato que sigue vivo manda a buscar donde no hay nada.
+* **Nunca entra un secreto.** Ni la contraseña que se intentó —media bitácora
+  serían claves casi correctas de gente que se equivocó una letra—, ni el valor
+  del contrato, ni el contenido del archivo. La bitácora la lee más gente que la
+  base.
+* **El título se arma al leer,** desde un código estable (`contrato.alta`). Si se
+  guardara la frase, cambiar la redacción reescribiría el pasado.
+
+Se purga a los 365 días, en el ciclo de mantenimiento que ya corría cada 12
+horas: en una base de plan gratuito no puede crecer sin techo, y guardar de más
+es su propio riesgo.
+
+*Un bug encontrado al probarlo en pantalla:* SQLite guarda la fecha **sin huso**,
+y el navegador lee eso como hora local. En Colombia son cinco horas: la bitácora
+decía "recién" para algo de la madrugada. La hora sale marcada como UTC desde el
+endpoint, que es donde se sabe qué es lo guardado.
+
 ### Lo que sigue pendiente, y por qué
 
 * **Aislamiento entre supermercados (fase 3).** Es el hallazgo crítico que
@@ -1907,6 +1961,12 @@ máquina. Defenderse de que adivinen la contraseña no puede costar el servidor.
   Colombia— y las llaves, que no viajan por chat: van en el panel de Render.
 * **Dos avisos `moderate` de `react-router`** (open redirect). El arreglo es un
   salto de versión mayor; se dejó afuera a propósito de la fase 1.
+
+Con eso, de los doce hallazgos quedan **dos**, y los dos son los que necesitan
+una decisión: el aislamiento entre supermercados y las cuentas nominales. El
+resto —el DoS, el IDOR, las contraseñas, las claves por defecto, el freno de
+intentos, la revocación de sesiones, las cabeceras, el enlace en la URL y la
+bitácora— está cerrado.
 
 ### Lo que hay que hacer a mano después de desplegar
 

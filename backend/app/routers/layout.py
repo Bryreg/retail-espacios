@@ -2,11 +2,12 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 from app.auth import get_config, require_admin, require_auth, set_config
 from app.database import get_db
 from app.models.models import LayoutSnapshot
+from app.services.bitacora import anotar
 from app.services.sede_archive import archive_sede_spaces, count_commercial_rows
 from app.schemas.layout import (
     LayoutIn,
@@ -486,8 +487,13 @@ def delete_impact(sede: str, db: Session = Depends(get_db)):
     return count_commercial_rows(db, sede)
 
 
-@router.delete("/{sede}", status_code=204, dependencies=[Depends(require_admin)])
-def delete_layout(sede: str, db: Session = Depends(get_db)):
+@router.delete("/{sede}", status_code=204)
+def delete_layout(
+    sede: str,
+    request: Request,
+    rol: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     """Drop a sede's snapshot entirely.
 
     Without this, removing a sede only took it out of the shared list while its
@@ -519,6 +525,15 @@ def delete_layout(sede: str, db: Session = Depends(get_db)):
         set_config(db, SEDES_KEY, json.dumps(remaining))
         set_config(db, SETTINGS_UPDATED_KEY, datetime.now(timezone.utc).isoformat())
 
+    # Es el borrado más grande que ofrece el sistema —se lleva el plano, y con
+    # él la sede de la lista— así que va a la bitácora con el estropicio contado.
+    anotar(
+        db, request, rol, "sede.baja", entidad="sede", entidad_id=sede,
+        detalle=(
+            f"{archived['spaces']} espacios archivados · "
+            f"{archived['leases_closed']} contratos cerrados"
+        ),
+    )
     db.commit()
     if archived["spaces"] or archived["mounts_archived"]:
         logger.info(

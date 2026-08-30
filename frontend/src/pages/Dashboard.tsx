@@ -13,7 +13,10 @@ import {
   sendTestNotification,
   getContacts,
   saveContacts,
+  getBitacora,
+  getAccionesBitacora,
   type ContactBook,
+  type LineaBitacora,
 } from "../api/auth";
 import { describeError } from "../api/client";
 import { useFixtureStore } from "../store/fixtureStore";
@@ -265,6 +268,162 @@ function ContactsSection({ sedes }: { sedes: string[] }) {
   );
 }
 
+// ─── Bitácora ─────────────────────────────────────────────────────────────────
+
+/** Cuándo pasó, en la unidad que uno pregunta.
+ *
+ *  "Hace 3 min" contesta lo que importa cuando algo acaba de pasar; la fecha
+ *  entera contesta lo que importa cuando el proveedor reclama por algo de hace
+ *  dos meses. Las dos están: una en la línea, la otra al pasar el mouse. */
+function haceCuanto(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return "—";
+  const seg = Math.max(0, Math.round((Date.now() - t) / 1000));
+  if (seg < 60) return "recién";
+  const min = Math.round(seg / 60);
+  if (min < 60) return `hace ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `hace ${h} h`;
+  const d = Math.round(h / 24);
+  if (d < 30) return `hace ${d} d`;
+  return new Date(t).toLocaleDateString("es-CO", { day: "2-digit", month: "short" });
+}
+
+const exacto = (iso: string) =>
+  new Date(iso).toLocaleString("es-CO", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+
+/** El color dice qué clase de línea es, sin leerla.
+ *
+ *  Un borrado y un ingreso no se miran igual: uno se busca cuando falta algo,
+ *  el otro es fondo. Sin esta marca, cincuenta líneas grises obligan a leerlas
+ *  todas para encontrar la que importa. */
+function tonoDe(accion: string): string {
+  if (accion.endsWith(".baja")) return "var(--danger)";
+  if (accion === "login.fallo") return "var(--warning)";
+  if (accion === "clave.cambio" || accion === "archivo.descarga") return "var(--accent)";
+  return "var(--ink-4)";
+}
+
+function BitacoraSection() {
+  const [lineas, setLineas] = useState<LineaBitacora[]>([]);
+  const [catalogo, setCatalogo] = useState<Record<string, string>>({});
+  const [filtro, setFiltro] = useState("");
+  const [cargando, setCargando] = useState(true);
+  const [msg, setMsg] = useState<Feedback>(null);
+
+  const cargar = (accion: string) => {
+    setCargando(true);
+    setMsg(null);
+    getBitacora({ limite: 60, accion: accion || undefined })
+      .then(setLineas)
+      .catch((err) => setMsg({ ok: false, text: describeError(err, "No se pudo leer la bitácora.") }))
+      .finally(() => setCargando(false));
+  };
+
+  useEffect(() => {
+    getAccionesBitacora().then(setCatalogo).catch(() => setCatalogo({}));
+  }, []);
+
+  useEffect(() => { cargar(filtro); }, [filtro]);
+
+  return (
+    <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+        <div style={{ ...sectionLabelStyle, flex: 1 }}>Bitácora</div>
+        <button
+          onClick={() => cargar(filtro)}
+          title="Volver a leer"
+          style={{
+            background: "transparent", border: "none", padding: 0,
+            color: "var(--accent)", cursor: "pointer",
+            fontSize: 11, fontWeight: 600, fontFamily: "inherit",
+          }}
+        >
+          Actualizar
+        </button>
+      </div>
+
+      <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginBottom: 10, lineHeight: 1.5 }}>
+        Contratos, documentos, borrados e ingresos. Se guarda un año.
+      </div>
+
+      <select
+        value={filtro}
+        onChange={(e) => setFiltro(e.target.value)}
+        style={{ ...inputStyle, marginBottom: 10 }}
+      >
+        <option value="">Todo</option>
+        {Object.entries(catalogo).map(([codigo, nombre]) => (
+          <option key={codigo} value={codigo}>{nombre}</option>
+        ))}
+      </select>
+
+      {cargando ? (
+        <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Leyendo…</div>
+      ) : lineas.length === 0 ? (
+        <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
+          {filtro ? "Nada de eso todavía." : "Todavía no hay nada anotado."}
+        </div>
+      ) : (
+        <div
+          style={{
+            maxHeight: 280, overflowY: "auto",
+            border: "1px solid var(--line)", borderRadius: "var(--r-md)",
+            background: "var(--surface-2)",
+          }}
+        >
+          {lineas.map((l) => (
+            <div
+              key={l.id}
+              style={{
+                display: "flex", alignItems: "flex-start", gap: 8,
+                padding: "8px 10px",
+                borderBottom: "1px solid var(--line-soft)",
+                borderLeft: `2px solid ${tonoDe(l.accion)}`,
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-1)" }}>
+                  {l.titulo}
+                </div>
+                {l.detalle && (
+                  <div
+                    style={{
+                      fontSize: 11.5, color: "var(--ink-2)", marginTop: 1,
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}
+                    title={l.detalle}
+                  >
+                    {l.detalle}
+                  </div>
+                )}
+                <div
+                  style={{
+                    fontSize: 10.5, color: "var(--ink-4)", marginTop: 2,
+                    fontFamily: "var(--font-mono)",
+                  }}
+                >
+                  {l.rol} · {l.ip}
+                </div>
+              </div>
+              <div
+                style={{ fontSize: 10.5, color: "var(--ink-3)", whiteSpace: "nowrap", paddingTop: 1 }}
+                title={exacto(l.at)}
+              >
+                {haceCuanto(l.at)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <FeedbackNote msg={msg} />
+    </div>
+  );
+}
+
 function SettingsModal({ onClose }: { onClose: () => void }) {
   // Passwords
   const [adminPw, setAdminPw] = useState("");
@@ -489,6 +648,8 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <ContactsSection sedes={sedes} />
+
+        <BitacoraSection />
       </div>
     </div>
   );
