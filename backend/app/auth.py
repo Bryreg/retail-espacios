@@ -20,13 +20,18 @@ endpoint que alguien agregue mañana sin acordarse de él.
 
 Los tokens son JWT HS256 firmados con la variable JWT_SECRET.
 """
+import logging
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import jwt
+from argon2 import PasswordHasher
+from argon2.exceptions import Argon2Error, InvalidHashError, VerifyMismatchError
 from fastapi import Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.database import get_db
 from app.models.models import AppConfig
 
 JWT_SECRET = os.getenv("JWT_SECRET")
@@ -45,11 +50,192 @@ TOKEN_TTL_HOURS = 12
 MONTAJE_TTL_DAYS = 30
 
 DEFAULT_CONFIG = {
-    "admin_password": "admin123",
-    "worker_password": "galerias",
     "notify_emails": "",
     "reminder_days": "30,15,7,1",
 }
+
+log = logging.getLogger("recabra.auth")
+
+# ─── Contraseñas ──────────────────────────────────────────────────────────────
+#
+# Se guardaban en texto plano en `app_config` y se comparaban con `==`. Un
+# volcado de la base —un respaldo, un empleado con acceso— las entregaba todas,
+# y la comparación tardaba distinto según cuántos caracteres coincidieran.
+#
+# Ahora se guarda el hash Argon2id bajo una clave NUEVA. `app_config` es
+# clave/valor, así que esto no necesita ninguna migración: es la razón por la
+# que se puede hacer hoy y no en la fase de las cuentas de usuario.
+
+# Los parámetros son los que OWASP da como mínimo recomendado para Argon2id:
+# 19 MiB de memoria, dos pasadas, un hilo. Los de la librería por defecto son 64
+# MiB y cuatro hilos, y eso acá se vuelve un problema propio: el servicio corre
+# en una instancia de 512 MB, así que un puñado de intentos simultáneos —que es
+# justo lo que hace un ataque de fuerza bruta— se comería la memoria de la
+# máquina. Defenderse de adivinar la contraseña no puede costar el servidor.
+_ph = PasswordHasher(time_cost=2, memory_cost=19 * 1024, parallelism=1)
+
+# rol -> (clave del hash, clave heredada en texto plano)
+CLAVES: dict[str, tuple[str, str]] = {
+    "admin": ("admin_password_hash", "admin_password"),
+    "worker": ("worker_password_hash", "worker_password"),
+}
+
+# Un hash real contra el que verificar cuando NO hay contraseña configurada, para
+# que fallar tarde lo mismo que acertar. Sin esto, un 401 instantáneo delata que
+# ese rol no existe todavía.
+#
+# Se calcula la primera vez que hace falta, no al importar: es un hash entero de
+# costo, y el arranque no tiene por qué pagarlo para algo que sólo se usa cuando
+# alguien se equivoca contra un rol sin contraseña.
+_señuelo: str | None = None
+
+
+def _hash_señuelo() -> str:
+    global _señuelo
+    if _señuelo is None:
+        _señuelo = _ph.hash("señuelo-de-tiempo-constante")
+    return _señuelo
+
+
+def hashear(clave: str) -> str:
+    return _ph.hash(clave)
+
+
+def guardar_clave(db: Session, rol: str, clave: str) -> None:
+    """Guarda el hash y borra el texto plano heredado si quedaba."""
+    k_hash, k_plano = CLAVES[rol]
+    set_config(db, k_hash, hashear(clave))
+    fila = db.query(AppConfig).filter(AppConfig.key == k_plano).first()
+    if fila is not None:
+        db.delete(fila)
+
+
+def verificar_clave(db: Session, rol: str, intento: str) -> bool:
+    """¿Es `intento` la contraseña de `rol`?
+
+    Migra sola: si todavía está el texto plano heredado y coincide, escribe el
+    hash y borra el texto en el mismo movimiento. Nadie queda afuera y nadie
+    tiene que hacer nada — la primera vez que alguien entra, su contraseña deja
+    de estar en claro.
+    """
+    k_hash, k_plano = CLAVES[rol]
+
+    guardado = get_config(db, k_hash)
+    if guardado:
+        try:
+            _ph.verify(guardado, intento)
+        except VerifyMismatchError:
+            return False
+        except (Argon2Error, InvalidHashError) as e:
+            # `InvalidHashError` NO hereda de `Argon2Error` sino de `ValueError`.
+            # Sin atraparlo, un hash ilegible —un respaldo a medias, una edición
+            # a mano de `app_config`— no da "contraseña incorrecta" sino un 500
+            # en el login: nadie entra y el error no dice por qué.
+            log.error(
+                "El hash de %s está ilegible (%s). Con ese rol no va a entrar nadie "
+                "hasta reponer la contraseña.", rol, type(e).__name__,
+            )
+            return False
+        # Argon2 sube sus parámetros con el tiempo; rehashear al entrar mantiene
+        # el costo al día sin pedirle nada a nadie.
+        if _ph.check_needs_rehash(guardado):
+            set_config(db, k_hash, hashear(intento))
+            db.commit()
+        return True
+
+    heredada = get_config(db, k_plano)
+    # En bytes a propósito: `compare_digest` con cadenas exige ASCII y revienta
+    # con TypeError si la contraseña heredada trae una tilde o una eñe. Eso, en
+    # producción, es un supermercado entero que no puede entrar.
+    if heredada is not None and secrets.compare_digest(
+        intento.encode("utf-8"), heredada.encode("utf-8")
+    ):
+        guardar_clave(db, rol, intento)
+        db.commit()
+        log.info("Contraseña de %s migrada a Argon2 y borrada del texto plano.", rol)
+        return True
+
+    # Sin contraseña configurada o intento errado: se gasta el mismo tiempo.
+    try:
+        _ph.verify(_hash_señuelo(), intento)
+    except Argon2Error:
+        pass
+    return False
+
+
+# ─── Épocas de sesión ─────────────────────────────────────────────────────────
+#
+# Cambiar la contraseña no echaba a nadie: los JWT ya emitidos seguían valiendo
+# hasta 12 horas. Justo lo contrario de lo que se busca al cambiarla, que suele
+# ser sacar a alguien.
+#
+# Cada rol lleva un contador en `app_config`. El token guarda con qué número
+# nació y deja de valer cuando el contador sube. Es por rol a propósito: que el
+# admin cambie la clave de los mercaderistas no tiene por qué cerrarle la sesión
+# a él.
+
+def clave_epoca(rol: str) -> str:
+    return f"token_epoch_{rol}"
+
+
+def epoca_de(db: Session, rol: str) -> int:
+    try:
+        return int(get_config(db, clave_epoca(rol), "0") or "0")
+    except ValueError:
+        return 0
+
+
+def invalidar_sesiones(db: Session, rol: str) -> int:
+    """Sube la época del rol: todo token emitido antes deja de valer."""
+    nueva = epoca_de(db, rol) + 1
+    set_config(db, clave_epoca(rol), str(nueva))
+    return nueva
+
+
+# ─── Arranque de las contraseñas ──────────────────────────────────────────────
+
+def _hay_clave(db: Session, rol: str) -> bool:
+    k_hash, k_plano = CLAVES[rol]
+    return get_config(db, k_hash) is not None or get_config(db, k_plano) is not None
+
+
+def bootstrap_claves(db: Session) -> None:
+    """Le pone contraseña a una instalación nueva, y sólo a una instalación nueva.
+
+    Antes venían escritas en el código —`admin123` y `galerias`—, y ese es el
+    problema entero: cada supermercado que instalara esto arrancaba con las
+    mismas dos claves, publicadas en el repositorio.
+
+    Ahora sale de ADMIN_PASSWORD / WORKER_PASSWORD, y si no están se genera una
+    al azar y se escribe en el log del arranque, que es el único lugar al que
+    llega quien acaba de desplegar.
+
+    **La base manda.** Si el rol ya tiene contraseña no se toca, aunque la
+    variable de entorno diga otra cosa: si no, cada reinicio pisaría lo que se
+    cambió desde la pantalla de configuración.
+    """
+    for rol in CLAVES:
+        if _hay_clave(db, rol):
+            if os.getenv(f"{rol.upper()}_PASSWORD"):
+                log.info(
+                    "%s_PASSWORD está definida pero %s ya tiene contraseña: se ignora. "
+                    "Se cambia desde la pantalla de configuración.",
+                    rol.upper(), rol,
+                )
+            continue
+        desde_entorno = os.getenv(f"{rol.upper()}_PASSWORD")
+        clave = desde_entorno or secrets.token_urlsafe(12)
+        guardar_clave(db, rol, clave)
+        db.commit()
+        if desde_entorno:
+            log.warning("Contraseña de %s tomada de %s_PASSWORD.", rol, rol.upper())
+        else:
+            log.warning(
+                "Instalación nueva: contraseña de %s generada al azar -> %s\n"
+                "Anotala y cambiala desde la pantalla de configuración. "
+                "No vuelve a aparecer.",
+                rol, clave,
+            )
 
 
 # ─── Config helpers ───────────────────────────────────────────────────────────
@@ -77,13 +263,17 @@ def ensure_default_config(db: Session) -> None:
             changed = True
     if changed:
         db.commit()
+    bootstrap_claves(db)
 
 
 # ─── Tokens ───────────────────────────────────────────────────────────────────
 
-def create_token(role: str) -> str:
+def create_token(role: str, epoca: int = 0) -> str:
     payload = {
         "role": role,
+        # Con qué número de época nació. Si el contador del rol sube después,
+        # este token deja de valer aunque todavía no se haya vencido.
+        "epoca": epoca,
         "exp": datetime.now(timezone.utc) + timedelta(hours=TOKEN_TTL_HOURS),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
@@ -99,18 +289,28 @@ def create_mount_token(space_code: str, days: int = MONTAJE_TTL_DAYS) -> str:
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
-def decode_token(token: str) -> str | None:
+def decode_token(token: str, db: Session | None = None) -> str | None:
     """Return the role encoded in the token, or None if invalid/expired.
 
     Sólo reconoce ``admin`` y ``worker``: un token de montaje NO pasa por acá,
     para que no entre por la puerta general. Se lee con ``decode_montaje``.
+
+    Con ``db`` también comprueba la época: un token emitido antes del último
+    cambio de contraseña de ese rol ya no vale. Sin ``db`` sólo se valida la
+    firma —es lo que hace el token de montaje, que no muere con la contraseña.
     """
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.PyJWTError:
         return None
     role = payload.get("role")
-    return role if role in ("admin", "worker") else None
+    if role not in ("admin", "worker"):
+        return None
+    if db is not None:
+        nacio = payload.get("epoca")
+        if not isinstance(nacio, int) or nacio < epoca_de(db, role):
+            return None
+    return role
 
 
 def decode_montaje(token: str) -> tuple[str, datetime | None] | None:
@@ -136,11 +336,14 @@ def decode_montaje(token: str) -> tuple[str, datetime | None] | None:
 
 # ─── FastAPI dependencies ─────────────────────────────────────────────────────
 
-def require_auth(authorization: str | None = Header(default=None)) -> str:
+def require_auth(
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> str:
     """Validate the ``Authorization: Bearer <jwt>`` header and return the role."""
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="No autenticado")
-    role = decode_token(authorization[7:].strip())
+    role = decode_token(authorization[7:].strip(), db)
     if role is None:
         raise HTTPException(status_code=401, detail="Token inválido o expirado")
     return role
@@ -182,6 +385,7 @@ def _leer_credencial(authorization: str | None, token: str | None) -> str | None
 def require_montaje(
     authorization: str | None = Header(default=None),
     token: str | None = Query(default=None),
+    db: Session = Depends(get_db),
 ) -> Quien:
     """Acepta admin, worker **o** un token de montaje.
 
@@ -195,7 +399,7 @@ def require_montaje(
     raw = _leer_credencial(authorization, token)
     if not raw:
         raise HTTPException(status_code=401, detail="No autenticado")
-    role = decode_token(raw)
+    role = decode_token(raw, db)
     if role is not None:
         return Quien(role)
     montaje = decode_montaje(raw)
@@ -208,6 +412,7 @@ def require_montaje(
 def require_auth_or_query_token(
     authorization: str | None = Header(default=None),
     token: str | None = Query(default=None),
+    db: Session = Depends(get_db),
 ) -> str:
     """Like ``require_auth`` but also accepts ``?token=<jwt>``.
 
@@ -221,7 +426,7 @@ def require_auth_or_query_token(
         raw = token
     if not raw:
         raise HTTPException(status_code=401, detail="No autenticado")
-    role = decode_token(raw)
+    role = decode_token(raw, db)
     if role is None:
         raise HTTPException(status_code=401, detail="Token inválido o expirado")
     return role

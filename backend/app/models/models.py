@@ -288,3 +288,26 @@ class SupplierAsset(Base):
     size = Column(Integer, nullable=False)
     data = Column(LargeBinary, nullable=False)
     uploaded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class LoginAttempt(Base):
+    """Un intento de entrar que falló, con la IP y la hora.
+
+    El freno a la fuerza bruta vivía en un diccionario en memoria. Se borraba
+    entero en cada despliegue y en cada reinicio —y Render reinicia el servicio
+    gratuito cuando se queda quieto—, así que bastaba con esperar, o con
+    provocar el reinicio, para volver a tener los diez intentos. En la base
+    sobrevive a los dos.
+
+    Sólo se anotan los FALLOS: contar también los aciertos castigaba a quien
+    entra y sale varias veces en la mañana, que es exactamente lo que hace un
+    administrador. Un acierto borra los fallos de esa IP.
+
+    ``create_all`` crea tablas que faltan pero nunca agrega columnas, así que
+    una tabla nueva es de lo que sí se puede hacer sin migración.
+    """
+    __tablename__ = "login_attempts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ip = Column(String, nullable=False, index=True)
+    at = Column(DateTime(timezone=True), nullable=False, index=True)

@@ -4,12 +4,21 @@ Every test gets a throwaway SQLite file. The environment has to be set before
 ``app.database`` is imported, because it builds the engine from ``DATABASE_URL``
 at module level — so nothing from ``app`` may be imported at the top of this
 file.
+
+Las contraseñas ya no vienen escritas en el código: una instalación nueva las
+toma de ADMIN_PASSWORD / WORKER_PASSWORD o se inventa uno al azar. Los tests
+son una instalación nueva en cada prueba, así que las fijan por el entorno —
+que es exactamente el camino que va a usar un supermercado al desplegar.
 """
 
 import os
 import tempfile
 
 import pytest
+
+# Las de siempre, para no tocar los tests que ya las usan escritas.
+CLAVE_ADMIN = "admin123"
+CLAVE_WORKER = "galerias"
 
 
 @pytest.fixture()
@@ -19,6 +28,8 @@ def client():
     os.environ["DATABASE_URL"] = f"sqlite:///{path}"
     os.environ["JWT_SECRET"] = "test-secret"
     os.environ["ENV"] = "test"
+    os.environ["ADMIN_PASSWORD"] = CLAVE_ADMIN
+    os.environ["WORKER_PASSWORD"] = CLAVE_WORKER
 
     # Imported here, and purged afterwards, so each test builds a fresh engine
     # bound to its own file instead of sharing the first test's database.
@@ -44,10 +55,10 @@ def _token(client, password: str) -> str:
 @pytest.fixture()
 def admin(client):
     """Authorization header for the default admin."""
-    return {"Authorization": f"Bearer {_token(client, 'admin123')}"}
+    return {"Authorization": f"Bearer {_token(client, CLAVE_ADMIN)}"}
 
 
 @pytest.fixture()
 def worker(client):
     """Authorization header for the default worker."""
-    return {"Authorization": f"Bearer {_token(client, 'galerias')}"}
+    return {"Authorization": f"Bearer {_token(client, CLAVE_WORKER)}"}

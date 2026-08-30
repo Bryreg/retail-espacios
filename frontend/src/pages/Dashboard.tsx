@@ -15,6 +15,7 @@ import {
   saveContacts,
   type ContactBook,
 } from "../api/auth";
+import { describeError } from "../api/client";
 import { useFixtureStore } from "../store/fixtureStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -279,6 +280,9 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
 
   const [busy, setBusy] = useState<"pw" | "cfg" | "test" | null>(null);
 
+  // Para reemplazar el token propio cuando el admin cambia su propia clave.
+  const setAuth = useAuthStore((s) => s.setAuth);
+
   // The contact book is keyed by sede, so it needs the same list the rest of
   // the app uses rather than a second one that could drift out of step.
   const sedes = useFixtureStore((s) => s.sedes);
@@ -314,12 +318,19 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
     setBusy("pw");
     setPwMsg(null);
     try {
-      await updatePasswords(payload);
-      setPwMsg({ ok: true, text: "Claves actualizadas correctamente." });
+      const r = await updatePasswords(payload);
+      // Cambiar la clave del admin cierra TODAS las sesiones de admin, incluida
+      // esta. El backend manda un token nuevo justamente para que quien acaba
+      // de guardar no salga expulsado de la pantalla.
+      if (r.token) setAuth(r.token, "admin");
+      const cerradas = payload.admin_password
+        ? "Se cerraron las demás sesiones de administrador."
+        : "Las sesiones de trabajador abiertas se cerraron.";
+      setPwMsg({ ok: true, text: `Claves actualizadas. ${cerradas}` });
       setAdminPw("");
       setWorkerPw("");
-    } catch {
-      setPwMsg({ ok: false, text: "No se pudieron actualizar las claves." });
+    } catch (err) {
+      setPwMsg({ ok: false, text: describeError(err, "No se pudieron actualizar las claves.") });
     } finally {
       setBusy(null);
     }
@@ -401,6 +412,10 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
         {/* Passwords */}
         <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--line-soft)" }}>
           <div style={sectionLabelStyle}>Claves de acceso</div>
+          <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginBottom: 10, lineHeight: 1.5 }}>
+            Mínimo 8 caracteres. Al cambiar una clave se cierran las sesiones abiertas
+            de ese rol: avisá antes a quien la use.
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div>
               <label style={fieldLabelStyle}>Clave administrador</label>

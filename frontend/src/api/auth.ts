@@ -11,11 +11,22 @@ export interface LoginResponse {
 export const login = (password: string): Promise<LoginResponse> =>
   client.post<LoginResponse>("/auth/login", { password }).then((r) => r.data);
 
+export interface PasswordsResponse {
+  ok: boolean;
+  /** Sólo viene cuando el admin cambió SU propia clave.
+   *
+   *  Cambiar una clave cierra las sesiones abiertas de ese rol —para eso se
+   *  cambia—, así que el token con el que se guardó acaba de morir. El backend
+   *  devuelve uno nuevo para no echar de la pantalla a quien acaba de guardar. */
+  token: string | null;
+}
+
 /** Admin only — update either access password. */
 export const updatePasswords = (payload: {
   admin_password?: string;
   worker_password?: string;
-}): Promise<void> => client.put("/auth/passwords", payload).then(() => undefined);
+}): Promise<PasswordsResponse> =>
+  client.put<PasswordsResponse>("/auth/passwords", payload).then((r) => r.data);
 
 export interface NotificationConfig {
   notify_emails: string;   // comma-separated recipient list
