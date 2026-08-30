@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LogIn } from "lucide-react";
-import { login } from "../api/auth";
+import { login, getClientes, type ClienteBreve } from "../api/auth";
 import { useAuthStore } from "../store/authStore";
 
 // ─── Logo mark (same as Dashboard topbar, scaled up) ─────────────────────────
@@ -27,20 +27,49 @@ function LogoMark() {
 
 // ─── Login page ──────────────────────────────────────────────────────────────
 
+const etiquetaStyle: React.CSSProperties = {
+  display: "block", marginBottom: 6,
+  fontSize: 10, fontWeight: 600,
+  textTransform: "uppercase", letterSpacing: "0.08em",
+  color: "var(--ink-3)",
+};
+
 export default function Login() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const [password, setPassword] = useState("");
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // La lista de supermercados. **El selector aparece sólo cuando hay más de
+  // uno:** para las tiendas que ya usan esto, la pantalla de ingreso sigue
+  // siendo exactamente la de ayer. Si la lista no carga —red caída, servidor
+  // dormido— se entra igual, y el servidor resuelve el único cliente que haya.
+  const [clientes, setClientes] = useState<ClienteBreve[]>([]);
+  const [cliente, setCliente] = useState("");
+
+  useEffect(() => {
+    getClientes()
+      .then((lista) => {
+        setClientes(lista);
+        if (lista.length === 1) setCliente(lista[0].slug);
+      })
+      .catch(() => setClientes([]));
+  }, []);
+
+  const varios = clientes.length > 1;
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!password || loading) return;
+    if (varios && !cliente) {
+      setError(true);
+      return;
+    }
     setLoading(true);
     setError(false);
     try {
-      const { token, role } = await login(password);
-      setAuth(token, role);
+      const r = await login(password, cliente || undefined);
+      setAuth(r.token, r.role, r.cliente, r.cliente_nombre);
     } catch {
       setError(true);
       setLoading(false);
@@ -82,21 +111,43 @@ export default function Login() {
         </p>
 
         <form onSubmit={submit} style={{ width: "100%" }}>
-          <label
-            htmlFor="login-password"
-            style={{
-              display: "block", marginBottom: 6,
-              fontSize: 10, fontWeight: 600,
-              textTransform: "uppercase", letterSpacing: "0.08em",
-              color: "var(--ink-3)",
-            }}
-          >
+          {varios && (
+            <div style={{ marginBottom: 14 }}>
+              <label htmlFor="login-cliente" style={etiquetaStyle}>
+                Supermercado
+              </label>
+              <select
+                id="login-cliente"
+                value={cliente}
+                onChange={(e) => {
+                  setCliente(e.target.value);
+                  setError(false);
+                }}
+                style={{
+                  width: "100%", height: 38, padding: "0 10px",
+                  borderRadius: "var(--r-md)",
+                  border: "1px solid var(--line)",
+                  background: "var(--surface-2)",
+                  color: cliente ? "var(--ink-1)" : "var(--ink-4)",
+                  fontSize: 13, fontFamily: "inherit",
+                  outline: "none",
+                }}
+              >
+                <option value="">Elegí el supermercado…</option>
+                {clientes.map((c) => (
+                  <option key={c.slug} value={c.slug}>{c.nombre}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <label htmlFor="login-password" style={etiquetaStyle}>
             Clave de acceso
           </label>
           <input
             id="login-password"
             type="password"
-            autoFocus
+            autoFocus={!varios}
             value={password}
             onChange={(e) => {
               setPassword(e.target.value);

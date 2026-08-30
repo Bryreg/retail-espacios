@@ -23,6 +23,7 @@ from app.auth import (
     require_admin,
     verificar_clave,
 )
+from app.clientes import Cliente, buscar, cliente_del_pedido, listar, sesion_de, unico
 from app.database import get_db
 from app.models.models import LoginAttempt
 from app.red import ip_del_cliente
@@ -75,11 +76,23 @@ def borrar_fallos(db: Session, ip: str) -> None:
 
 class LoginIn(BaseModel):
     password: str
+    # Qué supermercado. Se manda explícito: **nunca se deduce de la contraseña.**
+    # Deducirlo obligaría a probar la clave contra la base de cada cliente —lento
+    # a propósito, porque el hash lo es— y, peor, si dos clientes eligieran la
+    # misma contraseña entraría al que se revise primero.
+    cliente: Optional[str] = None
 
 
 class LoginOut(BaseModel):
     token: str
     role: str
+    cliente: str
+    cliente_nombre: str
+
+
+class ClienteOut(BaseModel):
+    slug: str
+    nombre: str
 
 
 class PasswordsUpdate(BaseModel):
@@ -97,29 +110,70 @@ class PasswordsOut(BaseModel):
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
+@router.get("/clientes", response_model=list[ClienteOut])
+def clientes_disponibles():
+    """La lista para el selector de la pantalla de ingreso.
+
+    Es pública porque hay que mostrarla antes de que nadie se identifique. Sólo
+    salen el código y el nombre — ni cuántas tiendas tiene cada uno, ni nada de
+    adentro. Mientras haya un solo cliente la pantalla ni lo pregunta.
+    """
+    return [ClienteOut(slug=c.slug, nombre=c.nombre) for c in listar()]
+
+
+def _cliente_para_entrar(slug: Optional[str]) -> Cliente:
+    if slug:
+        cliente = buscar(slug)
+        if cliente is None:
+            raise HTTPException(status_code=401, detail="Contraseña incorrecta")
+        return cliente
+    solo = unico()
+    if solo is not None:
+        return solo
+    raise HTTPException(status_code=422, detail="Elegí el supermercado antes de entrar")
+
+
 @router.post("/login", response_model=LoginOut)
-def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)):
-    """Single-field login: the password decides the role (admin first, then worker)."""
-    ip = ip_del_cliente(request)
-    frenar_si_hay_muchos_fallos(db, ip)
+def login(payload: LoginIn, request: Request):
+    """Single-field login: the password decides the role (admin first, then worker).
 
-    if verificar_clave(db, "admin", payload.password):
-        role = "admin"
-    elif verificar_clave(db, "worker", payload.password):
-        role = "worker"
-    else:
-        anotar(db, request, "anónimo", "login.fallo")
-        # `anotar_fallo` cierra la transacción, así que la línea de la bitácora
-        # viaja con ella. La contraseña que se intentó NO se guarda: media
-        # bitácora se llenaría de contraseñas casi correctas de gente que se
-        # equivocó una letra.
-        anotar_fallo(db, ip)
-        raise HTTPException(status_code=401, detail="Contraseña incorrecta")
+    Abre su propia sesión en vez de usar `get_db`: acá todavía no hay token, así
+    que el supermercado sale del cuerpo del pedido y no de la credencial.
 
-    borrar_fallos(db, ip)
-    anotar(db, request, role, "login.ok")
-    db.commit()
-    return LoginOut(token=create_token(role, epoca_de(db, role)), role=role)
+    Un cliente que no existe contesta lo mismo que una contraseña equivocada, y
+    a propósito: si dijera «ese supermercado no existe», la pantalla de ingreso
+    serviría para averiguar quiénes son los clientes.
+    """
+    cliente = _cliente_para_entrar(payload.cliente)
+    db = sesion_de(cliente)
+    try:
+        ip = ip_del_cliente(request)
+        frenar_si_hay_muchos_fallos(db, ip)
+
+        if verificar_clave(db, "admin", payload.password):
+            role = "admin"
+        elif verificar_clave(db, "worker", payload.password):
+            role = "worker"
+        else:
+            anotar(db, request, "anónimo", "login.fallo")
+            # `anotar_fallo` cierra la transacción, así que la línea de la
+            # bitácora viaja con ella. La contraseña que se intentó NO se
+            # guarda: media bitácora se llenaría de contraseñas casi correctas
+            # de gente que se equivocó una letra.
+            anotar_fallo(db, ip)
+            raise HTTPException(status_code=401, detail="Contraseña incorrecta")
+
+        borrar_fallos(db, ip)
+        anotar(db, request, role, "login.ok")
+        db.commit()
+        return LoginOut(
+            token=create_token(role, epoca_de(db, role), cliente.slug),
+            role=role,
+            cliente=cliente.slug,
+            cliente_nombre=cliente.nombre,
+        )
+    finally:
+        db.close()
 
 
 @router.put("/passwords", response_model=PasswordsOut)
@@ -127,6 +181,7 @@ def update_passwords(
     payload: PasswordsUpdate,
     request: Request,
     rol: str = Depends(require_admin),
+    cliente: Cliente = Depends(cliente_del_pedido),
     db: Session = Depends(get_db),
 ):
     if payload.admin_password is None and payload.worker_password is None:
@@ -160,5 +215,5 @@ def update_passwords(
         anotar(db, request, rol, "clave.cambio", entidad="rol", entidad_id=quien)
     db.commit()
 
-    nuevo = create_token(rol, epoca_de(db, rol)) if rol in nuevas else None
+    nuevo = create_token(rol, epoca_de(db, rol), cliente.slug) if rol in nuevas else None
     return PasswordsOut(ok=True, token=nuevo)

@@ -1,0 +1,359 @@
+"""Un supermercado, una base de datos.
+
+**La idea en una frase:** el programa es uno solo, pero cada cliente tiene su
+propia base de datos dentro de la misma instancia de Postgres. Una consulta que
+corre contra la base de un supermercado no puede ni nombrar la tabla de otro —
+la separación la hace el motor, no la disciplina de quien escribe la consulta.
+
+Se eligió así por tres razones, y la tercera es la que decidió:
+
+1. Cuesta lo mismo que mezclar todo con una columna `tenant_id`: la instancia de
+   Postgres es la misma y Render permite crear bases adentro de ella.
+2. Aísla por construcción y no por política. Con una columna, una sola consulta
+   que se olvide del filtro entrega los contratos de un supermercado a otro, sin
+   error y sin aviso.
+3. **No necesita migraciones.** La regla de este repositorio es que
+   `create_all` crea tablas que faltan pero nunca agrega columnas a una que ya
+   existe. Meter `tenant_id` en diez tablas con datos vivos adentro pedía
+   adoptar Alembic; armar una base nueva y vacía no pide nada.
+
+**Dónde vive la lista de clientes.** En la base por defecto —la que apunta
+`DATABASE_URL`, que además es la de GALERIAS—, en la tabla `clientes`.
+`create_all` va a crear esa tabla también dentro de la base de cada cliente,
+donde no significa nada: **la única copia que vale es la de la base por
+defecto**, y por eso se lee siempre con `sesion_registro()` y nunca con la
+sesión de un cliente.
+"""
+import logging
+import os
+import re
+import threading
+from dataclasses import dataclass
+from urllib.parse import urlsplit, urlunsplit
+
+from fastapi import HTTPException, Request
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.database import SQLALCHEMY_DATABASE_URL, Base, engine as motor_por_defecto
+
+log = logging.getLogger("recabra.clientes")
+
+# Cada cliente abre su propio grupo de conexiones, y Postgres en el plan Basic
+# admite 100 en total. Con estos números entran unos quince supermercados antes
+# de tener que subir de instancia; los valores de fábrica de SQLAlchemy —5 fijas
+# más 10 de desborde— se comerían el límite con siete.
+POOL_POR_CLIENTE = 2
+DESBORDE_POR_CLIENTE = 3
+
+SLUG_VALIDO = re.compile(r"^[a-z][a-z0-9_]{1,30}$")
+
+
+@dataclass(frozen=True)
+class Cliente:
+    """Un supermercado que usa el sistema."""
+    slug: str        # "olimpica" — va adentro del token y arma el nombre de la base
+    nombre: str      # "Olímpica" — lo que se ve en la pantalla de ingreso
+    db_name: str     # el nombre real de la base en Postgres
+    activo: bool = True
+
+
+def nombre_de_base(slug: str) -> str:
+    return f"recabra_{slug}"
+
+
+def url_para(db_name: str) -> str:
+    """La URL de conexión de esa base, derivada de la que ya está configurada.
+
+    Es la misma instancia: cambia el último componente, que es justo lo que dice
+    la documentación de Render para conectarse a una base adicional.
+
+    Se parsea de verdad en vez de cortar por la última barra porque la URL puede
+    traer parámetros —`?sslmode=require` es el caso típico en Postgres
+    administrado—. Cortando a mano, el nombre de la base se llevaría el
+    `?sslmode=require` puesto y la conexión del cliente nuevo saldría sin TLS o
+    directamente no saldría.
+    """
+    base = SQLALCHEMY_DATABASE_URL
+    if base.startswith("sqlite"):
+        # En desarrollo y en las pruebas, una base es un archivo. Sirve igual
+        # para probar el aislamiento, que es lo que importa.
+        cabeza, _, cola = base.rpartition("/")
+        sufijo = ".db" if cola.endswith(".db") else ""
+        return f"{cabeza}/{db_name}{sufijo}"
+    partes = urlsplit(base)
+    return urlunsplit(partes._replace(path=f"/{db_name}"))
+
+
+# ─── Motores, uno por cliente ─────────────────────────────────────────────────
+
+_motores: dict[str, Engine] = {}
+_fabricas: dict[str, sessionmaker] = {}
+_candado = threading.Lock()
+
+
+def _es_sqlite() -> bool:
+    return SQLALCHEMY_DATABASE_URL.startswith("sqlite")
+
+
+def motor_de(cliente: Cliente) -> Engine:
+    """El motor de ese cliente, creado la primera vez que hace falta."""
+    with _candado:
+        motor = _motores.get(cliente.slug)
+        if motor is not None:
+            return motor
+        if cliente.db_name == _db_por_defecto():
+            # El cliente que ya existía usa el motor que ya existía: ni una
+            # conexión de más, y ningún cambio de comportamiento el día del
+            # despliegue.
+            motor = motor_por_defecto
+        elif _es_sqlite():
+            motor = create_engine(
+                url_para(cliente.db_name), connect_args={"check_same_thread": False}
+            )
+        else:
+            motor = create_engine(
+                url_para(cliente.db_name),
+                pool_size=POOL_POR_CLIENTE,
+                max_overflow=DESBORDE_POR_CLIENTE,
+                # Render corta las conexiones quietas; sin esto la primera
+                # consulta de la mañana falla con "server closed the connection".
+                pool_pre_ping=True,
+                pool_recycle=1800,
+            )
+        _motores[cliente.slug] = motor
+        _fabricas[cliente.slug] = sessionmaker(autocommit=False, autoflush=False, bind=motor)
+        return motor
+
+
+def sesion_de(cliente: Cliente) -> Session:
+    motor_de(cliente)
+    return _fabricas[cliente.slug]()
+
+
+def sesion_registro() -> Session:
+    """Una sesión contra la base por defecto, que es donde vive la lista.
+
+    **Nunca** se lee la lista de clientes desde la sesión de un cliente: la
+    tabla existe ahí, pero está vacía y no significa nada.
+    """
+    return sessionmaker(autocommit=False, autoflush=False, bind=motor_por_defecto)()
+
+
+def olvidar_motores() -> None:
+    """Suelta todos los motores. Las pruebas arman una base nueva por prueba."""
+    with _candado:
+        for slug, motor in _motores.items():
+            if motor is not motor_por_defecto:
+                motor.dispose()
+        _motores.clear()
+        _fabricas.clear()
+
+
+def _db_por_defecto() -> str:
+    """El nombre de la base a la que apunta `DATABASE_URL`.
+
+    Mismo cuidado que en `url_para`: sin parsear, un `?sslmode=require` quedaría
+    pegado al nombre y el cliente de siempre no se reconocería como el de la
+    base por defecto — abriría un motor aparte contra la misma base, gastando
+    conexiones de a dos.
+    """
+    if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+        cola = SQLALCHEMY_DATABASE_URL.rpartition("/")[2]
+        return cola[:-3] if cola.endswith(".db") else cola
+    return urlsplit(SQLALCHEMY_DATABASE_URL).path.lstrip("/")
+
+
+# ─── La lista ─────────────────────────────────────────────────────────────────
+
+SLUG_POR_DEFECTO = os.getenv("CLIENTE_POR_DEFECTO", "galerias")
+NOMBRE_POR_DEFECTO = os.getenv("CLIENTE_POR_DEFECTO_NOMBRE", "Galerías")
+
+
+def _fila_a_cliente(fila) -> Cliente:
+    return Cliente(slug=fila.slug, nombre=fila.nombre, db_name=fila.db_name, activo=fila.activo)
+
+
+def listar(solo_activos: bool = True) -> list[Cliente]:
+    from app.models.models import ClienteRow
+
+    db = sesion_registro()
+    try:
+        q = db.query(ClienteRow)
+        if solo_activos:
+            q = q.filter(ClienteRow.activo == True)  # noqa: E712
+        return [_fila_a_cliente(f) for f in q.order_by(ClienteRow.nombre).all()]
+    finally:
+        db.close()
+
+
+def buscar(slug: str) -> Cliente | None:
+    from app.models.models import ClienteRow
+
+    slug = (slug or "").strip().lower()
+    if not slug:
+        return None
+    db = sesion_registro()
+    try:
+        fila = db.query(ClienteRow).filter(ClienteRow.slug == slug).first()
+        if fila is None or not fila.activo:
+            return None
+        return _fila_a_cliente(fila)
+    finally:
+        db.close()
+
+
+def unico() -> Cliente | None:
+    """El cliente, cuando hay uno solo.
+
+    Mientras haya uno solo la pantalla de ingreso no pregunta nada y los enlaces
+    viejos siguen sirviendo. El selector aparece recién con el segundo.
+    """
+    todos = listar()
+    return todos[0] if len(todos) == 1 else None
+
+
+def registrar_el_de_siempre() -> Cliente:
+    """Le pone nombre a la base que ya existe, sin mover un solo dato.
+
+    La instalación que está viva hoy tiene siete tiendas adentro. Pasa a ser el
+    cliente por defecto apuntando a la MISMA base: no se copia, no se migra, no
+    se toca.
+    """
+    from app.models.models import ClienteRow
+
+    db = sesion_registro()
+    try:
+        if db.query(ClienteRow).count() > 0:
+            fila = db.query(ClienteRow).filter(ClienteRow.slug == SLUG_POR_DEFECTO).first()
+            if fila is not None:
+                return _fila_a_cliente(fila)
+            return _fila_a_cliente(db.query(ClienteRow).order_by(ClienteRow.slug).first())
+        fila = ClienteRow(
+            slug=SLUG_POR_DEFECTO, nombre=NOMBRE_POR_DEFECTO,
+            db_name=_db_por_defecto(), activo=True,
+        )
+        db.add(fila)
+        db.commit()
+        log.info("Cliente por defecto registrado: %s -> base %s", fila.slug, fila.db_name)
+        return _fila_a_cliente(fila)
+    finally:
+        db.close()
+
+
+# ─── Dar de alta un cliente ───────────────────────────────────────────────────
+
+class ErrorDeAlta(Exception):
+    pass
+
+
+def crear_cliente(slug: str, nombre: str) -> Cliente:
+    """Crea la base del supermercado nuevo y la deja lista para entrar.
+
+    Arranca **vacía** a propósito. El arranque del sistema siembra los pasillos
+    de GALERIAS cuando la base está en cero, y darle esos pasillos a otro
+    supermercado sería peor que no darle nada: parece que el sistema ya sabe
+    algo de su tienda cuando no sabe nada.
+    """
+    from app.auth import ensure_default_config
+    from app.models.models import ClienteRow
+
+    slug = (slug or "").strip().lower()
+    if not SLUG_VALIDO.match(slug):
+        raise ErrorDeAlta(
+            "El código del cliente va en minúsculas, sin espacios ni tildes, "
+            "y arranca con una letra."
+        )
+    if buscar(slug) is not None:
+        raise ErrorDeAlta(f"Ya hay un cliente con el código «{slug}».")
+
+    db_name = nombre_de_base(slug)
+
+    if not _es_sqlite():
+        # CREATE DATABASE no corre adentro de una transacción, de ahí el
+        # autocommit. Si el usuario de Postgres no tiene permiso para crear
+        # bases, falla ACÁ —al dar de alta— y no al arrancar: el sistema sigue
+        # andando para todos los demás.
+        try:
+            with motor_por_defecto.connect().execution_options(
+                isolation_level="AUTOCOMMIT"
+            ) as cx:
+                cx.execute(text(f'CREATE DATABASE "{db_name}"'))
+        except Exception as e:  # noqa: BLE001
+            if "already exists" not in str(e).lower():
+                raise ErrorDeAlta(
+                    f"No se pudo crear la base del cliente: {e}. "
+                    "Suele ser que el usuario de Postgres no tiene permiso para crear bases."
+                ) from e
+
+    cliente = Cliente(slug=slug, nombre=nombre.strip() or slug, db_name=db_name, activo=True)
+
+    # Las tablas, la configuración y la contraseña inicial, adentro de la base
+    # nueva. Es exactamente lo que hace el arranque, pero para un cliente.
+    motor = motor_de(cliente)
+    Base.metadata.create_all(bind=motor)
+    sesion = sesion_de(cliente)
+    try:
+        # `ensure_default_config` ya llama al arranque de las contraseñas.
+        ensure_default_config(sesion)
+    finally:
+        sesion.close()
+
+    registro = sesion_registro()
+    try:
+        registro.add(ClienteRow(
+            slug=cliente.slug, nombre=cliente.nombre,
+            db_name=cliente.db_name, activo=True,
+        ))
+        registro.commit()
+    finally:
+        registro.close()
+
+    log.warning("Cliente nuevo dado de alta: %s (base %s)", cliente.slug, cliente.db_name)
+    return cliente
+
+
+# ─── A qué base se conecta este pedido ────────────────────────────────────────
+
+def _credencial(request: Request) -> str | None:
+    """El token del pedido, venga por cabecera o por `?token=`.
+
+    Por query también, porque la foto de montaje y la planometría se abren en un
+    `<img>` o un `<iframe>`, que no mandan cabeceras.
+    """
+    cabecera = request.headers.get("authorization") or ""
+    if cabecera.lower().startswith("bearer "):
+        return cabecera[7:].strip() or None
+    return (request.query_params.get("token") or "").strip() or None
+
+
+def cliente_del_pedido(request: Request) -> Cliente:
+    """Qué supermercado está pidiendo. **Nunca se deduce de la contraseña.**
+
+    Sale del token, que está firmado, o del único cliente que haya. Un
+    parámetro suelto en la URL no sirve: el navegador lo elige, y con eso
+    cualquiera se pararía adelante de la base de otro.
+    """
+    from app.auth import cliente_del_token
+
+    raw = _credencial(request)
+    if raw:
+        slug = cliente_del_token(raw)
+        if slug:
+            cliente = buscar(slug)
+            if cliente is None:
+                # El token está bien firmado pero nombra un cliente que ya no
+                # existe o quedó inactivo. Se cierra, no se cae a otro.
+                raise HTTPException(status_code=401, detail="Token inválido o expirado")
+            return cliente
+        # Token viejo, de antes de que hubiera más de un cliente.
+
+    solo = unico()
+    if solo is not None:
+        return solo
+    raise HTTPException(status_code=401, detail="No autenticado")
+
+
+def sesion_para_pedido(request: Request) -> Session:
+    return sesion_de(cliente_del_pedido(request))

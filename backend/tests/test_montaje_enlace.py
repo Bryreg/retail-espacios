@@ -133,7 +133,11 @@ def test_el_token_no_abre_ningun_otro_endpoint(client, admin):
     }
     # Lo abierto a propósito, escrito acá para que agregar algo público sea una
     # decisión visible y no un test que se acomoda solo.
-    publicas = {"/api/health"}
+    #
+    # `/api/auth/clientes` es la lista del selector de la pantalla de ingreso:
+    # hay que mostrarla ANTES de que nadie se identifique, así que no puede
+    # pedir sesión. Devuelve sólo código y nombre de cada supermercado.
+    publicas = {"/api/health", "/api/auth/clientes"}
 
     revisadas = 0
     for route in app.routes:

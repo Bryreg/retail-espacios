@@ -347,3 +347,29 @@ class AuditEntry(Base):
     # Lo mínimo para entender la línea sin ir a buscar: "Alpina · NAVE-PUN-01".
     # Nunca una contraseña, ni el contenido de un archivo.
     detalle = Column(Text, nullable=True)
+
+
+class ClienteRow(Base):
+    """Un supermercado que usa el sistema, y en qué base viven sus datos.
+
+    **Sólo vale la copia que está en la base por defecto.** `create_all` crea
+    esta tabla dentro de la base de cada cliente también, donde queda vacía y no
+    significa nada — por eso se lee siempre con `clientes.sesion_registro()`,
+    que apunta a la base por defecto, y nunca con la sesión del cliente que está
+    pidiendo.
+
+    ``create_all`` crea tablas que faltan pero nunca agrega columnas, así que
+    una tabla nueva es de lo que sí se puede hacer sin migración — y es la razón
+    entera por la que se eligió una base por cliente en vez de un `tenant_id`.
+    """
+    __tablename__ = "clientes"
+
+    # "olimpica". Va adentro del token, así que cambiarlo cierra las sesiones
+    # de ese cliente. Se elige una vez.
+    slug = Column(String, primary_key=True)
+    nombre = Column(String, nullable=False)
+    # El nombre real de la base en Postgres. Se guarda en vez de derivarlo para
+    # que el cliente que ya existía pueda seguir apuntando a la base de siempre.
+    db_name = Column(String, nullable=False)
+    activo = Column(Boolean, default=True, nullable=False)
+    creado = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
