@@ -285,3 +285,37 @@ def test_la_url_del_cliente_conserva_los_parametros(client, monkeypatch):
     assert mod.url_para("recabra_olimpica") == (
         "postgresql://u:p@host.render.com:5432/recabra_olimpica?sslmode=require"
     )
+
+
+def test_si_la_base_se_muda_el_registro_la_sigue(client):
+    """Mudar la base de proveedor no puede romper el sistema.
+
+    El cliente por defecto es, por definición, la base a la que apunta
+    `DATABASE_URL`. Si esa variable cambia —de Neon a Render, por decir— el
+    nombre guardado deja de coincidir, y sin esto `motor_de` no lo reconocería
+    como el de siempre: abriría un motor aparte contra una base que en el
+    destino no existe, y la app se caería en la primera petición.
+    """
+    from app.database import SessionLocal
+    from app.models.models import ClienteRow
+    from app.clientes import _db_por_defecto, motor_de, registrar_el_de_siempre
+    from app.database import engine as motor_por_defecto
+
+    # Simular que la fila quedó apuntando al nombre del proveedor viejo.
+    db = SessionLocal()
+    try:
+        fila = db.query(ClienteRow).first()
+        assert fila is not None
+        fila.db_name = "neondb"
+        db.commit()
+    finally:
+        db.close()
+
+    cliente = registrar_el_de_siempre()
+    assert cliente.db_name == _db_por_defecto()
+    # Y vuelve a usar el motor de siempre, sin abrir uno nuevo.
+    assert motor_de(cliente) is motor_por_defecto
+
+    # El sistema sigue contestando.
+    r = client.post("/api/auth/login", json={"password": CLAVE_ADMIN})
+    assert r.status_code == 200, r.text

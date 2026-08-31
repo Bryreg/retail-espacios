@@ -220,6 +220,15 @@ def registrar_el_de_siempre() -> Cliente:
     La instalación que está viva hoy tiene siete tiendas adentro. Pasa a ser el
     cliente por defecto apuntando a la MISMA base: no se copia, no se migra, no
     se toca.
+
+    **Y sigue a `DATABASE_URL` si la base se muda.** El cliente por defecto es,
+    por definición, la base a la que apunta esa variable; si mañana el sistema
+    cambia de proveedor —de Neon a Render, por decir— el nombre guardado deja de
+    coincidir y el arranque lo corrige solo.
+
+    Sin eso, mudar la base rompía todo en la primera petición: la fila seguiría
+    diciendo el nombre viejo, `motor_de` no lo reconocería como el de siempre y
+    abriría un motor aparte contra una base que en el destino no existe.
     """
     from app.models.models import ClienteRow
 
@@ -227,9 +236,17 @@ def registrar_el_de_siempre() -> Cliente:
     try:
         if db.query(ClienteRow).count() > 0:
             fila = db.query(ClienteRow).filter(ClienteRow.slug == SLUG_POR_DEFECTO).first()
-            if fila is not None:
-                return _fila_a_cliente(fila)
-            return _fila_a_cliente(db.query(ClienteRow).order_by(ClienteRow.slug).first())
+            if fila is None:
+                fila = db.query(ClienteRow).order_by(ClienteRow.slug).first()
+            actual = _db_por_defecto()
+            if fila.db_name != actual:
+                log.warning(
+                    "La base del cliente %s se mudó: %s -> %s. Se actualiza el registro.",
+                    fila.slug, fila.db_name, actual,
+                )
+                fila.db_name = actual
+                db.commit()
+            return _fila_a_cliente(fila)
         fila = ClienteRow(
             slug=SLUG_POR_DEFECTO, nombre=NOMBRE_POR_DEFECTO,
             db_name=_db_por_defecto(), activo=True,

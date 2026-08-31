@@ -2073,6 +2073,18 @@ Crea la base, sus tablas, la configuración y dos contraseñas al azar que
 un rol por encima del administrador —alguien que pueda tocar a TODOS los
 supermercados—, que es justo la llave que no conviene que ande en un navegador.
 
+### Si la base se muda de proveedor
+
+El cliente por defecto es, **por definición**, la base a la que apunta
+`DATABASE_URL`. Por eso el arranque corrige el nombre guardado cuando esa
+variable cambia.
+
+Sin eso, mudar la base rompía el sistema en la primera petición: la fila de
+`clientes` seguiría diciendo el nombre viejo (`neondb`, por ejemplo), `motor_de`
+no lo reconocería como el de siempre, y abriría un motor aparte contra una base
+que en el destino no existe. Se encontró preparando justamente esa mudanza, y
+está fijado en `test_si_la_base_se_muda_el_registro_la_sigue`.
+
 ### La copia de seguridad, con varios clientes
 
 `scripts/respaldo.py` baja todo por HTTPS con la clave de admin — sin acceso al
