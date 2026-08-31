@@ -2073,6 +2073,43 @@ Crea la base, sus tablas, la configuración y dos contraseñas al azar que
 un rol por encima del administrador —alguien que pueda tocar a TODOS los
 supermercados—, que es justo la llave que no conviene que ande en un navegador.
 
+### La copia de seguridad, con varios clientes
+
+`scripts/respaldo.py` baja todo por HTTPS con la clave de admin — sin acceso al
+servidor ni credenciales de la base. Con una base por cliente hubo que cambiarle
+una cosa de fondo: **una sola clave no abre a todos**, porque cada supermercado
+tiene la suya.
+
+```
+export RECABRA_CLAVE_GALERIAS='...'
+export RECABRA_CLAVE_OLIMPICA='...'
+python3 scripts/respaldo.py --base https://retail-espacios.onrender.com
+
+# o uno solo, con RECABRA_CLAVE a secas
+python3 scripts/respaldo.py --base https://... --cliente olimpica
+```
+
+Con un cliente solo alcanza `RECABRA_CLAVE`, que es como venía siendo: quien ya
+lo tuviera programado no tiene que tocar nada.
+
+**Cómo falla importa más que cómo funciona**, porque un respaldo se mira el día
+que algo se rompió:
+
+* Si falta la clave de un cliente, se copia el resto y **se dice cuál faltó**;
+  la salida es 1, no 0.
+* Si la copia quedó a medias, la carpeta se llama `...-INCOMPLETO`. El
+  MANIFIESTO también lo dice, pero el nombre es lo que se ve cuando hay que
+  restaurar apurado.
+* Si no se copió ningún cliente, **no queda carpeta**. En una urgencia uno
+  agarra la de fecha más nueva, y una carpeta vacía con la fecha de hoy es lo
+  peor que puede encontrar ahí.
+* Y sigue en pie la regla vieja: una copia sin ningún plano no sirve para
+  volver, y lo avisa.
+
+Se probó contra un servidor con dos clientes sembrados con datos distintos, y se
+verificó que **la copia respeta el aislamiento**: la carpeta de cada uno tiene
+sólo sus proveedores y sus sedes, sin rastro del otro.
+
 ### Cómo se probó
 
 `backend/tests/test_clientes.py`, 17 pruebas. Para verificar que no son
