@@ -6,6 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from app.auth import MONTAJE_TTL_DAYS, create_mount_token, require_admin, require_auth
+from app.clientes import Cliente, cliente_del_pedido
 from app.database import get_db
 from app.models.models import Space, SpaceFile, SpaceLease, Supplier, SpaceStatus
 from app.services.bitacora import anotar
@@ -280,6 +281,7 @@ def create_lease(
     background_tasks: BackgroundTasks,
     request: Request,
     rol: str = Depends(require_admin),
+    cliente: Cliente = Depends(cliente_del_pedido),
     db: Session = Depends(get_db),
 ):
     # Date sanity check. Equal dates are VALID: a one-day rental is a real
@@ -417,7 +419,9 @@ def create_lease(
         # proveedor y el período de cada espacio— para responder una sola
         # pregunta, y dejaba una contraseña compartida circulando por correo
         # que sobrevive a la persona que deja de trabajar ahí.
-        token = create_mount_token(space.code)
+        # El enlace lleva el cliente adentro del token. Sin eso, el enlace de
+        # un supermercado abriría la pantalla de montaje contra la base de otro.
+        token = create_mount_token(space.code, cliente.slug)
         link = f"{app_base_url()}/?montar={quote(space.code)}&t={quote(token)}"
         footer = (
             "El enlace abre el espacio señalado en el plano, y ahí mismo se "

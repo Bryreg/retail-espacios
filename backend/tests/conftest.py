@@ -40,10 +40,27 @@ def client():
     with TestClient(fastapi_app) as c:
         yield c
 
+    # Soltar los motores antes de purgar los módulos: cada cliente abre el suyo,
+    # y una prueba que deje conexiones abiertas contra un archivo borrado hace
+    # fallar a la siguiente por un motivo que no tiene nada que ver.
+    try:
+        from app.clientes import olvidar_motores
+        olvidar_motores()
+    except Exception:
+        pass
+
     import sys
     for name in [m for m in sys.modules if m == "app" or m.startswith("app.")]:
         del sys.modules[name]
     os.unlink(path)
+    # Las bases de los clientes que haya creado la prueba son archivos hermanos.
+    import glob
+    carpeta = os.path.dirname(path)
+    for extra in glob.glob(os.path.join(carpeta, "recabra_*.db")):
+        try:
+            os.unlink(extra)
+        except OSError:
+            pass
 
 
 def _token(client, password: str) -> str:

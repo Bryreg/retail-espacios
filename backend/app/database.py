@@ -1,4 +1,6 @@
 import os
+
+from fastapi import Request
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
@@ -17,8 +19,19 @@ class Base(DeclarativeBase):
     pass
 
 
-def get_db():
-    db = SessionLocal()
+def get_db(request: Request):
+    """La sesión de la base del supermercado que está pidiendo.
+
+    Éste es el único punto por el que pasan todos los endpoints, y por eso
+    separar clientes se pudo hacer sin tocar los doce routers: acá se decide
+    contra qué base corre la consulta, y de ahí en adelante nadie más elige.
+
+    El import va adentro a propósito — `app.clientes` importa este módulo, así
+    que arriba sería un ciclo.
+    """
+    from app.clientes import sesion_para_pedido
+
+    db = sesion_para_pedido(request)
     try:
         yield db
     finally:

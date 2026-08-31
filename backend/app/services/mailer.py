@@ -374,16 +374,10 @@ def send_mail_to_bg(recipients: list[str], subject: str, html_body: str) -> None
     send_mail_to(recipients, subject, html_body)
 
 
-def send_mail_bg(subject: str, html_body: str) -> None:
-    """Entry point for FastAPI BackgroundTasks — opens its own DB session.
-
-    The request-scoped session is closed before background tasks run, so this
-    helper must never reuse it.
-    """
-    from app.database import SessionLocal
-
-    db = SessionLocal()
-    try:
-        send_mail(db, subject, html_body)
-    finally:
-        db.close()
+# `send_mail_bg` vivía acá y abría su propia sesión contra `SessionLocal`, que
+# ahora es la base del cliente por defecto. Con un supermercado por base eso
+# habría mandado el correo de un cliente leyendo la configuración de otro. No
+# lo llamaba nadie —los routers usan `send_mail_to_bg`, que no necesita base
+# porque los destinatarios ya se resolvieron durante el pedido—, así que se
+# borra en vez de arreglarse: código muerto que apunta a la base equivocada es
+# una trampa esperando a que alguien la use.

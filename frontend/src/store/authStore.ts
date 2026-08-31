@@ -6,7 +6,11 @@ export type Role = "admin" | "worker";
 interface AuthState {
   token: string | null;
   role: Role | null;
-  setAuth: (token: string, role: Role) => void;
+  /** De qué supermercado es esta sesión. Se guarda sólo para poder mostrarlo;
+   *  quien manda es el que va firmado adentro del token. */
+  cliente: string | null;
+  clienteNombre: string | null;
+  setAuth: (token: string, role: Role, cliente?: string, clienteNombre?: string) => void;
   logout: () => void;
 }
 
@@ -17,8 +21,16 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       token: null,
       role: null,
-      setAuth: (token, role) => set({ token, role }),
-      logout: () => set({ token: null, role: null }),
+      cliente: null,
+      clienteNombre: null,
+      setAuth: (token, role, cliente, clienteNombre) =>
+        set({
+          token,
+          role,
+          cliente: cliente ?? null,
+          clienteNombre: clienteNombre ?? null,
+        }),
+      logout: () => set({ token: null, role: null, cliente: null, clienteNombre: null }),
     }),
     { name: "retail-auth-v1" }
   )

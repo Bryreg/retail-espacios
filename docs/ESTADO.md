@@ -1976,6 +1976,119 @@ bitácora— está cerrado.
 
 ---
 
+## Un supermercado, una base
+
+De los doce hallazgos de la auditoría quedaba el crítico: `sede` era un texto en
+una tabla común, así que dos supermercados en esta base compartían tabla,
+contraseña y archivos. Se eligió **una base de datos por cliente, todas dentro
+de la misma instancia de Postgres.**
+
+### Por qué ésa y no las otras dos
+
+Se compararon tres. La [documentación de Render](https://render.com/docs/postgresql-creating-connecting)
+dice que una instancia puede contener varias bases —`CREATE DATABASE`, y te
+conectás con la misma URL cambiando el último componente—, y eso es lo que
+rompió el empate:
+
+| | Todo mezclado con `tenant_id` | **Una base por cliente** | Una instancia por cliente |
+|---|---|---|---|
+| Plata (5 clientes) | $44/mes | **$44/mes** | $120/mes |
+| Trabajo | 2–3 semanas | **4–6 días** | 3–4 días + operación |
+| Migraciones | Obligatorias (Alembic) | **Ninguna** | Ninguna |
+| Aísla | Por política | **Por construcción** | Total |
+
+**La razón que decidió es la tercera fila.** La regla de este repositorio es que
+`create_all` crea tablas que faltan pero nunca agrega columnas. Meter
+`tenant_id` en diez tablas con siete tiendas de datos vivos adentro pedía
+adoptar Alembic; armar una base nueva y vacía no pide nada.
+
+Y una cuarta, que no estaba en el análisis original: **esta opción deja abierta
+la puerta a la de al lado.** Si mañana un cliente exige su propia instancia,
+mudarlo es un `pg_dump` de su base. Sacarlo de una tabla compartida sería
+extraer sus filas de diez tablas sin romper las llaves foráneas, con el sistema
+andando.
+
+### Lo que lo hizo barato
+
+**Todos los routers pasan por `get_db`.** Ese es el único lugar donde se decide
+contra qué base corre una consulta, así que separar clientes no obligó a tocar
+los doce routers: se cambió el punto de entrada y de ahí en adelante nadie más
+elige. Sólo tres lugares abrían sesión por fuera —el arranque, el ciclo de
+mantenimiento y un ayudante de correo que resultó ser código muerto.
+
+### El cliente va adentro del token
+
+Sin esto la separación por base no serviría de nada. La firma de los JWT es
+**una sola para todo el servicio**, así que un token de administrador de un
+supermercado sería criptográficamente válido en el otro. Va adentro de lo
+firmado (`create_token(role, epoca, cliente)`), y `cliente_del_pedido` verifica
+la firma **antes** de mirar el nombre.
+
+Un token sin cliente —los que ya estaban dando vueltas cuando se desplegó esto—
+se resuelve con el único cliente que haya. Así nadie se queda afuera el día del
+despliegue.
+
+### Cómo entra la gente
+
+`GET /api/auth/clientes` devuelve la lista, y el selector aparece en la pantalla
+de ingreso **sólo cuando hay más de un cliente**. Para las siete tiendas que ya
+usan esto, el día del despliegue no cambia nada.
+
+El supermercado se manda explícito y **nunca se deduce de la contraseña**. Si se
+dedujera, habría que probar la clave contra la base de cada cliente —lento a
+propósito, porque el hash lo es— y, peor, si dos clientes eligieran la misma
+contraseña entraría al que se revise primero.
+
+Un cliente que no existe contesta **lo mismo que una contraseña equivocada**: si
+dijera «ese supermercado no existe», la pantalla de ingreso serviría para
+averiguar quiénes son los clientes.
+
+### Detalles que cuestan caro si se pasan por alto
+
+* **La lista de clientes vive en la base por defecto.** `create_all` crea la
+  tabla `clientes` dentro de la base de cada cliente también, donde queda vacía
+  y no significa nada. Por eso se lee siempre con `sesion_registro()` y nunca
+  con la sesión del cliente que está pidiendo.
+* **Un cliente nuevo arranca vacío.** El arranque siembra los pasillos de
+  GALERIAS cuando la base está en cero; dárselos a otro supermercado sería peor
+  que dejarlo vacío. La siembra quedó acotada al cliente por defecto.
+* **Las conexiones se reparten.** Postgres Basic admite 100 en total, así que
+  cada cliente abre un grupo chico (2 fijas, 3 de desborde) en vez de las 15 de
+  fábrica de SQLAlchemy. Con eso entran unos quince supermercados antes de subir
+  de instancia.
+* **La URL se parsea, no se corta.** `?sslmode=require` es lo normal en un
+  Postgres administrado. Cortando por la última barra, el nombre de la base se
+  llevaría el parámetro puesto y la conexión del cliente nuevo saldría sin TLS.
+
+### Cómo se da de alta un supermercado
+
+```
+cd backend
+DATABASE_URL="<la de producción>" JWT_SECRET="<el del servicio>" \
+  python ../scripts/alta_cliente.py olimpica "Olímpica"
+```
+
+Crea la base, sus tablas, la configuración y dos contraseñas al azar que
+**imprime una sola vez**. No hay pantalla para esto a propósito: pediría inventar
+un rol por encima del administrador —alguien que pueda tocar a TODOS los
+supermercados—, que es justo la llave que no conviene que ande en un navegador.
+
+### Cómo se probó
+
+`backend/tests/test_clientes.py`, 17 pruebas. Para verificar que no son
+decorativas se rompió el aislamiento a propósito —haciendo que
+`cliente_del_pedido` ignore el token— y **siete pruebas fallaron**, incluidas
+las cuatro que verifican que los datos no se cruzan.
+
+La más exigente siembra un contrato de verdad en el primer cliente —proveedor,
+marca, fechas, el mueble en el plano— y después pide lo mismo con el enlace de
+montaje del segundo. Si la separación fallara, ahí saldría «Alpina».
+
+Y en navegador, con dos clientes vivos: el selector aparece, cada uno entra al
+suyo, y por API el primero tiene 41 espacios y el segundo 0.
+
+---
+
 ## Gotchas
 
 **La librería de Excel está vieja.** `xlsx@0.18.5` en npm arrastra vulnerabilidades

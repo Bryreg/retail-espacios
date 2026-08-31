@@ -4,12 +4,30 @@ import type { Role } from "../store/authStore";
 export interface LoginResponse {
   token: string;
   role: Role;
+  cliente: string;
+  cliente_nombre: string;
 }
 
+/** Un supermercado que usa el sistema, para el selector de la pantalla de ingreso. */
+export interface ClienteBreve {
+  slug: string;
+  nombre: string;
+}
+
+/** La lista de supermercados. Pública porque hay que mostrarla ANTES de que
+ *  nadie se identifique; sólo trae código y nombre. */
+export const getClientes = (): Promise<ClienteBreve[]> =>
+  client.get<ClienteBreve[]>("/auth/clientes").then((r) => r.data);
+
 /** Exchange an access password for a session token.
- *  The backend decides the role by which password matched. */
-export const login = (password: string): Promise<LoginResponse> =>
-  client.post<LoginResponse>("/auth/login", { password }).then((r) => r.data);
+ *  The backend decides the role by which password matched.
+ *
+ *  El supermercado va explícito y **nunca se deduce de la contraseña**: si dos
+ *  clientes eligieran la misma, el sistema entraría al que revise primero. */
+export const login = (password: string, cliente?: string): Promise<LoginResponse> =>
+  client
+    .post<LoginResponse>("/auth/login", cliente ? { password, cliente } : { password })
+    .then((r) => r.data);
 
 export interface PasswordsResponse {
   ok: boolean;

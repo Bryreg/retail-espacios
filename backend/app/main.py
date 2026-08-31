@@ -87,20 +87,31 @@ REMINDER_INTERVAL_SECONDS = 12 * 60 * 60  # every 12 hours
 
 
 def _run_lease_maintenance():
-    """Expire stale leases and send expiry reminders (runs in a worker thread)."""
-    from app.database import SessionLocal
+    """Expire stale leases and send expiry reminders (runs in a worker thread).
+
+    Recorre **todos los clientes**. Cada supermercado tiene su propia base, sus
+    propios contratos y sus propios destinatarios de correo, así que el
+    mantenimiento se hace una vez por cada uno. Si uno falla, los demás siguen:
+    un problema en la base de un cliente no puede dejar sin recordatorios a los
+    otros.
+    """
+    from app.clientes import listar, sesion_de
     from app.routers.spaces import expire_leases
     from app.services.bitacora import purgar
     from app.services.reminders import check_expiring_leases
-    db = SessionLocal()
-    try:
-        expire_leases(db)
-        check_expiring_leases(db)
-        # La bitácora no puede crecer para siempre en una base de plan gratuito,
-        # y guardar más de lo necesario es su propio riesgo.
-        purgar(db)
-    finally:
-        db.close()
+
+    for cliente in listar():
+        db = sesion_de(cliente)
+        try:
+            expire_leases(db)
+            check_expiring_leases(db)
+            # La bitácora no puede crecer para siempre en una base de plan
+            # gratuito, y guardar más de lo necesario es su propio riesgo.
+            purgar(db)
+        except Exception:
+            logger.exception("Mantenimiento falló para el cliente %s", cliente.slug)
+        finally:
+            db.close()
 
 
 async def _lease_maintenance_loop():
@@ -117,15 +128,26 @@ async def _lease_maintenance_loop():
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    from app.clientes import listar, motor_de, registrar_el_de_siempre, sesion_de
+
+    # La base por defecto primero: es donde vive la lista de clientes, así que
+    # tiene que tener sus tablas antes de poder preguntarle quiénes son.
     Base.metadata.create_all(bind=engine)
-    from app.database import SessionLocal
-    db = SessionLocal()
-    try:
-        ensure_default_config(db)
-        if db.query(Space).count() == 0:
-            seed_spaces(db)
-    finally:
-        db.close()
+    por_defecto = registrar_el_de_siempre()
+
+    for cliente in listar():
+        Base.metadata.create_all(bind=motor_de(cliente))
+        db = sesion_de(cliente)
+        try:
+            ensure_default_config(db)
+            # Los pasillos de ejemplo se siembran SÓLO en la base de siempre.
+            # Darle "Licores 24H" y "Arroz" a un supermercado nuevo sería peor
+            # que dejarlo vacío: parece que el sistema ya sabe algo de su tienda
+            # cuando no sabe nada.
+            if cliente.slug == por_defecto.slug and db.query(Space).count() == 0:
+                seed_spaces(db)
+        finally:
+            db.close()
     # Background task: lease expiry + email reminders (runs immediately, then every 12 h)
     maintenance_task = asyncio.create_task(_lease_maintenance_loop())
     yield

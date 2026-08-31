@@ -268,22 +268,30 @@ def ensure_default_config(db: Session) -> None:
 
 # ─── Tokens ───────────────────────────────────────────────────────────────────
 
-def create_token(role: str, epoca: int = 0) -> str:
+def create_token(role: str, epoca: int = 0, cliente: str | None = None) -> str:
     payload = {
         "role": role,
         # Con qué número de época nació. Si el contador del rol sube después,
         # este token deja de valer aunque todavía no se haya vencido.
         "epoca": epoca,
+        # De qué supermercado. **Sin esto la separación por base no serviría de
+        # nada:** la firma es una sola para todo el servicio, así que un token
+        # de administrador de un cliente abriría la puerta del otro. Va adentro
+        # de lo firmado, de modo que cambiarlo invalida el token.
+        "cliente": cliente,
         "exp": datetime.now(timezone.utc) + timedelta(hours=TOKEN_TTL_HOURS),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
-def create_mount_token(space_code: str, days: int = MONTAJE_TTL_DAYS) -> str:
+def create_mount_token(
+    space_code: str, cliente: str | None = None, days: int = MONTAJE_TTL_DAYS
+) -> str:
     """Un token que sólo sirve para montar ESE espacio, y sólo por un tiempo."""
     payload = {
         "role": "montaje",
         "code": (space_code or "").strip().upper(),
+        "cliente": cliente,
         "exp": datetime.now(timezone.utc) + timedelta(days=days),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
@@ -332,6 +340,26 @@ def decode_montaje(token: str) -> tuple[str, datetime | None] | None:
     exp = payload.get("exp")
     vence = datetime.fromtimestamp(exp, tz=timezone.utc) if isinstance(exp, (int, float)) else None
     return code, vence
+
+
+def cliente_del_token(raw: str) -> str | None:
+    """El supermercado que dice el token, o None si el token no sirve.
+
+    Verifica la firma ANTES de mirar el nombre: si no, cambiar una letra del
+    token alcanzaría para entrar a la base de otro cliente, que es exactamente
+    lo que esta separación existe para impedir.
+
+    Devuelve None también cuando el token es válido pero no trae cliente. Eso
+    pasa con los que se emitieron antes de que el sistema tuviera más de uno, y
+    se resuelven con el único cliente que hay — así nadie se queda afuera el día
+    del despliegue.
+    """
+    try:
+        payload = jwt.decode(raw, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.PyJWTError:
+        return None
+    valor = payload.get("cliente")
+    return valor.strip().lower() if isinstance(valor, str) and valor.strip() else None
 
 
 # ─── FastAPI dependencies ─────────────────────────────────────────────────────
