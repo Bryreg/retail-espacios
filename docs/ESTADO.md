@@ -438,6 +438,17 @@ hay ficha: si no, la lista de precios —unos 380 px— quedaba al lado de un pl
 y dejaba el fondo gris a la vista, que se lee como que falta algo. Estirada, la tabla
 queda arriba y lo que sobra es hoja en blanco.
 
+**La lista de precios dice CUÁLES.** «Isla · 3 · $1.200.000» dice cuántas quedan y no
+cuáles, y para averiguarlo había que buscar los prismas verdes a ojo entre ciento seis
+muebles. Debajo de cada tipo van los códigos de sus caras libres, como pastillas que se
+tocan para sumarlas al contrato — la misma acción que tocar el mueble en el plano, por
+el otro camino: el plano contesta «dónde queda» y la lista contesta «cuáles hay», y
+según cuál de las dos preguntas traiga el proveedor uno arranca por un lado o por el
+otro. Las que se liberan adentro del periodo van en naranja y con su fecha: es
+inventario vendible —«te lo puedo dar desde el 25»— y esconderlo es dejar de ofrecer
+cinco espacios de veinte. Los códigos salen cuando hay un contrato armado: ahí la
+pregunta ya es otra y empujarían la ficha fuera de la pantalla.
+
 **Cómo se mira sin backend.** `docs/maquetas/generadores/pantalla.mjs` sirve
 `frontend/dist` y contesta `/api/*` con una sede sintética que lleva los ocho contratos
 reales de NAVE. Lo que no está en el mapa de rutas contesta **404 y no `[]`** —así un

@@ -8,6 +8,9 @@
 //   node pantalla.mjs multi            # un contrato sobre DOS espacios, y
 //                                      # comprueba que el total sea la suma
 //                                      # prorrateada de los dos
+//   node pantalla.mjs codigos          # arma el contrato desde las pastillas
+//                                      # de la lista de precios, sin tocar el
+//                                      # plano
 //   node pantalla.mjs guardar          # el mismo, guardado: comprueba que
 //                                      # salga UNA sola tanda al servidor y
 //                                      # que la confirmación nombre los dos
@@ -187,7 +190,24 @@ async function capturar(nombre) {
   console.log(`${nombre}: ${ancho}×${alto} → ${destino}${ancho > 1440 ? "   ⚠ DESBORDE HORIZONTAL" : ""}`);
 }
 
-if (MODO === "ficha" || MODO === "multi" || MODO === "guardar") {
+if (MODO === "codigos") {
+  // Las pastillas de la lista de precios tienen que sumar al contrato igual
+  // que tocar el mueble en el plano: es la misma acción por dos caminos, y si
+  // uno de los dos no la hace la lista se lee como decoración.
+  const antes = await page.locator('input[aria-label^="Valor mensual de"]').count();
+  const chip = page.locator('button[title^="Sumar ISL-05"]').first();
+  console.log(await chip.count() ? "la pastilla de ISL-05 está ✓" : "⚠ no hay pastilla de ISL-05");
+  await chip.click();
+  await page.waitForTimeout(800);
+  const filas = await page.locator('input[aria-label^="Valor mensual de"]')
+    .evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
+  console.log(antes === 0 && filas.length === 1 && /ISL-05/.test(filas[0] || "")
+    ? "tocarla arma el contrato con ese espacio ✓"
+    : `⚠ el contrato quedó en ${filas.length} renglones: ${filas.join(", ")}`);
+  const marcados = await page.locator('svg polygon[stroke="var(--accent)"]').count();
+  console.log(marcados === 1 ? "y el plano la marca ✓" : `⚠ el plano marca ${marcados}`);
+  await capturar("codigos");
+} else if (MODO === "ficha" || MODO === "multi" || MODO === "guardar") {
   // Los prismas verdes del plano son los libres en el periodo. Tocarlos los
   // suma al contrato: uno para «ficha», dos para «multi».
   const verdes = page.locator('svg polygon[fill="#00786A"]');

@@ -36,6 +36,7 @@ node pantalla.mjs                   # admin: Vender y Supervisar
 node pantalla.mjs trabajador        # rol mercaderista, y la regla de la plata
 node pantalla.mjs ficha             # Vender con un espacio elegido
 node pantalla.mjs multi             # un contrato sobre dos espacios
+node pantalla.mjs codigos           # el contrato armado desde la lista de precios
 node pantalla.mjs guardar           # el mismo, guardado de punta a punta
 
 python3 opciones.py                      # regenera la página de opciones
