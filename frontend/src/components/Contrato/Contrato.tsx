@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
-import { AlertTriangle, Box, ImageUp, MapPin, X } from "lucide-react";
+import { AlertTriangle, Box, ImageUp, X } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { describirUbicacion } from "../MiniMapa/MiniMapa";
 import type { DateRange } from "../SeasonPicker/SeasonPicker";
-import { parseISODate } from "../../types/seasons";
+import { parseISODate, upcomingSeasons } from "../../types/seasons";
 import { findOrCreateSpace, createLease } from "../../api/spaces";
 import { subirPlanometria } from "../../api/planograms";
 import { findOrCreateSupplier } from "../../api/suppliers";
@@ -105,6 +105,7 @@ export const DISPONIBILIDAD: Record<
 export function useContrato({ fixture, face, sede, rango, onGuardado }: ArgsContrato) {
   const fixtures = useFixtureStore(selectFixtures);
   const referenceRates = useFixtureStore((s) => s.referenceRates);
+  const seasonWindows = useFixtureStore((s) => s.seasonWindows);
 
   const corto = face === "B" ? `${fixture.code}-B` : fixture.code;
   const codigo = fullSpaceCode(fixture.sede || sede, corto);
@@ -247,11 +248,37 @@ export function useContrato({ fixture, face, sede, rango, onGuardado }: ArgsCont
     }
   }
 
+  /** Lo que se firma, no lo que se cobra por mes.
+   *
+   *  El formulario pide el valor MENSUAL —así se negocia— pero lo que queda
+   *  escrito en el contrato es el total del plazo, y son dos números
+   *  distintos: $1.500.000 al mes por 61 días son $3.050.000. Sin este
+   *  renglón había que hacer la cuenta de cabeza con el proveedor esperando,
+   *  que es exactamente cuando se equivoca. Prorratea por día sobre 30, igual
+   *  que todo el resto del sistema. */
+  const total = monto > 0 && fechasEnOrden ? Math.round((monto / 30) * dias) : 0;
+
+  /** Las temporadas comerciales que caen adentro del plazo.
+   *
+   *  Es el argumento de venta que el sistema puede dar y una planilla no:
+   *  «este contrato cubre Amor y Amistad y Halloween». También es un control
+   *  —si la temporada que se estaba buscando NO aparece, las fechas están
+   *  mal— y por eso va al lado del total y no escondido en una ayuda. */
+  const cubre = useMemo(() => {
+    const d = parseISODate(desde);
+    const h = parseISODate(hasta);
+    if (!d || !h || h < d) return [] as string[];
+    return upcomingSeasons(d, seasonWindows)
+      .filter((t) => t.from <= h && t.to >= d)
+      .map((t) => t.label);
+  }, [desde, hasta, seasonWindows]);
+
   return {
     // La sede efectiva: los muebles dibujados antes de que existiera esa
     // columna no la traen, y ahí manda la sede activa.
     sede: fixture.sede || sede,
     fixture, face, corto, codigo, doble, ubicacion, ref, disponibilidad,
+    total, cubre,
     desde, setDesde, hasta, setHasta,
     proveedor, setProveedor, correo, setCorreo, marca, setMarca,
     valor, escribirValor, monto, nota, setNota,
@@ -267,22 +294,39 @@ export type Contrato = ReturnType<typeof useContrato>;
 // ─── Piezas ──────────────────────────────────────────────────────────────────
 
 const campo: React.CSSProperties = {
-  width: "100%", height: 34, padding: "0 10px", boxSizing: "border-box",
-  borderRadius: "var(--r-md)", border: "1px solid var(--line-strong)",
-  background: "var(--surface)", color: "var(--ink-1)",
-  fontSize: 13, fontFamily: "inherit", outline: "none",
+  width: "100%", height: 36, padding: "0 10px", boxSizing: "border-box",
+  borderRadius: "var(--r-xs)", border: "1px solid var(--line-strong)",
+  background: "#FCFDFD", color: "var(--ink-1)",
+  fontSize: 14.5, fontWeight: 500, fontFamily: "inherit", outline: "none",
 };
 
+/** El nombre del campo, en versalita condensada.
+ *
+ *  Era texto corriente en 11.5 semibold: al lado del valor —que va en 14.5—
+ *  competía con él, y en una columna de ocho campos apilados eso da dieciséis
+ *  renglones que pesan casi igual. En versalita el nombre se lee sin leerse,
+ *  que es lo que tiene que hacer una etiqueta. */
 function Etiqueta({ children, hint }: { children: React.ReactNode; hint?: string }) {
   return (
-    <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-2)", marginBottom: 4 }}>
+    <div className="rotulo" style={{ marginBottom: 4 }}>
       {children}
-      {hint && <span style={{ fontWeight: 400, color: "var(--ink-4)" }}> · {hint}</span>}
+      {hint && (
+        <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "var(--ink-4)" }}>
+          {" · "}{hint}
+        </span>
+      )}
     </div>
   );
 }
 
-/** El encabezado de la ficha: qué espacio es, dónde queda y cómo está. */
+/** El encabezado de la ficha: de qué contrato se trata y sobre qué espacio.
+ *
+ *  El espacio va adentro de un recuadro propio y no suelto entre los campos.
+ *  Es el único dato del formulario que NO se teclea —viene de haber tocado el
+ *  plano— y encuadrarlo lo dice sin una sola palabra: esto ya está decidido,
+ *  lo de abajo es lo que falta. Adentro del recuadro, el código en grande a la
+ *  izquierda y la tarifa a la derecha, que son las dos puntas de la
+ *  conversación: qué le doy y cuánto vale. */
 export function CabezaContrato({
   c, onFace,
 }: {
@@ -292,32 +336,58 @@ export function CabezaContrato({
   const pinta = DISPONIBILIDAD[c.disponibilidad];
   const pedirEnfoque3D = useFixtureStore((s) => s.pedirEnfoque3D);
   return (
-    <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--line-soft)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: 16.5, fontWeight: 700, color: "var(--ink-1)" }}>
+    <div style={{ padding: "11px 15px 0" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 9 }}>
+        <h2 style={{ fontSize: 14.5, fontWeight: 700, letterSpacing: "-0.005em", margin: 0 }}>
+          Contrato
+        </h2>
+        <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--ink-3)" }}>sin firmar</span>
+      </div>
+
+      <div
+        style={{
+          display: "flex", alignItems: "center", gap: 9,
+          border: "1px solid var(--ink-1)", borderRadius: "var(--r-xs)",
+          boxShadow: "0 0 0 2px rgba(20,24,28,.08)",
+          padding: "7px 9px", background: "#FCFDFD",
+        }}
+      >
+        <span style={{
+          fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 17,
+          letterSpacing: "0.01em", lineHeight: 1, flexShrink: 0,
+        }}>
           {nombreDeMueble({ code: c.corto, nomenclatura: c.fixture.nomenclatura })}
         </span>
-        <span
+        <span style={{ fontSize: 12, color: "var(--ink-3)", lineHeight: 1.3, flex: 1, minWidth: 0 }}>
+          {c.fixture.label || c.fixture.code}
+          {c.ubicacion && <><br />{c.ubicacion}</>}
+        </span>
+        {c.ref !== null && (
+          <span
+            title="Tarifa de referencia del tipo de mueble, al mes"
+            style={{ fontSize: 13, fontWeight: 700, flexShrink: 0, whiteSpace: "nowrap" }}
+          >
+            {money(c.ref)}
+          </span>
+        )}
+      </div>
+
+      {/* Cómo está ese espacio en el periodo elegido. Va debajo del recuadro y
+          no adentro: el recuadro dice QUÉ se está vendiendo, esto dice si se
+          puede. Cuando está libre —que es el caso normal— no se dibuja: una
+          pastilla verde que dice «todo en orden» en cada contrato es ruido. */}
+      {c.disponibilidad !== "libre" && (
+        <div
           style={{
-            fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 999,
-            background: pinta.fondo, color: pinta.color, border: `1px solid ${pinta.borde}`,
+            marginTop: 7, display: "inline-flex", alignItems: "center", gap: 6,
+            fontSize: 12, fontWeight: 600, color: pinta.color,
+            background: pinta.fondo, border: `1px solid ${pinta.borde}`,
+            borderRadius: "var(--r-xs)", padding: "3px 8px",
           }}
         >
           {pinta.texto}
-        </span>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 5, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 12.5, color: "var(--ink-2)" }}>
-          {c.fixture.label || c.fixture.code}
-        </span>
-        {c.ubicacion && (
-          <>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            <MapPin size={11} style={{ color: "var(--accent)", flexShrink: 0 }} />
-            <span style={{ fontSize: 12, color: "var(--ink-3)" }}>{c.ubicacion}</span>
-          </>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Mostrarle al proveedor cómo se ve su exhibición mientras se negocia.
           El 3D es la única pantalla que pone el arte sobre el mueble, y sin
@@ -325,7 +395,7 @@ export function CabezaContrato({
       <button
         onClick={() => pedirEnfoque3D(c.fixture.id, c.face)}
         style={{
-          marginTop: 9, width: "100%", height: 30, borderRadius: "var(--r-md)",
+          marginTop: 9, width: "100%", height: 30, borderRadius: "var(--r-xs)",
           display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
           border: "1px solid var(--line)", background: "var(--surface-2)",
           color: "var(--ink-2)", fontSize: 12, fontWeight: 600,
@@ -347,11 +417,11 @@ export function CabezaContrato({
                 key={id}
                 onClick={() => onFace(id)}
                 style={{
-                  flex: 1, height: 27, borderRadius: "var(--r-md)", cursor: "pointer",
-                  border: `1px solid ${activa ? "var(--accent)" : "var(--line)"}`,
+                  flex: 1, height: 27, borderRadius: "var(--r-xs)", cursor: "pointer",
+                  border: `1px solid ${activa ? "var(--ink-1)" : "var(--line)"}`,
                   background: activa ? "var(--accent-50)" : "var(--surface)",
-                  color: activa ? "var(--accent-700)" : "var(--ink-2)",
-                  fontSize: 11.5, fontWeight: 600, fontFamily: "inherit",
+                  color: activa ? "var(--ink-1)" : "var(--ink-2)",
+                  fontSize: 12, fontWeight: 600, fontFamily: "inherit",
                 }}
               >
                 Cara {id}
@@ -375,20 +445,16 @@ export function CamposContrato({ c }: { c: Contrato }) {
         padding: "13px 14px", display: "grid", gap: 12, alignContent: "start",
       }}
     >
+      {/* La advertencia de disponibilidad se dice UNA vez, en el encabezado,
+          al lado del espacio del que habla. Acá estaba repetida en un recuadro
+          de tres renglones que empujaba los campos hacia abajo. */}
       {c.disponibilidad !== "libre" && (
-        <div
-          style={{
-            display: "flex", alignItems: "flex-start", gap: 7,
-            padding: "9px 11px", borderRadius: "var(--r-md)",
-            background: "var(--warning-50)", color: "var(--warning)",
-            fontSize: 12.5, lineHeight: 1.45,
-          }}
-        >
-          <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 7, fontSize: 12, color: "var(--ink-3)", lineHeight: 1.45 }}>
+          <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1, color: "var(--warning)" }} />
           <span>
             {c.disponibilidad === "parcial"
-              ? "Este espacio ya tiene parte del periodo vendida. Revisá las fechas antes de guardar."
-              : "Este espacio está vendido en el periodo elegido. Si vas a renovar, ajustá las fechas."}
+              ? "Parte del periodo ya está vendida: revisá las fechas antes de guardar."
+              : "Está vendido en el periodo elegido. Si vas a renovar, ajustá las fechas."}
           </span>
         </div>
       )}
@@ -567,6 +633,45 @@ export function CamposContrato({ c }: { c: Contrato }) {
           es donde se toma la decisión: enterarse después de haber cerrado la
           llamada no sirve de nada. */}
       <NotifyPreview sede={c.sede} />
+
+      {/* ── Lo que se firma ─────────────────────────────────────────────────
+          El total del plazo, que no es el valor mensual: $1.500.000 al mes por
+          61 días son $3.050.000, y esa cuenta se hacía de cabeza con el
+          proveedor esperando del otro lado.
+
+          Es la única cifra grande de la pantalla —27 px, el peso 900 de Chivo—
+          y se la gana: es lo que va a quedar escrito. Debajo, las temporadas
+          que el plazo cubre, que son a la vez el argumento de venta y el
+          control de que las fechas quedaron donde se querían. */}
+      {c.total > 0 && (
+        <div>
+          <div style={{
+            display: "flex", alignItems: "baseline", justifyContent: "space-between",
+            borderTop: "2px solid var(--ink-1)", paddingTop: 9,
+          }}>
+            <span className="rotulo" style={{ fontSize: 11 }}>Total del contrato</span>
+            <span style={{ fontSize: 27, fontWeight: 900, letterSpacing: "-0.02em" }}>
+              {money(c.total)}
+            </span>
+          </div>
+          {c.cubre.length > 0 && (
+            <div style={{ display: "flex", gap: 6, marginTop: 9, flexWrap: "wrap" }}>
+              {c.cubre.map((t) => (
+                <span
+                  key={t}
+                  style={{
+                    fontSize: 12, fontWeight: 500, color: "var(--libre)",
+                    background: "var(--libre-suave)", padding: "3px 8px",
+                    borderRadius: "var(--r-xs)",
+                  }}
+                >
+                  Cubre {t}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
     </div>
   );

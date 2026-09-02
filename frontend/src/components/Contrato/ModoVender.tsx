@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, Handshake, Loader2, Lock, X } from "lucide-react";
+import { AlertTriangle, Check, Loader2, Lock, X } from "lucide-react";
 import type { DateRange } from "../SeasonPicker/SeasonPicker";
 import { isRentable, type FaceData, type UnifiedFixture } from "../../types/fixtures";
 import {
@@ -31,45 +31,70 @@ interface ModoVenderProps {
   onGuardado: (patch: Partial<FaceData>, resumen: ResumenContrato) => void;
   onCancelar: () => void;
   onSeguir: () => void;
-  /** El mapa de la sede. Viene del tablero para que sea exactamente el mismo. */
+  /** La columna izquierda: el plano y la escalera de «cuándo se libera».
+   *  Viene del tablero para que sea exactamente la misma en los dos modos. */
   children: React.ReactNode;
+  /** La lista de precios, debajo de la ficha. Se dibuja SIEMPRE —haya o no un
+   *  espacio elegido— porque es lo que se mira mientras se decide cuál tocar:
+   *  qué familias quedan y a cuánto salen. Antes vivía detrás de un botón, y
+   *  abrir un modal para consultar un precio en cada llamada es lo que hace
+   *  que la gente termine con la lista impresa al lado del teclado. */
+  panelTarifas?: React.ReactNode;
 }
 
 // ─── Armazón ─────────────────────────────────────────────────────────────────
 
 function Armazon({
-  mapa, ficha, barra,
+  mapa, ficha, barra, tarifas,
 }: {
   mapa: React.ReactNode;
-  ficha: React.ReactNode;
+  /** Sin ficha —y sin tarifas— el riel no se dibuja y el mapa se lleva todo. */
+  ficha: React.ReactNode | null;
   barra: React.ReactNode;
+  tarifas?: React.ReactNode;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", gap: 12, alignItems: "stretch" }}>
         {mapa}
-        {/* La ficha mide lo que mide su contenido y se queda pegada arriba: el
-            mapa es mucho más alto que el formulario, y estirar la tarjeta hasta
-            abajo sólo repartía aire entre los campos. */}
-        <div
-          style={{
-            width: ANCHO_FICHA, flexShrink: 0, minWidth: 0,
-            alignSelf: "flex-start", position: "sticky", top: 0,
-            display: "flex", flexDirection: "column",
-          }}
-        >
-          {ficha}
-        </div>
+        {/* Mientras no hay un espacio elegido, acá había 428 px de blanco con
+            un rótulo chiquito arriba explicando que ahí iba a aparecer algo.
+            Media pantalla reservada para lo que no está: es la interfaz
+            avisando que le falta contenido, y es de lo que más delata que
+            nadie se sentó a mirarla trabajando.
+
+            Ahora el riel simplemente no existe hasta que hay algo que poner, y
+            el mapa ocupa todo. Cuando se toca un espacio el riel entra y el
+            mapa se corre: el movimiento es la respuesta al clic. */}
+        {(ficha !== null || tarifas) && (
+          <div
+            style={{
+              width: ANCHO_FICHA, flexShrink: 0, minWidth: 0,
+              alignSelf: "flex-start", position: "sticky", top: 0,
+              display: "flex", flexDirection: "column", gap: 10,
+            }}
+          >
+            {ficha}
+            {tarifas}
+          </div>
+        )}
       </div>
       {barra}
     </div>
   );
 }
 
+/*  La ficha del contrato es un panel como el plano y como la tabla: mismo
+ *  blanco, misma línea de 1 px, misma esquina de 3. Un rato fue una «lámina»
+ *  sin borde con una línea de tinta arriba, para que se leyera como la otra
+ *  mitad del plano; el problema es que en esta pantalla hay cuatro paneles y
+ *  dos de ellos no pueden tener una gramática distinta de los otros dos. La
+ *  jerarquía la dan el tamaño y la posición, no el tratamiento del borde. */
 const tarjeta: React.CSSProperties = {
   display: "flex", flexDirection: "column",
   borderRadius: "var(--r-xl)", background: "var(--surface)",
-  border: "1px solid var(--line)", boxShadow: "var(--shadow-xs)",
+  border: "1px solid var(--line)",
+  boxShadow: "none",
   overflow: "hidden",
 };
 
@@ -94,37 +119,6 @@ function Barra({ children }: { children: React.ReactNode }) {
 }
 
 // ─── Estados sin contrato en curso ───────────────────────────────────────────
-
-function SinElegir() {
-  return (
-    <div
-      style={{
-        ...tarjeta,
-        alignItems: "center", justifyContent: "center", textAlign: "center",
-        padding: "30px 26px", gap: 12,
-        background: "var(--surface-2)", border: "1px dashed var(--line-strong)",
-        boxShadow: "none",
-      }}
-    >
-      <div
-        style={{
-          width: 46, height: 46, borderRadius: "var(--r-xl)",
-          background: "var(--accent-50)", color: "var(--accent)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }}
-      >
-        <Handshake size={22} />
-      </div>
-      <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--ink-1)" }}>
-        Elegí un espacio en el mapa
-      </div>
-      <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55, maxWidth: 280 }}>
-        Los verdes están libres todo el periodo, los amarillos tienen parte
-        vendida. Tocá uno y el contrato se llena acá.
-      </div>
-    </div>
-  );
-}
 
 /** Un mueble que no se alquila: una caja, una pared, la zona de frutas. Tocarlo
  *  en el mapa no puede abrir un contrato — no hay nada que vender ahí. */
@@ -278,7 +272,7 @@ function Cerrado({ datos, onSeguir }: { datos: ResumenContrato; onSeguir: () => 
 // ─── Con un espacio elegido ──────────────────────────────────────────────────
 
 function ConEspacio({
-  fixture, face, onFace, sede, rango, onGuardado, onCancelar, children,
+  fixture, face, onFace, sede, rango, onGuardado, onCancelar, children, panelTarifas,
 }: Omit<ModoVenderProps, "fixture" | "cerrado" | "onSeguir"> & { fixture: UnifiedFixture }) {
   const c = useContrato({ fixture, face, sede, rango, onGuardado });
   const guardando = c.estado === "guardando";
@@ -286,6 +280,7 @@ function ConEspacio({
   return (
     <Armazon
       mapa={children}
+      tarifas={panelTarifas}
       ficha={
         <div style={tarjeta}>
           <CabezaContrato c={c} onFace={onFace} />
@@ -388,16 +383,30 @@ function ConEspacio({
 // ─── ──────────────────────────────────────────────────────────────────────────
 
 export default function ModoVender(props: ModoVenderProps) {
-  const { fixture, face, cerrado, onSeguir, children } = props;
+  const { fixture, face, cerrado, onSeguir, children, panelTarifas } = props;
 
   if (cerrado) {
-    return <Armazon mapa={children} ficha={<Cerrado datos={cerrado} onSeguir={onSeguir} />} barra={null} />;
+    return (
+      <Armazon
+        mapa={children} tarifas={panelTarifas} barra={null}
+        ficha={<Cerrado datos={cerrado} onSeguir={onSeguir} />}
+      />
+    );
   }
   if (!fixture) {
-    return <Armazon mapa={children} ficha={<SinElegir />} barra={null} />;
+    // Sin espacio elegido acá había 428 px de blanco con un rótulo chiquito
+    // explicando que ahí iba a aparecer algo. Media pantalla reservada para lo
+    // que no está. Ahora la columna la ocupa la lista de precios, que es
+    // justamente lo que se mira antes de elegir.
+    return <Armazon mapa={children} ficha={null} tarifas={panelTarifas} barra={null} />;
   }
   if (!isRentable(fixture)) {
-    return <Armazon mapa={children} ficha={<NoComercializable fixture={fixture} />} barra={null} />;
+    return (
+      <Armazon
+        mapa={children} tarifas={panelTarifas} barra={null}
+        ficha={<NoComercializable fixture={fixture} />}
+      />
+    );
   }
   // La clave remonta el formulario al cambiar de espacio o de cara: lo que se
   // había tecleado para otra punta no puede quedar colgado en ésta.
