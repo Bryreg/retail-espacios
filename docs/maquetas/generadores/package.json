@@ -1,0 +1,14 @@
+{
+  "name": "recabra-maquetas-verificadores",
+  "private": true,
+  "type": "module",
+  "description": "Verificadores de las maquetas de docs/maquetas. No forma parte de la app.",
+  "scripts": {
+    "ver": "node ver.mjs",
+    "recorte": "node recorte.mjs",
+    "solape": "node solape.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.48.0"
+  }
+}

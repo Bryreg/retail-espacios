@@ -134,68 +134,55 @@ lo que vence, sin nada de dinero).
 Al hacer clic en un mueble se abre un popover anclado a él; "Ver todo" pasa el detalle
 completo a la columna derecha. Los campos vacíos no se dibujan.
 
-### Paleta
+### Paleta y tipografía
 
-Un solo lenguaje de color en Dashboard, plano 2D y editor 3D. El mapa tiene dos
-lecturas y cada una su escala. **Qué pasa hoy:**
+El sistema visual sale de `docs/maquetas/` y vive en `frontend/src/index.css` +
+`tailwind.config.js`, que repiten los mismos valores (literales en Tailwind y no
+`var(--x)`, porque media docena de clases usan el modificador de opacidad y Tailwind
+sólo sabe separarle el alfa a un color que puede leer). **Si tocás uno, tocá los dos.**
 
-| Estado | Color |
-|---|---|
-| Libre | verde `#4CC38A` |
-| Ocupado | violeta `#8B5CF6` |
-| Reservado | ámbar `#F0B429` |
-| No comercializable | `#DCE2E8` |
+**Tres estados y nada más.** Verde se puede vender, naranja a medias, rojo no:
 
-El rojo queda reservado para lo que está mal (un contrato vencido).
+| Lectura | Color | Token |
+|---|---|---|
+| Libre todo el periodo | verde `#00786A` | `--libre` |
+| Se libera en el periodo | naranja `#F08519` | `--entra` (texto: `--entra-txt` `#B35F0A`) |
+| Tomado | rojo oscuro `#8E1226` | `--ocupado` |
+| Resto de la sala | gris `#D3D9DB` · `#E4E8E9` | `--resto` |
 
-**Disponible en un periodo**, que es la lectura que contesta «¿lo puedo vender
-entre estas dos fechas?». Acá el color dice una escala, no tres etiquetas
-sueltas —**verde se puede, naranja a medias, rojo no**— y se entiende sin ir a
-la leyenda:
+El rojo es **oscuro a propósito**: cuando el tono se colapsa bajo deuteranopía lo que
+separa es la luminosidad, y un rojo claro contra un verde medio se vuelven el mismo
+bloque. Medida con la misma cuenta, esta terna separa mejor que la que estaba desplegada
+en TODOS los pares — el peor par pasa de 13,5 a 19,9 en dicromacia y de 27,4 a 33,8 en
+visión normal. Cada estado va **siempre rotulado**, así que la identidad nunca depende
+sólo del color.
 
-| Estado | Color |
-|---|---|
-| Libre todo el periodo | verde `#4CC38A` |
-| Libre parte del periodo | naranja `#F08519` |
-| Tomado | rojo `#D93A3A` |
-| No comercializable | `#DCE2E8` |
+`success` / `warning` / `danger` apuntan a esos mismos tres. Acá no quieren decir «bien /
+cuidado / error»: quieren decir libre, se libera, tomado.
 
-### La paleta del mapa se valida, no se elige a ojo
+**El plano pinta siempre esa escala de tres.** Antes, sin periodo elegido, contestaba con
+la otra —«qué pasa hoy», siete clases— y ahí `free` contra `maintenance` daba ΔE 3.6 en
+deuteranopía: el mismo color para dos estados opuestos. La salida no fue inventarle un
+color a nadie sino sacarle el trabajo al color: **«Hoy» pasó a ser un periodo de un día**
+(`hoyComoRango()` en `SeasonPicker`), las dos pantallas tienen siempre periodo puesto, y
+el detalle por estado vive **escrito** en la tabla, donde cada fila lleva su palabra.
 
-Dos de esos valores cambiaron porque no pasaban, y conviene que quede escrito
-por qué, para no revertirlos sin darse cuenta.
+**Tipografía: Chivo + Archivo Narrow.** Chivo para leer; Archivo Narrow para códigos y
+versalitas. Cada mitad hace algo que la otra no puede: Chivo tiene un 900 de verdad —no
+un 700 engordado— y sobre ese peso se apoya el único número grande de la pantalla, el
+total del contrato; Archivo Narrow aprieta `GON-60·A` en una columna de 56 px, y de eso
+depende que las 23 caras entren sin cortar un código. `--font-mono` sigue llamándose así
+por los ochenta lugares que la piden, pero **no es monoespaciada**: lo que hacía falta de
+un mono era que las cifras alinearan, y eso lo da `tabular-nums`, que está en el body.
 
-**El gris de «no comercializable» era `#94A3B8`** y contra el verde de «libre»
-daba **ΔE 8.0 en el peor caso daltónico y 14.7 en visión normal**, los dos por
-debajo del piso. No es un detalle al margen: el gris es la mayor parte del
-plano, así que «lo que puedo vender» contra «lo que ni siquiera se alquila» es
-justo el par que hay que distinguir de un vistazo. La salida **no** fue tocar el
-verde —bajarlo lo acerca al rojo, que bajo deuteranopía es el vecino peligroso:
-probado, con el verde en `#1E9E6A` el par verde-rojo cae a ΔE 6.5—. Se aclaró el
-gris, que separa por luminosidad, que es lo que sobrevive cuando el tono se
-colapsa. De paso hace lo correcto de diseño: la infraestructura se va al fondo y
-el color queda para lo que se vende.
+**Siete tamaños y ninguno más** — 9.5 · 11 · 12 · 13 · 14.5 · 17 · 27 — escritos en
+`index.css`. Había diecisiete, que es lo que hace que una pantalla se vea armada de a
+pedazos. El contraste lo dan la familia, el peso y el color, no el tamaño. Radios: 2 px
+para lo que se toca, 3 px para el panel. Sin sombras salvo el modal.
 
-**El ámbar de «libre parte del periodo» era `#F0B429`**, tiraba a amarillo y se
-leía como «atención», que es otra cosa. Con el naranja el mapa dice una escala.
-Tiene un costo medido: naranja y rojo son vecinos de tono, así que el par más
-apretado se mudó ahí —de ΔE 21.8 a 13.8 en daltonismo y de 27.5 a 16.7 en visión
-normal—. Sigue sobre el piso y ambos estados van rotulados, pero **no se puede
-oscurecer más el naranja**: `#D4700F` cae a ΔE 6.6 contra el rojo.
-
-Con los dos cambios, los cuatro colores de la lectura por periodo pasan la
-separación en **todos** los pares: peor caso ΔE 10.8 daltónico y 16.7 en visión
-normal. **Antes de mover cualquiera hay que volver a correr el validador de
-paleta**; que «se vean distintos» no es evidencia.
-
-Queda abierto un problema que no se arregla moviendo un color: la escala de «qué
-pasa hoy» tiene siete clases, y ahí `free #4CC38A` contra `maintenance #A8A29E`
-da **ΔE 3.6 en deuteranopía** —un daltónico no distingue «lo puedo vender» de
-«está en mantenimiento», que es lo contrario—. Mover el gris de mantenimiento a
-oscuro choca con el rojo en protanopía; a claro, con el gris nuevo. Siete clases
-es el techo que aguanta el color solo: la salida es menos clases o una segunda
-codificación (una trama en las caras en mantenimiento, por ejemplo), y eso es
-decisión de producto.
+**Antes de mover un color hay que volver a correr la cuenta** sobre los cinco del plano
+—los tres estados, el cuerpo del mueble y lo no comercializable—. Que «se vean distintos»
+no es evidencia.
 
 ### Tarifa de referencia y rendimiento $/m²
 
@@ -322,6 +309,69 @@ cambia de estado y eso desmontaba el mensaje justo cuando había que leerlo.
 
 Desde **Supervisar** también se vende: el popover del mapa y el panel de detalle traen
 "Negociar este espacio", que cambia de modo con ese espacio ya elegido.
+
+#### Cómo quedaron las dos pantallas (las maquetas, en código)
+
+Las maquetas de `docs/maquetas/elegida-vender.html` y `elegida-supervisar.html` bajaron a
+código. Lo que cambió no es el aspecto: es **qué contesta cada pantalla**.
+
+**El parte en prosa se fue de las dos**, y con él su maquinaria: `utils/parte.ts`,
+`utils/redaccion.ts`, `components/Parte/` y sus dos suites no están en el repo. Eran
+cuatrocientas líneas que no importaba nadie, y código muerto que sigue corriendo en CI se
+lee como código vivo hasta que alguien pierde media hora averiguando que no lo es. Están
+en la historia de la rama de diseño, que es donde hay que buscarlas si el parte vuelve.
+
+**Supervisar** abre con una franja de cinco cifras: canon vigente, sin alquilar, vence en
+30 días, ocupación, sin montar. «Sin alquilar» es la que faltaba —«ocupación 35 %» dice
+que sobra sala, «$8.730.000 al mes a tarifa» dice cuánto vale esa sala— y lleva su tasa
+por día, que dice **«por día vacío» y no «perdido»**: con el periodo por delante todavía
+no se perdió nada. A un mercaderista la franja le cambia: ve *Vence en 30 días* y
+*Libres* contados en espacios, nunca en pesos (el servidor ya le borra el
+`negotiatedValue`, así que en pesos le llegaría un `$0` que hace parecer quebrada a la
+sede).
+
+«Atención» es ahora **«Para revisar»** y cada fila es un **botón que selecciona el espacio
+en el plano de al lado**. Antes la lista y el plano eran dos paneles que no se hablaban.
+«Los que más pagan» es **«Quién paga el canon»**, con el porcentaje del canon y el sello
+VENCE: el ranking 1-2-3 contestaba una pregunta de vanidad; la que importa es de quién
+depende la sede. **«Estado por espacio»** queda a todo el ancho debajo del plano, con los
+chips de filtro en su encabezado —Todas / Por vencer / Sin montar / Libres, y el que no
+puede devolver nada no se dibuja—.
+
+Y el plano **deja de ser un directorio**: la tabla ya lista las 23 caras con su código, así
+que arriba se rotula sólo la fila abierta. Veintitrés rótulos en un panel de 700 px caen a
+un cuerpo ilegible. Lo no comercializable no se rotula nunca: es el contexto donde está lo
+que se vende, y el contexto se dibuja.
+
+**Vender** suma dos paneles. **«Cuándo se libera cada espacio»** (`components/Libera/`) es
+una escalera sobre el eje de fechas con peine de días y un cursor que escribe la respuesta
+—«si arranca el 26 de sep → 17 libres»—. Contesta la pregunta con la que se negocia una
+fecha de arranque, que ninguna cifra suelta contesta: «15 libres» es cierto hoy y deja de
+serlo el martes. **La serie no se asume monótona**: se cuenta día por día, porque un
+contrato que arranca en el medio del periodo *baja* la disponibilidad y dibujarlo como una
+subida sería mentir sobre inventario ya vendido. Los chips de código se apilan por columna
+y sueltan los que no entran, en vez de dibujarse encimados.
+
+**«Tarifa de referencia»** sale de atrás del botón y ocupa la columna derecha mientras no
+hay espacio elegido —donde antes había 428 px de blanco reservado para lo que no estaba—.
+Tocar una fila aísla esa familia en el plano. Abrir un modal para consultar un precio en
+cada llamada es lo que hace que la gente termine con la lista impresa al lado del teclado.
+
+La ficha del contrato lleva el espacio adentro de un recuadro propio con su tarifa —es el
+único dato que no se teclea— y al pie el **TOTAL DEL CONTRATO**, que no existía: el
+formulario pide el valor *mensual*, pero lo que se firma es el total del plazo, y
+$1.500.000 al mes por 61 días son $3.050.000. Esa cuenta se hacía de cabeza con el
+proveedor esperando. Debajo, las temporadas que el plazo cubre: argumento de venta y
+control a la vez —si la temporada que se buscaba no aparece, las fechas están mal—.
+
+**Cómo se mira sin backend.** `docs/maquetas/generadores/pantalla.mjs` sirve
+`frontend/dist` y contesta `/api/*` con una sede sintética que lleva los ocho contratos
+reales de NAVE. Lo que no está en el mapa de rutas contesta **404 y no `[]`** —así un
+componente toma su camino de error en vez de recibir algo que parece un dato, que fue
+exactamente el primer bicho que encontró—. Corre en tres modos: `admin`, `trabajador`
+(replica lo que el servidor le borra a un mercaderista y verifica que **no le quede un
+solo peso en pantalla**) y `ficha`.
+
 
 ### Tres cosas que estaban rotas y no se veían
 
@@ -1791,6 +1841,24 @@ configuración, no desde el código, y conviene hacerlo avisando.
 
 ## La línea visual: Empresarial
 
+> **Arqueología (agosto 2026).** Esta sección y la que la precede cuentan de
+> dónde salieron IBM Plex Sans, el acento azul y los neutros cálidos. **Ninguno
+> de los tres sigue vigente**: el sistema actual es Chivo + Archivo Narrow sobre
+> papel frío, y está descrito en «Paleta y tipografía» al principio de este
+> documento. Se conserva porque explica el PORQUÉ de decisiones que todavía
+> están en pie —dos radios y no seis, sin sombras ambientales, el acento en
+> tinta para que el color quede sólo para el estado— y porque saber qué se
+> probó y por qué se descartó vale más que el valor final. Ante cualquier
+> contradicción, manda «Paleta y tipografía».
+
+
+> **Esta sección quedó atrás.** Describe la dirección elegida en agosto de 2026,
+> que es la que después recibió la devolución de que «se ve hecho con IA». La
+> dirección vigente está más abajo, en «Rediseño de la pantalla principal»: la
+> elegida es **q1 con injertos de q3**, maquetada en `docs/maquetas/`. Esta
+> sección se reescribe cuando el rediseño baje al código; hasta entonces sigue
+> describiendo lo que hay implementado hoy.
+
 De seis líneas armadas en el prototipo, la elegida fue **Empresarial**.
 
 | Token | Antes | Ahora |
@@ -1848,6 +1916,369 @@ defecto de Tailwind —`#7C3AED` es `violet-500` sin tocar, los semánticos son
 generado por IA—, y ese es el motivo de que se lea como plantilla. El catálogo
 existe para que la dirección visual se elija de una lista razonada en vez de
 inventarse. **La decisión de qué dirección tomar sigue sin estar tomada.**
+
+---
+
+## Rediseño de la pantalla principal
+
+**Estado: elegida, sin implementar.** De cuatro finalistas quedó **q1**, con
+injertos de q3. La maqueta vive en `docs/maquetas/elegida-vender.html`. Nada de
+esto está en el código todavía.
+
+Al presentar el sistema, la devolución fue que **«se ve muy obvio que es hecho
+con IA»**. Lo que siguió fueron seis rondas y veinte maquetas. Vale la pena
+dejar escrito qué falló, porque el camino explica las cuatro que quedaron.
+
+### Lo que no funcionó
+
+**Sacar los tells no alcanza.** La primera pasada quitó gradientes, sombras,
+esquinas redondeadas y la paleta por defecto. El resultado fue rechazado: quitar
+las señales deja una interfaz *neutra*, que es otro género reconocible. La
+sustracción no produce una identidad.
+
+**Partir de lo que ya existe ancla.** Cinco propuestas hechas sobre la base de
+la que más gustaba dieron cinco rechazos: convergieron a variaciones en vez de
+proponer. Diseñar a ciegas —sin ver el sistema actual ni ninguna propuesta
+previa— es lo único que produjo un acierto.
+
+**Imitar un género conocido da un resultado correcto y anónimo.** Se probaron
+cinco variantes con la estética del software empresarial que corre adentro de
+una bodega (SAP, Siesa, Oracle, WMS). Ninguna gustó, y además se salieron de los
+datos reales: inventaron razones sociales formales con NIT porque los nombres
+verdaderos —«brayan», «camilop»— no encajaban en la estética.
+
+**Agregar texto que explique tampoco.** Una versión abría con un párrafo que
+contaba el hallazgo en prosa. La respuesta fue: *«no me refiero a poner más
+texto, me refiero a que la forma de presentar los datos sea la más óptima para
+lo que están diseñados»*. Si hace falta una frase para explicar un gráfico, el
+gráfico está mal elegido.
+
+### Los criterios que quedaron
+
+De rechazar dieciséis propuestas salieron cuatro reglas, en palabras del dueño
+del producto: **un sistema pulcro, que cada cosa esté ahí por algo, que pueda
+cerrar trato y revisar información todo a la mano.**
+
+1. **La forma la manda el dato.** Una magnitud sola es una cifra, no un anillo
+   de progreso. Unas partes de un total quieren verse sumar. Un ranking quiere
+   estar ordenado. Unos hechos con fecha quieren un eje de tiempo, no una tabla
+   ordenada por días. Una cantidad que hay que contar se cuenta mejor en
+   unidades discretas que en un porcentaje. **Si dos elementos dicen el mismo
+   dato, uno sobra.**
+2. **Pulcro.** Recorrer la pantalla elemento por elemento preguntando «¿esto qué
+   hace?». Lo que no contesta, se va.
+3. **Cerrar trato y revisar, cada uno en su modo.** El formulario del contrato
+   no puede ser un globo que aparece al hacer clic: si armar el contrato es la
+   mitad del trabajo, la mitad del trabajo tiene lugar fijo.
+4. **Nada de ámbar, oro ni ocre, y nada de fondos oscuros.** Descartados
+   explícitamente.
+
+### Las dos restricciones que aparecieron en el camino
+
+**Vender la ve el proveedor.** Es la más importante y no estaba en ningún lado.
+El administrador **gira el portátil y le muestra la pantalla al proveedor que
+tiene enfrente**, así que Vender no es una pantalla interna: es material de
+venta que un tercero lee.
+
+Eso vuelve prohibido en Vender: el nombre de otro proveedor, lo que paga otro
+proveedor, el ranking por canon, quién está por debajo de tarifa, el canon total
+de la sede, la plata del periodo y cuántos contratos vencen. Sólo va
+**disponibilidad, tiempo, el espacio en sí, el contrato de ESE proveedor y la
+tarifa de referencia**, que es lista de precios y sí es pública.
+
+Una propuesta anterior ponía, al lado del campo de precio, una barra comparando
+el canon ofrecido contra el de los otros tres proveedores, con nombre y monto.
+Es un gráfico excelente y es una fuga de información confidencial. Dos de los
+cuatro finalistas lo auditan por `grep` sobre su HTML final.
+
+**El plano isométrico va en los dos modos.** Es lo único que este sistema tiene
+y una planilla no puede tener: el inventario tiene domicilio, y quien vende
+señala el piso. En Vender es el catálogo que se le muestra al proveedor; en
+Supervisar es el estado de la sala de un vistazo.
+
+### El color se valida, no se elige a ojo
+
+La combinación **verde + naranja falló** el validador de la guía de
+visualización: se confunden con protanopía, que es el daltonismo más común, y en
+esta pantalla eso separa «libre» de «ocupado» (ΔE 5,3, muy por debajo del piso).
+Ninguno de los cuatro finalistas la usa. Todos llegaron a `ALL CHECKS PASS`
+antes de entregar.
+
+```bash
+node /tmp/.../dataviz/scripts/validate_palette.js "#hex,#hex,#hex" --mode light
+```
+
+### Los cuatro finalistas
+
+Los cuatro trabajaron a ciegas y comparten escuela —sistema de administración de
+comercio, tomando su estructura y no su piel—, porque de dieciséis propuestas de
+escuelas distintas ésa fue la elegida. Lo que varía es dónde gasta cada uno el
+riesgo.
+
+| | Dónde puso el esfuerzo | Lo que aporta que los otros no |
+|---|---|---|
+| **q1** | El plano isométrico | Las fechas de liberación sobre el propio mueble («libre 25 sep»). En Supervisar, el canon en barra con la tarifa como línea y en rosa lo que falta |
+| **q2** | Vender como material comercial | Botones para calcar el periodo de una temporada; el aviso «Amor y Amistad cae adentro» como argumento de venta |
+| **q3** | La densidad de Supervisar | La banda de liberación día a día, y **contratar varios espacios en un solo contrato** — un proveedor no negocia una punta suelta |
+| **q4** | El estado y la tipografía | Trama en vez de más colores (se lee en blanco y negro); **el frente en metros**, que es lo que el proveedor compara; la tarifa sólo del espacio elegido |
+
+Las ocho pantallas, sus notas de diseño, el brief, los criterios y el prompt
+completo están en `docs/maquetas/`. Van con sus tipografías en disco porque el
+navegador donde se hicieron no llega a Google Fonts.
+
+### La elegida: q1, con injertos de q3
+
+Ganó **q1** por el plano isométrico —que es la pieza que ninguna de las otras
+mejoró— y por las fechas de liberación escritas sobre el propio mueble. De q3
+se injertaron dos cosas: **contratar varios espacios en un solo contrato** (un
+proveedor no negocia una punta suelta) y el bloque **«cuándo se libera cada
+espacio»**, aunque no su forma.
+
+**El calendario comercial de q2 se descartó después de probarlo.** La cuadrícula
+del mes repetía lo que ya dicen la banda de temporada del gráfico y los sellos
+del contrato («Cubre Amor y Amistad»), y no agregaba ninguna decisión.
+
+**La forma del bloque de liberación se rehízo cinco veces**, y la discusión vale
+la pena porque se repite cada vez que hay que graficar algo acá. Las cinco están
+guardadas: `docs/maquetas/opciones-libera.html` compara cinco formas distintas y
+`docs/maquetas/variantes-a.html` cuatro maneras de leer la que ganó.
+
+- q3 lo dibujaba como **una barra por espacio** sobre un eje de fechas: barra
+  azul hasta que se libera, verde después. Gastaba todo el ancho pintando lo
+  *ocupado*, que es justo lo que no se vende, y dejaba la fecha —el dato— como
+  una astilla contra el borde derecho.
+- La segunda fue **área escalonada con los códigos flotando sobre los
+  escalones**. La forma era correcta pero los chips se pisaban entre sí y contra
+  el borde.
+- La tercera movió los códigos a **una columna al costado**. Dejó de chocar,
+  pero partió el bloque en dos piezas que hay que juntar con la vista.
+- Se pusieron a competir **cinco formas distintas** —escalera, inventario por
+  tipo, tira del mes, agenda sin gráfico, un punto por espacio—, cada una
+  contestando una pregunta distinta. Ganó la escalera, que contesta «¿cuántos
+  tengo si el cliente arranca el día X?».
+- La que quedó es **A·4: escalera sobre el eje de fechas, a todo el ancho**.
+  Cuatro decisiones que conviene no deshacer:
+  - **Sin columna lateral.** A 1024 px quedan 66 px entre el 25 y el 27 de sep y
+    un chip mide 56: los códigos caben debajo de su fecha sin pisarse. Eso es lo
+    que permite dejar un solo bloque. **Si el panel se angosta, los chips
+    vuelven a chocar y hay que reponer la columna.**
+  - **Sin eje vertical.** El rango es 15 a 20; una escala completa sería adorno.
+    Cada tramo va rotulado con su cifra, puesta al inicio de su meseta para que
+    quede pegada a su escalón.
+  - **Peine de días.** Un diente por día bajo el eje: los 25 días planos se leen
+    como tiempo que pasa y no como espacio sobrante.
+  - **El cursor escribe la lectura.** En la maqueta está parado en una fecha de
+    ejemplo («si arranca el 26 de sep → 17 libres»); en el sistema sigue al
+    mouse. Es lo que convierte el gráfico en una respuesta.
+
+Se descartó a propósito la variante con **techo en 23** (los espacios
+comercializables de la sede). Hace legible la proporción —15 de 23— pero
+aplasta el escalón contra el borde superior, y el escalón es el dato que se
+está negociando. Si alguna vez pesa más la proporción que el ritmo, ahí está.
+
+Un detalle de color de esa variante que sirve de precedente: sus bandas son
+**un solo tono con luminosidad descendente**, no tres colores. La versión con
+gris para «tomados» daba ΔE 4.0 en deuteranopía contra el verde claro. La rampa
+validada da ΔE 14.2 en protanopía y 18.4 en visión normal, y cada banda va
+rotulada, así que la identidad nunca depende sólo del color.
+
+### La paleta y la escala de letra
+
+**Verde: se puede vender. Rojo: no.** El azul que marcaba «tomado» se fue: no
+decía nada por sí solo y obligaba a mirar la leyenda. Los cuatro estados quedan
+así, y valen tanto en el plano como en el gráfico y en las tablas:
+
+| Estado | Color | Dónde |
+|---|---|---|
+| Libre todo el periodo | `#00786A` | plano, línea del gráfico, cifras |
+| Se libera en el periodo | `#3AAE99` | plano, chips de códigos |
+| Tomado todo el periodo | `#8E1226` | plano |
+| Resto de la sala | `#D3D9DB` | plano |
+
+**El rojo es oscuro a propósito.** Verde contra rojo es justo el par que se
+colapsa en un daltónico, y lo único que los sigue separando es la luminosidad:
+por eso el rojo va abajo en la escala. Validado con el script de dataviz sobre
+**todos** los pares —peor caso ΔE 11.0 en deuteranopía y 16.8 en visión
+normal—, y además cada estado va rotulado, así que la identidad nunca depende
+sólo del color. Antes de mover cualquiera de estos cuatro, volver a correr el
+validador; no alcanza con que «se vean distintos».
+
+En el isométrico cada estado son tres caras —tapa más clara, cara derecha con
+el color de identidad, cara izquierda más oscura—, no tres colores nuevos.
+
+**El verde queda reservado para la disponibilidad.** «+ agregar otro espacio»
+es una acción, no un estado, así que va en tinta.
+
+**Siete tamaños de letra y ninguno más:** 9.5 (versalitas), 11 (notas y ejes),
+12 (secundario), 13 (cuerpo), 14.5 (títulos, campos y botón), 17 (códigos de
+espacio) y 27 (el total del contrato). Antes había diecisiete, que es lo que
+hace que una pantalla se vea armada de a pedazos. El contraste lo dan la
+familia, el peso y el color, no el tamaño: en el plano el código y su fecha de
+liberación miden lo mismo y se distinguen por peso. Nada baja de 9.4 px reales
+—los rótulos del plano estaban a 8.1 y 8.8—; `generadores/tamanos.mjs` lista
+los tamaños tal como se renderizan y sirve para no dejar entrar un octavo.
+
+**El aire muerto se convirtió en contenido.** El panel de Contrato tenía 90 px
+en blanco entre los sellos y el botón; bajó de 640 a 550 y esos 90 se los quedó
+la tarifa de referencia, que pasó de mostrar 4 tipos de espacio a los 7, con su
+pie que amarra la tabla con el gráfico: 15 libres, +5 entran, 20 al cerrar.
+
+El SVG lo genera `docs/maquetas/generadores/riel.py`. La maqueta se verifica por
+código y no a ojo: un script mide cada panel y marca lo que se recorta, otro
+busca choques y desbordes entre los textos del SVG, y un tercero hace las dos
+cosas sobre páginas de varios paneles. Vale la pena mantener esa costumbre
+cuando esto baje al código.
+
+### Supervisar
+
+Está en `docs/maquetas/elegida-supervisar.html`, **con la misma estructura que
+la pantalla desplegada**: la franja de cifras arriba, el isométrico a la
+izquierda con lo accionable a su derecha, y **«Estado por espacio» a todo el
+ancho debajo del plano**. La pantalla es larga y hace scroll, igual que hoy.
+
+- **NAVE** — canon vigente, sin alquilar, lo que vence en 30 días, ocupación y
+  sin montar. Cinco cifras, ninguna oración.
+- **Piso de NAVE** — el isométrico. Acá **no es un directorio**: la tabla de
+  abajo ya lista los 23 códigos, así que el plano ubica y se queda con **un solo
+  rótulo, el de la fila abierta**. A ese ancho los 23 rótulos además caían a
+  6,4 px reales.
+- **Para revisar** — la lista de tareas: lo que vence y lo que se está cobrando
+  sin estar armado, una línea por cosa, clickeable.
+- **Quién paga el canon** — se calcula agrupando la misma tabla, así que no
+  puede contradecirla.
+- **Estado por espacio** — el libro entero: las 23 caras con estado, montaje,
+  desde, hasta, días y renta.
+
+Hay solapamiento deliberado entre «Para revisar» y la tabla: la primera es la
+tarea, la segunda el registro. Es la estructura que el sistema ya tiene y que
+funciona.
+
+**Los ocho contratos de la tabla suman exactamente $5.300.001**, que es el canon
+que muestra el sistema. Eso confirma que la tabla está completa y corrigió una
+derivación mía: lo que vence en 30 días es **$3.700.000, el 70%** del canon, no
+el 77% que había deducido suponiendo cinco contratos.
+
+#### Tres cosas que la tabla deja ver y que valen un arreglo
+
+- **«comercializadora nutresa» y «nutresa» son dos proveedores distintos** en la
+  base. Casi seguro el mismo, cargado dos veces: aparece con 15% y 2% por
+  separado en vez de 17% junto, y el ranking de concentración miente.
+- **Un contrato de doce meses por `$1`** (PUN-09 en el sistema desplegado).
+- **Una exhibición de piso a `$100.000`** cuando la tarifa de referencia del
+  tipo es `$900.000`: un 89% por debajo.
+
+Los tres los cazaría un aviso de «por debajo de tarifa», que es barato porque la
+tarifa de referencia por tipo ya existe.
+
+**Lo que se deja de percibir tiene una regla, y ya estaba escrita en el
+código.** `frontend/src/utils/parte.ts` la resolvió con pruebas, y la maqueta la
+respeta: **no se pinta una pérdida que todavía no ocurrió**. Con el periodo por
+delante la cifra honesta no es «perdimos X», es la **tasa**: `$8.730.000` al mes
+a tarifa de referencia por las 15 caras libres, o sea **`$281.613` por día
+vacío**. Recién cuando hay días transcurridos aparece lo que *ya no se
+recupera*, que es la cuenta que `colaDelPeriodo()` hace y que hoy la pantalla
+desplegada calcula y no muestra en ninguna parte.
+
+Va al lado del canon vigente a propósito: `$5.300.001` cobrando contra
+`$8.730.000` parado dice solo lo que hay que decir, sin una oración que lo
+explique. Las caras sin tarifa quedarían fuera de la cuenta y declaradas —la
+regla también es de `parte.ts`—; en NAVE los siete tipos tienen tarifa, así que
+no hace falta.
+
+El dato que la pantalla desplegada entierra: **$4.100.001, el 77% del canon,
+vence antes del 28 de sep**. Hoy eso vive como un «5» dentro de un casillero.
+(El 77% es derivado: los cuatro proveedores del listado de vencimientos son
+todos menos COCA COLA.)
+
+### La paleta de producción, y lo que queda abierto
+
+**La paleta del mapa: arreglada.** El par que se caía no era verde contra ámbar
+—ése pasa— sino **libre `#4CC38A` contra no comercializable `#94A3B8`**: ΔE 8.0
+en el peor caso daltónico y 14.7 en visión normal, los dos bajo el piso. Y no es
+un detalle al margen: el gris es la mayor parte del plano, así que «lo que puedo
+vender» contra «lo que ni siquiera se alquila» es justo el par que hay que
+distinguir de un vistazo.
+
+La salida **no** fue tocar el verde. Bajarlo lo acercaba al rojo, que bajo
+deuteranopía es el vecino peligroso —probado: con el verde en `#1E9E6A` el par
+verde-rojo cae a ΔE 6.5—. Se aclaró el gris a **`#DCE2E8`**, que separa por
+luminosidad, que es lo que sobrevive cuando el tono se colapsa. Con eso los
+cuatro colores del mapa pasan la separación en **todos** los pares: peor caso
+ΔE 9.6 daltónico y 19.5 en visión normal. De paso hace lo correcto de diseño:
+la infraestructura se va al fondo y el color queda para lo que se vende.
+
+Es un solo valor, `NON_RENTABLE_TOP` en `DashboardView.tsx`, y las caras y el
+contorno salen de ahí por `darken()`, así que el prisma sigue leyéndose en tres
+dimensiones. El antes y después, con la simulación de deuteranopía al lado, está
+en `docs/maquetas/paleta-plano.html`. **Antes de mover cualquiera de los cuatro
+hay que volver a correr el validador**; que «se vean distintos» no es evidencia.
+
+**Naranja para lo parcialmente ocupado.** El ámbar `#F0B429` tiraba a amarillo y
+se leía como «atención», que es otra cosa. Pasa a naranja `#F08519`, y con eso el
+mapa dice una escala en vez de tres etiquetas sueltas: **verde se puede vender,
+naranja a medias, rojo no**.
+
+El cambio tiene un costo que conviene tener escrito. Naranja y rojo son vecinos
+de tono, así que el par más apretado de la paleta se mudó ahí:
+
+| Par | Con ámbar | Con naranja | Piso |
+|---|---|---|---|
+| parcial ↔ tomado · daltónico | ΔE 21.8 | **ΔE 13.8** | ≥ 8 |
+| parcial ↔ tomado · visión normal | ΔE 27.5 | **ΔE 16.7** | ≥ 15 |
+| parcial ↔ libre · daltónico | ΔE 9.6 | ΔE 10.8 | ≥ 8 |
+
+Sigue pasando —y contra el verde incluso mejora— pero el margen contra el rojo
+baja bastante. Es un intercambio deliberado: se gana que la escala se entienda
+sin leyenda, se pierde holgura en un par que igual va rotulado en las dos
+pantallas. **No se puede oscurecer más el naranja**: probado, `#D4700F` cae a
+ΔE 6.6 contra el rojo de producción.
+
+El mismo naranja sirve para las dos paletas —la de producción, con el rojo
+claro, y la de las maquetas, con el rojo oscuro—, así que es un solo valor en
+todo el sistema.
+
+**Lo que queda abierto en la otra escala.** El mapa tiene dos lecturas: la del
+periodo (libre/parcial/tomado, la que se arregló) y la de «qué pasa hoy»
+—`DISPLAY_TOP`— que tiene siete clases: libre, contratado, activo, por vencer,
+vencido, reservado y mantenimiento. Ahí hay dos problemas que **no** se arreglan
+moviendo un color:
+
+- **`free #4CC38A` contra `maintenance #A8A29E` da ΔE 3.6 en deuteranopía.** Un
+  daltónico no distingue «lo puedo vender» de «está en mantenimiento», que es
+  justo lo contrario. Probé mover el gris de mantenimiento a oscuro y choca con
+  el rojo en protanopía; a claro y choca con el gris nuevo.
+- **`committed #A78BFA` contra `active #8B5CF6` da ΔE 11.9 en visión normal.**
+  Ese par es deliberado —el mismo violeta, un paso más claro— y va rotulado, así
+  que es defendible; queda anotado, no roto.
+
+Siete clases es el techo que aguanta el color solo. La salida no es otro tono:
+es bajar el número de clases o agregar una segunda codificación —una trama en
+las caras en mantenimiento, por ejemplo—. Es una decisión de producto, no un
+ajuste de paleta, y por eso no se tocó.
+
+> **Cerrado al bajar las maquetas.** La decisión de producto la tomaron las
+> maquetas, y no fue ninguna de las dos: fue sacarle el trabajo al color.
+> **«Hoy» pasó a ser un periodo de un día** (`hoyComoRango()` en
+> `SeasonPicker`), así que las dos pantallas tienen siempre periodo puesto y el
+> plano pinta SIEMPRE la escala de tres —libre, se libera, tomado—. La lectura
+> de siete clases ya no llega al plano: el detalle por estado vive **escrito**
+> en «Estado por espacio», donde cada fila lleva su palabra al lado del punto.
+> `DISPLAY_TOP` queda como respaldo, repintado sobre la paleta nueva y sin el
+> violeta que arrastraba del sistema anterior.
+
+**«El parte» ya no existe.** Ese bloque —el que reemplazaba la barra segmentada
+y los seis casilleros por una o dos oraciones— nunca llegó a producción, y al
+bajar las maquetas se lo reemplazó antes de llegar: en Supervisar por la franja
+de cinco cifras y en Vender por la escalera y el panel de tarifas. La razón está
+en la respuesta del usuario al verlo: *«veo mucho texto; el que pone el canon
+sabe lo que hace, no hay que estar diciéndole qué precio poner»*. Su maquinaria
+—`utils/parte.ts`, `utils/redaccion.ts`, `components/Parte/`— tampoco está: vive
+en la historia de la rama de diseño.
+
+**Hecho:** las dos pantallas están en código, y «Paleta y tipografía» arriba
+describe el sistema vigente. La sección «La línea visual» que sigue más abajo es
+**arqueología**: cuenta de dónde salieron IBM Plex y los neutros cálidos, que ya
+no son los del sistema. Ante cualquier contradicción manda «Paleta y tipografía».
 
 ---
 

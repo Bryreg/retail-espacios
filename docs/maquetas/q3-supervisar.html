@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="es-CO"><head><meta charset="utf-8">
+<title>RECABRA · Supervisar</title>
+<link rel="stylesheet" href="fuentes/tipos.css">
+<style>
+:root{
+  --papel:#FFFFFF; --piso:#E9ECEA; --piso2:#F4F6F4; --hueco:#FAFBFA;
+  --linea:#D8DCD9; --linea2:#C4CAC6; --linea3:#EAEEEB;
+  --tinta:#16211E; --tinta2:#4F5A56; --tinta3:#6B7671;
+  --verde:#2E9E7E; --verde-o:#1E7A5E; --verde-m:#6BC4A9; --verde-c:#D7EFE6; --verde-cc:#EDF8F3;
+  --azul:#3A6EA5; --azul-o:#2A5480; --azul-c:#DCE7F2;
+  --carmin:#B03050; --carmin-c:#F8E2E7;
+  --sans:'Archivo',system-ui,sans-serif;
+  --cond:'Archivo Narrow','Archivo',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1440px;height:900px;overflow:hidden}
+body{background:var(--piso);color:var(--tinta);
+     font-family:var(--sans);font-size:13px;line-height:1.35;
+     -webkit-font-smoothing:antialiased}
+svg{display:block}
+
+/* ---------------------------------------------------------- barra */
+.barra{height:56px;display:flex;align-items:center;gap:0;
+       background:var(--papel);border-bottom:1px solid var(--linea2);padding:0 24px}
+.marca{font-weight:800;font-size:15px;letter-spacing:.10em;color:var(--tinta)}
+.vrule{width:1px;height:24px;background:var(--linea);margin:0 16px}
+.sede{display:flex;align-items:baseline;gap:7px;cursor:default}
+.sede b{font-size:16px;font-weight:700;letter-spacing:.01em}
+.sede .caret{color:var(--tinta3);font-size:10px}
+.sede small{font-family:var(--cond);font-size:11px;color:var(--tinta3);letter-spacing:.02em}
+.modos{display:flex;margin-left:22px;border:1px solid var(--linea2);border-radius:2px;overflow:hidden}
+.modos a{display:block;padding:6px 16px 7px;font-size:12.5px;font-weight:600;
+         color:var(--tinta2);text-decoration:none;background:var(--papel);letter-spacing:.01em}
+.modos a+a{border-left:1px solid var(--linea2)}
+.modos a.on{background:var(--tinta);color:#fff}
+.perido{margin-left:auto;display:flex;align-items:center;gap:10px}
+.perido .et{margin:0}
+.rango{display:flex;align-items:center;gap:8px;border:1px solid var(--linea2);
+       border-radius:2px;padding:5px 10px 6px;background:var(--papel)}
+.rango b{font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums}
+.rango .caret{color:var(--tinta3);font-size:10px}
+
+/* ---------------------------------------------------------- rejilla */
+.cuerpo{display:grid;gap:16px;padding:14px 24px;height:844px}
+.tarjeta{background:var(--papel);border:1px solid var(--linea);border-radius:3px;
+         padding:15px 16px;display:flex;flex-direction:column;min-height:0}
+.cab{display:flex;align-items:baseline;gap:10px;margin-bottom:11px}
+.tt{font-size:13.5px;font-weight:700;letter-spacing:.005em}
+.cab .der{margin-left:auto;font-family:var(--cond);font-size:11.5px;color:var(--tinta3);
+          letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.et{font-family:var(--cond);font-size:10px;font-weight:700;letter-spacing:.09em;
+    text-transform:uppercase;color:var(--tinta3)}
+.regla{height:1px;background:var(--linea3);margin:12px 0}
+
+/* ---------------------------------------------------------- piezas */
+.cod{font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:-.03em}
+.plata{font-variant-numeric:tabular-nums;font-weight:600}
+.sig{color:var(--tinta3);font-weight:500}
+.uni{display:flex;gap:3px}
+.uni i{display:block;width:11px;height:17px;border-radius:1px}
+.u-libre{background:var(--verde)}
+.u-tomado{background:var(--azul)}
+.u-abre{background:linear-gradient(to bottom,var(--verde) 0 8px,var(--azul) 8px 100%)}
+.grupos{display:flex;gap:30px;align-items:flex-end}
+.grupo .top{display:flex;align-items:baseline;gap:6px;margin-bottom:6px}
+.grupo.cero .n{color:var(--tinta3)}
+.grupo.cero .q{color:var(--tinta3)}
+.grupo .n{font-size:19px;font-weight:700;letter-spacing:-.015em;font-variant-numeric:tabular-nums}
+.grupo .q{font-family:var(--cond);font-size:11px;color:var(--tinta2);letter-spacing:.015em}
+
+.campo{width:100%;border:1px solid var(--linea2);border-radius:2px;background:var(--papel);
+       padding:8px 10px;font-family:var(--sans);font-size:13.5px;font-weight:500;color:var(--tinta);
+       display:flex;align-items:center;gap:8px}
+.campo .caret{margin-left:auto;color:var(--tinta3);font-size:10px}
+.campo.foco{border-color:var(--tinta);box-shadow:0 0 0 2px var(--verde-c)}
+.rot{font-family:var(--cond);font-size:10px;font-weight:700;letter-spacing:.09em;
+     text-transform:uppercase;color:var(--tinta3);display:block;margin-bottom:5px}
+
+.boton{width:100%;border:0;border-radius:2px;background:var(--tinta);color:#fff;
+       font-family:var(--sans);font-size:13.5px;font-weight:600;letter-spacing:.01em;
+       padding:12px 14px;text-align:center;cursor:pointer}
+.enlace{display:block;text-align:center;margin-top:9px;font-size:12px;font-weight:500;
+        color:var(--verde-o);text-decoration:none;border-bottom:1px solid transparent}
+.mini{border:1px solid var(--linea2);border-radius:2px;background:var(--papel);
+      font-family:var(--sans);font-size:11.5px;font-weight:600;color:var(--tinta);
+      padding:5px 9px;cursor:pointer;white-space:nowrap}
+
+/* ---------------------------------------------------------- tabla */
+table{border-collapse:collapse;width:100%}
+thead th{font-family:var(--cond);font-size:10px;font-weight:700;letter-spacing:.09em;
+         text-transform:uppercase;color:var(--tinta3);text-align:left;
+         padding:0 0 7px;border-bottom:1px solid var(--linea2)}
+tbody td{padding:0;border-bottom:1px solid var(--linea3);vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+.prov{font-family:var(--cond);font-size:14px;font-weight:600;letter-spacing:.005em;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tipo{font-family:var(--cond);font-size:10.5px;color:var(--tinta3);letter-spacing:.02em}
+.der{text-align:right}
+
+.modo-s{grid-template-columns:780px 596px;grid-template-rows:560px 240px}
+.lienzo{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+.censo{margin-top:10px}
+table.contratos{table-layout:fixed}
+table.contratos th{vertical-align:bottom}
+table.contratos th.c-prov{width:146px}
+table.contratos th.c-esp{width:110px}
+table.contratos th.c-can{width:172px}
+table.contratos th.c-des{width:100px}
+table.contratos th.c-lane{width:138px}
+table.contratos th.c-acc{width:82px}
+table.contratos tbody td{height:52px}
+table.contratos .prov{white-space:normal;line-height:1.15;font-size:13.5px;padding-right:10px}
+table.contratos .cod{display:block}
+.fuerte{color:var(--tinta)}
+.can{display:flex;align-items:center;gap:8px}
+.can .plata{font-size:13.5px;width:80px;text-align:right}
+.des{display:flex;align-items:center;gap:6px;padding-left:8px}
+.des .dv{font-family:var(--sans);font-size:11.5px;font-weight:600;color:var(--carmin);
+         font-variant-numeric:tabular-nums;white-space:nowrap}
+.des .dv0{font-family:var(--cond);font-size:11px;color:var(--tinta3)}
+.th-lane{padding-right:0}
+table.contratos th.c-lane .aya{font-family:var(--cond);font-size:9px;font-weight:700;
+     color:var(--verde-o);letter-spacing:.04em;text-transform:none;margin-left:6px}
+.lfe{font-family:var(--mono);font-size:9.5px;font-weight:600;fill:var(--tinta2)}
+.c-acc .mini{padding:5px 8px;font-size:11px}
+.sigue{font-family:var(--cond);font-size:11px;color:var(--tinta3)}
+.pie{margin-top:auto;padding-top:12px;border-top:1px solid var(--linea2);
+     display:flex;justify-content:space-between;font-family:var(--cond);
+     font-size:11.5px;color:var(--tinta2)}
+.pie b{font-weight:700;color:var(--tinta)}
+.pie .car{color:var(--carmin)}
+.pcab{display:flex;justify-content:space-between;align-items:flex-start}
+.pcab .pder{text-align:right}
+.pgr{font-size:27px;font-weight:700;letter-spacing:-.02em;margin-top:2px}
+.pgr.car{color:var(--carmin)}
+.apil{margin-top:12px}
+.pleg{display:flex;gap:28px;margin-top:10px;font-family:var(--cond);font-size:11.5px;color:var(--tinta2)}
+.pleg i{display:inline-block;width:9px;height:9px;border-radius:1px;margin-right:6px}
+.pleg .s1{background:var(--verde-o)}.pleg .s2{background:var(--verde-m)}
+.pleg .s3{background:var(--linea2)}
+.pleg b{font-weight:700;color:var(--tinta)}
+.pdias{margin-top:auto;padding-top:14px}
+.pdl{margin-top:7px;font-family:var(--cond);font-size:11.5px;color:var(--tinta2)}
+.pdl b{font-weight:700;color:var(--tinta)}
+.pieleg{margin-top:10px;font-family:var(--cond);font-size:11.5px;color:var(--tinta2);
+        display:flex;align-items:center;gap:8px}
+.pieleg .anillo{width:12px;height:12px;border-radius:50%;border:2.4px solid var(--carmin);display:block}
+.mfila{display:flex;align-items:center;gap:14px;padding:14px 0;border-top:1px solid var(--linea3)}
+.mfila:first-of-type{border-top:0;padding-top:6px}
+.mizq{flex:1}
+.mprov{font-family:var(--cond);font-size:13px;font-weight:600;color:var(--tinta2);margin-top:3px}
+.mdias{width:128px}
+.mpts{display:flex;gap:3px;margin-bottom:4px}
+.mpts i{width:7px;height:15px;border-radius:1px;background:var(--carmin);display:block}
+.mfila .mini{padding:7px 11px}
+</style>
+</head><body>
+<header class="barra">
+  <span class="marca">RECABRA</span>
+  <span class="vrule"></span>
+  <span class="sede"><b>NAVE</b><span class="caret">&#9662;</span><small>de 7 sedes</small></span>
+  <nav class="modos"><a href="m-q3-vender.html">Vender</a><a href="m-q3-supervisar.html" class="on">Supervisar</a></nav>
+  <div class="perido">
+    <span class="et">Periodo</span>
+    <span class="rango"><b>31 ago &#8594; 30 sep 2026</b><span class="caret">&#9662;</span></span>
+  </div>
+</header><main class="cuerpo modo-s"><section class="tarjeta">
+  <div class="cab"><h2 class="tt">Contratos vigentes</h2>
+    <span class="der">8 contratos &#183; <b class="plata fuerte">$5.300.001</b> al mes</span></div>
+  <table class="contratos"><thead><tr>
+    <th class="c-prov">Proveedor</th><th class="c-esp">Espacio</th>
+    <th class="c-can">Canon mensual</th><th class="c-des">Contra tarifa</th>
+    <th class="c-lane">Vence <span class="aya">Amor y Amistad</span><svg width="138" height="19" viewBox="0 0 138 19"><style>.lej{font-family:var(--cond);font-size:9px;fill:var(--tinta3);letter-spacing:.03em}</style><line x1="0.0" y1="9" x2="0.0" y2="13" stroke="var(--linea2)" stroke-width="1"/><text x="0.0" y="6" class="lej" text-anchor="start">hoy</text><line x1="46.0" y1="9" x2="46.0" y2="13" stroke="var(--linea2)" stroke-width="1"/><text x="46.0" y="6" class="lej" text-anchor="middle">10 sep</text><line x1="92.0" y1="9" x2="92.0" y2="13" stroke="var(--linea2)" stroke-width="1"/><text x="92.0" y="6" class="lej" text-anchor="middle">20 sep</text><line x1="138.0" y1="9" x2="138.0" y2="13" stroke="var(--linea2)" stroke-width="1"/><text x="138.0" y="6" class="lej" text-anchor="end">30 sep</text><rect x="87.4" y="14" width="36.8" height="4" fill="var(--verde)"/></svg></th>
+    <th class="c-acc"></th></tr></thead><tbody><tr><td class="c-prov"><div class="prov">COCA COLA</div></td><td class="c-esp"><div class="cod">ISL-03</div><div class="tipo">Isla</div></td><td class="c-can"><div class="can"><svg width="84" height="12" viewBox="0 0 84 12"><rect x="0" y="1.5" width="84.0" height="9" fill="var(--azul)"/></svg><span class="plata">$1.200.000</span></div></td><td class="c-des"><div class="des"><svg width="32" height="12" viewBox="0 0 32 12"><line x1="32" y1="2" x2="32" y2="10" stroke="var(--linea2)" stroke-width="1"/></svg><span class="dv0">a tarifa</span></div></td><td class="c-lane"><svg width="138" height="22" viewBox="0 0 138 22"><rect x="87.4" y="0" width="36.8" height="22" fill="var(--verde-cc)"/><line x1="0" y1="19.5" x2="138" y2="19.5" stroke="var(--linea3)" stroke-width="1"/></svg></td><td class="c-acc"><span class="sigue">sigue</span></td></tr><tr><td class="c-prov"><div class="prov">brayan</div></td><td class="c-esp"><div class="cod">PUN-04</div><div class="tipo">Punta de góndola</div></td><td class="c-can"><div class="can"><svg width="84" height="12" viewBox="0 0 84 12"><rect x="0" y="1.5" width="70.0" height="9" fill="var(--azul)"/></svg><span class="plata">$1.000.000</span></div></td><td class="c-des"><div class="des"><svg width="32" height="12" viewBox="0 0 32 12"><line x1="32" y1="2" x2="32" y2="10" stroke="var(--linea2)" stroke-width="1"/></svg><span class="dv0">a tarifa</span></div></td><td class="c-lane"><svg width="138" height="22" viewBox="0 0 138 22"><rect x="87.4" y="0" width="36.8" height="22" fill="var(--verde-cc)"/><line x1="0" y1="19.5" x2="138" y2="19.5" stroke="var(--linea3)" stroke-width="1"/><rect x="109.2" y="4" width="2.4" height="14" fill="var(--tinta)"/><text x="104.4" y="14.5" class="lfe" text-anchor="end">24/9</text></svg></td><td class="c-acc"><button class="mini">Renovar</button></td></tr><tr><td class="c-prov"><div class="prov">camilop</div></td><td class="c-esp"><div class="cod">EXP-01</div><div class="tipo">Exhibición de piso</div></td><td class="c-can"><div class="can"><svg width="84" height="12" viewBox="0 0 84 12"><rect x="0" y="1.5" width="70.0" height="9" fill="var(--azul)"/></svg><span class="plata">$1.000.000</span></div></td><td class="c-des"><div class="des"><svg width="32" height="12" viewBox="0 0 32 12"><line x1="32" y1="2" x2="32" y2="10" stroke="var(--linea2)" stroke-width="1"/></svg><span class="dv0">a tarifa</span></div></td><td class="c-lane"><svg width="138" height="22" viewBox="0 0 138 22"><rect x="87.4" y="0" width="36.8" height="22" fill="var(--verde-cc)"/><line x1="0" y1="19.5" x2="138" y2="19.5" stroke="var(--linea3)" stroke-width="1"/><rect x="127.6" y="4" width="2.4" height="14" fill="var(--tinta)"/><text x="122.8" y="14.5" class="lfe" text-anchor="end">28/9</text></svg></td><td class="c-acc"><button class="mini">Renovar</button></td></tr><tr><td class="c-prov"><div class="prov">comercializadora nutresa</div></td><td class="c-esp"><div class="cod">PUN-03</div><div class="tipo">Punta de góndola</div></td><td class="c-can"><div class="can"><svg width="84" height="12" viewBox="0 0 84 12"><rect x="0" y="1.5" width="56.0" height="9" fill="var(--azul)"/></svg><span class="plata">$800.000</span></div></td><td class="c-des"><div class="des"><svg width="32" height="12" viewBox="0 0 32 12"><rect x="22.9" y="2" width="9.1" height="8" fill="var(--carmin)"/></svg><span class="dv">&#8722;200.000</span></div></td><td class="c-lane"><svg width="138" height="22" viewBox="0 0 138 22"><rect x="87.4" y="0" width="36.8" height="22" fill="var(--verde-cc)"/><line x1="0" y1="19.5" x2="138" y2="19.5" stroke="var(--linea3)" stroke-width="1"/><rect x="109.2" y="4" width="2.4" height="14" fill="var(--tinta)"/><text x="104.4" y="14.5" class="lfe" text-anchor="end">24/9</text></svg></td><td class="c-acc"><button class="mini">Renovar</button></td></tr><tr><td class="c-prov"><div class="prov">ALPINA</div></td><td class="c-esp"><div class="cod">PUN-17</div><div class="tipo">Punta de góndola</div></td><td class="c-can"><div class="can"><svg width="84" height="12" viewBox="0 0 84 12"><rect x="0" y="1.5" width="49.0" height="9" fill="var(--azul)"/></svg><span class="plata">$700.000</span></div></td><td class="c-des"><div class="des"><svg width="32" height="12" viewBox="0 0 32 12"><rect x="18.3" y="2" width="13.7" height="8" fill="var(--carmin)"/></svg><span class="dv">&#8722;300.000</span></div></td><td class="c-lane"><svg width="138" height="22" viewBox="0 0 138 22"><rect x="87.4" y="0" width="36.8" height="22" fill="var(--verde-cc)"/><line x1="0" y1="19.5" x2="138" y2="19.5" stroke="var(--linea3)" stroke-width="1"/><rect x="118.4" y="4" width="2.4" height="14" fill="var(--tinta)"/><text x="113.6" y="14.5" class="lfe" text-anchor="end">26/9</text></svg></td><td class="c-acc"><button class="mini">Renovar</button></td></tr><tr><td class="c-prov"><div class="prov">nutresa</div></td><td class="c-esp"><div class="cod">EXP-02</div><div class="tipo">Exhibición de piso</div></td><td class="c-can"><div class="can"><svg width="84" height="12" viewBox="0 0 84 12"><rect x="0" y="1.5" width="21.0" height="9" fill="var(--azul)"/></svg><span class="plata">$300.000</span></div></td><td class="c-des"><div class="des"><svg width="32" height="12" viewBox="0 0 32 12"><rect x="0.0" y="2" width="32.0" height="8" fill="var(--carmin)"/></svg><span class="dv">&#8722;700.000</span></div></td><td class="c-lane"><svg width="138" height="22" viewBox="0 0 138 22"><rect x="87.4" y="0" width="36.8" height="22" fill="var(--verde-cc)"/><line x1="0" y1="19.5" x2="138" y2="19.5" stroke="var(--linea3)" stroke-width="1"/><rect x="127.6" y="4" width="2.4" height="14" fill="var(--tinta)"/><text x="122.8" y="14.5" class="lfe" text-anchor="end">28/9</text></svg></td><td class="c-acc"><button class="mini">Renovar</button></td></tr><tr><td class="c-prov"><div class="prov">Postobón</div></td><td class="c-esp"><div class="cod">BEB-01</div><div class="tipo">Nevera de bebidas</div></td><td class="c-can"><div class="can"><svg width="84" height="12" viewBox="0 0 84 12"><rect x="0" y="1.5" width="14.0" height="9" fill="var(--azul)"/></svg><span class="plata">$200.000</span></div></td><td class="c-des"><div class="des"><svg width="32" height="12" viewBox="0 0 32 12"><line x1="32" y1="2" x2="32" y2="10" stroke="var(--linea2)" stroke-width="1"/></svg><span class="dv0">a tarifa</span></div></td><td class="c-lane"><svg width="138" height="22" viewBox="0 0 138 22"><rect x="87.4" y="0" width="36.8" height="22" fill="var(--verde-cc)"/><line x1="0" y1="19.5" x2="138" y2="19.5" stroke="var(--linea3)" stroke-width="1"/></svg></td><td class="c-acc"><span class="sigue">sigue</span></td></tr><tr><td class="c-prov"><div class="prov">Colanta</div></td><td class="c-esp"><div class="cod">GON-60·A</div><div class="tipo">Góndola, cara A</div></td><td class="c-can"><div class="can"><svg width="84" height="12" viewBox="0 0 84 12"><rect x="0" y="1.5" width="7.0" height="9" fill="var(--azul)"/></svg><span class="plata">$100.001</span></div></td><td class="c-des"><div class="des"><svg width="32" height="12" viewBox="0 0 32 12"><rect x="29.7" y="2" width="2.3" height="8" fill="var(--carmin)"/></svg><span class="dv">&#8722;49.999</span></div></td><td class="c-lane"><svg width="138" height="22" viewBox="0 0 138 22"><rect x="87.4" y="0" width="36.8" height="22" fill="var(--verde-cc)"/><line x1="0" y1="19.5" x2="138" y2="19.5" stroke="var(--linea3)" stroke-width="1"/></svg></td><td class="c-acc"><span class="sigue">sigue</span></td></tr></tbody></table>
+  <div class="pie"><span><b>4</b> por debajo de la tarifa de referencia, brecha
+    <b class="plata car">$1.249.999</b> al mes</span><span class="sig">0 vencidos</span></div>
+</section><section class="tarjeta">
+  <div class="cab"><h2 class="tt">Plano de NAVE</h2>
+    <span class="der">106 muebles &#183; 23 se comercializan</span></div>
+  <div class="lienzo"><svg viewBox="-240.79 -21.59 596.97 376.70" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Plano isometrico de NAVE"><defs><marker id="sflecha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#636C68"/></marker></defs><style>.rot{font-family:"IBM Plex Mono",monospace;font-size:8.6px;font-weight:600;fill:#16211E;text-anchor:middle;paint-order:stroke;stroke:#FFFFFF;stroke-width:2.8px;stroke-linejoin:round;letter-spacing:-0.02em}.rotSel{fill:#FFFFFF;stroke:none}.sala{font-family:"Archivo Narrow",sans-serif;font-size:9px;font-weight:600;fill:#636C68;letter-spacing:0.08em;text-transform:uppercase}</style><polygon points="0.00,0.00 346.18,199.87 115.39,333.11 -230.79,133.24" fill="#F2F4F2" stroke="#C6CDC8" stroke-width="1.00" stroke-linejoin="round"/><g stroke="#E3E7E4" stroke-width="0.6"><line x1="23.08" y1="13.32" x2="-207.71" y2="146.57"/><line x1="46.16" y1="26.65" x2="-184.63" y2="159.89"/><line x1="69.24" y1="39.97" x2="-161.55" y2="173.22"/><line x1="92.31" y1="53.30" x2="-138.47" y2="186.54"/><line x1="115.39" y1="66.62" x2="-115.39" y2="199.87"/><line x1="138.47" y1="79.95" x2="-92.31" y2="213.19"/><line x1="161.55" y1="93.27" x2="-69.24" y2="226.52"/><line x1="184.63" y1="106.60" x2="-46.16" y2="239.84"/><line x1="207.71" y1="119.92" x2="-23.08" y2="253.16"/><line x1="230.79" y1="133.24" x2="0.00" y2="266.49"/><line x1="253.86" y1="146.57" x2="23.08" y2="279.81"/><line x1="276.94" y1="159.89" x2="46.16" y2="293.14"/><line x1="300.02" y1="173.22" x2="69.24" y2="306.46"/><line x1="323.10" y1="186.54" x2="92.31" y2="319.79"/><line x1="-23.08" y1="13.32" x2="323.10" y2="213.19"/><line x1="-46.16" y1="26.65" x2="300.02" y2="226.52"/><line x1="-69.24" y1="39.97" x2="276.94" y2="239.84"/><line x1="-92.31" y1="53.30" x2="253.86" y2="253.16"/><line x1="-115.39" y1="66.62" x2="230.79" y2="266.49"/><line x1="-138.47" y1="79.95" x2="207.71" y2="279.81"/><line x1="-161.55" y1="93.27" x2="184.63" y2="293.14"/><line x1="-184.63" y1="106.60" x2="161.55" y2="306.46"/><line x1="-207.71" y1="119.92" x2="138.47" y2="319.79"/></g><polygon points="0.00,-15.59 -230.79,117.65 -230.79,133.24 0.00,0.00" fill="#D9DCDA" stroke="#C6CDC8" stroke-width="0.80" stroke-linejoin="round"/><polygon points="0.00,-15.59 346.18,184.28 346.18,199.87 0.00,0.00" fill="#E7EBE8" stroke="#C6CDC8" stroke-width="0.80" stroke-linejoin="round"/><polygon points="158.09,296.47 168.47,302.46 124.62,327.78 114.24,321.79" fill="#FFFFFF" stroke="#C6CDC8" stroke-width="0.80" stroke-linejoin="round"/><line x1="140.78" y1="311.79" x2="111.93" y2="295.14" stroke="#636C68" stroke-width="1.1" marker-end="url(#sflecha)"/><polygon points="17.31,24.18 116.55,81.48 116.55,95.27 17.31,37.97" fill="#47A98D" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="130.39,73.48 116.55,81.48 116.55,95.27 130.39,87.28" fill="#268469" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="31.16,16.19 130.39,73.48 116.55,81.48 17.31,24.18" fill="#ABD8CB" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-48.47,43.84 -20.77,59.83 -20.77,70.62 -48.47,54.63" fill="#47A98D" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="4.62,45.17 -20.77,59.83 -20.77,70.62 4.62,55.96" fill="#268469" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-23.08,29.18 4.62,45.17 -20.77,59.83 -48.47,43.84" fill="#ABD8CB" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-87.70,66.49 -60.00,82.48 -60.00,93.27 -87.70,77.28" fill="#47A98D" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-34.62,67.82 -60.00,82.48 -60.00,93.27 -34.62,78.61" fill="#268469" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-62.31,51.83 -34.62,67.82 -60.00,82.48 -87.70,66.49" fill="#ABD8CB" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="13.85,56.43 175.40,149.70 175.40,171.89 13.85,78.61" fill="#47A98D" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="191.55,140.37 175.40,149.70 175.40,171.89 191.55,162.56" fill="#AEB3B0" stroke="#7D817F" stroke-width="0.70" stroke-linejoin="round"/><polygon points="30.00,47.10 191.55,140.37 183.47,145.04 21.92,51.77" fill="#ABD8CB" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="21.92,51.77 183.47,145.04 175.40,149.70 13.85,56.43" fill="#ABD8CB" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><line x1="21.92" y1="51.77" x2="183.47" y2="145.04" stroke="#5D6864" stroke-width="1.5"/><g stroke="#8A938F" stroke-width="0.6" opacity="0.7"><line x1="53.08" y1="60.43" x2="36.93" y2="69.75"/><line x1="76.16" y1="73.75" x2="60.00" y2="83.08"/><line x1="99.24" y1="87.08" x2="83.08" y2="96.40"/><line x1="122.32" y1="100.40" x2="106.16" y2="109.73"/><line x1="145.40" y1="113.72" x2="129.24" y2="123.05"/><line x1="168.47" y1="127.05" x2="152.32" y2="136.38"/></g><polygon points="-126.93,89.14 -99.24,105.13 -99.24,115.92 -126.93,99.93" fill="#47A98D" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-73.85,90.47 -99.24,105.13 -99.24,115.92 -73.85,101.27" fill="#268469" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-101.55,74.48 -73.85,90.47 -99.24,105.13 -126.93,89.14" fill="#ABD8CB" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-25.39,79.08 136.16,172.35 136.16,194.54 -25.39,101.27" fill="#47A98D" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="152.32,163.02 136.16,172.35 136.16,194.54 152.32,185.21" fill="#AEB3B0" stroke="#7D817F" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-9.23,69.75 152.32,163.02 144.24,167.69 -17.31,74.42" fill="#ABD8CB" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-17.31,74.42 144.24,167.69 136.16,172.35 -25.39,79.08" fill="#ABD8CB" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><line x1="-17.31" y1="74.42" x2="144.24" y2="167.69" stroke="#5D6864" stroke-width="1.5"/><g stroke="#8A938F" stroke-width="0.6" opacity="0.7"><line x1="13.85" y1="83.08" x2="-2.31" y2="92.40"/><line x1="36.93" y1="96.40" x2="20.77" y2="105.73"/><line x1="60.00" y1="109.73" x2="43.85" y2="119.05"/><line x1="83.08" y1="123.05" x2="66.93" y2="132.38"/><line x1="106.16" y1="136.38" x2="90.01" y2="145.70"/><line x1="129.24" y1="149.70" x2="113.09" y2="159.03"/></g><polygon points="-192.71,114.79 -173.09,126.12 -173.09,139.91 -192.71,128.58" fill="#D1D6D3" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="-120.01,95.47 -173.09,126.12 -173.09,139.91 -120.01,109.26" fill="#AAAFAC" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="-139.63,84.14 -120.01,95.47 -173.09,126.12 -192.71,114.79" fill="#EAECEB" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="151.16,88.61 180.01,105.26 180.01,129.25 151.16,112.59" fill="#517FAF" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="191.55,98.60 180.01,105.26 180.01,129.25 191.55,122.58" fill="#305C8A" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="162.70,81.95 191.55,98.60 180.01,105.26 151.16,88.61" fill="#B0C5DB" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-64.62,101.73 96.93,195.00 96.93,217.19 -64.62,123.92" fill="#47A98D" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="113.09,185.68 96.93,195.00 96.93,217.19 113.09,207.86" fill="#AEB3B0" stroke="#7D817F" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-48.47,92.40 113.09,185.68 105.01,190.34 -56.54,97.07" fill="#B0C5DB" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-56.54,97.07 105.01,190.34 96.93,195.00 -64.62,101.73" fill="#ABD8CB" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><line x1="-56.54" y1="97.07" x2="105.01" y2="190.34" stroke="#5D6864" stroke-width="1.5"/><g stroke="#8A938F" stroke-width="0.6" opacity="0.7"><line x1="-25.39" y1="105.73" x2="-41.54" y2="115.06"/><line x1="-2.31" y1="119.05" x2="-18.46" y2="128.38"/><line x1="20.77" y1="132.38" x2="4.62" y2="141.71"/><line x1="43.85" y1="145.70" x2="27.69" y2="155.03"/><line x1="66.93" y1="159.03" x2="50.77" y2="168.35"/><line x1="90.01" y1="172.35" x2="73.85" y2="181.68"/></g><polygon points="185.78,108.59 214.63,125.25 214.63,149.23 185.78,132.58" fill="#47A98D" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="226.17,118.59 214.63,125.25 214.63,149.23 226.17,142.57" fill="#268469" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="197.32,101.93 226.17,118.59 214.63,125.25 185.78,108.59" fill="#ABD8CB" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-103.85,124.38 57.70,217.65 57.70,239.84 -103.85,146.57" fill="#D1D6D3" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="73.85,208.33 57.70,217.65 57.70,239.84 73.85,230.51" fill="#AAAFAC" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="-87.70,115.06 73.85,208.33 57.70,217.65 -103.85,124.38" fill="#EAECEB" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="-155.78,144.64 -125.78,161.96 -125.78,168.55 -155.78,151.23" fill="#517FAF" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-105.01,149.97 -125.78,161.96 -125.78,168.55 -105.01,156.56" fill="#305C8A" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-135.01,132.64 -105.01,149.97 -125.78,161.96 -155.78,144.64" fill="#B0C5DB" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="220.40,128.58 249.25,145.24 249.25,169.22 220.40,152.56" fill="#47A98D" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="260.79,138.57 249.25,145.24 249.25,169.22 260.79,162.56" fill="#268469" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="231.94,121.92 260.79,138.57 249.25,145.24 220.40,128.58" fill="#ABD8CB" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-111.93,169.95 -81.93,187.27 -81.93,193.87 -111.93,176.55" fill="#517FAF" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-61.16,175.28 -81.93,187.27 -81.93,193.87 -61.16,181.88" fill="#305C8A" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-91.16,157.96 -61.16,175.28 -81.93,187.27 -111.93,169.95" fill="#B0C5DB" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="180.94,157.63 196.51,166.62 196.51,187.01 180.94,178.01" fill="#517FAF" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="215.21,155.83 196.51,166.62 196.51,187.01 215.21,176.22" fill="#305C8A" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="199.63,146.84 215.21,155.83 196.51,166.62 180.94,157.63" fill="#B0C5DB" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-63.47,185.01 -50.77,192.34 -50.77,202.53 -63.47,195.20" fill="#D1D6D3" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="-38.08,185.01 -50.77,192.34 -50.77,202.53 -38.08,195.20" fill="#AAAFAC" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="-50.77,177.68 -38.08,185.01 -50.77,192.34 -63.47,185.01" fill="#EAECEB" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="141.70,180.28 157.28,189.27 157.28,209.66 141.70,200.67" fill="#517FAF" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="175.97,178.48 157.28,189.27 157.28,209.66 175.97,198.87" fill="#305C8A" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="160.40,169.49 175.97,178.48 157.28,189.27 141.70,180.28" fill="#B0C5DB" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><circle cx="158.84" cy="179.38" r="8.4" fill="#FFFFFF" fill-opacity="0.55" stroke="#B03050" stroke-width="2.4"/><circle cx="158.84" cy="179.38" r="3.0" fill="#B03050"/><polygon points="228.48,191.54 251.56,204.86 251.56,219.85 228.48,206.53" fill="#517FAF" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="274.64,191.54 251.56,204.86 251.56,219.85 274.64,206.53" fill="#305C8A" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="251.56,178.21 274.64,191.54 251.56,204.86 228.48,191.54" fill="#B0C5DB" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-43.85,196.34 -31.16,203.66 -31.16,213.86 -43.85,206.53" fill="#D1D6D3" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="-18.46,196.34 -31.16,203.66 -31.16,213.86 -18.46,206.53" fill="#AAAFAC" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="-31.16,189.01 -18.46,196.34 -31.16,203.66 -43.85,196.34" fill="#EAECEB" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="-60.58,198.87 -40.96,210.19 -40.96,222.19 -60.58,210.86" fill="#D1D6D3" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="-30.58,204.20 -40.96,210.19 -40.96,222.19 -30.58,216.19" fill="#AAAFAC" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="-50.20,192.87 -30.58,204.20 -40.96,210.19 -60.58,198.87" fill="#EAECEB" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="102.47,202.93 118.05,211.93 118.05,232.31 102.47,223.32" fill="#47A98D" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="136.74,201.13 118.05,211.93 118.05,232.31 136.74,221.52" fill="#268469" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="121.16,192.14 136.74,201.13 118.05,211.93 102.47,202.93" fill="#ABD8CB" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="189.24,214.19 212.32,227.51 212.32,242.50 189.24,229.18" fill="#47A98D" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="235.40,214.19 212.32,227.51 212.32,242.50 235.40,229.18" fill="#268469" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="212.32,200.87 235.40,214.19 212.32,227.51 189.24,214.19" fill="#ABD8CB" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-30.58,216.19 -10.96,227.51 -10.96,239.51 -30.58,228.18" fill="#D1D6D3" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="-0.58,221.52 -10.96,227.51 -10.96,239.51 -0.58,233.51" fill="#AAAFAC" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="-20.19,210.19 -0.58,221.52 -10.96,227.51 -30.58,216.19" fill="#EAECEB" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="63.24,225.58 78.81,234.58 78.81,254.96 63.24,245.97" fill="#517FAF" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="97.51,223.78 78.81,234.58 78.81,254.96 97.51,244.17" fill="#305C8A" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><polygon points="81.93,214.79 97.51,223.78 78.81,234.58 63.24,225.58" fill="#B0C5DB" stroke="#234466" stroke-width="0.70" stroke-linejoin="round"/><circle cx="80.37" cy="224.68" r="8.4" fill="#FFFFFF" fill-opacity="0.55" stroke="#B03050" stroke-width="2.4"/><circle cx="80.37" cy="224.68" r="3.0" fill="#B03050"/><polygon points="150.01,236.84 173.09,250.17 173.09,265.16 150.01,251.83" fill="#47A98D" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="196.17,236.84 173.09,250.17 173.09,265.16 196.17,251.83" fill="#268469" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="173.09,223.52 196.17,236.84 173.09,250.17 150.01,236.84" fill="#ABD8CB" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="-0.58,233.51 19.04,244.84 19.04,256.83 -0.58,245.50" fill="#D1D6D3" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="29.43,238.84 19.04,244.84 19.04,256.83 29.43,250.83" fill="#AAAFAC" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="9.81,227.51 29.43,238.84 19.04,244.84 -0.58,233.51" fill="#EAECEB" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="29.43,250.83 49.04,262.16 49.04,274.15 29.43,262.82" fill="#D1D6D3" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="59.43,256.16 49.04,262.16 49.04,274.15 59.43,268.15" fill="#AAAFAC" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="39.81,244.84 59.43,256.16 49.04,262.16 29.43,250.83" fill="#EAECEB" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="110.78,259.49 133.86,272.82 133.86,287.81 110.78,274.48" fill="#47A98D" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="156.93,259.49 133.86,272.82 133.86,287.81 156.93,274.48" fill="#268469" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="133.86,246.17 156.93,259.49 133.86,272.82 110.78,259.49" fill="#ABD8CB" stroke="#1C614E" stroke-width="0.70" stroke-linejoin="round"/><polygon points="59.43,268.15 79.04,279.48 79.04,291.47 59.43,280.15" fill="#D1D6D3" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="89.43,273.48 79.04,279.48 79.04,291.47 89.43,285.48" fill="#AAAFAC" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="69.81,262.16 89.43,273.48 79.04,279.48 59.43,268.15" fill="#EAECEB" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="89.43,285.48 109.05,296.80 109.05,308.79 89.43,297.47" fill="#D1D6D3" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="119.43,290.81 109.05,296.80 109.05,308.79 119.43,302.80" fill="#AAAFAC" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><polygon points="99.81,279.48 119.43,290.81 109.05,296.80 89.43,285.48" fill="#EAECEB" stroke="#929693" stroke-width="0.60" stroke-linejoin="round"/><text x="198.07" y="159.82" class="rot">PUN-03</text><line x1="158.84" y1="179.38" x2="158.84" y2="155.38" stroke="#8A938F" stroke-width="0.7" opacity="0.9"/><text x="158.84" y="158.48" class="rot">PUN-04</text><line x1="80.37" y1="224.68" x2="80.37" y2="200.68" stroke="#8A938F" stroke-width="0.7" opacity="0.9"/><text x="80.37" y="203.78" class="rot">PUN-17</text><text x="-130.39" y="150.40" class="rot">EXP-01</text><text x="-86.54" y="175.71" class="rot">EXP-02</text><text x="115.39" y="326.46" class="sala" text-anchor="middle">entrada</text><text x="8.08" y="268.50" class="sala" text-anchor="middle">cajas</text></svg></div>
+  <div class="censo"><div class="grupos"><div class="grupo"><div class="top"><span class="n">8</span><span class="q">ocupados hoy</span></div><div class="uni"><i class="u-tomado"></i><i class="u-tomado"></i><i class="u-tomado"></i><i class="u-tomado"></i><i class="u-tomado"></i><i class="u-tomado"></i><i class="u-tomado"></i><i class="u-tomado"></i></div></div><div class="grupo"><div class="top"><span class="n">15</span><span class="q">libres</span></div><div class="uni"><i class="u-libre"></i><i class="u-libre"></i><i class="u-libre"></i><i class="u-libre"></i><i class="u-libre"></i><i class="u-libre"></i><i class="u-libre"></i><i class="u-libre"></i><i class="u-libre"></i><i class="u-libre"></i><i class="u-libre"></i><i class="u-libre"></i><i class="u-libre"></i><i class="u-libre"></i><i class="u-libre"></i></div></div><div class="grupo" class="cero"><div class="top"><span class="n">0</span><span class="q">contratados sin arrancar</span></div><div class="uni"></div></div></div></div>
+  <div class="pieleg"><span class="anillo"></span>montaje sin reportar</div>
+</section><section class="tarjeta">
+  <div class="cab"><h2 class="tt">Plata del periodo</h2><span class="der">31 ago &#8594; 30 sep 2026</span></div>
+  <div class="pcab">
+    <div><span class="et">Potencial a tarifa</span><div class="pgr plata">$14.234.060</div></div>
+    <div class="pder"><span class="et">Se quema por día vacío</span>
+      <div class="pgr plata car">$294.411</div></div>
+  </div>
+  <svg width="748" height="34" viewBox="0 0 748 34" class="apil">
+    <rect x="0" y="0" width="268.4" height="34" fill="var(--verde-o)"/>
+    <rect x="271.4" y="0" width="476.6" height="34" fill="var(--verde-m)"/>
+    <text x="13" y="21.5" class="seg1">$5.107.310</text>
+    <text x="284.4" y="21.5" class="seg2">$9.126.750</text>
+    <style>.seg1{font-family:var(--sans);font-size:14.5px;font-weight:700;fill:#fff;font-variant-numeric:tabular-nums}
+    .seg2{font-family:var(--sans);font-size:14.5px;font-weight:700;fill:var(--tinta);font-variant-numeric:tabular-nums}</style>
+  </svg>
+  <div class="pleg">
+    <span><i class="s1"></i>vendido <b>36%</b></span>
+    <span><i class="s2"></i>queda por vender <b>64%</b></span>
+    <span class="sig"><i class="s3"></i>no se recupera <b>$0</b></span>
+  </div>
+  <div class="pdias">
+    <svg width="748" height="10" viewBox="0 0 748 10"><rect x="1.0" y="0" width="22.1" height="10" rx="1" fill="var(--tinta)"/><rect x="25.1" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="49.3" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="73.4" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="97.5" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="121.6" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="145.8" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="169.9" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="194.0" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="218.2" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="242.3" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="266.4" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="290.5" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="314.7" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="338.8" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="362.9" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="387.1" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="411.2" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="435.3" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="459.5" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="483.6" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="507.7" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="531.8" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="556.0" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="580.1" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="604.2" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="628.4" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="652.5" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="676.6" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="700.7" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/><rect x="724.9" y="0" width="22.1" height="10" rx="1" fill="var(--linea2)"/></svg>
+    <div class="pdl">día <b>1</b> de 31</div>
+  </div>
+</section><section class="tarjeta">
+  <div class="cab"><h2 class="tt">Exhibiciones sin montar</h2><span class="der">2 de 8 contratos</span></div>
+  <div class="mfila">
+      <div class="mizq"><div><span class="cod">PUN-17</span>
+        <span class="tipo" style="margin-left:8px">Punta de góndola</span></div>
+        <div class="mprov">ALPINA</div></div>
+      <div class="mdias"><div class="mpts"><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="tipo">arrancó hace 5 días</div></div>
+      <button class="mini">Registrar montaje</button></div>
+  <div class="mfila">
+      <div class="mizq"><div><span class="cod">PUN-04</span>
+        <span class="tipo" style="margin-left:8px">Punta de góndola</span></div>
+        <div class="mprov">brayan</div></div>
+      <div class="mdias"><div class="mpts"><i></i><i></i><i></i><i></i></div>
+        <div class="tipo">arrancó hace 4 días</div></div>
+      <button class="mini">Registrar montaje</button></div>
+</section></main>
+</body></html>

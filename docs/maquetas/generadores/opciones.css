@@ -1,0 +1,129 @@
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --papel:#EFF1F1; --sup:#FFFFFF;
+  --linea:#DEE2E3; --linea2:#C7CED0;
+  --tinta:#14181C; --tinta2:#4A5459; --tinta3:#6B7479;
+  --verde:#00907E; --verdeTxt:#00786A; --verdeSuave:#D8F0EA; --verdeClaro:#7FCBBC;
+}
+body{background:var(--papel);color:var(--tinta);
+  font-family:'Chivo',system-ui,sans-serif;font-size:13px;
+  -webkit-font-smoothing:antialiased}
+.hoja{width:1160px;margin:0 auto;padding:34px 0 60px}
+.tope{margin:0 0 28px 68px}
+.tope h1{font-family:'Archivo Narrow';font-weight:700;font-size:27px;letter-spacing:-.01em}
+.tope p{margin-top:8px;max-width:640px;font-size:13px;line-height:1.55;color:var(--tinta2)}
+
+.op{margin-bottom:34px}
+.cab{display:flex;gap:16px;align-items:flex-start;margin:0 0 11px}
+.letra{font-family:'Archivo Narrow';font-weight:700;font-size:19px;color:var(--sup);
+  background:var(--tinta);width:32px;height:32px;border-radius:3px;flex:0 0 32px;
+  display:flex;align-items:center;justify-content:center;margin-top:1px}
+.cab h3{font-size:15px;font-weight:700;letter-spacing:-.005em}
+.cab h3 em{font-style:normal;font-weight:400;color:var(--tinta3);font-size:13px}
+.preg{margin-top:3px;font-size:13.5px;color:var(--verdeTxt);font-weight:600}
+.por{margin-top:3px;font-size:12.5px;line-height:1.5;color:var(--tinta2);max-width:700px}
+.panel{width:1024px;height:274px;margin-left:48px}
+
+.t{background:var(--sup);border:1px solid var(--linea);border-radius:3px;
+  display:flex;flex-direction:column;overflow:hidden;height:100%}
+.t>header{display:flex;align-items:baseline;gap:12px;padding:11px 15px 9px}
+.t>header h2{font-size:14.5px;font-weight:700;letter-spacing:-.005em}
+.t>header .sub{font-size:12px;color:var(--tinta3)}
+.t>header .der{margin-left:auto;font-size:12px;color:var(--tinta3)}
+
+.graf{flex:1;min-height:0;padding:0 15px 12px;display:flex;overflow:hidden}
+.graf svg{width:100%;height:100%;display:block}
+.cuerpo{flex:1;min-height:0;padding:0 15px 12px;overflow:hidden}
+
+/* ---------------------------------------------------- comunes del SVG */
+.gEje{stroke:#C7CED0;stroke-width:1}
+.gCaida{stroke:#DEE2E3;stroke-width:1}
+.gDiv{stroke:#E8ECED;stroke-width:1}
+.gPaso{fill:none;stroke:#00907E;stroke-width:2.4;stroke-linejoin:round;stroke-linecap:round}
+.gPto{fill:#00907E}
+.gNum{font-family:'Chivo';font-weight:700;font-size:14px;fill:#00786A;
+  font-variant-numeric:tabular-nums}
+.gNumS{font-weight:700;fill:#00786A}
+.gRot{font-family:'Archivo Narrow';font-weight:600;font-size:9.5px;letter-spacing:.11em;
+  text-transform:uppercase;fill:#6B7479}
+.gMesR{font-family:'Archivo Narrow';font-weight:700;font-size:8.5px;letter-spacing:.12em;
+  fill:#8E979B}
+.gHoy{font-family:'Chivo';font-weight:600;font-size:11px;fill:#14181C}
+.gFecha{font-family:'Chivo';font-size:11px;fill:#4A5459;font-variant-numeric:tabular-nums}
+.gNota{font-family:'Chivo';font-size:11px;fill:#6B7479}
+.gPasan{font-family:'Chivo';font-size:10.5px;fill:#6B7479}
+.gTemp{fill:#EDF2F1}
+.gTempT{font-family:'Archivo Narrow';font-weight:700;font-size:8.5px;letter-spacing:.1em;
+  fill:#8E979B;text-anchor:middle}
+.gDia{font-family:'Chivo';font-weight:600;font-size:12.5px;fill:#14181C}
+.gChip{fill:#D8F0EA;stroke:#A8DCD0;stroke-width:1}
+.gCod{font-family:'Archivo Narrow';font-weight:700;font-size:11.5px;letter-spacing:.02em;
+  fill:#00786A}
+.gTipo{font-family:'Archivo Narrow';font-weight:600;font-size:9px;letter-spacing:.09em;
+  text-transform:uppercase;fill:#6B7479}
+
+/* --------------------------------------------------------- B · tabla */
+table.inv{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+table.inv th{font-family:'Archivo Narrow';font-weight:600;font-size:9.5px;
+  letter-spacing:.11em;text-transform:uppercase;color:var(--tinta3);
+  text-align:right;padding:0 0 6px;border-bottom:1px solid var(--linea)}
+table.inv th.izq,table.inv th.izq2{text-align:left}
+table.inv td{padding:0;height:24px;font-size:12.5px;color:var(--tinta2);
+  text-align:right;border-bottom:1px solid #F1F4F4}
+table.inv td.izq{text-align:left;color:var(--tinta)}
+table.inv td.izq2{text-align:left;padding-left:2px}
+table.inv th.n,table.inv td.n{width:132px;padding-right:32px}
+table.inv td.n{font-weight:600}
+table.inv th.fin,table.inv td.fin{width:86px}
+table.inv tr.mueve td{color:var(--tinta)}
+table.inv tr.mueve td.n,table.inv tr.mueve td.fin{color:var(--verdeTxt);font-weight:700}
+table.inv tr.quieta td.fin{color:var(--tinta3)}
+table.inv .nada{color:#A6AFB3;font-size:12px}
+table.inv .cu{color:var(--tinta2);font-size:12px}
+table.inv b{color:var(--verdeTxt);font-weight:700}
+table.inv .ch i{font-style:normal;font-family:'Archivo Narrow';font-weight:700;
+  font-size:11px;color:var(--verdeTxt);background:var(--verdeSuave);
+  border:1px solid #A8DCD0;border-radius:2.5px;padding:1px 5px;margin-left:4px}
+table.inv tfoot td{border-bottom:none;border-top:1px solid var(--linea2);
+  padding-top:3px;font-weight:700;color:var(--tinta)}
+table.inv tfoot td.izq{font-weight:400;color:var(--tinta3);font-size:12px}
+
+/* --------------------------------------------------- C · tira del mes */
+.c0{fill:#F2F5F5}.c1{fill:#DDEEE9}.c2{fill:#C6E5DD}.c3{fill:#AEDCD0}
+.dNum{font-family:'Chivo';font-size:10.5px;fill:#5A6469;text-anchor:middle;
+  font-variant-numeric:tabular-nums}
+.dNum.hoy{font-weight:700;fill:#14181C}
+.dNum.ent{font-weight:700;fill:#00786A}
+.finde{fill:#E3E7E8}
+
+/* ------------------------------------------------------- D · agenda */
+.ag{display:flex;flex-direction:column;gap:0}
+.agCab{display:flex;align-items:baseline;gap:10px;padding:2px 0 11px;
+  border-bottom:1px solid var(--linea)}
+.agK{font-size:13px;color:var(--tinta2)}
+.agK b{font-family:'Chivo';font-weight:700;font-size:21px;color:var(--tinta);
+  margin-right:3px;font-variant-numeric:tabular-nums}
+.agFlecha{color:var(--tinta3);font-size:15px}
+.agNota{margin-left:auto;font-size:12px;color:var(--tinta3)}
+.agFila{display:flex;align-items:center;gap:18px;height:56px;
+  border-bottom:1px solid #F1F4F4}
+.agFila:last-child{border-bottom:none}
+.agCu{width:210px;flex:0 0 210px;display:flex;flex-direction:column;gap:2px}
+.agCu b{font-size:14px;font-weight:700;color:var(--tinta)}
+.agCu span{font-size:11.5px;color:var(--tinta3)}
+.agQ{display:flex;align-items:center;gap:12px;flex:1}
+.agTipo{font-size:13px;color:var(--tinta2)}
+.agCh i{font-style:normal;font-family:'Archivo Narrow';font-weight:700;font-size:11.5px;
+  color:var(--verdeTxt);background:var(--verdeSuave);border:1px solid #A8DCD0;
+  border-radius:2.5px;padding:2px 7px;margin-right:5px}
+.agTot{font-size:12.5px;color:var(--tinta3);font-variant-numeric:tabular-nums}
+.agTot b{font-size:16px;font-weight:700;color:var(--verdeTxt);margin-left:2px}
+
+/* -------------------------------------------- E · un punto por espacio */
+.eCod{font-family:'Archivo Narrow';font-weight:700;font-size:12px;fill:#14181C}
+.eTipo{font-family:'Chivo';font-size:11.5px;fill:#6B7479}
+.eGuia{stroke:#E4E8E9;stroke-width:1}
+.eVend{stroke:#7FCBBC;stroke-width:3;stroke-linecap:round}
+.eFecha{font-family:'Chivo';font-weight:600;font-size:11.5px;fill:#00786A;
+  font-variant-numeric:tabular-nums}
+.eGris{fill:#8E979B}
