@@ -161,3 +161,47 @@ export function nombrePropio(
   const puesto = (mueble.nomenclatura ?? "").trim();
   return puesto !== "" && puesto !== mueble.code;
 }
+
+/** ¿Dos muebles quedarían llamándose igual? Lo mismo que `codigoRepetido`, pero
+ *  sobre el nombre que se VE, que es el que confunde a quien mira el plano. */
+export function nombreRepetido(
+  nombre: string,
+  existentes: { id: string; code: string; nomenclatura?: string | null }[],
+  exceptoId?: string,
+): boolean {
+  const n = normalizar(nombre);
+  if (!n) return false;
+  return existentes.some(
+    (f) => f.id !== exceptoId && normalizar(nombreDeMueble(f)) === n,
+  );
+}
+
+/**
+ * Qué se dibuja sobre un mueble en el plano: adentro de la caja, o en la
+ * pastilla que flota arriba.
+ *
+ * La regla es una sola y es la que se había roto: **el nombre aparece una vez**.
+ *
+ * Adentro iba `code` a secas, así que un mueble renombrado mostraba el nombre
+ * puesto a mano en la pastilla y el de fábrica adentro de la caja — dos nombres
+ * distintos para el mismo mueble, uno encima del otro. La pastilla no estaba de
+ * más: existe para los muebles chicos, donde el texto de adentro no entra y se
+ * dibuja un emoji. Lo que estaba mal era que las dos cosas se dibujaran juntas.
+ *
+ * Ahora adentro va el nombre efectivo, y la pastilla aparece sólo cuando adentro
+ * no cabe. Se reserva para el nombre puesto a mano a propósito: en un mueble
+ * chico sin nombre propio el plano ya dice bastante con el emoji, y una pastilla
+ * por cada cajita deja el plano ilegible al alejarse.
+ *
+ * `cabeAdentro` lo decide quien dibuja, que es el único que sabe cuántos píxeles
+ * mide el mueble en pantalla con el zoom que hay.
+ */
+export function rotulosDelPlano(
+  mueble: { code: string; nomenclatura?: string | null },
+  cabeAdentro: boolean,
+): { adentro: string | null; pastilla: string | null } {
+  const nombre = nombreDeMueble(mueble);
+  return cabeAdentro
+    ? { adentro: nombre, pastilla: null }
+    : { adentro: null, pastilla: nombrePropio(mueble) ? nombre : null };
+}

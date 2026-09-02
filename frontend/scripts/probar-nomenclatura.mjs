@@ -165,5 +165,94 @@ prueba("vaciar el campo devuelve el nombre del sistema", () => {
   assert.equal(N.nombreDeMueble({ ...antes, nomenclatura: "" }), "GON-800");
 });
 
+console.log("\nnomenclatura · qué se dibuja en el plano");
+
+prueba("EL NOMBRE APARECE UNA VEZ, NO DOS", () => {
+  // El bicho: un mueble renombrado mostraba «ISL-01» en la pastilla de arriba y
+  // «ISL-03» —el de fábrica— adentro de la caja. Dos nombres para el mismo
+  // mueble, uno encima del otro, y el de abajo era el que ya no se usa.
+  const renombrado = { code: "ISL-03", nomenclatura: "ISL-01" };
+  const grande = N.rotulosDelPlano(renombrado, true);
+  assert.equal(grande.adentro, "ISL-01");
+  assert.equal(grande.pastilla, null);
+});
+
+prueba("sin nombre propio, adentro va el del sistema", () => {
+  const r = N.rotulosDelPlano({ code: "GON-800" }, true);
+  assert.equal(r.adentro, "GON-800");
+  assert.equal(r.pastilla, null);
+});
+
+prueba("si adentro no cabe, el nombre puesto a mano se va a la pastilla", () => {
+  // Para eso existe la pastilla: un mueble de 30 px no tiene lugar adentro.
+  const r = N.rotulosDelPlano({ code: "ISL-03", nomenclatura: "ISL-01" }, false);
+  assert.equal(r.adentro, null);
+  assert.equal(r.pastilla, "ISL-01");
+});
+
+prueba("un mueble chico SIN nombre propio no lleva pastilla", () => {
+  // Una pastilla por cada cajita deja el plano ilegible al alejarse, y no diría
+  // nada que el emoji no diga.
+  const r = N.rotulosDelPlano({ code: "GON-800" }, false);
+  assert.equal(r.adentro, null);
+  assert.equal(r.pastilla, null);
+});
+
+prueba("nunca se dibujan los dos a la vez", () => {
+  const casos = [
+    { code: "GON-01" },
+    { code: "GON-01", nomenclatura: "" },
+    { code: "GON-01", nomenclatura: "GON-01" },
+    { code: "GON-01", nomenclatura: "Punta pasillo 3" },
+  ];
+  for (const m of casos) {
+    for (const cabe of [true, false]) {
+      const r = N.rotulosDelPlano(m, cabe);
+      assert.ok(!(r.adentro && r.pastilla), `${m.nomenclatura ?? "—"} / ${cabe}`);
+    }
+  }
+});
+
+console.log("\nnomenclatura · dos muebles llamados igual");
+
+prueba("renombrar a un nombre que ya se ve en otro mueble es choque", () => {
+  const items = [
+    { id: "a", code: "ISL-01" },
+    { id: "b", code: "ISL-03", nomenclatura: "Punta pasillo 3" },
+  ];
+  // Contra el nombre del sistema de otro mueble.
+  assert.equal(N.nombreRepetido("ISL-01", items, "c"), true);
+  // Contra el nombre puesto a mano de otro mueble.
+  assert.equal(N.nombreRepetido("Punta pasillo 3", items, "c"), true);
+  // Un nombre libre no choca.
+  assert.equal(N.nombreRepetido("ISL-02", items, "c"), false);
+  // Quedarse con el nombre que uno ya tiene no es choque.
+  assert.equal(N.nombreRepetido("Punta pasillo 3", items, "b"), false);
+});
+
+prueba("RENOMBRAR AL CÓDIGO DE OTRO MUEBLE ES CHOQUE", () => {
+  // Es exactamente lo que pasa al renombrar ISL-03 → ISL-01 en una sala donde
+  // ISL-01 ya existe: quedan dos cajas diciendo ISL-01 y nadie sabe cuál es
+  // cuál. El código no choca —sigue siendo ISL-03— pero lo que se VE, sí.
+  const items = [
+    { id: "a", code: "ISL-01" },
+    { id: "b", code: "ISL-03" },
+  ];
+  assert.equal(N.codigoRepetido("ISL-01", items, "b"), true);
+  assert.equal(N.nombreRepetido("ISL-01", items, "b"), true);
+});
+
+prueba("un nombre vacío no cuenta como repetido", () => {
+  assert.equal(N.nombreRepetido("  ", [{ id: "a", code: "ISL-01" }]), false);
+});
+
+prueba("el mueble renombrado libera su código de fábrica", () => {
+  // ISL-03 se renombró a ISL-01, así que YA NO se llama ISL-03: otro mueble
+  // puede llamarse así sin que se vean dos iguales en el plano.
+  const items = [{ id: "b", code: "ISL-03", nomenclatura: "ISL-01" }];
+  assert.equal(N.nombreRepetido("ISL-03", items, "c"), false);
+  // Pero el CÓDIGO sigue tomado: es la llave del espacio, y no se toca.
+  assert.equal(N.codigoRepetido("ISL-03", items, "c"), true);
+});
 
 console.log("\n" + hechas + " pruebas" + (process.exitCode ? " · CON FALLAS" : " · todo en orden") + "\n");
