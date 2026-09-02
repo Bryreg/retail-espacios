@@ -2753,6 +2753,17 @@ queda anotado y no hecho.
   de Vender ese mismo valor se volvió un alto de 480 px sobre un dibujo que pide 850 —
   con `overflow: hidden` en la tarjeta, el plano salió a producción cortado 142 px abajo.
   Ahora el `flex` lo pasa quien la llama.
+- **De píxeles a coordenadas de un SVG se pasa con `getScreenCTM()`, no con una
+  regla de tres.** `(clientX - caja.left) / caja.width * ANCHO` supone que el
+  viewBox llena la caja, y no la llena: el `preserveAspectRatio` por omisión es
+  `xMidYMid meet`, que encaja por el lado corto y **centra** lo que sobra. El
+  cursor de «cuándo se libera» caía corrido hasta 131 px en 1920 y perfecto en
+  1440, porque a 1440 la caja y el viewBox tienen casi la misma proporción y no
+  hay franjas. Cualquier lectura al pasar el mouse sobre un SVG va por la matriz.
+- **El harness revisa a 1440 y a 1920.** Un solo ancho no alcanza, y ése es el
+  motivo: el encaje del SVG depende de la proporción de la caja, y la caja
+  depende del ancho de la ventana. El bug del cursor daba verde en 1440 y rojo
+  en 1920. 1440 es el portátil; 1920 es el monitor donde esto se usa todo el día.
 
 ---
 

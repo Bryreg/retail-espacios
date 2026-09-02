@@ -190,8 +190,24 @@ export default function Libera({ fixtures, facesOf, tipoDe, desde, hasta, tempor
       viewBox={`0 0 ${ANCHO} ${ALTO}`}
       style={{ width: "100%", height: "100%", display: "block" }}
       onMouseMove={(e) => {
-        const caja = e.currentTarget.getBoundingClientRect();
-        const px = ((e.clientX - caja.left) / caja.width) * ANCHO;
+        // De píxeles de pantalla a unidades del viewBox, con la matriz del SVG.
+        //
+        // Acá había una regla de tres contra el rectángulo del elemento
+        // —`(clientX - caja.left) / caja.width * ANCHO`— y esa cuenta supone que
+        // el viewBox llena la caja. No la llena: el `preserveAspectRatio` por
+        // omisión es `xMidYMid meet`, que encaja el dibujo por el lado que le
+        // queda corto y CENTRA lo que sobra. Este viewBox es de 4,6:1 y la caja
+        // en una pantalla ancha es de 6,6:1, así que el dibujo entra por el alto
+        // y quedan ~215 px en blanco de cada lado. La regla de tres los cuenta
+        // como si fueran gráfico: el cursor salía corrido hacia adentro, cada
+        // vez más lejos del mouse cuanto más cerca del borde.
+        //
+        // `getScreenCTM()` es la transformación real que aplicó el navegador,
+        // con el encaje y el centrado adentro. Invertida, lleva el punto del
+        // mouse a la coordenada del dibujo, ande donde ande la caja.
+        const m = e.currentTarget.getScreenCTM();
+        if (!m) return;
+        const px = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse()).x;
         const i = Math.round(((px - X0) / (X1 - X0)) * dias);
         setCursor(Math.max(0, Math.min(dias, i)));
       }}
@@ -254,7 +270,10 @@ export default function Libera({ fixtures, facesOf, tipoDe, desde, hasta, tempor
 
       {/* El cursor: la respuesta escrita. */}
       <line x1={f(x(iCursor))} y1="26" x2={f(x(iCursor))} y2={f(YE)} stroke="#14181C" strokeWidth="1.2" />
-      <circle cx={f(x(iCursor))} cy={f(y(libresEn))} r="6" fill="none" stroke="#14181C" strokeWidth="2" />
+      <circle
+        data-cursor cx={f(x(iCursor))} cy={f(y(libresEn))}
+        r="6" fill="none" stroke="#14181C" strokeWidth="2"
+      />
       <text x={f(xLectura)} y="17" style={cruzT} textAnchor="middle">
         {lectura}
       </text>
