@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
   RefreshCw,
@@ -48,7 +48,7 @@ import type { ResumenContrato } from "../components/Contrato/Contrato";
 import Planometria from "../components/Contrato/Planometria";
 import CancelarContrato from "../components/Contrato/CancelarContrato";
 import CargaMasiva from "../components/CargaMasiva/CargaMasiva";
-import { inclusiveDays, upcomingSeasons } from "../types/seasons";
+import { inclusiveDays, toISODate, upcomingSeasons } from "../types/seasons";
 /* El parte —la zona superior escrita en prosa— salió de las dos pantallas.
    En Supervisar lo reemplaza la franja de cinco cifras: quien pone el canon no
    necesita que se le explique el negocio, necesita el dato a mano. En Vender
@@ -170,6 +170,38 @@ function facesOf(f: UnifiedFixture): FaceEntry[] {
 function codigoVisible(entry: FaceEntry): string {
   if (!isDoubleGondola(entry.fixture)) return entry.code;
   return entry.face === "B" ? `${entry.fixture.code}·B` : `${entry.fixture.code}·A`;
+}
+
+/** Una cara que se puede ofrecer en el periodo elegido. */
+interface Disponible {
+  code: string;
+  fixture: UnifiedFixture;
+  face: "A" | "B";
+  /** El primer día en que queda libre. Ausente = libre desde el arranque. */
+  desde?: Date;
+}
+
+/** Desde cuándo se puede ofrecer una cara que está tomada parte del periodo.
+ *
+ *  Se cuenta día por día en vez de sumarle uno a la fecha de fin del contrato,
+ *  que es lo que uno escribiría primero: esa cuenta se equivoca en los dos
+ *  casos que de verdad aparecen —un contrato que ARRANCA en el medio de la
+ *  ventana, donde el día libre es el primero y no el último, y una cara con dos
+ *  contratos que dejan un hueco entre medio—. Son 31 días y cinco caras: la
+ *  cuenta directa cuesta nada y no puede estar mal. */
+function primerDiaLibre(
+  face: { status: SpaceStatus; startDate?: string; endDate?: string },
+  from: Date,
+  to: Date,
+): Date | undefined {
+  const dia = 86_400_000;
+  const d0 = new Date(from); d0.setHours(0, 0, 0, 0);
+  const fin = new Date(to); fin.setHours(0, 0, 0, 0);
+  for (let t = d0.getTime(); t <= fin.getTime(); t += dia) {
+    const d = new Date(t);
+    if (daysTakenInRange(face, d, d) === 0) return d;
+  }
+  return undefined;
 }
 
 /** Faces that take part in the COMMERCIAL picture.
@@ -529,9 +561,19 @@ interface IsoMapProps {
    *  by what is happening today. */
   range: DateRange | null;
   rotulos?: Rotulos;
+  /** ¿La cámara se acerca al mueble elegido?
+   *
+   *  En Supervisar sí: se abre UNA fila de la tabla y la pregunta es dónde
+   *  queda. En Vender no, y no es una preferencia: ahí tocar un espacio lo suma
+   *  al contrato, así que el gesto siguiente es tocar OTRO — y acercarse al
+   *  primero esconde justamente los que faltan elegir. */
+  enfocar?: boolean;
 }
 
-function IsoMap({ fixtures, selectedIds, onSelect, match, range, rotulos = "todos" }: IsoMapProps) {
+function IsoMap({
+  fixtures, selectedIds, onSelect, match, range,
+  rotulos = "todos", enfocar = true,
+}: IsoMapProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [tip, setTip] = useState<{ x: number; y: number; title: string; sub: string } | null>(null);
@@ -703,14 +745,16 @@ function IsoMap({ fixtures, selectedIds, onSelect, match, range, rotulos = "todo
   // —un contrato sobre varias puntas— acercarse a uno esconde al resto y, peor,
   // esconde los que todavía faltan tocar. Ahí el trabajo es seguir eligiendo
   // sobre el plano entero.
-  const enfocado = selectedIds.length === 1
+  const enfocado = enfocar && selectedIds.length === 1
     ? scene.prisms.find((q) => q.f.id === selectedIds[0])?.foco ?? null
     : null;
-  // El tope importa más que la fórmula: una punta de góndola es tan chica que
-  // encuadrarla sola deja a los vecinos gigantes y cortados. Con 3.4 se ve el
-  // mueble y el pasillo alrededor, que es lo que hace falta para ubicarse.
+  // El tope importa más que la fórmula. Estaba en 3.4 y era demasiado: a esa
+  // distancia se ven cuatro muebles y el resto de la sala queda afuera, así que
+  // el plano deja de contestar «dónde queda esto» —que es su único trabajo— y
+  // pasa a ser un primer plano de un prisma. Con 1.9 el mueble se distingue y
+  // el pasillo entero sigue en pantalla.
   const k = enfocado
-    ? Math.min(3.4, Math.max(1, 0.17 * Math.min(scene.vb.w, scene.vb.h) / enfocado.r))
+    ? Math.min(1.9, Math.max(1, 0.17 * Math.min(scene.vb.w, scene.vb.h) / enfocado.r))
     : 1;
   // Sintaxis CSS, no de atributo SVG: `translate(10 20)` sin unidades ni coma
   // es válido como atributo pero inválido como propiedad, y el navegador
@@ -725,10 +769,29 @@ function IsoMap({ fixtures, selectedIds, onSelect, match, range, rotulos = "todo
     setTip({ x: e.clientX - rect.left, y: e.clientY - rect.top, title, sub });
   };
 
+  /** El lienzo toma la PROPORCIÓN DEL PLANO, no la de la tarjeta.
+   *
+   *  Con alto fijo el panel quedaba de 1450×430 —una ranura de 3.4:1— y el
+   *  plano de esta sede es de 1.7:1, así que `meet` lo encajaba por el alto y
+   *  dejaba el 55% del ancho en blanco: el dibujo se veía chico y lejos, con
+   *  medio panel vacío alrededor. La proporción no se puede fijar en el código
+   *  porque depende de la sede: una tienda larga y angosta y una cuadrada
+   *  proyectan distinto.
+   *
+   *  El tope de alto existe para que una sede casi cuadrada no empuje una
+   *  tarjeta de mil píxeles; el piso, para que una muy alargada no la deje
+   *  como una tira. Entre los dos, el plano llena su caja. */
+  const proporcion = scene.vb.w / scene.vb.h;
+
   return (
     <div
       ref={wrapRef}
-      style={{ position: "relative", flex: 1, minHeight: 0, display: "flex" }}
+      style={{
+        position: "relative", width: "100%", margin: "0 auto",
+        aspectRatio: `${scene.vb.w.toFixed(1)} / ${scene.vb.h.toFixed(1)}`,
+        maxHeight: 720, minHeight: 360, display: "flex",
+      }}
+      data-proporcion={proporcion.toFixed(2)}
     >
       <svg
         viewBox={scene.viewBox}
@@ -788,7 +851,7 @@ function IsoMap({ fixtures, selectedIds, onSelect, match, range, rotulos = "todo
                 setHoverId(null);
                 setTip(null);
               }}
-              opacity={dimmed ? 0.18 : enfocado && !selected ? 0.2 : 1}
+              opacity={dimmed ? 0.18 : enfocado && !selected ? 0.45 : 1}
               style={{
                 cursor: "pointer",
                 filter: hovered ? "brightness(1.12)" : undefined,
@@ -2068,6 +2131,56 @@ function SpacesTable({
   );
 }
 
+/** Un espacio libre, como pastilla: el código y —si se libera adentro del
+ *  periodo— desde cuándo.
+ *
+ *  Se toca y entra al contrato, igual que tocarlo en el plano. Es la misma
+ *  acción por dos caminos a propósito: el plano contesta «dónde queda» y la
+ *  lista contesta «cuáles hay», y según cuál de las dos preguntas traiga el
+ *  proveedor uno arranca por un lado o por el otro.
+ *
+ *  El que se libera adentro del periodo va en naranja y con su fecha. No se
+ *  esconde: es inventario vendible —«te lo puedo dar desde el 25»— y esconderlo
+ *  es dejar de vender cinco espacios de veinte. */
+function ChipEspacio({
+  code, desde, puesto, onClick,
+}: {
+  code: string;
+  desde?: Date;
+  /** Ya está en el contrato que se está armando. */
+  puesto: boolean;
+  onClick: () => void;
+}) {
+  const entra = desde !== undefined;
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      title={puesto
+        ? `Sacar ${code} del contrato`
+        : entra
+        ? `Sumar ${code} al contrato · se libera el ${fechaEnCurso(toISODate(desde))}`
+        : `Sumar ${code} al contrato`}
+      style={{
+        display: "inline-flex", alignItems: "baseline", gap: 4,
+        padding: "2px 6px", borderRadius: "var(--r-xs)", cursor: "pointer",
+        fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 12,
+        letterSpacing: "0.02em", lineHeight: 1.5,
+        border: `1px solid ${puesto ? "var(--ink-1)" : entra ? "var(--entra-borde)" : "var(--libre-borde)"}`,
+        background: puesto ? "var(--ink-1)" : entra ? "var(--entra-suave)" : "var(--libre-suave)",
+        color: puesto ? "#fff" : entra ? "var(--entra-txt)" : "var(--libre)",
+      }}
+    >
+      {code}
+      {entra && (
+        <span style={{ fontFamily: "var(--font-sans)", fontWeight: 500, fontSize: 10 }}>
+          {fechaEnCurso(toISODate(desde))}
+        </span>
+      )}
+    </button>
+  );
+}
+
 // ─── La franja de cifras ─────────────────────────────────────────────────────
 
 /** Una cifra de la franja: cómo se llama, cuánto es, y qué quiere decir.
@@ -2433,16 +2546,22 @@ export default function DashboardView() {
   const porCategoria = useMemo(() => {
     if (!mapRange) return [];
     const acum = new Map<string, {
-      libres: number; parciales: number; total: number; tarifa: number | null;
+      libres: Disponible[]; parciales: Disponible[]; total: number; tarifa: number | null;
     }>();
     fixtures.forEach((f) => {
       const cat = rateTypeOf(f);
       const ref = referenceRateFor(referenceRates, f.sede || sede, cat);
       commercialFacesOf(f).forEach((face) => {
-        const e = acum.get(cat) ?? { libres: 0, parciales: 0, total: 0, tarifa: ref };
+        const e = acum.get(cat) ?? { libres: [], parciales: [], total: 0, tarifa: ref };
         const a = rangeAvailability(face, mapRange.from, mapRange.to);
-        if (a === "libre") e.libres++;
-        else if (a === "parcial") e.parciales++;
+        if (a === "libre") {
+          e.libres.push({ code: codigoVisible(face), fixture: f, face: face.face });
+        } else if (a === "parcial") {
+          e.parciales.push({
+            code: codigoVisible(face), fixture: f, face: face.face,
+            desde: primerDiaLibre(face, mapRange.from, mapRange.to),
+          });
+        }
         e.total++;
         if (e.tarifa === null) e.tarifa = ref;
         acum.set(cat, e);
@@ -2689,8 +2808,11 @@ export default function DashboardView() {
   /** La tarjeta del mapa. Es la MISMA en los dos modos —el mapa no cambia
    *  porque cambie para qué estás mirándolo—; sólo cambian el subtítulo y las
    *  palabras de la clave, porque la pregunta que se le hace sí cambia. */
-  const tarjetaMapa = (alto: number | string) => (
-        <Card style={{ position: "relative", flex: "1 1 480px", minWidth: 0, height: alto }}>
+  /** La tarjeta del plano. No lleva alto: lo pone el lienzo, que se mide con
+   *  la proporción del plano de la sede. Fijarlo dejaba medio panel en blanco
+   *  alrededor de un dibujo chico. */
+  const tarjetaMapa = () => (
+        <Card style={{ position: "relative", flex: "1 1 480px", minWidth: 0 }}>
           <CardHeader
             title={`Piso de ${sede}`}
             sub={modoEfectivo === "vender"
@@ -2751,7 +2873,7 @@ export default function DashboardView() {
             }
           />
 
-          <div style={{ flex: 1, minHeight: 0, padding: "0 14px 12px", display: "flex" }}>
+          <div style={{ padding: "0 14px 12px", display: "flex" }}>
             <IsoMap
               fixtures={fixtures}
               /* En Vender se marcan TODOS los del contrato; en Supervisar, el
@@ -2763,6 +2885,7 @@ export default function DashboardView() {
               match={mapMatch}
               range={mapRange}
               rotulos={modoEfectivo === "vender" ? "todos" : "elegido"}
+              enfocar={modoEfectivo !== "vender"}
             />
           </div>
 
@@ -2788,8 +2911,26 @@ export default function DashboardView() {
    *  «¿qué le ofrezco?». Tenerlo detrás de un botón obligaba a abrir, mirar,
    *  cerrar y volver a mirar el plano — cuatro gestos para un dato que se usa
    *  en cada llamada. */
+  /** Las pastillas de un tipo: primero lo libre todo el periodo, después lo
+   *  que se libera adentro, con su fecha. */
+  const chipsDe = (g: { libres: Disponible[]; parciales: Disponible[] }) =>
+    [...g.libres, ...g.parciales].map((d) => (
+      <ChipEspacio
+        key={`${d.fixture.id}-${d.face}`}
+        code={d.code}
+        desde={d.desde}
+        onClick={() => alternarCara(d.fixture.id, d.face)}
+        puesto={enContrato.some((x) => x.id === d.fixture.id && x.face === d.face)}
+      />
+    ));
+
+  /** Los códigos sólo mientras no hay contrato armado: ahí la hoja de la
+   *  derecha está vacía y la pregunta es cuáles hay. Con la ficha abierta la
+   *  pregunta ya es otra y los códigos la empujarían fuera de la pantalla. */
+  const conCodigos = espaciosDelContrato.length === 0 && !cerrado;
+
   const panelTarifas = (
-    <Card style={{ flexShrink: 0 }}>
+    <Card style={{ flex: "1 1 auto", minHeight: 0 }}>
       <CardHeader title="Tarifa de referencia" right={<span>al mes</span>} />
       <div style={{ padding: "0 15px 12px", overflowY: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -2822,9 +2963,10 @@ export default function DashboardView() {
                 $1.200.000», se toca, y el plano se queda sólo con las islas. */}
             {porCategoria.map(({ cat, libres, parciales, tarifa }) => {
               const activa = mapCategoria === cat;
+              const cuantas = libres.length + parciales.length;
               return (
+              <Fragment key={cat}>
               <tr
-                key={cat}
                 onClick={() => setMapCategoria(activa ? null : cat)}
                 title={activa
                   ? "Ver todos los tipos en el plano"
@@ -2836,27 +2978,59 @@ export default function DashboardView() {
                   fontWeight: activa ? 700 : 400,
                   boxShadow: activa ? "inset 2px 0 0 var(--ink-1)" : undefined,
                   paddingLeft: activa ? 8 : 0,
+                  borderBottom: conCodigos && cuantas > 0 ? "none" : celdaTarifa.borderBottom,
                 }}>
                   {rateTypeLabel(cat)}
                 </td>
-                <td style={{ ...celdaTarifa, textAlign: "right" }}>
-                  <span style={{ color: libres === 0 ? "var(--ink-3)" : "var(--ink-2)" }}>{libres}</span>
-                  {parciales > 0 && (
+                <td style={{
+                  ...celdaTarifa, textAlign: "right",
+                  borderBottom: conCodigos && cuantas > 0 ? "none" : celdaTarifa.borderBottom,
+                }}>
+                  <span style={{ color: libres.length === 0 ? "var(--ink-3)" : "var(--ink-2)" }}>
+                    {libres.length}
+                  </span>
+                  {parciales.length > 0 && (
                     <>
                       {" "}
                       <span
-                        title={`${parciales} se libera${parciales === 1 ? "" : "n"} adentro del periodo`}
+                        title={`${parciales.length} se libera${parciales.length === 1 ? "" : "n"} adentro del periodo`}
                         style={{ color: "var(--entra-txt)", fontWeight: 700 }}
                       >
-                        +{parciales}
+                        +{parciales.length}
                       </span>
                     </>
                   )}
                 </td>
-                <td style={{ ...celdaTarifa, textAlign: "right" }}>
+                <td style={{
+                  ...celdaTarifa, textAlign: "right",
+                  borderBottom: conCodigos && cuantas > 0 ? "none" : celdaTarifa.borderBottom,
+                }}>
                   {tarifa ? formatCOP(tarifa) : <span style={{ color: "var(--ink-vacio)" }}>sin tarifa</span>}
                 </td>
               </tr>
+
+              {/* Los códigos de lo que está libre, debajo de su tipo.
+                  «Isla · 3» dice cuántas quedan y no CUÁLES, y para averiguarlo
+                  había que buscar los prismas verdes a ojo entre ciento seis
+                  muebles. Van acá y no en un panel aparte porque el panel
+                  aparte repetiría los mismos siete tipos con los mismos siete
+                  precios: es el mismo dato con una vuelta más de detalle.
+
+                  Sólo mientras no hay contrato armado. Después son ruido —lo
+                  que se necesita entonces es el formulario— y encima empujan
+                  la ficha fuera de la pantalla. */}
+              {conCodigos && cuantas > 0 && (
+                <tr>
+                  <td colSpan={3} style={{
+                    padding: "0 0 7px", borderBottom: "1px solid var(--line-soft)",
+                  }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {chipsDe({ libres, parciales })}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
               );
             })}
           </tbody>
@@ -2877,6 +3051,51 @@ export default function DashboardView() {
             </tr>
           </tfoot>
         </table>
+      </div>
+    </Card>
+  );
+
+  /** «Qué está libre», como panel propio.
+   *
+   *  Es el mismo contenido que cuelga de la lista de precios, mudado de
+   *  columna: con la ficha del contrato abierta la columna derecha mide medio
+   *  metro más que la izquierda, y ese desnivel dejaba la esquina de abajo a la
+   *  izquierda en gris. Los códigos van donde falta alto, que es también donde
+   *  sirven — se sigue eligiendo espacios con el contrato a medio llenar.
+   *
+   *  A todo el ancho de la columna las pastillas entran en una o dos filas por
+   *  tipo, así que ocupa menos que en la columna angosta y se lee de un golpe. */
+  const panelCodigos = (
+    <Card style={{ flex: "1 1 auto", minHeight: 0 }}>
+      <CardHeader
+        title="Qué está libre"
+        sub={`${rangeTally.libres + rangeTally.parciales} de ${kpis.total}`}
+        right={<span>tocá uno para sumarlo al contrato</span>}
+      />
+      <div style={{ padding: "0 15px 12px", overflowY: "auto" }}>
+        {porCategoria
+          .filter((g) => g.libres.length + g.parciales.length > 0)
+          .map((g) => (
+            <div
+              key={g.cat}
+              style={{
+                display: "flex", alignItems: "baseline", gap: 12,
+                padding: "6px 0", borderTop: "1px solid var(--line-soft)",
+              }}
+            >
+              <span style={{ fontSize: 13, color: "var(--ink-2)", width: 150, flexShrink: 0 }}>
+                {rateTypeLabel(g.cat)}
+              </span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, flex: 1, minWidth: 0 }}>
+                {chipsDe(g)}
+              </div>
+              <span style={{
+                fontSize: 12, color: "var(--ink-3)", flexShrink: 0, whiteSpace: "nowrap",
+              }}>
+                {g.tarifa ? `${formatCOP(g.tarifa)} al mes` : "sin tarifa"}
+              </span>
+            </div>
+          ))}
       </div>
     </Card>
   );
@@ -3107,7 +3326,7 @@ export default function DashboardView() {
           onSeguir={() => setCerrado(null)}
         >
           <div style={{ flex: "1 1 520px", minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
-            {tarjetaMapa(538)}
+            {tarjetaMapa()}
 
             {/* ── Cuándo se libera cada espacio ────────────────────────────
                 La escalera. Contesta la pregunta con la que se negocia una
@@ -3118,7 +3337,7 @@ export default function DashboardView() {
                 No se dibuja si el periodo no tiene un solo cambio: una
                 escalera sin escalón es una línea recta con un título. */}
             {mapRange && (
-              <Card style={{ height: 274, flexShrink: 0 }}>
+              <Card style={{ height: 274, flex: "0 0 auto" }}>
                 <CardHeader
                   title="Cuándo se libera cada espacio"
                   sub={rangeTally.parciales > 0
@@ -3138,6 +3357,14 @@ export default function DashboardView() {
                 </div>
               </Card>
             )}
+
+            {/* Con la ficha abierta la columna derecha mide medio metro más
+                que ésta, y ese desnivel dejaba la esquina de abajo en gris. Los
+                códigos se mudan acá: donde falta alto, que es también donde
+                sirven —se sigue eligiendo espacios con el contrato a medio
+                llenar—. Es el último panel de la columna, así que es el que
+                absorbe la diferencia y deja las dos parejas abajo. */}
+            {!conCodigos && porCategoria.length > 0 && panelCodigos}
           </div>
         </ModoVender>
       ) : (
@@ -3237,7 +3464,7 @@ export default function DashboardView() {
               gap: 10, marginBottom: 10,
             }}
           >
-            {tarjetaMapa(732)}
+            {tarjetaMapa()}
 
             <div
               style={{

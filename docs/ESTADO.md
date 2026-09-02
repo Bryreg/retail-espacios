@@ -410,6 +410,54 @@ sin nada que los ate. No hay tabla de contratos —y la habría que agregar, no 
 sí está permitido—. Mientras tanto la agrupación es **derivable**: mismo proveedor,
 mismo desde, mismo hasta, misma sede. Cancelar sigue siendo de a un espacio.
 
+#### El encuadre del plano
+
+Tres cosas que salieron de mirar la pantalla desplegada y no de diseñarla.
+
+**La tarjeta del plano no lleva alto: lo pone la PROPORCIÓN DEL PLANO.** Con alto fijo
+—538 en Vender, 732 en Supervisar, que son los de la maqueta— el panel quedaba de
+1450×430, una ranura de 3,4:1, y el plano de NAVE es de 1,7:1. `preserveAspectRatio`
+lo encajaba por el alto y dejaba **el 55 % del ancho en blanco**: el dibujo se veía
+chico y lejos, con medio panel vacío alrededor. La proporción no se puede fijar en el
+código porque depende de la sede —una tienda larga y angosta y una cuadrada proyectan
+distinto—, así que el lienzo la toma del `viewBox` de la escena, con un techo de 720 px
+para que una sede casi cuadrada no empuje una tarjeta de mil píxeles y un piso de 360
+para que una muy alargada no quede como una tira.
+
+**En Vender la cámara ya no se acerca al mueble elegido.** No es una preferencia: ahí
+tocar un espacio lo SUMA al contrato, así que el gesto siguiente es tocar otro — y
+acercarse al primero esconde justamente los que faltan elegir. En Supervisar sí se
+acerca, porque ahí se abre una fila de la tabla y la pregunta es dónde queda; pero el
+tope bajó de 3,4 a 1,9 —a 3,4 se veían cuatro muebles y el resto de la sala quedaba
+afuera— y el resto de la sala se apaga al 45 % y no al 20 %, que dejaba fantasmas.
+
+**Las columnas miden lo que miden.** La fila es `flex-start` y no `stretch`: estirar la
+tarjeta del plano para igualar la altura de la ficha le agregaba trescientos píxeles de
+blanco debajo del dibujo. La única que se estira es la de la derecha, y sólo cuando no
+hay ficha: si no, la lista de precios —unos 380 px— quedaba al lado de un plano de 700
+y dejaba el fondo gris a la vista, que se lee como que falta algo. Estirada, la tabla
+queda arriba y lo que sobra es hoja en blanco.
+
+**La lista de precios dice CUÁLES.** «Isla · 3 · $1.200.000» dice cuántas quedan y no
+cuáles, y para averiguarlo había que buscar los prismas verdes a ojo entre ciento seis
+muebles. Debajo de cada tipo van los códigos de sus caras libres, como pastillas que se
+tocan para sumarlas al contrato — la misma acción que tocar el mueble en el plano, por
+el otro camino: el plano contesta «dónde queda» y la lista contesta «cuáles hay», y
+según cuál de las dos preguntas traiga el proveedor uno arranca por un lado o por el
+otro. Las que se liberan adentro del periodo van en naranja y con su fecha: es
+inventario vendible —«te lo puedo dar desde el 25»— y esconderlo es dejar de ofrecer
+cinco espacios de veinte. Con la ficha del contrato abierta los códigos se MUDAN de columna: la derecha
+mide medio metro más que la izquierda y ese desnivel dejaba la esquina de abajo en gris,
+así que van a la izquierda, debajo de la escalera, como panel propio —«Qué está libre»—.
+Donde falta alto, que es también donde sirven: se sigue eligiendo espacios con el
+contrato a medio llenar. A todo el ancho de esa columna las pastillas entran en una fila
+por tipo y se leen de un golpe.
+
+**Las dos columnas terminan a la misma altura**, y lo que absorbe la diferencia es
+siempre el ÚLTIMO panel de la columna corta —la lista de precios a la derecha, la de
+espacios libres a la izquierda—. Nunca la tarjeta del plano ni la escalera: ésas se
+miden con su dibujo, y estirarlas les agrega blanco adentro.
+
 **Cómo se mira sin backend.** `docs/maquetas/generadores/pantalla.mjs` sirve
 `frontend/dist` y contesta `/api/*` con una sede sintética que lleva los ocho contratos
 reales de NAVE. Lo que no está en el mapa de rutas contesta **404 y no `[]`** —así un
