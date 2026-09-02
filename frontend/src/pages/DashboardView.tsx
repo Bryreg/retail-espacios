@@ -529,9 +529,19 @@ interface IsoMapProps {
    *  by what is happening today. */
   range: DateRange | null;
   rotulos?: Rotulos;
+  /** ¿La cámara se acerca al mueble elegido?
+   *
+   *  En Supervisar sí: se abre UNA fila de la tabla y la pregunta es dónde
+   *  queda. En Vender no, y no es una preferencia: ahí tocar un espacio lo suma
+   *  al contrato, así que el gesto siguiente es tocar OTRO — y acercarse al
+   *  primero esconde justamente los que faltan elegir. */
+  enfocar?: boolean;
 }
 
-function IsoMap({ fixtures, selectedIds, onSelect, match, range, rotulos = "todos" }: IsoMapProps) {
+function IsoMap({
+  fixtures, selectedIds, onSelect, match, range,
+  rotulos = "todos", enfocar = true,
+}: IsoMapProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [tip, setTip] = useState<{ x: number; y: number; title: string; sub: string } | null>(null);
@@ -703,14 +713,16 @@ function IsoMap({ fixtures, selectedIds, onSelect, match, range, rotulos = "todo
   // —un contrato sobre varias puntas— acercarse a uno esconde al resto y, peor,
   // esconde los que todavía faltan tocar. Ahí el trabajo es seguir eligiendo
   // sobre el plano entero.
-  const enfocado = selectedIds.length === 1
+  const enfocado = enfocar && selectedIds.length === 1
     ? scene.prisms.find((q) => q.f.id === selectedIds[0])?.foco ?? null
     : null;
-  // El tope importa más que la fórmula: una punta de góndola es tan chica que
-  // encuadrarla sola deja a los vecinos gigantes y cortados. Con 3.4 se ve el
-  // mueble y el pasillo alrededor, que es lo que hace falta para ubicarse.
+  // El tope importa más que la fórmula. Estaba en 3.4 y era demasiado: a esa
+  // distancia se ven cuatro muebles y el resto de la sala queda afuera, así que
+  // el plano deja de contestar «dónde queda esto» —que es su único trabajo— y
+  // pasa a ser un primer plano de un prisma. Con 1.9 el mueble se distingue y
+  // el pasillo entero sigue en pantalla.
   const k = enfocado
-    ? Math.min(3.4, Math.max(1, 0.17 * Math.min(scene.vb.w, scene.vb.h) / enfocado.r))
+    ? Math.min(1.9, Math.max(1, 0.17 * Math.min(scene.vb.w, scene.vb.h) / enfocado.r))
     : 1;
   // Sintaxis CSS, no de atributo SVG: `translate(10 20)` sin unidades ni coma
   // es válido como atributo pero inválido como propiedad, y el navegador
@@ -725,10 +737,29 @@ function IsoMap({ fixtures, selectedIds, onSelect, match, range, rotulos = "todo
     setTip({ x: e.clientX - rect.left, y: e.clientY - rect.top, title, sub });
   };
 
+  /** El lienzo toma la PROPORCIÓN DEL PLANO, no la de la tarjeta.
+   *
+   *  Con alto fijo el panel quedaba de 1450×430 —una ranura de 3.4:1— y el
+   *  plano de esta sede es de 1.7:1, así que `meet` lo encajaba por el alto y
+   *  dejaba el 55% del ancho en blanco: el dibujo se veía chico y lejos, con
+   *  medio panel vacío alrededor. La proporción no se puede fijar en el código
+   *  porque depende de la sede: una tienda larga y angosta y una cuadrada
+   *  proyectan distinto.
+   *
+   *  El tope de alto existe para que una sede casi cuadrada no empuje una
+   *  tarjeta de mil píxeles; el piso, para que una muy alargada no la deje
+   *  como una tira. Entre los dos, el plano llena su caja. */
+  const proporcion = scene.vb.w / scene.vb.h;
+
   return (
     <div
       ref={wrapRef}
-      style={{ position: "relative", flex: 1, minHeight: 0, display: "flex" }}
+      style={{
+        position: "relative", width: "100%", margin: "0 auto",
+        aspectRatio: `${scene.vb.w.toFixed(1)} / ${scene.vb.h.toFixed(1)}`,
+        maxHeight: 720, minHeight: 360, display: "flex",
+      }}
+      data-proporcion={proporcion.toFixed(2)}
     >
       <svg
         viewBox={scene.viewBox}
@@ -788,7 +819,7 @@ function IsoMap({ fixtures, selectedIds, onSelect, match, range, rotulos = "todo
                 setHoverId(null);
                 setTip(null);
               }}
-              opacity={dimmed ? 0.18 : enfocado && !selected ? 0.2 : 1}
+              opacity={dimmed ? 0.18 : enfocado && !selected ? 0.45 : 1}
               style={{
                 cursor: "pointer",
                 filter: hovered ? "brightness(1.12)" : undefined,
@@ -2689,8 +2720,11 @@ export default function DashboardView() {
   /** La tarjeta del mapa. Es la MISMA en los dos modos —el mapa no cambia
    *  porque cambie para qué estás mirándolo—; sólo cambian el subtítulo y las
    *  palabras de la clave, porque la pregunta que se le hace sí cambia. */
-  const tarjetaMapa = (alto: number | string) => (
-        <Card style={{ position: "relative", flex: "1 1 480px", minWidth: 0, height: alto }}>
+  /** La tarjeta del plano. No lleva alto: lo pone el lienzo, que se mide con
+   *  la proporción del plano de la sede. Fijarlo dejaba medio panel en blanco
+   *  alrededor de un dibujo chico. */
+  const tarjetaMapa = () => (
+        <Card style={{ position: "relative", flex: "1 1 480px", minWidth: 0 }}>
           <CardHeader
             title={`Piso de ${sede}`}
             sub={modoEfectivo === "vender"
@@ -2751,7 +2785,7 @@ export default function DashboardView() {
             }
           />
 
-          <div style={{ flex: 1, minHeight: 0, padding: "0 14px 12px", display: "flex" }}>
+          <div style={{ padding: "0 14px 12px", display: "flex" }}>
             <IsoMap
               fixtures={fixtures}
               /* En Vender se marcan TODOS los del contrato; en Supervisar, el
@@ -2763,6 +2797,7 @@ export default function DashboardView() {
               match={mapMatch}
               range={mapRange}
               rotulos={modoEfectivo === "vender" ? "todos" : "elegido"}
+              enfocar={modoEfectivo !== "vender"}
             />
           </div>
 
@@ -2789,7 +2824,7 @@ export default function DashboardView() {
    *  cerrar y volver a mirar el plano — cuatro gestos para un dato que se usa
    *  en cada llamada. */
   const panelTarifas = (
-    <Card style={{ flexShrink: 0 }}>
+    <Card style={{ flex: "1 1 auto", minHeight: 0 }}>
       <CardHeader title="Tarifa de referencia" right={<span>al mes</span>} />
       <div style={{ padding: "0 15px 12px", overflowY: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -3107,7 +3142,7 @@ export default function DashboardView() {
           onSeguir={() => setCerrado(null)}
         >
           <div style={{ flex: "1 1 520px", minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
-            {tarjetaMapa(538)}
+            {tarjetaMapa()}
 
             {/* ── Cuándo se libera cada espacio ────────────────────────────
                 La escalera. Contesta la pregunta con la que se negocia una
@@ -3237,7 +3272,7 @@ export default function DashboardView() {
               gap: 10, marginBottom: 10,
             }}
           >
-            {tarjetaMapa(732)}
+            {tarjetaMapa()}
 
             <div
               style={{

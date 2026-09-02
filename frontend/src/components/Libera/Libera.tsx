@@ -157,6 +157,19 @@ export default function Libera({ fixtures, facesOf, tipoDe, desde, hasta, tempor
   const iCursor = cursor ?? (cambios[0]?.[0] ?? 0);
   const libresEn = serie[Math.max(0, Math.min(dias, iCursor))];
 
+  // La lectura del cursor va centrada sobre él, pero sin salirse por ninguno de
+  // los dos costados. El ancho se estima por la cantidad de caracteres: adentro
+  // de un SVG no hay manera de medir texto antes de dibujarlo, y una estimación
+  // por lo alto es más segura que un margen fijo —que es lo que había, y por eso
+  // el rótulo del eje y la lectura se pisaban cuando el cursor caía a la
+  // izquierda.
+  const lectura = `si arranca el ${dm(fecha(iCursor))} → ${libresEn} libres`;
+  const anchoLectura = lectura.length * 6.6;
+  const xLectura = Math.max(anchoLectura / 2 + X0,
+                            Math.min(X1 - anchoLectura / 2, x(iCursor)));
+  const ROTULO_ANCHO = 236;   // «ESPACIOS LIBRES A LO LARGO DEL PERIODO» en 9.5
+  const pisaElRotulo = xLectura - anchoLectura / 2 < X0 + ROTULO_ANCHO + 12;
+
   // El primer tramo plano: «sin cambios durante N días» es la mitad del valor
   // de este gráfico, y es lo único que no se ve mirando la escalera.
   const primerCambio = cambios[0]?.[0] ?? null;
@@ -184,7 +197,12 @@ export default function Libera({ fixtures, facesOf, tipoDe, desde, hasta, tempor
       }}
       onMouseLeave={() => setCursor(null)}
     >
-      <text x={f(X0)} y="17" style={rot}>Espacios libres a lo largo del periodo</text>
+      {/* El rótulo del eje y la lectura del cursor comparten este renglón, y
+          cuando el cursor está a la izquierda se pisan. Manda la lectura: es la
+          respuesta, y el rótulo dice lo que el gráfico ya está mostrando. */}
+      {!pisaElRotulo && (
+        <text x={f(X0)} y="17" style={rot}>Espacios libres a lo largo del periodo</text>
+      )}
 
       {/* La temporada, detrás: explica por qué varias entregas caen juntas. */}
       {temporadas.map((t) => {
@@ -237,11 +255,8 @@ export default function Libera({ fixtures, facesOf, tipoDe, desde, hasta, tempor
       {/* El cursor: la respuesta escrita. */}
       <line x1={f(x(iCursor))} y1="26" x2={f(x(iCursor))} y2={f(YE)} stroke="#14181C" strokeWidth="1.2" />
       <circle cx={f(x(iCursor))} cy={f(y(libresEn))} r="6" fill="none" stroke="#14181C" strokeWidth="2" />
-      <text
-        x={f(Math.max(150, Math.min(ANCHO - 150, x(iCursor))))}
-        y="17" style={cruzT} textAnchor="middle"
-      >
-        si arranca el {dm(fecha(iCursor))} → {libresEn} libres
+      <text x={f(xLectura)} y="17" style={cruzT} textAnchor="middle">
+        {lectura}
       </text>
 
       {/* Las fechas y, debajo, los códigos que se mueven en cada una. */}

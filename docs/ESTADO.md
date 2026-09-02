@@ -410,6 +410,34 @@ sin nada que los ate. No hay tabla de contratos —y la habría que agregar, no 
 sí está permitido—. Mientras tanto la agrupación es **derivable**: mismo proveedor,
 mismo desde, mismo hasta, misma sede. Cancelar sigue siendo de a un espacio.
 
+#### El encuadre del plano
+
+Tres cosas que salieron de mirar la pantalla desplegada y no de diseñarla.
+
+**La tarjeta del plano no lleva alto: lo pone la PROPORCIÓN DEL PLANO.** Con alto fijo
+—538 en Vender, 732 en Supervisar, que son los de la maqueta— el panel quedaba de
+1450×430, una ranura de 3,4:1, y el plano de NAVE es de 1,7:1. `preserveAspectRatio`
+lo encajaba por el alto y dejaba **el 55 % del ancho en blanco**: el dibujo se veía
+chico y lejos, con medio panel vacío alrededor. La proporción no se puede fijar en el
+código porque depende de la sede —una tienda larga y angosta y una cuadrada proyectan
+distinto—, así que el lienzo la toma del `viewBox` de la escena, con un techo de 720 px
+para que una sede casi cuadrada no empuje una tarjeta de mil píxeles y un piso de 360
+para que una muy alargada no quede como una tira.
+
+**En Vender la cámara ya no se acerca al mueble elegido.** No es una preferencia: ahí
+tocar un espacio lo SUMA al contrato, así que el gesto siguiente es tocar otro — y
+acercarse al primero esconde justamente los que faltan elegir. En Supervisar sí se
+acerca, porque ahí se abre una fila de la tabla y la pregunta es dónde queda; pero el
+tope bajó de 3,4 a 1,9 —a 3,4 se veían cuatro muebles y el resto de la sala quedaba
+afuera— y el resto de la sala se apaga al 45 % y no al 20 %, que dejaba fantasmas.
+
+**Las columnas miden lo que miden.** La fila es `flex-start` y no `stretch`: estirar la
+tarjeta del plano para igualar la altura de la ficha le agregaba trescientos píxeles de
+blanco debajo del dibujo. La única que se estira es la de la derecha, y sólo cuando no
+hay ficha: si no, la lista de precios —unos 380 px— quedaba al lado de un plano de 700
+y dejaba el fondo gris a la vista, que se lee como que falta algo. Estirada, la tabla
+queda arriba y lo que sobra es hoja en blanco.
+
 **Cómo se mira sin backend.** `docs/maquetas/generadores/pantalla.mjs` sirve
 `frontend/dist` y contesta `/api/*` con una sede sintética que lleva los ocho contratos
 reales de NAVE. Lo que no está en el mapa de rutas contesta **404 y no `[]`** —así un
