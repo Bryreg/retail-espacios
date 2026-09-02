@@ -4,42 +4,52 @@ export default {
   theme: {
     extend: {
       // ── Typography ──────────────────────────────────────────────────────────
+      // El mismo par que `index.css`: Chivo para leer, Archivo Narrow para
+      // códigos y versalitas. `mono` no es monoespaciada — lo que hacía falta
+      // de un mono era que las cifras alinearan, y eso lo da `tabular-nums`.
       fontFamily: {
-        sans: ["Plus Jakarta Sans", "ui-sans-serif", "system-ui", "sans-serif"],
-        mono: ["IBM Plex Mono", "ui-monospace", "monospace"],
+        sans: ["Chivo", "system-ui", "ui-sans-serif", "sans-serif"],
+        mono: ["Archivo Narrow", "Chivo", "system-ui", "sans-serif"],
       },
 
       // ── Colors ──────────────────────────────────────────────────────────────
+      // Estos valores son los MISMOS que las variables de `index.css`, escritos
+      // literales y no como `var(--x)` a propósito: media docena de clases usan
+      // el modificador de opacidad (`bg-accent/20`), y Tailwind sólo sabe
+      // separarle el alfa a un color que puede leer. Si tocás uno, tocá los dos.
       colors: {
-        // Backgrounds
-        bg:        "#F8FAFC",
+        // Fondos — papel frío
+        bg:        "#EFF1F1",
         surface:   "#FFFFFF",
-        "surface-2": "#F1F5F9",
-        "surface-3": "#E8EEF5",
+        "surface-2": "#F2F5F5",
+        "surface-3": "#E8ECED",
 
-        // Borders
-        line:        "#E2E8F0",
-        "line-soft": "#EFF3F7",
-        "line-strong": "#CBD5E1",
+        // Líneas
+        line:        "#DEE2E3",
+        "line-soft": "#F1F4F4",
+        "line-strong": "#C7CED0",
 
-        // Text
-        "ink-1": "#020617",
-        "ink-2": "#334155",
-        "ink-3": "#475569",
-        "ink-4": "#94A3B8",
+        // Tinta
+        "ink-1": "#14181C",
+        "ink-2": "#4A5459",
+        "ink-3": "#6B7479",
+        "ink-4": "#8E979B",
 
-        // Acento — azul de oficina. Sólo para lo que se puede tocar.
+        // Acento — la tinta. El color queda para el estado.
         accent: {
-          DEFAULT: "#0369A1",
-          50:      "#EFF7FC",
-          100:     "#D7EBF6",
-          200:     "#A6D2E9",
-          600:     "#02598A",
-          700:     "#024A73",
+          DEFAULT: "#14181C",
+          50:      "#F2F5F5",
+          100:     "#E8ECED",
+          200:     "#C7CED0",
+          600:     "#14181C",
+          700:     "#14181C",
           ink:     "#FFFFFF",
         },
 
-        // Accent overrides (exposed as utility classes)
+        // Los tres acentos viejos. Ya no los usa ninguna pantalla rediseñada,
+        // pero el editor de zonas y el panel de espacios siguen escritos con
+        // clases `indigo-*`, y sacarlos de acá les cambiaría el tono sin que
+        // nadie lo haya pedido. Se van cuando se rehagan esas pantallas.
         indigo: {
           accent:  "#4F46E5",
           50:      "#EEF1FF",
@@ -65,45 +75,42 @@ export default {
           700:     "#9F3F26",
         },
 
-        // Semantic
-        success: {
-          DEFAULT: "#15803D",
-          50:      "#EAF5EE",
-          100:     "#C4E2CF",
-        },
-        warning: {
-          DEFAULT: "#B45309",
-          50:      "#FCF2E5",
-          100:     "#F2DBB6",
-        },
-        danger: {
-          DEFAULT: "#DC2626",
-          50:      "#FDEDED",
-          100:     "#F8CCCC",
-        },
-        "muted-status": "#94A3B8",
+        // Los tres estados. Verde se puede, naranja a medias, rojo no.
+        libre:   { DEFAULT: "#00786A", 50: "#D8F0EA", 100: "#A8DCD0" },
+        entra:   { DEFAULT: "#F08519", txt: "#B35F0A", 50: "#FCEEDD", 100: "#F2C79A" },
+        ocupado: { DEFAULT: "#8E1226", 50: "#F7E4E7", 100: "#E0B4BD" },
+        resto:   "#D3D9DB",
 
-        // Dark drawer / dark surfaces
+        // Los nombres semánticos apuntan a los mismos tres: acá no quieren
+        // decir «bien / cuidado / error», quieren decir libre, se libera,
+        // tomado.
+        success: { DEFAULT: "#00786A", 50: "#D8F0EA", 100: "#A8DCD0" },
+        warning: { DEFAULT: "#B35F0A", 50: "#FCEEDD", 100: "#F2C79A" },
+        danger:  { DEFAULT: "#8E1226", 50: "#F7E4E7", 100: "#E0B4BD" },
+        "muted-status": "#8E979B",
+
+        // Cajón oscuro — mismo papel, del otro lado.
         dark: {
-          bg:        "#0F172A",
-          surface:   "#1E293B",
-          "surface-2": "#273548",
-          line:      "#334155",
-          "line-2":  "#475569",
-          "ink-1":   "#F1F5F9",
-          "ink-2":   "#CBD5E1",
-          "ink-3":   "#94A3B8",
+          bg:        "#14181C",
+          surface:   "#1E2429",
+          "surface-2": "#2A3238",
+          line:      "#39434A",
+          "line-2":  "#4F5A62",
+          "ink-1":   "#EFF1F1",
+          "ink-2":   "#C2CACD",
+          "ink-3":   "#8E979B",
         },
       },
 
       // ── Border radius ───────────────────────────────────────────────────────
+      // Dos peldaños: 2px para lo que se toca, 3px para el panel.
       borderRadius: {
-        xs:  "4px",
-        sm:  "6px",
-        md:  "8px",
-        lg:  "10px",
-        xl:  "14px",
-        "2xl": "18px",
+        xs:  "2px",
+        sm:  "2px",
+        md:  "2px",
+        lg:  "2px",
+        xl:  "3px",
+        "2xl": "3px",
       },
 
       // ── Box shadows — sombra de la tinta, no gris neutro ─────────────────────

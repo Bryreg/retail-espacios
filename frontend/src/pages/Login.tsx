@@ -1,36 +1,21 @@
 import { useEffect, useState } from "react";
-import { LogIn } from "lucide-react";
 import { login, getClientes, type ClienteBreve } from "../api/auth";
 import { useAuthStore } from "../store/authStore";
 
-// ─── Logo mark (same as Dashboard topbar, scaled up) ─────────────────────────
-
-function LogoMark() {
-  return (
-    <div
-      style={{
-        width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-        background: "var(--accent)", color: "#fff",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        boxShadow: "var(--shadow-md)",
-      }}
-    >
-      <svg width="22" height="22" viewBox="0 0 14 14" fill="none">
-        <rect x="1.5" y="1.5" width="4" height="4" rx="0.8" fill="currentColor" opacity="0.55" />
-        <rect x="8.5" y="1.5" width="4" height="4" rx="0.8" fill="currentColor" opacity="0.9" />
-        <rect x="1.5" y="8.5" width="4" height="4" rx="0.8" fill="currentColor" />
-        <rect x="8.5" y="8.5" width="4" height="4" rx="0.8" fill="currentColor" opacity="0.7" />
-      </svg>
-    </div>
-  );
-}
-
 // ─── Login page ──────────────────────────────────────────────────────────────
+//
+// Acá había un cuadrado redondeado con cuatro puntos adentro, del mismo color
+// que el botón. No significaba nada: era un ícono de aplicación genérico, de
+// los que se dibujan cuando todavía no hay marca. Ahora el nombre se sostiene
+// solo, que es lo que hace una marca que no necesita presentarse.
+//
+// Y todo alineado a la izquierda. Un formulario centrado en medio de la
+// pantalla es la plantilla de ingreso de cualquier producto; alineado, con la
+// regla arriba, se lee como la portada de un instrumento.
 
 const etiquetaStyle: React.CSSProperties = {
-  display: "block", marginBottom: 6,
-  fontSize: 10, fontWeight: 600,
-  textTransform: "uppercase", letterSpacing: "0.08em",
+  display: "block", marginBottom: 5,
+  fontSize: 12, fontWeight: 500,
   color: "var(--ink-3)",
 };
 
@@ -87,26 +72,25 @@ export default function Login() {
     >
       <div
         style={{
-          width: "100%", maxWidth: 360,
+          width: "100%", maxWidth: 348,
           background: "var(--surface)",
           border: "1px solid var(--line)",
-          borderRadius: "var(--r-2xl)",
-          boxShadow: "var(--shadow-lg)",
-          padding: "36px 32px 32px",
-          display: "flex", flexDirection: "column", alignItems: "center",
+          borderRadius: "var(--r-xl)",
+          padding: "26px 28px 28px",
+          display: "flex", flexDirection: "column", alignItems: "flex-start",
         }}
       >
-        <LogoMark />
+        <div style={{ width: "100%", borderTop: "2px solid var(--ink-1)", marginBottom: 14 }} />
 
         <h1
           style={{
-            margin: "16px 0 4px", fontSize: 20, fontWeight: 800,
-            letterSpacing: "0.06em", color: "var(--ink-1)",
+            margin: "0 0 2px", fontSize: 22, fontWeight: 700,
+            letterSpacing: "0.02em", color: "var(--ink-1)",
           }}
         >
           RECABRA
         </h1>
-        <p style={{ margin: "0 0 24px", fontSize: 12, color: "var(--ink-3)" }}>
+        <p style={{ margin: "0 0 26px", fontSize: 12.5, color: "var(--ink-3)" }}>
           Gestión de espacios comerciales
         </p>
 
@@ -190,18 +174,16 @@ export default function Login() {
             disabled={loading || !password}
             style={{
               width: "100%", height: 38, marginTop: 16,
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+              display: "flex", alignItems: "center", justifyContent: "center",
               borderRadius: "var(--r-md)",
               background: "var(--accent)", color: "#fff",
               border: "none",
               cursor: loading || !password ? "default" : "pointer",
               opacity: loading || !password ? 0.6 : 1,
               fontSize: 13, fontWeight: 600, fontFamily: "inherit",
-              boxShadow: "var(--shadow-sm)",
-              transition: "opacity .12s, background .12s",
+                            transition: "opacity .12s, background .12s",
             }}
           >
-            <LogIn size={14} />
             {loading ? "Ingresando…" : "Ingresar"}
           </button>
         </form>

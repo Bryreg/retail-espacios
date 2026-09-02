@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Grid2x2, Box, Camera, Handshake, Search, Settings, LogOut, X, Send } from "lucide-react";
+import { Settings, LogOut, X, Send } from "lucide-react";
 import StoreEditor3D from "../components/StoreEditor3D/StoreEditor3D";
 import FloorPlan2D from "../components/FloorPlan2D/FloorPlan2D";
 import DashboardView from "./DashboardView";
@@ -47,26 +47,6 @@ const MOUNT_DEEP_LINK: string | null = (() => {
 
 // ─── Logo mark ────────────────────────────────────────────────────────────────
 
-function LogoMark() {
-  return (
-    <div
-      style={{
-        width: 26, height: 26, borderRadius: 7, flexShrink: 0,
-        background: "var(--accent)", color: "#fff",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        boxShadow: "var(--shadow-sm)",
-      }}
-    >
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-        <rect x="1.5" y="1.5" width="4" height="4" rx="0.8" fill="currentColor" opacity="0.55" />
-        <rect x="8.5" y="1.5" width="4" height="4" rx="0.8" fill="currentColor" opacity="0.9" />
-        <rect x="1.5" y="8.5" width="4" height="4" rx="0.8" fill="currentColor" />
-        <rect x="8.5" y="8.5" width="4" height="4" rx="0.8" fill="currentColor" opacity="0.7" />
-      </svg>
-    </div>
-  );
-}
-
 // ─── Settings modal (admin) ──────────────────────────────────────────────────
 
 const inputStyle: React.CSSProperties = {
@@ -76,10 +56,11 @@ const inputStyle: React.CSSProperties = {
   fontSize: 12.5, fontFamily: "inherit", outline: "none",
 };
 
+// Era 10px en mayúsculas con tracking, en CADA sección. El catálogo lo llama
+// «eyebrow on every section» y la recomendación es sacarlo: que mande el título.
 const sectionLabelStyle: React.CSSProperties = {
-  fontSize: 10, fontWeight: 700,
-  textTransform: "uppercase", letterSpacing: "0.08em",
-  color: "var(--ink-3)", marginBottom: 10,
+  fontSize: 13, fontWeight: 600,
+  color: "var(--ink-1)", marginBottom: 10,
 };
 
 const fieldLabelStyle: React.CSSProperties = {
@@ -295,16 +276,20 @@ const exacto = (iso: string) =>
     hour: "2-digit", minute: "2-digit",
   });
 
-/** El color dice qué clase de línea es, sin leerla.
+/** De qué clase es la línea, para poder encontrarla sin leerlas todas.
  *
- *  Un borrado y un ingreso no se miran igual: uno se busca cuando falta algo,
- *  el otro es fondo. Sin esta marca, cincuenta líneas grises obligan a leerlas
- *  todas para encontrar la que importa. */
+ *  Antes esto pintaba una barrita de color al costado de cada fila. El
+ *  catálogo de tells de diseño generado la llama «la señal más confiable de
+ *  todas», y con razón: es decoración que finge ser información.
+ *
+ *  Ahora el color va en el TÍTULO de la línea, que es lo que uno lee. Un
+ *  borrado se ve rojo porque la palabra «borrado» está en rojo, no porque
+ *  tenga un adorno al lado. Lo demás queda en tinta: si algo tiene color, es
+ *  porque hay que mirarlo. */
 function tonoDe(accion: string): string {
   if (accion.endsWith(".baja")) return "var(--danger)";
   if (accion === "login.fallo") return "var(--warning)";
-  if (accion === "clave.cambio" || accion === "archivo.descarga") return "var(--accent)";
-  return "var(--ink-4)";
+  return "var(--ink-1)";
 }
 
 function BitacoraSection() {
@@ -380,13 +365,12 @@ function BitacoraSection() {
               key={l.id}
               style={{
                 display: "flex", alignItems: "flex-start", gap: 8,
-                padding: "8px 10px",
+                padding: "7px 10px",
                 borderBottom: "1px solid var(--line-soft)",
-                borderLeft: `2px solid ${tonoDe(l.accion)}`,
               }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-1)" }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: tonoDe(l.accion) }}>
                   {l.titulo}
                 </div>
                 {l.detalle && (
@@ -526,18 +510,21 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
       onClick={onClose}
       style={{
         position: "fixed", inset: 0, zIndex: 150,
-        background: "rgba(20,19,15,0.45)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: 20,
+        background: "rgba(22,21,15,0.28)",
+        display: "flex", alignItems: "stretch", justifyContent: "flex-end",
       }}
     >
+      {/* Panel lateral, no diálogo centrado. El centrado con overlay negro y la
+          X arriba a la derecha es, palabra por palabra, el «modal default» del
+          catálogo. Y acá el lateral además es mejor: configurar no es una
+          interrupción de un paso, es una mesa de trabajo que se abre al lado
+          de lo que estabas mirando. */}
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "100%", maxWidth: 440, maxHeight: "86vh", overflowY: "auto",
+          width: "100%", maxWidth: 420, height: "100%", overflowY: "auto",
           background: "var(--surface)",
-          border: "1px solid var(--line)",
-          borderRadius: "var(--r-xl)",
+          borderLeft: "1px solid var(--line-strong)",
           boxShadow: "var(--shadow-lg)",
         }}
       >
@@ -545,13 +532,12 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
         <div
           style={{
             display: "flex", alignItems: "center", gap: 8,
-            padding: "14px 18px",
-            borderBottom: "1px solid var(--line)",
+            padding: "13px 18px",
+            borderBottom: "1px solid var(--line-strong)",
             position: "sticky", top: 0, background: "var(--surface)", zIndex: 1,
           }}
         >
-          <Settings size={15} style={{ color: "var(--accent)" }} />
-          <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: "var(--ink-1)", letterSpacing: "-0.01em" }}>
+          <span style={{ flex: 1, fontSize: 14.5, fontWeight: 600, color: "var(--ink-1)" }}>
             Configuración
           </span>
           <button
@@ -669,18 +655,18 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
  *  la pregunta "¿en cuál de las dos hago el contrato?" no tenía buena
  *  respuesta. Ahora hay una sola, y el contrato vive al lado del mapa. */
 const TABS: {
-  id: ViewMode; label: string; Icon: typeof Grid2x2; para: string; grupo: "operar" | "diseñar";
+  id: ViewMode; label: string; para: string; grupo: "operar" | "diseñar";
 }[] = [
   // Negociar y Resumen eran dos pestañas que mostraban casi lo mismo: las dos
   // abrían con el plano de la sede. Ahora son una sola — el mapa es el mismo y
   // el contrato se llena en el riel de la derecha, sin cambiar de pantalla.
-  { id: "kpis",     label: "Sede",      Icon: Handshake, grupo: "operar",
+  { id: "kpis",     label: "Sede", grupo: "operar",
     para: "Cómo va la sede y dónde se vende: tocás un espacio en el mapa y llenás el contrato ahí mismo" },
-  { id: "montaje",  label: "Montajes",  Icon: Camera,    grupo: "operar",
+  { id: "montaje",  label: "Montajes",    grupo: "operar",
     para: "Confirmar con foto que la exhibición quedó armada" },
-  { id: "map",      label: "Plano",     Icon: Grid2x2,   grupo: "diseñar",
+  { id: "map",      label: "Plano",   grupo: "diseñar",
     para: "Dibujar la tienda vista desde arriba y editar los muebles" },
-  { id: "store",    label: "Editor 3D", Icon: Box,       grupo: "diseñar",
+  { id: "store",    label: "Editor 3D",       grupo: "diseñar",
     para: "Ver la tienda en 3D y aplicar las artes del proveedor" },
 ];
 
@@ -719,25 +705,17 @@ function Topbar({ viewMode, setViewMode, isAdmin, onOpenSettings, onLogout }: To
         minWidth: 0,
       }}
     >
-      {/* Logo + wordmark */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <LogoMark />
+      {/* Marca. El cuadrado con cuatro puntos y la pastilla BETA se fueron: el
+          ícono no significaba nada y la pastilla es de las cosas que se ponen
+          cuando hay que llenar un espacio. El nombre alcanza. */}
+      <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
         <span
           style={{
-            fontSize: 14, fontWeight: 800, letterSpacing: "0.055em",
+            fontSize: 14, fontWeight: 700, letterSpacing: "0.055em",
             color: "var(--ink-1)",
           }}
         >
           RECABRA
-        </span>
-        <span
-          style={{
-            fontSize: 9.5, fontWeight: 600,
-            padding: "1px 6px", borderRadius: 999,
-            background: "var(--surface-3)", color: "var(--ink-3)",
-          }}
-        >
-          BETA
         </span>
       </div>
 
@@ -746,7 +724,7 @@ function Topbar({ viewMode, setViewMode, isAdmin, onOpenSettings, onLogout }: To
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 2 }}>
-        {visibleTabs.map(({ id, label, Icon, para, grupo }, i) => {
+        {visibleTabs.map(({ id, label, para, grupo }, i) => {
           const active = viewMode === id;
           // Una línea fina separa "operar" de "diseñar la tienda": son dos
           // trabajos distintos y mezclarlos era parte de la confusión.
@@ -762,23 +740,27 @@ function Topbar({ viewMode, setViewMode, isAdmin, onOpenSettings, onLogout }: To
                 }}
               />
             )}
+            {/* Pastilla con ícono → palabra con subrayado. La gente comercial
+                lee palabras, y un ícono por pestaña es de los patrones más
+                generados que hay. El subrayado dice cuál está activa sin
+                pintar un fondo de color. */}
             <button
               onClick={() => setViewMode(id)}
               title={para}
               style={{
-                display: "flex", alignItems: "center", gap: 5,
-                height: 30, padding: "0 12px",
-                borderRadius: "var(--r-md)",
-                fontSize: 12, fontWeight: active ? 600 : 500,
-                border: "1px solid transparent",
-                background: active ? "var(--accent-50)" : "transparent",
-                color: active ? "var(--accent-700)" : "var(--ink-2)",
+                display: "flex", alignItems: "center",
+                height: 30, padding: "0 10px",
+                borderRadius: 0,
+                fontSize: 12.5, fontWeight: active ? 600 : 450,
+                border: "none",
+                borderBottom: `2px solid ${active ? "var(--ink-1)" : "transparent"}`,
+                background: "transparent",
+                color: active ? "var(--ink-1)" : "var(--ink-3)",
                 cursor: "pointer",
-                transition: "background .12s, color .12s",
+                transition: "color .12s, border-color .12s",
                 fontFamily: "inherit",
               }}
             >
-              <Icon size={13} />
               {label}
             </button>
             </span>
@@ -791,17 +773,20 @@ function Topbar({ viewMode, setViewMode, isAdmin, onOpenSettings, onLogout }: To
         {/* Server sync state — click to sync now */}
         <SyncStatus />
 
-        {/* Search */}
-        <button
-          title="Búsqueda"
-          style={iconButtonStyle}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-3)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
-        >
-          <Search size={14} />
-        </button>
+        {/* Acá había una lupa. **No tenía `onClick`.** Era un botón que no
+            hacía nada: se dibujó porque una barra superior "tiene" que llevar
+            lupa, engranaje y avatar. Un control que no responde es la cosa más
+            delatora que puede tener una pantalla — nadie que use el sistema
+            todos los días deja un botón muerto ahí arriba. Se va.
 
-        {/* Settings (admin only) */}
+            Y el avatar: un círculo con "AD" adentro. Acá hay dos roles, no una
+            organización con nombres. El rol dicta la mitad de lo que se ve en
+            pantalla —la plata va tachada para el trabajador— así que decirlo
+            con la palabra informa, y el círculo con iniciales sólo decoraba. */}
+        <span style={{ fontSize: 11.5, color: "var(--ink-4)", whiteSpace: "nowrap" }}>
+          {isAdmin ? "Administrador" : "Trabajador"}
+        </span>
+
         {isAdmin && (
           <button
             title="Configuración"
@@ -814,7 +799,6 @@ function Topbar({ viewMode, setViewMode, isAdmin, onOpenSettings, onLogout }: To
           </button>
         )}
 
-        {/* Logout */}
         <button
           title="Cerrar sesión"
           onClick={onLogout}
@@ -824,19 +808,6 @@ function Topbar({ viewMode, setViewMode, isAdmin, onOpenSettings, onLogout }: To
         >
           <LogOut size={14} />
         </button>
-
-        {/* Avatar — role initial */}
-        <div
-          title={isAdmin ? "Administrador" : "Trabajador"}
-          style={{
-            width: 26, height: 26, borderRadius: 99,
-            background: "var(--accent-100)", color: "var(--accent-700)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 11, fontWeight: 600,
-          }}
-        >
-          {isAdmin ? "AD" : "TR"}
-        </div>
       </div>
     </header>
   );
