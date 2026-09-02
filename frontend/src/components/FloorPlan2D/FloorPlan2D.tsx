@@ -13,7 +13,7 @@ import { ClipboardCheck, Keyboard } from "lucide-react";
 import { useFixtureStore, selectFixtures, selectHasPendingWork, normalizeSede } from "../../store/fixtureStore";
 import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types/fixtures";
 import { isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
-import { siguienteCodigo, codigoRepetido, nombreDeMueble, nombrePropio } from "../../utils/nomenclatura";
+import { siguienteCodigo, nombreDeMueble, nombrePropio, nombreRepetido, rotulosDelPlano } from "../../utils/nomenclatura";
 import { revisarPlano } from "../../utils/revision";
 import { TOLERANCIA_CONTACTO } from "../../utils/planta";
 import { buscarHuecoGrupo } from "../../utils/acomodar";
@@ -514,7 +514,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   const [pendingType, setPendingType] = useState<FixType2D | null>(null);
   const [editingCodeId, setEditingCodeId] = useState<string | null>(null);
   const [editingCodeVal, setEditingCodeVal] = useState("");
-  /** Código tecleado a mano que ya es de otro mueble. Tiñe el campo. */
+  /** Nombre tecleado a mano que ya es el de otro mueble. Tiñe el campo. */
   const [codigoChocado, setCodigoChocado] = useState<string | null>(null);
   const [revisionAbierta, setRevisionAbierta] = useState(false);
   const [atajosAbiertos, setAtajosAbiertos] = useState(false);
@@ -1260,32 +1260,56 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     setResizeState({ id, ox: pt.x - item.w, oy: pt.y - item.h, origW: item.w, origH: item.h });
   }
 
-  // ── Double-click: edit code ──────────────────────────────────────────────────
+  // ── Doble clic: renombrar el mueble ─────────────────────────────────────────
+  //
+  //  Editaba el CÓDIGO, que es la llave del espacio: la que arma el código que
+  //  viaja al contrato, a los archivos del proveedor y a los correos de montaje.
+  //  Y el panel de al lado, en «Nomenclatura», editaba otra cosa. Dos maneras de
+  //  nombrar el mismo mueble, cada una escribiendo un campo distinto, era lo que
+  //  dejaba un mueble llamándose de dos formas a la vez.
+  //
+  //  Ahora las dos escriben el NOMBRE, que es lo que se ve, y el código no se
+  //  toca desde el plano. Vaciar el campo devuelve el nombre del sistema, igual
+  //  que en el panel.
 
   function handleItemDblClick(e: React.MouseEvent, id: string) {
     e.stopPropagation();
     const item = items.find((i) => i.id === id)!;
     setEditingCodeId(id);
-    setEditingCodeVal(item.code);
+    // Se abre con lo que dice la caja, no con lo que hay guardado debajo: si
+    // mostrara otra cosa, el que hace doble clic ya no está editando lo que vio.
+    setEditingCodeVal(nombreDeMueble(item));
   }
 
   function commitCodeEdit() {
     if (!editingCodeId) return;
+    const item = items.find((i) => i.id === editingCodeId);
     const val = editingCodeVal.trim();
-    if (!val) { setEditingCodeId(null); setEditingCodeVal(""); setCodigoChocado(null); return; }
-    // Se aceptaba cualquier texto. Dos muebles con el mismo código son dos
-    // espacios distintos compartiendo contratos, archivos y correos de montaje:
-    // se rechaza y se deja el campo abierto para corregirlo.
-    if (codigoRepetido(val, items, editingCodeId)) {
+    const cerrar = () => {
+      setEditingCodeId(null);
+      setEditingCodeVal("");
+      setCodigoChocado(null);
+    };
+    // Vacío, o el nombre del sistema tal cual: se borra la nomenclatura y el
+    // mueble vuelve a llamarse como lo llamó el sistema.
+    if (!val || (item && val === item.code)) {
+      setItems((prev) =>
+        prev.map((i) => (i.id === editingCodeId ? { ...i, nomenclatura: "" } : i))
+      );
+      cerrar();
+      return;
+    }
+    // Dos muebles con el mismo nombre en el plano no se distinguen: se rechaza
+    // y se deja el campo abierto para corregirlo. Se mira el nombre que se VE,
+    // no el código, porque es lo que confunde a quien lo lee.
+    if (nombreRepetido(val, items, editingCodeId)) {
       setCodigoChocado(val.toUpperCase());
       return;
     }
     setItems((prev) =>
-      prev.map((i) => (i.id === editingCodeId ? { ...i, code: val } : i))
+      prev.map((i) => (i.id === editingCodeId ? { ...i, nomenclatura: val } : i))
     );
-    setEditingCodeId(null);
-    setEditingCodeVal("");
-    setCodigoChocado(null);
+    cerrar();
   }
 
   // ── Panel update helper ──────────────────────────────────────────────────────
@@ -1654,6 +1678,16 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                 const catDef = CATALOG.find((c) => c.type === item.type);
                 const isFilterMatch = matchedIds === null || matchedIds.has(item.id);
                 const isDimmed = filterActive && !isFilterMatch;
+                // Qué se dibuja sobre el mueble: el nombre adentro de la caja
+                // cuando entra, y si no, en la pastilla que flota arriba. Nunca
+                // los dos. El umbral —46 px de ancho, 12 de alto en pantalla—
+                // es de acá porque es lo único que sabe cuánto mide el mueble
+                // con el zoom que hay; la REGLA vive en `nomenclatura.ts`, con
+                // sus pruebas.
+                const rotulos = rotulosDelPlano(
+                  item,
+                  pw * zoom > 46 && ph * zoom > 12,
+                );
 
                 return (
                   <g
@@ -1803,13 +1837,13 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                     {/* Nomenclatura pill — floats above the rect at constant screen
                         size, with a small leader line down to the top edge.
                         Filter matches always show their pill, Etiquetas toggle aside. */}
-                    {(showLabels || (filterActive && isFilterMatch)) && nombrePropio(item) && (() => {
-                      // Sólo cuando el nombre NO es el que puso el sistema: si
-                      // lo es, la caja ya lo dice adentro y la píldora quedaba
-                      // repitiéndolo encima, chocando con el mueble de arriba.
-                      // Acá la píldora existe para decir algo que la caja no
-                      // dice: el nombre que alguien le puso.
-                      const text = nombreDeMueble(item);
+                    {(showLabels || (filterActive && isFilterMatch)) && rotulos.pastilla && (() => {
+                      // La pastilla existe para los muebles CHICOS, donde el
+                      // nombre no entra adentro y se dibuja un emoji. Cuando
+                      // entra, va adentro y la pastilla no se dibuja: si no, el
+                      // mismo mueble queda diciendo su nombre dos veces.
+                      // Quién decide qué va dónde: `rotulosDelPlano`.
+                      const text = rotulos.pastilla;
                       const fs = 10.5 / zoom;
                       const padX = 7 / zoom;
                       const bh = 16 / zoom;
@@ -1862,7 +1896,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                     {(() => {
                       const screenW = pw * zoom;
                       const screenH = ph * zoom;
-                      const showCode = screenW > 46 && screenH > 12;
+                      const showCode = rotulos.adentro !== null;
                       const showEmoji = !showCode && screenW > 22 && screenH > 16;
                       // Font size: stays ~11 px on screen but capped to 45 % of fixture width
                       const fs = Math.min(11 / zoom, pw * 0.45, ph * 0.7);
@@ -1894,7 +1928,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                                       ? "border-danger bg-danger-50 text-danger"
                                       : "border-accent bg-white"
                                   }`}
-                                  title={codigoChocado ? `${codigoChocado} ya es de otro mueble` : undefined}
+                                  title={codigoChocado ? `${codigoChocado} ya es el nombre de otro mueble` : undefined}
                                   value={editingCodeVal}
                                   onChange={(e) => { setEditingCodeVal(e.target.value); setCodigoChocado(null); }}
                                   onBlur={commitCodeEdit}
@@ -1917,7 +1951,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                                 fontWeight="600"
                                 style={{ userSelect: "none", pointerEvents: "none" }}
                               >
-                                {item.code}
+                                {rotulos.adentro}
                               </text>
                             )
                           )}

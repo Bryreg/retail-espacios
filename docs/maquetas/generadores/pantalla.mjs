@@ -191,12 +191,16 @@ async function capturar(nombre) {
   await revisar(nombre);
 }
 
-/** Los anchos a los que se revisa. Un solo ancho no alcanza y no es teoría:
- *  el cursor de la escalera caía corrido en 1920 y perfecto en 1440, porque el
- *  encaje del SVG depende de la proporción de la caja y la caja depende del
- *  ancho de la ventana. 1440 es el portátil; 1920 es el monitor de escritorio,
- *  que es donde se usa esto todo el día. */
-const ANCHOS = [1440, 1920];
+/** Las pantallas a las que se revisa, ancho Y alto. Una sola no alcanza y no es
+ *  teoría: el cursor de la escalera caía corrido en 1920 y perfecto en 1440,
+ *  porque el encaje de un SVG depende de la proporción de su caja y la caja
+ *  depende de la ventana. El alto importa por lo mismo desde que el tope del
+ *  plano se mide en `vh`: a 900 de alto da 720 y a 1080 da 864, que es la
+ *  diferencia entre un plano con franjas blancas y uno que llena.
+ *
+ *  1440×900 es el portátil; 1920×1080 el monitor de escritorio, que es donde
+ *  esto se usa todo el día. Son configuraciones reales, no números redondos. */
+const PANTALLAS = [[1440, 900], [1920, 1080]];
 
 /** Los chequeos de geometría, UNA VEZ POR PANTALLA Y POR ANCHO.
  *
@@ -206,10 +210,10 @@ const ANCHOS = [1440, 1920];
  *  nunca. Un chequeo que no mira todas las pantallas que fotografía es peor que
  *  ninguno, porque el informe sale limpio igual. */
 async function revisar(nombre) {
-  for (const ancho of ANCHOS) {
-    await page.setViewportSize({ width: ancho, height: 900 });
+  for (const [ancho, alto] of PANTALLAS) {
+    await page.setViewportSize({ width: ancho, height: alto });
     await page.waitForTimeout(500);
-    await revisarA(`${nombre} · ${ancho}`);
+    await revisarA(`${nombre} · ${ancho}×${alto}`);
   }
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(300);
@@ -219,6 +223,18 @@ async function revisarA(nombre) {
   console.log(`\n── ${nombre} ─────────────────────────────`);
   // Lo que se sale de su panel
   const fuera = await page.evaluate(() => {
+    /** ¿Está dentro de algo que scrollea? Entonces no se está saliendo: está
+     *  abajo del pliegue, y se llega bajando. El panel del plano 2D en una
+     *  pantalla de 900 daba tres falsos así —«Archivos», «Duplicar»— y un
+     *  chequeo que grita en falso es el que después se lee por arriba. */
+    const alcanzable = (el) => {
+      for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+        const cs = getComputedStyle(p);
+        if ((cs.overflowY === "auto" || cs.overflowY === "scroll")
+            && p.scrollHeight > p.clientHeight + 4) return true;
+      }
+      return false;
+    };
     const malos = [];
     document.querySelectorAll("*:not(svg *)").forEach((el) => {
       const p = el.parentElement;
@@ -226,6 +242,7 @@ async function revisarA(nombre) {
       const a = el.getBoundingClientRect(), b = p.getBoundingClientRect();
       if (!a.width || !b.width) return;
       if (getComputedStyle(p).overflow !== "visible") return;
+      if (alcanzable(el)) return;
       if (a.right > b.right + 2 || a.bottom > b.bottom + 2) {
         malos.push(`${el.tagName} «${(el.textContent || "").trim().slice(0, 34)}»`);
       }
@@ -344,7 +361,86 @@ async function revisarA(nombre) {
   }
 }
 
-if (MODO === "codigos") {
+if (MODO === "plano") {
+  // El plano 2D: el editor donde se renombra un mueble.
+  //
+  // Es la pantalla del bicho de la nomenclatura —un mueble renombrado mostraba
+  // el nombre puesto a mano en la pastilla de arriba y el de fábrica adentro de
+  // la caja, dos nombres para el mismo mueble— y hasta ahora no la miraba nadie.
+  //
+  // Se renombra por LOS DOS CAMINOS, porque son dos y escribían campos
+  // distintos: el campo «Nomenclatura» del panel de la derecha, que es por
+  // donde entró el bicho, y el doble clic sobre la caja.
+  await page.locator('button:text-is("Plano"), a:text-is("Plano")').first().click();
+  await page.waitForTimeout(2200);
+  const editar = page.locator('button:has-text("Editar plano")').first();
+  if (await editar.count()) { await editar.click(); await page.waitForTimeout(800); }
+
+  /** Los textos DIBUJADOS sobre el plano. No la página entera: en el panel de
+   *  la derecha el código de fábrica aparece a propósito —`NAVE-ISL-05` es la
+   *  llave del espacio, y el texto de ayuda dice de dónde salió el nombre—. Lo
+   *  que no puede pasar es que el mueble lleve dos nombres encima. */
+  const dibujados = async () => page.evaluate(() =>
+    [...document.querySelectorAll("svg text")].map((t) => t.textContent.trim()));
+  const veces = (lista, t) => lista.filter((r) => r === t).length;
+
+  const rotulo = page.locator("svg text", { hasText: /^ISL-05$/ }).first();
+  if (!(await rotulo.count())) {
+    console.log("⚠ no encontré ISL-05 en el plano");
+  } else {
+    // ── Camino 1: el campo «Nomenclatura» del panel ───────────────────────
+    const b = await rotulo.boundingBox();
+    await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+    await page.waitForTimeout(600);
+    const campoPanel = page.locator('input[placeholder="ISL-05"]').first();
+    if (!(await campoPanel.count())) {
+      console.log("⚠ no encontré el campo Nomenclatura en el panel");
+    } else {
+      await campoPanel.fill("PUNTA NORTE");
+      await page.waitForTimeout(700);
+      const r = await dibujados();
+      console.log(veces(r, "PUNTA NORTE") >= 1
+        ? "renombrado desde el panel, el nombre nuevo se dibuja ✓"
+        : "⚠ renombrado desde el panel, el nombre nuevo NO se dibuja");
+      // El mueble YA NO se llama ISL-05: ese texto no puede seguir sobre él.
+      // Es exactamente el bicho de la captura.
+      console.log(veces(r, "ISL-05") === 0
+        ? "y el de fábrica ya no se dibuja ✓"
+        : `⚠ SIGUE EL DE FÁBRICA: «ISL-05» se dibuja ${veces(r, "ISL-05")} vez/veces junto al nombre nuevo`);
+      console.log(veces(r, "PUNTA NORTE") === 1
+        ? "y el nombre nuevo se dibuja UNA sola vez ✓"
+        : `⚠ EL NOMBRE SE DIBUJA ${veces(r, "PUNTA NORTE")} VECES`);
+
+      // ── Camino 2: el doble clic sobre la caja ───────────────────────────
+      const caja = page.locator("svg text", { hasText: /^PUNTA NORTE$/ }).first();
+      if (await caja.count()) {
+        const c = await caja.boundingBox();
+        await page.mouse.dblclick(c.x + c.width / 2, c.y + c.height / 2);
+        await page.waitForTimeout(400);
+        const campo = page.locator("foreignObject input").first();
+        if (!(await campo.count())) {
+          console.log("⚠ el doble clic no abrió el campo");
+        } else {
+          // Si abriera con otra cosa, el que hace doble clic ya no está
+          // editando lo que vio: son dos campos y vuelven los dos nombres.
+          const abierto = await campo.inputValue();
+          console.log(abierto === "PUNTA NORTE"
+            ? "el doble clic abre con el nombre que dice la caja ✓"
+            : `⚠ EL DOBLE CLIC ABRE OTRO CAMPO: dice «${abierto}» y la caja dice PUNTA NORTE`);
+          // Vaciar devuelve el nombre del sistema, igual que en el panel.
+          await campo.fill("");
+          await campo.press("Enter");
+          await page.waitForTimeout(700);
+          const r2 = await dibujados();
+          console.log(veces(r2, "ISL-05") === 1 && veces(r2, "PUNTA NORTE") === 0
+            ? "vaciar el campo devuelve el nombre del sistema ✓"
+            : "⚠ vaciar el campo no devolvió ISL-05");
+        }
+      }
+    }
+  }
+  await capturar("plano");
+} else if (MODO === "codigos") {
   // Las pastillas de la lista de precios tienen que sumar al contrato igual
   // que tocar el mueble en el plano: es la misma acción por dos caminos, y si
   // uno de los dos no la hace la lista se lee como decoración.
@@ -426,6 +522,30 @@ if (MODO === "codigos") {
   }
 
   await capturar(MODO);
+} else if (MODO === "revisar") {
+  // Supervisar: tocar un renglón de «Para revisar» tiene que ABRIR la ficha.
+  //
+  // Es el renglón desde el que se sale a renovar —«PUN-03 vence en 22 días»— y
+  // llevaba a ninguna parte: pintaba el mueble en el plano y ahí terminaba. El
+  // botón «Nuevo contrato para esta cara» nunca se quitó; vivía en una ficha a
+  // la que no se llegaba desde acá.
+  const b = page.locator('button:text-is("Supervisar")').first();
+  if (await b.count()) { await b.click(); await page.waitForTimeout(1400); }
+
+  const fila = page.locator('[data-fila-revisar]').first();
+  const porTexto = page.locator("div").filter({ hasText: /^PUN-\d+/ }).last();
+  const objetivo = (await fila.count()) ? fila : porTexto;
+  if (!(await objetivo.count())) {
+    console.log("⚠ no encontré un renglón en «Para revisar»");
+  } else {
+    await objetivo.click();
+    await page.waitForTimeout(900);
+    const texto = await page.evaluate(() => document.body.innerText);
+    console.log(/Nuevo contrato/.test(texto)
+      ? "el renglón abre la ficha, con el botón para renovar ✓"
+      : "⚠ EL RENGLÓN NO LLEVA A NINGUNA PARTE: no aparece «Nuevo contrato»");
+  }
+  await capturar("revisar");
 } else if (trabajador) {
   // El mercaderista no tiene pestañas: la pantalla es Supervisar y punto.
   await capturar("trabajador");

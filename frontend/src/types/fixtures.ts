@@ -381,8 +381,17 @@ export interface UnifiedFixture {
    *  free zones — anything that is part of the store but never sold as space. */
   rentable?: boolean;
 
-  /** Short label rendered OUTSIDE the shape in the 2D plan so it stays legible
-   *  from afar even on tiny fixtures. Optional — falls back to nothing. */
+  /** El nombre que alguien le puso al mueble, y que REEMPLAZA al código del
+   *  sistema en todas partes: el plano, el 3D, el montaje y la lámina. Vacío
+   *  significa «se llama como lo llamó el sistema», no «no tiene nombre».
+   *
+   *  El código sigue siendo la llave del espacio y no cambia por esto.
+   *
+   *  Acá decía que era un rótulo suelto que se dibuja AFUERA de la caja en el
+   *  plano 2D. Eso describía una versión anterior, y mientras el comentario
+   *  decía eso el plano dibujaba el nombre afuera y el código adentro: dos
+   *  nombres para el mismo mueble. Ver `nombreDeMueble` y `rotulosDelPlano`
+   *  en `utils/nomenclatura.ts`, que son la regla y están probadas. */
   nomenclatura?: string;
 
   /** Physical assembly of face A — see FaceData.mountedAt. */

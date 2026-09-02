@@ -2760,10 +2760,22 @@ queda anotado y no hecho.
   cursor de «cuándo se libera» caía corrido hasta 131 px en 1920 y perfecto en
   1440, porque a 1440 la caja y el viewBox tienen casi la misma proporción y no
   hay franjas. Cualquier lectura al pasar el mouse sobre un SVG va por la matriz.
-- **El harness revisa a 1440 y a 1920.** Un solo ancho no alcanza, y ése es el
-  motivo: el encaje del SVG depende de la proporción de la caja, y la caja
-  depende del ancho de la ventana. El bug del cursor daba verde en 1440 y rojo
-  en 1920. 1440 es el portátil; 1920 es el monitor donde esto se usa todo el día.
+- **El harness revisa a 1440×900 y a 1920×1080.** Una sola pantalla no alcanza,
+  y ése es el motivo: el encaje de un SVG depende de la proporción de su caja, y
+  la caja depende de la ventana. El bug del cursor daba verde en 1440 y rojo en
+  1920. El alto importa por lo mismo desde que el tope del plano se mide en
+  `vh`. Son las dos configuraciones reales: el portátil y el monitor.
+- **Un mueble tiene UN nombre.** `nombreDeMueble()` es la respuesta y
+  `rotulosDelPlano()` decide dónde se dibuja —adentro de la caja si entra, y si
+  no en la pastilla de arriba, nunca las dos—. El plano 2D dibujaba `item.code`
+  a secas adentro, así que un mueble renombrado mostraba el nombre puesto a mano
+  arriba y el de fábrica adentro. El `code` es la llave del espacio y no se toca
+  desde ninguna pantalla: renombrar escribe `nomenclatura`.
+- **Las filas de «Para revisar» abren la ficha.** Llamaban a `selectFixture` sin
+  punto de anclaje, y con eso no salía ninguno de los dos paneles: el globito
+  del mapa necesita un ancla y la ficha necesita `detailFull`, que sólo lo
+  prendía el globito. La fila pintaba el mueble en el plano y ahí terminaba
+  todo — justo el renglón desde el que se sale a renovar.
 
 ---
 

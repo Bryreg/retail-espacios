@@ -13,6 +13,7 @@ import { Html } from "@react-three/drei";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
+import { nombreDeMueble } from "../../utils/nomenclatura";
 import { fileUrl, getFaceImages } from "../../api/files";
 import { arteUrl, listarCatalogo, subirArte, type Arte } from "../../api/catalogo";
 import { getSuppliers } from "../../api/suppliers";
@@ -4405,7 +4406,7 @@ function CommercialPanel({
           <div className="flex h-7 w-7 items-center justify-center rounded bg-accent/20 text-xs font-mono font-bold text-accent-200">S</div>
           <div className="min-w-0 flex-1">
             <span className="bg-dark-bg rounded px-2 py-0.5 text-[10px] font-mono text-accent-200">{selectedSlot.id}</span>
-            <p className="text-xs font-bold text-dark-ink-1 mt-0.5">Slot — {fix.code}</p>
+            <p className="text-xs font-bold text-dark-ink-1 mt-0.5">Slot — {nombreDeMueble(fix)}</p>
           </div>
           <button onClick={onSlotClose} className="text-dark-ink-3 hover:text-dark-ink-1" title="Volver al fixture">
             <X size={14} />
@@ -4507,7 +4508,7 @@ function CommercialPanel({
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-bold text-dark-ink-1">{fix.label}</p>
-          <p className="font-mono text-[10px] text-dark-ink-3">{fix.code}</p>
+          <p className="font-mono text-[10px] text-dark-ink-3">{nombreDeMueble(fix)}</p>
         </div>
         <button onClick={onClose} className="text-dark-ink-3 hover:text-dark-ink-1"><X size={14}/></button>
       </div>
@@ -5258,7 +5259,7 @@ export default function StoreEditor3D() {
                 {selectedFix&&(
                   <span className="flex items-center gap-1 ml-2">
                     <span className="text-dark-ink-3">·</span>
-                    <span className="font-mono text-xs bg-dark-surface rounded px-2 py-0.5 text-accent-200">{selectedFix.code}</span>
+                    <span className="font-mono text-xs bg-dark-surface rounded px-2 py-0.5 text-accent-200">{nombreDeMueble(selectedFix)}</span>
                     {selectedSlot&&<span className="text-warning">› {selectedSlot.id}</span>}
                   </span>
                 )}
@@ -5401,7 +5402,7 @@ export default function StoreEditor3D() {
               className="pointer-events-none absolute z-30 rounded-lg border border-dark-line bg-dark-surface/95 px-3 py-2 text-xs shadow-xl backdrop-blur-sm"
               style={{ left: tooltipPos.x + 12, top: tooltipPos.y - 8, transform: 'translateY(-100%)' }}
             >
-              <p className="font-mono font-bold text-accent-200">{fix.code}</p>
+              <p className="font-mono font-bold text-accent-200">{nombreDeMueble(fix)}</p>
               <p className="text-dark-ink-1">{fix.label}</p>
               {fix.supplierName && <p className="text-dark-ink-2 mt-0.5">🏢 {fix.supplierName}</p>}
               {fix.negotiatedValue > 0 && <p className="text-success mt-0.5">💵 ${fix.negotiatedValue}/mes</p>}

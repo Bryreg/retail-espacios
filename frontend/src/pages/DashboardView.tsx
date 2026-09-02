@@ -780,7 +780,16 @@ function IsoMap({
    *
    *  El tope de alto existe para que una sede casi cuadrada no empuje una
    *  tarjeta de mil píxeles; el piso, para que una muy alargada no la deje
-   *  como una tira. Entre los dos, el plano llena su caja. */
+   *  como una tira. Entre los dos, el plano llena su caja.
+   *
+   *  El tope va contra la VENTANA, no en píxeles sueltos. La razón de que
+   *  exista es que el plano no empuje fuera de pantalla todo lo que va debajo,
+   *  y eso depende del alto de la ventana, no de un número. Con 720 fijo, en un
+   *  monitor de 1920×1080 el plano de NAVE llenaba el 83% de su lienzo y dejaba
+   *  franjas blancas a los costados. Con `80vh` el portátil de 900 se comporta
+   *  igual que antes —720— y el monitor grande deja crecer el dibujo hasta que
+   *  llena; el tope duro de 1000 es para las pantallas muy altas, donde 80vh
+   *  daría una tarjeta más alta que ancha. */
   const proporcion = scene.vb.w / scene.vb.h;
 
   return (
@@ -789,7 +798,7 @@ function IsoMap({
       style={{
         position: "relative", width: "100%", margin: "0 auto",
         aspectRatio: `${scene.vb.w.toFixed(1)} / ${scene.vb.h.toFixed(1)}`,
-        maxHeight: 720, minHeight: 360, display: "flex",
+        maxHeight: "min(1000px, 80vh)", minHeight: 360, display: "flex",
       }}
       data-proporcion={proporcion.toFixed(2)}
     >
@@ -1696,6 +1705,7 @@ function AtencionRow({
   const [hover, setHover] = useState(false);
   return (
     <div
+      data-fila-revisar
       style={{
         display: "flex", alignItems: "center",
         borderTop: "1px solid var(--line-soft)",
@@ -2432,6 +2442,29 @@ export default function DashboardView() {
     setDetailFull(false);
     setEnContrato([]);
   };
+  /** Desde «Para revisar»: abrir la FICHA del espacio, no sólo señalarlo.
+   *
+   *  Tocar una fila llamaba a `selectFixture` sin punto de anclaje, y con eso
+   *  no aparecía ninguno de los dos paneles: el globito del mapa necesita un
+   *  ancla —no la hay, porque no se tocó el mapa— y la ficha necesita
+   *  `detailFull`, que sólo lo prendía el globito al expandirse. Resultado: la
+   *  fila pintaba el mueble en el plano y ahí terminaba todo.
+   *
+   *  Es un callejón sin salida justo donde no puede haberlo: «PUN-03 vence en
+   *  22 días» es el renglón desde el que se sale a renovar, y el botón para
+   *  hacerlo —«Nuevo contrato para esta cara»— vive en la ficha que no se
+   *  abría. Nunca se quitó el botón; lo que faltaba era el camino hasta él.
+   *
+   *  Se abre en la cara del renglón: en una góndola doble, la que vence es una
+   *  de las dos y no da lo mismo cuál. */
+  const revisar = (f: UnifiedFixture, face: "A" | "B" = "A") => {
+    setSelected(f);
+    setAnchor(null);
+    setDetailFace(face);
+    setDetailFull(true);
+    setCerrado(null);
+  };
+
   /** Pasar a vender ese espacio, venga de donde venga: del popover del mapa o
    *  del panel de detalle en Supervisar. */
   const negociar = (f: UnifiedFixture, face: "A" | "B" = "A") => {
@@ -3536,7 +3569,7 @@ export default function DashboardView() {
                             chip="—"
                             dates="sin papeles"
                             selected={selected?.id === entry.fixture.id}
-                            onSelect={() => selectFixture(entry.fixture)}
+                            onSelect={() => revisar(entry.fixture, entry.face)}
                           />
                         ))}
                       </div>
@@ -3557,7 +3590,7 @@ export default function DashboardView() {
                             chip={`${Math.abs(entry.days)}d`}
                             dates={entry.endDate ? fechaEnCurso(entry.endDate) : "—"}
                             selected={selected?.id === entry.fixture.id}
-                            onSelect={() => selectFixture(entry.fixture)}
+                            onSelect={() => revisar(entry.fixture, entry.face)}
                           />
                         ))}
                       </div>
@@ -3576,7 +3609,7 @@ export default function DashboardView() {
                             chip={`${entry.days}d`}
                             dates={entry.endDate ? fechaEnCurso(entry.endDate) : "—"}
                             selected={selected?.id === entry.fixture.id}
-                            onSelect={() => selectFixture(entry.fixture)}
+                            onSelect={() => revisar(entry.fixture, entry.face)}
                           />
                         ))}
                       </div>
@@ -3597,7 +3630,7 @@ export default function DashboardView() {
                               ? MOTIVO_LABEL[entry.reporte.motivo as MountMotivo]
                               : "sin motivo"}
                             selected={selected?.id === entry.fixture.id}
-                            onSelect={() => selectFixture(entry.fixture)}
+                            onSelect={() => revisar(entry.fixture, entry.face)}
                             onFoto={
                               entry.reporte.file_id
                                 ? () => setViewerFile({
@@ -3631,7 +3664,7 @@ export default function DashboardView() {
                             tono={entry.dias > 60 ? "alarma" : "sordo"}
                             dates="sin montar"
                             selected={selected?.id === entry.fixture.id}
-                            onSelect={() => selectFixture(entry.fixture)}
+                            onSelect={() => revisar(entry.fixture, entry.face)}
                           />
                         ))}
                         {montaje.viejosSinReporte > 0 && (
@@ -3661,7 +3694,7 @@ export default function DashboardView() {
                             tono="sordo"
                             dates={`${compactCOP(entry.negotiatedValue)} · ref ${compactCOP(entry.ref)}`}
                             selected={selected?.id === entry.fixture.id}
-                            onSelect={() => selectFixture(entry.fixture)}
+                            onSelect={() => revisar(entry.fixture, entry.face)}
                           />
                         ))}
                       </div>
