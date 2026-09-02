@@ -2805,14 +2805,22 @@ export default function DashboardView() {
     return t.replace(",", "");
   }, []);
 
-  /** La tarjeta del mapa. Es la MISMA en los dos modos —el mapa no cambia
+  /** La tarjeta del plano. Es la MISMA en los dos modos —el mapa no cambia
    *  porque cambie para qué estás mirándolo—; sólo cambian el subtítulo y las
-   *  palabras de la clave, porque la pregunta que se le hace sí cambia. */
-  /** La tarjeta del plano. No lleva alto: lo pone el lienzo, que se mide con
-   *  la proporción del plano de la sede. Fijarlo dejaba medio panel en blanco
-   *  alrededor de un dibujo chico. */
-  const tarjetaMapa = () => (
-        <Card style={{ position: "relative", flex: "1 1 480px", minWidth: 0 }}>
+   *  palabras de la clave, porque la pregunta que se le hace sí cambia.
+   *
+   *  No lleva alto: lo pone el lienzo, que se mide con la proporción del plano
+   *  de la sede. Fijarlo dejaba medio panel en blanco alrededor de un dibujo
+   *  chico.
+   *
+   *  El `flex` lo pone quien la llama, y no es un detalle: en Supervisar la
+   *  tarjeta es hija de una FILA —`1 1 480px` es ancho, y crece— y en Vender es
+   *  hija de una COLUMNA, donde ese mismo valor es ALTO. Con 480 px de alto
+   *  base y `overflow: hidden`, un plano de 1,7:1 sobre 1450 px de columna pide
+   *  850 y el dibujo se cortaba abajo. En columna la tarjeta se mide con su
+   *  contenido: `0 0 auto`. */
+  const tarjetaMapa = (flex: React.CSSProperties["flex"]) => (
+        <Card style={{ position: "relative", flex, minWidth: 0 }}>
           <CardHeader
             title={`Piso de ${sede}`}
             sub={modoEfectivo === "vender"
@@ -3326,7 +3334,9 @@ export default function DashboardView() {
           onSeguir={() => setCerrado(null)}
         >
           <div style={{ flex: "1 1 520px", minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
-            {tarjetaMapa()}
+            {/* En columna: alto de su dibujo. Estirarla o encogerla es blanco
+                adentro o plano cortado; el desnivel lo absorbe el último panel. */}
+            {tarjetaMapa("0 0 auto")}
 
             {/* ── Cuándo se libera cada espacio ────────────────────────────
                 La escalera. Contesta la pregunta con la que se negocia una
@@ -3464,7 +3474,8 @@ export default function DashboardView() {
               gap: 10, marginBottom: 10,
             }}
           >
-            {tarjetaMapa()}
+            {/* En fila: 480 px de ancho base, y se lleva lo que sobre. */}
+            {tarjetaMapa("1 1 480px")}
 
             <div
               style={{

@@ -2747,6 +2747,12 @@ queda anotado y no hecho.
   `@react-three/drei@10` pide `fiber@^9` y el editor 3D está escrito contra `fiber@8`.
 - `nginx/retail.conf` es para el despliegue en VPS, no para Render. Si ese VPS se reactiva,
   hay que copiar el archivo al host a mano — el workflow no lo despliega.
+- **`flex: "1 1 480px"` no quiere decir «480 px de ancho».** El `flex-basis` va sobre el
+  EJE PRINCIPAL del padre: en una fila es ancho, en una columna es alto. La tarjeta del
+  plano se comparte entre Vender y Supervisar, y cuando pasó a vivir dentro de la columna
+  de Vender ese mismo valor se volvió un alto de 480 px sobre un dibujo que pide 850 —
+  con `overflow: hidden` en la tarjeta, el plano salió a producción cortado 142 px abajo.
+  Ahora el `flex` lo pasa quien la llama.
 
 ---
 

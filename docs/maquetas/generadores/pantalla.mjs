@@ -188,6 +188,98 @@ async function capturar(nombre) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(400);
   console.log(`${nombre}: ${ancho}×${alto} → ${destino}${ancho > 1440 ? "   ⚠ DESBORDE HORIZONTAL" : ""}`);
+  await revisar(nombre);
+}
+
+/** Los chequeos de geometría, UNA VEZ POR PANTALLA.
+ *
+ *  Antes corrían al final, sobre lo que hubiera quedado en el navegador — que
+ *  en modo admin es Supervisar, porque es la última pestaña del recorrido.
+ *  Vender se capturaba y se abandonaba: la pantalla del bicho no se revisaba
+ *  nunca. Un chequeo que no mira todas las pantallas que fotografía es peor que
+ *  ninguno, porque el informe sale limpio igual. */
+async function revisar(nombre) {
+  console.log(`\n── ${nombre} ─────────────────────────────`);
+  // Lo que se sale de su panel
+  const fuera = await page.evaluate(() => {
+    const malos = [];
+    document.querySelectorAll("*:not(svg *)").forEach((el) => {
+      const p = el.parentElement;
+      if (!p || p === document.body) return;
+      const a = el.getBoundingClientRect(), b = p.getBoundingClientRect();
+      if (!a.width || !b.width) return;
+      if (getComputedStyle(p).overflow !== "visible") return;
+      if (a.right > b.right + 2 || a.bottom > b.bottom + 2) {
+        malos.push(`${el.tagName} «${(el.textContent || "").trim().slice(0, 34)}»`);
+      }
+    });
+    return malos.slice(0, 12);
+  });
+  console.log(fuera.length ? "\nSE SALEN DE SU PANEL:\n  " + fuera.join("\n  ") : "\nNada se sale de su panel.");
+
+  // Lo que se CORTA.
+  //
+  // El chequeo de arriba saltea al padre que no es `overflow: visible`, y con
+  // razón: un panel con scroll tiene contenido más alto que él y eso es lo normal.
+  // Pero `hidden` no es `auto`: no guarda lo que sobra, lo tija. Un plano cortado
+  // abajo pasaba por esa puerta y salió a producción — se veía perfecto en el
+  // chequeo y roto en pantalla.
+  //
+  // Sólo hacia abajo y con 4 px de tolerancia: el corte horizontal en `hidden` es
+  // el de los títulos con puntos suspensivos, que se cortan a propósito.
+  const cortados = await page.evaluate(() => {
+    const malos = [];
+    document.querySelectorAll("*:not(svg *)").forEach((el) => {
+      const p = el.parentElement;
+      if (!p || p === document.body) return;
+      const cs = getComputedStyle(p);
+      if (cs.overflowY !== "hidden") return;
+      const a = el.getBoundingClientRect(), b = p.getBoundingClientRect();
+      if (!a.height || !b.height) return;
+      if (a.bottom > b.bottom + 4) {
+        malos.push(`${el.tagName} «${(el.textContent || "").trim().slice(0, 30)}» cortado ${Math.round(a.bottom - b.bottom)} px`);
+      }
+    });
+    return malos.slice(0, 12);
+  });
+  console.log(cortados.length ? "\nSE CORTAN:\n  " + cortados.join("\n  ") : "\nNada se corta.");
+
+  // Y el plano en particular, con nombre: es el dibujo que se mira, y el que se
+  // cortó. Dos cosas: que el lienzo entre entero en la tarjeta que lo tija, y
+  // que el dibujo LLENE el lienzo. La segunda es el otro modo de falla de este
+  // panel —el plano chiquito en el medio de una tarjeta grande, «se ve lejos»—
+  // y no lo agarra ningún chequeo de desborde, porque nada desborda.
+  const plano = await page.evaluate(() => {
+    const lienzo = document.querySelector("[data-proporcion]");
+    if (!lienzo) return null;
+    // La tarjeta es el primer ancestro que no guarda lo que sobra: lo tija.
+    let caja = lienzo.parentElement;
+    while (caja && getComputedStyle(caja).overflow === "visible") caja = caja.parentElement;
+    const a = lienzo.getBoundingClientRect();
+    const b = (caja || lienzo.parentElement).getBoundingClientRect();
+    // Lo que el SVG dibuja de verdad: `meet` encaja el viewBox por el lado
+    // que le queda corto y deja el otro en blanco.
+    const prop = Number(lienzo.getAttribute("data-proporcion"));
+    const dibujo = a.width / a.height > prop
+      ? { w: a.height * prop, h: a.height }
+      : { w: a.width, h: a.width / prop };
+    return {
+      prop: prop.toFixed(2),
+      lienzo: `${Math.round(a.width)}×${Math.round(a.height)}`,
+      sobra: Math.round(a.bottom - b.bottom),
+      llena: Math.round((100 * dibujo.w * dibujo.h) / (a.width * a.height)),
+    };
+  });
+  if (plano === null) {
+    console.log("\nSin plano en esta pantalla.");
+  } else {
+    console.log(plano.sobra > 2
+      ? `\n⚠ EL PLANO SE CORTA: le sobran ${plano.sobra} px por debajo de su tarjeta (lienzo ${plano.lienzo}, ${plano.prop}:1)`
+      : `\nEl plano entra entero en su tarjeta (lienzo ${plano.lienzo}, ${plano.prop}:1) ✓`);
+    console.log(plano.llena < 80
+      ? `⚠ EL PLANO SE VE CHICO: el dibujo llena el ${plano.llena}% del lienzo`
+      : `El dibujo llena el ${plano.llena}% del lienzo ✓`);
+  }
 }
 
 if (MODO === "codigos") {
@@ -284,23 +376,6 @@ if (MODO === "codigos") {
     await capturar(nombre);
   }
 }
-
-// Lo que se sale de su panel
-const fuera = await page.evaluate(() => {
-  const malos = [];
-  document.querySelectorAll("*:not(svg *)").forEach((el) => {
-    const p = el.parentElement;
-    if (!p || p === document.body) return;
-    const a = el.getBoundingClientRect(), b = p.getBoundingClientRect();
-    if (!a.width || !b.width) return;
-    if (getComputedStyle(p).overflow !== "visible") return;
-    if (a.right > b.right + 2 || a.bottom > b.bottom + 2) {
-      malos.push(`${el.tagName} «${(el.textContent || "").trim().slice(0, 34)}»`);
-    }
-  });
-  return malos.slice(0, 12);
-});
-console.log(fuera.length ? "\nSE SALEN DE SU PANEL:\n  " + fuera.join("\n  ") : "\nNada se sale de su panel.");
 
 if (trabajador) {
   // La regla dura: a un mercaderista no le puede aparecer un peso en pantalla.
