@@ -436,7 +436,14 @@ function topColorFor(face: FaceEntry): string {
  *  own three-way scale: sellable, negotiable, taken. */
 const RANGE_TOP: Record<RangeAvailability, string> = {
   libre: "#4CC38A",
-  parcial: "#F0B429",
+  // Naranja, no ámbar. Parcialmente ocupado es un estado intermedio y el
+  // naranja lo dice sin leyenda: verde se puede, naranja a medias, rojo no.
+  // El ámbar anterior tiraba a amarillo y se leía como «atención», que es otra
+  // cosa. Validado contra los otros tres del mapa en todos los pares: peor
+  // caso ΔE 10.8 daltónico —naranja contra verde— y 16.7 en visión normal
+  // —naranja contra rojo, que es el par apretado porque son vecinos de tono—.
+  // No se puede oscurecer más sin caerse contra el rojo: #D4700F da ΔE 6.6.
+  parcial: "#F08519",
   // Rojo, igual que «ocupado» en el plano, el 3D y el mapa de la sede: es el
   // mismo hecho —ese espacio no se puede vender— con otra etiqueta. En violeta
   // el único lugar donde de verdad se vende leía distinto que todos los demás.
@@ -449,8 +456,22 @@ const RANGE_LABEL: Record<RangeAvailability, string> = {
   tomado: "Tomado",
 };
 
-/** Infrastructure on the isometric map: present, but visibly not for sale. */
-const NON_RENTABLE_TOP = "#94A3B8";
+/** Infrastructure on the isometric map: present, but visibly not for sale.
+ *
+ *  Era `#94A3B8`, y ése era el par que se caía: contra el verde de «libre»
+ *  daba ΔE 8.0 en deuteranopía y 14.7 en visión normal, los dos por debajo del
+ *  piso. No es un detalle de accesibilidad al margen —el gris es la mayor
+ *  parte del plano, así que «lo que puedo vender» contra «lo que ni siquiera
+ *  se alquila» es justo el par que hay que distinguir de un vistazo—. La
+ *  salida no fue tocar el verde: bajarlo lo acercaba al rojo, que bajo
+ *  deuteranopía es el vecino peligroso. Aclarar el gris separa por
+ *  luminosidad, que es lo que sobrevive cuando el tono se colapsa, y de paso
+ *  hace lo correcto: la infraestructura se va al fondo y el color queda para
+ *  lo que se vende.
+ *
+ *  Las caras y el contorno salen de acá por `darken()`, así que el prisma
+ *  sigue leyéndose en tres dimensiones y no queda una silueta plana. */
+const NON_RENTABLE_TOP = "#DCE2E8";
 
 /** El material del mueble. El cuerpo ya no toma el color del estado: se queda
  *  en el gris del acero y el color va en la CARA, que es lo que de verdad se

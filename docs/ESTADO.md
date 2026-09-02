@@ -136,16 +136,66 @@ completo a la columna derecha. Los campos vacíos no se dibujan.
 
 ### Paleta
 
-Un solo lenguaje de color en Dashboard, plano 2D y editor 3D:
+Un solo lenguaje de color en Dashboard, plano 2D y editor 3D. El mapa tiene dos
+lecturas y cada una su escala. **Qué pasa hoy:**
 
 | Estado | Color |
 |---|---|
 | Libre | verde `#4CC38A` |
 | Ocupado | violeta `#8B5CF6` |
 | Reservado | ámbar `#F0B429` |
-| No comercializable | pizarra `#94A3B8` |
+| No comercializable | `#DCE2E8` |
 
 El rojo queda reservado para lo que está mal (un contrato vencido).
+
+**Disponible en un periodo**, que es la lectura que contesta «¿lo puedo vender
+entre estas dos fechas?». Acá el color dice una escala, no tres etiquetas
+sueltas —**verde se puede, naranja a medias, rojo no**— y se entiende sin ir a
+la leyenda:
+
+| Estado | Color |
+|---|---|
+| Libre todo el periodo | verde `#4CC38A` |
+| Libre parte del periodo | naranja `#F08519` |
+| Tomado | rojo `#D93A3A` |
+| No comercializable | `#DCE2E8` |
+
+### La paleta del mapa se valida, no se elige a ojo
+
+Dos de esos valores cambiaron porque no pasaban, y conviene que quede escrito
+por qué, para no revertirlos sin darse cuenta.
+
+**El gris de «no comercializable» era `#94A3B8`** y contra el verde de «libre»
+daba **ΔE 8.0 en el peor caso daltónico y 14.7 en visión normal**, los dos por
+debajo del piso. No es un detalle al margen: el gris es la mayor parte del
+plano, así que «lo que puedo vender» contra «lo que ni siquiera se alquila» es
+justo el par que hay que distinguir de un vistazo. La salida **no** fue tocar el
+verde —bajarlo lo acerca al rojo, que bajo deuteranopía es el vecino peligroso:
+probado, con el verde en `#1E9E6A` el par verde-rojo cae a ΔE 6.5—. Se aclaró el
+gris, que separa por luminosidad, que es lo que sobrevive cuando el tono se
+colapsa. De paso hace lo correcto de diseño: la infraestructura se va al fondo y
+el color queda para lo que se vende.
+
+**El ámbar de «libre parte del periodo» era `#F0B429`**, tiraba a amarillo y se
+leía como «atención», que es otra cosa. Con el naranja el mapa dice una escala.
+Tiene un costo medido: naranja y rojo son vecinos de tono, así que el par más
+apretado se mudó ahí —de ΔE 21.8 a 13.8 en daltonismo y de 27.5 a 16.7 en visión
+normal—. Sigue sobre el piso y ambos estados van rotulados, pero **no se puede
+oscurecer más el naranja**: `#D4700F` cae a ΔE 6.6 contra el rojo.
+
+Con los dos cambios, los cuatro colores de la lectura por periodo pasan la
+separación en **todos** los pares: peor caso ΔE 10.8 daltónico y 16.7 en visión
+normal. **Antes de mover cualquiera hay que volver a correr el validador de
+paleta**; que «se vean distintos» no es evidencia.
+
+Queda abierto un problema que no se arregla moviendo un color: la escala de «qué
+pasa hoy» tiene siete clases, y ahí `free #4CC38A` contra `maintenance #A8A29E`
+da **ΔE 3.6 en deuteranopía** —un daltónico no distingue «lo puedo vender» de
+«está en mantenimiento», que es lo contrario—. Mover el gris de mantenimiento a
+oscuro choca con el rojo en protanopía; a claro, con el gris nuevo. Siete clases
+es el techo que aguanta el color solo: la salida es menos clases o una segunda
+codificación (una trama en las caras en mantenimiento, por ejemplo), y eso es
+decisión de producto.
 
 ### Tarifa de referencia y rendimiento $/m²
 
