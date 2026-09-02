@@ -1,11 +1,10 @@
-import { AlertTriangle, Check, Handshake, Loader2, Lock, X } from "lucide-react";
+import { AlertTriangle, Check, Loader2, Lock, X } from "lucide-react";
 import type { DateRange } from "../SeasonPicker/SeasonPicker";
-import { isRentable, type FaceData, type UnifiedFixture } from "../../types/fixtures";
+import { isRentable, type UnifiedFixture } from "../../types/fixtures";
 import {
   CabezaContrato, CamposContrato, fechaCorta, money, useContrato,
-  type ResumenContrato,
+  type CaraElegida, type ParcheDeCara, type ResumenContrato,
 } from "./Contrato";
-import { nombreDeMueble } from "../../utils/nomenclatura";
 
 /**
  * El modo Vender: el mapa grande a la izquierda, la ficha del contrato a la
@@ -21,55 +20,84 @@ import { nombreDeMueble } from "../../utils/nomenclatura";
 const ANCHO_FICHA = 428;
 
 interface ModoVenderProps {
-  fixture: UnifiedFixture | null;
-  face: "A" | "B";
-  onFace: (f: "A" | "B") => void;
+  /** Los espacios que van en el contrato, en el orden en que se tocaron. */
+  espacios: CaraElegida[];
+  /** El que se tocó último: es el que decide si la columna muestra el
+   *  formulario o el cartel de «esto no se alquila». */
+  ultimo: UnifiedFixture | null;
+  onQuitar: (fixtureId: string, face: "A" | "B") => void;
+  onCambiarCara: (fixtureId: string, face: "A" | "B") => void;
   sede: string;
   rango: DateRange | null;
   /** El contrato que se acaba de guardar, si hay uno. */
   cerrado: ResumenContrato | null;
-  onGuardado: (patch: Partial<FaceData>, resumen: ResumenContrato) => void;
+  onGuardado: (parches: ParcheDeCara[], resumen: ResumenContrato) => void;
   onCancelar: () => void;
   onSeguir: () => void;
-  /** El mapa de la sede. Viene del tablero para que sea exactamente el mismo. */
+  /** La columna izquierda: el plano y la escalera de «cuándo se libera».
+   *  Viene del tablero para que sea exactamente la misma en los dos modos. */
   children: React.ReactNode;
+  /** La lista de precios, debajo de la ficha. Se dibuja SIEMPRE —haya o no un
+   *  espacio elegido— porque es lo que se mira mientras se decide cuál tocar:
+   *  qué familias quedan y a cuánto salen. Antes vivía detrás de un botón, y
+   *  abrir un modal para consultar un precio en cada llamada es lo que hace
+   *  que la gente termine con la lista impresa al lado del teclado. */
+  panelTarifas?: React.ReactNode;
 }
 
 // ─── Armazón ─────────────────────────────────────────────────────────────────
 
 function Armazon({
-  mapa, ficha, barra,
+  mapa, ficha, barra, tarifas,
 }: {
   mapa: React.ReactNode;
-  ficha: React.ReactNode;
+  /** Sin ficha —y sin tarifas— el riel no se dibuja y el mapa se lleva todo. */
+  ficha: React.ReactNode | null;
   barra: React.ReactNode;
+  tarifas?: React.ReactNode;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", gap: 12, alignItems: "stretch" }}>
         {mapa}
-        {/* La ficha mide lo que mide su contenido y se queda pegada arriba: el
-            mapa es mucho más alto que el formulario, y estirar la tarjeta hasta
-            abajo sólo repartía aire entre los campos. */}
-        <div
-          style={{
-            width: ANCHO_FICHA, flexShrink: 0, minWidth: 0,
-            alignSelf: "flex-start", position: "sticky", top: 0,
-            display: "flex", flexDirection: "column",
-          }}
-        >
-          {ficha}
-        </div>
+        {/* Mientras no hay un espacio elegido, acá había 428 px de blanco con
+            un rótulo chiquito arriba explicando que ahí iba a aparecer algo.
+            Media pantalla reservada para lo que no está: es la interfaz
+            avisando que le falta contenido, y es de lo que más delata que
+            nadie se sentó a mirarla trabajando.
+
+            Ahora el riel simplemente no existe hasta que hay algo que poner, y
+            el mapa ocupa todo. Cuando se toca un espacio el riel entra y el
+            mapa se corre: el movimiento es la respuesta al clic. */}
+        {(ficha !== null || tarifas) && (
+          <div
+            style={{
+              width: ANCHO_FICHA, flexShrink: 0, minWidth: 0,
+              alignSelf: "flex-start", position: "sticky", top: 0,
+              display: "flex", flexDirection: "column", gap: 10,
+            }}
+          >
+            {ficha}
+            {tarifas}
+          </div>
+        )}
       </div>
       {barra}
     </div>
   );
 }
 
+/*  La ficha del contrato es un panel como el plano y como la tabla: mismo
+ *  blanco, misma línea de 1 px, misma esquina de 3. Un rato fue una «lámina»
+ *  sin borde con una línea de tinta arriba, para que se leyera como la otra
+ *  mitad del plano; el problema es que en esta pantalla hay cuatro paneles y
+ *  dos de ellos no pueden tener una gramática distinta de los otros dos. La
+ *  jerarquía la dan el tamaño y la posición, no el tratamiento del borde. */
 const tarjeta: React.CSSProperties = {
   display: "flex", flexDirection: "column",
   borderRadius: "var(--r-xl)", background: "var(--surface)",
-  border: "1px solid var(--line)", boxShadow: "var(--shadow-xs)",
+  border: "1px solid var(--line)",
+  boxShadow: "none",
   overflow: "hidden",
 };
 
@@ -94,37 +122,6 @@ function Barra({ children }: { children: React.ReactNode }) {
 }
 
 // ─── Estados sin contrato en curso ───────────────────────────────────────────
-
-function SinElegir() {
-  return (
-    <div
-      style={{
-        ...tarjeta,
-        alignItems: "center", justifyContent: "center", textAlign: "center",
-        padding: "30px 26px", gap: 12,
-        background: "var(--surface-2)", border: "1px dashed var(--line-strong)",
-        boxShadow: "none",
-      }}
-    >
-      <div
-        style={{
-          width: 46, height: 46, borderRadius: "var(--r-xl)",
-          background: "var(--accent-50)", color: "var(--accent)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }}
-      >
-        <Handshake size={22} />
-      </div>
-      <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--ink-1)" }}>
-        Elegí un espacio en el mapa
-      </div>
-      <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55, maxWidth: 280 }}>
-        Los verdes están libres todo el periodo, los amarillos tienen parte
-        vendida. Tocá uno y el contrato se llena acá.
-      </div>
-    </div>
-  );
-}
 
 /** Un mueble que no se alquila: una caja, una pared, la zona de frutas. Tocarlo
  *  en el mapa no puede abrir un contrato — no hay nada que vender ahí. */
@@ -243,12 +240,43 @@ function Cerrado({ datos, onSeguir }: { datos: ResumenContrato; onSeguir: () => 
         <b style={{ fontSize: 15 }}>Contrato guardado</b>
       </div>
       <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.55 }}>
-        <b>{datos.corto}</b> queda contratado para <b>{datos.proveedor}</b>, del{" "}
-        {fechaCorta(datos.desde)} al {fechaCorta(datos.hasta)}.
+        <b>{datos.espacios.join(", ")}</b>
+        {datos.espacios.length > 1 ? " quedan contratados" : " queda contratado"} para{" "}
+        <b>{datos.proveedor}</b>, del {fechaCorta(datos.desde)} al {fechaCorta(datos.hasta)}
+        {datos.total > 0 && <> por <b>{money(datos.total)}</b></>}.
         <br />
         <br />
         <Avisos avisos={datos.avisos} />
       </div>
+
+      {/* Lo que NO quedó. Un contrato de tres espacios son tres filas en la
+          base y la segunda puede fallar con la primera ya escrita; deshacerla
+          sería peor —el correo ya salió—. Así que no se deshace nada y se dice
+          exactamente qué falta, con el código a mano para reintentarlo. */}
+      {datos.fallaron && datos.fallaron.length > 0 && (
+        <div
+          style={{
+            marginTop: 12, padding: "9px 11px", borderRadius: "var(--r-md)",
+            background: "var(--ocupado-suave)", color: "var(--ocupado)",
+            fontSize: 12.5, lineHeight: 1.45,
+          }}
+        >
+          <b>
+            {datos.fallaron.length === 1
+              ? "Un espacio no se pudo guardar."
+              : `${datos.fallaron.length} espacios no se pudieron guardar.`}
+          </b>{" "}
+          El resto del contrato sí quedó. Volvé a intentarlo con{" "}
+          {datos.fallaron.map((f) => f.espacio).join(", ")}.
+          <div style={{ marginTop: 5, color: "var(--ink-2)" }}>
+            {datos.fallaron.map((f) => (
+              <div key={f.espacio}>
+                {f.espacio}: {f.motivo}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {datos.avisoPlanometria && (
         <div
           style={{
@@ -275,48 +303,66 @@ function Cerrado({ datos, onSeguir }: { datos: ResumenContrato; onSeguir: () => 
   );
 }
 
-// ─── Con un espacio elegido ──────────────────────────────────────────────────
+// ─── Con espacios elegidos ───────────────────────────────────────────────────
 
-function ConEspacio({
-  fixture, face, onFace, sede, rango, onGuardado, onCancelar, children,
-}: Omit<ModoVenderProps, "fixture" | "cerrado" | "onSeguir"> & { fixture: UnifiedFixture }) {
-  const c = useContrato({ fixture, face, sede, rango, onGuardado });
+function ConEspacios({
+  espacios, sede, rango, onQuitar, onCambiarCara, onGuardado, onCancelar,
+  children, panelTarifas,
+}: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
+  const c = useContrato({ espacios, sede, rango, onQuitar, onCambiarCara, onGuardado });
   const guardando = c.estado === "guardando";
 
   return (
     <Armazon
       mapa={children}
+      tarifas={panelTarifas}
       ficha={
         <div style={tarjeta}>
-          <CabezaContrato c={c} onFace={onFace} />
+          <CabezaContrato c={c} />
           <CamposContrato c={c} />
         </div>
       }
       barra={
         <Barra>
           <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap", minWidth: 0 }}>
-            <span
-              style={{
-                fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 700,
-                padding: "4px 9px", borderRadius: "var(--r-sm)",
-                background: "var(--accent-50)", color: "var(--accent-700)",
-              }}
-            >
-              {nombreDeMueble({ code: c.corto, nomenclatura: c.fixture.nomenclatura })}
+            {/* Los espacios, cada uno en su plaquita. Juntos en una sola
+                cadena —«PUN-05, ISL-04»— se leen como un texto y hay que
+                contarlos; separados se ven de un golpe, que es lo que uno
+                revisa antes de firmar: cuántos y cuáles. */}
+            <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
+              {c.lineas.map((l) => (
+                <span
+                  key={`${l.fixture.id}-${l.face}`}
+                  style={{
+                    fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 700,
+                    padding: "4px 9px", borderRadius: "var(--r-sm)",
+                    background: "var(--accent-50)", color: "var(--accent-700)",
+                  }}
+                >
+                  {l.nombre}
+                </span>
+              ))}
             </span>
             <span style={{ color: "var(--ink-4)" }}>→</span>
             <span style={{ fontSize: 13.5, fontWeight: 600, color: c.proveedor ? "var(--ink-1)" : "var(--ink-4)" }}>
               {c.proveedor.trim() || "sin proveedor"}
             </span>
             <span style={{ color: "var(--line-strong)" }}>·</span>
+            {/* El TOTAL del plazo, no el valor mensual: es lo que va a quedar
+                escrito, y es el número sobre el que alguien dice que sí. */}
             <span
               style={{
-                fontFamily: "var(--font-mono)", fontSize: 13.5, fontWeight: 700,
-                color: c.monto > 0 ? "var(--success)" : "var(--ink-4)",
+                fontSize: 13.5, fontWeight: 700,
+                color: c.total > 0 ? "var(--libre)" : "var(--ink-4)",
               }}
             >
-              {c.monto > 0 ? money(c.monto) : "sin valor"}
+              {c.total > 0 ? money(c.total) : "sin valor"}
             </span>
+            {c.total > 0 && c.lineas.length > 0 && (
+              <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
+                {money(c.montoMensual)} al mes
+              </span>
+            )}
             <span style={{ color: "var(--line-strong)" }}>·</span>
             <span style={{ fontSize: 12.5, color: "var(--ink-2)" }}>
               {c.fechasEnOrden
@@ -388,18 +434,35 @@ function ConEspacio({
 // ─── ──────────────────────────────────────────────────────────────────────────
 
 export default function ModoVender(props: ModoVenderProps) {
-  const { fixture, face, cerrado, onSeguir, children } = props;
+  const { espacios, ultimo, cerrado, onSeguir, children, panelTarifas } = props;
 
   if (cerrado) {
-    return <Armazon mapa={children} ficha={<Cerrado datos={cerrado} onSeguir={onSeguir} />} barra={null} />;
+    return (
+      <Armazon
+        mapa={children} tarifas={panelTarifas} barra={null}
+        ficha={<Cerrado datos={cerrado} onSeguir={onSeguir} />}
+      />
+    );
   }
-  if (!fixture) {
-    return <Armazon mapa={children} ficha={<SinElegir />} barra={null} />;
+  // Un mueble que no se alquila no entra al contrato, así que la lista sigue
+  // vacía: lo que hay que explicar es por qué tocarlo no hizo nada.
+  if (espacios.length === 0 && ultimo && !isRentable(ultimo)) {
+    return (
+      <Armazon
+        mapa={children} tarifas={panelTarifas} barra={null}
+        ficha={<NoComercializable fixture={ultimo} />}
+      />
+    );
   }
-  if (!isRentable(fixture)) {
-    return <Armazon mapa={children} ficha={<NoComercializable fixture={fixture} />} barra={null} />;
+  if (espacios.length === 0) {
+    // Sin espacios elegidos acá había 428 px de blanco con un rótulo chiquito
+    // explicando que ahí iba a aparecer algo. Media pantalla reservada para lo
+    // que no está. Ahora la columna la ocupa la lista de precios, que es
+    // justamente lo que se mira antes de elegir.
+    return <Armazon mapa={children} ficha={null} tarifas={panelTarifas} barra={null} />;
   }
-  // La clave remonta el formulario al cambiar de espacio o de cara: lo que se
-  // había tecleado para otra punta no puede quedar colgado en ésta.
-  return <ConEspacio key={`${fixture.id}-${face}`} {...props} fixture={fixture} />;
+  // La clave remonta el formulario cuando cambia la sede, no cuando cambia la
+  // lista: agregar un segundo espacio no puede borrar el proveedor que alguien
+  // ya tecleó. Por eso NO entra la lista en la clave.
+  return <ConEspacios key={props.sede} {...props} />;
 }

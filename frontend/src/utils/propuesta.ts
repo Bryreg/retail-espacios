@@ -53,6 +53,21 @@ export function fechaCorta(iso: string): string {
   return `${Number(m[3])} ${mes} ${m[1]}`;
 }
 
+/** Igual que `fechaCorta` pero sin el año cuando cae en el año en curso:
+ *  «25 ago». En una tabla de contratos vigentes el año es la misma cifra
+ *  repetida veintitrés veces, y son cinco caracteres por celda que se le
+ *  restan al proveedor, que es lo que sí cambia de fila en fila. El año vuelve
+ *  a aparecer solo cuando la fecha NO es de este año, que es justo cuando hace
+ *  falta —un contrato que termina el año que viene tiene que decirlo—. */
+export function fechaEnCurso(iso: string, hoy: Date = new Date()): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((iso ?? "").trim());
+  if (!m) return iso ?? "";
+  const mes = MESES[Number(m[2]) - 1];
+  if (!mes) return iso;
+  const año = `${hoy.getFullYear()}` === m[1] ? "" : ` ${m[1]}`;
+  return `${Number(m[3])} ${mes}${año}`;
+}
+
 /** `1800000` → `$1.800.000`. */
 export function montoCorto(v: number): string {
   return "$" + Math.round(v).toLocaleString("es-CO");

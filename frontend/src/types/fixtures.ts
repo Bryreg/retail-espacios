@@ -140,25 +140,32 @@ export function referenceRateFor(
   return typeof base === "number" && base > 0 ? base : null;
 }
 
-/** Rate types offered in the tariff editor, in display order. Infrastructure
+/** Rate types offered in the tariff editor, in display order.
+ *
+ *  Los rótulos se escriben como se dicen. Decían «Stand Frutas/Verd», «Exhib.
+ *  de Piso», «Isla Helados/Cong.»: abreviaturas con barra y punto, con
+ *  mayúscula en el medio de la frase. Eso es cómo se nombra una columna de
+ *  base de datos, no cómo un encargado nombra un espacio por teléfono — y esa
+ *  clase de abreviatura es lo que hace que una pantalla se lea como un volcado
+ *  de tabla. Ninguna clave cambió: se cambia sólo lo que se lee. Infrastructure
  *  types are still listed (any fixture can be flipped to "comercializable"),
  *  columns excepted — a column is never sellable space. */
 export const RATE_TYPES: { type: string; label: string }[] = [
-  { type: "gondola",          label: "Góndola (por cara)" },
-  { type: "punta",            label: "Punta Góndola" },
+  { type: "gondola",          label: "Góndola, por cara" },
+  { type: "punta",            label: "Punta de góndola" },
   { type: "robatope",         label: "Robatope" },
   { type: "ristra",           label: "Ristra" },
-  { type: "cross",            label: "Exhibidor Cruz" },
-  { type: "impulsador",       label: "Impulsador Marca" },
+  { type: "cross",            label: "Exhibición de piso" },
+  { type: "impulsador",       label: "Impulsador de marca" },
   { type: "mueble",           label: "Vitrina" },
-  { type: "isla",             label: "Exhib. de Piso" },
+  { type: "isla",             label: "Isla" },
   { type: "batea",            label: "Batea" },
-  { type: "isla_fria",        label: "Isla Helados/Cong." },
-  { type: "nevera_carnes",    label: "Nevera Carnes" },
-  { type: "nevera_refrescos", label: "Nevera Refrescos" },
-  { type: "stand_frutas",     label: "Stand Frutas/Verd" },
-  { type: "checkout",         label: "Checkout / Caja" },
-  { type: "metro",            label: "Zona Libre" },
+  { type: "isla_fria",        label: "Isla de congelados" },
+  { type: "nevera_carnes",    label: "Nevera de carnes" },
+  { type: "nevera_refrescos", label: "Nevera de bebidas" },
+  { type: "stand_frutas",     label: "Frutas y verduras" },
+  { type: "checkout",         label: "Cabecera de caja" },
+  { type: "metro",            label: "Zona libre" },
 ];
 
 /** La familia comercial de cada tipo. Es el vocabulario que ya usa la

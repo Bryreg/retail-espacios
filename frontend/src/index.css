@@ -3,11 +3,19 @@
 @tailwind utilities;
 
 /* ─── Tipografía ────────────────────────────────────────────────────────
-   Plus Jakarta Sans para todo lo que se lee, IBM Plex Mono sólo para
-   códigos y campos numéricos. La línea «Empresarial» del prototipo usaba
-   una sola familia; acá se separa el mono a propósito, porque `font-mono`
-   está aplicado a los chips de código (ALF-GON-21), a los ids de zona y a
-   los inputs de tarifa, y ahí una retícula fija sí paga.
+   Chivo para leer, Archivo Narrow para los códigos y las versalitas.
+
+   El par sale de las maquetas y cada mitad hace un trabajo que la otra no
+   puede. Chivo tiene un 900 de verdad —no un 700 engordado— y ahí se apoya el
+   único número grande de la pantalla, el total del contrato: sin ese peso el
+   panel entero se queda sin jerarquía. Archivo Narrow aprieta `GON-60·A` en
+   una columna de 56px, y de eso depende que las 23 caras entren sin cortar un
+   código; además es la voz de los rótulos en versalita, que en un plano
+   impreso siempre van condensados.
+
+   Antes eran IBM Plex Sans y Plex Mono. Plex aguantaba la densidad, pero es
+   la tipografía por defecto del producto técnico y se lee como tal: la misma
+   que ya trae puesta cualquier tablero. El par de acá está elegido.
 
    `tnum` va en el body y no suelto: la mitad de lo que se lee acá son
    códigos, fechas y plata en columna, y con cifras proporcionales las
@@ -20,88 +28,155 @@
   }
 
   body {
-    font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
-    font-feature-settings: "tnum", "cv02", "cv03", "cv04";
+    font-family: 'Chivo', system-ui, ui-sans-serif, sans-serif;
+    font-feature-settings: "tnum";
     font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
-    letter-spacing: -0.004em;
-    color: #020617;
-    background: #F8FAFC;
+    letter-spacing: 0;
+    color: #14181C;
+    background: #EFF1F1;
   }
 }
 
 /* ─── Design tokens (CSS custom properties) ────────────────────────────── */
 :root {
-  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-sans: 'Chivo', system-ui, ui-sans-serif, sans-serif;
+  /* La cara condensada. Se llama `mono` por los ochenta lugares que ya la
+     piden con ese nombre, pero no es monoespaciada: lo que se necesitaba de
+     un mono acá era que las CIFRAS alinearan, y eso lo da `tabular-nums`,
+     que está puesto en el body. Lo que un mono no daba —códigos largos en
+     columnas angostas, versalitas con carácter— lo da la condensada. */
+  --font-mono: 'Archivo Narrow', 'Chivo', system-ui, sans-serif;
 
-  /* Papel frío con una escalera de cuatro peldaños: blanco para las tarjetas,
-     y tres grises cada vez más hondos para el fondo, los rellenos suaves y el
-     piso del plano. Que sean cuatro y no dos es lo que deja apilar paneles sin
-     que se pierda el borde entre uno y otro. */
-  --bg:           #F8FAFC;
+  /* ─── Neutros ──────────────────────────────────────────────────────────
+     Papel, no pantalla: la referencia sigue siendo el plano impreso y la
+     planilla. Antes eran neutros cálidos; ahora son fríos, con una pizca de
+     verde-azul, que es hacia dónde tira el papel de un plano y lo que deja
+     respirar al verde y al rojo de los estados sin que ninguno de los dos se
+     ensucie contra el fondo. */
+  --bg:           #EFF1F1;
   --surface:      #FFFFFF;
-  --surface-2:    #F1F5F9;
-  --surface-3:    #E8EEF5;
-  --line:         #E2E8F0;
-  --line-soft:    #EFF3F7;
-  --line-strong:  #CBD5E1;
+  --surface-2:    #F2F5F5;
+  --surface-3:    #E8ECED;
+  --line:         #DEE2E3;
+  --line-soft:    #F1F4F4;
+  --line-strong:  #C7CED0;
 
-  /* Text */
-  --ink-1: #020617;
-  --ink-2: #334155;
-  --ink-3: #475569;
-  --ink-4: #94A3B8;
+  /* Tinta. Tres pesos y un cuarto para lo que está vacío. */
+  --ink-1: #14181C;
+  --ink-2: #4A5459;
+  --ink-3: #6B7479;
+  --ink-4: #8E979B;
+  --ink-vacio: #BEC5C8;
 
-  /* Acento — azul de oficina, no azul de marca de software. Se usa para lo
-     que se puede tocar (botones, pestaña activa, foco) y para el aro de
-     ocupación; nunca para estado, que es competencia del semáforo. */
-  --accent:      #0369A1;
-  --accent-50:   #EFF7FC;
-  --accent-100:  #D7EBF6;
-  --accent-200:  #A6D2E9;
-  --accent-600:  #02598A;
-  --accent-700:  #024A73;
+  /* ─── Acento: la tinta ─────────────────────────────────────────────────
+     En este sistema el verde, el naranja y el rojo **significan** algo. Un
+     cuarto color saturado en un botón le robaría señal a los tres que sí la
+     cargan, así que la acción es tinta y lo único de color en pantalla es el
+     estado. Si algo brilla, es porque hay que mirarlo. */
+  --accent:      #14181C;
+  --accent-50:   #F2F5F5;
+  --accent-100:  #E8ECED;
+  --accent-200:  #C7CED0;
+  --accent-600:  #14181C;
+  --accent-700:  #14181C;
   --accent-ink:  #FFFFFF;
 
-  /* Semantic — cada uno con su tinte 50 y su borde 100: una pastilla de
-     estado se lee mucho más nítida con fondo tintado MÁS borde que con
-     fondo solo. */
-  --success:      #15803D;
-  --success-50:   #EAF5EE;
-  --success-100:  #C4E2CF;
-  --warning:      #B45309;
-  --warning-50:   #FCF2E5;
-  --warning-100:  #F2DBB6;
-  --danger:       #DC2626;
-  --danger-50:    #FDEDED;
-  --danger-100:   #F8CCCC;
-  --muted-status: #94A3B8;
+  /* ─── Los tres estados ─────────────────────────────────────────────────
+     Verde: se puede vender. Naranja: a medias. Rojo: no.
 
-  /* Dark drawer — frío también, para que no conviva un gris cálido con uno
-     frío en la misma pantalla. */
-  --dark-bg:        #0F172A;
-  --dark-surface:   #1E293B;
-  --dark-surface-2: #273548;
-  --dark-line:      #334155;
-  --dark-line-2:    #475569;
-  --dark-ink-1:     #F1F5F9;
-  --dark-ink-2:     #CBD5E1;
-  --dark-ink-3:     #94A3B8;
+     El rojo es OSCURO a propósito. Cuando el tono se colapsa —un daltónico
+     deuteranope no distingue el rojo del verde por color— lo que queda es la
+     luminosidad, y un rojo claro contra un verde medio se vuelven el mismo
+     bloque. Medida con la misma cuenta que la paleta que estaba desplegada,
+     ésta separa mejor en todos los pares: el peor par pasa de 13,5 a 19,9 en
+     dicromacia y de 27,4 a 33,8 en visión normal. Y de todas formas cada
+     estado va SIEMPRE rotulado con su palabra, así que la identidad nunca
+     depende sólo del color.
 
-  /* Radii */
-  --r-xs:  4px;
-  --r-sm:  6px;
-  --r-md:  8px;
-  --r-lg:  10px;
-  --r-xl:  14px;
-  --r-2xl: 18px;
+     Los nombres `success` / `warning` / `danger` se conservan porque los
+     piden treinta archivos, pero acá no quieren decir «bien / cuidado /
+     error»: quieren decir libre, se libera, tomado. */
+  --libre:        #00786A;
+  --libre-suave:  #D8F0EA;
+  --libre-borde:  #A8DCD0;
+  --entra:        #F08519;
+  --entra-txt:    #B35F0A;
+  --entra-suave:  #FCEEDD;
+  --entra-borde:  #F2C79A;
+  --ocupado:      #8E1226;
+  --ocupado-suave:#F7E4E7;
+  --ocupado-borde:#E0B4BD;
+  /* Lo que no se alquila: presente en el plano, visiblemente fuera de venta. */
+  --resto:        #D3D9DB;
 
-  /* Shadows */
-  --shadow-xs: 0 1px 0 rgba(2,6,23,0.04);
-  --shadow-sm: 0 1px 2px rgba(2,6,23,0.05), 0 1px 1px rgba(2,6,23,0.03);
-  --shadow-md: 0 2px 6px rgba(2,6,23,0.05), 0 1px 2px rgba(2,6,23,0.04);
-  --shadow-lg: 0 12px 28px rgba(2,6,23,0.10), 0 4px 10px rgba(2,6,23,0.05);
+  --success:      var(--libre);
+  --success-50:   var(--libre-suave);
+  --success-100:  var(--libre-borde);
+  /* El naranja de relleno no se puede leer como texto sobre blanco; para
+     escribir con él está la versión oscura, que es la misma familia. */
+  --warning:      var(--entra-txt);
+  --warning-50:   var(--entra-suave);
+  --warning-100:  var(--entra-borde);
+  --danger:       var(--ocupado);
+  --danger-50:    var(--ocupado-suave);
+  --danger-100:   var(--ocupado-borde);
+  --muted-status: var(--ink-4);
+
+  /* Cajón oscuro — mismo papel, del otro lado. */
+  --dark-bg:        #14181C;
+  --dark-surface:   #1E2429;
+  --dark-surface-2: #2A3238;
+  --dark-line:      #39434A;
+  --dark-line-2:    #4F5A62;
+  --dark-ink-1:     #EFF1F1;
+  --dark-ink-2:     #C2CACD;
+  --dark-ink-3:     #8E979B;
+
+  /* ─── Radios ───────────────────────────────────────────────────────────
+     Dos valores: 2px para lo que se toca, 3px para el panel. Un plano de
+     supermercado y una tabla de contratos no son objetos blandos.
+     Los nombres se conservan para no tocar diecisiete archivos. */
+  --r-xs:  2px;
+  --r-sm:  2px;
+  --r-md:  2px;
+  --r-lg:  2px;
+  --r-xl:  3px;
+  --r-2xl: 3px;
+
+  /* ─── Elevación ────────────────────────────────────────────────────────
+     Separar con una línea de 1px es más preciso y más honesto que una sombra
+     ambiental: dice dónde termina una cosa y empieza otra, sin fingir que hay
+     profundidad donde no la hay. Queda una sola sombra de verdad, para el
+     modal, que sí flota por encima de todo lo demás y necesita decirlo. */
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: 0 18px 44px rgba(20,24,28,0.22), 0 4px 12px rgba(20,24,28,0.12);
+}
+
+/* ─── La escala de letra ────────────────────────────────────────────────
+   Siete pasos y ninguno más. Antes había diecisiete tamaños distintos, que
+   es lo que hace que una pantalla se vea armada de a pedazos. El contraste
+   lo dan la familia, el peso y el color, no el tamaño.
+
+     9.5  versalitas y rótulos          14.5  títulos de panel, campos, botón
+    11    notas, ejes, pies             17    códigos de espacio y cifras jefe
+    12    secundario                    27    el total del contrato
+    13    cuerpo
+
+   No es un token porque un `font-size` suelto no se puede prohibir desde
+   CSS; queda escrito acá para que la próxima sesión sepa contra qué mide.  */
+
+/* Un rótulo en versalita: la etiqueta de un campo, el encabezado de una
+   columna, el nombre de una cifra. Siempre 9.5 y siempre condensada. */
+.rotulo {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 9.5px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-3);
 }
 
 /* La cámara del mapa de la sede. Quien pidió menos movimiento, sin viaje. */

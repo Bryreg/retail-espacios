@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  TrendingUp,
-  AlertTriangle,
   Camera,
   RefreshCw,
-  MapPin,
   Building2,
   Plus,
   X,
@@ -12,6 +9,8 @@ import {
   ChevronRight,
   Search,
   SlidersHorizontal,
+  CalendarRange,
+  ChevronDown,
   Handshake,
   FileSpreadsheet,
   Box,
@@ -37,20 +36,33 @@ import {
   rangeAvailability,
   rateTypeOf,
   referenceRateFor,
-  categoriaDeTipo,
+  rateTypeLabel,
 } from "../types/fixtures";
 import type {
   UnifiedFixture, SpaceStatus, FaceData, RangeAvailability,
 } from "../types/fixtures";
-import SeasonPicker, { describeRange, type DateRange } from "../components/SeasonPicker/SeasonPicker";
+import SeasonPicker, { describeRange, hoyComoRango, type DateRange } from "../components/SeasonPicker/SeasonPicker";
+import Libera from "../components/Libera/Libera";
 import ModoVender from "../components/Contrato/ModoVender";
 import type { ResumenContrato } from "../components/Contrato/Contrato";
 import Planometria from "../components/Contrato/Planometria";
 import CancelarContrato from "../components/Contrato/CancelarContrato";
 import CargaMasiva from "../components/CargaMasiva/CargaMasiva";
-import { inclusiveDays } from "../types/seasons";
+import { inclusiveDays, upcomingSeasons } from "../types/seasons";
+/* El parte —la zona superior escrita en prosa— salió de las dos pantallas.
+   En Supervisar lo reemplaza la franja de cinco cifras: quien pone el canon no
+   necesita que se le explique el negocio, necesita el dato a mano. En Vender
+   lo reemplazan la escalera y el panel de tarifas, que contestan la misma
+   pregunta con la fecha adentro.
+
+   La redacción que lo armaba —`utils/parte.ts`, `utils/redaccion.ts` y
+   `components/Parte/`, con sus dos suites— no viene a esta rama: cuatrocientas
+   líneas que no importa nadie, más dos suites que las prueban, se leen como
+   código vivo hasta que alguien pierde media hora averiguando que no lo es.
+   Quedan en la historia de `claude/retail-espacios-continue-jdn085`, que es
+   donde hay que ir a buscarlas si el parte vuelve. */
 import { nombreDeMueble } from "../utils/nomenclatura";
-import { fechaCorta } from "../utils/propuesta";
+import { fechaEnCurso } from "../utils/propuesta";
 
 // ─── Date / money helpers ────────────────────────────────────────────────────
 
@@ -146,6 +158,20 @@ function facesOf(f: UnifiedFixture): FaceEntry[] {
   ];
 }
 
+/** El código como se LEE, no como se guarda.
+ *
+ *  Una góndola doble guarda la cara A con el código pelado (`GON-60`) y la B
+ *  con sufijo (`GON-60-B`), porque así se llaman los espacios en la base. En
+ *  pantalla eso queda asimétrico: dos filas contiguas, una «GON-60» y otra
+ *  «GON-60-B», y hay que deducir que la primera es una cara y no el mueble
+ *  entero. Se muestran `GON-60·A` y `GON-60·B`, que es como las nombra
+ *  cualquiera que las esté mirando. El código de la base no se toca: es el que
+ *  viaja a la API y en los enlaces de los correos. */
+function codigoVisible(entry: FaceEntry): string {
+  if (!isDoubleGondola(entry.fixture)) return entry.code;
+  return entry.face === "B" ? `${entry.fixture.code}·B` : `${entry.fixture.code}·A`;
+}
+
 /** Faces that take part in the COMMERCIAL picture.
  *
  *  A non-rentable fixture (a column, a checkout, a free zone) is part of the
@@ -217,20 +243,18 @@ const STATUS_META: Record<
 
 // ─── Map search + status filter (product geolocation) ────────────────────────
 
-type MapFilter = "todos" | "free" | "occupied" | "committed" | "expiring" | "expired";
+/** Los filtros que comparten el plano y la tabla.
+ *
+ *  `sin_montar` no sale del estado del contrato sino de los reportes del
+ *  mercaderista, así que es el único que necesita un dato de afuera: quien
+ *  filtra pasa el conjunto de caras sin reportar. Está acá y no en una lista
+ *  aparte porque es una de las cuatro preguntas que se le hacen a esta tabla,
+ *  y tener tres filtros en un lugar y el cuarto en otro es de las cosas que
+ *  obligan a aprenderse la pantalla. */
+type MapFilter =
+  | "todos" | "free" | "occupied" | "committed" | "expiring" | "expired"
+  | "sin_montar";
 
-const FILTER_CHIPS: { id: MapFilter; label: string; ring: string; fill: string }[] = [
-  { id: "todos",     label: "Todos",           ring: "var(--ink-2)",      fill: "var(--surface-3)" },
-  { id: "free",      label: "Disponibles",     ring: "var(--success)",    fill: "rgba(21,128,61,0.10)" },
-  // Ocupado es rojo en el plano, en el 3D y en el mapa de la sede; el chip que
-  // lo filtra tiene que ser del mismo color o el filtro no se asocia con lo que
-  // pinta. «Vencidos» comparte el rojo pero no compite: es un subconjunto de lo
-  // ocupado, y se distingue por la etiqueta y por la columna Días.
-  { id: "occupied",  label: "Ocupados",        ring: "var(--danger)",     fill: "rgba(185,28,28,0.10)" },
-  { id: "committed", label: "Contratados",     ring: "var(--accent-700)", fill: "var(--accent-50)" },
-  { id: "expiring",  label: "Por vencer ≤30d", ring: "var(--warning)",    fill: "rgba(180,83,9,0.12)" },
-  { id: "expired",   label: "Vencidos",        ring: "var(--danger)",     fill: "rgba(185,28,28,0.10)" },
-];
 
 /** Accent- and case-insensitive comparison base. */
 function normalizeText(s: string): string {
@@ -248,8 +272,16 @@ function faceMatchesQuery(entry: FaceEntry, q: string): boolean {
   ].some((s) => s && normalizeText(s).includes(q));
 }
 
-function faceMatchesFilter(entry: FaceEntry, filter: MapFilter): boolean {
+function faceMatchesFilter(
+  entry: FaceEntry,
+  filter: MapFilter,
+  /** Claves `${fixture.id}-${face}` de las caras contratadas y sin reportar. */
+  sinMontar?: Set<string>,
+): boolean {
   if (filter === "todos") return true;
+  if (filter === "sin_montar") {
+    return sinMontar ? sinMontar.has(`${entry.fixture.id}-${entry.face}`) : false;
+  }
   const ds = displayStatus(entry);
   // "Ocupados" means earning today. A committed-but-not-started contract is
   // neither occupied nor available, so it answers to its own chip.
@@ -268,6 +300,13 @@ interface MapMatch {
 
 // ─── Card shell ───────────────────────────────────────────────────────────────
 
+/** Un panel. Blanco sobre el papel, una línea de 1px y 3px de esquina.
+ *
+ *  No lleva sombra: separar con una línea dice dónde termina una cosa y
+ *  empieza otra sin fingir profundidad. Es la única caja del sistema —el mapa,
+ *  el contrato, la tabla y los pendientes son todos esto—, y por eso ninguno
+ *  se lee como «el widget importante»: la jerarquía la dan el tamaño y la
+ *  posición, no el peso del borde. */
 function Card({
   children,
   style = {},
@@ -281,7 +320,9 @@ function Card({
         background: "var(--surface)",
         border: "1px solid var(--line)",
         borderRadius: "var(--r-xl)",
-        boxShadow: "var(--shadow-sm)",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
         ...style,
       }}
     >
@@ -290,28 +331,61 @@ function Card({
   );
 }
 
-// ─── Card header divider ──────────────────────────────────────────────────────
+// ─── Encabezado de panel ──────────────────────────────────────────────────────
 
+/** Título, aclaración y lo que vaya a la derecha, todos sobre la misma línea
+ *  de base.
+ *
+ *  Sin línea divisoria abajo: el encabezado y su contenido son la misma cosa,
+ *  y una regla entre los dos los parte en dos bloques que hay que volver a
+ *  juntar leyendo. El aire alcanza para separarlos.
+ *
+ *  El ícono se fue. Había un triangulito, una flechita y una lupa —uno por
+ *  panel— y ninguno decía nada que el título no dijera; es el patrón que se
+ *  pone cuando hay que llenar un renglón. */
 function CardHeader({
-  icon,
   title,
   sub,
+  right,
 }: {
-  icon: React.ReactNode;
   title: string;
-  sub?: string;
+  sub?: React.ReactNode;
+  /** La zona derecha: la clave del plano, los chips de filtro, «al mes». */
+  right?: React.ReactNode;
 }) {
   return (
     <div
       style={{
-        display: "flex", alignItems: "center", gap: 6,
-        padding: "10px 14px",
-        borderBottom: "1px solid var(--line-soft)",
+        display: "flex", alignItems: "baseline", gap: 12,
+        padding: "11px 15px 9px", flexShrink: 0,
       }}
     >
-      {icon}
-      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-1)" }}>{title}</span>
-      {sub && <span style={{ fontSize: 11, color: "var(--ink-3)" }}>· {sub}</span>}
+      <h2 style={{
+        fontSize: 14.5, fontWeight: 700, letterSpacing: "-0.005em",
+        color: "var(--ink-1)", margin: 0, whiteSpace: "nowrap", flexShrink: 0,
+      }}>
+        {title}
+      </h2>
+      {/* El subtítulo es lo primero que cede. Sin esto el título se partía en
+          dos renglones antes de que la aclaración soltara un solo píxel — y el
+          título es lo único de este renglón que no se puede leer a medias. */}
+      {sub && (
+        <span style={{
+          fontSize: 12, color: "var(--ink-3)", minWidth: 0,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          {sub}
+        </span>
+      )}
+      {right && (
+        <div style={{
+          marginLeft: "auto", display: "flex", alignItems: "center", gap: 14,
+          flexWrap: "wrap", justifyContent: "flex-end",
+          fontSize: 12, color: "var(--ink-3)", flexShrink: 0,
+        }}>
+          {right}
+        </div>
+      )}
     </div>
   );
 }
@@ -322,76 +396,6 @@ function CardHeader({
  *  used for occupancy, where the ratio matters more than the raw count.
  *  `note` is a second fact on its own line: `sub` sits inline beside the value
  *  and a long one breaks across three lines in a card this narrow. */
-function StatCard({
-  label, value, sub, note, color, meter, tone = "plain", onClick, active,
-}: {
-  label: string;
-  value: string | number;
-  sub?: string;
-  note?: string;
-  color: string;
-  meter?: number;
-  tone?: "plain" | "alert";
-  onClick?: () => void;
-  active?: boolean;
-}) {
-  const interactive = !!onClick;
-  return (
-    <div
-      onClick={onClick}
-      role={interactive ? "button" : undefined}
-      tabIndex={interactive ? 0 : undefined}
-      onKeyDown={interactive ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick!(); } } : undefined}
-      style={{
-        flex: "1 1 150px", minWidth: 140,
-        padding: "12px 14px 13px",
-        borderRadius: "var(--r-lg)",
-        background: tone === "alert" ? "var(--surface)" : "var(--surface)",
-        border: `1px solid ${active ? color : "var(--line)"}`,
-        boxShadow: active ? `0 0 0 2px ${color}22` : "var(--shadow-xs)",
-        cursor: interactive ? "pointer" : "default",
-        transition: "border-color .12s, box-shadow .12s",
-        outline: "none",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 9.5, fontWeight: 700, textTransform: "uppercase",
-          letterSpacing: "0.08em", color: "var(--ink-3)", whiteSpace: "nowrap",
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 4 }}>
-        <span style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.05, letterSpacing: "-0.03em", color }}>
-          {value}
-        </span>
-        {sub && <span style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 500 }}>{sub}</span>}
-      </div>
-      {note && (
-        <div style={{ marginTop: 3, fontSize: 10.5, color: "var(--ink-3)", whiteSpace: "nowrap" }}>
-          {note}
-        </div>
-      )}
-      {meter !== undefined && (
-        <div
-          style={{
-            marginTop: 9, height: 5, borderRadius: 99,
-            background: "var(--surface-3)", overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              width: `${Math.max(0, Math.min(100, meter))}%`, height: "100%",
-              background: color, borderRadius: 99, transition: "width .3s",
-            }}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Isometric occupancy map (hero) ──────────────────────────────────────────
 
 const S = 14;
@@ -411,20 +415,26 @@ function darken(hex: string, amt: number): string {
 /** What the map paints, keyed on the READING of the face rather than its
  *  stored status — so the plan tells the same story as the cards.
  *
- *  `committed` is the same violet family as occupied, one step lighter: the
- *  space is sold, just not yet live. Expired turns red because the project's
- *  palette reserves red for what is wrong, and a contract past its end date
- *  is exactly that — painting it as plain "occupied" hid the problem on the
- *  one screen where it should be most visible. */
+ *  Esta lectura —«qué pasa HOY»— tiene siete clases, y siete clases es más de
+ *  lo que el color solo puede sostener: en la escala anterior `free` contra
+ *  `maintenance` daba ΔE 3.6 en deuteranopía. La maqueta resolvió eso sin
+ *  arreglar la escala: el mapa dejó de responder por hoy. Las dos pantallas
+ *  tienen SIEMPRE un periodo puesto, así que el plano pinta la lectura de tres
+ *  clases —libre, se libera, tomado—, y el detalle por estado vive escrito en
+ *  la tabla, donde cada fila lleva su palabra.
+ *
+ *  Esto queda como respaldo —el anillo del popover y la leyenda si algún día
+ *  no hubiera periodo— y sale de la misma paleta de tres, sin el violeta que
+ *  arrastraba del sistema anterior. */
 const DISPLAY_TOP: Record<DisplayStatus, string> = {
-  free:        "#4CC38A",
-  committed:   "#A78BFA",
-  active:      "#8B5CF6",
-  expiring:    "#8B5CF6",
-  expired:     "#E5484D",
-  no_contract: "#E5484D",
-  reserved:    "#F0B429",
-  maintenance: "#A8A29E",
+  free:        "#00786A",
+  committed:   "#17A18C",
+  active:      "#8E1226",
+  expiring:    "#F08519",
+  expired:     "#B7364A",
+  no_contract: "#B7364A",
+  reserved:    "#F79E45",
+  maintenance: "#9AA3A7",
 };
 
 function topColorFor(face: FaceEntry): string {
@@ -433,53 +443,53 @@ function topColorFor(face: FaceEntry): string {
 
 /** Colours for the "available for this period" reading, which answers a
  *  different question than "what is happening today" and therefore uses its
- *  own three-way scale: sellable, negotiable, taken. */
+ *  own three-way scale: sellable, negotiable, taken.
+ *
+ *  Verde se puede, naranja a medias, rojo no. El rojo es OSCURO a propósito:
+ *  cuando el tono se colapsa —un deuteranope no separa rojo de verde por
+ *  color— lo que queda es la luminosidad, y un rojo claro contra un verde
+ *  medio se vuelven el mismo bloque. Medida con la misma cuenta, esta terna
+ *  separa mejor que la que estaba desplegada en TODOS los pares: el peor par
+ *  pasa de 13,5 a 19,9 en dicromacia y de 27,4 a 33,8 en visión normal.
+ *
+ *  Antes de mover uno hay que volver a correr la cuenta sobre los cinco
+ *  colores del plano —los tres estados, el cuerpo y lo no comercializable—.
+ *  Que «se vean distintos» no es evidencia. */
 const RANGE_TOP: Record<RangeAvailability, string> = {
-  libre: "#4CC38A",
-  // Naranja, no ámbar. Parcialmente ocupado es un estado intermedio y el
-  // naranja lo dice sin leyenda: verde se puede, naranja a medias, rojo no.
-  // El ámbar anterior tiraba a amarillo y se leía como «atención», que es otra
-  // cosa. Validado contra los otros tres del mapa en todos los pares: peor
-  // caso ΔE 10.8 daltónico —naranja contra verde— y 16.7 en visión normal
-  // —naranja contra rojo, que es el par apretado porque son vecinos de tono—.
-  // No se puede oscurecer más sin caerse contra el rojo: #D4700F da ΔE 6.6.
+  libre: "#00786A",
   parcial: "#F08519",
-  // Rojo, igual que «ocupado» en el plano, el 3D y el mapa de la sede: es el
-  // mismo hecho —ese espacio no se puede vender— con otra etiqueta. En violeta
-  // el único lugar donde de verdad se vende leía distinto que todos los demás.
-  tomado: "#D93A3A",
+  tomado: "#8E1226",
 };
 
 const RANGE_LABEL: Record<RangeAvailability, string> = {
   libre: "Libre todo el periodo",
-  parcial: "Libre parte del periodo",
+  // Decía «Libre parte del periodo», que nombra el estado. «Se libera en el
+  // periodo» nombra el HECHO, que es lo que se está por vender: dentro de esta
+  // ventana esa cara queda disponible, y esa es la razón para mirarla.
+  parcial: "Se libera en el periodo",
   tomado: "Tomado",
 };
 
 /** Infrastructure on the isometric map: present, but visibly not for sale.
  *
- *  Era `#94A3B8`, y ése era el par que se caía: contra el verde de «libre»
- *  daba ΔE 8.0 en deuteranopía y 14.7 en visión normal, los dos por debajo del
- *  piso. No es un detalle de accesibilidad al margen —el gris es la mayor
- *  parte del plano, así que «lo que puedo vender» contra «lo que ni siquiera
- *  se alquila» es justo el par que hay que distinguir de un vistazo—. La
- *  salida no fue tocar el verde: bajarlo lo acercaba al rojo, que bajo
- *  deuteranopía es el vecino peligroso. Aclarar el gris separa por
- *  luminosidad, que es lo que sobrevive cuando el tono se colapsa, y de paso
- *  hace lo correcto: la infraestructura se va al fondo y el color queda para
- *  lo que se vende.
+ *  La distinción que carga el peso no es este gris contra el del cuerpo —es
+ *  color contra ausencia de color: un mueble comercializable SIEMPRE tiene la
+ *  tapa pintada de un estado, y uno que no se alquila está gris entero—. Aun
+ *  así los dos grises se separan más que los que estaban desplegados (7,0
+ *  contra 4,1), y el orden es el correcto: la infraestructura es la más clara
+ *  y se va al fondo, el mueble que se vende es más oscuro y se adelanta.
  *
  *  Las caras y el contorno salen de acá por `darken()`, así que el prisma
  *  sigue leyéndose en tres dimensiones y no queda una silueta plana. */
-const NON_RENTABLE_TOP = "#DCE2E8";
+const NON_RENTABLE_TOP = "#E4E8E9";
 
-/** El material del mueble. El cuerpo ya no toma el color del estado: se queda
- *  en el gris del acero y el color va en la CARA, que es lo que de verdad se
+/** El material del mueble. El cuerpo no toma el color del estado: se queda en
+ *  el gris del acero y el color va en la CARA, que es lo que de verdad se
  *  vende. Una góndola doble con la cara A libre y la B tomada se veía toda
- *  roja; ahora se ve el mueble, y el rojo sólo en el lado que está tomado. */
-const CUERPO = "#CBD5E1";
-const CUERPO_LN = "#8FA0B4";
-const NON_RENTABLE_LABEL = "No comercializable";
+ *  roja; así se ve el mueble, y el rojo sólo en el lado que está tomado. */
+const CUERPO = "#C4CBCE";
+const CUERPO_LN = "#9AA3A7";
+const NON_RENTABLE_LABEL = "Resto de la sala";
 
 function pts(...points: [number, number][]): string {
   return points.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
@@ -492,9 +502,24 @@ export interface MapAnchor {
   h: number;
 }
 
+/** Cuántos rótulos se dibujan sobre el plano.
+ *
+ *  `todos` es Vender: el plano ES el directorio —se busca un espacio para
+ *  ofrecerlo— y hay que poder leer los códigos sin tocar nada.
+ *
+ *  `elegido` es Supervisar: ahí la tabla de abajo ya lista las veintitrés
+ *  caras con su código, su estado y su plata, así que el plano no es un
+ *  directorio sino un UBICADOR — contesta «¿dónde queda ésta?»— y le alcanza
+ *  con rotular la fila que está abierta. De paso resuelve un problema de
+ *  medida: veintitrés rótulos en un panel de 700 px caen a un cuerpo ilegible,
+ *  y sacarlos deja lugar para agrandar el que importa. */
+type Rotulos = "todos" | "elegido";
+
 interface IsoMapProps {
   fixtures: UnifiedFixture[];
-  selectedId: string | null;
+  /** Los muebles marcados. En Supervisar es uno —el que se está mirando—; en
+   *  Vender son todos los que van en el contrato que se está armando. */
+  selectedIds: string[];
   /** `point` is relative to the map wrapper, and carries the wrapper's own
    *  size so the popover can flip sides and stay inside the card. */
   onSelect: (f: UnifiedFixture | null, point?: MapAnchor) => void;
@@ -503,9 +528,10 @@ interface IsoMapProps {
   /** When set, faces are painted by availability over this period instead of
    *  by what is happening today. */
   range: DateRange | null;
+  rotulos?: Rotulos;
 }
 
-function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
+function IsoMap({ fixtures, selectedIds, onSelect, match, range, rotulos = "todos" }: IsoMapProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [tip, setTip] = useState<{ x: number; y: number; title: string; sub: string } | null>(null);
@@ -599,10 +625,16 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
         topHalves = [mitad(topA, [tA, tB, tC, tD])];
       }
 
-      // Label above the prism — small unlabeled fixtures still get one while matched
+      // Label above the prism — small unlabeled fixtures still get one while matched.
+      //
+      // Sólo lo comercializable. Una sala tiene sesenta góndolas de pared, una
+      // fila de cajas y las columnas; rotularlas llenaba el plano de códigos
+      // de cosas que no se venden y enterraba los veintitrés que sí. El resto
+      // de la sala es el CONTEXTO donde está lo que se vende, y el contexto no
+      // se rotula: se dibuja.
       const area = f.w * f.d;
-      const defaultVisible = Boolean(f.nomenclatura) || area > 1.5;
-      const labelText = nombreDeMueble(f);
+      const defaultVisible = rentable && (Boolean(f.nomenclatura) || area > 1.5);
+      const labelText = rentable ? nombreDeMueble(f) : "";
       const [lcx, lcy] = iso(f.cx, f.cz, h);
       const label = labelText ? { text: labelText, x: lcx, y: lcy, defaultVisible } : null;
       if (label) addPt([label.x, label.y - 8]);
@@ -667,8 +699,12 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
   // Al elegir un mueble el mapa se le acerca. `k` es cuánto se agranda; todo
   // lo que tiene que seguir midiendo lo mismo en pantalla —rótulos, anillos,
   // las pastillas de cara— se divide por él.
-  const enfocado = selectedId
-    ? scene.prisms.find((q) => q.f.id === selectedId)?.foco ?? null
+  // La cámara se acerca SÓLO cuando hay un mueble elegido. Con dos o más
+  // —un contrato sobre varias puntas— acercarse a uno esconde al resto y, peor,
+  // esconde los que todavía faltan tocar. Ahí el trabajo es seguir eligiendo
+  // sobre el plano entero.
+  const enfocado = selectedIds.length === 1
+    ? scene.prisms.find((q) => q.f.id === selectedIds[0])?.foco ?? null
     : null;
   // El tope importa más que la fórmula: una punta de góndola es tan chica que
   // encuadrarla sola deja a los vecinos gigantes y cortados. Con 3.4 se ve el
@@ -719,7 +755,7 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
 
         {scene.prisms.map(({ f, topHalves, left, right, sideL, sideR, stroke, topOutline, label, tooltipSub }) => {
           const hovered = hoverId === f.id;
-          const selected = selectedId === f.id;
+          const selected = selectedIds.includes(f.id);
           const flags = match?.faceFlags.get(f.id);
           const matched = !match || (flags?.some(Boolean) ?? false);
           const dimmed = match !== null && !matched;
@@ -745,14 +781,14 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
               onMouseMove={(e) => {
                 // The popover already describes this one — a tooltip on top of
                 // it would just be two cards saying the same thing.
-                if (f.id === selectedId) { setTip(null); return; }
+                if (selected) { setTip(null); return; }
                 handleMove(e, f.label || f.code, tooltipSub);
               }}
               onMouseLeave={() => {
                 setHoverId(null);
                 setTip(null);
               }}
-              opacity={dimmed ? 0.18 : selectedId && !selected ? 0.2 : 1}
+              opacity={dimmed ? 0.18 : enfocado && !selected ? 0.2 : 1}
               style={{
                 cursor: "pointer",
                 filter: hovered ? "brightness(1.12)" : undefined,
@@ -823,7 +859,9 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
               ))}
               {/* Floating label — always visible on matches */}
               {label
-                && (label.defaultVisible || (match !== null && matched))
+                && (rotulos === "elegido"
+                      ? selected || (match !== null && matched)
+                      : label.defaultVisible || (match !== null && matched))
                 && !(selected && k > 1.6 && topHalves.length > 1) && (
                 <text
                   x={label.x}
@@ -848,7 +886,7 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
       </svg>
 
       {/* Volver a ver la sede entera. Sólo aparece cuando hay algo enfocado. */}
-      {selectedId && (
+      {enfocado && (
         <button
           onClick={(e) => { e.stopPropagation(); onSelect(null); }}
           style={{
@@ -888,14 +926,33 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range }: IsoMapProps) {
   );
 }
 
-function MapLegend({ range }: { range?: DateRange | null }) {
-  // The legend has to describe whatever the map is actually painting: asking
-  // about a period replaces the six states of "today" with a three-way answer.
-  const items: { c: string; l: string }[] = range
+/** La clave del plano: qué quiere decir cada color y CUÁNTAS caras hay de
+ *  cada uno.
+ *
+ *  El número al lado del color es lo que la vuelve un dato en vez de un
+ *  glosario. Sin él hay que contar prismas a ojo para saber si «se libera en
+ *  el periodo» son dos o son veinte, que es justo la pregunta que se le hace
+ *  a esta pantalla.
+ *
+ *  Las palabras cambian con el modo porque la pregunta cambia: quien vende
+ *  mira hacia adelante —«esta cara SE LIBERA dentro de la ventana, la puedo
+ *  ofrecer»— y quien supervisa mira el contrato que se le está por caer
+ *  —«VENCE dentro»—. Es el mismo hecho y el mismo color; lo que cambia es de
+ *  qué lado del negocio se lo nombra. */
+function MapLegend({
+  range, tally, modo,
+}: {
+  range?: DateRange | null;
+  tally?: { libres: number; parciales: number; tomados: number } | null;
+  modo: "vender" | "supervisar";
+}) {
+  const items: { c: string; l: string; n?: number }[] = range
     ? [
-        { c: RANGE_TOP.libre,   l: RANGE_LABEL.libre },
-        { c: RANGE_TOP.parcial, l: RANGE_LABEL.parcial },
-        { c: RANGE_TOP.tomado,  l: RANGE_LABEL.tomado },
+        { c: RANGE_TOP.libre,   l: modo === "vender" ? RANGE_LABEL.libre : "Libre",
+          n: tally?.libres },
+        { c: RANGE_TOP.parcial, l: modo === "vender" ? RANGE_LABEL.parcial : "Vence dentro",
+          n: tally?.parciales },
+        { c: RANGE_TOP.tomado,  l: RANGE_LABEL.tomado, n: tally?.tomados },
         { c: NON_RENTABLE_TOP,  l: NON_RENTABLE_LABEL },
       ]
     : [
@@ -908,14 +965,20 @@ function MapLegend({ range }: { range?: DateRange | null }) {
     { c: NON_RENTABLE_TOP,        l: NON_RENTABLE_LABEL },
   ];
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center" }}>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
       {items.map((o) => (
         <div
           key={o.l}
-          style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "var(--ink-3)" }}
+          style={{
+            display: "flex", alignItems: "center", gap: 5, fontSize: 11.5,
+            color: "var(--ink-2)", whiteSpace: "nowrap",
+          }}
         >
-          <span style={{ width: 9, height: 9, borderRadius: 2.5, background: o.c, flexShrink: 0 }} />
+          <span style={{ width: 10, height: 10, borderRadius: 2, background: o.c, flexShrink: 0 }} />
           {o.l}
+          {o.n !== undefined && (
+            <b style={{ fontWeight: 700, color: "var(--ink-1)" }}>{o.n}</b>
+          )}
         </div>
       ))}
     </div>
@@ -1008,7 +1071,7 @@ function StatusPill({ fixture, face }: { fixture: UnifiedFixture; face: FaceEntr
     <span
       style={{
         display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0,
-        fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 999,
+        fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: "var(--r-sm)",
         background: rentable ? meta.fill : "var(--surface-3)",
         color:      rentable ? meta.ring : "var(--ink-2)",
         border: `1px solid ${rentable ? meta.edge : "var(--line)"}`,
@@ -1096,7 +1159,7 @@ function PeriodBox({ entry }: { entry: FaceEntry }) {
             <span
               style={{
                 display: "inline-flex", alignItems: "center", fontSize: 11, fontWeight: 700,
-                padding: "3px 10px", borderRadius: 999, background: pill.bg, color: pill.color,
+                padding: "3px 9px", borderRadius: "var(--r-sm)", background: pill.bg, color: pill.color,
               }}
             >
               {pill.text}
@@ -1244,7 +1307,7 @@ function FixturePopover({
                   {formatRange(entry.startDate, entry.endDate)}
                 </span>
                 {pill && (
-                  <span style={{ marginLeft: "auto", fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: pill.bg, color: pill.color }}>
+                  <span style={{ marginLeft: "auto", fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: "var(--r-sm)", background: pill.bg, color: pill.color }}>
                     {pill.text}
                   </span>
                 )}
@@ -1502,77 +1565,128 @@ interface ContractEntry extends FaceEntry {
   days: number;
 }
 
-function AtencionSection({ label, color }: { label: string; color: string }) {
-  return (
-    <div
-      style={{
-        padding: "7px 14px 4px",
-        fontSize: 9.5, fontWeight: 700,
-        textTransform: "uppercase", letterSpacing: "0.08em",
-        color,
-      }}
-    >
-      {label}
-    </div>
-  );
-}
-
-function AtencionRow({
-  entry,
-  chip,
-  chipColor,
-  bg,
-  dates,
-  last,
-  onFoto,
+/** El encabezado de un grupo de pendientes: qué son, y cuánto pesan.
+ *
+ *  El número de la derecha es la razón de ser del grupo. «Por vencer en 30
+ *  días» sin cifra es una categoría; con «$3.700.000» al lado es una alarma
+ *  con tamaño, y ése es el dato con el que se decide a quién llamar primero. */
+function AtencionSection({
+  label, color, monto,
 }: {
-  entry: FaceEntry;
-  chip: string;
-  chipColor: string;
-  bg: string;
-  dates: string;
-  last: boolean;
-  /** Abre la foto del montaje. Solo la traen las filas que tienen prueba. */
-  onFoto?: () => void;
+  label: string;
+  color: string;
+  /** Lo que ese grupo vale: plata en los que vencen, cantidad en el resto. */
+  monto?: React.ReactNode;
 }) {
   return (
     <div
       style={{
-        display: "flex", alignItems: "center", gap: 10,
-        height: 34, padding: "0 14px",
-        background: bg,
-        borderBottom: last ? "none" : "1px solid var(--line-soft)",
+        display: "flex", alignItems: "baseline", justifyContent: "space-between",
+        gap: 10, padding: "0 6px 6px", margin: "0 0 2px",
+        borderBottom: "1px solid var(--line)",
       }}
     >
       <span
         style={{
-          width: 38, flexShrink: 0, textAlign: "right",
-          fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700,
-          color: chipColor,
+          fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 9.5,
+          letterSpacing: "0.11em", textTransform: "uppercase", color,
         }}
       >
-        {chip}
+        {label}
       </span>
-      <span style={{ flexShrink: 0, fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-2)" }}>
-        {entry.code}
-      </span>
-      <span
+      {monto !== undefined && (
+        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-1)" }}>{monto}</span>
+      )}
+    </div>
+  );
+}
+
+/** Una fila de «Para revisar»: días, código, quién, y cuándo.
+ *
+ *  Es un BOTÓN, no un renglón. Antes la lista y el plano eran dos paneles que
+ *  no se hablaban: se leía «PUN-03 vence en 24 días» y para ver dónde quedaba
+ *  ese espacio había que buscarlo a ojo entre 106 muebles. Ahora tocar la fila
+ *  lo selecciona en el plano de al lado —y el plano, al seleccionarlo, lo
+ *  rotula—. La lista dice QUÉ y el plano dice DÓNDE; sueltos no servían.
+ *
+ *  Los días van primero y en una plaquita: es por lo que se ordena la lista y
+ *  lo único que decide si esto se mira hoy o la semana que viene. */
+function AtencionRow({
+  entry,
+  chip,
+  tono = "alarma",
+  dates,
+  selected,
+  onSelect,
+  onFoto,
+}: {
+  entry: FaceEntry;
+  chip: string;
+  /** `alarma` = rojo (vence, vencido). `sordo` = gris (esperando algo). */
+  tono?: "alarma" | "sordo";
+  dates: string;
+  selected?: boolean;
+  onSelect?: () => void;
+  /** Abre la foto del montaje. Solo la traen las filas que tienen prueba. */
+  onFoto?: () => void;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div
+      style={{
+        display: "flex", alignItems: "center",
+        borderTop: "1px solid var(--line-soft)",
+        background: selected ? "var(--surface-2)" : hover ? "#F6F8F8" : "transparent",
+        borderLeft: `2px solid ${selected ? "var(--ink-1)" : "transparent"}`,
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <button
+        type="button"
+        onClick={onSelect}
+        disabled={!onSelect}
+        title={onSelect ? "Verlo en el plano" : undefined}
         style={{
-          flex: 1, minWidth: 0, fontSize: 11.5, color: "var(--ink-1)",
-          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          flex: 1, minWidth: 0,
+          display: "flex", alignItems: "center", gap: 9,
+          padding: "5px 6px", border: "none", background: "none",
+          textAlign: "left", color: "inherit", fontFamily: "inherit",
+          cursor: onSelect ? "pointer" : "default",
         }}
       >
-        {entry.fixture.label || entry.fixture.code}
-        {entry.supplierName ? ` · ${entry.supplierName}` : ""}
-      </span>
-      <span
-        style={{
-          flexShrink: 0, textAlign: "right",
-          fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-3)",
-        }}
-      >
-        {dates}
-      </span>
+        <span
+          style={{
+            flexShrink: 0, minWidth: 38, textAlign: "center", padding: "2px 5px",
+            fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 14.5,
+            borderRadius: "var(--r-xs)",
+            color: tono === "alarma" ? "var(--ocupado)" : "var(--ink-2)",
+            background: tono === "alarma" ? "var(--ocupado-suave)" : "var(--surface-3)",
+          }}
+        >
+          {chip}
+        </span>
+        <span
+          style={{
+            flexShrink: 0, width: 56,
+            fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 13,
+            letterSpacing: "0.02em", color: "var(--ink-1)",
+          }}
+        >
+          {codigoVisible(entry)}
+        </span>
+        <span
+          style={{
+            flex: 1, minWidth: 0, fontSize: 12, color: "var(--ink-2)",
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          }}
+        >
+          {entry.supplierName || entry.fixture.label || entry.fixture.code}
+        </span>
+        <span style={{ flexShrink: 0, fontSize: 12, color: "var(--ink-3)", whiteSpace: "nowrap" }}>
+          {dates}
+        </span>
+      </button>
       {onFoto && (
         <button
           onClick={onFoto}
@@ -1580,8 +1694,8 @@ function AtencionRow({
           aria-label="Ver la foto del reporte"
           style={{
             flexShrink: 0, display: "inline-flex", alignItems: "center",
-            background: "none", border: "none", padding: 0, cursor: "pointer",
-            color: "var(--ink-3)",
+            background: "none", border: "none", padding: "0 8px 0 2px",
+            cursor: "pointer", color: "var(--ink-3)",
           }}
         >
           <Camera size={12} />
@@ -1635,56 +1749,110 @@ function MontajeChip({
   );
 }
 
-// ─── Supplier row (top proveedores, compact ranked) ──────────────────────────
+// ─── Quién paga el canon ─────────────────────────────────────────────────────
 
+/** Un proveedor y lo que pone, con la parte del canon que representa.
+ *
+ *  El panel se llamaba «Los que más pagan» y estaba ordenado por plata, con un
+ *  1-2-3 al costado. Ese ranking contesta una pregunta de vanidad. La que
+ *  importa es de quién depende la sede: por eso el porcentaje —«COCA COLA es
+ *  el 23% del canon»— y el sello VENCE, que juntos dicen cuánta plata se
+ *  levanta y se va si esa renovación no se cierra.
+ *
+ *  El número de contratos se fue de la fila: ocupaba lugar y no cambia
+ *  ninguna decisión. Está en la tabla de abajo, que es donde se mira. */
 function SupplierRow({
-  name,
-  revenue,
-  count,
-  rank,
+  name, revenue, pct, vence,
 }: {
   name: string;
   revenue: number;
-  count: number;
-  rank: number;
+  /** Qué parte del canon vigente pone este proveedor. */
+  pct: number;
+  /** Tiene al menos una cara que vence dentro de los 30 días. */
+  vence: boolean;
 }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, height: 28, padding: "0 14px" }}>
+    <div
+      style={{
+        display: "grid", gridTemplateColumns: "1fr auto auto 36px",
+        alignItems: "center", columnGap: 8,
+        padding: "4px 0", borderTop: "1px solid var(--line-soft)",
+      }}
+    >
       <span
         style={{
-          width: 16, flexShrink: 0, textAlign: "right",
-          fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-4)",
-        }}
-      >
-        {rank + 1}
-      </span>
-      <span
-        style={{
-          flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, color: "var(--ink-1)",
+          fontSize: 13, color: "var(--ink-1)", minWidth: 0,
           whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
         }}
+        title={name}
       >
         {name}
       </span>
-      <span style={{ flexShrink: 0, fontSize: 10.5, color: "var(--ink-3)" }}>
-        {count} contrato{count !== 1 ? "s" : ""}
-      </span>
-      <span
-        style={{
-          flexShrink: 0, fontFamily: "var(--font-mono)", fontSize: 11.5,
-          fontWeight: 600, color: "var(--success)",
-        }}
-      >
+      {vence ? (
+        <span
+          title="Tiene al menos un contrato que vence dentro de 30 días"
+          style={{
+            fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 9.5,
+            letterSpacing: "0.09em", textTransform: "uppercase",
+            color: "var(--ocupado)", background: "var(--ocupado-suave)",
+            borderRadius: "var(--r-xs)", padding: "1px 4px",
+          }}
+        >
+          vence
+        </span>
+      ) : (
+        <span />
+      )}
+      <span style={{ fontSize: 13, fontWeight: 700, textAlign: "right", whiteSpace: "nowrap" }}>
         {formatCOP(revenue)}
       </span>
+      <span style={{ fontSize: 11, color: "var(--ink-3)", textAlign: "right" }}>{pct}%</span>
     </div>
   );
 }
 
-// ─── Spaces table ─────────────────────────────────────────────────────────────
+// ─── Estado por espacio ──────────────────────────────────────────────────────
+
+/** Cómo se dice cada estado en la tabla, y de qué color va el punto.
+ *
+ *  El punto es el MISMO color que el mueble en el plano de arriba: es lo que
+ *  permite leer una fila y encontrarla en la sala sin volver a pensar. Nunca
+ *  va solo —al lado está la palabra, y a la derecha los días—, así que la
+ *  identidad del estado no depende del color en ningún momento. */
+const PIN: Record<DisplayStatus, { punto: string; texto: string; palabra: string }> = {
+  free:        { punto: RANGE_TOP.libre,   texto: "var(--libre)",   palabra: "Libre" },
+  active:      { punto: RANGE_TOP.tomado,  texto: "var(--ink-2)",   palabra: "Activo" },
+  expiring:    { punto: RANGE_TOP.parcial, texto: "var(--ocupado)", palabra: "Por vencer" },
+  committed:   { punto: DISPLAY_TOP.committed, texto: "var(--ink-2)", palabra: "Contratado" },
+  expired:     { punto: RANGE_TOP.tomado,  texto: "var(--ocupado)", palabra: "Vencido" },
+  no_contract: { punto: RANGE_TOP.tomado,  texto: "var(--ocupado)", palabra: "Sin contrato" },
+  reserved:    { punto: DISPLAY_TOP.reserved, texto: "var(--ink-2)", palabra: "Reservado" },
+  maintenance: { punto: DISPLAY_TOP.maintenance, texto: "var(--ink-3)", palabra: "Mantenim." },
+};
+
+/** El orden de la tabla: primero lo que pide acción.
+ *
+ *  Ordenar sólo por «días que faltan» ponía arriba lo vencido —que ya no se
+ *  puede evitar— y enterraba lo que vence la semana que viene, que es lo único
+ *  sobre lo que todavía se puede hacer algo. Van por grupo y adentro del grupo
+ *  por urgencia; lo libre al final, alfabético, porque ahí no hay urgencia:
+ *  hay inventario. */
+function ordenDeFila(e: FaceEntry): [number, number, string] {
+  const ds = displayStatus(e);
+  const dias = e.endDate ? daysUntil(e.endDate) : 99999;
+  const grupo =
+    ds === "no_contract" ? 0
+    : ds === "expired" ? 1
+    : ds === "expiring" ? 2
+    : ds === "free" ? 5
+    : ds === "maintenance" ? 4
+    : 3;
+  return [grupo, dias, e.code];
+}
 
 function SpacesTable({
-  fixtures, isAdmin, query, filter, montajeDe,
+  fixtures, isAdmin, query, filter, montajeDe, tarifaDe,
+  selectedId, onSelect, sinMontar,
 }: {
   fixtures: UnifiedFixture[];
   isAdmin: boolean;
@@ -1694,14 +1862,23 @@ function SpacesTable({
    *  search box and a second row of chips doing the same job as the map's. */
   query: string;
   filter: MapFilter;
+  /** El mueble abierto en el plano: la fila se marca y el plano la rotula. */
+  selectedId?: string | null;
+  onSelect?: (f: UnifiedFixture) => void;
+  /** Claves de las caras contratadas y sin reportar, para el filtro. */
+  sinMontar?: Set<string>;
+  /** La tarifa de referencia de esa cara. Sin esto la columna de plata queda
+   *  vacía en las filas libres, que suelen ser la mayoría de la tabla, y no
+   *  se puede contestar «¿cuánto pido por ésta?» sin salir a otra pantalla. */
+  tarifaDe: (entry: FaceEntry) => number | null;
 }) {
   // One row per rentable face — doubles expand to A + B, matching the KPIs.
   const rows = useMemo(
     () =>
       fixtures.flatMap(commercialFacesOf).sort((a, b) => {
-        const ad = a.endDate ? daysUntil(a.endDate) : 99999;
-        const bd = b.endDate ? daysUntil(b.endDate) : 99999;
-        return ad - bd;
+        const [ga, da, ca] = ordenDeFila(a);
+        const [gb, db, cb] = ordenDeFila(b);
+        return ga - gb || da - db || ca.localeCompare(cb);
       }),
     [fixtures],
   );
@@ -1710,201 +1887,276 @@ function SpacesTable({
   const filtered = useMemo(() => {
     const q = normalizeText(query.trim());
     return rows.filter(
-      (e) => (!q || faceMatchesQuery(e, q)) && faceMatchesFilter(e, filter),
+      (e) => (!q || faceMatchesQuery(e, q)) && faceMatchesFilter(e, filter, sinMontar),
     );
-  }, [rows, filter, query]);
+  }, [rows, filter, query, sinMontar]);
 
-  // Con alineación explícita y no por índice: la regla vieja era `i >= 4`, así
-  // que agregar una columna en el medio corría la alineación de todas las de
-  // atrás — y ya dejaba «Montaje» con el título a la derecha y el contenido a
-  // la izquierda.
-  const columnas: { etiqueta: string; derecha?: boolean }[] = [
-    { etiqueta: "Código" },
-    { etiqueta: "Tipo" },
+  // Los anchos van en el `th` y no en el `td`: con `table-layout:fixed` el
+  // navegador toma las medidas de la PRIMERA fila, que es la del encabezado.
+  // Puestos en las celdas se ignoran en silencio y la tabla vuelve a repartir
+  // el ancho a ojo — que es exactamente lo que hacía antes de esto.
+  const columnas: { etiqueta: string; ancho?: number; derecha?: boolean }[] = [
+    { etiqueta: "Código", ancho: 104 },
+    { etiqueta: "Tipo", ancho: 150 },
     { etiqueta: "Proveedor" },
-    { etiqueta: "Estado" },
-    { etiqueta: "Montaje" },
-    { etiqueta: "Desde", derecha: true },
-    { etiqueta: "Hasta", derecha: true },
-    { etiqueta: "Días",  derecha: true },
+    { etiqueta: "Estado", ancho: 104 },
+    { etiqueta: "Montaje", ancho: 92 },
+    { etiqueta: "Desde", ancho: 96 },
+    { etiqueta: "Hasta", ancho: 96 },
+    { etiqueta: "Días", ancho: 56, derecha: true },
   ];
-  if (isAdmin) columnas.push({ etiqueta: "Renta / mes", derecha: true });
+  if (isAdmin) columnas.push({ etiqueta: "Renta / mes", ancho: 110, derecha: true });
+
+  const vacio = <span style={{ color: "var(--ink-vacio)" }}>—</span>;
 
   return (
-    <>
-      {filtered.length === 0 && (
-        <div style={{ padding: "18px 14px", fontSize: 12, color: "var(--ink-3)" }}>
-          Ningún espacio coincide con la búsqueda.
-        </div>
-      )}
-      <div style={{ maxHeight: 360, overflowY: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, fontSize: 12 }}>
-          <thead style={{ position: "sticky", top: 0, zIndex: 1 }}>
-            <tr style={{ background: "var(--surface)" }}>
-              {columnas.map((c) => (
-                <th
-                  key={c.etiqueta}
+    <div style={{ padding: "0 15px 12px", overflowX: "auto" }}>
+      <table
+        style={{
+          width: "100%", minWidth: 880,
+          borderCollapse: "collapse", tableLayout: "fixed",
+        }}
+      >
+        <thead>
+          <tr>
+            {columnas.map((c) => (
+              <th
+                key={c.etiqueta}
+                style={{
+                  width: c.ancho,
+                  padding: "0 8px 5px",
+                  textAlign: c.derecha ? "right" : "left",
+                  fontFamily: "var(--font-mono)", fontSize: 9.5, fontWeight: 600,
+                  color: "var(--ink-3)",
+                  textTransform: "uppercase", letterSpacing: "0.1em",
+                  borderBottom: "1px solid var(--line-strong)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {c.etiqueta}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {filtered.length === 0 && (
+            <tr>
+              <td colSpan={columnas.length} style={{ padding: "14px 8px", fontSize: 12, color: "var(--ink-3)" }}>
+                {query.trim()
+                  ? <>Sin resultados para «{query.trim()}»</>
+                  : "Sin espacios con este estado."}
+              </td>
+            </tr>
+          )}
+          {filtered.map((entry) => {
+            const ds = displayStatus(entry);
+            const pin = PIN[ds];
+            const libre = ds === "free";
+            const days = entry.endDate && !libre ? daysUntil(entry.endDate) : null;
+            const sel = selectedId === entry.fixture.id;
+
+            const celda: React.CSSProperties = {
+              padding: "0 8px", height: 28,
+              borderBottom: "1px solid var(--line-soft)",
+              fontSize: 12.5, color: libre ? "var(--ink-3)" : "var(--ink-2)",
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              background: sel ? "var(--surface-2)" : undefined,
+            };
+
+            return (
+              <tr
+                key={`${entry.fixture.id}-${entry.face}`}
+                onClick={onSelect ? () => onSelect(entry.fixture) : undefined}
+                style={{ cursor: onSelect ? "pointer" : "default" }}
+                onMouseEnter={(e) => {
+                  if (sel) return;
+                  e.currentTarget.querySelectorAll("td").forEach((td) => {
+                    (td as HTMLElement).style.background = "#F6F8F8";
+                  });
+                }}
+                onMouseLeave={(e) => {
+                  if (sel) return;
+                  e.currentTarget.querySelectorAll("td").forEach((td) => {
+                    (td as HTMLElement).style.background = "";
+                  });
+                }}
+              >
+                <td
                   style={{
-                    padding: "7px 10px",
-                    textAlign: c.derecha ? "right" : "left",
-                    fontSize: 9.5, fontWeight: 700,
-                    color: "var(--ink-3)",
-                    textTransform: "uppercase", letterSpacing: "0.08em",
-                    boxShadow: "inset 0 -1px 0 var(--line-strong)",
-                    whiteSpace: "nowrap",
+                    ...celda,
+                    fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 13,
+                    letterSpacing: "0.02em", color: "var(--ink-1)",
+                    boxShadow: sel ? "inset 2px 0 0 var(--ink-1)" : undefined,
                   }}
                 >
-                  {c.etiqueta}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={columnas.length} style={{ padding: "10px 14px", fontSize: 12, color: "var(--ink-3)" }}>
-                  {query.trim()
-                    ? <>Sin resultados para «{query.trim()}»</>
-                    : "Sin espacios con este estado."}
+                  <span
+                    aria-hidden
+                    style={{
+                      display: "inline-block", width: 7, height: 7, borderRadius: "50%",
+                      marginRight: 8, verticalAlign: 1, background: pin.punto,
+                    }}
+                  />
+                  {codigoVisible(entry)}
                 </td>
-              </tr>
-            )}
-            {filtered.map((entry) => {
-              const ds = displayStatus(entry);
-              const meta = STATUS_META[ds];
-              const days = entry.endDate ? daysUntil(entry.endDate) : null;
-              const isDanger = ds === "expired" || ds === "no_contract";
-              // Libre with stale past contract data → muted note instead of red days
-              const staleFreeDays = ds === "free" && days !== null && days < 0 ? Math.abs(days) : null;
-              // ANY free face must not look like an active contract row: leftover
-              // supplier/date data renders muted (history), días always "—".
-              const freeRow = ds === "free";
-              const cell: React.CSSProperties = {
-                padding: "7px 10px",
-                borderBottom: "1px solid var(--line-soft)",
-              };
-
-              return (
-                <tr
-                  key={`${entry.fixture.id}-${entry.face}`}
-                  style={{ background: isDanger ? "rgba(185,28,28,0.04)" : "transparent" }}
+                {/* El TIPO, no el nombre propio del mueble. La maqueta dice
+                    «Punta de góndola» y no «Punta 3 del pasillo 5»: el nombre
+                    propio ya está en la columna del código, y repetirlo acá
+                    dejaba la columna sin contestar de qué clase de espacio se
+                    trata —que es lo que se compara entre filas—. El nombre
+                    completo queda al pasar por encima. */}
+                <td style={celda} title={entry.fixture.label || undefined}>
+                  {rateTypeLabel(rateTypeOf(entry.fixture))}
+                </td>
+                <td style={{ ...celda, color: libre ? "var(--ink-3)" : "var(--ink-1)" }}
+                    title={entry.supplierName || undefined}>
+                  {entry.supplierName
+                    ? libre
+                      ? <span style={{ color: "var(--ink-4)" }}>último: {entry.supplierName}</span>
+                      : entry.supplierName
+                    : vacio}
+                </td>
+                <td style={celda}>
+                  <span style={{
+                    fontSize: 12, color: pin.texto,
+                    fontWeight: ds === "expiring" || ds === "expired" || ds === "no_contract" ? 600 : 400,
+                  }}>
+                    {pin.palabra}
+                  </span>
+                </td>
+                <td style={celda}>
+                  <MontajeChip entry={entry} reporte={montajeDe(entry)} />
+                </td>
+                {/* El período. La tabla ya ordenaba por fecha de fin y contaba
+                    los días, pero no decía DESDE ni HASTA cuándo — y eso es lo
+                    que se necesita para renovar o para reclamar. */}
+                {([entry.startDate, entry.endDate] as const).map((iso, i) => (
+                  <td key={i} style={celda}>
+                    {iso && !libre ? fechaEnCurso(iso) : vacio}
+                  </td>
+                ))}
+                <td
+                  style={{
+                    ...celda, textAlign: "right", fontWeight: 700,
+                    color: days === null ? "var(--ink-vacio)"
+                      : days < 0 ? "var(--ocupado)"
+                      : days <= 30 ? "var(--ocupado)"
+                      : "var(--ink-2)",
+                  }}
                 >
-                  <td
-                    style={{
-                      ...cell,
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 11.5,
-                      color: "var(--ink-2)",
-                    }}
-                  >
-                    {entry.code}
-                  </td>
-                  <td style={{ ...cell, color: "var(--ink-2)" }}>
-                    {entry.fixture.label}
-                    {entry.face === "B" && (
-                      <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent-700)" }}> · Cara B</span>
-                    )}
-                  </td>
-                  <td style={cell}>
-                    {staleFreeDays !== null ? (
-                      <span style={{ color: "var(--ink-4)", fontSize: 11.5 }}>
-                        venció hace {staleFreeDays}d{entry.supplierName ? ` · ${entry.supplierName}` : ""}
-                      </span>
-                    ) : freeRow && entry.supplierName ? (
-                      <span style={{ color: "var(--ink-4)", fontSize: 11.5 }}>
-                        último: {entry.supplierName}
-                      </span>
-                    ) : entry.supplierName ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span
-                          style={{
-                            width: 16, height: 16, borderRadius: 3,
-                            background: "var(--accent-100)", color: "var(--accent-700)",
-                            display: "inline-flex", alignItems: "center", justifyContent: "center",
-                            fontSize: 9, fontWeight: 700, flexShrink: 0,
-                          }}
-                        >
-                          {entry.supplierName[0]?.toUpperCase()}
-                        </span>
-                        <span style={{ color: "var(--ink-1)", fontSize: 11.5 }}>{entry.supplierName}</span>
-                      </div>
-                    ) : ds === "no_contract" ? (
-                      <span style={{ color: "var(--danger)", fontWeight: 600, fontSize: 11.5 }}>
-                        ⚠ Sin contrato
-                      </span>
-                    ) : (
-                      <span style={{ color: "var(--ink-4)", fontSize: 11.5 }}>—</span>
-                    )}
-                  </td>
-                  <td style={cell}>
-                    <span
-                      style={{
-                        display: "inline-flex", alignItems: "center", gap: 5,
-                        fontSize: 11.5, fontWeight: 600, color: meta.ring,
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: 6, height: 6, borderRadius: 99,
-                          background: meta.ring, flexShrink: 0,
-                        }}
-                      />
-                      {meta.label}
-                    </span>
-                  </td>
-                  <td style={cell}>
-                    <MontajeChip entry={entry} reporte={montajeDe(entry)} />
-                  </td>
-                  {/* El período. La tabla ya ordenaba por fecha de fin y contaba
-                      los días, pero no decía DESDE ni HASTA cuándo — y eso es lo
-                      que se necesita para renovar o para reclamar. En una cara
-                      libre se muestran apagadas: son historia, igual que el
-                      «último: proveedor» de la columna de al lado. */}
-                  {([entry.startDate, entry.endDate] as const).map((iso, i) => (
-                    <td
-                      key={i}
-                      style={{
-                        ...cell, textAlign: "right", whiteSpace: "nowrap",
-                        fontFamily: "var(--font-mono)", fontSize: 11,
-                        color: !iso ? "var(--ink-4)" : freeRow ? "var(--ink-4)" : "var(--ink-2)",
-                      }}
-                    >
-                      {iso ? fechaCorta(iso) : "—"}
-                    </td>
-                  ))}
-                  <td
-                    style={{
-                      ...cell, textAlign: "right",
-                      fontFamily: "var(--font-mono)", fontSize: 11.5, fontWeight: 600,
-                      color:
-                        days === null || freeRow ? "var(--ink-4)"
-                        : days < 0 ? "var(--danger)"
-                        : days <= 30 ? "var(--warning)"
-                        : "var(--success)",
-                    }}
-                  >
-                    {days === null || freeRow ? "—" : `${days}d`}
-                  </td>
-                  {isAdmin && (
-                    <td
-                      style={{
-                        ...cell, textAlign: "right",
-                        fontFamily: "var(--font-mono)", fontSize: 11.5,
-                        color: "var(--success)", fontWeight: 600,
-                      }}
-                    >
-                      {entry.negotiatedValue > 0 ? formatCOP(entry.negotiatedValue) : "—"}
-                    </td>
+                  {days === null ? vacio : (
+                    <>{days}<i style={{ fontStyle: "normal", fontSize: 10, fontWeight: 600, color: "var(--ink-3)" }}>d</i></>
                   )}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </>
+                </td>
+                {isAdmin && (
+                  <td style={{ ...celda, textAlign: "right", fontWeight: 700, color: "var(--ink-1)" }}>
+                    {/* En una cara libre esto no es lo que se cobra sino lo que
+                        se pediría: va en gris y sin negrita, para que no se
+                        sume con la vista a lo que sí está entrando. */}
+                    {libre
+                      ? <span style={{ color: "var(--ink-3)", fontWeight: 400 }}>
+                          {(() => { const t = tarifaDe(entry); return t ? formatCOP(t) : "—"; })()}
+                        </span>
+                      : entry.negotiatedValue > 0 ? formatCOP(entry.negotiatedValue) : vacio}
+                  </td>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
+
+// ─── La franja de cifras ─────────────────────────────────────────────────────
+
+/** Una cifra de la franja: cómo se llama, cuánto es, y qué quiere decir.
+ *
+ *  El rótulo va arriba y en versalita, el número abajo y grande. Al revés
+ *  —número primero— la fila se lee como una hilera de importes sin nombre y
+ *  hay que volver a subir para saber de qué es cada uno.
+ *
+ *  `tasa` es el segundo renglón de «Sin alquilar»: lo que se evapora mientras
+ *  la cara sigue vacía. No dice «perdido» a propósito — con el periodo por
+ *  delante todavía no se perdió nada, y llamarle pérdida a lo que aún se puede
+ *  vender es la clase de exageración que hace que después nadie crea el resto
+ *  de los números. */
+function Cifra({
+  rotulo, valor, notas, tasa, alarma, barra,
+}: {
+  rotulo: string;
+  valor: string;
+  notas: string[];
+  tasa?: string;
+  /** Rojo: es plata que se puede caer. */
+  alarma?: boolean;
+  /** 0-100. Dibuja la barrita bajo el número. */
+  barra?: number;
+}) {
+  const cero = valor === "0" || valor === "$0" || valor === "0%";
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 130 }}>
+      <span className="rotulo" style={alarma ? { color: "var(--ocupado)" } : undefined}>
+        {rotulo}
+      </span>
+      <b style={{
+        fontSize: 17, fontWeight: cero ? 700 : 900, letterSpacing: "-0.015em", lineHeight: 1.15,
+        color: alarma ? "var(--ocupado)" : cero ? "var(--ink-3)" : "var(--ink-1)",
+      }}>
+        {valor}
+      </b>
+      {notas.map((n) => (
+        <i key={n} style={{
+          fontStyle: "normal", fontSize: 11, color: "var(--ink-3)",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        }}>
+          {n}
+        </i>
+      ))}
+      {tasa && (
+        <i style={{ fontStyle: "normal", fontSize: 11, fontWeight: 600, color: "var(--ink-2)" }}>
+          {tasa}
+        </i>
+      )}
+      {barra !== undefined && (
+        <div style={{
+          height: 4, background: "var(--surface-3)", borderRadius: 2,
+          marginTop: 4, overflow: "hidden",
+        }}>
+          <span style={{
+            display: "block", height: "100%", width: `${Math.max(0, Math.min(100, barra))}%`,
+            background: "var(--ocupado)", borderRadius: 2,
+          }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Separador() {
+  return <div aria-hidden style={{ width: 1, alignSelf: "stretch", background: "var(--line)", flexShrink: 0 }} />;
+}
+
+/** Los botones de la barra: lo que se le hace A LA SEDE —cargar una planilla,
+ *  editar tarifas, traer los cambios—. Van juntos y al final porque ninguno
+ *  cambia lo que se está leyendo; sólo lo actualizan. */
+const botonBarra: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", gap: 6,
+  height: 26, padding: "0 10px", borderRadius: "var(--r-md)",
+  border: "1px solid var(--line)", background: "var(--surface)",
+  color: "var(--ink-2)", fontSize: 12, fontWeight: 500,
+  fontFamily: "inherit", cursor: "pointer", whiteSpace: "nowrap",
+};
+
+const celdaTarifa: React.CSSProperties = {
+  padding: "3.5px 0", borderBottom: "1px solid var(--line-soft)",
+  fontSize: 13, height: 22, color: "var(--ink-1)",
+};
+
+const pieTarifa: React.CSSProperties = {
+  borderTop: "1px solid var(--line-strong)", paddingTop: 6,
+  color: "var(--ink-3)", fontSize: 12,
+};
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
@@ -1913,33 +2165,26 @@ function EmptyDashboard({ sede, isAdmin }: { sede: string; isAdmin: boolean }) {
     <div
       style={{
         flex: 1, display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center",
-        padding: 40, textAlign: "center",
+        alignItems: "flex-start", justifyContent: "center",
+        padding: "40px 44px", textAlign: "left",
       }}
     >
-      <div
-        style={{
-          width: 88, height: 88, borderRadius: 22,
-          background: "var(--surface)", border: "1px solid var(--line)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          marginBottom: 18, color: "var(--ink-3)",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      >
-        <Building2 size={36} strokeWidth={1.3} />
-      </div>
+      {/* Tenía un cuadrado de 88px con un ícono de edificio adentro. El catálogo
+          de tells lo nombra tal cual —«estado vacío: ícono centrado en una caja»—
+          y tiene razón en por qué: el ícono no enseña nada. Lo que le falta a
+          quien llega acá es saber qué hacer, y eso lo dicen las palabras. */}
       <p
         style={{
-          fontSize: 16, fontWeight: 700,
-          color: "var(--ink-1)", marginBottom: 6, letterSpacing: "-0.02em",
+          fontSize: 16, fontWeight: 600,
+          color: "var(--ink-1)", marginBottom: 6,
         }}
       >
-        Sin fixtures en{" "}
+        Todavía no hay muebles en{" "}
         <span style={{ fontFamily: "var(--font-mono)" }}>{sede}</span>
       </p>
       <p style={{ fontSize: 12.5, color: "var(--ink-3)", maxWidth: 360, marginBottom: 18 }}>
         {isAdmin
-          ? "Diseñá el plano desde la pestaña Plano para ver KPIs, mapa de ocupación y el detalle por espacio."
+          ? "Dibujá la tienda desde la pestaña Plano. Con el plano cargado aparece el mapa de la sede, qué está libre y cuánto entra por cada espacio."
           : "Todavía no hay un plano cargado para esta sede. Pedile a un administrador que lo diseñe."}
       </p>
       {isAdmin && (
@@ -1965,13 +2210,25 @@ function EmptyDashboard({ sede, isAdmin }: { sede: string; isAdmin: boolean }) {
 
 export default function DashboardView() {
   const fixtures = useFixtureStore(selectFixtures);
-  const { sedes, sede, setSede, fixturesBySede, syncFromServer } = useFixtureStore();
+  const { sedes, sede, setSede, fixturesBySede, syncFromServer, seasonWindows } = useFixtureStore();
   const referenceRates = useFixtureStore((s) => s.referenceRates);
   const commit = useFixtureStore((s) => s.commit);
   const isAdmin = useAuthStore(selectIsAdmin);
   const [ratesOpen, setRatesOpen] = useState(false);
 
   const [selected, setSelected] = useState<UnifiedFixture | null>(null);
+  /** Los espacios que van en el contrato que se está armando, en el orden en
+   *  que se fueron tocando.
+   *
+   *  Guarda `id` y cara, no el mueble: el objeto lo reemplaza el store en cada
+   *  sincronización, y una referencia vieja dejaría la ficha mostrando el
+   *  estado de hace un minuto. Se resuelve contra `fixtures` en cada render.
+   *
+   *  Vive acá y no adentro de la ficha porque el que la arma es el PLANO: se
+   *  toca un espacio y entra a la lista. Un contrato con un proveedor sobre
+   *  tres puntas de góndola es un solo acuerdo —un proveedor, un periodo, una
+   *  firma— y tecleado de a uno eran tres veces el mismo formulario. */
+  const [enContrato, setEnContrato] = useState<{ id: string; face: "A" | "B" }[]>([]);
   // Where on the map the click landed (anchors the quick-look popover).
   const [anchor, setAnchor] = useState<MapAnchor | null>(null);
   // false = quick popover, true = full detail in the rail ("Ver todo").
@@ -1995,6 +2252,9 @@ export default function DashboardView() {
   const [cerrado, setCerrado] = useState<ResumenContrato | null>(null);
   /** La planilla de la reunión comercial, cargada de una tanda. */
   const [cargaAbierta, setCargaAbierta] = useState(false);
+  /** La fila de temporadas, desplegada. Arranca cerrada: el periodo se lee en
+   *  la barra y se cambia de a ratos. */
+  const [periodoAbierto, setPeriodoAbierto] = useState(false);
 
   const selectFixture = (f: UnifiedFixture | null, point?: MapAnchor) => {
     setSelected(f);
@@ -2004,11 +2264,60 @@ export default function DashboardView() {
     setDetailFull(false);
     setDetailFace("A");
     setCerrado(null);
+
+    // En Vender tocar un espacio lo SUMA al contrato; tocarlo de nuevo lo
+    // saca. Antes reemplazaba la selección, y con eso un contrato sobre tres
+    // puntas había que tipearlo tres veces. Lo que no se alquila no entra —la
+    // ficha explica por qué—, y una góndola doble entra por su cara A: la B se
+    // elige en el renglón, que es donde se ve cuál se está vendiendo.
+    if (modoEfectivo !== "vender" || !f) return;
+    if (!isRentable(f)) { setEnContrato([]); return; }
+    setEnContrato((lista) =>
+      lista.some((x) => x.id === f.id)
+        ? lista.filter((x) => x.id !== f.id)
+        : [...lista, { id: f.id, face: "A" }],
+    );
   };
+
+  /** Quitar una cara del contrato. */
+  const quitarDelContrato = useCallback((id: string, face: "A" | "B") => {
+    setEnContrato((lista) => lista.filter((x) => !(x.id === id && x.face === face)));
+  }, []);
+
+  /** Sumar o sacar una cara de una góndola doble.
+   *
+   *  Es un interruptor por cara y no un selector entre las dos: las dos caras
+   *  de una góndola son DOS espacios, y vendérselas al mismo proveedor en el
+   *  mismo contrato es lo normal —una marca que quiere el pasillo entero—.
+   *  Con un selector eso obligaba a hacer dos contratos. Sacar la última cara
+   *  saca el mueble del contrato, que es lo que uno espera al apagar la
+   *  única que quedaba prendida. */
+  const alternarCara = useCallback((id: string, face: "A" | "B") => {
+    setEnContrato((lista) =>
+      lista.some((x) => x.id === id && x.face === face)
+        ? lista.filter((x) => !(x.id === id && x.face === face))
+        : [...lista, { id, face }],
+    );
+  }, []);
+
+  /** Los espacios del contrato resueltos contra el layout de ahora. */
+  const espaciosDelContrato = useMemo(
+    () =>
+      enContrato
+        .map(({ id, face }) => {
+          const fixture = fixtures.find((f) => f.id === id);
+          return fixture ? { fixture, face } : null;
+        })
+        .filter((x): x is { fixture: UnifiedFixture; face: "A" | "B" } => x !== null),
+    [enContrato, fixtures],
+  );
+
+
   const closeDetail = () => {
     setSelected(null);
     setAnchor(null);
     setDetailFull(false);
+    setEnContrato([]);
   };
   /** Pasar a vender ese espacio, venga de donde venga: del popover del mapa o
    *  del panel de detalle en Supervisar. */
@@ -2018,6 +2327,9 @@ export default function DashboardView() {
     setDetailFull(false);
     setAnchor(null);
     setCerrado(null);
+    // Arranca un contrato NUEVO con ese espacio. Sumarlo a uno que estuviera a
+    // medio armar mezclaría dos negociaciones sin avisar.
+    setEnContrato([{ id: f.id, face }]);
     setModo("vender");
   };
   const [viewerFile, setViewerFile] = useState<SpaceFileMeta | null>(null);
@@ -2059,15 +2371,24 @@ export default function DashboardView() {
   useEffect(() => {
     setSelected(null);
     setCerrado(null);
+    setEnContrato([]);
   }, [sede]);
 
-  /** Vender siempre tiene un periodo puesto.
+  /** Las dos pantallas tienen SIEMPRE un periodo puesto.
    *
-   *  El mapa sin rango responde por hoy, y "hoy" no es una pregunta comercial:
-   *  lo que se vende es una temporada. Sin esto, entrar a Vender mostraba el
-   *  mapa pintado por estado de hoy y el contador de libres en cero. */
+   *  Sin periodo el plano contestaba con la otra escala —«qué pasa hoy», siete
+   *  clases— donde `free` contra `maintenance` da ΔE 3.6 en deuteranopía: el
+   *  mismo color para dos estados opuestos. Con periodo pinta la escala de
+   *  tres, que es la única que la separación aguanta. «Hoy» sigue existiendo:
+   *  es un periodo de un día, que es lo que de verdad es.
+   *
+   *  En Vender arranca en treinta días porque «hoy» no es una pregunta
+   *  comercial —lo que se vende es una temporada— y sin eso entrar a Vender
+   *  mostraba el contador de libres en cero. En Supervisar arranca en hoy, que
+   *  es de lo que ese tablero habla. */
   useEffect(() => {
-    if (modoEfectivo !== "vender" || mapRange) return;
+    if (mapRange) return;
+    if (modoEfectivo !== "vender") { setMapRange(hoyComoRango()); return; }
     const from = new Date();
     const to = new Date(from);
     to.setDate(to.getDate() + 30);
@@ -2081,7 +2402,11 @@ export default function DashboardView() {
     const faceFlags = new Map<string, boolean[]>();
     let count = 0;
     fixtures.forEach((f) => {
-      const deLaCategoria = !mapCategoria || categoriaDeTipo(f.type) === mapCategoria;
+      // Por tipo de TARIFA y no por familia: la fila que se toca dice «Isla
+      // · $1.200.000», así que filtrar por «Muebles» —la familia a la que la
+      // isla pertenece— dejaría en el plano bateas y muebles que no son lo
+      // que se pidió. El rótulo y el filtro tienen que nombrar lo mismo.
+      const deLaCategoria = !mapCategoria || rateTypeOf(f) === mapCategoria;
       const flags = commercialFacesOf(f).map((entry) => {
         const ok = deLaCategoria
           && (!q || faceMatchesQuery(entry, q))
@@ -2094,92 +2419,37 @@ export default function DashboardView() {
     return { faceFlags, count };
   }, [fixtures, mapQuery, mapFilter, mapCategoria]);
 
-  // Qué queda por vender, agrupado por familia de mueble, y cuánto vale.
+  // La lista de precios de la sede: qué familias hay, cuántas caras de cada una
+  // están libres en el periodo, cuántas se liberan adentro, y a cuánto sale.
   //
-  // Usa la misma `rangeAvailability` que el mapa y que la tira de arriba, así
+  // Usa la misma `rangeAvailability` que el mapa y que la clave del plano, así
   // que los números no pueden discrepar entre sí.
   //
-  // Lo que NO se vendió se valora a la TARIFA DE REFERENCIA del tipo, prorrateada
-  // por día libre. Es la única base honesta: un espacio libre no tiene precio
-  // negociado, justamente porque nadie lo negoció. Y como `referenceRateFor`
-  // devuelve null para los tipos sin tarifa cargada, hay que contar aparte esas
-  // caras: si no se dicen, el total parece chico y nadie sabe por qué.
+  // Ordenada por TARIFA, de mayor a menor. Antes iba por cantidad de caras
+  // libres, y eso contestaba «de qué me sobra», que no es la pregunta: cuando
+  // hay un proveedor del otro lado del teléfono lo que se busca es qué es lo
+  // caro que todavía está disponible. La cantidad ya se ve en la columna de al
+  // lado y no necesita mandar el orden.
   const porCategoria = useMemo(() => {
     if (!mapRange) return [];
-    const dias = inclusiveDays(mapRange.from, mapRange.to);
     const acum = new Map<string, {
-      libres: number; parciales: number; total: number;
-      sinVender: number; carasSinTarifa: number;
+      libres: number; parciales: number; total: number; tarifa: number | null;
     }>();
     fixtures.forEach((f) => {
-      const cat = categoriaDeTipo(f.type);
-      const ref = referenceRateFor(referenceRates, f.sede || sede, rateTypeOf(f));
+      const cat = rateTypeOf(f);
+      const ref = referenceRateFor(referenceRates, f.sede || sede, cat);
       commercialFacesOf(f).forEach((face) => {
-        const e = acum.get(cat)
-          ?? { libres: 0, parciales: 0, total: 0, sinVender: 0, carasSinTarifa: 0 };
+        const e = acum.get(cat) ?? { libres: 0, parciales: 0, total: 0, tarifa: ref };
         const a = rangeAvailability(face, mapRange.from, mapRange.to);
         if (a === "libre") e.libres++;
         else if (a === "parcial") e.parciales++;
         e.total++;
-        const diasLibres = dias - daysTakenInRange(face, mapRange.from, mapRange.to);
-        if (diasLibres > 0) {
-          if (ref) e.sinVender += (ref / 30) * diasLibres;
-          else e.carasSinTarifa++;
-        }
+        if (e.tarifa === null) e.tarifa = ref;
         acum.set(cat, e);
       });
     });
-    // Ordenado por cantidad y no por plata: la cantidad es lo que el chip
-    // muestra, y un orden que no se explica con el número visible se lee como
-    // arbitrario. La plata de cada familia va en el título al pasar por encima.
-    return [...acum].map(([cat, v]) => ({ cat, ...v, sinVender: Math.round(v.sinVender) }))
-      .sort((a, b) => b.libres + b.parciales - (a.libres + a.parciales));
-  }, [fixtures, mapRange, referenceRates, sede]);
-
-  // El total del periodo: lo que se está cobrando y lo que se está dejando de
-  // cobrar, en la misma unidad. Un «no percibido» suelto no dice nada; al lado
-  // de lo vendido sí, porque recién ahí se ve de qué tamaño es.
-  const plataDelPeriodo = useMemo(() => {
-    if (!mapRange) return null;
-    const dias = inclusiveDays(mapRange.from, mapRange.to);
-
-    // Partir la ventana en hoy. Un día libre que ya pasó es plata que no se
-    // recupera; uno que viene todavía se puede vender. Sin esta división, mover
-    // el rango a marzo del año que viene dispara el «sin vender» y parece una
-    // alarma, cuando lo único que pasa es que el futuro no ocurrió.
-    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-    const ayer = new Date(hoy); ayer.setDate(ayer.getDate() - 1);
-    const finPasado = mapRange.to < ayer ? mapRange.to : ayer;
-    const iniFuturo = mapRange.from > hoy ? mapRange.from : hoy;
-    const hayPasado = mapRange.from <= finPasado;
-    const hayFuturo = iniFuturo <= mapRange.to;
-    const diasPasado = hayPasado ? inclusiveDays(mapRange.from, finPasado) : 0;
-    const diasFuturo = hayFuturo ? inclusiveDays(iniFuturo, mapRange.to) : 0;
-
-    let vendido = 0, sinVender = 0, sinVenderIdo = 0;
-    let carasSinTarifa = 0, carasConTarifa = 0;
-    fixtures.forEach((f) => {
-      const ref = referenceRateFor(referenceRates, f.sede || sede, rateTypeOf(f));
-      commercialFacesOf(f).forEach((face) => {
-        const tomados = daysTakenInRange(face, mapRange.from, mapRange.to);
-        vendido += ((face.negotiatedValue ?? 0) / 30) * tomados;
-        const libres = dias - tomados;
-        if (libres <= 0) return;
-        if (!ref) { carasSinTarifa++; return; }
-        carasConTarifa++;
-        sinVender += (ref / 30) * libres;
-        if (hayPasado) {
-          const diasIdos = diasPasado - daysTakenInRange(face, mapRange.from, finPasado);
-          if (diasIdos > 0) sinVenderIdo += (ref / 30) * diasIdos;
-        }
-      });
-    });
-    return {
-      dias, diasPasado, diasFuturo, carasSinTarifa, carasConTarifa,
-      vendido: Math.round(vendido),
-      sinVender: Math.round(sinVender),
-      sinVenderIdo: Math.round(sinVenderIdo),
-    };
+    return [...acum].map(([cat, v]) => ({ cat, ...v }))
+      .sort((a, b) => (b.tarifa ?? -1) - (a.tarifa ?? -1));
   }, [fixtures, mapRange, referenceRates, sede]);
 
   // ── KPI computation (per rentable face — doubles count as 2 units) ──
@@ -2236,7 +2506,10 @@ export default function DashboardView() {
     const topSuppliers = Object.entries(supplierMap)
       .map(([name, { revenue: r, count }]) => ({ name, revenue: r, count }))
       .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 6);
+      // Diez y no seis: el panel contesta «de quién depende la sede», y con
+      // un corte en seis un proveedor que pone el 8% quedaba afuera sin que
+      // nada dijera que había más. Lo que no entra en el alto, scrollea.
+      .slice(0, 10);
 
     // Contracts paying below the reference rate for their type + sede.
     // Only meaningful gaps (≥1%) — a peso of rounding is not an anomaly.
@@ -2317,63 +2590,181 @@ export default function DashboardView() {
     return { noMontado, sinMontar, viejosSinReporte };
   }, [fixtures, montajeDe]);
 
-  const activeSedeCount = sedes.filter((s) => (fixturesBySede[s] ?? []).length > 0).length;
+
+  // ─── Lo que la franja de Supervisar necesita saber ──────────────────────
+
+  /** La tarifa de referencia de una cara. Es lo que se pediría por ella, no lo
+   *  que se cobra: para una cara libre es el único precio que existe. */
+  const tarifaDe = useCallback(
+    (e: FaceEntry): number | null =>
+      referenceRateFor(referenceRates, e.fixture.sede || sede, rateTypeOf(e.fixture)),
+    [referenceRates, sede],
+  );
+
+  /** Lo que la sede NO está cobrando: las caras libres hoy, valoradas a tarifa.
+   *
+   *  Es la cifra que faltaba. «Ocupación 35%» dice que sobra sala; «$8.730.000
+   *  al mes sin alquilar» dice cuánto vale esa sala, y ése es el número con el
+   *  que se decide si vale la pena salir a buscar proveedores.
+   *
+   *  La tasa diaria divide por 30 y no por los días del periodo elegido: la
+   *  tarifa está expresada al mes, así que su valor por día es tarifa/30 mire
+   *  uno una ventana de siete días o de tres meses. Es la misma cuenta que usa
+   *  el resto de la pantalla para prorratear.
+   *
+   *  Las caras cuyo tipo no tiene tarifa cargada se cuentan aparte y se dicen:
+   *  sin eso el total parece chico y nadie sabe por qué. */
+  const sinAlquilar = useMemo(() => {
+    let plata = 0, caras = 0, sinTarifa = 0;
+    fixtures.flatMap(commercialFacesOf).forEach((face) => {
+      if (displayStatus(face) !== "free") return;
+      caras++;
+      const ref = tarifaDe(face);
+      if (ref) plata += ref; else sinTarifa++;
+    });
+    return { plata, caras, sinTarifa, porDia: Math.round(plata / 30) };
+  }, [fixtures, tarifaDe]);
+
+  /** Lo que se cae si no se renueva, en plata y en porcentaje del canon. */
+  const porVencer = useMemo(() => {
+    const plata = kpis.expiring.reduce((t, e) => t + (e.negotiatedValue ?? 0), 0);
+    return { plata, pct: kpis.revenue ? Math.round((plata * 100) / kpis.revenue) : 0 };
+  }, [kpis]);
+
+  /** De quién depende el canon. Con el sello de vencimiento, que es lo que
+   *  convierte un ranking en una alarma: «COCA COLA es el 23%» es un dato;
+   *  «brayan es el 19% y vence» es una llamada que hay que hacer. */
+  const proveedores = useMemo(() => {
+    const venciendo = new Set(kpis.expiring.map((e) => e.supplierName).filter(Boolean));
+    const total = kpis.revenue || 1;
+    return kpis.topSuppliers.map((x) => ({
+      ...x,
+      pct: Math.round((x.revenue / total) * 100),
+      vence: venciendo.has(x.name),
+    }));
+  }, [kpis]);
+
+  /** Las caras contratadas y sin reportar, para que el chip «Sin montar» de la
+   *  tabla filtre exactamente la misma lista que muestran los pendientes. */
+  const sinMontarSet = useMemo(
+    () => new Set(montaje.sinMontar.map((e) => `${e.fixture.id}-${e.face}`)),
+    [montaje.sinMontar],
+  );
+
+  /** Las temporadas comerciales que pisan el periodo, para el fondo del riel. */
+  const temporadasDelPeriodo = useMemo(() => {
+    if (!mapRange) return [];
+    return upcomingSeasons(new Date(), seasonWindows).filter(
+      (t) => t.from <= mapRange.to && t.to >= mapRange.from,
+    );
+  }, [mapRange, seasonWindows]);
 
   const attentionCount =
     kpis.expired.length + kpis.expiring.length + kpis.noContract.length +
     (isAdmin ? kpis.belowReference.length + montaje.noMontado.length + montaje.sinMontar.length : 0);
-  const lastAttentionSection =
-    kpis.belowReference.length > 0 ? "belowRef"
-    : montaje.sinMontar.length > 0 || montaje.viejosSinReporte > 0 ? "sinMontar"
-    : montaje.noMontado.length > 0 ? "noMontado"
-    : kpis.noContract.length > 0 ? "noContract"
-    : kpis.expiring.length > 0 ? "expiring"
-    : "expired";
+
+  /** Cuántas caras contesta cada chip de la tabla. Un filtro que no puede
+   *  devolver nada no se dibuja: es la misma regla que ya gobernaba el parte,
+   *  y es lo que evita que alguien toque «Sin montar 0» y crea que se rompió. */
+  const chipsTabla = useMemo(() => {
+    const todos: { id: MapFilter; label: string; n: number }[] = [
+      { id: "todos", label: "Todas", n: kpis.total },
+      { id: "expiring", label: "Por vencer", n: kpis.expiring.length },
+      { id: "sin_montar", label: "Sin montar", n: montaje.sinMontar.length },
+      { id: "free", label: "Libres", n: kpis.free },
+    ];
+    return todos.filter((c) => c.id === "todos" || c.n > 0);
+  }, [kpis, montaje.sinMontar.length]);
+
+  /** «lunes 31 de agosto de 2026». Es el único lugar de la pantalla donde se
+   *  dice qué día es, y hace falta: todo lo demás —los días que faltan, lo que
+   *  vence, el periodo— se cuenta contra hoy. */
+  const hoyLargo = useMemo(() => {
+    const t = new Date().toLocaleDateString("es-CO", {
+      weekday: "long", day: "numeric", month: "long", year: "numeric",
+    });
+    return t.replace(",", "");
+  }, []);
 
   /** La tarjeta del mapa. Es la MISMA en los dos modos —el mapa no cambia
-   *  porque cambie para qué estás mirándolo—; sólo cambia cuánto espacio se
-   *  lleva al lado de lo que tenga a la derecha. */
-  const tarjetaMapa = (flex: string) => (
-        <Card
-          style={{
-            position: "relative",
-            flex,
-            minWidth: 0,
-            display: "flex", flexDirection: "column",
-            padding: "12px 14px 10px",
-            minHeight: 460,
-          }}
-        >
-          <div
-            style={{
-              display: "flex", alignItems: "center", gap: 8,
-              flexWrap: "wrap", marginBottom: 8,
-            }}
-          >
-            <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink-1)" }}>
-              Mapa de la sede
-            </span>
-            <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
-              {sede} ·{" "}
-              {mapRange
-                ? describeRange(mapRange)
-                : isAdmin
-                ? "tocá un espacio para venderlo o ver su contrato"
-                : "clic para ver el contrato"}
-            </span>
-            {/* Legend next to what it explains, not stranded at the bottom */}
-            <div style={{ marginLeft: "auto" }}>
-              <MapLegend range={mapRange} />
-            </div>
-          </div>
+   *  porque cambie para qué estás mirándolo—; sólo cambian el subtítulo y las
+   *  palabras de la clave, porque la pregunta que se le hace sí cambia. */
+  const tarjetaMapa = (alto: number | string) => (
+        <Card style={{ position: "relative", flex: "1 1 480px", minWidth: 0, height: alto }}>
+          <CardHeader
+            title={`Piso de ${sede}`}
+            sub={modoEfectivo === "vender"
+              ? `${kpis.total} comercializables · ${fixtures.length} muebles`
+              : undefined}
+            right={
+              <>
+                {/* El filtro estaba arriba, en la franja de controles, junto a
+                    cosas que no filtran el mapa. Filtrar tacha los muebles del
+                    plano: es un control DEL mapa y vive en el borde del mapa,
+                    como la regla al costado de un plano impreso.
 
-          <IsoMap
-            fixtures={fixtures}
-            selectedId={selected?.id ?? null}
-            onSelect={selectFixture}
-            match={mapMatch}
-            range={mapRange}
+                    Sin caja y con una línea abajo: vacío —que es como está el
+                    95% del tiempo— no ocupa. Y dice «filtrar», que es lo que
+                    hace, y no «buscar», que promete llevarte a otra pantalla. */}
+                <div style={{ position: "relative", width: 118, flexShrink: 0 }}>
+                  <Search
+                    size={12}
+                    style={{
+                      position: "absolute", left: 1, top: "50%",
+                      transform: "translateY(-50%)", color: "var(--ink-4)", pointerEvents: "none",
+                    }}
+                  />
+                  <input
+                    type="text"
+                    value={mapQuery}
+                    onChange={(e) => setMapQuery(e.target.value)}
+                    placeholder="Filtrar"
+                    style={{
+                      width: "100%", height: 24, padding: "0 20px 0 17px",
+                      borderRadius: 0, border: "none",
+                      borderBottom: "1px solid var(--line)",
+                      background: "transparent", color: "var(--ink-1)",
+                      fontSize: 12, fontFamily: "inherit", outline: "none",
+                    }}
+                    onFocus={(e) => { e.currentTarget.style.borderBottomColor = "var(--ink-1)"; }}
+                    onBlur={(e) => { e.currentTarget.style.borderBottomColor = "var(--line)"; }}
+                  />
+                  {mapQuery && (
+                    <button
+                      onClick={() => setMapQuery("")}
+                      title="Limpiar el filtro"
+                      style={{
+                        position: "absolute", right: 0, top: "50%",
+                        transform: "translateY(-50%)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        width: 18, height: 18, borderRadius: 99,
+                        background: "var(--surface-3)", border: "none",
+                        color: "var(--ink-2)", cursor: "pointer",
+                      }}
+                    >
+                      <X size={10} />
+                    </button>
+                  )}
+                </div>
+                <MapLegend range={mapRange} tally={rangeTally} modo={modoEfectivo} />
+              </>
+            }
           />
+
+          <div style={{ flex: 1, minHeight: 0, padding: "0 14px 12px", display: "flex" }}>
+            <IsoMap
+              fixtures={fixtures}
+              /* En Vender se marcan TODOS los del contrato; en Supervisar, el
+                 que se está mirando. */
+              selectedIds={modoEfectivo === "vender"
+                ? espaciosDelContrato.map((e) => e.fixture.id)
+                : selected ? [selected.id] : []}
+              onSelect={selectFixture}
+              match={mapMatch}
+              range={mapRange}
+              rotulos={modoEfectivo === "vender" ? "todos" : "elegido"}
+            />
+          </div>
 
           {/* Quick look, anchored to the fixture. Hidden once the full
               detail takes over the rail so the two never compete. */}
@@ -2390,942 +2781,730 @@ export default function DashboardView() {
         </Card>
   );
 
+  /** El panel de tarifas de Vender: qué hay de cada tipo, cuánto entra en el
+   *  periodo, y a cuánto sale.
+   *
+   *  Está en la pantalla de vender y no en un modal porque es la respuesta a
+   *  «¿qué le ofrezco?». Tenerlo detrás de un botón obligaba a abrir, mirar,
+   *  cerrar y volver a mirar el plano — cuatro gestos para un dato que se usa
+   *  en cada llamada. */
+  const panelTarifas = (
+    <Card style={{ flexShrink: 0 }}>
+      <CardHeader title="Tarifa de referencia" right={<span>al mes</span>} />
+      <div style={{ padding: "0 15px 12px", overflowY: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              {[
+                { t: "Tipo de espacio" },
+                { t: "Libres · entran", w: 92, der: true },
+                { t: "Tarifa", w: 96, der: true },
+              ].map((c) => (
+                <th
+                  key={c.t}
+                  style={{
+                    width: c.w, padding: "0 0 5px", textAlign: c.der ? "right" : "left",
+                    fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 9.5,
+                    letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-3)",
+                    borderBottom: "1px solid var(--line)", whiteSpace: "nowrap",
+                  }}
+                >
+                  {c.t}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {/* Tocar una familia la aísla en el plano. Es lo que hacían los
+                chips de «lo que queda en este periodo», que vivían sueltos
+                arriba de la pantalla, lejos de los números que explicaban.
+                Acá el filtro está SOBRE el dato: se lee «Isla · 3 libres ·
+                $1.200.000», se toca, y el plano se queda sólo con las islas. */}
+            {porCategoria.map(({ cat, libres, parciales, tarifa }) => {
+              const activa = mapCategoria === cat;
+              return (
+              <tr
+                key={cat}
+                onClick={() => setMapCategoria(activa ? null : cat)}
+                title={activa
+                  ? "Ver todos los tipos en el plano"
+                  : `Ver sólo ${rateTypeLabel(cat)} en el plano`}
+                style={{ cursor: "pointer", background: activa ? "var(--surface-2)" : undefined }}
+              >
+                <td style={{
+                  ...celdaTarifa,
+                  fontWeight: activa ? 700 : 400,
+                  boxShadow: activa ? "inset 2px 0 0 var(--ink-1)" : undefined,
+                  paddingLeft: activa ? 8 : 0,
+                }}>
+                  {rateTypeLabel(cat)}
+                </td>
+                <td style={{ ...celdaTarifa, textAlign: "right" }}>
+                  <span style={{ color: libres === 0 ? "var(--ink-3)" : "var(--ink-2)" }}>{libres}</span>
+                  {parciales > 0 && (
+                    <>
+                      {" "}
+                      <span
+                        title={`${parciales} se libera${parciales === 1 ? "" : "n"} adentro del periodo`}
+                        style={{ color: "var(--entra-txt)", fontWeight: 700 }}
+                      >
+                        +{parciales}
+                      </span>
+                    </>
+                  )}
+                </td>
+                <td style={{ ...celdaTarifa, textAlign: "right" }}>
+                  {tarifa ? formatCOP(tarifa) : <span style={{ color: "var(--ink-vacio)" }}>sin tarifa</span>}
+                </td>
+              </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td style={{ ...pieTarifa }}>
+                {kpis.total} espacio{kpis.total === 1 ? "" : "s"} comercializable{kpis.total === 1 ? "" : "s"}
+              </td>
+              <td style={{ ...pieTarifa, textAlign: "right", color: "var(--ink-1)", fontWeight: 700 }}>
+                {rangeTally.libres}
+                {rangeTally.parciales > 0 && (
+                  <> <span style={{ color: "var(--entra-txt)" }}>+{rangeTally.parciales}</span></>
+                )}
+              </td>
+              <td style={{ ...pieTarifa, textAlign: "right", color: "var(--ink-1)", fontWeight: 700 }}>
+                {rangeTally.libres + rangeTally.parciales} al cerrar
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </Card>
+  );
+
   return (
     <div
       style={{
-        flex: 1, overflowY: "auto", padding: 20,
+        flex: 1, overflowY: "auto", padding: "10px 12px 16px",
         background: "var(--bg)",
       }}
     >
-      {/* ── Header row: title + sede selector ────────────────────────────── */}
+      {/* ── La barra de la pantalla ────────────────────────────────────────
+          Dónde estás, para qué estás, y de qué periodo se está hablando. Las
+          tres cosas de las que depende todo lo que se lee abajo, en un solo
+          renglón y en ese orden.
+
+          Acá vivía un titular de $12.400.000 en cuerpo 27 con «TERRON · 16
+          espacios · 2 sedes activas» debajo. Ese número tenía el tamaño de un
+          titular y el contenido de un pie de página: no se decide nada con el
+          canon total de la sede, y encima repetía datos que están en la tabla.
+          El nombre de la sede tampoco es un hecho, es el estado de un control:
+          se dice UNA vez, acá, y no vuelve a aparecer. */}
       <div
         style={{
-          display: "flex", justifyContent: "space-between",
-          alignItems: "flex-start", marginBottom: 26, gap: 16,
-          flexWrap: "wrap",
+          display: "flex", alignItems: "center", gap: 0,
+          marginBottom: 10, flexWrap: "wrap",
+          background: "var(--surface)", border: "1px solid var(--line)",
+          borderRadius: "var(--r-xl)", padding: "0 14px", minHeight: 46,
         }}
       >
-        <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-          <div
+        <div
+          style={{
+            display: "flex", alignItems: "center", gap: 10,
+            padding: "0 16px 0 0", borderRight: "1px solid var(--line)",
+            alignSelf: "stretch",
+          }}
+        >
+          <span className="rotulo">Sede</span>
+          <select
+            value={sede}
+            onChange={(e) => setSede(e.target.value)}
+            aria-label="Sede"
             style={{
-              width: 44, height: 44, borderRadius: "var(--r-md)",
-              background: "var(--accent)", color: "#fff",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: "var(--shadow-md)",
-              flexShrink: 0,
+              background: "transparent", border: "none", outline: "none",
+              fontFamily: "inherit", fontWeight: 700, fontSize: 17,
+              letterSpacing: "-0.01em", color: "var(--ink-1)", cursor: "pointer",
+              padding: 0,
             }}
           >
-            <Building2 size={18} />
-          </div>
-          <div>
-            {/* Antes esto era un h2 de 17 px y una línea de 11,5. TODO en la
-                pantalla vivía entre 11 y 13 px, así que no había jerarquía: el
-                nombre de la sede pesaba lo mismo que una observación. */}
-            <div style={{
-              fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 500,
-              letterSpacing: "0.14em", textTransform: "uppercase",
-              color: "var(--ink-3)", marginBottom: 3,
-            }}>
-              Sede
-            </div>
-            <h2
-              style={{
-                margin: 0, fontSize: 32, fontWeight: 600,
-                letterSpacing: "-0.035em", lineHeight: 1, color: "var(--ink-1)",
-              }}
-            >
-              {sede}
-            </h2>
-            <p style={{ fontSize: 12.5, color: "var(--ink-3)", marginTop: 7 }}>
-              {kpis.total} espacio{kpis.total !== 1 ? "s" : ""} comercializable{kpis.total !== 1 ? "s" : ""}
-              {" · "}
-              {fixtures.length} mueble{fixtures.length !== 1 ? "s" : ""} en el plano
-              {activeSedeCount > 1 && ` · ${activeSedeCount} sedes activas`}
-            </p>
-          </div>
-
-          {/* La plata que mueve la sede. `kpis.revenue` existía desde siempre y
-              no se mostraba en ninguna parte de esta pantalla: había que bajar
-              a las tarjetas para enterarse de cuánto entra por mes. Es la cifra
-              por la que existe el sistema y ahora es lo segundo que se lee.
-              Sólo admin: para el rol trabajador la plata va tachada en todo el
-              resto y acá no puede ser la excepción. */}
-          {isAdmin && kpis.revenue > 0 && (
-            <div style={{
-              paddingLeft: 20, marginLeft: 8,
-              borderLeft: "1px solid var(--line)", alignSelf: "stretch",
-              display: "flex", flexDirection: "column", justifyContent: "center",
-            }}>
-              <div style={{
-                fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 500,
-                letterSpacing: "0.14em", textTransform: "uppercase",
-                color: "var(--ink-3)", marginBottom: 5,
-              }}>
-                Canon vigente
-              </div>
-              <div style={{
-                fontSize: 30, fontWeight: 600, letterSpacing: "-0.035em",
-                lineHeight: 1, color: "var(--ink-1)", whiteSpace: "nowrap",
-              }}>
-                ${kpis.revenue.toLocaleString("es-CO")}
-                <span style={{ fontSize: 14, fontWeight: 500, color: "var(--ink-3)" }}> /mes</span>
-              </div>
-              {kpis.committedRevenue > 0 && (
-                <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 6 }}>
-                  + ${kpis.committedRevenue.toLocaleString("es-CO")} contratado sin arrancar
-                </div>
-              )}
-            </div>
-          )}
+            {/* Cada sede con cuántos muebles tiene: el selector lista TODAS,
+                tengan plano o no, así que acá se ve de una cuál está cargada y
+                cuál está en cero. */}
+            {/* Sólo el nombre. El conteo iba adentro de la opción y un
+                `select` muestra el texto de la elegida: en pantalla se leía
+                «TERRON · 0» en cuerpo 17, con un número pegado al nombre que
+                parecía parte del nombre. El dato no se pierde —va al lado, en
+                cuerpo chico— y ahí se lee como lo que es. */}
+            {sedes.map((x) => (
+              <option key={x} value={x}>{x}</option>
+            ))}
+          </select>
+          <span style={{ fontSize: 12, color: "var(--ink-3)", whiteSpace: "nowrap" }}>
+            de {sedes.length}
+            {" · "}
+            {(fixturesBySede[sede] ?? []).length} mueble
+            {(fixturesBySede[sede] ?? []).length === 1 ? "" : "s"}
+          </span>
         </div>
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          {/* Sede selector */}
-          <Card
-            style={{
-              display: "flex", alignItems: "center", gap: 8,
-              padding: "6px 10px", borderRadius: "var(--r-lg)",
-              boxShadow: "none",
-            }}
-          >
-            <MapPin size={13} style={{ color: "var(--accent)", flexShrink: 0 }} />
-            <select
-              value={sede}
-              onChange={(e) => setSede(e.target.value)}
-              style={{
-                background: "transparent", border: "none", outline: "none",
-                fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 12,
-                color: "var(--ink-1)", cursor: "pointer",
-              }}
-            >
-              {sedes.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-            <span
-              style={{
-                display: "inline-flex", alignItems: "center",
-                fontSize: 9.5, fontWeight: 600,
-                padding: "2px 7px", borderRadius: 999,
-                background: "var(--accent-100)", color: "var(--accent-700)",
-              }}
-            >
-              {fixtures.length} fixtures
-            </span>
-          </Card>
+        {isAdmin && (
+          <nav style={{ display: "flex", marginLeft: 20, alignSelf: "stretch" }}>
+            {([
+              { id: "vender", label: "Vender", badge: 0 },
+              { id: "supervisar", label: "Supervisar", badge: attentionCount },
+            ] as const).map(({ id, label, badge }) => {
+              const activo = modoEfectivo === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => setModo(id)}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    padding: "0 18px", border: "none",
+                    borderBottom: `3px solid ${activo ? "var(--ink-1)" : "transparent"}`,
+                    marginBottom: -1, background: "transparent",
+                    cursor: "pointer", fontFamily: "inherit",
+                    fontSize: 14.5, fontWeight: activo ? 700 : 500,
+                    color: activo ? "var(--ink-1)" : "var(--ink-3)",
+                    transition: "color .12s, border-color .12s",
+                  }}
+                >
+                  {label}
+                  {badge > 0 && (
+                    <span style={{
+                      fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 700,
+                      color: "var(--ocupado)",
+                    }}>
+                      {badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        )}
 
+        {/* El periodo, en los dos modos. El mercaderista está SIEMPRE en
+            Supervisar, así que sacarlo de ahí lo dejaría sin control de
+            periodo para siempre.
+
+            Va como TEXTO y no como la fila de siete temporadas: esa fila mide
+            700 px y partía la barra en dos renglones, con la fecha y los
+            botones caídos abajo. El periodo hay que verlo siempre —todo lo
+            que se lee está medido contra él— pero elegirlo es algo que se
+            hace de a ratos, así que se ve siempre y se despliega al tocarlo. */}
+        <button
+          onClick={() => setPeriodoAbierto((x) => !x)}
+          title="Elegir el periodo"
+          style={{
+            marginLeft: 20, display: "inline-flex", alignItems: "center", gap: 7,
+            border: "none", background: "transparent", cursor: "pointer",
+            fontFamily: "inherit", fontSize: 13, color: "var(--ink-1)",
+            padding: "4px 0", borderBottom: `1px solid ${periodoAbierto ? "var(--ink-1)" : "var(--line-strong)"}`,
+          }}
+        >
+          <CalendarRange size={13} style={{ color: "var(--ink-4)" }} />
+          {mapRange ? describeRange(mapRange) : "Hoy"}
+          <ChevronDown
+            size={12}
+            style={{
+              color: "var(--ink-4)",
+              transform: periodoAbierto ? "rotate(180deg)" : "none",
+              transition: "transform .12s",
+            }}
+          />
+        </button>
+
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 13, color: "var(--ink-1)", fontWeight: 500, whiteSpace: "nowrap" }}>
+            {hoyLargo}
+          </span>
+          {isAdmin && (
+            <button
+              onClick={() => setCargaAbierta(true)}
+              title="Cargar una tanda de contratos desde un Excel o un CSV"
+              style={botonBarra}
+            >
+              <FileSpreadsheet size={13} style={{ color: "var(--ink-3)" }} />
+              Planilla
+            </button>
+          )}
           {isAdmin && (
             <button
               onClick={() => setRatesOpen(true)}
               title="Tarifas de referencia por tipo de mueble"
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                height: 34, padding: "0 12px",
-                borderRadius: "var(--r-lg)",
-                background: "var(--surface)", color: "var(--ink-2)",
-                border: "1px solid var(--line)",
-                cursor: "pointer", fontSize: 12, fontWeight: 500,
-                fontFamily: "inherit",
-                boxShadow: "var(--shadow-xs)",
-              }}
+              style={botonBarra}
             >
-              <SlidersHorizontal size={13} /> Tarifas
+              <SlidersHorizontal size={13} style={{ color: "var(--ink-3)" }} /> Tarifas
             </button>
           )}
-
-          <button
-            onClick={() => syncFromServer()}
-            style={{
-              display: "flex", alignItems: "center", gap: 6,
-              height: 34, padding: "0 12px",
-              borderRadius: "var(--r-lg)",
-              background: "var(--surface)", color: "var(--ink-2)",
-              border: "1px solid var(--line)",
-              cursor: "pointer", fontSize: 12, fontWeight: 500,
-              fontFamily: "inherit",
-              boxShadow: "var(--shadow-xs)",
-            }}
-          >
-            <RefreshCw size={13} /> Actualizar
+          <button onClick={() => syncFromServer()} title="Traer los cambios del servidor" style={botonBarra}>
+            <RefreshCw size={13} style={{ color: "var(--ink-3)" }} /> Actualizar
           </button>
         </div>
       </div>
 
+      {periodoAbierto && (
+        <div style={{
+          display: "flex", alignItems: "center", flexWrap: "wrap",
+          padding: "8px 14px", marginBottom: 10,
+          background: "var(--surface)", border: "1px solid var(--line)",
+          borderRadius: "var(--r-xl)",
+        }}>
+          <SeasonPicker range={mapRange} onChange={setMapRange} />
+        </div>
+      )}
+
       {fixtures.length === 0 ? (
         <EmptyDashboard sede={sede} isAdmin={isAdmin} />
+      ) : modoEfectivo === "vender" ? (
+        /* Vender: el plano y la escalera a la izquierda, el contrato y las
+           tarifas a la derecha. Sin KPIs — para poner un precio no sirve la
+           ocupación de hoy, sirve ver qué hay libre en el periodo, cuándo se
+           suelta lo que falta y a cuánto sale. */
+        <ModoVender
+          espacios={espaciosDelContrato}
+          ultimo={selected}
+          onQuitar={quitarDelContrato}
+          onCambiarCara={alternarCara}
+          sede={sede}
+          rango={mapRange}
+          cerrado={cerrado}
+          panelTarifas={panelTarifas}
+          onGuardado={(parches, resumen) => {
+            // El JSON del layout es lo que pinta el mapa y responde la
+            // disponibilidad; sin esto el contrato existiría en la base y los
+            // espacios seguirían viéndose libres. Se aplican TODOS los parches
+            // en un solo `commit`: uno por espacio dispararía N guardados del
+            // layout, y el último pisaría a los anteriores.
+            if (parches.length > 0) {
+              const porMueble = new Map<string, { face: "A" | "B"; patch: Partial<FaceData> }[]>();
+              for (const p of parches) {
+                porMueble.set(p.fixtureId, [
+                  ...(porMueble.get(p.fixtureId) ?? []),
+                  { face: p.face, patch: p.patch },
+                ]);
+              }
+              commit(
+                fixtures.map((f) => {
+                  const suyos = porMueble.get(f.id);
+                  if (!suyos) return f;
+                  let siguiente = f;
+                  for (const { face, patch } of suyos) {
+                    siguiente = face === "B"
+                      ? { ...siguiente, faceB: { ...(siguiente.faceB ?? {}), ...patch } as FaceData }
+                      : { ...siguiente, ...patch };
+                  }
+                  return siguiente;
+                }),
+              );
+            }
+            setSelected(null);
+            setAnchor(null);
+            setEnContrato([]);
+            setCerrado(resumen);
+          }}
+          onCancelar={closeDetail}
+          onSeguir={() => setCerrado(null)}
+        >
+          <div style={{ flex: "1 1 520px", minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+            {tarjetaMapa(538)}
+
+            {/* ── Cuándo se libera cada espacio ────────────────────────────
+                La escalera. Contesta la pregunta con la que se negocia una
+                fecha de arranque —«¿cuánto tengo si empiezo el 26?»— que
+                ninguna cifra suelta contesta: «15 libres» es cierto hoy y
+                deja de serlo el martes.
+
+                No se dibuja si el periodo no tiene un solo cambio: una
+                escalera sin escalón es una línea recta con un título. */}
+            {mapRange && (
+              <Card style={{ height: 274, flexShrink: 0 }}>
+                <CardHeader
+                  title="Cuándo se libera cada espacio"
+                  sub={rangeTally.parciales > 0
+                    ? `de ${rangeTally.libres} disponibles hoy a ${rangeTally.libres + rangeTally.parciales} al cerrar el periodo`
+                    : `${rangeTally.libres} disponible${rangeTally.libres === 1 ? "" : "s"}, sin cambios en el periodo`}
+                  right={<span>{describeRange(mapRange)}</span>}
+                />
+                <div style={{ flex: 1, minHeight: 0, padding: "0 15px 12px", display: "flex", overflow: "hidden" }}>
+                  <Libera
+                    fixtures={fixtures}
+                    facesOf={commercialFacesOf}
+                    tipoDe={(f) => rateTypeLabel(rateTypeOf(f))}
+                    desde={mapRange.from}
+                    hasta={mapRange.to}
+                    temporadas={temporadasDelPeriodo}
+                  />
+                </div>
+              </Card>
+            )}
+          </div>
+        </ModoVender>
       ) : (
         <>
-          {/* ── Para qué, y para cuándo ────────────────────────────────────
-              Las dos preguntas que ordenan la pantalla, juntas y arriba. El
-              modo dice qué se está haciendo —vender o supervisar— y el periodo
-              es uno solo: el mismo que pinta el mapa llena después las fechas
-              del contrato, así no hay dos calendarios que puedan discrepar. */}
-          <Card style={{ padding: "10px 12px", marginBottom: 12, display: "flex", flexDirection: "column", gap: 9 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              {isAdmin && (
-                <div style={{ display: "flex", gap: 3, padding: 3, borderRadius: "var(--r-lg)", background: "var(--surface-3)" }}>
-                  {([
-                    { id: "vender", label: "Vender", Icon: Handshake, badge: 0 },
-                    { id: "supervisar", label: "Supervisar", Icon: TrendingUp, badge: attentionCount },
-                  ] as const).map(({ id, label, Icon, badge }) => {
-                    const activo = modoEfectivo === id;
-                    return (
-                      <button
-                        key={id}
-                        onClick={() => setModo(id)}
-                        style={{
-                          display: "inline-flex", alignItems: "center", gap: 7,
-                          height: 32, padding: "0 15px", borderRadius: "var(--r-md)",
-                          border: "none", cursor: "pointer", fontFamily: "inherit",
-                          fontSize: 13.5, fontWeight: activo ? 700 : 600,
-                          background: activo ? "var(--accent)" : "transparent",
-                          color: activo ? "#fff" : "var(--ink-2)",
-                          boxShadow: activo ? "var(--shadow-sm)" : "none",
-                          transition: "background .12s, color .12s",
-                        }}
-                      >
-                        <Icon size={14} />
-                        {label}
-                        {badge > 0 && (
-                          <span
-                            style={{
-                              minWidth: 17, height: 17, padding: "0 4px", borderRadius: 999,
-                              display: "inline-flex", alignItems: "center", justifyContent: "center",
-                              fontSize: 10, fontWeight: 700,
-                              background: activo ? "rgba(255,255,255,.22)" : "var(--danger-50)",
-                              color: activo ? "#fff" : "var(--danger)",
-                            }}
-                          >
-                            {badge}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+          {/* ── La franja ──────────────────────────────────────────────────
+              Cinco cifras y ninguna oración. Acá había un parte escrito en
+              prosa; el que pone el canon sabe lo que hace y no necesita que
+              se le explique el negocio, necesita el dato a mano.
 
-              {isAdmin && (
-                <button
-                  onClick={() => setCargaAbierta(true)}
-                  title="Cargar una tanda de contratos desde un Excel o un CSV"
-                  style={{
-                    marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 7,
-                    height: 32, padding: "0 13px", borderRadius: "var(--r-md)",
-                    border: "1px solid var(--line)", background: "var(--surface)",
-                    color: "var(--ink-2)", fontSize: 12.5, fontWeight: 600,
-                    fontFamily: "inherit", cursor: "pointer",
-                  }}
-                >
-                  <FileSpreadsheet size={14} style={{ color: "var(--accent)" }} />
-                  Cargar planilla
-                </button>
-              )}
-
-              <div style={{ position: "relative", flex: "1 1 240px", minWidth: 200, maxWidth: 380 }}>
-                <Search
-                  size={13}
-                  style={{
-                    position: "absolute", left: 10, top: "50%",
-                    transform: "translateY(-50%)", color: "var(--ink-3)", pointerEvents: "none",
-                  }}
-                />
-                <input
-                  type="text"
-                  value={mapQuery}
-                  onChange={(e) => setMapQuery(e.target.value)}
-                  placeholder="Buscar espacio, proveedor o categoría…"
-                  style={{
-                    width: "100%", height: 32, padding: "0 30px",
-                    borderRadius: "var(--r-md)", border: "1px solid var(--line)",
-                    background: "var(--surface-2)", color: "var(--ink-1)",
-                    fontSize: 12, fontFamily: "inherit", outline: "none",
-                  }}
-                />
-                {mapQuery && (
-                  <button
-                    onClick={() => setMapQuery("")}
-                    title="Limpiar búsqueda"
-                    style={{
-                      position: "absolute", right: 6, top: "50%",
-                      transform: "translateY(-50%)",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      width: 20, height: 20, borderRadius: 99,
-                      background: "var(--surface-3)", border: "none",
-                      color: "var(--ink-2)", cursor: "pointer",
-                    }}
-                  >
-                    <X size={11} />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-                paddingTop: 9, borderTop: "1px solid var(--line-soft)",
-              }}
-            >
-              <SeasonPicker range={mapRange} onChange={setMapRange} />
-              {mapRange && (
-                /* Las tres cifras son las partes de UN total, no tres datos
-                   sueltos: sumadas dan las caras comercializables de la sede.
-                   Dibujadas como barra, el total deja de ser algo que el lector
-                   tiene que reconstruir de cabeza. */
-                (() => {
-                  const t = rangeTally.libres + rangeTally.parciales + rangeTally.tomados;
-                  const pct = (n: number) => (t ? (n / t) * 100 : 0);
-                  const partes = [
-                    { n: rangeTally.libres,    c: "var(--success)", r: "libres" },
-                    { n: rangeTally.parciales, c: "var(--warning)", r: "parciales" },
-                    { n: rangeTally.tomados,   c: "var(--muted-status)", r: "vendidos" },
-                  ];
-                  return (
-                    <div style={{ marginLeft: "auto", minWidth: 260, maxWidth: 340 }}>
-                      <div
-                        style={{ display: "flex", height: 8, borderRadius: 4, overflow: "hidden", gap: 1 }}
-                        role="img"
-                        aria-label={partes.map((p) => `${p.n} ${p.r}`).join(", ") + `, de ${t} caras`}
-                      >
-                        {partes.map((p) => (
-                          <span key={p.r} style={{ width: `${pct(p.n)}%`, background: p.c }} />
-                        ))}
-                      </div>
-                      <div style={{
-                        display: "flex", alignItems: "baseline", gap: 11,
-                        marginTop: 6, fontSize: 11.5, whiteSpace: "nowrap",
-                      }}>
-                        {partes.map((p) => (
-                          <span key={p.r} style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
-                            <span style={{
-                              width: 8, height: 8, borderRadius: 2, background: p.c,
-                              alignSelf: "center", flexShrink: 0,
-                            }} />
-                            <b style={{ fontFamily: "var(--font-mono)", fontSize: 13.5 }}>{p.n}</b>
-                            <span style={{ color: "var(--ink-3)" }}>{p.r}</span>
-                          </span>
-                        ))}
-                        <span style={{
-                          marginLeft: "auto", fontFamily: "var(--font-mono)",
-                          fontSize: 11, color: "var(--ink-4)",
-                        }}>
-                          {t} caras
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })()
-              )}
-            </div>
-
-            {/* Qué queda por vender, por familia de mueble. Va acá y no en una
-                tarjeta aparte porque depende del periodo de arriba, y tocar
-                una familia filtra el mapa y la tabla: el dato sirve para algo,
-                no sólo para mirarlo. */}
-            {modoEfectivo === "vender" && porCategoria.length > 1 && (
-              <div
-                style={{
-                  display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
-                  marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line-soft)",
-                }}
-              >
-                <span
-                  style={{
-                    fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: "0.13em",
-                    textTransform: "uppercase", color: "var(--ink-3)", marginRight: 2,
-                  }}
-                >
-                  Libre por familia
+              El orden no es decorativo: lo que entra, lo que no entra, lo que
+              se puede caer, cuánto de la sala está trabajando, y qué se está
+              cobrando sin haberlo armado. De izquierda a derecha, de lo
+              seguro a lo que hay que ir a resolver. */}
+          <Card style={{ flexShrink: 0, marginBottom: 10 }}>
+            <CardHeader
+              title={sede}
+              sub={mapRange ? describeRange(mapRange) : "Hoy"}
+              right={
+                <span>
+                  {kpis.occupied + kpis.committed} contrato
+                  {kpis.occupied + kpis.committed === 1 ? "" : "s"} · {kpis.total} caras
                 </span>
-                {porCategoria.map(({ cat, libres, parciales, total, sinVender, carasSinTarifa }) => {
-                  const activa = mapCategoria === cat;
-                  const disponibles = libres + parciales;
-                  return (
-                    <button
-                      key={cat}
-                      onClick={() => setMapCategoria(activa ? null : cat)}
-                      title={`${libres} libre${libres === 1 ? "" : "s"} todo el periodo · `
-                           + `${parciales} parcial${parciales === 1 ? "" : "es"} · ${total} en total`
-                           + (sinVender > 0 ? `\n${formatCOP(sinVender)} sin vender en el periodo` : "")
-                           + (carasSinTarifa > 0 ? `\n${carasSinTarifa} cara(s) sin tarifa de referencia, fuera del cálculo` : "")}
-                      style={{
-                        display: "inline-flex", alignItems: "baseline", gap: 6,
-                        padding: "4px 10px", cursor: "pointer",
-                        borderRadius: "var(--r-sm)",
-                        border: `1px solid ${activa ? "var(--accent)" : "var(--line)"}`,
-                        background: activa ? "var(--accent-50)" : "var(--surface)",
-                        color: "var(--ink-1)", fontFamily: "inherit",
-                        position: "relative", overflow: "hidden",
-                      }}
-                    >
-                      {/* La tasa, detrás del número. 46 de 70 y 6 de 9 son 66% y
-                          67%: puestas en fila como cifras sueltas, la primera
-                          parece la gran oportunidad y no lo es. */}
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          position: "absolute", inset: 0,
-                          right: `${100 - (total ? (disponibles / total) * 100 : 0)}%`,
-                          background: "var(--success)", opacity: activa ? 0.1 : 0.13,
-                          pointerEvents: "none",
-                        }}
-                      />
-                      <b
-                        style={{
-                          fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 700,
-                          color: disponibles === 0 ? "var(--ink-4)" : "var(--success)",
-                          position: "relative",
-                        }}
-                      >
-                        {disponibles}
-                      </b>
-                      <span style={{ fontSize: 12, position: "relative" }}>{cat}</span>
-                      <span style={{
-                        fontFamily: "var(--font-mono)", fontSize: 10,
-                        color: "var(--ink-4)", position: "relative",
-                      }}>
-                        de {total}
-                      </span>
-                    </button>
-                  );
-                })}
-                {mapCategoria && (
-                  <button
-                    onClick={() => setMapCategoria(null)}
-                    style={{
-                      background: "none", border: "none", cursor: "pointer",
-                      fontSize: 11.5, color: "var(--ink-3)", fontFamily: "inherit",
-                      textDecoration: "underline", padding: "4px 2px",
-                    }}
-                  >
-                    ver todas
-                  </button>
-                )}
-
-                {/* Cuánto vale lo que está libre. Va al lado de las familias
-                    porque es la misma pregunta con otra unidad: no cuántas
-                    caras quedan, sino de qué tamaño es lo que queda. */}
-                {plataDelPeriodo && (
-                  <div style={{ marginLeft: "auto", textAlign: "right" }}>
-                    {plataDelPeriodo.carasConTarifa > 0 ? (
-                      <>
-                        <div style={{ fontSize: 12.5, whiteSpace: "nowrap" }}>
-                          <b style={{ fontFamily: "var(--font-mono)", fontSize: 15, color: "var(--warning)" }}>
-                            {formatCOP(plataDelPeriodo.sinVender)}
-                          </b>{" "}
-                          <span style={{ color: "var(--ink-3)" }}>sin vender</span>
-                          <span style={{ color: "var(--line-strong)", margin: "0 7px" }}>·</span>
-                          <b style={{ fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--ink-2)" }}>
-                            {formatCOP(plataDelPeriodo.vendido)}
-                          </b>{" "}
-                          <span style={{ color: "var(--ink-3)" }}>vendido</span>
-                        </div>
-                        <div style={{ fontSize: 10.5, color: "var(--ink-4)", marginTop: 2 }}>
-                          {plataDelPeriodo.diasPasado === 0
-                            ? `los ${plataDelPeriodo.dias} días están por delante`
-                            : plataDelPeriodo.diasFuturo === 0
-                            ? `los ${plataDelPeriodo.dias} días ya pasaron`
-                            : `${plataDelPeriodo.diasPasado} día${plataDelPeriodo.diasPasado === 1 ? "" : "s"} ya pasaron, ${plataDelPeriodo.diasFuturo} por delante`}
-                          {plataDelPeriodo.sinVenderIdo > 0 && (
-                            <>
-                              {" · "}
-                              <span
-                                style={{ color: "var(--ink-3)" }}
-                                title={"Esa parte del «sin vender» corresponde a días que ya "
-                                     + "pasaron: no se puede recuperar. El resto todavía se "
-                                     + "puede vender."}
-                              >
-                                {formatCOP(plataDelPeriodo.sinVenderIdo)} ya no se recupera
-                              </span>
-                            </>
-                          )}
-                          {" · a tarifa de referencia"}
-                          {plataDelPeriodo.carasSinTarifa > 0 && (
-                            <>
-                              {" · "}
-                              <span
-                                style={{ color: "var(--warning)" }}
-                                title={"Esas caras tienen días libres pero su tipo de mueble no "
-                                     + "tiene tarifa de referencia cargada, así que no suman. "
-                                     + "El verdadero sin vender es mayor."}
-                              >
-                                {plataDelPeriodo.carasSinTarifa} sin tarifa, fuera del cálculo
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <div style={{ fontSize: 11.5, color: "var(--ink-3)", maxWidth: 260 }}>
-                        Sin tarifas de referencia cargadas no se puede valorar lo libre.
-                        Se cargan en <b style={{ color: "var(--ink-2)" }}>Tarifas</b>.
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </Card>
-
-          {modoEfectivo === "vender" ? (
-            /* Vender: el mapa se lleva la pantalla y el contrato va al lado.
-               Sin KPIs — para decidir un precio no sirve la ocupación de hoy,
-               sirve ver qué hay libre en el periodo y dónde queda. */
-            <ModoVender
-              fixture={selected}
-              face={detailFace}
-              onFace={setDetailFace}
-              sede={sede}
-              rango={mapRange}
-              cerrado={cerrado}
-              onGuardado={(patch, resumen) => {
-                // El JSON del layout es lo que pinta el mapa y responde la
-                // disponibilidad; sin esto el contrato existiría en la base y
-                // el espacio seguiría viéndose libre.
-                const objetivo = selected;
-                const cara = detailFace;
-                if (objetivo) {
-                  commit(
-                    fixtures.map((f) =>
-                      f.id !== objetivo.id
-                        ? f
-                        : cara === "B"
-                        ? { ...f, faceB: { ...(f.faceB ?? {}), ...patch } as FaceData }
-                        : { ...f, ...patch },
-                    ),
-                  );
-                }
-                setSelected(null);
-                setAnchor(null);
-                setCerrado(resumen);
-              }}
-              onCancelar={closeDetail}
-              onSeguir={() => setCerrado(null)}
-            >
-              {tarjetaMapa("1 1 520px")}
-            </ModoVender>
-          ) : (
-            <>
-            {/* ── Filtros por estado ─────────────────────────────────────────
-                Filtran el mapa Y la tabla a la vez: antes cada uno tenía los
-                suyos y los dos podían contestar cosas distintas a la misma
-                pregunta. Sólo en Supervisar — miran el estado de HOY, y en
-                Vender el mapa está pintado por disponibilidad del periodo, así
-                que juntos se contradirían. */}
-            <Card
-              style={{
-                display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
-                padding: "9px 12px", marginBottom: 12,
-              }}
-            >
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {FILTER_CHIPS.map((c) => {
-                  const active = mapFilter === c.id;
-                  return (
-                    <button
-                      key={c.id}
-                      onClick={() => setMapFilter(c.id)}
-                      style={{
-                        display: "inline-flex", alignItems: "center", gap: 5,
-                        height: 27, padding: "0 11px", borderRadius: 999,
-                        fontSize: 11, fontWeight: 600, fontFamily: "inherit",
-                        border: `1px solid ${active ? c.ring : "var(--line)"}`,
-                        background: active ? c.fill : "var(--surface)",
-                        color: active ? c.ring : "var(--ink-2)",
-                        cursor: "pointer",
-                        transition: "background .12s, color .12s, border-color .12s",
-                      }}
-                    >
-                      {c.id !== "todos" && (
-                        <span
-                          style={{
-                            width: 6, height: 6, borderRadius: 99,
-                            background: active ? c.ring : "var(--ink-4)", flexShrink: 0,
-                          }}
-                        />
-                      )}
-                      {c.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {mapMatch && (
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-2)", marginLeft: "auto" }}>
-                  {mapMatch.count} espacio{mapMatch.count !== 1 ? "s" : ""} · mapa y tabla filtrados
-                </span>
-              )}
-            </Card>
-
-            {/* ── Headline metrics, above the fold ───────────────────────────
-                These used to sit BELOW a full-screen map, so the numbers the page
-                exists for were the last thing anyone saw. Admin leads with
-                occupancy and money; a worker cannot see money and leads with what
-                is available and what needs attention. */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+              }
+            />
+            {/* La plata sólo para quien la maneja. El servidor ya le borra el
+                `negotiatedValue` a un mercaderista y nunca le manda las
+                tarifas, así que estas tres cifras le llegarían en cero — y
+                «CANON VIGENTE $0» no es discreción, es una sede que parece
+                quebrada. Lo que él necesita saber es qué hay que montar y qué
+                se está por caer, y eso sí lo ve, contado en espacios. */}
+            <div style={{
+              padding: "0 15px 12px", display: "flex", alignItems: "flex-start",
+              gap: 16, flexWrap: "wrap",
+            }}>
               {isAdmin ? (
                 <>
-                  <StatCard
-                    label="Ocupación"
-                    value={`${kpis.occPct}%`}
-                    sub={`${kpis.occupied} de ${kpis.total}`}
-                    color="var(--accent-700)"
-                    meter={kpis.occPct}
+                  <Cifra
+                    rotulo="Canon vigente"
+                    valor={formatCOP(kpis.revenue)}
+                    notas={["al mes"]}
                   />
-                  <StatCard
-                    label="Disponibles"
-                    value={kpis.free}
-                    sub="para vender"
-                    color="var(--success)"
-                    onClick={() => setMapFilter(mapFilter === "free" ? "todos" : "free")}
-                    active={mapFilter === "free"}
+                  <Separador />
+                  <Cifra
+                    rotulo="Sin alquilar"
+                    valor={formatCOP(sinAlquilar.plata)}
+                    notas={[
+                      `al mes a tarifa · ${sinAlquilar.caras} cara${sinAlquilar.caras === 1 ? "" : "s"}`,
+                      ...(sinAlquilar.sinTarifa > 0
+                        ? [`${sinAlquilar.sinTarifa} sin tarifa, fuera de la cuenta`] : []),
+                    ]}
+                    tasa={`${formatCOP(sinAlquilar.porDia)} por día vacío`}
                   />
-                  <StatCard
-                    label="Contratados"
-                    value={kpis.committed}
-                    sub="aún no inician"
-                    color={kpis.committed > 0 ? "var(--accent-700)" : "var(--ink-4)"}
-                    onClick={() => setMapFilter(mapFilter === "committed" ? "todos" : "committed")}
-                    active={mapFilter === "committed"}
-                  />
-                  <StatCard
-                    label="Vencidos"
-                    value={kpis.expired.length}
-                    color={kpis.expired.length > 0 ? "var(--danger)" : "var(--ink-4)"}
-                    onClick={() => setMapFilter(mapFilter === "expired" ? "todos" : "expired")}
-                    active={mapFilter === "expired"}
-                  />
-                  <StatCard
-                    label="Por vencer ≤30d"
-                    value={kpis.expiring.length}
-                    color={kpis.expiring.length > 0 ? "var(--warning)" : "var(--ink-4)"}
-                    onClick={() => setMapFilter(mapFilter === "expiring" ? "todos" : "expiring")}
-                    active={mapFilter === "expiring"}
-                  />
-                  <StatCard
-                    label="Ingreso mensual"
-                    value={formatCOP(kpis.revenue)}
-                    sub="COP"
-                    // Only contracts running today count above. What is signed
-                    // for later gets its own line so the two are never added up
-                    // by eye.
-                    note={
-                      kpis.committedRevenue > 0
-                        ? `+ ${compactCOP(kpis.committedRevenue)} ya pactado`
-                        : undefined
-                    }
-                    color="var(--success)"
+                  <Separador />
+                  <Cifra
+                    rotulo="Vence en 30 días"
+                    valor={formatCOP(porVencer.plata)}
+                    notas={[`${porVencer.pct}% del canon · ${kpis.expiring.length} espacio${kpis.expiring.length === 1 ? "" : "s"}`]}
+                    alarma
                   />
                 </>
               ) : (
                 <>
-                  <StatCard
-                    label="Espacios disponibles"
-                    value={kpis.free}
-                    sub={`de ${kpis.total}`}
-                    color="var(--success)"
-                    meter={kpis.total ? Math.round((kpis.free / kpis.total) * 100) : 0}
-                    onClick={() => setMapFilter(mapFilter === "free" ? "todos" : "free")}
-                    active={mapFilter === "free"}
+                  <Cifra
+                    rotulo="Vence en 30 días"
+                    valor={String(kpis.expiring.length)}
+                    notas={["contratos que se caen"]}
+                    alarma
                   />
-                  <StatCard
-                    label="Vencidos"
-                    value={kpis.expired.length}
-                    sub="liberar o renovar"
-                    color={kpis.expired.length > 0 ? "var(--danger)" : "var(--ink-4)"}
-                    onClick={() => setMapFilter(mapFilter === "expired" ? "todos" : "expired")}
-                    active={mapFilter === "expired"}
-                  />
-                  <StatCard
-                    label="Por vencer ≤30d"
-                    value={kpis.expiring.length}
-                    sub="avisar al proveedor"
-                    color={kpis.expiring.length > 0 ? "var(--warning)" : "var(--ink-4)"}
-                    onClick={() => setMapFilter(mapFilter === "expiring" ? "todos" : "expiring")}
-                    active={mapFilter === "expiring"}
-                  />
-                  <StatCard
-                    label="Ocupados"
-                    value={kpis.occupied}
-                    sub={`${kpis.occPct}% de ocupación`}
-                    color="var(--accent-700)"
+                  <Separador />
+                  <Cifra
+                    rotulo="Libres"
+                    valor={String(kpis.free)}
+                    notas={[`de ${kpis.total} caras`]}
                   />
                 </>
               )}
+              <Separador />
+              <Cifra
+                rotulo="Ocupación"
+                valor={`${kpis.occPct}%`}
+                notas={[`${kpis.occupied} de ${kpis.total} caras`]}
+                barra={kpis.occPct}
+              />
+              <Separador />
+              <Cifra
+                rotulo="Sin montar"
+                valor={String(montaje.sinMontar.length)}
+                notas={["contratados y sin armar"]}
+              />
             </div>
+          </Card>
 
-            {/* ── Map + side rail ────────────────────────────────────────────
-                Side by side instead of stacked: the map used to reserve 62vh and
-                leave roughly half of it empty, pushing everything else off
-                screen. */}
+          {/* ── El plano y lo que hay que revisar ─────────────────────────── */}
+          <div
+            style={{
+              display: "flex", flexWrap: "wrap", alignItems: "stretch",
+              gap: 10, marginBottom: 10,
+            }}
+          >
+            {tarjetaMapa(732)}
+
             <div
               style={{
-                display: "flex", flexWrap: "wrap", alignItems: "stretch",
-                gap: 12, marginBottom: 12,
+                flex: "0 1 382px", minWidth: 300,
+                display: "flex", flexDirection: "column", gap: 10,
               }}
             >
-              {tarjetaMapa(isAdmin ? "62 1 480px" : "66 1 480px")}
-
-              {/* Rail: what needs action, always visible next to the map */}
-              <div
-                style={{
-                  flex: isAdmin ? "38 1 320px" : "34 1 300px",
-                  minWidth: 0, display: "flex", flexDirection: "column", gap: 12,
-                }}
-              >
-                {selected && detailFull ? (
-                  <FixtureDetailCard
-                    fixture={selected}
-                    isAdmin={isAdmin}
-                    face={detailFace}
-                    onFace={setDetailFace}
-                    onBack={closeDetail}
-                    onNegociar={isAdmin ? () => negociar(selected, detailFace) : undefined}
-                    onCancelado={(patch) => {
-                      // Igual que al guardar: el JSON del layout es lo que
-                      // pinta el mapa, así que soltar el contrato en la base
-                      // sin tocarlo dejaría el mueble vendido en pantalla.
-                      const objetivo = selected;
-                      const cara = detailFace;
-                      commit(
-                        fixtures.map((f) =>
-                          f.id !== objetivo.id
-                            ? f
-                            : cara === "B"
-                            ? { ...f, faceB: { ...(f.faceB ?? {}), ...patch } as FaceData }
-                            : { ...f, ...patch },
-                        ),
-                      );
-                      closeDetail();
-                    }}
-                    onOpenFile={setViewerFile}
-                  />
+              {selected && detailFull ? (
+                <FixtureDetailCard
+                  fixture={selected}
+                  isAdmin={isAdmin}
+                  face={detailFace}
+                  onFace={setDetailFace}
+                  onBack={closeDetail}
+                  onNegociar={isAdmin ? () => negociar(selected, detailFace) : undefined}
+                  onCancelado={(patch) => {
+                    // Igual que al guardar: el JSON del layout es lo que
+                    // pinta el mapa, así que soltar el contrato en la base
+                    // sin tocarlo dejaría el mueble vendido en pantalla.
+                    const objetivo = selected;
+                    const cara = detailFace;
+                    commit(
+                      fixtures.map((f) =>
+                        f.id !== objetivo.id
+                          ? f
+                          : cara === "B"
+                          ? { ...f, faceB: { ...(f.faceB ?? {}), ...patch } as FaceData }
+                          : { ...f, ...patch },
+                      ),
+                    );
+                    closeDetail();
+                  }}
+                  onOpenFile={setViewerFile}
+                />
+              ) : (
+              <Card style={{ height: 490, flexShrink: 0 }}>
+                <CardHeader title="Para revisar" right={<span>{attentionCount}</span>} />
+                {attentionCount === 0 ? (
+                  <div style={{ padding: "0 15px 14px", fontSize: 13, color: "var(--libre)" }}>
+                    Sin contratos vencidos ni próximos a vencer.
+                  </div>
                 ) : (
-                <Card style={{ padding: 0, overflow: "hidden" }}>
-                  <CardHeader
-                    icon={
-                      <AlertTriangle
-                        size={13}
-                        style={{ color: attentionCount > 0 ? "var(--danger)" : "var(--success)" }}
-                      />
-                    }
-                    title="Atención"
-                    sub={
-                      attentionCount > 0
-                        ? `${attentionCount} pendiente${attentionCount !== 1 ? "s" : ""}`
-                        : undefined
-                    }
-                  />
-                  {attentionCount === 0 ? (
-                    <div style={{ padding: "12px 14px", fontSize: 12, fontWeight: 500, color: "var(--success)" }}>
-                      ✓ Sin contratos vencidos ni próximos a vencer
-                    </div>
-                  ) : (
-                    <div style={{ maxHeight: isAdmin ? 300 : 420, overflowY: "auto" }}>
-                      {kpis.expired.length > 0 && (
-                        <>
-                          <AtencionSection label={`Vencidos · ${kpis.expired.length}`} color="var(--danger)" />
-                          {kpis.expired.map((entry, i) => (
-                            <AtencionRow
-                              key={`${entry.fixture.id}-${entry.face}`}
-                              entry={entry}
-                              chip={`${entry.days}d`}
-                              chipColor="var(--danger)"
-                              bg="var(--danger-50)"
-                              dates={formatRange(entry.startDate, entry.endDate)}
-                              last={lastAttentionSection === "expired" && i === kpis.expired.length - 1}
-                            />
-                          ))}
-                        </>
-                      )}
-                      {kpis.expiring.length > 0 && (
-                        <>
-                          <AtencionSection label={`Por vencer ≤30d · ${kpis.expiring.length}`} color="var(--warning)" />
-                          {kpis.expiring.map((entry, i) => (
-                            <AtencionRow
-                              key={`${entry.fixture.id}-${entry.face}`}
-                              entry={entry}
-                              chip={`${entry.days}d`}
-                              chipColor="var(--warning)"
-                              bg="var(--warning-50)"
-                              dates={formatRange(entry.startDate, entry.endDate)}
-                              last={lastAttentionSection === "expiring" && i === kpis.expiring.length - 1}
-                            />
-                          ))}
-                        </>
-                      )}
-                      {kpis.noContract.length > 0 && (
-                        <>
-                          <AtencionSection
-                            label={`Ocupados sin contrato registrado · ${kpis.noContract.length}`}
-                            color="var(--danger)"
+                  <div style={{
+                    flex: 1, minHeight: 0, padding: "0 9px 10px",
+                    display: "flex", flexDirection: "column", gap: 12, overflowY: "auto",
+                  }}>
+                    {kpis.noContract.length > 0 && (
+                      <div>
+                        <AtencionSection
+                          label="Ocupado sin contrato"
+                          color="var(--ocupado)"
+                          monto={kpis.noContract.length}
+                        />
+                        {kpis.noContract.map((entry) => (
+                          <AtencionRow
+                            key={`nc-${entry.fixture.id}-${entry.face}`}
+                            entry={entry}
+                            chip="—"
+                            dates="sin papeles"
+                            selected={selected?.id === entry.fixture.id}
+                            onSelect={() => selectFixture(entry.fixture)}
                           />
-                          {kpis.noContract.map((entry, i) => (
-                            <AtencionRow
-                              key={`${entry.fixture.id}-${entry.face}`}
-                              entry={entry}
-                              chip="—"
-                              chipColor="var(--ink-4)"
-                              bg="transparent"
-                              dates={formatRange(entry.startDate, entry.endDate)}
-                              last={lastAttentionSection === "noContract" && i === kpis.noContract.length - 1}
-                            />
-                          ))}
-                        </>
-                      )}
-                      {isAdmin && montaje.noMontado.length > 0 && (
-                        <>
-                          <AtencionSection
-                            label={`No se pudo montar · ${montaje.noMontado.length}`}
-                            color="var(--danger)"
+                        ))}
+                      </div>
+                    )}
+                    {kpis.expired.length > 0 && (
+                      <div>
+                        <AtencionSection
+                          label="Vencidos"
+                          color="var(--ocupado)"
+                          monto={isAdmin
+                            ? formatCOP(kpis.expired.reduce((t, e) => t + (e.negotiatedValue ?? 0), 0))
+                            : kpis.expired.length}
+                        />
+                        {kpis.expired.map((entry) => (
+                          <AtencionRow
+                            key={`v-${entry.fixture.id}-${entry.face}`}
+                            entry={entry}
+                            chip={`${Math.abs(entry.days)}d`}
+                            dates={entry.endDate ? fechaEnCurso(entry.endDate) : "—"}
+                            selected={selected?.id === entry.fixture.id}
+                            onSelect={() => selectFixture(entry.fixture)}
                           />
-                          {montaje.noMontado.map((entry, i) => (
-                            <AtencionRow
-                              key={`nm-${entry.fixture.id}-${entry.face}`}
-                              entry={entry}
-                              chip="!"
-                              chipColor="var(--danger)"
-                              bg="var(--danger-50)"
-                              dates={
-                                (entry.reporte.motivo
-                                  ? MOTIVO_LABEL[entry.reporte.motivo as MountMotivo]
-                                  : "Sin motivo") +
-                                (entry.reporte.reportado_por ? ` · ${entry.reporte.reportado_por}` : "")
-                              }
-                              last={lastAttentionSection === "noMontado" && i === montaje.noMontado.length - 1}
-                              onFoto={
-                                entry.reporte.file_id
-                                  ? () => setViewerFile({
-                                      id: entry.reporte.file_id as number,
-                                      filename: entry.reporte.foto_nombre ?? "montaje.jpg",
-                                      content_type: entry.reporte.foto_tipo ?? "image/jpeg",
-                                      size: 0,
-                                      uploaded_at: entry.reporte.confirmado_en ?? "",
-                                    })
-                                  : undefined
-                              }
-                            />
-                          ))}
-                        </>
-                      )}
-                      {isAdmin && montaje.sinMontar.length > 0 && (
-                        <>
-                          <AtencionSection
-                            label={`Contratado, sin montar · ${montaje.sinMontar.length}`}
-                            color="var(--warning)"
+                        ))}
+                      </div>
+                    )}
+                    {kpis.expiring.length > 0 && (
+                      <div>
+                        <AtencionSection
+                          label="Por vencer en 30 días"
+                          color="var(--ocupado)"
+                          monto={isAdmin ? formatCOP(porVencer.plata) : kpis.expiring.length}
+                        />
+                        {kpis.expiring.map((entry) => (
+                          <AtencionRow
+                            key={`pv-${entry.fixture.id}-${entry.face}`}
+                            entry={entry}
+                            chip={`${entry.days}d`}
+                            dates={entry.endDate ? fechaEnCurso(entry.endDate) : "—"}
+                            selected={selected?.id === entry.fixture.id}
+                            onSelect={() => selectFixture(entry.fixture)}
                           />
-                          {montaje.sinMontar.map((entry, i) => (
-                            <AtencionRow
-                              key={`sm-${entry.fixture.id}-${entry.face}`}
-                              entry={entry}
-                              chip={entry.dias === 0 ? "hoy" : `${entry.dias}d`}
-                              chipColor="var(--warning)"
-                              bg="var(--warning-50)"
-                              dates={
-                                entry.dias === 0
-                                  ? "Arrancó hoy · sin reporte"
-                                  : `Arrancó hace ${entry.dias} día${entry.dias === 1 ? "" : "s"} · sin reporte`
-                              }
-                              last={
-                                lastAttentionSection === "sinMontar" &&
-                                montaje.viejosSinReporte === 0 &&
-                                i === montaje.sinMontar.length - 1
-                              }
-                            />
-                          ))}
-                        </>
-                      )}
-                      {isAdmin && montaje.viejosSinReporte > 0 && (
-                        <div
-                          style={{
-                            padding: "8px 14px", fontSize: 11, color: "var(--ink-3)",
-                            lineHeight: 1.4,
-                          }}
-                        >
-                          Además, {montaje.viejosSinReporte} contrato
-                          {montaje.viejosSinReporte === 1 ? "" : "s"} que arrancó
-                          {montaje.viejosSinReporte === 1 ? "" : "n"} hace más de{" "}
-                          {VENTANA_MONTAJE_DIAS} días nunca se reportó
-                          {montaje.viejosSinReporte === 1 ? "" : "n"}. A esa altura el
-                          espacio ya está armado: lo que falta es el reporte.
-                        </div>
-                      )}
-                      {isAdmin && kpis.belowReference.length > 0 && (
-                        <>
-                          <AtencionSection
-                            label={`Bajo tarifa de referencia · ${kpis.belowReference.length}`}
-                            color="var(--warning)"
+                        ))}
+                      </div>
+                    )}
+                    {isAdmin && montaje.noMontado.length > 0 && (
+                      <div>
+                        <AtencionSection
+                          label="No se pudo montar"
+                          color="var(--ocupado)"
+                          monto={montaje.noMontado.length}
+                        />
+                        {montaje.noMontado.map((entry) => (
+                          <AtencionRow
+                            key={`nm-${entry.fixture.id}-${entry.face}`}
+                            entry={entry}
+                            chip="!"
+                            dates={entry.reporte.motivo
+                              ? MOTIVO_LABEL[entry.reporte.motivo as MountMotivo]
+                              : "sin motivo"}
+                            selected={selected?.id === entry.fixture.id}
+                            onSelect={() => selectFixture(entry.fixture)}
+                            onFoto={
+                              entry.reporte.file_id
+                                ? () => setViewerFile({
+                                    id: entry.reporte.file_id as number,
+                                    filename: entry.reporte.foto_nombre ?? "montaje.jpg",
+                                    content_type: entry.reporte.foto_tipo ?? "image/jpeg",
+                                    size: 0,
+                                    uploaded_at: entry.reporte.confirmado_en ?? "",
+                                  })
+                                : undefined
+                            }
                           />
-                          {kpis.belowReference.map((entry, i) => (
-                            <AtencionRow
-                              key={`${entry.fixture.id}-${entry.face}`}
-                              entry={entry}
-                              chip={`−${entry.gapPct}%`}
-                              chipColor="var(--warning)"
-                              bg="transparent"
-                              dates={`${compactCOP(entry.negotiatedValue)} · ref ${compactCOP(entry.ref)}`}
-                              last={lastAttentionSection === "belowRef" && i === kpis.belowReference.length - 1}
-                            />
-                          ))}
-                        </>
-                      )}
-                    </div>
-                  )}
+                        ))}
+                      </div>
+                    )}
+                    {isAdmin && montaje.sinMontar.length > 0 && (
+                      <div>
+                        <AtencionSection
+                          label="Contratado sin montar"
+                          color="var(--ink-3)"
+                          monto={montaje.sinMontar.length}
+                        />
+                        {montaje.sinMontar.map((entry) => (
+                          <AtencionRow
+                            key={`sm-${entry.fixture.id}-${entry.face}`}
+                            entry={entry}
+                            chip={entry.dias === 0 ? "hoy" : `${entry.dias}d`}
+                            /* Más de dos meses cobrando algo que nadie
+                               reportó armado deja de ser un pendiente y pasa
+                               a ser un problema. */
+                            tono={entry.dias > 60 ? "alarma" : "sordo"}
+                            dates="sin montar"
+                            selected={selected?.id === entry.fixture.id}
+                            onSelect={() => selectFixture(entry.fixture)}
+                          />
+                        ))}
+                        {montaje.viejosSinReporte > 0 && (
+                          <div style={{ padding: "8px 6px 0", fontSize: 11, color: "var(--ink-3)", lineHeight: 1.4 }}>
+                            Además, {montaje.viejosSinReporte} contrato
+                            {montaje.viejosSinReporte === 1 ? "" : "s"} que arrancó
+                            {montaje.viejosSinReporte === 1 ? "" : "n"} hace más de{" "}
+                            {VENTANA_MONTAJE_DIAS} días nunca se reportó
+                            {montaje.viejosSinReporte === 1 ? "" : "n"}. A esa altura el
+                            espacio ya está armado: lo que falta es el reporte.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {isAdmin && kpis.belowReference.length > 0 && (
+                      <div>
+                        <AtencionSection
+                          label="Bajo tarifa de referencia"
+                          color="var(--ink-3)"
+                          monto={kpis.belowReference.length}
+                        />
+                        {kpis.belowReference.map((entry) => (
+                          <AtencionRow
+                            key={`bt-${entry.fixture.id}-${entry.face}`}
+                            entry={entry}
+                            chip={`−${entry.gapPct}%`}
+                            tono="sordo"
+                            dates={`${compactCOP(entry.negotiatedValue)} · ref ${compactCOP(entry.ref)}`}
+                            selected={selected?.id === entry.fixture.id}
+                            onSelect={() => selectFixture(entry.fixture)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Card>
+              )}
+
+              {isAdmin && !(selected && detailFull) && (
+                <Card style={{ flex: 1, minHeight: 0 }}>
+                  <CardHeader title="Quién paga el canon" right={<span>al mes</span>} />
+                  <div style={{ flex: 1, minHeight: 0, padding: "0 15px 12px", overflowY: "auto" }}>
+                    {proveedores.length === 0 ? (
+                      <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
+                        Sin contratos vigentes con valor registrado.
+                      </div>
+                    ) : (
+                      proveedores.map((x) => (
+                        <SupplierRow
+                          key={x.name}
+                          name={x.name}
+                          revenue={x.revenue}
+                          pct={x.pct}
+                          vence={x.vence}
+                        />
+                      ))
+                    )}
+                  </div>
                 </Card>
-                )}
-
-                {isAdmin && !(selected && detailFull) && (
-                  <Card style={{ padding: 0, overflow: "hidden" }}>
-                    <CardHeader
-                      icon={<TrendingUp size={13} style={{ color: "var(--accent)" }} />}
-                      title="Top proveedores"
-                      sub="por ingreso mensual"
-                    />
-                    <div style={{ padding: "6px 0", maxHeight: 260, overflowY: "auto" }}>
-                      {kpis.topSuppliers.length === 0 ? (
-                        <div style={{ padding: "4px 14px 8px", fontSize: 12, color: "var(--ink-3)" }}>
-                          Sin contratos activos con valor registrado.
-                        </div>
-                      ) : (
-                        kpis.topSuppliers.map((s, i) => (
-                          <SupplierRow
-                            key={s.name}
-                            name={s.name}
-                            revenue={s.revenue}
-                            count={s.count}
-                            rank={i}
-                          />
-                        ))
-                      )}
-                    </div>
-                  </Card>
-                )}
-
-              </div>
+              )}
             </div>
+          </div>
 
-            {/* ── Full-width spaces table ──────────────────────────────────── */}
-            <Card style={{ padding: 0, overflow: "hidden" }}>
-              <CardHeader
-                icon={null}
-                title="Estado por espacio"
-                sub={
-                  mapMatch
-                    ? `${sede} · ${mapMatch.count} de ${kpis.total} (filtrado)`
-                    : `${sede} · ${kpis.total} espacio${kpis.total !== 1 ? "s" : ""}`
-                }
-              />
-              <SpacesTable
-                fixtures={fixtures}
-                isAdmin={isAdmin}
-                query={mapQuery}
-                filter={mapFilter}
-                montajeDe={montajeDe}
-              />
-            </Card>
-            </>
-          )}
+          {/* ── Estado por espacio, a todo el ancho ───────────────────────── */}
+          <Card>
+            <CardHeader
+              title="Estado por espacio"
+              sub={`${sede} · ${kpis.total} espacio${kpis.total !== 1 ? "s" : ""}`}
+              right={
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  {chipsTabla.map((c, i) => {
+                    const on = mapFilter === c.id;
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => setMapFilter(c.id)}
+                        style={{
+                          fontSize: 11, fontFamily: "inherit", cursor: "pointer",
+                          padding: "3px 8px", whiteSpace: "nowrap",
+                          border: "1px solid var(--line)",
+                          borderRight: i === chipsTabla.length - 1 ? "1px solid var(--line)" : 0,
+                          borderRadius:
+                            i === 0 ? "2px 0 0 2px"
+                            : i === chipsTabla.length - 1 ? "0 2px 2px 0"
+                            : 0,
+                          background: on ? "var(--ink-1)" : "transparent",
+                          borderColor: on ? "var(--ink-1)" : "var(--line)",
+                          color: on ? "#fff" : "var(--ink-3)",
+                          fontWeight: on ? 600 : 400,
+                        }}
+                      >
+                        {c.label} {c.n}
+                      </button>
+                    );
+                  })}
+                </div>
+              }
+            />
+            <SpacesTable
+              fixtures={fixtures}
+              isAdmin={isAdmin}
+              query={mapQuery}
+              filter={mapFilter}
+              montajeDe={montajeDe}
+              tarifaDe={tarifaDe}
+              sinMontar={sinMontarSet}
+              selectedId={selected?.id ?? null}
+              onSelect={selectFixture}
+            />
+          </Card>
         </>
       )}
 

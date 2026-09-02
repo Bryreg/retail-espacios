@@ -5254,7 +5254,7 @@ export default function StoreEditor3D() {
               </span>
             ) : (
               <span className="flex items-center gap-2 text-dark-ink-2">
-                {placedFixtures.length} fixture{placedFixtures.length!==1?"s":""}
+                {placedFixtures.length} mueble{placedFixtures.length!==1?"s":""}
                 {selectedFix&&(
                   <span className="flex items-center gap-1 ml-2">
                     <span className="text-dark-ink-3">·</span>
@@ -5268,7 +5268,7 @@ export default function StoreEditor3D() {
 
             {/* Vista superior — alinea cámara cenital para mover fixtures fácil */}
             <button onClick={handleTopView}
-              title="Vista superior (cenital) — ideal para mover fixtures"
+              title="Vista superior (cenital) — ideal para mover los muebles"
               className="flex items-center gap-1 rounded border border-dark-line-2 bg-dark-surface px-2 py-0.5 text-[10px] text-dark-ink-2 hover:bg-dark-surface-2 transition-colors">
               ⊞ Top
             </button>

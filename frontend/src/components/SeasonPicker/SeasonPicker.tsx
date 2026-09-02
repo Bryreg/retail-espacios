@@ -8,6 +8,7 @@ import {
   parseISODate,
   upcomingSeasons,
   inclusiveDays,
+  dayNumber,
   type SeasonOccurrence,
 } from "../../types/seasons";
 
@@ -38,6 +39,49 @@ export function describeRange(range: DateRange | null): string {
  * for a date — and the fields are the escape hatch for anything that is not a
  * named season. Both produce the same thing: a period the map answers for.
  */
+/** Cuántos días faltan para que arranque. Cero o negativo: ya arrancó. */
+function diasHasta(d: Date): number {
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const otro = new Date(d); otro.setHours(0, 0, 0, 0);
+  return Math.round((otro.getTime() - hoy.getTime()) / 86_400_000);
+}
+
+/** Una temporada elegida se subraya; las demás son texto. Sin caja, sin
+ *  fondo de color, sin borde. */
+const estiloTemporada = (activa: boolean): React.CSSProperties => ({
+  height: 25, padding: "0 7px",
+  fontSize: 11.5, fontWeight: activa ? 600 : 450,
+  fontFamily: "inherit", cursor: "pointer",
+  border: "none",
+  borderBottom: `2px solid ${activa ? "var(--ink-1)" : "transparent"}`,
+  background: "transparent",
+  color: activa ? "var(--ink-1)" : "var(--ink-3)",
+  whiteSpace: "nowrap",
+});
+
+/** Hoy, como periodo de un día.
+ *
+ *  «Hoy» solía ser `null`, y ese null obligaba al mapa a contestar con otra
+ *  escala: la de «qué pasa hoy», que tiene siete clases —libre, contratado,
+ *  ocupado, vencido, reservado, mantenimiento, resto—. Siete clases es más de
+ *  lo que el color solo puede sostener: ahí `free` contra `maintenance` daba
+ *  ΔE 3.6 en deuteranopía, o sea el mismo color para dos estados opuestos.
+ *
+ *  Hoy es un periodo de un día, que es lo que de verdad es. Con eso el plano
+ *  usa SIEMPRE la escala de tres —se puede, a medias, no— y el problema de las
+ *  siete clases deja de existir sin tener que inventarle un color a nadie. */
+export function hoyComoRango(): DateRange {
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  return { from: d, to: new Date(d) };
+}
+
+/** ¿Ese rango es «hoy»? Un solo día, y ese día es el de hoy. */
+export function esHoy(r: DateRange | null): boolean {
+  if (!r) return true;
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  return inclusiveDays(r.from, r.to) <= 1 && dayNumber(r.from) === dayNumber(d);
+}
+
 export default function SeasonPicker({
   range,
   onChange,
@@ -84,23 +128,31 @@ export default function SeasonPicker({
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-      <CalendarRange size={13} style={{ color: "var(--accent)", flexShrink: 0 }} />
-      <span style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-3)", whiteSpace: "nowrap" }}>
-        Disponible para
-      </span>
+      {/* Decía «Disponible para» delante de la fila. El parte que va debajo
+          arranca con «Para Halloween —del 24 oct al 1 nov…», así que el rótulo
+          era la misma palabra dicha dos veces a dos centímetros. Queda el
+          ícono de calendario, que sí dice de qué se trata la fila sin gastar
+          una palabra. */}
+      <CalendarRange size={13} style={{ color: "var(--ink-4)", flexShrink: 0 }} />
 
+      {/* Siete pastillas idénticas con borde, una al lado de la otra. Es de
+          los patrones que más gritan "generado": cada opción metida en su
+          cajita, todas con el mismo peso, y la elegida marcada pintándole el
+          fondo de color.
+
+          Una temporada no es una etiqueta, es **una fecha**: son las que un
+          comercial nombra de memoria porque son los seis momentos del año en
+          que se vende. Van como se nombran —palabras en fila, separadas por
+          una línea fina— y la elegida se subraya. El mismo gesto que una
+          pestaña, que es exactamente lo que son. */}
       <button
-        onClick={() => onChange(null)}
-        style={{
-          height: 25, padding: "0 10px", borderRadius: 999,
-          fontSize: 11, fontWeight: 600, fontFamily: "inherit", cursor: "pointer",
-          border: `1px solid ${range === null ? "var(--accent)" : "var(--line)"}`,
-          background: range === null ? "var(--accent-50)" : "var(--surface)",
-          color: range === null ? "var(--accent-700)" : "var(--ink-2)",
-        }}
+        onClick={() => onChange(hoyComoRango())}
+        style={estiloTemporada(esHoy(range))}
       >
         Hoy
       </button>
+
+      <span aria-hidden style={{ width: 1, height: 14, background: "var(--line)", margin: "0 3px" }} />
 
       {seasons.map((s) => {
         const active = activeId === s.id;
@@ -109,16 +161,19 @@ export default function SeasonPicker({
             key={`${s.id}-${s.year}`}
             onClick={() => onChange({ from: s.from, to: s.to, label: s.label })}
             title={`${long(s.from)} → ${long(s.to)} · ${s.days} días`}
-            style={{
-              height: 25, padding: "0 10px", borderRadius: 999,
-              fontSize: 11, fontWeight: 600, fontFamily: "inherit", cursor: "pointer",
-              border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`,
-              background: active ? "var(--accent-50)" : "var(--surface)",
-              color: active ? "var(--accent-700)" : "var(--ink-2)",
-              whiteSpace: "nowrap",
-            }}
+            style={estiloTemporada(active)}
           >
             {s.label}
+            {/* A cuántos días arranca, pegado al nombre. Siete nombres en fila
+                no dicen cuál es la próxima ni cuál está a tres meses; con el
+                número, la fila deja de ser una lista y pasa a ser el
+                calendario por el que se vende. Cuesta cero píxeles de alto. */}
+            <span style={{
+              marginLeft: 4, fontFamily: "var(--font-mono)", fontSize: 10,
+              fontWeight: 500, color: "var(--ink-4)",
+            }}>
+              {diasHasta(s.from) > 0 ? diasHasta(s.from) : `va por ${1 - diasHasta(s.from)}/${s.days}`}
+            </span>
           </button>
         );
       })}
@@ -139,9 +194,9 @@ export default function SeasonPicker({
           onChange={(e) => setEnd("to", e.target.value)}
           style={fieldStyle}
         />
-        {range && (
+        {!esHoy(range) && (
           <button
-            onClick={() => onChange(null)}
+            onClick={() => onChange(hoyComoRango())}
             title="Volver a hoy"
             style={{
               display: "flex", alignItems: "center", justifyContent: "center",

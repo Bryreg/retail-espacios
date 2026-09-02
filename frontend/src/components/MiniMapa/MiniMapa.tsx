@@ -403,7 +403,7 @@ export default function MiniMapa({
                   x={cxD}
                   y={yPastilla + 9.3}
                   textAnchor="middle"
-                  style={{ fontSize: 9.5, fontWeight: 800, fill: "#fff" }}
+                  style={{ fontSize: 9.5, fontWeight: 700, fill: "#fff" }}
                 >
                   {texto}
                 </text>
