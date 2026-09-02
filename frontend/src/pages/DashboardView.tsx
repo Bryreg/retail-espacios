@@ -517,7 +517,9 @@ type Rotulos = "todos" | "elegido";
 
 interface IsoMapProps {
   fixtures: UnifiedFixture[];
-  selectedId: string | null;
+  /** Los muebles marcados. En Supervisar es uno —el que se está mirando—; en
+   *  Vender son todos los que van en el contrato que se está armando. */
+  selectedIds: string[];
   /** `point` is relative to the map wrapper, and carries the wrapper's own
    *  size so the popover can flip sides and stay inside the card. */
   onSelect: (f: UnifiedFixture | null, point?: MapAnchor) => void;
@@ -529,7 +531,7 @@ interface IsoMapProps {
   rotulos?: Rotulos;
 }
 
-function IsoMap({ fixtures, selectedId, onSelect, match, range, rotulos = "todos" }: IsoMapProps) {
+function IsoMap({ fixtures, selectedIds, onSelect, match, range, rotulos = "todos" }: IsoMapProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [tip, setTip] = useState<{ x: number; y: number; title: string; sub: string } | null>(null);
@@ -697,8 +699,12 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range, rotulos = "todos
   // Al elegir un mueble el mapa se le acerca. `k` es cuánto se agranda; todo
   // lo que tiene que seguir midiendo lo mismo en pantalla —rótulos, anillos,
   // las pastillas de cara— se divide por él.
-  const enfocado = selectedId
-    ? scene.prisms.find((q) => q.f.id === selectedId)?.foco ?? null
+  // La cámara se acerca SÓLO cuando hay un mueble elegido. Con dos o más
+  // —un contrato sobre varias puntas— acercarse a uno esconde al resto y, peor,
+  // esconde los que todavía faltan tocar. Ahí el trabajo es seguir eligiendo
+  // sobre el plano entero.
+  const enfocado = selectedIds.length === 1
+    ? scene.prisms.find((q) => q.f.id === selectedIds[0])?.foco ?? null
     : null;
   // El tope importa más que la fórmula: una punta de góndola es tan chica que
   // encuadrarla sola deja a los vecinos gigantes y cortados. Con 3.4 se ve el
@@ -749,7 +755,7 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range, rotulos = "todos
 
         {scene.prisms.map(({ f, topHalves, left, right, sideL, sideR, stroke, topOutline, label, tooltipSub }) => {
           const hovered = hoverId === f.id;
-          const selected = selectedId === f.id;
+          const selected = selectedIds.includes(f.id);
           const flags = match?.faceFlags.get(f.id);
           const matched = !match || (flags?.some(Boolean) ?? false);
           const dimmed = match !== null && !matched;
@@ -775,14 +781,14 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range, rotulos = "todos
               onMouseMove={(e) => {
                 // The popover already describes this one — a tooltip on top of
                 // it would just be two cards saying the same thing.
-                if (f.id === selectedId) { setTip(null); return; }
+                if (selected) { setTip(null); return; }
                 handleMove(e, f.label || f.code, tooltipSub);
               }}
               onMouseLeave={() => {
                 setHoverId(null);
                 setTip(null);
               }}
-              opacity={dimmed ? 0.18 : selectedId && !selected ? 0.2 : 1}
+              opacity={dimmed ? 0.18 : enfocado && !selected ? 0.2 : 1}
               style={{
                 cursor: "pointer",
                 filter: hovered ? "brightness(1.12)" : undefined,
@@ -880,7 +886,7 @@ function IsoMap({ fixtures, selectedId, onSelect, match, range, rotulos = "todos
       </svg>
 
       {/* Volver a ver la sede entera. Sólo aparece cuando hay algo enfocado. */}
-      {selectedId && (
+      {enfocado && (
         <button
           onClick={(e) => { e.stopPropagation(); onSelect(null); }}
           style={{
@@ -2211,6 +2217,18 @@ export default function DashboardView() {
   const [ratesOpen, setRatesOpen] = useState(false);
 
   const [selected, setSelected] = useState<UnifiedFixture | null>(null);
+  /** Los espacios que van en el contrato que se está armando, en el orden en
+   *  que se fueron tocando.
+   *
+   *  Guarda `id` y cara, no el mueble: el objeto lo reemplaza el store en cada
+   *  sincronización, y una referencia vieja dejaría la ficha mostrando el
+   *  estado de hace un minuto. Se resuelve contra `fixtures` en cada render.
+   *
+   *  Vive acá y no adentro de la ficha porque el que la arma es el PLANO: se
+   *  toca un espacio y entra a la lista. Un contrato con un proveedor sobre
+   *  tres puntas de góndola es un solo acuerdo —un proveedor, un periodo, una
+   *  firma— y tecleado de a uno eran tres veces el mismo formulario. */
+  const [enContrato, setEnContrato] = useState<{ id: string; face: "A" | "B" }[]>([]);
   // Where on the map the click landed (anchors the quick-look popover).
   const [anchor, setAnchor] = useState<MapAnchor | null>(null);
   // false = quick popover, true = full detail in the rail ("Ver todo").
@@ -2246,11 +2264,60 @@ export default function DashboardView() {
     setDetailFull(false);
     setDetailFace("A");
     setCerrado(null);
+
+    // En Vender tocar un espacio lo SUMA al contrato; tocarlo de nuevo lo
+    // saca. Antes reemplazaba la selección, y con eso un contrato sobre tres
+    // puntas había que tipearlo tres veces. Lo que no se alquila no entra —la
+    // ficha explica por qué—, y una góndola doble entra por su cara A: la B se
+    // elige en el renglón, que es donde se ve cuál se está vendiendo.
+    if (modoEfectivo !== "vender" || !f) return;
+    if (!isRentable(f)) { setEnContrato([]); return; }
+    setEnContrato((lista) =>
+      lista.some((x) => x.id === f.id)
+        ? lista.filter((x) => x.id !== f.id)
+        : [...lista, { id: f.id, face: "A" }],
+    );
   };
+
+  /** Quitar una cara del contrato. */
+  const quitarDelContrato = useCallback((id: string, face: "A" | "B") => {
+    setEnContrato((lista) => lista.filter((x) => !(x.id === id && x.face === face)));
+  }, []);
+
+  /** Sumar o sacar una cara de una góndola doble.
+   *
+   *  Es un interruptor por cara y no un selector entre las dos: las dos caras
+   *  de una góndola son DOS espacios, y vendérselas al mismo proveedor en el
+   *  mismo contrato es lo normal —una marca que quiere el pasillo entero—.
+   *  Con un selector eso obligaba a hacer dos contratos. Sacar la última cara
+   *  saca el mueble del contrato, que es lo que uno espera al apagar la
+   *  única que quedaba prendida. */
+  const alternarCara = useCallback((id: string, face: "A" | "B") => {
+    setEnContrato((lista) =>
+      lista.some((x) => x.id === id && x.face === face)
+        ? lista.filter((x) => !(x.id === id && x.face === face))
+        : [...lista, { id, face }],
+    );
+  }, []);
+
+  /** Los espacios del contrato resueltos contra el layout de ahora. */
+  const espaciosDelContrato = useMemo(
+    () =>
+      enContrato
+        .map(({ id, face }) => {
+          const fixture = fixtures.find((f) => f.id === id);
+          return fixture ? { fixture, face } : null;
+        })
+        .filter((x): x is { fixture: UnifiedFixture; face: "A" | "B" } => x !== null),
+    [enContrato, fixtures],
+  );
+
+
   const closeDetail = () => {
     setSelected(null);
     setAnchor(null);
     setDetailFull(false);
+    setEnContrato([]);
   };
   /** Pasar a vender ese espacio, venga de donde venga: del popover del mapa o
    *  del panel de detalle en Supervisar. */
@@ -2260,6 +2327,9 @@ export default function DashboardView() {
     setDetailFull(false);
     setAnchor(null);
     setCerrado(null);
+    // Arranca un contrato NUEVO con ese espacio. Sumarlo a uno que estuviera a
+    // medio armar mezclaría dos negociaciones sin avisar.
+    setEnContrato([{ id: f.id, face }]);
     setModo("vender");
   };
   const [viewerFile, setViewerFile] = useState<SpaceFileMeta | null>(null);
@@ -2301,6 +2371,7 @@ export default function DashboardView() {
   useEffect(() => {
     setSelected(null);
     setCerrado(null);
+    setEnContrato([]);
   }, [sede]);
 
   /** Las dos pantallas tienen SIEMPRE un periodo puesto.
@@ -2683,7 +2754,11 @@ export default function DashboardView() {
           <div style={{ flex: 1, minHeight: 0, padding: "0 14px 12px", display: "flex" }}>
             <IsoMap
               fixtures={fixtures}
-              selectedId={selected?.id ?? null}
+              /* En Vender se marcan TODOS los del contrato; en Supervisar, el
+                 que se está mirando. */
+              selectedIds={modoEfectivo === "vender"
+                ? espaciosDelContrato.map((e) => e.fixture.id)
+                : selected ? [selected.id] : []}
               onSelect={selectFixture}
               match={mapMatch}
               range={mapRange}
@@ -2987,32 +3062,45 @@ export default function DashboardView() {
            ocupación de hoy, sirve ver qué hay libre en el periodo, cuándo se
            suelta lo que falta y a cuánto sale. */
         <ModoVender
-          fixture={selected}
-          face={detailFace}
-          onFace={setDetailFace}
+          espacios={espaciosDelContrato}
+          ultimo={selected}
+          onQuitar={quitarDelContrato}
+          onCambiarCara={alternarCara}
           sede={sede}
           rango={mapRange}
           cerrado={cerrado}
           panelTarifas={panelTarifas}
-          onGuardado={(patch, resumen) => {
+          onGuardado={(parches, resumen) => {
             // El JSON del layout es lo que pinta el mapa y responde la
-            // disponibilidad; sin esto el contrato existiría en la base y
-            // el espacio seguiría viéndose libre.
-            const objetivo = selected;
-            const cara = detailFace;
-            if (objetivo) {
+            // disponibilidad; sin esto el contrato existiría en la base y los
+            // espacios seguirían viéndose libres. Se aplican TODOS los parches
+            // en un solo `commit`: uno por espacio dispararía N guardados del
+            // layout, y el último pisaría a los anteriores.
+            if (parches.length > 0) {
+              const porMueble = new Map<string, { face: "A" | "B"; patch: Partial<FaceData> }[]>();
+              for (const p of parches) {
+                porMueble.set(p.fixtureId, [
+                  ...(porMueble.get(p.fixtureId) ?? []),
+                  { face: p.face, patch: p.patch },
+                ]);
+              }
               commit(
-                fixtures.map((f) =>
-                  f.id !== objetivo.id
-                    ? f
-                    : cara === "B"
-                    ? { ...f, faceB: { ...(f.faceB ?? {}), ...patch } as FaceData }
-                    : { ...f, ...patch },
-                ),
+                fixtures.map((f) => {
+                  const suyos = porMueble.get(f.id);
+                  if (!suyos) return f;
+                  let siguiente = f;
+                  for (const { face, patch } of suyos) {
+                    siguiente = face === "B"
+                      ? { ...siguiente, faceB: { ...(siguiente.faceB ?? {}), ...patch } as FaceData }
+                      : { ...siguiente, ...patch };
+                  }
+                  return siguiente;
+                }),
               );
             }
             setSelected(null);
             setAnchor(null);
+            setEnContrato([]);
             setCerrado(resumen);
           }}
           onCancelar={closeDetail}

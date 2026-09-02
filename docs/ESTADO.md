@@ -364,6 +364,52 @@ $1.500.000 al mes por 61 días son $3.050.000. Esa cuenta se hacía de cabeza co
 proveedor esperando. Debajo, las temporadas que el plazo cubre: argumento de venta y
 control a la vez —si la temporada que se buscaba no aparece, las fechas están mal—.
 
+#### El contrato multiespacio
+
+Un contrato con un proveedor sobre tres puntas de góndola es **un solo acuerdo**
+—un proveedor, un periodo, una firma— y hasta acá había que tipearlo tres veces, con
+tres oportunidades de escribir una fecha distinta. Ahora la ficha lleva una lista.
+
+- **La arma el plano.** Tocar un espacio lo suma al contrato; tocarlo de nuevo lo saca.
+  Antes reemplazaba la selección. El plano marca todos los elegidos, y la cámara sólo se
+  acerca cuando hay UNO: con dos o más, acercarse a uno esconde los que faltan tocar.
+- **El valor va por espacio**, adentro de su renglón, y arranca con la tarifa de
+  referencia escrita. La punta de la entrada no vale lo que la del fondo, y ése es
+  justamente el detalle que se negocia; con el precio de lista puesto, bajarlo es una
+  decisión que se toma mirando cuánto se está bajando. Al lado, el desvío contra la
+  referencia, en el renglón del espacio que lo tiene.
+- **Las dos caras de una góndola doble pueden ir en el mismo contrato.** Cada letra es
+  un interruptor y no una opción: una marca que quiere el pasillo entero compra A y B, y
+  con un selector entre las dos eso eran dos contratos.
+- **El total es del plazo**, no del mes: $2.250.000 al mes por 61 días son $4.575.000.
+
+**Se guarda por el camino de la tanda** (`POST /leases/bulk/confirmar`), el mismo que
+usa la planilla, y eso no es comodidad de implementación. Por el camino de a uno cada
+espacio dispara su propio juego de correos: un acuerdo sobre tres puntas le llegaba al
+proveedor como tres confirmaciones, al comercial como tres contratos nuevos y al
+mercaderista como tres órdenes. Nueve correos para una sola firma es exactamente lo que
+hace que nadie los lea — y ese endpoint ya lo tenía resuelto («un correo por rol para
+TODA la tanda»). De paso trae dos cosas gratis: **revalida** cada espacio contra la base
+justo antes de escribir —entre que se armó el contrato y se tocó el botón, alguien pudo
+haber vendido una de esas puntas desde otra sesión— y devuelve fila por fila qué pasó.
+
+Hubo que agregarle dos campos a la respuesta, sin migración: `lease_id` por fila —la
+planometría cuelga del contrato, así que la pantalla necesita su id, y va a **cada**
+espacio porque el mercaderista abre el que le toca montar— y `avisos`, que dice a quién
+se le encoló un correo. Ese segundo campo existe por la misma razón que existía en el
+alta de a uno: cerrar la llamada creyendo que se le avisó al mercaderista, sin que haya
+salido un correo, es el modo de falla que vuelve inútil la herramienta.
+
+**Si un espacio falla, no se deshace nada.** Tres espacios son tres filas y la segunda
+puede fallar con la primera ya escrita; deshacerla sería peor, porque el correo ya salió
+y otra sesión pudo haberla leído. La confirmación dice exactamente qué quedó y qué no,
+con el código a mano para reintentarlo.
+
+**Lo que NO hace:** los N contratos quedan como N filas independientes en `space_leases`,
+sin nada que los ate. No hay tabla de contratos —y la habría que agregar, no migrar, que
+sí está permitido—. Mientras tanto la agrupación es **derivable**: mismo proveedor,
+mismo desde, mismo hasta, misma sede. Cancelar sigue siendo de a un espacio.
+
 **Cómo se mira sin backend.** `docs/maquetas/generadores/pantalla.mjs` sirve
 `frontend/dist` y contesta `/api/*` con una sede sintética que lleva los ocho contratos
 reales de NAVE. Lo que no está en el mapa de rutas contesta **404 y no `[]`** —así un

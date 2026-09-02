@@ -15,7 +15,7 @@ revisó `docs/maquetas/`. Quedan versionadas porque una vez se perdieron.
 | `tamanos.mjs` | Lista los tamaños de letra tal como se renderizan, incluido lo que va dentro de un SVG (se escala con el viewBox). Sirve para no dejar entrar un octavo tamaño |
 | `medir.mjs` · `huecos.mjs` | Miden los paneles y el aire muerto, para saber dónde sobra espacio |
 | `supervisar.py` + `sistema.css` + `plano.svg` | Generan `elegida-supervisar.html`. `sistema.css` es la hoja de estilos de Vender extraída, más lo propio de Supervisar; `plano.svg` es el isométrico sacado de la maqueta de Vender, para no mantener dos copias |
-| `pantalla.mjs` + `sede-demo.mjs` | Miran las pantallas YA CONSTRUIDAS, sin backend, para poder compararlas contra las maquetas de al lado. Sirven `frontend/dist` y contestan `/api/*` con una sede sintética que lleva los ocho contratos reales de NAVE. Lo que no está en el mapa de rutas contesta **404** y no `[]`, que es lo que hace que un componente tome su camino de error en vez de recibir algo que parece un dato — así encontró el primer bicho. En modo `trabajador` replica lo que el servidor le borra a un mercaderista y verifica que no le quede un solo peso en pantalla |
+| `pantalla.mjs` + `sede-demo.mjs` | Miran las pantallas YA CONSTRUIDAS, sin backend, para poder compararlas contra las maquetas de al lado. Sirven `frontend/dist` y contestan `/api/*` con una sede sintética que lleva los ocho contratos reales de NAVE. Lo que no está en el mapa de rutas contesta **404** y no `[]`, que es lo que hace que un componente tome su camino de error en vez de recibir algo que parece un dato — así encontró el primer bicho. En modo `trabajador` replica lo que el servidor le borra a un mercaderista y verifica que no le quede un solo peso en pantalla. En `multi` y `guardar` afirma sobre el contrato multiespacio: que el total sea la suma prorrateada, que el plano marque todos los elegidos, y que al guardar salga **un solo pedido** al servidor con un proveedor y un periodo |
 | `paleta.py` | Genera `paleta-plano.html`: los cuatro colores del mapa dibujados como los dibuja el sistema, antes y después, y las mismas dos filas pasadas por una simulación de deuteranopía |
 | `vista.mjs` | Captura una página larga cualquiera de estas y reporta errores |
 | `cuanto.mjs` | Compara el alto del contenido contra el de su caja, panel por panel. Es lo que dice cuánto hay que crecer o achicar en vez de tantear |
@@ -35,6 +35,8 @@ cd ../../../frontend && npm run build && cd -
 node pantalla.mjs                   # admin: Vender y Supervisar
 node pantalla.mjs trabajador        # rol mercaderista, y la regla de la plata
 node pantalla.mjs ficha             # Vender con un espacio elegido
+node pantalla.mjs multi             # un contrato sobre dos espacios
+node pantalla.mjs guardar           # el mismo, guardado de punta a punta
 
 python3 opciones.py                      # regenera la página de opciones
 node ver-largo.mjs opciones-libera.html  # captura y revisa los 5 paneles

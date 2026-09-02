@@ -129,6 +129,53 @@ def test_el_correo_del_proveedor_se_guarda(client, admin):
     assert prov["email"] == "ventas@nutresa.com.co"
 
 
+def test_confirmar_devuelve_el_id_del_contrato_de_cada_fila(client, admin):
+    """La planometría cuelga del contrato, así que la pantalla necesita su id.
+
+    El contrato multiespacio de Vender entra por acá: crea las N filas y
+    después le sube la lámina a cada una. Sin el id en la respuesta habría que
+    salir a buscar el contrato por código, que es una consulta de más y una
+    carrera con quien esté vendiendo el mismo espacio.
+    """
+    _plano(client, admin)
+    filas = [_fila(), _fila(3, espacio="PUN-05", valor=1_200_000)]
+    cuerpo = _confirmar(client, admin, filas).json()
+    ids = [f["lease_id"] for f in cuerpo["filas"]]
+    assert all(isinstance(i, int) for i in ids), cuerpo["filas"]
+    assert len(set(ids)) == 2          # dos contratos distintos, no el mismo dos veces
+
+
+def test_una_fila_con_error_no_trae_id(client, admin):
+    _plano(client, admin)
+    filas = [_fila(), _fila(3, espacio="NO-EXISTE")]
+    cuerpo = _confirmar(client, admin, filas).json()
+    por_fila = {f["fila"]: f for f in cuerpo["filas"]}
+    assert isinstance(por_fila[2]["lease_id"], int)
+    assert por_fila[3]["lease_id"] is None
+
+
+def test_confirmar_dice_a_quien_se_le_avisó(client, admin):
+    """No es adorno: la pantalla lo muestra al cerrar la negociación.
+
+    Antes decía «ya salieron los avisos» como frase fija. Sin SMTP configurado
+    —que es como corre esta prueba— no sale ni un correo, y afirmar lo
+    contrario es el modo de falla que vuelve inútil la herramienta.
+    """
+    _plano(client, admin)
+    cuerpo = _confirmar(client, admin, [_fila()]).json()
+    avisos = cuerpo["avisos"]
+    assert avisos is not None
+    assert avisos["smtp_listo"] is False
+    assert avisos["comercial"] == [] and avisos["montaje"] == [] and avisos["proveedor"] == []
+
+
+def test_sin_nada_creado_no_hay_avisos(client, admin):
+    _plano(client, admin)
+    cuerpo = _confirmar(client, admin, [_fila(espacio="NO-EXISTE")]).json()
+    assert cuerpo["creados"] == 0
+    assert cuerpo["avisos"] is None
+
+
 # ─── Lo que se rechaza ────────────────────────────────────────────────────────
 
 def test_un_codigo_que_no_esta_en_el_plano_es_error(client, admin):

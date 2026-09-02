@@ -5,6 +5,12 @@
 //   node pantalla.mjs trabajador       # rol mercaderista, y revisa que no se
 //                                      # le escape una sola cifra en pesos
 //   node pantalla.mjs ficha            # Vender con un espacio elegido
+//   node pantalla.mjs multi            # un contrato sobre DOS espacios, y
+//                                      # comprueba que el total sea la suma
+//                                      # prorrateada de los dos
+//   node pantalla.mjs guardar          # el mismo, guardado: comprueba que
+//                                      # salga UNA sola tanda al servidor y
+//                                      # que la confirmación nombre los dos
 //
 // Sirve `frontend/dist` con un servidor mínimo y contesta `/api/*` con la sede
 // sintética de `sede-demo.mjs` (los datos de NAVE: 23 caras, ocho contratos que
@@ -83,9 +89,56 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, dev
 const errores = [];
 page.on("pageerror", (e) => errores.push(`JS: ${e.stack ?? e.message}`));
 page.on("console", (m) => { if (m.type() === "error") errores.push(`console: ${m.text()}`); });
+page.on("response", (r) => { if (r.status() === 404) errores.push(`404: ${new URL(r.url()).pathname}`); });
+
+// Lo que el servidor recibió al guardar, para poder afirmar que salió UNA
+// sola tanda y no un pedido por espacio.
+const tandas = [];
 
 await page.route("**/api/**", async (route) => {
   const u = new URL(route.request().url());
+
+  // El guardado del layout. Es lo que persiste el plano después de escribir el
+  // contrato: sin este stub la pantalla se ve bien igual —el store ya se
+  // actualizó en memoria— y el fallo sólo aparecía como un 404 en la consola,
+  // que es justo el modo de falla que este harness existe para no dejar pasar.
+  if (route.request().method() === "PUT" && u.pathname.startsWith("/api/layout/")) {
+    const cuerpo = JSON.parse(route.request().postData() || "{}");
+    await route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        sede: decodeURIComponent(u.pathname.split("/").pop()),
+        fixtures: cuerpo.fixtures || [],
+        updated_at: "2026-09-02T00:00:00Z",
+      }),
+    });
+    return;
+  }
+
+  // El guardado del contrato multiespacio. Se contesta como el backend: una
+  // fila por espacio, cada una con el id del contrato creado, y a quién se le
+  // avisó — uno por rol para toda la tanda.
+  if (u.pathname === "/api/leases/bulk/confirmar") {
+    const cuerpo = JSON.parse(route.request().postData() || "{}");
+    tandas.push(cuerpo);
+    await route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        creados: (cuerpo.filas || []).length,
+        omitidos: 0,
+        filas: (cuerpo.filas || []).map((f, i) => ({
+          fila: f.fila, estado: "ok", mensajes: [], codigo: f.espacio,
+          proveedor: f.proveedor, valor: f.valor, desde: f.desde, hasta: f.hasta,
+          proveedor_nuevo: false, lease_id: 900 + i,
+        })),
+        avisos: {
+          smtp_listo: true, comercial: ["comercial@galerias.co"],
+          montaje: ["mercaderista@galerias.co"], proveedor: [],
+        },
+      }),
+    });
+    return;
+  }
   const cuerpo = API[u.pathname] ?? API[u.pathname.replace(/\/$/, "")];
   if (cuerpo === undefined) {
     await route.fulfill({ status: 404, contentType: "application/json", body: '{"detail":"sin stub"}' });
@@ -134,23 +187,71 @@ async function capturar(nombre) {
   console.log(`${nombre}: ${ancho}×${alto} → ${destino}${ancho > 1440 ? "   ⚠ DESBORDE HORIZONTAL" : ""}`);
 }
 
-if (MODO === "ficha") {
-  await page.locator('svg polygon[fill="#00786A"]').first().click({ force: true });
-  await page.waitForTimeout(800);
+if (MODO === "ficha" || MODO === "multi" || MODO === "guardar") {
+  // Los prismas verdes del plano son los libres en el periodo. Tocarlos los
+  // suma al contrato: uno para «ficha», dos para «multi».
+  const verdes = page.locator('svg polygon[fill="#00786A"]');
+  await verdes.nth(0).click({ force: true });
+  await page.waitForTimeout(700);
+  if (MODO === "multi" || MODO === "guardar") {
+    await verdes.nth(3).click({ force: true });
+    await page.waitForTimeout(700);
+  }
   const llenar = async (sel, txt) => {
     const el = page.locator(sel);
     if (await el.count()) await el.first().fill(txt);
   };
   await llenar('input[placeholder^="Alpina"]', "ALPINA");
   await llenar('input[placeholder^="Lácteos"]', "Alpinito");
-  await llenar('input[placeholder="1.800.000"]', "1050000");
   const fechas = page.locator('input[type="date"]');
   if (await fechas.count() >= 2) {
     await fechas.nth(0).fill("2026-09-15");
     await fechas.nth(1).fill("2026-11-14");
   }
   await page.waitForTimeout(900);
-  await capturar("ficha");
+
+  // El total tiene que ser la suma mensual de los espacios prorrateada por los
+  // días del plazo. Es la cuenta que antes se hacía de cabeza, así que se
+  // verifica y no se mira.
+  const valores = await page.locator('input[aria-label^="Valor mensual de"]')
+    .evaluateAll((els) => els.map((e) => ({ que: e.getAttribute("aria-label"), val: e.value })));
+  const suma = valores.reduce((t, v) => t + Number(v.val.replace(/\D/g, "") || 0), 0);
+  const esperado = "$" + Math.round((suma / 30) * 61).toLocaleString("es-CO");
+  const texto = await page.evaluate(() => document.body.innerText);
+  const enPantalla = (texto.match(/TOTAL DEL CONTRATO\s*\n?\s*(\$[\d.]+)/) || [])[1];
+  console.log(`espacios en el contrato: ${valores.length} · ${valores.map((v) => v.val).join(" + ")} al mes`);
+  console.log(enPantalla === esperado
+    ? `total: ${enPantalla} = suma prorrateada por 61 días ✓`
+    : `⚠ TOTAL EQUIVOCADO: en pantalla ${enPantalla}, esperado ${esperado}`);
+  const marcados = await page.locator('svg polygon[stroke="var(--accent)"]').count();
+  console.log(marcados === valores.length
+    ? `el plano marca los ${marcados} ✓`
+    : `⚠ el plano marca ${marcados} y el contrato tiene ${valores.length}`);
+
+  if (MODO === "guardar") {
+    await page.locator('button:has-text("Guardar contrato")').first().click();
+    await page.waitForTimeout(1200);
+    console.log(tandas.length === 1
+      ? `un solo pedido al servidor con ${tandas[0].filas.length} espacios ✓`
+      : `⚠ salieron ${tandas.length} pedidos; tendría que ser 1`);
+    const t = tandas[0] || { filas: [] };
+    const unProveedor = new Set(t.filas.map((f) => f.proveedor)).size === 1;
+    const unPeriodo = new Set(t.filas.map((f) => `${f.desde}→${f.hasta}`)).size === 1;
+    console.log(unProveedor && unPeriodo
+      ? "un proveedor y un periodo para todos los espacios ✓"
+      : "⚠ la tanda mezcla proveedores o periodos");
+    const cerrado = await page.evaluate(() => document.body.innerText);
+    console.log(/Contrato guardado/.test(cerrado)
+      ? "la confirmación aparece ✓"
+      : "⚠ no apareció la confirmación");
+    for (const f of t.filas) {
+      if (!cerrado.includes(String(f.espacio).replace(/^[A-Z]+-/, "").split("-")[0])) {
+        console.log(`⚠ la confirmación no nombra ${f.espacio}`);
+      }
+    }
+  }
+
+  await capturar(MODO);
 } else if (trabajador) {
   // El mercaderista no tiene pestañas: la pantalla es Supervisar y punto.
   await capturar("trabajador");

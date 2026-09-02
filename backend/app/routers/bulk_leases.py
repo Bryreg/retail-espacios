@@ -37,9 +37,10 @@ from app.database import get_db
 from app.models.models import Space, SpaceLease, SpaceStatus, Supplier
 from app.routers.layout import reference_rates_raw
 from app.services.layout_lookup import find_fixture_by_space_code
+from app.schemas.spaces import AvisosContrato
 from app.services.contacts import recipients_for
 from app.services.mailer import (
-    app_base_url, format_cop, html_shell, send_mail_to_bg,
+    app_base_url, correo_configurado, format_cop, html_shell, send_mail_to_bg,
 )
 
 router = APIRouter(prefix="/leases/bulk", tags=["carga masiva"])
@@ -98,6 +99,10 @@ class FilaOut(BaseModel):
     #: El proveedor todavía no existe en la base y se va a crear. Vale avisarlo:
     #: "Nutresa" y "NUTRESA S.A." son dos proveedores distintos para el sistema.
     proveedor_nuevo: bool = False
+    #: El contrato que quedó creado, en la respuesta de /confirmar. La pantalla
+    #: lo necesita para colgarle la planometría, que existe recién después de
+    #: que el contrato existe. Al validar es siempre None.
+    lease_id: Optional[int] = None
 
 
 class LoteOut(BaseModel):
@@ -111,6 +116,14 @@ class ConfirmadoOut(BaseModel):
     creados: int
     omitidos: int
     filas: list[FilaOut]
+    #: A quién se le avisó, de verdad.
+    #:
+    #: La planilla no lo usaba —carga cuarenta contratos y se mira el resumen—
+    #: pero el contrato multiespacio de la pantalla de Vender pasa por acá, y
+    #: ahí cerrar la llamada creyendo que se le avisó al mercaderista, sin que
+    #: haya salido un correo, es el modo de falla que vuelve inútil todo esto.
+    #: Reporta lo ENCOLADO, no lo entregado.
+    avisos: Optional[AvisosContrato] = None
 
 
 # ─── Utilidades ───────────────────────────────────────────────────────────────
@@ -373,6 +386,8 @@ def confirmar(lote: LoteIn, background_tasks: BackgroundTasks, db: Session = Dep
             notes=v.nota,
         )
         db.add(lease)
+        db.flush()          # para poder devolver el id del contrato creado
+        v.lease_id = lease.id
         # Sólo lo que ya arrancó ocupa: firmar en agosto para diciembre no puede
         # esconder cuatro meses vendibles detrás de un estado que no es cierto.
         if lease.start_date <= date.today():
@@ -381,25 +396,36 @@ def confirmar(lote: LoteIn, background_tasks: BackgroundTasks, db: Session = Dep
 
     db.commit()
 
+    avisos: Optional[AvisosContrato] = None
     if creados:
-        _avisar(db, background_tasks, lote.sede, creados)
+        avisos = _avisar(db, background_tasks, lote.sede, creados)
 
     return ConfirmadoOut(
         creados=len(creados),
         omitidos=len(filas) - len(creados),
         filas=filas,
+        avisos=avisos,
     )
 
 
 # ─── Los avisos, uno por rol y uno por tanda ──────────────────────────────────
 
-def _avisar(db: Session, background_tasks: BackgroundTasks, sede_lote, creados: list[FilaOut]):
+def _avisar(
+    db: Session, background_tasks: BackgroundTasks, sede_lote, creados: list[FilaOut]
+) -> AvisosContrato:
     """Un correo por rol para TODA la tanda, no uno por contrato.
 
     Cuarenta contratos por el camino de a uno serían ciento veinte correos en un
     minuto: nadie los lee, el proveedor de correo los trata como spam y el aviso
-    que sí importaba se pierde entre los otros.
+    que sí importaba se pierde entre los otros. Lo mismo vale para un contrato
+    de tres espacios hecho desde el mapa: son tres espacios, no tres acuerdos.
+
+    Devuelve a quién se le encoló algo, que es lo que la pantalla muestra al
+    cerrar. Sin SMTP configurado no se encola nada y se dice.
     """
+    listo = correo_configurado()
+    encolados = AvisosContrato(smtp_listo=listo, comercial=[], montaje=[], proveedor=[])
+
     por_sede: dict[str, list[FilaOut]] = defaultdict(list)
     for c in creados:
         por_sede[c.sede or (sede_lote or "").strip().upper() or ""].append(c)
@@ -409,7 +435,8 @@ def _avisar(db: Session, background_tasks: BackgroundTasks, sede_lote, creados: 
         cuantos = len(filas)
         total = sum(float(f.valor or 0) for f in filas)
 
-        if who["comercial"]:
+        if who["comercial"] and listo:
+            encolados.comercial.extend(who["comercial"])
             asunto = f"{cuantos} contrato{'s' if cuantos != 1 else ''} nuevo{'s' if cuantos != 1 else ''} — {sede or 'sede'}"
             rows = [
                 (f"{f.codigo} · {f.proveedor}",
@@ -422,7 +449,8 @@ def _avisar(db: Session, background_tasks: BackgroundTasks, sede_lote, creados: 
                 html_shell(asunto, rows, "Cargados desde una planilla."),
             )
 
-        if who["montaje"]:
+        if who["montaje"] and listo:
+            encolados.montaje.extend(who["montaje"])
             asunto = f"{cuantos} espacio{'s' if cuantos != 1 else ''} por montar — {sede or 'sede'}"
             rows = [
                 (f"{f.codigo}", f"{f.proveedor}{f' · {f.marca}' if f.marca else ''} · desde el {f.desde}")
@@ -447,6 +475,9 @@ def _avisar(db: Session, background_tasks: BackgroundTasks, sede_lote, creados: 
         por_proveedor.setdefault(supplier.id, (supplier, []))[1].append(c)
 
     for supplier, filas in por_proveedor.values():
+        if not listo:
+            continue
+        encolados.proveedor.append(supplier.email)
         cuantos = len(filas)
         asunto = f"Confirmación de {cuantos} espacio{'s' if cuantos != 1 else ''}"
         rows = [
@@ -458,3 +489,5 @@ def _avisar(db: Session, background_tasks: BackgroundTasks, sede_lote, creados: 
             send_mail_to_bg, [supplier.email], asunto,
             html_shell(asunto, rows, "Cualquier ajuste sobre lo acordado, respondé este correo."),
         )
+
+    return encolados
