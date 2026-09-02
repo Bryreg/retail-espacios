@@ -58,12 +58,13 @@ function Armazon({
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* `flex-start` y no `stretch`: la tarjeta del plano se mide con la
-          proporción del plano, y estirarla para igualar la altura de la ficha
-          le agregaba trescientos píxeles de blanco abajo del dibujo. Cada
-          columna mide lo que mide; la que se estira es la de la derecha, y
-          sólo cuando no hay ficha. */}
-      <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+      {/* Las dos columnas terminan a la misma altura, y lo que absorbe la
+          diferencia es SIEMPRE el último panel de la columna corta: la lista
+          de precios a la derecha, la de espacios libres a la izquierda. Nunca
+          la tarjeta del plano ni la escalera, que se miden con su dibujo —
+          estirarlas les agrega blanco adentro, que fue el error anterior.
+          Por eso `stretch` acá y `flex` sólo en el último de cada columna. */}
+      <div style={{ display: "flex", gap: 12, alignItems: "stretch" }}>
         {mapa}
         {/* Mientras no hay un espacio elegido, acá había 428 px de blanco con
             un rótulo chiquito arriba explicando que ahí iba a aparecer algo.

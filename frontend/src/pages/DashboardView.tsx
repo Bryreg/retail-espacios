@@ -2911,6 +2911,19 @@ export default function DashboardView() {
    *  «¿qué le ofrezco?». Tenerlo detrás de un botón obligaba a abrir, mirar,
    *  cerrar y volver a mirar el plano — cuatro gestos para un dato que se usa
    *  en cada llamada. */
+  /** Las pastillas de un tipo: primero lo libre todo el periodo, después lo
+   *  que se libera adentro, con su fecha. */
+  const chipsDe = (g: { libres: Disponible[]; parciales: Disponible[] }) =>
+    [...g.libres, ...g.parciales].map((d) => (
+      <ChipEspacio
+        key={`${d.fixture.id}-${d.face}`}
+        code={d.code}
+        desde={d.desde}
+        onClick={() => alternarCara(d.fixture.id, d.face)}
+        puesto={enContrato.some((x) => x.id === d.fixture.id && x.face === d.face)}
+      />
+    ));
+
   /** Los códigos sólo mientras no hay contrato armado: ahí la hoja de la
    *  derecha está vacía y la pregunta es cuáles hay. Con la ficha abierta la
    *  pregunta ya es otra y los códigos la empujarían fuera de la pantalla. */
@@ -3012,23 +3025,7 @@ export default function DashboardView() {
                     padding: "0 0 7px", borderBottom: "1px solid var(--line-soft)",
                   }}>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                      {libres.map((d) => (
-                        <ChipEspacio
-                          key={`${d.fixture.id}-${d.face}`}
-                          code={d.code}
-                          onClick={() => alternarCara(d.fixture.id, d.face)}
-                          puesto={enContrato.some((x) => x.id === d.fixture.id && x.face === d.face)}
-                        />
-                      ))}
-                      {parciales.map((d) => (
-                        <ChipEspacio
-                          key={`${d.fixture.id}-${d.face}`}
-                          code={d.code}
-                          desde={d.desde}
-                          onClick={() => alternarCara(d.fixture.id, d.face)}
-                          puesto={enContrato.some((x) => x.id === d.fixture.id && x.face === d.face)}
-                        />
-                      ))}
+                      {chipsDe({ libres, parciales })}
                     </div>
                   </td>
                 </tr>
@@ -3054,6 +3051,51 @@ export default function DashboardView() {
             </tr>
           </tfoot>
         </table>
+      </div>
+    </Card>
+  );
+
+  /** «Qué está libre», como panel propio.
+   *
+   *  Es el mismo contenido que cuelga de la lista de precios, mudado de
+   *  columna: con la ficha del contrato abierta la columna derecha mide medio
+   *  metro más que la izquierda, y ese desnivel dejaba la esquina de abajo a la
+   *  izquierda en gris. Los códigos van donde falta alto, que es también donde
+   *  sirven — se sigue eligiendo espacios con el contrato a medio llenar.
+   *
+   *  A todo el ancho de la columna las pastillas entran en una o dos filas por
+   *  tipo, así que ocupa menos que en la columna angosta y se lee de un golpe. */
+  const panelCodigos = (
+    <Card style={{ flex: "1 1 auto", minHeight: 0 }}>
+      <CardHeader
+        title="Qué está libre"
+        sub={`${rangeTally.libres + rangeTally.parciales} de ${kpis.total}`}
+        right={<span>tocá uno para sumarlo al contrato</span>}
+      />
+      <div style={{ padding: "0 15px 12px", overflowY: "auto" }}>
+        {porCategoria
+          .filter((g) => g.libres.length + g.parciales.length > 0)
+          .map((g) => (
+            <div
+              key={g.cat}
+              style={{
+                display: "flex", alignItems: "baseline", gap: 12,
+                padding: "6px 0", borderTop: "1px solid var(--line-soft)",
+              }}
+            >
+              <span style={{ fontSize: 13, color: "var(--ink-2)", width: 150, flexShrink: 0 }}>
+                {rateTypeLabel(g.cat)}
+              </span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, flex: 1, minWidth: 0 }}>
+                {chipsDe(g)}
+              </div>
+              <span style={{
+                fontSize: 12, color: "var(--ink-3)", flexShrink: 0, whiteSpace: "nowrap",
+              }}>
+                {g.tarifa ? `${formatCOP(g.tarifa)} al mes` : "sin tarifa"}
+              </span>
+            </div>
+          ))}
       </div>
     </Card>
   );
@@ -3295,7 +3337,7 @@ export default function DashboardView() {
                 No se dibuja si el periodo no tiene un solo cambio: una
                 escalera sin escalón es una línea recta con un título. */}
             {mapRange && (
-              <Card style={{ height: 274, flexShrink: 0 }}>
+              <Card style={{ height: 274, flex: "0 0 auto" }}>
                 <CardHeader
                   title="Cuándo se libera cada espacio"
                   sub={rangeTally.parciales > 0
@@ -3315,6 +3357,14 @@ export default function DashboardView() {
                 </div>
               </Card>
             )}
+
+            {/* Con la ficha abierta la columna derecha mide medio metro más
+                que ésta, y ese desnivel dejaba la esquina de abajo en gris. Los
+                códigos se mudan acá: donde falta alto, que es también donde
+                sirven —se sigue eligiendo espacios con el contrato a medio
+                llenar—. Es el último panel de la columna, así que es el que
+                absorbe la diferencia y deja las dos parejas abajo. */}
+            {!conCodigos && porCategoria.length > 0 && panelCodigos}
           </div>
         </ModoVender>
       ) : (

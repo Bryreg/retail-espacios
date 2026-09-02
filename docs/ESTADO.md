@@ -446,8 +446,17 @@ el otro camino: el plano contesta «dónde queda» y la lista contesta «cuáles
 según cuál de las dos preguntas traiga el proveedor uno arranca por un lado o por el
 otro. Las que se liberan adentro del periodo van en naranja y con su fecha: es
 inventario vendible —«te lo puedo dar desde el 25»— y esconderlo es dejar de ofrecer
-cinco espacios de veinte. Los códigos salen cuando hay un contrato armado: ahí la
-pregunta ya es otra y empujarían la ficha fuera de la pantalla.
+cinco espacios de veinte. Con la ficha del contrato abierta los códigos se MUDAN de columna: la derecha
+mide medio metro más que la izquierda y ese desnivel dejaba la esquina de abajo en gris,
+así que van a la izquierda, debajo de la escalera, como panel propio —«Qué está libre»—.
+Donde falta alto, que es también donde sirven: se sigue eligiendo espacios con el
+contrato a medio llenar. A todo el ancho de esa columna las pastillas entran en una fila
+por tipo y se leen de un golpe.
+
+**Las dos columnas terminan a la misma altura**, y lo que absorbe la diferencia es
+siempre el ÚLTIMO panel de la columna corta —la lista de precios a la derecha, la de
+espacios libres a la izquierda—. Nunca la tarjeta del plano ni la escalera: ésas se
+miden con su dibujo, y estirarlas les agrega blanco adentro.
 
 **Cómo se mira sin backend.** `docs/maquetas/generadores/pantalla.mjs` sirve
 `frontend/dist` y contesta `/api/*` con una sede sintética que lleva los ocho contratos
