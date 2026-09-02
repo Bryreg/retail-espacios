@@ -191,7 +191,14 @@ async function capturar(nombre) {
   await revisar(nombre);
 }
 
-/** Los chequeos de geometría, UNA VEZ POR PANTALLA.
+/** Los anchos a los que se revisa. Un solo ancho no alcanza y no es teoría:
+ *  el cursor de la escalera caía corrido en 1920 y perfecto en 1440, porque el
+ *  encaje del SVG depende de la proporción de la caja y la caja depende del
+ *  ancho de la ventana. 1440 es el portátil; 1920 es el monitor de escritorio,
+ *  que es donde se usa esto todo el día. */
+const ANCHOS = [1440, 1920];
+
+/** Los chequeos de geometría, UNA VEZ POR PANTALLA Y POR ANCHO.
  *
  *  Antes corrían al final, sobre lo que hubiera quedado en el navegador — que
  *  en modo admin es Supervisar, porque es la última pestaña del recorrido.
@@ -199,6 +206,16 @@ async function capturar(nombre) {
  *  nunca. Un chequeo que no mira todas las pantallas que fotografía es peor que
  *  ninguno, porque el informe sale limpio igual. */
 async function revisar(nombre) {
+  for (const ancho of ANCHOS) {
+    await page.setViewportSize({ width: ancho, height: 900 });
+    await page.waitForTimeout(500);
+    await revisarA(`${nombre} · ${ancho}`);
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(300);
+}
+
+async function revisarA(nombre) {
   console.log(`\n── ${nombre} ─────────────────────────────`);
   // Lo que se sale de su panel
   const fuera = await page.evaluate(() => {
@@ -270,6 +287,51 @@ async function revisar(nombre) {
       llena: Math.round((100 * dibujo.w * dibujo.h) / (a.width * a.height)),
     };
   });
+  // El cursor de la escalera cae DONDE ESTÁ EL MOUSE.
+  //
+  // Un gráfico con lectura al pasar el mouse tiene una sola obligación: que lo
+  // que dice sea de donde uno está apuntando. El SVG se dibuja con
+  // `xMidYMid meet`, que centra lo que sobra, así que pasar de píxeles a
+  // coordenadas del dibujo con una regla de tres contra la caja del elemento da
+  // un cursor corrido — y corrido de a poco, que es la clase de error que se ve
+  // raro y no se sabe explicar. Se mueve el mouse a tres lugares del gráfico y
+  // se mide dónde queda el anillo.
+  // Hay que traerlo a la vista antes de medir: en 1920 el plano es más alto y la
+  // escalera queda debajo del viewport, y un `mouse.move` fuera de la ventana no
+  // dispara nada — el anillo se queda donde estaba y el desvío que se mide es
+  // basura que igual da rojo, por el motivo equivocado.
+  const cursor = await page.evaluate(async () => {
+    const anillo = document.querySelector("circle[data-cursor]");
+    if (!anillo) return null;
+    const svg = anillo.closest("svg");
+    svg.scrollIntoView({ block: "center" });
+    await new Promise((r) => setTimeout(r, 250));
+    const c = svg.getBoundingClientRect();
+    return { x: c.x, y: c.y, width: c.width, height: c.height };
+  });
+  if (cursor === null) {
+    console.log("Sin escalera en esta pantalla.");
+  } else {
+    const desvios = [];
+    for (const parte of [0.2, 0.5, 0.8]) {
+      const px = cursor.x + cursor.width * parte;
+      await page.mouse.move(px, cursor.y + cursor.height * 0.4);
+      await page.waitForTimeout(120);
+      const donde = await page.evaluate(() => {
+        const a = document.querySelector("circle[data-cursor]");
+        return a ? a.getBoundingClientRect().x + a.getBoundingClientRect().width / 2 : null;
+      });
+      if (donde !== null) desvios.push({ parte, desvio: Math.round(donde - px) });
+    }
+    // Un día del periodo mide unos 30 px: el cursor salta de día en día, así que
+    // media jornada de desvío es redondeo y no un error de coordenadas.
+    const peor = Math.max(...desvios.map((d) => Math.abs(d.desvio)));
+    console.log(peor <= 16
+      ? `El cursor de la escalera cae donde está el mouse (peor desvío ${peor} px) ✓`
+      : `⚠ EL CURSOR NO CAE DONDE ESTÁ EL MOUSE: ${desvios.map((d) => `${d.parte * 100}% → ${d.desvio > 0 ? "+" : ""}${d.desvio} px`).join(", ")}`);
+    await page.mouse.move(4, 4);
+  }
+
   if (plano === null) {
     console.log("\nSin plano en esta pantalla.");
   } else {
