@@ -23,12 +23,14 @@ Los tokens son JWT HS256 firmados con la variable JWT_SECRET.
 import logging
 import os
 import secrets
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 import jwt
 from argon2 import PasswordHasher
 from argon2.exceptions import Argon2Error, InvalidHashError, VerifyMismatchError
-from fastapi import Depends, Header, HTTPException, Query
+from fastapi import Depends, Header, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -270,7 +272,24 @@ def ensure_default_config(db: Session) -> None:
 
 # ─── Tokens ───────────────────────────────────────────────────────────────────
 
-def create_token(role: str, epoca: int = 0, cliente: str | None = None) -> str:
+def create_token(
+    role: str,
+    epoca: int = 0,
+    cliente: str | None = None,
+    *,
+    sub: int | None = None,
+    email: str | None = None,
+) -> str:
+    """El mismo token de siempre — ``sub``/``email`` son opcionales y NUEVOS.
+
+    El login legado (``routers/auth.py::login``) llama esto sin ``sub`` ni
+    ``email``, y el payload que sale es byte a byte el de antes: las claves
+    nuevas sólo se agregan cuando alguien las pasa, que es lo que hace
+    ``/api/auth/oauth``. Ahí ``sub`` es el id de la fila en ``usuarios`` y
+    habilita, en ``decode_token``, la revocación por membresía — algo que un
+    token del login por clave compartida no tiene ni necesita: ese ya se
+    revoca por época.
+    """
     payload = {
         "role": role,
         # Con qué número de época nació. Si el contador del rol sube después,
@@ -283,6 +302,10 @@ def create_token(role: str, epoca: int = 0, cliente: str | None = None) -> str:
         "cliente": cliente,
         "exp": datetime.now(timezone.utc) + timedelta(hours=TOKEN_TTL_HOURS),
     }
+    if sub is not None:
+        payload["sub"] = sub
+    if email is not None:
+        payload["email"] = email
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
@@ -299,6 +322,111 @@ def create_mount_token(
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
+# ─── Revocación por request (membresías individuales) ─────────────────────────
+#
+# Las épocas invalidan TODO un rol de golpe — sirven para el logout masivo del
+# login legado, pero desactivar a UNA persona no puede subirle la época a
+# todo el mundo. Un token con `sub` (los que emite /oauth) se valida además
+# contra su membresía, consultada al registro y cacheada por 60 s: lo bastante
+# corto para que "desactivar a alguien" se sienta inmediato, lo bastante largo
+# para no convertir cada pedido en una consulta a la base por defecto.
+#
+# El PATCH de `routers/usuarios.py` llama `invalidar_cache_membresia` al
+# cambiar `activo`, así que en la práctica el retraso real es el tiempo hasta
+# el PRÓXIMO pedido de esa persona, no el TTL.
+
+_MEMBRESIA_CACHE_TTL_SEGUNDOS = 60
+_membresia_cache: dict[tuple[int, str], tuple[bool, float]] = {}
+_membresia_cache_candado = threading.Lock()
+
+
+def _membresia_activa(usuario_id: int, cliente_slug: str) -> bool:
+    clave = (usuario_id, cliente_slug)
+    ahora = time.monotonic()
+    with _membresia_cache_candado:
+        cacheado = _membresia_cache.get(clave)
+        if cacheado is not None and ahora < cacheado[1]:
+            return cacheado[0]
+
+    # Import perezoso: `clientes.py` importa este módulo con un import
+    # perezoso también (dentro de funciones), así que ninguno de los dos carga
+    # al otro al arrancar.
+    from app.clientes import sesion_registro
+    from app.models.identidad import Membresia, Usuario
+
+    reg = sesion_registro()
+    try:
+        # El `join` contra `usuarios` importa hoy poco —no hay ningún
+        # endpoint que borre una fila de `usuarios`— pero es la diferencia
+        # entre "sin efecto" y "agujero latente" el día que exista uno (Fase
+        # 2, o un borrado manual): sin él, un `sub` de una cuenta que ya no
+        # existe seguiría validando mientras su fila de `membresias` quedara
+        # atrás.
+        fila = (
+            reg.query(Membresia)
+            .join(Usuario, Usuario.id == Membresia.usuario_id)
+            .filter(Membresia.usuario_id == usuario_id, Membresia.cliente_slug == cliente_slug)
+            .first()
+        )
+        activa = bool(fila is not None and fila.activo)
+    finally:
+        reg.close()
+
+    with _membresia_cache_candado:
+        _membresia_cache[clave] = (activa, ahora + _MEMBRESIA_CACHE_TTL_SEGUNDOS)
+    return activa
+
+
+def invalidar_cache_membresia(usuario_id: int, cliente_slug: str) -> None:
+    """Se llama al cambiar ``activo`` desde el PATCH: no hay que esperar el TTL."""
+    with _membresia_cache_candado:
+        _membresia_cache.pop((usuario_id, cliente_slug), None)
+
+
+def _claims_del_token(token: str) -> tuple[int | None, str | None]:
+    """``(sub, email)`` de un token ya válido, o ``(None, None)``.
+
+    Sólo se llama sobre tokens que ya pasaron por ``decode_token`` (o que se
+    van a volver a verificar acá mismo, que es barato): repite el
+    ``jwt.decode`` para leer dos campos que ``decode_token`` no devuelve
+    —devuelve el rol, por compatibilidad con todo el código que ya lo llama.
+    """
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.PyJWTError:
+        return None, None
+    sub = payload.get("sub")
+    email = payload.get("email")
+    return (
+        sub if isinstance(sub, int) else None,
+        email if isinstance(email, str) and email else None,
+    )
+
+
+def _email_del_token(token: str) -> str | None:
+    return _claims_del_token(token)[1]
+
+
+def sub_y_email_de_la_sesion(
+    authorization: str | None = Header(default=None),
+) -> tuple[int | None, str | None]:
+    """El ``(sub, email)`` de quien hace el pedido, si entró con cuenta real.
+
+    Pensado para el único endpoint que REEMITE un token para la MISMA persona
+    que hizo el pedido — ``PUT /api/auth/passwords``. Sin esto, un admin con
+    cuenta real que cambiaba su propia contraseña se llevaba un token de
+    rescate SIN ``sub``: como ``decode_token`` sólo somete al chequeo de
+    membresía a los tokens QUE TRAEN ``sub``, ese token de rescate seguía
+    abriendo todo aunque a esa persona la desactivaran un minuto después —
+    la revocación individual dejaba de tener efecto mientras ese token
+    viviera (hasta 12 horas). No verifica nada por su cuenta: el pedido ya
+    pasó por ``require_admin``, así que el token es válido por construcción.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None, None
+    return _claims_del_token(authorization[7:].strip())
+
+
 def decode_token(token: str, db: Session | None = None) -> str | None:
     """Return the role encoded in the token, or None if invalid/expired.
 
@@ -308,6 +436,11 @@ def decode_token(token: str, db: Session | None = None) -> str | None:
     Con ``db`` también comprueba la época: un token emitido antes del último
     cambio de contraseña de ese rol ya no vale. Sin ``db`` sólo se valida la
     firma —es lo que hace el token de montaje, que no muere con la contraseña.
+
+    Si el token trae ``sub`` (los que emite ``/oauth``), además comprueba que
+    la membresía de esa persona en ese cliente siga activa — ver la sección de
+    arriba. Un token sin ``sub`` (todo lo del login legado) no paga ese costo:
+    pasa exactamente como pasaba antes.
     """
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
@@ -319,6 +452,15 @@ def decode_token(token: str, db: Session | None = None) -> str | None:
     if db is not None:
         nacio = payload.get("epoca")
         if not isinstance(nacio, int) or nacio < epoca_de(db, role):
+            return None
+    sub = payload.get("sub")
+    if sub is not None:
+        if not isinstance(sub, int):
+            return None
+        cliente = payload.get("cliente")
+        if not isinstance(cliente, str) or not cliente:
+            return None
+        if not _membresia_activa(sub, cliente):
             return None
     return role
 
@@ -367,15 +509,27 @@ def cliente_del_token(raw: str) -> str | None:
 # ─── FastAPI dependencies ─────────────────────────────────────────────────────
 
 def require_auth(
+    request: Request,
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> str:
-    """Validate the ``Authorization: Bearer <jwt>`` header and return the role."""
+    """Validate the ``Authorization: Bearer <jwt>`` header and return the role.
+
+    Cuando el token trae ``email`` (los de ``/oauth``) lo deja en
+    ``request.state.actor_email``. Es lo que ``services/bitacora.py::anotar``
+    lee para que la línea diga la persona y no sólo el rol — sin tocar un solo
+    router de negocio: todos pasan por acá, y ``anotar`` ya recibe el
+    ``Request`` de siempre.
+    """
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="No autenticado")
-    role = decode_token(authorization[7:].strip(), db)
+    raw = authorization[7:].strip()
+    role = decode_token(raw, db)
     if role is None:
         raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    email = _email_del_token(raw)
+    if email:
+        request.state.actor_email = email
     return role
 
 
@@ -440,6 +594,7 @@ def require_montaje(
 
 
 def require_auth_or_query_token(
+    request: Request,
     authorization: str | None = Header(default=None),
     token: str | None = Query(default=None),
     db: Session = Depends(get_db),
@@ -459,4 +614,7 @@ def require_auth_or_query_token(
     role = decode_token(raw, db)
     if role is None:
         raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    email = _email_del_token(raw)
+    if email:
+        request.state.actor_email = email
     return role

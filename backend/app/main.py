@@ -12,7 +12,13 @@ from app.database import engine, Base
 from app.routers import spaces, suppliers, dashboard, layout, files, notifications, mounts, montaje, planograms, bulk_leases, catalogo
 from app.routers import bitacora as bitacora_routes
 from app.routers import auth as auth_routes
+from app.routers import usuarios as usuarios_routes
 from app.models.models import Space, SpaceStatus
+# Tablas de identidad (Fase 1): archivo nuevo, sin columnas agregadas a nada
+# existente. El único propósito de este import es que `Base.metadata` las
+# conozca ANTES de que corra `create_all()` en el lifespan de abajo — si no,
+# `create_all` nunca se entera de que existen.
+from app.models import identidad as identidad_models  # noqa: F401
 
 logger = logging.getLogger("retail.main")
 
@@ -217,6 +223,9 @@ async def cabeceras_de_seguridad(request, call_next):
 
 
 app.include_router(auth_routes.router,   prefix="/api")
+# Alta, listado y activación de miembros de un cliente. Todo detrás de
+# `require_admin` (ver `routers/usuarios.py`), sobre el cliente del token.
+app.include_router(usuarios_routes.router, prefix="/api")
 app.include_router(spaces.router,        prefix="/api")
 app.include_router(suppliers.router,     prefix="/api")
 app.include_router(dashboard.router,     prefix="/api")

@@ -21,6 +21,7 @@ from app.auth import (
     guardar_clave,
     invalidar_sesiones,
     require_admin,
+    sub_y_email_de_la_sesion,
     verificar_clave,
 )
 from app.clientes import Cliente, buscar, cliente_del_pedido, listar, sesion_de, unico
@@ -28,6 +29,7 @@ from app.database import get_db
 from app.models.models import LoginAttempt
 from app.red import ip_del_cliente
 from app.services.bitacora import anotar
+from app.services.firebase_tokens import VerificadorDeIdToken, get_verificador
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -43,15 +45,21 @@ def _desde(segundos: int) -> datetime:
     return datetime.now(timezone.utc) - timedelta(seconds=segundos)
 
 
-def frenar_si_hay_muchos_fallos(db: Session, ip: str) -> None:
-    """429 cuando esta IP ya lleva demasiados intentos fallidos en la ventana."""
+def frenar_si_hay_muchos_fallos(db: Session, ip: str, modelo=LoginAttempt) -> None:
+    """429 cuando esta IP ya lleva demasiados intentos fallidos en la ventana.
+
+    ``modelo`` es ``LoginAttempt`` por defecto (login legado, por cliente) o
+    ``IntentoOauth`` (``/oauth``, va contra ``sesion_registro()``) — mismas
+    tres columnas en las dos tablas, así que la misma consulta sirve para
+    cualquiera de las dos sin duplicar el freno.
+    """
     corte = _desde(LOGIN_WINDOW_SECONDS)
     # Barrer lo viejo acá evita una tarea aparte; la tabla es diminuta.
-    db.query(LoginAttempt).filter(LoginAttempt.at < corte).delete(synchronize_session=False)
+    db.query(modelo).filter(modelo.at < corte).delete(synchronize_session=False)
     db.commit()
     fallos = (
-        db.query(LoginAttempt)
-        .filter(LoginAttempt.ip == ip, LoginAttempt.at >= corte)
+        db.query(modelo)
+        .filter(modelo.ip == ip, modelo.at >= corte)
         .count()
     )
     if fallos >= LOGIN_MAX_ATTEMPTS:
@@ -61,14 +69,14 @@ def frenar_si_hay_muchos_fallos(db: Session, ip: str) -> None:
         )
 
 
-def anotar_fallo(db: Session, ip: str) -> None:
-    db.add(LoginAttempt(ip=ip, at=datetime.now(timezone.utc)))
+def anotar_fallo(db: Session, ip: str, modelo=LoginAttempt) -> None:
+    db.add(modelo(ip=ip, at=datetime.now(timezone.utc)))
     db.commit()
 
 
-def borrar_fallos(db: Session, ip: str) -> None:
+def borrar_fallos(db: Session, ip: str, modelo=LoginAttempt) -> None:
     """Entró bien: la cuenta de esa IP vuelve a cero."""
-    db.query(LoginAttempt).filter(LoginAttempt.ip == ip).delete(synchronize_session=False)
+    db.query(modelo).filter(modelo.ip == ip).delete(synchronize_session=False)
     db.commit()
 
 
@@ -93,6 +101,13 @@ class LoginOut(BaseModel):
 class ClienteOut(BaseModel):
     slug: str
     nombre: str
+
+
+class OAuthIn(BaseModel):
+    id_token: str
+    # Con qué supermercado entrar, cuando la cuenta tiene membresía en varios.
+    # Igual que en `LoginIn`, nunca se deduce de otra cosa.
+    cliente: Optional[str] = None
 
 
 class PasswordsUpdate(BaseModel):
@@ -176,6 +191,224 @@ def login(payload: LoginIn, request: Request):
         db.close()
 
 
+def _rol_de_token(rol_membresia: str) -> str:
+    """``owner``/``admin`` de membresía entran al middleware como ``admin``.
+
+    Spec, decisión 5: el JWT propio sólo conoce dos roles. El ``owner`` de hoy
+    gestiona usuarios además de lo que gestiona un admin, pero eso lo decide
+    `require_admin` — sigue viendo `role == "admin"`. No hay tercer valor que
+    inventarle al middleware existente.
+    """
+    return "admin" if rol_membresia in ("owner", "admin") else "worker"
+
+
+@router.post("/oauth")
+def oauth_login(
+    payload: OAuthIn,
+    request: Request,
+    verificador: Optional[VerificadorDeIdToken] = Depends(get_verificador),
+):
+    """Login con Google o correo/contraseña, vía Firebase.
+
+    El backend nunca ve una contraseña acá: Firebase ya autenticó a la
+    persona y lo único que llega es su ID token, que se verifica contra el
+    JWKS de Google (``services/firebase_tokens.py``). De ahí en más es
+    resolver identidad, no autenticar de nuevo.
+    """
+    # Imports perezosos: `models/identidad.py` no depende de este router, pero
+    # evita cualquier ciclo si `clientes.py` alguna vez importa `routers.auth`
+    # arriba (hoy no lo hace, y así queda a prueba de que empiece a hacerlo).
+    from app.clientes import sesion_registro
+    from app.models.identidad import IntentoOauth, Invitacion, Membresia, Usuario
+
+    if verificador is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Login con Google/correo no configurado en este servidor",
+        )
+
+    reg = sesion_registro()
+    try:
+        # Mismo freno que el login legado (`frenar_si_hay_muchos_fallos` /
+        # `anotar_fallo`, arriba en este archivo), pero contra `IntentoOauth`
+        # y NO contra `LoginAttempt`: compartir esa tabla habría sumado los
+        # fallos de `/oauth` de CUALQUIER cliente a los del login legado de
+        # uno solo —el cliente por defecto, porque su base resulta ser la
+        # misma que la del registro— dejando a los demás sin contar nada.
+        # Sirve tanto para no dar intentos gratis de "¿existe esta
+        # invitación?" como para no convertir el endpoint en una máquina de
+        # gastar CPU verificando firmas RSA de tokens inventados. Va ANTES de
+        # tocar el verificador, que es la parte cara.
+        ip = ip_del_cliente(request)
+        frenar_si_hay_muchos_fallos(reg, ip, modelo=IntentoOauth)
+
+        claims = verificador.verificar(payload.id_token)
+        if claims is None:
+            anotar_fallo(reg, ip, modelo=IntentoOauth)
+            raise HTTPException(status_code=401, detail="Token inválido o expirado")
+
+        # Un correo es CONFIABLE si viene verificado o si el token lo emitió
+        # Google (Google verifica el correo antes de emitir el ID token, por
+        # eso el claim confía aunque `email_verified` no venga marcado — pasa
+        # con cuentas de Workspace). CUALQUIER otro proveedor (incluido
+        # "password") tiene que traerlo en `true`: sin este chequeo, alguien
+        # con una cuenta de Firebase por un proveedor que no pide probar el
+        # correo podría declarar CUALQUIER email y canjear la invitación de
+        # otra persona. ESTA MISMA VARA decide también la vinculación por
+        # correo de más abajo — tener dos varas distintas era un bug real: un
+        # google.com sin `email_verified` pasaba esta puerta, NO vinculaba, y
+        # con una invitación pendiente moría en un 500 de UNIQUE(email) al
+        # intentar crear un usuario con un correo que ya existía; y ese 500
+        # funcionaba de oráculo de qué correos ya tienen cuenta.
+        correo_confiable = claims.email_verificado or claims.proveedor == "google.com"
+        if not correo_confiable:
+            anotar_fallo(reg, ip, modelo=IntentoOauth)
+            raise HTTPException(status_code=401, detail="Verificá tu correo antes de entrar")
+
+        email = (claims.email or "").strip().lower()
+        if not email:
+            anotar_fallo(reg, ip, modelo=IntentoOauth)
+            raise HTTPException(status_code=401, detail="Token inválido o expirado")
+
+        usuario = reg.query(Usuario).filter(Usuario.firebase_uid == claims.uid).first()
+
+        if usuario is None:
+            # ¿Ya es usuario por otro proveedor con el mismo correo? Se
+            # vincula con la MISMA vara que la puerta de arriba (todo el que
+            # llegó hasta acá tiene correo confiable). Nunca se crea un
+            # usuario nuevo si el correo ya tiene fila: UNIQUE(email) manda.
+            usuario = reg.query(Usuario).filter(Usuario.email == email).first()
+            if usuario is not None:
+                usuario.firebase_uid = claims.uid
+                if claims.nombre and not usuario.nombre:
+                    usuario.nombre = claims.nombre
+
+        # Invitaciones pendientes de este correo: se canjean SIEMPRE, no sólo
+        # la primera vez que se ve el correo. Alguien puede recibir una
+        # invitación a un SEGUNDO cliente después de ya tener cuenta —si sólo
+        # se mirara cuando `usuario is None`, esa invitación quedaría pendiente
+        # para siempre: el próximo login ya resuelve al usuario por
+        # `firebase_uid` y nunca vuelve a mirar la tabla. Se canjean TODAS las
+        # que haya, no sólo una: dos clientes distintos pueden haber invitado
+        # al mismo correo, y las dos membresías nacen juntas.
+        ahora = datetime.now(timezone.utc)
+        invitaciones = (
+            reg.query(Invitacion)
+            .filter(
+                Invitacion.email == email,
+                Invitacion.usada_en.is_(None),
+                Invitacion.expira_en > ahora,
+            )
+            .order_by(Invitacion.creado_en.asc())
+            .all()
+        )
+
+        if usuario is None and not invitaciones:
+            anotar_fallo(reg, ip, modelo=IntentoOauth)
+            raise HTTPException(
+                status_code=403,
+                detail="Tu cuenta no tiene acceso a ningún cliente. Pedí una invitación.",
+            )
+
+        if usuario is None:
+            usuario = Usuario(firebase_uid=claims.uid, email=email, nombre=claims.nombre)
+            reg.add(usuario)
+            reg.flush()  # necesita usuario.id para las membresías
+
+        if invitaciones:
+            ya_miembro = {
+                m.cliente_slug
+                for m in reg.query(Membresia).filter(Membresia.usuario_id == usuario.id).all()
+            }
+            for invitacion in invitaciones:
+                # Ya hay membresía en ese cliente (activa o no): dos
+                # invitaciones al mismo cliente no pueden generar dos filas —
+                # la tabla tiene UNIQUE(usuario_id, cliente_slug) — y si ya
+                # existe la membresía, ésta no la resucita ni le cambia el rol.
+                if invitacion.cliente_slug in ya_miembro:
+                    invitacion.usada_en = ahora
+                    continue
+                ya_miembro.add(invitacion.cliente_slug)
+                reg.add(Membresia(
+                    usuario_id=usuario.id,
+                    cliente_slug=invitacion.cliente_slug,
+                    rol=invitacion.rol,
+                    activo=True,
+                ))
+                invitacion.usada_en = ahora
+            reg.commit()
+
+        membresias = (
+            reg.query(Membresia)
+            .filter(Membresia.usuario_id == usuario.id, Membresia.activo == True)  # noqa: E712
+            .all()
+        )
+        if not membresias:
+            anotar_fallo(reg, ip, modelo=IntentoOauth)
+            raise HTTPException(
+                status_code=403,
+                detail="Tu cuenta no tiene acceso a ningún cliente. Pedí una invitación.",
+            )
+
+        elegida: Membresia | None = None
+        if payload.cliente:
+            slug_pedido = payload.cliente.strip().lower()
+            elegida = next((m for m in membresias if m.cliente_slug == slug_pedido), None)
+            if elegida is None:
+                anotar_fallo(reg, ip, modelo=IntentoOauth)
+                raise HTTPException(status_code=403, detail="No tenés acceso a ese cliente.")
+        elif len(membresias) == 1:
+            elegida = membresias[0]
+
+        if elegida is None:
+            # Varias membresías y sin elegir todavía: el front pregunta. El ID
+            # token SÍ era válido, así que esto es un login que sigue en curso,
+            # no un fallo — se limpia la cuenta de intentos igual que el éxito.
+            borrar_fallos(reg, ip, modelo=IntentoOauth)
+            filas = []
+            for m in membresias:
+                cliente_obj = buscar(m.cliente_slug)
+                filas.append({
+                    "cliente": m.cliente_slug,
+                    "nombre": cliente_obj.nombre if cliente_obj else m.cliente_slug,
+                    "rol": m.rol,
+                })
+            return {"requiere_cliente": True, "membresias": filas}
+
+        cliente_obj = buscar(elegida.cliente_slug)
+        if cliente_obj is None:
+            # El cliente de la membresía está inactivo o ya no existe.
+            anotar_fallo(reg, ip, modelo=IntentoOauth)
+            raise HTTPException(
+                status_code=403,
+                detail="Tu cuenta no tiene acceso a ningún cliente. Pedí una invitación.",
+            )
+
+        usuario.ultimo_login = datetime.now(timezone.utc)
+        reg.commit()
+        borrar_fallos(reg, ip, modelo=IntentoOauth)
+
+        role = _rol_de_token(elegida.rol)
+        cdb = sesion_de(cliente_obj)
+        try:
+            epoca = epoca_de(cdb, role)
+            anotar(cdb, request, role, "login.ok", detalle=email)
+            cdb.commit()
+        finally:
+            cdb.close()
+
+        token = create_token(role, epoca, cliente_obj.slug, sub=usuario.id, email=email)
+        return {
+            "token": token,
+            "role": role,
+            "cliente": cliente_obj.slug,
+            "email": email,
+            "nombre": usuario.nombre,
+        }
+    finally:
+        reg.close()
+
+
 @router.put("/passwords", response_model=PasswordsOut)
 def update_passwords(
     payload: PasswordsUpdate,
@@ -183,6 +416,7 @@ def update_passwords(
     rol: str = Depends(require_admin),
     cliente: Cliente = Depends(cliente_del_pedido),
     db: Session = Depends(get_db),
+    identidad: tuple = Depends(sub_y_email_de_la_sesion),
 ):
     if payload.admin_password is None and payload.worker_password is None:
         raise HTTPException(status_code=422, detail="Debe enviar al menos una contraseña")
@@ -215,5 +449,14 @@ def update_passwords(
         anotar(db, request, rol, "clave.cambio", entidad="rol", entidad_id=quien)
     db.commit()
 
-    nuevo = create_token(rol, epoca_de(db, rol), cliente.slug) if rol in nuevas else None
+    # El token de rescate reemplaza al que trajo el pedido: si ESE traía `sub`
+    # (un admin con cuenta real, entrado por /oauth), el nuevo tiene que
+    # conservarlo. Si no lo llevara, quedaría fuera del chequeo de membresía
+    # de `decode_token` — un token de hasta 12 horas que sobrevive a que
+    # desactiven a esa misma persona un minuto después.
+    sub_actor, email_actor = identidad
+    nuevo = (
+        create_token(rol, epoca_de(db, rol), cliente.slug, sub=sub_actor, email=email_actor)
+        if rol in nuevas else None
+    )
     return PasswordsOut(ok=True, token=nuevo)

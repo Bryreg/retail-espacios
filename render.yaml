@@ -18,6 +18,26 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      # Identidad (Fase 1): login con Google/correo vía Firebase Auth.
+      # Sin FIREBASE_PROJECT_ID el endpoint /api/auth/oauth responde 503 y el
+      # login legado sigue funcionando solo. Las VITE_* son config PÚBLICA del
+      # cliente (no son secretos) pero Vite las hornea EN EL BUILD: tienen que
+      # estar definidas cuando corre el build del Docker, no solo en runtime.
+      # Valores del proyecto Firebase "recabra":
+      #   FIREBASE_PROJECT_ID=recabra
+      #   VITE_FIREBASE_API_KEY=<apiKey de la consola>
+      #   VITE_FIREBASE_AUTH_DOMAIN=recabra.firebaseapp.com
+      #   VITE_FIREBASE_PROJECT_ID=recabra
+      # Y en Firebase: Authentication → Settings → dominios autorizados debe
+      # incluir retail-espacios.onrender.com o el popup de Google se rechaza.
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: VITE_FIREBASE_API_KEY
+        sync: false
+      - key: VITE_FIREBASE_AUTH_DOMAIN
+        sync: false
+      - key: VITE_FIREBASE_PROJECT_ID
+        sync: false
       # Correo. DOS caminos, y en el plan gratuito de Render sólo sirve el segundo:
       # el plan gratuito bloquea la salida SMTP y connect() devuelve
       # "[Errno 101] Network is unreachable" antes de intentar autenticarse, así
