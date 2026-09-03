@@ -3,7 +3,7 @@ import type { DateRange } from "../SeasonPicker/SeasonPicker";
 import { isRentable, type UnifiedFixture } from "../../types/fixtures";
 import {
   CabezaContrato, CamposContrato, fechaCorta, money, useContrato,
-  type CaraElegida, type ParcheDeCara, type ResumenContrato,
+  type CaraElegida, type ParcheDeCara, type ResumenContrato, type SemillaContrato,
 } from "./Contrato";
 
 /**
@@ -43,6 +43,9 @@ interface ModoVenderProps {
    *  abrir un modal para consultar un precio en cada llamada es lo que hace
    *  que la gente termine con la lista impresa al lado del teclado. */
   panelTarifas?: React.ReactNode;
+  /** Con qué abre el formulario cuando se llegó por «Renovar»: el mismo
+   *  proveedor, el mismo valor y el periodo siguiente al que está corriendo. */
+  semilla?: SemillaContrato | null;
 }
 
 // ─── Armazón ─────────────────────────────────────────────────────────────────
@@ -321,10 +324,10 @@ function Cerrado({ datos, onSeguir }: { datos: ResumenContrato; onSeguir: () => 
 // ─── Con espacios elegidos ───────────────────────────────────────────────────
 
 function ConEspacios({
-  espacios, sede, rango, onQuitar, onCambiarCara, onGuardado, onCancelar,
+  espacios, sede, rango, semilla, onQuitar, onCambiarCara, onGuardado, onCancelar,
   children, panelTarifas,
 }: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
-  const c = useContrato({ espacios, sede, rango, onQuitar, onCambiarCara, onGuardado });
+  const c = useContrato({ espacios, sede, rango, semilla, onQuitar, onCambiarCara, onGuardado });
   const guardando = c.estado === "guardando";
 
   return (
@@ -479,5 +482,9 @@ export default function ModoVender(props: ModoVenderProps) {
   // La clave remonta el formulario cuando cambia la sede, no cuando cambia la
   // lista: agregar un segundo espacio no puede borrar el proveedor que alguien
   // ya tecleó. Por eso NO entra la lista en la clave.
-  return <ConEspacios key={props.sede} {...props} />;
+  //
+  // La semilla SÍ entra: los campos se siembran en el `useState` inicial, así
+  // que sin remontar, tocar «Renovar» con un contrato a medio armar en pantalla
+  // no haría nada visible.
+  return <ConEspacios key={`${props.sede}|${props.semilla?.id ?? ""}`} {...props} />;
 }

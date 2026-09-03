@@ -1791,18 +1791,62 @@ Procedimiento de recuperación, en orden:
 
 ---
 
+## Renovar
+
+Dos cosas, y ninguna es un tablero de estados.
+
+**El botón.** Renovar no es abrir un contrato en blanco sobre el mismo mueble: es el mismo
+acuerdo otra vez, y lo único que suele cambiar es el precio. El botón llega prellenado con
+el proveedor, la marca y el valor QUE SE ESTÁ PAGANDO —no la tarifa de lista, porque lo que
+se renegocia es lo que se paga hoy— y con el periodo arrancando **el día después** de que
+termina el que corre, por el mismo largo. El día después y no el mismo: los dos extremos
+cuentan como ocupados, así que arrancar el mismo día se solaparía con un contrato vivo y la
+propia validación del formulario lo marcaría no disponible.
+
+Aparece cuando el contrato se cae dentro de 60 días o ya se cayó, en la ficha del espacio y
+en el globito del plano. Antes de eso no hay nada que renovar y el botón sería una trampa.
+Al lado queda «Contrato con otro proveedor», que es el otro camino y conviene que se lea
+como tal en vez de tener que deducirlo.
+
+La semilla entra en la `key` del formulario a propósito: los campos se siembran en el
+`useState` inicial, así que sin remontar, tocar «Renovar» con un contrato a medio armar en
+pantalla no haría nada visible.
+
+**Los recordatorios.** Existían y corrían —cada 12 horas desde `main`, y de arranque— pero
+con tres cosas mal, y las tres importaban:
+
+1. **Los hitos eran 30/15/7/1.** Son 30/15/6: a una semana ya no hay margen para negociar y
+   a un día el correo avisa de algo que ya pasó.
+2. **Se comparaba por igualdad exacta.** Si el servicio estaba dormido justo el día 30, ese
+   aviso no salía NUNCA. En Render un servicio sin tráfico se apaga y el día que despierta
+   rara vez es exactamente un hito. Ahora se busca el hito más chico que todavía cubre los
+   días que faltan: un contrato a 28 días recibe el aviso de «30» —tarde pero llega— y uno
+   que aparece a 5 días recibe UNO solo, el de «6», y no los tres de golpe. La marca en
+   `NotificationLog` lleva el hito y no los días, para que un aviso tardío no se repita
+   todos los días hasta el vencimiento.
+3. **Iban a `notify_emails`**, la lista global vieja, mientras los correos de contrato ya
+   iban por la libreta de contactos por sede. Con la libreta cargada y esa lista vacía —la
+   instalación normal hoy— **el recordatorio no le llegaba a nadie** y sólo dejaba una línea
+   en el log. Ahora va por la misma libreta que todo lo demás. Sin contactos no se manda y
+   **no se marca**: marcarlo daría por avisado algo que no salió.
+
+Lo que se descartó: un tablero de «en negociación / renovado / no renueva» con valor
+propuesto, totales partidos y plaquitas por renglón. Se construyó y se tiró. En una pantalla
+que ya tiene el plano, la lista de lo que se cae y la tabla de espacios, era una cuarta capa
+de información para sostener a mano un dato que el contrato nuevo ya deja escrito.
+
+---
+
 ## Backlog
 
-1. **Estado de renovación** (en negociación / renovado / no renueva). Lo que lo vuelve
-   accionable no es el estado sino el **valor propuesto** al lado del vigente: el tablero
-   deja de decir "8 contratos por vencer" y pasa a decir cuánta plata está en juego.
-2. **Histórico por espacio**. Es además prerrequisito de la tarifa de referencia: no hay
+1. **Histórico por espacio**. Es además prerrequisito de la tarifa de referencia: no hay
    tarifario público de exhibición en Colombia (los acuerdos son confidenciales), así que
    la única referencia calibrable es "a cuánto se cerró este mueble en esta sede antes".
 
 Hecho en agosto 2026: tarifa de referencia por tipo y sede, disponibilidad por fechas,
 calendario por temporada sobre el mapa, correos por rol y confirmación de montaje desde
-el celular — ver "Qué está hecho".
+el celular — ver "Qué está hecho". En septiembre: el botón de renovar y los recordatorios
+de vencimiento arreglados — ver "Renovar".
 
 No perseguir: pantallas digitales, sensores de impresiones, compra programática,
 reconocimiento de imagen para auditar anaquel, y scorings de "tienda perfecta". Los tres

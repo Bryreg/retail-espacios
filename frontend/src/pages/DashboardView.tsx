@@ -48,7 +48,7 @@ import type { ResumenContrato } from "../components/Contrato/Contrato";
 import Planometria from "../components/Contrato/Planometria";
 import CancelarContrato from "../components/Contrato/CancelarContrato";
 import CargaMasiva from "../components/CargaMasiva/CargaMasiva";
-import { inclusiveDays, toISODate, upcomingSeasons } from "../types/seasons";
+import { inclusiveDays, parseISODate, toISODate, upcomingSeasons } from "../types/seasons";
 /* El parte —la zona superior escrita en prosa— salió de las dos pantallas.
    En Supervisar lo reemplaza la franja de cinco cifras: quien pone el canon no
    necesita que se le explique el negocio, necesita el dato a mano. En Vender
@@ -62,6 +62,7 @@ import { inclusiveDays, toISODate, upcomingSeasons } from "../types/seasons";
    Quedan en la historia de `claude/retail-espacios-continue-jdn085`, que es
    donde hay que ir a buscarlas si el parte vuelve. */
 import { nombreDeMueble } from "../utils/nomenclatura";
+import type { SemillaContrato } from "../components/Contrato/Contrato";
 import { fechaEnCurso } from "../utils/propuesta";
 
 // ─── Date / money helpers ────────────────────────────────────────────────────
@@ -167,6 +168,21 @@ function facesOf(f: UnifiedFixture): FaceEntry[] {
  *  entero. Se muestran `GON-60·A` y `GON-60·B`, que es como las nombra
  *  cualquiera que las esté mirando. El código de la base no se toca: es el que
  *  viaja a la API y en los enlaces de los correos. */
+/** ¿Hay algo que renovar acá?
+ *
+ *  Un contrato con proveedor que se cae dentro de 60 días o que ya se cayó.
+ *  Antes de eso el botón sería una trampa: crearía un contrato que arranca
+ *  dentro de meses y se solapa con uno que sigue vivo. 60 y no 30 porque una
+ *  punta de góndola grande se empieza a hablar con dos meses de anticipación.
+ */
+const DIAS_PARA_RENOVAR = 60;
+
+function renovable(entry: FaceEntry): boolean {
+  if (!entry.supplierName.trim() || !entry.endDate) return false;
+  const dias = daysUntil(entry.endDate);
+  return dias !== null && dias <= DIAS_PARA_RENOVAR;
+}
+
 function codigoVisible(entry: FaceEntry): string {
   if (!isDoubleGondola(entry.fixture)) return entry.code;
   return entry.face === "B" ? `${entry.fixture.code}·B` : `${entry.fixture.code}·A`;
@@ -1279,7 +1295,7 @@ function NoContractState({ fixture, isAdmin }: { fixture: UnifiedFixture; isAdmi
 // ─── Quick-look popover, anchored to the fixture on the map ─────────────────
 
 function FixturePopover({
-  fixture, anchor, isAdmin, onExpand, onNegociar, onClose,
+  fixture, anchor, isAdmin, onExpand, onNegociar, onRenovar, onClose,
 }: {
   fixture: UnifiedFixture;
   anchor: MapAnchor;
@@ -1287,6 +1303,8 @@ function FixturePopover({
   onExpand: () => void;
   /** Abre el contrato en el riel. Ausente para el mercaderista, que no vende. */
   onNegociar?: () => void;
+  /** El mismo acuerdo otra vez, prellenado. Sólo cuando hay algo que renovar. */
+  onRenovar?: () => void;
   onClose: () => void;
 }) {
   const rentable = isRentable(fixture);
@@ -1394,9 +1412,11 @@ function FixturePopover({
 
         {/* La acción principal del mapa es vender: el popover es lo que se abre
             al tocar un espacio, y antes lo único que ofrecía era mirar. */}
-        {rentable && onNegociar && (
+        {/* Tocar un mueble naranja en el plano y poder renovarlo ahí mismo: es
+            el camino corto, y el color ya dijo que se está por caer. */}
+        {rentable && onRenovar && (
           <button
-            onClick={onNegociar}
+            onClick={onRenovar}
             style={{
               width: "100%", height: 34, borderRadius: "var(--r-md)", border: "none",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
@@ -1404,8 +1424,25 @@ function FixturePopover({
               fontSize: 12.5, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
             }}
           >
+            <RefreshCw size={13} />
+            Renovar
+          </button>
+        )}
+        {rentable && onNegociar && (
+          <button
+            onClick={onNegociar}
+            style={{
+              width: "100%", height: 34, borderRadius: "var(--r-md)",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              border: onRenovar ? "1px solid var(--line)" : "none",
+              background: onRenovar ? "var(--surface-2)" : "var(--accent)",
+              color: onRenovar ? "var(--ink-2)" : "#fff",
+              fontSize: 12.5, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
+            }}
+          >
             <Handshake size={13} />
-            {hasContract ? "Nuevo contrato" : "Negociar este espacio"}
+            {onRenovar ? "Con otro proveedor"
+              : hasContract ? "Nuevo contrato" : "Negociar este espacio"}
           </button>
         )}
 
@@ -1437,7 +1474,7 @@ function FixturePopover({
 // ─── Full detail, rendered in the right-hand rail ────────────────────────────
 
 function FixtureDetailCard({
-  fixture, isAdmin, face, onFace, onBack, onNegociar, onCancelado, onOpenFile,
+  fixture, isAdmin, face, onFace, onBack, onNegociar, onRenovar, onCancelado, onOpenFile,
 }: {
   fixture: UnifiedFixture;
   isAdmin: boolean;
@@ -1446,6 +1483,9 @@ function FixtureDetailCard({
   onBack: () => void;
   /** Cambia este panel por el del contrato, sobre la cara que se está viendo. */
   onNegociar?: () => void;
+  /** El mismo acuerdo otra vez, prellenado. Sólo llega cuando el contrato se
+   *  está por caer: antes de eso no hay nada que renovar. */
+  onRenovar?: () => void;
   /** El contrato se canceló: hay que escribir el JSON del layout para que el
    *  mapa repinte el mueble como libre. */
   onCancelado?: (patch: Partial<FaceData>) => void;
@@ -1517,19 +1557,50 @@ function FixtureDetailCard({
       )}
 
       <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 13, overflowY: "auto" }}>
+        {/* Renovar es la acción de esta pantalla, y por eso es el botón lleno.
+            No abre un contrato en blanco: abre el mismo acuerdo otra vez —mismo
+            proveedor, misma marca, mismo valor— arrancando el día después de
+            que termina el que corre. Lo que se cambia es el precio, que es de
+            lo único que se habla en una renovación.
+
+            Aparece cuando el contrato se cae dentro de 60 días o ya se cayó.
+            Antes de eso no hay nada que renovar y el botón sería una trampa:
+            crearía un contrato solapado con uno que sigue vivo. */}
+        {rentable && onRenovar && (
+          <button
+            onClick={onRenovar}
+            style={{
+              width: "100%", height: 36, borderRadius: "var(--r-md)", border: "none",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+              background: "var(--accent)", color: "#fff",
+              fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
+            }}
+          >
+            <RefreshCw size={14} />
+            Renovar {entry.supplierName ? `con ${entry.supplierName}` : "este contrato"}
+          </button>
+        )}
         {rentable && onNegociar && (
           <button
             onClick={onNegociar}
             style={{
-              width: "100%", height: 36, borderRadius: "var(--r-md)", border: "none",
+              width: "100%", height: onRenovar ? 32 : 36, borderRadius: "var(--r-md)",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-              background: hasContract ? "var(--accent-50)" : "var(--accent)",
-              color: hasContract ? "var(--accent-700)" : "#fff",
-              fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
+              border: onRenovar ? "1px solid var(--line)" : "none",
+              background: onRenovar ? "var(--surface-2)"
+                : hasContract ? "var(--accent-50)" : "var(--accent)",
+              color: onRenovar ? "var(--ink-2)"
+                : hasContract ? "var(--accent-700)" : "#fff",
+              fontSize: onRenovar ? 12.5 : 13, fontWeight: 700,
+              fontFamily: "inherit", cursor: "pointer",
             }}
           >
             <Handshake size={14} />
-            {hasContract ? "Nuevo contrato para esta cara" : "Negociar este espacio"}
+            {/* Con «Renovar» arriba, éste es el otro camino: cambiar de
+                proveedor. Decirlo así ahorra tener que deducirlo. */}
+            {onRenovar ? "Contrato con otro proveedor"
+              : hasContract ? "Nuevo contrato para esta cara"
+              : "Negociar este espacio"}
           </button>
         )}
 
@@ -2441,6 +2512,10 @@ export default function DashboardView() {
     setAnchor(null);
     setDetailFull(false);
     setEnContrato([]);
+    // La semilla se va con el contrato que la trajo. Si quedara, el próximo
+    // espacio que alguien elija abriría el formulario con el proveedor y el
+    // periodo de una renovación que se canceló.
+    setSemilla(null);
   };
   /** Desde «Para revisar»: abrir la FICHA del espacio, no sólo señalarlo.
    *
@@ -2467,17 +2542,80 @@ export default function DashboardView() {
 
   /** Pasar a vender ese espacio, venga de donde venga: del popover del mapa o
    *  del panel de detalle en Supervisar. */
-  const negociar = (f: UnifiedFixture, face: "A" | "B" = "A") => {
+  const negociar = (f: UnifiedFixture, face: "A" | "B" = "A", semilla: SemillaContrato | null = null) => {
     setSelected(f);
     setDetailFace(face);
     setDetailFull(false);
     setAnchor(null);
     setCerrado(null);
+    setSemilla(semilla);
     // Arranca un contrato NUEVO con ese espacio. Sumarlo a uno que estuviera a
     // medio armar mezclaría dos negociaciones sin avisar.
     setEnContrato([{ id: f.id, face }]);
     setModo("vender");
   };
+
+  /** Con qué abre el formulario cuando se llega por «Renovar». */
+  const [semilla, setSemilla] = useState<SemillaContrato | null>(null);
+
+  /** La cara que la ficha está mostrando. Se calcula acá y no adentro de la
+   *  ficha porque el botón de renovar necesita la MISMA: dos cálculos separados
+   *  de «cuál cara es» se desincronizan en una góndola doble, y renovar la cara
+   *  B creyendo que es la A es un error que no se ve hasta que sale el correo. */
+  const entradaDetalle = useMemo((): FaceEntry | null => {
+    if (!selected) return null;
+    const caras = facesOf(selected);
+    return detailFace === "B" && caras.length > 1 ? caras[1] : caras[0];
+  }, [selected, detailFace]);
+
+  /** Renovar: el mismo acuerdo otra vez, empezando cuando termina el que corre.
+   *
+   *  Renovar NO es hacer un contrato en blanco sobre el mismo mueble. Es el
+   *  mismo proveedor, la misma marca y —hasta que alguien lo cambie— el mismo
+   *  valor, por el mismo tiempo, arrancando el día después de que termina el
+   *  que está corriendo. Sin esto había que volver a tipear proveedor, correo,
+   *  marca y valor mirando la ficha de al lado, y cada uno de esos cuatro
+   *  campos es una oportunidad de escribir mal el nombre del proveedor y
+   *  terminar con dos proveedores que son el mismo.
+   *
+   *  El día DESPUÉS, no el mismo: los dos extremos cuentan como ocupados, así
+   *  que arrancar el mismo día se pisaría con el contrato vigente y la propia
+   *  validación del formulario lo marcaría como no disponible.
+   *
+   *  El valor viene del contrato que está corriendo y no de la tarifa de lista:
+   *  lo que se renegocia es lo que se está pagando. Queda editable, que es
+   *  justamente donde se sube el canon. */
+  const renovar = useCallback((entry: FaceEntry) => {
+    const dia = 86_400_000;
+    const fin = entry.endDate ? parseISODate(entry.endDate) : null;
+    const ini = entry.startDate ? parseISODate(entry.startDate) : null;
+    // Mismo largo que el contrato vigente, contando los dos extremos. Sin
+    // fechas confiables se cae al periodo de la barra, que es lo que hacía
+    // antes de que este botón existiera.
+    const largo = fin && ini ? Math.round((+fin - +ini) / dia) : null;
+    const desde = fin ? new Date(+fin + dia) : null;
+    const hasta = desde && largo !== null ? new Date(+desde + largo * dia) : null;
+
+    const codigo = fullSpaceCode(entry.fixture.sede || sede, entry.code);
+    setSemilla({
+      id: `${codigo}|${entry.endDate}`,
+      proveedor: entry.supplierName,
+      correo: "",
+      marca: entry.brandCategory,
+      desde: desde ? toISODate(desde) : "",
+      hasta: hasta ? toISODate(hasta) : "",
+      valores: entry.negotiatedValue > 0
+        ? { [codigo]: entry.negotiatedValue.toLocaleString("es-CO") }
+        : {},
+    });
+    setSelected(entry.fixture);
+    setDetailFace(entry.face);
+    setDetailFull(false);
+    setAnchor(null);
+    setCerrado(null);
+    setEnContrato([{ id: entry.fixture.id, face: entry.face }]);
+    setModo("vender");
+  }, [sede]);
   const [viewerFile, setViewerFile] = useState<SpaceFileMeta | null>(null);
 
   // ── Estado de montaje ────────────────────────────────────────────────────
@@ -2939,6 +3077,9 @@ export default function DashboardView() {
               isAdmin={isAdmin}
               onExpand={() => setDetailFull(true)}
               onNegociar={isAdmin ? () => negociar(selected) : undefined}
+              onRenovar={isAdmin && renovable(facesOf(selected)[0])
+                ? () => renovar(facesOf(selected)[0])
+                : undefined}
               onClose={closeDetail}
             />
           )}
@@ -3361,8 +3502,10 @@ export default function DashboardView() {
             setSelected(null);
             setAnchor(null);
             setEnContrato([]);
+            setSemilla(null);
             setCerrado(resumen);
           }}
+          semilla={semilla}
           onCancelar={closeDetail}
           onSeguir={() => setCerrado(null)}
         >
@@ -3524,6 +3667,12 @@ export default function DashboardView() {
                   onFace={setDetailFace}
                   onBack={closeDetail}
                   onNegociar={isAdmin ? () => negociar(selected, detailFace) : undefined}
+                  /* Sólo cuando hay algo que renovar: un contrato con proveedor
+                     que se cae dentro de 60 días o que ya se cayó. Con más
+                     margen el botón crearía un contrato solapado con uno vivo. */
+                  onRenovar={isAdmin && entradaDetalle && renovable(entradaDetalle)
+                    ? () => renovar(entradaDetalle)
+                    : undefined}
                   onCancelado={(patch) => {
                     // Igual que al guardar: el JSON del layout es lo que
                     // pinta el mapa, así que soltar el contrato en la base

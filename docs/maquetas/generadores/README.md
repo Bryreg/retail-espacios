@@ -39,6 +39,7 @@ node pantalla.mjs multi             # un contrato sobre dos espacios
 node pantalla.mjs codigos           # el contrato armado desde la lista de precios
 node pantalla.mjs guardar           # el mismo, guardado de punta a punta
 node pantalla.mjs revisar           # que un renglón de «Para revisar» abra la ficha
+node pantalla.mjs renovar           # renovar prellenado, y que las fechas no se pisen
 node pantalla.mjs plano             # el plano 2D: renombrar un mueble por los dos caminos
 
 python3 opciones.py                      # regenera la página de opciones
