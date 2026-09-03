@@ -64,6 +64,8 @@ import { inclusiveDays, parseISODate, toISODate, upcomingSeasons } from "../type
 import { nombreDeMueble } from "../utils/nomenclatura";
 import type { SemillaContrato } from "../components/Contrato/Contrato";
 import { fechaEnCurso } from "../utils/propuesta";
+import OcupacionSection from "../components/Ocupacion/Ocupacion";
+import type { BrechaEspacio } from "../components/Ocupacion/types";
 
 // ─── Date / money helpers ────────────────────────────────────────────────────
 
@@ -2880,6 +2882,46 @@ export default function DashboardView() {
     return { noMontado, sinMontar, viejosSinReporte };
   }, [fixtures, montajeDe]);
 
+  // ── "Ocupación real vs esperada" ─────────────────────────────────────────
+  //
+  // La brecha —contratadas sin montar, para el PERÍODO elegido con el
+  // SeasonPicker (`mapRange`), no sólo "hoy" como `montaje.sinMontar`—. El
+  // backend de `/dashboard/ocupacion` da el conteo agregado; la lista de
+  // códigos se arma acá porque esta pantalla ya tiene los fixtures y los
+  // reportes de montaje de la sede en pantalla cargados, y el agregado no
+  // trae códigos. Mismo criterio que el backend: "contratada" = algún
+  // contrato toca el período (`rangeAvailability` !== libre, el mismo
+  // helper que ya usa `rangeTally`); "montada" = el último reporte de esa
+  // cara dice "montado". Sólo existe para la sede en pantalla — el
+  // porqué está documentado en `components/Ocupacion/Ocupacion.tsx`.
+  const brechaOcupacion = useMemo((): BrechaEspacio[] => {
+    if (!mapRange) return [];
+    const out: BrechaEspacio[] = [];
+    fixtures.flatMap(commercialFacesOf).forEach((entry) => {
+      if (rangeAvailability(entry, mapRange.from, mapRange.to) === "libre") return;
+      const reporte = montajeDe(entry);
+      if (reporte?.estado === "montado") return;
+      out.push({
+        id: entry.fixture.id,
+        face: entry.face,
+        codigo: fullSpaceCode(entry.fixture.sede || sede, entry.code),
+        display: codigoVisible(entry),
+        proveedor: entry.supplierName,
+      });
+    });
+    return out;
+  }, [fixtures, mapRange, montajeDe, sede]);
+
+  /** `desde`/`hasta` en ISO para el mismo período del SeasonPicker — la
+   *  sección de ocupación no trae su propio calendario. Los dos ausentes
+   *  cuando no hay `mapRange` todavía: el endpoint responde "hoy" por
+   *  default, igual que `hoyComoRango()` acá. */
+  const periodoOcupacion = useMemo(
+    () => (mapRange
+      ? { desde: toISODate(mapRange.from), hasta: toISODate(mapRange.to) }
+      : { desde: undefined, hasta: undefined }),
+    [mapRange],
+  );
 
   // ─── Lo que la franja de Supervisar necesita saber ──────────────────────
 
@@ -3925,6 +3967,20 @@ export default function DashboardView() {
               onSelect={selectFixture}
             />
           </Card>
+
+          {/* ── Ocupación real vs esperada, por sede y por período ─────────── */}
+          <OcupacionSection
+            sedeActual={sede}
+            desde={periodoOcupacion.desde}
+            hasta={periodoOcupacion.hasta}
+            periodoLabel={mapRange ? describeRange(mapRange) : "hoy"}
+            isAdmin={isAdmin}
+            brecha={brechaOcupacion}
+            onSeleccionarBrecha={(id, face) => {
+              const f = fixtures.find((x) => x.id === id);
+              if (f) revisar(f, face);
+            }}
+          />
         </>
       )}
 

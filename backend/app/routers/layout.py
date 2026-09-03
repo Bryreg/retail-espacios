@@ -75,7 +75,15 @@ def _as_utc(value: datetime | None) -> datetime | None:
 
 
 def _redact_fixtures_for_worker(fixtures: list) -> None:
-    """Drop negotiated amounts so non-admin roles never receive them.
+    """Drop negotiated amounts AND commercial notes so non-admin roles never
+    receive them, at the same three depths (top, faceB, slots).
+
+    ``observation`` es donde queda escrito lo que no entra en un campo con
+    nombre — "descuento del 25% cerrado por teléfono" es exactamente la
+    forma que toma esa plata cuando no es ``negotiatedValue``. Se decide acá,
+    en el servidor: avisar en el formulario de que "esto lo ve el
+    mercaderista" no alcanza, porque un cliente viejo o una llamada directa a
+    la API igual la manda.
 
     The dicts come fresh from ``json.loads`` in ``_to_out`` — mutating them
     cannot dirty the ORM session (``fixtures_json`` stays untouched).
@@ -83,12 +91,15 @@ def _redact_fixtures_for_worker(fixtures: list) -> None:
     for fixture in fixtures:
         if isinstance(fixture, dict):
             fixture.pop("negotiatedValue", None)
+            fixture.pop("observation", None)
             face_b = fixture.get("faceB")
             if isinstance(face_b, dict):
                 face_b.pop("negotiatedValue", None)
+                face_b.pop("observation", None)
             for slot in fixture.get("slots") or []:
                 if isinstance(slot, dict):
                     slot.pop("negotiatedValue", None)
+                    slot.pop("observation", None)
 
 
 def _price_map(fixtures: list) -> dict:

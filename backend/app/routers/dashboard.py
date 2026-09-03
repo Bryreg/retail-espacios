@@ -1,11 +1,12 @@
 from datetime import date, timedelta
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from app.auth import require_auth
 from app.database import get_db
 from app.models.models import Space, SpaceLease, Supplier
 from app.routers.spaces import expire_leases
+from app.services.ocupacion import ocupacion_por_sedes
 
 # Read-only router: any authenticated role may consult the dashboard.
 router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depends(require_auth)])
@@ -140,3 +141,44 @@ def get_spaces(role: str = Depends(require_auth), db: Session = Depends(get_db))
         })
 
     return result
+
+
+@router.get("/ocupacion")
+def get_ocupacion(
+    sede: str | None = None,
+    desde: date | None = None,
+    hasta: date | None = None,
+    role: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """Ocupación agregada por sede, para el panel del dashboard.
+
+    Devuelve una LISTA — una fila por sede con plano guardado — aunque
+    ``sede`` filtre a una sola: así el llamador nunca tiene que distinguir
+    "objeto" de "lista" según haya filtrado o no. Sin ``sede`` van todas las
+    que tienen ``layout_snapshots``; con ``sede`` (comparado sin mayúsculas,
+    porque hay sedes reales en minúscula) queda como máximo una, o la lista
+    vacía si esa sede no tiene plano guardado — no es un 404: preguntar por
+    una sede que todavía no se dibujó no es un error.
+
+    Sin ``desde``/``hasta`` el período es HOY (un solo día), igual que
+    "hoyComoRango()" en el cliente. Los dos van juntos: la mitad de un rango
+    es un 422.
+
+    ``ingreso_contratado``/``ingreso_a_referencia`` sólo se agregan para
+    admin — es plata, así que para worker esas dos claves quedan AUSENTES del
+    diccionario de cada sede, no en null.
+    """
+    if (desde is None) != (hasta is None):
+        raise HTTPException(status_code=422, detail="desde y hasta van juntos")
+    hoy = date.today()
+    periodo_desde = desde or hoy
+    periodo_hasta = hasta or hoy
+    if periodo_desde > periodo_hasta:
+        raise HTTPException(status_code=422, detail="desde no puede ser posterior a hasta")
+
+    # Al día antes de agregar: sin esto una expiración que nadie más disparó
+    # todavía dejaría "contratadas" contando un contrato que ya venció.
+    expire_leases(db)
+
+    return ocupacion_por_sedes(db, sede, periodo_desde, periodo_hasta, role == "admin")

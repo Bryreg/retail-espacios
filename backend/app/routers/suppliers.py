@@ -4,15 +4,22 @@ from sqlalchemy.orm import Session
 from app.auth import require_admin, require_auth
 from app.database import get_db
 from app.models.models import Supplier, SpaceLease
-from app.schemas.spaces import SupplierCreate, SupplierOut
+from app.schemas.spaces import SupplierCreate, SupplierOut, supplier_out_for_role
 
 # Every route requires a valid token; mutations additionally require admin.
 router = APIRouter(prefix="/suppliers", tags=["suppliers"], dependencies=[Depends(require_auth)])
 
 
-@router.get("/", response_model=list[SupplierOut])
-def list_suppliers(db: Session = Depends(get_db)):
-    return db.query(Supplier).order_by(Supplier.name).all()
+# Sin response_model=list[SupplierOut] a propósito: ese esquema reconstruye
+# CADA campo desde el ORM al validar, así que un SupplierPublicOut (menos
+# campos) volvería a traer email/phone/contact_name/notes en null en vez de
+# dejarlos ausentes. Devolviendo directamente la instancia pydantic ya
+# construida (una u otra según el rol), FastAPI serializa exactamente los
+# campos que ESA clase declara — nada más.
+@router.get("/")
+def list_suppliers(role: str = Depends(require_auth), db: Session = Depends(get_db)):
+    suppliers = db.query(Supplier).order_by(Supplier.name).all()
+    return [supplier_out_for_role(s, role) for s in suppliers]
 
 
 @router.post("/find-or-create", response_model=SupplierOut, status_code=200, dependencies=[Depends(require_admin)])
@@ -51,12 +58,12 @@ def create_supplier(payload: SupplierCreate, db: Session = Depends(get_db)):
     return supplier
 
 
-@router.get("/{supplier_id}", response_model=SupplierOut)
-def get_supplier(supplier_id: int, db: Session = Depends(get_db)):
+@router.get("/{supplier_id}")
+def get_supplier(supplier_id: int, role: str = Depends(require_auth), db: Session = Depends(get_db)):
     supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
-    return supplier
+    return supplier_out_for_role(supplier, role)
 
 
 @router.put("/{supplier_id}", response_model=SupplierOut, dependencies=[Depends(require_admin)])

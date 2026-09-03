@@ -1,6 +1,6 @@
-from datetime import date
+from datetime import date, datetime, timezone
 from urllib.parse import quote
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -8,18 +8,20 @@ from sqlalchemy.orm import Session, joinedload
 from app.auth import MONTAJE_TTL_DAYS, create_mount_token, require_admin, require_auth
 from app.clientes import Cliente, cliente_del_pedido
 from app.database import get_db
-from app.models.models import Space, SpaceFile, SpaceLease, Supplier, SpaceStatus
+from app.models.models import LeaseCancellation, Space, SpaceFile, SpaceLease, Supplier, SpaceStatus
 from app.services.bitacora import anotar
 from app.schemas.spaces import (
     SpaceOut, SpaceCreate, SpaceStatusUpdate, LeaseCreate, LeaseOut, SpaceMapItem,
-    SpaceFindOrCreate, AvisosContrato,
+    SpaceFindOrCreate, AvisosContrato, SupplierPublicOut,
 )
 from app.routers.mounts import MOUNT_FILE_PREFIX
 from app.services.contacts import recipients_for
-from app.services.layout_lookup import describe_location, is_space_rentable
+from app.services.layout_lookup import describe_location, find_fixture_by_space_code, is_space_rentable
 from app.services.mailer import (
     app_base_url, format_cop, html_shell, send_mail_to_bg, correo_configurado,
 )
+from app.services.ocupacion import occupancy_range, occupancy_today, rate_type_of, reference_rate_for
+from app.routers.layout import reference_rates_raw
 
 # Every route requires a valid token; mutations additionally require admin.
 router = APIRouter(prefix="/spaces", tags=["spaces"], dependencies=[Depends(require_auth)])
@@ -39,6 +41,17 @@ def _space_out_for_role(space: Space, role: str) -> SpaceOut:
         for lease in (out.active_lease, out.upcoming_lease):
             if lease is not None:
                 lease.monthly_rent = None
+                # La nota del contrato es donde vive lo que no se anima a
+                # entrar en un campo con nombre ("descuento del 25% cerrado
+                # por teléfono"): la misma plata que negotiated/monthly_rent
+                # esconde, con otra forma. Se decide en el servidor —avisar
+                # en el formulario no alcanza, un cliente viejo o una llamada
+                # directa a la API la siguen mandando igual.
+                lease.notes = None
+                # El proveedor anidado va por la misma lista blanca que
+                # /api/suppliers/: sólo id y nombre para quien no es admin —
+                # su email, teléfono, contacto y notas no viajan.
+                lease.supplier = SupplierPublicOut.model_validate(lease.supplier, from_attributes=True)
     return out
 
 
@@ -247,6 +260,79 @@ def get_space_by_code(code: str, role: str = Depends(require_auth), db: Session 
     if not space:
         raise HTTPException(status_code=404, detail="Espacio no encontrado")
     return _space_out_for_role(space, role)
+
+
+@router.get("/{code}/rates")
+def get_space_rates(
+    code: str,
+    response: Response,
+    desde: date | None = None,
+    hasta: date | None = None,
+    role: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """Tarifa de referencia y ocupación de UN espacio, por su código completo.
+
+    ``{code}`` es "SEDE-CODE" en mayúsculas — la cara B de una góndola doble
+    lleva el sufijo "-B". La respuesta se arma por LISTA BLANCA: para un rol
+    distinto de admin la clave ``reference_rate`` no se agrega al diccionario
+    — no viaja en null, no está — porque es plata y acá la exige hasta para
+    leer, igual que ``GET /layout/rates``. ``occupancy`` sí es de cualquier
+    rol autenticado: son fechas, no dinero.
+
+    Sin ``desde``/``hasta`` contesta el estado de HOY (disponible / contratado
+    / vencido / ocupado); con los dos, el estado del período pedido (libre /
+    se_libera / tomado) — ninguno de los dos solo no alcanza para pedir la
+    otra mitad, así que un solo parámetro puesto es un 422 y no una lectura a
+    medias.
+
+    El tipo para la tarifa sale del snapshot del layout (nunca de ``Space``,
+    que no tiene columna de tipo de mueble) resuelto vía
+    ``find_fixture_by_space_code`` — el mismo helper que ya usa la carga
+    masiva y el chequeo de "comercializable" — y normalizado con
+    ``rate_type_of`` (espeja ``rateTypeOf`` del cliente: las góndolas legadas
+    y la unificada comparten una sola tarifa por cara).
+    """
+    # Espejo exacto de GET /layout/rates: es plata y ocupación en vivo, nunca
+    # una respuesta que el navegador o un proxy intermedio pueda servir de
+    # caché mientras el rol o la fecha de la próxima consulta cambian.
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+
+    if (desde is None) != (hasta is None):
+        raise HTTPException(status_code=422, detail="desde y hasta van juntos")
+    if desde is not None and hasta is not None and desde > hasta:
+        raise HTTPException(status_code=422, detail="desde no puede ser posterior a hasta")
+
+    code_uc = (code or "").strip().upper()
+    fixture = find_fixture_by_space_code(db, code_uc)
+    if fixture is None:
+        raise HTTPException(status_code=404, detail="Espacio no encontrado")
+
+    sede = str(fixture.get("sede") or "").strip().upper()
+    rate_type = rate_type_of(fixture)
+
+    space = (
+        db.query(Space)
+        .options(joinedload(Space.leases))
+        .filter(Space.code == code_uc)
+        .first()
+    )
+
+    if desde is not None and hasta is not None:
+        occupancy = occupancy_range(space, desde, hasta)
+    else:
+        occupancy = occupancy_today(space)
+
+    payload = {
+        "code": code_uc,
+        "sede": sede,
+        "type": rate_type,
+        "occupancy": occupancy,
+    }
+    if role == "admin":
+        raw_rates = reference_rates_raw(db)
+        payload["reference_rate"] = reference_rate_for(raw_rates, sede, rate_type)
+    return payload
 
 
 @router.patch("/{space_id}/status", response_model=SpaceOut)
@@ -477,6 +563,12 @@ def cancel_lease(
         raise HTTPException(status_code=409, detail="El contrato ya estaba cancelado")
 
     lease.is_active = False
+    # Cuándo se canceló, no sólo que se canceló: `is_active=False` por sí solo
+    # no distingue "corrió hasta el final y venció" de "lo bajaron a mitad de
+    # camino" — y sin esa fecha, ocupacion.py no tiene de dónde prorratear lo
+    # YA devengado. Misma transacción que el soft-delete: si el commit de
+    # abajo no llega a pasar, tampoco debe quedar esta fila suelta.
+    db.add(LeaseCancellation(lease_id=lease.id, cancelled_at=datetime.now(timezone.utc)))
 
     # Only mark the space free when no other active lease remains
     remaining = (

@@ -290,6 +290,31 @@ class SupplierAsset(Base):
     uploaded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+class LeaseCancellation(Base):
+    """Cuándo se canceló un contrato — para prorratear el ingreso hasta ahí.
+
+    ``DELETE /spaces/{id}/leases/{id}`` ya hacía un soft-delete
+    (``is_active = False``), pero eso borra el CORTE sin decir CUÁNDO pasó.
+    Sin esto, un contrato cancelado a mitad de un mes reportaba $0 de ingreso
+    para ese mes en vez de lo YA devengado hasta que se canceló — ver
+    ``services/ocupacion.py``, que es quien lee esta tabla.
+
+    Tabla NUEVA a propósito: ``Base.metadata.create_all()`` crea tablas que
+    faltan pero nunca agrega una columna a ``space_leases``, así que un
+    ``cancelled_at`` ahí habría quedado sin efecto en cualquier base ya
+    desplegada.
+
+    Un contrato cancelado ANTES de que esta tabla existiera no tiene fila acá
+    — eso es una limitación aceptada, no un bug: ``ocupacion.py`` documenta
+    cómo se trata ese caso.
+    """
+    __tablename__ = "lease_cancellations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lease_id = Column(Integer, ForeignKey("space_leases.id"), nullable=False, unique=True, index=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
 class LoginAttempt(Base):
     """Un intento de entrar que falló, con la IP y la hora.
 

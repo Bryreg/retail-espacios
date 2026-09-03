@@ -17,7 +17,20 @@ import { nombreDeMueble } from "../../utils/nomenclatura";
 import { fileUrl, getFaceImages } from "../../api/files";
 import { arteUrl, listarCatalogo, subirArte, type Arte } from "../../api/catalogo";
 import { getSuppliers } from "../../api/suppliers";
+import { getSpaceRates, OCCUPANCY_ESTADO_LABEL, type SpaceRatesDTO } from "../../api/spaces";
 import { describeError } from "../../api/client";
+// Modo Ocupación — el semáforo de disponibilidad por periodo. Misma terna
+// auditada por dicromacia que ya pinta el mapa 2D de la sede (DashboardView),
+// nunca una paleta nueva; ver utils/semaforo3d.ts.
+import {
+  OCUPACION_COLORS, LEYENDA_OCUPACION, NO_COMERCIALIZABLE_COLOR, NO_COMERCIALIZABLE_LABEL,
+  getOcupacionMaterial, estadoDeCara, detalleDeCara, CARA_B_VACIA,
+} from "../../utils/semaforo3d";
+// El período es uno solo: se reusa el MISMO componente y la misma aritmética
+// de fechas que ya usa el resto de la app (mapa de sede, ficha de venta) — no
+// una segunda implementación de "hoy" o de rangos.
+import SeasonPicker, { type DateRange, hoyComoRango } from "../SeasonPicker/SeasonPicker";
+import { toISODate } from "../../types/seasons";
 // Extensión real del local y física de la caminata — geometría pura, probada
 // aparte. STORE_W/STORE_D describen una tienda ficticia que ninguna sede ocupa.
 import {
@@ -1983,6 +1996,10 @@ interface FixtureMeshProps {
   hoveredSlotId?:  string | null;
   onSlotClick?:    (slotId: string) => void;
   onSlotHover?:    (slotId: string | null) => void;
+  /** Modo Ocupación: reemplaza el color-por-estado de HOY (`STATUS_COLORS`)
+   *  por el color de disponibilidad del periodo elegido. `undefined` deja el
+   *  cálculo de siempre intacto — este prop nunca se pisa a sí mismo. */
+  statusColorOverride?: string;
 }
 
 /**
@@ -2071,10 +2088,10 @@ function ServicioClienteMesh({ w, d, h, ghost }: { w:number;d:number;h:number;gh
   );
 }
 
-function FixtureMesh({ fixture, ghost, facePaint, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: FixtureMeshProps) {
-  const sc = isRentable(fixture)
+function FixtureMesh({ fixture, ghost, facePaint, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover, statusColorOverride }: FixtureMeshProps) {
+  const sc = statusColorOverride ?? (isRentable(fixture)
     ? (STATUS_COLORS[fixture.status] ?? STATUS_COLORS.free)
-    : NON_RENTABLE_COLOR;
+    : NON_RENTABLE_COLOR);
   const base = { w:fixture.w, d:fixture.d, h:fixture.h, statusColor:sc, ghost };
   switch (fixture.type) {
     case "gondola": return (
@@ -3781,6 +3798,10 @@ interface SceneProps {
   saltarA:           { x: number; z: number; n: number } | null;
   onHoverFixture:    (id: string|null, x: number, y: number) => void;
   fixtures:          import("../../types/fixtures").UnifiedFixture[];
+  /** Modo Ocupación: pinta cada cara comercializable por su disponibilidad en
+   *  `rangoOcupacion` en vez de por el arte del proveedor. */
+  ocupacion:         boolean;
+  rangoOcupacion:    DateRange;
 }
 
 function Scene({
@@ -3789,7 +3810,7 @@ function Scene({
   draggingId, orbitRef, onFloorMove, onFloorClick,
   onSelectFixture, setPlacedFixtures,
   screenshotReady, topViewReady, firstPerson, sinArte, prueba, onCamaraFP, saltarA,
-  onHoverFixture, fixtures,
+  onHoverFixture, fixtures, ocupacion, rangoOcupacion,
 }: SceneProps) {
   const { gl, camera, invalidate } = useThree();
   const { setCamera3D } = useFixtureStore();
@@ -3828,6 +3849,35 @@ function Scene({
   // Face-paint materials per fixture id (photo → category pattern → plain).
   const facePaintById = useMemo(() => {
     const map = new Map<string, FacePaint>();
+    // Modo Ocupación PISA la prioridad de siempre (prueba → foto → patrón →
+    // color): no la rompe, la reemplaza a propósito mientras el interruptor
+    // está prendido. Sin él, el árbol de arriba corre exactamente igual que
+    // antes de esta feature — nada de lo de abajo se toca.
+    //
+    // Reusa el MISMO camino que ya pinta el arte (LaminaDeProducto sobre un
+    // mesh existente, cero geometría nueva): lo único que cambia es qué
+    // material se le pasa. Sólo los tipos con superficie pintable
+    // (TIPOS_CON_PRODUCTO) reciben esto; el resto de los muebles
+    // comercializables recibe el mismo estado por otra vía — el
+    // `statusColorOverride` que se le pasa a cada <FixtureMesh> más abajo,
+    // que alimenta el trim de estado y cubre incluso los tipos sin lámina
+    // (metro, checkout).
+    if (ocupacion) {
+      for (const fix of placedFixtures) {
+        if (!isRentable(fix)) continue; // gris pizarra ya sale por el camino normal
+        if (!TIPOS_CON_PRODUCTO.has(fix.type as string)) continue;
+        const isDouble = isDoubleGondola(fix) || (fix.type as string) === "gondola_doble";
+        const front = getOcupacionMaterial(estadoDeCara(fix, rangoOcupacion));
+        const uf = unifiedById.get(fix.id);
+        // Cara B sin tocar todavía (uf.faceB === undefined) es "free", no
+        // "sin pintar" — ver CARA_B_VACIA.
+        const back = isDouble
+          ? getOcupacionMaterial(estadoDeCara(uf?.faceB ?? CARA_B_VACIA, rangoOcupacion))
+          : null;
+        map.set(fix.id, { front, back });
+      }
+      return map;
+    }
     // Sin arte no se pinta NADA sobre las caras: ni la foto del proveedor ni el
     // patrón de categoría. El «antes» tiene que ser el mueble pelado, que es
     // contra lo que se compara la marca puesta.
@@ -3877,7 +3927,7 @@ function Scene({
     return map;
   // texVersion re-runs this memo when an async photo texture settles
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [placedFixtures, unifiedById, faceImages, texVersion, notifyTexLoaded, sinArte, prueba]);
+  }, [placedFixtures, unifiedById, faceImages, texVersion, notifyTexLoaded, sinArte, prueba, ocupacion, rangoOcupacion]);
 
   // CHANGE 1 — Restore camera + wire persistence once OrbitControls are ready.
   // W1: Read camera3D from getState() at call time (not from closure) to avoid stale values.
@@ -4125,6 +4175,14 @@ function Scene({
               fixture={fix}
               facePaint={facePaintById.get(fix.id) ?? null}
               /* slots disabled — omit onSlotClick/onSlotHover to skip all slot meshes */
+              /* Modo Ocupación, cara A: cubre TODOS los tipos comercializables,
+                 incluidos los que no tienen lámina de producto (metro, checkout)
+                 y por eso quedan afuera de facePaintById/TIPOS_CON_PRODUCTO.
+                 Para los tipos que sí tienen lámina, esto refuerza el mismo
+                 color en el trim decorativo del mueble — nunca lo contradice. */
+              statusColorOverride={ocupacion && isRentable(fix)
+                ? OCUPACION_COLORS[estadoDeCara(fix, rangoOcupacion)]
+                : undefined}
             />
             {fix.id===selectedId && !selectedSlotId && <SelectionBox w={fix.w} d={fix.d} h={fix.h} />}
             {/* CHANGE 4 — Unauthorized placement badge (distance-gated + occluded) */}
@@ -4351,6 +4409,51 @@ function fixturesToStore(
 
 // ─── CommercialPanel ──────────────────────────────────────────────────────────
 
+/**
+ * Una cara del bloque de tarifa: la referencia (si el backend la mandó — sólo
+ * llega para admin), el desvío contra lo negociado cuando hay con qué
+ * compararla, y la lectura de ocupación que el propio backend confirma para
+ * el periodo pedido. Cualquier campo ausente simplemente no se dibuja.
+ */
+function TarifaCara({
+  etiqueta, rates, negotiatedValue,
+}: {
+  etiqueta?: string;
+  rates: SpaceRatesDTO | null;
+  negotiatedValue: number | undefined;
+}) {
+  if (!rates) return null;
+  const ref = rates.reference_rate;
+  const desvioPct = ref && ref > 0 && negotiatedValue && negotiatedValue > 0
+    ? Math.round((1 - negotiatedValue / ref) * 100)
+    : null;
+  // Mismo umbral que el resto de la app: un peso de redondeo no es anomalía.
+  const bajoTarifa = desvioPct !== null && desvioPct >= 1;
+  // Vocabulario del backend ("se_libera"), NO el del pintado local
+  // (RangeAvailability = "parcial") — son dos cosas separadas a propósito.
+  const ocLabel = OCCUPANCY_ESTADO_LABEL[rates.occupancy.estado];
+
+  return (
+    <div className="mt-1.5 first:mt-0">
+      {etiqueta && <p className="text-[9.5px] font-semibold uppercase tracking-wide text-dark-ink-3">{etiqueta}</p>}
+      {ref != null && (
+        <p className="font-mono text-sm font-bold text-dark-ink-1">
+          ${ref.toLocaleString()} <span className="text-[10px] font-normal text-dark-ink-3">/ mes, referencia</span>
+        </p>
+      )}
+      {desvioPct !== null && (
+        <p className={`text-[10.5px] font-medium ${bajoTarifa ? "text-warning" : "text-success"}`}>
+          {desvioPct > 0 ? `−${desvioPct}%` : desvioPct < 0 ? `+${-desvioPct}%` : "en línea"} vs referencia
+        </p>
+      )}
+      <p className="mt-0.5 text-[10.5px] text-dark-ink-2">
+        {ocLabel}
+        {rates.occupancy.se_libera_el && ` · libre desde ${rates.occupancy.se_libera_el}`}
+      </p>
+    </div>
+  );
+}
+
 interface CommercialPanelProps {
   fix:           PlacedFixture;
   /** En primera persona la cámara no se persiste: el bloque de vista lo avisa. */
@@ -4368,12 +4471,15 @@ interface CommercialPanelProps {
   onDelete:      () => void;
   onClose:       () => void;
   onSlotClose:   () => void;
+  /** Periodo activo del Modo Ocupación — mismo que pinta el semáforo, para
+   *  que la tarifa consultada responda por lo mismo que se está mirando. */
+  rangoOcupacion: DateRange;
 }
 
 function CommercialPanel({
   fix, enCaminata, catalogo, cargandoCatalogo, prueba, onProbar, onRecargarCatalogo,
   selectedSlot, onUpdate, onUpdateSlot,
-  onRotate, onFlip, onDelete, onClose, onSlotClose,
+  onRotate, onFlip, onDelete, onClose, onSlotClose, rangoOcupacion,
 }: CommercialPanelProps) {
   const isAdmin = useAuthStore(selectIsAdmin);
   const u  = useCallback((up: Partial<PlacedFixture>) => onUpdate(fix.id, up), [fix.id, onUpdate]);
@@ -4383,6 +4489,34 @@ function CommercialPanel({
   const def = FIXTURE_DEFS.find(d=>d.type===fix.type && (fix.type!=="gondola"||d.gondolaType===fix.gondolaType)) ?? FIXTURE_DEFS[0];
   // Infrastructure holds no contract: the commercial half of the panel hides.
   const rentable = isRentable(fix);
+  const isDouble = isDoubleGondola(fix);
+
+  // ── Tarifa de referencia + ocupación (GET /spaces/{code}/rates) ──────────
+  // {code} = fullSpaceCode(sede, code) en mayúsculas; cara B con sufijo "-B" —
+  // mismo contrato que usa facePaintById para resolver el código del espacio.
+  // Se pide para la cara A y, si es góndola doble, también para la B: son DOS
+  // espacios, cada uno con su propio contrato y su propia tarifa.
+  //
+  // Nunca bloquea el panel. Si el endpoint todavía no existe, si el rol no
+  // puede leer tarifas, o si cae la red, `getSpaceRates` ya resuelve a `null`
+  // y el bloque de tarifa simplemente no se dibuja — nada de "—" ni "$0".
+  const sede = useFixtureStore((s) => s.sede);
+  const [ratesA, setRatesA] = useState<SpaceRatesDTO | null>(null);
+  const [ratesB, setRatesB] = useState<SpaceRatesDTO | null>(null);
+  const desde = toISODate(rangoOcupacion.from);
+  const hasta = toISODate(rangoOcupacion.to);
+  useEffect(() => {
+    if (!rentable) { setRatesA(null); setRatesB(null); return; }
+    let alive = true;
+    const codeA = fullSpaceCode(sede, fix.code);
+    getSpaceRates(codeA, desde, hasta).then((r) => { if (alive) setRatesA(r); });
+    if (isDouble) {
+      getSpaceRates(`${codeA}-B`, desde, hasta).then((r) => { if (alive) setRatesB(r); });
+    } else {
+      setRatesB(null);
+    }
+    return () => { alive = false; };
+  }, [rentable, isDouble, sede, fix.code, desde, hasta]);
 
   const inputCls = "w-full border-0 border-b border-dark-line-2 bg-transparent rounded-none px-0 py-1 text-sm text-dark-ink-1 focus:border-accent focus:outline-none placeholder:text-dark-ink-3 transition-colors";
   const labelCls = ETIQUETA_CLS;
@@ -4645,6 +4779,21 @@ function CommercialPanel({
           )}
         </div>
 
+        {/* Tarifa de referencia + ocupación del periodo (GET .../rates). Si el
+            endpoint todavía no existe o el rol no puede leer tarifas, `rates`
+            queda en null y este bloque entero no se dibuja — nunca un "—". */}
+        {rentable && (ratesA || ratesB) && (
+          <div className="rounded-lg border border-dark-line/50 bg-dark-bg/60 p-3">
+            <p className={labelCls}><DollarSign size={9} className="inline mr-1"/>Tarifa de referencia</p>
+            {/* negotiatedValue ya viene redactado server-side para un worker
+                (0), pero se gatea también con isAdmin acá — mismo doble
+                resguardo que el resto de este panel (ver `fix.negotiatedValue
+                > 0 && isAdmin` unas líneas arriba). El desvío es plata. */}
+            <TarifaCara etiqueta={isDouble ? "Cara A" : undefined} rates={ratesA} negotiatedValue={isAdmin ? fix.negotiatedValue : undefined} />
+            {isDouble && <TarifaCara etiqueta="Cara B" rates={ratesB} negotiatedValue={undefined} />}
+          </div>
+        )}
+
         <VistaProveedor
           fix={fix}
           enCaminata={enCaminata}
@@ -4739,6 +4888,23 @@ export default function StoreEditor3D() {
   // Antes y después: apagar las artes muestra el espacio como está hoy, que es
   // contra lo que el proveedor compara su marca puesta.
   const [sinArte, setSinArte] = useState(false);
+
+  // ── Modo Ocupación — el semáforo de disponibilidad por periodo ───────────
+  // `null` = hoy, exactamente la misma convención que ya usa SeasonPicker en
+  // el mapa de la sede (`hoyComoRango()` / `esHoy()`). No hay un periodo
+  // global compartido entre pestañas — el mapa de Sede tampoco lo tiene, cada
+  // pantalla arranca en "hoy" — así que esto es SU propio estado, con el
+  // MISMO componente y la misma aritmética de fechas.
+  const [ocupacion, setOcupacion] = useState(false);
+  const [rangoOcupacion, setRangoOcupacion] = useState<DateRange | null>(null);
+  // Memoizado: `hoyComoRango()` construye un Date nuevo en cada llamada, y
+  // sin esto cada render del componente le pasaría a Scene/CommercialPanel
+  // un objeto de identidad distinta aunque el día sea el mismo — exactamente
+  // lo que rompe una dependencia de useMemo/useEffect corriente abajo.
+  const rangoOcupacionEfectivo = useMemo(
+    () => rangoOcupacion ?? hoyComoRango(),
+    [rangoOcupacion],
+  );
 
   // ── El producto que se está probando ──────────────────────────────────────
   // Vive en la sesión y NO en el layout, a propósito. El layout es lo que está
@@ -5185,9 +5351,21 @@ export default function StoreEditor3D() {
         <div className="border-t border-dark-line" />
 
         <div>
-          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">Estados</p>
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">
+            {ocupacion ? "Ocupación · leyenda" : "Estados"}
+          </p>
           <div className="flex flex-col gap-1">
-            {(["free","occupied","reserved"] as SpaceStatus[]).map(s=>{
+            {/* Modo Ocupación: la terna auditada por periodo, la MISMA que
+                pinta el mapa 2D de la sede — nunca "qué pasa hoy". Cada
+                estado va rotulado con su palabra: la identidad no depende
+                sólo del color (ver docs/ESTADO.md § Paleta y tipografía). */}
+            {ocupacion ? LEYENDA_OCUPACION.map(({ estado, color, label }) => (
+              <span key={estado} className="flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-medium"
+                style={{ background: `${color}26`, color }}>
+                <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: color }} />
+                {label}
+              </span>
+            )) : (["free","occupied","reserved"] as SpaceStatus[]).map(s=>{
               const sm=STATUS_META[s];
               return (
                 <span key={s} className={`flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-medium ${sm.bg} ${sm.text}`}>
@@ -5200,8 +5378,8 @@ export default function StoreEditor3D() {
               className="flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-medium"
               style={{ background: "rgba(100,116,139,0.18)", color: "#94A3B8" }}
             >
-              <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: NON_RENTABLE_COLOR }} />
-              No comercializable
+              <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: NO_COMERCIALIZABLE_COLOR }} />
+              {ocupacion ? NO_COMERCIALIZABLE_LABEL : "No comercializable"}
             </span>
           </div>
         </div>
@@ -5233,7 +5411,8 @@ export default function StoreEditor3D() {
 
         {/* MEJORA 4: Status bar — hidden in presentation mode */}
         {!presentationMode && (
-          <div className={`absolute inset-x-0 top-0 z-10 flex items-center gap-3 border-b px-4 py-1.5 text-[10px] backdrop-blur-sm ${
+          <div className="absolute inset-x-0 top-0 z-10 flex flex-col">
+          <div className={`flex items-center gap-3 border-b px-4 py-1.5 text-[10px] backdrop-blur-sm ${
             warning
               ? "bg-warning/10 border-warning/30"
               : placingDef
@@ -5285,6 +5464,19 @@ export default function StoreEditor3D() {
               <User size={10}/> {firstPerson ? 'Orbital' : '1ª Persona'}
             </button>
 
+            {/* Modo Ocupación: pinta cada cara comercializable por su
+                disponibilidad en el periodo elegido — el semáforo del mapa
+                2D de la sede, acá. */}
+            <button onClick={() => setOcupacion(p => !p)}
+              title={ocupacion ? "Volver a las artes del proveedor" : "Pintar por disponibilidad del periodo"}
+              className={`flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] transition-all ${
+                ocupacion
+                  ? 'border-success/50 bg-success/15 text-success'
+                  : 'border-dark-line-2 bg-dark-surface text-dark-ink-2 hover:bg-dark-surface-2'
+              }`}>
+              🚦 Ocupación
+            </button>
+
             {/* Antes y después: el mismo encuadre con la marca puesta y sin
                 ella. Es la comparación que cierra una negociación, y hasta
                 ahora había que imaginársela. */}
@@ -5330,6 +5522,23 @@ export default function StoreEditor3D() {
                 <X size={10}/> Cancelar
               </button>
             )}
+          </div>
+
+          {/* Segunda fila, sólo en Modo Ocupación: el período — MISMO
+              componente que ya usa Sede → Vender, no una fecha reinventada
+              acá. Va en una píldora clara porque SeasonPicker está hecho para
+              la paleta de luz (var(--ink-1) etc.); sobre el fondo oscuro del
+              editor su texto quedaría casi invisible. */}
+          {ocupacion && (
+            <div className="flex flex-wrap items-center gap-3 border-b border-dark-line/60 bg-dark-bg/90 px-4 py-1.5 backdrop-blur-sm">
+              <div className="rounded-md px-2 py-1" style={{ background: "var(--surface)" }}>
+                <SeasonPicker range={rangoOcupacion} onChange={setRangoOcupacion} />
+              </div>
+              <span className="text-[10px] text-dark-ink-3">
+                Pintando por disponibilidad para este periodo · leyenda en el panel izquierdo
+              </span>
+            </div>
+          )}
           </div>
         )}
 
@@ -5388,6 +5597,8 @@ export default function StoreEditor3D() {
               saltarA={saltarA}
               onHoverFixture={onHoverFixture}
               fixtures={fixtures}
+              ocupacion={ocupacion}
+              rangoOcupacion={rangoOcupacionEfectivo}
             />
           </Canvas>
         </CanvasErrorBoundary>
@@ -5397,6 +5608,14 @@ export default function StoreEditor3D() {
           const fix = placedFixtures.find(f => f.id === hoveredFixtureId);
           if (!fix || fix.id === selectedId) return null;
           const sm = STATUS_META[fix.status];
+          // Modo Ocupación: la palabra del estado por periodo, no la de hoy —
+          // y su detalle (fechas), porque un "Tomado" pintado igual de rojo
+          // puede ser un contrato vigente o uno firmado que recién arranca.
+          const ocA = ocupacion && isRentable(fix) ? estadoDeCara(fix, rangoOcupacionEfectivo) : null;
+          const esDoble = ocupacion && isDoubleGondola(fix);
+          const ufHover = esDoble ? fixtures.find(f => f.id === fix.id) : undefined;
+          const caraBHover = ufHover?.faceB ?? CARA_B_VACIA;
+          const ocB = ocA && esDoble ? estadoDeCara(caraBHover, rangoOcupacionEfectivo) : null;
           return (
             <div
               className="pointer-events-none absolute z-30 rounded-lg border border-dark-line bg-dark-surface/95 px-3 py-2 text-xs shadow-xl backdrop-blur-sm"
@@ -5404,11 +5623,32 @@ export default function StoreEditor3D() {
             >
               <p className="font-mono font-bold text-accent-200">{nombreDeMueble(fix)}</p>
               <p className="text-dark-ink-1">{fix.label}</p>
-              {fix.supplierName && <p className="text-dark-ink-2 mt-0.5">🏢 {fix.supplierName}</p>}
-              {fix.negotiatedValue > 0 && <p className="text-success mt-0.5">💵 ${fix.negotiatedValue}/mes</p>}
-              <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${sm.bg} ${sm.text}`}>
-                {sm.label}
-              </span>
+              {ocA ? (
+                <>
+                  <p className="mt-1 flex items-center gap-1.5" style={{ color: OCUPACION_COLORS[ocA] }}>
+                    <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ background: OCUPACION_COLORS[ocA] }} />
+                    {ocB ? "Cara A — " : ""}{LEYENDA_OCUPACION.find(l => l.estado === ocA)?.label}
+                  </p>
+                  {detalleDeCara(fix) && <p className="text-[10px] text-dark-ink-3">{detalleDeCara(fix)}</p>}
+                  {ocB && (
+                    <>
+                      <p className="mt-1 flex items-center gap-1.5" style={{ color: OCUPACION_COLORS[ocB] }}>
+                        <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ background: OCUPACION_COLORS[ocB] }} />
+                        Cara B — {LEYENDA_OCUPACION.find(l => l.estado === ocB)?.label}
+                      </p>
+                      {detalleDeCara(caraBHover) && <p className="text-[10px] text-dark-ink-3">{detalleDeCara(caraBHover)}</p>}
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  {fix.supplierName && <p className="text-dark-ink-2 mt-0.5">🏢 {fix.supplierName}</p>}
+                  {fix.negotiatedValue > 0 && <p className="text-success mt-0.5">💵 ${fix.negotiatedValue}/mes</p>}
+                  <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${sm.bg} ${sm.text}`}>
+                    {sm.label}
+                  </span>
+                </>
+              )}
             </div>
           );
         })()}
@@ -5483,6 +5723,7 @@ export default function StoreEditor3D() {
           onDelete={deleteSelected}
           onClose={()=>{ setSelectedId(null); setSelectedSlotId(null); }}
           onSlotClose={()=>setSelectedSlotId(null)}
+          rangoOcupacion={rangoOcupacionEfectivo}
         />
       )}
     </div>

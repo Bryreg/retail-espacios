@@ -1,5 +1,5 @@
 from datetime import date
-from typing import Optional
+from typing import Optional, Union
 from pydantic import BaseModel, Field
 from app.models.models import SpaceStatus
 
@@ -20,6 +20,34 @@ class SupplierOut(SupplierBase):
     id: int
 
     model_config = {"from_attributes": True}
+
+
+class SupplierPublicOut(BaseModel):
+    """Lo único que un no-admin necesita para saber QUIÉN ocupa un espacio.
+
+    ``email``, ``phone``, ``contact_name`` y ``notes`` quedan AUSENTES —no en
+    ``null``— porque son datos de contacto y notas comerciales del proveedor:
+    un worker no tiene por qué poder llamarlo por fuera del sistema, ni leer
+    lo que un admin anotó sobre la negociación. Lista blanca: sólo lo que
+    está declarado acá viaja, nunca "todo menos lo que se tacha".
+    """
+    id: int
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
+def supplier_out_for_role(supplier, role: str) -> Union[SupplierOut, SupplierPublicOut]:
+    """``SupplierOut`` completo para admin; ``SupplierPublicOut`` (sólo id/name)
+    para cualquier otro rol — worker, o lo que se agregue mañana.
+
+    ``supplier`` puede ser el ORM ``Supplier`` o ya un ``SupplierOut``: los dos
+    exponen los mismos atributos, así que ``from_attributes`` lee cualquiera de
+    los dos sin distinción.
+    """
+    if role == "admin":
+        return SupplierOut.model_validate(supplier, from_attributes=True)
+    return SupplierPublicOut.model_validate(supplier, from_attributes=True)
 
 
 class LeaseBase(BaseModel):
@@ -57,7 +85,12 @@ class LeaseOut(LeaseBase):
     id: int
     space_id: int
     is_active: bool
-    supplier: SupplierOut
+    # Union y no SupplierOut a secas: la redacción por rol reemplaza este campo
+    # por un SupplierPublicOut para no-admin (ver `_space_out_for_role` en
+    # routers/spaces.py), y Pydantic serializa por el tipo REAL de la instancia
+    # cuando el campo es una Union — así el email/phone/contact_name/notes del
+    # proveedor quedan AUSENTES del JSON para worker, no en null.
+    supplier: Union[SupplierOut, SupplierPublicOut]
     # Overridden as Optional so responses for non-admin roles can redact the amount.
     monthly_rent: Optional[float] = None
     # Sólo viene al CREAR el contrato; al listar no tiene sentido.

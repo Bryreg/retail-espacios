@@ -1,7 +1,8 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: agosto 2026 (disponibilidad por fechas y calendario por temporada).
+Última actualización: septiembre 2026 (semáforo de ocupación 🚦 en el 3D, tarifa por espacio
+y dashboard de ocupación real vs esperada).
 
 Gestión de espacios comerciales en supermercados: se dibuja el plano de cada sede, se
 marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
@@ -790,6 +791,99 @@ Dos cosas que conviene saber antes de tocar el mapa:
 
 De los 104 muebles de NAVE, **19 son comercializables**. El resto es infraestructura, que es
 justo lo que hace legible el mapa: contexto en gris y todo el color en el destino.
+
+### Ocupación en tiempo real: semáforo 3D, tarifa por espacio y dashboard
+
+Plata y conteo comparten UNA elegibilidad (`_fin_efectivo` en `services/ocupacion.py`):
+`contratadas` e `ingreso_contratado` derivan del mismo corte —fecha de cancelación si hay
+fila, `end_date` si no— así que no pueden contradecirse por construcción, y la función no
+mira `date.today()`: el P&L de un período cerrado da lo mismo consultado hoy o en un año
+(hallazgos C-1 y C-3 del auditor contable, cerrados con tests de regresión). El semáforo de
+VENTA (`occupancy_range`) sigue filtrando `is_active` a propósito: "cancelado no ocupa" es
+la regla para vender; "ocupó los días que ocupó" es la regla para contar la temporada.
+
+Modo **Ocupación 🚦** nuevo en el editor 3D (`StoreEditor3D.tsx`, interruptor arriba + el
+mismo `SeasonPicker` de Sede → Vender): cada cara comercializable se pinta con la terna
+auditada (`--libre`/`--entra`/`--ocupado`) según `rangeAvailability`, la MISMA función que ya
+pinta el mapa 2D — no hay una segunda regla de color. La góndola doble sigue pintando sus dos
+caras por separado (índices de material 5/4). El violeta que pedía el brief original para
+"contratado, aún no arranca" **no se implementó a propósito**: la auditoría de dicromacia de
+agosto (ver «Paleta y tipografía») manda sobre el brief, y la terna de tres sigue siendo la
+única lectura por color. Nuevo: `frontend/src/utils/semaforo3d.ts`.
+
+**`GET /spaces/{code}/rates`** (`backend/app/routers/spaces.py`) — tarifa de referencia +
+ocupación de un espacio, por su código completo (`SEDE-CODE`, cara B con sufijo `-B`). Igual
+que `GET /layout/rates`, exige admin **también para leer**: para un rol distinto de admin la
+clave `reference_rate` no se agrega a la respuesta —no viaja en `null`, está ausente—, y
+lleva `Cache-Control: no-store`. `desde`/`hasta` van juntos (422 si falta uno); sin ellos
+contesta el estado de HOY. El tipo de mueble sale del snapshot del layout vía
+`find_fixture_by_space_code`, nunca de `Space` (que no tiene esa columna).
+
+**Dashboard → Supervisar** suma una sección al pie —nunca en Vender— con la ocupación real
+vs esperada por sede (`frontend/src/components/Ocupacion/`) y la brecha accionable: los
+códigos contratados y todavía sin montar, calculados en el cliente con datos ya en memoria,
+visibles también para el worker porque no llevan plata. El dinero va con doble candado:
+`isAdmin && "ingreso_contratado" in fila` —presencia de la clave, nunca `!== null`.
+
+**El ingreso se prorratea.** `monthly_rent / 30 × días de intersección inclusiva`, la misma
+convención que ya firma el proveedor en el total del plazo (`Contrato.tsx`). Antes un
+contrato de un solo día sumaba el mes completo. La cuenta vive en el módulo nuevo
+`backend/app/services/ocupacion.py`.
+
+**Tabla nueva `LeaseCancellation`** (`lease_cancellations` — vía `create_all()`, permitido
+por la regla dura de "sin migraciones" porque es tabla nueva y no columna agregada):
+`DELETE /spaces/{id}/leases/{id}` ahora también escribe `cancelled_at`, en la misma
+transacción que el soft-delete, para que `ocupacion.py` pueda prorratear lo devengado hasta
+la cancelación en vez de reportar `$0` para el mes en que se canceló.
+
+**Dos fugas de PII, cerradas.** `lease.notes` —donde vive lo que no se anima a entrar en un
+campo con nombre, del estilo "descuento del 25% cerrado por teléfono"— y el `supplier`
+anidado en el contrato —antes viajaba entero: email, teléfono, notas— ahora se redactan
+server-side para no-admin, igual que ya pasa con `negotiatedValue`/`monthly_rent`. El
+proveedor pasa por `SupplierPublicOut` (solo `id`+`name`), la misma lista blanca que ya usaba
+`GET /suppliers/`. Verificado en caliente por auditoría: canaria en 0 apariciones sobre el
+texto completo de 19 respuestas de worker, y barrido de 33 rutas con el token de montaje,
+todas 401.
+
+**55+ tests nuevos** — `backend/tests/{test_space_rates,test_dashboard_ocupacion,
+test_redaction_pii}.py` — con la suite completa del backend en verde.
+
+### Pendientes conocidos: ocupación y tarifas
+
+- **El modelo dual no concilia, y hace falta una decisión de producto.** `UnifiedFixture`
+  sólo sostiene UN contrato por cara; una punta vendida en dos contratos consecutivos (30+30
+  días) queda con 2 filas en `space_leases` y 1 sola en el JSON del layout. Medido: hasta
+  **$613.333 de devengado real (16,4% del período) invisibles** en toda pantalla, con un
+  **spread del 28%** entre las tres cifras de "ingreso" que hoy conviven para la misma sede
+  el mismo día (Canon vigente del JSON / `/kpis` sin prorratear / `/ocupacion` prorrateado).
+  La consecuencia operativa cara: el semáforo —2D y 3D leen el JSON— pinta "se libera" una
+  punta ya vendida el período completo en dos contratos, y **ofrece vender dos veces el mismo
+  espacio**. La pregunta pendiente es de producto, no técnica: ¿`space_leases` pasa a mandar
+  para todo el dinero y el JSON queda solo para pintar? Detalle en
+  `features/vitrinas-3d/outputs/auditor-contador-pl.md`.
+- **Backfill URGENTE de `lease_cancellations`, con ventana que se cierra.** La tabla sólo
+  tiene fila para lo cancelado desde este deploy en adelante; un contrato cancelado antes no
+  tiene registro y cuenta hasta su `end_date` completo — regla ESTABLE a propósito (la
+  elegibilidad de `ocupacion.py` es función pura de fechas + fila de cancelación y no mira
+  el calendario: el mismo período consultado hoy o en un año da el mismo peso), pero
+  sobre-declara lo cancelado a mitad de plazo hasta que el backfill reponga la fecha real.
+  La única fuente de esa fecha para esos contratos viejos es `audit_log`
+  (`accion='contrato.baja'`), que **se purga a los 365 días** en el ciclo de mantenimiento de
+  `main.py` — cada día que pasa sin hacer el backfill es una cancelación vieja cuya fecha real
+  se pierde para siempre. Es escribir filas en una tabla nueva a partir de la bitácora, sin
+  migración.
+- **`cancelled_at` se guarda en UTC y se lee como día calendario.** Cancelar después de las
+  19:00 hora Colombia devenga un día de más (`monthly_rent/30`, determinístico, siempre a
+  favor de quien factura).
+- Advertencias abiertas que no bloquean la feature: `top_suppliers` sigue viajando al worker
+  con el ORDEN comercial aunque los montos estén en `0.0` (el orden ES el ranking); `/kpis`
+  sigue mandando `0.0` donde los endpoints nuevos mandan ausencia —dos convenciones de
+  redacción conviviendo—; el correo de montaje de un contrato multiespacio no lleva enlace
+  firmado y empuja al mercaderista a la clave compartida de worker; un contrato escaneado
+  como imagen sigue siendo descargable por worker (filtro por content-type, no por rol);
+  `vencidas` cuenta caras libres en períodos futuros; `ocupacion_real_pct` se contamina entre
+  temporadas. Detalle completo en `features/vitrinas-3d/outputs/auditor-legal-precios.md` y
+  `auditor-contador-pl.md`.
 
 ---
 
