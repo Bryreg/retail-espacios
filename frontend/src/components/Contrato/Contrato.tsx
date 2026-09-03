@@ -63,6 +63,24 @@ export interface ParcheDeCara {
   patch: Partial<FaceData>;
 }
 
+/** Con qué llega prellenado un contrato al que se entra por «Renovar». */
+export interface SemillaContrato {
+  /** Qué renovación es. La pantalla lo usa de `key` para REMONTAR el
+   *  formulario: los campos se siembran en el `useState` inicial, así que un
+   *  formulario ya montado ignoraría la semilla y «Renovar» no haría nada
+   *  visible si ya había un contrato a medio armar en pantalla. */
+  id: string;
+  proveedor: string;
+  correo: string;
+  marca: string;
+  /** ISO. El día después de que termina el contrato vigente. */
+  desde: string;
+  /** ISO. Mismo largo que el contrato vigente. */
+  hasta: string;
+  /** Por código completo del espacio, como los escribe el formulario. */
+  valores: Record<string, string>;
+}
+
 export interface ArgsContrato {
   /** Los espacios del contrato, en el orden en que se fueron tocando.
    *
@@ -76,6 +94,14 @@ export interface ArgsContrato {
   sede: string;
   /** El periodo elegido arriba. Es de donde salen las fechas por defecto. */
   rango: DateRange | null;
+  /** Con qué abre el formulario cuando se llega por «Renovar».
+   *
+   *  Renovar no es hacer un contrato en blanco sobre el mismo mueble: es el
+   *  mismo acuerdo otra vez, y lo único que suele cambiar es el precio. Sin
+   *  esto había que volver a tipear el proveedor, el correo, la marca y el
+   *  valor mirando la ficha de al lado, y cada uno de esos cuatro campos es una
+   *  oportunidad de escribir mal el nombre del proveedor y crear uno nuevo. */
+  semilla?: SemillaContrato | null;
   /** Sacar una cara de la lista desde la propia ficha. */
   onQuitar: (fixtureId: string, face: "A" | "B") => void;
   /** Sumar o sacar una cara de una góndola doble. Es un interruptor por cara,
@@ -136,7 +162,7 @@ export const DISPONIBILIDAD: Record<
 // ─── El hook ─────────────────────────────────────────────────────────────────
 
 export function useContrato({
-  espacios, sede, rango, onQuitar, onCambiarCara, onGuardado,
+  espacios, sede, rango, semilla, onQuitar, onCambiarCara, onGuardado,
 }: ArgsContrato) {
   const fixtures = useFixtureStore(selectFixtures);
   const referenceRates = useFixtureStore((s) => s.referenceRates);
@@ -147,17 +173,23 @@ export function useContrato({
   // tecleando el acuerdo.
   const [inicial] = useState<DateRange>(() => rango ?? rangoPorDefecto());
 
-  const [desde, setDesde] = useState(iso(inicial.from));
-  const [hasta, setHasta] = useState(iso(inicial.to));
-  const [proveedor, setProveedor] = useState("");
-  const [correo, setCorreo] = useState("");
-  const [marca, setMarca] = useState("");
+  // Al renovar mandan las fechas de la semilla —el día después de que termina
+  // el contrato vigente, por el mismo largo— y no el periodo de la barra de
+  // arriba: renovar «del 2 sep al 2 oct» cuando el contrato corre hasta el 26
+  // de septiembre solaparía tres semanas con un acuerdo que sigue vivo.
+  const [desde, setDesde] = useState(semilla?.desde ?? iso(inicial.from));
+  const [hasta, setHasta] = useState(semilla?.hasta ?? iso(inicial.to));
+  const [proveedor, setProveedor] = useState(semilla?.proveedor ?? "");
+  const [correo, setCorreo] = useState(semilla?.correo ?? "");
+  const [marca, setMarca] = useState(semilla?.marca ?? "");
   const [nota, setNota] = useState("");
   /** El valor mensual de cada espacio, tecleado, indexado por su código
    *  completo. Vive en un mapa y no adentro de la lista porque la lista la
    *  manda la pantalla —se arma tocando el plano— y volver a montarla no
    *  puede borrar lo que alguien ya escribió. */
-  const [valores, setValores] = useState<Record<string, string>>({});
+  const [valores, setValores] = useState<Record<string, string>>(
+    () => semilla?.valores ?? {},
+  );
   /** La planometría que el proveedor mandó: cómo debe quedar armada la
    *  exhibición. Se sube DESPUÉS de crear el contrato, porque cuelga de él. */
   const [planometria, setPlanometria] = useState<File | null>(null);
@@ -214,7 +246,11 @@ export function useContrato({
    *  negociación, y dejar el campo vacío obliga a ir a buscar la tarifa en otro
    *  panel y a teclearla — que es donde se cuela un cero de más. Se escribe una
    *  sola vez por espacio; si alguien lo borra a mano, se queda borrado. */
-  const vistos = useRef(new Set<string>());
+  // Lo que trae la semilla ya cuenta como visto: al renovar, el valor que
+  // manda es el que se está pagando hoy, no la tarifa de lista. Pisarlo con la
+  // tarifa haría que renovar arrancara proponiendo otro precio sin que nadie lo
+  // pidiera.
+  const vistos = useRef(new Set<string>(Object.keys(semilla?.valores ?? {})));
   useEffect(() => {
     const nuevos: Record<string, string> = {};
     for (const l of lineas) {

@@ -51,7 +51,9 @@ MONTAJE_TTL_DAYS = 30
 
 DEFAULT_CONFIG = {
     "notify_emails": "",
-    "reminder_days": "30,15,7,1",
+    # Los hitos del aviso de vencimiento. 7 y 1 no servían: a una semana ya no
+    # hay margen para negociar y a un día el correo avisa de algo que ya pasó.
+    "reminder_days": "30,15,6",
 }
 
 log = logging.getLogger("recabra.auth")

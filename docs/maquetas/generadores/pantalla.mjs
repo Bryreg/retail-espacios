@@ -522,6 +522,72 @@ if (MODO === "plano") {
   }
 
   await capturar(MODO);
+} else if (MODO === "renovar") {
+  // Renovar de punta a punta, desde el renglón que avisa que se cae.
+  //
+  // Renovar NO es abrir un contrato en blanco sobre el mismo mueble: es el
+  // mismo acuerdo otra vez. Lo que se prueba es que llegue prellenado —mismo
+  // proveedor, mismo valor— y sobre todo que las FECHAS no se pisen con el
+  // contrato que sigue vivo, que es el error que este botón existe para evitar.
+  const b = page.locator('button:text-is("Supervisar")').first();
+  if (await b.count()) { await b.click(); await page.waitForTimeout(1400); }
+
+  await page.locator('[data-fila-revisar]').first().click();
+  await page.waitForTimeout(900);
+
+  // La ficha, antes de renovar: de acá salen el proveedor y las fechas contra
+  // las que se compara después.
+  const ficha = await page.evaluate(() => document.body.innerText);
+  const boton = page.locator('button:has-text("Renovar")').first();
+  if (!(await boton.count())) {
+    console.log("⚠ NO HAY BOTÓN DE RENOVAR en un contrato que vence en 24 días");
+  } else {
+    console.log("el contrato que se cae trae el botón de renovar ✓");
+    await boton.click();
+    await page.waitForTimeout(1400);
+
+    const form = await page.evaluate(() => {
+      const val = (sel) => document.querySelector(sel)?.value ?? null;
+      return {
+        proveedor: val('input[placeholder*="Alpina"]'),
+        desde: val('input[type="date"]'),
+        hasta: [...document.querySelectorAll('input[type="date"]')][1]?.value ?? null,
+        valor: [...document.querySelectorAll('input[aria-label^="Valor mensual de"]')][0]?.value ?? null,
+        texto: document.body.innerText,
+      };
+    });
+    console.log(form.proveedor === "comercializadora nutresa"
+      ? "el proveedor viene puesto ✓"
+      : `⚠ EL PROVEEDOR NO VIENE: «${form.proveedor}»`);
+    console.log(form.valor && form.valor.replace(/\D/g, "") === "800000"
+      ? "y el valor que se está pagando hoy, no la tarifa de lista ✓"
+      : `⚠ EL VALOR NO ES EL VIGENTE: «${form.valor}» (el contrato paga 800.000, la tarifa de lista es 1.000.000)`);
+    // Las fechas se comprueban contra el contrato que está corriendo, sacado
+    // del layout que sirve este mismo harness. Escribirlas a mano las ataría al
+    // día en que se corrió: el demo arma sus fechas a partir de HOY.
+    const vigente = LAYOUT.find((l) => l.sede === "NAVE")
+      .fixtures.find((f) => f.code === "PUN-03");
+    const dia = 86_400_000;
+    const iso = (d) => new Date(d).toISOString().slice(0, 10);
+    const fin = Date.parse(vigente.endDate + "T00:00:00Z");
+    const ini = Date.parse(vigente.startDate + "T00:00:00Z");
+    const esperaDesde = iso(fin + dia);
+    const esperaHasta = iso(fin + dia + (fin - ini));
+
+    // Arranca el día DESPUÉS: los dos extremos cuentan como ocupados, así que
+    // arrancar el mismo día se pisaría con un contrato que sigue vivo y el
+    // propio formulario lo marcaría como no disponible.
+    console.log(form.desde === esperaDesde
+      ? `arranca el día DESPUÉS de que termina el vigente (${vigente.endDate} → ${form.desde}) ✓`
+      : `⚠ LAS FECHAS SE PISAN: arranca el ${form.desde} y el vigente corre hasta el ${vigente.endDate}`);
+    console.log(form.hasta === esperaHasta
+      ? `y dura lo mismo que el que termina (${form.desde} → ${form.hasta}) ✓`
+      : `⚠ EL LARGO NO SE MANTIENE: termina el ${form.hasta} y debería ser el ${esperaHasta}`);
+    console.log(!/no disponible|ya tiene parte del periodo vendido/i.test(form.texto)
+      ? "el formulario no marca conflicto: las fechas son libres ✓"
+      : "⚠ EL FORMULARIO MARCA CONFLICTO con el contrato que se está renovando");
+  }
+  await capturar("renovar");
 } else if (MODO === "revisar") {
   // Supervisar: tocar un renglón de «Para revisar» tiene que ABRIR la ficha.
   //
@@ -541,9 +607,12 @@ if (MODO === "plano") {
     await objetivo.click();
     await page.waitForTimeout(900);
     const texto = await page.evaluate(() => document.body.innerText);
-    console.log(/Nuevo contrato/.test(texto)
-      ? "el renglón abre la ficha, con el botón para renovar ✓"
-      : "⚠ EL RENGLÓN NO LLEVA A NINGUNA PARTE: no aparece «Nuevo contrato»");
+    // Sobre un contrato que se cae el botón dice «Renovar»; sobre uno que no,
+    // «Nuevo contrato». Lo que se prueba es que el renglón lleve a alguno de
+    // los dos y no a una pantalla sin salida.
+    console.log(/Renovar|Nuevo contrato/i.test(texto)
+      ? "el renglón abre la ficha, con el botón para cerrar el contrato ✓"
+      : "⚠ EL RENGLÓN NO LLEVA A NINGUNA PARTE: la ficha no ofrece ninguna acción");
   }
   await capturar("revisar");
 } else if (trabajador) {
