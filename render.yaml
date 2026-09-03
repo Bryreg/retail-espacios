@@ -1,7 +1,21 @@
+# Preview Environments (Blueprint): cada PR con la etiqueta `render-preview` o
+# `[render preview]` en el título levanta una copia completa — servicio + una
+# Postgres NUEVA Y VACÍA (la de producción no se toca) — con URL propia, que se
+# destruye sola al mergear/cerrar el PR. Requiere workspace Pro; en el plan
+# gratuito este bloque es inerte. OJO: esto NO es el toggle "Pull Request
+# Previews" de la pestaña Previews del servicio — ESE copia DATABASE_URL de
+# producción tal cual y no hay que activarlo.
+previews:
+  generation: manual
+  expireAfterDays: 7
+
 databases:
   - name: retail-db
     databaseName: retail_espacios
     user: retail_user
+    # Plan de la Postgres de cada preview (prorrateada por segundo mientras
+    # viva; la libre puede chocar con el límite de una gratuita por workspace).
+    previewPlan: basic-256mb
 
 services:
   - type: web
@@ -18,6 +32,15 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      # Sólo para previews: la base nace vacía y una instalación nueva inventa
+      # las claves al azar — con esto todo preview entra con claves conocidas.
+      # En producción estas dos siguen viniendo del dashboard (sync: false).
+      - key: ADMIN_PASSWORD
+        sync: false
+        previewValue: preview-admin
+      - key: WORKER_PASSWORD
+        sync: false
+        previewValue: preview-worker
       # Correo. DOS caminos, y en el plan gratuito de Render sólo sirve el segundo:
       # el plan gratuito bloquea la salida SMTP y connect() devuelve
       # "[Errno 101] Network is unreachable" antes de intentar autenticarse, así
