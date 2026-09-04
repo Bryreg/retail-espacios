@@ -1,7 +1,7 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: septiembre 2026 (identidad: cuentas individuales con Google/correo, membresías por cliente).
+Última actualización: septiembre 2026 (Fase 2: alta self-service de supermercados y estado de cuenta por cliente).
 
 Gestión de espacios comerciales en supermercados: se dibuja el plano de cada sede, se
 marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
@@ -128,6 +128,54 @@ sigue solo); frontend `VITE_FIREBASE_API_KEY` / `VITE_FIREBASE_AUTH_DOMAIN` /
 legado). Ver `render.yaml` para el deploy. Verificado de punta a punta contra
 el proyecto Firebase real (`recabra`): firma, JWKS, audiencia y emisor.
 
+### Clientes comerciales: alta self-service y estado de cuenta (Fase 2)
+
+Un usuario con cuenta (Google/correo) y sin membresías puede **fundar su
+supermercado**: `POST /api/clientes/alta` recibe el ID token de Firebase
+directamente (la misma vara de correo confiable que `/oauth`), valida TODO
+antes del paso irreversible (`crear_cliente()`), y el fundador nace **owner**.
+Frenos: slugs reservados, tope de 2 fundaciones por usuario, freno por IP en
+tabla propia (`alta_attempts`).
+
+El **estado de cuenta** por cliente (`activo`/`gracia`/`solo_lectura`/
+`suspendido`) vive en la tabla nueva `estados_cliente` del registro — **fila
+ausente = activo**, así que los clientes existentes no necesitaron backfill.
+El corte se aplica en UN lugar (`cliente_del_pedido`) y SOLO con credencial
+presente (contestar 402 a un anónimo delataría quién dejó de pagar): `gracia`
+avisa sin cortar; `solo_lectura` deja GET y corta mutaciones de negocio con
+402 (auth y gestión de usuarios siguen, para poder entrar a ver y pagar; las
+escrituras internas de un GET permitido, como `expire_leases()`, no se
+cortan); `suspendido` corta todo salvo el login del owner, que es el ÚNICO que
+ve el `motivo` escrito por el operador — su gente ve el estado, nunca la deuda.
+Los datos jamás se borran por estado.
+
+**Operadores de plataforma**: correos en la env `OPERADOR_EMAILS`, solo para
+cuentas con `sub` (el legado jamás). Panel en `/api/plataforma/*`: listar
+clientes con estado y `PATCH` con motivo obligatorio. Ser operador NO abre la
+base de negocio de ningún cliente. Red-team dedicado en
+`tests/test_plataforma_ataques.py` (30 ataques; la frontera resistió).
+
+### Pendientes conocidos: clientes y plataforma
+
+- **R-3 (menor)**: el tope de 2 fundaciones es count+insert sin barrera en la
+  base — una carrera perfecta podría fundar de más. `UNIQUE` solo cubre
+  repetir el mismo slug.
+- **R-4 (menor)**: si `crear_cliente()` falla tras el commit intermedio (que
+  suelta el candado de SQLite), queda un `Usuario` sin membresía ni fundación.
+  No da acceso a nada; es fondo de tabla.
+- **R-5 (latente)**: `crear_cliente` adopta una base `recabra_<slug>`
+  preexistente en vez de rechazarla. Hoy inalcanzable (producción se llama
+  `retail_espacios`); es un renombre de base de distancia. Test xfail que lo
+  documenta.
+- Un login legado rechazado por suspensión no deja línea en la bitácora.
+- Un estado desconocido escrito a mano en `estados_cliente` **falla abierto**
+  (pasa como activo): no cortarle el servicio a quien paga ante un valor que
+  el código no entiende.
+- El estado se refresca al **entrar**: un cambio a mitad de sesión se ve en el
+  próximo login (el 402 puntual de cada mutación sí llega igual).
+- El cache del estado es de 60 s; el PATCH del operador lo invalida — mover la
+  fila a mano en la base no.
+
 ### Pendientes conocidos: identidad
 
 - **Firebase no se consulta por revocación**: una cuenta deshabilitada en la
@@ -144,6 +192,132 @@ el proyecto Firebase real (`recabra`): firma, JWKS, audiencia y emisor.
   verificación, reset) no tienen tests automatizados: el repo no tiene runner
   de tests de frontend. El backend sí está cubierto (identidad + ataques).
 
+
+### Clientes: alta self-service y estado de cuenta (Fase 2)
+
+Dos cosas nuevas, construidas sobre la Fase 1: un supermercado se puede
+fundar solo, y la plataforma tiene un interruptor de estado de cuenta por
+cliente que un operador mueve a mano.
+
+**El alta** (`POST /api/clientes/alta`, `app/routers/alta.py`) recibe el
+`id_token` de Firebase **directo**, sin JWT propio — un usuario sin
+membresías no puede tener uno (`/oauth` le da 403), así que no hay JWT que
+pedirle. La misma vara de correo confiable que `/oauth` (verificado, o el
+proveedor es Google) y las mismas reglas de vinculación de `Usuario` (por
+`firebase_uid`, si no por email, nunca se crea uno nuevo si el email ya tiene
+fila). El freno de fuerza bruta es una tabla propia (`alta_attempts`, vía
+`IntentoAlta`) para no contaminar ni `login_attempts` ni `intentos_oauth`.
+`crear_cliente(slug, nombre)` —que ya existía— es el paso **irreversible**:
+crea la base de Postgres. Por eso TODA la validación va antes — slug con la
+misma forma que exige `crear_cliente`, lista de reservados
+(`galerias`, `api`, `plataforma`, …), verificación directa de que el slug no
+existe (activo o no: `buscar()` filtra inactivos y dejaría estrellar el
+UNIQUE), y el tope de **2 clientes fundados por usuario** (tabla
+`fundaciones`) — así que "sin cliente a medias" es literal: si algo falla,
+no queda una base a medio crear.
+
+**Estado de cuenta sin tocar `clientes`.** La tabla nueva `estados_cliente`
+(base registro, `create_all` la crea sin migración) vive **al lado** de
+`clientes`, no adentro: **fila ausente = activo**, y una fila con
+`estado="activo"` también es activo (el PATCH la deja puesta como constancia
+de quién hizo el último cambio, incluido reactivar). Por construcción,
+galerías y todo cliente que ya existía hoy quedan activos sin ninguna
+acción — cero backfill, cero fila que escribir.
+
+**El interruptor vive en un solo lugar**: `_aplicar_estado`, adentro de
+`cliente_del_pedido` (`clientes.py`), el único punto por el que pasan todos
+los routers de negocio. Semántica: `activo`/`gracia` pasan; `solo_lectura`
+deja pasar GET/HEAD/OPTIONS y corta el resto con 402; `suspendido` corta
+todo, GET incluido. Dos exenciones explícitas, a propósito:
+- **`/api/plataforma/*` siempre pasa** — opera sobre el registro, no sobre
+  la base del cliente, y un operador cuyo propio cliente quedó degradado
+  tiene que poder seguir destrabando cuentas, incluida la suya.
+- **`/api/auth` y `/api/usuarios` pasan en `solo_lectura`** — el owner
+  necesita poder entrar y gestionar su gente para poder pagar (spec, decisión
+  3). En `suspendido` NO hay excepción para estos dos: el corte ahí es total.
+
+`/api/auth/login` y `/api/auth/oauth` **no pasan por `cliente_del_pedido`**
+(resuelven su propio cliente antes de que exista ningún token), así que el
+gating de esos dos vive aparte, explícito, en `routers/auth.py` — mismo
+`estado_de()`, mismos códigos, pero cada uno con su propio motivo: el legado
+comprueba la contraseña ANTES de mirar el estado, para que la pantalla de
+ingreso no se convierta en un oráculo de qué supermercados dejaron de pagar
+con solo probar slugs.
+
+**`expire_leases()` sigue andando en `solo_lectura` a propósito.** El corte
+es al **pedido HTTP**, no a la sesión de base: un `GET /api/spaces/map` que
+pasa el filtro (es lectura) puede seguir disparando por dentro la escritura
+que vence contratos vencidos — si el corte viviera en la sesión, ese mismo
+GET se caería al intentar escribir. Es la sutileza central del contrato de
+esta fase, y tiene test dedicado
+(`test_solo_lectura_no_rompe_el_get_que_escribe_por_dentro`).
+
+**Operador de plataforma** = email en la env `OPERADOR_EMAILS`
+(coma-separada), sin distinguir mayúsculas, sin tabla de superadmins que
+alguien pueda escribir — se lee de la env en cada llamada. Sólo aplica a
+cuentas con `sub`: el login legado nunca trae `email` en el token, así que
+`request.state.actor_email` queda ausente y `require_operador` da 403
+siempre, por construcción, sin ningún chequeo especial para el legado.
+`GET /api/plataforma/clientes` y `PATCH /api/plataforma/clientes/{slug}`
+(motivo obligatorio, también al dejar "activo") sólo tocan el registro:
+nunca abren la base de negocio de un cliente.
+
+Config: `OPERADOR_EMAILS` sin poner deja el panel de operador inexistente
+para todos — no hay 500, cualquier cuenta con `sub` simplemente da
+`operador: false`.
+
+#### Pendientes conocidos: clientes
+
+De la auditoría de regresión y del red team
+(`features/clientes/outputs/regresion-fase-2.md`,
+`features/clientes/outputs/red-team-privilegio.md`):
+
+- **La suite completa de pytest sólo está verde la primera vez que se corre
+  sobre un checkout** (hallazgo R-0, encontrado por duplicado y sin
+  coordinación por el auditor de regresión y por el red team).
+  `tests/test_correo_api.py` —pre-existente, ajeno a esta fase— importa
+  `app.services.mailer` a nivel de módulo; pytest colecciona (importa) todos
+  los archivos de test antes de correr ningún fixture, así que ese import
+  deja `app.database` clavado contra su default
+  (`sqlite:///./retail_espacios.db`, un archivo real en `backend/`) desde
+  ANTES de que el fixture `client()` del primer test ponga el
+  `DATABASE_URL` de prueba. Sólo el primer test de toda la sesión paga esto
+  (la purga de `sys.modules` corre en el teardown, protege del segundo test
+  en adelante). Antes de esta fase era inofensivo porque nada revisaba
+  estado persistente; desde que el primer test alfabético del repo es
+  `test_alta.py::test_alta_feliz_funda_owner_y_base_vacia` —que funda un
+  cliente real llamado `nuevomarket`— la segunda corrida sobre el mismo
+  checkout arranca en rojo (409, el slug ya existe) o, si dos procesos
+  comparten el mismo directorio, con `readonly database`. Antes de medir
+  regresión sobre esta rama: `rm -f backend/retail_espacios.db
+  backend/recabra_*.db`. Arreglo de una línea, fuera del territorio de los
+  tres builders de esta fase: mover el import de `test_correo_api.py`
+  adentro de sus funciones, como hace el resto de `tests/`.
+- **El 402 del interruptor se contesta sin credencial** (R-1, mayor): en una
+  instalación de un solo cliente, `cliente_del_pedido` resuelve por `unico()`
+  antes de que `require_auth` mire el token, así que un `GET` anónimo
+  distingue 401 (cuenta sana) de 402 (degradada/suspendida) — exactamente el
+  oráculo que el login legado se cuidó de no construir. Sugerido: que
+  `_aplicar_estado` sólo corra cuando el pedido trajo credencial.
+- **`aviso_cuenta.motivo` en `gracia`/`solo_lectura` le llega a cualquier
+  rol**, worker incluido — a diferencia de `suspendido`, donde el motivo ya
+  está protegido para el owner solo. Es texto libre que el operador escribe
+  para uso comercial (facturas, con quién hablar), no para la trastienda.
+- **El tope de 2 fundaciones por usuario no tiene barrera en la base**: dos
+  altas simultáneas del mismo usuario pueden ganarle la carrera al `count()`.
+  El UNIQUE existente evita fundar el mismo slug dos veces, no evita fundar
+  un tercer cliente distinto.
+- **Un alta que falla en `crear_cliente` deja un `Usuario` huérfano** (sin
+  membresía ni fundación): el commit que suelta el candado de SQLite antes
+  del paso irreversible también graba el usuario. No abre nada (`/oauth` le
+  da 403 igual), pero contradice "sin cliente a medias" en sentido estricto.
+- **`crear_cliente` no distingue crear una base de adoptar una que ya
+  existe**: si una base `recabra_<slug>` de la misma instancia de Postgres
+  no tiene fila en `clientes`, el alta le mete las tablas de RECABRA adentro
+  y el fundador nace admin ahí. Hoy no es alcanzable (la base de producción
+  se llama `retail_espacios`, no hay `recabra_*` huérfanas), pero el
+  `recabra_nuevomarket.db` que deja la propia suite de tests al correr es
+  exactamente ese escenario en miniatura.
 
 ### Sincronización entre computadores
 

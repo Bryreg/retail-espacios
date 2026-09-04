@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import logging
 import os
 from pathlib import Path
@@ -13,6 +14,8 @@ from app.routers import spaces, suppliers, dashboard, layout, files, notificatio
 from app.routers import bitacora as bitacora_routes
 from app.routers import auth as auth_routes
 from app.routers import usuarios as usuarios_routes
+from app.routers import alta as alta_routes
+from app.routers import plataforma as plataforma_routes
 from app.models.models import Space, SpaceStatus
 # Tablas de identidad (Fase 1): archivo nuevo, sin columnas agregadas a nada
 # existente. El único propósito de este import es que `Base.metadata` las
@@ -91,6 +94,15 @@ def seed_spaces(db):
 
 REMINDER_INTERVAL_SECONDS = 12 * 60 * 60  # every 12 hours
 
+# Corte cooperativo del hilo de mantenimiento. `Task.cancel()` cancela la TASK
+# de asyncio pero NO el hilo de SO que `to_thread` ya lanzó: sin esta señal, el
+# hilo quedaba huérfano al apagar la app, seguía recorriendo clientes contra
+# bases que el teardown de los tests ya había borrado ("database is locked"),
+# y —como los hilos del executor por defecto no son daemon— mantenía vivo el
+# proceso de pytest después del 100 %. El hilo mira la señal entre cliente y
+# cliente y se retira solo.
+_stop_mantenimiento = threading.Event()
+
 
 def _run_lease_maintenance():
     """Expire stale leases and send expiry reminders (runs in a worker thread).
@@ -107,6 +119,8 @@ def _run_lease_maintenance():
     from app.services.reminders import check_expiring_leases
 
     for cliente in listar():
+        if _stop_mantenimiento.is_set():
+            return
         db = sesion_de(cliente)
         try:
             expire_leases(db)
@@ -155,9 +169,11 @@ async def lifespan(_app: FastAPI):
         finally:
             db.close()
     # Background task: lease expiry + email reminders (runs immediately, then every 12 h)
+    _stop_mantenimiento.clear()  # los tests abren y cierran la app muchas veces
     maintenance_task = asyncio.create_task(_lease_maintenance_loop())
     yield
-    maintenance_task.cancel()
+    _stop_mantenimiento.set()  # el hilo en vuelo se retira en el próximo cliente
+    maintenance_task.cancel()  # y esto corta el sleep de 12 horas
     try:
         await maintenance_task
     except asyncio.CancelledError:
@@ -226,6 +242,12 @@ app.include_router(auth_routes.router,   prefix="/api")
 # Alta, listado y activación de miembros de un cliente. Todo detrás de
 # `require_admin` (ver `routers/usuarios.py`), sobre el cliente del token.
 app.include_router(usuarios_routes.router, prefix="/api")
+# Alta self-service (funda su cliente y nace owner) y panel del operador de
+# plataforma (estado de cuenta por cliente). Fase 2 -- las tablas nuevas ya
+# quedan registradas en Base.metadata porque `app/plataforma_estado.py` las
+# importa a nivel de módulo, y estos dos routers importan ese módulo.
+app.include_router(alta_routes.router,       prefix="/api")
+app.include_router(plataforma_routes.router, prefix="/api")
 app.include_router(spaces.router,        prefix="/api")
 app.include_router(suppliers.router,     prefix="/api")
 app.include_router(dashboard.router,     prefix="/api")

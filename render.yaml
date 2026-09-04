@@ -38,6 +38,11 @@ services:
         sync: false
       - key: VITE_FIREBASE_PROJECT_ID
         sync: false
+      # Fase 2: correos (separados por coma) de los operadores de plataforma —
+      # quienes mueven el estado de cuenta de los clientes desde el panel.
+      # Solo aplica a cuentas con sub (el login legado jamás es operador).
+      - key: OPERADOR_EMAILS
+        sync: false
       # Correo. DOS caminos, y en el plan gratuito de Render sólo sirve el segundo:
       # el plan gratuito bloquea la salida SMTP y connect() devuelve
       # "[Errno 101] Network is unreachable" antes de intentar autenticarse, así

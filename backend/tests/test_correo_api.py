@@ -14,7 +14,11 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from app.services import mailer
+# `app.services.mailer` se importa ADENTRO de cada función, nunca acá (R-0):
+# un import app.* a nivel de módulo corre en la COLECCIÓN de pytest, antes de
+# que el fixture fije DATABASE_URL, y deja app.database clavado contra el
+# archivo persistente backend/retail_espacios.db — la segunda corrida de la
+# suite arrancaba en rojo por los clientes que la primera fundó ahí.
 
 
 class Recibidor(BaseHTTPRequestHandler):
@@ -54,6 +58,7 @@ def brevo(monkeypatch, servidor):
     Se reemplaza sólo la URL: el POST que sale es el de verdad, con sus
     cabeceras y su cuerpo, contra un servidor que los guarda.
     """
+    from app.services import mailer
     monkeypatch.setenv("EMAIL_PROVIDER", "brevo")
     monkeypatch.setenv("EMAIL_API_KEY", "clave-de-prueba")
     monkeypatch.setenv("MAIL_FROM", "bmgpersonal99@gmail.com")
@@ -71,6 +76,7 @@ def brevo(monkeypatch, servidor):
 
 
 def test_el_correo_sale_por_https(brevo):
+    from app.services import mailer
     ok, motivo, seg = mailer.enviar_con_diagnostico(
         ["brayanmoreno098@gmail.com"], "Nuevo contrato — NAVE-PUN-01", "<p>hola</p>"
     )
@@ -79,6 +85,7 @@ def test_el_correo_sale_por_https(brevo):
 
 
 def test_viaja_la_clave_y_el_remitente(brevo):
+    from app.services import mailer
     mailer.enviar_con_diagnostico(["brayanmoreno098@gmail.com"], "Asunto", "<p>x</p>")
     r = Recibidor.recibido
     assert r["cabeceras"]["api-key"] == "clave-de-prueba"
@@ -89,11 +96,13 @@ def test_viaja_la_clave_y_el_remitente(brevo):
 
 
 def test_varios_destinatarios_van_todos(brevo):
+    from app.services import mailer
     mailer.enviar_con_diagnostico(["a@b.co", "c@d.co"], "S", "<p>x</p>")
     assert Recibidor.recibido["cuerpo"]["to"] == [{"email": "a@b.co"}, {"email": "c@d.co"}]
 
 
 def test_una_clave_rechazada_lo_dice_con_todas_las_letras(brevo):
+    from app.services import mailer
     Recibidor.codigo = 401
     Recibidor.respuesta = b'{"message":"Key not found"}'
     ok, motivo, _ = mailer.enviar_con_diagnostico(["a@b.co"], "S", "<p>x</p>")
@@ -104,6 +113,7 @@ def test_una_clave_rechazada_lo_dice_con_todas_las_letras(brevo):
 
 
 def test_un_error_del_proveedor_trae_su_respuesta(brevo):
+    from app.services import mailer
     Recibidor.codigo = 400
     Recibidor.respuesta = b'{"message":"sender not valid"}'
     ok, motivo, _ = mailer.enviar_con_diagnostico(["a@b.co"], "S", "<p>x</p>")
@@ -112,6 +122,7 @@ def test_un_error_del_proveedor_trae_su_respuesta(brevo):
 
 
 def test_sin_clave_no_intenta_salir(monkeypatch):
+    from app.services import mailer
     monkeypatch.setenv("EMAIL_PROVIDER", "brevo")
     monkeypatch.delenv("EMAIL_API_KEY", raising=False)
     monkeypatch.setenv("MAIL_FROM", "x@y.co")
@@ -121,6 +132,7 @@ def test_sin_clave_no_intenta_salir(monkeypatch):
 
 def test_con_proveedor_https_no_hacen_falta_credenciales_smtp(monkeypatch):
     """SMTP_USER y SMTP_PASSWORD dejan de ser obligatorias: no hay SMTP."""
+    from app.services import mailer
     monkeypatch.setenv("EMAIL_PROVIDER", "brevo")
     monkeypatch.setenv("EMAIL_API_KEY", "k")
     monkeypatch.setenv("MAIL_FROM", "x@y.co")
@@ -130,12 +142,14 @@ def test_con_proveedor_https_no_hacen_falta_credenciales_smtp(monkeypatch):
 
 
 def test_un_proveedor_desconocido_no_rompe(monkeypatch):
+    from app.services import mailer
     monkeypatch.setenv("EMAIL_PROVIDER", "palomas-mensajeras")
     assert mailer.proveedor() == "smtp"
 
 
 def test_sendgrid_habla_su_propio_dialecto(monkeypatch):
     """El otro proveedor arma otro cuerpo y otra cabecera de autorización."""
+    from app.services import mailer
     monkeypatch.setenv("EMAIL_PROVIDER", "sendgrid")
     monkeypatch.setenv("EMAIL_API_KEY", "SG.clave")
     monkeypatch.setenv("MAIL_FROM", "bmgpersonal99@gmail.com")
@@ -159,6 +173,7 @@ def test_sendgrid_habla_su_propio_dialecto(monkeypatch):
 
 def test_el_smtp_sigue_siendo_el_camino_por_defecto(monkeypatch):
     """Sin EMAIL_PROVIDER nada cambia: una instalación existente no se entera."""
+    from app.services import mailer
     monkeypatch.delenv("EMAIL_PROVIDER", raising=False)
     assert mailer.proveedor() == "smtp"
 
@@ -170,6 +185,7 @@ def test_volver_a_smtp_es_borrar_una_variable(monkeypatch):
     credenciales conviven con las del proveedor HTTPS. Quitar EMAIL_PROVIDER
     devuelve el envío a smtplib con lo que ya estaba configurado.
     """
+    from app.services import mailer
     monkeypatch.setenv("SMTP_USER", "bmgpersonal99@gmail.com")
     monkeypatch.setenv("SMTP_PASSWORD", "abcd efgh ijkl mnop")
 
@@ -187,6 +203,7 @@ def test_volver_a_smtp_es_borrar_una_variable(monkeypatch):
 
 def test_el_puerto_465_usa_ssl_directo(monkeypatch):
     """465 es SSL desde el saludo; hacerle starttls() lo rompía."""
+    from app.services import mailer
     import smtplib
 
     usados = {}

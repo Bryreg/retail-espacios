@@ -91,11 +91,28 @@ class LoginIn(BaseModel):
     cliente: Optional[str] = None
 
 
+class AvisoCuenta(BaseModel):
+    """Lo que el frontend necesita para pintar el banner de pago pendiente.
+
+    Va en la RESPUESTA del login, nunca adentro del JWT: el token no cambia de
+    forma. Un claim de estado además envejecería mal —el token dura horas y el
+    operador mueve el interruptor en cualquier momento—, mientras que esto es
+    una foto del instante en que la persona entró.
+    """
+    estado: str
+    motivo: Optional[str] = None
+
+
 class LoginOut(BaseModel):
     token: str
     role: str
     cliente: str
     cliente_nombre: str
+    # Ausente cuando el cliente está activo, que es el caso de siempre. El
+    # `response_model_exclude_none=True` de la ruta lo saca del JSON en vez de
+    # mandarlo en `null`: así el cuerpo del login de un cliente activo sigue
+    # siendo, byte por byte, el de antes de la Fase 2.
+    aviso_cuenta: Optional[AvisoCuenta] = None
 
 
 class ClienteOut(BaseModel):
@@ -148,7 +165,34 @@ def _cliente_para_entrar(slug: Optional[str]) -> Cliente:
     raise HTTPException(status_code=422, detail="Elegí el supermercado antes de entrar")
 
 
-@router.post("/login", response_model=LoginOut)
+CUENTA_SUSPENDIDA = "La cuenta de este cliente está suspendida."
+
+
+def _aviso_de(slug: str) -> Optional[AvisoCuenta]:
+    """El aviso para el frontend, o `None` si la cuenta está al día.
+
+    `gracia` y `solo_lectura` entran igual —el objetivo es que el cliente pueda
+    entrar a ver y a pagar—, pero se van sabiendo por qué la pantalla les va a
+    mostrar un banner y qué dice el motivo que escribió el operador.
+    """
+    from app import plataforma_estado
+
+    estado, motivo = plataforma_estado.estado_de(slug)
+    if estado == "activo":
+        return None
+    return AvisoCuenta(estado=estado, motivo=motivo)
+
+
+def _aviso_sin_motivo(aviso: Optional[AvisoCuenta]) -> Optional[AvisoCuenta]:
+    """El mismo aviso, sin el texto del operador (hallazgo R-2): el `motivo`
+    es información de la relación comercial —factura, mora, contacto— y la
+    tiene el owner, no su gente. El estado sí viaja: el banner lo necesita."""
+    if aviso is None:
+        return None
+    return AvisoCuenta(estado=aviso.estado, motivo=None)
+
+
+@router.post("/login", response_model=LoginOut, response_model_exclude_none=True)
 def login(payload: LoginIn, request: Request):
     """Single-field login: the password decides the role (admin first, then worker).
 
@@ -179,6 +223,23 @@ def login(payload: LoginIn, request: Request):
             raise HTTPException(status_code=401, detail="Contraseña incorrecta")
 
         borrar_fallos(db, ip)
+
+        # El interruptor de estado de cuenta, explícito: este endpoint NO pasa
+        # por `cliente_del_pedido` —acá todavía no hay token que resolver—, así
+        # que el único lugar donde puede aplicarse es éste.
+        #
+        # Va DESPUÉS de comprobar la contraseña a propósito. Contestar 402 antes
+        # convertiría la pantalla de ingreso en un oráculo de qué supermercados
+        # dejaron de pagar, para cualquiera que sepa un slug — exactamente la
+        # razón por la que un cliente inexistente contesta "Contraseña
+        # incorrecta" y no "ese supermercado no existe".
+        aviso = _aviso_de(cliente.slug)
+        if aviso is not None and aviso.estado == "suspendido":
+            # Sin excepción de owner: el login legado es una contraseña
+            # compartida, no una persona, y por construcción jamás es owner.
+            # El motivo tampoco viaja acá — es para quien tiene cuenta propia.
+            raise HTTPException(status_code=402, detail=CUENTA_SUSPENDIDA)
+
         anotar(db, request, role, "login.ok")
         db.commit()
         return LoginOut(
@@ -186,6 +247,8 @@ def login(payload: LoginIn, request: Request):
             role=role,
             cliente=cliente.slug,
             cliente_nombre=cliente.nombre,
+            # Sin motivo: el legado es una clave compartida, jamás owner (R-2).
+            aviso_cuenta=_aviso_sin_motivo(aviso),
         )
     finally:
         db.close()
@@ -384,6 +447,20 @@ def oauth_login(
                 detail="Tu cuenta no tiene acceso a ningún cliente. Pedí una invitación.",
             )
 
+        # El interruptor de estado, otra vez explícito: `/oauth` tampoco pasa
+        # por `cliente_del_pedido`. Acá el ID token YA está verificado y la
+        # membresía resuelta, así que contestar 402 no le cuenta nada a nadie
+        # que no fuera de la casa — al revés que en el login legado, donde el
+        # chequeo tiene que esperar a la contraseña.
+        aviso = _aviso_de(cliente_obj.slug)
+        if aviso is not None and aviso.estado == "suspendido" and elegida.rol != "owner":
+            # Un token válido no es un intento fallido: se limpia la cuenta de
+            # intentos igual que en el éxito, como ya hace la rama de
+            # multi-membresía. El motivo NO viaja: es información de la
+            # relación comercial, y esa la tiene el owner, no su gente.
+            borrar_fallos(reg, ip, modelo=IntentoOauth)
+            raise HTTPException(status_code=402, detail=CUENTA_SUSPENDIDA)
+
         usuario.ultimo_login = datetime.now(timezone.utc)
         reg.commit()
         borrar_fallos(reg, ip, modelo=IntentoOauth)
@@ -398,13 +475,21 @@ def oauth_login(
             cdb.close()
 
         token = create_token(role, epoca, cliente_obj.slug, sub=usuario.id, email=email)
-        return {
+        cuerpo = {
             "token": token,
             "role": role,
             "cliente": cliente_obj.slug,
             "email": email,
             "nombre": usuario.nombre,
         }
+        if aviso is not None:
+            # Sólo cuando hay algo que avisar: el cuerpo de un cliente activo
+            # queda idéntico al de antes de la Fase 2. El motivo viaja SOLO al
+            # owner — en gracia y solo_lectura también, no únicamente en
+            # suspendido (hallazgo R-2): su gente ve el estado, no la deuda.
+            visible = aviso if elegida.rol == "owner" else _aviso_sin_motivo(aviso)
+            cuerpo["aviso_cuenta"] = visible.model_dump()
+        return cuerpo
     finally:
         reg.close()
 
