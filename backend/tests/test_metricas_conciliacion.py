@@ -1441,16 +1441,7 @@ def test_el_tipo_legado_gondola_doble_cuenta_dos_caras():
 # el defecto se corrija el test pasa a "XPASS" y ROMPE la suite, obligando a
 # sacarle la marca. Un hallazgo así no se puede olvidar.
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "HALLAZGO M-1 (mayor): el `estado_cuenta` que viaja en el JSON de métricas "
-        "sale del caché de 5 minutos y queda VIEJO después de que el propio operador "
-        "cambia el estado desde la misma consola. La spec pide 'estado de cuenta "
-        "ACTUAL'. El PATCH invalida `_estado_cache` (plataforma_estado) pero no el "
-        "caché de métricas. Esperado 'suspendido', devuelve 'activo'."
-    ),
-)
+# Hallazgo CERRADO en el cierre de fase — el test ahora afirma el arreglo.
 def test_hallazgo_M1_el_estado_del_json_de_metricas_queda_viejo_tras_el_patch(client, monkeypatch):
     _ids, cab = _escenario(client, monkeypatch)
 

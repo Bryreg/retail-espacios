@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { LogOut } from "lucide-react";
 import {
+  AgregadosMetricasCliente,
   soyOperador, getClientesPlataforma, patchEstadoCliente, getMetricasPlataforma,
   ESTADOS_CUENTA,
   type ClientePlataforma, type EstadoCuenta, type MetricasPlataforma, type ClienteMetricas,
@@ -184,8 +185,11 @@ function GraficoOcupacion({ clientes }: { clientes: ClienteMetricas[] }) {
               valor={f.ocupacion}
               maximo={100}
               texto={formatoPct(f.ocupacion)}
-              color="var(--ocupado)"
-              trackColor="var(--ocupado-suave)"
+              // Ocupación es MAGNITUD (más alquilado = mejor negocio), no un
+              // estado de alarma: un solo matiz secuencial. El rojo de la terna
+              // queda reservado para estados (suspendido, vencido).
+              color="var(--libre)"
+              trackColor="var(--libre-suave)"
             />
           ))
         )}
@@ -304,6 +308,29 @@ function FilaEditor({
 // cliente con error, o venir cacheada -- ninguna de esas tres cosas debe
 // tapar el estado ni el botón Cambiar, que dependen sólo del primer fetch.
 
+
+/** Celda de importe con la supresión K=3 legible: `null` con contratos > 0 no
+ *  es "sin datos" — es la regla de privacidad ocultando una celda chica, y el
+ *  operador tiene que poder distinguirlas de un vistazo. */
+function celdaPlata(m: AgregadosMetricasCliente, v: number | null) {
+  if (v !== null) return formatoCOP(v);
+  // `null` en un importe significa, por diseño del backend, "menos de tres
+  // contratos" — el cero incluido a propósito (si el 0 se publicara, null
+  // delataría "tiene uno o dos"). Por eso el gate es tener inventario: un
+  // cliente sin espacios no tiene nada que suprimir.
+  if (m.espacios_comercializables > 0) {
+    return (
+      <span
+        title="Suprimido por privacidad: los importes de un cliente solo se publican cuando agrupan 3 o más contratos activos (regla K=3). Con menos, el agregado equivaldría al valor de un contrato identificable."
+        style={{ color: "var(--ink-4)", fontStyle: "italic", cursor: "help" }}
+      >
+        ‹3 contratos
+      </span>
+    );
+  }
+  return "—";
+}
+
 function FilaCliente({
   fila, metricas, editando, onEditar, onGuardado, onCancelar,
 }: {
@@ -352,10 +379,10 @@ function FilaCliente({
               {m ? formatoPct(m.ocupacion_pct) : "—"}
             </div>
             <div style={{ width: 108, flexShrink: 0, fontSize: 11.5, color: "var(--ink-2)", fontFamily: "var(--font-mono)" }} title="Canon promedio mensual">
-              {m ? formatoCOP(m.canon_promedio_mensual) : "—"}
+              {m ? celdaPlata(m, m.canon_promedio_mensual) : "—"}
             </div>
             <div style={{ width: 118, flexShrink: 0, fontSize: 11.5, color: "var(--ink-2)", fontFamily: "var(--font-mono)" }} title="Ingreso contratado del mes">
-              {m ? formatoCOP(m.ingreso_contratado_mes) : "—"}
+              {m ? celdaPlata(m, m.ingreso_contratado_mes) : "—"}
             </div>
             <div style={{ width: 90, flexShrink: 0, fontSize: 11, color: "var(--ink-3)" }} title="Último acceso con cuenta">
               {m ? soloFecha(m.ultimo_acceso) : "—"}
@@ -742,7 +769,19 @@ export default function Plataforma() {
                   ) : clientes.length === 0 ? (
                     <div style={{ padding: 18, fontSize: 12, color: "var(--ink-3)" }}>No hay clientes todavía.</div>
                   ) : (
-                    clientes.map((f) => (
+                    <>
+                      {/* Encabezados: mismas anchuras que las celdas de FilaCliente —
+                          sin ellos, los porcentajes y los pesos flotaban sin nombre. */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "7px 18px", borderTop: "1px solid var(--line-soft)" }}>
+                        <div style={{ flex: "1.4 1 180px", minWidth: 150, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink-4)" }}>Supermercado</div>
+                        <div style={{ width: 92, flexShrink: 0, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink-4)" }}>Estado</div>
+                        <div style={{ width: 74, flexShrink: 0, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink-4)" }}>Ocupación</div>
+                        <div style={{ width: 108, flexShrink: 0, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink-4)" }}>Canon prom.</div>
+                        <div style={{ width: 118, flexShrink: 0, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink-4)" }}>Ingreso (mes)</div>
+                        <div style={{ width: 90, flexShrink: 0, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink-4)" }}>Últ. acceso</div>
+                        <div style={{ marginLeft: "auto", width: 72 }} />
+                      </div>
+                      {clientes.map((f) => (
                       <FilaCliente
                         key={f.slug}
                         fila={f}
@@ -757,7 +796,8 @@ export default function Plataforma() {
                           setEditando(null);
                         }}
                       />
-                    ))
+                      ))}
+                    </>
                   )}
                 </div>
               </div>

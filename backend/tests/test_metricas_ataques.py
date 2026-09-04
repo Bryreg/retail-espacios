@@ -1289,7 +1289,12 @@ def test_m26_el_cliente_suspendido_aparece_con_sus_metricas_y_sin_su_motivo(clie
     beta = _fila(cuerpo, "beta")
     assert beta["estado_cuenta"] == "suspendido"
     assert beta["error"] is None
-    assert beta["metricas"]["ingreso_contratado_mes"] == BETA_INGRESO
+    # K=3 (H-2): BETA tiene DOS contratos — su plata se suprime a propósito.
+    # La visibilidad del suspendido se afirma por la ocupación y los conteos,
+    # que la regla publica siempre; el consolidado (abajo) sí lleva su plata,
+    # porque se calcula con los subyacentes y el Σ de contratos supera K.
+    assert beta["metricas"]["ingreso_contratado_mes"] is None
+    assert beta["metricas"]["canon_promedio_mensual"] is None
     assert beta["metricas"]["ocupacion_pct"] == 100.0
     assert set(beta.keys()) == CLIENTE            # ni un campo para el motivo
     assert MOTIVO_ESTADO not in json.dumps(beta, ensure_ascii=False)
@@ -1367,7 +1372,7 @@ def test_m28_metricas_no_acepta_metodos_de_escritura(client, monkeypatch):
 # `features/plataforma/outputs/red-team-metricas.md`.
 
 
-@pytest.mark.xfail(strict=True, reason="H-1: el nombre del proveedor viaja crudo al JSON")
+# Hallazgo CERRADO en ronda 2 (el test pasó a XPASS y se destapó): ahora es la red.
 def test_m29_hallazgo_un_proveedor_con_correo_en_el_nombre_filtra_el_correo(client, monkeypatch):
     """M-29 · H-1 — La invariante de M-1 depende de lo que teclee el cliente.
 
@@ -1401,7 +1406,7 @@ def test_m29_hallazgo_un_proveedor_con_correo_en_el_nombre_filtra_el_correo(clie
     assert con_arroba == [], f"el nombre del proveedor filtró un correo: {con_arroba}"
 
 
-@pytest.mark.xfail(strict=True, reason="H-2: con un solo contrato, el agregado ES el contrato")
+# Hallazgo CERRADO en ronda 2 (el test pasó a XPASS y se destapó): ahora es la red.
 def test_m30_hallazgo_celda_de_uno_el_agregado_es_el_valor_individual(client, monkeypatch):
     """M-30 · H-2 — Una suma de un solo sumando no es un agregado.
 
@@ -1436,7 +1441,7 @@ def test_m30_hallazgo_celda_de_uno_el_agregado_es_el_valor_individual(client, mo
     assert reveladores == [], f"el canon del único contrato está en el JSON: {reveladores}"
 
 
-@pytest.mark.xfail(strict=True, reason="H-3: el prefijo se compara sin frontera de segmento")
+# Hallazgo CERRADO en el cierre de fase — el test ahora afirma el arreglo.
 def test_m31_hallazgo_el_prefijo_de_plataforma_no_tiene_frontera_de_segmento(client, monkeypatch):
     """M-31 · H-3 — ``startswith("/api/plataforma")`` también acepta ``/api/plataformazo``.
 
@@ -1554,19 +1559,14 @@ def test_m33_caracterizacion_el_admin_del_cliente_por_defecto_corta_la_consola(c
     assert client.get("/api/plataforma/soy", headers=cab).status_code == 401
 
 
-def test_m34_caracterizacion_el_cache_sirve_un_estado_de_cuenta_viejo(client, monkeypatch):
-    """M-34 · H-6 — El operador suspende un cliente y su panel sigue diciendo "activo".
+def test_m34_el_patch_de_estado_refresca_tambien_el_cache_de_metricas(client, monkeypatch):
+    """M-34 · H-6 — CERRADO: el PATCH invalida también el caché de métricas.
 
-    ``estado_cuenta`` entra al cuerpo cacheado, y el PATCH del interruptor
-    invalida el caché de ``plataforma_estado`` pero **no** el de las métricas.
-    Durante hasta cinco minutos el panel contradice a la acción que el propio
-    operador acaba de hacer en la misma pantalla.
-
-    No es privacidad, es confianza en el tablero: un número viejo se perdona
-    (dice ``de_cache: true``), un estado de cuenta viejo se lee como que el
-    corte no se aplicó. Severidad baja; el arreglo es llamar a
+    Nació como caracterización del defecto (el panel decía "activo" hasta 5
+    minutos después de que el propio operador suspendiera al cliente en la
+    misma pantalla). El arreglo fue el que este mismo test proponía: llamar a
     ``limpiar_cache_metricas()`` desde el PATCH, al lado del
-    ``invalidar_cache_estado`` que ya está.
+    ``invalidar_cache_estado`` que ya estaba. Ahora afirma la conducta buena.
     """
     from app.plataforma_metricas import limpiar_cache_metricas
 
@@ -1586,13 +1586,11 @@ def test_m34_caracterizacion_el_cache_sirve_un_estado_de_cuenta_viejo(client, mo
     listado = client.get("/api/plataforma/clientes", headers=cab).json()["clientes"]
     assert next(c for c in listado if c["slug"] == "acme")["estado"] == "suspendido"
 
+    # ...y el de métricas AHORA TAMBIÉN: el PATCH limpió su caché, así que la
+    # respuesta se recalcula (de_cache False) y trae el estado recién puesto.
     cuerpo = _pedir(client, cab)
-    assert cuerpo["de_cache"] is True
-    assert _fila(cuerpo, "acme")["estado_cuenta"] == "activo"   # la conducta de hoy
-
-    # Con el caché limpio, la verdad aparece — o sea: es el caché, no el cálculo.
-    limpiar_cache_metricas()
-    assert _fila(_pedir(client, cab), "acme")["estado_cuenta"] == "suspendido"
+    assert cuerpo["de_cache"] is False
+    assert _fila(cuerpo, "acme")["estado_cuenta"] == "suspendido"
 
 
 def test_m35_las_rutas_deformadas_no_le_sirven_datos_a_la_consola(client, monkeypatch):

@@ -286,4 +286,9 @@ def cambiar_estado_cliente(slug: str, payload: PatchEstadoIn, email: str = Depen
     # Tras el commit, no antes: si el commit fallara, el cache de un estado
     # viejo no tendría por qué invalidarse.
     invalidar_cache_estado(slug)
+    # Y el cache de MÉTRICAS también (hallazgo M-1): el estado_cuenta viaja
+    # adentro del JSON de métricas, y sin esto el propio operador veía el
+    # estado viejo en el panel hasta 5 minutos después de su propio PATCH.
+    from app.plataforma_metricas import limpiar_cache_metricas
+    limpiar_cache_metricas()
     return resultado

@@ -377,6 +377,13 @@ _EXENTOS_POR_HABEAS_DATA = (
 _PREFIJO_PLATAFORMA = "/api/plataforma"
 
 
+def _es_path_de_plataforma(path: str) -> bool:
+    """Con frontera de segmento (hallazgo H-3): ``startswith`` a secas también
+    aceptaba ``/api/plataformazo`` — un router futuro con ese prefijo heredaría
+    la resolución de consola sin que nadie lo decidiera."""
+    return path == _PREFIJO_PLATAFORMA or path.startswith(_PREFIJO_PLATAFORMA + "/")
+
+
 def _aplicar_estado(cliente: Cliente, request: Request) -> Cliente:
     """El corte por estado de cuenta, en el ÚNICO lugar donde se aplica.
 
@@ -401,7 +408,7 @@ def _aplicar_estado(cliente: Cliente, request: Request) -> Cliente:
         return cliente
 
     path = request.url.path or ""
-    if path.startswith(_PREFIJO_PLATAFORMA):
+    if _es_path_de_plataforma(path):
         return cliente
 
     # Los DERECHOS DEL TITULAR (Ley 1581) no dependen del estado comercial:
@@ -452,7 +459,7 @@ def _cliente_de_la_consola(request: Request) -> Cliente:
     está exento del interruptor— pero preguntarlo sugeriría que este slug es
     una cuenta que se puede cortar, y no lo es.
     """
-    if not (request.url.path or "").startswith(_PREFIJO_PLATAFORMA):
+    if not _es_path_de_plataforma(request.url.path or ""):
         raise HTTPException(status_code=401, detail="Token inválido o expirado")
     return Cliente(
         slug=plataforma_estado.SLUG_PLATAFORMA,
