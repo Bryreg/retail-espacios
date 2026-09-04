@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert } from "lucide-react";
 import StoreEditor3D from "../components/StoreEditor3D/StoreEditor3D";
 import FloorPlan2D from "../components/FloorPlan2D/FloorPlan2D";
@@ -6,7 +7,6 @@ import DashboardView from "./DashboardView";
 import MountView from "./MountView";
 import SyncStatus from "../components/SyncStatus/SyncStatus";
 import AvisoCuentaBanner from "../components/AvisoCuentaBanner";
-import PlataformaPanel from "../components/Plataforma/PlataformaPanel";
 import { soyOperador } from "../api/plataforma";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
 import {
@@ -1027,12 +1027,12 @@ interface TopbarProps {
   isAdmin: boolean;
   operador: boolean;
   onOpenSettings: () => void;
-  onOpenPlataforma: () => void;
+  onIrPlataforma: () => void;
   onLogout: () => void;
 }
 
 function Topbar({
-  viewMode, setViewMode, isAdmin, operador, onOpenSettings, onOpenPlataforma, onLogout,
+  viewMode, setViewMode, isAdmin, operador, onOpenSettings, onIrPlataforma, onLogout,
 }: TopbarProps) {
   // A worker gets the dashboard and the mount screen: confirming a mount is
   // literally their job, and it is the one thing they are allowed to write.
@@ -1144,11 +1144,14 @@ function Topbar({
 
         {/* Fase 2 clientes: sólo existe en el DOM si el backend confirmó
             `operador === true` — no es un botón deshabilitado para el resto
-            de las cuentas, directamente no está. */}
+            de las cuentas, directamente no está.
+            Fase 4 plataforma: ya no abre un modal — NAVEGA a la ruta propia
+            `/plataforma` (Dashboard vive adentro del `<BrowserRouter>` de
+            App.tsx, así que `useNavigate` está disponible). */}
         {operador && (
           <button
             title="Plataforma"
-            onClick={onOpenPlataforma}
+            onClick={onIrPlataforma}
             style={iconButtonStyle}
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-3)"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
@@ -1194,13 +1197,13 @@ export default function Dashboard() {
   const isAdmin = useAuthStore(selectIsAdmin);
   const role = useAuthStore((s) => s.role);
   const logout = useAuthStore((s) => s.logout);
+  const navigate = useNavigate();
 
   // Fase 2 clientes: quién es operador de plataforma se pregunta de nuevo en
   // cada sesión — nunca se persiste (a diferencia de `avisoCuenta`, que es
   // parte de la sesión misma). El legado (token sin email) siempre da
   // `false`, así que pedirlo acá no distingue caminos: el backend resuelve.
   const [operador, setOperador] = useState(false);
-  const [plataformaOpen, setPlataformaOpen] = useState(false);
 
   useEffect(() => {
     let vivo = true;
@@ -1244,7 +1247,7 @@ export default function Dashboard() {
         isAdmin={isAdmin}
         operador={operador}
         onOpenSettings={() => setSettingsOpen(true)}
-        onOpenPlataforma={() => setPlataformaOpen(true)}
+        onIrPlataforma={() => navigate("/plataforma")}
         onLogout={logout}
       />
 
@@ -1261,7 +1264,6 @@ export default function Dashboard() {
       </div>
 
       {settingsOpen && isAdmin && <SettingsModal onClose={() => setSettingsOpen(false)} />}
-      {plataformaOpen && operador && <PlataformaPanel onClose={() => setPlataformaOpen(false)} />}
     </div>
   );
 }

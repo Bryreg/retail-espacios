@@ -63,6 +63,15 @@ export interface OauthOk {
    *  membresía pero nunca aceptó la versión vigente de la Política de
    *  Tratamiento de Datos. No bloquea el login — el frontend avisa una vez. */
   pedir_consentimiento?: boolean;
+  /** Fase 4 plataforma: presente y en `true` cuando la cuenta es operadora
+   *  de la plataforma (email en `OPERADOR_EMAILS`) y NO tiene ninguna
+   *  membresía. Reemplaza, sólo para operadores, la rama que antes ofrecía
+   *  "fundá tu supermercado" ante el 403 -- esa rama sigue existiendo tal
+   *  cual para cualquier cuenta que NO sea operadora. `cliente` viene como
+   *  `"plataforma"` (no es un supermercado real; no aparece en `getClientes`
+   *  ni tiene tarifas ni layout) y el aterrizaje es directo a `/plataforma`,
+   *  resuelto en `Login.tsx` antes de guardar la sesión. */
+  plataforma?: boolean;
 }
 
 /** Varias membresías activas y sin `cliente`: hay que elegir y repetir el

@@ -221,3 +221,110 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ─── Consola de plataforma (back-office / BI) ──────────────────────────────
+   Sistema visual PROPIO del operador, deliberadamente distinto de la vista de
+   sede del cliente: un ground más profundo, un acento "instrumento"
+   azul-pizarra que NO es ninguno de los tres estados, y una escala
+   SECUENCIAL para magnitud (ocupación %, conteos) separada de la terna de
+   estado de cuenta.
+
+   Ocupación es MAGNITUD, no alarma: la pinta `--con-mag-*` (un solo matiz, la
+   longitud codifica el valor). El verde/ámbar/rojo queda reservado a
+   `--con-estado-*` (estado de cuenta: activo/gracia/suspendido). Así el color
+   nunca dice dos cosas a la vez.
+
+   Dos temas parejos: claro en `:root`, oscuro bajo
+   `[data-consola-tema="oscuro"]`. El resto de la app no consume estos
+   `--con-*`, de modo que definirlos en `:root` es inocuo. */
+:root {
+  --con-bg:             #E8ECED;
+  --con-surface:        #FFFFFF;
+  --con-surface-2:      #F2F5F5;
+  --con-surface-raised: #FFFFFF;
+  --con-line:           #DEE2E3;
+  --con-line-soft:      #EBEFEF;
+  --con-line-strong:    #C7CED0;
+
+  --con-ink-1: #14181C;
+  --con-ink-2: #4A5459;
+  --con-ink-3: #6B7479;
+  --con-ink-4: #8E979B;
+
+  /* Acento de operación: azul-pizarra de instrumento. No es ninguno de los
+     tres estados ni la tinta-acento de la sede. */
+  --con-accent:     #275A7A;
+  --con-accent-ink: #FFFFFF;
+  /* Anillo de foco de teclado: azul claro, visible en ambos temas y distinto
+     de todo color de estado. */
+  --con-focus: #2E80BE;
+
+  /* Magnitud secuencial (un solo matiz): ocupación %. Longitud = valor. */
+  --con-mag-track: #E3E9EB;
+  --con-mag-fill:  #3D7DA6;
+  /* Conteos (proveedores): grafito, para separar "cuántos" de "qué %". */
+  --con-bar-neutral:       #5A666D;
+  --con-bar-neutral-track: #E8ECED;
+
+  /* Estado de cuenta — la terna, reservada a esto. `activo` es neutro a
+     propósito: si algo lleva color, es porque hay que mirarlo. */
+  --con-estado-activo: #8E979B;
+  --con-estado-aviso:  #B35F0A;
+  --con-estado-corte:  #8E1226;
+
+  /* Dato suprimido por K=3 vs. sin dato: DOS tratamientos distintos, y ambos
+     distintos de un 0 real. */
+  --con-suprimido-ink:   #6B7479;
+  --con-suprimido-hatch: #C7CED0;
+  --con-sindato-ink:     #BEC5C8;
+}
+
+[data-consola-tema="oscuro"] {
+  --con-bg:             #10151A;
+  --con-surface:        #1A2026;
+  --con-surface-2:      #222B32;
+  --con-surface-raised: #1E262D;
+  --con-line:           #2E3A42;
+  --con-line-soft:      #232C33;
+  --con-line-strong:    #46535C;
+
+  --con-ink-1: #EFF1F1;
+  --con-ink-2: #C2CACD;
+  --con-ink-3: #96A0A5;
+  --con-ink-4: #737D82;
+
+  --con-accent:     #4E9FCB;
+  --con-accent-ink: #0B0F13;
+  --con-focus:      #6BB6E6;
+
+  --con-mag-track: #262F36;
+  --con-mag-fill:  #4E9FCB;
+  --con-bar-neutral:       #9AA6AD;
+  --con-bar-neutral-track: #262F36;
+
+  --con-estado-activo: #737D82;
+  --con-estado-aviso:  #E8963F;
+  --con-estado-corte:  #E8798C;
+
+  --con-suprimido-ink:   #96A0A5;
+  --con-suprimido-hatch: #3A454D;
+  --con-sindato-ink:     #55606A;
+}
+
+/* Foco de teclado visible para lo interactivo de la consola. El offset usa el
+   fondo de panel para que el anillo respire sobre la tarjeta. */
+.con-focusable:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--con-surface), 0 0 0 4px var(--con-focus);
+}
+/* Fila de barra: realce al pasar el mouse y al enfocar con teclado (cada barra
+   es un dato inspeccionable). */
+.con-bar-row { transition: background-color 150ms ease-in-out; border-radius: var(--r-sm); }
+.con-bar-row:hover { background: var(--con-surface-2); }
+.con-bar-row:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--con-surface), 0 0 0 3px var(--con-focus);
+}
+/* Fila de tabla: realce al pasar. */
+.con-fila { transition: background-color 150ms ease-in-out; }
+.con-fila:hover { background: var(--con-surface-2); }

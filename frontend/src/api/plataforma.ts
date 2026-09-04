@@ -59,3 +59,80 @@ export const patchEstadoCliente = (
   client
     .patch<EstadoClienteActualizado>(`/plataforma/clientes/${encodeURIComponent(slug)}`, payload)
     .then((r) => r.data);
+
+// ─── Métricas del negocio (Fase 4 plataforma) ───────────────────────────────
+//
+// Shape FIJADO por el contrato vinculante de la Fase 4 (mensaje del Maestro,
+// campo por campo) -- no se ajusta a ojo mirando una respuesta real. El
+// backend arma estos agregados recorriendo las bases de cliente en secuencia,
+// solo lectura, tolerante a fallos: una base rota deja su fila con `error` y
+// `metricas: null`, el resto sigue (patrón `_run_lease_maintenance`). El JSON
+// JAMÁS trae filas de negocio ni datos de usuarios finales -- sólo números y
+// el top-5 de proveedores (nombre + conteo).
+
+export interface ProveedorTop {
+  nombre: string;
+  contratos_activos: number;
+}
+
+export interface PeriodoMetricas {
+  anio_mes: string;
+  desde: string;
+  hasta: string;
+}
+
+/** Agregados taxativos de la spec. `ocupacion_pct` y los montos pueden venir
+ *  `null` (p. ej. sin contratos activos en el período) -- nunca se asume un
+ *  0 en su lugar, porque 0% de ocupación y "no hay dato" no son lo mismo. */
+export interface AgregadosMetricas {
+  sedes_con_plano: number;
+  espacios_comercializables: number;
+  ocupacion_pct: number | null;
+  canon_promedio_mensual: number | null;
+  ingreso_contratado_mes: number | null;
+  top_proveedores: ProveedorTop[];
+  usuarios_con_cuenta: number;
+}
+
+export interface ConsolidadoMetricas extends AgregadosMetricas {
+  clientes_total: number;
+  clientes_con_error: number;
+}
+
+/** Agregados por cliente -- superset de `AgregadosMetricas` con
+ *  `ultimo_acceso`, que sólo tiene sentido por cliente (el consolidado no
+ *  tiene una fecha única que lo resuma). Es SOLO la fecha, nunca quién --
+ *  la spec es explícita: "la fecha, no quién". */
+export interface AgregadosMetricasCliente extends AgregadosMetricas {
+  ultimo_acceso: string | null;
+}
+
+export interface ClienteMetricas {
+  slug: string;
+  nombre: string;
+  estado_cuenta: EstadoCuenta;
+  /** Mensaje de la base rota, o `null` si se leyó bien. Cuando hay error,
+   *  `metricas` es siempre `null` -- nunca los dos a la vez. */
+  error: string | null;
+  metricas: AgregadosMetricasCliente | null;
+}
+
+export interface MetricasPlataforma {
+  periodo: PeriodoMetricas;
+  /** ISO 8601 UTC -- cuándo se armó esta respuesta (si `de_cache`, cuándo se
+   *  armó la que quedó en caché, no cuándo se sirvió esta llamada). */
+  generado_en: string;
+  /** `true` en un hit del caché de 5 min del registro. */
+  de_cache: boolean;
+  consolidado: ConsolidadoMetricas;
+  clientes: ClienteMetricas[];
+}
+
+/** `periodo` en formato `"YYYY-MM"`; sin él, el backend usa el mes actual.
+ *  Cada llamada anota en la bitácora del registro quién (el operador, por el
+ *  JWT), cuándo y qué período -- eso lo hace el backend, no hay nada que
+ *  mandar acá para eso. */
+export const getMetricasPlataforma = (periodo?: string): Promise<MetricasPlataforma> =>
+  client
+    .get<MetricasPlataforma>("/plataforma/metricas", { params: periodo ? { periodo } : undefined })
+    .then((r) => r.data);

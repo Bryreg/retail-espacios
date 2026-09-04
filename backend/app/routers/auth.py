@@ -28,6 +28,9 @@ from app.auth import (
 from app.clientes import Cliente, buscar, cliente_del_pedido, listar, sesion_de, unico
 from app.database import get_db
 from app.models.models import LoginAttempt
+# Fase 4: quién es operador de la plataforma. Módulo de contrato, ya importado
+# por `app.auth` y por `app.clientes` — no agrega ningún ciclo.
+from app.plataforma_estado import es_operador
 from app.red import ip_del_cliente
 from app.services.bitacora import anotar
 from app.services.firebase_tokens import VerificadorDeIdToken, get_verificador
@@ -298,6 +301,59 @@ def _rol_de_token(rol_membresia: str) -> str:
     return "admin" if rol_membresia in ("owner", "admin") else "worker"
 
 
+# ─── La consola del operador (Fase 4) ────────────────────────────────────────
+
+def _entrar_a_la_consola(reg: Session, ip: str, usuario, email: str) -> dict:
+    """El operador SIN membresías entra a `/plataforma`, no al 403 de siempre.
+
+    Hasta la Fase 3 este camino terminaba en «tu cuenta no tiene acceso a
+    ningún cliente», y al dueño del SaaS la pantalla le ofrecía *fundar su
+    supermercado*: la puerta equivocada para la única persona que no viene a
+    usar un supermercado sino a operarlos todos.
+
+    Lo que sale es el MISMO JWT de siempre, sin un claim nuevo ni uno de menos
+    (``role``/``epoca``/``cliente``/``sub``/``email``):
+
+    · ``role="worker"`` — mínimo privilegio. La consola no necesita más: sus
+      endpoints se defienden con `require_operador`, no con el rol del token,
+      y si este token se filtrara, "worker" es el techo del daño.
+    · ``cliente="plataforma"`` — el slug RESERVADO del alta. No hay base con
+      ese nombre y `cliente_del_pedido` sólo lo resuelve adentro de
+      ``/api/plataforma``: fuera de ahí, 401.
+    · ``epoca`` — la del rol ``worker`` en la BASE POR DEFECTO, que es la del
+      registro. Es la única base a la que este token se conecta, así que tiene
+      que ser la misma que va a comprobar `require_auth` en cada pedido; leerla
+      de otra parte dejaría un token que no valida contra nada.
+
+    No escribe una línea en la bitácora de ningún cliente: no hay cliente al
+    que entrar. Lo que sí queda es `ultimo_login`, en el registro.
+    """
+    # Imports perezosos, como en `oauth_login`: `models/identidad.py` no
+    # depende de este router y así queda a prueba de cualquier ciclo futuro.
+    from app.models.identidad import IntentoOauth
+    from app.plataforma_estado import NOMBRE_PLATAFORMA, SLUG_PLATAFORMA
+
+    usuario.ultimo_login = datetime.now(timezone.utc)
+    reg.commit()
+    borrar_fallos(reg, ip, modelo=IntentoOauth)
+
+    epoca = epoca_de(reg, "worker")
+    return {
+        "token": create_token(
+            "worker", epoca, SLUG_PLATAFORMA, sub=usuario.id, email=email,
+        ),
+        "role": "worker",
+        "cliente": SLUG_PLATAFORMA,
+        "cliente_nombre": NOMBRE_PLATAFORMA,
+        "email": email,
+        "nombre": usuario.nombre,
+        # Top-level, hermano del token — igual que `aviso_cuenta` (Fase 2) y
+        # `pedir_consentimiento` (Fase 3): el JWT no cambia de forma, ni un
+        # claim. Es lo que le dice al frontend que aterrice en /plataforma.
+        "plataforma": True,
+    }
+
+
 @router.post("/oauth")
 def oauth_login(
     payload: OAuthIn,
@@ -400,7 +456,15 @@ def oauth_login(
             .all()
         )
 
-        if usuario is None and not invitaciones:
+        # Fase 4: un operador de la plataforma NO necesita invitación ni
+        # membresía para entrar a su consola. Sin esta excepción, el primer
+        # login del dueño del SaaS —que puede no tener fila en `usuarios`
+        # todavía— moriría acá, antes de llegar a la bifurcación de más
+        # abajo. `es_operador` lee `OPERADOR_EMAILS` del entorno, así que
+        # esto no crea ninguna puerta nueva: quien la abre es quien
+        # despliega, y ya la tenía abierta.
+        es_op = es_operador(email)
+        if usuario is None and not invitaciones and not es_op:
             anotar_fallo(reg, ip, modelo=IntentoOauth)
             raise HTTPException(
                 status_code=403,
@@ -465,6 +529,8 @@ def oauth_login(
             .all()
         )
         if not membresias:
+            if es_op:
+                return _entrar_a_la_consola(reg, ip, usuario, email)
             anotar_fallo(reg, ip, modelo=IntentoOauth)
             raise HTTPException(
                 status_code=403,

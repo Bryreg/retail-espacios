@@ -377,6 +377,13 @@ _EXENTOS_POR_HABEAS_DATA = (
 _PREFIJO_PLATAFORMA = "/api/plataforma"
 
 
+def _es_path_de_plataforma(path: str) -> bool:
+    """Con frontera de segmento (hallazgo H-3): ``startswith`` a secas también
+    aceptaba ``/api/plataformazo`` — un router futuro con ese prefijo heredaría
+    la resolución de consola sin que nadie lo decidiera."""
+    return path == _PREFIJO_PLATAFORMA or path.startswith(_PREFIJO_PLATAFORMA + "/")
+
+
 def _aplicar_estado(cliente: Cliente, request: Request) -> Cliente:
     """El corte por estado de cuenta, en el ÚNICO lugar donde se aplica.
 
@@ -401,7 +408,7 @@ def _aplicar_estado(cliente: Cliente, request: Request) -> Cliente:
         return cliente
 
     path = request.url.path or ""
-    if path.startswith(_PREFIJO_PLATAFORMA):
+    if _es_path_de_plataforma(path):
         return cliente
 
     # Los DERECHOS DEL TITULAR (Ley 1581) no dependen del estado comercial:
@@ -427,6 +434,41 @@ def _aplicar_estado(cliente: Cliente, request: Request) -> Cliente:
     return cliente
 
 
+def _cliente_de_la_consola(request: Request) -> Cliente:
+    """El "cliente" sintético del token de plataforma. **No es un supermercado.**
+
+    Un operador que entra sin membresías se lleva un token con
+    ``cliente == "plataforma"`` (Fase 4). Ese slug no tiene fila en
+    ``clientes`` y no puede tenerla —está reservado en el alta—, así que
+    `buscar` daría `None` y el token moriría en el primer pedido. Acá se le
+    devuelve un cliente armado a mano que apunta a la BASE POR DEFECTO, que es
+    la del registro: es la única base que ese token necesita, porque
+    ``require_auth`` la usa para comprobar la época y porque los endpoints de
+    ``/api/plataforma`` leen el registro.
+
+    **Y sólo resuelve adentro de ``/api/plataforma``.** En cualquier otro path
+    esto contesta 401 -- el mismo 401 que un token que nombra un cliente que no
+    existe, que es exactamente lo que este token es para el resto del sistema.
+    Así el token de la consola no puede abrir la base de negocio de nadie POR
+    CONSTRUCCIÓN, y no por acordarse de poner un guard en cada router: aunque
+    mañana alguien monte un endpoint nuevo sin pensar en esto, el pedido no
+    llega a tener sesión de base.
+
+    Ojo con lo que NO hace: no pasa por `_aplicar_estado`. Daría el mismo
+    resultado —`plataforma` no tiene fila de estado, y además `/api/plataforma`
+    está exento del interruptor— pero preguntarlo sugeriría que este slug es
+    una cuenta que se puede cortar, y no lo es.
+    """
+    if not _es_path_de_plataforma(request.url.path or ""):
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    return Cliente(
+        slug=plataforma_estado.SLUG_PLATAFORMA,
+        nombre=plataforma_estado.NOMBRE_PLATAFORMA,
+        db_name=_db_por_defecto(),
+        activo=True,
+    )
+
+
 def cliente_del_pedido(request: Request) -> Cliente:
     """Qué supermercado está pidiendo. **Nunca se deduce de la contraseña.**
 
@@ -445,6 +487,8 @@ def cliente_del_pedido(request: Request) -> Cliente:
     if raw:
         slug = cliente_del_token(raw)
         if slug:
+            if slug == plataforma_estado.SLUG_PLATAFORMA:
+                return _cliente_de_la_consola(request)
             cliente = buscar(slug)
             if cliente is None:
                 # El token está bien firmado pero nombra un cliente que ya no

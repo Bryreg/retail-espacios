@@ -279,12 +279,68 @@ trasladó (artículo 18, literal e, de la Ley 1581).
 
 **Los datos de un supermercado nunca se mezclan con los de otro.** Cada cliente tiene su
 propia base de datos separada; ser operador de la plataforma no abre la base de negocio de
-ningún cliente.
+ningún cliente. La única excepción son las métricas agregadas de operación descritas en el
+punto 5.3, que por construcción no llevan datos personales.
 
 > **[COMPLETAR]** Esta relación debe quedar además en un **contrato de transmisión de
 > datos personales** o en una cláusula del contrato de servicio con cada supermercado
 > (artículo 25 del Decreto 1377 de 2013), que fije la finalidad, las obligaciones del
 > encargado y el deber de seguridad. Hoy no existe ese documento firmado.
+
+### 5.3 El operador de la plataforma y las métricas agregadas del negocio
+
+> **[VALIDAR CON ABOGADO]**
+
+RECABRA opera una consola propia (`/plataforma`) para quien administra el servicio como
+negocio. Desde esa consola, el **operador de la plataforma** ve **métricas agregadas** del
+negocio de cada supermercado cliente: conteos (sedes con plano, espacios comercializables),
+porcentajes de ocupación, promedios y sumas de canon, un top de proveedores por **nombre
+comercial del proveedor —depurado de datos de contacto: los correos y teléfonos que
+pudieran aparecer se enmascaran antes de mostrarse— y conteo de contratos activos**, la
+cantidad de usuarios con cuenta y la fecha del último acceso —la fecha, no quién entró—.
+
+Estas métricas son **solo lectura** y **solo agregadas**: el operador nunca ve una fila
+individual de negocio (un contrato, un espacio, un proveedor con sus datos de contacto) ni
+un dato de una persona identificada del supermercado o de sus proveedores. El sistema
+construye estos números por consulta agregada, no exponiendo listas de filas: la respuesta
+que arma la consola no puede contener una fila de negocio. Cada consulta de métricas queda
+anotada —con el correo del operador, el momento y el período consultado— en la bitácora de
+la plataforma, igual que cualquier otro acceso.
+
+Los promedios y sumas de canon, y el listado de top de proveedores, de un supermercado
+cliente **solo se muestran cuando agrupan al menos 3 contratos activos del período**; por
+debajo de ese umbral el dato se omite. La razón de esta regla es que un agregado construido
+sobre uno o dos contratos deja de ser un agregado en los hechos: equivaldría, en la
+práctica, al canon de un contrato puntual e identificable. El umbral existe precisamente
+para que eso no pase.
+
+Esto no cambia el reparto de responsabilidades del punto 5.2: el supermercado sigue siendo
+el responsable del tratamiento de los datos de su gente y de sus proveedores, y RECABRA
+sigue siendo el encargado. Lo que describe este punto es una capacidad interna de operación
+del negocio —entender cuánto se usa el servicio, no acceder a los datos personales que el
+supermercado trata—.
+
+> **[VALIDAR CON ABOGADO]** Confirmar que estos agregados —conteos, porcentajes, promedios
+> y sumas de canon ya sujetos al umbral de 3 contratos, nombre comercial de un proveedor
+> junto a un conteo de contratos, y una fecha de último acceso sin identidad— no
+> constituyen, ni siquiera combinados entre sí, un dato personal en el sentido del
+> artículo 3 de la Ley 1581 (vinculable a una persona natural determinada o determinable).
+> Si el abogado concluye que sí lo son, o que de todas formas amerita una nueva aceptación
+> de los titulares, el camino previsto es subir `VERSION_POLITICA` (la constante del
+> backend y el encabezado de este documento a la vez) y disparar el flujo de
+> re-consentimiento automático que ya existe (punto 4.1) para toda la base de usuarios.
+> Mientras tanto, la decisión de NO subir la versión —y su justificación— queda
+> documentada en `docs/ESTADO.md`.
+>
+> Pregunta abierta que el contador del equipo dejó marcada y que el abogado debe evaluar
+> puntualmente: el **nombre comercial** de un proveedor puede, en algunos casos, coincidir
+> con el nombre de una persona natural (un proveedor unipersonal que factura a su propio
+> nombre, por ejemplo) aun cuando el dato ya pasó por el saneo de correos y teléfonos
+> descrito arriba. Que el abogado evalúe si ese escenario —un nombre comercial que ES
+> también el nombre de una persona determinable— cae bajo el artículo 3 de la Ley 1581 y,
+> si es así, qué tratamiento adicional corresponde (¿excluir del top a los proveedores sin
+> razón social distinguible de una persona natural? ¿es la regla de los 3 contratos
+> suficiente disociación?).
 
 ---
 

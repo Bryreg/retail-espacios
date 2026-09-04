@@ -55,3 +55,46 @@ class Fundacion(Base):
     usuario_id = Column(Integer, nullable=False, index=True)
     cliente_slug = Column(String, nullable=False)
     creado_en = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class BitacoraPlataforma(Base):
+    """Cada vez que un operador MIRÓ datos de negocio agregados de los clientes.
+
+    Es la contrapartida de la enmienda de la regla dura de la Fase 4: el
+    operador puede ver métricas agregadas de todos los clientes, y a cambio
+    **cada consulta deja constancia** con su correo y el período que pidió.
+
+    Tres decisiones que la definen:
+
+    · **Vive en el REGISTRO, no en la base de ningún cliente.** El acceso es
+      del operador a la plataforma, no de nadie a un supermercado; anotarlo en
+      la bitácora de cada cliente (``audit_log``) además obligaría a ESCRIBIR
+      en bases que este camino abre en sólo lectura por diseño.
+    · **Tabla nueva y no ``audit_log``.** Esa tabla existe adentro de cada
+      cliente y sus filas hablan de acciones sobre datos de ese cliente; ésta
+      habla de un actor que está por encima de todos. Mezclarlas haría
+      imposible contestar «¿qué miró el operador?» sin recorrer N bases.
+    · **Se anota el ACCESO, no el cálculo.** Una respuesta servida desde el
+      caché de 5 minutos deja línea igual: lo que la bitácora tiene que poder
+      reconstruir es quién vio qué y cuándo, y eso pasó aunque los números ya
+      estuvieran calculados.
+
+    ``create_all()`` la crea, sin migración — la misma regla de siempre.
+    """
+
+    __tablename__ = "bitacora_plataforma"
+
+    id = Column(Integer, primary_key=True, index=True)
+    # El correo del operador (cuenta con `sub`; el legado jamás es operador).
+    email = Column(String, nullable=False, index=True)
+    # Código estable, como en `audit_log`: hoy sólo "metricas".
+    accion = Column(String, nullable=False, default="metricas")
+    # El período consultado, "YYYY-MM". Es el QUÉ de la línea: sin él, saber
+    # que alguien miró no dice qué miró.
+    periodo = Column(String, nullable=False)
+    en = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+        index=True,
+    )

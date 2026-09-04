@@ -1,9 +1,18 @@
-"""Panel de plataforma: quién es operador y el interruptor de estado por cliente.
+"""Panel de plataforma: quién es operador, el interruptor de estado y las métricas.
 
-SOLO datos del registro. Este router JAMÁS abre la base de un cliente
-(``sesion_de``) -- un operador toca el registro, no los datos de negocio de
-ningún supermercado; el estado de cuenta vive enteramente en la base por
-defecto (``estados_cliente``, ver ``app/plataforma_estado.py``).
+Datos del registro, con UNA excepción acotada y declarada: ``GET /metricas``
+(Fase 4). Todos los demás endpoints de este router JAMÁS abren la base de un
+cliente -- un operador toca el registro, no los datos de negocio de ningún
+supermercado; el estado de cuenta vive enteramente en la base por defecto
+(``estados_cliente``, ver ``app/plataforma_estado.py``).
+
+**La excepción, textual** (enmienda de la regla dura de la Fase 2, spec de la
+Fase 4): el operador accede a datos de negocio SOLO por el endpoint de métricas
+agregadas -- sólo lectura, sólo agregados (nunca filas individuales), y cada
+consulta queda anotada en ``bitacora_plataforma`` con su correo. La lógica vive
+entera en ``app/plataforma_metricas.py``, que no escribe una sola fila en
+ninguna base de cliente; acá abajo sólo se valida el período, se anota la
+consulta y se devuelve.
 
 Operador = email en env ``OPERADOR_EMAILS``, y sólo para cuentas con ``sub``:
 el login legado nunca trae ``request.state.actor_email`` (lo deja
@@ -33,6 +42,56 @@ def require_operador(request: Request, rol: str = Depends(require_auth)) -> str:
     if not email or not es_operador(email):
         raise HTTPException(status_code=403, detail="Solo para operadores de la plataforma.")
     return email
+
+
+# ─── Métricas del negocio (Fase 4) ────────────────────────────────────────────
+#
+# Ruta LITERAL, declarada ANTES que `/clientes/{slug}` y
+# `/supresiones/{solicitud_id}` -- la regla dura de orden de rutas de FastAPI.
+# Hoy no chocaría (primer segmento distinto), pero el orden se respeta igual:
+# el día que alguien agregue `/{algo}` en este router, esta ruta ya está a
+# salvo y no hay que acordarse de nada.
+
+@router.get("/metricas")
+def metricas_del_negocio(
+    periodo: str | None = None,
+    email: str = Depends(require_operador),
+):
+    """Los agregados taxativos de la spec: consolidado + una fila por cliente.
+
+    ``?periodo=YYYY-MM``; sin parámetro, el mes calendario en curso (UTC).
+    Un período malformado es 422 -- no se cae a "el mes actual" en silencio,
+    porque el operador que teclea mal una fecha tiene que enterarse.
+
+    **La bitácora se escribe SIEMPRE**, también cuando la respuesta salió del
+    caché de 5 minutos: lo que se registra es que este operador VIO estos
+    números, y eso pasó igual aunque el cálculo fuera de hace cuatro minutos.
+    Va DESPUÉS de calcular: si el cálculo se cayera, no habría acceso que
+    anotar.
+    """
+    from app.models.plataforma import BitacoraPlataforma
+    from app.plataforma_metricas import PeriodoInvalido, metricas_del_periodo, normalizar_periodo
+
+    try:
+        anio_mes = normalizar_periodo(periodo)
+    except PeriodoInvalido as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+    cuerpo = metricas_del_periodo(anio_mes)
+
+    reg = sesion_registro()
+    try:
+        reg.add(BitacoraPlataforma(
+            email=email,
+            accion="metricas",
+            periodo=anio_mes,
+            en=datetime.now(timezone.utc),
+        ))
+        reg.commit()
+    finally:
+        reg.close()
+
+    return cuerpo
 
 
 class PatchEstadoIn(BaseModel):
@@ -227,4 +286,9 @@ def cambiar_estado_cliente(slug: str, payload: PatchEstadoIn, email: str = Depen
     # Tras el commit, no antes: si el commit fallara, el cache de un estado
     # viejo no tendría por qué invalidarse.
     invalidar_cache_estado(slug)
+    # Y el cache de MÉTRICAS también (hallazgo M-1): el estado_cuenta viaja
+    # adentro del JSON de métricas, y sin esto el propio operador veía el
+    # estado viejo en el panel hasta 5 minutos después de su propio PATCH.
+    from app.plataforma_metricas import limpiar_cache_metricas
+    limpiar_cache_metricas()
     return resultado
