@@ -163,7 +163,13 @@ const DEFAULT_CAMERA_3D: Camera3D = {
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 
-export const DEFAULT_SEDES = ["TERRON", "CENTRO", "NORTE", "SUR"];
+// Antes esto era ["TERRON", "CENTRO", "NORTE", "SUR"] — nombres reales de
+// sedes de Galerías Plaza, el primer cliente. Con multi-tenant cualquier
+// cliente nuevo sin plano cargado heredaba "TERRON" como si fuera su propia
+// sede: no es un leak de datos ajenos (cada cliente tiene su propia base),
+// pero sí es marca de otro cliente asomando donde no corresponde. El default
+// para un cliente sin plano es un nombre genérico, no una sede real.
+export const DEFAULT_SEDES = ["SEDE 1"];
 
 export type SyncState = "idle" | "pulling" | "pushing" | "error" | "conflict";
 
@@ -313,7 +319,7 @@ export const useFixtureStore = create<FixtureStore>()(
     (set, get) => ({
       fixturesBySede: {},
       sedes: DEFAULT_SEDES,
-      sede: "TERRON",
+      sede: DEFAULT_SEDES[0],
       catalogLabels: {},
       referenceRates: null,
       seasonWindows: {},
@@ -495,7 +501,7 @@ export const useFixtureStore = create<FixtureStore>()(
             delete conflicts[key];
           }
           const remaining = state.sedes.filter((s) => !keys.has(s));
-          const sedes = remaining.length > 0 ? remaining : ["TERRON"];
+          const sedes = remaining.length > 0 ? remaining : [DEFAULT_SEDES[0]];
           const sede = keys.has(state.sede) || normalizeSede(state.sede) === target
             ? sedes[0]
             : state.sede;
@@ -1163,7 +1169,7 @@ export const useFixtureStore = create<FixtureStore>()(
           p.fixtures.length > 0 &&
           Object.keys(fixturesBySede).length === 0
         ) {
-          const oldSede = p.sede ?? "TERRON";
+          const oldSede = p.sede ?? DEFAULT_SEDES[0];
           fixturesBySede = { [oldSede]: p.fixtures };
         }
 
@@ -1261,7 +1267,7 @@ export function migrateFromLegacy(): void {
   // ── Migrate from 3D editor (store-editor-v3) ────────────────────────────────
   try {
     const raw3D = localStorage.getItem("store-editor-v3");
-    const sede3D = localStorage.getItem("store-sede-v1") || "TERRON";
+    const sede3D = localStorage.getItem("store-sede-v1") || DEFAULT_SEDES[0];
     if (raw3D) {
       const fixtures3D = JSON.parse(raw3D) as any[];
       for (const f of fixtures3D) {
@@ -1341,7 +1347,7 @@ export function migrateFromLegacy(): void {
           h: H_DEFAULTS[type] ?? 1.8,
           color: COLOR_DEFAULTS[type] ?? "#6366f1",
           status,
-          sede: item.sede ?? "TERRON",
+          sede: item.sede ?? DEFAULT_SEDES[0],
           supplierName: item.supplierName ?? "",
           brandCategory: item.brandCategory ?? "",
           negotiatedValue: item.negotiatedValue ?? 0,

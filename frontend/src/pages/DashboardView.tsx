@@ -2354,7 +2354,11 @@ const pieTarifa: React.CSSProperties = {
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
-function EmptyDashboard({ sede, isAdmin }: { sede: string; isAdmin: boolean }) {
+function EmptyDashboard({
+  sede, isAdmin, onDisenarPlano,
+}: {
+  sede: string; isAdmin: boolean; onDisenarPlano: () => void;
+}) {
   return (
     <div
       style={{
@@ -2383,6 +2387,7 @@ function EmptyDashboard({ sede, isAdmin }: { sede: string; isAdmin: boolean }) {
       </p>
       {isAdmin && (
         <button
+          onClick={onDisenarPlano}
           style={{
             display: "inline-flex", alignItems: "center", gap: 6,
             height: 36, padding: "0 16px",
@@ -2402,7 +2407,7 @@ function EmptyDashboard({ sede, isAdmin }: { sede: string; isAdmin: boolean }) {
 
 // ─── Main view ────────────────────────────────────────────────────────────────
 
-export default function DashboardView() {
+export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () => void }) {
   const fixtures = useFixtureStore(selectFixtures);
   const { sedes, sede, setSede, fixturesBySede, syncFromServer, seasonWindows } = useFixtureStore();
   const referenceRates = useFixtureStore((s) => s.referenceRates);
@@ -3456,7 +3461,7 @@ export default function DashboardView() {
       )}
 
       {fixtures.length === 0 ? (
-        <EmptyDashboard sede={sede} isAdmin={isAdmin} />
+        <EmptyDashboard sede={sede} isAdmin={isAdmin} onDisenarPlano={onDisenarPlano} />
       ) : modoEfectivo === "vender" ? (
         /* Vender: el plano y la escalera a la izquierda, el contrato y las
            tarifas a la derecha. Sin KPIs — para poner un precio no sirve la
