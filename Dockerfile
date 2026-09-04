@@ -9,6 +9,19 @@ COPY frontend/package*.json ./
 RUN npm install --legacy-peer-deps
 
 COPY frontend/ ./
+
+# Config PÚBLICA de Firebase para el build de Vite: las VITE_* se hornean en
+# el bundle, así que tienen que existir cuando corre `npm run build`. Render
+# pasa sus variables de entorno como build-args al build de Docker, pero
+# Docker solo entrega las que el Dockerfile declara con ARG — sin este bloque,
+# Vite construye sin Firebase y el login degrada al legado en producción.
+ARG VITE_FIREBASE_API_KEY
+ARG VITE_FIREBASE_AUTH_DOMAIN
+ARG VITE_FIREBASE_PROJECT_ID
+ENV VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY \
+    VITE_FIREBASE_AUTH_DOMAIN=$VITE_FIREBASE_AUTH_DOMAIN \
+    VITE_FIREBASE_PROJECT_ID=$VITE_FIREBASE_PROJECT_ID
+
 RUN npm run build
 
 # ─────────────────────────────────────────────────────────────────────────────
