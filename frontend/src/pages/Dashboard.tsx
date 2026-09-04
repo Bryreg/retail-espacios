@@ -1257,7 +1257,7 @@ export default function Dashboard() {
         ) : effectiveMode === "montaje" ? (
           <MountView initialCode={mountCode} onDone={() => setViewMode("kpis")} />
         ) : effectiveMode === "kpis" ? (
-          <DashboardView />
+          <DashboardView onDisenarPlano={() => setViewMode("map")} />
         ) : (
           <FloorPlan2D />
         )}

@@ -10,7 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { ClipboardCheck, Keyboard } from "lucide-react";
-import { useFixtureStore, selectFixtures, selectHasPendingWork, normalizeSede } from "../../store/fixtureStore";
+import { useFixtureStore, selectFixtures, selectHasPendingWork, normalizeSede, DEFAULT_SEDES } from "../../store/fixtureStore";
 import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types/fixtures";
 import { isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
 import { siguienteCodigo, nombreDeMueble, nombrePropio, nombreRepetido, rotulosDelPlano } from "../../utils/nomenclatura";
@@ -2576,7 +2576,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
             // the canvas would keep the deleted sede selected while the store
             // had already switched, and the next commit would write these
             // fixtures back into the wrong floor plan.
-            const next = storeSedeList.find((s) => s !== sede) ?? "TERRON";
+            const next = storeSedeList.find((s) => s !== sede) ?? DEFAULT_SEDES[0];
             const result = await removeSede(sede);
             // The server refused and nothing was removed. Say so and stay open
             // rather than closing as if it had worked.
