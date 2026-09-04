@@ -9,7 +9,7 @@ import BloqueoCuenta from "./components/BloqueoCuenta";
 import ModalConsentimiento from "./components/ModalConsentimiento";
 import { usarToken } from "./api/montaje";
 import { useAuthStore } from "./store/authStore";
-import { startAutoSync, stopAutoSync } from "./store/fixtureStore";
+import { startAutoSync, stopAutoSync, useFixtureStore } from "./store/fixtureStore";
 
 /** Dónde queda el enlace de montaje entre una recarga y la siguiente. */
 const LLAVE_MONTAJE = "recabra-montaje";
@@ -67,6 +67,7 @@ const TOKEN_MONTAJE = (() => {
 
 export default function App() {
   const token = useAuthStore((s) => s.token);
+  const cliente = useAuthStore((s) => s.cliente);
   const avisoCuenta = useAuthStore((s) => s.avisoCuenta);
   const pedirConsentimiento = useAuthStore((s) => s.pedirConsentimiento);
   // Fase 4 plataforma: sesión de un operador SIN membresías. No tiene
@@ -92,9 +93,13 @@ export default function App() {
       stopAutoSync();
       return;
     }
+    // Antes de sincronizar: si esta sesión es de otro cliente que el que dejó
+    // sus planos en localStorage, se descartan. Evita ver —y peor, subir— los
+    // planos del inquilino anterior en una máquina compartida.
+    useFixtureStore.getState().scopeToCliente(cliente);
     startAutoSync();
     return () => stopAutoSync();
-  }, [token, plataforma]);
+  }, [token, cliente, plataforma]);
 
   // Fase 3 compliance: la Política de Tratamiento de Datos es pública — se
   // resuelve ACÁ, antes que cualquier otra cosa (el enlace de montaje

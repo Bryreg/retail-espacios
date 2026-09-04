@@ -210,6 +210,9 @@ interface FixtureStore {
   /** Role whose (possibly redacted) data is currently cached. A worker never
    *  receives negotiatedValue, so that cache must not be reused by an admin. */
   dataRole: string | null;
+  /** El slug del cliente al que pertenece el caché de planos persistido.
+   *  `null` hasta que una sesión lo reclame. Ver `scopeToCliente`. */
+  clienteCache: string | null;
 
   // Undo / redo (session-only — not persisted to localStorage)
   past: UnifiedFixture[][];
@@ -223,6 +226,9 @@ interface FixtureStore {
    * Clears undo/redo history because the two floor plans are independent.
    */
   setSede: (sede: string) => void;
+  /** Descarta el caché de planos si la sesión pertenece a OTRO cliente.
+   *  Se llama al abrir sesión, antes de sincronizar. */
+  scopeToCliente: (cliente: string | null) => void;
 
   /** Add a new sede to the list. */
   addSede: (name: string) => void;
@@ -322,6 +328,7 @@ export const useFixtureStore = create<FixtureStore>()(
       syncMessage: null,
       lastSyncedAt: null,
       dataRole: null,
+      clienteCache: null,
       past: [],
       future: [],
 
@@ -330,6 +337,36 @@ export const useFixtureStore = create<FixtureStore>()(
         set((state) => ({
           fixturesBySede: { ...state.fixturesBySede, [state.sede]: fixtures },
         })),
+
+      scopeToCliente: (cliente) => {
+        if (get().clienteCache === cliente) return;
+        // Cambió el cliente de la sesión (o es la primera vez con este caché):
+        // los planos que hay en localStorage son de OTRO inquilino. Se
+        // descartan ANTES de cualquier sync. Si no, no sólo se verían los
+        // planos ajenos: el bootstrap de `syncFromServer` los SUBIRÍA a la
+        // base del cliente nuevo (contaminación entre inquilinos). El servidor
+        // repuebla lo que de verdad le corresponde a este cliente. El dinero
+        // ya salía fuera de `partialize`; esto hace lo propio con los planos,
+        // que en un mundo multi-cliente no pueden sobrevivir a un cambio de
+        // inquilino en la misma máquina.
+        set({
+          clienteCache: cliente,
+          fixturesBySede: {},
+          sedes: DEFAULT_SEDES,
+          sede: DEFAULT_SEDES[0],
+          catalogLabels: {},
+          referenceRates: null,
+          seasonWindows: {},
+          serverRev: {},
+          settingsRev: null,
+          dirty: {},
+          conflicts: {},
+          past: [],
+          future: [],
+          syncState: "idle",
+          syncMessage: null,
+        });
+      },
 
       setSede: (sede) =>
         // Clear undo/redo when switching sedes — each floor plan is independent
@@ -1107,6 +1144,7 @@ export const useFixtureStore = create<FixtureStore>()(
         settingsRev: state.settingsRev,
         dirty: state.dirty,
         dataRole: state.dataRole,
+        clienteCache: state.clienteCache,
         // referenceRates stays out on purpose: it's admin-only money, and this
         // key survives logout — a worker on the same machine must not find it.
       }),
