@@ -297,6 +297,118 @@ El dueño del SaaS opera y entiende su negocio desde una superficie propia.
   nombre de proveedor descritos arriba. A la espera de que el abogado lo
   confirme o lo contradiga (ver el punto 5.3 y `docs/legal/politica-datos.md`).
 
+### Fase 5 — Tendencia temporal (histórico de métricas)
+
+La Fase 4 dejó una **foto**; ésta agrega la **película**. El motivo es que un mes
+pasado ya no se puede recorrer: la base de un cliente guarda los contratos como
+están HOY, no como estaban en agosto, así que preguntarle por un mes viejo
+devuelve la verdad de hoy proyectada hacia atrás. Sin historia persistida,
+"¿estamos mejorando o empeorando?" es incontestable.
+
+- **Tabla nueva del registro `snapshot_metricas`** (`create_all()`, SIN
+  migración; cero columnas agregadas a tablas existentes, `bitacora_plataforma`
+  incluida). `UNIQUE(cliente_slug, periodo)`. Una fila por cliente y mes, más la
+  fila del total con `cliente_slug = "__consolidado__"` (constante
+  `CONSOLIDADO_SLUG`; los guiones bajos la dejan fuera de `SLUG_VALIDO`, así que
+  ningún cliente real puede colisionar). Guarda **CRUDOS**: `sedes_con_plano`,
+  `espacios_comercializables`, `ocupadas`, `contratos_activos`, `canon_total`,
+  `usuarios` (un CONTEO — **ningún id, correo ni nombre baja a disco**;
+  la deduplicación de la misma persona con cuenta en dos supermercados se
+  resuelve en memoria al capturar), `proveedores_json` (`{nombre_ORIGINAL:
+  conteo}` recortado al top 5), `clientes_incluidos`, `clientes_con_error`,
+  `origen` (`"vista"` | `"cierre"`) y `capturado_en`.
+- **La supresión K=3 y el saneo se aplican AL LEER**, no al guardar
+  (`plataforma_tendencia.publicar_fila` reusa `_pct`, `_plata`, `_top` y
+  `_suprimir_celda_chica` de `plataforma_metricas` — cero fórmulas duplicadas).
+  Así la regla de privacidad vive en un solo lugar, el histórico no queda
+  congelado con una supresión vieja, y el día que el umbral suba el histórico
+  entero obedece sin tocar una fila. **`contratos_activos` y `ocupadas` nunca
+  salen** al JSON: son el numerador y el denominador de la propia supresión.
+- **Poblado híbrido, sin job nuevo**:
+  - *Write-through*: `calcular(anio_mes, origen="vista")` hace el upsert justo
+    antes del `return`. Va colgado del **cálculo** y no del endpoint, porque un
+    acierto del cache de 5 min no recalcula nada ni trae los crudos. Si la
+    persistencia falla, `/metricas` responde igual (log y no propaga).
+  - *Cierre automático*: `cerrar_mes_anterior()` al **final** de
+    `_run_lease_maintenance` (ciclo de 12 h), DESPUÉS del recorrido por
+    clientes. Es tarea de la plataforma y no de cada supermercado (se hace una
+    vez por corrida). Si al mes ya cerrado le falta la fila consolidada o la de
+    algún cliente del registro, llama a `calcular(mes, origen="cierre")`; si no
+    falta nada, no hace nada. **Va al final y no al principio a propósito**:
+    cuando falta una fila recorre todas las bases, y hacerlo antes de
+    vencimientos y recordatorios retrasaba ese barrido varios segundos en cada
+    arranque (Render reinicia seguido) y volvía intermitentes los tests de
+    `test_recordatorios.py`, que comparten el hilo de mantenimiento con el
+    fixture `client`.
+  - **El apagado ESPERA al hilo de mantenimiento** (`lifespan`, tope 30 s).
+    Cancelar la tarea asyncio cortaba el `await`, no el hilo: el hilo seguía
+    vivo después del shutdown y, en los tests (misma memoria, `DATABASE_URL`
+    ya apuntando al archivo del test siguiente), terminaba escribiendo el
+    snapshot en la base de OTRO test — `ERROR` intermitentes en el setup del
+    siguiente. La vuelta en curso se guarda en `_mantenimiento_en_vuelo` y el
+    shutdown la `await`ea; el hilo mira `_stop_mantenimiento` entre clientes y
+    antes del cierre mensual, así que normalmente termina en milisegundos.
+  - **Regla del congelado**: el mes EN CURSO se sobreescribe siempre (converge);
+    un mes PASADO se inserta sólo si falta, FILA POR CLIENTE — eso nunca cambia.
+    Un cliente con la base rota **no recibe fila** — un hueco es la verdad, un
+    cero sería una mentira congelada.
+  - **Excepción del congelado, sólo para la fila `__consolidado__`**: si una
+    captura de un mes YA PASADO inserta al menos una fila por cliente que
+    faltaba (un cliente nuevo con historia retroactiva, o una base que estuvo
+    rota durante el cierre y ahora se pudo leer), la consolidada de ESE período
+    se **reconstruye** a partir de TODAS las filas por cliente ya persistidas
+    (no sólo las de esta captura), en la misma transacción del upsert —
+    `persistir_snapshots` en `app/plataforma_tendencia.py`. El total nunca
+    puede contradecir a sus sumandos, ni siquiera congelado. El ponderado (Σ/Σ)
+    de la reconstrucción usa el mismo helper compartido que arma el
+    consolidado la primera vez: `consolidar_crudos` en
+    `app/plataforma_metricas.py`. Cuando la captura tiene en memoria los
+    crudos de TODOS los clientes con fila persistida, la reconstrucción es
+    EXACTA; si algún cliente persistido no fue leído en esta captura (base
+    rota ahora mismo), se reconstruye sumando desde disco — exacto para
+    ingreso/ocupación/contratos/sedes, pero **aproximado para usuarios y
+    proveedores** (en disco sólo sobrevive el conteo de usuarios, no los ids
+    para deduplicar entre clientes, ni el conteo completo de cada proveedor,
+    sólo su top-5). Limitación conocida, aceptada: prioriza que los campos
+    load-bearing del bug queden bien.
+- **`GET /api/plataforma/tendencia?cliente=<slug|__consolidado__>&meses=N`**
+  (default consolidado / 12, máx 24). `require_operador`, ruta **literal
+  declarada justo después de `/metricas`** y antes de `/supresiones/{id}` y
+  `/clientes/{slug}`. **No abre ninguna base de cliente**: lee sólo el registro.
+  Sin cache (son N filas de una tabla indexada). `meses` fuera de rango → 422;
+  slug inexistente → 404 con texto FIJO ("No hay un cliente con ese código.").
+  La serie trae **siempre N meses consecutivos** terminando en el mes en curso
+  (UTC), del más viejo al más nuevo: un mes sin fila sale con `sin_dato: true` y
+  todo en `null` en vez de omitirse (un hueco callado en un gráfico de línea se
+  lee como una caída), y el mes en curso va marcado `parcial: true`.
+- **Consolidado ponderado (Σ/Σ)**: la fila guarda SUMAS, nunca promedios, y el
+  canon promedio y la ocupación se derivan al leer. Guardar el promedio ya
+  calculado dejaría sin sumandos y la única cuenta posible pasaría a ser el
+  promedio de promedios — la equivocada (la lección de vitrinas).
+- **Bitácora**: cada consulta anota `accion="tendencia"` en
+  `bitacora_plataforma`, con el alcance completo como QUÉ de la línea
+  (`periodo = "<cliente>:<desde>..<hasta>"`, p. ej.
+  `"__consolidado__:2025-10..2026-09"`) — lo consultado acá es un rango, no un mes.
+- Login legado, redacción por rol y JWT intocados.
+
+**Pendientes conocidos de la fase:**
+
+- **Un cliente con la base rota deja el cierre "incompleto" para siempre**:
+  `cerrar_mes_anterior()` compara contra `ClienteRow`, así que mientras a ese
+  cliente le falte la fila del mes anterior, cada corrida del ciclo (12 h)
+  vuelve a recorrer todas las bases. Es idempotente y barato en la escala
+  actual, pero es trabajo repetido: la alternativa (anotar "este mes ya se
+  intentó") pedía una tabla o una columna más.
+- ~~El primer mes de vida de un cliente puede quedar con el consolidado
+  incompleto~~ — **arreglado**: si el ciclo cierra el mes anterior antes de que
+  un cliente nuevo exista (o antes de que su base se pudiera leer) y después
+  aparece su fila, el consolidado de ese mes **se recompone** en vez de quedar
+  congelado sin él (ver "Excepción del congelado" arriba). Test
+  `test_BUG_consolidado_congelado_no_incluye_al_cliente_que_llego_despues` en
+  `backend/tests/test_tendencia_conciliacion.py` (ya no `xfail`).
+- El histórico **no se rellena hacia atrás**: la serie arranca vacía y se llena
+  mes a mes desde el despliegue. Un backfill sería inventar datos.
+
 ### Pendientes conocidos: clientes y plataforma
 
 - **R-3 (menor)**: el tope de 2 fundaciones es count+insert sin barrera en la

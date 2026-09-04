@@ -28,6 +28,9 @@ from pydantic import BaseModel
 from app.auth import require_auth
 from app.clientes import sesion_registro
 from app.plataforma_estado import ESTADOS_CUENTA, es_operador, invalidar_cache_estado
+# Los defaults de `/tendencia` (Fase 5). Se importan del módulo que los define
+# para que el contrato del endpoint y el de la serie no se puedan separar.
+from app.plataforma_tendencia import CONSOLIDADO_SLUG, MESES_DEFAULT
 
 router = APIRouter(prefix="/plataforma", tags=["plataforma"])
 
@@ -85,6 +88,61 @@ def metricas_del_negocio(
             email=email,
             accion="metricas",
             periodo=anio_mes,
+            en=datetime.now(timezone.utc),
+        ))
+        reg.commit()
+    finally:
+        reg.close()
+
+    return cuerpo
+
+
+# ─── Tendencia temporal (Fase 5) ──────────────────────────────────────────────
+#
+# Ruta LITERAL, declarada junto a `/metricas` y ANTES de las paramétricas
+# `/clientes/{slug}` y `/supresiones/{solicitud_id}` — la regla dura de orden de
+# rutas de FastAPI. Es la MISMA frontera del operador que `/metricas`: sólo
+# lectura, sólo agregados, con bitácora; nunca filas de negocio ni datos de
+# usuarios finales. No abre ninguna base de cliente — lee sólo el snapshot del
+# registro (`snapshot_metricas`), donde la supresión K=3 y el saneo se aplican al
+# leer, reusando la lógica de `plataforma_metricas`.
+
+@router.get("/tendencia")
+def tendencia_del_negocio(
+    cliente: str = CONSOLIDADO_SLUG,
+    meses: int = MESES_DEFAULT,
+    email: str = Depends(require_operador),
+):
+    """La serie de tiempo de los agregados públicos, por cliente o consolidada.
+
+    ``?cliente=<slug|__consolidado__>`` (default el consolidado) y ``?meses=N``
+    (default 12, acotado a 1..24). Un ``meses`` fuera de rango es 422 y un
+    ``cliente`` que no existe es 404: ni uno ni otro se caen al default en
+    silencio — el operador que teclea mal tiene que enterarse, igual que con el
+    período de ``/metricas``.
+
+    **La bitácora se escribe SIEMPRE**, con acción ``"tendencia"``. El QUÉ de la
+    línea es el alcance completo —``"<cliente>:<desde>..<hasta>"``— porque acá lo
+    consultado no es un mes sino un rango: sin los extremos, saber que alguien
+    miró la tendencia no dice qué tendencia miró. Va DESPUÉS de leer: si la
+    lectura fallara, no habría acceso que anotar.
+    """
+    from app.models.plataforma import BitacoraPlataforma
+    from app.plataforma_tendencia import ClienteDesconocido, MesesInvalidos, serie
+
+    try:
+        cuerpo = serie(cliente, meses)
+    except MesesInvalidos as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except ClienteDesconocido as e:
+        raise HTTPException(status_code=404, detail="No hay un cliente con ese código.") from e
+
+    reg = sesion_registro()
+    try:
+        reg.add(BitacoraPlataforma(
+            email=email,
+            accion="tendencia",
+            periodo=f"{cuerpo['cliente']}:{cuerpo['desde']}..{cuerpo['hasta']}",
             en=datetime.now(timezone.utc),
         ))
         reg.commit()

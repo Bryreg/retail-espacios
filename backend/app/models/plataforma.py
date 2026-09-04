@@ -7,9 +7,17 @@ Se leen y escriben SOLO con ``clientes.sesion_registro()``.
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text, UniqueConstraint
 
 from app.database import Base
+
+# El slug reservado de la fila consolidada de ``snapshot_metricas``. Se define en
+# ``app/plataforma_tendencia.py`` —que es quien la escribe y quien la lee— y se
+# reexporta acá para que el modelo se pueda entender sin saltar de archivo. Los
+# guiones bajos de los extremos lo dejan fuera del alcance de ``SLUG_VALIDO``
+# (``clientes.py`` exige empezar por letra): ningún cliente real puede llamarse
+# así, ni siquiera por accidente, así que la fila consolidada nunca colisiona.
+from app.plataforma_tendencia import CONSOLIDADO_SLUG  # noqa: F401
 
 
 class EstadoCliente(Base):
@@ -97,4 +105,90 @@ class BitacoraPlataforma(Base):
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
         index=True,
+    )
+
+
+class SnapshotMetricas(Base):
+    """La foto mensual de los agregados CRUDOS de un cliente — el histórico (Fase 5).
+
+    El endpoint de métricas de la Fase 4 es una foto del mes que se le pida, y el
+    sistema no guardaba historia: no había forma de contestar «¿estamos mejorando
+    o empeorando?», que es la primera pregunta de una asesoría recurrente. Esta
+    tabla persiste, mes a mes, los SUMANDOS con los que ``plataforma_metricas``
+    arma sus números publicados.
+
+    Cuatro decisiones que la definen:
+
+    · **Guarda CRUDOS, nunca públicos.** ``ocupadas``, ``contratos_activos``,
+      ``canon_total`` y el conteo por proveedor son los mismos ``crudos`` que
+      ``_metricas_de_un_cliente`` ya calcula. La supresión de celda chica (K=3) y
+      el saneo del nombre del proveedor se aplican AL LEER la serie, reusando la
+      MISMA lógica de ``plataforma_metricas`` — así la regla de privacidad vive
+      en un solo lugar y el histórico no queda congelado con una supresión vieja
+      (ni con un saneo viejo, el día que el saneo mejore).
+
+    · **Ni un id, ni un correo, ni un nombre de persona.** ``usuarios`` es un
+      CONTEO, no una lista: el cálculo en vivo sí maneja ids para poder
+      deduplicar a la misma persona con cuenta en dos supermercados, pero eso se
+      resuelve en memoria al capturar y a disco baja sólo el número. Un
+      histórico es justamente lo que no conviene que acumule identificadores.
+
+    · **Vive en el REGISTRO, tabla nueva, sin migración.** ``create_all()`` la
+      crea igual que ``estados_cliente`` y ``bitacora_plataforma``: cero columnas
+      agregadas a ninguna tabla existente, y jamás se escribe en la base de un
+      cliente —el camino de métricas la abre en sólo lectura por diseño—.
+
+    · **Idempotente por ``(cliente_slug, periodo)``.** El mes en curso converge
+      (se sobreescribe en cada vista, hasta que el mes cierra); un mes ya pasado
+      se congela la primera vez que se lo captura, porque volver a calcularlo
+      hoy daría los contratos vigentes HOY, no los de aquel mes. El ``UNIQUE``
+      es lo que hace del upsert una operación segura de repetir.
+
+    La fila con ``cliente_slug == CONSOLIDADO_SLUG`` es el total de la plataforma
+    de ese mes: se guarda calculada, y no se suma al vuelo al leer, porque la
+    lista de clientes de hace seis meses no es la de hoy — un cliente dado de
+    baja seguiría restando de su propio pasado.
+    """
+
+    __tablename__ = "snapshot_metricas"
+    __table_args__ = (
+        UniqueConstraint("cliente_slug", "periodo", name="uq_snapshot_cliente_periodo"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    # El slug del cliente, o `CONSOLIDADO_SLUG` para la fila del total.
+    cliente_slug = Column(String, nullable=False, index=True)
+    # "YYYY-MM" del período capturado.
+    periodo = Column(String, nullable=False, index=True)
+
+    # ── Los crudos ────────────────────────────────────────────────────────────
+    sedes_con_plano = Column(Integer, nullable=False, default=0)
+    espacios_comercializables = Column(Integer, nullable=False, default=0)
+    ocupadas = Column(Integer, nullable=False, default=0)
+    contratos_activos = Column(Integer, nullable=False, default=0)
+    canon_total = Column(Float, nullable=False, default=0.0)
+    # Un CONTEO. Por cliente, cuántas cuentas tienen membresía activa; en la fila
+    # consolidada, cuántas personas DISTINTAS hay en toda la plataforma (la misma
+    # persona con cuenta en dos supermercados es una sola). Ver arriba: los ids
+    # se usan para deduplicar al capturar y no se persisten.
+    usuarios = Column(Integer, nullable=False, default=0)
+    # JSON: {nombre_ORIGINAL_del_proveedor: nº de contratos activos}, recortado a
+    # las 5 entradas top. Se guarda el nombre SIN sanear porque el saneo se
+    # aplica al leer; se guardan sólo 5 porque es lo máximo que el JSON público
+    # puede mostrar y el resto sería histórico de proveedores que nadie va a ver.
+    proveedores_json = Column(Text, nullable=False, default="{}")
+
+    # ── Cuántos clientes hay detrás del número (sólo tienen sentido en el
+    #    consolidado; por cliente, `clientes_incluidos` es 1 y el otro es NULL) ──
+    clientes_incluidos = Column(Integer, nullable=True)
+    clientes_con_error = Column(Integer, nullable=True)
+
+    # "vista" (write-through al mirar las métricas) | "cierre" (ciclo de
+    # mantenimiento). Es lo que permite distinguir un mes que alguien miró de uno
+    # que el sistema cerró solo, sin tener que adivinarlo por la hora.
+    origen = Column(String, nullable=False, default="vista")
+    capturado_en = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
     )

@@ -18,6 +18,7 @@ import {
   Barras, BarraFila, EstadoPill, etiquetaEstado, Suprimido, SinDato,
   TablaScroll, TablaHead, TablaHeadCelda, Fila,
 } from "../components/plataforma/consola";
+import { PanelTendencia, useTendencia } from "../components/plataforma/tendencia";
 
 // ─── /plataforma — Fase 4: ruta propia del operador ─────────────────────────
 //
@@ -647,19 +648,41 @@ export default function Plataforma() {
   const [metricasError, setMetricasError] = useState<string | null>(null);
   const [metricasLoading, setMetricasLoading] = useState(false);
 
+  // Sube en cada resolución (éxito o error) de `cargarMetricas` -- la
+  // tendencia se dispara DESPUÉS, nunca antes: el backend hace write-through
+  // del snapshot del mes en curso al calcular métricas, así que pedir la
+  // tendencia antes de que eso corra deja el mes actual como "sin dato".
+  const [metricasVersion, setMetricasVersion] = useState(0);
+
   const cargarMetricas = (p: string) => {
     setMetricasLoading(true);
     setMetricasError(null);
     getMetricasPlataforma(p)
       .then(setMetricas)
       .catch((err) => setMetricasError(describeError(err, "No se pudieron leer las métricas.")))
-      .finally(() => setMetricasLoading(false));
+      .finally(() => {
+        setMetricasLoading(false);
+        setMetricasVersion((v) => v + 1);
+      });
   };
 
   useEffect(() => {
     if (operador === "si") cargarMetricas(periodo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [operador, periodo]);
+
+  // ── Tendencia temporal (Fase 5) ────────────────────────────────────────────
+  //
+  // Reusa la lista de clientes que la página YA cargó (`getClientesPlataforma`
+  // arriba) -- ni un fetch nuevo de clientes. Se recarga al cambiar cliente o
+  // meses, y cada vez que las métricas terminan de resolver (incluye la
+  // primera carga del período inicial).
+  const tend = useTendencia();
+
+  useEffect(() => {
+    if (operador === "si" && metricasVersion > 0) tend.cargar(tend.cliente, tend.meses);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [operador, metricasVersion, tend.cliente, tend.meses]);
 
   const metricasPorSlug = useMemo(() => {
     const mapa = new Map<string, ClienteMetricas>();
@@ -810,6 +833,17 @@ export default function Plataforma() {
                 )}
               </TablaScroll>
             </Panel>
+
+            <PanelTendencia
+              clientes={clientes}
+              tendencia={tend.tendencia}
+              loading={tend.loading}
+              error={tend.error}
+              cliente={tend.cliente}
+              meses={tend.meses}
+              onCambiarCliente={tend.setCliente}
+              onCambiarMeses={tend.setMeses}
+            />
 
             <SupresionesSection />
           </div>

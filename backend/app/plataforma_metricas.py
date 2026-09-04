@@ -438,20 +438,6 @@ def _metricas_de_un_cliente(cliente, reg, desde: date, hasta: date) -> tuple[dic
 
     ids_usuarios, ultimo_acceso = _usuarios_del_cliente(reg, cliente.slug)
 
-    publicas = {
-        "sedes_con_plano": sedes,
-        "espacios_comercializables": len(caras),
-        "ocupacion_pct": _pct(ocupadas, len(caras)),
-        "canon_promedio_mensual": _plata(canon_total / len(contratos)) if contratos else None,
-        "ingreso_contratado_mes": _plata(canon_total),
-        "top_proveedores": _top(conteo_proveedores),
-        "usuarios_con_cuenta": len(ids_usuarios),
-        "ultimo_acceso": ultimo_acceso.isoformat() if ultimo_acceso else None,
-    }
-    # Con menos de K contratos, los tres campos de plata de ESTA fila se
-    # suprimen. Los `crudos` que se devuelven abajo son los datos SUBYACENTES
-    # completos: el consolidado se calcula con ellos, no con lo que se publica.
-    _suprimir_celda_chica(publicas, len(contratos))
     crudos = {
         "sedes": sedes,
         "caras": len(caras),
@@ -461,7 +447,41 @@ def _metricas_de_un_cliente(cliente, reg, desde: date, hasta: date) -> tuple[dic
         "proveedores": conteo_proveedores,
         "usuarios": ids_usuarios,
     }
+    # Los públicos se derivan SIEMPRE de los crudos, por `publicas_desde_crudos`
+    # -- el mismo camino que relee la serie histórica (Fase 5,
+    # `app/plataforma_tendencia.py`): un único lugar donde el crudo se vuelve
+    # público y donde se aplica la supresión K=3. `ultimo_acceso` es lo único
+    # que no sale de los crudos -- vive en el registro, no en la base de
+    # negocio -- así que se agrega aparte; K=3 no lo toca (una fecha no revela
+    # ningún importe).
+    publicas = publicas_desde_crudos(crudos)
+    publicas["ultimo_acceso"] = ultimo_acceso.isoformat() if ultimo_acceso else None
     return publicas, crudos
+
+
+def publicas_desde_crudos(crudos: dict) -> dict:
+    """Los agregados PÚBLICOS de un cliente a partir de sus ``crudos``, con K=3.
+
+    Es la frontera única entre el sumando crudo y el número publicado: la usan
+    el endpoint de métricas (Fase 4, vía ``_metricas_de_un_cliente``) y la serie
+    de tiempo (Fase 5, ``app/plataforma_tendencia.py``), de modo que la
+    supresión de celda chica y el saneo del nombre del proveedor viven en un
+    solo sitio. No incluye ``sedes_con_plano`` ni ``ultimo_acceso`` -- ese
+    último no es un crudo de negocio -- para que la serie histórica, que no
+    los guarda igual, use exactamente esta función tal cual.
+    """
+    contratos = crudos["contratos"]
+    caras = crudos["caras"]
+    publicas = {
+        "sedes_con_plano": crudos["sedes"],
+        "espacios_comercializables": caras,
+        "ocupacion_pct": _pct(crudos["ocupadas"], caras),
+        "canon_promedio_mensual": _plata(crudos["canon_total"] / contratos) if contratos else None,
+        "ingreso_contratado_mes": _plata(crudos["canon_total"]),
+        "top_proveedores": _top(crudos["proveedores"]),
+        "usuarios_con_cuenta": len(crudos["usuarios"]),
+    }
+    return _suprimir_celda_chica(publicas, contratos)
 
 
 # ─── El cálculo completo ──────────────────────────────────────────────────────
@@ -470,12 +490,17 @@ def _ahora_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def calcular(anio_mes: str) -> dict:
+def calcular(anio_mes: str, origen: str = "vista") -> dict:
     """El cuerpo completo de ``GET /api/plataforma/metricas``, sin caché.
 
     Recorre TODAS las filas de ``clientes`` del registro — activas e inactivas,
     y los suspendidos incluidos: el operador necesita ver el negocio completo,
     y una cuenta cortada por impago es justamente la que hay que poder mirar.
+
+    ``origen`` sólo ETIQUETA el snapshot que este cálculo deja de paso (Fase 5):
+    ``"vista"`` cuando lo disparó alguien mirando el panel, ``"cierre"`` cuando
+    lo disparó el ciclo de mantenimiento. No cambia una sola cuenta ni un solo
+    campo del JSON que se devuelve.
     """
     from app.clientes import Cliente, sesion_registro
     from app.models.models import ClienteRow
@@ -500,6 +525,11 @@ def calcular(anio_mes: str) -> dict:
 
         clientes: list[dict] = []
         acumulado: list[dict] = []
+        # Los crudos de los clientes LEGIBLES, indexados por slug: es lo único
+        # que le falta al snapshot de la Fase 5 y ya está calculado acá. Se lleva
+        # aparte de `acumulado` —que es una lista y le alcanza— porque el
+        # snapshot necesita saber DE QUIÉN es cada crudo.
+        crudos_por_slug: dict[str, dict] = {}
         for cliente, estado in objetivos:
             fila = {
                 "slug": cliente.slug,
@@ -519,9 +549,30 @@ def calcular(anio_mes: str) -> dict:
             else:
                 fila["metricas"] = publicas
                 acumulado.append(crudos)
+                # Sólo los clientes legibles se snapshotean (Fase 5): una base
+                # rota no deja crudos que guardar, igual que no suma al
+                # consolidado -- la serie de ese cliente tendrá un hueco ese mes.
+                crudos_por_slug[cliente.slug] = crudos
             clientes.append(fila)
     finally:
         reg.close()
+
+    # Write-through de la serie histórica (Fase 5, `app/plataforma_tendencia.py`):
+    # cada cálculo REAL deja o actualiza el snapshot del período por cliente.
+    # Tolerante a fallos: si la persistencia falla, las métricas se devuelven
+    # igual -- la foto del panel no depende de que la historia se haya podido
+    # guardar. Va acá, no en el caché (`metricas_del_periodo`), porque lo que
+    # hay que capturar es el cálculo, y un acierto de caché no recalcula nada
+    # (ni trae los crudos que hacen falta para el snapshot).
+    #
+    # El import es LOCAL: `plataforma_tendencia` importa de este módulo a nivel
+    # de archivo (reusa `_pct`, `_plata`, `_top` y `_suprimir_celda_chica`), así
+    # que hacerlo arriba cerraría el ciclo.
+    try:
+        from app.plataforma_tendencia import persistir_snapshots
+        persistir_snapshots(anio_mes, clientes, crudos_por_slug, origen)
+    except Exception:  # noqa: BLE001
+        log.exception("No se pudo persistir el snapshot de la serie de tendencia para %s", anio_mes)
 
     return {
         "periodo": {
@@ -536,8 +587,61 @@ def calcular(anio_mes: str) -> dict:
     }
 
 
-def _consolidar(total_clientes: int, clientes: list[dict], acumulado: list[dict]) -> dict:
-    """El consolidado, sumando SÓLO los clientes legibles.
+def consolidar_crudos(acumulado: list[dict]) -> dict:
+    """La suma CRUDA (Σ), sin K=3 ni saneo, de una lista de ``crudos``.
+
+    Es el paso compartido entre dos consumidores con necesidades distintas:
+    ``consolidar_agregado`` (abajo), que le aplica K=3 y el saneo de proveedor
+    para devolver el JSON PÚBLICO del consolidado de ``/metricas``; y
+    ``app.plataforma_tendencia.persistir_snapshots`` (Fase 5), que guarda estos
+    números tal cual — la fila ``__consolidado__`` de ``snapshot_metricas``
+    también es un CRUDO, igual que la de cada cliente, porque K=3 se aplica al
+    LEER la serie (``publicar_fila``), no al escribirla.
+
+    Un único lugar para el ponderado (Σ/Σ, nunca promedio de promedios) evita
+    que la tendencia reimplemente esta suma por su cuenta — que es justamente
+    cómo apareció BUG-1: reconstruir el consolidado desde las filas por
+    cliente ya persistidas necesitaba la misma aritmética que arma el
+    consolidado la primera vez.
+
+    Con un único elemento en ``acumulado`` da exactamente sus propios crudos:
+    así también sirve para el punto de UN cliente, sin una segunda fórmula.
+    """
+    proveedores: dict[str, int] = {}
+    for a in acumulado:
+        for nombre, cuantos in a["proveedores"].items():
+            proveedores[nombre] = proveedores.get(nombre, 0) + cuantos
+
+    # Distintos: la misma persona puede tener cuenta en dos supermercados y no
+    # por eso son dos usuarios de la plataforma.
+    usuarios: set = set()
+    for a in acumulado:
+        usuarios.update(a["usuarios"])
+
+    return {
+        "sedes": sum(a["sedes"] for a in acumulado),
+        "caras": sum(a["caras"] for a in acumulado),
+        "ocupadas": sum(a["ocupadas"] for a in acumulado),
+        "contratos": sum(a["contratos"] for a in acumulado),
+        "canon_total": sum(a["canon_total"] for a in acumulado),
+        "proveedores": proveedores,
+        "usuarios": usuarios,
+    }
+
+
+def consolidar_agregado(acumulado: list[dict]) -> dict:
+    """El agregado consolidado PÚBLICO (ponderado, con K=3) de una lista de ``crudos``.
+
+    SÓLO la cuenta del negocio — sin ``clientes_total`` ni ``clientes_con_error``,
+    que son de la foto del panel (Fase 4) y no tienen sentido en un punto de la
+    serie histórica. La usa el consolidado de ``/metricas`` (envuelto por
+    ``_consolidar``, abajo). La tendencia (Fase 5,
+    ``app/plataforma_tendencia.py``) NO pasa por esta función: la fila
+    ``__consolidado__`` que persiste es un CRUDO (arma el suyo con
+    ``consolidar_crudos`` de arriba, sin K=3), y aplica K=3 recién al leer,
+    con ``publicar_fila``. Ambas comparten el mismo ponderado (Σ/Σ) por la
+    misma ``consolidar_crudos`` — un solo lugar para la aritmética, aunque el
+    JSON que produce cada una sea distinto.
 
     Las dos cuentas que no se pueden hacer promediando promedios:
 
@@ -547,40 +651,39 @@ def _consolidar(total_clientes: int, clientes: list[dict], acumulado: list[dict]
     · **ocupación consolidada** = Σ ocupadas / Σ comercializables, por lo mismo:
       una sede chica al 100 % no compensa a una grande al 10 %.
     """
-    con_error = sum(1 for c in clientes if c["error"] is not None)
-
-    caras = sum(a["caras"] for a in acumulado)
-    ocupadas = sum(a["ocupadas"] for a in acumulado)
-    contratos = sum(a["contratos"] for a in acumulado)
-    canon_total = sum(a["canon_total"] for a in acumulado)
-
-    proveedores: dict[str, int] = {}
-    for a in acumulado:
-        for nombre, cuantos in a["proveedores"].items():
-            proveedores[nombre] = proveedores.get(nombre, 0) + cuantos
-
-    # Distintos: la misma persona puede tener cuenta en dos supermercados y no
-    # por eso son dos usuarios de la plataforma.
-    usuarios: set[int] = set()
-    for a in acumulado:
-        usuarios.update(a["usuarios"])
-
-    consolidado = {
-        "clientes_total": total_clientes,
-        "clientes_con_error": con_error,
-        "sedes_con_plano": sum(a["sedes"] for a in acumulado),
-        "espacios_comercializables": caras,
-        "ocupacion_pct": _pct(ocupadas, caras),
+    crudo = consolidar_crudos(acumulado)
+    contratos = crudo["contratos"]
+    canon_total = crudo["canon_total"]
+    agregado = {
+        "sedes_con_plano": crudo["sedes"],
+        "espacios_comercializables": crudo["caras"],
+        "ocupacion_pct": _pct(crudo["ocupadas"], crudo["caras"]),
         "canon_promedio_mensual": _plata(canon_total / contratos) if contratos else None,
         "ingreso_contratado_mes": _plata(canon_total),
-        "top_proveedores": _top(proveedores),
-        "usuarios_con_cuenta": len(usuarios),
+        "top_proveedores": _top(crudo["proveedores"]),
+        "usuarios_con_cuenta": len(crudo["usuarios"]),
     }
-    # El consolidado se calcula con los datos SUBYACENTES de todos los clientes
-    # legibles —los suprimidos incluidos: suprimir una fila no puede cambiar el
-    # total del negocio— y aplica la MISMA regla K=3 a su propio nivel. Con dos
-    # contratos en toda la plataforma, el total ES el contrato.
-    return _suprimir_celda_chica(consolidado, contratos)
+    # Se calcula con los datos SUBYACENTES de todos los clientes legibles — los
+    # suprimidos incluidos: suprimir una fila no puede cambiar el total del
+    # negocio — y aplica la MISMA regla K=3 a su propio nivel. Con dos contratos
+    # en toda la plataforma, el total ES el contrato.
+    return _suprimir_celda_chica(agregado, contratos)
+
+
+def _consolidar(total_clientes: int, clientes: list[dict], acumulado: list[dict]) -> dict:
+    """El consolidado del panel de ``/metricas``: el agregado ponderado más el
+    conteo de clientes.
+
+    El agregado del negocio lo hace ``consolidar_agregado`` (compartido con la
+    tendencia); acá sólo se le anteponen ``clientes_total`` y
+    ``clientes_con_error``, que son de la foto de ESTE mes y no de la serie.
+    """
+    con_error = sum(1 for c in clientes if c["error"] is not None)
+    return {
+        "clientes_total": total_clientes,
+        "clientes_con_error": con_error,
+        **consolidar_agregado(acumulado),
+    }
 
 
 # ─── Caché de 5 minutos ───────────────────────────────────────────────────────

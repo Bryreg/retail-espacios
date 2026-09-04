@@ -1,0 +1,1631 @@
+diff --git a/backend/app/database.py b/backend/app/database.py
+index cf13193..303634d 100644
+--- a/backend/app/database.py
++++ b/backend/app/database.py
+@@ -1,7 +1,8 @@
+ import os
+ 
+ from fastapi import Request
+-from sqlalchemy import create_engine
++from sqlalchemy import create_engine, event
++from sqlalchemy.engine import Engine
+ from sqlalchemy.orm import DeclarativeBase, sessionmaker
+ 
+ _raw_url = os.getenv("DATABASE_URL", "sqlite:///./retail_espacios.db")
+@@ -15,6 +16,36 @@ engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args=_connect_args)
+ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+ 
+ 
++# ─── SQLite: convivencia de escritores (dev/test) ─────────────────────────────
++#
++# En SQLite hay varios escritores a la vez contra el MISMO archivo: el ciclo de
++# mantenimiento en su hilo (vencer contratos, purgar bitácora, cerrar el mes de
++# la serie de tendencia) corre en paralelo con las peticiones, y —como el
++# registro y la base "de siempre" comparten archivo— vencen sobre el mismo
++# fichero. Sin un `busy_timeout`, un segundo escritor no espera: falla en el acto
++# con "database is locked" / "readonly database". El PRAGMA hace que espere su
++# turno (30 s) en vez de fallar. En Postgres (producción) este camino ni se toca
++# —el `connect_args` de SQLite ya no aplica— y el MVCC del motor resuelve lo
++# mismo sin ayuda. Se registra a nivel de la CLASE `Engine` para cubrir de una
++# todos los motores del proceso: el registro y el de cada cliente, creados en
++# `app/clientes.py`.
++#
++# NO se activa WAL a propósito: dejaría ficheros `-wal`/`-shm` que el arnés de
++# pruebas (que borra `retail_espacios.db`/`recabra_*.db` entre pruebas, no sus
++# laterales) no limpia, y como las bases de cliente reusan el nombre por slug
++# entre pruebas, un `-wal` viejo contaminaría la prueba siguiente. El
++# `busy_timeout` alcanza para la contención real sin ese riesgo.
++if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
++
++    @event.listens_for(Engine, "connect")
++    def _sqlite_pragmas(dbapi_conn, _record):  # noqa: ANN001
++        cur = dbapi_conn.cursor()
++        try:
++            cur.execute("PRAGMA busy_timeout=30000")  # 30 s: esperar, no fallar
++        finally:
++            cur.close()
++
++
+ class Base(DeclarativeBase):
+     pass
+ 
+diff --git a/backend/app/main.py b/backend/app/main.py
+index 2f613d8..1b29e54 100644
+--- a/backend/app/main.py
++++ b/backend/app/main.py
+@@ -105,7 +105,7 @@ REMINDER_INTERVAL_SECONDS = 12 * 60 * 60  # every 12 hours
+ _stop_mantenimiento = threading.Event()
+ 
+ 
+-def _run_lease_maintenance():
++def _run_lease_maintenance(incluir_cierre_mensual: bool = True):
+     """Expire stale leases and send expiry reminders (runs in a worker thread).
+ 
+     Recorre **todos los clientes**. Cada supermercado tiene su propia base, sus
+@@ -113,6 +113,12 @@ def _run_lease_maintenance():
+     mantenimiento se hace una vez por cada uno. Si uno falla, los demás siguen:
+     un problema en la base de un cliente no puede dejar sin recordatorios a los
+     otros.
++
++    ``incluir_cierre_mensual`` gobierna el cierre de la serie de tendencia
++    (Fase 5). Se salta en el pase inmediato del arranque —donde el resto del
++    proceso todavía está sembrando y escribiendo el registro— y corre recién en
++    los pases programados: el cierre es una red de seguridad de cadencia mensual,
++    no algo que deba pelear por el registro contra el propio arranque.
+     """
+     from app.clientes import listar, sesion_de
+     from app.routers.spaces import expire_leases
+@@ -134,14 +140,32 @@ def _run_lease_maintenance():
+         finally:
+             db.close()
+ 
++    # Cierre automático del mes (Fase 5): snapshotea el MES YA CERRADO si aún le
++    # falta a algún cliente, para que la serie de tendencia no dependa de que
++    # alguien haya abierto la consola ese mes. Va DESPUÉS del recorrido y en su
++    # propio try/except: es tolerante igual que el resto —una falla acá no puede
++    # dejar sin mantenimiento (ni sin arranque) al servidor— y sólo lee las bases
++    # de cliente, escribiendo el snapshot en el registro.
++    if not incluir_cierre_mensual or _stop_mantenimiento.is_set():
++        return
++    try:
++        from app.plataforma_tendencia import cerrar_mes_anterior
++        cerrar_mes_anterior()
++    except Exception:
++        logger.exception("El cierre mensual de la serie de tendencia falló")
++
+ 
+ async def _lease_maintenance_loop():
+     """Run maintenance at startup and then every 12 hours. Never dies on errors."""
++    primer_pase = True
+     while True:
+         try:
+-            await asyncio.to_thread(_run_lease_maintenance)
++            # El cierre mensual de la serie se salta en el pase de arranque (el
++            # registro todavía se está sembrando) y corre en los programados.
++            await asyncio.to_thread(_run_lease_maintenance, not primer_pase)
+         except Exception:
+             logger.exception("Error en el ciclo de mantenimiento de contratos")
++        primer_pase = False
+         await asyncio.sleep(REMINDER_INTERVAL_SECONDS)
+ 
+ 
+diff --git a/backend/app/models/plataforma.py b/backend/app/models/plataforma.py
+index dc0c0c0..16af1c2 100644
+--- a/backend/app/models/plataforma.py
++++ b/backend/app/models/plataforma.py
+@@ -7,7 +7,7 @@ Se leen y escriben SOLO con ``clientes.sesion_registro()``.
+ """
+ from datetime import datetime, timezone
+ 
+-from sqlalchemy import Column, DateTime, Integer, String, UniqueConstraint
++from sqlalchemy import Column, DateTime, Float, Integer, String, UniqueConstraint
+ 
+ from app.database import Base
+ 
+@@ -98,3 +98,65 @@ class BitacoraPlataforma(Base):
+         nullable=False,
+         index=True,
+     )
++
++
++class SnapshotMetricas(Base):
++    """Foto mensual de los agregados CRUDOS de un cliente, para la serie de tiempo (Fase 5).
++
++    El endpoint de métricas es una foto del mes elegido: el sistema no guardaba
++    historia, así que no podía contestar «¿estamos mejorando o empeorando?».
++    Esta tabla persiste, mes a mes y por cliente, los SUMANDOS crudos con los que
++    ``plataforma_metricas`` arma sus públicos — y NADA público se guarda acá.
++
++    Tres decisiones que la definen:
++
++    · **Guarda CRUDOS, no públicos.** ``contratos_activos``, ``ocupadas``,
++      ``canon_total``, el conteo por proveedor y los ids de usuario son los
++      mismos ``crudos`` que ``_metricas_de_un_cliente`` ya calcula. La supresión
++      K=3 y el saneo del nombre del proveedor se aplican AL LEER la serie,
++      reusando la MISMA lógica de ``plataforma_metricas`` — la regla de
++      privacidad vive en un solo lugar y el histórico nunca queda «congelado»
++      con una supresión vieja. Por eso ninguna columna es un valor publicado.
++
++    · **Vive en el REGISTRO, tabla nueva, sin migración.** ``create_all()`` la
++      crea igual que ``estados_cliente`` y ``bitacora_plataforma``: cero columnas
++      agregadas a tablas existentes, y jamás se escribe en la base de un cliente
++      (que este camino abre en sólo lectura por diseño). Se llena por
++      write-through al calcular métricas y por el cierre del ciclo de
++      mantenimiento — ver ``app/plataforma_tendencia.py``.
++
++    · **Idempotente por ``(cliente_slug, periodo)``.** El mes en curso converge
++      (se actualiza en cada vista); un mes ya cerrado se congela la primera vez
++      que se lo captura. El ``UNIQUE`` hace del upsert una operación segura de
++      repetir.
++    """
++
++    __tablename__ = "snapshot_metricas"
++    __table_args__ = (
++        UniqueConstraint("cliente_slug", "periodo", name="uq_snapshot_cliente_periodo"),
++    )
++
++    id = Column(Integer, primary_key=True, index=True)
++    cliente_slug = Column(String, nullable=False, index=True)
++    # "YYYY-MM" del período capturado.
++    periodo = Column(String, nullable=False, index=True)
++
++    # ── Los crudos: exactamente el dict `crudos` de `_metricas_de_un_cliente`. ──
++    sedes = Column(Integer, nullable=False, default=0)
++    espacios_comercializables = Column(Integer, nullable=False, default=0)  # `caras`
++    ocupadas = Column(Integer, nullable=False, default=0)
++    contratos_activos = Column(Integer, nullable=False, default=0)
++    canon_total = Column(Float, nullable=False, default=0.0)
++    # {nombre_original_del_proveedor: nº de contratos}. JSON; el saneo del nombre
++    # se aplica AL LEER, no acá — así el histórico no se congela con un saneo viejo.
++    proveedores_json = Column(String, nullable=False, default="{}")
++    # [ids de usuario con membresía activa]. Se guardan los ids —números— para
++    # que el consolidado pueda deduplicar a la misma persona con cuenta en dos
++    # supermercados, igual que el cálculo en vivo. Nunca un correo ni un nombre.
++    usuarios_json = Column(String, nullable=False, default="[]")
++
++    capturado_en = Column(
++        DateTime(timezone=True),
++        default=lambda: datetime.now(timezone.utc),
++        nullable=False,
++    )
+diff --git a/backend/app/plataforma_metricas.py b/backend/app/plataforma_metricas.py
+index aa5baa7..e4c9212 100644
+--- a/backend/app/plataforma_metricas.py
++++ b/backend/app/plataforma_metricas.py
+@@ -438,20 +438,6 @@ def _metricas_de_un_cliente(cliente, reg, desde: date, hasta: date) -> tuple[dic
+ 
+     ids_usuarios, ultimo_acceso = _usuarios_del_cliente(reg, cliente.slug)
+ 
+-    publicas = {
+-        "sedes_con_plano": sedes,
+-        "espacios_comercializables": len(caras),
+-        "ocupacion_pct": _pct(ocupadas, len(caras)),
+-        "canon_promedio_mensual": _plata(canon_total / len(contratos)) if contratos else None,
+-        "ingreso_contratado_mes": _plata(canon_total),
+-        "top_proveedores": _top(conteo_proveedores),
+-        "usuarios_con_cuenta": len(ids_usuarios),
+-        "ultimo_acceso": ultimo_acceso.isoformat() if ultimo_acceso else None,
+-    }
+-    # Con menos de K contratos, los tres campos de plata de ESTA fila se
+-    # suprimen. Los `crudos` que se devuelven abajo son los datos SUBYACENTES
+-    # completos: el consolidado se calcula con ellos, no con lo que se publica.
+-    _suprimir_celda_chica(publicas, len(contratos))
+     crudos = {
+         "sedes": sedes,
+         "caras": len(caras),
+@@ -461,9 +447,39 @@ def _metricas_de_un_cliente(cliente, reg, desde: date, hasta: date) -> tuple[dic
+         "proveedores": conteo_proveedores,
+         "usuarios": ids_usuarios,
+     }
++    # Los públicos se derivan SIEMPRE de los crudos, por el mismo camino que la
++    # serie histórica (`plataforma_tendencia`): un único lugar donde el crudo se
++    # vuelve público y donde se aplica la supresión K=3. `ultimo_acceso` es lo
++    # único que no sale del crudo —vive en el registro, no en la base de negocio—
++    # y se agrega aparte; K=3 no lo toca (una fecha no revela ningún importe).
++    publicas = publicas_desde_crudos(crudos)
++    publicas["ultimo_acceso"] = ultimo_acceso.isoformat() if ultimo_acceso else None
+     return publicas, crudos
+ 
+ 
++def publicas_desde_crudos(crudos: dict) -> dict:
++    """Los agregados PÚBLICOS de un cliente a partir de sus ``crudos``, con K=3.
++
++    Es la frontera única entre el sumando crudo y el número publicado: la usan
++    el endpoint de métricas (Fase 4) y la serie de tiempo (Fase 5), de modo que
++    la supresión de celda chica y el saneo del nombre del proveedor viven en un
++    solo sitio. No incluye ``ultimo_acceso`` —que no es un crudo de negocio— para
++    que la serie histórica, que no lo guarda, use exactamente esta función.
++    """
++    contratos = crudos["contratos"]
++    caras = crudos["caras"]
++    publicas = {
++        "sedes_con_plano": crudos["sedes"],
++        "espacios_comercializables": caras,
++        "ocupacion_pct": _pct(crudos["ocupadas"], caras),
++        "canon_promedio_mensual": _plata(crudos["canon_total"] / contratos) if contratos else None,
++        "ingreso_contratado_mes": _plata(crudos["canon_total"]),
++        "top_proveedores": _top(crudos["proveedores"]),
++        "usuarios_con_cuenta": len(crudos["usuarios"]),
++    }
++    return _suprimir_celda_chica(publicas, contratos)
++
++
+ # ─── El cálculo completo ──────────────────────────────────────────────────────
+ 
+ def _ahora_iso() -> str:
+@@ -500,6 +516,7 @@ def calcular(anio_mes: str) -> dict:
+ 
+         clientes: list[dict] = []
+         acumulado: list[dict] = []
++        capturados: list[tuple[str, dict]] = []
+         for cliente, estado in objetivos:
+             fila = {
+                 "slug": cliente.slug,
+@@ -519,10 +536,26 @@ def calcular(anio_mes: str) -> dict:
+             else:
+                 fila["metricas"] = publicas
+                 acumulado.append(crudos)
++                # Sólo los clientes legibles se snapshotean: una base rota no
++                # deja fila (no hay crudos que guardar), igual que no suma al
++                # consolidado. La serie de ese cliente tendrá un hueco ese mes.
++                capturados.append((cliente.slug, crudos))
+             clientes.append(fila)
+     finally:
+         reg.close()
+ 
++    # Write-through de la serie histórica (Fase 5): cada cálculo REAL deja o
++    # actualiza el snapshot del período por cliente. Tolerante a fallos: si la
++    # persistencia falla, las métricas se devuelven igual — la foto del panel no
++    # depende de que la historia se haya podido guardar. Va acá, no en el caché,
++    # porque lo que hay que capturar es el cálculo, y un acierto de caché no
++    # recalcula nada (ni trae los crudos).
++    try:
++        from app.plataforma_tendencia import persistir_snapshots
++        persistir_snapshots(anio_mes, capturados)
++    except Exception:  # noqa: BLE001
++        log.exception("No se pudo persistir el snapshot de la serie para %s", anio_mes)
++
+     return {
+         "periodo": {
+             "anio_mes": anio_mes,
+@@ -536,8 +569,14 @@ def calcular(anio_mes: str) -> dict:
+     }
+ 
+ 
+-def _consolidar(total_clientes: int, clientes: list[dict], acumulado: list[dict]) -> dict:
+-    """El consolidado, sumando SÓLO los clientes legibles.
++def consolidar_agregado(acumulado: list[dict]) -> dict:
++    """El agregado consolidado (ponderado) de una lista de ``crudos``, con K=3.
++
++    SÓLO la cuenta del negocio — sin ``clientes_total`` ni ``clientes_con_error``,
++    que son de la foto del panel y no de la serie de tiempo. La usan el
++    consolidado del endpoint de métricas (Fase 4, envuelta por ``_consolidar``) y
++    cada punto consolidado de la serie histórica (Fase 5), para que el promedio
++    ponderado —y no el promedio de promedios— viva en un solo lugar.
+ 
+     Las dos cuentas que no se pueden hacer promediando promedios:
+ 
+@@ -547,8 +586,6 @@ def _consolidar(total_clientes: int, clientes: list[dict], acumulado: list[dict]
+     · **ocupación consolidada** = Σ ocupadas / Σ comercializables, por lo mismo:
+       una sede chica al 100 % no compensa a una grande al 10 %.
+     """
+-    con_error = sum(1 for c in clientes if c["error"] is not None)
+-
+     caras = sum(a["caras"] for a in acumulado)
+     ocupadas = sum(a["ocupadas"] for a in acumulado)
+     contratos = sum(a["contratos"] for a in acumulado)
+@@ -565,9 +602,7 @@ def _consolidar(total_clientes: int, clientes: list[dict], acumulado: list[dict]
+     for a in acumulado:
+         usuarios.update(a["usuarios"])
+ 
+-    consolidado = {
+-        "clientes_total": total_clientes,
+-        "clientes_con_error": con_error,
++    agregado = {
+         "sedes_con_plano": sum(a["sedes"] for a in acumulado),
+         "espacios_comercializables": caras,
+         "ocupacion_pct": _pct(ocupadas, caras),
+@@ -576,11 +611,26 @@ def _consolidar(total_clientes: int, clientes: list[dict], acumulado: list[dict]
+         "top_proveedores": _top(proveedores),
+         "usuarios_con_cuenta": len(usuarios),
+     }
+-    # El consolidado se calcula con los datos SUBYACENTES de todos los clientes
+-    # legibles —los suprimidos incluidos: suprimir una fila no puede cambiar el
+-    # total del negocio— y aplica la MISMA regla K=3 a su propio nivel. Con dos
+-    # contratos en toda la plataforma, el total ES el contrato.
+-    return _suprimir_celda_chica(consolidado, contratos)
++    # Se calcula con los datos SUBYACENTES de todos los clientes legibles —los
++    # suprimidos incluidos: suprimir una fila no puede cambiar el total del
++    # negocio— y aplica la MISMA regla K=3 a su propio nivel. Con dos contratos
++    # en toda la plataforma, el total ES el contrato.
++    return _suprimir_celda_chica(agregado, contratos)
++
++
++def _consolidar(total_clientes: int, clientes: list[dict], acumulado: list[dict]) -> dict:
++    """El consolidado del panel: el agregado ponderado más el conteo de clientes.
++
++    El agregado del negocio lo hace ``consolidar_agregado`` (compartido con la
++    serie); acá sólo se le anteponen ``clientes_total`` y ``clientes_con_error``,
++    que son de la foto y no de la tendencia.
++    """
++    con_error = sum(1 for c in clientes if c["error"] is not None)
++    return {
++        "clientes_total": total_clientes,
++        "clientes_con_error": con_error,
++        **consolidar_agregado(acumulado),
++    }
+ 
+ 
+ # ─── Caché de 5 minutos ───────────────────────────────────────────────────────
+diff --git a/backend/app/plataforma_tendencia.py b/backend/app/plataforma_tendencia.py
+new file mode 100644
+index 0000000..de1aacb
+--- /dev/null
++++ b/backend/app/plataforma_tendencia.py
+@@ -0,0 +1,296 @@
++"""Serie de tiempo de las métricas del negocio (Fase 5).
++
++El endpoint de métricas (Fase 4) es una foto del mes elegido: no guarda historia,
++así que no puede contestar «¿estamos mejorando o empeorando?». Este módulo
++persiste un snapshot mensual de los agregados CRUDOS por cliente
++(``snapshot_metricas``, tabla nueva del registro) y expone la serie de los
++últimos N meses con los agregados PÚBLICOS por mes, lista para graficar.
++
++**No duplica una sola fórmula de ``plataforma_metricas``.** El snapshot guarda
++los mismos ``crudos`` que ``_metricas_de_un_cliente`` ya calcula, y al leer la
++serie se reusan ``publicas_desde_crudos`` (por cliente, con K=3) y
++``consolidar_agregado`` (consolidado ponderado, con K=3). La supresión de celda
++chica y el saneo del nombre del proveedor viven en un solo lugar, y el histórico
++nunca queda «congelado» con una supresión vieja: se aplica AL LEER.
++
++**Cómo se llena** (híbrido, sin job nuevo):
++
++* **Write-through** — ``plataforma_metricas.calcular`` llama a
++  ``persistir_snapshots`` en cada cálculo real. El mes en curso converge (se
++  actualiza en cada vista); un mes ya pasado se congela la primera vez que
++  alguien lo mira.
++* **Cierre en mantenimiento** — ``cerrar_mes_anterior`` corre desde
++  ``main.py::_run_lease_maintenance`` (cada 12 h) y captura el MES YA CERRADO si
++  aún le falta a algún cliente, para que la serie no dependa de que alguien haya
++  abierto la consola ese mes.
++
++Ambos caminos son idempotentes (``UNIQUE(cliente_slug, periodo)``, upsert) y
++read-only sobre las bases de cliente: el snapshot sólo escribe en el registro.
++"""
++import json
++import logging
++from datetime import datetime, timezone
++
++from app.plataforma_metricas import (
++    consolidar_agregado,
++    normalizar_periodo,
++    periodo_actual,
++    publicas_desde_crudos,
++    rango_del_periodo,
++)
++
++log = logging.getLogger("recabra.plataforma.tendencia")
++
++MESES_DEFAULT = 12
++MESES_MAXIMO = 24
++
++
++# ─── El período, un mes a la vez ──────────────────────────────────────────────
++
++def mes_anterior(anio_mes: str) -> str:
++    """El "YYYY-MM" del mes calendario justo anterior."""
++    anio, mes = int(anio_mes[:4]), int(anio_mes[5:7])
++    if mes == 1:
++        return f"{anio - 1:04d}-12"
++    return f"{anio:04d}-{mes - 1:02d}"
++
++
++def ultimos_periodos(anio_mes: str, meses: int) -> list[str]:
++    """Los ``meses`` períodos que terminan en ``anio_mes``, del más viejo al más nuevo."""
++    serie = [anio_mes]
++    for _ in range(meses - 1):
++        serie.append(mes_anterior(serie[-1]))
++    return list(reversed(serie))
++
++
++# ─── Write-through / cierre: el upsert del snapshot ───────────────────────────
++
++def _crudos_a_columnas(crudos: dict) -> dict:
++    """Del dict ``crudos`` de ``plataforma_metricas`` a las columnas del snapshot."""
++    return {
++        "sedes": crudos["sedes"],
++        "espacios_comercializables": crudos["caras"],
++        "ocupadas": crudos["ocupadas"],
++        "contratos_activos": crudos["contratos"],
++        "canon_total": crudos["canon_total"],
++        "proveedores_json": json.dumps(crudos["proveedores"]),
++        # Ordenados para que la fila sea estable entre capturas del mismo mes.
++        "usuarios_json": json.dumps(sorted(crudos["usuarios"])),
++    }
++
++
++def _columnas_a_crudos(fila) -> dict:
++    """Reconstruye el dict ``crudos`` desde una fila de ``snapshot_metricas``.
++
++    Es la inversa exacta de ``_crudos_a_columnas``: lo que sale de acá se puede
++    dar tal cual a ``publicas_desde_crudos`` / ``consolidar_agregado``.
++    """
++    return {
++        "sedes": fila.sedes,
++        "caras": fila.espacios_comercializables,
++        "ocupadas": fila.ocupadas,
++        "contratos": fila.contratos_activos,
++        "canon_total": fila.canon_total,
++        "proveedores": json.loads(fila.proveedores_json or "{}"),
++        "usuarios": json.loads(fila.usuarios_json or "[]"),
++    }
++
++
++def persistir_snapshots(anio_mes: str, capturados: list[tuple[str, dict]]) -> None:
++    """Upsert del snapshot de ``anio_mes`` para cada ``(slug, crudos)`` capturado.
++
++    Reglas de convergencia/congelado:
++
++    · **Un período FUTURO no se snapshotea.** Mirar un mes que todavía no llegó
++      no es historia; guardarlo metería una fila prematura (y vacía) en la serie.
++    · **El mes en curso se ACTUALIZA** en cada captura: converge al valor final
++      a medida que el mes avanza y se firman o vencen contratos.
++    · **Un mes ya cerrado se CONGELA**: se inserta la primera vez y no se vuelve
++      a tocar, aunque alguien vuelva a mirar ese mes más tarde.
++
++    Idempotente por ``UNIQUE(cliente_slug, periodo)``. Escribe SÓLO en el
++    registro; ninguna base de cliente se abre acá.
++    """
++    if anio_mes > periodo_actual():
++        return  # el futuro no es historia
++
++    from app.clientes import sesion_registro
++    from app.models.plataforma import SnapshotMetricas
++
++    actualizar = anio_mes == periodo_actual()
++    ahora = datetime.now(timezone.utc)
++
++    reg = sesion_registro()
++    try:
++        existentes = {
++            f.cliente_slug: f
++            for f in reg.query(SnapshotMetricas).filter(
++                SnapshotMetricas.periodo == anio_mes
++            ).all()
++        }
++        for slug, crudos in capturados:
++            columnas = _crudos_a_columnas(crudos)
++            fila = existentes.get(slug)
++            if fila is None:
++                reg.add(SnapshotMetricas(
++                    cliente_slug=slug, periodo=anio_mes, capturado_en=ahora, **columnas,
++                ))
++            elif actualizar:
++                for k, v in columnas.items():
++                    setattr(fila, k, v)
++                fila.capturado_en = ahora
++            # else: mes cerrado ya capturado → se deja congelado.
++        reg.commit()
++    finally:
++        reg.close()
++
++
++def cerrar_mes_anterior() -> None:
++    """Captura el mes ya cerrado si aún le falta a algún cliente activo.
++
++    Corre desde el ciclo de mantenimiento. Es idempotente y barato en régimen:
++    si todos los clientes activos ya tienen su fila del mes anterior, no recalcula
++    nada. Si falta al menos uno, recalcula ese período —que hace el write-through
++    (insert-only, porque es un mes pasado)— reusando ``calcular``, tolerante a
++    fallos por cliente igual que el resto del mantenimiento.
++    """
++    from app.clientes import listar, sesion_registro
++    from app.models.plataforma import SnapshotMetricas
++    from app.plataforma_metricas import calcular
++
++    cerrado = mes_anterior(periodo_actual())
++
++    activos = {c.slug for c in listar()}
++    if not activos:
++        return
++
++    reg = sesion_registro()
++    try:
++        ya = {
++            f.cliente_slug
++            for f in reg.query(SnapshotMetricas.cliente_slug).filter(
++                SnapshotMetricas.periodo == cerrado
++            ).all()
++        }
++    finally:
++        reg.close()
++
++    if activos.issubset(ya):
++        return  # todos los activos ya tienen el mes cerrado: nada que hacer
++
++    # `calcular` recorre las bases en secuencia, tolerante a fallos por cliente,
++    # y su write-through inserta las filas que falten del mes cerrado.
++    calcular(cerrado)
++
++
++# ─── La serie, para el endpoint ───────────────────────────────────────────────
++
++CONSOLIDADO = "__consolidado__"
++
++
++class ClienteDesconocido(ValueError):
++    """El ``cliente`` pedido no es ``__consolidado__`` ni un slug del registro."""
++
++
++def _meses_saneado(crudo) -> int:
++    """``meses`` acotado a 1..24; el default si no vino nada. Nunca levanta."""
++    if crudo is None:
++        return MESES_DEFAULT
++    try:
++        n = int(crudo)
++    except (TypeError, ValueError):
++        return MESES_DEFAULT
++    return max(1, min(MESES_MAXIMO, n))
++
++
++def _existe_cliente(slug: str) -> bool:
++    from app.clientes import sesion_registro
++    from app.models.models import ClienteRow
++
++    reg = sesion_registro()
++    try:
++        return reg.query(ClienteRow).filter(ClienteRow.slug == slug).first() is not None
++    finally:
++        reg.close()
++
++
++def tendencia(cliente: str, meses_crudo) -> dict:
++    """La serie de los últimos N meses para un cliente o para el consolidado.
++
++    Devuelve SÓLO los meses que tienen dato en el alcance pedido (los huecos —un
++    cliente que aún no existía, un mes sin snapshot— no se rellenan con ceros),
++    en orden cronológico. Cada punto trae los agregados PÚBLICOS de ese mes (K=3
++    y saneo aplicados al leer) y una marca ``parcial`` para el mes en curso, que
++    todavía está convergiendo.
++
++    ``suficiente`` es ``False`` con menos de dos puntos: una tendencia es un
++    cambio en el tiempo, y con un solo mes no hay cambio que mostrar — el
++    frontend pinta un estado vacío honesto en vez de una línea de un punto.
++    """
++    from app.clientes import sesion_registro
++    from app.models.plataforma import SnapshotMetricas
++
++    alcance = (cliente or CONSOLIDADO).strip()
++    if alcance != CONSOLIDADO and not _existe_cliente(alcance):
++        raise ClienteDesconocido(alcance)
++
++    meses = _meses_saneado(meses_crudo)
++    actual = periodo_actual()
++    periodos = ultimos_periodos(actual, meses)
++    ventana = set(periodos)
++
++    reg = sesion_registro()
++    try:
++        q = reg.query(SnapshotMetricas).filter(SnapshotMetricas.periodo.in_(periodos))
++        if alcance != CONSOLIDADO:
++            q = q.filter(SnapshotMetricas.cliente_slug == alcance)
++        filas = q.all()
++    finally:
++        reg.close()
++
++    # Agrupar por período los crudos de cada fila (una por cliente).
++    por_periodo: dict[str, list[dict]] = {}
++    for fila in filas:
++        if fila.periodo not in ventana:
++            continue
++        por_periodo.setdefault(fila.periodo, []).append(_columnas_a_crudos(fila))
++
++    serie = []
++    for periodo in periodos:
++        crudos_mes = por_periodo.get(periodo)
++        if not crudos_mes:
++            continue  # hueco: sin snapshot en este alcance → no se inventa
++        if alcance == CONSOLIDADO:
++            publicas = consolidar_agregado(crudos_mes)
++        else:
++            publicas = publicas_desde_crudos(crudos_mes[0])
++        serie.append({
++            "periodo": periodo,
++            "parcial": periodo == actual,
++            "metricas": publicas,
++        })
++
++    return {
++        "cliente": alcance,
++        "meses_pedidos": meses,
++        "generado_en": datetime.now(timezone.utc)
++            .isoformat(timespec="seconds").replace("+00:00", "Z"),
++        "suficiente": len(serie) >= 2,
++        "serie": serie,
++    }
++
++
++# Re-exports usados por el router (para no reimportar de dos módulos).
++__all__ = [
++    "tendencia",
++    "persistir_snapshots",
++    "cerrar_mes_anterior",
++    "ultimos_periodos",
++    "mes_anterior",
++    "ClienteDesconocido",
++    "normalizar_periodo",
++    "rango_del_periodo",
++    "CONSOLIDADO",
++    "MESES_DEFAULT",
++    "MESES_MAXIMO",
++]
+diff --git a/backend/app/routers/plataforma.py b/backend/app/routers/plataforma.py
+index ae06b63..2e5fc0b 100644
+--- a/backend/app/routers/plataforma.py
++++ b/backend/app/routers/plataforma.py
+@@ -94,6 +94,58 @@ def metricas_del_negocio(
+     return cuerpo
+ 
+ 
++# ─── Tendencia temporal (Fase 5) ──────────────────────────────────────────────
++#
++# Ruta LITERAL, declarada junto a `/metricas` y ANTES de las paramétricas
++# `/clientes/{slug}` y `/supresiones/{solicitud_id}` — la regla dura de orden de
++# rutas de FastAPI. Es la MISMA frontera del operador que `/metricas`: sólo
++# lectura, sólo agregados, con bitácora; nunca filas de negocio ni datos de
++# usuarios finales. No abre ninguna base de cliente — lee sólo el snapshot del
++# registro (`snapshot_metricas`), donde la supresión K=3 y el saneo se aplican al
++# leer, reusando la lógica de `plataforma_metricas`.
++
++@router.get("/tendencia")
++def tendencia_del_negocio(
++    cliente: str | None = None,
++    meses: int | None = None,
++    email: str = Depends(require_operador),
++):
++    """La serie de tiempo de los agregados públicos, por cliente o consolidada.
++
++    ``?cliente=<slug|__consolidado__>`` (default consolidado) y ``?meses=N``
++    (default 12, acotado a 1..24). Un ``cliente`` que no existe es 404 — un slug
++    inventado no se cae a "consolidado" en silencio.
++
++    **La bitácora se escribe SIEMPRE**, con acción ``"tendencia"`` y el alcance
++    pedido como QUÉ de la línea: lo que se registra es que este operador vio la
++    evolución de este cliente (o del consolidado). Va DESPUÉS de leer: si la
++    lectura fallara, no habría acceso que anotar.
++    """
++    from app.models.plataforma import BitacoraPlataforma
++    from app.plataforma_tendencia import ClienteDesconocido, tendencia
++
++    try:
++        cuerpo = tendencia(cliente, meses)
++    except ClienteDesconocido as e:
++        raise HTTPException(status_code=404, detail="No hay un cliente con ese código.") from e
++
++    reg = sesion_registro()
++    try:
++        reg.add(BitacoraPlataforma(
++            email=email,
++            accion="tendencia",
++            # El alcance consultado es el QUÉ de esta línea (el slug del cliente,
++            # o `__consolidado__`), no un mes: una tendencia abarca N meses.
++            periodo=cuerpo["cliente"],
++            en=datetime.now(timezone.utc),
++        ))
++        reg.commit()
++    finally:
++        reg.close()
++
++    return cuerpo
++
++
+ class PatchEstadoIn(BaseModel):
+     estado: str
+     motivo: str
+diff --git a/backend/tests/test_metricas_ataques.py b/backend/tests/test_metricas_ataques.py
+index 49a6b94..41dd48e 100644
+--- a/backend/tests/test_metricas_ataques.py
++++ b/backend/tests/test_metricas_ataques.py
+@@ -1247,12 +1247,22 @@ def test_m24_dos_consultas_no_escriben_una_sola_fila_en_ninguna_tabla(client, mo
+     assert despues == antes, f"las métricas escribieron: {antes} -> {despues}"
+ 
+ 
+-def test_m25_lo_unico_que_crece_en_el_registro_es_la_bitacora(client, monkeypatch):
+-    """M-25 — La otra mitad de M-24: el registro tampoco se mueve, salvo la bitácora.
++def test_m25_lo_unico_que_crece_en_el_registro_es_la_bitacora_y_el_snapshot(client, monkeypatch):
++    """M-25 — La otra mitad de M-24: el registro no se mueve, salvo la bitácora y
++    —desde la Fase 5— el snapshot de la serie de tendencia.
+ 
+     Si una consulta de métricas tocara ``usuarios``, ``membresias`` o
+     ``estados_cliente`` —por ejemplo "marcando" al cliente visitado— la promesa
+     de solo lectura sería falsa aunque las bases de negocio quedaran intactas.
++
++    **Enmienda de la Fase 5 (write-through):** la spec de tendencia hace que cada
++    cálculo real de métricas deje/actualice ``snapshot_metricas`` en el registro
++    (agregados CRUDOS por cliente, nunca PII: la supresión K=3 y el saneo se
++    aplican al leer). Así que el snapshot AHORA crece junto con la bitácora —es
++    conducta intencional y documentada, no una fuga—. Lo que la promesa sigue
++    garantizando, y este test blinda, es que NINGUNA tabla de identidad ni de
++    estado del cliente se toca, y que la segunda consulta (caché) no vuelve a
++    escribir el snapshot.
+     """
+     from sqlalchemy import inspect, text
+ 
+@@ -1267,12 +1277,23 @@ def test_m25_lo_unico_que_crece_en_el_registro_es_la_bitacora(client, monkeypatc
+ 
+     antes = foto()
+     _pedir(client, cab, "2026-09")
++    n_tras_1 = foto()
+     _pedir(client, cab, "2026-09")   # la segunda sale del caché y anota igual
+     despues = foto()
+ 
+     crecieron = {t: (antes[t], despues[t]) for t in antes if antes[t] != despues[t]}
+-    assert set(crecieron) == {"bitacora_plataforma"}, crecieron
++    # Lo ÚNICO que crece: la bitácora (el acceso) y el snapshot (write-through).
++    assert set(crecieron) <= {"bitacora_plataforma", "snapshot_metricas"}, crecieron
++    assert "bitacora_plataforma" in crecieron
++    # Ninguna tabla de identidad ni de estado del cliente se movió.
++    for prohibida in ("usuarios", "membresias", "estados_cliente", "fundaciones",
++                      "solicitudes_supresion", "alta_attempts"):
++        assert prohibida not in crecieron, prohibida
++    # La bitácora anota las DOS consultas (también la cacheada).
+     assert crecieron["bitacora_plataforma"][1] - crecieron["bitacora_plataforma"][0] == 2
++    # El write-through NO se repite en el hit de caché: el snapshot quedó igual
++    # entre la primera y la segunda consulta.
++    assert despues.get("snapshot_metricas") == n_tras_1.get("snapshot_metricas")
+ 
+ 
+ def test_m26_el_cliente_suspendido_aparece_con_sus_metricas_y_sin_su_motivo(client, monkeypatch):
+diff --git a/backend/tests/test_plataforma_tendencia.py b/backend/tests/test_plataforma_tendencia.py
+new file mode 100644
+index 0000000..44c4a45
+--- /dev/null
++++ b/backend/tests/test_plataforma_tendencia.py
+@@ -0,0 +1,416 @@
++"""Fase 5: serie de tiempo de las métricas (histórico + tendencia para asesoría).
++
++Se prueba la cadena entera de la fase, contra datos sembrados a mano:
++
++* **Snapshot CRUDO + lectura pública**: la tabla nueva del registro guarda los
++  sumandos crudos; la supresión K=3 y el saneo se aplican AL LEER, reusando la
++  lógica de ``plataforma_metricas`` — un solo lugar para la privacidad.
++* **Poblado híbrido**: write-through al abrir métricas de un período, y cierre
++  automático del mes ya cerrado desde el mantenimiento, sin abrir la consola.
++* **El endpoint** ``GET /api/plataforma/tendencia``: consolidado ponderado y por
++  cliente, mes en curso parcial, estado insuficiente con < 2 meses, operator-only
++  y con bitácora.
++
++Reusa el andamiaje de ``test_plataforma_metricas`` (identidades falsas, alta
++self-service, sembrado en la base del cliente, operador sin membresías). El
++"mes en curso" es ``periodo_actual()`` en UTC; los datos se siembran en los tres
++meses que terminan hoy para que la serie tenga un pasado congelado y un presente
++parcial de verdad.
++"""
++from datetime import date
++
++from tests.test_plataforma_metricas import (
++    Identidades,
++    _cab,
++    _fundar,
++    _operador_sin_membresias,
++    _sembrar,
++)
++
++from app.plataforma_metricas import periodo_actual
++from app.plataforma_tendencia import mes_anterior, ultimos_periodos
++
++
++# ─── Los tres meses de la ventana ────────────────────────────────────────────
++# Hoy es el mes en curso (parcial); los dos anteriores son pasado (congelado).
++
++ACTUAL = periodo_actual()
++MES_1 = mes_anterior(mes_anterior(ACTUAL))   # el más viejo de los tres
++MES_2 = mes_anterior(ACTUAL)                 # el mes ya cerrado
++MES_3 = ACTUAL                               # el mes en curso, parcial
++
++
++def _rango(anio_mes: str) -> tuple[str, str]:
++    """(desde, hasta) ISO del mes, para acotar un contrato a ese mes exacto."""
++    import calendar
++
++    anio, mes = int(anio_mes[:4]), int(anio_mes[5:7])
++    ultimo = calendar.monthrange(anio, mes)[1]
++    return f"{anio:04d}-{mes:02d}-01", f"{anio:04d}-{mes:02d}-{ultimo:02d}"
++
++
++def _fixtures(sede: str, n: int) -> list:
++    return [{"code": f"E-{i:02d}", "type": "punta", "sede": sede} for i in range(1, n + 1)]
++
++
++def _leases_del_mes(sede: str, anio_mes: str, cuantos: int, canon=100_000.0, prov="Prov"):
++    """`cuantos` contratos activos SÓLO en `anio_mes`, sobre E-01..E-cuantos."""
++    desde, hasta = _rango(anio_mes)
++    return [
++        (f"{sede}-E-{i:02d}", f"{prov}{i}", desde, hasta, canon, True)
++        for i in range(1, cuantos + 1)
++    ]
++
++
++def _tendencia(client, cab, cliente="__consolidado__", meses=None):
++    q = f"?cliente={cliente}"
++    if meses is not None:
++        q += f"&meses={meses}"
++    return client.get(f"/api/plataforma/tendencia{q}", headers=cab)
++
++
++def _pedir_metricas(client, cab, periodo):
++    r = client.get(f"/api/plataforma/metricas?periodo={periodo}", headers=cab)
++    assert r.status_code == 200, r.text
++    return r.json()
++
++
++def _punto(cuerpo, periodo):
++    return next((p for p in cuerpo["serie"] if p["periodo"] == periodo), None)
++
++
++# ─── Escenario: acme con 3/4/5 contratos en los tres meses ───────────────────
++
++def _acme_tres_meses(client, monkeypatch):
++    """Funda acme, siembra 3/4/5 contratos en MES_1/2/3 y captura los tres por
++    write-through (abrir métricas de cada período). Devuelve la cabecera del
++    operador de la consola."""
++    from app.plataforma_metricas import limpiar_cache_metricas
++
++    ids = Identidades(client)
++    _fundar(ids, "uid-acme", "duena@acme.co", "acme", "Acme")
++    contratos = (
++        _leases_del_mes("NAVE", MES_1, 3)
++        + _leases_del_mes("NAVE", MES_2, 4)
++        + _leases_del_mes("NAVE", MES_3, 5)
++    )
++    _sembrar("acme", {"NAVE": _fixtures("NAVE", 5)}, contratos)
++    consola = _operador_sin_membresias(ids, monkeypatch)
++    cab = _cab(consola["token"])
++    limpiar_cache_metricas()
++
++    # Write-through: abrir métricas de cada período deja su snapshot.
++    for p in (MES_1, MES_2, MES_3):
++        _pedir_metricas(client, cab, p)
++    return cab
++
++
++# ════════════════════════════════════════════════════════════════════════════
++# La serie por cliente, contra datos sembrados
++# ════════════════════════════════════════════════════════════════════════════
++
++def test_serie_de_un_cliente_devuelve_los_tres_meses_en_orden(client, monkeypatch):
++    cab = _acme_tres_meses(client, monkeypatch)
++    r = _tendencia(client, cab, cliente="acme")
++    assert r.status_code == 200, r.text
++    cuerpo = r.json()
++
++    assert cuerpo["cliente"] == "acme"
++    assert cuerpo["suficiente"] is True
++    # Cronológico y sólo los meses con dato (los huecos de la ventana no se rellenan).
++    assert [p["periodo"] for p in cuerpo["serie"]] == [MES_1, MES_2, MES_3]
++
++    m1, m2, m3 = (p["metricas"] for p in cuerpo["serie"])
++    assert (m1["ocupacion_pct"], m1["ingreso_contratado_mes"]) == (60.0, 300_000.0)
++    assert (m2["ocupacion_pct"], m2["ingreso_contratado_mes"]) == (80.0, 400_000.0)
++    assert (m3["ocupacion_pct"], m3["ingreso_contratado_mes"]) == (100.0, 500_000.0)
++    assert [p["metricas"]["espacios_comercializables"] for p in cuerpo["serie"]] == [5, 5, 5]
++
++
++def test_el_mes_en_curso_va_marcado_parcial_y_los_pasados_no(client, monkeypatch):
++    cab = _acme_tres_meses(client, monkeypatch)
++    cuerpo = _tendencia(client, cab, cliente="acme").json()
++
++    parciales = {p["periodo"]: p["parcial"] for p in cuerpo["serie"]}
++    assert parciales[MES_1] is False
++    assert parciales[MES_2] is False
++    assert parciales[MES_3] is True  # el mes en curso
++
++
++def test_con_un_solo_mes_la_serie_es_insuficiente(client, monkeypatch):
++    """Una tendencia es un cambio en el tiempo: con un mes no hay tendencia."""
++    from app.plataforma_metricas import limpiar_cache_metricas
++
++    ids = Identidades(client)
++    _fundar(ids, "uid-solo", "duena@solo.co", "solo", "Solo")
++    _sembrar("solo", {"S": _fixtures("S", 3)}, _leases_del_mes("S", MES_3, 3))
++    consola = _operador_sin_membresias(ids, monkeypatch)
++    cab = _cab(consola["token"])
++    limpiar_cache_metricas()
++    _pedir_metricas(client, cab, MES_3)  # sólo el mes en curso
++
++    cuerpo = _tendencia(client, cab, cliente="solo").json()
++    assert [p["periodo"] for p in cuerpo["serie"]] == [MES_3]
++    assert cuerpo["suficiente"] is False  # el frontend pinta estado vacío honesto
++
++
++# ════════════════════════════════════════════════════════════════════════════
++# Consolidado ponderado
++# ════════════════════════════════════════════════════════════════════════════
++
++def test_consolidado_pondera_y_suma_los_clientes_del_mes(client, monkeypatch):
++    """Dos clientes en el mismo mes → el consolidado suma ingreso y pondera ocupación."""
++    from app.plataforma_metricas import limpiar_cache_metricas
++
++    ids = Identidades(client)
++    _fundar(ids, "uid-a", "duena@a.co", "aa", "A")
++    _fundar(ids, "uid-b", "duena@b.co", "bb", "B")
++    # A: 3 caras, 3 ocupadas en MES_2 y MES_3.  B: 4 caras, 2 ocupadas.
++    _sembrar("aa", {"A": _fixtures("A", 3)},
++             _leases_del_mes("A", MES_2, 3) + _leases_del_mes("A", MES_3, 3))
++    _sembrar("bb", {"B": _fixtures("B", 4)},
++             _leases_del_mes("B", MES_2, 2, canon=50_000.0)
++             + _leases_del_mes("B", MES_3, 4, canon=50_000.0))
++    consola = _operador_sin_membresias(ids, monkeypatch)
++    cab = _cab(consola["token"])
++    limpiar_cache_metricas()
++    for p in (MES_2, MES_3):
++        _pedir_metricas(client, cab, p)
++
++    cuerpo = _tendencia(client, cab, cliente="__consolidado__").json()
++    assert cuerpo["cliente"] == "__consolidado__"
++    p3 = _punto(cuerpo, MES_3)["metricas"]
++
++    # Ingreso consolidado = A (3·100k) + B (4·50k) = 300k + 200k = 500k.
++    assert p3["ingreso_contratado_mes"] == 500_000.0
++    # Ocupación ponderada = Σ ocupadas / Σ caras = (3+4)/(3+4) = 100%.
++    assert p3["ocupacion_pct"] == 100.0
++    # Canon promedio PONDERADO = Σ canon / Σ contratos = 500k / 7, no el promedio
++    # de promedios (100k y 50k → 75k).
++    assert p3["canon_promedio_mensual"] == round(500_000.0 / 7, 2)
++    assert p3["canon_promedio_mensual"] != 75_000.0
++
++    # MES_2: A 3·100k + B 2·50k = 400k; ocupación (3+2)/(3+4)=71.4%.
++    p2 = _punto(cuerpo, MES_2)["metricas"]
++    assert p2["ingreso_contratado_mes"] == 400_000.0
++    assert p2["ocupacion_pct"] == round(5 * 100 / 7, 1)
++
++
++# ════════════════════════════════════════════════════════════════════════════
++# K=3 y saneo aplicados POR MES al leer (no congelados en el snapshot)
++# ════════════════════════════════════════════════════════════════════════════
++
++def test_k3_se_aplica_por_mes_en_la_serie(client, monkeypatch):
++    """Un cliente con 2 contratos un mes y 3 el otro: ingreso suprimido sólo el
++    mes de dos, publicado el mes de tres — la supresión se aplica al leer."""
++    from app.plataforma_metricas import limpiar_cache_metricas
++
++    ids = Identidades(client)
++    _fundar(ids, "uid-k", "duena@k.co", "kk", "K")
++    _sembrar("kk", {"K": _fixtures("K", 3)},
++             _leases_del_mes("K", MES_2, 2) + _leases_del_mes("K", MES_3, 3))
++    consola = _operador_sin_membresias(ids, monkeypatch)
++    cab = _cab(consola["token"])
++    limpiar_cache_metricas()
++    for p in (MES_2, MES_3):
++        _pedir_metricas(client, cab, p)
++
++    cuerpo = _tendencia(client, cab, cliente="kk").json()
++    dos = _punto(cuerpo, MES_2)["metricas"]
++    tres = _punto(cuerpo, MES_3)["metricas"]
++
++    # Mes de DOS contratos: los tres campos de plata suprimidos, conteos NO.
++    assert dos["ingreso_contratado_mes"] is None
++    assert dos["canon_promedio_mensual"] is None
++    assert dos["top_proveedores"] == []
++    assert dos["espacios_comercializables"] == 3   # el conteo sobrevive
++    # Mes de TRES: la celda vuelve a ser un agregado.
++    assert tres["ingreso_contratado_mes"] == 300_000.0
++    assert len(tres["top_proveedores"]) == 3
++
++
++def test_el_nombre_del_proveedor_sale_saneado_en_la_serie(client, monkeypatch):
++    """El saneo del contacto se aplica AL LEER la serie, no se congela crudo."""
++    from app.plataforma_metricas import limpiar_cache_metricas
++
++    sucio = "Distribuidora Norte (ventas@norte.example) 300 555 8899"
++    desde, hasta = _rango(MES_3)
++    ids = Identidades(client)
++    _fundar(ids, "uid-s", "duena@s.co", "ss", "S")
++    _sembrar(
++        "ss", {"S": _fixtures("S", 3)},
++        [(f"S-E-{i:02d}", sucio, desde, hasta, 100_000.0, True) for i in (1, 2, 3)],
++    )
++    consola = _operador_sin_membresias(ids, monkeypatch)
++    cab = _cab(consola["token"])
++    limpiar_cache_metricas()
++    _pedir_metricas(client, cab, MES_3)
++
++    cuerpo = _tendencia(client, cab, cliente="ss").json()
++    top = _punto(cuerpo, MES_3)["metricas"]["top_proveedores"]
++    assert len(top) == 1 and top[0]["contratos_activos"] == 3
++    assert "@" not in top[0]["nombre"]
++    assert "555 8899" not in top[0]["nombre"]
++
++
++# ════════════════════════════════════════════════════════════════════════════
++# Poblado: write-through y cierre automático
++# ════════════════════════════════════════════════════════════════════════════
++
++def _snapshot(slug, periodo):
++    from app.clientes import sesion_registro
++    from app.models.plataforma import SnapshotMetricas
++
++    reg = sesion_registro()
++    try:
++        return reg.query(SnapshotMetricas).filter(
++            SnapshotMetricas.cliente_slug == slug,
++            SnapshotMetricas.periodo == periodo,
++        ).first()
++    finally:
++        reg.close()
++
++
++def test_write_through_deja_el_snapshot_al_abrir_metricas(client, monkeypatch):
++    from app.plataforma_metricas import limpiar_cache_metricas
++
++    ids = Identidades(client)
++    _fundar(ids, "uid-w", "duena@w.co", "ww", "W")
++    _sembrar("ww", {"W": _fixtures("W", 5)}, _leases_del_mes("W", MES_3, 5))
++    consola = _operador_sin_membresias(ids, monkeypatch)
++    cab = _cab(consola["token"])
++    limpiar_cache_metricas()
++
++    assert _snapshot("ww", MES_3) is None      # antes de mirar, no hay fila
++    _pedir_metricas(client, cab, MES_3)       # abrir métricas del período
++    fila = _snapshot("ww", MES_3)
++    assert fila is not None
++    # Guarda CRUDOS, no públicos: contratos, canon total, ocupadas.
++    assert fila.contratos_activos == 5
++    assert fila.canon_total == 500_000.0
++    assert fila.ocupadas == 5
++
++
++def test_write_through_congela_el_mes_pasado_y_converge_el_actual(client, monkeypatch):
++    """El mes en curso se actualiza en cada vista; un mes pasado se congela."""
++    from app.plataforma_metricas import limpiar_cache_metricas
++
++    ids = Identidades(client)
++    _fundar(ids, "uid-c", "duena@c.co", "cc", "C")
++    # 3 contratos en el mes pasado y 3 en el actual, misma base.
++    _sembrar("cc", {"C": _fixtures("C", 6)},
++             _leases_del_mes("C", MES_2, 3) + _leases_del_mes("C", MES_3, 3))
++    consola = _operador_sin_membresias(ids, monkeypatch)
++    cab = _cab(consola["token"])
++    limpiar_cache_metricas()
++
++    _pedir_metricas(client, cab, MES_2)
++    congelado_1 = _snapshot("cc", MES_2).capturado_en
++    _pedir_metricas(client, cab, MES_3)
++    actual_1 = _snapshot("cc", MES_3).capturado_en
++
++    # Volver a mirar: el pasado NO se re-captura, el actual sí.
++    limpiar_cache_metricas()
++    _pedir_metricas(client, cab, MES_2)
++    _pedir_metricas(client, cab, MES_3)
++    assert _snapshot("cc", MES_2).capturado_en == congelado_1     # congelado
++    assert _snapshot("cc", MES_3).capturado_en >= actual_1        # convergió
++
++
++def test_cierre_automatico_snapshotea_el_mes_cerrado_sin_abrir_la_consola(client, monkeypatch):
++    """El cierre del mantenimiento captura el mes ya cerrado aunque nadie haya
++    abierto la consola ese mes."""
++    from app.plataforma_metricas import limpiar_cache_metricas
++    from app.plataforma_tendencia import cerrar_mes_anterior
++
++    ids = Identidades(client)
++    _fundar(ids, "uid-m", "duena@m.co", "mm", "M")
++    _sembrar("mm", {"M": _fixtures("M", 4)}, _leases_del_mes("M", MES_2, 4))
++    _operador_sin_membresias(ids, monkeypatch)
++    limpiar_cache_metricas()
++
++    # Nadie abrió las métricas de m para MES_2 (el mes cerrado). El cierre lo captura.
++    assert _snapshot("mm", MES_2) is None
++    cerrar_mes_anterior()
++    fila = _snapshot("mm", MES_2)
++    assert fila is not None and fila.contratos_activos == 4
++
++
++# ════════════════════════════════════════════════════════════════════════════
++# La puerta del operador: 403 / 401, 404, saneo de `meses`, bitácora
++# ════════════════════════════════════════════════════════════════════════════
++
++def test_tendencia_operator_only(client, admin, monkeypatch):
++    monkeypatch.setenv("OPERADOR_EMAILS", "otro@x.co")
++    ids = Identidades(client)
++    cab = _fundar(ids, "uid-nop", "nop@x.co", "nop", "No Op")
++
++    assert client.get("/api/plataforma/tendencia", headers=cab).status_code == 403
++    assert client.get("/api/plataforma/tendencia", headers=admin).status_code == 403
++    assert client.get("/api/plataforma/tendencia").status_code == 401
++
++
++def test_cliente_inexistente_da_404(client, monkeypatch):
++    cab = _acme_tres_meses(client, monkeypatch)
++    r = _tendencia(client, cab, cliente="no-existe-jamas")
++    assert r.status_code == 404
++
++
++def test_meses_se_acota_entre_1_y_24(client, monkeypatch):
++    cab = _acme_tres_meses(client, monkeypatch)
++    assert _tendencia(client, cab, cliente="acme", meses=999).json()["meses_pedidos"] == 24
++    assert _tendencia(client, cab, cliente="acme", meses=0).json()["meses_pedidos"] == 1
++    assert _tendencia(client, cab, cliente="acme").json()["meses_pedidos"] == 12  # default
++
++
++def test_la_bitacora_anota_la_consulta_de_tendencia(client, monkeypatch):
++    from app.clientes import sesion_registro
++    from app.models.plataforma import BitacoraPlataforma
++
++    cab = _acme_tres_meses(client, monkeypatch)
++    _tendencia(client, cab, cliente="acme")
++    _tendencia(client, cab, cliente="__consolidado__")
++
++    reg = sesion_registro()
++    try:
++        lineas = [
++            (f.email, f.accion, f.periodo)
++            for f in reg.query(BitacoraPlataforma)
++            .filter(BitacoraPlataforma.accion == "tendencia")
++            .order_by(BitacoraPlataforma.id)
++            .all()
++        ]
++    finally:
++        reg.close()
++    assert lineas == [
++        ("op@recabra.co", "tendencia", "acme"),
++        ("op@recabra.co", "tendencia", "__consolidado__"),
++    ]
++
++
++# ════════════════════════════════════════════════════════════════════════════
++# Frontera: el JSON de la serie no filtra datos prohibidos
++# ════════════════════════════════════════════════════════════════════════════
++
++def test_la_serie_no_trae_claves_de_negocio_ni_de_usuarios(client, monkeypatch):
++    cab = _acme_tres_meses(client, monkeypatch)
++    cuerpo = _tendencia(client, cab, cliente="__consolidado__").json()
++
++    import json as _json
++    crudo = _json.dumps(cuerpo)
++    for prohibido in ("usuarios_json", "proveedores_json", "canon_total", "ocupadas",
++                      "monthly_rent", "space_id", "supplier_id", "duena@"):
++        assert prohibido not in crudo, prohibido
++    # Los únicos arreglos son `serie` y `top_proveedores`.
++    for p in cuerpo["serie"]:
++        assert set(p.keys()) == {"periodo", "parcial", "metricas"}
++
++
++def test_ultimos_periodos_es_cronologico_y_del_largo_pedido():
++    serie = ultimos_periodos("2026-03", 4)
++    assert serie == ["2025-12", "2026-01", "2026-02", "2026-03"]
++
++
++def test_date_hoy_es_el_mes_actual_sanity():
++    # Ancla de los tests: el mes en curso es hoy en UTC.
++    assert ACTUAL == f"{date.today():%Y-%m}" or ACTUAL == periodo_actual()
+diff --git a/frontend/src/api/plataforma.ts b/frontend/src/api/plataforma.ts
+index ca64a56..683e88f 100644
+--- a/frontend/src/api/plataforma.ts
++++ b/frontend/src/api/plataforma.ts
+@@ -136,3 +136,56 @@ export const getMetricasPlataforma = (periodo?: string): Promise<MetricasPlatafo
+   client
+     .get<MetricasPlataforma>("/plataforma/metricas", { params: periodo ? { periodo } : undefined })
+     .then((r) => r.data);
++
++// ─── Tendencia temporal (Fase 5 plataforma) ─────────────────────────────────
++//
++// La serie histórica de los mismos agregados públicos, mes a mes. El backend la
++// arma leyendo `snapshot_metricas` (tabla nueva del registro) y aplicando la
++// supresión K=3 y el saneo AL LEER, reusando la lógica de `plataforma_metricas`
++// -- así el histórico nunca queda congelado con una privacidad vieja. Nunca trae
++// filas de negocio ni datos de usuarios finales, igual que `/metricas`.
++
++/** El slug reservado para pedir el consolidado ponderado en vez de un cliente. */
++export const TENDENCIA_CONSOLIDADO = "__consolidado__";
++
++/** Agregados públicos de UN mes de la serie. Es el mismo juego de `/metricas`
++ *  sin `ultimo_acceso` (que no tiene sentido histórico). Los montos y la
++ *  ocupación pueden venir `null`: por K=3 (celda chica suprimida ese mes) o por
++ *  no haber denominador -- el frontend los trata como huecos, nunca como 0. */
++export interface AgregadosMes {
++  sedes_con_plano: number;
++  espacios_comercializables: number;
++  ocupacion_pct: number | null;
++  canon_promedio_mensual: number | null;
++  ingreso_contratado_mes: number | null;
++  top_proveedores: ProveedorTop[];
++  usuarios_con_cuenta: number;
++}
++
++export interface PuntoTendencia {
++  /** "YYYY-MM". */
++  periodo: string;
++  /** El mes en curso, que todavía está convergiendo -- se marca como parcial. */
++  parcial: boolean;
++  metricas: AgregadosMes;
++}
++
++export interface Tendencia {
++  /** El slug consultado, o `__consolidado__`. */
++  cliente: string;
++  meses_pedidos: number;
++  generado_en: string;
++  /** `false` con < 2 meses de historia: no hay tendencia que mostrar todavía. */
++  suficiente: boolean;
++  /** Cronológica (del más viejo al más nuevo), sólo los meses con dato. */
++  serie: PuntoTendencia[];
++}
++
++/** `cliente` = un slug o `__consolidado__` (default). `meses` se acota a 1..24
++ *  en el backend. Cada llamada queda anotada en la bitácora del registro. */
++export const getTendencia = (cliente: string, meses?: number): Promise<Tendencia> =>
++  client
++    .get<Tendencia>("/plataforma/tendencia", {
++      params: { cliente, ...(meses ? { meses } : {}) },
++    })
++    .then((r) => r.data);
+diff --git a/frontend/src/components/plataforma/consola.tsx b/frontend/src/components/plataforma/consola.tsx
+index 94a7e83..d54e577 100644
+--- a/frontend/src/components/plataforma/consola.tsx
++++ b/frontend/src/components/plataforma/consola.tsx
+@@ -427,3 +427,125 @@ export function TablaHead({ children }: { children: ReactNode }) {
+ export function Fila({ children }: { children: ReactNode }) {
+   return <div className="con-fila" style={filaBase}>{children}</div>;
+ }
++
++// ═══ Gráfico de LÍNEA con eje desde cero (tendencia = cambio en el tiempo) ═══
++//
++// SVG propio, sin librería de charts (bajo la CSP de Fase 3, que no admite un
++// script externo). Se pinta con los tokens `--con-*`, de modo que cambia de tema
++// con el atributo de la raíz, igual que las barras. Reglas que fija:
++//  · Eje desde CERO siempre: una tendencia se lee por la pendiente, y un eje
++//    recortado la exagera o la aplana. El track 0→máx queda explícito.
++//  · Un `valor` null es un HUECO, no un cero: la línea se corta y el punto no se
++//    dibuja (K=3 o sin denominador ese mes).
++//  · El mes en curso (`parcial`) se marca distinto —anillo hueco + segmento
++//    entrante punteado— porque su número todavía está convergiendo.
++//  · Cada punto es enfocable e inspeccionable (título nativo con el detalle).
++
++export interface PuntoLinea {
++  /** Clave estable del punto ("YYYY-MM"). */
++  periodo: string;
++  /** Etiqueta corta bajo el eje X (p. ej. "sep"). */
++  etiqueta: string;
++  /** El valor del mes, o `null` si ese mes no tiene dato (hueco, no 0). */
++  valor: number | null;
++  /** El mes en curso, que todavía converge. */
++  parcial: boolean;
++  /** Texto del tooltip nativo del punto (lo arma quien llama, ya formateado). */
++  tooltip: string;
++}
++
++const LINEA_W = 620;
++const LINEA_H = 150;
++const LINEA_PAD = { top: 12, right: 14, bottom: 26, left: 44 };
++
++/** Gráfico de línea de una serie temporal. `max` es el tope del eje (desde 0);
++ *  `etiquetaMax`/`etiquetaCero` son las marcas del eje Y ya formateadas. */
++export function LineaTendencia({
++  puntos, max, etiquetaMax, etiquetaCero = "0", color = "var(--con-mag-fill)", titulo,
++}: {
++  puntos: PuntoLinea[];
++  max: number;
++  etiquetaMax: string;
++  etiquetaCero?: string;
++  color?: string;
++  /** Descripción accesible del gráfico entero (`aria-label` del SVG). */
++  titulo: string;
++}) {
++  const innerW = LINEA_W - LINEA_PAD.left - LINEA_PAD.right;
++  const innerH = LINEA_H - LINEA_PAD.top - LINEA_PAD.bottom;
++  const tope = max > 0 ? max : 1;
++
++  const x = (i: number) =>
++    LINEA_PAD.left + (puntos.length <= 1 ? innerW / 2 : (innerW * i) / (puntos.length - 1));
++  const y = (v: number) => LINEA_PAD.top + innerH - (Math.max(0, Math.min(tope, v)) / tope) * innerH;
++
++  // Coordenadas de los puntos con dato; los null se saltan (hueco).
++  const pts = puntos.map((p, i) => ({ ...p, i, cx: x(i), cy: p.valor === null ? null : y(p.valor) }));
++
++  // Segmentos entre puntos con dato CONSECUTIVOS (un null corta la línea). Un
++  // segmento que entra al mes parcial va punteado.
++  const segmentos: { x1: number; y1: number; x2: number; y2: number; punteado: boolean }[] = [];
++  for (let i = 1; i < pts.length; i++) {
++    const a = pts[i - 1];
++    const b = pts[i];
++    if (a.cy === null || b.cy === null) continue;
++    segmentos.push({ x1: a.cx, y1: a.cy, x2: b.cx, y2: b.cy, punteado: b.parcial });
++  }
++
++  const yCero = y(0);
++  const yMax = y(tope);
++  // Con muchos meses, no se etiqueta cada uno: se saltea para no amontonar.
++  const paso = puntos.length > 14 ? 3 : puntos.length > 8 ? 2 : 1;
++
++  return (
++    <svg
++      viewBox={`0 0 ${LINEA_W} ${LINEA_H}`}
++      width="100%"
++      role="img"
++      aria-label={titulo}
++      style={{ display: "block", height: "auto", overflow: "visible" }}
++    >
++      {/* Rejilla: eje cero (abajo) y tope (arriba), con sus marcas a la izquierda. */}
++      <line x1={LINEA_PAD.left} y1={yCero} x2={LINEA_W - LINEA_PAD.right} y2={yCero} stroke="var(--con-line)" strokeWidth={1} />
++      <line x1={LINEA_PAD.left} y1={yMax} x2={LINEA_W - LINEA_PAD.right} y2={yMax} stroke="var(--con-line-soft)" strokeWidth={1} strokeDasharray="2 3" />
++      <text x={LINEA_PAD.left - 6} y={yCero} textAnchor="end" dominantBaseline="middle" fontSize={9.5} fill="var(--con-ink-4)" fontFamily="var(--font-mono)">{etiquetaCero}</text>
++      <text x={LINEA_PAD.left - 6} y={yMax} textAnchor="end" dominantBaseline="middle" fontSize={9.5} fill="var(--con-ink-4)" fontFamily="var(--font-mono)">{etiquetaMax}</text>
++
++      {/* La línea, segmento a segmento (para poder puntear el tramo parcial). */}
++      {segmentos.map((s, k) => (
++        <line
++          key={k}
++          x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2}
++          stroke={color} strokeWidth={2}
++          strokeLinecap="round"
++          strokeDasharray={s.punteado ? "4 3" : undefined}
++        />
++      ))}
++
++      {/* Puntos + etiqueta del mes. El parcial va hueco (anillo). */}
++      {pts.map((p) => (
++        <g key={p.periodo}>
++          {p.cy !== null && (
++            <circle
++              cx={p.cx} cy={p.cy} r={3.5}
++              fill={p.parcial ? "var(--con-surface)" : color}
++              stroke={color} strokeWidth={p.parcial ? 2 : 1}
++              tabIndex={0}
++              className="con-focusable"
++            >
++              <title>{p.tooltip}</title>
++            </circle>
++          )}
++          {p.i % paso === 0 && (
++            <text
++              x={p.cx} y={LINEA_H - 8} textAnchor="middle"
++              fontSize={9.5} fill="var(--con-ink-4)" fontFamily="var(--font-mono)"
++            >
++              {p.etiqueta}{p.parcial ? "*" : ""}
++            </text>
++          )}
++        </g>
++      ))}
++    </svg>
++  );
++}
+diff --git a/frontend/src/pages/Plataforma.tsx b/frontend/src/pages/Plataforma.tsx
+index 7ca7ff2..0683e5b 100644
+--- a/frontend/src/pages/Plataforma.tsx
++++ b/frontend/src/pages/Plataforma.tsx
+@@ -4,8 +4,10 @@ import { LogOut } from "lucide-react";
+ import {
+   AgregadosMetricasCliente,
+   soyOperador, getClientesPlataforma, patchEstadoCliente, getMetricasPlataforma,
++  getTendencia, TENDENCIA_CONSOLIDADO,
+   ESTADOS_CUENTA,
+   type ClientePlataforma, type EstadoCuenta, type MetricasPlataforma, type ClienteMetricas,
++  type Tendencia, type PuntoTendencia,
+ } from "../api/plataforma";
+ import {
+   getSolicitudesSupresion, atenderSupresion, type SolicitudSupresion,
+@@ -17,6 +19,7 @@ import {
+   Panel, EstadoVacio, EstadoError, KpiTile,
+   Barras, BarraFila, EstadoPill, etiquetaEstado, Suprimido, SinDato,
+   TablaScroll, TablaHead, TablaHeadCelda, Fila,
++  LineaTendencia, type PuntoLinea,
+ } from "../components/plataforma/consola";
+ 
+ // ─── /plataforma — Fase 4: ruta propia del operador ─────────────────────────
+@@ -382,6 +385,206 @@ function GraficoProveedores({ metricas }: { metricas: MetricasPlataforma | null
+   );
+ }
+ 
++// ─── Tendencia temporal (Fase 5): gráfico de línea de la evolución ──────────
++//
++// Pregunta de negocio, la primera de una asesoría recurrente: "¿estamos
++// mejorando o empeorando?". Un gráfico de LÍNEA es la forma correcta (cambio en
++// el tiempo), con eje desde cero para no exagerar ni aplanar la pendiente. Se
++// puede mirar el consolidado o un cliente puntual (selector). El mes en curso va
++// marcado como parcial —todavía converge— y con menos de dos meses de historia
++// se muestra un estado vacío honesto en vez de una línea de un punto.
++
++const COP_COMPACTO = new Intl.NumberFormat("es-CO", {
++  style: "currency", currency: "COP", notation: "compact", maximumFractionDigits: 1,
++});
++
++/** "YYYY-MM" → "sep 25" (mes corto + año de dos dígitos), en UTC para no correr
++ *  el mes por zona horaria. */
++const mesCorto = (periodo: string): string => {
++  const [y, m] = periodo.split("-").map(Number);
++  if (!y || !m) return periodo;
++  const d = new Date(Date.UTC(y, m - 1, 1));
++  const mes = d.toLocaleDateString("es-CO", { month: "short", timeZone: "UTC" }).replace(".", "");
++  return `${mes} ${String(y).slice(2)}`;
++};
++
++/** La lectura accionable, SIN inventar: sólo compara meses que existen y tienen
++ *  dato. Devuelve `null` cuando no hay dos puntos con dato que comparar (p. ej.
++ *  el ingreso viene suprimido por K=3 la mayoría de los meses). */
++function lecturaTendencia(
++  puntos: PuntoTendencia[],
++  saca: (m: PuntoTendencia["metricas"]) => number | null,
++  nombre: string,
++  formato: (n: number) => string,
++): string | null {
++  const conDato = puntos.filter((p) => saca(p.metricas) !== null);
++  if (conDato.length < 2) return null;
++
++  const ultimo = conDato[conDato.length - 1];
++  const previo = conDato[conDato.length - 2];
++  const vUlt = saca(ultimo.metricas) as number;
++  const vPre = saca(previo.metricas) as number;
++
++  const nota = ultimo.parcial ? ` (${mesCorto(ultimo.periodo)} en curso, parcial)` : "";
++  let frase: string;
++  if (vPre === 0) {
++    frase = `${nombre}: ${formato(vUlt)} en ${mesCorto(ultimo.periodo)}, desde 0 el mes previo`;
++  } else {
++    const pct = ((vUlt - vPre) / Math.abs(vPre)) * 100;
++    const signo = pct > 0 ? "+" : "";
++    const verbo = pct > 0 ? "subió" : pct < 0 ? "bajó" : "sin cambio";
++    frase = `${nombre} ${verbo} ${signo}${pct.toFixed(1)}% vs ${mesCorto(previo.periodo)} (${formato(vUlt)})`;
++  }
++
++  // Racha: cuántos movimientos consecutivos en la misma dirección terminan en el
++  // último punto. Sólo se nombra si son 3 o más — antes de eso es ruido.
++  let dir = 0;
++  let racha = 0;
++  for (let i = conDato.length - 1; i > 0; i--) {
++    const a = saca(conDato[i - 1].metricas) as number;
++    const b = saca(conDato[i].metricas) as number;
++    const d = Math.sign(b - a);
++    if (d === 0) break;
++    if (dir === 0) dir = d;
++    if (d !== dir) break;
++    racha++;
++  }
++  const cola = racha >= 3 ? ` — ${dir < 0 ? "bajó" : "subió"} ${racha} meses seguidos` : "";
++  return frase + cola + nota;
++}
++
++/** Arma los puntos del gráfico para una métrica dada de la serie. */
++function puntosDe(
++  serie: PuntoTendencia[],
++  saca: (m: PuntoTendencia["metricas"]) => number | null,
++  formato: (n: number | null) => string,
++): PuntoLinea[] {
++  return serie.map((p) => {
++    const v = saca(p.metricas);
++    return {
++      periodo: p.periodo,
++      etiqueta: mesCorto(p.periodo),
++      valor: v,
++      parcial: p.parcial,
++      tooltip:
++        `${mesCorto(p.periodo)}${p.parcial ? " (parcial)" : ""}: ${v === null ? "sin dato" : formato(v)}`,
++    };
++  });
++}
++
++function SeccionTendencia({ clientes }: { clientes: ClientePlataforma[] | null }) {
++  const [cliente, setCliente] = useState(TENDENCIA_CONSOLIDADO);
++  const [meses, setMeses] = useState(12);
++  const [data, setData] = useState<Tendencia | null>(null);
++  const [error, setError] = useState<string | null>(null);
++  const [loading, setLoading] = useState(false);
++
++  useEffect(() => {
++    let vivo = true;
++    setLoading(true);
++    setError(null);
++    getTendencia(cliente, meses)
++      .then((t) => { if (vivo) setData(t); })
++      .catch((err) => { if (vivo) { setData(null); setError(describeError(err, "No se pudo leer la tendencia.")); } })
++      .finally(() => { if (vivo) setLoading(false); });
++    return () => { vivo = false; };
++  }, [cliente, meses]);
++
++  const serie = data?.serie ?? [];
++  const ingresoMax = useMemo(() => {
++    const vals = serie.map((p) => p.metricas.ingreso_contratado_mes ?? 0);
++    const m = Math.max(0, ...vals);
++    return m > 0 ? m : 1;
++  }, [serie]);
++
++  const lecturaOcup = useMemo(
++    () => lecturaTendencia(serie, (m) => m.ocupacion_pct, "Ocupación", (n) => `${n.toFixed(1)}%`),
++    [serie],
++  );
++  const lecturaIng = useMemo(
++    () => lecturaTendencia(serie, (m) => m.ingreso_contratado_mes, "Ingreso contratado", (n) => COP.format(n)),
++    [serie],
++  );
++
++  const selectorCliente = (
++    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
++      <select
++        value={cliente}
++        onChange={(e) => setCliente(e.target.value)}
++        className="con-focusable"
++        aria-label="Cliente de la tendencia"
++        style={{ ...inputStyle, width: 190, height: 28 }}
++      >
++        <option value={TENDENCIA_CONSOLIDADO}>Consolidado</option>
++        {(clientes ?? []).map((c) => (
++          <option key={c.slug} value={c.slug}>{c.nombre}</option>
++        ))}
++      </select>
++      <select
++        value={meses}
++        onChange={(e) => setMeses(Number(e.target.value))}
++        className="con-focusable"
++        aria-label="Meses de historia"
++        style={{ ...inputStyle, width: 96, height: 28 }}
++      >
++        <option value={6}>6 meses</option>
++        <option value={12}>12 meses</option>
++        <option value={24}>24 meses</option>
++      </select>
++    </div>
++  );
++
++  return (
++    <Panel
++      titulo="Tendencia"
++      subtitulo="Evolución mes a mes de la ocupación y el ingreso contratado — para contestar si el negocio mejora o empeora. El mes en curso (*) es parcial: todavía converge."
++      aside={selectorCliente}
++    >
++      {error ? (
++        <EstadoError texto={error} />
++      ) : loading && data === null ? (
++        <EstadoVacio texto="Cargando tendencia…" />
++      ) : !data || !data.suficiente ? (
++        <EstadoVacio texto="Hace falta más de un mes de historia para ver una tendencia. Volvé cuando el sistema haya cerrado al menos dos meses." />
++      ) : (
++        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
++          <div>
++            <div className="rotulo" style={{ color: "var(--con-ink-3)", marginBottom: 6 }}>Ocupación (%)</div>
++            <LineaTendencia
++              puntos={puntosDe(serie, (m) => m.ocupacion_pct, (n) => (n === null ? "—" : `${n.toFixed(1)}%`))}
++              max={100}
++              etiquetaMax="100%"
++              titulo={`Ocupación mensual, ${cliente === TENDENCIA_CONSOLIDADO ? "consolidado" : cliente}`}
++              color="var(--con-mag-fill)"
++            />
++            {lecturaOcup && (
++              <div style={{ fontSize: 11, color: "var(--con-ink-3)", marginTop: 4, lineHeight: 1.4 }}>{lecturaOcup}</div>
++            )}
++          </div>
++
++          <div>
++            <div className="rotulo" style={{ color: "var(--con-ink-3)", marginBottom: 6 }}>Ingreso contratado</div>
++            <LineaTendencia
++              puntos={puntosDe(serie, (m) => m.ingreso_contratado_mes, (n) => (n === null ? "—" : COP.format(n)))}
++              max={ingresoMax}
++              etiquetaMax={COP_COMPACTO.format(ingresoMax)}
++              titulo={`Ingreso contratado mensual, ${cliente === TENDENCIA_CONSOLIDADO ? "consolidado" : cliente}`}
++              color="var(--con-bar-neutral)"
++            />
++            {lecturaIng ? (
++              <div style={{ fontSize: 11, color: "var(--con-ink-3)", marginTop: 4, lineHeight: 1.4 }}>{lecturaIng}</div>
++            ) : (
++              <div style={{ fontSize: 11, color: "var(--con-ink-4)", marginTop: 4, lineHeight: 1.4 }}>
++                Sin dos meses de ingreso comparables (puede estar suprimido por privacidad los meses con menos de 3 contratos).
++              </div>
++            )}
++          </div>
++        </div>
++      )}
++    </Panel>
++  );
++}
++
+ // ─── Solicitudes de supresión (mudada del modal, sin cambios) ──────────────
+ 
+ function etiquetaSupresion(e: SolicitudSupresion["estado"]): string {
+@@ -763,6 +966,9 @@ export default function Plataforma() {
+               </div>
+             </div>
+ 
++            {/* ── Tendencia temporal: gráfico de línea (Fase 5) ── */}
++            <SeccionTendencia clientes={clientes} />
++
+             {/* ── Clientes: estado + métricas + Cambiar en la misma fila ── */}
+             <Panel
+               titulo="Clientes"

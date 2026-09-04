@@ -136,3 +136,66 @@ export const getMetricasPlataforma = (periodo?: string): Promise<MetricasPlatafo
   client
     .get<MetricasPlataforma>("/plataforma/metricas", { params: periodo ? { periodo } : undefined })
     .then((r) => r.data);
+
+// ─── Tendencia temporal (Fase 5 plataforma) ─────────────────────────────────
+//
+// Shape verificado contra el backend real (`backend/app/plataforma_tendencia.py`
+// -- funciones `serie()` y `_mes_vacio()`, ambas leídas antes de escribir este
+// bloque): `GET /plataforma/tendencia` SIEMPRE trae `meses` puntos
+// consecutivos, del más viejo al más nuevo, terminando en el mes en curso --
+// nunca se omite un mes, un hueco se rellena con `_mes_vacio()` (`sin_dato:
+// true`, todo lo demás `null`/`[]`) para que el gráfico no interpole una
+// recta sobre la ausencia. Tres ausencias distintas por mes, nunca un 0
+// inventado en su lugar:
+//   (a) `sin_dato: true`                              -- no hay snapshot ese mes.
+//   (b) `sin_dato: false`, `ingreso_contratado_mes`/`canon_promedio_mensual`
+//       null y `top_proveedores: []`                  -- suprimido por K=3.
+//   (c) `sin_dato: false`, `ocupacion_pct: null`       -- sin espacios
+//       comercializables ese mes (no es K=3: `ocupacion_pct` no participa
+//       de la supresión de celda chica, ver `publicar_fila`).
+// `parcial: true` es el mes en curso, cuyos números todavía pueden cambiar.
+
+/** Slug reservado para el consolidado ponderado (Σ/Σ) de todos los clientes;
+ *  el mismo valor que usa el backend como default de `cliente`
+ *  (`plataforma_tendencia.CONSOLIDADO_SLUG`). */
+export const CONSOLIDADO_SLUG = "__consolidado__";
+
+export interface PuntoTendencia {
+  periodo: string; // "YYYY-MM"
+  parcial: boolean;
+  sin_dato: boolean;
+  capturado_en: string | null;
+  origen: "vista" | "cierre" | null;
+  clientes_incluidos: number | null;
+  clientes_con_error: number | null;
+  sedes_con_plano: number | null;
+  espacios_comercializables: number | null;
+  ocupacion_pct: number | null;
+  canon_promedio_mensual: number | null;
+  ingreso_contratado_mes: number | null;
+  top_proveedores: ProveedorTop[];
+  usuarios_con_cuenta: number | null;
+}
+
+export interface Tendencia {
+  cliente: string; // slug pedido, o CONSOLIDADO_SLUG
+  nombre: string;
+  meses: number;
+  desde: string; // "YYYY-MM"
+  hasta: string; // "YYYY-MM"
+  periodo_actual: string; // "YYYY-MM"
+  generado_en: string; // ISO 8601 UTC
+  serie: PuntoTendencia[];
+}
+
+/** `cliente`: slug del cliente o `CONSOLIDADO_SLUG` (default del backend si
+ *  se omite). `meses`: 1..24, 12 por defecto -- fuera de rango el backend
+ *  responde 422 (`MesesInvalidos`), un slug inexistente responde 404
+ *  (`ClienteDesconocido`), y quien no es operador, 403. **Nunca se guarda en
+ *  localStorage**: son métricas de clientes, el mismo guardrail que
+ *  `getClientesPlataforma` y `getMetricasPlataforma` -- vive sólo en el
+ *  estado de quien la pide. */
+export const getTendencia = (cliente: string = CONSOLIDADO_SLUG, meses = 12): Promise<Tendencia> =>
+  client
+    .get<Tendencia>("/plataforma/tendencia", { params: { cliente, meses } })
+    .then((r) => r.data);
