@@ -40,6 +40,95 @@ class PatchEstadoIn(BaseModel):
     motivo: str
 
 
+class PatchSupresionIn(BaseModel):
+    estado: str
+    nota: str
+
+
+def _solicitud_dict(fila) -> dict:
+    return {
+        "id": fila.id,
+        "cliente_slug": fila.cliente_slug,
+        "usuario_id": fila.usuario_id,
+        "email": fila.email,
+        "motivo": fila.motivo,
+        "estado": fila.estado,
+        "creado_en": fila.creado_en,
+        "atendido_en": fila.atendido_en,
+        "atendido_por": fila.atendido_por,
+        "nota": fila.nota,
+    }
+
+
+# ─── Solicitudes de supresión (Fase 3, derechos del titular) ───────────────
+#
+# Rutas NUEVAS, declaradas ANTES de `/clientes` y `/clientes/{slug}` (contrato
+# de la fase) -- aunque en los hechos no chocan (prefijo distinto, "/supresiones"
+# vs "/clientes"), se respeta el orden pedido. El owner las CREA desde
+# `routers/derechos.py` (`POST /api/clientes/solicitar-supresion`); acá sólo se
+# leen y se les cambia el estado -- nada se borra nunca, la ejecución real es
+# manual y fuera del sistema.
+#
+# La constancia de la acción del operador va en la MISMA fila
+# (`atendido_en`/`atendido_por`/`nota`) -- el mismo patrón, en el mismo lugar,
+# que `EstadoCliente` (`cambiado_en`/`cambiado_por`/`motivo`) más abajo: este
+# router opera sobre el REGISTRO y nunca abre la base de negocio de un
+# cliente, así que no hay `AuditEntry` (esa tabla vive adentro de cada
+# cliente) al que escribirle -- la fila misma ES la bitácora.
+
+@router.get("/supresiones")
+def listar_supresiones(email: str = Depends(require_operador)):
+    """Todas las solicitudes de supresión, más nuevas primero."""
+    from app.models.supresion import SolicitudSupresion
+
+    reg = sesion_registro()
+    try:
+        filas = reg.query(SolicitudSupresion).order_by(SolicitudSupresion.creado_en.desc()).all()
+        return {"solicitudes": [_solicitud_dict(f) for f in filas]}
+    finally:
+        reg.close()
+
+
+@router.patch("/supresiones/{solicitud_id}")
+def atender_supresion(solicitud_id: int, payload: PatchSupresionIn, email: str = Depends(require_operador)):
+    """El operador marca una solicitud atendida o rechazada. Nota OBLIGATORIA
+    -- espejo del motivo obligatorio del PATCH de estados de más abajo.
+
+    Nunca borra nada: sólo dice qué se hizo con el pedido. La supresión real
+    del cliente, si corresponde, la ejecuta el operador A MANO, fuera de este
+    sistema.
+    """
+    from app.models.supresion import ESTADOS_SUPRESION, SolicitudSupresion
+
+    estado = (payload.estado or "").strip().lower()
+    if estado not in ("atendida", "rechazada"):
+        raise HTTPException(
+            status_code=422,
+            detail='Estado inválido: debe ser "atendida" o "rechazada".',
+        )
+    assert estado in ESTADOS_SUPRESION  # documenta que comparte el catálogo con el modelo
+
+    nota = (payload.nota or "").strip()
+    if not nota:
+        raise HTTPException(status_code=422, detail="La nota es obligatoria.")
+
+    reg = sesion_registro()
+    try:
+        fila = reg.query(SolicitudSupresion).filter(SolicitudSupresion.id == solicitud_id).first()
+        if fila is None:
+            raise HTTPException(status_code=404, detail="No hay una solicitud con ese id.")
+
+        fila.estado = estado
+        fila.nota = nota
+        fila.atendido_en = datetime.now(timezone.utc)
+        fila.atendido_por = email
+        reg.commit()
+
+        return _solicitud_dict(fila)
+    finally:
+        reg.close()
+
+
 @router.get("/soy")
 def soy_operador(request: Request, rol: str = Depends(require_auth)):
     """¿La cuenta de este token es operadora de la plataforma?

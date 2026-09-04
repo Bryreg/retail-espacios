@@ -13,6 +13,9 @@ export interface AltaClientePayload {
   id_token: string;
   slug: string;
   nombre: string;
+  /** Fase 3 compliance: sin `true` el backend contesta 422 antes de fundar
+   *  nada — "sin aceptación no hay alta" (spec). */
+  acepta_politica: boolean;
 }
 
 /** Superset de `OauthOk` (api/auth.ts) con `cliente_nombre` puesto: acá SÍ

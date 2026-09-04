@@ -12,12 +12,22 @@ export interface SpaceFileMeta {
 export const listSpaceFiles = (spaceId: number): Promise<SpaceFileMeta[]> =>
   client.get<SpaceFileMeta[]>(`/spaces/${spaceId}/files`).then((r) => r.data);
 
+/**
+ * `uso: "cara"` DECLARA esta imagen como la cara vigente del espacio (Fase 3,
+ * fix H8): la que pinta el 3D (`getFaceImages`) y la única imagen que el rol
+ * `worker` puede ver de este espacio, aparte de sus propias fotos de montaje.
+ * Ya no se infiere de "la imagen más reciente" — hay que declararla a
+ * propósito. Sin `uso`, el archivo se sube como documento normal y el worker
+ * no lo ve.
+ */
 export const uploadSpaceFile = (
   spaceId: number,
-  file: File
+  file: File,
+  uso?: "cara"
 ): Promise<SpaceFileMeta> => {
   const fd = new FormData();
   fd.append("file", file);
+  if (uso) fd.append("uso", uso);
   return client
     .post<SpaceFileMeta>(`/spaces/${spaceId}/files`, fd, {
       headers: { "Content-Type": "multipart/form-data" },

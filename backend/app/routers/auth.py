@@ -21,6 +21,7 @@ from app.auth import (
     guardar_clave,
     invalidar_sesiones,
     require_admin,
+    require_auth,
     sub_y_email_de_la_sesion,
     verificar_clave,
 )
@@ -30,6 +31,13 @@ from app.models.models import LoginAttempt
 from app.red import ip_del_cliente
 from app.services.bitacora import anotar
 from app.services.firebase_tokens import VerificadorDeIdToken, get_verificador
+
+# El import registra `consentimientos` en Base.metadata ANTES de que corra
+# create_all() en el arranque — este router ya se incluye en main.py, así que
+# alcanza con importar el módulo acá (mismo patrón que
+# `plataforma_estado.py` con `models/plataforma.py`; ver ese docstring). No
+# hay ciclo: `models/consentimiento.py` sólo importa `app.database`.
+from app.models import consentimiento as _tabla_consentimientos  # noqa: F401
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -125,6 +133,10 @@ class OAuthIn(BaseModel):
     # Con qué supermercado entrar, cuando la cuenta tiene membresía en varios.
     # Igual que en `LoginIn`, nunca se deduce de otra cosa.
     cliente: Optional[str] = None
+    # Fase 3: aceptación de la Política de Tratamiento de Datos, sólo relevante
+    # cuando el canje de invitaciones pendientes va a crear una membresía
+    # nueva y esta cuenta todavía no tiene fila para la versión vigente.
+    acepta_politica: bool = False
 
 
 class PasswordsUpdate(BaseModel):
@@ -254,6 +266,27 @@ def login(payload: LoginIn, request: Request):
         db.close()
 
 
+# ─── Consentimiento a la Política de Tratamiento de Datos (Fase 3) ───────────
+
+def _tiene_consentimiento_vigente(reg: Session, usuario_id: int) -> bool:
+    from app.models.consentimiento import Consentimiento, VERSION_POLITICA
+
+    return (
+        reg.query(Consentimiento)
+        .filter(Consentimiento.usuario_id == usuario_id, Consentimiento.version == VERSION_POLITICA)
+        .first()
+        is not None
+    )
+
+
+def _registrar_consentimiento(reg: Session, usuario_id: int, ip: str, origen: str) -> None:
+    """Agrega la fila a la sesión (no comitea): el llamador la comitea junto
+    con lo demás que esté escribiendo, para que las dos cosas caigan juntas."""
+    from app.models.consentimiento import Consentimiento, VERSION_POLITICA
+
+    reg.add(Consentimiento(usuario_id=usuario_id, version=VERSION_POLITICA, ip=ip, origen=origen))
+
+
 def _rol_de_token(rol_membresia: str) -> str:
     """``owner``/``admin`` de membresía entran al middleware como ``admin``.
 
@@ -282,6 +315,7 @@ def oauth_login(
     # evita cualquier ciclo si `clientes.py` alguna vez importa `routers.auth`
     # arriba (hoy no lo hace, y así queda a prueba de que empiece a hacerlo).
     from app.clientes import sesion_registro
+    from app.models.consentimiento import VERSION_POLITICA
     from app.models.identidad import IntentoOauth, Invitacion, Membresia, Usuario
 
     if verificador is None:
@@ -383,6 +417,30 @@ def oauth_login(
                 m.cliente_slug
                 for m in reg.query(Membresia).filter(Membresia.usuario_id == usuario.id).all()
             }
+
+            # Fase 3: si el canje va a crear al menos UNA membresía nueva y esta
+            # cuenta todavía no tiene fila para la versión vigente de la
+            # política, hace falta aceptarla antes de tocar nada — nada se
+            # canjea y no se marca ninguna invitación como usada.
+            crea_membresia_nueva = any(
+                invitacion.cliente_slug not in ya_miembro for invitacion in invitaciones
+            )
+            if crea_membresia_nueva and not _tiene_consentimiento_vigente(reg, usuario.id):
+                if not payload.acepta_politica:
+                    # Sin commit: si `usuario` se acababa de crear más arriba
+                    # (`reg.add` + `reg.flush()`, todavía sin comitear), el
+                    # `reg.close()` del `finally` lo deshace con el resto de
+                    # la transacción — "nada se canjea" también para la fila
+                    # de `usuarios`, no sólo para la membresía. No se toca el
+                    # contador de `IntentoOauth` tampoco: no es un intento
+                    # fallido, pero comitear acá para limpiarlo persistiría
+                    # ese mismo usuario a medias.
+                    raise HTTPException(
+                        status_code=428,
+                        detail={"codigo": "consentimiento_requerido", "version": VERSION_POLITICA},
+                    )
+                _registrar_consentimiento(reg, usuario.id, ip, origen="invitacion")
+
             for invitacion in invitaciones:
                 # Ya hay membresía en ese cliente (activa o no): dos
                 # invitaciones al mismo cliente no pueden generar dos filas —
@@ -465,6 +523,11 @@ def oauth_login(
         reg.commit()
         borrar_fallos(reg, ip, modelo=IntentoOauth)
 
+        # Fase 3: cuenta existente, CON membresía, que nunca aceptó la versión
+        # vigente (o aceptó una anterior) — no se bloquea, se avisa una vez.
+        # El frontend lo cierra y no vuelve hasta el próximo login.
+        pedir_consentimiento = not _tiene_consentimiento_vigente(reg, usuario.id)
+
         role = _rol_de_token(elegida.rol)
         cdb = sesion_de(cliente_obj)
         try:
@@ -489,7 +552,55 @@ def oauth_login(
             # suspendido (hallazgo R-2): su gente ve el estado, no la deuda.
             visible = aviso if elegida.rol == "owner" else _aviso_sin_motivo(aviso)
             cuerpo["aviso_cuenta"] = visible.model_dump()
+        if pedir_consentimiento:
+            # Top-level, hermano del token — igual que `aviso_cuenta` en Fase
+            # 2: el JWT no cambia de forma, ni un claim.
+            cuerpo["pedir_consentimiento"] = True
         return cuerpo
+    finally:
+        reg.close()
+
+
+@router.post("/aceptar-politica", status_code=204)
+def aceptar_politica(
+    request: Request,
+    role: str = Depends(require_auth),
+    identidad: tuple = Depends(sub_y_email_de_la_sesion),
+):
+    """Registra la aceptación de la política para una cuenta existente
+    (Fase 3, origen "login"): lo llama el modal que dispara
+    ``pedir_consentimiento`` y también el flujo de aceptar-y-reintentar del
+    428 de ``/oauth``, si el frontend prefiere ese camino en vez de reenviar
+    ``acepta_politica`` en el mismo pedido.
+
+    Exige un token de cuenta real (con ``sub``): el login legado nunca lo
+    trae, y no tiene sentido registrarle un consentimiento a una clave
+    compartida por rol que no identifica a nadie — 403.
+
+    Idempotente por construcción: el segundo POST intenta insertar la misma
+    fila (mismo ``usuario_id`` + ``version``) y el UNIQUE la rechaza; se
+    atrapa y se contesta 204 igual, sin que la persona note nada raro por
+    haber tocado el botón dos veces.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    from app.clientes import sesion_registro
+
+    sub, _email = identidad
+    if sub is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Esta cuenta no tiene consentimiento individual para registrar",
+        )
+
+    reg = sesion_registro()
+    try:
+        ip = ip_del_cliente(request)
+        _registrar_consentimiento(reg, sub, ip, origen="login")
+        try:
+            reg.commit()
+        except IntegrityError:
+            reg.rollback()  # ya existía la fila para esta versión: idempotente
     finally:
         reg.close()
 

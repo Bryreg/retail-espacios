@@ -68,8 +68,8 @@ def _invitar(client, cab_admin, email, rol="worker"):
     return r.json()
 
 
-def _oauth(client, id_token, cliente=None):
-    body = {"id_token": id_token}
+def _oauth(client, id_token, cliente=None, acepta_politica=True):
+    body = {"id_token": id_token, "acepta_politica": acepta_politica}
     if cliente is not None:
         body["cliente"] = cliente
     return client.post("/api/auth/oauth", json=body)

@@ -123,12 +123,19 @@ def test_el_documento_deja_rastro_al_subir_al_bajar_y_al_borrar(client, admin):
 
 
 def test_la_imagen_no_ensucia_la_bitacora(client, admin):
-    """La foto del montaje se abre decenas de veces por día; anotarla ahogaría
-    lo que sí hay que poder encontrar."""
+    """La cara del mueble se abre decenas de veces por día; anotarla ahogaría
+    lo que sí hay que poder encontrar.
+
+    Fase 3 (fix H8-B2): la exención ya NO es "cualquier imagen" — es la cara
+    DESIGNADA (``uso=cara``) del espacio, ver
+    ``features/compliance/outputs/hardening.md``. Una imagen sin designar SÍ
+    deja rastro al bajarse: es exactamente el caso de un contrato escaneado
+    en JPG que nadie marcó como cara."""
     space_id = _espacio(client, admin)
     r = client.post(
         f"/api/spaces/{space_id}/files",
         files={"file": ("foto.jpg", b"\xff\xd8\xff no importa", "image/jpeg")},
+        data={"uso": "cara"},
         headers=admin,
     )
     assert r.status_code == 201, r.text

@@ -130,6 +130,39 @@ class SpaceFile(Base):
     uploaded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+class SpaceFace(Base):
+    """La imagen DESIGNADA como cara vigente de un espacio (Fase 3, fix H8).
+
+    Reemplaza la heurística vieja ("la imagen más reciente" = la cara) — esa
+    heurística no distingue una foto del mueble de un contrato escaneado en
+    JPG: si el contrato es la única imagen, o la última subida, la heurística
+    lo declaraba cara vigente y ``list_face_images`` lo pintaba como textura
+    del 3D para TODOS, y el worker lo bajaba. Acá la designación la hace el
+    ADMIN a propósito, en el upload (``uso=cara`` en
+    ``POST /spaces/{id}/files``, ver ``routers/files.py``) — nunca se infiere.
+
+    Tabla NUEVA a propósito, mismo patrón que ``MountConfirmation`` y
+    ``ArchivedSpace``: ``space_files`` no admite una columna nueva porque
+    ``create_all`` crea tablas que faltan pero nunca agrega columnas a una que
+    ya existe (regla dura del repo, sin migraciones).
+
+    Una fila por espacio (``space_id`` es la primary key): designar una cara
+    nueva REEMPLAZA la anterior in-place — a `list_face_images` y al worker
+    sólo les importa la vigente, nunca el historial de cuáles lo fueron.
+
+    Un espacio SIN fila acá no tiene cara vigente para nadie que no sea admin
+    — fail closed a propósito: un espacio legado (de antes de este fix) queda
+    sin textura en el 3D y sin imagen visible para el worker hasta que un
+    admin lo designe de nuevo. Documentado como comportamiento buscado en
+    ``docs/ESTADO.md`` y en ``features/compliance/outputs/hardening.md``.
+    """
+    __tablename__ = "space_faces"
+
+    space_id = Column(Integer, ForeignKey("spaces.id"), primary_key=True)
+    file_id = Column(Integer, ForeignKey("space_files.id"), nullable=False)
+    designado_en = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class MountConfirmation(Base):
     """Prueba de que el espacio contratado se montó — o de por qué no.
 

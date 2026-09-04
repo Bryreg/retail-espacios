@@ -3185,6 +3185,9 @@ function DaysLeftStrip({ startDate, endDate }: { startDate: string; endDate: str
 // ─── Files section (contract documents per space) ─────────────────────────────
 
 const ALLOWED_FILE_EXTS = [".pdf", ".xls", ".xlsx", ".csv", ".jpg", ".jpeg", ".png", ".webp"];
+// Extensiones que SÍ pueden declararse como cara vigente (fix H8, Fase 3) —
+// coincide con las que `files.py` acepta como imagen.
+const IMAGE_FILE_EXTS = [".jpg", ".jpeg", ".png", ".webp"];
 
 function FilesSection({
   code, name, zone, sedeName, areaM2, isAdmin, editMode,
@@ -3202,6 +3205,9 @@ function FilesSection({
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  // Declaración explícita de "esta imagen es la cara vigente" (fix H8, Fase
+  // 3) — ya no se infiere de cuándo se sube, hay que marcarla a propósito.
+  const [marcarComoCara, setMarcarComoCara] = useState(false);
   // Space id resolved lazily on first expand/upload — ref so callbacks stay stable
   const spaceIdRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -3252,17 +3258,22 @@ function FilesSection({
       setError("Formato no permitido (.pdf, .xls, .xlsx, .csv, .jpg, .jpeg, .png, .webp)");
       return;
     }
+    if (marcarComoCara && !IMAGE_FILE_EXTS.includes(ext)) {
+      setError("Sólo una imagen (JPG, PNG o WEBP) puede marcarse como cara del mueble.");
+      return;
+    }
     setUploading(true);
     setError("");
     try {
       const id = await resolveSpaceId();
       if (id == null) throw new Error("space unresolved");
-      await uploadSpaceFile(id, file);
+      await uploadSpaceFile(id, file, marcarComoCara ? "cara" : undefined);
       setFiles(await listSpaceFiles(id));
     } catch {
       setError("Error al subir el archivo");
     } finally {
       setUploading(false);
+      setMarcarComoCara(false);
     }
   }
 
@@ -3350,6 +3361,21 @@ function FilesSection({
                   e.target.value = "";
                 }}
               />
+              <label
+                title="Sólo aplica si el próximo archivo que subís es una imagen. Reemplaza la cara designada anterior de este espacio."
+                style={{
+                  display: "flex", alignItems: "center", gap: 5, marginTop: 2,
+                  fontSize: 10.5, color: "var(--dark-ink-3)", cursor: "pointer", userSelect: "none",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={marcarComoCara}
+                  onChange={(e) => setMarcarComoCara(e.target.checked)}
+                  style={{ margin: 0 }}
+                />
+                Es la cara del mueble (textura del 3D)
+              </label>
               <button
                 onClick={() => inputRef.current?.click()}
                 disabled={uploading}

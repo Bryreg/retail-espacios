@@ -26,7 +26,12 @@ from sqlalchemy.exc import IntegrityError
 from app.auth import create_token, epoca_de
 from app.clientes import SLUG_VALIDO, ErrorDeAlta, crear_cliente, sesion_de, sesion_registro
 from app.red import ip_del_cliente
-from app.routers.auth import anotar_fallo, borrar_fallos, frenar_si_hay_muchos_fallos
+from app.routers.auth import (
+    _tiene_consentimiento_vigente,
+    anotar_fallo,
+    borrar_fallos,
+    frenar_si_hay_muchos_fallos,
+)
 from app.services.firebase_tokens import VerificadorDeIdToken, get_verificador
 
 router = APIRouter(prefix="/clientes", tags=["clientes"])
@@ -47,6 +52,9 @@ class AltaIn(BaseModel):
     id_token: str
     slug: str
     nombre: str
+    # Fase 3: sin esto no hay fundación. Falso/ausente es el default -- la
+    # persona tiene que marcarlo, no viene marcado por omisión.
+    acepta_politica: bool = False
 
 
 @router.post("/alta")
@@ -57,6 +65,7 @@ def alta_self_service(
 ):
     # Imports perezosos, mismo motivo que `routers/auth.py::oauth_login`: sin
     # ciclo aunque `clientes.py` llegue a importar algo de acá alguna vez.
+    from app.models.consentimiento import VERSION_POLITICA, Consentimiento
     from app.models.identidad import Membresia, Usuario
     from app.models.models import ClienteRow
     from app.models.plataforma import Fundacion, IntentoAlta
@@ -120,6 +129,15 @@ def alta_self_service(
         if reg.query(ClienteRow).filter(ClienteRow.slug == slug).first() is not None:
             raise HTTPException(status_code=409, detail=MENSAJE_SLUG_TOMADO)
 
+        # 8.5) Fase 3: aceptar la Política de Tratamiento de Datos Personales.
+        # ANTES de cualquier escritura -- el Usuario que se resuelve/crea en
+        # el paso siguiente incluido -- y del paso irreversible de más abajo.
+        if not payload.acepta_politica:
+            raise HTTPException(
+                status_code=422,
+                detail="Para fundar el cliente hay que aceptar la Política de Tratamiento de Datos Personales",
+            )
+
         # 9) Resolver/crear Usuario -- MISMAS reglas de vinculación que
         # /oauth: por firebase_uid, si no por email (ya confiable a esta
         # altura), y nunca se crea uno nuevo si el email ya tiene fila.
@@ -160,9 +178,16 @@ def alta_self_service(
             # Carrera: dos altas con el mismo slug llegaron casi juntas.
             raise HTTPException(status_code=409, detail=MENSAJE_SLUG_TOMADO)
 
-        # 12) Membresía owner + fundación, en UN solo commit del registro.
+        # 12) Membresía owner + fundación + consentimiento registrado, en UN
+        # solo commit del registro. El consentimiento es por USUARIO, no por
+        # alta: quien funda un segundo cliente con la misma cuenta (tope de
+        # `MAX_FUNDACIONES_POR_USUARIO`, arriba) ya tiene fila de la primera
+        # vez -- insertarla de nuevo estrellaría el UNIQUE(usuario_id,
+        # version).
         reg.add(Membresia(usuario_id=usuario.id, cliente_slug=cliente.slug, rol="owner", activo=True))
         reg.add(Fundacion(usuario_id=usuario.id, cliente_slug=cliente.slug))
+        if not _tiene_consentimiento_vigente(reg, usuario.id):
+            reg.add(Consentimiento(usuario_id=usuario.id, version=VERSION_POLITICA, ip=ip, origen="alta"))
         usuario.ultimo_login = datetime.now(timezone.utc)
         reg.commit()
 

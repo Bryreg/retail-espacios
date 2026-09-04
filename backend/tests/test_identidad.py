@@ -80,7 +80,14 @@ def _invitar(client, admin, email, rol="worker"):
 
 
 def _oauth(client, id_token, cliente=None):
-    body = {"id_token": id_token}
+    # Fase 3: `acepta_politica` va SIEMPRE en True acá — nada de lo que este
+    # archivo prueba es sobre consentimiento (eso vive en
+    # `test_consentimiento.py`), así que el gate nuevo no tiene por qué
+    # interferir con un canje de invitación que antes de esta fase pasaba
+    # sin pedir nada. Sin esto, cualquier test de acá que invite y entre por
+    # primera vez se llevaría un 428 en lugar del 200/403/lo que sea que
+    # prueba.
+    body = {"id_token": id_token, "acepta_politica": True}
     if cliente is not None:
         body["cliente"] = cliente
     return client.post("/api/auth/oauth", json=body)

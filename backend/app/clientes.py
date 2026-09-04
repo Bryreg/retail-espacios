@@ -365,6 +365,11 @@ _METODOS_DE_LECTURA = frozenset({"GET", "HEAD", "OPTIONS"})
 # administrando a su gente —justamente para poder pagar—, así que el login y la
 # gestión de usuarios quedan exentos aunque muten.
 _EXENTOS_EN_SOLO_LECTURA = ("/api/auth", "/api/usuarios")
+_EXENTOS_POR_HABEAS_DATA = (
+    "/api/clientes/mi-export",
+    "/api/clientes/solicitar-supresion",
+    "/api/auth/aceptar-politica",
+)
 
 # El panel del operador opera sobre el REGISTRO, no sobre datos de negocio de
 # nadie. Si el estado lo cortara, un operador cuyo propio cliente quedó
@@ -397,6 +402,15 @@ def _aplicar_estado(cliente: Cliente, request: Request) -> Cliente:
 
     path = request.url.path or ""
     if path.startswith(_PREFIJO_PLATAFORMA):
+        return cliente
+
+    # Los DERECHOS DEL TITULAR (Ley 1581) no dependen del estado comercial:
+    # exportar sus datos, solicitar la supresión y aceptar la política tienen
+    # que funcionar aunque la cuenta esté suspendida — cortarlos convertiría
+    # el interruptor de cobranza en un bloqueo de habeas data (hallazgo m-3
+    # de la verificación de Fase 3). Son owner-only/authenticados por sus
+    # propios routers; acá solo se los exime del 402.
+    if path.startswith(_EXENTOS_POR_HABEAS_DATA):
         return cliente
 
     if estado == "solo_lectura":

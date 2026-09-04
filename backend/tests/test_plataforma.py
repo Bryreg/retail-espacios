@@ -35,7 +35,14 @@ def _cuenta_con_sub(client, uid, email, slug, nombre):
     """Funda un cliente por el alta self-service y devuelve la cabecera de su
     owner — un token con ``sub``/``email``, como los que emite ``/oauth``."""
     _usar_verificador(client, {uid: _claims(uid, email)})
-    r = client.post("/api/clientes/alta", json={"id_token": uid, "slug": slug, "nombre": nombre})
+    # `acepta_politica` es obligatorio desde la Fase 3 (consentimiento
+    # registrado) -- este archivo es de la Fase 2 y no la ataca, así que se
+    # manda siempre en `True` para que la fundación llegue a "owner" como
+    # antes de que esa regla existiera.
+    r = client.post(
+        "/api/clientes/alta",
+        json={"id_token": uid, "slug": slug, "nombre": nombre, "acepta_politica": True},
+    )
     assert r.status_code == 200, r.text
     return _cab(r.json()["token"])
 

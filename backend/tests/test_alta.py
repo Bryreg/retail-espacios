@@ -36,8 +36,15 @@ def _cab(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def _alta(client, id_token, slug, nombre):
-    return client.post("/api/clientes/alta", json={"id_token": id_token, "slug": slug, "nombre": nombre})
+def _alta(client, id_token, slug, nombre, acepta_politica=True):
+    # Fase 3: `acepta_politica` va en True por defecto acá — nada de lo que
+    # este archivo prueba es sobre consentimiento (eso vive en
+    # `test_consentimiento.py`), así que el gate nuevo no tiene por qué
+    # interferir con un alta que antes de esta fase pasaba sin pedir nada.
+    return client.post(
+        "/api/clientes/alta",
+        json={"id_token": id_token, "slug": slug, "nombre": nombre, "acepta_politica": acepta_politica},
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════════

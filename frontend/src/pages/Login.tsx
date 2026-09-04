@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  login, getClientes, loginOauth, esRequiereCliente,
+  login, getClientes, loginOauth, esRequiereCliente, esConsentimientoRequerido,
   type ClienteBreve, type Membresia,
 } from "../api/auth";
 import { altaCliente, sugerirSlug, SLUG_VALIDO } from "../api/clientes";
@@ -147,6 +147,18 @@ export default function Login() {
   const [altaSlugTocado, setAltaSlugTocado] = useState(false);
   const [altaBusy, setAltaBusy] = useState(false);
   const [altaError, setAltaError] = useState<string | null>(null);
+  // Fase 3 compliance: sin marcar, el botón de fundar ni se habilita — el
+  // backend igual lo exige (422), pero pedirlo acá evita el viaje de más.
+  const [altaAceptaPolitica, setAltaAceptaPolitica] = useState(false);
+
+  // ─── Fase 3 compliance: 428 de /oauth al canjear una invitación ────────
+  // Guarda el `id_token` (y el `cliente`, si ya se había elegido) con el que
+  // reintentar apenas la persona acepte la política — el token no se
+  // reemplaza por otro: es el mismo que ya se verificó, sólo faltaba el
+  // consentimiento.
+  const [consentimientoPendiente, setConsentimientoPendiente] =
+    useState<{ idToken: string; cliente?: string } | null>(null);
+  const [consentimientoBusy, setConsentimientoBusy] = useState(false);
 
   const limpiarAvisos = () => {
     setFbError(null);
@@ -154,7 +166,17 @@ export default function Login() {
     setNeedsVerification(false);
   };
 
-  const manejarErrorOauth = (err: unknown) => {
+  const manejarErrorOauth = (err: unknown, idToken?: string, cliente?: string) => {
+    // Fase 3 compliance: el canje de una invitación iba a crear una
+    // membresía nueva y esta cuenta todavía no aceptó la política — no es
+    // un error, es el punto de partida del modal de aceptación.
+    const requerido = esConsentimientoRequerido(err);
+    if (requerido) {
+      limpiarAvisos(); // no arrastrar un error viejo adentro del modal nuevo
+      if (idToken) setConsentimientoPendiente({ idToken, cliente });
+      return;
+    }
+    setConsentimientoPendiente(null);
     const status = (err as { response?: { status?: number } })?.response?.status;
     if (status === 503) {
       // El servidor no tiene FIREBASE_PROJECT_ID: el resto de la app sigue
@@ -195,13 +217,22 @@ export default function Login() {
       );
       return;
     }
+    if (!altaAceptaPolitica) {
+      // El backend contesta el mismo 422 si esto se saltea (deshabilitar el
+      // botón es la primera barrera, no la única).
+      setAltaError("Para fundar el cliente hay que aceptar la Política de Tratamiento de Datos Personales.");
+      return;
+    }
     setAltaBusy(true);
     setAltaError(null);
     try {
       // Fresco a propósito: no el token que ya usó `/oauth` y rechazó —
       // puede estar por vencer para cuando se llega hasta acá.
       const idToken = await obtenerIdTokenFresco();
-      const r = await altaCliente({ id_token: idToken, slug: altaSlug, nombre: altaNombre.trim() });
+      const r = await altaCliente({
+        id_token: idToken, slug: altaSlug, nombre: altaNombre.trim(),
+        acepta_politica: altaAceptaPolitica,
+      });
       // Éxito == un oauth exitoso: se guarda la sesión y entra como admin.
       // Acá `cliente_nombre` viene directo del backend — no hace falta
       // buscarlo en ninguna lista, como sí pasa en `completarOauth`.
@@ -215,24 +246,40 @@ export default function Login() {
   };
 
   /** Manda el ID token al backend propio. Si hace falta elegir cliente,
-   *  guarda el token y muestra el selector; si no, entra directo. */
-  const completarOauth = async (idToken: string, clienteElegido?: string) => {
+   *  guarda el token y muestra el selector; si no, entra directo.
+   *  `aceptaPolitica` sólo lo manda el botón "Aceptar" del modal de
+   *  consentimiento — el reintento del MISMO id_token, con el campo puesto. */
+  const completarOauth = async (idToken: string, clienteElegido?: string, aceptaPolitica?: boolean) => {
     try {
-      const r = await loginOauth(idToken, clienteElegido);
+      const r = await loginOauth(idToken, clienteElegido, aceptaPolitica);
       if (esRequiereCliente(r)) {
         setPendingIdToken(idToken);
         setMembresias(r.membresias);
         setClienteElegido(r.membresias[0]?.cliente ?? "");
         return;
       }
+      setConsentimientoPendiente(null);
       // Superset del legado: además de token/role/cliente trae email y
       // nombre de la persona, que el legado nunca tuvo por no ser individual.
       const nombreVisibleCliente =
         clientes.find((c) => c.slug === r.cliente)?.nombre ??
         membresias?.find((m) => m.cliente === r.cliente)?.nombre;
-      setAuth(r.token, r.role, r.cliente, nombreVisibleCliente, r.email, r.nombre, r.aviso_cuenta);
+      setAuth(
+        r.token, r.role, r.cliente, nombreVisibleCliente, r.email, r.nombre,
+        r.aviso_cuenta, r.pedir_consentimiento
+      );
     } catch (err) {
-      manejarErrorOauth(err);
+      manejarErrorOauth(err, idToken, clienteElegido);
+    }
+  };
+
+  const aceptarPoliticaYReintentar = async () => {
+    if (!consentimientoPendiente || consentimientoBusy) return;
+    setConsentimientoBusy(true);
+    try {
+      await completarOauth(consentimientoPendiente.idToken, consentimientoPendiente.cliente, true);
+    } finally {
+      setConsentimientoBusy(false);
     }
   };
 
@@ -339,6 +386,8 @@ export default function Login() {
     setAltaSlug("");
     setAltaSlugTocado(false);
     setAltaError(null);
+    setAltaAceptaPolitica(false);
+    setConsentimientoPendiente(null);
     limpiarAvisos();
   };
 
@@ -430,6 +479,35 @@ export default function Login() {
                     </div>
                   </div>
 
+                  {/* Fase 3 compliance: sin marcar, ni se manda el pedido —
+                      el backend igual lo exige (422), esto evita el viaje. */}
+                  <label
+                    style={{
+                      display: "flex", alignItems: "flex-start", gap: 8,
+                      marginBottom: 12, cursor: "pointer",
+                      fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={altaAceptaPolitica}
+                      onChange={(e) => setAltaAceptaPolitica(e.target.checked)}
+                      style={{ marginTop: 2, flexShrink: 0 }}
+                    />
+                    <span>
+                      Leí y acepto la{" "}
+                      <a
+                        href="/politica-datos"
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: "var(--accent)", fontWeight: 600 }}
+                      >
+                        Política de Tratamiento de Datos Personales
+                      </a>
+                      .
+                    </span>
+                  </label>
+
                   {altaError && (
                     <div style={{ marginBottom: 10, fontSize: 12, fontWeight: 500, color: "var(--danger)" }}>
                       {altaError}
@@ -438,15 +516,15 @@ export default function Login() {
 
                   <button
                     type="submit"
-                    disabled={altaBusy || !altaNombre.trim() || !altaSlug}
+                    disabled={altaBusy || !altaNombre.trim() || !altaSlug || !altaAceptaPolitica}
                     style={{
                       width: "100%", height: 38,
                       display: "flex", alignItems: "center", justifyContent: "center",
                       borderRadius: "var(--r-md)",
                       background: "var(--accent)", color: "#fff",
                       border: "none",
-                      cursor: altaBusy || !altaNombre.trim() || !altaSlug ? "default" : "pointer",
-                      opacity: altaBusy || !altaNombre.trim() || !altaSlug ? 0.6 : 1,
+                      cursor: altaBusy || !altaNombre.trim() || !altaSlug || !altaAceptaPolitica ? "default" : "pointer",
+                      opacity: altaBusy || !altaNombre.trim() || !altaSlug || !altaAceptaPolitica ? 0.6 : 1,
                       fontSize: 13, fontWeight: 600, fontFamily: "inherit",
                     }}
                   >
@@ -709,7 +787,105 @@ export default function Login() {
             {loading ? "Ingresando…" : "Ingresar"}
           </button>
         </form>
+
+        {/* Fase 3 compliance: la política tiene que poder leerse desde acá
+            aunque nadie esté fundando un cliente ni aceptando nada — es
+            pública, y esta pantalla es donde vive el enlace de siempre. */}
+        <div style={{ marginTop: 18 }}>
+          <a
+            href="/politica-datos"
+            target="_blank"
+            rel="noreferrer"
+            style={{ fontSize: 10.5, color: "var(--ink-4)", textDecoration: "none" }}
+          >
+            Política de Tratamiento de Datos Personales
+          </a>
+        </div>
       </div>
+
+      {/* Fase 3 compliance: 428 de /oauth — el canje de una invitación
+          pendiente iba a crear una membresía nueva y hace falta aceptar la
+          política primero. No hay JWT todavía, así que "Aceptar" reintenta
+          el MISMO /oauth con `acepta_politica: true`, no pega a
+          `/auth/aceptar-politica` (eso es sólo para sesiones ya abiertas —
+          ver `ModalConsentimiento`). */}
+      {consentimientoPendiente && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed", inset: 0, zIndex: 1000,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "rgba(0,0,0,0.45)", padding: 20,
+          }}
+        >
+          <div
+            style={{
+              width: "100%", maxWidth: 380,
+              background: "var(--surface)",
+              border: "1px solid var(--line)",
+              borderRadius: "var(--r-xl)",
+              padding: "24px 26px 22px",
+            }}
+          >
+            <h2 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 700, color: "var(--ink-1)" }}>
+              Aceptá la Política de Tratamiento de Datos
+            </h2>
+            <p style={{ margin: "0 0 16px", fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
+              Para sumarte a este supermercado hace falta aceptar la política antes
+              de terminar de entrar.
+            </p>
+            <a
+              href="/politica-datos"
+              target="_blank"
+              rel="noreferrer"
+              style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)" }}
+            >
+              Leer la Política de Tratamiento de Datos Personales →
+            </a>
+
+            {fbError && (
+              <div style={{ marginTop: 14, fontSize: 12, fontWeight: 500, color: "var(--danger)" }}>
+                {fbError}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+              <button
+                type="button"
+                onClick={() => setConsentimientoPendiente(null)}
+                disabled={consentimientoBusy}
+                style={{
+                  flex: 1, height: 38,
+                  borderRadius: "var(--r-md)",
+                  background: "var(--surface-2)", color: "var(--ink-2)",
+                  border: "1px solid var(--line)",
+                  cursor: consentimientoBusy ? "default" : "pointer",
+                  fontSize: 13, fontWeight: 600, fontFamily: "inherit",
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={aceptarPoliticaYReintentar}
+                disabled={consentimientoBusy}
+                style={{
+                  flex: 1, height: 38,
+                  borderRadius: "var(--r-md)",
+                  background: "var(--accent)", color: "#fff",
+                  border: "none",
+                  cursor: consentimientoBusy ? "default" : "pointer",
+                  opacity: consentimientoBusy ? 0.6 : 1,
+                  fontSize: 13, fontWeight: 600, fontFamily: "inherit",
+                }}
+              >
+                {consentimientoBusy ? "Un momento…" : "Aceptar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

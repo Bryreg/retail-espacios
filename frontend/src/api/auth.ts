@@ -59,6 +59,10 @@ export interface OauthOk {
    *  rol, y en `suspendido` sólo para el owner (worker/admin dan 402 antes
    *  de llegar acá). */
   aviso_cuenta?: AvisoCuenta;
+  /** Fase 3 compliance: presente y en `true` cuando esta cuenta ya tenía
+   *  membresía pero nunca aceptó la versión vigente de la Política de
+   *  Tratamiento de Datos. No bloquea el login — el frontend avisa una vez. */
+  pedir_consentimiento?: boolean;
 }
 
 /** Varias membresías activas y sin `cliente`: hay que elegir y repetir el
@@ -75,11 +79,50 @@ export const esRequiereCliente = (r: OauthResponse): r is OauthRequiereCliente =
 
 /** Intercambia un ID token de Firebase por la sesión propia. `cliente` va
  *  sólo cuando ya se sabe cuál — la primera llamada de un login nuevo nunca
- *  lo manda. */
-export const loginOauth = (idToken: string, cliente?: string): Promise<OauthResponse> =>
+ *  lo manda. `aceptaPolitica` va en `true` sólo en el reintento que sigue al
+ *  428 de "consentimiento_requerido" (ver `esConsentimientoRequerido`) —
+ *  Fase 3 compliance. */
+export const loginOauth = (
+  idToken: string,
+  cliente?: string,
+  aceptaPolitica?: boolean
+): Promise<OauthResponse> =>
   client
-    .post<OauthResponse>("/auth/oauth", cliente ? { id_token: idToken, cliente } : { id_token: idToken })
+    .post<OauthResponse>("/auth/oauth", {
+      id_token: idToken,
+      ...(cliente ? { cliente } : {}),
+      ...(aceptaPolitica ? { acepta_politica: true } : {}),
+    })
     .then((r) => r.data);
+
+// ─── Consentimiento a la Política de Tratamiento de Datos (Fase 3) ─────────
+
+/** Cuerpo del 428 que `/auth/oauth` contesta cuando el canje de una
+ *  invitación pendiente iba a crear una membresía nueva y esta cuenta
+ *  todavía no aceptó la versión vigente de la política. */
+export interface ConsentimientoRequerido {
+  codigo: "consentimiento_requerido";
+  version: string;
+}
+
+/** ¿Este error de `loginOauth` es el 428 de "hace falta aceptar la
+ *  política"? Se usa para mostrar el modal de aceptación en vez del error
+ *  genérico, y para saber con qué reintentar. */
+export function esConsentimientoRequerido(err: unknown): ConsentimientoRequerido | null {
+  const resp = (err as { response?: { status?: number; data?: { detail?: unknown } } })?.response;
+  if (resp?.status !== 428) return null;
+  const detail = resp.data?.detail;
+  if (detail && typeof detail === "object" && (detail as { codigo?: unknown }).codigo === "consentimiento_requerido") {
+    return detail as ConsentimientoRequerido;
+  }
+  return null;
+}
+
+/** Registra la aceptación para una cuenta con sesión ya abierta —lo llama
+ *  el modal que dispara `pedir_consentimiento` en la respuesta del login.
+ *  204 sin cuerpo; idempotente del lado del servidor. */
+export const aceptarPolitica = (): Promise<void> =>
+  client.post("/auth/aceptar-politica").then(() => undefined);
 
 // ─── Gestión de usuarios (admin) ────────────────────────────────────────────
 
