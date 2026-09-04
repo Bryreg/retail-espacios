@@ -8,7 +8,11 @@ pydantic==2.8.2
 # tumba el servicio entero. Corregido en 0.0.18.
 python-multipart==0.0.20
 psycopg2-binary==2.9.9
-PyJWT==2.9.0
+# [crypto] trae `cryptography`: hace falta para verificar RS256 (los ID
+# tokens de Firebase — services/firebase_tokens.py) además del HS256 de
+# siempre. Sin el extra, un despliegue nuevo instalaría PyJWT sin soporte
+# RSA y /api/auth/oauth fallaría con un error de librería, no de config.
+PyJWT[crypto]==2.9.0
 # Las contraseñas se guardaban en texto plano en `app_config`: un volcado de
 # la base las entregaba todas. Argon2id es el algoritmo que recomienda OWASP
 # para contraseñas —costo en memoria, no sólo en CPU, que es lo que arruina

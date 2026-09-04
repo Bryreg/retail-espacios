@@ -29,6 +29,91 @@ export const login = (password: string, cliente?: string): Promise<LoginResponse
     .post<LoginResponse>("/auth/login", cliente ? { password, cliente } : { password })
     .then((r) => r.data);
 
+// ─── Login con Google/correo (Firebase) ─────────────────────────────────────
+//
+// El shape exacto lo fija el contrato de la Fase 1 de identidad — el backend
+// lo implementa en paralelo contra el mismo documento, así que esto NO se
+// ajusta a ojo mirando una respuesta real.
+
+/** Una membresía activa de la persona que acaba de loguearse, cuando tiene
+ *  más de una y hay que preguntar en cuál entra. */
+export interface Membresia {
+  cliente: string;
+  /** Nombre visible del supermercado — el mismo que trae `getClientes()`. */
+  nombre: string;
+  rol: "owner" | "admin" | "worker";
+}
+
+/** Éxito: una sola membresía activa (o ya se mandó `cliente` y es válida). */
+export interface OauthOk {
+  token: string;
+  role: Role;
+  cliente: string;
+  email: string;
+  nombre: string;
+}
+
+/** Varias membresías activas y sin `cliente`: hay que elegir y repetir el
+ *  POST con el elegido. */
+export interface OauthRequiereCliente {
+  requiere_cliente: true;
+  membresias: Membresia[];
+}
+
+export type OauthResponse = OauthOk | OauthRequiereCliente;
+
+export const esRequiereCliente = (r: OauthResponse): r is OauthRequiereCliente =>
+  (r as OauthRequiereCliente).requiere_cliente === true;
+
+/** Intercambia un ID token de Firebase por la sesión propia. `cliente` va
+ *  sólo cuando ya se sabe cuál — la primera llamada de un login nuevo nunca
+ *  lo manda. */
+export const loginOauth = (idToken: string, cliente?: string): Promise<OauthResponse> =>
+  client
+    .post<OauthResponse>("/auth/oauth", cliente ? { id_token: idToken, cliente } : { id_token: idToken })
+    .then((r) => r.data);
+
+// ─── Gestión de usuarios (admin) ────────────────────────────────────────────
+
+export interface Miembro {
+  id: number;
+  email: string;
+  nombre: string | null;
+  rol: "owner" | "admin" | "worker";
+  activo: boolean;
+  ultimo_login: string | null;
+}
+
+export interface InvitacionPendiente {
+  email: string;
+  rol: "owner" | "admin" | "worker";
+  expira_en: string;
+}
+
+export interface UsuariosResponse {
+  miembros: Miembro[];
+  invitaciones: InvitacionPendiente[];
+}
+
+export const getUsuarios = (): Promise<UsuariosResponse> =>
+  client.get<UsuariosResponse>("/usuarios").then((r) => r.data);
+
+export interface InvitarPayload {
+  email: string;
+  rol: "owner" | "admin" | "worker";
+}
+
+export const invitarUsuario = (payload: InvitarPayload): Promise<{ ok: boolean; expira_en: string }> =>
+  client.post<{ ok: boolean; expira_en: string }>("/usuarios/invitar", payload).then((r) => r.data);
+
+/** Activa o desactiva la membresía de esa persona EN el cliente del token
+ *  de quien llama. Desactivar le corta el acceso YA: el siguiente request
+ *  de esa persona da 401 (revocación por request, no espera a que expire
+ *  el JWT). El endpoint devuelve sólo `{ok}` — no la fila actualizada —,
+ *  así que quien llama actualiza su propia copia local del miembro. */
+export const setMiembroActivo = (usuarioId: number, activo: boolean): Promise<{ ok: boolean }> =>
+  client.patch<{ ok: boolean }>(`/usuarios/${usuarioId}`, { activo }).then((r) => r.data);
+
 export interface PasswordsResponse {
   ok: boolean;
   /** Sólo viene cuando el admin cambió SU propia clave.

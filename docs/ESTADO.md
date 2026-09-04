@@ -1,7 +1,7 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: agosto 2026 (disponibilidad por fechas y calendario por temporada).
+Última actualización: septiembre 2026 (identidad: cuentas individuales con Google/correo, membresías por cliente).
 
 Gestión de espacios comerciales en supermercados: se dibuja el plano de cada sede, se
 marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
@@ -92,6 +92,58 @@ causó una pérdida de datos real (ver más abajo).
 ---
 
 ## Qué está hecho
+
+### Identidad: cuentas individuales con Google/correo (Fase 1)
+
+Conviven DOS formas de entrar, y las dos emiten el mismo JWT:
+
+- **Legado**: las dos claves compartidas por rol (admin/worker) de siempre —
+  intacto, byte a byte el mismo payload. Se apagará por cliente cuando ese
+  cliente haya migrado a cuentas.
+- **Cuentas individuales**: Google o correo/contraseña vía Firebase Auth
+  (`POST /api/auth/oauth`). El backend NO corre SDK de Firebase: verifica el
+  ID token contra el JWKS de Google (RS256 forzado desde el header — inmune a
+  `alg none` y a la confusión RS256→HS256 —, clave por `kid`, `aud` =
+  `FIREBASE_PROJECT_ID`, `iss` de securetoken, y **leeway de 60 s** porque
+  medio segundo de desfase de reloj real bastó para rechazar todo token
+  recién emitido). El JWT propio solo gana `sub` y `email`: todo el
+  middleware y la redacción de dinero por rol siguen tal cual.
+
+Las tablas de identidad (`usuarios`, `membresias`, `invitaciones`) viven en
+la **base por defecto (el registro)**, junto a `clientes` — identidad global,
+se lee SIEMPRE con `sesion_registro()`. Son tablas nuevas: `create_all()` las
+crea, sin migración. El rol sale de la MEMBRESÍA (owner/admin/worker; owner
+viaja como admin en el token), nunca del pedido. Invitación por correo con
+expiración; se canjean TODAS las pendientes al entrar. Desactivar una
+membresía corta el acceso de ESA persona en el siguiente request (cache de
+60 s con invalidación explícita al desactivar). El freno de fuerza bruta de
+`/oauth` usa una tabla propia (`intentos_oauth`) para no contaminar el del
+login legado. Un correo es confiable si viene verificado o si el token lo
+emitió Google — LA MISMA vara en la puerta y en la vinculación por correo
+(tener dos varas causaba un 500 que además era oráculo de correos).
+
+Config: backend `FIREBASE_PROJECT_ID` (sin ella, `/oauth` da 503 y el legado
+sigue solo); frontend `VITE_FIREBASE_API_KEY` / `VITE_FIREBASE_AUTH_DOMAIN` /
+`VITE_FIREBASE_PROJECT_ID` (sin ellas, la pantalla muestra solo el login
+legado). Ver `render.yaml` para el deploy. Verificado de punta a punta contra
+el proyecto Firebase real (`recabra`): firma, JWKS, audiencia y emisor.
+
+### Pendientes conocidos: identidad
+
+- **Firebase no se consulta por revocación**: una cuenta deshabilitada en la
+  consola de Firebase puede canjear su ID token vigente (≤1 h) por un JWT
+  propio de 12 h. Mitigado de verdad por el chequeo de membresía por request:
+  desactivar la membresía acá corta el acceso ya. Deshabilitar en Firebase
+  SIN desactivar la membresía no corta nada — el procedimiento es desactivar
+  la membresía.
+- **El email del actor va concatenado en `detalle` del `audit_log`**
+  (`… · correo@x.co`), no en la columna `actor` (que sigue diciendo el rol).
+  Funciona pero obliga a parsear texto; una columna nueva pediría migración o
+  tabla aparte — decisión pendiente.
+- Los caminos del SDK de Firebase en el cliente (alta por correo,
+  verificación, reset) no tienen tests automatizados: el repo no tiene runner
+  de tests de frontend. El backend sí está cubierto (identidad + ataques).
+
 
 ### Sincronización entre computadores
 

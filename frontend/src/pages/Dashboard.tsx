@@ -15,8 +15,13 @@ import {
   saveContacts,
   getBitacora,
   getAccionesBitacora,
+  getUsuarios,
+  invitarUsuario,
+  setMiembroActivo,
   type ContactBook,
   type LineaBitacora,
+  type Miembro,
+  type UsuariosResponse,
 } from "../api/auth";
 import { describeError } from "../api/client";
 import { useFixtureStore } from "../store/fixtureStore";
@@ -249,6 +254,235 @@ function ContactsSection({ sedes }: { sedes: string[] }) {
   );
 }
 
+// ─── Usuarios (Fase 1 identidad) ────────────────────────────────────────────
+
+/** `owner`/`admin`/`worker` → la palabra que la persona espera leer, no el
+ *  nombre de la columna. */
+function rolLabelUsuario(rol: Miembro["rol"]): string {
+  if (rol === "owner") return "Dueño";
+  if (rol === "admin") return "Administrador";
+  return "Trabajador";
+}
+
+/** Miembros con cuenta individual (Google/correo) e invitaciones que
+ *  todavía nadie aceptó, para el cliente de la sesión actual — el token
+ *  manda, no hay selector de cliente acá.
+ *
+ *  Convive con "Claves de acceso" de arriba a propósito: mientras dure la
+ *  transición de la Fase 1 los dos caminos entran al mismo lugar, y quien
+ *  administra necesita ver los dos para saber a quién todavía le falta
+ *  pasarse a cuenta propia. */
+function UsuariosSection() {
+  const [datos, setDatos] = useState<UsuariosResponse | null>(null);
+  const [cargando, setCargando] = useState(true);
+  const [msg, setMsg] = useState<Feedback>(null);
+
+  const [invEmail, setInvEmail] = useState("");
+  const [invRol, setInvRol] = useState<Miembro["rol"]>("worker");
+  const [invitando, setInvitando] = useState(false);
+  const [invMsg, setInvMsg] = useState<Feedback>(null);
+
+  // Qué fila está a mitad de un activar/desactivar, para deshabilitar sólo
+  // ESE botón y no toda la sección mientras viaja el PATCH.
+  const [cambiando, setCambiando] = useState<number | null>(null);
+
+  const cargar = () => {
+    setCargando(true);
+    setMsg(null);
+    getUsuarios()
+      .then(setDatos)
+      .catch((err) => setMsg({ ok: false, text: describeError(err, "No se pudo leer la lista de usuarios.") }))
+      .finally(() => setCargando(false));
+  };
+
+  useEffect(cargar, []);
+
+  const invitar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!invEmail.trim() || invitando) return;
+    setInvitando(true);
+    setInvMsg(null);
+    try {
+      await invitarUsuario({ email: invEmail.trim(), rol: invRol });
+      setInvMsg({ ok: true, text: `Invitación enviada a ${invEmail.trim()}.` });
+      setInvEmail("");
+      cargar();
+    } catch (err) {
+      // 409: la persona ya es miembro de este cliente — describeError ya
+      // trae el detalle del backend, no hace falta inventar uno genérico.
+      setInvMsg({ ok: false, text: describeError(err, "No se pudo enviar la invitación.") });
+    } finally {
+      setInvitando(false);
+    }
+  };
+
+  const cambiarActivo = async (m: Miembro) => {
+    // Desactivar le corta el acceso YA — a mitad de un turno de trabajo si
+    // hace falta. Reactivar es reversible y no lo pide; apagar sí.
+    if (m.activo) {
+      const seguro = confirm(
+        `¿Desactivar a ${m.nombre || m.email}? Pierde el acceso a este supermercado de inmediato.`
+      );
+      if (!seguro) return;
+    }
+    setCambiando(m.id);
+    setMsg(null);
+    try {
+      await setMiembroActivo(m.id, !m.activo);
+      // El endpoint sólo confirma `{ok}`, no manda la fila de vuelta: se
+      // actualiza la copia local a mano en vez de re-pedir toda la lista.
+      setDatos((prev) =>
+        prev
+          ? {
+              ...prev,
+              miembros: prev.miembros.map((x) => (x.id === m.id ? { ...x, activo: !m.activo } : x)),
+            }
+          : prev
+      );
+    } catch (err) {
+      setMsg({ ok: false, text: describeError(err, "No se pudo actualizar la membresía.") });
+    } finally {
+      setCambiando(null);
+    }
+  };
+
+  return (
+    <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }}>
+      <div style={sectionLabelStyle}>Usuarios</div>
+      <p style={{ fontSize: 11.5, color: "var(--ink-2)", margin: "-4px 0 12px", lineHeight: 1.5 }}>
+        Cuentas individuales con Google o correo, para este supermercado. Conviven
+        con la clave compartida de arriba mientras dure la transición.
+      </p>
+
+      {/* Invitar */}
+      <form onSubmit={invitar} style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 14 }}>
+        <div style={{ flex: 1 }}>
+          <label style={fieldLabelStyle}>Invitar por correo</label>
+          <input
+            type="email"
+            value={invEmail}
+            onChange={(e) => setInvEmail(e.target.value)}
+            placeholder="persona@empresa.com"
+            style={inputStyle}
+          />
+        </div>
+        <div style={{ width: 120 }}>
+          <label style={fieldLabelStyle}>Rol</label>
+          <select
+            value={invRol}
+            onChange={(e) => setInvRol(e.target.value as Miembro["rol"])}
+            style={inputStyle}
+          >
+            <option value="worker">Trabajador</option>
+            <option value="admin">Administrador</option>
+            <option value="owner">Dueño</option>
+          </select>
+        </div>
+        <ActionButton onClick={() => {}} disabled={invitando || !invEmail.trim()} primary>
+          {invitando ? "Enviando…" : "Invitar"}
+        </ActionButton>
+      </form>
+      <FeedbackNote msg={invMsg} />
+
+      {cargando ? (
+        <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 8 }}>Cargando…</div>
+      ) : datos ? (
+        <>
+          {datos.miembros.length === 0 && datos.invitaciones.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 8 }}>
+              Todavía nadie entró con cuenta propia en este supermercado.
+            </div>
+          ) : (
+            <div
+              style={{
+                marginTop: 4,
+                border: "1px solid var(--line)", borderRadius: "var(--r-md)",
+                background: "var(--surface-2)", overflow: "hidden",
+              }}
+            >
+              {datos.miembros.map((m) => (
+                <div
+                  key={m.id}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "8px 10px",
+                    borderBottom: "1px solid var(--line-soft)",
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 12.5, fontWeight: 600,
+                      color: m.activo ? "var(--ink-1)" : "var(--ink-4)",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>
+                      {m.nombre || m.email}
+                    </div>
+                    <div style={{
+                      fontSize: 11, color: "var(--ink-3)",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>
+                      {m.email} · {rolLabelUsuario(m.rol)}
+                      {!m.activo && " · desactivado"}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "var(--ink-4)", whiteSpace: "nowrap" }}>
+                    {m.ultimo_login ? haceCuanto(m.ultimo_login) : "nunca entró"}
+                  </div>
+                  <button
+                    onClick={() => cambiarActivo(m)}
+                    disabled={cambiando === m.id}
+                    style={{
+                      height: 26, padding: "0 10px",
+                      borderRadius: "var(--r-md)",
+                      border: `1px solid ${m.activo ? "var(--danger)" : "var(--line)"}`,
+                      background: "var(--surface)",
+                      color: m.activo ? "var(--danger)" : "var(--ink-2)",
+                      fontSize: 11, fontWeight: 600, fontFamily: "inherit",
+                      cursor: cambiando === m.id ? "default" : "pointer",
+                      opacity: cambiando === m.id ? 0.55 : 1,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {cambiando === m.id ? "…" : m.activo ? "Desactivar" : "Activar"}
+                  </button>
+                </div>
+              ))}
+
+              {datos.invitaciones.map((inv) => (
+                <div
+                  key={inv.email}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "8px 10px",
+                    borderBottom: "1px solid var(--line-soft)",
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 12.5, fontWeight: 600, color: "var(--ink-3)",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>
+                      {inv.email}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--ink-4)" }}>
+                      Invitación pendiente · {rolLabelUsuario(inv.rol)}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "var(--ink-4)", whiteSpace: "nowrap" }}>
+                    {fraseVencimiento(inv.expira_en)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      ) : null}
+
+      <FeedbackNote msg={msg} />
+    </div>
+  );
+}
+
 // ─── Bitácora ─────────────────────────────────────────────────────────────────
 
 /** Cuándo pasó, en la unidad que uno pregunta.
@@ -268,6 +502,23 @@ function haceCuanto(iso: string): string {
   const d = Math.round(h / 24);
   if (d < 30) return `hace ${d} d`;
   return new Date(t).toLocaleDateString("es-CO", { day: "2-digit", month: "short" });
+}
+
+/** Cuándo vence una invitación, en la misma unidad relativa que el resto de
+ *  la pantalla — "vence en 3 d" y no una fecha ISO que hay que traducir de
+ *  cabeza. Frase completa (no sólo el número) porque "vencida" sola no
+ *  admite el prefijo "vence " sin sonar mal. */
+function fraseVencimiento(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return "—";
+  const seg = Math.round((t - Date.now()) / 1000);
+  if (seg <= 0) return "vencida";
+  const min = Math.round(seg / 60);
+  if (min < 60) return `vence en ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `vence en ${h} h`;
+  const d = Math.round(h / 24);
+  return `vence en ${d} d`;
 }
 
 const exacto = (iso: string) =>
@@ -591,8 +842,10 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
           <FeedbackNote msg={pwMsg} />
         </div>
 
+        <UsuariosSection />
+
         {/* Notifications */}
-        <div style={{ padding: "16px 18px" }}>
+        <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }}>
           <div style={sectionLabelStyle}>Notificaciones por correo</div>
           {cfgLoading ? (
             <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Cargando configuración…</div>

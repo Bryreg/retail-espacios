@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
-import { login, getClientes, type ClienteBreve } from "../api/auth";
+import {
+  login, getClientes, loginOauth, esRequiereCliente,
+  type ClienteBreve, type Membresia,
+} from "../api/auth";
+import { describeError } from "../api/client";
+import {
+  firebaseDisponible, loginConGoogle, loginConCorreo, registrarConCorreo,
+  reenviarVerificacion, resetearClave, signOutFirebase, describirErrorFirebase,
+} from "../api/firebase";
 import { useAuthStore } from "../store/authStore";
 
 // ─── Login page ──────────────────────────────────────────────────────────────
@@ -12,6 +20,23 @@ import { useAuthStore } from "../store/authStore";
 // Y todo alineado a la izquierda. Un formulario centrado en medio de la
 // pantalla es la plantilla de ingreso de cualquier producto; alineado, con la
 // regla arriba, se lee como la portada de un instrumento.
+//
+// ─── Fase 1 identidad: dos vías ────────────────────────────────────────────
+//
+// Arriba, Google/correo (Firebase) — la vía nueva, individual. Abajo, la
+// clave compartida de siempre, rotulada "Acceso anterior". Las dos conviven
+// hasta que cada cliente migre.
+//
+// `firebaseDisponible` decide TODO: si falta cualquiera de las tres
+// VITE_FIREBASE_*, la vía nueva ni se dibuja — ni el botón de Google, ni el
+// divisor, ni la etiqueta "Acceso anterior" (que no tendría de qué
+// distinguirse). La pantalla queda IDÉNTICA a como estaba antes de esta fase.
+//
+// Un 503 de `/api/auth/oauth` (backend sin `FIREBASE_PROJECT_ID`) es otra
+// cosa: ahí SÍ hay configuración del lado del cliente, pero el servidor no
+// la tiene. Sólo se entera al intentar, así que ese caso se resuelve en
+// tiempo de uso — no hay endpoint para "preguntar antes" — y cuando llega se
+// reemplaza toda la vía nueva por un aviso discreto, sin ocultar el resto.
 
 const etiquetaStyle: React.CSSProperties = {
   display: "block", marginBottom: 5,
@@ -19,8 +44,33 @@ const etiquetaStyle: React.CSSProperties = {
   color: "var(--ink-3)",
 };
 
+const inputStyle: React.CSSProperties = {
+  width: "100%", height: 38, padding: "0 12px",
+  borderRadius: "var(--r-md)",
+  border: "1px solid var(--line)",
+  background: "var(--surface-2)",
+  color: "var(--ink-1)",
+  fontSize: 13, fontFamily: "inherit",
+  outline: "none",
+};
+
+const linkButtonStyle: React.CSSProperties = {
+  background: "transparent", border: "none", padding: 0,
+  color: "var(--accent)", cursor: "pointer",
+  fontSize: 11.5, fontWeight: 600, fontFamily: "inherit",
+  textAlign: "left",
+};
+
+function rolLabel(rol: Membresia["rol"]): string {
+  if (rol === "owner") return "dueño";
+  if (rol === "admin") return "administrador";
+  return "trabajador";
+}
+
 export default function Login() {
   const setAuth = useAuthStore((s) => s.setAuth);
+
+  // ─── Legado: clave compartida ─────────────────────────────────────────
   const [password, setPassword] = useState("");
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -61,6 +111,170 @@ export default function Login() {
     }
   };
 
+  // ─── Nuevo: Google / correo (Firebase) ─────────────────────────────────
+  const [fbMode, setFbMode] = useState<"login" | "registro">("login");
+  const [fbEmail, setFbEmail] = useState("");
+  const [fbPassword, setFbPassword] = useState("");
+  const [fbBusy, setFbBusy] = useState(false);
+  const [fbError, setFbError] = useState<string | null>(null);
+  const [fbInfo, setFbInfo] = useState<string | null>(null);
+  const [needsVerification, setNeedsVerification] = useState(false);
+  // Backend sin FIREBASE_PROJECT_ID: se entera recién al intentar. Una vez
+  // visto, no tiene sentido dejar los botones puestos para que fallen de
+  // nuevo — se cambia por el aviso y listo.
+  const [backendSinConfig, setBackendSinConfig] = useState(false);
+  // Varias membresías activas: hay que elegir antes de terminar.
+  const [membresias, setMembresias] = useState<Membresia[] | null>(null);
+  const [pendingIdToken, setPendingIdToken] = useState<string | null>(null);
+  const [clienteElegido, setClienteElegido] = useState("");
+
+  const limpiarAvisos = () => {
+    setFbError(null);
+    setFbInfo(null);
+    setNeedsVerification(false);
+  };
+
+  const manejarErrorOauth = (err: unknown) => {
+    const status = (err as { response?: { status?: number } })?.response?.status;
+    if (status === 503) {
+      // El servidor no tiene FIREBASE_PROJECT_ID: el resto de la app sigue
+      // andando igual, acá sólo se retira la vía nueva de esta pantalla.
+      setBackendSinConfig(true);
+      return;
+    }
+    if (status === 403) {
+      setFbError(describeError(
+        err,
+        "Tu cuenta no tiene acceso a ningún cliente. Pedí una invitación."
+      ));
+      return;
+    }
+    setFbError(describeError(err, "No se pudo verificar tu identidad."));
+  };
+
+  /** Manda el ID token al backend propio. Si hace falta elegir cliente,
+   *  guarda el token y muestra el selector; si no, entra directo. */
+  const completarOauth = async (idToken: string, clienteElegido?: string) => {
+    try {
+      const r = await loginOauth(idToken, clienteElegido);
+      if (esRequiereCliente(r)) {
+        setPendingIdToken(idToken);
+        setMembresias(r.membresias);
+        setClienteElegido(r.membresias[0]?.cliente ?? "");
+        return;
+      }
+      // Superset del legado: además de token/role/cliente trae email y
+      // nombre de la persona, que el legado nunca tuvo por no ser individual.
+      const nombreVisibleCliente =
+        clientes.find((c) => c.slug === r.cliente)?.nombre ??
+        membresias?.find((m) => m.cliente === r.cliente)?.nombre;
+      setAuth(r.token, r.role, r.cliente, nombreVisibleCliente, r.email, r.nombre);
+    } catch (err) {
+      manejarErrorOauth(err);
+    }
+  };
+
+  const conGoogle = async () => {
+    if (fbBusy) return;
+    limpiarAvisos();
+    setFbBusy(true);
+    try {
+      const r = await loginConGoogle();
+      await completarOauth(r.idToken);
+    } catch (err) {
+      // signInWithPopup cancelado por la persona no es un error que valga
+      // mostrar en rojo: intentó y se arrepintió.
+      const codigo = (err as { code?: string })?.code;
+      if (codigo !== "auth/popup-closed-by-user" && codigo !== "auth/cancelled-popup-request") {
+        setFbError(describirErrorFirebase(err));
+      }
+    } finally {
+      setFbBusy(false);
+    }
+  };
+
+  const conCorreo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fbEmail || !fbPassword || fbBusy) return;
+    limpiarAvisos();
+    setFbBusy(true);
+    try {
+      const r = fbMode === "registro"
+        ? await registrarConCorreo(fbEmail, fbPassword)
+        : await loginConCorreo(fbEmail, fbPassword);
+      if (!r.emailVerified) {
+        // El backend hace el mismo chequeo y contestaría 401 igual — se
+        // ahorra el viaje porque el SDK ya lo sabe acá.
+        setNeedsVerification(true);
+        setFbInfo(
+          fbMode === "registro"
+            ? "Te mandamos un correo para verificar tu cuenta. Confirmalo y volvé a entrar."
+            : "Tu correo todavía no está verificado."
+        );
+        return;
+      }
+      await completarOauth(r.idToken);
+    } catch (err) {
+      setFbError(describirErrorFirebase(err));
+    } finally {
+      setFbBusy(false);
+    }
+  };
+
+  const reenviar = async () => {
+    if (fbBusy) return;
+    setFbBusy(true);
+    setFbError(null);
+    try {
+      await reenviarVerificacion();
+      setFbInfo("Te reenviamos el correo de verificación.");
+    } catch (err) {
+      setFbError(err instanceof Error ? err.message : "No se pudo reenviar la verificación.");
+    } finally {
+      setFbBusy(false);
+    }
+  };
+
+  const [resetEnviado, setResetEnviado] = useState(false);
+  const olvideClave = async () => {
+    if (!fbEmail) {
+      setFbError("Escribí tu correo arriba para poder mandarte el enlace.");
+      return;
+    }
+    setFbBusy(true);
+    setFbError(null);
+    try {
+      await resetearClave(fbEmail);
+      setResetEnviado(true);
+      setFbInfo("Te mandamos un enlace para elegir una contraseña nueva.");
+    } catch (err) {
+      setFbError(describirErrorFirebase(err));
+    } finally {
+      setFbBusy(false);
+    }
+  };
+
+  const confirmarCliente = async () => {
+    if (!pendingIdToken || !clienteElegido || fbBusy) return;
+    setFbBusy(true);
+    setFbError(null);
+    try {
+      await completarOauth(pendingIdToken, clienteElegido);
+    } finally {
+      setFbBusy(false);
+    }
+  };
+
+  /** Vuelve al punto de partida de la vía nueva — para probar con otra
+   *  cuenta de Google/correo sin recargar la página. */
+  const empezarDeNuevo = () => {
+    void signOutFirebase();
+    setMembresias(null);
+    setPendingIdToken(null);
+    setClienteElegido("");
+    limpiarAvisos();
+  };
+
   return (
     <div
       style={{
@@ -93,6 +307,179 @@ export default function Login() {
         <p style={{ margin: "0 0 26px", fontSize: 12.5, color: "var(--ink-3)" }}>
           Gestión de espacios comerciales
         </p>
+
+        {firebaseDisponible && (
+          <div style={{ width: "100%" }}>
+            {backendSinConfig ? (
+              <div
+                style={{
+                  width: "100%", marginBottom: 18,
+                  padding: "10px 12px",
+                  borderRadius: "var(--r-md)",
+                  border: "1px solid var(--line)",
+                  background: "var(--surface-2)",
+                  fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.5,
+                }}
+              >
+                El ingreso con Google o correo no está disponible en este servidor
+                todavía. Usá el acceso anterior, más abajo.
+              </div>
+            ) : membresias ? (
+              // ── Selector de cliente: varias membresías activas ──────────
+              <div style={{ width: "100%", marginBottom: 18 }}>
+                <label htmlFor="login-cliente-fb" style={etiquetaStyle}>
+                  Tu cuenta entra a varios supermercados — elegí uno
+                </label>
+                <select
+                  id="login-cliente-fb"
+                  value={clienteElegido}
+                  onChange={(e) => setClienteElegido(e.target.value)}
+                  style={{ ...inputStyle, height: 38, marginBottom: 10 }}
+                >
+                  {membresias.map((m) => (
+                    <option key={m.cliente} value={m.cliente}>
+                      {m.nombre} · {rolLabel(m.rol)}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={confirmarCliente}
+                  disabled={fbBusy || !clienteElegido}
+                  style={{
+                    width: "100%", height: 38,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    borderRadius: "var(--r-md)",
+                    background: "var(--accent)", color: "#fff",
+                    border: "none",
+                    cursor: fbBusy || !clienteElegido ? "default" : "pointer",
+                    opacity: fbBusy || !clienteElegido ? 0.6 : 1,
+                    fontSize: 13, fontWeight: 600, fontFamily: "inherit",
+                  }}
+                >
+                  {fbBusy ? "Entrando…" : "Continuar"}
+                </button>
+                <div style={{ marginTop: 10 }}>
+                  <button type="button" onClick={empezarDeNuevo} style={linkButtonStyle}>
+                    Probar con otra cuenta
+                  </button>
+                </div>
+              </div>
+            ) : (
+              // ── Google + correo/contraseña ───────────────────────────────
+              <div style={{ width: "100%", marginBottom: 18 }}>
+                <button
+                  type="button"
+                  onClick={conGoogle}
+                  disabled={fbBusy}
+                  style={{
+                    width: "100%", height: 38, marginBottom: 12,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    borderRadius: "var(--r-md)",
+                    background: "var(--surface)", color: "var(--ink-1)",
+                    border: "1px solid var(--line-strong)",
+                    cursor: fbBusy ? "default" : "pointer",
+                    opacity: fbBusy ? 0.6 : 1,
+                    fontSize: 13, fontWeight: 600, fontFamily: "inherit",
+                  }}
+                >
+                  {fbBusy ? "Un momento…" : "Continuar con Google"}
+                </button>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 12px" }}>
+                  <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
+                  <span style={{ fontSize: 11, color: "var(--ink-4)" }}>o con correo</span>
+                  <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
+                </div>
+
+                <form onSubmit={conCorreo}>
+                  <div style={{ marginBottom: 10 }}>
+                    <label htmlFor="fb-email" style={etiquetaStyle}>Correo</label>
+                    <input
+                      id="fb-email"
+                      type="email"
+                      autoComplete="email"
+                      value={fbEmail}
+                      onChange={(e) => { setFbEmail(e.target.value); setResetEnviado(false); }}
+                      placeholder="vos@empresa.com"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <label htmlFor="fb-password" style={etiquetaStyle}>Contraseña</label>
+                    <input
+                      id="fb-password"
+                      type="password"
+                      autoComplete={fbMode === "registro" ? "new-password" : "current-password"}
+                      value={fbPassword}
+                      onChange={(e) => setFbPassword(e.target.value)}
+                      placeholder="••••••••"
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                    <button
+                      type="button"
+                      onClick={() => { setFbMode(fbMode === "login" ? "registro" : "login"); limpiarAvisos(); }}
+                      style={linkButtonStyle}
+                    >
+                      {fbMode === "login" ? "Crear una cuenta" : "Ya tengo cuenta"}
+                    </button>
+                    {fbMode === "login" && !resetEnviado && (
+                      <button type="button" onClick={olvideClave} style={linkButtonStyle}>
+                        Olvidé mi contraseña
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={fbBusy || !fbEmail || !fbPassword}
+                    style={{
+                      width: "100%", height: 38,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      borderRadius: "var(--r-md)",
+                      background: "var(--accent)", color: "#fff",
+                      border: "none",
+                      cursor: fbBusy || !fbEmail || !fbPassword ? "default" : "pointer",
+                      opacity: fbBusy || !fbEmail || !fbPassword ? 0.6 : 1,
+                      fontSize: 13, fontWeight: 600, fontFamily: "inherit",
+                    }}
+                  >
+                    {fbBusy
+                      ? "Un momento…"
+                      : fbMode === "registro" ? "Crear cuenta" : "Ingresar"}
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {fbError && (
+              <div style={{ marginTop: -8, marginBottom: 14, fontSize: 12, fontWeight: 500, color: "var(--danger)" }}>
+                {fbError}
+              </div>
+            )}
+            {fbInfo && (
+              <div style={{ marginTop: -8, marginBottom: 8, fontSize: 12, fontWeight: 500, color: "var(--success)" }}>
+                {fbInfo}
+              </div>
+            )}
+            {needsVerification && (
+              <div style={{ marginTop: -4, marginBottom: 14 }}>
+                <button type="button" onClick={reenviar} disabled={fbBusy} style={linkButtonStyle}>
+                  Reenviar correo de verificación
+                </button>
+              </div>
+            )}
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "6px 0 16px" }}>
+              <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
+              <span className="rotulo" style={{ fontSize: 9.5 }}>Acceso anterior</span>
+              <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
+            </div>
+          </div>
+        )}
 
         <form onSubmit={submit} style={{ width: "100%" }}>
           {varios && (
@@ -131,7 +518,7 @@ export default function Login() {
           <input
             id="login-password"
             type="password"
-            autoFocus={!varios}
+            autoFocus={!varios && !firebaseDisponible}
             value={password}
             onChange={(e) => {
               setPassword(e.target.value);
