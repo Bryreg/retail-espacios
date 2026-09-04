@@ -134,12 +134,45 @@ def _run_lease_maintenance():
         finally:
             db.close()
 
+    # Cierre automático del mes (Fase 5): snapshotea el MES YA CERRADO si le
+    # falta la fila a algún cliente, para que la serie de tendencia no dependa de
+    # que alguien haya abierto la consola ese mes. Es una tarea de la PLATAFORMA
+    # y no de cada supermercado: se hace una sola vez por corrida. Va DESPUÉS del
+    # recorrido y no antes: cuando falta una fila recorre todas las bases por
+    # `calcular()`, y hacer eso primero retrasaba vencimientos y recordatorios
+    # varios segundos en cada arranque (y volvía intermitentes los tests de
+    # recordatorios, que comparten este hilo). En su propio try/except: una falla
+    # del histórico no puede dejar sin nada al resto del ciclo. Sólo LEE las
+    # bases de cliente; lo que escribe va al registro.
+    if _stop_mantenimiento.is_set():
+        return
+    from app.plataforma_tendencia import cerrar_mes_anterior
+    try:
+        cerrar_mes_anterior()
+    except Exception:
+        logger.exception("El cierre mensual de la serie de tendencia falló")
+
+
+# La vuelta de mantenimiento que está corriendo AHORA en el hilo de fondo, para
+# que el apagado pueda esperarla. Cancelar la tarea asyncio corta el `await`,
+# no el hilo: sin esto, el hilo seguía vivo después del shutdown y —en los
+# tests, que levantan y bajan la app cientos de veces— terminaba escribiendo en
+# la base del test SIGUIENTE (mismo proceso, `DATABASE_URL` ya cambiado).
+_mantenimiento_en_vuelo: "asyncio.Future | None" = None
+
 
 async def _lease_maintenance_loop():
     """Run maintenance at startup and then every 12 hours. Never dies on errors."""
+    global _mantenimiento_en_vuelo
+    loop = asyncio.get_running_loop()
     while True:
         try:
-            await asyncio.to_thread(_run_lease_maintenance)
+            _mantenimiento_en_vuelo = loop.run_in_executor(None, _run_lease_maintenance)
+            # `shield`: la cancelación de esta tarea no toca al hilo (no se puede
+            # matar un hilo); quien lo espera hasta el final es el lifespan.
+            await asyncio.shield(_mantenimiento_en_vuelo)
+        except asyncio.CancelledError:
+            raise
         except Exception:
             logger.exception("Error en el ciclo de mantenimiento de contratos")
         await asyncio.sleep(REMINDER_INTERVAL_SECONDS)
@@ -179,6 +212,17 @@ async def lifespan(_app: FastAPI):
         await maintenance_task
     except asyncio.CancelledError:
         pass
+    # Y se espera al hilo hasta que de verdad termine: la app no está apagada
+    # mientras un hilo suyo siga leyendo bases. Con tope, para que un cliente
+    # con la base colgada no deje al proceso sin poder salir.
+    en_vuelo = _mantenimiento_en_vuelo
+    if en_vuelo is not None and not en_vuelo.done():
+        try:
+            await asyncio.wait_for(asyncio.shield(en_vuelo), timeout=30)
+        except asyncio.TimeoutError:
+            logger.warning("El mantenimiento de fondo no terminó en 30 s; se lo abandona")
+        except Exception:
+            pass  # su error ya quedó en el log del ciclo
 
 
 # ─── App ──────────────────────────────────────────────────────────────────────

@@ -1247,8 +1247,10 @@ def test_m24_dos_consultas_no_escriben_una_sola_fila_en_ninguna_tabla(client, mo
     assert despues == antes, f"las métricas escribieron: {antes} -> {despues}"
 
 
-def test_m25_lo_unico_que_crece_en_el_registro_es_la_bitacora(client, monkeypatch):
-    """M-25 — La otra mitad de M-24: el registro tampoco se mueve, salvo la bitácora.
+def test_m25_lo_unico_que_crece_en_el_registro_es_la_bitacora_y_el_snapshot(client, monkeypatch):
+    """M-25 — La otra mitad de M-24: el registro tampoco se mueve, salvo lo que
+    la spec autoriza a escribir: la bitácora, y desde la Fase 5 el snapshot de
+    tendencia (write-through, tabla nueva del registro).
 
     Si una consulta de métricas tocara ``usuarios``, ``membresias`` o
     ``estados_cliente`` —por ejemplo "marcando" al cliente visitado— la promesa
@@ -1271,8 +1273,13 @@ def test_m25_lo_unico_que_crece_en_el_registro_es_la_bitacora(client, monkeypatc
     despues = foto()
 
     crecieron = {t: (antes[t], despues[t]) for t in antes if antes[t] != despues[t]}
-    assert set(crecieron) == {"bitacora_plataforma"}, crecieron
+    assert set(crecieron) == {"bitacora_plataforma", "snapshot_metricas"}, crecieron
     assert crecieron["bitacora_plataforma"][1] - crecieron["bitacora_plataforma"][0] == 2
+    # El write-through sólo corre en el CÁLCULO real: la primera consulta deja
+    # una fila por cliente LEGIBLE (acme, beta, galerias -- "roto" no) más la
+    # consolidada; la segunda sale del caché de 5 min y no recalcula nada, así
+    # que no vuelve a escribir el snapshot.
+    assert crecieron["snapshot_metricas"][1] - crecieron["snapshot_metricas"][0] == 4
 
 
 def test_m26_el_cliente_suspendido_aparece_con_sus_metricas_y_sin_su_motivo(client, monkeypatch):

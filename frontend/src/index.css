@@ -277,6 +277,14 @@
   --con-suprimido-ink:   #6B7479;
   --con-suprimido-hatch: #C7CED0;
   --con-sindato-ink:     #BEC5C8;
+
+  /* Tendencia (Fase 5): línea + puntos del gráfico temporal. Mismo matiz
+     "instrumento" que `--con-mag-fill` pero un pelín más oscuro para
+     mantener ≥3:1 contra `--con-surface` (blanco) también en el trazo fino
+     de 2px de la línea; el relleno del punto usa `--con-surface` para que el
+     hueco (sin dato / parcial) se vea agujereado de verdad. */
+  --con-linea:      #2A6890;
+  --con-linea-punto: #2A6890;
 }
 
 [data-consola-tema="oscuro"] {
@@ -309,6 +317,11 @@
   --con-suprimido-ink:   #96A0A5;
   --con-suprimido-hatch: #3A454D;
   --con-sindato-ink:     #55606A;
+
+  /* Tendencia (Fase 5): más clara que en el tema claro para sostener ≥3:1
+     contra el `--con-surface` oscuro. */
+  --con-linea:      #6BB6E6;
+  --con-linea-punto: #6BB6E6;
 }
 
 /* Foco de teclado visible para lo interactivo de la consola. El offset usa el
