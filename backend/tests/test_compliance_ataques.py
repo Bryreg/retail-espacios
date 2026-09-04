@@ -1083,7 +1083,27 @@ def test_x24_el_interruptor_de_fase_2_ya_no_corta_el_habeas_data(client, monkeyp
     assert client.get("/api/spaces/", headers=owner).status_code == 402
 
 
-def test_x22_la_pagina_publica_no_exige_login_y_lleva_las_cabeceras(client):
+@pytest.fixture()
+def _dist_minimo():
+    """El catch-all de la SPA solo se registra si ``frontend/dist`` existe
+    (main.py lo chequea al importar). Localmente suele estar construido; en CI
+    no — y el test daba 404 por ausencia de build, no por bug. Este fixture
+    garantiza un dist mínimo ANTES de que el fixture ``client`` importe
+    ``app.main``, y limpia solo lo que creó."""
+    import shutil
+    from pathlib import Path
+
+    dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+    creado = not dist.exists()
+    if creado:
+        (dist / "assets").mkdir(parents=True)
+        (dist / "index.html").write_text("<!doctype html><title>RECABRA</title>")
+    yield
+    if creado:
+        shutil.rmtree(dist, ignore_errors=True)
+
+
+def test_x22_la_pagina_publica_no_exige_login_y_lleva_las_cabeceras(_dist_minimo, client):
     """X-22. ``/politica-datos`` la resuelve el catch-all de la SPA: tiene que
     contestar sin credencial (es un requisito legal) y con las mismas
     cabeceras que todo lo demás."""

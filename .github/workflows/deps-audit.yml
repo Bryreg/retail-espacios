@@ -46,7 +46,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20          # mismo runtime que deploy.yml
+          node-version: 22          # npm >=10.9: el endpoint "quick audit" de
+                                      # npm 10.8 (node 20) está retirado y
+                                      # devuelve 400 "Invalid package tree" con
+                                      # lockfiles de --legacy-peer-deps; npm de
+                                      # node 22 usa el bulk advisory endpoint.
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       # --legacy-peer-deps: el mismo requisito del repo que deploy.yml ya
