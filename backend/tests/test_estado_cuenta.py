@@ -94,7 +94,7 @@ def _entrar_por_oauth(client, admin, email, rol="worker", uid=None):
     """Invita y canjea, con el cliente todavía sano. Devuelve la respuesta cruda."""
     _invitar(client, admin, email, rol=rol)
     _usar_verificador(client, {"tok": _claims(uid or f"uid-{email}", email)})
-    return client.post("/api/auth/oauth", json={"id_token": "tok"})
+    return client.post("/api/auth/oauth", json={"id_token": "tok", "acepta_politica": True})
 
 
 def _login_legado(client, password=CLAVE_ADMIN):
@@ -309,13 +309,13 @@ def test_suspendido_deja_afuera_al_worker_y_adentro_al_owner_con_el_motivo(clien
         "t-worker": _claims("uid-worker", "peon@x.co"),
     })
 
-    peon = client.post("/api/auth/oauth", json={"id_token": "t-worker"})
+    peon = client.post("/api/auth/oauth", json={"id_token": "t-worker", "acepta_politica": True})
     assert peon.status_code == 402
     assert peon.json()["detail"] == SUSPENDIDA
     # El motivo es información de la relación comercial: la ve el owner, no su gente.
     assert "Tres meses" not in peon.text
 
-    duena = client.post("/api/auth/oauth", json={"id_token": "t-owner"})
+    duena = client.post("/api/auth/oauth", json={"id_token": "t-owner", "acepta_politica": True})
     assert duena.status_code == 200, duena.text
     assert duena.json()["aviso_cuenta"] == {
         "estado": "suspendido", "motivo": "Tres meses sin pagar",
@@ -328,7 +328,7 @@ def test_el_owner_que_entro_a_una_cuenta_suspendida_igual_no_opera(client, admin
     _sembrar("suspendido")
     _usar_verificador(client, {"t": _claims("uid-owner", "duena@x.co")})
 
-    token = client.post("/api/auth/oauth", json={"id_token": "t"}).json()["token"]
+    token = client.post("/api/auth/oauth", json={"id_token": "t", "acepta_politica": True}).json()["token"]
     assert client.get("/api/spaces/", headers=_cab(token)).status_code == 402
 
 

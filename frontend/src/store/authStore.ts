@@ -33,6 +33,14 @@ interface AuthState {
    *  es sólo el estado de ESTA cuenta, tan sensible como el rol o el cliente
    *  que ya se guardan acá mismo. */
   avisoCuenta: AvisoCuenta | null;
+  /** Fase 3 compliance: `true` cuando el login trajo `pedir_consentimiento`
+   *  — una cuenta existente, con membresía, que nunca aceptó (o aceptó una
+   *  versión vieja de) la Política de Tratamiento de Datos. Se persiste
+   *  junto con el resto de la sesión a propósito: "una vez por sesión de
+   *  login, no un muro" significa que cerrar el aviso lo apaga hasta el
+   *  PRÓXIMO login (que vuelve a poner lo que diga el servidor en ese
+   *  momento) — no hasta la próxima recarga de la pestaña. */
+  pedirConsentimiento: boolean;
   setAuth: (
     token: string,
     role: Role,
@@ -40,8 +48,12 @@ interface AuthState {
     clienteNombre?: string,
     email?: string,
     nombre?: string,
-    avisoCuenta?: AvisoCuenta | null
+    avisoCuenta?: AvisoCuenta | null,
+    pedirConsentimiento?: boolean
   ) => void;
+  /** Cierra el aviso de consentimiento sin más — el botón "Ahora no" y el
+   *  que sigue a un `aceptar-politica` exitoso. No es un muro. */
+  descartarConsentimiento: () => void;
   logout: () => void;
 }
 
@@ -57,7 +69,8 @@ export const useAuthStore = create<AuthState>()(
       email: null,
       nombre: null,
       avisoCuenta: null,
-      setAuth: (token, role, cliente, clienteNombre, email, nombre, avisoCuenta) =>
+      pedirConsentimiento: false,
+      setAuth: (token, role, cliente, clienteNombre, email, nombre, avisoCuenta, pedirConsentimiento) =>
         set({
           token,
           role,
@@ -66,11 +79,13 @@ export const useAuthStore = create<AuthState>()(
           email: email ?? null,
           nombre: nombre ?? null,
           avisoCuenta: avisoCuenta ?? null,
+          pedirConsentimiento: pedirConsentimiento ?? false,
         }),
+      descartarConsentimiento: () => set({ pedirConsentimiento: false }),
       logout: () => {
         set({
           token: null, role: null, cliente: null, clienteNombre: null,
-          email: null, nombre: null, avisoCuenta: null,
+          email: null, nombre: null, avisoCuenta: null, pedirConsentimiento: false,
         });
         // Cierra también la sesión de Firebase, si el SDK llegó a
         // inicializarse — si nunca se usó la vía nueva esto es un no-op

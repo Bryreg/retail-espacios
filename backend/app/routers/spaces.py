@@ -2,19 +2,17 @@ from datetime import date
 from urllib.parse import quote
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from app.auth import MONTAJE_TTL_DAYS, create_mount_token, require_admin, require_auth
 from app.clientes import Cliente, cliente_del_pedido
 from app.database import get_db
-from app.models.models import Space, SpaceFile, SpaceLease, Supplier, SpaceStatus
+from app.models.models import Space, SpaceFace, SpaceLease, Supplier, SpaceStatus
 from app.services.bitacora import anotar
 from app.schemas.spaces import (
     SpaceOut, SpaceCreate, SpaceStatusUpdate, LeaseCreate, LeaseOut, SpaceMapItem,
     SpaceFindOrCreate, AvisosContrato,
 )
-from app.routers.mounts import MOUNT_FILE_PREFIX
 from app.services.contacts import recipients_for
 from app.services.layout_lookup import describe_location, is_space_rentable
 from app.services.mailer import (
@@ -179,41 +177,31 @@ class FaceImageOut(BaseModel):
 # otherwise swallow "/spaces/face-images" (422 "space_id must be int").
 @router.get("/face-images", response_model=list[FaceImageOut])
 def list_face_images(db: Session = Depends(get_db)):
-    """Latest image per space: [{code, file_id}] for every space with ≥1 image.
+    """The DESIGNATED face image per space: [{code, file_id}] for every space
+    with one.
 
-    Single query, no N+1: a window function ranks each space's image files by
-    recency (uploaded_at, id as tiebreaker) and the outer join keeps only rank 1.
+    Fase 3 / fix H8-B2: this used to be "the most recent image per space" — a
+    window function ranking by ``uploaded_at``. That heuristic could not tell
+    a gondola photo from a contract scanned as JPG: if the contract was the
+    only image (or the newest one), it became the "face" and got painted as
+    the 3D texture for every viewer, admin and worker alike. The face is now
+    an explicit designation (``uso=cara`` on upload, see
+    ``routers/files.py::upload_space_file``), stored in ``models.SpaceFace`` —
+    the SAME table ``routers/files.py`` reads for the worker's per-file gate,
+    so the 3D texture and what the worker is allowed to download can never
+    disagree.
+
+    A space with no designation simply does not appear here — fail closed on
+    purpose: a legacy space (uploaded before this fix) loses its 3D texture
+    until an admin re-designates a face. Documented in
+    ``docs/ESTADO.md``/``features/compliance/outputs/hardening.md``.
+
     Only metadata columns are selected, so the LargeBinary ``data`` column is
     never loaded.
     """
-    rn = (
-        func.row_number()
-        .over(
-            partition_by=SpaceFile.space_id,
-            order_by=(SpaceFile.uploaded_at.desc(), SpaceFile.id.desc()),
-        )
-        .label("rn")
-    )
-    latest_images = (
-        db.query(
-            SpaceFile.id.label("file_id"),
-            SpaceFile.space_id.label("space_id"),
-            rn,
-        )
-        .filter(
-            SpaceFile.content_type.like("image/%"),
-            # La foto de montaje NO es un planograma. Se guarda contra el mismo
-            # espacio pero con un prefijo reservado en el nombre (ver
-            # routers/mounts.py); sin excluirla, la última foto del
-            # mercaderista se convertía en la textura del mueble en el 3D.
-            ~SpaceFile.filename.like(f"{MOUNT_FILE_PREFIX}%"),
-        )
-        .subquery()
-    )
     rows = (
-        db.query(Space.code, latest_images.c.file_id)
-        .join(latest_images, latest_images.c.space_id == Space.id)
-        .filter(latest_images.c.rn == 1)
+        db.query(Space.code, SpaceFace.file_id)
+        .join(SpaceFace, SpaceFace.space_id == Space.id)
         .all()
     )
     return [FaceImageOut(code=code, file_id=file_id) for code, file_id in rows]

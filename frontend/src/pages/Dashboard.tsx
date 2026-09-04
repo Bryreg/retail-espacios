@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Settings, LogOut, X, Send, ShieldCheck } from "lucide-react";
+import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert } from "lucide-react";
 import StoreEditor3D from "../components/StoreEditor3D/StoreEditor3D";
 import FloorPlan2D from "../components/FloorPlan2D/FloorPlan2D";
 import DashboardView from "./DashboardView";
@@ -27,6 +27,7 @@ import {
   type UsuariosResponse,
 } from "../api/auth";
 import { describeError } from "../api/client";
+import { descargarMiExport, solicitarSupresion } from "../api/derechos";
 import { useFixtureStore } from "../store/fixtureStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -662,6 +663,98 @@ function BitacoraSection() {
   );
 }
 
+/** "Tus datos" (Fase 3, Ley 1581/2012): derechos del titular, propios de esta
+ *  fase y en su propio archivo (`api/derechos.ts`) -- no comparten código con
+ *  el resto de Configuración a propósito, porque su frontera es distinta: acá
+ *  no importa el rol del JWT (que siempre es "admin" para un owner, Fase 1,
+ *  decisión 5) sino la membresía real, y eso el backend lo resuelve solo. El
+ *  frontend no intenta adivinar "sos owner": deja que el 403 lo diga y lo
+ *  traduce a un mensaje que se entiende. */
+function TusDatosSection() {
+  const [descargando, setDescargando] = useState(false);
+  const [exportMsg, setExportMsg] = useState<Feedback>(null);
+
+  const [motivo, setMotivo] = useState("");
+  const [pidiendo, setPidiendo] = useState(false);
+  const [supresionMsg, setSupresionMsg] = useState<Feedback>(null);
+
+  const bajarExport = async () => {
+    setDescargando(true);
+    setExportMsg(null);
+    try {
+      await descargarMiExport();
+      setExportMsg({ ok: true, text: "Descarga iniciada." });
+    } catch (err) {
+      setExportMsg({
+        ok: false,
+        text: describeError(err, "No se pudo generar el export."),
+      });
+    } finally {
+      setDescargando(false);
+    }
+  };
+
+  const pedirSupresion = async () => {
+    const seguro = confirm(
+      "Esto NO borra nada ahora mismo: registra un pedido de supresión que revisa el " +
+        "operador de la plataforma, y la ejecución (si corresponde) la hace a mano. " +
+        "¿Confirmás la solicitud?"
+    );
+    if (!seguro) return;
+    setPidiendo(true);
+    setSupresionMsg(null);
+    try {
+      await solicitarSupresion(motivo.trim() || undefined);
+      setSupresionMsg({
+        ok: true,
+        text: "Solicitud registrada. El operador de la plataforma la va a revisar.",
+      });
+      setMotivo("");
+    } catch (err) {
+      setSupresionMsg({
+        ok: false,
+        text: describeError(err, "No se pudo registrar la solicitud."),
+      });
+    } finally {
+      setPidiendo(false);
+    }
+  };
+
+  return (
+    <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }}>
+      <div style={sectionLabelStyle}>Tus datos</div>
+      <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginBottom: 12, lineHeight: 1.5 }}>
+        Política de Tratamiento de Datos Personales (Ley 1581/2012). Estas dos acciones sólo
+        las puede hacer quien fundó el cliente -- si no sos el owner, el sistema te lo va a decir.
+      </div>
+
+      <div style={{ marginBottom: 14 }}>
+        <ActionButton onClick={bajarExport} disabled={descargando}>
+          <Download size={12} />
+          {descargando ? "Generando…" : "Descargar mis datos"}
+        </ActionButton>
+        <FeedbackNote msg={exportMsg} />
+      </div>
+
+      <div>
+        <label style={fieldLabelStyle}>Solicitar supresión (motivo opcional)</label>
+        <input
+          type="text"
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          placeholder="Por qué querés que se suprima el cliente"
+          style={{ ...inputStyle, marginBottom: 8 }}
+        />
+        <ActionButton onClick={pedirSupresion} disabled={pidiendo}>
+          <ShieldAlert size={12} />
+          {pidiendo ? "Enviando…" : "Solicitar supresión"}
+        </ActionButton>
+        <FeedbackNote msg={supresionMsg} />
+      </div>
+    </div>
+  );
+}
+
 function SettingsModal({ onClose }: { onClose: () => void }) {
   // Passwords
   const [adminPw, setAdminPw] = useState("");
@@ -890,6 +983,8 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <ContactsSection sedes={sedes} />
+
+        <TusDatosSection />
 
         <BitacoraSection />
       </div>

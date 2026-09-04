@@ -88,8 +88,17 @@ def _payload(token):
 
 
 def _alta(client, id_token, slug, nombre):
+    # `acepta_politica` es obligatorio desde la Fase 3 (consentimiento
+    # registrado). Este archivo ataca la Fase 2 (plataforma/alta), no el
+    # consentimiento -- se manda siempre en `True` para que las fundaciones de
+    # los casos felices sigan llegando a "owner" como antes de esa regla; los
+    # casos que esperan 4xx acá abajo fallan todos ANTES del chequeo de
+    # `acepta_politica` en `routers/alta.py` (token/correo/nombre/slug/
+    # reservado/duplicado van primero), así que este valor no les cambia el
+    # resultado.
     return client.post(
-        "/api/clientes/alta", json={"id_token": id_token, "slug": slug, "nombre": nombre}
+        "/api/clientes/alta",
+        json={"id_token": id_token, "slug": slug, "nombre": nombre, "acepta_politica": True},
     )
 
 
@@ -255,7 +264,10 @@ def test_r2_el_motivo_de_la_deuda_no_deberia_llegarle_a_los_no_owner(client, adm
     # b) Un miembro con cuenta propia y rol worker.
     client.post("/api/usuarios/invitar", json={"email": "peon@x.co", "rol": "worker"}, headers=admin)
     _usar_verificador(client, {"tok": _claims("uid-peon", "peon@x.co")})
-    oauth = client.post("/api/auth/oauth", json={"id_token": "tok"})
+    # Cuenta nueva sin consentimiento registrado -- Fase 3 se lo pide UNA vez
+    # al entrar (spec); este archivo ataca la Fase 2, así que se manda de
+    # entrada para no chocar con el 428 de "consentimiento_requerido".
+    oauth = client.post("/api/auth/oauth", json={"id_token": "tok", "acepta_politica": True})
     assert oauth.status_code == 200, oauth.text
     motivo_oauth = (oauth.json().get("aviso_cuenta") or {}).get("motivo")
 
@@ -750,13 +762,16 @@ def test_k_suspendido_en_oauth_deja_afuera_a_la_gente_y_adentro_al_owner(client,
     for rol, email, uid in (("worker", "peona@x.co", "uid-peona"),
                             ("admin", "gerenta@x.co", "uid-gerenta")):
         _usar_verificador(client, {"t": _claims(uid, email)})
-        r = client.post("/api/auth/oauth", json={"id_token": "t"})
+        # `acepta_politica: True` para no chocar con el 428 de Fase 3 (cuenta
+        # nueva sin consentimiento) -- este test ataca el 402 de suspensión,
+        # que en `routers/auth.py` se resuelve DESPUÉS del chequeo de consentimiento.
+        r = client.post("/api/auth/oauth", json={"id_token": "t", "acepta_politica": True})
         assert r.status_code == 402, (rol, r.status_code, r.text)
         assert r.json()["detail"] == SUSPENDIDA
         assert "Mora" not in r.text, (rol, r.text)
 
     _usar_verificador(client, {"t": _claims("uid-duenia", "duenia@x.co")})
-    r = client.post("/api/auth/oauth", json={"id_token": "t"})
+    r = client.post("/api/auth/oauth", json={"id_token": "t", "acepta_politica": True})
     assert r.status_code == 200, r.text
     assert r.json()["aviso_cuenta"] == {"estado": "suspendido", "motivo": "Mora de 120 días"}
 

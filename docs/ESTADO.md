@@ -1,7 +1,7 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: septiembre 2026 (Fase 2: alta self-service de supermercados y estado de cuenta por cliente).
+Última actualización: septiembre 2026 (Fase 3 comercial: Ley 1581 — consentimiento, derechos del titular — y hardening OWASP).
 
 Gestión de espacios comerciales en supermercados: se dibuja el plano de cada sede, se
 marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
@@ -154,6 +154,49 @@ cuentas con `sub` (el legado jamás). Panel en `/api/plataforma/*`: listar
 clientes con estado y `PATCH` con motivo obligatorio. Ser operador NO abre la
 base de negocio de ningún cliente. Red-team dedicado en
 `tests/test_plataforma_ataques.py` (30 ataques; la frontera resistió).
+
+### Compliance: Ley 1581, consentimiento y hardening (Fase 3 comercial)
+
+**Tablas nuevas (registro, `create_all()`, sin migraciones):** `consentimientos`
+(usuario, versión, fecha, IP, origen; `UNIQUE(usuario_id, version)`),
+`solicitudes_supresion`, `export_attempts`. **En la base de cada cliente:**
+`space_faces` (designación explícita de la cara del mueble).
+
+**Reglas duras nuevas:**
+- `VERSION_POLITICA = "2026-09-v1"` (`models/consentimiento.py`) — debe
+  coincidir con el encabezado de `docs/legal/politica-datos.md`, y
+  `frontend/src/legal/politica-datos.md` es copia byte a byte (test lo fija).
+- El alta exige `acepta_politica=true` → 422 antes de cualquier escritura.
+  `/oauth` devuelve 428 `consentimiento_requerido` solo cuando el canje crearía
+  membresía NUEVA; usuario existente recibe `pedir_consentimiento: true`
+  top-level (el JWT NO cambia de forma). `POST /auth/aceptar-politica` → 204
+  idempotente. Login legado intocado.
+- **Owner-only** (export, supresión) = `sub` + membresía activa `rol=="owner"`
+  leída del registro; el rol del token NO alcanza. Legado → 403 por
+  construcción.
+- `GET /api/clientes/mi-export` (3/hora → 429) excluye SIEMPRE bitácora,
+  hashes, tablas de intentos y `estados_cliente` — por construcción.
+  `POST /solicitar-supresion` → nada se borra nunca; atiende el operador en
+  `/api/plataforma/supresiones` con nota obligatoria.
+- **Los derechos del titular NO se cortan por estado de cuenta**: export,
+  solicitud de supresión y aceptar-politica están exentos del 402 (incluso en
+  suspendido) — el interruptor de cobranza no puede bloquear el habeas data.
+- **Cara del mueble = designación explícita** (`uso=cara` → `space_faces`),
+  nunca heurística de recencia; sin designación no hay cara para worker ni 3D
+  (fail closed). Borrar el archivo borra la designación.
+- CSP con los hosts medidos de Firebase (identitytoolkit/securetoken en
+  connect-src, apis.google.com en script-src, *.firebaseapp.com en frame-src);
+  única concesión `'unsafe-inline'` en style-src. Verificada en navegador
+  headless: login completo, cero violaciones. HSTS mira también
+  `x-forwarded-proto` (Render). Cabeceras en TODA respuesta, errores incluidos.
+- Página pública `/politica-datos` sin login. CI de dependencias en
+  `.github/workflows/deps-audit.yml` (falla solo HIGH/CRITICAL).
+
+**Pendientes de la fase:** m-5 imagen con prefijo `montaje--` baja para worker
+sin bitácora (xfail strict); m-6 el 404 al worker no se anota (xfail strict);
+m-7 tarea operativa post-deploy: re-designar la cara de los espacios
+existentes; la política y la guía RNBD son **BORRADOR** con `[COMPLETAR]` /
+`[VALIDAR CON ABOGADO]` — no publicar sin abogado.
 
 ### Pendientes conocidos: clientes y plataforma
 

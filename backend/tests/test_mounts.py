@@ -204,12 +204,16 @@ def test_an_svg_is_not_a_photo(client, worker):
 
 
 def test_the_mount_photo_is_not_a_planogram(client, admin, worker):
-    """La foto se cuelga del mismo espacio que las artes del proveedor, y el
-    editor 3D usa la imagen MÁS RECIENTE de cada espacio como textura. Sin
-    separarlas, la foto del anaquel reemplazaba el arte de la góndola en la
-    pantalla del comercial — y con la foto obligatoria, en cada contrato."""
+    """La foto se cuelga del mismo espacio que las artes del proveedor. El
+    editor 3D usa la imagen DESIGNADA de cada espacio como textura (Fase 3,
+    fix H8-B2 — ya no "la más reciente": esa heurística dejaba que un
+    contrato escaneado en JPG, subido después del arte, se convirtiera en la
+    textura). Sin separar la foto de montaje de la designación, igual la
+    reemplazaría — y con la foto obligatoria, en cada contrato."""
     _put(client, admin, "NAVE", [FIXTURE])
-    # El arte del proveedor, subido por el camino normal de archivos.
+    # El arte del proveedor, subido por el camino normal de archivos y
+    # DECLARADO como cara (uso=cara) — la designación explícita reemplaza a
+    # la vieja heurística de "imagen más reciente".
     r = client.post(
         "/api/spaces/find-or-create",
         json={"code": "NAVE-GON-01", "name": "GON-01", "zone": "Z",
@@ -220,6 +224,7 @@ def test_the_mount_photo_is_not_a_planogram(client, admin, worker):
     arte = client.post(
         f"/api/spaces/{space_id}/files",
         files={"file": ("planograma.png", b"\x89PNG\r\n\x1a\n", "image/png")},
+        data={"uso": "cara"},
         headers=admin,
     )
     assert arte.status_code in (200, 201), arte.text

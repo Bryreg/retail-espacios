@@ -15,6 +15,7 @@ from app.routers import bitacora as bitacora_routes
 from app.routers import auth as auth_routes
 from app.routers import usuarios as usuarios_routes
 from app.routers import alta as alta_routes
+from app.routers import derechos as derechos_routes
 from app.routers import plataforma as plataforma_routes
 from app.models.models import Space, SpaceStatus
 # Tablas de identidad (Fase 1): archivo nuevo, sin columnas agregadas a nada
@@ -201,21 +202,65 @@ app.add_middleware(
 #
 # La misma aplicación sirve la API y el frontend, así que estas cabeceras cubren
 # las dos cosas. La política de contenido está escrita contra lo que la app
-# realmente usa —tipografías de Google, PDFs en un iframe del mismo origen,
-# imágenes en blob: y data: para el 3D y las fotos de montaje— y no más que eso.
+# realmente usa, medido archivo por archivo (Fase 3, `features/compliance/`) y
+# no un origen más:
+#
+#   style-src  https://fonts.googleapis.com  — frontend/index.html:15, <link
+#              rel="stylesheet"> de Geist/Archivo Narrow.
+#   font-src   https://fonts.gstatic.com      — los .woff2 que baja ese CSS.
+#   connect-src https://identitytoolkit.googleapis.com
+#               https://securetoken.googleapis.com
+#              — frontend/src/api/firebase.ts: signInWithPopup,
+#              signInWithEmailAndPassword, createUserWithEmailAndPassword,
+#              sendPasswordResetEmail y el refresh de ID token, TODOS vía el
+#              SDK de Firebase Auth (`@firebase/auth`), pegan a estos dos
+#              hosts. `grep -n "identitytoolkit\|securetoken"
+#              node_modules/@firebase/auth/dist/esm/index-*.js` los confirma
+#              como los ÚNICOS hosts de red que arma el SDK (apiHost /
+#              tokenApiHost, ver esa misma búsqueda). El resto de la app
+#              (axios en frontend/src/api/client.ts) sólo pega a `/api`,
+#              mismo origen — cubierto por 'self'.
+#   script-src https://apis.google.com
+#              — SOLO por signInWithPopup: `Login.tsx` usa el popup de
+#              Google (no signInWithRedirect), y el propio SDK, antes de
+#              abrir el popup, instancia `BrowserPopupRedirectResolver`
+#              (@firebase/auth/dist/esm/index-*.js:10709 en adelante), que
+#              carga `gapi.iframes` bajando
+#              `DEFAULT_CDNDOMAIN.gapiScript = "https://apis.google.com/js/api.js"`
+#              (misma fuente, línea ~11263) SI `window.gapi.iframes.Iframe`
+#              no está ya presente. Sin este origen el popup de Google se
+#              rompe (el listener de eventos entre ventanas no arranca);
+#              login por correo/contraseña (`signInWithEmailAndPassword`,
+#              `createUserWithEmailAndPassword`) no lo necesita, pero
+#              Login.tsx ofrece las dos vías en la misma pantalla.
+#   frame-src https://*.firebaseapp.com
+#              — el mismo `BrowserPopupRedirectResolver._openIframe` abre un
+#              iframe OCULTO en `https://${authDomain}/__/auth/iframe`
+#              (índice ~10461) para escuchar el resultado del popup vía
+#              postMessage — es la pieza que faltaba junto al script de
+#              arriba. `authDomain` es `VITE_FIREBASE_AUTH_DOMAIN`
+#              (`render.yaml`: `recabra.firebaseapp.com`); el wildcard de
+#              subdominio cubre ese valor sin clavar el nombre del proyecto
+#              acá adentro, para el día que cambie.
+#   img-src / worker-src  data: blob:
+#              — Three.js (`@react-three/fiber`) texturiza las caras de los
+#              muebles con `blob:` (fotos de proveedor bajadas por
+#              `fileUrl()`) y usa Web Workers también por blob; sin cambios,
+#              ya alcanzaba.
 #
 # `unsafe-inline` en los estilos es inevitable hoy: media aplicación pinta con
 # `style={{...}}` de React, que son atributos inline. En los SCRIPTS no está, que
-# es donde de verdad importa.
+# es donde de verdad importa — el único origen externo que se sumó ahí
+# (`apis.google.com`) es un script CONCRETO de Google, no un comodín.
 CSP = "; ".join([
     "default-src 'self'",
-    "script-src 'self'",
+    "script-src 'self' https://apis.google.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' data: blob:",
-    "connect-src 'self'",
+    "connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com",
     "worker-src 'self' blob:",
-    "frame-src 'self' blob:",
+    "frame-src 'self' blob: https://*.firebaseapp.com",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -232,8 +277,15 @@ async def cabeceras_de_seguridad(request, call_next):
     respuesta.headers["X-Frame-Options"] = "DENY"
     respuesta.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     respuesta.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-    # HSTS sólo donde hay TLS: en desarrollo se entra por http y esto rompería.
-    if request.url.scheme == "https":
+    # HSTS sólo donde hubo TLS de verdad. `request.url.scheme` no alcanza
+    # detrás del proxy de Render: la conexión entre el proxy y este proceso
+    # es SIEMPRE http, así que Starlette arma la URL con scheme "http" aun
+    # cuando el navegador entró por https — con sólo esa condición, HSTS
+    # jamás se hubiera mandado en producción. Render (como cualquier proxy
+    # estándar) agrega `X-Forwarded-Proto: https` en ese caso; en desarrollo
+    # directo (uvicorn sin proxy) el header no existe y gana la condición de
+    # siempre.
+    if request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https":
         respuesta.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return respuesta
 
@@ -242,6 +294,12 @@ app.include_router(auth_routes.router,   prefix="/api")
 # Alta, listado y activación de miembros de un cliente. Todo detrás de
 # `require_admin` (ver `routers/usuarios.py`), sobre el cliente del token.
 app.include_router(usuarios_routes.router, prefix="/api")
+# Derechos del titular (Fase 3): export owner-only y solicitud de supresión.
+# Mismo prefix "/clientes" que alta_routes, ambos con rutas literales -- el
+# orden entre los dos no cambia ningún resultado, pero va ANTES por el
+# contrato de esta fase. Registra `solicitudes_supresion`/`export_attempts` en
+# Base.metadata al importar `app/models/supresion.py`.
+app.include_router(derechos_routes.router,   prefix="/api")
 # Alta self-service (funda su cliente y nace owner) y panel del operador de
 # plataforma (estado de cuenta por cliente). Fase 2 -- las tablas nuevas ya
 # quedan registradas en Base.metadata porque `app/plataforma_estado.py` las

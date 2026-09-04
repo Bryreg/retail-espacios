@@ -4,6 +4,9 @@ import {
   getClientesPlataforma, patchEstadoCliente,
   ESTADOS_CUENTA, type ClientePlataforma, type EstadoCuenta,
 } from "../../api/plataforma";
+import {
+  getSolicitudesSupresion, atenderSupresion, type SolicitudSupresion,
+} from "../../api/derechos";
 import { describeError } from "../../api/client";
 
 // ─── Panel mínimo del operador de plataforma (Fase 2 clientes) ─────────────
@@ -130,6 +133,188 @@ function FilaEditor({
         </button>
         {error && <span style={{ fontSize: 11, fontWeight: 500, color: "var(--danger)" }}>{error}</span>}
       </div>
+    </div>
+  );
+}
+
+// ─── Solicitudes de supresión (Fase 3, derechos del titular) ───────────────
+//
+// Pedidos que un owner registra desde "Tus datos" en Configuración. Nada se
+// borra acá: el operador sólo deja constancia de si la atendió o la
+// rechazó -- la ejecución real, si corresponde, es MANUAL y fuera del
+// sistema (spec, guardrail).
+
+function etiquetaSupresion(e: SolicitudSupresion["estado"]): string {
+  if (e === "pendiente") return "Pendiente";
+  if (e === "atendida") return "Atendida";
+  return "Rechazada";
+}
+
+function colorSupresion(e: SolicitudSupresion["estado"]): string {
+  if (e === "pendiente") return "var(--warning)";
+  if (e === "atendida") return "var(--ink-3)";
+  return "var(--danger)";
+}
+
+function FilaEditorSupresion({
+  fila, onGuardado, onCancelar,
+}: {
+  fila: SolicitudSupresion;
+  onGuardado: (actualizada: SolicitudSupresion) => void;
+  onCancelar: () => void;
+}) {
+  const [estado, setEstado] = useState<"atendida" | "rechazada">("atendida");
+  const [nota, setNota] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const guardar = async () => {
+    if (!nota.trim()) {
+      setError("La nota es obligatoria.");
+      return;
+    }
+    const seguro = confirm(
+      `¿Marcar la solicitud de "${fila.cliente_slug}" como "${etiquetaSupresion(estado)}"?\n\n` +
+      `Nota: ${nota.trim()}\n\n` +
+      "Esto NO borra nada: la supresión real, si corresponde, se ejecuta a mano, fuera del sistema."
+    );
+    if (!seguro) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const actualizada = await atenderSupresion(fila.id, { estado, nota: nota.trim() });
+      onGuardado(actualizada);
+    } catch (err) {
+      setError(describeError(err, "No se pudo actualizar la solicitud."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ padding: "10px 18px", background: "var(--surface-2)", borderTop: "1px solid var(--line-soft)" }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+        <select
+          value={estado}
+          onChange={(e) => setEstado(e.target.value as "atendida" | "rechazada")}
+          style={{ ...inputStyle, width: 140 }}
+        >
+          <option value="atendida">Atendida</option>
+          <option value="rechazada">Rechazada</option>
+        </select>
+        <input
+          type="text"
+          value={nota}
+          onChange={(e) => setNota(e.target.value)}
+          placeholder="Nota (obligatoria)"
+          style={{ ...inputStyle, flex: 1, minWidth: 220 }}
+        />
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <button onClick={guardar} disabled={busy} style={{ ...botonPrimarioStyle, opacity: busy ? 0.6 : 1 }}>
+          {busy ? "Guardando…" : "Confirmar"}
+        </button>
+        <button onClick={onCancelar} disabled={busy} style={botonStyle}>
+          Cancelar
+        </button>
+        {error && <span style={{ fontSize: 11, fontWeight: 500, color: "var(--danger)" }}>{error}</span>}
+      </div>
+    </div>
+  );
+}
+
+function SupresionesSection() {
+  const [filas, setFilas] = useState<SolicitudSupresion[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [editando, setEditando] = useState<number | null>(null);
+
+  const cargar = () => {
+    setError(null);
+    getSolicitudesSupresion()
+      .then(setFilas)
+      .catch((err) => setError(describeError(err, "No se pudo leer las solicitudes de supresión.")));
+  };
+
+  useEffect(cargar, []);
+
+  return (
+    <div>
+      <div style={{
+        padding: "10px 18px", borderTop: "1px solid var(--line)",
+        fontSize: 12.5, fontWeight: 700, color: "var(--ink-1)",
+      }}>
+        Solicitudes de supresión
+      </div>
+      <div style={{ padding: "0 18px 10px", fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
+        Pedidos de un owner para suprimir su cliente. Nada se borra desde acá — la ejecución,
+        si corresponde, es manual y fuera del sistema.
+      </div>
+
+      {filas === null ? (
+        <div style={{ padding: "0 18px 14px", fontSize: 12, color: error ? "var(--danger)" : "var(--ink-3)" }}>
+          {error ?? "Cargando…"}
+        </div>
+      ) : filas.length === 0 ? (
+        <div style={{ padding: "0 18px 14px", fontSize: 12, color: "var(--ink-3)" }}>
+          No hay solicitudes todavía.
+        </div>
+      ) : (
+        filas.map((f) => (
+          <div key={f.id}>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 10,
+              padding: "9px 18px", borderTop: "1px solid var(--line-soft)",
+            }}>
+              <div style={{ flex: 1.3, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-1)" }}>
+                  {f.cliente_slug}
+                </div>
+                <div style={{
+                  fontSize: 11, color: "var(--ink-4)", fontFamily: "var(--font-mono)",
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }} title={f.email}>
+                  {f.email}
+                </div>
+              </div>
+              <div style={{ width: 96, fontSize: 11.5, fontWeight: 700, color: colorSupresion(f.estado) }}>
+                {etiquetaSupresion(f.estado)}
+              </div>
+              <div
+                style={{
+                  flex: 1.6, minWidth: 0, fontSize: 11.5, color: "var(--ink-2)",
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}
+                title={f.motivo ?? undefined}
+              >
+                {f.motivo ?? "—"}
+              </div>
+              {f.estado === "pendiente" ? (
+                <button onClick={() => setEditando(editando === f.id ? null : f.id)} style={botonStyle}>
+                  {editando === f.id ? "Cerrar" : "Atender"}
+                </button>
+              ) : (
+                <div
+                  style={{ width: 130, fontSize: 10.5, color: "var(--ink-4)", whiteSpace: "nowrap" }}
+                  title={f.nota ?? undefined}
+                >
+                  {f.atendido_por ?? "—"}
+                </div>
+              )}
+            </div>
+
+            {editando === f.id && (
+              <FilaEditorSupresion
+                fila={f}
+                onCancelar={() => setEditando(null)}
+                onGuardado={(actualizada) => {
+                  setFilas((prev) => (prev ? prev.map((x) => (x.id === f.id ? actualizada : x)) : prev));
+                  setEditando(null);
+                }}
+              />
+            )}
+          </div>
+        ))
+      )}
     </div>
   );
 }
@@ -277,6 +462,8 @@ export default function PlataformaPanel({ onClose }: { onClose: () => void }) {
               </div>
             ))
           )}
+
+          <SupresionesSection />
         </div>
       </div>
     </div>

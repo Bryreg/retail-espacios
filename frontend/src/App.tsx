@@ -3,7 +3,9 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import Montaje from "./pages/Montaje";
+import PoliticaDatos from "./pages/PoliticaDatos";
 import BloqueoCuenta from "./components/BloqueoCuenta";
+import ModalConsentimiento from "./components/ModalConsentimiento";
 import { usarToken } from "./api/montaje";
 import { useAuthStore } from "./store/authStore";
 import { startAutoSync, stopAutoSync } from "./store/fixtureStore";
@@ -65,6 +67,7 @@ const TOKEN_MONTAJE = (() => {
 export default function App() {
   const token = useAuthStore((s) => s.token);
   const avisoCuenta = useAuthStore((s) => s.avisoCuenta);
+  const pedirConsentimiento = useAuthStore((s) => s.pedirConsentimiento);
 
   // Server sync starts only once there is a session, and stops on logout.
   // Doing this at module load (as it used to) meant the very first pull ran
@@ -81,6 +84,15 @@ export default function App() {
     startAutoSync();
     return () => stopAutoSync();
   }, [token]);
+
+  // Fase 3 compliance: la Política de Tratamiento de Datos es pública — se
+  // resuelve ACÁ, antes que cualquier otra cosa (el enlace de montaje
+  // incluido), leyendo la URL igual que `TOKEN_MONTAJE` arriba, y no como una
+  // `<Route>` de más abajo: esas viven adentro del `<BrowserRouter>` que sólo
+  // se monta con sesión abierta, y esta página tiene que andar sin login.
+  if (typeof window !== "undefined" && window.location.pathname === "/politica-datos") {
+    return <PoliticaDatos />;
+  }
 
   // El enlace del correo manda sobre todo lo demás, incluso sobre una sesión
   // abierta: quien lo toca quiere ver ESE espacio, no el tablero.
@@ -100,6 +112,10 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      {/* Fase 3 compliance: superposición, no reemplazo — a diferencia de
+          `BloqueoCuenta`, acá no hay nada que cortar; el tablero de abajo
+          sigue funcionando mientras el aviso está puesto. */}
+      {pedirConsentimiento && <ModalConsentimiento />}
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,0 +1,58 @@
+name: CI · Auditoría de dependencias
+
+# Fase 3 (compliance/OWASP): que una dependencia con una vulnerabilidad
+# conocida no entre por un PR sin que nadie la vea. Corre en cada PR, aparte
+# de `deploy.yml` — no bloquea el deploy de `main` (ese sigue con su propio
+# gate de tests), y no vuelve a instalar nada que ese workflow ya instale:
+# los dos son independientes y pueden correr en paralelo.
+#
+# "Fallando SOLO en high/critical": una vulnerabilidad low/moderate en una
+# dependencia transitiva es demasiado frecuente para bloquear un PR por
+# ella — eso es "llorar lobo", y la primera vez que alguien hace merge con
+# `--admin` para saltarse un check que "siempre está rojo", el check dejó de
+# servir. High/critical sigue siendo raro; cuando aparece, vale la pena
+# frenar y mirar.
+
+on:
+  pull_request:
+
+jobs:
+  python:
+    name: pip-audit (backend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"    # mismo runtime que deploy.yml
+      - run: pip install pip-audit
+      - name: pip-audit contra requirements.txt
+        working-directory: backend
+        run: |
+          # pip-audit devuelve exit code 1 apenas encuentra UNA vulnerabilidad,
+          # sin importar la severidad -- por eso `|| true`: interesa el JSON,
+          # el veredicto de pasar o fallar el job lo arma el script de abajo,
+          # que sí distingue severidad.
+          pip-audit -r requirements.txt --format json > audit-python.json || true
+          cat audit-python.json
+      - name: Filtrar por severidad (HIGH/CRITICAL) y decidir
+        working-directory: backend
+        run: python3 ../.github/scripts/pip_audit_severity.py audit-python.json
+
+  node:
+    name: npm audit (frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20          # mismo runtime que deploy.yml
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      # --legacy-peer-deps: el mismo requisito del repo que deploy.yml ya
+      # documenta (drei@10 pide fiber@^9, este proyecto fija fiber@8).
+      - run: npm ci --legacy-peer-deps
+        working-directory: frontend
+      - name: npm audit (prod únicamente, falla sólo en high/critical)
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
