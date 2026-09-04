@@ -12,6 +12,12 @@ import {
 } from "../api/derechos";
 import { describeError } from "../api/client";
 import { useAuthStore } from "../store/authStore";
+import {
+  type ConsolaTema, temaInicial, guardarTema, TemaToggle,
+  Panel, EstadoVacio, EstadoError, KpiTile,
+  Barras, BarraFila, EstadoPill, etiquetaEstado, Suprimido, SinDato,
+  TablaScroll, TablaHead, TablaHeadCelda, Fila,
+} from "../components/plataforma/consola";
 
 // ─── /plataforma — Fase 4: ruta propia del operador ─────────────────────────
 //
@@ -23,6 +29,11 @@ import { useAuthStore } from "../store/authStore";
 // motivo obligatorio, confirmación) y la sección de supresiones se mudan
 // acá TAL CUAL se comportaban, y se les suma el panel de métricas del
 // negocio (spec `features/plataforma/spec.md`).
+//
+// Fase 4b (diseño): la consola tiene ahora sistema visual PROPIO de
+// back-office/BI — tokens `--con-*`, tema claro/oscuro, y primitivas
+// reutilizables en `components/plataforma/consola.tsx` (KPI tiles, barras con
+// eje desde cero, estado de cuenta, K=3 vs sin-dato, tabla de densidad).
 //
 // Guard de SPA: se pregunta `GET /api/plataforma/soy` al montar. Es
 // cortesía nada más -- el 403 real lo tira el backend en cada endpoint, y
@@ -61,170 +72,29 @@ const haceMin = (iso: string): string => {
   return `hace ${h} h`;
 };
 
-// ─── Estilos compartidos (tokens del repo, nada nuevo) ──────────────────────
+// ─── Estilos compartidos de formulario (tokens --con-* de la consola) ───────
 
 const inputStyle: React.CSSProperties = {
   height: 32, padding: "0 10px",
-  borderRadius: "var(--r-md)", border: "1px solid var(--line)",
-  background: "var(--surface)", color: "var(--ink-1)",
+  borderRadius: "var(--r-md)", border: "1px solid var(--con-line)",
+  background: "var(--con-surface)", color: "var(--con-ink-1)",
   fontSize: 12.5, fontFamily: "inherit", outline: "none",
 };
 
 const botonStyle: React.CSSProperties = {
   height: 28, padding: "0 12px",
   borderRadius: "var(--r-md)",
-  border: "1px solid var(--line)",
-  background: "var(--surface)",
-  color: "var(--ink-2)",
+  border: "1px solid var(--con-line)",
+  background: "var(--con-surface)",
+  color: "var(--con-ink-2)",
   fontSize: 11.5, fontWeight: 600, fontFamily: "inherit",
   cursor: "pointer", whiteSpace: "nowrap",
 };
 
 const botonPrimarioStyle: React.CSSProperties = {
   ...botonStyle,
-  background: "var(--accent)", color: "#fff", border: "none",
+  background: "var(--con-accent)", color: "var(--con-accent-ink)", border: "none",
 };
-
-const panelStyle: React.CSSProperties = {
-  background: "var(--surface)",
-  border: "1px solid var(--line)",
-  borderRadius: "var(--r-xl)",
-  overflow: "hidden",
-};
-
-const sectionTitleStyle: React.CSSProperties = {
-  padding: "12px 18px",
-  fontSize: 13, fontWeight: 700, color: "var(--ink-1)",
-  borderBottom: "1px solid var(--line-soft)",
-};
-
-function etiquetaEstado(e: EstadoCuenta): string {
-  if (e === "activo") return "Activo";
-  if (e === "gracia") return "Gracia";
-  if (e === "solo_lectura") return "Solo lectura";
-  return "Suspendido";
-}
-
-function colorEstado(e: EstadoCuenta): string {
-  if (e === "activo") return "var(--ink-3)";
-  if (e === "gracia") return "var(--warning)";
-  return "var(--danger)";
-}
-
-// ─── Tarjeta de resumen ──────────────────────────────────────────────────────
-
-function TarjetaResumen({ etiqueta, valor }: { etiqueta: string; valor: string }) {
-  return (
-    <div
-      style={{
-        flex: "1 1 160px", minWidth: 150,
-        padding: "12px 14px",
-        background: "var(--surface)",
-        border: "1px solid var(--line)",
-        borderRadius: "var(--r-lg)",
-      }}
-    >
-      <div className="rotulo" style={{ marginBottom: 6 }}>{etiqueta}</div>
-      <div style={{ fontSize: 22, fontWeight: 900, color: "var(--ink-1)", fontFamily: "var(--font-sans)" }}>
-        {valor}
-      </div>
-    </div>
-  );
-}
-
-// ─── Gráfico sobrio: barras horizontales (SVG/CSS propio, sin librería) ─────
-
-function BarraHorizontal({
-  label, valor, maximo, texto, color, trackColor,
-}: {
-  label: string; valor: number; maximo: number; texto: string; color: string; trackColor: string;
-}) {
-  const pct = maximo > 0 ? Math.min(100, (valor / maximo) * 100) : 0;
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-      <div
-        style={{
-          width: 120, flexShrink: 0, fontSize: 11.5, color: "var(--ink-2)",
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        }}
-        title={label}
-      >
-        {label}
-      </div>
-      <div style={{ flex: 1, height: 14, borderRadius: "var(--r-sm)", background: trackColor, overflow: "hidden" }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: "var(--r-sm)" }} />
-      </div>
-      <div style={{ width: 64, flexShrink: 0, textAlign: "right", fontSize: 11.5, fontWeight: 600, color: "var(--ink-1)", fontFamily: "var(--font-mono)" }}>
-        {texto}
-      </div>
-    </div>
-  );
-}
-
-function GraficoOcupacion({ clientes }: { clientes: ClienteMetricas[] }) {
-  const filas = useMemo(
-    () =>
-      clientes
-        .filter((c) => c.metricas && c.metricas.ocupacion_pct !== null)
-        .map((c) => ({ slug: c.slug, nombre: c.nombre, ocupacion: c.metricas!.ocupacion_pct as number }))
-        .sort((a, b) => b.ocupacion - a.ocupacion),
-    [clientes]
-  );
-
-  return (
-    <div style={panelStyle}>
-      <div style={sectionTitleStyle}>Ocupación por cliente</div>
-      <div style={{ padding: "14px 18px" }}>
-        {filas.length === 0 ? (
-          <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Sin datos de ocupación para este período.</div>
-        ) : (
-          filas.map((f) => (
-            <BarraHorizontal
-              key={f.slug}
-              label={f.nombre}
-              valor={f.ocupacion}
-              maximo={100}
-              texto={formatoPct(f.ocupacion)}
-              // Ocupación es MAGNITUD (más alquilado = mejor negocio), no un
-              // estado de alarma: un solo matiz secuencial. El rojo de la terna
-              // queda reservado para estados (suspendido, vencido).
-              color="var(--libre)"
-              trackColor="var(--libre-suave)"
-            />
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function GraficoProveedores({ metricas }: { metricas: MetricasPlataforma | null }) {
-  const top = (metricas?.consolidado.top_proveedores ?? []).slice(0, 5);
-  const maximo = top.reduce((m, p) => Math.max(m, p.contratos_activos), 0);
-
-  return (
-    <div style={panelStyle}>
-      <div style={sectionTitleStyle}>Top proveedores (consolidado)</div>
-      <div style={{ padding: "14px 18px" }}>
-        {top.length === 0 ? (
-          <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Sin contratos activos en este período.</div>
-        ) : (
-          top.map((p) => (
-            <BarraHorizontal
-              key={p.nombre}
-              label={p.nombre}
-              valor={p.contratos_activos}
-              maximo={maximo}
-              texto={String(p.contratos_activos)}
-              color="var(--ink-1)"
-              trackColor="var(--surface-3)"
-            />
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
 
 // ─── Fila en edición del estado de cuenta (mudada del modal, sin cambios de
 //     comportamiento: motivo obligatorio, confirmación antes del PATCH) ────
@@ -266,11 +136,12 @@ function FilaEditor({
   };
 
   return (
-    <div style={{ padding: "10px 18px", background: "var(--surface-2)", borderTop: "1px solid var(--line-soft)" }}>
+    <div style={{ padding: "10px 16px", background: "var(--con-surface-2)", borderTop: "1px solid var(--con-line-soft)" }}>
       <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
         <select
           value={estado}
           onChange={(e) => setEstado(e.target.value as EstadoCuenta)}
+          className="con-focusable"
           style={{ ...inputStyle, width: 140 }}
         >
           {ESTADOS_CUENTA.map((e) => (
@@ -282,17 +153,18 @@ function FilaEditor({
           value={motivo}
           onChange={(e) => setMotivo(e.target.value)}
           placeholder="Motivo (obligatorio, también al reactivar)"
+          className="con-focusable"
           style={{ ...inputStyle, flex: 1, minWidth: 220 }}
         />
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button onClick={guardar} disabled={busy} style={{ ...botonPrimarioStyle, opacity: busy ? 0.6 : 1 }}>
+        <button onClick={guardar} disabled={busy} className="con-focusable" style={{ ...botonPrimarioStyle, opacity: busy ? 0.6 : 1 }}>
           {busy ? "Guardando…" : "Confirmar"}
         </button>
-        <button onClick={onCancelar} disabled={busy} style={botonStyle}>
+        <button onClick={onCancelar} disabled={busy} className="con-focusable" style={botonStyle}>
           Cancelar
         </button>
-        {error && <span style={{ fontSize: 11, fontWeight: 500, color: "var(--danger)" }}>{error}</span>}
+        {error && <span style={{ fontSize: 11, fontWeight: 500, color: "var(--con-estado-corte)" }}>{error}</span>}
       </div>
     </div>
   );
@@ -311,25 +183,24 @@ function FilaEditor({
 
 /** Celda de importe con la supresión K=3 legible: `null` con contratos > 0 no
  *  es "sin datos" — es la regla de privacidad ocultando una celda chica, y el
- *  operador tiene que poder distinguirlas de un vistazo. */
+ *  operador tiene que poder distinguirlas de un vistazo. Tres salidas
+ *  visualmente distintas: número en tinta, K=3 (ícono + "‹3"), sin-dato (—). */
 function celdaPlata(m: AgregadosMetricasCliente, v: number | null) {
-  if (v !== null) return formatoCOP(v);
+  if (v !== null) return <span style={{ color: "var(--con-ink-2)" }}>{formatoCOP(v)}</span>;
   // `null` en un importe significa, por diseño del backend, "menos de tres
   // contratos" — el cero incluido a propósito (si el 0 se publicara, null
   // delataría "tiene uno o dos"). Por eso el gate es tener inventario: un
   // cliente sin espacios no tiene nada que suprimir.
-  if (m.espacios_comercializables > 0) {
-    return (
-      <span
-        title="Suprimido por privacidad: los importes de un cliente solo se publican cuando agrupan 3 o más contratos activos (regla K=3). Con menos, el agregado equivaldría al valor de un contrato identificable."
-        style={{ color: "var(--ink-4)", fontStyle: "italic", cursor: "help" }}
-      >
-        ‹3 contratos
-      </span>
-    );
-  }
-  return "—";
+  if (m.espacios_comercializables > 0) return <Suprimido compacto />;
+  return <SinDato />;
 }
+
+const W_ESTADO = 118;
+const W_OCUP = 74;
+const W_CANON = 108;
+const W_ING = 118;
+const W_ACC = 90;
+const W_BTN = 84;
 
 function FilaCliente({
   fila, metricas, editando, onEditar, onGuardado, onCancelar,
@@ -346,59 +217,168 @@ function FilaCliente({
 
   return (
     <div>
-      <div
-        style={{
-          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-          padding: "9px 18px",
-          borderTop: "1px solid var(--line-soft)",
-        }}
-      >
+      <Fila>
         <div style={{ flex: "1.4 1 180px", minWidth: 150 }}>
           <div style={{
-            fontSize: 12.5, fontWeight: 600, color: "var(--ink-1)",
+            fontSize: 12.5, fontWeight: 600, color: "var(--con-ink-1)",
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>
             {fila.nombre}
           </div>
-          <div style={{ fontSize: 11, color: "var(--ink-4)", fontFamily: "var(--font-mono)" }}>
+          <div style={{ fontSize: 11, color: "var(--con-ink-4)", fontFamily: "var(--font-mono)" }}>
             {fila.slug}{!fila.activo && " · inactivo"}
           </div>
         </div>
 
-        <div style={{ width: 92, flexShrink: 0, fontSize: 11.5, fontWeight: 700, color: colorEstado(fila.estado) }}>
-          {etiquetaEstado(fila.estado)}
+        <div style={{ width: W_ESTADO, flexShrink: 0 }}>
+          <EstadoPill estado={fila.estado} />
         </div>
 
         {error ? (
-          <div style={{ flex: "3 1 260px", minWidth: 200, fontSize: 11.5, color: "var(--danger)" }}>
+          <div style={{ flex: "3 1 260px", minWidth: 200, fontSize: 11.5, color: "var(--con-estado-corte)" }}>
             {error}
           </div>
         ) : (
           <>
-            <div style={{ width: 74, flexShrink: 0, fontSize: 11.5, color: "var(--ink-2)" }} title="Ocupación del período">
-              {m ? formatoPct(m.ocupacion_pct) : "—"}
+            <div style={{ width: W_OCUP, flexShrink: 0, fontSize: 11.5, color: "var(--con-ink-2)", fontFamily: "var(--font-mono)", textAlign: "right" }} title="Ocupación del período">
+              {m ? (m.ocupacion_pct !== null ? formatoPct(m.ocupacion_pct) : <SinDato />) : "—"}
             </div>
-            <div style={{ width: 108, flexShrink: 0, fontSize: 11.5, color: "var(--ink-2)", fontFamily: "var(--font-mono)" }} title="Canon promedio mensual">
+            <div style={{ width: W_CANON, flexShrink: 0, fontSize: 11.5, fontFamily: "var(--font-mono)", textAlign: "right" }} title="Canon promedio mensual">
               {m ? celdaPlata(m, m.canon_promedio_mensual) : "—"}
             </div>
-            <div style={{ width: 118, flexShrink: 0, fontSize: 11.5, color: "var(--ink-2)", fontFamily: "var(--font-mono)" }} title="Ingreso contratado del mes">
+            <div style={{ width: W_ING, flexShrink: 0, fontSize: 11.5, fontFamily: "var(--font-mono)", textAlign: "right" }} title="Ingreso contratado del mes">
               {m ? celdaPlata(m, m.ingreso_contratado_mes) : "—"}
             </div>
-            <div style={{ width: 90, flexShrink: 0, fontSize: 11, color: "var(--ink-3)" }} title="Último acceso con cuenta">
+            <div
+              style={{ width: W_ACC, flexShrink: 0, fontSize: 11, color: "var(--con-ink-3)" }}
+              title={
+                m
+                  ? `${m.usuarios_con_cuenta} cuenta${m.usuarios_con_cuenta === 1 ? "" : "s"} de usuario · último acceso ${m.ultimo_acceso ? soloFecha(m.ultimo_acceso) : "sin registrar"}`
+                  : "Último acceso con cuenta"
+              }
+            >
               {m ? soloFecha(m.ultimo_acceso) : "—"}
             </div>
           </>
         )}
 
-        <button onClick={onEditar} style={{ ...botonStyle, marginLeft: "auto" }}>
+        <button onClick={onEditar} className="con-focusable" style={{ ...botonStyle, marginLeft: "auto", width: W_BTN }}>
           {editando ? "Cerrar" : "Cambiar"}
         </button>
-      </div>
+      </Fila>
 
       {editando && (
         <FilaEditor fila={fila} onCancelar={onCancelar} onGuardado={onGuardado} />
       )}
     </div>
+  );
+}
+
+// ─── Gráficos: barras con eje desde cero (primitivas de la consola) ─────────
+
+// Pregunta de negocio: "¿qué cliente necesita una conversación de asesoría
+// primero?" -- por eso el orden es de MENOR a MAYOR ocupación (el peor caso
+// arriba, no abajo) y los clientes sin dato de ocupación se muestran igual
+// (al final, como "sin dato") en vez de desaparecer del panel: un cliente sin
+// contratos activos en el período es, si acaso, el que MÁS necesita una
+// llamada -- ocultarlo sería el error de presentación opuesto al que se
+// está corrigiendo.
+function GraficoOcupacion({ clientes }: { clientes: ClienteMetricas[] }) {
+  const filas = useMemo(() => {
+    const conDato = clientes
+      .filter((c) => c.metricas && c.metricas.ocupacion_pct !== null)
+      .map((c) => ({
+        slug: c.slug,
+        nombre: c.nombre,
+        ocupacion: c.metricas!.ocupacion_pct as number,
+        espacios: c.metricas!.espacios_comercializables,
+        estado: "normal" as const,
+      }))
+      .sort((a, b) => a.ocupacion - b.ocupacion); // menor primero: el que necesita asesoría antes
+    const sinDato = clientes
+      .filter((c) => c.metricas && c.metricas.ocupacion_pct === null)
+      .map((c) => ({
+        slug: c.slug,
+        nombre: c.nombre,
+        ocupacion: 0,
+        espacios: c.metricas!.espacios_comercializables,
+        estado: "sindato" as const,
+      }));
+    return [...conDato, ...sinDato];
+  }, [clientes]);
+
+  return (
+    <Panel
+      titulo="Ocupación por cliente"
+      subtitulo="Espacios con contrato activo sobre comercializables, en el período — de menor a mayor: el que necesita asesoría primero."
+    >
+      {filas.length === 0 ? (
+        <EstadoVacio texto="Sin datos de ocupación para este período." />
+      ) : (
+        <Barras etiquetaMax="100%">
+          {filas.map((f) => (
+            <BarraFila
+              key={f.slug}
+              label={f.nombre}
+              valor={f.ocupacion}
+              max={100}
+              texto={f.estado === "sindato" ? "—" : formatoPct(f.ocupacion)}
+              tono="magnitud"
+              estado={f.estado}
+              hint={
+                f.estado === "sindato"
+                  ? `${f.nombre}: sin dato de ocupación este período (${f.espacios} espacios comercializables, sin contratos activos que la calculen).`
+                  : `${f.nombre}: ${formatoPct(f.ocupacion)} de ${f.espacios} espacios comercializables.`
+              }
+            />
+          ))}
+        </Barras>
+      )}
+    </Panel>
+  );
+}
+
+// Pregunta de negocio: "¿qué tan expuesta está la cartera a un solo
+// proveedor?" -- la concentración se calcula SOLO sobre el top-5 que trae el
+// endpoint (no hay un total de proveedores en el JSON), así que la lectura se
+// nombra explícitamente "entre los 5 principales" para no insinuar un
+// porcentaje de la cartera completa que no se puede calcular con estos datos.
+function GraficoProveedores({ metricas }: { metricas: MetricasPlataforma | null }) {
+  const top = (metricas?.consolidado.top_proveedores ?? []).slice(0, 5);
+  const maximo = top.reduce((m, p) => Math.max(m, p.contratos_activos), 0);
+  const totalTop = top.reduce((s, p) => s + p.contratos_activos, 0);
+  const liderPct = top.length > 0 && totalTop > 0 ? (top[0].contratos_activos / totalTop) * 100 : null;
+
+  return (
+    <Panel
+      titulo="Top proveedores (consolidado)"
+      subtitulo={
+        liderPct !== null
+          ? `Contratos activos por proveedor. "${top[0].nombre}" concentra ${liderPct.toFixed(1)}% de los contratos entre los 5 principales — cuanto más cerca del 100%, mayor el riesgo de depender de uno solo.`
+          : "Contratos activos por proveedor — concentración entre los 5 principales."
+      }
+    >
+      {top.length === 0 ? (
+        <EstadoVacio texto="Sin contratos activos en este período." />
+      ) : (
+        <Barras etiquetaMax={String(maximo)}>
+          {top.map((p) => {
+            const share = totalTop > 0 ? (p.contratos_activos / totalTop) * 100 : 0;
+            return (
+              <BarraFila
+                key={p.nombre}
+                label={p.nombre}
+                valor={p.contratos_activos}
+                max={maximo}
+                texto={String(p.contratos_activos)}
+                tono="conteo"
+                hint={`${p.nombre}: ${p.contratos_activos} contrato${p.contratos_activos === 1 ? "" : "s"} activo${p.contratos_activos === 1 ? "" : "s"} — ${share.toFixed(1)}% de los 5 principales.`}
+              />
+            );
+          })}
+        </Barras>
+      )}
+    </Panel>
   );
 }
 
@@ -411,9 +391,9 @@ function etiquetaSupresion(e: SolicitudSupresion["estado"]): string {
 }
 
 function colorSupresion(e: SolicitudSupresion["estado"]): string {
-  if (e === "pendiente") return "var(--warning)";
-  if (e === "atendida") return "var(--ink-3)";
-  return "var(--danger)";
+  if (e === "pendiente") return "var(--con-estado-aviso)";
+  if (e === "atendida") return "var(--con-ink-3)";
+  return "var(--con-estado-corte)";
 }
 
 function FilaEditorSupresion({
@@ -452,11 +432,12 @@ function FilaEditorSupresion({
   };
 
   return (
-    <div style={{ padding: "10px 18px", background: "var(--surface-2)", borderTop: "1px solid var(--line-soft)" }}>
+    <div style={{ padding: "10px 16px", background: "var(--con-surface-2)", borderTop: "1px solid var(--con-line-soft)" }}>
       <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
         <select
           value={estado}
           onChange={(e) => setEstado(e.target.value as "atendida" | "rechazada")}
+          className="con-focusable"
           style={{ ...inputStyle, width: 140 }}
         >
           <option value="atendida">Atendida</option>
@@ -467,17 +448,18 @@ function FilaEditorSupresion({
           value={nota}
           onChange={(e) => setNota(e.target.value)}
           placeholder="Nota (obligatoria)"
+          className="con-focusable"
           style={{ ...inputStyle, flex: 1, minWidth: 220 }}
         />
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button onClick={guardar} disabled={busy} style={{ ...botonPrimarioStyle, opacity: busy ? 0.6 : 1 }}>
+        <button onClick={guardar} disabled={busy} className="con-focusable" style={{ ...botonPrimarioStyle, opacity: busy ? 0.6 : 1 }}>
           {busy ? "Guardando…" : "Confirmar"}
         </button>
-        <button onClick={onCancelar} disabled={busy} style={botonStyle}>
+        <button onClick={onCancelar} disabled={busy} className="con-focusable" style={botonStyle}>
           Cancelar
         </button>
-        {error && <span style={{ fontSize: 11, fontWeight: 500, color: "var(--danger)" }}>{error}</span>}
+        {error && <span style={{ fontSize: 11, fontWeight: 500, color: "var(--con-estado-corte)" }}>{error}</span>}
       </div>
     </div>
   );
@@ -498,34 +480,29 @@ function SupresionesSection() {
   useEffect(cargar, []);
 
   return (
-    <div style={panelStyle}>
-      <div style={sectionTitleStyle}>Solicitudes de supresión</div>
-      <div style={{ padding: "10px 18px", fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
-        Pedidos de un owner para suprimir su cliente. Nada se borra desde acá — la ejecución,
-        si corresponde, es manual y fuera del sistema.
-      </div>
-
+    <Panel
+      titulo="Solicitudes de supresión"
+      subtitulo="Pedidos de un owner para suprimir su cliente. Nada se borra desde acá — la ejecución, si corresponde, es manual y fuera del sistema."
+      sinPadding
+    >
       {filas === null ? (
-        <div style={{ padding: "0 18px 14px", fontSize: 12, color: error ? "var(--danger)" : "var(--ink-3)" }}>
-          {error ?? "Cargando…"}
+        <div style={{ padding: "12px 16px" }}>
+          {error ? <EstadoError texto={error} /> : <EstadoVacio texto="Cargando…" />}
         </div>
       ) : filas.length === 0 ? (
-        <div style={{ padding: "0 18px 14px", fontSize: 12, color: "var(--ink-3)" }}>
-          No hay solicitudes todavía.
+        <div style={{ padding: "12px 16px" }}>
+          <EstadoVacio texto="No hay solicitudes todavía." />
         </div>
       ) : (
         filas.map((f) => (
           <div key={f.id}>
-            <div style={{
-              display: "flex", alignItems: "center", gap: 10,
-              padding: "9px 18px", borderTop: "1px solid var(--line-soft)",
-            }}>
+            <Fila>
               <div style={{ flex: 1.3, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-1)" }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--con-ink-1)" }}>
                   {f.cliente_slug}
                 </div>
                 <div style={{
-                  fontSize: 11, color: "var(--ink-4)", fontFamily: "var(--font-mono)",
+                  fontSize: 11, color: "var(--con-ink-4)", fontFamily: "var(--font-mono)",
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }} title={f.email}>
                   {f.email}
@@ -536,7 +513,7 @@ function SupresionesSection() {
               </div>
               <div
                 style={{
-                  flex: 1.6, minWidth: 0, fontSize: 11.5, color: "var(--ink-2)",
+                  flex: 1.6, minWidth: 0, fontSize: 11.5, color: "var(--con-ink-2)",
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }}
                 title={f.motivo ?? undefined}
@@ -544,18 +521,18 @@ function SupresionesSection() {
                 {f.motivo ?? "—"}
               </div>
               {f.estado === "pendiente" ? (
-                <button onClick={() => setEditando(editando === f.id ? null : f.id)} style={botonStyle}>
+                <button onClick={() => setEditando(editando === f.id ? null : f.id)} className="con-focusable" style={botonStyle}>
                   {editando === f.id ? "Cerrar" : "Atender"}
                 </button>
               ) : (
                 <div
-                  style={{ width: 130, fontSize: 10.5, color: "var(--ink-4)", whiteSpace: "nowrap" }}
+                  style={{ width: 130, fontSize: 10.5, color: "var(--con-ink-4)", whiteSpace: "nowrap" }}
                   title={f.nota ?? undefined}
                 >
                   {f.atendido_por ?? "—"}
                 </div>
               )}
-            </div>
+            </Fila>
 
             {editando === f.id && (
               <FilaEditorSupresion
@@ -570,43 +547,45 @@ function SupresionesSection() {
           </div>
         ))
       )}
-    </div>
+    </Panel>
   );
 }
 
 // ─── Encabezado propio (sin Topbar de sede) ─────────────────────────────────
 
-function Encabezado({ email }: { email: string | null }) {
+function Encabezado({ email, tema, onToggleTema }: { email: string | null; tema: ConsolaTema; onToggleTema: () => void }) {
   const logout = useAuthStore((s) => s.logout);
   return (
     <header
       style={{
         display: "flex", alignItems: "center", gap: 12,
         padding: "12px 20px",
-        background: "var(--surface)",
-        borderBottom: "1px solid var(--line)",
+        background: "var(--con-surface)",
+        borderBottom: "1px solid var(--con-line)",
         flexShrink: 0,
       }}
     >
-      <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: "0.055em", color: "var(--ink-1)" }}>
+      <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: "0.055em", color: "var(--con-ink-1)" }}>
         RECABRA
       </span>
-      <span style={{ color: "var(--ink-4)" }}>·</span>
-      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-2)" }}>Plataforma</span>
+      <span style={{ color: "var(--con-ink-4)" }}>·</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--con-ink-2)" }}>Plataforma</span>
 
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
         {email && (
-          <span style={{ fontSize: 11.5, color: "var(--ink-4)", whiteSpace: "nowrap" }}>{email}</span>
+          <span style={{ fontSize: 11.5, color: "var(--con-ink-4)", whiteSpace: "nowrap" }}>{email}</span>
         )}
+        <TemaToggle tema={tema} onToggle={onToggleTema} />
         <button
           onClick={logout}
           title="Salir"
+          className="con-focusable"
           style={{
             display: "flex", alignItems: "center", gap: 6,
             height: 28, padding: "0 10px",
             borderRadius: "var(--r-md)",
-            background: "transparent", border: "1px solid var(--line)",
-            color: "var(--ink-2)", cursor: "pointer",
+            background: "transparent", border: "1px solid var(--con-line)",
+            color: "var(--con-ink-2)", cursor: "pointer",
             fontSize: 11.5, fontWeight: 600, fontFamily: "inherit",
           }}
         >
@@ -621,6 +600,16 @@ function Encabezado({ email }: { email: string | null }) {
 
 export default function Plataforma() {
   const email = useAuthStore((s) => s.email);
+
+  // ── Tema de la consola (claro/oscuro) — preferencia de UI, no dato ────────
+  const [tema, setTema] = useState<ConsolaTema>(temaInicial);
+  const toggleTema = () => {
+    setTema((prev) => {
+      const siguiente: ConsolaTema = prev === "claro" ? "oscuro" : "claro";
+      guardarTema(siguiente);
+      return siguiente;
+    });
+  };
 
   // Guard de cortesía: mientras no se sepa, no se pinta nada de negocio.
   // El backend contesta 403 en CADA endpoint igual -- esto sólo evita que
@@ -682,23 +671,27 @@ export default function Plataforma() {
   // cada apertura de la página), no desde `consolidado.clientes_total` de
   // métricas, que cuenta TODOS los clientes sin importar su estado.
   const clientesActivos = clientes ? clientes.filter((c) => c.estado === "activo").length : null;
+  const clientesConError = metricas?.consolidado.clientes_con_error ?? 0;
 
   if (operador === "no") return <Navigate to="/" replace />;
 
   return (
-    <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--bg)" }}>
-      <Encabezado email={email} />
+    <div
+      data-consola-tema={tema}
+      style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--con-bg)", color: "var(--con-ink-1)" }}
+    >
+      <Encabezado email={email} tema={tema} onToggleTema={toggleTema} />
 
       {operador === "verificando" ? (
-        <div style={{ padding: 40, fontSize: 12.5, color: "var(--ink-3)" }}>Verificando acceso…</div>
+        <div style={{ padding: 40, fontSize: 12.5, color: "var(--con-ink-3)" }}>Verificando acceso…</div>
       ) : (
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 20px 60px" }}>
           <div style={{ maxWidth: 1080, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
 
             {/* ── Selector de período + indicador de frescura ── */}
-            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
               <div>
-                <label htmlFor="plataforma-periodo" style={{ display: "block", fontSize: 11, fontWeight: 500, color: "var(--ink-3)", marginBottom: 4 }}>
+                <label htmlFor="plataforma-periodo" style={{ display: "block", fontSize: 11, fontWeight: 500, color: "var(--con-ink-3)", marginBottom: 4 }}>
                   Período
                 </label>
                 <input
@@ -706,10 +699,11 @@ export default function Plataforma() {
                   type="month"
                   value={periodo}
                   onChange={(e) => setPeriodo(e.target.value || mesActual())}
+                  className="con-focusable"
                   style={inputStyle}
                 />
               </div>
-              <div style={{ fontSize: 11, color: "var(--ink-4)" }}>
+              <div style={{ fontSize: 11, color: "var(--con-ink-4)", paddingBottom: 8 }}>
                 {metricasLoading
                   ? "Cargando métricas…"
                   : metricas
@@ -718,31 +712,48 @@ export default function Plataforma() {
               </div>
             </div>
 
-            {metricasError && (
-              <div style={{ fontSize: 12, fontWeight: 500, color: "var(--danger)" }}>{metricasError}</div>
-            )}
+            {metricasError && <EstadoError texto={metricasError} />}
 
-            {/* ── Tarjetas de resumen consolidado ── */}
+            {/* ── KPIs consolidados: el hero (ingreso contratado) grande y
+                   primero; el resto lo sostiene. Un nivel de énfasis por tile. */}
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <TarjetaResumen
-                etiqueta="Clientes activos"
-                valor={clientesActivos === null ? "—" : String(clientesActivos)}
-              />
-              <TarjetaResumen
-                etiqueta="Ocupación media"
-                valor={formatoPct(metricas?.consolidado.ocupacion_pct ?? null)}
-              />
-              <TarjetaResumen
-                etiqueta="Canon promedio"
-                valor={formatoCOP(metricas?.consolidado.canon_promedio_mensual ?? null)}
-              />
-              <TarjetaResumen
-                etiqueta="Ingreso contratado (mes)"
+              <KpiTile
+                variante="hero"
+                rotulo="Ingreso contratado · mes"
                 valor={formatoCOP(metricas?.consolidado.ingreso_contratado_mes ?? null)}
+                hint="Suma del canon de los contratos activos del período, consolidada sobre todos los clientes."
+                contexto={
+                  clientesConError > 0
+                    ? `${clientesConError} cliente${clientesConError === 1 ? "" : "s"} sin leer este período`
+                    : undefined
+                }
+              />
+              <KpiTile
+                rotulo="Clientes activos"
+                valor={clientesActivos === null ? "—" : String(clientesActivos)}
+                hint="Clientes con estado de cuenta 'activo' (fuente: lista de estados, no las métricas)."
+                contexto={
+                  metricas ? `de ${metricas.consolidado.clientes_total} en el registro` : undefined
+                }
+              />
+              <KpiTile
+                rotulo="Ocupación media"
+                valor={formatoPct(metricas?.consolidado.ocupacion_pct ?? null)}
+                hint="Espacios con contrato activo sobre comercializables, consolidado."
+                contexto={
+                  metricas
+                    ? `sobre ${metricas.consolidado.espacios_comercializables} espacios comercializables en ${metricas.consolidado.sedes_con_plano} sede${metricas.consolidado.sedes_con_plano === 1 ? "" : "s"} con plano`
+                    : undefined
+                }
+              />
+              <KpiTile
+                rotulo="Canon promedio"
+                valor={formatoCOP(metricas?.consolidado.canon_promedio_mensual ?? null)}
+                hint="Canon mensual promedio de los contratos activos, consolidado."
               />
             </div>
 
-            {/* ── Gráficos sobrios (SVG/CSS propio) ── */}
+            {/* ── Gráficos: barras con eje desde cero (SVG/CSS propio) ── */}
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
               <div style={{ flex: "1 1 380px", minWidth: 320 }}>
                 <GraficoOcupacion clientes={metricas?.clientes ?? []} />
@@ -753,35 +764,33 @@ export default function Plataforma() {
             </div>
 
             {/* ── Clientes: estado + métricas + Cambiar en la misma fila ── */}
-            <div style={panelStyle}>
-              <div style={sectionTitleStyle}>Clientes</div>
-              <div style={{ padding: "10px 18px", fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5, borderBottom: "1px solid var(--line-soft)" }}>
-                Estado de cuenta y métricas del período por supermercado. Cambiar el estado corta o
-                restringe el servicio de inmediato — el motivo queda de constancia, también al
-                reactivar.
-              </div>
-              <div style={{ overflowX: "auto" }}>
-                <div style={{ minWidth: 720 }}>
-                  {clientes === null ? (
-                    <div style={{ padding: 18, fontSize: 12, color: clientesError ? "var(--danger)" : "var(--ink-3)" }}>
-                      {clientesError ?? "Cargando…"}
-                    </div>
-                  ) : clientes.length === 0 ? (
-                    <div style={{ padding: 18, fontSize: 12, color: "var(--ink-3)" }}>No hay clientes todavía.</div>
-                  ) : (
-                    <>
-                      {/* Encabezados: mismas anchuras que las celdas de FilaCliente —
-                          sin ellos, los porcentajes y los pesos flotaban sin nombre. */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "7px 18px", borderTop: "1px solid var(--line-soft)" }}>
-                        <div style={{ flex: "1.4 1 180px", minWidth: 150, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink-4)" }}>Supermercado</div>
-                        <div style={{ width: 92, flexShrink: 0, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink-4)" }}>Estado</div>
-                        <div style={{ width: 74, flexShrink: 0, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink-4)" }}>Ocupación</div>
-                        <div style={{ width: 108, flexShrink: 0, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink-4)" }}>Canon prom.</div>
-                        <div style={{ width: 118, flexShrink: 0, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink-4)" }}>Ingreso (mes)</div>
-                        <div style={{ width: 90, flexShrink: 0, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink-4)" }}>Últ. acceso</div>
-                        <div style={{ marginLeft: "auto", width: 72 }} />
-                      </div>
-                      {clientes.map((f) => (
+            <Panel
+              titulo="Clientes"
+              subtitulo="Estado de cuenta y métricas del período por supermercado. Cambiar el estado corta o restringe el servicio de inmediato — el motivo queda de constancia, también al reactivar."
+              sinPadding
+            >
+              <TablaScroll minWidth={760}>
+                {clientes === null ? (
+                  <div style={{ padding: 16 }}>
+                    {clientesError ? <EstadoError texto={clientesError} /> : <EstadoVacio texto="Cargando…" />}
+                  </div>
+                ) : clientes.length === 0 ? (
+                  <div style={{ padding: 16 }}>
+                    <EstadoVacio texto="No hay clientes todavía." />
+                  </div>
+                ) : (
+                  <>
+                    {/* Encabezados: mismas anchuras que las celdas de FilaCliente. */}
+                    <TablaHead>
+                      <TablaHeadCelda flex="1.4 1 180px">Supermercado</TablaHeadCelda>
+                      <TablaHeadCelda width={W_ESTADO}>Estado</TablaHeadCelda>
+                      <TablaHeadCelda width={W_OCUP} alinear="right">Ocupación</TablaHeadCelda>
+                      <TablaHeadCelda width={W_CANON} alinear="right">Canon prom.</TablaHeadCelda>
+                      <TablaHeadCelda width={W_ING} alinear="right">Ingreso (mes)</TablaHeadCelda>
+                      <TablaHeadCelda width={W_ACC}>Últ. acceso</TablaHeadCelda>
+                      <div style={{ marginLeft: "auto", width: W_BTN }} />
+                    </TablaHead>
+                    {clientes.map((f) => (
                       <FilaCliente
                         key={f.slug}
                         fila={f}
@@ -796,12 +805,11 @@ export default function Plataforma() {
                           setEditando(null);
                         }}
                       />
-                      ))}
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
+                    ))}
+                  </>
+                )}
+              </TablaScroll>
+            </Panel>
 
             <SupresionesSection />
           </div>
