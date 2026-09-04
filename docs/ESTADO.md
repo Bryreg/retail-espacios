@@ -84,6 +84,16 @@ exigen admin **también para leer**. En el cliente, las tarifas quedan fuera de
 `partialize` a propósito: la clave `retail-fixtures-v1` sobrevive al logout, y una
 máquina compartida no debe entregarle precios al siguiente turno.
 
+**Los planos del store están SCOPED por cliente.** `retail-fixtures-v1` sobrevive
+al logout (para poder leer el mapa offline), pero en un mundo multi-cliente eso
+significaba que entrar con la cuenta de OTRO supermercado en la misma máquina
+mostraba —y, peor, el bootstrap de `syncFromServer` SUBÍA— los planos del cliente
+anterior a la base del nuevo. El store guarda ahora `clienteCache` (el slug dueño
+del caché) y `scopeToCliente(cliente)` descarta todo lo persistido si la sesión
+que abre pertenece a otro cliente, ANTES de cualquier sync. Se llama desde el
+efecto de sesión de `App.tsx`, antes de `startAutoSync`. El dinero ya salía de
+`partialize`; esto hace lo propio con los planos ante un cambio de inquilino.
+
 **Los espejos comparan identidad, no booleanos.** El plano 2D y el editor 3D mantienen
 una copia local del store. Los guards que evitan el eco comparan la *identidad del array*,
 no una bandera: un booleano lo consume la pasada equivocada del ciclo de montaje, y eso
