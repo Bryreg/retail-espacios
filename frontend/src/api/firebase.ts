@@ -98,6 +98,21 @@ export async function registrarConCorreo(email: string, password: string): Promi
   };
 }
 
+/** ID token FRESCO de quien está logueado ACÁ AHORA en el SDK — `getIdToken`
+ *  con `forceRefresh: true`, así que nunca devuelve el que Firebase tenía en
+ *  caché. Lo usa el alta self-service (Fase 2 clientes): el `id_token` del
+ *  intento de `/auth/oauth` que acaba de dar 403 puede estar por vencer para
+ *  cuando la persona termina de escribir el nombre del supermercado, y el
+ *  alta no reintenta sola. */
+export async function obtenerIdTokenFresco(): Promise<string> {
+  const instancia = await auth();
+  const usuario = instancia.currentUser;
+  if (!usuario) {
+    throw new Error("Se cerró la sesión. Volvé a entrar con Google o tu correo.");
+  }
+  return usuario.getIdToken(true);
+}
+
 /** Reenvía el correo de verificación a quien está logueado ACÁ AHORA en el
  *  SDK de Firebase (el intento de login/registro que acaba de fallar por
  *  401 en el backend). Si no hay nadie logueado en el SDK, no hay a quién

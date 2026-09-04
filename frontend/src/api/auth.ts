@@ -1,11 +1,15 @@
 import client from "./client";
-import type { Role } from "../store/authStore";
+import type { AvisoCuenta, Role } from "../store/authStore";
 
 export interface LoginResponse {
   token: string;
   role: Role;
   cliente: string;
   cliente_nombre: string;
+  /** Fase 2 clientes: presente cuando el cliente está en `gracia` o
+   *  `solo_lectura` (nunca `suspendido` acá — eso da 402 en el login legado,
+   *  para los dos roles). */
+  aviso_cuenta?: AvisoCuenta;
 }
 
 /** Un supermercado que usa el sistema, para el selector de la pantalla de ingreso. */
@@ -51,6 +55,10 @@ export interface OauthOk {
   cliente: string;
   email: string;
   nombre: string;
+  /** Fase 2 clientes: presente en `gracia`/`solo_lectura` para cualquier
+   *  rol, y en `suspendido` sólo para el owner (worker/admin dan 402 antes
+   *  de llegar acá). */
+  aviso_cuenta?: AvisoCuenta;
 }
 
 /** Varias membresías activas y sin `cliente`: hay que elegir y repetir el

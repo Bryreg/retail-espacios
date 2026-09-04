@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import Montaje from "./pages/Montaje";
+import BloqueoCuenta from "./components/BloqueoCuenta";
 import { usarToken } from "./api/montaje";
 import { useAuthStore } from "./store/authStore";
 import { startAutoSync, stopAutoSync } from "./store/fixtureStore";
@@ -63,6 +64,7 @@ const TOKEN_MONTAJE = (() => {
 
 export default function App() {
   const token = useAuthStore((s) => s.token);
+  const avisoCuenta = useAuthStore((s) => s.avisoCuenta);
 
   // Server sync starts only once there is a session, and stops on logout.
   // Doing this at module load (as it used to) meant the very first pull ran
@@ -87,6 +89,14 @@ export default function App() {
   // Route guard: no session → login screen. A 401 anywhere clears the token
   // (see api/client.ts), which lands the user back here automatically.
   if (!token) return <Login />;
+
+  // Fase 2 clientes: cliente `suspendido` — sólo un owner llega hasta acá con
+  // este aviso puesto (worker/admin reciben 402 en el login y nunca guardan
+  // sesión). Reemplaza TODA la app: nada de navegación de negocio hasta que
+  // un operador reactive el cliente.
+  if (avisoCuenta?.estado === "suspendido") {
+    return <BloqueoCuenta motivo={avisoCuenta.motivo} />;
+  }
 
   return (
     <BrowserRouter>

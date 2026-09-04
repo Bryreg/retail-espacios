@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
-import { Settings, LogOut, X, Send } from "lucide-react";
+import { Settings, LogOut, X, Send, ShieldCheck } from "lucide-react";
 import StoreEditor3D from "../components/StoreEditor3D/StoreEditor3D";
 import FloorPlan2D from "../components/FloorPlan2D/FloorPlan2D";
 import DashboardView from "./DashboardView";
 import MountView from "./MountView";
 import SyncStatus from "../components/SyncStatus/SyncStatus";
+import AvisoCuentaBanner from "../components/AvisoCuentaBanner";
+import PlataformaPanel from "../components/Plataforma/PlataformaPanel";
+import { soyOperador } from "../api/plataforma";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
 import {
   updatePasswords,
@@ -927,11 +930,15 @@ interface TopbarProps {
   viewMode: ViewMode;
   setViewMode: (m: ViewMode) => void;
   isAdmin: boolean;
+  operador: boolean;
   onOpenSettings: () => void;
+  onOpenPlataforma: () => void;
   onLogout: () => void;
 }
 
-function Topbar({ viewMode, setViewMode, isAdmin, onOpenSettings, onLogout }: TopbarProps) {
+function Topbar({
+  viewMode, setViewMode, isAdmin, operador, onOpenSettings, onOpenPlataforma, onLogout,
+}: TopbarProps) {
   // A worker gets the dashboard and the mount screen: confirming a mount is
   // literally their job, and it is the one thing they are allowed to write.
   const visibleTabs = isAdmin
@@ -1040,6 +1047,21 @@ function Topbar({ viewMode, setViewMode, isAdmin, onOpenSettings, onLogout }: To
           {isAdmin ? "Administrador" : "Trabajador"}
         </span>
 
+        {/* Fase 2 clientes: sólo existe en el DOM si el backend confirmó
+            `operador === true` — no es un botón deshabilitado para el resto
+            de las cuentas, directamente no está. */}
+        {operador && (
+          <button
+            title="Plataforma"
+            onClick={onOpenPlataforma}
+            style={iconButtonStyle}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-3)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+          >
+            <ShieldCheck size={14} />
+          </button>
+        )}
+
         {isAdmin && (
           <button
             title="Configuración"
@@ -1078,6 +1100,21 @@ export default function Dashboard() {
   const role = useAuthStore((s) => s.role);
   const logout = useAuthStore((s) => s.logout);
 
+  // Fase 2 clientes: quién es operador de plataforma se pregunta de nuevo en
+  // cada sesión — nunca se persiste (a diferencia de `avisoCuenta`, que es
+  // parte de la sesión misma). El legado (token sin email) siempre da
+  // `false`, así que pedirlo acá no distingue caminos: el backend resuelve.
+  const [operador, setOperador] = useState(false);
+  const [plataformaOpen, setPlataformaOpen] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    soyOperador()
+      .then((v) => { if (vivo) setOperador(v); })
+      .catch(() => { if (vivo) setOperador(false); });
+    return () => { vivo = false; };
+  }, []);
+
   // A worker may only be on the dashboard or the mount screen.
   useEffect(() => {
     if (role === "worker" && viewMode !== "kpis" && viewMode !== "montaje") {
@@ -1104,11 +1141,15 @@ export default function Dashboard() {
         background: "var(--bg)",
       }}
     >
+      <AvisoCuentaBanner />
+
       <Topbar
         viewMode={effectiveMode}
         setViewMode={setViewMode}
         isAdmin={isAdmin}
+        operador={operador}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenPlataforma={() => setPlataformaOpen(true)}
         onLogout={logout}
       />
 
@@ -1125,6 +1166,7 @@ export default function Dashboard() {
       </div>
 
       {settingsOpen && isAdmin && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {plataformaOpen && operador && <PlataformaPanel onClose={() => setPlataformaOpen(false)} />}
     </div>
   );
 }

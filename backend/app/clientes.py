@@ -38,6 +38,14 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.database import SQLALCHEMY_DATABASE_URL, Base, engine as motor_por_defecto
 
+# El interruptor de estado de cuenta (Fase 2). El import va ARRIBA, a nivel de
+# módulo, por dos motivos: acá se aplica el corte en cada pedido, y de paso
+# `plataforma_estado` importa `models/plataforma.py`, con lo que las tablas
+# nuevas quedan en `Base.metadata` antes de que el arranque llame a
+# `create_all()`. No hay ciclo: `models/plataforma.py` sólo importa
+# `app.database`, que no importa este archivo a nivel de módulo.
+from app import plataforma_estado
+
 log = logging.getLogger("recabra.clientes")
 
 # Cada cliente abre su propio grupo de conexiones, y Postgres en el plan Basic
@@ -345,12 +353,77 @@ def _credencial(request: Request) -> str | None:
     return (request.query_params.get("token") or "").strip() or None
 
 
+# ─── El interruptor de estado de cuenta ───────────────────────────────────────
+
+CUENTA_SOLO_LECTURA = "Cuenta en solo lectura por pago pendiente."
+CUENTA_SUSPENDIDA = "La cuenta de este cliente está suspendida."
+
+# Un pedido que sólo lee no mueve el negocio de nadie: en `solo_lectura` pasa.
+_METODOS_DE_LECTURA = frozenset({"GET", "HEAD", "OPTIONS"})
+
+# Spec, decisión 3: en `solo_lectura` el owner tiene que poder seguir entrando y
+# administrando a su gente —justamente para poder pagar—, así que el login y la
+# gestión de usuarios quedan exentos aunque muten.
+_EXENTOS_EN_SOLO_LECTURA = ("/api/auth", "/api/usuarios")
+
+# El panel del operador opera sobre el REGISTRO, no sobre datos de negocio de
+# nadie. Si el estado lo cortara, un operador cuyo propio cliente quedó
+# degradado no podría destrabar ninguna cuenta — incluida la suya.
+_PREFIJO_PLATAFORMA = "/api/plataforma"
+
+
+def _aplicar_estado(cliente: Cliente, request: Request) -> Cliente:
+    """El corte por estado de cuenta, en el ÚNICO lugar donde se aplica.
+
+    Todo pedido que toca una base de cliente pasa por `cliente_del_pedido`, así
+    que acá alcanza: ningún router repite el chequeo y por lo tanto ninguno
+    puede olvidárselo.
+
+    **El corte es al pedido HTTP, no a la sesión de base.** Es la diferencia que
+    decide el caso raro: `expire_leases()` ESCRIBE adentro de
+    `GET /api/spaces/map`. Si el bloqueo viviera en la sesión —una sesión de
+    sólo lectura, digamos—, ese GET permitido se caería al intentar vencer un
+    contrato. Bloqueando el pedido, un GET que pasó sigue pudiendo escribir todo
+    lo que la mecánica interna necesite.
+
+    Un estado desconocido (una fila escrita a mano fuera del PATCH, que valida
+    contra `ESTADOS_CUENTA`) se deja pasar a propósito: el interruptor corta
+    servicio, y ante una fila que no entiende prefiere no cortarle el suyo a un
+    cliente que paga.
+    """
+    estado, _motivo = plataforma_estado.estado_de(cliente.slug)
+    if estado in ("activo", "gracia"):
+        return cliente
+
+    path = request.url.path or ""
+    if path.startswith(_PREFIJO_PLATAFORMA):
+        return cliente
+
+    if estado == "solo_lectura":
+        if (request.method or "").upper() in _METODOS_DE_LECTURA:
+            return cliente
+        if path.startswith(_EXENTOS_EN_SOLO_LECTURA):
+            return cliente
+        raise HTTPException(status_code=402, detail=CUENTA_SOLO_LECTURA)
+
+    if estado == "suspendido":
+        # Todo método, GET incluido. Los datos no se borran; se dejan de servir.
+        raise HTTPException(status_code=402, detail=CUENTA_SUSPENDIDA)
+
+    return cliente
+
+
 def cliente_del_pedido(request: Request) -> Cliente:
     """Qué supermercado está pidiendo. **Nunca se deduce de la contraseña.**
 
     Sale del token, que está firmado, o del único cliente que haya. Un
     parámetro suelto en la URL no sirve: el navegador lo elige, y con eso
     cualquiera se pararía adelante de la base de otro.
+
+    Los DOS caminos que devuelven un cliente pasan por `_aplicar_estado`: el del
+    token y el del cliente único. Con uno solo alcanzaría para que una
+    instalación de un cliente —la de hoy, sin ir más lejos, donde los enlaces
+    viejos entran sin slug en el token— se saltee el interruptor entero.
     """
     from app.auth import cliente_del_token
 
@@ -363,11 +436,18 @@ def cliente_del_pedido(request: Request) -> Cliente:
                 # El token está bien firmado pero nombra un cliente que ya no
                 # existe o quedó inactivo. Se cierra, no se cae a otro.
                 raise HTTPException(status_code=401, detail="Token inválido o expirado")
-            return cliente
+            return _aplicar_estado(cliente, request)
         # Token viejo, de antes de que hubiera más de un cliente.
 
     solo = unico()
     if solo is not None:
+        if raw is not None:
+            return _aplicar_estado(solo, request)
+        # Sin credencial NO se aplica el estado (hallazgo R-1): contestar 402
+        # antes de que nadie compruebe un token le contaría a un anónimo si el
+        # cliente dejó de pagar — el mismo oráculo que la pantalla de ingreso
+        # se cuidó de no construir. El require_auth de más adelante contesta
+        # su 401 de siempre y el estado se aplica recién con credencial.
         return solo
     raise HTTPException(status_code=401, detail="No autenticado")
 

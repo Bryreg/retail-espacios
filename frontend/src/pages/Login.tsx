@@ -3,10 +3,12 @@ import {
   login, getClientes, loginOauth, esRequiereCliente,
   type ClienteBreve, type Membresia,
 } from "../api/auth";
+import { altaCliente, sugerirSlug, SLUG_VALIDO } from "../api/clientes";
 import { describeError } from "../api/client";
 import {
   firebaseDisponible, loginConGoogle, loginConCorreo, registrarConCorreo,
-  reenviarVerificacion, resetearClave, signOutFirebase, describirErrorFirebase,
+  reenviarVerificacion, resetearClave, obtenerIdTokenFresco, signOutFirebase,
+  describirErrorFirebase,
 } from "../api/firebase";
 import { useAuthStore } from "../store/authStore";
 
@@ -37,6 +39,16 @@ import { useAuthStore } from "../store/authStore";
 // la tiene. Sólo se entera al intentar, así que ese caso se resuelve en
 // tiempo de uso — no hay endpoint para "preguntar antes" — y cuando llega se
 // reemplaza toda la vía nueva por un aviso discreto, sin ocultar el resto.
+//
+// ─── Fase 2 clientes: alta self-service ────────────────────────────────────
+//
+// El 403 de `/oauth` ("esta cuenta no tiene ninguna membresía") ya NO se
+// muestra como error seco: en su lugar se ofrece fundar el supermercado
+// ahí mismo — nombre, slug sugerido en vivo y editable, y `POST
+// /clientes/alta` con un `id_token` FRESCO (no el que ya usó y rechazó
+// `/oauth`: para cuando la persona termina de escribir puede estar por
+// vencer). El éxito se trata exactamente como un oauth exitoso: se guarda
+// la sesión y entra como admin.
 
 const etiquetaStyle: React.CSSProperties = {
   display: "block", marginBottom: 5,
@@ -104,7 +116,7 @@ export default function Login() {
     setError(false);
     try {
       const r = await login(password, cliente || undefined);
-      setAuth(r.token, r.role, r.cliente, r.cliente_nombre);
+      setAuth(r.token, r.role, r.cliente, r.cliente_nombre, undefined, undefined, r.aviso_cuenta);
     } catch {
       setError(true);
       setLoading(false);
@@ -128,6 +140,14 @@ export default function Login() {
   const [pendingIdToken, setPendingIdToken] = useState<string | null>(null);
   const [clienteElegido, setClienteElegido] = useState("");
 
+  // ─── Fase 2: sin membresías → ofrecer fundar el supermercado ───────────
+  const [sinCliente, setSinCliente] = useState(false);
+  const [altaNombre, setAltaNombre] = useState("");
+  const [altaSlug, setAltaSlug] = useState("");
+  const [altaSlugTocado, setAltaSlugTocado] = useState(false);
+  const [altaBusy, setAltaBusy] = useState(false);
+  const [altaError, setAltaError] = useState<string | null>(null);
+
   const limpiarAvisos = () => {
     setFbError(null);
     setFbInfo(null);
@@ -143,13 +163,55 @@ export default function Login() {
       return;
     }
     if (status === 403) {
-      setFbError(describeError(
-        err,
-        "Tu cuenta no tiene acceso a ningún cliente. Pedí una invitación."
-      ));
+      // Sin membresías: no es un error, es el punto de partida del alta.
+      setSinCliente(true);
       return;
     }
     setFbError(describeError(err, "No se pudo verificar tu identidad."));
+  };
+
+  const cambiarAltaNombre = (v: string) => {
+    setAltaNombre(v);
+    // El slug sigue al nombre en vivo hasta que la persona lo toca a mano —
+    // a partir de ahí manda lo que escribió, no se le pisa más.
+    if (!altaSlugTocado) setAltaSlug(sugerirSlug(v));
+  };
+
+  const cambiarAltaSlug = (v: string) => {
+    setAltaSlugTocado(true);
+    setAltaSlug(v.toLowerCase());
+  };
+
+  const fundarCliente = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (altaBusy) return;
+    if (!altaNombre.trim()) {
+      setAltaError("Escribí el nombre del supermercado.");
+      return;
+    }
+    if (!SLUG_VALIDO.test(altaSlug)) {
+      setAltaError(
+        "El código va en minúsculas, sin espacios ni tildes, y arranca con una letra."
+      );
+      return;
+    }
+    setAltaBusy(true);
+    setAltaError(null);
+    try {
+      // Fresco a propósito: no el token que ya usó `/oauth` y rechazó —
+      // puede estar por vencer para cuando se llega hasta acá.
+      const idToken = await obtenerIdTokenFresco();
+      const r = await altaCliente({ id_token: idToken, slug: altaSlug, nombre: altaNombre.trim() });
+      // Éxito == un oauth exitoso: se guarda la sesión y entra como admin.
+      // Acá `cliente_nombre` viene directo del backend — no hace falta
+      // buscarlo en ninguna lista, como sí pasa en `completarOauth`.
+      setAuth(r.token, r.role, r.cliente, r.cliente_nombre, r.email, r.nombre);
+    } catch (err) {
+      // 409/403/422/429: el detail del backend se muestra tal cual.
+      setAltaError(describeError(err, "No se pudo crear el supermercado."));
+    } finally {
+      setAltaBusy(false);
+    }
   };
 
   /** Manda el ID token al backend propio. Si hace falta elegir cliente,
@@ -168,7 +230,7 @@ export default function Login() {
       const nombreVisibleCliente =
         clientes.find((c) => c.slug === r.cliente)?.nombre ??
         membresias?.find((m) => m.cliente === r.cliente)?.nombre;
-      setAuth(r.token, r.role, r.cliente, nombreVisibleCliente, r.email, r.nombre);
+      setAuth(r.token, r.role, r.cliente, nombreVisibleCliente, r.email, r.nombre, r.aviso_cuenta);
     } catch (err) {
       manejarErrorOauth(err);
     }
@@ -272,6 +334,11 @@ export default function Login() {
     setMembresias(null);
     setPendingIdToken(null);
     setClienteElegido("");
+    setSinCliente(false);
+    setAltaNombre("");
+    setAltaSlug("");
+    setAltaSlugTocado(false);
+    setAltaError(null);
     limpiarAvisos();
   };
 
@@ -323,6 +390,74 @@ export default function Login() {
               >
                 El ingreso con Google o correo no está disponible en este servidor
                 todavía. Usá el acceso anterior, más abajo.
+              </div>
+            ) : sinCliente ? (
+              // ── Fase 2: sin membresías → ofrecer fundar el supermercado ──
+              <div style={{ width: "100%", marginBottom: 18 }}>
+                <p style={{ margin: "0 0 14px", fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
+                  Tu cuenta todavía no tiene acceso a ningún supermercado. Si te
+                  invitaron, pedile a quien te invitó que revise el correo — o fundá
+                  el tuyo ahora mismo.
+                </p>
+                <form onSubmit={fundarCliente}>
+                  <div style={{ marginBottom: 10 }}>
+                    <label htmlFor="alta-nombre" style={etiquetaStyle}>
+                      Nombre del supermercado
+                    </label>
+                    <input
+                      id="alta-nombre"
+                      type="text"
+                      autoFocus
+                      value={altaNombre}
+                      onChange={(e) => cambiarAltaNombre(e.target.value)}
+                      placeholder="Supermercado Terrón"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <label htmlFor="alta-slug" style={etiquetaStyle}>Código</label>
+                    <input
+                      id="alta-slug"
+                      type="text"
+                      value={altaSlug}
+                      onChange={(e) => cambiarAltaSlug(e.target.value)}
+                      placeholder="supermercado_terron"
+                      style={{ ...inputStyle, fontFamily: "var(--font-mono)" }}
+                    />
+                    <div style={{ marginTop: 5, fontSize: 10.5, color: "var(--ink-4)", lineHeight: 1.4 }}>
+                      Minúsculas, sin espacios ni tildes, arranca con una letra. Así te
+                      identifica el sistema — no se puede cambiar después.
+                    </div>
+                  </div>
+
+                  {altaError && (
+                    <div style={{ marginBottom: 10, fontSize: 12, fontWeight: 500, color: "var(--danger)" }}>
+                      {altaError}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={altaBusy || !altaNombre.trim() || !altaSlug}
+                    style={{
+                      width: "100%", height: 38,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      borderRadius: "var(--r-md)",
+                      background: "var(--accent)", color: "#fff",
+                      border: "none",
+                      cursor: altaBusy || !altaNombre.trim() || !altaSlug ? "default" : "pointer",
+                      opacity: altaBusy || !altaNombre.trim() || !altaSlug ? 0.6 : 1,
+                      fontSize: 13, fontWeight: 600, fontFamily: "inherit",
+                    }}
+                  >
+                    {altaBusy ? "Creando…" : "Crear y entrar"}
+                  </button>
+                </form>
+                <div style={{ marginTop: 12 }}>
+                  <button type="button" onClick={empezarDeNuevo} style={linkButtonStyle}>
+                    Volver
+                  </button>
+                </div>
               </div>
             ) : membresias ? (
               // ── Selector de cliente: varias membresías activas ──────────
