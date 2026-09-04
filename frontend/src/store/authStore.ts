@@ -41,6 +41,18 @@ interface AuthState {
    *  PRÓXIMO login (que vuelve a poner lo que diga el servidor en ese
    *  momento) — no hasta la próxima recarga de la pestaña. */
   pedirConsentimiento: boolean;
+  /** Fase 4 plataforma: `true` sólo en la sesión de un operador SIN
+   *  membresías — la que `/auth/oauth` devuelve con `plataforma: true` y
+   *  `cliente: "plataforma"` en vez del 403 que antes ofrecía "fundá tu
+   *  supermercado" (esa rama sigue existiendo para quien NO es operador).
+   *  Se persiste junto con el resto de la sesión, igual que `avisoCuenta`:
+   *  una recarga tiene que seguir sabiendo que esta sesión no tiene layout
+   *  que sincronizar ni Dashboard que mostrar. `App.tsx` la lee para (a)
+   *  no arrancar `startAutoSync` -- con este token cualquier fetch de
+   *  layout/spaces daría 401 y el interceptor de `api/client.ts` borraría
+   *  la sesión -- y (b) mandar "/" a "/plataforma" en vez de montar
+   *  `Dashboard`. */
+  plataforma: boolean;
   setAuth: (
     token: string,
     role: Role,
@@ -49,7 +61,8 @@ interface AuthState {
     email?: string,
     nombre?: string,
     avisoCuenta?: AvisoCuenta | null,
-    pedirConsentimiento?: boolean
+    pedirConsentimiento?: boolean,
+    plataforma?: boolean
   ) => void;
   /** Cierra el aviso de consentimiento sin más — el botón "Ahora no" y el
    *  que sigue a un `aceptar-politica` exitoso. No es un muro. */
@@ -70,7 +83,10 @@ export const useAuthStore = create<AuthState>()(
       nombre: null,
       avisoCuenta: null,
       pedirConsentimiento: false,
-      setAuth: (token, role, cliente, clienteNombre, email, nombre, avisoCuenta, pedirConsentimiento) =>
+      plataforma: false,
+      setAuth: (
+        token, role, cliente, clienteNombre, email, nombre, avisoCuenta, pedirConsentimiento, plataforma
+      ) =>
         set({
           token,
           role,
@@ -80,12 +96,14 @@ export const useAuthStore = create<AuthState>()(
           nombre: nombre ?? null,
           avisoCuenta: avisoCuenta ?? null,
           pedirConsentimiento: pedirConsentimiento ?? false,
+          plataforma: plataforma ?? false,
         }),
       descartarConsentimiento: () => set({ pedirConsentimiento: false }),
       logout: () => {
         set({
           token: null, role: null, cliente: null, clienteNombre: null,
           email: null, nombre: null, avisoCuenta: null, pedirConsentimiento: false,
+          plataforma: false,
         });
         // Cierra también la sesión de Firebase, si el SDK llegó a
         // inicializarse — si nunca se usó la vía nueva esto es un no-op

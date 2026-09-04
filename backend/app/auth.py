@@ -35,6 +35,10 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.models import AppConfig
+# Módulo de contrato, sin ciclo: `plataforma_estado` sólo importa
+# `app.models.plataforma`, que sólo importa `app.database`. Ninguno de los dos
+# importa este archivo a nivel de módulo.
+from app.plataforma_estado import SLUG_PLATAFORMA, es_operador
 
 JWT_SECRET = os.getenv("JWT_SECRET")
 if not JWT_SECRET:
@@ -460,7 +464,21 @@ def decode_token(token: str, db: Session | None = None) -> str | None:
         cliente = payload.get("cliente")
         if not isinstance(cliente, str) or not cliente:
             return None
-        if not _membresia_activa(sub, cliente):
+        if cliente == SLUG_PLATAFORMA:
+            # Fase 4: el token del operador que entró SIN membresías. Su
+            # `cliente` no es un supermercado, así que preguntarle a
+            # `membresias` daría siempre que no y el token moriría en el
+            # primer pedido. Lo que lo mantiene vivo es lo MISMO que lo emitió:
+            # que ese correo siga en `OPERADOR_EMAILS`. Sacar el correo de la
+            # variable corta el token en el pedido siguiente, sin caché de por
+            # medio -- `es_operador` lee el entorno en cada llamada.
+            #
+            # Es una excepción para ESE slug y para ninguno más: cualquier otro
+            # `cliente` sigue pasando por el chequeo de membresía de siempre.
+            email = payload.get("email")
+            if not isinstance(email, str) or not es_operador(email):
+                return None
+        elif not _membresia_activa(sub, cliente):
             return None
     return role
 

@@ -4,6 +4,7 @@ import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import Montaje from "./pages/Montaje";
 import PoliticaDatos from "./pages/PoliticaDatos";
+import Plataforma from "./pages/Plataforma";
 import BloqueoCuenta from "./components/BloqueoCuenta";
 import ModalConsentimiento from "./components/ModalConsentimiento";
 import { usarToken } from "./api/montaje";
@@ -68,6 +69,13 @@ export default function App() {
   const token = useAuthStore((s) => s.token);
   const avisoCuenta = useAuthStore((s) => s.avisoCuenta);
   const pedirConsentimiento = useAuthStore((s) => s.pedirConsentimiento);
+  // Fase 4 plataforma: sesión de un operador SIN membresías. No tiene
+  // cliente de negocio detrás -- CUALQUIER fetch de layout/spaces con este
+  // token daría 401, y el interceptor de `api/client.ts` borraría la sesión
+  // entera (deslogueando al operador en medio de su propia consola). Por
+  // eso entra en la MISMA condición que ya frenaba el sync por el enlace de
+  // montaje, no una aparte: es el mismo "esta sesión no tiene layout".
+  const plataforma = useAuthStore((s) => s.plataforma);
 
   // Server sync starts only once there is a session, and stops on logout.
   // Doing this at module load (as it used to) meant the very first pull ran
@@ -77,13 +85,16 @@ export default function App() {
     // sirve entera del servidor en una llamada. Y si el enlace se abre en el
     // computador de alguien que además tiene sesión de admin, no hay por qué
     // arrancarle la sincronización de fondo para mirar un espacio.
-    if (!token || TOKEN_MONTAJE) {
+    //
+    // La sesión de plataforma tampoco tiene layout: es un operador sin
+    // membresías, mirando sólo `/api/plataforma/*`.
+    if (!token || TOKEN_MONTAJE || plataforma) {
       stopAutoSync();
       return;
     }
     startAutoSync();
     return () => stopAutoSync();
-  }, [token]);
+  }, [token, plataforma]);
 
   // Fase 3 compliance: la Política de Tratamiento de Datos es pública — se
   // resuelve ACÁ, antes que cualquier otra cosa (el enlace de montaje
@@ -117,7 +128,15 @@ export default function App() {
           sigue funcionando mientras el aviso está puesto. */}
       {pedirConsentimiento && <ModalConsentimiento />}
       <Routes>
-        <Route path="/" element={<Dashboard />} />
+        {/* Fase 4 plataforma: la sesión de un operador sin membresías nunca
+            monta Dashboard -- "/" la manda derecho a "/plataforma". El
+            aterrizaje inicial (justo después del login) ya llega con la URL
+            puesta en "/plataforma" por `Login.tsx` (`history.replaceState`
+            antes de `setAuth`), así que esta ruta es la red de seguridad
+            para cualquier otra forma de volver a "/": atrás del navegador,
+            un enlace guardado, escribir la barra a mano. */}
+        <Route path="/" element={plataforma ? <Navigate to="/plataforma" replace /> : <Dashboard />} />
+        <Route path="/plataforma" element={<Plataforma />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

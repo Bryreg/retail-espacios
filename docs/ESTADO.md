@@ -151,9 +151,14 @@ Los datos jamás se borran por estado.
 
 **Operadores de plataforma**: correos en la env `OPERADOR_EMAILS`, solo para
 cuentas con `sub` (el legado jamás). Panel en `/api/plataforma/*`: listar
-clientes con estado y `PATCH` con motivo obligatorio. Ser operador NO abre la
-base de negocio de ningún cliente. Red-team dedicado en
-`tests/test_plataforma_ataques.py` (30 ataques; la frontera resistió).
+clientes con estado y `PATCH` con motivo obligatorio. **Enmendado en Fase 4**
+(ver esa sección más abajo): "El operador accede a datos de negocio de los
+clientes SOLO a través de los endpoints de métricas agregadas definidos en
+esta spec: solo lectura, solo agregados (nunca filas individuales), y cada
+consulta queda anotada en la bitácora del registro con el email del
+operador. Ningún otro endpoint de plataforma abre una base de cliente."
+Red-team dedicado en `tests/test_plataforma_ataques.py` (30 ataques; la
+frontera resistió).
 
 ### Compliance: Ley 1581, consentimiento y hardening (Fase 3 comercial)
 
@@ -197,6 +202,90 @@ sin bitácora (xfail strict); m-6 el 404 al worker no se anota (xfail strict);
 m-7 tarea operativa post-deploy: re-designar la cara de los espacios
 existentes; la política y la guía RNBD son **BORRADOR** con `[COMPLETAR]` /
 `[VALIDAR CON ABOGADO]` — no publicar sin abogado.
+
+### Fase 4 — Consola de plataforma
+
+El dueño del SaaS opera y entiende su negocio desde una superficie propia.
+
+- **Ruta `/plataforma`**, página completa fuera del layout de cliente (sin
+  Topbar de sede) — el modal `PlataformaPanel` murió, su contenido (estados
+  + supresiones) se mudó a la página. Un operador sin membresías aterriza
+  ahí directo tras el login con Google; uno con membresías llega por el
+  botón del Topbar, que ahora navega en vez de abrir modal.
+- **`GET /api/plataforma/metricas`**: consolidado + por cliente con los
+  agregados **taxativos** de la spec (sedes con plano, espacios
+  comercializables, % de ocupación, canon promedio mensual, ingreso
+  contratado del mes, top 5 proveedores por nombre + conteo de contratos,
+  usuarios con cuenta y fecha del último acceso, estado de cuenta). Cache de
+  5 min **en memoria del proceso**. Tabla **nueva** del registro
+  `bitacora_plataforma` (sin migración, mismo patrón que las tablas de la
+  Fase 3): cada consulta de métricas anota el email del operador, cuándo y
+  qué período — hit de cache incluido. Las bases de cliente se abren
+  **read-only y en secuencia**, tolerantes a fallos (patrón de
+  `_run_lease_maintenance`: una base rota marca error en su fila, el resto
+  del panel sigue). **Supresión de celda chica (regla de los 3 contratos)**:
+  los promedios y sumas de canon, y el top de proveedores, de un cliente
+  solo se calculan cuando agrupan al menos 3 contratos activos del período;
+  por debajo del umbral el dato sale `null`/omitido, para que el agregado
+  nunca equivalga al valor de un contrato puntual. **Nombre de proveedor
+  saneado**: `top_proveedores` no devuelve `Supplier.name` verbatim — se
+  depura de correos y teléfonos (se enmascaran) antes de entrar al JSON,
+  para que el campo de texto libre que carga el supermercado no filtre un
+  dato de contacto de un tercero.
+- **Enmienda de la regla del operador** (ver la nota en "Clientes
+  comerciales" arriba): el JSON de métricas jamás contiene filas de negocio,
+  valores de contrato individuales, ni correos/nombres de usuarios finales —
+  solo números y el top-5 de proveedores (nombre + conteo). Ningún otro
+  endpoint de plataforma abre una base de cliente. Un cliente suspendido
+  también aparece en métricas (el operador necesita ver el negocio
+  completo).
+- **Token de operador sin membresías**: `cliente="plataforma"` (slug
+  reservado en el alta — ningún cliente real puede llamarse así). Solo
+  resuelve bajo `/api/plataforma/*`; en cualquier otro path da 401 **por
+  construcción** (no es una lista de excepciones, es que `cliente_del_pedido`
+  no sabe abrir ninguna base de negocio para ese slug).
+- SIN MIGRACIONES, login legado y JWT intocados; rutas literales
+  (`/metricas`) antes de paramétricas.
+
+**Pendientes conocidos de la fase:**
+
+- El cache de métricas es **por proceso**: con más de un worker de uvicorn
+  habría un cálculo por proceso (hoy Render corre uno).
+- La época del token plataforma se valida contra la base **por defecto**
+  (que también es la de GALERIAS): cambiar la clave del rol `worker` de
+  GALERIAS invalida tokens de operador vigentes. Revalidan con Google en un
+  click; se aceptó a cambio de no debilitar la revocación.
+- `ultimo_acceso` sale de `ultimo_login`, que solo se actualiza en
+  `/oauth`: cuentas que solo usan el login legado no mueven esa fecha.
+- **H-5, aceptado a conciencia** (`test_m33_…` en `test_metricas_ataques.py`):
+  como consecuencia directa del punto anterior, **el admin del cliente que
+  vive en la base por defecto puede cerrarle la sesión al operador de la
+  plataforma** sin ser operador ni saber que lo hizo — le basta con cambiar
+  la contraseña de `worker` de su propio cliente. Efecto máximo: un
+  re-login del operador con Google. Se documentó y se aceptó en vez de
+  quitarle la validación de época al token (que sería debilitar la
+  revocación) o darle una época propia en el registro (clave nueva, regla
+  nueva, para ahorrar un re-login ocasional).
+- **M-1 / H-6, mayor, queda para la fase siguiente** (`test_m34_…` en
+  `test_metricas_ataques.py`, sirve de recordatorio — no está marcado
+  `xfail` porque hoy documenta la conducta aceptada, no una promesa
+  incumplida): el cache de métricas de 5 min **no se invalida** cuando el
+  operador cambia el `estado_cuenta` de un cliente con `PATCH`
+  (`invalidar_cache_estado` limpia el cache de `plataforma_estado`, pero no
+  llama a `limpiar_cache_metricas()`). Durante hasta 5 minutos el panel de
+  métricas puede seguir mostrando `estado_cuenta: "activo"` de un cliente
+  que el propio operador acaba de suspender en la misma pantalla. No es un
+  problema de privacidad (no hay dato personal de por medio), es de
+  confianza en el tablero. El arreglo (llamar `limpiar_cache_metricas()`
+  desde el `PATCH` de estado) queda para la fase siguiente.
+- La Política de Tratamiento de Datos ganó un punto (5.3) declarando estas
+  métricas, marcado `[VALIDAR CON ABOGADO]`. **`VERSION_POLITICA` NO se
+  subió**: no por regla general, sino porque la condición que el propio
+  red team fijó para eso —que los agregados no permitan reconstruir un
+  valor individual (H-2) ni filtrar un dato de contacto de un tercero
+  (H-1)— quedó satisfecha por la regla de los 3 contratos y el saneo de
+  nombre de proveedor descritos arriba. A la espera de que el abogado lo
+  confirme o lo contradiga (ver el punto 5.3 y `docs/legal/politica-datos.md`).
 
 ### Pendientes conocidos: clientes y plataforma
 

@@ -259,6 +259,37 @@ export default function Login() {
         return;
       }
       setConsentimientoPendiente(null);
+
+      // ── Fase 4 plataforma: operador SIN membresías ──────────────────────
+      // El backend ya NO contesta 403 acá para esta cuenta (esa rama sigue
+      // intacta para quien NO es operador, más abajo en `manejarErrorOauth`)
+      // -- contesta 200 con `plataforma: true` y `cliente: "plataforma"`, y
+      // el aterrizaje es DIRECTO en `/plataforma`, sin pasar por Dashboard.
+      //
+      // La URL se reescribe ACÁ, antes de `setAuth`: `App.tsx` recién monta
+      // el `<BrowserRouter>` cuando hay token, así que si la barra ya dice
+      // "/plataforma" en el momento en que eso pasa, React Router arranca
+      // resolviendo esa ruta directo -- no hace falta una redirección
+      // posterior ni un estado de "adónde ir" aparte. (La alternativa que
+      // se consideró -- una ruta inicial condicional leída de la marca del
+      // store -- también funcionaría, pero dejaría un instante en el que
+      // `BrowserRouter` monta en "/" antes de que el `Route` de "/" mismo
+      // redirija; reescribir la URL antes evita ese salto.)
+      if (r.plataforma) {
+        try {
+          window.history.replaceState(null, "", "/plataforma");
+        } catch {
+          // Navegación privada o `history` bloqueada: sin esto la sesión
+          // igual entra bien -- el `Route` de "/" en App.tsx manda a
+          // "/plataforma" apenas monta, sólo se pierde el salto directo.
+        }
+        setAuth(
+          r.token, r.role, r.cliente, undefined, r.email, r.nombre,
+          r.aviso_cuenta, r.pedir_consentimiento, true
+        );
+        return;
+      }
+
       // Superset del legado: además de token/role/cliente trae email y
       // nombre de la persona, que el legado nunca tuvo por no ser individual.
       const nombreVisibleCliente =

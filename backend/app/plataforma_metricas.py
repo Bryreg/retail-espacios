@@ -1,0 +1,626 @@
+"""Métricas agregadas del negocio, para la consola del operador (Fase 4).
+
+**Este módulo SÓLO LEE.** Es la única puerta por la que un operador toca datos
+de negocio de un cliente, y la enmienda de la regla dura de la Fase 2 la acota
+a esto: sólo lectura, sólo agregados, nunca filas. No hay un ``add``, un
+``commit`` ni un ``delete`` contra la base de un cliente en todo el archivo —
+la garantía es por construcción, no por convención: las sesiones de cliente
+sólo se usan para ``query(...)`` y se cierran en el ``finally``.
+
+**Qué sale (taxativo, spec de la fase)**: nº de sedes con plano, nº de espacios
+comercializables, % de ocupación del período, canon promedio mensual de
+contratos activos, ingreso contratado del mes, top 5 de proveedores por nº de
+contratos activos (nombre + conteo), nº de usuarios con cuenta y la FECHA del
+último acceso, y el estado de cuenta. **Qué nunca**: valores de contratos
+individuales, filas de ``space_leases``/``spaces``, correos o nombres de
+usuarios finales, notas, fotos, ni la bitácora de nadie. Los únicos arreglos
+de la respuesta son ``clientes`` y ``top_proveedores``.
+
+**Dos defensas sobre esa frontera**, porque "agregado" no alcanza solo:
+
+* **Supresión de celda chica (K=3)** — con menos de 3 contratos activos, la
+  suma ES el sumando. Bajo ese umbral, ``ingreso_contratado_mes`` y
+  ``canon_promedio_mensual`` van en ``null`` y ``top_proveedores`` vacío, tanto
+  por cliente como en el consolidado. Ver ``_suprimir_celda_chica``.
+* **Saneo del nombre del proveedor** — ``Supplier.name`` es texto libre del
+  cliente y es el único string de negocio que sale al JSON. Se le enmascaran
+  correos y teléfonos y se le pone tope de largo. Ver
+  ``sanear_nombre_proveedor``.
+
+**Cómo recorre las bases** — patrón de ``main.py::_run_lease_maintenance``: en
+SECUENCIA, una por una, con ``try/except`` por cliente. Una base rota deja su
+fila marcada con ``error`` y el panel entero sigue funcionando; el consolidado
+la excluye y la cuenta aparte en ``clientes_con_error``. El texto del error es
+FIJO: jamás la URL de la base, ni credenciales, ni el mensaje crudo del driver
+—eso va al log del servidor, que es donde sirve—.
+
+**Caché de 5 minutos** por ``anio_mes``, en memoria del registro y con candado,
+igual que ``_estado_cache`` de ``plataforma_estado.py``: recorrer N bases en
+cada pedido no escala sin techo. La bitácora NO depende del caché: la anota el
+router en cada consulta, porque lo que se registra es el acceso, no el cálculo.
+"""
+import calendar
+import json
+import logging
+import re
+import threading
+import time
+from datetime import date, datetime, timezone
+
+log = logging.getLogger("recabra.plataforma.metricas")
+
+# El texto que ve el operador cuando la base de un cliente no se deja leer.
+# Corto y FIJO a propósito: el detalle real (que suele traer la URL de la base
+# y a veces credenciales) va al log del servidor y nunca al JSON.
+ERROR_BASE_ILEGIBLE = "No se pudo leer la base de este cliente."
+
+TOPE_PROVEEDORES = 5
+
+# ─── Supresión de celda chica (K=3) ───────────────────────────────────────────
+#
+# Una suma de UN sumando no es un agregado: es el sumando. Con un solo contrato
+# activo, `ingreso_contratado_mes` y `canon_promedio_mensual` son, exactamente,
+# el `monthly_rent` de ese contrato, y el `top_proveedores` de al lado dice con
+# quién se firmó. El operador reconstruye la fila entera —proveedor, monto y,
+# si además hay una sola cara ocupada, cuál espacio— sin salir del panel. Eso
+# es justo lo que la spec prohíbe ("nunca valores de contratos individuales"),
+# y no es un caso de laboratorio: es el estado normal de un supermercado en su
+# primer mes, que es cuando más se lo mira desde la consola.
+#
+# La regla, estándar en estadística oficial: por debajo de K observaciones, la
+# celda no se publica. K=3 — con dos contratos, quien conoce uno despeja el
+# otro.
+#
+# Se suprimen SÓLO los tres campos que exponen plata (`ingreso_contratado_mes`,
+# `canon_promedio_mensual`, `top_proveedores`). Los conteos y la ocupación NO:
+# un porcentaje sobre el inventario no revela ningún valor de contrato.
+K_MINIMO_CONTRATOS = 3
+
+
+def _suprimir_celda_chica(publicas: dict, contratos: int) -> dict:
+    """Aplica la regla K=3 sobre un diccionario de métricas, in place.
+
+    ``null`` para los dos importes y lista **vacía** para el top. La elección es
+    deliberada y consistente con el resto del contrato: los importes ya usan
+    ``null`` para "este número no existe" (``canon_promedio_mensual`` sin
+    contratos), mientras que ``top_proveedores`` es un arreglo en todos los
+    casos y el frontend lo recorre sin preguntar — devolverle ``null`` lo
+    rompería para ganar una distinción que no necesita.
+
+    **El umbral incluye el cero.** Dejar ``0.0`` cuando no hay ningún contrato
+    parecía inofensivo —no hay nada que proteger— pero rompe la supresión por
+    la puerta de atrás: si el cero se publica y el 1 y el 2 se ocultan,
+    entonces ``null`` *significa* "tiene uno o dos" y el operador aprende de la
+    ausencia justo lo que la regla le quería ocultar. Con el umbral uniforme,
+    ``null`` sólo dice "menos de tres".
+    """
+    if contratos >= K_MINIMO_CONTRATOS:
+        return publicas
+    publicas["ingreso_contratado_mes"] = None
+    publicas["canon_promedio_mensual"] = None
+    publicas["top_proveedores"] = []
+    return publicas
+
+
+_PERIODO_RE = re.compile(r"^(\d{4})-(\d{2})$")
+
+
+class PeriodoInvalido(ValueError):
+    """El parámetro ``periodo`` no es un ``YYYY-MM`` con mes real."""
+
+
+# ─── El período ───────────────────────────────────────────────────────────────
+
+def periodo_actual() -> str:
+    """El mes calendario en curso, en UTC. El servidor corre en UTC y el resto
+    del repo fecha en UTC; usar la hora local de la máquina haría que el
+    "mes actual" cambiara según dónde se despliegue."""
+    hoy = datetime.now(timezone.utc).date()
+    return f"{hoy.year:04d}-{hoy.month:02d}"
+
+
+def rango_del_periodo(anio_mes: str) -> tuple[date, date]:
+    """``(desde, hasta)`` — el primer y el último día del mes, inclusive."""
+    m = _PERIODO_RE.match((anio_mes or "").strip())
+    if m is None:
+        raise PeriodoInvalido("El período va como YYYY-MM (por ejemplo, 2026-09).")
+    anio, mes = int(m.group(1)), int(m.group(2))
+    if not (1 <= mes <= 12) or not (1900 <= anio <= 9999):
+        raise PeriodoInvalido("El período va como YYYY-MM (por ejemplo, 2026-09).")
+    ultimo = calendar.monthrange(anio, mes)[1]
+    return date(anio, mes, 1), date(anio, mes, ultimo)
+
+
+def normalizar_periodo(crudo: str | None) -> str:
+    """``YYYY-MM`` validado, o el mes en curso si no vino nada."""
+    if crudo is None or not str(crudo).strip():
+        return periodo_actual()
+    anio_mes = str(crudo).strip()
+    rango_del_periodo(anio_mes)  # valida; levanta PeriodoInvalido
+    return anio_mes
+
+
+# ─── Semántica del layout, replicada server-side ──────────────────────────────
+#
+# Espeja `frontend/src/types/fixtures.ts` (`isRentable`, `isDoubleGondola`,
+# `fullSpaceCode`). Si las dos se separan, el % de ocupación que ve el operador
+# deja de ser el mismo negocio que ve el cliente en su plano.
+
+def _es_comercializable(fixture: dict) -> bool:
+    """``isRentable``: ausente = comercializable; sólo un ``false`` explícito no.
+
+    Un layout guardado antes de que la bandera existiera no tiene la propiedad
+    y todos sus muebles siguen siendo vendibles — la compatibilidad hacia atrás
+    es el motivo entero de que la regla se lea al revés de lo que parece.
+    """
+    return fixture.get("rentable") is not False
+
+
+def _es_gondola_doble(fixture: dict) -> bool:
+    """``isDoubleGondola`` **de ``DashboardView.tsx``**, que es la que cuenta caras.
+
+    Dos criterios, unidos por un OR, exactamente como el frontend::
+
+        isDoubleGondolaShared(f) || (f.type as string) === "gondola_doble"
+
+    · ``type == "gondola"`` con ``gondolaType`` ``"double"`` **o ausente** — el
+      default indefinido es doble en los dos editores (``fixtures.ts``).
+    · el tipo **legado** ``"gondola_doble"``, que ``DashboardView.tsx`` conserva
+      a propósito para los layouts viejos ya persistidos: esos planos están en
+      las bases de los clientes y sus góndolas siguen siendo de dos caras. Sin
+      esta rama, un cliente antiguo aparecería con la mitad del inventario.
+    """
+    tipo = fixture.get("type")
+    if tipo == "gondola_doble":
+        return True
+    if tipo != "gondola":
+        return False
+    return (fixture.get("gondolaType") or "double") == "double"
+
+
+def _codigo_completo(sede: str, code: str) -> str:
+    """``fullSpaceCode``: ``SEDE-CODE`` en mayúsculas, sin doble prefijo.
+
+    Los códigos que genera el editor 3D ya traen la sede adentro; el guard
+    evita ``NAVE-NAVE-PUN-01``. Todo en mayúsculas porque el prefijo se genera
+    así y la sede puede venir escrita como sea.
+    """
+    code_uc = (code or "").strip().upper()
+    sede_uc = (sede or "").strip().upper()
+    if not sede_uc or code_uc.startswith(f"{sede_uc}-"):
+        return code_uc
+    return f"{sede_uc}-{code_uc}"
+
+
+def _caras_comercializables(fixtures: list, sede_snapshot: str) -> set[str]:
+    """Los códigos completos de las caras VENDIBLES de una sede.
+
+    Una góndola doble son DOS espacios **siempre**: la cara A son los campos
+    top-level del fixture y la cara B lleva el sufijo ``-B``. Lo que hace doble
+    a una góndola es su TIPO, no la presencia de la clave ``faceB``: ``faceB``
+    es sólo donde se guardan los datos comerciales de esa cara, y el editor la
+    omite mientras la cara nunca tuvo nada vendido. ``facesOf``
+    (``DashboardView.tsx``) hace ``f.faceB ?? EMPTY_FACE`` y devuelve DOS
+    entradas igual — una góndola recién dibujada son dos caras libres, no una.
+    Exigir ``faceB`` contaba la mitad del inventario justo en el mueble más
+    común y en el estado más frecuente (nada vendido todavía).
+    """
+    caras: set[str] = set()
+    for fixture in fixtures:
+        if not isinstance(fixture, dict):
+            continue
+        code = str(fixture.get("code") or "").strip()
+        if not code:
+            continue
+        if not _es_comercializable(fixture):
+            continue
+        sede = str(fixture.get("sede") or sede_snapshot or "").strip()
+        completo = _codigo_completo(sede, code)
+        if not completo:
+            continue
+        caras.add(completo)
+        if _es_gondola_doble(fixture):
+            # Con o sin la clave `faceB`: `f.faceB ?? EMPTY_FACE`.
+            caras.add(f"{completo}-B")
+    return caras
+
+
+# ─── Un cliente ───────────────────────────────────────────────────────────────
+
+def _numeros_del_layout(db) -> tuple[int, set[str]]:
+    """``(sedes_con_plano, caras_comercializables)`` leyendo ``layout_snapshots``.
+
+    Una sede con el plano vacío no es una sede con plano: la fila existe desde
+    que alguien abrió el editor y guardó sin dibujar nada.
+    """
+    from app.models.models import LayoutSnapshot
+
+    sedes = 0
+    caras: set[str] = set()
+    for snap in db.query(LayoutSnapshot).all():
+        try:
+            fixtures = json.loads(snap.fixtures_json or "[]")
+        except (ValueError, TypeError):
+            # Un JSON ilegible no tumba al cliente entero: esa sede no cuenta.
+            continue
+        if not isinstance(fixtures, list) or not fixtures:
+            continue
+        sedes += 1
+        caras |= _caras_comercializables(fixtures, snap.sede or "")
+    return sedes, caras
+
+
+def _contratos_activos(db, desde: date, hasta: date) -> list[tuple[str, str, float]]:
+    """``(codigo_espacio, nombre_proveedor, canon)`` de cada contrato activo.
+
+    "Activo en el período" = ``start_date <= hasta AND end_date >= desde``, con
+    los dos extremos inclusive: un contrato de UN día que cae adentro del mes
+    cuenta como cualquier otro.
+
+    Al solapamiento de fechas se le suma ``is_active``, que es lo que dice que
+    el contrato **no fue cancelado** (ver ``Space.active_lease`` en
+    ``models/models.py``: las fechas son la verdad, la bandera sólo dice que
+    nadie lo dio de baja). Un contrato cancelado no es un contrato activo, así
+    que no puede sumar ingreso ni ocupación.
+
+    Devuelve una lista de TUPLAS, no filas del ORM, a propósito: lo que sale de
+    esta función se agrega y se tira. Nada de esto viaja al JSON.
+    """
+    from app.models.models import Space, SpaceLease, Supplier
+
+    filas = (
+        db.query(Space.code, Supplier.name, SpaceLease.monthly_rent)
+        .join(Space, Space.id == SpaceLease.space_id)
+        .join(Supplier, Supplier.id == SpaceLease.supplier_id)
+        .filter(
+            SpaceLease.is_active == True,  # noqa: E712
+            SpaceLease.start_date <= hasta,
+            SpaceLease.end_date >= desde,
+        )
+        .all()
+    )
+    return [
+        ((codigo or "").strip().upper(), (nombre or "").strip(), float(canon or 0.0))
+        for codigo, nombre, canon in filas
+    ]
+
+
+def _usuarios_del_cliente(reg, slug: str) -> tuple[list[int], date | None]:
+    """``(ids_de_usuarios_con_membresía_activa, fecha_del_último_acceso)``.
+
+    Sale del REGISTRO (``membresias`` + ``usuarios``), no de la base del
+    cliente: la identidad es global desde la Fase 1. Se devuelven ids —números—
+    y una FECHA: ni un correo ni un nombre salen de acá, y la fecha va sin hora
+    para que el último acceso no sirva de reloj de nadie.
+    """
+    from app.models.identidad import Membresia, Usuario
+
+    filas = (
+        reg.query(Usuario.id, Usuario.ultimo_login)
+        .join(Membresia, Membresia.usuario_id == Usuario.id)
+        .filter(Membresia.cliente_slug == slug, Membresia.activo == True)  # noqa: E712
+        .all()
+    )
+    ids = sorted({fila[0] for fila in filas})
+    accesos = [fila[1] for fila in filas if fila[1] is not None]
+    ultimo = max(accesos).date() if accesos else None
+    return ids, ultimo
+
+
+# ─── El nombre del proveedor, saneado ─────────────────────────────────────────
+#
+# `Supplier.name` es TEXTO LIBRE que teclea el supermercado, y es el único
+# string de negocio que la spec deja salir al JSON del operador. En retail el
+# proveedor es muy seguido una persona natural, y el contacto termina escrito
+# adentro del nombre porque es el campo que se ve en las listas
+# ("Juan Pérez Distribuciones (juan.perez@…)"). Eso convierte al top de
+# proveedores en un canal de datos personales de un tercero, que es
+# exactamente lo que la frontera de la fase prohíbe.
+#
+# Se sanea SÓLO la cadena que sale al JSON. El conteo y el agrupamiento se
+# hacen contra el nombre ORIGINAL: si dos filas del mismo proveedor se
+# agruparan por su versión saneada, dos nombres distintos podrían fundirse en
+# uno y el conteo mentiría.
+
+_CORREO_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]*[A-Za-z0-9\-]+\.[A-Za-z]{2,}")
+# 7+ dígitos con separadores de teléfono intercalados (espacio, guion, punto,
+# paréntesis, +). El umbral es 7 porque abajo de eso son códigos internos,
+# metros cuadrados o años, no un número de contacto.
+# El `\(?` inicial se come el paréntesis del indicativo (`(300) 555 88 99`) para
+# no dejar uno huérfano al lado de la máscara.
+_TELEFONO_RE = re.compile(r"\(?\+?\d(?:[\s\-.()]*\d){6,}\)?")
+MASCARA_CORREO = "[correo oculto]"
+MASCARA_TELEFONO = "[teléfono oculto]"
+LARGO_MAXIMO_NOMBRE = 80
+
+
+def sanear_nombre_proveedor(nombre: str) -> str:
+    """El nombre del proveedor como puede salir al JSON del operador.
+
+    Tres pasadas, en este orden:
+
+    1. **Correos** — cualquier subcadena con forma de correo (``@`` y un punto
+       en el dominio) se reemplaza por ``[correo oculto]``. Primero, porque un
+       correo suele traer dígitos que si no se llevaría la pasada del teléfono.
+    2. **Teléfonos** — 7 o más dígitos contiguos admitiendo espacios, guiones,
+       puntos y paréntesis intercalados → ``[teléfono oculto]``.
+    3. **Tope de largo** — 80 caracteres, cortando en el último espacio para no
+       partir una palabra al medio, con ``…`` al final. Un nombre de proveedor
+       no necesita más; el resto es narrativa que alguien metió en el campo, y
+       cuanto más largo, más chance de que traiga algo que no debería.
+
+    Un ``@`` suelto que sobreviva a la pasada 1 (``"Distribuciones @ Norte"``)
+    se neutraliza igual: la invariante que defiende la frontera es "ningún
+    string del JSON trae una arroba", y depender de que el patrón cubra todas
+    las formas de escribir un correo es apostar contra el usuario.
+    """
+    limpio = " ".join(str(nombre or "").split())
+    limpio = _CORREO_RE.sub(MASCARA_CORREO, limpio)
+    limpio = _TELEFONO_RE.sub(MASCARA_TELEFONO, limpio)
+    limpio = limpio.replace("@", " ")
+    limpio = " ".join(limpio.split())
+    if len(limpio) > LARGO_MAXIMO_NOMBRE:
+        cortado = limpio[: LARGO_MAXIMO_NOMBRE - 1]
+        espacio = cortado.rfind(" ")
+        if espacio >= LARGO_MAXIMO_NOMBRE // 2:
+            cortado = cortado[:espacio]
+        limpio = cortado.rstrip(" .,;:-") + "…"
+    return limpio
+
+
+def _top(conteos: dict[str, int]) -> list[dict]:
+    """Top 5 por nº de contratos, descendente; empates por nombre alfabético.
+
+    Cada objeto es EXACTAMENTE ``{nombre, contratos_activos}`` — el nombre del
+    proveedor y cuántos contratos tiene. Ni un campo más: un ``id`` o un
+    ``monto`` acá convertirían el agregado en una fila de negocio.
+
+    El orden (conteo desc, nombre alfabético para los empates) se resuelve con
+    el nombre **original**, que es el que agrupó; el saneo se aplica recién al
+    armar el objeto que sale. Así el saneo no puede reordenar el top ni fundir
+    dos proveedores distintos en una sola fila.
+    """
+    ordenados = sorted(conteos.items(), key=lambda par: (-par[1], par[0]))
+    return [
+        {"nombre": sanear_nombre_proveedor(n), "contratos_activos": c}
+        for n, c in ordenados[:TOPE_PROVEEDORES]
+    ]
+
+
+def _pct(ocupadas: int, total: int) -> float | None:
+    """Porcentaje con un decimal, o ``None`` si no hay denominador.
+
+    ``None`` y no ``0.0``: un cliente sin un solo espacio comercializable no
+    tiene 0 % de ocupación, no tiene ocupación.
+    """
+    if total <= 0:
+        return None
+    return round(ocupadas * 100.0 / total, 1)
+
+
+def _plata(valor: float) -> float:
+    return round(valor + 0.0, 2)
+
+
+def _metricas_de_un_cliente(cliente, reg, desde: date, hasta: date) -> tuple[dict, dict]:
+    """``(metricas_publicas, crudos_para_el_consolidado)`` de UN cliente.
+
+    Los "crudos" no salen nunca al JSON: son los sumandos que el consolidado
+    necesita para ponderar (contratos, canon total, caras, ocupadas, ids de
+    usuarios, conteo por proveedor). Sin ellos el consolidado tendría que
+    promediar promedios, que es una cuenta distinta y equivocada.
+    """
+    from app.clientes import sesion_de
+
+    db = sesion_de(cliente)
+    try:
+        sedes, caras = _numeros_del_layout(db)
+        contratos = _contratos_activos(db, desde, hasta)
+    finally:
+        # Sólo se leyó. Nada que comitear ni que revertir; la sesión se cierra
+        # pase lo que pase, igual que en `_run_lease_maintenance`.
+        db.close()
+
+    ocupados = {codigo for codigo, _n, _c in contratos}
+    # Un contrato sobre un espacio que NO tiene mueble en el plano (un código
+    # legado, un mueble borrado después de firmar) no puede contar como cara
+    # ocupada: inflaría el numerador contra un denominador que no lo incluye,
+    # y con eso el porcentaje pasaría de 100. Para canon, ingreso y top de
+    # proveedores sí cuenta — la plata existe aunque el plano no la muestre.
+    ocupadas = len(caras & ocupados)
+
+    canon_total = sum(canon for _c, _n, canon in contratos)
+    conteo_proveedores: dict[str, int] = {}
+    for _codigo, nombre, _canon in contratos:
+        if not nombre:
+            continue
+        conteo_proveedores[nombre] = conteo_proveedores.get(nombre, 0) + 1
+
+    ids_usuarios, ultimo_acceso = _usuarios_del_cliente(reg, cliente.slug)
+
+    publicas = {
+        "sedes_con_plano": sedes,
+        "espacios_comercializables": len(caras),
+        "ocupacion_pct": _pct(ocupadas, len(caras)),
+        "canon_promedio_mensual": _plata(canon_total / len(contratos)) if contratos else None,
+        "ingreso_contratado_mes": _plata(canon_total),
+        "top_proveedores": _top(conteo_proveedores),
+        "usuarios_con_cuenta": len(ids_usuarios),
+        "ultimo_acceso": ultimo_acceso.isoformat() if ultimo_acceso else None,
+    }
+    # Con menos de K contratos, los tres campos de plata de ESTA fila se
+    # suprimen. Los `crudos` que se devuelven abajo son los datos SUBYACENTES
+    # completos: el consolidado se calcula con ellos, no con lo que se publica.
+    _suprimir_celda_chica(publicas, len(contratos))
+    crudos = {
+        "sedes": sedes,
+        "caras": len(caras),
+        "ocupadas": ocupadas,
+        "contratos": len(contratos),
+        "canon_total": canon_total,
+        "proveedores": conteo_proveedores,
+        "usuarios": ids_usuarios,
+    }
+    return publicas, crudos
+
+
+# ─── El cálculo completo ──────────────────────────────────────────────────────
+
+def _ahora_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def calcular(anio_mes: str) -> dict:
+    """El cuerpo completo de ``GET /api/plataforma/metricas``, sin caché.
+
+    Recorre TODAS las filas de ``clientes`` del registro — activas e inactivas,
+    y los suspendidos incluidos: el operador necesita ver el negocio completo,
+    y una cuenta cortada por impago es justamente la que hay que poder mirar.
+    """
+    from app.clientes import Cliente, sesion_registro
+    from app.models.models import ClienteRow
+    from app.models.plataforma import EstadoCliente
+
+    desde, hasta = rango_del_periodo(anio_mes)
+
+    reg = sesion_registro()
+    try:
+        filas = reg.query(ClienteRow).order_by(ClienteRow.slug).all()
+        estados = {e.slug: e.estado for e in reg.query(EstadoCliente).all()}
+        # Se materializa la lista ANTES de abrir ninguna base de cliente: la
+        # sesión del registro queda libre y no depende de cuánto tarde la
+        # vuelta por las N bases.
+        objetivos = [
+            (
+                Cliente(slug=f.slug, nombre=f.nombre, db_name=f.db_name, activo=f.activo),
+                estados.get(f.slug) or "activo",
+            )
+            for f in filas
+        ]
+
+        clientes: list[dict] = []
+        acumulado: list[dict] = []
+        for cliente, estado in objetivos:
+            fila = {
+                "slug": cliente.slug,
+                "nombre": cliente.nombre,
+                "estado_cuenta": estado,
+                "error": None,
+                "metricas": None,
+            }
+            try:
+                publicas, crudos = _metricas_de_un_cliente(cliente, reg, desde, hasta)
+            except Exception:  # noqa: BLE001
+                # Patrón `_run_lease_maintenance`: una base rota no tumba al
+                # resto. El detalle va al log (con traza), el JSON se queda con
+                # el texto fijo — el mensaje del driver trae la URL de la base.
+                log.exception("No se pudieron leer las métricas del cliente %s", cliente.slug)
+                fila["error"] = ERROR_BASE_ILEGIBLE
+            else:
+                fila["metricas"] = publicas
+                acumulado.append(crudos)
+            clientes.append(fila)
+    finally:
+        reg.close()
+
+    return {
+        "periodo": {
+            "anio_mes": anio_mes,
+            "desde": desde.isoformat(),
+            "hasta": hasta.isoformat(),
+        },
+        "generado_en": _ahora_iso(),
+        "de_cache": False,
+        "consolidado": _consolidar(len(clientes), clientes, acumulado),
+        "clientes": clientes,
+    }
+
+
+def _consolidar(total_clientes: int, clientes: list[dict], acumulado: list[dict]) -> dict:
+    """El consolidado, sumando SÓLO los clientes legibles.
+
+    Las dos cuentas que no se pueden hacer promediando promedios:
+
+    · **canon promedio ponderado** = Σ canones / Σ contratos activos. Un cliente
+      con 1 contrato de $100 y otro con 99 de $1 dan un promedio real de ~$2, no
+      de $50,50 — y el operador que mira este número está mirando su negocio.
+    · **ocupación consolidada** = Σ ocupadas / Σ comercializables, por lo mismo:
+      una sede chica al 100 % no compensa a una grande al 10 %.
+    """
+    con_error = sum(1 for c in clientes if c["error"] is not None)
+
+    caras = sum(a["caras"] for a in acumulado)
+    ocupadas = sum(a["ocupadas"] for a in acumulado)
+    contratos = sum(a["contratos"] for a in acumulado)
+    canon_total = sum(a["canon_total"] for a in acumulado)
+
+    proveedores: dict[str, int] = {}
+    for a in acumulado:
+        for nombre, cuantos in a["proveedores"].items():
+            proveedores[nombre] = proveedores.get(nombre, 0) + cuantos
+
+    # Distintos: la misma persona puede tener cuenta en dos supermercados y no
+    # por eso son dos usuarios de la plataforma.
+    usuarios: set[int] = set()
+    for a in acumulado:
+        usuarios.update(a["usuarios"])
+
+    consolidado = {
+        "clientes_total": total_clientes,
+        "clientes_con_error": con_error,
+        "sedes_con_plano": sum(a["sedes"] for a in acumulado),
+        "espacios_comercializables": caras,
+        "ocupacion_pct": _pct(ocupadas, caras),
+        "canon_promedio_mensual": _plata(canon_total / contratos) if contratos else None,
+        "ingreso_contratado_mes": _plata(canon_total),
+        "top_proveedores": _top(proveedores),
+        "usuarios_con_cuenta": len(usuarios),
+    }
+    # El consolidado se calcula con los datos SUBYACENTES de todos los clientes
+    # legibles —los suprimidos incluidos: suprimir una fila no puede cambiar el
+    # total del negocio— y aplica la MISMA regla K=3 a su propio nivel. Con dos
+    # contratos en toda la plataforma, el total ES el contrato.
+    return _suprimir_celda_chica(consolidado, contratos)
+
+
+# ─── Caché de 5 minutos ───────────────────────────────────────────────────────
+#
+# Mismo patrón que `_estado_cache` de `plataforma_estado.py`: diccionario en
+# memoria del proceso, candado, TTL y un `limpiar_` para las pruebas. La clave
+# es el `anio_mes`: pedir agosto no invalida septiembre.
+
+CACHE_TTL_SEGUNDOS = 5 * 60.0
+_cache: dict[str, tuple[dict, float]] = {}
+_cache_candado = threading.Lock()
+
+
+def metricas_del_periodo(anio_mes: str) -> dict:
+    """El cuerpo de la respuesta, del caché o recién calculado.
+
+    Un acierto de caché devuelve el MISMO ``generado_en`` del cálculo original
+    —es la hora en que esos números se sacaron, y mentirla haría creer al
+    operador que está mirando algo más fresco de lo que mira— y marca
+    ``de_cache: true`` para que la pantalla lo pueda decir.
+    """
+    ahora = time.monotonic()
+    with _cache_candado:
+        cacheado = _cache.get(anio_mes)
+        if cacheado is not None and cacheado[1] > ahora:
+            cuerpo = dict(cacheado[0])
+            cuerpo["de_cache"] = True
+            return cuerpo
+
+    cuerpo = calcular(anio_mes)
+
+    with _cache_candado:
+        _cache[anio_mes] = (cuerpo, time.monotonic() + CACHE_TTL_SEGUNDOS)
+    # Se devuelve una copia superficial por la misma razón por la que el hit de
+    # arriba la hace: el llamador no puede quedarse con una referencia al
+    # diccionario guardado y cambiarle `de_cache` a la copia del caché.
+    return dict(cuerpo)
+
+
+def limpiar_cache_metricas() -> None:
+    """Para las pruebas, que arman una base nueva por prueba."""
+    with _cache_candado:
+        _cache.clear()

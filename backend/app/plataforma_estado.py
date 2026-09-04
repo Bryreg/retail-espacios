@@ -19,6 +19,15 @@ from app.models import plataforma as _tablas  # noqa: F401
 
 ESTADOS_CUENTA = ("activo", "gracia", "solo_lectura", "suspendido")
 
+# El slug que lleva adentro el token de un operador que entró SIN membresías
+# (Fase 4). No es un supermercado y nunca puede serlo: está en
+# `routers/alta.py::SLUGS_RESERVADOS`, así que el alta self-service no lo deja
+# fundar. Vive acá, en el módulo de contrato, porque lo miran tres lugares que
+# no se importan entre sí -- `auth.decode_token`, `clientes.cliente_del_pedido`
+# y `routers/auth.oauth_login`.
+SLUG_PLATAFORMA = "plataforma"
+NOMBRE_PLATAFORMA = "Plataforma"
+
 # Mismo espíritu que el cache de membresía de app/auth.py: el estado se lee en
 # CADA pedido, así que 60 s de cache con invalidación explícita en el PATCH.
 _ESTADO_CACHE_TTL_SEGUNDOS = 60.0
