@@ -524,6 +524,22 @@ def cliente_del_token(raw: str) -> str | None:
     return valor.strip().lower() if isinstance(valor, str) and valor.strip() else None
 
 
+def token_verifica(raw: str) -> bool:
+    """¿Ese texto es un token NUESTRO, con firma y vencimiento válidos?
+
+    No mira ningún claim: sólo responde si lo firmamos nosotros y todavía vale.
+    Existe porque `cliente_del_token` devuelve `None` en dos casos que hay que
+    poder distinguir (hallazgo ingresos-1): «token legítimo viejo, sin claim
+    `cliente`» y «texto inventado por un anónimo». Tratar a los dos igual
+    reabría el oráculo de estado de cuenta que R-1 cerró.
+    """
+    try:
+        jwt.decode(raw, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.PyJWTError:
+        return False
+    return True
+
+
 # ─── FastAPI dependencies ─────────────────────────────────────────────────────
 
 def require_auth(

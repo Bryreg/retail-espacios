@@ -172,10 +172,14 @@ class SnapshotMetricas(Base):
     # persona con cuenta en dos supermercados es una sola). Ver arriba: los ids
     # se usan para deduplicar al capturar y no se persisten.
     usuarios = Column(Integer, nullable=False, default=0)
-    # JSON: {nombre_ORIGINAL_del_proveedor: nº de contratos activos}, recortado a
-    # las 5 entradas top. Se guarda el nombre SIN sanear porque el saneo se
-    # aplica al leer; se guardan sólo 5 porque es lo máximo que el JSON público
-    # puede mostrar y el resto sería histórico de proveedores que nadie va a ver.
+    # JSON: {nombre_SANEADO_del_proveedor: nº de contratos activos}, recortado a
+    # las 5 entradas top. El top se elige con el nombre original (para no fundir
+    # dos proveedores distintos al contar) y el nombre baja ya SANEADO
+    # (`sanear_nombre_proveedor`: correos y teléfonos enmascarados) — un nombre
+    # de proveedor es texto libre del cliente y suele traer datos de contacto
+    # de una persona; en reposo en el registro no puede quedar crudo (auditoría
+    # integral, compliance-1). Se guardan sólo 5 porque es lo máximo que el JSON
+    # público puede mostrar y el resto sería histórico que nadie va a ver.
     proveedores_json = Column(Text, nullable=False, default="{}")
 
     # ── Cuántos clientes hay detrás del número (sólo tienen sentido en el

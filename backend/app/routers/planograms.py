@@ -26,6 +26,7 @@ from app.auth import require_admin, require_auth, require_auth_or_query_token
 from app.database import get_db
 from app.models.models import LeaseFile, Space, SpaceLease
 from app.services.contratos import contrato_para_montar
+from app.services.subidas import leer_con_tope
 
 router = APIRouter(tags=["planometrias"])
 
@@ -106,11 +107,14 @@ async def subir_planometria(
             detail="La planometría tiene que ser una imagen (JPG, PNG, WEBP, HEIC) o un PDF.",
         )
 
-    data = await file.read()
+    # Mismo corte que en `files.py`/`mounts.py` (hardening-1): se corta la
+    # lectura apenas se pasa del tope. El 400 (y no 413) es el que este
+    # endpoint contestaba desde siempre y se conserva tal cual.
+    data = await leer_con_tope(
+        file, MAX_SIZE, "El archivo supera los 10 MB.", codigo=400
+    )
     if not data:
         raise HTTPException(status_code=400, detail="El archivo llegó vacío.")
-    if len(data) > MAX_SIZE:
-        raise HTTPException(status_code=400, detail="El archivo supera los 10 MB.")
 
     # Una planometría por contrato: cargar otra REEMPLAZA la anterior. Guardar
     # las dos dejaría dos verdades sobre cómo debe quedar el mismo mueble, que

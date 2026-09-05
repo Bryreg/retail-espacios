@@ -16,12 +16,20 @@ lógica vive entera en ``app/plataforma_metricas.py`` y
 de cliente; acá abajo sólo se valida el período, se anota la consulta y se
 devuelve.
 
+**Y la bitácora ya no es sólo de los agregados** (hallazgo frontera-6): toda
+consulta del operador deja línea por ``_anotar_consulta``, incluidas
+``GET /supresiones`` (correo, id y motivo de titulares de habeas data) y
+``GET /clientes`` (motivo del corte de cada cuenta), que son la PII más
+sensible del panel y no dejaban ninguna. ``GET /soy`` no anota: no devuelve un
+solo dato de nadie más que del propio solicitante.
+
 Operador = email en env ``OPERADOR_EMAILS``, y sólo para cuentas con ``sub``:
 el login legado nunca trae ``request.state.actor_email`` (lo deja
 ``require_auth`` sólo cuando el token trae ``email``), así que
 ``require_operador`` le da 403 siempre, por construcción -- no hace falta
 ningún chequeo especial para el legado.
 """
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -35,6 +43,47 @@ from app.plataforma_estado import ESTADOS_CUENTA, es_operador, invalidar_cache_e
 from app.plataforma_tendencia import CONSOLIDADO_SLUG, MESES_DEFAULT
 
 router = APIRouter(prefix="/plataforma", tags=["plataforma"])
+
+log = logging.getLogger("recabra.plataforma.router")
+
+
+def _anotar_consulta(email: str, accion: str, periodo: str) -> None:
+    """Una línea en ``bitacora_plataforma``: quién consultó qué, y cuándo.
+
+    Estaba repetido palabra por palabra en ``/metricas``, ``/tendencia`` y
+    ``/adopcion``, y ESE es el motivo de que ``/supresiones`` y ``/clientes`` —los
+    dos endpoints que devuelven PII de verdad: el correo, el id y el motivo del
+    titular que ejerció habeas data, y el motivo del corte de cada cuenta— se
+    hubieran quedado sin constancia de lectura (hallazgo frontera-6). Con un solo
+    helper, anotar es una línea y olvidarse cuesta más que acordarse.
+
+    **Sesión propia y commit propio**, igual que los tres bloques que reemplaza:
+    la bitácora es del ACCESO, no de la transacción de negocio (que en este
+    router no existe: se leyó y se cerró).
+
+    **Nunca propaga.** La constancia no puede tumbar la consulta que constata —el
+    operador ya vio los datos cuando esto corre—; el detalle va al log con traza.
+
+    Y nunca lleva un dato de negocio adentro: ``accion`` es un código estable y
+    ``periodo`` es un período o un rango, jamás un correo, un motivo ni un
+    nombre.
+    """
+    from app.models.plataforma import BitacoraPlataforma
+
+    try:
+        reg = sesion_registro()
+        try:
+            reg.add(BitacoraPlataforma(
+                email=email,
+                accion=accion,
+                periodo=periodo,
+                en=datetime.now(timezone.utc),
+            ))
+            reg.commit()
+        finally:
+            reg.close()
+    except Exception:  # noqa: BLE001
+        log.exception("No se pudo anotar la consulta %s de %s en la bitácora", accion, email)
 
 
 def require_operador(request: Request, rol: str = Depends(require_auth)) -> str:
@@ -74,7 +123,6 @@ def metricas_del_negocio(
     Va DESPUÉS de calcular: si el cálculo se cayera, no habría acceso que
     anotar.
     """
-    from app.models.plataforma import BitacoraPlataforma
     from app.plataforma_metricas import PeriodoInvalido, metricas_del_periodo, normalizar_periodo
 
     try:
@@ -83,19 +131,7 @@ def metricas_del_negocio(
         raise HTTPException(status_code=422, detail=str(e)) from e
 
     cuerpo = metricas_del_periodo(anio_mes)
-
-    reg = sesion_registro()
-    try:
-        reg.add(BitacoraPlataforma(
-            email=email,
-            accion="metricas",
-            periodo=anio_mes,
-            en=datetime.now(timezone.utc),
-        ))
-        reg.commit()
-    finally:
-        reg.close()
-
+    _anotar_consulta(email, "metricas", anio_mes)
     return cuerpo
 
 
@@ -129,7 +165,6 @@ def tendencia_del_negocio(
     miró la tendencia no dice qué tendencia miró. Va DESPUÉS de leer: si la
     lectura fallara, no habría acceso que anotar.
     """
-    from app.models.plataforma import BitacoraPlataforma
     from app.plataforma_tendencia import ClienteDesconocido, MesesInvalidos, serie
 
     try:
@@ -139,18 +174,8 @@ def tendencia_del_negocio(
     except ClienteDesconocido as e:
         raise HTTPException(status_code=404, detail="No hay un cliente con ese código.") from e
 
-    reg = sesion_registro()
-    try:
-        reg.add(BitacoraPlataforma(
-            email=email,
-            accion="tendencia",
-            periodo=f"{cuerpo['cliente']}:{cuerpo['desde']}..{cuerpo['hasta']}",
-            en=datetime.now(timezone.utc),
-        ))
-        reg.commit()
-    finally:
-        reg.close()
-
+    _anotar_consulta(
+        email, "tendencia", f"{cuerpo['cliente']}:{cuerpo['desde']}..{cuerpo['hasta']}")
     return cuerpo
 
 
@@ -172,23 +197,10 @@ def adopcion_del_negocio(email: str = Depends(require_operador)):
     el período en curso, después de calcular -- si el cálculo se cayera, no
     habría acceso que anotar.
     """
-    from app.models.plataforma import BitacoraPlataforma
     from app.plataforma_adopcion import calcular_adopcion
 
     cuerpo = calcular_adopcion()
-
-    reg = sesion_registro()
-    try:
-        reg.add(BitacoraPlataforma(
-            email=email,
-            accion="adopcion",
-            periodo=cuerpo["periodo"],
-            en=datetime.now(timezone.utc),
-        ))
-        reg.commit()
-    finally:
-        reg.close()
-
+    _anotar_consulta(email, "adopcion", cuerpo["periodo"])
     return cuerpo
 
 
@@ -235,15 +247,28 @@ def _solicitud_dict(fila) -> dict:
 
 @router.get("/supresiones")
 def listar_supresiones(email: str = Depends(require_operador)):
-    """Todas las solicitudes de supresión, más nuevas primero."""
+    """Todas las solicitudes de supresión, más nuevas primero.
+
+    **Deja línea en la bitácora** (``accion="supresiones"``, hallazgo
+    frontera-6). Es el endpoint con la PII más sensible del panel —el correo, el
+    id de usuario y el motivo de cada titular que ejerció habeas data—, y hasta
+    ahora sólo quedaban rastro los PATCH (``atendido_por`` en la fila): quién
+    LEYÓ la lista no se sabía. La línea va después de armar la respuesta y no
+    lleva ni un dato de las solicitudes adentro; el ``periodo`` es el mes en
+    curso, porque acá no hay un período consultado y la columna es obligatoria.
+    """
     from app.models.supresion import SolicitudSupresion
+    from app.plataforma_metricas import periodo_actual
 
     reg = sesion_registro()
     try:
         filas = reg.query(SolicitudSupresion).order_by(SolicitudSupresion.creado_en.desc()).all()
-        return {"solicitudes": [_solicitud_dict(f) for f in filas]}
+        cuerpo = {"solicitudes": [_solicitud_dict(f) for f in filas]}
     finally:
         reg.close()
+
+    _anotar_consulta(email, "supresiones", periodo_actual())
+    return cuerpo
 
 
 @router.patch("/supresiones/{solicitud_id}")
@@ -305,9 +330,16 @@ def listar_clientes_plataforma(email: str = Depends(require_operador)):
     ``null``. Con fila -- también cuando el operador dejó "activo" a mano,
     que se guarda como constancia del último cambio -- se muestran los
     valores reales de la fila.
+
+    **Deja línea en la bitácora** (``accion="clientes"``, hallazgo frontera-6):
+    devuelve el MOTIVO del corte de cada cuenta, que es texto libre del operador
+    y el dato más sensible del registro después de las supresiones. Igual que
+    allá: la línea va después de armar la respuesta, sin nada del contenido
+    adentro, con el mes en curso como ``periodo``.
     """
     from app.models.models import ClienteRow
     from app.models.plataforma import EstadoCliente
+    from app.plataforma_metricas import periodo_actual
 
     reg = sesion_registro()
     try:
@@ -327,9 +359,11 @@ def listar_clientes_plataforma(email: str = Depends(require_operador)):
                     "estado": e.estado, "motivo": e.motivo,
                     "cambiado_en": e.cambiado_en, "cambiado_por": e.cambiado_por,
                 })
-        return {"clientes": clientes}
     finally:
         reg.close()
+
+    _anotar_consulta(email, "clientes", periodo_actual())
+    return {"clientes": clientes}
 
 
 @router.patch("/clientes/{slug}")

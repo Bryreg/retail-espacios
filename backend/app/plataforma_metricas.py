@@ -36,8 +36,16 @@ FIJO: jamás la URL de la base, ni credenciales, ni el mensaje crudo del driver
 
 **Caché de 5 minutos** por ``anio_mes``, en memoria del registro y con candado,
 igual que ``_estado_cache`` de ``plataforma_estado.py``: recorrer N bases en
-cada pedido no escala sin techo. La bitácora NO depende del caché: la anota el
-router en cada consulta, porque lo que se registra es el acceso, no el cálculo.
+cada pedido no escala sin techo. Es un LRU ACOTADO (``TOPE_CACHE_PERIODOS``):
+el TTL solo no acota nada si el pedido siempre trae un período distinto. La
+bitácora NO depende del caché: la anota el router en cada consulta, porque lo
+que se registra es el acceso, no el cálculo.
+
+**Y el ``periodo`` tiene ventana** (``normalizar_periodo``): 24 meses hacia
+atrás —lo que la serie de tendencia puede dibujar— y 12 hacia adelante —un
+contrato que arranca el mes que viene se mira preguntando por ese mes—. Fuera
+de eso es 422: si no, un GET de sólo lectura recorre N bases por cada uno de
+≈97.000 meses tecleables.
 """
 import calendar
 import json
@@ -45,6 +53,8 @@ import logging
 import re
 import threading
 import time
+import unicodedata
+from collections import OrderedDict
 from datetime import date, datetime, timezone
 
 log = logging.getLogger("recabra.plataforma.metricas")
@@ -146,12 +156,61 @@ def rango_del_periodo(anio_mes: str) -> tuple[date, date]:
     return date(anio, mes, 1), date(anio, mes, ultimo)
 
 
+# ─── La ventana de períodos consultables (frontera-3) ─────────────────────────
+#
+# `rango_del_periodo` acepta cualquier mes entre 1900-01 y 9999-12: ≈97.000
+# valores distintos, y cada uno que no esté cacheado recorre las N bases de
+# negocio, deja una entrada nueva en el caché de proceso y ESCRIBE filas de
+# `snapshot_metricas`. Un GET de sólo lectura no puede ser una palanca de
+# crecimiento sin techo, ni fabricar "historia" de meses que no existieron.
+#
+# La ventana no es simétrica a propósito:
+#
+# · Hacia atrás, `MESES_HISTORIA_MAXIMO` (24) — exactamente lo que la serie de
+#   tendencia puede mostrar (`plataforma_tendencia.MESES_MAXIMO`, que reusa
+#   esta constante). Pedir un mes que ningún gráfico puede dibujar no tiene
+#   consumidor.
+# · Hacia adelante, `VENTANA_MESES_ADELANTE` (12) — un contrato que arranca el
+#   mes que viene se mira preguntando por ese mes, y una campaña de temporada
+#   se planifica con un año de anticipación. Lo que NO pasa es que esos meses
+#   se persistan como historia: ver `plataforma_tendencia.persistir_snapshots`.
+MESES_HISTORIA_MAXIMO = 24
+VENTANA_MESES_ADELANTE = 12
+
+
+def _corrido(anio_mes: str, meses: int) -> str:
+    """``YYYY-MM`` corrido ``meses`` (con signo) en el calendario."""
+    anio, mes = int(anio_mes[:4]), int(anio_mes[5:7])
+    total = anio * 12 + (mes - 1) + meses
+    return f"{total // 12:04d}-{total % 12 + 1:02d}"
+
+
+def ventana_de_periodos() -> tuple[str, str]:
+    """``(mas_viejo, mas_nuevo)`` consultables hoy, ambos inclusive."""
+    actual = periodo_actual()
+    return (
+        _corrido(actual, -MESES_HISTORIA_MAXIMO),
+        _corrido(actual, VENTANA_MESES_ADELANTE),
+    )
+
+
 def normalizar_periodo(crudo: str | None) -> str:
-    """``YYYY-MM`` validado, o el mes en curso si no vino nada."""
+    """``YYYY-MM`` validado y DENTRO de la ventana, o el mes en curso si no vino nada.
+
+    Dos puertas, en este orden: la forma (``rango_del_periodo``, que no cambió —
+    se usa como unidad en otros lados y sigue aceptando cualquier mes real) y la
+    ventana de arriba. Fuera de la ventana levanta ``PeriodoInvalido`` con un
+    texto FIJO que nombra los dos extremos y no refleja lo que el operador
+    tecleó; el router lo convierte en 422.
+    """
     if crudo is None or not str(crudo).strip():
         return periodo_actual()
     anio_mes = str(crudo).strip()
-    rango_del_periodo(anio_mes)  # valida; levanta PeriodoInvalido
+    rango_del_periodo(anio_mes)  # valida la FORMA; levanta PeriodoInvalido
+    mas_viejo, mas_nuevo = ventana_de_periodos()
+    if not (mas_viejo <= anio_mes <= mas_nuevo):
+        raise PeriodoInvalido(
+            f"El período tiene que estar entre {mas_viejo} y {mas_nuevo}.")
     return anio_mes
 
 
@@ -389,7 +448,13 @@ _CORREO_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]*[A-Za-z0-9\-]+\.[A-Z
 # metros cuadrados o años, no un número de contacto.
 # El `\(?` inicial se come el paréntesis del indicativo (`(300) 555 88 99`) para
 # no dejar uno huérfano al lado de la máscara.
-_TELEFONO_RE = re.compile(r"\(?\+?\d(?:[\s\-.()]*\d){6,}\)?")
+# Separadores admitidos ENTRE los dígitos de un teléfono. Además del espacio,
+# el guion, el punto y los paréntesis de siempre, entran la barra, el guion
+# bajo, el punto medio y la coma: `300/555/8899`, `300_555_8899` y
+# `300·555·8899` son formas corrientes de teclear un celular, y sin ellas la
+# expresión veía tres números cortos y ninguno llegaba al umbral de 7 dígitos
+# (hallazgo frontera-1).
+_TELEFONO_RE = re.compile(r"\(?\+?\d(?:[\s\-.()/_·,]*\d){6,}\)?")
 MASCARA_CORREO = "[correo oculto]"
 MASCARA_TELEFONO = "[teléfono oculto]"
 LARGO_MAXIMO_NOMBRE = 80
@@ -398,24 +463,42 @@ LARGO_MAXIMO_NOMBRE = 80
 def sanear_nombre_proveedor(nombre: str) -> str:
     """El nombre del proveedor como puede salir al JSON del operador.
 
-    Tres pasadas, en este orden:
+    Cuatro pasadas, en este orden:
 
+    0. **Normalización Unicode (NFKC) y borrado de los caracteres de formato**
+       (categoría ``Cf``: U+200B..U+200D, U+FEFF, marcas de dirección…). Va
+       PRIMERA porque las dos expresiones de abajo son ASCII: sin este paso,
+       una arroba de ancho completo (``＠``, U+FF20 — la que teclea cualquier
+       teclado asiático y la que sobrevive a un copy-paste desde un PDF) no es
+       la ``@`` que busca ``_CORREO_RE``, y un espacio de ancho cero entre los
+       dígitos (``300​555​8899``, que viaja solo en cualquier copy-paste desde
+       una web o un WhatsApp) parte el teléfono en tres números demasiado
+       cortos para el umbral. NFKC además convierte los dígitos de ancho
+       completo en dígitos ASCII. Hallazgo frontera-1.
     1. **Correos** — cualquier subcadena con forma de correo (``@`` y un punto
-       en el dominio) se reemplaza por ``[correo oculto]``. Primero, porque un
-       correo suele traer dígitos que si no se llevaría la pasada del teléfono.
-    2. **Teléfonos** — 7 o más dígitos contiguos admitiendo espacios, guiones,
-       puntos y paréntesis intercalados → ``[teléfono oculto]``.
+       en el dominio) se reemplaza por ``[correo oculto]``. Antes del teléfono,
+       porque un correo suele traer dígitos que si no se llevaría esa pasada.
+    2. **Teléfonos** — 7 o más dígitos contiguos admitiendo los separadores de
+       ``_TELEFONO_RE`` intercalados → ``[teléfono oculto]``.
     3. **Tope de largo** — 80 caracteres, cortando en el último espacio para no
        partir una palabra al medio, con ``…`` al final. Un nombre de proveedor
        no necesita más; el resto es narrativa que alguien metió en el campo, y
        cuanto más largo, más chance de que traiga algo que no debería.
 
     Un ``@`` suelto que sobreviva a la pasada 1 (``"Distribuciones @ Norte"``)
-    se neutraliza igual: la invariante que defiende la frontera es "ningún
-    string del JSON trae una arroba", y depender de que el patrón cubra todas
-    las formas de escribir un correo es apostar contra el usuario.
+    se neutraliza igual, y sobre el texto YA normalizado: la invariante que
+    defiende la frontera es "ningún string del JSON trae una arroba", y depender
+    de que el patrón cubra todas las formas de escribir un correo es apostar
+    contra el usuario.
+
+    **Es idempotente**: las máscaras no traen ni arrobas ni dígitos, así que
+    volver a sanear un nombre ya saneado lo deja igual. De eso depende que el
+    snapshot pueda guardarlo ya saneado (frontera-2) y que ``_top`` lo siga
+    pasando por acá al leer sin enmascarar dos veces.
     """
-    limpio = " ".join(str(nombre or "").split())
+    crudo = unicodedata.normalize("NFKC", str(nombre or ""))
+    crudo = "".join(c for c in crudo if unicodedata.category(c) != "Cf")
+    limpio = " ".join(crudo.split())
     limpio = _CORREO_RE.sub(MASCARA_CORREO, limpio)
     limpio = _TELEFONO_RE.sub(MASCARA_TELEFONO, limpio)
     limpio = limpio.replace("@", " ")
@@ -871,13 +954,27 @@ def _consolidar(total_clientes: int, clientes: list[dict], acumulado: list[dict]
 # es el `anio_mes`: pedir agosto no invalida septiembre.
 
 CACHE_TTL_SEGUNDOS = 5 * 60.0
-_cache: dict[str, tuple[dict, float]] = {}
+# Tope de períodos vivos en memoria (frontera-3). El TTL solo no acota nada:
+# mientras alguien siga pidiendo períodos distintos, ninguna entrada llega a
+# vencer y el diccionario crece con cada mes nuevo que se teclee. 24 es el
+# horizonte de la serie de tendencia: más períodos que ésos no los mira nadie
+# dos veces, así que desalojar el menos usado no cuesta un solo acierto real.
+TOPE_CACHE_PERIODOS = 24
+_cache: "OrderedDict[str, tuple[dict, float]]" = OrderedDict()
 # El conteo de contratos activos por cliente (Fase 6, adopción) — de uso
-# INTERNO, jamás al JSON. Mismo TTL y mismo candado que `_cache`, se llena en
-# el MISMO cálculo (`metricas_del_periodo` lo arma junto con el cuerpo) para
-# no recorrer las N bases una segunda vez.
-_cache_contratos: dict[str, tuple[dict[str, int], float]] = {}
+# INTERNO, jamás al JSON. Mismo TTL, mismo tope y mismo candado que `_cache`,
+# se llena en el MISMO cálculo (`metricas_del_periodo` lo arma junto con el
+# cuerpo) para no recorrer las N bases una segunda vez.
+_cache_contratos: "OrderedDict[str, tuple[dict[str, int], float]]" = OrderedDict()
 _cache_candado = threading.Lock()
+
+
+def _guardar_en_cache(cache: OrderedDict, clave: str, valor) -> None:
+    """LRU acotado a ``TOPE_CACHE_PERIODOS``. Llamar SIEMPRE bajo el candado."""
+    cache[clave] = valor
+    cache.move_to_end(clave)
+    while len(cache) > TOPE_CACHE_PERIODOS:
+        cache.popitem(last=False)
 
 
 def metricas_del_periodo(anio_mes: str) -> dict:
@@ -892,6 +989,7 @@ def metricas_del_periodo(anio_mes: str) -> dict:
     with _cache_candado:
         cacheado = _cache.get(anio_mes)
         if cacheado is not None and cacheado[1] > ahora:
+            _cache.move_to_end(anio_mes)  # LRU: usarlo lo vuelve el más reciente
             cuerpo = dict(cacheado[0])
             cuerpo["de_cache"] = True
             return cuerpo
@@ -900,8 +998,8 @@ def metricas_del_periodo(anio_mes: str) -> dict:
 
     with _cache_candado:
         expira = time.monotonic() + CACHE_TTL_SEGUNDOS
-        _cache[anio_mes] = (cuerpo, expira)
-        _cache_contratos[anio_mes] = (contratos_por_cliente, expira)
+        _guardar_en_cache(_cache, anio_mes, (cuerpo, expira))
+        _guardar_en_cache(_cache_contratos, anio_mes, (contratos_por_cliente, expira))
     # Se devuelve una copia superficial por la misma razón por la que el hit de
     # arriba la hace: el llamador no puede quedarse con una referencia al
     # diccionario guardado y cambiarle `de_cache` a la copia del caché.
@@ -920,6 +1018,7 @@ def contratos_activos_por_cliente(anio_mes: str) -> dict[str, int]:
     with _cache_candado:
         cacheado = _cache_contratos.get(anio_mes)
         if cacheado is not None and cacheado[1] > ahora:
+            _cache_contratos.move_to_end(anio_mes)
             return dict(cacheado[0])
 
     metricas_del_periodo(anio_mes)
