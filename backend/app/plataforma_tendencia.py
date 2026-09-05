@@ -34,24 +34,40 @@ escribe únicamente el registro (``sesion_registro``); los datos de negocio le
 llegan ya agregados desde ``plataforma_metricas``, que es el único módulo con
 permiso —acotado y declarado— para tocarlas, y sólo en lectura.
 
-**Y la privacidad se aplica AL LEER.** La tabla guarda crudos; la supresión de
-celda chica (K=3) y el saneo del nombre del proveedor los aplica
+**Los NÚMEROS se protegen al LEER; el NOMBRE del proveedor, al ESCRIBIR.** La
+tabla guarda los conteos crudos y la supresión de celda chica (K=3) la aplica
 ``publicar_fila`` en cada lectura, reusando las funciones de
-``plataforma_metricas``. Un solo lugar donde el crudo se vuelve público — si
-mañana el umbral sube a 5, el histórico entero obedece sin tocar una fila.
+``plataforma_metricas``: un solo lugar donde el crudo se vuelve público, y si
+mañana el umbral sube a 5 el histórico entero obedece sin tocar una fila. El
+nombre del proveedor no: baja a disco YA SANEADO (``_recortar_top``), porque un
+correo o un celular de un tercero metido adentro de ``Supplier.name`` no tiene
+por qué existir en reposo en el registro —hallazgos frontera-2/compliance-1—.
+El saneo es idempotente, así que ``publicar_fila`` lo sigue pasando por ``_top``
+sin enmascarar dos veces y una mejora futura del saneo se aplica igual a lo ya
+guardado.
+
+**Y el registro se purga** (``purgar_registro``, frontera-4): bitácora del
+operador a 365 días —la misma constante que la bitácora de cada cliente—,
+intentos de alta a 24 h y snapshots por cliente más viejos que la ventana
+consultable. La serie ``__consolidado__`` no se purga nunca: es la serie larga
+del negocio.
 """
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.plataforma_metricas import (
+    MESES_HISTORIA_MAXIMO,
     TOPE_PROVEEDORES,
+    VENTANA_MESES_ADELANTE,
+    _corrido,
     _pct,
     _plata,
     _suprimir_celda_chica,
     _top,
     periodo_actual,
     rango_del_periodo,
+    sanear_nombre_proveedor,
 )
 
 log = logging.getLogger("recabra.plataforma.tendencia")
@@ -69,7 +85,22 @@ NOMBRE_CONSOLIDADO = "Consolidado"
 # indexada) sino de lectura: más puntos en el mismo ancho es una línea que ya no
 # se puede leer.
 MESES_DEFAULT = 12
-MESES_MAXIMO = 24
+# La MISMA constante que acota la ventana de períodos consultables de
+# `plataforma_metricas` (frontera-3): se reusa en vez de duplicarse para que el
+# horizonte que la serie puede dibujar y el que el endpoint acepta consultar no
+# se puedan separar.
+MESES_MAXIMO = MESES_HISTORIA_MAXIMO
+
+# Cuánto histórico se conserva en el registro antes de purgarlo
+# (`purgar_registro`, frontera-4): todo lo que la ventana de consulta puede
+# alcanzar, más un año de colchón. Un mes que ya nadie puede pedir ni dibujar
+# no es historia, es una fila que ocupa disco sin consumidor.
+MESES_QUE_SE_GUARDA_EL_SNAPSHOT = MESES_MAXIMO + VENTANA_MESES_ADELANTE
+# Los intentos fallidos del alta (`IntentoAlta`) sólo cuentan dentro de la
+# ventana del rate limit (`routers/auth.LOGIN_WINDOW_SECONDS`, 15 minutos). Un
+# día es dos órdenes de magnitud más que eso: lo que se borra ya no frenaba a
+# nadie, y queda margen de sobra para mirar la tabla si hay un incidente.
+HORAS_QUE_SE_GUARDA_EL_INTENTO = 24
 
 ORIGEN_VISTA = "vista"
 ORIGEN_CIERRE = "cierre"
@@ -133,20 +164,40 @@ def _iso_z(momento: datetime | None) -> str | None:
 
 
 def _recortar_top(conteos: dict[str, int]) -> dict[str, int]:
-    """Las ``TOPE_PROVEEDORES`` entradas más altas, con el orden de ``_top``.
+    """Las ``TOPE_PROVEEDORES`` entradas más altas, **con el nombre SANEADO**.
 
-    Se recorta ANTES de guardar: el JSON público nunca muestra más de cinco, así
-    que persistir la cola entera sería guardar para siempre el nombre de
-    proveedores que nadie va a ver — dato de un tercero sin propósito, que es
-    justo lo que la frontera de la fase no quiere acumular.
+    Es el único paso previo al ``json.dumps`` que baja a
+    ``snapshot_metricas.proveedores_json`` —lo usan la fila por cliente, la
+    consolidada y la reconstrucción—, así que es acá donde se sanea (hallazgos
+    frontera-2 / compliance-1). Antes el disco guardaba el nombre CRUDO y el
+    saneo se aplicaba recién al leer: el correo o el celular que un supermercado
+    tecleó adentro de ``Supplier.name`` quedaba en claro, sin plazo, en una
+    tabla del REGISTRO —o sea en la base de negocio de GALERIAS—, a un
+    ``db.query`` de distancia de cualquier backup o script de soporte. Un dato
+    de contacto de un tercero que nunca dio consentimiento no tiene por qué
+    existir en reposo.
 
-    El criterio de orden es el mismo de ``_top`` —conteo descendente, empates por
-    nombre alfabético— y se resuelve con el nombre ORIGINAL, que es el que
-    agrupó. Recortar por el nombre saneado podría fundir dos proveedores
-    distintos en uno y el conteo mentiría.
+    Dos pasos, en este orden:
+
+    1. **Ordenar y recortar con el nombre ORIGINAL** —conteo descendente,
+       empates por nombre alfabético, el mismo criterio de ``_top``—, que es el
+       que agrupó. Elegir el top por el nombre saneado podría fundir dos
+       proveedores distintos y el conteo mentiría.
+    2. **Sanear al bajar.** Si dos originales del top sanean igual, sus conteos
+       se SUMAN: es la misma aproximación que la rama que reconstruye desde
+       disco ya acepta, y perder la distinción entre "Norte (juan@x.co)" y
+       "Norte (ana@x.co)" es exactamente el punto.
+
+    Los NÚMEROS siguen crudos —K=3 se aplica al leer, en ``publicar_fila``—; lo
+    que baja saneado es sólo la cadena. Y el saneo es idempotente, así que
+    volver a pasar por ``_top`` al leer no enmascara dos veces.
     """
     ordenados = sorted(conteos.items(), key=lambda par: (-par[1], par[0]))
-    return dict(ordenados[:TOPE_PROVEEDORES])
+    saneados: dict[str, int] = {}
+    for nombre, cuantos in ordenados[:TOPE_PROVEEDORES]:
+        clave = sanear_nombre_proveedor(nombre)
+        saneados[clave] = saneados.get(clave, 0) + int(cuantos)
+    return saneados
 
 
 # ─── Escritura: el write-through y el cierre ──────────────────────────────────
@@ -173,25 +224,48 @@ def persistir_snapshots(
     foto del panel no puede depender de que la historia se haya podido guardar.
     El detalle va al log, con traza.
 
-    **La excepción del congelado (BUG-1).** Un mes YA PASADO se inserta sólo si
-    falta — esa es la regla, y sigue valiendo para cada fila POR CLIENTE: una ya
-    presente nunca se toca acá, aunque el mes tenga altas nuevas. Pero la fila
-    ``__consolidado__`` es distinta: es una SUMA de esas filas, y una suma que no
-    coincide con sus sumandos está mal, congelada o no. Si esta captura de un mes
-    pasado INSERTA al menos una fila por cliente que todavía no tenía — un
-    cliente que se dio de alta con historia retroactiva, o cuya base estuvo
-    rota durante el cierre y ahora se pudo leer — la consolidada de ESE período
-    se reconstruye a partir de TODAS las filas por cliente ya persistidas (no
-    sólo las de esta captura: una captura de mes pasado puede traer un
-    subconjunto distinto al que quedó congelado en el cierre). El mes en curso
-    sigue con su regla de siempre (converge en cada captura); nada de esto lo
-    cambia.
+    **Un mes FUTURO no es historia (frontera-3).** ``/metricas?periodo=`` acepta
+    hasta doce meses hacia adelante —un contrato que arranca el mes que viene se
+    mira preguntando por ese mes— pero lo que se ve ahí es una proyección de la
+    base de HOY, no lo que va a pasar. Persistirla la convertiría, cuando ese mes
+    llegue, en una fila "congelada" de un pasado que nunca ocurrió, y el
+    congelado impediría corregirla. Así que si ``anio_mes`` es posterior al mes
+    en curso, esta función no escribe NADA.
+
+    **La excepción del congelado (BUG-1, iteración 3).** Un mes YA PASADO se
+    inserta sólo si falta — esa es la regla, y sigue valiendo para cada fila POR
+    CLIENTE: una ya presente nunca se toca acá, aunque el mes tenga altas nuevas.
+    Pero la fila ``__consolidado__`` es distinta: es una SUMA de esas filas, y
+    una suma que no coincide con sus sumandos está mal, congelada o no. Si esta
+    captura de un mes pasado INSERTA al menos una fila por cliente que todavía no
+    tenía — un cliente que se dio de alta con historia retroactiva, o cuya base
+    estuvo rota durante el cierre y ahora se pudo leer — la consolidada de ESE
+    período se reconstruye a partir de TODAS las filas por cliente ya
+    persistidas.
+
+    **Y la fuente de verdad de cada sumando es su FILA EN DISCO**, salvo para
+    los slugs que ESTA captura acaba de insertar (``recien_insertados``), donde
+    lo que se acaba de escribir ES el valor fresco y además se tienen los ids
+    reales de usuario y el conteo COMPLETO por proveedor. La iteración 2 de este
+    arreglo tomaba ``crudos_por_slug`` para todos los slugs que hubiera leído, y
+    con eso un cliente cuya fila ya estaba congelada (contrato cancelado
+    DESPUÉS de la captura) entraba al total con sus números de hoy: el
+    consolidado contradecía a sus propios sumandos publicados —600 + 900 por
+    cliente contra 1.200 en el total— que es exactamente lo que la fase existe
+    para que no pase (hallazgo bugs-1). Ver ``_reconstruir_consolidado``.
     """
     from app.clientes import sesion_registro
     from app.models.plataforma import SnapshotMetricas
     from app.plataforma_metricas import consolidar_crudos
 
-    es_mes_en_curso = anio_mes == periodo_actual()
+    actual = periodo_actual()
+    if anio_mes > actual:
+        # Ver el docstring: una proyección no es historia. Sin log de error —
+        # esto es normal, no un fallo.
+        log.debug("No se persiste el snapshot de %s: es un mes futuro", anio_mes)
+        return
+
+    es_mes_en_curso = anio_mes == actual
     con_error = sum(1 for c in clientes if c.get("error") is not None)
 
     # ── Las filas por cliente ─────────────────────────────────────────────────
@@ -251,6 +325,11 @@ def persistir_snapshots(
         # reconstruye más abajo, DESPUÉS de que las altas de este bucle ya
         # estén escritas.
         hubo_alta = False
+        # Los slugs cuya fila NACE en esta captura: para ésos —y sólo para
+        # ésos— lo que hay en memoria es lo mismo que se acaba de escribir, así
+        # que se puede usar el crudo completo (ids de usuario, conteo entero por
+        # proveedor). Ver `_reconstruir_consolidado`.
+        recien_insertados: set[str] = set()
         for slug, valores in a_escribir:
             if slug == CONSOLIDADO_SLUG:
                 continue  # se resuelve aparte, una vez que se sabe `hubo_alta`
@@ -260,6 +339,7 @@ def persistir_snapshots(
                     cliente_slug=slug, periodo=anio_mes, origen=origen,
                     capturado_en=ahora, **valores,
                 ))
+                recien_insertados.add(slug)
                 if not es_mes_en_curso:
                     hubo_alta = True
             elif es_mes_en_curso:
@@ -302,31 +382,8 @@ def persistir_snapshots(
                 )
                 .all()
             )
-            slugs_persistidos = {f.cliente_slug for f in filas_clientes}
-
-            if slugs_persistidos <= set(crudos_por_slug.keys()):
-                # Esta captura leyó (en memoria, con ids reales de usuario y el
-                # conteo COMPLETO de cada proveedor) a todos los clientes que
-                # tienen fila persistida este período: reconstrucción EXACTA,
-                # usuarios y proveedores incluidos.
-                crudo_reconstruido = consolidar_crudos(
-                    [crudos_por_slug[slug] for slug in slugs_persistidos]
-                )
-                valores_reconstruidos = _consolidado_crudo_a_valores(
-                    crudo_reconstruido, len(slugs_persistidos))
-            else:
-                # Hay alguna fila persistida de un cliente que ESTA captura no
-                # leyó (su base está rota ahora, pero estaba legible cuando se
-                # guardó su fila -- o esta captura es justamente la del cierre
-                # de otro mes y no lo tocó). Se suma desde DISCO: exacto para
-                # ingreso/ocupación/contratos -- los campos load-bearing del
-                # bug -- pero aproximado para usuarios y proveedores, porque en
-                # disco sólo sobrevive el CONTEO de usuarios (no los ids, no se
-                # puede deduplicar con exactitud entre clientes) y el TOP-5 de
-                # proveedores de cada cliente (no su conteo completo). Se
-                # documenta como limitación conocida en ESTADO.md.
-                valores_reconstruidos = _reconstruir_consolidado_desde_disco(
-                    filas_clientes, con_error)
+            valores_reconstruidos = _reconstruir_consolidado(
+                filas_clientes, crudos_por_slug, recien_insertados, con_error)
 
             for campo, valor in valores_reconstruidos.items():
                 setattr(fila_consolidado, campo, valor)
@@ -349,25 +406,57 @@ def persistir_snapshots(
         reg.close()
 
 
-def _reconstruir_consolidado_desde_disco(filas_clientes: list, con_error: int) -> dict:
-    """Suma APROXIMADA del consolidado a partir de filas YA persistidas (BUG-1).
+def _reconstruir_consolidado(
+    filas_clientes: list,
+    crudos_por_slug: dict[str, dict],
+    recien_insertados: set[str],
+    con_error: int,
+) -> dict:
+    """La consolidada de un mes pasado, rearmada desde sus sumandos (BUG-1).
 
-    Se usa sólo cuando esta captura no tiene en memoria los crudos de TODOS los
-    clientes con fila persistida ese período (ver ``persistir_snapshots``).
-    Ingreso, ocupación, contratos y sedes son exactos (Σ de columnas guardadas
-    tal cual). Usuarios y proveedores son la limitación conocida: en disco cada
-    fila sólo guarda el CONTEO de usuarios (no los ids que permitirían
-    deduplicar entre clientes) y el TOP-5 de proveedores (no el conteo
-    completo), así que no hay forma de reconstruir esas dos cifras con
-    exactitud desde acá. Se prioriza que los campos load-bearing del bug
-    (ingreso/ocupación/contratos) queden bien, que es lo que la fase existe
-    para garantizar.
+    **Una sola reconstrucción, con una sola regla de precedencia**: para cada
+    fila por cliente ya persistida del período,
+
+    · si su slug está en ``recien_insertados`` —la fila NACIÓ en esta captura—,
+      el sumando sale de ``crudos_por_slug``: es literalmente lo que se acaba de
+      escribir, y en memoria viene mejor (ids reales de usuario para deduplicar
+      entre clientes, y el conteo COMPLETO por proveedor, no sólo su top 5);
+    · si no, el sumando sale de **SU FILA EN DISCO**, siempre. Esa fila es la
+      verdad congelada de ese cliente en ese mes, aunque su base haya cambiado
+      después y aunque esta captura la haya leído recién. Tomar los crudos de
+      hoy para un cliente ya congelado es el hallazgo bugs-1: el total dejaba de
+      coincidir con los sumandos que el propio operador ve por cliente.
+
+    Ingreso, ocupación, contratos y sedes quedan EXACTOS en los dos caminos —son
+    los campos load-bearing, los que nunca pueden estar mal—. Usuarios y
+    proveedores son la aproximación conocida (ya aceptada en ESTADO.md) para las
+    filas que salen de disco: ahí sólo sobrevive el CONTEO de usuarios (no los
+    ids con los que se deduplica a la misma persona con cuenta en dos
+    supermercados) y el TOP-5 de proveedores (no su conteo completo).
     """
     proveedores_aprox: dict[str, int] = {}
     usuarios_aprox: set = set()
     sedes = caras = ocupadas = contratos = 0
     canon_total = 0.0
     for f in filas_clientes:
+        crudos = crudos_por_slug.get(f.cliente_slug) if f.cliente_slug in recien_insertados else None
+        if crudos is not None:
+            # Recién insertada: el crudo en memoria ES esta fila, y trae más.
+            sedes += crudos["sedes"]
+            caras += crudos["caras"]
+            ocupadas += crudos["ocupadas"]
+            contratos += crudos["contratos"]
+            canon_total += float(crudos["canon_total"])
+            usuarios_aprox.update(crudos["usuarios"])
+            for nombre, cuantos in crudos["proveedores"].items():
+                # El nombre en memoria es el ORIGINAL; el de disco ya viene
+                # saneado (`_recortar_top`). Se sanea acá para sumar en el mismo
+                # espacio de nombres — si no, el mismo proveedor aparecería dos
+                # veces con dos escrituras distintas del mismo contacto.
+                clave = sanear_nombre_proveedor(nombre)
+                proveedores_aprox[clave] = proveedores_aprox.get(clave, 0) + int(cuantos)
+            continue
+
         sedes += f.sedes_con_plano or 0
         caras += f.espacios_comercializables or 0
         ocupadas += f.ocupadas or 0
@@ -400,17 +489,99 @@ def _reconstruir_consolidado_desde_disco(filas_clientes: list, con_error: int) -
     }
 
 
-def cerrar_mes_anterior() -> None:
-    """Se asegura de que el mes YA CERRADO tenga sus filas. Lo llama el mantenimiento.
+def purgar_registro() -> dict[str, int]:
+    """Borra del REGISTRO lo que ya cumplió su plazo (hallazgo frontera-4).
 
-    Sin esto, la serie dependería de que alguien hubiera abierto la consola: un
-    mes en el que nadie miró el panel quedaría como un hueco permanente, porque
+    ``services/bitacora.purgar`` cuida la bitácora de cada cliente (365 días) y
+    el ciclo de mantenimiento la llama por cada base. Las tres tablas que crecen
+    en el registro no tenían equivalente: nadie las borraba nunca. Es a la vez un
+    problema de retención —Ley 1581: dato conservado sin plazo declarado— y de
+    disponibilidad en un disco de plan chico.
+
+    Qué se borra, y con qué plazo:
+
+    · ``BitacoraPlataforma`` más vieja que ``services.bitacora.DIAS_QUE_SE_GUARDA``
+      (365 días). Se IMPORTA esa constante, no se duplica: el plazo de la
+      constancia del operador y el de la del cliente son el mismo plazo, y el día
+      que uno cambie tiene que cambiar el otro.
+    · ``IntentoAlta`` de más de ``HORAS_QUE_SE_GUARDA_EL_INTENTO`` (24 h). El
+      rate limit del alta sólo mira los últimos 15 minutos
+      (``routers/auth.LOGIN_WINDOW_SECONDS``), así que lo que se borra ya no
+      frenaba a nadie.
+    · ``SnapshotMetricas`` de un período anterior a la ventana consultable
+      (``MESES_QUE_SE_GUARDA_EL_SNAPSHOT``), **excepto la fila
+      ``__consolidado__``**: la serie del total de la plataforma es el histórico
+      largo del negocio —no habla de ningún cliente en particular ni trae un
+      nombre de proveedor— y se conserva entera.
+
+    Devuelve los conteos borrados por tabla y los loguea. No propaga: quien la
+    llama es el ciclo de mantenimiento, y una purga que falla no puede frenarlo.
+    """
+    from app.clientes import sesion_registro
+    from app.models.plataforma import BitacoraPlataforma, IntentoAlta, SnapshotMetricas
+    from app.services.bitacora import DIAS_QUE_SE_GUARDA
+
+    ahora = _ahora_utc()
+    corte_bitacora = ahora - timedelta(days=DIAS_QUE_SE_GUARDA)
+    corte_intentos = ahora - timedelta(hours=HORAS_QUE_SE_GUARDA_EL_INTENTO)
+    corte_snapshot = _corrido(periodo_actual(), -MESES_QUE_SE_GUARDA_EL_SNAPSHOT)
+
+    borrados = {"bitacora_plataforma": 0, "alta_attempts": 0, "snapshot_metricas": 0}
+    reg = sesion_registro()
+    try:
+        borrados["bitacora_plataforma"] = (
+            reg.query(BitacoraPlataforma)
+            .filter(BitacoraPlataforma.en < corte_bitacora)
+            .delete(synchronize_session=False)
+        )
+        borrados["alta_attempts"] = (
+            reg.query(IntentoAlta)
+            .filter(IntentoAlta.at < corte_intentos)
+            .delete(synchronize_session=False)
+        )
+        borrados["snapshot_metricas"] = (
+            reg.query(SnapshotMetricas)
+            .filter(
+                SnapshotMetricas.periodo < corte_snapshot,
+                SnapshotMetricas.cliente_slug != CONSOLIDADO_SLUG,
+            )
+            .delete(synchronize_session=False)
+        )
+        reg.commit()
+    except Exception:  # noqa: BLE001
+        log.exception("No se pudo purgar el registro de plataforma")
+        try:
+            reg.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        return {k: 0 for k in borrados}
+    finally:
+        reg.close()
+
+    if any(borrados.values()):
+        log.info("Purga del registro de plataforma: %s", borrados)
+    return borrados
+
+
+def cerrar_mes_anterior() -> None:
+    """Las DOS tareas de plataforma del ciclo de mantenimiento: cierre y purga.
+
+    **1. El cierre.** Se asegura de que el mes YA CERRADO tenga sus filas. Sin
+    esto, la serie dependería de que alguien hubiera abierto la consola: un mes
+    en el que nadie miró el panel quedaría como un hueco permanente, porque
     calcularlo después daría los contratos de hoy y no los de aquel mes.
 
     Falta el mes si no está la fila consolidada **o** si falta la de algún
     cliente del registro. Cuando falta, se llama a ``calcular``, que recorre las
     bases y dispara el write-through con ``origen="cierre"``. Cuando no falta, no
     hace absolutamente nada — que es lo normal en casi todas las corridas.
+
+    **2. La purga** (``purgar_registro``, frontera-4). Corre SIEMPRE, también
+    cuando el cierre no tenía nada que hacer —que es el caso normal—, y en su
+    propio ``try``: son dos tareas independientes y una no puede tapar a la
+    otra. Va acá y no en ``main._run_lease_maintenance`` porque ese ciclo ya
+    llama a esta función una vez por vuelta, que es exactamente la cadencia que
+    la purga necesita.
 
     No escribe en ninguna base de cliente y no propaga: el mantenimiento de
     contratos y recordatorios es lo importante de ese ciclo, y un problema con el
@@ -435,16 +606,19 @@ def cerrar_mes_anterior() -> None:
         finally:
             reg.close()
 
-        if CONSOLIDADO_SLUG in presentes and esperados <= presentes:
-            return
-
-        # `calcular` ya es tolerante a fallos por cliente —una base rota deja su
-        # fila con error y el resto sigue—, así que el cierre hereda esa
-        # tolerancia sin repetirla acá.
-        from app.plataforma_metricas import calcular
-        calcular(mes, origen=ORIGEN_CIERRE)
+        if not (CONSOLIDADO_SLUG in presentes and esperados <= presentes):
+            # `calcular` ya es tolerante a fallos por cliente —una base rota deja
+            # su fila con error y el resto sigue—, así que el cierre hereda esa
+            # tolerancia sin repetirla acá.
+            from app.plataforma_metricas import calcular
+            calcular(mes, origen=ORIGEN_CIERRE)
     except Exception:  # noqa: BLE001
         log.exception("No se pudo cerrar el mes anterior de la serie de métricas")
+
+    try:
+        purgar_registro()
+    except Exception:  # noqa: BLE001
+        log.exception("No se pudo purgar el registro de plataforma")
 
 
 # ─── Lectura: de la fila cruda al JSON público ────────────────────────────────

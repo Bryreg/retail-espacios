@@ -314,10 +314,12 @@ devuelve la verdad de hoy proyectada hacia atrás. Sin historia persistida,
   `espacios_comercializables`, `ocupadas`, `contratos_activos`, `canon_total`,
   `usuarios` (un CONTEO — **ningún id, correo ni nombre baja a disco**;
   la deduplicación de la misma persona con cuenta en dos supermercados se
-  resuelve en memoria al capturar), `proveedores_json` (`{nombre_ORIGINAL:
-  conteo}` recortado al top 5), `clientes_incluidos`, `clientes_con_error`,
+  resuelve en memoria al capturar), `proveedores_json` (`{nombre_SANEADO:
+  conteo}`, top-5 elegido con el nombre original y saneado al bajar — ver
+  Auditoría integral), `clientes_incluidos`, `clientes_con_error`,
   `origen` (`"vista"` | `"cierre"`) y `capturado_en`.
-- **La supresión K=3 y el saneo se aplican AL LEER**, no al guardar
+- **La supresión K=3 se aplica AL LEER; el saneo del nombre, al ESCRIBIR (y
+  también al leer, idempotente)**, no al guardar los números
   (`plataforma_tendencia.publicar_fila` reusa `_pct`, `_plata`, `_top` y
   `_suprimir_celda_chica` de `plataforma_metricas` — cero fórmulas duplicadas).
   Así la regla de privacidad vive en un solo lugar, el histórico no queda
@@ -362,15 +364,13 @@ devuelve la verdad de hoy proyectada hacia atrás. Sin historia persistida,
     puede contradecir a sus sumandos, ni siquiera congelado. El ponderado (Σ/Σ)
     de la reconstrucción usa el mismo helper compartido que arma el
     consolidado la primera vez: `consolidar_crudos` en
-    `app/plataforma_metricas.py`. Cuando la captura tiene en memoria los
-    crudos de TODOS los clientes con fila persistida, la reconstrucción es
-    EXACTA; si algún cliente persistido no fue leído en esta captura (base
-    rota ahora mismo), se reconstruye sumando desde disco — exacto para
-    ingreso/ocupación/contratos/sedes, pero **aproximado para usuarios y
-    proveedores** (en disco sólo sobrevive el conteo de usuarios, no los ids
-    para deduplicar entre clientes, ni el conteo completo de cada proveedor,
-    sólo su top-5). Limitación conocida, aceptada: prioriza que los campos
-    load-bearing del bug queden bien.
+    `app/plataforma_metricas.py`. La reconstrucción suma SIEMPRE desde disco
+    para los clientes con fila previa y sólo toma de memoria los slugs recién
+    insertados en esta captura (BUG-1, iteración 3 — auditoría integral,
+    bugs-1: usar los crudos de HOY para un mes pasado contradecía a las filas
+    congeladas): exacta para ingreso/ocupación/contratos/sedes; **aproximada
+    para usuarios y proveedores** en las filas que vienen de disco (conteo sin
+    ids, top-5 sin conteo completo). Limitación conocida, aceptada.
 - **`GET /api/plataforma/tendencia?cliente=<slug|__consolidado__>&meses=N`**
   (default consolidado / 12, máx 24). `require_operador`, ruta **literal
   declarada justo después de `/metricas`** y antes de `/supresiones/{id}` y
@@ -539,6 +539,126 @@ debajo de "Tendencia" con tabla de cohortes (mes, clientes, retención 30d,
 desglose por badge) y lista "A quién llamar hoy". `components/plataforma/
 adopcion.tsx`; primitivas de `consola.tsx`, tokens `--con-*`, claro y oscuro,
 sin librerías nuevas, bajo la CSP de Fase 3.
+
+### Auditoría integral (post Fase 6)
+
+Auditoría adversarial del sistema completo (spec en `features/auditoria/spec.md`,
+entregables en `features/auditoria/outputs/`), sobre seis dimensiones: ingreso
+al sistema, aislamiento multi-tenant y base de datos, frontera del operador,
+OWASP/hardening, bugs de las Fases 4–6 y compliance/privacidad. Cinco auditores,
+24 hallazgos con reproducción (cada uno con un test en
+`tests/test_auditoria_<dimension>.py`, estilo `test_*_ataques.py`), 11
+arreglados en la misma rama con el `xfail` convertido en test verde. La
+frontera multi-tenant, la verificación de Firebase y los derechos del titular
+aguantaron todo sin un solo cruce: lo que se encontró fue de segundo orden.
+
+**Qué se arregló**
+
+- **Uploads con tope de streaming** (`app/services/subidas.py::leer_con_tope`):
+  `files.py`, `mounts.py`, `catalogo.py` y `planograms.py` leían el archivo
+  ENTERO en RAM antes de comparar contra su límite (con `--workers 1`, un
+  archivo de GB tumba el único proceso). Ahora se lee de a 64 KiB y se corta
+  apenas se pasa; códigos y textos de respuesta no cambiaron. `montaje.py`
+  hereda el arreglo porque delega en `mounts.registrar_montaje`.
+- **Tope de tamaño de cuerpo para toda la app, antes de cualquier auth**
+  (`subidas.py::LimiteDeCuerpo`, middleware ASGI puro registrado en `main.py`):
+  2 MiB para JSON y todo lo que no sea multipart, 12 MiB para
+  `multipart/form-data` (el tope propio de cada endpoint lo sigue aplicando el
+  helper). `Content-Length` sirve para rechazar de entrada, nunca para
+  permitir: decide el conteo real. Responde 413 JSON con las cabeceras de
+  seguridad. No es `@app.middleware("http")` a propósito: `BaseHTTPMiddleware`
+  no puede intervenir el `receive`. El tope JSON de 2 MiB es un juicio (los
+  layouts por sede pesan cientos de KB), vive en `subidas.py::TOPE_JSON`.
+- **El `Bearer basura` ya no delata el estado de cuenta** (ingresos-1). Con un
+  solo cliente en la instalación, la rama `unico()` de `cliente_del_pedido`
+  aplicaba `_aplicar_estado` ante CUALQUIER texto en el header o en `?token=`,
+  y el 402 salía antes del 401. Ahora hay `auth.token_verifica()` y la rama
+  exige que la credencial verifique (firma y `exp`): sin credencial → 401;
+  credencial que no verifica → 401; token nuestro válido (incluso legado sin
+  claim `cliente`) → se aplica el estado de cuenta, 402 si corresponde.
+- **Exenciones del interruptor con frontera de segmento** (ingresos-2):
+  `clientes._path_bajo` (igualdad o prefijo + `/`) reemplaza `startswith` en
+  `_EXENTOS_EN_SOLO_LECTURA`, `_EXENTOS_POR_HABEAS_DATA` y
+  `_es_path_de_plataforma`. Un solo helper para las tres.
+- **BUG-1, iteración 3** (bugs-1): la reconstrucción de la fila
+  `__consolidado__` cuando una captura de un mes pasado inserta una fila que
+  faltaba ya no usa los crudos de HOY para clientes con fila previa. Regla
+  única en `_reconstruir_consolidado`: un cliente con fila persistida antes de
+  esta captura se suma SIEMPRE desde su fila en disco; sólo los slugs recién
+  insertados salen de memoria. Ingreso, ocupación, contratos y sedes del
+  consolidado nunca contradicen a sus sumandos.
+- **El nombre del proveedor baja SANEADO a `snapshot_metricas`**
+  (compliance-1 = frontera-2). `_recortar_top` elige el top-5 con el nombre
+  original y persiste `{sanear_nombre_proveedor(nombre): conteo}`, sumando
+  conteos si dos originales sanean igual. Los NÚMEROS siguen crudos y K=3 se
+  sigue aplicando al leer; el NOMBRE se protege al escribir (y el saneo es
+  idempotente, así que leer sigue pasando por `_top`). Sin migración.
+- **Saneo Unicode** (frontera-1): `sanear_nombre_proveedor` normaliza NFKC
+  (`＠` → `@`, dígitos de ancho completo → ASCII), borra los caracteres de
+  categoría `Cf` (ZWSP, ZWNJ, BOM, marcas de dirección) y `_TELEFONO_RE`
+  acepta `/ _ · ,` como separadores.
+- **Ventana de `periodo`** (frontera-3): `normalizar_periodo` acepta sólo
+  `[actual − 24, actual + 12]` meses (`MESES_HISTORIA_MAXIMO`,
+  `VENTANA_MESES_ADELANTE`); fuera de ahí, 422 con texto fijo. **Un mes futuro
+  NO se persiste** (una proyección no es historia). `_cache` y
+  `_cache_contratos` son LRU con `TOPE_CACHE_PERIODOS = 24`.
+- **Purga del registro** (frontera-4 = ingresos-5):
+  `plataforma_tendencia.purgar_registro()` borra `bitacora_plataforma` con más
+  de `DIAS_QUE_SE_GUARDA` días (365, la misma constante que `audit_log`),
+  `intentos_alta` con más de 24 h y las filas POR CLIENTE de
+  `snapshot_metricas` anteriores a `actual − 36 meses`. **La fila
+  `__consolidado__` no se purga nunca**: es la serie larga del negocio. Corre
+  al final de `cerrar_mes_anterior()`, en su propio `try/except`, SIEMPRE.
+- **Bitácora en las lecturas de PII** (frontera-6): `/supresiones` y
+  `/clientes` ahora también anotan en `bitacora_plataforma`
+  (`_anotar_consulta`), igual que `/metricas`, `/tendencia` y `/adopcion`.
+- **Gate de `pip-audit` con CVSS real** (hardening-8): el script
+  `.github/scripts/pip_audit_severity.py` hacía `float()` sobre un vector CVSS
+  textual y nunca podía confirmar un HIGH/CRITICAL. Ahora calcula el score
+  base v3.x desde el vector y tiene `--self-test`. Consecuencia: el gate falla
+  con 9 HIGH confirmados hasta que se actualicen las dependencias (abajo).
+- **Guardianes que mentían** (verif-1, verif-2): `test_t32` fallaba sobre un
+  comentario por un `A or B and C` sin paréntesis — ahora mira sólo líneas
+  del diff con `Content-Security-Policy`; `test_ingresos_16` afirmaba la
+  ausencia de purga con grep y quedó verde diciendo algo falso — ahora fija la
+  presencia por el objeto real.
+
+**Qué queda abierto y por qué**
+
+- **frontera-5 — decisión de producto pendiente** (`test_f09`,
+  `xfail(strict=True)`, NO borrar). Con un cliente que publica y otro
+  suprimido por K=3, `ingreso_consolidado − ingreso_visible` devuelve al peso
+  el canon del contrato único del suprimido. Contradice la regla "el
+  consolidado sí suma a todos" (Fase 4, `test_m26`). Opciones: (a) sumar sólo
+  clientes publicables (precedente del spread, a17); (b) sumar a los
+  suprimidos sólo si entre todos juntan ≥ K contratos. Se recomienda (b).
+- ~~Dependencias con DoS~~ — **cerrado en la misma rama**: `fastapi 0.115.0
+  → 0.141.1` (arrastra `starlette 1.6.0`, que parchea CVE-2024-47874, y
+  `pydantic 2.13.5`), `python-multipart 0.0.32`, `PyJWT 2.13.0`. `pip-audit`
+  limpio. Dos consecuencias de la subida, ya absorbidas: (1) PyJWT ≥ 2.10
+  exige que el claim `sub` sea TEXTO — `create_token` emite `str(id)` y
+  `auth._sub_entero` lo vuelve entero al leer (`invalidar_cache_membresia`
+  acepta las dos formas); (2) con Starlette 1.x `include_router` deja en
+  `app.routes` un `_IncludedRouter` sin `path` ni `methods`, así que los
+  tests que barrían rutas por atributos recorrían cero rutas y pasaban en
+  verde sin comprobar nada — ahora usan `conftest.rutas_planas(app)` (aplana
+  en orden de declaración) o el esquema OpenAPI. En el frontend `npm audit
+  fix` cerró `browserslist` (HIGH); queda `vite ≤ 6.4.2` (HIGH, sólo servidor
+  de desarrollo: path traversal en `.map` y `launch-editor` en Windows) porque
+  el salto a Vite 8 es mayor y se hace aparte.
+- **Dockerfile sin `USER`** (hardening-9): no verificable contra el disco de
+  datos de Render desde acá.
+- **H-7 / H-8** (identidad) y **R-3 / R-4 / R-5** (alta self-service) siguen
+  xfail; ingresos-4 (falla de infraestructura del alta disfrazada de "slug
+  tomado") se suma a R-4.
+- Documentados sin cambio: ingresos-3 (leeway sobre `exp`, medido,
+  aceptable), hardening-2 (HSTS spoofeable, benigno por RFC 6797 §7.2),
+  compliance-2 (validación en el ORM como defensa opcional), compliance-3
+  (texto de la política: nombrar Brevo/SendGrid y el enlace con credencial de
+  un solo uso en §9.1; completar §6 con 365 días).
+- Decisiones de producto anotadas: zona horaria del negocio (`periodo_actual`
+  en UTC), supresión de `ultimo_acceso` bajo K cuando hay un solo usuario,
+  retención de logs de correo en Render.
 
 ### Pendientes conocidos: clientes y plataforma
 

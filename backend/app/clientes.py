@@ -377,11 +377,23 @@ _EXENTOS_POR_HABEAS_DATA = (
 _PREFIJO_PLATAFORMA = "/api/plataforma"
 
 
+def _path_bajo(path: str, prefijos: tuple[str, ...]) -> bool:
+    """¿`path` ES uno de esos prefijos, o cuelga de él, CON frontera de segmento?
+
+    Un `startswith` suelto no distingue `/api/auth` de `/api/authorizaciones`:
+    el router que alguien monte mañana con ese nombre heredaría la exención del
+    interruptor de cobranza sin que nadie lo decida (hallazgos H-3 e
+    ingresos-2). La comparación correcta es «igualdad o prefijo + barra», y
+    vive en UN solo lugar para que no se pueda arreglar la mitad de las veces.
+    """
+    return any(path == p or path.startswith(p + "/") for p in prefijos)
+
+
 def _es_path_de_plataforma(path: str) -> bool:
     """Con frontera de segmento (hallazgo H-3): ``startswith`` a secas también
     aceptaba ``/api/plataformazo`` — un router futuro con ese prefijo heredaría
     la resolución de consola sin que nadie lo decidiera."""
-    return path == _PREFIJO_PLATAFORMA or path.startswith(_PREFIJO_PLATAFORMA + "/")
+    return _path_bajo(path, (_PREFIJO_PLATAFORMA,))
 
 
 def _aplicar_estado(cliente: Cliente, request: Request) -> Cliente:
@@ -417,13 +429,13 @@ def _aplicar_estado(cliente: Cliente, request: Request) -> Cliente:
     # el interruptor de cobranza en un bloqueo de habeas data (hallazgo m-3
     # de la verificación de Fase 3). Son owner-only/authenticados por sus
     # propios routers; acá solo se los exime del 402.
-    if path.startswith(_EXENTOS_POR_HABEAS_DATA):
+    if _path_bajo(path, _EXENTOS_POR_HABEAS_DATA):
         return cliente
 
     if estado == "solo_lectura":
         if (request.method or "").upper() in _METODOS_DE_LECTURA:
             return cliente
-        if path.startswith(_EXENTOS_EN_SOLO_LECTURA):
+        if _path_bajo(path, _EXENTOS_EN_SOLO_LECTURA):
             return cliente
         raise HTTPException(status_code=402, detail=CUENTA_SOLO_LECTURA)
 
@@ -481,7 +493,7 @@ def cliente_del_pedido(request: Request) -> Cliente:
     instalación de un cliente —la de hoy, sin ir más lejos, donde los enlaces
     viejos entran sin slug en el token— se saltee el interruptor entero.
     """
-    from app.auth import cliente_del_token
+    from app.auth import cliente_del_token, token_verifica
 
     raw = _credencial(request)
     if raw:
@@ -499,13 +511,23 @@ def cliente_del_pedido(request: Request) -> Cliente:
 
     solo = unico()
     if solo is not None:
-        if raw is not None:
+        # Tres situaciones distintas, y el estado de cuenta sólo se aplica en
+        # una (hallazgos R-1 e ingresos-1). Con UN solo cliente en la
+        # instalación —producción hoy— el 402 es un oráculo: contestarlo antes
+        # de que nadie valide la credencial le cuenta a cualquiera si ese
+        # supermercado dejó de pagar, que es justo lo que la pantalla de
+        # ingreso se cuidó de no construir.
+        #
+        # 1. SIN credencial: no se aplica nada. `require_auth` contesta su 401
+        #    de siempre.
+        # 2. Credencial BASURA (texto que no firmamos nosotros, o vencido):
+        #    tampoco. Para el sistema es tan anónimo como el caso 1 — sólo que
+        #    escribió algo en el header. Mismo 401.
+        # 3. Token NUESTRO, válido, pero sin claim `cliente` (emitido antes del
+        #    multi-tenant): ahí sí. Es un usuario legítimo de este único
+        #    cliente y le corresponde el 402 si la cuenta está degradada.
+        if raw is not None and token_verifica(raw):
             return _aplicar_estado(solo, request)
-        # Sin credencial NO se aplica el estado (hallazgo R-1): contestar 402
-        # antes de que nadie compruebe un token le contaría a un anónimo si el
-        # cliente dejó de pagar — el mismo oráculo que la pantalla de ingreso
-        # se cuidó de no construir. El require_auth de más adelante contesta
-        # su 401 de siempre y el estado se aplica recién con credencial.
         return solo
     raise HTTPException(status_code=401, detail="No autenticado")
 

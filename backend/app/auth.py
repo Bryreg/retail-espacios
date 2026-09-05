@@ -307,10 +307,30 @@ def create_token(
         "exp": datetime.now(timezone.utc) + timedelta(hours=TOKEN_TTL_HOURS),
     }
     if sub is not None:
-        payload["sub"] = sub
+        # Como TEXTO: RFC 7519 define `sub` como StringOrURI y PyJWT ≥ 2.10 lo
+        # exige al decodificar (un `sub` numérico tira InvalidSubjectError y
+        # el token entero vale 401). Se vuelve a entero al leer, en
+        # `_sub_entero`.
+        payload["sub"] = str(sub)
     if email is not None:
         payload["email"] = email
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def _sub_entero(payload: dict) -> int | None:
+    """El id de usuario del claim ``sub``, o ``None`` si no hay o no es un id.
+
+    Acepta el texto de dígitos que emite ``create_token`` y, por si queda
+    algún token de antes del cambio en vuelo, también un entero.
+    """
+    sub = payload.get("sub")
+    if isinstance(sub, bool):
+        return None
+    if isinstance(sub, int):
+        return sub
+    if isinstance(sub, str) and sub.isdigit():
+        return int(sub)
+    return None
 
 
 def create_mount_token(
@@ -381,8 +401,15 @@ def _membresia_activa(usuario_id: int, cliente_slug: str) -> bool:
     return activa
 
 
-def invalidar_cache_membresia(usuario_id: int, cliente_slug: str) -> None:
-    """Se llama al cambiar ``activo`` desde el PATCH: no hay que esperar el TTL."""
+def invalidar_cache_membresia(usuario_id: int | str, cliente_slug: str) -> None:
+    """Se llama al cambiar ``activo`` desde el PATCH: no hay que esperar el TTL.
+
+    Acepta el id como entero o como el texto de dígitos del claim ``sub``: la
+    clave del caché es siempre ``(int, slug)``, y un llamador que pase el
+    ``sub`` tal cual viene del token no debe dejar la entrada viva.
+    """
+    if isinstance(usuario_id, str) and usuario_id.isdigit():
+        usuario_id = int(usuario_id)
     with _membresia_cache_candado:
         _membresia_cache.pop((usuario_id, cliente_slug), None)
 
@@ -399,10 +426,9 @@ def _claims_del_token(token: str) -> tuple[int | None, str | None]:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.PyJWTError:
         return None, None
-    sub = payload.get("sub")
     email = payload.get("email")
     return (
-        sub if isinstance(sub, int) else None,
+        _sub_entero(payload),
         email if isinstance(email, str) and email else None,
     )
 
@@ -457,9 +483,9 @@ def decode_token(token: str, db: Session | None = None) -> str | None:
         nacio = payload.get("epoca")
         if not isinstance(nacio, int) or nacio < epoca_de(db, role):
             return None
-    sub = payload.get("sub")
-    if sub is not None:
-        if not isinstance(sub, int):
+    if payload.get("sub") is not None:
+        sub = _sub_entero(payload)
+        if sub is None:
             return None
         cliente = payload.get("cliente")
         if not isinstance(cliente, str) or not cliente:
@@ -522,6 +548,22 @@ def cliente_del_token(raw: str) -> str | None:
         return None
     valor = payload.get("cliente")
     return valor.strip().lower() if isinstance(valor, str) and valor.strip() else None
+
+
+def token_verifica(raw: str) -> bool:
+    """¿Ese texto es un token NUESTRO, con firma y vencimiento válidos?
+
+    No mira ningún claim: sólo responde si lo firmamos nosotros y todavía vale.
+    Existe porque `cliente_del_token` devuelve `None` en dos casos que hay que
+    poder distinguir (hallazgo ingresos-1): «token legítimo viejo, sin claim
+    `cliente`» y «texto inventado por un anónimo». Tratar a los dos igual
+    reabría el oráculo de estado de cuenta que R-1 cerró.
+    """
+    try:
+        jwt.decode(raw, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.PyJWTError:
+        return False
+    return True
 
 
 # ─── FastAPI dependencies ─────────────────────────────────────────────────────

@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session, defer
 from app.auth import require_admin, require_auth, require_auth_or_query_token
 from app.database import get_db
 from app.models.models import Supplier, SupplierAsset
+from app.services.subidas import leer_con_tope
 
 router = APIRouter(prefix="/catalogo", tags=["catalogo"])
 
@@ -111,11 +112,12 @@ async def subir(
             detail="El arte tiene que ser una imagen (JPG, PNG o WEBP).",
         )
 
-    data = await file.read()
+    # Mismo corte que en `files.py`/`mounts.py` (hardening-1): se deja de leer
+    # apenas se pasa del tope, en vez de bufferizar el arte entero en RAM para
+    # después rechazarlo. `MAX_SIZE` se lee acá, en tiempo de llamada.
+    data = await leer_con_tope(file, MAX_SIZE, "El arte supera los 5 MB.")
     if not data:
         raise HTTPException(status_code=422, detail="El archivo llegó vacío.")
-    if len(data) > MAX_SIZE:
-        raise HTTPException(status_code=413, detail="El arte supera los 5 MB.")
 
     fila = SupplierAsset(
         supplier_id=supplier_id,

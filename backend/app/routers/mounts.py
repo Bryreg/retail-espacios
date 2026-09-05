@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.auth import require_auth
 from app.database import get_db
 from app.models.models import MountConfirmation, Space, SpaceFile
+from app.services.subidas import leer_con_tope
 
 router = APIRouter(prefix="/mounts", tags=["mounts"], dependencies=[Depends(require_auth)])
 
@@ -167,9 +168,10 @@ async def registrar_montaje(
                 status_code=422,
                 detail="El archivo tiene que ser una imagen (JPG, PNG, WEBP o HEIC)",
             )
-        data = await foto.read()
-        if len(data) > MAX_PHOTO:
-            raise HTTPException(status_code=413, detail="La foto supera el límite de 10 MB")
+        # Mismo corte que en `files.py` (hardening-1): se deja de leer apenas
+        # se pasa del tope, en vez de bufferizar la foto entera para después
+        # rechazarla.
+        data = await leer_con_tope(foto, MAX_PHOTO, "La foto supera el límite de 10 MB")
 
         # La foto se cuelga del Space para que aparezca junto al resto de los
         # archivos del espacio. Si el espacio todavía no existe como fila —

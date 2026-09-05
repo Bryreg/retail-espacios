@@ -18,6 +18,7 @@ from app.routers import alta as alta_routes
 from app.routers import derechos as derechos_routes
 from app.routers import plataforma as plataforma_routes
 from app.models.models import Space, SpaceStatus
+from app.services.subidas import LimiteDeCuerpo
 # Tablas de identidad (Fase 1): archivo nuevo, sin columnas agregadas a nada
 # existente. El único propósito de este import es que `Base.metadata` las
 # conozca ANTES de que corra `create_all()` en el lifespan de abajo — si no,
@@ -241,6 +242,15 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Tope de tamaño del cuerpo del pedido (hallazgo hardening-1c). Va acá, entre
+# los middlewares, porque tiene que correr ANTES de cualquier autenticación:
+# hasta ahora `POST /api/auth/login` con 5 MB de "contraseña" se parseaba
+# entero para terminar contestando 401, y para eso no hace falta cuenta.
+# `add_middleware` apila del último al primero, así que este queda por DENTRO
+# de `cabeceras_de_seguridad` (registrado más abajo) y su 413 sale con CSP y
+# el resto de las cabeceras, como cualquier otra respuesta.
+app.add_middleware(LimiteDeCuerpo)
 
 # ─── Cabeceras de seguridad ──────────────────────────────────────────────────
 #

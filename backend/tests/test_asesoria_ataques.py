@@ -802,7 +802,9 @@ def test_a9_orden_de_rutas_y_variantes_de_la_url(client, monkeypatch):
     """
     _ids, cab, _ = _escenario_adopcion(client, monkeypatch)
 
-    caminos = [getattr(r, "path", "") for r in client.app.routes]
+    from conftest import rutas_planas
+
+    caminos = [r.path for r in rutas_planas(client.app)]
     i_adopcion = caminos.index("/api/plataforma/adopcion")
     parametricas = [i for i, p in enumerate(caminos)
                     if p.startswith("/api/plataforma/") and "{" in p]

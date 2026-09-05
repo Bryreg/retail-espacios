@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models.models import Space, SpaceFace, SpaceFile
 from app.routers.mounts import MOUNT_FILE_PREFIX
 from app.services.bitacora import anotar
+from app.services.subidas import leer_con_tope
 
 router = APIRouter(tags=["files"])
 
@@ -156,9 +157,11 @@ async def upload_space_file(
             detail="Extensión no permitida. Solo se aceptan archivos PDF, XLS, XLSX, CSV o imágenes JPG, PNG y WEBP.",
         )
 
-    data = await file.read()
-    if len(data) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail="El archivo supera el límite de 10 MB")
+    # Corta la lectura apenas se pasa del límite (hardening-1): `await
+    # file.read()` a secas traía el archivo ENTERO a RAM antes de comparar.
+    # `MAX_FILE_SIZE` se lee acá, en tiempo de llamada, no como default de
+    # parámetro: los tests lo bajan en caliente sobre el módulo.
+    data = await leer_con_tope(file, MAX_FILE_SIZE, "El archivo supera el límite de 10 MB")
 
     # Derive the content type from the validated extension — never trust the
     # client-supplied header (it is echoed back verbatim on download).

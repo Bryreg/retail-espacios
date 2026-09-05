@@ -794,10 +794,12 @@ def test_m10_barrido_automatico_de_todas_las_rutas_de_la_aplicacion(client, monk
                "space_code": "NAVE-PUN-01", "svg_id": "s1", "code": "NAVE-PUN-01",
                "slug": "acme", "mount_id": "1", "id": "1"}
 
+    from conftest import rutas_planas
+
     servidos = []
-    for ruta in client.app.routes:
-        path = getattr(ruta, "path", "")
-        metodos = getattr(ruta, "methods", set()) or set()
+    for ruta in rutas_planas(client.app):
+        path = ruta.path
+        metodos = ruta.methods
         if not path.startswith("/api/") or path.startswith(saltar):
             continue
         concreta = path
@@ -1329,7 +1331,9 @@ def test_m27_metricas_no_lo_captura_la_ruta_parametrica_ni_al_reves(client, monk
     """
     _ids, cab, _ = _escenario(client, monkeypatch)
 
-    caminos = [getattr(r, "path", "") for r in client.app.routes]
+    from conftest import rutas_planas
+
+    caminos = [r.path for r in rutas_planas(client.app)]
     i_metricas = caminos.index("/api/plataforma/metricas")
     parametricas = [i for i, p in enumerate(caminos)
                     if p.startswith("/api/plataforma/") and "{" in p]

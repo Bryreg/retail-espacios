@@ -79,3 +79,45 @@ def admin(client):
 def worker(client):
     """Authorization header for the default worker."""
     return {"Authorization": f"Bearer {_token(client, CLAVE_WORKER)}"}
+
+
+class RutaPlana:
+    """Lo que los tests necesitan de una ruta: ``path`` completo y ``methods``."""
+
+    def __init__(self, path: str, methods):
+        self.path = path
+        self.methods = set(methods or ())
+
+    def __repr__(self) -> str:
+        return f"RutaPlana({self.path!r}, {sorted(self.methods)!r})"
+
+
+def rutas_planas(app) -> list:
+    """Todas las rutas de la app, en ORDEN de declaración, con el path completo.
+
+    Desde FastAPI 0.141 / Starlette 1.x ``include_router`` deja en
+    ``app.routes`` un ``_IncludedRouter`` sin ``path`` ni ``methods``: las
+    rutas reales viven en ``original_router.routes`` y el prefijo del
+    ``include`` está aparte, en ``include_context.prefix``. Los tests que
+    recorrían ``app.routes`` por atributos pasaban a barrer cero rutas — y a
+    pasar en verde sin comprobar nada. Este helper aplana recursivamente y
+    conserva el orden, que es lo que los tests de "literal antes de
+    paramétrica" necesitan.
+    """
+    salida: list = []
+
+    def _caminar(rutas, prefijo: str) -> None:
+        for r in rutas:
+            original = getattr(r, "original_router", None)
+            if original is not None:
+                contexto = getattr(r, "include_context", None)
+                extra = getattr(contexto, "prefix", "") or ""
+                _caminar(original.routes, prefijo + extra)
+                continue
+            path = getattr(r, "path", None)
+            if path is None:
+                continue
+            salida.append(RutaPlana(prefijo + path, getattr(r, "methods", None)))
+
+    _caminar(app.routes, "")
+    return salida

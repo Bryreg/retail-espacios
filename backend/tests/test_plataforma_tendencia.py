@@ -64,6 +64,12 @@ _BETA = [
     {"code": "E-03", "type": "punta", "sede": "BETA"},
 ]
 PROVEEDOR_SUCIO = "Bimbo Distribuciones (ventas@bimbo.co)"
+# Cómo baja ese nombre a `snapshot_metricas.proveedores_json`: SANEADO. Desde el
+# arreglo de frontera-2/compliance-1, `_recortar_top` sanea antes del
+# `json.dumps` -- el correo de un tercero no queda en reposo en el registro. El
+# CONTEO sigue crudo (K=3 se aplica al leer) y el saneo es idempotente, así que
+# `publicar_fila` lo vuelve a pasar por `_top` sin enmascarar dos veces.
+PROVEEDOR_SUCIO_EN_DISCO = "Bimbo Distribuciones ([correo oculto])"
 _CONTRATOS_BETA = [
     ("BETA-E-01", PROVEEDOR_SUCIO, *_SIEMPRE, 400_000.0, True),
     ("BETA-E-02", PROVEEDOR_SUCIO, *_SIEMPRE, 200_000.0, True),
@@ -390,8 +396,10 @@ def test_write_through_deja_una_fila_por_cliente_y_la_consolidada(client, monkey
     assert cons["canon_total"] == CONS_INGRESO
     assert cons["clientes_incluidos"] == 3          # acme, beta, galerias
     assert cons["clientes_con_error"] == 1          # roto
-    # Los proveedores de todos los clientes, fusionados por nombre ORIGINAL.
-    assert cons["proveedores"] == {"Alpina": 3, "Nutresa": 1, PROVEEDOR_SUCIO: 2}
+    # Los proveedores de todos los clientes, fusionados por nombre original y
+    # bajados a disco ya SANEADOS (frontera-2/compliance-1).
+    assert cons["proveedores"] == {"Alpina": 3, "Nutresa": 1, PROVEEDOR_SUCIO_EN_DISCO: 2}
+    assert not any("@" in nombre for nombre in cons["proveedores"]), cons["proveedores"]
 
 
 def test_write_through_es_idempotente(client, monkeypatch):

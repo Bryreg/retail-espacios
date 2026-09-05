@@ -1,18 +1,26 @@
-fastapi==0.115.0
+# 0.115.0 fijaba starlette 0.38.6, que arrastra CVE-2024-47874 (sin tope de
+# tamaño de request: DoS de memoria pre-auth). `LimiteDeCuerpo` lo mitigaba;
+# esto lo parchea. Subido en la auditoría integral post Fase 6; arrastra
+# pydantic (0.141 pide una versión más nueva que 2.8).
+fastapi==0.141.1
 uvicorn[standard]==0.30.1
 sqlalchemy==2.0.31
-pydantic==2.8.2
+pydantic==2.13.5
 # 0.0.9 arrastra CVE-2024-53981: al parsear multipart recorre byte a byte lo
 # que venga antes del primer delimitador y registra cada uno, así que una
 # petición con basura adelante bloquea el bucle de eventos. Con --workers 1 eso
-# tumba el servicio entero. Corregido en 0.0.18.
-python-multipart==0.0.20
+# tumba el servicio entero. Corregido en 0.0.18. 0.0.20 todavía tenía seis
+# avisos de pip-audit (auditoría integral); 0.0.32 los cierra.
+python-multipart==0.0.32
 psycopg2-binary==2.9.9
 # [crypto] trae `cryptography`: hace falta para verificar RS256 (los ID
 # tokens de Firebase — services/firebase_tokens.py) además del HS256 de
 # siempre. Sin el extra, un despliegue nuevo instalaría PyJWT sin soporte
 # RSA y /api/auth/oauth fallaría con un error de librería, no de config.
-PyJWT[crypto]==2.9.0
+# 2.13 valida que el claim `sub` sea TEXTO (RFC 7519): los tokens llevan el
+# id de usuario como str desde la auditoría integral (antes iba como int y
+# 2.13 los rechazaba con 401).
+PyJWT[crypto]==2.13.0
 # Las contraseñas se guardaban en texto plano en `app_config`: un volcado de
 # la base las entregaba todas. Argon2id es el algoritmo que recomienda OWASP
 # para contraseñas —costo en memoria, no sólo en CPU, que es lo que arruina
