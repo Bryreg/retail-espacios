@@ -19,6 +19,7 @@ import {
   TablaScroll, TablaHead, TablaHeadCelda, Fila,
 } from "../components/plataforma/consola";
 import { PanelTendencia, useTendencia } from "../components/plataforma/tendencia";
+import { PanelAdopcion, useAdopcion } from "../components/plataforma/adopcion";
 
 // ─── /plataforma — Fase 4: ruta propia del operador ─────────────────────────
 //
@@ -47,6 +48,15 @@ const COP = new Intl.NumberFormat("es-CO", {
 
 const formatoCOP = (n: number | null): string => (n === null ? "—" : COP.format(n));
 const formatoPct = (n: number | null): string => (n === null ? "—" : `${n.toFixed(1)}%`);
+
+/** Spread canon vs tarifa de referencia (Fase 6): signo menos tipográfico
+ *  (U+2212, no el guion ASCII), coma decimal, espacio fino (U+2009) antes del
+ *  "%". `0` explícito se pinta sin signo -- "0,0 %", nunca "+0,0 %". */
+const formatoSpread = (n: number): string => {
+  const cifra = Math.abs(n).toFixed(1).replace(".", ",");
+  const signo = n > 0 ? "+" : n < 0 ? "−" : "";
+  return `${signo}${cifra} %`;
+};
 
 const mesActual = (): string => {
   const d = new Date();
@@ -196,11 +206,46 @@ function celdaPlata(m: AgregadosMetricasCliente, v: number | null) {
   return <SinDato />;
 }
 
+/** Celda "vs tarifa" (Fase 6, oportunidad de precio): tres estados propios,
+ *  ninguno es la ausencia genérica de `celdaPlata` --
+ *   · `tarifa_configurada === false` → "sin tarifa" en tinta apagada (no es
+ *     K=3 ni un error: el cliente sencillamente no configuró nada todavía).
+ *   · tarifa configurada pero `spread_pct === null` → el mismo K=3 que el
+ *     canon (menos de 3 contratos con tarifa aplicable).
+ *   · valor → signo + magnitud; por debajo de tarifa (negativo) se resalta
+ *     con el tono de aviso de la consola (mismo ámbar que gracia/solo
+ *     lectura) porque es la lectura que dispara una conversación de
+ *     asesoría -- por encima o en cero queda en tinta neutra, no es un
+ *     problema. La tarifa en sí nunca se pinta ni se manda: sólo esta
+ *     relación. */
+function celdaSpread(m: AgregadosMetricasCliente) {
+  if (!m.tarifa_configurada) {
+    return <span style={{ color: "var(--con-ink-4)" }}>sin tarifa</span>;
+  }
+  if (m.spread_pct === null) return <Suprimido compacto />;
+  const color = m.spread_pct < 0 ? "var(--con-estado-aviso)" : "var(--con-ink-2)";
+  return <span style={{ color, fontWeight: 600 }}>{formatoSpread(m.spread_pct)}</span>;
+}
+
+function hintSpread(m: AgregadosMetricasCliente | null): string {
+  if (!m) return "vs tarifa de referencia";
+  const base = !m.tarifa_configurada
+    ? "Sin tarifa de referencia configurada."
+    : m.spread_pct === null
+      ? "Suprimido por privacidad: menos de 3 contratos con tarifa aplicable."
+      : "Canon vs tarifa de referencia (negativo = por debajo de su tarifa).";
+  if (m.contratos_sin_tarifa > 0) {
+    return `${base} ${m.contratos_sin_tarifa} contrato${m.contratos_sin_tarifa === 1 ? "" : "s"} sin tarifa aplicable.`;
+  }
+  return base;
+}
+
 const W_ESTADO = 118;
 const W_OCUP = 74;
 const W_CANON = 108;
 const W_ING = 118;
 const W_ACC = 90;
+const W_SPREAD = 96;
 const W_BTN = 84;
 
 function FilaCliente({
@@ -249,6 +294,9 @@ function FilaCliente({
             </div>
             <div style={{ width: W_ING, flexShrink: 0, fontSize: 11.5, fontFamily: "var(--font-mono)", textAlign: "right" }} title="Ingreso contratado del mes">
               {m ? celdaPlata(m, m.ingreso_contratado_mes) : "—"}
+            </div>
+            <div style={{ width: W_SPREAD, flexShrink: 0, fontSize: 11.5, fontFamily: "var(--font-mono)", textAlign: "right" }} title={hintSpread(m)}>
+              {m ? celdaSpread(m) : "—"}
             </div>
             <div
               style={{ width: W_ACC, flexShrink: 0, fontSize: 11, color: "var(--con-ink-3)" }}
@@ -684,6 +732,19 @@ export default function Plataforma() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [operador, metricasVersion, tend.cliente, tend.meses]);
 
+  // ── Adopción (Fase 6) ─────────────────────────────────────────────────────
+  //
+  // Mismo motivo que la tendencia: `con_contratos_activos` lo calcula el
+  // backend con el mismo caché de métricas de 5 min, así que se pide DESPUÉS
+  // de que `/metricas` haya resuelto al menos una vez (`metricasVersion > 0`),
+  // nunca antes.
+  const adop = useAdopcion();
+
+  useEffect(() => {
+    if (operador === "si" && metricasVersion > 0) adop.cargar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [operador, metricasVersion]);
+
   const metricasPorSlug = useMemo(() => {
     const mapa = new Map<string, ClienteMetricas>();
     (metricas?.clientes ?? []).forEach((c) => mapa.set(c.slug, c));
@@ -774,6 +835,28 @@ export default function Plataforma() {
                 valor={formatoCOP(metricas?.consolidado.canon_promedio_mensual ?? null)}
                 hint="Canon mensual promedio de los contratos activos, consolidado."
               />
+              <KpiTile
+                rotulo="vs tarifa de referencia"
+                valor={
+                  !metricas ? "—"
+                  : metricas.consolidado.clientes_con_tarifa === 0 ? "sin tarifa"
+                  : metricas.consolidado.spread_pct === null ? "‹3"
+                  : formatoSpread(metricas.consolidado.spread_pct)
+                }
+                hint="Ponderado: Σ canon / Σ tarifa de referencia de los clientes con tarifa configurada (nunca promedio de spreads). Con menos de 3 contratos con tarifa, el número se suprime (K=3) -- misma regla que el canon."
+                contexto={
+                  !metricas ? undefined
+                  : metricas.consolidado.clientes_con_tarifa === 0
+                    ? "ningún cliente configuró tarifa de referencia"
+                  : metricas.consolidado.spread_pct === null
+                    ? "menos de 3 contratos con tarifa"
+                  : metricas.consolidado.spread_pct < 0
+                    ? `la cartera cobra ${Math.abs(metricas.consolidado.spread_pct).toFixed(1).replace(".", ",")} % por debajo de sus tarifas de referencia`
+                  : metricas.consolidado.spread_pct > 0
+                    ? `la cartera cobra ${metricas.consolidado.spread_pct.toFixed(1).replace(".", ",")} % por encima de sus tarifas de referencia`
+                  : "la cartera cobra exactamente su tarifa de referencia"
+                }
+              />
             </div>
 
             {/* ── Gráficos: barras con eje desde cero (SVG/CSS propio) ── */}
@@ -792,7 +875,7 @@ export default function Plataforma() {
               subtitulo="Estado de cuenta y métricas del período por supermercado. Cambiar el estado corta o restringe el servicio de inmediato — el motivo queda de constancia, también al reactivar."
               sinPadding
             >
-              <TablaScroll minWidth={760}>
+              <TablaScroll minWidth={856}>
                 {clientes === null ? (
                   <div style={{ padding: 16 }}>
                     {clientesError ? <EstadoError texto={clientesError} /> : <EstadoVacio texto="Cargando…" />}
@@ -810,6 +893,7 @@ export default function Plataforma() {
                       <TablaHeadCelda width={W_OCUP} alinear="right">Ocupación</TablaHeadCelda>
                       <TablaHeadCelda width={W_CANON} alinear="right">Canon prom.</TablaHeadCelda>
                       <TablaHeadCelda width={W_ING} alinear="right">Ingreso (mes)</TablaHeadCelda>
+                      <TablaHeadCelda width={W_SPREAD} alinear="right">vs tarifa</TablaHeadCelda>
                       <TablaHeadCelda width={W_ACC}>Últ. acceso</TablaHeadCelda>
                       <div style={{ marginLeft: "auto", width: W_BTN }} />
                     </TablaHead>
@@ -844,6 +928,8 @@ export default function Plataforma() {
               onCambiarCliente={tend.setCliente}
               onCambiarMeses={tend.setMeses}
             />
+
+            <PanelAdopcion adopcion={adop.adopcion} loading={adop.loading} error={adop.error} />
 
             <SupresionesSection />
           </div>

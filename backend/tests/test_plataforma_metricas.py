@@ -306,6 +306,11 @@ def test_metricas_de_un_cliente_contra_datos_sembrados(client, monkeypatch):
         ],
         "usuarios_con_cuenta": 1,
         "ultimo_acceso": m["metricas"]["ultimo_acceso"],
+        # Fase 6 (spread): ACME no tiene tarifa de referencia configurada en
+        # este escenario -> `null` + los 4 contratos activos van sin tarifa.
+        "spread_pct": None,
+        "tarifa_configurada": False,
+        "contratos_sin_tarifa": ACME_CONTRATOS,
     }
     # La fecha del último acceso: sólo la fecha, sin hora y sin quién.
     assert m["metricas"]["ultimo_acceso"] == date.today().isoformat()

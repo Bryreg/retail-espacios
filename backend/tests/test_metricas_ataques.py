@@ -445,8 +445,12 @@ METRICAS = {
     "canon_promedio_mensual", "ingreso_contratado_mes", "top_proveedores",
     "usuarios_con_cuenta",
 }
-CONSOLIDADO = METRICAS | {"clientes_total", "clientes_con_error"}
-METRICAS_CLIENTE = METRICAS | {"ultimo_acceso"}
+# Fase 6 (spread): el consolidado gana `spread_pct` y `clientes_con_tarifa`; la
+# fila por cliente gana `spread_pct`, `tarifa_configurada` y `contratos_sin_tarifa`.
+CONSOLIDADO = METRICAS | {"clientes_total", "clientes_con_error", "spread_pct", "clientes_con_tarifa"}
+METRICAS_CLIENTE = METRICAS | {
+    "ultimo_acceso", "spread_pct", "tarifa_configurada", "contratos_sin_tarifa",
+}
 CLIENTE = {"slug", "nombre", "estado_cuenta", "error", "metricas"}
 PROVEEDOR = {"nombre", "contratos_activos"}
 

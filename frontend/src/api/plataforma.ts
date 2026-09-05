@@ -97,6 +97,18 @@ export interface AgregadosMetricas {
 export interface ConsolidadoMetricas extends AgregadosMetricas {
   clientes_total: number;
   clientes_con_error: number;
+  /** Oportunidad de precio (Fase 6), consolidada Σ canon / Σ tarifa de los
+   *  clientes con tarifa configurada -- NUNCA promedio de spreads (ver
+   *  `clientes_con_tarifa`). `null` cuando ningún cliente legible tiene
+   *  tarifa configurada, o hay tarifa pero ninguno junta el K=3. La tarifa
+   *  de referencia en sí JAMÁS sale de la base del cliente -- esto es sólo
+   *  la relación canon/tarifa, 1 decimal, negativo = por debajo. */
+  spread_pct: number | null;
+  /** Cuántos clientes del consolidado tienen tarifa de referencia
+   *  configurada (con o sin K=3) -- distingue "nadie configuró tarifa" de
+   *  "configuraron pero el spread quedó suprimido" cuando `spread_pct` es
+   *  `null`. */
+  clientes_con_tarifa: number;
 }
 
 /** Agregados por cliente -- superset de `AgregadosMetricas` con
@@ -105,6 +117,25 @@ export interface ConsolidadoMetricas extends AgregadosMetricas {
  *  la spec es explícita: "la fecha, no quién". */
 export interface AgregadosMetricasCliente extends AgregadosMetricas {
   ultimo_acceso: string | null;
+  /** Oportunidad de precio (Fase 6): `(Σ canon / Σ tarifa aplicable − 1) ×
+   *  100` sobre los contratos activos con tarifa aplicable de este cliente,
+   *  1 decimal. Negativo = cobra por debajo de su tarifa de referencia.
+   *  `null` por CUALQUIERA de dos motivos taxativos -- distinguilos con
+   *  `tarifa_configurada`, nunca se adivina cuál fue:
+   *   (i) `tarifa_configurada === false` -- el cliente no configuró tarifa;
+   *   (ii) hay tarifa pero menos de 3 contratos con tarifa aplicable (misma
+   *        supresión K=3 que el canon, `_suprimir_celda_chica`).
+   *  La tarifa de referencia NUNCA viaja en este campo ni en ningún otro --
+   *  sólo la relación. */
+  spread_pct: number | null;
+  /** Si el cliente tiene tarifa de referencia configurada (default o por
+   *  sede) en `/api/layout/rates`. `false` es el estado más común al
+   *  principio -- la consola lo dice, no inventa un spread. */
+  tarifa_configurada: boolean;
+  /** Contratos activos de este cliente cuyo espacio no tiene tarifa
+   *  aplicable (ni por sede ni default) -- no entran en la cuenta del
+   *  spread. Conteo, nunca un monto. */
+  contratos_sin_tarifa: number;
 }
 
 export interface ClienteMetricas {
@@ -199,3 +230,67 @@ export const getTendencia = (cliente: string = CONSOLIDADO_SLUG, meses = 12): Pr
   client
     .get<Tendencia>("/plataforma/tendencia", { params: { cliente, meses } })
     .then((r) => r.data);
+
+// ─── Cohortes de adopción (Fase 6 plataforma) ───────────────────────────────
+//
+// Shape FIJADO por el contrato vinculante de la Fase 6 (mensaje del Maestro,
+// campo por campo) -- codificado contra el contrato, no contra una respuesta
+// real (el backend lo implementa en paralelo). Todo sale del registro
+// (usuarios, membresías, fundaciones, estados_cliente) -- ninguna base de
+// cliente se abre para esto salvo lo que `/metricas` ya abre para
+// `con_contratos_activos`. Ningún correo, nombre ni id de usuario en el
+// cuerpo -- sólo conteos y fechas sin hora. La clasificación se calcula UNA
+// vez en el backend: el frontend NUNCA re-deriva estados a partir de fechas,
+// sólo pinta `clasificacion` tal cual llega.
+
+export type Clasificacion = "nueva" | "activa" | "fantasma" | "dormida" | "sin_cuentas";
+
+export interface CohorteAdopcion {
+  /** Mes de alta `"YYYY-MM"`, o `null` = "sin fecha de alta" (se muestra con
+   *  ese texto, al final -- no se inventa un mes). */
+  cohorte: string | null;
+  clientes: number;
+  /** % de la cohorte con algún acceso en los últimos 30 días. `null` cuando
+   *  no aplica (p. ej. cohorte vacía) -- nunca se asume 0. */
+  retencion_30d_pct: number | null;
+  nueva: number;
+  activa: number;
+  fantasma: number;
+  dormida: number;
+  sin_cuentas: number;
+}
+
+export interface ClienteAdopcion {
+  slug: string;
+  nombre: string;
+  estado_cuenta: EstadoCuenta;
+  /** Mensaje de la base rota, o `null` si se leyó bien (mismo patrón que
+   *  `ClienteMetricas.error`). */
+  error: string | null;
+  cohorte: string | null;
+  clasificacion: Clasificacion;
+  usuarios_con_cuenta: number;
+  usuarios_activos_30d: number;
+  /** Desde el último acceso de CUALQUIER usuario del cliente. `null` si
+   *  nunca entró nadie -- no es lo mismo que 0. */
+  dias_sin_acceso: number | null;
+  con_contratos_activos: boolean;
+}
+
+export interface Adopcion {
+  periodo: string; // "YYYY-MM"
+  generado_en: string; // ISO 8601 UTC
+  /** Ya vienen ordenadas por mes ascendente -- no reordenar. */
+  cohortes: CohorteAdopcion[];
+  /** Ya vienen ordenados fantasma → dormida → sin_cuentas → nueva → activa
+   *  (es "a quién llamar hoy" primero) -- respetar el orden del backend, no
+   *  reordenar por otra cosa. */
+  clientes: ClienteAdopcion[];
+}
+
+/** Sin parámetros: el backend fija `periodo` al mes actual. 401 sin token,
+ *  403 quien no es operador. **Nunca se guarda en localStorage**: mismo
+ *  guardrail que `getClientesPlataforma`/`getMetricasPlataforma`/
+ *  `getTendencia` -- vive sólo en el estado de quien la pide. */
+export const getAdopcion = (): Promise<Adopcion> =>
+  client.get<Adopcion>("/plataforma/adopcion").then((r) => r.data);

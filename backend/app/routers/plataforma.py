@@ -7,12 +7,14 @@ supermercado; el estado de cuenta vive enteramente en la base por defecto
 (``estados_cliente``, ver ``app/plataforma_estado.py``).
 
 **La excepción, textual** (enmienda de la regla dura de la Fase 2, spec de la
-Fase 4): el operador accede a datos de negocio SOLO por el endpoint de métricas
-agregadas -- sólo lectura, sólo agregados (nunca filas individuales), y cada
-consulta queda anotada en ``bitacora_plataforma`` con su correo. La lógica vive
-entera en ``app/plataforma_metricas.py``, que no escribe una sola fila en
-ninguna base de cliente; acá abajo sólo se valida el período, se anota la
-consulta y se devuelve.
+Fase 4): el operador accede a datos de negocio SOLO por los endpoints de
+métricas agregadas -- ``/metricas``, ``/tendencia`` y, desde la Fase 6,
+``/adopcion`` -- sólo lectura, sólo agregados (nunca filas individuales), y
+cada consulta queda anotada en ``bitacora_plataforma`` con su correo. La
+lógica vive entera en ``app/plataforma_metricas.py`` y
+``app/plataforma_adopcion.py``, que no escriben una sola fila en ninguna base
+de cliente; acá abajo sólo se valida el período, se anota la consulta y se
+devuelve.
 
 Operador = email en env ``OPERADOR_EMAILS``, y sólo para cuentas con ``sub``:
 el login legado nunca trae ``request.state.actor_email`` (lo deja
@@ -143,6 +145,44 @@ def tendencia_del_negocio(
             email=email,
             accion="tendencia",
             periodo=f"{cuerpo['cliente']}:{cuerpo['desde']}..{cuerpo['hasta']}",
+            en=datetime.now(timezone.utc),
+        ))
+        reg.commit()
+    finally:
+        reg.close()
+
+    return cuerpo
+
+
+# ─── Adopción (Fase 6) ────────────────────────────────────────────────────────
+#
+# Ruta LITERAL, declarada INMEDIATAMENTE después de `/tendencia` y ANTES de
+# `/supresiones/{solicitud_id}` y `/clientes/{slug}` -- la regla dura de orden
+# de rutas de FastAPI. Misma frontera del operador: sólo lectura, sólo
+# agregados del REGISTRO (más `contratos_activos_por_cliente`, que reusa el
+# recorrido de bases de `/metricas` en vez de abrirlas de nuevo), con
+# bitácora. No abre ninguna base de cliente.
+
+@router.get("/adopcion")
+def adopcion_del_negocio(email: str = Depends(require_operador)):
+    """Cohortes de adopción: quién entra, quién no, y a quién llamar hoy.
+
+    Sin parámetros -- siempre el mes calendario en curso (UTC), como el resto
+    del panel. **La bitácora se escribe SIEMPRE**, con acción ``"adopcion"`` y
+    el período en curso, después de calcular -- si el cálculo se cayera, no
+    habría acceso que anotar.
+    """
+    from app.models.plataforma import BitacoraPlataforma
+    from app.plataforma_adopcion import calcular_adopcion
+
+    cuerpo = calcular_adopcion()
+
+    reg = sesion_registro()
+    try:
+        reg.add(BitacoraPlataforma(
+            email=email,
+            accion="adopcion",
+            periodo=cuerpo["periodo"],
             en=datetime.now(timezone.utc),
         ))
         reg.commit()

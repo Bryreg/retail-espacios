@@ -314,6 +314,42 @@ sobre uno o dos contratos deja de ser un agregado en los hechos: equivaldría, e
 práctica, al canon de un contrato puntual e identificable. El umbral existe precisamente
 para que eso no pase.
 
+> **[VALIDAR CON ABOGADO]**
+
+Desde la misma consola, y con el mismo alcance —solo lectura, solo agregados, con
+constancia en la bitácora—, el operador ve además dos lecturas incorporadas después:
+
+**La relación entre el canon cobrado y la tarifa de referencia del supermercado.** El
+supermercado cliente puede configurar, dentro de su propio sistema, una **tarifa de
+referencia** por tipo de espacio y por sede: cuánto dice que vale cada espacio. Ese valor
+es información comercial del supermercado y **nunca se muestra al operador**, ni por sede
+ni en promedio ni sumada. Lo único que cruza es la **relación porcentual** entre lo que el
+supermercado efectivamente cobra por sus contratos activos del período y lo que esas
+mismas posiciones valdrían según su propia tarifa —un porcentaje con signo, ponderado
+sobre el conjunto de contratos, nunca un promedio de promedios—, junto con **si el
+supermercado configuró o no una tarifa de referencia** (sí/no) y un **conteo de contratos
+del período a los que no les aplica ninguna tarifa**. Esta relación está sujeta al **mismo
+umbral de 3 contratos** descrito arriba: por debajo de tres contratos con tarifa aplicable
+el porcentaje se omite, porque con uno o dos el porcentaje y el canon promedio que ya se
+publica permitirían despejar la tarifa individual, que es justamente lo que no puede
+salir.
+
+**La lectura de adopción del servicio.** Para entender qué supermercados están usando el
+servicio y cuáles dejaron de entrar —el antecedente típico de una baja—, el operador ve,
+**por supermercado**: cuántas cuentas con membresía activa tiene, cuántas de esas cuentas
+entraron en los últimos 30 días, **cuántos días pasaron desde el último acceso de
+cualquiera de sus cuentas** —un número de días, no quién entró ni cuándo entró cada
+persona—, si el supermercado tiene contratos vigentes en el período (sí/no), el **mes de
+alta** del supermercado (mes y año, sin día) y una **clasificación derivada** de todo lo
+anterior, calculada por el sistema: nueva, activa, sin uso con contratos, sin uso sin
+contratos, o sin cuentas. Estos datos se agrupan además por mes de alta, con el porcentaje
+de supermercados de cada grupo que registró algún acceso en los últimos 30 días. **Ninguna
+de estas cifras identifica a una persona**: no se muestran correos, nombres, identificadores
+ni fechas de acceso de ninguna cuenta en particular, sólo conteos y cantidades de días
+referidos al supermercado como organización. Cada consulta de adopción queda anotada —con
+el correo del operador, el momento y el período— en la bitácora de la plataforma, igual que
+las consultas de métricas.
+
 Esto no cambia el reparto de responsabilidades del punto 5.2: el supermercado sigue siendo
 el responsable del tratamiento de los datos de su gente y de sus proveedores, y RECABRA
 sigue siendo el encargado. Lo que describe este punto es una capacidad interna de operación
@@ -341,6 +377,26 @@ supermercado trata—.
 > si es así, qué tratamiento adicional corresponde (¿excluir del top a los proveedores sin
 > razón social distinguible de una persona natural? ¿es la regla de los 3 contratos
 > suficiente disociación?).
+>
+> **[VALIDAR CON ABOGADO] — sobre las dos lecturas incorporadas después** (la relación
+> canon/tarifa de referencia y la lectura de adopción): la decisión tomada fue **NO subir
+> `VERSION_POLITICA`**, con la misma justificación que se usó para los agregados
+> anteriores de este punto 5.3. El motivo: la relación canon/tarifa queda bajo el **mismo
+> umbral de 3 contratos** que ya rige para el canon, y la lectura de adopción es un
+> conjunto de conteos y de cantidades de días referidos al supermercado **como
+> organización** —cuántas cuentas, cuántas entraron, cuántos días desde el último acceso de
+> cualquiera de ellas—, sin correos, nombres, identificadores ni fechas de acceso
+> individuales, de modo que no se incorpora ningún dato personal nuevo ni se amplía la
+> finalidad ya informada. Que el abogado confirme ese criterio y, en particular, dos
+> puntos: (i) si la **cantidad de días desde el último acceso** de un supermercado que
+> tiene **una sola cuenta activa** deja de ser un dato de la organización y pasa a ser un
+> dato de esa persona determinable —el mismo interrogante que ya plantea la "fecha del
+> último acceso" descrita más arriba—; y (ii) si el porcentaje canon/tarifa, aun bajo el
+> umbral de 3, puede considerarse información comercial reservada del supermercado cliente
+> cuyo tratamiento convenga cubrir expresamente en el contrato de servicio del punto 5.2
+> —no es un dato personal, pero sí un dato de negocio de un tercero—. Si la conclusión
+> fuera que corresponde una nueva aceptación de los titulares, el camino previsto es el
+> mismo: subir `VERSION_POLITICA` y disparar el re-consentimiento del punto 4.1.
 
 ---
 
