@@ -742,7 +742,9 @@ def test_t26_cliente_roto_no_rompe_metricas(client, monkeypatch):
 def test_t27_tendencia_no_cae_en_las_parametricas(client, monkeypatch):
     _ids, cab = _escenario_jugoso(client, monkeypatch)
 
-    caminos = [getattr(r, "path", "") for r in client.app.routes]
+    from conftest import rutas_planas
+
+    caminos = [r.path for r in rutas_planas(client.app)]
     i_tendencia = caminos.index("/api/plataforma/tendencia")
     parametricas = [i for i, p in enumerate(caminos)
                     if p.startswith("/api/plataforma/") and "{" in p]

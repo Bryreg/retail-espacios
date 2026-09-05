@@ -139,10 +139,17 @@ def test_el_token_no_abre_ningun_otro_endpoint(client, admin):
     # pedir sesión. Devuelve sólo código y nombre de cada supermercado.
     publicas = {"/api/health", "/api/auth/clientes"}
 
+    # Se enumera por el esquema OpenAPI y no por `app.routes`: desde FastAPI
+    # 0.141 / Starlette 1.x `include_router` deja en `app.routes` un
+    # `_IncludedRouter` sin `path` ni `methods`, y el barrido por atributos
+    # recorría cero rutas (y pasaba en verde sin comprobar nada).
+    esquema = app.openapi()
+    rutas = sorted(
+        (path, set(m.upper() for m in ops.keys()))
+        for path, ops in esquema.get("paths", {}).items()
+    )
     revisadas = 0
-    for route in app.routes:
-        path = getattr(route, "path", "")
-        metodos = getattr(route, "methods", set()) or set()
+    for path, metodos in rutas:
         if not path.startswith("/api/") or "GET" not in metodos:
             continue
         if path.startswith("/api/montaje") or path in publicas:

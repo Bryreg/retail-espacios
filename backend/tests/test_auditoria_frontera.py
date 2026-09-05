@@ -172,13 +172,15 @@ def _un_cliente_con_proveedor(client, monkeypatch, nombre_proveedor):
 def _rutas_de_plataforma(client):
     """``(metodo, path, cuerpo)`` de TODAS las rutas del router de plataforma,
     con los parámetros ya rellenos."""
+    from conftest import rutas_planas
+
     salida = []
-    for ruta in client.app.routes:
-        path = getattr(ruta, "path", "")
+    for ruta in rutas_planas(client.app):
+        path = ruta.path
         if not path.startswith("/api/plataforma"):
             continue
         concreto = path.replace("{slug}", "galerias").replace("{solicitud_id}", "1")
-        for metodo in sorted(getattr(ruta, "methods", set()) - {"HEAD", "OPTIONS"}):
+        for metodo in sorted(ruta.methods - {"HEAD", "OPTIONS"}):
             if metodo == "PATCH" and "supresiones" in path:
                 cuerpo = {"estado": "atendida", "nota": "auditoría"}
             elif metodo == "PATCH":
@@ -244,12 +246,14 @@ def test_f02_el_token_de_la_consola_muere_en_todo_el_arbol_tambien_por_query(cli
     cab = _un_cliente_con_proveedor(client, monkeypatch, "Alpina")
     token = cab["Authorization"].split(" ", 1)[1]
 
+    from conftest import rutas_planas
+
     fugas = []
-    for ruta in client.app.routes:
-        path = getattr(ruta, "path", "")
+    for ruta in rutas_planas(client.app):
+        path = ruta.path
         if not path.startswith("/api/") or path.startswith("/api/plataforma"):
             continue
-        if "GET" not in (getattr(ruta, "methods", set()) or set()):
+        if "GET" not in ruta.methods:
             continue
         concreto = (path.replace("{slug}", "galerias").replace("{sede}", "NAVE")
                         .replace("{lease_id}", "1").replace("{space_id}", "1")

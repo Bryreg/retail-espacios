@@ -939,7 +939,9 @@ def test_la_forma_del_jwt_no_cambia(client, monkeypatch):
     assert payload["role"] == "worker"
     assert payload["cliente"] == "plataforma"
     assert payload["email"] == "op@recabra.co"
-    assert isinstance(payload["sub"], int)
+    # `sub` viaja como TEXTO de dígitos (RFC 7519; PyJWT ≥ 2.10 rechaza un
+    # `sub` numérico) y vuelve a entero en `auth._sub_entero`.
+    assert isinstance(payload["sub"], str) and payload["sub"].isdigit()
     assert isinstance(payload["epoca"], int)
 
 

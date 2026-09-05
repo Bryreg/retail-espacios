@@ -632,12 +632,20 @@ aguantaron todo sin un solo cruce: lo que se encontró fue de segundo orden.
   consolidado sí suma a todos" (Fase 4, `test_m26`). Opciones: (a) sumar sólo
   clientes publicables (precedente del spread, a17); (b) sumar a los
   suprimidos sólo si entre todos juntan ≥ K contratos. Se recomienda (b).
-- **Dependencias con DoS**: `starlette 0.38.6` (CVE-2024-47874, sin tope de
-  tamaño de request — `LimiteDeCuerpo` lo mitiga, no lo parchea),
-  `python-multipart 0.0.20`, `pyjwt 2.9.0`. El salto de starlette arrastra
-  FastAPI y el de pyjwt toca la verificación de tokens: se hace en un PR
-  propio, en serie, con `test_identidad*` y `test_files_acceso`/`test_catalogo`/
-  `test_mounts` después.
+- ~~Dependencias con DoS~~ — **cerrado en la misma rama**: `fastapi 0.115.0
+  → 0.141.1` (arrastra `starlette 1.6.0`, que parchea CVE-2024-47874, y
+  `pydantic 2.13.5`), `python-multipart 0.0.32`, `PyJWT 2.13.0`. `pip-audit`
+  limpio. Dos consecuencias de la subida, ya absorbidas: (1) PyJWT ≥ 2.10
+  exige que el claim `sub` sea TEXTO — `create_token` emite `str(id)` y
+  `auth._sub_entero` lo vuelve entero al leer (`invalidar_cache_membresia`
+  acepta las dos formas); (2) con Starlette 1.x `include_router` deja en
+  `app.routes` un `_IncludedRouter` sin `path` ni `methods`, así que los
+  tests que barrían rutas por atributos recorrían cero rutas y pasaban en
+  verde sin comprobar nada — ahora usan `conftest.rutas_planas(app)` (aplana
+  en orden de declaración) o el esquema OpenAPI. En el frontend `npm audit
+  fix` cerró `browserslist` (HIGH); queda `vite ≤ 6.4.2` (HIGH, sólo servidor
+  de desarrollo: path traversal en `.map` y `launch-editor` en Windows) porque
+  el salto a Vite 8 es mayor y se hace aparte.
 - **Dockerfile sin `USER`** (hardening-9): no verificable contra el disco de
   datos de Render desde acá.
 - **H-7 / H-8** (identidad) y **R-3 / R-4 / R-5** (alta self-service) siguen
