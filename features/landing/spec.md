@@ -69,16 +69,39 @@ distinta)
 - Accesible: navegable por teclado, `prefers-reduced-motion` respetado, texto
   alternativo para el plano.
 
-## Diseño
+## Orden de trabajo y libertad creativa (VINCULANTE — indicación del dueño)
 
-- Usar las skills de diseño del framework: `ui-ux-pro-max` (estilo, paleta,
-  tipografía, guías UX), `design-system` / `ui-styling` (tokens y
-  componentes), `brand` (voz y mensaje), `dataviz` si hay gráficos de ejemplo
-  (tendencia). Un agente de **diseño** define dirección visual y tokens ANTES
-  de que el frontend construya; un agente **analista/copy** escribe el texto
-  con el producto real (leyendo `docs/ESTADO.md`).
-- Coherente con la app (tokens `--con-*` / la paleta existente), claro y
-  oscuro, responsive de 360 px a 1920 px. Innovadora sin ser pesada.
+1. **Primero el texto. El copy es lo que decide la calidad del resultado.**
+   Un agente **analista/copy** (Opus) escribe TODO el texto de la página
+   antes de que nadie diseñe ni construya: titulares, subtítulos, bloques,
+   pasos, beneficios, CTAs, microcopy de botones y tarjetas, el pie. Lo
+   escribe con el producto real —leyendo `docs/ESTADO.md` completo, las
+   specs de `features/*/spec.md` y las capturas de `features/*/outputs/`—,
+   para un gerente de supermercado colombiano que no conoce el sistema, en
+   español claro, concreto y sin humo: verbos, cifras del producto (no
+   inventadas), cero jerga técnica. Entrega `outputs/copy.md` con la
+   estructura de la página sección por sección y, por sección, el texto
+   final más una línea de "intención" (qué tiene que sentir/entender quien
+   lee). Es el insumo único de diseño y frontend.
+2. **Diseño sin referencias visuales, solo con el texto.** Sabemos por
+   sesiones anteriores que las skills de diseño rinden mejor sin capturas ni
+   paleta impuesta. El agente de **diseño** recibe `copy.md` y esta spec, y
+   NADA más: ni capturas de la app, ni los tokens `--con-*`, ni la paleta
+   actual. Usa `ui-ux-pro-max`, `design-system` / `ui-styling`, `brand` (y
+   `dataviz` si propone gráficos) con **libertad creativa total**: dirección
+   visual, paleta, tipografía, ritmo, animaciones, la puesta en escena del
+   plano isométrico. Entrega `outputs/diseno.md` (dirección + tokens +
+   especificación por sección) y, si puede, un prototipo HTML estático en
+   `outputs/prototipo/`. Que sea ambicioso: después se descarta lo que no
+   vaya con la realidad del producto, pero eso lo decide el dueño al ver el
+   resultado, no el agente al autolimitarse.
+3. **Recién después el frontend** construye en la app a partir de `copy.md`
+   y `diseno.md`. Lo único que hereda de la app es lo funcional (rutas, CSP,
+   three.js lazy para el 3D); la estética es la del diseño nuevo. Si el
+   diseño nuevo choca con la app interior, se documenta como decisión
+   pendiente del dueño, no se "suaviza".
+4. Coherencia claro/oscuro y responsive de 360 px a 1920 px siguen siendo
+   requisitos; el resto es libre.
 - SEO básico: `<title>`, meta description, Open Graph, `robots`, `sitemap`
   no hace falta. `lang="es"`.
 
