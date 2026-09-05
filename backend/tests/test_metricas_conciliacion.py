@@ -203,6 +203,11 @@ NORTE = {
     ],
     "usuarios_con_cuenta": 2,                   # la dueña + la cuenta compartida
     "ultimo_acceso": "2026-09-17",              # la compartida, que es la más nueva
+    # Fase 6: sin tarifa de referencia configurada -> spread `null`, los 4
+    # contratos activos van a `contratos_sin_tarifa`.
+    "spread_pct": None,
+    "tarifa_configurada": False,
+    "contratos_sin_tarifa": 4,
 }
 
 # ── centro ── 2 contratos activos: 2 < K, los tres campos de plata SE SUPRIMEN.
@@ -219,6 +224,9 @@ CENTRO = {
     "top_proveedores": [],                      # suprimido (2 < 3)
     "usuarios_con_cuenta": 2,                   # el dueño + la cuenta compartida
     "ultimo_acceso": "2026-09-20",              # el dueño, más nuevo que la compartida
+    "spread_pct": None,
+    "tarifa_configurada": False,
+    "contratos_sin_tarifa": 2,
 }
 OCULTO_CENTRO = {
     "contratos": 2,
@@ -244,6 +252,9 @@ SUR = {
     ],
     "usuarios_con_cuenta": 1,                   # la compartida está INACTIVA acá
     "ultimo_acceso": None,                      # el dueño nunca entró
+    "spread_pct": None,
+    "tarifa_configurada": False,
+    "contratos_sin_tarifa": 7,
 }
 
 # ── susp (suspendido, y adentro del consolidado igual) ──
@@ -258,6 +269,9 @@ SUSP = {
     "top_proveedores": [],                      # suprimido (2 < 3)
     "usuarios_con_cuenta": 1,
     "ultimo_acceso": "2026-07-05",
+    "spread_pct": None,
+    "tarifa_configurada": False,
+    "contratos_sin_tarifa": 2,
 }
 OCULTO_SUSP = {
     "contratos": 2,
@@ -280,6 +294,9 @@ GALERIAS = {
     "top_proveedores": [],
     "usuarios_con_cuenta": 0,
     "ultimo_acceso": None,
+    "spread_pct": None,
+    "tarifa_configurada": False,
+    "contratos_sin_tarifa": 0,
 }
 OCULTO_GALERIAS = {"contratos": 0, "ingreso": 0.0, "canon": None, "proveedores": {}}
 
@@ -318,6 +335,11 @@ CONSOLIDADO = {
         {"nombre": "Diana", "contratos_activos": 1},     # Exito y Familia quedan afuera
     ],
     "usuarios_con_cuenta": 5,   # 4 dueños + 1 compartida (DISTINTOS, no Σ de filas)
+    # Fase 6 (spread): ningún cliente de este escenario tiene tarifa de
+    # referencia configurada -> 0 clientes con tarifa, 0 contratos con tarifa
+    # (0 < K), spread consolidado `null`.
+    "spread_pct": None,
+    "clientes_con_tarifa": 0,
 }
 
 # Las dos cuentas EQUIVOCADAS, con nombre y número, para que el test las nombre.
@@ -590,12 +612,18 @@ CLAVES_CONSOLIDADO = {
     "clientes_total", "clientes_con_error", "sedes_con_plano",
     "espacios_comercializables", "ocupacion_pct", "canon_promedio_mensual",
     "ingreso_contratado_mes", "top_proveedores", "usuarios_con_cuenta",
+    # Fase 6 (spread): consolidado.
+    "spread_pct", "clientes_con_tarifa",
 }
 CLAVES_FILA = {"slug", "nombre", "estado_cuenta", "error", "metricas"}
 CLAVES_METRICAS = {
     "sedes_con_plano", "espacios_comercializables", "ocupacion_pct",
     "canon_promedio_mensual", "ingreso_contratado_mes", "top_proveedores",
     "usuarios_con_cuenta", "ultimo_acceso",
+    # Fase 6 (spread): por cliente. Ninguno de estos clientes tiene tarifa de
+    # referencia configurada en este escenario, así que `spread_pct` es
+    # siempre `null` y `contratos_sin_tarifa` son todos los activos.
+    "spread_pct", "tarifa_configurada", "contratos_sin_tarifa",
 }
 
 

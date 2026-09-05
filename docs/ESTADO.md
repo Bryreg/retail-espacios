@@ -409,6 +409,137 @@ devuelve la verdad de hoy proyectada hacia atrás. Sin historia persistida,
 - El histórico **no se rellena hacia atrás**: la serie arranca vacía y se llena
   mes a mes desde el despliegue. Un backfill sería inventar datos.
 
+### Fase 6 — Asesoría
+
+Cierra el roadmap de asesoría de la consola con las dos lecturas que faltaban
+para que una sesión tenga algo concreto que recomendar: **oportunidad de
+precio** (spread canon vs tarifa de referencia) y **cohortes de adopción**
+(cuentas fantasma). Backend y frontend completos en esta fase.
+
+**Spread (oportunidad de precio).** `spread_pct = (Σ canon_con_tarifa / Σ
+tarifa_aplicable − 1) × 100`, por cliente y consolidado, con K=3 sobre el
+número de contratos con tarifa aplicable (misma constante
+`K_MINIMO_CONTRATOS`, mismo helper `_suprimir_celda_chica` conceptualmente,
+pero acá con un helper propio `_spread` porque el umbral no anula con `null`
+un booleano ni un conteo, sino sólo el número). **La tarifa NUNCA sale de la
+base del cliente**: ni su valor, ni su suma, ni un promedio — sólo la relación.
+
+- **Dónde vive**: `backend/app/plataforma_metricas.py`. `_numeros_del_layout`
+  gana un tercer valor de retorno, `mapa_tipos` (`codigo_completo -> (SEDE,
+  tipo)`), armado en la MISMA pasada que ya abre el plano para
+  `_caras_comercializables` — no se abre una segunda vez por contrato.
+  `_tarifas_limpias(db)` lee `reference_rates_raw` (de `routers/layout.py`) y
+  aplica la MISMA regla de `_clean_rates` (sólo números > 0); import local,
+  misma sesión del cliente que ya está abierta. `_tarifa_aplicable` resuelve
+  sede-o-default por contrato. Los cinco crudos nuevos
+  (`canon_con_tarifa`, `tarifa_total`, `contratos_con_tarifa`,
+  `contratos_sin_tarifa`, `tarifa_configurada`) se calculan en
+  `_metricas_de_un_cliente` y NUNCA entran a `publicas_desde_crudos` —esa
+  función la reusa la tendencia (Fase 5), que reconstruye crudos desde disco
+  sin estas claves y tiraría `KeyError`—; los tres campos públicos por
+  cliente (`spread_pct`, `tarifa_configurada`, `contratos_sin_tarifa`) se
+  agregan DESPUÉS, en `_metricas_de_un_cliente`, igual que `ultimo_acceso`.
+  El consolidado (`spread_pct`, `clientes_con_tarifa`) se calcula en
+  `_consolidar` —sólo `/metricas`—, nunca en `consolidar_agregado` ni
+  `consolidar_crudos`, por la misma razón de la tendencia.
+- **Decisión de privacidad**: contrato cuyo espacio no está en el mapa (código
+  fuera del plano) o cuyo tipo no tiene tarifa aplicable (ni por sede ni
+  default) → cuenta en `contratos_sin_tarifa` y queda fuera del spread. Sin
+  ninguna tarifa configurada → `spread_pct: null`, `tarifa_configurada:
+  false`, `contratos_sin_tarifa` = todos los activos del período (es el
+  estado inicial más común). Consolidado ponderado (Σ canon_con_tarifa / Σ
+  tarifa_total de los clientes LEGIBLES), nunca promedio de spreads —
+  verificado a mano en `test_plataforma_spread.py` con un reparto asimétrico
+  a propósito.
+- **Caché**: el spread viaja en el mismo cuerpo de `/metricas`, mismo caché
+  de 5 minutos, mismo `limpiar_cache_metricas()`.
+- **Riesgo residual aceptado (documentado, no un bug)**: con EXACTAMENTE 3
+  contratos con tarifa del mismo tipo y `contratos_sin_tarifa == 0`, alguien
+  que conozca el ingreso publicado puede despejar la tarifa de ese tipo
+  (`ingreso / (1 + spread/100) / 3`). Es la decisión K=3 de la spec —la misma
+  que ya acepta el canon promedio publicado con exactamente 3 contratos—, no
+  un descuido de esta fase.
+- **Pendiente, fuera de alcance**: histórico del spread. `snapshot_metricas`
+  no puede ganar columnas (SIN MIGRACIONES) y una tabla nueva sólo para esto
+  no se justifica todavía.
+
+**Adopción (cohortes).** Todo sale del REGISTRO —nunca de una base de
+cliente nueva—: `ClienteRow`, `EstadoCliente`, `Membresia` + `Usuario.
+ultimo_login`, `Fundacion.creado_en`, más `contratos_activos_por_cliente`
+(parte B, abajo). Ningún correo, nombre ni id de usuario sale al JSON; las
+fechas van sin hora.
+
+- **Dónde vive**: `backend/app/plataforma_adopcion.py`, función
+  `calcular_adopcion()`. La clasificación se calcula UNA vez, en este orden:
+  `sin_cuentas` (cero membresías activas) → `nueva` (alta hace menos de 30
+  días) → `activa` (algún acceso en 30 días) → `fantasma` (contratos activos
+  y sin acceso reciente — la señal que la asesoría busca) → `dormida` (nada
+  de lo anterior). Cohorte = mes de `Fundacion.creado_en` más antigua del
+  slug, o `ClienteRow.creado` si no hay fundación, o `null` si ninguna de las
+  dos existe. Un slug ausente de `contratos_activos_por_cliente` (base rota
+  este período) sale con `con_contratos_activos: false` y
+  `error: ERROR_BASE_ILEGIBLE`; el resto de la fila (puro registro) se
+  calcula igual.
+- **Gotcha real, ya corregido**: `datetime` es subclase de `date` en Python
+  —`isinstance(alta, date)` da `True` para las dos—, así que reducir
+  `ClienteRow.creado` (un `datetime`) a día exige preguntar por `datetime`
+  explícitamente; la pregunta al revés deja pasar el `datetime` intacto y la
+  resta contra un `date` revienta con `TypeError` en el primer cliente sin
+  `Fundacion` (típicamente `galerias`).
+- **Router**: `GET /api/plataforma/adopcion`, sin parámetros, declarado
+  INMEDIATAMENTE después de `/tendencia` y antes de `/supresiones/{id}` y
+  `/clientes/{slug}` (orden literal-antes-de-paramétrica). Bitácora SIEMPRE,
+  `accion="adopcion"`, después de calcular.
+
+**Conteo de contratos para adopción, sin abrir bases nuevas (parte B).** El
+cuerpo de `calcular()` se partió: `_calcular(anio_mes, origen) -> (cuerpo,
+{slug: nº contratos activos | None})` hace el recorrido real y devuelve el
+conteo de contratos activos por cliente como segundo valor (de uso INTERNO,
+nunca al JSON) — `None` para una base que se intentó leer y no se pudo, y el
+slug AUSENTE para un cliente que nació después de ese cálculo (así la
+adopción no confunde un alta reciente con una base rota); `calcular()` queda como wrapper de siempre, con la misma
+firma que ya usaba `cerrar_mes_anterior`. `metricas_del_periodo` llama a
+`_calcular` y llena, además del caché de siempre (`_cache`, sin cambiar su
+forma), un `_cache_contratos[anio_mes]` con el mismo TTL de 5 minutos.
+`contratos_activos_por_cliente(anio_mes)` sirve del caché si está fresco, o
+dispara `metricas_del_periodo` (que lo llena) si no. `limpiar_cache_metricas()`
+limpia los dos cachés.
+
+**Decisión de privacidad del spread (vinculante, cierra la pendiente de Fase
+4).** La tarifa de referencia es estrategia comercial del cliente y NUNCA
+cruza la frontera del operador: ni su valor, ni Σ tarifa, ni un promedio, ni
+por sede. Sólo viaja la relación `spread_pct`. Lista taxativa de campos nuevos
+en `/metricas`: por cliente `spread_pct` (`null` por dos motivos distintos:
+sin tarifa o K=3), `tarifa_configurada`, `contratos_sin_tarifa`; consolidado
+`spread_pct` y `clientes_con_tarifa`. Lista negra test-enforced: ninguna otra
+clave con `tarifa`, `rates`, `by_sede`, `default`. **El spread consolidado
+suma SÓLO a los clientes cuyo propio spread se publica** (≥ K contratos con
+tarifa): si entrara un cliente suprimido, su spread se despejaría por
+diferencia contra los visibles y la supresión no valdría nada (hallazgo H-1
+de la fase, `test_asesoria_ataques.py` a17). Es distinto del ingreso
+consolidado, que sí suma a todos: ahí el total del negocio es el dato; acá el
+dato es una relación cuya base es secreta. Riesgo aceptado (K=3): con
+exactamente 3 contratos con tarifa del mismo tipo, el ingreso publicado deja
+estimar la tarifa unitaria (a18, medido); es la misma aceptación que ya rige
+el canon promedio.
+
+**Endpoint `GET /api/plataforma/adopcion`.** Sin parámetros (siempre el mes
+en curso UTC). `require_operador`: sin token 401, admin legado 403, dueño de
+cliente 403, operador 200. Bitácora siempre, `accion="adopcion"`,
+`periodo=<YYYY-MM>`. Responde `{ periodo, generado_en, cohortes: [...],
+clientes: [...] }`; el frontend ordena los `fantasma` primero. No abre ninguna
+base de cliente que `/metricas` no abra ya. La ventana "activo" es de 30 días
+INCLUSIVE (`<= DIAS_RECIENTE`: el día 30 exacto cuenta — hallazgo H-4,
+`test_asesoria_contador.py` 10e).
+
+**Frontend (`/plataforma`).** Columna "vs tarifa" en la tabla de clientes con
+tres estados (`−12,4 %` / `+3,1 %`; `Suprimido ‹3`; `sin tarifa`); tile en el
+hero "VS TARIFA DE REFERENCIA" con la lectura en palabras; panel "Adopción"
+debajo de "Tendencia" con tabla de cohortes (mes, clientes, retención 30d,
+desglose por badge) y lista "A quién llamar hoy". `components/plataforma/
+adopcion.tsx`; primitivas de `consola.tsx`, tokens `--con-*`, claro y oscuro,
+sin librerías nuevas, bajo la CSP de Fase 3.
+
 ### Pendientes conocidos: clientes y plataforma
 
 - **R-3 (menor)**: el tope de 2 fundaciones es count+insert sin barrera en la

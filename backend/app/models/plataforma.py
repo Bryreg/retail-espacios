@@ -95,7 +95,7 @@ class BitacoraPlataforma(Base):
     id = Column(Integer, primary_key=True, index=True)
     # El correo del operador (cuenta con `sub`; el legado jamás es operador).
     email = Column(String, nullable=False, index=True)
-    # Código estable, como en `audit_log`: hoy sólo "metricas".
+    # Código estable, como en `audit_log`: "metricas" | "tendencia" | "adopcion".
     accion = Column(String, nullable=False, default="metricas")
     # El período consultado, "YYYY-MM". Es el QUÉ de la línea: sin él, saber
     # que alguien miró no dice qué miró.

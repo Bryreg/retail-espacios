@@ -77,6 +77,21 @@ TOPE_PROVEEDORES = 5
 K_MINIMO_CONTRATOS = 3
 
 
+def _spread(canon: float, tarifa: float, contratos: int) -> float | None:
+    """``(Σ canon_con_tarifa / Σ tarifa − 1) × 100``, redondeado a 1 decimal.
+
+    ``None`` por debajo de ``K_MINIMO_CONTRATOS`` — la MISMA regla de celda
+    chica que protege el canon: con uno o dos contratos con tarifa aplicable,
+    el spread y el canon promedio (que sí se publica) despejan la tarifa. Con
+    ``contratos >= K`` la tarifa acumulada es siempre positiva (sólo se suma
+    cuando un contrato tuvo tarifa aplicable > 0), así que no hace falta
+    guardia aparte contra la división por cero.
+    """
+    if contratos < K_MINIMO_CONTRATOS:
+        return None
+    return round((canon / tarifa - 1) * 100, 1)
+
+
 def _suprimir_celda_chica(publicas: dict, contratos: int) -> dict:
     """Aplica la regla K=3 sobre un diccionario de métricas, in place.
 
@@ -225,18 +240,63 @@ def _caras_comercializables(fixtures: list, sede_snapshot: str) -> set[str]:
     return caras
 
 
+# ─── Tarifa de referencia: tipo y sede de cada espacio (Fase 6) ───────────────
+#
+# El spread necesita, para cada contrato, la tarifa APLICABLE a su espacio —
+# la de su sede o la default— y esa tarifa se busca por (SEDE, tipo). El plano
+# ya se abre una vez para `_caras_comercializables`; en vez de abrirlo de
+# nuevo por cada contrato (`find_fixture_by_space_code` recorre TODAS las
+# sedes por cada llamada), se arma acá, en la MISMA pasada, un mapa
+# ``codigo_completo -> (SEDE, tipo)``.
+
+def _tipo_de_tarifa(tipo: str) -> str:
+    """Misma semántica que ``_tipo_de_tarifa`` de ``routers/bulk_leases.py``:
+    las dos caras de una góndola (doble o mural) comparten tarifa, porque el
+    valor negociado también es por cara."""
+    return "gondola" if tipo in ("gondola_doble", "gondola_mural") else tipo
+
+
+def _mapa_tipos_de_sede(fixtures: list, sede_snapshot: str) -> dict[str, tuple[str, str]]:
+    """``codigo_completo -> (SEDE, tipo)`` de los fixtures COMERCIALIZABLES de
+    una sede. Espeja ``_caras_comercializables``: la cara ``-B`` de una
+    góndola doble entra con el MISMO tipo que la cara A."""
+    mapa: dict[str, tuple[str, str]] = {}
+    for fixture in fixtures:
+        if not isinstance(fixture, dict):
+            continue
+        code = str(fixture.get("code") or "").strip()
+        if not code:
+            continue
+        if not _es_comercializable(fixture):
+            continue
+        sede = str(fixture.get("sede") or sede_snapshot or "").strip()
+        completo = _codigo_completo(sede, code)
+        if not completo:
+            continue
+        sede_uc = sede.strip().upper()
+        tipo = _tipo_de_tarifa(str(fixture.get("type") or ""))
+        mapa[completo] = (sede_uc, tipo)
+        if _es_gondola_doble(fixture):
+            mapa[f"{completo}-B"] = (sede_uc, tipo)
+    return mapa
+
+
 # ─── Un cliente ───────────────────────────────────────────────────────────────
 
-def _numeros_del_layout(db) -> tuple[int, set[str]]:
-    """``(sedes_con_plano, caras_comercializables)`` leyendo ``layout_snapshots``.
+def _numeros_del_layout(db) -> tuple[int, set[str], dict[str, tuple[str, str]]]:
+    """``(sedes_con_plano, caras_comercializables, mapa_tipos)`` leyendo
+    ``layout_snapshots``.
 
     Una sede con el plano vacío no es una sede con plano: la fila existe desde
-    que alguien abrió el editor y guardó sin dibujar nada.
+    que alguien abrió el editor y guardó sin dibujar nada. ``mapa_tipos`` es
+    ``codigo_completo -> (SEDE, tipo)`` (Fase 6, spread): se arma en la misma
+    pasada para no volver a abrir el plano por cada contrato.
     """
     from app.models.models import LayoutSnapshot
 
     sedes = 0
     caras: set[str] = set()
+    mapa_tipos: dict[str, tuple[str, str]] = {}
     for snap in db.query(LayoutSnapshot).all():
         try:
             fixtures = json.loads(snap.fixtures_json or "[]")
@@ -247,7 +307,8 @@ def _numeros_del_layout(db) -> tuple[int, set[str]]:
             continue
         sedes += 1
         caras |= _caras_comercializables(fixtures, snap.sede or "")
-    return sedes, caras
+        mapa_tipos.update(_mapa_tipos_de_sede(fixtures, snap.sede or ""))
+    return sedes, caras, mapa_tipos
 
 
 def _contratos_activos(db, desde: date, hasta: date) -> list[tuple[str, str, float]]:
@@ -402,6 +463,42 @@ def _plata(valor: float) -> float:
     return round(valor + 0.0, 2)
 
 
+def _tarifas_limpias(db) -> dict:
+    """``{"default": {...}, "by_sede": {...}}`` con la MISMA regla de
+    ``_clean_rates`` de ``routers/layout.py`` (sólo números > 0), sede en
+    mayúsculas. Import LOCAL, en la misma sesión del cliente ya abierta.
+
+    La tarifa nunca sale de acá al JSON — sólo se usa para calcular el
+    spread (una relación), nunca su valor.
+    """
+    from app.routers.layout import _clean_rates, reference_rates_raw
+
+    raw = reference_rates_raw(db)
+    default = _clean_rates(raw.get("default") or {})
+    by_sede_raw = raw.get("by_sede") or {}
+    by_sede: dict[str, dict[str, float]] = {}
+    if isinstance(by_sede_raw, dict):
+        for sede, rates in by_sede_raw.items():
+            if not isinstance(sede, str):
+                continue
+            limpio = _clean_rates(rates)
+            if limpio:
+                by_sede[sede.strip().upper()] = limpio
+    return {"default": default, "by_sede": by_sede}
+
+
+def _tarifa_aplicable(tarifas: dict, sede: str, tipo: str) -> float | None:
+    """La tarifa de un contrato: la de su SEDE si existe y es > 0, si no la
+    ``default`` si es > 0. ``None`` si ninguna de las dos aplica."""
+    valor = (tarifas.get("by_sede") or {}).get(sede, {}).get(tipo)
+    if valor is not None and valor > 0:
+        return valor
+    valor = (tarifas.get("default") or {}).get(tipo)
+    if valor is not None and valor > 0:
+        return valor
+    return None
+
+
 def _metricas_de_un_cliente(cliente, reg, desde: date, hasta: date) -> tuple[dict, dict]:
     """``(metricas_publicas, crudos_para_el_consolidado)`` de UN cliente.
 
@@ -414,12 +511,31 @@ def _metricas_de_un_cliente(cliente, reg, desde: date, hasta: date) -> tuple[dic
 
     db = sesion_de(cliente)
     try:
-        sedes, caras = _numeros_del_layout(db)
+        sedes, caras, mapa_tipos = _numeros_del_layout(db)
         contratos = _contratos_activos(db, desde, hasta)
+        tarifas = _tarifas_limpias(db)
     finally:
         # Sólo se leyó. Nada que comitear ni que revertir; la sesión se cierra
         # pase lo que pase, igual que en `_run_lease_maintenance`.
         db.close()
+
+    tarifa_configurada = bool(tarifas["default"]) or any(tarifas["by_sede"].values())
+    canon_con_tarifa = 0.0
+    tarifa_total = 0.0
+    contratos_con_tarifa = 0
+    contratos_sin_tarifa = 0
+    for codigo, _nombre, canon in contratos:
+        entrada = mapa_tipos.get(codigo)
+        tarifa_valor = None
+        if entrada is not None:
+            sede_del_espacio, tipo = entrada
+            tarifa_valor = _tarifa_aplicable(tarifas, sede_del_espacio, tipo)
+        if tarifa_valor is None:
+            contratos_sin_tarifa += 1
+            continue
+        canon_con_tarifa += canon
+        tarifa_total += tarifa_valor
+        contratos_con_tarifa += 1
 
     ocupados = {codigo for codigo, _n, _c in contratos}
     # Un contrato sobre un espacio que NO tiene mueble en el plano (un código
@@ -446,6 +562,15 @@ def _metricas_de_un_cliente(cliente, reg, desde: date, hasta: date) -> tuple[dic
         "canon_total": canon_total,
         "proveedores": conteo_proveedores,
         "usuarios": ids_usuarios,
+        # ── Fase 6 (spread): NUNCA al JSON tal cual — sólo entran al público
+        # transformados por `_spread` (una relación, jamás la tarifa ni su
+        # suma). Ver `publicas_desde_crudos`: NO los toca -- se agregan
+        # después, en `_metricas_de_un_cliente`, igual que `ultimo_acceso`.
+        "canon_con_tarifa": canon_con_tarifa,
+        "tarifa_total": tarifa_total,
+        "contratos_con_tarifa": contratos_con_tarifa,
+        "contratos_sin_tarifa": contratos_sin_tarifa,
+        "tarifa_configurada": tarifa_configurada,
     }
     # Los públicos se derivan SIEMPRE de los crudos, por `publicas_desde_crudos`
     # -- el mismo camino que relee la serie histórica (Fase 5,
@@ -456,6 +581,13 @@ def _metricas_de_un_cliente(cliente, reg, desde: date, hasta: date) -> tuple[dic
     # ningún importe).
     publicas = publicas_desde_crudos(crudos)
     publicas["ultimo_acceso"] = ultimo_acceso.isoformat() if ultimo_acceso else None
+    # Fase 6 (spread): PROHIBIDO meterlos en `publicas_desde_crudos` -- la
+    # reusa la tendencia (`publicar_fila`), que reconstruye desde crudos en
+    # disco sin estas claves. Se agregan acá, después, igual que
+    # `ultimo_acceso`.
+    publicas["spread_pct"] = _spread(canon_con_tarifa, tarifa_total, contratos_con_tarifa)
+    publicas["tarifa_configurada"] = tarifa_configurada
+    publicas["contratos_sin_tarifa"] = contratos_sin_tarifa
     return publicas, crudos
 
 
@@ -490,8 +622,9 @@ def _ahora_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def calcular(anio_mes: str, origen: str = "vista") -> dict:
-    """El cuerpo completo de ``GET /api/plataforma/metricas``, sin caché.
+def _calcular(anio_mes: str, origen: str = "vista") -> tuple[dict, dict[str, int]]:
+    """El cuerpo completo de ``GET /api/plataforma/metricas`` (sin caché) MÁS
+    el conteo de contratos activos por cliente LEGIBLE (Fase 6, adopción).
 
     Recorre TODAS las filas de ``clientes`` del registro — activas e inactivas,
     y los suspendidos incluidos: el operador necesita ver el negocio completo,
@@ -501,6 +634,12 @@ def calcular(anio_mes: str, origen: str = "vista") -> dict:
     ``"vista"`` cuando lo disparó alguien mirando el panel, ``"cierre"`` cuando
     lo disparó el ciclo de mantenimiento. No cambia una sola cuenta ni un solo
     campo del JSON que se devuelve.
+
+    El segundo elemento de la tupla —``{slug: nº de contratos activos}`` para
+    los clientes que SÍ se pudieron leer y ``{slug: None}`` para los que no—
+    es de uso INTERNO: nunca sale al JSON de ``/metricas``. Existe para que la adopción (``contratos_activos_por_cliente``,
+    más abajo) no tenga que recorrer las N bases una segunda vez -- ya está
+    calculado acá, en `crudos["contratos"]` de cada cliente.
     """
     from app.clientes import Cliente, sesion_registro
     from app.models.models import ClienteRow
@@ -530,6 +669,7 @@ def calcular(anio_mes: str, origen: str = "vista") -> dict:
         # aparte de `acumulado` —que es una lista y le alcanza— porque el
         # snapshot necesita saber DE QUIÉN es cada crudo.
         crudos_por_slug: dict[str, dict] = {}
+        contratos_por_cliente: dict[str, int | None] = {}
         for cliente, estado in objetivos:
             fila = {
                 "slug": cliente.slug,
@@ -546,6 +686,9 @@ def calcular(anio_mes: str, origen: str = "vista") -> dict:
                 # el texto fijo — el mensaje del driver trae la URL de la base.
                 log.exception("No se pudieron leer las métricas del cliente %s", cliente.slug)
                 fila["error"] = ERROR_BASE_ILEGIBLE
+                # `None` = "se intentó leer y no se pudo". La adopción distingue
+                # así una base rota de un cliente que nació después del caché.
+                contratos_por_cliente[cliente.slug] = None
             else:
                 fila["metricas"] = publicas
                 acumulado.append(crudos)
@@ -553,6 +696,7 @@ def calcular(anio_mes: str, origen: str = "vista") -> dict:
                 # rota no deja crudos que guardar, igual que no suma al
                 # consolidado -- la serie de ese cliente tendrá un hueco ese mes.
                 crudos_por_slug[cliente.slug] = crudos
+                contratos_por_cliente[cliente.slug] = crudos["contratos"]
             clientes.append(fila)
     finally:
         reg.close()
@@ -574,7 +718,7 @@ def calcular(anio_mes: str, origen: str = "vista") -> dict:
     except Exception:  # noqa: BLE001
         log.exception("No se pudo persistir el snapshot de la serie de tendencia para %s", anio_mes)
 
-    return {
+    cuerpo = {
         "periodo": {
             "anio_mes": anio_mes,
             "desde": desde.isoformat(),
@@ -585,6 +729,18 @@ def calcular(anio_mes: str, origen: str = "vista") -> dict:
         "consolidado": _consolidar(len(clientes), clientes, acumulado),
         "clientes": clientes,
     }
+    return cuerpo, contratos_por_cliente
+
+
+def calcular(anio_mes: str, origen: str = "vista") -> dict:
+    """El cuerpo completo de ``GET /api/plataforma/metricas``, sin caché.
+
+    Wrapper de ``_calcular`` con la firma de siempre (la usa
+    ``plataforma_tendencia.cerrar_mes_anterior``): descarta el conteo de
+    contratos por cliente, que es de uso interno de la adopción.
+    """
+    cuerpo, _contratos_por_cliente = _calcular(anio_mes, origen)
+    return cuerpo
 
 
 def consolidar_crudos(acumulado: list[dict]) -> dict:
@@ -677,12 +833,34 @@ def _consolidar(total_clientes: int, clientes: list[dict], acumulado: list[dict]
     El agregado del negocio lo hace ``consolidar_agregado`` (compartido con la
     tendencia); acá sólo se le anteponen ``clientes_total`` y
     ``clientes_con_error``, que son de la foto de ESTE mes y no de la serie.
+
+    **El spread consolidado se calcula ACÁ, no en ``consolidar_agregado``**
+    (Fase 6): esa función la reusa ``app/plataforma_tendencia.py``, cuya fila
+    ``__consolidado__`` persistida no guarda ``canon_con_tarifa``/
+    ``tarifa_total`` — meterlo ahí rompería la reconstrucción con un
+    ``KeyError``. Ponderado (Σ canon_con_tarifa / Σ tarifa_total) sobre los
+    clientes LEGIBLES de ``acumulado``, K=3 sobre Σ contratos_con_tarifa,
+    nunca promedio de spreads.
     """
     con_error = sum(1 for c in clientes if c["error"] is not None)
+    agregado = consolidar_agregado(acumulado)
+    # Sólo entran al spread consolidado los clientes cuyo PROPIO spread se
+    # publica (≥ K contratos con tarifa). Si entrara un cliente suprimido por
+    # K=3, su Σ tarifa y su spread se despejarían por diferencia entre el
+    # consolidado y los clientes visibles — la supresión no valdría nada
+    # (hallazgo H-1 de la fase, `test_asesoria_ataques.py` a17). Distinto del
+    # ingreso consolidado, que sí suma a todos: ahí el total del negocio es
+    # el dato; acá el dato es una relación cuya base es secreta por spec.
+    publicables = [a for a in acumulado if a["contratos_con_tarifa"] >= K_MINIMO_CONTRATOS]
+    canon_con_tarifa = sum(a["canon_con_tarifa"] for a in publicables)
+    tarifa_total = sum(a["tarifa_total"] for a in publicables)
+    contratos_con_tarifa = sum(a["contratos_con_tarifa"] for a in publicables)
+    agregado["spread_pct"] = _spread(canon_con_tarifa, tarifa_total, contratos_con_tarifa)
+    agregado["clientes_con_tarifa"] = sum(1 for a in acumulado if a["tarifa_configurada"])
     return {
         "clientes_total": total_clientes,
         "clientes_con_error": con_error,
-        **consolidar_agregado(acumulado),
+        **agregado,
     }
 
 
@@ -694,6 +872,11 @@ def _consolidar(total_clientes: int, clientes: list[dict], acumulado: list[dict]
 
 CACHE_TTL_SEGUNDOS = 5 * 60.0
 _cache: dict[str, tuple[dict, float]] = {}
+# El conteo de contratos activos por cliente (Fase 6, adopción) — de uso
+# INTERNO, jamás al JSON. Mismo TTL y mismo candado que `_cache`, se llena en
+# el MISMO cálculo (`metricas_del_periodo` lo arma junto con el cuerpo) para
+# no recorrer las N bases una segunda vez.
+_cache_contratos: dict[str, tuple[dict[str, int], float]] = {}
 _cache_candado = threading.Lock()
 
 
@@ -713,17 +896,41 @@ def metricas_del_periodo(anio_mes: str) -> dict:
             cuerpo["de_cache"] = True
             return cuerpo
 
-    cuerpo = calcular(anio_mes)
+    cuerpo, contratos_por_cliente = _calcular(anio_mes)
 
     with _cache_candado:
-        _cache[anio_mes] = (cuerpo, time.monotonic() + CACHE_TTL_SEGUNDOS)
+        expira = time.monotonic() + CACHE_TTL_SEGUNDOS
+        _cache[anio_mes] = (cuerpo, expira)
+        _cache_contratos[anio_mes] = (contratos_por_cliente, expira)
     # Se devuelve una copia superficial por la misma razón por la que el hit de
     # arriba la hace: el llamador no puede quedarse con una referencia al
     # diccionario guardado y cambiarle `de_cache` a la copia del caché.
     return dict(cuerpo)
 
 
+def contratos_activos_por_cliente(anio_mes: str) -> dict[str, int]:
+    """``{slug: nº de contratos activos}`` de los clientes LEGIBLES del período.
+
+    Del caché de 5 minutos si está fresco (mismo TTL que ``/metricas``); si no,
+    dispara ``metricas_del_periodo`` — que lo llena como efecto de calcular — y
+    lo devuelve. Uso INTERNO exclusivo de ``plataforma_adopcion``: este dict
+    JAMÁS sale al JSON de ningún endpoint.
+    """
+    ahora = time.monotonic()
+    with _cache_candado:
+        cacheado = _cache_contratos.get(anio_mes)
+        if cacheado is not None and cacheado[1] > ahora:
+            return dict(cacheado[0])
+
+    metricas_del_periodo(anio_mes)
+
+    with _cache_candado:
+        cacheado = _cache_contratos.get(anio_mes)
+        return dict(cacheado[0]) if cacheado is not None else {}
+
+
 def limpiar_cache_metricas() -> None:
     """Para las pruebas, que arman una base nueva por prueba."""
     with _cache_candado:
         _cache.clear()
+        _cache_contratos.clear()
