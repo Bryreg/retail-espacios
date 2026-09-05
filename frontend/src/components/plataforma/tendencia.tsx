@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CONSOLIDADO_SLUG,
   getTendencia,
@@ -20,8 +20,8 @@ import { Panel, EstadoVacio, EstadoError } from "./consola";
 //
 // Criterio de analista (agente-datos): el gráfico se lee en 5 segundos sin
 // inventar — nunca se interpola sobre un hueco, nunca se compara contra un
-// mes sin dato o suprimido, y el mes en curso (parcial) queda marcado y
-// afuera de cualquier lectura de racha.
+// mes sin dato, y el mes en curso (parcial) queda marcado y afuera de
+// cualquier lectura de racha.
 
 const COP = new Intl.NumberFormat("es-CO", {
   style: "currency", currency: "COP", maximumFractionDigits: 0,
@@ -40,31 +40,31 @@ function etiquetaMesCorta(periodo: string): string {
   return `${nombre} ${a.slice(2)}`;
 }
 
-// ═══ Semántica del contrato: tres ausencias distintas + un 0 real ═══════════
+// ═══ Semántica del contrato: dos ausencias distintas + un 0 real ═══════════
 
 type Campo = "ocupacion_pct" | "ingreso_contratado_mes";
-type EstadoPunto = "normal" | "sindato" | "suprimido";
+type EstadoPunto = "normal" | "sindato";
 
 /** Valor comparable del punto para este campo, o `null` si no hay nada que
- *  graficar/comparar (sin snapshot, o suprimido/sin base para esta métrica
+ *  graficar/comparar (sin snapshot ese mes, o sin base para esta métrica
  *  puntual). Un 0 real NUNCA cae acá -- vuelve como `0`, no `null`. */
 function valorDePunto(p: PuntoTendencia, campo: Campo): number | null {
   if (p.sin_dato) return null;
   return campo === "ingreso_contratado_mes" ? p.ingreso_contratado_mes : p.ocupacion_pct;
 }
 
-/** Estado visual del punto para este campo. La supresión K=3 (contrato Fase
- *  5, punto (b)) sólo se define sobre ingreso/canon/top -- nunca toca
- *  `ocupacion_pct` (no es una regla de privacidad, es "sin espacios
- *  comercializables ese mes"), así que ese caso se pinta como "sin dato" de
- *  ESA métrica puntual, no como K=3 (mentir el motivo sería peor que no
- *  mostrar nada). */
+/** Estado visual del punto para este campo. Fase 7 quitó la supresión de
+ *  celda chica: `ingreso_contratado_mes` es siempre un número cuando hay
+ *  snapshot del mes (0.0 con cero contratos, nunca `null`). Sólo
+ *  `ocupacion_pct` puede venir `null` con `sin_dato: false` -- "sin espacios
+ *  comercializables ese mes", no una regla de privacidad -- y se pinta como
+ *  "sin dato" de ESA métrica puntual. */
 function estadoDePunto(p: PuntoTendencia, campo: Campo): EstadoPunto {
   if (p.sin_dato) return "sindato";
-  if (campo === "ingreso_contratado_mes") {
-    return p.ingreso_contratado_mes === null ? "suprimido" : "normal";
+  if (campo === "ocupacion_pct") {
+    return p.ocupacion_pct === null ? "sindato" : "normal";
   }
-  return p.ocupacion_pct === null ? "sindato" : "normal";
+  return "normal";
 }
 
 // ═══ LineaTendencia — gráfico de línea SVG propio ═══════════════════════════
@@ -107,7 +107,6 @@ function LineaTendencia({
   tooltipUnidad: string;
   tooltipContexto?: (p: PuntoTendencia) => string | null;
 }) {
-  const idHatch = useId();
   const n = serie.length;
   const etiquetaTecho = formato(ejeMax);
   // Ancho de la columna izquierda según el texto más largo que va a llevar
@@ -182,13 +181,6 @@ function LineaTendencia({
             viewBox={`0 0 ${W} ${H}`}
             preserveAspectRatio="xMinYMid meet"
           >
-            <defs>
-              <pattern id={idHatch} width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                <rect width="5" height="5" style={{ fill: "var(--con-surface)" }} />
-                <line x1="0" y1="0" x2="0" y2="5" style={{ stroke: "var(--con-suprimido-hatch)", strokeWidth: 2 }} />
-              </pattern>
-            </defs>
-
             {/* Eje: 0 y el techo, igual que las barras de Fase 4 (eje desde cero explícito). */}
             <line x1={PAD_L} y1={yBase} x2={W - PAD_R} y2={yBase} style={{ stroke: "var(--con-line)" }} strokeWidth={1} />
             <text x={PAD_L - 6} y={yBase + 3} textAnchor="end" fontSize={9} style={{ fill: "var(--con-ink-4)" }} fontFamily="var(--font-mono)">0</text>
@@ -220,22 +212,6 @@ function LineaTendencia({
                     >
                       <title>{`${tituloBase} · sin dato`}</title>
                     </line>
-                    <text x={pt.x} y={H - 4} textAnchor="middle" fontSize={8.5} style={{ fill: "var(--con-ink-4)" }}>
-                      {etiquetaMesCorta(pt.p.periodo)}
-                    </text>
-                  </g>
-                );
-              }
-              if (pt.estado === "suprimido") {
-                return (
-                  <g key={pt.i}>
-                    <rect
-                      x={pt.x - 4} y={yBase - 4} width={8} height={8}
-                      style={{ fill: `url(#${idHatch})` }}
-                      stroke="var(--con-suprimido-hatch)"
-                    >
-                      <title>{`${tituloBase} · ${tooltipUnidad} suprimido por privacidad (K=3)`}</title>
-                    </rect>
                     <text x={pt.x} y={H - 4} textAnchor="middle" fontSize={8.5} style={{ fill: "var(--con-ink-4)" }}>
                       {etiquetaMesCorta(pt.p.periodo)}
                     </text>
@@ -298,7 +274,7 @@ function LineaTendencia({
                   {pt.p.periodo}{pt.p.parcial ? " (parcial)" : ""}
                 </td>
                 <td style={{ padding: "2px 6px", textAlign: "right", color: "var(--con-ink-2)", fontFamily: "var(--font-mono)" }}>
-                  {pt.estado === "sindato" ? "sin dato" : pt.estado === "suprimido" ? "‹3 (suprimido)" : formato(pt.valor as number)}
+                  {pt.estado === "sindato" ? "sin dato" : formato(pt.valor as number)}
                 </td>
               </tr>
             ))}
@@ -313,7 +289,6 @@ function LeyendaMarcadores({ serie, campo }: { serie: PuntoTendencia[]; campo: C
   const estados = useMemo(() => new Set(serie.map((p) => estadoDePunto(p, campo))), [serie, campo]);
   const items: string[] = [];
   if (estados.has("sindato")) items.push("sin dato");
-  if (estados.has("suprimido")) items.push("suprimido por privacidad (K=3)");
   if (serie.some((p) => p.parcial)) items.push("parcial (mes en curso)");
   if (items.length === 0) return null;
   return (
@@ -325,9 +300,8 @@ function LeyendaMarcadores({ serie, campo }: { serie: PuntoTendencia[]; campo: C
 
 // ═══ Lectura accionable (criterio analista) ═════════════════════════════════
 //
-// Nunca compara contra un mes sin dato, un suprimido, ni el mes parcial. Sin
-// al menos dos meses CALENDARIO-ADYACENTES con valor real no dice nada -- ni
-// "estable".
+// Nunca compara contra un mes sin dato, ni el mes parcial. Sin al menos dos
+// meses CALENDARIO-ADYACENTES con valor real no dice nada -- ni "estable".
 
 function lecturaAccionable(serie: PuntoTendencia[], campo: Campo, formatoDelta: (n: number) => string): string | null {
   const valores = serie.map((p) => (p.parcial ? null : valorDePunto(p, campo)));

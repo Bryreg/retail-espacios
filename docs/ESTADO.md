@@ -1,7 +1,7 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: septiembre 2026 (Fase 3 comercial: Ley 1581 — consentimiento, derechos del titular — y hardening OWASP).
+Última actualización: 2026-09-05 (Fase 8 — Detalle por cliente para asesoría: el operador ve espacios, contratos y proveedores de cada cliente, solo lectura, con bitácora, reporte y política ampliada).
 
 Gestión de espacios comerciales en supermercados: se dibuja el plano de cada sede, se
 marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
@@ -161,12 +161,17 @@ Los datos jamás se borran por estado.
 
 **Operadores de plataforma**: correos en la env `OPERADOR_EMAILS`, solo para
 cuentas con `sub` (el legado jamás). Panel en `/api/plataforma/*`: listar
-clientes con estado y `PATCH` con motivo obligatorio. **Enmendado en Fase 4**
-(ver esa sección más abajo): "El operador accede a datos de negocio de los
-clientes SOLO a través de los endpoints de métricas agregadas definidos en
-esta spec: solo lectura, solo agregados (nunca filas individuales), y cada
-consulta queda anotada en la bitácora del registro con el email del
-operador. Ningún otro endpoint de plataforma abre una base de cliente."
+clientes con estado y `PATCH` con motivo obligatorio. **Enmendado en Fase 4,
+re-enmendado en Fase 7 y ampliado en Fase 8** (ver esas secciones más abajo):
+el operador accede a datos de negocio de los clientes SOLO a través de los
+endpoints de plataforma definidos en las specs — hoy los **agregados exactos**
+de `/metricas`, `/tendencia` y `/adopcion` y el **detalle de negocio** de
+`/clientes/{slug}/detalle` (espacios, contratos y proveedores de UN cliente
+por vez) —, siempre **solo lectura**, siempre anotado en la bitácora del
+registro con el email del operador, y siempre declarado en la política §5.3 y
+en el catálogo del reporte de transparencia. Lo que ningún endpoint abre:
+contactos y notas de proveedores, notas de espacios y contratos, fotos y
+archivos, datos de usuarios y la tarifa de referencia.
 Red-team dedicado en `tests/test_plataforma_ataques.py` (30 ataques; la
 frontera resistió).
 
@@ -178,9 +183,11 @@ frontera resistió).
 `space_faces` (designación explícita de la cara del mueble).
 
 **Reglas duras nuevas:**
-- `VERSION_POLITICA = "2026-09-v1"` (`models/consentimiento.py`) — debe
-  coincidir con el encabezado de `docs/legal/politica-datos.md`, y
-  `frontend/src/legal/politica-datos.md` es copia byte a byte (test lo fija).
+- `VERSION_POLITICA = "2026-09-v2"` (`models/consentimiento.py`, subida en Fase
+  7 Parte C) — debe coincidir con el encabezado de `docs/legal/politica-datos.md`,
+  y `frontend/src/legal/politica-datos.md` es copia byte a byte (test lo fija).
+  El historial de versiones vive en §11 de la política ("Vigencia y
+  versionado"), no en §10.
 - El alta exige `acepta_politica=true` → 422 antes de cualquier escritura.
   `/oauth` devuelve 428 `consentimiento_requerido` solo cuando el canje crearía
   membresía NUEVA; usuario existente recibe `pedir_consentimiento: true`
@@ -233,22 +240,41 @@ El dueño del SaaS opera y entiende su negocio desde una superficie propia.
   qué período — hit de cache incluido. Las bases de cliente se abren
   **read-only y en secuencia**, tolerantes a fallos (patrón de
   `_run_lease_maintenance`: una base rota marca error en su fila, el resto
-  del panel sigue). **Supresión de celda chica (regla de los 3 contratos)**:
-  los promedios y sumas de canon, y el top de proveedores, de un cliente
-  solo se calculan cuando agrupan al menos 3 contratos activos del período;
-  por debajo del umbral el dato sale `null`/omitido, para que el agregado
-  nunca equivalga al valor de un contrato puntual. **Nombre de proveedor
-  saneado**: `top_proveedores` no devuelve `Supplier.name` verbatim — se
-  depura de correos y teléfonos (se enmascaran) antes de entrar al JSON,
-  para que el campo de texto libre que carga el supermercado no filtre un
-  dato de contacto de un tercero.
-- **Enmienda de la regla del operador** (ver la nota en "Clientes
-  comerciales" arriba): el JSON de métricas jamás contiene filas de negocio,
-  valores de contrato individuales, ni correos/nombres de usuarios finales —
-  solo números y el top-5 de proveedores (nombre + conteo). Ningún otro
-  endpoint de plataforma abre una base de cliente. Un cliente suspendido
-  también aparece en métricas (el operador necesita ver el negocio
-  completo).
+  del panel sigue). **Nombre de proveedor saneado**: `top_proveedores` no
+  devuelve `Supplier.name` verbatim — se depura de correos y teléfonos (se
+  enmascaran) antes de entrar al JSON, para que el campo de texto libre que
+  carga el supermercado no filtre un dato de contacto de un tercero.
+- **Enmienda de la regla del operador, RE-ENMENDADA en Fase 7 y AMPLIADA en
+  Fase 8** (ver la nota en "Clientes comerciales" arriba): el operador ve los
+  **agregados EXACTOS de todos los clientes, sin umbral** — con un contrato
+  activo, el ingreso del mes es ese contrato y así se publica — **y, desde la
+  Fase 8, también el DETALLE DE NEGOCIO de cada cliente**: espacios (código,
+  tipo, estado en el período), contratos (proveedor saneado, marca, canon
+  mensual, fechas) y proveedores, más el resumen por tipo, los movimientos de
+  12 meses y las oportunidades y recomendaciones que se derivan de todo eso.
+  Ese detalle es **de un cliente por vez, solo lectura, con bitácora
+  (`accion="detalle"`) y declarado en la política (§5.3 (a)) y en el catálogo
+  del reporte de transparencia** (`endpoints: ["detalle"]`), de modo que el
+  cliente ve en su propio reporte qué se lee de él y quién lo leyó. El detalle
+  abre la base del cliente pedido; la ÚNICA lectura de otras bases es
+  `benchmark_por_tipo`, que recorre los mismos clientes que `/metricas` y
+  devuelve un promedio de canon por tipo de espacio — un número, sin slugs,
+  conteos ni nombres —; `test_auditoria_frontera.py::f01` y
+  `test_detalle_ataques.py::d10/d11` fijan que eso es todo lo que cruza. Hasta la
+  Fase 6 los agregados se protegían con una supresión de celda chica (K=3: por
+  debajo de 3 contratos activos, el dato salía `null`); el dueño de la
+  plataforma decidió cambiar el trato en vez de parcharlo (la auditoría
+  integral encontró que la regla era porosa, `frontera-5`, resuelto abajo). La
+  contrapartida sigue siendo el **reporte de transparencia** (Fase 7, más
+  abajo). **Lo que sigue intacto, y es la frontera que no se movió**: datos de
+  contacto de proveedores (`contact_name`, `phone`, `email`) y sus notas;
+  notas de espacios y de contratos; fotos y archivos (`SpaceFile`,
+  `LeaseFile`); cualquier correo, nombre o id de un **usuario** final; la
+  **tarifa de referencia** (sólo `tarifa_configurada` sí/no y el spread); y la
+  **escritura** — ningún endpoint de plataforma modifica el negocio de un
+  cliente. El JSON de `/metricas` sigue sin llevar filas: el detalle vive
+  SÓLO en `/clientes/{slug}/detalle`. Un cliente suspendido también aparece en
+  métricas (el operador necesita ver el negocio completo).
 - **Token de operador sin membresías**: `cliente="plataforma"` (slug
   reservado en el alta — ningún cliente real puede llamarse así). Solo
   resuelve bajo `/api/plataforma/*`; en cualquier otro path da 401 **por
@@ -290,12 +316,13 @@ El dueño del SaaS opera y entiende su negocio desde una superficie propia.
   desde el `PATCH` de estado) queda para la fase siguiente.
 - La Política de Tratamiento de Datos ganó un punto (5.3) declarando estas
   métricas, marcado `[VALIDAR CON ABOGADO]`. **`VERSION_POLITICA` NO se
-  subió**: no por regla general, sino porque la condición que el propio
-  red team fijó para eso —que los agregados no permitan reconstruir un
-  valor individual (H-2) ni filtrar un dato de contacto de un tercero
-  (H-1)— quedó satisfecha por la regla de los 3 contratos y el saneo de
-  nombre de proveedor descritos arriba. A la espera de que el abogado lo
-  confirme o lo contradiga (ver el punto 5.3 y `docs/legal/politica-datos.md`).
+  subió en esta fase**: no por regla general, sino porque la condición que
+  el propio red team fijó para eso —que los agregados no permitan
+  reconstruir un valor individual (H-2) ni filtrar un dato de contacto de un
+  tercero (H-1)— quedó satisfecha por la regla de los 3 contratos y el saneo
+  de nombre de proveedor descritos arriba. **Superado en Fase 7**: al quitar
+  la regla de los 3 contratos el trato cambia de forma material, y
+  `VERSION_POLITICA` sube a `"2026-09-v2"` (ver la sección Fase 7 más abajo).
 
 ### Fase 5 — Tendencia temporal (histórico de métricas)
 
@@ -318,14 +345,16 @@ devuelve la verdad de hoy proyectada hacia atrás. Sin historia persistida,
   conteo}`, top-5 elegido con el nombre original y saneado al bajar — ver
   Auditoría integral), `clientes_incluidos`, `clientes_con_error`,
   `origen` (`"vista"` | `"cierre"`) y `capturado_en`.
-- **La supresión K=3 se aplica AL LEER; el saneo del nombre, al ESCRIBIR (y
-  también al leer, idempotente)**, no al guardar los números
-  (`plataforma_tendencia.publicar_fila` reusa `_pct`, `_plata`, `_top` y
-  `_suprimir_celda_chica` de `plataforma_metricas` — cero fórmulas duplicadas).
-  Así la regla de privacidad vive en un solo lugar, el histórico no queda
-  congelado con una supresión vieja, y el día que el umbral suba el histórico
-  entero obedece sin tocar una fila. **`contratos_activos` y `ocupadas` nunca
-  salen** al JSON: son el numerador y el denominador de la propia supresión.
+- **El saneo del nombre del proveedor se aplica al ESCRIBIR (y también al
+  leer, idempotente)**, no al guardar los números
+  (`plataforma_tendencia.publicar_fila` reusa `_pct`, `_plata` y `_top` de
+  `plataforma_metricas` — cero fórmulas duplicadas). Así la regla vive en un
+  solo lugar. Hasta la Fase 6 este mismo camino aplicaba además la supresión
+  de celda chica (K=3) AL LEER; la Fase 7 la quitó — el histórico entero
+  publica ahora el número exacto sin tocar una fila persistida.
+  **`contratos_activos` y `ocupadas` nunca salen** al JSON: son crudos de
+  negocio (numerador y denominador de la ocupación), no algo que la spec deje
+  cruzar la frontera del operador — eso no cambió con Fase 7.
 - **Poblado híbrido, sin job nuevo**:
   - *Write-through*: `calcular(anio_mes, origen="vista")` hace el upsert justo
     antes del `return`. Va colgado del **cálculo** y no del endpoint, porque un
@@ -417,12 +446,11 @@ precio** (spread canon vs tarifa de referencia) y **cohortes de adopción**
 (cuentas fantasma). Backend y frontend completos en esta fase.
 
 **Spread (oportunidad de precio).** `spread_pct = (Σ canon_con_tarifa / Σ
-tarifa_aplicable − 1) × 100`, por cliente y consolidado, con K=3 sobre el
-número de contratos con tarifa aplicable (misma constante
-`K_MINIMO_CONTRATOS`, mismo helper `_suprimir_celda_chica` conceptualmente,
-pero acá con un helper propio `_spread` porque el umbral no anula con `null`
-un booleano ni un conteo, sino sólo el número). **La tarifa NUNCA sale de la
-base del cliente**: ni su valor, ni su suma, ni un promedio — sólo la relación.
+tarifa_aplicable − 1) × 100`, por cliente y consolidado, con un helper propio
+`_spread` (`null` sólo por ausencia de dato: sin contratos con tarifa
+aplicable, o sin tarifa acumulada positiva — ver Fase 7, que le quitó el
+umbral K=3 que aplicaba hasta la Fase 6). **La tarifa NUNCA sale de la base
+del cliente**: ni su valor, ni su suma, ni un promedio — sólo la relación.
 
 - **Dónde vive**: `backend/app/plataforma_metricas.py`. `_numeros_del_layout`
   gana un tercer valor de retorno, `mapa_tipos` (`codigo_completo -> (SEDE,
@@ -453,12 +481,14 @@ base del cliente**: ni su valor, ni su suma, ni un promedio — sólo la relaci�
   a propósito.
 - **Caché**: el spread viaja en el mismo cuerpo de `/metricas`, mismo caché
   de 5 minutos, mismo `limpiar_cache_metricas()`.
-- **Riesgo residual aceptado (documentado, no un bug)**: con EXACTAMENTE 3
-  contratos con tarifa del mismo tipo y `contratos_sin_tarifa == 0`, alguien
-  que conozca el ingreso publicado puede despejar la tarifa de ese tipo
-  (`ingreso / (1 + spread/100) / 3`). Es la decisión K=3 de la spec —la misma
-  que ya acepta el canon promedio publicado con exactamente 3 contratos—, no
-  un descuido de esta fase.
+- **Riesgo residual aceptado (documentado, no un bug), vigente tras Fase 7**:
+  con n contratos con tarifa del mismo tipo y `contratos_sin_tarifa == 0`,
+  alguien que conozca el ingreso publicado puede despejar la tarifa unitaria
+  (`ingreso / (1 + spread/100) / n`), sea cual sea n. Hasta la Fase 6 esto se
+  aceptaba EN LA FRONTERA de K=3 (con exactamente 3 contratos); sin umbral el
+  residual ya no tiene frontera — se acepta para cualquier n, es la misma
+  decisión de producto de Fase 7 (agregados exactos, contrapartida en el
+  reporte de transparencia), no un descuido de esta fase.
 - **Pendiente, fuera de alcance**: histórico del spread. `snapshot_metricas`
   no puede ganar columnas (SIN MIGRACIONES) y una tabla nueva sólo para esto
   no se justifica todavía.
@@ -506,22 +536,24 @@ dispara `metricas_del_periodo` (que lo llena) si no. `limpiar_cache_metricas()`
 limpia los dos cachés.
 
 **Decisión de privacidad del spread (vinculante, cierra la pendiente de Fase
-4).** La tarifa de referencia es estrategia comercial del cliente y NUNCA
-cruza la frontera del operador: ni su valor, ni Σ tarifa, ni un promedio, ni
-por sede. Sólo viaja la relación `spread_pct`. Lista taxativa de campos nuevos
-en `/metricas`: por cliente `spread_pct` (`null` por dos motivos distintos:
-sin tarifa o K=3), `tarifa_configurada`, `contratos_sin_tarifa`; consolidado
+4; enmendada por Fase 7).** La tarifa de referencia es estrategia comercial
+del cliente y NUNCA cruza la frontera del operador: ni su valor, ni Σ tarifa,
+ni un promedio, ni por sede. Sólo viaja la relación `spread_pct`. Lista
+taxativa de campos nuevos en `/metricas`: por cliente `spread_pct` (`null`
+sólo por ausencia de dato: sin tarifa configurada o sin contratos con tarifa
+aplicable), `tarifa_configurada`, `contratos_sin_tarifa`; consolidado
 `spread_pct` y `clientes_con_tarifa`. Lista negra test-enforced: ninguna otra
-clave con `tarifa`, `rates`, `by_sede`, `default`. **El spread consolidado
-suma SÓLO a los clientes cuyo propio spread se publica** (≥ K contratos con
-tarifa): si entrara un cliente suprimido, su spread se despejaría por
-diferencia contra los visibles y la supresión no valdría nada (hallazgo H-1
-de la fase, `test_asesoria_ataques.py` a17). Es distinto del ingreso
-consolidado, que sí suma a todos: ahí el total del negocio es el dato; acá el
-dato es una relación cuya base es secreta. Riesgo aceptado (K=3): con
-exactamente 3 contratos con tarifa del mismo tipo, el ingreso publicado deja
-estimar la tarifa unitaria (a18, medido); es la misma aceptación que ya rige
-el canon promedio.
+clave con `tarifa`, `rates`, `by_sede`, `default`. **Fase 7 — el spread
+consolidado vuelve a sumar a TODOS los legibles con tarifa**, igual que ya
+hacía el ingreso consolidado: hasta la Fase 6 sumaba SÓLO a los clientes cuyo
+propio spread se publicaba (≥ K contratos con tarifa) para que un cliente
+suprimido no se despejara por diferencia (hallazgo H-1 de la fase,
+`test_asesoria_ataques.py` a16/a17); sin supresión que proteger, esa
+distinción con el ingreso consolidado desaparece — el total del negocio es
+el dato en los dos casos. Riesgo aceptado (documentado, ya no acotado a K=3):
+con n contratos con tarifa del mismo tipo, el ingreso publicado deja estimar
+la tarifa unitaria (a18, medido); es la misma aceptación que ya rige el
+canon promedio.
 
 **Endpoint `GET /api/plataforma/adopcion`.** Sin parámetros (siempre el mes
 en curso UTC). `require_operador`: sin token 401, admin legado 403, dueño de
@@ -533,7 +565,8 @@ INCLUSIVE (`<= DIAS_RECIENTE`: el día 30 exacto cuenta — hallazgo H-4,
 `test_asesoria_contador.py` 10e).
 
 **Frontend (`/plataforma`).** Columna "vs tarifa" en la tabla de clientes con
-tres estados (`−12,4 %` / `+3,1 %`; `Suprimido ‹3`; `sin tarifa`); tile en el
+dos estados (`−12,4 %` / `+3,1 %`; `sin tarifa`) — hasta Fase 6 había un
+tercero, `Suprimido ‹3`, que la Fase 7 eliminó; tile en el
 hero "VS TARIFA DE REFERENCIA" con la lectura en palabras; panel "Adopción"
 debajo de "Tendencia" con tabla de cohortes (mes, clientes, retención 30d,
 desglose por badge) y lista "A quién llamar hoy". `components/plataforma/
@@ -590,9 +623,10 @@ aguantaron todo sin un solo cruce: lo que se encontró fue de segundo orden.
 - **El nombre del proveedor baja SANEADO a `snapshot_metricas`**
   (compliance-1 = frontera-2). `_recortar_top` elige el top-5 con el nombre
   original y persiste `{sanear_nombre_proveedor(nombre): conteo}`, sumando
-  conteos si dos originales sanean igual. Los NÚMEROS siguen crudos y K=3 se
-  sigue aplicando al leer; el NOMBRE se protege al escribir (y el saneo es
-  idempotente, así que leer sigue pasando por `_top`). Sin migración.
+  conteos si dos originales sanean igual. Los NÚMEROS siguen crudos y se
+  vuelven públicos y exactos al leer (Fase 7, sin umbral); el NOMBRE se
+  protege al escribir (y el saneo es idempotente, así que leer sigue pasando
+  por `_top`). Sin migración.
 - **Saneo Unicode** (frontera-1): `sanear_nombre_proveedor` normaliza NFKC
   (`＠` → `@`, dígitos de ancho completo → ASCII), borra los caracteres de
   categoría `Cf` (ZWSP, ZWNJ, BOM, marcas de dirección) y `_TELEFONO_RE`
@@ -625,13 +659,20 @@ aguantaron todo sin un solo cruce: lo que se encontró fue de segundo orden.
 
 **Qué queda abierto y por qué**
 
-- **frontera-5 — decisión de producto pendiente** (`test_f09`,
-  `xfail(strict=True)`, NO borrar). Con un cliente que publica y otro
-  suprimido por K=3, `ingreso_consolidado − ingreso_visible` devuelve al peso
-  el canon del contrato único del suprimido. Contradice la regla "el
-  consolidado sí suma a todos" (Fase 4, `test_m26`). Opciones: (a) sumar sólo
-  clientes publicables (precedente del spread, a17); (b) sumar a los
-  suprimidos sólo si entre todos juntan ≥ K contratos. Se recomienda (b).
+- **frontera-5 — RESUELTO por decisión de producto (Fase 7)**. Con un
+  cliente que publicaba y otro suprimido por K=3, `ingreso_consolidado −
+  ingreso_visible` devolvía al peso el canon del contrato único del
+  suprimido — contradecía la regla "el consolidado sí suma a todos" (Fase 4,
+  `test_m26`). En vez de parchear la regla (opciones consideradas: sumar
+  sólo clientes publicables, o sumar a los suprimidos sólo si entre todos
+  juntan ≥ K contratos), el dueño de la plataforma decidió **cambiar el
+  trato**: el operador ve los agregados EXACTOS de todos los clientes, sin
+  umbral — K=3 desaparece de `/metricas`, `/tendencia` y del spread. Ya no
+  hay ninguna celda suprimida que el consolidado pueda despejar. La
+  contrapartida es el reporte de transparencia (ver la sección "Fase 7 —
+  Transparencia" más abajo). `test_f09` (`test_auditoria_frontera.py`) se
+  eliminó con un comentario en su lugar; el helper que usaba no se
+  reutiliza en ningún otro test de ese archivo.
 - ~~Dependencias con DoS~~ — **cerrado en la misma rama**: `fastapi 0.115.0
   → 0.141.1` (arrastra `starlette 1.6.0`, que parchea CVE-2024-47874, y
   `pydantic 2.13.5`), `python-multipart 0.0.32`, `PyJWT 2.13.0`. `pip-audit`
@@ -660,6 +701,311 @@ aguantaron todo sin un solo cruce: lo que se encontró fue de segundo orden.
   en UTC), supresión de `ultimo_acceso` bajo K cuando hay un solo usuario,
   retención de logs de correo en Render.
 
+### Fase 7 — Transparencia
+
+El operador ve las cifras exactas y cada cliente puede auditar qué se tomó de
+él. Decisión del dueño de la plataforma, 2026-09-05, en respuesta directa al
+hallazgo `frontera-5` de la auditoría integral: en vez de parchear la regla
+de los 3 contratos (K=3), se cambia el trato.
+
+**Parte A — Quitar K=3 (backend, `plataforma_metricas.py` / `plataforma_tendencia.py`).**
+`K_MINIMO_CONTRATOS` y `_suprimir_celda_chica` se eliminan del todo (y toda
+llamada: `publicas_desde_crudos`, `consolidar_agregado`, `_consolidar`,
+`plataforma_tendencia.publicar_fila`). Por cliente y consolidado:
+`ingreso_contratado_mes` es SIEMPRE un número (`0.0` con 0 contratos);
+`canon_promedio_mensual` es número con ≥1 contrato y `null` sólo con 0
+contratos (no hay promedio de cero términos); `top_proveedores` es la lista
+real saneada por `_top`, vacía sólo si no hay contratos con proveedor.
+`_spread` conserva su firma (`None` si `contratos == 0` o `tarifa <= 0`, si
+no `round((canon/tarifa - 1)*100, 1)`) pero sin el piso de K=3. El
+consolidado del spread (`_consolidar`) vuelve a sumar a TODOS los clientes
+legibles con tarifa — igual que ya hacía el ingreso consolidado — porque sin
+supresión que proteger, excluir a los que antes se suprimían no tiene
+sentido. En `/tendencia`: `publicar_fila` aplica las mismas reglas exactas;
+`contratos_activos` y `ocupadas` siguen sin salir (son crudos de negocio, no
+algo que la spec deje cruzar la frontera); nada cambia en snapshot (crudos,
+saneo al escribir), caché, bitácora ni adopción. `grep -rn "K_MINIMO|
+_suprimir_celda_chica" backend/app` da vacío. Los 9 archivos de test que
+afirmaban la supresión (`test_plataforma_metricas`, `test_metricas_conciliacion`,
+`test_metricas_ataques`, `test_plataforma_tendencia`, `test_tendencia_ataques`,
+`test_tendencia_conciliacion`, `test_asesoria_ataques`, `test_asesoria_contador`,
+`test_auditoria_frontera`) se reescribieron para afirmar el comportamiento
+nuevo; `test_f09` (frontera-5) se eliminó con un comentario en su lugar.
+
+**Parte B — Reporte de transparencia (`app/plataforma_reporte.py`, sin
+migraciones).** La contrapartida de la Parte A: cada cliente puede pedir, a
+demanda, cada dato que la plataforma tomó de él, cómo lo calculó, de dónde,
+para qué, y quién del operador lo consultó y cuándo. El módulo declara un
+`CATALOGO` TAXATIVO en código (no prosa suelta en el frontend) con, por cada
+agregado de `/metricas` / `/tendencia` / `/adopcion`: nombre, definición
+(fórmula en palabras), fuente (qué tablas), finalidad (`asesoria` /
+`salud_cartera` / `cobranza`), endpoints que lo exponen y tratamiento
+(`exacto` / `saneado` / `sin_hora` / `conteo` / `relacion`). El catálogo
+también declara las cifras que SOLO el reporte publica en `valores[]`
+(`ocupadas`, `contratos_activos`, `canon_total`, `origen`, `capturado_en`),
+con `endpoints: ["reporte"]` — `"reporte"` es un valor válido de `endpoints`
+en el shape (`endpoints:[metricas|tendencia|adopcion|reporte]`). Regla dura:
+ninguna clave puede aparecer en `valores[]` sin una entrada en `CATALOGO`
+(la fija `test_t62`). El reporte se
+arma SOLO con lo que ya existe — `snapshot_metricas`, `bitacora_plataforma`,
+`consentimientos`, `solicitudes_supresion` y, para el spread del mes en
+curso, `_metricas_de_un_cliente` sobre la base de ESE cliente — sin filas de
+contratos.
+
+Endpoints:
+
+- `GET /api/clientes/mi-reporte-plataforma?meses=N` — dueño del cliente
+  (`require_owner`, como `/mi-export`), ruta literal en `routers/derechos.py`,
+  exenta del interruptor de cobranza (`_EXENTOS_POR_HABEAS_DATA`). `meses` se
+  valida primero (`1..MESES_MAXIMO`, si no 422) ANTES de cobrar el freno
+  compartido con `/mi-export` — un pedido inválido nunca consume cupo de un
+  derecho de habeas data. Ese freno (3/hora por usuario, tabla
+  `export_attempts`) queda compartido con `/mi-export`: riesgo aceptado
+  (L-3 de la revisión legal), decisión del Maestro de mantenerlo así sin
+  migraciones. Un slug ajeno da 403/404 indistinguible.
+- `GET /api/plataforma/clientes/{slug}/reporte?meses=N` — operador
+  (`require_operador`), declarada DESPUÉS de las literales, anota
+  `accion="reporte"` con `periodo="<slug>:<desde>..<hasta>"` en la bitácora
+  (el reporte también es un acceso; el reporte siguiente del dueño lo lista).
+
+Los dos devuelven el MISMO JSON:
+
+```
+{cliente:{slug,nombre}, generado_en, ventana:{desde,hasta,meses},
+ politica:{version_vigente,version_aceptada|null,aceptada_en(fecha)|null,base_legal,url},
+ catalogo:[{clave,nombre,definicion,fuente,finalidad:asesoria|salud_cartera|cobranza,
+            endpoints:[...],tratamiento:exacto|saneado|sin_hora|conteo|relacion}],
+ valores:[{periodo,sin_dato,origen,capturado_en(fecha),sedes_con_plano,
+           espacios_comercializables,ocupadas,ocupacion_pct,contratos_activos,
+           canon_total,canon_promedio_mensual,usuarios_con_cuenta,
+           top_proveedores:[{nombre(saneado),contratos}]}],
+ spread_actual:{periodo,tarifa_configurada,spread_pct,contratos_sin_tarifa}|null,
+ accesos:{total,lineas:[{fecha,operador,accion,periodo}]},
+ derechos:{export,supresion,reporte,contacto}}
+```
+
+Frontend: ruta `/reporte-plataforma` (dueño) y `/plataforma/reporte/:slug`
+(operador), vista imprimible (`@media print`, sin cabecera de app), botón
+"Descargar JSON", reusa `consola.tsx` y los tokens `--con-*`, claro/oscuro en
+pantalla y siempre claro en impresión, sin librerías nuevas, bajo la CSP de
+Fase 3. El tipo del item de `top_proveedores` en el reporte es
+`ProveedorTopReporte {nombre, contratos}` — distinto de `ProveedorTop
+{nombre, contratos_activos}` que ya usan `/metricas` y `/tendencia` (no
+comparten shape ni nombre de campo de conteo).
+
+**Parte C — Política y consentimiento.** `VERSION_POLITICA` sube a
+`"2026-09-v2"` (`models/consentimiento.py`): es un cambio material del trato
+(agregados exactos sin umbral, contrapartida del reporte), así que el flujo
+existente de re-consentimiento (`consentimiento_requerido` al entrar,
+`/aceptar-politica`) se dispara para todos los usuarios con cuenta; el legado
+(claves compartidas) no se rompe. §5.3 de `docs/legal/politica-datos.md` (y
+su copia byte-idéntica en `frontend/src/legal/`) se reescribe declarando el
+trato nuevo con las frases `"agregados exactos"`, `"sin umbral"`, `"reporte
+de transparencia"` y `"mi-reporte-plataforma"` (test-enforced,
+`test_asesoria_ataques.py` a15), manteniendo los marcadores `[VALIDAR CON
+ABOGADO]`. `/mi-export` y el reporte incluyen la versión de política
+aceptada.
+
+**Verificación de cierre (2026-09-05).** Sonda independiente sobre base
+propia: cliente con 1 contrato de 4.173.919 y tarifa punta 5.000.000 →
+`/metricas` publica ingreso 4173919.0, promedio 4173919.0, spread −16.5,
+proveedor saneado; consolidado 7673919.0 = Σ de los tres clientes legibles;
+`/tendencia` idéntico y `sin_dato: false`. Reporte del dueño: 22 entradas de
+catálogo, 12 meses, cero rastros de otros clientes; del operador: mismo shape
+y línea `accion="reporte"` en la bitácora que el reporte siguiente del dueño
+lista. Re-consentimiento verificado de punta a punta; legado intacto. `tsc` y
+`build` limpios. Capturas en `features/transparencia/outputs/capturas/`.
+
+**Gotcha para quien agregue un GET con parámetro de ruta**:
+`test_montaje_enlace.py::test_el_token_no_abre_ningun_otro_endpoint` barre el
+OpenAPI entero con el token de montaje y necesita un valor para cada
+parámetro en su diccionario `relleno`. `GET /api/plataforma/clientes/{slug}/
+reporte` fue el primer GET con `{slug}` y lo rompió; `slug` ya está en el
+diccionario. Un parámetro nuevo sin relleno hace fallar la suite entera a
+propósito.
+
+### Fase 8 — Detalle por cliente para asesoría
+
+**La decisión del dueño (2026-09-05, encima de la Fase 7).** "La plataforma aún
+no tiene toda la información disponible para hacer análisis: no sé qué proveedor
+está en cada espacio adicional y a qué precio". El límite "el operador ve
+agregados, nunca filas" era una decisión de diseño de la Fase 4, no una
+limitación técnica: para el servicio de **asesoría comercial** que RECABRA le
+vende a cada supermercado, el operador necesita ver el negocio **espacio por
+espacio** y derivar de ahí qué proponerle hoy al cliente. Esta fase abre esa
+vista, **solo lectura**, con bitácora, y la declara en la política y en el
+reporte de transparencia **dentro de la misma versión de política**
+(`2026-09-v2`, que todavía no se había desplegado) para que el cliente consienta
+el trato completo **una sola vez**.
+
+**El endpoint.** `GET /api/plataforma/clientes/{slug}/detalle?periodo=YYYY-MM`
+(`require_operador`; por defecto el mes en curso, misma ventana que
+`/metricas`; `app/plataforma_detalle.py`, ruta declarada AL FINAL de
+`routers/plataforma.py`). Abre la base de ESE cliente **una vez**, sólo
+`query`, y anota `accion="detalle"` con `periodo="<slug>:<YYYY-MM>"` en
+`bitacora_plataforma` **después** de armar (un 401/403/404/422/503 no deja
+línea). La única otra apertura de bases es `benchmark_por_tipo`: recorre los
+mismos clientes que `_calcular` de métricas (secuencia, read-only, `try/except`
+por cliente, caché 5 min con el mismo LRU acotado) y devuelve UN número por
+tipo. Por eso `test_auditoria_frontera.py::f01` lista esta ruta entre las que
+abren bases, junto a `/metricas`, `/tendencia`, `/adopcion` y `/reporte`.
+`slug` inexistente → 404 con el texto fijo `"No hay un cliente con ese
+código."`; dueño de cliente, legado y trabajador → 403; sin token → 401;
+período fuera de ventana → 422; base ilegible → 503 con `ERROR_BASE_ILEGIBLE`
+(la ruta del archivo va al log, nunca al JSON). Sin caché del detalle: cada
+consulta se calcula y se anota. SIN MIGRACIONES: todo sale de
+`layout_snapshots`, `spaces` (sólo `code`, `zone`, `area_m2`), `space_leases`
+(sin `notes` ni ids), `suppliers.name` y `app_config` (sólo el sí/no de la
+tarifa), con los helpers que ya existían (`_numeros_del_layout` y su mapa de
+tipos, `_es_gondola_doble`, `_tarifa_aplicable`, `sanear_nombre_proveedor`,
+`_huella`) más dos nuevos en `plataforma_metricas.py`: `_del_periodo` (la
+regla "activo en el período", enunciada una sola vez) y
+`_contratos_del_cliente`.
+
+Shape (VINCULANTE, idéntico en backend y frontend):
+
+```
+{cliente:{slug,nombre,estado_cuenta}, periodo, desde, hasta, generado_en,
+ sedes_con_plano,
+ sedes:[{sede,espacios,ocupados,libres,ocupacion_pct}],
+ espacios:[{codigo(SEDE-CODE, cara B con -B),sede,codigo_corto,cara:A|B|null,tipo,
+            zona(SANEADA),area_m2,estado:ocupado|libre|se_libera,
+            contrato:{proveedor(SANEADO),marca(SANEADA),canon_mensual,inicio,fin,
+                      dias_para_vencer,arranca_en_periodo}|null}],
+ contratos_fuera_del_plano: N,
+ resumen_por_tipo:[{tipo,total,ocupados,libres,canon_promedio,canon_minimo,
+                    canon_maximo,tarifa_configurada(sí/no)}],
+ proveedores:[{nombre(SANEADO),espacios,tipos,sedes,canon_total,canon_promedio,
+               participacion_pct(cuota de CONTRATOS, no de canon),desde,
+               contratos_por_vencer_60d}],
+ movimientos:[{mes,entradas:[{proveedor,codigo,tipo,canon_mensual,fecha,cancelado}],
+                   salidas:[{proveedor,codigo,tipo,canon_mensual,fecha,
+                             motivo:vencimiento|cancelacion}]}]  (12 meses),
+ benchmark_plataforma:{<tipo>: UN promedio de todos los clientes legibles},
+ oportunidades:[{codigo,sede,tipo,estado:libre|se_libera,precio_sugerido,
+                 origen_precio:cliente|benchmark|null,valor_estimado_mensual,
+                 candidatos:[{proveedor(SANEADO),canon_actual,mismo_tipo}]}],
+ recomendaciones:[{id:"{tipo}:{clave}",
+                   tipo:espacio_libre|contrato_por_vencer|precio_bajo_tarifa|
+                        concentracion_proveedor|sede_subutilizada|sin_tarifa|arranque,
+                   prioridad:alta|media|baja,valor_estimado_mensual,explicacion,datos}]}
+```
+
+**Las reglas de estado, oportunidad y recomendación.** "Contrato del período"
+es `is_active AND start_date <= hasta AND end_date >= desde` (`_del_periodo`,
+la MISMA regla de `_contratos_activos`); con varios contratos sobre un espacio
+se publica el de fin más tardío. Un espacio está `ocupado` si tiene contrato
+del período, `se_libera` si además `fin <= hasta`, `libre` si no tiene
+ninguno; un contrato que arranca dentro del período cuenta como ocupado
+(`arranca_en_periodo`). Un contrato cuyo código no está en el plano no es un
+espacio pero sí es plata: cuenta en `contratos_fuera_del_plano`,
+`proveedores`, `movimientos` y `contrato_por_vencer`, nunca en `espacios`,
+`resumen_por_tipo` ni `oportunidades`. El **precio sugerido** de un espacio
+libre o que se libera es el canon promedio que ESE cliente cobra por ese tipo
+(`origen_precio: "cliente"`); si no cobra ninguno, el benchmark
+(`"benchmark"`); si tampoco, `null`. Los **candidatos** son proveedores del
+mismo cliente que no ocupan ese espacio, primero los del mismo tipo, por canon
+actual desc, hasta 3. Las **recomendaciones** (`id="{tipo}:{clave}"`) se
+ordenan por prioridad, valor desc e id: `espacio_libre` (una por TIPO, valor Σ
+precio sugerido), `contrato_por_vencer` (≤ 60 días; ≤ 30 alta y nunca menos
+que media), `precio_bajo_tarifa` (tipo con ≥ 2 contratos y alguno bajo el
+promedio del PROPIO cliente — nunca contra la tarifa),
+`concentracion_proveedor` (≥ 40 % de los contratos del período y ≥ 2
+contratos; ≥ 60 % alta), `sede_subutilizada` (≥ 15 puntos bajo la ocupación
+global, con ≥ 2 sedes), `sin_tarifa` (una, siempre baja, valor 0) y `arranque`
+como ÚNICA con cero contratos del período. Prioridad general: alta desde el
+15 % del ingreso contratado del mes, media desde el 5 %. La `explicacion` la
+genera el backend por plantilla, sin PII: nombres saneados, códigos, tipos,
+fechas y plata como `"$ 1.200.000"`.
+
+**Verificación de cierre (2026-09-05).** Sonda independiente: cliente con 2
+sedes, góndola doble, punta y nevera, 3 contratos del período (uno vence el 20,
+uno arranca el 15) → 5/5 espacios con tipo, estado y contrato exactos; resumen
+gondola 2/2/0 prom 800.000 (min 600.000, max 1.000.000), punta 2/1/1 prom
+2.000.000, nevera 1/0/1 `null`; `SUR-PUN-01` sugerido 2.000.000 del cliente,
+`NAVE-NEV-01` 400.000 de benchmark = (300.000+500.000)/2 del otro cliente; 7
+recomendaciones en orden alta×4 (espacio_libre 4.000.000, contrato_por_vencer
+2.000.000 a 19 días, sede_subutilizada 2.000.000, concentracion_proveedor
+1.600.000 con 2 de 3 = 66,7 %), media×2, baja×1; 10/10 agujas de PII
+ausentes, sólo `tarifa_configurada` como clave con "tarifa"; 401/403/403/404
+sin línea de bitácora y exactamente una línea tras el 200, listada en el
+reporte del dueño; conteos de filas idénticos antes y después. Capturas en
+`features/asesoria-detalle/outputs/capturas/`.
+
+**Pendientes conocidos de la fase:**
+
+- **Benchmark con pocos aportantes**: `benchmark_plataforma` no tiene umbral
+  de clientes aportantes por tipo; con dos clientes que tienen un tipo, cada
+  uno puede despejar el canon del otro por diferencia. Decisión de producto
+  pendiente, misma familia que `frontera-5` (el dueño ya eligió exactitud a
+  cambio de transparencia en Fase 7; si se mantiene ese criterio, no hay nada
+  que hacer).
+- **`participacion_pct` es cuota de contratos**, no de canon: el catálogo y la
+  política lo dicen así desde el cierre de Fase 8; si alguien lo cambia a
+  canon, cambia también `concentracion_proveedor` y los dos documentos.
+
+**El benchmark de plataforma** es **un número por tipo de espacio** — el canon
+promedio de los contratos vigentes de ese tipo en todos los clientes legibles —,
+con caché de 5 min como el de métricas, y jamás sale con desglose, sedes ni
+nombres de otros supermercados. Es lo único del detalle que mira más de una
+base.
+
+**La frontera (lista taxativa de lo que el detalle NO devuelve):**
+`Supplier.contact_name` / `phone` / `email` / `notes`; `Space.notes`;
+`SpaceLease.notes`; `SpaceFile` / `LeaseFile` (fotos y documentos de montaje);
+cualquier correo, nombre o id de un **usuario**; la **tarifa de referencia**
+(sólo `tarifa_configurada` sí/no por tipo y el spread que ya existía); cualquier
+dato de **otro cliente** dentro del detalle de uno (el benchmark es un promedio,
+un número por tipo); ningún texto libre del cliente sin sanear (proveedor,
+marca **y zona** pasan por `sanear_nombre_proveedor` — el auditor encontró la
+zona sin sanear, `detalle-1`, corregida al cierre); y nada en **modo
+escritura**.
+
+**La política (misma versión, `2026-09-v2`).** §5.3 (a) suma el **detalle de
+espacios y contratos** con las palabras de la spec (código y tipo del espacio,
+ocupado o libre, proveedor por **nombre comercial** depurado, marca, canon,
+fechas, resumen por tipo con la tarifa sólo como sí/no, proveedores,
+movimientos, **oportunidades** y **recomendaciones**); §5.3 (b) perdió "ningún
+contrato, ningún espacio" y quedó como la lista taxativa de arriba; §5.3 (c) y
+(d) suman el detalle a los accesos del reporte y a la bitácora; §3.6 (nuevo)
+declara las finalidades, con **"mejora del servicio y de la plataforma"**
+agregada a asesoría / salud de la cartera / cobranza. `VERSION_POLITICA` **NO
+sube**: la v2 no se había desplegado y el titular consiente el trato completo en
+un solo acto (§11 lo deja escrito en el historial, bajo la fila de 2026-09-v2).
+Un `[VALIDAR CON ABOGADO]` nuevo pregunta por el contrato individual con nombre
+de proveedor y por el benchmark cruzado entre clientes. La copia de
+`frontend/src/legal/politica-datos.md` sigue byte-idéntica (test-enforced).
+
+**El catálogo del reporte** (`app/plataforma_reporte.py::CATALOGO`) pasa de 22 a
+**34 entradas**: 12 nuevas con `endpoints: ["detalle"]` — `espacio_codigo_y_tipo`,
+`espacio_estado`, `contrato_proveedor` (saneado), `contrato_marca`,
+`contrato_canon_mensual`, `contrato_fechas`, `resumen_por_tipo`,
+`proveedores_del_cliente` (saneado), `movimientos`, `benchmark_plataforma`,
+`oportunidades` y `recomendaciones`. `"detalle"` es un valor válido más de
+`endpoints` (junto a `metricas` / `tendencia` / `adopcion` / `reporte`). El enum
+de `finalidad` NO cambia (`asesoria|salud_cartera|cobranza`, que es como lo tipa
+el frontend): las 12 van con `asesoria`, y la finalidad nueva de la política vive
+en el documento. `_accesos_del_cliente` gana la rama
+`accion == "detalle"` → alcanza si `periodo` empieza con `"<slug>:"`, así que la
+consulta del detalle aparece en el reporte de transparencia del titular.
+
+**El frontend**: página `/plataforma/clientes/:slug` (operador) con
+**Recomendaciones primero** (es "qué le propongo hoy"), luego Oportunidades,
+Espacios (filtrable por sede, tipo y estado, con buscador), Por tipo,
+Proveedores y Movimientos; botón **"Imprimir recomendaciones"** que reusa la
+vista imprimible del reporte de Fase 7 (`@media print`); enlace **"Ver detalle"**
+en cada fila de la tabla de `/plataforma` y enlace al reporte de transparencia
+del cliente. Primitivas de `components/plataforma/consola.tsx`, tokens `--con-*`,
+claro y oscuro, sin librerías nuevas, bajo la CSP.
+
+**Gotcha heredado de la Fase 7** (vale también para este endpoint):
+`test_montaje_enlace.py::test_el_token_no_abre_ningun_otro_endpoint` barre el
+OpenAPI entero con el token de montaje y necesita un valor para cada parámetro
+de ruta en su diccionario `relleno`. `slug` ya está ahí desde el cierre de la
+Fase 7, así que `GET /api/plataforma/clientes/{slug}/detalle` queda barrido
+solo; un parámetro de ruta NUEVO sin su relleno hace fallar la suite entera a
+propósito.
+
 ### Pendientes conocidos: clientes y plataforma
 
 - **R-3 (menor)**: el tope de 2 fundaciones es count+insert sin barrera en la
@@ -680,6 +1026,21 @@ aguantaron todo sin un solo cruce: lo que se encontró fue de segundo orden.
   próximo login (el 402 puntual de cada mutación sí llega igual).
 - El cache del estado es de 60 s; el PATCH del operador lo invalida — mover la
   fila a mano en la base no.
+- **Para el abogado, abiertas por la Fase 8** (marcador nuevo en §5.3, además de
+  las heredadas de la Fase 7 —agregado sobre un solo contrato, relación
+  canon/tarifa sin umbral, proveedor unipersonal, fecha de último acceso, día de
+  aceptación—): **(1)** si el **contrato de encargo** del §5.2 y la finalidad de
+  asesoría alcanzan para que el operador lea el **canon y las fechas de un
+  contrato individual** junto al **nombre comercial** del proveedor —dato
+  comercial del supermercado y, a la vez, de un tercero que puede ser persona
+  natural— o hace falta una cláusula/autorización adicional; **(2)** si el
+  **precio sugerido calculado sobre el promedio de toda la plataforma** —un solo
+  número por tipo, sin nombres ni desglose— queda cubierto por el contrato de
+  servicio como estadística agregada o hay que pactarlo expresamente, y si esa
+  disociación alcanza cuando hay pocos clientes con ese tipo de espacio;
+  **(3)** la **marca** exhibida como dato de un tercero; **(4)** el plazo de
+  retención de `bitacora_plataforma`, que sigue en `[COMPLETAR]` en el §6 de la
+  política y ahora guarda también las consultas de detalle.
 
 ### Pendientes conocidos: identidad
 

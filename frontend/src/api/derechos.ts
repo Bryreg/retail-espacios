@@ -1,4 +1,7 @@
 import client from "./client";
+import type { ReporteTransparencia } from "./plataforma";
+
+export type { ReporteTransparencia } from "./plataforma";
 
 // ─── Derechos del titular (Fase 3 compliance) ───────────────────────────────
 //
@@ -78,4 +81,22 @@ export const atenderSupresion = (
 ): Promise<SolicitudSupresion> =>
   client
     .patch<SolicitudSupresion>(`/plataforma/supresiones/${id}`, payload)
+    .then((r) => r.data);
+
+// ─── Reporte de transparencia (Fase 7) ──────────────────────────────────────
+//
+// Para el DUEÑO del cliente: `GET /clientes/mi-reporte-plataforma?meses=N`,
+// mismo `require_owner` que `descargarMiExport`/`solicitarSupresion` de acá
+// arriba -- JWT con `sub` + membresía ACTIVA `rol == "owner"`. Un 403 acá es
+// "no sos el owner de este cliente" (o "sos el operador sin membresías": ese
+// usa `getReporteCliente` en `api/plataforma.ts`), nunca "no sos admin". El
+// MISMO JSON que ve el operador de este cliente -- `ReporteTransparencia`
+// vive en `api/plataforma.ts` (reexportado arriba) para no duplicar el shape.
+
+/** `meses`: 1..24, 12 por defecto (igual que `getTendencia`/`getReporteCliente`).
+ *  Mismo freno que `/mi-export` contra el abuso (rate limit por usuario) --
+ *  un 429 llega como cualquier otro error, `describeError` lo traduce. */
+export const getMiReportePlataforma = (meses = 12): Promise<ReporteTransparencia> =>
+  client
+    .get<ReporteTransparencia>("/clientes/mi-reporte-plataforma", { params: { meses } })
     .then((r) => r.data);

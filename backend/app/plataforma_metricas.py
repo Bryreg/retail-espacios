@@ -16,12 +16,19 @@ individuales, filas de ``space_leases``/``spaces``, correos o nombres de
 usuarios finales, notas, fotos, ni la bitácora de nadie. Los únicos arreglos
 de la respuesta son ``clientes`` y ``top_proveedores``.
 
-**Dos defensas sobre esa frontera**, porque "agregado" no alcanza solo:
+**Fase 7 — agregados EXACTOS, sin umbral.** Hasta la Fase 6 este módulo
+aplicaba supresión de celda chica (K=3): con menos de 3 contratos activos, el
+ingreso, el canon promedio y el top de proveedores de un cliente salían en
+``null``/vacío. El dueño de la plataforma decidió cambiar el trato: el
+operador ve el número EXACTO de todos los clientes, sin umbral — con un
+contrato activo, el ingreso del mes es ese contrato y así se publica. La
+contrapartida es el **reporte de transparencia** (``app/plataforma_reporte.py``,
+``GET /api/clientes/mi-reporte-plataforma`` y
+``GET /api/plataforma/clientes/{slug}/reporte``): cada cliente puede pedir,
+a demanda, qué dato exacto tomó la plataforma de él, cómo lo calculó y quién
+del operador lo consultó. Lo que sigue intacto es la otra defensa sobre la
+frontera:
 
-* **Supresión de celda chica (K=3)** — con menos de 3 contratos activos, la
-  suma ES el sumando. Bajo ese umbral, ``ingreso_contratado_mes`` y
-  ``canon_promedio_mensual`` van en ``null`` y ``top_proveedores`` vacío, tanto
-  por cliente como en el consolidado. Ver ``_suprimir_celda_chica``.
 * **Saneo del nombre del proveedor** — ``Supplier.name`` es texto libre del
   cliente y es el único string de negocio que sale al JSON. Se le enmascaran
   correos y teléfonos y se le pone tope de largo. Ver
@@ -66,65 +73,31 @@ ERROR_BASE_ILEGIBLE = "No se pudo leer la base de este cliente."
 
 TOPE_PROVEEDORES = 5
 
-# ─── Supresión de celda chica (K=3) ───────────────────────────────────────────
+# ─── Spread: agregado exacto, sin umbral (Fase 7) ─────────────────────────────
 #
-# Una suma de UN sumando no es un agregado: es el sumando. Con un solo contrato
-# activo, `ingreso_contratado_mes` y `canon_promedio_mensual` son, exactamente,
-# el `monthly_rent` de ese contrato, y el `top_proveedores` de al lado dice con
-# quién se firmó. El operador reconstruye la fila entera —proveedor, monto y,
-# si además hay una sola cara ocupada, cuál espacio— sin salir del panel. Eso
-# es justo lo que la spec prohíbe ("nunca valores de contratos individuales"),
-# y no es un caso de laboratorio: es el estado normal de un supermercado en su
-# primer mes, que es cuando más se lo mira desde la consola.
-#
-# La regla, estándar en estadística oficial: por debajo de K observaciones, la
-# celda no se publica. K=3 — con dos contratos, quien conoce uno despeja el
-# otro.
-#
-# Se suprimen SÓLO los tres campos que exponen plata (`ingreso_contratado_mes`,
-# `canon_promedio_mensual`, `top_proveedores`). Los conteos y la ocupación NO:
-# un porcentaje sobre el inventario no revela ningún valor de contrato.
-K_MINIMO_CONTRATOS = 3
+# Hasta la Fase 6, `_spread` devolvía `None` por debajo de un mínimo de tres
+# contratos con tarifa aplicable, la misma regla de celda chica que protegía
+# el canon promedio. El dueño de la plataforma decidió quitar el umbral: el
+# operador ve la relación
+# EXACTA con cuantos contratos con tarifa aplicable haya, uno incluido. La
+# contrapartida por la que el trato sigue siendo defendible es el reporte de
+# transparencia (`app/plataforma_reporte.py`): cada cliente puede auditar qué
+# se calculó de él y quién lo consultó.
 
 
 def _spread(canon: float, tarifa: float, contratos: int) -> float | None:
     """``(Σ canon_con_tarifa / Σ tarifa − 1) × 100``, redondeado a 1 decimal.
 
-    ``None`` por debajo de ``K_MINIMO_CONTRATOS`` — la MISMA regla de celda
-    chica que protege el canon: con uno o dos contratos con tarifa aplicable,
-    el spread y el canon promedio (que sí se publica) despejan la tarifa. Con
-    ``contratos >= K`` la tarifa acumulada es siempre positiva (sólo se suma
-    cuando un contrato tuvo tarifa aplicable > 0), así que no hace falta
-    guardia aparte contra la división por cero.
+    ``None`` sólo por AUSENCIA de dato: ``contratos == 0`` (nada que relacionar)
+    o ``tarifa <= 0`` (no hay tarifa configurada que sirva de referencia). Sin
+    umbral — con 1 contrato con tarifa aplicable el spread sale exacto. Con
+    ``contratos >= 1`` la tarifa acumulada es siempre positiva (sólo se suma
+    cuando un contrato tuvo tarifa aplicable > 0), así que la guarda contra la
+    división por cero sólo importa cuando ``contratos == 0``.
     """
-    if contratos < K_MINIMO_CONTRATOS:
+    if contratos == 0 or tarifa <= 0:
         return None
     return round((canon / tarifa - 1) * 100, 1)
-
-
-def _suprimir_celda_chica(publicas: dict, contratos: int) -> dict:
-    """Aplica la regla K=3 sobre un diccionario de métricas, in place.
-
-    ``null`` para los dos importes y lista **vacía** para el top. La elección es
-    deliberada y consistente con el resto del contrato: los importes ya usan
-    ``null`` para "este número no existe" (``canon_promedio_mensual`` sin
-    contratos), mientras que ``top_proveedores`` es un arreglo en todos los
-    casos y el frontend lo recorre sin preguntar — devolverle ``null`` lo
-    rompería para ganar una distinción que no necesita.
-
-    **El umbral incluye el cero.** Dejar ``0.0`` cuando no hay ningún contrato
-    parecía inofensivo —no hay nada que proteger— pero rompe la supresión por
-    la puerta de atrás: si el cero se publica y el 1 y el 2 se ocultan,
-    entonces ``null`` *significa* "tiene uno o dos" y el operador aprende de la
-    ausencia justo lo que la regla le quería ocultar. Con el umbral uniforme,
-    ``null`` sólo dice "menos de tres".
-    """
-    if contratos >= K_MINIMO_CONTRATOS:
-        return publicas
-    publicas["ingreso_contratado_mes"] = None
-    publicas["canon_promedio_mensual"] = None
-    publicas["top_proveedores"] = []
-    return publicas
 
 
 _PERIODO_RE = re.compile(r"^(\d{4})-(\d{2})$")
@@ -405,6 +378,77 @@ def _contratos_activos(db, desde: date, hasta: date) -> list[tuple[str, str, flo
     ]
 
 
+# ─── El mismo contrato, visto en detalle (Fase 8) ──────────────────────────────
+#
+# `_contratos_activos` agrega y tira: devuelve lo justo para contar ocupación,
+# ingreso y top de proveedores, y filtra el período en SQL. El detalle por
+# cliente (`app/plataforma_detalle.py`) necesita el mismo contrato con más
+# columnas —marca, fechas, la bandera de cancelado— y además los HISTÓRICOS
+# (los movimientos de 12 meses y el "desde" de cada proveedor miran contratos
+# que ya vencieron o que se cancelaron). Las dos funciones de abajo son
+# hermanas de `_contratos_activos`, no un reemplazo: aquélla no cambia ni de
+# firma ni de comportamiento, y la regla de "activo en el período" queda
+# enunciada UNA sola vez, en `_del_periodo`.
+
+
+def _del_periodo(inicio: date, fin: date, activo: bool, desde: date, hasta: date) -> bool:
+    """La MISMA regla de ``_contratos_activos``, evaluada en Python.
+
+    ``is_active`` (es decir, que nadie lo canceló) **y** solapamiento de fechas
+    con los dos extremos inclusive: ``start_date <= hasta AND end_date >= desde``.
+    Un contrato de UN día que cae adentro del mes cuenta como cualquier otro.
+
+    Existe porque el detalle trae todos los contratos de la base en una sola
+    pasada y decide mes a mes en memoria; sin esto, la regla estaría escrita dos
+    veces (una en SQL, otra acá) y podrían separarse.
+    """
+    return bool(activo) and inicio <= hasta and fin >= desde
+
+
+def _contratos_del_cliente(db) -> list[tuple]:
+    """``(codigo, proveedor, marca, canon, inicio, fin, is_active)`` de TODOS
+    los contratos de la base — activos, vencidos y cancelados, sin filtrar.
+
+    Mismo join y mismas normalizaciones que ``_contratos_activos`` (código en
+    mayúsculas y sin espacios, nombre del proveedor CRUDO —el saneo se aplica
+    al armar el JSON, nunca al agrupar—, canon como ``float``). Devuelve TUPLAS
+    y no filas del ORM por el mismo motivo: nada de lo que sale de acá viaja al
+    JSON tal cual; el llamador elige qué publica y por qué camino.
+
+    Sin filtro de fechas a propósito: el detalle necesita los históricos para
+    los movimientos de los últimos 12 meses y para el primer contrato de cada
+    proveedor. Filtrar el período es cosa de ``_del_periodo``.
+    """
+    from app.models.models import Space, SpaceLease, Supplier
+
+    filas = (
+        db.query(
+            Space.code,
+            Supplier.name,
+            SpaceLease.marca,
+            SpaceLease.monthly_rent,
+            SpaceLease.start_date,
+            SpaceLease.end_date,
+            SpaceLease.is_active,
+        )
+        .join(Space, Space.id == SpaceLease.space_id)
+        .join(Supplier, Supplier.id == SpaceLease.supplier_id)
+        .all()
+    )
+    return [
+        (
+            (codigo or "").strip().upper(),
+            (nombre or "").strip(),
+            marca,
+            float(canon or 0.0),
+            inicio,
+            fin,
+            bool(activo),
+        )
+        for codigo, nombre, marca, canon, inicio, fin, activo in filas
+    ]
+
+
 def _usuarios_del_cliente(reg, slug: str) -> tuple[list[int], date | None]:
     """``(ids_de_usuarios_con_membresía_activa, fecha_del_último_acceso)``.
 
@@ -658,10 +702,9 @@ def _metricas_de_un_cliente(cliente, reg, desde: date, hasta: date) -> tuple[dic
     # Los públicos se derivan SIEMPRE de los crudos, por `publicas_desde_crudos`
     # -- el mismo camino que relee la serie histórica (Fase 5,
     # `app/plataforma_tendencia.py`): un único lugar donde el crudo se vuelve
-    # público y donde se aplica la supresión K=3. `ultimo_acceso` es lo único
-    # que no sale de los crudos -- vive en el registro, no en la base de
-    # negocio -- así que se agrega aparte; K=3 no lo toca (una fecha no revela
-    # ningún importe).
+    # público, exacto y sin umbral (Fase 7). `ultimo_acceso` es lo único que
+    # no sale de los crudos -- vive en el registro, no en la base de negocio
+    # -- así que se agrega aparte.
     publicas = publicas_desde_crudos(crudos)
     publicas["ultimo_acceso"] = ultimo_acceso.isoformat() if ultimo_acceso else None
     # Fase 6 (spread): PROHIBIDO meterlos en `publicas_desde_crudos` -- la
@@ -675,19 +718,23 @@ def _metricas_de_un_cliente(cliente, reg, desde: date, hasta: date) -> tuple[dic
 
 
 def publicas_desde_crudos(crudos: dict) -> dict:
-    """Los agregados PÚBLICOS de un cliente a partir de sus ``crudos``, con K=3.
+    """Los agregados PÚBLICOS y EXACTOS de un cliente a partir de sus ``crudos``.
 
     Es la frontera única entre el sumando crudo y el número publicado: la usan
     el endpoint de métricas (Fase 4, vía ``_metricas_de_un_cliente``) y la serie
-    de tiempo (Fase 5, ``app/plataforma_tendencia.py``), de modo que la
-    supresión de celda chica y el saneo del nombre del proveedor viven en un
-    solo sitio. No incluye ``sedes_con_plano`` ni ``ultimo_acceso`` -- ese
-    último no es un crudo de negocio -- para que la serie histórica, que no
-    los guarda igual, use exactamente esta función tal cual.
+    de tiempo (Fase 5, ``app/plataforma_tendencia.py``), de modo que el saneo
+    del nombre del proveedor vive en un solo sitio. Sin umbral (Fase 7):
+    ``ingreso_contratado_mes`` es SIEMPRE un número (``0.0`` con 0 contratos),
+    ``canon_promedio_mensual`` es ``null`` sólo sin contratos (no hay promedio
+    de cero términos) y ``top_proveedores`` es la lista real, vacía sólo si no
+    hay contratos con proveedor. No incluye ``sedes_con_plano`` ni
+    ``ultimo_acceso`` -- ese último no es un crudo de negocio -- para que la
+    serie histórica, que no los guarda igual, use exactamente esta función tal
+    cual.
     """
     contratos = crudos["contratos"]
     caras = crudos["caras"]
-    publicas = {
+    return {
         "sedes_con_plano": crudos["sedes"],
         "espacios_comercializables": caras,
         "ocupacion_pct": _pct(crudos["ocupadas"], caras),
@@ -696,7 +743,6 @@ def publicas_desde_crudos(crudos: dict) -> dict:
         "top_proveedores": _top(crudos["proveedores"]),
         "usuarios_con_cuenta": len(crudos["usuarios"]),
     }
-    return _suprimir_celda_chica(publicas, contratos)
 
 
 # ─── El cálculo completo ──────────────────────────────────────────────────────
@@ -793,8 +839,8 @@ def _calcular(anio_mes: str, origen: str = "vista") -> tuple[dict, dict[str, int
     # (ni trae los crudos que hacen falta para el snapshot).
     #
     # El import es LOCAL: `plataforma_tendencia` importa de este módulo a nivel
-    # de archivo (reusa `_pct`, `_plata`, `_top` y `_suprimir_celda_chica`), así
-    # que hacerlo arriba cerraría el ciclo.
+    # de archivo (reusa `_pct`, `_plata` y `_top`), así que hacerlo arriba
+    # cerraría el ciclo.
     try:
         from app.plataforma_tendencia import persistir_snapshots
         persistir_snapshots(anio_mes, clientes, crudos_por_slug, origen)
@@ -827,15 +873,16 @@ def calcular(anio_mes: str, origen: str = "vista") -> dict:
 
 
 def consolidar_crudos(acumulado: list[dict]) -> dict:
-    """La suma CRUDA (Σ), sin K=3 ni saneo, de una lista de ``crudos``.
+    """La suma CRUDA (Σ), sin saneo, de una lista de ``crudos``.
 
     Es el paso compartido entre dos consumidores con necesidades distintas:
-    ``consolidar_agregado`` (abajo), que le aplica K=3 y el saneo de proveedor
-    para devolver el JSON PÚBLICO del consolidado de ``/metricas``; y
+    ``consolidar_agregado`` (abajo), que le aplica el saneo de proveedor para
+    devolver el JSON PÚBLICO EXACTO del consolidado de ``/metricas``; y
     ``app.plataforma_tendencia.persistir_snapshots`` (Fase 5), que guarda estos
     números tal cual — la fila ``__consolidado__`` de ``snapshot_metricas``
-    también es un CRUDO, igual que la de cada cliente, porque K=3 se aplica al
-    LEER la serie (``publicar_fila``), no al escribirla.
+    también es un CRUDO, igual que la de cada cliente, porque el nombre del
+    proveedor se sanea al ESCRIBIR y los números se vuelven públicos recién al
+    LEER la serie (``publicar_fila``).
 
     Un único lugar para el ponderado (Σ/Σ, nunca promedio de promedios) evita
     que la tendencia reimplemente esta suma por su cuenta — que es justamente
@@ -869,7 +916,7 @@ def consolidar_crudos(acumulado: list[dict]) -> dict:
 
 
 def consolidar_agregado(acumulado: list[dict]) -> dict:
-    """El agregado consolidado PÚBLICO (ponderado, con K=3) de una lista de ``crudos``.
+    """El agregado consolidado PÚBLICO (ponderado, EXACTO) de una lista de ``crudos``.
 
     SÓLO la cuenta del negocio — sin ``clientes_total`` ni ``clientes_con_error``,
     que son de la foto del panel (Fase 4) y no tienen sentido en un punto de la
@@ -877,10 +924,14 @@ def consolidar_agregado(acumulado: list[dict]) -> dict:
     ``_consolidar``, abajo). La tendencia (Fase 5,
     ``app/plataforma_tendencia.py``) NO pasa por esta función: la fila
     ``__consolidado__`` que persiste es un CRUDO (arma el suyo con
-    ``consolidar_crudos`` de arriba, sin K=3), y aplica K=3 recién al leer,
-    con ``publicar_fila``. Ambas comparten el mismo ponderado (Σ/Σ) por la
-    misma ``consolidar_crudos`` — un solo lugar para la aritmética, aunque el
-    JSON que produce cada una sea distinto.
+    ``consolidar_crudos`` de arriba), y lo vuelve público recién al leer, con
+    ``publicar_fila``. Ambas comparten el mismo ponderado (Σ/Σ) por la misma
+    ``consolidar_crudos`` — un solo lugar para la aritmética, aunque el JSON
+    que produce cada una sea distinto.
+
+    Fase 7: sin umbral. Devuelve el ponderado exacto de TODOS los clientes de
+    ``acumulado`` — ya no hay una regla de celda chica que aplicar a su propio
+    nivel.
 
     Las dos cuentas que no se pueden hacer promediando promedios:
 
@@ -893,7 +944,7 @@ def consolidar_agregado(acumulado: list[dict]) -> dict:
     crudo = consolidar_crudos(acumulado)
     contratos = crudo["contratos"]
     canon_total = crudo["canon_total"]
-    agregado = {
+    return {
         "sedes_con_plano": crudo["sedes"],
         "espacios_comercializables": crudo["caras"],
         "ocupacion_pct": _pct(crudo["ocupadas"], crudo["caras"]),
@@ -902,11 +953,6 @@ def consolidar_agregado(acumulado: list[dict]) -> dict:
         "top_proveedores": _top(crudo["proveedores"]),
         "usuarios_con_cuenta": len(crudo["usuarios"]),
     }
-    # Se calcula con los datos SUBYACENTES de todos los clientes legibles — los
-    # suprimidos incluidos: suprimir una fila no puede cambiar el total del
-    # negocio — y aplica la MISMA regla K=3 a su propio nivel. Con dos contratos
-    # en toda la plataforma, el total ES el contrato.
-    return _suprimir_celda_chica(agregado, contratos)
 
 
 def _consolidar(total_clientes: int, clientes: list[dict], acumulado: list[dict]) -> dict:
@@ -921,23 +967,22 @@ def _consolidar(total_clientes: int, clientes: list[dict], acumulado: list[dict]
     (Fase 6): esa función la reusa ``app/plataforma_tendencia.py``, cuya fila
     ``__consolidado__`` persistida no guarda ``canon_con_tarifa``/
     ``tarifa_total`` — meterlo ahí rompería la reconstrucción con un
-    ``KeyError``. Ponderado (Σ canon_con_tarifa / Σ tarifa_total) sobre los
-    clientes LEGIBLES de ``acumulado``, K=3 sobre Σ contratos_con_tarifa,
-    nunca promedio de spreads.
+    ``KeyError``. Ponderado (Σ canon_con_tarifa / Σ tarifa_total), nunca
+    promedio de spreads.
+
+    **Fase 7: vuelve a sumar a TODOS los legibles.** Hasta la Fase 6, sólo
+    entraban al spread consolidado los clientes cuyo propio spread se publicaba
+    (hasta la Fase 6: ≥ K contratos con tarifa) — si entrara uno suprimido, su tarifa se
+    despejaría por diferencia (hallazgo H-1, `test_asesoria_ataques.py` a17).
+    Sin supresión que proteger, el filtro `publicables` desaparece: el
+    consolidado suma a todos los legibles con tarifa, igual que ya hacía el
+    ingreso consolidado — el total del negocio es el dato en los dos casos.
     """
     con_error = sum(1 for c in clientes if c["error"] is not None)
     agregado = consolidar_agregado(acumulado)
-    # Sólo entran al spread consolidado los clientes cuyo PROPIO spread se
-    # publica (≥ K contratos con tarifa). Si entrara un cliente suprimido por
-    # K=3, su Σ tarifa y su spread se despejarían por diferencia entre el
-    # consolidado y los clientes visibles — la supresión no valdría nada
-    # (hallazgo H-1 de la fase, `test_asesoria_ataques.py` a17). Distinto del
-    # ingreso consolidado, que sí suma a todos: ahí el total del negocio es
-    # el dato; acá el dato es una relación cuya base es secreta por spec.
-    publicables = [a for a in acumulado if a["contratos_con_tarifa"] >= K_MINIMO_CONTRATOS]
-    canon_con_tarifa = sum(a["canon_con_tarifa"] for a in publicables)
-    tarifa_total = sum(a["tarifa_total"] for a in publicables)
-    contratos_con_tarifa = sum(a["contratos_con_tarifa"] for a in publicables)
+    canon_con_tarifa = sum(a["canon_con_tarifa"] for a in acumulado)
+    tarifa_total = sum(a["tarifa_total"] for a in acumulado)
+    contratos_con_tarifa = sum(a["contratos_con_tarifa"] for a in acumulado)
     agregado["spread_pct"] = _spread(canon_con_tarifa, tarifa_total, contratos_con_tarifa)
     agregado["clientes_con_tarifa"] = sum(1 for a in acumulado if a["tarifa_configurada"])
     return {

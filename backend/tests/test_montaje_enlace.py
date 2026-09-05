@@ -130,6 +130,9 @@ def test_el_token_no_abre_ningun_otro_endpoint(client, admin):
         "space_id": "1", "lease_id": "1", "file_id": "1", "supplier_id": "1",
         "id": "1", "svg_id": "fix-NAVE-PUN-04", "key": "reminder_days",
         "arte_id": "1",
+        # Fase 7: `GET /api/plataforma/clientes/{slug}/reporte` fue el primer GET
+        # con `{slug}` en la ruta. El cliente de siempre del fixture.
+        "slug": "galerias",
     }
     # Lo abierto a propósito, escrito acá para que agregar algo público sea una
     # decisión visible y no un test que se acomoda solo.

@@ -40,6 +40,12 @@ from app.clientes import Cliente, cliente_del_pedido, sesion_de, sesion_registro
 # mismo patrón que `plataforma_estado.py` con `models/plataforma.py`.
 from app.models.consentimiento import VERSION_POLITICA
 from app.models.supresion import IntentoExport, SolicitudSupresion
+# El default de `?meses=` del reporte de transparencia (Fase 7, Parte B): se
+# importa de `plataforma_tendencia`, que es quien lo define, para que el
+# horizonte por defecto de `/tendencia` y el de este endpoint no se puedan
+# separar. `MESES_MAXIMO` se usa para validar `meses` ANTES de cobrar el
+# freno de `/mi-reporte-plataforma` (ver el endpoint más abajo).
+from app.plataforma_tendencia import MESES_DEFAULT, MESES_MAXIMO
 
 router = APIRouter(prefix="/clientes", tags=["derechos"])
 
@@ -276,3 +282,65 @@ def solicitar_supresion(payload: SolicitarSupresionIn, dueno: tuple = Depends(re
         return _solicitud_dict(fila)
     finally:
         reg.close()
+
+
+# ─── GET /clientes/mi-reporte-plataforma ────────────────────────────────────
+#
+# Ruta LITERAL más, en el mismo prefix que ``/mi-export`` y
+# ``/solicitar-supresion`` -- mismo comentario de siempre sobre el orden entre
+# routers (no choca con nada de ``routers/alta.py``).
+
+@router.get("/mi-reporte-plataforma")
+def mi_reporte_plataforma(meses: int = MESES_DEFAULT, dueno: tuple = Depends(require_owner)):
+    """El reporte de transparencia (Fase 7, Parte B) del cliente del owner.
+
+    ``?meses=N`` (default 12, 1..24) -- 422 si se sale de rango. El slug
+    NUNCA sale de un parámetro: sale de ``cliente_del_pedido`` a través de
+    ``require_owner``, así que un owner sólo puede pedir el reporte de SU
+    propio cliente, nunca el de otro (contrato [A] de este módulo).
+
+    **La validación de ``meses`` va ANTES del freno.** Se chequea
+    ``1 <= meses <= MESES_MAXIMO`` y se responde 422 ANTES de tocar
+    ``_chequear_y_anotar_freno_export``: un pedido inválido (que de todos
+    modos iba a terminar en 422 dentro de ``armar_reporte``) nunca puede
+    consumir cupo del propio titular -- tres ``meses=0`` seguidos no pueden
+    dejarlo sin poder ejercer su derecho de acceso durante una hora.
+
+    **Comparte el freno de 3 por hora con ``/mi-export``**
+    (``_chequear_y_anotar_freno_export``, arriba): sin migraciones no hay
+    columna para llevar un contador aparte por endpoint, y los dos devuelven
+    datos completos del cliente a demanda de su propio owner -- la MISMA
+    superficie de abuso (un owner que se golpea a sí mismo descargando el
+    reporte 1000 veces por hora). Se decidió compartir la tabla
+    ``export_attempts`` en vez de abrir una cuarta tabla nueva sólo para
+    diferenciar los dos contadores.
+
+    **No anota bitácora.** ``bitacora_plataforma`` registra accesos DEL
+    OPERADOR a datos de negocio de un cliente -- esto es al revés: el DUEÑO
+    mirando sus propios datos. Anotarlo acá sería registrar que alguien miró
+    lo suyo, que no es lo que la bitácora existe para constatar.
+    """
+    from app.plataforma_reporte import ClienteDesconocido, MesesInvalidos, armar_reporte
+
+    cliente, usuario_id, _email = dueno
+
+    if not (1 <= meses <= MESES_MAXIMO):
+        raise HTTPException(status_code=422, detail=f"Los meses van de 1 a {MESES_MAXIMO}.")
+
+    _chequear_y_anotar_freno_export(usuario_id)
+
+    try:
+        return armar_reporte(cliente.slug, meses)
+    except MesesInvalidos as e:
+        # Red de seguridad: `armar_reporte` valida `meses` de nuevo (y valida
+        # otras formas inválidas, como un `meses` no convertible a int que
+        # FastAPI ya habría rechazado con 422 antes de llegar acá). No se
+        # borra el except sólo porque el chequeo de arriba ya cubre el caso
+        # común.
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except ClienteDesconocido as e:
+        # No debería poder pasar -- `cliente` ya vino resuelto por
+        # `cliente_del_pedido`/`require_owner` -- pero si el registro
+        # cambiara debajo de la sesión, el mismo texto fijo que en
+        # `/plataforma/tendencia` y sin filtrar nada del driver.
+        raise HTTPException(status_code=404, detail="No hay un cliente con ese código.") from e

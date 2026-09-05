@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert } from "lucide-react";
+import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText } from "lucide-react";
 import StoreEditor3D from "../components/StoreEditor3D/StoreEditor3D";
 import FloorPlan2D from "../components/FloorPlan2D/FloorPlan2D";
 import DashboardView from "./DashboardView";
@@ -671,6 +671,7 @@ function BitacoraSection() {
  *  frontend no intenta adivinar "sos owner": deja que el 403 lo diga y lo
  *  traduce a un mensaje que se entiende. */
 function TusDatosSection() {
+  const navigate = useNavigate();
   const [descargando, setDescargando] = useState(false);
   const [exportMsg, setExportMsg] = useState<Feedback>(null);
 
@@ -750,6 +751,16 @@ function TusDatosSection() {
           {pidiendo ? "Enviando…" : "Solicitar supresión"}
         </ActionButton>
         <FeedbackNote msg={supresionMsg} />
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <ActionButton onClick={() => navigate("/reporte-plataforma")}>
+          <FileText size={12} />
+          Reporte de transparencia
+        </ActionButton>
+        <div style={{ marginTop: 6, fontSize: 11, color: "var(--ink-3)", lineHeight: 1.4 }}>
+          Qué tomó la plataforma de tu cliente, cómo lo calculó y quién lo consultó.
+        </div>
       </div>
     </div>
   );

@@ -251,8 +251,10 @@ def _hash_bases(slugs):
 #
 # Un proveedor cuyo NOMBRE lleva correo y teléfono (la tentación: el nombre
 # saneado SÍ sale en el top-5). Usuarios reales con correo. Un monto
-# característico (4321.99) en un cliente con UN SOLO contrato ese mes -- por
-# debajo de K=3, ni el importe ni el top pueden aparecer.
+# característico (4321.99) en un cliente con UN SOLO contrato ese mes --
+# Fase 7 (sin umbral): el importe y el top SÍ aparecen, exactos, y lo que
+# tiene que seguir sin filtrarse es el correo/teléfono del proveedor, no el
+# monto.
 
 PROVEEDOR_JUGOSO = "Contacto Comercial <contacto.jugoso@ejemplo.example> +57 300 555 0199"
 CORREO_DUENA = "duena.jugosa@correo-personal.example"
@@ -264,8 +266,9 @@ _CONTRATO_UNICO = [
     ("NAVE-PUN-01", PROVEEDOR_JUGOSO, "2026-09-01", "2026-09-30", MONTO_CARACTERISTICO, True),
 ]
 
-# Un segundo cliente con TRES contratos (encima de K=3) para que el consolidado
-# tenga plata que publicar y el test pueda comprobar que igual no se filtra nada.
+# Un segundo cliente con TRES contratos, para que el consolidado tenga más de
+# un cliente aportando plata y el test pueda comprobar que igual no se filtra
+# ningún dato individual, sea cual sea el conteo de contratos.
 _BETA = [
     {"code": "E-01", "type": "punta", "sede": "BETA"},
     {"code": "E-02", "type": "punta", "sede": "BETA"},
@@ -279,7 +282,7 @@ _CONTRATOS_BETA = [
 
 
 def _escenario_jugoso(client, monkeypatch):
-    """acme (1 contrato, K=3 suprime) + beta (3 contratos) + roto + operador."""
+    """acme (1 contrato, publica exacto sin umbral) + beta (3 contratos) + roto + operador."""
     from app.plataforma_metricas import limpiar_cache_metricas
 
     ids = Identidades(client)
@@ -467,26 +470,37 @@ def test_t13_ningun_correo_ni_telefono_en_el_json(client, monkeypatch):
         assert not re.search(r"\d{7,}", t), t
 
 
-def test_t14_menos_de_k3_no_publica_el_monto_caracteristico(client, monkeypatch):
-    """acme tiene UN solo contrato ese mes: el importe y el top van suprimidos."""
+def test_t14_con_un_contrato_el_monto_caracteristico_sale_exacto(client, monkeypatch):
+    """Fase 7 (sin umbral): acme tiene UN solo contrato ese mes y el importe se
+    publica EXACTO — es la decisión de producto que reemplaza a K=3. Lo que
+    sigue sin poder aparecer es el correo/teléfono del proveedor (frontera D),
+    no el monto."""
     _ids, cab = _escenario_jugoso(client, monkeypatch)
     r = client.get("/api/plataforma/tendencia?cliente=acme&meses=1", headers=cab)
     assert r.status_code == 200, r.text
     punto = r.json()["serie"][-1]
 
-    assert punto["ingreso_contratado_mes"] is None
-    assert punto["canon_promedio_mensual"] is None
-    assert punto["top_proveedores"] == []
+    assert punto["ingreso_contratado_mes"] == MONTO_CARACTERISTICO
+    assert punto["canon_promedio_mensual"] == MONTO_CARACTERISTICO
+    assert punto["top_proveedores"] == [
+        {"nombre": "Contacto Comercial <[correo oculto]> [teléfono oculto]",
+         "contratos_activos": 1},
+    ]
 
     numeros = _todos_los_numeros(r.json())
-    assert MONTO_CARACTERISTICO not in numeros
+    assert MONTO_CARACTERISTICO in numeros
+    # Y lo que sigue prohibido es el dato de contacto, no el monto agregado.
+    textos = _todos_los_textos(r.json())
+    assert not any("@" in t for t in textos)
+    assert not any("300 555 0199" in t for t in textos)
 
 
 def test_t15_claves_prohibidas_no_existen_en_la_serie(client, monkeypatch):
     """Ni siquiera dentro de `top_proveedores`: las claves de esa lista son
     `nombre`/`contratos_activos` a propósito, pero `contratos_activos` FUERA de
-    ese arreglo (al nivel del punto mensual) no puede existir -- es justo el
-    numerador de la supresión que la regla esconde."""
+    ese arreglo (al nivel del punto mensual) no puede existir -- es un crudo de
+    negocio (el numerador de la ocupación) que no cruza la frontera del
+    operador, con o sin umbral (Fase 7 no cambia esto)."""
     _ids, cab = _escenario_jugoso(client, monkeypatch)
     r = client.get("/api/plataforma/tendencia?cliente=__consolidado__&meses=1", headers=cab)
     assert r.status_code == 200, r.text
@@ -495,7 +509,7 @@ def test_t15_claves_prohibidas_no_existen_en_la_serie(client, monkeypatch):
     for punto in cuerpo["serie"]:
         assert set(punto.keys()) & CLAVES_PROHIBIDAS == set(), punto.keys()
         # Dentro de cada punto, sólo `top_proveedores` puede llevar la clave
-        # `contratos_activos` -- es la del conteo por proveedor, ya pasado por K=3.
+        # `contratos_activos` -- ahí es el conteo por proveedor, no el total.
         for camino, clave in _claves_recursivas(punto):
             if clave in ("contratos_activos",) and "top_proveedores" not in camino:
                 pytest.fail(f"clave prohibida '{clave}' fuera de top_proveedores en {camino}")
@@ -520,10 +534,12 @@ def test_t17_top_proveedores_nunca_supera_cinco(client, monkeypatch):
         assert len(punto["top_proveedores"]) <= TOPE_PROVEEDORES
 
 
-def test_t18_beta_con_tres_contratos_no_filtra_datos_individuales(client, monkeypatch):
-    """beta SÍ supera K=3 y publica top/importe -- pero ninguno de los montos
-    ni nombres INDIVIDUALES de sus contratos aparece suelto (sólo el agregado
-    y el nombre saneado del proveedor, que el top ya permite)."""
+def test_t18_beta_publica_el_agregado_sin_filtrar_datos_individuales(client, monkeypatch):
+    """beta publica su top/importe agregado -- pero ninguno de los montos ni
+    nombres INDIVIDUALES de sus contratos aparece suelto (sólo el agregado y
+    el nombre saneado del proveedor, que el top ya permite). Esto no depende
+    de cuántos contratos tenga (Fase 7, sin umbral): la frontera es agregado
+    vs fila, no publicado vs suprimido."""
     _ids, cab = _escenario_jugoso(client, monkeypatch)
     r = client.get("/api/plataforma/tendencia?cliente=beta&meses=1", headers=cab)
     assert r.status_code == 200, r.text
@@ -531,7 +547,7 @@ def test_t18_beta_con_tres_contratos_no_filtra_datos_individuales(client, monkey
     numeros = _todos_los_numeros(r.json())
     for _codigo, _prov, _ini, _fin, canon, _activo in _CONTRATOS_BETA:
         assert canon not in numeros
-    # El agregado SÍ está: beta tiene 3 contratos, por encima de K=3.
+    # El agregado SÍ está, exacto.
     assert punto["ingreso_contratado_mes"] == 1_350_000.0
 
 
@@ -631,7 +647,14 @@ def test_t22_ninguna_tabla_existente_gano_columnas(client):
     # Sólo `plataforma.py` puede tener tocado un modelo -- si `models.py`,
     # `identidad.py` o cualquier otro aparece acá, alguien agregó una columna a
     # una tabla existente en OTRO archivo y hay que mirarlo a mano.
-    assert set(archivos_tocados) <= {"backend/app/models/plataforma.py"}, archivos_tocados
+    # `consentimiento.py` está en la lista por Fase 7 Parte C: sólo cambia el
+    # VALOR de la constante `VERSION_POLITICA` ("2026-09-v1" -> "2026-09-v2"),
+    # ninguna columna nueva ni tocada -- se verifica en el diff de abajo, que
+    # sólo mira `plataforma.py` en busca de `Column(` agregadas.
+    assert set(archivos_tocados) <= {
+        "backend/app/models/plataforma.py",
+        "backend/app/models/consentimiento.py",
+    }, archivos_tocados
 
     diff_plataforma = subprocess.run(
         ["git", "diff", "main", "--", "app/models/plataforma.py"],

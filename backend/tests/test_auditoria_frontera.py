@@ -8,9 +8,9 @@ lo demuestra —``xfail(strict=True)`` afirmando el comportamiento SEGURO que ho
 no se cumple— y se cuenta en ``features/auditoria/outputs/frontera.md``.
 
 No se repiten los ataques ya escritos (barrido de rutas con cabecera m9/m10,
-bitácora m19/a8, motivo del estado m20/a13, caché y atribución m22, K=3 del
-spread a16/a17/a18, base rota m18/a12). Se atacan SIETE bordes que las fases
-anteriores dejaron sin tocar:
+bitácora m19/a8, motivo del estado m20/a13, caché y atribución m22, el spread
+sin umbral a16/a17/a18, base rota m18/a12). Se atacan SIETE bordes que las
+fases anteriores dejaron sin tocar:
 
 * **f01/f02** — la frontera dura, revisitada con las rutas de las Fases 5 y 6
   adentro y por el camino de la QUERY (``?token=``), no de la cabecera.
@@ -24,10 +24,12 @@ anteriores dejaron sin tocar:
   tope y filas de snapshot para períodos arbitrarios, futuros incluidos.
 * **f07** — ``bitacora_plataforma`` y ``snapshot_metricas`` no se purgan nunca,
   a diferencia de ``AuditEntry`` (``services/bitacora.purgar``, 365 días).
-* **f08** — K=3 se despeja por diferencia contra el consolidado: el canon
-  EXACTO del contrato único de un cliente suprimido.
-* **f09** — caracterización: dos operadores comparten caché en ``/tendencia`` y
-  ``/adopcion``, y la bitácora igual atribuye cada consulta a quien la hizo.
+* **f08** — RESUELTO por decisión de producto (Fase 7): K=3 desaparece, el
+  operador ve agregados exactos de todos los clientes sin umbral, y ya no
+  hay ninguna celda suprimida que despejar por diferencia contra el
+  consolidado.
+* **f09** — caracterización: dos operadores comparten caché en ``/tendencia``
+  y ``/adopcion``, y la bitácora igual atribuye cada consulta a quien la hizo.
 
 **Todos los ``import app.*`` van adentro de las funciones**: el fixture
 ``client`` de ``conftest.py`` purga ``sys.modules['app.*']`` entre pruebas.
@@ -150,8 +152,8 @@ def _bitacora():
 
 
 def _un_cliente_con_proveedor(client, monkeypatch, nombre_proveedor):
-    """Un supermercado con TRES contratos (pasa K=3) de un proveedor cuyo
-    nombre lleva un contacto ofuscado adentro. Devuelve la cabecera de consola.
+    """Un supermercado con TRES contratos de un proveedor cuyo nombre lleva un
+    contacto ofuscado adentro. Devuelve la cabecera de consola.
     """
     ids = Identidades(client)
     _fundar(ids, "uid-acme", "duena.acme@correo-personal.example", "acme", "Acme")
@@ -226,6 +228,16 @@ def test_f01_solo_metricas_tendencia_y_adopcion_abren_una_base_de_cliente(client
         "GET /api/plataforma/metricas",
         "GET /api/plataforma/tendencia",
         "GET /api/plataforma/adopcion",
+        # Fase 7 Parte B: el reporte de transparencia del operador abre UNA
+        # base -la del cliente pedido- sólo para el spread del mes en curso
+        # (`_metricas_de_un_cliente`); el resto del reporte sale de
+        # snapshot_metricas/bitacora_plataforma/consentimientos/solicitudes_supresion.
+        "GET /api/plataforma/clientes/galerias/reporte",
+        # Fase 8: el detalle abre la base del cliente pedido (espacios,
+        # contratos, proveedores) y, SÓLO para `benchmark_por_tipo`, recorre las
+        # demás como `/metricas`; lo que cruza de las otras es un promedio de
+        # canon por tipo, un número, ver `test_detalle_ataques.py::d10/d11`.
+        "GET /api/plataforma/clientes/galerias/detalle",
     }
     assert con_base <= permitidas, f"rutas que abrieron una base de cliente: {abiertas}"
     assert "GET /api/plataforma/metricas" in con_base, abiertas
@@ -607,60 +619,23 @@ def test_f08_hallazgo_la_bitacora_del_operador_no_se_purga_nunca(client, monkeyp
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# f09 · K=3 SE DESPEJA POR DIFERENCIA CONTRA EL CONSOLIDADO
+# f09 (frontera-5) resuelto por decisión de producto, Fase 7: el consolidado
+# suma a todos y el cliente ve el reporte de transparencia.
+#
+# Este test documentaba que el consolidado despejaba por diferencia el canon
+# EXACTO del contrato único de un cliente suprimido por K=3
+# (``canon_de_B = ingreso_consolidado − ingreso_de_A``), porque K=3 suprimía
+# la fila de B pero el consolidado sí publicaba su ingreso (decisión m26 de
+# la Fase 4: el consolidado suma a todos los legibles). El dueño de la
+# plataforma decidió (docs/ESTADO.md, sección "Fase 7 — Transparencia") que
+# el operador vea los agregados EXACTOS de todos los clientes, sin umbral:
+# K=3 desaparece, así que ya no existe ninguna celda suprimida que despejar
+# — B publica su propio ingreso exacto en su propia fila, igual que el
+# consolidado. La contrapartida es el reporte de transparencia
+# (``app/plataforma_reporte.py``, ``GET /api/clientes/mi-reporte-plataforma``
+# y ``GET /api/plataforma/clientes/{slug}/reporte``): cada cliente puede
+# auditar qué dato exacto tomó la plataforma de él y quién lo consultó.
 # ════════════════════════════════════════════════════════════════════════════
-
-CANON_UNICO = 4_173_919.0   # irrepetible: si aparece, se filtró
-
-
-def _dos_clientes_uno_de_un_solo_contrato(client, monkeypatch):
-    """A publica (3 contratos) y B queda suprimido por K=3 (1 contrato)."""
-    ids = Identidades(client)
-    _fundar(ids, "uid-a", "duena@a.example", "aaa", "A")
-    _fundar(ids, "uid-b", "dueno@b.example", "bbb", "B")
-    _sembrar_negocio(
-        "aaa", {"A": [{"code": f"E-0{i}", "type": "punta", "sede": "A"} for i in (1, 2, 3)]},
-        _largos([(f"A-E-0{i}", "Alpina", 1_000_000.0) for i in (1, 2, 3)]),
-    )
-    _sembrar_negocio(
-        "bbb", {"B": [{"code": "E-01", "type": "punta", "sede": "B"}]},
-        _largos([("B-E-01", "Nutresa", CANON_UNICO)]),
-    )
-    consola = _consola(ids, monkeypatch, email=CORREO_OPERADOR)
-    _limpiar_caches()
-    return _cab(consola["token"])
-
-
-@pytest.mark.xfail(strict=True, reason="frontera-5: el consolidado despeja la celda suprimida")
-def test_f09_hallazgo_el_consolidado_despeja_el_contrato_unico_del_cliente_suprimido(
-        client, monkeypatch):
-    """f09 · frontera-5 — K=3 no protege nada cuando los demás clientes publican.
-
-    B tiene UN contrato: su ``ingreso_contratado_mes`` y su
-    ``canon_promedio_mensual`` van en ``null`` y su top de proveedores vacío,
-    exactamente como manda ``_suprimir_celda_chica``. Pero el consolidado sí
-    publica el ingreso (4 contratos ≥ K) e incluye a B —decisión declarada, m26
-    de la Fase 4—, así que::
-
-        canon del contrato de B = ingreso_consolidado − ingreso_de_A
-
-    devuelve el monto EXACTO del contrato individual que la regla escondió. Con
-    N clientes es lo mismo: alcanza con que N−1 publiquen. El fix de a17 tapó
-    esta aritmética para el *spread* pero no para el *ingreso*, que es la cifra
-    que la spec nombra primero ("nunca valores de contratos individuales").
-
-    Se exige que el monto despejado no coincida con el canon real.
-    """
-    cab = _dos_clientes_uno_de_un_solo_contrato(client, monkeypatch)
-    cuerpo = _metricas(client, cab)
-
-    b = next(c for c in cuerpo["clientes"] if c["slug"] == "bbb")["metricas"]
-    a = next(c for c in cuerpo["clientes"] if c["slug"] == "aaa")["metricas"]
-    assert b["ingreso_contratado_mes"] is None, "el escenario exige que B esté suprimido"
-
-    despejado = cuerpo["consolidado"]["ingreso_contratado_mes"] - a["ingreso_contratado_mes"]
-    assert abs(despejado - CANON_UNICO) > 1.0, (
-        f"el canon del contrato único de B se despejó del consolidado: {despejado}")
 
 
 # ════════════════════════════════════════════════════════════════════════════

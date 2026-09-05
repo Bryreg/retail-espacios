@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import { Sun, Moon, EyeOff, AlertTriangle } from "lucide-react";
+import { Sun, Moon, AlertTriangle } from "lucide-react";
 import type { EstadoCuenta } from "../../api/plataforma";
 
 // ─── Primitivas visuales de la consola de plataforma (Fase 4b) ──────────────
@@ -16,8 +16,9 @@ import type { EstadoCuenta } from "../../api/plataforma";
 //  · Estado de cuenta usa la terna (`--con-estado-*`) — activo neutro,
 //    gracia/solo_lectura ámbar, suspendido rojo — siempre con punto + palabra,
 //    nunca color solo.
-//  · K=3 (suprimido por privacidad) y "sin dato" tienen tratamientos
-//    DISTINTOS entre sí y de un 0 real.
+//  · Fase 7: los agregados por cliente son EXACTOS, sin umbral de privacidad
+//    — la contrapartida es el reporte de transparencia. Un dato ausente es
+//    "sin dato" (— apagado), nunca una supresión; distinto de un 0 real.
 //  · Todo lo interactivo lleva foco de teclado visible (clase `con-focusable`
 //    o `con-bar-row`).
 //
@@ -222,7 +223,7 @@ export function KpiTile({
 const GRID_BARRA = "minmax(84px, 38%) 1fr 58px";
 
 export type TonoBarra = "magnitud" | "conteo";
-export type EstadoBarra = "normal" | "suprimido" | "sindato";
+export type EstadoBarra = "normal" | "sindato";
 
 function pistaColor(tono: TonoBarra): string {
   return tono === "magnitud" ? "var(--con-mag-track)" : "var(--con-bar-neutral-track)";
@@ -256,9 +257,8 @@ export function Barras({
 }
 
 /** Una barra. `estado`:
- *   · "normal"    → track + relleno a la proporción, texto = valor.
- *   · "suprimido" → track rayado (K=3), sin relleno, texto = chip "‹3".
- *   · "sindato"   → sin barra, texto = "—" apagado.
+ *   · "normal"  → track + relleno a la proporción, texto = valor.
+ *   · "sindato" → sin barra, texto = "—" apagado.
  *  Es enfocable con teclado (cada barra es un dato inspeccionable); el
  *  Analista puede colgar el tooltip de contenido del `aria-label`/`title`. */
 export function BarraFila({
@@ -275,8 +275,7 @@ export function BarraFila({
 }) {
   const pct = estado === "normal" && max > 0 ? Math.max(0, Math.min(100, (valor / max) * 100)) : 0;
   const aria =
-    estado === "suprimido" ? `${label}: dato suprimido por privacidad (menos de 3 contratos)`
-    : estado === "sindato" ? `${label}: sin dato`
+    estado === "sindato" ? `${label}: sin dato`
     : `${label}: ${texto}`;
 
   return (
@@ -299,14 +298,6 @@ export function BarraFila({
         <div style={{ height: 14, display: "flex", alignItems: "center" }}>
           <span style={{ fontSize: 10.5, color: "var(--con-sindato-ink)", fontStyle: "italic" }}>sin dato</span>
         </div>
-      ) : estado === "suprimido" ? (
-        <div
-          style={{
-            height: 14, borderRadius: "var(--r-sm)",
-            background: "repeating-linear-gradient(135deg, var(--con-suprimido-hatch) 0 3px, transparent 3px 6px)",
-            border: "1px solid var(--con-line)",
-          }}
-        />
       ) : (
         <div style={{ height: 14, borderRadius: "var(--r-sm)", background: pistaColor(tono), overflow: "hidden" }}>
           <div style={{ width: `${pct}%`, height: "100%", background: rellenoColor(tono), borderRadius: "var(--r-sm)" }} />
@@ -314,9 +305,7 @@ export function BarraFila({
       )}
 
       <div style={{ textAlign: "right", fontSize: 11.5, fontWeight: 600, fontFamily: "var(--font-mono)" }}>
-        {estado === "suprimido" ? (
-          <Suprimido compacto />
-        ) : estado === "sindato" ? (
+        {estado === "sindato" ? (
           <span style={{ color: "var(--con-sindato-ink)" }}>—</span>
         ) : (
           <span style={{ color: "var(--con-ink-1)" }}>{texto}</span>
@@ -356,32 +345,44 @@ export function EstadoPill({ estado }: { estado: EstadoCuenta }) {
   );
 }
 
-// ═══ K=3 (suprimido) y sin dato — DISTINTOS entre sí y de un 0 real ═════════
+// ═══ Sin dato — distinto de un 0 real ═══════════════════════════════════════
 
-/** Dato ocultado por la regla de privacidad K=3 (menos de 3 contratos). Lleva
- *  ícono de "oculto" + texto: no es "sin dato" (que es un guion apagado) ni un
- *  0 (que es un número en tinta plena). */
-export function Suprimido({ compacto }: { compacto?: boolean }) {
-  return (
-    <span
-      title="Suprimido por privacidad: los importes de un cliente solo se publican cuando agrupan 3 o más contratos activos (regla K=3). Con menos, el agregado equivaldría al valor de un contrato identificable."
-      style={{
-        display: "inline-flex", alignItems: "center", gap: 4,
-        color: "var(--con-suprimido-ink)", fontStyle: "italic", cursor: "help",
-        fontFamily: "var(--font-sans)", fontWeight: 500, fontSize: 11.5,
-      }}
-    >
-      <EyeOff size={12} style={{ flexShrink: 0 }} />
-      {compacto ? "‹3" : "‹3 contratos"}
-    </span>
-  );
+/** Ausencia real de dato: un guion en el tono de vacío. Distinto del 0 —
+ *  Fase 7 quitó la supresión de celda chica: los agregados por cliente
+ *  ahora son EXACTOS, sin umbral, así que esto sólo aparece cuando de verdad
+ *  no hay nada que mostrar (p. ej. cero contratos activos en el período). */
+export function SinDato({ title = "Sin dato para este período" }: { title?: string }) {
+  return <span title={title} style={{ color: "var(--con-sindato-ink)" }}>—</span>;
 }
 
-/** Ausencia real de dato: un guion en el tono de vacío. Distinto del 0 y del
- *  suprimido. */
-export function SinDato() {
-  return <span title="Sin dato para este período" style={{ color: "var(--con-sindato-ink)" }}>—</span>;
-}
+// ═══ Impresión: paleta clara forzada (Fase 7/8) ═════════════════════════════
+//
+// La misma paleta clara que `ReportePlataforma.tsx` fija en su bloque
+// `@media print` (Fase 7) -- extraída acá para que `DetalleCliente.tsx`
+// (Fase 8, "Imprimir recomendaciones") la use sin duplicar la lista de
+// tokens. Es sólo el CUERPO de declaraciones `--con-*` + `background`/`color`
+// que cada página cuelga de su propio selector raíz dentro de un
+// `@media print { .mi-clase-raiz { ...ESTO... } }` -- no incluye el
+// `@media print` en sí, porque cada página oculta y particiona sus propias
+// secciones de forma distinta.
+export const IMPRESION_CLARA_VARS = `
+  --con-bg: #FFFFFF !important;
+  --con-surface: #FFFFFF !important;
+  --con-surface-2: #FFFFFF !important;
+  --con-surface-raised: #FFFFFF !important;
+  --con-line: #C7CED0 !important;
+  --con-line-soft: #DEE2E3 !important;
+  --con-ink-1: #14181C !important;
+  --con-ink-2: #4A5459 !important;
+  --con-ink-3: #6B7479 !important;
+  --con-ink-4: #8E979B !important;
+  --con-accent: #275A7A !important;
+  --con-accent-ink: #FFFFFF !important;
+  --con-sindato-ink: #8E979B !important;
+  --con-estado-corte: #8E1226 !important;
+  background: #FFFFFF !important;
+  color: #14181C !important;
+`;
 
 // ═══ Tabla de densidad de tablero ═══════════════════════════════════════════
 //

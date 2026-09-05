@@ -177,8 +177,9 @@ def test_compliance1_snapshot_metricas_no_deberia_guardar_el_contacto_del_provee
 
     ids = Identidades(client)
     _fundar(ids, "uid-acme", "duena@acme.example", "acme", "Acme")
-    # 3 contratos activos -- por encima del umbral K=3, para que el proveedor
-    # jugoso entre de lleno al cálculo (no que quede fuera por celda chica).
+    # 3 contratos activos: el conteo no importa desde Fase 7 (sin umbral) para
+    # que el proveedor jugoso entre al cálculo; se mantiene por continuidad
+    # con el resto del escenario.
     contratos = [
         ("NAVE-E-01", PROVEEDOR_CON_CONTACTO, "2026-09-01", "2026-09-30", 100_000.0, True),
         ("NAVE-E-02", PROVEEDOR_CON_CONTACTO, "2026-09-01", "2026-09-30", 100_000.0, True),
@@ -201,8 +202,9 @@ def test_compliance1_snapshot_metricas_no_deberia_guardar_el_contacto_del_provee
 
     # Ni el correo ni el teléfono del contacto sobreviven a disco, ni siquiera
     # en el crudo interno: `_recortar_top` sanea el nombre ANTES del `json.dumps`
-    # (arreglo de compliance-1 / frontera-2). Los NÚMEROS siguen crudos —K=3 se
-    # aplica al leer—; lo que baja saneado es sólo la cadena.
+    # (arreglo de compliance-1 / frontera-2). Los NÚMEROS siguen crudos, se
+    # vuelven públicos y exactos recién al leer (Fase 7, sin umbral); lo que
+    # baja saneado es sólo la cadena.
     assert not any("@" in nombre for nombre in crudo), (
         f"el correo del contacto del proveedor quedó a disco sin sanear: {list(crudo)}"
     )

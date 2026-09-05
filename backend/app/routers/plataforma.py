@@ -1,10 +1,12 @@
 """Panel de plataforma: quién es operador, el interruptor de estado y las métricas.
 
-Datos del registro, con UNA excepción acotada y declarada: ``GET /metricas``
-(Fase 4). Todos los demás endpoints de este router JAMÁS abren la base de un
-cliente -- un operador toca el registro, no los datos de negocio de ningún
-supermercado; el estado de cuenta vive enteramente en la base por defecto
-(``estados_cliente``, ver ``app/plataforma_estado.py``).
+Datos del registro, con TRES excepciones acotadas y declaradas: ``GET /metricas``
+(Fase 4), ``GET /clientes/{slug}/reporte`` (Fase 7, sólo el spread del mes en
+curso) y ``GET /clientes/{slug}/detalle`` (Fase 8). Los demás endpoints de
+este router JAMÁS abren la base de un cliente -- un operador toca el registro,
+no los datos de negocio de ningún supermercado; el estado de cuenta vive
+enteramente en la base por defecto (``estados_cliente``, ver
+``app/plataforma_estado.py``).
 
 **La excepción, textual** (enmienda de la regla dura de la Fase 2, spec de la
 Fase 4): el operador accede a datos de negocio SOLO por los endpoints de
@@ -15,6 +17,18 @@ lógica vive entera en ``app/plataforma_metricas.py`` y
 ``app/plataforma_adopcion.py``, que no escriben una sola fila en ninguna base
 de cliente; acá abajo sólo se valida el período, se anota la consulta y se
 devuelve.
+
+**Y desde la Fase 8 la enmienda va más lejos: agregados exactos Y DETALLE DE
+NEGOCIO.** ``GET /clientes/{slug}/detalle`` (decisión del dueño de la
+plataforma, 2026-09-05, para el servicio de asesoría comercial) devuelve el
+negocio de UN cliente espacio por espacio: qué proveedor ocupa cada uno, a qué
+canon, desde y hasta cuándo, qué está libre, y las oportunidades y
+recomendaciones que se derivan de eso. Sigue siendo SOLO LECTURA, con bitácora
+(``accion="detalle"``) y con la misma frontera de siempre: nada de datos de
+contacto del proveedor ni de notas, ninguna foto, ningún correo/nombre/id de
+un usuario del supermercado, y la tarifa de referencia sólo como
+``tarifa_configurada`` sí/no. La lógica vive entera en
+``app/plataforma_detalle.py``, que tampoco escribe una sola fila.
 
 **Y la bitácora ya no es sólo de los agregados** (hallazgo frontera-6): toda
 consulta del operador deja línea por ``_anotar_consulta``, incluidas
@@ -424,3 +438,115 @@ def cambiar_estado_cliente(slug: str, payload: PatchEstadoIn, email: str = Depen
     from app.plataforma_metricas import limpiar_cache_metricas
     limpiar_cache_metricas()
     return resultado
+
+
+# ─── Reporte de transparencia, para el operador (Fase 7, Parte B) ──────────
+#
+# Ruta declarada AL FINAL DEL ARCHIVO A PROPÓSITO -- después de `/metricas`,
+# `/tendencia`, `/adopcion`, `/supresiones`, `/supresiones/{solicitud_id}`,
+# `/soy`, `/clientes` y `/clientes/{slug}` PATCH: es decir, después de TODAS
+# las literales de este router. `/clientes/{slug}/reporte` no puede chocar
+# con `/clientes/{slug}` (distinto número de segmentos) ni con ninguna otra
+# ruta de acá, pero se respeta el orden igual -- la regla dura de FastAPI del
+# repo es "literal antes de paramétrica", y el día que alguien agregue una
+# ruta nueva bajo `/clientes/` en el medio de este archivo, ésta ya queda
+# a salvo por estar al final.
+#
+# Mismo JSON que `GET /api/clientes/mi-reporte-plataforma` -- las dos rutas
+# llaman a la MISMA función (`app.plataforma_reporte.armar_reporte`). La
+# diferencia es la bitácora: acá SÍ se anota (es un acceso del operador a
+# datos de un cliente), allá no (es el dueño mirando lo suyo).
+
+@router.get("/clientes/{slug}/reporte")
+def reporte_de_transparencia_del_cliente(
+    slug: str,
+    meses: int = MESES_DEFAULT,
+    email: str = Depends(require_operador),
+):
+    """El reporte de transparencia de UN cliente, para el operador.
+
+    ``slug`` normalizado (``.strip().lower()``, igual que el PATCH de
+    estados). 404 con texto FIJO si no existe -- igual que ``/tendencia`` y
+    el PATCH de arriba. ``meses`` fuera de 1..24 -> 422.
+
+    **La bitácora se escribe SIEMPRE, DESPUÉS de armar** (si armar fallara,
+    no habría acceso que anotar) -- ``accion="reporte"``, con
+    ``periodo="<slug>:<desde>..<hasta>"``: el reporte también es un acceso
+    del operador a datos de negocio de este cliente, y el rango completo
+    (no un solo mes) es el QUÉ de la línea, igual que en ``/tendencia``.
+    """
+    from app.plataforma_reporte import ClienteDesconocido, MesesInvalidos, armar_reporte
+
+    slug = (slug or "").strip().lower()
+    try:
+        cuerpo = armar_reporte(slug, meses)
+    except MesesInvalidos as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except ClienteDesconocido as e:
+        raise HTTPException(status_code=404, detail="No hay un cliente con ese código.") from e
+
+    ventana = cuerpo["ventana"]
+    _anotar_consulta(email, "reporte", f"{slug}:{ventana['desde']}..{ventana['hasta']}")
+    return cuerpo
+
+
+# ─── Detalle de negocio de un cliente, para la asesoría (Fase 8) ───────────
+#
+# Ruta declarada AL FINAL DEL ARCHIVO, después de `/clientes/{slug}/reporte`
+# y por lo tanto después de TODAS las literales de este router (`/metricas`,
+# `/tendencia`, `/adopcion`, `/supresiones`, `/soy`, `/clientes`): la regla
+# dura del repo es "literal antes de paramétrica". `/clientes/{slug}/detalle`
+# no puede chocar hoy con ninguna de ellas (distinto número de segmentos o
+# distinto primer segmento), pero el orden se respeta igual -- el día que
+# alguien agregue una ruta nueva bajo `/clientes/` en el medio del archivo,
+# ésta ya está a salvo por estar al final.
+#
+# Es la SEGUNDA puerta por la que un operador toca datos de negocio de un
+# cliente (la primera es `/metricas`), y la única que devuelve filas: los
+# espacios y sus contratos. Todo lo que sale de acá lo arma
+# `app.plataforma_detalle.armar_detalle`, que abre la base de ESTE cliente una
+# sola vez y sólo para `query(...)`.
+
+@router.get("/clientes/{slug}/detalle")
+def detalle_de_negocio_del_cliente(
+    slug: str,
+    periodo: str | None = None,
+    email: str = Depends(require_operador),
+):
+    """El detalle de negocio de UN cliente: espacios, contratos, proveedores,
+    movimientos, oportunidades y recomendaciones.
+
+    ``?periodo=YYYY-MM``; sin parámetro, el mes calendario en curso (UTC), con
+    la MISMA ventana de ``/metricas`` -- un período malformado o fuera de
+    ventana es 422 con el texto de ``normalizar_periodo``, nunca una caída
+    silenciosa al mes actual. ``slug`` normalizado (``.strip().lower()``,
+    igual que el PATCH de estados y que ``/reporte``); si no existe, 404 con
+    el MISMO texto fijo de ``/tendencia`` y ``/reporte``. Si la base de
+    negocio no se deja leer, 503 con ``ERROR_BASE_ILEGIBLE``: el texto fijo,
+    sin la URL de la base ni el mensaje del driver, que van al log.
+
+    **La bitácora se escribe SIEMPRE, DESPUÉS de armar** (si armar fallara, no
+    habría acceso que anotar) -- ``accion="detalle"`` con
+    ``periodo="<slug>:<YYYY-MM>"``: es el acceso más profundo que un operador
+    puede hacer a los datos de un cliente, y el reporte de transparencia de
+    ese cliente lo lista. No hay caché del detalle a propósito: cada consulta
+    se calcula y cada consulta queda anotada.
+    """
+    from app.plataforma_detalle import BaseIlegible, ClienteDesconocido, armar_detalle
+    from app.plataforma_metricas import ERROR_BASE_ILEGIBLE, PeriodoInvalido, normalizar_periodo
+
+    slug = (slug or "").strip().lower()
+    try:
+        anio_mes = normalizar_periodo(periodo)
+    except PeriodoInvalido as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+    try:
+        cuerpo = armar_detalle(slug, anio_mes)
+    except ClienteDesconocido as e:
+        raise HTTPException(status_code=404, detail="No hay un cliente con ese código.") from e
+    except BaseIlegible as e:
+        raise HTTPException(status_code=503, detail=ERROR_BASE_ILEGIBLE) from e
+
+    _anotar_consulta(email, "detalle", f"{slug}:{anio_mes}")
+    return cuerpo
