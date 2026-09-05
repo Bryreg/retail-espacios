@@ -25,14 +25,29 @@ para el operador) y devuelven exactamente el mismo JSON -- el shape es
 VINCULANTE y el frontend lo consume tal cual, sin distinguir de qué endpoint
 vino.
 
-**La frontera de este reporte es la misma de siempre, aplicada a un solo
-cliente**: agregados, nunca filas de ``space_leases``/``spaces``/``suppliers``;
-ningún correo, nombre ni id de un usuario final (``accesos.lineas[].operador``
-es el correo del OPERADOR -- el dato que el cliente tiene derecho a ver, no el
-de uno de sus propios usuarios); el nombre del proveedor sale SANEADO
-(``_top``, reusado tal cual); fechas sin hora; la tarifa de referencia nunca
-sale, sólo el spread. Los únicos arreglos del JSON son ``catalogo``,
-``valores``, ``valores[].top_proveedores`` y ``accesos.lineas``.
+**La frontera de ESTE reporte (Fase 7) sigue igual**: su JSON son agregados,
+nunca filas de ``space_leases``/``spaces``/``suppliers``; ningún correo, nombre
+ni id de un usuario final (``accesos.lineas[].operador`` es el correo del
+OPERADOR -- el dato que el cliente tiene derecho a ver, no el de uno de sus
+propios usuarios); el nombre del proveedor sale SANEADO (``_top``, reusado tal
+cual); fechas sin hora; la tarifa de referencia nunca sale, sólo el spread. Los
+únicos arreglos del JSON son ``catalogo``, ``valores``,
+``valores[].top_proveedores`` y ``accesos.lineas``.
+
+**Lo que SÍ cambió en la Fase 8 (detalle por cliente para asesoría).** La regla
+"el operador ve agregados, nunca filas" dejó de ser cierta en un punto acotado
+y declarado: ``GET /api/plataforma/clientes/{slug}/detalle`` SÍ publica filas de
+contratos y de espacios de UN cliente -- código y tipo del espacio, estado en el
+período, y del contrato vigente el proveedor saneado, la marca, el canon mensual
+y las fechas -- para el servicio de asesoría comercial, sólo lectura y con
+bitácora (``accion="detalle"``, ``periodo="<slug>:<YYYY-MM>"``). Ese endpoint
+vive en ``app/plataforma_detalle.py``; ESTE módulo no lo llama ni copia sus
+datos. Lo que sí hace, y es la razón de que la ampliación sea defendible, es
+**declararlo**: el ``CATALOGO`` de abajo gana las entradas del detalle con
+``endpoints: ["detalle"]``, y ``_accesos_del_cliente`` lista las consultas
+``accion="detalle"`` de ese cliente, de modo que el titular ve en su propio
+reporte qué se lee de él y quién lo leyó. La política lo declara en el §5.3 (a)
+(detalle de espacios y contratos) y (b) (lo que sigue prohibido).
 """
 import json
 import logging
@@ -83,7 +98,7 @@ __all__ = [
 # test de abajo (`test_plataforma_reporte.py`) afirma que ninguna clave que
 # `/metricas` o `/adopcion` publican de verdad queda afuera.
 #
-# 22 entradas: las primeras 17 son las que publican `/metricas`, `/tendencia`
+# 34 entradas: las primeras 17 son las que publican `/metricas`, `/tendencia`
 # y `/adopcion` bajo ESE nombre exacto (por eso llevan ese endpoint en
 # `endpoints`). Las últimas 5 (`ocupadas`, `contratos_activos`, `canon_total`,
 # `origen`, `capturado_en`) son cifras que SÍ salen en `valores[]` de este
@@ -93,6 +108,20 @@ __all__ = [
 # nada más (nunca "metricas"/"tendencia"/"adopcion" -- el test T-61 del
 # auditor afirma el recíproco: toda entrada que declare uno de esos tres
 # endpoints tiene que aparecer ahí con ese nombre exacto).
+#
+# Las 12 últimas (Fase 8) son el DETALLE de espacios y contratos que el
+# operador ve de un cliente por `GET /api/plataforma/clientes/{slug}/detalle`
+# (`app/plataforma_detalle.py`): `endpoints: ["detalle"]`, un valor nuevo y
+# válido de `endpoints`. Son la excepción declarada a "agregados, nunca filas"
+# -- ver el docstring del módulo. No salen en `valores[]` de este reporte (T-62
+# no las alcanza) ni en `/metricas`//`tendencia`//`adopcion` (T-61 tampoco):
+# están acá porque el catálogo es la declaración TAXATIVA de todo lo que la
+# plataforma lee de un cliente, no sólo de lo que este reporte imprime. La
+# `finalidad` de las 12 es `asesoria` -- el enum del shape (y el tipo del
+# frontend) sigue siendo `asesoria|salud_cartera|cobranza`; la finalidad nueva
+# de la política, "mejora del servicio y de la plataforma" (§3.6), vive en el
+# documento y no en este enum, porque cambiarlo rompería el contrato del
+# frontend sin decirle nada nuevo al titular.
 CATALOGO = [
     {
         "clave": "sedes_con_plano",
@@ -295,6 +324,121 @@ CATALOGO = [
         "endpoints": ["reporte"],
         "tratamiento": "sin_hora",
     },
+    # ── Fase 8: el DETALLE de espacios y contratos (endpoints: ["detalle"]) ──
+    # Lo que el operador ve de UN cliente por vez en
+    # `GET /api/plataforma/clientes/{slug}/detalle`, para la asesoría
+    # comercial. Declarado en la política §5.3 (a); lo que NO se abre está en
+    # §5.3 (b) y no tiene entrada acá porque no se lee: contactos y notas de
+    # proveedores, notas de espacios y contratos, fotos y archivos, usuarios y
+    # la tarifa de referencia.
+    {
+        "clave": "espacio_codigo_y_tipo",
+        "nombre": "Código y tipo del espacio",
+        "definicion": "Por cada espacio comercializable del plano, su código completo (SEDE-CODE, con el sufijo -B de la cara B de una góndola doble) y su tipo comercial (góndola, punta, nevera y demás), más la sede, la zona y el área si están cargadas.",
+        "fuente": "layout_snapshots",
+        "finalidad": "asesoria",
+        "endpoints": ["detalle"],
+        "tratamiento": "exacto",
+    },
+    {
+        "clave": "espacio_estado",
+        "nombre": "Estado del espacio en el período",
+        "definicion": "Si el espacio está ocupado, libre o se libera dentro del período consultado (el contrato que lo ocupa vence antes de que termine).",
+        "fuente": "layout_snapshots, space_leases",
+        "finalidad": "asesoria",
+        "endpoints": ["detalle"],
+        "tratamiento": "exacto",
+    },
+    {
+        "clave": "contrato_proveedor",
+        "nombre": "Proveedor del contrato vigente",
+        "definicion": "El nombre comercial del proveedor que ocupa el espacio, saneado (los correos y teléfonos incrustados se enmascaran antes de mostrarse). Nunca sus datos de contacto ni sus notas.",
+        "fuente": "suppliers.name",
+        "finalidad": "asesoria",
+        "endpoints": ["detalle"],
+        "tratamiento": "saneado",
+    },
+    {
+        "clave": "contrato_marca",
+        "nombre": "Marca del contrato vigente",
+        "definicion": "La marca que se exhibe en el espacio según el contrato vigente, con el mismo saneo que el nombre del proveedor.",
+        "fuente": "space_leases",
+        "finalidad": "asesoria",
+        "endpoints": ["detalle"],
+        "tratamiento": "saneado",
+    },
+    {
+        "clave": "contrato_canon_mensual",
+        "nombre": "Canon mensual del contrato vigente",
+        "definicion": "El canon mensual pactado en el contrato que ocupa el espacio, contrato por contrato (no sólo el promedio ni la suma del mes).",
+        "fuente": "space_leases",
+        "finalidad": "asesoria",
+        "endpoints": ["detalle"],
+        "tratamiento": "exacto",
+    },
+    {
+        "clave": "contrato_fechas",
+        "nombre": "Fechas del contrato vigente",
+        "definicion": "Las fechas de inicio y de fin del contrato que ocupa el espacio, y cuántos días le faltan para vencer.",
+        "fuente": "space_leases",
+        "finalidad": "asesoria",
+        "endpoints": ["detalle"],
+        "tratamiento": "exacto",
+    },
+    {
+        "clave": "resumen_por_tipo",
+        "nombre": "Resumen por tipo de espacio",
+        "definicion": "Por cada tipo de espacio del cliente: cuántos hay, cuántos ocupados y cuántos libres, y el canon promedio, mínimo y máximo de los contratos vigentes de ese tipo, más si hay una tarifa de referencia configurada para ese tipo (sí/no -- nunca el valor de la tarifa).",
+        "fuente": "space_leases, layout_snapshots, app_config (sólo el sí/no de la tarifa)",
+        "finalidad": "asesoria",
+        "endpoints": ["detalle"],
+        "tratamiento": "relacion",
+    },
+    {
+        "clave": "proveedores_del_cliente",
+        "nombre": "Proveedores del cliente",
+        "definicion": "Por cada proveedor con contratos vigentes en el cliente, con el nombre saneado: cuántos espacios ocupa, de qué tipos y en qué sedes, su canon total y promedio, qué parte de los contratos vigentes del cliente representa, desde cuándo está y cuántos contratos le vencen en 60 días.",
+        "fuente": "space_leases, suppliers",
+        "finalidad": "asesoria",
+        "endpoints": ["detalle"],
+        "tratamiento": "saneado",
+    },
+    {
+        "clave": "movimientos",
+        "nombre": "Movimientos de los últimos 12 meses",
+        "definicion": "Mes a mes, los contratos que empezaron y los que terminaron o se cancelaron, con el proveedor (saneado), el espacio, el tipo, el canon, la fecha y el motivo de cancelación si lo hubo.",
+        "fuente": "space_leases (y las cancelaciones registradas)",
+        "finalidad": "asesoria",
+        "endpoints": ["detalle"],
+        "tratamiento": "exacto",
+    },
+    {
+        "clave": "benchmark_plataforma",
+        "nombre": "Promedio de la plataforma por tipo de espacio",
+        "definicion": "UN solo número por tipo de espacio: el canon promedio de los contratos vigentes de ese tipo en todos los clientes legibles. Sin desglose, sin sedes y sin el nombre de ningún otro supermercado -- se usa sólo para sugerir un precio cuando el cliente no cobra nada de ese tipo.",
+        "fuente": "space_leases de todos los clientes legibles (un promedio por tipo)",
+        "finalidad": "asesoria",
+        "endpoints": ["detalle"],
+        "tratamiento": "relacion",
+    },
+    {
+        "clave": "oportunidades",
+        "nombre": "Oportunidades de venta de espacio",
+        "definicion": "Por cada espacio libre o que se libera: el precio sugerido (el canon promedio que ESE cliente cobra por ese tipo o, si no cobra ninguno, el promedio de la plataforma) y hasta 3 proveedores candidatos, que son siempre proveedores del MISMO cliente, con el canon que ya pagan.",
+        "fuente": "derivado de espacio_estado, resumen_por_tipo, proveedores_del_cliente y benchmark_plataforma",
+        "finalidad": "asesoria",
+        "endpoints": ["detalle"],
+        "tratamiento": "relacion",
+    },
+    {
+        "clave": "recomendaciones",
+        "nombre": "Recomendaciones de asesoría",
+        "definicion": "La lista priorizada de qué proponerle al cliente (espacio libre, contrato por vencer, precio bajo la tarifa, concentración de un proveedor, sede subutilizada, tipos sin tarifa o arranque), con el canon mensual en juego y una explicación en palabras que GENERA EL SISTEMA a partir de esos mismos datos -- no es una nota de nadie y no lleva datos de contacto ni personas.",
+        "fuente": "derivado de las entradas anteriores del detalle (texto generado por el sistema)",
+        "finalidad": "asesoria",
+        "endpoints": ["detalle"],
+        "tratamiento": "relacion",
+    },
 ]
 
 
@@ -435,9 +579,24 @@ def _spread_actual(reg, fila_cliente) -> dict | None:
 
 def _accesos_del_cliente(reg, slug: str, desde_dt: datetime, hasta_dt: datetime) -> dict:
     """Cada línea de ``bitacora_plataforma`` en la ventana que ALCANZÓ a este
-    cliente -- ver el docstring del módulo y la spec para la regla por
-    ``accion``. Más nueva primero; ``fecha`` sin hora; ``operador`` es el
-    correo del operador (el dato que el titular tiene derecho a ver)."""
+    cliente. Más nueva primero; ``fecha`` sin hora; ``operador`` es el correo
+    del operador (el dato que el titular tiene derecho a ver).
+
+    La regla por ``accion``:
+
+    * ``metricas``, ``adopcion``, ``clientes`` -- barren a TODOS los clientes:
+      alcanzan siempre.
+    * ``tendencia`` -- alcanza si el período es ``"<slug>:…"`` o el del
+      consolidado (que suma a este cliente).
+    * ``supresiones`` -- alcanza sólo si este cliente tiene alguna solicitud.
+    * ``reporte`` -- el reporte de transparencia de ESTE cliente
+      (``periodo="<slug>:<desde>..<hasta>"``).
+    * ``detalle`` (Fase 8) -- el detalle de espacios y contratos de ESTE
+      cliente (``periodo="<slug>:<YYYY-MM>"``).
+
+    Cualquier acción que no esté en esa lista NO alcanza: una acción nueva sin
+    su rama acá quedaría sin declarar en el reporte del titular, que es
+    exactamente lo que este módulo existe para impedir."""
     from app.models.plataforma import BitacoraPlataforma
     from app.models.supresion import SolicitudSupresion
 
@@ -465,6 +624,13 @@ def _accesos_del_cliente(reg, slug: str, desde_dt: datetime, hasta_dt: datetime)
         elif f.accion == "supresiones":
             alcanza = tiene_supresion
         elif f.accion == "reporte":
+            alcanza = periodo.startswith(f"{slug}:")
+        elif f.accion == "detalle":
+            # Fase 8: `GET /api/plataforma/clientes/{slug}/detalle` anota
+            # `periodo="<slug>:<YYYY-MM>"` -- alcanza SÓLO al cliente cuyo slug
+            # va adelante. Es la consulta más invasiva que existe (espacios y
+            # contratos, fila por fila), así que tiene que verse en el reporte
+            # del titular igual que las demás.
             alcanza = periodo.startswith(f"{slug}:")
         else:
             alcanza = False

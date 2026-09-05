@@ -6,6 +6,7 @@ import Montaje from "./pages/Montaje";
 import PoliticaDatos from "./pages/PoliticaDatos";
 import Plataforma from "./pages/Plataforma";
 import ReportePlataforma from "./pages/ReportePlataforma";
+import DetalleCliente from "./pages/DetalleCliente";
 import BloqueoCuenta from "./components/BloqueoCuenta";
 import ModalConsentimiento from "./components/ModalConsentimiento";
 import { usarToken } from "./api/montaje";
@@ -155,6 +156,12 @@ export default function App() {
             porque ninguna se monta fuera del <BrowserRouter>. */}
         <Route path="/reporte-plataforma" element={<ReportePlataforma modo="dueno" />} />
         <Route path="/plataforma/reporte/:slug" element={<ReportePlataforma modo="operador" />} />
+        {/* Fase 8 (asesoría): detalle por cliente -- espacios, contratos,
+            proveedores y oportunidades, espacio por espacio, con las
+            recomendaciones priorizadas de la sesión de asesoría. Misma
+            familia de rutas que "/plataforma" y "/plataforma/reporte/:slug",
+            antes del "*" catch-all. */}
+        <Route path="/plataforma/clientes/:slug" element={<DetalleCliente />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

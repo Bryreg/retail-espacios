@@ -9,7 +9,7 @@ import {
 } from "../api/plataforma";
 import { getMiReportePlataforma } from "../api/derechos";
 import { describeError } from "../api/client";
-import { temaInicial, EstadoVacio, EstadoError } from "../components/plataforma/consola";
+import { temaInicial, EstadoVacio, EstadoError, IMPRESION_CLARA_VARS } from "../components/plataforma/consola";
 
 // ─── /reporte-plataforma y /plataforma/reporte/:slug — Fase 7 (transparencia) ─
 //
@@ -378,22 +378,7 @@ export default function ReportePlataforma({ modo }: { modo: Modo }) {
         @media print {
           .reporte-controles { display: none !important; }
           .reporte-transparencia {
-            --con-bg: #FFFFFF !important;
-            --con-surface: #FFFFFF !important;
-            --con-surface-2: #FFFFFF !important;
-            --con-surface-raised: #FFFFFF !important;
-            --con-line: #C7CED0 !important;
-            --con-line-soft: #DEE2E3 !important;
-            --con-ink-1: #14181C !important;
-            --con-ink-2: #4A5459 !important;
-            --con-ink-3: #6B7479 !important;
-            --con-ink-4: #8E979B !important;
-            --con-accent: #275A7A !important;
-            --con-accent-ink: #FFFFFF !important;
-            --con-sindato-ink: #8E979B !important;
-            --con-estado-corte: #8E1226 !important;
-            background: #FFFFFF !important;
-            color: #14181C !important;
+            ${IMPRESION_CLARA_VARS}
           }
           .reporte-tabla { page-break-inside: avoid; }
         }

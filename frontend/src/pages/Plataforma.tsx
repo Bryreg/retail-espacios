@@ -251,7 +251,8 @@ const W_ACC = 90;
 const W_SPREAD = 96;
 const W_BTN = 76;
 const W_BTN_REPORTE = 74;
-const W_BOTONES = W_BTN_REPORTE + 6 + W_BTN;
+const W_BTN_DETALLE = 84;
+const W_BOTONES = W_BTN_DETALLE + 6 + W_BTN_REPORTE + 6 + W_BTN;
 
 function FilaCliente({
   fila, metricas, editando, onEditar, onGuardado, onCancelar,
@@ -318,6 +319,14 @@ function FilaCliente({
         )}
 
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          <button
+            onClick={() => navigate(`/plataforma/clientes/${encodeURIComponent(fila.slug)}`)}
+            className="con-focusable"
+            style={{ ...botonStyle, width: W_BTN_DETALLE }}
+            title="Detalle de espacios, contratos, proveedores y oportunidades de este cliente (Fase 8, asesoría)."
+          >
+            Ver detalle
+          </button>
           <button
             onClick={() => navigate(`/plataforma/reporte/${encodeURIComponent(fila.slug)}`)}
             className="con-focusable"
@@ -891,7 +900,7 @@ export default function Plataforma() {
               subtitulo="Estado de cuenta y métricas del período por supermercado. Cambiar el estado corta o restringe el servicio de inmediato — el motivo queda de constancia, también al reactivar."
               sinPadding
             >
-              <TablaScroll minWidth={856 + W_BTN_REPORTE + 6}>
+              <TablaScroll minWidth={856 + W_BTN_REPORTE + 6 + W_BTN_DETALLE + 6}>
                 {clientes === null ? (
                   <div style={{ padding: 16 }}>
                     {clientesError ? <EstadoError texto={clientesError} /> : <EstadoVacio texto="Cargando…" />}

@@ -233,6 +233,11 @@ def test_f01_solo_metricas_tendencia_y_adopcion_abren_una_base_de_cliente(client
         # (`_metricas_de_un_cliente`); el resto del reporte sale de
         # snapshot_metricas/bitacora_plataforma/consentimientos/solicitudes_supresion.
         "GET /api/plataforma/clientes/galerias/reporte",
+        # Fase 8: el detalle abre la base del cliente pedido (espacios,
+        # contratos, proveedores) y, SÓLO para `benchmark_por_tipo`, recorre las
+        # demás como `/metricas`; lo que cruza de las otras es un promedio de
+        # canon por tipo, un número, ver `test_detalle_ataques.py::d10/d11`.
+        "GET /api/plataforma/clientes/galerias/detalle",
     }
     assert con_base <= permitidas, f"rutas que abrieron una base de cliente: {abiertas}"
     assert "GET /api/plataforma/metricas" in con_base, abiertas

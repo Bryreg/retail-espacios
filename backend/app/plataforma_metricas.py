@@ -378,6 +378,77 @@ def _contratos_activos(db, desde: date, hasta: date) -> list[tuple[str, str, flo
     ]
 
 
+# ─── El mismo contrato, visto en detalle (Fase 8) ──────────────────────────────
+#
+# `_contratos_activos` agrega y tira: devuelve lo justo para contar ocupación,
+# ingreso y top de proveedores, y filtra el período en SQL. El detalle por
+# cliente (`app/plataforma_detalle.py`) necesita el mismo contrato con más
+# columnas —marca, fechas, la bandera de cancelado— y además los HISTÓRICOS
+# (los movimientos de 12 meses y el "desde" de cada proveedor miran contratos
+# que ya vencieron o que se cancelaron). Las dos funciones de abajo son
+# hermanas de `_contratos_activos`, no un reemplazo: aquélla no cambia ni de
+# firma ni de comportamiento, y la regla de "activo en el período" queda
+# enunciada UNA sola vez, en `_del_periodo`.
+
+
+def _del_periodo(inicio: date, fin: date, activo: bool, desde: date, hasta: date) -> bool:
+    """La MISMA regla de ``_contratos_activos``, evaluada en Python.
+
+    ``is_active`` (es decir, que nadie lo canceló) **y** solapamiento de fechas
+    con los dos extremos inclusive: ``start_date <= hasta AND end_date >= desde``.
+    Un contrato de UN día que cae adentro del mes cuenta como cualquier otro.
+
+    Existe porque el detalle trae todos los contratos de la base en una sola
+    pasada y decide mes a mes en memoria; sin esto, la regla estaría escrita dos
+    veces (una en SQL, otra acá) y podrían separarse.
+    """
+    return bool(activo) and inicio <= hasta and fin >= desde
+
+
+def _contratos_del_cliente(db) -> list[tuple]:
+    """``(codigo, proveedor, marca, canon, inicio, fin, is_active)`` de TODOS
+    los contratos de la base — activos, vencidos y cancelados, sin filtrar.
+
+    Mismo join y mismas normalizaciones que ``_contratos_activos`` (código en
+    mayúsculas y sin espacios, nombre del proveedor CRUDO —el saneo se aplica
+    al armar el JSON, nunca al agrupar—, canon como ``float``). Devuelve TUPLAS
+    y no filas del ORM por el mismo motivo: nada de lo que sale de acá viaja al
+    JSON tal cual; el llamador elige qué publica y por qué camino.
+
+    Sin filtro de fechas a propósito: el detalle necesita los históricos para
+    los movimientos de los últimos 12 meses y para el primer contrato de cada
+    proveedor. Filtrar el período es cosa de ``_del_periodo``.
+    """
+    from app.models.models import Space, SpaceLease, Supplier
+
+    filas = (
+        db.query(
+            Space.code,
+            Supplier.name,
+            SpaceLease.marca,
+            SpaceLease.monthly_rent,
+            SpaceLease.start_date,
+            SpaceLease.end_date,
+            SpaceLease.is_active,
+        )
+        .join(Space, Space.id == SpaceLease.space_id)
+        .join(Supplier, Supplier.id == SpaceLease.supplier_id)
+        .all()
+    )
+    return [
+        (
+            (codigo or "").strip().upper(),
+            (nombre or "").strip(),
+            marca,
+            float(canon or 0.0),
+            inicio,
+            fin,
+            bool(activo),
+        )
+        for codigo, nombre, marca, canon, inicio, fin, activo in filas
+    ]
+
+
 def _usuarios_del_cliente(reg, slug: str) -> tuple[list[int], date | None]:
     """``(ids_de_usuarios_con_membresía_activa, fecha_del_último_acceso)``.
 

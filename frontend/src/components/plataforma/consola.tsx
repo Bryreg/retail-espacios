@@ -355,6 +355,35 @@ export function SinDato({ title = "Sin dato para este período" }: { title?: str
   return <span title={title} style={{ color: "var(--con-sindato-ink)" }}>—</span>;
 }
 
+// ═══ Impresión: paleta clara forzada (Fase 7/8) ═════════════════════════════
+//
+// La misma paleta clara que `ReportePlataforma.tsx` fija en su bloque
+// `@media print` (Fase 7) -- extraída acá para que `DetalleCliente.tsx`
+// (Fase 8, "Imprimir recomendaciones") la use sin duplicar la lista de
+// tokens. Es sólo el CUERPO de declaraciones `--con-*` + `background`/`color`
+// que cada página cuelga de su propio selector raíz dentro de un
+// `@media print { .mi-clase-raiz { ...ESTO... } }` -- no incluye el
+// `@media print` en sí, porque cada página oculta y particiona sus propias
+// secciones de forma distinta.
+export const IMPRESION_CLARA_VARS = `
+  --con-bg: #FFFFFF !important;
+  --con-surface: #FFFFFF !important;
+  --con-surface-2: #FFFFFF !important;
+  --con-surface-raised: #FFFFFF !important;
+  --con-line: #C7CED0 !important;
+  --con-line-soft: #DEE2E3 !important;
+  --con-ink-1: #14181C !important;
+  --con-ink-2: #4A5459 !important;
+  --con-ink-3: #6B7479 !important;
+  --con-ink-4: #8E979B !important;
+  --con-accent: #275A7A !important;
+  --con-accent-ink: #FFFFFF !important;
+  --con-sindato-ink: #8E979B !important;
+  --con-estado-corte: #8E1226 !important;
+  background: #FFFFFF !important;
+  color: #14181C !important;
+`;
+
 // ═══ Tabla de densidad de tablero ═══════════════════════════════════════════
 //
 // Pseudo-tabla en grid: legible con 1 fila y con 30. Cabecera en versalita,

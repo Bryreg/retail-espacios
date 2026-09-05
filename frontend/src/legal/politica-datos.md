@@ -185,6 +185,22 @@ el artículo 7 de la Ley 1581 y el artículo 12 del Decreto 1377, ajustar esta s
 - Frenar intentos de acceso no autorizado (fuerza bruta) y detectar abuso.
 - Investigar y reportar incidentes de seguridad.
 
+### 3.6 Operación del servicio y asesoría comercial al supermercado
+
+Con los datos de negocio de cada supermercado cliente —no con los datos personales de su
+gente— RECABRA opera y mejora el servicio que vende. Las finalidades de esa lectura, que el
+punto 5.3 describe en detalle y que el reporte de transparencia declara dato por dato, son:
+
+- **Asesoría comercial**: proponerle a cada supermercado qué espacio le conviene vender, a
+  qué precio y a qué proveedor ofrecérselo, a partir de sus propios espacios, contratos y
+  proveedores.
+- **Salud de la cartera**: entender la ocupación, el ingreso contratado y el rendimiento de
+  cada cliente para sostener el servicio.
+- **Cobranza y administración de la cuenta**: el estado comercial, el uso de la cuenta y la
+  facturación.
+- **Mejora del servicio y de la plataforma**: entender cómo se usa el producto y qué le
+  falta para funcionar mejor, sin identificar a ninguna persona.
+
 **Lo que NO hacemos con estos datos:** no se venden, no se alquilan y no se entregan a
 terceros con fines publicitarios. No se usan para elaborar perfiles comerciales de
 personas ni para tomar decisiones automatizadas que produzcan efectos jurídicos sobre
@@ -316,6 +332,19 @@ una protección aparente —el total consolidado de todos los clientes permitía
 diferencia la celda omitida— y, en su lugar, se le da al cliente algo que sí se puede
 verificar: la trazabilidad completa de lo que se tomó de él y de quién lo miró.
 
+**Ampliación de esta misma versión, antes de su despliegue.** El párrafo anterior describe
+un cambio de **precisión**: las mismas cifras de siempre, ahora exactas. Lo que se agrega
+acá es un cambio de **alcance**: además de los agregados, el operador pasa a ver el
+**detalle de espacios y contratos** de cada cliente —espacio por espacio, con el contrato
+vigente de cada uno— para poder prestarle el servicio de asesoría comercial descrito en el
+punto (a). La versión 2026-09-v2 **todavía no se había publicado ni desplegado** cuando se
+tomó esta decisión, así que la ampliación se escribe **dentro de la misma versión** y no
+en una nueva: el titular lee y consiente el trato completo —agregados exactos sin umbral y
+detalle de espacios y contratos, siempre de sólo lectura y siempre con bitácora— **una
+sola vez**, en un único acto de aceptación, en lugar de aceptar dos veces en pocos días
+dos mitades de un mismo cambio. Todo lo que el punto (b) enumera como prohibido lo sigue
+siendo, sin excepción.
+
 **a) Qué ve el operador.** De **todos** los supermercados clientes, uno por uno y también
 sumado, y siempre en forma de agregados exactos, sin umbral:
 
@@ -351,19 +380,78 @@ información comercial suya y **nunca se muestra al operador**, ni por sede, ni 
 ni sumada: lo único que cruza es la relación porcentual descrita arriba, que ahora también
 sale sin umbral.
 
-**b) Qué sigue estando prohibido.** El cambio de esta versión es de precisión, no de
-alcance. El operador **no ve, ni puede ver**:
+**El detalle de espacios y contratos, para el servicio de asesoría comercial.** Además de
+esos agregados, y **de un cliente por vez**, el operador ve el **detalle de espacios y
+contratos** de ese supermercado. Existe para una finalidad concreta y declarada: la
+**asesoría comercial** que RECABRA le presta a cada cliente —decirle qué espacio le
+conviene vender, a qué precio y a qué proveedor ofrecérselo— y la **mejora del servicio y
+de la plataforma**. Lo que ve, taxativamente:
 
-- **filas individuales de negocio**: ningún contrato, ningún espacio, ningún proveedor con
-  sus datos de contacto, ninguna nota, ninguna foto de montaje. La respuesta que arma la
-  consola se construye por consulta agregada y no puede contener una fila;
-- **ningún correo, nombre ni identificador de un usuario final** del supermercado ni de sus
-  proveedores, ni la fecha de acceso de una persona en particular;
-- el **nombre de un proveedor sin sanear** (los correos y teléfonos se enmascaran antes de
-  cualquier lectura del operador);
-- la **tarifa de referencia** en sí misma;
+- por cada **espacio comercializable** del plano: su **código** y su **tipo** (góndola,
+  punta de góndola, nevera y demás), la sede y la zona en que está y su área si está
+  cargada, y si en el **período** consultado está **ocupado o libre** —o si *se libera*
+  dentro de ese período, porque el contrato que lo ocupa vence antes de que termine—;
+- del **contrato vigente** de ese espacio, cuando lo hay: el proveedor por su **nombre
+  comercial**, depurado de datos de contacto —los correos y teléfonos que pudieran
+  aparecer incrustados se enmascaran antes de mostrarse, igual que en el top de
+  proveedores—, la **marca** que se exhibe, el **canon mensual** pactado y las **fechas de
+  inicio y de fin**;
+- el **resumen por tipo de espacio**: cuántos hay, cuántos ocupados y cuántos libres, y el
+  canon promedio, mínimo y máximo de los contratos vigentes de ese tipo en ese cliente,
+  junto con **si el cliente tiene una tarifa de referencia configurada para ese tipo
+  (sí/no, nunca el valor de la tarifa)**;
+- los **proveedores de ese cliente**: por cada uno, con el nombre comercial depurado,
+  cuántos espacios ocupa, de qué tipos y en qué sedes, qué canon paga en total y en
+  promedio, qué parte de los contratos vigentes del cliente representa, desde cuándo está y si tiene
+  contratos que vencen en los próximos sesenta días;
+- los **movimientos de los últimos doce meses**, mes a mes: qué contratos empezaron y
+  cuáles terminaron o se cancelaron, con el proveedor, el espacio, el canon y la fecha;
+- las **oportunidades** que se derivan de lo anterior: por cada espacio libre o que se
+  libera, un **precio sugerido** calculado a partir de lo que **ese mismo cliente** cobra
+  por los espacios de ese tipo o, si no cobra ninguno de ese tipo, a partir del promedio
+  de toda la plataforma para ese tipo —que viaja como **un solo número**, sin desglose,
+  sin sedes y sin el nombre de ningún otro supermercado—, y hasta tres **proveedores
+  candidatos**, que son siempre proveedores **de ese mismo cliente**, con el canon que ya
+  pagan;
+- y las **recomendaciones** que el sistema arma con esos mismos datos, en orden de
+  prioridad y con el canon mensual que está en juego: un espacio libre para vender, un
+  contrato por vencer para renovar o reasignar, un tipo de espacio cuyo canon quedó por
+  debajo del promedio del propio cliente, un proveedor que concentra buena parte de los
+  espacios ocupados, una sede con la ocupación muy por debajo del resto, los tipos de
+  espacio sin tarifa configurada o —si el cliente todavía no tiene ningún contrato— por
+  dónde arrancar. La explicación que acompaña a cada recomendación **la redacta el
+  sistema** a partir de esos mismos datos: es texto generado, no una nota de nadie, y no
+  contiene ningún dato de contacto ni ninguna persona.
+
+Este detalle abre **una sola base de cliente por consulta**, es de **sólo lectura** —el
+operador no puede crear, modificar ni borrar nada del negocio de un cliente desde su
+consola— y **queda anotado en la bitácora** con el correo del operador, el día, el cliente
+y el período consultados, de modo que el propio cliente lo ve después en su reporte de
+transparencia.
+
+**b) Qué sigue estando prohibido.** Ni el cambio de precisión —cifras exactas, sin
+umbral— ni la ampliación de alcance —el detalle de espacios y contratos— tocan esta lista,
+que es la que hace que el trato siga siendo defendible. El operador **no ve, ni puede
+ver**:
+
+- los **datos de contacto de un proveedor**: el nombre de la persona de contacto, su
+  teléfono y su correo, ni las **notas** internas que el supermercado escribe sobre él;
+- las **notas** de un espacio ni las de un contrato —el texto libre que escribe la gente
+  del supermercado—;
+- las **fotos** de montaje ni ningún otro archivo o documento adjunto a un espacio o a un
+  contrato;
+- **ningún correo, nombre ni identificador de un usuario** del supermercado ni de sus
+  proveedores, ni la **fecha de acceso de una persona en particular**;
+- el **nombre de un proveedor sin sanear** (los correos y teléfonos incrustados se
+  enmascaran antes de cualquier lectura del operador, en el detalle igual que en los
+  agregados);
+- la **tarifa de referencia** en sí misma: sólo si está configurada (sí/no) y la relación
+  porcentual con el canon efectivamente cobrado;
+- **ningún dato de otro cliente dentro del detalle de uno**: el promedio de toda la
+  plataforma que sostiene un precio sugerido es **un solo número por tipo de espacio**,
+  sin desglose, sin sedes y sin el nombre de ningún otro supermercado;
 - **nada en modo escritura**: el acceso del operador a los datos de negocio de un cliente
-  es de **sólo lectura**.
+  es de **sólo lectura**, en el detalle igual que en los agregados.
 
 **c) El reporte de transparencia, como derecho del cliente.** Cualquier supermercado
 cliente puede generar, cuando quiera, un **reporte de transparencia** de su propia cuenta.
@@ -371,12 +459,18 @@ El reporte contiene:
 
 - el **catálogo** completo de los datos que la plataforma toma de él: por cada uno, su
   nombre, la definición en palabras (la fórmula), la fuente (de qué tabla sale), la
-  finalidad (asesoría, salud de la cartera o cobranza) y si sale saneado o sin hora;
+  finalidad —**asesoría**, **salud de la cartera**, **cobranza** o **mejora del servicio y
+  de la plataforma**— y si sale saneado o sin hora. El catálogo del reporte etiqueta cada
+  dato con una de las tres primeras finalidades, que son las que el sistema conoce como
+  etiqueta; las entradas del **detalle de espacios y contratos** van etiquetadas como
+  *asesoría*, que es su finalidad principal, y sirven además a la mejora del servicio y de
+  la plataforma descrita en el punto 3.6;
 - los **valores tomados mes a mes** dentro de una ventana de hasta 24 meses: los mismos
   agregados exactos que ve el operador, referidos sólo a ese cliente, junto con las cifras
   mensuales guardadas de las que salen (contratos activos, caras ocupadas, canon total,
   usuarios con cuenta y el top de proveedores saneado) y la fecha de cada captura;
-- los **accesos del operador** que alcanzaron a ese cliente en la ventana: por cada uno, la
+- los **accesos del operador** que alcanzaron a ese cliente en la ventana —incluidas las
+  consultas del **detalle de espacios y contratos** de ese cliente—: por cada uno, la
   **fecha sin hora**, el **correo del operador** que consultó, la acción y el período, más
   el conteo total;
 - la **versión de la política** vigente, la versión que aceptó el dueño y el día en que la
@@ -392,7 +486,8 @@ eso están los derechos de la sección 7.
 **d) La bitácora.** Cada consulta del operador queda anotada —con el **correo del
 operador**, el momento y el período consultado— en la **bitácora** de la plataforma: las
 métricas, la tendencia histórica, la lectura de adopción, el listado de clientes, el panel
-de solicitudes de supresión y el propio reporte de transparencia. Esa bitácora es lo que
+de solicitudes de supresión, el **detalle de espacios y contratos** de un cliente y el
+propio reporte de transparencia. Esa bitácora es lo que
 alimenta la lista de accesos del reporte: por eso el cliente puede comprobar, y no
 solamente creer, quién miró sus cifras y cuándo.
 
@@ -435,6 +530,29 @@ acceder a los datos personales que el supermercado trata—.
 > interrogante alcanza al **día en que se aceptó esta política**, que el reporte muestra sin
 > decir quién la aceptó: en un supermercado con un solo dueño, esa fecha es atribuible a esa
 > persona.
+
+> **[VALIDAR CON ABOGADO] — sobre el detalle de espacios y contratos.** La ampliación
+> descrita en el punto (a) es un cambio de **alcance**, no de precisión, y plantea dos
+> preguntas propias que las anteriores no cubren:
+>
+> 1. El **canon y las fechas de un contrato individual**, junto al **nombre comercial** del
+>    proveedor, son a la vez información comercial del supermercado cliente e información
+>    de un **tercero que puede ser una persona natural** (un proveedor unipersonal que
+>    factura a su propio nombre). Que el abogado confirme si el **contrato de encargo** del
+>    punto 5.2 y la finalidad de **asesoría comercial** informada en esta política alcanzan
+>    para que el operador lea ese dato contrato por contrato —y no sólo agregado—, o si
+>    hace falta una autorización o una cláusula adicional del supermercado cliente, y qué
+>    tratamiento corresponde cuando el nombre comercial coincide con el de una persona
+>    determinable. Si la conclusión fuera que no alcanza, el camino es **restringir la
+>    lectura del operador**, no ampliar el reporte.
+> 2. El **precio sugerido calculado sobre el promedio de toda la plataforma** usa datos de
+>    negocio de **otros clientes** en beneficio de uno. Viaja como **un solo número por
+>    tipo de espacio**, sin desglose, sin sedes y sin nombres, de modo que ningún cliente
+>    puede identificar a otro; aun así, es un uso cruzado. Que el abogado confirme si ese
+>    uso queda cubierto por el contrato de servicio del punto 5.2 —como estadística
+>    agregada del servicio— o si hay que informarlo y pactarlo expresamente con cada
+>    supermercado, y si la disociación por promedio es suficiente cuando la plataforma
+>    tiene pocos clientes con espacios de ese tipo.
 
 > **[VALIDAR CON ABOGADO]** Confirmar que estos agregados —conteos, porcentajes, promedios
 > y sumas de canon ya sin umbral, nombre comercial de un proveedor junto a un conteo de
@@ -714,7 +832,8 @@ la ley lo exija, se pedirá una nueva aceptación.
 | Versión | Qué cambió |
 |---|---|
 | **2026-09-v1** | Primera versión: rol dual, consentimiento registrado por versión, derechos del titular dentro del producto, y las métricas agregadas del operador sujetas a un umbral de 3 contratos. |
-| **2026-09-v2** | El operador ve agregados exactos sin umbral; reporte de transparencia como derecho del cliente. Cambio material: dispara el re-consentimiento del punto 4.1. |
+| **2026-09-v2** | El operador ve agregados exactos sin umbral; reporte de transparencia como derecho del cliente. Cambio material: dispara el re-consentimiento del punto 4.1. Antes de su despliegue, esta misma versión se amplió con el detalle de espacios y contratos (ver la fila siguiente). |
+| ↳ 2026-09-v2, ampliación previa al despliegue (2026-09-05) | El operador pasa a ver, además de los agregados, el **detalle de espacios y contratos** de cada cliente para la asesoría comercial (punto 5.3 (a)), con la finalidad nueva de **mejora del servicio y de la plataforma** (punto 3.6), anotado en la bitácora y declarado en el reporte de transparencia. **No se creó una versión nueva**: la 2026-09-v2 todavía no se había publicado ni desplegado, y el titular consiente el trato completo en un solo acto de aceptación. |
 
 > Nota técnica para quien mantiene el sistema: el identificador `2026-09-v2` es el mismo
 > valor de la constante `VERSION_POLITICA` del backend (`app/models/consentimiento.py`). Si

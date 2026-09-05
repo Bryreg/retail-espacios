@@ -413,3 +413,217 @@ export const getReporteCliente = (slug: string, meses = 12): Promise<ReporteTran
   client
     .get<ReporteTransparencia>(`/plataforma/clientes/${encodeURIComponent(slug)}/reporte`, { params: { meses } })
     .then((r) => r.data);
+
+// ─── Detalle por cliente para asesoría (Fase 8) ─────────────────────────────
+//
+// Shape FIJADO por el contrato vinculante de la Fase 8 (mensaje del Maestro,
+// campo por campo) -- codificado contra el contrato, no contra una respuesta
+// real (el backend lo implementa en paralelo, contra el MISMO shape). Abre UNA
+// sola base de cliente, solo lectura -- espacio por espacio, contrato por
+// contrato, con oportunidades y recomendaciones ya calculadas por el backend.
+// Nunca viaja acá: datos de contacto de proveedor, notas, fotos, ningún dato
+// de usuario del supermercado, ni el valor de una tarifa de referencia (sólo
+// `tarifa_configurada` sí/no). El nombre del proveedor ya llega SANEADO
+// (`sanear_nombre_proveedor`) -- no se retoca en el frontend.
+
+export interface ClienteDetalle {
+  slug: string;
+  nombre: string;
+  estado_cuenta: EstadoCuenta;
+}
+
+/** Agregado por sede dentro del detalle -- distinto de `AgregadosMetricas`
+ *  (que es del cliente entero): acá es SOLO conteo de espacios de esa sede,
+ *  sin canon ni proveedores. `ocupacion_pct` es `null` con cero espacios
+ *  comercializables en esa sede. */
+export interface SedeDetalle {
+  sede: string;
+  espacios: number;
+  ocupados: number;
+  libres: number;
+  ocupacion_pct: number | null;
+}
+
+/** Contrato vigente de un espacio ocupado (o que arranca/vence en el
+ *  período). `dias_para_vencer` puede ser negativo si ya venció dentro del
+ *  período mostrado (el backend decide el signo; el frontend lo muestra tal
+ *  cual). `arranca_en_periodo`: el contrato empezó dentro de la ventana
+ *  pedida -- un espacio así cuenta como ocupado igual. */
+export interface ContratoEspacioDetalle {
+  proveedor: string;
+  marca: string | null;
+  canon_mensual: number;
+  inicio: string; // "YYYY-MM-DD"
+  fin: string; // "YYYY-MM-DD"
+  dias_para_vencer: number;
+  arranca_en_periodo: boolean;
+}
+
+/** Un espacio comercializable del plano (cara `-B` incluida). `codigo` es el
+ *  código completo `SEDE-CODE`; `codigo_corto` es sin el prefijo de sede.
+ *  `contrato` es `null` sólo cuando `estado === "libre"` -- con `"ocupado"` o
+ *  `"se_libera"` siempre viene el contrato que sustenta ese estado. */
+export interface EspacioDetalle {
+  codigo: string;
+  sede: string;
+  codigo_corto: string;
+  cara: "A" | "B" | null;
+  tipo: string;
+  zona: string | null;
+  area_m2: number | null;
+  estado: "ocupado" | "libre" | "se_libera";
+  contrato: ContratoEspacioDetalle | null;
+}
+
+/** Resumen por tipo de espacio de ESTE cliente. `canon_promedio/minimo/maximo`
+ *  son de los contratos VIGENTES de ese tipo -- `null` con cero contratos
+ *  vigentes de ese tipo (no existe el promedio/mínimo/máximo de cero cosas).
+ *  `tarifa_configurada`: sí/no -- JAMÁS el valor de la tarifa en sí. */
+export interface ResumenTipoDetalle {
+  tipo: string;
+  total: number;
+  ocupados: number;
+  libres: number;
+  canon_promedio: number | null;
+  canon_minimo: number | null;
+  canon_maximo: number | null;
+  tarifa_configurada: boolean;
+}
+
+/** Proveedor de este cliente. `desde`: fecha (sin hora) del primer contrato
+ *  de este proveedor con este cliente, o `null` si no se pudo determinar. */
+export interface ProveedorDetalle {
+  nombre: string;
+  espacios: number;
+  tipos: string[];
+  sedes: string[];
+  canon_total: number;
+  canon_promedio: number;
+  participacion_pct: number;
+  desde: string | null;
+  contratos_por_vencer_60d: number;
+}
+
+export interface MovimientoEntrada {
+  proveedor: string;
+  codigo: string;
+  tipo: string;
+  canon_mensual: number;
+  fecha: string; // "YYYY-MM-DD"
+  cancelado: boolean;
+}
+
+export interface MovimientoSalida {
+  proveedor: string;
+  codigo: string;
+  tipo: string;
+  canon_mensual: number;
+  fecha: string; // "YYYY-MM-DD"
+  motivo: "vencimiento" | "cancelacion";
+}
+
+/** Un mes de la ventana de movimientos (siempre 12, del más viejo al más
+ *  nuevo -- mismo patrón que `Tendencia.serie`, pero acá no hay `sin_dato`:
+ *  un mes sin movimientos simplemente trae `entradas`/`salidas` vacíos, y el
+ *  frontend lo colapsa en una línea ("sin movimientos"). */
+export interface MovimientoMes {
+  mes: string; // "YYYY-MM"
+  entradas: MovimientoEntrada[];
+  salidas: MovimientoSalida[];
+}
+
+/** Candidato a ocupar un espacio libre/que se libera: un proveedor de este
+ *  mismo cliente que todavía no ocupa ESE espacio. `mismo_tipo`: ya ocupa
+ *  otro espacio del mismo tipo que el ofrecido (candidato más natural). */
+export interface OportunidadCandidato {
+  proveedor: string;
+  canon_actual: number;
+  mismo_tipo: boolean;
+}
+
+/** Oportunidad sobre un espacio libre o que se libera, ya ordenadas por
+ *  `valor_estimado_mensual` descendente por el backend -- no reordenar.
+ *  `precio_sugerido` es `null` sólo si ni este cliente ni la plataforma
+ *  tienen una referencia calculable para ese tipo (entonces
+ *  `origen_precio` también es `null`); con precio, `origen_precio` distingue
+ *  "promedio de ESTE cliente" de "benchmark de la plataforma" -- el texto de
+ *  la oportunidad (y su matiz) se arma en el frontend a partir de estos
+ *  campos, nunca viaja como prosa desde el backend. */
+export interface Oportunidad {
+  codigo: string;
+  sede: string;
+  tipo: string;
+  estado: "libre" | "se_libera";
+  precio_sugerido: number | null;
+  origen_precio: "cliente" | "benchmark" | null;
+  valor_estimado_mensual: number;
+  candidatos: OportunidadCandidato[];
+}
+
+export type TipoRecomendacion =
+  | "espacio_libre"
+  | "contrato_por_vencer"
+  | "precio_bajo_tarifa"
+  | "concentracion_proveedor"
+  | "sede_subutilizada"
+  | "sin_tarifa"
+  | "arranque";
+
+export type PrioridadRecomendacion = "alta" | "media" | "baja";
+
+/** Recomendación ya calculada y priorizada por el backend -- `explicacion`
+ *  SÍ viaja como texto (a diferencia de las oportunidades), generada por el
+ *  backend a partir de los datos, sin PII. `datos` es de forma libre por
+ *  `tipo` (los campos que sustentan esa recomendación puntual) -- el
+ *  frontend nunca depende de una clave particular de `datos` para pintar la
+ *  lista, sólo la usa si quiere enriquecer (no es parte del contrato de
+ *  render mínimo). Ya vienen ordenadas por prioridad y luego valor -- no
+ *  reordenar. */
+export interface Recomendacion {
+  id: string;
+  tipo: TipoRecomendacion;
+  prioridad: PrioridadRecomendacion;
+  valor_estimado_mensual: number;
+  explicacion: string;
+  datos: Record<string, unknown>;
+}
+
+/** `GET /plataforma/clientes/{slug}/detalle?periodo=YYYY-MM` -- shape
+ *  VINCULANTE de la Fase 8 (spec `features/asesoria-detalle/spec.md`).
+ *  `benchmark_plataforma`: UN número por tipo de espacio (promedio de TODOS
+ *  los clientes legibles de ese tipo) -- sin desglose ni nombres de otros
+ *  clientes; es el mapa `{tipo: promedio}` que usan las oportunidades de este
+ *  cliente cuando él mismo no tiene contratos vigentes de ese tipo. */
+export interface DetalleCliente {
+  cliente: ClienteDetalle;
+  periodo: string; // "YYYY-MM"
+  desde: string; // "YYYY-MM-DD"
+  hasta: string; // "YYYY-MM-DD"
+  generado_en: string; // ISO 8601 UTC
+  sedes_con_plano: number;
+  sedes: SedeDetalle[];
+  espacios: EspacioDetalle[];
+  contratos_fuera_del_plano: number;
+  resumen_por_tipo: ResumenTipoDetalle[];
+  proveedores: ProveedorDetalle[];
+  movimientos: MovimientoMes[];
+  benchmark_plataforma: Record<string, number>;
+  oportunidades: Oportunidad[];
+  recomendaciones: Recomendacion[];
+}
+
+/** `periodo` en formato `"YYYY-MM"`; sin él, el backend usa el mes actual
+ *  (misma ventana que `/metricas`). 401 sin token (interceptor), 403 quien no
+ *  es operador, 404 slug inexistente (texto fijo), 422 período inválido,
+ *  503 base ilegible (texto fijo) -- todos con el `detail` del backend, que
+ *  se muestra tal cual en `EstadoError`. Cada llamada anota
+ *  `accion="detalle"` en la bitácora del registro (el backend, no hay nada
+ *  que mandar acá para eso). **Nunca se guarda en localStorage**: mismo
+ *  guardrail que el resto de `/plataforma/*` -- vive sólo en el estado de
+ *  quien la pide. */
+export const getDetalleCliente = (slug: string, periodo?: string): Promise<DetalleCliente> =>
+  client
+    .get<DetalleCliente>(`/plataforma/clientes/${encodeURIComponent(slug)}/detalle`, {
+      params: periodo ? { periodo } : undefined,
+    })
+    .then((r) => r.data);

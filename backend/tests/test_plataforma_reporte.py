@@ -342,6 +342,88 @@ def test_operador_requiere_ser_operador(client):
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# Fase 8: la consulta del DETALLE de espacios y contratos también es un acceso
+# ════════════════════════════════════════════════════════════════════════════
+
+def _anotar_bitacora_a_mano(email, accion, periodo):
+    """Escribe DIRECTO una línea de ``bitacora_plataforma``.
+
+    A mano y no por el endpoint a propósito: `GET /api/plataforma/clientes/
+    {slug}/detalle` lo construye otro agente de la Fase 8 y este archivo prueba
+    el REPORTE, no el detalle. Lo que se fija acá es la regla de
+    ``_accesos_del_cliente``: una línea ``accion="detalle"`` con
+    ``periodo="<slug>:<YYYY-MM>"`` alcanza al cliente de ese slug y **sólo** a
+    ése -- si mañana cambia el formato del período, este test se pone rojo antes
+    de que el titular deje de ver quién le miró los contratos.
+    """
+    from app.clientes import sesion_registro
+    from app.models.plataforma import BitacoraPlataforma
+
+    reg = sesion_registro()
+    try:
+        reg.add(BitacoraPlataforma(email=email, accion=accion, periodo=periodo))
+        reg.commit()
+    finally:
+        reg.close()
+
+
+def test_el_dueno_ve_la_consulta_de_detalle_de_su_cliente_y_no_la_de_otro(client):
+    from app.plataforma_metricas import periodo_actual
+
+    ids = Identidades(client)
+    owner_cab = _fundar(ids, "uid-det", "det@x.co", "repdetalle", "Rep Detalle")
+
+    periodo = periodo_actual()
+    _anotar_bitacora_a_mano("asesor@recabra.co", "detalle", f"repdetalle:{periodo}")
+    _anotar_bitacora_a_mano("asesor@recabra.co", "detalle", f"otrocliente:{periodo}")
+
+    r = _pedir_dueno(client, owner_cab)
+    assert r.status_code == 200, r.text
+    lineas = [l for l in r.json()["accesos"]["lineas"] if l["accion"] == "detalle"]
+
+    assert len(lineas) == 1, lineas
+    assert lineas[0]["periodo"] == f"repdetalle:{periodo}"
+    assert lineas[0]["operador"] == "asesor@recabra.co"
+    assert _FECHA_RE.match(lineas[0]["fecha"])
+    assert set(lineas[0]) == CLAVES_LINEA_ACCESO
+
+
+def test_el_catalogo_declara_el_detalle_de_espacios_y_contratos(client):
+    """El detalle es la excepción DECLARADA a "agregados, nunca filas": si el
+    operador lee contratos de un cliente, el catálogo del reporte de ese cliente
+    tiene que decirlo, con fuente, finalidad y tratamiento. Sin esta entrada el
+    reporte mentiría por omisión, que es justo lo que la Fase 7 vino a impedir.
+    """
+    from app.plataforma_reporte import CATALOGO
+
+    del_detalle = {c["clave"]: c for c in CATALOGO if "detalle" in c["endpoints"]}
+    esperadas = {
+        "espacio_codigo_y_tipo", "espacio_estado", "contrato_proveedor",
+        "contrato_marca", "contrato_canon_mensual", "contrato_fechas",
+        "resumen_por_tipo", "proveedores_del_cliente", "movimientos",
+        "benchmark_plataforma", "oportunidades", "recomendaciones",
+    }
+    assert esperadas <= set(del_detalle), esperadas - set(del_detalle)
+
+    for clave, item in del_detalle.items():
+        assert set(item) == CLAVES_CATALOGO_ITEM, clave
+        # El enum del shape NO cambió (el frontend lo tipa): la finalidad nueva
+        # de la política ("mejora del servicio y de la plataforma") vive en el
+        # documento, no acá.
+        assert item["finalidad"] in {"asesoria", "salud_cartera", "cobranza"}, clave
+        assert item["tratamiento"] in {
+            "exacto", "saneado", "sin_hora", "conteo", "relacion"}, clave
+        # El detalle NO sale por los otros endpoints.
+        assert item["endpoints"] == ["detalle"], clave
+
+    # El proveedor del contrato sale SANEADO, como en `top_proveedores`.
+    assert del_detalle["contrato_proveedor"]["tratamiento"] == "saneado"
+    assert del_detalle["proveedores_del_cliente"]["tratamiento"] == "saneado"
+    # La tarifa de referencia sigue sin salir: sólo el sí/no.
+    assert "sólo el sí/no" in del_detalle["resumen_por_tipo"]["fuente"]
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # Valores mes a mes contra el snapshot sembrado
 # ════════════════════════════════════════════════════════════════════════════
 
