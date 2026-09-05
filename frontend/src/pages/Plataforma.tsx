@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { LogOut } from "lucide-react";
 import {
   AgregadosMetricasCliente,
@@ -15,7 +15,7 @@ import { useAuthStore } from "../store/authStore";
 import {
   type ConsolaTema, temaInicial, guardarTema, TemaToggle,
   Panel, EstadoVacio, EstadoError, KpiTile,
-  Barras, BarraFila, EstadoPill, etiquetaEstado, Suprimido, SinDato,
+  Barras, BarraFila, EstadoPill, etiquetaEstado, SinDato,
   TablaScroll, TablaHead, TablaHeadCelda, Fila,
 } from "../components/plataforma/consola";
 import { PanelTendencia, useTendencia } from "../components/plataforma/tendencia";
@@ -35,7 +35,12 @@ import { PanelAdopcion, useAdopcion } from "../components/plataforma/adopcion";
 // Fase 4b (diseño): la consola tiene ahora sistema visual PROPIO de
 // back-office/BI — tokens `--con-*`, tema claro/oscuro, y primitivas
 // reutilizables en `components/plataforma/consola.tsx` (KPI tiles, barras con
-// eje desde cero, estado de cuenta, K=3 vs sin-dato, tabla de densidad).
+// eje desde cero, estado de cuenta, sin-dato, tabla de densidad).
+//
+// Fase 7 (transparencia): el operador ve los agregados EXACTOS de todos los
+// clientes, sin umbral de privacidad -- la contrapartida es el reporte de
+// transparencia que cada cliente puede generar (botón "Reporte" por fila,
+// abajo, y desde el Dashboard del cliente).
 //
 // Guard de SPA: se pregunta `GET /api/plataforma/soy` al montar. Es
 // cortesía nada más -- el 403 real lo tira el backend en cada endpoint, y
@@ -192,26 +197,22 @@ function FilaEditor({
 // tapar el estado ni el botón Cambiar, que dependen sólo del primer fetch.
 
 
-/** Celda de importe con la supresión K=3 legible: `null` con contratos > 0 no
- *  es "sin datos" — es la regla de privacidad ocultando una celda chica, y el
- *  operador tiene que poder distinguirlas de un vistazo. Tres salidas
- *  visualmente distintas: número en tinta, K=3 (ícono + "‹3"), sin-dato (—). */
-function celdaPlata(m: AgregadosMetricasCliente, v: number | null) {
+/** Celda de importe (Fase 7: agregados EXACTOS, sin umbral). `null` significa
+ *  únicamente "cero contratos activos en el período" -- nunca una supresión
+ *  de privacidad; con 1 o más contratos el número sale exacto, sin ocultar
+ *  nada. */
+function celdaPlata(v: number | null) {
   if (v !== null) return <span style={{ color: "var(--con-ink-2)" }}>{formatoCOP(v)}</span>;
-  // `null` en un importe significa, por diseño del backend, "menos de tres
-  // contratos" — el cero incluido a propósito (si el 0 se publicara, null
-  // delataría "tiene uno o dos"). Por eso el gate es tener inventario: un
-  // cliente sin espacios no tiene nada que suprimir.
-  if (m.espacios_comercializables > 0) return <Suprimido compacto />;
-  return <SinDato />;
+  return <SinDato title="Sin contratos activos en el período" />;
 }
 
-/** Celda "vs tarifa" (Fase 6, oportunidad de precio): tres estados propios,
- *  ninguno es la ausencia genérica de `celdaPlata` --
- *   · `tarifa_configurada === false` → "sin tarifa" en tinta apagada (no es
- *     K=3 ni un error: el cliente sencillamente no configuró nada todavía).
- *   · tarifa configurada pero `spread_pct === null` → el mismo K=3 que el
- *     canon (menos de 3 contratos con tarifa aplicable).
+/** Celda "vs tarifa" (Fase 6, oportunidad de precio): dos ausencias propias,
+ *  ninguna es la ausencia genérica de `celdaPlata` --
+ *   · `tarifa_configurada === false` → "sin tarifa" en tinta apagada (el
+ *     cliente sencillamente no configuró nada todavía).
+ *   · tarifa configurada pero `spread_pct === null` → "sin contratos con
+ *     tarifa aplicable" (Fase 7: sin umbral -- con 1 contrato con tarifa
+ *     aplicable, el número sale exacto).
  *   · valor → signo + magnitud; por debajo de tarifa (negativo) se resalta
  *     con el tono de aviso de la consola (mismo ámbar que gracia/solo
  *     lectura) porque es la lectura que dispara una conversación de
@@ -222,7 +223,9 @@ function celdaSpread(m: AgregadosMetricasCliente) {
   if (!m.tarifa_configurada) {
     return <span style={{ color: "var(--con-ink-4)" }}>sin tarifa</span>;
   }
-  if (m.spread_pct === null) return <Suprimido compacto />;
+  if (m.spread_pct === null) {
+    return <span style={{ color: "var(--con-ink-4)" }}>sin contratos con tarifa aplicable</span>;
+  }
   const color = m.spread_pct < 0 ? "var(--con-estado-aviso)" : "var(--con-ink-2)";
   return <span style={{ color, fontWeight: 600 }}>{formatoSpread(m.spread_pct)}</span>;
 }
@@ -232,7 +235,7 @@ function hintSpread(m: AgregadosMetricasCliente | null): string {
   const base = !m.tarifa_configurada
     ? "Sin tarifa de referencia configurada."
     : m.spread_pct === null
-      ? "Suprimido por privacidad: menos de 3 contratos con tarifa aplicable."
+      ? "Sin contratos con tarifa aplicable en el período."
       : "Canon vs tarifa de referencia (negativo = por debajo de su tarifa).";
   if (m.contratos_sin_tarifa > 0) {
     return `${base} ${m.contratos_sin_tarifa} contrato${m.contratos_sin_tarifa === 1 ? "" : "s"} sin tarifa aplicable.`;
@@ -246,7 +249,9 @@ const W_CANON = 108;
 const W_ING = 118;
 const W_ACC = 90;
 const W_SPREAD = 96;
-const W_BTN = 84;
+const W_BTN = 76;
+const W_BTN_REPORTE = 74;
+const W_BOTONES = W_BTN_REPORTE + 6 + W_BTN;
 
 function FilaCliente({
   fila, metricas, editando, onEditar, onGuardado, onCancelar,
@@ -260,6 +265,7 @@ function FilaCliente({
 }) {
   const m = metricas?.metricas ?? null;
   const error = metricas?.error ?? null;
+  const navigate = useNavigate();
 
   return (
     <div>
@@ -290,10 +296,10 @@ function FilaCliente({
               {m ? (m.ocupacion_pct !== null ? formatoPct(m.ocupacion_pct) : <SinDato />) : "—"}
             </div>
             <div style={{ width: W_CANON, flexShrink: 0, fontSize: 11.5, fontFamily: "var(--font-mono)", textAlign: "right" }} title="Canon promedio mensual">
-              {m ? celdaPlata(m, m.canon_promedio_mensual) : "—"}
+              {m ? celdaPlata(m.canon_promedio_mensual) : "—"}
             </div>
             <div style={{ width: W_ING, flexShrink: 0, fontSize: 11.5, fontFamily: "var(--font-mono)", textAlign: "right" }} title="Ingreso contratado del mes">
-              {m ? celdaPlata(m, m.ingreso_contratado_mes) : "—"}
+              {m ? celdaPlata(m.ingreso_contratado_mes) : "—"}
             </div>
             <div style={{ width: W_SPREAD, flexShrink: 0, fontSize: 11.5, fontFamily: "var(--font-mono)", textAlign: "right" }} title={hintSpread(m)}>
               {m ? celdaSpread(m) : "—"}
@@ -311,9 +317,19 @@ function FilaCliente({
           </>
         )}
 
-        <button onClick={onEditar} className="con-focusable" style={{ ...botonStyle, marginLeft: "auto", width: W_BTN }}>
-          {editando ? "Cerrar" : "Cambiar"}
-        </button>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          <button
+            onClick={() => navigate(`/plataforma/reporte/${encodeURIComponent(fila.slug)}`)}
+            className="con-focusable"
+            style={{ ...botonStyle, width: W_BTN_REPORTE }}
+            title="Reporte de transparencia de este cliente -- qué toma la plataforma, cómo lo calcula y quién lo consultó."
+          >
+            Reporte
+          </button>
+          <button onClick={onEditar} className="con-focusable" style={{ ...botonStyle, width: W_BTN }}>
+            {editando ? "Cerrar" : "Cambiar"}
+          </button>
+        </div>
       </Fila>
 
       {editando && (
@@ -840,16 +856,16 @@ export default function Plataforma() {
                 valor={
                   !metricas ? "—"
                   : metricas.consolidado.clientes_con_tarifa === 0 ? "sin tarifa"
-                  : metricas.consolidado.spread_pct === null ? "‹3"
+                  : metricas.consolidado.spread_pct === null ? "—"
                   : formatoSpread(metricas.consolidado.spread_pct)
                 }
-                hint="Ponderado: Σ canon / Σ tarifa de referencia de los clientes con tarifa configurada (nunca promedio de spreads). Con menos de 3 contratos con tarifa, el número se suprime (K=3) -- misma regla que el canon."
+                hint="Ponderado: Σ canon / Σ tarifa de referencia de los clientes con tarifa configurada (nunca promedio de spreads). Fase 7: suma a todos los clientes legibles con tarifa configurada, sin umbral."
                 contexto={
                   !metricas ? undefined
                   : metricas.consolidado.clientes_con_tarifa === 0
                     ? "ningún cliente configuró tarifa de referencia"
                   : metricas.consolidado.spread_pct === null
-                    ? "menos de 3 contratos con tarifa"
+                    ? "ningún contrato con tarifa aplicable en el período"
                   : metricas.consolidado.spread_pct < 0
                     ? `la cartera cobra ${Math.abs(metricas.consolidado.spread_pct).toFixed(1).replace(".", ",")} % por debajo de sus tarifas de referencia`
                   : metricas.consolidado.spread_pct > 0
@@ -875,7 +891,7 @@ export default function Plataforma() {
               subtitulo="Estado de cuenta y métricas del período por supermercado. Cambiar el estado corta o restringe el servicio de inmediato — el motivo queda de constancia, también al reactivar."
               sinPadding
             >
-              <TablaScroll minWidth={856}>
+              <TablaScroll minWidth={856 + W_BTN_REPORTE + 6}>
                 {clientes === null ? (
                   <div style={{ padding: 16 }}>
                     {clientesError ? <EstadoError texto={clientesError} /> : <EstadoVacio texto="Cargando…" />}
@@ -895,7 +911,7 @@ export default function Plataforma() {
                       <TablaHeadCelda width={W_ING} alinear="right">Ingreso (mes)</TablaHeadCelda>
                       <TablaHeadCelda width={W_SPREAD} alinear="right">vs tarifa</TablaHeadCelda>
                       <TablaHeadCelda width={W_ACC}>Últ. acceso</TablaHeadCelda>
-                      <div style={{ marginLeft: "auto", width: W_BTN }} />
+                      <div style={{ marginLeft: "auto", width: W_BOTONES }} />
                     </TablaHead>
                     {clientes.map((f) => (
                       <FilaCliente

@@ -369,6 +369,10 @@ _EXENTOS_POR_HABEAS_DATA = (
     "/api/clientes/mi-export",
     "/api/clientes/solicitar-supresion",
     "/api/auth/aceptar-politica",
+    # Fase 7, Parte B: el reporte de transparencia es tan derecho del titular
+    # como el export -- un cliente suspendido tiene que poder seguir auditando
+    # qué le tomó la plataforma.
+    "/api/clientes/mi-reporte-plataforma",
 )
 
 # El panel del operador opera sobre el REGISTRO, no sobre datos de negocio de

@@ -5,6 +5,7 @@ import Login from "./pages/Login";
 import Montaje from "./pages/Montaje";
 import PoliticaDatos from "./pages/PoliticaDatos";
 import Plataforma from "./pages/Plataforma";
+import ReportePlataforma from "./pages/ReportePlataforma";
 import BloqueoCuenta from "./components/BloqueoCuenta";
 import ModalConsentimiento from "./components/ModalConsentimiento";
 import { usarToken } from "./api/montaje";
@@ -142,6 +143,18 @@ export default function App() {
             un enlace guardado, escribir la barra a mano. */}
         <Route path="/" element={plataforma ? <Navigate to="/plataforma" replace /> : <Dashboard />} />
         <Route path="/plataforma" element={<Plataforma />} />
+        {/* Fase 7 (transparencia): la contrapartida de haber quitado la
+            supresión de celda chica en /plataforma -- vista imprimible del
+            reporte de auditoría, fuera del layout de sede/consola. La del
+            dueño ("/reporte-plataforma")
+            está disponible para CUALQUIER sesión de cliente (el 403 de "no
+            sos el owner" lo tira el backend, no una lista blanca acá); la
+            del operador vive bajo "/plataforma/reporte/:slug", misma familia
+            de rutas que "/plataforma". Las dos, antes del "*" catch-all;
+            el guard de sesión de arriba (sin token → Login) ya las cubre
+            porque ninguna se monta fuera del <BrowserRouter>. */}
+        <Route path="/reporte-plataforma" element={<ReportePlataforma modo="dueno" />} />
+        <Route path="/plataforma/reporte/:slug" element={<ReportePlataforma modo="operador" />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

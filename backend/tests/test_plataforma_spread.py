@@ -70,7 +70,9 @@ def test_tres_contratos_bajo_tarifa_dan_el_spread_esperado(client, monkeypatch):
     assert m["contratos_sin_tarifa"] == 0
 
 
-def test_dos_contratos_con_tarifa_dan_null_por_K3(client, monkeypatch):
+def test_dos_contratos_con_tarifa_publican_el_spread_exacto(client, monkeypatch):
+    """Fase 7 (sin umbral): 2 contratos con tarifa publican el spread EXACTO —
+    hasta la Fase 6 esto daba `null` por K=3 (< 3 contratos con tarifa)."""
     fixtures = {"S1": [{"code": f"E-0{i}", "type": "punta", "sede": "S1"} for i in (1, 2)]}
     contratos = [
         (f"S1-E-0{i}", f"Prov{i}", "2026-09-01", "2026-09-30", 900_000.0, True)
@@ -79,7 +81,8 @@ def test_dos_contratos_con_tarifa_dan_null_por_K3(client, monkeypatch):
     rates = {"default": {"punta": 1_000_000.0}, "by_sede": {}}
     _cuerpo, m = _cliente_con(client, monkeypatch, "dos", fixtures, contratos, rates)
 
-    assert m["spread_pct"] is None
+    # (1.800.000 / 2.000.000 - 1) * 100 = -10.0
+    assert m["spread_pct"] == -10.0
     assert m["tarifa_configurada"] is True
     assert m["contratos_sin_tarifa"] == 0
 

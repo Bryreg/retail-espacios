@@ -20,6 +20,8 @@ import json
 from datetime import date
 from types import SimpleNamespace
 
+import pytest
+
 # ─── Datos sembrados ─────────────────────────────────────────────────────────
 #
 # Cliente ACME, período 2026-09 (2026-09-01 .. 2026-09-30):
@@ -67,9 +69,8 @@ _CONTRATOS_ACME = [
     ("NAVE-GON-01", "Bimbo", "2026-09-01", "2026-09-30", 7_777_777.0, False),    # cancelado
 ]
 
-# BETA lleva TRES contratos a propósito: es el mínimo que la regla de celda
-# chica (K=3) deja publicar. Con dos, sus importes saldrían suprimidos y el
-# test del empate alfabético no tendría top que mirar.
+# BETA lleva TRES contratos, uno por proveedor: da un top de tres sin empates
+# de conteo, que es lo que el test del desempate alfabético necesita mirar.
 _BETA = [
     {"code": "E-01", "type": "punta", "sede": "BETA"},
     {"code": "E-02", "type": "punta", "sede": "BETA"},
@@ -403,12 +404,13 @@ def test_contrato_de_un_dia_cuenta_en_su_mes_y_no_en_otro(client, monkeypatch):
     septiembre = _fila(_pedir(client, cab, "2026-09"), "acme")["metricas"]
     assert septiembre["ingreso_contratado_mes"] == ACME_INGRESO  # incluye los 500.000 del día único
 
-    # En noviembre no hay ningún contrato activo de ACME: ni canon ni ingreso.
-    # Cero contratos está por debajo de K=3, así que los importes van en `null`
-    # por la misma regla que cubre al cliente con uno o dos.
+    # En noviembre no hay ningún contrato activo de ACME. Sin umbral (Fase 7):
+    # `ingreso_contratado_mes` es SIEMPRE un número, y con 0 contratos es 0.0 —
+    # no factura nada, y eso es un dato, no una ausencia. `canon_promedio_mensual`
+    # sigue en `null` porque no hay ningún contrato del que promediar.
     noviembre = _fila(_pedir(client, cab, "2026-11"), "acme")["metricas"]
     assert noviembre["canon_promedio_mensual"] is None
-    assert noviembre["ingreso_contratado_mes"] is None
+    assert noviembre["ingreso_contratado_mes"] == 0.0
     assert noviembre["top_proveedores"] == []
     assert noviembre["ocupacion_pct"] == 0.0  # hay caras, ninguna ocupada
 
@@ -436,8 +438,8 @@ def test_ocupacion_null_cuando_no_hay_espacios_comercializables(client, monkeypa
     assert m["sedes_con_plano"] == 0
     assert m["espacios_comercializables"] == 0
     assert m["ocupacion_pct"] is None
-    assert m["canon_promedio_mensual"] is None
-    assert m["ingreso_contratado_mes"] is None   # 0 contratos: por debajo de K=3
+    assert m["canon_promedio_mensual"] is None      # 0 contratos: no hay qué promediar
+    assert m["ingreso_contratado_mes"] == 0.0       # Fase 7: SIEMPRE número, sin umbral
     assert m["usuarios_con_cuenta"] == 0
     assert m["ultimo_acceso"] is None
 
@@ -517,8 +519,16 @@ def test_consolidado_excluye_al_cliente_con_error(client, monkeypatch):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Supresión de celda chica (K=3): una suma de un sumando no es un agregado
+# Fase 7 — agregados EXACTOS, sin umbral: la plata sale sea cual sea el conteo
 # ════════════════════════════════════════════════════════════════════════════
+#
+# Hasta la Fase 6 esta sección probaba la supresión de celda chica (K=3): con
+# menos de 3 contratos activos, `ingreso_contratado_mes`, `canon_promedio_mensual`
+# y `top_proveedores` salían en `null`/vacío. El dueño de la plataforma decidió
+# cambiar el trato (docs/ESTADO.md, Fase 7): el operador ve el número EXACTO de
+# todos los clientes, sin umbral — con un contrato activo, el ingreso del mes
+# es ese contrato y así se publica. La contrapartida es el reporte de
+# transparencia (`app/plataforma_reporte.py`), que construye otro agente.
 
 def _cliente_con_contratos(client, monkeypatch, slug, cuantos):
     """Funda un cliente con `cuantos` contratos activos y devuelve su fila.
@@ -545,43 +555,56 @@ def _cliente_con_contratos(client, monkeypatch, slug, cuantos):
     return cuerpo, _fila(cuerpo, slug)["metricas"], [c[4] for c in contratos]
 
 
-def test_con_menos_de_tres_contratos_la_plata_se_suprime(client, monkeypatch):
-    """Con UN contrato, `ingreso` y `canon` SON ese contrato y el top dice con quién.
+def test_con_un_contrato_de_4_173_919_el_ingreso_y_el_canon_salen_exactos(client, monkeypatch):
+    """El caso de la spec, al pie de la letra: un contrato de 4.173.919 publica
+    ese número exacto — antes se suprimía, ahora es la regla del dueño."""
+    from app.plataforma_metricas import limpiar_cache_metricas
 
-    El operador reconstruiría la fila entera —proveedor, monto y, si además hay
-    una sola cara ocupada, cuál espacio— sin salir del panel, que es
-    exactamente lo que la spec prohíbe. Por debajo de K=3 los tres campos de
-    plata no se publican.
-    """
-    cuerpo, m, canones = _cliente_con_contratos(client, monkeypatch, "uno", 1)
+    ids = Identidades(client)
+    _fundar(ids, "uid-uno", "duena@uno.co", "uno", "Uno")
+    _sembrar(
+        "uno",
+        {"UNO": [{"code": "E-01", "type": "punta", "sede": "UNO"}]},
+        [("UNO-E-01", "Alpina", "2026-09-01", "2026-09-30", 4_173_919.0, True)],
+    )
+    consola = _operador_sin_membresias(ids, monkeypatch)
+    limpiar_cache_metricas()
 
-    assert m["ingreso_contratado_mes"] is None
-    assert m["canon_promedio_mensual"] is None
-    assert m["top_proveedores"] == []
-    # El canon individual no aparece en NINGÚN número de toda la respuesta.
-    assert canones[0] not in _todos_los_numeros(cuerpo)
-
-
-def test_con_dos_contratos_tambien_se_suprime(client, monkeypatch):
-    """K=3 y no 2: con dos, quien conoce uno despeja el otro restando."""
-    _cuerpo, m, _canones = _cliente_con_contratos(client, monkeypatch, "dos", 2)
-
-    assert m["ingreso_contratado_mes"] is None
-    assert m["canon_promedio_mensual"] is None
-    assert m["top_proveedores"] == []
+    m = _fila(_pedir(client, _cab(consola["token"])), "uno")["metricas"]
+    assert m["ingreso_contratado_mes"] == 4_173_919.0
+    assert m["canon_promedio_mensual"] == 4_173_919.0
+    assert m["top_proveedores"] == [{"nombre": "Alpina", "contratos_activos": 1}]
 
 
-def test_con_tres_contratos_ya_se_publica(client, monkeypatch):
-    """El umbral es exactamente 3: en 3 la celda vuelve a ser un agregado."""
-    _cuerpo, m, canones = _cliente_con_contratos(client, monkeypatch, "tres", 3)
+@pytest.mark.parametrize("cuantos", [1, 2, 3, 5])
+def test_con_cualquier_cantidad_de_contratos_el_agregado_sale_exacto(client, monkeypatch, cuantos):
+    """1, 2, 3 o 5 contratos: sin umbral, el ingreso y el canon promedio son
+    SIEMPRE el número exacto — antes de la Fase 7, 1 y 2 se suprimían."""
+    cuerpo, m, canones = _cliente_con_contratos(client, monkeypatch, f"n{cuantos}", cuantos)
 
     assert m["ingreso_contratado_mes"] == round(sum(canones), 2)
-    assert m["canon_promedio_mensual"] == round(sum(canones) / 3, 2)
-    assert len(m["top_proveedores"]) == 3
+    assert m["canon_promedio_mensual"] == round(sum(canones) / cuantos, 2)
+    assert len(m["top_proveedores"]) == cuantos
+    # La suma sí aparece en la respuesta: ya no hay nada que esconder por
+    # debajo de un umbral.
+    assert round(sum(canones), 2) in _todos_los_numeros(cuerpo)
 
 
-def test_la_supresion_no_toca_los_conteos_ni_la_ocupacion(client, monkeypatch):
-    """Un porcentaje sobre el inventario no revela ningún valor de contrato."""
+def test_con_cero_contratos_el_ingreso_es_0_0_y_el_canon_null(client, monkeypatch):
+    """0 contratos es la única `null`/cero que sigue existiendo, y por un motivo
+    distinto al umbral: `ingreso_contratado_mes` es SIEMPRE número (0.0 acá,
+    porque no facturó nada), y `canon_promedio_mensual` es `null` porque no hay
+    ningún contrato del que promediar — no por ausencia de dato protegido."""
+    _cuerpo, m, _canones = _cliente_con_contratos(client, monkeypatch, "cero", 0)
+
+    assert m["ingreso_contratado_mes"] == 0.0
+    assert m["canon_promedio_mensual"] is None
+    assert m["top_proveedores"] == []
+
+
+def test_los_conteos_y_la_ocupacion_no_dependen_de_cuantos_contratos_haya(client, monkeypatch):
+    """Los conteos y el % de ocupación siempre fueron ajenos al ingreso, con o
+    sin umbral: no cambian con la Fase 7 porque nunca hubo nada que proteger ahí."""
     _cuerpo, m, _canones = _cliente_con_contratos(client, monkeypatch, "conteos", 1)
 
     assert m["sedes_con_plano"] == 1
@@ -590,15 +613,12 @@ def test_la_supresion_no_toca_los_conteos_ni_la_ocupacion(client, monkeypatch):
     assert m["usuarios_con_cuenta"] == 1
 
 
-def test_el_consolidado_se_calcula_con_los_datos_subyacentes_de_las_filas_suprimidas(
-    client, monkeypatch,
-):
-    """Suprimir una fila no puede cambiar el total del negocio.
-
-    ACME (4 contratos, visible) + un cliente de 1 contrato (suprimido): el
-    consolidado suma los CINCO. Como corolario declarado del diseño, el
-    consolidado ya **no** es reconstruible sumando las filas visibles cuando
-    hay filas suprimidas — y eso es lo que hace que la supresión sirva.
+def test_el_consolidado_es_exactamente_la_suma_de_todas_las_filas_legibles(client, monkeypatch):
+    """Fase 7: sin supresión, el consolidado SÍ es reconstruible sumando lo
+    visible — ya no hay una fila que esconda su propio ingreso por debajo de
+    un umbral. ACME (4 contratos) + un cliente de 1 solo contrato: el
+    consolidado suma los CINCO, y el de 1 contrato aporta su número EXACTO,
+    no `null`.
     """
     from app.plataforma_metricas import limpiar_cache_metricas
 
@@ -617,35 +637,33 @@ def test_el_consolidado_se_calcula_con_los_datos_subyacentes_de_las_filas_suprim
     cuerpo = _pedir(client, _cab(consola["token"]))
     c = cuerpo["consolidado"]
 
-    assert _fila(cuerpo, "min")["metricas"]["ingreso_contratado_mes"] is None
+    assert _fila(cuerpo, "min")["metricas"]["ingreso_contratado_mes"] == 123_457.0
     assert c["ingreso_contratado_mes"] == ACME_INGRESO + 123_457.0
     assert c["canon_promedio_mensual"] == round((ACME_INGRESO + 123_457.0) / 5, 2)
-    # El proveedor de la fila suprimida SÍ está en el top consolidado: ahí es un
-    # sumando entre cinco contratos, no la fila entera de un cliente.
     assert {"nombre": "Solitaria", "contratos_activos": 1} in c["top_proveedores"]
-    # Y la fila suprimida no se puede despejar restando lo visible del total.
+    # Sin filas ocultas, el consolidado SÍ se puede reconstruir sumando lo
+    # visible — al revés de lo que valía bajo K=3.
     visibles = sum(
         f["metricas"]["ingreso_contratado_mes"] or 0.0
         for f in cuerpo["clientes"] if f["metricas"]
     )
-    assert visibles != c["ingreso_contratado_mes"]
+    assert visibles == c["ingreso_contratado_mes"]
 
 
-def test_el_consolidado_tambien_se_suprime_si_toda_la_plataforma_tiene_menos_de_tres(
+def test_el_consolidado_publica_exacto_aunque_toda_la_plataforma_tenga_pocos_contratos(
     client, monkeypatch,
 ):
-    """La regla se aplica a CADA nivel, no sólo a las filas.
-
-    Con dos contratos en toda la plataforma, el consolidado es el contrato — y
-    el operador que ve una sola fila publicada ya sabe de quién.
-    """
-    cuerpo, _m, _canones = _cliente_con_contratos(client, monkeypatch, "chico", 2)
+    """Sin umbral, con dos contratos en toda la plataforma el consolidado es
+    el número exacto — antes de la Fase 7 esto daba `null` porque 2 < K."""
+    cuerpo, m, canones = _cliente_con_contratos(client, monkeypatch, "chico", 2)
     c = cuerpo["consolidado"]
 
-    assert c["ingreso_contratado_mes"] is None
-    assert c["canon_promedio_mensual"] is None
-    assert c["top_proveedores"] == []
-    # Los conteos y la ocupación siguen publicándose.
+    assert c["ingreso_contratado_mes"] == round(sum(canones), 2)
+    assert c["canon_promedio_mensual"] == round(sum(canones) / 2, 2)
+    assert len(c["top_proveedores"]) == 2
+    # Es el único cliente con contratos en la plataforma: la fila y el
+    # consolidado coinciden.
+    assert m["ingreso_contratado_mes"] == c["ingreso_contratado_mes"]
     assert c["espacios_comercializables"] == 2
     assert c["ocupacion_pct"] == 100.0
 

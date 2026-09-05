@@ -8,10 +8,10 @@ Tres cosas se prueban acá, y son las tres patas del histórico:
 * **El cierre automático** — ``cerrar_mes_anterior()`` puebla el mes ya cerrado
   sin que nadie haya abierto la consola, es idempotente, lo llama de verdad
   ``_run_lease_maintenance()`` y sobrevive a un cliente con la base rota.
-* **El endpoint** — N entradas siempre, el mes en curso marcado ``parcial``, la
-  supresión K=3 aplicada MES A MES, el consolidado ponderado (Σ/Σ) contra
-  números sembrados a mano, el saneo del nombre del proveedor, y la frontera del
-  operador (403 / 404 / 422 + bitácora).
+* **El endpoint** — N entradas siempre, el mes en curso marcado ``parcial``, los
+  agregados EXACTOS mes a mes (Fase 7, sin umbral), el consolidado ponderado
+  (Σ/Σ) contra números sembrados a mano, el saneo del nombre del proveedor, y
+  la frontera del operador (403 / 404 / 422 + bitácora).
 
 Los helpers de andamiaje son los de ``test_plataforma_metricas.py``, copiados a
 propósito: cada archivo de pruebas se sostiene solo.
@@ -32,7 +32,8 @@ from types import SimpleNamespace
 # otra vez el recorte por período —eso ya lo prueba `test_plataforma_metricas`—.
 #
 # ACME: 2 sedes con plano, 6 caras comercializables, 3 ocupadas, 4 contratos.
-# BETA: 3 caras, 2 contratos -> por debajo de K=3, sus importes van suprimidos.
+# BETA: 3 caras, 2 contratos -> Fase 7, sin umbral: sus importes se publican
+# exactos igual que los de ACME.
 
 _NAVE = [
     {"code": "PUN-01", "type": "punta", "sede": "NAVE"},
@@ -55,9 +56,11 @@ _CONTRATOS_ACME = [
     ("FANTASMA-01", "Alpina", *_SIEMPRE, 400_000.0, True),
 ]
 
-# BETA lleva DOS contratos a propósito: es lo que la regla de celda chica (K=3)
-# NO deja publicar. Su nombre de proveedor trae un correo adentro, que es el
-# caso que el saneo existe para tapar.
+# BETA lleva DOS contratos: con Fase 7 (sin umbral) eso ya no impide publicar
+# nada — se agrega igual un tercero en algunas pruebas, para verificar que un
+# mes con MÁS contratos que otro sigue publicando ambos, no para cruzar ningún
+# umbral. Su nombre de proveedor trae un correo adentro, que es el caso que
+# el saneo existe para tapar.
 _BETA = [
     {"code": "E-01", "type": "punta", "sede": "BETA"},
     {"code": "E-02", "type": "punta", "sede": "BETA"},
@@ -67,14 +70,16 @@ PROVEEDOR_SUCIO = "Bimbo Distribuciones (ventas@bimbo.co)"
 # Cómo baja ese nombre a `snapshot_metricas.proveedores_json`: SANEADO. Desde el
 # arreglo de frontera-2/compliance-1, `_recortar_top` sanea antes del
 # `json.dumps` -- el correo de un tercero no queda en reposo en el registro. El
-# CONTEO sigue crudo (K=3 se aplica al leer) y el saneo es idempotente, así que
-# `publicar_fila` lo vuelve a pasar por `_top` sin enmascarar dos veces.
+# CONTEO sigue crudo (los agregados públicos, exactos desde Fase 7, se derivan
+# al leer) y el saneo es idempotente, así que `publicar_fila` lo vuelve a pasar
+# por `_top` sin enmascarar dos veces.
 PROVEEDOR_SUCIO_EN_DISCO = "Bimbo Distribuciones ([correo oculto])"
 _CONTRATOS_BETA = [
     ("BETA-E-01", PROVEEDOR_SUCIO, *_SIEMPRE, 400_000.0, True),
     ("BETA-E-02", PROVEEDOR_SUCIO, *_SIEMPRE, 200_000.0, True),
 ]
-# El tercero, que se agrega SÓLO en algunas pruebas para cruzar el umbral K=3.
+# El tercero, que se agrega SÓLO en algunas pruebas para tener un mes con más
+# contratos que otro en la MISMA serie.
 _TERCERO_BETA = ("BETA-E-03", "Nutresa", *_SIEMPRE, 750_000.0, True)
 
 # Lo que tiene que dar cada uno, calculado a mano:
@@ -84,6 +89,7 @@ ACME_CANON = 975_000.0                       # 3.900.000 / 4
 
 BETA_CARAS, BETA_OCUPADAS, BETA_CONTRATOS = 3, 2, 2
 BETA_INGRESO = 600_000.0
+BETA_CANON = 300_000.0                       # 600.000 / 2
 
 # Consolidado con BETA en 2 contratos (galerias no tiene nada, roto va excluido):
 CONS_CARAS = ACME_CARAS + BETA_CARAS                  # 9
@@ -624,7 +630,7 @@ def test_el_default_es_consolidado_y_doce_meses(client, monkeypatch):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# El endpoint: los números, K=3 y el saneo
+# El endpoint: los números, EXACTOS y sin umbral (Fase 7), y el saneo
 # ════════════════════════════════════════════════════════════════════════════
 
 def test_consolidado_es_ponderado_contra_numeros_sembrados(client, monkeypatch):
@@ -646,45 +652,46 @@ def test_consolidado_es_ponderado_contra_numeros_sembrados(client, monkeypatch):
     assert punto["capturado_en"].endswith("Z")
 
 
-def test_k3_se_aplica_mes_a_mes(client, monkeypatch):
-    """Un cliente con 2 contratos en un mes y 3 en otro: se suprime SÓLO el primero.
+def test_el_agregado_exacto_se_aplica_mes_a_mes(client, monkeypatch):
+    """Un cliente con 2 contratos en un mes y 3 en otro: los DOS publican exacto.
 
-    La supresión se aplica AL LEER, así que dos meses de la MISMA serie pueden
-    salir uno suprimido y el otro publicado — que es todo el punto de no guardar
-    los públicos.
+    Fase 7 (sin umbral): la serie no distingue "publicado" de "suprimido" —
+    cada mes de la MISMA serie sale con su propio número, sea cual sea el
+    conteo de contratos de ese mes.
     """
     _ids, cab = _escenario(client, monkeypatch)
     actual, anterior = _actual(), _anterior()
 
-    # Mes anterior: BETA con sus 2 contratos originales -> por debajo de K=3.
+    # Mes anterior: BETA con sus 2 contratos originales.
     _pedir_metricas(client, cab, anterior)
-    # Mes en curso: se le agrega el tercero -> publica.
+    # Mes en curso: se le agrega el tercero.
     _sembrar("beta", {}, [_TERCERO_BETA])
     _pedir_metricas(client, cab, actual)
 
     cuerpo = _tendencia(client, cab, cliente="beta", meses=3)
     assert cuerpo["nombre"] == "Beta"
 
-    suprimido = _mes(cuerpo, anterior)
-    assert suprimido["sin_dato"] is False
-    assert suprimido["ingreso_contratado_mes"] is None
-    assert suprimido["canon_promedio_mensual"] is None
-    assert suprimido["top_proveedores"] == []
-    # Los conteos y la ocupación NO se suprimen: no revelan ningún importe.
-    assert suprimido["espacios_comercializables"] == BETA_CARAS
-    assert suprimido["ocupacion_pct"] == round(BETA_OCUPADAS * 100 / BETA_CARAS, 1)
+    con_dos = _mes(cuerpo, anterior)
+    assert con_dos["sin_dato"] is False
+    assert con_dos["ingreso_contratado_mes"] == BETA_INGRESO
+    assert con_dos["canon_promedio_mensual"] == BETA_CANON
+    assert con_dos["top_proveedores"] == [
+        {"nombre": PROVEEDOR_SUCIO_EN_DISCO, "contratos_activos": 2},
+    ]
+    assert con_dos["espacios_comercializables"] == BETA_CARAS
+    assert con_dos["ocupacion_pct"] == round(BETA_OCUPADAS * 100 / BETA_CARAS, 1)
 
-    publicado = _mes(cuerpo, actual)
-    assert publicado["ingreso_contratado_mes"] == BETA_INGRESO + 750_000.0
-    assert publicado["canon_promedio_mensual"] == round((BETA_INGRESO + 750_000.0) / 3, 2)
-    assert publicado["top_proveedores"]
+    con_tres = _mes(cuerpo, actual)
+    assert con_tres["ingreso_contratado_mes"] == BETA_INGRESO + 750_000.0
+    assert con_tres["canon_promedio_mensual"] == round((BETA_INGRESO + 750_000.0) / 3, 2)
+    assert con_tres["top_proveedores"]
 
 
 def test_el_nombre_del_proveedor_sale_saneado(client, monkeypatch):
     """El correo que el cliente tecleó adentro del nombre no llega al JSON."""
     _ids, cab = _escenario(client, monkeypatch)
     actual = _actual()
-    _sembrar("beta", {}, [_TERCERO_BETA])   # cruza K=3 para que haya top
+    _sembrar("beta", {}, [_TERCERO_BETA])   # un contrato más, mismo proveedor sucio
     _pedir_metricas(client, cab, actual)
 
     punto = _mes(_tendencia(client, cab, cliente="beta", meses=1), actual)
@@ -696,10 +703,11 @@ def test_el_nombre_del_proveedor_sale_saneado(client, monkeypatch):
 
 
 def test_la_serie_nunca_publica_contratos_ni_ocupadas(client, monkeypatch):
-    """El numerador y el denominador de la supresión no salen del backend.
+    """``contratos_activos`` y ``ocupadas`` son crudos de negocio: no cruzan la
+    frontera del operador, con o sin umbral (Fase 7 no cambia esto).
 
-    ``contratos_activos`` aparece SÓLO adentro de ``top_proveedores``, donde ya
-    pasó por K=3 y es un conteo por proveedor, no el total del cliente.
+    ``contratos_activos`` aparece SÓLO adentro de ``top_proveedores``, y ahí es
+    un conteo por proveedor, no el total del cliente.
     """
     _ids, cab = _escenario(client, monkeypatch)
     actual = _actual()

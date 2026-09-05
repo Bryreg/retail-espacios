@@ -34,12 +34,18 @@ escribe únicamente el registro (``sesion_registro``); los datos de negocio le
 llegan ya agregados desde ``plataforma_metricas``, que es el único módulo con
 permiso —acotado y declarado— para tocarlas, y sólo en lectura.
 
-**Los NÚMEROS se protegen al LEER; el NOMBRE del proveedor, al ESCRIBIR.** La
-tabla guarda los conteos crudos y la supresión de celda chica (K=3) la aplica
-``publicar_fila`` en cada lectura, reusando las funciones de
-``plataforma_metricas``: un solo lugar donde el crudo se vuelve público, y si
-mañana el umbral sube a 5 el histórico entero obedece sin tocar una fila. El
-nombre del proveedor no: baja a disco YA SANEADO (``_recortar_top``), porque un
+**Fase 7 — agregados EXACTOS, sin umbral.** Hasta la Fase 6 la tabla guardaba
+los conteos crudos y ``publicar_fila`` les aplicaba supresión de celda chica
+(K=3) en cada lectura. El dueño de la plataforma decidió quitar el umbral: el
+operador ve el número exacto de cada mes, con un contrato incluido. La
+contrapartida es el reporte de transparencia del cliente
+(``app/plataforma_reporte.py``). ``publicar_fila`` sigue siendo el único lugar
+donde el crudo guardado se vuelve el JSON público, reusando las funciones de
+``plataforma_metricas`` — eso no cambió, sólo desapareció la supresión.
+
+**El NOMBRE del proveedor se protege al ESCRIBIR.** La tabla guarda los
+conteos crudos tal cual; el nombre del proveedor no: baja a disco YA SANEADO
+(``_recortar_top``), porque un
 correo o un celular de un tercero metido adentro de ``Supplier.name`` no tiene
 por qué existir en reposo en el registro —hallazgos frontera-2/compliance-1—.
 El saneo es idempotente, así que ``publicar_fila`` lo sigue pasando por ``_top``
@@ -63,7 +69,6 @@ from app.plataforma_metricas import (
     _corrido,
     _pct,
     _plata,
-    _suprimir_celda_chica,
     _top,
     periodo_actual,
     rango_del_periodo,
@@ -624,20 +629,20 @@ def cerrar_mes_anterior() -> None:
 # ─── Lectura: de la fila cruda al JSON público ────────────────────────────────
 
 def publicar_fila(fila) -> dict:
-    """Los agregados PÚBLICOS de una fila de ``snapshot_metricas``.
+    """Los agregados PÚBLICOS y EXACTOS de una fila de ``snapshot_metricas``.
 
     Es la única puerta por la que un crudo guardado se vuelve un número
-    publicado, y aplica exactamente las mismas reglas que el endpoint de métricas
-    porque usa exactamente las mismas funciones: ``_pct``, ``_plata``, ``_top``
-    (que sanea el nombre del proveedor) y ``_suprimir_celda_chica`` (K=3). No hay
-    una sola fórmula reescrita acá — el día que el umbral de supresión cambie, el
-    histórico entero cambia con él, sin tocar una fila guardada.
+    publicado, y aplica exactamente las mismas reglas que el endpoint de
+    métricas porque usa exactamente las mismas funciones: ``_pct``, ``_plata``
+    y ``_top`` (que sanea el nombre del proveedor). No hay una sola fórmula
+    reescrita acá. Fase 7: sin umbral — ``ingreso_contratado_mes`` sale
+    siempre como número (``0.0`` con 0 contratos), ``canon_promedio_mensual``
+    es ``null`` sólo sin contratos, ``top_proveedores`` es la lista real.
 
-    **Ni ``contratos_activos`` ni ``ocupadas`` salen jamás.** Son el numerador y
-    el denominador de la propia supresión: publicarlos al lado de los importes en
-    ``null`` diría "acá hay 2 contratos", que es la mitad de lo que la regla
-    esconde. Salen sólo transformados (``ocupacion_pct``) o como el conteo por
-    proveedor del top, que ya pasó por K=3.
+    **Ni ``contratos_activos`` ni ``ocupadas`` salen jamás.** Eso no cambia con
+    Fase 7: son crudos de negocio (numerador y denominador de la ocupación),
+    no algo que la spec deje cruzar la frontera del operador. Salen sólo
+    transformados (``ocupacion_pct``) o como el conteo por proveedor del top.
     """
     try:
         proveedores = json.loads(fila.proveedores_json or "{}")
@@ -651,7 +656,7 @@ def publicar_fila(fila) -> dict:
 
     contratos = fila.contratos_activos or 0
     canon_total = float(fila.canon_total or 0.0)
-    publicas = {
+    return {
         "sedes_con_plano": fila.sedes_con_plano,
         "espacios_comercializables": fila.espacios_comercializables,
         "ocupacion_pct": _pct(fila.ocupadas or 0, fila.espacios_comercializables or 0),
@@ -660,7 +665,6 @@ def publicar_fila(fila) -> dict:
         "top_proveedores": _top({str(n): int(c) for n, c in proveedores.items()}),
         "usuarios_con_cuenta": fila.usuarios,
     }
-    return _suprimir_celda_chica(publicas, contratos)
 
 
 def _mes_vacio(periodo: str, actual: str) -> dict:
@@ -669,8 +673,10 @@ def _mes_vacio(periodo: str, actual: str) -> dict:
     El mes se devuelve igual —no se omite— porque un gráfico de línea al que le
     falta un punto en el medio dibuja una recta entre los vecinos, y eso miente
     con más convicción que un hueco. ``top_proveedores`` va como lista vacía y no
-    ``null`` por la misma razón que en ``_suprimir_celda_chica``: el frontend lo
-    recorre sin preguntar.
+    ``null`` por la misma razón que en el resto del contrato (Fase 7,
+    ``publicas_desde_crudos``): el frontend lo recorre sin preguntar. Esto no
+    cambia con Fase 7 — la ausencia de dato sigue siendo ausencia de dato, sólo
+    desapareció la supresión por umbral.
     """
     return {
         "periodo": periodo,

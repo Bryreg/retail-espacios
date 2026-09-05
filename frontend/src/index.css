@@ -272,10 +272,8 @@
   --con-estado-aviso:  #B35F0A;
   --con-estado-corte:  #8E1226;
 
-  /* Dato suprimido por K=3 vs. sin dato: DOS tratamientos distintos, y ambos
-     distintos de un 0 real. */
-  --con-suprimido-ink:   #6B7479;
-  --con-suprimido-hatch: #C7CED0;
+  /* Sin dato: distinto de un 0 real (Fase 7 quitó la supresión de celda
+     chica -- los agregados por cliente son exactos, sin umbral). */
   --con-sindato-ink:     #BEC5C8;
 
   /* Tendencia (Fase 5): línea + puntos del gráfico temporal. Mismo matiz
@@ -314,8 +312,6 @@
   --con-estado-aviso:  #E8963F;
   --con-estado-corte:  #E8798C;
 
-  --con-suprimido-ink:   #96A0A5;
-  --con-suprimido-hatch: #3A454D;
   --con-sindato-ink:     #55606A;
 
   /* Tendencia (Fase 5): más clara que en el tema claro para sostener ≥3:1

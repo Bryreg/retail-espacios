@@ -134,7 +134,13 @@ def test_owner_200_con_las_claves_exactas_del_contrato(client):
     body = r.json()
     assert set(body.keys()) == CLAVES_DEL_EXPORT
     assert body["cliente"] == {"slug": "exportable", "nombre": "Exportable"}
-    assert body["version_politica"] == "2026-09-v1"
+    # Contra la CONSTANTE, no contra el literal: cuando la política sube de
+    # versión (Fase 7: "2026-09-v2") este contrato no puede quedar afirmando
+    # una versión que ya no existe. El literal se afirma en UN solo lugar
+    # -- `tests/test_consentimiento.py`, contra el encabezado del documento.
+    from app.models.consentimiento import VERSION_POLITICA
+
+    assert body["version_politica"] == VERSION_POLITICA
     assert body["generado_en"]
     assert body["spaces"] == []
     assert body["leases"] == []

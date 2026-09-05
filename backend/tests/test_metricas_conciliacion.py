@@ -36,20 +36,20 @@ y dos trampas sembradas a propósito:
 ``susp``     SUSPENDIDO y adentro del consolidado igual; canon con centavos
 ===========  ==========================================================
 
-**La regla K=3 (supresión de celda chica), y qué le hace a este archivo.** El
-backend suprime ``ingreso_contratado_mes``, ``canon_promedio_mensual`` y
-``top_proveedores`` de toda fila con MENOS de 3 contratos activos en el período
-(``_suprimir_celda_chica``): con uno o dos contratos, la suma ES el sumando. En
-este escenario eso deja **suprimidos a ``centro`` (2), ``susp`` (2) y
-``galerias`` (0)**, y publicados a ``norte`` (4) y ``sur`` (7).
+**Fase 7 — agregados EXACTOS, sin umbral, y qué le hace a este archivo.** Hasta
+la Fase 6 el backend suprimía ``ingreso_contratado_mes``, ``canon_promedio_mensual``
+y ``top_proveedores`` de toda fila con MENOS de 3 contratos activos en el
+período. El dueño de la plataforma decidió cambiar el trato (docs/ESTADO.md,
+Fase 7): sin umbral, TODAS las filas publican su número exacto — en este
+escenario ``centro`` (2 contratos), ``susp`` (2) y ``galerias`` (0) ya no se
+suprimen, igual que ``norte`` (4) y ``sur`` (7).
 
-La consecuencia que ordena la sección 6 de este archivo: el consolidado se
-calcula con los datos SUBYACENTES de todos los clientes legibles —los suprimidos
-incluidos—, así que **deja de ser la suma de las filas VISIBLES** y pasa a ser
-la suma de las filas visibles MÁS lo que las suprimidas esconden. Los tests de
-conciliación siguen cuadrando la cuenta entera, sumándole a lo visible los
-números ocultos calculados A MANO (``OCULTO_*``): un consolidado que no cierre
-ni así seguiría siendo el fallo silencioso que este archivo existe para atrapar.
+La consecuencia que ordena la sección 6 de este archivo: sin filas suprimidas,
+el consolidado vuelve a ser, exactamente, la suma de las filas VISIBLES —lo
+que antes de la Fase 7 hacía falta sumarle a mano (``OCULTO_*``) ahora ya está
+publicado en cada fila, y la conciliación cierra SIN residuo. Lo que sigue
+sin poder promediarse por promedio de promedios (canon consolidado, ocupación
+consolidada) no cambió: sigue siendo ponderado, Σ/Σ.
 
 Los HALLAZGOS van al final, marcados ``xfail(strict=True)``: son tests que hoy
 fallan a propósito y que se ponen verdes solos el día que el defecto se corrija.
@@ -134,13 +134,11 @@ _CONTRATOS_NORTE = [
     ("N1-GON-01",   "Postobon", "2026-10-01", "2026-10-31", 3_000_000.00, True),
     # (g) CANCELADO (is_active=False) aunque las fechas caigan justo adentro.
     ("N1-GON-01",   "Postobon", "2026-09-01", "2026-09-30", 9_000_000.00, False),
-    # (h) SÓLO agosto, y sobre un espacio que tampoco está en el plano.
-    #     Existe por la regla K=3: sin él, agosto tendría 2 contratos y el mes
-    #     entero saldría suprimido, con lo que la comparación "mes con contrato
-    #     vigente vs mes anterior" no podría mirar ni un peso. Con él, agosto
-    #     tiene 3 y se publica. Se eligió un espacio FANTASMA a propósito: si
-    #     ocupara una cara real, agosto pasaría a 3/5 = 60,0 % y daría lo mismo
-    #     que septiembre, que es justo lo que el test tiene que distinguir.
+    # (h) SÓLO agosto, y sobre un espacio que tampoco está en el plano. Se
+    #     eligió un espacio FANTASMA a propósito: si ocupara una cara real,
+    #     agosto pasaría a 3/5 = 60,0 % y daría lo mismo que septiembre, que es
+    #     justo lo que el test tiene que distinguir (Fase 7: ya no hace falta
+    #     para cruzar ningún umbral — agosto se publica exacto con o sin él).
     ("FANTASMA-98", "Colanta",  "2026-08-01", "2026-08-31",   200_000.00, True),
 ]
 
@@ -176,17 +174,13 @@ _CONTRATOS_SUSP = [
 # test compara contra estos números; el reporte
 # (`features/plataforma/outputs/conciliacion-metricas.md`) muestra la cuenta.
 
-# La regla de supresión, escrita acá para que las cuentas de abajo se lean con
-# ella a la vista. Es la MISMA constante del módulo, verificada en
-# `test_la_frontera_de_K_son_tres_contratos`.
-K = 3
-SUPRIMIDO = {
-    "ingreso_contratado_mes": None,
-    "canon_promedio_mensual": None,
-    "top_proveedores": [],
-}
+# Fase 7: sin umbral, todas las filas publican su número EXACTO. Se conservan
+# los diccionarios `OCULTO_*` con los mismos números que antes de la Fase 7
+# había que calcular "por debajo" — ahora son, literalmente, lo que la fila
+# publica, y se referencian desde `CENTRO`/`SUSP`/`GALERIAS` para no repetir
+# el número dos veces.
 
-# ── norte ── 4 contratos activos en 2026-09: 4 >= K, se PUBLICA entero.
+# ── norte ── 4 contratos activos en 2026-09, se publica entero (como siempre).
 # caras: N1-PUN-01, N1-GON-01, N1-GON-01-B, N1-CHK-01, N2-PUN-01 = 5
 #        (COL-01 es `rentable: false`; N0 no tiene muebles)
 # activos en 2026-09: (a) (b) (c) (d) = 4   [(h) es de agosto]
@@ -210,24 +204,6 @@ NORTE = {
     "contratos_sin_tarifa": 4,
 }
 
-# ── centro ── 2 contratos activos: 2 < K, los tres campos de plata SE SUPRIMEN.
-# Lo que hay por debajo (y que el consolidado SÍ usa): 150.000,00 de ingreso,
-# 75.000,00 de canon promedio y Zenu con 2 contratos. Nada de eso se publica.
-# Los CONTEOS y la ocupación no se suprimen: un porcentaje sobre el inventario
-# no revela ningún valor de contrato.
-CENTRO = {
-    "sedes_con_plano": 1,
-    "espacios_comercializables": 2,
-    "ocupacion_pct": 100.0,                     # 2/2 — se publica igual
-    "canon_promedio_mensual": None,             # suprimido (2 < 3)
-    "ingreso_contratado_mes": None,             # suprimido (2 < 3)
-    "top_proveedores": [],                      # suprimido (2 < 3)
-    "usuarios_con_cuenta": 2,                   # el dueño + la cuenta compartida
-    "ultimo_acceso": "2026-09-20",              # el dueño, más nuevo que la compartida
-    "spread_pct": None,
-    "tarifa_configurada": False,
-    "contratos_sin_tarifa": 2,
-}
 OCULTO_CENTRO = {
     "contratos": 2,
     "ingreso": 150_000.00,                      # 100.000 + 50.000
@@ -235,7 +211,24 @@ OCULTO_CENTRO = {
     "proveedores": {"Zenu": 2},
 }
 
-# ── sur ── 7 contratos: 7 >= K, se publica entero.
+# ── centro ── 2 contratos activos. Hasta la Fase 6 esto suprimía los tres
+# campos de plata (2 < K=3); sin umbral, se publica el número exacto: 150.000,00
+# de ingreso, 75.000,00 de canon promedio y Zenu con 2 contratos.
+CENTRO = {
+    "sedes_con_plano": 1,
+    "espacios_comercializables": 2,
+    "ocupacion_pct": 100.0,                     # 2/2
+    "canon_promedio_mensual": OCULTO_CENTRO["canon"],
+    "ingreso_contratado_mes": OCULTO_CENTRO["ingreso"],
+    "top_proveedores": [{"nombre": "Zenu", "contratos_activos": 2}],
+    "usuarios_con_cuenta": 2,                   # el dueño + la cuenta compartida
+    "ultimo_acceso": "2026-09-20",              # el dueño, más nuevo que la compartida
+    "spread_pct": None,
+    "tarifa_configurada": False,
+    "contratos_sin_tarifa": 2,
+}
+
+# ── sur ── 7 contratos, se publica entero.
 # 1.900.000 / 7 = 271.428,571428... -> 271.428,57
 SUR = {
     "sedes_con_plano": 1,
@@ -257,22 +250,6 @@ SUR = {
     "contratos_sin_tarifa": 7,
 }
 
-# ── susp (suspendido, y adentro del consolidado igual) ──
-# 2 contratos: 2 < K, plata suprimida. Por debajo: 500.000,68 de ingreso y
-# 250.000,34 de canon (500.000,68 / 2), con Alpina y Zenu a 1 contrato cada uno.
-SUSP = {
-    "sedes_con_plano": 1,
-    "espacios_comercializables": 3,
-    "ocupacion_pct": 66.7,                      # 2/3 = 66,666... -> 66,7
-    "canon_promedio_mensual": None,             # suprimido (2 < 3)
-    "ingreso_contratado_mes": None,             # suprimido (2 < 3)
-    "top_proveedores": [],                      # suprimido (2 < 3)
-    "usuarios_con_cuenta": 1,
-    "ultimo_acceso": "2026-07-05",
-    "spread_pct": None,
-    "tarifa_configurada": False,
-    "contratos_sin_tarifa": 2,
-}
 OCULTO_SUSP = {
     "contratos": 2,
     "ingreso": 500_000.68,                      # 300.000,33 + 200.000,35
@@ -280,17 +257,40 @@ OCULTO_SUSP = {
     "proveedores": {"Alpina": 1, "Zenu": 1},
 }
 
+# ── susp (suspendido, y adentro del consolidado igual) ──
+# 2 contratos. Sin umbral se publica el número exacto: 500.000,68 de ingreso y
+# 250.000,34 de canon (500.000,68 / 2), con Alpina y Zenu a 1 contrato cada
+# uno (empate: alfabético).
+SUSP = {
+    "sedes_con_plano": 1,
+    "espacios_comercializables": 3,
+    "ocupacion_pct": 66.7,                      # 2/3 = 66,666... -> 66,7
+    "canon_promedio_mensual": OCULTO_SUSP["canon"],
+    "ingreso_contratado_mes": OCULTO_SUSP["ingreso"],
+    "top_proveedores": [
+        {"nombre": "Alpina", "contratos_activos": 1},
+        {"nombre": "Zenu", "contratos_activos": 1},
+    ],
+    "usuarios_con_cuenta": 1,
+    "ultimo_acceso": "2026-07-05",
+    "spread_pct": None,
+    "tarifa_configurada": False,
+    "contratos_sin_tarifa": 2,
+}
+
+OCULTO_GALERIAS = {"contratos": 0, "ingreso": 0.0, "canon": None, "proveedores": {}}
+
 # ── galerias (el cliente por defecto: existe, y no tiene nada) ──
-# CERO contratos, y cero también es menos que K: el ingreso, que antes salía
-# `0.0`, ahora sale `null` por la misma regla. Ver el hallazgo `m-5` de
-# `conciliacion-metricas.md` — no es un error de cuenta, es una decisión de la
-# regla que vale la pena tener escrita.
+# CERO contratos. `ingreso_contratado_mes` es SIEMPRE número (Fase 7): con
+# cero contratos no facturó nada, y `0.0` es ese dato, no una ausencia.
+# `canon_promedio_mensual` sigue en `null` porque no hay ningún contrato del
+# que promediar — eso no depende del umbral, nunca dependió.
 GALERIAS = {
     "sedes_con_plano": 0,
     "espacios_comercializables": 0,
     "ocupacion_pct": None,                      # sin denominador NO es 0 %
     "canon_promedio_mensual": None,
-    "ingreso_contratado_mes": None,             # suprimido (0 < 3); antes 0.0
+    "ingreso_contratado_mes": 0.0,
     "top_proveedores": [],
     "usuarios_con_cuenta": 0,
     "ultimo_acceso": None,
@@ -298,23 +298,16 @@ GALERIAS = {
     "tarifa_configurada": False,
     "contratos_sin_tarifa": 0,
 }
-OCULTO_GALERIAS = {"contratos": 0, "ingreso": 0.0, "canon": None, "proveedores": {}}
-
-# Lo que las tres filas suprimidas se guardan, y que el consolidado SÍ suma.
-INGRESO_SUPRIMIDO = 650_000.68        # 150.000,00 + 500.000,68 + 0,00
-CONTRATOS_SUPRIMIDOS = 4              # 2 (centro) + 2 (susp) + 0 (galerias)
-PROVEEDORES_SUPRIMIDOS = {"Zenu": 3, "Alpina": 1}   # centro 2 + susp 1 · susp 1
-SUPRIMIDOS = ("centro", "susp", "galerias")
-PUBLICADOS = ("norte", "sur")
 
 POR_CLIENTE = {"norte": NORTE, "centro": CENTRO, "sur": SUR, "susp": SUSP, "galerias": GALERIAS}
 LEGIBLES = ("centro", "galerias", "norte", "sur", "susp")   # orden por slug
 TODOS = ("centro", "galerias", "norte", "roto", "sur", "susp")
 
 # ── consolidado ──
-# Se calcula con los datos SUBYACENTES de TODOS los legibles, los suprimidos
-# incluidos: suprimir una fila no puede cambiar el total del negocio. Y 15
-# contratos son >= K, así que el consolidado no se suprime a sí mismo.
+# Se calcula con los datos SUBYACENTES de TODOS los legibles — esto no cambió
+# con la Fase 7, el consolidado siempre sumó los crudos de todos. Lo que
+# cambió es que ahora coincide, al centavo, con la suma de las filas VISIBLES:
+# sin supresión no hay nada que el consolidado sepa y una fila no publique.
 # Σ caras      = 5 + 2 + 7 + 3 + 0 = 17
 # Σ ocupadas   = 3 + 2 + 7 + 2 + 0 = 14      -> 14/17 = 82,352...  -> 82,4
 # Σ canones    = 4.200.000 + 150.000 + 1.900.000 + 500.000,68 = 6.750.000,68
@@ -337,14 +330,14 @@ CONSOLIDADO = {
     "usuarios_con_cuenta": 5,   # 4 dueños + 1 compartida (DISTINTOS, no Σ de filas)
     # Fase 6 (spread): ningún cliente de este escenario tiene tarifa de
     # referencia configurada -> 0 clientes con tarifa, 0 contratos con tarifa
-    # (0 < K), spread consolidado `null`.
+    # -> spread consolidado `null` (Fase 7: por ausencia de tarifa, sin umbral).
     "spread_pct": None,
     "clientes_con_tarifa": 0,
 }
 
 # Las dos cuentas EQUIVOCADAS, con nombre y número, para que el test las nombre.
 # Las dos se calculan sobre los promedios REALES de las cuatro filas con
-# contratos —los de `centro` y `susp` incluidos, aunque no se publiquen—: la
+# contratos —los de `centro` y `susp` incluidos, que ahora también publican—: la
 # cuenta equivocada que hay que descartar es la que haría alguien con los
 # números del negocio en la mano, no la que sale de mirar sólo lo visible.
 OCUPACION_PROMEDIO_DE_PORCENTAJES = 81.7      # (60,0 + 100,0 + 100,0 + 66,7) / 4
@@ -358,7 +351,7 @@ SUMA_DE_USUARIOS_POR_FILA = 6
 
 # ── agosto, sólo norte ──
 # Activos del 1 al 31 de agosto: (c) 06-01..09-01 = 500.000, (e) 08-01..08-31 =
-# 800.000 y (h) 08-01..08-31 = 200.000. Son 3 >= K: agosto SE PUBLICA.
+# 800.000 y (h) 08-01..08-31 = 200.000. Sin umbral, agosto se publica exacto.
 # Ocupadas: N2-PUN-01 por (c) y N1-CHK-01 por (e). (h) es sobre FANTASMA-98, que
 # no está en el plano: suma plata, no ocupación.
 NORTE_AGOSTO = {
@@ -729,13 +722,16 @@ def test_ocupacion_por_cliente_es_ocupadas_sobre_comercializables(panel):
         assert m["ocupacion_pct"] == round(ocupadas * 100 / caras, 1) == pct, slug
 
 
-def test_ocupacion_es_null_y_no_cero_con_denominador_cero(panel):
+def test_ocupacion_es_null_y_el_ingreso_es_0_0_con_denominador_cero(panel):
     """galerias no tiene 0 % de ocupación: no tiene ocupación.
 
-    El `null` de `ocupacion_pct` es del CÁLCULO (no hay denominador) y no tiene
-    nada que ver con la supresión: los porcentajes no se suprimen nunca. El de
-    `ingreso_contratado_mes` sí es de la supresión, y sobre un cero — ver el
-    hallazgo `m-5`.
+    El `null` de `ocupacion_pct` es del CÁLCULO (no hay denominador). Fase 7:
+    `ingreso_contratado_mes` SIEMPRE es un número — con cero contratos vale
+    `0.0`, porque no facturó nada y eso es un dato, no una ausencia (hasta la
+    Fase 6 esto salía `null` por la supresión de celda chica, hallazgo `m-5`
+    de `conciliacion-metricas.md`, ya resuelto). `canon_promedio_mensual`
+    sigue en `null`, pero por un motivo distinto: no hay ningún contrato del
+    que promediar.
     """
     _client, _cab, cuerpo = panel
     m = _m(cuerpo, "galerias")
@@ -743,10 +739,7 @@ def test_ocupacion_es_null_y_no_cero_con_denominador_cero(panel):
     assert m["espacios_comercializables"] == 0
     assert m["ocupacion_pct"] is None
     assert m["canon_promedio_mensual"] is None
-    # HALLAZGO m-5, fijado acá: hasta la regla K=3 esto valía `0.0` —no facturó
-    # nada, y eso es un número—. Ahora vale `null`, porque 0 < 3. El cero no
-    # tiene nada que proteger: no hay contrato que reconstruir.
-    assert m["ingreso_contratado_mes"] is None
+    assert m["ingreso_contratado_mes"] == 0.0
     assert m["top_proveedores"] == []
 
 
@@ -790,21 +783,21 @@ def test_contrato_sobre_espacio_sin_mueble_factura_pero_no_ocupa(panel):
 
 
 def test_canon_promedio_por_cliente_es_ingreso_sobre_contratos(panel):
-    """En las filas PUBLICADAS, el promedio es exactamente ingreso / contratos."""
+    """En TODAS las filas con contratos, el promedio es exactamente
+    ingreso / contratos — sin umbral, esto ya no distingue publicadas de
+    suprimidas: todas lo son."""
     _client, _cab, cuerpo = panel
 
-    contratos = {"norte": 4, "sur": 7}          # las dos filas con >= K contratos
+    contratos = {"norte": 4, "sur": 7, "centro": 2, "susp": 2}
     for slug, cuantos in contratos.items():
         m = _m(cuerpo, slug)
         assert m["canon_promedio_mensual"] == round(m["ingreso_contratado_mes"] / cuantos, 2), slug
         assert sum(p["contratos_activos"] for p in m["top_proveedores"]) <= cuantos, slug
 
-    # Y en las suprimidas no hay con qué hacer la división: los tres campos de
-    # plata son `null`/`[]` a la vez, nunca uno sí y otro no.
-    for slug in ("centro", "susp"):
-        m = _m(cuerpo, slug)
-        assert (m["canon_promedio_mensual"], m["ingreso_contratado_mes"],
-                m["top_proveedores"]) == (None, None, []), slug
+    # galerias: cero contratos, nada de qué dividir.
+    m = _m(cuerpo, "galerias")
+    assert (m["canon_promedio_mensual"], m["ingreso_contratado_mes"],
+            m["top_proveedores"]) == (None, 0.0, [])
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -828,11 +821,12 @@ def test_los_extremos_del_periodo_cuentan_y_un_dia_afuera_no(panel):
     # (c): sin él, Bavaria no estaría en el top de norte ni sus 500.000 en el
     # ingreso. Está.
     assert {"nombre": "Bavaria", "contratos_activos": 1} in norte["top_proveedores"]
-    # (k): centro tiene la plata suprimida (2 < K), así que el borde se lee por
-    # la ocupación, que no se suprime: sin (k) sería 1 de 2 caras = 50,0 %.
+    # (k): con el borde adentro, centro tiene 2 caras ocupadas de 2 (100,0 %) y
+    # 150.000,00 de ingreso EXACTO (Fase 7, sin umbral). Sin (k) sería 1 de 2
+    # caras (50,0 %) y 100.000,00 de ingreso.
     assert centro["ocupacion_pct"] == 100.0
     assert centro["ocupacion_pct"] != 50.0
-    # ...y por debajo, ese contrato existe: el consolidado lo suma.
+    assert centro["ingreso_contratado_mes"] == 150_000.00
     assert OCULTO_CENTRO["ingreso"] == 150_000.00
     # (a) el de un día: sus 1.000.000 están adentro.
     assert norte["ingreso_contratado_mes"] == 4_200_000.00
@@ -862,8 +856,8 @@ def test_mes_con_contrato_vigente_vs_mes_anterior_vs_mes_vacio(panel):
     noviembre = _m(_pedir(client, cab, MES_SIN_NADA), "norte")
     sept = _m(septiembre, "norte")
 
-    # Agosto: (c), (e) y (h). Son 3, así que agosto se publica entero y los dos
-    # meses se pueden comparar peso contra peso.
+    # Agosto: (c), (e) y (h), sin umbral que cruzar (Fase 7) — los dos meses se
+    # pueden comparar peso contra peso.
     for clave, valor in NORTE_AGOSTO.items():
         assert agosto[clave] == valor, clave
     # El inventario no cambia con el mes; lo que cambia es lo contratado.
@@ -878,9 +872,11 @@ def test_mes_con_contrato_vigente_vs_mes_anterior_vs_mes_vacio(panel):
     assert {p["nombre"] for p in sept["top_proveedores"]} == {"Alpina", "Bavaria"}
 
     # Noviembre: ni un contrato. Ocupación 0,0 (hay caras, ninguna ocupada) —
-    # que NO es lo mismo que el `null` de un cliente sin inventario. La plata va
-    # en `null` por la supresión sobre cero (hallazgo `m-5`), no porque falte.
-    assert noviembre["ingreso_contratado_mes"] is None
+    # que NO es lo mismo que el `null` de un cliente sin inventario. El ingreso
+    # es `0.0` (Fase 7: siempre número, no factura nada y eso es el dato); el
+    # canon promedio sigue en `null` porque no hay ningún contrato del que
+    # promediar.
+    assert noviembre["ingreso_contratado_mes"] == 0.0
     assert noviembre["canon_promedio_mensual"] is None
     assert noviembre["top_proveedores"] == []
     assert noviembre["ocupacion_pct"] == 0.0
@@ -926,14 +922,14 @@ def test_canon_consolidado_es_ponderado_no_promedio_de_promedios(panel):
     _client, _cab, cuerpo = panel
     c = cuerpo["consolidado"]
 
-    # Los cuatro promedios por fila, de las cuentas a mano: dos se publican
-    # (norte y sur) y dos están suprimidos (centro y susp), pero la cuenta
-    # equivocada que hay que descartar es la de los CUATRO — el consolidado los
-    # tiene todos por debajo.
+    # Los cuatro promedios por fila, de las cuentas a mano: las cuatro se
+    # publican (Fase 7, sin umbral), pero la cuenta equivocada que hay que
+    # descartar es la de los CUATRO promedios — el consolidado los pondera,
+    # no los promedia.
     assert _m(cuerpo, "norte")["canon_promedio_mensual"] == CANON_POR_FILA[0]
     assert _m(cuerpo, "sur")["canon_promedio_mensual"] == CANON_POR_FILA[2]
-    assert OCULTO_CENTRO["canon"] == CANON_POR_FILA[1]
-    assert OCULTO_SUSP["canon"] == CANON_POR_FILA[3]
+    assert _m(cuerpo, "centro")["canon_promedio_mensual"] == OCULTO_CENTRO["canon"] == CANON_POR_FILA[1]
+    assert _m(cuerpo, "susp")["canon_promedio_mensual"] == OCULTO_SUSP["canon"] == CANON_POR_FILA[3]
     promedio_de_promedios = round(sum(CANON_POR_FILA) / len(CANON_POR_FILA), 2)
 
     assert promedio_de_promedios == CANON_PROMEDIO_DE_PROMEDIOS == 411_607.23
@@ -949,17 +945,14 @@ def test_canon_consolidado_es_ponderado_no_promedio_de_promedios(panel):
 # La lección de vitrinas, entera: acá el peor fallo silencioso es un consolidado
 # que no cuadra con las filas del mismo JSON.
 #
-# Con la regla K=3 la conciliación tiene DOS niveles, y hay que decir cuál se
-# está haciendo o el test miente:
-#
-#   * **cuenta cerrada** — conteos (sedes, espacios, usuarios) y todo lo que no
-#     se suprime: el consolidado sigue siendo, exactamente, la suma de las filas
-#     VISIBLES. Si esto no cuadra, es un defecto.
-#   * **cuenta con lo oculto** — plata y proveedores: el consolidado es la suma
-#     de lo visible MÁS lo que las filas suprimidas se guardan. La diferencia no
-#     es un descuadre: es la supresión, y tiene que valer EXACTAMENTE los
-#     números ocultos calculados a mano. Un residuo distinto sí sería un
-#     defecto, y es lo que estos tests atrapan.
+# Fase 7: sin umbral, la conciliación tiene un solo nivel — el consolidado
+# tiene que ser, exactamente, la suma de TODAS las filas legibles (conteos,
+# plata y proveedores por igual). Hasta la Fase 6 esto tenía dos niveles (una
+# "cuenta cerrada" para lo que nunca se suprimía y una "cuenta con lo oculto"
+# para plata y proveedores, que había que reconstruir a mano); sin supresión
+# ya no hay nada oculto que reconstruir, así que un residuo distinto de cero
+# en cualquier campo SÍ sería un defecto de verdad, y es lo que estos tests
+# atrapan.
 
 def _legibles(cuerpo):
     return [f["metricas"] for f in cuerpo["clientes"] if f["metricas"] is not None]
@@ -971,32 +964,32 @@ def _visible(cuerpo, clave):
 
 
 def test_conciliacion_ingreso_contratado(panel):
-    """Consolidado = Σ filas visibles + Σ lo que esconden las suprimidas.
+    """Consolidado = Σ EXACTA de las filas visibles. Fase 7, sin residuo.
 
-    NO-CONCILIACIÓN ESPERADA, y por eso está escrita con los dos números: la
-    suma de lo que el panel MUESTRA da 6.100.000,00 y el consolidado dice
-    6.750.000,68. Los 650.000,68 de diferencia son, al centavo, lo que centro
-    (150.000,00), susp (500.000,68) y galerias (0,00) tienen y no publican. Un
-    operador que sume la columna va a encontrar esa diferencia; si algún día
-    valiera otra cosa, sería un defecto de verdad.
+    Hasta la Fase 6 esto era una NO-conciliación esperada: la suma de lo que
+    el panel mostraba daba 6.100.000,00 (sólo norte y sur publicaban) contra
+    6.750.000,68 del consolidado, con 650.000,68 de diferencia que eran centro,
+    susp y galerias sin publicar. Sin umbral, esa diferencia desaparece: cada
+    fila publica su número exacto (galerias incluido, con `0.0`) y el
+    consolidado es, literalmente, la suma de la columna que ve el operador.
     """
     _client, _cab, cuerpo = panel
 
     visible = _visible(cuerpo, "ingreso_contratado_mes")
-    assert visible == 6_100_000.00                    # sólo norte y sur publican
-    assert round(visible + INGRESO_SUPRIMIDO, 2) == 6_750_000.68
+    assert visible == 6_750_000.68           # las cinco filas publican, galerias con 0.0
     assert cuerpo["consolidado"]["ingreso_contratado_mes"] == 6_750_000.68
-    assert cuerpo["consolidado"]["ingreso_contratado_mes"] != visible
+    assert cuerpo["consolidado"]["ingreso_contratado_mes"] == visible
 
-    # El residuo es la supresión, no un descuadre: cada peso tiene dueño.
-    residuo = round(cuerpo["consolidado"]["ingreso_contratado_mes"] - visible, 2)
-    assert residuo == INGRESO_SUPRIMIDO == round(
-        OCULTO_CENTRO["ingreso"] + OCULTO_SUSP["ingreso"] + OCULTO_GALERIAS["ingreso"], 2)
+    # Sin residuo: lo que antes había que reconstruir a mano (OCULTO_*) ahora
+    # está en las propias filas.
+    assert CENTRO["ingreso_contratado_mes"] == OCULTO_CENTRO["ingreso"] == 150_000.00
+    assert SUSP["ingreso_contratado_mes"] == OCULTO_SUSP["ingreso"] == 500_000.68
+    assert GALERIAS["ingreso_contratado_mes"] == OCULTO_GALERIAS["ingreso"] == 0.0
 
 
 def test_conciliacion_espacios_comercializables_y_sedes(panel):
-    """CUENTA CERRADA: los conteos no se suprimen, así que acá el consolidado
-    tiene que ser exactamente la suma de las filas visibles — sin residuo."""
+    """El consolidado tiene que ser exactamente la suma de las filas visibles
+    — sin residuo, ya sin umbral que suprima nada."""
     _client, _cab, cuerpo = panel
     filas = _legibles(cuerpo)
 
@@ -1004,23 +997,19 @@ def test_conciliacion_espacios_comercializables_y_sedes(panel):
         m["espacios_comercializables"] for m in filas) == 17
     assert cuerpo["consolidado"]["sedes_con_plano"] == sum(
         m["sedes_con_plano"] for m in filas) == 5
-    # Las tres filas suprimidas aportan sus conteos como cualquier otra: la
-    # supresión toca la plata, no el inventario.
-    assert [_m(cuerpo, s)["espacios_comercializables"] for s in SUPRIMIDOS] == [2, 3, 0]
-    assert [_m(cuerpo, s)["ocupacion_pct"] for s in SUPRIMIDOS] == [100.0, 66.7, None]
+    # centro, susp y galerias aportan sus conteos como cualquier otra fila.
+    assert [_m(cuerpo, s)["espacios_comercializables"] for s in ("centro", "susp", "galerias")] == [2, 3, 0]
+    assert [_m(cuerpo, s)["ocupacion_pct"] for s in ("centro", "susp", "galerias")] == [100.0, 66.7, None]
 
 
 def test_conciliacion_del_top_de_proveedores(panel):
-    """Conteo consolidado de cada proveedor = Σ visibles + Σ suprimidos.
+    """Conteo consolidado de cada proveedor = Σ de las filas visibles.
 
-    Dos fuentes de diferencia, las dos conocidas y las dos con número:
-
-    * la **supresión** — el top de centro y el de susp no se publican, así que
-      sus contratos existen en el consolidado y no en ninguna fila visible;
-    * el **corte en 5** — Familia, sexto proveedor de sur, no está en el top de
-      su cliente ni en el consolidado. Consecuencia sabida de un "top 5".
-
-    Todo lo demás tiene que cerrar al contrato.
+    Una sola fuente de diferencia posible, y conocida: el **corte en 5** —
+    Familia, sexto proveedor de sur, no está en el top de su cliente ni en el
+    consolidado. Consecuencia sabida de un "top 5". Sin umbral, ya no hay una
+    segunda fuente: centro y susp publican su propio top, así que Zenu (de
+    centro y susp) SÍ aparece en una fila del panel.
     """
     _client, _cab, cuerpo = panel
 
@@ -1031,28 +1020,27 @@ def test_conciliacion_del_top_de_proveedores(panel):
         for p in fila["metricas"]["top_proveedores"]:
             por_cliente.setdefault(p["nombre"], {})[fila["slug"]] = p["contratos_activos"]
 
-    # Sólo las dos filas publicadas aportan al desglose visible.
+    # Las CINCO filas legibles aportan al desglose visible; Zenu ya aparece
+    # (viene de centro y susp, que antes de la Fase 7 no publicaban su top).
     assert por_cliente == {
-        "Alpina": {"norte": 3, "sur": 2},
+        "Alpina": {"norte": 3, "sur": 2, "susp": 1},
         "Bavaria": {"norte": 1, "sur": 1},
         "Colanta": {"sur": 1},
         "Diana": {"sur": 1},
         "Exito": {"sur": 1},
+        "Zenu": {"centro": 2, "susp": 1},
     }
 
     for p in cuerpo["consolidado"]["top_proveedores"]:
         visible = sum(por_cliente.get(p["nombre"], {}).values())
-        oculto = PROVEEDORES_SUPRIMIDOS.get(p["nombre"], 0)
-        assert visible + oculto == p["contratos_activos"], (p["nombre"], visible, oculto)
+        assert visible == p["contratos_activos"], (p["nombre"], visible)
 
-    # Los dos casos, con nombre: Bavaria cierra sin residuo (2 = 1 + 1) y Zenu
-    # está entero adentro de la supresión (3 = 0 visibles + 2 de centro + 1 de
-    # susp) — un proveedor que el consolidado nombra y que no aparece en NINGUNA
-    # fila del panel.
+    # Sin residuo: cada proveedor del consolidado cierra exactamente con la
+    # suma de sus filas.
     top_c = {p["nombre"]: p["contratos_activos"] for p in cuerpo["consolidado"]["top_proveedores"]}
-    assert top_c["Bavaria"] == 2 and sum(por_cliente["Bavaria"].values()) == 2
-    assert top_c["Zenu"] == 3 and "Zenu" not in por_cliente
-    assert top_c["Alpina"] == 6 and sum(por_cliente["Alpina"].values()) == 5   # +1 de susp
+    assert top_c["Bavaria"] == 2 == sum(por_cliente["Bavaria"].values())
+    assert top_c["Zenu"] == 3 == sum(por_cliente["Zenu"].values())
+    assert top_c["Alpina"] == 6 == sum(por_cliente["Alpina"].values())
 
     assert "Familia" not in por_cliente
     assert "Familia" not in top_c
@@ -1123,12 +1111,11 @@ def test_el_cliente_suspendido_entra_entero_en_el_consolidado(panel):
     assert fila["error"] is None
     assert fila["metricas"] == SUSP
 
-    # Sin susp, el consolidado sería 6.250.000,00 y 14 caras. Y esto es lo que
-    # vale la pena mirar dos veces: la plata de susp está SUPRIMIDA en su fila
-    # y presente en el consolidado. Suprimir una fila no puede cambiar el total
-    # del negocio — si lo cambiara, el operador estaría mirando un negocio más
-    # chico del que tiene.
-    assert fila["metricas"]["ingreso_contratado_mes"] is None
+    # Sin susp, el consolidado sería 6.250.000,00 y 14 caras. La plata de susp
+    # está publicada en su fila Y presente en el consolidado — suspender una
+    # cuenta no puede cambiar el total del negocio, y sin umbral tampoco hace
+    # falta esconder el número de la fila para que eso sea cierto.
+    assert fila["metricas"]["ingreso_contratado_mes"] == 500_000.68
     assert cuerpo["consolidado"]["ingreso_contratado_mes"] == 6_750_000.68
     assert cuerpo["consolidado"]["ingreso_contratado_mes"] - 500_000.68 == 6_250_000.00
     assert cuerpo["consolidado"]["espacios_comercializables"] == 17
@@ -1256,33 +1243,32 @@ def test_cada_consulta_deja_linea_en_la_bitacora_del_registro(panel):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 10. LA REGLA K=3, EN SU FRONTERA
+# 10. FASE 7 — SIN UMBRAL: 2 y 3 contratos publican igual, y el consolidado
+#     NUNCA se suprime a sí mismo
 # ════════════════════════════════════════════════════════════════════════════
 #
-# La supresión de celda chica no es una cifra más: decide qué se publica. Se
-# prueba en su BORDE (2 contratos vs 3, que es donde una regla se rompe) y en
-# los dos niveles, fila y consolidado.
+# Hasta la Fase 6 esta sección probaba la frontera de K=3 (2 contratos
+# suprimidos, 3 publicados). El dueño de la plataforma quitó el umbral
+# (docs/ESTADO.md, Fase 7): ya no hay una frontera que cruzar, y estos dos
+# tests se convierten en la prueba de que 2 y 3 contratos publican EXACTO por
+# igual, fila y consolidado.
 
-def test_la_frontera_de_K_son_tres_contratos(client, monkeypatch):
+def test_con_2_o_3_contratos_la_fila_publica_el_numero_exacto_por_igual(client, monkeypatch):
     """Dos clientes gemelos, uno con 2 contratos y otro con 3, en el mismo JSON.
 
     Cuentas a mano:
 
-    * ``dos``  — 2 caras, 2 contratos de 100.000 y 300.000. Por debajo:
-      ingreso 400.000,00 y canon 200.000,00. **2 < 3 → los tres campos de plata
-      se suprimen**; los conteos y el 100,0 % de ocupación se publican.
-    * ``tres`` — 3 caras, 3 contratos de 100.000, 200.000 y 600.000. Por debajo
-      y **publicado**: ingreso 900.000,00, canon 300.000,00, top con Alpina 2 y
-      Bavaria 1. Es el mismo cliente que ``dos`` más un contrato: lo único que
-      cambia es cruzar la frontera.
-    * consolidado — 5 contratos (>= 3), así que se publica: ingreso
-      1.300.000,00 (400.000 SUPRIMIDOS incluidos) y canon ponderado
-      1.300.000 / 5 = 260.000,00. El promedio de los dos promedios daría
-      250.000,00: otra vez, ponderado y no promedio de promedios.
+    * ``dos``  — 2 caras, 2 contratos de 100.000 y 300.000. Publicado: ingreso
+      400.000,00 y canon 200.000,00.
+    * ``tres`` — 3 caras, 3 contratos de 100.000, 200.000 y 600.000. Publicado:
+      ingreso 900.000,00, canon 300.000,00, top con Alpina 2 y Bavaria 1. Es el
+      mismo cliente que ``dos`` más un contrato: la única diferencia es esa,
+      ya no cruzar ningún umbral.
+    * consolidado — 5 contratos: ingreso 1.300.000,00 (los 400.000 de ``dos``
+      incluidos) y canon ponderado 1.300.000 / 5 = 260.000,00. El promedio de
+      los dos promedios daría 250.000,00: ponderado, no promedio de promedios.
     """
-    from app.plataforma_metricas import K_MINIMO_CONTRATOS, limpiar_cache_metricas
-
-    assert K_MINIMO_CONTRATOS == K == 3
+    from app.plataforma_metricas import limpiar_cache_metricas
 
     ids = Identidades(client)
     _fundar(ids, "uid-dos", "duena@dos.co", "dos", "Dos")
@@ -1311,16 +1297,19 @@ def test_la_frontera_de_K_son_tres_contratos(client, monkeypatch):
 
     cuerpo = _pedir(client, _cab(r.json()["token"]))
 
-    # 2 contratos: suprimido, pero NO mutilado.
+    # 2 contratos: número exacto, no `null`.
     dos = _m(cuerpo, "dos")
-    assert dos["ingreso_contratado_mes"] is None
-    assert dos["canon_promedio_mensual"] is None
-    assert dos["top_proveedores"] == []
+    assert dos["ingreso_contratado_mes"] == 400_000.00
+    assert dos["canon_promedio_mensual"] == 200_000.00
+    assert dos["top_proveedores"] == [       # empate a 1: alfabético
+        {"nombre": "Alpina", "contratos_activos": 1},
+        {"nombre": "Bavaria", "contratos_activos": 1},
+    ]
     assert dos["espacios_comercializables"] == 2
     assert dos["ocupacion_pct"] == 100.0
     assert dos["sedes_con_plano"] == 1
 
-    # 3 contratos: exactamente el mismo cliente, un contrato más, y se publica.
+    # 3 contratos: exactamente el mismo cliente, un contrato más.
     tres = _m(cuerpo, "tres")
     assert tres["ingreso_contratado_mes"] == 900_000.00
     assert tres["canon_promedio_mensual"] == 300_000.00
@@ -1330,27 +1319,27 @@ def test_la_frontera_de_K_son_tres_contratos(client, monkeypatch):
     ]
     assert tres["ocupacion_pct"] == 100.0
 
-    # El consolidado suma los 5, incluidos los 400.000 que `dos` no publica.
+    # El consolidado suma los 5, los 400.000 de `dos` incluidos — y como `dos`
+    # también los publica, la conciliación cierra sin residuo.
     c = cuerpo["consolidado"]
     assert c["ingreso_contratado_mes"] == 1_300_000.00
     assert c["canon_promedio_mensual"] == 260_000.00          # 1.300.000 / 5
     assert c["canon_promedio_mensual"] != 250_000.00          # (200.000+300.000)/2
-    assert c["ingreso_contratado_mes"] - tres["ingreso_contratado_mes"] == 400_000.00
+    assert c["ingreso_contratado_mes"] - tres["ingreso_contratado_mes"] == dos["ingreso_contratado_mes"]
     assert c["top_proveedores"] == [
         {"nombre": "Alpina", "contratos_activos": 3},         # 2 de tres + 1 de dos
         {"nombre": "Bavaria", "contratos_activos": 2},        # 1 y 1
     ]
 
 
-def test_con_menos_de_K_contratos_en_toda_la_plataforma_el_consolidado_tambien_se_suprime(
+def test_el_consolidado_publica_exacto_aunque_toda_la_plataforma_tenga_pocos_contratos(
     client, monkeypatch,
 ):
-    """La regla se aplica también a su propio nivel.
+    """Sin umbral, el consolidado tampoco se suprime a su propio nivel.
 
-    Un solo cliente con 2 contratos (más `galerias`, que no tiene ninguno): en
-    toda la plataforma hay 2 < 3, así que el CONSOLIDADO tampoco publica plata.
-    Con dos contratos en todo el negocio, el total ES el contrato. Los conteos
-    del consolidado siguen ahí: 2 caras, 100,0 % de ocupación, 2 clientes.
+    Un solo cliente con 2 contratos (más `galerias`, que no tiene ninguno):
+    el CONSOLIDADO publica el número exacto — antes de la Fase 7, con 2 < K=3
+    en toda la plataforma, esto salía `null`.
     """
     from app.plataforma_metricas import limpiar_cache_metricas
 
@@ -1372,14 +1361,13 @@ def test_con_menos_de_K_contratos_en_toda_la_plataforma_el_consolidado_tambien_s
     cuerpo = _pedir(client, _cab(r.json()["token"]))
     c = cuerpo["consolidado"]
 
-    assert c["ingreso_contratado_mes"] is None                # el total sería 1.000.000
-    assert c["canon_promedio_mensual"] is None                # y el promedio 500.000
-    assert c["top_proveedores"] == []
-    # Y lo que no se suprime, intacto.
+    assert c["ingreso_contratado_mes"] == 1_000_000.00
+    assert c["canon_promedio_mensual"] == 500_000.00
+    assert c["top_proveedores"] == [{"nombre": "Alpina", "contratos_activos": 2}]
     assert c["espacios_comercializables"] == 2
     assert c["ocupacion_pct"] == 100.0
     assert c["clientes_total"] == 2 and c["clientes_con_error"] == 0
-    assert _m(cuerpo, "chico")["ingreso_contratado_mes"] is None
+    assert _m(cuerpo, "chico")["ingreso_contratado_mes"] == 1_000_000.00
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1440,9 +1428,9 @@ def test_un_contrato_sobre_la_cara_B_ocupa_y_el_denominador_la_cuenta(client, mo
     m = _m(_pedir(client, _cab(r.json()["token"])), "dob")
     assert m["espacios_comercializables"] == 2
     assert m["ocupacion_pct"] == 50.0
-    # Un contrato solo: la plata de esta fila va suprimida por K=3, y la
-    # ocupación —que es lo que este test mira— se publica igual.
-    assert m["ingreso_contratado_mes"] is None
+    # Un contrato solo: sin umbral (Fase 7), el ingreso sale exacto igual que
+    # la ocupación —que es lo que este test mira.
+    assert m["ingreso_contratado_mes"] == 100_000.00
 
 
 def test_el_tipo_legado_gondola_doble_cuenta_dos_caras():

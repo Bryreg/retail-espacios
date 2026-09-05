@@ -242,10 +242,12 @@ _PLANO_K = [
 def test_bugs_1_reconstruccion_exacta_usa_datos_de_hoy_no_lo_congelado(client, monkeypatch):
     """Guion, con los números a mano:
 
-    1) `acme` (ya existe) tiene en M-1 tres contratos por 600 (100+200+300,
-       K=3 así que nada se suprime). Se pide `/metricas?periodo=M-1`: la fila
-       de `acme` en `snapshot_metricas` queda CONGELADA con `canon_total=600`,
-       `contratos_activos=3`. El consolidado también queda en 600.
+    1) `acme` (ya existe) tiene en M-1 tres contratos por 600 (100+200+300;
+       el conteo no importa desde Fase 7, sin umbral -- se mantiene por
+       continuidad con el resto del escenario). Se pide `/metricas?periodo=M-1`:
+       la fila de `acme` en `snapshot_metricas` queda CONGELADA con
+       `canon_total=600`, `contratos_activos=3`. El consolidado también queda
+       en 600.
 
     2) Después de esa captura, alguien CANCELA uno de los contratos de `acme`
        en M-1 (`is_active=False`) -- la fila `acme` en disco no se toca (mes

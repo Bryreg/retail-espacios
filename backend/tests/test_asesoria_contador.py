@@ -1,4 +1,5 @@
-"""Fase 6 — AUDITORÍA ARITMÉTICA del spread ponderado (K=3) y de las cohortes.
+"""Fase 6 — AUDITORÍA ARITMÉTICA del spread ponderado (Fase 7: sin umbral) y
+de las cohortes.
 
 Este archivo es de un AUDITOR, no del constructor: no reusa una sola cuenta del
 código de producción. Todo número esperado está calculado A MANO en las
@@ -9,14 +10,13 @@ cambia la fórmula del spread, este archivo no lo sigue: lo denuncia.
 Qué se audita:
 
 * El spread por cliente — ``(Σ canon_con_tarifa / Σ tarifa − 1) × 100`` a 1
-  decimal — con la supresión K=3, la precedencia ``by_sede`` sobre ``default``,
-  los contratos sin tarifa aplicable (espacio fuera del plano o tipo sin
-  entrada) y la cara ``-B`` de la góndola doble, que paga la MISMA tarifa por
-  cara que la A.
-* El consolidado PONDERADO (Σ/Σ sobre los clientes legibles), incluidos los
-  clientes cuya fila salió suprimida por K=3 —suprimir una fila no cambia el
-  total— y su diferencia demostrada contra el promedio aritmético de spreads,
-  que es la cuenta equivocada.
+  decimal — EXACTO sin umbral (Fase 7: K=3 desapareció), la precedencia
+  ``by_sede`` sobre ``default``, los contratos sin tarifa aplicable (espacio
+  fuera del plano o tipo sin entrada) y la cara ``-B`` de la góndola doble,
+  que paga la MISMA tarifa por cara que la A.
+* El consolidado PONDERADO (Σ/Σ sobre TODOS los clientes legibles con
+  tarifa, sin excluir a ninguno) y su diferencia demostrada contra el
+  promedio aritmético de spreads, que es la cuenta equivocada.
 * Que ningún valor ABSOLUTO de tarifa aparezca en el JSON.
 * Que ``/tendencia`` NO gane los campos nuevos.
 * La clasificación de adopción, su orden de precedencia, los bordes de los 30
@@ -58,13 +58,15 @@ A_SIN_TARIFA = 0
 
 # ── Cliente B (slug "clib") ──────────────────────────────────────────────────
 # Misma tarifa default {gondola: 1.000.000}; SÓLO 2 contratos a 900.000.
-#   contratos_con_tarifa = 2 < K=3  ->  spread_pct = null
-#   contratos = 2 < K=3             ->  canon_promedio_mensual = null
-#   PERO sus sumandos SÍ entran al consolidado.
+# Fase 7 (sin umbral): 2 contratos publican igual que 3 — no hay umbral que
+# cruzar. ratio = 1.800.000 / 2.000.000 = 0,9  ->  (0,9 − 1) × 100 = −10,0
 B_CANON_CT = 1_800_000.0
 B_TARIFA_T = 2_000_000.0
 B_CONTRATOS_CT = 2
 B_SIN_TARIFA = 0
+B_SPREAD = -10.0
+B_CANON_PROMEDIO = 900_000.0          # 1.800.000 / 2
+B_INGRESO = 1_800_000.0
 
 # ── Cliente C (slug "clic") ──────────────────────────────────────────────────
 # SIN tarifa configurada. 4 contratos a 1.111.111 (valor elegido para no
@@ -97,18 +99,21 @@ D_INGRESO = 5_800_000.0               # 4.500.000 + 800.000 + 500.000
 D_CANON_PROMEDIO = 1_160_000.0        # 5.800.000 / 5
 
 # ── Consolidado (A + B + C + D legibles; "galerias" vacío; "roto" excluido) ──
+# Fase 7 (sin umbral): el consolidado suma a TODOS los legibles con tarifa —
+# A, B y D los tres, B incluido (antes de la Fase 7 quedaba afuera por K=3).
 #   Σ canon_con_tarifa = 2.700.000 + 1.800.000 + 0 + 5.300.000 = 9.800.000
 #   Σ tarifa           = 3.000.000 + 2.000.000 + 0 + 7.000.000 = 12.000.000
-#   Σ contratos_con_tarifa = 3 + 2 + 0 + 4 = 9   (≥ 3, se publica)
+#   Σ contratos_con_tarifa = 3 + 2 + 0 + 4 = 9
 #   9.800.000 / 12.000.000 = 0,816666…  ->  (−0,183333…) × 100 = −18,3333…
 #   round(…, 1) = −18,3
 CONS_CANON_CT = 9_800_000.0
 CONS_TARIFA_T = 12_000_000.0
 CONS_CONTRATOS_CT = 9
 CONS_SPREAD = -18.3
-# La cuenta EQUIVOCADA (promedio aritmético de los spreads PUBLICADOS: A y D;
-# B y C están en null): (−10,0 + −24,3) / 2 = −17,15
-CONS_PROMEDIO_DE_SPREADS = -17.15
+# La cuenta EQUIVOCADA (promedio aritmético de los spreads publicados: A, B y
+# D — los tres, ahora que ninguno se suprime): (−10,0 + −10,0 + −24,3) / 3 =
+# −14,7666… -> −14,77
+CONS_PROMEDIO_DE_SPREADS = -14.77
 CONS_CLIENTES_CON_TARIFA = 3          # A, B y D. C no; galerias tampoco.
 
 # Los montos de TARIFA sembrados: ninguno puede aparecer en el JSON.
@@ -369,21 +374,24 @@ def test_01_spread_exacto_con_tres_contratos_y_tarifa_default(client, monkeypatc
     assert m["ingreso_contratado_mes"] == A_INGRESO
 
 
-def test_02_dos_contratos_suprimen_el_spread_pero_no_la_tarifa_configurada(client, monkeypatch):
-    """B: K=3 apaga el spread Y el canon, pero `tarifa_configurada` sigue en true.
+def test_02_dos_contratos_publican_el_spread_exacto(client, monkeypatch):
+    """B: con 2 contratos, sin umbral (Fase 7), el spread sale EXACTO.
 
-    Es la distinción que la consola necesita: "no te lo puedo mostrar" (‹3) no
-    es lo mismo que "no lo configuraste".
+    Hasta la Fase 6 esto era la frontera de K=3 ("no te lo puedo mostrar" con
+    menos de 3). El dueño de la plataforma la quitó: `tarifa_configurada`
+    (si se configuró o no) y `spread_pct` (el número, exacto sea cual sea el
+    conteo) son dos preguntas distintas, y ninguna de las dos depende ya de un
+    umbral.
     """
     _ids, cab = _escenario_spread(client, monkeypatch)
     m = _fila(_pedir(client, cab), "clib")["metricas"]
 
     assert B_CONTRATOS_CT < 3
-    assert m["spread_pct"] is None
+    assert m["spread_pct"] == B_SPREAD
     assert m["tarifa_configurada"] is True
     assert m["contratos_sin_tarifa"] == B_SIN_TARIFA
-    assert m["canon_promedio_mensual"] is None      # K=3 de la Fase 4
-    assert m["ingreso_contratado_mes"] is None
+    assert m["canon_promedio_mensual"] == B_CANON_PROMEDIO
+    assert m["ingreso_contratado_mes"] == B_INGRESO
 
 
 def test_03_sin_tarifa_configurada_todos_los_contratos_quedan_sin_tarifa(client, monkeypatch):
@@ -393,7 +401,7 @@ def test_03_sin_tarifa_configurada_todos_los_contratos_quedan_sin_tarifa(client,
     assert m["spread_pct"] is None
     assert m["tarifa_configurada"] is False
     assert m["contratos_sin_tarifa"] == C_SIN_TARIFA      # los 4 activos
-    # El canon se sigue publicando: 4 ≥ K=3.
+    # El canon se sigue publicando: la ausencia de tarifa no toca la Fase 4.
     assert m["ingreso_contratado_mes"] == C_INGRESO
 
 
@@ -465,47 +473,49 @@ def test_05b_un_tipo_sin_entrada_en_la_tarifa_cuenta_como_sin_tarifa(client, mon
 # 6-8 · El CONSOLIDADO
 # ════════════════════════════════════════════════════════════════════════════
 
-def test_06_consolidado_ponderado_excluye_al_cliente_suprimido(client, monkeypatch):
-    """Σ canon_con_tarifa / Σ tarifa sobre los clientes con spread PUBLICADO
-    (A y D; C aporta 0/0 y B queda AFUERA porque su propio spread está
-    suprimido por K=3). Cierre de la fase (H-1): si B entrara, su spread se
-    despejaría por diferencia contra A y D. Y se demuestra que el ponderado
-    difiere del promedio aritmético de los spreads publicados.
+def test_06_consolidado_ponderado_incluye_al_cliente_chico(client, monkeypatch):
+    """Σ canon_con_tarifa / Σ tarifa sobre TODOS los clientes con tarifa — A, B
+    y D los tres, B (el cliente chico, 2 contratos) incluido.
+
+    Hasta la Fase 6, B quedaba AFUERA del consolidado del spread porque su
+    propio spread estaba suprimido por K=3 (H-1: si hubiera entrado, se habría
+    podido despejar por diferencia contra A y D). Fase 7 quita el umbral en
+    los dos niveles: B publica su propio spread exacto (−10,0) y el
+    consolidado lo suma como a cualquier otro — ya no hay nada que despejar
+    por diferencia, porque no hay nada escondido.
     """
     _ids, cab = _escenario_spread(client, monkeypatch)
     cuerpo = _pedir(client, cab)
     cons = cuerpo["consolidado"]
 
-    # A mano, sólo A + D: 8.000.000 / 10.000.000 = 0,8  ->  −20,0
-    canon_publicable = A_CANON_CT + D_CANON_CT
-    tarifa_publicable = A_TARIFA_T + D_TARIFA_T
-    assert (canon_publicable, tarifa_publicable) == (8_000_000.0, 10_000_000.0)
-    assert round((canon_publicable / tarifa_publicable - 1) * 100, 1) == -20.0
+    # A mano, A + B + D: 9.800.000 / 12.000.000 = 0,81666…  ->  −18,3
+    assert (CONS_CANON_CT, CONS_TARIFA_T) == (9_800_000.0, 12_000_000.0)
+    assert round((CONS_CANON_CT / CONS_TARIFA_T - 1) * 100, 1) == CONS_SPREAD
 
-    assert cons["spread_pct"] == -20.0
-    # `clientes_con_tarifa` sigue contando a B: tener tarifa configurada no es
-    # lo mismo que tener spread publicable.
+    assert cons["spread_pct"] == CONS_SPREAD
     assert cons["clientes_con_tarifa"] == CONS_CLIENTES_CON_TARIFA
 
-    # La cuenta EQUIVOCADA da otro número: si el consolidado promediara spreads
-    # publicados, saldría −17,15 y no −20,0.
+    # La cuenta EQUIVOCADA da otro número: si el consolidado promediara los
+    # spreads publicados (A, B y D — los tres, ninguno suprimido), saldría
+    # −14,77 y no −18,3.
     publicados = [c["metricas"]["spread_pct"] for c in cuerpo["clientes"]
                   if c["metricas"] and c["metricas"]["spread_pct"] is not None]
-    assert sorted(publicados) == [D_SPREAD, A_SPREAD]
+    assert sorted(publicados) == sorted([A_SPREAD, B_SPREAD, D_SPREAD])
     assert round(sum(publicados) / len(publicados), 2) == CONS_PROMEDIO_DE_SPREADS
     assert cons["spread_pct"] != CONS_PROMEDIO_DE_SPREADS
 
-    # Con B adentro daría −18,3 (el número de antes del arreglo): B NO entra.
-    con_b = round((CONS_CANON_CT / CONS_TARIFA_T - 1) * 100, 1)
-    assert con_b == CONS_SPREAD and cons["spread_pct"] != con_b
+    # Y B SÍ aparece en su propia fila, exacto: nada que despejar por diferencia.
+    b = _fila(cuerpo, "clib")["metricas"]
+    assert b["spread_pct"] == B_SPREAD
 
     # El cliente ROTO no suma ni cuenta.
     assert cuerpo["consolidado"]["clientes_con_error"] == 1
     assert _fila(cuerpo, "roto")["metricas"] is None
 
 
-def test_07_consolidado_con_menos_de_tres_contratos_con_tarifa_es_null(client, monkeypatch):
-    """Sólo B legible con tarifa (2 contratos): K=3 apaga también el consolidado."""
+def test_07_el_consolidado_es_null_solo_sin_ningun_contrato_con_tarifa(client, monkeypatch):
+    """`spread_pct` es `null` SÓLO por ausencia de dato: sin tarifa configurada
+    o sin contratos con tarifa aplicable — nunca por un umbral (Fase 7)."""
     from app.plataforma_metricas import limpiar_cache_metricas
 
     ids = Identidades(client)
@@ -516,7 +526,9 @@ def test_07_consolidado_con_menos_de_tres_contratos_con_tarifa_es_null(client, m
     limpiar_cache_metricas()
 
     cons = _pedir(client, _cab(consola["token"]))["consolidado"]
-    assert cons["spread_pct"] is None
+    # 2 contratos con tarifa, sin umbral: el consolidado publica exacto,
+    # igual que la fila de B (test_02).
+    assert cons["spread_pct"] == B_SPREAD
     assert cons["clientes_con_tarifa"] == 1
 
 

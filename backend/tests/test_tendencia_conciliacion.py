@@ -400,13 +400,13 @@ def test_contrato_cancelado_no_cuenta_en_ningun_mes(client, monkeypatch):
 #
 #  ACME: 10 góndolas DOBLES = 20 caras.  2 contratos de $100 → 2 caras ocupadas
 #        → 2/20 = 10.0 %   ·   canon promedio propio = 100,00
-#        (2 contratos < K=3 → su FILA sale suprimida; sus crudos igual pesan)
+#        (Fase 7, sin umbral: su FILA publica ese número exacto)
 #  BETA: 2 puntas = 2 caras.  8 contratos de $1 sobre esos 2 espacios
 #        → 2/2 = 100.0 %   ·   canon promedio propio = 1,00
 #
 #  CONSOLIDADO (Σ/Σ):
 #    ocupación = (2+2)/(20+2) = 4/22 = 18,1818… → 18.2 %
-#    contratos = 2+8 = 10  (≥3 → se publica)
+#    contratos = 2+8 = 10
 #    canon_total = 200 + 8 = 208  → ingreso 208,00
 #    canon promedio ponderado = 208/10 = 20,80
 #
@@ -476,10 +476,11 @@ def test_consolidado_canon_es_ponderado(client, monkeypatch):
     assert punto["canon_promedio_mensual"] == CONS_CANON_PONDERADO
     assert punto["canon_promedio_mensual"] != CONS_CANON_PROMEDIO_DE_PROMEDIOS
 
-    # acme aporta sus $200 al total aunque SU fila esté suprimida por K=3.
+    # acme aporta sus $200 al total, y su propia fila publica el mismo número
+    # exacto (Fase 7, sin umbral).
     acme = _punto(_tendencia(client, cab, cliente="acme", meses=1), m)
-    assert acme["canon_promedio_mensual"] is None
-    assert acme["ingreso_contratado_mes"] is None
+    assert acme["canon_promedio_mensual"] == 100.0
+    assert acme["ingreso_contratado_mes"] == 200.0
 
 
 def test_consolidado_usuarios_son_distintos(client, monkeypatch):
@@ -495,7 +496,7 @@ def test_consolidado_usuarios_son_distintos(client, monkeypatch):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 3. K=3 aplicado POR MES en el histórico
+# 3. Fase 7 — agregados EXACTOS por mes en el histórico, sin umbral
 # ════════════════════════════════════════════════════════════════════════════
 #
 # ACME, sede NAVE: PUN-01, PUN-02, GON-01 (doble), CHK-01 → 5 caras
@@ -509,22 +510,24 @@ def test_consolidado_usuarios_son_distintos(client, monkeypatch):
 #   B1 Nutresa  B-E-01          M-2 .. M-2   1000
 #   B2 Nutresa  B-E-02          M-2 .. M-2   2000
 #
-# A MANO:
-#   acme M-2: 2 contratos  → SUPRIMIDO (ingreso/canon null, top [])
-#             ocupadas 2/5 = 40.0 %  ← NO se suprime
-#   acme M-1: 3 contratos  → publicado. canon_total 1.200, promedio 400,00
+# A MANO (sin umbral, Fase 7 — cada mes publica su número exacto):
+#   acme M-2: 2 contratos. ingreso 300,00, canon 150,00, top Alpina 1 / Bimbo 1
+#             ocupadas 2/5 = 40.0 %
+#   acme M-1: 3 contratos. canon_total 1.200, promedio 400,00
 #             ocupadas {GON-01, GON-01-B, CHK-01} 3/5 = 60.0 %
-#   acme M  : 1 contrato   → SUPRIMIDO. ocupadas 1/5 = 20.0 %
+#   acme M  : 1 contrato. ingreso 500,00, canon 500,00, top Nutresa 1
+#             ocupadas 1/5 = 20.0 %
 #
-#   consolidado M-2: 2 (acme) + 2 (beta) = 4 contratos ≥ 3 → PUBLICADO
+#   consolidado M-2: 2 (acme) + 2 (beta) = 4 contratos
 #             canon_total = 300 + 3.000 = 3.300  →  promedio 3.300/4 = 825,00
 #             ocupadas (2+2)/(5+2) = 4/7 = 57,142… → 57.1 %
 #             top: Nutresa 2, Alpina 1, Bimbo 1
-#             ⇒ el ingreso consolidado INCLUYE los $300 de acme aunque la fila
-#               de acme de ese mes esté suprimida.
-#   consolidado M-1: 3 contratos → publicado, 1.200 / 400,00, 3/7 = 42.9 %
-#   consolidado M  : 1 contrato en TODA la plataforma → SUPRIMIDO
-#             ocupacion 1/7 = 14,285… → 14.3 %  (los conteos NO se suprimen)
+#             ⇒ el ingreso consolidado coincide con la suma de las filas: acme
+#               (300,00) + beta (3.000,00) = 3.300,00, sin residuo.
+#   consolidado M-1: 3 contratos → 1.200 / 400,00, 3/7 = 42.9 %
+#   consolidado M  : 1 contrato en TODA la plataforma → publica exacto
+#             ingreso 500,00, canon 500,00, top Nutresa 1
+#             ocupacion 1/7 = 14,285… → 14.3 %
 
 _PLANO_K = [
     {"code": "PUN-01", "type": "punta", "sede": "NAVE"},
@@ -564,20 +567,23 @@ def _escenario_k3(client, monkeypatch):
     return cab, (m2, m1, m)
 
 
-def test_k3_por_mes_en_la_serie_del_cliente(client, monkeypatch):
+def test_el_agregado_exacto_se_aplica_mes_a_mes_en_la_serie_del_cliente(client, monkeypatch):
+    """Fase 7: cada mes de la serie publica su número exacto, sea cual sea el
+    conteo de contratos de ese mes — 1, 2 o 3, ninguno se esconde."""
     cab, (m2, m1, m) = _escenario_k3(client, monkeypatch)
     serie = _tendencia(client, cab, cliente="acme", meses=3)
 
-    # M-2: 2 contratos → importes suprimidos, ocupación NO
+    # M-2: 2 contratos, exacto.
     p2 = _punto(serie, m2)
-    assert p2["ingreso_contratado_mes"] is None
-    assert p2["canon_promedio_mensual"] is None
-    assert p2["top_proveedores"] == []
+    assert p2["ingreso_contratado_mes"] == 300.0
+    assert p2["canon_promedio_mensual"] == 150.0
+    assert [(t["nombre"], t["contratos_activos"]) for t in p2["top_proveedores"]] == [
+        ("Alpina", 1), ("Bimbo", 1)]
     assert p2["ocupacion_pct"] == 40.0
     assert p2["espacios_comercializables"] == 5
     assert p2["sedes_con_plano"] == 1
 
-    # M-1: 3 contratos → publicado
+    # M-1: 3 contratos, exacto.
     p1 = _punto(serie, m1)
     assert p1["ingreso_contratado_mes"] == 1200.0
     assert p1["canon_promedio_mensual"] == 400.0
@@ -585,20 +591,22 @@ def test_k3_por_mes_en_la_serie_del_cliente(client, monkeypatch):
     assert [(t["nombre"], t["contratos_activos"]) for t in p1["top_proveedores"]] == [
         ("Alpina", 1), ("Bimbo", 1), ("Nutresa", 1)]
 
-    # M: 1 contrato → suprimido otra vez
+    # M: 1 contrato, exacto igual.
     p0 = _punto(serie, m)
-    assert p0["ingreso_contratado_mes"] is None
-    assert p0["canon_promedio_mensual"] is None
-    assert p0["top_proveedores"] == []
+    assert p0["ingreso_contratado_mes"] == 500.0
+    assert p0["canon_promedio_mensual"] == 500.0
+    assert p0["top_proveedores"] == [{"nombre": "Nutresa", "contratos_activos": 1}]
     assert p0["ocupacion_pct"] == 20.0
 
 
-def test_consolidado_usa_los_datos_subyacentes_del_cliente_suprimido(client, monkeypatch):
+def test_consolidado_usa_los_datos_subyacentes_del_cliente(client, monkeypatch):
+    """Sin umbral, el consolidado coincide con la suma de las filas visibles:
+    ya no hay una fila que aporte al total sin publicar su propio número."""
     cab, (m2, m1, m) = _escenario_k3(client, monkeypatch)
     serie = _tendencia(client, cab, meses=3)
 
     p2 = _punto(serie, m2)
-    assert p2["ingreso_contratado_mes"] == 3300.0, "los $300 de acme suprimida SÍ suman"
+    assert p2["ingreso_contratado_mes"] == 3300.0, "acme (300) + beta (3.000)"
     assert p2["canon_promedio_mensual"] == 825.0     # 3.300 / 4
     assert p2["ocupacion_pct"] == 57.1               # 4/7
     assert [(t["nombre"], t["contratos_activos"]) for t in p2["top_proveedores"]] == [
@@ -610,14 +618,18 @@ def test_consolidado_usa_los_datos_subyacentes_del_cliente_suprimido(client, mon
     assert p1["ocupacion_pct"] == 42.9               # 3/7
 
 
-def test_plataforma_entera_bajo_k3_suprime_el_consolidado(client, monkeypatch):
+def test_el_consolidado_publica_exacto_aunque_toda_la_plataforma_tenga_un_solo_contrato(
+    client, monkeypatch,
+):
+    """Fase 7: sin umbral, el consolidado también publica exacto cuando toda
+    la plataforma sólo tiene un contrato ese mes."""
     cab, (_m2, _m1, m) = _escenario_k3(client, monkeypatch)
     p0 = _punto(_tendencia(client, cab, meses=3), m)
 
-    assert p0["ingreso_contratado_mes"] is None, "1 contrato en toda la plataforma"
-    assert p0["canon_promedio_mensual"] is None
-    assert p0["top_proveedores"] == []
-    assert p0["ocupacion_pct"] == 14.3               # 1/7, NO se suprime
+    assert p0["ingreso_contratado_mes"] == 500.0, "1 contrato en toda la plataforma"
+    assert p0["canon_promedio_mensual"] == 500.0
+    assert p0["top_proveedores"] == [{"nombre": "Nutresa", "contratos_activos": 1}]
+    assert p0["ocupacion_pct"] == 14.3               # 1/7
     assert p0["espacios_comercializables"] == 7
 
 
@@ -628,7 +640,9 @@ def test_plataforma_entera_bajo_k3_suprime_el_consolidado(client, monkeypatch):
 # "Juan Pérez (juan@x.co) 3001234567"
 #   1) correo  -> "Juan Pérez ([correo oculto]) 3001234567"
 #   2) teléfono (10 dígitos ≥ 7) -> "Juan Pérez ([correo oculto]) [teléfono oculto]"
-# Hacen falta 3 contratos para que el top no salga suprimido por K=3.
+# Tres contratos del mismo proveedor sucio, para que el top tenga un caso real
+# que sanear (Fase 7: ya no hace falta cruzar ningún umbral para que el top
+# aparezca — con 1 o 2 contratos también saldría saneado igual).
 
 SUCIO = "Juan Pérez (juan@x.co) 3001234567"
 SANEADO = "Juan Pérez ([correo oculto]) [teléfono oculto]"
@@ -669,7 +683,8 @@ def _escenario_congelado(client, monkeypatch):
     _m2, m1, m = _tres_meses()
     d1, h1 = _limites(m1)
     d0, h0 = _limites(m)
-    # Base: 3 contratos en M-1 y 3 en M, para que nada salga suprimido.
+    # Base: 3 contratos en M-1 y 3 en M (el conteo no importa desde Fase 7,
+    # sin umbral; se mantiene por continuidad con el resto del escenario).
     _sembrar("acme", {"NAVE": _PLANO_K}, [
         ("NAVE-PUN-01",   "Alpina",  d1, h1, 100.0, True),
         ("NAVE-PUN-02",   "Bimbo",   d1, h1, 200.0, True),
@@ -871,14 +886,15 @@ def test_meses_sin_snapshot_van_con_sin_dato_y_nulls(client, monkeypatch):
 
 
 def test_contratos_activos_y_ocupadas_nunca_salen_al_json(client, monkeypatch):
-    """Son el numerador y el denominador de la propia supresión."""
+    """Son crudos de negocio (numerador y denominador de la ocupación): no
+    cruzan la frontera del operador, con o sin umbral (Fase 7 no cambia esto)."""
     cab, (_m2, _m1, m) = _escenario_k3(client, monkeypatch)
     for cliente in ("acme", "beta", "__consolidado__"):
         cuerpo = _tendencia(client, cab, cliente=cliente, meses=6)
         claves = set(_claves(cuerpo))
         assert "ocupadas" not in claves, cliente
-        # "contratos_activos" sólo puede aparecer DENTRO de top_proveedores,
-        # que ya pasó por K=3. Nunca como campo del punto de la serie.
+        # "contratos_activos" sólo puede aparecer DENTRO de top_proveedores.
+        # Nunca como campo del punto de la serie.
         for punto in cuerpo["serie"]:
             assert "contratos_activos" not in punto, (cliente, punto["periodo"])
             assert "ocupadas" not in punto
@@ -938,9 +954,10 @@ def test_BUG_consolidado_congelado_no_incluye_al_cliente_que_llego_despues(
 
     ESPERADO para el consolidado de M-1: ingreso $1.200,00, canon promedio
     $400,00, ocupación 3/5 = 60.0 %, clientes_incluidos 2.
-    OBTENIDO: ingreso None, canon None, ocupación None, clientes_incluidos 1
-    (K=3 sobre 0 contratos), porque la fila consolidada quedó congelada en el
-    cierre de arranque.
+    OBTENIDO en su momento (histórico, antes del arreglo de BUG-1 y de que la
+    Fase 7 quitara K=3): ingreso None, canon None, ocupación None,
+    clientes_incluidos 1 (entonces por K=3 sobre 0 contratos), porque la fila
+    consolidada quedó congelada en el cierre de arranque.
     """
     from app.plataforma_tendencia import cerrar_mes_anterior
 

@@ -24,7 +24,8 @@ los dos son exactamente la clase de cosa que hay que atacar por los bordes:
 
 Seis frentes:
 
-* **A. La tarifa no sale** (a1-a4, a16-a18) — hojas, claves, K=3 y despeje.
+* **A. La tarifa no sale** (a1-a4, a16-a18) — hojas, claves, el spread sin
+  umbral (Fase 7) y despeje.
 * **B. Adopción no lleva personas** (a5, a6) — lista blanca, arroba, ids,
   fechas sin hora.
 * **C. La puerta** (a7, a11) — autorización de ``/adopcion`` y el token de
@@ -446,14 +447,16 @@ def test_a2_lista_blanca_y_negra_de_claves_de_metricas(client, monkeypatch):
     assert isinstance(cuerpo["consolidado"]["clientes_con_tarifa"], int)
 
 
-def test_a3_k3_del_spread_no_deja_despejar_la_tarifa(client, monkeypatch):
-    """a3 — La supresión de celda chica, atacada por sus tres bordes.
+def test_a3_el_spread_con_pocos_contratos_publica_exacto_sin_umbral(client, monkeypatch):
+    """a3 — Fase 7: el spread ya no tiene celda chica que atacar.
 
-    Con DOS contratos con tarifa el spread y el canon promedio publicado
-    despejarían la tarifa individual; con UNO, la despejarían exactamente. Los
-    dos casos tienen que dar ``null``. Y el consolidado, que suma sobre todos
-    los clientes legibles, tiene que aplicar la MISMA regla sobre su propia Σ
-    de contratos con tarifa: con menos de tres en toda la plataforma, ``null``.
+    Con DOS contratos con tarifa, hasta la Fase 6 el spread y el canon
+    promedio publicado habrían despejado la tarifa individual (K=3) y el
+    campo salía ``null``. El dueño de la plataforma decidió lo contrario: sin
+    umbral, el spread sale EXACTO con cuantos contratos con tarifa haya —uno
+    incluido—, y la contrapartida es el reporte de transparencia del cliente.
+    El consolidado, que suma sobre todos los legibles, aplica la misma regla:
+    exacto, sin importar cuántos contratos con tarifa haya en total.
     """
     ids = Identidades(client)
     _fundar(ids, "uid-dos", "d@dos.example", "dos", "Dos Contratos")
@@ -470,15 +473,16 @@ def test_a3_k3_del_spread_no_deja_despejar_la_tarifa(client, monkeypatch):
 
     cuerpo = _metricas(client, cab)
     dos = _fila(cuerpo, "dos")["metricas"]
-    assert dos["spread_pct"] is None, "con 2 contratos con tarifa el spread se publicó"
+    # (1.800.000 / 2.000.000 - 1) * 100 = -10.0
+    assert dos["spread_pct"] == -10.0
     assert dos["tarifa_configurada"] is True
-    # El consolidado tiene Σ = 2 contratos con tarifa: también por debajo de K.
-    assert cuerpo["consolidado"]["spread_pct"] is None, (
-        "el consolidado publicó un spread con menos de 3 contratos con tarifa"
-    )
+    # El consolidado tiene Σ = 2 contratos con tarifa en toda la plataforma:
+    # también publica exacto, sin umbral.
+    assert cuerpo["consolidado"]["spread_pct"] == -10.0
     assert cuerpo["consolidado"]["clientes_con_tarifa"] == 1
 
-    # Y con UNO: el caso donde el despeje sería exacto.
+    # Y con UNO: sin umbral, sigue publicando exacto — es la misma tarifa
+    # aplicada a un solo contrato, así que el spread da igual −10,0.
     from app.clientes import buscar, sesion_de
     from app.models.models import SpaceLease
 
@@ -494,8 +498,8 @@ def test_a3_k3_del_spread_no_deja_despejar_la_tarifa(client, monkeypatch):
 
     cuerpo = _metricas(client, cab)
     uno = _fila(cuerpo, "dos")["metricas"]
-    assert uno["spread_pct"] is None, "con 1 contrato con tarifa el spread se publicó"
-    assert cuerpo["consolidado"]["spread_pct"] is None
+    assert uno["spread_pct"] == -10.0
+    assert cuerpo["consolidado"]["spread_pct"] == -10.0
 
 
 def test_a4_tarifa_configurada_sin_contratos_aplicables_no_revela_nada_mas(client, monkeypatch):
@@ -984,7 +988,14 @@ def test_a15_la_politica_declara_los_campos_nuevos_y_la_copia_es_identica():
     # (i) la relación canon / tarifa de referencia.
     assert "tarifa de referencia" in bajo
     assert "relación" in bajo or "spread" in bajo
-    assert "3 contratos" in bajo or "tres contratos" in bajo
+    # Fase 7: K=3 desaparece — el operador ve agregados exactos de todos los
+    # clientes, sin umbral, y la contrapartida es el reporte de transparencia
+    # del cliente. La política tiene que declarar el trato NUEVO con estas
+    # frases (el agente legal reescribe §5.3 con ellas, textuales).
+    assert "agregados exactos" in bajo
+    assert "sin umbral" in bajo
+    assert "reporte de transparencia" in bajo
+    assert "mi-reporte-plataforma" in bajo
     # (ii) la lectura de adopción y su clasificación derivada.
     assert "adopción" in bajo, "el §5.3 no declara la lectura de adopción"
     assert "clasificación" in bajo, "el §5.3 no declara la clasificación derivada"
@@ -1014,16 +1025,17 @@ def test_a15_la_politica_declara_los_campos_nuevos_y_la_copia_es_identica():
 # `features/asesoria/outputs/frontera-asesoria.md`.
 
 
-def _dos_clientes_uno_suprimido(client, monkeypatch):
-    """A (3 contratos con tarifa, spread publicado) + B (2, spread SUPRIMIDO).
+def _dos_clientes_a_y_b(client, monkeypatch):
+    """A (3 contratos con tarifa) + B (2, ambos con tarifa) — Fase 7: los DOS
+    publican su spread exacto, sin umbral.
 
     Todos los contratos de los dos clientes tienen tarifa aplicable, así que
     ``Σ canon_con_tarifa`` coincide con el ``ingreso_contratado_mes`` que el
-    panel publica — la condición que abre el despeje por diferencia.
+    panel publica.
 
     Números elegidos para que la aritmética sea exacta y el test no dependa de
     tolerancias: A cobra 900.000 sobre una tarifa de 1.000.000 (spread −10,0),
-    B cobra 400.000 sobre 500.000 (spread real −20,0), consolidado −12,5.
+    B cobra 400.000 sobre 500.000 (spread −20,0), consolidado ponderado −12,5.
     """
     ids = Identidades(client)
     _fundar(ids, "uid-a", "d@a.example", "aaa", "A")
@@ -1043,8 +1055,9 @@ def _dos_clientes_uno_suprimido(client, monkeypatch):
     return _cab(consola["token"])
 
 
-def _despejar_al_cliente_suprimido(cuerpo):
-    """La aritmética del atacante. Devuelve ``(Σ tarifa de B, spread de B)``."""
+def _despejar_por_diferencia(cuerpo):
+    """La aritmética que, bajo K=3, era un ataque. Devuelve ``(Σ tarifa de B,
+    spread de B)`` reconstruidos por diferencia contra el consolidado."""
     cons = cuerpo["consolidado"]
     a = _fila(cuerpo, "aaa")["metricas"]
     canon_b = cons["ingreso_contratado_mes"] - a["ingreso_contratado_mes"]
@@ -1054,75 +1067,72 @@ def _despejar_al_cliente_suprimido(cuerpo):
     return tarifa_b, (canon_b / tarifa_b - 1) * 100.0
 
 
-def test_a16_caracterizacion_el_consolidado_no_despeja_al_cliente_suprimido(client, monkeypatch):
-    """a16 · H-1 (evidencia del arreglo) — El spread suprimido ya no se recupera.
+def test_a16_caracterizacion_el_consolidado_del_spread_suma_a_todos(client, monkeypatch):
+    """a16 · H-1 — RESUELTO por decisión de producto (Fase 7), no por el
+    arreglo de K=3 que documentaba antes.
 
-    Antes del cierre de la fase el consolidado sumaba a TODOS los legibles con
-    tarifa, suprimidos incluidos, y con dos clientes el operador resolvía:
+    Hasta la Fase 6, el spread consolidado sumaba SÓLO a los clientes cuyo
+    propio spread se publicaba (≥ K contratos con tarifa) — precisamente para
+    que un cliente suprimido no se pudiera despejar por diferencia (hallazgo
+    H-1). Fase 7 quita el umbral en los dos niveles: A y B publican su spread
+    exacto (−10,0 y −20,0) y el consolidado vuelve a sumar a TODOS los
+    clientes legibles con tarifa, como ya hacía con el ingreso —
+    (2.700.000 + 800.000) / (3.000.000 + 1.000.000) − 1 = −12,5 %.
 
-        Σtarifa_total = ingreso_consolidado / (1 + spread_consolidado)
-        Σtarifa_A     = ingreso_A          / (1 + spread_A)
-        Σtarifa_B     = Σtarifa_total − Σtarifa_A
-
-    …y obtenía EXACTAMENTE la Σ de tarifas de B (1.000.000) y su spread
-    (−20,0), que el JSON había puesto en ``null`` a propósito. Ahora el spread
-    consolidado suma sólo a los clientes con spread PUBLICADO: con A solo, el
-    consolidado es −10,0 (el de A) y la misma aritmética devuelve basura. El
-    ingreso consolidado sigue incluyendo a B (ese sí es "el total del negocio",
-    precedente m26 de la Fase 4) — pero sin el spread de B en el total ya no
-    hay segunda ecuación.
+    Ya no hay nada que "despejar": el spread de B está directamente en su
+    propia fila, no escondido detrás de una resta.
     """
-    cab = _dos_clientes_uno_suprimido(client, monkeypatch)
+    cab = _dos_clientes_a_y_b(client, monkeypatch)
     cuerpo = _metricas(client, cab)
 
+    a = _fila(cuerpo, "aaa")["metricas"]
     b = _fila(cuerpo, "bbb")["metricas"]
-    assert b["spread_pct"] is None, "el escenario exige que B esté suprimido"
-    assert b["ingreso_contratado_mes"] is None, "y que su plata también lo esté"
-    assert cuerpo["consolidado"]["spread_pct"] == -10.0
+    assert a["spread_pct"] == -10.0
+    assert b["spread_pct"] == -20.0
+    assert cuerpo["consolidado"]["spread_pct"] == -12.5
     assert cuerpo["consolidado"]["ingreso_contratado_mes"] == 3_500_000.0
 
-    tarifa_b, spread_b = _despejar_al_cliente_suprimido(cuerpo)
-    assert abs(tarifa_b - 1_000_000) > 50_000, tarifa_b
-    assert abs(spread_b - (-20.0)) > 1.0, spread_b
 
-
-# H-1 (arreglado en el cierre de la fase): el spread consolidado ahora suma
-# SÓLO a los clientes cuyo propio spread se publica (≥ K contratos con
-# tarifa), así que un cliente suprimido no se despeja por diferencia.
-def test_a17_hallazgo_la_suma_de_tarifas_de_un_cliente_suprimido_no_deberia_despejarse(
+def test_a17_caracterizacion_el_despeje_ya_coincide_con_el_spread_publicado(
         client, monkeypatch):
-    """a17 · H-1 — El comportamiento SEGURO que hoy no se cumple.
+    """a17 · H-1 — La misma aritmética de a16, aplicada, ya no revela un
+    secreto: coincide con el spread que B publica en su propia fila.
 
-    Si K=3 suprime el spread de un cliente, ese spread no puede quedar
-    reconstruible desde el consolidado con un margen mejor que el ruido. Se
-    exige que el despeje de a16 NO acierte.
+    Antes del cierre de la Fase 6 esta cuenta era un ataque contra una celda
+    suprimida; con Fase 7 no hay celda que atacar — B ya muestra su −20,0
+    directamente, y reconstruirlo por diferencia contra el consolidado da,
+    dentro del margen del redondeo a un decimal, el mismo número.
     """
-    cab = _dos_clientes_uno_suprimido(client, monkeypatch)
+    cab = _dos_clientes_a_y_b(client, monkeypatch)
     cuerpo = _metricas(client, cab)
-    assert _fila(cuerpo, "bbb")["metricas"]["spread_pct"] is None
+    b_publicado = _fila(cuerpo, "bbb")["metricas"]["spread_pct"]
+    assert b_publicado == -20.0
 
-    _tarifa_b, spread_b = _despejar_al_cliente_suprimido(cuerpo)
-    assert abs(spread_b - (-20.0)) > 1.0, (
-        f"el spread suprimido de B se despejó desde el consolidado: {spread_b}")
+    _tarifa_b, spread_b = _despejar_por_diferencia(cuerpo)
+    assert abs(spread_b - b_publicado) < 0.5, (
+        f"el despeje ({spread_b}) ya no coincide con el spread publicado ({b_publicado})")
 
 
-def test_a18_caracterizacion_con_tres_contratos_homogeneos_la_tarifa_se_estima(
+def test_a18_caracterizacion_con_contratos_homogeneos_la_tarifa_se_estima(
         client, monkeypatch):
-    """a18 · H-2 — El residual que la propia spec acepta, medido.
+    """a18 · H-2 — El residual que la propia spec acepta, medido (Fase 7: sigue
+    valiendo, y ahora sin umbral que lo module).
 
-    Con exactamente K=3 contratos, todos del mismo tipo y sede, y
+    Con contratos homogéneos (todos del mismo tipo y sede) y
     ``contratos_sin_tarifa == 0``, el ``ingreso_contratado_mes`` publicado ES
-    ``Σ canon_con_tarifa``, así que ``ingreso / (3 × (1 + spread/100))``
-    devuelve la tarifa UNITARIA del supermercado. El único límite es el
-    redondeo del spread a un decimal: el error relativo queda por debajo del
-    0,05 %.
+    ``Σ canon_con_tarifa``, así que ``ingreso / (n × (1 + spread/100))``
+    devuelve la tarifa UNITARIA del supermercado — con n=3 o con cualquier otro
+    n, porque desde Fase 7 el spread se publica exacto sin importar cuántos
+    contratos con tarifa haya. El único límite es el redondeo del spread a un
+    decimal: el error relativo queda por debajo del 0,05 %.
 
-    La spec eligió K=3 sabiendo esto ("con 1 o 2 contratos el spread y el canon
-    promedio dejan despejar la tarifa") — con 3 también se despeja, sólo que el
-    valor despejado es un promedio de tres posiciones idénticas, que es
-    exactamente la tarifa. No se marca ``xfail`` porque el arreglo (subir K, o
-    redondear el spread a entero) es una decisión de producto, no un bug; queda
-    medido y escrito.
+    Hasta la Fase 6 esto se aceptaba EN LA FRONTERA de K=3 ("con 1 o 2
+    contratos el spread y el canon promedio dejan despejar la tarifa, con 3
+    también, pero es el mínimo publicable"). Sin umbral, el residual ya no
+    tiene frontera: se acepta para cualquier n, es la misma decisión de
+    producto de Fase 7 (agregados exactos, contrapartida en el reporte de
+    transparencia). No se marca ``xfail`` porque no es un bug; queda medido y
+    escrito.
     """
     ids = Identidades(client)
     _fundar(ids, "uid-h", "d@h.example", "homo", "Homogéneo")

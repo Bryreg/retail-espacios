@@ -1302,12 +1302,11 @@ def test_m26_el_cliente_suspendido_aparece_con_sus_metricas_y_sin_su_motivo(clie
     beta = _fila(cuerpo, "beta")
     assert beta["estado_cuenta"] == "suspendido"
     assert beta["error"] is None
-    # K=3 (H-2): BETA tiene DOS contratos — su plata se suprime a propósito.
-    # La visibilidad del suspendido se afirma por la ocupación y los conteos,
-    # que la regla publica siempre; el consolidado (abajo) sí lleva su plata,
-    # porque se calcula con los subyacentes y el Σ de contratos supera K.
-    assert beta["metricas"]["ingreso_contratado_mes"] is None
-    assert beta["metricas"]["canon_promedio_mensual"] is None
+    # Fase 7 (sin umbral, docs/ESTADO.md): BETA tiene DOS contratos y su plata
+    # sale EXACTA igual que la de cualquier otro cliente — suspendido no
+    # cambia esa regla, la visibilidad completa (plata incluida) es el punto.
+    assert beta["metricas"]["ingreso_contratado_mes"] == BETA_INGRESO
+    assert beta["metricas"]["canon_promedio_mensual"] == BETA_CANON_PROMEDIO
     assert beta["metricas"]["ocupacion_pct"] == 100.0
     assert set(beta.keys()) == CLIENTE            # ni un campo para el motivo
     assert MOTIVO_ESTADO not in json.dumps(beta, ensure_ascii=False)
@@ -1421,25 +1420,23 @@ def test_m29_hallazgo_un_proveedor_con_correo_en_el_nombre_filtra_el_correo(clie
     assert con_arroba == [], f"el nombre del proveedor filtró un correo: {con_arroba}"
 
 
-# Hallazgo CERRADO en ronda 2 (el test pasó a XPASS y se destapó): ahora es la red.
-def test_m30_hallazgo_celda_de_uno_el_agregado_es_el_valor_individual(client, monkeypatch):
-    """M-30 · H-2 — Una suma de un solo sumando no es un agregado.
+# Hallazgo M-30 · H-2, RESUELTO por decisión de producto (Fase 7,
+# docs/ESTADO.md): el dueño de la plataforma decidió que el operador vea los
+# agregados EXACTOS de todos los clientes, sin umbral — la "celda de uno" ya
+# no se protege escondiendo el número. La contrapartida es el reporte de
+# transparencia del cliente (`app/plataforma_reporte.py`,
+# `GET /api/clientes/mi-reporte-plataforma`), que documenta exactamente qué
+# se tomó y quién lo consultó. Este test afirma el comportamiento NUEVO.
+def test_m30_con_un_solo_contrato_el_canon_sale_exacto_por_decision_de_producto(client, monkeypatch):
+    """M-30 · H-2 — Ya no es un hallazgo: es la regla.
 
-    La spec dice dos cosas que con pocos datos se contradicen: «sólo agregados
-    (nunca filas individuales)» y, en «qué NUNCA», «valores de contratos
-    individuales». Un cliente con **un** contrato activo hace que
-    ``ingreso_contratado_mes`` y ``canon_promedio_mensual`` sean, exactamente,
-    el ``monthly_rent`` de ese contrato; y ``top_proveedores`` de al lado dice
-    con quién. El operador reconstruye la fila entera: proveedor, monto y —si
-    además hay una sola cara ocupada— cuál espacio.
-
-    No es un caso de laboratorio: es el estado normal de un supermercado en su
-    primer mes, y el panel del operador es justamente donde se miran los
-    clientes nuevos.
-
-    Este test afirma el comportamiento SEGURO: que con un solo contrato ningún
-    número de la respuesta coincida con el canon individual (supresión de celda
-    chica, redondeo a una banda, o el campo en ``null`` bajo un mínimo).
+    Hasta la Fase 6, un cliente con **un** contrato activo hacía que
+    ``ingreso_contratado_mes`` y ``canon_promedio_mensual`` fueran,
+    exactamente, el ``monthly_rent`` de ese contrato, y eso se consideraba un
+    riesgo a mitigar (supresión de celda chica, K=3). El dueño de la
+    plataforma decidió lo contrario (docs/ESTADO.md, Fase 7): sin umbral,
+    ESO es justamente lo que tiene que pasar — el operador ve el negocio
+    exacto, incluido el de un cliente en su primer mes con un solo contrato.
     """
     from app.plataforma_metricas import limpiar_cache_metricas
 
@@ -1452,8 +1449,10 @@ def test_m30_hallazgo_celda_de_uno_el_agregado_es_el_valor_individual(client, mo
     limpiar_cache_metricas()
 
     cuerpo = _pedir(client, _cab(consola["token"]))
-    reveladores = [(r, v) for r, v in _numeros(cuerpo) if float(v) == CANON_1]
-    assert reveladores == [], f"el canon del único contrato está en el JSON: {reveladores}"
+    m = _fila(cuerpo, "acme")["metricas"]
+    assert m["ingreso_contratado_mes"] == CANON_1
+    assert m["canon_promedio_mensual"] == CANON_1
+    assert m["top_proveedores"] == [{"nombre": "Alpina", "contratos_activos": 1}]
 
 
 # Hallazgo CERRADO en el cierre de fase — el test ahora afirma el arreglo.

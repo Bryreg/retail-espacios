@@ -424,3 +424,53 @@ def cambiar_estado_cliente(slug: str, payload: PatchEstadoIn, email: str = Depen
     from app.plataforma_metricas import limpiar_cache_metricas
     limpiar_cache_metricas()
     return resultado
+
+
+# ─── Reporte de transparencia, para el operador (Fase 7, Parte B) ──────────
+#
+# Ruta declarada AL FINAL DEL ARCHIVO A PROPÓSITO -- después de `/metricas`,
+# `/tendencia`, `/adopcion`, `/supresiones`, `/supresiones/{solicitud_id}`,
+# `/soy`, `/clientes` y `/clientes/{slug}` PATCH: es decir, después de TODAS
+# las literales de este router. `/clientes/{slug}/reporte` no puede chocar
+# con `/clientes/{slug}` (distinto número de segmentos) ni con ninguna otra
+# ruta de acá, pero se respeta el orden igual -- la regla dura de FastAPI del
+# repo es "literal antes de paramétrica", y el día que alguien agregue una
+# ruta nueva bajo `/clientes/` en el medio de este archivo, ésta ya queda
+# a salvo por estar al final.
+#
+# Mismo JSON que `GET /api/clientes/mi-reporte-plataforma` -- las dos rutas
+# llaman a la MISMA función (`app.plataforma_reporte.armar_reporte`). La
+# diferencia es la bitácora: acá SÍ se anota (es un acceso del operador a
+# datos de un cliente), allá no (es el dueño mirando lo suyo).
+
+@router.get("/clientes/{slug}/reporte")
+def reporte_de_transparencia_del_cliente(
+    slug: str,
+    meses: int = MESES_DEFAULT,
+    email: str = Depends(require_operador),
+):
+    """El reporte de transparencia de UN cliente, para el operador.
+
+    ``slug`` normalizado (``.strip().lower()``, igual que el PATCH de
+    estados). 404 con texto FIJO si no existe -- igual que ``/tendencia`` y
+    el PATCH de arriba. ``meses`` fuera de 1..24 -> 422.
+
+    **La bitácora se escribe SIEMPRE, DESPUÉS de armar** (si armar fallara,
+    no habría acceso que anotar) -- ``accion="reporte"``, con
+    ``periodo="<slug>:<desde>..<hasta>"``: el reporte también es un acceso
+    del operador a datos de negocio de este cliente, y el rango completo
+    (no un solo mes) es el QUÉ de la línea, igual que en ``/tendencia``.
+    """
+    from app.plataforma_reporte import ClienteDesconocido, MesesInvalidos, armar_reporte
+
+    slug = (slug or "").strip().lower()
+    try:
+        cuerpo = armar_reporte(slug, meses)
+    except MesesInvalidos as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except ClienteDesconocido as e:
+        raise HTTPException(status_code=404, detail="No hay un cliente con ese código.") from e
+
+    ventana = cuerpo["ventana"]
+    _anotar_consulta(email, "reporte", f"{slug}:{ventana['desde']}..{ventana['hasta']}")
+    return cuerpo
