@@ -52,6 +52,30 @@ shape exacto, idéntico en backend y frontend):
    ocupan este, ordenados por canon que ya pagan. El texto de la oportunidad
    se arma en el frontend a partir de los campos, no viaja como prosa.
 
+6. **Recomendaciones** (`recomendaciones[]`, calculadas en el backend, en
+   orden de prioridad): la lista de qué proponerle HOY a ese cliente en una
+   sesión de asesoría, cada una con `tipo`, `prioridad` (alta/media/baja),
+   `valor_estimado_mensual` (cuánto canon mensual está en juego), los campos
+   que la sustentan y una `explicacion` corta en palabras (esta sí viaja como
+   texto, generada por el backend a partir de los datos, sin PII). Tipos
+   mínimos, todos calculables con los datos de arriba:
+   - `espacio_libre`: un espacio libre de tipo X con precio sugerido y
+     candidatos (es la oportunidad del punto 5, elevada a recomendación).
+   - `contrato_por_vencer`: contrato que vence en ≤ 60 días → "renovar con
+     {proveedor} o reasignar; canon en juego $X".
+   - `precio_bajo_tarifa`: espacios de un tipo cuyo canon promedio está por
+     debajo del promedio del cliente para ese tipo (sin usar la tarifa de
+     referencia en sí; sí el spread ya público) → "subir el canon de {tipo} en
+     la próxima renovación".
+   - `concentracion_proveedor`: un proveedor con ≥ 40 % de los espacios
+     ocupados → "diversificar: {n} contratos dependen de {proveedor}".
+   - `sede_subutilizada`: sede con ocupación ≥ 15 puntos por debajo del
+     promedio del cliente → "concentrar la venta en {sede}".
+   - `sin_tarifa`: tipos de espacio sin tarifa de referencia configurada →
+     "cargar tarifas de {tipos} para medir el spread".
+   Cero contratos activos en el cliente → una sola recomendación
+   `arranque` con los espacios por tipo y el benchmark de plataforma.
+
 ## Lo que NO se abre (VINCULANTE — sigue prohibido)
 
 - `Supplier.contact_name`, `phone`, `email`, `notes`; `Space.notes`;
@@ -71,9 +95,13 @@ shape exacto, idéntico en backend y frontend):
 
 - Página `/plataforma/clientes/:slug` (operador), con enlace "Ver detalle"
   en cada fila de la tabla de clientes de `/plataforma`. Secciones, en este
-  orden: **Oportunidades** primero (es "qué le propongo hoy"), luego
-  **Espacios** (tabla filtrable por sede, tipo y estado, con buscador por
-  código o proveedor), **Por tipo**, **Proveedores**, **Movimientos**.
+  orden: **Recomendaciones** primero (la lista priorizada del punto 6, con
+  el valor en juego y la explicación: es "qué le propongo hoy"), luego
+  **Oportunidades** (espacios libres con precio y candidatos), **Espacios**
+  (tabla filtrable por sede, tipo y estado, con buscador por código o
+  proveedor), **Por tipo**, **Proveedores**, **Movimientos**. Botón
+  "Imprimir recomendaciones" que usa la misma vista imprimible del reporte
+  de Fase 7 (`@media print`): es lo que el asesor le deja al cliente.
   Selector de período como en la consola. Enlace al reporte de transparencia
   del cliente. Primitivas de `components/plataforma/consola.tsx`, tokens
   `--con-*`, claro y oscuro, sin librerías nuevas, bajo la CSP.
@@ -114,6 +142,7 @@ shape exacto, idéntico en backend y frontend):
 - [ ] `grep` del JSON por el teléfono, correo, `contact_name` y `notes` sembrados en `Supplier`/`Space`/`SpaceLease` → vacío. Ningún correo de usuario. Ninguna clave con `tarifa` salvo `tarifa_configurada`.
 - [ ] Resumen por tipo cuadra a mano (ocupados + libres = total; promedio/min/max).
 - [ ] Oportunidades: espacio libre de tipo punta → precio sugerido = promedio de puntas del cliente; candidatos = proveedores del cliente que no ocupan ese espacio; cliente sin contratos de ese tipo → `benchmark`.
+- [ ] Recomendaciones: con la siembra de la spec salen al menos `espacio_libre`, `contrato_por_vencer` (el que vence en el período), `concentracion_proveedor` (un proveedor con 2 de 3 contratos) y `sin_tarifa`; ordenadas por prioridad y valor; cada una con explicación sin PII; cliente sin contratos → una sola `arranque`.
 - [ ] 403 dueño de cliente, 403 legado, 401 sin token, 404 slug inexistente; bitácora `accion="detalle"`; el reporte de transparencia del dueño lista ese acceso y el catálogo tiene las entradas de detalle.
 - [ ] Política y copia byte-idénticas, §5.3 (a)/(b)/finalidades como pide la spec, `VERSION_POLITICA` sigue `2026-09-v2`.
 - [ ] Capturas de `/plataforma/clientes/:slug` (claro y oscuro) con oportunidades, tabla de espacios y proveedores.
