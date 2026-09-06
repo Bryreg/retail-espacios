@@ -1053,8 +1053,8 @@ redefine `--bg`, `--surface`, `--ink`, `--accent`, `.card`, `.nav`, `.btn` que
 `datos.ts` (supermercado inventado: 2 sedes, 16 alquilables 7/3/6, ~30 muebles
 de contexto, prefijos de `nomenclatura.ts`, proveedores inventados — nunca
 reemplazar por marcas reales), `PlanoIsometrico.tsx` (SVG propio, proyección
-2:1, paneo/zoom como un solo `transform` por `ref`; rueda armada con el primer
-clic para no secuestrar el scroll; teclado completo; ficha con el orden de copy
+2:1, paneo/zoom como un solo `transform` por `ref`; la rueda sola siempre
+scrollea la página y el zoom por rueda pide Ctrl/⌘ (ver gotcha abajo); teclado completo; ficha con el orden de copy
 §11.2; leyenda con la palabra al lado del color; tabla equivalente; límite de
 error) y `Vista3D.tsx` (three.js, **escena mínima propia, NO `StoreEditor3D`**,
 que arrastra fiber/drei/store/API; entra por `lazy(() => import(...))`, se
@@ -1178,6 +1178,15 @@ sección:
   asserts: el titular es ahora «Recabrá cada metro.» con el titular viejo de
   subtítulo, y el enlace de salto apunta a `#contenido`).
 
+- **Gotchas de producción (dueño, 2026-09-06):** (1) Chrome pone
+  `outline: auto 5px` a cualquier elemento SVG con foco —también por clic, no
+  solo `:focus-visible`— y lo dibuja en unidades del plano: con la cámara a ×19
+  salía un aro blanco que tapaba el mueble elegido. `landing.css` apaga el
+  `outline` en `.pieza:focus`; el foco visible es el `.pieza__ring` amarillo.
+  (2) «Armar» la rueda con el clic hasta que el mouse saliera del plano
+  secuestraba el scroll, porque el plano pegado ocupa toda la pantalla. Ahora
+  la rueda sola siempre scrollea; el zoom por rueda es Ctrl/⌘ + rueda (la
+  pinza del trackpad manda `ctrlKey` sola), más los botones y la pinza táctil.
 - **Gotcha al cerrar (verificador de fidelidad):** `src/index.css` define una
   clase global `.rotulo` (versalita mono 600, 9,5 px) que pisaba el pill del
   plano; `landing.css` la redeclara entera (`font-weight`, `text-transform`).

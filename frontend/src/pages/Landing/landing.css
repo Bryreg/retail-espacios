@@ -351,7 +351,11 @@ html.lp-activa body {
 
 /* piezas del plano */
 .lp .pieza { cursor: pointer; }
-.lp .pieza:focus-visible { outline: none; }
+/* Chrome pone `outline: auto 5px` a cualquier SVG con foco (también por clic,
+   no solo :focus-visible) y lo dibuja en unidades del plano: con la cámara a
+   ×19 salía un aro blanco que tapaba el mueble. El foco visible es el
+   `.pieza__ring` amarillo de abajo. */
+.lp .pieza:focus, .lp .pieza:focus-visible { outline: none; }
 .lp .pieza .face { transition: opacity var(--dur-2) var(--ease); }
 .lp .pieza__ring { fill: none; stroke: var(--signal); stroke-width: 1.6; opacity: 0; transition: opacity var(--dur-2); }
 .lp .pieza[data-active="true"] .pieza__ring,
