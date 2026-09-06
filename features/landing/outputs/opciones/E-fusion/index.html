@@ -1,0 +1,2409 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RECABRA — Espacios comerciales de tu supermercado</title>
+<meta name="description" content="Qué mueble está libre, quién lo ocupa, a cuánto y hasta cuándo. RECABRA lleva la venta de espacios de exhibición de tu supermercado, sede por sede.">
+<meta name="robots" content="index, follow">
+<meta property="og:site_name" content="RECABRA">
+<meta property="og:title" content="RECABRA — Espacios comerciales de tu supermercado">
+<meta property="og:description" content="Dibujás el plano de cada sede, marcás qué muebles se alquilan y vendés tocando el mapa. Contratos, tarifas, vencimientos y montaje con foto.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://retail-espacios.onrender.com/">
+<meta property="og:locale" content="es_CO">
+<meta property="og:image:alt" content="Plano isométrico de un supermercado de ejemplo, con los muebles pintados según estén libres, por liberarse u ocupados.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="color-scheme" content="dark light">
+
+<script>
+/* Tema antes del primer pintado: sin flash. (de C) */
+(function(){try{
+  /* La estética de esta dirección es la sala a media luz: el oscuro es el
+     modo de la casa. El claro está entero y a un clic, y queda recordado. */
+  var t=localStorage.getItem('recabra-tema');
+  document.documentElement.setAttribute('data-theme', t==='light'?'light':'dark');
+}catch(e){}})();
+</script>
+
+<style>
+/* ==========================================================================
+   RECABRA · dirección E — "La fusión"
+   Estructura y densidad de C · interacción y estética de A.
+   Tokens en tres capas: primitivo -> semántico -> componente.
+   Sin recursos externos, sin librerías, un solo archivo.
+   ========================================================================== */
+
+/* --- 1. PRIMITIVOS ------------------------------------------------------ */
+:root{
+  /* Neutros fríos: sala a media luz (de A) */
+  --n-1000:#04070A; --n-950:#070B0F; --n-900:#0B1116; --n-850:#101820;
+  --n-800:#16212A;  --n-700:#1F2C36; --n-600:#2C3B47; --n-500:#4A5C68;
+  --n-400:#788994;  --n-300:#A6B4BC; --n-200:#CBD5DA; --n-100:#E6EBEC;
+  --n-050:#F2F5F3;  --n-000:#FFFFFF;
+
+  /* Papel (modo claro) */
+  --p-000:#FFFFFF; --p-050:#F7F8F5; --p-100:#EFF1ED; --p-200:#E4E7E1;
+
+  /* Estado del mueble — paletas validadas de C (dataviz).
+     Oscuro: CVD protan dE 9.3 · visión normal dE 18.7 · contraste >= 3:1
+     Claro:  CVD deutan dE 10.4 · visión normal dE 17.9
+     Nunca van solos: siempre con la palabra al lado (regla del producto). */
+  --st-libre-d:#00BE86;  --st-libera-d:#F5A524; --st-tomado-d:#F4544E; --st-resto-d:#33414F;
+  --st-libre-l:#00805A;  --st-libera-l:#CE8A0A; --st-tomado-l:#D8342E; --st-resto-l:#AAB3BE;
+
+  /* Señal: amarillo de etiqueta de precio (de A). Es la plata y es el botón.
+     Único color de acción de la página. */
+  --y-400:#FFE067; --y-500:#FFD028; --y-600:#E0B000; --y-700:#8A6100;
+
+  /* Tipografía: pilas de sistema. Display con peso y tracking (A),
+     mono con cifras tabulares para códigos, plata y fechas (A y C). */
+  --f-display:"Helvetica Neue","Segoe UI Variable Display",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans",Arial,sans-serif;
+  --f-text:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans","Helvetica Neue",Arial,sans-serif;
+  --f-mono:ui-monospace,SFMono-Regular,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+
+  --t-3xs:11px; --t-2xs:12px; --t-xs:13px; --t-sm:14.5px;
+  --t-base:clamp(15.5px,1.02vw,17px);
+  --t-md:clamp(17px,1.2vw,19px);
+  --t-lg:clamp(19px,1.5vw,23px);
+  --t-xl:clamp(22px,2.4vw,30px);
+  --t-2xl:clamp(27px,3.6vw,44px);
+  --t-3xl:clamp(36px,6.2vw,78px);
+
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+  --s7:48px; --s8:64px; --s9:96px;
+
+  --r-xs:4px; --r-sm:6px; --r-md:10px; --r-lg:16px; --r-xl:24px; --r-pill:999px;
+  --hair:1px;
+
+  --dur-1:140ms; --dur-2:260ms; --dur-3:420ms; --dur-4:640ms; --dur-5:900ms;
+  --ease:cubic-bezier(.22,.68,.24,1);
+  --ease-out:cubic-bezier(.16,.84,.44,1);
+
+  --wrap:1220px;
+  --colw:min(40vw,470px);      /* ancho de la columna de texto del film */
+  --railh:74px;
+  --z-plan:0; --z-script:1; --z-hud:4; --z-rail:40; --z-top:100;
+}
+
+/* --- 2. SEMÁNTICOS · OSCURO --------------------------------------------- */
+:root[data-theme="dark"]{
+  --bg:var(--n-1000);
+  --bg-deep:#020406;
+  --veil:radial-gradient(1100px 620px at 76% -10%, rgba(255,208,40,.055), transparent 62%),
+         radial-gradient(900px 700px at 50% 108%, rgba(0,190,134,.05), transparent 66%);
+  --grid-line:rgba(166,180,188,.05);
+  --panel:rgba(12,19,25,.72);
+  --panel-solid:var(--n-900);
+  --panel-2:rgba(255,255,255,.045);
+  --panel-hi:rgba(255,255,255,.05);
+  --brd:rgba(255,255,255,.11);
+  --brd-strong:rgba(255,255,255,.21);
+  --fg:#EDF3F2;
+  --fg-2:#9DAEB6;
+  --fg-3:#6C7E88;
+  --signal:var(--y-500);
+  --signal-ink:var(--y-500);      /* la señal como texto o trazo */
+  --on-signal:#0A0C06;
+  --ring:var(--y-400);
+  --floor:#0A1015;
+  --floor-edge:rgba(255,255,255,.10);
+  --st-libre:var(--st-libre-d); --st-libera:var(--st-libera-d);
+  --st-tomado:var(--st-tomado-d); --st-resto:var(--st-resto-d);
+  --st-libre-soft:rgba(0,190,134,.16); --st-libera-soft:rgba(245,165,36,.16);
+  --st-tomado-soft:rgba(244,84,78,.16); --st-resto-soft:rgba(91,105,128,.18);
+  --face-left:.70; --face-right:.48;
+  --sh-1:0 1px 2px rgba(0,0,0,.5);
+  --sh-2:0 12px 34px -14px rgba(0,0,0,.8), 0 2px 8px rgba(0,0,0,.4);
+  --sh-3:0 30px 70px -24px rgba(0,0,0,.85), 0 4px 14px rgba(0,0,0,.5);
+  --blur:16px;
+}
+
+/* --- 3. SEMÁNTICOS · CLARO ---------------------------------------------- */
+:root[data-theme="light"]{
+  --bg:var(--p-100);
+  --bg-deep:var(--p-200);
+  --veil:radial-gradient(1100px 620px at 76% -10%, rgba(224,176,0,.10), transparent 62%),
+         radial-gradient(900px 700px at 50% 108%, rgba(0,128,90,.06), transparent 66%);
+  --grid-line:rgba(11,17,22,.05);
+  --panel:rgba(255,255,255,.82);
+  --panel-solid:#FFFFFF;
+  --panel-2:rgba(11,17,22,.045);
+  --panel-hi:rgba(255,255,255,.9);
+  --brd:rgba(11,17,22,.14);
+  --brd-strong:rgba(11,17,22,.28);
+  --fg:#0A1014;
+  --fg-2:#4A5B65;
+  --fg-3:#5A6B74;
+  --signal:#F2B300;
+  --signal-ink:#8A6100;           /* 5,3:1 sobre la tarjeta clara — el amarillo
+                                     brillante NO llega a 4,5:1 como texto */
+  --on-signal:#120E00;
+  --ring:#8A6100;
+  --floor:#F7F8F5;
+  --floor-edge:rgba(11,17,22,.16);
+  --st-libre:var(--st-libre-l); --st-libera:var(--st-libera-l);
+  --st-tomado:var(--st-tomado-l); --st-resto:var(--st-resto-l);
+  --st-libre-soft:rgba(0,128,90,.13); --st-libera-soft:rgba(206,138,10,.15);
+  --st-tomado-soft:rgba(216,52,46,.12); --st-resto-soft:rgba(154,163,178,.22);
+  --face-left:.86; --face-right:.74;
+  --sh-1:0 1px 2px rgba(16,21,30,.07);
+  --sh-2:0 10px 28px -14px rgba(16,21,30,.24), 0 2px 6px rgba(16,21,30,.05);
+  --sh-3:0 28px 64px -26px rgba(16,21,30,.32), 0 4px 12px rgba(16,21,30,.07);
+  --blur:14px;
+}
+
+/* --- 4. BASE ------------------------------------------------------------ */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth;scroll-padding-top:96px}
+body{
+  margin:0;background:var(--bg);color:var(--fg);
+  font-family:var(--f-text);font-size:var(--t-base);line-height:1.6;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden;
+}
+img,svg{max-width:100%}
+h1,h2,h3,h4,p,ul,ol,figure,table{margin:0}
+ul{padding:0;list-style:none}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--ring);outline-offset:3px;border-radius:var(--r-xs)}
+::selection{background:color-mix(in srgb,var(--signal) 30%,transparent);color:var(--fg)}
+.sr{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.skip{position:fixed;left:16px;top:-120px;z-index:200;background:var(--signal);color:var(--on-signal);
+  padding:var(--s3) var(--s4);border-radius:var(--r-md);font-weight:700;transition:top var(--dur-2)}
+.skip:focus{top:16px}
+
+.deco{position:fixed;inset:0;z-index:-1;pointer-events:none}
+.deco__veil{position:absolute;inset:0;background:var(--veil)}
+.deco__grid{
+  position:absolute;inset:-2px;
+  background-image:linear-gradient(var(--grid-line) 1px,transparent 1px),
+                   linear-gradient(90deg,var(--grid-line) 1px,transparent 1px);
+  background-size:56px 56px;
+  -webkit-mask-image:radial-gradient(ellipse 120% 90% at 50% 0%,#000 18%,transparent 76%);
+          mask-image:radial-gradient(ellipse 120% 90% at 50% 0%,#000 18%,transparent 76%);
+}
+.wrap{width:100%;max-width:var(--wrap);margin-inline:auto;padding-inline:clamp(16px,4vw,32px);position:relative}
+
+/* --- 5. TIPOGRAFÍA DE COMPONENTE ---------------------------------------- */
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.eyebrow{
+  font-family:var(--f-mono);font-size:var(--t-2xs);letter-spacing:.18em;
+  text-transform:uppercase;color:var(--signal-ink);display:flex;align-items:center;gap:var(--s2)
+}
+.eyebrow::before{content:"";width:18px;height:1px;background:currentColor;opacity:.7;flex:none}
+h1,.h1{font-family:var(--f-display);font-size:var(--t-3xl);line-height:1.0;letter-spacing:-.038em;font-weight:800;text-wrap:balance}
+h2,.h2{font-family:var(--f-display);font-size:var(--t-2xl);line-height:1.06;letter-spacing:-.03em;font-weight:800;text-wrap:balance}
+h3,.h3{font-family:var(--f-display);font-size:var(--t-lg);line-height:1.2;letter-spacing:-.02em;font-weight:800}
+.h4{font-size:var(--t-md);line-height:1.3;font-weight:700;letter-spacing:-.012em}
+.lead{font-size:var(--t-md);line-height:1.55;color:var(--fg)}
+.body{color:var(--fg-2)}
+.small{font-size:var(--t-sm);color:var(--fg-3);line-height:1.55}
+.tiny{font-size:var(--t-xs);color:var(--fg-3);line-height:1.5}
+.fig{font-family:var(--f-mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em;font-weight:700}
+.pie-blk{font-family:var(--f-mono);font-size:var(--t-2xs);color:var(--fg-3);line-height:1.5}
+.slot{
+  display:inline-block;padding:2px 9px;border-radius:var(--r-sm);
+  border:1px dashed color-mix(in srgb,var(--signal) 55%,transparent);
+  color:var(--signal-ink);background:var(--panel-2);
+  font-family:var(--f-mono);font-size:.66em;letter-spacing:.02em;vertical-align:middle;
+}
+
+/* --- 6. BOTONES --------------------------------------------------------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:var(--s2);
+  min-height:48px;padding:0 var(--s6);border-radius:var(--r-md);
+  font-size:var(--t-sm);font-weight:700;letter-spacing:.01em;white-space:nowrap;
+  border:var(--hair) solid transparent;
+  transition:transform var(--dur-1) var(--ease),background var(--dur-2),border-color var(--dur-2),box-shadow var(--dur-2);
+}
+.btn:active{transform:translateY(1px)}
+.btn--primary{background:var(--signal);color:var(--on-signal);box-shadow:0 8px 30px color-mix(in srgb,var(--signal) 26%,transparent)}
+.btn--primary:hover{box-shadow:0 12px 40px color-mix(in srgb,var(--signal) 38%,transparent)}
+.btn--ghost{border-color:var(--brd-strong);color:var(--fg);background:var(--panel-2)}
+.btn--ghost:hover{border-color:var(--fg-3)}
+.btn--sm{min-height:38px;padding:0 var(--s4);font-size:var(--t-xs)}
+.lnk{color:var(--fg);border-bottom:1px solid var(--signal);padding-bottom:1px;display:inline-flex;align-items:center;gap:6px}
+.lnk:hover{color:var(--signal-ink)}
+
+/* --- 7. RAIL SUPERIOR (barra de estado del tablero, de C) --------------- */
+.rail{position:sticky;top:0;z-index:var(--z-rail)}
+.rail__in{
+  display:flex;align-items:center;gap:var(--s4);
+  height:56px;padding-inline:clamp(10px,2.4vw,18px);margin-top:10px;
+  border-radius:var(--r-pill);border:var(--hair) solid var(--brd);
+  background:var(--panel);backdrop-filter:blur(20px) saturate(1.4);
+  -webkit-backdrop-filter:blur(20px) saturate(1.4);box-shadow:var(--sh-2);position:relative;
+}
+.mark{display:flex;align-items:center;gap:9px;flex:none}
+.mark__glyph{width:24px;height:24px;flex:none}
+.mark__txt{font-family:var(--f-mono);font-weight:700;font-size:var(--t-xs);letter-spacing:.26em;color:var(--fg)}
+.rail__nav{display:flex;gap:2px;margin-inline:auto}
+.rail__nav a{padding:7px 11px;border-radius:var(--r-pill);font-size:var(--t-xs);color:var(--fg-3);
+  transition:color var(--dur-2),background var(--dur-2);white-space:nowrap}
+.rail__nav a:hover{color:var(--fg);background:var(--panel-2)}
+.rail__nav a[aria-current="true"]{color:var(--fg);background:color-mix(in srgb,var(--signal) 16%,transparent)}
+.rail__live{display:flex;align-items:center;gap:var(--s3);padding-right:var(--s3);
+  border-right:var(--hair) solid var(--brd);margin-right:var(--s1)}
+.rail__kv{display:flex;align-items:baseline;gap:5px;font-family:var(--f-mono);font-size:var(--t-2xs)}
+.rail__kv b{color:var(--fg);font-weight:700;font-variant-numeric:tabular-nums}
+.rail__kv span{color:var(--fg-3);letter-spacing:.08em;text-transform:uppercase;font-size:10px}
+.rail__acts{display:flex;align-items:center;gap:var(--s2);flex:none}
+.iconbtn{width:36px;height:36px;display:grid;place-items:center;border-radius:var(--r-pill);
+  border:var(--hair) solid var(--brd);color:var(--fg-2);
+  transition:color var(--dur-2),border-color var(--dur-2),background var(--dur-2)}
+.iconbtn:hover{color:var(--fg);border-color:var(--brd-strong);background:var(--panel-2)}
+.rail__prog{position:absolute;left:6%;right:6%;bottom:-1px;height:2px;border-radius:2px;overflow:hidden}
+.rail__prog i{display:block;height:100%;width:0;background:var(--signal-ink);transition:width 90ms linear}
+@media (max-width:1180px){ .rail__live{display:none} }
+@media (max-width:940px){ .rail__nav{display:none} }
+
+/* --- 8. SECCIONES Y GANCHOS (de C) -------------------------------------- */
+.sec{padding-block:clamp(52px,8vw,104px);position:relative}
+.sec__head{max-width:780px;margin-bottom:var(--s6);display:grid;gap:var(--s3)}
+.sec__num{font-family:var(--f-mono);font-size:var(--t-2xs);letter-spacing:.2em;color:var(--signal-ink)}
+.hook{
+  display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:var(--s4);
+  margin-top:clamp(32px,5vw,52px);padding:var(--s4) var(--s5);
+  border-radius:var(--r-lg);border:var(--hair) solid var(--brd);
+  background:linear-gradient(180deg,transparent,var(--panel));
+  transition:border-color var(--dur-3),transform var(--dur-3) var(--ease-out);
+}
+.hook:hover{border-color:var(--signal);transform:translateY(-2px)}
+.hook__n{font-family:var(--f-mono);font-size:var(--t-xs);letter-spacing:.18em;color:var(--signal-ink)}
+.hook__t{font-size:var(--t-sm);color:var(--fg-2);font-weight:600;line-height:1.35}
+.hook:hover .hook__t{color:var(--fg)}
+.hook__arrow{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
+  border:var(--hair) solid var(--brd);color:var(--signal-ink);flex:none;
+  transition:transform var(--dur-3) var(--ease-out),background var(--dur-3)}
+.hook:hover .hook__arrow{transform:translateY(3px);background:color-mix(in srgb,var(--signal) 16%,transparent)}
+.beam{position:relative;height:clamp(26px,4vw,48px);margin-inline:auto;width:2px;overflow:hidden;border-radius:2px;background:var(--brd)}
+.beam::after{content:"";position:absolute;inset-inline:0;height:40%;top:-40%;
+  background:linear-gradient(180deg,transparent,var(--signal),transparent);
+  animation:beamRun 2.4s ease-in-out infinite}
+@keyframes beamRun{to{top:100%}}
+@media (max-width:640px){ .hook{grid-template-columns:auto 1fr;gap:var(--s3)} .hook__arrow{display:none} }
+
+/* ==========================================================================
+   9. EL FILM — hero + "Lo que hace" sobre una sola sala pegada.
+   Es el scrollytelling de A, acotado a DOS secciones. Todo lo que viene
+   después es estático y denso como C.
+   ========================================================================== */
+.film{position:relative}
+@media (min-width:1000px){ .film{margin-top:-66px} }
+.stage{
+  position:sticky;top:0;height:100dvh;z-index:var(--z-plan);overflow:hidden;
+  background:
+    radial-gradient(120% 90% at 34% 44%, color-mix(in srgb,var(--signal) 5%,transparent), transparent 62%),
+    radial-gradient(140% 120% at 40% 118%, var(--bg-deep), var(--bg) 72%);
+}
+.stage__plan{position:absolute;inset:0 calc(var(--colw) + 4vw) 0 0;touch-action:pan-y}
+.stage__svg{display:block;width:100%;height:100%;touch-action:pan-y;cursor:grab}
+.stage__svg:active{cursor:grabbing}
+.stage__plan:focus-visible{outline:2px solid var(--ring);outline-offset:-6px;border-radius:var(--r-lg)}
+.vignette{position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(112% 82% at 46% 46%,transparent 44%,var(--bg) 100%);opacity:.8}
+
+/* piezas del plano */
+.pieza{cursor:pointer}
+.pieza:focus-visible{outline:none}
+.pieza .face{transition:opacity var(--dur-2) var(--ease)}
+.pieza[data-dim="true"] .face{opacity:.34}
+.pieza__ring{fill:none;stroke:var(--signal);stroke-width:1.6;opacity:0;transition:opacity var(--dur-2)}
+.pieza[data-active="true"] .pieza__ring,.pieza:focus-visible .pieza__ring{opacity:.95}
+.pieza__code{
+  font-family:var(--f-mono);fill:var(--fg);
+  opacity:0;transition:opacity var(--dur-2);pointer-events:none;text-anchor:middle;
+  paint-order:stroke;stroke:var(--bg);stroke-linejoin:round;
+  font-size:var(--lbl,.62px);stroke-width:calc(var(--lbl,.62px) * .3);letter-spacing:calc(var(--lbl,.62px) * .05);
+}
+.pieza:hover .pieza__code,.pieza[data-active="true"] .pieza__code,.pieza[data-show="true"] .pieza__code{opacity:1}
+.sede-label{font-family:var(--f-mono);fill:var(--fg-3);text-transform:uppercase;pointer-events:none;
+  font-size:var(--sede,.7px);letter-spacing:calc(var(--sede,.7px) * .24);text-anchor:middle}
+
+/* --- HUD del plano: rótulo, herramientas, leyenda, ayuda ---------------- */
+.hud{position:absolute;inset:0;pointer-events:none;z-index:var(--z-hud)}
+.hud>*{pointer-events:auto}
+.rotulo{
+  position:absolute;left:clamp(12px,2.2vw,26px);top:calc(var(--railh) + 6px);
+  font-family:var(--f-mono);font-size:var(--t-2xs);letter-spacing:.1em;color:var(--fg-2);
+  display:flex;align-items:center;gap:var(--s2);
+  background:var(--panel);border:var(--hair) solid var(--brd);border-radius:var(--r-pill);
+  padding:6px 12px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+}
+.pulse{width:8px;height:8px;border-radius:50%;background:var(--st-libre);flex:none;position:relative}
+.pulse::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:1px solid var(--st-libre);opacity:.5;animation:pulseRing 2s var(--ease-out) infinite}
+@keyframes pulseRing{0%{transform:scale(.6);opacity:.7}100%{transform:scale(1.5);opacity:0}}
+
+.tools{position:absolute;right:clamp(12px,2.2vw,26px);top:calc(var(--railh) + 6px);display:flex;gap:6px}
+.tool{
+  height:36px;min-width:36px;padding:0 11px;border-radius:var(--r-sm);
+  border:var(--hair) solid var(--brd);color:var(--fg-2);display:inline-flex;align-items:center;gap:6px;
+  font-size:var(--t-xs);background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  transition:color var(--dur-1),border-color var(--dur-1),background var(--dur-1);
+}
+.tool:hover{color:var(--fg);border-color:var(--brd-strong)}
+.tool[aria-pressed="true"]{color:var(--on-signal);background:var(--signal);border-color:var(--signal);font-weight:700}
+
+.legend{
+  position:absolute;left:clamp(12px,2.2vw,26px);bottom:clamp(12px,2.4vh,24px);
+  max-width:min(300px,calc(100% - 24px));
+  background:var(--panel);border:var(--hair) solid var(--brd);border-radius:var(--r-lg);
+  padding:var(--s4);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+}
+.legend h4{font-family:var(--f-mono);font-size:var(--t-3xs);letter-spacing:.16em;text-transform:uppercase;color:var(--fg-3);margin-bottom:var(--s3)}
+.legend ul{display:grid;gap:7px}
+.legend li{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-xs);color:var(--fg-2)}
+.legend .n{margin-left:auto;font-family:var(--f-mono);color:var(--fg);font-variant-numeric:tabular-nums}
+.legend .foot{margin-top:var(--s3);font-size:var(--t-3xs);color:var(--fg-3);line-height:1.45}
+.dot{width:10px;height:10px;border-radius:3px;flex:none}
+.dot--libre{background:var(--st-libre)} .dot--libera{background:var(--st-libera)}
+.dot--tomado{background:var(--st-tomado)} .dot--resto{background:var(--st-resto);outline:1px solid var(--brd)}
+
+.help{
+  position:absolute;right:clamp(12px,2.2vw,26px);bottom:clamp(12px,2.4vh,24px);
+  max-width:270px;text-align:right;font-size:var(--t-3xs);color:var(--fg-3);line-height:1.45;
+}
+.help .touch,.help .kb{display:none}
+body.coarse .help .mouse{display:none}
+body.coarse .help .touch{display:block}
+body.plan-focus .help .kb{display:block;color:var(--fg-2);margin-top:4px}
+
+/* --- ficha del mueble (A: mono, sólida; C: campos y textos) ------------- */
+.ficha{
+  position:absolute;z-index:8;width:252px;max-width:calc(100% - 24px);
+  border-radius:var(--r-lg);border:var(--hair) solid var(--brd-strong);
+  background:var(--panel-solid);box-shadow:var(--sh-3);
+  padding:var(--s4);font-family:var(--f-mono);
+  opacity:0;transform:translateY(6px);pointer-events:none;
+  transition:opacity var(--dur-2) var(--ease),transform var(--dur-2) var(--ease);
+}
+.ficha[data-open="true"]{opacity:1;transform:none;pointer-events:auto}
+.ficha__code{font-size:var(--t-md);font-weight:700;letter-spacing:.04em;color:var(--fg)}
+.ficha__type{font-size:var(--t-xs);color:var(--fg-2);margin-top:2px}
+.ficha__loc{font-size:var(--t-2xs);color:var(--fg-3);margin-top:2px}
+.ficha__hr{height:1px;background:var(--brd);margin:var(--s3) 0}
+.ficha__state{display:flex;align-items:center;gap:8px;font-size:var(--t-xs);font-weight:700}
+.ficha__row{font-size:var(--t-xs);color:var(--fg-2);margin-top:4px}
+.ficha__money{font-size:var(--t-sm);color:var(--fg);font-weight:700;font-variant-numeric:tabular-nums}
+.ficha__foot{font-size:var(--t-3xs);color:var(--fg-3);margin-top:var(--s3);padding-top:8px;border-top:1px dashed var(--brd)}
+.ficha__close{position:absolute;top:6px;right:6px;width:30px;height:30px;border-radius:var(--r-sm);display:grid;place-items:center;color:var(--fg-3)}
+.ficha__close:hover{color:var(--fg);background:var(--panel-2)}
+
+/* --- capas de prueba sobre el plano (de A) ------------------------------ */
+.fxlayer{position:absolute;inset:0;pointer-events:none;z-index:6}
+.fxbox{
+  position:absolute;opacity:0;transform:translateY(10px) scale(.985);font-family:var(--f-mono);
+  transition:opacity var(--dur-3) var(--ease),transform var(--dur-3) var(--ease);
+}
+.fxbox[data-on="true"]{opacity:1;transform:none}
+.glass{
+  background:var(--panel);border:var(--hair) solid var(--brd);border-radius:var(--r-lg);
+  backdrop-filter:blur(16px) saturate(1.4);-webkit-backdrop-filter:blur(16px) saturate(1.4);
+  box-shadow:var(--sh-3);
+}
+#fxContrato{width:min(276px,70%);padding:var(--s4);font-size:var(--t-2xs)}
+#fxContrato .ttl{font-family:var(--f-display);font-weight:800;font-size:var(--t-xs);margin-bottom:var(--s3)}
+#fxContrato .row{display:flex;justify-content:space-between;gap:var(--s3);padding:5px 0;border-bottom:1px dashed var(--brd);color:var(--fg-3)}
+#fxContrato .row b{color:var(--fg);font-weight:700}
+#fxContrato .tot{display:flex;justify-content:space-between;margin-top:var(--s3);font-size:var(--t-sm)}
+#fxContrato .tot b{color:var(--signal-ink);font-weight:800}
+#fxTarifa{padding:var(--s3) var(--s4);font-size:var(--t-xs);font-weight:700;text-align:center}
+#fxTarifa .d{color:var(--st-libera);font-size:var(--t-lg);display:block;font-weight:800}
+#fxCaras{padding:var(--s3) var(--s4);font-size:var(--t-2xs);color:var(--fg-2);line-height:1.5;width:min(230px,64%)}
+#fxCaras b{color:var(--fg);display:block;font-size:var(--t-xs);margin-bottom:3px}
+#fxTemporada{left:50%;transform:translateX(-50%) translateY(10px);bottom:clamp(160px,30vh,300px);
+  display:flex;gap:6px;flex-wrap:wrap;justify-content:center;width:min(520px,86%);padding:var(--s3)}
+#fxTemporada[data-on="true"]{transform:translateX(-50%)}
+#fxTemporada span{font-size:var(--t-3xs);letter-spacing:.06em;text-transform:uppercase;padding:5px 9px;
+  border:var(--hair) solid var(--brd);border-radius:var(--r-pill);color:var(--fg-3);white-space:nowrap;
+  transition:color var(--dur-2),background var(--dur-2),border-color var(--dur-2)}
+#fxTemporada span.act{color:var(--on-signal);background:var(--signal);border-color:var(--signal);font-weight:700}
+#fxAvisos{left:50%;transform:translateX(-50%) translateY(10px);top:calc(var(--railh) + 52px);width:min(400px,86%);padding:var(--s5)}
+#fxAvisos[data-on="true"]{transform:translateX(-50%)}
+#fxAvisos .mails{display:grid;gap:var(--s2)}
+#fxAvisos .mail{display:flex;gap:var(--s3);align-items:center;font-size:var(--t-3xs);color:var(--fg-2);
+  border:var(--hair) solid var(--brd);border-radius:var(--r-sm);padding:8px var(--s3);background:var(--panel-solid)}
+#fxAvisos .mail em{font-style:normal;color:var(--fg);font-weight:700}
+#fxAvisos .mail .tag{margin-left:auto;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--fg-3)}
+#fxAvisos .line{position:relative;height:2px;background:var(--brd-strong);margin:var(--s6) 0 var(--s5)}
+#fxAvisos .dots{display:flex;justify-content:space-between;margin-top:-30px}
+#fxAvisos .dot3{text-align:center;width:33%}
+#fxAvisos .dot3 i{display:block;width:11px;height:11px;border-radius:50%;background:var(--signal);margin:0 auto 9px;
+  box-shadow:0 0 0 5px color-mix(in srgb,var(--signal) 20%,transparent)}
+#fxAvisos .dot3 b{font-size:var(--t-lg);font-family:var(--f-display);font-weight:800;display:block}
+#fxAvisos .dot3 span{font-size:10px;color:var(--fg-3);letter-spacing:.14em;text-transform:uppercase}
+#fxMontaje{width:184px;padding:9px;border-radius:22px}
+#fxMontaje .scr{border-radius:14px;overflow:hidden;background:var(--panel-2);border:var(--hair) solid var(--brd)}
+#fxMontaje .photo{height:92px;background:
+  linear-gradient(115deg,color-mix(in srgb,var(--st-libera) 34%,var(--bg)),color-mix(in srgb,var(--signal) 22%,var(--bg)));
+  position:relative}
+#fxMontaje .photo::after{content:"";position:absolute;inset:auto 12px 11px 12px;height:22px;border-radius:3px;
+  background:linear-gradient(90deg,var(--st-tomado),var(--st-libera))}
+#fxMontaje .meta{padding:9px;font-size:10px;color:var(--fg-2);line-height:1.45}
+#fxMontaje .meta b{color:var(--fg);letter-spacing:.04em}
+#fxMontaje .btns{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:0 9px 9px}
+#fxMontaje .btns span{font-size:10px;text-align:center;padding:8px 4px;border-radius:var(--r-sm);font-weight:700}
+#fxMontaje .ok{background:var(--st-libre);color:#04140B}
+#fxMontaje .no{border:var(--hair) solid var(--brd);color:var(--fg-2)}
+
+/* --- el guion: los paneles que pasan al costado ------------------------- */
+.script{position:relative;z-index:var(--z-script);margin-top:-100dvh;pointer-events:none}
+.panel{
+  min-height:64vh;display:grid;align-items:center;
+  padding:var(--s5) clamp(14px,3.5vw,44px);
+  grid-template-columns:1fr var(--colw);column-gap:4vw;
+}
+.panel--hero{min-height:100dvh;padding-top:calc(var(--railh) + 16px)}
+.panel--corto{min-height:44vh}
+.panel>.card{grid-column:2}
+.card{
+  pointer-events:auto;max-width:100%;position:relative;
+  background:var(--panel);border:var(--hair) solid var(--brd);border-radius:var(--r-lg);
+  backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);
+  padding:clamp(20px,2.2vw,30px);box-shadow:var(--sh-3);
+  opacity:0;transform:translateY(22px);
+  transition:opacity var(--dur-5) var(--ease),transform var(--dur-5) var(--ease);
+}
+.panel.is-in>.card{opacity:1;transform:none}
+.card__i{width:32px;height:32px;border-radius:var(--r-sm);display:grid;place-items:center;
+  border:var(--hair) solid var(--brd);color:var(--signal-ink);background:color-mix(in srgb,var(--signal) 12%,transparent);margin-bottom:var(--s3)}
+.card .num{font-family:var(--f-mono);font-size:var(--t-3xs);letter-spacing:.2em;color:var(--fg-3);display:block;margin-bottom:var(--s3)}
+.card .num b{color:var(--signal-ink);font-weight:700}
+.card>h3{margin-bottom:var(--s3)}
+.card p+p{margin-top:var(--s3)}
+.card__foot{
+  margin-top:var(--s4);padding-top:var(--s3);border-top:var(--hair) solid var(--brd);
+  font-family:var(--f-mono);font-size:var(--t-2xs);color:var(--fg-3);line-height:1.5;
+}
+.card__demo{margin-top:var(--s4)}
+.cta-row{display:flex;flex-wrap:wrap;gap:var(--s3);margin-top:var(--s5)}
+.fine{font-size:var(--t-xs);color:var(--fg-3);margin-top:var(--s3);line-height:1.5}
+
+/* film en pantallas chicas: el plano se pega arriba y las tarjetas pasan debajo */
+@media (max-width:999px){
+  :root{--colw:0px}
+  /* el plano queda pegado arriba y las tarjetas pasan POR DEBAJO */
+  .stage{top:var(--railh);height:clamp(260px,44dvh,360px);z-index:3;
+    background-color:var(--bg);border-bottom:var(--hair) solid var(--brd)}
+  .ficha{width:180px;padding:10px;font-size:11px;line-height:1.45}
+  .ficha__code{font-size:13px}
+  .ficha__type,.ficha__loc,.ficha__row,.ficha__state{font-size:11px}
+  .ficha__money{font-size:12px}
+  .ficha__hr{margin:8px 0}
+  .ficha__foot{font-size:10px;margin-top:8px;padding-top:6px}
+  .ficha__close{width:26px;height:26px;top:3px;right:3px}
+  .stage__plan{inset:0}
+  .script{margin-top:0}
+  .panel{grid-template-columns:1fr;min-height:0;padding:var(--s6) clamp(14px,4vw,24px) 0}
+  .panel--hero,.panel--corto{min-height:0}
+  .panel>.card{grid-column:1}
+  .card{backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--panel-solid)}
+  .legend{left:0;right:0;bottom:0;max-width:none;border-radius:0;border:0;
+    border-top:var(--hair) solid var(--brd);padding:8px 10px;background:var(--panel-solid);backdrop-filter:none}
+  .legend h4,.legend .foot{display:none}
+  .legend ul{display:flex;flex-wrap:wrap;gap:4px 14px}
+  .legend li{font-size:var(--t-3xs)}
+  .legend .n{margin-left:5px}
+  .help{display:none}
+  .rotulo{top:8px;left:10px;font-size:10px;padding:5px 9px;max-width:calc(100% - 160px);line-height:1.35}
+  .tools{top:8px;right:10px}
+  .tool{height:32px;min-width:32px;padding:0 8px}
+  .tool span{display:none}
+  .vignette{opacity:.5}
+}
+@media (max-width:1000px){ .fxbox{display:none} }   /* la prueba la dan las microdemos de la tarjeta */
+
+/* ==========================================================================
+   10. MICRODEMOS (de C) — viven dentro de las tarjetas y funcionan solas,
+   también en pantallas chicas y con movimiento reducido.
+   ========================================================================== */
+.mini{border-radius:var(--r-md);border:var(--hair) solid var(--brd);background:var(--panel-2);overflow:hidden}
+.mini__bar{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:var(--hair) solid var(--brd);
+  font-family:var(--f-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-3)}
+.mini__body{padding:var(--s3)}
+.kvrow{display:flex;justify-content:space-between;gap:var(--s3);padding:6px 0;font-size:var(--t-xs);border-bottom:1px dashed var(--brd)}
+.kvrow:last-child{border-bottom:0}
+.kvrow span{color:var(--fg-3)}
+.kvrow b{font-family:var(--f-mono);font-weight:700;color:var(--fg);font-variant-numeric:tabular-nums}
+.total{display:flex;justify-content:space-between;align-items:baseline;margin-top:var(--s2);padding-top:var(--s3);border-top:1px solid var(--brd)}
+.total b{font-family:var(--f-mono);font-size:var(--t-lg);color:var(--signal-ink);font-variant-numeric:tabular-nums;letter-spacing:-.02em;font-weight:800}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{padding:5px 11px;border-radius:var(--r-pill);border:var(--hair) solid var(--brd);
+  font-size:var(--t-xs);color:var(--fg-2);white-space:nowrap;transition:all var(--dur-2) var(--ease)}
+button.chip:hover{border-color:var(--signal);color:var(--fg)}
+.chip[aria-pressed="true"]{background:color-mix(in srgb,var(--signal) 16%,transparent);border-color:var(--signal);color:var(--fg);font-weight:700}
+.chip--stat{font-family:var(--f-mono);font-size:var(--t-2xs);letter-spacing:.06em}
+.gridmini{display:grid;grid-template-columns:repeat(8,1fr);gap:4px}
+.gridmini i{aspect-ratio:1;border-radius:3px;display:block;background:var(--st-resto);transition:background var(--dur-3) var(--ease)}
+.meter{height:8px;border-radius:var(--r-pill);background:var(--panel-solid);border:var(--hair) solid var(--brd);position:relative;overflow:hidden}
+.meter i{position:absolute;inset-block:0;left:0;background:var(--st-libera);width:0;transition:width var(--dur-5) var(--ease-out)}
+.timeline{display:flex;align-items:center;margin-top:var(--s3)}
+.timeline__n{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
+  font-family:var(--f-mono);font-size:var(--t-xs);border:var(--hair) solid var(--brd);color:var(--fg-2);background:var(--panel-solid);
+  transition:color var(--dur-4),border-color var(--dur-4)}
+.timeline__l{flex:1;height:2px;background:var(--brd);position:relative;overflow:hidden}
+.timeline__l i{position:absolute;inset-block:0;left:0;width:0;background:var(--signal);transition:width var(--dur-5) var(--ease-out)}
+.is-in .timeline__l i{width:100%}
+.is-in .timeline__n{border-color:var(--signal);color:var(--signal-ink)}
+.mailrow{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--r-sm);
+  border:var(--hair) solid var(--brd);background:var(--panel-solid);font-size:var(--t-xs);color:var(--fg-2);
+  opacity:0;transform:translateY(6px)}
+.mailrow b{color:var(--fg);font-weight:700}
+.is-in .mailrow{animation:rise var(--dur-4) var(--ease-out) forwards}
+.is-in .mailrow:nth-child(2){animation-delay:.09s}
+.is-in .mailrow:nth-child(3){animation-delay:.18s}
+@keyframes rise{to{opacity:1;transform:none}}
+.mailrow__tag{margin-left:auto;font-family:var(--f-mono);font-size:10px;letter-spacing:.08em;padding:2px 7px;
+  border-radius:var(--r-pill);border:1px solid var(--brd);color:var(--fg-3)}
+.mailrow__tag--none{color:var(--st-resto);border-color:var(--brd-strong)}
+.fono{width:174px;flex:none;border-radius:20px;border:var(--hair) solid var(--brd-strong);
+  background:var(--panel-solid);box-shadow:var(--sh-2);overflow:hidden}
+.fono__top{height:20px;display:grid;place-items:center;border-bottom:var(--hair) solid var(--brd)}
+.fono__top i{width:40px;height:4px;border-radius:4px;background:var(--brd-strong);display:block}
+.fono__in{padding:11px;display:grid;gap:9px}
+.fono__code{font-family:var(--f-mono);font-size:var(--t-xs);color:var(--fg);font-weight:700}
+.fono__where{font-size:11px;color:var(--fg-3);line-height:1.4}
+.fono__btns{display:grid;gap:6px}
+.fono__b{min-height:34px;border-radius:var(--r-sm);font-size:var(--t-xs);font-weight:700;
+  border:var(--hair) solid var(--brd);display:flex;align-items:center;justify-content:center;gap:6px}
+.fono__b--ok{background:var(--st-libre-soft);color:var(--st-libre);border-color:color-mix(in srgb,var(--st-libre) 45%,transparent)}
+.fono__b--no{color:var(--fg-2)}
+.fono__shot{border-radius:var(--r-sm);overflow:hidden;border:var(--hair) solid var(--brd);height:0;opacity:0;
+  transition:height var(--dur-4) var(--ease-out),opacity var(--dur-3)}
+.fono__shot[data-on="true"]{height:76px;opacity:1}
+.demo6{display:flex;gap:var(--s4);flex-wrap:wrap;align-items:flex-start}
+.demo6__side{flex:1;min-width:180px}
+
+/* ==========================================================================
+   11. SECCIONES ESTÁTICAS (de C)
+   ========================================================================== */
+.glasscard{
+  position:relative;border-radius:var(--r-lg);border:var(--hair) solid var(--brd);background:var(--panel);
+  backdrop-filter:blur(var(--blur)) saturate(1.2);-webkit-backdrop-filter:blur(var(--blur)) saturate(1.2);
+  box-shadow:var(--sh-1);
+}
+.pbar{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) var(--s4);
+  border-bottom:var(--hair) solid var(--brd);font-family:var(--f-mono);font-size:var(--t-2xs);
+  letter-spacing:.13em;text-transform:uppercase;color:var(--fg-3)}
+.pbar__dots{display:flex;gap:5px;flex:none}
+.pbar__dots i{width:7px;height:7px;border-radius:50%;background:var(--brd-strong);display:block}
+.pbar__sp{margin-left:auto}
+.pad{padding:var(--s5)}
+
+/* perfiles */
+.roles{display:grid;gap:var(--s4);grid-template-columns:1fr}
+@media (min-width:960px){ .roles{grid-template-columns:minmax(290px,38fr) 62fr;align-items:start} }
+.roles__tabs{display:grid;gap:var(--s3)}
+.rtab{text-align:left;padding:var(--s4);border-radius:var(--r-md);border:var(--hair) solid var(--brd);
+  background:var(--panel);display:grid;gap:6px;position:relative;overflow:hidden;
+  transition:border-color var(--dur-3),background var(--dur-3)}
+.rtab::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--signal);
+  transform:scaleY(0);transform-origin:top;transition:transform var(--dur-3) var(--ease-out)}
+.rtab[aria-selected="true"]{border-color:var(--brd-strong);background:var(--panel-2);box-shadow:var(--sh-2)}
+.rtab[aria-selected="true"]::before{transform:scaleY(1)}
+.rtab:hover{border-color:var(--brd-strong)}
+.rtab__k{font-family:var(--f-mono);font-size:var(--t-2xs);letter-spacing:.14em;text-transform:uppercase;color:var(--fg-3)}
+.rtab__t{font-size:var(--t-lg);font-weight:800;letter-spacing:-.02em;color:var(--fg);font-family:var(--f-display)}
+.rtab__d{font-size:var(--t-sm);color:var(--fg-2);line-height:1.55;display:none}
+.rtab[aria-selected="true"] .rtab__d{display:block}
+@media (max-width:959px){ .rtab__d{display:block} }
+.rpane{display:none;padding:var(--s5);gap:var(--s4)}
+.rpane[data-on="true"]{display:grid;animation:fadeIn var(--dur-4) var(--ease-out)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.redact{position:relative;color:transparent;background:var(--st-resto-soft);border-radius:4px;padding-inline:4px;user-select:none}
+.redact::after{content:"•••••";color:var(--fg-3);position:absolute;inset:0;display:grid;place-items:center;
+  font-family:var(--f-mono);font-size:11px;letter-spacing:.1em}
+
+/* cifras */
+.readout{display:grid;gap:var(--s5);grid-template-columns:1fr}
+@media (min-width:860px){ .readout{grid-template-columns:auto 1fr;align-items:center;gap:var(--s7)} }
+.readout__hero{display:grid;gap:var(--s2);justify-items:center;min-width:200px}
+.readout__ring{position:relative;width:130px;height:130px}
+.rrow{display:grid;grid-template-columns:auto 1fr;gap:var(--s3);align-items:baseline;padding:var(--s3) 0;border-bottom:1px solid var(--brd)}
+.rrow:last-child{border-bottom:0}
+.rrow__k{font-family:var(--f-mono);font-size:var(--t-xs);letter-spacing:.05em;color:var(--fg);min-width:148px;display:flex;align-items:center;gap:8px}
+.rrow__v{font-size:var(--t-sm);color:var(--fg-2)}
+
+/* --- cómo se arranca: la sala se vacía, se dibuja en gris y se pinta ---- */
+.pasos-film{position:relative;height:220vh}
+.pasos-sticky{position:sticky;top:var(--railh);height:calc(100dvh - var(--railh));display:grid;align-content:center;
+  grid-template-columns:1fr;gap:var(--s5);padding-block:var(--s4)}
+@media (min-width:1000px){ .pasos-sticky{grid-template-columns:52fr 48fr;align-items:center;gap:var(--s7)} }
+.sala{border-radius:var(--r-lg);border:var(--hair) solid var(--brd);background:
+   radial-gradient(120% 100% at 50% 40%, color-mix(in srgb,var(--signal) 4%,transparent), transparent 64%), var(--panel);
+  overflow:hidden;position:relative}
+.sala__bar{display:flex;align-items:center;gap:var(--s3);padding:9px var(--s4);border-bottom:var(--hair) solid var(--brd);
+  font-family:var(--f-mono);font-size:var(--t-2xs);letter-spacing:.12em;text-transform:uppercase;color:var(--fg-3)}
+.sala__bar b{color:var(--signal-ink);font-weight:700}
+.sala svg{display:block;width:100%;height:clamp(190px,42dvh,420px)}
+.pasos{display:grid;gap:var(--s3)}
+.paso{position:relative;padding:var(--s3) var(--s4);border-radius:var(--r-md);border:var(--hair) solid var(--brd);
+  background:var(--panel);display:grid;gap:6px;transition:border-color var(--dur-4),opacity var(--dur-4),background var(--dur-4)}
+.paso[data-on="false"]{opacity:.45}
+.paso[data-on="true"]{border-color:var(--brd-strong);background:var(--panel-2)}
+.pasos .body{font-size:var(--t-sm)}
+.paso__n{font-family:var(--f-display);font-size:var(--t-lg);font-weight:800;line-height:1;
+  color:transparent;-webkit-text-stroke:1.4px var(--fg-3);transition:-webkit-text-stroke-color var(--dur-4)}
+.paso[data-on="true"] .paso__n{-webkit-text-stroke-color:var(--signal-ink)}
+.paso__pipe{position:absolute;left:0;right:0;top:0;height:2px;background:var(--brd);border-radius:2px;overflow:hidden}
+.paso__pipe i{display:block;height:100%;width:0;background:var(--signal);transition:width var(--dur-4) var(--ease-out)}
+.paso[data-on="true"] .paso__pipe i{width:100%}
+
+/* asesoría */
+.bento{display:grid;gap:var(--s4);grid-template-columns:1fr}
+@media (min-width:760px){ .bento{grid-template-columns:repeat(6,1fr)} .bA{grid-column:span 4} .bB{grid-column:span 2} .bC{grid-column:span 6} }
+.bcard{display:flex;flex-direction:column}
+.bcard .pad{display:grid;gap:var(--s3);align-content:start}
+.reco{display:grid;gap:var(--s2)}
+.reco__it{display:grid;grid-template-columns:1fr auto;gap:var(--s3);align-items:center;padding:var(--s3) var(--s4);
+  border-radius:var(--r-md);border:var(--hair) solid var(--brd);background:var(--panel-2);opacity:0;transform:translateY(10px)}
+.reco__t{font-size:var(--t-xs);color:var(--fg-2);line-height:1.5}
+.reco__v{font-family:var(--f-mono);font-size:var(--t-sm);font-weight:800;color:var(--signal-ink);white-space:nowrap;font-variant-numeric:tabular-nums}
+.reco__rank{font-family:var(--f-mono);font-size:10px;color:var(--fg-3);letter-spacing:.1em}
+.meses{display:flex;gap:5px;flex-wrap:wrap}
+.mes{min-width:42px;flex:1;padding:8px 4px;border-radius:var(--r-xs);text-align:center;
+  font-family:var(--f-mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  border:var(--hair) solid var(--brd);background:color-mix(in srgb,var(--signal) 12%,transparent);color:var(--fg-2)}
+.mes--hueco{background:transparent;border-style:dashed;color:var(--fg-3);opacity:.75}
+.mes--futuro{background:transparent;color:var(--fg-3);opacity:.45}
+.honesto{border-radius:var(--r-lg);border:var(--hair) dashed var(--brd-strong);padding:var(--s5);
+  background:var(--panel-2);display:grid;gap:var(--s3)}
+
+/* confianza */
+.trust{display:grid;border-radius:var(--r-lg);border:var(--hair) solid var(--brd);overflow:hidden;background:var(--panel)}
+.trust__it{display:grid;grid-template-columns:auto 1fr;gap:var(--s4);padding:var(--s5);
+  border-bottom:var(--hair) solid var(--brd);align-items:start;transition:background var(--dur-3)}
+.trust__it:last-child{border-bottom:0}
+.trust__it:hover{background:var(--panel-2)}
+.trust__n{font-family:var(--f-mono);font-size:var(--t-xs);color:var(--signal-ink);padding-top:3px;letter-spacing:.1em}
+.trust__t{font-size:var(--t-md);font-weight:700;color:var(--fg);margin-bottom:4px}
+.links{display:flex;flex-wrap:wrap;gap:var(--s4);margin-top:var(--s4)}
+
+/* precio */
+.precio{display:grid;gap:var(--s5);grid-template-columns:1fr}
+@media (min-width:900px){ .precio{grid-template-columns:minmax(280px,44fr) 56fr;align-items:start} }
+.precio__tag{font-family:var(--f-display);font-size:var(--t-2xl);font-weight:800;letter-spacing:-.03em;color:var(--fg);padding-block:var(--s2)}
+.estados{display:grid;gap:var(--s2)}
+.estado{display:grid;grid-template-columns:auto 1fr;gap:var(--s3);align-items:start;padding:var(--s4);
+  border-radius:var(--r-md);border:var(--hair) solid var(--brd);background:var(--panel-2);transition:all var(--dur-3) var(--ease)}
+.estado[data-on="true"]{border-color:var(--signal);background:color-mix(in srgb,var(--signal) 10%,transparent)}
+.estado__d{width:10px;height:10px;border-radius:50%;margin-top:7px;background:var(--brd-strong)}
+.estado[data-on="true"] .estado__d{background:var(--signal)}
+.estado__t{font-size:var(--t-sm);color:var(--fg-2);line-height:1.55}
+
+/* cierre y pie */
+.cierre{text-align:center;display:grid;gap:var(--s4);justify-items:center;padding-block:clamp(52px,8vw,104px)}
+.cierre__cta{display:flex;flex-wrap:wrap;gap:var(--s3);justify-content:center}
+.pie{border-top:var(--hair) solid var(--brd);background:var(--bg-deep);padding-block:var(--s8) var(--s6)}
+.pie__grid{display:grid;gap:var(--s6);grid-template-columns:1fr}
+@media (min-width:760px){ .pie__grid{grid-template-columns:2fr 1fr 1fr 1fr} }
+.pie__col h4{font-family:var(--f-mono);font-size:var(--t-2xs);letter-spacing:.14em;text-transform:uppercase;color:var(--fg-3);margin-bottom:var(--s3)}
+.pie__col li{margin-bottom:8px}
+.pie__col a{font-size:var(--t-sm);color:var(--fg-2)}
+.pie__col a:hover{color:var(--signal-ink)}
+.pie__legal{margin-top:var(--s6);padding-top:var(--s5);border-top:var(--hair) solid var(--brd);display:grid;gap:var(--s3)}
+
+/* tabla equivalente */
+.tabla-alt summary{font-size:var(--t-xs);color:var(--fg-3);cursor:pointer;padding:6px 0;font-family:var(--f-mono)}
+.tabla-alt summary:hover{color:var(--signal-ink)}
+.tabla-alt table{width:100%;border-collapse:collapse;font-size:var(--t-xs);margin-top:var(--s2)}
+.tabla-alt th,.tabla-alt td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--brd);color:var(--fg-2)}
+.tabla-alt th{color:var(--fg-3);font-family:var(--f-mono);font-size:var(--t-3xs);letter-spacing:.08em;text-transform:uppercase}
+.tabla-alt td:first-child{font-family:var(--f-mono);color:var(--fg)}
+.tabla-wrap{overflow-x:auto}
+
+/* toast */
+.toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,26px);z-index:var(--z-top);
+  display:flex;align-items:center;gap:10px;padding:11px 16px;border-radius:var(--r-pill);
+  border:var(--hair) solid var(--brd-strong);background:var(--panel-solid);box-shadow:var(--sh-3);
+  font-size:var(--t-sm);color:var(--fg);opacity:0;pointer-events:none;max-width:calc(100vw - 32px);
+  transition:opacity var(--dur-3) var(--ease),transform var(--dur-3) var(--ease)}
+.toast[data-on="true"]{opacity:1;transform:translate(-50%,0)}
+
+/* revelado al bajar */
+.rv{opacity:0;transform:translateY(14px);transition:opacity var(--dur-4) var(--ease-out),transform var(--dur-4) var(--ease-out)}
+.rv.is-in{opacity:1;transform:none}
+.rv-1{transition-delay:.06s} .rv-2{transition-delay:.12s} .rv-3{transition-delay:.18s}
+.rv-4{transition-delay:.24s} .rv-5{transition-delay:.30s} .rv-6{transition-delay:.36s}
+
+/* "Cómo se arranca" en pantallas chicas: sin pantalla pegada. La sala se
+   dibuja y se pinta sola al entrar en cuadro y los tres pasos se leen enteros.
+   (Va después de la base para ganarle por orden, no por especificidad.) */
+@media (max-width:999px){
+  .pasos-film{height:auto}
+  .pasos-sticky{position:static;height:auto;padding-block:var(--s4)}
+  .paso[data-on="false"]{opacity:1}
+}
+
+/* rendimiento: el vidrio es caro en móvil (regla de C) */
+@media (max-width:720px){
+  .glasscard,.mini,.rtab,.paso,.sala{backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--panel-solid)}
+  .rail__in{backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+}
+
+/* ==========================================================================
+   12. MOVIMIENTO REDUCIDO
+   La cámara NO se apaga: se queda QUIETA. Los encuadres siguen cambiando
+   al bajar, pero de golpe, sin recorrido; las capas de prueba siguen
+   apareciendo, sin desplazamiento. Nadie pierde una sola prueba.
+   ========================================================================== */
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;
+    transition-duration:.001ms!important;scroll-behavior:auto!important}
+  .rv{opacity:1;transform:none}
+  .card{opacity:1;transform:none}
+  .beam::after,.pulse::after{display:none}
+  .mailrow{opacity:1;transform:none}
+  .reco__it{opacity:1;transform:none}
+}
+/* con la preferencia activa, los tres pasos se leen de una y la sala queda
+   dibujada y pintada: sin sticky, sin recorrido, con la prueba a la vista. */
+body.reducido .pasos-film{height:auto}
+body.reducido .pasos-sticky{position:static;height:auto}
+body.reducido .paso[data-on="false"]{opacity:1}
+
+@media print{ .rail,.deco,.toast,.stage{display:none} .script{margin-top:0} }
+</style>
+<noscript><style>
+  .card,.rv{opacity:1!important;transform:none!important}
+  .stage{display:none} .script{margin-top:0} .pasos-film{height:auto} .pasos-sticky{position:static;height:auto}
+  .panel{grid-template-columns:1fr;min-height:0;padding-top:var(--s6)} .panel>.card{grid-column:1}
+</style></noscript>
+</head>
+<body>
+
+<div class="deco" aria-hidden="true"><div class="deco__veil"></div><div class="deco__grid"></div></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 12h14"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="6.5"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-cube" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 7l6-3 6 3 6-3v13l-6 3-6-3-6 3V7z"/><path d="M9 4v13M15 7v13"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v13M6 12l6 6 6-6"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 7l8.5 6 8.5-6"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="4.5" y="10" width="15" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 8.5h3.5L8 6h8l1.5 2.5H21v10H3z"/><circle cx="12" cy="13" r="3.2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5 10-11"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M11 3H4v7l10 10 7-7L11 3z"/><circle cx="7.6" cy="7.6" r="1.3"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M6 9a6 6 0 1112 0c0 4 1.5 5.5 1.5 5.5h-15S6 13 6 9z"/><path d="M10 18.5a2.2 2.2 0 004 0"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16M7 16V9M12 16V5M17 16v-5"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.4"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.4"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.4"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.4"/></symbol>
+</defs></svg>
+
+<a href="#contenido" class="skip">Ir al contenido</a>
+
+<header class="rail">
+  <div class="wrap">
+    <div class="rail__in">
+      <a class="mark" href="#top" aria-label="RECABRA, inicio">
+        <svg class="mark__glyph" viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M16 3 29 10.5 16 18 3 10.5Z" fill="var(--st-libre)"/>
+          <path d="M3 10.5 16 18v11L3 21.5Z" fill="var(--st-tomado)" opacity=".85"/>
+          <path d="M29 10.5 16 18v11l13-7.5Z" fill="var(--st-libera)" opacity=".7"/>
+        </svg>
+        <span class="mark__txt">RECABRA</span>
+      </a>
+      <nav class="rail__nav" aria-label="Secciones">
+        <a href="#que-hace">Lo que hace</a>
+        <a href="#para-quien">Para quién</a>
+        <a href="#como-se-usa">Cómo se usa</a>
+        <a href="#asesoria">Asesoría</a>
+        <a href="#confianza">Datos</a>
+        <a href="#precio">Precio</a>
+      </nav>
+      <div class="rail__live" aria-hidden="true">
+        <span class="rail__kv"><b data-count="7">0</b><span>libres</span></span>
+        <span class="rail__kv"><b data-count="3">0</b><span>se liberan</span></span>
+        <span class="rail__kv"><b data-count="6">0</b><span>tomados</span></span>
+      </div>
+      <div class="rail__acts">
+        <button class="iconbtn" id="tema" type="button" aria-label="Cambiar a modo claro" title="Claro / oscuro">
+          <svg width="18" height="18" aria-hidden="true"><use href="#i-sun"/></svg>
+        </button>
+        <a class="btn btn--primary btn--sm" href="/login#registro">Crear mi cuenta</a>
+      </div>
+      <div class="rail__prog" aria-hidden="true"><i id="prog"></i></div>
+    </div>
+  </div>
+</header>
+
+<main id="contenido">
+
+<!-- ================= EL FILM: hero + Lo que hace, sobre una sola sala ============== -->
+<div class="film" id="film">
+
+  <div class="stage" id="stage">
+    <div class="stage__plan" id="planbox" tabindex="0" role="application"
+         aria-label="Plano interactivo de un supermercado de ejemplo. Usá las flechas para moverte y Enter para abrir la ficha de un mueble."
+         aria-describedby="plano-desc">
+      <svg class="stage__svg" id="svg" role="img"
+           aria-label="Plano isométrico de un supermercado de ejemplo, visto desde arriba en perspectiva. Dieciséis muebles alquilables pintados según su estado —verde libre, naranja se libera, rojo tomado— entre pasillos, cajas y neveras en gris que no se alquilan.">
+        <g id="escena"></g>
+      </svg>
+      <div class="vignette" aria-hidden="true"></div>
+
+      <!-- capas de prueba: la cámara las saca sobre el propio plano -->
+      <div class="fxlayer" id="fxlayer" aria-hidden="true">
+        <div class="fxbox glass" id="fxCaras">
+          <b>Una góndola son dos espacios</b>
+          GON-04·A tomada · GON-04·B libre. Cada cara se vende aparte.
+        </div>
+        <div class="fxbox glass" id="fxContrato">
+          <div class="ttl">Una sola ficha</div>
+          <div class="row"><span>proveedor</span><b>Bebidas Zafiro</b></div>
+          <div class="row"><span>canon mensual</span><b>$ 1.500.000</b></div>
+          <div class="row"><span>desde</span><b>1 sep</b></div>
+          <div class="row"><span>hasta</span><b>31 oct</b></div>
+          <div class="tot"><span>61 días</span><b>$ 3.050.000</b></div>
+        </div>
+        <div class="fxbox glass" id="fxTemporada">
+          <span>Escolar</span><span>Semana Santa</span><span>Día de la Madre</span><span>Día del Padre</span>
+          <span>Vacaciones</span><span class="act">Amor y Amistad</span><span>Halloween</span><span>Black Friday</span><span>Navidad</span>
+        </div>
+        <div class="fxbox glass" id="fxTarifa"><span class="d">−17 %</span>vs referencia</div>
+        <div class="fxbox glass" id="fxAvisos">
+          <div class="mails">
+            <div class="mail"><em>el comercial</em> recibe el acuerdo con el valor<span class="tag">1</span></div>
+            <div class="mail"><em>el mercaderista</em> recibe la orden de montaje<span class="tag">2</span></div>
+            <div class="mail"><em>el proveedor</em> recibe la constancia<span class="tag">3</span></div>
+          </div>
+          <div class="line"></div>
+          <div class="dots">
+            <div class="dot3"><i></i><b>30</b><span>días</span></div>
+            <div class="dot3"><i></i><b>15</b><span>días</span></div>
+            <div class="dot3"><i></i><b>6</b><span>días</span></div>
+          </div>
+        </div>
+        <div class="fxbox glass" id="fxMontaje">
+          <div class="scr">
+            <div class="photo"></div>
+            <div class="meta"><b>CRS-01</b><br>Pasillo central · sede CENTRO</div>
+            <div class="btns"><span class="ok">Montado</span><span class="no">No pude</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hud">
+        <p class="rotulo"><i class="pulse" aria-hidden="true"></i> Supermercado de ejemplo · Tocá un mueble</p>
+        <div class="tools">
+          <button class="tool" id="t-out" type="button" aria-label="Alejar" title="Alejar"><svg width="15" height="15" aria-hidden="true"><use href="#i-minus"/></svg></button>
+          <button class="tool" id="t-in" type="button" aria-label="Acercar" title="Acercar"><svg width="15" height="15" aria-hidden="true"><use href="#i-plus"/></svg></button>
+          <button class="tool" id="t-fit" type="button" aria-label="Centrar" title="Centrar"><svg width="15" height="15" aria-hidden="true"><use href="#i-target"/></svg><span>Centrar</span></button>
+          <button class="tool" id="t-3d" type="button" aria-pressed="false" aria-label="Ver en 3D" title="Ver en 3D">
+            <svg width="15" height="15" aria-hidden="true"><use href="#i-cube"/></svg><span id="t-3d-txt">Ver en 3D</span>
+          </button>
+        </div>
+        <div class="legend">
+          <h4>Estado en el periodo</h4>
+          <ul>
+            <li><i class="dot dot--libre" aria-hidden="true"></i> Libre todo el periodo <span class="n" data-count="7">0</span></li>
+            <li><i class="dot dot--libera" aria-hidden="true"></i> Se libera en el periodo <span class="n" data-count="3">0</span></li>
+            <li><i class="dot dot--tomado" aria-hidden="true"></i> Tomado <span class="n" data-count="6">0</span></li>
+            <li><i class="dot dot--resto" aria-hidden="true"></i> Resto de la sala</li>
+          </ul>
+          <p class="foot">Es la misma lectura que vas a tener adentro, con tu propia tienda.</p>
+        </div>
+        <p class="help">
+          <span class="mouse">Arrastrá para moverte. Rueda para acercar. Tocá un mueble para ver su ficha.</span>
+          <span class="touch">Deslizá para moverte. Pellizcá para acercar. Tocá un mueble.</span>
+          <span class="kb">Flechas para moverte · + y − para acercar · Enter para abrir la ficha del mueble · Esc para cerrarla</span>
+        </p>
+      </div>
+
+      <div class="ficha" id="ficha" role="group" aria-live="polite" aria-label="Ficha del mueble">
+        <button class="ficha__close" id="ficha-x" type="button" aria-label="Cerrar"><svg width="16" height="16" aria-hidden="true"><use href="#i-close"/></svg></button>
+        <div id="ficha-in"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="script" id="script">
+
+    <!-- HERO -->
+    <section class="panel panel--hero" data-scene="hero" id="top">
+      <div class="card">
+        <p class="mark__txt" style="display:block;margin-bottom:10px">RECABRA</p>
+        <p class="eyebrow">Espacios comerciales de supermercado</p>
+        <h1 style="margin:10px 0 14px">Vendé tocando el plano</h1>
+        <p class="lead" style="margin-bottom:14px">
+          Qué mueble está <span style="color:var(--st-libre)">libre</span>,
+          quién lo <span style="color:var(--st-tomado)">ocupa</span>,
+          <span style="color:var(--signal-ink)">a cuánto</span> y
+          <span style="color:var(--st-libera)">hasta cuándo</span>.
+        </p>
+        <p class="body">RECABRA es el sistema con el que un supermercado vende sus espacios de exhibición. Dibujás el plano de cada sede, marcás qué muebles se alquilan y armás el contrato ahí mismo, tocando el mueble.</p>
+        <p class="body" style="margin-top:var(--s3)">Si hoy eso vive en un Excel, en un chat de WhatsApp o en la memoria de alguien, esta es la pantalla que falta.</p>
+        <div class="cta-row">
+          <a class="btn btn--primary" href="/login#registro">Crear mi cuenta</a>
+          <a class="btn btn--ghost" href="/login">Ya tengo cuenta</a>
+        </div>
+        <p class="fine">Entrás con tu correo o con Google. Crear la cuenta y tu supermercado toma un minuto.</p>
+        <p class="fine">Los datos del plano son inventados, para mostrar cómo se ve. Ningún supermercado real aparece acá.</p>
+      </div>
+    </section>
+
+    <!-- 01 · LO QUE HACE -->
+    <section class="panel panel--corto" data-scene="qh-intro" id="que-hace">
+      <div class="card">
+        <p class="sec__num mono">01 / LO QUE HACE</p>
+        <h2 style="margin:8px 0 12px">Lo que hace</h2>
+        <p class="lead">Seis cosas concretas. Todas están construidas y andan hoy.</p>
+        <p class="card__foot">Seis tarjetas. El plano de al lado se mueve con cada una: acerca el mueble del que habla, lo repinta, lo separa en dos caras y saca los avisos.</p>
+      </div>
+    </section>
+
+    <article class="panel" data-scene="qh-1">
+      <div class="card">
+        <span class="num">01 <b>/</b> 06</span>
+        <span class="card__i"><svg width="17" height="17" aria-hidden="true"><use href="#i-map"/></svg></span>
+        <h3>El plano de tu tienda, no una lista de códigos</h3>
+        <p class="body">Dibujás cada sede como es: góndolas, puntas, islas, neveras, bateas, cajas. Cada mueble queda con su código y sus medidas. En el plano se ve de un vistazo qué está libre y qué está tomado, y cuando el proveedor quiere ver cómo le va a quedar la exhibición, la misma tienda se recorre en 3D.</p>
+        <div class="card__demo">
+          <div class="mini">
+            <div class="mini__bar"><span>Sede CENTRO</span><span style="margin-left:auto" id="mini1-mode">plano</span></div>
+            <div class="mini__body" style="padding:0">
+              <svg viewBox="0 0 320 128" style="display:block;width:100%;height:auto" aria-hidden="true"><g id="mini-plano"></g></svg>
+            </div>
+          </div>
+        </div>
+        <p class="card__foot">Plano 2D · vista 3D · una nomenclatura para toda la cadena</p>
+      </div>
+    </article>
+
+    <article class="panel" data-scene="qh-2">
+      <div class="card">
+        <span class="num">02 <b>/</b> 06</span>
+        <span class="card__i"><svg width="17" height="17" aria-hidden="true"><use href="#i-doc"/></svg></span>
+        <h3>El contrato se arma sobre el mueble</h3>
+        <p class="body">Tocás el espacio y llenás una sola ficha: proveedor, marca, canon mensual, desde y hasta. Si el acuerdo cubre tres puntas de góndola, las tocás las tres y queda un solo contrato, no tres. Abajo del formulario está el total del plazo, que es lo que se firma: $ 1.500.000 al mes por 61 días son $ 3.050.000, y esa cuenta ya no se hace de cabeza con el proveedor esperando.</p>
+        <div class="card__demo">
+          <div class="mini">
+            <div class="mini__bar"><span>Ficha del contrato</span></div>
+            <div class="mini__body">
+              <div class="kvrow"><span>Canon mensual</span><b>$ 1.500.000</b></div>
+              <div class="kvrow"><span>Plazo</span><b>61 días</b></div>
+              <div class="total"><span class="tiny" style="text-transform:uppercase;letter-spacing:.12em">Total del plazo</span><b data-count="3050000" data-money="1">$ 0</b></div>
+            </div>
+          </div>
+        </div>
+        <p class="card__foot">Un proveedor, un periodo, todos los espacios que haga falta</p>
+      </div>
+    </article>
+
+    <article class="panel" data-scene="qh-3">
+      <div class="card">
+        <span class="num">03 <b>/</b> 06</span>
+        <span class="card__i"><svg width="17" height="17" aria-hidden="true"><use href="#i-cal"/></svg></span>
+        <h3>Qué hay libre en la temporada que estás vendiendo</h3>
+        <p class="body">Elegís el periodo —Amor y Amistad, Halloween, Black Friday, Navidad, regreso a clases— y el plano entero se repinta para ese periodo: libre todo el tiempo, se libera adentro, o tomado. Un panel te dice cuántos espacios hay libres si el contrato arranca el 26 y cuántos si arranca el 29. Un mueble que se desocupa el 25 es inventario que podés ofrecer hoy.</p>
+        <div class="card__demo">
+          <div class="chips" role="group" aria-label="Temporada de ejemplo" id="temporadas">
+            <button class="chip" type="button" aria-pressed="true" data-t="0">Amor y Amistad</button>
+            <button class="chip" type="button" aria-pressed="false" data-t="1">Halloween</button>
+            <button class="chip" type="button" aria-pressed="false" data-t="2">Black Friday</button>
+            <button class="chip" type="button" aria-pressed="false" data-t="3">Navidad</button>
+          </div>
+          <div class="gridmini" id="gridmini" style="margin-top:12px" aria-hidden="true"></div>
+        </div>
+        <p class="card__foot">Nueve temporadas del calendario colombiano, con la ventana de venta que vos definas</p>
+      </div>
+    </article>
+
+    <article class="panel" data-scene="qh-4">
+      <div class="card">
+        <span class="num">04 <b>/</b> 06</span>
+        <span class="card__i"><svg width="17" height="17" aria-hidden="true"><use href="#i-tag"/></svg></span>
+        <h3>Tu tarifa, y cuánto te estás corriendo de ella</h3>
+        <p class="body">Cargás una tarifa por tipo de mueble, con ajuste por sede si una tienda vale más que otra. Cuando escribís el valor de un contrato, al lado te aparece la referencia y el desvío: «−17 % vs referencia». En el tablero hay una lista de todo lo que está por debajo de tarifa, para revisarlo en la próxima renovación.</p>
+        <div class="card__demo">
+          <div class="mini">
+            <div class="mini__bar"><span>Valor del contrato</span><span style="margin-left:auto;color:var(--st-libera)">−17 % vs referencia</span></div>
+            <div class="mini__body">
+              <div class="meter" data-meter="83"><i></i></div>
+              <div class="kvrow" style="border:0;padding-top:10px"><span>Tarifa de referencia</span><b>$ 1.150.000</b></div>
+            </div>
+          </div>
+        </div>
+        <p class="card__foot">La tarifa la ve el administrador. El mercaderista no ve un solo peso.</p>
+      </div>
+    </article>
+
+    <article class="panel" data-scene="qh-5">
+      <div class="card">
+        <span class="num">05 <b>/</b> 06</span>
+        <span class="card__i"><svg width="17" height="17" aria-hidden="true"><use href="#i-bell"/></svg></span>
+        <h3>Los avisos salen solos</h3>
+        <p class="body">Al guardar un contrato salen tres correos distintos: el comercial recibe el acuerdo con el valor, el mercaderista recibe la orden de montaje sin un solo monto y con el enlace para reportar, y el proveedor recibe la constancia de lo suyo. Antes de vencer, el sistema avisa tres veces: a 30, a 15 y a 6 días. A una semana ya no hay margen para negociar; a un día el correo llega para contar algo que ya pasó.</p>
+        <div class="card__demo" data-anim="mails">
+          <div style="display:grid;gap:6px">
+            <div class="mailrow"><svg width="14" height="14" aria-hidden="true"><use href="#i-mail"/></svg><b>Comercial</b> acuerdo <span class="mailrow__tag">con valor</span></div>
+            <div class="mailrow"><svg width="14" height="14" aria-hidden="true"><use href="#i-mail"/></svg><b>Mercaderista</b> montaje <span class="mailrow__tag mailrow__tag--none">sin valor</span></div>
+            <div class="mailrow"><svg width="14" height="14" aria-hidden="true"><use href="#i-mail"/></svg><b>Proveedor</b> constancia <span class="mailrow__tag">de lo suyo</span></div>
+          </div>
+          <div class="timeline" aria-hidden="true">
+            <span class="timeline__n">30</span><span class="timeline__l"><i></i></span>
+            <span class="timeline__n">15</span><span class="timeline__l"><i></i></span>
+            <span class="timeline__n">6</span>
+          </div>
+        </div>
+        <p class="card__foot">Y cuando falta poco, el botón Renovar viene con el proveedor, la marca y el valor que se está pagando ya escritos.</p>
+      </div>
+    </article>
+
+    <article class="panel" data-scene="qh-6">
+      <div class="card">
+        <span class="num">06 <b>/</b> 06</span>
+        <span class="card__i"><svg width="17" height="17" aria-hidden="true"><use href="#i-camera"/></svg></span>
+        <h3>El montaje se confirma con foto, desde el celular</h3>
+        <p class="body">El correo del mercaderista trae un enlace que abre directo en el espacio que le toca. Sin contraseña y sin ver el tablero de la tienda: solo el mueble, dónde queda —«a unos 4 m de las cajas», con el plano de la sala señalado— y dos botones. «Montado» exige foto. «No pude» exige motivo, porque sin motivo no se sabe a quién reclamarle.</p>
+        <div class="card__demo">
+          <div class="demo6">
+            <div class="fono">
+              <div class="fono__top"><i></i></div>
+              <div class="fono__in">
+                <p class="fono__code">PUN-01</p>
+                <p class="fono__where">Punta de góndola · sede CENTRO<br>a unos 4 m de las cajas</p>
+                <div class="fono__shot" id="fono-shot" data-on="false">
+                  <svg viewBox="0 0 160 76" style="display:block;width:100%;height:100%" aria-hidden="true">
+                    <defs><linearGradient id="ph" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0" stop-color="var(--st-libera)" stop-opacity=".35"/>
+                      <stop offset="1" stop-color="var(--signal)" stop-opacity=".22"/></linearGradient></defs>
+                    <rect width="160" height="76" fill="url(#ph)"/>
+                    <g fill="var(--fg)" opacity=".22">
+                      <rect x="18" y="16" width="34" height="10" rx="2"/><rect x="18" y="32" width="34" height="10" rx="2"/><rect x="18" y="48" width="34" height="10" rx="2"/>
+                      <rect x="62" y="16" width="34" height="10" rx="2"/><rect x="62" y="32" width="34" height="10" rx="2"/><rect x="62" y="48" width="34" height="10" rx="2"/>
+                      <rect x="106" y="16" width="34" height="42" rx="2"/>
+                    </g>
+                  </svg>
+                </div>
+                <div class="fono__btns">
+                  <button class="fono__b fono__b--ok" id="fono-ok" type="button"><svg width="14" height="14" aria-hidden="true"><use href="#i-check"/></svg> Montado</button>
+                  <button class="fono__b fono__b--no" type="button" disabled>No pude</button>
+                </div>
+              </div>
+            </div>
+            <p class="tiny demo6__side">«Montado» exige foto: hasta que no hay foto, no hay montaje reportado. Probalo acá al lado.</p>
+          </div>
+        </div>
+        <p class="card__foot">La foto queda guardada. Es la que responde el reclamo del proveedor tres meses después.</p>
+      </div>
+    </article>
+
+    <section class="panel panel--corto" data-scene="qh-cierre">
+      <div class="card">
+        <p class="lead">Y además: cargás la temporada entera desde una planilla de Excel, revisás fila por fila antes de crear nada, manejás todas tus sedes desde la misma cuenta e invitás a tu equipo con el permiso que le toca a cada uno.</p>
+        <a class="hook" href="#para-quien">
+          <span class="hook__n">02</span>
+          <span class="hook__t">Tres personas usan esto, y cada una ve otra cosa</span>
+          <span class="hook__arrow"><svg width="17" height="17" aria-hidden="true"><use href="#i-down"/></svg></span>
+        </a>
+      </div>
+    </section>
+
+  </div><!-- /script -->
+</div><!-- /film -->
+
+<!-- tira de servicio del plano: descripción larga + tabla equivalente -->
+<div class="wrap" style="padding-block:var(--s5)">
+  <p class="tiny sr" id="plano-desc">Supermercado de ejemplo con dos sedes. En la sede CENTRO hay diez espacios alquilables: cuatro libres, dos que se liberan dentro del periodo y cuatro tomados. En la sede PALMAS hay seis: tres libres, uno que se libera y dos tomados. Cada espacio tiene un código, un tipo de mueble, un proveedor de ejemplo y un canon mensual. Los datos son inventados.</p>
+  <details class="tabla-alt">
+    <summary>Los mismos datos del plano, en tabla</summary>
+    <div class="tabla-wrap"><table id="tabla-alt">
+      <thead><tr><th>Código</th><th>Tipo</th><th>Sede</th><th>Estado</th><th>Proveedor de ejemplo</th><th>Canon mensual</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </details>
+</div>
+
+<!-- ========================= 02 · PARA QUIÉN ========================= -->
+<section class="wrap sec" id="para-quien">
+  <header class="sec__head rv">
+    <p class="sec__num mono">02 / PARA QUIÉN</p>
+    <h2>Tres personas usan esto, y cada una ve otra cosa</h2>
+  </header>
+
+  <div class="roles">
+    <div class="roles__tabs" role="tablist" aria-label="Perfiles">
+      <button class="rtab" role="tab" id="tab-g" aria-controls="pane-g" aria-selected="true" type="button">
+        <span class="rtab__k">Gerente o administrador</span>
+        <span class="rtab__t">Vende con datos, no de memoria</span>
+        <span class="rtab__d">Ve el plano, la plata y el calendario en la misma pantalla. Arma el contrato, pone el precio con la tarifa al lado y sabe qué se le cae el mes que viene. Puede girar el portátil y mostrarle el plano al proveedor que tiene enfrente: esa pantalla no muestra el nombre ni el canon de ningún otro proveedor.</span>
+      </button>
+      <button class="rtab" role="tab" id="tab-t" aria-controls="pane-t" aria-selected="false" type="button">
+        <span class="rtab__k">Trabajador de piso</span>
+        <span class="rtab__t">Monta y reporta, sin ver dinero</span>
+        <span class="rtab__d">Le llega un correo con el espacio que le toca y un enlace que abre en su celular. Confirma con una foto o dice qué pasó. No entra con una contraseña compartida y no ve valores: el sistema le borra la plata antes de mandarle la pantalla.</span>
+      </button>
+      <button class="rtab" role="tab" id="tab-p" aria-controls="pane-p" aria-selected="false" type="button">
+        <span class="rtab__k">Proveedor</span>
+        <span class="rtab__t">Sabe qué compró</span>
+        <span class="rtab__d">Recibe por correo la constancia de su acuerdo: qué espacios, en qué sede, desde cuándo y hasta cuándo. Y antes de firmar puede ver el mueble en 3D con su marca puesta, en una lámina de antes y después que se le manda adjunta.</span>
+      </button>
+    </div>
+
+    <div class="glasscard rv rv-2" style="overflow:hidden">
+      <div class="pbar"><span class="pbar__dots"><i></i><i></i><i></i></span><span id="rview-title">Pantalla del gerente</span><span class="pbar__sp"></span><span>Supermercado de ejemplo</span></div>
+      <div class="rpane" id="pane-g" role="tabpanel" aria-labelledby="tab-g" data-on="true">
+        <div class="mini">
+          <div class="mini__bar"><span>Sede CENTRO · 1 → 30 de septiembre</span></div>
+          <div class="mini__body">
+            <div class="kvrow"><span>PUN-01 · Punta de góndola</span><b>Bebidas Zafiro</b></div>
+            <div class="kvrow"><span>Canon mensual</span><b>$ 1.300.000</b></div>
+            <div class="kvrow"><span>Tarifa de referencia</span><b>$ 1.150.000</b></div>
+            <div class="kvrow"><span>Hasta</span><b>28 sep</b></div>
+          </div>
+        </div>
+        <div class="chips">
+          <span class="chip"><i class="dot dot--libre" aria-hidden="true" style="margin-right:6px"></i>7 libres</span>
+          <span class="chip"><i class="dot dot--libera" aria-hidden="true" style="margin-right:6px"></i>3 se liberan</span>
+          <span class="chip"><i class="dot dot--tomado" aria-hidden="true" style="margin-right:6px"></i>6 tomados</span>
+        </div>
+        <p class="tiny">Proveedor y valores de ejemplo</p>
+      </div>
+      <div class="rpane" id="pane-t" role="tabpanel" aria-labelledby="tab-t" data-on="false">
+        <div class="mini">
+          <div class="mini__bar"><span>Enlace de montaje · sin contraseña</span></div>
+          <div class="mini__body">
+            <div class="kvrow"><span>PUN-01 · Punta de góndola</span><b>sede CENTRO</b></div>
+            <div class="kvrow"><span>Dónde queda</span><b>a unos 4 m de las cajas</b></div>
+            <div class="kvrow"><span>Canon mensual</span><b><span class="redact">$ 1.300.000</span></b></div>
+            <div class="kvrow"><span>Proveedor</span><b><span class="redact">Bebidas Zafiro</span></b></div>
+          </div>
+        </div>
+        <div class="fono__btns" style="max-width:280px">
+          <span class="fono__b fono__b--ok"><svg width="14" height="14" aria-hidden="true"><use href="#i-check"/></svg> Montado</span>
+          <span class="fono__b fono__b--no">No pude</span>
+        </div>
+        <p class="tiny">El sistema le borra la plata antes de mandarle la pantalla.</p>
+      </div>
+      <div class="rpane" id="pane-p" role="tabpanel" aria-labelledby="tab-p" data-on="false">
+        <div class="mini">
+          <div class="mini__bar"><svg width="13" height="13" aria-hidden="true"><use href="#i-mail"/></svg><span>Constancia del acuerdo</span></div>
+          <div class="mini__body">
+            <div class="kvrow"><span>Proveedor</span><b>Bebidas Zafiro</b></div>
+            <div class="kvrow"><span>Espacios</span><b>PUN-01 · BEB-01</b></div>
+            <div class="kvrow"><span>Sede</span><b>CENTRO</b></div>
+            <div class="kvrow"><span>Desde / hasta</span><b>1 sep → 28 sep</b></div>
+          </div>
+        </div>
+        <p class="tiny">Proveedor y valores de ejemplo</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="glasscard rv" style="margin-top:40px;overflow:hidden">
+    <div class="pbar"><span class="pbar__dots"><i></i><i></i><i></i></span>Los números que vas a tener a la vista<span class="pbar__sp"></span><span>Ocupación · ejemplo</span></div>
+    <div class="pad">
+      <p class="lead" style="margin-bottom:24px">No son promesas. Son las cifras que la pantalla te muestra cada vez que la abrís.</p>
+      <div class="readout">
+        <div class="readout__hero">
+          <div class="readout__ring">
+            <svg viewBox="0 0 120 120" style="width:100%;height:100%" aria-hidden="true">
+              <circle cx="60" cy="60" r="52" fill="none" stroke="var(--brd)" stroke-width="9"/>
+              <circle id="ring" cx="60" cy="60" r="52" fill="none" stroke="var(--signal)" stroke-width="9"
+                      stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7"
+                      transform="rotate(-90 60 60)" style="transition:stroke-dashoffset 1200ms cubic-bezier(.16,.84,.44,1)"/>
+            </svg>
+            <div style="position:absolute;inset:0;display:grid;place-items:center">
+              <span class="fig" style="font-size:30px" data-count="35" data-suffix=" %">0 %</span>
+            </div>
+          </div>
+          <p class="tiny">8 de 23 caras vendidas en el periodo</p>
+        </div>
+        <ul>
+          <li class="rrow"><span class="rrow__k"><i class="dot dot--libre" aria-hidden="true"></i>Ocupación</span><span class="rrow__v">35 % · 8 de 23 caras vendidas en el periodo</span></li>
+          <li class="rrow"><span class="rrow__k"><i class="dot dot--tomado" aria-hidden="true"></i>Canon vigente</span><span class="rrow__v">lo que están pagando hoy los contratos vivos, al mes</span></li>
+          <li class="rrow"><span class="rrow__k"><i class="dot dot--libre" aria-hidden="true"></i>Sin alquilar</span><span class="rrow__v">cuánto vale a tarifa lo que está vacío, y cuánto es eso por día vacío</span></li>
+          <li class="rrow"><span class="rrow__k"><i class="dot dot--libera" aria-hidden="true"></i>Vence en 30 días</span><span class="rrow__v">cuántos espacios y cuánta plata se te caen si nadie los renueva</span></li>
+          <li class="rrow"><span class="rrow__k"><i class="dot dot--resto" aria-hidden="true"></i>Sin montar</span><span class="rrow__v">contratos ya cobrados que todavía no están armados en el piso</span></li>
+        </ul>
+      </div>
+      <p class="body" style="margin-top:24px">Y un contrato de tres puntas de góndola se arma una vez, no tres.</p>
+    </div>
+  </div>
+
+  <a class="hook rv" href="#como-se-usa">
+    <span class="hook__n">03</span>
+    <span class="hook__t">Cómo se arranca</span>
+    <span class="hook__arrow"><svg width="17" height="17" aria-hidden="true"><use href="#i-down"/></svg></span>
+  </a>
+</section>
+
+<!-- ========================= 03 · CÓMO SE ARRANCA =========================
+     El momento de A: la sala se vacía, se redibuja en gris y se pinta.
+     Versión corta: una sola pantalla pegada, tres pasos al costado.        -->
+<section class="sec" id="como-se-usa" style="padding-bottom:0">
+  <div class="wrap">
+    <header class="sec__head rv">
+      <p class="sec__num mono">03 / CÓMO SE USA</p>
+      <h2>Cómo se arranca</h2>
+      <p class="lead">Tres pasos. El primero toma un minuto; el segundo es el trabajo de verdad y se hace una sola vez.</p>
+    </header>
+  </div>
+
+  <div class="pasos-film" id="pasos-film">
+    <div class="wrap pasos-sticky">
+      <figure class="sala">
+        <figcaption class="sala__bar"><span>Sede CENTRO</span><b id="sala-estado">Cuenta creada · sala vacía</b></figcaption>
+        <svg viewBox="0 0 640 300" aria-hidden="true"><g id="sala-g"></g></svg>
+      </figure>
+      <ol class="pasos" id="pasos">
+        <li class="paso" data-paso="1" data-on="true">
+          <span class="paso__pipe"><i></i></span>
+          <span class="paso__n">1</span>
+          <h3 class="h4">Creá la cuenta y tu supermercado</h3>
+          <p class="body">Entrás con Google o con tu correo, le ponés nombre a tu supermercado y quedás como dueño de la cuenta. Después invitás a tu equipo: cada persona con su correo y con el permiso que le toca.</p>
+          <div class="chips" style="margin-top:6px">
+            <span class="chip chip--stat">dueño de la cuenta</span>
+            <span class="chip chip--stat">administrador</span>
+            <span class="chip chip--stat">trabajador de piso</span>
+          </div>
+        </li>
+        <li class="paso" data-paso="2" data-on="false">
+          <span class="paso__pipe"><i></i></span>
+          <span class="paso__n">2</span>
+          <h3 class="h4">Dibujá el plano de cada sede</h3>
+          <p class="body">Ponés los muebles como están en la sala y marcás cuáles se alquilan. Las cajas y las columnas quedan de contexto, en gris. Si ya tenés los contratos de la temporada en un Excel, los cargás de una vez: el sistema te muestra fila por fila qué entra y qué choca, antes de crear nada.</p>
+        </li>
+        <li class="paso" data-paso="3" data-on="false">
+          <span class="paso__pipe"><i></i></span>
+          <span class="paso__n">3</span>
+          <h3 class="h4">Vendé tocando el mapa</h3>
+          <p class="body">Elegís la temporada, mirás qué quedó verde, tocás el mueble y llenás el contrato. Al guardar salen los tres correos y el espacio cambia de color en el plano.</p>
+        </li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <p class="small rv" style="margin-top:20px">Cada supermercado empieza vacío. RECABRA no viene con datos de nadie adentro.</p>
+    <a class="hook rv" href="#asesoria">
+      <span class="hook__n">04</span>
+      <span class="hook__t">Además del sistema, te decimos qué proponer</span>
+      <span class="hook__arrow"><svg width="17" height="17" aria-hidden="true"><use href="#i-down"/></svg></span>
+    </a>
+  </div>
+</section>
+
+<!-- ========================= 04 · ASESORÍA ========================= -->
+<section class="wrap sec" id="asesoria">
+  <header class="sec__head rv">
+    <p class="sec__num mono">04 / ASESORÍA</p>
+    <p class="eyebrow">Lo que ningún Excel te va a decir</p>
+    <h2>Además del sistema, te decimos qué proponer</h2>
+    <p class="lead">Un sistema te muestra lo que pasó. Nosotros miramos tus números y te llevamos, por escrito, qué le podés ofrecer a quién esta semana.</p>
+  </header>
+
+  <div class="bento">
+    <article class="glasscard bcard bA rv rv-1">
+      <div class="pad">
+        <span class="card__i"><svg width="17" height="17" aria-hidden="true"><use href="#i-chart"/></svg></span>
+        <h3>Recomendaciones ordenadas por lo que hay en juego</h3>
+        <p class="body">Cada recomendación viene con un valor al lado y una razón. «Tenés tres puntas de góndola libres: ofrecelas a $ 2.000.000 cada una, que es el promedio que vos mismo estás cobrando por ese tipo — $ 6.000.000 en juego.» «El contrato de esa punta vence en 19 días: renovalo o reasignalo — $ 2.000.000 en juego.» Primero las de mayor valor.</p>
+        <div class="reco" data-anim="reco">
+          <div class="reco__it">
+            <div><span class="reco__rank">01</span><p class="reco__t">Tres puntas de góndola libres · ofrecelas a $ 2.000.000 cada una</p></div>
+            <span class="reco__v">$ 6.000.000</span>
+          </div>
+          <div class="reco__it">
+            <div><span class="reco__rank">02</span><p class="reco__t">Esa punta vence en 19 días · renovala o reasignala</p></div>
+            <span class="reco__v">$ 2.000.000</span>
+          </div>
+        </div>
+      </div>
+      <p class="card__foot" style="margin:0;padding:var(--s3) var(--s5);border-top:var(--hair) solid var(--brd)">Primero las de mayor valor · «en juego» es lo que se gana o se pierde según qué hagas</p>
+    </article>
+
+    <article class="glasscard bcard bB rv rv-2">
+      <div class="pad">
+        <span class="card__i"><svg width="17" height="17" aria-hidden="true"><use href="#i-grid"/></svg></span>
+        <h3>Oportunidades espacio por espacio</h3>
+        <p class="body">Para cada mueble libre o que se libera en el periodo: un precio sugerido —el promedio que ya cobrás por ese tipo, o el promedio de los supermercados que usan RECABRA si vos todavía no cobrás ninguno— y hasta tres proveedores tuyos que podrían tomarlo, empezando por los que ya alquilan ese mismo tipo de mueble.</p>
+        <div class="mini">
+          <div class="mini__bar"><span>PUN-05 · libre</span></div>
+          <div class="mini__body" style="display:grid;gap:6px">
+            <div class="kvrow"><span>Precio sugerido</span><b>$ 1.000.000</b></div>
+            <span class="chip chip--stat">Bebidas Zafiro</span>
+            <span class="chip chip--stat">Confites Milagro</span>
+            <span class="chip chip--stat">Café Alto Bosque</span>
+          </div>
+        </div>
+      </div>
+      <p class="card__foot" style="margin:0;padding:var(--s3) var(--s5);border-top:var(--hair) solid var(--brd)">Proveedores y valores de ejemplo</p>
+    </article>
+
+    <article class="glasscard bcard bC rv rv-3">
+      <div class="pad">
+        <span class="card__i"><svg width="17" height="17" aria-hidden="true"><use href="#i-cal"/></svg></span>
+        <h3>Tendencia mes a mes</h3>
+        <p class="body">Ocupación, ingreso contratado y canon promedio, guardados mes a mes desde que entrás. La pregunta «¿estamos mejorando?» deja de contestarse de memoria. Un mes sin datos aparece como un hueco, no como un cero: un cero sería mentira.</p>
+        <div class="chips">
+          <span class="chip chip--stat">Ocupación</span>
+          <span class="chip chip--stat">Ingreso contratado</span>
+          <span class="chip chip--stat">Canon promedio</span>
+        </div>
+        <div class="meses" aria-hidden="true">
+          <span class="mes">ene</span><span class="mes">feb</span><span class="mes">mar</span>
+          <span class="mes mes--hueco">abr</span><span class="mes">may</span><span class="mes">jun</span>
+          <span class="mes">jul</span><span class="mes">ago</span><span class="mes">sep</span>
+          <span class="mes mes--futuro">oct</span><span class="mes mes--futuro">nov</span><span class="mes mes--futuro">dic</span>
+        </div>
+        <p class="tiny">Abril quedó como hueco: ese mes no hubo datos. No se rellena con un cero.</p>
+      </div>
+      <p class="card__foot" style="margin:0;padding:var(--s3) var(--s5);border-top:var(--hair) solid var(--brd)">La tendencia arranca vacía el día que entrás. No se rellena hacia atrás.</p>
+    </article>
+  </div>
+
+  <div class="honesto rv" style="margin-top:24px">
+    <h3 class="h4">Cómo funciona, sin vueltas.</h3>
+    <p class="body">Esta parte no es una pantalla tuya: la revisa una persona de RECABRA sobre tus propios datos, y te llega en la sesión de asesoría. Todo lo que se lee está escrito en la Política de Tratamiento de Datos, queda anotado con la fecha y el correo de quien lo consultó, y podés pedir ese registro cuando quieras desde tu propia cuenta.</p>
+    <p><a class="lnk" href="/politica-datos">Ver el reporte de transparencia <svg width="15" height="15" aria-hidden="true"><use href="#i-arrow"/></svg></a></p>
+  </div>
+
+  <a class="hook rv" href="#confianza">
+    <span class="hook__n">05</span>
+    <span class="hook__t">Dónde quedan tus datos</span>
+    <span class="hook__arrow"><svg width="17" height="17" aria-hidden="true"><use href="#i-down"/></svg></span>
+  </a>
+</section>
+
+<!-- ========================= 05 · CONFIANZA ========================= -->
+<section class="wrap sec" id="confianza">
+  <header class="sec__head rv">
+    <p class="sec__num mono">05 / DATOS</p>
+    <h2>Dónde quedan tus datos</h2>
+    <p class="lead">Esto lo usa gente distinta de la misma tienda, y hay dinero adentro. Así está resuelto.</p>
+  </header>
+
+  <ul class="trust rv rv-1">
+    <li class="trust__it"><span class="trust__n">01</span>
+      <div><p class="trust__t">Cada supermercado, en su propia base</p>
+        <p class="body">Los planos, los contratos y los proveedores de tu supermercado viven en una base separada de la de cualquier otro cliente. No es un filtro por columna: es otra base.</p></div></li>
+    <li class="trust__it"><span class="trust__n">02</span>
+      <div><p class="trust__t">Cada persona entra con su cuenta</p>
+        <p class="body">Con Google o con correo y contraseña. Nada de una clave compartida que sigue funcionando cuando alguien se va. Desactivás a esa persona y pierde el acceso en el siguiente clic, sin tocar a nadie más.</p></div></li>
+    <li class="trust__it"><span class="trust__n">03</span>
+      <div><p class="trust__t">El dinero no le llega a quien no le toca</p>
+        <p class="body">Los valores no se ocultan en la pantalla: se borran en el servidor antes de mandarla. El mercaderista no tiene forma de verlos, ni siquiera mirando lo que le llegó al navegador.</p>
+        <p class="tiny" style="margin-top:8px">Canon del contrato tal como le llega al mercaderista: <span class="redact">$ 1.300.000</span></p></div></li>
+    <li class="trust__it"><span class="trust__n">04</span>
+      <div><p class="trust__t">Podés auditar qué se mira de vos</p>
+        <p class="body">El dueño de la cuenta puede pedir, cuando quiera, el reporte de transparencia: qué datos toma RECABRA, cómo los calcula, de dónde salen, para qué, y quién los consultó y qué día. También puede descargar todos sus datos y pedir la supresión.</p></div></li>
+    <li class="trust__it"><span class="trust__n">05</span>
+      <div><p class="trust__t">Colombia, Ley 1581</p>
+        <p class="body">Tratamiento de datos personales conforme a la Ley 1581 de 2012 y al Decreto 1377 de 2013. La política es pública y se lee sin tener cuenta.</p></div></li>
+  </ul>
+
+  <div class="links rv rv-2">
+    <a class="lnk" href="/politica-datos"><svg width="15" height="15" aria-hidden="true"><use href="#i-lock"/></svg> Política de Tratamiento de Datos</a>
+    <a class="lnk" href="/politica-datos#transparencia"><svg width="15" height="15" aria-hidden="true"><use href="#i-shield"/></svg> Reporte de transparencia</a>
+  </div>
+
+  <a class="hook rv" href="#precio">
+    <span class="hook__n">06</span>
+    <span class="hook__t">Cuánto cuesta</span>
+    <span class="hook__arrow"><svg width="17" height="17" aria-hidden="true"><use href="#i-down"/></svg></span>
+  </a>
+</section>
+
+<!-- ========================= 06 · PRECIO ========================= -->
+<section class="wrap sec" id="precio">
+  <header class="sec__head rv">
+    <p class="sec__num mono">06 / PRECIO</p>
+    <h2>Cuánto cuesta</h2>
+  </header>
+
+  <div class="precio">
+    <div class="glasscard rv rv-1" style="overflow:hidden">
+      <div class="pbar"><span class="pbar__dots"><i></i><i></i><i></i></span>Modelo comercial</div>
+      <div class="pad">
+        <p class="precio__tag"><span class="slot">[COMPLETAR: precio]</span></p>
+        <p class="small"><span class="slot" style="font-size:.85em">[COMPLETAR: unidad — por supermercado al mes, por sede al mes, o lo que corresponda]</span></p>
+        <p class="body" style="margin-top:20px">Por transferencia bancaria, contra cuenta de cobro. No hay pasarela de pagos ni te pedimos una tarjeta.</p>
+        <p class="body" style="margin-top:20px">¿Tenés varias sedes o una cadena regional y querés que lo veamos juntos? Escribinos a <span class="slot">[COMPLETAR: correo de contacto]</span>.</p>
+        <p style="margin-top:20px"><a class="btn btn--primary" href="mailto:">Hablemos</a></p>
+      </div>
+    </div>
+    <div class="rv rv-2">
+      <div class="estados" id="estados">
+        <div class="estado" data-on="false"><span class="estado__d"></span><p class="estado__t">Primero te avisamos en la pantalla, y todo sigue funcionando igual.</p></div>
+        <div class="estado" data-on="false"><span class="estado__d"></span><p class="estado__t">Si el atraso sigue, la cuenta pasa a solo lectura: podés entrar, ver todo y consultar, pero no se cargan contratos nuevos.</p></div>
+        <div class="estado" data-on="false"><span class="estado__d"></span><p class="estado__t">Tus datos no se borran nunca. Ponés la cuenta al día y volvés a trabajar donde lo dejaste.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <a class="hook rv" href="#cierre">
+    <span class="hook__n">07</span>
+    <span class="hook__t">Empezá por una sede</span>
+    <span class="hook__arrow"><svg width="17" height="17" aria-hidden="true"><use href="#i-down"/></svg></span>
+  </a>
+</section>
+
+<!-- ========================= 07 · CIERRE ========================= -->
+<section class="wrap cierre" id="cierre">
+  <div class="beam" aria-hidden="true"></div>
+  <h2 class="rv">Empezá por una sede</h2>
+  <p class="lead rv rv-1" style="max-width:56ch">Creá la cuenta, dibujá la tienda que más espacios vende y mirá cuántos tenés libres esta temporada. Si sirve, seguís con las demás.</p>
+  <div class="cierre__cta rv rv-2">
+    <a class="btn btn--primary" href="/login#registro">Crear mi cuenta</a>
+    <a class="btn btn--ghost" href="/login">Ya tengo cuenta</a>
+  </div>
+  <p class="small rv rv-3">Entrás con Google o con tu correo. El plano de arriba es de ejemplo; el tuyo lo dibujás vos.</p>
+</section>
+
+</main>
+
+<footer class="pie">
+  <div class="wrap">
+    <div class="pie__grid">
+      <div class="pie__col">
+        <a class="mark" href="#top" style="margin-bottom:12px">
+          <svg class="mark__glyph" viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M16 3 29 10.5 16 18 3 10.5Z" fill="var(--st-libre)"/>
+            <path d="M3 10.5 16 18v11L3 21.5Z" fill="var(--st-tomado)" opacity=".85"/>
+            <path d="M29 10.5 16 18v11l13-7.5Z" fill="var(--st-libera)" opacity=".7"/>
+          </svg>
+          <span class="mark__txt">RECABRA</span>
+        </a>
+        <p class="small">RECABRA · Gestión de espacios comerciales en supermercados</p>
+        <p style="margin-top:14px"><a class="lnk" href="#top">Volver arriba <svg width="14" height="14" aria-hidden="true" style="transform:rotate(-90deg)"><use href="#i-arrow"/></svg></a></p>
+      </div>
+      <div class="pie__col"><h4>Producto</h4><ul>
+        <li><a href="#que-hace">Qué hace</a></li>
+        <li><a href="#como-se-usa">Cómo se usa</a></li>
+        <li><a href="#precio">Precio</a></li>
+      </ul></div>
+      <div class="pie__col"><h4>Cuenta</h4><ul>
+        <li><a href="/login#registro">Crear mi cuenta</a></li>
+        <li><a href="/login">Ya tengo cuenta</a></li>
+      </ul></div>
+      <div class="pie__col"><h4>Legal</h4><ul>
+        <li><a href="/politica-datos">Política de Tratamiento de Datos</a></li>
+        <li><a href="/politica-datos#derechos">Tratamiento de datos y derechos del titular</a></li>
+      </ul></div>
+    </div>
+    <div class="pie__legal">
+      <p class="tiny"><span class="slot">[COMPLETAR: razón social]</span> · NIT <span class="slot">[COMPLETAR: NIT]</span> · <span class="slot">[COMPLETAR: ciudad, Colombia]</span><br>
+      Tratamiento de datos personales conforme a la Ley 1581 de 2012 y al Decreto 1377 de 2013.<br>
+      Para ejercer tus derechos como titular, escribí a <span class="slot">[COMPLETAR: correo de protección de datos]</span>.</p>
+      <p class="tiny">© <span id="anio">2026</span> RECABRA. Todos los derechos reservados.</p>
+      <p class="tiny">El plano de esta página es un supermercado inventado, sembrado en el código de la propia página. No corresponde a ningún cliente.</p>
+    </div>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite" data-on="false">
+  <svg width="16" height="16" aria-hidden="true" style="color:var(--st-libre)"><use href="#i-check"/></svg>
+  <span id="toast-txt"></span>
+</div>
+
+<script>
+"use strict";
+/* ==========================================================================
+   RECABRA · dirección E — "La fusión"
+   Motor del plano de C (una sola proyección con parámetro) + cámara guiada
+   por scroll de A, acotada a las dos primeras secciones.
+   Datos INVENTADOS y sembrados acá (copy.md §13). Cero llamadas de red.
+   ========================================================================== */
+
+var RM = window.matchMedia('(prefers-reduced-motion: reduce)');
+function reduce(){ return RM.matches; }
+var COARSE = window.matchMedia('(pointer:coarse)').matches;
+
+function $(s,c){ return (c||document).querySelector(s); }
+function $$(s,c){ return Array.prototype.slice.call((c||document).querySelectorAll(s)); }
+function pesos(n){ return '$ ' + String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,'.'); }
+function el(tag,attrs){
+  var e=document.createElementNS('http://www.w3.org/2000/svg',tag);
+  for(var k in attrs){ if(attrs[k]!==undefined&&attrs[k]!==null) e.setAttribute(k,attrs[k]); }
+  return e;
+}
+
+/* ---------------------------------------------------------------- 1. DATOS */
+var SEDES = { CENTRO:{ dx:0, dy:0, w:31.2, d:21.2 }, PALMAS:{ dx:38, dy:1.5, w:21.2, d:17.2 } };
+function P(o){ return o; }
+var PIEZAS = [
+/* ---- CENTRO · contexto (el gris es mayoría) ---- */
+P({sede:'CENTRO',code:'REF-01',tipo:'Pared de refrigerados',estado:'resto',x:2,y:0.6,w:17,d:1.4,h:3.2}),
+P({sede:'CENTRO',code:'REF-02',tipo:'Pared de refrigerados',estado:'resto',x:25.6,y:0.6,w:3.4,d:1.4,h:3.2}),
+P({sede:'CENTRO',code:'GON-01',tipo:'Corrida de góndola',estado:'resto',x:3,y:4.0,w:10,d:1.2,h:2.0}),
+P({sede:'CENTRO',code:'GON-02',tipo:'Corrida de góndola',estado:'resto',x:16.5,y:4.0,w:9.5,d:1.2,h:2.0}),
+P({sede:'CENTRO',code:'GON-04',tipo:'Corrida de góndola',estado:'resto',x:3,y:7.6,w:10,d:1.0,h:2.0}),
+P({sede:'CENTRO',code:'GON-05',tipo:'Corrida de góndola',estado:'resto',x:16.5,y:7.6,w:9.5,d:1.2,h:2.0}),
+P({sede:'CENTRO',code:'GON-08',tipo:'Corrida de góndola',estado:'resto',x:3,y:11.0,w:10,d:1.2,h:2.0}),
+P({sede:'CENTRO',code:'GON-09',tipo:'Corrida de góndola',estado:'resto',x:16.5,y:11.0,w:9.5,d:1.2,h:2.0}),
+P({sede:'CENTRO',code:'CAJ-01',tipo:'Caja registradora',estado:'resto',x:3,y:16.0,w:2.8,d:1.2,h:1.1}),
+P({sede:'CENTRO',code:'CAJ-03',tipo:'Caja registradora',estado:'resto',x:6.6,y:16.0,w:2.8,d:1.2,h:1.1}),
+P({sede:'CENTRO',code:'CAJ-04',tipo:'Caja registradora',estado:'resto',x:10.2,y:16.0,w:2.8,d:1.2,h:1.1}),
+P({sede:'CENTRO',code:'CAJ-05',tipo:'Caja registradora',estado:'resto',x:13.8,y:16.0,w:2.8,d:1.2,h:1.1}),
+P({sede:'CENTRO',code:'CAJ-06',tipo:'Caja registradora',estado:'resto',x:17.4,y:16.0,w:2.8,d:1.2,h:1.1}),
+P({sede:'CENTRO',code:'SAC-01',tipo:'Mostrador de servicio al cliente',estado:'resto',x:23,y:15.8,w:5,d:1.6,h:1.3}),
+P({sede:'CENTRO',code:'COL-01',tipo:'Columna',estado:'resto',x:14.6,y:2.2,w:0.7,d:0.7,h:3.6}),
+P({sede:'CENTRO',code:'COL-02',tipo:'Columna',estado:'resto',x:14.6,y:9.4,w:0.7,d:0.7,h:3.6}),
+P({sede:'CENTRO',code:'COL-03',tipo:'Columna',estado:'resto',x:16.4,y:14.6,w:0.7,d:0.7,h:3.6}),
+P({sede:'CENTRO',code:'COL-04',tipo:'Columna',estado:'resto',x:29,y:6.0,w:0.7,d:0.7,h:3.6}),
+P({sede:'CENTRO',code:'COL-05',tipo:'Columna',estado:'resto',x:0.6,y:9.4,w:0.7,d:0.7,h:3.6}),
+P({sede:'CENTRO',code:'COL-06',tipo:'Columna',estado:'resto',x:29,y:13.6,w:0.7,d:0.7,h:3.6}),
+/* ---- CENTRO · alquilables (10) ---- */
+P({sede:'CENTRO',code:'PUN-01',tipo:'Punta de góndola',ubic:'Frente a la entrada',estado:'tomado',prov:'Bebidas Zafiro',canon:1300000,fecha:'hasta el 28 sep',x:1.4,y:13.2,w:1.8,d:1.9,h:2.6}),
+P({sede:'CENTRO',code:'PUN-02',tipo:'Punta de góndola',ubic:'Pasillo 2, de cara a las cajas',estado:'libera',prov:'Confites Milagro',canon:1150000,fecha:'libre desde el 26 sep',x:13.3,y:13.2,w:1.8,d:1.9,h:2.6}),
+P({sede:'CENTRO',code:'PUN-05',tipo:'Punta de góndola',ubic:'Pasillo 5, contra la pared del fondo',estado:'libre',tarifa:1000000,x:26.4,y:3.0,w:1.8,d:1.9,h:2.6}),
+P({sede:'CENTRO',code:'EXP-01',tipo:'Isla',ubic:'Frente a la entrada',estado:'tomado',prov:'Galletas Doña Rita',canon:1200000,fecha:'hasta el 30 nov',x:5.4,y:13.4,w:3.2,d:1.8,h:1.5}),
+P({sede:'CENTRO',code:'EXP-02',tipo:'Isla',ubic:'A 3 m de las cajas',estado:'libre',tarifa:1200000,x:18.4,y:13.4,w:3.2,d:1.8,h:1.5}),
+P({sede:'CENTRO',code:'CRS-01',tipo:'Exhibición de piso',ubic:'Pasillo central',estado:'libera',prov:'Aseo Rocío',canon:900000,fecha:'libre desde el 22 sep',x:14.3,y:5.4,w:1.5,d:2.6,h:1.4}),
+P({sede:'CENTRO',code:'GON-04·A',tipo:'Góndola, por cara',ubic:'Pasillo 3, lado par',estado:'tomado',prov:'Lácteos Monteverde',canon:240000,fecha:'hasta el 31 oct',x:4.5,y:7.14,w:8,d:0.46,h:2.4}),
+P({sede:'CENTRO',code:'GON-04·B',tipo:'Góndola, por cara',ubic:'Pasillo 4, lado impar',estado:'libre',tarifa:230000,x:4.5,y:8.6,w:8,d:0.46,h:2.4}),
+P({sede:'CENTRO',code:'BEB-01',tipo:'Nevera de bebidas',ubic:'Pared de refrigerados',estado:'tomado',prov:'Bebidas Zafiro',canon:450000,fecha:'hasta el 30 nov',x:19.2,y:0.6,w:6.2,d:1.4,h:3.2}),
+P({sede:'CENTRO',code:'FRU-02',tipo:'Frutas y verduras',ubic:'Entrada, mano derecha',estado:'libre',tarifa:380000,x:24,y:18.0,w:4.5,d:1.5,h:1.2}),
+/* ---- PALMAS · contexto ---- */
+P({sede:'PALMAS',code:'REF-01',tipo:'Pared de refrigerados',estado:'resto',x:2,y:0.6,w:16,d:1.4,h:3.2}),
+P({sede:'PALMAS',code:'GON-05',tipo:'Corrida de góndola',estado:'resto',x:3,y:3.5,w:9,d:1.2,h:2.0}),
+P({sede:'PALMAS',code:'GON-11',tipo:'Corrida de góndola',estado:'resto',x:3,y:7.0,w:9,d:1.0,h:2.0}),
+P({sede:'PALMAS',code:'GON-14',tipo:'Corrida de góndola',estado:'resto',x:3,y:10.5,w:9,d:1.2,h:2.0}),
+P({sede:'PALMAS',code:'CAJ-01',tipo:'Caja registradora',estado:'resto',x:3,y:13.6,w:2.8,d:1.2,h:1.1}),
+P({sede:'PALMAS',code:'CAJ-03',tipo:'Caja registradora',estado:'resto',x:10.2,y:13.6,w:2.8,d:1.2,h:1.1}),
+P({sede:'PALMAS',code:'SAC-01',tipo:'Mostrador de servicio al cliente',estado:'resto',x:15,y:13.4,w:4,d:1.6,h:1.3}),
+P({sede:'PALMAS',code:'COL-01',tipo:'Columna',estado:'resto',x:13.5,y:3.0,w:0.7,d:0.7,h:3.6}),
+P({sede:'PALMAS',code:'COL-02',tipo:'Columna',estado:'resto',x:13.5,y:10.0,w:0.7,d:0.7,h:3.6}),
+/* ---- PALMAS · alquilables (6) ---- */
+P({sede:'PALMAS',code:'PUN-01',tipo:'Punta de góndola',ubic:'Frente a la entrada',estado:'tomado',prov:'Café Alto Bosque',canon:1100000,fecha:'hasta el 15 dic',x:0.9,y:11.9,w:1.8,d:1.9,h:2.6}),
+P({sede:'PALMAS',code:'PUN-03',tipo:'Punta de góndola',ubic:'Pasillo 3, de cara a las cajas',estado:'libre',tarifa:1000000,x:12.3,y:11.4,w:1.8,d:1.9,h:2.6}),
+P({sede:'PALMAS',code:'CAJ-02',tipo:'Cabecera de caja',ubic:'Caja 2',estado:'libera',prov:'Confites Milagro',canon:850000,fecha:'libre desde el 24 sep',x:6.6,y:13.6,w:2.8,d:1.2,h:1.7}),
+P({sede:'PALMAS',code:'ISL-01',tipo:'Isla de congelados',ubic:'Zona de congelados',estado:'tomado',prov:'Cárnicos San Isidro',canon:700000,fecha:'hasta el 31 oct',x:15,y:3.5,w:4,d:3.0,h:1.3}),
+P({sede:'PALMAS',code:'GON-11·A',tipo:'Góndola, por cara',ubic:'Pasillo 1, lado par',estado:'libre',tarifa:230000,x:4,y:6.54,w:7,d:0.46,h:2.4}),
+P({sede:'PALMAS',code:'BAT-01',tipo:'Batea',ubic:'Pasillo central',estado:'libre',tarifa:320000,x:15,y:8.0,w:3.2,d:2.0,h:1.0})
+];
+var ETIQ={libre:'Libre todo el periodo',libera:'Se libera en el periodo',tomado:'Tomado',resto:'Resto de la sala'};
+
+PIEZAS.forEach(function(p){
+  var s=SEDES[p.sede];
+  p.ax=p.x+s.dx; p.ay=p.y+s.dy; p.ox=0; p.oy=0;
+  p.depth=(p.ax+p.w/2)+(p.ay+p.d/2);
+  p.alq=(p.estado!=='resto');
+});
+var ORDEN=PIEZAS.slice().sort(function(a,b){return a.depth-b.depth;});
+var NODOS={}; PIEZAS.forEach(function(p){ NODOS[p.sede+'/'+p.code]=p; });
+
+/* --------------------------------------------- 2. PALETA Y PROYECCIÓN */
+function hex2rgb(h){
+  h=(h||'').trim();
+  if(h.charAt(0)==='#'){
+    if(h.length===4) h='#'+h[1]+h[1]+h[2]+h[2]+h[3]+h[3];
+    return [parseInt(h.substr(1,2),16),parseInt(h.substr(3,2),16),parseInt(h.substr(5,2),16)];
+  }
+  var m=h.match(/(\d+(\.\d+)?)/g);
+  return m?[+m[0],+m[1],+m[2]]:[128,128,128];
+}
+function shade(rgb,f,bg){
+  return 'rgb('+Math.round(rgb[0]*f+bg[0]*(1-f))+','+Math.round(rgb[1]*f+bg[1]*(1-f))+','+Math.round(rgb[2]*f+bg[2]*(1-f))+')';
+}
+var PAL={};
+function leerPaleta(){
+  var cs=getComputedStyle(document.documentElement);
+  var bg=hex2rgb(cs.getPropertyValue('--bg')||'#000');
+  var fl=parseFloat(cs.getPropertyValue('--face-left'))||0.7;
+  var fr=parseFloat(cs.getPropertyValue('--face-right'))||0.5;
+  ['libre','libera','tomado','resto'].forEach(function(k){
+    var base=hex2rgb(cs.getPropertyValue('--st-'+k));
+    PAL[k]={top:'rgb('+base.join(',')+')',left:shade(base,fl,bg),right:shade(base,fr,bg)};
+  });
+  PAL.floor=(cs.getPropertyValue('--floor')||'#111').trim();
+  PAL.edge=(cs.getPropertyValue('--floor-edge')||'#333').trim();
+}
+
+var COS=0.866;
+var V=0;              /* 0 = el plano isométrico · 1 = "Ver en 3D" (más alto, más rasante) */
+function proy(x,y,z,v){
+  var S=0.5+(0.30-0.5)*v, HK=1+(1.9-1)*v;
+  return [(x-y)*COS, (x+y)*S - z*0.95*HK];
+}
+function caras(p,v){
+  var x=p.ax+p.ox, y=p.ay+p.oy, w=p.w, d=p.d, h=p.h;
+  function q(a,b,c){ var t=proy(a,b,c,v); return t[0]+','+t[1]; }
+  return {
+    top:   q(x,y,h)+' '+q(x+w,y,h)+' '+q(x+w,y+d,h)+' '+q(x,y+d,h),
+    left:  q(x,y+d,0)+' '+q(x+w,y+d,0)+' '+q(x+w,y+d,h)+' '+q(x,y+d,h),
+    right: q(x+w,y,0)+' '+q(x+w,y+d,0)+' '+q(x+w,y+d,h)+' '+q(x+w,y,h)
+  };
+}
+
+/* ------------------------------------------------------- 3. EL PLANO */
+var planbox=$('#planbox'), svg=$('#svg'), escena=$('#escena');
+var ficha=$('#ficha'), fichaIn=$('#ficha-in');
+var base={s:1,tx:0,ty:0}, base0=null, base1=null;
+var cam={s:1,px:0,py:0}, tgt={s:1,px:0,py:0};
+var activo=null, hoverBloq=false, libre=false;
+
+function bboxMundo(v,soloCentro){
+  var a=1e9,b=1e9,c=-1e9,d=-1e9;
+  PIEZAS.forEach(function(p){
+    if(soloCentro && p.sede!=='CENTRO') return;
+    var pts=[[p.ax,p.ay,0],[p.ax+p.w,p.ay,0],[p.ax,p.ay+p.d,0],[p.ax+p.w,p.ay+p.d,0],
+             [p.ax,p.ay,p.h],[p.ax+p.w,p.ay,p.h],[p.ax,p.ay+p.d,p.h],[p.ax+p.w,p.ay+p.d,p.h]];
+    for(var i=0;i<8;i++){ var t=proy(pts[i][0],pts[i][1],pts[i][2],v);
+      if(t[0]<a)a=t[0]; if(t[0]>c)c=t[0]; if(t[1]<b)b=t[1]; if(t[1]>d)d=t[1]; }
+  });
+  return {x:a,y:b,w:c-a,h:d-b};
+}
+function calcBase(v){
+  var r=planbox.getBoundingClientRect(), vw=Math.max(1,r.width), vh=Math.max(1,r.height);
+  var bb=bboxMundo(v,true);
+  var s=Math.min(vw/bb.w, vh/bb.h)*0.80;
+  return {s:s, tx:vw/2 - s*(bb.x+bb.w/2), ty:vh/2 - s*(bb.y+bb.h/2)};
+}
+function refrescarBase(){ base0=calcBase(0); base1=calcBase(1); mezclarBase(); }
+function mezclarBase(){
+  if(!base0||!base1) return;
+  base={s:base0.s+(base1.s-base0.s)*V, tx:base0.tx+(base1.tx-base0.tx)*V, ty:base0.ty+(base1.ty-base0.ty)*V};
+}
+function aplicar(){
+  var S=base.s*cam.s;
+  escena.style.setProperty('--lbl',(11/S)+'px');
+  escena.style.setProperty('--sede',(12/S)+'px');
+  escena.setAttribute('transform','translate('+(base.tx+cam.px)+','+(base.ty+cam.py)+') scale('+S+')');
+  if(activo) ubicarFicha(activo);
+  ubicarCapas();
+}
+function construir(){
+  leerPaleta();
+  escena.textContent='';
+  Object.keys(SEDES).forEach(function(nombre){
+    var s=SEDES[nombre];
+    var g=el('g',{'pointer-events':'none'});
+    s._poly=el('polygon',{fill:PAL.floor,stroke:PAL.edge,'stroke-width':0.06,opacity:0.92});
+    s._tx=el('text',{'class':'sede-label'}); s._tx.textContent=nombre;
+    g.appendChild(s._poly); g.appendChild(s._tx); escena.appendChild(g);
+  });
+  ORDEN.forEach(function(p){
+    var g=el('g',{'class':'pieza','data-code':p.code,'data-sede':p.sede});
+    if(p.alq){ g.setAttribute('tabindex','0'); g.setAttribute('role','button');
+      g.setAttribute('aria-label',p.code+', '+p.tipo+', sede '+p.sede+', '+ETIQ[p.estado]); }
+    else { g.setAttribute('aria-hidden','true'); }
+    var c=PAL[p.estado];
+    p._r=el('polygon',{'class':'face',fill:c.right});
+    p._l=el('polygon',{'class':'face',fill:c.left});
+    p._t=el('polygon',{'class':'face',fill:c.top,'fill-opacity':p.alq?1:0.92});
+    p._ring=el('polygon',{'class':'pieza__ring'});
+    g.appendChild(p._r); g.appendChild(p._l); g.appendChild(p._t); g.appendChild(p._ring);
+    if(p.alq){ p._lab=el('text',{'class':'pieza__code'}); p._lab.textContent=p.code; g.appendChild(p._lab); }
+    p._g=g; escena.appendChild(g);
+  });
+  pintar();
+}
+function pintar(){
+  Object.keys(SEDES).forEach(function(n){
+    var s=SEDES[n]; if(!s._poly) return;
+    var x=s.dx-0.8,y=s.dy-0.8,w=s.w,d=s.d;
+    function q(a,b){ var t=proy(a,b,0,V); return t[0]+','+t[1]; }
+    s._poly.setAttribute('points',q(x,y)+' '+q(x+w,y)+' '+q(x+w,y+d)+' '+q(x,y+d));
+    var lt=proy(x+w/2,y+d+1.6,0,V);
+    s._tx.setAttribute('x',lt[0]); s._tx.setAttribute('y',lt[1]);
+  });
+  ORDEN.forEach(function(p){
+    var f=caras(p,V);
+    p._r.setAttribute('points',f.right); p._l.setAttribute('points',f.left);
+    p._t.setAttribute('points',f.top);   p._ring.setAttribute('points',f.top);
+    p._ring.setAttribute('style','stroke-width:0.1px');
+    if(p._lab){
+      var c=proy(p.ax+p.ox+p.w/2,p.ay+p.oy+p.d/2,p.h,V);
+      p._lab.setAttribute('x',c[0]); p._lab.setAttribute('y',c[1]-0.3);
+    }
+  });
+  mezclarBase(); aplicar();
+}
+
+/* ---- Ver en 3D / Volver al plano: un solo parámetro animado ---- */
+var animV=null;
+function irA(v){
+  if(reduce()){ V=v; pintar(); setEscena(escenaActual,true); return; }
+  if(animV) cancelAnimationFrame(animV);
+  var v0=V,t0=performance.now(),dur=760;
+  (function paso(t){
+    var u=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-u,3);
+    V=v0+(v-v0)*e; pintar();
+    if(u<1) animV=requestAnimationFrame(paso); else { animV=null; setEscena(escenaActual,true); }
+  })(t0);
+}
+
+/* ---- ficha ---- */
+function fila(v,cls){ return '<p class="ficha__row '+(cls||'')+'">'+v+'</p>'; }
+function pintarFicha(p){
+  var color='var(--st-'+p.estado+')', h='';
+  h+='<p class="ficha__code">'+p.code+'</p>';
+  h+='<p class="ficha__type">'+p.tipo+'</p>';
+  h+='<p class="ficha__loc">'+(p.ubic?p.ubic+' · ':'')+'sede '+p.sede+'</p>';
+  h+='<div class="ficha__hr"></div>';
+  h+='<p class="ficha__state" style="color:'+color+'"><i class="dot" style="background:'+color+'"></i>'+ETIQ[p.estado]+'</p>';
+  if(p.estado==='resto'){ h+=fila('No se alquila. Es parte del local.'); }
+  else if(p.estado==='libre'){ h+=fila('Tarifa de referencia'); h+=fila(pesos(p.tarifa)+' al mes','ficha__money'); }
+  else { h+=fila(p.prov); h+=fila(pesos(p.canon)+' al mes','ficha__money'); h+=fila(p.fecha); }
+  if(p.prov) h+='<p class="ficha__foot">Proveedor y valores de ejemplo</p>';
+  fichaIn.innerHTML=h;
+}
+function ubicarFicha(p){
+  var r=planbox.getBoundingClientRect();
+  var S=base.s*cam.s, c=proy(p.ax+p.ox+p.w/2,p.ay+p.oy+p.d/2,p.h,V);
+  var sx=base.tx+cam.px+S*c[0], sy=base.ty+cam.py+S*c[1];
+  var fw=ficha.offsetWidth||252, fh=ficha.offsetHeight||170;
+  var x=sx-fw/2, y=sy-fh-14;
+  if(y<8) y=sy+18;
+  x=Math.max(8,Math.min(r.width-fw-8,x));
+  y=Math.max(8,Math.min(r.height-fh-8,y));
+  ficha.style.left=x+'px'; ficha.style.top=y+'px';
+}
+function abrir(p,fijo){
+  if(activo && activo!==p) activo._g.setAttribute('data-active','false');
+  activo=p; p._g.setAttribute('data-active','true'); hoverBloq=!!fijo;
+  pintarFicha(p); ficha.setAttribute('data-open','true'); ubicarFicha(p);
+}
+function cerrar(){
+  if(activo) activo._g.setAttribute('data-active','false');
+  activo=null; hoverBloq=false; ficha.setAttribute('data-open','false');
+}
+$('#ficha-x').addEventListener('click',function(e){ e.stopPropagation(); cerrar(); planbox.focus(); });
+
+/* ---- interacción: rueda, arrastre, pellizco, teclado ---- */
+function limites(s){ return Math.max(0.35,Math.min(5,s)); }
+function zoomEn(f,cx,cy){
+  var r=planbox.getBoundingClientRect();
+  var ax=(cx===undefined?r.width/2:cx), ay=(cy===undefined?r.height/2:cy);
+  var S=base.s*cam.s, wx=(ax-(base.tx+cam.px))/S, wy=(ay-(base.ty+cam.py))/S;
+  cam.s=limites(cam.s*f);
+  var S2=base.s*cam.s;
+  cam.px=(ax-S2*wx)-base.tx; cam.py=(ay-S2*wy)-base.ty;
+  sincronizar(); aplicar();
+}
+function sincronizar(){ tgt.s=cam.s; tgt.px=cam.px; tgt.py=cam.py; libre=true; }
+
+var planoActivo=false;
+function activarPlano(){ if(!planoActivo){ planoActivo=true; } }
+planbox.addEventListener('pointerdown',activarPlano);
+planbox.addEventListener('focusin',activarPlano);
+planbox.addEventListener('mouseleave',function(){ planoActivo=false; });
+planbox.addEventListener('wheel',function(e){
+  if(!planoActivo && !e.ctrlKey) return;        /* la página sigue scrolleando */
+  e.preventDefault();
+  var r=planbox.getBoundingClientRect();
+  zoomEn(e.deltaY<0?1.12:1/1.12, e.clientX-r.left, e.clientY-r.top);
+},{passive:false});
+
+/* Nada de setPointerCapture: capturar el puntero en el contenedor le roba el
+   click a los botones y a la ficha que viven encima del plano. El arrastre se
+   sigue con eventos de ventana, que además funciona si el dedo se sale. */
+var punteros={}, arrastre=null, pinch=null, movio=0;
+planbox.addEventListener('pointerdown',function(e){
+  if(!(e.target.closest && e.target.closest('#svg'))) return;   /* controles y ficha no arrastran */
+  punteros[e.pointerId]={x:e.clientX,y:e.clientY};
+  var ids=Object.keys(punteros);
+  if(ids.length===1){ arrastre={x:e.clientX,y:e.clientY,px:cam.px,py:cam.py}; movio=0; }
+  else if(ids.length===2){
+    var a=punteros[ids[0]],b=punteros[ids[1]];
+    pinch={d:Math.hypot(a.x-b.x,a.y-b.y),s:cam.s}; arrastre=null;
+  }
+});
+window.addEventListener('pointermove',function(e){
+  if(!punteros[e.pointerId]) return;
+  punteros[e.pointerId]={x:e.clientX,y:e.clientY};
+  var ids=Object.keys(punteros);
+  if(pinch && ids.length===2){
+    var a=punteros[ids[0]],b=punteros[ids[1]], d=Math.hypot(a.x-b.x,a.y-b.y);
+    var r=planbox.getBoundingClientRect();
+    zoomEn((d/pinch.d)*pinch.s/cam.s,(a.x+b.x)/2-r.left,(a.y+b.y)/2-r.top);
+  } else if(arrastre){
+    var dx=e.clientX-arrastre.x, dy=e.clientY-arrastre.y;
+    movio=Math.max(movio,Math.abs(dx)+Math.abs(dy));
+    if(movio>4){ cam.px=arrastre.px+dx; cam.py=arrastre.py+dy; sincronizar(); aplicar(); }
+  }
+});
+function soltar(e){
+  delete punteros[e.pointerId];
+  if(Object.keys(punteros).length<2) pinch=null;
+  if(Object.keys(punteros).length===0) arrastre=null;
+}
+window.addEventListener('pointerup',soltar);
+window.addEventListener('pointercancel',soltar);
+planbox.addEventListener('click',function(e){
+  if(e.target.closest && (e.target.closest('.hud')||e.target.closest('.ficha'))) return;
+  if(movio>6){ movio=0; return; }
+  var g=e.target.closest?e.target.closest('.pieza'):null;
+  if(!g){ cerrar(); return; }
+  var p=NODOS[g.getAttribute('data-sede')+'/'+g.getAttribute('data-code')];
+  if(p) abrir(p,true);
+});
+planbox.addEventListener('mouseover',function(e){
+  if(hoverBloq) return;
+  var g=e.target.closest?e.target.closest('.pieza'):null;
+  if(g){ var p=NODOS[g.getAttribute('data-sede')+'/'+g.getAttribute('data-code')]; if(p&&p!==activo) abrir(p,false); }
+});
+planbox.addEventListener('focusin',function(e){
+  var g=e.target.closest?e.target.closest('.pieza'):null;
+  if(g){ var p=NODOS[g.getAttribute('data-sede')+'/'+g.getAttribute('data-code')]; if(p) abrir(p,true); }
+});
+planbox.addEventListener('focus',function(){ document.body.classList.add('plan-focus'); });
+planbox.addEventListener('blur',function(){ document.body.classList.remove('plan-focus'); });
+planbox.addEventListener('keydown',function(e){
+  var k=e.key, paso=48;
+  if(k==='ArrowLeft'){ cam.px+=paso; }
+  else if(k==='ArrowRight'){ cam.px-=paso; }
+  else if(k==='ArrowUp'){ cam.py+=paso; }
+  else if(k==='ArrowDown'){ cam.py-=paso; }
+  else if(k==='+'||k==='='){ zoomEn(1.18); return; }
+  else if(k==='-'||k==='_'){ zoomEn(1/1.18); return; }
+  else if(k==='Escape'){ cerrar(); return; }
+  else if(k==='Enter'||k===' '){
+    var g=document.activeElement&&document.activeElement.closest?document.activeElement.closest('.pieza'):null;
+    if(g){ e.preventDefault(); var p=NODOS[g.getAttribute('data-sede')+'/'+g.getAttribute('data-code')]; if(p) abrir(p,true); }
+    return;
+  } else return;
+  e.preventDefault(); sincronizar(); aplicar();
+});
+$('#t-in').addEventListener('click',function(){ activarPlano(); zoomEn(1.22); });
+$('#t-out').addEventListener('click',function(){ activarPlano(); zoomEn(1/1.22); });
+$('#t-fit').addEventListener('click',function(){ libre=false; setEscena(escenaActual,false); });
+var b3d=$('#t-3d'), t3dTxt=$('#t-3d-txt');
+b3d.addEventListener('click',function(){
+  var yaEn3D=V>0.5;
+  irA(yaEn3D?0:1);
+  b3d.setAttribute('aria-pressed',yaEn3D?'false':'true');
+  t3dTxt.textContent=yaEn3D?'Ver en 3D':'Volver al plano';
+  b3d.setAttribute('aria-label',t3dTxt.textContent);
+  b3d.setAttribute('title',t3dTxt.textContent);
+});
+
+/* ============================================================ 4. LA CÁMARA
+   Es el recurso de A: el objeto que mirás no cambia nunca, cambia el punto
+   de vista. Acá vive sólo en el hero y en "Lo que hace".                  */
+var ESC={
+  'hero':      {cx:16.5,cy:11.5,z:0.82},
+  'qh-intro':  {cx:15,  cy:10,  z:1.00},
+  'qh-1':      {key:'CENTRO/GON-04·A', z:1.70, fx:['fxCaras'],     sep:true},
+  'qh-2':      {key:'CENTRO/PUN-01',   z:1.95, fx:['fxContrato']},
+  'qh-3':      {cx:15,  cy:10,  z:0.95, fx:['fxTemporada'], temporada:true},
+  'qh-4':      {key:'CENTRO/GON-04·A', z:1.85, fx:['fxTarifa']},
+  'qh-5':      {cx:15,  cy:10,  z:1.18, fx:['fxAvisos']},
+  'qh-6':      {key:'CENTRO/CRS-01',   z:1.90, fx:['fxMontaje']},
+  'qh-cierre': {cx:29.4,cy:10,  z:0.55}
+};
+var ANCLAS={
+  fxCaras:   {key:'CENTRO/GON-04·A',dx:0,dy:-22},
+  fxContrato:{key:'CENTRO/PUN-01',  dx:0,dy:-20},
+  fxTarifa:  {key:'CENTRO/GON-04·A',dx:0,dy:-18},
+  fxMontaje: {key:'CENTRO/CRS-01',  dx:140,dy:-24}
+};
+var escenaActual='hero', raf=null;
+
+function setEscena(id,inmediato){
+  var s=ESC[id]||ESC.hero;
+  var r=planbox.getBoundingClientRect();
+  var cx,cy,ancY=r.height*0.50;
+  if(s.key){ var p=NODOS[s.key]; cx=p.ax+p.ox+p.w/2; cy=p.ay+p.oy+p.d/2; ancY=r.height*0.60; }
+  else { cx=s.cx; cy=s.cy; }
+  var w=proy(cx,cy,0,V), S2=base.s*s.z;
+  tgt.s=s.z;
+  tgt.px=(r.width/2 - S2*w[0]) - base.tx;
+  tgt.py=(ancY       - S2*w[1]) - base.ty;
+  if(inmediato||reduce()){ cam.s=tgt.s; cam.px=tgt.px; cam.py=tgt.py; aplicar(); }
+  else kick();
+}
+function kick(){ if(raf===null) raf=requestAnimationFrame(paso); }
+function paso(){
+  raf=null;
+  var k=0.14;
+  var ds=tgt.s-cam.s, dx=tgt.px-cam.px, dy=tgt.py-cam.py;
+  cam.s+=ds*k; cam.px+=dx*k; cam.py+=dy*k;
+  aplicar();
+  if(Math.abs(dx)>0.4||Math.abs(dy)>0.4||Math.abs(ds)>0.0008) kick();
+}
+
+/* ---- las capas de prueba, ancladas al mueble del que habla la tarjeta --- */
+function ubicarCapas(){
+  var r=planbox.getBoundingClientRect(), S=base.s*cam.s;
+  Object.keys(ANCLAS).forEach(function(n){
+    var box=document.getElementById(n);
+    if(!box||box.getAttribute('data-on')!=='true') return;
+    var a=ANCLAS[n], p=NODOS[a.key];
+    var c=proy(p.ax+p.ox+p.w/2,p.ay+p.oy+p.d/2,p.h,V);
+    var sx=base.tx+cam.px+S*c[0], sy=base.ty+cam.py+S*c[1];
+    var bw=box.offsetWidth||240, bh=box.offsetHeight||120;
+    var x=sx-bw/2+a.dx, y=sy-bh+a.dy;
+    x=Math.max(12,Math.min(r.width-bw-12,x));
+    y=Math.max(74,Math.min(r.height-bh-12,y));
+    box.style.left=x+'px'; box.style.top=y+'px';
+  });
+}
+function aplicarFx(id){
+  var s=ESC[id]||{}, lista=s.fx||[];
+  $$('.fxbox').forEach(function(b){ b.setAttribute('data-on', lista.indexOf(b.id)>=0?'true':'false'); });
+  separarCaras(!!s.sep);
+  if(!s.temporada) restaurarTemporada();
+  ubicarCapas();
+}
+
+/* ---- las dos caras de la góndola se separan: son dos espacios ---------- */
+var sepVal=0, sepAnim=null;
+function separarCaras(on){
+  var destino=on?1:0;
+  ['CENTRO/GON-04·A','CENTRO/GON-04·B'].forEach(function(k){
+    if(NODOS[k]&&NODOS[k]._g) NODOS[k]._g.setAttribute('data-show',on?'true':'false');
+  });
+  if(sepVal===destino && !sepAnim) return;
+  if(reduce()){ sepVal=destino; aplicarSep(); pintar(); return; }
+  if(sepAnim) cancelAnimationFrame(sepAnim);
+  var v0=sepVal,t0=performance.now(),dur=520;
+  (function pas(t){
+    var u=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-u,3);
+    sepVal=v0+(destino-v0)*e; aplicarSep(); pintar();
+    if(u<1) sepAnim=requestAnimationFrame(pas); else sepAnim=null;
+  })(t0);
+}
+function aplicarSep(){
+  var a=NODOS['CENTRO/GON-04·A'], b=NODOS['CENTRO/GON-04·B'];
+  if(a) a.oy=-1.15*sepVal;
+  if(b) b.oy= 1.15*sepVal;
+}
+
+/* ---- el plano se repinta por temporada (nueve del calendario) ---------- */
+var CHIPS=$$('#fxTemporada span'), ultimaTemp=-1, ORIG=null;
+function hash(s,k){ var h=0,i; for(i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))|0; return Math.abs(h+k*7919)%3; }
+function repintarTemporada(prog){
+  var idx=Math.max(0,Math.min(8,Math.floor(prog*9)));
+  if(idx===ultimaTemp) return; ultimaTemp=idx;
+  CHIPS.forEach(function(s,i){ s.classList.toggle('act',i===idx); });
+  if(!ORIG){ ORIG={}; PIEZAS.forEach(function(p){ ORIG[p.sede+'/'+p.code]=p.estado; }); }
+  var nombres=['libre','libera','tomado'];
+  PIEZAS.forEach(function(p){
+    if(!p.alq) return;
+    var k=p.sede+'/'+p.code;
+    var st = (idx===5) ? ORIG[k] : nombres[hash(k,idx)];
+    if(p.estado===st) return;
+    p.estado=st;
+    var c=PAL[st];
+    p._r.setAttribute('fill',c.right); p._l.setAttribute('fill',c.left); p._t.setAttribute('fill',c.top);
+    p._g.setAttribute('aria-label',p.code+', '+p.tipo+', sede '+p.sede+', '+ETIQ[st]);
+  });
+}
+function restaurarTemporada(){
+  if(!ORIG) return;
+  PIEZAS.forEach(function(p){
+    if(!p.alq) return;
+    var st=ORIG[p.sede+'/'+p.code];
+    if(p.estado===st) return;
+    p.estado=st; var c=PAL[st];
+    p._r.setAttribute('fill',c.right); p._l.setAttribute('fill',c.left); p._t.setAttribute('fill',c.top);
+    p._g.setAttribute('aria-label',p.code+', '+p.tipo+', sede '+p.sede+', '+ETIQ[st]);
+  });
+  ultimaTemp=-1;
+  CHIPS.forEach(function(s,i){ s.classList.toggle('act',i===5); });
+}
+
+/* ------------------------------------------------- 5. SCROLL -> ESCENA */
+var paneles=$$('.panel');
+function alScroll(){
+  var vh=window.innerHeight, mid=window.scrollY+vh*0.5, best=null, bd=1e12, prog=0;
+  paneles.forEach(function(p){
+    var r=p.getBoundingClientRect(), top=r.top+window.scrollY, h=r.height||1;
+    var d=Math.abs(top+h/2-mid);
+    if(d<bd){ bd=d; best=p; prog=Math.max(0,Math.min(1,(mid-top)/h)); }
+  });
+  if(best){
+    var id=best.getAttribute('data-scene');
+    if(id!==escenaActual){
+      escenaActual=id;
+      aplicarFx(id);
+      if(!libre) setEscena(id,false);
+      if(activo && id!=='hero') cerrar();
+    }
+    if(id==='qh-3') repintarTemporada(prog);
+  }
+  var h=document.documentElement;
+  $('#prog').style.width=(h.scrollTop/Math.max(1,h.scrollHeight-h.clientHeight)*100).toFixed(1)+'%';
+  navViva(h.scrollTop+140);
+  pasosScroll();
+}
+var tick=false;
+window.addEventListener('scroll',function(){ if(!tick){ tick=true; requestAnimationFrame(function(){ tick=false; alScroll(); }); } },{passive:true});
+var reTimer=null;
+window.addEventListener('resize',function(){
+  clearTimeout(reTimer);
+  reTimer=setTimeout(function(){ refrescarBase(); setEscena(escenaActual,true); ajustarSala(); },140);
+});
+
+var navLinks=$$('.rail__nav a');
+var navSecs=navLinks.map(function(a){ return document.querySelector(a.getAttribute('href')); });
+function navViva(y){
+  var cur=-1;
+  navSecs.forEach(function(s,i){ if(s && (s.getBoundingClientRect().top+window.scrollY)<=y) cur=i; });
+  navLinks.forEach(function(a,i){ a.setAttribute('aria-current', i===cur?'true':'false'); });
+}
+
+/* ------------------------------------------ 6. PLANOS EN MINIATURA */
+function Mini(g,W,H,lista,v,opts){
+  opts=opts||{};
+  var orden=lista.slice().sort(function(a,b){ return a.depth-b.depth; });
+  var nodos=[]; g.textContent='';
+  var piso=null;
+  if(opts.piso){ piso=el('polygon',{fill:PAL.floor,stroke:PAL.edge,'stroke-width':0.06}); g.appendChild(piso); }
+  orden.forEach(function(p){
+    var gg=el('g',{});
+    var col=opts.color?PAL[p.estado]:PAL.resto;
+    var r=el('polygon',{fill:col.right}),l=el('polygon',{fill:col.left}),t=el('polygon',{fill:col.top});
+    gg.appendChild(r); gg.appendChild(l); gg.appendChild(t); g.appendChild(gg);
+    nodos.push({p:p,g:gg,r:r,l:l,t:t});
+  });
+  function bbox(k){
+    var a=1e9,b=1e9,c=-1e9,d=-1e9;
+    lista.forEach(function(p){
+      [[p.ax,p.ay,0],[p.ax+p.w,p.ay,0],[p.ax,p.ay+p.d,0],[p.ax+p.w,p.ay+p.d,0],
+       [p.ax,p.ay,p.h],[p.ax+p.w,p.ay,p.h],[p.ax,p.ay+p.d,p.h],[p.ax+p.w,p.ay+p.d,p.h]].forEach(function(q){
+        var t=proy(q[0],q[1],q[2],k);
+        if(t[0]<a)a=t[0]; if(t[0]>c)c=t[0]; if(t[1]<b)b=t[1]; if(t[1]>d)d=t[1];
+      });
+    });
+    return {x:a,y:b,w:c-a,h:d-b};
+  }
+  function render(k){
+    var bb=bbox(k), s=Math.min(W/bb.w,H/bb.h)*0.92;
+    g.setAttribute('transform','translate('+(W/2-s*(bb.x+bb.w/2))+','+(H/2-s*(bb.y+bb.h/2))+') scale('+s+')');
+    if(piso){
+      var S=SEDES.CENTRO, x=S.dx-0.8, y=S.dy-0.8;
+      function q(a,b){ var t=proy(a,b,0,k); return t[0]+','+t[1]; }
+      piso.setAttribute('points',q(x,y)+' '+q(x+S.w,y)+' '+q(x+S.w,y+S.d)+' '+q(x,y+S.d));
+      piso.setAttribute('stroke-width',0.06);
+    }
+    nodos.forEach(function(n){
+      var f=caras(n.p,k);
+      n.r.setAttribute('points',f.right); n.l.setAttribute('points',f.left); n.t.setAttribute('points',f.top);
+    });
+  }
+  function color(n,on){
+    var c=on?PAL[n.p.estado]:PAL.resto;
+    n.r.setAttribute('fill',c.right); n.l.setAttribute('fill',c.left); n.t.setAttribute('fill',c.top);
+  }
+  function recolorear(on){ nodos.forEach(function(n){ color(n,on); }); }
+  render(v);
+  return {render:render,recolorear:recolorear,color:color,nodos:nodos,piso:piso};
+}
+
+var CENTRO_LISTA=PIEZAS.filter(function(p){ return p.sede==='CENTRO'; });
+var mini1=null, sala=null;
+
+/* mini del bloque 1: morfa plano <-> 3D al pasar el mouse */
+function armarMini1(){
+  var g=$('#mini-plano'); if(!g) return;
+  mini1=Mini(g,320,128,CENTRO_LISTA,0,{color:true});
+  var card=g.closest('.card'), lbl=$('#mini1-mode'), kk=0, anim=null;
+  if(!card) return;
+  function morfar(dest){
+    if(reduce()){ kk=dest; mini1.render(kk); lbl.textContent=dest>0.5?'3D':'plano'; return; }
+    if(anim) cancelAnimationFrame(anim);
+    var k0=kk,t0=performance.now();
+    (function pas(t){
+      var u=Math.min(1,(t-t0)/520), e=1-Math.pow(1-u,3);
+      kk=k0+(dest-k0)*e; mini1.render(kk);
+      if(u<1) anim=requestAnimationFrame(pas); else { anim=null; lbl.textContent=dest>0.5?'3D':'plano'; }
+    })(t0);
+  }
+  card.addEventListener('mouseenter',function(){ morfar(1); });
+  card.addEventListener('mouseleave',function(){ morfar(0); });
+  card.addEventListener('focusin',function(){ morfar(1); });
+}
+
+/* ------------------------- 7. CÓMO SE ARRANCA: vaciar, dibujar, pintar */
+var SALA_ORDEN=null, SALA_ALQ=null, salaFase=null, salaSVG=null, salaW=0, salaH=0;
+function armarSala(){
+  salaSVG=document.querySelector('.sala svg');
+  var g=$('#sala-g'); if(!g||!salaSVG) return;
+  /* el viewBox se ajusta a la caja real: la sala llena el marco en cualquier ancho */
+  var r=salaSVG.getBoundingClientRect();
+  salaW=Math.max(240,Math.round(r.width)); salaH=Math.max(150,Math.round(r.height));
+  salaSVG.setAttribute('viewBox','0 0 '+salaW+' '+salaH);
+  sala=Mini(g,salaW,salaH,CENTRO_LISTA,0,{color:false,piso:true});
+  SALA_ORDEN=sala.nodos;
+  SALA_ALQ=SALA_ORDEN.filter(function(n){ return n.p.alq; });
+  salaFase=null;
+  if(reduce()||document.body.classList.contains('reducido')) fase(3,1);
+  else if(pasosJugado) fase(3,1);
+  else fase(1,0);
+}
+function ajustarSala(){
+  if(!salaSVG) return;
+  var r=salaSVG.getBoundingClientRect();
+  if(Math.abs(r.width-salaW)<8 && Math.abs(r.height-salaH)<8) return;
+  armarSala();
+  if(!reduce() && !compacto()) pasosScroll();
+}
+var ROT=$('#sala-estado');
+function fase(f,u){
+  var q=f+':'+Math.round(u*24);
+  if(q===salaFase) return; salaFase=q;
+  if(f===1){
+    SALA_ORDEN.forEach(function(n){ n.g.style.opacity='0'; });
+    ROT.textContent='Cuenta creada · sala vacía';
+  } else if(f===2){
+    SALA_ORDEN.forEach(function(n,i){
+      n.g.style.opacity=((i+1)/SALA_ORDEN.length<=u)?'1':'0';
+      sala.color(n,false);
+    });
+    ROT.textContent='Dibujando la sala · todo en gris';
+  } else {
+    SALA_ORDEN.forEach(function(n){ n.g.style.opacity='1'; if(!n.p.alq) sala.color(n,false); });
+    SALA_ALQ.forEach(function(n,i){ sala.color(n,((i+1)/SALA_ALQ.length)<=u); });
+    ROT.textContent='16 espacios alquilables, pintados';
+  }
+  $$('#pasos .paso').forEach(function(li,i){ li.setAttribute('data-on', (i+1)===f?'true':'false'); });
+}
+var pasosFilm=$('#pasos-film');
+var MQ_COMPACTO=window.matchMedia('(max-width:999px)');
+function compacto(){ return MQ_COMPACTO.matches; }
+var pasosJugado=false;
+/* Sin pantalla pegada (móvil), la sala se vacía, se dibuja y se pinta sola
+   al entrar en cuadro: la prueba no depende del scroll. */
+function secuenciaPasos(){
+  if(pasosJugado||!sala) return; pasosJugado=true;
+  if(reduce()){ fase(3,1); return; }
+  fase(1,0);
+  var t0=performance.now()+450;
+  (function loop(now){
+    var e=now-t0;
+    if(e<0){ requestAnimationFrame(loop); return; }
+    if(e<1400) fase(2,e/1400);
+    else if(e<2900) fase(3,(e-1400)/1500);
+    else { fase(3,1); return; }
+    requestAnimationFrame(loop);
+  })(performance.now());
+}
+function pasosScroll(){
+  if(!sala||!pasosFilm) return;
+  if(document.body.classList.contains('reducido')){ fase(3,1); return; }
+  if(compacto()) return;
+  var r=pasosFilm.getBoundingClientRect();
+  var alto=Math.max(1,r.height-window.innerHeight);
+  var p=Math.max(0,Math.min(1,(-r.top)/alto));
+  if(p<0.30) fase(1,0);
+  else if(p<0.62) fase(2,(p-0.30)/0.32);
+  else fase(3,Math.min(1,(p-0.62)/0.30));
+}
+
+/* --------------------------------------- 8. CONTADORES Y REVELADO (de C) */
+function contar(node){
+  if(node.dataset.contado) return; node.dataset.contado='1';
+  var fin=parseFloat(node.getAttribute('data-count'));
+  var money=node.getAttribute('data-money')==='1';
+  var suf=node.getAttribute('data-suffix')||'';
+  if(reduce()){ node.textContent=(money?pesos(fin):fin)+suf; return; }
+  var t0=performance.now(),dur=1100;
+  (function pas(t){
+    var u=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-u,4), v=fin*e;
+    node.textContent=(money?pesos(v):Math.round(v))+suf;
+    if(u<1) requestAnimationFrame(pas);
+  })(t0);
+}
+var io=new IntersectionObserver(function(ents){
+  ents.forEach(function(en){
+    if(!en.isIntersecting) return;
+    var t=en.target;
+    t.classList.add('is-in');
+    if(t.hasAttribute('data-count')) contar(t);
+    $$('[data-count]',t).forEach(contar);
+    $$('.meter[data-meter]',t).forEach(function(m){ m.querySelector('i').style.width=m.getAttribute('data-meter')+'%'; });
+    io.unobserve(t);
+  });
+},{rootMargin:'0px 0px -8% 0px',threshold:0.14});
+$$('.rv, .card__demo, .timeline, .panel').forEach(function(n){ io.observe(n); });
+
+/* anillo de ocupación */
+(function(){
+  var ring=$('#ring'); if(!ring) return;
+  var o=new IntersectionObserver(function(e){
+    if(e[0].isIntersecting){ ring.style.strokeDashoffset=(326.7*(1-0.35)).toFixed(1); o.disconnect(); }
+  },{threshold:0.4});
+  o.observe(ring);
+})();
+
+/* recomendaciones: entran ordenadas por lo que hay en juego */
+(function(){
+  var box=$('[data-anim="reco"]'); if(!box) return;
+  var o=new IntersectionObserver(function(e){
+    if(!e[0].isIntersecting) return;
+    $$('.reco__it',box).forEach(function(it,i){
+      if(reduce()){ it.style.opacity='1'; it.style.transform='none'; return; }
+      it.style.transition='opacity 420ms cubic-bezier(.16,.84,.44,1), transform 420ms cubic-bezier(.16,.84,.44,1)';
+      it.style.transitionDelay=(i*140)+'ms';
+      requestAnimationFrame(function(){ it.style.opacity='1'; it.style.transform='none'; });
+    });
+    o.disconnect();
+  },{threshold:0.3});
+  o.observe(box);
+})();
+
+/* estados de la cuenta: se encienden en cadena */
+(function(){
+  var box=$('#estados'); if(!box) return;
+  var its=$$('.estado',box);
+  var o=new IntersectionObserver(function(e){
+    if(!e[0].isIntersecting) return;
+    if(reduce()){ its.forEach(function(i){ i.setAttribute('data-on','true'); }); o.disconnect(); return; }
+    its.forEach(function(it,i){ setTimeout(function(){ it.setAttribute('data-on','true'); }, i*760); });
+    o.disconnect();
+  },{threshold:0.4});
+  o.observe(box);
+})();
+
+/* ------------------------------------------------ 9. INTERACCIONES (C) */
+/* perfiles */
+(function(){
+  var tabs=$$('.rtab'), title=$('#rview-title');
+  var titulos={'tab-g':'Pantalla del gerente','tab-t':'Pantalla del trabajador de piso','tab-p':'Correo del proveedor'};
+  function activar(t){
+    tabs.forEach(function(o){
+      var on=(o===t); o.setAttribute('aria-selected',on?'true':'false');
+      var pane=document.getElementById(o.getAttribute('aria-controls'));
+      if(pane) pane.setAttribute('data-on',on?'true':'false');
+    });
+    title.textContent=titulos[t.id]||'';
+  }
+  tabs.forEach(function(t,i){
+    t.addEventListener('click',function(){ activar(t); });
+    t.addEventListener('keydown',function(e){
+      var d=(e.key==='ArrowDown'||e.key==='ArrowRight')?1:((e.key==='ArrowUp'||e.key==='ArrowLeft')?-1:0);
+      if(!d) return; e.preventDefault();
+      var n=tabs[(i+d+tabs.length)%tabs.length]; n.focus(); activar(n);
+    });
+  });
+})();
+
+/* temporadas de la tarjeta: repinta los 16 espacios */
+(function(){
+  var grid=$('#gridmini'), chips=$$('#temporadas .chip');
+  if(!grid) return;
+  var mapas=['lllllllaaaTTTTTT','llllaaTTTTTTllll','llaaaTTTTTTTTll','laaTTTTTTTTTlll'];
+  var col={l:'var(--st-libre)',a:'var(--st-libera)',T:'var(--st-tomado)'};
+  for(var i=0;i<16;i++) grid.appendChild(document.createElement('i'));
+  function pintarGrid(n){
+    var m=mapas[n]||mapas[0];
+    $$('i',grid).forEach(function(c,i){
+      setTimeout(function(){ c.style.background=col[m.charAt(i)]||'var(--st-resto)'; }, reduce()?0:i*22);
+    });
+  }
+  chips.forEach(function(c){
+    c.addEventListener('click',function(){
+      chips.forEach(function(o){ o.setAttribute('aria-pressed', o===c?'true':'false'); });
+      pintarGrid(+c.getAttribute('data-t'));
+    });
+  });
+  pintarGrid(0);
+})();
+
+/* toast + montaje con foto */
+var toastT=null;
+function toast(msg){
+  var t=$('#toast'); $('#toast-txt').textContent=msg;
+  t.setAttribute('data-on','true');
+  clearTimeout(toastT); toastT=setTimeout(function(){ t.setAttribute('data-on','false'); },4200);
+}
+(function(){
+  var b=$('#fono-ok'), shot=$('#fono-shot'); if(!b) return;
+  b.addEventListener('click',function(){
+    var on=shot.getAttribute('data-on')==='true';
+    shot.setAttribute('data-on',on?'false':'true');
+    if(!on) toast('Montaje confirmado con foto · PUN-01, sede CENTRO');
+  });
+})();
+
+/* tema claro / oscuro */
+(function(){
+  var b=$('#tema');
+  function icono(){
+    var d=document.documentElement.getAttribute('data-theme')==='dark';
+    b.innerHTML='<svg width="18" height="18" aria-hidden="true"><use href="#'+(d?'i-sun':'i-moon')+'"/></svg>';
+    b.setAttribute('aria-label', d?'Cambiar a modo claro':'Cambiar a modo oscuro');
+  }
+  icono();
+  b.addEventListener('click',function(){
+    var d=document.documentElement.getAttribute('data-theme')==='dark';
+    document.documentElement.setAttribute('data-theme', d?'light':'dark');
+    try{ localStorage.setItem('recabra-tema', d?'light':'dark'); }catch(e){}
+    icono(); leerPaleta();
+    ORDEN.forEach(function(p){
+      if(!p._r) return;
+      var c=PAL[p.estado];
+      p._r.setAttribute('fill',c.right); p._l.setAttribute('fill',c.left); p._t.setAttribute('fill',c.top);
+    });
+    Object.keys(SEDES).forEach(function(k){
+      var s=SEDES[k];
+      if(s._poly){ s._poly.setAttribute('fill',PAL.floor); s._poly.setAttribute('stroke',PAL.edge); }
+    });
+    if(mini1) mini1.recolorear(true);
+    if(sala){
+      if(sala.piso){ sala.piso.setAttribute('fill',PAL.floor); sala.piso.setAttribute('stroke',PAL.edge); }
+      salaFase=null;
+      if(reduce()||compacto()||pasosJugado) fase(3,1); else pasosScroll();
+    }
+  });
+})();
+
+/* tabla equivalente al plano */
+(function(){
+  var tb=$('#tabla-alt tbody'); if(!tb) return;
+  PIEZAS.filter(function(p){ return p.alq; }).forEach(function(p){
+    var tr=document.createElement('tr');
+    tr.innerHTML='<td>'+p.code+'</td><td>'+p.tipo+'</td><td>'+p.sede+'</td><td>'+ETIQ[p.estado]+'</td><td>'+
+      (p.prov||'—')+'</td><td>'+pesos(p.canon||p.tarifa)+' al mes'+(p.tarifa?' (tarifa)':'')+'</td>';
+    tb.appendChild(tr);
+  });
+})();
+
+$('#anio').textContent=new Date().getFullYear();
+
+/* ---------------------------------------------------------- 10. ARRANQUE
+   El H1 y los botones son HTML estático: pintan primero. El plano se
+   construye recién en el primer cuadro después de DOMContentLoaded.      */
+if(reduce()) document.body.classList.add('reducido');
+if(COARSE) document.body.classList.add('coarse');
+RM.addEventListener && RM.addEventListener('change',function(){
+  document.body.classList.toggle('reducido',reduce());
+  salaFase=null; pasosScroll();
+});
+
+function errorPlano(){
+  var box=$('#planbox');
+  box.innerHTML='<div style="display:grid;place-items:center;height:100%;gap:12px;padding:24px;text-align:center">'+
+    '<p class="body">No pudimos dibujar el plano de ejemplo. El resto de la página funciona igual.</p>'+
+    '<button class="btn btn--ghost btn--sm" onclick="location.reload()">Reintentar</button></div>';
+}
+function boot(){
+  try{
+    construir();
+    refrescarBase();
+    setEscena('hero',true);
+    aplicarFx('hero');
+    if(!reduce()){ cam.s=tgt.s*0.88; aplicar(); requestAnimationFrame(function(){ setEscena('hero',false); }); }
+  }catch(err){ errorPlano(); }
+  try{ armarMini1(); armarSala(); }catch(err){}
+  if(pasosFilm){
+    var oP=new IntersectionObserver(function(e){
+      if(e[0].isIntersecting && (compacto()||reduce())){ secuenciaPasos(); oP.disconnect(); }
+    },{threshold:0.15});
+    oP.observe(pasosFilm);
+  }
+  $$('.rail [data-count], .legend [data-count]').forEach(contar);
+  setTimeout(function(){ if(!activo && NODOS['CENTRO/PUN-02'] && NODOS['CENTRO/PUN-02']._g) abrir(NODOS['CENTRO/PUN-02'],true); }, reduce()?0:700);
+  alScroll();
+}
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',function(){ requestAnimationFrame(boot); });
+}else{ requestAnimationFrame(boot); }
+</script>
+</body>
+</html>
