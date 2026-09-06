@@ -536,7 +536,7 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Ayuda del plano (una línea, debajo de los controles, siempre visible en escritorio):**
 
-> Arrastrá para moverte. Rueda para acercar. Tocá un mueble para ver su ficha.
+> Arrastrá para moverte. Ctrl + rueda para acercar. Tocá un mueble para ver su ficha.
 
 **La misma en móvil:**
 

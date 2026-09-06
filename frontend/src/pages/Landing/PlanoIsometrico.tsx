@@ -580,13 +580,11 @@ function Escenario() {
   useEffect(() => {
     const caja = planboxRef.current;
     if (!caja) return;
-    let armado = false;
     const punteros = new Map<number, { x: number; y: number }>();
     let arrastre: { x: number; y: number; px: number; py: number } | null = null;
     let pinza: { d: number; s: number } | null = null;
 
     const alBajar = (e: PointerEvent) => {
-      armado = true;
       const t = e.target as Element | null;
       if (!t || !t.closest(".stage__svg")) return;
       punteros.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -625,29 +623,25 @@ function Escenario() {
       if (punteros.size < 2) pinza = null;
       if (punteros.size === 0) arrastre = null;
     };
-    /* La rueda se arma con el primer clic o foco sobre el plano: mientras no lo
-       tocaste, la rueda scrollea la página. Un plano pegado en el hero nunca
-       puede secuestrar el scroll. */
+    /* La rueda sola SIEMPRE scrollea la página: el plano está pegado a toda la
+       pantalla y «armarlo» con el clic lo dejaba secuestrando el scroll hasta
+       que el mouse salía (dueño, 2026-09-06). El zoom por rueda pide Ctrl/⌘;
+       la pinza del trackpad manda ctrlKey sola; quedan los botones y la pinza
+       táctil. */
     const alRodar = (e: WheelEvent) => {
-      if (!armado && !e.ctrlKey) return;
+      if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       const r = caja.getBoundingClientRect();
       zoomEn(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX - r.left, e.clientY - r.top);
     };
-    const alSalir = () => { armado = false; };
-    const alEntrarFoco = () => { armado = true; };
 
     caja.addEventListener("pointerdown", alBajar);
-    caja.addEventListener("focusin", alEntrarFoco);
-    caja.addEventListener("mouseleave", alSalir);
     caja.addEventListener("wheel", alRodar, { passive: false });
     window.addEventListener("pointermove", alMover);
     window.addEventListener("pointerup", alSoltar);
     window.addEventListener("pointercancel", alSoltar);
     return () => {
       caja.removeEventListener("pointerdown", alBajar);
-      caja.removeEventListener("focusin", alEntrarFoco);
-      caja.removeEventListener("mouseleave", alSalir);
       caja.removeEventListener("wheel", alRodar);
       window.removeEventListener("pointermove", alMover);
       window.removeEventListener("pointerup", alSoltar);
@@ -909,7 +903,7 @@ function Escenario() {
             <p className="foot">Es la misma lectura que vas a tener adentro, con tu propia tienda.</p>
           </div>
           <p className="help">
-            <span className="mouse">Arrastrá para moverte. Rueda para acercar. Tocá un mueble para ver su ficha.</span>
+            <span className="mouse">Arrastrá para moverte. Ctrl + rueda para acercar. Tocá un mueble para ver su ficha.</span>
             <span className="touch">Deslizá para moverte. Pellizcá para acercar. Tocá un mueble.</span>
             <span className="kb">Flechas para moverte · + y − para acercar · Enter para abrir la ficha del mueble · Esc para cerrarla</span>
           </p>
