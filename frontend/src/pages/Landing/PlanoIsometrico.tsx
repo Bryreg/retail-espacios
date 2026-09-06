@@ -154,6 +154,10 @@ function Escenario() {
   const animSep = useRef<number | null>(null);
   const sepVal = useRef(0);
   const escenaActual = useRef("hero");
+  /* La ficha del mueble solo existe en el inicio: en las specs tapaba la capa
+     de prueba de la sección (dueño, 2026-09-06). Ahí queda el resaltado
+     (anillo + código) y nada más. */
+  const [enHero, setEnHero] = useState(true);
   const ultimaTemp = useRef(-1);
   const hoverBloq = useRef(false);
   const movio = useRef(0);
@@ -520,6 +524,7 @@ function Escenario() {
       const id = (best as HTMLElement).getAttribute("data-scene") || "hero";
       if (id !== escenaActual.current) {
         escenaActual.current = id;
+        setEnHero(id === "hero");
         aplicarFx(id);
         /* La cámara de la sección SIEMPRE retoma el plano: un arrastre o un
            zoom a mano vale hasta la próxima sección, nunca congela el plano
@@ -746,7 +751,7 @@ function Escenario() {
     return k && INDICE[k] !== undefined ? INDICE[k] : null;
   };
 
-  const piezaActiva = activo ? PIEZAS[activo.i] : null;
+  const piezaActiva = activo && enHero ? PIEZAS[activo.i] : null;
 
   return (
     <div className="stage">
