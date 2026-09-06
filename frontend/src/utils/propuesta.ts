@@ -149,12 +149,19 @@ export function nombreDeArchivo(d: DatosPropuesta, conComparacion: boolean): str
 
 // ─── El dibujo (sólo navegador) ──────────────────────────────────────────────
 
+/* Estos cinco NO son tokens del tema y no deben serlo. La lámina se dibuja en
+   un `<canvas>` y sale del navegador como un PNG que se adjunta a un correo: es
+   PAPEL, y el papel es blanco siempre, con tema claro o con tema oscuro. Si
+   siguieran al tema, el proveedor recibiría una lámina negra porque el
+   vendedor tenía el modo oscuro puesto. Lo que sí se alinea con el sistema es
+   la tipografía: la misma pila de texto que el resto (`--f-text`), escrita acá
+   literal porque un canvas no lee variables de CSS. */
 const TINTA_1 = "#111827";
 const TINTA_2 = "#4b5563";
 const TINTA_3 = "#9ca3af";
 const FONDO   = "#ffffff";
 const LINEA   = "#e5e7eb";
-const TIPO    = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+const TIPO    = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif';
 
 function cargar(dataUrl: string): Promise<HTMLImageElement> {
   return new Promise((ok, mal) => {

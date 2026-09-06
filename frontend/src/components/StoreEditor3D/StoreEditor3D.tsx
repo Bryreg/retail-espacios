@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Html } from "@react-three/drei";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
+import { useModalAbierto } from "../../tema";
 import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
 import { nombreDeMueble } from "../../utils/nomenclatura";
@@ -2438,8 +2439,14 @@ function SelectorDeProducto({
     return [...m.entries()];
   }, [filtrado]);
 
+  // Mientras el catálogo está abierto, ÉL es la pantalla: se lleva el amarillo
+  // y cualquier botón principal de atrás pasa a tinta.
+  useModalAbierto();
+
   return (
     <div
+      data-cajon-oscuro
+      data-capa-modal
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
       onClick={onCerrar}
     >
@@ -2624,10 +2631,13 @@ function FormularioDeArte({
             {archivo.name}
           </span>
         )}
+        {/* El botón principal del editor de zonas: el único amarillo de esta
+            pantalla (`outputs/tema.md` §2). «Cambiar / Imagen» y «Cancelar»
+            quedan en tinta sobre el cajón oscuro. */}
         <button
           onClick={enviar}
           disabled={subiendo}
-          className="flex items-center gap-1.5 rounded bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+          className="btn-principal flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs"
         >
           {subiendo && <Loader2 size={12} className="animate-spin" />}
           {subiendo ? "Subiendo…" : "Guardar"}
@@ -2687,7 +2697,7 @@ function VistaProveedor({
               key={id}
               onClick={() => setCara(id)}
               className={`flex-1 rounded px-1 py-1 text-[10.5px] font-semibold transition-colors ${
-                caraUsada === id ? "bg-accent text-white"
+                caraUsada === id ? "bg-accent text-accent-ink"
                                  : "border border-dark-line-2 text-dark-ink-3 hover:text-dark-ink-1"
               }`}
             >
@@ -2766,7 +2776,7 @@ function VistaProveedor({
         ) : (
           <button
             onClick={() => guardarVista(fix.id, caraUsada, { ...camara3D })}
-            className="rounded bg-accent px-2 py-1.5 text-[11px] font-semibold text-white hover:opacity-90">
+            className="rounded-md bg-accent px-2 py-1.5 text-[11px] font-semibold text-accent-ink hover:opacity-90">
             {guardada ? "Reemplazar por la vista actual" : "Guardar esta vista"}
           </button>
         )}
@@ -4570,7 +4580,7 @@ function CommercialPanel({
                 onClick={() => u({ rentable: value })}
                 className={`flex-1 rounded px-1 py-1.5 text-[10.5px] font-semibold transition-colors ${
                   rentable === value
-                    ? "bg-accent text-white"
+                    ? "bg-accent text-accent-ink"
                     : "border border-dark-line-2 text-dark-ink-3 hover:text-dark-ink-1"
                 }`}
               >
@@ -5144,7 +5154,11 @@ export default function StoreEditor3D() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-1 overflow-hidden rounded-xl border border-dark-line bg-dark-bg" style={{minHeight:0}}>
+    /* `data-cajon-oscuro`: el editor es oscuro en los dos temas (ver el
+       bloque del mismo nombre en `tema.css`). Adentro de esta marca la tinta
+       se invierte, así que `bg-accent` es una pestaña CLARA sobre el panel
+       oscuro y no un rectángulo negro invisible. */
+    <div data-cajon-oscuro className="flex flex-1 overflow-hidden rounded-xl border border-dark-line bg-dark-bg" style={{minHeight:0}}>
 
       {/* ── Left sidebar — hidden in presentation mode ── */}
       <div className={`flex w-52 flex-shrink-0 flex-col gap-3 overflow-y-auto border-r border-dark-line bg-dark-surface p-3 ${presentationMode ? 'hidden' : ''}`}>
@@ -5217,7 +5231,7 @@ export default function StoreEditor3D() {
 
         <div className="mt-auto flex flex-col gap-1.5">
           <button onClick={handleSave}
-            className="flex items-center justify-center gap-1.5 rounded-lg bg-accent hover:bg-accent-600 shadow-lg active:scale-[0.98] transition-all py-2 text-xs font-semibold text-white">
+            className="flex items-center justify-center gap-1.5 rounded-lg bg-accent hover:bg-accent-600 shadow-lg active:scale-[0.98] transition-all py-2 text-xs font-semibold text-accent-ink">
             {showSavedFeedback
               ? <><span className="text-success-100">✓</span> <span className="text-success-100">Guardado</span></>
               : <><Save size={12}/> Guardar</>
@@ -5247,7 +5261,7 @@ export default function StoreEditor3D() {
             ) : placingDef ? (
               <span className="flex items-center gap-2 text-accent-200">
                 <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-accent flex-shrink-0"/>
-                Colocando <strong className="text-white">{placingDef.label}</strong>
+                Colocando <strong className="text-dark-ink-1">{placingDef.label}</strong>
                 <span className="text-accent/40">·</span>
                 <kbd className="rounded border border-dark-line-2 bg-dark-surface px-1 text-dark-ink-2">clic</kbd> ubicar ·
                 <kbd className="rounded border border-dark-line-2 bg-dark-surface px-1 text-dark-ink-2">R</kbd> rotar ·
@@ -5413,12 +5427,16 @@ export default function StoreEditor3D() {
           );
         })()}
 
-        {/* MEJORA 4: Presentation mode overlay pill */}
+        {/* MEJORA 4: Presentation mode overlay pill.
+            El HUD flota SOBRE la escena 3D, no sobre una superficie del tema:
+            blanco al 60-90% y negro translúcido son lo correcto encima de un
+            render, en los dos temas. Es la única familia de colores literales
+            de Tailwind que queda fuera de la landing, y queda a propósito. */}
         {presentationMode && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 rounded-full border border-white/10 bg-black/40 px-4 py-2 backdrop-blur-sm">
             <span className="text-xs text-white/60">Modo presentación</span>
             <button onClick={() => setPresentationMode(false)}
-              className="rounded-full bg-white/10 px-3 py-1 text-xs text-white hover:bg-white/20 transition-colors">
+              className="rounded-full bg-dark-ink-1/10 px-3 py-1 text-xs text-white hover:bg-dark-ink-1/20 transition-colors">
               Salir
             </button>
           </div>
@@ -5429,12 +5447,12 @@ export default function StoreEditor3D() {
           <div className="absolute inset-0 flex flex-col items-end justify-end p-4 pointer-events-none z-10">
             <div className="rounded-xl border border-white/10 bg-black/50 p-3 backdrop-blur-sm text-xs text-white/70 space-y-1">
               <p className="font-semibold text-white/90 mb-2">Modo Primera Persona</p>
-              <p><kbd className="bg-white/10 rounded px-1">Clic</kbd> para capturar el mouse</p>
-              <p><kbd className="bg-white/10 rounded px-1">WASD</kbd> para caminar</p>
-              <p><kbd className="bg-white/10 rounded px-1">Shift</kbd> para ir más rápido</p>
-              <p><kbd className="bg-white/10 rounded px-1">Esc</kbd> para soltar el mouse</p>
-              <p><kbd className="bg-white/10 rounded px-1">Esc</kbd> y clic en el plano para saltar ahí</p>
-              <button onClick={() => setFirstPerson(false)} className="pointer-events-auto mt-2 w-full rounded bg-white/10 hover:bg-white/20 px-2 py-1 text-center">
+              <p><kbd className="bg-dark-ink-1/10 rounded px-1">Clic</kbd> para capturar el mouse</p>
+              <p><kbd className="bg-dark-ink-1/10 rounded px-1">WASD</kbd> para caminar</p>
+              <p><kbd className="bg-dark-ink-1/10 rounded px-1">Shift</kbd> para ir más rápido</p>
+              <p><kbd className="bg-dark-ink-1/10 rounded px-1">Esc</kbd> para soltar el mouse</p>
+              <p><kbd className="bg-dark-ink-1/10 rounded px-1">Esc</kbd> y clic en el plano para saltar ahí</p>
+              <button onClick={() => setFirstPerson(false)} className="pointer-events-auto mt-2 w-full rounded bg-dark-ink-1/10 hover:bg-dark-ink-1/20 px-2 py-1 text-center">
                 Volver a vista orbital
               </button>
             </div>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { aceptarPolitica } from "../api/auth";
 import { describeError } from "../api/client";
 import { useAuthStore } from "../store/authStore";
+import { useModalAbierto } from "../tema";
 
 /**
  * Aviso post-login de Fase 3 compliance — NO es un muro.
@@ -37,8 +38,13 @@ export default function ModalConsentimiento() {
     }
   };
 
+  // Mientras este aviso está puesto, ÉL es la pantalla: se lleva el amarillo y
+  // el botón principal del tablero de atrás pasa a tinta.
+  useModalAbierto();
+
   return (
     <div
+      data-capa-modal
       role="dialog"
       aria-modal="true"
       style={{
@@ -96,17 +102,14 @@ export default function ModalConsentimiento() {
             Ahora no
           </button>
           <button
+            className="btn-principal"
             type="button"
             onClick={aceptar}
             disabled={busy}
             style={{
               flex: 1, height: 38,
               borderRadius: "var(--r-md)",
-              background: "var(--accent)", color: "#fff",
-              border: "none",
-              cursor: busy ? "default" : "pointer",
-              opacity: busy ? 0.6 : 1,
-              fontSize: 13, fontWeight: 600, fontFamily: "inherit",
+              fontSize: 13, fontFamily: "inherit",
             }}
           >
             {busy ? "Guardando…" : "Aceptar"}

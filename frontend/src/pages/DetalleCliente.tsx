@@ -194,6 +194,15 @@ const botonStyle: React.CSSProperties = {
   fontSize: 12, fontWeight: 600, fontFamily: "inherit",
   cursor: "pointer", whiteSpace: "nowrap",
 };
+/** La forma del botón principal, sin el color: el color lo pone
+ *  `.btn-principal` (`index.css`). */
+const botonSenalStyle: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", gap: 6,
+  height: 30, padding: "0 12px",
+  borderRadius: "var(--r-md)",
+  fontSize: 12, fontFamily: "inherit",
+  whiteSpace: "nowrap",
+};
 
 const th: React.CSSProperties = {
   textAlign: "left", padding: "5px 8px", fontSize: 11, fontWeight: 700,
@@ -667,7 +676,6 @@ export default function DetalleCliente() {
   return (
     <div
       className="detalle-cliente"
-      data-consola-tema={tema}
       style={{ minHeight: "100dvh", background: "var(--con-bg)", color: "var(--con-ink-1)" }}
     >
       {/* Impresión ("Imprimir recomendaciones"): lo que el asesor le deja al
@@ -713,10 +721,12 @@ export default function DetalleCliente() {
         </label>
 
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          {/* El botón principal del detalle: se lleva el amarillo. «Imprimir
+              recomendaciones» y «Volver» quedan en tinta. */}
           <button
             onClick={() => slug && navigate(`/plataforma/reporte/${encodeURIComponent(slug)}`)}
-            className="con-focusable"
-            style={botonStyle}
+            className="con-focusable btn-principal"
+            style={botonSenalStyle}
           >
             <FileText size={13} /> Reporte de transparencia
           </button>

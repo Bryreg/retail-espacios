@@ -9,7 +9,11 @@ import {
 } from "../api/plataforma";
 import { getMiReportePlataforma } from "../api/derechos";
 import { describeError } from "../api/client";
-import { temaInicial, EstadoVacio, EstadoError, IMPRESION_CLARA_VARS } from "../components/plataforma/consola";
+// El tema ya no se lee acá: desde Fase 10 lo pinta `html[data-tema]` (una sola
+// llave, `recabra-tema`, ver `src/tema.tsx`) y los `--con-*` cuelgan de ahí.
+// La impresión sigue siendo clara SIEMPRE, con `IMPRESION_CLARA_VARS` en el
+// `@media print` de más abajo, que no depende del tema de pantalla.
+import { EstadoVacio, EstadoError, IMPRESION_CLARA_VARS } from "../components/plataforma/consola";
 
 // ─── /reporte-plataforma y /plataforma/reporte/:slug — Fase 7 (transparencia) ─
 //
@@ -134,9 +138,16 @@ const botonStyle: React.CSSProperties = {
   cursor: "pointer", whiteSpace: "nowrap",
 };
 
-const botonPrimarioStyle: React.CSSProperties = {
-  ...botonStyle,
-  background: "var(--con-accent)", color: "var(--con-accent-ink)", border: "none",
+/** La forma del botón principal, sin el color: el color lo pone
+ *  `.btn-principal` (`index.css`), que es el único lugar donde vive el
+ *  amarillo. Un `background` en línea acá le ganaría a la clase y volveríamos a
+ *  tener un amarillo que nadie puede contar con un grep. */
+const botonSenalStyle: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", gap: 6,
+  height: 30, padding: "0 12px",
+  borderRadius: "var(--r-md)",
+  fontSize: 12, fontFamily: "inherit",
+  whiteSpace: "nowrap",
 };
 
 const th: React.CSSProperties = {
@@ -329,8 +340,6 @@ const parrafo: React.CSSProperties = {
 export default function ReportePlataforma({ modo }: { modo: Modo }) {
   const { slug: slugParam } = useParams<{ slug: string }>();
   const navigate = useNavigate();
-  const [tema] = useState(temaInicial);
-
   const [meses, setMeses] = useState(12);
   const [reporte, setReporte] = useState<ReporteTransparencia | null>(null);
   const [loading, setLoading] = useState(true);
@@ -369,7 +378,6 @@ export default function ReportePlataforma({ modo }: { modo: Modo }) {
   return (
     <div
       className="reporte-transparencia"
-      data-consola-tema={tema}
       style={{ minHeight: "100dvh", background: "var(--con-bg)", color: "var(--con-ink-1)" }}
     >
       {/* Impresión: siempre claro, sin depender del tema de pantalla; oculta
@@ -414,10 +422,13 @@ export default function ReportePlataforma({ modo }: { modo: Modo }) {
           <button onClick={() => window.print()} className="con-focusable" style={botonStyle} disabled={!reporte}>
             <Printer size={13} /> Imprimir / Guardar como PDF
           </button>
+          {/* El botón principal del reporte: se lleva el amarillo. «Imprimir /
+              Guardar como PDF» y «Volver» quedan en tinta — la acción que
+              cierra esta pantalla es llevarse el dato. */}
           <button
             onClick={() => reporte && descargarJSON(reporte)}
-            className="con-focusable"
-            style={{ ...botonPrimarioStyle, opacity: reporte ? 1 : 0.6 }}
+            className="con-focusable btn-principal"
+            style={botonSenalStyle}
             disabled={!reporte}
           >
             <Download size={13} /> Descargar JSON

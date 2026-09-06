@@ -82,12 +82,12 @@ export default function SyncStatus() {
 
   const { label, color, Icon } = (() => {
     if (hayConflicto)
-      return { label: "Conflicto", color: "var(--warning, #B45309)", Icon: AlertTriangle };
+      return { label: "Conflicto", color: "var(--warning)", Icon: AlertTriangle };
     if (syncState === "pulling") return { label: "Actualizando…", color: "var(--ink-3)", Icon: RefreshCw };
     if (syncState === "pushing") return { label: "Guardando…", color: "var(--ink-3)", Icon: UploadCloud };
-    if (syncState === "error") return { label: "Sin conexión", color: "#B91C1C", Icon: CloudOff };
+    if (syncState === "error") return { label: "Sin conexión", color: "var(--danger)", Icon: CloudOff };
     if (hasPending) return { label: "Cambios sin subir", color: "var(--ink-2)", Icon: UploadCloud };
-    return { label: "Sincronizado", color: "var(--success, #15803D)", Icon: Cloud };
+    return { label: "Sincronizado", color: "var(--success)", Icon: Cloud };
   })();
 
   const lastSyncLabel = lastSyncedAt

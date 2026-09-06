@@ -786,7 +786,6 @@ export default function Plataforma() {
 
   return (
     <div
-      data-consola-tema={tema}
       style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--con-bg)", color: "var(--con-ink-1)" }}
     >
       <Encabezado email={email} tema={tema} onToggleTema={toggleTema} />

@@ -2,8 +2,15 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App";
+import { iniciarTema } from "./tema";
 import { migrateFromLegacy, useFixtureStore } from "./store/fixtureStore";
 import { useAuthStore } from "./store/authStore";
+
+// El tema del interior, ANTES del primer render: si el usuario dejó puesto el
+// oscuro, tiene que estar puesto cuando pinta el primer frame. Hacerlo dentro de
+// un `useEffect` daría un parpadeo de claro en cada carga. Claro por defecto,
+// sin leer `prefers-color-scheme` (decisión del dueño, ver `src/tema.tsx`).
+iniciarTema();
 
 // One-time migration from old per-editor localStorage keys to the unified store.
 migrateFromLegacy();

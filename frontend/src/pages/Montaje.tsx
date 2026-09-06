@@ -8,6 +8,7 @@ import FormularioMontaje, {
 import type { MountConfirmation } from "../api/mounts";
 import type { UnifiedFixture } from "../types/fixtures";
 import { nombreDeMueble } from "../utils/nomenclatura";
+import { TemaToggle } from "../tema";
 
 /**
  * La pantalla que abre el enlace del correo. Un espacio y nada más.
@@ -210,9 +211,16 @@ function Marco({ espacio, children }: { espacio: EspacioMontaje; children: React
           borderBottom: "1px solid var(--line)",
         }}
       >
-        <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: "0.06em",
-          textTransform: "uppercase", color: "var(--ink-3)" }}>
-          Montaje
+        {/* El toggle de tema también acá: la mercaderista abre esta pantalla
+            en el celular, parada frente al mueble, y el pasillo del fondo de un
+            supermercado tiene la mitad de luz que la oficina. Es la misma pieza
+            y la misma llave que en el tablero (`recabra-tema`). */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: "0.06em",
+            textTransform: "uppercase", color: "var(--ink-3)" }}>
+            Montaje
+          </div>
+          <TemaToggle estilo={{ marginLeft: "auto" }} />
         </div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 3 }}>
           <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.02em" }}>

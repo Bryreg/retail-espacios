@@ -1,25 +1,37 @@
+/* Los tokens del interior viven en un archivo aparte y son la capa 1 y 2 del
+   sistema (primitivos + semánticos claro/oscuro). Acá abajo queda sólo la capa
+   3: las piezas que los consumen. Va primero de todo porque un `@import` tiene
+   que ir antes de cualquier otra regla. */
+@import "./tema.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ─── Tipografía ────────────────────────────────────────────────────────
-   Chivo para leer, Archivo Narrow para los códigos y las versalitas.
+   Pilas de sistema: `--f-display` para el peso, `--f-text` para leer,
+   `--f-mono` con cifras tabulares para códigos, plata y fechas. Los valores
+   están en `tema.css`, y ahí está también, escrita entera, la respuesta a las
+   dos razones por las que antes había un par de Google Fonts (Chivo +
+   Archivo Narrow): la del «900 de verdad» se refuta —el total del contrato es
+   una CIFRA y le corresponde el tratamiento `.fig`, no un peso de titular— y
+   la de la condensada se respeta como medición y se contesta separando los
+   tres trabajos que hacía, de los cuales sólo el de los códigos necesitaba
+   ser condensado. Ese se resuelve midiendo la COLUMNA en `ch`, no achicando
+   la letra.
 
-   El par sale de las maquetas y cada mitad hace un trabajo que la otra no
-   puede. Chivo tiene un 900 de verdad —no un 700 engordado— y ahí se apoya el
-   único número grande de la pantalla, el total del contrato: sin ese peso el
-   panel entero se queda sin jerarquía. Archivo Narrow aprieta `GON-60·A` en
-   una columna de 56px, y de eso depende que las 23 caras entren sin cortar un
-   código; además es la voz de los rótulos en versalita, que en un plano
-   impreso siempre van condensados.
-
-   Antes eran IBM Plex Sans y Plex Mono. Plex aguantaba la densidad, pero es
-   la tipografía por defecto del producto técnico y se lee como tal: la misma
-   que ya trae puesta cualquier tablero. El par de acá está elegido.
+   Con las dos familias se fue el `<link>` a Google Fonts de `index.html`:
+   cero descargas de red, cero orígenes externos, y le sirve también al LCP de
+   la landing.
 
    `tnum` va en el body y no suelto: la mitad de lo que se lee acá son
    códigos, fechas y plata en columna, y con cifras proporcionales las
-   columnas bailan al cambiar de valor.                                     */
+   columnas bailan al cambiar de valor. La razón no cambió con la tipografía;
+   lo que cambió es que ahora, además, la retícula del mono es real.
+
+   El `body` NO fija `font-size` a propósito: cada pieza del interior escribe
+   el suyo, y bajar el tamaño heredado movería lo que ninguna de ellas declara.
+   Eso es forma, y este PR es piel.                                          */
 @layer base {
   html, body, #root {
     height: 100%;
@@ -28,155 +40,135 @@
   }
 
   body {
-    font-family: 'Chivo', system-ui, ui-sans-serif, sans-serif;
+    font-family: var(--f-text);
     font-feature-settings: "tnum";
     font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
     letter-spacing: 0;
-    color: #14181C;
-    background: #EFF1F1;
+    color: var(--ink-1);
+    background: var(--bg);
   }
 }
 
-/* ─── Design tokens (CSS custom properties) ────────────────────────────── */
-:root {
-  --font-sans: 'Chivo', system-ui, ui-sans-serif, sans-serif;
-  /* La cara condensada. Se llama `mono` por los ochenta lugares que ya la
-     piden con ese nombre, pero no es monoespaciada: lo que se necesitaba de
-     un mono acá era que las CIFRAS alinearan, y eso lo da `tabular-nums`,
-     que está puesto en el body. Lo que un mono no daba —códigos largos en
-     columnas angostas, versalitas con carácter— lo da la condensada. */
-  --font-mono: 'Archivo Narrow', 'Chivo', system-ui, sans-serif;
-
-  /* ─── Neutros ──────────────────────────────────────────────────────────
-     Papel, no pantalla: la referencia sigue siendo el plano impreso y la
-     planilla. Antes eran neutros cálidos; ahora son fríos, con una pizca de
-     verde-azul, que es hacia dónde tira el papel de un plano y lo que deja
-     respirar al verde y al rojo de los estados sin que ninguno de los dos se
-     ensucie contra el fondo. */
-  --bg:           #EFF1F1;
-  --surface:      #FFFFFF;
-  --surface-2:    #F2F5F5;
-  --surface-3:    #E8ECED;
-  --line:         #DEE2E3;
-  --line-soft:    #F1F4F4;
-  --line-strong:  #C7CED0;
-
-  /* Tinta. Tres pesos y un cuarto para lo que está vacío. */
-  --ink-1: #14181C;
-  --ink-2: #4A5459;
-  --ink-3: #6B7479;
-  --ink-4: #8E979B;
-  --ink-vacio: #BEC5C8;
-
-  /* ─── Acento: la tinta ─────────────────────────────────────────────────
-     En este sistema el verde, el naranja y el rojo **significan** algo. Un
-     cuarto color saturado en un botón le robaría señal a los tres que sí la
-     cargan, así que la acción es tinta y lo único de color en pantalla es el
-     estado. Si algo brilla, es porque hay que mirarlo. */
-  --accent:      #14181C;
-  --accent-50:   #F2F5F5;
-  --accent-100:  #E8ECED;
-  --accent-200:  #C7CED0;
-  --accent-600:  #14181C;
-  --accent-700:  #14181C;
-  --accent-ink:  #FFFFFF;
-
-  /* ─── Los tres estados ─────────────────────────────────────────────────
-     Verde: se puede vender. Naranja: a medias. Rojo: no.
-
-     El rojo es OSCURO a propósito. Cuando el tono se colapsa —un daltónico
-     deuteranope no distingue el rojo del verde por color— lo que queda es la
-     luminosidad, y un rojo claro contra un verde medio se vuelven el mismo
-     bloque. Medida con la misma cuenta que la paleta que estaba desplegada,
-     ésta separa mejor en todos los pares: el peor par pasa de 13,5 a 19,9 en
-     dicromacia y de 27,4 a 33,8 en visión normal. Y de todas formas cada
-     estado va SIEMPRE rotulado con su palabra, así que la identidad nunca
-     depende sólo del color.
-
-     Los nombres `success` / `warning` / `danger` se conservan porque los
-     piden treinta archivos, pero acá no quieren decir «bien / cuidado /
-     error»: quieren decir libre, se libera, tomado. */
-  --libre:        #00786A;
-  --libre-suave:  #D8F0EA;
-  --libre-borde:  #A8DCD0;
-  --entra:        #F08519;
-  --entra-txt:    #B35F0A;
-  --entra-suave:  #FCEEDD;
-  --entra-borde:  #F2C79A;
-  --ocupado:      #8E1226;
-  --ocupado-suave:#F7E4E7;
-  --ocupado-borde:#E0B4BD;
-  /* Lo que no se alquila: presente en el plano, visiblemente fuera de venta. */
-  --resto:        #D3D9DB;
-
-  --success:      var(--libre);
-  --success-50:   var(--libre-suave);
-  --success-100:  var(--libre-borde);
-  /* El naranja de relleno no se puede leer como texto sobre blanco; para
-     escribir con él está la versión oscura, que es la misma familia. */
-  --warning:      var(--entra-txt);
-  --warning-50:   var(--entra-suave);
-  --warning-100:  var(--entra-borde);
-  --danger:       var(--ocupado);
-  --danger-50:    var(--ocupado-suave);
-  --danger-100:   var(--ocupado-borde);
-  --muted-status: var(--ink-4);
-
-  /* Cajón oscuro — mismo papel, del otro lado. */
-  --dark-bg:        #14181C;
-  --dark-surface:   #1E2429;
-  --dark-surface-2: #2A3238;
-  --dark-line:      #39434A;
-  --dark-line-2:    #4F5A62;
-  --dark-ink-1:     #EFF1F1;
-  --dark-ink-2:     #C2CACD;
-  --dark-ink-3:     #8E979B;
-
-  /* ─── Radios ───────────────────────────────────────────────────────────
-     Dos valores: 2px para lo que se toca, 3px para el panel. Un plano de
-     supermercado y una tabla de contratos no son objetos blandos.
-     Los nombres se conservan para no tocar diecisiete archivos. */
-  --r-xs:  2px;
-  --r-sm:  2px;
-  --r-md:  2px;
-  --r-lg:  2px;
-  --r-xl:  3px;
-  --r-2xl: 3px;
-
-  /* ─── Elevación ────────────────────────────────────────────────────────
-     Separar con una línea de 1px es más preciso y más honesto que una sombra
-     ambiental: dice dónde termina una cosa y empieza otra, sin fingir que hay
-     profundidad donde no la hay. Queda una sola sombra de verdad, para el
-     modal, que sí flota por encima de todo lo demás y necesita decirlo. */
-  --shadow-xs: none;
-  --shadow-sm: none;
-  --shadow-md: none;
-  --shadow-lg: 0 18px 44px rgba(20,24,28,0.22), 0 4px 12px rgba(20,24,28,0.12);
-}
-
 /* ─── La escala de letra ────────────────────────────────────────────────
-   Siete pasos y ninguno más. Antes había diecisiete tamaños distintos, que
-   es lo que hace que una pantalla se vea armada de a pedazos. El contraste
-   lo dan la familia, el peso y el color, no el tamaño.
+   Ocho pasos y ninguno más, y AHORA SON TOKENS (`--t-3xs` … `--t-xl`, en
+   `tema.css`). Antes esta lista vivía en prosa en este mismo comentario, con
+   la explicación de que «un `font-size` suelto no se puede prohibir desde
+   CSS»; con los tokens puestos ya hay contra qué medir, y el auditor puede
+   grepear `fontSize:` suelto y compararlo con la escala.
 
      9.5  versalitas y rótulos          14.5  títulos de panel, campos, botón
     11    notas, ejes, pies             17    códigos de espacio y cifras jefe
-    12    secundario                    27    el total del contrato
-    13    cuerpo
+    12    secundario                    21    título de pantalla
+    13    cuerpo                        27    el total del contrato
 
-   No es un token porque un `font-size` suelto no se puede prohibir desde
-   CSS; queda escrito acá para que la próxima sesión sepa contra qué mide.  */
+   El contraste lo dan la familia, el peso y el color, no el tamaño.        */
 
 /* Un rótulo en versalita: la etiqueta de un campo, el encabezado de una
-   columna, el nombre de una cifra. Siempre 9.5 y siempre condensada. */
+   columna, el nombre de una cifra. Siempre 9.5 y siempre versalita.
+
+   NO es mono, y es a propósito: un mono en versalita a 9,5px es ~18% más
+   ancho que la condensada que había y rompería los encabezados de columna.
+   La voz de «plano impreso» la dan la versalita y el tracking, no la
+   condensación; la pila de texto de sistema en 600 uppercase es más angosta
+   que cualquier monoespaciada. */
 .rotulo {
-  font-family: var(--font-mono);
+  font-family: var(--f-text);
   font-weight: 600;
-  font-size: 9.5px;
+  font-size: var(--t-3xs);
   letter-spacing: 0.11em;
   text-transform: uppercase;
   color: var(--ink-3);
+}
+
+/* Una CIFRA: plata, tarifa, fecha, cantidad, el total del contrato. Mono con
+   cifras tabulares y tracking negativo — se lee como cifra de sistema de
+   caja, no como titular, que es de donde sale su peso. Es el reemplazo del
+   «900 de verdad» que daba la tipografía que se fue. */
+.fig {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Un CÓDIGO de espacio (`GON-60·A`). La regla del dueño es «se ajusta la
+   columna, no la tipografía», y la forma de cumplirla que sobrevive a los
+   tres sistemas operativos es medir en `ch`: con `--f-mono` puesto, `1ch` es
+   exactamente un avance de carácter, así que `9ch` es el ancho de un código
+   POR CONSTRUCCIÓN, resuelva el navegador SF Mono, Cascadia o Liberation
+   Mono. Regla de sistema: ninguna caja con un código lleva `overflow:hidden`
+   con ancho fijo en px — o `ch`, o se envuelve. */
+.codigo {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+.codigo-col {
+  min-width: 9ch;
+}
+
+/* ─── El botón principal ────────────────────────────────────────────────
+   EL ÚNICO AMARILLO DE LA PANTALLA. Uno por pantalla, y la lista completa
+   —con archivo y línea, y con el porqué de las cuatro pantallas que no llevan
+   ninguno— está en `features/diseno-interior/outputs/tema.md` §2.
+
+   Que sea una clase y no un estilo en línea es la mitad del punto: un
+   `background: var(--signal)` copiado a mano en un `.tsx` es un amarillo que
+   nadie puede contar. Con la clase, contar los amarillos de una pantalla es
+   un grep.
+
+   El borde de 1px NO es decoración: en claro, `#F2B300` sobre una tarjeta
+   blanca da 1,87:1, y adentro no existen el fondo profundo ni el halo que en
+   la landing le dibujan el contorno. `--signal-borde` (#A87C00: 3,33:1 sobre el papel,
+   3,79:1 sobre la tarjeta) es lo que hace que el botón tenga forma. En oscuro va
+   `transparent`, porque ahí el amarillo sobre el panel da 12,93:1 y el
+   contorno se lo dibuja el propio contraste; el borde se deja declarado, y no
+   quitado, para que la geometría del botón sea idéntica en los dos modos. */
+.btn-principal {
+  background: var(--signal);
+  color: var(--on-signal);
+  border: 1px solid var(--signal-borde);
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: filter var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+}
+.btn-principal:hover:not(:disabled) { filter: brightness(1.06); }
+.btn-principal:active:not(:disabled) { filter: brightness(0.96); }
+.btn-principal:disabled {
+  background: var(--surface-3);
+  color: var(--ink-4);
+  border-color: var(--line);
+  cursor: default;
+  filter: none;
+}
+
+/* ─── Foco de teclado ───────────────────────────────────────────────────
+   El anillo usa `--ring` (el ámbar tostado en claro, el amarillo claro en
+   oscuro: 4,87:1 y 14,57:1). Va con `outline` y no con `box-shadow` para que
+   sobreviva a un `overflow:hidden` del contenedor. */
+.btn-principal:focus-visible,
+.foco-tema:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.foco-tema:hover { background: var(--surface-3); }
+
+/* Mientras hay un modal abierto, ÉL es la pantalla y se lleva el amarillo: el
+   botón principal de la pantalla de atrás pasa a tinta. Si no, hay dos
+   amarillos a la vez y la regla del dueño («uno por pantalla») deja de
+   significar algo. El modal marca su raíz con `data-capa-modal` y el contador
+   de `useModalAbierto()` pone `data-modal-abierto` en el `<html>`.          */
+html[data-modal-abierto] .btn-principal:not(:disabled) {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: transparent;
+}
+html[data-modal-abierto] [data-capa-modal] .btn-principal:not(:disabled) {
+  background: var(--signal);
+  color: var(--on-signal);
+  border-color: var(--signal-borde);
 }
 
 /* La cámara del mapa de la sede. Quien pidió menos movimiento, sin viaje. */
@@ -234,8 +226,14 @@
    `--con-estado-*` (estado de cuenta: activo/gracia/suspendido). Así el color
    nunca dice dos cosas a la vez.
 
-   Dos temas parejos: claro en `:root`, oscuro bajo
-   `[data-consola-tema="oscuro"]`. El resto de la app no consume estos
+   Fase 10: estos valores NO cambian —el sistema es deliberadamente otro y su
+   tema oscuro ya funcionaba—. Lo único que cambió es quién los enciende: el
+   toggle de la consola dejó de tener llave propia y lee y escribe la misma
+   `recabra-tema` que el del tablero (ver `src/tema.tsx`), así que el interior
+   ya no tiene dos interruptores que puedan quedar en desacuerdo.
+
+   Dos temas parejos: claro en `:root`, oscuro bajo `html[data-tema="oscuro"]`
+   —el mismo atributo que todo lo demás—. El resto de la app no consume estos
    `--con-*`, de modo que definirlos en `:root` es inocuo. */
 :root {
   --con-bg:             #E8ECED;
@@ -285,7 +283,12 @@
   --con-linea-punto: #2A6890;
 }
 
-[data-consola-tema="oscuro"] {
+/* El bloque oscuro de la consola cuelga del MISMO atributo que todo el resto
+   del interior. Antes colgaba de `[data-consola-tema="oscuro"]`, que lo escribía
+   un interruptor propio con su propia llave: dos interruptores, y un usuario que
+   podía dejarlos en desacuerdo. Ahora hay uno solo (`src/tema.tsx`) y este
+   bloque es lo único que la consola necesita para acompañarlo. */
+html[data-tema="oscuro"] {
   --con-bg:             #10151A;
   --con-surface:        #1A2026;
   --con-surface-2:      #222B32;

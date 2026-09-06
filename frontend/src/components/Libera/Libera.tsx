@@ -227,21 +227,21 @@ export default function Libera({ fixtures, facesOf, tipoDe, desde, hasta, tempor
         if (b <= a) return null;
         return (
           <g key={t.label}>
-            <rect x={f(x(a))} y="30" width={f(x(b) - x(a))} height={f(YE - 30)} fill="#F1F5F4" />
+            <rect x={f(x(a))} y="30" width={f(x(b) - x(a))} height={f(YE - 30)} fill="var(--surface-2)" />
             <text x={f((x(a) + x(b)) / 2)} y="41" style={temp}>{t.label.toUpperCase()}</text>
           </g>
         );
       })}
 
-      <polygon points={poli([[X0, YE], ...pasos, [X1, YE]])} fill="#E3F1ED" />
-      <line x1={f(X0)} y1={f(YE)} x2={f(X1)} y2={f(YE)} stroke="#C7CED0" strokeWidth="1" />
+      <polygon points={poli([[X0, YE], ...pasos, [X1, YE]])} fill="var(--libre-suave)" />
+      <line x1={f(X0)} y1={f(YE)} x2={f(X1)} y2={f(YE)} stroke="var(--line-strong)" strokeWidth="1" />
 
       {/* Peine: un diente por día, más largo cada cinco. */}
       {Array.from({ length: dias + 1 }, (_, i) => (
         <line
           key={i}
           x1={f(x(i))} y1={f(YE)} x2={f(x(i))} y2={f(YE + (i % 5 === 0 || i === dias ? 5 : 2.5))}
-          stroke="#C7CED0" strokeWidth="1"
+          stroke="var(--line-strong)" strokeWidth="1"
         />
       ))}
 
@@ -269,10 +269,10 @@ export default function Libera({ fixtures, facesOf, tipoDe, desde, hasta, tempor
       ))}
 
       {/* El cursor: la respuesta escrita. */}
-      <line x1={f(x(iCursor))} y1="26" x2={f(x(iCursor))} y2={f(YE)} stroke="#14181C" strokeWidth="1.2" />
+      <line x1={f(x(iCursor))} y1="26" x2={f(x(iCursor))} y2={f(YE)} stroke="var(--ink-1)" strokeWidth="1.2" />
       <circle
         data-cursor cx={f(x(iCursor))} cy={f(y(libresEn))}
-        r="6" fill="none" stroke="#14181C" strokeWidth="2"
+        r="6" fill="none" stroke="var(--ink-1)" strokeWidth="2"
       />
       <text x={f(xLectura)} y="17" style={cruzT} textAnchor="middle">
         {lectura}

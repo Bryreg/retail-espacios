@@ -106,7 +106,7 @@ export default function SeasonPicker({
 
   const fieldStyle: React.CSSProperties = {
     height: 26, padding: "0 6px",
-    borderRadius: "var(--r-sm)", border: "1px solid var(--line)",
+    borderRadius: "var(--r-sm)", border: "1px solid var(--brd-control)",
     background: "var(--surface-2)", color: "var(--ink-1)",
     fontSize: 11.5, fontFamily: "var(--font-mono)", outline: "none",
   };
@@ -221,7 +221,7 @@ export default function SeasonPicker({
           style={{
             display: "inline-flex", alignItems: "center", justifyContent: "center",
             width: 25, height: 25, borderRadius: 99,
-            background: "transparent", border: "1px solid var(--line)",
+            background: "transparent", border: "1px solid var(--brd-control)",
             color: "var(--ink-3)", cursor: "pointer",
           }}
         >

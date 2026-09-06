@@ -1309,6 +1309,10 @@ export function migrateFromLegacy(): void {
     gondola: 1.8, punta: 2.0, robatope: 1.6, ristra: 1.6,
     cross: 1.8, metro: 0.05, mueble: 2.1, exhibicion: 1.5,
   };
+  // PENDIENTE DEL PR 2, igual que su gemela de `FloorPlan2D.tsx`: es una paleta
+  // categórica por TIPO de mueble, elegida a ojo y sin validar, y además cada
+  // color queda GUARDADO en el mueble (`f.color`), así que moverlo toca datos y
+  // no sólo pintura. Nada que ver con la terna de estado, que ya salió a tokens.
   const COLOR_DEFAULTS: Record<string, string> = {
     gondola: "#6366f1", punta: "#7c3aed", robatope: "#16a34a",
     ristra: "#d97706", cross: "#0891b2", metro: "#64748b",

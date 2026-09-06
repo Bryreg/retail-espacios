@@ -16,8 +16,8 @@ import { nombreDeMueble } from "../../utils/nomenclatura";
  */
 
 /** Un mueble que no se alquila igual sirve: son las referencias de la tienda. */
-const GRIS_INFRA = "#CBD5E1";
-const GRIS_OTROS = "#94A3B8";
+const GRIS_INFRA = "var(--resto-borde)";
+const GRIS_OTROS = "var(--resto)";
 
 /** Las cajas son la referencia que todo el mundo conoce, aunque nunca haya
  *  mirado un plano. Se dibujan aparte y con etiqueta. */

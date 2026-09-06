@@ -1,0 +1,649 @@
+/* ============================================================================
+   RECABRA — EL TEMA COMPARTIDO (Fase 10 · PR 1)
+
+   Un solo archivo de tokens para TODO el interior. Implementa
+   `features/diseno-interior/outputs/tema.md`, que es el contrato: si un hex de
+   acá no coincide con la tabla de ahí, el que está mal es este archivo.
+
+   TRES CAPAS, como en la landing:
+     · capa 1 — PRIMITIVOS (`--n-*`, `--p-*`, `--y-*`, `--st-*`): la paleta
+       cruda. No cambia con el tema. Nadie la consume desde un componente.
+     · capa 2 — SEMÁNTICOS: qué significa cada primitivo en este modo. Claro en
+       `:root`, oscuro en `html[data-tema="oscuro"]`.
+     · capa 3 — componente: vive en `index.css` y en cada `.tsx`.
+
+   DOS JUEGOS DE NOMBRES, UN SOLO VALOR. Cada semántico se publica con el
+   nombre que la app ya usa (`--bg`, `--surface`, `--line`, `--ink-1`,
+   `--accent`, `--libre`…) **y** con el nombre de la landing (`--panel`,
+   `--brd`, `--fg`, `--st-libre`…). Los dos apuntan al mismo primitivo: no hay
+   dos verdades, hay un idioma viejo que sigue compilando y uno nuevo para
+   escribir componentes nuevos.
+
+   LA LANDING NO SE TOCA. `landing.css` declara sus propios `--bg`, `--fg`,
+   `--t-*`… dentro de `.lp`, y por cascada SOMBREA a los de `:root`. Es el
+   mecanismo que su propio encabezado ya describe. Este archivo no puede
+   alcanzarla ni queriendo: `:root` está más arriba en el árbol y pierde contra
+   `.lp` en cuanto el nombre se repite. Lo verifican `probar-landing.mjs` y las
+   capturas antes/después.
+
+   POR QUÉ CLARO POR DEFECTO Y SIN `prefers-color-scheme`: decisión del dueño
+   (spec §0). El interior se usa de día, en un supermercado, y la mitad de lo
+   que se mira es un plano impreso en pantalla. El oscuro está entero y a un
+   clic, y queda recordado en `localStorage` bajo `recabra-tema`. La landing
+   sigue con su llave propia (`recabra-tema-landing`, oscuro por defecto) y son
+   dos preferencias distintas a propósito: son dos productos distintos.
+   ========================================================================== */
+
+/* ───────────────────────────────────────────────────────────────────────────
+   CAPA 1 · PRIMITIVOS — la paleta cruda, igual en los dos modos
+   ────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Neutros fríos: la sala a media luz. Copiados de `landing.css` sin mover
+     un dígito — es la misma paleta, no una parecida. */
+  --n-1000: #04070A; --n-950: #070B0F; --n-900: #0B1116; --n-850: #101820;
+  --n-800:  #16212A; --n-700: #1F2C36; --n-600: #2C3B47; --n-500: #4A5C68;
+  --n-400:  #788994; --n-300: #A6B4BC; --n-200: #CBD5DA; --n-100: #E6EBEC;
+  --n-050:  #F2F5F3; --n-000: #FFFFFF;
+
+  /* Papel (modo claro). */
+  --p-000: #FFFFFF; --p-050: #F7F8F5; --p-100: #EFF1ED; --p-200: #E4E7E1;
+
+  /* ── Estado del mueble — las dos ternas validadas con dataviz ────────────
+     Claro:  CVD deutan ΔE 10.4 · visión normal ΔE 17.9 · contraste ≥3:1 salvo
+             el ámbar (2,54:1 sobre el papel), que el validador cubre con
+             «relief required: visible labels» — y acá cada estado va SIEMPRE
+             con su palabra al lado, así que el WARN está cubierto de antemano.
+     Oscuro: CVD protan ΔE 9.3 · visión normal ΔE 18.7 · contraste ≥3:1.
+
+     DESVIACIÓN CONOCIDA Y ACEPTADA — la terna OSCURA reprueba la banda de
+     claridad OKLCH del validador (`--mode dark` da exit=1: verde en L 0,709 y
+     ámbar en L 0,782 contra una banda de 0,48–0,67). Se mantiene igual, y la
+     razón está medida en `outputs/tema.md` §4: bajar la claridad para entrar
+     en la banda ROMPE lo que la banda protege. La terna más cercana a la banda
+     (`#009E6D · #C6870E · #F4544E`, L 0,670) hunde el par ámbar↔rojo a ΔE 3,5
+     en deuteranopía y 14,9 en visión normal — por debajo del piso duro de 15,
+     que es justo el error que ESTADO.md cuenta que costó dieciséis propuestas
+     descubrir. La banda está calibrada para marcas de un gráfico categórico
+     sobre la superficie estándar; acá son rellenos de estado sobre una sala
+     casi negra, donde el trabajo del color es verse encendido. Si alguien
+     vuelve a correr el validador y ve exit=1, la explicación es ésta.
+     Las dos compensaciones que la desviación exige y que son regla:
+       (1) cada estado va siempre con su PALABRA, nunca sólo por color;
+       (2) todo relleno de estado lleva su `-borde`. */
+  --st-libre-d:  #00BE86; --st-libera-d: #F5A524;
+  --st-tomado-d: #F4544E; --st-resto-d:  #33414F;
+  --st-libre-l:  #00805A; --st-libera-l: #CE8A0A;
+  --st-tomado-l: #D8342E; --st-resto-l:  #AAB3BE;
+
+  /* ── Señal: el amarillo ─────────────────────────────────────────────────
+     Amarillo de etiqueta de precio. En la landing es la plata y es el botón;
+     acá es UNA COSA SOLA: el botón principal de la pantalla (`.btn-principal`,
+     la lista está en `outputs/tema.md` §2). Un segundo amarillo en pantalla
+     vacía la regla del dueño, por eso `[data-modal-abierto]` lo apaga en la
+     pantalla de atrás mientras hay un modal arriba. */
+  --y-400: #FFE067; --y-500: #FFD028; --y-600: #E0B000; --y-700: #8A6100;
+
+  /* ── Tipografía: pilas de sistema ───────────────────────────────────────
+     Se fueron Chivo y Archivo Narrow, y con ellas el `<link>` a Google Fonts
+     de `index.html`. Cero descargas: también le sirve al LCP de la landing.
+
+     Las dos razones escritas que había en `index.css` están contestadas por
+     escrito en `outputs/tema.md` §3.2. En corto:
+
+     (a) «Chivo tiene un 900 de verdad y ahí se apoya el total del contrato».
+         REFUTADA con reemplazo. El peso no se pierde —`--f-display` en 800
+         resuelve al corte más pesado de cada sistema— y sobre todo el total
+         del contrato es una CIFRA, no un título: le corresponde el tratamiento
+         `.fig` (mono + tabular + 700 + tracking -.02em), que se lee más duro
+         que un 900 sans porque se lee como cifra de sistema de caja y no como
+         titular. La jerarquía la dan el tamaño, la familia y el color.
+
+     (b) «Archivo Narrow aprieta GON-60·A en 56px y es la voz de los rótulos».
+         RESPETADA COMO MEDICIÓN, y contestada separando los tres trabajos que
+         la condensada hacía, porque sólo uno necesita ser condensado:
+           · cifras  → `--f-mono` + tabular-nums (la retícula del mono es real,
+             no simulada con `tnum` sobre una proporcional);
+           · rótulos en versalita → `--f-text` 600, NO mono: un mono en
+             versalita a 9,5px es ~18% más ancho y rompería los encabezados de
+             columna. La voz de «plano impreso» la dan la versalita y el
+             tracking, no la condensación;
+           · códigos → `--f-mono`, y ahí sí se ajusta la COLUMNA, no la letra:
+             toda columna de código se mide en `ch` (con `--f-mono` puesto,
+             `1ch` es un avance de carácter, así que `9ch` es el ancho de
+             `GON-60·A` POR CONSTRUCCIÓN, resuelva el sistema SF Mono, Cascadia
+             o Liberation Mono). Regla de sistema: ninguna caja con un código
+             lleva `overflow:hidden` con ancho fijo en px. */
+  --f-display: "Helvetica Neue", "Segoe UI Variable Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", Arial, sans-serif;
+  --f-text:    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  --f-mono:    ui-monospace, SFMono-Regular, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Alias para los ochenta lugares que ya piden estos nombres. `--font-mono`
+     ahora SÍ es monoespaciada (antes era la condensada llamada «mono» por
+     costumbre); lo que se le pedía —que las cifras alineen— lo sigue dando
+     `tabular-nums`, y ahora además la retícula es de verdad. */
+  --font-sans: var(--f-text);
+  --font-mono: var(--f-mono);
+  --peso-display: 800;
+
+  /* ── La escala de letra ─────────────────────────────────────────────────
+     Los NOMBRES son los de la landing; los VALORES son los siete pasos que la
+     app ya usa, fijos y sin `clamp`. La escala de E es fluida y está hecha
+     para una página de venta que respira: bajarla al interior movería el
+     cuerpo de 13 a 14,5px y relayoutearía cada tabla, cada ficha y cada
+     columna del plano. Eso es FORMA, y la forma es el PR 2 (refutación
+     argumentada en `outputs/tema.md` §3.4).
+
+     Efecto lateral bueno: los siete tamaños que hasta ahora vivían en prosa en
+     un comentario («no es un token porque un font-size suelto no se puede
+     prohibir desde CSS») ahora sí son tokens, y el auditor puede grepear
+     `fontSize` suelto contra algo.
+
+     `--t-2xl` y `--t-3xl` NO se definen acá: son de la landing y siguen
+     viviendo bajo `.lp`. */
+  --t-3xs:  9.5px;   /* versalitas y rótulos (`.rotulo`) */
+  --t-2xs:  11px;    /* notas, ejes, pies, código sobre el mueble */
+  --t-xs:   12px;    /* secundario */
+  --t-sm:   13px;    /* cuerpo */
+  --t-base: 14.5px;  /* títulos de panel, campos, botón */
+  --t-md:   17px;    /* códigos de espacio, cifras jefe */
+  --t-lg:   21px;    /* título de pantalla */
+  --t-xl:   27px;    /* el total del contrato */
+
+  /* ── Espacios ───────────────────────────────────────────────────────────
+     De la landing tal cual. OJO, desfase real y consciente: la escala de
+     `tailwind.config.js` define `5: 20px` y `6: 24px`, mientras que acá
+     `--s5: 24px` y `--s6: 32px`. NO se toca la escala de Tailwind en este PR
+     —mover `p-6` de 24 a 32px es forma, no piel—; las dos conviven y el
+     desfase queda anotado para el PR 2. */
+  --s1: 4px; --s2: 8px;  --s3: 12px; --s4: 16px; --s5: 24px;
+  --s6: 32px; --s7: 48px; --s8: 64px; --s9: 96px;
+
+  /* ── Radios ─────────────────────────────────────────────────────────────
+     La razón escrita que había («2px para lo que se toca, 3px para el panel:
+     un plano de supermercado no es un objeto blando») se refuta A MEDIAS. Lo
+     que hace que la landing no se vea blanda no es el radio: es la línea de
+     1px, el panel plano y el papel frío — usa `--r-md: 10px` en botones y
+     `--r-lg: 16px` en tarjetas y se sigue leyendo como un plano. Lo que sí es
+     cierto es que el escalón de arriba (24px) está calculado para una página
+     con 96px de aire entre bloques; acá los paneles están a 10px y una esquina
+     de 24px se come el renglón del encabezado. Se adopta la escala CAPADA EN
+     16px. `--r-hero` queda disponible, sin uso.
+
+     `--r-md` tiene ~80 usos y salta de 2 a 10px: es el cambio visual más
+     extendido del PR y donde más hay que mirar las capturas. */
+  --r-xs:   4px;
+  --r-sm:   6px;
+  --r-md:   10px;
+  --r-lg:   16px;
+  --r-xl:   16px;
+  --r-2xl:  16px;
+  --r-pill: 999px;
+  --r-hero: 24px;
+  --hair:   1px;
+
+  /* ── Duraciones ─────────────────────────────────────────────────────────  */
+  --dur-1: 140ms; --dur-2: 260ms; --dur-3: 420ms; --dur-4: 640ms; --dur-5: 900ms;
+  --ease:     cubic-bezier(.22, .68, .24, 1);
+  --ease-out: cubic-bezier(.16, .84, .44, 1);
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   CAPA 2 · SEMÁNTICOS · CLARO — el modo de la casa adentro
+   ────────────────────────────────────────────────────────────────────────── */
+:root {
+  color-scheme: light;
+
+  /* ── Fondos y superficies ───────────────────────────────────────────────
+     Papel, no pantalla: la referencia sigue siendo el plano impreso y la
+     planilla. `--panel` y `--panel-2` son las versiones translúcidas de la
+     landing y se publican JUNTO a su gemelo sólido, porque Tailwind no sabe
+     separarle el alfa a un `rgba()` escrito a mano: la clase va contra el
+     sólido, el CSS suelto puede usar el translúcido. */
+  /* POR QUÉ ESTOS ESTÁN ESCRITOS EN CANALES Y NO EN HEX. `tailwind.config.js`
+     traía escrita esta regla: «los mismos hex, literales y no `var(--x)`,
+     porque media docena de clases usa el modificador de opacidad
+     (`bg-accent/20`) y Tailwind sólo sabe separarle el alfa a un color que
+     puede leer». La RAZÓN es correcta y se respeta entera; lo que ya no se
+     sostiene es la CONSECUENCIA («si tocás uno, tocá los dos»), porque desde
+     que el interior tiene modo oscuro un hex congelado en el config es un
+     color que no se entera del tema: `bg-accent` seguiría siendo casi negro
+     sobre una sala casi negra.
+
+     Los canales separados por espacio son exactamente el mecanismo que
+     Tailwind 3 documenta para esto: el config escribe
+     `rgb(var(--accent-rgb) / <alpha-value>)` y `bg-accent/20` sigue
+     funcionando, ahora contra el token del tema puesto. Un solo lugar donde
+     está el color, y el `/20` intacto. El hex va al lado, en el comentario,
+     para que el archivo se siga leyendo como una paleta. */
+  --bg-rgb:        239 241 237;   /* #EFF1ED — el papel */
+  --surface-rgb:   255 255 255;   /* #FFFFFF — la tarjeta */
+  --surface-2-rgb: 247 248 245;   /* #F7F8F5 — fila alterna, hover */
+  --surface-3-rgb: 228 231 225;   /* #E4E7E1 — hueco, deshabilitado, pista de barra */
+
+  --bg:        rgb(var(--bg-rgb));
+  --surface:   rgb(var(--surface-rgb));
+  --surface-2: rgb(var(--surface-2-rgb));
+  --surface-3: rgb(var(--surface-3-rgb));
+
+  --panel:       rgba(255, 255, 255, .82);
+  --panel-solid: var(--surface);
+  --panel-2:     rgba(11, 17, 22, .045);
+  --bg-deep:     var(--surface-3);
+  --floor:       var(--p-050);
+  --floor-edge:  rgba(11, 17, 22, .16);
+  --blur:        14px;
+
+  /* ── Líneas ─────────────────────────────────────────────────────────────
+     Se publican en DOS FORMAS. La app las necesita OPACAS —una línea que se
+     apoya sobre una fila alterna y sobre el papel tiene que verse igual en las
+     dos, y con alfa no se ve igual—; la landing las escribe con alfa, que es
+     lo correcto cuando la línea cruza dos fondos distintos a propósito.
+     Los sólidos claros están aplanados sobre `#FFFFFF`, que es donde vive el
+     90% de las líneas. Sobre el papel `#EFF1ED` la misma tinta da
+     `#E1E4E0 / #CFD2CF / #AFB2B1`: si una separación sobre el fondo se ve
+     lavada, la respuesta es usar el alfa, no un cuarto token. */
+  --line-soft-rgb:   240 241 241;   /* #F0F1F1 */
+  --line-rgb:        221 222 222;   /* #DDDEDE */
+  --line-strong-rgb: 187 188 190;   /* #BBBCBE */
+  --brd-control: rgb(var(--ink-4-rgb));
+
+  --line-soft:   rgb(var(--line-soft-rgb));
+  --line:        rgb(var(--line-rgb));
+  --line-strong: rgb(var(--line-strong-rgb));
+  /* Borde de un CONTROL (campo, selector): WCAG 1.4.11 pide 3:1 y --line da
+     1,35:1. Sigue a --ink-4 en los dos modos. */
+
+  --brd-soft:   rgba(11, 17, 22, .06);
+  --brd:        rgba(11, 17, 22, .14);
+  --brd-strong: rgba(11, 17, 22, .28);
+
+  /* ── Tinta ──────────────────────────────────────────────────────────────
+     `--ink-1..3` pasan 4,5:1 sobre las CUATRO superficies, no sobre dos.
+
+     CORRECCIÓN MEDIDA a la tabla de `outputs/tema.md` §1.3: ahí `--ink-3` es
+     `#5A6B74`, y ese valor está medido contra el papel y la tarjeta (4,87:1 y
+     5,54:1), que es donde vive casi todo el texto. Pero `--surface-3` (#E4E7E1)
+     también lleva texto —es el hueco, lo deshabilitado y la pista de una
+     barra— y ahí `#5A6B74` da **4,44:1**, o sea que reprueba por seis
+     centésimas. Se oscurece a `#54646E`, que es el mismo tono con dos puntos
+     menos de claridad y pasa en las cuatro: 4,91 sobre el hueco · 5,39 sobre el
+     papel · 5,75 sobre la fila alterna · 6,13 sobre la tarjeta.
+     `--ink-4` NO es color de texto y nunca lo fue: es el placeholder, el «sin
+     dato» y lo deshabilitado. Queda en 3,62:1, por encima del piso de 3:1 de
+     un elemento no textual. Si hay texto normal escrito en `--ink-4`, es un
+     bug de contraste PREEXISTENTE que este PR hereda, no que introduce.
+     `--ink-vacio` deja de tener valor propio (era #BEC5C8): decía lo mismo
+     que `--ink-4` con otro hex. */
+  --ink-1-rgb: 10 16 20;      /* #0A1014 */
+  --ink-2-rgb: 74 91 101;     /* #4A5B65 */
+  --ink-3-rgb: 84 100 110;    /* #54646E — ver la nota de abajo */
+  --ink-4-rgb: 104 120 138;   /* #68788A — 4,52:1 sobre blanco: es TEXTO (rótulos chicos, placeholders), no solo relleno */
+
+  --ink-1:     rgb(var(--ink-1-rgb));
+  --ink-2:     rgb(var(--ink-2-rgb));
+  --ink-3:     rgb(var(--ink-3-rgb));
+  --ink-4:     rgb(var(--ink-4-rgb));
+  --ink-vacio: var(--ink-4);
+
+  --fg:   var(--ink-1);
+  --fg-2: var(--ink-2);
+  --fg-3: var(--ink-3);
+  --fg-4: var(--ink-4);
+
+  /* ── Acento = la tinta ──────────────────────────────────────────────────
+     La razón escrita —«un cuarto color saturado en un botón le robaría señal a
+     los tres que sí la cargan»— SIGUE EN PIE Y SE REFUERZA: el amarillo entra
+     acotado a un botón por pantalla justamente para no ser un cuarto color de
+     estado. Todo el resto de la acción sigue siendo tinta. Si algo brilla, es
+     porque hay que mirarlo. */
+  --accent-rgb:     var(--ink-1-rgb);
+  --accent-ink-rgb: 255 255 255;      /* #FFFFFF */
+  --accent-50-rgb:  var(--surface-2-rgb);
+  --accent-100-rgb: var(--surface-3-rgb);
+  --accent-200-rgb: var(--line-strong-rgb);
+
+  --accent:     rgb(var(--accent-rgb));
+  --accent-ink: rgb(var(--accent-ink-rgb));
+  --accent-50:  var(--surface-2);
+  --accent-100: var(--surface-3);
+  --accent-200: var(--line-strong);
+  --accent-600: var(--accent);
+  --accent-700: var(--accent);
+
+  /* ── Señal ──────────────────────────────────────────────────────────────
+     DOS CORRECCIONES A LA LETRA DE LA SPEC, con la medición al lado:
+
+     1. La spec pide `--signal: --y-500 (#FFD028)`. En CLARO eso está mal, y la
+        landing ya lo había resuelto: su tema claro define `#F2B300`. `#FFD028`
+        sobre la tarjeta blanca da 1,47:1 y sobre el papel 1,29:1 — el botón no
+        tendría contorno, sería una mancha flotando. `--y-500` queda como
+        primitivo y como el valor del modo oscuro, donde sí es correcto.
+     2. Aun con `#F2B300` el botón sobre tarjeta blanca da 1,87:1: adentro no
+        existen ni el fondo profundo ni el halo con `color-mix` que en la
+        landing le dibujan el contorno. Por eso `--signal-borde #B88800`
+        (3,20:1 sobre blanco) como 1px del botón principal. Es un token que la
+        landing no tiene y el interior sí necesita.
+
+     `--signal-ink` es la señal ESCRITA. Nunca se escribe con `--signal`:
+     #8A6100 sobre #F2B300 da 2,96:1, o sea que ni la propia señal se puede
+     escribir encima de sí misma. */
+  --signal-rgb:     242 179 0;   /* #F2B300 */
+  --on-signal-rgb:  18 14 0;     /* #120E00 — 10,31:1 sobre el relleno */
+  --signal-ink-rgb: 138 97 0;    /* #8A6100 = --y-700 — 5,54:1 tarjeta · 4,87:1 papel */
+
+  --signal:       rgb(var(--signal-rgb));
+  /* CORRECCIÓN MEDIDA al `#B88800` de `outputs/tema.md` §1.5. Ese valor está
+     medido sólo contra la tarjeta blanca (3,20:1), y ahí pasa; pero el botón
+     principal también se apoya sobre el papel —la barra de Vender, la barra del
+     reporte— y contra `#EFF1ED` el mismo borde da **2,82:1**, por debajo del
+     piso de 3:1 de un elemento no textual. Como el borde ES el contorno del
+     control (el relleno amarillo da 1,87:1 y nunca va a dibujarlo), un contorno
+     que no llega a 3:1 sobre la superficie donde está el botón es un botón sin
+     forma. Se oscurece a `#A87C00`: 3,33:1 sobre el papel, 3,79:1 sobre la
+     tarjeta, 3,55:1 sobre la fila alterna. */
+  --signal-borde: #A87C00;
+  --on-signal:    rgb(var(--on-signal-rgb));
+  --signal-ink:   rgb(var(--signal-ink-rgb));
+  --ring:         var(--signal-ink);
+
+  /* ── Los tres estados ───────────────────────────────────────────────────
+     Verde: se puede vender. Ámbar: a medias. Rojo: no.
+
+     `-suave` = el estado al 12% sobre #FFFFFF · `-borde` = al 38%.
+
+     EL ROJO DEJA DE SER OSCURO, y la razón escrita que había era buena («el
+     rojo es OSCURO a propósito, porque cuando el tono se colapsa lo que queda
+     es la luminosidad»). Esta paleta resuelve el mismo problema por otro lado
+     —separa el ÁMBAR del rojo en vez del rojo del verde— y lo hace mejor
+     medido: el peor par pasa de ΔE 5,3 (verde+naranja, que reprobaba) a 10,4
+     en deuteranopía y 17,9 en visión normal. El rojo puede ser más claro
+     porque quien carga la diferencia es el ámbar tostado, no la luminosidad
+     del rojo.
+
+     LA REGLA DE USO, que es lo que evita el bug de contraste:
+     `--libre / --entra / --ocupado` pintan CARAS del plano, puntos, barras y
+     chips. Para ESCRIBIR se usa siempre `--*-txt`. Los rellenos claros no
+     llegan a 4,5:1 como texto sobre el papel (4,36 · 2,54 · 4,15), y el ámbar
+     ni siquiera se acerca. En claro son colores distintos; en oscuro son el
+     mismo. Un grep de `color: var(--libre|--entra|--ocupado)` fuera del plano
+     y los chips debería dar cero.
+
+     CONSECUENCIA DEL WARN DEL VALIDADOR: una cara o un chip de `--entra`
+     NECESITA su `-borde` para tener contorno contra el papel; sin borde, un
+     mueble ámbar sobre el piso claro se pierde. Los otros dos llevan borde
+     igual, por consistencia. */
+  --libre-rgb:       0 128 90;      /* #00805A = --st-libre-l */
+  --libre-suave-rgb: 224 240 235;  /* #E0F0EB */
+  --libre-borde-rgb: 158 207 192;  /* #9ECFC0 */
+  --libre-txt-rgb:   0 107 76;     /* #006B4C — 6,55:1 tarjeta · 5,76:1 papel */
+
+  --entra-rgb:       206 138 10;   /* #CE8A0A = --st-libera-l */
+  --entra-suave-rgb: 249 241 226;  /* #F9F1E2 */
+  --entra-borde-rgb: 236 211 162;  /* #ECD3A2 */
+  --entra-txt-rgb:   138 90 6;     /* #8A5A06 — 5,92:1 tarjeta · 5,21:1 papel */
+
+  --ocupado-rgb:       216 52 46;    /* #D8342E = --st-tomado-l */
+  --ocupado-suave-rgb: 250 231 230;  /* #FAE7E6 */
+  --ocupado-borde-rgb: 240 178 176;  /* #F0B2B0 */
+  --ocupado-txt-rgb:   179 39 32;    /* #B32720 — 6,51:1 tarjeta · 5,72:1 papel */
+
+  --libre:        rgb(var(--libre-rgb));
+  --libre-suave:  rgb(var(--libre-suave-rgb));
+  --libre-borde:  rgb(var(--libre-borde-rgb));
+  --libre-txt:    rgb(var(--libre-txt-rgb));
+
+  --entra:        rgb(var(--entra-rgb));
+  --entra-suave:  rgb(var(--entra-suave-rgb));
+  --entra-borde:  rgb(var(--entra-borde-rgb));
+  --entra-txt:    rgb(var(--entra-txt-rgb));
+
+  --ocupado:       rgb(var(--ocupado-rgb));
+  --ocupado-suave: rgb(var(--ocupado-suave-rgb));
+  --ocupado-borde: rgb(var(--ocupado-borde-rgb));
+  --ocupado-txt:   rgb(var(--ocupado-txt-rgb));
+
+  /* Lo que no se alquila: presente en el plano, visiblemente fuera de venta.
+     NO entra en la corrida categórica del validador y no debe entrar: se lee
+     gris, que es exactamente su trabajo (el validador lo reprueba por croma,
+     0,019, y hace bien). Se verifica con contraste WCAG contra la superficie,
+     no con la paleta categórica. */
+  --resto-rgb:       170 179 190;   /* #AAB3BE = --st-resto-l */
+  --resto-suave-rgb: 236 238 241;   /* #ECEEF1 */
+  --resto-borde-rgb: 213 217 223;   /* #D5D9DF */
+
+  --resto:       rgb(var(--resto-rgb));
+  --resto-suave: rgb(var(--resto-suave-rgb));
+  --resto-borde: rgb(var(--resto-borde-rgb));
+
+  /* Nombres de la landing para los mismos cuatro. */
+  --st-libre:       var(--libre);
+  --st-libera:      var(--entra);
+  --st-tomado:      var(--ocupado);
+  --st-resto:       var(--resto);
+  --st-libre-soft:  var(--libre-suave);
+  --st-libera-soft: var(--entra-suave);
+  --st-tomado-soft: var(--ocupado-suave);
+  --st-resto-soft:  var(--resto-suave);
+
+  /* Los alias semánticos apuntan a las variantes de TEXTO. Es la regla que ya
+     estaba escrita para `--warning` («el naranja de relleno no se puede leer
+     como texto sobre blanco; para escribir con él está la versión oscura»),
+     extendida a los otros dos. Los nombres se conservan porque los piden
+     treinta archivos, y siguen SIN querer decir «bien / cuidado / error»:
+     quieren decir libre, se libera, tomado. */
+  --success-rgb:      var(--libre-txt-rgb);
+  --success-50-rgb:   var(--libre-suave-rgb);
+  --success-100-rgb:  var(--libre-borde-rgb);
+  --warning-rgb:      var(--entra-txt-rgb);
+  --warning-50-rgb:   var(--entra-suave-rgb);
+  --warning-100-rgb:  var(--entra-borde-rgb);
+  --danger-rgb:       var(--ocupado-txt-rgb);
+  --danger-50-rgb:    var(--ocupado-suave-rgb);
+  --danger-100-rgb:   var(--ocupado-borde-rgb);
+  --muted-status-rgb: var(--ink-4-rgb);
+
+  --success:      var(--libre-txt);
+  --success-50:   var(--libre-suave);
+  --success-100:  var(--libre-borde);
+  --warning:      var(--entra-txt);
+  --warning-50:   var(--entra-suave);
+  --warning-100:  var(--entra-borde);
+  --danger:       var(--ocupado-txt);
+  --danger-50:    var(--ocupado-suave);
+  --danger-100:   var(--ocupado-borde);
+  --muted-status: var(--ink-4);
+
+  /* ── Elevación ──────────────────────────────────────────────────────────
+     Se respeta el principio escrito («separar con una línea de 1px es más
+     preciso y más honesto que una sombra ambiental») y se cambia la
+     implementación: la línea sigue siendo el separador de todo lo APOYADO, la
+     sombra queda para lo que FLOTA. Lo que cambia es que ahora hay dos alturas
+     de flote en vez de una, porque el interior tiene desplegables (periodo,
+     temporadas, cliente) que hoy se apoyan en un borde y se confunden con la
+     tabla de atrás. */
+  --sh-1: 0 1px 2px rgba(16, 21, 30, .07);
+  --sh-2: 0 10px 28px -14px rgba(16, 21, 30, .24), 0 2px 6px rgba(16, 21, 30, .05);
+  --sh-3: 0 28px 64px -26px rgba(16, 21, 30, .32), 0 4px 12px rgba(16, 21, 30, .07);
+
+  --shadow-xs: none;          /* lo apoyado: sigue siendo la línea */
+  --shadow-sm: var(--sh-1);   /* el chip levantado */
+  --shadow-md: var(--sh-2);   /* desplegables y popovers */
+  --shadow-lg: var(--sh-3);   /* el modal */
+
+  /* Cajón oscuro heredado. Media docena de piezas (el visor de archivos, el
+     encabezado del editor 3D) están escritas con estos nombres y pintan oscuro
+     SIEMPRE, con tema claro o con tema oscuro. Se reapuntan a la escala de
+     neutros nueva para que el negro sea el mismo negro; el día que esas piezas
+     se rehagan, estos siete tokens se van. */
+  --dark-bg:        var(--n-1000);
+  --dark-surface:   var(--n-900);
+  --dark-surface-2: var(--n-800);
+  --dark-line:      var(--n-700);
+  --dark-line-2:    var(--n-600);
+  --dark-ink-1:     #EDF3F2;
+  --dark-ink-2:     #9DAEB6;
+  --dark-ink-3:     #6C7E88;
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   CAPA 2 · SEMÁNTICOS · OSCURO — `html[data-tema="oscuro"]`
+
+   Sólo se redefine lo que cambia de valor. Todo lo que arriba está escrito
+   como `var(--otro-token)` (los alias, los `--fg*`, los `--st-*`, los
+   `--success/--warning/--danger`) se recalcula solo al cambiar el token del
+   que cuelga: por eso acá abajo no hay que repetirlos, y por eso no pueden
+   quedar desincronizados.
+   ────────────────────────────────────────────────────────────────────────── */
+html[data-tema="oscuro"] {
+  color-scheme: dark;
+
+  --bg-rgb:        4 7 10;      /* #04070A = --n-1000 — la sala a media luz */
+  --surface-rgb:   11 17 22;    /* #0B1116 = --n-900  — el panel */
+  --surface-2-rgb: 16 24 32;    /* #101820 = --n-850 */
+  --surface-3-rgb: 22 33 42;    /* #16212A = --n-800 */
+
+  --panel:      rgba(12, 19, 25, .72);
+  --panel-2:    rgba(255, 255, 255, .045);
+  --floor:      #0A1015;
+  --floor-edge: rgba(255, 255, 255, .10);
+  --blur:       16px;
+
+  --line-soft-rgb:   26 31 36;   /* #1A1F24 */
+  --line-rgb:        38 43 48;   /* #262B30 */
+  --line-strong-rgb: 62 67 71;   /* #3E4347 */
+  --brd-control: rgb(var(--ink-4-rgb));
+
+  --brd-soft:   rgba(255, 255, 255, .06);
+  --brd:        rgba(255, 255, 255, .11);
+  --brd-strong: rgba(255, 255, 255, .21);
+
+  /* MISMA CORRECCIÓN MEDIDA que en claro, y acá era peor. `outputs/tema.md`
+     §1.3 da `--ink-3: #6C7E88` con 4,50:1 sobre el panel — justo en el filo—,
+     pero sobre `--surface-2` (#101820) cae a 4,24:1 y sobre `--surface-3`
+     (#16212A) a 3,87:1, que es reprobar en la fila alterna y en el hueco. Se
+     aclara a `#788A94` (que es `--n-400`, o sea que no estrena un tono: es el
+     escalón de la escala que ya existe) y pasa en las cuatro: 5,64 sobre la
+     sala · 5,30 sobre el panel · 4,99 sobre la fila alterna · 4,56 sobre el
+     hueco. `--ink-1`/`--ink-2` quedan en 16,91:1 y 8,29:1; `--ink-4` en
+     3,23:1, que otra vez es piso de elemento no textual, no de texto. */
+  --ink-1-rgb: 237 243 242;   /* #EDF3F2 */
+  --ink-2-rgb: 157 174 182;   /* #9DAEB6 */
+  --ink-3-rgb: 120 138 148;   /* #788A94 — aclarado; ver la nota */
+  --ink-4-rgb: 110 129 144;   /* #6E8190 — 4,71:1 sobre --surface oscuro */
+
+  /* La tinta es clara: el botón de acción se invierte solo. */
+  --accent-ink-rgb: var(--bg-rgb);   /* #04070A */
+
+  /* En oscuro el amarillo brillante SÍ es el correcto: 12,93:1 sobre el panel.
+     No necesita borde —el contorno se lo da el propio contraste—, así que
+     `--signal-borde` va transparente en vez de desaparecer, para que la regla
+     del botón no tenga que cambiar de forma entre modos. */
+  --signal-rgb:     255 208 40;   /* #FFD028 = --y-500 — 12,93:1 sobre el panel */
+  --on-signal-rgb:  10 12 6;      /* #0A0C06 — 13,39:1 sobre el relleno */
+  --signal-ink-rgb: var(--signal-rgb);
+  --signal-borde:   transparent;
+  --ring:           var(--y-400); /* #FFE067 — 14,57:1 */
+
+  /* `-suave` = el estado al 16% sobre #0B1116 · `-borde` = al 42%.
+     Acá los tres rellenos ya pasan 4,5:1 sobre el panel (7,87 · 9,30 · 5,63),
+     así que `-txt` apunta al relleno: los tokens existen igual para que un
+     componente se escriba UNA sola vez y sirva en los dos modos. */
+  --libre-rgb:       0 190 134;   /* #00BE86 = --st-libre-d — 7,87:1 */
+  --libre-suave-rgb: 9 45 40;     /* #092D28 */
+  --libre-borde-rgb: 6 90 69;     /* #065A45 */
+  --libre-txt-rgb:   var(--libre-rgb);
+
+  --entra-rgb:       245 165 36;  /* #F5A524 = --st-libera-d — 9,30:1 */
+  --entra-suave-rgb: 48 41 24;    /* #302918 */
+  --entra-borde-rgb: 109 79 28;   /* #6D4F1C */
+  --entra-txt-rgb:   var(--entra-rgb);
+
+  --ocupado-rgb:       244 84 78;   /* #F4544E = --st-tomado-d — 5,63:1 */
+  --ocupado-suave-rgb: 48 28 31;    /* #301C1F */
+  --ocupado-borde-rgb: 109 45 46;   /* #6D2D2E */
+  --ocupado-txt-rgb:   var(--ocupado-rgb);
+
+  --resto-rgb:       51 65 79;    /* #33414F = --st-resto-d */
+  --resto-suave-rgb: 27 36 45;    /* #1B242D */
+  --resto-borde-rgb: 41 53 65;    /* #293541 */
+
+  --sh-1: 0 1px 2px rgba(0, 0, 0, .5);
+  --sh-2: 0 12px 34px -14px rgba(0, 0, 0, .8), 0 2px 8px rgba(0, 0, 0, .4);
+  --sh-3: 0 30px 70px -24px rgba(0, 0, 0, .85), 0 4px 14px rgba(0, 0, 0, .5);
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   EL CAJÓN OSCURO — `[data-cajon-oscuro]`
+
+   El editor 3D es oscuro SIEMPRE, con tema claro o con tema oscuro, y es a
+   propósito: el visor de la escena es una sala en 3D y una cinta de
+   herramientas clara alrededor de una sala oscura pelea con lo que se está
+   mirando. Por eso su chrome está escrito con los `dark-*` congelados.
+
+   El problema que eso deja es el ACENTO. `--accent` es la tinta, y en modo
+   claro la tinta es casi negra: una pestaña activa `bg-accent` sobre un panel
+   `#0B1116` es invisible. Antes ya lo era (la tinta vieja era `#14181C` sobre
+   `#1E2429`), así que no es un bug que este PR introduce; es uno que este PR
+   puede arreglar, porque `outputs/tema.md` §1.6 dice explícitamente que este PR
+   rehace el editor de zonas EN COLOR.
+
+   El arreglo no toca los treinta y cinco lugares que escriben `bg-accent` o
+   `text-accent-200`: invierte el token adentro del cajón, una vez. Adentro de
+   `[data-cajon-oscuro]` la tinta es clara y el papel es la sala, en los DOS
+   temas — que es exactamente lo que ya significa «cajón oscuro».
+   ========================================================================== */
+[data-cajon-oscuro] {
+  color-scheme: dark;
+
+  --surface-rgb:   11 17 22;    /* #0B1116 */
+  --surface-2-rgb: 22 33 42;    /* #16212A */
+  --surface-3-rgb: 31 44 54;    /* #1F2C36 */
+
+  --line-soft-rgb:   26 31 36;   /* #1A1F24 */
+  --line-rgb:        31 44 54;   /* #1F2C36 */
+  --line-strong-rgb: 44 59 71;   /* #2C3B47 */
+
+  --ink-1-rgb: 237 243 242;   /* #EDF3F2 */
+  --ink-2-rgb: 157 174 182;   /* #9DAEB6 */
+  --ink-3-rgb: 120 138 148;   /* #788A94 — el mismo del oscuro: 4,50:1 sobre --surface-2 del cajón (verificador) */
+  --ink-4-rgb: 110 129 144;   /* #6E8190 — 4,71:1 sobre --surface oscuro */
+
+  /* La tinta invertida: el acento es claro y lo que va encima es la sala. */
+  --accent-ink-rgb: 4 7 10;   /* #04070A */
+
+  /* El amarillo del botón principal de este cajón es el de modo oscuro, con su
+     contorno dado por el contraste y no por un borde. */
+  --signal-rgb:     255 208 40;   /* #FFD028 */
+  --on-signal-rgb:  10 12 6;      /* #0A0C06 */
+  --signal-ink-rgb: var(--signal-rgb);
+  --signal-borde:   transparent;
+  --ring:           var(--y-400);
+
+  /* Los estados, en su versión de sala oscura. */
+  --libre-rgb:       0 190 134;   --libre-suave-rgb: 9 45 40;   --libre-borde-rgb: 6 90 69;
+  --entra-rgb:       245 165 36;  --entra-suave-rgb: 48 41 24;  --entra-borde-rgb: 109 79 28;
+  --ocupado-rgb:     244 84 78;   --ocupado-suave-rgb: 48 28 31; --ocupado-borde-rgb: 109 45 46;
+  --libre-txt-rgb:   var(--libre-rgb);
+  --entra-txt-rgb:   var(--entra-rgb);
+  --ocupado-txt-rgb: var(--ocupado-rgb);
+  --resto-rgb:       51 65 79;    --resto-suave-rgb: 27 36 45;  --resto-borde-rgb: 41 53 65;
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   CONSOLA DE PLATAFORMA — una sola llave de tema
+
+   Los VALORES `--con-*` no se tocan en este PR: son un sistema deliberadamente
+   distinto («un acento instrumento azul-pizarra que NO es ninguno de los tres
+   estados») y su tema oscuro ya existía y funcionaba. Siguen viviendo en
+   `index.css`, donde estaban.
+
+   Lo que cambia es QUIÉN los enciende. Antes la consola tenía su propio
+   interruptor, su propia llave (`recabra-consola-tema`) y su propio selector
+   (`[data-consola-tema="oscuro"]`), así que el interior quedaba con DOS
+   interruptores de tema y el usuario podía dejarlos en desacuerdo: tablero
+   claro, consola oscura, mismo navegador, misma sesión. Ahora el bloque oscuro
+   de la consola cuelga de `html[data-tema="oscuro"]`, igual que todo el resto,
+   y el toggle de la consola escribe la misma llave `recabra-tema` (ver
+   `src/tema.tsx`). Un interruptor, dos sistemas de color, cero desacuerdo
+   posible.
+   ========================================================================== */

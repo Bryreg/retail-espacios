@@ -94,21 +94,26 @@ function applyDrag(zone: ZoneDef, handle: HandleId | "body", dx: number, dy: num
   return { ...zone, x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) };
 }
 
+/* El azul indigo se fue del plano. Lo que estaba pintado de azul eran dos cosas
+   distintas —el modo edición y LA SELECCIÓN— y ahora se separan como manda el
+   sistema: el modo edición es tinta (`--accent`, que es la acción) y la
+   selección es la señal escrita (`--signal-ink`), que es el único amarillo que
+   puede aparecer fuera de un botón porque es un TRAZO, no un relleno. */
 function overlayFill(svgId: string, mapData: SpaceMapItem[], selectedId: string | null, editMode: boolean): string {
-  if (editMode) return "rgba(99,102,241,0.12)";
-  if (svgId === selectedId) return "rgba(99,102,241,0.55)";
+  if (editMode) return "rgb(var(--accent-rgb) / 0.10)";
+  if (svgId === selectedId) return "rgb(var(--signal-rgb) / 0.35)";
   const item = mapData.find((m) => m.svg_id === svgId);
-  if (!item) return "rgba(34,197,94,0.20)";
-  return STATUS_COLORS[item.status] ?? "rgba(34,197,94,0.20)";
+  if (!item) return "rgb(var(--libre-rgb) / 0.20)";
+  return STATUS_COLORS[item.status] ?? "rgb(var(--libre-rgb) / 0.20)";
 }
 
 function overlayStroke(svgId: string, mapData: SpaceMapItem[], selectedId: string | null, editMode: boolean): { color: string; width: number } {
-  if (editMode && svgId === selectedId) return { color: "#4f46e5", width: 2 };
-  if (editMode) return { color: "#818cf8", width: 1 };
-  if (svgId === selectedId) return { color: "#4f46e5", width: 3 };
+  if (editMode && svgId === selectedId) return { color: "var(--signal-ink)", width: 2 };
+  if (editMode) return { color: "var(--accent-200)", width: 1 };
+  if (svgId === selectedId) return { color: "var(--signal-ink)", width: 3 };
   const item = mapData.find((m) => m.svg_id === svgId);
-  if (!item) return { color: "#16a34a", width: 1.5 };
-  return { color: STATUS_COLORS_SOLID[item.status] ?? "#16a34a", width: 1.5 };
+  if (!item) return { color: "var(--libre)", width: 1.5 };
+  return { color: STATUS_COLORS_SOLID[item.status] ?? "var(--libre)", width: 1.5 };
 }
 
 // ─── New-zone dialog ──────────────────────────────────────────────────────────
@@ -122,23 +127,23 @@ function NewZoneDialog({ zone, onConfirm, onCancel }: {
   const [label, setLabel] = useState(zone.label);
   const [type, setType] = useState<ZoneDef["type"]>(zone.type);
   return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/30">
-      <div className="w-72 rounded-xl bg-white p-5 shadow-xl">
-        <h3 className="mb-3 font-semibold text-slate-800">New Zone</h3>
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-ink-1/40">
+      <div className="w-72 rounded-xl bg-surface p-5 shadow-xl">
+        <h3 className="mb-3 font-semibold text-ink-1">New Zone</h3>
         <div className="space-y-2 text-sm">
           <label className="block">
-            <span className="text-xs text-slate-500">ID</span>
-            <input className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            <span className="text-xs text-ink-3">ID</span>
+            <input className="mt-0.5 w-full rounded border border-line px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
               value={zid} onChange={(e) => setZid(e.target.value)} />
           </label>
           <label className="block">
-            <span className="text-xs text-slate-500">Label</span>
-            <input className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            <span className="text-xs text-ink-3">Label</span>
+            <input className="mt-0.5 w-full rounded border border-line px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-accent"
               value={label} onChange={(e) => setLabel(e.target.value)} />
           </label>
           <label className="block">
-            <span className="text-xs text-slate-500">Type</span>
-            <select className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            <span className="text-xs text-ink-3">Type</span>
+            <select className="mt-0.5 w-full rounded border border-line px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-accent"
               value={type} onChange={(e) => setType(e.target.value as ZoneDef["type"])}>
               <option value="gondola">gondola</option>
               <option value="promo">promo</option>
@@ -146,12 +151,12 @@ function NewZoneDialog({ zone, onConfirm, onCancel }: {
               <option value="specialty">specialty</option>
             </select>
           </label>
-          <p className="text-xs text-slate-400">x:{zone.x} y:{zone.y} w:{zone.width} h:{zone.height}</p>
+          <p className="text-xs text-ink-4">x:{zone.x} y:{zone.y} w:{zone.width} h:{zone.height}</p>
         </div>
         <div className="mt-4 flex gap-2">
-          <button onClick={onCancel} className="flex-1 rounded border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">Cancel</button>
+          <button onClick={onCancel} className="flex-1 rounded border border-line px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-2">Cancel</button>
           <button onClick={() => onConfirm({ ...zone, id: zid.trim() || zone.id, label: label.trim() || "Zone", type })}
-            className="flex-1 rounded bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-700">Add Zone</button>
+            className="flex-1 rounded bg-accent px-3 py-1.5 text-sm text-accent-ink hover:bg-accent-600">Add Zone</button>
         </div>
       </div>
     </div>
@@ -171,7 +176,7 @@ function SplitLines({ zone, vCuts, hCuts }: { zone: ZoneDef; vCuts: number; hCut
         return (
           <line key={`v${i}`}
             x1={x} y1={zone.y} x2={x} y2={zone.y + zone.height}
-            stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 3" />
+            stroke="var(--entra)" strokeWidth={2} strokeDasharray="5 3" />
         );
       })}
       {/* Horizontal cut lines */}
@@ -180,7 +185,7 @@ function SplitLines({ zone, vCuts, hCuts }: { zone: ZoneDef; vCuts: number; hCut
         return (
           <line key={`h${i}`}
             x1={zone.x} y1={y} x2={zone.x + zone.width} y2={y}
-            stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 3" />
+            stroke="var(--entra)" strokeWidth={2} strokeDasharray="5 3" />
         );
       })}
       {/* Cell count badge */}
@@ -189,11 +194,11 @@ function SplitLines({ zone, vCuts, hCuts }: { zone: ZoneDef; vCuts: number; hCut
           <rect
             x={zone.x + zone.width / 2 - 18} y={zone.y + zone.height / 2 - 9}
             width={36} height={18} rx={4}
-            fill="#f59e0b" opacity={0.9} />
+            fill="var(--entra)" opacity={0.9} />
           <text
             x={zone.x + zone.width / 2} y={zone.y + zone.height / 2}
             textAnchor="middle" dominantBaseline="middle"
-            fontSize={10} fontWeight="700" fill="white">
+            fontSize={10} fontWeight="700" fill="var(--surface)">
             {cols * rows}
           </text>
         </>
@@ -332,25 +337,25 @@ export default function FloorMap({
   const svgH = Math.round(IMG_H * zoom);
 
   return (
-    <div className="flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+    <div className="flex flex-col rounded-xl border border-line bg-surface shadow-sm overflow-hidden">
 
       {/* ── Zoom toolbar ─────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-1.5 border-b border-slate-100 bg-slate-50 px-3 py-1.5">
-        <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide mr-1">Zoom</span>
+      <div className="flex items-center gap-1.5 border-b border-line-soft bg-surface-2 px-3 py-1.5">
+        <span className="text-[10px] font-medium text-ink-4 uppercase tracking-wide mr-1">Zoom</span>
         <button
           onClick={() => setZoom((z) => clampZoom(z - 0.25))}
-          className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+          className="flex h-6 w-6 items-center justify-center rounded border border-line bg-surface text-ink-2 hover:bg-surface-3 disabled:opacity-40"
           disabled={zoom <= ZOOM_MIN}
           title="Zoom out"
         >
           <ZoomOut size={12} />
         </button>
-        <span className="min-w-[3rem] text-center text-xs font-mono text-slate-700">
+        <span className="min-w-[3rem] text-center text-xs font-mono text-ink-1">
           {Math.round(zoom * 100)}%
         </span>
         <button
           onClick={() => setZoom((z) => clampZoom(z + 0.25))}
-          className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+          className="flex h-6 w-6 items-center justify-center rounded border border-line bg-surface text-ink-2 hover:bg-surface-3 disabled:opacity-40"
           disabled={zoom >= ZOOM_MAX}
           title="Zoom in"
         >
@@ -358,7 +363,7 @@ export default function FloorMap({
         </button>
         <button
           onClick={() => setZoom(1)}
-          className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+          className="flex h-6 w-6 items-center justify-center rounded border border-line bg-surface text-ink-2 hover:bg-surface-3"
           title="Reset zoom"
         >
           <Maximize2 size={11} />
@@ -372,10 +377,10 @@ export default function FloorMap({
           step={0.05}
           value={zoom}
           onChange={(e) => setZoom(parseFloat(e.target.value))}
-          className="ml-1 h-1 w-28 accent-indigo-600"
+          className="ml-1 h-1 w-28 accent-accent"
         />
 
-        <span className="ml-auto text-[10px] text-slate-400">
+        <span className="ml-auto text-[10px] text-ink-4">
           Ctrl + scroll para hacer zoom
         </span>
       </div>
@@ -416,13 +421,13 @@ export default function FloorMap({
                     x={zone.x + zone.width / 2} y={zone.y + zone.height / 2}
                     textAnchor="middle" dominantBaseline="middle"
                     fontSize={Math.min(9, zone.height * 0.55, zone.width / (zone.id.length * 0.65))}
-                    fill="#312e81" style={{ pointerEvents: "none", userSelect: "none" }}>
+                    fill="var(--ink-1)" style={{ pointerEvents: "none", userSelect: "none" }}>
                     {zone.id}
                   </text>
                 )}
                 {!editMode && isSelected && (
                   <text x={zone.x + zone.width / 2} y={zone.y - 4}
-                    textAnchor="middle" fontSize={10} fontWeight="700" fill="#4f46e5"
+                    textAnchor="middle" fontSize={10} fontWeight="700" fill="var(--signal-ink)"
                     style={{ pointerEvents: "none" }}>▼</text>
                 )}
                 {editMode && isSelected && HANDLE_DEFS.map((h) => {
@@ -432,7 +437,7 @@ export default function FloorMap({
                     <rect key={h.id}
                       x={hx - HANDLE_SIZE / 2} y={hy - HANDLE_SIZE / 2}
                       width={HANDLE_SIZE} height={HANDLE_SIZE}
-                      fill="white" stroke="#4f46e5" strokeWidth={1.5} rx={2}
+                      fill="var(--surface)" stroke="var(--signal-ink)" strokeWidth={1.5} rx={2}
                       style={{ cursor: h.cursor }}
                       onPointerDown={(e) => { onSelect(zone.id); startZoneDrag(zone.id, h.id, e); }}
                     />
@@ -452,7 +457,7 @@ export default function FloorMap({
             <rect
               x={createPreview.x} y={createPreview.y}
               width={createPreview.width} height={createPreview.height}
-              fill="rgba(99,102,241,0.18)" stroke="#4f46e5"
+              fill="rgb(var(--signal-rgb) / 0.18)" stroke="var(--signal-ink)"
               strokeWidth={1.5} strokeDasharray="6 3" rx={3}
               style={{ pointerEvents: "none" }}
             />

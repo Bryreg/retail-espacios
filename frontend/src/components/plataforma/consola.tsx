@@ -1,14 +1,21 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Sun, Moon, AlertTriangle } from "lucide-react";
 import type { EstadoCuenta } from "../../api/plataforma";
+import {
+  type Tema,
+  aplicarTema,
+  temaInicial as temaInicialCompartido,
+  guardarTema as guardarTemaCompartido,
+} from "../../tema";
 
 // ─── Primitivas visuales de la consola de plataforma (Fase 4b) ──────────────
 //
 // Sistema visual PROPIO del operador — carácter de back-office / BI, distinto
 // de la vista de sede del cliente. Todo se pinta con tokens `--con-*`
 // (definidos en `index.css`, tema claro en `:root` y oscuro bajo
-// `[data-consola-tema="oscuro"]`), así que estas piezas cambian de tema sin
-// tocar una línea de JS: el color lo decide el atributo en la raíz.
+// `html[data-tema="oscuro"]` — el MISMO atributo que el resto del interior,
+// desde Fase 10), así que estas piezas cambian de tema sin tocar una línea de
+// JS: el color lo decide el atributo de la raíz.
 //
 // Reglas que estas primitivas fijan y que el resto de la consola hereda:
 //  · Ocupación (y cualquier %) es MAGNITUD: barra secuencial `--con-mag-*`,
@@ -28,37 +35,38 @@ import type { EstadoCuenta } from "../../api/plataforma";
 // significado.
 
 // ═══ Tema claro/oscuro ══════════════════════════════════════════════════════
+//
+// Fase 10: la consola YA NO tiene interruptor propio. Tenía su llave
+// (`recabra-consola-tema`) y su propio default (`prefers-color-scheme`),
+// mientras el tablero no tenía ninguno; el resultado era que el mismo usuario,
+// en el mismo navegador, podía dejar el tablero claro y la consola oscura y no
+// entender por qué. Ahora las dos leen y escriben `recabra-tema` (`src/tema.tsx`)
+// y el toggle de acá enciende el mismo atributo de la raíz que el de allá.
+//
+// Lo que NO cambia son los `--con-*`: el sistema visual de la consola sigue
+// siendo deliberadamente otro —acento instrumento azul-pizarra, escala
+// secuencial para magnitud— y su tema oscuro ya funcionaba. Lo único
+// compartido es el interruptor.
+//
+// Se conservan los nombres `ConsolaTema`, `temaInicial` y `guardarTema` porque
+// los piden las tres pantallas de plataforma; son alias del módulo compartido,
+// no una segunda verdad.
 
-export type ConsolaTema = "claro" | "oscuro";
+export type ConsolaTema = Tema;
 
-const TEMA_KEY = "recabra-consola-tema";
-
-/** Tema inicial: preferencia guardada del operador si la hay, si no la del
- *  sistema (`prefers-color-scheme`). Es una preferencia de UI — NO es dato de
- *  cliente ni métrica, así que persistirla no roza el guardrail de
- *  localStorage (que cubre la lista de clientes y las métricas). Todo lectura
- *  de storage va en try/catch: una ventana privada puede tirar al leer. */
+/** Tema inicial: la preferencia guardada del usuario, CLARO si no hay ninguna.
+ *  `prefers-color-scheme` ya no se lee — decisión del dueño: adentro el claro
+ *  es el default y el oscuro es una opción, no una preferencia del sistema
+ *  aplicada de contrabando. */
 export function temaInicial(): ConsolaTema {
-  try {
-    const guardado = localStorage.getItem(TEMA_KEY);
-    if (guardado === "claro" || guardado === "oscuro") return guardado;
-  } catch {
-    /* storage bloqueado: caemos a la preferencia del sistema */
-  }
-  try {
-    if (window.matchMedia?.("(prefers-color-scheme: dark)").matches) return "oscuro";
-  } catch {
-    /* sin matchMedia: claro por defecto */
-  }
-  return "claro";
+  return temaInicialCompartido();
 }
 
+/** Guarda la preferencia Y la pinta en la raíz, para que el tablero (que lee
+ *  el mismo atributo) quede en el mismo tema sin tener que enterarse. */
 export function guardarTema(tema: ConsolaTema): void {
-  try {
-    localStorage.setItem(TEMA_KEY, tema);
-  } catch {
-    /* no persiste: el tema sigue vivo en el estado del componente igual */
-  }
+  guardarTemaCompartido(tema);
+  aplicarTema(tema);
 }
 
 /** Botón para alternar claro/oscuro. Muestra el ícono del tema al que se va

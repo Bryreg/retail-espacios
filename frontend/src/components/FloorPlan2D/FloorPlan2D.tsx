@@ -128,18 +128,24 @@ const CATALOG: {
 // que el mismo estado tenía dos colores según la pestaña. Vencido se distingue
 // por otro lado: la tabla lo dice con todas las letras y el filtro «Vencidos»
 // lo aísla.
+// Fase 10: acá había una CUARTA copia de la terna, con sus propios hex
+// (`#2E9E6B / #D93A3A / #D19A17`), apenas distintos de los del mapa isométrico
+// y de los de los chips. El mismo estado con cuatro colores según la pestaña es
+// exactamente el bug que este comentario ya contaba a medias («el mismo estado
+// tenía dos colores según la pestaña»). Ahora salen del token, que es uno solo,
+// está validado contra daltonismo y cambia con el tema.
 const STATUS_COLORS: Record<SpaceStatus, string> = {
-  free:        "#2E9E6B",   // green  — available
-  occupied:    "#D93A3A",   // red    — under contract, no se puede vender
-  reserved:    "#D19A17",   // amber  — held
-  maintenance: "#8A8578",   // warm grey
+  free:        "var(--libre)",     // se puede vender
+  occupied:    "var(--ocupado)",   // bajo contrato, no se puede vender
+  reserved:    "var(--entra)",     // apartado
+  maintenance: "var(--resto)",
 };
 
 const STATUS_FILL: Record<SpaceStatus, string> = {
-  free:        "rgba(76,195,138,0.16)",
-  occupied:    "rgba(217,58,58,0.16)",
-  reserved:    "rgba(240,180,41,0.16)",
-  maintenance: "rgba(168,162,158,0.14)",
+  free:        "rgb(var(--libre-rgb) / 0.16)",
+  occupied:    "rgb(var(--ocupado-rgb) / 0.16)",
+  reserved:    "rgb(var(--entra-rgb) / 0.16)",
+  maintenance: "rgb(var(--resto-rgb) / 0.14)",
 };
 
 const STATUS_LABELS: Record<SpaceStatus, string> = {
@@ -153,11 +159,11 @@ const STATUS_LABELS: Record<SpaceStatus, string> = {
 // a neutral slate treatment so they read as "background" against the coloured
 // commercial states instead of competing with them.
 const NON_RENTABLE_LABEL = "No comercializable";
-const NON_RENTABLE_STROKE = "#64748B";
-const NON_RENTABLE_FILL = "rgba(100,116,139,0.10)";
+const NON_RENTABLE_STROKE = "var(--resto)";
+const NON_RENTABLE_FILL = "rgb(var(--resto-rgb) / 0.10)";
 const NON_RENTABLE_BADGE_STYLE: React.CSSProperties = {
-  background: "rgba(100,116,139,0.18)",
-  color: "#94A3B8",
+  background: "rgb(var(--resto-rgb) / 0.18)",
+  color: "var(--ink-3)",
 };
 
 // ─── Search + status filter (canvas control bar) ─────────────────────────────
@@ -252,6 +258,16 @@ const H_DEFAULTS: Record<string, number> = {
   stand_frutas: 0.95, checkout: 0.90, columna: 3.00,
 };
 
+/* PENDIENTE DEL PR 2 (forma / dataviz). Estos veinte son un color por TIPO de
+   mueble —góndola, punta, ristra, nevera, caja— y quedan como estaban a
+   propósito. No son la terna de estado (esa ya salió a tokens arriba) sino una
+   paleta CATEGÓRICA de veinte entradas elegidas a ojo: no está validada contra
+   daltonismo, no está medida contra ninguna de las dos superficies, y en modo
+   oscuro varias son igual de brillantes entre sí. Cambiarlas es reelegir una
+   paleta de veinte con el validador en la mano, que es una decisión de diseño
+   y no un cambio de piel. Anotado en `features/diseno-interior/outputs/frontend.md`.
+   Además el color de cada mueble es dato guardado (`f.color`), así que moverlo
+   toca lo que ya está en la base, no sólo lo que se pinta. */
 const COLOR_DEFAULTS: Record<string, string> = {
   gondola_doble: "#6366f1", gondola_mural: "#818cf8",
   punta: "#7c3aed", robatope: "#c0c0bc",
@@ -1881,7 +1897,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                         y={py - 6 / zoom}
                         textAnchor="middle"
                         fontSize={10 / zoom}
-                        fill="#1e293b"
+                        fill="var(--ink-1)"
                         fontWeight="600"
                         style={{ pointerEvents: "none", userSelect: "none" }}
                       >
@@ -1926,7 +1942,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                                   className={`w-full h-full text-center text-xs rounded-sm outline-none px-1 border ${
                                     codigoChocado
                                       ? "border-danger bg-danger-50 text-danger"
-                                      : "border-accent bg-white"
+                                      : "border-accent bg-surface"
                                   }`}
                                   title={codigoChocado ? `${codigoChocado} ya es el nombre de otro mueble` : undefined}
                                   value={editingCodeVal}
@@ -1947,7 +1963,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                                 textAnchor="middle"
                                 dominantBaseline="middle"
                                 fontSize={fs}
-                                fill="#1e293b"
+                                fill="var(--ink-1)"
                                 fontWeight="600"
                                 style={{ userSelect: "none", pointerEvents: "none" }}
                               >
@@ -1997,7 +2013,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               {alignmentGuides.length > 0 && (
                 <g style={{ pointerEvents: "none" }} opacity={0.9}>
                   {alignmentGuides.map((g, idx) => {
-                    const stroke = "#E11D8F";           // smart-guide magenta
+                    const stroke = "var(--signal-ink)";  // la guía de alineación: el mismo trazo
+                                        // de señal que la selección del plano
                     const sw = 1.25 / zoom;
                     const dash = `${5 / zoom},${3 / zoom}`;
                     const tick = 4 / zoom;              // perpendicular end-tick size
@@ -2812,7 +2829,7 @@ function SyncButton() {
 
   const color =
     conflictCount > 0 ? "var(--warning)"
-    : syncState === "error" ? "#ef4444"
+    : syncState === "error" ? "var(--danger)"
     : !hasPending && syncState === "idle" ? "var(--success)"
     : "var(--ink-2)";
 
@@ -3122,11 +3139,16 @@ function MultiSelectPanel({
 
 // Badges follow STATUS_COLORS: occupied is violet everywhere, so red stays
 // reserved for what is actually wrong (an expired contract — see DaysLeftStrip).
+// El violeta de «ocupado» se va con el resto de la copia de la paleta: era una
+// quinta versión del mismo estado, esta vez para que no chocara con el rojo de
+// «vencido». Vencido se distingue por otro lado —la tabla lo dice con todas las
+// letras y el filtro lo aísla—, que es lo que el comentario de STATUS_COLORS ya
+// decía. Un estado, un color.
 const STATUS_BADGE_STYLE: Record<SpaceStatus, React.CSSProperties> = {
-  free:        { background: "rgba(76,195,138,0.18)",  color: "#4CC38A",             border: "1px solid rgba(76,195,138,0.40)" },
-  occupied:    { background: "rgba(139,92,246,0.20)",  color: "#A78BFA",             border: "1px solid rgba(139,92,246,0.42)" },
-  reserved:    { background: "rgba(240,180,41,0.18)",  color: "#F0B429",             border: "1px solid rgba(240,180,41,0.40)" },
-  maintenance: { background: "rgba(168,162,158,0.14)", color: "var(--muted-status)", border: "1px solid rgba(168,162,158,0.32)" },
+  free:        { background: "var(--libre-suave)",   color: "var(--libre-txt)",    border: "1px solid var(--libre-borde)" },
+  occupied:    { background: "var(--ocupado-suave)", color: "var(--ocupado-txt)",  border: "1px solid var(--ocupado-borde)" },
+  reserved:    { background: "var(--entra-suave)",   color: "var(--entra-txt)",    border: "1px solid var(--entra-borde)" },
+  maintenance: { background: "var(--resto-suave)",   color: "var(--muted-status)", border: "1px solid var(--resto-borde)" },
 };
 
 function Field({ label, icon, children }: { label: string; icon?: string; children: React.ReactNode }) {
