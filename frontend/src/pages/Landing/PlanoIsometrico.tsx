@@ -153,7 +153,6 @@ function Escenario() {
   const animV = useRef<number | null>(null);
   const animSep = useRef<number | null>(null);
   const sepVal = useRef(0);
-  const camLibre = useRef(false);
   const escenaActual = useRef("hero");
   const ultimaTemp = useRef(-1);
   const hoverBloq = useRef(false);
@@ -522,7 +521,10 @@ function Escenario() {
       if (id !== escenaActual.current) {
         escenaActual.current = id;
         aplicarFx(id);
-        if (!camLibre.current) setEscena(id, false);
+        /* La cámara de la sección SIEMPRE retoma el plano: un arrastre o un
+           zoom a mano vale hasta la próxima sección, nunca congela el plano
+           mientras se baja por las specs (dueño, 2026-09-06). */
+        setEscena(id, false);
         if (activoRef.current && id !== "hero") cerrar();
       }
       if (id === "qh-3") pintarTemporada(Math.max(0, Math.min(8, Math.floor(prog * 9))));
@@ -557,7 +559,6 @@ function Escenario() {
 
   const sincronizar = useCallback(() => {
     tgt.current = { s: cam.current.s, px: cam.current.px, py: cam.current.py };
-    camLibre.current = true;
   }, []);
 
   const zoomEn = useCallback((f: number, cx?: number, cy?: number) => {
@@ -610,7 +611,7 @@ function Escenario() {
         const dx = e.clientX - arrastre.x;
         const dy = e.clientY - arrastre.y;
         movio.current = Math.max(movio.current, Math.abs(dx) + Math.abs(dy));
-        if (movio.current > 4) {
+        if (movio.current > 10) {
           cam.current.px = arrastre.px + dx;
           cam.current.py = arrastre.py + dy;
           sincronizar();
@@ -762,7 +763,7 @@ function Escenario() {
         onClick={(e) => {
           const t = e.target as Element;
           if (t.closest(".hud") || t.closest(".ficha")) return;
-          if (movio.current > 6) { movio.current = 0; return; }
+          if (movio.current > 10) { movio.current = 0; return; }
           const i = llaveDe(e.target);
           if (i === null) { cerrar(); return; }
           abrir(i, true);
@@ -873,7 +874,7 @@ function Escenario() {
               <svg width="15" height="15" aria-hidden="true"><use href="#lp-i-plus" /></svg>
             </button>
             <button className="tool" type="button" aria-label="Centrar" title="Centrar"
-              onClick={() => { camLibre.current = false; setEscena(escenaActual.current, false); }}>
+              onClick={() => setEscena(escenaActual.current, false)}>
               <svg width="15" height="15" aria-hidden="true"><use href="#lp-i-target" /></svg><span>Centrar</span>
             </button>
             <button className="tool" type="button" aria-pressed={en3d}
