@@ -1,0 +1,1589 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RECABRA — Espacios comerciales de tu supermercado</title>
+<meta name="description" content="Qué mueble está libre, quién lo ocupa, a cuánto y hasta cuándo. RECABRA lleva la venta de espacios de exhibición de tu supermercado, sede por sede.">
+<meta name="robots" content="index, follow">
+<meta property="og:site_name" content="RECABRA">
+<meta property="og:title" content="RECABRA — Espacios comerciales de tu supermercado">
+<meta property="og:description" content="Dibujás el plano de cada sede, marcás qué muebles se alquilan y vendés tocando el mapa. Contratos, tarifas, vencimientos y montaje con foto.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://retail-espacios.onrender.com/">
+<meta property="og:locale" content="es_CO">
+<meta property="og:image:alt" content="Plano isométrico de un supermercado de ejemplo, con los muebles pintados según estén libres, por liberarse u ocupados.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="color-scheme" content="dark light">
+<style>
+/* ============================================================
+   RECABRA · Dirección A — "El piso en vivo"
+   Tokens en tres capas: primitivo → semántico → componente.
+   Sin recursos externos. Sin librerías.
+   ============================================================ */
+
+/* ---------- 1. PRIMITIVOS ---------- */
+:root{
+  /* neutros fríos: piso de sala a media luz */
+  --n-1000:#04070A; --n-950:#070B0F; --n-900:#0B1116; --n-850:#101820;
+  --n-800:#16212A; --n-700:#1F2C36; --n-600:#2C3B47; --n-500:#4A5C68;
+  --n-400:#788994; --n-300:#A6B4BC; --n-200:#CBD5DA; --n-100:#E6EBEC;
+  --n-050:#F2F5F3; --n-000:#FFFFFF;
+
+  /* estados del plano (los del producto: verde/naranja/rojo/gris) */
+  --g-500:#3FD98A; --g-600:#22A96A; --g-700:#166F47;
+  --o-500:#FF9A46; --o-600:#DD6F26; --o-700:#93481A;
+  --r-500:#FF6B67; --r-600:#D8413D; --r-700:#8E2724;
+
+  /* señal: amarillo de etiqueta de precio. Es la plata y el llamado a la acción. */
+  --y-400:#FFE067; --y-500:#FFD028; --y-600:#E0B000; --y-700:#8A6B00;
+
+  /* tipografía */
+  --f-display:"Helvetica Neue","Segoe UI Variable Display",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans",Arial,sans-serif;
+  --f-text:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans","Helvetica Neue",Arial,sans-serif;
+  --f-mono:ui-monospace,SFMono-Regular,"SF Mono","Cascadia Mono",Menlo,Consolas,"Liberation Mono",monospace;
+
+  --t-3xs:11px; --t-2xs:12px; --t-xs:13px; --t-sm:14.5px;
+  --t-base:clamp(16px,1.05vw,17.5px);
+  --t-md:clamp(17.5px,1.25vw,20px);
+  --t-lg:clamp(20px,1.6vw,24px);
+  --t-xl:clamp(24px,2.6vw,34px);
+  --t-2xl:clamp(29px,4vw,52px);
+  --t-3xl:clamp(36px,6.6vw,84px);
+
+  /* espaciado 4/8 */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+  --s7:48px; --s8:64px; --s9:96px;
+
+  --r-sm:3px; --r-md:6px; --r-lg:12px; --r-pill:999px;
+  --z-plan:0; --z-script:1; --z-hud:4; --z-chrome:6;
+  --dur-1:140ms; --dur-2:260ms; --dur-3:520ms; --dur-4:900ms;
+  --ease:cubic-bezier(.22,.68,.24,1);
+}
+
+/* ---------- 2. SEMÁNTICOS · oscuro (por defecto) ---------- */
+:root{
+  --bg:var(--n-1000);
+  --bg-deep:#020406;
+  --surface:rgba(12,19,25,.74);
+  --surface-solid:var(--n-900);
+  --surface-2:rgba(255,255,255,.045);
+  --line:rgba(255,255,255,.11);
+  --line-strong:rgba(255,255,255,.20);
+  --ink:#EDF3F2;
+  --ink-2:#9DAEB6;
+  --ink-3:#6C7E88;
+  --signal:var(--y-500);
+  --signal-ink:var(--y-500);   /* señal usada como texto o trazo */
+  --on-signal:#0A0C06;
+  --focus:var(--y-400);
+  --floor:#0A1015;
+  --floor-line:rgba(255,255,255,.055);
+  --floor-edge:rgba(255,255,255,.10);
+  --glow:rgba(120,200,255,.10);
+
+  --f-libre-top:var(--g-500);   --f-libre-r:var(--g-600);   --f-libre-l:var(--g-700);
+  --f-libera-top:var(--o-500);  --f-libera-r:var(--o-600);  --f-libera-l:var(--o-700);
+  --f-tomado-top:var(--r-500);  --f-tomado-r:var(--r-600);  --f-tomado-l:var(--r-700);
+  --f-resto-top:#243039;        --f-resto-r:#1A242C;        --f-resto-l:#131C22;
+  --ink-libre:var(--g-500); --ink-libera:var(--o-500); --ink-tomado:var(--r-500);
+}
+
+/* ---------- 2b. SEMÁNTICOS · claro ---------- */
+:root[data-theme="light"]{
+  --bg:#EFF1ED;
+  --bg-deep:#E4E7E1;
+  --surface:rgba(255,255,255,.82);
+  --surface-solid:#FFFFFF;
+  --surface-2:rgba(11,17,22,.045);
+  --line:rgba(11,17,22,.14);
+  --line-strong:rgba(11,17,22,.28);
+  --ink:#0A1014;
+  --ink-2:#4A5B65;
+  --ink-3:#5A6B74;
+  --signal:#F2B300;
+  --signal-ink:#8A6100;        /* 5,3:1 sobre la tarjeta clara */
+  --on-signal:#120E00;
+  --focus:#8A6B00;
+  --floor:#F7F8F5;
+  --floor-line:rgba(11,17,22,.06);
+  --floor-edge:rgba(11,17,22,.14);
+  --glow:rgba(0,60,90,.06);
+
+  --f-libre-top:#3CC77F;  --f-libre-r:#1E9A5E;  --f-libre-l:#147245;
+  --f-libera-top:#F79038; --f-libera-r:#CE6A1C; --f-libera-l:#984B12;
+  --f-tomado-top:#F35D5A; --f-tomado-r:#CB3835; --f-tomado-l:#932523;
+  --f-resto-top:#D6DCDE;  --f-resto-r:#BEC7CB;  --f-resto-l:#A5B0B5;
+  --ink-libre:#0F7A4B; --ink-libera:#A8570F; --ink-tomado:#B02F2C;
+}
+
+/* ---------- 3. BASE ---------- */
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth; -webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:var(--f-text); font-size:var(--t-base); line-height:1.6;
+  -webkit-font-smoothing:antialiased; overflow-x:hidden;
+}
+img,svg{max-width:100%}
+a{color:inherit}
+h1,h2,h3,p,ul,figure,table{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--focus); outline-offset:3px; border-radius:2px}
+.sr{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.skip{position:fixed;left:var(--s4);top:-100px;z-index:99;background:var(--signal);color:var(--on-signal);
+  padding:var(--s3) var(--s4);border-radius:var(--r-md);font-weight:700;transition:top var(--dur-2)}
+.skip:focus{top:var(--s4)}
+
+/* ---------- 4. CHROME SUPERIOR ---------- */
+.chrome{
+  position:fixed;inset:0 0 auto 0;z-index:var(--z-chrome);
+  display:flex;align-items:center;gap:var(--s5);
+  padding:var(--s3) clamp(12px,3vw,32px);
+  background:var(--bg);
+  background:linear-gradient(to bottom,var(--bg) 12%,color-mix(in srgb,var(--bg) 70%,transparent) 70%,transparent);
+  backdrop-filter:blur(10px);
+}
+.wordmark{
+  font-family:var(--f-display);font-weight:800;font-size:15px;
+  letter-spacing:.22em;text-transform:uppercase;white-space:nowrap;
+}
+.wordmark b{color:var(--signal-ink);font-weight:800}
+.chrome nav{display:flex;gap:var(--s5);margin-left:auto;font-size:var(--t-xs);color:var(--ink-2)}
+.chrome nav a{text-decoration:none;padding:6px 0;border-bottom:1px solid transparent;transition:color var(--dur-1),border-color var(--dur-1)}
+.chrome nav a:hover{color:var(--ink);border-color:var(--signal)}
+.chrome .acts{display:flex;align-items:center;gap:var(--s2);margin-left:var(--s4)}
+.iconbtn{
+  width:38px;height:38px;display:grid;place-items:center;border:1px solid var(--line);
+  border-radius:var(--r-md);color:var(--ink-2);transition:border-color var(--dur-1),color var(--dur-1),background var(--dur-1)
+}
+.iconbtn:hover{color:var(--ink);border-color:var(--line-strong);background:var(--surface-2)}
+.progress{position:fixed;left:0;top:0;height:2px;background:var(--signal-ink);width:0;z-index:calc(var(--z-chrome) + 1);transition:width 80ms linear}
+@media (max-width:900px){ .chrome nav{display:none} }
+
+/* ---------- 5. ESCENARIO (plano pegajoso) ---------- */
+.film{position:relative}
+.stage{
+  position:sticky;top:0;height:100vh;height:100dvh;overflow:hidden;z-index:var(--z-plan);
+  background:
+    radial-gradient(120% 90% at 50% 42%, var(--glow), transparent 62%),
+    radial-gradient(140% 120% at 50% 120%, var(--bg-deep), var(--bg) 70%);
+}
+.plan{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:pan-y}
+.plan.grabbing{cursor:grabbing}
+.plan.free{cursor:grab;touch-action:none}
+.vignette{position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(110% 80% at 50% 45%,transparent 45%,var(--bg) 100%);opacity:.85}
+
+/* piezas del plano */
+.fl{fill:var(--floor)}
+.fline{stroke:var(--floor-line);stroke-width:1;fill:none}
+.fedge{stroke:var(--floor-edge);stroke-width:1.5;fill:none}
+.fx .f-top{fill:var(--f-resto-top)}
+.fx .f-right{fill:var(--f-resto-r)}
+.fx .f-left{fill:var(--f-resto-l)}
+.fx.st-libre  .f-top{fill:var(--f-libre-top)}  .fx.st-libre  .f-right{fill:var(--f-libre-r)}  .fx.st-libre  .f-left{fill:var(--f-libre-l)}
+.fx.st-libera .f-top{fill:var(--f-libera-top)} .fx.st-libera .f-right{fill:var(--f-libera-r)} .fx.st-libera .f-left{fill:var(--f-libera-l)}
+.fx.st-tomado .f-top{fill:var(--f-tomado-top)} .fx.st-tomado .f-right{fill:var(--f-tomado-r)} .fx.st-tomado .f-left{fill:var(--f-tomado-l)}
+.fx{transition:opacity var(--dur-3) var(--ease)}
+.fx.alq{cursor:pointer}
+.fx .hit{fill:transparent}
+.fx .code{
+  font-family:var(--f-mono);font-size:11px;font-weight:600;fill:#04070A;
+  text-anchor:middle;opacity:0;pointer-events:none;transition:opacity var(--dur-2)
+}
+:root[data-theme="light"] .fx .code{fill:#0A1014}
+.plan.zoomed .fx.alq .code{opacity:.9}
+.fx.is-open .f-top{filter:brightness(1.22)}
+.plan.focusing .fx:not(.is-focus){opacity:.22}
+.sede-label{
+  font-family:var(--f-mono);font-size:13px;letter-spacing:.28em;
+  fill:var(--ink-3);text-anchor:middle;text-transform:uppercase
+}
+.ring{fill:none;stroke:var(--signal);stroke-width:2;opacity:0}
+.fx.is-open .ring{opacity:.95}
+
+/* estados de escena que repintan el plano */
+.stage[data-scene="cu-1"] .fx{opacity:0}
+.stage[data-scene="cu-2"] .fx .f-top{fill:var(--f-resto-top)}
+.stage[data-scene="cu-2"] .fx .f-right{fill:var(--f-resto-r)}
+.stage[data-scene="cu-2"] .fx .f-left{fill:var(--f-resto-l)}
+.stage[data-scene="cu-2"] .fx .code{opacity:0}
+.stage[data-scene="cf"] .fx .f-top,.stage[data-scene="cf"] .fx .f-right,.stage[data-scene="cf"] .fx .f-left{
+  transition:fill var(--dur-3) var(--ease)}
+
+/* ---------- 6. CAPAS DE EFECTO (dentro del escenario) ---------- */
+.fxlayer{position:absolute;inset:0;pointer-events:none}
+.fxbox{
+  position:absolute;opacity:0;transform:translateY(10px) scale(.985);
+  transition:opacity var(--dur-3) var(--ease),transform var(--dur-3) var(--ease);
+  font-family:var(--f-mono);
+}
+.fxbox.on{opacity:1;transform:none}
+.panelcard{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  backdrop-filter:blur(16px) saturate(150%);box-shadow:0 24px 60px rgba(0,0,0,.45);
+}
+:root[data-theme="light"] .panelcard{box-shadow:0 20px 50px rgba(11,17,22,.14)}
+
+/* contrato */
+#fxContrato{width:min(300px,74vw);padding:var(--s4);font-size:var(--t-2xs)}
+#fxContrato .ttl{font-family:var(--f-display);font-weight:800;letter-spacing:.02em;font-size:var(--t-xs);margin-bottom:var(--s3)}
+#fxContrato .row{display:flex;justify-content:space-between;gap:var(--s3);padding:5px 0;border-bottom:1px dashed var(--line);color:var(--ink-2)}
+#fxContrato .row b{color:var(--ink);font-weight:600}
+#fxContrato .tot{display:flex;justify-content:space-between;margin-top:var(--s3);font-size:var(--t-sm)}
+#fxContrato .tot b{color:var(--signal-ink);font-weight:800}
+
+/* tarifa */
+#fxTarifa{padding:var(--s3) var(--s4);font-size:var(--t-sm);font-weight:700;letter-spacing:.02em}
+#fxTarifa .d{color:var(--ink-libera);font-size:var(--t-lg);display:block;font-weight:800}
+
+/* temporadas */
+#fxTemporada{left:var(--ax,50%);transform:translateX(-50%) translateY(10px);bottom:clamp(96px,14vh,140px);
+  display:flex;gap:6px;flex-wrap:wrap;justify-content:center;width:min(540px,88vw);padding:var(--s3)}
+#fxTemporada.on{transform:translateX(-50%)}
+#fxTemporada span{
+  font-size:var(--t-3xs);letter-spacing:.06em;text-transform:uppercase;padding:6px 10px;
+  border:1px solid var(--line);border-radius:var(--r-pill);color:var(--ink-3);white-space:nowrap;
+  transition:color var(--dur-2),border-color var(--dur-2),background var(--dur-2)
+}
+#fxTemporada span.act{color:var(--on-signal);background:var(--signal);border-color:var(--signal);font-weight:700}
+
+/* avisos */
+#fxAvisos{left:var(--ax,50%);transform:translateX(-50%) translateY(10px);top:13vh;width:min(430px,88vw);padding:var(--s5)}
+#fxAvisos.on{transform:translateX(-50%)}
+#fxAvisos .line{position:relative;height:2px;background:var(--line-strong);margin:var(--s6) 0 var(--s5)}
+#fxAvisos .dots{display:flex;justify-content:space-between;margin-top:-31px}
+#fxAvisos .dot{text-align:center;width:33%}
+#fxAvisos .dot i{display:block;width:12px;height:12px;border-radius:50%;background:var(--signal);margin:0 auto 10px;
+  box-shadow:0 0 0 5px color-mix(in srgb,var(--signal) 22%,transparent)}
+#fxAvisos .dot b{font-size:var(--t-lg);font-family:var(--f-display);font-weight:800;display:block}
+#fxAvisos .dot span{font-size:var(--t-3xs);color:var(--ink-3);letter-spacing:.14em;text-transform:uppercase}
+#fxAvisos .mails{display:grid;gap:var(--s2)}
+#fxAvisos .mail{display:flex;gap:var(--s3);align-items:center;font-size:var(--t-2xs);color:var(--ink-2);
+  border:1px solid var(--line);border-radius:var(--r-md);padding:9px var(--s3)}
+#fxAvisos .mail em{font-style:normal;color:var(--ink);font-weight:600}
+#fxAvisos .mail .tag{margin-left:auto;font-size:var(--t-3xs);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+
+/* montaje */
+#fxMontaje{width:190px;padding:10px;border-radius:22px}
+#fxMontaje .scr{border-radius:14px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line)}
+#fxMontaje .photo{height:104px;position:relative;background:
+  linear-gradient(115deg,#1b2a33,#2f4551 45%,#16222a),
+  repeating-linear-gradient(90deg,rgba(255,255,255,.05) 0 8px,transparent 8px 18px)}
+#fxMontaje .photo::after{content:"";position:absolute;inset:auto 12px 12px 12px;height:26px;border-radius:3px;
+  background:linear-gradient(90deg,var(--r-500),var(--o-500))}
+#fxMontaje .meta{padding:10px;font-size:var(--t-3xs);color:var(--ink-2);line-height:1.45}
+#fxMontaje .meta b{color:var(--ink);font-family:var(--f-mono);letter-spacing:.04em}
+#fxMontaje .btns{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:0 10px 10px}
+#fxMontaje .btns span{font-size:var(--t-3xs);text-align:center;padding:8px 4px;border-radius:var(--r-sm);font-weight:700}
+#fxMontaje .ok{background:var(--g-500);color:#04140B}
+#fxMontaje .no{border:1px solid var(--line);color:var(--ink-2)}
+
+/* roles */
+#fxRoles{left:var(--ax,50%);transform:translateX(-50%) translateY(10px);top:12vh;display:flex;gap:var(--s3);flex-wrap:wrap;justify-content:center;width:min(480px,92vw)}
+#fxRoles.on{transform:translateX(-50%)}
+#fxRoles .r{padding:var(--s3) var(--s4);min-width:150px;font-size:var(--t-3xs)}
+#fxRoles .r span{display:block;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px}
+#fxRoles .r b{font-size:var(--t-sm);font-family:var(--f-mono);letter-spacing:.02em}
+#fxRoles .r.hid b{color:var(--ink-3);letter-spacing:.1em}
+
+/* cifras */
+#fxCifras{left:var(--ax,50%);transform:translateX(-50%) translateY(10px);top:12vh;display:flex;gap:var(--s2);flex-wrap:wrap;justify-content:center;width:min(480px,92vw)}
+#fxCifras .k{padding:var(--s3) var(--s4);min-width:118px;text-align:center}
+#fxCifras .k b{display:block;font-family:var(--f-display);font-weight:800;font-size:var(--t-xl);letter-spacing:-.02em}
+#fxCifras .k span{font-size:var(--t-3xs);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+
+/* oportunidades */
+.opp{position:absolute;font-family:var(--f-mono);font-size:var(--t-3xs);font-weight:700;
+  background:var(--signal);color:var(--on-signal);padding:3px 8px;border-radius:var(--r-pill);
+  opacity:0;transform:translate(-50%,-50%) scale(.8);transition:opacity var(--dur-3),transform var(--dur-3) var(--ease);white-space:nowrap}
+.opp.on{opacity:1;transform:translate(-50%,-50%) scale(1)}
+
+/* tendencia */
+#fxTendencia{left:var(--ax,50%);transform:translateX(-50%) translateY(10px);top:13vh;width:min(430px,90vw);padding:var(--s5)}
+#fxTendencia.on{transform:translateX(-50%)}
+#fxTendencia .sp{display:grid;grid-template-columns:auto 1fr;gap:var(--s3) var(--s4);align-items:center}
+#fxTendencia .lb{font-size:var(--t-3xs);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);white-space:nowrap}
+#fxTendencia .gapnote{margin-top:var(--s4);font-size:var(--t-3xs);color:var(--ink-3);display:flex;align-items:center;gap:var(--s2)}
+#fxTendencia .gapnote i{width:16px;height:2px;background:repeating-linear-gradient(90deg,var(--ink-3) 0 3px,transparent 3px 6px);display:block}
+
+/* separación de bases */
+#fxBases{left:var(--ax,50%);transform:translateX(-50%) translateY(10px);top:11vh;display:flex;gap:var(--s5);align-items:center}
+#fxBases.on{transform:translateX(-50%)}
+#fxBases .b{padding:var(--s3) var(--s5);font-size:var(--t-3xs);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2)}
+#fxBases .sep{width:1px;height:52px;background:repeating-linear-gradient(180deg,var(--line-strong) 0 6px,transparent 6px 12px)}
+
+/* ---------- 7. HUD (rótulo, leyenda, controles, ficha) ---------- */
+.hud{position:fixed;inset:0;z-index:var(--z-hud);pointer-events:none}
+.hud>*{pointer-events:auto}
+.hud.hidden{opacity:0;visibility:hidden;transition:opacity var(--dur-3),visibility var(--dur-3)}
+.rotulo{
+  position:absolute;left:clamp(12px,3vw,32px);top:calc(var(--s9) - 22px);
+  font-family:var(--f-mono);font-size:var(--t-2xs);letter-spacing:.1em;color:var(--ink-2);
+  display:flex;align-items:center;gap:var(--s2);
+}
+.rotulo i{width:7px;height:7px;border-radius:50%;background:var(--signal);animation:pulse 2.6s var(--ease) infinite}
+@keyframes pulse{0%,100%{opacity:.4;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}
+
+.leftstack{
+  position:absolute;left:clamp(12px,3vw,32px);bottom:clamp(16px,4vh,36px);
+  display:flex;flex-direction:column;gap:var(--s3);align-items:flex-start;max-width:284px
+}
+.legend{
+  padding:var(--s4);border-radius:var(--r-lg);width:100%;
+  background:var(--surface);border:1px solid var(--line);backdrop-filter:blur(14px)
+}
+.legend h4{margin:0 0 var(--s3);font-size:var(--t-3xs);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);font-weight:700}
+.legend ul{list-style:none;padding:0;margin:0;display:grid;gap:7px}
+.legend li{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-xs);color:var(--ink-2)}
+.legend .sw{width:11px;height:11px;border-radius:2px;flex:none}
+.legend .n{margin-left:auto;font-family:var(--f-mono);font-size:var(--t-xs);color:var(--ink);font-variant-numeric:tabular-nums}
+.legend .foot{margin-top:var(--s3);font-size:var(--t-3xs);color:var(--ink-3);line-height:1.45}
+.sw-libre{background:var(--f-libre-top)} .sw-libera{background:var(--f-libera-top)}
+.sw-tomado{background:var(--f-tomado-top)} .sw-resto{background:var(--f-resto-top)}
+
+.controls{display:flex;flex-direction:column;align-items:flex-start;gap:var(--s2);width:100%}
+.ctrlrow{display:flex;gap:6px}
+.ctrl{
+  min-width:40px;height:40px;padding:0 12px;display:grid;place-items:center;
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);
+  backdrop-filter:blur(14px);font-size:var(--t-xs);color:var(--ink-2);
+  transition:color var(--dur-1),border-color var(--dur-1),background var(--dur-1)
+}
+.ctrl:hover{color:var(--ink);border-color:var(--line-strong)}
+.ctrl.on{color:var(--on-signal);background:var(--signal);border-color:var(--signal);font-weight:700}
+.help{font-size:var(--t-3xs);color:var(--ink-3);max-width:260px;line-height:1.4}
+.help .touch{display:none}
+body.coarse .help .mouse{display:none}
+body.coarse .help .touch{display:block}
+.help .kb{display:none}
+.plan-focus .help .kb{display:block;margin-top:4px;color:var(--ink-2)}
+
+/* ficha del mueble */
+.ficha{
+  position:absolute;width:250px;padding:var(--s4);border-radius:var(--r-lg);
+  background:var(--surface-solid);border:1px solid var(--line-strong);
+  box-shadow:0 20px 48px rgba(0,0,0,.5);font-family:var(--f-mono);
+  opacity:0;visibility:hidden;transform:translateY(6px);transition:opacity var(--dur-2),transform var(--dur-2),visibility var(--dur-2)
+}
+:root[data-theme="light"] .ficha{box-shadow:0 18px 40px rgba(11,17,22,.2)}
+.ficha.on{opacity:1;visibility:visible;transform:none}
+.ficha .cod{font-size:var(--t-md);font-weight:700;letter-spacing:.04em;color:var(--ink)}
+.ficha .tipo{font-size:var(--t-xs);color:var(--ink-2);margin-top:2px}
+.ficha .ubi{font-size:var(--t-2xs);color:var(--ink-3);margin-top:2px}
+.ficha hr{border:0;border-top:1px solid var(--line);margin:var(--s3) 0}
+.ficha .est{display:flex;align-items:center;gap:7px;font-size:var(--t-xs);font-weight:700}
+.ficha .est i{width:9px;height:9px;border-radius:50%;flex:none}
+.ficha .l{font-size:var(--t-xs);color:var(--ink-2);margin-top:5px}
+.ficha .money{font-size:var(--t-sm);color:var(--ink);font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}
+.ficha .nota{font-size:var(--t-3xs);color:var(--ink-3);margin-top:var(--s3)}
+.ficha .cerrar{position:absolute;right:8px;top:8px;font-size:var(--t-3xs);color:var(--ink-3);padding:4px 8px;border-radius:var(--r-sm)}
+.ficha .cerrar:hover{color:var(--ink);background:var(--surface-2)}
+.e-libre{background:var(--f-libre-top)} .e-libera{background:var(--f-libera-top)}
+.e-tomado{background:var(--f-tomado-top)} .e-resto{background:var(--f-resto-top)}
+.t-libre{color:var(--ink-libre)} .t-libera{color:var(--ink-libera)}
+.t-tomado{color:var(--ink-tomado)} .t-resto{color:var(--ink-3)}
+
+@media (max-width:959px){
+  .rotulo{top:62px;font-size:var(--t-3xs)}
+  .leftstack{top:84px;bottom:auto;left:10px;right:10px;max-width:none}
+  .legend{padding:9px 11px}
+  .legend h4{margin-bottom:6px}
+  .legend ul{display:flex;flex-wrap:wrap;gap:3px 14px}
+  .legend li{font-size:var(--t-3xs)}
+  .legend .n{margin-left:5px}
+  .legend .foot{display:none}
+  .help{display:none}
+  .ficha{width:214px;padding:var(--s3)}
+}
+
+/* riel de capítulos */
+.rail{position:fixed;right:14px;top:50%;transform:translateY(-50%);z-index:var(--z-hud);
+  display:flex;flex-direction:column;gap:9px;pointer-events:auto}
+.rail.hidden{opacity:0;visibility:hidden;transition:opacity var(--dur-3),visibility var(--dur-3)}
+.rail button{width:7px;height:7px;border-radius:50%;background:var(--line-strong);transition:all var(--dur-2)}
+.rail button[aria-current="true"]{background:var(--signal-ink);height:20px;border-radius:4px}
+@media (max-width:1200px){.rail{display:none}}
+
+/* ---------- 8. GUION (paneles de texto) ---------- */
+.script{position:relative;z-index:var(--z-script);margin-top:-100vh;margin-top:-100dvh;pointer-events:none}
+.panel{
+  min-height:100vh;min-height:100dvh;display:grid;align-items:center;
+  padding:calc(var(--s9) + 8px) clamp(14px,3.5vw,44px) var(--s8);
+  grid-template-columns:1fr;
+}
+@media (min-width:960px){
+  .panel{grid-template-columns:1fr min(40vw,470px);column-gap:var(--s7)}
+  .card{grid-column:2}
+}
+.card{
+  pointer-events:auto;max-width:min(560px,100%);
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  backdrop-filter:blur(18px) saturate(150%);
+  padding:clamp(20px,2.4vw,34px);
+  box-shadow:0 28px 70px rgba(0,0,0,.42);
+  opacity:0;transform:translateY(26px);
+  transition:opacity var(--dur-4) var(--ease),transform var(--dur-4) var(--ease);
+}
+:root[data-theme="light"] .card{box-shadow:0 22px 56px rgba(11,17,22,.13)}
+.panel.in .card{opacity:1;transform:none}
+@media (max-width:959px){
+  .panel{align-items:end;padding-top:calc(var(--s9) + 40vh)}
+  .card{max-width:100%}
+}
+
+.num{font-family:var(--f-mono);font-size:var(--t-3xs);letter-spacing:.2em;color:var(--ink-3);display:block;margin-bottom:var(--s3)}
+.num b{color:var(--signal-ink);font-weight:700}
+.eyebrow{font-family:var(--f-mono);font-size:var(--t-2xs);letter-spacing:.18em;text-transform:uppercase;color:var(--signal-ink);margin-bottom:var(--s3)}
+h1{font-family:var(--f-display);font-size:var(--t-3xl);line-height:1.02;letter-spacing:-.035em;font-weight:800;margin-bottom:var(--s5)}
+h2{font-family:var(--f-display);font-size:var(--t-2xl);line-height:1.05;letter-spacing:-.028em;font-weight:800;margin-bottom:var(--s4)}
+h3{font-family:var(--f-display);font-size:var(--t-xl);line-height:1.12;letter-spacing:-.022em;font-weight:800;margin-bottom:var(--s3)}
+.lead{font-size:var(--t-md);line-height:1.55;color:var(--ink);margin-bottom:var(--s4);max-width:52ch}
+.body{color:var(--ink-2);max-width:56ch;margin-bottom:var(--s4)}
+.body strong{color:var(--ink);font-weight:600}
+.pie{font-family:var(--f-mono);font-size:var(--t-2xs);color:var(--ink-3);border-top:1px solid var(--line);padding-top:var(--s3);line-height:1.5}
+.fine{font-size:var(--t-xs);color:var(--ink-3);margin-top:var(--s3);line-height:1.5}
+
+.k-libre{color:var(--ink-libre)} .k-tomado{color:var(--ink-tomado)}
+.k-signal{color:var(--signal-ink)} .k-libera{color:var(--ink-libera)}
+
+.cta-row{display:flex;flex-wrap:wrap;gap:var(--s3);margin-top:var(--s5)}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:var(--s2);
+  min-height:50px;padding:0 var(--s6);border-radius:var(--r-md);text-decoration:none;
+  font-weight:700;font-size:var(--t-sm);letter-spacing:.01em;
+  transition:transform var(--dur-1) var(--ease),background var(--dur-1),border-color var(--dur-1),box-shadow var(--dur-2)
+}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--signal);color:var(--on-signal);box-shadow:0 8px 30px color-mix(in srgb,var(--signal) 26%,transparent)}
+.btn-primary:hover{box-shadow:0 12px 40px color-mix(in srgb,var(--signal) 38%,transparent)}
+.btn-ghost{border:1px solid var(--line-strong);color:var(--ink)}
+.btn-ghost:hover{background:var(--surface-2);border-color:var(--ink-3)}
+.lnk{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--signal);padding-bottom:1px}
+.lnk:hover{color:var(--signal-ink)}
+
+/* gancho entre secciones */
+.hook{display:flex;align-items:center;gap:var(--s3);margin-top:var(--s5);color:var(--ink-3)}
+.hook .bar{height:1px;flex:1;background:linear-gradient(90deg,var(--signal),transparent)}
+.hook .chev{width:22px;height:22px;flex:none;animation:bob 2.4s var(--ease) infinite}
+@keyframes bob{0%,100%{transform:translateY(-2px);opacity:.55}50%{transform:translateY(3px);opacity:1}}
+.counter{font-family:var(--f-mono);font-variant-numeric:tabular-nums;color:var(--signal-ink);font-weight:700}
+
+/* listas y tablas dentro de las tarjetas */
+.perfiles{display:grid;gap:var(--s4)}
+.perfil{border-left:2px solid var(--line);padding-left:var(--s4)}
+.perfil.p1{border-color:var(--f-libre-top)}
+.perfil.p2{border-color:var(--f-libera-top)}
+.perfil.p3{border-color:var(--f-tomado-top)}
+.perfil .rot{font-family:var(--f-mono);font-size:var(--t-3xs);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3)}
+.perfil h3{font-size:var(--t-lg);margin:4px 0 var(--s2)}
+.perfil p{color:var(--ink-2);font-size:var(--t-sm);line-height:1.55}
+
+table.cifras{width:100%;border-collapse:collapse;font-size:var(--t-sm);margin-bottom:var(--s4)}
+table.cifras th{text-align:left;font-weight:700;font-size:var(--t-3xs);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);padding:0 0 var(--s2);border-bottom:1px solid var(--line)}
+table.cifras td{padding:10px 0;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink-2)}
+table.cifras td:first-child{color:var(--ink);font-weight:700;width:40%;padding-right:var(--s4)}
+table.cifras .mono{font-family:var(--f-mono);color:var(--signal-ink);font-variant-numeric:tabular-nums}
+
+.pasos{display:flex;align-items:flex-start;gap:var(--s4)}
+.pasos .n{
+  font-family:var(--f-display);font-size:clamp(44px,6vw,76px);font-weight:800;line-height:.8;
+  letter-spacing:-.05em;color:transparent;-webkit-text-stroke:1.5px var(--signal-ink);flex:none
+}
+.puntos{display:grid;gap:var(--s4);margin-bottom:var(--s4)}
+.punto h3{font-size:var(--t-md);margin-bottom:5px}
+.punto p{color:var(--ink-2);font-size:var(--t-sm);line-height:1.55}
+.punto .ix{font-family:var(--f-mono);font-size:var(--t-3xs);color:var(--signal-ink);letter-spacing:.16em}
+.lista{list-style:none;padding:0;margin:0 0 var(--s4);display:grid;gap:var(--s3)}
+.lista li{display:flex;gap:var(--s3);color:var(--ink-2);font-size:var(--t-sm);line-height:1.55}
+.lista li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--signal);flex:none;margin-top:9px}
+.precio-big{font-family:var(--f-display);font-size:var(--t-2xl);font-weight:800;letter-spacing:-.03em;line-height:1.05;margin-bottom:var(--s2)}
+.slot{
+  font-family:var(--f-mono);font-size:.62em;letter-spacing:.02em;color:var(--signal-ink);
+  border:1px dashed color-mix(in srgb,var(--signal) 55%,transparent);border-radius:var(--r-sm);
+  padding:2px 8px;display:inline-block;vertical-align:middle
+}
+.tabla-alt{margin-top:var(--s5);font-size:var(--t-xs)}
+.tabla-alt summary{cursor:pointer;color:var(--ink-3);font-family:var(--f-mono);font-size:var(--t-2xs)}
+.tabla-alt summary:hover{color:var(--ink)}
+.tabla-alt table{width:100%;border-collapse:collapse;margin-top:var(--s3);font-size:var(--t-3xs);font-family:var(--f-mono)}
+.tabla-alt th,.tabla-alt td{text-align:left;padding:5px 8px 5px 0;border-bottom:1px solid var(--line);color:var(--ink-2)}
+.tabla-alt th{color:var(--ink-3);text-transform:uppercase;letter-spacing:.1em;font-size:10px}
+
+/* ---------- 9. PIE ---------- */
+.pie-legal{
+  position:relative;z-index:5;background:var(--bg-deep);border-top:1px solid var(--line);
+  padding:var(--s9) clamp(14px,3.5vw,44px) var(--s7)
+}
+.pie-grid{max-width:1180px;margin:0 auto;display:grid;gap:var(--s7);grid-template-columns:1fr}
+@media (min-width:760px){.pie-grid{grid-template-columns:1.4fr repeat(3,1fr)}}
+.pie-legal h5{margin:0 0 var(--s3);font-size:var(--t-3xs);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);font-weight:700}
+.pie-legal ul{list-style:none;padding:0;margin:0;display:grid;gap:9px}
+.pie-legal a{color:var(--ink-2);text-decoration:none;font-size:var(--t-sm)}
+.pie-legal a:hover{color:var(--signal-ink)}
+.pie-desc{color:var(--ink-2);font-size:var(--t-sm);margin-top:var(--s3);max-width:36ch}
+.pie-bottom{max-width:1180px;margin:var(--s8) auto 0;padding-top:var(--s5);border-top:1px solid var(--line);
+  color:var(--ink-3);font-size:var(--t-xs);line-height:1.7;display:grid;gap:var(--s4)}
+.pie-bottom .up{justify-self:start;font-family:var(--f-mono);font-size:var(--t-2xs);color:var(--ink-2);
+  border:1px solid var(--line);border-radius:var(--r-md);padding:9px 14px;text-decoration:none}
+.pie-bottom .up:hover{color:var(--signal-ink);border-color:var(--signal-ink)}
+
+/* ---------- 10. MOVIMIENTO REDUCIDO ---------- */
+@media (prefers-reduced-motion: reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+  .card{opacity:1;transform:none}
+  .fxbox{opacity:1;transform:none;position:relative;display:none}
+  .hook .chev{animation:none}
+  .rotulo i{animation:none}
+}
+</style>
+<noscript><style>.card{opacity:1!important;transform:none!important}.stage{display:none}.script{margin-top:0}.hud,.rail{display:none}</style></noscript>
+</head>
+<body>
+<a class="skip" href="#contenido">Ir al contenido</a>
+<div class="progress" id="progress" aria-hidden="true"></div>
+
+<header class="chrome">
+  <span class="wordmark">RECA<b>BRA</b></span>
+  <nav aria-label="Secciones">
+    <a href="#que-hace">Lo que hace</a>
+    <a href="#para-quien">Para quién</a>
+    <a href="#como-se-usa">Cómo se arranca</a>
+    <a href="#asesoria">Asesoría</a>
+    <a href="#confianza">Tus datos</a>
+    <a href="#precio">Cuánto cuesta</a>
+  </nav>
+  <div class="acts">
+    <button class="iconbtn" id="theme" aria-label="Cambiar entre claro y oscuro">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"/>
+      </svg>
+    </button>
+    <a class="btn btn-primary" style="min-height:38px;padding:0 18px;font-size:13px" href="/login#registro">Crear mi cuenta</a>
+  </div>
+</header>
+
+<main id="contenido">
+<div class="film" id="film">
+
+  <!-- ===================== ESCENARIO ===================== -->
+  <div class="stage" id="stage" data-scene="hero">
+    <svg class="plan" id="plan" role="group"
+         aria-label="Plano interactivo de un supermercado de ejemplo. Usá las flechas para moverte y Enter para abrir la ficha de un mueble."
+         aria-describedby="plano-desc" tabindex="0"></svg>
+    <p id="plano-desc" class="sr">Supermercado de ejemplo con dos sedes. En la sede CENTRO hay diez espacios alquilables: cuatro libres, dos que se liberan dentro del periodo y cuatro tomados. En la sede PALMAS hay seis: tres libres, uno que se libera y dos tomados. Cada espacio tiene un código, un tipo de mueble, un proveedor de ejemplo y un canon mensual. Los datos son inventados.</p>
+    <div class="vignette" aria-hidden="true"></div>
+
+    <!-- capas de efecto, sincronizadas con el guion -->
+    <div class="fxlayer" id="fxlayer" aria-hidden="true">
+
+      <div class="fxbox panelcard" id="fxContrato">
+        <div class="ttl">Una sola ficha</div>
+        <div class="row"><span>proveedor</span><b>Bebidas Zafiro</b></div>
+        <div class="row"><span>marca</span><b>Zafiro Citrus</b></div>
+        <div class="row"><span>canon mensual</span><b>$ 1.500.000</b></div>
+        <div class="row"><span>desde</span><b>1 sep</b></div>
+        <div class="row"><span>hasta</span><b>31 oct</b></div>
+        <div class="tot"><span>61 días</span><b>$ 3.050.000</b></div>
+      </div>
+
+      <div class="fxbox panelcard" id="fxTarifa">
+        <span class="d">−17 %</span>vs referencia
+      </div>
+
+      <div class="fxbox panelcard" id="fxTemporada">
+        <span>Escolar</span><span>Semana Santa</span><span>Día de la Madre</span><span>Día del Padre</span>
+        <span>Vacaciones</span><span class="act">Amor y Amistad</span><span>Halloween</span><span>Black Friday</span><span>Navidad</span>
+      </div>
+
+      <div class="fxbox panelcard" id="fxAvisos">
+        <div class="mails">
+          <div class="mail"><em>el comercial</em> recibe el acuerdo con el valor<span class="tag">1</span></div>
+          <div class="mail"><em>el mercaderista</em> recibe la orden de montaje<span class="tag">2</span></div>
+          <div class="mail"><em>el proveedor</em> recibe la constancia<span class="tag">3</span></div>
+        </div>
+        <div class="line"></div>
+        <div class="dots">
+          <div class="dot"><i></i><b>30</b><span>días</span></div>
+          <div class="dot"><i></i><b>15</b><span>días</span></div>
+          <div class="dot"><i></i><b>6</b><span>días</span></div>
+        </div>
+      </div>
+
+      <div class="fxbox panelcard" id="fxMontaje">
+        <div class="scr">
+          <div class="photo"></div>
+          <div class="meta"><b>CRS-01</b><br>Pasillo central · sede CENTRO</div>
+          <div class="btns"><span class="ok">Montado</span><span class="no">No pude</span></div>
+        </div>
+      </div>
+
+      <div class="fxbox" id="fxRoles">
+        <div class="r panelcard"><span>Gerente o administrador</span><b>$ 1.300.000</b></div>
+        <div class="r panelcard hid"><span>Trabajador de piso</span><b>████████</b></div>
+        <div class="r panelcard"><span>Proveedor</span><b>PUN-01 · CENTRO</b></div>
+      </div>
+
+      <div class="fxbox" id="fxCifras">
+        <div class="k panelcard"><b>35 %</b><span>Ocupación</span></div>
+        <div class="k panelcard"><b>8/23</b><span>caras vendidas</span></div>
+        <div class="k panelcard"><b>16</b><span>espacios</span></div>
+        <div class="k panelcard"><b>2</b><span>sedes</span></div>
+      </div>
+
+      <div class="fxbox panelcard" id="fxTendencia">
+        <div class="sp">
+          <span class="lb">Ocupación</span><span id="spark1"></span>
+          <span class="lb">Ingreso contratado</span><span id="spark2"></span>
+          <span class="lb">Canon promedio</span><span id="spark3"></span>
+        </div>
+        <div class="gapnote"><i></i> el mes sin datos queda como hueco, no como cero</div>
+      </div>
+
+      <div class="fxbox" id="fxBases">
+        <div class="b panelcard">CENTRO · PALMAS</div>
+        <div class="sep"></div>
+        <div class="b panelcard">otro cliente</div>
+      </div>
+
+      <div id="oppLayer"></div>
+    </div>
+  </div>
+
+  <!-- ===================== HUD ===================== -->
+  <div class="hud" id="hud">
+    <p class="rotulo"><i aria-hidden="true"></i> Supermercado de ejemplo · Tocá un mueble</p>
+
+    <div class="leftstack">
+    <div class="legend" id="legend">
+      <h4>Estado en el periodo</h4>
+      <ul>
+        <li><span class="sw sw-libre" aria-hidden="true"></span> Libre todo el periodo <span class="n" data-count="7">0</span></li>
+        <li><span class="sw sw-libera" aria-hidden="true"></span> Se libera en el periodo <span class="n" data-count="3">0</span></li>
+        <li><span class="sw sw-tomado" aria-hidden="true"></span> Tomado <span class="n" data-count="6">0</span></li>
+        <li><span class="sw sw-resto" aria-hidden="true"></span> Resto de la sala</li>
+      </ul>
+      <p class="foot">Es la misma lectura que vas a tener adentro, con tu propia tienda.</p>
+    </div>
+
+    <div class="controls">
+      <div class="ctrlrow">
+        <button class="ctrl" id="zoomOut" aria-label="Alejar">−</button>
+        <button class="ctrl" id="zoomIn" aria-label="Acercar">+</button>
+        <button class="ctrl" id="center">Centrar</button>
+        <button class="ctrl" id="t3d">Ver en 3D</button>
+      </div>
+      <p class="help">
+        <span class="mouse">Arrastrá para moverte. Rueda para acercar. Tocá un mueble para ver su ficha.</span>
+        <span class="touch">Deslizá para moverte. Pellizcá para acercar. Tocá un mueble.</span>
+        <span class="kb">Flechas para moverte · + y − para acercar · Enter para abrir la ficha del mueble · Esc para cerrarla</span>
+      </p>
+    </div>
+    </div>
+
+    <div class="ficha" id="ficha" role="group" aria-live="polite" aria-label="Ficha del mueble">
+      <button class="cerrar" id="cerrarFicha">Cerrar</button>
+      <div class="cod" id="fCod">PUN-02</div>
+      <div class="tipo" id="fTipo"></div>
+      <div class="ubi" id="fUbi"></div>
+      <hr>
+      <div class="est" id="fEst"><i></i><span></span></div>
+      <div class="l" id="fL1"></div>
+      <div class="money" id="fL2"></div>
+      <div class="l" id="fL3"></div>
+      <p class="nota" id="fNota">Proveedor y valores de ejemplo</p>
+    </div>
+  </div>
+
+  <div class="rail" id="rail" aria-label="Capítulos"></div>
+
+  <!-- ===================== GUION ===================== -->
+  <div class="script" id="script">
+
+    <!-- 1 · HERO -->
+    <section class="panel" data-scene="hero" data-cap="Inicio" id="inicio">
+      <div class="card">
+        <p class="eyebrow">Espacios comerciales de supermercado</p>
+        <h1>Qué mueble está <span class="k-libre">libre</span>, quién lo <span class="k-tomado">ocupa</span>, <span class="k-signal">a cuánto</span> y <span class="k-libera">hasta cuándo</span>.</h1>
+        <p class="lead">RECABRA es el sistema con el que un supermercado vende sus espacios de exhibición. Dibujás el plano de cada sede, marcás qué muebles se alquilan y armás el contrato ahí mismo, tocando el mueble.</p>
+        <p class="body">Si hoy eso vive en un Excel, en un chat de WhatsApp o en la memoria de alguien, esta es la pantalla que falta.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="/login#registro">Crear mi cuenta</a>
+          <a class="btn btn-ghost" href="/login">Ya tengo cuenta</a>
+        </div>
+        <p class="fine">Entrás con tu correo o con Google. Crear la cuenta y tu supermercado toma un minuto.</p>
+        <p class="fine">Los datos del plano son inventados, para mostrar cómo se ve. Ningún supermercado real aparece acá.</p>
+        <div class="hook" aria-hidden="true">
+          <span class="counter" id="hookCount">16</span>
+          <span class="bar"></span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2 · QUÉ HACE · intro -->
+    <section class="panel" data-scene="qh-intro" data-cap="Lo que hace" id="que-hace">
+      <div class="card">
+        <span class="num">02 <b>/</b> 09</span>
+        <h2>Lo que hace</h2>
+        <p class="lead">Seis cosas concretas. Todas están construidas y andan hoy.</p>
+        <div class="hook" aria-hidden="true"><span class="counter">01 · 06</span><span class="bar"></span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg></div>
+      </div>
+    </section>
+
+    <!-- 3 · bloque 1 -->
+    <section class="panel" data-scene="qh-1" data-cap="El plano">
+      <div class="card">
+        <span class="num">01 <b>/</b> 06</span>
+        <h3>El plano de tu tienda, no una lista de códigos</h3>
+        <p class="body">Dibujás cada sede como es: góndolas, puntas, islas, neveras, bateas, cajas. Cada mueble queda con su código y sus medidas. En el plano se ve de un vistazo qué está libre y qué está tomado, y cuando el proveedor quiere ver cómo le va a quedar la exhibición, la misma tienda se recorre en 3D.</p>
+        <p class="pie">Plano 2D · vista 3D · una nomenclatura para toda la cadena</p>
+      </div>
+    </section>
+
+    <!-- 4 · bloque 2 -->
+    <section class="panel" data-scene="qh-2" data-cap="El contrato">
+      <div class="card">
+        <span class="num">02 <b>/</b> 06</span>
+        <h3>El contrato se arma sobre el mueble</h3>
+        <p class="body">Tocás el espacio y llenás una sola ficha: proveedor, marca, canon mensual, desde y hasta. Si el acuerdo cubre tres puntas de góndola, las tocás las tres y queda un solo contrato, no tres. Abajo del formulario está el total del plazo, que es lo que se firma: $ 1.500.000 al mes por 61 días son $ 3.050.000, y esa cuenta ya no se hace de cabeza con el proveedor esperando.</p>
+        <p class="pie">Un proveedor, un periodo, todos los espacios que haga falta</p>
+      </div>
+    </section>
+
+    <!-- 5 · bloque 3 -->
+    <section class="panel" data-scene="qh-3" data-cap="La temporada">
+      <div class="card">
+        <span class="num">03 <b>/</b> 06</span>
+        <h3>Qué hay libre en la temporada que estás vendiendo</h3>
+        <p class="body">Elegís el periodo —Amor y Amistad, Halloween, Black Friday, Navidad, regreso a clases— y el plano entero se repinta para ese periodo: libre todo el tiempo, se libera adentro, o tomado. Un panel te dice cuántos espacios hay libres si el contrato arranca el 26 y cuántos si arranca el 29. Un mueble que se desocupa el 25 es inventario que podés ofrecer hoy.</p>
+        <p class="pie">Nueve temporadas del calendario colombiano, con la ventana de venta que vos definas</p>
+      </div>
+    </section>
+
+    <!-- 6 · bloque 4 -->
+    <section class="panel" data-scene="qh-4" data-cap="La tarifa">
+      <div class="card">
+        <span class="num">04 <b>/</b> 06</span>
+        <h3>Tu tarifa, y cuánto te estás corriendo de ella</h3>
+        <p class="body">Cargás una tarifa por tipo de mueble, con ajuste por sede si una tienda vale más que otra. Cuando escribís el valor de un contrato, al lado te aparece la referencia y el desvío: «−17 % vs referencia». En el tablero hay una lista de todo lo que está por debajo de tarifa, para revisarlo en la próxima renovación.</p>
+        <p class="pie">La tarifa la ve el administrador. El mercaderista no ve un solo peso.</p>
+      </div>
+    </section>
+
+    <!-- 7 · bloque 5 -->
+    <section class="panel" data-scene="qh-5" data-cap="Los avisos">
+      <div class="card">
+        <span class="num">05 <b>/</b> 06</span>
+        <h3>Los avisos salen solos</h3>
+        <p class="body">Al guardar un contrato salen tres correos distintos: el comercial recibe el acuerdo con el valor, el mercaderista recibe la orden de montaje sin un solo monto y con el enlace para reportar, y el proveedor recibe la constancia de lo suyo. Antes de vencer, el sistema avisa tres veces: a 30, a 15 y a 6 días. A una semana ya no hay margen para negociar; a un día el correo llega para contar algo que ya pasó.</p>
+        <p class="pie">Y cuando falta poco, el botón Renovar viene con el proveedor, la marca y el valor que se está pagando ya escritos.</p>
+      </div>
+    </section>
+
+    <!-- 8 · bloque 6 -->
+    <section class="panel" data-scene="qh-6" data-cap="El montaje">
+      <div class="card">
+        <span class="num">06 <b>/</b> 06</span>
+        <h3>El montaje se confirma con foto, desde el celular</h3>
+        <p class="body">El correo del mercaderista trae un enlace que abre directo en el espacio que le toca. Sin contraseña y sin ver el tablero de la tienda: solo el mueble, dónde queda —«a unos 4 m de las cajas», con el plano de la sala señalado— y dos botones. «Montado» exige foto. «No pude» exige motivo, porque sin motivo no se sabe a quién reclamarle.</p>
+        <p class="pie">La foto queda guardada. Es la que responde el reclamo del proveedor tres meses después.</p>
+      </div>
+    </section>
+
+    <!-- 9 · cierre de sección -->
+    <section class="panel" data-scene="qh-cierre" data-cap="Y además">
+      <div class="card">
+        <p class="lead">Y además: cargás la temporada entera desde una planilla de Excel, revisás fila por fila antes de crear nada, manejás todas tus sedes desde la misma cuenta e invitás a tu equipo con el permiso que le toca a cada uno.</p>
+        <div class="hook" aria-hidden="true"><span class="counter">CENTRO → PALMAS</span><span class="bar"></span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg></div>
+      </div>
+    </section>
+
+    <!-- 10 · PARA QUIÉN · intro -->
+    <section class="panel" data-scene="pq-intro" data-cap="Para quién" id="para-quien">
+      <div class="card">
+        <span class="num">03 <b>/</b> 09</span>
+        <h2>Tres personas usan esto, y cada una ve otra cosa</h2>
+        <div class="hook" aria-hidden="true"><span class="counter">3</span><span class="bar"></span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg></div>
+      </div>
+    </section>
+
+    <!-- 11 · perfiles -->
+    <section class="panel" data-scene="pq-perfiles" data-cap="Perfiles">
+      <div class="card">
+        <div class="perfiles">
+          <div class="perfil p1">
+            <p class="rot">Gerente o administrador</p>
+            <h3>Vende con datos, no de memoria</h3>
+            <p>Ve el plano, la plata y el calendario en la misma pantalla. Arma el contrato, pone el precio con la tarifa al lado y sabe qué se le cae el mes que viene. Puede girar el portátil y mostrarle el plano al proveedor que tiene enfrente: esa pantalla no muestra el nombre ni el canon de ningún otro proveedor.</p>
+          </div>
+          <div class="perfil p2">
+            <p class="rot">Trabajador de piso</p>
+            <h3>Monta y reporta, sin ver dinero</h3>
+            <p>Le llega un correo con el espacio que le toca y un enlace que abre en su celular. Confirma con una foto o dice qué pasó. No entra con una contraseña compartida y no ve valores: el sistema le borra la plata antes de mandarle la pantalla.</p>
+          </div>
+          <div class="perfil p3">
+            <p class="rot">Proveedor</p>
+            <h3>Sabe qué compró</h3>
+            <p>Recibe por correo la constancia de su acuerdo: qué espacios, en qué sede, desde cuándo y hasta cuándo. Y antes de firmar puede ver el mueble en 3D con su marca puesta, en una lámina de antes y después que se le manda adjunta.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 12 · cifras -->
+    <section class="panel" data-scene="pq-cifras" data-cap="Los números">
+      <div class="card">
+        <h3>Los números que vas a tener a la vista</h3>
+        <p class="body">No son promesas. Son las cifras que la pantalla te muestra cada vez que la abrís.</p>
+        <table class="cifras">
+          <thead><tr><th>Cifra</th><th>Cómo se lee</th></tr></thead>
+          <tbody>
+            <tr><td>Ocupación</td><td><span class="mono">35 %</span> · 8 de 23 caras vendidas en el periodo</td></tr>
+            <tr><td>Canon vigente</td><td>lo que están pagando hoy los contratos vivos, al mes</td></tr>
+            <tr><td>Sin alquilar</td><td>cuánto vale a tarifa lo que está vacío, y cuánto es eso por día vacío</td></tr>
+            <tr><td>Vence en 30 días</td><td>cuántos espacios y cuánta plata se te caen si nadie los renueva</td></tr>
+            <tr><td>Sin montar</td><td>contratos ya cobrados que todavía no están armados en el piso</td></tr>
+          </tbody>
+        </table>
+        <p class="lead">Y un contrato de tres puntas de góndola se arma una vez, no tres.</p>
+      </div>
+    </section>
+
+    <!-- 13 · CÓMO SE USA · intro -->
+    <section class="panel" data-scene="cu-intro" data-cap="Cómo se arranca" id="como-se-usa">
+      <div class="card">
+        <span class="num">04 <b>/</b> 09</span>
+        <h2>Cómo se arranca</h2>
+        <p class="lead">Tres pasos. El primero toma un minuto; el segundo es el trabajo de verdad y se hace una sola vez.</p>
+        <div class="hook" aria-hidden="true"><span class="counter">1 · 2 · 3</span><span class="bar"></span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg></div>
+      </div>
+    </section>
+
+    <!-- 14 · paso 1 -->
+    <section class="panel" data-scene="cu-1" data-cap="Paso 1">
+      <div class="card">
+        <div class="pasos"><span class="n">1</span>
+          <div>
+            <h3>Creá la cuenta y tu supermercado</h3>
+            <p class="body">Entrás con Google o con tu correo, le ponés nombre a tu supermercado y quedás como dueño de la cuenta. Después invitás a tu equipo: cada persona con su correo y con el permiso que le toca.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 15 · paso 2 -->
+    <section class="panel" data-scene="cu-2" data-cap="Paso 2">
+      <div class="card">
+        <div class="pasos"><span class="n">2</span>
+          <div>
+            <h3>Dibujá el plano de cada sede</h3>
+            <p class="body">Ponés los muebles como están en la sala y marcás cuáles se alquilan. Las cajas y las columnas quedan de contexto, en gris. Si ya tenés los contratos de la temporada en un Excel, los cargás de una vez: el sistema te muestra fila por fila qué entra y qué choca, antes de crear nada.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 16 · paso 3 -->
+    <section class="panel" data-scene="cu-3" data-cap="Paso 3">
+      <div class="card">
+        <div class="pasos"><span class="n">3</span>
+          <div>
+            <h3>Vendé tocando el mapa</h3>
+            <p class="body">Elegís la temporada, mirás qué quedó verde, tocás el mueble y llenás el contrato. Al guardar salen los tres correos y el espacio cambia de color en el plano.</p>
+          </div>
+        </div>
+        <p class="fine">Cada supermercado empieza vacío. RECABRA no viene con datos de nadie adentro.</p>
+      </div>
+    </section>
+
+    <!-- 17 · ASESORÍA · intro -->
+    <section class="panel" data-scene="as-intro" data-cap="Asesoría" id="asesoria">
+      <div class="card">
+        <span class="num">05 <b>/</b> 09</span>
+        <p class="eyebrow">Lo que ningún Excel te va a decir</p>
+        <h2>Además del sistema, te decimos qué proponer</h2>
+        <p class="lead">Un sistema te muestra lo que pasó. Nosotros miramos tus números y te llevamos, por escrito, qué le podés ofrecer a quién esta semana.</p>
+      </div>
+    </section>
+
+    <!-- 18 · A -->
+    <section class="panel" data-scene="as-a" data-cap="Recomendaciones">
+      <div class="card">
+        <h3>Recomendaciones ordenadas por lo que hay en juego</h3>
+        <p class="body">Cada recomendación viene con un valor al lado y una razón. «Tenés tres puntas de góndola libres: ofrecelas a $ 2.000.000 cada una, que es el promedio que vos mismo estás cobrando por ese tipo — $ 6.000.000 en juego.» «El contrato de esa punta vence en 19 días: renovalo o reasignalo — $ 2.000.000 en juego.» Primero las de mayor valor.</p>
+      </div>
+    </section>
+
+    <!-- 19 · B -->
+    <section class="panel" data-scene="as-b" data-cap="Oportunidades">
+      <div class="card">
+        <h3>Oportunidades espacio por espacio</h3>
+        <p class="body">Para cada mueble libre o que se libera en el periodo: un precio sugerido —el promedio que ya cobrás por ese tipo, o el promedio de los supermercados que usan RECABRA si vos todavía no cobrás ninguno— y hasta tres proveedores tuyos que podrían tomarlo, empezando por los que ya alquilan ese mismo tipo de mueble.</p>
+      </div>
+    </section>
+
+    <!-- 20 · C -->
+    <section class="panel" data-scene="as-c" data-cap="Tendencia">
+      <div class="card">
+        <h3>Tendencia mes a mes</h3>
+        <p class="body">Ocupación, ingreso contratado y canon promedio, guardados mes a mes desde que entrás. La pregunta «¿estamos mejorando?» deja de contestarse de memoria. Un mes sin datos aparece como un hueco, no como un cero: un cero sería mentira.</p>
+      </div>
+    </section>
+
+    <!-- 21 · cierre honesto -->
+    <section class="panel" data-scene="as-cierre" data-cap="Sin vueltas">
+      <div class="card">
+        <p class="lead"><strong>Cómo funciona, sin vueltas.</strong> Esta parte no es una pantalla tuya: la revisa una persona de RECABRA sobre tus propios datos, y te llega en la sesión de asesoría. Todo lo que se lee está escrito en la Política de Tratamiento de Datos, queda anotado con la fecha y el correo de quien lo consultó, y podés pedir ese registro cuando quieras desde tu propia cuenta.</p>
+        <p><a class="lnk" href="/politica-datos">Ver el reporte de transparencia</a></p>
+      </div>
+    </section>
+
+    <!-- 22 · CONFIANZA -->
+    <section class="panel" data-scene="cf" data-cap="Tus datos" id="confianza">
+      <div class="card">
+        <span class="num">06 <b>/</b> 09</span>
+        <h2>Dónde quedan tus datos</h2>
+        <p class="body">Esto lo usa gente distinta de la misma tienda, y hay dinero adentro. Así está resuelto.</p>
+        <div class="puntos">
+          <div class="punto"><span class="ix">01</span><h3>Cada supermercado, en su propia base</h3><p>Los planos, los contratos y los proveedores de tu supermercado viven en una base separada de la de cualquier otro cliente. No es un filtro por columna: es otra base.</p></div>
+          <div class="punto"><span class="ix">02</span><h3>Cada persona entra con su cuenta</h3><p>Con Google o con correo y contraseña. Nada de una clave compartida que sigue funcionando cuando alguien se va. Desactivás a esa persona y pierde el acceso en el siguiente clic, sin tocar a nadie más.</p></div>
+          <div class="punto"><span class="ix">03</span><h3>El dinero no le llega a quien no le toca</h3><p>Los valores no se ocultan en la pantalla: se borran en el servidor antes de mandarla. El mercaderista no tiene forma de verlos, ni siquiera mirando lo que le llegó al navegador.</p></div>
+          <div class="punto"><span class="ix">04</span><h3>Podés auditar qué se mira de vos</h3><p>El dueño de la cuenta puede pedir, cuando quiera, el reporte de transparencia: qué datos toma RECABRA, cómo los calcula, de dónde salen, para qué, y quién los consultó y qué día. También puede descargar todos sus datos y pedir la supresión.</p></div>
+          <div class="punto"><span class="ix">05</span><h3>Colombia, Ley 1581</h3><p>Tratamiento de datos personales conforme a la Ley 1581 de 2012 y al Decreto 1377 de 2013. La política es pública y se lee sin tener cuenta.</p></div>
+        </div>
+        <p class="fine"><a class="lnk" href="/politica-datos">Política de Tratamiento de Datos</a> · <a class="lnk" href="/politica-datos#transparencia">Reporte de transparencia</a></p>
+      </div>
+    </section>
+
+    <!-- 23 · PRECIO -->
+    <section class="panel" data-scene="pr" data-cap="Cuánto cuesta" id="precio">
+      <div class="card">
+        <span class="num">07 <b>/</b> 09</span>
+        <h2>Cuánto cuesta</h2>
+        <p class="precio-big"><span class="slot">[COMPLETAR: precio]</span> <span class="slot">[COMPLETAR: unidad — por supermercado al mes, por sede al mes, o lo que corresponda]</span></p>
+        <p class="body">Por transferencia bancaria, contra cuenta de cobro. No hay pasarela de pagos ni te pedimos una tarjeta.</p>
+        <ul class="lista">
+          <li>Primero te avisamos en la pantalla, y todo sigue funcionando igual.</li>
+          <li>Si el atraso sigue, la cuenta pasa a solo lectura: podés entrar, ver todo y consultar, pero no se cargan contratos nuevos.</li>
+          <li>Tus datos no se borran nunca. Ponés la cuenta al día y volvés a trabajar donde lo dejaste.</li>
+        </ul>
+        <p class="body">¿Tenés varias sedes o una cadena regional y querés que lo veamos juntos? Escribinos a <span class="slot">[COMPLETAR: correo de contacto]</span>.</p>
+        <div class="cta-row"><a class="btn btn-ghost" href="mailto:">Hablemos</a></div>
+      </div>
+    </section>
+
+    <!-- 24 · CTA FINAL -->
+    <section class="panel" data-scene="cta" data-cap="Empezá">
+      <div class="card">
+        <span class="num">08 <b>/</b> 09</span>
+        <h2>Empezá por una sede</h2>
+        <p class="lead">Creá la cuenta, dibujá la tienda que más espacios vende y mirá cuántos tenés libres esta temporada. Si sirve, seguís con las demás.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="/login#registro">Crear mi cuenta</a>
+          <a class="btn btn-ghost" href="/login">Ya tengo cuenta</a>
+        </div>
+        <p class="fine">Entrás con Google o con tu correo. El plano de arriba es de ejemplo; el tuyo lo dibujás vos.</p>
+        <details class="tabla-alt">
+          <summary>Los mismos datos del plano, en tabla</summary>
+          <table id="tablaAlt">
+            <thead><tr><th>Código</th><th>Tipo</th><th>Sede</th><th>Estado</th><th>Proveedor de ejemplo</th><th>Canon mensual</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </details>
+      </div>
+    </section>
+
+  </div><!-- /script -->
+</div><!-- /film -->
+</main>
+
+<footer class="pie-legal">
+  <div class="pie-grid">
+    <div>
+      <span class="wordmark">RECA<b>BRA</b></span>
+      <p class="pie-desc">RECABRA · Gestión de espacios comerciales en supermercados</p>
+    </div>
+    <div><h5>Producto</h5><ul>
+      <li><a href="#que-hace">Qué hace</a></li>
+      <li><a href="#como-se-usa">Cómo se usa</a></li>
+      <li><a href="#precio">Precio</a></li>
+    </ul></div>
+    <div><h5>Cuenta</h5><ul>
+      <li><a href="/login#registro">Crear mi cuenta</a></li>
+      <li><a href="/login">Ya tengo cuenta</a></li>
+    </ul></div>
+    <div><h5>Legal</h5><ul>
+      <li><a href="/politica-datos">Política de Tratamiento de Datos</a></li>
+      <li><a href="/politica-datos#derechos">Tratamiento de datos y derechos del titular</a></li>
+    </ul></div>
+  </div>
+  <div class="pie-bottom">
+    <a class="up" href="#inicio">Volver arriba</a>
+    <p>
+      <span class="slot">[COMPLETAR: razón social]</span> · NIT <span class="slot">[COMPLETAR: NIT]</span> · <span class="slot">[COMPLETAR: ciudad, Colombia]</span><br>
+      Tratamiento de datos personales conforme a la Ley 1581 de 2012 y al Decreto 1377 de 2013.<br>
+      Para ejercer tus derechos como titular, escribí a <span class="slot">[COMPLETAR: correo de protección de datos]</span>.
+    </p>
+    <p>© 2026 RECABRA. Todos los derechos reservados.</p>
+    <p>El plano de esta página es un supermercado inventado, sembrado en el código de la propia página. No corresponde a ningún cliente.</p>
+  </div>
+</footer>
+
+<script>
+/* ============================================================
+   RECABRA · A — "El piso en vivo"
+   Plano isométrico de ejemplo + cámara guiada por scroll.
+   Datos 100% sembrados acá (copy.md §13). Cero llamadas de red.
+   ============================================================ */
+(function(){
+"use strict";
+var $=function(s,r){return (r||document).querySelector(s);};
+var $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));};
+var NS="http://www.w3.org/2000/svg";
+var REDUCED=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+var COARSE=window.matchMedia("(pointer:coarse)").matches;
+
+/* ---------- 1. DATOS DE EJEMPLO (MercaFresco · inventados) ---------- */
+var GON_W=0.72, GON_GAP=0.9, GON_Y=2.4, GON_SY=8.2, GON_H=30;
+function caras(sede,run,x,y,sy,a,b){ // dos caras de una misma góndola = dos espacios
+  return [assign(a,{sede:sede,x:x,y:y,sx:GON_W,sy:sy,h:GON_H}),
+          assign(b,{sede:sede,x:x+GON_GAP,y:y,sx:GON_W,sy:sy,h:GON_H})];
+}
+function assign(o,e){var r={},k;for(k in o)r[k]=o[k];for(k in e)r[k]=e[k];return r;}
+function resto(id,tipo){return {id:id,tipo:tipo,loc:"",st:"resto"};}
+
+var F=[];
+/* --- CENTRO --- */
+F.push({sede:"CENTRO",id:"PUN-01",tipo:"Punta de góndola",loc:"Frente a la entrada",st:"tomado",prov:"Bebidas Zafiro",canon:"$ 1.300.000",fecha:"hasta el 28 sep",x:2.9,y:11.0,sx:1.8,sy:1.3,h:36});
+F.push({sede:"CENTRO",id:"PUN-02",tipo:"Punta de góndola",loc:"Pasillo 2, de cara a las cajas",st:"libera",prov:"Confites Milagro",canon:"$ 1.150.000",fecha:"libre desde el 26 sep",x:7.3,y:11.0,sx:1.8,sy:1.3,h:36});
+F.push({sede:"CENTRO",id:"PUN-05",tipo:"Punta de góndola",loc:"Pasillo 5, contra la pared del fondo",st:"libre",tarifa:"$ 1.000.000",x:20.5,y:1.0,sx:1.8,sy:1.3,h:36});
+F.push({sede:"CENTRO",id:"EXP-01",tipo:"Isla",loc:"Frente a la entrada",st:"tomado",prov:"Galletas Doña Rita",canon:"$ 1.200.000",fecha:"hasta el 30 nov",x:1.6,y:13.0,sx:2.3,sy:1.7,h:18});
+F.push({sede:"CENTRO",id:"EXP-02",tipo:"Isla",loc:"A 3 m de las cajas",st:"libre",tarifa:"$ 1.200.000",x:11.2,y:13.0,sx:2.3,sy:1.7,h:18});
+F.push({sede:"CENTRO",id:"CRS-01",tipo:"Exhibición de piso",loc:"Pasillo central",st:"libera",prov:"Aseo Rocío",canon:"$ 900.000",fecha:"libre desde el 22 sep",x:14.3,y:5.4,sx:1.2,sy:2.6,h:22});
+F=F.concat(caras("CENTRO","GON-04",16.2,GON_Y,GON_SY,
+  {id:"GON-04·A",tipo:"Góndola, por cara",loc:"Pasillo 3, lado par",st:"tomado",prov:"Lácteos Monteverde",canon:"$ 240.000",fecha:"hasta el 31 oct"},
+  {id:"GON-04·B",tipo:"Góndola, por cara",loc:"Pasillo 4, lado impar",st:"libre",tarifa:"$ 230.000"}));
+F.push({sede:"CENTRO",id:"BEB-01",tipo:"Nevera de bebidas",loc:"Pared de refrigerados",st:"tomado",prov:"Bebidas Zafiro",canon:"$ 450.000",fecha:"hasta el 30 nov",x:6.0,y:0.2,sx:4.0,sy:1.0,h:48});
+F.push({sede:"CENTRO",id:"FRU-02",tipo:"Frutas y verduras",loc:"Entrada, mano derecha",st:"libre",tarifa:"$ 380.000",x:20.2,y:13.0,sx:2.6,sy:2.0,h:20});
+/* contexto CENTRO */
+[["GON-01",2.9],["GON-02",7.3],["GON-03",11.7],["GON-05",20.5]].forEach(function(r){
+  F=F.concat(caras("CENTRO",r[0],r[1],GON_Y,GON_SY,resto(r[0]+"·A","Góndola, por cara"),resto(r[0]+"·B","Góndola, por cara")));
+});
+[[11.0,4.2],[15.6,3.0]].forEach(function(n,i){
+  F.push(assign(resto("NEV-0"+(i+1),"Pared de refrigerados"),{sede:"CENTRO",x:n[0],y:0.2,sx:n[1],sy:1.0,h:48}));
+});
+[1.0,3.3,5.6,7.9,10.2].forEach(function(x,i){
+  F.push(assign(resto("CAJ-0"+(i+1),"Caja registradora"),{sede:"CENTRO",x:x,y:15.0,sx:1.8,sy:0.9,h:24}));
+});
+F.push(assign(resto("SAC-01","Mostrador de servicio al cliente"),{sede:"CENTRO",x:15.6,y:14.8,sx:3.2,sy:1.0,h:26}));
+[[5.6,3.6],[10.0,3.6],[5.6,9.2],[10.0,9.2],[18.7,12.6],[1.2,10.4]].forEach(function(c,i){
+  F.push(assign(resto("COL-0"+(i+1),"Columna"),{sede:"CENTRO",x:c[0],y:c[1],sx:0.55,sy:0.55,h:78}));
+});
+
+/* --- PALMAS --- */
+var OX=34;
+F.push({sede:"PALMAS",id:"PUN-01",tipo:"Punta de góndola",loc:"Frente a la entrada",st:"tomado",prov:"Café Alto Bosque",canon:"$ 1.100.000",fecha:"hasta el 15 dic",x:OX+2.0,y:10.4,sx:1.8,sy:1.3,h:36});
+F.push({sede:"PALMAS",id:"PUN-03",tipo:"Punta de góndola",loc:"Pasillo 3, de cara a las cajas",st:"libre",tarifa:"$ 1.000.000",x:OX+10.0,y:10.4,sx:1.8,sy:1.3,h:36});
+F.push({sede:"PALMAS",id:"CAJ-02",tipo:"Cabecera de caja",loc:"Caja 2",st:"libera",prov:"Confites Milagro",canon:"$ 850.000",fecha:"libre desde el 24 sep",x:OX+2.9,y:12.4,sx:1.8,sy:0.9,h:24});
+F.push({sede:"PALMAS",id:"ISL-01",tipo:"Isla de congelados",loc:"Zona de congelados",st:"tomado",prov:"Cárnicos San Isidro",canon:"$ 700.000",fecha:"hasta el 31 oct",x:OX+11.6,y:3.6,sx:2.4,sy:2.2,h:20});
+F=F.concat(caras("PALMAS","GON-11",OX+2.0,4.0,6.0,
+  {id:"GON-11·A",tipo:"Góndola, por cara",loc:"Pasillo 1, lado par",st:"libre",tarifa:"$ 230.000"},
+  resto("GON-11·B","Góndola, por cara")));
+F.push({sede:"PALMAS",id:"BAT-01",tipo:"Batea",loc:"Pasillo central",st:"libre",tarifa:"$ 320.000",x:OX+8.2,y:6.6,sx:1.6,sy:1.6,h:14});
+[["GON-12",OX+6.0],["GON-13",OX+10.0]].forEach(function(r){
+  F=F.concat(caras("PALMAS",r[0],r[1],4.0,6.0,resto(r[0]+"·A","Góndola, por cara"),resto(r[0]+"·B","Góndola, por cara")));
+});
+[[OX+0.7,"CAJ-01"],[OX+5.1,"CAJ-03"]].forEach(function(c){
+  F.push(assign(resto(c[1],"Caja registradora"),{sede:"PALMAS",x:c[0],y:12.4,sx:1.8,sy:0.9,h:24}));
+});
+F.push(assign(resto("NEV-03","Pared de refrigerados"),{sede:"PALMAS",x:OX+5.0,y:2.2,sx:4.4,sy:1.0,h:46}));
+[[OX+4.6,5.4],[OX+4.6,9.0],[OX+9.0,11.4]].forEach(function(c,i){
+  F.push(assign(resto("COL-1"+(i+1),"Columna"),{sede:"PALMAS",x:c[0],y:c[1],sx:0.55,sy:0.55,h:78}));
+});
+
+var ROOMS=[{sede:"CENTRO",x:-0.6,y:-0.6,w:24.4,h:17.0},{sede:"PALMAS",x:OX-0.6,y:1.4,w:15.4,h:12.6}];
+
+var TXT={libre:"Libre todo el periodo",libera:"Se libera en el periodo",tomado:"Tomado",resto:"Resto de la sala"};
+
+/* ---------- 2. ISOMETRÍA ---------- */
+var MODE=0;           /* 0 = plano, 1 = vista 3D liviana */
+var IW=26, IH2D=15, IH3D=8.6, HK3D=1.9;
+function ih(){return MODE?IH3D:IH2D;}
+function hk(){return MODE?HK3D:1;}
+function px(a,b,z){return [(a-b)*IW, (a+b)*ih() - (z||0)];}
+function pt(a,b,z){var p=px(a,b,z);return p[0].toFixed(1)+","+p[1].toFixed(1);}
+
+function poly(cls,points){var p=document.createElementNS(NS,"polygon");p.setAttribute("class",cls);p.setAttribute("points",points);return p;}
+
+function boxG(f){
+  var g=document.createElementNS(NS,"g");
+  var x=f.x,y=f.y,sx=f.sx,sy=f.sy,h=f.h*hk();
+  g.appendChild(poly("f-left", pt(x,y+sy,h)+" "+pt(x+sx,y+sy,h)+" "+pt(x+sx,y+sy,0)+" "+pt(x,y+sy,0)));
+  g.appendChild(poly("f-right",pt(x+sx,y,h)+" "+pt(x+sx,y+sy,h)+" "+pt(x+sx,y+sy,0)+" "+pt(x+sx,y,0)));
+  g.appendChild(poly("f-top",  pt(x,y,h)+" "+pt(x+sx,y,h)+" "+pt(x+sx,y+sy,h)+" "+pt(x,y+sy,h)));
+  return g;
+}
+
+function buildLayer(){
+  var root=document.createElementNS(NS,"g");
+  /* pisos */
+  ROOMS.forEach(function(r){
+    var g=document.createElementNS(NS,"g");
+    g.appendChild(poly("fl",pt(r.x,r.y,0)+" "+pt(r.x+r.w,r.y,0)+" "+pt(r.x+r.w,r.y+r.h,0)+" "+pt(r.x,r.y+r.h,0)));
+    var i;
+    for(i=0;i<=r.w;i+=2){ var l=document.createElementNS(NS,"line");
+      var a=px(r.x+i,r.y,0),b=px(r.x+i,r.y+r.h,0);
+      l.setAttribute("class","fline");l.setAttribute("x1",a[0]);l.setAttribute("y1",a[1]);l.setAttribute("x2",b[0]);l.setAttribute("y2",b[1]);g.appendChild(l);}
+    for(i=0;i<=r.h;i+=2){ var l2=document.createElementNS(NS,"line");
+      var c=px(r.x,r.y+i,0),d=px(r.x+r.w,r.y+i,0);
+      l2.setAttribute("class","fline");l2.setAttribute("x1",c[0]);l2.setAttribute("y1",c[1]);l2.setAttribute("x2",d[0]);l2.setAttribute("y2",d[1]);g.appendChild(l2);}
+    g.appendChild(poly("fedge",pt(r.x,r.y,0)+" "+pt(r.x+r.w,r.y,0)+" "+pt(r.x+r.w,r.y+r.h,0)+" "+pt(r.x,r.y+r.h,0)));
+    var t=document.createElementNS(NS,"text");
+    var lp=px(r.x+r.w/2,r.y+r.h+1.4,0);
+    t.setAttribute("class","sede-label");t.setAttribute("x",lp[0]);t.setAttribute("y",lp[1]);t.textContent=r.sede;
+    g.appendChild(t);
+    root.appendChild(g);
+  });
+  /* muebles, ordenados por profundidad */
+  F.map(function(f,i){return {f:f,i:i,d:(f.x+f.sx/2)+(f.y+f.sy/2)};})
+   .sort(function(a,b){return a.d-b.d;})
+   .forEach(function(o){
+     var f=o.f, alq=f.st!=="resto";
+     var g=boxG(f);
+     g.setAttribute("class","fx st-"+f.st+(alq?" alq":""));
+     g.setAttribute("data-key",f.sede+"/"+f.id);
+     if(alq){
+       g.setAttribute("tabindex","0");
+       g.setAttribute("role","button");
+       g.setAttribute("aria-label",f.id+", "+f.tipo+", "+TXT[f.st]+", sede "+f.sede);
+       var r=document.createElementNS(NS,"polygon");
+       var h=f.h*hk();
+       r.setAttribute("class","ring");
+       r.setAttribute("points",pt(f.x-0.12,f.y-0.12,h)+" "+pt(f.x+f.sx+0.12,f.y-0.12,h)+" "+pt(f.x+f.sx+0.12,f.y+f.sy+0.12,h)+" "+pt(f.x-0.12,f.y+f.sy+0.12,h));
+       g.appendChild(r);
+       var tx=document.createElementNS(NS,"text");
+       var c=px(f.x+f.sx/2,f.y+f.sy/2,f.h*hk()+3);
+       tx.setAttribute("class","code");tx.setAttribute("x",c[0]);tx.setAttribute("y",c[1]);
+       tx.textContent=f.id;
+       g.appendChild(tx);
+     }
+     root.appendChild(g);
+   });
+  return root;
+}
+
+var plan=$("#plan"), stage=$("#stage");
+var cam=document.createElementNS(NS,"g");
+cam.setAttribute("id","cam");
+plan.appendChild(cam);
+var layer2d=buildLayer(); cam.appendChild(layer2d);
+var layer3d=null;
+
+/* ---------- 3. CÁMARA ---------- */
+var VW=0,VH=0,fit=1;
+var cur={x:0,y:0,s:1}, tgt={x:0,y:0,s:1};
+var pan={x:0,y:0}, uz=1, free=false, dirty=true;
+
+function measure(){
+  var r=stage.getBoundingClientRect();
+  VW=Math.max(1,r.width); VH=Math.max(1,r.height);
+  plan.setAttribute("viewBox","0 0 "+VW+" "+VH);
+  var wide=VW>=960;
+  var availW=wide? VW-Math.min(VW*0.40,470)-90 : VW-24;
+  fit=Math.min(availW/1060, (VH*0.80)/620);
+  fit=Math.max(0.16,Math.min(fit,1.15));
+  ANCHOR.x = wide ? (availW/2 + 44) : VW/2;
+  ANCHOR.y = wide ? VH*0.50 : VH*0.30;
+  stage.style.setProperty("--ax", ANCHOR.x.toFixed(0)+"px");
+}
+var ANCHOR={x:0,y:0};
+
+function worldOf(gx,gy){var p=px(gx,gy,0);return {x:p[0],y:p[1]};}
+
+/* escenas: punto del mundo (en celdas) + factor de zoom */
+var SCENES={
+  "hero":      [12,8,1.00], "qh-intro":[12,8,0.92], "qh-1":[12,6.5,1.30],
+  "qh-2":      [4.2,11.4,2.50], "qh-3":[12,8,1.00], "qh-4":[17.2,6.5,2.60],
+  "qh-5":      [12,9,1.45], "qh-6":[14.9,6.7,2.50], "qh-cierre":[24,8,0.60],
+  "pq-intro":  [30,8,0.58], "pq-perfiles":[OX+7,8,0.95], "pq-cifras":[24,8,0.48],
+  "cu-intro":  [12,8,0.95], "cu-1":[12,8,0.95], "cu-2":[12,8,1.05], "cu-3":[8.5,10,1.55],
+  "as-intro":  [12,8,1.00], "as-a":[12,8,1.12], "as-b":[16,7,1.75], "as-c":[12,8,0.88],
+  "as-cierre": [12,8,0.84], "cf":[24,8,0.52], "pr":[12,9,0.78], "cta":[10,9,1.20]
+};
+
+function setScene(id){
+  var s=SCENES[id]||SCENES.hero;
+  var w=worldOf(s[0],s[1]);
+  tgt.x=w.x; tgt.y=w.y; tgt.s=fit*s[2];
+  dirty=true; kick();
+}
+
+function render(){
+  var s=cur.s*uz;
+  var tx=ANCHOR.x - (cur.x+pan.x)*s;
+  var ty=ANCHOR.y - (cur.y+pan.y)*s;
+  cam.setAttribute("transform","translate("+tx.toFixed(2)+","+ty.toFixed(2)+") scale("+s.toFixed(4)+")");
+  plan.classList.toggle("zoomed", s>0.85);
+  if(fichaOpen) placeFicha();
+  placeAnchored();
+}
+
+var raf=null;
+function kick(){ if(raf===null) raf=requestAnimationFrame(step); }
+function step(){
+  raf=null;
+  var k=REDUCED?1:0.14;
+  var dx=tgt.x-cur.x, dy=tgt.y-cur.y, ds=tgt.s-cur.s;
+  cur.x+=dx*k; cur.y+=dy*k; cur.s+=ds*k;
+  render();
+  if(Math.abs(dx)>0.4||Math.abs(dy)>0.4||Math.abs(ds)>0.0008) kick();
+}
+
+/* ---------- 4. INTERACCIÓN CON EL PLANO ---------- */
+function enterFree(on){
+  free=on;
+  plan.classList.toggle("free",on);
+  $("#center").classList.toggle("on",on);
+}
+function zoomBy(k){
+  uz=Math.max(0.35,Math.min(6,uz*k));
+  enterFree(true); dirty=true; render();
+}
+$("#zoomIn").addEventListener("click",function(){zoomBy(1.28);});
+$("#zoomOut").addEventListener("click",function(){zoomBy(1/1.28);});
+$("#center").addEventListener("click",function(){
+  uz=1; pan.x=0; pan.y=0; enterFree(false); setScene(stage.dataset.scene); render();
+});
+
+var down=null, moved=false, touches={}, pinch=null;
+function tcount(){return Object.keys(touches).length;}
+plan.addEventListener("pointerdown",function(e){
+  if(e.pointerType==="touch"){
+    touches[e.pointerId]={x:e.clientX,y:e.clientY};
+    if(tcount()===2){ pinch={d:tdist(),z:uz}; enterFree(true); }
+    if(!free) return;                               /* un dedo: la página sigue haciendo scroll */
+  }
+  down={x:e.clientX,y:e.clientY}; moved=false;
+  plan.classList.add("grabbing");
+  try{plan.setPointerCapture(e.pointerId);}catch(err){}
+});
+function tdist(){
+  var k=Object.keys(touches); if(k.length<2) return 0;
+  var a=touches[k[0]],b=touches[k[1]];
+  return Math.sqrt(Math.pow(a.x-b.x,2)+Math.pow(a.y-b.y,2));
+}
+plan.addEventListener("pointermove",function(e){
+  if(e.pointerType==="touch" && touches[e.pointerId]){
+    touches[e.pointerId]={x:e.clientX,y:e.clientY};
+    if(pinch && tcount()===2){
+      var d=tdist();
+      if(d>10){ uz=Math.max(0.35,Math.min(6,pinch.z*(d/pinch.d))); render(); }
+      return;
+    }
+  }
+  if(!down) return;
+  var s=cur.s*uz;
+  var dx=(e.clientX-down.x)/s, dy=(e.clientY-down.y)/s;
+  if(Math.abs(e.clientX-down.x)+Math.abs(e.clientY-down.y)>6){ moved=true; enterFree(true); }
+  pan.x+=dx; pan.y+=dy; down={x:e.clientX,y:e.clientY};
+  render();
+});
+["pointerup","pointercancel","pointerleave"].forEach(function(ev){
+  plan.addEventListener(ev,function(e){
+    if(e && e.pointerId!==undefined) delete touches[e.pointerId];
+    if(tcount()<2) pinch=null;
+    down=null; plan.classList.remove("grabbing");
+  });
+});
+plan.addEventListener("wheel",function(e){
+  if(!(free||e.ctrlKey||e.metaKey)) return;          /* sin modo libre, la rueda sigue siendo scroll */
+  var next=uz*(e.deltaY<0?1.12:1/1.12);
+  if(next<0.35||next>6) return;
+  e.preventDefault(); uz=next; enterFree(true); render();
+},{passive:false});
+
+/* teclado: flechas mueven, + y − acercan */
+plan.addEventListener("keydown",function(e){
+  var st=90/(cur.s*uz), used=true;
+  if(e.key==="ArrowLeft") pan.x+=st; else if(e.key==="ArrowRight") pan.x-=st;
+  else if(e.key==="ArrowUp") pan.y+=st; else if(e.key==="ArrowDown") pan.y-=st;
+  else if(e.key==="+"||e.key==="=") zoomBy(1.28);
+  else if(e.key==="-"||e.key==="_") zoomBy(1/1.28);
+  else used=false;
+  if(used){e.preventDefault(); enterFree(true); render();}
+});
+plan.addEventListener("focus",function(){document.body.classList.add("plan-focus");});
+plan.addEventListener("blur",function(){document.body.classList.remove("plan-focus");});
+
+/* ---------- 5. FICHA DEL MUEBLE ---------- */
+var ficha=$("#ficha"), fichaOpen=null, byKey={};
+F.forEach(function(f){byKey[f.sede+"/"+f.id]=f;});
+
+function openFicha(key){
+  var f=byKey[key]; if(!f) return;
+  fichaOpen=key;
+  $$(".fx",plan).forEach(function(g){g.classList.toggle("is-open",g.getAttribute("data-key")===key);});
+  $("#fCod").textContent=f.id;
+  $("#fTipo").textContent=f.tipo;
+  $("#fUbi").textContent=(f.loc? f.loc+" · ":"")+"sede "+f.sede;
+  var est=$("#fEst");
+  est.querySelector("i").className="e-"+f.st;
+  est.querySelector("span").className="t-"+f.st;
+  est.querySelector("span").textContent=TXT[f.st];
+  var l1=$("#fL1"), l2=$("#fL2"), l3=$("#fL3"), nota=$("#fNota");
+  if(f.st==="libre"){ l1.textContent="Tarifa de referencia"; l2.textContent=f.tarifa+" al mes"; l3.textContent=""; nota.style.display="none"; }
+  else if(f.st==="libera"){ l1.textContent=f.prov; l2.textContent=f.canon+" al mes"; l3.textContent=f.fecha; nota.style.display=""; }
+  else if(f.st==="tomado"){ l1.textContent=f.prov; l2.textContent=f.canon+" al mes"; l3.textContent=f.fecha; nota.style.display=""; }
+  else { l1.textContent="No se alquila. Es parte del local."; l2.textContent=""; l3.textContent=""; nota.style.display="none"; }
+  ficha.classList.add("on");
+  placeFicha();
+}
+function closeFicha(){
+  fichaOpen=null; ficha.classList.remove("on");
+  $$(".fx.is-open",plan).forEach(function(g){g.classList.remove("is-open");});
+}
+function placeFicha(){
+  var g=plan.querySelector('.fx[data-key="'+cssEsc(fichaOpen)+'"]'); if(!g) return;
+  var r=g.getBoundingClientRect(), fr=ficha.getBoundingClientRect();
+  var x=r.left+r.width/2-fr.width/2, y=r.top-fr.height-14;
+  if(y<86) y=r.bottom+14;
+  x=Math.max(10,Math.min(x,window.innerWidth-fr.width-10));
+  y=Math.max(78,Math.min(y,window.innerHeight-fr.height-10));
+  ficha.style.left=x+"px"; ficha.style.top=y+"px";
+}
+function cssEsc(s){return s.replace(/(["\\])/g,"\\$1");}
+
+plan.addEventListener("click",function(e){
+  if(moved){moved=false;return;}
+  var g=e.target.closest? e.target.closest(".fx"):null;
+  if(g) openFicha(g.getAttribute("data-key")); else closeFicha();
+});
+plan.addEventListener("keydown",function(e){
+  if(e.key!=="Enter"&&e.key!==" ") return;
+  var g=document.activeElement && document.activeElement.closest? document.activeElement.closest(".fx"):null;
+  if(g){e.preventDefault(); openFicha(g.getAttribute("data-key"));}
+});
+document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeFicha(); });
+$("#cerrarFicha").addEventListener("click",closeFicha);
+
+/* ---------- 6. VISTA 3D LIVIANA (bajo demanda, como el three.js de adentro) ---------- */
+var btn3d=$("#t3d");
+btn3d.addEventListener("click",function(){
+  MODE=MODE?0:1;
+  btn3d.textContent=MODE?"Volver al plano":"Ver en 3D";
+  btn3d.classList.toggle("on",!!MODE);
+  var nl=buildLayer();
+  cam.replaceChild(nl, cam.firstChild);
+  layer2d=nl;
+  measure(); setScene(stage.dataset.scene);
+  if(fichaOpen) openFicha(fichaOpen);
+});
+
+/* ---------- 7. GUION: scroll, escenas, ganchos ---------- */
+var panels=$$(".panel"), rail=$("#rail"), keys=[], caps=[];
+panels.forEach(function(p,i){
+  var b=document.createElement("button");
+  b.setAttribute("aria-label",p.getAttribute("data-cap")||("Capítulo "+(i+1)));
+  b.addEventListener("click",function(){p.scrollIntoView({behavior:REDUCED?"auto":"smooth",block:"center"});});
+  rail.appendChild(b);
+  caps.push(b);
+});
+
+setTimeout(function(){panels.forEach(function(p){p.classList.add("in");});},2500);
+var io=new IntersectionObserver(function(es){
+  es.forEach(function(en){ if(en.isIntersecting) en.target.classList.add("in"); });
+},{rootMargin:"-12% 0px -12% 0px"});
+panels.forEach(function(p){io.observe(p);});
+
+var active="hero", ticking=false;
+function onScroll(){
+  if(ticking) return; ticking=true;
+  requestAnimationFrame(function(){
+    ticking=false;
+    var vh=window.innerHeight, mid=window.scrollY+vh/2, best=null, bd=1e12, prog=0;
+    panels.forEach(function(p){
+      var r=p.getBoundingClientRect(), top=r.top+window.scrollY, h=r.height;
+      var c=top+h/2, d=Math.abs(c-mid);
+      if(d<bd){bd=d;best=p;prog=Math.max(0,Math.min(1,(mid-top)/h));}
+    });
+    if(best){
+      var id=best.getAttribute("data-scene");
+      if(id!==active){
+        active=id; stage.dataset.scene=id;
+        caps.forEach(function(b,i){b.setAttribute("aria-current",panels[i]===best?"true":"false");});
+        applyFx(id);
+        if(!free) setScene(id);
+        if(fichaOpen && id!=="hero") closeFicha();
+      }
+      if(id==="qh-3") repaintSeason(prog);
+    }
+    var doc=document.documentElement;
+    $("#progress").style.width=(window.scrollY/(doc.scrollHeight-vh)*100)+"%";
+    var fb=$("#film").getBoundingClientRect();
+    var fuera=fb.bottom<vh*0.62;
+    $("#hud").classList.toggle("hidden",fuera);
+    rail.classList.toggle("hidden",fuera);
+  });
+}
+window.addEventListener("scroll",onScroll,{passive:true});
+window.addEventListener("resize",function(){measure();setScene(active);render();});
+
+/* efectos por escena */
+var FXMAP={
+  "qh-2":["fxContrato"],"qh-3":["fxTemporada"],"qh-4":["fxTarifa"],"qh-5":["fxAvisos"],
+  "qh-6":["fxMontaje"],"pq-perfiles":["fxRoles"],"pq-cifras":["fxCifras"],
+  "as-b":["opp"],"as-c":["fxTendencia"],"cf":["fxBases"]
+};
+var ANCHORED={fxContrato:{key:"CENTRO/PUN-01",dx:0,dy:-150},fxTarifa:{key:"CENTRO/GON-04·A",dx:0,dy:-120},fxMontaje:{key:"CENTRO/CRS-01",dx:150,dy:-40}};
+function applyFx(id){
+  $$(".fxbox").forEach(function(b){b.classList.remove("on");});
+  $$(".opp").forEach(function(o){o.classList.remove("on");});
+  if(id!=="qh-3") restoreSeason();
+  var list=FXMAP[id]||[];
+  list.forEach(function(n){
+    if(n==="opp"){ $$(".opp").forEach(function(o){o.classList.add("on");}); }
+    else { var el=document.getElementById(n); if(el) el.classList.add("on"); }
+  });
+  placeAnchored();
+}
+function placeAnchored(){
+  var sr=stage.getBoundingClientRect();
+  Object.keys(ANCHORED).forEach(function(n){
+    var el=document.getElementById(n); if(!el||!el.classList.contains("on")) return;
+    var a=ANCHORED[n], g=plan.querySelector('.fx[data-key="'+cssEsc(a.key)+'"]'); if(!g) return;
+    var r=g.getBoundingClientRect(), b=el.getBoundingClientRect();
+    var x=r.left+r.width/2-sr.left-b.width/2+a.dx;
+    var y=r.top-sr.top+a.dy;
+    x=Math.max(12,Math.min(x,sr.width-b.width-12));
+    y=Math.max(76,Math.min(y,sr.height-b.height-16));
+    el.style.left=x+"px"; el.style.top=y+"px";
+  });
+  $$(".opp").forEach(function(o){
+    var g=plan.querySelector('.fx[data-key="'+cssEsc(o.getAttribute("data-key"))+'"]'); if(!g) return;
+    var r=g.getBoundingClientRect();
+    o.style.left=(r.left+r.width/2-sr.left)+"px";
+    o.style.top=(r.top-sr.top-8)+"px";
+  });
+}
+
+/* repintado por temporada (escena qh-3) */
+var SEASONS=$$("#fxTemporada span"), lastSeason=-1, orig=null;
+function restoreSeason(){
+  if(!orig) return;
+  F.forEach(function(f){
+    if(f.st==="resto") return;
+    var g=plan.querySelector('.fx[data-key="'+cssEsc(f.sede+"/"+f.id)+'"]');
+    if(g) g.setAttribute("class","fx st-"+orig[f.sede+"/"+f.id]+" alq");
+  });
+  lastSeason=-1;
+}
+function hash(s,k){var h=0,i;for(i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return Math.abs(h+k*7919)%3;}
+function repaintSeason(p){
+  var idx=Math.max(0,Math.min(8,Math.floor(p*9)));
+  if(idx===lastSeason) return; lastSeason=idx;
+  SEASONS.forEach(function(s,i){s.classList.toggle("act",i===idx);});
+  if(!orig){orig={};F.forEach(function(f){orig[f.sede+"/"+f.id]=f.st;});}
+  var names=["libre","libera","tomado"];
+  F.forEach(function(f){
+    if(f.st==="resto") return;
+    var k=f.sede+"/"+f.id;
+    var st = idx===5 ? orig[k] : names[hash(k,idx)];
+    var g=plan.querySelector('.fx[data-key="'+cssEsc(k)+'"]');
+    if(g) g.setAttribute("class","fx st-"+st+" alq");
+  });
+}
+
+/* ---------- 8. ETIQUETAS DE OPORTUNIDAD (asesoría) ---------- */
+(function(){
+  var layer=$("#oppLayer");
+  F.filter(function(f){return f.st==="libre"||f.st==="libera";}).slice(0,8).forEach(function(f){
+    var d=document.createElement("div");
+    d.className="opp"; d.setAttribute("data-key",f.sede+"/"+f.id);
+    d.textContent=(f.tarifa||f.canon)+" en juego";
+    layer.appendChild(d);
+  });
+})();
+
+/* ---------- 9. SPARKLINES (tendencia, con hueco = mes sin datos) ---------- */
+(function(){
+  var series={spark1:[26,31,29,38,null,42,47,45],spark2:[18,24,22,33,null,40,44,49],spark3:[30,32,31,34,null,33,36,38]};
+  Object.keys(series).forEach(function(id){
+    var v=series[id], w=190, h=30, n=v.length, s='<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" role="img" aria-hidden="true">';
+    var mx=Math.max.apply(null,v.filter(Boolean)), mn=Math.min.apply(null,v.filter(Boolean));
+    var X=function(i){return (i/(n-1))*(w-16)+8;}, Y=function(y){return h-4-((y-mn)/(mx-mn||1))*(h-10);};
+    var seg=[],curseg=[];
+    v.forEach(function(y,i){ if(y===null){ if(curseg.length)seg.push(curseg); curseg=[]; } else curseg.push([X(i),Y(y)]); });
+    if(curseg.length)seg.push(curseg);
+    seg.forEach(function(p){
+      s+='<polyline fill="none" stroke="var(--signal-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" points="'+p.map(function(q){return q[0].toFixed(1)+","+q[1].toFixed(1);}).join(" ")+'"/>';
+    });
+    if(seg.length>1){
+      var a=seg[0][seg[0].length-1], b=seg[1][0];
+      s+='<line x1="'+a[0].toFixed(1)+'" y1="'+a[1].toFixed(1)+'" x2="'+b[0].toFixed(1)+'" y2="'+b[1].toFixed(1)+'" stroke="var(--ink-3)" stroke-width="1.4" stroke-dasharray="2 3"/>';
+    }
+    var last=seg[seg.length-1][seg[seg.length-1].length-1];
+    s+='<circle cx="'+last[0].toFixed(1)+'" cy="'+last[1].toFixed(1)+'" r="2.6" fill="var(--signal-ink)"/></svg>';
+    document.getElementById(id).innerHTML=s;
+  });
+})();
+
+/* ---------- 10. TABLA EQUIVALENTE ---------- */
+(function(){
+  var tb=$("#tablaAlt tbody"), html="";
+  F.filter(function(f){return f.st!=="resto";}).forEach(function(f){
+    html+="<tr><td>"+f.id+"</td><td>"+f.tipo+"</td><td>"+f.sede+"</td><td>"+TXT[f.st]+"</td><td>"+(f.prov||"—")+"</td><td>"+(f.canon||f.tarifa+" (tarifa)")+"</td></tr>";
+  });
+  tb.innerHTML=html;
+})();
+
+/* ---------- 11. CONTADORES DEL GANCHO ---------- */
+(function(){
+  var done=false;
+  function run(){
+    if(done) return; done=true;
+    $$(".legend .n[data-count]").concat([$("#hookCount")]).forEach(function(el){
+      if(!el) return;
+      var to=parseInt(el.getAttribute("data-count")||el.textContent,10), i=0;
+      if(REDUCED){el.textContent=to;return;}
+      el.textContent="0";
+      var t=setInterval(function(){ i++; el.textContent=i; if(i>=to) clearInterval(t); }, 900/Math.max(to,1));
+    });
+  }
+  if(REDUCED) run(); else setTimeout(run,700);
+})();
+
+if(COARSE) document.body.classList.add("coarse");
+
+/* ---------- 12. TEMA CLARO / OSCURO ---------- */
+(function(){
+  var root=document.documentElement, key="recabra-tema", saved=null;
+  try{saved=localStorage.getItem(key);}catch(e){}
+  if(saved) root.setAttribute("data-theme",saved);
+  else if(window.matchMedia("(prefers-color-scheme: light)").matches) root.setAttribute("data-theme","light");
+  else root.setAttribute("data-theme","dark");
+  $("#theme").addEventListener("click",function(){
+    var n=root.getAttribute("data-theme")==="light"?"dark":"light";
+    root.setAttribute("data-theme",n);
+    try{localStorage.setItem(key,n);}catch(e){}
+  });
+})();
+
+/* ---------- 13. ARRANQUE (después del primer pintado) ---------- */
+measure();
+setScene("hero");
+cur.x=tgt.x; cur.y=tgt.y; cur.s=tgt.s*(REDUCED?1:0.86);
+render();
+if(!REDUCED){ requestAnimationFrame(function(){ setScene("hero"); }); }
+setTimeout(function(){ openFicha("CENTRO/PUN-02"); }, REDUCED?0:900);
+onScroll();
+})();
+</script>
+</body>
+</html>

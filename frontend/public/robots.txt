@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /$
+Allow: /politica-datos
+Disallow: /login
+Disallow: /plataforma
+Disallow: /api/

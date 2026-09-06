@@ -78,6 +78,21 @@ Nunca crear geometría nueva posicionada para esto: se intentó dos veces y fall
 paramétricas y del catch-all, o éste se las traga. Aplica en `layout.py`
 (`/revisions`, `/settings`) y en `spaces.py` (`/face-images`).
 
+**`/` es pública; el ingreso vive en `/login`.** Sin sesión, `App.tsx` mira
+`window.location.pathname`: `/` monta la landing (`src/pages/Landing/`) y **cualquier
+otra ruta sigue montando `Login`**, que es lo que hace que un enlace guardado a
+`/reporte-plataforma` termine ahí después de entrar. Lo que se resuelve ANTES que eso no
+cambió y no puede cambiar: `/politica-datos` es pública y el enlace de montaje
+(`/?montar=…&t=…`) manda sobre todo, así que la mercaderista nunca ve la landing aunque
+su enlace caiga en `/`. El correo de invitación sigue apuntando a `/login?invitacion=…`
+(`routers/usuarios.py`) y los CTA de la landing a `/login#registro`, que abre `Login` ya
+en modo registro. La landing es **pública de verdad**: cero llamadas a `/api/*`, cero
+datos de cliente —el plano isométrico es un supermercado inventado sembrado en
+`src/pages/Landing/datos.ts`— y cero recursos externos. Su CSS cuelga entero de `.lp`
+porque redefine tokens que se llaman igual que los de `src/index.css`; un selector suyo
+que se escape repinta el tablero. three.js entra sólo por el `import()` perezoso de «Ver
+en 3D» (`Vista3D.tsx`): el bundle inicial de `/` no lo lleva.
+
 **El dinero no viaja al worker.** `negotiatedValue` se redacta server-side en las
 respuestas de layout, `monthly_rent` en las de spaces, y las tarifas de referencia
 exigen admin **también para leer**. En el cliente, las tarifas quedan fuera de
@@ -1005,6 +1020,192 @@ de ruta en su diccionario `relleno`. `slug` ya está ahí desde el cierre de la
 Fase 7, así que `GET /api/plataforma/clientes/{slug}/detalle` queda barrido
 solo; un parámetro de ruta NUEVO sin su relleno hace fallar la suite entera a
 propósito.
+
+### Fase 9 — Landing pública
+
+**El problema (dueño, 2026-09-05).** Al abrir `retail-espacios.onrender.com`
+lo único que había era el formulario de ingreso: nada decía qué es RECABRA,
+para quién es ni por qué registrarse. La landing tiene que vender el sistema
+y llevar al registro en 30 segundos.
+
+**Ruteo.** Sin sesión, `App.tsx` resuelve en este orden y el orden es
+vinculante: `/politica-datos` → enlace de montaje (`/?montar=…&t=…`, que
+apunta a la RAÍZ, `routers/spaces.py`) → `/` = `Landing` → **cualquier otra
+ruta = `Login`** (así un enlace guardado a `/reporte-plataforma` aterriza ahí
+después de entrar). Con sesión, `/` sigue siendo el tablero o `/plataforma`.
+`/login#registro` abre `Login` en modo registro; es el destino de los dos CTA
+«Crear mi cuenta». `/login?invitacion=…` no se tocó (el canje sigue en el
+backend). Sin backend nuevo: `/` es el mismo cascarón del SPA; no hay ningún
+`/api/landing/*` (barrido de la tabla de rutas en `test_landing_ataques.py::l13`).
+
+**Orden de trabajo (indicación del dueño, `features/landing/spec.md`).**
+Copy primero (`outputs/copy.md`: texto final sección por sección, cifras con
+archivo de origen en §12, datos de ejemplo en §13, 28 «no prometemos» en §14),
+después diseño **sin referencias visuales** —sólo copy y spec, sin capturas ni
+paleta—, y recién después frontend con lo funcional heredado (rutas, CSP,
+three.js perezoso) y la estética del diseño nuevo. Lo que choca con la
+aplicación interior se documenta como decisión del dueño, no se suaviza.
+
+**Lo que se construyó.** `src/pages/Landing/`: `Landing.tsx` (nueve secciones
+con el copy literal), `landing.css` (tokens y componentes **todos bajo `.lp`**:
+redefine `--bg`, `--surface`, `--ink`, `--accent`, `.card`, `.nav`, `.btn` que
+`src/index.css` ya usa; `probar-landing.mjs` falla si un selector se escapa),
+`datos.ts` (supermercado inventado: 2 sedes, 16 alquilables 7/3/6, ~30 muebles
+de contexto, prefijos de `nomenclatura.ts`, proveedores inventados — nunca
+reemplazar por marcas reales), `PlanoIsometrico.tsx` (SVG propio, proyección
+2:1, paneo/zoom como un solo `transform` por `ref`; rueda armada con el primer
+clic para no secuestrar el scroll; teclado completo; ficha con el orden de copy
+§11.2; leyenda con la palabra al lado del color; tabla equivalente; límite de
+error) y `Vista3D.tsx` (three.js, **escena mínima propia, NO `StoreEditor3D`**,
+que arrastra fiber/drei/store/API; entra por `lazy(() => import(...))`, se
+pinta a pedido, libera renderer al desmontar). SEO en `index.html` servido en
+el HTML: title, description, robots, `og:*`, `twitter:card`. Tema claro/oscuro
+por `data-lp-tema` con preferencia guardada; `prefers-reduced-motion` respetado.
+
+**Diseño «Planta y tinta»** (`outputs/diseno.md` + `outputs/prototipo/`): la
+página es un plano — papel cálido `#F7F4EE`, tinta, retícula isométrica,
+tipografía del sistema (cero descargas, por eso cumple la CSP sin tocarla),
+ultramar `#3A34D6` como único color de acción porque verde/ámbar/rojo ya
+significan estado. Estados validados con el validador de `dataviz` en claro y
+oscuro. Sólo Ocupación lleva cifra en «los números que vas a tener a la
+vista»; las otras cuatro, rótulo sin número: es la prueba visual de que nadie
+promete «+30 %».
+
+**Cifras del copy, todas con origen.** Recordatorios 30/15/6
+(`services/reminders.py`, no 30/15/7); enlace de montaje 30 días (`auth.py`);
+planilla 300 filas (`bulk_leases.py`); «Renovar» a ≤ 60 días; 9 temporadas
+(`types/seasons.ts`); 15 tipos con tarifa (`fixtures.ts`); desvío desde 1 %;
+`$ 1.500.000 × 61 días = $ 3.050.000` (este documento); ocupación de ejemplo
+35 % = 8 de 23 caras. Regla: si un número no está en copy §12, no se escribe.
+La sección de Asesoría NO promete un panel dentro de la cuenta del
+supermercado: las recomendaciones salen de la consola del operador y llegan
+por la sesión de asesoría, y la landing lo dice junto al reporte de
+transparencia. Las capturas de `features/*/outputs/capturas/` son de la
+consola del operador con un cliente de prueba y no van en la landing.
+
+**El armazón cambió.** La landing no importaba three, pero `main.tsx → App.tsx
+→ Dashboard → StoreEditor3D` lo metía en el chunk principal y el visitante
+anónimo bajaba el motor 3D y Firebase antes del titular (hallazgo H-1 del
+auditor). Por eso **todas las pantallas de adentro entran por `React.lazy`**
+con una frontera `Suspense` en `App.tsx`. Build: `three.module-*.js` 732 kB
+en chunk propio, `Dashboard-*.js` 1.058 kB aparte, `index-*.js` 300 kB.
+
+**Verificación (2026-09-06).** `tsc` limpio; `build` limpio; suite completa
+verde dos veces en serie (990 pruebas, 1 saltada, 7 xfail); 21 pruebas propias
+(`npm run probar:landing`, render con `react-dom/server`), 11 de rutas
+(`test_landing.py`) y 28 del red team (`test_landing_ataques.py`: cero API,
+cero sesión, cero red, cero clientes reales, cero recursos externos, CSP
+directiva por directiva, los nueve enlaces que circulan devuelven el mismo
+cascarón, orden de guardas, grafo estático sin three). En navegador: 0
+peticiones a `/api/`, 0 violaciones de CSP, 0 errores; three sólo baja al tocar
+«Ver en 3D». **LCP en Slow 4G: 3,42 s** (objetivo < 2,5 s; en 4G rápido 1,8 s):
+lo que pesa es el chunk de entrada y la hoja de fuentes de Google de
+`index.html` que la landing no usa. Capturas 360/1440 × claro/oscuro en
+`features/landing/outputs/capturas/`.
+
+**Pendientes al cierre de la fase** (detalle en
+`features/landing/outputs/ENTREGA.md`): recorte horizontal a 360 px por
+`min-height: 300px` + `aspect-ratio` en `.mesa__stage` (`landing.css:285`);
+LCP en 4G lento; `frontend/public/robots.txt` (hoy `/robots.txt` devuelve la
+landing en HTML); anclas `#transparencia`/`#derechos` muertas porque
+`markdownLite` no emite `id`; `og:image` 1200×630; el copy del atraso no cuenta
+el escalón `suspendido`; los siete `[COMPLETAR]` (precio, unidad, correo de
+contacto, razón social, NIT, ciudad, correo de protección de datos) y el
+`mailto:` vacío de «Hablemos». Decisiones del dueño: `/login` no se parece a
+la landing (papel cálido + ultramar + sistema vs. papel frío + tinta + Chivo);
+los cuatro colores de estado son el mismo lenguaje pero no los mismos hex que
+`index.css`; dos sedes o una; diagramas o capturas en «Cómo se usa».
+
+**Pendientes conocidos de la fase:**
+
+- **LCP en 4G lento**: 3,42 s medidos (objetivo < 2,5 s); en 4G rápido 1,8 s.
+  El elemento LCP es el párrafo del hero y el costo es el entry de la app
+  (~294 kB) más la hoja de fuentes de Google en `index.html`, que bloquea el
+  pintado. Palancas: inyectar la hoja de fuentes por JS sólo en las pantallas
+  de adentro y bajar el entry. No bloquea el merge; sí conviene antes de
+  pautar la página.
+- **`og:image`** falta (1200×630 desde el plano de ejemplo).
+- **`markdownLite` no emite `id` en encabezados**: toda ancla `#…` hacia
+  `/politica-datos` aterriza arriba.
+- **Siete `[COMPLETAR]`** visibles en la página (precio, unidad, correo de
+  contacto, razón social, NIT, ciudad, correo de protección de datos): sin
+  ellos la página no se pauta, aunque ya se puede desplegar.
+- Resueltos al cierre: el recorte a 360 px (`min-height: 0` en móvil),
+  `/robots.txt` estático, el escalón `suspendido` en el copy del precio.
+
+### Landing — re-vestido a la dirección E («La fusión»)
+
+El dueño eligió, entre las cinco direcciones del taller de diseño, la **E**
+(`features/landing/outputs/opciones/E-fusion/`): estructura y densidad de C con
+el gesto de A concentrado donde vale. La landing de la Fase 9 («Planta y
+tinta», papel cálido + ultramar) quedó **reemplazada**; lo funcional se
+conservó entero. Lo que cambia respecto de lo escrito más arriba en esta misma
+sección:
+
+- **Ocho secciones**, no nueve: hero, lo que hace, para quién, cómo se arranca,
+  asesoría, datos, precio, cierre. Entre ellas, conectores que nombran el
+  título **literal** de la siguiente.
+- **Estética:** fondo `#04070A` (el oscuro es el modo de la casa; el claro está
+  entero y a un clic), **amarillo de etiqueta de precio `#FFD028` como único
+  color de acción** —ya no el ultramar—, display de sistema con peso 800 y
+  monoespaciada con cifras tabulares para códigos, plata y fechas. Los cuatro
+  estados siguen siendo los hex validados con `dataviz` (oscuro `#00BE86 ·
+  #F5A524 · #F4544E`; claro `#00805A · #CE8A0A · #D8342E`).
+- **El plano ya no vive en una tarjeta del hero:** es una **sala pegada**
+  (`position: sticky`, 100 dvh) que ocupa el hero y «Lo que hace», con la
+  **cámara guiada por el scroll** (lerp 0,14 sobre un único `transform`, mapa
+  de nueve escenas en `PlanoIsometrico.tsx`). Sobre el propio plano salen las
+  capas de prueba ancladas al mueble del que habla cada tarjeta.
+- **Motor nuevo del plano**, portado de E: una sola proyección con parámetro
+  (`motor.ts`), donde «Ver en 3D» **no dibuja otra escena** sino que baja el
+  horizonte y sube los muebles interpolando 760 ms. El `React.lazy` de
+  `Vista3D` (three.js) **sigue existiendo y sigue siendo el único camino a
+  three**: se abre desde «Recorrerla», el botón que aparece dentro de la vista
+  3D. El bundle inicial de `/` sigue sin un byte de three.
+- **`prefers-reduced-motion` no apaga nada:** deja la cámara quieta (los
+  encuadres cambian de golpe), las capas de prueba aparecen igual y «Cómo se
+  arranca» se lee como tres pasos con la sala ya dibujada y pintada.
+- **`datos.ts` se rehízo con la constante `PIEZAS` de E:** 45 piezas, 16
+  alquilables (10 CENTRO / 6 PALMAS) y 29 de contexto, mismo reparto 7/3/6 y
+  los mismos proveedores inventados. El supermercado **no se nombra**: el
+  nombre que propone `copy.md` §13 ya identifica a un cliente en la consola del
+  operador y `test_landing_ataques.py` §L05 lo prohíbe en una página pública.
+- **No cambió nada de lo que sostiene la fase:** cero `/api/*`, cero sesión,
+  cero red, cero recursos externos, todo el CSS bajo `.lp`, `/login`,
+  `/politica-datos`, el deep link de montaje y la redirección de quien ya tiene
+  sesión intactos. `test_landing.py`, `test_landing_ataques.py` y
+  `npm run probar:landing` siguen verdes (de este último se actualizaron dos
+  asserts: el titular es ahora «Recabrá cada metro.» con el titular viejo de
+  subtítulo, y el enlace de salto apunta a `#contenido`).
+
+- **Gotcha al cerrar (verificador de fidelidad):** `src/index.css` define una
+  clase global `.rotulo` (versalita mono 600, 9,5 px) que pisaba el pill del
+  plano; `landing.css` la redeclara entera (`font-weight`, `text-transform`).
+  Lo mismo con el preflight de Tailwind: los `h4` y el `padding` de los botones
+  se declaran explícitos. La sala de «Cómo se arranca» ajusta su `viewBox` a la
+  caja real (como E) en vez del 640 × 300 fijo, que la dejaba un cuarto más
+  chica.
+
+Detalle de qué se portó tal cual, qué se adaptó y qué quedó distinto de E en
+`features/landing/outputs/frontend-E.md`.
+
+### CI en GitHub: por qué estuvo rojo en `main` (#48 → #49) y cómo se arregló
+
+Los merges de #48 y #49 dejaron **rojo** el job «Backend · pytest» de `main` sin
+que nadie lo viera (se mergeaba mirando la suite local, verde). Cuatro fallos,
+todos de tests, ninguno del producto — y ninguno reproducible local:
+
+- `test_a9`: comparaba dos respuestas enteras de `/adopcion` y `generado_en`
+  cambió de segundo entre llamada y llamada. Ahora se compara sin el reloj.
+- `test_t53`: el 404 genérico dice «Not Found» con httpx 0.27 (el pinneado en
+  `requirements-dev.txt`, que no normaliza `..` en el path) y «Not found» (el
+  catch-all de la SPA) con httpx 0.28 (el local). El test acepta los dos.
+- `test_ingresos_12`: hace `git show 6dd2f4c:…` y el checkout de Actions es
+  superficial (`fetch-depth: 1`), así que el commit no existía. El job del
+  backend clona con `fetch-depth: 0`.
+
+**Regla:** antes de mergear, mirar los checks del PR en GitHub, no solo la
+suite local; y después del merge, el run de `main`.
 
 ### Pendientes conocidos: clientes y plataforma
 
@@ -3321,7 +3522,7 @@ así, y valen tanto en el plano como en el gráfico y en las tablas:
 | Estado | Color | Dónde |
 |---|---|---|
 | Libre todo el periodo | `#00786A` | plano, línea del gráfico, cifras |
-| Se libera en el periodo | `#3AAE99` | plano, chips de códigos |
+| Se libera en el periodo | `#F08519` | plano, chips de códigos |
 | Tomado todo el periodo | `#8E1226` | plano |
 | Resto de la sala | `#D3D9DB` | plano |
 

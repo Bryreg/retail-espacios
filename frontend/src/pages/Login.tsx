@@ -124,7 +124,16 @@ export default function Login() {
   };
 
   // ─── Nuevo: Google / correo (Firebase) ─────────────────────────────────
-  const [fbMode, setFbMode] = useState<"login" | "registro">("login");
+  //
+  // Fase 9 (landing): «Crear mi cuenta» de la página pública apunta a
+  // `/login#registro`. El ancla no es decorativa — es lo que hace que quien
+  // vino a registrarse aterrice en el formulario de registro y no en el de
+  // ingreso. Se lee UNA sola vez, al montar: cualquier otra entrada a `/login`
+  // (la invitación con `?invitacion=`, un enlace guardado, un 401) llega sin
+  // `#` y ve exactamente la pantalla de siempre.
+  const [fbMode, setFbMode] = useState<"login" | "registro">(
+    typeof window !== "undefined" && window.location.hash === "#registro" ? "registro" : "login",
+  );
   const [fbEmail, setFbEmail] = useState("");
   const [fbPassword, setFbPassword] = useState("");
   const [fbBusy, setFbBusy] = useState(false);

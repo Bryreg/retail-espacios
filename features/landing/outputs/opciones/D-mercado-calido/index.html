@@ -1,0 +1,1641 @@
+<!doctype html>
+<html lang="es" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RECABRA — Espacios comerciales de tu supermercado</title>
+<meta name="description" content="Qué mueble está libre, quién lo ocupa, a cuánto y hasta cuándo. RECABRA lleva la venta de espacios de exhibición de tu supermercado, sede por sede.">
+<meta name="robots" content="index, follow">
+<meta property="og:site_name" content="RECABRA">
+<meta property="og:title" content="RECABRA — Espacios comerciales de tu supermercado">
+<meta property="og:description" content="Dibujás el plano de cada sede, marcás qué muebles se alquilan y vendés tocando el mapa. Contratos, tarifas, vencimientos y montaje con foto.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://retail-espacios.onrender.com/">
+<meta property="og:locale" content="es_CO">
+<meta property="og:image" content="/og-plano-ejemplo.png">
+<meta property="og:image:alt" content="Plano isométrico de un supermercado de ejemplo, con los muebles pintados según estén libres, por liberarse u ocupados.">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+/* ============================================================
+   RECABRA · Opción D — "El mercado"
+   Un día en la tienda: mañana → mediodía → cierre.
+   Tokens: primitivo → semántico → componente.
+   ============================================================ */
+
+/* ---------- 1. PRIMITIVOS ---------- */
+:root{
+  /* mandarina */
+  --p-man-50:#FFF3E5; --p-man-100:#FCE2C6; --p-man-300:#F5A960;
+  --p-man-500:#E8792B; --p-man-600:#CF6318; --p-man-700:#A44B0F; --p-man-900:#2B1508;
+  /* verde hoja */
+  --p-hoj-100:#DCEFE0; --p-hoj-300:#7FC392; --p-hoj-500:#2F7D4F;
+  --p-hoj-600:#24643E; --p-hoj-700:#1B4C2F;
+  /* crema / papel de estraza */
+  --p-cre-50:#FFFBF2; --p-cre-75:#FFF6E6; --p-cre-100:#FBF3E4;
+  --p-cre-200:#F5EAD6; --p-cre-300:#E7D6BB; --p-cre-400:#D6C2A2;
+  /* azul profundo */
+  --p-azu-400:#2C5B7E; --p-azu-500:#1B4160; --p-azu-700:#14324B; --p-azu-900:#0C2033;
+  /* tinta */
+  --p-tin-900:#2A2118; --p-tin-700:#4A3D2E; --p-tin-500:#6E5E4A; --p-tin-300:#8E7F69;
+  /* rojo tomate */
+  --p-roj-400:#E4695E; --p-roj-500:#D2453B; --p-roj-600:#B3372E;
+  /* gris cartón */
+  --p-gri-300:#C9C2B6; --p-gri-400:#B9B2A6; --p-gri-500:#9A9184; --p-gri-600:#6E6559;
+  /* nocturnos */
+  --p-noc-900:#16130F; --p-noc-800:#1C1814; --p-noc-700:#221D18; --p-noc-600:#2A241E;
+  --p-noc-500:#3A322A;
+
+  /* escalas */
+  --s-1:4px; --s-2:8px; --s-3:12px; --s-4:16px; --s-5:24px; --s-6:32px;
+  --s-7:48px; --s-8:64px; --s-9:88px; --s-10:120px;
+  --r-sm:10px; --r-md:16px; --r-lg:24px; --r-xl:34px; --r-pill:999px;
+
+  --f-titulo: ui-rounded, "SF Pro Rounded", "Segoe UI Variable Display", "Segoe UI",
+              system-ui, -apple-system, "Trebuchet MS", "Helvetica Neue", Arial, sans-serif;
+  --f-texto:  system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --f-codigo: ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+
+  --sombra-1: 0 1px 0 rgba(42,33,24,.06), 0 2px 8px rgba(42,33,24,.05);
+  --sombra-2: 0 2px 0 rgba(42,33,24,.08), 0 10px 26px rgba(42,33,24,.09);
+  --sombra-cajon: 0 4px 0 var(--borde-fuerte);
+  --transicion: 220ms cubic-bezier(.2,.7,.3,1);
+}
+
+/* ---------- 2. SEMÁNTICOS · claro ---------- */
+:root{
+  --fondo:var(--p-cre-100);
+  --fondo-alto:var(--p-cre-75);
+  --papel:#FFFFFF;
+  --papel-2:var(--p-cre-50);
+  --texto:var(--p-tin-900);
+  --texto-2:var(--p-tin-700);
+  --texto-3:#756751;
+  --borde:var(--p-cre-300);
+  --borde-fuerte:var(--p-cre-400);
+  --marca:var(--p-man-500);
+  --marca-tinta:var(--p-man-700);
+  --sobre-marca:var(--p-man-900);
+  --azul:var(--p-azu-700);
+  --azul-claro:var(--p-azu-400);
+
+  --est-libre:var(--p-hoj-500);   --est-libre-txt:var(--p-hoj-600);   --est-libre-suave:var(--p-hoj-100);
+  --est-libera:var(--p-man-500);  --est-libera-txt:var(--p-man-700);  --est-libera-suave:var(--p-man-100);
+  --est-tomado:var(--p-roj-500);  --est-tomado-txt:var(--p-roj-600);  --est-tomado-suave:#FADFDC;
+  --est-resto:var(--p-gri-400);   --est-resto-txt:var(--p-gri-600);   --est-resto-suave:#EDE9E2;
+
+  --piso:#F4E9D6; --piso-linea:var(--p-cre-400);
+
+  /* ilustración (siempre sobre medallón crema, por eso no cambia en oscuro) */
+  --il-piel:#EBBD92; --il-piel-2:#D19A6C; --il-pelo:#3B2B1E;
+  --il-azul:#1B4160; --il-naranja:#E8792B; --il-verde:#2F7D4F;
+  --il-linea:#2A2118; --il-papel:#FFF6E6; --il-carton:#D9BE95;
+
+  color-scheme: light;
+}
+
+/* ---------- 3. SEMÁNTICOS · oscuro ---------- */
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="claro"]){
+    --fondo:var(--p-noc-900); --fondo-alto:var(--p-noc-800);
+    --papel:var(--p-noc-700); --papel-2:var(--p-noc-600);
+    --texto:#F5ECDD; --texto-2:#CBBEA9; --texto-3:#9C8E79;
+    --borde:var(--p-noc-500); --borde-fuerte:#4A4036;
+    --marca:var(--p-man-300); --marca-tinta:var(--p-man-300); --sobre-marca:var(--p-man-900);
+    --azul:#8FC2E4; --azul-claro:#6FA8CE;
+    --est-libre:#4FA96E; --est-libre-txt:#8AD0A0; --est-libre-suave:#1D3226;
+    --est-libera:#F0913F; --est-libera-txt:#F7B87A; --est-libera-suave:#3A2515;
+    --est-tomado:var(--p-roj-400); --est-tomado-txt:#F09E97; --est-tomado-suave:#3A1E1B;
+    --est-resto:#7E766A; --est-resto-txt:#ADA396; --est-resto-suave:#2B2721;
+    --piso:#2A241D; --piso-linea:#3E362C;
+    --sombra-1:0 1px 0 rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.35);
+    --sombra-2:0 2px 0 rgba(0,0,0,.5), 0 10px 26px rgba(0,0,0,.45);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="oscuro"]{
+  --fondo:var(--p-noc-900); --fondo-alto:var(--p-noc-800);
+  --papel:var(--p-noc-700); --papel-2:var(--p-noc-600);
+  --texto:#F5ECDD; --texto-2:#CBBEA9; --texto-3:#9C8E79;
+  --borde:var(--p-noc-500); --borde-fuerte:#4A4036;
+  --marca:var(--p-man-300); --marca-tinta:var(--p-man-300); --sobre-marca:var(--p-man-900);
+  --azul:#8FC2E4; --azul-claro:#6FA8CE;
+  --est-libre:#4FA96E; --est-libre-txt:#8AD0A0; --est-libre-suave:#1D3226;
+  --est-libera:#F0913F; --est-libera-txt:#F7B87A; --est-libera-suave:#3A2515;
+  --est-tomado:var(--p-roj-400); --est-tomado-txt:#F09E97; --est-tomado-suave:#3A1E1B;
+  --est-resto:#7E766A; --est-resto-txt:#ADA396; --est-resto-suave:#2B2721;
+  --piso:#2A241D; --piso-linea:#3E362C;
+  --sombra-1:0 1px 0 rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.35);
+  --sombra-2:0 2px 0 rgba(0,0,0,.5), 0 10px 26px rgba(0,0,0,.45);
+  color-scheme: dark;
+}
+
+/* ---------- 4. BASE ---------- */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%; scroll-behavior:smooth; overflow-x:clip}
+@media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} }
+body{
+  margin:0; background:var(--fondo); color:var(--texto);
+  font-family:var(--f-texto); font-size:17px; line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{font-family:var(--f-titulo); font-weight:700; line-height:1.08; letter-spacing:-.02em; margin:0}
+p{margin:0}
+a{color:inherit}
+img,svg{max-width:100%}
+:focus-visible{outline:3px solid var(--marca); outline-offset:3px; border-radius:4px}
+.oculto-visual{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.saltar{position:absolute;left:-9999px;top:0;z-index:100;background:var(--marca);color:var(--sobre-marca);padding:12px 18px;border-radius:0 0 var(--r-md) 0;font-weight:700}
+.saltar:focus{left:0}
+
+.env{width:min(1180px, 100% - 2*var(--s-5)); margin-inline:auto}
+@media (max-width:520px){ .env{width:min(1180px, 100% - 2*var(--s-4))} }
+
+.tabnum{font-variant-numeric:tabular-nums}
+.cod{font-family:var(--f-codigo); font-size:.86em; letter-spacing:.02em}
+
+/* ---------- 5. TOLDO (firma del mercado) ---------- */
+.toldo{
+  height:15px; width:100%;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='15' viewBox='0 0 44 15'%3E%3Cpath d='M0 0h22v6a11 9 0 0 1-22 0z' fill='%23E8792B'/%3E%3Cpath d='M22 0h22v6a11 9 0 0 1-22 0z' fill='%23FFF6E6'/%3E%3C/svg%3E") repeat-x;
+  background-size:44px 15px;
+}
+:root[data-theme="oscuro"] .toldo{filter:saturate(.85) brightness(.8)}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="claro"]) .toldo{filter:saturate(.85) brightness(.8)} }
+
+/* ---------- 6. CABECERA ---------- */
+.barra{position:sticky; top:0; z-index:60; background:var(--fondo); background:color-mix(in srgb, var(--fondo) 88%, transparent); backdrop-filter:saturate(1.4) blur(10px); border-bottom:1px solid transparent; transition:border-color var(--transicion)}
+.barra.pegada{border-bottom-color:var(--borde)}
+.barra-in{display:flex; align-items:center; gap:var(--s-4); padding:10px 0; min-height:60px; flex-wrap:wrap}
+.marca{display:flex; align-items:center; gap:10px; text-decoration:none; font-family:var(--f-titulo); font-weight:700; font-size:18px; letter-spacing:.14em; text-transform:uppercase}
+.marca svg{flex:0 0 auto}
+.nav{display:flex; gap:var(--s-5); margin-left:auto; font-size:15px}
+.nav a{text-decoration:none; color:var(--texto-2); padding:6px 2px; border-bottom:2px solid transparent}
+.nav a:hover{color:var(--texto); border-bottom-color:var(--marca)}
+@media (max-width:900px){ .nav{display:none} }
+@media (max-width:430px){
+  .barra-in{gap:var(--s-2)}
+  .marca{font-size:15px; letter-spacing:.10em}
+  .marca svg{width:24px;height:24px}
+  .btn-mini{padding:8px 13px; font-size:13.5px; min-height:40px}
+  .btn-icono{width:40px;height:40px}
+}
+.barra-acc{display:flex; align-items:center; gap:var(--s-2); margin-left:auto}
+@media (min-width:901px){ .barra-acc{margin-left:var(--s-5)} }
+
+/* ---------- 7. BOTONES ---------- */
+.btn{display:inline-flex; align-items:center; justify-content:center; gap:8px; cursor:pointer;
+  font-family:var(--f-titulo); font-weight:700; font-size:16px; letter-spacing:-.01em;
+  padding:13px 22px; border-radius:var(--r-pill); border:2px solid transparent; text-decoration:none;
+  transition:transform 140ms cubic-bezier(.2,.7,.3,1), box-shadow var(--transicion), background var(--transicion);
+  min-height:48px;}
+.btn:active{transform:translateY(2px)}
+.btn-1{background:var(--marca); color:var(--sobre-marca); border-color:var(--marca-tinta); box-shadow:0 4px 0 var(--marca-tinta)}
+.btn-1:hover{background:var(--p-man-300)}
+.btn-1:active{box-shadow:0 2px 0 var(--marca-tinta)}
+.btn-2{background:transparent; color:var(--texto); border-color:var(--borde-fuerte)}
+.btn-2:hover{background:var(--papel-2); border-color:var(--texto-3)}
+.btn-mini{padding:9px 16px; font-size:14.5px; min-height:42px}
+.btn-icono{width:44px; height:44px; padding:0; border-radius:var(--r-pill); background:var(--papel); border:2px solid var(--borde); color:var(--texto); cursor:pointer; display:inline-flex; align-items:center; justify-content:center}
+.btn-icono:hover{border-color:var(--marca); color:var(--marca-tinta)}
+
+/* ---------- 8. RITMO DE SECCIÓN + LUZ DEL DÍA ---------- */
+.sec{padding:var(--s-9) 0; position:relative; scroll-margin-top:72px}
+@media (max-width:640px){ .sec{padding:var(--s-8) 0} }
+#hero{background:linear-gradient(180deg, var(--p-cre-75), var(--fondo) 70%)}
+#que-hace{background:var(--fondo)}
+#para-quien{background:var(--fondo-alto)}
+#como-se-usa{background:linear-gradient(180deg, var(--fondo-alto), var(--p-cre-200))}
+#asesoria{background:var(--p-cre-200)}
+#confianza{background:linear-gradient(180deg, var(--p-cre-200), #EDE4D6)}
+#precio{background:#EDE4D6}
+#cierre{background:var(--p-azu-700)}
+.horizonte{height:132px; position:relative; overflow:hidden; background:linear-gradient(180deg, #EDE4D6 0, #EFC48E 46%, var(--p-azu-700) 100%)}
+.horizonte .sol{position:absolute; left:50%; bottom:-58px; width:132px; height:132px; margin-left:-66px; border-radius:50%; background:radial-gradient(circle at 50% 35%, #FBD9A6, #E8792B 72%); box-shadow:0 0 60px 18px rgba(232,121,43,.35)}
+.horizonte .linea{position:absolute; left:0; right:0; bottom:0; height:2px; background:rgba(20,50,75,.5)}
+.pie{background:var(--p-azu-900)}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="claro"]) {
+  --luz-1:#1A1611; --luz-2:#191512; --luz-3:#1C1712; --luz-4:#1A1815;
+} }
+:root[data-theme="oscuro"]{ --luz-1:#1A1611; --luz-2:#191512; --luz-3:#1C1712; --luz-4:#1A1815; }
+:root[data-theme="oscuro"] #hero{background:linear-gradient(180deg,#1D1813,var(--fondo) 70%)}
+:root[data-theme="oscuro"] #como-se-usa{background:linear-gradient(180deg,var(--fondo-alto),var(--luz-3))}
+:root[data-theme="oscuro"] #asesoria{background:var(--luz-3)}
+:root[data-theme="oscuro"] #confianza{background:linear-gradient(180deg,var(--luz-3),var(--luz-4))}
+:root[data-theme="oscuro"] #precio{background:var(--luz-4)}
+:root[data-theme="oscuro"] #cierre{background:#0F2739}
+:root[data-theme="oscuro"] .horizonte{background:linear-gradient(180deg,var(--luz-4) 0,#6E4526 46%,#0F2739 100%)}
+:root[data-theme="oscuro"] .pie{background:#0A1B2B}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="claro"]) #hero{background:linear-gradient(180deg,#1D1813,var(--fondo) 70%)}
+  :root:not([data-theme="claro"]) #como-se-usa{background:linear-gradient(180deg,var(--fondo-alto),var(--luz-3))}
+  :root:not([data-theme="claro"]) #asesoria{background:var(--luz-3)}
+  :root:not([data-theme="claro"]) #confianza{background:linear-gradient(180deg,var(--luz-3),var(--luz-4))}
+  :root:not([data-theme="claro"]) #precio{background:var(--luz-4)}
+  :root:not([data-theme="claro"]) #cierre{background:#0F2739}
+  :root:not([data-theme="claro"]) .horizonte{background:linear-gradient(180deg,var(--luz-4) 0,#6E4526 46%,#0F2739 100%)}
+  :root:not([data-theme="claro"]) .pie{background:#0A1B2B}
+}
+.nocturno{ --texto:#FFF6E6; --texto-2:#E2D3BB; --texto-3:#B29E82; --papel:#1C4058; --papel-2:#17384E; --borde:#2C5B7E; --borde-fuerte:#3D6E92; color:var(--texto)}
+
+/* ---------- 9. ENCABEZADOS DE SECCIÓN ---------- */
+.hora{display:inline-flex; align-items:center; gap:9px; font-family:var(--f-codigo); font-size:13px;
+  letter-spacing:.08em; text-transform:uppercase; color:var(--texto-3); margin-bottom:var(--s-3)}
+.hora b{color:var(--marca-tinta); font-weight:700; letter-spacing:.04em}
+.nocturno .hora b{color:var(--p-man-300)}
+.hora svg{opacity:.9}
+.tit-sec{font-size:clamp(1.9rem, 4.6vw, 3.05rem); max-width:19ch; text-wrap:balance}
+.bajada{margin-top:var(--s-4); font-size:clamp(1.05rem,1.9vw,1.28rem); color:var(--texto-2); max-width:62ch}
+.antetitulo{font-family:var(--f-codigo); font-size:13.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--marca-tinta); margin-bottom:var(--s-3)}
+.nocturno .antetitulo{color:var(--p-man-300)}
+
+/* ---------- 10. GANCHO entre secciones ---------- */
+.gancho{margin-top:var(--s-8); padding-top:var(--s-6); border-top:2px dashed var(--borde-fuerte);
+  display:flex; align-items:flex-start; gap:var(--s-4); flex-wrap:wrap}
+.gancho-txt{flex:1 1 300px; font-family:var(--f-titulo); font-size:clamp(1.2rem,2.5vw,1.6rem);
+  font-weight:700; line-height:1.25; letter-spacing:-.02em; max-width:34ch}
+.gancho-txt em{font-style:normal; color:var(--marca-tinta); }
+.nocturno .gancho-txt em{color:var(--p-man-300)}
+.gancho-lado{flex:0 0 auto; display:flex; align-items:center; gap:var(--s-3)}
+.flecha-abajo{width:46px;height:46px;border-radius:var(--r-pill);border:2px solid var(--borde-fuerte);
+  display:grid;place-items:center;color:var(--marca-tinta);background:var(--papel);text-decoration:none;flex:0 0 auto}
+.flecha-abajo:hover{background:var(--marca);color:var(--sobre-marca);border-color:var(--marca-tinta)}
+.flecha-abajo svg{animation:bajar 2.4s ease-in-out infinite}
+@keyframes bajar{0%,100%{transform:translateY(-2px)}50%{transform:translateY(3px)}}
+@media (prefers-reduced-motion: reduce){ .flecha-abajo svg{animation:none} }
+
+/* ---------- 11. HERO ---------- */
+.hero-rejilla{display:grid; grid-template-columns:minmax(0,1fr); gap:var(--s-7); align-items:start}
+@media (min-width:1000px){ .hero-rejilla{grid-template-columns:minmax(360px,.86fr) minmax(0,1.14fr); gap:var(--s-7)} }
+.hero h1{font-size:clamp(2.25rem, 5.6vw, 4.05rem); text-wrap:balance; margin-top:var(--s-2)}
+.hero .sub1{margin-top:var(--s-5); font-size:clamp(1.06rem,2vw,1.3rem); color:var(--texto-2); max-width:52ch}
+.hero .sub2{margin-top:var(--s-4); font-size:clamp(1rem,1.8vw,1.16rem); color:var(--texto); max-width:52ch;
+  border-left:4px solid var(--marca); padding-left:var(--s-4); font-weight:500}
+.acciones{display:flex; gap:var(--s-3); flex-wrap:wrap; margin-top:var(--s-6)}
+.linea-acc{margin-top:var(--s-3); font-size:15px; color:var(--texto-3); max-width:46ch}
+
+/* ---------- 12. PLANO INTERACTIVO ---------- */
+.plano-marco{position:relative; background:var(--papel); border:2px solid var(--borde-fuerte);
+  border-radius:var(--r-xl); box-shadow:var(--sombra-2); overflow:hidden}
+.plano-cabecera{display:flex; align-items:center; gap:var(--s-3); flex-wrap:wrap;
+  padding:12px 14px 10px; border-bottom:1px solid var(--borde)}
+.rotulo{display:inline-flex; align-items:center; gap:8px; background:var(--est-libera-suave);
+  color:var(--est-libera-txt); border:1px solid var(--est-libera); border-radius:var(--r-pill);
+  padding:6px 13px; font-size:13px; font-weight:700; font-family:var(--f-titulo)}
+.rotulo .punto{width:8px;height:8px;border-radius:50%;background:var(--est-libera)}
+.plano-btns{display:flex; gap:6px; margin-left:auto}
+.plano-btns button{width:38px;height:38px;border-radius:12px;border:2px solid var(--borde);
+  background:var(--papel-2); color:var(--texto); font-family:var(--f-titulo); font-size:17px; font-weight:700;
+  cursor:pointer; display:grid; place-items:center}
+.plano-btns button:hover{border-color:var(--marca); color:var(--marca-tinta)}
+.plano-btns .ancho{width:auto; padding:0 14px; font-size:14px}
+.plano-lienzo{position:relative; width:100%; aspect-ratio:16/12; background:
+  radial-gradient(120% 90% at 50% 8%, var(--papel-2), var(--papel) 72%);}
+@media (min-width:1000px){ .plano-lienzo{aspect-ratio:16/13} }
+@media (max-width:520px){ .plano-lienzo{aspect-ratio:1/1} }
+.plano-lienzo svg{position:absolute; inset:0; width:100%; height:100%; touch-action:none; cursor:grab; display:block}
+.plano-lienzo svg.arrastrando{cursor:grabbing}
+.fx{cursor:pointer}
+.fx:focus{outline:none}
+.fx .halo{opacity:0; transition:opacity 160ms linear}
+.fx:hover .halo, .fx:focus-visible .halo, .fx.sel .halo{opacity:1}
+.chip-cod{font-family:var(--f-codigo); font-size:9px; font-weight:700}
+.ayuda-plano{padding:9px 14px 12px; font-size:13.5px; color:var(--texto-3); border-top:1px solid var(--borde)}
+.ayuda-plano .movil{display:none}
+@media (hover:none){ .ayuda-plano .escritorio{display:none} .ayuda-plano .movil{display:inline} }
+.ayuda-teclado{display:none; padding:0 14px 10px; font-size:13px; color:var(--texto-2)}
+.plano-lienzo:focus-within ~ .ayuda-teclado{display:block}
+
+/* leyenda */
+.leyenda{display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; padding:11px 14px; border-top:1px solid var(--borde); background:var(--papel-2)}
+.leyenda h3{font-size:13px; letter-spacing:.06em; text-transform:uppercase; color:var(--texto-3); font-family:var(--f-codigo); font-weight:700; width:100%}
+.ley{display:inline-flex; align-items:center; gap:7px; font-size:13.5px; color:var(--texto-2); font-weight:600}
+.ley i{width:13px;height:13px;border-radius:4px;display:inline-block;border:1.5px solid rgba(0,0,0,.22)}
+.leyenda .pie-ley{width:100%; font-size:13px; color:var(--texto-3); margin-top:2px}
+.nota-plano{padding:10px 14px 13px; font-size:13px; color:var(--texto-3); background:var(--papel-2); border-top:1px dashed var(--borde)}
+
+/* ficha del mueble */
+.ficha{position:absolute; z-index:8; width:246px; background:var(--papel); border:2px solid var(--texto);
+  border-radius:var(--r-md); box-shadow:0 10px 30px rgba(42,33,24,.24); padding:12px 13px 10px; pointer-events:auto}
+.ficha[hidden]{display:none}
+.ficha .f-cod{font-family:var(--f-codigo); font-weight:700; font-size:15px; letter-spacing:.02em}
+.ficha .f-tipo{font-size:13.5px; color:var(--texto-2); margin-top:1px}
+.ficha .f-ubi{font-size:13px; color:var(--texto-3); margin-top:1px}
+.ficha hr{border:0; border-top:1px solid var(--borde); margin:9px 0}
+.ficha .f-est{display:flex; align-items:center; gap:7px; font-weight:700; font-size:14.5px}
+.ficha .f-est i{width:11px;height:11px;border-radius:50%;flex:0 0 auto}
+.ficha .f-l{font-size:14px; margin-top:3px}
+.ficha .f-plata{font-family:var(--f-codigo); font-size:14.5px; font-weight:700; font-variant-numeric:tabular-nums}
+.ficha .f-nota{font-size:11.5px; color:var(--texto-3); margin-top:9px; padding-top:8px; border-top:1px dashed var(--borde)}
+.ficha .f-cerrar{display:none}
+@media (max-width:640px){
+  .ficha{position:absolute; left:8px; right:8px; bottom:8px; top:auto!important; width:auto}
+  .ficha .f-cerrar{display:block; margin-top:9px; width:100%}
+}
+.tabla-alt{margin-top:var(--s-4); font-size:14px; overflow-x:auto}
+.tabla-alt summary{cursor:pointer; color:var(--texto-2); font-weight:600}
+.tabla-alt table{border-collapse:collapse; width:100%; min-width:520px; margin-top:var(--s-3); font-size:13px}
+.tabla-alt th,.tabla-alt td{text-align:left; padding:6px 8px; border-bottom:1px solid var(--borde)}
+.tabla-alt th{font-family:var(--f-codigo); font-size:11.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--texto-3)}
+
+/* ---------- 13. TARJETAS Y BLOQUES ---------- */
+.tarjeta{background:var(--papel); border:2px solid var(--borde); border-radius:var(--r-lg); padding:var(--s-5);
+  box-shadow:var(--sombra-1); position:relative}
+.rejilla{display:grid; gap:var(--s-4)}
+@media (min-width:700px){ .rejilla-2{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media (min-width:980px){ .rejilla-3{grid-template-columns:repeat(3,minmax(0,1fr))} }
+.bloque{display:flex; flex-direction:column; gap:var(--s-3)}
+.bloque .medallon{width:76px;height:76px;border-radius:50%;background:var(--il-papel);
+  border:2px solid var(--borde-fuerte); display:grid; place-items:center; flex:0 0 auto}
+.bloque h3{font-size:1.28rem; letter-spacing:-.02em; text-wrap:balance}
+.bloque p{color:var(--texto-2); font-size:15.8px}
+.bloque .pie-b{margin-top:auto; padding-top:var(--s-3); border-top:1px dashed var(--borde);
+  font-size:13.5px; color:var(--texto-3); font-family:var(--f-codigo); line-height:1.5}
+.num-bloque{position:absolute; top:-14px; right:18px; width:34px;height:34px;border-radius:50%;
+  background:var(--marca); color:var(--sobre-marca); display:grid; place-items:center;
+  font-family:var(--f-codigo); font-weight:700; font-size:14px; border:2px solid var(--marca-tinta)}
+.cierre-lista{margin-top:var(--s-5); background:var(--est-libre-suave); border:2px dashed var(--est-libre);
+  border-radius:var(--r-lg); padding:var(--s-5); font-size:16.5px; color:var(--texto)}
+
+/* contador 1..6 */
+.contador{display:flex; align-items:center; gap:10px; margin-top:var(--s-5); font-family:var(--f-codigo); font-size:13.5px; color:var(--texto-3)}
+.contador .pistas{display:flex; gap:5px}
+.contador .pistas i{width:26px;height:6px;border-radius:3px;background:var(--borde-fuerte);transition:background var(--transicion)}
+.contador .pistas i.on{background:var(--marca)}
+
+/* ---------- 14. PERFILES ---------- */
+.perfil{display:flex; flex-direction:column; gap:var(--s-3); align-items:flex-start}
+.perfil .escena{width:100%; border-radius:var(--r-lg); background:var(--il-papel); border:2px solid var(--borde-fuerte); overflow:hidden}
+.perfil .rot{font-family:var(--f-codigo); font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--marca-tinta)}
+.perfil h3{font-size:1.4rem}
+.perfil p{color:var(--texto-2); font-size:15.6px}
+.cifras{margin-top:var(--s-7)}
+.cifras table{width:100%; border-collapse:collapse; margin-top:var(--s-4); background:var(--papel);
+  border:2px solid var(--borde-fuerte); border-radius:var(--r-lg); overflow:hidden}
+.cifras th,.cifras td{padding:14px 16px; text-align:left; border-bottom:1px solid var(--borde); vertical-align:top}
+.cifras tr:last-child th,.cifras tr:last-child td{border-bottom:0}
+.cifras th{font-family:var(--f-titulo); font-weight:700; font-size:16px; width:38%}
+.cifras td{color:var(--texto-2); font-size:15.4px}
+.cifras .dato{font-family:var(--f-codigo); font-weight:700; color:var(--texto); font-variant-numeric:tabular-nums}
+@media (max-width:600px){ .cifras th,.cifras td{display:block; width:auto} .cifras th{padding-bottom:2px; border-bottom:0} }
+
+/* ---------- 15. PASOS ---------- */
+.pasos{counter-reset:paso; display:grid; gap:var(--s-5)}
+@media (min-width:900px){ .pasos{grid-template-columns:repeat(3,minmax(0,1fr))} }
+.paso{background:var(--papel); border:2px solid var(--borde); border-radius:var(--r-lg); padding:var(--s-5); position:relative}
+.paso .globo{width:54px;height:54px;border-radius:50%;background:var(--p-azu-700); color:#FFF6E6;
+  display:grid;place-items:center; font-family:var(--f-titulo); font-weight:700; font-size:24px; margin-bottom:var(--s-3)}
+.paso h3{font-size:1.25rem; margin-bottom:8px}
+.paso p{color:var(--texto-2); font-size:15.6px}
+.paso .escena{margin-top:var(--s-4); border-radius:var(--r-md); background:var(--il-papel); border:2px solid var(--borde-fuerte); overflow:hidden}
+.nota-pasos{margin-top:var(--s-5); font-size:16px; color:var(--texto-2); display:flex; gap:10px; align-items:flex-start}
+
+/* ---------- 16. ASESORÍA ---------- */
+.reco{background:var(--papel); border:2px solid var(--borde); border-left:8px solid var(--marca);
+  border-radius:var(--r-md); padding:var(--s-4) var(--s-5)}
+.reco .juego{font-family:var(--f-codigo); font-weight:700; color:var(--marca-tinta); font-variant-numeric:tabular-nums; white-space:nowrap}
+.cierre-honesto{margin-top:var(--s-6); background:var(--p-azu-700); color:#FFF6E6; border-radius:var(--r-lg); padding:var(--s-6)}
+.cierre-honesto b{color:#FFD9A8}
+.cierre-honesto a{color:#FFD9A8; font-weight:700}
+.grafico{background:var(--papel); border:2px solid var(--borde); border-radius:var(--r-lg); padding:var(--s-5)}
+.grafico figcaption{font-size:13px; color:var(--texto-3); margin-top:10px}
+
+/* ---------- 17. CONFIANZA ---------- */
+.punto{display:flex; gap:var(--s-4); align-items:flex-start; padding:var(--s-4) 0; border-bottom:1px dashed var(--borde)}
+.punto:last-of-type{border-bottom:0}
+.punto .llave{flex:0 0 46px; height:46px; border-radius:14px; background:var(--est-libre-suave);
+  border:2px solid var(--est-libre); display:grid; place-items:center; color:var(--est-libre-txt)}
+.punto h3{font-size:1.12rem; margin-bottom:4px}
+.punto p{color:var(--texto-2); font-size:15.4px}
+.enlaces-sec{display:flex; gap:var(--s-4); flex-wrap:wrap; margin-top:var(--s-5); font-size:15px}
+.enlaces-sec a{color:var(--marca-tinta); font-weight:700}
+
+/* ---------- 18. PRECIO ---------- */
+.precio-caja{background:var(--papel); border:2px solid var(--borde-fuerte); border-radius:var(--r-xl);
+  padding:var(--s-6); box-shadow:var(--sombra-2); max-width:720px}
+.precio-valor{font-family:var(--f-titulo); font-size:clamp(1.7rem,4vw,2.6rem); font-weight:700; letter-spacing:-.02em}
+.completar{display:inline-block; background:repeating-linear-gradient(45deg, var(--est-libera-suave) 0 8px, transparent 8px 16px);
+  border:2px dashed var(--est-libera); border-radius:8px; padding:2px 10px; color:var(--est-libera-txt);
+  font-family:var(--f-codigo); font-size:.62em; font-weight:700; vertical-align:middle}
+.lista-atraso{list-style:none; padding:0; margin:var(--s-5) 0 0; display:grid; gap:10px}
+.lista-atraso li{display:flex; gap:11px; align-items:flex-start; font-size:15.6px; color:var(--texto-2)}
+.lista-atraso .n{flex:0 0 24px;height:24px;border-radius:50%;background:var(--papel-2);border:2px solid var(--borde-fuerte);
+  display:grid;place-items:center;font-family:var(--f-codigo);font-size:12px;font-weight:700;color:var(--texto)}
+
+/* ---------- 19. CIERRE + PIE ---------- */
+#cierre{color:var(--texto)}
+#cierre .caja{max-width:760px}
+#cierre h2{font-size:clamp(2.1rem,5.2vw,3.4rem)}
+.pie{padding:var(--s-8) 0 var(--s-6)}
+.pie-rejilla{display:grid; gap:var(--s-6)}
+@media (min-width:820px){ .pie-rejilla{grid-template-columns:1.4fr repeat(3,minmax(0,.8fr))} }
+.pie h4{font-family:var(--f-codigo); font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#B29E82; margin-bottom:12px}
+.pie ul{list-style:none;padding:0;margin:0;display:grid;gap:9px}
+.pie a{color:#FFF6E6; text-decoration:none; font-size:15px}
+.pie a:hover{text-decoration:underline; text-decoration-color:var(--p-man-300)}
+.pie-legal{margin-top:var(--s-7); padding-top:var(--s-5); border-top:1px solid #2C5B7E; font-size:13.5px; color:#C6B79E; display:grid; gap:8px}
+
+/* ---------- 20. RAÍL DEL DÍA ---------- */
+.rail{position:fixed; right:16px; top:50%; transform:translateY(-50%); z-index:50; display:none}
+@media (min-width:1400px){ .rail{display:block} }
+.rail ol{list-style:none;margin:0;padding:0;display:grid;gap:14px}
+.rail a{display:flex; align-items:center; gap:10px; text-decoration:none; color:var(--texto-3); font-family:var(--f-codigo); font-size:11px; justify-content:flex-end}
+.rail .et{opacity:0; transform:translateX(6px); transition:opacity var(--transicion), transform var(--transicion); white-space:nowrap}
+.rail a:hover .et, .rail a.act .et{opacity:1; transform:none}
+.rail .bolita{width:11px;height:11px;border-radius:50%;border:2px solid var(--borde-fuerte);background:var(--fondo);flex:0 0 auto;transition:background var(--transicion), border-color var(--transicion), transform var(--transicion)}
+.rail a.act .bolita{background:var(--marca); border-color:var(--marca-tinta); transform:scale(1.35)}
+.rail a.act{color:var(--texto-2)}
+
+/* ---------- 21. ENTRADA AL SCROLL ---------- */
+.aparece{opacity:0; transform:translateY(18px); transition:opacity 520ms cubic-bezier(.2,.7,.3,1), transform 520ms cubic-bezier(.2,.7,.3,1)}
+.aparece.vista{opacity:1; transform:none}
+@media (prefers-reduced-motion: reduce){
+  .aparece{opacity:1!important; transform:none!important; transition:none!important}
+  *{scroll-behavior:auto!important}
+}
+</style>
+</head>
+<body>
+<a class="saltar" href="#contenido">Saltar al contenido</a>
+
+<!-- ============ SPRITE DE ILUSTRACIONES (dibujadas a mano, vector propio) ============ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+ <defs>
+  <g id="g-linea"></g>
+ </defs>
+
+ <!-- puntos de vista / spots 64x64 -->
+ <symbol id="il-plano" viewBox="0 0 64 64">
+   <rect x="5" y="9" width="54" height="46" rx="7" fill="#FFF6E6" stroke="#2A2118" stroke-width="2.4"/>
+   <rect x="11" y="16" width="26" height="5" rx="2.5" fill="#B9B2A6" stroke="#2A2118" stroke-width="1.6"/>
+   <rect x="11" y="26" width="26" height="5" rx="2.5" fill="#2F7D4F" stroke="#2A2118" stroke-width="1.6"/>
+   <rect x="11" y="36" width="26" height="5" rx="2.5" fill="#B9B2A6" stroke="#2A2118" stroke-width="1.6"/>
+   <rect x="11" y="45" width="17" height="5" rx="2.5" fill="#D2453B" stroke="#2A2118" stroke-width="1.6"/>
+   <rect x="44" y="16" width="10" height="10" rx="3" fill="#E8792B" stroke="#2A2118" stroke-width="1.6"/>
+   <rect x="44" y="31" width="10" height="19" rx="3" fill="#B9B2A6" stroke="#2A2118" stroke-width="1.6"/>
+ </symbol>
+
+ <symbol id="il-contrato" viewBox="0 0 64 64">
+   <path d="M12 54 L28 62 L28 38 L12 30 Z" fill="#D2453B" stroke="#2A2118" stroke-width="2.2" stroke-linejoin="round"/>
+   <path d="M28 62 L36 50 L36 26 L28 38 Z" fill="#A8332B" stroke="#2A2118" stroke-width="2.2" stroke-linejoin="round"/>
+   <path d="M12 30 L28 38 L36 26 L20 18 Z" fill="#EE7B70" stroke="#2A2118" stroke-width="2.2" stroke-linejoin="round"/>
+   <rect x="34" y="10" width="22" height="28" rx="4" fill="#FFF6E6" stroke="#2A2118" stroke-width="2.4"/>
+   <rect x="40" y="6" width="10" height="7" rx="3" fill="#E8792B" stroke="#2A2118" stroke-width="2"/>
+   <path d="M39 20h12M39 26h12M39 32h7" stroke="#2A2118" stroke-width="2" stroke-linecap="round"/>
+ </symbol>
+
+ <symbol id="il-temporada" viewBox="0 0 64 64">
+   <rect x="8" y="14" width="48" height="42" rx="6" fill="#FFF6E6" stroke="#2A2118" stroke-width="2.4"/>
+   <path d="M8 24h48" stroke="#2A2118" stroke-width="2.4"/>
+   <path d="M20 8v10M44 8v10" stroke="#2A2118" stroke-width="3" stroke-linecap="round"/>
+   <rect x="14" y="30" width="8" height="8" rx="2" fill="#2F7D4F"/>
+   <rect x="26" y="30" width="8" height="8" rx="2" fill="#2F7D4F"/>
+   <rect x="38" y="30" width="8" height="8" rx="2" fill="#E8792B"/>
+   <rect x="14" y="42" width="8" height="8" rx="2" fill="#D2453B"/>
+   <rect x="26" y="42" width="8" height="8" rx="2" fill="#B9B2A6"/>
+   <rect x="38" y="42" width="8" height="8" rx="2" fill="#2F7D4F"/>
+ </symbol>
+
+ <symbol id="il-tarifa" viewBox="0 0 64 64">
+   <path d="M34 6 L58 6 L58 30 L30 58 L6 34 Z" fill="#E8792B" stroke="#2A2118" stroke-width="2.4" stroke-linejoin="round"/>
+   <circle cx="47" cy="17" r="5" fill="#FFF6E6" stroke="#2A2118" stroke-width="2.2"/>
+   <path d="M18 32 L26 40 L40 26" fill="none" stroke="#FFF6E6" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+ </symbol>
+
+ <symbol id="il-correos" viewBox="0 0 64 64">
+   <rect x="4" y="20" width="38" height="26" rx="4" fill="#D9BE95" stroke="#2A2118" stroke-width="2.2"/>
+   <path d="M4 24l19 13 19-13" fill="none" stroke="#2A2118" stroke-width="2.2" stroke-linecap="round"/>
+   <rect x="14" y="14" width="38" height="26" rx="4" fill="#FFF6E6" stroke="#2A2118" stroke-width="2.2"/>
+   <path d="M14 18l19 13 19-13" fill="none" stroke="#2A2118" stroke-width="2.2" stroke-linecap="round"/>
+   <rect x="24" y="8" width="38" height="26" rx="4" fill="#E8792B" stroke="#2A2118" stroke-width="2.2"/>
+   <path d="M24 12l19 13 19-13" fill="none" stroke="#2A2118" stroke-width="2.2" stroke-linecap="round"/>
+ </symbol>
+
+ <symbol id="il-celular" viewBox="0 0 64 64">
+   <rect x="16" y="4" width="32" height="56" rx="7" fill="#1B4160" stroke="#2A2118" stroke-width="2.4"/>
+   <rect x="20" y="12" width="24" height="34" rx="3" fill="#FFF6E6" stroke="#2A2118" stroke-width="1.8"/>
+   <rect x="23" y="26" width="18" height="9" rx="2" fill="#D2453B"/>
+   <rect x="23" y="17" width="18" height="6" rx="2" fill="#B9B2A6"/>
+   <circle cx="32" cy="52" r="4" fill="#FFF6E6" stroke="#2A2118" stroke-width="1.8"/>
+   <circle cx="46" cy="44" r="11" fill="#2F7D4F" stroke="#2A2118" stroke-width="2.2"/>
+   <path d="M41 44l4 4 7-8" fill="none" stroke="#FFF6E6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+ </symbol>
+
+ <symbol id="il-caja-fruta" viewBox="0 0 64 44">
+   <circle cx="22" cy="16" r="8" fill="#E8792B" stroke="#2A2118" stroke-width="2"/>
+   <circle cx="38" cy="14" r="9" fill="#2F7D4F" stroke="#2A2118" stroke-width="2"/>
+   <path d="M38 5c2-4 6-4 6-4s-1 4-4 5z" fill="#2F7D4F" stroke="#2A2118" stroke-width="1.6"/>
+   <path d="M4 22h56l-4 18H8z" fill="#D9BE95" stroke="#2A2118" stroke-width="2.2" stroke-linejoin="round"/>
+   <path d="M14 22l-2 18M30 22v18M46 22l2 18" stroke="#2A2118" stroke-width="1.6" opacity=".55"/>
+ </symbol>
+
+ <!-- escenas con personas -->
+ <symbol id="il-gerente" viewBox="0 0 320 190">
+   <path d="M0 168h320" stroke="#2A2118" stroke-width="2.4" stroke-linecap="round" opacity=".35"/>
+   <!-- escritorio -->
+   <rect x="150" y="124" width="152" height="9" rx="4" fill="#D9BE95" stroke="#2A2118" stroke-width="2.2"/>
+   <path d="M162 133v35M292 133v35" stroke="#2A2118" stroke-width="2.4" stroke-linecap="round"/>
+   <!-- portátil con el plano -->
+   <path d="M188 124 L196 78 L280 78 L288 124 Z" fill="#1B4160" stroke="#2A2118" stroke-width="2.4" stroke-linejoin="round"/>
+   <rect x="202" y="84" width="72" height="34" rx="3" fill="#FFF6E6"/>
+   <rect x="207" y="90" width="26" height="5" rx="2.5" fill="#2F7D4F"/>
+   <rect x="207" y="99" width="26" height="5" rx="2.5" fill="#D2453B"/>
+   <rect x="207" y="108" width="18" height="5" rx="2.5" fill="#B9B2A6"/>
+   <rect x="242" y="90" width="26" height="23" rx="3" fill="#E8792B"/>
+   <!-- persona -->
+   <path d="M60 168h20l2-40H58z" fill="#1B4160" stroke="#2A2118" stroke-width="2.4" stroke-linejoin="round"/>
+   <path d="M84 168h20l-2-40H82z" fill="#1B4160" stroke="#2A2118" stroke-width="2.4" stroke-linejoin="round"/>
+   <rect x="54" y="164" width="30" height="9" rx="4.5" fill="#2A2118"/>
+   <rect x="82" y="164" width="30" height="9" rx="4.5" fill="#2A2118"/>
+   <path d="M52 130 L52 92 Q52 74 82 74 Q112 74 112 92 L112 130 Z" fill="#2F7D4F" stroke="#2A2118" stroke-width="2.6" stroke-linejoin="round"/>
+   <path d="M110 96 q26 6 44 22" fill="none" stroke="#2F7D4F" stroke-width="13" stroke-linecap="round"/>
+   <path d="M110 96 q26 6 44 22" fill="none" stroke="#2A2118" stroke-width="2.2" stroke-linecap="round" opacity=".28"/>
+   <circle cx="158" cy="120" r="8" fill="#EBBD92" stroke="#2A2118" stroke-width="2.2"/>
+   <circle cx="82" cy="52" r="20" fill="#EBBD92" stroke="#2A2118" stroke-width="2.6"/>
+   <path d="M62 50 q2-24 20-24 t20 24 q-4-12-20-12 t-20 12z" fill="#3B2B1E" stroke="#2A2118" stroke-width="2.2" stroke-linejoin="round"/>
+   <circle cx="75" cy="53" r="2.4" fill="#2A2118"/><circle cx="90" cy="53" r="2.4" fill="#2A2118"/>
+   <path d="M76 61 q6 5 12 0" fill="none" stroke="#2A2118" stroke-width="2.2" stroke-linecap="round"/>
+   <path d="M52 96 q-14 8-16 26" fill="none" stroke="#2F7D4F" stroke-width="13" stroke-linecap="round"/>
+ </symbol>
+
+ <symbol id="il-piso" viewBox="0 0 320 190">
+   <path d="M0 168h320" stroke="#2A2118" stroke-width="2.4" stroke-linecap="round" opacity=".35"/>
+   <!-- góndola -->
+   <path d="M196 168 L196 74 L280 62 L280 156 Z" fill="#D9BE95" stroke="#2A2118" stroke-width="2.4" stroke-linejoin="round"/>
+   <path d="M196 100 L280 88 M196 128 L280 116" stroke="#2A2118" stroke-width="2" opacity=".6"/>
+   <rect x="204" y="80" width="16" height="16" rx="3" fill="#D2453B" stroke="#2A2118" stroke-width="1.8"/>
+   <rect x="226" y="76" width="16" height="16" rx="3" fill="#E8792B" stroke="#2A2118" stroke-width="1.8"/>
+   <rect x="248" y="72" width="16" height="16" rx="3" fill="#2F7D4F" stroke="#2A2118" stroke-width="1.8"/>
+   <!-- persona con chaleco -->
+   <path d="M58 168h20l2-40H56z" fill="#1B4160" stroke="#2A2118" stroke-width="2.4" stroke-linejoin="round"/>
+   <path d="M82 168h20l-2-40H80z" fill="#1B4160" stroke="#2A2118" stroke-width="2.4" stroke-linejoin="round"/>
+   <rect x="52" y="164" width="30" height="9" rx="4.5" fill="#2A2118"/>
+   <rect x="80" y="164" width="30" height="9" rx="4.5" fill="#2A2118"/>
+   <path d="M50 130 L50 92 Q50 74 80 74 Q110 74 110 92 L110 130 Z" fill="#FFF6E6" stroke="#2A2118" stroke-width="2.6" stroke-linejoin="round"/>
+   <path d="M50 130 L50 92 Q50 78 64 75 L64 130 Z M110 130 L110 92 Q110 78 96 75 L96 130 Z" fill="#E8792B" stroke="#2A2118" stroke-width="2.4" stroke-linejoin="round"/>
+   <path d="M64 96h32" stroke="#FFF6E6" stroke-width="5" stroke-linecap="round"/>
+   <path d="M110 98 q22 4 22 -14" fill="none" stroke="#E8792B" stroke-width="13" stroke-linecap="round"/>
+   <path d="M110 98 q22 4 22 -14" fill="none" stroke="#2A2118" stroke-width="2.2" stroke-linecap="round" opacity=".28"/>
+   <!-- celular en la mano -->
+   <rect x="122" y="52" width="26" height="42" rx="6" fill="#1B4160" stroke="#2A2118" stroke-width="2.4"/>
+   <rect x="126" y="58" width="18" height="26" rx="2" fill="#FFF6E6"/>
+   <path d="M129 72l4 4 8-9" fill="none" stroke="#2F7D4F" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+   <circle cx="80" cy="52" r="20" fill="#D19A6C" stroke="#2A2118" stroke-width="2.6"/>
+   <path d="M58 46 q0-22 22-22 t22 22 l-6 0 q-4-10-16-10 t-16 10z" fill="#3B2B1E" stroke="#2A2118" stroke-width="2.2" stroke-linejoin="round"/>
+   <path d="M56 46h48" stroke="#E8792B" stroke-width="7" stroke-linecap="round"/>
+   <path d="M56 46h48" stroke="#2A2118" stroke-width="2.2" stroke-linecap="round" opacity=".3"/>
+   <circle cx="73" cy="54" r="2.4" fill="#2A2118"/><circle cx="88" cy="54" r="2.4" fill="#2A2118"/>
+   <path d="M74 62 q6 5 12 0" fill="none" stroke="#2A2118" stroke-width="2.2" stroke-linecap="round"/>
+ </symbol>
+
+ <symbol id="il-mercaderista" viewBox="0 0 320 190">
+   <path d="M0 168h320" stroke="#2A2118" stroke-width="2.4" stroke-linecap="round" opacity=".35"/>
+   <!-- isla / exhibición con la marca puesta -->
+   <path d="M186 150 L232 128 L296 150 L250 172 Z" fill="#D9BE95" stroke="#2A2118" stroke-width="2.4" stroke-linejoin="round"/>
+   <path d="M186 150 L186 132 L232 110 L232 128 Z" fill="#E9CDA3" stroke="#2A2118" stroke-width="2.4" stroke-linejoin="round"/>
+   <path d="M232 128 L232 110 L296 132 L296 150 Z" fill="#C4A276" stroke="#2A2118" stroke-width="2.4" stroke-linejoin="round"/>
+   <path d="M206 122 L232 110 L252 118 L226 130 Z" fill="#E8792B" stroke="#2A2118" stroke-width="2.2" stroke-linejoin="round"/>
+   <path d="M226 130 L226 108 L252 96 L252 118 Z" fill="#E8792B" stroke="#2A2118" stroke-width="2.2" stroke-linejoin="round" opacity=".9"/>
+   <!-- persona con caja -->
+   <path d="M56 168h20l2-40H54z" fill="#2F7D4F" stroke="#2A2118" stroke-width="2.4" stroke-linejoin="round"/>
+   <path d="M80 168h20l-2-40H78z" fill="#2F7D4F" stroke="#2A2118" stroke-width="2.4" stroke-linejoin="round"/>
+   <rect x="50" y="164" width="30" height="9" rx="4.5" fill="#2A2118"/>
+   <rect x="78" y="164" width="30" height="9" rx="4.5" fill="#2A2118"/>
+   <path d="M48 130 L48 94 Q48 76 78 76 Q108 76 108 94 L108 130 Z" fill="#1B4160" stroke="#2A2118" stroke-width="2.6" stroke-linejoin="round"/>
+   <circle cx="78" cy="54" r="20" fill="#EBBD92" stroke="#2A2118" stroke-width="2.6"/>
+   <path d="M56 54 q0-24 22-24 t22 24 q-6-14-22-14 t-22 14z" fill="#3B2B1E" stroke="#2A2118" stroke-width="2.2" stroke-linejoin="round"/>
+   <circle cx="71" cy="56" r="2.4" fill="#2A2118"/><circle cx="86" cy="56" r="2.4" fill="#2A2118"/>
+   <path d="M72 64 q6 5 12 0" fill="none" stroke="#2A2118" stroke-width="2.2" stroke-linecap="round"/>
+   <use href="#il-caja-fruta" x="96" y="96" width="86" height="59"/>
+   <path d="M48 104 q4 18 46 18" fill="none" stroke="#1B4160" stroke-width="13" stroke-linecap="round"/>
+   <path d="M108 104 q10 12 -2 18" fill="none" stroke="#1B4160" stroke-width="13" stroke-linecap="round"/>
+ </symbol>
+
+ <symbol id="il-paso1" viewBox="0 0 300 150">
+   <path d="M40 132 L40 66 L150 48 L260 66 L260 132 Z" fill="#FFF6E6" stroke="#2A2118" stroke-width="2.6" stroke-linejoin="round"/>
+   <path d="M32 66 L150 44 L268 66 L268 78 L150 56 L32 78 Z" fill="#E8792B" stroke="#2A2118" stroke-width="2.4" stroke-linejoin="round"/>
+   <rect x="70" y="86" width="52" height="46" rx="4" fill="#2F7D4F" stroke="#2A2118" stroke-width="2.2"/>
+   <rect x="140" y="86" width="52" height="46" rx="4" fill="#E8792B" stroke="#2A2118" stroke-width="2.2"/>
+   <rect x="208" y="86" width="34" height="46" rx="4" fill="#B9B2A6" stroke="#2A2118" stroke-width="2.2"/>
+   <circle cx="242" cy="42" r="21" fill="#2F7D4F" stroke="#2A2118" stroke-width="2.6"/>
+   <path d="M242 32v20M232 42h20" stroke="#FFF6E6" stroke-width="4.4" stroke-linecap="round"/>
+ </symbol>
+
+ <symbol id="il-paso2" viewBox="0 0 300 150">
+   <rect x="20" y="16" width="216" height="118" rx="8" fill="#FFF6E6" stroke="#2A2118" stroke-width="2.6"/>
+   <path d="M20 44h216M20 72h216M20 100h216M62 16v118M104 16v118M146 16v118M188 16v118" stroke="#D9BE95" stroke-width="1.6"/>
+   <rect x="34" y="52" width="90" height="12" rx="6" fill="#B9B2A6" stroke="#2A2118" stroke-width="2"/>
+   <rect x="34" y="82" width="90" height="12" rx="6" fill="#2F7D4F" stroke="#2A2118" stroke-width="2"/>
+   <rect x="150" y="52" width="26" height="42" rx="5" fill="#D2453B" stroke="#2A2118" stroke-width="2"/>
+   <rect x="34" y="110" width="46" height="12" rx="6" fill="#B9B2A6" stroke="#2A2118" stroke-width="2"/>
+   <path d="M186 116 L268 34 L282 48 L200 130 L182 134 Z" fill="#E8792B" stroke="#2A2118" stroke-width="2.6" stroke-linejoin="round"/>
+   <path d="M186 116 L200 130" stroke="#2A2118" stroke-width="2.2"/>
+   <path d="M262 40l14 14" stroke="#2A2118" stroke-width="2.2"/>
+ </symbol>
+
+ <symbol id="il-paso3" viewBox="0 0 300 170">
+   <path d="M28 118 L96 78 L164 118 L96 158 Z" fill="#D9BE95" stroke="#2A2118" stroke-width="2.4" stroke-linejoin="round" opacity=".5"/>
+   <path d="M54 96 L96 72 L138 96 L96 120 Z" fill="#D2453B" stroke="#2A2118" stroke-width="2.4" stroke-linejoin="round"/>
+   <path d="M54 96 L54 74 L96 50 L96 72 Z" fill="#EE7B70" stroke="#2A2118" stroke-width="2.4" stroke-linejoin="round"/>
+   <path d="M96 72 L96 50 L138 74 L138 96 Z" fill="#A8332B" stroke="#2A2118" stroke-width="2.4" stroke-linejoin="round"/>
+   <rect x="116" y="112" width="50" height="42" rx="18" fill="#EBBD92" stroke="#2A2118" stroke-width="2.6"/>
+   <path d="M92.9 101.1a10 10 0 0 1 14.2-14.2l26 26a10 10 0 0 1-14.2 14.2z" fill="#EBBD92" stroke="#2A2118" stroke-width="2.6" stroke-linejoin="round"/>
+   <rect x="176" y="34" width="104" height="86" rx="8" fill="#FFF6E6" stroke="#2A2118" stroke-width="2.6"/>
+   <path d="M188 52h60M188 66h80M188 80h44" stroke="#2A2118" stroke-width="2.6" stroke-linecap="round" opacity=".6"/>
+   <rect x="188" y="94" width="58" height="16" rx="8" fill="#2F7D4F" stroke="#2A2118" stroke-width="2.2"/>
+ </symbol>
+
+ <symbol id="il-cuenta" viewBox="0 0 220 160">
+   <path d="M34 12h140a8 8 0 0 1 8 8v122l-16-10-16 10-16-10-16 10-16-10-16 10-16-10-16 10V20a8 8 0 0 1 8-8z" fill="#FFF6E6" stroke="#2A2118" stroke-width="2.6" stroke-linejoin="round"/>
+   <path d="M50 40h64M50 58h88M50 76h72" stroke="#2A2118" stroke-width="2.6" stroke-linecap="round" opacity=".55"/>
+   <rect x="50" y="96" width="88" height="20" rx="6" fill="#E8792B" stroke="#2A2118" stroke-width="2.2"/>
+   <circle cx="166" cy="102" r="24" fill="#2F7D4F" stroke="#2A2118" stroke-width="2.6"/>
+   <path d="M156 102l7 7 13-15" fill="none" stroke="#FFF6E6" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+ </symbol>
+
+ <!-- iconos de línea -->
+ <symbol id="ic-sol" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+ <symbol id="ic-luna" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+ <symbol id="ic-abajo" viewBox="0 0 24 24"><path d="M12 4v15M5.5 12.5L12 19l6.5-6.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+ <symbol id="ic-candado" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+ <symbol id="ic-carrito" viewBox="0 0 24 24"><path d="M2 3h3l2.6 11.4a2 2 0 0 0 2 1.6h7.8a2 2 0 0 0 2-1.5L21 7H6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="20" r="1.6" fill="currentColor"/><circle cx="18" cy="20" r="1.6" fill="currentColor"/></symbol>
+</svg>
+
+<div class="toldo" aria-hidden="true"></div>
+
+<header class="barra" id="barra">
+  <div class="env barra-in">
+    <a class="marca" href="#hero" aria-label="RECABRA, inicio">
+      <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="2" y="9" width="28" height="20" rx="5" style="fill:var(--marca);stroke:var(--marca-tinta)" stroke-width="2"/>
+        <path d="M2 14h28" style="stroke:var(--marca-tinta)" stroke-width="2"/>
+        <path d="M7 9l3-6h12l3 6" fill="none" style="stroke:var(--marca-tinta)" stroke-width="2" stroke-linejoin="round"/>
+        <rect x="7" y="18" width="7" height="7" rx="2" fill="#FFF6E6"/>
+        <rect x="18" y="18" width="7" height="7" rx="2" style="fill:var(--marca-tinta)"/>
+      </svg>
+      RECABRA
+    </a>
+    <nav class="nav" aria-label="Secciones">
+      <a href="#que-hace">Qué hace</a>
+      <a href="#para-quien">Para quién</a>
+      <a href="#como-se-usa">Cómo se usa</a>
+      <a href="#asesoria">Asesoría</a>
+      <a href="#precio">Precio</a>
+    </nav>
+    <div class="barra-acc">
+      <button class="btn-icono" id="tema" type="button" aria-label="Cambiar entre claro y oscuro" aria-pressed="false">
+        <svg width="20" height="20" aria-hidden="true"><use href="#ic-sol" id="tema-icono"/></svg>
+      </button>
+      <a class="btn btn-1 btn-mini" href="/login#registro">Crear mi cuenta</a>
+    </div>
+  </div>
+</header>
+
+<!-- raíl del día -->
+<nav class="rail" id="rail" aria-label="El día en la tienda">
+  <ol>
+    <li><a href="#hero" data-sec="hero"><span class="et">7:40 · abre</span><span class="bolita"></span></a></li>
+    <li><a href="#que-hace" data-sec="que-hace"><span class="et">9:15 · mañana</span><span class="bolita"></span></a></li>
+    <li><a href="#para-quien" data-sec="para-quien"><span class="et">11:00 · el equipo</span><span class="bolita"></span></a></li>
+    <li><a href="#como-se-usa" data-sec="como-se-usa"><span class="et">12:30 · mediodía</span><span class="bolita"></span></a></li>
+    <li><a href="#asesoria" data-sec="asesoria"><span class="et">15:20 · tarde</span><span class="bolita"></span></a></li>
+    <li><a href="#confianza" data-sec="confianza"><span class="et">17:45 · cae la tarde</span><span class="bolita"></span></a></li>
+    <li><a href="#precio" data-sec="precio"><span class="et">19:10 · cuadre de caja</span><span class="bolita"></span></a></li>
+    <li><a href="#cierre" data-sec="cierre"><span class="et">20:00 · cierra</span><span class="bolita"></span></a></li>
+  </ol>
+</nav>
+
+<main id="contenido">
+
+<!-- ================= 1 · HERO ================= -->
+<section class="sec hero" id="hero">
+  <div class="env">
+    <div class="hero-rejilla">
+      <div>
+        <p class="hora"><svg width="15" height="15" aria-hidden="true"><use href="#ic-sol"/></svg> <b>7:40 a.&nbsp;m.</b> · abre MercaFresco</p>
+        <p class="antetitulo">Espacios comerciales de supermercado</p>
+        <h1>Qué mueble está libre, quién lo ocupa, a cuánto y hasta cuándo.</h1>
+        <p class="sub1">RECABRA es el sistema con el que un supermercado vende sus espacios de exhibición. Dibujás el plano de cada sede, marcás qué muebles se alquilan y armás el contrato ahí mismo, tocando el mueble.</p>
+        <p class="sub2">Si hoy eso vive en un Excel, en un chat de WhatsApp o en la memoria de alguien, esta es la pantalla que falta.</p>
+        <div class="acciones">
+          <a class="btn btn-1" href="/login#registro">Crear mi cuenta</a>
+          <a class="btn btn-2" href="/login">Ya tengo cuenta</a>
+        </div>
+        <p class="linea-acc">Entrás con tu correo o con Google. Crear la cuenta y tu supermercado toma un minuto.</p>
+      </div>
+
+      <figure class="plano-marco" style="margin:0">
+        <div class="plano-cabecera">
+          <span class="rotulo"><span class="punto" aria-hidden="true"></span>Supermercado de ejemplo · Tocá un mueble</span>
+          <div class="plano-btns">
+            <button type="button" id="b-mas" aria-label="Acercar" title="Acercar">+</button>
+            <button type="button" id="b-menos" aria-label="Alejar" title="Alejar">−</button>
+            <button type="button" id="b-centrar" class="ancho" aria-label="Centrar">Centrar</button>
+            <button type="button" id="b-3d" class="ancho">Ver en 3D</button>
+          </div>
+        </div>
+
+        <div class="plano-lienzo" id="lienzo">
+          <svg id="plano" role="application" tabindex="0"
+               aria-label="Plano interactivo de un supermercado de ejemplo. Usá las flechas para moverte y Enter para abrir la ficha de un mueble."
+               aria-describedby="plano-desc"></svg>
+          <div class="ficha" id="ficha" role="group" aria-live="polite" aria-label="Ficha del mueble" hidden></div>
+        </div>
+        <p id="plano-desc" class="oculto-visual">Supermercado de ejemplo con dos sedes. En la sede CENTRO hay diez espacios alquilables: cuatro libres, dos que se liberan dentro del periodo y cuatro tomados. En la sede PALMAS hay seis: tres libres, uno que se libera y dos tomados. Cada espacio tiene un código, un tipo de mueble, un proveedor de ejemplo y un canon mensual. Los datos son inventados.</p>
+
+        <p class="ayuda-plano">
+          <span class="escritorio">Arrastrá para moverte. Rueda para acercar. Tocá un mueble para ver su ficha.</span>
+          <span class="movil">Deslizá para moverte. Pellizcá para acercar. Tocá un mueble.</span>
+        </p>
+        <p class="ayuda-teclado">Flechas para moverte · <span class="cod">+</span> y <span class="cod">−</span> para acercar · <span class="cod">Enter</span> para abrir la ficha del mueble · <span class="cod">Esc</span> para cerrarla</p>
+
+        <div class="leyenda">
+          <h3>Estado en el periodo</h3>
+          <span class="ley"><i style="background:var(--est-libre)"></i>Libre todo el periodo</span>
+          <span class="ley"><i style="background:var(--est-libera)"></i>Se libera en el periodo</span>
+          <span class="ley"><i style="background:var(--est-tomado)"></i>Tomado</span>
+          <span class="ley"><i style="background:var(--est-resto)"></i>Resto de la sala</span>
+          <span class="pie-ley">Es la misma lectura que vas a tener adentro, con tu propia tienda.</span>
+        </div>
+        <figcaption class="nota-plano">
+          Los datos del plano son inventados, para mostrar cómo se ve. Ningún supermercado real aparece acá.
+          <details class="tabla-alt">
+            <summary>Los mismos datos del plano, en tabla</summary>
+            <table id="tabla-plano">
+              <caption class="oculto-visual">Los mismos datos del plano, en tabla</caption>
+              <thead><tr><th>Código</th><th>Tipo</th><th>Sede</th><th>Estado</th><th>Proveedor de ejemplo</th><th>Canon mensual</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </details>
+        </figcaption>
+      </figure>
+    </div>
+
+    <div class="gancho">
+      <p class="gancho-txt">Son las 7:40 y en ese plano hay <em>7 muebles verdes</em>. Nadie los está vendiendo todavía. ¿Qué se puede hacer con ellos antes del mediodía?</p>
+      <span class="gancho-lado">
+        <a class="flecha-abajo" href="#que-hace" aria-label="Ir a: lo que hace"><svg width="22" height="22" aria-hidden="true"><use href="#ic-abajo"/></svg></a>
+      </span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 2 · LO QUE HACE ================= -->
+<section class="sec" id="que-hace">
+  <div class="env">
+    <p class="hora aparece"><svg width="15" height="15" aria-hidden="true"><use href="#ic-carrito"/></svg> <b>9:15 a.&nbsp;m.</b> · entran los primeros proveedores</p>
+    <h2 class="tit-sec aparece">Lo que hace</h2>
+    <p class="bajada aparece">Seis cosas concretas. Todas están construidas y andan hoy.</p>
+
+    <div class="contador aparece" id="contador" aria-hidden="true">
+      <span class="pistas" id="pistas"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+      <span id="contador-txt">1 de 6</span>
+    </div>
+
+    <div class="rejilla rejilla-2 rejilla-3" style="margin-top:var(--s-6)">
+
+      <article class="tarjeta bloque aparece dato-bloque">
+        <span class="num-bloque">1</span>
+        <span class="medallon"><svg width="46" height="46" aria-hidden="true"><use href="#il-plano"/></svg></span>
+        <h3>El plano de tu tienda, no una lista de códigos</h3>
+        <p>Dibujás cada sede como es: góndolas, puntas, islas, neveras, bateas, cajas. Cada mueble queda con su código y sus medidas. En el plano se ve de un vistazo qué está libre y qué está tomado, y cuando el proveedor quiere ver cómo le va a quedar la exhibición, la misma tienda se recorre en 3D.</p>
+        <p class="pie-b">Plano 2D · vista 3D · una nomenclatura para toda la cadena</p>
+      </article>
+
+      <article class="tarjeta bloque aparece dato-bloque">
+        <span class="num-bloque">2</span>
+        <span class="medallon"><svg width="46" height="46" aria-hidden="true"><use href="#il-contrato"/></svg></span>
+        <h3>El contrato se arma sobre el mueble</h3>
+        <p>Tocás el espacio y llenás una sola ficha: proveedor, marca, canon mensual, desde y hasta. Si el acuerdo cubre tres puntas de góndola, las tocás las tres y queda un solo contrato, no tres. Abajo del formulario está el total del plazo, que es lo que se firma: <span class="cod tabnum">$&nbsp;1.500.000</span> al mes por 61 días son <span class="cod tabnum">$&nbsp;3.050.000</span>, y esa cuenta ya no se hace de cabeza con el proveedor esperando.</p>
+        <p class="pie-b">Un proveedor, un periodo, todos los espacios que haga falta</p>
+      </article>
+
+      <article class="tarjeta bloque aparece dato-bloque">
+        <span class="num-bloque">3</span>
+        <span class="medallon"><svg width="46" height="46" aria-hidden="true"><use href="#il-temporada"/></svg></span>
+        <h3>Qué hay libre en la temporada que estás vendiendo</h3>
+        <p>Elegís el periodo —Amor y Amistad, Halloween, Black Friday, Navidad, regreso a clases— y el plano entero se repinta para ese periodo: libre todo el tiempo, se libera adentro, o tomado. Un panel te dice cuántos espacios hay libres si el contrato arranca el 26 y cuántos si arranca el 29. Un mueble que se desocupa el 25 es inventario que podés ofrecer hoy.</p>
+        <p class="pie-b">Nueve temporadas del calendario colombiano, con la ventana de venta que vos definas</p>
+      </article>
+
+      <article class="tarjeta bloque aparece dato-bloque">
+        <span class="num-bloque">4</span>
+        <span class="medallon"><svg width="46" height="46" aria-hidden="true"><use href="#il-tarifa"/></svg></span>
+        <h3>Tu tarifa, y cuánto te estás corriendo de ella</h3>
+        <p>Cargás una tarifa por tipo de mueble, con ajuste por sede si una tienda vale más que otra. Cuando escribís el valor de un contrato, al lado te aparece la referencia y el desvío: «−17&nbsp;% vs referencia». En el tablero hay una lista de todo lo que está por debajo de tarifa, para revisarlo en la próxima renovación.</p>
+        <p class="pie-b">La tarifa la ve el administrador. El mercaderista no ve un solo peso.</p>
+      </article>
+
+      <article class="tarjeta bloque aparece dato-bloque">
+        <span class="num-bloque">5</span>
+        <span class="medallon"><svg width="46" height="46" aria-hidden="true"><use href="#il-correos"/></svg></span>
+        <h3>Los avisos salen solos</h3>
+        <p>Al guardar un contrato salen tres correos distintos: el comercial recibe el acuerdo con el valor, el mercaderista recibe la orden de montaje sin un solo monto y con el enlace para reportar, y el proveedor recibe la constancia de lo suyo. Antes de vencer, el sistema avisa tres veces: a 30, a 15 y a 6 días. A una semana ya no hay margen para negociar; a un día el correo llega para contar algo que ya pasó.</p>
+        <p class="pie-b">Y cuando falta poco, el botón Renovar viene con el proveedor, la marca y el valor que se está pagando ya escritos.</p>
+      </article>
+
+      <article class="tarjeta bloque aparece dato-bloque">
+        <span class="num-bloque">6</span>
+        <span class="medallon"><svg width="46" height="46" aria-hidden="true"><use href="#il-celular"/></svg></span>
+        <h3>El montaje se confirma con foto, desde el celular</h3>
+        <p>El correo del mercaderista trae un enlace que abre directo en el espacio que le toca. Sin contraseña y sin ver el tablero de la tienda: solo el mueble, dónde queda —«a unos 4&nbsp;m de las cajas», con el plano de la sala señalado— y dos botones. «Montado» exige foto. «No pude» exige motivo, porque sin motivo no se sabe a quién reclamarle.</p>
+        <p class="pie-b">La foto queda guardada. Es la que responde el reclamo del proveedor tres meses después.</p>
+      </article>
+    </div>
+
+    <p class="cierre-lista aparece">Y además: cargás la temporada entera desde una planilla de Excel, revisás fila por fila antes de crear nada, manejás todas tus sedes desde la misma cuenta e invitás a tu equipo con el permiso que le toca a cada uno.</p>
+
+    <div class="gancho">
+      <p class="gancho-txt">Seis cosas que hace el sistema. Pero la tienda no la mueve un sistema: la mueven <em>tres personas</em>, y ninguna de las tres ve lo mismo.</p>
+      <span class="gancho-lado">
+        <a class="flecha-abajo" href="#para-quien" aria-label="Ir a: para quién"><svg width="22" height="22" aria-hidden="true"><use href="#ic-abajo"/></svg></a>
+      </span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 3 · PARA QUIÉN ================= -->
+<section class="sec" id="para-quien">
+  <div class="env">
+    <p class="hora aparece"><svg width="15" height="15" aria-hidden="true"><use href="#ic-sol"/></svg> <b>11:00 a.&nbsp;m.</b> · media mañana, la sala llena</p>
+    <h2 class="tit-sec aparece">Tres personas usan esto, y cada una ve otra cosa</h2>
+
+    <div class="rejilla rejilla-3" style="margin-top:var(--s-6)">
+      <article class="perfil aparece">
+        <span class="escena"><svg viewBox="0 0 320 190" width="100%" height="auto" role="img" aria-label="Ilustración: una gerente frente a un portátil que muestra el plano de la sede con muebles verdes, rojos y naranjas."><use href="#il-gerente"/></svg></span>
+        <p class="rot">Gerente o administrador</p>
+        <h3>Vende con datos, no de memoria</h3>
+        <p>Ve el plano, la plata y el calendario en la misma pantalla. Arma el contrato, pone el precio con la tarifa al lado y sabe qué se le cae el mes que viene. Puede girar el portátil y mostrarle el plano al proveedor que tiene enfrente: esa pantalla no muestra el nombre ni el canon de ningún otro proveedor.</p>
+      </article>
+
+      <article class="perfil aparece">
+        <span class="escena"><svg viewBox="0 0 320 190" width="100%" height="auto" role="img" aria-label="Ilustración: un trabajador de piso con chaleco naranja confirma un montaje desde el celular, junto a una góndola."><use href="#il-piso"/></svg></span>
+        <p class="rot">Trabajador de piso</p>
+        <h3>Monta y reporta, sin ver dinero</h3>
+        <p>Le llega un correo con el espacio que le toca y un enlace que abre en su celular. Confirma con una foto o dice qué pasó. No entra con una contraseña compartida y no ve valores: el sistema le borra la plata antes de mandarle la pantalla.</p>
+      </article>
+
+      <article class="perfil aparece">
+        <span class="escena"><svg viewBox="0 0 320 190" width="100%" height="auto" role="img" aria-label="Ilustración: un mercaderista del proveedor lleva una caja de fruta hacia una isla de exhibición con su marca puesta."><use href="#il-mercaderista"/></svg></span>
+        <p class="rot">Proveedor</p>
+        <h3>Sabe qué compró</h3>
+        <p>Recibe por correo la constancia de su acuerdo: qué espacios, en qué sede, desde cuándo y hasta cuándo. Y antes de firmar puede ver el mueble en 3D con su marca puesta, en una lámina de antes y después que se le manda adjunta.</p>
+      </article>
+    </div>
+
+    <div class="cifras aparece">
+      <h3 style="font-size:1.5rem">Los números que vas a tener a la vista</h3>
+      <p class="bajada" style="margin-top:var(--s-2)">No son promesas. Son las cifras que la pantalla te muestra cada vez que la abrís.</p>
+      <table>
+        <caption class="oculto-visual">Cifras que muestra la pantalla y cómo se leen</caption>
+        <tbody>
+          <tr><th scope="row">Ocupación</th><td><span class="dato">35&nbsp;%</span> · 8 de 23 caras vendidas en el periodo</td></tr>
+          <tr><th scope="row">Canon vigente</th><td>lo que están pagando hoy los contratos vivos, al mes</td></tr>
+          <tr><th scope="row">Sin alquilar</th><td>cuánto vale a tarifa lo que está vacío, y cuánto es eso por día vacío</td></tr>
+          <tr><th scope="row">Vence en 30 días</th><td>cuántos espacios y cuánta plata se te caen si nadie los renueva</td></tr>
+          <tr><th scope="row">Sin montar</th><td>contratos ya cobrados que todavía no están armados en el piso</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:var(--s-4); font-size:16.5px">Y un contrato de tres puntas de góndola se arma una vez, no tres.</p>
+    </div>
+
+    <div class="gancho">
+      <p class="gancho-txt">Ya sabés quién mira qué. Falta lo otro: <em>¿cuánto cuesta llegar hasta acá</em> desde cero, un lunes cualquiera?</p>
+      <span class="gancho-lado">
+        <a class="flecha-abajo" href="#como-se-usa" aria-label="Ir a: cómo se arranca"><svg width="22" height="22" aria-hidden="true"><use href="#ic-abajo"/></svg></a>
+      </span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 4 · CÓMO SE ARRANCA ================= -->
+<section class="sec" id="como-se-usa">
+  <div class="env">
+    <p class="hora aparece"><svg width="15" height="15" aria-hidden="true"><use href="#ic-sol"/></svg> <b>12:30 p.&nbsp;m.</b> · mediodía, baja el ritmo</p>
+    <h2 class="tit-sec aparece">Cómo se arranca</h2>
+    <p class="bajada aparece">Tres pasos. El primero toma un minuto; el segundo es el trabajo de verdad y se hace una sola vez.</p>
+
+    <div class="pasos" style="margin-top:var(--s-6)">
+      <article class="paso aparece">
+        <span class="globo">1</span>
+        <h3>Creá la cuenta y tu supermercado</h3>
+        <p>Entrás con Google o con tu correo, le ponés nombre a tu supermercado y quedás como dueño de la cuenta. Después invitás a tu equipo: cada persona con su correo y con el permiso que le toca.</p>
+        <span class="escena"><svg viewBox="0 0 300 150" width="100%" height="auto" role="img" aria-label="Ilustración: la fachada de un supermercado con toldo naranja y un botón de más para crearlo."><use href="#il-paso1"/></svg></span>
+      </article>
+      <article class="paso aparece">
+        <span class="globo">2</span>
+        <h3>Dibujá el plano de cada sede</h3>
+        <p>Ponés los muebles como están en la sala y marcás cuáles se alquilan. Las cajas y las columnas quedan de contexto, en gris. Si ya tenés los contratos de la temporada en un Excel, los cargás de una vez: el sistema te muestra fila por fila qué entra y qué choca, antes de crear nada.</p>
+        <span class="escena"><svg viewBox="0 0 300 150" width="100%" height="auto" role="img" aria-label="Ilustración: un lápiz dibuja góndolas sobre una grilla; unas quedan grises y otras de color."><use href="#il-paso2"/></svg></span>
+      </article>
+      <article class="paso aparece">
+        <span class="globo">3</span>
+        <h3>Vendé tocando el mapa</h3>
+        <p>Elegís la temporada, mirás qué quedó verde, tocás el mueble y llenás el contrato. Al guardar salen los tres correos y el espacio cambia de color en el plano.</p>
+        <span class="escena"><svg viewBox="0 0 300 170" width="100%" height="auto" role="img" aria-label="Ilustración: una mano toca una punta de góndola que se pinta de rojo y aparece la ficha del contrato."><use href="#il-paso3"/></svg></span>
+      </article>
+    </div>
+
+    <p class="nota-pasos aparece"><svg width="22" height="22" style="flex:0 0 auto;margin-top:2px" aria-hidden="true"><use href="#ic-candado"/></svg> Cada supermercado empieza vacío. RECABRA no viene con datos de nadie adentro.</p>
+
+    <div class="gancho">
+      <p class="gancho-txt">Con eso el sistema ya te muestra <em>lo que pasó</em>. Queda la pregunta cara: ¿y qué conviene ofrecer esta semana, y a quién?</p>
+      <span class="gancho-lado">
+        <a class="flecha-abajo" href="#asesoria" aria-label="Ir a: asesoría"><svg width="22" height="22" aria-hidden="true"><use href="#ic-abajo"/></svg></a>
+      </span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 5 · ASESORÍA ================= -->
+<section class="sec" id="asesoria">
+  <div class="env">
+    <p class="hora aparece"><svg width="15" height="15" aria-hidden="true"><use href="#ic-sol"/></svg> <b>3:20 p.&nbsp;m.</b> · la tarde, cuando se piensa</p>
+    <p class="antetitulo aparece">Lo que ningún Excel te va a decir</p>
+    <h2 class="tit-sec aparece">Además del sistema, te decimos qué proponer</h2>
+    <p class="bajada aparece">Un sistema te muestra lo que pasó. Nosotros miramos tus números y te llevamos, por escrito, qué le podés ofrecer a quién esta semana.</p>
+
+    <div class="rejilla" style="margin-top:var(--s-6); gap:var(--s-5)">
+      <article class="tarjeta aparece">
+        <h3 style="font-size:1.3rem">Recomendaciones ordenadas por lo que hay en juego</h3>
+        <p style="color:var(--texto-2); margin-top:10px">Cada recomendación viene con un valor al lado y una razón. «Tenés tres puntas de góndola libres: ofrecelas a <span class="cod tabnum">$&nbsp;2.000.000</span> cada una, que es el promedio que vos mismo estás cobrando por ese tipo — <span class="cod tabnum">$&nbsp;6.000.000</span> en juego.» «El contrato de esa punta vence en 19 días: renovalo o reasignalo — <span class="cod tabnum">$&nbsp;2.000.000</span> en juego.» Primero las de mayor valor.</p>
+        <div class="rejilla" style="margin-top:var(--s-4); gap:10px">
+          <div class="reco"><b>Tres puntas de góndola libres</b> — ofrecelas al promedio que ya cobrás. <span class="juego">$&nbsp;6.000.000 en juego</span></div>
+          <div class="reco" style="border-left-color:var(--est-tomado)"><b>Punta que vence en 19 días</b> — renovala o reasignala. <span class="juego">$&nbsp;2.000.000 en juego</span></div>
+          <p style="font-size:12.5px;color:var(--texto-3)">Ejemplo, con los mismos datos inventados del plano de arriba.</p>
+        </div>
+      </article>
+
+      <div class="rejilla rejilla-2">
+        <article class="tarjeta aparece">
+          <h3 style="font-size:1.3rem">Oportunidades espacio por espacio</h3>
+          <p style="color:var(--texto-2); margin-top:10px">Para cada mueble libre o que se libera en el periodo: un precio sugerido —el promedio que ya cobrás por ese tipo, o el promedio de los supermercados que usan RECABRA si vos todavía no cobrás ninguno— y hasta tres proveedores tuyos que podrían tomarlo, empezando por los que ya alquilan ese mismo tipo de mueble.</p>
+        </article>
+
+        <article class="tarjeta aparece">
+          <h3 style="font-size:1.3rem">Tendencia mes a mes</h3>
+          <p style="color:var(--texto-2); margin-top:10px">Ocupación, ingreso contratado y canon promedio, guardados mes a mes desde que entrás. La pregunta «¿estamos mejorando?» deja de contestarse de memoria. Un mes sin datos aparece como un hueco, no como un cero: un cero sería mentira.</p>
+          <figure class="grafico" style="margin:var(--s-4) 0 0; padding:var(--s-4)">
+            <svg viewBox="0 0 560 210" width="100%" height="auto" role="img"
+                 aria-label="Gráfico de ejemplo: ocupación mes a mes. Abril 31 por ciento, mayo 35, junio 29, julio sin datos, agosto 34, septiembre 38.">
+              <g style="font-family:ui-monospace,Menlo,Consolas,monospace;fill:var(--texto-3)" font-size="15">
+                <line x1="40" y1="170" x2="548" y2="170" style="stroke:var(--borde-fuerte)" stroke-width="2"/>
+                <!-- barras: x, alto -->
+                <g>
+                  <rect x="52" y="86" width="56" height="84" rx="6" style="fill:var(--est-libre)"/>
+                  <text x="80" y="76" text-anchor="middle" style="fill:var(--texto)" font-weight="700">31%</text>
+                  <text x="80" y="192" text-anchor="middle">abr</text>
+                </g>
+                <g>
+                  <rect x="134" y="66" width="56" height="104" rx="6" style="fill:var(--est-libre)"/>
+                  <text x="162" y="56" text-anchor="middle" style="fill:var(--texto)" font-weight="700">35%</text>
+                  <text x="162" y="192" text-anchor="middle">may</text>
+                </g>
+                <g>
+                  <rect x="216" y="96" width="56" height="74" rx="6" style="fill:var(--est-libre)"/>
+                  <text x="244" y="86" text-anchor="middle" style="fill:var(--texto)" font-weight="700">29%</text>
+                  <text x="244" y="192" text-anchor="middle">jun</text>
+                </g>
+                <g>
+                  <rect x="298" y="120" width="56" height="50" rx="6" fill="none" style="stroke:var(--borde-fuerte)" stroke-width="2.5" stroke-dasharray="6 6"/>
+                  <text x="326" y="110" text-anchor="middle" font-size="12.5">sin datos</text>
+                  <text x="326" y="192" text-anchor="middle">jul</text>
+                </g>
+                <g>
+                  <rect x="380" y="76" width="56" height="94" rx="6" style="fill:var(--est-libre)"/>
+                  <text x="408" y="66" text-anchor="middle" style="fill:var(--texto)" font-weight="700">34%</text>
+                  <text x="408" y="192" text-anchor="middle">ago</text>
+                </g>
+                <g>
+                  <rect x="462" y="60" width="56" height="110" rx="6" style="fill:var(--est-libre)"/>
+                  <text x="490" y="50" text-anchor="middle" style="fill:var(--texto)" font-weight="700">38%</text>
+                  <text x="490" y="192" text-anchor="middle">sep</text>
+                </g>
+                <text x="6" y="176" font-size="12.5">0%</text>
+              </g>
+            </svg>
+            <figcaption>Ocupación mes a mes. Julio aparece vacío porque ese mes no hay dato. Ejemplo, con datos inventados.</figcaption>
+          </figure>
+        </article>
+      </div>
+    </div>
+
+    <div class="cierre-honesto aparece">
+      <p><b>Cómo funciona, sin vueltas.</b> Esta parte no es una pantalla tuya: la revisa una persona de RECABRA sobre tus propios datos, y te llega en la sesión de asesoría. Todo lo que se lee está escrito en la Política de Tratamiento de Datos, queda anotado con la fecha y el correo de quien lo consultó, y podés pedir ese registro cuando quieras desde tu propia cuenta.</p>
+      <p style="margin-top:var(--s-4)"><a href="/politica-datos">Ver el reporte de transparencia →</a></p>
+    </div>
+
+    <div class="gancho">
+      <p class="gancho-txt">Alguien de RECABRA mira tus números. La pregunta que sigue es la incómoda: <em>¿dónde quedan guardados</em>, y quién más los ve?</p>
+      <span class="gancho-lado">
+        <a class="flecha-abajo" href="#confianza" aria-label="Ir a: dónde quedan tus datos"><svg width="22" height="22" aria-hidden="true"><use href="#ic-abajo"/></svg></a>
+      </span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 6 · CONFIANZA ================= -->
+<section class="sec" id="confianza">
+  <div class="env">
+    <p class="hora aparece"><svg width="15" height="15" aria-hidden="true"><use href="#ic-luna"/></svg> <b>5:45 p.&nbsp;m.</b> · cae la tarde</p>
+    <h2 class="tit-sec aparece">Dónde quedan tus datos</h2>
+    <p class="bajada aparece">Esto lo usa gente distinta de la misma tienda, y hay dinero adentro. Así está resuelto.</p>
+
+    <div class="tarjeta aparece" style="margin-top:var(--s-6); padding:var(--s-5) var(--s-6)">
+      <div class="punto">
+        <span class="llave" aria-hidden="true"><svg width="22" height="22"><use href="#ic-candado"/></svg></span>
+        <div><h3>Cada supermercado, en su propia base</h3><p>Los planos, los contratos y los proveedores de tu supermercado viven en una base separada de la de cualquier otro cliente. No es un filtro por columna: es otra base.</p></div>
+      </div>
+      <div class="punto">
+        <span class="llave" aria-hidden="true"><svg width="22" height="22"><use href="#ic-candado"/></svg></span>
+        <div><h3>Cada persona entra con su cuenta</h3><p>Con Google o con correo y contraseña. Nada de una clave compartida que sigue funcionando cuando alguien se va. Desactivás a esa persona y pierde el acceso en el siguiente clic, sin tocar a nadie más.</p></div>
+      </div>
+      <div class="punto">
+        <span class="llave" aria-hidden="true"><svg width="22" height="22"><use href="#ic-candado"/></svg></span>
+        <div><h3>El dinero no le llega a quien no le toca</h3><p>Los valores no se ocultan en la pantalla: se borran en el servidor antes de mandarla. El mercaderista no tiene forma de verlos, ni siquiera mirando lo que le llegó al navegador.</p></div>
+      </div>
+      <div class="punto">
+        <span class="llave" aria-hidden="true"><svg width="22" height="22"><use href="#ic-candado"/></svg></span>
+        <div><h3>Podés auditar qué se mira de vos</h3><p>El dueño de la cuenta puede pedir, cuando quiera, el reporte de transparencia: qué datos toma RECABRA, cómo los calcula, de dónde salen, para qué, y quién los consultó y qué día. También puede descargar todos sus datos y pedir la supresión.</p></div>
+      </div>
+      <div class="punto">
+        <span class="llave" aria-hidden="true"><svg width="22" height="22"><use href="#ic-candado"/></svg></span>
+        <div><h3>Colombia, Ley 1581</h3><p>Tratamiento de datos personales conforme a la Ley 1581 de 2012 y al Decreto 1377 de 2013. La política es pública y se lee sin tener cuenta.</p></div>
+      </div>
+      <p class="enlaces-sec">
+        <a href="/politica-datos">Política de Tratamiento de Datos</a>
+        <a href="/politica-datos#transparencia">Reporte de transparencia</a>
+      </p>
+    </div>
+
+    <div class="gancho">
+      <p class="gancho-txt">Resuelto lo de los datos. Queda la parte que nadie quiere leer al final de una página: <em>la plata</em>.</p>
+      <span class="gancho-lado">
+        <a class="flecha-abajo" href="#precio" aria-label="Ir a: cuánto cuesta"><svg width="22" height="22" aria-hidden="true"><use href="#ic-abajo"/></svg></a>
+      </span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 7 · PRECIO ================= -->
+<section class="sec" id="precio">
+  <div class="env">
+    <p class="hora aparece"><svg width="15" height="15" aria-hidden="true"><use href="#ic-luna"/></svg> <b>7:10 p.&nbsp;m.</b> · cuadre de caja</p>
+    <h2 class="tit-sec aparece">Cuánto cuesta</h2>
+
+    <div class="rejilla rejilla-2 aparece" style="margin-top:var(--s-6); align-items:start">
+      <div class="precio-caja">
+        <p class="precio-valor"><span class="completar">[COMPLETAR: precio]</span> <span class="completar">[COMPLETAR: unidad — por supermercado al mes, por sede al mes, o lo que corresponda]</span></p>
+        <p style="margin-top:var(--s-5); font-size:16.5px; color:var(--texto-2)">Por transferencia bancaria, contra cuenta de cobro. No hay pasarela de pagos ni te pedimos una tarjeta.</p>
+
+        <h3 style="margin-top:var(--s-6); font-size:1.15rem">Qué pasa si un mes te atrasás</h3>
+        <ul class="lista-atraso">
+          <li><span class="n">1</span><span>Primero te avisamos en la pantalla, y todo sigue funcionando igual.</span></li>
+          <li><span class="n">2</span><span>Si el atraso sigue, la cuenta pasa a solo lectura: podés entrar, ver todo y consultar, pero no se cargan contratos nuevos.</span></li>
+          <li><span class="n">3</span><span>Tus datos no se borran nunca. Ponés la cuenta al día y volvés a trabajar donde lo dejaste.</span></li>
+        </ul>
+
+        <p style="margin-top:var(--s-6); font-size:16.5px">¿Tenés varias sedes o una cadena regional y querés que lo veamos juntos? Escribinos a <span class="completar">[COMPLETAR: correo de contacto]</span>.</p>
+        <p style="margin-top:var(--s-4)"><a class="btn btn-1" href="mailto:">Hablemos</a></p>
+      </div>
+      <div style="display:grid; place-items:center; padding:var(--s-5)">
+        <svg viewBox="0 0 220 160" width="100%" style="max-width:300px" height="auto" role="img" aria-label="Ilustración: una cuenta de cobro en papel con un sello de aprobado."><use href="#il-cuenta"/></svg>
+      </div>
+    </div>
+
+    <div class="gancho">
+      <p class="gancho-txt">Son las 8 y la tienda cierra. Mañana a las 7:40 vuelve a abrir con los mismos espacios vacíos. <em>¿Y si el lunes ya estuvieran dibujados?</em></p>
+      <span class="gancho-lado">
+        <a class="flecha-abajo" href="#cierre" aria-label="Ir a: empezá por una sede"><svg width="22" height="22" aria-hidden="true"><use href="#ic-abajo"/></svg></a>
+      </span>
+    </div>
+  </div>
+</section>
+
+<div class="horizonte" aria-hidden="true"><span class="sol"></span><span class="linea"></span></div>
+
+<!-- ================= 8 · CIERRE ================= -->
+<section class="sec nocturno" id="cierre">
+  <div class="env">
+    <p class="hora aparece"><svg width="15" height="15" aria-hidden="true"><use href="#ic-luna"/></svg> <b>8:00 p.&nbsp;m.</b> · cierra MercaFresco</p>
+    <div class="caja">
+      <h2 class="aparece">Empezá por una sede</h2>
+      <p class="bajada aparece" style="color:var(--texto-2)">Creá la cuenta, dibujá la tienda que más espacios vende y mirá cuántos tenés libres esta temporada. Si sirve, seguís con las demás.</p>
+      <div class="acciones aparece">
+        <a class="btn btn-1" href="/login#registro">Crear mi cuenta</a>
+        <a class="btn btn-2" href="/login" style="color:#FFF6E6; border-color:#3D6E92">Ya tengo cuenta</a>
+      </div>
+      <p class="linea-acc aparece" style="color:var(--texto-3)">Entrás con Google o con tu correo. El plano de arriba es de ejemplo; el tuyo lo dibujás vos.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 9 · PIE ================= -->
+<footer class="pie nocturno">
+  <div class="env">
+    <div class="pie-rejilla">
+      <div>
+        <a class="marca" href="#hero" style="color:#FFF6E6; text-decoration:none">
+          <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="2" y="9" width="28" height="20" rx="5" fill="#E8792B" stroke="#FFF6E6" stroke-width="2"/>
+            <path d="M2 14h28" stroke="#FFF6E6" stroke-width="2"/>
+            <path d="M7 9l3-6h12l3 6" fill="none" stroke="#FFF6E6" stroke-width="2" stroke-linejoin="round"/>
+          </svg>
+          RECABRA
+        </a>
+        <p style="margin-top:12px; color:#C6B79E; font-size:15px">Gestión de espacios comerciales en supermercados</p>
+      </div>
+      <div><h4>Producto</h4><ul>
+        <li><a href="#que-hace">Qué hace</a></li>
+        <li><a href="#como-se-usa">Cómo se usa</a></li>
+        <li><a href="#precio">Precio</a></li>
+      </ul></div>
+      <div><h4>Cuenta</h4><ul>
+        <li><a href="/login#registro">Crear mi cuenta</a></li>
+        <li><a href="/login">Ya tengo cuenta</a></li>
+      </ul></div>
+      <div><h4>Legal</h4><ul>
+        <li><a href="/politica-datos">Política de Tratamiento de Datos</a></li>
+        <li><a href="/politica-datos#derechos">Tratamiento de datos y derechos del titular</a></li>
+      </ul></div>
+    </div>
+    <div class="pie-legal">
+      <p><span class="completar">[COMPLETAR: razón social]</span> · NIT <span class="completar">[COMPLETAR: NIT]</span> · <span class="completar">[COMPLETAR: ciudad, Colombia]</span></p>
+      <p>Tratamiento de datos personales conforme a la Ley 1581 de 2012 y al Decreto 1377 de 2013.<br>Para ejercer tus derechos como titular, escribí a <span class="completar">[COMPLETAR: correo de protección de datos]</span>.</p>
+      <p>© <span id="anio">2026</span> RECABRA. Todos los derechos reservados.</p>
+      <p>El plano de esta página es un supermercado inventado, sembrado en el código de la propia página. No corresponde a ningún cliente.</p>
+      <p style="margin-top:8px"><a href="#hero">Volver arriba ↑</a></p>
+    </div>
+  </div>
+</footer>
+</main>
+
+<script>
+(function(){
+'use strict';
+var RM = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+/* ---------- año ---------- */
+var anio = document.getElementById('anio'); if (anio) anio.textContent = new Date().getFullYear();
+
+/* ---------- tema claro / oscuro ---------- */
+var raiz = document.documentElement, btnTema = document.getElementById('tema'), icoTema = document.getElementById('tema-icono');
+function sistemaOscuro(){ return window.matchMedia('(prefers-color-scheme: dark)').matches; }
+function temaActual(){ var t = raiz.getAttribute('data-theme'); if (t==='claro'||t==='oscuro') return t; return sistemaOscuro()?'oscuro':'claro'; }
+function pintarBoton(){
+  var oscuro = temaActual()==='oscuro';
+  icoTema.setAttribute('href', oscuro ? '#ic-luna' : '#ic-sol');
+  btnTema.setAttribute('aria-pressed', oscuro ? 'true':'false');
+  btnTema.setAttribute('aria-label', oscuro ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro');
+}
+try { var guardado = localStorage.getItem('recabra-tema'); if (guardado) raiz.setAttribute('data-theme', guardado); } catch(e){}
+pintarBoton();
+btnTema.addEventListener('click', function(){
+  var nuevo = temaActual()==='oscuro' ? 'claro' : 'oscuro';
+  raiz.setAttribute('data-theme', nuevo);
+  try { localStorage.setItem('recabra-tema', nuevo); } catch(e){}
+  pintarBoton(); if (window.__pintarPlano) window.__pintarPlano();
+});
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(){
+  pintarBoton(); if (window.__pintarPlano) window.__pintarPlano();
+});
+
+/* ---------- barra pegada ---------- */
+var barra = document.getElementById('barra');
+addEventListener('scroll', function(){ barra.classList.toggle('pegada', scrollY > 8); }, {passive:true});
+
+/* ============================================================
+   DATOS DEL SUPERMERCADO DE EJEMPLO — MercaFresco
+   Todo inventado. Sembrado acá, sin ninguna llamada a la red.
+   ============================================================ */
+var OY = 19; // desplazamiento en la grilla de la sede PALMAS (la segunda sede va abajo a la izquierda)
+
+var MUEBLES = [
+ /* --- sede CENTRO: 10 espacios alquilables --- */
+ {c:'PUN-01', t:'Punta de góndola', u:'Frente a la entrada', s:'CENTRO', e:'tomado', p:'Bebidas Zafiro', m:'$ 1.300.000', f:'hasta el 28 sep', x:1.0,y:3.0,w:1.7,d:1.7,h:1.9},
+ {c:'PUN-02', t:'Punta de góndola', u:'Pasillo 2, de cara a las cajas', s:'CENTRO', e:'libera', p:'Confites Milagro', m:'$ 1.150.000', f:'libre desde el 26 sep', x:1.4,y:6.4,w:1.6,d:1.4,h:1.9},
+ {c:'PUN-05', t:'Punta de góndola', u:'Pasillo 5, contra la pared del fondo', s:'CENTRO', e:'libre', m:'$ 1.000.000', x:17.6,y:13.0,w:1.6,d:1.4,h:1.9},
+ {c:'EXP-01', t:'Isla', u:'Frente a la entrada', s:'CENTRO', e:'tomado', p:'Galletas Doña Rita', m:'$ 1.200.000', f:'hasta el 30 nov', x:15.6,y:3.6,w:2.4,d:2.4,h:0.95},
+ {c:'EXP-02', t:'Isla', u:'A 3 m de las cajas', s:'CENTRO', e:'libre', m:'$ 1.200.000', x:11.6,y:3.8,w:2.4,d:2.4,h:0.95},
+ {c:'CRS-01', t:'Exhibición de piso', u:'Pasillo central', s:'CENTRO', e:'libera', p:'Aseo Rocío', m:'$ 900.000', f:'libre desde el 22 sep', x:13.6,y:11.4,w:2.0,d:1.5,h:0.8},
+ {c:'GON-04·A', t:'Góndola, por cara', u:'Pasillo 3, lado par', s:'CENTRO', e:'tomado', p:'Lácteos Monteverde', m:'$ 240.000', f:'hasta el 31 oct', x:8.0,y:9.0,w:4.4,d:0.7,h:1.8},
+ {c:'GON-04·B', t:'Góndola, por cara', u:'Pasillo 4, lado impar', s:'CENTRO', e:'libre', m:'$ 230.000', x:8.0,y:10.4,w:4.4,d:0.7,h:1.8},
+ {c:'BEB-01', t:'Nevera de bebidas', u:'Pared de refrigerados', s:'CENTRO', e:'tomado', p:'Bebidas Zafiro', m:'$ 450.000', f:'hasta el 30 nov', x:3.6,y:14.8,w:5.2,d:1.2,h:2.3},
+ {c:'FRU-02', t:'Frutas y verduras', u:'Entrada, mano derecha', s:'CENTRO', e:'libre', m:'$ 380.000', x:18.8,y:1.6,w:2.6,d:2.6,h:0.85},
+
+ /* --- sede PALMAS: 6 espacios alquilables --- */
+ {c:'PUN-01', t:'Punta de góndola', u:'Frente a la entrada', s:'PALMAS', e:'tomado', p:'Café Alto Bosque', m:'$ 1.100.000', f:'hasta el 15 dic', x:7.8,y:2.4+OY,w:1.7,d:1.7,h:1.9},
+ {c:'PUN-03', t:'Punta de góndola', u:'Pasillo 3, de cara a las cajas', s:'PALMAS', e:'libre', m:'$ 1.000.000', x:8.4,y:5.0+OY,w:1.6,d:1.4,h:1.9},
+ {c:'CAJ-02', t:'Cabecera de caja', u:'Caja 2', s:'PALMAS', e:'libera', p:'Confites Milagro', m:'$ 850.000', f:'libre desde el 24 sep', x:13.6,y:0.6+OY,w:1.5,d:1.8,h:1.15},
+ {c:'ISL-01', t:'Isla de congelados', u:'Zona de congelados', s:'PALMAS', e:'tomado', p:'Cárnicos San Isidro', m:'$ 700.000', f:'hasta el 31 oct', x:16.6,y:9.6+OY,w:3.0,d:1.8,h:1.15},
+ {c:'GON-11·A', t:'Góndola, por cara', u:'Pasillo 1, lado par', s:'PALMAS', e:'libre', m:'$ 230.000', x:13.0,y:6.2+OY,w:4.0,d:0.6,h:1.8},
+ {c:'BAT-01', t:'Batea', u:'Pasillo central', s:'PALMAS', e:'libre', m:'$ 320.000', x:12.6,y:9.6+OY,w:1.9,d:1.9,h:0.75}
+];
+
+/* muebles de contexto: no se alquilan */
+var CONTEXTO = [
+ // CENTRO
+ {c:'CAJ-01', x:3.2,y:1.4,w:1.5,d:2.0,h:1.0}, {c:'CAJ-03', x:5.4,y:1.4,w:1.5,d:2.0,h:1.0},
+ {c:'CAJ-04', x:7.6,y:1.4,w:1.5,d:2.0,h:1.0}, {c:'CAJ-05', x:9.8,y:1.4,w:1.5,d:2.0,h:1.0},
+ {c:'SAC-01', x:13.0,y:1.4,w:3.0,d:1.4,h:1.15},
+ {c:'Góndola', x:3.2,y:6.4,w:14.0,d:1.3,h:1.75},
+ {c:'Góndola', x:3.2,y:9.7,w:4.2,d:1.2,h:1.75},
+ {c:'Góndola', x:8.0,y:9.7,w:4.4,d:0.7,h:1.05},
+ {c:'Góndola', x:13.0,y:9.7,w:4.2,d:1.2,h:1.75},
+ {c:'Góndola', x:3.2,y:13.0,w:13.4,d:1.3,h:1.75},
+ {c:'Pared de refrigerados', x:9.4,y:14.8,w:8.6,d:1.2,h:2.3},
+ {c:'COL-01', x:6.0,y:4.6,w:0.7,d:0.7,h:2.7}, {c:'COL-02', x:13.4,y:8.0,w:0.7,d:0.7,h:2.7},
+ {c:'COL-03', x:6.0,y:11.9,w:0.7,d:0.7,h:2.7}, {c:'COL-04', x:16.6,y:11.4,w:0.7,d:0.7,h:2.7},
+ // PALMAS
+ {c:'Caja', x:9.4,y:0.6+OY,w:1.5,d:1.8,h:1.0}, {c:'Caja', x:11.5,y:0.6+OY,w:1.5,d:1.8,h:1.0},
+ {c:'Góndola', x:10.2,y:5.0+OY,w:9.4,d:1.2,h:1.75},
+ {c:'Góndola', x:10.2,y:7.6+OY,w:9.4,d:1.3,h:1.75},
+ {c:'COL-05', x:12.0,y:3.2+OY,w:0.7,d:0.7,h:2.7}, {c:'COL-06', x:18.4,y:2.8+OY,w:0.7,d:0.7,h:2.7}
+];
+
+var PISOS = [
+ {n:'CENTRO', x:-1.2,y:-1.2,w:23.6,d:18.2},
+ {n:'PALMAS', x:5.8,y:-1.2+OY,w:16.0,d:14.0}
+];
+
+var TXT = {
+  libre:  {et:'Libre todo el periodo'},
+  libera: {et:'Se libera en el periodo'},
+  tomado: {et:'Tomado'},
+  resto:  {et:'Resto de la sala'}
+};
+
+/* paletas por tema (top / izquierda / derecha) */
+var PALETAS = {
+ claro:{
+   libre:['#4FAF74','#35895A','#24643E'], libera:['#F5A960','#E8792B','#B85C15'],
+   tomado:['#E4695E','#D2453B','#9E2C24'], resto:['#CDC6BA','#B9B2A6','#948C7F'],
+   piso:'#F1E5D0', pisoBorde:'#D6C2A2', linea:'#2A2118', lineaOp:.55,
+   chipBg:'#FFF6E6', chipBorde:'#C7B79A', chipTxt:'#2A2118', sede:'#8E7F69'
+ },
+ oscuro:{
+   libre:['#5FBE83','#3F9463','#2B6B45'], libera:['#F7B87A','#E8873A','#A85C18'],
+   tomado:['#EE8177','#D2554A','#93332B'], resto:['#8A8175','#6E6659','#4E483E'],
+   piso:'#2E271F', pisoBorde:'#4A4036', linea:'#0F0C09', lineaOp:.6,
+   chipBg:'#241F19', chipBorde:'#4A4036', chipTxt:'#F5ECDD', sede:'#9C8E79'
+ }
+};
+
+/* ============================================================
+   MOTOR ISOMÉTRICO (SVG propio, sin librerías)
+   ============================================================ */
+var NS='http://www.w3.org/2000/svg';
+var VW=1000, VH=760, PAD=46;
+var K=30, KY=0.5, KZ=17;              // proyección 2D
+var KY3=0.33, KZ3=27;                 // proyección "3D"
+var modo3D=false;
+
+var svg=document.getElementById('plano'), lienzo=document.getElementById('lienzo'), ficha=document.getElementById('ficha');
+var cam, capaPiso, capaObj, capaChip;
+var refs=[], chips=[], seleccion=null, esc=1, tx=0, ty=0, base={s:1,x:0,y:0};
+
+function el(n,a){ var e=document.createElementNS(NS,n); if(a) for(var k in a) e.setAttribute(k,a[k]); return e; }
+function pr(x,y,z){ return [ (x-y)*K, (x+y)*K*KY - z*KZ ]; }
+function pts(list){ var s=''; for(var i=0;i<list.length;i++){ var p=pr(list[i][0],list[i][1],list[i][2]); s += (i?' ':'')+p[0].toFixed(1)+','+p[1].toFixed(1); } return s; }
+function carasDe(b){
+  return {
+    top:[[b.x,b.y,b.h],[b.x+b.w,b.y,b.h],[b.x+b.w,b.y+b.d,b.h],[b.x,b.y+b.d,b.h]],
+    izq:[[b.x,b.y+b.d,b.h],[b.x+b.w,b.y+b.d,b.h],[b.x+b.w,b.y+b.d,0],[b.x,b.y+b.d,0]],
+    der:[[b.x+b.w,b.y,b.h],[b.x+b.w,b.y+b.d,b.h],[b.x+b.w,b.y+b.d,0],[b.x+b.w,b.y,0]]
+  };
+}
+
+function construir(){
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+  svg.setAttribute('viewBox','0 0 '+VW+' '+VH);
+  cam=el('g',{id:'cam'});
+  capaPiso=el('g'); capaObj=el('g'); capaChip=el('g');
+  cam.appendChild(capaPiso); cam.appendChild(capaObj); cam.appendChild(capaChip);
+  svg.appendChild(cam);
+  refs=[]; chips=[];
+
+  /* pisos */
+  PISOS.forEach(function(f){
+    var poly=el('polygon',{'stroke-width':2,'vector-effect':'non-scaling-stroke','stroke-linejoin':'round'});
+    capaPiso.appendChild(poly);
+    refs.push({tipo:'piso', el:poly, caja:{x:f.x,y:f.y,w:f.w,d:f.d,h:0}});
+    var g=el('g'); capaPiso.appendChild(g);
+    var rect=el('rect',{rx:7,height:24,width:f.n.length*11+22,x:-6,y:-18});
+    var t=el('text',{'font-family':'ui-monospace, Menlo, Consolas, monospace','font-size':13,'font-weight':'700',x:5,y:-1});
+    t.textContent=f.n; g.appendChild(rect); g.appendChild(t);
+    chips.push({el:g, rect:rect, txt:t, sede:true, anc:[f.x+0.6, f.y+0.6, 0]});
+  });
+
+  /* objetos, ordenados de lejos a cerca (algoritmo del pintor) */
+  var todos=[];
+  CONTEXTO.forEach(function(o){ todos.push({dato:o, estado:'resto', alq:false}); });
+  MUEBLES.forEach(function(o){ todos.push({dato:o, estado:o.e, alq:true}); });
+  todos.sort(function(a,b){
+    return (a.dato.x+a.dato.w/2 + a.dato.y+a.dato.d/2) - (b.dato.x+b.dato.w/2 + b.dato.y+b.dato.d/2);
+  });
+
+  todos.forEach(function(o,i){
+    var b=o.dato, g=el('g',{class:'fx'});
+    if(o.alq){
+      g.setAttribute('tabindex','0'); g.setAttribute('role','button');
+      g.setAttribute('aria-label', b.c+', '+b.t+', sede '+b.s+', '+TXT[b.e].et);
+    } else { g.setAttribute('role','presentation'); }
+    var halo=el('polygon',{class:'halo',fill:'none','stroke-width':5,'vector-effect':'non-scaling-stroke','stroke-linejoin':'round'});
+    var pt=el('polygon',{'stroke-width':1.4,'vector-effect':'non-scaling-stroke','stroke-linejoin':'round'});
+    var pi=el('polygon',{'stroke-width':1.4,'vector-effect':'non-scaling-stroke','stroke-linejoin':'round'});
+    var pd=el('polygon',{'stroke-width':1.4,'vector-effect':'non-scaling-stroke','stroke-linejoin':'round'});
+    g.appendChild(halo); g.appendChild(pi); g.appendChild(pd); g.appendChild(pt);
+    capaObj.appendChild(g);
+    var r={tipo:'caja', g:g, halo:halo, top:pt, izq:pi, der:pd, caja:b, estado:o.estado, alq:o.alq, dato:b};
+    refs.push(r);
+    if(o.alq){
+      var cg=el('g',{class:'chip'});
+      var crect=el('rect',{rx:6,height:17,width:b.c.length*6.4+12,x:-(b.c.length*6.4+12)/2,y:-13});
+      var ct=el('text',{class:'chip-cod','font-family':'ui-monospace, Menlo, Consolas, monospace','font-size':10,'font-weight':'700','text-anchor':'middle',y:-1});
+      ct.textContent=b.c; cg.appendChild(crect); cg.appendChild(ct);
+      capaChip.appendChild(cg);
+      chips.push({el:cg, rect:crect, txt:ct, anc:[b.x+b.w/2, b.y+b.d/2, b.h], ref:r});
+      r.chip=cg;
+      g.addEventListener('click', function(ev){ ev.stopPropagation(); abrir(r); });
+      g.addEventListener('keydown', function(ev){ if(ev.key==='Enter'||ev.key===' '){ ev.preventDefault(); abrir(r); } });
+      g.addEventListener('pointerenter', function(){ if(!hayTacto()) abrir(r,true); });
+    } else {
+      g.addEventListener('click', function(ev){ ev.stopPropagation(); abrirResto(r); });
+    }
+  });
+  pintar(); calcularEncuadre(); aplicarCamara();
+}
+
+function hayTacto(){ return window.matchMedia('(hover:none)').matches; }
+
+/* ---- geometría: recalcula todos los puntos ---- */
+function disponer(){
+  refs.forEach(function(r){
+    if(r.tipo==='piso'){
+      var f=r.caja;
+      r.el.setAttribute('points', pts([[f.x,f.y,0],[f.x+f.w,f.y,0],[f.x+f.w,f.y+f.d,0],[f.x,f.y+f.d,0]]));
+    } else {
+      var c=carasDe(r.caja);
+      r.top.setAttribute('points', pts(c.top));
+      r.izq.setAttribute('points', pts(c.izq));
+      r.der.setAttribute('points', pts(c.der));
+      r.halo.setAttribute('points', pts(c.top));
+    }
+  });
+  chips.forEach(function(ch){
+    var p=pr(ch.anc[0],ch.anc[1],ch.anc[2]);
+    ch.el.setAttribute('transform','translate('+p[0].toFixed(1)+','+(p[1]-6).toFixed(1)+')');
+  });
+}
+
+/* ---- color ---- */
+function pintar(){
+  var P=PALETAS[temaActual()];
+  refs.forEach(function(r){
+    if(r.tipo==='piso'){
+      r.el.setAttribute('fill',P.piso); r.el.setAttribute('stroke',P.pisoBorde);
+    } else {
+      var c=P[r.estado];
+      r.top.setAttribute('fill',c[0]); r.izq.setAttribute('fill',c[1]); r.der.setAttribute('fill',c[2]);
+      r.top.setAttribute('stroke',P.linea); r.izq.setAttribute('stroke',P.linea); r.der.setAttribute('stroke',P.linea);
+      r.top.setAttribute('stroke-opacity',P.lineaOp); r.izq.setAttribute('stroke-opacity',P.lineaOp); r.der.setAttribute('stroke-opacity',P.lineaOp);
+      r.halo.setAttribute('stroke',P.linea);
+    }
+  });
+  chips.forEach(function(ch){
+    ch.rect.setAttribute('fill',P.chipBg); ch.rect.setAttribute('stroke',P.chipBorde); ch.rect.setAttribute('stroke-width','1');
+    ch.txt.setAttribute('fill', ch.sede ? P.sede : P.chipTxt);
+  });
+  disponer();
+}
+window.__pintarPlano=pintar;
+
+/* ---- cámara ---- */
+function bbox(){
+  var min=[1e9,1e9], max=[-1e9,-1e9];
+  function add(x,y,z){ var p=pr(x,y,z); if(p[0]<min[0])min[0]=p[0]; if(p[1]<min[1])min[1]=p[1]; if(p[0]>max[0])max[0]=p[0]; if(p[1]>max[1])max[1]=p[1]; }
+  PISOS.forEach(function(f){ add(f.x,f.y,0); add(f.x+f.w,f.y,0); add(f.x+f.w,f.y+f.d,0); add(f.x,f.y+f.d,0); });
+  MUEBLES.concat(CONTEXTO).forEach(function(b){ add(b.x,b.y,b.h); add(b.x+b.w,b.y+b.d,b.h); add(b.x+b.w,b.y,b.h); add(b.x,b.y+b.d,b.h); });
+  return {x:min[0],y:min[1],w:max[0]-min[0],h:max[1]-min[1]};
+}
+function calcularEncuadre(){
+  var b=bbox();
+  var s=Math.min((VW-2*PAD)/b.w, (VH-2*PAD)/b.h);
+  base={ s:s, x:PAD - b.x*s + (VW-2*PAD - b.w*s)/2, y:PAD - b.y*s + (VH-2*PAD - b.h*s)/2 };
+  esc=base.s; tx=base.x; ty=base.y;
+}
+function aplicarCamara(){
+  cam.setAttribute('transform','translate('+tx.toFixed(2)+','+ty.toFixed(2)+') scale('+esc.toFixed(4)+')');
+  capaChip.style.display = (esc/base.s < 0.72) ? 'none' : '';
+  colocarFicha();
+}
+function zoom(factor, cx, cy){
+  var nuevo=Math.max(base.s*0.55, Math.min(base.s*5.5, esc*factor));
+  if(cx===undefined){ cx=VW/2; cy=VH/2; }
+  tx = cx - (cx-tx)*(nuevo/esc);
+  ty = cy - (cy-ty)*(nuevo/esc);
+  esc=nuevo; aplicarCamara();
+}
+
+/* ---- interacción: arrastre, rueda, teclado ---- */
+var arr=null;
+svg.addEventListener('pointerdown', function(e){
+  arr={id:e.pointerId, x:e.clientX, y:e.clientY, tx:tx, ty:ty, movido:false};
+  svg.setPointerCapture(e.pointerId); svg.classList.add('arrastrando');
+});
+svg.addEventListener('pointermove', function(e){
+  if(!arr||arr.id!==e.pointerId) return;
+  var m=svg.getScreenCTM(); if(!m) return;
+  var k=1/m.a;
+  var dx=(e.clientX-arr.x)*k, dy=(e.clientY-arr.y)*k;
+  if(Math.abs(dx)+Math.abs(dy)>3) arr.movido=true;
+  tx=arr.tx+dx; ty=arr.ty+dy; aplicarCamara();
+});
+var huboArrastre=false;
+function finArrastre(e){ if(arr&&arr.id===e.pointerId){ huboArrastre=!!arr.movido; svg.classList.remove('arrastrando'); arr=null; } }
+svg.addEventListener('pointerup', finArrastre); svg.addEventListener('pointercancel', finArrastre);
+
+svg.addEventListener('wheel', function(e){
+  e.preventDefault();
+  var m=svg.getScreenCTM(); if(!m) return;
+  var p=svg.createSVGPoint(); p.x=e.clientX; p.y=e.clientY;
+  var v=p.matrixTransform(m.inverse());
+  zoom(e.deltaY<0 ? 1.16 : 1/1.16, v.x, v.y);
+}, {passive:false});
+
+/* pellizco */
+var toques={};
+svg.addEventListener('pointerdown', function(e){ if(e.pointerType==='touch') toques[e.pointerId]={x:e.clientX,y:e.clientY}; });
+svg.addEventListener('pointermove', function(e){
+  if(e.pointerType!=='touch'||!toques[e.pointerId]) return;
+  toques[e.pointerId]={x:e.clientX,y:e.clientY};
+  var ids=Object.keys(toques);
+  if(ids.length===2){
+    arr=null; svg.classList.remove('arrastrando');
+    var a=toques[ids[0]], b=toques[ids[1]];
+    var dist=Math.hypot(a.x-b.x, a.y-b.y);
+    if(svg.__dist){ var f=dist/svg.__dist; if(Math.abs(f-1)>0.01){
+      var m=svg.getScreenCTM(); var p=svg.createSVGPoint(); p.x=(a.x+b.x)/2; p.y=(a.y+b.y)/2;
+      var v=p.matrixTransform(m.inverse()); zoom(f, v.x, v.y); } }
+    svg.__dist=dist;
+  }
+});
+function soltarToque(e){ delete toques[e.pointerId]; if(Object.keys(toques).length<2) svg.__dist=null; }
+svg.addEventListener('pointerup', soltarToque); svg.addEventListener('pointercancel', soltarToque);
+
+svg.addEventListener('keydown', function(e){
+  var paso=60/ (esc/base.s);
+  if(e.key==='ArrowLeft'){ tx+=paso; } else if(e.key==='ArrowRight'){ tx-=paso; }
+  else if(e.key==='ArrowUp'){ ty+=paso; } else if(e.key==='ArrowDown'){ ty-=paso; }
+  else if(e.key==='+'||e.key==='='){ zoom(1.2); return; }
+  else if(e.key==='-'||e.key==='_'){ zoom(1/1.2); return; }
+  else if(e.key==='Escape'){ cerrar(); return; }
+  else return;
+  e.preventDefault(); aplicarCamara();
+});
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') cerrar(); });
+
+document.getElementById('b-mas').addEventListener('click', function(){ zoom(1.25); });
+document.getElementById('b-menos').addEventListener('click', function(){ zoom(1/1.25); });
+document.getElementById('b-centrar').addEventListener('click', function(){ esc=base.s; tx=base.x; ty=base.y; aplicarCamara(); });
+
+/* ---- vista 3D (misma escena, otra cámara: sin librerías) ---- */
+var b3d=document.getElementById('b-3d');
+b3d.addEventListener('click', function(){
+  modo3D=!modo3D;
+  b3d.textContent = modo3D ? 'Volver al plano' : 'Ver en 3D';
+  var kyA=KY, kzA=KZ, kyB=modo3D?KY3:0.5, kzB=modo3D?KZ3:17;
+  if(RM.matches){ var rz=esc/base.s; KY=kyB; KZ=kzB; disponer(); calcularEncuadre(); esc=base.s*rz; aplicarCamara(); return; }
+  var razon=esc/base.s, t0=performance.now(), dur=520;
+  (function paso(t){
+    var k=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-k,3);
+    KY=kyA+(kyB-kyA)*e; KZ=kzA+(kzB-kzA)*e;
+    disponer(); calcularEncuadre();
+    esc=base.s*razon; tx=base.x; ty=base.y; aplicarCamara();
+    if(k<1) requestAnimationFrame(paso);
+  })(t0);
+});
+
+/* ---- ficha del mueble ---- */
+function marcarSeleccion(r){
+  refs.forEach(function(o){ if(o.g) o.g.classList.remove('sel'); });
+  if(r&&r.g) r.g.classList.add('sel');
+  seleccion=r||null;
+}
+function esc_(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function abrir(r, suave){
+  var b=r.dato, P=PALETAS[temaActual()];
+  var color=P[b.e][1];
+  var lineas='';
+  if(b.e==='libre'){ lineas='<p class="f-l">Tarifa de referencia</p><p class="f-l f-plata">'+esc_(b.m)+' al mes</p>'; }
+  else if(b.e==='libera'){ lineas='<p class="f-l">'+esc_(b.p)+'</p><p class="f-l f-plata">'+esc_(b.m)+' al mes</p><p class="f-l">'+esc_(b.f)+'</p>'; }
+  else { lineas='<p class="f-l">'+esc_(b.p)+'</p><p class="f-l f-plata">'+esc_(b.m)+' al mes</p><p class="f-l">'+esc_(b.f)+'</p>'; }
+  var nota = (b.e==='libre') ? '' : '<p class="f-nota">Proveedor y valores de ejemplo</p>';
+  ficha.innerHTML =
+    '<p class="f-cod">'+esc_(b.c)+'</p>'+
+    '<p class="f-tipo">'+esc_(b.t)+'</p>'+
+    '<p class="f-ubi">'+esc_(b.u)+' · sede '+esc_(b.s)+'</p>'+
+    '<hr>'+
+    '<p class="f-est"><i style="background:'+color+'"></i>'+TXT[b.e].et+'</p>'+
+    lineas + nota +
+    '<button type="button" class="btn btn-2 btn-mini f-cerrar">Cerrar</button>';
+  var bc=ficha.querySelector('.f-cerrar'); if(bc) bc.addEventListener('click', cerrar);
+  ficha.hidden=false;
+  marcarSeleccion(r);
+  colocarFicha();
+}
+function abrirResto(r){
+  ficha.innerHTML =
+    '<p class="f-cod">'+esc_(r.dato.c)+'</p>'+
+    '<hr>'+
+    '<p class="f-est"><i style="background:'+PALETAS[temaActual()].resto[1]+'"></i>Resto de la sala</p>'+
+    '<p class="f-l">No se alquila. Es parte del local.</p>'+
+    '<button type="button" class="btn btn-2 btn-mini f-cerrar">Cerrar</button>';
+  var bc=ficha.querySelector('.f-cerrar'); if(bc) bc.addEventListener('click', cerrar);
+  ficha.hidden=false; marcarSeleccion(r); colocarFicha();
+}
+function cerrar(){ ficha.hidden=true; marcarSeleccion(null); }
+
+function colocarFicha(){
+  if(ficha.hidden||!seleccion||!cam) return;
+  if(window.matchMedia('(max-width:640px)').matches){ ficha.style.left=''; ficha.style.top=''; return; } // panel inferior fijo
+  var m=cam.getScreenCTM(); if(!m) return;
+  var b=seleccion.caja||seleccion.dato;
+  var p=pr(b.x+b.w/2, b.y+b.d/2, b.h);
+  var pt=svg.createSVGPoint(); pt.x=p[0]; pt.y=p[1];
+  var s=pt.matrixTransform(m);
+  var caja=lienzo.getBoundingClientRect();
+  var x=s.x-caja.left-123, y=s.y-caja.top-ficha.offsetHeight-22;
+  x=Math.max(8, Math.min(caja.width-254, x));
+  y=Math.max(8, Math.min(caja.height-ficha.offsetHeight-8, y));
+  ficha.style.left=x+'px'; ficha.style.top=y+'px';
+}
+addEventListener('resize', function(){ colocarFicha(); }, {passive:true});
+svg.addEventListener('click', function(e){ if(e.target===svg && !huboArrastre) cerrar(); huboArrastre=false; });
+
+/* ---- tabla equivalente ---- */
+(function(){
+  var tb=document.querySelector('#tabla-plano tbody'); if(!tb) return;
+  MUEBLES.forEach(function(b){
+    var tr=document.createElement('tr');
+    tr.innerHTML='<td class="cod">'+esc_(b.c)+'</td><td>'+esc_(b.t)+'</td><td>'+esc_(b.s)+'</td><td>'+TXT[b.e].et+'</td><td>'+esc_(b.p||'—')+'</td><td class="cod tabnum">'+esc_(b.m)+(b.e==='libre'?' (tarifa)':'')+'</td>';
+    tb.appendChild(tr);
+  });
+})();
+
+/* ---- arranque del plano: después del primer pintado ---- */
+function arrancarPlano(){
+  construir();
+  var pun02=null;
+  refs.forEach(function(r){ if(r.alq && r.dato.c==='PUN-02' && r.dato.s==='CENTRO') pun02=r; });
+  if(pun02) abrir(pun02);
+}
+requestAnimationFrame(function(){ requestAnimationFrame(function(){ setTimeout(arrancarPlano, 0); }); });
+
+/* ============================================================
+   RITMO DE LECTURA: entradas, raíl del día y contador
+   ============================================================ */
+if('IntersectionObserver' in window){
+  var obsAp=new IntersectionObserver(function(ent){
+    ent.forEach(function(x){ if(x.isIntersecting){ x.target.classList.add('vista'); obsAp.unobserve(x.target); } });
+  },{rootMargin:'0px 0px -8% 0px', threshold:0.08});
+  var i=0;
+  document.querySelectorAll('.aparece').forEach(function(n){
+    n.style.transitionDelay=((i++%5)*55)+'ms';
+    obsAp.observe(n);
+  });
+
+  /* raíl */
+  var enlacesRail=[].slice.call(document.querySelectorAll('.rail a'));
+  var obsSec=new IntersectionObserver(function(ent){
+    ent.forEach(function(x){
+      if(x.isIntersecting){
+        enlacesRail.forEach(function(a){ a.classList.toggle('act', a.getAttribute('data-sec')===x.target.id); });
+      }
+    });
+  },{rootMargin:'-45% 0px -45% 0px'});
+  ['hero','que-hace','para-quien','como-se-usa','asesoria','confianza','precio','cierre'].forEach(function(id){
+    var s=document.getElementById(id); if(s) obsSec.observe(s);
+  });
+
+  /* contador 1..6 */
+  var pistas=[].slice.call(document.querySelectorAll('#pistas i'));
+  var txtCont=document.getElementById('contador-txt');
+  var bloques=[].slice.call(document.querySelectorAll('.dato-bloque'));
+  var vistos=0;
+  var obsCont=new IntersectionObserver(function(ent){
+    ent.forEach(function(x){
+      if(x.isIntersecting){
+        var n=bloques.indexOf(x.target)+1;
+        if(n>vistos){ vistos=n; for(var j=0;j<pistas.length;j++) pistas[j].classList.toggle('on', j<vistos);
+          txtCont.textContent = vistos+' de 6' + (vistos===6 ? ' · las seis' : ''); }
+      }
+    });
+  },{threshold:0.35});
+  bloques.forEach(function(b){ obsCont.observe(b); });
+} else {
+  document.querySelectorAll('.aparece').forEach(function(n){ n.classList.add('vista'); });
+}
+})();
+</script>
+</body>
+</html>

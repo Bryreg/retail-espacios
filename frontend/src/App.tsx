@@ -1,17 +1,49 @@
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import Dashboard from "./pages/Dashboard";
-import Login from "./pages/Login";
-import Montaje from "./pages/Montaje";
-import PoliticaDatos from "./pages/PoliticaDatos";
-import Plataforma from "./pages/Plataforma";
-import ReportePlataforma from "./pages/ReportePlataforma";
-import DetalleCliente from "./pages/DetalleCliente";
+import Landing from "./pages/Landing/Landing";
 import BloqueoCuenta from "./components/BloqueoCuenta";
 import ModalConsentimiento from "./components/ModalConsentimiento";
 import { usarToken } from "./api/montaje";
 import { useAuthStore } from "./store/authStore";
 import { startAutoSync, stopAutoSync, useFixtureStore } from "./store/fixtureStore";
+
+/**
+ * Fase 9 (landing): TODAS las pantallas de adentro entran por `import()`.
+ *
+ * Vite parte el bundle únicamente donde hay un import dinámico. Con estas
+ * páginas importadas de la forma normal, el grafo estático de `main.tsx`
+ * arrastraba `StoreEditor3D` —y con él `three`, `@react-three/fiber` y
+ * `@react-three/drei`— hasta el chunk principal: el visitante anónimo de `/`
+ * bajaba el motor 3D entero antes de leer el titular, y el `import()` perezoso
+ * de la vista 3D de la landing no ahorraba un solo byte porque three ya había
+ * llegado. Lo mismo con el SDK de Firebase, que cuelga de `Login`.
+ *
+ * La landing es lo ÚNICO que se importa de forma estática: es lo que ve quien
+ * llega sin sesión, y su LCP es un `<h1>` que no puede esperar a un chunk.
+ */
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Login = lazy(() => import("./pages/Login"));
+const Montaje = lazy(() => import("./pages/Montaje"));
+const PoliticaDatos = lazy(() => import("./pages/PoliticaDatos"));
+const Plataforma = lazy(() => import("./pages/Plataforma"));
+const ReportePlataforma = lazy(() => import("./pages/ReportePlataforma"));
+const DetalleCliente = lazy(() => import("./pages/DetalleCliente"));
+
+/** Mientras baja el chunk de la pantalla: fondo de la app y nada más, para no
+ *  meter un parpadeo de texto en una espera que suele durar milisegundos. */
+function Pantalla({ children }: { children: ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <div style={{ minHeight: "100vh", background: "var(--bg)" }} aria-busy="true">
+          <span className="sr-only" style={{ position: "absolute", left: -9999 }}>Cargando…</span>
+        </div>
+      }
+    >
+      {children}
+    </Suspense>
+  );
+}
 
 /** Dónde queda el enlace de montaje entre una recarga y la siguiente. */
 const LLAVE_MONTAJE = "recabra-montaje";
@@ -109,16 +141,33 @@ export default function App() {
   // `<Route>` de más abajo: esas viven adentro del `<BrowserRouter>` que sólo
   // se monta con sesión abierta, y esta página tiene que andar sin login.
   if (typeof window !== "undefined" && window.location.pathname === "/politica-datos") {
-    return <PoliticaDatos />;
+    return <Pantalla><PoliticaDatos /></Pantalla>;
   }
 
   // El enlace del correo manda sobre todo lo demás, incluso sobre una sesión
   // abierta: quien lo toca quiere ver ESE espacio, no el tablero.
-  if (TOKEN_MONTAJE) return <Montaje />;
+  if (TOKEN_MONTAJE) return <Pantalla><Montaje /></Pantalla>;
 
-  // Route guard: no session → login screen. A 401 anywhere clears the token
-  // (see api/client.ts), which lands the user back here automatically.
-  if (!token) return <Login />;
+  // Route guard: no session. A 401 anywhere clears the token (see
+  // api/client.ts), which lands the user back acá automáticamente.
+  //
+  // Fase 9 (landing): sin sesión, "/" ya NO es el formulario de ingreso — es la
+  // página pública que cuenta qué es RECABRA. El login se mudó a "/login", que
+  // es adonde apuntan el correo de invitación (`/login?invitacion=…`, ver
+  // `backend/app/routers/usuarios.py`) y los dos CTA de la landing.
+  //
+  // Todo lo que estaba antes que esto sigue mandando: la política de datos es
+  // pública y el enlace de montaje (`/?montar=…&t=…`) se resuelve arriba, así
+  // que la mercaderista nunca ve la landing aunque su enlace caiga en "/".
+  //
+  // Cualquier OTRA ruta sin sesión sigue mostrando el login, como siempre: es
+  // lo que hace que un enlace guardado a `/reporte-plataforma` termine en esa
+  // pantalla después de entrar, en vez de perderse en la portada.
+  if (!token) {
+    const ruta = typeof window !== "undefined" ? window.location.pathname : "/";
+    const esPortada = ruta === "/" || ruta === "" || ruta === "/index.html";
+    return esPortada ? <Landing /> : <Pantalla><Login /></Pantalla>;
+  }
 
   // Fase 2 clientes: cliente `suspendido` — sólo un owner llega hasta acá con
   // este aviso puesto (worker/admin reciben 402 en el login y nunca guardan
@@ -129,6 +178,7 @@ export default function App() {
   }
 
   return (
+    <Pantalla>
     <BrowserRouter>
       {/* Fase 3 compliance: superposición, no reemplazo — a diferencia de
           `BloqueoCuenta`, acá no hay nada que cortar; el tablero de abajo
@@ -165,5 +215,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
+    </Pantalla>
   );
 }

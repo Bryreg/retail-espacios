@@ -3,7 +3,35 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RECABRA</title>
+
+    <!-- SEO de la landing (Fase 9). Va acá, en el HTML servido, y no puesto por
+         JavaScript: quien comparte el enlace en un WhatsApp o en un correo tiene
+         que ver de qué se trata sin que nadie ejecute nada. `/` sin sesión es la
+         landing pública; el resto de la aplicación vive detrás del ingreso y no
+         se indexa igual. El texto es el de `features/landing/outputs/copy.md`
+         §1, literal. -->
+    <title>RECABRA — Espacios comerciales de tu supermercado</title>
+    <meta
+      name="description"
+      content="Qué mueble está libre, quién lo ocupa, a cuánto y hasta cuándo. RECABRA lleva la venta de espacios de exhibición de tu supermercado, sede por sede."
+    />
+    <meta name="robots" content="index, follow" />
+    <meta property="og:site_name" content="RECABRA" />
+    <meta property="og:title" content="RECABRA — Espacios comerciales de tu supermercado" />
+    <meta
+      property="og:description"
+      content="Dibujás el plano de cada sede, marcás qué muebles se alquilan y vendés tocando el mapa. Contratos, tarifas, vencimientos y montaje con foto."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://retail-espacios.onrender.com/" />
+    <meta property="og:locale" content="es_CO" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!-- FALTA `og:image` (1200 × 630 px, el plano isométrico de ejemplo con la
+         leyenda visible, imagen LOCAL del repo). No se pone una etiqueta que
+         apunte a un archivo que no existe: sin `og:image` el enlace compartido
+         se ve como tarjeta chica; con una ruta rota, roto. Lo pendiente está
+         anotado en `features/landing/outputs/frontend.md`. -->
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- Chivo para leer y Archivo Narrow para los códigos y las versalitas.
