@@ -835,7 +835,10 @@ def test_a9_orden_de_rutas_y_variantes_de_la_url(client, monkeypatch):
     for ruta in ("/api/plataforma/adopcion/", "/api/plataforma/adopcionx",
                  "/api/plataforma/ADOPCION"):
         r = client.get(ruta, headers=cab)
-        assert r.status_code != 200 or r.json() == base, f"{ruta} -> {r.status_code}"
+        # `generado_en` es el reloj: entre las dos llamadas puede cambiar de
+        # segundo (pasó en CI). Se compara todo lo demás.
+        sin_reloj = lambda d: {k: v for k, v in d.items() if k != "generado_en"}
+        assert r.status_code != 200 or sin_reloj(r.json()) == sin_reloj(base), f"{ruta} -> {r.status_code}"
         assert client.get(ruta).status_code in (401, 403, 404, 405, 307), ruta
 
 

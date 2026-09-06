@@ -1452,8 +1452,10 @@ def test_t53_un_slug_veneno_no_abre_nada_ni_ensucia_la_bitacora(client, monkeypa
         # O el 404 con texto FIJO del router, o el 404 genérico de Starlette
         # cuando la cadena ni siquiera llega a matchear la ruta (barras
         # adentro del segmento). Ninguno de los dos puede filtrar nada.
-        assert r.json()["detail"] in ("No hay un cliente con ese código.", "Not found"), r.text
-        assert veneno not in r.text or r.json()["detail"] == "Not found"
+        # «Not found» es el del catch-all de la SPA; «Not Found» el de Starlette
+        # cuando ninguna ruta matchea (httpx 0.27 no normaliza los `..`, 0.28 sí).
+        assert r.json()["detail"] in ("No hay un cliente con ese código.", "Not found", "Not Found"), r.text
+        assert veneno not in r.text or r.json()["detail"] in ("Not found", "Not Found")
         for pista in ("passwd", "sqlite", "/tmp", "Traceback", NOMBRE_A):
             assert pista not in r.text, (veneno, r.text)
         assert nuevas == [], (veneno, nuevas)

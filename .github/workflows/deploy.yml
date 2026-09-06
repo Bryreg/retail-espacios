@@ -47,6 +47,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # test_ingresos_12 compara los modelos contra el commit 6dd2f4c con
+          # `git show`: con el clon superficial por defecto ese commit no existe.
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"    # matches the Dockerfile's runtime stage

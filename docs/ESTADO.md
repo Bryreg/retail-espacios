@@ -1189,6 +1189,24 @@ sección:
 Detalle de qué se portó tal cual, qué se adaptó y qué quedó distinto de E en
 `features/landing/outputs/frontend-E.md`.
 
+### CI en GitHub: por qué estuvo rojo en `main` (#48 → #49) y cómo se arregló
+
+Los merges de #48 y #49 dejaron **rojo** el job «Backend · pytest» de `main` sin
+que nadie lo viera (se mergeaba mirando la suite local, verde). Cuatro fallos,
+todos de tests, ninguno del producto — y ninguno reproducible local:
+
+- `test_a9`: comparaba dos respuestas enteras de `/adopcion` y `generado_en`
+  cambió de segundo entre llamada y llamada. Ahora se compara sin el reloj.
+- `test_t53`: el 404 genérico dice «Not Found» con httpx 0.27 (el pinneado en
+  `requirements-dev.txt`, que no normaliza `..` en el path) y «Not found» (el
+  catch-all de la SPA) con httpx 0.28 (el local). El test acepta los dos.
+- `test_ingresos_12`: hace `git show 6dd2f4c:…` y el checkout de Actions es
+  superficial (`fetch-depth: 1`), así que el commit no existía. El job del
+  backend clona con `fetch-depth: 0`.
+
+**Regla:** antes de mergear, mirar los checks del PR en GitHub, no solo la
+suite local; y después del merge, el run de `main`.
+
 ### Pendientes conocidos: clientes y plataforma
 
 - **R-3 (menor)**: el tope de 2 fundaciones es count+insert sin barrera en la
