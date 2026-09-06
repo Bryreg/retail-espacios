@@ -1,0 +1,1466 @@
+<!doctype html>
+<html lang="es" class="sinjs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RECABRA — Espacios comerciales de tu supermercado</title>
+<meta name="description" content="Qué mueble está libre, quién lo ocupa, a cuánto y hasta cuándo. RECABRA lleva la venta de espacios de exhibición de tu supermercado, sede por sede.">
+<meta name="robots" content="index, follow">
+<meta property="og:site_name" content="RECABRA">
+<meta property="og:title" content="RECABRA — Espacios comerciales de tu supermercado">
+<meta property="og:description" content="Dibujás el plano de cada sede, marcás qué muebles se alquilan y vendés tocando el mapa. Contratos, tarifas, vencimientos y montaje con foto.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://retail-espacios.onrender.com/">
+<meta property="og:locale" content="es_CO">
+<meta property="og:image:alt" content="Plano isométrico de un supermercado de ejemplo, con los muebles pintados según estén libres, por liberarse u ocupados.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#FFD100">
+<script>document.documentElement.className='js';try{var t=localStorage.getItem('recabra-tema');if(t)document.documentElement.setAttribute('data-tema',t);}catch(e){}</script>
+<style>
+/* ═══════════════════════════════════════════════════════════════════
+   RECABRA — Dirección B "GÓNDOLA": cartel de supermercado
+   Capa 1 primitivos · Capa 2 semánticos · Capa 3 componente
+   ═══════════════════════════════════════════════════════════════════ */
+:root{
+  /* ── Capa 1 · primitivos ─────────────────────────── */
+  --p-amarillo:#FFD100; --p-amarillo-osc:#E5B800; --p-amarillo-claro:#FFE566;
+  --p-rojo:#D8232A;     --p-rojo-osc:#A8161C;
+  --p-azul:#1B3FD8;     --p-azul-osc:#122A94;
+  --p-negro:#0E0E0D;    --p-carbon:#232320;
+  --p-hueso:#FFFCF2;    --p-crema:#F4EEDF;
+  --p-verde:#0B7A3E;    --p-verde-claro:#2FBE72;
+  --p-naranja:#E06A00;  --p-naranja-claro:#FFA033;
+  --p-gris:#B5B1A6;     --p-gris-osc:#6E6B63;
+
+  /* ── Capa 2 · semánticos (claro) ─────────────────── */
+  --papel:#FCFCFB; --papel-2:var(--p-crema); --papel-3:#FFFFFF;
+  --tinta:var(--p-negro); --tinta-2:#4A4842;
+  --marca:var(--p-amarillo);
+  --borde:var(--p-negro); --borde-suave:#D8D3C6;
+  --sombra-dura:var(--p-negro);
+  --libre:var(--p-verde); --libre-cara:#3ECB7D;
+  --libera:var(--p-naranja); --libera-cara:#FF9E2E;
+  --tomado:var(--p-rojo); --tomado-cara:#E8464C;
+  --resto:var(--p-gris); --piso:#E7E2D5;
+  --sel-anillo:var(--p-azul);
+  color-scheme:light;
+}
+html[data-tema="oscuro"]{
+  --papel:#0C0C0B; --papel-2:#17171A; --papel-3:#121211;
+  --tinta:#FBF7EC; --tinta-2:#B6B2A6;
+  --borde:#FBF7EC; --borde-suave:#3A3A36;
+  --sombra-dura:#000;
+  --marca:#FFD100;
+  --libre:#2FBE72; --libre-cara:#5FE39B;
+  --libera:#FF8A1F; --libera-cara:#FFB463;
+  --tomado:#F2545B; --tomado-cara:#FF7A80;
+  --resto:#57564F; --piso:#232320;
+  --sel-anillo:#7FA0FF;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme:dark){
+  html:not([data-tema="claro"]){
+    --papel:#0C0C0B; --papel-2:#17171A; --papel-3:#121211;
+    --tinta:#FBF7EC; --tinta-2:#B6B2A6;
+    --borde:#FBF7EC; --borde-suave:#3A3A36;
+    --sombra-dura:#000;
+    --libre:#2FBE72; --libre-cara:#5FE39B;
+    --libera:#FF8A1F; --libera-cara:#FFB463;
+    --tomado:#F2545B; --tomado-cara:#FF7A80;
+    --resto:#57564F; --piso:#232320;
+    --sel-anillo:#7FA0FF;
+    color-scheme:dark;
+  }
+}
+:root{
+  /* Colores que NO cambian con el tema: van dentro de bloques planos */
+  --fijo-negro:#0E0E0D; --fijo-hueso:#FFFCF2; --fijo-amarillo:#FFD100;
+  --fijo-rojo:#D8232A; --fijo-azul:#1B3FD8;
+
+  /* Tipografía */
+  --f-cartel:"Avenir Next Condensed","Roboto Condensed","Archivo Narrow","Liberation Sans Narrow","DejaVu Sans Condensed","Arial Narrow","Franklin Gothic Demi Cond",Impact,Haettenschweiler,system-ui,sans-serif;
+  --f-texto:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+  --f-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono","DejaVu Sans Mono",monospace;
+
+  --t-mega:clamp(2rem,5.6vw,4.6rem);
+  --t-xxl:clamp(1.9rem,5vw,3.6rem);
+  --t-xl:clamp(1.55rem,3.4vw,2.6rem);
+  --t-l:clamp(1.25rem,2.6vw,1.9rem);
+  --t-m:clamp(1.02rem,1.5vw,1.18rem);
+  --t-s:.875rem; --t-xs:.75rem;
+
+  --e-1:.5rem; --e-2:1rem; --e-3:1.5rem; --e-4:2.25rem; --e-5:3.5rem; --e-6:5rem;
+  --bw:3px; --bw-g:5px;
+  --nav-h:56px;
+  --radio:0px;
+}
+@media (min-width:900px){ :root{ --nav-h:64px; } }
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%; scroll-behavior:smooth; scroll-padding-top:calc(var(--nav-h) + 8px)}
+@media (prefers-reduced-motion:reduce){ html{scroll-behavior:auto} }
+body{
+  margin:0; background:var(--papel); color:var(--tinta);
+  font-family:var(--f-texto); font-size:var(--t-m); line-height:1.55;
+  overflow-x:hidden; -webkit-font-smoothing:antialiased;
+}
+img,svg{max-width:100%}
+h1,h2,h3,h4{margin:0; font-family:var(--f-cartel); font-stretch:condensed; font-weight:800; text-transform:uppercase; line-height:.92; letter-spacing:-.005em}
+p{margin:0 0 var(--e-2)}
+a{color:inherit}
+::selection{background:var(--fijo-amarillo); color:var(--fijo-negro)}
+:focus-visible{outline:4px solid var(--sel-anillo); outline-offset:3px}
+
+.env{width:min(1360px,100% - 2rem); margin-inline:auto}
+@media (min-width:900px){ .env{width:min(1360px,100% - 4rem)} }
+.oculto-vis{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ─── Barra + recorrido de la tienda ─────────────── */
+.barra{
+  position:sticky; top:0; z-index:80; height:var(--nav-h);
+  background:var(--fijo-amarillo); color:var(--fijo-negro);
+  border-bottom:var(--bw-g) solid var(--fijo-negro);
+  display:flex; align-items:center; gap:var(--e-2);
+  padding-inline:clamp(.75rem,2vw,1.5rem);
+}
+.barra .logo{
+  font-family:var(--f-cartel); font-weight:800; font-size:clamp(1.15rem,2.4vw,1.6rem);
+  letter-spacing:.10em; text-transform:uppercase; text-decoration:none; white-space:nowrap;
+}
+.recorrido{flex:1; min-width:0; display:flex; align-items:center; gap:6px}
+.recorrido .rail{
+  position:relative; flex:1; height:14px; background:var(--fijo-hueso);
+  border:2px solid var(--fijo-negro); overflow:hidden;
+}
+.recorrido .fill{position:absolute; inset:0 auto 0 0; width:0%; background:var(--fijo-rojo)}
+.recorrido .fill::after{content:""; position:absolute; right:0; top:0; bottom:0; width:3px; background:var(--fijo-negro)}
+.recorrido .paso{
+  font-family:var(--f-cartel); font-size:.68rem; letter-spacing:.06em; text-transform:uppercase;
+  padding:.1rem .3rem; opacity:.7; white-space:nowrap; border:2px solid transparent;
+}
+.recorrido .paso[aria-current="true"]{opacity:1; background:var(--fijo-negro); color:var(--fijo-amarillo)}
+.recorrido .pasos{display:none; gap:2px}
+@media (min-width:1100px){ .recorrido .pasos{display:flex} .recorrido .rail{max-width:180px; flex:0 0 180px} }
+.barra .acc{display:flex; align-items:center; gap:.5rem}
+.btn-tema{
+  font:inherit; font-family:var(--f-cartel); font-weight:800; text-transform:uppercase; font-size:.8rem;
+  letter-spacing:.04em; background:var(--fijo-hueso); color:var(--fijo-negro);
+  border:2px solid var(--fijo-negro); padding:.3rem .55rem; cursor:pointer; display:flex; gap:.35rem; align-items:center;
+}
+.btn-tema:hover{background:var(--fijo-negro); color:var(--fijo-amarillo)}
+.btn-tema svg{width:15px;height:15px;display:block}
+.btn-tema .txt{display:none}
+@media (min-width:700px){ .btn-tema .txt{display:inline} }
+.barra .cta-mini{
+  display:none; font-family:var(--f-cartel); font-weight:800; text-transform:uppercase; font-size:.85rem;
+  letter-spacing:.03em; background:var(--fijo-negro); color:var(--fijo-amarillo);
+  border:2px solid var(--fijo-negro); padding:.4rem .8rem; text-decoration:none; white-space:nowrap;
+}
+.barra .cta-mini:hover{background:var(--fijo-rojo); color:var(--fijo-hueso)}
+@media (min-width:560px){ .barra .cta-mini{display:inline-block} }
+
+/* ─── Botones ─────────────────────────────────────── */
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:.5rem;
+  font-family:var(--f-cartel); font-weight:800; text-transform:uppercase; letter-spacing:.02em;
+  font-size:clamp(1rem,2vw,1.35rem); line-height:1; text-decoration:none; cursor:pointer;
+  padding:.95rem 1.5rem; min-height:52px; border:var(--bw) solid var(--fijo-negro);
+  background:var(--fijo-negro); color:var(--fijo-amarillo);
+  box-shadow:6px 6px 0 var(--fijo-negro); transition:transform .12s ease, box-shadow .12s ease, background .12s ease;
+}
+.btn:hover{transform:translate(3px,3px); box-shadow:3px 3px 0 var(--fijo-negro); background:var(--fijo-rojo); color:var(--fijo-hueso)}
+.btn:active{transform:translate(6px,6px); box-shadow:0 0 0 var(--fijo-negro)}
+.btn.sec{background:var(--fijo-hueso); color:var(--fijo-negro)}
+.btn.sec:hover{background:var(--fijo-amarillo); color:var(--fijo-negro)}
+.btn.claro{border-color:var(--tinta); box-shadow:6px 6px 0 var(--tinta); background:var(--tinta); color:var(--papel)}
+.btn.claro:hover{box-shadow:3px 3px 0 var(--tinta); background:var(--fijo-rojo); color:var(--fijo-hueso)}
+.btn.claro.sec{background:transparent; color:var(--tinta)}
+.btn.claro.sec:hover{background:var(--tinta); color:var(--papel)}
+@media (prefers-reduced-motion:reduce){ .btn,.btn:hover,.btn:active{transition:none; transform:none} }
+
+/* ─── Etiquetas / stickers ────────────────────────── */
+.eti{
+  display:inline-flex; align-items:center; gap:.4rem;
+  font-family:var(--f-cartel); font-weight:800; text-transform:uppercase; letter-spacing:.05em;
+  font-size:.78rem; line-height:1; padding:.4rem .6rem;
+  border:2px solid var(--fijo-negro); background:var(--fijo-hueso); color:var(--fijo-negro);
+}
+.eti .pto{width:.62em;height:.62em;border:2px solid var(--fijo-negro);display:block;flex:none}
+.eti.libre .pto{background:var(--libre-cara)}
+.eti.libera .pto{background:var(--libera-cara); background-image:repeating-linear-gradient(45deg,rgba(0,0,0,.55) 0 2px,transparent 2px 4px)}
+.eti.tomado .pto{background:var(--tomado-cara)}
+.eti.resto .pto{background:var(--resto)}
+.eti.am{background:var(--fijo-amarillo)}
+.eti.ng{background:var(--fijo-negro); color:var(--fijo-amarillo); border-color:var(--fijo-negro)}
+
+/* Etiqueta colgante que apunta hacia abajo = el gancho */
+.gancho{position:relative; display:flex; justify-content:center; padding-top:var(--e-3); z-index:5}
+.gancho::before{content:""; position:absolute; top:0; left:50%; width:3px; height:var(--e-3); background:var(--tinta)}
+.colgante{
+  position:relative; display:block; text-align:center; text-decoration:none;
+  background:var(--fijo-amarillo); color:var(--fijo-negro);
+  border:var(--bw) solid var(--fijo-negro);
+  padding:1.1rem clamp(1rem,3vw,2.2rem) 2.2rem;
+  clip-path:polygon(0 0,100% 0,100% 68%,50% 100%,0 68%);
+  max-width:min(560px,92vw);
+  transform:rotate(-1deg);
+}
+.colgante:hover{background:var(--fijo-rojo); color:var(--fijo-hueso)}
+.colgante .q{font-family:var(--f-cartel); font-weight:800; text-transform:uppercase; font-size:clamp(1.05rem,2.7vw,1.7rem); line-height:1.05; display:block}
+.colgante .sub{display:block; font-family:var(--f-texto); font-size:.8rem; text-transform:none; margin-top:.3rem; opacity:.8}
+.gancho .flecha{position:absolute; bottom:-30px; left:50%; transform:translateX(-50%); width:26px; height:26px; color:var(--tinta)}
+.js .gancho .flecha{animation:baja 1.8s ease-in-out infinite}
+@keyframes baja{0%,100%{transform:translate(-50%,0)}50%{transform:translate(-50%,8px)}}
+@media (prefers-reduced-motion:reduce){ .js .gancho .flecha{animation:none} .colgante{transform:none} }
+
+/* ─── Cabecera de góndola (encabezado de sección) ─── */
+.pasillo{position:relative}
+.cabecera{
+  position:sticky; top:var(--nav-h); z-index:40;
+  background:var(--papel-2); color:var(--tinta);
+  border-block:var(--bw-g) solid var(--borde);
+  padding:var(--e-2) 0;
+}
+.cabecera .fila{display:flex; align-items:center; gap:var(--e-2); flex-wrap:wrap}
+.cabecera .num{
+  font-family:var(--f-cartel); font-weight:800; font-size:clamp(1.4rem,3.4vw,2.3rem); line-height:1;
+  background:var(--fijo-amarillo); color:var(--fijo-negro); border:var(--bw) solid var(--fijo-negro);
+  padding:.28rem .55rem; flex:none;
+}
+.cabecera h2{font-size:var(--t-xl); flex:1 1 auto; min-width:0}
+.cabecera .de{font-family:var(--f-cartel); font-size:.78rem; letter-spacing:.08em; text-transform:uppercase; opacity:.75}
+.cabecera.ng{background:var(--fijo-negro); color:var(--fijo-hueso); border-color:var(--fijo-negro)}
+.cabecera.rj{background:var(--fijo-rojo); color:var(--fijo-hueso); border-color:var(--fijo-negro)}
+.cabecera.rj .num{background:var(--fijo-hueso)}
+.cabecera.az{background:var(--fijo-azul); color:var(--fijo-hueso); border-color:var(--fijo-negro)}
+.cabecera.am{background:var(--fijo-amarillo); color:var(--fijo-negro); border-color:var(--fijo-negro)}
+.cabecera.am .num{background:var(--fijo-negro); color:var(--fijo-amarillo)}
+@media (max-width:699px){
+  .cabecera{padding:.45rem 0}
+  .cabecera h2{font-size:var(--t-l)}
+  .cabecera .num{font-size:1.15rem; padding:.2rem .4rem}
+  .cabecera .de{display:none}
+  .cabecera .fila{gap:.6rem; flex-wrap:nowrap}
+}
+.bajada{font-size:clamp(1.05rem,2vw,1.35rem); max-width:56ch; margin-top:var(--e-1)}
+.cuerpo{padding-block:var(--e-4) var(--e-3)}
+@media (min-width:900px){ .cuerpo{padding-block:var(--e-5) var(--e-4)} }
+
+/* ─── HERO ────────────────────────────────────────── */
+.hero{position:relative; background:var(--fijo-amarillo); color:var(--fijo-negro); border-bottom:var(--bw-g) solid var(--fijo-negro); overflow:hidden}
+.hero::before{
+  content:""; position:absolute; inset:0; opacity:.14; pointer-events:none;
+  background-image:repeating-linear-gradient(90deg,var(--fijo-negro) 0 2px,transparent 2px 64px),
+                   repeating-linear-gradient(0deg,var(--fijo-negro) 0 2px,transparent 2px 64px);
+}
+.hero .env{position:relative; padding-block:var(--e-4) var(--e-3)}
+@media (min-width:900px){ .hero .env{padding-block:var(--e-5) var(--e-4)} }
+.hero-grid{display:grid; gap:var(--e-4); align-items:start}
+@media (min-width:1080px){ .hero-grid{grid-template-columns:minmax(0,0.92fr) minmax(0,1.08fr); gap:var(--e-4)} }
+.antetitulo{display:inline-block; background:var(--fijo-negro); color:var(--fijo-amarillo); font-family:var(--f-cartel); font-weight:800; text-transform:uppercase; letter-spacing:.14em; font-size:clamp(.72rem,1.5vw,.9rem); padding:.45rem .7rem; margin-bottom:var(--e-2)}
+h1.titular{font-size:var(--t-mega); letter-spacing:-.02em; line-height:.9; margin-bottom:var(--e-2)}
+h1.titular .mk{position:relative; display:inline-block; padding-inline:.12em; color:var(--fijo-hueso)}
+h1.titular .mk.v{background:var(--p-verde)}
+h1.titular .mk.r{background:var(--fijo-rojo)}
+h1.titular .mk.n{background:var(--p-naranja); color:var(--fijo-negro)}
+h1.titular .mk.z{background:var(--fijo-negro); color:var(--fijo-amarillo)}
+.hero .sub1{font-size:clamp(1.05rem,1.9vw,1.3rem); max-width:52ch; font-weight:500}
+.hero .sub2{font-size:clamp(1rem,1.7vw,1.15rem); max-width:52ch; border-left:var(--bw) solid var(--fijo-negro); padding-left:var(--e-2)}
+.acciones{display:flex; flex-wrap:wrap; gap:var(--e-2); margin-top:var(--e-3)}
+.pie-acciones{font-size:.9rem; margin-top:var(--e-2); max-width:46ch}
+
+/* ─── Caja del plano ──────────────────────────────── */
+.plano-caja{
+  position:relative; background:var(--papel-3); color:var(--tinta);
+  border:var(--bw-g) solid var(--fijo-negro); box-shadow:10px 10px 0 var(--fijo-negro);
+}
+.plano-top{display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; padding:.55rem .7rem; border-bottom:var(--bw) solid var(--borde); background:var(--papel-2)}
+.rotulo{font-family:var(--f-cartel); font-weight:800; text-transform:uppercase; letter-spacing:.05em; font-size:.82rem; background:var(--fijo-negro); color:var(--fijo-amarillo); padding:.35rem .55rem}
+.ctrl{margin-left:auto; display:flex; gap:.3rem}
+.ctrl button{
+  font:inherit; font-family:var(--f-cartel); font-weight:800; font-size:.82rem; text-transform:uppercase;
+  min-width:38px; height:38px; padding:0 .5rem; cursor:pointer;
+  background:var(--papel-3); color:var(--tinta); border:2px solid var(--borde);
+}
+.ctrl button:hover{background:var(--fijo-amarillo); color:var(--fijo-negro); border-color:var(--fijo-negro)}
+.ctrl button svg{width:16px;height:16px;display:block;margin:auto}
+.lienzo{
+  position:relative; width:100%; height:clamp(300px,52vh,470px);
+  background:var(--papel-3);
+  background-image:radial-gradient(var(--borde-suave) 1px,transparent 1px); background-size:22px 22px;
+  touch-action:none; cursor:grab; overflow:hidden;
+}
+.lienzo:active{cursor:grabbing}
+@media (min-width:1080px){ .lienzo{height:clamp(360px,46vh,520px)} }
+#svg-holder{position:absolute; inset:0}
+.lienzo svg{display:block; width:100%; height:100%; user-select:none}
+.err-plano{position:absolute; inset:0; background:var(--papel-3)}
+.fx{cursor:pointer}
+.fx .top,.fx .izq,.fx .der{stroke:var(--fijo-negro); stroke-width:1.1; stroke-linejoin:round}
+.fx.act .top,.fx.act .izq,.fx.act .der,.fx:hover .top,.fx:hover .izq,.fx:hover .der{stroke-width:3}
+.fx.act{filter:drop-shadow(0 0 0 transparent)}
+.cod{font-family:var(--f-mono); font-size:11px; font-weight:700; paint-order:stroke fill; stroke:#FFFCF2; stroke-width:3px; stroke-linejoin:round; fill:#0E0E0D; pointer-events:none}
+.sede-rot{font-family:var(--f-cartel); font-weight:800; text-transform:uppercase; font-size:15px; letter-spacing:.12em; paint-order:stroke fill; stroke:#FFFCF2; stroke-width:4px; fill:#0E0E0D; pointer-events:none}
+html[data-tema="oscuro"] .sede-rot{stroke:#0C0C0B; fill:#FBF7EC}
+@media (prefers-color-scheme:dark){ html:not([data-tema="claro"]) .sede-rot{stroke:#0C0C0B; fill:#FBF7EC} }
+
+.ayuda-plano{font-size:.78rem; padding:.4rem .7rem; border-top:2px solid var(--borde-suave); color:var(--tinta-2)}
+.ayuda-plano .teclas{display:none}
+.lienzo-wrap:focus-within .ayuda-plano .teclas{display:block}
+
+/* Ficha del mueble */
+.ficha{
+  display:grid; grid-template-columns:1fr; gap:.35rem;
+  border-top:var(--bw) solid var(--borde); background:var(--fijo-negro); color:var(--fijo-hueso);
+  padding:.7rem .8rem; min-height:118px;
+}
+@media (min-width:600px){ .ficha{grid-template-columns:1.1fr 1fr; column-gap:var(--e-2)} }
+.ficha .c1{display:flex; flex-direction:column; gap:.2rem}
+.ficha .cod-f{font-family:var(--f-mono); font-weight:700; font-size:1.05rem; color:var(--fijo-amarillo); letter-spacing:.02em}
+.ficha .tipo{font-size:.86rem}
+.ficha .ubi{font-size:.78rem; opacity:.72}
+.ficha .c2{display:flex; flex-direction:column; gap:.25rem; align-items:flex-start}
+.ficha .prov{font-size:.9rem; font-weight:600}
+.ficha .canon{font-family:var(--f-cartel); font-weight:800; font-size:clamp(1.3rem,3vw,1.8rem); line-height:1; color:var(--fijo-amarillo); font-variant-numeric:tabular-nums}
+.ficha .canon small{font-family:var(--f-texto); font-weight:600; font-size:.62rem; letter-spacing:.06em; text-transform:uppercase; opacity:.75; display:block; margin-top:.15rem; color:var(--fijo-hueso)}
+.ficha .fecha{font-size:.8rem}
+.ficha .nota{grid-column:1/-1; font-size:.68rem; text-transform:uppercase; letter-spacing:.08em; opacity:.6; border-top:1px solid rgba(255,252,242,.22); padding-top:.3rem; margin-top:.15rem}
+.ficha .vacio{font-size:.88rem; opacity:.8}
+.ficha .cerrar{
+  position:absolute; right:.5rem; top:.5rem; display:none;
+  font:inherit; font-family:var(--f-cartel); font-weight:800; text-transform:uppercase; font-size:.7rem;
+  background:var(--fijo-hueso); color:var(--fijo-negro); border:2px solid var(--fijo-negro); padding:.2rem .45rem; cursor:pointer;
+}
+.ficha{position:relative}
+.ficha.abierta .cerrar{display:block}
+
+.leyenda{display:flex; flex-wrap:wrap; gap:.4rem; align-items:center; padding:.6rem .7rem; border-top:var(--bw) solid var(--borde); background:var(--papel-2)}
+.leyenda .tit{font-family:var(--f-cartel); font-weight:800; text-transform:uppercase; font-size:.72rem; letter-spacing:.08em; margin-right:.2rem}
+.leyenda .ley-pie{flex-basis:100%; font-size:.74rem; color:var(--tinta-2)}
+.nota-chica{font-size:.8rem; margin-top:var(--e-2); max-width:52ch}
+.tabla-alt{margin-top:var(--e-2); border:2px solid var(--fijo-negro); background:var(--fijo-hueso); color:var(--fijo-negro)}
+.tabla-alt summary{cursor:pointer; padding:.5rem .7rem; font-family:var(--f-cartel); font-weight:800; text-transform:uppercase; font-size:.8rem; letter-spacing:.04em}
+.tabla-alt .scroll{overflow-x:auto; padding:0 .7rem .7rem}
+.tabla-alt table{border-collapse:collapse; font-size:.78rem; min-width:600px}
+.tabla-alt th,.tabla-alt td{border:1px solid #0E0E0D; padding:.25rem .45rem; text-align:left; white-space:nowrap}
+.tabla-alt th{background:var(--fijo-amarillo)}
+.err-plano{display:none!important; flex-direction:column; gap:.7rem; align-items:flex-start; justify-content:center; height:100%; padding:var(--e-3)}
+.err-plano.on{display:flex!important}
+
+/* ─── Bloques "producto en la góndola" ───────────── */
+.rejilla{display:grid; gap:var(--e-3); grid-template-columns:1fr}
+@media (min-width:720px){ .rejilla.c2{grid-template-columns:repeat(2,1fr)} }
+@media (min-width:1080px){ .rejilla.c3{grid-template-columns:repeat(3,1fr)} }
+.tarjeta{
+  display:flex; flex-direction:column; background:var(--papel-3); color:var(--tinta);
+  border:var(--bw) solid var(--borde); box-shadow:7px 7px 0 var(--sombra-dura);
+}
+.tarjeta .cab{display:flex; gap:.6rem; align-items:flex-start; padding:var(--e-2); border-bottom:var(--bw) solid var(--borde)}
+.tarjeta .idx{font-family:var(--f-cartel); font-weight:800; font-size:1.6rem; line-height:.9; border:2px solid var(--fijo-negro); background:var(--fijo-amarillo); color:var(--fijo-negro); padding:.15rem .4rem; flex:none}
+.tarjeta h3{font-size:clamp(1.15rem,2vw,1.45rem)}
+.tarjeta .txt{padding:var(--e-2); flex:1}
+.tarjeta .txt p:last-child{margin-bottom:0}
+.tarjeta .pie-b{
+  padding:.6rem var(--e-2); border-top:var(--bw) solid var(--borde);
+  font-family:var(--f-cartel); font-weight:800; text-transform:uppercase; font-size:.8rem; letter-spacing:.03em;
+  background:var(--fijo-amarillo); color:var(--fijo-negro);
+}
+.tarjeta.rj .pie-b{background:var(--fijo-rojo); color:var(--fijo-hueso)}
+.tarjeta.vd .pie-b{background:var(--p-verde); color:var(--fijo-hueso)}
+.tarjeta.nj .pie-b{background:var(--p-naranja); color:var(--fijo-negro)}
+.tarjeta.az .pie-b{background:var(--fijo-azul); color:var(--fijo-hueso)}
+.tarjeta.ng .pie-b{background:var(--fijo-negro); color:var(--fijo-amarillo)}
+
+/* Precio como titular */
+.precio-tit{
+  font-family:var(--f-cartel); font-weight:800; font-variant-numeric:tabular-nums;
+  font-size:clamp(1.8rem,5vw,3.2rem); line-height:.9; letter-spacing:-.01em;
+}
+.cuenta{
+  display:flex; flex-wrap:wrap; align-items:baseline; gap:.5rem 1rem; margin:var(--e-2) 0;
+  padding:var(--e-2); border:var(--bw) dashed var(--borde); background:var(--papel-2);
+}
+.cuenta .op{font-family:var(--f-cartel); font-size:1.4rem; font-weight:800; opacity:.5}
+.cuenta .res{color:var(--fijo-rojo)}
+html[data-tema="oscuro"] .cuenta .res{color:var(--tomado)}
+.cuenta .rot{flex-basis:100%; font-size:.75rem; text-transform:uppercase; letter-spacing:.08em; opacity:.65; font-family:var(--f-cartel)}
+.avisos{display:flex; gap:.5rem; flex-wrap:wrap; margin:var(--e-2) 0}
+.aviso-d{
+  font-family:var(--f-cartel); font-weight:800; text-align:center; line-height:1;
+  border:var(--bw) solid var(--fijo-negro); background:var(--fijo-amarillo); color:var(--fijo-negro);
+  padding:.55rem .7rem 1.4rem; clip-path:polygon(0 0,100% 0,100% 70%,50% 100%,0 70%); min-width:74px;
+}
+.aviso-d b{display:block; font-size:1.7rem}
+.aviso-d span{font-size:.66rem; letter-spacing:.06em; text-transform:uppercase}
+.aviso-d.n2{background:var(--p-naranja); color:var(--fijo-negro)}
+.aviso-d.n3{background:var(--fijo-rojo); color:var(--fijo-hueso)}
+.franja{
+  border-block:var(--bw-g) solid var(--fijo-negro); background:var(--fijo-amarillo); color:var(--fijo-negro);
+  padding:var(--e-3) 0; margin-top:var(--e-4);
+}
+.franja p{margin:0; font-size:clamp(1.02rem,1.9vw,1.25rem); max-width:76ch}
+.franja.ng{background:var(--fijo-negro); color:var(--fijo-hueso)}
+
+/* ─── Perfiles ────────────────────────────────────── */
+.perfil{display:flex; flex-direction:column; border:var(--bw) solid var(--borde); background:var(--papel-3); box-shadow:7px 7px 0 var(--sombra-dura)}
+.perfil .rot{padding:.5rem var(--e-2); font-family:var(--f-cartel); font-weight:800; text-transform:uppercase; letter-spacing:.06em; font-size:.85rem; border-bottom:var(--bw) solid var(--borde)}
+.perfil.p1 .rot{background:var(--fijo-negro); color:var(--fijo-amarillo)}
+.perfil.p2 .rot{background:var(--p-verde); color:var(--fijo-hueso)}
+.perfil.p3 .rot{background:var(--fijo-azul); color:var(--fijo-hueso)}
+.perfil h3{padding:var(--e-2) var(--e-2) 0; font-size:clamp(1.4rem,2.6vw,1.9rem)}
+.perfil .txt{padding:var(--e-2)}
+.perfil .txt p{margin:0}
+
+/* Cifras */
+.cifras{display:grid; gap:var(--e-2); grid-template-columns:1fr; margin-top:var(--e-3)}
+@media (min-width:640px){ .cifras{grid-template-columns:repeat(2,1fr)} }
+@media (min-width:1080px){ .cifras{grid-template-columns:repeat(3,1fr)} .cifras .destacada{grid-column:span 3} }
+.cifra{border:var(--bw) solid var(--borde); background:var(--papel-3); padding:var(--e-2)}
+.cifra .n{font-family:var(--f-cartel); font-weight:800; text-transform:uppercase; font-size:clamp(1.1rem,2.2vw,1.4rem); display:block; margin-bottom:.25rem}
+.cifra .l{font-size:.95rem; color:var(--tinta-2)}
+.cifra.destacada{background:var(--fijo-negro); color:var(--fijo-hueso); border-color:var(--fijo-negro)}
+.cifra.destacada .l{color:rgba(255,252,242,.8)}
+.ocup{display:flex; flex-wrap:wrap; align-items:center; gap:var(--e-2); margin-top:.4rem}
+.ocup .pct{font-family:var(--f-cartel); font-weight:800; font-size:clamp(2.6rem,8vw,4.5rem); line-height:.85; color:var(--fijo-amarillo); font-variant-numeric:tabular-nums}
+.celdas{display:flex; gap:3px; flex-wrap:wrap; max-width:420px}
+.celdas i{width:14px; height:26px; display:block; border:2px solid var(--fijo-hueso); background:transparent}
+.celdas i.on{background:var(--fijo-rojo); border-color:var(--fijo-hueso)}
+.js .celdas i{transition:background .25s ease}
+@media (prefers-reduced-motion:reduce){ .js .celdas i{transition:none} }
+
+/* ─── Pasos ───────────────────────────────────────── */
+.pasos-l{display:grid; gap:var(--e-3); counter-reset:p}
+@media (min-width:980px){ .pasos-l{grid-template-columns:repeat(3,1fr)} }
+.paso-c{position:relative; border:var(--bw) solid var(--borde); background:var(--papel-3); padding:var(--e-3) var(--e-2) var(--e-2); box-shadow:7px 7px 0 var(--sombra-dura)}
+.paso-c .big{
+  position:absolute; top:calc(-1 * var(--e-3)); left:var(--e-2);
+  font-family:var(--f-cartel); font-weight:800; font-size:clamp(3.2rem,7vw,4.6rem); line-height:.8;
+  background:var(--fijo-amarillo); color:var(--fijo-negro); border:var(--bw) solid var(--fijo-negro); padding:.05em .22em;
+}
+.paso-c:nth-child(2) .big{background:var(--p-naranja)}
+.paso-c:nth-child(3) .big{background:var(--p-verde); color:var(--fijo-hueso)}
+.paso-c h3{margin-top:var(--e-3); font-size:clamp(1.3rem,2.4vw,1.7rem)}
+.paso-c p{margin-top:.6rem; margin-bottom:0}
+.mini-plano{display:flex; gap:6px; margin-top:var(--e-2); align-items:flex-end; height:44px}
+.mini-plano i{width:34px; height:26px; border:2px solid var(--borde); background:var(--libre-cara); display:block}
+.mini-plano i.b{background:var(--tomado-cara)}
+.js .mini-plano i{transition:background .35s ease}
+@media (prefers-reduced-motion:reduce){ .js .mini-plano i{transition:none} }
+
+/* ─── Asesoría ────────────────────────────────────── */
+.pasillo.az-fondo{background:var(--fijo-azul); color:var(--fijo-hueso)}
+.pasillo.az-fondo .tarjeta{background:var(--fijo-hueso); color:var(--fijo-negro); border-color:var(--fijo-negro); box-shadow:7px 7px 0 rgba(0,0,0,.55)}
+.pasillo.az-fondo .bajada{color:var(--fijo-hueso)}
+.enjuego{
+  display:inline-block; font-family:var(--f-cartel); font-weight:800; font-variant-numeric:tabular-nums;
+  background:var(--fijo-negro); color:var(--fijo-amarillo); padding:.25rem .5rem; font-size:clamp(1.1rem,2.4vw,1.5rem); margin:.25rem .25rem .25rem 0;
+}
+.honesto{border:var(--bw) solid var(--fijo-hueso); padding:var(--e-2); margin-top:var(--e-3); background:rgba(0,0,0,.22)}
+.honesto a{color:var(--fijo-amarillo)}
+.grafico{margin-top:var(--e-2); border:2px solid var(--fijo-negro); background:var(--fijo-hueso); padding:.7rem}
+.barras{display:flex; align-items:flex-end; gap:8px; height:118px}
+.barras .col{flex:1; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; height:100%; gap:4px}
+.barras .b{width:100%; background:var(--fijo-azul); border:2px solid var(--fijo-negro); min-height:4px}
+.barras .b.hueco{background:transparent; background-image:repeating-linear-gradient(45deg,#0E0E0D 0 2px,transparent 2px 6px); border-style:dashed}
+.barras .m{font-family:var(--f-mono); font-size:.62rem; color:#0E0E0D}
+.barras .v{font-family:var(--f-cartel); font-weight:800; font-size:.72rem; color:#0E0E0D}
+.grafico .cap{font-size:.7rem; color:#4A4842; margin:.4rem 0 0; text-transform:uppercase; letter-spacing:.06em; font-family:var(--f-cartel)}
+
+/* ─── Confianza ───────────────────────────────────── */
+.pasillo.ng-fondo{background:var(--fijo-negro); color:var(--fijo-hueso)}
+.pasillo.ng-fondo .bajada{color:var(--fijo-hueso)}
+.punto{display:flex; gap:var(--e-2); padding:var(--e-2) 0; border-top:2px solid rgba(255,252,242,.28)}
+.punto .n{font-family:var(--f-cartel); font-weight:800; font-size:1.4rem; line-height:1; background:var(--fijo-amarillo); color:var(--fijo-negro); padding:.2rem .45rem; height:max-content; flex:none}
+.punto h3{font-size:clamp(1.15rem,2.1vw,1.5rem); margin-bottom:.35rem}
+.punto p{margin:0; max-width:70ch}
+.enlaces-sec{display:flex; flex-wrap:wrap; gap:var(--e-2); margin-top:var(--e-3)}
+.enlaces-sec a{font-family:var(--f-cartel); font-weight:800; text-transform:uppercase; font-size:.85rem; letter-spacing:.04em; color:var(--fijo-amarillo); text-decoration:underline; text-underline-offset:4px}
+
+/* ─── Precio ──────────────────────────────────────── */
+.precio-grid{display:grid; gap:var(--e-3)}
+@media (min-width:900px){ .precio-grid{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr)} }
+.etiqueta-precio{
+  background:var(--fijo-amarillo); color:var(--fijo-negro); border:var(--bw-g) solid var(--fijo-negro);
+  box-shadow:10px 10px 0 var(--sombra-dura); padding:var(--e-3) var(--e-2) var(--e-4);
+  clip-path:polygon(0 0,100% 0,100% 88%,50% 100%,0 88%); text-align:center;
+}
+.etiqueta-precio .rot{font-family:var(--f-cartel); font-weight:800; text-transform:uppercase; letter-spacing:.1em; font-size:.8rem}
+.etiqueta-precio .val{font-family:var(--f-cartel); font-weight:800; font-size:clamp(1.6rem,4.6vw,2.6rem); line-height:1; margin:.5rem 0; word-break:break-word}
+.etiqueta-precio .uni{font-size:.85rem}
+.atraso{display:grid; gap:.6rem; margin-top:var(--e-2)}
+.atraso li{display:flex; gap:.7rem; align-items:flex-start; border:var(--bw) solid var(--borde); background:var(--papel-3); padding:.7rem var(--e-2)}
+.atraso .k{font-family:var(--f-cartel); font-weight:800; font-size:.72rem; text-transform:uppercase; letter-spacing:.06em; padding:.25rem .45rem; border:2px solid var(--fijo-negro); flex:none}
+.atraso li:nth-child(1) .k{background:var(--fijo-amarillo); color:var(--fijo-negro)}
+.atraso li:nth-child(2) .k{background:var(--p-naranja); color:var(--fijo-negro)}
+.atraso li:nth-child(3) .k{background:var(--p-verde); color:var(--fijo-hueso)}
+
+/* ─── Cierre ──────────────────────────────────────── */
+.cierre{background:var(--fijo-rojo); color:var(--fijo-hueso); border-block:var(--bw-g) solid var(--fijo-negro); padding-block:var(--e-5)}
+.cierre h2{font-size:var(--t-mega); letter-spacing:-.02em}
+.cierre p{font-size:clamp(1.05rem,2vw,1.35rem); max-width:56ch}
+.cierre .btn{border-color:var(--fijo-negro); box-shadow:6px 6px 0 var(--fijo-negro)}
+.cierre .btn.sec:hover{background:var(--fijo-amarillo)}
+
+/* ─── Pie ─────────────────────────────────────────── */
+.pie{background:var(--fijo-negro); color:var(--fijo-hueso); padding-block:var(--e-4) var(--e-3)}
+.pie .marca-pie{font-family:var(--f-cartel); font-weight:800; text-transform:uppercase; font-size:clamp(1.3rem,3vw,2rem); letter-spacing:.06em}
+.pie .cols{display:grid; gap:var(--e-3); margin-top:var(--e-3); grid-template-columns:1fr}
+@media (min-width:620px){ .pie .cols{grid-template-columns:repeat(3,1fr)} }
+.pie h4{font-family:var(--f-cartel); font-weight:800; text-transform:uppercase; font-size:.78rem; letter-spacing:.1em; color:var(--fijo-amarillo); margin-bottom:.5rem}
+.pie ul{list-style:none; margin:0; padding:0; display:grid; gap:.35rem}
+.pie a{color:var(--fijo-hueso); text-decoration:none; border-bottom:1px solid rgba(255,252,242,.3)}
+.pie a:hover{color:var(--fijo-amarillo); border-color:var(--fijo-amarillo)}
+.pie .legal{margin-top:var(--e-3); padding-top:var(--e-2); border-top:2px solid rgba(255,252,242,.3); font-size:.82rem; color:rgba(255,252,242,.82)}
+.pie .legal p{margin:0 0 .4rem}
+.arriba{display:inline-flex; margin-top:var(--e-2); font-family:var(--f-cartel); font-weight:800; text-transform:uppercase; font-size:.8rem; letter-spacing:.06em; border:2px solid var(--fijo-hueso); padding:.4rem .7rem; text-decoration:none}
+.arriba:hover{background:var(--fijo-amarillo); color:var(--fijo-negro); border-color:var(--fijo-amarillo)}
+
+/* ─── Revelado al hacer scroll (después del hero) ── */
+.js .rv{opacity:0; transform:translateY(18px)}
+.js .rv.on{opacity:1; transform:none; transition:opacity .45s ease, transform .45s cubic-bezier(.2,.7,.3,1)}
+@media (prefers-reduced-motion:reduce){ .js .rv{opacity:1; transform:none} }
+
+/* ── Hero: tokens propios para que el afiche funcione en los dos modos ── */
+.hero{--h-bg:var(--fijo-amarillo); --h-fg:var(--fijo-negro); --h-lin:var(--fijo-negro); --h-inv:var(--fijo-hueso); --h-som:rgba(14,14,13,1)}
+html[data-tema="oscuro"] .hero{--h-bg:#111110; --h-fg:var(--fijo-hueso); --h-lin:var(--fijo-hueso); --h-inv:var(--fijo-negro); --h-som:rgba(255,252,242,.42)}
+@media (prefers-color-scheme:dark){ html:not([data-tema="claro"]) .hero{--h-bg:#111110; --h-fg:var(--fijo-hueso); --h-lin:var(--fijo-hueso); --h-inv:var(--fijo-negro); --h-som:rgba(255,252,242,.42)} }
+.hero{background:var(--h-bg); color:var(--h-fg); border-bottom-color:var(--h-lin)}
+.hero::before{background-image:repeating-linear-gradient(90deg,currentColor 0 2px,transparent 2px 64px),repeating-linear-gradient(0deg,currentColor 0 2px,transparent 2px 64px)}
+.hero .antetitulo{background:var(--h-fg); color:var(--h-bg)}
+.hero h1.titular .mk.z{background:var(--h-fg); color:var(--h-bg)}
+.hero .sub2{border-left-color:var(--h-lin)}
+.hero .btn{background:var(--h-fg); color:var(--h-bg); border-color:var(--h-fg); box-shadow:6px 6px 0 var(--h-som)}
+.hero .btn:hover{background:var(--fijo-rojo); color:var(--fijo-hueso); border-color:var(--fijo-rojo); box-shadow:3px 3px 0 var(--h-som)}
+.hero .btn.sec{background:transparent; color:var(--h-fg); border-color:var(--h-fg)}
+.hero .btn.sec:hover{background:var(--h-fg); color:var(--h-bg)}
+.hero .plano-caja{border-color:var(--h-lin); box-shadow:10px 10px 0 var(--h-som)}
+.hero .gancho::before{background:var(--h-lin)}
+.hero .gancho .flecha{color:var(--h-lin)}
+.hero .colgante{border-color:var(--fijo-negro)}
+.az-fondo .gancho::before, .ng-fondo .gancho::before{background:var(--fijo-hueso)}
+.az-fondo .gancho .flecha, .ng-fondo .gancho .flecha{color:var(--fijo-hueso)}
+.aviso-mov{display:none}
+</style>
+</head>
+<body>
+<a class="oculto-vis" href="#contenido">Saltar al contenido</a>
+
+<header class="barra">
+  <a class="logo" href="#inicio">RECABRA</a>
+  <nav class="recorrido" aria-label="Recorrido de la tienda">
+    <div class="rail" role="img" aria-label="Avance del recorrido"><span class="fill" id="fill"></span></div>
+    <div class="pasos" id="pasos-nav">
+      <a class="paso" href="#inicio">Entrada</a>
+      <a class="paso" href="#que-hace">Qué hace</a>
+      <a class="paso" href="#para-quien">Quién</a>
+      <a class="paso" href="#como-se-usa">Pasos</a>
+      <a class="paso" href="#asesoria">Asesoría</a>
+      <a class="paso" href="#confianza">Datos</a>
+      <a class="paso" href="#precio">Precio</a>
+      <a class="paso" href="#caja">Caja</a>
+    </div>
+  </nav>
+  <div class="acc">
+    <button class="btn-tema" id="btn-tema" type="button" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 1.8v2.6M12 19.6v2.6M4.4 4.4l1.9 1.9M17.7 17.7l1.9 1.9M1.8 12h2.6M19.6 12h2.6M4.4 19.6l1.9-1.9M17.7 6.3l1.9-1.9"/></svg>
+      <span class="txt">Claro</span>
+    </button>
+    <a class="cta-mini" href="/login#registro">Crear mi cuenta</a>
+  </div>
+</header>
+
+<main id="contenido">
+
+<!-- ═══════════ PASILLO 00 · HERO ═══════════ -->
+<section class="hero" id="inicio">
+  <div class="env">
+    <div class="hero-grid">
+      <div>
+        <span class="antetitulo">Espacios comerciales de supermercado</span>
+        <h1 class="titular">Qué mueble está <span class="mk v">libre,</span> <span class="mk r">quién lo ocupa,</span> <span class="mk z">a cuánto</span> y <span class="mk n">hasta cuándo.</span></h1>
+        <p class="sub1">RECABRA es el sistema con el que un supermercado vende sus espacios de exhibición. Dibujás el plano de cada sede, marcás qué muebles se alquilan y armás el contrato ahí mismo, tocando el mueble.</p>
+        <p class="sub2">Si hoy eso vive en un Excel, en un chat de WhatsApp o en la memoria de alguien, esta es la pantalla que falta.</p>
+        <div class="acciones">
+          <a class="btn" href="/login#registro">Crear mi cuenta</a>
+          <a class="btn sec" href="/login">Ya tengo cuenta</a>
+        </div>
+        <p class="pie-acciones">Entrás con tu correo o con Google. Crear la cuenta y tu supermercado toma un minuto.</p>
+      </div>
+
+      <div>
+        <figure class="plano-caja" style="margin:0">
+          <div class="plano-top">
+            <span class="rotulo">Supermercado de ejemplo · Tocá un mueble</span>
+            <div class="ctrl">
+              <button type="button" id="z-mas" aria-label="Acercar" title="Acercar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+              <button type="button" id="z-menos" aria-label="Alejar" title="Alejar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+              <button type="button" id="z-centrar" title="Centrar">Centrar</button>
+              <button type="button" id="b3d" title="Ver en 3D">Ver en 3D</button>
+            </div>
+          </div>
+
+          <div class="lienzo-wrap">
+            <div class="lienzo" id="lienzo" tabindex="0" role="application"
+                 aria-label="Plano interactivo de un supermercado de ejemplo. Usá las flechas para moverte y Enter para abrir la ficha de un mueble."
+                 aria-describedby="plano-desc">
+              <div id="svg-holder"></div>
+              <div class="err-plano" id="err-plano">
+                <p style="margin:0">No pudimos dibujar el plano de ejemplo. El resto de la página funciona igual.</p>
+                <button class="btn claro" type="button" id="reintentar">Reintentar</button>
+              </div>
+            </div>
+            <p id="plano-desc" class="oculto-vis">Supermercado de ejemplo con dos sedes. En la sede CENTRO hay diez espacios alquilables: cuatro libres, dos que se liberan dentro del periodo y cuatro tomados. En la sede PALMAS hay seis: tres libres, uno que se libera y dos tomados. Cada espacio tiene un código, un tipo de mueble, un proveedor de ejemplo y un canon mensual. Los datos son inventados.</p>
+            <p class="ayuda-plano">
+              <span id="ayuda-txt">Arrastrá para moverte. Rueda para acercar. Tocá un mueble para ver su ficha.</span>
+              <span class="teclas">Flechas para moverte · <b>+</b> y <b>−</b> para acercar · <b>Enter</b> para abrir la ficha del mueble · <b>Esc</b> para cerrarla</span>
+              <span class="aviso-mov" id="aviso-mov">Animaciones reducidas, como pediste en tu sistema.</span>
+            </p>
+          </div>
+
+          <div class="ficha" id="ficha" aria-live="polite">
+            <button class="cerrar" type="button" id="ficha-cerrar">Cerrar</button>
+            <div class="c1"><span class="vacio" id="ficha-vacio">Pasá el mouse por un mueble para ver su ficha.</span></div>
+          </div>
+
+          <div class="leyenda">
+            <span class="tit">Estado en el periodo</span>
+            <span class="eti libre"><i class="pto"></i>Libre todo el periodo</span>
+            <span class="eti libera"><i class="pto"></i>Se libera en el periodo</span>
+            <span class="eti tomado"><i class="pto"></i>Tomado</span>
+            <span class="eti resto"><i class="pto"></i>Resto de la sala</span>
+            <span class="ley-pie">Es la misma lectura que vas a tener adentro, con tu propia tienda.</span>
+          </div>
+        </figure>
+
+        <p class="nota-chica">Los datos del plano son inventados, para mostrar cómo se ve. Ningún supermercado real aparece acá.</p>
+
+        <details class="tabla-alt">
+          <summary>Los mismos datos del plano, en tabla</summary>
+          <div class="scroll">
+            <table>
+              <thead><tr><th>Código</th><th>Tipo</th><th>Sede</th><th>Estado</th><th>Proveedor de ejemplo</th><th>Canon mensual</th></tr></thead>
+              <tbody id="tabla-cuerpo"></tbody>
+            </table>
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <div class="gancho" style="padding-bottom:2rem">
+    <a class="colgante" href="#que-hace">
+      <span class="q">Ese plano ya es la mitad del producto</span>
+      <span class="sub">¿Y qué hace la otra mitad? Bajá al pasillo 01</span>
+    </a>
+    <svg class="flecha" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M12 4v15M5 13l7 7 7-7"/></svg>
+  </div>
+</section>
+
+<!-- ═══════════ PASILLO 01 · LO QUE HACE ═══════════ -->
+<section class="pasillo" id="que-hace" data-paso="1">
+  <div class="cabecera ng">
+    <div class="env fila">
+      <span class="num">01</span>
+      <h2>Lo que hace</h2>
+      <span class="de">Pasillo 01 de 06</span>
+    </div>
+  </div>
+  <div class="env cuerpo">
+    <p class="bajada rv">Seis cosas concretas. Todas están construidas y andan hoy.</p>
+
+    <div class="rejilla c2 c3" style="margin-top:var(--e-3)">
+
+      <article class="tarjeta rv">
+        <div class="cab"><span class="idx">1</span><h3>El plano de tu tienda, no una lista de códigos</h3></div>
+        <div class="txt">
+          <p>Dibujás cada sede como es: góndolas, puntas, islas, neveras, bateas, cajas. Cada mueble queda con su código y sus medidas. En el plano se ve de un vistazo qué está libre y qué está tomado, y cuando el proveedor quiere ver cómo le va a quedar la exhibición, la misma tienda se recorre en 3D.</p>
+          <p style="margin:var(--e-2) 0 0"><span class="eti"><i class="pto" style="background:var(--libre-cara)"></i>Libre</span> <span class="eti"><i class="pto" style="background:var(--tomado-cara)"></i>Tomado</span> <span class="eti"><i class="pto" style="background:var(--resto)"></i>Resto</span></p>
+        </div>
+        <p class="pie-b">Plano 2D · vista 3D · una nomenclatura para toda la cadena</p>
+      </article>
+
+      <article class="tarjeta rj rv">
+        <div class="cab"><span class="idx">2</span><h3>El contrato se arma sobre el mueble</h3></div>
+        <div class="txt">
+          <p>Tocás el espacio y llenás una sola ficha: proveedor, marca, canon mensual, desde y hasta. Si el acuerdo cubre tres puntas de góndola, las tocás las tres y queda un solo contrato, no tres. Abajo del formulario está el total del plazo, que es lo que se firma: $ 1.500.000 al mes por 61 días son $ 3.050.000, y esa cuenta ya no se hace de cabeza con el proveedor esperando.</p>
+          <div class="cuenta" aria-hidden="true">
+            <span class="rot">Total del plazo</span>
+            <span class="precio-tit" style="font-size:clamp(1.2rem,3vw,1.9rem)">$ 1.500.000</span>
+            <span class="op">×</span><span class="precio-tit" style="font-size:clamp(1.2rem,3vw,1.9rem)">61 días</span>
+            <span class="op">=</span><span class="precio-tit res">$ 3.050.000</span>
+          </div>
+        </div>
+        <p class="pie-b">Un proveedor, un periodo, todos los espacios que haga falta</p>
+      </article>
+
+      <article class="tarjeta vd rv">
+        <div class="cab"><span class="idx">3</span><h3>Qué hay libre en la temporada que estás vendiendo</h3></div>
+        <div class="txt">
+          <p>Elegís el periodo —Amor y Amistad, Halloween, Black Friday, Navidad, regreso a clases— y el plano entero se repinta para ese periodo: libre todo el tiempo, se libera adentro, o tomado. Un panel te dice cuántos espacios hay libres si el contrato arranca el 26 y cuántos si arranca el 29. Un mueble que se desocupa el 25 es inventario que podés ofrecer hoy.</p>
+          <div class="mini-plano" id="mini-plano" aria-hidden="true"><i></i><i></i><i class="b"></i><i></i><i class="b"></i><i></i></div>
+        </div>
+        <p class="pie-b">Nueve temporadas del calendario colombiano, con la ventana de venta que vos definas</p>
+      </article>
+
+      <article class="tarjeta nj rv">
+        <div class="cab"><span class="idx">4</span><h3>Tu tarifa, y cuánto te estás corriendo de ella</h3></div>
+        <div class="txt">
+          <p>Cargás una tarifa por tipo de mueble, con ajuste por sede si una tienda vale más que otra. Cuando escribís el valor de un contrato, al lado te aparece la referencia y el desvío: «−17 % vs referencia». En el tablero hay una lista de todo lo que está por debajo de tarifa, para revisarlo en la próxima renovación.</p>
+          <p style="margin:var(--e-2) 0 0"><span class="precio-tit" style="color:var(--fijo-rojo)">−17 %</span> <span style="font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;font-family:var(--f-cartel)">vs referencia</span></p>
+        </div>
+        <p class="pie-b">La tarifa la ve el administrador. El mercaderista no ve un solo peso.</p>
+      </article>
+
+      <article class="tarjeta az rv">
+        <div class="cab"><span class="idx">5</span><h3>Los avisos salen solos</h3></div>
+        <div class="txt">
+          <p>Al guardar un contrato salen tres correos distintos: el comercial recibe el acuerdo con el valor, el mercaderista recibe la orden de montaje sin un solo monto y con el enlace para reportar, y el proveedor recibe la constancia de lo suyo. Antes de vencer, el sistema avisa tres veces: a 30, a 15 y a 6 días. A una semana ya no hay margen para negociar; a un día el correo llega para contar algo que ya pasó.</p>
+          <div class="avisos" aria-hidden="true">
+            <span class="aviso-d"><b>30</b><span>días</span></span>
+            <span class="aviso-d n2"><b>15</b><span>días</span></span>
+            <span class="aviso-d n3"><b>6</b><span>días</span></span>
+          </div>
+        </div>
+        <p class="pie-b">Y cuando falta poco, el botón Renovar viene con el proveedor, la marca y el valor que se está pagando ya escritos.</p>
+      </article>
+
+      <article class="tarjeta ng rv">
+        <div class="cab"><span class="idx">6</span><h3>El montaje se confirma con foto, desde el celular</h3></div>
+        <div class="txt">
+          <p>El correo del mercaderista trae un enlace que abre directo en el espacio que le toca. Sin contraseña y sin ver el tablero de la tienda: solo el mueble, dónde queda —«a unos 4 m de las cajas», con el plano de la sala señalado— y dos botones. «Montado» exige foto. «No pude» exige motivo, porque sin motivo no se sabe a quién reclamarle.</p>
+          <p style="margin:var(--e-2) 0 0" aria-hidden="true"><span class="eti ng">Montado</span> <span class="eti">No pude</span></p>
+        </div>
+        <p class="pie-b">La foto queda guardada. Es la que responde el reclamo del proveedor tres meses después.</p>
+      </article>
+
+    </div>
+  </div>
+
+  <div class="franja">
+    <div class="env"><p>Y además: cargás la temporada entera desde una planilla de Excel, revisás fila por fila antes de crear nada, manejás todas tus sedes desde la misma cuenta e invitás a tu equipo con el permiso que le toca a cada uno.</p></div>
+  </div>
+
+  <div class="gancho" style="padding-bottom:2.5rem">
+    <a class="colgante" href="#para-quien" style="background:var(--fijo-rojo);color:var(--fijo-hueso)">
+      <span class="q">Seis cosas. Pero ¿quién las toca?</span>
+      <span class="sub">Tres personas usan esto y ninguna ve lo mismo</span>
+    </a>
+    <svg class="flecha" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M12 4v15M5 13l7 7 7-7"/></svg>
+  </div>
+</section>
+
+<!-- ═══════════ PASILLO 02 · PARA QUIÉN ═══════════ -->
+<section class="pasillo" id="para-quien" data-paso="2">
+  <div class="cabecera am">
+    <div class="env fila">
+      <span class="num">02</span>
+      <h2>Tres personas usan esto, y cada una ve otra cosa</h2>
+      <span class="de">Pasillo 02 de 06</span>
+    </div>
+  </div>
+  <div class="env cuerpo">
+    <div class="rejilla c3">
+      <article class="perfil p1 rv">
+        <p class="rot" style="margin:0">Gerente o administrador</p>
+        <h3>Vende con datos, no de memoria</h3>
+        <div class="txt"><p>Ve el plano, la plata y el calendario en la misma pantalla. Arma el contrato, pone el precio con la tarifa al lado y sabe qué se le cae el mes que viene. Puede girar el portátil y mostrarle el plano al proveedor que tiene enfrente: esa pantalla no muestra el nombre ni el canon de ningún otro proveedor.</p></div>
+      </article>
+      <article class="perfil p2 rv">
+        <p class="rot" style="margin:0">Trabajador de piso</p>
+        <h3>Monta y reporta, sin ver dinero</h3>
+        <div class="txt"><p>Le llega un correo con el espacio que le toca y un enlace que abre en su celular. Confirma con una foto o dice qué pasó. No entra con una contraseña compartida y no ve valores: el sistema le borra la plata antes de mandarle la pantalla.</p></div>
+      </article>
+      <article class="perfil p3 rv">
+        <p class="rot" style="margin:0">Proveedor</p>
+        <h3>Sabe qué compró</h3>
+        <div class="txt"><p>Recibe por correo la constancia de su acuerdo: qué espacios, en qué sede, desde cuándo y hasta cuándo. Y antes de firmar puede ver el mueble en 3D con su marca puesta, en una lámina de antes y después que se le manda adjunta.</p></div>
+      </article>
+    </div>
+
+    <h3 style="font-size:var(--t-l); margin-top:var(--e-5)" class="rv">Los números que vas a tener a la vista</h3>
+    <p class="bajada rv" style="margin-top:.5rem">No son promesas. Son las cifras que la pantalla te muestra cada vez que la abrís.</p>
+
+    <div class="cifras">
+      <div class="cifra destacada rv" id="tile-ocup">
+        <span class="n">Ocupación</span>
+        <div class="ocup">
+          <span class="pct" id="pct-ocup">0 %</span>
+          <div>
+            <div class="celdas" id="celdas" aria-hidden="true"></div>
+            <span class="l" style="display:block;margin-top:.5rem">8 de 23 caras vendidas en el periodo</span>
+          </div>
+        </div>
+      </div>
+      <div class="cifra rv"><span class="n">Canon vigente</span><span class="l">lo que están pagando hoy los contratos vivos, al mes</span></div>
+      <div class="cifra rv"><span class="n">Sin alquilar</span><span class="l">cuánto vale a tarifa lo que está vacío, y cuánto es eso por día vacío</span></div>
+      <div class="cifra rv"><span class="n">Vence en 30 días</span><span class="l">cuántos espacios y cuánta plata se te caen si nadie los renueva</span></div>
+      <div class="cifra rv"><span class="n">Sin montar</span><span class="l">contratos ya cobrados que todavía no están armados en el piso</span></div>
+      <div class="cifra rv" style="background:var(--fijo-amarillo);color:var(--fijo-negro);border-color:var(--fijo-negro)"><span class="n">Y un contrato de tres puntas de góndola se arma una vez, no tres.</span></div>
+    </div>
+  </div>
+
+  <div class="gancho" style="padding-bottom:2.5rem">
+    <a class="colgante" href="#como-se-usa">
+      <span class="q">¿Cuánto tarda en estar andando?</span>
+      <span class="sub">Tres pasos. El primero toma un minuto</span>
+    </a>
+    <svg class="flecha" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M12 4v15M5 13l7 7 7-7"/></svg>
+  </div>
+</section>
+
+<!-- ═══════════ PASILLO 03 · CÓMO SE ARRANCA ═══════════ -->
+<section class="pasillo" id="como-se-usa" data-paso="3">
+  <div class="cabecera">
+    <div class="env fila">
+      <span class="num">03</span>
+      <h2>Cómo se arranca</h2>
+      <span class="de">Pasillo 03 de 06</span>
+    </div>
+  </div>
+  <div class="env cuerpo">
+    <p class="bajada rv">Tres pasos. El primero toma un minuto; el segundo es el trabajo de verdad y se hace una sola vez.</p>
+    <div class="pasos-l" style="margin-top:var(--e-4)">
+      <article class="paso-c rv">
+        <span class="big">1</span>
+        <h3>Creá la cuenta y tu supermercado</h3>
+        <p>Entrás con Google o con tu correo, le ponés nombre a tu supermercado y quedás como dueño de la cuenta. Después invitás a tu equipo: cada persona con su correo y con el permiso que le toca.</p>
+      </article>
+      <article class="paso-c rv">
+        <span class="big">2</span>
+        <h3>Dibujá el plano de cada sede</h3>
+        <p>Ponés los muebles como están en la sala y marcás cuáles se alquilan. Las cajas y las columnas quedan de contexto, en gris. Si ya tenés los contratos de la temporada en un Excel, los cargás de una vez: el sistema te muestra fila por fila qué entra y qué choca, antes de crear nada.</p>
+      </article>
+      <article class="paso-c rv">
+        <span class="big">3</span>
+        <h3>Vendé tocando el mapa</h3>
+        <p>Elegís la temporada, mirás qué quedó verde, tocás el mueble y llenás el contrato. Al guardar salen los tres correos y el espacio cambia de color en el plano.</p>
+      </article>
+    </div>
+    <p style="margin-top:var(--e-3); font-weight:600" class="rv">Cada supermercado empieza vacío. RECABRA no viene con datos de nadie adentro.</p>
+  </div>
+
+  <div class="gancho" style="padding-bottom:2.5rem">
+    <a class="colgante" href="#asesoria" style="background:var(--fijo-azul);color:var(--fijo-hueso)">
+      <span class="q">Un sistema te muestra lo que pasó</span>
+      <span class="sub">Lo que ningún Excel te va a decir está un pasillo más abajo</span>
+    </a>
+    <svg class="flecha" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M12 4v15M5 13l7 7 7-7"/></svg>
+  </div>
+</section>
+
+<!-- ═══════════ PASILLO 04 · ASESORÍA ═══════════ -->
+<section class="pasillo az-fondo" id="asesoria" data-paso="4">
+  <div class="cabecera az">
+    <div class="env fila">
+      <span class="num">04</span>
+      <h2>Además del sistema, te decimos qué proponer</h2>
+      <span class="de">Pasillo 04 de 06</span>
+    </div>
+  </div>
+  <div class="env cuerpo">
+    <p class="antetitulo rv" style="background:var(--fijo-amarillo);color:var(--fijo-negro)">Lo que ningún Excel te va a decir</p>
+    <p class="bajada rv">Un sistema te muestra lo que pasó. Nosotros miramos tus números y te llevamos, por escrito, qué le podés ofrecer a quién esta semana.</p>
+
+    <div class="rejilla c3" style="margin-top:var(--e-4)">
+      <article class="tarjeta rv">
+        <div class="cab"><span class="idx">A</span><h3>Recomendaciones ordenadas por lo que hay en juego</h3></div>
+        <div class="txt">
+          <p>Cada recomendación viene con un valor al lado y una razón. «Tenés tres puntas de góndola libres: ofrecelas a $ 2.000.000 cada una, que es el promedio que vos mismo estás cobrando por ese tipo — $ 6.000.000 en juego.» «El contrato de esa punta vence en 19 días: renovalo o reasignalo — $ 2.000.000 en juego.» Primero las de mayor valor.</p>
+          <p style="margin:var(--e-2) 0 0" aria-hidden="true"><span class="enjuego">$ 6.000.000</span><span class="enjuego">$ 2.000.000</span></p>
+        </div>
+        <p class="pie-b" style="background:var(--fijo-negro);color:var(--fijo-amarillo)">Primero las de mayor valor</p>
+      </article>
+
+      <article class="tarjeta rv">
+        <div class="cab"><span class="idx">B</span><h3>Oportunidades espacio por espacio</h3></div>
+        <div class="txt">
+          <p>Para cada mueble libre o que se libera en el periodo: un precio sugerido —el promedio que ya cobrás por ese tipo, o el promedio de los supermercados que usan RECABRA si vos todavía no cobrás ninguno— y hasta tres proveedores tuyos que podrían tomarlo, empezando por los que ya alquilan ese mismo tipo de mueble.</p>
+        </div>
+        <p class="pie-b" style="background:var(--p-verde);color:var(--fijo-hueso)">Hasta tres proveedores tuyos por espacio</p>
+      </article>
+
+      <article class="tarjeta rv">
+        <div class="cab"><span class="idx">C</span><h3>Tendencia mes a mes</h3></div>
+        <div class="txt">
+          <p>Ocupación, ingreso contratado y canon promedio, guardados mes a mes desde que entrás. La pregunta «¿estamos mejorando?» deja de contestarse de memoria. Un mes sin datos aparece como un hueco, no como un cero: un cero sería mentira.</p>
+          <figure class="grafico" style="margin:var(--e-2) 0 0">
+            <div class="barras" role="img" aria-label="Ejemplo de tendencia de ocupación mes a mes: abril 28 por ciento, mayo 31, junio 26, julio sin datos, agosto 33, septiembre 35. Los datos son inventados.">
+              <div class="col"><span class="v">28%</span><span class="b" style="height:56%"></span><span class="m">abr</span></div>
+              <div class="col"><span class="v">31%</span><span class="b" style="height:62%"></span><span class="m">may</span></div>
+              <div class="col"><span class="v">26%</span><span class="b" style="height:52%"></span><span class="m">jun</span></div>
+              <div class="col"><span class="v" style="font-size:.6rem">sin datos</span><span class="b hueco" style="height:70%"></span><span class="m">jul</span></div>
+              <div class="col"><span class="v">33%</span><span class="b" style="height:66%"></span><span class="m">ago</span></div>
+              <div class="col"><span class="v">35%</span><span class="b" style="height:70%"></span><span class="m">sep</span></div>
+            </div>
+            <figcaption class="cap">Ejemplo · ocupación mes a mes · datos inventados</figcaption>
+          </figure>
+        </div>
+        <p class="pie-b" style="background:var(--fijo-amarillo);color:var(--fijo-negro)">Un hueco es un hueco, no un cero</p>
+      </article>
+    </div>
+
+    <div class="honesto rv">
+      <p><b>Cómo funciona, sin vueltas.</b> Esta parte no es una pantalla tuya: la revisa una persona de RECABRA sobre tus propios datos, y te llega en la sesión de asesoría. Todo lo que se lee está escrito en la Política de Tratamiento de Datos, queda anotado con la fecha y el correo de quien lo consultó, y podés pedir ese registro cuando quieras desde tu propia cuenta.</p>
+      <p style="margin:0"><a href="/politica-datos">Ver el reporte de transparencia</a></p>
+    </div>
+  </div>
+
+  <div class="gancho" style="padding-bottom:2.5rem">
+    <a class="colgante" href="#confianza" style="background:var(--fijo-negro);color:var(--fijo-amarillo);border-color:var(--fijo-hueso)">
+      <span class="q">Alguien mira tus números. ¿Dónde quedan?</span>
+      <span class="sub">La respuesta completa, en el pasillo 05</span>
+    </a>
+    <svg class="flecha" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true" style="color:var(--fijo-hueso)"><path d="M12 4v15M5 13l7 7 7-7"/></svg>
+  </div>
+</section>
+
+<!-- ═══════════ PASILLO 05 · CONFIANZA ═══════════ -->
+<section class="pasillo ng-fondo" id="confianza" data-paso="5">
+  <div class="cabecera ng">
+    <div class="env fila">
+      <span class="num">05</span>
+      <h2>Dónde quedan tus datos</h2>
+      <span class="de">Pasillo 05 de 06</span>
+    </div>
+  </div>
+  <div class="env cuerpo">
+    <p class="bajada rv">Esto lo usa gente distinta de la misma tienda, y hay dinero adentro. Así está resuelto.</p>
+    <div style="margin-top:var(--e-3)">
+      <div class="punto rv"><span class="n">1</span><div><h3>Cada supermercado, en su propia base</h3><p>Los planos, los contratos y los proveedores de tu supermercado viven en una base separada de la de cualquier otro cliente. No es un filtro por columna: es otra base.</p></div></div>
+      <div class="punto rv"><span class="n">2</span><div><h3>Cada persona entra con su cuenta</h3><p>Con Google o con correo y contraseña. Nada de una clave compartida que sigue funcionando cuando alguien se va. Desactivás a esa persona y pierde el acceso en el siguiente clic, sin tocar a nadie más.</p></div></div>
+      <div class="punto rv"><span class="n">3</span><div><h3>El dinero no le llega a quien no le toca</h3><p>Los valores no se ocultan en la pantalla: se borran en el servidor antes de mandarla. El mercaderista no tiene forma de verlos, ni siquiera mirando lo que le llegó al navegador.</p></div></div>
+      <div class="punto rv"><span class="n">4</span><div><h3>Podés auditar qué se mira de vos</h3><p>El dueño de la cuenta puede pedir, cuando quiera, el reporte de transparencia: qué datos toma RECABRA, cómo los calcula, de dónde salen, para qué, y quién los consultó y qué día. También puede descargar todos sus datos y pedir la supresión.</p></div></div>
+      <div class="punto rv"><span class="n">5</span><div><h3>Colombia, Ley 1581</h3><p>Tratamiento de datos personales conforme a la Ley 1581 de 2012 y al Decreto 1377 de 2013. La política es pública y se lee sin tener cuenta.</p></div></div>
+    </div>
+    <div class="enlaces-sec rv">
+      <a href="/politica-datos">Política de Tratamiento de Datos</a>
+      <a href="/politica-datos#transparencia">Reporte de transparencia</a>
+    </div>
+  </div>
+
+  <div class="gancho" style="padding-bottom:2.5rem">
+    <a class="colgante" href="#precio">
+      <span class="q">Bien. ¿Y cuánto cuesta?</span>
+      <span class="sub">Sin pasarela, sin tarjeta, sin letra chica escondida</span>
+    </a>
+    <svg class="flecha" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true" style="color:var(--fijo-hueso)"><path d="M12 4v15M5 13l7 7 7-7"/></svg>
+  </div>
+</section>
+
+<!-- ═══════════ PASILLO 06 · PRECIO ═══════════ -->
+<section class="pasillo" id="precio" data-paso="6">
+  <div class="cabecera am">
+    <div class="env fila">
+      <span class="num">06</span>
+      <h2>Cuánto cuesta</h2>
+      <span class="de">Pasillo 06 de 06</span>
+    </div>
+  </div>
+  <div class="env cuerpo">
+    <div class="precio-grid">
+      <div class="rv">
+        <div class="etiqueta-precio">
+          <span class="rot">Precio</span>
+          <span class="val">[COMPLETAR: precio]</span>
+          <span class="uni">[COMPLETAR: unidad — por supermercado al mes, por sede al mes, o lo que corresponda]</span>
+        </div>
+      </div>
+      <div class="rv">
+        <h3 style="font-size:var(--t-l)">Cómo se paga</h3>
+        <p style="margin-top:.6rem">Por transferencia bancaria, contra cuenta de cobro. No hay pasarela de pagos ni te pedimos una tarjeta.</p>
+
+        <h3 style="font-size:var(--t-l); margin-top:var(--e-3)">Qué pasa si un mes te atrasás</h3>
+        <ul class="atraso" style="list-style:none;padding:0">
+          <li><span class="k">1</span><span>Primero te avisamos en la pantalla, y todo sigue funcionando igual.</span></li>
+          <li><span class="k">2</span><span>Si el atraso sigue, la cuenta pasa a solo lectura: podés entrar, ver todo y consultar, pero no se cargan contratos nuevos.</span></li>
+          <li><span class="k">3</span><span>Tus datos no se borran nunca. Ponés la cuenta al día y volvés a trabajar donde lo dejaste.</span></li>
+        </ul>
+
+        <p style="margin-top:var(--e-3)">¿Tenés varias sedes o una cadena regional y querés que lo veamos juntos? Escribinos a <b>[COMPLETAR: correo de contacto]</b>.</p>
+        <p style="margin-top:var(--e-2)"><a class="btn claro" href="mailto:[COMPLETAR: correo de contacto]">Hablemos</a></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="gancho" style="padding-bottom:2.5rem">
+    <a class="colgante" href="#caja" style="background:var(--fijo-rojo);color:var(--fijo-hueso)">
+      <span class="q">Última góndola: la caja</span>
+      <span class="sub">Empezá por una sede, no por la cadena</span>
+    </a>
+    <svg class="flecha" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M12 4v15M5 13l7 7 7-7"/></svg>
+  </div>
+</section>
+
+<!-- ═══════════ CAJA · CIERRE ═══════════ -->
+<section class="cierre" id="caja" data-paso="7">
+  <div class="env">
+    <p style="font-family:var(--f-cartel);font-weight:800;text-transform:uppercase;letter-spacing:.14em;font-size:.85rem;margin-bottom:var(--e-2)">Caja · salida</p>
+    <h2>Empezá por una sede</h2>
+    <p style="margin-top:var(--e-2)">Creá la cuenta, dibujá la tienda que más espacios vende y mirá cuántos tenés libres esta temporada. Si sirve, seguís con las demás.</p>
+    <div class="acciones">
+      <a class="btn" href="/login#registro">Crear mi cuenta</a>
+      <a class="btn sec" href="/login">Ya tengo cuenta</a>
+    </div>
+    <p class="pie-acciones">Entrás con Google o con tu correo. El plano de arriba es de ejemplo; el tuyo lo dibujás vos.</p>
+  </div>
+</section>
+
+</main>
+
+<footer class="pie">
+  <div class="env">
+    <p class="marca-pie" style="margin:0">RECABRA <span style="font-family:var(--f-texto);font-weight:400;text-transform:none;font-size:.95rem;letter-spacing:0">· Gestión de espacios comerciales en supermercados</span></p>
+    <div class="cols">
+      <div><h4>Producto</h4><ul><li><a href="#que-hace">Qué hace</a></li><li><a href="#como-se-usa">Cómo se usa</a></li><li><a href="#precio">Precio</a></li></ul></div>
+      <div><h4>Cuenta</h4><ul><li><a href="/login#registro">Crear mi cuenta</a></li><li><a href="/login">Ya tengo cuenta</a></li></ul></div>
+      <div><h4>Legal</h4><ul><li><a href="/politica-datos">Política de Tratamiento de Datos</a></li><li><a href="/politica-datos#derechos">Tratamiento de datos y derechos del titular</a></li></ul></div>
+    </div>
+    <div class="legal">
+      <p>[COMPLETAR: razón social] · NIT [COMPLETAR: NIT] · [COMPLETAR: ciudad, Colombia]</p>
+      <p>Tratamiento de datos personales conforme a la Ley 1581 de 2012 y al Decreto 1377 de 2013.</p>
+      <p>Para ejercer tus derechos como titular, escribí a [COMPLETAR: correo de protección de datos].</p>
+      <p style="margin-top:.8rem">© <span id="anio">2026</span> RECABRA. Todos los derechos reservados.</p>
+      <p style="margin-top:.8rem;opacity:.75">El plano de esta página es un supermercado inventado, sembrado en el código de la propia página. No corresponde a ningún cliente.</p>
+      <a class="arriba" href="#inicio">Volver arriba</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+"use strict";
+var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+var tactil = window.matchMedia && window.matchMedia('(hover: none)').matches;
+
+/* ───────── Tema claro / oscuro ───────── */
+var btnTema = document.getElementById('btn-tema');
+function temaActual(){
+  var t = document.documentElement.getAttribute('data-tema');
+  if(t) return t;
+  return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'oscuro' : 'claro';
+}
+function pintaBoton(){
+  var osc = temaActual()==='oscuro';
+  btnTema.setAttribute('aria-pressed', osc ? 'true':'false');
+  btnTema.querySelector('.txt').textContent = osc ? 'Oscuro' : 'Claro';
+  btnTema.setAttribute('aria-label', 'Cambiar a modo ' + (osc?'claro':'oscuro'));
+}
+btnTema.addEventListener('click', function(){
+  var nuevo = temaActual()==='oscuro' ? 'claro':'oscuro';
+  document.documentElement.setAttribute('data-tema', nuevo);
+  try{ localStorage.setItem('recabra-tema', nuevo); }catch(e){}
+  pintaBoton(); if(window.__pintaPlano) window.__pintaPlano();
+});
+pintaBoton();
+document.getElementById('anio').textContent = new Date().getFullYear();
+if(reduce){ var av = document.getElementById('aviso-mov'); if(av) av.style.display='block'; }
+if(tactil){
+  document.getElementById('ayuda-txt').textContent = 'Deslizá para moverte. Pellizcá para acercar. Tocá un mueble.';
+  document.getElementById('ficha-vacio').textContent = 'Tocá un mueble para ver su ficha.';
+}
+
+/* ───────── Datos de ejemplo (MercaFresco · inventados) ───────── */
+var LIBRE='libre', LIBERA='libera', TOMADO='tomado';
+var ESTADO = {
+  libre:  {txt:'Libre todo el periodo', cls:'libre'},
+  libera: {txt:'Se libera en el periodo', cls:'libera'},
+  tomado: {txt:'Tomado', cls:'tomado'},
+  resto:  {txt:'Resto de la sala', cls:'resto'}
+};
+var M = [
+  {c:'PUN-01',t:'Punta de góndola',u:'Frente a la entrada',s:TOMADO,p:'Bebidas Zafiro',n:'$ 1.300.000',f:'hasta el 28 sep',sede:'CENTRO',x:2.2,y:9.3,w:1.6,d:1.0,h:1.5},
+  {c:'PUN-02',t:'Punta de góndola',u:'Pasillo 2, de cara a las cajas',s:LIBERA,p:'Confites Milagro',n:'$ 1.150.000',f:'libre desde el 26 sep',sede:'CENTRO',x:10.3,y:7.0,w:1.0,d:1.6,h:1.5},
+  {c:'PUN-05',t:'Punta de góndola',u:'Pasillo 5, contra la pared del fondo',s:LIBRE,p:'',n:'$ 1.000.000',f:'',sede:'CENTRO',x:10.3,y:0.95,w:1.0,d:1.6,h:1.5},
+  {c:'EXP-01',t:'Isla',u:'Frente a la entrada',s:TOMADO,p:'Galletas Doña Rita',n:'$ 1.200.000',f:'hasta el 30 nov',sede:'CENTRO',x:4.6,y:9.5,w:1.8,d:1.4,h:0.9},
+  {c:'EXP-02',t:'Isla',u:'A 3 m de las cajas',s:LIBRE,p:'',n:'$ 1.200.000',f:'',sede:'CENTRO',x:7.0,y:9.5,w:1.8,d:1.4,h:0.9},
+  {c:'CRS-01',t:'Exhibición de piso',u:'Pasillo central',s:LIBERA,p:'Aseo Rocío',n:'$ 900.000',f:'libre desde el 22 sep',sede:'CENTRO',x:6.6,y:6.15,w:1.7,d:1.0,h:0.75},
+  {c:'GON-04·A',t:'Góndola, por cara',u:'Pasillo 3, lado par',s:TOMADO,p:'Lácteos Monteverde',n:'$ 240.000',f:'hasta el 31 oct',sede:'CENTRO',x:3.4,y:4.35,w:6.4,d:0.42,h:1.55,la:0.24},
+  {c:'GON-04·B',t:'Góndola, por cara',u:'Pasillo 4, lado impar',s:LIBRE,p:'',n:'$ 230.000',f:'',sede:'CENTRO',x:3.4,y:5.12,w:6.4,d:0.42,h:1.55,la:0.76},
+  {c:'BEB-01',t:'Nevera de bebidas',u:'Pared de refrigerados',s:TOMADO,p:'Bebidas Zafiro',n:'$ 450.000',f:'hasta el 30 nov',sede:'CENTRO',x:12.3,y:3.4,w:0.9,d:3.4,h:2.1},
+  {c:'FRU-02',t:'Frutas y verduras',u:'Entrada, mano derecha',s:LIBRE,p:'',n:'$ 380.000',f:'',sede:'CENTRO',x:11.1,y:9.2,w:2.2,d:1.5,h:0.7},
+
+  {c:'PUN-01',t:'Punta de góndola',u:'Frente a la entrada',s:TOMADO,p:'Café Alto Bosque',n:'$ 1.100.000',f:'hasta el 15 dic',sede:'PALMAS',x:19.6,y:8.3,w:1.6,d:1.0,h:1.5},
+  {c:'PUN-03',t:'Punta de góndola',u:'Pasillo 3, de cara a las cajas',s:LIBRE,p:'',n:'$ 1.000.000',f:'',sede:'PALMAS',x:25.3,y:6.3,w:1.0,d:1.6,h:1.5},
+  {c:'CAJ-02',t:'Cabecera de caja',u:'Caja 2',s:LIBERA,p:'Confites Milagro',n:'$ 850.000',f:'libre desde el 24 sep',sede:'PALMAS',x:21.8,y:9.3,w:1.3,d:0.8,h:1.0},
+  {c:'ISL-01',t:'Isla de congelados',u:'Zona de congelados',s:TOMADO,p:'Cárnicos San Isidro',n:'$ 700.000',f:'hasta el 31 oct',sede:'PALMAS',x:23.3,y:2.3,w:2.6,d:1.4,h:0.9},
+  {c:'GON-11·A',t:'Góndola, por cara',u:'Pasillo 1, lado par',s:LIBRE,p:'',n:'$ 230.000',f:'',sede:'PALMAS',x:19.9,y:5.12,w:5.0,d:0.42,h:1.55},
+  {c:'BAT-01',t:'Batea',u:'Pasillo central',s:LIBRE,p:'',n:'$ 320.000',f:'',sede:'PALMAS',x:21.9,y:6.4,w:1.7,d:1.1,h:0.6}
+];
+var CTX = [
+  /* CENTRO */
+  {c:'',t:'Muro del fondo',x:0.7,y:0.35,w:12.8,d:0.35,h:2.6},
+  {c:'',t:'Muro lateral',x:0.7,y:0.35,w:0.35,d:10.9,h:2.6},
+  {c:'',t:'Pared de refrigerados',x:12.3,y:0.7,w:0.9,d:2.5,h:2.4},
+  {c:'',t:'Corrida de góndola',x:3.4,y:0.9,w:6.4,d:0.9,h:1.55},
+  {c:'',t:'Corrida de góndola',x:3.4,y:2.6,w:6.4,d:0.9,h:1.55},
+  {c:'',t:'Corrida de góndola',x:3.4,y:7.0,w:6.4,d:0.9,h:1.55},
+  {c:'CAJ-01',t:'Caja registradora',x:3.6,y:10.9,w:1.2,d:0.7,h:1.0},
+  {c:'CAJ-03',t:'Caja registradora',x:5.3,y:10.9,w:1.2,d:0.7,h:1.0},
+  {c:'CAJ-04',t:'Caja registradora',x:7.0,y:10.9,w:1.2,d:0.7,h:1.0},
+  {c:'CAJ-05',t:'Caja registradora',x:8.7,y:10.9,w:1.2,d:0.7,h:1.0},
+  {c:'SAC-01',t:'Mostrador de servicio al cliente',x:10.6,y:10.8,w:2.2,d:0.9,h:1.1},
+  {c:'COL-01',t:'Columna',x:2.6,y:3.6,w:0.5,d:0.5,h:2.9},
+  {c:'COL-02',t:'Columna',x:10.1,y:3.6,w:0.5,d:0.5,h:2.9},
+  {c:'COL-03',t:'Columna',x:2.6,y:8.0,w:0.5,d:0.5,h:2.9},
+  {c:'COL-04',t:'Columna',x:10.1,y:8.0,w:0.5,d:0.5,h:2.9},
+  /* PALMAS */
+  {c:'',t:'Muro del fondo',x:18.4,y:0.75,w:9.0,d:0.35,h:2.6},
+  {c:'',t:'Muro lateral',x:18.4,y:0.75,w:0.35,d:9.6,h:2.6},
+  {c:'',t:'Corrida de góndola',x:19.9,y:2.3,w:5.0,d:0.9,h:1.55},
+  {c:'',t:'Corrida de góndola',x:19.9,y:4.35,w:5.0,d:0.42,h:1.55},
+  {c:'',t:'Corrida de góndola',x:19.9,y:6.9,w:5.0,d:0.9,h:1.55},
+  {c:'COL-05',t:'Columna',x:19.2,y:7.6,w:0.5,d:0.5,h:2.9},
+  {c:'COL-06',t:'Columna',x:25.6,y:3.4,w:0.5,d:0.5,h:2.9},
+  {c:'',t:'Caja registradora',x:20.0,y:9.3,w:1.2,d:0.7,h:1.0},
+  {c:'',t:'Caja registradora',x:23.4,y:9.3,w:1.2,d:0.7,h:1.0},
+  {c:'',t:'Mostrador de servicio al cliente',x:25.2,y:9.2,w:1.9,d:0.9,h:1.1}
+];
+var PISOS = [
+  {x:0.7,y:0.35,w:12.9,d:11.4,rot:'SEDE CENTRO'},
+  {x:18.4,y:0.75,w:9.1,d:9.4,rot:'SEDE PALMAS'}
+];
+
+/* ───────── Isometría ───────── */
+var TW=32, TH=16, HU=17;
+function P(gx,gy){ return [(gx-gy)*TW, (gx+gy)*TH]; }
+function hex2rgb(h){h=h.trim().replace('#','');if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];var n=parseInt(h,16);return [n>>16&255,n>>8&255,n&255];}
+function sh(h,f){var c=hex2rgb(h);return 'rgb('+c.map(function(v){return Math.max(0,Math.min(255,Math.round(v*f)));}).join(',')+')';}
+
+var lienzo = document.getElementById('lienzo');
+var errPlano = document.getElementById('err-plano');
+var holder = document.getElementById('svg-holder');
+var svg=null, mundo=null;
+var vista = {s:1, tx:0, ty:0};
+var alto3d = false, hmul = 1;
+var sel = -1, fijo = -1;
+
+function paleta(){
+  var cs = getComputedStyle(document.documentElement);
+  function g(n){ return cs.getPropertyValue(n).trim() || '#888888'; }
+  return {
+    libre:g('--libre-cara'), libera:g('--libera-cara'), tomado:g('--tomado-cara'),
+    resto:g('--resto'), piso:g('--piso'), borde:g('--borde-suave')
+  };
+}
+function caja(o,color,cls,extra,mul){
+  var H=o.h*HU*(mul||hmul);
+  var a=P(o.x,o.y), b=P(o.x+o.w,o.y), c=P(o.x+o.w,o.y+o.d), d=P(o.x,o.y+o.d);
+  var pt=[a[0]+','+(a[1]-H),b[0]+','+(b[1]-H),c[0]+','+(c[1]-H),d[0]+','+(d[1]-H)].join(' ');
+  var pd=[b[0]+','+(b[1]-H),c[0]+','+(c[1]-H),c[0]+','+c[1],b[0]+','+b[1]].join(' ');
+  var pi=[d[0]+','+(d[1]-H),c[0]+','+(c[1]-H),c[0]+','+c[1],d[0]+','+d[1]].join(' ');
+  var s='<g class="'+cls+'" '+(extra||'')+'>';
+  s+='<polygon class="izq" points="'+pi+'" fill="'+sh(color,0.62)+'"/>';
+  s+='<polygon class="der" points="'+pd+'" fill="'+sh(color,0.80)+'"/>';
+  s+='<polygon class="top" points="'+pt+'" fill="'+color+'"/>';
+  return {s:s, top:pt, H:H};
+}
+function pintaPlano(){
+  try{
+    var pal = paleta();
+    var W = lienzo.clientWidth, Hh = lienzo.clientHeight;
+    var out = '';
+    out += '<defs><pattern id="rayas" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">'
+        +  '<rect width="7" height="7" fill="none"/><line x1="0" y1="0" x2="0" y2="7" stroke="#0E0E0D" stroke-width="2.6" opacity=".55"/></pattern></defs>';
+    out += '<g id="mundo">';
+    /* pisos */
+    PISOS.forEach(function(f){
+      var a=P(f.x,f.y),b=P(f.x+f.w,f.y),c=P(f.x+f.w,f.y+f.d),d=P(f.x,f.y+f.d);
+      out += '<polygon points="'+[a,b,c,d].map(function(q){return q[0]+','+q[1];}).join(' ')+'" fill="'+pal.piso+'" stroke="'+pal.borde+'" stroke-width="2"/>';
+    });
+    /* objetos ordenados por profundidad */
+    var todos = [];
+    CTX.forEach(function(o){ todos.push({o:o,r:false}); });
+    M.forEach(function(o,i){ todos.push({o:o,r:true,i:i}); });
+    todos.sort(function(A,B){ return (A.o.x+A.o.w/2+A.o.y+A.o.d/2) - (B.o.x+B.o.w/2+B.o.y+B.o.d/2); });
+    todos.forEach(function(it){
+      var o=it.o;
+      if(!it.r){ out += caja(o, pal.resto, 'ctx', '', 1+(hmul-1)*0.5).s + '</g>'; return; }
+      var col = pal[o.s];
+      var k = caja(o, col, 'fx'+(it.i===fijo?' act':''), 'data-i="'+it.i+'"');
+      out += k.s;
+      if(o.s===LIBERA) out += '<polygon points="'+k.top+'" fill="url(#rayas)" stroke="none"/>';
+      var m = P(o.x+o.w*(o.la||0.5), o.y+o.d/2);
+      out += '<text class="cod" x="'+m[0]+'" y="'+(m[1]-k.H+4)+'" text-anchor="middle">'+o.c+'</text>';
+      out += '</g>';
+    });
+    /* rótulos de sede */
+    PISOS.forEach(function(f){
+      var m = P(f.x+f.w*0.62, f.y-1.7);
+      out += '<text class="sede-rot" x="'+m[0]+'" y="'+m[1]+'" text-anchor="middle">'+f.rot+'</text>';
+    });
+    out += '</g>';
+    holder.innerHTML = '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><g id="raiz">'+out+'</g></svg>';
+    errPlano.classList.remove('on');
+    svg = holder.querySelector('svg');
+    mundo = holder.querySelector('#raiz');
+    aplicaVista();
+    if(W===0||Hh===0){/* aún sin layout */}
+  }catch(e){
+    holder.innerHTML = '';
+    errPlano.classList.add('on');
+  }
+}
+window.__pintaPlano = function(){ if(svg) pintaPlano(); };
+
+function aplicaVista(){
+  if(mundo) mundo.setAttribute('transform','translate('+vista.tx+','+vista.ty+') scale('+vista.s+')');
+}
+function encuadra(){
+  var f = PISOS[0];
+  var pts = [P(f.x,f.y),P(f.x+f.w,f.y),P(f.x+f.w,f.y+f.d),P(f.x,f.y+f.d)];
+  var x0=Math.min.apply(null,pts.map(function(p){return p[0];})), x1=Math.max.apply(null,pts.map(function(p){return p[0];}));
+  var y0=Math.min.apply(null,pts.map(function(p){return p[1];}))-70, y1=Math.max.apply(null,pts.map(function(p){return p[1];}));
+  var W=lienzo.clientWidth||600, H=lienzo.clientHeight||400;
+  var s = Math.min(W/((x1-x0)*1.08), H/((y1-y0)*1.10));
+  s = Math.max(0.42, Math.min(1.9, s));
+  vista.s = s;
+  vista.tx = W/2 - ((x0+x1)/2)*s;
+  vista.ty = H/2 - ((y0+y1)/2)*s;
+  aplicaVista();
+}
+function zoom(k, cx, cy){
+  var W=lienzo.clientWidth, H=lienzo.clientHeight;
+  if(cx===undefined){cx=W/2; cy=H/2;}
+  var ns = Math.max(0.35, Math.min(2.8, vista.s*k));
+  var f = ns/vista.s;
+  vista.tx = cx - (cx - vista.tx)*f;
+  vista.ty = cy - (cy - vista.ty)*f;
+  vista.s = ns; aplicaVista();
+}
+
+/* ───────── Ficha ───────── */
+var ficha = document.getElementById('ficha');
+var vacioTxt = tactil ? 'Tocá un mueble para ver su ficha.' : 'Pasá el mouse por un mueble para ver su ficha.';
+function marcaSel(i){
+  var g = lienzo.querySelectorAll('g.fx');
+  for(var k=0;k<g.length;k++) g[k].classList.toggle('act', String(i)===g[k].getAttribute('data-i'));
+}
+function limpiaFicha(){
+  ficha.classList.remove('abierta');
+  ficha.innerHTML = '<button class="cerrar" type="button" id="ficha-cerrar">Cerrar</button><div class="c1"><span class="vacio">'+vacioTxt+'</span></div>';
+  enganchaCerrar(); marcaSel(-1);
+}
+function enganchaCerrar(){
+  var b = document.getElementById('ficha-cerrar');
+  if(b) b.addEventListener('click', function(){ fijo=-1; limpiaFicha(); });
+}
+function muestraFicha(i, pinchada){
+  var o = M[i]; if(!o) return;
+  var e = ESTADO[o.s];
+  var lineas = '';
+  if(o.s===LIBRE){
+    lineas = '<span class="prov">Tarifa de referencia</span>'
+           + '<span class="canon">'+o.n+'<small>al mes</small></span>';
+  }else if(o.s===LIBERA){
+    lineas = '<span class="prov">'+o.p+'</span>'
+           + '<span class="canon">'+o.n+'<small>al mes</small></span>'
+           + '<span class="fecha">'+o.f+'</span>';
+  }else{
+    lineas = '<span class="prov">'+o.p+'</span>'
+           + '<span class="canon">'+o.n+'<small>al mes</small></span>'
+           + '<span class="fecha">'+o.f+'</span>';
+  }
+  var nota = (o.s===LIBRE) ? '' : '<p class="nota" style="margin:0">Proveedor y valores de ejemplo</p>';
+  ficha.innerHTML =
+    '<button class="cerrar" type="button" id="ficha-cerrar">Cerrar</button>'
+  + '<div class="c1"><span class="cod-f">'+o.c+'</span><span class="tipo">'+o.t+'</span><span class="ubi">'+o.u+' · sede '+o.sede+'</span></div>'
+  + '<div class="c2"><span class="eti '+e.cls+'"><i class="pto"></i>'+e.txt+'</span>'+lineas+'</div>'
+  + nota;
+  if(pinchada) ficha.classList.add('abierta'); else ficha.classList.remove('abierta');
+  enganchaCerrar();
+  marcaSel(i);
+}
+
+/* ───────── Interacción del plano ───────── */
+var arrastrando=false, movio=0, ult={x:0,y:0}, punteros=new Map(), distIni=0, sIni=1, objetivo=null;
+function eventos(){
+  lienzo.addEventListener('wheel', function(e){
+    e.preventDefault();
+    var r = lienzo.getBoundingClientRect();
+    zoom(Math.exp(-e.deltaY*0.0016), e.clientX-r.left, e.clientY-r.top);
+  }, {passive:false});
+
+  lienzo.addEventListener('pointerdown', function(e){
+    punteros.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    objetivo = (e.target && e.target.closest) ? e.target.closest('g.fx') : null;
+    if(punteros.size===1){ arrastrando=true; movio=0; ult={x:e.clientX,y:e.clientY}; try{lienzo.setPointerCapture(e.pointerId);}catch(err){} }
+    if(punteros.size===2){ var v=Array.from(punteros.values()); distIni=Math.hypot(v[0].x-v[1].x, v[0].y-v[1].y); sIni=vista.s; arrastrando=false; }
+  });
+  lienzo.addEventListener('pointermove', function(e){
+    if(punteros.has(e.pointerId)) punteros.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(punteros.size===2 && distIni>0){
+      var v=Array.from(punteros.values());
+      var d=Math.hypot(v[0].x-v[1].x, v[0].y-v[1].y);
+      var r=lienzo.getBoundingClientRect();
+      var cx=(v[0].x+v[1].x)/2-r.left, cy=(v[0].y+v[1].y)/2-r.top;
+      var obj = Math.max(0.35, Math.min(2.8, sIni*(d/distIni)));
+      zoom(obj/vista.s, cx, cy);
+      return;
+    }
+    if(arrastrando){
+      var dx=e.clientX-ult.x, dy=e.clientY-ult.y;
+      movio += Math.abs(dx)+Math.abs(dy);
+      vista.tx+=dx; vista.ty+=dy; ult={x:e.clientX,y:e.clientY}; aplicaVista();
+    }else if(!tactil){
+      var g = e.target.closest ? e.target.closest('g.fx') : null;
+      if(g){ var i=+g.getAttribute('data-i'); if(i!==sel){ sel=i; muestraFicha(i,false); } }
+    }
+  });
+  function fin(e){
+    punteros.delete(e.pointerId);
+    if(punteros.size<2){ distIni=0; }
+    if(arrastrando && movio<6){
+      /* con setPointerCapture el pointerup vuelve al contenedor: usamos el destino del pointerdown */
+      var g = objetivo;
+      if(g){ fijo = +g.getAttribute('data-i'); muestraFicha(fijo, true); }
+      else if(fijo!==-1){ fijo=-1; limpiaFicha(); }
+    }
+    arrastrando=false; objetivo=null;
+  }
+  lienzo.addEventListener('pointerup', fin);
+  lienzo.addEventListener('pointercancel', fin);
+  lienzo.addEventListener('pointerleave', function(){
+    if(!tactil && !arrastrando){ sel=-1; if(fijo!==-1) muestraFicha(fijo,false); else limpiaFicha(); }
+  });
+
+  lienzo.addEventListener('keydown', function(e){
+    var p = 44;
+    if(e.key==='ArrowLeft'){ vista.tx+=p; aplicaVista(); e.preventDefault(); }
+    else if(e.key==='ArrowRight'){ vista.tx-=p; aplicaVista(); e.preventDefault(); }
+    else if(e.key==='ArrowUp'){ vista.ty+=p; aplicaVista(); e.preventDefault(); }
+    else if(e.key==='ArrowDown'){ vista.ty-=p; aplicaVista(); e.preventDefault(); }
+    else if(e.key==='+'||e.key==='='){ zoom(1.22); e.preventDefault(); }
+    else if(e.key==='-'||e.key==='_'){ zoom(1/1.22); e.preventDefault(); }
+    else if(e.key==='Enter'){ fijo = (fijo+1) % M.length; muestraFicha(fijo,true); e.preventDefault(); }
+    else if(e.key==='Escape'){ fijo=-1; limpiaFicha(); }
+  });
+
+  document.getElementById('z-mas').addEventListener('click', function(){ zoom(1.25); });
+  document.getElementById('z-menos').addEventListener('click', function(){ zoom(1/1.25); });
+  document.getElementById('z-centrar').addEventListener('click', function(){ encuadra(); });
+  document.getElementById('b3d').addEventListener('click', function(){
+    var b=this; alto3d=!alto3d;
+    b.textContent = alto3d ? 'Volver al plano' : 'Ver en 3D';
+    b.title = b.textContent;
+    var desde=hmul, hasta = alto3d ? 2.6 : 1;
+    if(reduce){ hmul=hasta; pintaPlano(); return; }
+    var t0 = performance.now(), dur = 380;
+    (function paso(t){
+      var k = Math.min(1,(t-t0)/dur); var e = 1-Math.pow(1-k,3);
+      hmul = desde + (hasta-desde)*e;
+      pintaPlano();
+      if(k<1) requestAnimationFrame(paso);
+    })(t0);
+  });
+  var rt;
+  window.addEventListener('resize', function(){ clearTimeout(rt); rt=setTimeout(function(){ pintaPlano(); encuadra(); },160); });
+}
+
+/* ───────── Tabla accesible equivalente ───────── */
+(function(){
+  var tb = document.getElementById('tabla-cuerpo');
+  var filas = M.map(function(o){
+    return '<tr><td>'+o.c+'</td><td>'+o.t+'</td><td>'+o.sede+'</td><td>'+ESTADO[o.s].txt+'</td><td>'+(o.p||'—')+'</td><td>'+o.n+(o.s===LIBRE?' (tarifa)':'')+'</td></tr>';
+  }).join('');
+  tb.innerHTML = filas;
+})();
+
+var reint = document.getElementById('reintentar');
+if(reint) reint.addEventListener('click', function(){ arranca(); });
+
+function arranca(){
+  pintaPlano();
+  encuadra();
+  eventos();
+  var i = 1; /* PUN-02 · el que se libera el 26 */
+  fijo = i; muestraFicha(i, false);
+}
+
+/* ───────── Recorrido de la tienda + revelado + contadores ───────── */
+function secundario(){
+  var fill = document.getElementById('fill');
+  var enlaces = Array.prototype.slice.call(document.querySelectorAll('#pasos-nav .paso'));
+  var secciones = Array.prototype.slice.call(document.querySelectorAll('main > section'));
+  var pendiente = false;
+  function actualiza(){
+    pendiente = false;
+    var h = document.documentElement.scrollHeight - window.innerHeight;
+    var p = h>0 ? Math.min(1, Math.max(0, window.scrollY/h)) : 0;
+    fill.style.width = (p*100).toFixed(1)+'%';
+  }
+  window.addEventListener('scroll', function(){
+    if(!pendiente){ pendiente=true; requestAnimationFrame(actualiza); }
+  }, {passive:true});
+  actualiza();
+
+  if('IntersectionObserver' in window){
+    var obsSec = new IntersectionObserver(function(es){
+      es.forEach(function(en){
+        if(!en.isIntersecting) return;
+        var k = secciones.indexOf(en.target);
+        enlaces.forEach(function(a,j){ a.setAttribute('aria-current', j===k ? 'true':'false'); });
+      });
+    }, {rootMargin:'-45% 0px -50% 0px'});
+    secciones.forEach(function(s){ obsSec.observe(s); });
+
+    var obsRv = new IntersectionObserver(function(es){
+      es.forEach(function(en){ if(en.isIntersecting){ en.target.classList.add('on'); obsRv.unobserve(en.target); } });
+    }, {rootMargin:'0px 0px -8% 0px', threshold:0.06});
+    document.querySelectorAll('.rv').forEach(function(el){ obsRv.observe(el); });
+
+    /* contador de ocupación */
+    var celdas = document.getElementById('celdas');
+    for(var i=0;i<23;i++){ var s=document.createElement('i'); celdas.appendChild(s); }
+    var pct = document.getElementById('pct-ocup');
+    var obsC = new IntersectionObserver(function(es){
+      es.forEach(function(en){
+        if(!en.isIntersecting) return;
+        obsC.unobserve(en.target);
+        var cs = celdas.children;
+        if(reduce){ for(var j=0;j<8;j++) cs[j].classList.add('on'); pct.textContent='35 %'; return; }
+        var n=0;
+        var iv = setInterval(function(){
+          if(n<8){ cs[n].classList.add('on'); }
+          n++;
+          pct.textContent = Math.round(35*Math.min(1,n/8)) + ' %';
+          if(n>=8){ clearInterval(iv); pct.textContent='35 %'; }
+        }, 85);
+      });
+    }, {threshold:0.35});
+    obsC.observe(document.getElementById('tile-ocup'));
+
+    /* mini plano que se vende solo */
+    var mini = document.getElementById('mini-plano');
+    if(mini && !reduce){
+      var obsM = new IntersectionObserver(function(es){
+        es.forEach(function(en){
+          if(en.isIntersecting){
+            if(!mini.__iv){
+              var k=0;
+              mini.__iv = setInterval(function(){
+                var hijos = mini.children;
+                hijos[k % hijos.length].classList.toggle('b');
+                k++;
+              }, 1100);
+            }
+          }else if(mini.__iv){ clearInterval(mini.__iv); mini.__iv=null; }
+        });
+      }, {threshold:0.4});
+      obsM.observe(mini);
+    }
+  }else{
+    document.querySelectorAll('.rv').forEach(function(el){ el.classList.add('on'); });
+    var cel = document.getElementById('celdas');
+    for(var q=0;q<23;q++){ var sp=document.createElement('i'); if(q<8) sp.className='on'; cel.appendChild(sp); }
+    document.getElementById('pct-ocup').textContent='35 %';
+  }
+}
+
+/* El hero pinta primero; el plano y las animaciones, después */
+function despues(){ requestAnimationFrame(function(){ setTimeout(function(){ arranca(); secundario(); }, 0); }); }
+if(document.readyState==='complete') despues();
+else window.addEventListener('load', despues);
+})();
+</script>
+</body>
+</html>
