@@ -249,8 +249,12 @@ def _grafo_landing() -> tuple[set[Path], set[Path]]:
     exige el estilo de la landing, pero sí lo único que no se negocia: que no
     arrastren la API ni la sesión adentro de una página pública.
     """
-    nucleo = {p for p in (_archivos_nuevos_del_frontend() | _por_nombre())
-              if SRC in p.parents}
+    # Fase 10: la landing ya vive entera bajo `pages/Landing/` (todo lo que se
+    # llama «landing»). El «lo que esta rama agregó» de la construcción de la
+    # Fase 9 ya no sirve de vara: cualquier archivo nuevo de otra fase (el
+    # tema, la hoja de ingreso que monta App.tsx) caía adentro del núcleo y
+    # arrastraba a la auditoría cosas que no son la página pública.
+    nucleo = {p for p in _por_nombre() if SRC in p.parents}
     heredados: set[Path] = set()
     pendientes = list(nucleo)
     vistos: set[Path] = set()

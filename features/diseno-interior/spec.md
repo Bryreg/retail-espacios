@@ -16,6 +16,10 @@ Esto **revoca** la regla 4 del rediseño de la pantalla principal en
 amarillo entra acotado al botón principal, y el oscuro entra como modo
 opcional, nunca por defecto. Hay que dejarlo escrito en ESTADO.
 
+**Revisión (2026-09-06, viendo el antes/después):** el dueño confirmó **claro por
+defecto**, y pidió que el ingreso pase **encima de la landing** en vez de saltar a
+`/login` (hoja de ingreso, ver ESTADO).
+
 ## PR 1 — Un solo sistema de tokens
 
 **Qué es.** La app ya es de tokens (`frontend/src/index.css`: `--bg`,

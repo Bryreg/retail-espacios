@@ -340,3 +340,28 @@ html[data-tema="oscuro"] {
 /* Fila de tabla: realce al pasar. */
 .con-fila { transition: background-color 150ms ease-in-out; }
 .con-fila:hover { background: var(--con-surface-2); }
+
+/* ─── La hoja de ingreso sobre la landing (Fase 10) ─────────────────────────
+   El login sin salir de la portada. Panel a la derecha en escritorio, a
+   pantalla completa en el celular; tokens de :root, que mientras la hoja está
+   abierta siguen el tema de la landing (ver `components/HojaIngreso.tsx`). */
+.hoja-ingreso { position: fixed; inset: 0; z-index: 1000; display: flex; justify-content: flex-end; }
+.hoja-ingreso__velo {
+  position: absolute; inset: 0; background: rgba(4, 7, 10, .55);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.hoja-ingreso__panel {
+  position: relative; width: min(460px, 100%); height: 100%; overflow-y: auto;
+  background: var(--surface); border-left: 1px solid var(--line);
+  box-shadow: var(--sh-3); padding: 52px 8px 24px;
+  animation: hoja-entra 320ms cubic-bezier(.16, .84, .44, 1);
+}
+.hoja-ingreso__cerrar {
+  position: absolute; top: 12px; right: 14px; width: 36px; height: 36px; padding: 0;
+  border-radius: 999px; border: 1px solid var(--line); background: var(--surface);
+  color: var(--ink-2); font-size: 22px; line-height: 1; cursor: pointer;
+}
+.hoja-ingreso__cerrar:hover { color: var(--ink-1); border-color: var(--line-strong); }
+@keyframes hoja-entra { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .hoja-ingreso__panel { animation: none; } }
+@media (max-width: 600px) { .hoja-ingreso__panel { width: 100%; border-left: 0; } }

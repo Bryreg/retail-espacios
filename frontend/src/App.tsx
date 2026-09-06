@@ -1,7 +1,8 @@
-import { Suspense, lazy, useEffect, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Landing from "./pages/Landing/Landing";
 import BloqueoCuenta from "./components/BloqueoCuenta";
+import HojaIngreso from "./components/HojaIngreso";
 import ModalConsentimiento from "./components/ModalConsentimiento";
 import { usarToken } from "./api/montaje";
 import { useAuthStore } from "./store/authStore";
@@ -100,6 +101,18 @@ const TOKEN_MONTAJE = (() => {
 })();
 
 export default function App() {
+  // Fase 10: «Crear mi cuenta» / «Ya tengo cuenta» de la landing abren el
+  // ingreso encima de la portada. La landing sólo dispara el evento; el login
+  // (que sí conoce la API y la sesión) lo monta App, y entra perezoso.
+  const [hoja, setHoja] = useState<"login" | "registro" | null>(null);
+  useEffect(() => {
+    const abrir = (e: Event) => {
+      const modo = (e as CustomEvent<string>).detail;
+      setHoja(modo === "registro" ? "registro" : "login");
+    };
+    window.addEventListener("recabra:ingresar", abrir);
+    return () => window.removeEventListener("recabra:ingresar", abrir);
+  }, []);
   const token = useAuthStore((s) => s.token);
   const cliente = useAuthStore((s) => s.cliente);
   const avisoCuenta = useAuthStore((s) => s.avisoCuenta);
@@ -166,7 +179,13 @@ export default function App() {
   if (!token) {
     const ruta = typeof window !== "undefined" ? window.location.pathname : "/";
     const esPortada = ruta === "/" || ruta === "" || ruta === "/index.html";
-    return esPortada ? <Landing /> : <Pantalla><Login /></Pantalla>;
+    if (!esPortada) return <Pantalla><Login /></Pantalla>;
+    return (
+      <>
+        <Landing />
+        {hoja && <HojaIngreso modo={hoja} onCerrar={() => setHoja(null)} />}
+      </>
+    );
   }
 
   // Fase 2 clientes: cliente `suspendido` — sólo un owner llega hasta acá con

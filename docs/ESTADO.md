@@ -3411,6 +3411,26 @@ cerrar trato y revisar cada uno en su modo) siguen vigentes y son el PR 2.
   1,35:1. Los `-borde` de estado NO dan contorno (1,3–1,8:1): el refuerzo del
   estado es la palabra al lado, que es regla dura; no el borde.
 
+### La hoja de ingreso sobre la landing
+
+«Crear mi cuenta» y «Ya tengo cuenta» ya **no saltan a `/login`** (dueño,
+2026-09-06: «la idea era poder ingresar ahí de una vez»). La portada dispara
+`recabra:ingresar` (con `registro` o `login`), `App.tsx` monta
+`components/HojaIngreso.tsx` encima, y el `Login` de siempre entra perezoso
+adentro con `enHoja` (sin pantalla completa ni tarjeta) y `modoInicial`.
+Mientras la hoja está abierta el `<html>` toma el tema de la landing (oscuro
+salvo que la portada esté en claro) para que los tokens pinten a juego, y al
+cerrar vuelve el del interior. Escape, el velo y la × cierran; el `href` a
+`/login` queda de respaldo (clic con modificadores, sin JS). `/login` sigue
+existiendo para la invitación, los enlaces guardados y el 401.
+
+**Frontera intacta:** la landing sigue sin importar sesión ni API (la hoja la
+importa `App.tsx`, no la landing). `test_landing_ataques.py` definía el
+«núcleo» de la landing como *todo archivo nuevo de la rama bajo `frontend/src`*
+(muleta de la construcción de la Fase 9): con la Fase 10 eso metía `tema.css`
+y la hoja adentro del núcleo. Ahora el núcleo es lo que se llama «landing»
+(`pages/Landing/`), que es lo que la landing es.
+
 ### Gotchas de la Fase 10
 
 - **La terna oscura de estados reprueba la banda de claridad de `dataviz`**

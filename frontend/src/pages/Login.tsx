@@ -80,7 +80,14 @@ function rolLabel(rol: Membresia["rol"]): string {
   return "trabajador";
 }
 
-export default function Login() {
+/** `enHoja`: el formulario vive adentro de la hoja de ingreso que se abre
+ *  sobre la landing (`components/HojaIngreso.tsx`): sin la pantalla completa
+ *  ni la tarjeta con borde, y con el modo inicial que pidió el botón de la
+ *  portada en vez del `#registro` de la URL. */
+export default function Login({ enHoja = false, modoInicial }: {
+  enHoja?: boolean;
+  modoInicial?: "login" | "registro";
+} = {}) {
   const setAuth = useAuthStore((s) => s.setAuth);
 
   // ─── Legado: clave compartida ─────────────────────────────────────────
@@ -133,7 +140,7 @@ export default function Login() {
   // (la invitación con `?invitacion=`, un enlace guardado, un 401) llega sin
   // `#` y ve exactamente la pantalla de siempre.
   const [fbMode, setFbMode] = useState<"login" | "registro">(
-    typeof window !== "undefined" && window.location.hash === "#registro" ? "registro" : "login",
+    modoInicial ?? (typeof window !== "undefined" && window.location.hash === "#registro" ? "registro" : "login"),
   );
   const [fbEmail, setFbEmail] = useState("");
   const [fbPassword, setFbPassword] = useState("");
@@ -438,7 +445,7 @@ export default function Login() {
 
   return (
     <div
-      style={{
+      style={enHoja ? { padding: 0 } : {
         height: "100dvh",
         display: "flex", alignItems: "center", justifyContent: "center",
         background: "var(--bg)",
@@ -447,11 +454,11 @@ export default function Login() {
     >
       <div
         style={{
-          width: "100%", maxWidth: 348,
-          background: "var(--surface)",
-          border: "1px solid var(--line)",
+          width: "100%", maxWidth: enHoja ? "none" : 348,
+          background: enHoja ? "transparent" : "var(--surface)",
+          border: enHoja ? 0 : "1px solid var(--line)",
           borderRadius: "var(--r-xl)",
-          padding: "26px 28px 28px",
+          padding: enHoja ? "8px 20px 24px" : "26px 28px 28px",
           display: "flex", flexDirection: "column", alignItems: "flex-start",
         }}
       >
