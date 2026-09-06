@@ -79,7 +79,7 @@ la cámara sobre el plano vive en dos de ellas —el hero y «Lo que hace»— y
 
 ## Lo que es nuevo en E (y no estaba ni en A ni en C)
 
-- **Titular.** `Vendé tocando el plano`, con el titular viejo bajado intacto a subtítulo:
+- **Titular.** `Recabrá cada metro.` (elegido por el dueño entre los slogans de marca; antes «Vendé tocando el plano»), con el titular viejo bajado intacto a subtítulo:
   «Qué mueble está libre, quién lo ocupa, a cuánto y hasta cuándo.» **El recurso de pintar las
   palabras con los colores del estado se mantiene, pero mudado al subtítulo**, que es donde el texto
   nuevo lo permite de forma natural: *libre* verde, *ocupa* rojo, *a cuánto* amarillo señal,
