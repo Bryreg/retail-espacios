@@ -1193,6 +1193,10 @@ sección:
   permanente: la cámara de cada sección SIEMPRE retoma el plano al cambiar de
   sección (un arrastre o zoom a mano vale hasta la siguiente), y el umbral de
   arrastre subió a 10 px. El clic y la ficha se conservan.
+  (4) La ficha del mueble tapaba la capa de prueba de la sección (p. ej. la
+  tira de temporadas). Ahora la ficha solo existe en el inicio (escena
+  `hero`); en las specs, señalar o tocar un mueble deja el anillo y el
+  código, sin ficha. Al volver arriba, la ficha vuelve.
 - **Gotcha al cerrar (verificador de fidelidad):** `src/index.css` define una
   clase global `.rotulo` (versalita mono 600, 9,5 px) que pisaba el pill del
   plano; `landing.css` la redeclara entera (`font-weight`, `text-transform`).
