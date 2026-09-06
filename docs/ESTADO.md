@@ -1187,6 +1187,12 @@ sección:
   secuestraba el scroll, porque el plano pegado ocupa toda la pantalla. Ahora
   la rueda sola siempre scrollea; el zoom por rueda es Ctrl/⌘ + rueda (la
   pinza del trackpad manda `ctrlKey` sola), más los botones y la pinza táctil.
+  (3) Tocar un mueble «congelaba» el plano: un clic con 4 px de movimiento
+  (mouse real, dedo) contaba como arrastre y dejaba la cámara «libre» para
+  siempre, fuera de las escenas del scroll. Ya no existe la cámara libre
+  permanente: la cámara de cada sección SIEMPRE retoma el plano al cambiar de
+  sección (un arrastre o zoom a mano vale hasta la siguiente), y el umbral de
+  arrastre subió a 10 px. El clic y la ficha se conservan.
 - **Gotcha al cerrar (verificador de fidelidad):** `src/index.css` define una
   clase global `.rotulo` (versalita mono 600, 9,5 px) que pisaba el pill del
   plano; `landing.css` la redeclara entera (`font-weight`, `text-transform`).
