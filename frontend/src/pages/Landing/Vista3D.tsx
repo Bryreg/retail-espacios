@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { PIEZAS, PISOS, type Estado } from "./datos";
 
 /**
- * «Ver en 3D» — la misma tienda de ejemplo, vista desde abajo.
+ * «Recorrer la sala» — la misma tienda de ejemplo, vista desde abajo.
  *
  * ESTE ARCHIVO ES EL CHUNK PEREZOSO DE LA LANDING. `three` se importa acá y en
  * ningún otro lado de la página; `PlanoIsometrico` lo trae con `React.lazy` +
@@ -15,23 +15,23 @@ import { PIEZAS, PISOS, type Estado } from "./datos";
  * muebles y media docena de llamadas a `/api/*`, y la landing es pública.
  */
 
-/** La paleta de los estados, copiada de `landing.css` (§3.3 de diseno.md). */
+/** La paleta de los estados, la misma que pinta `landing.css` (dirección E). */
 const PALETA: Record<"claro" | "oscuro", Record<Estado, string> & { piso: string; fondo: string }> = {
   claro: {
-    libre: "#1BA97B",
-    libera: "#F0A63C",
-    tomado: "#D6394F",
-    resto: "#CFC9BC",
-    piso: "#EBE6DB",
-    fondo: "#F2EEE5",
+    libre: "#00805A",
+    libera: "#CE8A0A",
+    tomado: "#D8342E",
+    resto: "#AAB3BE",
+    piso: "#F7F8F5",
+    fondo: "#EFF1ED",
   },
   oscuro: {
-    libre: "#2FBE8B",
-    libera: "#E7AE4E",
-    tomado: "#EE6A7B",
-    resto: "#4E5560",
-    piso: "#1A1F27",
-    fondo: "#0F1218",
+    libre: "#00BE86",
+    libera: "#F5A524",
+    tomado: "#F4544E",
+    resto: "#33414F",
+    piso: "#0A1015",
+    fondo: "#04070A",
   },
 };
 
@@ -110,7 +110,7 @@ export default function Vista3D({ onSinSoporte, onVolver }: Props) {
       escena.add(mesh);
       const bordes = new THREE.EdgesGeometry(g);
       const lm = new THREE.LineBasicMaterial({
-        color: new THREE.Color(tema === "oscuro" ? 0x0b0e13 : 0x1a1c22),
+        color: new THREE.Color(tema === "oscuro" ? 0x04070a : 0x0a1014),
         transparent: true,
         opacity: alq ? 0.35 : 0.15,
       });

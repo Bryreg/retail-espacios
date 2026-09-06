@@ -156,8 +156,11 @@ console.log("\nlanding · la página se dibuja con el copy");
 const contiene = (t) => assert.ok(html.includes(t), `falta en la página: «${t.slice(0, 60)}»`);
 
 prueba("el titular, la frase de qué es y el dolor", () => {
-  contiene("Qué mueble está libre, quién lo ocupa,");
-  contiene("a cuánto y hasta cuándo.");
+  // Dirección E: el H1 es el slogan que eligió el dueño («Recabrá cada metro.»)
+  // y el titular viejo baja intacto a subtítulo, con las cuatro palabras
+  // pintadas con los colores del estado — por eso va partido en `<span>`.
+  contiene("Recabrá cada metro.");
+  ["Qué mueble está", "libre", "quién lo ", "ocupa", "a cuánto", "hasta cuándo"].forEach(contiene);
   contiene("RECABRA es el sistema con el que un supermercado vende sus espacios de exhibición.");
   contiene("esta es la pantalla que falta.");
 });
@@ -217,7 +220,7 @@ prueba("la tabla equivalente trae los 16 espacios, con sus seis columnas", () =>
 });
 
 prueba("accesibilidad: enlace de salto, un solo h1 y el plano descrito", () => {
-  contiene('href="#main"');
+  contiene('href="#contenido"');   // E llama "contenido" al <main>
   contiene("Plano interactivo de un supermercado de ejemplo");
   contiene("Plano isométrico de un supermercado de ejemplo");
   assert.equal((html.match(/<h1/g) || []).length, 1, "tiene que haber exactamente un h1");

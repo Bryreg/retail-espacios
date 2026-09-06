@@ -1170,3 +1170,783 @@ def test_l16_el_plano_se_puede_usar_sin_mouse():
         "el plano se maneja con rueda/arrastre pero no toma foco ni escucha "
         "el teclado: " + ", ".join(delitos)
     )
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# L18–L26 · SEGUNDA RONDA: LO QUE AGREGA EL VESTIDO «E · LA FUSIÓN»
+#
+# La landing se re-viste con la opción E
+# (`features/landing/outputs/opciones/E-fusion/index.html`), que trae cinco
+# cosas que antes no existían y que abren bordes nuevos:
+#
+# * una **cámara guiada por el scroll** sobre el plano, con nueve encuadres
+#   (el mapa `ESC` del prototipo) y capas de prueba ancladas a un mueble;
+# * un **titular nuevo** —«Recabrá cada metro.», elegido por el dueño— con el
+#   titular viejo bajado a subtítulo;
+# * **vidrio** (`backdrop-filter`) en las tarjetas, apagado bajo 720 px;
+# * una **barra de progreso** y **conectores** entre secciones;
+# * «**Ver en 3D**» resuelto como un parámetro animado en vez de una escena
+#   aparte.
+#
+# El riesgo de todo esto es el mismo y es viejo: una página que se vuelve
+# película deja de ser legible para quien no puede —o no quiere— ver la
+# película. En A, `prefers-reduced-motion` apagaba las capas con
+# `display:none`, y con ellas la PRUEBA: el visitante con movimiento reducido
+# se quedaba sin el contrato, sin el −17 % y sin los tres correos. E dice
+# haberlo arreglado («cámara quieta, no cámara apagada»). Acá se comprueba.
+# ════════════════════════════════════════════════════════════════════════════
+
+# El slogan que el dueño eligió como H1 (commit «landing E: slogan de marca»).
+# Es, junto con el subtítulo, la ÚNICA licencia sobre el copy: todo lo demás
+# sale literal de `features/landing/outputs/copy.md`.
+TITULAR_E = "Recabrá cada metro."
+
+# El titular viejo. No se borra: baja a subtítulo, porque es la línea que
+# enseña la leyenda de colores antes de que nadie la lea.
+SUBTITULO_E = "Qué mueble está libre, quién lo ocupa, a cuánto y hasta cuándo."
+
+COPY_MD = RAIZ / "features" / "landing" / "outputs" / "copy.md"
+OPCIONES = RAIZ / "features" / "landing" / "outputs"
+
+_ENTIDADES = {
+    "&nbsp;": " ", "&#160;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">",
+    "&middot;": "·", "&times;": "×", "&minus;": "−", "&hellip;": "…",
+    "&mdash;": "—", "&ndash;": "–", "&quot;": '"', "&#39;": "'",
+    "&laquo;": "«", "&raquo;": "»",
+}
+
+
+def _normalizar(texto: str) -> str:
+    """El texto tal como lo lee una persona, no como lo escribe el JSX.
+
+    Borra marcas, expresiones ``{…}`` (que en un `.tsx` son código, no
+    palabras), entidades, espacios finos y saltos de línea. Así
+    ``<h2>Cómo se\n  arranca</h2>`` y ``> Cómo se arranca`` del ``copy.md``
+    se pueden comparar de verdad.
+    """
+    import unicodedata
+    t = unicodedata.normalize("NFC", texto)
+    for k, v in _ENTIDADES.items():
+        t = t.replace(k, v)
+    t = t.replace(" ", " ").replace(" ", " ").replace(" ", " ")
+    t = re.sub(r"<[^>]*>", " ", t)          # etiquetas (JSX incluido)
+    t = re.sub(r"\{[^{}]*\}", " ", t)       # {" "}, {variable}, {/* … */}
+    t = re.sub(r"\s+", " ", t)
+    # Al sacar las etiquetas queda un espacio donde el JSX no lo tenía:
+    # `está <span>libre</span>, quién` → `está libre , quién`. Sin esto, una
+    # frase pintada palabra por palabra (que es justo lo que hace el
+    # subtítulo del hero con los cuatro estados) nunca coincide con el copy.
+    t = re.sub(r"\s+([,.;:!?%)\]»…])", r"\1", t)
+    t = re.sub(r"([(\[«¡¿])\s+", r"\1", t)
+    return t.strip()
+
+
+def _copy() -> str:
+    """El copy aprobado, normalizado, para buscar frases adentro."""
+    if not COPY_MD.is_file():
+        pytest.skip(f"HUECO: falta {_rel(COPY_MD)}; sin la fuente del copy no "
+                    "hay contra qué comparar los textos de la página.")
+    return _normalizar(_texto(COPY_MD))
+
+
+def _css_de_la_landing() -> list[Path]:
+    return sorted(p for p in _paginas_de_la_landing() if p.suffix == ".css")
+
+
+def _bloques_media(css: str, condicion: re.Pattern) -> list[tuple[str, str]]:
+    """``@media`` cuyo texto de condición matchea, con su cuerpo balanceado.
+
+    Con expresión regular sola esto sale mal: un ``@media`` que adentro tiene
+    otro ``@media`` (o un ``@supports``) cierra donde no debe y la prueba se
+    queda mirando medio bloque. Se cuentan llaves.
+    """
+    salida: list[tuple[str, str]] = []
+    for m in re.finditer(r"@media([^{]*)\{", css):
+        cond = m.group(1).strip()
+        if not condicion.search(cond):
+            continue
+        i, prof, n = m.end(), 1, len(css)
+        while i < n and prof:
+            if css[i] == "{":
+                prof += 1
+            elif css[i] == "}":
+                prof -= 1
+            i += 1
+        salida.append((cond, css[m.end():i - 1]))
+    return salida
+
+
+def _reglas(cuerpo: str) -> list[tuple[str, str]]:
+    """(selector, declaraciones) de un cuerpo CSS plano."""
+    return [(m.group(1).strip(), m.group(2))
+            for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", cuerpo)]
+
+
+def _declara(decls: str, propiedad: str, valor: str) -> bool:
+    return re.search(
+        rf"(?:^|;)\s*{re.escape(propiedad)}\s*:\s*{valor}\s*(?:!important)?\s*(?:;|$)",
+        decls, re.I,
+    ) is not None
+
+
+# Lo que SÍ se puede apagar con movimiento reducido: adorno puro. Un
+# pseudo-elemento no lleva contenido de prueba (no hay forma de que un
+# `::after` sea el contrato del proveedor), y estos nombres son los del
+# decorado — velo, grilla, destello, estela, cursor.
+DECORATIVO = re.compile(
+    r"::(?:before|after)|\[aria-hidden|\.deco\b|\.veil\b|\.velo\b|\.grid(?:_|-|\b)|"
+    r"\.beam\b|\.pulse\b|\.pulso\b|\.glow\b|\.brillo\b|\.destello\b|\.estela\b|"
+    r"\.shine\b|\.spark\b|\.cursor\b|\.particul\w*|\.scan\b|\.ruido\b|\.noise\b",
+    re.I,
+)
+
+
+def _hay_camara_de_scroll() -> list[Path]:
+    """Archivos de la landing donde vive la cámara guiada por el scroll.
+
+    Se reconoce por la mezcla que sólo tiene ese recurso: escuchar el scroll
+    (o un IntersectionObserver de escenas) Y escribir un ``transform`` cuadro
+    a cuadro con ``requestAnimationFrame``.
+    """
+    salida = []
+    for p in _componentes_de_la_landing():
+        c = _codigo(p)
+        mira_scroll = re.search(r"""addEventListener\(\s*["']scroll["']|onScroll|"""
+                                r"""IntersectionObserver""", c)
+        anima = "requestAnimationFrame" in c
+        camara = re.search(r"\bcam(?:ara|era)?\b|\bescena\b|\bencuadre\b|\bsetEscena\b|"
+                           r"\btgt\b|\blerp\b", c, re.I)
+        if mira_scroll and anima and camara:
+            salida.append(p)
+    return sorted(salida)
+
+
+# ── L18 ─────────────────────────────────────────────────────────────────────
+
+def test_l18_el_titular_es_el_slogan_de_marca_y_el_viejo_no_se_perdio():
+    """L18. «Recabrá cada metro.» es el H1, y el titular viejo baja a subtítulo.
+
+    Dos cosas, y la segunda importa tanto como la primera.
+
+    **Una.** El H1 es el LCP de la página y es lo que Google publica: tiene
+    que ser el slogan que el dueño eligió (`README.md` de E, «Lo que es nuevo
+    en E»), en un solo ``<h1>``. Dos ``<h1>`` en una página larga es el error
+    clásico del que arma secciones con la misma plantilla, y deja al lector
+    de pantalla sin saber cuál es el título del documento.
+
+    **Dos.** «Qué mueble está libre, quién lo ocupa, a cuánto y hasta cuándo»
+    no es una frase que sobre: es la línea donde se ENSEÑA la leyenda de
+    colores —*libre* verde, *ocupa* rojo, *a cuánto* amarillo, *hasta cuándo*
+    naranja— antes de que nadie lea la leyenda. Si al cambiar el titular esa
+    frase se borra en vez de bajar a subtítulo, la página pierde su única
+    explicación de por qué el plano está pintado así, y la pierde en silencio:
+    nada se rompe, sólo deja de entenderse.
+    """
+    archivos = _exigir_componentes()
+    textos = {p: _codigo(p) for p in sorted(archivos)}
+
+    h1s = [(p, _normalizar(m.group(1)))
+           for p, c in textos.items()
+           for m in re.finditer(r"<h1[^>]*>(.*?)</h1>", c, re.S | re.I)]
+    assert h1s, (
+        "la landing no tiene ningún <h1>: el título del documento (y el LCP "
+        "de la página pública) no existe"
+    )
+    assert len(h1s) == 1, (
+        "hay más de un <h1> en la landing:\n  "
+        + "\n  ".join(f"{_rel(p)}: {t!r}" for p, t in h1s)
+    )
+
+    p, titular = h1s[0]
+    assert titular == TITULAR_E, (
+        f"el <h1> de {_rel(p)} dice {titular!r} y el dueño eligió "
+        f"{TITULAR_E!r} (commit «landing E: slogan de marca … como H1»; "
+        "`features/landing/outputs/opciones/E-fusion/README.md`, «Lo que es "
+        "nuevo en E»). El titular viejo no se borra: baja a subtítulo."
+    )
+
+    todo = _normalizar("\n".join(textos.values()))
+    assert _normalizar(SUBTITULO_E).rstrip(".") in todo, (
+        f"al cambiar el titular se perdió {SUBTITULO_E!r}. Esa frase es la que "
+        "enseña la leyenda de colores (libre / ocupa / a cuánto / hasta "
+        "cuándo) antes de que nadie lea la leyenda: en E baja a subtítulo del "
+        "hero, no se elimina."
+    )
+
+
+# ── L19 ─────────────────────────────────────────────────────────────────────
+
+def test_l19_la_camara_por_scroll_no_traba_el_scroll_ni_repinta_el_arbol():
+    """L19. Una cámara que se mueve con el dedo se paga con el dedo.
+
+    Dos trampas concretas, las dos anotadas por el propio E
+    (`README.md`, «Cómo está hecho (para el port a React)»):
+
+    * **Escuchar ``scroll`` sin ``{ passive: true }``.** El navegador no puede
+      adelantar el desplazamiento hasta saber si el handler va a llamar
+      ``preventDefault()``, así que espera al JavaScript en CADA cuadro. En un
+      Android de gama media eso es exactamente la sensación de página trabada
+      que la fase quiere evitar. La rueda del plano es otra cosa —ahí sí hace
+      falta ``passive: false``, porque el plano acerca en vez de scrollear— y
+      por eso esta prueba mira sólo ``scroll``.
+    * **Poner la cámara en ``useState``.** Serían ~60 renders del árbol por
+      segundo, con el plano entero adentro. La cámara es estado derivado del
+      scroll, no del render: va en un ``useRef`` y se escribe imperativamente
+      sobre un único ``transform``.
+    """
+    camaras = _hay_camara_de_scroll()
+    if not camaras:
+        pytest.skip(
+            "HUECO: todavía no hay cámara guiada por scroll en la landing "
+            "(ningún componente junta scroll/IntersectionObserver + "
+            "requestAnimationFrame + encuadres). Es lo que agrega la opción E; "
+            "la prueba corre sola en cuanto exista."
+        )
+    delitos: list[str] = []
+    for p in camaras:
+        c = _codigo(p)
+        for m in re.finditer(
+            r"""addEventListener\(\s*["']scroll["']\s*,([^;]{0,240}?)\)\s*;""", c, re.S
+        ):
+            if not re.search(r"passive\s*:\s*true", m.group(1)):
+                linea = c.count("\n", 0, m.start()) + 1
+                delitos.append(
+                    f"{_rel(p)}:~{linea}: listener de `scroll` sin "
+                    "{ passive: true }"
+                )
+        if "useRef" not in c:
+            delitos.append(
+                f"{_rel(p)}: la cámara se mueve con requestAnimationFrame pero "
+                "el archivo no usa `useRef`; si `cam`/`tgt` viven en `useState` "
+                "son ~60 renders por segundo del árbol con el plano adentro"
+            )
+    assert not delitos, (
+        "la cámara por scroll se paga con la fluidez de la página:\n  "
+        + "\n  ".join(delitos)
+    )
+
+
+# ── L20 ─────────────────────────────────────────────────────────────────────
+
+def test_l20_movimiento_reducido_deja_la_camara_quieta_no_apagada():
+    """L20. Con movimiento reducido nadie puede perder una PRUEBA.
+
+    Es el punto flojo que E dice haber corregido de A y el que más fácil se
+    vuelve a romper, porque la forma cómoda de «respetar»
+    ``prefers-reduced-motion`` es esconder lo que se movía:
+
+    ```css
+    @media (prefers-reduced-motion: reduce) { .capa-prueba { display: none } }
+    ```
+
+    Eso no es accesibilidad, es censura selectiva: el visitante que pidió
+    menos movimiento —o cuyo sistema lo pide por él— se queda sin la ficha del
+    contrato, sin el −17 % y sin los tres correos, que son justamente la
+    prueba de que el producto hace lo que dice. La versión correcta es la
+    **quieta**: el encuadre cambia de golpe, las capas aparecen sin recorrido,
+    los contadores muestran el valor final.
+
+    Se permite apagar adorno puro (un ``::after`` que destella, el velo del
+    fondo): nada de eso lleva contenido.
+    """
+    hojas = _css_de_la_landing()
+    if not hojas:
+        pytest.skip("HUECO: la landing todavía no tiene hoja de estilo propia.")
+
+    reducido = re.compile(r"prefers-reduced-motion", re.I)
+    apagones = [
+        ("display", "none"), ("visibility", "hidden"),
+        ("content-visibility", "hidden"), ("opacity", "0"),
+    ]
+    delitos: list[str] = []
+    restaura = False
+
+    for hoja in hojas:
+        css = _codigo(hoja)
+        bloques = [c for _, c in _bloques_media(css, reducido)]
+        # La otra forma de escribirlo: una clase en el <body> puesta desde JS
+        # cuando `matchMedia` da true.
+        fuera = "\n".join(
+            m.group(0) for m in re.finditer(r"[^{}]*reduc\w*[^{}]*\{[^{}]*\}", css, re.I)
+        )
+        for cuerpo in bloques + ([fuera] if fuera.strip() else []):
+            for selector, decls in _reglas(cuerpo):
+                if _declara(decls, "opacity", "1") or _declara(decls, "transform", "none"):
+                    restaura = True
+                if DECORATIVO.search(selector):
+                    continue
+                for prop, val in apagones:
+                    if _declara(decls, prop, val):
+                        delitos.append(
+                            f"{_rel(hoja)}: `{selector}` → {prop}: {val}"
+                        )
+
+    assert not delitos, (
+        "con `prefers-reduced-motion` la landing ESCONDE contenido en vez de "
+        "dejarlo quieto:\n  " + "\n  ".join(sorted(set(delitos)))
+        + "\n\nLa regla de E es explícita: «movimiento reducido = cámara "
+          "quieta, no cámara apagada; las capas de prueba aparecen igual, "
+          "nada de display:none». Si lo que se apaga es adorno, dale un "
+          "selector que se lea como adorno (`::after`, `.deco`, `.pulse`, "
+          "`[aria-hidden]`)."
+    )
+    assert restaura, (
+        "la landing atiende `prefers-reduced-motion` pero no deja ninguna "
+        "regla que DEVUELVA el estado final (`opacity: 1` / `transform: none`) "
+        "a lo que entra animado: con la preferencia puesta, todo lo que se "
+        "revela al hacer scroll se queda en su estado inicial —invisible o "
+        "corrido— y la página no se puede leer. La versión quieta hay que "
+        "escribirla; apagar la animación no alcanza."
+    )
+
+    # Y del lado del JavaScript: la preferencia no puede borrar una capa.
+    componentes = _componentes_de_la_landing()
+    gatillos = [
+        (re.compile(r"""[!¬]\s*\w*[Rr]educ\w*\s*&&\s*<"""),
+         "`{!reducido && <capa/>}`: la capa no se pinta"),
+        (re.compile(r"""\w*[Rr]educ\w*\s*\?\s*null\s*:"""),
+         "`{reducido ? null : …}`: la capa no se pinta"),
+        (re.compile(r"""\w*[Rr]educ\w*\s*\?\s*["']none["']"""),
+         "`reducido ? \"none\"`: la capa se esconde con estilo en línea"),
+    ]
+    ocultos = [
+        f"{_rel(p)}:~{_codigo(p).count(chr(10), 0, m.start()) + 1}: {que}"
+        for p in sorted(componentes)
+        for patron, que in gatillos
+        for m in [patron.search(_codigo(p))] if m
+    ]
+    assert not ocultos, (
+        "el movimiento reducido decide en JavaScript que una capa NO se "
+        "pinte:\n  " + "\n  ".join(ocultos)
+        + "\n\nQuieta sí, ausente no: con la preferencia puesta la capa "
+          "aparece igual, sin recorrido."
+    )
+
+
+# ── L21 ─────────────────────────────────────────────────────────────────────
+
+def test_l21_el_vidrio_se_apaga_en_pantallas_chicas():
+    """L21. ``backdrop-filter`` es barato de escribir y caro de pintar.
+
+    Cada superficie con ``backdrop-filter: blur()`` obliga al compositor a
+    releer y desenfocar lo que hay detrás **en cada cuadro**. Con la cámara de
+    E moviéndose con el scroll, eso pasa 60 veces por segundo, y en un Android
+    de gama media —que es el teléfono con el que un gerente de supermercado
+    va a abrir esta página— tira los fps al piso justo mientras la página
+    intenta demostrar que es fluida.
+
+    La regla es de la propia opción E, tomada de C: «el vidrio moderado y
+    **apagado bajo 720 px**». Lo que se pide acá es lo mínimo comprobable
+    leyendo la hoja: que exista el corte, que ahí el vidrio se apague de
+    verdad (``backdrop-filter: none``) y que lo que quede desenfocado no pase
+    de un blur liviano. Y que al apagarlo se ponga un fondo sólido: un panel
+    que era legible por el desenfoque y se queda sin él ni fondo pasa a ser
+    texto sobre el plano.
+    """
+    hojas = _css_de_la_landing()
+    if not hojas:
+        pytest.skip("HUECO: la landing todavía no tiene hoja de estilo propia.")
+
+    usa_vidrio = [h for h in hojas if re.search(r"backdrop-filter", _codigo(h), re.I)]
+    if not usa_vidrio:
+        pytest.skip(
+            "HUECO: la landing todavía no usa `backdrop-filter`; el vidrio es "
+            "lo que trae el vestido E. Sin vidrio no hay nada que apagar."
+        )
+
+    # `(max-width: 720px)`, `(width <= 720px)` y cualquier corte más chico.
+    corte = re.compile(r"max-width\s*:\s*(\d+)\s*px|width\s*<=\s*(\d+)\s*px", re.I)
+    apaga = False
+    fondo = False
+    blurs_chicos: list[str] = []
+
+    for hoja in usa_vidrio:
+        css = _codigo(hoja)
+        for cond, cuerpo in _bloques_media(css, corte):
+            anchos = [int(a or b) for a, b in corte.findall(cond)]
+            if not anchos or min(anchos) > 720:
+                continue
+            for selector, decls in _reglas(cuerpo):
+                if _declara(decls, "backdrop-filter", "none") or \
+                   _declara(decls, "-webkit-backdrop-filter", "none"):
+                    apaga = True
+                    if re.search(r"(?:^|;)\s*background", decls, re.I):
+                        fondo = True
+                for m in re.finditer(r"backdrop-filter\s*:[^;]*blur\(\s*([\d.]+)px",
+                                     decls, re.I):
+                    if float(m.group(1)) > 12:
+                        blurs_chicos.append(
+                            f"{_rel(hoja)}: `{selector}` conserva "
+                            f"blur({m.group(1)}px) bajo {min(anchos)} px"
+                        )
+
+    assert apaga, (
+        "la landing usa `backdrop-filter` ("
+        + ", ".join(_rel(h) for h in usa_vidrio)
+        + ") y no lo apaga en ningún corte de 720 px o menos. Con la cámara "
+          "de E repintando el plano en cada cuadro, el vidrio se compone 60 "
+          "veces por segundo sobre un Android de gama media. La regla es de "
+          "la propia opción E («el vidrio moderado y apagado bajo 720 px», "
+          "`opciones/E-fusion/README.md`, «Qué tomé de C» §7):\n\n"
+          "    @media (max-width: 720px) {\n"
+          "      .tarjeta, .panel { backdrop-filter: none; background: var(--panel-solid) }\n"
+          "    }"
+    )
+    assert fondo, (
+        "bajo 720 px se apaga `backdrop-filter` pero no se pone `background` "
+        "en la misma regla: el panel dejaba de ser legible porque el "
+        "desenfoque le daba el contraste, y ahora queda texto directamente "
+        "sobre el plano. Hay que darle el fondo sólido."
+    )
+    assert not blurs_chicos, (
+        "bajo 720 px queda vidrio pesado:\n  " + "\n  ".join(blurs_chicos)
+        + "\nSi una superficie tiene que seguir con vidrio (la barra "
+          "superior, por ejemplo), que sea un blur liviano (≤ 12 px)."
+    )
+
+
+# ── L22 ─────────────────────────────────────────────────────────────────────
+
+def _prototipos_entregados() -> list[Path]:
+    """Los `.html` que esta fase dejó en ``features/landing/outputs/``.
+
+    No son código de producción, pero son ENTREGABLES: el dueño los abre con
+    doble clic para elegir la dirección, y lo que se elija se porta a React
+    tal cual. Un prototipo que baja una fuente de Google decide, sin que nadie
+    lo note, que la landing definitiva la baje también — y ahí ya no abre: la
+    CSP de la Fase 3 la bloquea en producción y en silencio.
+    """
+    if not OPCIONES.is_dir():
+        return []
+    return sorted(p for p in OPCIONES.rglob("*.html") if p.is_file())
+
+
+def test_l22_los_prototipos_entregados_son_autocontenidos():
+    """L22. «Un solo archivo, sin librerías, sin recursos externos, cero red».
+
+    Es lo que promete el README de E, y es la promesa que hay que verificar,
+    no creer: un prototipo se escribe rápido, con el navegador abierto y sin
+    CSP, que es exactamente la situación en la que una fuente de un CDN entra
+    sola. Se mira lo mismo que en L06 (que audita el frontend) más lo que un
+    prototipo puede tener y el frontend no: una llamada de red de verdad.
+    """
+    prototipos = _prototipos_entregados()
+    if not prototipos:
+        pytest.skip("HUECO: no hay prototipos en features/landing/outputs/.")
+
+    red = [
+        (re.compile(r"\bfetch\s*\(", re.I), "fetch()"),
+        (re.compile(r"\bXMLHttpRequest\b"), "XMLHttpRequest"),
+        (re.compile(r"\bnavigator\.sendBeacon\b"), "sendBeacon"),
+        (re.compile(r"\bnew\s+WebSocket\b"), "WebSocket"),
+        (re.compile(r"\bnew\s+EventSource\b"), "EventSource"),
+        (re.compile(r"""["'`]/api/"""), "una ruta /api/*"),
+    ]
+    delitos: list[str] = []
+    for p in prototipos:
+        codigo = _codigo(p)
+        for patron, que in SUBRECURSOS_EXTERNOS:
+            m = patron.search(codigo)
+            if m:
+                delitos.append(f"{_rel(p)}: {que} → {m.group(0)[:80]!r}")
+        for host in re.findall(r"https?://([A-Za-z0-9._-]+)", codigo):
+            if host.lower() not in HOSTS_PERMITIDOS:
+                delitos.append(f"{_rel(p)}: host externo {host!r}")
+        for patron, que in red:
+            m = patron.search(codigo)
+            if m:
+                delitos.append(f"{_rel(p)}: {que} — el prototipo se promete "
+                               "«cero llamadas de red»")
+    assert not delitos, (
+        "prototipos de la landing que dependen de algo de afuera:\n  "
+        + "\n  ".join(sorted(set(delitos)))
+    )
+
+
+def test_l22b_los_prototipos_no_nombran_a_un_cliente_del_registro():
+    """L22b. El plano de ejemplo tampoco puede sonar a un cliente adentro del `.html`.
+
+    Mismo criterio que L05 sobre el frontend, aplicado a los entregables. Con
+    una diferencia declarada: **``MercaFresco`` queda fuera de la lista acá**.
+    `copy.md` §13 lo propone como el nombre del supermercado inventado y el
+    dueño de la fase lo ratificó, así que en estos archivos es ficción
+    aprobada. Sigue siendo una observación —el mismo nombre identifica a un
+    cliente en las capturas de la consola del operador
+    (`features/tendencia/outputs/`)— y por eso E, que es la opción que se
+    porta, no lo escribe en ningún lado: rotula «Supermercado de ejemplo».
+    Lo que no se negocia es el resto del registro.
+    """
+    prototipos = _prototipos_entregados()
+    if not prototipos:
+        pytest.skip("HUECO: no hay prototipos en features/landing/outputs/.")
+    lista = [(pat, quien) for pat, quien in CLIENTES_REALES
+             if "mercafresco" not in pat.pattern.lower()]
+    delitos = [
+        f"{_rel(p)}:~{_codigo(p).count(chr(10), 0, m.start()) + 1}: {quien} → {m.group(0)!r}"
+        for p in prototipos
+        for pat, quien in lista
+        for m in [pat.search(_codigo(p))] if m
+    ]
+    assert not delitos, (
+        "nombres del registro de producción en un entregable de la landing:\n  "
+        + "\n  ".join(delitos)
+    )
+
+
+# ── L23 ─────────────────────────────────────────────────────────────────────
+
+# Las dos licencias que la ronda E se tomó sobre el copy, y ninguna más.
+LICENCIAS_DE_COPY = {_normalizar(TITULAR_E), _normalizar(SUBTITULO_E)}
+
+# Dónde vive un texto que la persona lee como TÍTULO o como PROMESA. El
+# cuerpo de las tarjetas no se audita acá: son párrafos largos, se cortan
+# distinto en JSX y su fidelidad se mira a ojo. Los títulos, no: son cortos,
+# son los que la gente recuerda, y son los que se inventan solos.
+_TITULARES = [
+    (re.compile(r"<h2[^>]*>(.*?)</h2>", re.S | re.I), "un <h2>"),
+    (re.compile(r"<h3[^>]*>(.*?)</h3>", re.S | re.I), "un <h3>"),
+    (re.compile(r"""<(?:a|span|p|div)[^>]*class[Nn]ame?\s*=\s*[{"'][^"'}]*"""
+                r"""(?:hook|gancho|conector|eyebrow|sec__num|cejilla)[^"'}]*["'}][^>]*>(.*?)</\w+>""",
+                re.S), "un conector o cejilla"),
+]
+
+
+def test_l23_los_titulos_y_los_conectores_no_inventan_copy():
+    """L23. Los conectores nombran el título literal de la sección siguiente.
+
+    El recurso que E toma de C —una tarjeta entre secciones con el número y
+    el título de la que viene— es el lugar donde el copy se inventa solo. Es
+    una tentación real y honesta: el conector queda mejor con un gancho
+    («Y ahora, lo que de verdad importa»), y nadie lo va a revisar contra el
+    documento. Pero `copy.md` es la fuente única —«si un texto no entra, se
+    pide el recorte en copy.md; no se reescribe en el .tsx»— y una promesa
+    escrita en un conector es una promesa igual: la lee un cliente, y no pasó
+    por la regla de §14 («Lo que NO prometemos»).
+
+    Se comparan los TÍTULOS y los conectores contra el copy aprobado, con dos
+    licencias declaradas: el H1 nuevo y el subtítulo que trae E.
+    """
+    archivos = _exigir_componentes()
+    copy = _copy()
+    delitos: list[str] = []
+    mirados = 0
+    for p in sorted(archivos):
+        codigo = _codigo(p)
+        for patron, que in _TITULARES:
+            for m in patron.finditer(codigo):
+                texto = _normalizar(m.group(1))
+                # «01 / LO QUE HACE» → «LO QUE HACE»: el número de sección y
+                # la versalita son tipografía, no copy.
+                texto = re.sub(r"^\d{1,2}\s*[/·—–|-]\s*", "", texto).strip()
+                if len(texto) < 4:              # «01», «→», un ícono suelto
+                    continue
+                mirados += 1
+                if texto in LICENCIAS_DE_COPY or texto.lower() in copy.lower():
+                    continue
+                linea = codigo.count("\n", 0, m.start()) + 1
+                delitos.append(f"{_rel(p)}:~{linea}: {que} dice {texto!r}")
+    if not mirados:
+        pytest.skip(
+            "HUECO: no se encontró ningún título ni conector legible en el "
+            "JSX de la landing (los textos pueden estar saliendo de una "
+            "constante). Esta prueba lee el texto escrito en el JSX."
+        )
+    assert not delitos, (
+        f"textos que no están en {_rel(COPY_MD)}:\n  " + "\n  ".join(delitos)
+        + "\n\nEl copy tiene una sola fuente. Si el texto hace falta, se "
+          "agrega allá y se copia acá; las únicas licencias de esta ronda son "
+          f"el H1 {TITULAR_E!r} y el subtítulo que baja del titular viejo."
+    )
+
+
+# ── L24 ─────────────────────────────────────────────────────────────────────
+
+def test_l24_la_barra_de_progreso_no_le_habla_al_lector_de_pantalla():
+    """L24. Una barra de progreso de scroll es decorado, y tiene que decirlo.
+
+    La barra que cruza la barra superior mide cuánto de la página bajaste. No
+    es una tarea que avanza, no es una carga, no es información que alguien
+    necesite oír: es una ayuda visual. Si se deja expuesta al árbol de
+    accesibilidad, un lector de pantalla anuncia un `progressbar` sin nombre
+    ni valor; si además alguien le pone `aria-live` —que es el reflejo cuando
+    un número cambia—, **la barra habla en cada cuadro del scroll** y vuelve
+    la página inusable con lector.
+
+    Dos salidas correctas y ninguna más: `aria-hidden="true"` (lo que hace E)
+    o un `role="progressbar"` con su `aria-valuenow`. Nunca `aria-live`.
+    """
+    archivos = _exigir_componentes()
+    etiquetas: list[tuple[Path, str]] = []
+    for p in sorted(archivos):
+        codigo = _codigo(p)
+        for m in re.finditer(r"<\w+[^>]*>", codigo):
+            t = m.group(0)
+            if re.search(r"""(?:class[Nn]ame?|id)\s*=\s*[{"'][^"'}]*"""
+                         r"""(?:prog(?:reso|ress)?|barra-?scroll|scroll-?bar)""", t):
+                etiquetas.append((p, t))
+    if not etiquetas:
+        pytest.skip(
+            "HUECO: la landing todavía no tiene barra de progreso de scroll "
+            "(la agrega el vestido E, `.rail__prog` / `#prog`)."
+        )
+    plano = " ".join(t for _, t in etiquetas)
+    hablador = [f"{_rel(p)}: {t[:90]}" for p, t in etiquetas
+                if re.search(r"aria-live", t)]
+    assert not hablador, (
+        "la barra de progreso del scroll lleva `aria-live`: con lector de "
+        "pantalla anuncia el porcentaje en cada cuadro mientras la persona "
+        "baja.\n  " + "\n  ".join(hablador)
+    )
+    assert re.search(r"""aria-hidden\s*=\s*[{"']?\s*(?:true|\{true\})""", plano) or \
+        re.search(r"""role\s*=\s*[{"']progressbar""", plano), (
+        "la barra de progreso del scroll queda expuesta al árbol de "
+        "accesibilidad sin ser nada:\n  "
+        + "\n  ".join(f"{_rel(p)}: {t[:90]}" for p, t in etiquetas)
+        + "\n\nO `aria-hidden=\"true\"` (es decorado, que es lo que hace E) o "
+          "`role=\"progressbar\"` con `aria-valuenow`."
+    )
+
+
+# ── L25 ─────────────────────────────────────────────────────────────────────
+
+# El microcopy de `copy.md` §11.1 para el control del 3D. Los tres textos
+# tienen que existir: sin el de «cargando», el botón se queda mudo los
+# segundos que tarda el chunk en bajar y la persona lo toca dos veces.
+MICROCOPY_3D = ["Ver en 3D", "Volver al plano"]
+
+# Éste es condicional, y con motivo: hace falta cuando el 3D es un chunk que
+# BAJA (`lazy(() => import("./Vista3D"))`, que es como está hoy). Si el port
+# adopta la solución de E —una sola proyección con un parámetro animado, sin
+# motor y sin descarga— el botón cambia al instante y anunciar «Cargando…»
+# sería mentir sobre una espera que no existe.
+MICROCOPY_3D_PEREZOSO = "Cargando la vista 3D"
+
+
+def test_l25_ver_en_3d_existe_y_sigue_siendo_un_chunk_aparte():
+    """L25. El botón del 3D es el único permiso que tiene three.js para entrar.
+
+    L14 y L17 vigilan el grafo; esto vigila el botón, que es la otra mitad
+    del mismo guardrail. Tres cosas:
+
+    1. **El control existe y se llama como dice el copy** (§11.1: `Ver en 3D`,
+       `Volver al plano`, `Cargando la vista 3D…`).
+    2. **El archivo que lo pinta no importa ``three`` de forma estática.** Si
+       lo hiciera, el botón sería decorativo: el motor ya bajó con la página.
+    3. **Si algún archivo de la landing toca ``three``, alguien lo carga con
+       ``import()``.** E resuelve el 3D sin motor —mueve un parámetro de la
+       proyección—, y eso también está bien: entonces no hay ``three`` en
+       ninguna parte y esta condición se cumple sola. Lo que no puede pasar es
+       el punto medio: importar el motor y no partir el chunk.
+    """
+    archivos = _exigir_componentes()
+    textos = {p: _codigo(p) for p in sorted(archivos)}
+    todo = _normalizar("\n".join(textos.values()))
+
+    # Se busca en el CÓDIGO, no en el texto renderizado: el rótulo del botón
+    # sale de una expresión (`{cargando ? … : en3d ? … : …}`) y `_normalizar`
+    # se come las llaves justamente porque adentro suele haber código.
+    crudo = "\n".join(textos.values())
+    def _dice(t: str) -> bool:
+        return t in crudo or _normalizar(t) in todo
+
+    faltan = [t for t in MICROCOPY_3D if not _dice(t)]
+    assert not faltan, (
+        f"falta el microcopy del control 3D ({faltan}) — `copy.md` §11.1. El "
+        "botón tiene que decir en qué vista estás y a cuál vas; «3D» a secas "
+        "no dice ninguna de las dos."
+    )
+
+    # Si el 3D se BAJA, la espera se anuncia.
+    baja_algo = any(_DINAMICO.search(c) or re.search(r"\blazy\s*\(", c)
+                    for c in textos.values())
+    if baja_algo and not _dice(MICROCOPY_3D_PEREZOSO):
+        raise AssertionError(
+            f"la landing carga la vista 3D con `import()` y el botón no dice "
+            f"{MICROCOPY_3D_PEREZOSO + '…'!r} mientras el chunk baja "
+            "(`copy.md` §11.1): en 4G son segundos con el botón mudo, y la "
+            "persona lo toca de nuevo."
+        )
+
+    pesado = re.compile(
+        r"""^\s*import\s[^;]*?from\s*["'`](three|@react-three/[\w-]+)["'`]""", re.M
+    )
+    duenos = [p for p, c in textos.items() if "Ver en 3D" in c]
+    culpables = [f"{_rel(p)}: {pesado.search(c).group(0).strip()[:70]!r}"
+                 for p, c in textos.items() if p in duenos and pesado.search(c)]
+    assert not culpables, (
+        "el archivo que pinta el botón «Ver en 3D» importa el motor 3D de "
+        "forma estática, así que el motor baja con la página y el botón no "
+        "ahorra nada:\n  " + "\n  ".join(culpables)
+    )
+
+    con_three = [p for p, c in textos.items() if pesado.search(c)]
+    if con_three:
+        dinamicos = {
+            _resolver_import(p, espec)
+            for p in _paginas_de_la_landing()
+            for espec in _DINAMICO.findall(_codigo(p))
+        }
+        assert set(con_three) & dinamicos, (
+            f"{[_rel(p) for p in con_three]} importa three.js y nadie lo carga "
+            "con `import()`: el chunk no se parte y `/` —que es pública— baja "
+            "el motor entero antes de pintar el titular"
+        )
+
+
+# ── L26 ─────────────────────────────────────────────────────────────────────
+
+_CLAVE_ESCENA = re.compile(r"""["'`]([A-ZÁÉÍÓÚÑ]{4,10})/([A-Z]{2,4}-\d{1,2}(?:·[A-Z])?)["'`]""")
+
+
+def test_l26_las_escenas_de_la_camara_apuntan_a_muebles_que_existen():
+    """L26. Un encuadre que apunta a un mueble que no existe no rompe: no pasa nada.
+
+    El mapa de escenas de E (`ESC`) ancla seis de los nueve encuadres a un
+    mueble por su clave —`CENTRO/GON-04·A`, `CENTRO/PUN-01`, `CENTRO/CRS-01`—
+    y las capas de prueba se posicionan sobre ese mismo mueble. Si al portar
+    a React una clave se escribe mal —`GON-04·A` con guion normal en vez de
+    `·`, `PUN-1` en vez de `PUN-01`, la pieza renombrada en `datos.ts` y el
+    mapa sin tocar— **no hay error en consola**: el lookup devuelve
+    `undefined`, la cámara se queda donde estaba y la ficha del contrato
+    aparece flotando sobre el piso vacío. Es un defecto que se ve sólo si
+    alguien mira esa sección en ese ancho de pantalla, y por eso sobrevive.
+
+    Se comprueba lo único que se puede comprobar sin navegador: que el código
+    del mueble que nombra la escena esté escrito en algún lado de los datos
+    sembrados.
+    """
+    archivos = _paginas_de_la_landing()
+    if not archivos:
+        pytest.skip("HUECO: no hay archivos de landing.")
+    codigos = {p: _codigo(p) for p in sorted(archivos)}
+    todo = "\n".join(codigos.values())
+
+    claves = [(p, m) for p, c in codigos.items() for m in _CLAVE_ESCENA.finditer(c)]
+    if not claves:
+        pytest.skip(
+            "HUECO: la landing no usa claves `SEDE/CODIGO` para anclar los "
+            "encuadres de la cámara (la opción E las trae en su mapa `ESC`). "
+            "Si el port ancla las escenas de otra forma, esta prueba no "
+            "aplica y hay que escribir la equivalente."
+        )
+
+    # Los códigos que de verdad existen: cualquier `code: "GON-04·A"` o
+    # `"GON-04·A"` suelto en los datos sembrados, y las sedes declaradas.
+    codigos_existentes = set(re.findall(r"""["'`]([A-Z]{2,4}-\d{1,2}(?:·[A-Z])?)["'`]""", todo))
+    sedes = set(re.findall(r"""["'`](CENTRO|PALMAS)["'`]""", todo))
+
+    delitos = []
+    for p, m in claves:
+        sede, code = m.group(1), m.group(2)
+        linea = codigos[p].count("\n", 0, m.start()) + 1
+        if sedes and sede not in sedes:
+            delitos.append(f"{_rel(p)}:~{linea}: la escena mira la sede {sede!r}, "
+                           f"y las sedes sembradas son {sorted(sedes)}")
+        if code not in codigos_existentes:
+            delitos.append(f"{_rel(p)}:~{linea}: la escena mira el mueble "
+                           f"{code!r}, que no está en los datos sembrados")
+    assert not delitos, (
+        "encuadres de la cámara anclados a un mueble que no existe (falla "
+        "muda: la cámara no se mueve y la capa de prueba queda sobre el "
+        "piso):\n  " + "\n  ".join(sorted(set(delitos)))
+    )

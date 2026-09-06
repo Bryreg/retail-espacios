@@ -1133,6 +1133,62 @@ los cuatro colores de estado son el mismo lenguaje pero no los mismos hex que
 - Resueltos al cierre: el recorte a 360 px (`min-height: 0` en móvil),
   `/robots.txt` estático, el escalón `suspendido` en el copy del precio.
 
+### Landing — re-vestido a la dirección E («La fusión»)
+
+El dueño eligió, entre las cinco direcciones del taller de diseño, la **E**
+(`features/landing/outputs/opciones/E-fusion/`): estructura y densidad de C con
+el gesto de A concentrado donde vale. La landing de la Fase 9 («Planta y
+tinta», papel cálido + ultramar) quedó **reemplazada**; lo funcional se
+conservó entero. Lo que cambia respecto de lo escrito más arriba en esta misma
+sección:
+
+- **Ocho secciones**, no nueve: hero, lo que hace, para quién, cómo se arranca,
+  asesoría, datos, precio, cierre. Entre ellas, conectores que nombran el
+  título **literal** de la siguiente.
+- **Estética:** fondo `#04070A` (el oscuro es el modo de la casa; el claro está
+  entero y a un clic), **amarillo de etiqueta de precio `#FFD028` como único
+  color de acción** —ya no el ultramar—, display de sistema con peso 800 y
+  monoespaciada con cifras tabulares para códigos, plata y fechas. Los cuatro
+  estados siguen siendo los hex validados con `dataviz` (oscuro `#00BE86 ·
+  #F5A524 · #F4544E`; claro `#00805A · #CE8A0A · #D8342E`).
+- **El plano ya no vive en una tarjeta del hero:** es una **sala pegada**
+  (`position: sticky`, 100 dvh) que ocupa el hero y «Lo que hace», con la
+  **cámara guiada por el scroll** (lerp 0,14 sobre un único `transform`, mapa
+  de nueve escenas en `PlanoIsometrico.tsx`). Sobre el propio plano salen las
+  capas de prueba ancladas al mueble del que habla cada tarjeta.
+- **Motor nuevo del plano**, portado de E: una sola proyección con parámetro
+  (`motor.ts`), donde «Ver en 3D» **no dibuja otra escena** sino que baja el
+  horizonte y sube los muebles interpolando 760 ms. El `React.lazy` de
+  `Vista3D` (three.js) **sigue existiendo y sigue siendo el único camino a
+  three**: se abre desde «Recorrerla», el botón que aparece dentro de la vista
+  3D. El bundle inicial de `/` sigue sin un byte de three.
+- **`prefers-reduced-motion` no apaga nada:** deja la cámara quieta (los
+  encuadres cambian de golpe), las capas de prueba aparecen igual y «Cómo se
+  arranca» se lee como tres pasos con la sala ya dibujada y pintada.
+- **`datos.ts` se rehízo con la constante `PIEZAS` de E:** 45 piezas, 16
+  alquilables (10 CENTRO / 6 PALMAS) y 29 de contexto, mismo reparto 7/3/6 y
+  los mismos proveedores inventados. El supermercado **no se nombra**: el
+  nombre que propone `copy.md` §13 ya identifica a un cliente en la consola del
+  operador y `test_landing_ataques.py` §L05 lo prohíbe en una página pública.
+- **No cambió nada de lo que sostiene la fase:** cero `/api/*`, cero sesión,
+  cero red, cero recursos externos, todo el CSS bajo `.lp`, `/login`,
+  `/politica-datos`, el deep link de montaje y la redirección de quien ya tiene
+  sesión intactos. `test_landing.py`, `test_landing_ataques.py` y
+  `npm run probar:landing` siguen verdes (de este último se actualizaron dos
+  asserts: el titular es ahora «Recabrá cada metro.» con el titular viejo de
+  subtítulo, y el enlace de salto apunta a `#contenido`).
+
+- **Gotcha al cerrar (verificador de fidelidad):** `src/index.css` define una
+  clase global `.rotulo` (versalita mono 600, 9,5 px) que pisaba el pill del
+  plano; `landing.css` la redeclara entera (`font-weight`, `text-transform`).
+  Lo mismo con el preflight de Tailwind: los `h4` y el `padding` de los botones
+  se declaran explícitos. La sala de «Cómo se arranca» ajusta su `viewBox` a la
+  caja real (como E) en vez del 640 × 300 fijo, que la dejaba un cuarto más
+  chica.
+
+Detalle de qué se portó tal cual, qué se adaptó y qué quedó distinto de E en
+`features/landing/outputs/frontend-E.md`.
+
 ### Pendientes conocidos: clientes y plataforma
 
 - **R-3 (menor)**: el tope de 2 fundaciones es count+insert sin barrera en la
