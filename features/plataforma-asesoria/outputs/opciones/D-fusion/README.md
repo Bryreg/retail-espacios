@@ -315,10 +315,10 @@ Chromium 1194 (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`) sobre el
 | Medición | Resultado |
 |---|---|
 | **Alto del documento · cartera** | 1440×900 → **900 / 900** · 1366×768 → **768 / 768**. Cero scroll de documento, en claro y en oscuro. |
-| **Alto del capítulo activo · sesión** | 1440×900 → **772 / 772** los cinco · 1366×768 → **640 / 640** los cinco. Ningún capítulo desborda; ninguna lista ni panel interno queda con scroll oculto. |
+| **Alto del capítulo activo · sesión** | 1440×900 → **772 / 772** los cinco · 1366×768 → **640 / 640** los cinco · 1920×1080 → **952 / 952**. Ningún capítulo desborda; ninguna lista ni panel interno queda con scroll oculto. |
 | **Textos pisados dentro de los SVG** (solape > 30 % del área menor) | **0** sobre **88 SVG** |
 | **Textos que se salen de su dibujo** | **0** |
-| **Tamaño de letra** | máximo **30 px**, mínimo **10 px**. Textos > 30 px: **0**. Textos < 10 px: **0**. |
+| **Tamaño de letra** | máximo **30 px**. Textos > 30 px: **0**. *(Esta fila decía además «mínimo 10 px, textos < 10 px: 0» y **era falsa**: medía la relación de anchos del SVG, no la escala real. Con `getScreenCTM()` el mínimo era **7,0 px**. Está corregida y remedida en **§7.8**, donde ahora da **0 textos por debajo de 10 px** y mínimo **10,99 px**.)* |
 | **Contraste** | **0** nodos por debajo de su piso WCAG (4,5:1, o 3,0:1 si ≥ 24 px o ≥ 18,66 px en negrita), en claro y en oscuro, sobre todos los módulos |
 | **Un solo `var(--signal)` por pantalla** | cartera **1** · sesión capítulos 1-5 **1** cada uno · con el panel abierto **1** · informe **1** · sesión de Almacenes Caribe **0**, a propósito y explicado en pantalla |
 | **Errores y avisos de consola** | **0** en las 4 combinaciones × todas las rutas |
@@ -329,7 +329,7 @@ Chromium 1194 (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`) sobre el
 | **Teclado** | al abrir el panel el foco va al botón de cerrar; con `Esc` **vuelve al botón que lo abrió** |
 | **`recomendaciones[].explicacion`** | el párrafo de 113 códigos **NO** aparece nunca en pantalla |
 | **«tarifa de referencia»** | **5** menciones recorriendo cartera + 5 capítulos + 6 hallazgos + informe, **las cinco como la advertencia; 0 como cifra** |
-| **Recursos externos** | **0** — sin `<script src>`, sin `<link rel=stylesheet>`, sin `@import`, sin `url(http…)`, sin `<img>`, `<canvas>` ni `<iframe>`. HTML autocontenido, **286 KB** |
+| **Recursos externos** | **0** — sin `<script src>`, sin `<link rel=stylesheet>`, sin `@import`, sin `url(http…)`, sin `<img>`, `<canvas>` ni `<iframe>`. HTML autocontenido, **296 KB** |
 
 ### Cómo se reproducen
 
@@ -370,10 +370,11 @@ de la pieza). El resumen literal de cada corrida es el de la tabla de arriba.
 
 ## 7. Lo que se arregló después de la verificación
 
-Siete arreglos sobre `VERIFICACION-D.md`. Nada más del diseño se tocó. Todo lo de
-abajo está medido con el mismo Chromium 1194
+Siete arreglos de la primera vuelta y **cuatro de la segunda** (§7.4 rehecho de
+raíz, §7.8, §7.9 y §7.10) sobre `VERIFICACION-D.md`. Nada más del diseño se tocó.
+Todo lo de abajo está medido con el mismo Chromium 1194
 (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`) sobre el `file://`, sin red,
-en **1440×900 y 1366×768 × claro y oscuro**.
+en **1366×768, 1440×900 y 1920×1080 × claro y oscuro**.
 
 ### 1 · GRAVE — el `null` crudo de la columna MARCA *(falla 1a)*
 
@@ -458,58 +459,112 @@ Esto además cumple lo que la tabla de §3 ya declaraba para
 `contratos_fuera_del_plano` («una línea contada en el capítulo 4 **y al pie de la
 tabla de contratos**») y que antes no existía.
 
-### 4 · MEDIA — la hoja crece con la ventana *(falla 3)*
+### 4 · MEDIA — el hueco interior de cada columna *(falla 3, segunda vuelta)*
 
-La composición estaba afinada contra 1366×768 y a 1440×900 el sobrante se iba
-entero al pie. Ahora las tarjetas del capítulo llegan hasta abajo y **reparten** el
-sobrante entre sus bloques (`index.html:193-210`):
+**Lo que estaba mal, y por qué el número anterior no lo decía.** El primer arreglo
+empujó las tarjetas hasta abajo y publicó el **aire de cola** —la última tinta
+contra el borde de la ventana—, que bajó de 43,9 % a 4,6 %. Cierto, y engañoso: el
+blanco no se había ido, se había mudado al medio. La medida que manda es el
+**hueco interior máximo por columna**: se proyectan todas las tintas de la columna
+—texto y cada primitiva de cada SVG— sobre el eje y y se busca el intervalo más
+largo sin tinta. Con esa vara, el capítulo 5 tenía **463 px** de blanco entre la
+ficha de metadatos y el aviso de cierre, más que los 437 px de cola de la falla
+original, y peor de leer: una cola blanca se lee como página corta; un hueco de
+463 px entre dos bloques se lee como algo que no cargó.
+
+**El movimiento: redibujar cada dibujo para su columna.** El mapa de sedes tenía
+`viewBox` 984 × 245 metido en 630 px de columna: escala **0,64**, el ancho lo
+limitaba y el alto no entraba en la cuenta. Ahora **el viewBox se arma con la caja
+real**, medida después de montar el HTML (`figSlot()` deja el hueco,
+`pintarFiguras()` lo mide y lo pinta). De ahí salen las dos cosas a la vez:
+**1 unidad = 1 px** —el texto declarado a 11 px se imprime a 11 px, ver §7.8— y el
+alto disponible se gasta **dentro del dibujo**.
+
+Qué se redibujó, y por qué:
+
+| Dibujo | Antes | Ahora | Por qué |
+|---|---|---|---|
+| **Mapa de sedes** (cap. 1 · módulo «Las siete sedes», y el cliente nuevo) | rótulo a la izquierda (96 u.) + cuenta a la derecha (126 u.) = **222 de las 984 unidades, el 23 % del ancho**, gastado en texto; filas de 19 u. = **12 px reales** | **rótulo de sede y cuenta ARRIBA de su fila**; las marcas se quedan con el ancho entero, y el alto sobrante engorda las filas: **9 px a 1366** (donde no sobra nada), **26 px a 1440**, **36 px a 1920** (el techo) | el rótulo lateral era un impuesto de ancho en la columna angosta; subiéndolo, la marca por espacio pasa de 5 u. a escala 0,64 (**3,2 px reales**) a **3,8 px a 1366 y 4,1 px a 1440**, y el largo de la fila sigue siendo el conteo |
+| **Barras de sede** (cap. 2 · H1 y el informe) | nombre a la izquierda (104 px) y cuenta a la derecha (150 px); barras de 15 px | mismo movimiento: **nombre y cuenta arriba**, barra sobre el ancho completo y de hasta **30 px** de alto según lo que sobre | idéntico argumento; además la barra de TERRÓN (108 espacios) ya no queda comprimida por los márgenes de texto |
+| **Riel de 60 días** (cap. 2 · H4) | eje a 76 px del tope, dos carriles fijos de 16 px | eje al **56 % del alto** y carriles que se reparten hasta 58 px, con **techo de 300 px**: un eje de fechas no gana con más alto | lo que sobra de ese techo lo reparte la tarjeta, no una costura |
+| **Medidor de la cartera** | banda de 22 px | banda de hasta **230 px** | es una razón contra un límite: una banda gruesa la dice igual de bien y se come el sobrante de su columna |
+| **Los otros ocho** (líneas de 12 meses, ingreso, movimientos, proveedores, dumbbell, spread, barras de conteo, tipos) | alto fijo | **alto de la caja**; filas, barras y área de trazado se reparten el sobrante | misma regla |
+| **Los tres del informe** | `viewBox` 880 en una caja de 874 → escala 0,993 y texto a 9,9 px | `viewBox` **874 × 252 · 874 × 200 · 874 × 258**, escala **1,000** | el informe es documento: el alto es fijo (y 11 px menor que antes, para no tocar las tres páginas A4) |
+
+Dos consecuencias de dibujar a la medida de la caja, y las dos son arreglos:
+
+- **el margen del rótulo lo pide el nombre más largo, no una constante**
+  (`margenRot()`): en 1440 los 200 px fijos del ranking de proveedores sobraban y
+  en una columna angosta el nombre se salía del dibujo;
+- **ningún rótulo se sale de su caja** (`rotulo()`): un valor pegado a su punto va
+  a la derecha si entra, a la izquierda si no, y arrimado al borde si no entra de
+  ningún lado; y las notas al pie se dicen enteras si caben y en su versión corta
+  si no (`cabe()`), porque media frase cortada no dice nada. **Textos fuera de su
+  dibujo: 0** en 390, 1024, 1366, 1440 y 1920, recorriendo todos los estados.
+
+Y el sobrante que ningún dibujo puede absorber ya no se junta en una costura: se
+reparte entre **todas** las juntas de la tarjeta.
 
 ```css
 .cap .col>.caja,.cap .col>.panelito,.cap .col>.lista{flex:1 1 auto}
-.cap .lista>.item{flex:1 1 auto;align-content:center}   /* las tarjetas se reparten */
-.aire{margin-bottom:auto}    /* UNA costura por tarjeta, marcada a mano */
-.blq{display:flex;flex-direction:column;gap:var(--s2)}  /* frase + ruta = un bloque */
+.cap .lista>.item{flex:1 1 auto;align-content:center}
+.panelito{justify-content:space-around}      /* n juntas, no una */
+.panelito>.esc{flex:1 1 auto;justify-content:space-evenly}
+.comp.crece>table{height:100%}               /* el sobrante engorda las filas */
+.pie.crece{flex:1 1 auto;align-content:space-between}
 ```
 
-La costura va donde el orden de lectura la pide, nunca entre una frase y su ruta
-ni entre una cifra y su delta: tras la cifra grande del capítulo 1
-(`index.html:1763`), tras el dibujo del módulo (`1333`) y del hallazgo (`1711`),
-tras la escalera de la acción (`1729`), tras la tercera nota del capítulo 4
-(`1859`), y en el capítulo 5 el cierre se ancla abajo (`.aire-arriba`,
-`index.html:1898`) dejando la tarjeta de metadatos en su alto natural.
+Las clases `.aire` y `.aire-arriba` —la costura única del arreglo anterior— **se
+eliminaron**.
 
-**Los dibujos no se estiran, y está medido por qué:** el mapa de sedes tiene
-`viewBox` de **984 × 245** y la columna mide **630 px**, así que se dibuja a
-**escala 0,64** — lo limita el ancho, no el alto; darle más alto sólo lo centraba
-en un hueco. Lo que crece es el aire alrededor, repartido.
+**Capítulo 5.** Era el peor (463 px) porque su ficha de metadatos tenía seis
+casillas y el aviso de cierre estaba clavado al borde inferior. Ahora la ficha
+crece a **doce casillas de metadatos reales del guion** —periodo, **fecha de
+corte**, generado, **sedes leídas**, **contratos leídos**, **códigos sin cara**,
+**criterio de «se libera»**, ventana de vencimientos (`DIAS_POR_VENCER = 60`),
+cobertura del benchmark, sin dato, lo que nunca sale de la base y **quién lo
+preparó y quién lo va a ver**— repartidas en cuatro filas que se estiran con la
+tarjeta; y el aviso de cierre va **pegado a lo que lo precede**, no al borde.
 
-**Aire muerto** (última tinta contra el alto de la ventana), idéntico en claro y
-en oscuro:
+#### Hueco interior máximo por columna — **hueco** · cola secundaria
 
-| Vista | 1440×900 antes | 1440×900 **ahora** | 1366×768 antes | 1366×768 **ahora** |
-|---|---|---|---|---|
-| Cartera | 150 px · 16,7 % | 136 px · **15,2 %** | 18 px · 2,4 % | 18 px · **2,3 %** |
-| Capítulo 1 | 270 px · 30,0 % | 35 px · **3,9 %** | 66 px · 8,5 % | 35 px · **4,6 %** |
-| Capítulo 2 | 305 px · 33,9 % | 18 px · **2,0 %** | 164 px · 21,4 % | 18 px · **2,4 %** |
-| Capítulo 3 | 175 px · 19,4 % | 35 px · **3,9 %** | 26 px · 3,4 % | 24 px · **3,1 %** |
-| **Capítulo 4** | **395 px · 43,9 %** | 41 px · **4,6 %** | 263 px · 34,3 % | 41 px · **5,4 %** |
-| **Capítulo 5** | **446 px · 49,5 %** | 25 px · **2,8 %** | 296 px · 38,5 % | 25 px · **3,3 %** |
+Medido con Playwright sobre el `file://`, sin red, proyectando **texto + toda
+primitiva SVG** de cada columna sobre el eje y, recorriendo **todos los estados**
+de cada pantalla (los 5 módulos de la cartera, los 4 del capítulo 1, los 6
+hallazgos, las 6 acciones) y quedándose con el peor. Idéntico en claro y en
+oscuro.
+
+| Vista · columna | 1366×768 | 1440×900 | 1920×1080 |
+|---|---|---|---|
+| Cartera · cola de llamadas | **23** · 2 | **33** · 2 | **68** · 2 |
+| Cartera · módulos | **34** · 19 | **58** · 35 | **128** · 70 |
+| Cap. 1 · las cuatro cifras | **23** · 19 | **73** · 19 | **137** · 19 |
+| Cap. 1 · los cuatro módulos | **34** · 25 | **61** · 25 | **95** · 25 |
+| Cap. 2 · los seis hallazgos | **54** · 2 | **76** · 2 | **106** · 2 |
+| Cap. 2 · el dibujo del hallazgo | **82** · 56 | **115** · 72 | **165** · 97 |
+| Cap. 3 · las acciones | **20** · 8 | **38** · 19 | **66** · 33 |
+| Cap. 3 · la escalera | **68** · 25 | **112** · 25 | **185** · 25 |
+| Cap. 4 · las cinco fichas | **65** · 32 | **91** · 45 | **139** · 69 |
+| Cap. 4 · cómo se llega | **74** · 48 | **100** · 62 | **143** · 83 |
+| Cap. 5 · la ficha de metadatos | **50** · 9 | **94** · 9 | **166** · 9 |
+| **PEOR DE TODA LA PIEZA** | **82** (techo 120) | **115** (techo 150) | **185** (techo 250) |
+
+Contra el estado anterior, en las mismas celdas: capítulo 5 **463 → 94**, capítulo 4
+**384 → 100**, capítulo 2 **276 → 115**, capítulo 1 **260 → 73**, capítulo 3
+**213 → 112**; a 1920 el peor pasa de **660 → 185**.
+
+El peor caso —**115 px, capítulo 2, hallazgo H6**— es el único hallazgo **sin
+dibujo**, y es a propósito: H6 dice que hay una medición que no se puede hacer, y
+dibujar una ausencia sería inventarla. Ahí el sobrante se reparte entre las cuatro
+juntas de la tarjeta y no hay nada que engordar.
 
 Y nada dejó de caber:
 
-| Medición | 1440×900 | 1366×768 |
-|---|---|---|
-| `scrollHeight` / `clientHeight` del documento, cartera y los 5 capítulos | **900 / 900** | **768 / 768** |
-| `scrollWidth` / `clientWidth` del documento | **1440 / 1440** | **1366 / 1366** |
-| paneles internos con desborde escondido, en los 5 capítulos × 2 modos | **0** | **0** |
-
-Y en los cinco anchos que se probaron —390, 1024, 1366, 1440 y 1920—
-`scrollWidth` = `clientWidth` siempre (**0 scroll horizontal**), con **0** errores
-de consola. A 1920×1080 los cinco capítulos siguen dando **1080 / 1080**: la hoja
-sigue creciendo. Dicho sin adornos: por encima del ancho de referencia la costura
-es la que se ensancha —el dibujo no puede—, así que a 1920 la tarjeta se lee con
-mucho aire en el medio. A 1440×900, que es donde se juzga la pieza, la costura
-mide entre 150 y 250 px y se lee como composición.
+| Medición | 1366×768 | 1440×900 | 1920×1080 |
+|---|---|---|---|
+| `scrollHeight` / `clientHeight` del documento · cartera y los 5 capítulos | **768 / 768** | **900 / 900** | **1080 / 1080** |
+| `scrollWidth` / `clientWidth` del documento | **1366 / 1366** | **1440 / 1440** | **1920 / 1920** |
+| errores y avisos de consola | **0** | **0** | **0** |
 
 ### 5 · MEDIA — la regla de orden de la cola se lee entera *(falla 4)*
 
@@ -575,6 +630,83 @@ filas:
 | `Esc` cierra y devuelve el foco al botón de origen | sí | **sí**, sin cambio |
 | `<tr>` en el DOM con el panel cerrado | 0 | **0**, sin cambio |
 
+### 8 · MEDIA — el texto de los dibujos se imprimía a 7 px *(hallazgo nuevo del director)*
+
+La clave obligatoria dentro del dibujo —«ocupado · se libera este mes · libre»—,
+los rótulos de sede y «al promedio del cliente» se declaraban a 11 px **en
+unidades de viewBox**, y el viewBox de 880 (o 984) se metía en una columna de 630:
+escala 0,64, y esos 11 px llegaban a la pantalla como **7,0 px**. El informe, con
+`viewBox` 880 en 874 px, imprimía su nodo más chico a **9,9 px**.
+
+El arreglo es el mismo del §7.4 y por eso van juntos: **el viewBox se arma con la
+caja renderizada**, así que 1 unidad = 1 px y no hay escala que compensar. Además
+el único tamaño declarado por debajo de 11 (el «4 libres de 17» del dumbbell, a
+10) subió a 11.
+
+Medido con `getScreenCTM()` de **cada** nodo `<text>` de **cada** SVG, recorriendo
+cartera + los 5 capítulos + el informe en sus estados, claro y oscuro:
+
+| | antes | ahora |
+|---|---|---|
+| escala del SVG (`getScreenCTM().a`) — sesión | 0,599 · 0,641 · 0,670 · 0,716 · 0,912 | **1,000** (peor caso 0,9994, por el redondeo del ancho a entero) |
+| escala del SVG — informe | 0,993 | **1,000** |
+| nodos de texto SVG por debajo de 10 px · 1366 | **48** (mínimo **6,6 px**) | **0** (mínimo **10,99 px**) |
+| nodos por debajo de 10 px · 1440 | **48** (mínimo **7,0 px**) | **0** (mínimo **11,00 px**) |
+| nodos por debajo de 10 px · 1920 | **7** (mínimo 9,9 px) | **0** (mínimo **11,00 px**) |
+| máximo dentro de un SVG | 13 px | **11,5 px** en los gráficos, **13 px** la cifra del medidor |
+| letra máxima de toda la pieza | 30 px | **30 px**, sin cambio |
+| textos que se salen de su dibujo | — | **0** en todos los estados, en **390, 1024, 1366, 1440 y 1920**, los dos modos |
+
+Como el informe se imprime en una caja más angosta que la pantalla (A4 menos
+márgenes), los dibujos **se vuelven a medir al entrar en `media:print`**
+(`matchMedia("print")`), así que el texto también sale a 11 px en papel. El alto de
+esos tres dibujos es fijo, de modo que **el informe sigue siendo de tres páginas**.
+
+### 9 · MEDIA — el `<thead>` tapado por la barra de filtros *(hallazgo nuevo del director)*
+
+La barra de filtros, las pestañas y el `<thead>` eran tres cosas fijas que se
+pisaban: el `<th>` se pegaba a `top:0` y la barra —que llega hasta y=172 dentro del
+panel— le pasaba por encima. A partir de la fila ~10 se leía una grilla de nueve
+columnas sin saber cuál era cuál, incluida la columna MARCA que la falla 1 acababa
+de arreglar.
+
+Se hicieron las dos cosas que pedía el director, porque se complementan:
+
+1. **Filtros y pestañas viven en un solo contenedor pegajoso**, `.barra-panel`, que
+   además se sale a los márgenes del panel para que ninguna fila asome por el
+   costado. El `padding-top` del cuerpo del panel pasó al contenedor: `sticky` no
+   deja subir un elemento por encima del borde de contenido de su contenedor, y en
+   esa banda de 12 px asomaban las filas.
+2. **El `<thead>` se pega justo debajo, con el alto real de esa barra**, medido al
+   pintar el detalle: `PC.style.setProperty("--th-top", Math.ceil(alto)+"px")` y
+   `.tbl thead th{top:var(--th-top,0px)}`.
+
+Medido con `#panel-cuerpo` rodado 400 px, pestaña Espacios, 1440×900:
+
+| | antes | ahora |
+|---|---|---|
+| `--th-top` | 0 px (implícito) | **91 px**, medido de la barra |
+| barra de filtros + pestañas | y 111 → 172 | y **99 → 189** |
+| `<th>` de la tabla | y **111 → 132** — *debajo de la barra* | y **190 → 211** — **debajo de la barra, entero** |
+| ¿el `<thead>` queda tapado? | **sí** | **no** |
+| filas asomando por encima de la barra | sí, en la banda de padding | **ninguna**: la barra es opaca, `z-index:5`, y cubre hasta el borde del panel |
+
+### 10 · MENOR — dos rótulos que contradecían el texto
+
+- **«109 ocupados» → «109 con contrato».** El rótulo del último punto del gráfico
+  de doce meses llamaba «ocupados» a los que tienen contrato, mientras el párrafo
+  nuevo del informe dice «**106** ocupados más **3** que se liberan». `gLineas()`
+  recibe ahora la palabra del último punto: los dos gráficos de Mercamío —el del
+  capítulo 1 y el del informe— dicen **«109 con contrato»**, y el de la cartera
+  sigue diciendo «ocupados», que es lo que ahí significa el número (ocupación % ×
+  comercializables). El `aria-label` del dibujo acompaña.
+- **El `<caption>` de la tabla de Espacios cuenta el filtro.** Decía «Los 254
+  espacios del plano de Mercamío» aunque el filtro dejara 108 a la vista. Ahora,
+  medido: sin filtro → «**Los 254 espacios del plano de Mercamío.** Cada uno con su
+  estado del periodo y su contrato si lo tiene.»; llegando desde «Los 108 espacios
+  de TERRÓN» → «**108 de los 254 espacios · filtro: TERRON.** Cada uno con su
+  estado del periodo y su contrato si lo tiene.»
+
 ### Lo que no se movió, verificado de nuevo
 
 Cada arreglo se volvió a medir contra las columnas que el director ya había dado
@@ -582,11 +714,15 @@ por buenas, en **9 vistas × 2 modos × 2 anchos**:
 
 | Medición | Resultado |
 |---|---|
-| Contraste: nodos por debajo de su piso WCAG | **0** sobre **4.383 nodos de texto** por pasada, en los dos modos. Peor margen: **1,09 × el piso** en claro, **1,05 ×** en oscuro |
-| `var(--signal)` por pantalla | **exactamente 1** en las 9 vistas × 4 combinaciones |
-| Errores y avisos de consola | **0** |
-| Informe en A4 | **3 páginas** · **0** controles en `media:print` |
-| Panel cerrado | **0 `<tr>`** en el DOM, `aria-hidden="true"` |
+| `null` / `undefined` / `NaN` en pantalla | **0**, en cartera + los 5 capítulos + informe + las 5 pestañas del panel **agotadas**, claro y oscuro |
+| Contraste: nodos por debajo de su piso WCAG (4,5:1 · 3,0:1) | **0 sobre 987 nodos de texto por pasada** —incluidos los `<text>` de los SVG—, en los dos modos, sobre cartera + 5 capítulos + informe + cliente nuevo |
+| `var(--signal)` por pantalla | **exactamente 1** en 12 pantallas × 2 modos = **24 / 24** (Almacenes Caribe **0**, a propósito) |
+| Formas | **0** arcos · **0** círculos de r > 14 · letra máxima **30 px** |
+| Errores y avisos de consola | **0** en los tres anchos × los dos modos |
+| Informe en A4 | **3 páginas** · **0** controles en `media:print` · alto del artículo **2.973 px**, 11 px menos que antes del arreglo |
+| Detalle al clic, filtrado | desde «Los 108 espacios de TERRÓN»: `f-sede=TERRON` y el resto vacío · pestañas `108 · 9 · 7 · 32 · 3` · 40 filas de primera tanda · subtítulo «Llegaste con el filtro puesto: TERRON» |
+| Foco tras «Mostrar 40 más» | clic → **`TR` de la primera fila nueva** (80 filas) · `Tab` → `#btn-mas`, **sobrevive 400 ms** · `Enter` → **`TR` de la primera fila nueva** (108 con el filtro puesto) |
+| Panel cerrado | **0 `<tr>`** en el DOM, `aria-hidden="true"`, foco de vuelta en el botón de origen |
 | Recursos externos | **0** — sin `<script src>`, `<link>`, `@import`, `url(http…)`, `<img>`, `<canvas>` ni `<iframe>` |
 
 ### Y las dos correcciones al README

@@ -190,22 +190,32 @@ select.ctrl{padding-right:22px}
 .dos{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:var(--s4);min-height:0;flex:1 1 auto}
 .dos.izq-ancha{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr)}
 .col{display:flex;flex-direction:column;gap:var(--s2);min-height:0;min-width:0}
-/* La hoja estaba compuesta contra 1366×768 y a 1440×900 el sobrante se iba entero
-   al pie: hasta 48 % de la pantalla en los capítulos 4 y 5, 30 % en el 1 y el 2.
-   Ahora las tarjetas llegan hasta abajo y REPARTEN el sobrante entre sus bloques,
-   en vez de amontonarlo arriba y dejar media tarjeta vacía. Los dibujos no se
-   estiran —son anchos y chatos, ya se dibujan al ancho de la columna, que es su
-   límite—: lo que crece es el aire alrededor. Todo con flex-grow, así que a 768,
-   donde no sobra nada, la composición no se mueve un píxel. */
+/* La hoja estaba compuesta contra 1366×768 y a 1440×900 el sobrante primero se
+   iba entero al pie y después —al empujar las tarjetas hasta abajo— se juntaba
+   en UNA costura de hasta 463 px en el medio de la columna, que se lee peor que
+   la cola. La medida que manda es el HUECO INTERIOR MÁXIMO por columna, y para
+   bajarlo el sobrante se gasta, en este orden:
+     1. en el DIBUJO, que ahora se dibuja al alto real de su caja (filas de sede
+        más gruesas, barras más altas) — ver el kit de SVG;
+     2. en las TARJETAS, cuyas filas crecen (la tabla de cuatro comparaciones del
+        capítulo 1, los seis hallazgos, las cinco fichas del capítulo 4);
+     3. y lo que quede se REPARTE entre todas las juntas de la tarjeta
+        (`justify-content:space-between`), nunca en una sola costura.
+   A 768, donde no sobra nada, la composición no se mueve un píxel. */
 .cap .col>.caja,.cap .col>.panelito,.cap .col>.lista{flex:1 1 auto}
 .cap .col>.caja{display:flex;flex-direction:column}
 .cap .lista>.item{flex:1 1 auto;align-content:center}
-/* El sobrante se abre en UNA sola costura, marcada a mano en cada tarjeta: arriba
-   queda lo que se lee primero (la cifra, la frase, el dibujo) y abajo lo que se
-   lee al final (la evidencia, la nota, los botones). Nunca se mete entre una
-   frase y su ruta, ni entre una cifra y su delta. */
-.aire{margin-bottom:auto}
-.aire-arriba{margin-top:auto}
+#v-cartera .col>.panelito,#v-cartera .col>.cola{flex:1 1 auto}
+.panelito{justify-content:space-around}
+.panelito>.esc{flex:1 1 auto;justify-content:space-evenly}
+#v-cartera .cola .fila{flex:1 0 auto;align-content:center}
+/* la tabla de comparaciones se estira con la tarjeta: el sobrante engorda sus
+   filas en vez de abrir una costura debajo de la cifra */
+.comp.crece{flex:1 1 auto;display:flex}
+.comp.crece>table{flex:1 1 auto;height:100%}
+.comp.crece td,.comp.crece th{vertical-align:middle}
+/* la ficha de «de dónde sale» reparte sus filas de metadatos en el alto que tenga */
+.pie.crece{flex:1 1 auto;align-content:space-between}
 /* la frase y su ruta son UN bloque: el aire nunca se mete entre las dos */
 .blq{display:flex;flex-direction:column;gap:var(--s2)}
 
@@ -225,14 +235,17 @@ select.ctrl{padding-right:22px}
 
 /* ── figuras ────────────────────────────────────────────────────────────── */
 figure{margin:0;min-width:0}
-.fig{width:100%;height:auto;display:block;overflow:visible}
+.fig{width:100%;display:block;overflow:visible}
+/* el hueco que deja cada dibujo hasta que se lo mide y se lo pinta */
+.figbox{margin:0;min-width:0;min-height:0;flex:1 1 auto}
+.figbox.fijo{flex:0 0 auto}
 
 /* ── tablas ─────────────────────────────────────────────────────────────── */
 .tbl{font-size:var(--t-xs)}
 .tbl th,.tbl td{text-align:left;padding:4px 9px;border-bottom:var(--hair) solid var(--line-soft);vertical-align:top}
 .tbl thead th{font-family:var(--f-mono);font-size:var(--t-3xs);font-weight:600;letter-spacing:.07em;
   text-transform:uppercase;color:var(--ink-3);border-bottom:var(--hair) solid var(--line);white-space:nowrap;
-  position:sticky;top:0;background:var(--surface);z-index:2}
+  position:sticky;top:var(--th-top,0px);background:var(--surface);z-index:2}
 .tbl td.n,.tbl th.n{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
 .tbl td .mono{white-space:nowrap}
 .tbl tbody tr:nth-child(even){background:var(--surface-2)}
@@ -333,14 +346,24 @@ html[data-tema="oscuro"] .panel-fondo{background:rgba(0,0,0,.58)}
 .panel-cerrar{margin-left:auto;border:var(--hair) solid var(--line);border-radius:var(--r-sm);
   width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:var(--t-sm);
   color:var(--ink-2);background:var(--surface-2);flex:0 0 auto}
-.panel-cuerpo{flex:1 1 auto;min-height:0;overflow:auto;padding:var(--s3) var(--s4) var(--s5)}
+.panel-cuerpo{flex:1 1 auto;min-height:0;overflow:auto;padding:0 var(--s4) var(--s5)}
+.panel-cuerpo>:first-child:not(.barra-panel){margin-top:var(--s3)}
+/* La barra de filtros, las pestañas y el <thead> son TRES cosas fijas y antes
+   se pisaban: el <th> se pegaba a top:0 y la barra le pasaba por encima hasta
+   y=172, así que a partir de la fila ~10 se leía una grilla de nueve columnas
+   sin saber cuál era cuál. Ahora filtros y pestañas viven en UN solo contenedor
+   pegajoso, y el <thead> se pega justo debajo: --th-top se mide del alto real
+   de esa barra al pintar el detalle. El contenedor se sale a los márgenes del
+   panel para que ninguna fila asome por el costado ni por arriba. */
+.barra-panel{position:sticky;top:0;z-index:5;background:var(--surface);
+  margin:0 calc(var(--s4) * -1);padding:var(--s3) var(--s4) 0}
 .filtros{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-bottom:var(--s2);
-  border-bottom:var(--hair) solid var(--line);position:sticky;top:0;background:var(--surface);z-index:3}
+  border-bottom:var(--hair) solid var(--line);background:var(--surface)}
 .filtros select,.filtros input{font-size:var(--t-2xs);padding:4px 7px;border-radius:var(--r-sm);
   border:var(--hair) solid var(--line);background:var(--surface);color:var(--ink-1)}
 .filtros .cuenta{margin-left:auto;font-family:var(--f-mono);font-size:var(--t-3xs);color:var(--ink-3)}
 .tabs{display:flex;gap:2px;border-bottom:var(--hair) solid var(--line);flex-wrap:wrap;margin-top:var(--s2);
-  position:sticky;top:30px;background:var(--surface);z-index:2}
+  background:var(--surface)}
 .tabs button{padding:6px 10px;font-size:var(--t-2xs);font-weight:600;color:var(--ink-3);
   border-bottom:2px solid transparent;margin-bottom:-1px}
 .tabs button[aria-current="true"]{color:var(--ink-1);border-bottom-color:var(--ink-1)}
@@ -492,21 +515,73 @@ const CLASE  = {activa:"activa", dormida:"dormida", fantasma:"fantasma", sin_cue
    VA DENTRO DEL DIBUJO — la clave, el umbral, el promedio y la palabra de
    cada color se escriben sobre el gráfico, nunca en una leyenda de al lado.
    Ninguno usa dos escalas. Ninguno es una torta ni un anillo.
+
+   CADA DIBUJO SE DIBUJA PARA SU COLUMNA. El viewBox no es una lámina fija que
+   después se encoge: se arma con el ancho y el alto REALES de la caja, así que
+   1 unidad = 1 px. De ahí salen las dos cosas que faltaban:
+     · el texto declarado a 11 px se imprime a 11 px en pantalla (el mismo
+       texto, con el viewBox de 880 metido en una columna de 630, caía a 7,0);
+     · el alto entra en la cuenta, de modo que el aire que le sobra a la
+       columna se gasta en filas de sede más gruesas —en el dibujo— y no en
+       una costura de 400 px en el medio de la pantalla.
    ═════════════════════════════════════════════════════════════════════════ */
 function fig(w,h,inner,label){
   return `<svg class="fig" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)}"
-    preserveAspectRatio="xMidYMid meet" style="max-height:${h}px">${inner}</svg>`;
+    preserveAspectRatio="xMidYMid meet" style="height:${h}px">${inner}</svg>`;
+}
+/* El HTML se arma como texto y el ancho de la caja sólo se sabe después de
+   montarlo: cada figura deja un hueco rotulado y se pinta en una segunda
+   pasada, con la medida en la mano. `min` es el piso (columna angosta),
+   `max` el techo de los dibujos que no ganan nada con más alto —el riel de
+   fechas, el medidor—: lo que sobra de ahí lo reparte la tarjeta. */
+const FIGS=[];
+function figSlot(fn, op){
+  op=op||{}; FIGS.push(fn);
+  return `<figure class="figbox${op.fijo?" fijo":""}" data-fig="${FIGS.length-1}"
+    data-min="${op.min||150}"${op.max?` data-max="${op.max}"`:""}></figure>`;
+}
+function pintarFiguras(raiz){
+  (raiz||document).querySelectorAll("figure[data-fig]").forEach(f=>{
+    const fn=FIGS[+f.dataset.fig]; if(!fn) return;
+    f.style.height=""; f.style.flex=""; f.textContent="";
+    const w=Math.floor(f.clientWidth); if(w<120) return;
+    const libre=Math.floor(f.clientHeight);
+    const mn=+f.dataset.min||150, mx=+f.dataset.max||0;
+    let h=Math.max(mn, libre);
+    if(mx && h>mx) h=mx;
+    if(h<libre){ f.style.flex="0 0 auto"; f.style.height=h+"px"; }
+    f.innerHTML=fn(w,h);
+  });
 }
 const AX = 'stroke="var(--line)" stroke-width="1" fill="none"';
 const GR = 'stroke="var(--line-soft)" stroke-width="1" fill="none"';
 const TX = 'fill="var(--ink-3)" font-size="11" font-family="var(--f-mono)"';
 const TL = 'fill="var(--ink-2)" font-size="11" font-family="var(--f-text)"';
 const TF = 'fill="var(--ink-1)" font-size="11.5" font-family="var(--f-text)" font-weight="600"';
+/* ancho medio de carácter a 11 px, medido: monoespaciada y texto */
+const WM=6.7, WT=6.3;
+const anchoM = s => Math.ceil(String(s).length*WM);
+const anchoT = s => Math.ceil(String(s).length*WT);
+/* la nota al pie de un dibujo se dice entera si entra en la caja y en su versión
+   corta si no: en una columna angosta, media frase cortada no dice nada */
+const cabe = (largo, corto, ancho) => anchoM(largo)<=ancho ? largo : corto;
+/* un rótulo pegado a su punto: a la derecha si entra, a la izquierda si no, y
+   arrimado al borde si no entra de ningún lado. Nunca fuera de la caja. */
+/* el margen izquierdo de un ranking lo pide el nombre más largo, no una
+   constante: en 1440 sobra y en 390 no cabía, y el nombre se salía del dibujo */
+const margenRot = (etiquetas, W, tope) =>
+  Math.min(tope, Math.round(W*0.45), Math.max(...etiquetas.map(anchoT))+14);
+function rotulo(px, t, W, mono){
+  const w = mono ? anchoM(t) : anchoT(t);
+  if(px+6+w<=W)  return `x="${(px+6).toFixed(1)}" text-anchor="start"`;
+  if(px-6-w>=0)  return `x="${(px-6).toFixed(1)}" text-anchor="end"`;
+  return `x="${Math.max(0,W-w).toFixed(1)}" text-anchor="start"`;
+}
 
 /* clave dentro del dibujo: cuadraditos + palabra, arriba a la derecha */
 function claveSVG(x, y, items, anchor){
   let g = "", cx = x;
-  const ancho = it => (it.t.length*6.4) + 20;
+  const ancho = it => anchoM(it.t) + 20;
   const total = items.reduce((a,it)=>a+ancho(it)+10,0);
   if(anchor==="end") cx = Math.max(2, x - total);
   items.forEach(it=>{
@@ -523,10 +598,15 @@ function claveSVG(x, y, items, anchor){
    El denominador se mueve tres veces en cuatro meses: una línea de % dibuja un
    derrumbe que no ocurrió. Dos conteos en UNA escala de espacios ponen el
    escalón en el dato. ──────────────────────────────────────────────────── */
-function gLineas(serie, anot, alto){
-  const W=880, H=alto||250, L=46, R=126, T=alto?54:58, B=30;
-  const pw=W-L-R, ph=H-T-B;
+function gLineas(serie, anot, W, H, rotUlt){
+  const rot = rotUlt || "ocupados";
   const pts = serie.map((s,i)=>({...s, i, ocup: s.occ==null?null:Math.round(s.occ*s.esp/100)}));
+  const last = pts[pts.length-1];
+  const rot1 = miles(last.esp)+" comercializables", rot2 = miles(last.ocup)+" "+rot;
+  const L=48, R=Math.max(anchoT(rot1),anchoT(rot2))+18, B=34;
+  const NL = anot.length ? Math.max(...anot.map((a,k)=>(a.lane!=null?a.lane:k)))+1 : 0;
+  const T = 14+NL*17+14;
+  const pw=W-L-R, ph=H-T-B;
   const max = Math.max(...pts.map(p=>p.esp||0))*1.10;
   const x = i => L + (pw*i)/(pts.length-1);
   const y = v => T + ph - (ph*v)/max;
@@ -548,23 +628,25 @@ function gLineas(serie, anot, alto){
         <text x="${x(p.i)+5}" y="${T+ph-6}" ${TX}>sin dato</text>`;
   });
   g+= linea(p=>p.esp,"var(--dato-tenue)") + linea(p=>p.ocup,"var(--dato)");
-  const last = pts[pts.length-1];
   g+=`<circle cx="${x(last.i)}" cy="${y(last.esp)}" r="4" fill="var(--surface)" stroke="var(--dato-tenue)" stroke-width="2"/>
       <circle cx="${x(last.i)}" cy="${y(last.ocup)}" r="4" fill="var(--surface)" stroke="var(--dato)" stroke-width="2"/>
-      <text x="${x(last.i)+9}" y="${y(last.esp)+4}" ${TL}>${miles(last.esp)} comercializables</text>
-      <text x="${x(last.i)+9}" y="${y(last.ocup)+4}" ${TF}>${miles(last.ocup)} ocupados</text>
+      <text ${rotulo(x(last.i)+3, rot1, W)} y="${y(last.esp)+4}" ${TL}>${esc(rot1)}</text>
+      <text ${rotulo(x(last.i)+3, rot2, W)} y="${y(last.ocup)+4}" ${TF}>${esc(rot2)}</text>
       <text x="${x(last.i)}" y="${T+ph+27}" text-anchor="middle" ${TX}>parcial</text>`;
   anot.forEach((a,k)=>{
-    const px=x(a.i), lane = 12 + (a.lane!=null?a.lane:k)*17, anchor = px>L+pw-210 ? "end":"start", dx = anchor==="end"?-6:6;
+    const px=x(a.i), lane = 12 + (a.lane!=null?a.lane:k)*17;
     g+=`<line x1="${px}" y1="${lane+5}" x2="${px}" y2="${y(serie[a.i].esp)-7}" stroke="var(--ink-3)" stroke-width="1"/>
-        <text x="${px+dx}" y="${lane+3}" text-anchor="${anchor}" ${TF}>${esc(a.t)}</text>`;
+        <text ${rotulo(px, a.t, W)} y="${lane+3}" ${TF}>${esc(a.t)}</text>`;
   });
-  return fig(W,H,g,"Espacios comercializables y espacios ocupados, mes a mes. Una sola escala: espacios.");
+  return fig(W,H,g,"Espacios comercializables y espacios "+rot+", mes a mes. Una sola escala: espacios.");
 }
 
 /* ── 2 · la plata, en su propio panel, sobre la misma rejilla de meses ──── */
-function gIngreso(serie, anot, alto){
-  const W=880, H=alto||210, L=46, R=126, T=44, B=28;
+function gIngreso(serie, anot, W, H){
+  const li=serie.length-1, rotU=pesos(serie[li].ing);
+  const L=48, R=anchoT(rotU)+18, B=32;
+  const NL = anot.length ? Math.max(...anot.map((a,k)=>(a.lane!=null?a.lane:k)))+1 : 0;
+  const T = 14+NL*17+14;
   const pw=W-L-R, ph=H-T-B;
   const vals=serie.map(s=>s.ing).filter(v=>v!=null);
   const max=Math.max(...vals)*1.05, min=Math.min(...vals)*0.92;
@@ -581,67 +663,75 @@ function gIngreso(serie, anot, alto){
   if(cur.length)segs.push(cur);
   g+=segs.map(s=>`<polyline points="${s.map(a=>a.join(",")).join(" ")}" fill="none" stroke="var(--dato)"
       stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`).join("");
-  const li=serie.length-1;
   g+=`<circle cx="${x(li)}" cy="${y(serie[li].ing)}" r="4" fill="var(--surface)" stroke="var(--dato)" stroke-width="2"/>
-      <text x="${x(li)+9}" y="${y(serie[li].ing)+4}" ${TF}>${pesos(serie[li].ing)}</text>
+      <text ${rotulo(x(li)+3, rotU, W)} y="${y(serie[li].ing)+4}" ${TF}>${esc(rotU)}</text>
       <text x="${x(li)}" y="${T+ph+27}" text-anchor="middle" ${TX}>parcial</text>`;
   serie.filter(s=>s.sd).forEach(s=>{ const i=serie.indexOf(s);
     g+=`<line x1="${x(i)}" y1="${T}" x2="${x(i)}" y2="${T+ph}" stroke="var(--line)" stroke-width="1"/>
         <text x="${x(i)+5}" y="${T+11}" ${TX}>sin dato</text>`; });
   anot.forEach((a,k)=>{
-    const px=x(a.i), lane=12+(a.lane!=null?a.lane:k)*17, anchor=px>L+pw-240?"end":"start", dx=anchor==="end"?-6:6;
+    const px=x(a.i), lane=12+(a.lane!=null?a.lane:k)*17;
     g+=`<line x1="${px}" y1="${lane+5}" x2="${px}" y2="${y(serie[a.i].ing)-7}" stroke="var(--ink-3)" stroke-width="1"/>
-        <text x="${px+dx}" y="${lane+3}" text-anchor="${anchor}" ${TF}>${esc(a.t)}</text>`;
+        <text ${rotulo(px, a.t, W)} y="${lane+3}" ${TF}>${esc(a.t)}</text>`;
   });
   return fig(W,H,g,"Ingreso contratado mes a mes. Una sola escala: pesos.");
 }
 
 /* ── 3 · el mapa de unidades: una marca por espacio, agrupadas por sede ──
    Hace dos trabajos con un dibujo: el conteo por estado y el ranking de sedes
-   (el largo de la fila ES el número de espacios). ──────────────────────── */
-function gMapa(espacios, sedes, promedio, opts){
+   (el largo de la fila ES el número de espacios).
+   REDIBUJADO PARA LA COLUMNA: el rótulo de la sede y su cuenta van ARRIBA de
+   la fila, no a los costados, así las marcas se quedan con el ancho entero
+   (antes 96 px de rótulo + 126 px de cuenta se comían un tercio); y el alto
+   disponible se reparte entre las siete filas, que engordan hasta 36 px. ── */
+function gMapa(espacios, sedes, promedio, opts, W, H){
   opts = opts||{};
   const orden={ocupado:0, se_libera:1, libre:2};
   const porSede={}; espacios.forEach(e=>{ (porSede[e.s]=porSede[e.s]||[]).push(e); });
   const filas = sedes.slice().sort((a,b)=>a.ocupacion_pct-b.ocupacion_pct);
   const maxN = Math.max(...filas.map(s=>s.espacios));
-  const P=7, MW=5, LX=96, RW=opts.compacto?4:126, RH=opts.compacto?18:22, GAP=opts.compacto?5:7;
-  const TOP = opts.compacto?4:26;
-  const W = LX + maxN*P + RW + 6;
-  const H = TOP + filas.length*(RH+GAP) + (promedio!=null?16:4);
+  const comp = !!opts.compacto;
+  const CAB = comp?0:20, PIE = (promedio!=null && !comp)?20:0, ROT = comp?0:16;
+  const paso = (H-CAB-PIE)/filas.length;
+  const RH = Math.max(comp?10:9, Math.min(comp?20:36, paso-ROT-8));
+  /* en el plano de UNA sede el paso de marca se topa: si no, doce espacios se
+     dibujarían como doce cajones y el largo de la fila dejaría de ser el conteo */
+  const P = comp ? Math.min(9,(W-2)/maxN) : (W-2)/maxN;
+  const MW = Math.max(1.6, P-Math.min(2.4, P*0.30));
+  const sw = MW<2.6 ? 0.5 : 1;
   let g="";
-  if(!opts.compacto){
-    g += claveSVG(W-4, 10, [
+  if(!comp) g += claveSVG(W-2, 12, [
       {c:"var(--ocupado)", b:"var(--ocupado-borde)", t:"ocupado"},
       {c:"var(--entra)",   b:"var(--entra-borde)",   t:"se libera este mes"},
       {c:"var(--libre)",   b:"var(--libre-borde)",   t:"libre"}], "end");
-  }
   filas.forEach((s,r)=>{
-    const y = TOP + r*(RH+GAP);
+    const yT = CAB + r*paso, y = yT + ROT;
     const lista=(porSede[s.sede]||[]).slice().sort((a,b)=> (orden[a.e]-orden[b.e]) || a.c.localeCompare(b.c));
-    g+=`<text x="0" y="${y+RH-6}" font-size="11" font-weight="700" fill="var(--ink-1)"
-         font-family="var(--f-text)">${esc(s.sede)}</text>`;
+    if(!comp){
+      g+=`<text x="0" y="${yT+11}" font-size="11.5" font-weight="700" fill="var(--ink-1)"
+           font-family="var(--f-text)">${esc(s.sede)}</text>`;
+      g+=`<text x="${W}" y="${yT+11}" text-anchor="end" font-size="11" font-family="var(--f-mono)"
+           fill="var(--ink-2)" font-variant-numeric="tabular-nums">${s.ocupados} de ${s.espacios} · ${dec(s.ocupacion_pct)} %</text>`;
+    }
     lista.forEach((e,i)=>{
       const col = e.e==="libre"?"var(--libre)": e.e==="se_libera"?"var(--entra)":"var(--ocupado)";
       const bor = e.e==="libre"?"var(--libre-borde)": e.e==="se_libera"?"var(--entra-borde)":"var(--ocupado-borde)";
       const sel = opts.resaltar && opts.resaltar.has(e.c);
-      g+=`<rect x="${LX+i*P}" y="${y}" width="${MW}" height="${RH-3}" rx="1.5"
+      g+=`<rect x="${(i*P).toFixed(2)}" y="${y.toFixed(1)}" width="${MW.toFixed(2)}" height="${RH.toFixed(1)}" rx="1.5"
            fill="${opts.resaltar?(sel?col:"var(--resto-suave)"):col}"
-           stroke="${opts.resaltar?(sel?bor:"var(--resto-borde)"):bor}" stroke-width="1"
+           stroke="${opts.resaltar?(sel?bor:"var(--resto-borde)"):bor}" stroke-width="${sw}"
            ><title>${esc(e.c)} · ${esc(tnom(e.t))} · ${ESTADO[e.e]}${e.k?" · "+esc(e.k.pr):""}</title></rect>`;
     });
     if(promedio!=null){
-      const tx = LX + (promedio/100)*s.espacios*P;
-      g+=`<line x1="${tx}" y1="${y-3}" x2="${tx}" y2="${y+RH-1}" stroke="var(--ink-1)" stroke-width="1.5"/>`;
+      const tx = (promedio/100)*s.espacios*P;
+      g+=`<line x1="${tx.toFixed(2)}" y1="${(y-3).toFixed(1)}" x2="${tx.toFixed(2)}" y2="${(y+RH+3).toFixed(1)}" stroke="var(--ink-1)" stroke-width="1.5"/>`;
     }
-    if(!opts.compacto)
-      g+=`<text x="${LX+maxN*P+8}" y="${y+RH-6}" font-size="11" font-family="var(--f-mono)"
-           fill="var(--ink-2)" font-variant-numeric="tabular-nums">${s.ocupados} / ${s.espacios} · ${dec(s.ocupacion_pct)} %</text>`;
   });
-  if(promedio!=null && !opts.compacto)
-    g+=`<line x1="${LX}" y1="${H-11}" x2="${LX+7}" y2="${H-11}" stroke="var(--ink-1)" stroke-width="0"/>
-        <rect x="${LX}" y="${H-16}" width="2" height="11" rx="1" fill="var(--ink-1)"/>
-        <text x="${LX+8}" y="${H-7}" ${TX} fill="var(--ink-2)">dónde terminaría lo ocupado si la sede estuviera en el promedio del cliente, ${dec(promedio)} %</text>`;
+  if(promedio!=null && !comp)
+    g+=`<rect x="0" y="${H-16}" width="2" height="11" rx="1" fill="var(--ink-1)"/>
+        <text x="8" y="${H-7}" ${TX} fill="var(--ink-2)">${esc(cabe(
+          `dónde terminaría lo ocupado si la sede estuviera en el promedio del cliente, ${dec(promedio)} %`,
+          `al promedio del cliente, ${dec(promedio)} %`, W-10))}</text>`;
   return fig(W,H,g,"Mapa de espacios por sede: una marca por espacio, ordenadas de peor a mejor ocupación.");
 }
 
@@ -649,235 +739,274 @@ function gMapa(espacios, sedes, promedio, opts){
    Largo = espacios de la sede (unidades, no %); el relleno son LOS TRES
    ESTADOS, nunca dos: ocupado · se libera este mes · libre. La marca negra es
    dónde terminaría lo ocupado al promedio del cliente. Con barras de % ARRAYÁN
-   (8/12) y VILLA (16/24) dibujarían lo mismo, y no son el mismo negocio. ─── */
-function gSedes(sedes, promedio, espacios){
-  const W=880, L=104, R=150, T=30, RH=27;
+   (8/12) y VILLA (16/24) dibujarían lo mismo, y no son el mismo negocio.
+   REDIBUJADO PARA LA COLUMNA, igual que el mapa: nombre y cuenta arriba de la
+   barra —el ancho entero es escala— y el alto sobrante engorda las barras. ── */
+function gSedes(sedes, promedio, espacios, W, H){
   const por={}; espacios.forEach(e=>{ const o=por[e.s]=por[e.s]||{o:0,s:0,l:0};
     o[e.e==="ocupado"?"o":e.e==="se_libera"?"s":"l"]++; });
   const filas = sedes.slice().sort((a,b)=>a.ocupacion_pct-b.ocupacion_pct);
-  const pw=W-L-R, H=T+filas.length*RH+24;
-  const max=Math.max(...filas.map(s=>s.espacios))*1.02, x=v=>L+pw*v/max;
+  const CAB=20, PIE=38, ROT=16;
+  const paso=(H-CAB-PIE)/filas.length;
+  const bh=Math.max(9, Math.min(30, paso-ROT-8));
+  const max=Math.max(...filas.map(s=>s.espacios))*1.02, x=v=>W*v/max;
   let g = claveSVG(W-2, 12, [
     {c:"var(--ocupado)", b:"var(--ocupado-borde)", t:"ocupado"},
     {c:"var(--entra)",   b:"var(--entra-borde)",   t:"se libera este mes"},
-    {c:"var(--libre)",   b:"var(--libre-borde)",   t:"libre"},
-    {c:"var(--ink-1)",   tick:true, t:"al promedio del cliente, "+dec(promedio)+" %"}], "end");
+    {c:"var(--libre)",   b:"var(--libre-borde)",   t:"libre"}], "end");
   filas.forEach((s,i)=>{
-    const y=T+i*RH, bh=15, c=por[s.sede]||{o:0,s:0,l:0};
-    g+=`<text x="${L-10}" y="${y+bh-3}" text-anchor="end" font-size="11.5" font-weight="700"
+    const yT=CAB+i*paso, y=yT+ROT, c=por[s.sede]||{o:0,s:0,l:0};
+    g+=`<text x="0" y="${yT+11}" font-size="11.5" font-weight="700"
          fill="var(--ink-1)" font-family="var(--f-text)">${esc(s.sede)}</text>`;
-    let ax=L;
+    g+=`<text x="${W}" y="${yT+11}" text-anchor="end" ${TX} fill="var(--ink-1)">${s.ocupados} de ${s.espacios} · ${dec(s.ocupacion_pct)} %${c.s?" · "+c.s+" se libera"+(c.s>1?"n":""):""}</text>`;
+    let ax=0;
     [[c.o,"var(--ocupado)","var(--ocupado-borde)"],[c.s,"var(--entra)","var(--entra-borde)"],
      [c.l,"var(--libre)","var(--libre-borde)"]].forEach(([n,col,bor])=>{
-      if(!n) return; const w=Math.max(1.5,(pw*n/max));
-      g+=`<rect x="${ax}" y="${y}" width="${w}" height="${bh}" rx="2" fill="${col}" stroke="${bor}" stroke-width="1"/>`;
+      if(!n) return; const w=Math.max(1.5,x(n));
+      g+=`<rect x="${ax.toFixed(2)}" y="${y.toFixed(1)}" width="${w.toFixed(2)}" height="${bh.toFixed(1)}" rx="2" fill="${col}" stroke="${bor}" stroke-width="1"/>`;
       ax+=w; });
     const tx=x(s.espacios*promedio/100);
-    g+=`<line x1="${tx}" y1="${y-3}" x2="${tx}" y2="${y+bh+3}" stroke="var(--ink-1)" stroke-width="1.5"/>`;
-    g+=`<text x="${x(s.espacios)+9}" y="${y+bh-3}" ${TX} fill="var(--ink-1)">${s.ocupados} de ${s.espacios} · ${dec(s.ocupacion_pct)} %${c.s?" · "+c.s+" se libera"+(c.s>1?"n":""):""}</text>`;
+    g+=`<line x1="${tx.toFixed(2)}" y1="${(y-3).toFixed(1)}" x2="${tx.toFixed(2)}" y2="${(y+bh+3).toFixed(1)}" stroke="var(--ink-1)" stroke-width="1.5"/>`;
   });
-  g+=`<text x="${L}" y="${H-6}" ${TX}>el largo de la barra son los espacios de la sede — no un porcentaje</text>`;
+  g+=`<rect x="0" y="${H-27}" width="2" height="11" rx="1" fill="var(--ink-1)"/>
+      <text x="8" y="${H-18}" ${TX} fill="var(--ink-2)">al promedio del cliente, ${dec(promedio)} %</text>`;
+  g+=`<text x="0" y="${H-4}" ${TX}>${esc(cabe(
+    "el largo de la barra son los espacios de la sede — no un porcentaje",
+    "el largo son espacios, no un porcentaje", W-2))}</text>`;
   return fig(W,H,g,"Ocupación por sede, ordenada de peor a mejor. Largo = espacios; relleno = los tres estados.");
 }
 
 /* ── 5 · dos barras por proveedor (de C): participación en CONTRATOS y peso
    en PLATA, sobre un único eje de %. Son dos cosas y hay que decir las dos. */
-function gProveedores(rows, umbral){
-  const W=880, L=196, R=104, T=32, RH=31;
-  const pw=W-L-R, H=T+rows.length*RH+30;
+function gProveedores(rows, umbral, W, H){
+  const L=margenRot(rows.map(r=>r.n), W, 200), R=Math.min(160, Math.round(W*0.26));
+  const T=32, PIE=38, pw=W-L-R;
+  const paso=(H-T-PIE)/rows.length;
+  const bh=Math.max(7, Math.min(16, (paso-16)/2)), sep=3, blq=bh*2+sep;
   const max=60, x=v=>L+(pw*v)/max;
+  const yFin=T+rows.length*paso-10;
   let g="";
-  for(let v=0;v<=60;v+=10){ g+=`<line x1="${x(v)}" y1="${T-8}" x2="${x(v)}" y2="${T+rows.length*RH-8}" ${GR}/>
+  for(let v=0;v<=60;v+=10){ g+=`<line x1="${x(v)}" y1="${T-8}" x2="${x(v)}" y2="${yFin}" ${GR}/>
     <text x="${x(v)}" y="${T-13}" text-anchor="middle" ${TX}>${v} %</text>`; }
   rows.forEach((r,i)=>{
-    const y=T+i*RH;
-    g+=`<text x="${L-9}" y="${y+8}" text-anchor="end" font-size="11.5" font-weight="${r.otros?400:700}"
+    const y0=T+i*paso+(paso-blq)/2;
+    g+=`<text x="${L-9}" y="${(y0+blq/2+4).toFixed(1)}" text-anchor="end" font-size="11.5" font-weight="${r.otros?400:700}"
          fill="${r.otros?"var(--ink-2)":"var(--ink-1)"}" font-family="var(--f-text)">${esc(r.n)}</text>`;
-    g+=`<rect x="${L}" y="${y-1}" width="${Math.max(2,x(r.ct)-L)}" height="9" rx="2.5" fill="${r.otros?"var(--resto)":"var(--dato)"}"/>`;
-    g+=`<rect x="${L}" y="${y+10}" width="${Math.max(2,x(r.pl)-L)}" height="9" rx="2.5" fill="${r.otros?"var(--resto-borde)":"var(--dato-tenue)"}"/>`;
-    g+=`<text x="${x(r.ct)+6}" y="${y+7}" ${TX} fill="var(--ink-1)">${dec(r.ct)} % · ${r.c} contratos</text>`;
-    g+=`<text x="${x(r.pl)+6}" y="${y+18}" ${TX}>${dec(r.pl)} % · ${pesosM(r.v)}</text>`;
+    g+=`<rect x="${L}" y="${y0.toFixed(1)}" width="${Math.max(2,x(r.ct)-L).toFixed(1)}" height="${bh.toFixed(1)}" rx="2.5" fill="${r.otros?"var(--resto)":"var(--dato)"}"/>`;
+    g+=`<rect x="${L}" y="${(y0+bh+sep).toFixed(1)}" width="${Math.max(2,x(r.pl)-L).toFixed(1)}" height="${bh.toFixed(1)}" rx="2.5" fill="${r.otros?"var(--resto-borde)":"var(--dato-tenue)"}"/>`;
+    const v1=`${dec(r.ct)} % · ${r.c} contratos`, v2=`${dec(r.pl)} % · ${pesosM(r.v)}`;
+    g+=`<text ${rotulo(x(r.ct), v1, W, true)} y="${(y0+bh-1).toFixed(1)}" ${TX} fill="var(--ink-1)">${esc(v1)}</text>`;
+    g+=`<text ${rotulo(x(r.pl), v2, W, true)} y="${(y0+blq-1).toFixed(1)}" ${TX}>${esc(v2)}</text>`;
   });
-  g+=`<line x1="${x(umbral)}" y1="${T-8}" x2="${x(umbral)}" y2="${T+rows.length*RH-8}" stroke="var(--ink-1)" stroke-width="1.5"/>`;
-  g+=`<text x="${L}" y="${H-6}" ${TX}>barra de arriba: contratos · barra de abajo: plata</text>`;
-  g+=`<text x="${W-2}" y="${H-6}" text-anchor="end" ${TF}>la línea negra es el umbral de concentración, ${umbral} %</text>`;
+  g+=`<line x1="${x(umbral)}" y1="${T-8}" x2="${x(umbral)}" y2="${yFin}" stroke="var(--ink-1)" stroke-width="1.5"/>`;
+  g+=`<text x="${W}" y="${H-20}" text-anchor="end" ${TF}>${esc(cabe(
+    `la línea negra es el umbral de concentración, ${umbral} %`,
+    `umbral de concentración, ${umbral} %`, W-2))}</text>`;
+  g+=`<text x="0" y="${H-4}" ${TX}>${esc(cabe(
+    "barra de arriba: contratos · barra de abajo: plata",
+    "arriba: contratos · abajo: plata", W-2))}</text>`;
   return fig(W,H,g,"Participación de cada proveedor sobre los contratos y sobre el ingreso, con el umbral marcado.");
 }
 
 /* ── 6 · dumbbell canon del cliente ↔ benchmark de la plataforma ───────── */
-function gDumbbell(rows, quien){
-  const W=880, L=226, R=112, T=34, RH=29;
-  const pw=W-L-R, H=T+rows.length*RH+22;
+function gDumbbell(rows, quien, W, H){
+  const L=margenRot(rows.map(r=>tnom(r.t)).concat(rows.map(r=>r.libres+" libres de "+r.total)), W, 176),
+        R=Math.min(96, Math.round(W*0.15));
+  const T=36, PIE=28, pw=W-L-R;
+  const paso=(H-T-PIE)/rows.length;
   const max=Math.max(...rows.flatMap(r=>[r.cli||0,r.ben]))*1.06;
   const x=v=>L+(pw*v)/max;
+  const yFin=T+rows.length*paso-14;
   let g="";
   for(let k=0;k<=4;k++){ const v=max*k/4;
-    g+=`<line x1="${x(v)}" y1="${T-9}" x2="${x(v)}" y2="${T+rows.length*RH-14}" ${GR}/>
+    g+=`<line x1="${x(v)}" y1="${T-9}" x2="${x(v)}" y2="${yFin}" ${GR}/>
         <text x="${x(v)}" y="${T-14}" text-anchor="middle" ${TX}>${v===0?"0":"$ "+(v/1e6).toFixed(1).replace(".",",")+" M"}</text>`; }
   rows.forEach((r,i)=>{
-    const y=T+i*RH;
-    g+=`<text x="${L-11}" y="${y+3}" text-anchor="end" font-size="11.5" font-weight="700" fill="var(--ink-1)"
+    const y=T+i*paso+paso/2-6;
+    g+=`<text x="${L-11}" y="${(y+3).toFixed(1)}" text-anchor="end" font-size="11.5" font-weight="700" fill="var(--ink-1)"
          font-family="var(--f-text)">${esc(tnom(r.t))}</text>`;
-    g+=`<text x="${L-11}" y="${y+15}" text-anchor="end" font-size="10" fill="var(--ink-3)"
+    g+=`<text x="${L-11}" y="${(y+17).toFixed(1)}" text-anchor="end" font-size="11" fill="var(--ink-3)"
          font-family="var(--f-mono)">${r.libres} libres de ${r.total}</text>`;
     if(r.cli!=null){
       const a=Math.min(x(r.cli),x(r.ben)), b=Math.max(x(r.cli),x(r.ben));
-      g+=`<line x1="${a}" y1="${y}" x2="${b}" y2="${y}" stroke="var(--dato-tenue)" stroke-width="2" stroke-linecap="round"/>`;
-      g+=`<circle cx="${x(r.ben)}" cy="${y}" r="4.5" fill="var(--dato-tenue)" stroke="var(--surface)" stroke-width="2"/>`;
-      g+=`<circle cx="${x(r.cli)}" cy="${y}" r="5" fill="var(--dato)" stroke="var(--surface)" stroke-width="2"/>`;
-      g+=`<text x="${W-R+9}" y="${y+4}" ${TX} fill="var(--ink-1)">${pctF(r.br)}</text>`;
+      g+=`<line x1="${a.toFixed(1)}" y1="${y.toFixed(1)}" x2="${b.toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--dato-tenue)" stroke-width="2" stroke-linecap="round"/>`;
+      g+=`<circle cx="${x(r.ben).toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" fill="var(--dato-tenue)" stroke="var(--surface)" stroke-width="2"/>`;
+      g+=`<circle cx="${x(r.cli).toFixed(1)}" cy="${y.toFixed(1)}" r="5" fill="var(--dato)" stroke="var(--surface)" stroke-width="2"/>`;
+      g+=`<text ${rotulo(W-R+3, pctF(r.br), W, true)} y="${(y+4).toFixed(1)}" ${TX} fill="var(--ink-1)">${pctF(r.br)}</text>`;
     }else{
-      g+=`<circle cx="${x(r.ben)}" cy="${y}" r="4.5" fill="var(--dato-tenue)" stroke="var(--surface)" stroke-width="2"/>`;
-      g+=`<text x="${x(r.ben)+10}" y="${y+4}" ${TX}>sin contratos de este tipo — no hay brecha que medir</text>`;
+      const t=cabe("sin contratos de este tipo — no hay brecha que medir",
+                   "sin contratos: no hay brecha", W-x(r.ben)-12);
+      g+=`<circle cx="${x(r.ben).toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" fill="var(--dato-tenue)" stroke="var(--surface)" stroke-width="2"/>`;
+      g+=`<text ${rotulo(x(r.ben)+4, t, W, true)} y="${(y+4).toFixed(1)}" ${TX}>${esc(t)}</text>`;
     }
   });
-  g += claveSVG(W-2, H-5, [
-    {c:"var(--dato)",       t:(quien||"lo que cobra Mercamío")},
-    {c:"var(--dato-tenue)", t:"promedio de la plataforma"}], "end");
-  g += `<text x="${L-11}" y="${H-5}" text-anchor="end" ${TX}>ordenado por brecha</text>`;
+  g += claveSVG(W-2, H-6, [
+    {c:"var(--dato)",       t:cabe(quien||"lo que cobra Mercamío", quien?"usted":"Mercamío", W*0.40)},
+    {c:"var(--dato-tenue)", t:cabe("promedio de la plataforma","la plataforma", W*0.40)}], "end");
+  g += `<text x="0" y="${H-6}" ${TX}>ordenado por brecha</text>`;
   return fig(W,H,g,"Canon promedio del cliente frente al promedio de la plataforma, por tipo, ordenado por brecha.");
 }
 
 /* ── 7 · el riel de 60 días, con la plata rotulada sobre cada hito (de C) ─
-   60 y no 90: el backend no mira más allá (DIAS_POR_VENCER = 60). ─────── */
-function gRiel(items, hoy, finPeriodo){
-  const W=880, L=30, R=30, T=76, H=136;
-  const pw=W-L-R;
+   60 y no 90: el backend no mira más allá (DIAS_POR_VENCER = 60). Un eje de
+   fechas no gana nada con más alto: lleva techo, y lo que sobre lo reparte la
+   tarjeta que lo contiene. ─────────────────────────────────────────────── */
+function gRiel(items, hoy, finPeriodo, W, H){
+  const L=30, R=30, pw=W-L-R;
+  const T=Math.round(H*0.56);
   const t0=Date.parse(hoy), t1=t0+60*864e5;
   const x=d=>L+pw*(Date.parse(d)-t0)/(t1-t0);
+  const pitch=Math.max(18, Math.min(58, (T-40)/2));
+  const laneY=k=>T-32-k*pitch;
   let g=`<line x1="${L}" y1="${T}" x2="${L+pw}" y2="${T}" stroke="var(--line-strong)" stroke-width="1"/>`;
   const hitos=[[hoy,"hoy · 7 sep",0,"start"],[finPeriodo,"fin del periodo · 30 sep",1,"middle"],["2026-11-06","+60 días · 6 nov",0,"end"]];
   hitos.forEach(([d,t,fuerte,an])=>{
     const px=x(d);
-    g+=`<line x1="${px}" y1="${T-8}" x2="${px}" y2="${T+8}" stroke="${fuerte?"var(--ink-1)":"var(--line-strong)"}" stroke-width="${fuerte?1.5:1}"/>
-        <text x="${px}" y="${T+24}" text-anchor="${an}" ${fuerte?TF:TX}>${esc(t)}</text>`;
+    g+=`<line x1="${px.toFixed(1)}" y1="${T-8}" x2="${px.toFixed(1)}" y2="${T+8}" stroke="${fuerte?"var(--ink-1)":"var(--line-strong)"}" stroke-width="${fuerte?1.5:1}"/>
+        <text x="${px.toFixed(1)}" y="${T+24}" text-anchor="${an}" ${fuerte?TF:TX}>${esc(t)}</text>`;
   });
   items.forEach(it=>{
     const px=x(it.f), y=T;
     if(it.selibera)
-      g+=`<rect x="${px-5.5}" y="${y-5.5}" width="11" height="11" rx="2" fill="var(--entra)" stroke="var(--surface)" stroke-width="2"><title>${esc(it.c)} · ${esc(it.pr)} · ${fecha(it.f)}</title></rect>`;
+      g+=`<rect x="${(px-5.5).toFixed(1)}" y="${y-5.5}" width="11" height="11" rx="2" fill="var(--entra)" stroke="var(--surface)" stroke-width="2"><title>${esc(it.c)} · ${esc(it.pr)} · ${fecha(it.f)}</title></rect>`;
     else
-      g+=`<circle cx="${px}" cy="${y}" r="5.5" fill="var(--dato)" stroke="var(--surface)" stroke-width="2"><title>${esc(it.c)} · ${esc(it.pr)} · ${fecha(it.f)}</title></circle>`;
+      g+=`<circle cx="${px.toFixed(1)}" cy="${y}" r="5.5" fill="var(--dato)" stroke="var(--surface)" stroke-width="2"><title>${esc(it.c)} · ${esc(it.pr)} · ${fecha(it.f)}</title></circle>`;
     if(it.rot){
-      const lane = it.lane||0;
-      g+=`<line x1="${px}" y1="${y-8}" x2="${px}" y2="${30-lane*16}" stroke="var(--ink-3)" stroke-width="1"/>
-          <text x="${px}" y="${26-lane*16}" text-anchor="middle" ${TF}>${esc(it.rot)}</text>`;
+      const ly=laneY(it.lane||0);
+      g+=`<line x1="${px.toFixed(1)}" y1="${T-8}" x2="${px.toFixed(1)}" y2="${(ly+4).toFixed(1)}" stroke="var(--ink-3)" stroke-width="1"/>
+          <text x="${px.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" ${TF}>${esc(it.rot)}</text>`;
     }
   });
-  g += claveSVG(W-2, T+46, [
-    {c:"var(--entra)", b:"var(--entra-borde)", t:"ya está en «se libera»"},
-    {c:"var(--dato)",  t:"vence después del periodo"}], "end");
-  g += `<text x="${L}" y="${T+49}" ${TX}>la cifra sobre el hito es el canon mensual que se cae</text>`;
+  g += `<text x="${L}" y="${T+44}" ${TX}>${esc(cabe(
+    "la cifra sobre el hito es el canon mensual que se cae",
+    "la cifra es el canon que se cae", W-L-2))}</text>`;
+  g += claveSVG(W-2, H-6, [
+    {c:"var(--entra)", b:"var(--entra-borde)", t:cabe("ya está en «se libera»","se libera", W*0.42)},
+    {c:"var(--dato)",  t:cabe("vence después del periodo","vence después", W*0.42)}], "end");
   return fig(W,H,g,"Contratos que vencen en los próximos 60 días, sobre un eje de tiempo.");
 }
 
 /* ── 8 · barras divergentes de movimientos. La polaridad la lleva la
    POSICIÓN sobre el cero, no el tono: no queda un par divergente libre que no
    colisione con el rojo «ocupado» (ΔE 10,7, bajo el piso de 15). ──────── */
-function gMovimientos(mov, alto){
-  const W=880, L=58, R=22, T=30, B=40, H=alto||248;
+function gMovimientos(mov, W, H){
+  const L=58, R=22, T=30, B=40;
   const pw=W-L-R, ph=H-T-B, y0=T+ph/2;
   const d=mov.map(m=>({m:m.m, e:m.ent.reduce((a,x)=>a+x.v,0), s:m.sal.reduce((a,x)=>a+x.v,0)}));
   const max=Math.max(...d.flatMap(v=>[v.e,v.s]))*1.20;
-  const slot=pw/d.length, bw=Math.min(22,slot-14);
+  const slot=pw/d.length, bw=Math.min(26,slot-12);
   const y=v=>y0-(ph/2)*v/max;
   let g="";
-  [max/2,max,-max/2,-max].forEach(v=>{ g+=`<line x1="${L}" y1="${y(v)}" x2="${L+pw}" y2="${y(v)}" ${GR}/>
-    <text x="${L-7}" y="${y(v)+4}" text-anchor="end" ${TX}>${(v>0?"+":"−")+"$ "+(Math.abs(v)/1e6).toFixed(0)+" M"}</text>`; });
+  [max/2,max,-max/2,-max].forEach(v=>{ g+=`<line x1="${L}" y1="${y(v).toFixed(1)}" x2="${L+pw}" y2="${y(v).toFixed(1)}" ${GR}/>
+    <text x="${L-7}" y="${(y(v)+4).toFixed(1)}" text-anchor="end" ${TX}>${(v>0?"+":"−")+"$ "+(Math.abs(v)/1e6).toFixed(0)+" M"}</text>`; });
   d.forEach((v,i)=>{
     const cx=L+slot*i+slot/2;
-    g+=`<rect x="${cx-bw/2}" y="${y(v.e)}" width="${bw}" height="${Math.max(1,y0-2-y(v.e))}" rx="2.5" fill="var(--dato)"><title>${esc(mesCorto(v.m))} entradas ${pesos(v.e)}</title></rect>`;
-    g+=`<rect x="${cx-bw/2}" y="${y0+2}" width="${bw}" height="${Math.max(1,y(-v.s)-y0-2)}" rx="2.5" fill="var(--dato-tenue)"><title>${esc(mesCorto(v.m))} salidas ${pesos(v.s)}</title></rect>`;
-    g+=`<text x="${cx}" y="${H-14}" text-anchor="middle" ${TX}>${esc(mesCorto(v.m))}</text>`;
+    g+=`<rect x="${(cx-bw/2).toFixed(1)}" y="${y(v.e).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1,y0-2-y(v.e)).toFixed(1)}" rx="2.5" fill="var(--dato)"><title>${esc(mesCorto(v.m))} entradas ${pesos(v.e)}</title></rect>`;
+    g+=`<rect x="${(cx-bw/2).toFixed(1)}" y="${(y0+2).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1,y(-v.s)-y0-2).toFixed(1)}" rx="2.5" fill="var(--dato-tenue)"><title>${esc(mesCorto(v.m))} salidas ${pesos(v.s)}</title></rect>`;
+    g+=`<text x="${cx.toFixed(1)}" y="${H-14}" text-anchor="middle" ${TX}>${esc(mesCorto(v.m))}</text>`;
   });
-  g+=`<line x1="${L}" y1="${y0}" x2="${L+pw}" y2="${y0}" stroke="var(--ink-1)" stroke-width="1.5"/>`;
+  g+=`<line x1="${L}" y1="${y0.toFixed(1)}" x2="${L+pw}" y2="${y0.toFixed(1)}" stroke="var(--ink-1)" stroke-width="1.5"/>`;
   g+=`<text x="${L+3}" y="${T-9}" ${TX} fill="var(--ink-2)">entradas, arriba del cero</text>`;
-  g+=`<text x="${L+3}" y="${H-24}" ${TX} fill="var(--ink-2)">salidas, abajo del cero</text>`;
+  g+=`<text x="${L+3}" y="${H-26}" ${TX} fill="var(--ink-2)">salidas, abajo del cero</text>`;
   const peor=d.reduce((a,b)=>b.s>a.s?b:a), iPeor=d.indexOf(peor), ult=d.length-1;
-  g+=`<text x="${L+slot*iPeor+slot/2}" y="${y(-peor.s)+14}" text-anchor="middle" ${TF}>−${pesos(peor.s).replace("$ ","$ ")}</text>`;
-  g+=`<text x="${L+slot*ult+slot/2}" y="${y(d[ult].e)-7}" text-anchor="middle" ${TF}>+${pesos(d[ult].e).replace("$ ","$ ")}</text>`;
+  const rPeor="−"+pesos(peor.s), rUlt="+"+pesos(d[ult].e);
+  g+=`<text ${rotulo(L+slot*iPeor+slot/2-anchoT(rPeor)/2-6, rPeor, W)} y="${(y(-peor.s)+14).toFixed(1)}" ${TF}>${esc(rPeor)}</text>`;
+  g+=`<text ${rotulo(L+slot*ult+slot/2-anchoT(rUlt)-6, rUlt, W)} y="${(y(d[ult].e)-7).toFixed(1)}" ${TF}>${esc(rUlt)}</text>`;
   return fig(W,H,g,"Entradas y salidas de contratos por mes, en pesos. Una sola escala.");
 }
 
 /* ── 9 · medidor: una razón contra un límite. Para la CARTERA, no unidades:
    513 marcas (3.000 con 30 clientes) no señalan ningún lugar al que ir. ─ */
-function gMedidor(v, ref, refRot){
-  const W=880, H=62, T=16, bh=22;
-  let g=`<rect x="0" y="${T}" width="${W}" height="${bh}" rx="4" fill="var(--surface-3)"/>
-         <rect x="0" y="${T}" width="${W*v/100}" height="${bh}" rx="4" fill="var(--dato)"/>`;
-  g+=`<line x1="${W*ref/100}" y1="${T-8}" x2="${W*ref/100}" y2="${T+bh+8}" stroke="var(--ink-1)" stroke-width="2"/>
-      <text x="${W*ref/100+8}" y="${T+bh+22}" ${TF}>${esc(refRot)}</text>`;
-  g+=`<text x="${W*v/100+10}" y="${T+16}" fill="var(--ink-1)" font-weight="700" font-size="13"
+function gMedidor(v, ref, refRot, W, H){
+  const T=20, PIE=32;
+  const bh=Math.max(22, Math.min(230, H-T-PIE));
+  let g=`<rect x="0" y="${T}" width="${W}" height="${bh.toFixed(1)}" rx="4" fill="var(--surface-3)"/>
+         <rect x="0" y="${T}" width="${(W*v/100).toFixed(1)}" height="${bh.toFixed(1)}" rx="4" fill="var(--dato)"/>`;
+  g+=`<line x1="${(W*ref/100).toFixed(1)}" y1="${T-8}" x2="${(W*ref/100).toFixed(1)}" y2="${(T+bh+8).toFixed(1)}" stroke="var(--ink-1)" stroke-width="2"/>
+      <text ${rotulo(W*ref/100+2, refRot, W)} y="${(T+bh+22).toFixed(1)}" ${TF}>${esc(refRot)}</text>`;
+  g+=`<text ${rotulo(W*v/100+4, dec(v)+" %", W, true)} y="${(T+bh/2+5).toFixed(1)}" fill="var(--ink-1)" font-weight="700" font-size="13"
         font-family="var(--f-mono)">${dec(v)} %</text>`;
   g+=`<text x="0" y="${T-6}" ${TX}>0 %</text>`;
-  g+=`<text x="${W}" y="${T-6}" text-anchor="end" ${TX}>100 % de los ${miles(513)} espacios comercializables</text>`;
+  g+=`<text x="${W}" y="${T-6}" text-anchor="end" ${TX}>${esc(cabe(
+    `100 % de los ${miles(513)} espacios comercializables`,
+    `100 % · ${miles(513)} espacios`, W-40))}</text>`;
   return fig(W,H,g,"Ocupación de la cartera contra el mes anterior comparable.");
 }
 
 /* ── 10 · puntos de spread sobre un eje con el cero marcado. Los nulos NO se
    dibujan en el cero: se cuentan aparte, con la razón. ────────────────── */
-function gSpread(rows){
-  const W=880, L=180, R=204, T=32, RH=28;
-  const pw=W-L-R, H=T+rows.length*RH+22;
+function gSpread(rows, W, H){
+  const L=margenRot(rows.map(r=>r.n), W, 186), R=Math.min(168, Math.round(W*0.28));
+  const T=34, PIE=32, pw=W-L-R;
+  const paso=(H-T-PIE)/rows.length;
   const min=-22, max=6, x=v=>L+pw*(v-min)/(max-min);
+  const yFin=T+rows.length*paso-16;
   let g="";
-  for(let v=-20;v<=5;v+=5){ g+=`<line x1="${x(v)}" y1="${T-11}" x2="${x(v)}" y2="${T+rows.length*RH-16}" ${GR}/>
-    <text x="${x(v)}" y="${T-16}" text-anchor="middle" ${TX}>${v>0?"+"+v:v} %</text>`; }
-  g+=`<line x1="${x(0)}" y1="${T-11}" x2="${x(0)}" y2="${T+rows.length*RH-16}" stroke="var(--ink-1)" stroke-width="1.5"/>
-      <text x="${x(0)}" y="${T+rows.length*RH+1}" text-anchor="middle" ${TF}>cobra lo que dice su tarifa</text>`;
+  for(let v=-20;v<=5;v+=5){ g+=`<line x1="${x(v).toFixed(1)}" y1="${T-11}" x2="${x(v).toFixed(1)}" y2="${yFin.toFixed(1)}" ${GR}/>
+    <text x="${x(v).toFixed(1)}" y="${T-16}" text-anchor="middle" ${TX}>${v>0?"+"+v:v} %</text>`; }
+  g+=`<line x1="${x(0).toFixed(1)}" y1="${T-11}" x2="${x(0).toFixed(1)}" y2="${yFin.toFixed(1)}" stroke="var(--ink-1)" stroke-width="1.5"/>
+      <text x="${x(0).toFixed(1)}" y="${(yFin+16).toFixed(1)}" text-anchor="middle" ${TF}>cobra lo que dice su tarifa</text>`;
   rows.forEach((r,i)=>{
-    const y=T+i*RH;
-    g+=`<text x="${L-12}" y="${y+4}" text-anchor="end" font-size="11.5" font-weight="700" fill="var(--ink-1)"
+    const y=T+i*paso+paso/2-4;
+    g+=`<text x="${L-12}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="11.5" font-weight="700" fill="var(--ink-1)"
          font-family="var(--f-text)">${esc(r.n)}</text>`;
-    g+=`<line x1="${x(0)}" y1="${y}" x2="${x(r.v)}" y2="${y}" stroke="var(--dato-tenue)" stroke-width="2"/>`;
-    g+=`<circle cx="${x(r.v)}" cy="${y}" r="5" fill="var(--dato)" stroke="var(--surface)" stroke-width="2"/>`;
-    g+=`<text x="${W-R+10}" y="${y+4}" ${TX} fill="var(--ink-1)">${pctF(r.v)}</text>`;
-    g+=`<text x="${W-R+64}" y="${y+4}" ${TX}>${esc(r.d)}</text>`;
+    g+=`<line x1="${x(0).toFixed(1)}" y1="${y.toFixed(1)}" x2="${x(r.v).toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--dato-tenue)" stroke-width="2"/>`;
+    g+=`<circle cx="${x(r.v).toFixed(1)}" cy="${y.toFixed(1)}" r="5" fill="var(--dato)" stroke="var(--surface)" stroke-width="2"/>`;
+    g+=`<text x="${W-R+10}" y="${(y+4).toFixed(1)}" ${TX} fill="var(--ink-1)">${pctF(r.v)}</text>`;
+    g+=`<text ${rotulo(Math.min(W-R+56, W-anchoM(r.d)-8), r.d, W, true)} y="${(y+4).toFixed(1)}" ${TX}>${esc(r.d)}</text>`;
   });
-  g+=`<text x="${L}" y="${H-6}" ${TX}>negativo = cobra menos que su propia tarifa de referencia</text>`;
+  g+=`<text x="0" y="${H-4}" ${TX}>${esc(cabe(
+    "negativo = cobra menos que su propia tarifa de referencia",
+    "negativo = cobra menos que su tarifa", W-2))}</text>`;
   return fig(W,H,g,"Spread por cliente: cuánto cobra cada uno contra su propia tarifa.");
 }
 
 /* ── 11 · barras de conteo. Sin porcentaje: la cartera NO publica el total de
    contratos por cliente, y un porcentaje sin denominador es inventado. ── */
-function gBarras(rows, unidad, nota){
-  const W=880, L=194, R=170, T=14, RH=25;
-  const pw=W-L-R, H=T+rows.length*RH+(nota?18:4);
+function gBarras(rows, unidad, nota, W, H){
+  const L=margenRot(rows.map(r=>r.n), W, 190), R=Math.min(150, Math.round(W*0.24));
+  const T=14, PIE=(nota?22:6), pw=W-L-R;
+  const paso=(H-T-PIE)/rows.length;
+  const bh=Math.max(10, Math.min(22, paso-10));
   const max=Math.max(...rows.map(r=>r.v))*1.04, x=v=>L+pw*v/max;
   let g="";
-  rows.forEach((r,i)=>{ const y=T+i*RH;
-    g+=`<text x="${L-11}" y="${y+13}" text-anchor="end" font-size="11.5" fill="var(--ink-1)"
+  rows.forEach((r,i)=>{ const y=T+i*paso+(paso-bh)/2;
+    g+=`<text x="${L-11}" y="${(y+bh/2+4).toFixed(1)}" text-anchor="end" font-size="11.5" fill="var(--ink-1)"
          font-family="var(--f-text)" font-weight="${i===0?700:400}">${esc(r.n)}</text>`;
-    g+=`<rect x="${L}" y="${y+4}" width="${Math.max(2,x(r.v)-L)}" height="13" rx="3" fill="${i===0?"var(--dato)":"var(--dato-tenue)"}"/>`;
-    g+=`<text x="${x(r.v)+7}" y="${y+14}" ${TX} fill="var(--ink-1)">${r.v} ${esc(unidad)}${r.d?" · "+esc(r.d):""}</text>`;
+    g+=`<rect x="${L}" y="${y.toFixed(1)}" width="${Math.max(2,x(r.v)-L).toFixed(1)}" height="${bh.toFixed(1)}" rx="3" fill="${i===0?"var(--dato)":"var(--dato-tenue)"}"/>`;
+    const vb=`${r.v} ${unidad}${r.d?" · "+r.d:""}`;
+    g+=`<text ${rotulo(x(r.v)+1, vb, W, true)} y="${(y+bh/2+4).toFixed(1)}" ${TX} fill="var(--ink-1)">${esc(vb)}</text>`;
   });
-  if(nota) g+=`<text x="${L}" y="${H-4}" ${TX}>${esc(nota)}</text>`;
+  if(nota) g+=`<text x="0" y="${H-4}" ${TX}>${esc(cabe(nota, "conteos, sin porcentaje", W-2))}</text>`;
   return fig(W,H,g,"Ranking por número de "+unidad+".");
 }
 
 /* ── 12 · el inventario por tipo: unidades apiladas que suman el total ─── */
-function gTipos(tipos, sel, espacios){
-  const W=880, L=150, R=218, T=26, RH=25;
+function gTipos(tipos, sel, espacios, W, H){
   const por={}; espacios.forEach(e=>{ const o=por[e.t]=por[e.t]||{o:0,s:0,l:0};
     o[e.e==="ocupado"?"o":e.e==="se_libera"?"s":"l"]++; });
   const filas = tipos.slice().sort((a,b)=>b.total-a.total);
-  const pw=W-L-R, H=T+filas.length*RH+8;
+  const L=margenRot(filas.map(t=>tnom(t.tipo)), W, 160), R=Math.min(232, Math.round(W*0.38));
+  const T=26, PIE=8, pw=W-L-R;
+  const paso=(H-T-PIE)/filas.length;
+  const bh=Math.max(10, Math.min(26, paso-9));
   const max=Math.max(...filas.map(t=>t.total))*1.02;
-  let g = claveSVG(W-2, 10, [
+  let g = claveSVG(W-2, 11, [
     {c:"var(--ocupado)", b:"var(--ocupado-borde)", t:"ocupado"},
     {c:"var(--entra)",   b:"var(--entra-borde)",   t:"se libera este mes"},
     {c:"var(--libre)",   b:"var(--libre-borde)",   t:"libre"}], "end");
   filas.forEach((t,i)=>{
-    const y=T+i*RH, bh=14, c=por[t.tipo]||{o:0,s:0,l:0};
-    g+=`<text x="${L-11}" y="${y+bh-2}" text-anchor="end" font-size="11.5" font-weight="${t.tipo===sel?700:400}"
+    const y=T+i*paso+(paso-bh)/2, c=por[t.tipo]||{o:0,s:0,l:0};
+    g+=`<text x="${L-11}" y="${(y+bh/2+4).toFixed(1)}" text-anchor="end" font-size="11.5" font-weight="${t.tipo===sel?700:400}"
          fill="var(--ink-1)" font-family="var(--f-text)">${esc(tnom(t.tipo))}</text>`;
     let ax=L;
     [[c.o,"var(--ocupado)","var(--ocupado-borde)"],[c.s,"var(--entra)","var(--entra-borde)"],
      [c.l,"var(--libre)","var(--libre-borde)"]].forEach(([n,col,bor])=>{
       if(!n) return; const w=Math.max(1.5,(pw*n/max));
-      g+=`<rect x="${ax}" y="${y}" width="${w}" height="${bh}" rx="2" fill="${col}" stroke="${bor}" stroke-width="1"/>`;
+      g+=`<rect x="${ax.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="${col}" stroke="${bor}" stroke-width="1"/>`;
       ax+=w; });
-    g+=`<text x="${L+pw*t.total/max+8}" y="${y+bh-2}" ${TX} fill="var(--ink-1)">${t.libres} en oferta de ${t.total}${t.canon_promedio?" · "+pesos(t.canon_promedio):" · sin canon propio"}</text>`;
+    const vt=`${t.libres} en oferta de ${t.total}${t.canon_promedio?" · "+pesos(t.canon_promedio):" · sin canon propio"}`;
+    g+=`<text ${rotulo(L+pw*t.total/max+2, vt, W, true)} y="${(y+bh/2+4).toFixed(1)}" ${TX} fill="var(--ink-1)">${esc(vt)}</text>`;
   });
   return fig(W,H,g,"Espacios por tipo: cuántos hay, cuántos ocupados, cuántos se liberan y cuántos libres.");
 }
@@ -966,6 +1095,7 @@ function abrirPanel(rot, tit, sub, html){
   $("#panel-sub").innerHTML=sub||"";
   PC.innerHTML=html; PC.scrollTop=0;
   PANEL.dataset.on="1"; PANEL.setAttribute("aria-hidden","false");
+  pintarFiguras(PC);
   ultimoFoco=document.activeElement;
   $("#panel-x").focus();
 }
@@ -1074,7 +1204,9 @@ function pintarDetalle(){
       R.espF.map(e=>[`<span class="mono">${esc(e.c)}</span>`, esc(e.s), `<span class="mono">${esc(e.cara||"—")}</span>`,
         esc(tnom(e.t)), esc(e.z||"—"), dec(e.a,1), chipEstado(e.e),
         e.k?`${esc(e.k.pr)} <span class="ter">· ${escN(e.k.m)}</span>`:"—", e.k?pesos(e.k.v):"—"]),
-      "Los 254 espacios del plano de Mercamío. Cada uno con su estado del periodo y su contrato si lo tiene.");
+      act.length
+        ? `${R.espF.length} de los ${ESP.length} espacios · filtro: ${esc(act.join(" · "))}. Cada uno con su estado del periodo y su contrato si lo tiene.`
+        : `Los ${ESP.length} espacios del plano de Mercamío. Cada uno con su estado del periodo y su contrato si lo tiene.`);
   } else if(F.tab==="contratos"){
     nota=`<div class="aviso" style="margin-bottom:var(--s2)"><b>Dos filas que hay que contar y no esconder:</b>
       hay ${DET.fuera_del_plano} contratos sobre códigos que <b>no están en el plano</b>
@@ -1114,6 +1246,7 @@ function pintarDetalle(){
       filas, "Doce meses de entradas y salidas, con el motivo de cada salida.");
   }
   PC.innerHTML=`
+    <div class="barra-panel">
     <div class="filtros" role="group" aria-label="Filtros de las cinco tablas">
       <span class="rotulo">Filtros</span>
       <select id="f-sede" aria-label="Sede"><option value="">todas las sedes</option>${
@@ -1129,12 +1262,18 @@ function pintarDetalle(){
     <div class="tabs" role="tablist">${TABS.map(([k,n])=>
       `<button role="tab" data-tab="${k}" aria-current="${F.tab===k}">${n} <span class="c">${
         k==="movimientos"? "12 meses · "+cuentaTab(k,R) : cuentaTab(k,R)}</span></button>`).join("")}</div>
+    </div>
     ${nota}
     <div style="margin-top:var(--s2)">${cuerpo}</div>
     <p class="nota" style="margin-top:var(--s3);border-top:var(--hair) solid var(--line);padding-top:var(--s2)">
       <b>La frontera, al pie de la tabla:</b> todo esto es de <b>sólo lectura</b>; los nombres de proveedor van
       saneados; <b>la tarifa de referencia del cliente no aparece en ninguna de estas cinco tablas</b> — sólo su
       relación (spread) y si existe. Esta consulta queda anotada en la bitácora que el cliente puede ver.</p>`;
+  /* el <thead> se pega JUSTO debajo de la barra de filtros + pestañas, medida
+     de verdad: si se queda en top:0 la barra lo tapa y a partir de la fila ~10
+     se lee una grilla de nueve columnas sin saber cuál es cuál. */
+  const bp=$(".barra-panel",PC);
+  PC.style.setProperty("--th-top", (bp? Math.ceil(bp.getBoundingClientRect().height) : 0)+"px");
   pintarTanda();
 }
 function verDetalle(op){
@@ -1157,7 +1296,7 @@ function verCodigos(grupos, titulo, sub){
       <h3 style="font-size:var(--t-sm);font-weight:700">${esc(g.s)} · ${g.n} ${esc(tnomp(g.t,g.n))}${
         g.sel?` <span class="ter">(${g.sel} se libera${g.sel>1?"n":""} este mes)</span>`:""} · ${pesos(g.v)}</h3>
       <p class="nota" style="margin:4px 0 6px">El plano de ${esc(g.s)}, con estos ${g.n} encendidos y el resto en gris.</p>
-      ${gMapa(ESP.filter(e=>e.s===g.s), [sede], null, {resaltar:set, compacto:true})}
+      ${figSlot((W,H)=>gMapa(ESP.filter(e=>e.s===g.s), [sede], null, {resaltar:set, compacto:true}, W, H), {fijo:true, min:40})}
       <div class="codigos">${g.cods.slice().sort().map(c=>`<div>${esc(c)}</div>`).join("")}</div>
     </section>`;
   }).join("");
@@ -1281,7 +1420,8 @@ const MODULOS_C={
     frase:`La cartera está al <em>${pct(CON.ocupacion_pct)}</em> de ocupación sobre <em>${num(CON.espacios_comercializables)}</em>
       espacios, y a igual composición agosto también fue <em>${pct(agoComp.occ)}</em>: <b>quedó plana</b>.`,
     ruta:"cartera.consolidado.ocupacion_pct · tendencia_cartera.serie[2026-08] menos Mercado El Guadual",
-    fig:()=>gMedidor(CON.ocupacion_pct, agoComp.occ, "agosto a igual composición, "+pct(agoComp.occ)),
+    fig:(W,H)=>gMedidor(CON.ocupacion_pct, agoComp.occ, "agosto a igual composición, "+pct(agoComp.occ), W, H),
+    figop:{min:96, max:290},
     nota:`Acá la ocupación es <b>una razón contra un límite</b>, no un lugar al que ir: 513 marcas —3.000 con
       30 clientes— no señalan nada. El mapa de unidades vive en la sesión del cliente, donde cada marca <b>es</b>
       un espacio que se puede vender.`, tabla:null},
@@ -1290,7 +1430,7 @@ const MODULOS_C={
     frase:`La ocupación cayó de <em>${pct(D.tc[7].occ)}</em> a <em>${pct(tcSep.occ)}</em> en cuatro meses
       <b>sin que se perdiera un solo contrato</b>: entraron <em>142</em> espacios nuevos al denominador.`,
     ruta:"tendencia_cartera.serie[2026-05..2026-09] · espacios 445 → 553 → 587 → 513",
-    fig:()=>gLineas(D.tc,[{i:8,t:"+108 caras · plano de TERRÓN"},{i:10,t:"+34 · alta de Almacenes Caribe"},{i:11,t:"−74 · Guadual ilegible"}]),
+    fig:(W,H)=>gLineas(D.tc,[{i:8,t:"+108 caras · plano de TERRÓN"},{i:10,t:"+34 · alta de Almacenes Caribe"},{i:11,t:"−74 · Guadual ilegible"}], W, H), figop:{min:190},
     nota:`<b>Por qué dos conteos y no una línea de %.</b> El denominador se mueve tres veces en cuatro meses. Un eje
       de porcentaje sobre eso dibuja un derrumbe de 16,4 puntos que no ocurrió, y ninguna anotación arregla un eje
       que miente. El mes sin snapshot es un hueco, no una recta entre vecinos.`, tabla:"tc"},
@@ -1299,7 +1439,7 @@ const MODULOS_C={
     frase:`Y el ingreso <b>no cayó con la ocupación</b>: de mayo a agosto subió <em>${pesosM(tcAgo.ing-D.tc[7].ing)}</em>,
       de <em>${pesos(D.tc[7].ing)}</em> a <em>${pesos(tcAgo.ing)}</em>.`,
     ruta:"tendencia_cartera.serie[].ingreso_contratado_mes · panel aparte, misma rejilla de meses",
-    fig:()=>gIngreso(D.tc,[{i:8,t:"el escalón del inventario no tocó la plata"}]),
+    fig:(W,H)=>gIngreso(D.tc,[{i:8,t:"el escalón del inventario no tocó la plata"}], W, H), figop:{min:180},
     nota:`Dos unidades, <b>dos paneles con la misma rejilla de meses</b>. Nunca dos ejes en un dibujo: los dos ejes
       inventan una correlación que no está en el dato.`, tabla:"tc"},
   spread:{
@@ -1307,9 +1447,9 @@ const MODULOS_C={
     frase:`Sólo <em>3</em> de los <em>6</em> clientes tienen tarifa cargada, y de esos tres <b>Superandes cobra
       ${pct(17.4)} por debajo de la suya</b> sobre <em>${pesos(109520000)}</em> facturados.`,
     ruta:"cartera.clientes[].metricas.spread_pct · _derivado_frontend.cartera.clientes_sin_spread",
-    fig:()=>gSpread(C.clientes.filter(c=>c.metricas && c.metricas.spread_pct!=null)
+    fig:(W,H)=>gSpread(C.clientes.filter(c=>c.metricas && c.metricas.spread_pct!=null)
       .map(c=>({n:c.nombre, v:c.metricas.spread_pct, d:`${c.metricas.contratos_sin_tarifa} sin tarifa`}))
-      .sort((a,b)=>a.v-b.v)),
+      .sort((a,b)=>a.v-b.v), W, H), figop:{min:160},
     nota:`<b>Los nulos se cuentan, no se dibujan en el cero:</b> 2 clientes sin tarifa configurada —Almacenes Caribe
       y Provisiones del Tolima— y 1 sin dato. En toda la cartera hay <b>${DER.cartera.contratos_sin_tarifa_cartera}
       contratos</b> a los que no se les puede aplicar tarifa. La tarifa <b>nunca</b> cruza la frontera: el operador
@@ -1320,8 +1460,8 @@ const MODULOS_C={
     frase:`<b>Gaseosas Volcán</b> aparece en el top 5 de los <em>4</em> clientes con contratos y suma <em>84</em>:
       es el primer proveedor de la cartera y de lejos — el segundo tiene <em>20</em>.`,
     ruta:"cartera.consolidado.top_proveedores · cartera.clientes[].metricas.top_proveedores",
-    fig:()=>gBarras(CON.top_proveedores.map(p=>({n:p.nombre,v:p.contratos_activos})),"contratos",
-      "conteos, sin porcentaje: la cartera no publica el total de contratos por cliente"),
+    fig:(W,H)=>gBarras(CON.top_proveedores.map(p=>({n:p.nombre,v:p.contratos_activos})),"contratos",
+      "conteos, sin porcentaje: la cartera no publica el total de contratos por cliente", W, H), figop:{min:160},
     nota:`<b>Acá no hay porcentaje, a propósito.</b> Sin denominador publicado, una participación es un número
       inventado. El porcentaje sólo existe en el detalle de un cliente, donde el total sí viene.`, tabla:"topprov"}
 };
@@ -1330,7 +1470,7 @@ function panelModulo(m){
   return `<div class="panelito">
     <div class="blq"><p class="frase chica">${m.frase}</p>
       <p class="ruta">${esc(m.ruta)}</p></div>
-    <figure class="aire">${m.fig()}</figure>
+    ${figSlot(m.fig, m.figop)}
     <p class="nota">${m.nota}</p>
     ${m.tabla?`<div>${botonTabla(m.tabla)}</div>`:""}
     ${m.extra||""}
@@ -1440,7 +1580,7 @@ const MODULOS_1={
     frase:`Las siete sedes van de <em>${pct(79.4)}</em> a <em>${pct(8.3)}</em>. Seis caben entre 50 y 80; la séptima,
       <b>TERRÓN</b>, es el <em>${dec(100*108/254,0)} %</em> del inventario y está casi entera libre.`,
     ruta:"detalle_cliente.sedes[] · detalle_cliente.espacios[].estado",
-    fig:()=>gMapa(ESP, DET.sedes, MET.ocupacion_pct),
+    fig:(W,H)=>gMapa(ESP, DET.sedes, MET.ocupacion_pct, null, W, H), figop:{min:240},
     nota:`Una marca = un espacio, y el largo de la fila es cuántos tiene la sede: por eso <b>ARRAYÁN (8 de 12) y
       VILLA (16 de 24) no dibujan lo mismo aunque las dos den ${pct(66.7)}</b>. La marca vertical es dónde
       terminaría lo ocupado al promedio del cliente — en TERRÓN, esa distancia es el hallazgo.`,
@@ -1452,7 +1592,7 @@ const MODULOS_1={
     frase:`De mayo a junio la ocupación cayó <em>35,1</em> puntos, de <em>${pct(76.0)}</em> a <em>${pct(40.9)}</em>,
       y <b>no se perdió una sola cara</b>: el inventario pasó de <em>146</em> a <em>254</em> porque se cargó el plano de TERRÓN.`,
     ruta:"tendencia_cliente.serie[2026-05..06] · espacios 146 → 254 · ocupacion_pct 76,0 → 40,9",
-    fig:()=>gLineas(D.tm,[{i:8,t:"+108 caras · se cargó el plano de TERRÓN"}]),
+    fig:(W,H)=>gLineas(D.tm,[{i:8,t:"+108 caras · se cargó el plano de TERRÓN"}], W, H, "con contrato"), figop:{min:170},
     nota:`<b>El escalón está en el dato, no en una nota:</b> la línea tenue sube 108 caras en junio y la fuerte no
       se mueve. Una línea de porcentaje sobre un denominador móvil dibuja un derrumbe que no ocurrió.`,
     tabla:"tm"},
@@ -1461,7 +1601,7 @@ const MODULOS_1={
     frase:`Lo que sí se perdió ese mes fue plata, y <b>es otra historia</b>: el ingreso bajó
       <em>${pesos(D.tm[7].ing-D.tm[8].ing)}</em> de mayo a junio porque <b>Higiénicos Zafra canceló 6 contratos</b>.`,
     ruta:"tendencia_cliente.serie[].ingreso_contratado_mes · movimientos[mes=2026-05].salidas con motivo «cancelacion»",
-    fig:()=>gIngreso(D.tm,[{i:7,t:"Higiénicos Zafra cancela 6 contratos"}]),
+    fig:(W,H)=>gIngreso(D.tm,[{i:7,t:"Higiénicos Zafra cancela 6 contratos"}], W, H), figop:{min:170},
     nota:`<b>Estas dos cosas pasaron el mismo mes y no tienen nada que ver entre sí.</b> Si el gráfico las junta en
       una sola caída, inventa una causa. Las seis cancelaciones suman ${pesos(7200000)} mensuales y la caída neta
       fue ${pesos(D.tm[7].ing-D.tm[8].ing)}, porque el mismo mes entraron otros contratos: <b>son dos números
@@ -1470,7 +1610,7 @@ const MODULOS_1={
   movimientos:{
     rot:"Movimientos",
     frase:``, ruta:"detalle_cliente.movimientos[] · 12 meses",
-    fig:()=>gMovimientos(DET.mov),
+    fig:(W,H)=>gMovimientos(DET.mov, W, H), figop:{min:170},
     nota:`<b>La polaridad la lleva la posición, no el color.</b> Arriba y abajo de una línea de cero es un canal más
       fuerte que el tono — y el único par divergente cálido↔frío que quedaba libre colisiona con el rojo «ocupado»
       (ΔE 10,7, bajo el piso de 15). Las etiquetas llevan el signo escrito.`,
@@ -1496,7 +1636,7 @@ const HALLAZGOS={
       (<em>${dec(100*rT.d.libres/LIBRES,0)} %</em>) y está al <em>${pct(rT.d.ocupacion_pct)}</em>,
       <em>${dec(rT.d.ocupacion_promedio_cliente_pct-rT.d.ocupacion_pct)}</em> puntos por debajo del promedio de Mercamío.`,
     ruta:'detalle_cliente.recomendaciones[id="sede_subutilizada:TERRON"] · detalle_cliente.sedes[]',
-    fig:()=>gSedes(DET.sedes, MET.ocupacion_pct, ESP),
+    fig:(W,H)=>gSedes(DET.sedes, MET.ocupacion_pct, ESP, W, H), figop:{min:250},
     nota:`<b>Contra qué:</b> el promedio del propio cliente, dibujado <b>dentro</b> de cada barra. Las otras seis
       sedes van de ${pct(50.0)} (NAVE) a ${pct(79.4)} (CENTENARIO). <b>TERRÓN no es una sede floja: es una sede que
       todavía no se vendió</b> — su plano se cargó en junio, es el escalón de +108 caras del capítulo 1. Una sede
@@ -1509,7 +1649,7 @@ const HALLAZGOS={
       y <em>${pesos(V0.ct)}</em> del ingreso: <em>${pct(100*V0.ct/CANON_TOT)}</em>. Cinco de sus contratos vencen
       en los próximos 60 días.`,
     ruta:'detalle_cliente.proveedores[0] · recomendaciones[id="concentracion_proveedor:Gaseosas Volcán S.A."]',
-    fig:()=>gProveedores(ROWS_PROV,40),
+    fig:(W,H)=>gProveedores(ROWS_PROV, 40, W, H), figop:{min:180},
     nota:`<b>Son dos números y hay que decir los dos:</b> la participación se cuenta en contratos (${pct(V0.pp)}) y
       el peso en plata es otro (${pct(100*V0.ct/CANON_TOT)}), porque Volcán ocupa espacios caros. El umbral del
       sistema es 40 % (media) y 60 % (alta): está ${dec(V0.pp-40)} puntos encima del primero.
@@ -1523,7 +1663,7 @@ const HALLAZGOS={
       (<em>${dec(100*GON.total/ESP.length,0)} %</em>) y <em>${GON.libres}</em> están libres:
       son el <em>${dec(100*GON.libres/LIBRES,0)} %</em> de todo lo vacío.`,
     ruta:"detalle_cliente.resumen_por_tipo[] · detalle_cliente.espacios[].estado",
-    fig:()=>gTipos(DET.tipos,"gondola",ESP),
+    fig:(W,H)=>gTipos(DET.tipos, "gondola", ESP, W, H), figop:{min:180},
     nota:`El inventario no está repartido: <b>un solo tipo es el 61 % de todo</b>, y es el que menos se vende. Por
       eso la primera acción del capítulo 3 es una sola llamada y no siete. El conteo va en unidades que suman —
       ocupados + libres = total—, no en porcentaje.`,
@@ -1535,9 +1675,10 @@ const HALLAZGOS={
       <em>${pesos(M.ingreso_en_riesgo_60d)}</em> mensuales: el <em>${pct(100*M.ingreso_en_riesgo_60d/MET.ingreso_contratado_mes)}</em>
       del ingreso. <em>${VENC_SEP.length}</em> se caen dentro de septiembre y <b>ya cambiaron de estado a «se libera»</b>.`,
     ruta:'detalle_cliente.recomendaciones[tipo="contrato_por_vencer"] · espacios[].estado · _derivado_frontend.mercamio.ingreso_en_riesgo_60d',
-    fig:()=>gRiel(VENC.map((v,i)=>{ const e=ESP.find(x=>x.c===v.codigo);
+    fig:(W,H)=>gRiel(VENC.map((v,i)=>{ const e=ESP.find(x=>x.c===v.codigo);
       return {f:v.fin, c:v.codigo, pr:v.proveedor, selibera:!!(e&&e.e==="se_libera"),
-        rot: v.fin<=FINP? pesos(v.canon_mensual):null, lane:i%2}; }), HOY, FINP),
+        rot: v.fin<=FINP? pesos(v.canon_mensual):null, lane:i%2}; }), HOY, FINP, W, H),
+    figop:{min:150, max:300},
     nota:`<b>El riel es de 60 días y no de 90, a propósito:</b> el sistema no mira más allá
       (<span class="mono">DIAS_POR_VENCER = 60</span>), y un riel de 90 con datos de 60 dibuja un tercio vacío que
       se lee como «no hay vencimientos en noviembre». El corte de fin de mes importa porque <b>cambia el estado del
@@ -1550,7 +1691,7 @@ const HALLAZGOS={
       <em>−11,6 %</em> en nevera de bebidas y <em>−9,1 %</em> en góndola; y <em>+5,7 %</em> en punta y
       <em>+5,2 %</em> en isla.`,
     ruta:"_derivado_frontend.mercamio.canon_vs_benchmark_por_tipo · resumen_por_tipo[].canon_promedio vs benchmark_plataforma",
-    fig:()=>gDumbbell(BM),
+    fig:(W,H)=>gDumbbell(BM, null, W, H), figop:{min:246},
     nota:`<b>Ojo: esto NO es la recomendación «precio bajo tarifa».</b> El sistema tiene dos comparaciones de precio
       y hay que llamarlas distinto. <b>Dispersión interna</b>: contratos que cobran menos que el promedio del propio
       cliente — vale ${pesos(M.oportunidad_nueva_partes.precio_por_debajo_del_propio_promedio)} y está en el
@@ -1702,14 +1843,14 @@ function itemHTML(o){
 }
 function panelHallazgo(h){
   return `<div class="panelito">
-    <div style="display:flex;align-items:flex-start;gap:var(--s3)"${h.fig?"":' class="aire"'}>
+    <div style="display:flex;align-items:flex-start;gap:var(--s3)">
       <div style="min-width:0;flex:1"><p class="frase chica">${h.frase}</p>
         <p class="ruta">${esc(h.ruta)}</p></div>
       <div style="text-align:right;flex:0 0 auto;padding-left:var(--s3);border-left:var(--hair) solid var(--line)">
         <span class="cifra" style="font-size:var(--t-md);white-space:nowrap">${esc(h.val)}</span>
         <span class="rotulo" style="display:block">${esc(h.vrot)}</span></div></div>
-    ${h.fig?`<figure class="aire">${h.fig()}</figure>`:""}
-    <p class="nota">${h.nota}</p>
+    ${h.fig?figSlot(h.fig, h.figop):""}
+    ${h.nota.split("<br><br>").map(x=>`<p class="nota">${x}</p>`).join("")}
     <div style="display:flex;gap:6px;flex-wrap:wrap;padding-top:2px">
       ${h.tabla?botonTabla(h.tabla):""}
       ${h.det?`<button class="btn lupa" data-detalle='${JSON.stringify(h.det)}'>${esc(h.detTxt)}</button>`:""}
@@ -1726,7 +1867,7 @@ function panelAccion(a){
       <div style="text-align:right;flex:0 0 auto;padding-left:var(--s3);border-left:var(--hair) solid var(--line)">
         <span class="cifra" style="font-size:var(--t-md);white-space:nowrap">${esc(a.val)}</span>
         <span class="rotulo" style="display:block">${esc(a.vrot)}</span></div></div>
-    <div class="esc aire">${a.esc.map(([k,v])=>`<div class="esc-l"><span class="k">${esc(k)}</span><span>${v}</span></div>`).join("")}</div>
+    <div class="esc">${a.esc.map(([k,v])=>`<div class="esc-l"><span class="k">${esc(k)}</span><span>${v}</span></div>`).join("")}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;padding-top:2px">
       ${a.cod?`<button class="btn lupa" data-cod='${JSON.stringify(a.cod)}'>${a.cod.titulo?esc(a.cod.titulo):"Los códigos, por sede"}</button>`:""}
       ${a.det?`<button class="btn lupa" data-detalle='${JSON.stringify(a.det)}'>Rastrear en las tablas</button>`:""}
@@ -1760,10 +1901,10 @@ function cap1(){
         <div class="caja" style="flex:1 1 auto;overflow:auto">
           <span class="rotulo">Ingreso contratado del mes</span>
           <span class="grande">${pesos(MET.ingreso_contratado_mes)}</span>
-          <div class="delta aire"><span class="n">${pesosF(MET.ingreso_contratado_mes-tmAgo.ing)}</span>
+          <div class="delta"><span class="n">${pesosF(MET.ingreso_contratado_mes-tmAgo.ing)}</span>
             <span class="n">${pctF(100*(MET.ingreso_contratado_mes/tmAgo.ing-1))}</span>
             <span class="ter">contra agosto (${pesos(tmAgo.ing)}) — y el mes es parcial</span></div>
-          <div class="comp" style="margin-top:var(--s3)"><table>
+          <div class="comp crece" style="margin-top:var(--s3)"><table>
             <thead><tr><th>Dato</th><th class="n">Valor</th><th>Contra qué</th><th>Lectura</th></tr></thead>
             <tbody>${cuadro}</tbody></table></div>
           <p class="nota" style="margin-top:var(--s2)"><b>Los cuatro números del capítulo, cada uno contra algo.</b>
@@ -1856,7 +1997,7 @@ function cap4(){
         <p class="nota"><b>Cómo se llega acá sin pasar por este capítulo.</b> Cada gráfico de los capítulos 1 a 3
           tiene su botón: «los espacios de TERRÓN», «los 46 contratos de Volcán», «rastrear en las tablas». Todos
           abren el mismo panel, ya filtrado. Este capítulo es el único que lo abre en blanco.</p>
-        <p class="nota aire"><b>Y no se cargan las ${ESP.length} filas de golpe:</b> el panel entrega de a 40 y sigue
+        <p class="nota"><b>Y no se cargan las ${ESP.length} filas de golpe:</b> el panel entrega de a 40 y sigue
           cuando se rueda o cuando se pide. A 300 espacios y 30 clientes, la lista no se vuelve la pantalla.</p>
         <div class="aviso"><b>Dos filas que hay que contar y no esconder:</b> hay ${DET.fuera_del_plano} contratos
           sobre códigos que no están en el plano (${pesos(4250000)} al mes). Suman al ingreso y <b>no suman a la
@@ -1876,26 +2017,39 @@ function cap5(){
         otros supermercados.</p>
       <p class="ruta">GET /api/plataforma/clientes/mercamio/detalle?periodo=2026-09 · GET /api/plataforma/metricas?periodo=2026-09</p>
     </div>
-    <div class="caja" style="flex:0 0 auto">
-      <div class="pie">
+    <div class="caja" style="flex:1 1 auto;display:flex;flex-direction:column;min-height:0;overflow:auto">
+      <div class="pie crece">
         <div><b class="k">Periodo</b>${esc(DET.desde)} a ${esc(DET.hasta)} — mes en curso, <b>parcial</b> (hoy es el 7: 7 de 30 días)</div>
+        <div><b class="k">Fecha de corte</b>el periodo cierra el <b>${fechaC(DET.hasta)}</b>; los días para vencer se
+          cuentan desde <b>hoy, ${fechaC(HOY)}</b>, no desde el cierre</div>
         <div><b class="k">Generado</b><span class="mono">${esc(DET.generado_en)}</span>${C.de_cache?" · desde caché":" · lectura en vivo"}</div>
+        <div><b class="k">Sedes leídas</b>${DET.sedes.length} de ${DET.sedes.length} con plano cargado, con
+          <b>${num(ESP.length)} caras</b> entre todas — ${esc(DET.sedes.slice().sort((a,b)=>b.espacios-a.espacios).slice(0,2).map(x=>x.sede+" "+x.espacios).join(" · "))} y las otras ${DET.sedes.length-2}</div>
+        <div><b class="k">Contratos leídos</b><b>${CON_TOT}</b>: ${CON_PLANO} sobre espacios con cara en el plano
+          —${OCUP} ocupados y ${SELIB} que se liberan— más ${CON_FUERA} sin cara</div>
+        <div><b class="k">Códigos sin cara</b><span class="mono">PALMAR-VIT-03</span> y
+          <span class="mono">CENTENARIO-EXH-07</span>, ${pesos(4250000)} al mes: suman al ingreso y no a la ocupación</div>
+        <div><b class="k">Criterio de «se libera»</b>el contrato termina dentro del periodo → el espacio pasa a
+          <b>«se libera este mes»</b>, no a «libre»: todavía está ocupado y ya tiene fecha</div>
+        <div><b class="k">Ventana de vencimientos</b><span class="mono">DIAS_POR_VENCER = 60</span> — el sistema no
+          mira más allá, y por eso el riel del capítulo 2 es de 60 días y no de 90</div>
         <div><b class="k">Cobertura del benchmark</b>promedio de la plataforma por tipo sobre los
           ${CON.clientes_total-CON.clientes_con_error} clientes legibles de ${CON.clientes_total}</div>
         <div><b class="k">Sin dato</b>batea no tiene contratos → su precio sale del benchmark; robatope y batea no
           tienen tarifa cargada → <b>sin spread</b> para ${MET.contratos_sin_tarifa} contratos</div>
         <div><b class="k">Nunca sale de la base del cliente</b>la tarifa de referencia. Sólo su relación
           (<span class="mono">spread_pct</span>) y si existe.</div>
-        <div><b class="k">Bitácora</b>esta consulta queda anotada y el cliente la ve.
+        <div><b class="k">Quién lo preparó y quién lo va a ver</b>lo preparó el operador de RECABRA con esta consola,
+          de sólo lectura; lo lee el cliente en su informe. <b>Bitácora:</b> esta consulta queda anotada y el cliente la ve.
           <a class="enlace" href="#" data-noop="1">→ Reporte de transparencia</a> <span class="ter">(ya existe, no se rediseña acá)</span></div>
       </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:var(--s3)">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:var(--s3);flex:0 0 auto">
         ${botonTabla("endpoints","Los nueve endpoints del ejemplo")}
         ${botonTabla("frontera","Lo que nunca cruza la frontera")}
         ${botonTabla("composicion","La corrección de composición de la cartera")}
       </div>
     </div>
-    <div class="aviso aire-arriba" style="flex:0 0 auto">Los tres capítulos que el cliente ve —dónde está, qué encontramos, qué
+    <div class="aviso" style="flex:0 0 auto">Los tres capítulos que el cliente ve —dónde está, qué encontramos, qué
       le proponemos— salen en el informe. <b>El capítulo 4 y todo lo de la cartera no salen</b>: el orden de la cola,
       la clasificación de adopción y el estado de cuenta son juicios internos. El botón para armarlo está arriba a
       la derecha, y es la única acción amarilla de esta pantalla.</div>`;
@@ -1958,7 +2112,7 @@ function vistaCaribe(){
         <p class="frase chica">Las <em>${NUE.espacios.length}</em> caras del plano de MALECÓN están libres: no hay
           nada que comparar contra el mes pasado y no hay una sola marca ocupada que dibujar.</p>
         <p class="ruta">detalle_cliente_nuevo.espacios[].estado · sedes[]</p>
-        <figure>${gMapa(NUE.espacios, NUE.sedes, null)}</figure>
+        ${figSlot((W,H)=>gMapa(NUE.espacios, NUE.sedes, null, null, W, H), {min:92})}
         <div class="aviso"><b>Esta es otra pantalla, no la misma con casillas vacías.</b> El sistema genera la
           recomendación de <span class="mono">arranque</span> <b>sólo</b> cuando el cliente no tiene ni un contrato,
           y en ese caso <b>no genera ninguna de las otras seis</b>. Un diseño que muestre «7 tipos de recomendación»
@@ -2024,7 +2178,7 @@ function vistaInforme(){
       <b>${CON_FUERA}</b> están sobre códigos que no tienen cara: suman al ingreso y no pueden sumar a la
       ocupación, porque no hay espacio que ocupar.</p>
     <h3>Sus siete sedes no están igual de vendidas. El largo de cada barra son los espacios que tiene la sede.</h3>
-    <figure style="margin-top:var(--s2)">${gSedes(DET.sedes, MET.ocupacion_pct, ESP)}</figure>
+    ${figSlot((W,H)=>gSedes(DET.sedes, MET.ocupacion_pct, ESP, W, H), {fijo:true, min:252})}
     <table class="tbl compacta" style="margin-top:var(--s2)">
       <thead><tr><th>Sede</th><th class="n">Espacios</th><th class="n">Ocupado</th><th class="n">Se libera este mes</th><th class="n">Libre</th><th class="n">Ocupación</th></tr></thead>
       <tbody>${DET.sedes.slice().sort((a,b)=>a.ocupacion_pct-b.ocupacion_pct).map(s=>{
@@ -2034,7 +2188,7 @@ function vistaInforme(){
          <td class="n">${e.filter(x=>x.e==="libre").length}</td><td class="n">${pct(s.ocupacion_pct)}</td></tr>`;}).join("")}</tbody></table>
     <h3>En junio su inventario pasó de 146 a 254 espacios porque se cargó el plano de Terrón. La ocupación bajó por
       eso, no porque se hayan perdido contratos.</h3>
-    <figure style="margin-top:var(--s2)">${gLineas(D.tm,[{i:8,t:"+108 caras · plano de Terrón"}],200)}</figure>
+    ${figSlot((W,H)=>gLineas(D.tm,[{i:8,t:"+108 caras · plano de Terrón"}], W, H, "con contrato"), {fijo:true, min:200})}
     <p style="font-size:var(--t-2xs);max-width:none">Mes a mes, lo mismo escrito: ${
       D.tm.filter(x=>!x.sd && ["2026-05","2026-06","2026-07","2026-08","2026-09"].includes(x.p))
         .map(x=>`<b>${mesLargo(x.p).split(" ")[0]}</b> ${x.esp} espacios, ${Math.round(x.occ*x.esp/100)} con contrato, ${pct(x.occ)}, ${pesos(x.ing)}${x.parcial?" (parcial)":""}`)
@@ -2048,7 +2202,7 @@ function vistaInforme(){
       espacios son caras de góndola y ${GON.libres} están libres: el ${dec(100*GON.libres/LIBRES,0)} % de todo lo vacío.</p>
     <p><b>Y en tres tipos cobra por debajo del promedio de la plataforma</b> — el promedio anónimo por tipo de
       espacio de todos los supermercados que usan RECABRA. En punta e isla cobra por encima.</p>
-    <figure style="margin-top:var(--s2)">${gDumbbell(BM,"lo que usted cobra")}</figure>
+    ${figSlot((W,H)=>gDumbbell(BM, "lo que usted cobra", W, H), {fijo:true, min:258})}
     <table class="tbl compacta" style="margin-top:var(--s2)">
       <thead><tr><th>Tipo de espacio</th><th class="n">Tiene</th><th class="n">Libres</th><th class="n">Usted cobra</th><th class="n">Promedio plataforma</th><th class="n">Diferencia</th></tr></thead>
       <tbody>${BM.map(r=>`<tr><td>${esc(tnom(r.t))}</td><td class="n">${r.total}</td><td class="n">${r.libres}</td>
@@ -2118,8 +2272,8 @@ function vistaInforme(){
    NAVEGACIÓN Y ESTADO
    ═════════════════════════════════════════════════════════════════════════ */
 const VS={cartera:$("#v-cartera"), sesion:$("#v-sesion"), informe:$("#v-informe")};
-function pintaCartera(){ VS.cartera.innerHTML=vistaCartera(); }
-function pintaSesion(){ VS.sesion.innerHTML=vistaSesion(); }
+function pintaCartera(){ VS.cartera.innerHTML=vistaCartera(); pintarFiguras(VS.cartera); }
+function pintaSesion(){ VS.sesion.innerHTML=vistaSesion(); pintarFiguras(VS.sesion); }
 function pintaCap(){
   $$(".cap").forEach(s=>{
     const n=+s.dataset.cap;
@@ -2127,14 +2281,16 @@ function pintaCap(){
     if(n===CAP && !s.innerHTML.trim()) s.innerHTML=CAPFN[n-1]();
   });
   $$(".rail button").forEach(b=>b.setAttribute("aria-current", String(+b.dataset.cap===CAP)));
+  const a=$(`.cap[data-cap="${CAP}"]`); if(a) pintarFiguras(a);
 }
-function repintaCap(){ const s=$(`.cap[data-cap="${CAP}"]`); if(s) s.innerHTML=CAPFN[CAP-1](); }
+function repintaCap(){ const s=$(`.cap[data-cap="${CAP}"]`); if(s){ s.innerHTML=CAPFN[CAP-1](); pintarFiguras(s); } }
 function ir(p){
   Object.entries(VS).forEach(([k,el])=>el.dataset.on = k===p?"1":"0");
   $$(".piezas button").forEach(b=>b.setAttribute("aria-current", String(b.dataset.pieza===p)));
   document.body.classList.toggle("documento", p==="informe");
   if(p==="sesion" && !VS.sesion.innerHTML.trim()) pintaSesion();
   if(p==="informe" && !VS.informe.innerHTML.trim()) VS.informe.innerHTML=vistaInforme();
+  if(VS[p] && VS[p].innerHTML.trim()) pintarFiguras(VS[p]);
   window.scrollTo(0,0);
 }
 
@@ -2209,6 +2365,19 @@ $("#tema").addEventListener("click",()=>{
 });
 try{ if(localStorage.getItem("recabra-tema")==="oscuro"){
   document.documentElement.setAttribute("data-tema","oscuro"); $("#tema").textContent="Claro"; } }catch(_){}
+
+/* Los dibujos están hechos a la medida de su caja, así que cuando la ventana
+   cambia hay que volver a medirlos: 1 unidad = 1 px sólo se sostiene si la
+   cuenta se rehace. */
+let TREDIB=null;
+/* al imprimir, la caja del informe cambia de ancho (A4 menos márgenes): los
+   dibujos se vuelven a medir para que el texto siga a 11 px también en papel.
+   El alto no cambia —es fijo—, así que el informe sigue siendo de tres páginas. */
+try{ window.matchMedia("print").addEventListener("change", ()=>{
+  if(VS.informe.innerHTML.trim()) pintarFiguras(VS.informe); }); }catch(_){}
+window.addEventListener("resize", ()=>{ clearTimeout(TREDIB);
+  TREDIB=setTimeout(()=>{ $$(".vista[data-on='1']").forEach(v=>pintarFiguras(v));
+    if(PANEL.dataset.on==="1") pintarFiguras(PC); }, 140); });
 
 /* ── arranque ───────────────────────────────────────────────────────────── */
 pintaCartera();
