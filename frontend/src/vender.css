@@ -543,7 +543,24 @@ html[data-tema="oscuro"] .vender {
    El pie —N espacios comercializables · L +E · T al cerrar— tiene que verse
    entero y sin rodar. Las columnas se separan 12 px para que «+5» y «20» no se
    lean pegados («+520»). Las cifras no se tocan. */
-.vender .tabla { padding: 0 16px 9px; }
+/* Con las pastillas de código la tabla puede medir más que su panel: rueda
+   adentro, con barra a la vista, y el pie (la respuesta a «¿cómo va la
+   sede?») queda pegado abajo. */
+.vender .tabla { padding: 0 16px 9px; overflow-y: auto; min-height: 0; }
+.vender .tabla tfoot td { position: sticky; bottom: 0; background: var(--surface); }
+.vender .tabla tr.conchips td { border-bottom: 0; }
+.vender .tabla tr.chips td { padding: 0 0 7px; border-bottom: var(--hair) solid var(--line-soft); }
+.vender .chips-fila { display: flex; flex-wrap: wrap; gap: 4px; }
+.vender .chip {
+  display: inline-flex; align-items: baseline; gap: 4px; padding: 1px 6px;
+  border-radius: var(--r-xs); cursor: pointer;
+  font-family: var(--f-mono); font-weight: 700; font-size: var(--t-2xs);
+  letter-spacing: 0.02em; line-height: 1.5;
+  border: var(--hair) solid var(--libre-borde); background: var(--libre-suave); color: var(--libre-txt);
+}
+.vender .chip--entra { border-color: var(--entra-borde); background: var(--entra-suave); color: var(--entra-txt); }
+.vender .chip:hover { border-color: currentColor; }
+.vender .chip__f { font-family: var(--f-text); font-weight: 500; font-size: var(--t-3xs); }
 .vender .tabla table { width: 100%; border-collapse: collapse; }
 .vender .tabla th {
   font-size: var(--t-3xs);

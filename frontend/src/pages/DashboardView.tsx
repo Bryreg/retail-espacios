@@ -3690,10 +3690,12 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  a la vez.
    *
    *  Pasar el mouse por una fila APAGA LA SALA y enciende los muebles de ese
-   *  tipo (los libres y los que se liberan). Es el reemplazo de las pastillas
-   *  de código que colgaban de cada fila: decían CUÁLES son, pero había que
-   *  leerlas y después buscarlas a ojo entre ciento seis prismas. El resaltado
-   *  las señala en el plano, que es donde se tocan. */
+   *  tipo (los libres y los que se liberan). Y debajo de cada tipo van las
+   *  pastillas de código de lo que está libre, como antes del PR 2 (el dueño
+   *  las pidió de vuelta, 2026-09-07): dicen CUÁLES son sin tocar el plano,
+   *  y pasar el mouse por una enciende ESE mueble. Sólo mientras no hay
+   *  contrato armado: con la ficha abierta la pregunta ya es otra. */
+  const conCodigos = espaciosDelContrato.length === 0;
   const panelTarifas = (
     <section className="vp conect" style={{ gridArea: "2 / 2" }}>
       <header>
@@ -3711,10 +3713,12 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
             </tr>
           </thead>
           <tbody>
-            {porCategoria.map(({ cat, libres, parciales, tarifa, claves }) => (
+            {porCategoria.map(({ cat, libres, parciales, tarifa, claves }) => {
+              const chips = conCodigos ? [...libres, ...parciales] : [];
+              return (
+              <Fragment key={cat}>
               <tr
-                key={cat}
-                className={tiposDelContrato.has(cat) ? "mk" : undefined}
+                className={[tiposDelContrato.has(cat) ? "mk" : "", chips.length ? "conchips" : ""].join(" ").trim() || undefined}
                 onMouseEnter={() => destacar(claves)}
                 onMouseLeave={() => destacar(null)}
               >
@@ -3739,7 +3743,41 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                   {tarifa ? formatCOP(tarifa) : <span className="cero">sin tarifa</span>}
                 </td>
               </tr>
-            ))}
+              {chips.length > 0 && (
+                <tr
+                  className="chips"
+                  onMouseEnter={() => destacar(claves)}
+                  onMouseLeave={() => destacar(null)}
+                >
+                  <td colSpan={3}>
+                    <div className="chips-fila">
+                      {chips.map((d) => {
+                        const entra = d.desde !== undefined;
+                        const clave = `${d.fixture.id}-${d.face}`;
+                        return (
+                          <button
+                            key={clave}
+                            type="button"
+                            className={"chip" + (entra ? " chip--entra" : "")}
+                            title={entra
+                              ? `Sumar ${d.code} al contrato · se libera el ${fechaEnCurso(toISODate(d.desde as Date))}`
+                              : `Sumar ${d.code} al contrato`}
+                            onMouseEnter={() => destacar([clave])}
+                            onMouseLeave={() => destacar(claves)}
+                            onClick={(e) => { e.stopPropagation(); destacar(null); alternarCara(d.fixture.id, d.face); }}
+                          >
+                            {d.code}
+                            {entra && <span className="chip__f">{fechaEnCurso(toISODate(d.desde as Date))}</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
+              );
+            })}
           </tbody>
           <tfoot>
             <tr>

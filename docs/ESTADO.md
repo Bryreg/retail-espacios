@@ -3599,7 +3599,12 @@ no un rótulo); la acción secundaria es «Empezar de nuevo» (la app no tiene
 «guardar como reserva»); la clave dice «Se libera en el periodo»; la ficha
 suma «+ Correo, nota y planometría» (campos reales); la ubicación va en dos
 renglones con puntos suspensivos (la ficha tiene que cerrar con tres espacios
-y 12 px de aire). (4) Pendiente al PR 3: **las dos barras** (la de la app y la
+y 12 px de aire). (3b) El dueño pidió de vuelta **las pastillas de código bajo cada tipo de la
+tarifa** (el diseño anterior), con la tarifa abajo (panel 04) y conservando el
+resaltado: la fila enciende los muebles del tipo, la pastilla enciende ESE
+mueble, y el clic lo suma al contrato. Sólo mientras no hay contrato armado.
+La tabla rueda por dentro con barra a la vista y el pie queda pegado abajo
+(`position: sticky`). (4) Pendiente al PR 3: **las dos barras** (la de la app y la
 de la pantalla) le quitan ~43 px de hoja respecto de D y corren el umbral de
 rodar de 760 a 790 px de alto; fusionarlas devuelve el comportamiento exacto.
 El plano no rotula ENTRADA/CAJAS (no existen en los datos).
