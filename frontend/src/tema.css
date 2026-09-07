@@ -126,28 +126,40 @@
   --peso-display: 800;
 
   /* ── La escala de letra ─────────────────────────────────────────────────
-     Los NOMBRES son los de la landing; los VALORES son los siete pasos que la
-     app ya usa, fijos y sin `clamp`. La escala de E es fluida y está hecha
-     para una página de venta que respira: bajarla al interior movería el
-     cuerpo de 13 a 14,5px y relayoutearía cada tabla, cada ficha y cada
-     columna del plano. Eso es FORMA, y la forma es el PR 2 (refutación
-     argumentada en `outputs/tema.md` §3.4).
+     OCHO PASOS, los de D (PR 2). El PR 1 dejó acá los siete valores que la app
+     ya usaba y anotó por qué: mover el cuerpo relayoutea cada tabla y cada
+     ficha, «eso es FORMA, y la forma es el PR 2». Este es el PR 2, así que los
+     valores pasan a ser los de la opción aprobada
+     (`outputs/vender/opciones/D-fusion/`): 10 · 11,5 · 12,5 · 13,5 · 15 ·
+     17,5 · 21 · 30. Fijos y sin `clamp` — la escala fluida de E está hecha
+     para una página de venta que respira, no para una hoja de trabajo que
+     tiene que caber entera en 1440×900.
 
-     Efecto lateral bueno: los siete tamaños que hasta ahora vivían en prosa en
-     un comentario («no es un token porque un font-size suelto no se puede
-     prohibir desde CSS») ahora sí son tokens, y el auditor puede grepear
-     `fontSize` suelto contra algo.
+     El cambio de valor sólo se ve en dos lugares del sistema, porque el token
+     se lee sólo desde dos: `.rotulo` (9,5 → 10) y el total del contrato
+     (27 → 30). Todo lo demás de Vender pasa a leerlos por `vender.css`; el
+     resto de las pantallas sigue con sus `fontSize` en línea hasta el PR 3.
 
      `--t-2xl` y `--t-3xl` NO se definen acá: son de la landing y siguen
      viviendo bajo `.lp`. */
-  --t-3xs:  9.5px;   /* versalitas y rótulos (`.rotulo`) */
-  --t-2xs:  11px;    /* notas, ejes, pies, código sobre el mueble */
-  --t-xs:   12px;    /* secundario */
-  --t-sm:   13px;    /* cuerpo */
-  --t-base: 14.5px;  /* títulos de panel, campos, botón */
-  --t-md:   17px;    /* códigos de espacio, cifras jefe */
+  /* El cuerpo del RÓTULO DE UN PLANO. No es un noveno paso de la escala: es el
+     tamaño que un rótulo dibujado adentro de un SVG tiene que medir EN
+     PANTALLA. En el plano isométrico se divide por la escala vigente
+     (`--lbl` = `--lbl-px` ÷ escala) para que no cambie al acercar; en la
+     escalera, cuyo viewBox ES su caja, se usa tal cual. Está declarado —y no
+     escrito a mano en dos archivos— porque los dos rótulos son el mismo
+     tamaño por la misma razón, y si uno se mueve tienen que moverse los dos.
+     Sale de D (`--lbl-px: 10.5`). */
+  --lbl-px: 10.5px;
+
+  --t-3xs:  10px;    /* versalitas y rótulos (`.rotulo`) */
+  --t-2xs:  11.5px;  /* notas, ejes, pies, código sobre el mueble */
+  --t-xs:   12.5px;  /* secundario, la lectura de la escalera */
+  --t-sm:   13.5px;  /* cuerpo y tablas */
+  --t-base: 15px;    /* títulos de panel, campos, botón */
+  --t-md:   17.5px;  /* códigos de espacio en la ficha del contrato */
   --t-lg:   21px;    /* título de pantalla */
-  --t-xl:   27px;    /* el total del contrato */
+  --t-xl:   30px;    /* el total del contrato */
 
   /* ── Espacios ───────────────────────────────────────────────────────────
      De la landing tal cual. OJO, desfase real y consciente: la escala de

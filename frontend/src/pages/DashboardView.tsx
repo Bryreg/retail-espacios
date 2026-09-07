@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
   RefreshCw,
@@ -461,73 +461,64 @@ function darken(hex: string, amt: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-/** What the map paints, keyed on the READING of the face rather than its
- *  stored status — so the plan tells the same story as the cards.
+/** LOS SIETE ESTADOS DEL CONTRATO, SOBRE LOS CUATRO COLORES VALIDADOS.
  *
- *  Esta lectura —«qué pasa HOY»— tiene siete clases, y siete clases es más de
- *  lo que el color solo puede sostener: en la escala anterior `free` contra
- *  `maintenance` daba ΔE 3.6 en deuteranopía. La maqueta resolvió eso sin
- *  arreglar la escala: el mapa dejó de responder por hoy. Las dos pantallas
- *  tienen SIEMPRE un periodo puesto, así que el plano pinta la lectura de tres
- *  clases —libre, se libera, tomado—, y el detalle por estado vive escrito en
- *  la tabla, donde cada fila lleva su palabra.
+ *  (Pendiente del PR 1, `docs/ESTADO.md` → «Pendientes para el PR 2»:
+ *  «`DISPLAY_TOP` del plano: siete clases sobre cuatro colores validados
+ *  (`active`/`expired`/`no_contract` del mismo rojo). O una paleta de siete
+ *  validada, o borrar el respaldo (el mapa siempre tiene periodo)».)
  *
- *  Esto queda como respaldo —el anillo del popover y la leyenda si algún día
- *  no hubiera periodo— y sale de la misma paleta de tres, sin el violeta que
- *  arrastraba del sistema anterior. */
-/* Los colores del plano NO pueden ser `var(--x)`: `darken()` recibe un hex y le
-   hace la cuenta de las caras del prisma, así que acá el color tiene que ser un
-   valor de verdad. Por eso la terna vive dos veces —una cara clara y una
-   oscura— y se elige al pintar, leyendo el atributo de la raíz con
-   `temaActual()`. Son EXACTAMENTE los mismos hex que `tema.css`; si alguno se
-   despega, el que está mal es este archivo.
-
-   LO QUE CAMBIA DE FONDO, y hay que decirlo: las siete clases de «qué pasa hoy»
-   se apoyan ahora en los CUATRO colores validados (los tres estados + el resto)
-   y en dos tintes al 60 % de esos mismos, en vez de en siete matices elegidos
-   uno por uno. Es lo que el propio comentario de abajo ya decía —«siete clases
-   es más de lo que el color solo puede sostener: free contra maintenance daba
-   ΔE 3.6 en deuteranopía»— y es la única forma de tener una versión oscura sin
-   elegir siete colores nuevos a ojo, que es justo lo que este proyecto tiene
-   prohibido. El costo: `active`, `expired` y `no_contract` quedan del mismo
-   rojo, y `free` y `committed` se separan por claridad y no por matiz. Los tres
-   van SIEMPRE con su palabra al lado en la tabla y en el tooltip, que es la
-   regla que sostiene la identidad. Recuperar una lectura de siete clases —o
-   borrar el respaldo, que es lo que probablemente corresponde— queda anotado
-   para el PR 2 en `outputs/frontend.md`.
-
-   Los dos tintes al 60 % no son un color nuevo: son el mismo estado ya validado
-   mezclado con su superficie, la misma construcción que los `-suave` (que son
-   ese mismo estado al 12 % / 16 %). Al conservar el matiz, la separación CVD
-   entre familias no se mueve. */
-const DISPLAY_TOP_CLARO: Record<DisplayStatus, string> = {
+ *  Se resuelve por las dos puntas, y así queda escrito:
+ *
+ *  1. **Del PLANO se borra.** El mapa no pinta nunca por esta lectura: las dos
+ *     pantallas ponen SIEMPRE un periodo (el efecto de `mapRange`: Vender
+ *     arranca en treinta días, Supervisar en hoy, que es un periodo de un día),
+ *     así que `topColorFor()` era código muerto desde que ese efecto existe. Un
+ *     respaldo que nunca corre es un respaldo que nadie prueba. El plano pinta
+ *     con `RANGE_TOP`, que es la terna VALIDADA (peor par ΔE 19,9 en
+ *     dicromacia), y punto.
+ *
+ *  2. **De la tabla y del popover NO se borra, porque ahí se lee el CONTRATO**
+ *     —vencido, comprometido, en mantenimiento— y esa distinción es el trabajo
+ *     de la pantalla de Supervisar. Lo que se borra es la PALETA DE SIETE: los
+ *     siete estados se apoyan ahora en los cuatro colores validados y en nada
+ *     más. Se fueron los dos tintes al 60 % (`#66B39C` y `#E2B96C`), que eran
+ *     los únicos dos hex del archivo que no había validado nadie.
+ *
+ *  Que cuatro de los siete compartan color no es una pérdida de información: la
+ *  regla del sistema es que **cada estado va siempre con su palabra al lado**
+ *  —`pinDe()` lleva `palabra` justamente para eso— y la identidad nunca depende
+ *  sólo del color. Inventar tres matices más para separar «vencido» de
+ *  «ocupado» sería elegir color a ojo, que es lo que este proyecto tiene
+ *  prohibido desde que verde + naranja reprobó el validador.
+ *
+ *  No pueden ser `var(--x)`: `darken()` recibe un hex y le hace la cuenta a
+ *  cada cara del prisma. Son EXACTAMENTE los mismos hex que `tema.css`; si
+ *  alguno se despega, el que está mal es este archivo. */
+const ESTADO_CLARO: Record<DisplayStatus, string> = {
   free:        "#00805A",   // --libre
-  committed:   "#66B39C",   // --libre al 60 % sobre la tarjeta
+  committed:   "#00805A",   // --libre  · «Contratado», con su palabra
   active:      "#D8342E",   // --ocupado
   expiring:    "#CE8A0A",   // --entra
-  expired:     "#D8342E",   // --ocupado
-  no_contract: "#D8342E",   // --ocupado
-  reserved:    "#E2B96C",   // --entra al 60 % sobre la tarjeta
+  expired:     "#D8342E",   // --ocupado · «Vencido»
+  no_contract: "#D8342E",   // --ocupado · «Sin contrato»
+  reserved:    "#CE8A0A",   // --entra   · «Reservado»
   maintenance: "#AAB3BE",   // --resto
 };
 
-const DISPLAY_TOP_OSCURO: Record<DisplayStatus, string> = {
-  free:        "#00BE86",   // --libre
-  committed:   "#047959",   // --libre al 60 % sobre el panel
-  active:      "#F4544E",   // --ocupado
-  expiring:    "#F5A524",   // --entra
-  expired:     "#F4544E",   // --ocupado
-  no_contract: "#F4544E",   // --ocupado
-  reserved:    "#976A1E",   // --entra al 60 % sobre el panel
-  maintenance: "#33414F",   // --resto
+const ESTADO_OSCURO: Record<DisplayStatus, string> = {
+  free:        "#00BE86",
+  committed:   "#00BE86",
+  active:      "#F4544E",
+  expiring:    "#F5A524",
+  expired:     "#F4544E",
+  no_contract: "#F4544E",
+  reserved:    "#F5A524",
+  maintenance: "#33414F",
 };
 
-function displayTop(): Record<DisplayStatus, string> {
-  return temaActual() === "oscuro" ? DISPLAY_TOP_OSCURO : DISPLAY_TOP_CLARO;
-}
-
-function topColorFor(face: FaceEntry): string {
-  return displayTop()[displayStatus(face)];
+function colorEstado(): Record<DisplayStatus, string> {
+  return temaActual() === "oscuro" ? ESTADO_OSCURO : ESTADO_CLARO;
 }
 
 /** Colours for the "available for this period" reading, which answers a
@@ -625,18 +616,34 @@ type Rotulos = "todos" | "elegido";
 
 interface IsoMapProps {
   fixtures: UnifiedFixture[];
-  /** Los muebles marcados. En Supervisar es uno —el que se está mirando—; en
-   *  Vender son todos los que van en el contrato que se está armando. */
-  selectedIds: string[];
+  /** Las CARAS marcadas, por su llave `${fixtureId}-${cara}`. En Supervisar es
+   *  una —la que se está mirando—; en Vender son todas las que van en el
+   *  contrato que se está armando. Por cara y no por mueble: una góndola doble
+   *  puede tener vendida una sola de sus dos caras, y la tapa se pinta por
+   *  mitad. */
+  selectedKeys: string[];
   /** `point` is relative to the map wrapper, and carries the wrapper's own
    *  size so the popover can flip sides and stay inside the card. */
-  onSelect: (f: UnifiedFixture | null, point?: MapAnchor) => void;
+  onSelect: (f: UnifiedFixture | null, point?: MapAnchor, cara?: "A" | "B") => void;
   /** Active search/filter result — null when no query or filter applies. */
   match: MapMatch | null;
-  /** When set, faces are painted by availability over this period instead of
-   *  by what is happening today. */
-  range: DateRange | null;
+  /** El periodo por el que se pregunta. NO es opcional: las dos pantallas
+   *  tienen siempre uno puesto, y sin él el plano contestaba con la otra
+   *  escala —siete clases sobre cuatro colores— donde dos estados opuestos
+   *  compartían tinta. «Hoy» es un periodo de un día, que es lo que de verdad
+   *  es. */
+  range: DateRange;
   rotulos?: Rotulos;
+  /** Acercar, alejar y arrastrar (`+ − Centrar`, rueda, arrastre). Sólo en
+   *  Vender: sin esto, «el rótulo mide lo mismo a todo acercamiento» sería una
+   *  promesa sin manera de probarla. */
+  herramientas?: boolean;
+  /** El lienzo llena su caja (Vender, donde el alto lo pone la rejilla) en vez
+   *  de medirse con la proporción del plano (Supervisar). */
+  llenar?: boolean;
+  /** Dónde deja el plano su función de resaltado, para que la tarifa, la
+   *  escalera y el contrato la llamen sin volver a pintar la escena. */
+  resaltar?: React.MutableRefObject<((claves: string[] | null) => void) | null>;
   /** ¿La cámara se acerca al mueble elegido?
    *
    *  En Supervisar sí: se abre UNA fila de la tabla y la pregunta es dónde
@@ -646,12 +653,73 @@ interface IsoMapProps {
   enfocar?: boolean;
 }
 
+/** Un rótulo del plano: el código del espacio y, si se libera adentro del
+ *  periodo, cuándo. Dos `<tspan>` que miden lo mismo y se distinguen por peso
+ *  y color, como en D. */
+interface Rotulo {
+  /** `${fixtureId}-${cara}` — la misma llave con la que el contrato, la tarifa
+   *  y la escalera nombran una cara. Es lo que permite que el resaltado sea
+   *  una sola función. */
+  clave: string;
+  cod: string;
+  fecha: string;
+  /** El ancla, en unidades del plano: el CENTROIDE DE LA TAPA de su mueble.
+   *  No hay una lista de posiciones a mano: los rótulos quedan todos a la
+   *  misma distancia del mueble —cero— y alineados igual. */
+  ax: number;
+  ay: number;
+  /** Orden para deschocar: 1 lo que se libera (lleva fecha), 2 lo libre,
+   *  3 lo tomado. Lo que se está vendiendo manda. */
+  peso: number;
+}
+
+/** Lo que `acomodar()` necesita de cada rótulo. Todo en magnitudes que NO
+ *  cambian con la cámara: el ancla en unidades del plano y la caja en píxeles
+ *  de pantalla (el rótulo mide siempre lo mismo en pantalla). */
+interface Pieza extends Rotulo {
+  txt: SVGTextElement;
+  hit: SVGRectElement | null;
+  w: number;
+  h: number;
+  ox: number;
+  oy: number;
+}
+
+/** Cuánto se corre un rótulo cuando su ancla natural choca, en milésimas del
+ *  ancho del plano. D corría cinco anclas a mano y todas exactamente 20
+ *  unidades de su viewBox (1032,5 de ancho) en una de cuatro direcciones. Acá
+ *  no puede haber lista —los muebles los pone el usuario, no un generador—,
+ *  así que es la misma regla CALCULADA: un solo valor, cuatro direcciones, y
+ *  el que no encuentra lugar cede. */
+const DESVIO = 20 / 1032.5;
+
+/** Separación de las dos caras de una góndola, en la misma unidad. Cada rótulo
+ *  se ancla en la punta de SU cara, en direcciones opuestas. */
+const SEP_CARA = 16 / 1032.5;
+
+/** El cuerpo del rótulo, EN PÍXELES DE PANTALLA. No es un tamaño del SVG: el
+ *  grupo de la escena publica `--lbl: LBL / escala`, así que el rótulo mide lo
+ *  mismo se acerque o se aleje el plano. */
+const LBL = 10.5;
+
+/** Dos cajas se pisan si se cruzan y también si se acercan a menos de esto: un
+ *  rótulo pegado a otra letra se lee mal aunque no la toque. */
+const AIRE_TXT = 2;
+
+function cruza(a: Caja, b: Caja): boolean {
+  return a.left - AIRE_TXT < b.right && b.left - AIRE_TXT < a.right
+      && a.top - AIRE_TXT < b.bottom && b.top - AIRE_TXT < a.bottom;
+}
+interface Caja { left: number; top: number; right: number; bottom: number }
+
 function IsoMap({
-  fixtures, selectedIds, onSelect, match, range,
-  rotulos = "todos", enfocar = true,
+  fixtures, selectedKeys, onSelect, match, range,
+  rotulos = "todos", enfocar = true, herramientas = false, llenar = false,
+  resaltar,
 }: IsoMapProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [hoverId, setHoverId] = useState<string | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const escenaRef = useRef<SVGGElement>(null);
   const [tip, setTip] = useState<{ x: number; y: number; title: string; sub: string } | null>(null);
   /* La escena pinta con `temaActual()` adentro del memo: si el tema no es
      dependencia, tocar el sol/luna deja el plano con la terna del modo viejo
@@ -701,18 +769,13 @@ function IsoMap({
       // commercial hue.
       const double = isDoubleGondola(f) && rentable;
       const faces = facesOf(f);
-      const paint = (face: FaceEntry) =>
-        range ? rangeTop()[rangeAvailability(face, range.from, range.to)] : topColorFor(face);
+      const paint = (face: FaceEntry) => rangeTop()[rangeAvailability(face, range.from, range.to)];
       const topA = rentable ? paint(faces[0]) : noRentableTop();
       const topB = rentable && faces[1] ? paint(faces[1]) : noRentableTop();
       // La cara que da al frente en isométrico: cuando el mueble es más ancho
       // que hondo el corte va por Z y la mitad de adelante es la B; si es más
       // hondo que ancho el corte va por X y la B queda a la derecha. El otro
       // lado visible es la tapa, que no se vende y va del color del material.
-      // Sobre la huella GIRADA, no sobre las medidas crudas. El prisma se
-      // dibuja con `fp`, así que preguntarle a `f.w`/`f.d` por el eje largo
-      // deja el color en la cara equivocada en todo mueble rotado un cuarto
-      // de vuelta —un pasillo cruzado, que es común.
       const anchoManda = fp.w >= fp.d;
       const cuerpo = rentable ? colorCuerpo() : noRentableTop();
       const caraFrente = double ? topB : topA;
@@ -722,49 +785,35 @@ function IsoMap({
       const stroke = rentable ? colorCuerpoLinea() : darken(noRentableTop(), 0.42);
 
       // Top face — split into two halves for double gondolas
-      const mitad = (color: string, esquinas: [number, number][]) => ({
+      const mitad = (color: string, cara: "A" | "B", esquinas: [number, number][]) => ({
         color,
+        cara,
         points: pts(...esquinas),
         cx: esquinas.reduce((a, q) => a + q[0], 0) / esquinas.length,
         cy: esquinas.reduce((a, q) => a + q[1], 0) / esquinas.length,
       });
-      let topHalves: { color: string; points: string; cx: number; cy: number }[];
+      let topHalves: { color: string; cara: "A" | "B"; points: string; cx: number; cy: number }[];
       if (double) {
         if (anchoManda) {
           const zm = (z0 + z1) / 2;
           topHalves = [
-            mitad(topA, [iso(x0, z0, h), iso(x1, z0, h), iso(x1, zm, h), iso(x0, zm, h)]),
-            mitad(topB, [iso(x0, zm, h), iso(x1, zm, h), iso(x1, z1, h), iso(x0, z1, h)]),
+            mitad(topA, "A", [iso(x0, z0, h), iso(x1, z0, h), iso(x1, zm, h), iso(x0, zm, h)]),
+            mitad(topB, "B", [iso(x0, zm, h), iso(x1, zm, h), iso(x1, z1, h), iso(x0, z1, h)]),
           ];
         } else {
           const xm = (x0 + x1) / 2;
           topHalves = [
-            mitad(topA, [iso(x0, z0, h), iso(xm, z0, h), iso(xm, z1, h), iso(x0, z1, h)]),
-            mitad(topB, [iso(xm, z0, h), iso(x1, z0, h), iso(x1, z1, h), iso(xm, z1, h)]),
+            mitad(topA, "A", [iso(x0, z0, h), iso(xm, z0, h), iso(xm, z1, h), iso(x0, z1, h)]),
+            mitad(topB, "B", [iso(xm, z0, h), iso(x1, z0, h), iso(x1, z1, h), iso(xm, z1, h)]),
           ];
         }
       } else {
-        topHalves = [mitad(topA, [tA, tB, tC, tD])];
+        topHalves = [mitad(topA, "A", [tA, tB, tC, tD])];
       }
-
-      // Label above the prism — small unlabeled fixtures still get one while matched.
-      //
-      // Sólo lo comercializable. Una sala tiene sesenta góndolas de pared, una
-      // fila de cajas y las columnas; rotularlas llenaba el plano de códigos
-      // de cosas que no se venden y enterraba los veintitrés que sí. El resto
-      // de la sala es el CONTEXTO donde está lo que se vende, y el contexto no
-      // se rotula: se dibuja.
-      const area = f.w * f.d;
-      const defaultVisible = rentable && (Boolean(f.nomenclatura) || area > 1.5);
-      const labelText = rentable ? nombreDeMueble(f) : "";
-      const [lcx, lcy] = iso(f.cx, f.cz, h);
-      const label = labelText ? { text: labelText, x: lcx, y: lcy, defaultVisible } : null;
-      if (label) addPt([label.x, label.y - 8]);
 
       // Asking about a period changes the question the tooltip should answer:
       // not "who is here" but "can I sell this, and if not, how much of it".
       const rangeSub = (face: FaceEntry) => {
-        if (!range) return face.supplierName || "Sin proveedor";
         // A column or a checkout is not for sale, so it must never answer
         // "libre los 24 días" — the colour already excludes it, the words
         // have to as well.
@@ -772,7 +821,7 @@ function IsoMap({
         const total = inclusiveDays(range.from, range.to);
         const taken = daysTakenInRange(face, range.from, range.to);
         if (taken <= 0) return `libre los ${total} día${total === 1 ? "" : "s"}`;
-        if (taken >= total) return `tomado${face.supplierName ? ` · ${face.supplierName}` : ""}`;
+        if (taken >= total) return "tomado";
         return `libre ${total - taken} de ${total} días`;
       };
       const tooltipSub = double
@@ -790,15 +839,12 @@ function IsoMap({
       };
 
       return {
-        f,
-        foco,
-        topHalves,
+        f, foco, topHalves, rentable, double, faces,
         // Visible sides: the z1 face (front-left) and the x1 face (front-right)
         left:  pts(tD, tC, bC, bD),
         right: pts(tB, bB, bC, tC),
         sideL, sideR, stroke,
         topOutline: pts(tA, tB, tC, tD),
-        label,
         tooltipSub,
       };
     });
@@ -817,32 +863,341 @@ function IsoMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fixtures, range, tema]);
 
+  /** Los rótulos, con su ancla ya calculada.
+   *
+   *  El ancla por defecto NO está escrita a mano: es el centroide de la tapa
+   *  de su mueble, que sale de la misma geometría que dibuja el prisma. De ahí
+   *  se sale sólo cuando hay que salir —las dos caras de una góndola— y con un
+   *  único valor.
+   *
+   *  Las dos caras de una góndola se anclan EN PUNTAS OPUESTAS: cada rótulo se
+   *  corre `SEP_CARA` sobre el eje que separa las dos mitades, cada uno del
+   *  lado de la cara que nombra. Sin eso los dos caen casi en el mismo punto y
+   *  uno de los dos tiene que ceder siempre. */
+  const labels = useMemo<Rotulo[]>(() => {
+    if (!scene) return [];
+    const unidad = Math.max(scene.vb.w, scene.vb.h);
+    const sep = SEP_CARA * unidad;
+    const salida: Rotulo[] = [];
+    for (const p of scene.prisms) {
+      if (!p.rentable) continue;
+      const nombre = nombreDeMueble(p.f);
+      p.topHalves.forEach((mitad, i) => {
+        const entry = p.faces[i];
+        if (!entry) return;
+        let ax = mitad.cx, ay = mitad.cy;
+        if (p.double && p.topHalves.length > 1) {
+          const otra = p.topHalves[1 - i];
+          const dx = mitad.cx - otra.cx, dy = mitad.cy - otra.cy;
+          const m = Math.hypot(dx, dy) || 1;
+          ax += (dx / m) * sep;
+          ay += (dy / m) * sep;
+        }
+        const dispo = rangeAvailability(entry, range.from, range.to);
+        const desde = dispo === "parcial" ? primerDiaLibre(entry, range.from, range.to) : undefined;
+        salida.push({
+          clave: `${p.f.id}-${entry.face}`,
+          cod: p.double ? `${nombre}·${entry.face}` : nombre,
+          fecha: desde ? `libre ${desde.getDate()} ${MONTHS_ES[desde.getMonth()]}` : "",
+          ax, ay,
+          peso: dispo === "parcial" ? 1 : dispo === "libre" ? 2 : 3,
+        });
+      });
+    }
+    // Primero lo que se libera (lleva fecha), después lo libre, después lo
+    // tomado: si dos se pisan, el que cede es el que menos se está vendiendo.
+    return salida.sort((a, b) => a.peso - b.peso || (a.cod < b.cod ? -1 : 1));
+  }, [scene, range]);
+
+  // ── La cámara ────────────────────────────────────────────────────────────
+  //
+  // NO es estado de React: es escritura imperativa de un solo `transform`. Si
+  // entra a `useState`, el plano tiembla y —peor— la medición del deschoque se
+  // hace contra la geometría del paso anterior.
+  const cam = useRef({ zoom: 1, T: [0, 0] as [number, number] });
+  /** La otra cámara: el acercamiento al mueble elegido de Supervisar. Se
+   *  guarda acá para que `aPantalla()` la tenga en cuenta. */
+  const foco = useRef({ k: 1, tx: 0, ty: 0 });
+  const piezas = useRef<Pieza[]>([]);
+  const calibrado = useRef(false);
+  const pendiente = useRef(0);
+  const txtRefs = useRef(new Map<string, SVGTextElement>());
+  const hitRefs = useRef(new Map<string, SVGRectElement>());
+  const grupoRefs = useRef(new Map<string, SVGGElement>());
+
+  /** La escala del SVG contra su caja: `xMidYMid meet` encaja por el lado que
+   *  queda corto y centra lo que sobra. */
+  const escalaSVG = useCallback(() => {
+    const vb = scene?.vb;
+    const r = svgRef.current?.getBoundingClientRect();
+    if (!vb || !r || !(r.width > 0)) return null;
+    return { k: Math.min(r.width / vb.w, r.height / vb.h), r, vb };
+  }, [scene]);
+
+  /** Un punto del plano → pantalla, con la geometría NUEVA: no se le pregunta
+   *  al navegador dónde quedó nada, se calcula con el acercamiento y el
+   *  arrastre que acabamos de escribir. Es lo que evita que `acomodar()` decida
+   *  un paso tarde (README de D §4.3). */
+  const aPantalla = useCallback(
+    (x: number, y: number, e: NonNullable<ReturnType<typeof escalaSVG>>): [number, number] => {
+      const { k, r, vb } = e;
+      const ox = r.left + (r.width - vb.w * k) / 2;
+      const oy = r.top + (r.height - vb.h * k) / 2;
+      const { zoom, T } = cam.current;
+      // cámara interior (arrastre + acercamiento) y después la del enfoque
+      const px = foco.current.k * (T[0] + zoom * x) + foco.current.tx;
+      const py = foco.current.k * (T[1] + zoom * y) + foco.current.ty;
+      return [ox + (px - vb.x) * k, oy + (py - vb.y) * k];
+    },
+    [],
+  );
+
+  /** Pantalla → plano. Sólo para acercar con la rueda sobre el puntero. */
+  const aPlano = useCallback((cx: number, cy: number): [number, number] => {
+    const e = escalaSVG();
+    if (!e) return [0, 0];
+    const { k, r, vb } = e;
+    const ox = r.left + (r.width - vb.w * k) / 2;
+    const oy = r.top + (r.height - vb.h * k) / 2;
+    return [(cx - ox) / k + vb.x, (cy - oy) / k + vb.y];
+  }, [escalaSVG]);
+
+  /** Escribir la cámara: un `transform` y el cuerpo del rótulo. `--lbl` es la
+   *  pieza que hay que portar con cuidado — se escribe como propiedad en el
+   *  grupo de la escena, fuera de React. */
+  const escribir = useCallback(() => {
+    const g = escenaRef.current;
+    const e = escalaSVG();
+    if (!g || !e) return;
+    const S = e.k * cam.current.zoom * foco.current.k;
+    g.style.setProperty("--lbl", `${(LBL / S).toFixed(3)}px`);
+    const { zoom, T } = cam.current;
+    g.setAttribute(
+      "transform",
+      `translate(${T[0].toFixed(2)},${T[1].toFixed(2)}) scale(${zoom.toFixed(4)})`,
+    );
+  }, [escalaSVG]);
+
+  /** Que ningún rótulo pise una letra.
+   *
+   *  Aritmética pura: ni una sola lectura de geometría del plano. El rótulo
+   *  mide lo mismo EN PANTALLA a todo acercamiento, así que su caja se midió
+   *  una vez (`calibrar`) y no vuelve a cambiar; lo único que se mueve es el
+   *  ancla, y el ancla la da `aPantalla()` con la cámara recién escrita.
+   *
+   *  Orden: lo que flota encima del plano manda; después los rótulos por su
+   *  peso. El que se cruza con algo ya aceptado, o el que se sale del lienzo,
+   *  prueba las cuatro desviaciones de un único valor y, si ninguna entra,
+   *  CEDE — y vuelve solo en cuanto el acercamiento le abre lugar. Nunca se
+   *  achica: el cuerpo es constante. */
+  const acomodar = useCallback(() => {
+    if (!calibrado.current) return;
+    const e = escalaSVG();
+    const lz = wrapRef.current?.getBoundingClientRect();
+    if (!e || !lz) return;
+    const S = e.k * cam.current.zoom * foco.current.k;
+    const d = DESVIO * Math.max(e.vb.w, e.vb.h);
+    const fijos: Caja[] = [];
+    const herr = wrapRef.current?.querySelector(".herr");
+    if (herr) fijos.push(herr.getBoundingClientRect());
+    const seSale = (b: Caja) =>
+      b.left < lz.left + 2 || b.right > lz.right - 2 || b.top < lz.top + 2 || b.bottom > lz.bottom - 2;
+
+    const ok: Caja[] = [];
+    for (const p of piezas.current) {
+      const intentos: [number, number][] = [[0, 0], [-d, 0], [d, 0], [0, d], [0, -d]];
+      let puesto: { b: Caja; dx: number; dy: number } | null = null;
+      for (const [dx, dy] of intentos) {
+        const a = aPantalla(p.ax + dx, p.ay + dy, e);
+        const b: Caja = {
+          left: a[0] + p.ox, top: a[1] + p.oy,
+          right: a[0] + p.ox + p.w, bottom: a[1] + p.oy + p.h,
+        };
+        if (seSale(b)) continue;
+        if (fijos.some((o) => cruza(b, o))) continue;
+        if (ok.some((o) => cruza(b, o))) continue;
+        puesto = { b, dx, dy };
+        break;
+      }
+      if (!puesto) {
+        p.txt.style.display = "none";
+        p.hit?.setAttribute("width", "0");
+        p.hit?.setAttribute("height", "0");
+        continue;
+      }
+      p.txt.style.display = "";
+      p.txt.setAttribute("x", (p.ax + puesto.dx).toFixed(2));
+      p.txt.setAttribute("y", (p.ay + puesto.dy).toFixed(2));
+      for (const hijo of Array.from(p.txt.children)) {
+        hijo.setAttribute("x", (p.ax + puesto.dx).toFixed(2));
+      }
+      ok.push(puesto.b);
+      // La caja de impacto, en unidades del plano: seis píxeles de pantalla de
+      // margen alrededor de lo que ocupa el rótulo. El clic lo cobra el mueble,
+      // no el rótulo.
+      if (p.hit) {
+        const m = 6 / S;
+        p.hit.setAttribute("x", (p.ax + puesto.dx + p.ox / S - m).toFixed(1));
+        p.hit.setAttribute("y", (p.ay + puesto.dy + p.oy / S - m).toFixed(1));
+        p.hit.setAttribute("width", (p.w / S + 2 * m).toFixed(1));
+        p.hit.setAttribute("height", (p.h / S + 2 * m).toFixed(1));
+      }
+    }
+  }, [aPantalla, escalaSVG]);
+
+  const aplicar = useCallback(() => { escribir(); acomodar(); }, [escribir, acomodar]);
+
+  /** Medir bien es todo el asunto. Un `requestAnimationFrame` NO alcanza: el
+   *  navegador corre esos avisos ANTES de rehacer el dibujo, así que la caja
+   *  que devuelve todavía es la del cuerpo anterior. Por eso se mide en el
+   *  SEGUNDO cuadro y se repite hasta que dos pasadas dan lo mismo. */
+  const calibrar = useCallback((intento = 0) => {
+    const e = escalaSVG();
+    if (!e) return;
+    // Volver TODOS al ancla natural antes de medir. Sin esto se mide un rótulo
+    // que `acomodar()` ya corrió, el desplazamiento se cuenta dos veces, y las
+    // cajas quedan corridas justo lo que hace falta para que dos se crucen sin
+    // que la cuenta lo vea.
+    for (const p of piezas.current) {
+      p.txt.style.display = "";
+      p.txt.setAttribute("x", p.ax.toFixed(2));
+      p.txt.setAttribute("y", p.ay.toFixed(2));
+      for (const hijo of Array.from(p.txt.children)) hijo.setAttribute("x", p.ax.toFixed(2));
+    }
+    escribir();
+    if (pendiente.current) cancelAnimationFrame(pendiente.current);
+    pendiente.current = requestAnimationFrame(() => {
+      pendiente.current = requestAnimationFrame(() => {
+        pendiente.current = 0;
+        let cambio = false;
+        const e2 = escalaSVG();
+        if (!e2) return;
+        for (const p of piezas.current) {
+          const a = aPantalla(p.ax, p.ay, e2);
+          const r = p.txt.getBoundingClientRect();
+          if (!(r.width > 0)) continue;
+          if (Math.abs(p.w - r.width) > 0.5 || Math.abs(p.h - r.height) > 0.5) cambio = true;
+          p.w = r.width; p.h = r.height;
+          p.ox = r.left - a[0]; p.oy = r.top - a[1];
+        }
+        calibrado.current = piezas.current.every((p) => p.w > 0);
+        acomodar();
+        if (cambio && intento < 3) calibrar(intento + 1);
+      });
+    });
+  }, [aPantalla, acomodar, escalaSVG, escribir]);
+
+  /** Rearmar la lista de piezas cada vez que cambian los rótulos dibujados. */
+  useLayoutEffect(() => {
+    piezas.current = labels
+      .map((l) => {
+        const txt = txtRefs.current.get(l.clave);
+        if (!txt) return null;
+        return { ...l, txt, hit: hitRefs.current.get(l.clave) ?? null, w: 0, h: 0, ox: 0, oy: 0 };
+      })
+      .filter((p): p is Pieza => p !== null);
+    calibrado.current = false;
+    calibrar();
+  }, [labels, calibrar]);
+
+  // La tipografía del sistema puede llegar después del primer pintado: cada vez
+  // que puede haber cambiado el ancho de una letra, se vuelve a medir.
+  useEffect(() => {
+    const f = (document as Document & { fonts?: FontFaceSet }).fonts;
+    if (f?.ready) void f.ready.then(() => calibrar());
+  }, [calibrar]);
+
+  // Al cambiar la caja del plano cambia la escala: se reescribe el transform y
+  // se vuelve a acomodar. El cuerpo del rótulo no cambia, así que no hay que
+  // volver a medirlo.
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => aplicar());
+    ro.observe(el);
+    window.addEventListener("resize", aplicar);
+    return () => { ro.disconnect(); window.removeEventListener("resize", aplicar); };
+  }, [aplicar]);
+
+  /** EL RESALTADO: apaga la sala y enciende esos muebles.
+   *
+   *  Se registra como función imperativa y no como estado: apagar la sala es
+   *  CSS sobre los hijos de la escena, y marcar es un `classList.toggle` sobre
+   *  los nodos que ya existen. Con estado, pasar el mouse por una fila de la
+   *  tarifa volvería a pintar ciento seis prismas. */
+  useEffect(() => {
+    if (!resaltar) return;
+    resaltar.current = (claves) => {
+      const g = escenaRef.current;
+      if (!g) return;
+      const on = !!claves && claves.length > 0;
+      const set = new Set(claves ?? []);
+      g.setAttribute("data-foco", on ? "1" : "0");
+      // Los grupos están indexados por MUEBLE y las llaves son por CARA: un
+      // mueble se enciende si alguna de sus caras está en la lista.
+      grupoRefs.current.forEach((el, id) => {
+        el.classList.toggle("mk", claves ? claves.some((c) => c.startsWith(id + "-")) : false);
+      });
+      txtRefs.current.forEach((el, clave) => {
+        el.classList.toggle("mk", set.has(clave));
+      });
+    };
+    return () => { if (resaltar) resaltar.current = null; };
+  }, [resaltar]);
+
+  const ponerZoom = useCallback((z: number, cx?: number, cy?: number) => {
+    const e = escalaSVG();
+    if (!e) return;
+    const centro: [number, number] = cx === undefined
+      ? [e.r.left + e.r.width / 2, e.r.top + e.r.height / 2]
+      : [cx, cy as number];
+    const u = aPlano(centro[0], centro[1]);
+    const z0 = cam.current.zoom;
+    const z1 = Math.max(0.7, Math.min(4, z));
+    cam.current = {
+      zoom: z1,
+      T: [u[0] - (z1 * (u[0] - cam.current.T[0])) / z0, u[1] - (z1 * (u[1] - cam.current.T[1])) / z0],
+    };
+    aplicar();
+  }, [aPlano, aplicar, escalaSVG]);
+
+  /** La rueda va como oyente NATIVO y no como `onWheel` de React.
+   *
+   *  React 18 registra `wheel` en la raíz y de forma PASIVA, así que el
+   *  `preventDefault()` de adentro no hace nada: el navegador lo avisa por
+   *  consola («Unable to preventDefault inside passive event listener») y la
+   *  página rueda mientras uno cree que está acercando el plano. Con
+   *  `{ passive: false }` sobre el lienzo, el gesto es del plano. */
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || !herramientas) return;
+    const rueda = (ev: WheelEvent) => {
+      ev.preventDefault();
+      ponerZoom(cam.current.zoom * (ev.deltaY < 0 ? 1.1 : 1 / 1.1), ev.clientX, ev.clientY);
+    };
+    el.addEventListener("wheel", rueda, { passive: false });
+    return () => el.removeEventListener("wheel", rueda);
+  }, [herramientas, ponerZoom]);
+
   if (!scene) return null;
 
-  // Al elegir un mueble el mapa se le acerca. `k` es cuánto se agranda; todo
-  // lo que tiene que seguir midiendo lo mismo en pantalla —rótulos, anillos,
-  // las pastillas de cara— se divide por él.
-  // La cámara se acerca SÓLO cuando hay un mueble elegido. Con dos o más
-  // —un contrato sobre varias puntas— acercarse a uno esconde al resto y, peor,
-  // esconde los que todavía faltan tocar. Ahí el trabajo es seguir eligiendo
-  // sobre el plano entero.
-  const enfocado = enfocar && selectedIds.length === 1
-    ? scene.prisms.find((q) => q.f.id === selectedIds[0])?.foco ?? null
+  // Al elegir un mueble el mapa se le acerca (sólo Supervisar). Con dos o más
+  // acercarse a uno esconde al resto y, peor, esconde los que todavía faltan
+  // tocar: ahí el trabajo es seguir eligiendo sobre el plano entero.
+  const idsElegidos = new Set(selectedKeys.map((c) => c.slice(0, c.lastIndexOf("-"))));
+  const unico = idsElegidos.size === 1 ? [...idsElegidos][0] : null;
+  const enfocado = enfocar && unico
+    ? scene.prisms.find((q) => q.f.id === unico)?.foco ?? null
     : null;
-  // El tope importa más que la fórmula. Estaba en 3.4 y era demasiado: a esa
-  // distancia se ven cuatro muebles y el resto de la sala queda afuera, así que
-  // el plano deja de contestar «dónde queda esto» —que es su único trabajo— y
-  // pasa a ser un primer plano de un prisma. Con 1.9 el mueble se distingue y
-  // el pasillo entero sigue en pantalla.
   const k = enfocado
     ? Math.min(1.9, Math.max(1, 0.17 * Math.min(scene.vb.w, scene.vb.h) / enfocado.r))
     : 1;
-  // Sintaxis CSS, no de atributo SVG: `translate(10 20)` sin unidades ni coma
-  // es válido como atributo pero inválido como propiedad, y el navegador
-  // descarta la declaración entera sin decir nada.
   const camara = enfocado
     ? `translate(${(scene.vb.x + scene.vb.w / 2 - enfocado.x * k).toFixed(2)}px, ${(scene.vb.y + scene.vb.h / 2 - enfocado.y * k).toFixed(2)}px) scale(${k.toFixed(3)})`
     : "translate(0px, 0px) scale(1)";
+  foco.current = enfocado
+    ? { k, tx: scene.vb.x + scene.vb.w / 2 - enfocado.x * k, ty: scene.vb.y + scene.vb.h / 2 - enfocado.y * k }
+    : { k: 1, tx: 0, ty: 0 };
 
   const handleMove = (e: React.MouseEvent, title: string, sub: string) => {
     const rect = wrapRef.current?.getBoundingClientRect();
@@ -850,43 +1205,60 @@ function IsoMap({
     setTip({ x: e.clientX - rect.left, y: e.clientY - rect.top, title, sub });
   };
 
-  /** El lienzo toma la PROPORCIÓN DEL PLANO, no la de la tarjeta.
-   *
-   *  Con alto fijo el panel quedaba de 1450×430 —una ranura de 3.4:1— y el
-   *  plano de esta sede es de 1.7:1, así que `meet` lo encajaba por el alto y
-   *  dejaba el 55% del ancho en blanco: el dibujo se veía chico y lejos, con
-   *  medio panel vacío alrededor. La proporción no se puede fijar en el código
-   *  porque depende de la sede: una tienda larga y angosta y una cuadrada
-   *  proyectan distinto.
-   *
-   *  El tope de alto existe para que una sede casi cuadrada no empuje una
-   *  tarjeta de mil píxeles; el piso, para que una muy alargada no la deje
-   *  como una tira. Entre los dos, el plano llena su caja.
-   *
-   *  El tope va contra la VENTANA, no en píxeles sueltos. La razón de que
-   *  exista es que el plano no empuje fuera de pantalla todo lo que va debajo,
-   *  y eso depende del alto de la ventana, no de un número. Con 720 fijo, en un
-   *  monitor de 1920×1080 el plano de NAVE llenaba el 83% de su lienzo y dejaba
-   *  franjas blancas a los costados. Con `80vh` el portátil de 900 se comporta
-   *  igual que antes —720— y el monitor grande deja crecer el dibujo hasta que
-   *  llena; el tope duro de 1000 es para las pantallas muy altas, donde 80vh
-   *  daría una tarjeta más alta que ancha. */
-  const proporcion = scene.vb.w / scene.vb.h;
+  /** El lienzo toma la PROPORCIÓN DEL PLANO en Supervisar (donde la tarjeta se
+   *  mide con su dibujo) y LLENA su caja en Vender, donde el alto lo pone la
+   *  rejilla de la hoja y el dibujo se encaja adentro con `meet`. */
+  const marco: React.CSSProperties = llenar
+    ? { position: "relative", flex: 1, minHeight: 0, minWidth: 0, display: "flex" }
+    : {
+        position: "relative", width: "100%", margin: "0 auto",
+        aspectRatio: `${scene.vb.w.toFixed(1)} / ${scene.vb.h.toFixed(1)}`,
+        maxHeight: "min(1000px, 80vh)", minHeight: 360, display: "flex",
+      };
 
   return (
     <div
       ref={wrapRef}
-      style={{
-        position: "relative", width: "100%", margin: "0 auto",
-        aspectRatio: `${scene.vb.w.toFixed(1)} / ${scene.vb.h.toFixed(1)}`,
-        maxHeight: "min(1000px, 80vh)", minHeight: 360, display: "flex",
-      }}
-      data-proporcion={proporcion.toFixed(2)}
+      style={marco}
+      data-proporcion={(scene.vb.w / scene.vb.h).toFixed(2)}
+      onPointerDown={herramientas ? (ev) => {
+        if ((ev.target as Element).closest?.(".herr")) return;
+        const x0 = ev.clientX, y0 = ev.clientY;
+        const t0 = cam.current.T.slice() as [number, number];
+        let movido = false;
+        const mover = (e2: PointerEvent) => {
+          const e = escalaSVG();
+          if (!e) return;
+          if (Math.abs(e2.clientX - x0) + Math.abs(e2.clientY - y0) < 3 && !movido) return;
+          movido = true;
+          cam.current.T = [t0[0] + (e2.clientX - x0) / e.k, t0[1] + (e2.clientY - y0) / e.k];
+          aplicar();
+        };
+        const soltar = () => {
+          window.removeEventListener("pointermove", mover);
+          window.removeEventListener("pointerup", soltar);
+        };
+        window.addEventListener("pointermove", mover);
+        window.addEventListener("pointerup", soltar);
+      } : undefined}
     >
+      {herramientas && (
+        <div className="herr">
+          <button type="button" aria-label="Acercar el plano"
+            onClick={(e) => { e.stopPropagation(); ponerZoom(cam.current.zoom * 1.25); }}>+</button>
+          <button type="button" aria-label="Alejar el plano"
+            onClick={(e) => { e.stopPropagation(); ponerZoom(cam.current.zoom / 1.25); }}>−</button>
+          <button type="button"
+            onClick={(e) => { e.stopPropagation(); cam.current = { zoom: 1, T: [0, 0] }; aplicar(); }}>
+            Centrar
+          </button>
+        </div>
+      )}
       <svg
+        ref={svgRef}
         viewBox={scene.viewBox}
         preserveAspectRatio="xMidYMid meet"
-        style={{ width: "100%", height: "100%", display: "block" }}
+        style={{ width: "100%", height: "100%", display: "block", touchAction: "none" }}
         onClick={() => onSelect(null)}
       >
         <g
@@ -897,7 +1269,9 @@ function IsoMap({
             transformOrigin: "0 0",
             transition: "transform 620ms cubic-bezier(.22,.72,.24,1)",
           }}
+          onTransitionEnd={() => acomodar()}
         >
+        <g ref={escenaRef} className="iso-escena" data-foco="0">
         {/* Ground */}
         <polygon
           points={scene.groundPts}
@@ -906,135 +1280,141 @@ function IsoMap({
           strokeWidth={0.8}
         />
 
-        {scene.prisms.map(({ f, topHalves, left, right, sideL, sideR, stroke, topOutline, label, tooltipSub }) => {
-          const hovered = hoverId === f.id;
-          const selected = selectedIds.includes(f.id);
+        {scene.prisms.map(({ f, topHalves, left, right, sideL, sideR, stroke, topOutline, tooltipSub, faces, rentable }) => {
+          const selected = faces.some((x) => selectedKeys.includes(`${f.id}-${x.face}`));
           const flags = match?.faceFlags.get(f.id);
           const matched = !match || (flags?.some(Boolean) ?? false);
           const dimmed = match !== null && !matched;
+          const est = !rentable ? "resto"
+            : rangeAvailability(faces[0], range.from, range.to) === "libre" ? "libre" : "otro";
           return (
             <g
               key={f.id}
+              className="pz"
+              data-est={est}
+              data-sel={selected ? "1" : undefined}
+              ref={(el) => { if (el) grupoRefs.current.set(f.id, el); else grupoRefs.current.delete(f.id); }}
               onClick={(e) => {
                 e.stopPropagation();
                 const rect = wrapRef.current?.getBoundingClientRect();
+                /* QUÉ CARA se tocó. Una góndola doble son dos espacios que se
+                   venden por separado, y en el plano cada uno tiene su media
+                   tapa, su rótulo y su caja de impacto: tocar la mitad de
+                   atrás tiene que sumar la cara de atrás. Sin esto el plano
+                   sólo sabía sumar la A y la B había que ir a buscarla al
+                   renglón del contrato. */
+                const cara = (e.target as Element).getAttribute?.("data-cara");
                 onSelect(
                   f,
                   rect
-                    ? {
-                        x: e.clientX - rect.left,
-                        y: e.clientY - rect.top,
-                        w: rect.width,
-                        h: rect.height,
-                      }
+                    ? { x: e.clientX - rect.left, y: e.clientY - rect.top, w: rect.width, h: rect.height }
                     : undefined,
+                  cara === "B" ? "B" : "A",
                 );
               }}
-              onMouseEnter={() => setHoverId(f.id)}
               onMouseMove={(e) => {
                 // The popover already describes this one — a tooltip on top of
                 // it would just be two cards saying the same thing.
                 if (selected) { setTip(null); return; }
                 handleMove(e, f.label || f.code, tooltipSub);
               }}
-              onMouseLeave={() => {
-                setHoverId(null);
-                setTip(null);
-              }}
+              onMouseLeave={() => setTip(null)}
               opacity={dimmed ? 0.18 : enfocado && !selected ? 0.45 : 1}
-              style={{
-                cursor: "pointer",
-                filter: hovered ? "brightness(1.12)" : undefined,
-                transition: "filter .12s, opacity .15s",
-              }}
+              style={{ cursor: "pointer", transition: "filter .12s, opacity .15s" }}
             >
               {/* Side faces */}
-              <polygon points={left} fill={sideL} stroke={stroke} strokeWidth={0.5 / k} strokeLinejoin="round" />
-              <polygon points={right} fill={sideR} stroke={stroke} strokeWidth={0.5 / k} strokeLinejoin="round" />
+              <polygon className="c-izq" points={left} fill={sideL} stroke={stroke} strokeWidth={0.5} strokeLinejoin="round" />
+              <polygon className="c-der" points={right} fill={sideR} stroke={stroke} strokeWidth={0.5} strokeLinejoin="round" />
               {/* Top face (1 or 2 halves) — non-matching halves of a double dim per face */}
               {topHalves.map((th, i) => (
                 <polygon
                   key={i}
+                  className={`c-tapa${selectedKeys.includes(`${f.id}-${th.cara}`) ? " sel" : ""}`}
+                  data-cara={th.cara}
                   points={th.points}
                   fill={th.color}
                   fillOpacity={match && matched && topHalves.length > 1 && flags && !flags[i] ? 0.25 : 1}
                   stroke={stroke}
-                  strokeWidth={0.5 / k}
+                  strokeWidth={0.5}
                   strokeLinejoin="round"
                 />
               ))}
               {/* Match highlight — accent glow + outline */}
               {match !== null && matched && !selected && (
                 <>
-                  <polygon
-                    points={topOutline}
-                    fill="none"
-                    stroke="var(--accent)"
-                    strokeWidth={3.4 / k}
-                    opacity={0.3}
-                    strokeLinejoin="round"
-                  />
-                  <polygon
-                    points={topOutline}
-                    fill="none"
-                    stroke="var(--accent)"
-                    strokeWidth={1.3 / k}
-                    strokeLinejoin="round"
-                  />
+                  <polygon points={topOutline} fill="none" stroke="var(--accent)" strokeWidth={3.4} opacity={0.3} strokeLinejoin="round" />
+                  <polygon points={topOutline} fill="none" stroke="var(--accent)" strokeWidth={1.3} strokeLinejoin="round" />
                 </>
               )}
               {/* Selection ring */}
               {selected && (
-                <polygon
-                  points={topOutline}
-                  fill="none"
-                  stroke="var(--accent)"
-                  strokeWidth={1.6 / k}
-                  strokeLinejoin="round"
-                />
-              )}
-              {/* Cuál cara es cuál. Sólo al acercarse, que es cuando hay
-                  espacio y cuando de verdad hace falta saberlo. */}
-              {selected && k > 1.6 && topHalves.length > 1 && topHalves.map((th, i) => (
-                <g key={`cara-${i}`} style={{ pointerEvents: "none" }}>
-                  <circle
-                    cx={th.cx} cy={th.cy} r={9 / k}
-                    fill="var(--surface)" stroke={th.color} strokeWidth={2.2 / k}
-                  />
-                  <text
-                    x={th.cx} y={th.cy + 3 / k}
-                    textAnchor="middle" fontSize={9 / k} fontWeight={700}
-                    fontFamily="var(--font-mono)" fill="var(--ink-1)"
-                  >
-                    {i === 0 ? "A" : "B"}
-                  </text>
-                </g>
-              ))}
-              {/* Floating label — always visible on matches */}
-              {label
-                && (rotulos === "elegido"
-                      ? selected || (match !== null && matched)
-                      : label.defaultVisible || (match !== null && matched))
-                && !(selected && k > 1.6 && topHalves.length > 1) && (
-                <text
-                  x={label.x}
-                  y={label.y - 7 / k}
-                  textAnchor="middle"
-                  fontSize={8.5 / k}
-                  fontWeight={600}
-                  fontFamily="var(--font-mono)"
-                  fill="var(--ink-2)"
-                  stroke="var(--surface)"
-                  strokeWidth={2.4 / k}
-                  paintOrder="stroke"
-                  style={{ pointerEvents: "none", userSelect: "none" }}
-                >
-                  {label.text}
-                </text>
+                <polygon points={topOutline} fill="none" stroke="var(--accent)" strokeWidth={1.6} strokeLinejoin="round" />
               )}
             </g>
           );
         })}
+
+        {/* LOS RÓTULOS, en una capa propia dibujada DESPUÉS de los muebles: con
+            el rótulo colgando de su pieza, los prismas de adelante le comen
+            media palabra al de atrás. */}
+        <g className="rotulos">
+          {labels
+            .filter((l) => rotulos === "todos" || selectedKeys.includes(l.clave))
+            .map((l) => (
+              <text
+                key={l.clave}
+                className="p-cod"
+                data-cod={l.cod}
+                data-sel={selectedKeys.includes(l.clave) ? "1" : undefined}
+                x={l.ax.toFixed(2)}
+                y={l.ay.toFixed(2)}
+                ref={(el) => { if (el) txtRefs.current.set(l.clave, el); else txtRefs.current.delete(l.clave); }}
+              >
+                <tspan x={l.ax.toFixed(2)} dy={l.fecha ? "-.22em" : ".36em"}>{l.cod}</tspan>
+                {l.fecha && <tspan className="p-fec" x={l.ax.toFixed(2)} dy="1.18em">{l.fecha}</tspan>}
+              </text>
+            ))}
+        </g>
+
+        {/* LAS CAJAS DE IMPACTO DEL RÓTULO, en una capa por encima de todo.
+            El rótulo se dibuja arriba de los muebles y no cobra el clic
+            (`pointer-events:none`); el que lo cobra es el mueble que nombra. La
+            caja tiene que estar ARRIBA y no adentro del grupo del mueble: los
+            prismas se pintan de atrás hacia adelante, así que una caja metida
+            en el grupo de un mueble del fondo queda tapada por los de adelante
+            y el clic sobre el rótulo terminaba eligiendo el mueble equivocado
+            —o uno que no se alquila, que además vaciaba el contrato—.
+            Las miden `calibrar()` y `acomodar()`, no un `style`. */}
+        <g className="impactos">
+          {labels
+            .filter((l) => rotulos === "todos" || selectedKeys.includes(l.clave))
+            .map((l) => {
+              const id = l.clave.slice(0, l.clave.lastIndexOf("-"));
+              const cara = l.clave.slice(l.clave.lastIndexOf("-") + 1) as "A" | "B";
+              const pieza = scene.prisms.find((q) => q.f.id === id);
+              return (
+                <rect
+                  key={l.clave}
+                  className="pl-hit"
+                  x={0} y={0} width={0} height={0}
+                  ref={(el) => { if (el) hitRefs.current.set(l.clave, el); else hitRefs.current.delete(l.clave); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!pieza) return;
+                    const rect = wrapRef.current?.getBoundingClientRect();
+                    onSelect(
+                      pieza.f,
+                      rect
+                        ? { x: e.clientX - rect.left, y: e.clientY - rect.top, w: rect.width, h: rect.height }
+                        : undefined,
+                      cara,
+                    );
+                  }}
+                />
+              );
+            })}
+        </g>
+        </g>
         </g>
       </svg>
 
@@ -1046,7 +1426,7 @@ function IsoMap({
             position: "absolute", left: 8, top: 8, zIndex: 4,
             background: "var(--surface)", border: "1px solid var(--line)",
             borderRadius: "var(--r-sm)", padding: "4px 10px",
-            fontSize: 11.5, color: "var(--ink-2)", cursor: "pointer",
+            fontSize: "var(--t-2xs)", color: "var(--ink-2)", cursor: "pointer",
             boxShadow: "var(--shadow-sm)",
           }}
         >
@@ -1071,68 +1451,62 @@ function IsoMap({
             boxShadow: "var(--shadow-lg)",
           }}
         >
-          <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--dark-ink-1)" }}>{tip.title}</div>
-          <div style={{ fontSize: 10.5, color: "var(--dark-ink-2)", marginTop: 1 }}>{tip.sub}</div>
+          <div style={{ fontSize: "var(--t-2xs)", fontWeight: 600, color: "var(--dark-ink-1)" }}>{tip.title}</div>
+          <div style={{ fontSize: "var(--t-3xs)", color: "var(--dark-ink-2)", marginTop: 1 }}>{tip.sub}</div>
         </div>
       )}
     </div>
   );
 }
 
-/** La clave del plano: qué quiere decir cada color y CUÁNTAS caras hay de
- *  cada uno.
+/** La clave del plano: qué quiere decir cada color y CUÁNTAS caras hay de cada
+ *  uno.
  *
  *  El número al lado del color es lo que la vuelve un dato en vez de un
- *  glosario. Sin él hay que contar prismas a ojo para saber si «se libera en
- *  el periodo» son dos o son veinte, que es justo la pregunta que se le hace
- *  a esta pantalla.
+ *  glosario. Sin él hay que contar prismas a ojo para saber si «se libera en el
+ *  periodo» son dos o son veinte, que es justo la pregunta que se le hace a
+ *  esta pantalla.
  *
- *  Las palabras cambian con el modo porque la pregunta cambia: quien vende
- *  mira hacia adelante —«esta cara SE LIBERA dentro de la ventana, la puedo
+ *  CINCO ESTADOS, con «En el contrato» como quinto contado (de D): lo que entra
+ *  al contrato deja de estar libre, y tiene que verse que dejó de estarlo en el
+ *  mismo renglón donde se cuenta lo libre. Los cuatro primeros conteos y el
+ *  pie de la tarifa son LA MISMA CUENTA mirada en dos lugares, así que la
+ *  pantalla no se puede contradecir a sí misma.
+ *
+ *  Las palabras cambian con el modo porque la pregunta cambia: quien vende mira
+ *  hacia adelante —«esta cara SE LIBERA dentro de la ventana, la puedo
  *  ofrecer»— y quien supervisa mira el contrato que se le está por caer
- *  —«VENCE dentro»—. Es el mismo hecho y el mismo color; lo que cambia es de
- *  qué lado del negocio se lo nombra. */
+ *  —«VENCE dentro»—. Es el mismo hecho y el mismo color. */
 function MapLegend({
-  range, tally, modo,
+  tally, modo, enContrato,
 }: {
-  range?: DateRange | null;
-  tally?: { libres: number; parciales: number; tomados: number } | null;
+  tally: { libres: number; parciales: number; tomados: number };
   modo: "vender" | "supervisar";
+  /** Cuántas caras hay en el contrato que se está armando. Sólo en Vender. */
+  enContrato?: number;
 }) {
-  const items: { c: string; l: string; n?: number }[] = range
-    ? [
-        { c: rangeTop().libre,   l: modo === "vender" ? RANGE_LABEL.libre : "Libre",
-          n: tally?.libres },
-        { c: rangeTop().parcial, l: modo === "vender" ? RANGE_LABEL.parcial : "Vence dentro",
-          n: tally?.parciales },
-        { c: rangeTop().tomado,  l: RANGE_LABEL.tomado, n: tally?.tomados },
-        { c: noRentableTop(),   l: NON_RENTABLE_LABEL },
-      ]
-    : [
-    { c: displayTop().free,        l: "Libre" },
-    { c: displayTop().committed,   l: "Contratado" },
-    { c: displayTop().active,      l: "Ocupado" },
-    { c: displayTop().expired,     l: "Vencido" },
-    { c: displayTop().reserved,    l: "Reservado" },
-    { c: displayTop().maintenance, l: "Mantenimiento" },
-    { c: noRentableTop(),         l: NON_RENTABLE_LABEL },
+  const items: { c: string; b: string; l: string; n?: number; sep?: boolean }[] = [
+    { c: rangeTop().libre, b: "var(--libre-borde)",
+      l: modo === "vender" ? RANGE_LABEL.libre : "Libre", n: tally.libres },
+    { c: rangeTop().parcial, b: "var(--entra-borde)",
+      l: modo === "vender" ? RANGE_LABEL.parcial : "Vence dentro", n: tally.parciales },
+    { c: rangeTop().tomado, b: "var(--ocupado-borde)", l: RANGE_LABEL.tomado, n: tally.tomados },
+    { c: noRentableTop(), b: "var(--resto)", l: NON_RENTABLE_LABEL },
   ];
+  if (enContrato !== undefined) {
+    items.push({ c: "var(--pl-ei)", b: "var(--ink-3)", l: "En el contrato", n: enContrato, sep: true });
+  }
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+    <div className="clave">
       {items.map((o) => (
-        <div
-          key={o.l}
-          style={{
-            display: "flex", alignItems: "center", gap: 5, fontSize: 11.5,
-            color: "var(--ink-2)", whiteSpace: "nowrap",
-          }}
-        >
-          <span style={{ width: 10, height: 10, borderRadius: 2, background: o.c, flexShrink: 0 }} />
-          {o.l}
-          {o.n !== undefined && (
-            <b style={{ fontWeight: 700, color: "var(--ink-1)" }}>{o.n}</b>
-          )}
-        </div>
+        <Fragment key={o.l}>
+          {o.sep && <span className="sep" aria-hidden />}
+          <span>
+            <i style={{ background: o.c, borderColor: o.b }} />
+            {o.l}
+            {o.n !== undefined && <b>{o.n}</b>}
+          </span>
+        </Fragment>
       ))}
     </div>
   );
@@ -1218,7 +1592,7 @@ function FileRow({ file, onOpen }: { file: SpaceFileMeta; onOpen: () => void }) 
 function StatusPill({ fixture, face }: { fixture: UnifiedFixture; face: FaceEntry }) {
   const rentable = isRentable(fixture);
   const ds = displayStatus(face);
-  const ring = rentable ? displayTop()[ds] : noRentableTop();
+  const ring = rentable ? colorEstado()[ds] : noRentableTop();
   const meta = STATUS_META[ds];
   return (
     <span
@@ -2038,11 +2412,11 @@ function pinDe(): Record<DisplayStatus, { punto: string; texto: string; palabra:
   free:        { punto: rangeTop().libre,   texto: "var(--libre-txt)",   palabra: "Libre" },
   active:      { punto: rangeTop().tomado,  texto: "var(--ink-2)",   palabra: "Activo" },
   expiring:    { punto: rangeTop().parcial, texto: "var(--ocupado-txt)", palabra: "Por vencer" },
-  committed:   { punto: displayTop().committed, texto: "var(--ink-2)", palabra: "Contratado" },
+  committed:   { punto: colorEstado().committed, texto: "var(--ink-2)", palabra: "Contratado" },
   expired:     { punto: rangeTop().tomado,  texto: "var(--ocupado-txt)", palabra: "Vencido" },
   no_contract: { punto: rangeTop().tomado,  texto: "var(--ocupado-txt)", palabra: "Sin contrato" },
-  reserved:    { punto: displayTop().reserved, texto: "var(--ink-2)", palabra: "Reservado" },
-  maintenance: { punto: displayTop().maintenance, texto: "var(--ink-3)", palabra: "Mantenim." },
+  reserved:    { punto: colorEstado().reserved, texto: "var(--ink-2)", palabra: "Reservado" },
+  maintenance: { punto: colorEstado().maintenance, texto: "var(--ink-3)", palabra: "Mantenim." },
   };
 }
 
@@ -2284,55 +2658,24 @@ function SpacesTable({
   );
 }
 
-/** Un espacio libre, como pastilla: el código y —si se libera adentro del
- *  periodo— desde cuándo.
- *
- *  Se toca y entra al contrato, igual que tocarlo en el plano. Es la misma
- *  acción por dos caminos a propósito: el plano contesta «dónde queda» y la
- *  lista contesta «cuáles hay», y según cuál de las dos preguntas traiga el
- *  proveedor uno arranca por un lado o por el otro.
- *
- *  El que se libera adentro del periodo va en naranja y con su fecha. No se
- *  esconde: es inventario vendible —«te lo puedo dar desde el 25»— y esconderlo
- *  es dejar de vender cinco espacios de veinte. */
-function ChipEspacio({
-  code, desde, puesto, onClick,
-}: {
-  code: string;
-  desde?: Date;
-  /** Ya está en el contrato que se está armando. */
-  puesto: boolean;
-  onClick: () => void;
-}) {
-  const entra = desde !== undefined;
-  return (
-    <button
-      type="button"
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
-      title={puesto
-        ? `Sacar ${code} del contrato`
-        : entra
-        ? `Sumar ${code} al contrato · se libera el ${fechaEnCurso(toISODate(desde))}`
-        : `Sumar ${code} al contrato`}
-      style={{
-        display: "inline-flex", alignItems: "baseline", gap: 4,
-        padding: "2px 6px", borderRadius: "var(--r-xs)", cursor: "pointer",
-        fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 12,
-        letterSpacing: "0.02em", lineHeight: 1.5,
-        border: `1px solid ${puesto ? "var(--ink-1)" : entra ? "var(--entra-borde)" : "var(--libre-borde)"}`,
-        background: puesto ? "var(--ink-1)" : entra ? "var(--entra-suave)" : "var(--libre-suave)",
-        color: puesto ? "#fff" : entra ? "var(--entra-txt)" : "var(--libre-txt)",
-      }}
-    >
-      {code}
-      {entra && (
-        <span style={{ fontFamily: "var(--font-sans)", fontWeight: 500, fontSize: 10 }}>
-          {fechaEnCurso(toISODate(desde))}
-        </span>
-      )}
-    </button>
-  );
-}
+/* LAS PASTILLAS DE CÓDIGO (`ChipEspacio`) Y LOS ESTILOS DE LA TARIFA SE FUERON.
+   Las pastillas colgaban de cada fila de la tarifa —«Isla · 3 · $1.200.000» y
+   debajo `ISL-04 ISL-05 ISL-06`— y contestaban «cuáles son». En la hoja de D la
+   contesta el propio plano: los veintitrés espacios llevan su código escrito
+   encima del mueble, y pasar el mouse por la fila de la tarifa APAGA la sala y
+   deja encendidos los de ese tipo. Es la misma respuesta, en el lugar donde
+   además se toca, y sin repetir veintitrés códigos que ya están dibujados
+   —«si dos elementos dicen el mismo dato, uno sobra»—.
+
+   Con ellas se fue el panel «Qué está libre», que era esas mismas pastillas
+   mudadas de columna para tapar un desnivel entre dos columnas de alto
+   distinto. La rejilla de D no tiene desnivel: los cuatro paneles alinean fila
+   con fila.
+
+   `celdaTarifa` y `pieTarifa` eran estilos en línea de la tabla; ahora la tabla
+   la viste `vender.css`, que es donde el pie puede declarar que no envuelve y
+   las columnas su ancho. */
+
 
 // ─── La franja de cifras ─────────────────────────────────────────────────────
 
@@ -2410,19 +2753,39 @@ const botonBarra: React.CSSProperties = {
   display: "inline-flex", alignItems: "center", gap: 6,
   height: 26, padding: "0 10px", borderRadius: "var(--r-md)",
   border: "1px solid var(--line)", background: "var(--surface)",
-  color: "var(--ink-2)", fontSize: 12, fontWeight: 500,
+  color: "var(--ink-2)", fontSize: "var(--t-xs)", fontWeight: 500,
   fontFamily: "inherit", cursor: "pointer", whiteSpace: "nowrap",
 };
 
-const celdaTarifa: React.CSSProperties = {
-  padding: "3.5px 0", borderBottom: "1px solid var(--line-soft)",
-  fontSize: 13, height: 22, color: "var(--ink-1)",
-};
-
-const pieTarifa: React.CSSProperties = {
-  borderTop: "1px solid var(--line-strong)", paddingTop: 6,
-  color: "var(--ink-3)", fontSize: 12,
-};
+/** La lectura del cursor de la escalera, en el encabezado del panel 02.
+ *
+ *  Es un componente con su propio estado y una función registrada por `ref`:
+ *  `Libera` la llama en cada movimiento del cursor y sólo se vuelve a pintar
+ *  este renglón. Con la lectura como estado de la pantalla, arrastrar el mouse
+ *  por la escalera repintaría el plano entero treinta veces por segundo.
+ *
+ *  «el 26 de sep», con un espacio normal: la caja de ancho fijo la lleva SÓLO
+ *  la cifra —tabular, para que no baile al mover el cursor— y las palabras van
+ *  en la familia de texto. Entera en mono se leía «el 26  de  sep». */
+function Lectura({
+  registrar,
+}: {
+  registrar: React.MutableRefObject<((dia: string, n: number) => void) | null>;
+}) {
+  const [v, setV] = useState<{ dia: string; n: number } | null>(null);
+  useEffect(() => {
+    registrar.current = (dia, n) => setV((x) => (x && x.dia === dia && x.n === n ? x : { dia, n }));
+    return () => { registrar.current = null; };
+  }, [registrar]);
+  if (!v) return null;
+  const [cifra, ...mes] = v.dia.split(" ");
+  return (
+    <p className="lectura">
+      si arrancás el <b><span className="dig">{cifra}</span> de {mes.join(" ")}</b>
+      {" → "}<b className="n dig">{v.n}</b> libres
+    </p>
+  );
+}
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
@@ -2534,26 +2897,31 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  la barra y se cambia de a ratos. */
   const [periodoAbierto, setPeriodoAbierto] = useState(false);
 
-  const selectFixture = (f: UnifiedFixture | null, point?: MapAnchor) => {
+  const selectFixture = (f: UnifiedFixture | null, point?: MapAnchor, cara: "A" | "B" = "A") => {
     setSelected(f);
     // En Vender el popover sobra: la ficha de la derecha ya dice todo lo que
     // ese globito decía, y encima tapa el mapa que se está mirando.
     setAnchor(modoEfectivo === "vender" ? null : point ?? null);
     setDetailFull(false);
-    setDetailFace("A");
+    setDetailFace(cara);
     setCerrado(null);
 
     // En Vender tocar un espacio lo SUMA al contrato; tocarlo de nuevo lo
     // saca. Antes reemplazaba la selección, y con eso un contrato sobre tres
     // puntas había que tipearlo tres veces. Lo que no se alquila no entra —la
-    // ficha explica por qué—, y una góndola doble entra por su cara A: la B se
-    // elige en el renglón, que es donde se ve cuál se está vendiendo.
+    // ficha explica por qué—.
+    //
+    // Por CARA y no por mueble: en la hoja de D cada cara de una góndola doble
+    // tiene su media tapa, su rótulo y su caja de impacto, así que tocar la
+    // mitad de atrás suma la cara de atrás. Antes entraba siempre la A y la B
+    // había que ir a buscarla al renglón del contrato — el renglón sigue
+    // teniendo sus dos interruptores, pero ya no es el único camino.
     if (modoEfectivo !== "vender" || !f) return;
     if (!isRentable(f)) { setEnContrato([]); return; }
     setEnContrato((lista) =>
-      lista.some((x) => x.id === f.id)
-        ? lista.filter((x) => x.id !== f.id)
-        : [...lista, { id: f.id, face: "A" }],
+      lista.some((x) => x.id === f.id && x.face === cara)
+        ? lista.filter((x) => !(x.id === f.id && x.face === cara))
+        : [...lista, { id: f.id, face: cara }],
     );
   };
 
@@ -2589,6 +2957,46 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
         .filter((x): x is { fixture: UnifiedFixture; face: "A" | "B" } => x !== null),
     [enContrato, fixtures],
   );
+
+  /** Las llaves `${fixtureId}-${cara}` de lo que va en el contrato. Es el
+   *  idioma con el que el plano, la tarifa, la escalera y la ficha nombran una
+   *  cara: una sola llave para las cuatro piezas es lo que permite que el
+   *  resaltado sea una sola función y que los conteos no se contradigan. */
+  const clavesDelContrato = useMemo(
+    () => espaciosDelContrato.map((e) => `${e.fixture.id}-${e.face}`),
+    [espaciosDelContrato],
+  );
+
+  /** Qué tipos de tarifa toca el contrato, para marcar sus filas en la tabla. */
+  const tiposDelContrato = useMemo(
+    () => new Set(espaciosDelContrato.map((e) => rateTypeOf(e.fixture))),
+    [espaciosDelContrato],
+  );
+
+  /** EL RESALTADO. Apaga la sala al 20 % y enciende los muebles de los que se
+   *  está hablando, desde una fila de la tarifa, un chip de la escalera o una
+   *  fila del contrato. Una sola función para las tres.
+   *
+   *  Es imperativa a propósito: el apagado es CSS sobre los hijos de la escena
+   *  y el encendido un `classList.toggle` sobre nodos que ya existen. Con
+   *  estado de React, pasar el mouse por una fila volvería a pintar ciento seis
+   *  prismas por cada píxel que se mueve el mouse. */
+  const resaltarPlano = useRef<((claves: string[] | null) => void) | null>(null);
+  const destacar = useCallback((claves: string[] | null) => {
+    resaltarPlano.current?.(claves);
+    const set = new Set(claves ?? []);
+    document.querySelectorAll<HTMLElement>(".eitem[data-clave]").forEach((el) => {
+      el.classList.toggle("hl", set.has(el.dataset.clave ?? ""));
+    });
+  }, []);
+
+  /** La lectura del cursor de la escalera, que vive en el encabezado del panel
+   *  02. `Libera` la escribe por acá en vez de subirla como estado: mover el
+   *  cursor no puede volver a pintar la pantalla entera. */
+  const lecturaRef = useRef<((dia: string, n: number) => void) | null>(null);
+  const escribirLectura = useCallback((dia: string, n: number) => {
+    lecturaRef.current?.(dia, n);
+  }, []);
 
 
   const closeDetail = () => {
@@ -2730,7 +3138,11 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
 
   const [mapQuery, setMapQuery] = useState("");
   const [mapFilter, setMapFilter] = useState<MapFilter>("todos");
-  const [mapCategoria, setMapCategoria] = useState<string | null>(null);
+  /* El filtro por TIPO de espacio se fue con las pastillas de código: en la
+     hoja de D, pasar el mouse por una fila de la tarifa APAGA la sala y deja
+     encendidos los muebles de ese tipo, que es la misma pregunta contestada
+     sin dejar la pantalla en un estado que después hay que acordarse de
+     deshacer. El filtro de texto del plano sigue vivo, en Supervisar. */
   /** Period the map answers for; null = today. */
   const [mapRange, setMapRange] = useState<DateRange | null>(null);
 
@@ -2766,18 +3178,12 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   // ── Map search / status filter (per rentable face) ──
   const mapMatch = useMemo<MapMatch | null>(() => {
     const q = normalizeText(mapQuery.trim());
-    if (!q && mapFilter === "todos" && !mapCategoria) return null;
+    if (!q && mapFilter === "todos") return null;
     const faceFlags = new Map<string, boolean[]>();
     let count = 0;
     fixtures.forEach((f) => {
-      // Por tipo de TARIFA y no por familia: la fila que se toca dice «Isla
-      // · $1.200.000», así que filtrar por «Muebles» —la familia a la que la
-      // isla pertenece— dejaría en el plano bateas y muebles que no son lo
-      // que se pidió. El rótulo y el filtro tienen que nombrar lo mismo.
-      const deLaCategoria = !mapCategoria || rateTypeOf(f) === mapCategoria;
       const flags = commercialFacesOf(f).map((entry) => {
-        const ok = deLaCategoria
-          && (!q || faceMatchesQuery(entry, q))
+        const ok = (!q || faceMatchesQuery(entry, q))
           && faceMatchesFilter(entry, mapFilter);
         if (ok) count++;
         return ok;
@@ -2785,7 +3191,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       faceFlags.set(f.id, flags);
     });
     return { faceFlags, count };
-  }, [fixtures, mapQuery, mapFilter, mapCategoria]);
+  }, [fixtures, mapQuery, mapFilter]);
 
   // La lista de precios de la sede: qué familias hay, cuántas caras de cada una
   // están libres en el periodo, cuántas se liberan adentro, y a cuánto sale.
@@ -2802,20 +3208,35 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     if (!mapRange) return [];
     const acum = new Map<string, {
       libres: Disponible[]; parciales: Disponible[]; total: number; tarifa: number | null;
+      /** Las llaves `id-cara` de este tipo que se pueden ofrecer: las que el
+       *  resaltado enciende cuando el mouse pasa por la fila. Lo tomado no
+       *  entra — no es lo que se está mostrando. */
+      claves: string[];
     }>();
     fixtures.forEach((f) => {
       const cat = rateTypeOf(f);
       const ref = referenceRateFor(referenceRates, f.sede || sede, cat);
       commercialFacesOf(f).forEach((face) => {
-        const e = acum.get(cat) ?? { libres: [], parciales: [], total: 0, tarifa: ref };
+        const e = acum.get(cat)
+          ?? { libres: [], parciales: [], total: 0, tarifa: ref, claves: [] };
         const a = rangeAvailability(face, mapRange.from, mapRange.to);
+        const clave = `${f.id}-${face.face}`;
+        // Lo que ya entró al contrato DEJA DE ESTAR LIBRE, acá y en el pie y en
+        // la clave del plano: son la misma cuenta mirada tres veces.
         if (a === "libre") {
-          e.libres.push({ code: codigoVisible(face), fixture: f, face: face.face });
+          // El conteo NO cuenta lo que ya entró al contrato; el resaltado SÍ lo
+          // enciende: la fila dice «de este tipo, esto es lo que hay», y lo que
+          // uno acaba de tomar es parte de esa respuesta —se ve en tinta.
+          if (!clavesDelContrato.includes(clave)) {
+            e.libres.push({ code: codigoVisible(face), fixture: f, face: face.face });
+          }
+          e.claves.push(clave);
         } else if (a === "parcial") {
           e.parciales.push({
             code: codigoVisible(face), fixture: f, face: face.face,
             desde: primerDiaLibre(face, mapRange.from, mapRange.to),
           });
+          e.claves.push(clave);
         }
         e.total++;
         if (e.tarifa === null) e.tarifa = ref;
@@ -2824,7 +3245,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     });
     return [...acum].map(([cat, v]) => ({ cat, ...v }))
       .sort((a, b) => (b.tarifa ?? -1) - (a.tarifa ?? -1));
-  }, [fixtures, mapRange, referenceRates, sede]);
+  }, [fixtures, mapRange, referenceRates, sede, clavesDelContrato]);
 
   // ── KPI computation (per rentable face — doubles count as 2 units) ──
   // Buckets use displayStatus() so KPIs, Atención, map chips and table agree.
@@ -2922,6 +3343,30 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     });
     return { libres, parciales, tomados };
   }, [fixtures, mapRange]);
+
+  /** El mismo recuento, DESCONTANDO lo que ya entró al contrato que se está
+   *  armando. Es el que ve la clave del plano y el pie de la tarifa en Vender:
+   *  un espacio que uno acaba de meter al contrato no se le puede seguir
+   *  ofreciendo al proveedor como libre. Supervisar sigue viendo el crudo, que
+   *  es de lo que ese tablero habla. */
+  const tallyVender = useMemo(() => {
+    if (!mapRange) return { libres: 0, parciales: 0, tomados: 0 };
+    let libres = 0, parciales = 0, tomados = 0;
+    fixtures.forEach((f) => {
+      commercialFacesOf(f).forEach((face) => {
+        // Lo que está en el contrato no es libre NI tomado: se cuenta aparte,
+        // en el quinto estado de la clave. Sumarlo a «tomado» hacía que meter
+        // un espacio al contrato subiera el contador de lo que no se puede
+        // vender, que es lo contrario de lo que acaba de pasar.
+        if (clavesDelContrato.includes(`${f.id}-${face.face}`)) return;
+        const a = rangeAvailability(face, mapRange.from, mapRange.to);
+        if (a === "libre") libres++;
+        else if (a === "parcial") parciales++;
+        else tomados++;
+      });
+    });
+    return { libres, parciales, tomados };
+  }, [fixtures, mapRange, clavesDelContrato]);
 
   // ── Montaje: lo que hay que mirar ────────────────────────────────────────
   //
@@ -3060,27 +3505,21 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     return t.replace(",", "");
   }, []);
 
-  /** La tarjeta del plano. Es la MISMA en los dos modos —el mapa no cambia
-   *  porque cambie para qué estás mirándolo—; sólo cambian el subtítulo y las
-   *  palabras de la clave, porque la pregunta que se le hace sí cambia.
+  /** La tarjeta del plano DE SUPERVISAR. El mapa es el mismo componente en los
+   *  dos modos —no cambia porque cambie para qué lo estás mirando— pero el
+   *  panel que lo enmarca sí: en Vender es el panel `01` de la hoja (más
+   *  abajo), con la clave de cinco estados y las herramientas de acercamiento;
+   *  acá es una tarjeta de una fila, con el filtro del plano al costado.
+   *
+   *  Supervisar NO se rediseña en este PR: esta tarjeta queda como estaba.
    *
    *  No lleva alto: lo pone el lienzo, que se mide con la proporción del plano
    *  de la sede. Fijarlo dejaba medio panel en blanco alrededor de un dibujo
-   *  chico.
-   *
-   *  El `flex` lo pone quien la llama, y no es un detalle: en Supervisar la
-   *  tarjeta es hija de una FILA —`1 1 480px` es ancho, y crece— y en Vender es
-   *  hija de una COLUMNA, donde ese mismo valor es ALTO. Con 480 px de alto
-   *  base y `overflow: hidden`, un plano de 1,7:1 sobre 1450 px de columna pide
-   *  850 y el dibujo se cortaba abajo. En columna la tarjeta se mide con su
-   *  contenido: `0 0 auto`. */
+   *  chico. */
   const tarjetaMapa = (flex: React.CSSProperties["flex"]) => (
         <Card style={{ position: "relative", flex, minWidth: 0 }}>
           <CardHeader
             title={`Piso de ${sede}`}
-            sub={modoEfectivo === "vender"
-              ? `${kpis.total} comercializables · ${fixtures.length} muebles`
-              : undefined}
             right={
               <>
                 {/* El filtro estaba arriba, en la franja de controles, junto a
@@ -3131,25 +3570,23 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                     </button>
                   )}
                 </div>
-                <MapLegend range={mapRange} tally={rangeTally} modo={modoEfectivo} />
+                <MapLegend tally={rangeTally} modo="supervisar" />
               </>
             }
           />
 
           <div style={{ padding: "0 14px 12px", display: "flex" }}>
-            <IsoMap
-              fixtures={fixtures}
-              /* En Vender se marcan TODOS los del contrato; en Supervisar, el
-                 que se está mirando. */
-              selectedIds={modoEfectivo === "vender"
-                ? espaciosDelContrato.map((e) => e.fixture.id)
-                : selected ? [selected.id] : []}
-              onSelect={selectFixture}
-              match={mapMatch}
-              range={mapRange}
-              rotulos={modoEfectivo === "vender" ? "todos" : "elegido"}
-              enfocar={modoEfectivo !== "vender"}
-            />
+            {mapRange && (
+              <IsoMap
+                fixtures={fixtures}
+                /* El que se está mirando, por su cara. */
+                selectedKeys={selected ? [`${selected.id}-${detailFace}`] : []}
+                onSelect={selectFixture}
+                match={mapMatch}
+                range={mapRange}
+                rotulos="elegido"
+              />
+            )}
           </div>
 
           {/* Quick look, anchored to the fixture. Hidden once the full
@@ -3170,128 +3607,170 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
         </Card>
   );
 
-  /** El panel de tarifas de Vender: qué hay de cada tipo, cuánto entra en el
-   *  periodo, y a cuánto sale.
+  /* ══ LA HOJA DE VENDER · la composición de D ═══════════════════════════════
+     Cuatro paneles numerados 01 · 02 · 03 · 04 con el conector, el plano
+     arriba a la izquierda, la escalera debajo, el contrato a la derecha con
+     lugar fijo y la tarifa abajo. Los cuatro alinean fila con fila y la hoja
+     entera cabe en la ventana: sin scroll de documento y sin nada escondido
+     adentro de un panel.
+     Referencia: `outputs/vender/opciones/D-fusion/index.html`.             */
+
+  /** 01 · EL PISO.
    *
-   *  Está en la pantalla de vender y no en un modal porque es la respuesta a
-   *  «¿qué le ofrezco?». Tenerlo detrás de un botón obligaba a abrir, mirar,
-   *  cerrar y volver a mirar el plano — cuatro gestos para un dato que se usa
-   *  en cada llamada. */
-  /** Las pastillas de un tipo: primero lo libre todo el periodo, después lo
-   *  que se libera adentro, con su fecha. */
-  const chipsDe = (g: { libres: Disponible[]; parciales: Disponible[] }) =>
-    [...g.libres, ...g.parciales].map((d) => (
-      <ChipEspacio
-        key={`${d.fixture.id}-${d.face}`}
-        code={d.code}
-        desde={d.desde}
-        onClick={() => alternarCara(d.fixture.id, d.face)}
-        puesto={enContrato.some((x) => x.id === d.fixture.id && x.face === d.face)}
-      />
-    ));
+   *  Encabezado: número, título, cuántos muebles, y la clave de CINCO estados
+   *  con sus conteos. Lienzo: el plano, con las herramientas de acercamiento
+   *  —que son lo que hace verificable la promesa del rótulo («mide 10,5 px a
+   *  todo acercamiento»)—. */
+  const panelPlano = mapRange && (
+    <section className="vp" style={{ gridArea: "1 / 1" }}>
+      <header>
+        <span className="ojo">01</span>
+        <h2>Piso de {sede}</h2>
+        <span className="sub">{fixtures.length} muebles</span>
+        <div className="der">
+          <MapLegend tally={tallyVender} modo="vender" enContrato={espaciosDelContrato.length} />
+        </div>
+      </header>
+      <div className="lienzo">
+        <IsoMap
+          fixtures={fixtures}
+          selectedKeys={clavesDelContrato}
+          onSelect={selectFixture}
+          match={mapMatch}
+          range={mapRange}
+          rotulos="todos"
+          enfocar={false}
+          herramientas
+          llenar
+          resaltar={resaltarPlano}
+        />
+      </div>
+    </section>
+  );
 
-  /** Los códigos sólo mientras no hay contrato armado: ahí la hoja de la
-   *  derecha está vacía y la pregunta es cuáles hay. Con la ficha abierta la
-   *  pregunta ya es otra y los códigos la empujarían fuera de la pantalla. */
-  const conCodigos = espaciosDelContrato.length === 0 && !cerrado;
+  /** 02 · CUÁNDO SE LIBERA CADA ESPACIO.
+   *
+   *  La escalera A·4 entera, con la lectura del cursor chica y en mono a la
+   *  derecha del encabezado (pedido del dueño, 2026-09-07). La lectura la
+   *  escribe `Lectura`, que es un componente propio con su estado: mover el
+   *  cursor por la escalera no puede volver a pintar la pantalla. */
+  const panelEscalera = mapRange && (
+    <section className="vp conect" style={{ gridArea: "2 / 1" }}>
+      <header>
+        <span className="ojo">02</span>
+        <h2>Cuándo se libera cada espacio</h2>
+        <div className="der">
+          <Lectura registrar={lecturaRef} />
+        </div>
+      </header>
+      <div className="graf">
+        <Libera
+          fixtures={fixtures}
+          facesOf={commercialFacesOf}
+          tipoDe={(f) => rateTypeLabel(rateTypeOf(f))}
+          desde={mapRange.from}
+          hasta={mapRange.to}
+          temporadas={temporadasDelPeriodo}
+          onLectura={escribirLectura}
+          onResaltar={destacar}
+        />
+      </div>
+    </section>
+  );
 
+  /** 04 · TARIFA DE REFERENCIA.
+   *
+   *  Está en la pantalla y no en un modal porque es la respuesta a «¿qué le
+   *  ofrezco?»: detrás de un botón obligaba a abrir, mirar, cerrar y volver al
+   *  plano — cuatro gestos para un dato que se usa en cada llamada.
+   *
+   *  LOS CONTEOS SE DERIVAN, NO SE ESCRIBEN. La columna «Libres · entran», el
+   *  pie y la clave del plano son la misma cuenta mirada tres veces, así que
+   *  un espacio que entra al contrato deja de estar libre en los tres lugares
+   *  a la vez.
+   *
+   *  Pasar el mouse por una fila APAGA LA SALA y enciende los muebles de ese
+   *  tipo (los libres y los que se liberan). Y debajo de cada tipo van las
+   *  pastillas de código de lo que está libre, como antes del PR 2 (el dueño
+   *  las pidió de vuelta, 2026-09-07): dicen CUÁLES son sin tocar el plano,
+   *  y pasar el mouse por una enciende ESE mueble. Sólo mientras no hay
+   *  contrato armado: con la ficha abierta la pregunta ya es otra. */
+  const conCodigos = espaciosDelContrato.length === 0;
   const panelTarifas = (
-    <Card style={{ flex: "1 1 auto", minHeight: 0 }}>
-      <CardHeader title="Tarifa de referencia" right={<span>al mes</span>} />
-      <div style={{ padding: "0 15px 12px", overflowY: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+    <section className="vp conect" style={{ gridArea: "2 / 2" }}>
+      <header>
+        <span className="ojo">04</span>
+        <h2>Tarifa de referencia</h2>
+        <div className="der"><span className="vpill">al mes</span></div>
+      </header>
+      <div className="tabla">
+        <table>
           <thead>
             <tr>
-              {[
-                { t: "Tipo de espacio" },
-                { t: "Libres · entran", w: 92, der: true },
-                { t: "Tarifa", w: 96, der: true },
-              ].map((c) => (
-                <th
-                  key={c.t}
-                  style={{
-                    width: c.w, padding: "0 0 5px", textAlign: c.der ? "right" : "left",
-                    fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 9.5,
-                    letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-3)",
-                    borderBottom: "1px solid var(--line)", whiteSpace: "nowrap",
-                  }}
-                >
-                  {c.t}
-                </th>
-              ))}
+              <th scope="col">Tipo de espacio</th>
+              <th scope="col" className="der2 c2">Libres · entran</th>
+              <th scope="col" className="der2 c3">Tarifa</th>
             </tr>
           </thead>
           <tbody>
-            {/* Tocar una familia la aísla en el plano. Es lo que hacían los
-                chips de «lo que queda en este periodo», que vivían sueltos
-                arriba de la pantalla, lejos de los números que explicaban.
-                Acá el filtro está SOBRE el dato: se lee «Isla · 3 libres ·
-                $1.200.000», se toca, y el plano se queda sólo con las islas. */}
-            {porCategoria.map(({ cat, libres, parciales, tarifa }) => {
-              const activa = mapCategoria === cat;
-              const cuantas = libres.length + parciales.length;
+            {porCategoria.map(({ cat, libres, parciales, tarifa, claves }) => {
+              const chips = conCodigos ? [...libres, ...parciales] : [];
               return (
               <Fragment key={cat}>
               <tr
-                onClick={() => setMapCategoria(activa ? null : cat)}
-                title={activa
-                  ? "Ver todos los tipos en el plano"
-                  : `Ver sólo ${rateTypeLabel(cat)} en el plano`}
-                style={{ cursor: "pointer", background: activa ? "var(--surface-2)" : undefined }}
+                className={[tiposDelContrato.has(cat) ? "mk" : "", chips.length ? "conchips" : ""].join(" ").trim() || undefined}
+                onMouseEnter={() => destacar(claves)}
+                onMouseLeave={() => destacar(null)}
               >
-                <td style={{
-                  ...celdaTarifa,
-                  fontWeight: activa ? 700 : 400,
-                  boxShadow: activa ? "inset 2px 0 0 var(--ink-1)" : undefined,
-                  paddingLeft: activa ? 8 : 0,
-                  borderBottom: conCodigos && cuantas > 0 ? "none" : celdaTarifa.borderBottom,
-                }}>
-                  {rateTypeLabel(cat)}
-                </td>
-                <td style={{
-                  ...celdaTarifa, textAlign: "right",
-                  borderBottom: conCodigos && cuantas > 0 ? "none" : celdaTarifa.borderBottom,
-                }}>
-                  <span style={{ color: libres.length === 0 ? "var(--ink-3)" : "var(--ink-2)" }}>
-                    {libres.length}
-                  </span>
+                <td>{rateTypeLabel(cat)}</td>
+                <td className="der2 cif">
+                  {libres.length === 0
+                    ? <span className="cero">0</span>
+                    : libres.length}
                   {parciales.length > 0 && (
                     <>
                       {" "}
                       <span
+                        className="entran"
                         title={`${parciales.length} se libera${parciales.length === 1 ? "" : "n"} adentro del periodo`}
-                        style={{ color: "var(--entra-txt)", fontWeight: 700 }}
                       >
                         +{parciales.length}
                       </span>
                     </>
                   )}
                 </td>
-                <td style={{
-                  ...celdaTarifa, textAlign: "right",
-                  borderBottom: conCodigos && cuantas > 0 ? "none" : celdaTarifa.borderBottom,
-                }}>
-                  {tarifa ? formatCOP(tarifa) : <span style={{ color: "var(--ink-vacio)" }}>sin tarifa</span>}
+                <td className="der2 cif">
+                  {tarifa ? formatCOP(tarifa) : <span className="cero">sin tarifa</span>}
                 </td>
               </tr>
-
-              {/* Los códigos de lo que está libre, debajo de su tipo.
-                  «Isla · 3» dice cuántas quedan y no CUÁLES, y para averiguarlo
-                  había que buscar los prismas verdes a ojo entre ciento seis
-                  muebles. Van acá y no en un panel aparte porque el panel
-                  aparte repetiría los mismos siete tipos con los mismos siete
-                  precios: es el mismo dato con una vuelta más de detalle.
-
-                  Sólo mientras no hay contrato armado. Después son ruido —lo
-                  que se necesita entonces es el formulario— y encima empujan
-                  la ficha fuera de la pantalla. */}
-              {conCodigos && cuantas > 0 && (
-                <tr>
-                  <td colSpan={3} style={{
-                    padding: "0 0 7px", borderBottom: "1px solid var(--line-soft)",
-                  }}>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                      {chipsDe({ libres, parciales })}
+              {chips.length > 0 && (
+                <tr
+                  className="chips"
+                  onMouseEnter={() => destacar(claves)}
+                  onMouseLeave={() => destacar(null)}
+                >
+                  <td colSpan={3}>
+                    <div className="chips-fila">
+                      {chips.map((d) => {
+                        const entra = d.desde !== undefined;
+                        const clave = `${d.fixture.id}-${d.face}`;
+                        return (
+                          <button
+                            key={clave}
+                            type="button"
+                            className={"chip" + (entra ? " chip--entra" : "")}
+                            title={entra
+                              ? `Sumar ${d.code} al contrato · se libera el ${fechaEnCurso(toISODate(d.desde as Date))}`
+                              : `Sumar ${d.code} al contrato`}
+                            onMouseEnter={() => destacar([clave])}
+                            onMouseLeave={() => destacar(claves)}
+                            onClick={(e) => { e.stopPropagation(); destacar(null); alternarCara(d.fixture.id, d.face); }}
+                          >
+                            {d.code}
+                            {entra && <span className="chip__f">{fechaEnCurso(toISODate(d.desde as Date))}</span>}
+                          </button>
+                        );
+                      })}
                     </div>
                   </td>
                 </tr>
@@ -3302,76 +3781,41 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           </tbody>
           <tfoot>
             <tr>
-              <td style={{ ...pieTarifa }}>
+              <td>
                 {kpis.total} espacio{kpis.total === 1 ? "" : "s"} comercializable{kpis.total === 1 ? "" : "s"}
               </td>
-              <td style={{ ...pieTarifa, textAlign: "right", color: "var(--ink-1)", fontWeight: 700 }}>
-                {rangeTally.libres}
-                {rangeTally.parciales > 0 && (
-                  <> <span style={{ color: "var(--entra-txt)" }}>+{rangeTally.parciales}</span></>
+              <td className="der2 cif">
+                {tallyVender.libres === 0
+                  ? <span className="cero">0</span>
+                  : tallyVender.libres}
+                {tallyVender.parciales > 0 && (
+                  <> <span className="entran">+{tallyVender.parciales}</span></>
                 )}
               </td>
-              <td style={{ ...pieTarifa, textAlign: "right", color: "var(--ink-1)", fontWeight: 700 }}>
-                {rangeTally.libres + rangeTally.parciales} al cerrar
+              <td className="der2 cif">
+                {tallyVender.libres + tallyVender.parciales} al cerrar
               </td>
             </tr>
           </tfoot>
         </table>
       </div>
-    </Card>
-  );
-
-  /** «Qué está libre», como panel propio.
-   *
-   *  Es el mismo contenido que cuelga de la lista de precios, mudado de
-   *  columna: con la ficha del contrato abierta la columna derecha mide medio
-   *  metro más que la izquierda, y ese desnivel dejaba la esquina de abajo a la
-   *  izquierda en gris. Los códigos van donde falta alto, que es también donde
-   *  sirven — se sigue eligiendo espacios con el contrato a medio llenar.
-   *
-   *  A todo el ancho de la columna las pastillas entran en una o dos filas por
-   *  tipo, así que ocupa menos que en la columna angosta y se lee de un golpe. */
-  const panelCodigos = (
-    <Card style={{ flex: "1 1 auto", minHeight: 0 }}>
-      <CardHeader
-        title="Qué está libre"
-        sub={`${rangeTally.libres + rangeTally.parciales} de ${kpis.total}`}
-        right={<span>tocá uno para sumarlo al contrato</span>}
-      />
-      <div style={{ padding: "0 15px 12px", overflowY: "auto" }}>
-        {porCategoria
-          .filter((g) => g.libres.length + g.parciales.length > 0)
-          .map((g) => (
-            <div
-              key={g.cat}
-              style={{
-                display: "flex", alignItems: "baseline", gap: 12,
-                padding: "6px 0", borderTop: "1px solid var(--line-soft)",
-              }}
-            >
-              <span style={{ fontSize: 13, color: "var(--ink-2)", width: 150, flexShrink: 0 }}>
-                {rateTypeLabel(g.cat)}
-              </span>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, flex: 1, minWidth: 0 }}>
-                {chipsDe(g)}
-              </div>
-              <span style={{
-                fontSize: 12, color: "var(--ink-3)", flexShrink: 0, whiteSpace: "nowrap",
-              }}>
-                {g.tarifa ? `${formatCOP(g.tarifa)} al mes` : "sin tarifa"}
-              </span>
-            </div>
-          ))}
-      </div>
-    </Card>
+    </section>
   );
 
   return (
     <div
-      style={{
-        flex: 1, overflowY: "auto", padding: "10px 12px 16px",
-        background: "var(--bg)",
-      }}
+      /* En Vender la pantalla es una HOJA: toma el alto que le deja la barra de
+         la aplicación y lo reparte entre las dos filas de la rejilla, sin
+         scroll de documento y sin esconder nada adentro de un panel (la única
+         válvula declarada es la ficha del contrato del cuarto espacio en
+         adelante). En Supervisar sigue siendo un documento largo que rueda,
+         que es lo que esa pantalla es. */
+      className={modoEfectivo === "vender" && fixtures.length > 0 ? "vender" : undefined}
+      style={
+        modoEfectivo === "vender" && fixtures.length > 0
+          ? { padding: "10px 12px 12px", background: "var(--bg)" }
+          : { flex: 1, overflowY: "auto", padding: "10px 12px 16px", background: "var(--bg)" }
+      }
     >
       {/* ── La barra de la pantalla ────────────────────────────────────────
           Dónde estás, para qué estás, y de qué periodo se está hablando. Las
@@ -3385,6 +3829,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           El nombre de la sede tampoco es un hecho, es el estado de un control:
           se dice UNA vez, acá, y no vuelve a aparecer. */}
       <div
+        className="barra-pantalla"
         style={{
           display: "flex", alignItems: "center", gap: 0,
           marginBottom: 10, flexWrap: "wrap",
@@ -3406,7 +3851,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
             aria-label="Sede"
             style={{
               background: "transparent", border: "none", outline: "none",
-              fontFamily: "inherit", fontWeight: 700, fontSize: 17,
+              fontFamily: "inherit", fontWeight: 700, fontSize: "var(--t-md)",
               letterSpacing: "-0.01em", color: "var(--ink-1)", cursor: "pointer",
               padding: 0,
             }}
@@ -3423,7 +3868,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               <option key={x} value={x}>{x}</option>
             ))}
           </select>
-          <span style={{ fontSize: 12, color: "var(--ink-3)", whiteSpace: "nowrap" }}>
+          <span style={{ fontSize: "var(--t-xs)", color: "var(--ink-3)", whiteSpace: "nowrap" }}>
             de {sedes.length}
             {" · "}
             {(fixturesBySede[sede] ?? []).length} mueble
@@ -3448,7 +3893,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                     borderBottom: `3px solid ${activo ? "var(--ink-1)" : "transparent"}`,
                     marginBottom: -1, background: "transparent",
                     cursor: "pointer", fontFamily: "inherit",
-                    fontSize: 14.5, fontWeight: activo ? 700 : 500,
+                    fontSize: "var(--t-base)", fontWeight: activo ? 700 : 500,
                     color: activo ? "var(--ink-1)" : "var(--ink-3)",
                     transition: "color .12s, border-color .12s",
                   }}
@@ -3456,7 +3901,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                   {label}
                   {badge > 0 && (
                     <span style={{
-                      fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 700,
+                      fontFamily: "var(--font-mono)", fontSize: "var(--t-xs)", fontWeight: 700,
                       color: "var(--ocupado-txt)",
                     }}>
                       {badge}
@@ -3483,7 +3928,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           style={{
             marginLeft: 20, display: "inline-flex", alignItems: "center", gap: 7,
             border: "none", background: "transparent", cursor: "pointer",
-            fontFamily: "inherit", fontSize: 13, color: "var(--ink-1)",
+            fontFamily: "inherit", fontSize: "var(--t-sm)", color: "var(--ink-1)",
             padding: "4px 0", borderBottom: `1px solid ${periodoAbierto ? "var(--ink-1)" : "var(--line-strong)"}`,
           }}
         >
@@ -3500,7 +3945,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
         </button>
 
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 13, color: "var(--ink-1)", fontWeight: 500, whiteSpace: "nowrap" }}>
+          <span style={{ fontSize: "var(--t-sm)", color: "var(--ink-1)", fontWeight: 500, whiteSpace: "nowrap" }}>
             {hoyLargo}
           </span>
           {isAdmin && (
@@ -3542,101 +3987,63 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       {fixtures.length === 0 ? (
         <EmptyDashboard sede={sede} isAdmin={isAdmin} onDisenarPlano={onDisenarPlano} />
       ) : modoEfectivo === "vender" ? (
-        /* Vender: el plano y la escalera a la izquierda, el contrato y las
-           tarifas a la derecha. Sin KPIs — para poner un precio no sirve la
-           ocupación de hoy, sirve ver qué hay libre en el periodo, cuándo se
-           suelta lo que falta y a cuánto sale. */
-        <ModoVender
-          espacios={espaciosDelContrato}
-          ultimo={selected}
-          onQuitar={quitarDelContrato}
-          onCambiarCara={alternarCara}
-          sede={sede}
-          rango={mapRange}
-          cerrado={cerrado}
-          panelTarifas={panelTarifas}
-          onGuardado={(parches, resumen) => {
-            // El JSON del layout es lo que pinta el mapa y responde la
-            // disponibilidad; sin esto el contrato existiría en la base y los
-            // espacios seguirían viéndose libres. Se aplican TODOS los parches
-            // en un solo `commit`: uno por espacio dispararía N guardados del
-            // layout, y el último pisaría a los anteriores.
-            if (parches.length > 0) {
-              const porMueble = new Map<string, { face: "A" | "B"; patch: Partial<FaceData> }[]>();
-              for (const p of parches) {
-                porMueble.set(p.fixtureId, [
-                  ...(porMueble.get(p.fixtureId) ?? []),
-                  { face: p.face, patch: p.patch },
-                ]);
+        /* Vender: la hoja de D. Cuatro paneles numerados, el plano y la
+           escalera a la izquierda, el contrato y la tarifa a la derecha, todo
+           en la ventana. Sin KPIs — para poner un precio no sirve la ocupación
+           de hoy, sirve ver qué hay libre en el periodo, cuándo se suelta lo
+           que falta y a cuánto sale. */
+        <div className="vender-hoja">
+          {panelPlano}
+          {panelEscalera}
+          <ModoVender
+            espacios={espaciosDelContrato}
+            ultimo={selected}
+            onQuitar={quitarDelContrato}
+            onCambiarCara={alternarCara}
+            onResaltar={destacar}
+            sede={sede}
+            rango={mapRange}
+            cerrado={cerrado}
+            onGuardado={(parches, resumen) => {
+              // El JSON del layout es lo que pinta el mapa y responde la
+              // disponibilidad; sin esto el contrato existiría en la base y los
+              // espacios seguirían viéndose libres. Se aplican TODOS los parches
+              // en un solo `commit`: uno por espacio dispararía N guardados del
+              // layout, y el último pisaría a los anteriores.
+              if (parches.length > 0) {
+                const porMueble = new Map<string, { face: "A" | "B"; patch: Partial<FaceData> }[]>();
+                for (const p of parches) {
+                  porMueble.set(p.fixtureId, [
+                    ...(porMueble.get(p.fixtureId) ?? []),
+                    { face: p.face, patch: p.patch },
+                  ]);
+                }
+                commit(
+                  fixtures.map((f) => {
+                    const suyos = porMueble.get(f.id);
+                    if (!suyos) return f;
+                    let siguiente = f;
+                    for (const { face, patch } of suyos) {
+                      siguiente = face === "B"
+                        ? { ...siguiente, faceB: { ...(siguiente.faceB ?? {}), ...patch } as FaceData }
+                        : { ...siguiente, ...patch };
+                    }
+                    return siguiente;
+                  }),
+                );
               }
-              commit(
-                fixtures.map((f) => {
-                  const suyos = porMueble.get(f.id);
-                  if (!suyos) return f;
-                  let siguiente = f;
-                  for (const { face, patch } of suyos) {
-                    siguiente = face === "B"
-                      ? { ...siguiente, faceB: { ...(siguiente.faceB ?? {}), ...patch } as FaceData }
-                      : { ...siguiente, ...patch };
-                  }
-                  return siguiente;
-                }),
-              );
-            }
-            setSelected(null);
-            setAnchor(null);
-            setEnContrato([]);
-            setSemilla(null);
-            setCerrado(resumen);
-          }}
-          semilla={semilla}
-          onCancelar={closeDetail}
-          onSeguir={() => setCerrado(null)}
-        >
-          <div style={{ flex: "1 1 520px", minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
-            {/* En columna: alto de su dibujo. Estirarla o encogerla es blanco
-                adentro o plano cortado; el desnivel lo absorbe el último panel. */}
-            {tarjetaMapa("0 0 auto")}
-
-            {/* ── Cuándo se libera cada espacio ────────────────────────────
-                La escalera. Contesta la pregunta con la que se negocia una
-                fecha de arranque —«¿cuánto tengo si empiezo el 26?»— que
-                ninguna cifra suelta contesta: «15 libres» es cierto hoy y
-                deja de serlo el martes.
-
-                No se dibuja si el periodo no tiene un solo cambio: una
-                escalera sin escalón es una línea recta con un título. */}
-            {mapRange && (
-              <Card style={{ height: 274, flex: "0 0 auto" }}>
-                <CardHeader
-                  title="Cuándo se libera cada espacio"
-                  sub={rangeTally.parciales > 0
-                    ? `de ${rangeTally.libres} disponibles hoy a ${rangeTally.libres + rangeTally.parciales} al cerrar el periodo`
-                    : `${rangeTally.libres} disponible${rangeTally.libres === 1 ? "" : "s"}, sin cambios en el periodo`}
-                  right={<span>{describeRange(mapRange)}</span>}
-                />
-                <div style={{ flex: 1, minHeight: 0, padding: "0 15px 12px", display: "flex", overflow: "hidden" }}>
-                  <Libera
-                    fixtures={fixtures}
-                    facesOf={commercialFacesOf}
-                    tipoDe={(f) => rateTypeLabel(rateTypeOf(f))}
-                    desde={mapRange.from}
-                    hasta={mapRange.to}
-                    temporadas={temporadasDelPeriodo}
-                  />
-                </div>
-              </Card>
-            )}
-
-            {/* Con la ficha abierta la columna derecha mide medio metro más
-                que ésta, y ese desnivel dejaba la esquina de abajo en gris. Los
-                códigos se mudan acá: donde falta alto, que es también donde
-                sirven —se sigue eligiendo espacios con el contrato a medio
-                llenar—. Es el último panel de la columna, así que es el que
-                absorbe la diferencia y deja las dos parejas abajo. */}
-            {!conCodigos && porCategoria.length > 0 && panelCodigos}
-          </div>
-        </ModoVender>
+              setSelected(null);
+              setAnchor(null);
+              setEnContrato([]);
+              setSemilla(null);
+              setCerrado(resumen);
+            }}
+            semilla={semilla}
+            onCancelar={closeDetail}
+            onSeguir={() => setCerrado(null)}
+          />
+          {panelTarifas}
+        </div>
       ) : (
         <>
           {/* ── La franja ──────────────────────────────────────────────────

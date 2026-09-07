@@ -1,0 +1,701 @@
+/* ============================================================================
+   RECABRA · VENDER — la forma de D («La fusión»)
+
+   Capa 3 del sistema: consume los tokens de `tema.css` y no define ninguno de
+   color propio salvo la familia `--pl-*`, que es la traducción de un estado a
+   las TRES CARAS de un prisma (tapa más clara · cara izquierda con el color de
+   identidad · cara derecha más oscura). No son colores nuevos: salen de los
+   cuatro validados.
+
+   Referencia exacta:
+   `features/diseno-interior/outputs/vender/opciones/D-fusion/index.html`.
+   Lo que acá se aparta de ese archivo está anotado con el porqué.
+
+   TODO cuelga de `.vender`. Supervisar, Montaje y el editor 3D comparten los
+   tokens y la tipografía, y no ven una sola de estas reglas: es la condición
+   del PR («`--con-*`, Supervisar, Montaje, Editor 3D: NO se rediseñan»).
+   ========================================================================== */
+
+.vender {
+  /* --- EL MARCO DE LA PANTALLA -------------------------------------------
+     La pantalla no tiene alto propio: toma el que le deja la barra de la
+     aplicación. Estos valores son todo lo que hay entre el borde y la hoja, y
+     en ventanas bajas se aprietan un punto (bloque `max-height:880px`), sin
+     mover ni una letra de la escala.
+
+     `--fila1` y `--fila2` son el PISO de cada fila de la rejilla: lo que
+     miden, apretadas, la ficha del contrato y la tabla de la tarifa. Si la
+     ventana no da para los dos pisos, el documento rueda; nunca esconde. */
+  --aire-v: 10px;
+  --fila1: 448px;
+  --fila2: 248px;
+
+  /* El plano: tres caras por estado. Los hex salen de los tokens, no de una
+     paleta nueva. `-i` izquierda · `-d` derecha · `-t` tapa. */
+  --pl-piso: var(--surface-2);
+  --pl-cod: var(--ink-1);
+  --pl-codsel: var(--accent-ink);
+  --pl-halosel: var(--ink-1);
+  /* El anillo de foco, EN TINTA. `tema.css` lo deja en `--signal-ink` para
+     todo el interior; en Vender la regla del dueño es más dura —un amarillo,
+     el del botón— y un anillo de teclado ámbar es un segundo amarillo. Es la
+     misma decisión de D (§5.6: «--ring en tinta: ni con foco de teclado hay un
+     segundo amarillo»), acotada a esta pantalla para no tocar las otras. */
+  --ring: var(--ink-1);
+
+  /* «En el contrato»: el quinto estado de la clave. Tinta, no un color más. */
+  --pl-ei: #232C33;
+  --pl-ed: #131A1F;
+  --pl-et: #46525B;
+
+  display: flex;
+  flex-direction: column;
+  /* Sin `gap`: la barra de la pantalla ya trae su propio margen abajo, y dos
+     separaciones sumadas dejarían la hoja diez píxeles más corta de lo que la
+     rejilla cree que mide. */
+  gap: 0;
+  padding: 8px 12px 8px;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+html[data-tema="oscuro"] .vender {
+  --pl-ei: #C6D2D6;
+  --pl-ed: #9FAEB5;
+  --pl-et: #E6EFF1;
+}
+
+/* --- LA HOJA -------------------------------------------------------------
+   El presupuesto de D, en proporción y no en píxeles: la hoja se queda con
+   todo el alto que deja la barra y lo reparte entre las dos filas en la misma
+   relación que tenía a 900 px (550 : 254), con un piso por fila.
+     fila 1 : fila 2 = 550 : 254, nunca menos de --fila1 / --fila2
+     ancho           = 1004 : 402                                          */
+.vender-hoja {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  gap: var(--aire-v);
+  grid-template-columns: 1004fr 402fr;
+  grid-template-rows: minmax(var(--fila1), 550fr) minmax(var(--fila2), 254fr);
+}
+
+/* La barra de la pantalla es lo único que D no tenía: su rail ERA la barra de
+   la aplicación. Acá hay dos, así que la de la pantalla va apretada en Vender
+   —dice exactamente lo mismo, con menos aire— y esos píxeles se los queda la
+   hoja, que es donde se trabaja. */
+.vender > .barra-pantalla { min-height: 40px !important; margin-bottom: 8px !important; }
+
+/* Un panel. Mismo blanco, misma línea de 1 px, misma esquina que el resto del
+   sistema: la jerarquía la dan el tamaño y la posición, no el borde. */
+.vp {
+  background: var(--surface);
+  border: var(--hair) solid var(--line);
+  border-radius: var(--r-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+  position: relative;
+}
+.vp > header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 11px 16px 7px;
+  flex: none;
+}
+.vp > header .der {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-width: 0;
+}
+.vp > header h2 {
+  font-family: var(--f-display);
+  font-weight: var(--peso-display);
+  letter-spacing: -0.022em;
+  font-size: var(--t-base);
+  line-height: 1.1;
+  margin: 0;
+  white-space: nowrap;
+  flex: none;
+}
+.vp > header .sub {
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* El número de panel, y el conector: una línea fina que baja del panel de
+   arriba al número del de abajo. No decora: dice que 02 se lee después de 01. */
+.ojo {
+  font-family: var(--f-mono);
+  font-size: var(--t-3xs);
+  letter-spacing: 0.2em;
+  color: var(--ink-4);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+}
+.ojo::after {
+  content: "";
+  width: 14px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.55;
+}
+.vp.conect::before {
+  content: "";
+  position: absolute;
+  left: 29px;
+  top: calc(var(--aire-v) * -1);
+  width: 1px;
+  height: var(--aire-v);
+  background: var(--brd-strong);
+}
+
+.vpill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
+  border: var(--hair) solid var(--brd);
+  font-size: var(--t-3xs);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* --- 01 · EL PLANO ------------------------------------------------------ */
+.vender .lienzo {
+  flex: 1;
+  min-height: 0;
+  padding: 0 14px 10px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+}
+.vender .lienzo > svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+/* Las herramientas del plano. Sin ellas, «tamaño constante en pantalla» sería
+   una promesa sin manera de probarla. */
+.herr {
+  position: absolute;
+  right: 20px;
+  top: 2px;
+  z-index: 3;
+  display: flex;
+  gap: 5px;
+}
+.herr button {
+  height: 28px;
+  min-width: 28px;
+  padding: 0 9px;
+  border-radius: var(--r-sm);
+  border: var(--hair) solid var(--brd);
+  background: var(--panel);
+  color: var(--ink-2);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: 1;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: color var(--dur-1), border-color var(--dur-1);
+}
+.herr button:hover {
+  color: var(--fg);
+  border-color: var(--brd-strong);
+}
+
+/* La clave: qué quiere decir cada color y cuántas caras hay de cada uno. */
+.clave {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  font-size: var(--t-xs);
+  color: var(--ink-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.clave i {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+  flex: none;
+  border: 1px solid;
+}
+.clave b {
+  font-family: var(--f-mono);
+  font-weight: 700;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+.clave span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.clave .sep {
+  width: 1px;
+  height: 15px;
+  background: var(--line);
+  flex: none;
+  padding: 0;
+}
+
+/* EL ROTULO SOBRE EL MUEBLE ————————————————————————————————————
+   Un <text> con dos <tspan>: el código y su fecha de liberación. Miden lo
+   mismo y se distinguen por peso y color. Interlineado en `em`: sigue al
+   cuerpo, que es constante EN PANTALLA (`--lbl` = px / escala, escrito por
+   `escribir()` en el grupo de la escena), así que las dos líneas no se pisan a
+   ningún acercamiento. Sin caja: el halo lo hace `paint-order:stroke`, así que
+   no hay un ancho fijo en px que pueda desbordar — es lo que cierra el
+   pendiente de los 7,6 px del PR 1. */
+.iso-escena { --lbl: var(--lbl-px); }
+.p-cod {
+  font-family: var(--f-mono);
+  font-weight: 700;
+  text-anchor: middle;
+  pointer-events: none;
+  font-size: var(--lbl);
+  letter-spacing: 0;
+  fill: var(--pl-cod);
+  paint-order: stroke;
+  stroke: var(--pl-piso);
+  stroke-width: calc(var(--lbl) * 0.30);
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.p-fec { fill: var(--entra-txt); font-weight: 500; }
+.p-cod[data-sel="1"] {
+  fill: var(--pl-codsel);
+  stroke: var(--pl-halosel);
+  stroke-width: calc(var(--lbl) * 0.42);
+}
+/* Los rótulos viven en una capa propia, dibujada DESPUÉS de los muebles: así
+   ningún prisma de adelante puede tapar media palabra. El clic no lo cobra el
+   rótulo — lo cobra el mueble (`.pl-hit`). */
+.rotulos { pointer-events: none; }
+.pl-hit { fill: transparent; stroke: none; }
+
+/* La pieza elegida pasa a tinta y su código se invierte. Las reglas de CSS le
+   ganan a los atributos de presentación del SVG, así que el color de cada cara
+   se sigue calculando una sola vez en el memo de la escena. */
+.vender .pz[data-sel="1"] .c-tapa { fill: var(--pl-et); }
+.vender .pz[data-sel="1"] .c-izq  { fill: var(--pl-ei); }
+.vender .pz[data-sel="1"] .c-der  { fill: var(--pl-ed); }
+.vender .pz[data-est="libre"] { cursor: pointer; }
+
+/* EL RESALTADO: pasar el mouse por una fila de la tarifa, por un chip de la
+   escalera o por una fila del contrato APAGA LA SALA y deja encendidos los
+   muebles de los que se está hablando. El apagado es CSS sobre los hijos
+   directos de la escena, no un repintado por JS. */
+.iso-escena > * { transition: opacity var(--dur-2) var(--ease); }
+.iso-escena[data-foco="1"] > * { opacity: 0.20; }
+.iso-escena[data-foco="1"] > .mk { opacity: 1; }
+.iso-escena[data-foco="1"] > .rotulos { opacity: 1; }
+.rotulos .p-cod { transition: opacity var(--dur-2) var(--ease); }
+.iso-escena[data-foco="1"] .rotulos .p-cod { opacity: 0.20; }
+.iso-escena[data-foco="1"] .rotulos .p-cod.mk { opacity: 1; }
+.vender .pz.mk .c-tapa { filter: brightness(1.08); }
+.vender .pz.mk .c-izq,
+.vender .pz.mk .c-der { filter: brightness(1.12); }
+.vender .pz:hover { filter: brightness(1.1); }
+
+/* --- 02 · LA ESCALERA ---------------------------------------------------- */
+/* La lectura, chica y en mono, a la derecha del encabezado (pedido del dueño,
+   2026-09-07: el titular grande de B se descartó). */
+.lectura {
+  font-family: var(--f-mono);
+  font-weight: 700;
+  font-size: var(--t-xs);
+  letter-spacing: 0;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--fg);
+  margin: 0;
+}
+/* «el 26 de sep», con un espacio normal: la caja de ancho fijo la lleva sólo
+   la cifra —para que no baile al mover el cursor— y las palabras siguen en la
+   familia de texto. Entera en mono se leía «el 26  de  sep». */
+.lectura .dig { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.lectura b { font-weight: 700; }
+.lectura .n { color: var(--libre-txt); }
+.vender .graf {
+  flex: 1;
+  min-height: 0;
+  padding: 0 14px 8px;
+  display: flex;
+}
+.vender .graf > .libera-caja { flex: 1; min-width: 0; min-height: 0; display: flex; }
+.vender .graf > .libera-caja > svg { width: 100%; height: 100%; display: block; }
+.vender .graf > .libera-caja > svg:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.gChip { cursor: default; }
+.gChip rect { fill: var(--entra-suave); stroke: var(--entra-borde); stroke-width: 1; }
+.gChip text { font-family: var(--f-mono); font-size: var(--t-2xs); font-weight: 700; fill: var(--entra-txt); text-anchor: middle; }
+.gChip:hover rect, .gChip.paso rect { stroke: var(--entra); stroke-width: 1.6; }
+
+/* --- 03 · EL CONTRATO ---------------------------------------------------
+   La ficha de E: filas mono, separador punteado, total grande, sellos.
+   La válvula: con dos y con tres espacios el panel cierra con aire y no
+   esconde nada; del cuarto en adelante rueda, y sólo él.
+   El aire de abajo lo pone el margen de `.acciones` y NO el relleno del panel:
+   así los 12 px se ven Y se cuentan como contenido —la ficha avisa antes de
+   romper— sin que el panel gane un solo píxel de alto. */
+.vender .cuerpo {
+  padding: 0 16px 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.espacios { display: flex; flex-direction: column; gap: 5px; }
+.eitem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  border: var(--hair) solid var(--line);
+  background: var(--surface-2);
+}
+.eitem.hl { border-color: var(--ink-1); background: var(--surface); }
+.eitem .cod {
+  font-family: var(--f-mono);
+  font-weight: 700;
+  font-size: var(--t-md);
+  letter-spacing: -0.01em;
+  min-width: 9ch;
+  flex: none;
+}
+/* Dos renglones exactos, y los dos con puntos suspensivos: una ubicación
+   larga no puede hacer crecer la fila —la ficha tiene que cerrar con tres
+   espacios adentro y 12 px de aire. */
+.eitem .d {
+  font-size: var(--t-2xs);
+  color: var(--ink-3);
+  line-height: 1.3;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.eitem .d > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* El valor es un campo, pero se lee como la cifra de la fila: mono, tabular,
+   700, alineado a la derecha. El borde sólo aparece cuando falta el dato. */
+.eitem .m {
+  width: 11ch;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: var(--r-xs);
+  border: var(--hair) solid transparent;
+  background: var(--surface);
+}
+.eitem .m.falta { border-color: var(--ocupado); }
+.eitem .m input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  text-align: right;
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--t-sm);
+  font-weight: 700;
+  color: var(--fg);
+}
+.eitem .m input:focus { box-shadow: none; }
+.eitem .m:focus-within { border-color: var(--ink-1); }
+.eitem .x {
+  width: 20px; height: 20px;
+  display: grid; place-items: center;
+  border-radius: var(--r-xs);
+  color: var(--ink-3);            /* 5,75:1 — era --ink-4 y daba 4,24 */
+  flex: none; font-size: var(--t-base); line-height: 1;
+  border: 0; background: none; cursor: pointer;
+}
+.eitem .x:hover { color: var(--ocupado-txt); background: var(--ocupado-suave); }
+.vender .pista { margin: 6px 0 0; font-size: var(--t-2xs); color: var(--ink-3); }
+.vender .pista b { font-weight: 600; color: var(--ink-2); border-bottom: 1px solid var(--line-strong); }
+.corte { border: 0; border-top: 1px dashed var(--brd); margin: 8px 0 6px; }
+.vender .campo { margin-bottom: 5px; }
+.vender .campo .rotulo { display: block; margin-bottom: 4px; }
+.vender .entrada {
+  border: var(--hair) solid var(--brd-control);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  padding: 6px 10px;
+  font-size: var(--t-base);
+  font-weight: 500;
+  color: var(--fg);
+  font-family: inherit;
+  min-height: 32px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  outline: none;
+}
+.vender .entrada.cif { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: var(--t-sm); }
+.vender .entrada:focus { border-color: var(--ink-1); box-shadow: 0 0 0 2px var(--panel-2); }
+.vender .par { display: flex; gap: 8px; }
+.vender .par > * { flex: 1; min-width: 0; }
+.vender .plazo {
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  color: var(--ink-3);
+  margin: 2px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+.vender .plazo.mal { color: var(--ocupado-txt); }
+.vender .total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 2px solid var(--ink-1);
+  padding-top: 7px;
+  margin-top: 8px;
+}
+.vender .total .n {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  font-size: var(--t-xl);
+  letter-spacing: -0.035em;
+  line-height: 1.12;
+}
+.cubre { display: flex; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
+.sello {
+  font-size: var(--t-3xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--libre-txt);
+  background: var(--libre-suave);
+  border: var(--hair) solid var(--libre-borde);
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
+}
+/* El botón se queda abajo, pero no pegado al filo: los 12 px de margen son la
+   holgura que la ficha necesita con dos espacios —y son los primeros que se
+   cuentan cuando el panel se queda corto, así que avisan antes de romper. */
+.acciones { margin-top: auto; padding-top: 8px; margin-bottom: 12px; }
+.vender .btn-principal {
+  display: block;
+  width: 100%;
+  border-radius: var(--r-md);
+  padding: 11px;
+  font-size: var(--t-base);
+  letter-spacing: 0.005em;
+}
+.btn2 {
+  display: block;
+  width: 100%;
+  text-align: center;
+  margin-top: 6px;
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+  padding: 4px;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+.btn2:hover { color: var(--fg); }
+.plazo-fila {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+}
+.plazo-fila .btn2 { width: auto; margin: 0; padding: 0; flex: none; text-align: right; }
+.vender .error-txt {
+  margin: 6px 0 0; font-size: var(--t-2xs); line-height: 1.4;
+  color: var(--ocupado-txt); background: var(--ocupado-suave);
+  border: var(--hair) solid var(--ocupado-borde);
+  border-radius: var(--r-sm); padding: 6px 8px;
+}
+
+/* --- 04 · LA TARIFA -----------------------------------------------------
+   El pie —N espacios comercializables · L +E · T al cerrar— tiene que verse
+   entero y sin rodar. Las columnas se separan 12 px para que «+5» y «20» no se
+   lean pegados («+520»). Las cifras no se tocan. */
+/* Con las pastillas de código la tabla puede medir más que su panel: rueda
+   adentro, con barra a la vista, y el pie (la respuesta a «¿cómo va la
+   sede?») queda pegado abajo. */
+.vender .tabla { padding: 0 16px 0; overflow-y: auto; min-height: 0; }
+/* El aire de abajo va en el pie y no en el contenedor: si no, lo que rueda
+   asoma por debajo del pie pegado. */
+.vender .tabla tfoot td { position: sticky; bottom: 0; background: var(--surface); padding-bottom: 9px; }
+.vender .tabla tr.conchips td { border-bottom: 0; }
+.vender .tabla tr.chips td { padding: 0 0 7px; border-bottom: var(--hair) solid var(--line-soft); }
+.vender .chips-fila { display: flex; flex-wrap: wrap; gap: 4px; }
+.vender .chip {
+  display: inline-flex; align-items: baseline; gap: 4px; padding: 1px 6px;
+  border-radius: var(--r-xs); cursor: pointer;
+  font-family: var(--f-mono); font-weight: 700; font-size: var(--t-2xs);
+  letter-spacing: 0.02em; line-height: 1.5;
+  border: var(--hair) solid var(--libre-borde); background: var(--libre-suave); color: var(--libre-txt);
+}
+.vender .chip--entra { border-color: var(--entra-borde); background: var(--entra-suave); color: var(--entra-txt); }
+.vender .chip:hover { border-color: currentColor; }
+.vender .chip__f { font-family: var(--f-text); font-weight: 500; font-size: var(--t-3xs); }
+.vender .tabla table { width: 100%; border-collapse: collapse; }
+.vender .tabla th {
+  font-size: var(--t-3xs);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  font-weight: 600;
+  text-align: left;
+  padding: 0 0 4px;
+  border-bottom: var(--hair) solid var(--line);
+  white-space: nowrap;
+}
+.vender .tabla td {
+  padding: 2px 0;
+  border-bottom: var(--hair) solid var(--line-soft);
+  font-size: var(--t-sm);
+  line-height: 1.25;
+}
+.vender .tabla th + th, .vender .tabla td + td { padding-left: 12px; }
+.vender .tabla .der2 { text-align: right; }
+.vender .tabla .cif { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.vender .tabla tfoot td {
+  border-bottom: 0;
+  border-top: var(--hair) solid var(--line-strong);
+  padding-top: 6px;
+  color: var(--ink-3);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+}
+.vender .tabla tfoot td.der2 { color: var(--fg); font-weight: 700; }
+.vender .tabla .entran { color: var(--entra-txt); font-weight: 700; }
+/* `--ink-3` y no `--ink-4`: el cero también se lee sobre la fila marcada
+   (`--panel-2` sobre la tarjeta), y ahí --ink-4 cae por debajo de 4,5:1. */
+.vender .tabla .cero { color: var(--ink-3); }
+.vender .tabla tr.mk td { background: var(--panel-2); }
+.vender .tabla .c2 { width: 107px; }
+.vender .tabla .c3 { width: 93px; }
+.vender .tabla tbody tr { cursor: default; }
+/* Por debajo de 1340 la columna de la izquierda se queda sin sitio para «23
+   espacios comercializables» y el panel escondía ancho: las dos columnas de
+   cifras ceden lo justo y la tabla vuelve a entrar entera. */
+@media (max-width: 1340px) {
+  .vender .tabla tfoot td:first-child { white-space: normal; }
+  .vender .tabla .c2 { width: 92px; }
+  .vender .tabla .c3 { width: 86px; }
+  .vender .tabla th + th, .vender .tabla td + td { padding-left: 8px; }
+}
+
+/* --- VENTANA BAJA (portátiles de 800 y de 768) --------------------------
+   La misma composición, la misma escala de letra, el mismo amarillo: lo que
+   baja es el aire. Cada valor de acá es un relleno o un interlineado, nunca un
+   cuerpo de la escala. */
+@media (max-height: 880px) {
+  .vender { --aire-v: 8px; --fila1: 430px; --fila2: 240px; padding: 8px 10px 8px !important; }
+  /* La barra de la pantalla es lo único que D no tenía: su rail era la barra
+     de la aplicación. Acá hay dos, así que en ventana baja ésta se aprieta —
+     sigue diciendo lo mismo, con menos aire. */
+  .vender > .barra-pantalla { min-height: 36px !important; margin-bottom: 6px !important; }
+  .vp > header { padding: 8px 14px 5px; }
+  .vender .lienzo { padding: 0 12px 8px; }
+  .vender .graf { padding: 0 12px 6px; }
+  .vender .cuerpo { padding: 0 14px 0; }
+  .espacios { gap: 5px; }
+  .eitem { padding: 5px 9px; }
+  .eitem .d { line-height: 1.22; }
+  .vender .pista { margin-top: 4px; }
+  .corte { margin: 6px 0 5px; }
+  .vender .campo { margin-bottom: 4px; }
+  .vender .campo .rotulo { margin-bottom: 2px; }
+  .vender .entrada { min-height: 28px; padding: 4px 9px; line-height: 1.2; }
+  .vender .plazo { margin-top: 1px; }
+  .vender .total { margin-top: 7px; padding-top: 6px; }
+  .vender .total .n { line-height: 1; }
+  .cubre { margin-top: 5px; }
+  .acciones { padding-top: 7px; }
+  .vender .btn-principal { padding: 9px; }
+  .btn2 { margin-top: 4px; padding: 2px; }
+  .vender .tabla { padding: 0 14px 8px; }
+  .vender .tabla td { padding: 1px 0; }
+  .vender .tabla tfoot td { padding-top: 5px; }
+}
+
+/* --- VENTANA MÁS BAJA QUE LA COMPOSICIÓN -------------------------------
+   Si ni apretada entra, la pantalla no esconde el final: deja de fingir que es
+   una hoja fija y rueda como cualquier documento. Las dos filas conservan su
+   piso, el plano su alto mínimo, y no hay un solo píxel que exista y no se
+   pueda alcanzar.
+
+   EL UMBRAL ES 790 Y NO 760, y la diferencia es exactamente la barra de la
+   aplicación. D era una página entera: su rail de 56 px ERA la barra. Acá
+   arriba de la hoja hay dos —la de la aplicación (51 px, compartida con
+   Montajes, Plano y el editor 3D, que este PR no toca) y la de la pantalla
+   (38 px apretada)—, o sea 43 px más de marco que en D. La misma regla, el
+   mismo cálculo, el umbral corrido lo que mide el marco de más:
+   D 760 + 43 ≈ 803, redondeado a 790 porque la ficha del contrato es un
+   poco más baja que la de D. Por encima de eso —1440×800, 1600×900,
+   1920×1080— la hoja entra entera y no rueda; por debajo —1366×768— rueda
+   como documento y no esconde un píxel. */
+@media (max-height: 790px) {
+  /* Rueda la PANTALLA y no el documento: el armazón de la aplicación es
+     `height:100dvh; overflow:hidden`, así que un documento más alto que la
+     ventana no se puede alcanzar — se recorta. Con la barra acá, se alcanza. */
+  .vender { overflow-y: auto; }
+  .vender-hoja { grid-template-rows: minmax(var(--fila1), auto) minmax(var(--fila2), auto); }
+  .vender .lienzo { min-height: 300px; }
+}
+
+/* --- ANGOSTO: razonable, no perfecto ------------------------------------
+   El plano y la escalera no pueden quedar en `width:0`: los dos toman alto
+   propio y la escalera se desliza. */
+@media (max-width: 1100px) {
+  .vender { overflow-y: auto; }
+  .vender-hoja {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-auto-rows: min-content;
+  }
+  .vender-hoja > .vp { grid-area: auto !important; min-height: 0; }
+  .vender .lienzo { height: 62vw; min-height: 280px; }
+  .herr { right: 12px; top: auto; bottom: 12px; }
+  .vender .graf { flex: none; height: auto; overflow-x: auto; overflow-y: hidden; }
+  /* La escalera no se aplasta: a lo angosto mide 880 px (como D) y se desliza,
+     con los rótulos a su cuerpo real; el verificador midió 10 choques de
+     texto a 390 px cuando el viewBox seguía a la caja angosta. */
+  .vender .graf > .libera-caja { min-width: 880px; height: 220px; }
+  .vp.conect::before { display: none; }
+  .vp > header { flex-wrap: wrap; }
+  .lectura { white-space: normal; }
+  .clave { flex-wrap: wrap; }
+  .vender .tabla th, .vender .tabla tfoot td { white-space: normal; }
+  /* La barra de la pantalla: el grupo de la derecha (Planilla · Tarifas ·
+     Actualizar) no envuelve y a este ancho empujaba 93 px de más. */
+  .vender > .barra-pantalla > div { flex-wrap: wrap; margin-left: 0 !important; }
+  .vender .tabla .c2 { width: 52px; }
+  .vender .tabla .c3 { width: 96px; }
+}

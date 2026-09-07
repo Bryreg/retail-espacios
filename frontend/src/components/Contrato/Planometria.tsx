@@ -100,7 +100,7 @@ export default function Planometria({
         <div
           style={{
             display: "flex", alignItems: "center", gap: 6, marginBottom: 7,
-            fontSize: 10, fontWeight: 700, color: "var(--ink-3)",
+            fontSize: "var(--t-3xs)", fontWeight: 700, color: "var(--ink-3)",
             letterSpacing: "0.08em", textTransform: "uppercase",
           }}
         >
@@ -122,7 +122,7 @@ export default function Planometria({
                   display: "flex", alignItems: "center", gap: 9, padding: "11px 12px",
                   borderRadius: "var(--r-lg)", border: "1px solid var(--line)",
                   background: "var(--surface-2)", color: "var(--accent-700)",
-                  fontSize: 12.5, fontWeight: 600,
+                  fontSize: "var(--t-xs)", fontWeight: 600,
                 }}
               >
                 <FileText size={16} />
@@ -142,7 +142,7 @@ export default function Planometria({
               />
             )}
           </a>
-          <div style={{ marginTop: 6, fontSize: 11, color: "var(--ink-3)" }}>
+          <div style={{ marginTop: 6, fontSize: "var(--t-2xs)", color: "var(--ink-3)" }}>
             Así debe quedar la exhibición
             {plano.subido_por ? ` · la cargó ${plano.subido_por}` : ""}
           </div>
@@ -153,7 +153,7 @@ export default function Planometria({
             display: "flex", alignItems: "center", gap: 8,
             height: 36, padding: "0 11px", cursor: subiendo ? "wait" : "pointer",
             borderRadius: "var(--r-md)", border: "1px dashed var(--line-strong)",
-            background: "var(--surface-2)", color: "var(--ink-3)", fontSize: 12.5,
+            background: "var(--surface-2)", color: "var(--ink-3)", fontSize: "var(--t-xs)",
           }}
         >
           <ImageUp size={14} />
@@ -176,7 +176,7 @@ export default function Planometria({
               flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
               height: 30, borderRadius: "var(--r-md)", cursor: subiendo ? "wait" : "pointer",
               border: "1px solid var(--line)", background: "var(--surface)",
-              color: "var(--ink-2)", fontSize: 11.5, fontWeight: 600,
+              color: "var(--ink-2)", fontSize: "var(--t-2xs)", fontWeight: 600,
             }}
           >
             <ImageUp size={12} />
@@ -197,7 +197,7 @@ export default function Planometria({
               display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
               height: 30, padding: "0 11px", borderRadius: "var(--r-md)",
               border: "1px solid var(--line)", background: "var(--surface)",
-              color: "var(--danger)", fontSize: 11.5, fontWeight: 600,
+              color: "var(--danger)", fontSize: "var(--t-2xs)", fontWeight: 600,
               cursor: subiendo ? "wait" : "pointer", fontFamily: "inherit",
             }}
           >
@@ -207,7 +207,7 @@ export default function Planometria({
       )}
 
       {error && (
-        <div style={{ marginTop: 6, fontSize: 11.5, color: "var(--danger)" }}>{error}</div>
+        <div style={{ marginTop: 6, fontSize: "var(--t-2xs)", color: "var(--danger)" }}>{error}</div>
       )}
     </div>
   );

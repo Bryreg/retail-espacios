@@ -1,0 +1,952 @@
+<!doctype html>
+<html lang="es-CO" data-tema="claro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RECABRA · Vender · NAVE</title>
+<style>
+/* ===========================================================================
+   C · LA MESA DE TRABAJO — Vender, con la forma de E.
+   Tokens copiados de frontend/src/tema.css (mismos nombres, mismos hex).
+   Claro en :root, oscuro en html[data-tema="oscuro"].
+   =========================================================================== */
+:root{
+  /* --- capa 1 · primitivos de E ------------------------------------------ */
+  --n-1000:#04070A; --n-900:#0B1116; --n-850:#101820; --n-800:#16212A;
+  --n-700:#1F2C36;  --n-600:#2C3B47; --n-500:#4A5C68; --n-400:#788994;
+  --n-300:#A6B4BC;  --n-200:#CBD5DA; --n-100:#E6EBEC; --n-050:#F2F5F3; --n-000:#FFFFFF;
+  --p-000:#FFFFFF;  --p-050:#F7F8F5; --p-100:#EFF1ED; --p-200:#E4E7E1;
+  --y-400:#FFE067;  --y-500:#FFD028; --y-600:#E0B000; --y-700:#8A6100;
+  --st-libre-d:#00BE86; --st-libera-d:#F5A524; --st-tomado-d:#F4544E; --st-resto-d:#33414F;
+  --st-libre-l:#00805A; --st-libera-l:#CE8A0A; --st-tomado-l:#D8342E; --st-resto-l:#AAB3BE;
+
+  /* --- tipografía de E ---------------------------------------------------- */
+  --f-display:"Helvetica Neue","Segoe UI Variable Display",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans",Arial,sans-serif;
+  --f-text:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans","Helvetica Neue",Arial,sans-serif;
+  --f-mono:ui-monospace,SFMono-Regular,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --peso-display:800;
+
+  /* --- la escala: ocho pasos, ninguno más (nombres de tema.css) ------------ */
+  --t-3xs:9.5px;   /* rótulo pill, versalita                                  */
+  --t-2xs:11px;    /* nota, eje, pie, rótulo sobre el mueble                  */
+  --t-xs:12px;     /* mono secundaria: chip de la escalera, tarifa            */
+  --t-sm:13px;     /* cuerpo                                                  */
+  --t-base:14.5px; /* título de panel, campo, botón                           */
+  --t-md:17px;     /* código de espacio, cifra de renglón                     */
+  --t-lg:21px;     /* nombre de la sede                                       */
+  --t-xl:27px;     /* el total del contrato                                   */
+
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+  --r-xs:4px; --r-sm:6px; --r-md:10px; --r-pill:999px; --hair:1px;
+  --dur-1:140ms; --ease:cubic-bezier(.22,.68,.24,1);
+
+  /* --- capa 2 · semánticos CLARO ------------------------------------------ */
+  --bg:#EFF1ED; --surface:#FFFFFF; --surface-2:#F7F8F5; --surface-3:#E4E7E1;
+  --floor:#F7F8F5;
+  --line-soft:#F0F1F1; --line:#DDDEDE; --line-strong:#BBBCBE;
+  --brd-soft:rgba(11,17,22,.06); --brd:rgba(11,17,22,.14); --brd-strong:rgba(11,17,22,.28);
+  --ink-1:#0A1014; --ink-2:#4A5B65; --ink-3:#54646E; --ink-4:#68788A;
+  --fg:var(--ink-1); --fg-2:var(--ink-2); --fg-3:var(--ink-3); --fg-4:var(--ink-4);
+  --accent:var(--ink-1); --accent-ink:#FFFFFF;
+  --signal:#F2B300; --signal-borde:#A87C00; --on-signal:#120E00; --ring:#8A6100;
+
+  --libre:#00805A; --libre-suave:#E0F0EB; --libre-borde:#9ECFC0; --libre-txt:#006B4C;
+  --entra:#CE8A0A; --entra-suave:#F9F1E2; --entra-borde:#ECD3A2; --entra-txt:#8A5A06;
+  --ocupado:#D8342E; --ocupado-suave:#FAE7E6; --ocupado-borde:#F0B2B0; --ocupado-txt:#B32720;
+  --resto:#AAB3BE; --resto-suave:#ECEEF1; --resto-borde:#D5D9DF;
+
+  /* luz y sombra de las caras del isométrico */
+  --mix-luz:#FFFFFF; --mix-sombra:#0A1014; --tapa-p:80%; --cara-p:76%; --resto-tapa-p:86%;
+  --resto-op:.72;
+}
+html[data-tema="oscuro"]{
+  --bg:#04070A; --surface:#0B1116; --surface-2:#101820; --surface-3:#16212A;
+  --floor:#0A1015;
+  --line-soft:#1A1F24; --line:#262B30; --line-strong:#3E4347;
+  --brd-soft:rgba(255,255,255,.06); --brd:rgba(255,255,255,.11); --brd-strong:rgba(255,255,255,.21);
+  --ink-1:#EDF3F2; --ink-2:#9DAEB6; --ink-3:#788A94; --ink-4:#6E8190;
+  --accent:var(--ink-1); --accent-ink:#04070A;
+  --signal:#FFD028; --signal-borde:transparent; --on-signal:#0A0C06; --ring:#FFE067;
+
+  --libre:#00BE86; --libre-suave:#092D28; --libre-borde:#065A45; --libre-txt:#00BE86;
+  --entra:#F5A524; --entra-suave:#302918; --entra-borde:#6D4F1C; --entra-txt:#F5A524;
+  --ocupado:#F4544E; --ocupado-suave:#301C1F; --ocupado-borde:#6D2D2E; --ocupado-txt:#F4544E;
+  --resto:#33414F; --resto-suave:#1B242D; --resto-borde:#293541;
+
+  --mix-luz:#FFFFFF; --mix-sombra:#04070A; --tapa-p:84%; --cara-p:66%; --resto-tapa-p:88%;
+  --resto-op:1;
+}
+
+/* ===========================  base  ======================================= */
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font:400 var(--t-sm)/1.35 var(--f-text);
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{margin:0;font-family:var(--f-display);font-weight:var(--peso-display);letter-spacing:-.022em}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+table{border-collapse:collapse;width:100%}
+
+/* mono con cifras tabulares: TODO lo que se compara */
+.n{font-family:var(--f-mono);font-variant-numeric:tabular-nums;letter-spacing:-.015em}
+/* el rótulo pill de E */
+.rot{font:600 var(--t-3xs)/1 var(--f-text);letter-spacing:.13em;text-transform:uppercase;color:var(--fg-3)}
+.pill{display:inline-flex;align-items:center;gap:5px;border:var(--hair) solid var(--brd);
+      border-radius:var(--r-pill);padding:3px 9px;white-space:nowrap}
+
+.app{height:100dvh;display:grid;grid-template-rows:auto auto minmax(0,1fr);overflow:hidden}
+
+/* ===========================  barra  ====================================== */
+.barra{
+  display:flex;align-items:center;gap:var(--s4);height:44px;padding:0 12px;
+  background:var(--surface);border-bottom:var(--hair) solid var(--line);
+}
+.marca{display:flex;align-items:baseline;gap:7px}
+.marca b{font-family:var(--f-display);font-weight:var(--peso-display);font-size:var(--t-base);
+         letter-spacing:.055em}
+.marca span{font-size:var(--t-2xs);color:var(--fg-3)}
+.sede{display:flex;align-items:baseline;gap:7px;margin-left:2px}
+.sede .v{font-family:var(--f-display);font-weight:var(--peso-display);font-size:var(--t-lg);
+         letter-spacing:-.03em;line-height:1}
+.sede .c{font-size:var(--t-2xs);color:var(--fg-4)}
+.sede .car{color:var(--fg-4);font-size:var(--t-2xs);transform:translateY(-1px)}
+.modos{display:flex;border:var(--hair) solid var(--brd);border-radius:var(--r-xs);overflow:hidden}
+.modos button{padding:4px 12px;font-size:var(--t-xs);color:var(--fg-3)}
+.modos button+button{border-left:var(--hair) solid var(--brd)}
+.modos button[aria-current="true"]{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.barra .der{margin-left:auto;display:flex;align-items:center;gap:var(--s3)}
+.barra .fecha{font-size:var(--t-2xs);color:var(--fg-3)}
+.tema{width:26px;height:26px;display:grid;place-items:center;border-radius:var(--r-xs);
+      border:var(--hair) solid var(--brd);color:var(--fg-2)}
+.tema:hover{background:var(--surface-2)}
+.tema svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6;
+          stroke-linecap:round;stroke-linejoin:round}
+html[data-tema="oscuro"] .tema .sol{display:none}
+html:not([data-tema="oscuro"]) .tema .luna{display:none}
+
+/* ===========================  banda de periodo  =========================== */
+.banda{
+  display:flex;align-items:center;gap:var(--s3);height:38px;padding:0 12px;
+  background:var(--surface-2);border-bottom:var(--hair) solid var(--line);
+  overflow:hidden;
+}
+.banda .sep{width:var(--hair);height:20px;background:var(--line);flex:none}
+.banda .rango{font-size:var(--t-xs);font-weight:600}
+.banda .dias{font-size:var(--t-2xs);color:var(--fg-3)}
+.temps{display:flex;gap:6px;min-width:0}
+.temp{font-size:var(--t-2xs);color:var(--fg-2);background:var(--surface);cursor:pointer;
+      transition:background var(--dur-1) var(--ease),color var(--dur-1) var(--ease)}
+.temp .n{font-size:var(--t-2xs);color:var(--fg-4)}
+.temp:hover{border-color:var(--brd-strong)}
+.temp[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.temp[aria-pressed="true"] .n{color:var(--accent-ink);opacity:.72}
+
+/* ===========================  la hoja  ==================================== */
+.hoja{
+  display:grid;grid-template-columns:minmax(0,1fr) 394px;gap:10px;
+  padding:10px 12px;min-height:0;
+}
+.izq,.der{display:grid;gap:10px;min-height:0;min-width:0}
+.izq{grid-template-rows:minmax(0,1fr) 262px}
+.der{grid-template-rows:minmax(0,1fr) 308px}
+
+.p{background:var(--surface);border:var(--hair) solid var(--line);border-radius:var(--r-sm);
+   display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden}
+.p>header{display:flex;align-items:baseline;gap:9px;padding:7px 11px;
+          border-bottom:var(--hair) solid var(--line);flex:none}
+.p>header .num{font-family:var(--f-mono);font-size:var(--t-2xs);color:var(--fg-4);
+               letter-spacing:.04em}
+.p>header h2{font-size:var(--t-base);line-height:1.1}
+.p>header .sub{font-size:var(--t-2xs);color:var(--fg-3)}
+.p>header .fin{margin-left:auto;display:flex;align-items:baseline;gap:var(--s3)}
+
+/* leyenda: el punto SIEMPRE con la palabra al lado */
+.clave{display:flex;gap:var(--s3);align-items:baseline}
+.clave span{display:inline-flex;align-items:baseline;gap:5px;font-size:var(--t-2xs);color:var(--fg-2)}
+.clave i{width:8px;height:8px;border-radius:2px;flex:none;transform:translateY(1px)}
+.clave b{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:var(--t-xs);color:var(--fg)}
+
+/* ===========================  el plano  =================================== */
+.lienzo{flex:1;min-height:0;position:relative;padding:2px 6px 4px}
+.lienzo svg{width:100%;height:100%;display:block;overflow:visible}
+.pieza{cursor:pointer}
+.pieza.quieta{cursor:default}
+.pieza .cara{stroke:none}
+.tapa{fill:var(--c);fill:color-mix(in oklch,var(--c) var(--tapa-p),var(--mix-luz))}
+.caraA{fill:var(--c)}
+.caraB{fill:var(--c);fill:color-mix(in oklch,var(--c) var(--cara-p),var(--mix-sombra))}
+.resto .cara{opacity:var(--resto-op)}
+.resto .tapa{fill:var(--c);fill:color-mix(in oklch,var(--c) var(--resto-tapa-p),var(--mix-luz))}
+.pieza:hover .cara,.pieza:focus-visible .cara{opacity:1}
+.pieza:focus-visible{outline:none}
+.pieza:focus-visible .aro,.pieza:hover .aro{stroke:var(--fg);stroke-width:1.6;fill:none;opacity:1}
+.aro{opacity:0}
+.sel .aro{stroke:var(--fg);stroke-width:1.6;fill:none;opacity:1}
+.guia{stroke:var(--brd-strong);stroke-width:1;fill:none}
+.chip rect{fill:var(--surface);stroke:var(--brd);stroke-width:1}
+.chip .barra-est{stroke:none}
+.chip .cod{font-family:var(--f-mono);font-weight:700;fill:var(--fg);letter-spacing:-.02em}
+.chip .est{font-weight:600;font-family:var(--f-text)}
+.sel .chip rect{fill:var(--accent);stroke:var(--accent)}
+.sel .chip .cod{fill:var(--accent-ink)}
+.sel .chip .est{fill:var(--accent-ink);opacity:.78}
+.piso{fill:var(--floor)}
+.reja{stroke:var(--line-soft);stroke-width:1;fill:none}
+.borde-piso{fill:none;stroke:var(--line);stroke-width:1.2}
+.muro{fill:var(--surface-3)}
+.muro-tapa{fill:var(--line)}
+.sede-rot{font-family:var(--f-text);font-weight:700;letter-spacing:.18em;fill:var(--fg-4)}
+
+/* ===========================  la escalera  ================================ */
+.graf{flex:1;min-height:0;padding:2px 8px 4px;position:relative}
+.graf svg{width:100%;height:100%;display:block}
+.gEje{stroke:var(--line-strong);stroke-width:1}
+.gPeine{stroke:var(--line);stroke-width:1}
+.gPaso{fill:none;stroke:var(--libre);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.gArea{fill:var(--libre-suave)}
+.gPto{fill:var(--libre)}
+.gNum{font-family:var(--f-mono);font-weight:700;font-size:var(--t-base);fill:var(--libre);
+      font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.gRot{font-family:var(--f-text);font-weight:600;font-size:var(--t-3xs);letter-spacing:.13em;
+      text-transform:uppercase;fill:var(--fg-3)}
+.gNota{font-size:var(--t-2xs);fill:var(--fg-3);font-family:var(--f-text)}
+.gHoy{font-family:var(--f-mono);font-weight:600;font-size:var(--t-2xs);fill:var(--fg)}
+.gFecha{font-family:var(--f-mono);font-size:var(--t-2xs);fill:var(--fg-2);font-variant-numeric:tabular-nums}
+.gTemp{fill:var(--surface-3);opacity:.6}
+.gTempT{font-family:var(--f-text);font-weight:700;font-size:var(--t-3xs);letter-spacing:.13em;
+        fill:var(--fg-4);text-anchor:middle}
+.gChip rect{fill:var(--entra-suave);stroke:var(--entra-borde);stroke-width:1;rx:3}
+.gChip text{font-family:var(--f-mono);font-weight:700;font-size:var(--t-xs);fill:var(--entra-txt);
+            text-anchor:middle;letter-spacing:-.02em}
+.gTipo{font-family:var(--f-text);font-weight:600;font-size:var(--t-3xs);letter-spacing:.11em;
+       text-transform:uppercase;fill:var(--fg-4)}
+.gCursor{stroke:var(--fg);stroke-width:1.2}
+.gAnillo{fill:none;stroke:var(--fg);stroke-width:2}
+.gLee{font-family:var(--f-text);font-weight:600;font-size:var(--t-xs);fill:var(--fg);text-anchor:middle}
+.gLee tspan{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+
+/* ===========================  el contrato  ================================ */
+.cuerpo{flex:1;min-height:0;display:flex;flex-direction:column;padding:9px 11px 10px;gap:7px;overflow:hidden}
+/* la lista es el sitio que crece: el contrato lleva varios espacios */
+.espacios{display:flex;flex-direction:column;flex:0 1 auto;min-height:0;overflow-y:auto;scrollbar-width:thin}
+.campos,.total,.acciones,.agregar{flex:none}
+.sellos{flex:none;max-height:48px;overflow:hidden;align-content:flex-start}
+.eitem{display:grid;grid-template-columns:auto 1fr auto auto;align-items:baseline;
+       column-gap:9px;padding:6px 0;border-bottom:var(--hair) dotted var(--line-strong)}
+.eitem:first-child{border-top:var(--hair) solid var(--line)}
+.eitem .cod{font-family:var(--f-mono);font-weight:700;font-size:var(--t-md);letter-spacing:-.03em}
+.eitem .d{font-size:var(--t-2xs);color:var(--fg-3);line-height:1.3}
+.eitem .m{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:var(--t-sm);
+          font-weight:600;text-align:right}
+.eitem .m i{display:block;font-style:normal;font-size:var(--t-3xs);color:var(--fg-4);font-weight:400;
+            letter-spacing:.02em}
+.eitem .x{color:var(--fg-4);font-size:var(--t-base);line-height:1;padding:0 2px}
+.eitem .x:hover{color:var(--ocupado-txt)}
+.agregar{align-self:start;font-size:var(--t-xs);color:var(--fg-2);border-bottom:var(--hair) solid var(--brd);
+         padding:3px 0 2px;margin-top:1px}
+.agregar:hover{color:var(--fg);border-color:var(--fg)}
+.vacio{font-size:var(--t-2xs);color:var(--fg-4);padding:10px 0;border-top:var(--hair) solid var(--line);
+       border-bottom:var(--hair) dotted var(--line-strong)}
+
+.campos{display:grid;gap:7px;margin-top:2px}
+.campo{display:grid;gap:3px}
+.par{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.entrada{border:var(--hair) solid var(--brd);border-radius:var(--r-xs);background:var(--surface-2);
+         padding:5px 8px;font-size:var(--t-base);min-height:29px;display:flex;align-items:center}
+.entrada.foco{border-color:var(--fg);background:var(--surface)}
+.entrada.cifra{font-family:var(--f-mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.plazo{font-size:var(--t-2xs);color:var(--fg-3);font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+
+.total{display:flex;align-items:baseline;justify-content:space-between;
+       border-top:var(--hair) solid var(--line-strong);padding-top:7px;margin-top:auto}
+.total .n{font-size:var(--t-xl);font-weight:700;line-height:1.05}
+.sellos{display:flex;gap:6px;flex-wrap:wrap;min-height:22px}
+.sello{font-size:var(--t-2xs);color:var(--libre-txt);background:var(--libre-suave);
+       border:var(--hair) solid var(--libre-borde);border-radius:var(--r-pill);padding:2px 9px}
+.acciones{display:flex;align-items:center;gap:var(--s3)}
+.btn-principal{
+  flex:1;background:var(--signal);color:var(--on-signal);border:var(--hair) solid var(--signal-borde);
+  border-radius:var(--r-xs);padding:9px 12px;font-size:var(--t-base);font-weight:700;
+  letter-spacing:-.01em;
+}
+.btn-principal:hover{filter:brightness(1.05)}
+.btn-principal:active{transform:translateY(1px)}
+.btn2{font-size:var(--t-xs);color:var(--fg-2);border-bottom:var(--hair) solid var(--brd);padding-bottom:1px}
+.btn2:hover{color:var(--fg);border-color:var(--fg)}
+:focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:2px}
+
+/* ===========================  la tarifa  ================================== */
+.tabla{flex:1;min-height:0;padding:4px 11px 9px;overflow:hidden}
+.tabla th{font:600 var(--t-3xs)/1 var(--f-text);letter-spacing:.11em;text-transform:uppercase;
+          color:var(--fg-3);text-align:left;padding:5px 0 6px;border-bottom:var(--hair) solid var(--line)}
+.tabla td{font-size:var(--t-sm);padding:5.5px 0;border-bottom:var(--hair) solid var(--line-soft)}
+.tabla .d{text-align:right}
+.tabla tbody td.d{font-family:var(--f-mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.tabla .entran{color:var(--entra-txt);font-weight:600}
+.tabla .cero{color:var(--fg-4)}
+.tabla tfoot td{border-top:var(--hair) solid var(--line-strong);border-bottom:0;
+                padding-top:6px;font-size:var(--t-xs);font-weight:600}
+.tabla tfoot td.d{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.tabla tr.mira td{background:var(--surface-2)}
+
+/* ===========================  390 px  ===================================== */
+@media (max-width:1180px){
+  .app{height:auto;min-height:100dvh;overflow:visible}
+  .hoja{grid-template-columns:minmax(0,1fr)}
+  .izq,.der{grid-template-rows:none}
+  .izq .p:first-child{min-height:470px}
+  .izq .p:last-child{min-height:240px}
+  .der .p:first-child{min-height:auto}
+  .der .p:last-child{min-height:auto}
+  /* la escalera no se achica hasta lo ilegible: rueda a lo ancho */
+  .graf{overflow-x:auto}
+  .graf svg{min-width:740px;height:216px}
+  .banda{height:auto;flex-wrap:wrap;padding:7px 12px;gap:8px}
+  .temps{flex-wrap:wrap}
+  .barra{flex-wrap:wrap;height:auto;padding:7px 12px;gap:10px}
+}
+@media (max-width:560px){
+  .barra .fecha{display:none}
+  .p>header{flex-wrap:wrap;gap:6px}
+  .p>header .fin{margin-left:0;width:100%}
+  .clave{flex-wrap:wrap;gap:8px}
+  .izq .p:first-child{min-height:430px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- =====================  barra  ===================================== -->
+  <header class="barra">
+    <div class="marca"><b>RECABRA</b><span>Galerías</span></div>
+    <div class="sede">
+      <span class="rot">Sede</span>
+      <span class="v">NAVE</span><span class="car">▾</span>
+      <span class="c n">de 7</span>
+    </div>
+    <nav class="modos" aria-label="Modo">
+      <button aria-current="true">Vender</button>
+      <button aria-current="false">Supervisar</button>
+    </nav>
+    <div class="der">
+      <span class="fecha n">lunes 31 de agosto de 2026</span>
+      <button class="tema" id="tema" aria-label="Cambiar a modo oscuro" title="Cambiar de tema">
+        <svg class="sol" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/></svg>
+        <svg class="luna" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4 8.4 8.4 0 1 0 20 14.2z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- =====================  banda de periodo  ========================== -->
+  <div class="banda">
+    <span class="rot">Periodo</span>
+    <span class="rango n">31 ago → 30 sep 2026</span>
+    <span class="dias n">31 días · va el día 1</span>
+    <span class="sep"></span>
+    <span class="rot">Temporadas</span>
+    <div class="temps" id="temps"></div>
+  </div>
+
+  <!-- =====================  la hoja  =================================== -->
+  <main class="hoja">
+
+    <div class="izq">
+      <!-- 01 · el plano -->
+      <section class="p">
+        <header>
+          <span class="num">01</span>
+          <h2>Piso de NAVE</h2>
+          <span class="sub n">23 comercializables · 106 muebles</span>
+          <div class="fin">
+            <div class="clave">
+              <span><i style="background:var(--libre)"></i>Libre todo el periodo <b>15</b></span>
+              <span><i style="background:var(--entra)"></i>Se libera en el periodo <b>5</b></span>
+              <span><i style="background:var(--ocupado)"></i>Ocupado <b>3</b></span>
+              <span><i style="background:var(--resto)"></i>Resto de la sala</span>
+            </div>
+          </div>
+        </header>
+        <div class="lienzo">
+          <svg id="plano" role="group" aria-label="Plano isométrico de NAVE. 23 espacios comercializables; tocá uno para ponerlo en el contrato."></svg>
+        </div>
+      </section>
+
+      <!-- 02 · la escalera A·4 -->
+      <section class="p">
+        <header>
+          <span class="num">02</span>
+          <h2>Cuándo se libera cada espacio</h2>
+          <span class="sub n">de 15 hoy a 20 al cerrar</span>
+        </header>
+        <div class="graf"><svg id="escalera" viewBox="0 0 994 214" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Escalera de disponibilidad: 15 espacios libres sin cambios durante 25 días, 17 desde el 25 de septiembre, 18 desde el 27 y 20 desde el 29."></svg></div>
+      </section>
+    </div>
+
+    <div class="der">
+      <!-- 03 · el contrato, en su lugar fijo -->
+      <section class="p">
+        <header>
+          <span class="num">03</span>
+          <h2>Contrato</h2>
+          <span class="fin rot" id="estado-contrato">sin firmar</span>
+        </header>
+        <div class="cuerpo">
+          <div class="espacios" id="espacios"></div>
+          <button class="agregar" id="agregar">+ agregar otro espacio</button>
+
+          <div class="campos">
+            <div class="campo"><span class="rot">Proveedor</span>
+              <div class="entrada foco">ALPINA</div></div>
+            <div class="campo"><span class="rot">Marca</span>
+              <div class="entrada">Alpinito</div></div>
+            <div class="par">
+              <div class="campo"><span class="rot">Desde</span>
+                <div class="entrada cifra" id="desde">15 sep 2026</div></div>
+              <div class="campo"><span class="rot">Hasta</span>
+                <div class="entrada cifra" id="hasta">14 nov 2026</div></div>
+            </div>
+            <div class="plazo" id="plazo">61 días · 2 espacios</div>
+          </div>
+
+          <div class="total">
+            <span class="rot">Total del contrato</span>
+            <span class="n" id="total">$4.575.000</span>
+          </div>
+          <div class="sellos" id="sellos"></div>
+          <div class="acciones">
+            <button class="btn-principal">Guardar contrato y avisar</button>
+            <button class="btn2">Guardalo como reserva</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 04 · la tarifa de referencia -->
+      <section class="p">
+        <header>
+          <span class="num">04</span>
+          <h2>Tarifa de referencia</h2>
+          <span class="fin rot">al mes</span>
+        </header>
+        <div class="tabla">
+          <table>
+            <thead><tr><th>Tipo de espacio</th><th class="d" style="width:84px">Libres · entran</th><th class="d" style="width:92px">Tarifa</th></tr></thead>
+            <tbody id="tarifas"></tbody>
+            <tfoot><tr><td>23 espacios comercializables</td>
+              <td class="d">15 <span class="entran">+5</span></td>
+              <td class="d">20 al cerrar</td></tr></tfoot>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ==========================================================================
+   1 · DATOS · NAVE, lunes 31 de agosto de 2026
+   Nada de otro proveedor, su canon, rankings, bajo-tarifa, canon de sede
+   ni plata del periodo: esta pantalla la lee el proveedor.
+   ========================================================================== */
+const TARIFA = {
+  isla:1200000, punta:1150000, exp:900000, caja:850000,
+  nevera:420000, frutas:380000, gondola:230000
+};
+const NOMBRE_TIPO = {
+  isla:"Isla", punta:"Punta de góndola", exp:"Exhibición de piso",
+  caja:"Cabecera de caja", nevera:"Nevera de bebidas",
+  frutas:"Frutas y verduras", gondola:"Góndola, por cara"
+};
+
+/* a,b = celda del piso · w,d = tamaño · h = alto (en celdas) */
+const ESPACIOS = [
+  ["CAR-01",   1.03, 0.10, 1.20,0.75,1.15, "caja",   "libre",   "", "junto a frescos, muro del fondo"],
+  ["BEB-01",  14.57, 4.24, 0.75,1.30,1.62, "nevera", "ocupado", "", "pared derecha, línea de neveras"],
+  ["BEB-02",  14.57, 5.64, 0.75,1.30,1.62, "nevera", "libre",   "", "pared derecha, línea de neveras"],
+  ["BEB-03",  14.57, 7.04, 0.75,1.30,1.62, "nevera", "libre",   "", "pared derecha, salida de cajas"],
+  ["FRU-04",   1.00, 5.53, 1.30,0.75,0.69, "frutas", "libre",   "", "zona de frescos, muro izquierdo"],
+  ["FRU-05",   2.60, 4.43, 1.30,0.75,0.69, "frutas", "libre",   "", "zona de frescos"],
+  ["FRU-01",   2.60, 5.53, 1.30,0.75,0.69, "frutas", "libre",   "", "zona de frescos, de cara al pasillo 1"],
+  ["GON-60·A", 5.77, 3.97, 0.31,0.85,1.41, "gondola","ocupado", "", "góndola 60, cara al pasillo 2"],
+  ["GON-60·B", 5.45, 3.97, 0.31,0.85,1.41, "gondola","libre",   "", "góndola 60, cara al pasillo 1"],
+  ["GON-61·A", 8.77, 3.97, 0.31,0.85,1.41, "gondola","libre",   "", "góndola 61, cara al pasillo 3"],
+  ["GON-61·B", 8.45, 3.97, 0.31,0.85,1.41, "gondola","libre",   "", "góndola 61, cara al pasillo 2"],
+  ["GON-67·A",11.77, 3.97, 0.31,0.85,1.41, "gondola","libre",   "", "góndola 67, cara al pasillo 5"],
+  ["GON-67·B",11.45, 3.97, 0.31,0.85,1.41, "gondola","libre",   "", "góndola 67, cara al pasillo 4"],
+  ["PUN-04",   4.19, 7.51, 0.63,0.42,1.25, "punta",  "entra",   "2026-09-25", "pasillo 1, de cara a las cajas"],
+  ["PUN-17",   5.69, 1.51, 0.63,0.42,1.25, "punta",  "entra",   "2026-09-27", "pasillo 2, al fondo"],
+  ["PUN-03",   7.19, 7.51, 0.62,0.42,1.25, "punta",  "entra",   "2026-09-25", "pasillo 3, de cara a las cajas"],
+  ["PUN-05",  10.19, 7.51, 0.62,0.42,1.25, "punta",  "libre",   "", "pasillo 5, de cara a las cajas"],
+  ["ISL-06",   2.26, 7.23, 1.05,1.00,0.93, "isla",   "libre",   "", "primer pasillo, sobre la entrada"],
+  ["ISL-05",   0.76, 8.78, 1.05,1.00,0.93, "isla",   "libre",   "", "junto a la entrada"],
+  ["ISL-03",   2.26, 8.78, 1.05,1.00,0.93, "isla",   "ocupado", "", "frente a la entrada"],
+  ["ISL-04",   3.76, 8.78, 1.05,1.00,0.93, "isla",   "libre",   "", "frente a la entrada"],
+  ["EXP-01",   6.48, 8.28, 0.85,0.65,0.85, "exp",    "entra",   "2026-09-29", "pasillo central, antes de cajas"],
+  ["EXP-02",   9.68, 8.28, 0.85,0.65,0.85, "exp",    "entra",   "2026-09-29", "salida de cajas"]
+].map(([codigo,a,b,w,d,h,tipo,estado,libera,donde])=>({codigo,a,b,w,d,h,tipo,estado,libera,donde}));
+
+/* el resto de la sala: se dibuja y no se vende */
+const RESTO = [[2.33,0.1,1.2,0.75,1.15],[1,2.23,1.3,0.75,0.69],[3.63,0.1,1.2,0.75,1.15],[1,3.33,1.3,0.75,0.69],[2.6,2.23,1.3,0.75,0.7],[1,4.43,1.3,0.75,0.69],[4.93,0.1,1.2,0.75,1.14],[2.6,3.33,1.3,0.75,0.69],[4.19,1.51,0.62,0.42,1.25],[6.23,0.1,1.2,0.75,1.15],[4.11,2.12,0.62,0.85,1.41],[4.11,3.05,0.63,0.85,1.41],[0.76,7.23,1.05,1,0.93],[7.83,0.1,1.2,0.75,1.15],[4.11,3.97,0.62,0.85,1.41],[9.13,0.1,1.2,0.75,1.15],[7.19,1.51,0.63,0.42,1.25],[4.11,4.9,0.62,0.85,1.41],[7.11,2.12,0.62,0.85,1.41],[3.46,7.23,1.05,1,0.93],[4.11,5.82,0.63,0.85,1.41],[7.11,3.05,0.62,0.85,1.41],[8.69,1.51,0.62,0.43,1.25],[10.51,-0.12,1.2,0.75,1.58],[4.11,6.75,0.63,0.85,1.41],[7.11,3.97,0.62,0.85,1.41],[11.81,-0.11,1.2,0.75,1.58],[10.19,1.51,0.63,0.43,1.25],[7.11,4.9,0.62,0.85,1.41],[10.11,2.12,0.63,0.85,1.41],[4.94,8.52,0.5,0.5,0.62],[7.11,5.82,0.63,0.85,1.41],[13.11,-0.11,1.2,0.75,1.58],[10.11,3.05,0.63,0.85,1.41],[5.69,7.51,0.62,0.42,1.25],[11.69,1.51,0.63,0.43,1.25],[5.64,8.52,0.5,0.5,0.62],[4.74,9.64,0.5,0.5,0.62],[7.11,6.75,0.63,0.85,1.41],[10.11,3.97,0.62,0.85,1.41],[5.57,9.4,0.5,1.25,0.85],[13.19,1.51,0.63,0.43,1.25],[10.11,4.9,0.63,0.85,1.41],[13.11,2.12,0.63,0.85,1.41],[6.82,9.4,0.5,1.25,0.85],[7.64,8.52,0.5,0.5,0.62],[10.11,5.82,0.63,0.85,1.41],[14.57,1.44,0.75,1.3,1.62],[13.11,3.05,0.62,0.85,1.41],[8.69,7.51,0.62,0.42,1.25],[8.34,8.52,0.5,0.5,0.62],[8.07,9.4,0.5,1.25,0.85],[10.11,6.75,0.63,0.85,1.41],[9.04,8.52,0.5,0.5,0.62],[13.11,3.97,0.62,0.85,1.41],[14.57,2.84,0.75,1.3,1.62],[13.11,4.9,0.63,0.85,1.41],[9.32,9.4,0.5,1.25,0.85],[10.94,8.52,0.5,0.5,0.62],[13.11,5.82,0.62,0.85,1.41],[11.69,7.51,0.63,0.42,1.25],[10.57,9.4,0.5,1.25,0.85],[11.64,8.52,0.5,0.5,0.62],[13.11,6.75,0.63,0.85,1.41],[12.34,8.52,0.5,0.5,0.62],[11.82,9.4,0.5,1.25,0.85],[13.19,7.51,0.63,0.42,1.25],[13.04,8.52,0.5,0.5,0.62],[13.74,8.52,0.5,0.5,0.62],[13.07,9.4,0.5,1.25,0.85],[14.44,8.52,0.5,0.5,0.62]];
+
+const TEMPORADAS = [
+  ["Amor y Amistad","2026-09-19",8],  ["Halloween","2026-10-24",9],
+  ["Black Friday","2026-11-27",7],    ["Navidad","2026-12-01",24],
+  ["Escolar","2026-12-15",36],        ["Semana Santa","2027-03-21",10]
+];
+
+/* filas de la tarifa de referencia, con su pie */
+const FILAS_TARIFA = [
+  ["isla",3,0],["punta",1,3],["exp",0,2],["caja",1,0],
+  ["nevera",2,0],["frutas",3,0],["gondola",5,0]
+];
+
+/* ==========================================================================
+   2 · UTILIDADES
+   ========================================================================== */
+const MES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+const HOY = new Date(2026,7,31);
+const d  = (iso)=>{const [y,m,dd]=iso.split("-").map(Number);return new Date(y,m-1,dd)};
+const dm = (f)=>`${f.getDate()} ${MES[f.getMonth()]}`;
+const dmy= (f)=>`${f.getDate()} ${MES[f.getMonth()]} ${f.getFullYear()}`;
+const dias=(a,b)=>Math.round((b-a)/86400000);
+const mas =(f,n)=>{const x=new Date(f);x.setDate(x.getDate()+n);return x};
+const pesos=(n)=>"$"+Math.round(n).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,".");
+const ns = "http://www.w3.org/2000/svg";
+const el = (t,at={},kids=[])=>{const e=document.createElementNS(ns,t);
+  for(const k in at) if(at[k]!==undefined&&at[k]!==null) e.setAttribute(k,at[k]);
+  kids.forEach(k=>e.appendChild(k)); return e};
+
+/* proyección isométrica: un paso en «a» va a (SX, SY), uno en «b» a (−SX, SY) */
+const SX=38, SY=19;
+const px=(a,b)=>SX*(a-b);
+const py=(a,b,alto=0)=>SY*(a+b)-SY*alto;
+
+const COLOR={libre:"var(--libre)",entra:"var(--entra)",ocupado:"var(--ocupado)",resto:"var(--resto)"};
+const PALABRA={libre:"libre",entra:"se libera",ocupado:"ocupado"};
+
+/* ==========================================================================
+   3 · EL PLANO ISOMÉTRICO
+   ========================================================================== */
+const svgP = document.getElementById("plano");
+const A1=16, B1=10.75;                       /* la sala, en celdas */
+
+function caja(a,b,w,d,h,color,clase){
+  const g = el("g",{class:clase});
+  const a0=a-w/2,a1=a+w/2,b0=b-d/2,b1=b+d/2;
+  const P=(A,B,H)=>`${px(A,B)},${py(A,B,H)}`;
+  /* cara derecha (+a): la del color de identidad */
+  g.appendChild(el("polygon",{class:"cara caraA",
+    points:[P(a1,b0,h),P(a1,b1,h),P(a1,b1,0),P(a1,b0,0)].join(" ")}));
+  /* cara izquierda (+b): más oscura */
+  g.appendChild(el("polygon",{class:"cara caraB",
+    points:[P(a1,b1,h),P(a0,b1,h),P(a0,b1,0),P(a1,b1,0)].join(" ")}));
+  /* tapa: más clara */
+  g.appendChild(el("polygon",{class:"cara tapa",
+    points:[P(a0,b0,h),P(a1,b0,h),P(a1,b1,h),P(a0,b1,h)].join(" ")}));
+  g.style.setProperty("--c",color);
+  return g;
+}
+
+function dibujarPlano(){
+  svgP.textContent="";
+  const raiz = el("g",{});
+  svgP.appendChild(raiz);
+
+  /* piso */
+  raiz.appendChild(el("polygon",{class:"piso",
+    points:[[0,0],[A1,0],[A1,B1],[0,B1]].map(([a,b])=>`${px(a,b)},${py(a,b)}`).join(" ")}));
+  let reja="";
+  for(let a=1;a<A1;a++) reja+=`M${px(a,0)},${py(a,0)}L${px(a,B1)},${py(a,B1)}`;
+  for(let b=1;b<B1;b++) reja+=`M${px(0,b)},${py(0,b)}L${px(A1,b)},${py(A1,b)}`;
+  raiz.appendChild(el("path",{class:"reja",d:reja}));
+  raiz.appendChild(el("polygon",{class:"borde-piso",
+    points:[[0,0],[A1,0],[A1,B1],[0,B1]].map(([a,b])=>`${px(a,b)},${py(a,b)}`).join(" ")}));
+
+  /* los dos muros del fondo */
+  const MH=0.84;
+  const muro=(pa,pb)=>{
+    const [a0,b0]=pa,[a1,b1]=pb;
+    raiz.appendChild(el("polygon",{class:"muro",
+      points:`${px(a0,b0)},${py(a0,b0)} ${px(a1,b1)},${py(a1,b1)} ${px(a1,b1)},${py(a1,b1,MH)} ${px(a0,b0)},${py(a0,b0,MH)}`}));
+    raiz.appendChild(el("line",{class:"muro-tapa",x1:px(a0,b0),y1:py(a0,b0,MH),
+      x2:px(a1,b1),y2:py(a1,b1,MH),"stroke-width":1.4}));
+  };
+  muro([0,0],[A1,0]); muro([0,0],[0,B1]);
+
+  /* muebles: de lejos a cerca */
+  const piezas = [
+    ...RESTO.map(([a,b,w,dd,h])=>({resto:true,a,b,w,d:dd,h})),
+    ...ESPACIOS.map(e=>({...e}))
+  ].sort((p,q)=>(p.a+p.w/2+p.b+p.d/2)-(q.a+q.w/2+q.b+q.d/2));
+
+  const rotulos=[];
+  for(const p of piezas){
+    if(p.resto){ raiz.appendChild(caja(p.a,p.b,p.w,p.d,p.h,COLOR.resto,"resto")); continue; }
+    const sel = CONTRATO.some(c=>c.codigo===p.codigo);
+    const vendible = p.estado!=="ocupado";
+    const g = el("g",{class:"pieza"+(sel?" sel":"")+(vendible?"":" quieta"),
+      role:vendible?"button":"img",tabindex:vendible?"0":null,"data-cod":vendible?p.codigo:null,
+      "aria-label":`${p.codigo}, ${NOMBRE_TIPO[p.tipo]}, ${p.donde}, ${PALABRA[p.estado]}${p.libera?" el "+dm(d(p.libera)):""}`});
+    g.appendChild(el("title",{},[document.createTextNode(
+      `${p.codigo} · ${NOMBRE_TIPO[p.tipo]} · ${p.donde} · ${PALABRA[p.estado]}${p.libera?" "+dm(d(p.libera)):""}`)]));
+    g.appendChild(caja(p.a,p.b,p.w,p.d,p.h,COLOR[p.estado],"cuerpo"));
+    /* aro de foco / de elegido, sobre la tapa */
+    const a0=p.a-p.w/2,a1=p.a+p.w/2,b0=p.b-p.d/2,b1=p.b+p.d/2;
+    g.appendChild(el("polygon",{class:"aro",
+      points:[[a0,b0],[a1,b0],[a1,b1],[a0,b1]].map(([a,b])=>`${px(a,b)},${py(a,b,p.h)}`).join(" ")}));
+    raiz.appendChild(g);
+    rotulos.push({p,g,x:px(p.a,p.b),y:py(p.a,p.b,p.h)});
+  }
+
+  /* ENTRADA y CAJAS, tumbadas sobre el piso */
+  const tumbado=(a,b,txt)=>el("text",{class:"sede-rot",
+    transform:`matrix(.8944,.4472,-.8944,.4472,${px(a,b)},${py(a,b)})`},
+    [document.createTextNode(txt)]);
+  raiz.appendChild(tumbado(1.2,10.25,"ENTRADA"));
+  raiz.appendChild(tumbado(5.3,10.5,"CAJAS"));
+
+  /* rótulos: guía fina + chip con el código y, si la hay, la fecha */
+  const capa = el("g",{});
+  svgP.appendChild(capa);
+  for(const r of rotulos){
+    const p=r.p;
+    const sel = CONTRATO.some(c=>c.codigo===p.codigo);
+    const g = el("g",{class:"chip-g"+(sel?" sel":""),"data-cod":p.codigo,"pointer-events":"none"});
+    const guia = el("line",{class:"guia",x1:r.x,y1:r.y,x2:r.x,y2:r.y-18});
+    const rect = el("rect",{rx:3});
+    const barra= el("rect",{class:"barra-est",fill:COLOR[p.estado]});
+    const gc   = el("g",{class:"chip"},[rect,barra]);
+    const cod  = el("text",{class:"cod","text-anchor":"middle",x:r.x},[document.createTextNode(p.codigo)]);
+    gc.appendChild(cod);
+    let est=null;
+    if(p.estado==="entra"){
+      est = el("text",{class:"est","text-anchor":"middle",x:r.x,fill:"var(--entra-txt)"},
+        [document.createTextNode("libre "+dm(d(p.libera)))]);
+    }else if(p.estado==="ocupado"){
+      est = el("text",{class:"est","text-anchor":"middle",x:r.x,fill:"var(--ocupado-txt)"},
+        [document.createTextNode("ocupado")]);
+    }
+    if(est) gc.appendChild(est);
+    g.appendChild(guia); g.appendChild(gc);
+    capa.appendChild(g);
+    r.nodos={guia,rect,barra,cod,est,gc};
+  }
+  return rotulos;
+}
+
+/* Los rótulos miden lo mismo en pantalla sea cual sea la escala, y se
+   deschocan por código: nunca a ojo. Se colocan de cerca hacia el fondo,
+   así el que sube es siempre el mueble que está más lejos. */
+const v_px=(v,esc)=>v/esc;
+function acomodarRotulos(rotulos){
+  if(!rotulos || !rotulos.length) return;
+  const caja0 = svgP.getBoundingClientRect();
+  if(!caja0.width) return;
+  const vb = svgP.viewBox.baseVal;
+  const esc = vb.width ? Math.min(caja0.width/vb.width, caja0.height/vb.height) : 1;
+  const PX = (v)=> v/esc;                 /* píxeles reales → unidades del viewBox */
+  svgP.querySelectorAll(".sede-rot").forEach(t=>t.setAttribute("font-size",v_px(11,esc)));
+  const chico = caja0.width < 720;        /* pantalla angosta: menos rótulos, más chicos */
+  /* el código y su fecha MIDEN LO MISMO: los separan el peso y el color */
+  const fCod = PX(chico?9.5:11), fEst = fCod, alt = PX(chico?12.5:14.5);
+
+  for(const r of rotulos){
+    const {cod,est,gc}=r.nodos;
+    const sel = CONTRATO.some(c=>c.codigo===r.p.codigo);
+    /* en angosto se quedan los que TIENEN algo que decir */
+    const vive = !chico || sel || r.p.estado!=="libre";
+    gc.parentNode.style.display = vive ? "" : "none";
+    r.vive = vive;
+    cod.setAttribute("font-size",fCod);
+    if(est) est.setAttribute("font-size",fEst);
+    let w = 0;
+    try{ w = cod.getComputedTextLength(); }catch(e){ w = r.p.codigo.length*fCod*0.6; }
+    if(est){ let w2=0; try{w2=est.getComputedTextLength();}catch(e){w2=0} w=Math.max(w,w2); }
+    r.h = est ? alt*2-PX(3.5) : alt;
+    r.w = w + PX(11);
+    r.x0 = r.x - r.w/2;
+    r.y0 = r.y - PX(17) - r.h;
+  }
+  const choca=(a,b)=>!(a.x0+a.w<=b.x0||b.x0+b.w<=a.x0||a.y0+a.h<=b.y0||b.y0+b.h<=a.y0);
+  const orden = [...rotulos].filter(r=>r.vive)
+    .sort((a,b)=>(b.p.a+b.p.b)-(a.p.a+a.p.b));   /* de cerca hacia el fondo */
+  const puestos=[];
+  for(const r of orden){
+    let n=0;
+    while(n<45 && puestos.some(q=>choca(r,q))){ r.y0 -= PX(3); n++; }
+    puestos.push(r);
+  }
+  for(const r of rotulos){
+    const {cod,est,rect,barra,guia}=r.nodos;
+    rect.setAttribute("x",r.x0); rect.setAttribute("y",r.y0);
+    rect.setAttribute("width",r.w); rect.setAttribute("height",r.h);
+    rect.setAttribute("rx",PX(3));
+    barra.setAttribute("x",r.x0); barra.setAttribute("y",r.y0);
+    barra.setAttribute("width",PX(2.5)); barra.setAttribute("height",r.h);
+    cod.setAttribute("y", r.y0 + (est? PX(chico?9.8:11) : r.h/2 + PX(3.6)));
+    if(est) est.setAttribute("y", r.y0 + r.h - PX(3.4));
+    guia.setAttribute("y1", r.y); guia.setAttribute("y2", r.y0 + r.h);
+  }
+  /* la caja final del dibujo manda el viewBox */
+  const bb = svgP.getBBox();
+  const m = 6;
+  if(bb.width>0) svgP.setAttribute("viewBox",`${bb.x-m} ${bb.y-m} ${bb.width+2*m} ${bb.height+2*m}`);
+}
+
+let ROTULOS=[];
+function pintarPlano(){
+  svgP.setAttribute("viewBox","-430 -60 1060 590");
+  ROTULOS = dibujarPlano();
+  requestAnimationFrame(()=>{ acomodarRotulos(ROTULOS); requestAnimationFrame(()=>acomodarRotulos(ROTULOS)); });
+}
+
+svgP.addEventListener("click",(ev)=>{
+  const g = ev.target.closest("[data-cod]"); if(!g) return;
+  alternar(g.getAttribute("data-cod"));
+});
+svgP.addEventListener("keydown",(ev)=>{
+  if(ev.key!=="Enter" && ev.key!==" ") return;
+  const g = ev.target.closest("[data-cod]"); if(!g) return;
+  ev.preventDefault(); alternar(g.getAttribute("data-cod"));
+});
+
+/* ==========================================================================
+   4 · LA ESCALERA A·4 — «cuándo se libera cada espacio»
+   Sin columna lateral · sin eje vertical · peine de días · el cursor lee.
+   ========================================================================== */
+const svgE = document.getElementById("escalera");
+const P_INI = d("2026-08-31"), P_FIN = d("2026-09-30"), P_DIAS = dias(P_INI,P_FIN);
+const BASE = 15;
+const HITOS = [
+  ["2026-09-25",["PUN-03","PUN-04"],"Punta de góndola"],
+  ["2026-09-27",["PUN-17"],"Punta de góndola"],
+  ["2026-09-29",["EXP-01","EXP-02"],"Exhibición de piso"]
+].map(([f,c,t])=>({f:d(f),cods:c,tipo:t}));
+const TEMP_ESC = {ini:d("2026-09-19"),fin:d("2026-09-26"),nom:"AMOR Y AMISTAD"};
+
+const X0=8, X1=986, YE=130, ESC_Y=12;
+const xd = (f)=>X0 + dias(P_INI,f)*(X1-X0)/P_DIAS;
+const yn = (n)=>YE - (n-BASE+2)*ESC_Y;
+const libresEn = (f)=>BASE + HITOS.reduce((s,h)=>s+(f>=h.f?h.cods.length:0),0);
+
+function dibujarEscalera(){
+  svgE.textContent="";
+  const G=(t,at,k)=>svgE.appendChild(el(t,at,k));
+  G("text",{class:"gRot",x:X0,y:16},[document.createTextNode("Espacios libres a lo largo del periodo")]);
+
+  /* banda de temporada: dónde cae respecto de las entregas */
+  const tx0=xd(TEMP_ESC.ini), tx1=xd(TEMP_ESC.fin);
+  G("rect",{class:"gTemp",x:tx0,y:30,width:tx1-tx0,height:YE-30});
+  G("text",{class:"gTempT",x:(tx0+tx1)/2,y:41},[document.createTextNode(TEMP_ESC.nom)]);
+
+  /* escalera: área + línea + puntos */
+  const pasos=[[P_INI,BASE]];
+  HITOS.forEach(h=>pasos.push([h.f,libresEn(h.f)]));
+  let pts=[]; let prev=null;
+  for(const [f,n] of pasos){
+    if(prev!==null) pts.push([xd(f),yn(prev)]);
+    pts.push([xd(f),yn(n)]); prev=n;
+  }
+  pts.push([X1,yn(prev)]);
+  G("polygon",{class:"gArea",points:[[X0,YE],...pts,[X1,YE]].map(p=>p.join(",")).join(" ")});
+  G("line",{class:"gEje",x1:X0,y1:YE,x2:X1,y2:YE});
+  /* peine: un diente por día */
+  for(let i=0;i<=P_DIAS;i++){
+    const x=X0+i*(X1-X0)/P_DIAS, lg=(i%5===0)?5:2.5;
+    G("line",{class:"gPeine",x1:x,y1:YE,x2:x,y2:YE+lg});
+  }
+  G("polyline",{class:"gPaso",points:pts.map(p=>p.join(",")).join(" ")});
+  pasos.forEach(([f,n])=>G("circle",{class:"gPto",cx:xd(f),cy:yn(n),r:3.4}));
+
+  /* cada meseta con su cifra pegada al escalón */
+  G("text",{class:"gNum",x:X0+2,y:yn(BASE)-10},[document.createTextNode(String(BASE))]);
+  G("text",{class:"gNota",x:X0+34,y:yn(BASE)-10},
+    [document.createTextNode(`sin cambios durante ${dias(P_INI,HITOS[0].f)} días`)]);
+  pasos.slice(1).forEach(([f,n])=>{
+    G("text",{class:"gNum",x:xd(f)+7,y:yn(n)-11},[document.createTextNode(String(n))]);
+  });
+
+  /* fechas y chips de códigos, cada uno bajo su fecha */
+  G("text",{class:"gHoy",x:X0,y:152},[document.createTextNode("hoy · 31 ago")]);
+  const CHW=56,CHH=20;
+  HITOS.forEach(h=>{
+    const x=xd(h.f);
+    G("text",{class:"gFecha",x,y:152,"text-anchor":"middle"},[document.createTextNode(dm(h.f))]);
+    h.cods.forEach((c,i)=>{
+      const g=el("g",{class:"gChip"});
+      g.appendChild(el("rect",{x:x-CHW/2,y:162+i*24,width:CHW,height:CHH,rx:3}));
+      g.appendChild(el("text",{x,y:162+i*24+14},[document.createTextNode(c)]));
+      svgE.appendChild(g);
+    });
+  });
+  G("text",{class:"gTipo",x:X0,y:176},[document.createTextNode("PUN · PUNTA DE GÓNDOLA")]);
+  G("text",{class:"gTipo",x:X0,y:192},[document.createTextNode("EXP · EXHIBICIÓN DE PISO")]);
+
+  /* el cursor escribe la lectura */
+  const cur = el("g",{id:"cursor"});
+  cur.appendChild(el("line",{class:"gCursor",x1:0,y1:26,x2:0,y2:YE}));
+  cur.appendChild(el("circle",{class:"gAnillo",cx:0,cy:0,r:6}));
+  cur.appendChild(el("text",{class:"gLee",x:0,y:17}));
+  svgE.appendChild(cur);
+  leerEn(d("2026-09-26"));
+}
+function leerEn(f){
+  const cur=document.getElementById("cursor"); if(!cur)return;
+  const x=xd(f), n=libresEn(f);
+  cur.children[0].setAttribute("x1",x); cur.children[0].setAttribute("x2",x);
+  cur.children[1].setAttribute("cx",x); cur.children[1].setAttribute("cy",yn(n));
+  const t=cur.children[2];
+  t.setAttribute("x",Math.max(120,Math.min(X1-100,x)));
+  t.textContent=`si arranca el ${dm(f)} → ${n} libres`;
+}
+svgE.addEventListener("pointermove",(ev)=>{
+  const r=svgE.getBoundingClientRect();
+  const x=(ev.clientX-r.left)/r.width*994;
+  const k=Math.round((x-X0)/(X1-X0)*P_DIAS);
+  leerEn(mas(P_INI,Math.max(0,Math.min(P_DIAS,k))));
+});
+svgE.addEventListener("pointerleave",()=>leerEn(d("2026-09-26")));
+
+/* ==========================================================================
+   5 · EL CONTRATO — lugar fijo, varios espacios
+   ========================================================================== */
+let CONTRATO = [
+  {codigo:"PUN-05", valor:1050000},
+  {codigo:"ISL-04", valor:1200000}
+];
+let DESDE = d("2026-09-15"), HASTA = d("2026-11-14");
+
+const esp = (c)=>ESPACIOS.find(e=>e.codigo===c);
+
+function pintarContrato(){
+  const cont = document.getElementById("espacios");
+  cont.textContent="";
+  if(!CONTRATO.length){
+    const v=document.createElement("div");
+    v.className="vacio"; v.textContent="Tocá un espacio del plano para armar el contrato.";
+    cont.appendChild(v);
+  }
+  for(const it of CONTRATO){
+    const e = esp(it.codigo);
+    const row=document.createElement("div"); row.className="eitem";
+    const tarifa = TARIFA[e.tipo];
+    row.innerHTML =
+      `<span class="cod"></span>`+
+      `<span class="d"></span>`+
+      `<span class="m"><span class="v"></span><i></i></span>`+
+      `<button class="x" title="Quitar ${e.codigo}" aria-label="Quitar ${e.codigo}">×</button>`;
+    row.querySelector(".cod").textContent = e.codigo;
+    row.querySelector(".d").innerHTML = `${NOMBRE_TIPO[e.tipo]}<br>${e.donde}`;
+    row.querySelector(".v").textContent = pesos(it.valor);
+    row.querySelector("i").textContent = it.valor===tarifa ? "a tarifa" : "tarifa "+pesos(tarifa);
+    row.querySelector(".x").addEventListener("click",()=>alternar(e.codigo));
+    cont.appendChild(row);
+  }
+  const dd = dias(DESDE,HASTA)+1;
+  const mensual = CONTRATO.reduce((s,it)=>s+it.valor,0);
+  document.getElementById("desde").textContent = dmy(DESDE);
+  document.getElementById("hasta").textContent = dmy(HASTA);
+  document.getElementById("plazo").textContent =
+    `${dd} días · ${CONTRATO.length} espacio${CONTRATO.length===1?"":"s"}`;
+  document.getElementById("total").textContent = pesos(mensual*dd/30);
+
+  const sellos=document.getElementById("sellos"); sellos.textContent="";
+  for(const [nom,ini,dur] of TEMPORADAS){
+    const a=d(ini), b=mas(a,dur-1);
+    if(a<=HASTA && b>=DESDE){
+      const s=document.createElement("span"); s.className="sello"; s.textContent="Cubre "+nom;
+      sellos.appendChild(s);
+    }
+  }
+  document.getElementById("estado-contrato").textContent =
+    CONTRATO.length ? "sin firmar" : "vacío";
+  pintarTemporadas();
+  pintarTarifas();
+}
+
+function alternar(cod){
+  const e = esp(cod); if(!e) return;
+  const i = CONTRATO.findIndex(c=>c.codigo===cod);
+  if(i>=0) CONTRATO.splice(i,1);
+  else CONTRATO.push({codigo:cod, valor:TARIFA[e.tipo]});
+  pintarContrato(); pintarPlano();
+}
+
+document.getElementById("agregar").addEventListener("click",()=>{
+  const libre = ESPACIOS.find(e=>e.estado!=="ocupado" && !CONTRATO.some(c=>c.codigo===e.codigo));
+  if(libre) alternar(libre.codigo);
+});
+
+/* ==========================================================================
+   6 · LAS TEMPORADAS — control del plazo, no adorno
+   ========================================================================== */
+function cubre(ini,dur){
+  const a=d(ini), b=mas(a,dur-1);
+  return a<=HASTA && b>=DESDE;
+}
+function pintarTemporadas(){
+  const cont=document.getElementById("temps"); cont.textContent="";
+  for(const [nom,ini,dur] of TEMPORADAS){
+    const a=d(ini), b=mas(a,dur-1), c=cubre(ini,dur);
+    const bt=document.createElement("button");
+    bt.className="temp pill"; bt.setAttribute("aria-pressed",String(c));
+    bt.title = `${nom}: ${dm(a)} a ${dm(b)}, ${dur} días · faltan ${dias(HOY,a)}`+
+               (c?" · el contrato ya la cubre":" · tocá para estirar el contrato hasta cubrirla");
+    bt.innerHTML=`<span></span><span class="n"></span>`;
+    bt.children[0].textContent=nom;
+    bt.children[1].textContent=dm(a);
+    bt.addEventListener("click",()=>{
+      if(a<DESDE) DESDE=a;
+      if(b>HASTA) HASTA=b;
+      pintarContrato();
+    });
+    cont.appendChild(bt);
+  }
+}
+
+/* ==========================================================================
+   7 · LA TARIFA DE REFERENCIA
+   ========================================================================== */
+function pintarTarifas(){
+  const tb=document.getElementById("tarifas"); tb.textContent="";
+  for(const [tipo,libres,entran] of FILAS_TARIFA){
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td></td><td class="d"></td><td class="d"></td>`;
+    tr.children[0].textContent=NOMBRE_TIPO[tipo];
+    tr.children[1].innerHTML=
+      `<span class="${libres?"":"cero"}">${libres}</span>`+(entran?` <span class="entran">+${entran}</span>`:"");
+    tr.children[2].textContent=pesos(TARIFA[tipo]);
+    if(CONTRATO.some(c=>esp(c.codigo).tipo===tipo)) tr.classList.add("mira");
+    tb.appendChild(tr);
+  }
+}
+
+/* ==========================================================================
+   8 · TEMA — claro por defecto, oscuro a un clic
+   ========================================================================== */
+const LLAVE="recabra-tema";
+function aplicarTema(t){
+  document.documentElement.setAttribute("data-tema",t);
+  const b=document.getElementById("tema");
+  b.setAttribute("aria-label", t==="oscuro" ? "Cambiar a modo claro" : "Cambiar a modo oscuro");
+}
+try{ aplicarTema(localStorage.getItem(LLAVE)==="oscuro" ? "oscuro" : "claro"); }
+catch(e){ aplicarTema("claro"); }
+document.getElementById("tema").addEventListener("click",()=>{
+  const t = document.documentElement.getAttribute("data-tema")==="oscuro" ? "claro" : "oscuro";
+  aplicarTema(t);
+  try{ localStorage.setItem(LLAVE,t); }catch(e){}
+  requestAnimationFrame(()=>acomodarRotulos(ROTULOS));
+});
+
+/* ==========================================================================
+   9 · ARRANQUE
+   ========================================================================== */
+pintarContrato(); pintarPlano(); dibujarEscalera();
+new ResizeObserver(()=>acomodarRotulos(ROTULOS)).observe(document.querySelector(".lienzo"));
+</script>
+</body>
+</html>

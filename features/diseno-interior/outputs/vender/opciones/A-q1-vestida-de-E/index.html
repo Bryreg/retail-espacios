@@ -1,0 +1,1188 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RECABRA · NAVE · Vender</title>
+<meta name="color-scheme" content="light dark">
+<script>
+/* Claro por defecto. No se lee prefers-color-scheme: decisión del dueño
+   (el interior se usa de día, en un supermercado). El oscuro queda recordado. */
+(function(){try{
+  if(localStorage.getItem('recabra-tema')==='oscuro')
+    document.documentElement.setAttribute('data-tema','oscuro');
+}catch(e){}})();
+</script>
+<style>
+/* ==========================================================================
+   RECABRA · VENDER — dirección A: «q1 vestida de E»
+   La composición de docs/maquetas/elegida-vender.html con la tipografía, los
+   materiales y el ritmo de features/landing/outputs/opciones/E-fusion.
+   Tokens copiados de frontend/src/tema.css (claro en :root, oscuro en
+   html[data-tema="oscuro"]). Sin recursos externos, sin librerías.
+   ========================================================================== */
+
+/* --- 1. PRIMITIVOS (de tema.css) --------------------------------------- */
+:root{
+  --n-1000:#04070A; --n-900:#0B1116; --n-850:#101820; --n-800:#16212A;
+  --n-700:#1F2C36;  --n-600:#2C3B47; --n-400:#788994; --n-200:#CBD5DA;
+  --p-000:#FFFFFF;  --p-050:#F7F8F5; --p-100:#EFF1ED; --p-200:#E4E7E1;
+
+  /* Los cuatro estados, con los hex validados de tema.css. Cada uno va
+     SIEMPRE con su palabra al lado: la identidad no depende del color. */
+  --st-libre-d:#00BE86; --st-libera-d:#F5A524; --st-tomado-d:#F4544E; --st-resto-d:#33414F;
+  --st-libre-l:#00805A; --st-libera-l:#CE8A0A; --st-tomado-l:#D8342E; --st-resto-l:#AAB3BE;
+
+  /* Señal — el amarillo de etiqueta de precio. En esta pantalla existe en UN
+     solo lugar: el botón «Guardar contrato y avisar». Nada más lo usa. */
+  --y-400:#FFE067; --y-500:#FFD028; --y-700:#8A6100;
+
+  --f-display:"Helvetica Neue","Segoe UI Variable Display",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans",Arial,sans-serif;
+  --f-text:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans","Helvetica Neue",Arial,sans-serif;
+  --f-mono:ui-monospace,SFMono-Regular,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+
+  /* --- LA ESCALA — seis pasos, no siete -------------------------------
+     La maqueta vieja tenía siete tamaños apretados entre 9,5 y 27. Acá la
+     escala es la de E: un racimo corto abajo (donde vive el dato denso) y
+     dos saltos grandes arriba. 10,5 → 12 → 13,5 → 15 son pasos de ~1,12; de
+     15 a 20 el salto es 1,33 y de 20 a 34 es 1,70. El código de espacio dejó
+     de ser un tamaño propio: va en --t-base pero en mono 700, que a igual
+     cuerpo pinta más ancho y más negro que la sans. El contraste lo dan la
+     familia, el peso y el color; el tamaño se reserva para la jerarquía.
+     --t-2xl se usa UNA vez en toda la pantalla: el total del contrato. */
+  --t-2xs:10.5px;  /* rótulos pill, rótulos del plano, ejes */
+  --t-xs:12px;     /* notas, pies, chips, fechas del gráfico */
+  --t-sm:13.5px;   /* cuerpo y filas de tabla */
+  --t-base:15px;   /* campos, botón, códigos de espacio */
+  --t-lg:20px;     /* títulos de panel, sede, cifras del gráfico */
+  --t-2xl:34px;    /* el total del contrato — y nada más */
+
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+  --r-sm:6px; --r-md:10px; --r-panel:12px; --r-pill:999px; --hair:1px;
+  --dur-1:140ms; --dur-2:260ms; --dur-3:420ms;
+  --ease:cubic-bezier(.22,.68,.24,1);
+  --ease-out:cubic-bezier(.16,.84,.44,1);
+}
+
+/* --- 2. SEMÁNTICOS · CLARO (tema.css :root) ---------------------------- */
+:root{
+  --bg:var(--p-100); --surface:var(--p-000); --surface-2:var(--p-050); --surface-3:var(--p-200);
+  --panel:rgba(255,255,255,.86); --panel-2:rgba(11,17,22,.045);
+  --line-soft:#F0F1F1; --line:#DDDEDE; --line-strong:#BBBCBE;
+  --brd-soft:rgba(11,17,22,.06); --brd:rgba(11,17,22,.14); --brd-strong:rgba(11,17,22,.28);
+  --brd-control:#68788A;
+  --fg:#0A1014; --fg-2:#4A5B65; --fg-3:#54646E; --fg-4:#68788A;
+  --signal:#F2B300; --signal-borde:#A87C00; --on-signal:#120E00;
+  --libre:var(--st-libre-l); --libre-suave:#E0F0EB; --libre-borde:#9ECFC0; --libre-txt:#006B4C;
+  --entra:var(--st-libera-l); --entra-suave:#F9F1E2; --entra-borde:#ECD3A2; --entra-txt:#8A5A06;
+  --ocupado:var(--st-tomado-l); --ocupado-suave:#FAE7E6; --ocupado-borde:#F0B2B0; --ocupado-txt:#B32720;
+  --resto:var(--st-resto-l); --resto-suave:#ECEEF1; --resto-borde:#D5D9DF;
+  --floor:var(--p-050); --floor-edge:rgba(11,17,22,.16);
+  --face-left:.86; --face-right:.74;
+  --sh-1:0 1px 2px rgba(16,21,30,.07);
+  --sh-2:0 10px 28px -14px rgba(16,21,30,.24), 0 2px 6px rgba(16,21,30,.05);
+  --sh-3:0 28px 64px -26px rgba(16,21,30,.32), 0 4px 12px rgba(16,21,30,.07);
+  --blur:14px;
+}
+
+/* --- 3. SEMÁNTICOS · OSCURO (tema.css html[data-tema="oscuro"]) -------- */
+html[data-tema="oscuro"]{
+  --bg:var(--n-1000); --surface:var(--n-900); --surface-2:var(--n-850); --surface-3:var(--n-800);
+  --panel:rgba(12,19,25,.78); --panel-2:rgba(255,255,255,.045);
+  --line-soft:#1A1F24; --line:#262B30; --line-strong:#3E4347;
+  --brd-soft:rgba(255,255,255,.06); --brd:rgba(255,255,255,.11); --brd-strong:rgba(255,255,255,.21);
+  --brd-control:#6E8190;
+  --fg:#EDF3F2; --fg-2:#9DAEB6; --fg-3:#788A94; --fg-4:#6E8190;
+  --signal:var(--y-500); --signal-borde:transparent; --on-signal:#0A0C06;
+  --libre:var(--st-libre-d); --libre-suave:#092D28; --libre-borde:#065A45; --libre-txt:var(--st-libre-d);
+  --entra:var(--st-libera-d); --entra-suave:#302918; --entra-borde:#6D4F1C; --entra-txt:var(--st-libera-d);
+  --ocupado:var(--st-tomado-d); --ocupado-suave:#301C1F; --ocupado-borde:#6D2D2E; --ocupado-txt:var(--st-tomado-d);
+  --resto:var(--st-resto-d); --resto-suave:#1B242D; --resto-borde:#293541;
+  --floor:#0A1015; --floor-edge:rgba(255,255,255,.10);
+  --face-left:.70; --face-right:.48;
+  --sh-1:0 1px 2px rgba(0,0,0,.5);
+  --sh-2:0 12px 34px -14px rgba(0,0,0,.8), 0 2px 8px rgba(0,0,0,.4);
+  --sh-3:0 30px 70px -24px rgba(0,0,0,.85), 0 4px 14px rgba(0,0,0,.5);
+  --blur:16px;
+}
+
+/* --- 4. BASE ----------------------------------------------------------- */
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:var(--f-text); font-size:var(--t-sm); line-height:1.45;
+  -webkit-font-smoothing:antialiased; font-variant-numeric:tabular-nums;
+}
+@media (min-width:1100px){ html,body{height:100%;overflow:hidden} }
+h1,h2,h3,p,figure,table{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input{font:inherit;color:inherit;background:none;border:0}
+a{color:inherit;text-decoration:none}
+svg{display:block}
+:focus-visible{outline:2px solid var(--fg);outline-offset:2px;border-radius:var(--r-sm)}
+.sr{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* --- 5. TIPOGRAFÍA DE COMPONENTE (la piel de E) ------------------------ */
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.fig{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:700;letter-spacing:-.02em}
+.rotulo{
+  font-family:var(--f-mono);font-size:var(--t-2xs);letter-spacing:.16em;
+  text-transform:uppercase;color:var(--fg-3);line-height:1;
+}
+/* el rótulo pill: el mismo rótulo, encapsulado, para lo que flota o titula */
+.pill{
+  display:inline-flex;align-items:center;gap:6px;
+  border:var(--hair) solid var(--brd);border-radius:var(--r-pill);
+  padding:4px 10px;background:var(--panel-2);white-space:nowrap;
+}
+.codigo{font-family:var(--f-mono);font-weight:700;letter-spacing:.03em;font-variant-numeric:tabular-nums}
+.dot{width:9px;height:9px;border-radius:2px;flex:none;display:inline-block}
+.dot--libre{background:var(--libre)} .dot--entra{background:var(--entra)}
+.dot--ocupado{background:var(--ocupado)} .dot--resto{background:var(--resto)}
+
+/* --- 6. LA BARRA ------------------------------------------------------- */
+.barra{
+  height:60px;display:flex;align-items:stretch;
+  background:var(--surface);border-bottom:var(--hair) solid var(--line);
+  padding:0 var(--s4) 0 var(--s5);
+}
+.marca{display:flex;align-items:center;gap:10px;padding-right:var(--s5)}
+.marca b{
+  font-family:var(--f-mono);font-weight:700;font-size:var(--t-sm);
+  letter-spacing:.28em;line-height:1;
+}
+.marca span{font-size:var(--t-xs);color:var(--fg-3)}
+.sede{
+  display:flex;align-items:center;gap:10px;padding:0 var(--s5);
+  border-left:var(--hair) solid var(--line);
+}
+.sede .val{
+  font-family:var(--f-display);font-weight:800;font-size:var(--t-lg);
+  letter-spacing:-.03em;line-height:1;
+}
+.sede .cnt{font-family:var(--f-mono);font-size:var(--t-xs);color:var(--fg-3)}
+.modos{display:flex;align-items:stretch;margin-left:var(--s5)}
+.modos a{
+  display:flex;align-items:center;padding:0 var(--s4);font-size:var(--t-base);
+  color:var(--fg-3);border-bottom:2px solid transparent;margin-bottom:-1px;
+  letter-spacing:-.01em;transition:color var(--dur-2);
+}
+.modos a:hover{color:var(--fg)}
+.modos a.on{color:var(--fg);font-weight:700;border-bottom-color:var(--fg)}
+.barra .der{margin-left:auto;display:flex;align-items:center;gap:var(--s4)}
+.barra .fecha{font-family:var(--f-mono);font-size:var(--t-xs);color:var(--fg-2)}
+.iconbtn{
+  width:34px;height:34px;display:grid;place-items:center;border-radius:var(--r-pill);
+  border:var(--hair) solid var(--brd);color:var(--fg-2);
+  transition:color var(--dur-2),border-color var(--dur-2),background var(--dur-2);
+}
+.iconbtn:hover{color:var(--fg);border-color:var(--brd-strong);background:var(--panel-2)}
+.iconbtn .luna{display:none}
+html[data-tema="oscuro"] .iconbtn .sol{display:none}
+html[data-tema="oscuro"] .iconbtn .luna{display:block}
+
+/* --- 7. LA HOJA Y LOS PANELES ----------------------------------------- */
+.hoja{
+  height:calc(100% - 60px);padding:var(--s3) 14px 14px;
+  display:flex;gap:var(--s3);
+}
+.col{display:flex;flex-direction:column;gap:var(--s3);min-height:0}
+.col--izq{width:992px;flex:none}
+.col--der{flex:1;min-width:0}
+.t{
+  background:var(--surface);border:var(--hair) solid var(--line);
+  border-radius:var(--r-panel);display:flex;flex-direction:column;
+  overflow:hidden;box-shadow:var(--sh-1);min-height:0;
+}
+/* El aire vive acá: la cabecera del panel es una franja de 46 px con su
+   rótulo pill y una línea fina abajo. La maqueta vieja apretaba título y
+   subtítulo en 11 px de padding y la pantalla se leía como una planilla. */
+.t>header{
+  height:44px;flex:none;display:flex;align-items:center;gap:var(--s3);
+  padding:0 var(--s4) 0 18px;border-bottom:var(--hair) solid var(--line-soft);
+}
+.t>header h2{
+  font-family:var(--f-display);font-weight:800;font-size:var(--t-lg);
+  letter-spacing:-.03em;line-height:1;
+}
+.t>header .der{margin-left:auto;display:flex;align-items:center;gap:var(--s2)}
+
+/* --- 8. EL PLANO — protagonista, a sangre dentro de su panel ----------- */
+.t--plano{flex:1 1 auto}
+.lienzo{position:relative;flex:1;min-height:0;overflow:hidden}
+.lienzo svg.plano{width:100%;height:100%;cursor:default}
+.pieza{cursor:pointer}
+.pieza .cara{transition:opacity var(--dur-2) var(--ease)}
+.pieza[data-apagada="true"] .cara{opacity:.28}
+.pieza__aro{fill:none;stroke:var(--fg);stroke-width:.09;opacity:0;transition:opacity var(--dur-2)}
+.pieza[data-elegida="true"] .pieza__aro,
+.pieza[data-marcada="true"] .pieza__aro,
+.pieza:hover .pieza__aro,
+.pieza:focus-visible .pieza__aro{opacity:1}
+.pieza:focus-visible{outline:none}
+/* Rótulo sobre el mueble: código y fecha de liberación MIDEN LO MISMO y se
+   distinguen por peso y color. Tamaño constante en pantalla: el <g> publica
+   --lbl en px divididos por la escala vigente. */
+.p-cod{
+  font-family:var(--f-mono);text-anchor:middle;pointer-events:none;
+  paint-order:stroke;stroke:var(--bg);stroke-linejoin:round;
+  font-size:var(--lbl,.5px);stroke-width:calc(var(--lbl,.5px)*.34);
+  letter-spacing:calc(var(--lbl,.5px)*.02);
+}
+.p-cod{fill:var(--fg);font-weight:700}
+/* el código y su fecha de liberación MIDEN LO MISMO: se separan por peso y
+   color, no por tamaño. Es la regla de q1 y es también la de E. */
+.p-fecha{fill:var(--entra-txt);font-weight:400}
+
+/* HUD del plano — el material de E: pill, hairline, vidrio moderado */
+.hud{position:absolute;inset:0;pointer-events:none}
+.hud>*{pointer-events:auto}
+.herr{position:absolute;top:12px;right:14px;display:flex;gap:6px}
+.herr button{
+  height:30px;min-width:30px;padding:0 10px;border-radius:var(--r-sm);
+  border:var(--hair) solid var(--brd);background:var(--panel);color:var(--fg-2);
+  font-family:var(--f-mono);font-size:var(--t-xs);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  transition:color var(--dur-1),border-color var(--dur-1);
+}
+.herr button:hover{color:var(--fg);border-color:var(--brd-strong)}
+.clave{
+  position:absolute;left:14px;bottom:12px;
+  display:flex;flex-direction:column;gap:7px;
+  background:var(--panel);border:var(--hair) solid var(--brd);border-radius:var(--r-md);
+  padding:11px 13px;backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));
+  box-shadow:var(--sh-1);
+}
+.clave li{display:flex;align-items:center;gap:var(--s2);font-size:var(--t-xs);color:var(--fg-2);list-style:none}
+.clave ul{margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+.clave .n{margin-left:auto;padding-left:var(--s4);font-family:var(--f-mono);font-weight:700;color:var(--fg)}
+.clave .sinn{margin-left:auto;padding-left:var(--s4);font-family:var(--f-mono);color:var(--fg-4)}
+.pista{
+  position:absolute;right:14px;bottom:12px;white-space:nowrap;
+  font-family:var(--f-mono);font-size:var(--t-2xs);color:var(--fg-4);line-height:1.5;
+}
+/* ficha del mueble: es LECTURA, no el formulario. El formulario tiene lugar
+   fijo (la columna derecha) y no aparece nunca como globo. */
+.ficha{
+  position:absolute;width:222px;z-index:5;
+  background:var(--surface);border:var(--hair) solid var(--brd-strong);
+  border-radius:var(--r-md);box-shadow:var(--sh-3);padding:13px;
+  opacity:0;transform:translateY(6px);pointer-events:none;
+  transition:opacity var(--dur-2) var(--ease),transform var(--dur-2) var(--ease);
+}
+.ficha[data-abierta="true"]{opacity:1;transform:none;pointer-events:auto}
+.ficha .cod{font-family:var(--f-mono);font-weight:700;font-size:var(--t-base);letter-spacing:.03em}
+.ficha .tipo{font-size:var(--t-xs);color:var(--fg-2);margin-top:2px}
+.ficha .ubi{font-size:var(--t-2xs);color:var(--fg-3);margin-top:2px;font-family:var(--f-mono)}
+.ficha hr{border:0;border-top:var(--hair) solid var(--line);margin:10px 0}
+.ficha .est{display:flex;align-items:center;gap:7px;font-size:var(--t-xs);font-weight:700}
+.ficha .fila{font-size:var(--t-xs);color:var(--fg-2);margin-top:5px;display:flex;justify-content:space-between;gap:10px}
+.ficha .fila b{font-family:var(--f-mono);color:var(--fg);font-weight:700}
+.ficha .pie{margin-top:10px;padding-top:8px;border-top:1px dashed var(--brd);
+  font-family:var(--f-mono);font-size:var(--t-2xs);color:var(--fg-3);line-height:1.45}
+.ficha .cerrar{position:absolute;top:4px;right:4px;width:26px;height:26px;border-radius:var(--r-sm);
+  display:grid;place-items:center;color:var(--fg-3);font-size:var(--t-base);line-height:1}
+.ficha .cerrar:hover{color:var(--fg);background:var(--panel-2)}
+
+/* --- 9. LA ESCALERA (A·4) --------------------------------------------- */
+.t--libera{height:286px;flex:none}
+.graf{flex:1;min-height:0;padding:2px 14px 8px}
+.graf svg{width:100%;height:100%}
+.gEje{stroke:var(--line-strong);stroke-width:1;fill:none}
+.gComb{stroke:var(--line-strong);stroke-width:1;opacity:.65}
+.gArea{fill:var(--libre);opacity:.10}
+.gPaso{fill:none;stroke:var(--libre);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.gPto{fill:var(--libre);stroke:var(--surface);stroke-width:2}
+.gNum{font-family:var(--f-mono);font-weight:700;font-size:20px;fill:var(--libre-txt);letter-spacing:-.02em}
+.gRot{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.16em;fill:var(--fg-3)}
+.gNota{font-family:var(--f-mono);font-size:12px;fill:var(--fg-3)}
+.gFecha{font-family:var(--f-mono);font-size:12px;fill:var(--fg-2)}
+.gHoy{font-family:var(--f-mono);font-size:12px;fill:var(--fg-2);font-weight:700}
+.gTemp{fill:var(--entra);opacity:.09}
+.gTempT{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.16em;fill:var(--entra-txt);text-anchor:middle}
+.gCruz{stroke:var(--fg);stroke-width:1;stroke-dasharray:2 3;opacity:.55}
+.gAnillo{fill:none;stroke:var(--fg);stroke-width:1.6}
+.gLee{font-family:var(--f-mono);font-size:12px;fill:var(--fg);font-weight:700;text-anchor:middle}
+.gChip rect{fill:var(--entra-suave);stroke:var(--entra-borde);stroke-width:1}
+.gChip text{font-family:var(--f-mono);font-size:12px;font-weight:700;fill:var(--entra-txt);text-anchor:middle}
+.gChip{cursor:default}
+.gChip:hover rect{stroke:var(--entra)}
+.gTipo{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.16em;fill:var(--fg-4)}
+
+/* --- 10. EL CONTRATO — lugar fijo, nunca un globo --------------------- */
+.t--contrato{flex:1 1 auto}
+.cuerpo{flex:1;min-height:0;display:flex;flex-direction:column;padding:14px 18px}
+/* el riel: la línea fina que ata los espacios de un mismo contrato */
+.espacios{display:flex;flex-direction:column;gap:var(--s2);position:relative}
+.eitem{
+  display:flex;align-items:center;gap:10px;
+  border:var(--hair) solid var(--line);border-radius:var(--r-sm);
+  padding:6px 10px;background:var(--surface-2);position:relative;
+  transition:border-color var(--dur-2);
+}
+.eitem::before{
+  content:"";position:absolute;left:-1px;top:-1px;bottom:-1px;width:2px;
+  border-radius:2px 0 0 2px;background:var(--fg);opacity:0;transition:opacity var(--dur-2);
+}
+.eitem:hover{border-color:var(--brd-strong)}
+.eitem:hover::before,.eitem[data-foco="true"]::before{opacity:1}
+.eitem .cod2{font-family:var(--f-mono);font-weight:700;font-size:var(--t-base);letter-spacing:.03em;line-height:1.1}
+.eitem .d{font-size:var(--t-xs);color:var(--fg-3);line-height:1.3;flex:1;min-width:0}
+.eitem .m{font-family:var(--f-mono);font-weight:700;font-size:var(--t-sm);white-space:nowrap}
+.eitem .x{color:var(--fg-4);font-size:var(--t-base);line-height:1;padding:2px 3px;border-radius:3px}
+.eitem .x:hover{color:var(--ocupado-txt);background:var(--panel-2)}
+.agregar{
+  margin-top:8px;align-self:flex-start;font-size:var(--t-sm);font-weight:600;
+  color:var(--fg);border-bottom:var(--hair) solid var(--line-strong);padding-bottom:1px;
+}
+.agregar:hover{border-bottom-color:var(--fg)}
+.raya{border:0;border-top:var(--hair) solid var(--line);margin:var(--s3) 0}
+.par{display:flex;gap:10px}
+.par>*{flex:1;min-width:0}
+.campo{margin-bottom:8px}
+.campo>label{display:block;margin-bottom:5px}
+.entrada{
+  border:var(--hair) solid var(--brd-control);border-radius:var(--r-sm);
+  background:var(--surface);padding:0 11px;height:36px;
+  font-size:var(--t-base);color:var(--fg);width:100%;display:block;
+}
+input.entrada{font-family:var(--f-text);letter-spacing:-.005em}
+input.entrada.cifra{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:var(--t-sm)}
+.entrada:focus{outline:none;border-color:var(--fg);box-shadow:0 0 0 2px var(--panel-2)}
+.total{
+  display:flex;align-items:baseline;justify-content:space-between;gap:var(--s3);
+  border-top:2px solid var(--fg);padding-top:10px;margin-top:var(--s3);
+}
+/* El plazo vive en el rótulo del total: es lo que prorratea esa cifra, y así
+   no hace falta una línea aparte. «2 espacios» lo dicen las dos filas de
+   arriba, así que no se repite. */
+.total .rotulo{line-height:1.5}
+.total .n{font-family:var(--f-mono);font-size:var(--t-2xl);font-weight:800;letter-spacing:-.035em;line-height:1}
+.cubre{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;min-height:20px}
+.sello{
+  font-family:var(--f-mono);font-size:var(--t-2xs);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--libre-txt);background:var(--libre-suave);border:var(--hair) solid var(--libre-borde);
+  padding:4px 9px;border-radius:var(--r-pill);
+}
+.acciones{margin-top:auto;padding-top:10px}
+/* EL ÚNICO AMARILLO DE LA PANTALLA */
+.btn-principal{
+  display:block;width:100%;height:44px;border-radius:var(--r-sm);
+  background:var(--signal);color:var(--on-signal);
+  border:var(--hair) solid var(--signal-borde);
+  font-size:var(--t-base);font-weight:700;letter-spacing:-.005em;
+  transition:filter var(--dur-1),transform var(--dur-1);
+}
+.btn-principal:hover{filter:brightness(1.05)}
+.btn-principal:active{transform:translateY(1px)}
+.btn-secundario{
+  display:block;width:100%;text-align:center;margin-top:8px;padding:4px;
+  font-size:var(--t-sm);color:var(--fg-2);
+}
+.btn-secundario:hover{color:var(--fg)}
+
+/* --- 11. TARIFA DE REFERENCIA ----------------------------------------- */
+.t--tarifa{height:270px;flex:none}
+.tabla{flex:1;min-height:0;padding:4px 18px var(--s3);overflow:hidden}
+table{width:100%;border-collapse:collapse}
+th{
+  font-family:var(--f-mono);font-size:var(--t-2xs);letter-spacing:.16em;text-transform:uppercase;
+  color:var(--fg-3);text-align:left;font-weight:400;
+  padding:0 0 6px;border-bottom:var(--hair) solid var(--line);
+}
+td{padding:0;height:20px;border-bottom:var(--hair) solid var(--line-soft);font-size:var(--t-sm)}
+tbody tr{cursor:default;transition:background var(--dur-1)}
+tbody tr:hover{background:var(--surface-2)}
+tbody tr:last-child td{border-bottom:0}
+.der2{text-align:right}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.entran{color:var(--entra-txt);font-weight:700}
+.cero{color:var(--fg-4)}
+tfoot td{
+  border-bottom:0;border-top:var(--hair) solid var(--line-strong);
+  padding-top:7px;height:auto;color:var(--fg-3);font-size:var(--t-xs);
+}
+tfoot td.der2{color:var(--fg);font-weight:700;font-family:var(--f-mono)}
+
+/* --- 12. RESPONSIVE RAZONABLE (390 px) -------------------------------- */
+@media (max-width:1099px){
+  .hoja{height:auto;flex-direction:column;padding:10px}
+  .col--izq{width:auto}
+  .t--plano{height:340px;flex:none}
+  .t--libera{height:250px}
+  .t--contrato{height:auto;flex:none}
+  .t--tarifa{height:auto}
+  .tabla{overflow-x:auto}
+  .barra{padding:0 10px;gap:0}
+  .marca span,.sede .cnt,.barra .fecha{display:none}
+  .sede{padding:0 12px}
+  .modos{margin-left:6px}
+  .modos a{padding:0 10px;font-size:var(--t-sm)}
+  .t>header{height:auto;min-height:44px;padding:10px 14px;flex-wrap:wrap;row-gap:6px}
+  .t>header .der{margin-left:auto}
+  /* la escalera no se achica hasta ser ilegible: se desliza a lo ancho */
+  .graf{overflow-x:auto;overflow-y:hidden}
+  .graf svg{width:880px;flex:none}
+  .clave{left:8px;bottom:8px;padding:8px 10px;gap:5px}
+  .clave ul{gap:5px}
+  .clave li{font-size:var(--t-2xs)}
+  .pista{display:none}
+  .graf{padding:2px 8px 6px}
+}
+@media (max-width:640px){
+  :root{--t-2xl:28px;--t-lg:18px}
+  .t--plano{height:280px}
+  .t--plano>header>.sub{display:none}
+  .p-fecha{display:none}   /* a este tamaño la fecha sobre el mueble es ruido: queda en la ficha */
+  .marca{padding-right:10px}
+  .marca b{font-size:var(--t-xs);letter-spacing:.13em}
+  .sede{padding:0 10px;gap:7px}
+  .modos{margin-left:4px}
+  .modos a{padding:0 8px}
+  .barra .der{gap:6px}
+  .barra{padding:0 8px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition-duration:1ms!important;animation-duration:1ms!important}
+}
+</style>
+</head>
+<body>
+
+<div class="barra">
+  <div class="marca"><b>RECABRA</b><span>Galerías</span></div>
+  <div class="sede">
+    <span class="rotulo">Sede</span>
+    <span class="val">NAVE</span>
+    <span class="cnt">de 7</span>
+  </div>
+  <nav class="modos" aria-label="Modo">
+    <a href="#" class="on" aria-current="page">Vender</a>
+    <a href="#">Supervisar</a>
+  </nav>
+  <div class="der">
+    <span class="fecha">lunes 31 de agosto de 2026</span>
+    <button class="iconbtn" id="btnTema" type="button" aria-label="Cambiar a modo oscuro" title="Claro / oscuro">
+      <svg class="sol" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+      </svg>
+      <svg class="luna" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5z"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<div class="hoja">
+
+  <div class="col col--izq">
+
+    <section class="t t--plano" aria-labelledby="h-plano">
+      <header>
+        <h2 id="h-plano">Piso de NAVE</h2>
+        <span class="rotulo sub">23 caras comercializables · 106 muebles</span>
+        <div class="der"><span class="pill rotulo" id="rotPlano">2 elegidos</span></div>
+      </header>
+      <div class="lienzo" id="lienzo">
+        <svg class="plano" id="svgPlano" role="img" aria-labelledby="h-plano" aria-describedby="tablaPlano">
+          <g id="escena"></g>
+        </svg>
+        <div class="hud">
+          <div class="herr">
+            <button type="button" id="zMas" aria-label="Acercar">+</button>
+            <button type="button" id="zMenos" aria-label="Alejar">−</button>
+            <button type="button" id="zCentrar">Centrar</button>
+          </div>
+          <div class="clave">
+            <ul id="claveLista">
+              <li><i class="dot dot--libre"></i>Libre todo el periodo<b class="n" id="nLibre">15</b></li>
+              <li><i class="dot dot--entra"></i>Se libera en el periodo<b class="n" id="nEntra">5</b></li>
+              <li><i class="dot dot--ocupado"></i>Tomado todo el periodo<b class="n" id="nTomado">3</b></li>
+              <li><i class="dot dot--resto"></i>Resto de la sala<span class="sinn">no se alquila</span></li>
+            </ul>
+          </div>
+          <p class="pista">rueda para acercar · arrastrá para mover</p>
+          <div class="ficha" id="ficha" role="dialog" aria-live="polite" aria-label="Detalle del espacio">
+            <button class="cerrar" type="button" id="fichaCerrar" aria-label="Cerrar">×</button>
+            <div id="fichaIn"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sr" id="tablaPlano">
+        <table>
+          <caption>Los 23 espacios comercializables de NAVE y su estado en el periodo</caption>
+          <thead><tr><th>Código</th><th>Tipo</th><th>Estado</th><th>Se libera</th></tr></thead>
+          <tbody id="tablaPlanoCuerpo"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="t t--libera" aria-labelledby="h-libera">
+      <header>
+        <h2 id="h-libera">Cuándo se libera cada espacio</h2>
+        <div class="der"><span class="pill rotulo">31 ago → 30 sep 2026</span></div>
+      </header>
+      <div class="graf" id="graf">
+        <svg id="svgLibera" viewBox="0 0 960 226" preserveAspectRatio="xMidYMid meet" role="img"
+             aria-label="Escalera de espacios libres a lo largo del periodo: 15 hoy, 17 desde el 25 de septiembre, 18 desde el 27, 20 desde el 29."></svg>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="col col--der">
+
+    <section class="t t--contrato" aria-labelledby="h-contrato">
+      <header>
+        <h2 id="h-contrato">Contrato</h2>
+        <div class="der"><span class="pill rotulo">Sin firmar</span></div>
+      </header>
+      <div class="cuerpo">
+        <div class="espacios" id="espacios"></div>
+        <a href="#" class="agregar" id="agregar">+ agregar otro espacio</a>
+
+        <hr class="raya">
+
+        <div class="campo par">
+          <div>
+            <label class="rotulo" for="fProv">Proveedor</label>
+            <input class="entrada" id="fProv" value="ALPINA" autocomplete="off">
+          </div>
+          <div>
+            <label class="rotulo" for="fMarca">Marca</label>
+            <input class="entrada" id="fMarca" value="Alpinito" autocomplete="off">
+          </div>
+        </div>
+        <div class="campo par">
+          <div>
+            <label class="rotulo" for="fDesde">Desde</label>
+            <input class="entrada cifra" id="fDesde" value="15 sep 2026" inputmode="text" autocomplete="off">
+          </div>
+          <div>
+            <label class="rotulo" for="fHasta">Hasta</label>
+            <input class="entrada cifra" id="fHasta" value="14 nov 2026" inputmode="text" autocomplete="off">
+          </div>
+        </div>
+        <div class="total">
+          <span class="rotulo" id="plazo">Total del contrato<br>61 días</span>
+          <span class="n" id="total">$4.575.000</span>
+        </div>
+        <div class="cubre" id="cubre"></div>
+
+        <div class="acciones">
+          <button class="btn-principal" type="button" id="btnGuardar">Guardar contrato y avisar</button>
+          <a class="btn-secundario" href="#">Guardalo como reserva</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="t t--tarifa" aria-labelledby="h-tarifa">
+      <header>
+        <h2 id="h-tarifa">Tarifa de referencia</h2>
+        <div class="der"><span class="pill rotulo">Al mes</span></div>
+      </header>
+      <div class="tabla">
+        <table>
+          <thead>
+            <tr>
+              <th>Tipo de espacio</th>
+              <th class="der2" style="width:88px">Libres · entran</th>
+              <th class="der2" style="width:94px">Tarifa</th>
+            </tr>
+          </thead>
+          <tbody id="tbTarifa"></tbody>
+          <tfoot>
+            <tr>
+              <td>Total de la sede</td>
+              <td class="der2 num">15 <span class="entran">+5</span></td>
+              <td class="der2 num">20 al cerrar</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+"use strict";
+/* =========================================================================
+   0 · TEMA — claro por defecto, oscuro a un clic.
+   ========================================================================= */
+var raiz=document.documentElement, btnTema=document.getElementById('btnTema');
+function rotularTema(){
+  var osc=raiz.getAttribute('data-tema')==='oscuro';
+  btnTema.setAttribute('aria-label', osc?'Cambiar a modo claro':'Cambiar a modo oscuro');
+}
+rotularTema();
+btnTema.addEventListener('click',function(){
+  var osc=raiz.getAttribute('data-tema')==='oscuro';
+  if(osc) raiz.removeAttribute('data-tema'); else raiz.setAttribute('data-tema','oscuro');
+  try{ localStorage.setItem('recabra-tema', osc?'claro':'oscuro'); }catch(e){}
+  rotularTema(); construirPlano(); dibujarLibera();
+});
+
+/* =========================================================================
+   1 · LOS DATOS DE NAVE — 31 de agosto de 2026, periodo 31 ago → 30 sep.
+       23 caras comercializables: 15 libres todo el periodo, 5 que se liberan
+       adentro, 3 tomadas. Ningún nombre de proveedor ajeno: en Vender un
+       espacio tomado dice QUE está tomado y HASTA CUÁNDO, nunca de quién.
+   ========================================================================= */
+var TARIFAS={
+  isla:1200000, punta:1150000, exp:900000, caja:850000,
+  nevera:420000, frutas:380000, gondola:230000
+};
+var NOMBRE={
+  isla:'Isla', punta:'Punta de góndola', exp:'Exhibición de piso', caja:'Cabecera de caja',
+  nevera:'Nevera de bebidas', frutas:'Frutas y verduras', gondola:'Góndola, por cara'
+};
+var ETIQ={libre:'Libre todo el periodo', entra:'Se libera en el periodo',
+          ocupado:'Tomado todo el periodo', resto:'No se alquila'};
+
+/* x,y en metros sobre el piso; w,d,h el volumen. `anc` corre el rótulo a lo
+   largo del mueble (las dos caras de una góndola se rotulan en puntas
+   opuestas, si no se pisan). */
+function P(o){ o.h=o.h||1.6; o.estado=o.estado||'libre'; return o; }
+var PIEZAS=[
+  /* --- góndolas de dos caras: cada cara es un espacio y se dibuja como
+         media góndola. Es el modelo del producto, dibujado. --- */
+  P({code:'GON-60·A',tipo:'gondola',ubic:'pasillo 1, lado frutas',x:4,y:5.2,w:9,d:.8,estado:'ocupado',anc:-3.2}),
+  P({code:'GON-60·B',tipo:'gondola',ubic:'pasillo 2, lado cajas',x:4,y:6,w:9,d:.8,anc:3.2}),
+  P({code:'GON-61·A',tipo:'gondola',ubic:'pasillo 2, lado entrada',x:4,y:8.2,w:9,d:.8,anc:-3.2}),
+  P({code:'GON-61·B',tipo:'gondola',ubic:'pasillo 3, lado fondo',x:4,y:9,w:9,d:.8,anc:3.2}),
+  P({code:'GON-67·A',tipo:'gondola',ubic:'pasillo 3, lado cajas',x:4,y:11.2,w:9,d:.8,anc:-3.2}),
+  P({code:'GON-67·B',tipo:'gondola',ubic:'pasillo 4, lado islas',x:4,y:12,w:9,d:.8,anc:3.2}),
+  /* --- puntas de góndola --- */
+  P({code:'PUN-17',tipo:'punta',ubic:'cabecera oeste, pasillo 1',x:2.1,y:5.2,w:1.5,d:1.6,h:1.95,estado:'entra',libera:'27 sep'}),
+  P({code:'PUN-03',tipo:'punta',ubic:'cabecera este, pasillo 1',x:13.4,y:5.2,w:1.5,d:1.6,h:1.95,estado:'entra',libera:'25 sep'}),
+  P({code:'PUN-04',tipo:'punta',ubic:'cabecera este, pasillo 2',x:13.4,y:8.2,w:1.5,d:1.6,h:1.95,estado:'entra',libera:'25 sep'}),
+  P({code:'PUN-05',tipo:'punta',ubic:'cabecera este, frente a cajas',x:13.4,y:11.2,w:1.5,d:1.6,h:1.95}),
+  /* --- exhibiciones de piso --- */
+  P({code:'EXP-01',tipo:'exp',ubic:'pasillo central',x:16.6,y:6,w:1.8,d:1.8,h:1.35,estado:'entra',libera:'29 sep'}),
+  P({code:'EXP-02',tipo:'exp',ubic:'pasillo central, fondo',x:16.6,y:9.4,w:1.8,d:1.8,h:1.35,estado:'entra',libera:'29 sep'}),
+  /* --- islas --- */
+  P({code:'ISL-03',tipo:'isla',ubic:'frente a la entrada',x:2.4,y:13.4,w:2,d:2,h:1.1,estado:'ocupado'}),
+  P({code:'ISL-04',tipo:'isla',ubic:'frente a la entrada',x:5.5,y:13.4,w:2,d:2,h:1.1}),
+  P({code:'ISL-05',tipo:'isla',ubic:'zona de paso',x:8.6,y:13.4,w:2,d:2,h:1.1}),
+  P({code:'ISL-06',tipo:'isla',ubic:'zona de paso',x:11.7,y:13.4,w:2,d:2,h:1.1}),
+  /* --- frutas y verduras --- */
+  P({code:'FRU-01',tipo:'frutas',ubic:'frescos, fondo',x:16.6,y:1.6,w:2.4,d:1.5,h:1.05}),
+  P({code:'FRU-04',tipo:'frutas',ubic:'frescos, fondo',x:19.4,y:1.6,w:2.4,d:1.5,h:1.05}),
+  P({code:'FRU-05',tipo:'frutas',ubic:'frescos, pared este',x:16.6,y:3.4,w:2.4,d:1.5,h:1.05}),
+  /* --- neveras --- */
+  P({code:'BEB-01',tipo:'nevera',ubic:'pared este',x:20.7,y:5.8,w:1.2,d:2.6,h:2.05,estado:'ocupado'}),
+  P({code:'BEB-02',tipo:'nevera',ubic:'pared este',x:20.7,y:8.8,w:1.2,d:2.6,h:2.05}),
+  P({code:'BEB-03',tipo:'nevera',ubic:'pared este',x:20.7,y:11.8,w:1.2,d:2.6,h:2.05}),
+  /* --- cabecera de caja --- */
+  P({code:'CAR-01',tipo:'caja',ubic:'cabecera de caja 3',x:14.6,y:15,w:2.2,d:1,h:1.35})
+];
+/* Resto de la sala: infraestructura que se dibuja y no se vende. Es la mayor
+   parte del piso, y va en gris. */
+var RESTO=[
+  [1,.7,5,.9,1.9],[6.6,.7,4.6,.9,1.9],[11.8,.7,3.4,.9,1.9],
+  [.7,2.2,.9,4.4,1.9],[.7,7.4,.9,4.4,1.9],
+  [22.5,2,.9,4.4,1.9],[22.5,7.6,.9,5.6,1.9],
+  [4,2.4,4,1,1.7],[9,2.4,3.4,1,1.7],
+  [16.6,12.6,2.2,1,1.4],[19.4,12.6,2.2,1,1.4],
+  [2,15.4,1.6,.9,1.1],[4.2,15.4,1.6,.9,1.1],[6.4,15.4,1.6,.9,1.1],
+  [8.6,15.4,1.6,.9,1.1],[10.8,15.4,1.6,.9,1.1],[13,15.4,1.6,.9,1.1],
+  [17.4,15.4,2.4,.9,1.1],[20.2,15.4,2.4,.9,1.1]
+].map(function(r,i){ return P({code:'INF-'+(i+1),tipo:'resto',x:r[0],y:r[1],w:r[2],d:r[3],h:r[4],estado:'resto'}); });
+
+var TODAS=PIEZAS.concat(RESTO);
+TODAS.forEach(function(p){ p.prof=(p.x+p.w/2)+(p.y+p.d/2); });
+var ORDEN=TODAS.slice().sort(function(a,b){ return a.prof-b.prof; });
+var POR_CODE={}; PIEZAS.forEach(function(p){ POR_CODE[p.code]=p; });
+
+/* Las temporadas que vienen, contadas desde hoy (31 ago 2026). */
+var TEMPORADAS=[
+  {n:'Amor y Amistad',ini:'2026-09-19',dur:8},
+  {n:'Halloween',ini:'2026-10-24',dur:9},
+  {n:'Black Friday',ini:'2026-11-27',dur:7},
+  {n:'Navidad',ini:'2026-12-01',dur:24},
+  {n:'Escolar',ini:'2026-12-15',dur:36},
+  {n:'Semana Santa',ini:'2027-03-21',dur:10}
+];
+
+/* =========================================================================
+   2 · UTILIDADES
+   ========================================================================= */
+var MES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+function pesos(n){
+  var s=String(Math.round(Math.abs(n))), o='';
+  while(s.length>3){ o='.'+s.slice(-3)+o; s=s.slice(0,-3); }
+  return (n<0?'-$':'$')+s+o;
+}
+function fecha(d){ return d.getUTCDate()+' '+MES[d.getUTCMonth()]+' '+d.getUTCFullYear(); }
+function leerFecha(t){
+  var m=String(t||'').trim().toLowerCase().match(/^(\d{1,2})\s+([a-záéíóú]{3,})\s+(\d{4})$/);
+  if(!m) return null;
+  var i=MES.indexOf(m[2].slice(0,3));
+  if(i<0) return null;
+  var d=new Date(Date.UTC(+m[3],i,+m[1]));
+  return isNaN(d)?null:d;
+}
+function iso(s){ var p=s.split('-'); return new Date(Date.UTC(+p[0],+p[1]-1,+p[2])); }
+function dias(a,b){ return Math.round((b-a)/86400000); }
+function el(t,a){
+  var n=document.createElementNS('http://www.w3.org/2000/svg',t);
+  for(var k in a) n.setAttribute(k,a[k]);
+  return n;
+}
+function hex2rgb(h){
+  h=(h||'').trim();
+  if(h.charAt(0)==='#'){
+    if(h.length===4) h='#'+h[1]+h[1]+h[2]+h[2]+h[3]+h[3];
+    return [parseInt(h.substr(1,2),16),parseInt(h.substr(3,2),16),parseInt(h.substr(5,2),16)];
+  }
+  var m=h.match(/(\d+(\.\d+)?)/g);
+  return m?[+m[0],+m[1],+m[2]]:[128,128,128];
+}
+/* Cada estado son TRES CARAS del mismo color, no tres colores: tapa con el
+   color de identidad, y las dos caras mezcladas hacia el fondo. */
+function mezcla(rgb,f,bg){
+  return 'rgb('+Math.round(rgb[0]*f+bg[0]*(1-f))+','+
+                Math.round(rgb[1]*f+bg[1]*(1-f))+','+
+                Math.round(rgb[2]*f+bg[2]*(1-f))+')';
+}
+
+/* =========================================================================
+   3 · EL PLANO ISOMÉTRICO
+   ========================================================================= */
+var COS=.866, SEN=.44, ALT=.95;
+function proy(x,y,z){ return [(x-y)*COS, (x+y)*SEN - z*ALT]; }
+function caras(p){
+  function q(a,b,c){ var t=proy(a,b,c); return t[0].toFixed(3)+','+t[1].toFixed(3); }
+  var x=p.x,y=p.y,w=p.w,d=p.d,h=p.h;
+  return {
+    tapa: q(x,y,h)+' '+q(x+w,y,h)+' '+q(x+w,y+d,h)+' '+q(x,y+d,h),
+    izq:  q(x,y+d,0)+' '+q(x+w,y+d,0)+' '+q(x+w,y+d,h)+' '+q(x,y+d,h),
+    der:  q(x+w,y,0)+' '+q(x+w,y+d,0)+' '+q(x+w,y+d,h)+' '+q(x+w,y,h)
+  };
+}
+var svgPlano=document.getElementById('svgPlano'), escena=document.getElementById('escena');
+var lienzo=document.getElementById('lienzo');
+var ficha=document.getElementById('ficha'), fichaIn=document.getElementById('fichaIn');
+var PAL={}, base={s:1,tx:0,ty:0}, cam={s:1,px:0,py:0}, abierta=null;
+
+function leerPaleta(){
+  var cs=getComputedStyle(raiz);
+  var bg=hex2rgb(cs.getPropertyValue('--bg'));
+  var fl=parseFloat(cs.getPropertyValue('--face-left'))||.8;
+  var fr=parseFloat(cs.getPropertyValue('--face-right'))||.6;
+  ['libre','entra','ocupado','resto'].forEach(function(k){
+    var v=cs.getPropertyValue(k==='entra'?'--entra':k==='ocupado'?'--ocupado':k==='libre'?'--libre':'--resto');
+    var b=hex2rgb(v);
+    PAL[k]={tapa:'rgb('+b.join(',')+')', izq:mezcla(b,fl,bg), der:mezcla(b,fr,bg)};
+  });
+  PAL.piso=(cs.getPropertyValue('--floor')||'#eee').trim();
+  PAL.borde=(cs.getPropertyValue('--floor-edge')||'#ccc').trim();
+}
+var PISO={x0:-.4,y0:-.4,x1:24,y1:17.2};
+function bbox(){
+  var a=1e9,b=1e9,c=-1e9,e=-1e9;
+  /* el piso también cuenta: si sólo se encuadran los muebles, las puntas del
+     rombo quedan cortadas contra el borde del panel */
+  [[PISO.x0,PISO.y0],[PISO.x1,PISO.y0],[PISO.x1,PISO.y1],[PISO.x0,PISO.y1]].forEach(function(v){
+    var t=proy(v[0],v[1],0);
+    if(t[0]<a)a=t[0]; if(t[0]>c)c=t[0]; if(t[1]<b)b=t[1]; if(t[1]>e)e=t[1];
+  });
+  TODAS.forEach(function(p){
+    [[p.x,p.y,0],[p.x+p.w,p.y,0],[p.x,p.y+p.d,0],[p.x+p.w,p.y+p.d,0],
+     [p.x,p.y,p.h],[p.x+p.w,p.y,p.h],[p.x,p.y+p.d,p.h],[p.x+p.w,p.y+p.d,p.h]]
+    .forEach(function(v){ var t=proy(v[0],v[1],v[2]);
+      if(t[0]<a)a=t[0]; if(t[0]>c)c=t[0]; if(t[1]<b)b=t[1]; if(t[1]>e)e=t[1]; });
+  });
+  return {x:a,y:b,w:c-a,h:e-b};
+}
+function calcBase(){
+  var r=lienzo.getBoundingClientRect(), vw=Math.max(1,r.width), vh=Math.max(1,r.height);
+  svgPlano.setAttribute('viewBox','0 0 '+vw+' '+vh);
+  var bb=bbox(), s=Math.min(vw/bb.w, vh/bb.h)*.94;
+  base={s:s, tx:vw/2 - s*(bb.x+bb.w/2), ty:vh/2 - s*(bb.y+bb.h/2)};
+}
+function aplicar(){
+  var S=base.s*cam.s;
+  /* rótulos de tamaño constante en pantalla: 10.5 px, dividido por la escala */
+  escena.style.setProperty('--lbl',(10.5/S)+'px');
+  escena.setAttribute('transform','translate('+(base.tx+cam.px)+','+(base.ty+cam.py)+') scale('+S+')');
+  if(abierta) ubicarFicha(abierta);
+}
+function construirPlano(){
+  leerPaleta();
+  escena.textContent='';
+  /* el piso */
+  var piso=el('polygon',{fill:PAL.piso,stroke:PAL.borde,'stroke-width':.05,'pointer-events':'none'});
+  var q=function(a,b){ var t=proy(a,b,0); return t[0].toFixed(2)+','+t[1].toFixed(2); };
+  piso.setAttribute('points', q(PISO.x0,PISO.y0)+' '+q(PISO.x1,PISO.y0)+' '+q(PISO.x1,PISO.y1)+' '+q(PISO.x0,PISO.y1));
+  escena.appendChild(piso);
+
+  ORDEN.forEach(function(p){
+    var g=el('g',{'class':'pieza','data-code':p.code});
+    var c=PAL[p.estado], f=caras(p);
+    if(p.estado==='resto'){ g.setAttribute('aria-hidden','true'); g.setAttribute('pointer-events','none'); }
+    else{
+      g.setAttribute('tabindex','0'); g.setAttribute('role','button');
+      g.setAttribute('aria-label',p.code+', '+NOMBRE[p.tipo]+', '+ETIQ[p.estado]+(p.libera?', libre desde el '+p.libera:''));
+    }
+    g.appendChild(el('polygon',{'class':'cara',fill:c.der,points:f.der}));
+    g.appendChild(el('polygon',{'class':'cara',fill:c.izq,points:f.izq}));
+    g.appendChild(el('polygon',{'class':'cara',fill:c.tapa,points:f.tapa,'fill-opacity':p.estado==='resto'?.9:1}));
+    g.appendChild(el('polygon',{'class':'pieza__aro',points:f.tapa}));
+    if(p.estado!=='resto'){
+      var cx=p.x+p.w/2+(p.anc||0), cy=p.y+p.d/2;
+      var t=proy(cx,cy,p.h), X=t[0].toFixed(2);
+      var tc=el('text',{'class':'p-cod',x:X,y:(t[1]-.28).toFixed(2)});
+      var l1=el('tspan',{x:X}); l1.textContent=p.code; tc.appendChild(l1);
+      if(p.libera){
+        /* el interlineado va en em: sigue al cuerpo, que es constante en
+           pantalla, así que las dos líneas nunca se pisan al acercar */
+        var l2=el('tspan',{'class':'p-fecha',x:X,dy:'1.22em'});
+        l2.textContent='libre '+p.libera; tc.appendChild(l2);
+      }
+      g.appendChild(tc);
+    }
+    p._g=g; escena.appendChild(g);
+  });
+  calcBase(); aplicar(); marcarElegidas();
+}
+
+/* --- ficha (lectura). Nunca muestra de QUIÉN es un espacio tomado. ------ */
+function pintarFicha(p){
+  var col='var(--'+(p.estado==='entra'?'entra':p.estado)+'-txt)';
+  var h='<p class="cod">'+p.code+'</p>';
+  h+='<p class="tipo">'+NOMBRE[p.tipo]+'</p>';
+  h+='<p class="ubi">'+p.ubic+'</p><hr>';
+  h+='<p class="est" style="color:'+col+'"><i class="dot dot--'+(p.estado==='entra'?'entra':p.estado)+'"></i>'+ETIQ[p.estado]+'</p>';
+  if(p.estado==='libre'){
+    h+='<p class="fila"><span>Tarifa de referencia</span><b>'+pesos(TARIFAS[p.tipo])+'</b></p>';
+    h+='<p class="pie">Disponible desde hoy · tocá el mueble para sumarlo al contrato</p>';
+  }else if(p.estado==='entra'){
+    h+='<p class="fila"><span>Se libera</span><b>'+p.libera+'</b></p>';
+    h+='<p class="fila"><span>Tarifa de referencia</span><b>'+pesos(TARIFAS[p.tipo])+'</b></p>';
+    h+='<p class="pie">Se puede contratar desde el '+p.libera+'</p>';
+  }else{
+    h+='<p class="fila"><span>Se libera</span><b>después del periodo</b></p>';
+    h+='<p class="pie">Ocupado. Preguntá por una fecha más adelante.</p>';
+  }
+  fichaIn.innerHTML=h;
+}
+function ubicarFicha(p){
+  var r=lienzo.getBoundingClientRect(), S=base.s*cam.s;
+  var c=proy(p.x+p.w/2,p.y+p.d/2,p.h);
+  var sx=base.tx+cam.px+S*c[0], sy=base.ty+cam.py+S*c[1];
+  var fw=ficha.offsetWidth||222, fh=ficha.offsetHeight||150;
+  var x=sx-fw/2, y=sy-fh-14;
+  if(y<8) y=sy+16;
+  x=Math.max(8,Math.min(x,r.width-fw-8));
+  y=Math.max(8,Math.min(y,r.height-fh-8));
+  ficha.style.left=x+'px'; ficha.style.top=y+'px';
+}
+function abrirFicha(p){ abierta=p; pintarFicha(p); ficha.setAttribute('data-abierta','true'); ubicarFicha(p); }
+function cerrarFicha(){ abierta=null; ficha.setAttribute('data-abierta','false'); }
+document.getElementById('fichaCerrar').addEventListener('click',cerrarFicha);
+
+/* --- tocar un mueble: si está libre, entra al contrato ------------------ */
+function tocar(code){
+  var p=POR_CODE[code]; if(!p) return;
+  if(p.estado==='libre'){
+    if(enContrato(code)) quitarDelContrato(code); else sumarAlContrato(code);
+    cerrarFicha();
+  }else{
+    abrirFicha(p);
+  }
+}
+escena.addEventListener('click',function(e){
+  var g=e.target.closest('.pieza'); if(!g) return;
+  tocar(g.getAttribute('data-code'));
+});
+escena.addEventListener('keydown',function(e){
+  if(e.key!=='Enter'&&e.key!==' ') return;
+  var g=e.target.closest('.pieza'); if(!g) return;
+  e.preventDefault(); tocar(g.getAttribute('data-code'));
+});
+document.addEventListener('keydown',function(e){ if(e.key==='Escape') cerrarFicha(); });
+
+/* --- zoom y arrastre ---------------------------------------------------- */
+function zoom(f,cx,cy){
+  var r=lienzo.getBoundingClientRect();
+  cx=(cx===undefined?r.width/2:cx); cy=(cy===undefined?r.height/2:cy);
+  var s0=cam.s, s1=Math.max(.55,Math.min(4,s0*f)); f=s1/s0;
+  cam.px=cx-base.tx-(cx-base.tx-cam.px)*f;
+  cam.py=cy-base.ty-(cy-base.ty-cam.py)*f;
+  cam.s=s1; aplicar();
+}
+document.getElementById('zMas').addEventListener('click',function(){ zoom(1.25); });
+document.getElementById('zMenos').addEventListener('click',function(){ zoom(1/1.25); });
+document.getElementById('zCentrar').addEventListener('click',function(){ cam={s:1,px:0,py:0}; aplicar(); });
+lienzo.addEventListener('wheel',function(e){
+  e.preventDefault();
+  var r=lienzo.getBoundingClientRect();
+  zoom(e.deltaY<0?1.1:1/1.1, e.clientX-r.left, e.clientY-r.top);
+},{passive:false});
+(function(){
+  var arr=false,x0=0,y0=0,px0=0,py0=0;
+  lienzo.addEventListener('pointerdown',function(e){
+    if(e.target.closest('.hud')) return;
+    arr=true; x0=e.clientX; y0=e.clientY; px0=cam.px; py0=cam.py;
+  });
+  window.addEventListener('pointermove',function(e){
+    if(!arr) return;
+    cam.px=px0+(e.clientX-x0); cam.py=py0+(e.clientY-y0); aplicar();
+  });
+  window.addEventListener('pointerup',function(){ arr=false; });
+})();
+window.addEventListener('resize',function(){ calcBase(); aplicar(); dibujarLibera(); });
+
+/* --- destacar un conjunto de códigos (el conector entre paneles) -------- */
+function destacar(codes){
+  var on=codes&&codes.length;
+  PIEZAS.forEach(function(p){
+    if(!p._g) return;
+    var hit=on&&codes.indexOf(p.code)>=0;
+    p._g.setAttribute('data-apagada', on&&!hit ? 'true':'false');
+    p._g.setAttribute('data-marcada', hit ? 'true':'false');
+  });
+  RESTO.forEach(function(p){ if(p._g) p._g.setAttribute('data-apagada', on?'true':'false'); });
+}
+
+/* =========================================================================
+   4 · «CUÁNDO SE LIBERA CADA ESPACIO» — la escalera A·4.
+       Sin columna lateral · sin eje vertical · peine de días · el cursor
+       escribe la lectura. Las cuatro decisiones no se deshacen.
+   ========================================================================= */
+var svgLib=document.getElementById('svgLibera');
+var L_INI=iso('2026-08-31'), L_FIN=iso('2026-09-30'), L_DIAS=dias(L_INI,L_FIN);
+var HITOS=[
+  {d:iso('2026-09-25'),cods:['PUN-03','PUN-04'],tipo:'Punta de góndola'},
+  {d:iso('2026-09-27'),cods:['PUN-17'],tipo:'Punta de góndola'},
+  {d:iso('2026-09-29'),cods:['EXP-01','EXP-02'],tipo:'Exhibición de piso'}
+];
+var BASE_L=15, X0=12, X1=946, YE=142, ESC=12;
+var lecturaFija=iso('2026-09-26'), lectura=lecturaFija;
+function lx(d){ return X0 + dias(L_INI,d)*(X1-X0)/L_DIAS; }
+function ly(n){ return YE - (n-BASE_L+2)*ESC; }
+function libresEn(d){
+  var c=BASE_L;
+  HITOS.forEach(function(h){ if(d>=h.d) c+=h.cods.length; });
+  return c;
+}
+function serie(){
+  var out=[{d:L_INI,n:BASE_L}], c=BASE_L;
+  HITOS.forEach(function(h){ c+=h.cods.length; out.push({d:h.d,n:c}); });
+  return out;
+}
+function puntos(){
+  var s=serie(), p=[];
+  s.forEach(function(v,i){
+    p.push([lx(v.d),ly(v.n)]);
+    if(i+1<s.length) p.push([lx(s[i+1].d),ly(v.n)]);
+  });
+  p.push([lx(L_FIN),ly(s[s.length-1].n)]);
+  return p;
+}
+function poli(p){ return p.map(function(v){ return v[0].toFixed(1)+','+v[1].toFixed(1); }).join(' '); }
+function dm(d){ return d.getUTCDate()+' '+MES[d.getUTCMonth()]; }
+
+function dibujarLibera(){
+  svgLib.textContent='';
+  var s=serie(), pts=puntos(), add=svgLib.appendChild.bind(svgLib);
+
+  var r=el('text',{'class':'gRot',x:X0,y:16}); r.textContent='ESPACIOS LIBRES A LO LARGO DEL PERIODO'; add(r);
+
+  /* la temporada, detrás: explica por qué las entregas caen juntas */
+  var ti=lx(iso('2026-09-19')), tf=lx(iso('2026-09-26'));
+  add(el('rect',{'class':'gTemp',x:ti,y:30,width:(tf-ti),height:(YE-30)}));
+  var tt=el('text',{'class':'gTempT',x:((ti+tf)/2),y:42}); tt.textContent='AMOR Y AMISTAD'; add(tt);
+
+  add(el('polygon',{'class':'gArea',points:poli([[X0,YE]].concat(pts).concat([[X1,YE]]))}));
+  add(el('line',{'class':'gEje',x1:X0,y1:YE,x2:X1,y2:YE}));
+
+  /* peine de días: los 25 días planos se leen como tiempo que pasa */
+  for(var i=0;i<=L_DIAS;i++){
+    var d=new Date(L_INI.getTime()+i*86400000);
+    var h=(i%5===0||i===L_DIAS)?5:2.5;
+    add(el('line',{'class':'gComb',x1:lx(d),y1:YE,x2:lx(d),y2:YE+h}));
+  }
+  add(el('polyline',{'class':'gPaso',points:poli(pts)}));
+  s.forEach(function(v){ add(el('circle',{'class':'gPto',cx:lx(v.d),cy:ly(v.n),r:3.6})); });
+
+  /* la cifra de cada tramo, al inicio de su meseta: no hace falta eje */
+  var n0=el('text',{'class':'gNum',x:X0+2,y:ly(BASE_L)-11}); n0.textContent=BASE_L; add(n0);
+  var na=el('text',{'class':'gNota',x:X0+34,y:ly(BASE_L)-11});
+  na.textContent='sin cambios durante '+dias(L_INI,HITOS[0].d)+' días'; add(na);
+  for(var k=1;k<s.length;k++){
+    var t=el('text',{'class':'gNum',x:lx(s[k].d)+8,y:ly(s[k].n)-12}); t.textContent=s[k].n; add(t);
+  }
+
+  /* el cursor: la respuesta escrita */
+  var cx=lx(lectura), cy=ly(libresEn(lectura));
+  add(el('line',{'class':'gCruz',x1:cx,y1:26,x2:cx,y2:YE}));
+  add(el('circle',{'class':'gAnillo',cx:cx,cy:cy,r:6.5}));
+  var le=el('text',{'class':'gLee',x:Math.max(112,Math.min(X1-112,cx)),y:16});
+  le.textContent='si arranca el '+dm(lectura)+' → '+libresEn(lectura)+' libres'; add(le);
+
+  /* fechas y, debajo, los códigos que entran en cada una */
+  var hoy=el('text',{'class':'gHoy',x:X0,y:YE+22}); hoy.textContent='hoy · '+dm(L_INI); add(hoy);
+  HITOS.forEach(function(h){
+    var t=el('text',{'class':'gFecha',x:lx(h.d),y:YE+22,'text-anchor':'middle'});
+    t.textContent=dm(h.d); add(t);
+  });
+  var y0=YE+32;
+  HITOS.forEach(function(h){
+    h.cods.forEach(function(cod,j){
+      var g=el('g',{'class':'gChip'});
+      g.appendChild(el('rect',{x:lx(h.d)-31,y:y0+j*25,width:62,height:20,rx:10}));
+      var t=el('text',{x:lx(h.d),y:y0+14.5+j*25}); t.textContent=cod;
+      g.appendChild(t);
+      g.addEventListener('mouseenter',function(){ destacar([cod]); });
+      g.addEventListener('mouseleave',function(){ destacar(null); });
+      add(g);
+    });
+  });
+  var vistos=[];
+  HITOS.forEach(function(h){
+    var pre=h.cods[0].split('-')[0];
+    if(vistos.indexOf(pre)<0){ vistos.push(pre);
+      var t=el('text',{'class':'gTipo',x:X0,y:y0+14+(vistos.length-1)*17});
+      t.textContent=pre+' · '+h.tipo.toUpperCase(); add(t);
+    }
+  });
+}
+/* el cursor sigue al mouse; al salir vuelve a la lectura de la maqueta */
+svgLib.addEventListener('mousemove',function(e){
+  var r=svgLib.getBoundingClientRect();
+  var u=(e.clientX-r.left)/r.width*960;
+  var k=Math.round((u-X0)/((X1-X0)/L_DIAS));
+  k=Math.max(0,Math.min(L_DIAS,k));
+  var d=new Date(L_INI.getTime()+k*86400000);
+  if(+d!==+lectura){ lectura=d; dibujarLibera(); }
+});
+svgLib.addEventListener('mouseleave',function(){ lectura=lecturaFija; dibujarLibera(); });
+
+/* =========================================================================
+   5 · EL CONTRATO — varios espacios, lugar fijo, total que se ve sumar.
+   ========================================================================= */
+var CONTRATO=[
+  {code:'PUN-05', mes:1050000},   /* negociado bajo la tarifa: es el suyo */
+  {code:'ISL-04', mes:1200000}
+];
+var elEspacios=document.getElementById('espacios');
+var fDesde=document.getElementById('fDesde'), fHasta=document.getElementById('fHasta');
+
+function enContrato(code){ return CONTRATO.some(function(r){ return r.code===code; }); }
+function sumarAlContrato(code){
+  var p=POR_CODE[code]; if(!p||p.estado!=='libre'||enContrato(code)) return;
+  CONTRATO.push({code:code, mes:TARIFAS[p.tipo]});
+  pintarContrato();
+}
+function quitarDelContrato(code){
+  CONTRATO=CONTRATO.filter(function(r){ return r.code!==code; });
+  pintarContrato();
+}
+function rotularElegidos(){
+  var n=CONTRATO.length;
+  document.getElementById('rotPlano').textContent=n+' elegido'+(n===1?'':'s');
+}
+function marcarElegidas(){
+  PIEZAS.forEach(function(p){
+    if(p._g) p._g.setAttribute('data-elegida', enContrato(p.code)?'true':'false');
+  });
+}
+function pintarContrato(){
+  elEspacios.textContent='';
+  CONTRATO.forEach(function(r,i){
+    var p=POR_CODE[r.code];
+    var div=document.createElement('div');
+    div.className='eitem';
+    if(i===0) div.setAttribute('data-foco','true');
+    div.innerHTML='<span class="cod2">'+r.code+'</span>'+
+      '<span class="d">'+NOMBRE[p.tipo]+'<br>'+p.ubic+'</span>'+
+      '<span class="m">'+pesos(r.mes)+'</span>'+
+      '<button class="x" type="button" title="Quitar" aria-label="Quitar '+r.code+' del contrato">×</button>';
+    div.querySelector('.x').addEventListener('click',function(){ quitarDelContrato(r.code); });
+    div.addEventListener('mouseenter',function(){ destacar([r.code]); });
+    div.addEventListener('mouseleave',function(){ destacar(null); });
+    elEspacios.appendChild(div);
+  });
+  recalcular();
+  marcarElegidas();
+  rotularElegidos();
+}
+function recalcular(){
+  var a=leerFecha(fDesde.value), b=leerFecha(fHasta.value);
+  var n=(a&&b&&b>a)?dias(a,b)+1:0;
+  var mes=CONTRATO.reduce(function(s,r){ return s+r.mes; },0);
+  document.getElementById('total').textContent=pesos(Math.round(mes*n/30));
+  document.getElementById('plazo').innerHTML=
+    'Total del contrato'+(n?'<br>'+n+' días':'');
+  var c=document.getElementById('cubre'); c.textContent='';
+  if(a&&b) TEMPORADAS.forEach(function(t){
+    var ti=iso(t.ini), tf=new Date(ti.getTime()+(t.dur-1)*86400000);
+    if(tf>=a&&ti<=b){
+      var s=document.createElement('span'); s.className='sello';
+      s.textContent='Cubre '+t.n; c.appendChild(s);
+    }
+  });
+}
+[fDesde,fHasta].forEach(function(i){ i.addEventListener('input',recalcular); });
+document.getElementById('agregar').addEventListener('click',function(e){
+  e.preventDefault();
+  var rot=document.getElementById('rotPlano');
+  rot.textContent='Tocá el mueble en el plano';
+  setTimeout(rotularElegidos,2600);
+});
+document.getElementById('btnGuardar').addEventListener('click',function(){
+  var rot=document.getElementById('rotPlano');
+  rot.textContent='Guardado · aviso enviado a '+document.getElementById('fProv').value;
+  setTimeout(rotularElegidos,3200);
+});
+
+/* =========================================================================
+   6 · TARIFA DE REFERENCIA — la lista de precios, que sí es pública.
+       Las columnas «libres · entran» se cuentan del propio plano, así que no
+       pueden contradecirlo. Pasar el mouse por una fila la señala en el piso.
+   ========================================================================= */
+function pintarTarifa(){
+  var tb=document.getElementById('tbTarifa'); tb.textContent='';
+  ['isla','punta','exp','caja','nevera','frutas','gondola'].forEach(function(k){
+    var libres=PIEZAS.filter(function(p){ return p.tipo===k&&p.estado==='libre'; });
+    var entran=PIEZAS.filter(function(p){ return p.tipo===k&&p.estado==='entra'; });
+    var tr=document.createElement('tr');
+    tr.innerHTML='<td>'+NOMBRE[k]+'</td>'+
+      '<td class="der2 num">'+(libres.length?libres.length:'<span class="cero">0</span>')+
+        (entran.length?' <span class="entran">+'+entran.length+'</span>':'')+'</td>'+
+      '<td class="der2 num">'+pesos(TARIFAS[k])+'</td>';
+    var codes=libres.concat(entran).map(function(p){ return p.code; });
+    tr.addEventListener('mouseenter',function(){ destacar(codes); });
+    tr.addEventListener('mouseleave',function(){ destacar(null); });
+    tb.appendChild(tr);
+  });
+}
+
+/* =========================================================================
+   7 · CLAVE, TABLA EQUIVALENTE Y ARRANQUE
+   ========================================================================= */
+function pintarClave(){
+  var c={libre:0,entra:0,ocupado:0};
+  PIEZAS.forEach(function(p){ if(c[p.estado]!==undefined) c[p.estado]++; });
+  document.getElementById('nLibre').textContent=c.libre;
+  document.getElementById('nEntra').textContent=c.entra;
+  document.getElementById('nTomado').textContent=c.ocupado;
+  var tb=document.getElementById('tablaPlanoCuerpo'); tb.textContent='';
+  PIEZAS.forEach(function(p){
+    var tr=document.createElement('tr');
+    tr.innerHTML='<td>'+p.code+'</td><td>'+NOMBRE[p.tipo]+'</td><td>'+ETIQ[p.estado]+'</td><td>'+(p.libera||'—')+'</td>';
+    tb.appendChild(tr);
+  });
+}
+function arrancar(){
+  construirPlano(); dibujarLibera(); pintarContrato(); pintarTarifa(); pintarClave();
+}
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',arrancar);
+else arrancar();
+</script>
+</body>
+</html>
