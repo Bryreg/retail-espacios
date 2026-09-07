@@ -1,0 +1,1221 @@
+<!doctype html>
+<html lang="es" data-tema="claro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RECABRA · NAVE · Vender</title>
+<meta name="color-scheme" content="light dark">
+<script>
+/* Tema antes del primer pintado: claro por defecto (decision del dueno, spec §0);
+   el oscuro queda a un clic y se recuerda. Misma llave que el interior: recabra-tema. */
+(function(){try{var t=localStorage.getItem('recabra-tema');
+document.documentElement.setAttribute('data-tema', t==='oscuro'?'oscuro':'claro');}catch(e){}})();
+</script>
+<style>
+/* ===========================================================================
+   RECABRA · Vender · D — la fusion
+   Base: B «El catalogo» (composicion, encabezados numerados, plano de NAVE con
+   ENTRADA y CAJAS, ficha del contrato, titulo grande de la escalera).
+   De A: el resaltado que apaga la sala, el modulo 02 entero y el rotulo sobre
+   el mueble (tamano constante en pantalla, halo, sin caja).
+   Autocontenido: cero recursos externos, pilas de sistema, sin librerias.
+   =========================================================================== */
+
+/* --- CAPA 1 · PRIMITIVOS (tema.css, sin mover un digito) ----------------- */
+:root{
+  --n-1000:#04070A; --n-950:#070B0F; --n-900:#0B1116; --n-850:#101820;
+  --n-800:#16212A;  --n-700:#1F2C36; --n-600:#2C3B47; --n-500:#4A5C68;
+  --n-400:#788994;  --n-300:#A6B4BC; --n-200:#CBD5DA; --n-100:#E6EBEC;
+  --n-050:#F2F5F3;  --n-000:#FFFFFF;
+  --p-000:#FFFFFF; --p-050:#F7F8F5; --p-100:#EFF1ED; --p-200:#E4E7E1;
+  --st-libre-d:#00BE86; --st-libera-d:#F5A524; --st-tomado-d:#F4544E; --st-resto-d:#33414F;
+  --st-libre-l:#00805A; --st-libera-l:#CE8A0A; --st-tomado-l:#D8342E; --st-resto-l:#AAB3BE;
+  --y-400:#FFE067; --y-500:#FFD028; --y-600:#E0B000; --y-700:#8A6100;
+
+  --f-display:"Helvetica Neue","Segoe UI Variable Display",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans",Arial,sans-serif;
+  --f-text:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans","Helvetica Neue",Arial,sans-serif;
+  --f-mono:ui-monospace,SFMono-Regular,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --peso-display:800;
+
+  /* --- LA ESCALA DE LETRA (la de B, ocho pasos) ---------------------------
+       10    versalitas y rotulos pill
+       11.5  notas, pies, ejes
+       12.5  secundario (subtitulos de panel, ubicaciones)
+       13.5  cuerpo y tablas
+       15    titulos de panel, campos y boton
+       17.5  codigos de espacio en la ficha del contrato
+       21    la lectura de la escalera — el argumento de venta
+       30    el total del contrato
+     El rotulo sobre el mueble NO usa esta escala: usa --lbl, que son 10,5 px
+     medidos en pantalla, divididos por la escala vigente del plano. Asi el
+     rotulo mide siempre lo mismo, se acerque o se aleje el plano. */
+  --t-3xs:10px; --t-2xs:11.5px; --t-xs:12.5px; --t-sm:13.5px;
+  --t-base:15px; --t-md:17.5px; --t-lg:21px; --t-xl:30px;
+  --lbl-px:10.5;
+
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px;
+
+  /* --- EL MARCO DE LA PANTALLA -------------------------------------------
+     La pantalla no tiene un alto propio: toma el de la ventana. Estos cinco
+     valores son todo lo que hay entre el borde del navegador y la hoja, y en
+     ventanas bajas (portatiles de 768 y de 800) se aprietan un punto —el
+     bloque de mas abajo—, sin mover ni una letra de la escala.
+     --fila1 y --fila2 son el piso de cada fila de la rejilla: lo que miden,
+     apretadas, la ficha del contrato y la tabla de la tarifa. Si la ventana
+     no da para los dos pisos, el documento rueda; nunca esconde. */
+  --marco-t:8px; --marco-x:12px; --marco-b:12px; --aire:10px; --rail-h:56px;
+  --fila1:448px; --fila2:240px;
+  --r-xs:4px; --r-sm:6px; --r-md:10px; --r-lg:16px; --r-pill:999px; --hair:1px;
+  --dur-1:140ms; --dur-2:260ms; --dur-3:420ms;
+  --ease:cubic-bezier(.22,.68,.24,1);
+  --ease-out:cubic-bezier(.16,.84,.44,1);
+}
+
+/* --- CAPA 2 · SEMANTICOS · CLARO (el modo de la casa) -------------------- */
+:root{
+  color-scheme:light;
+  --bg:#EFF1ED; --surface:#FFFFFF; --surface-2:#F7F8F5; --surface-3:#E4E7E1;
+  --panel:rgba(255,255,255,.82); --panel-2:rgba(11,17,22,.045);
+  --floor:#F7F8F5; --floor-edge:rgba(11,17,22,.16);
+  --line-soft:#F0F1F1; --line:#DDDEDE; --line-strong:#BBBCBE;
+  --brd-soft:rgba(11,17,22,.06); --brd:rgba(11,17,22,.14); --brd-strong:rgba(11,17,22,.28);
+  --ink-1:#0A1014; --ink-2:#4A5B65; --ink-3:#54646E; --ink-4:#68788A;
+  --brd-control:var(--ink-4);
+  --fg:var(--ink-1); --fg-2:var(--ink-2); --fg-3:var(--ink-3); --fg-4:var(--ink-4);
+  --accent:var(--ink-1); --accent-ink:#FFFFFF;
+  --signal:#F2B300; --signal-borde:#A87C00; --on-signal:#120E00; --ring:var(--ink-1);
+
+  --libre:#00805A;   --libre-suave:#E0F0EB; --libre-borde:#9ECFC0; --libre-txt:#006B4C;
+  --entra:#CE8A0A;   --entra-suave:#F9F1E2; --entra-borde:#ECD3A2; --entra-txt:#8A5A06;
+  --ocupado:#D8342E; --ocupado-suave:#FAE7E6; --ocupado-borde:#F0B2B0; --ocupado-txt:#B32720;
+  --resto:#AAB3BE;   --resto-suave:#ECEEF1; --resto-borde:#D5D9DF;
+
+  --sh-1:0 1px 2px rgba(16,21,30,.07);
+  --sh-2:0 10px 28px -14px rgba(16,21,30,.24), 0 2px 6px rgba(16,21,30,.05);
+
+  /* --- El plano: tres caras por estado, no tres colores nuevos.
+     tapa mas clara · cara izquierda con el color de identidad · cara derecha
+     mas oscura. Los hex salen de los tokens de arriba, no de una paleta nueva. */
+  --pl-piso:var(--floor); --pl-reja:rgba(11,17,22,.055); --pl-cont:var(--floor-edge);
+  --pl-muro:#D9DEE0; --pl-murot:#E9EDEC;
+  --pl-ri:#D5D9DF; --pl-rd:#B3B6BB; --pl-rt:#F0F2F5;
+  --pl-ni:#E2E6EA; --pl-nd:#BEC1C5; --pl-nt:#F1F3F6;
+  --pl-li:#00805A; --pl-ld:#006C4C; --pl-lt:#389C7E;
+  --pl-ai:#CE8A0A; --pl-ad:#AD7408; --pl-at:#D9A440;
+  --pl-ti:#D8342E; --pl-td:#B52C27; --pl-tt:#E0605C;
+  --pl-ei:#232C33; --pl-ed:#131A1F; --pl-et:#46525B;
+  --pl-cod:var(--ink-1); --pl-codsel:#FFFFFF; --pl-halosel:#131A1F;
+  --pl-fec:var(--entra-txt); --pl-sala:var(--ink-4); --pl-sep:rgba(0,0,0,.30);
+}
+
+/* --- CAPA 2 · SEMANTICOS · OSCURO --------------------------------------- */
+html[data-tema="oscuro"]{
+  color-scheme:dark;
+  --bg:#04070A; --surface:#0B1116; --surface-2:#101820; --surface-3:#16212A;
+  --panel:rgba(12,19,25,.72); --panel-2:rgba(255,255,255,.045);
+  --floor:#0A1015; --floor-edge:rgba(255,255,255,.10);
+  --line-soft:#1A1F24; --line:#262B30; --line-strong:#3E4347;
+  --brd-soft:rgba(255,255,255,.06); --brd:rgba(255,255,255,.11); --brd-strong:rgba(255,255,255,.21);
+  --ink-1:#EDF3F2; --ink-2:#9DAEB6; --ink-3:#8CA0AA; --ink-4:#6E8190;
+  --accent-ink:#04070A;
+  --signal:#FFD028; --signal-borde:transparent; --on-signal:#0A0C06; --ring:var(--ink-1);
+
+  --libre:#00BE86;   --libre-suave:#092D28; --libre-borde:#065A45; --libre-txt:#00BE86;
+  --entra:#F5A524;   --entra-suave:#302918; --entra-borde:#6D4F1C; --entra-txt:#F5A524;
+  --ocupado:#F4544E; --ocupado-suave:#301C1F; --ocupado-borde:#6D2D2E; --ocupado-txt:#F4544E;
+  --resto:#33414F;   --resto-suave:#1B242D; --resto-borde:#293541;
+
+  --sh-1:0 1px 2px rgba(0,0,0,.5);
+  --sh-2:0 12px 34px -14px rgba(0,0,0,.8), 0 2px 8px rgba(0,0,0,.4);
+
+  --pl-reja:rgba(255,255,255,.05);
+  --pl-muro:#16212A; --pl-murot:#1F2C36;
+  --pl-ri:#293541; --pl-rd:#202932; --pl-rt:#394550;
+  --pl-ni:#1B242D; --pl-nd:#151C23; --pl-nt:#2C343C;
+  --pl-li:#00BE86; --pl-ld:#008960; --pl-lt:#24C899;
+  --pl-ai:#F5A524; --pl-ad:#B0771A; --pl-at:#FAB133;
+  --pl-ti:#F4544E; --pl-td:#B03C38; --pl-tt:#F5625D;
+  --pl-ei:#C6D2D6; --pl-ed:#9FAEB5; --pl-et:#E6EFF1;
+  --pl-codsel:#04070A; --pl-halosel:#C6D2D6;
+  --pl-sep:rgba(0,0,0,.45);
+}
+
+/* --- BASE --------------------------------------------------------------- */
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:var(--f-text); font-size:var(--t-sm); line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+  height:100dvh; display:flex; flex-direction:column; gap:var(--aire);
+  padding:var(--marco-t) var(--marco-x) var(--marco-b);
+}
+/* La hoja llena la ventana real. Solo se cierra el paso al rodar cuando la
+   ventana da de sobra para los dos pisos de la rejilla (ver --fila1/--fila2);
+   por debajo de eso manda el bloque de «ventana baja»: el documento rueda. */
+@media (min-height:760px){ html,body{overflow:hidden} }
+h1,h2,h3,p,ul,table,figure{margin:0}
+ul{padding:0;list-style:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:var(--r-xs)}
+.sr{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* --- TIPOGRAFIA DE COMPONENTE (la voz de E) ----------------------------- */
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+h2,.h2{font-family:var(--f-display);font-weight:800;letter-spacing:-.022em;font-size:var(--t-base);line-height:1.1}
+.rotulo{font-size:var(--t-3xs);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-4);font-weight:600}
+.ojo{font-family:var(--f-mono);font-size:var(--t-3xs);letter-spacing:.2em;color:var(--ink-4);
+  display:inline-flex;align-items:center;gap:7px;flex:none}
+.ojo::after{content:"";width:14px;height:1px;background:currentColor;opacity:.55}
+.sub{font-size:var(--t-xs);color:var(--ink-3)}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:var(--r-pill);
+  border:var(--hair) solid var(--brd);font-size:var(--t-3xs);letter-spacing:.13em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:600;white-space:nowrap}
+
+/* --- RAIL (la barra pildora de E) --------------------------------------- */
+.rail{display:flex;align-items:center;gap:var(--s4);height:var(--rail-h);flex:none;
+  padding-inline:16px;border-radius:var(--r-pill);
+  border:var(--hair) solid var(--brd);background:var(--surface);box-shadow:var(--sh-1)}
+.marca{display:flex;align-items:center;gap:9px;flex:none}
+.marca b{font-family:var(--f-mono);font-weight:700;font-size:var(--t-xs);letter-spacing:.26em}
+.marca span{font-size:var(--t-xs);color:var(--ink-4)}
+.sede{display:flex;align-items:baseline;gap:8px;padding-left:var(--s4);
+  border-left:var(--hair) solid var(--line);flex:none}
+.sede .v{font-family:var(--f-display);font-weight:800;font-size:var(--t-md);letter-spacing:-.02em}
+.sede .c{font-size:var(--t-xs);color:var(--ink-4)}
+.modos{display:flex;gap:2px;margin-left:var(--s2)}
+.modos a{padding:7px 13px;border-radius:var(--r-pill);font-size:var(--t-sm);color:var(--ink-3);font-weight:500}
+.modos a:hover{color:var(--fg);background:var(--panel-2)}
+.modos a.on{color:var(--fg);font-weight:700;background:var(--panel-2);
+  box-shadow:inset 0 0 0 1px var(--brd)}
+.rail .der{margin-left:auto;display:flex;align-items:center;gap:var(--s3)}
+.hoy{font-family:var(--f-mono);font-size:var(--t-2xs);color:var(--ink-3);font-variant-numeric:tabular-nums}
+.iconbtn{width:34px;height:34px;display:grid;place-items:center;border-radius:var(--r-pill);
+  border:var(--hair) solid var(--brd);color:var(--ink-2);flex:none;
+  transition:color var(--dur-1),border-color var(--dur-1),background var(--dur-1)}
+.iconbtn:hover{color:var(--fg);border-color:var(--brd-strong);background:var(--panel-2)}
+html[data-tema="oscuro"] .solo{display:none}
+html:not([data-tema="oscuro"]) .luna{display:none}
+
+/* --- LA HOJA -------------------------------------------------------------
+   El presupuesto de B, pero en proporcion y no en pixeles: la hoja se queda
+   con todo el alto que deja el marco y lo reparte entre las dos filas en la
+   misma relacion que tenia a 900 px (550 : 254), con un piso por fila.
+     alto de la hoja = 100dvh − marco-t − rail − aire − marco-b
+     fila 1 : fila 2 = 550 : 254, nunca menos de --fila1 / --fila2
+     ancho           = 1004 : 402                                          */
+.hoja{flex:1;min-height:0;display:grid;gap:var(--aire);
+  grid-template-columns:1004fr 402fr;
+  grid-template-rows:minmax(var(--fila1),550fr) minmax(var(--fila2),254fr)}
+.t{background:var(--surface);border:var(--hair) solid var(--brd);border-radius:var(--r-lg);
+  display:flex;flex-direction:column;overflow:hidden;min-height:0;position:relative}
+.t>header{display:flex;align-items:baseline;gap:10px;padding:11px 16px 7px;flex:none}
+.t>header .der{margin-left:auto;display:flex;align-items:center;gap:var(--s3)}
+
+/* El conector de E, traido literal: una linea fina que baja del panel de
+   arriba al numero del de abajo. No decora: dice que 02 se lee despues de 01. */
+.t.conect::before{content:"";position:absolute;left:29px;top:-10px;width:1px;height:10px;background:var(--brd-strong)}
+
+/* --- PLANO -------------------------------------------------------------- */
+.lienzo{flex:1;min-height:0;padding:0 14px 10px;position:relative;overflow:hidden}
+.lienzo svg{width:100%;height:100%;display:block;touch-action:none}
+.periodo{position:absolute;left:26px;top:2px;z-index:3;background:var(--panel);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  font-family:var(--f-mono);font-variant-numeric:tabular-nums;
+  font-size:var(--t-2xs);letter-spacing:.06em;color:var(--ink-2);
+  border:var(--hair) solid var(--brd);border-radius:var(--r-pill);padding:5px 12px}
+/* las herramientas del plano: el HUD de A, en pill de linea fina */
+.herr{position:absolute;right:20px;top:2px;z-index:3;display:flex;gap:5px}
+.herr button{height:28px;min-width:28px;padding:0 9px;border-radius:var(--r-sm);
+  border:var(--hair) solid var(--brd);background:var(--panel);color:var(--ink-2);
+  font-family:var(--f-mono);font-size:var(--t-2xs);line-height:1;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  transition:color var(--dur-1),border-color var(--dur-1)}
+.herr button:hover{color:var(--fg);border-color:var(--brd-strong)}
+.clave{display:flex;align-items:center;gap:11px;font-size:var(--t-xs);color:var(--ink-2)}
+.clave i{width:10px;height:10px;border-radius:2px;display:inline-block;flex:none;border:1px solid}
+.clave b{font-family:var(--f-mono);font-weight:700;color:var(--fg);font-variant-numeric:tabular-nums}
+.clave span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.clave .sep{width:1px;height:15px;background:var(--line);flex:none}
+
+/* piezas del plano */
+.pz{cursor:default}
+.pz[data-est="libre"]{cursor:pointer}
+.pl-piso{fill:var(--pl-piso)} .pl-sreja{stroke:var(--pl-reja);fill:none}
+.pl-scont{stroke:var(--pl-cont);fill:none}
+.pl-muro{fill:var(--pl-muro)} .pl-murot{fill:var(--pl-murot)}
+.pl-ri{fill:var(--pl-ri)} .pl-rd{fill:var(--pl-rd)} .pl-rt{fill:var(--pl-rt)}
+.pl-ni{fill:var(--pl-ni)} .pl-nd{fill:var(--pl-nd)} .pl-nt{fill:var(--pl-nt)}
+.pl-li{fill:var(--pl-li)} .pl-ld{fill:var(--pl-ld)} .pl-lt{fill:var(--pl-lt)}
+.pl-ai{fill:var(--pl-ai)} .pl-ad{fill:var(--pl-ad)} .pl-at{fill:var(--pl-at)}
+.pl-ti{fill:var(--pl-ti)} .pl-td{fill:var(--pl-td)} .pl-tt{fill:var(--pl-tt)}
+.pl-ei{fill:var(--pl-ei)} .pl-ed{fill:var(--pl-ed)} .pl-et{fill:var(--pl-et)}
+.pl-ssep{stroke:var(--pl-sep);stroke-width:1}
+.pl-sent{stroke:var(--pl-ad);stroke-width:1.6;stroke-linejoin:round;fill:none}
+.pl-ssala,.pl-ssala-f{stroke:var(--pl-sala)} .pl-ssala-f{fill:var(--pl-sala);stroke:none}
+/* ENTRADA y CAJAS cruzan muebles: el mismo halo que el rotulo, para que
+   ninguna letra quede a medias sobre un prisma */
+.pl-sala-t{font-family:var(--f-text);font-size:12.5px;font-weight:700;letter-spacing:.2em;
+  fill:var(--pl-sala);paint-order:stroke;stroke:var(--pl-piso);stroke-width:2.4px;stroke-linejoin:round}
+
+/* EL ROTULO SOBRE EL MUEBLE (de A) —————————————————————————————————
+   Un <text> con dos <tspan>: el codigo y su fecha de liberacion. Miden lo
+   mismo y se distinguen por peso y color. Interlineado en em: sigue al
+   cuerpo, que es constante en pantalla, asi que las dos lineas no se pisan a
+   ningun acercamiento. Sin caja: el halo lo hace paint-order:stroke, asi que
+   no hay ancho fijo en px que pueda desbordar. */
+#escena{--lbl:11.7px}
+.p-cod{
+  font-family:var(--f-mono);font-weight:700;text-anchor:middle;pointer-events:none;
+  font-size:var(--lbl);letter-spacing:0;
+  fill:var(--pl-cod);paint-order:stroke;stroke:var(--pl-piso);
+  stroke-width:calc(var(--lbl)*.30);stroke-linejoin:round;stroke-linecap:round;
+}
+.p-fec{fill:var(--pl-fec);font-weight:500}
+.p-cod[data-sel="1"]{fill:var(--pl-codsel);stroke:var(--pl-halosel);stroke-width:calc(var(--lbl)*.42)}
+/* Los 23 rotulos viven en una capa propia, dibujada despues de los 106
+   muebles: asi ningun prisma de adelante puede tapar media palabra. El clic
+   no lo cobra el rotulo — lo cobra el mueble (ver .pl-hit). */
+#rotulos{pointer-events:none}
+.pz-aro{fill:none;stroke:var(--ink-1);stroke-width:1.6;opacity:0;pointer-events:none;
+  transition:opacity var(--dur-1)}
+.pz:hover .pz-aro,.pz.mk .pz-aro,.pz:focus-visible .pz-aro{opacity:1}
+.pz:focus-visible{outline:none}
+/* elegido: la pieza pasa a tinta y su codigo se invierte */
+.pz[data-sel="1"] .pl-li{fill:var(--pl-ei)}
+.pz[data-sel="1"] .pl-ld{fill:var(--pl-ed)}
+.pz[data-sel="1"] .pl-lt{fill:var(--pl-et)}
+.pl-hit{fill:transparent;stroke:none}
+/* EL RESALTADO (de A): pasar el mouse por una fila de la tarifa, por un chip
+   de la escalera o por una fila del contrato APAGA LA SALA y deja encendidos
+   los muebles de los que se esta hablando. */
+#escena>*{transition:opacity var(--dur-2) var(--ease)}
+#escena[data-foco="1"]>*{opacity:.20}
+#escena[data-foco="1"]>.mk{opacity:1}
+#escena[data-foco="1"]>#rotulos{opacity:1}
+#rotulos .p-cod{transition:opacity var(--dur-2) var(--ease)}
+#escena[data-foco="1"] #rotulos .p-cod{opacity:.20}
+#escena[data-foco="1"] #rotulos .p-cod.mk{opacity:1}
+.pz.mk .pl-li,.pz.mk .pl-ai,.pz.mk .pl-ti{filter:brightness(1.12)}
+.pz.mk .pl-lt,.pz.mk .pl-at,.pz.mk .pl-tt{filter:brightness(1.08)}
+
+/* --- ESCALERA (el modulo 02 de A) --------------------------------------- */
+.lectura{font-family:var(--f-display);font-weight:800;font-size:var(--t-lg);
+  letter-spacing:-.028em;line-height:1;white-space:nowrap}
+/* «el 26 de sep», con un espacio normal. Antes la fecha entera iba en mono y
+   los espacios de la mono son cajas: se leia «el 26  de  sep». Ahora la caja
+   de ancho fijo la lleva solo la cifra —para que no baile al mover el
+   cursor— y las palabras siguen en la display. */
+.lectura b{font-weight:800;letter-spacing:-.03em}
+.lectura .dig{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.lectura .n{color:var(--libre-txt)}
+.graf{flex:1;min-height:0;padding:0 14px 8px}
+.graf svg{width:100%;height:100%;display:block;touch-action:none}
+.gEje{stroke:var(--line-strong);stroke-width:1;fill:none}
+.gComb{stroke:var(--line-strong);stroke-width:1;opacity:.65}
+.gArea{fill:var(--libre);opacity:.10}
+.gPaso{fill:none;stroke:var(--libre);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.gPto{fill:var(--libre);stroke:var(--surface);stroke-width:2}
+.gNum{font-family:var(--f-mono);font-weight:700;font-size:15px;fill:var(--libre-txt);
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.gRot{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.16em;fill:var(--ink-3)}
+.gNota{font-family:var(--f-mono);font-size:11.5px;fill:var(--ink-3)}
+.gFecha{font-family:var(--f-mono);font-size:11.5px;fill:var(--ink-2);font-variant-numeric:tabular-nums}
+.gHoy{font-family:var(--f-mono);font-size:11.5px;fill:var(--ink-2);font-weight:700}
+.gTemp{fill:var(--entra);opacity:.09}
+.gTempT{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.16em;fill:var(--entra-txt);text-anchor:middle}
+.gCruz{stroke:var(--ink-1);stroke-width:1;stroke-dasharray:2 3;opacity:.55}
+.gAnillo{fill:none;stroke:var(--ink-1);stroke-width:1.6}
+.gChip rect{fill:var(--entra-suave);stroke:var(--entra-borde);stroke-width:1}
+.gChip text{font-family:var(--f-mono);font-size:11.5px;font-weight:700;fill:var(--entra-txt);text-anchor:middle}
+.gChip{cursor:default}
+.gChip:hover rect,.gChip.paso rect{stroke:var(--entra);stroke-width:1.6}
+.gTipo{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.16em;fill:var(--ink-4)}
+
+/* --- CONTRATO (la ficha de E: filas mono, separador punteado, total grande) */
+/* La valvula declarada de B: con dos y con tres espacios el panel cierra con
+   aire y no esconde nada; del cuarto en adelante rueda, y solo el. */
+/* el aire de abajo lo pone el margen de .acciones, no el relleno del panel:
+   asi los 12 px se ven Y se cuentan como contenido —la ficha avisa antes de
+   romper— sin que el panel gane un solo pixel de alto. */
+.cuerpo{padding:0 16px 0;display:flex;flex-direction:column;flex:1;min-height:0;overflow-y:auto}
+.espacios{display:flex;flex-direction:column;gap:6px}
+.eitem{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:var(--r-sm);
+  border:var(--hair) solid var(--line);background:var(--surface-2)}
+.eitem.mk{border-color:var(--brd-strong)}
+.eitem.hl{border-color:var(--ink-1);background:var(--surface)}
+.eitem .cod{font-family:var(--f-mono);font-weight:700;font-size:var(--t-md);letter-spacing:-.01em;
+  width:9ch;flex:none}
+.eitem .d{font-size:var(--t-2xs);color:var(--ink-3);line-height:1.3;flex:1;min-width:0}
+.eitem .m{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:var(--t-sm);font-weight:700}
+.eitem .x{width:20px;height:20px;display:grid;place-items:center;border-radius:var(--r-xs);
+  color:var(--ink-3);flex:none;font-size:15px;line-height:1}
+.eitem .x:hover{color:var(--ocupado-txt);background:var(--ocupado-suave)}
+.pista{margin-top:6px;font-size:var(--t-2xs);color:var(--ink-3)}
+.pista b{font-weight:600;color:var(--ink-2);border-bottom:1px solid var(--line-strong)}
+.corte{border:0;border-top:1px dashed var(--brd);margin:10px 0 8px}
+.campo{margin-bottom:6px}
+.campo .rotulo{display:block;margin-bottom:4px}
+.entrada{border:var(--hair) solid var(--brd-control);border-radius:var(--r-sm);background:var(--surface);
+  padding:6px 10px;font-size:var(--t-base);font-weight:500;color:var(--fg);min-height:32px;
+  display:flex;align-items:center}
+.entrada.cif{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:var(--t-sm)}
+.entrada.foco{border-color:var(--ink-1);box-shadow:0 0 0 2px var(--panel-2)}
+.par{display:flex;gap:8px}.par>*{flex:1;min-width:0}
+.plazo{font-family:var(--f-mono);font-size:var(--t-2xs);color:var(--ink-3);margin-top:2px;
+  font-variant-numeric:tabular-nums}
+.total{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+  border-top:2px solid var(--ink-1);padding-top:8px;margin-top:10px}
+.total .n{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:800;
+  font-size:var(--t-xl);letter-spacing:-.035em;line-height:1.12}
+.cubre{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+.sello{font-size:var(--t-3xs);letter-spacing:.1em;text-transform:uppercase;font-weight:600;
+  color:var(--libre-txt);background:var(--libre-suave);border:var(--hair) solid var(--libre-borde);
+  padding:3px 9px;border-radius:var(--r-pill)}
+/* El boton se queda abajo, pero no pegado al filo: los 12 px de margen son
+   la holgura que pedia la ficha con dos espacios —y son los primeros que se
+   cuentan cuando el panel se queda corto, asi que avisan antes de romper. */
+.acciones{margin-top:auto;padding-top:10px;margin-bottom:12px}
+.btn-principal{display:block;width:100%;background:var(--signal);color:var(--on-signal);
+  border:var(--hair) solid var(--signal-borde);border-radius:var(--r-md);
+  padding:11px;font-size:var(--t-base);font-weight:700;letter-spacing:.005em;
+  transition:filter var(--dur-1)}
+.btn-principal:hover{filter:brightness(1.05)}
+.btn-principal:active{transform:translateY(1px)}
+.btn2{display:block;width:100%;text-align:center;margin-top:6px;font-size:var(--t-xs);
+  color:var(--ink-3);padding:4px}
+.btn2:hover{color:var(--fg)}
+
+/* --- TARIFA -------------------------------------------------------------
+   El pie —23 espacios comercializables · 15 +5 · 20 al cerrar— tiene que
+   verse entero y sin rodar. Tres cosas lo consiguen: el panel es 8 px mas
+   alto, el encabezado no envuelve a dos lineas, y las filas bajan un punto
+   de relleno. Las columnas ademas se separan 16 px para que «+5» y «20»
+   no se lean pegados. Las cifras no se tocan.                              */
+.tabla{padding:0 16px 9px}
+table{width:100%;border-collapse:collapse}
+th{font-size:var(--t-3xs);letter-spacing:.05em;text-transform:uppercase;color:var(--ink-4);
+  font-weight:600;text-align:left;padding:0 0 4px;border-bottom:var(--hair) solid var(--line);
+  white-space:nowrap}
+td{padding:2px 0;border-bottom:var(--hair) solid var(--line-soft);font-size:var(--t-sm);line-height:1.25}
+th+th,td+td{padding-left:12px}
+.der2{text-align:right}
+.cif{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+tfoot td{border-bottom:0;border-top:var(--hair) solid var(--line-strong);padding-top:6px;
+  color:var(--ink-3);font-size:var(--t-2xs);white-space:nowrap}
+tfoot td.der2{color:var(--fg);font-weight:700}
+.entran{color:var(--entra-txt);font-weight:700}
+.cero{color:var(--ink-4)}
+tr.mk td{background:var(--panel-2)}
+.c2{width:107px} .c3{width:93px}
+/* por debajo de 1340 la columna de la izquierda se queda sin sitio para «23
+   espacios comercializables» y el panel escondia 9 px de ancho: las dos
+   columnas de cifras ceden lo justo y la tabla vuelve a entrar entera. */
+@media (max-width:1340px){
+  tfoot td:first-child{white-space:normal}
+  .c2{width:92px} .c3{width:86px}
+  th+th,td+td{padding-left:8px}
+}
+tbody tr{cursor:default}
+
+/* --- VENTANA BAJA (portatiles de 800 y de 768) --------------------------
+   La misma composicion, la misma escala de letra, el mismo amarillo: lo que
+   baja es el aire. Cada valor de aqui es un relleno o un interlineado, nunca
+   un cuerpo de la escala. Con esto la ficha del contrato cierra con su boton
+   y su «Guardalo como reserva» dentro, y el pie de la tarifa —23 espacios
+   comercializables— entra entero, sin rodar y sin esconderse.              */
+@media (max-height:880px){
+  :root{ --marco-t:6px; --marco-x:10px; --marco-b:6px; --aire:8px; --rail-h:44px; }
+  .rail{padding-inline:14px}
+  .t>header{padding:8px 14px 5px}
+  .lienzo{padding:0 12px 8px}
+  .graf{padding:0 12px 6px}
+  .cuerpo{padding:0 14px 0}
+  .espacios{gap:5px}
+  .eitem{padding:5px 9px}
+  .eitem .d{line-height:1.22}
+  .pista{margin-top:4px}
+  .corte{margin:6px 0 5px}
+  .campo{margin-bottom:4px}
+  .campo .rotulo{margin-bottom:2px}
+  .entrada{min-height:28px;padding:4px 9px;line-height:1.2}
+  .plazo{margin-top:1px}
+  .total{margin-top:7px;padding-top:6px}
+  .total .n{line-height:1}
+  .cubre{margin-top:5px}
+  .acciones{padding-top:7px}
+  .btn-principal{padding:9px}
+  .btn2{margin-top:4px;padding:2px}
+  .tabla{padding:0 14px 8px}
+  td{padding:1px 0}
+  tfoot td{padding-top:5px}
+}
+
+/* --- VENTANA MAS BAJA QUE LA COMPOSICION -------------------------------
+   Si ni apretada entra (menos de 760 px de alto), la pantalla no esconde el
+   final: deja de fingir que es una hoja fija y rueda como cualquier
+   documento. Las dos filas conservan su piso, el plano su alto minimo, y no
+   hay un solo pixel que exista y no se pueda alcanzar.                    */
+@media (max-height:759px){
+  html,body{overflow:visible}
+  body{height:auto;min-height:100dvh}
+  .hoja{grid-template-rows:minmax(var(--fila1),auto) minmax(var(--fila2),auto)}
+  .lienzo{min-height:300px}
+}
+
+/* --- 390 px: razonable, no perfecto -------------------------------------
+   El plano y la escalera no pueden quedar en width:0 (era el defecto de B a
+   este ancho): los dos toman alto propio y la escalera se desliza. */
+@media (max-width:1200px){
+  html,body{overflow:visible}
+  body{height:auto;min-height:0;padding:8px}
+  .hoja{grid-template-columns:1fr;grid-template-rows:none;grid-auto-rows:min-content}
+  /* sin esto los paneles se quedan en la columna 2 que ya no existe y el
+     plano cae a width:0 — era el defecto de B a este ancho */
+  .hoja>.t{grid-area:auto!important;min-height:0}
+  .lienzo{height:62vw;min-height:280px}
+  /* la pildora del periodo se leia «31 ago → 30 sep 2026 · 3»: no la cortaba
+     el lienzo, la tapaba la herramienta. A este ancho no caben las dos en la
+     misma linea, asi que la herramienta baja al pie del plano y el periodo se
+     lee entero. */
+  .periodo{left:12px;padding:4px 10px;letter-spacing:.03em}
+  .herr{right:12px;top:auto;bottom:12px}
+  /* la escalera no se achica —a 974 px el rotulo mide sus 10,5 px justos— y
+     arranca por los escalones, que es lo que hay que ver; el resto queda a un
+     deslizamiento, con su barra a la vista. */
+  .graf{flex:none;height:auto;overflow-x:auto;overflow-y:hidden}
+  .graf svg{width:974px;height:202px;flex:none}
+  .rail{height:auto;flex-wrap:wrap;gap:8px;padding:10px 12px;border-radius:var(--r-lg)}
+  .rail .der{margin-left:0;width:100%;justify-content:space-between}
+  .sede{border-left:0;padding-left:0}
+  .clave{flex-wrap:wrap;gap:8px}
+  .t.conect::before{display:none}
+  .lectura{font-size:var(--t-base);white-space:normal}
+  .t>header{flex-wrap:wrap}
+  /* la tabla entra entera: los encabezados envuelven, las columnas se
+     estrechan y las separaciones bajan a 8 px. Nada de ancho escondido. */
+  .tabla{overflow-x:visible}
+  th,tfoot td{white-space:normal}
+  th+th,td+td{padding-left:8px}
+  .c2{width:52px} .c3{width:96px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition-duration:1ms!important}
+}
+</style>
+</head>
+<body>
+
+<div class="rail">
+  <div class="marca">
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+      <polygon points="12,3 21,8 12,13 3,8" fill="var(--ink-1)"/>
+      <polygon points="3,8 12,13 12,21 3,16" fill="var(--ink-3)"/>
+      <polygon points="21,8 12,13 12,21 21,16" fill="var(--ink-4)"/>
+    </svg>
+    <b>RECABRA</b><span>Galerías</span>
+  </div>
+  <div class="sede">
+    <span class="rotulo">Sede</span><span class="v">NAVE</span><span class="c">de 7</span>
+  </div>
+  <nav class="modos" aria-label="Modo">
+    <a href="#" class="on" aria-current="page">Vender</a>
+    <a href="#">Supervisar</a>
+  </nav>
+  <div class="der">
+    <span class="hoy">lunes 31 de agosto de 2026</span>
+    <button class="iconbtn" id="tema" type="button" aria-label="Cambiar a modo oscuro" aria-pressed="false">
+      <svg class="solo" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>
+      </svg>
+      <svg class="luna" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<main class="hoja">
+
+  <!-- 01 · EL PISO ------------------------------------------------------- -->
+  <section class="t" style="grid-area:1/1">
+    <header>
+      <span class="ojo">01</span>
+      <h2>Piso de NAVE</h2>
+      <span class="sub">106 muebles</span>
+      <div class="der clave" id="clave">
+        <span><i style="background:var(--pl-li);border-color:var(--libre-borde)"></i>Libre todo el periodo <b id="cLibre">13</b></span>
+        <span><i style="background:var(--pl-ai);border-color:var(--entra-borde)"></i>Se libera <b id="cEntra">5</b></span>
+        <span><i style="background:var(--pl-ti);border-color:var(--ocupado-borde)"></i>Tomado <b id="cTomado">3</b></span>
+        <span><i style="background:var(--pl-ri);border-color:var(--resto)"></i>Resto de la sala</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span><i style="background:var(--pl-ei);border-color:var(--ink-3)"></i>En el contrato <b id="cEleg">2</b></span>
+      </div>
+    </header>
+    <div class="lienzo" id="lienzo">
+      <p class="periodo">31 ago → 30 sep 2026 · 31 días</p>
+      <div class="herr">
+        <button type="button" id="zMas" aria-label="Acercar el plano">+</button>
+        <button type="button" id="zMenos" aria-label="Alejar el plano">−</button>
+        <button type="button" id="zCentrar">Centrar</button>
+      </div>
+      <svg viewBox="-416.5 -39.5 1032.5 557.8" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" id="svgPlano" role="group" aria-label="Plano isométrico de la sede NAVE: 23 espacios comercializables. Cada espacio libre se puede agregar al contrato."><defs><marker id="pta" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L8,4 L0,8 z" class="pl-ssala-f"/></marker></defs><g id="escena"><polygon class="pl-piso" points="0.0,0.0 608.0,304.0 199.5,508.2 -408.5,204.2"/><path class="pl-sreja" d="M38.0,19.0L-370.5,223.2M76.0,38.0L-332.5,242.2M114.0,57.0L-294.5,261.2M152.0,76.0L-256.5,280.2M190.0,95.0L-218.5,299.2M228.0,114.0L-180.5,318.2M266.0,133.0L-142.5,337.2M304.0,152.0L-104.5,356.2M342.0,171.0L-66.5,375.2M380.0,190.0L-28.5,394.2M418.0,209.0L9.5,413.2M456.0,228.0L47.5,432.2M494.0,247.0L85.5,451.2M532.0,266.0L123.5,470.2M570.0,285.0L161.5,489.2M-38.0,19.0L570.0,323.0M-76.0,38.0L532.0,342.0M-114.0,57.0L494.0,361.0M-152.0,76.0L456.0,380.0M-190.0,95.0L418.0,399.0M-228.0,114.0L380.0,418.0M-266.0,133.0L342.0,437.0M-304.0,152.0L304.0,456.0M-342.0,171.0L266.0,475.0M-380.0,190.0L228.0,494.0" fill="none"/><polygon class="pl-scont" points="0.0,0.0 608.0,304.0 199.5,508.2 -408.5,204.2" fill="none"/><polygon class="pl-muro" points="608.0,304.0 602.7,306.7 602.7,290.9 608.0,288.2"/><polygon class="pl-muro" points="-5.3,2.7 602.7,306.7 602.7,290.9 -5.3,-13.1"/><polygon class="pl-murot" points="0.0,-15.8 608.0,288.2 602.7,290.9 -5.3,-13.1"/><polygon class="pl-muro" points="5.3,2.7 -403.2,206.9 -403.2,191.2 5.3,-13.1"/><polygon class="pl-muro" points="-408.5,204.2 -403.2,206.9 -403.2,191.2 -408.5,188.5"/><polygon class="pl-murot" points="0.0,-15.8 5.3,-13.1 -403.2,191.2 -408.5,188.5"/><polygon class="pl-muro" points="608.0,304.0 199.5,508.2 199.5,492.5 608.0,288.2"/><polygon class="pl-muro" points="194.2,505.6 199.5,508.2 199.5,492.5 194.2,489.8"/><polygon class="pl-murot" points="602.7,285.6 608.0,288.2 199.5,492.5 194.2,489.8"/><polygon class="pl-muro" points="-346.2,230.1 -351.5,232.8 -351.5,217.0 -346.2,214.3"/><polygon class="pl-muro" points="-408.5,204.2 -351.5,232.8 -351.5,217.0 -408.5,188.5"/><polygon class="pl-murot" points="-403.2,185.8 -346.2,214.3 -351.5,217.0 -408.5,188.5"/><polygon class="pl-muro" points="204.8,505.6 199.5,508.2 199.5,492.5 204.8,489.8"/><polygon class="pl-muro" points="-256.5,280.2 199.5,508.2 199.5,492.5 -256.5,264.5"/><polygon class="pl-murot" points="-251.2,261.8 204.8,489.8 199.5,492.5 -256.5,264.5"/><g class="pz" data-cod="CAR-01"><polygon class="pl-li" points="72.2,47.5 43.7,61.8 43.7,40.0 72.2,25.8"/><polygon class="pl-ld" points="-1.9,38.9 43.7,61.8 43.7,40.0 -1.9,17.2"/><polygon class="pl-lt" points="26.6,2.9 72.2,25.8 43.7,40.0 -1.9,17.2"/></g><polygon class="pl-ri" points="121.6,72.2 93.1,86.5 93.1,64.7 121.6,50.5"/><polygon class="pl-rd" points="47.5,63.6 93.1,86.5 93.1,64.7 47.5,41.9"/><polygon class="pl-rt" points="76.0,27.6 121.6,50.5 93.1,64.7 47.5,41.9"/><polygon class="pl-ri" points="-7.6,79.8 -36.1,94.0 -36.1,80.8 -7.6,66.6"/><polygon class="pl-rd" points="-85.5,69.4 -36.1,94.0 -36.1,80.8 -85.5,56.2"/><polygon class="pl-rt" points="-57.0,41.9 -7.6,66.6 -36.1,80.8 -85.5,56.2"/><polygon class="pl-ri" points="171.0,96.9 142.5,111.1 142.5,89.4 171.0,75.1"/><polygon class="pl-rd" points="96.9,88.4 142.5,111.1 142.5,89.4 96.9,66.6"/><polygon class="pl-rt" points="125.4,52.3 171.0,75.1 142.5,89.4 96.9,66.6"/><polygon class="pl-ri" points="-49.4,100.7 -77.9,115.0 -77.9,101.8 -49.4,87.5"/><polygon class="pl-rd" points="-127.3,90.2 -77.9,115.0 -77.9,101.8 -127.3,77.0"/><polygon class="pl-rt" points="-98.8,62.8 -49.4,87.5 -77.9,101.8 -127.3,77.0"/><polygon class="pl-ri" points="53.2,110.2 24.7,124.5 24.7,111.2 53.2,97.0"/><polygon class="pl-rd" points="-24.7,99.8 24.7,124.5 24.7,111.2 -24.7,86.5"/><polygon class="pl-rt" points="3.8,72.3 53.2,97.0 24.7,111.2 -24.7,86.5"/><polygon class="pl-ri" points="-91.2,121.6 -119.7,135.8 -119.7,122.6 -91.2,108.4"/><polygon class="pl-rd" points="-169.1,111.2 -119.7,135.8 -119.7,122.6 -169.1,98.0"/><polygon class="pl-rt" points="-140.6,83.7 -91.2,108.4 -119.7,122.6 -169.1,98.0"/><polygon class="pl-ri" points="220.4,121.6 191.9,135.8 191.9,114.1 220.4,99.9"/><polygon class="pl-rd" points="146.3,113.0 191.9,135.8 191.9,114.1 146.3,91.3"/><polygon class="pl-rt" points="174.8,77.0 220.4,99.9 191.9,114.1 146.3,91.3"/><polygon class="pl-ri" points="11.4,131.1 -17.1,145.3 -17.1,132.2 11.4,117.9"/><polygon class="pl-rd" points="-66.5,120.6 -17.1,145.3 -17.1,132.2 -66.5,107.4"/><polygon class="pl-rt" points="-38.0,93.2 11.4,117.9 -17.1,132.2 -66.5,107.4"/><g class="pz" data-cod="FRU-04"><polygon class="pl-li" points="-133.0,142.5 -161.5,156.8 -161.5,143.6 -133.0,129.3"/><polygon class="pl-ld" points="-210.9,132.1 -161.5,156.8 -161.5,143.6 -210.9,118.9"/><polygon class="pl-lt" points="-182.4,104.6 -133.0,129.3 -161.5,143.6 -210.9,118.9"/></g><polygon class="pl-ri" points="121.6,133.9 105.5,142.0 105.5,118.3 121.6,110.2"/><polygon class="pl-rd" points="81.7,130.2 105.5,142.0 105.5,118.3 81.7,106.5"/><polygon class="pl-rt" points="97.9,98.4 121.6,110.2 105.5,118.3 81.7,106.5"/><polygon class="pl-ri" points="269.8,146.3 241.3,160.6 241.3,138.8 269.8,124.6"/><polygon class="pl-rd" points="195.7,137.8 241.3,160.6 241.3,138.8 195.7,116.0"/><polygon class="pl-rt" points="224.2,101.8 269.8,124.6 241.3,138.8 195.7,116.0"/><g class="pz" data-cod="FRU-05"><polygon class="pl-li" points="-30.4,152.0 -58.9,166.2 -58.9,153.1 -30.4,138.8"/><polygon class="pl-ld" points="-108.3,141.6 -58.9,166.2 -58.9,153.1 -108.3,128.4"/><polygon class="pl-lt" points="-79.8,114.1 -30.4,138.8 -58.9,153.1 -108.3,128.4"/></g><polygon class="pl-ri" points="103.5,143.0 71.2,159.1 71.2,132.4 103.5,116.3"/><polygon class="pl-rd" points="47.5,147.2 71.2,159.1 71.2,132.4 47.5,120.5"/><polygon class="pl-rt" points="79.8,104.4 103.5,116.3 71.2,132.4 47.5,120.5"/><g class="pz" data-cod="FRU-01"><polygon class="pl-li" points="-72.2,172.9 -100.7,187.2 -100.7,174.0 -72.2,159.7"/><polygon class="pl-ld" points="-150.1,162.5 -100.7,187.2 -100.7,174.0 -150.1,149.3"/><polygon class="pl-lt" points="-121.6,135.0 -72.2,159.7 -100.7,174.0 -150.1,149.3"/></g><polygon class="pl-ri" points="68.4,160.5 36.1,176.7 36.1,150.0 68.4,133.8"/><polygon class="pl-rd" points="12.4,164.8 36.1,176.7 36.1,150.0 12.4,138.1"/><polygon class="pl-rt" points="44.6,122.0 68.4,133.8 36.1,150.0 12.4,138.1"/><polygon class="pl-ri" points="-207.1,170.0 -245.1,189.0 -245.1,171.3 -207.1,152.3"/><polygon class="pl-rd" points="-285.0,169.1 -245.1,189.0 -245.1,171.3 -285.0,151.4"/><polygon class="pl-rt" points="-247.0,132.4 -207.1,152.3 -245.1,171.3 -285.0,151.4"/><g class="pz" data-cod="PUN-17"><polygon class="pl-ai" points="178.6,162.5 162.5,170.5 162.5,146.8 178.6,138.8"/><polygon class="pl-ad" points="138.7,158.7 162.5,170.5 162.5,146.8 138.7,134.9"/><polygon class="pl-at" points="154.8,126.9 178.6,138.8 162.5,146.8 138.7,134.9"/><polyline class="pl-sent" points="154.8,126.9 178.6,138.8 162.5,146.8 162.5,170.5 138.7,158.7 138.7,134.9" fill="none" stroke-linejoin="round"/></g><polygon class="pl-ri" points="330.6,176.7 302.1,191.0 302.1,169.2 330.6,155.0"/><polygon class="pl-rd" points="256.5,168.2 302.1,191.0 302.1,169.2 256.5,146.4"/><polygon class="pl-rt" points="285.0,132.2 330.6,155.0 302.1,169.2 256.5,146.4"/><polygon class="pl-ti" points="160.5,171.5 128.2,187.6 128.2,160.9 160.5,144.8"/><polygon class="pl-ld" points="104.5,175.8 128.2,187.6 128.2,160.9 104.5,149.1"/><polygon class="pl-lt" points="136.8,132.9 148.7,138.8 116.4,155.0 104.5,149.1"/><polygon class="pl-tt" points="148.7,138.8 160.5,144.8 128.2,160.9 116.4,155.0"/><line class="pl-ssep" x1="148.7" y1="138.8" x2="116.4" y2="155.0"/><polygon class="pl-ri" points="33.2,178.1 1.0,194.3 1.0,167.6 33.2,151.4"/><polygon class="pl-rd" points="-22.8,182.4 1.0,194.3 1.0,167.6 -22.8,155.7"/><polygon class="pl-rt" points="9.5,139.6 33.2,151.4 1.0,167.6 -22.8,155.7"/><polygon class="pl-ti" points="125.4,189.0 93.1,205.2 93.1,178.5 125.4,162.3"/><polygon class="pl-ld" points="69.4,193.3 93.1,205.2 93.1,178.5 69.4,166.6"/><polygon class="pl-lt" points="101.6,150.5 113.5,156.4 81.2,172.6 69.4,166.6"/><polygon class="pl-tt" points="113.5,156.4 125.4,162.3 93.1,178.5 81.2,172.6"/><line class="pl-ssep" x1="113.5" y1="156.4" x2="81.2" y2="172.6"/><g class="pz" data-cod="ISL-06"><polygon class="pl-li" points="-150.1,198.5 -188.1,217.5 -188.1,199.8 -150.1,180.8"/><polygon class="pl-ld" points="-228.0,197.6 -188.1,217.5 -188.1,199.8 -228.0,179.9"/><polygon class="pl-lt" points="-190.0,160.9 -150.1,180.8 -188.1,199.8 -228.0,179.9"/></g><polygon class="pl-ri" points="380.0,201.4 351.5,215.7 351.5,193.9 380.0,179.7"/><polygon class="pl-rd" points="305.9,192.8 351.5,215.7 351.5,193.9 305.9,171.1"/><polygon class="pl-rt" points="334.4,156.8 380.0,179.7 351.5,193.9 305.9,171.1"/><polygon class="pl-ri" points="235.6,191.0 219.5,199.0 219.5,175.3 235.6,167.2"/><polygon class="pl-rd" points="195.7,187.2 219.5,199.0 219.5,175.3 195.7,163.4"/><polygon class="pl-rt" points="211.8,155.4 235.6,167.2 219.5,175.3 195.7,163.4"/><g class="pz" data-cod="ISL-05"><polygon class="pl-li" points="-266.0,199.5 -304.0,218.5 -304.0,200.8 -266.0,181.8"/><polygon class="pl-ld" points="-343.9,198.5 -304.0,218.5 -304.0,200.8 -343.9,180.8"/><polygon class="pl-lt" points="-305.9,161.8 -266.0,181.8 -304.0,200.8 -343.9,180.8"/></g><polygon class="pl-ri" points="-1.9,195.7 -34.2,211.8 -34.2,185.1 -1.9,169.0"/><polygon class="pl-rd" points="-57.9,200.0 -34.2,211.8 -34.2,185.1 -57.9,173.3"/><polygon class="pl-rt" points="-25.6,157.1 -1.9,169.0 -34.2,185.1 -57.9,173.3"/><polygon class="pl-ri" points="217.5,200.0 185.2,216.1 185.2,189.4 217.5,173.3"/><polygon class="pl-rd" points="161.5,204.2 185.2,216.1 185.2,189.4 161.5,177.6"/><polygon class="pl-rt" points="193.8,161.4 217.5,173.3 185.2,189.4 161.5,177.6"/><g class="pz" data-cod="GON-60·A" data-par="GON-60·A|GON-60·B"><polygon class="pl-ti" points="90.2,206.6 58.0,222.8 58.0,196.1 90.2,179.9"/><polygon class="pl-tt" points="78.4,174.0 90.2,179.9 58.0,196.1 46.1,190.1"/></g><g class="pz" data-cod="GON-60·B" data-par="GON-60·A|GON-60·B"><polygon class="pl-ld" points="34.2,210.9 58.0,222.8 58.0,196.1 34.2,184.2"/><polygon class="pl-lt" points="66.5,168.1 78.4,174.0 46.1,190.1 34.2,184.2"/></g><polygon class="pl-ri" points="-104.5,221.3 -142.5,240.3 -142.5,222.6 -104.5,203.7"/><polygon class="pl-rd" points="-182.4,220.4 -142.5,240.3 -142.5,222.6 -182.4,202.7"/><polygon class="pl-rt" points="-144.4,183.7 -104.5,203.7 -142.5,222.6 -182.4,202.7"/><polygon class="pl-ri" points="-37.0,213.3 -69.3,229.4 -69.3,202.7 -37.0,186.6"/><polygon class="pl-rd" points="-93.1,217.5 -69.3,229.4 -69.3,202.7 -93.1,190.8"/><polygon class="pl-rt" points="-60.8,174.7 -37.0,186.6 -69.3,202.7 -93.1,190.8"/><polygon class="pl-ri" points="182.4,217.5 150.1,233.7 150.1,207.0 182.4,190.8"/><polygon class="pl-rd" points="126.4,221.8 150.1,233.7 150.1,207.0 126.4,195.1"/><polygon class="pl-rt" points="158.7,179.0 182.4,190.8 150.1,207.0 126.4,195.1"/><polygon class="pl-ri" points="292.6,219.5 276.4,227.5 276.4,203.8 292.6,195.8"/><polygon class="pl-rd" points="252.7,215.7 276.4,227.5 276.4,203.8 252.7,191.9"/><polygon class="pl-rt" points="268.9,183.9 292.6,195.8 276.4,203.8 252.7,191.9"/><g class="pz" data-cod="ISL-03"><polygon class="pl-ti" points="-209.0,228.0 -247.0,247.0 -247.0,229.3 -209.0,210.3"/><polygon class="pl-td" points="-286.9,227.0 -247.0,247.0 -247.0,229.3 -286.9,209.3"/><polygon class="pl-tt" points="-248.9,190.3 -209.0,210.3 -247.0,229.3 -286.9,209.3"/></g><polygon class="pl-ri" points="440.8,231.8 412.3,246.0 412.3,216.0 440.8,201.8"/><polygon class="pl-rd" points="366.7,223.2 412.3,246.0 412.3,216.0 366.7,193.2"/><polygon class="pl-rt" points="395.2,179.0 440.8,201.8 412.3,216.0 366.7,193.2"/><polygon class="pl-ti" points="55.1,224.2 22.8,240.3 22.8,213.6 55.1,197.5"/><polygon class="pl-ld" points="-0.9,228.5 22.8,240.3 22.8,213.6 -0.9,201.8"/><polygon class="pl-lt" points="31.4,185.6 43.2,191.6 10.9,207.7 -0.9,201.8"/><polygon class="pl-tt" points="43.2,191.6 55.1,197.5 22.8,213.6 10.9,207.7"/><line class="pl-ssep" x1="43.2" y1="191.6" x2="10.9" y2="207.7"/><polygon class="pl-li" points="274.6,228.5 242.2,244.6 242.2,217.9 274.6,201.8"/><polygon class="pl-ld" points="218.5,232.8 242.2,244.6 242.2,217.9 218.5,206.1"/><polygon class="pl-lt" points="250.8,189.9 262.7,195.8 230.4,212.0 218.5,206.1"/><polygon class="pl-lt" points="262.7,195.8 274.6,201.8 242.2,217.9 230.4,212.0"/><line class="pl-ssep" x1="262.7" y1="195.8" x2="230.4" y2="212.0"/><polygon class="pl-ri" points="-72.2,230.8 -104.5,247.0 -104.5,220.3 -72.2,204.2"/><polygon class="pl-rd" points="-128.2,235.1 -104.5,247.0 -104.5,220.3 -128.2,208.4"/><polygon class="pl-rt" points="-96.0,192.3 -72.2,204.2 -104.5,220.3 -128.2,208.4"/><polygon class="pl-ri" points="147.2,235.1 115.0,251.3 115.0,224.6 147.2,208.4"/><polygon class="pl-rd" points="91.2,239.4 115.0,251.3 115.0,224.6 91.2,212.7"/><polygon class="pl-rt" points="123.5,196.6 147.2,208.4 115.0,224.6 91.2,212.7"/><polygon class="pl-ti" points="20.0,241.8 -12.3,257.9 -12.3,231.2 20.0,215.1"/><polygon class="pl-ld" points="-36.1,246.0 -12.3,257.9 -12.3,231.2 -36.1,219.3"/><polygon class="pl-lt" points="-3.8,203.2 8.1,209.1 -24.2,225.3 -36.1,219.3"/><polygon class="pl-tt" points="8.1,209.1 20.0,215.1 -12.3,231.2 -24.2,225.3"/><line class="pl-ssep" x1="8.1" y1="209.1" x2="-24.2" y2="225.3"/><polygon class="pl-ri" points="490.2,256.5 461.7,270.8 461.7,240.8 490.2,226.5"/><polygon class="pl-rd" points="416.1,248.0 461.7,270.8 461.7,240.8 416.1,218.0"/><polygon class="pl-rt" points="444.6,203.7 490.2,226.5 461.7,240.8 416.1,218.0"/><polygon class="pl-li" points="239.4,246.0 207.1,262.2 207.1,235.5 239.4,219.3"/><polygon class="pl-ld" points="183.3,250.3 207.1,262.2 207.1,235.5 183.3,223.6"/><polygon class="pl-lt" points="215.7,207.5 227.5,213.4 195.2,229.6 183.3,223.6"/><polygon class="pl-lt" points="227.5,213.4 239.4,219.3 207.1,235.5 195.2,229.6"/><line class="pl-ssep" x1="227.5" y1="213.4" x2="195.2" y2="229.6"/><g class="pz" data-cod="PUN-04"><polygon class="pl-ai" points="-106.4,248.0 -122.5,256.0 -122.5,232.3 -106.4,224.2"/><polygon class="pl-ad" points="-146.3,244.2 -122.5,256.0 -122.5,232.3 -146.3,220.4"/><polygon class="pl-at" points="-130.2,212.4 -106.4,224.2 -122.5,232.3 -146.3,220.4"/><polyline class="pl-sent" points="-130.2,212.4 -106.4,224.2 -122.5,232.3 -122.5,256.0 -146.3,244.2 -146.3,220.4" fill="none" stroke-linejoin="round"/></g><polygon class="pl-ri" points="349.6,248.0 333.4,256.0 333.4,232.3 349.6,224.2"/><polygon class="pl-rd" points="309.7,244.2 333.4,256.0 333.4,232.3 309.7,220.4"/><polygon class="pl-rt" points="325.8,212.4 349.6,224.2 333.4,232.3 309.7,220.4"/><g class="pz" data-cod="ISL-04" data-sel="1"><polygon class="pl-li" points="-152.0,256.5 -190.0,275.5 -190.0,257.8 -152.0,238.8"/><polygon class="pl-ld" points="-229.9,255.5 -190.0,275.5 -190.0,257.8 -229.9,237.8"/><polygon class="pl-lt" points="-191.9,218.8 -152.0,238.8 -190.0,257.8 -229.9,237.8"/></g><polygon class="pl-ri" points="112.1,252.7 79.8,268.8 79.8,242.1 112.1,226.0"/><polygon class="pl-rd" points="56.1,257.0 79.8,268.8 79.8,242.1 56.1,230.3"/><polygon class="pl-rt" points="88.4,214.1 112.1,226.0 79.8,242.1 56.1,230.3"/><polygon class="pl-ri" points="331.6,257.0 299.2,273.1 299.2,246.4 331.6,230.3"/><polygon class="pl-rd" points="275.5,261.2 299.2,273.1 299.2,246.4 275.5,234.6"/><polygon class="pl-rt" points="307.8,218.4 331.6,230.3 299.2,246.4 275.5,234.6"/><polygon class="pl-ti" points="-15.2,259.4 -47.5,275.5 -47.5,248.8 -15.2,232.7"/><polygon class="pl-ld" points="-71.2,263.6 -47.5,275.5 -47.5,248.8 -71.2,236.9"/><polygon class="pl-lt" points="-39.0,220.8 -27.1,226.7 -59.4,242.9 -71.2,236.9"/><polygon class="pl-tt" points="-27.1,226.7 -15.2,232.7 -47.5,248.8 -59.4,242.9"/><line class="pl-ssep" x1="-27.1" y1="226.7" x2="-59.4" y2="242.9"/><g class="pz" data-cod="GON-61·A" data-par="GON-61·A|GON-61·B"><polygon class="pl-li" points="204.2,263.6 172.0,279.8 172.0,253.1 204.2,236.9"/><polygon class="pl-lt" points="192.4,231.0 204.2,236.9 172.0,253.1 160.1,247.1"/></g><g class="pz" data-cod="GON-61·B" data-par="GON-61·A|GON-61·B"><polygon class="pl-ld" points="148.2,267.9 172.0,279.8 172.0,253.1 148.2,241.2"/><polygon class="pl-lt" points="180.5,225.1 192.4,231.0 160.1,247.1 148.2,241.2"/></g><polygon class="pl-ri" points="-116.8,267.4 -135.8,276.9 -135.8,265.2 -116.8,255.7"/><polygon class="pl-rd" points="-154.8,267.4 -135.8,276.9 -135.8,265.2 -154.8,255.7"/><polygon class="pl-rt" points="-135.8,246.2 -116.8,255.7 -135.8,265.2 -154.8,255.7"/><polygon class="pl-ri" points="77.0,270.3 44.7,286.4 44.7,259.7 77.0,243.6"/><polygon class="pl-rd" points="20.9,274.6 44.7,286.4 44.7,259.7 20.9,247.9"/><polygon class="pl-rt" points="53.2,231.7 77.0,243.6 44.7,259.7 20.9,247.9"/><polygon class="pl-ri" points="539.6,281.2 511.1,295.4 511.1,265.4 539.6,251.2"/><polygon class="pl-rd" points="465.5,272.7 511.1,295.4 511.1,265.4 465.5,242.7"/><polygon class="pl-rt" points="494.0,228.4 539.6,251.2 511.1,265.4 465.5,242.7"/><polygon class="pl-ri" points="296.4,274.6 264.1,290.7 264.1,264.0 296.4,247.9"/><polygon class="pl-rd" points="240.3,278.8 264.1,290.7 264.1,264.0 240.3,252.1"/><polygon class="pl-rt" points="272.6,236.0 296.4,247.9 264.1,264.0 240.3,252.1"/><polygon class="pl-ri" points="-49.4,276.4 -65.5,284.5 -65.5,260.8 -49.4,252.8"/><polygon class="pl-rd" points="-89.3,272.6 -65.5,284.5 -65.5,260.8 -89.3,248.9"/><polygon class="pl-rt" points="-73.1,240.9 -49.4,252.8 -65.5,260.8 -89.3,248.9"/><polygon class="pl-ri" points="406.6,276.4 390.4,284.5 390.4,260.8 406.6,252.8"/><polygon class="pl-rd" points="366.7,272.6 390.4,284.5 390.4,260.8 366.7,248.9"/><polygon class="pl-rt" points="382.8,240.9 406.6,252.8 390.4,260.8 366.7,248.9"/><polygon class="pl-li" points="169.1,281.2 136.8,297.3 136.8,270.6 169.1,254.5"/><polygon class="pl-ld" points="113.1,285.5 136.8,297.3 136.8,270.6 113.1,258.8"/><polygon class="pl-lt" points="145.3,242.6 157.2,248.6 124.9,264.7 113.1,258.8"/><polygon class="pl-lt" points="157.2,248.6 169.1,254.5 136.8,270.6 124.9,264.7"/><line class="pl-ssep" x1="157.2" y1="248.6" x2="124.9" y2="264.7"/><polygon class="pl-ri" points="-90.2,280.7 -109.2,290.2 -109.2,278.5 -90.2,269.0"/><polygon class="pl-rd" points="-128.2,280.7 -109.2,290.2 -109.2,278.5 -128.2,269.0"/><polygon class="pl-rt" points="-109.2,259.5 -90.2,269.0 -109.2,278.5 -128.2,269.0"/><polygon class="pl-li" points="388.6,285.5 356.2,301.6 356.2,274.9 388.6,258.8"/><polygon class="pl-ld" points="332.5,289.8 356.2,301.6 356.2,274.9 332.5,263.1"/><polygon class="pl-lt" points="364.8,246.9 376.7,252.8 344.4,269.0 332.5,263.1"/><polygon class="pl-lt" points="376.7,252.8 388.6,258.8 356.2,274.9 344.4,269.0"/><line class="pl-ssep" x1="376.7" y1="252.8" x2="344.4" y2="269.0"/><polygon class="pl-ri" points="-167.2,285.0 -186.2,294.5 -186.2,282.8 -167.2,273.3"/><polygon class="pl-rd" points="-205.2,285.0 -186.2,294.5 -186.2,282.8 -205.2,273.3"/><polygon class="pl-rt" points="-186.2,263.8 -167.2,273.3 -186.2,282.8 -205.2,273.3"/><polygon class="pl-ri" points="41.8,287.9 9.5,304.0 9.5,277.3 41.8,261.2"/><polygon class="pl-rd" points="-14.2,292.1 9.5,304.0 9.5,277.3 -14.2,265.4"/><polygon class="pl-rt" points="18.0,249.3 41.8,261.2 9.5,277.3 -14.2,265.4"/><polygon class="pl-ri" points="261.2,292.1 229.0,308.3 229.0,281.6 261.2,265.4"/><polygon class="pl-rd" points="205.2,296.4 229.0,308.3 229.0,281.6 205.2,269.7"/><polygon class="pl-rt" points="237.5,253.6 261.2,265.4 229.0,281.6 205.2,269.7"/><polygon class="pl-ni" points="-112.1,293.6 -159.6,317.3 -159.6,301.1 -112.1,277.4"/><polygon class="pl-nd" points="-178.6,307.8 -159.6,317.3 -159.6,301.1 -178.6,291.6"/><polygon class="pl-nt" points="-131.1,267.9 -112.1,277.4 -159.6,301.1 -178.6,291.6"/><g class="pz" data-cod="EXP-01"><polygon class="pl-ai" points="-39.9,303.1 -64.6,315.4 -64.6,294.7 -39.9,282.4"/><polygon class="pl-ad" points="-96.9,299.2 -64.6,315.4 -64.6,294.7 -96.9,278.6"/><polygon class="pl-at" points="-72.2,266.2 -39.9,282.4 -64.6,294.7 -96.9,278.6"/><polyline class="pl-sent" points="-72.2,266.2 -39.9,282.4 -64.6,294.7 -64.6,315.4 -96.9,299.2 -96.9,278.6" fill="none" stroke-linejoin="round"/></g><polygon class="pl-li" points="134.0,298.8 101.7,314.9 101.7,288.2 134.0,272.1"/><polygon class="pl-ld" points="77.9,303.1 101.7,314.9 101.7,288.2 77.9,276.4"/><polygon class="pl-lt" points="110.2,260.2 122.1,266.1 89.8,282.3 77.9,276.4"/><polygon class="pl-lt" points="122.1,266.1 134.0,272.1 101.7,288.2 89.8,282.3"/><line class="pl-ssep" x1="122.1" y1="266.1" x2="89.8" y2="282.3"/><polygon class="pl-li" points="353.4,303.1 321.1,319.2 321.1,292.5 353.4,276.4"/><polygon class="pl-ld" points="297.4,307.3 321.1,319.2 321.1,292.5 297.4,280.6"/><polygon class="pl-lt" points="329.7,264.5 341.5,270.4 309.2,286.6 297.4,280.6"/><polygon class="pl-lt" points="341.5,270.4 353.4,276.4 321.1,292.5 309.2,286.6"/><line class="pl-ssep" x1="341.5" y1="270.4" x2="309.2" y2="286.6"/><g class="pz" data-cod="PUN-03"><polygon class="pl-ai" points="7.6,304.9 -8.5,313.0 -8.5,289.3 7.6,281.2"/><polygon class="pl-ad" points="-32.3,301.1 -8.5,313.0 -8.5,289.3 -32.3,277.4"/><polygon class="pl-at" points="-16.1,269.4 7.6,281.2 -8.5,289.3 -32.3,277.4"/><polyline class="pl-sent" points="-16.1,269.4 7.6,281.2 -8.5,289.3 -8.5,313.0 -32.3,301.1 -32.3,277.4" fill="none" stroke-linejoin="round"/></g><polygon class="pl-ri" points="463.6,304.9 447.4,313.0 447.4,289.3 463.6,281.2"/><polygon class="pl-rd" points="423.7,301.1 447.4,313.0 447.4,289.3 423.7,277.4"/><polygon class="pl-rt" points="439.8,269.4 463.6,281.2 447.4,289.3 423.7,277.4"/><polygon class="pl-ri" points="226.1,309.7 193.8,325.8 193.8,299.1 226.1,283.0"/><polygon class="pl-rd" points="170.1,314.0 193.8,325.8 193.8,299.1 170.1,287.3"/><polygon class="pl-rt" points="202.3,271.1 226.1,283.0 193.8,299.1 170.1,287.3"/><polygon class="pl-ri" points="445.6,314.0 413.2,330.1 413.2,303.4 445.6,287.3"/><polygon class="pl-rd" points="389.5,318.2 413.2,330.1 413.2,303.4 389.5,291.6"/><polygon class="pl-rt" points="421.8,275.4 445.6,287.3 413.2,303.4 389.5,291.6"/><polygon class="pl-li" points="98.8,316.3 66.5,332.5 66.5,305.8 98.8,289.6"/><polygon class="pl-ld" points="42.8,320.6 66.5,332.5 66.5,305.8 42.8,293.9"/><polygon class="pl-lt" points="75.0,277.8 86.9,283.7 54.6,299.9 42.8,293.9"/><polygon class="pl-lt" points="86.9,283.7 98.8,289.6 66.5,305.8 54.6,299.9"/><line class="pl-ssep" x1="86.9" y1="283.7" x2="54.6" y2="299.9"/><polygon class="pl-ni" points="-64.6,317.3 -112.1,341.1 -112.1,324.9 -64.6,301.1"/><polygon class="pl-nd" points="-131.1,331.6 -112.1,341.1 -112.1,324.9 -131.1,315.4"/><polygon class="pl-nt" points="-83.6,291.6 -64.6,301.1 -112.1,324.9 -131.1,315.4"/><g class="pz" data-cod="GON-67·A" data-par="GON-67·A|GON-67·B"><polygon class="pl-li" points="318.2,320.6 285.9,336.8 285.9,310.1 318.2,293.9"/><polygon class="pl-lt" points="306.4,288.0 318.2,293.9 285.9,310.1 274.1,304.1"/></g><g class="pz" data-cod="GON-67·B" data-par="GON-67·A|GON-67·B"><polygon class="pl-ld" points="262.2,324.9 285.9,336.8 285.9,310.1 262.2,298.2"/><polygon class="pl-lt" points="294.5,282.1 306.4,288.0 274.1,304.1 262.2,298.2"/></g><polygon class="pl-ri" points="-14.2,318.7 -33.2,328.2 -33.2,316.5 -14.2,307.0"/><polygon class="pl-rd" points="-52.2,318.7 -33.2,328.2 -33.2,316.5 -52.2,307.0"/><polygon class="pl-rt" points="-33.2,297.5 -14.2,307.0 -33.2,316.5 -52.2,307.0"/><polygon class="pl-ri" points="191.0,327.3 158.7,343.4 158.7,316.7 191.0,300.6"/><polygon class="pl-rd" points="134.9,331.6 158.7,343.4 158.7,316.7 134.9,304.9"/><polygon class="pl-rt" points="167.2,288.7 191.0,300.6 158.7,316.7 134.9,304.9"/><polygon class="pl-ri" points="537.7,329.7 488.3,354.3 488.3,323.6 537.7,298.9"/><polygon class="pl-rd" points="459.8,340.1 488.3,354.3 488.3,323.6 459.8,309.3"/><polygon class="pl-rt" points="509.2,284.7 537.7,298.9 488.3,323.6 459.8,309.3"/><polygon class="pl-ri" points="410.4,331.6 378.1,347.7 378.1,321.0 410.4,304.9"/><polygon class="pl-rd" points="354.3,335.8 378.1,347.7 378.1,321.0 354.3,309.1"/><polygon class="pl-rt" points="386.7,293.0 410.4,304.9 378.1,321.0 354.3,309.1"/><polygon class="pl-ri" points="64.6,333.4 48.5,341.5 48.5,317.8 64.6,309.8"/><polygon class="pl-rd" points="24.7,329.7 48.5,341.5 48.5,317.8 24.7,306.0"/><polygon class="pl-rt" points="40.9,297.9 64.6,309.8 48.5,317.8 24.7,306.0"/><polygon class="pl-ri" points="12.4,332.0 -6.6,341.5 -6.6,329.8 12.4,320.3"/><polygon class="pl-rd" points="-25.6,332.0 -6.6,341.5 -6.6,329.8 -25.6,320.3"/><polygon class="pl-rt" points="-6.6,310.8 12.4,320.3 -6.6,329.8 -25.6,320.3"/><polygon class="pl-li" points="283.1,338.2 250.8,354.3 250.8,327.6 283.1,311.5"/><polygon class="pl-ld" points="227.1,342.5 250.8,354.3 250.8,327.6 227.1,315.8"/><polygon class="pl-lt" points="259.4,299.6 271.2,305.6 238.9,321.7 227.1,315.8"/><polygon class="pl-lt" points="271.2,305.6 283.1,311.5 250.8,327.6 238.9,321.7"/><line class="pl-ssep" x1="271.2" y1="305.6" x2="238.9" y2="321.7"/><polygon class="pl-ni" points="-17.1,341.1 -64.6,364.8 -64.6,348.6 -17.1,324.9"/><polygon class="pl-nd" points="-83.6,355.3 -64.6,364.8 -64.6,348.6 -83.6,339.1"/><polygon class="pl-nt" points="-36.1,315.4 -17.1,324.9 -64.6,348.6 -83.6,339.1"/><polygon class="pl-ri" points="155.8,344.8 123.5,361.0 123.5,334.3 155.8,318.1"/><polygon class="pl-rd" points="99.8,349.1 123.5,361.0 123.5,334.3 99.8,322.4"/><polygon class="pl-rt" points="132.0,306.3 155.8,318.1 123.5,334.3 99.8,322.4"/><polygon class="pl-ri" points="39.0,345.3 20.0,354.8 20.0,343.1 39.0,333.6"/><polygon class="pl-rd" points="1.0,345.3 20.0,354.8 20.0,343.1 1.0,333.6"/><polygon class="pl-rt" points="20.0,324.1 39.0,333.6 20.0,343.1 1.0,333.6"/><polygon class="pl-ri" points="375.2,349.1 342.9,365.3 342.9,338.6 375.2,322.4"/><polygon class="pl-rd" points="319.2,353.4 342.9,365.3 342.9,338.6 319.2,326.7"/><polygon class="pl-rt" points="351.5,310.6 375.2,322.4 342.9,338.6 319.2,326.7"/><polygon class="pl-ri" points="484.5,356.2 435.1,380.9 435.1,350.2 484.5,325.5"/><polygon class="pl-rd" points="406.6,366.7 435.1,380.9 435.1,350.2 406.6,335.9"/><polygon class="pl-rt" points="456.0,311.2 484.5,325.5 435.1,350.2 406.6,335.9"/><polygon class="pl-li" points="248.0,355.8 215.7,371.9 215.7,345.2 248.0,329.1"/><polygon class="pl-ld" points="191.9,360.1 215.7,371.9 215.7,345.2 191.9,333.4"/><polygon class="pl-lt" points="224.2,317.2 236.1,323.1 203.8,339.3 191.9,333.4"/><polygon class="pl-lt" points="236.1,323.1 248.0,329.1 215.7,345.2 203.8,339.3"/><line class="pl-ssep" x1="236.1" y1="323.1" x2="203.8" y2="339.3"/><g class="pz" data-cod="EXP-02"><polygon class="pl-ai" points="81.7,363.8 57.0,376.2 57.0,355.5 81.7,343.1"/><polygon class="pl-ad" points="24.7,360.1 57.0,376.2 57.0,355.5 24.7,339.4"/><polygon class="pl-at" points="49.4,327.0 81.7,343.1 57.0,355.5 24.7,339.4"/><polyline class="pl-sent" points="49.4,327.0 81.7,343.1 57.0,355.5 57.0,376.2 24.7,360.1 24.7,339.4" fill="none" stroke-linejoin="round"/></g><g class="pz" data-cod="PUN-05" data-sel="1"><polygon class="pl-li" points="121.6,361.9 105.5,370.0 105.5,346.3 121.6,338.2"/><polygon class="pl-ld" points="81.7,358.2 105.5,370.0 105.5,346.3 81.7,334.5"/><polygon class="pl-lt" points="97.9,326.4 121.6,338.2 105.5,346.3 81.7,334.5"/></g><polygon class="pl-ri" points="340.1,366.7 307.8,382.8 307.8,356.1 340.1,340.0"/><polygon class="pl-rd" points="284.1,371.0 307.8,382.8 307.8,356.1 284.1,344.3"/><polygon class="pl-rt" points="316.3,328.1 340.1,340.0 307.8,356.1 284.1,344.3"/><polygon class="pl-ni" points="30.4,364.8 -17.1,388.6 -17.1,372.4 30.4,348.6"/><polygon class="pl-nd" points="-36.1,379.1 -17.1,388.6 -17.1,372.4 -36.1,362.9"/><polygon class="pl-nt" points="11.4,339.1 30.4,348.6 -17.1,372.4 -36.1,362.9"/><polygon class="pl-li" points="212.8,373.3 180.5,389.5 180.5,362.8 212.8,346.6"/><polygon class="pl-ld" points="156.8,377.6 180.5,389.5 180.5,362.8 156.8,350.9"/><polygon class="pl-lt" points="189.0,334.8 200.9,340.7 168.6,356.9 156.8,350.9"/><polygon class="pl-lt" points="200.9,340.7 212.8,346.6 180.5,362.8 168.6,356.9"/><line class="pl-ssep" x1="200.9" y1="340.7" x2="168.6" y2="356.9"/><g class="pz" data-cod="BEB-01"><polygon class="pl-ti" points="431.3,382.8 381.9,407.6 381.9,376.8 431.3,352.1"/><polygon class="pl-td" points="353.4,393.3 381.9,407.6 381.9,376.8 353.4,362.6"/><polygon class="pl-tt" points="402.8,337.8 431.3,352.1 381.9,376.8 353.4,362.6"/></g><polygon class="pl-ri" points="111.2,381.4 92.2,390.9 92.2,379.2 111.2,369.7"/><polygon class="pl-rd" points="73.2,381.4 92.2,390.9 92.2,379.2 73.2,369.7"/><polygon class="pl-rt" points="92.2,360.2 111.2,369.7 92.2,379.2 73.2,369.7"/><polygon class="pl-ri" points="304.9,384.3 272.7,400.4 272.7,373.7 304.9,357.6"/><polygon class="pl-rd" points="248.9,388.6 272.7,400.4 272.7,373.7 248.9,361.9"/><polygon class="pl-rt" points="281.2,345.7 304.9,357.6 272.7,373.7 248.9,361.9"/><polygon class="pl-ri" points="178.6,390.4 162.5,398.5 162.5,374.8 178.6,366.8"/><polygon class="pl-rd" points="138.7,386.7 162.5,398.5 162.5,374.8 138.7,363.0"/><polygon class="pl-rt" points="154.8,354.9 178.6,366.8 162.5,374.8 138.7,363.0"/><polygon class="pl-ni" points="77.9,388.6 30.4,412.3 30.4,396.1 77.9,372.4"/><polygon class="pl-nd" points="11.4,402.8 30.4,412.3 30.4,396.1 11.4,386.6"/><polygon class="pl-nt" points="58.9,362.9 77.9,372.4 30.4,396.1 11.4,386.6"/><polygon class="pl-ri" points="137.8,394.7 118.8,404.2 118.8,392.5 137.8,383.0"/><polygon class="pl-rd" points="99.8,394.7 118.8,404.2 118.8,392.5 99.8,383.0"/><polygon class="pl-rt" points="118.8,373.5 137.8,383.0 118.8,392.5 99.8,383.0"/><polygon class="pl-ri" points="269.8,401.8 237.5,418.0 237.5,391.3 269.8,375.1"/><polygon class="pl-rd" points="213.8,406.1 237.5,418.0 237.5,391.3 213.8,379.4"/><polygon class="pl-rt" points="246.0,363.3 269.8,375.1 237.5,391.3 213.8,379.4"/><g class="pz" data-cod="BEB-02"><polygon class="pl-li" points="378.1,409.4 328.7,434.2 328.7,403.4 378.1,378.7"/><polygon class="pl-ld" points="300.2,419.9 328.7,434.2 328.7,403.4 300.2,389.2"/><polygon class="pl-lt" points="349.6,364.4 378.1,378.7 328.7,403.4 300.2,389.2"/></g><polygon class="pl-ri" points="164.4,408.0 145.4,417.5 145.4,405.8 164.4,396.3"/><polygon class="pl-rd" points="126.4,408.0 145.4,417.5 145.4,405.8 126.4,396.3"/><polygon class="pl-rt" points="145.4,386.8 164.4,396.3 145.4,405.8 126.4,396.3"/><polygon class="pl-ni" points="125.4,412.3 77.9,436.1 77.9,419.9 125.4,396.1"/><polygon class="pl-nd" points="58.9,426.6 77.9,436.1 77.9,419.9 58.9,410.4"/><polygon class="pl-nt" points="106.4,386.6 125.4,396.1 77.9,419.9 58.9,410.4"/><polygon class="pl-ri" points="235.6,418.9 219.5,427.0 219.5,403.3 235.6,395.2"/><polygon class="pl-rd" points="195.7,415.2 219.5,427.0 219.5,403.3 195.7,391.5"/><polygon class="pl-rt" points="211.8,383.4 235.6,395.2 219.5,403.3 195.7,391.5"/><polygon class="pl-ri" points="191.0,421.3 172.0,430.8 172.0,419.1 191.0,409.6"/><polygon class="pl-rd" points="153.0,421.3 172.0,430.8 172.0,419.1 153.0,409.6"/><polygon class="pl-rt" points="172.0,400.1 191.0,409.6 172.0,419.1 153.0,409.6"/><g class="pz" data-cod="BEB-03"><polygon class="pl-li" points="324.9,436.1 275.5,460.8 275.5,430.0 324.9,405.3"/><polygon class="pl-ld" points="247.0,446.5 275.5,460.8 275.5,430.0 247.0,415.8"/><polygon class="pl-lt" points="296.4,391.1 324.9,405.3 275.5,430.0 247.0,415.8"/></g><polygon class="pl-ri" points="217.6,434.6 198.6,444.1 198.6,432.4 217.6,422.9"/><polygon class="pl-rd" points="179.6,434.6 198.6,444.1 198.6,432.4 179.6,422.9"/><polygon class="pl-rt" points="198.6,413.4 217.6,422.9 198.6,432.4 179.6,422.9"/><polygon class="pl-ni" points="172.9,436.1 125.4,459.8 125.4,443.6 172.9,419.9"/><polygon class="pl-nd" points="106.4,450.3 125.4,459.8 125.4,443.6 106.4,434.1"/><polygon class="pl-nt" points="153.9,410.4 172.9,419.9 125.4,443.6 106.4,434.1"/><polygon class="pl-ri" points="244.2,447.9 225.2,457.4 225.2,445.7 244.2,436.2"/><polygon class="pl-rd" points="206.2,447.9 225.2,457.4 225.2,445.7 206.2,436.2"/><polygon class="pl-rt" points="225.2,426.7 244.2,436.2 225.2,445.7 206.2,436.2"/><text class="pl-sala-t" transform="matrix(0.8944,0.4472,-0.8944,0.4472,-318.2,227.5)" text-anchor="start">ENTRADA</text><text class="pl-sala-t" transform="matrix(0.8944,0.4472,-0.8944,0.4472,-181.4,311.1)" text-anchor="start">CAJAS</text><path class="pl-ssala" d="M-304.0,256.5L-273.6,241.3" fill="none" marker-end="url(#pta)"/></g></svg>
+    </div>
+  </section>
+
+  <!-- 02 · CUÁNDO SE LIBERA (el módulo de A, con el título grande de B) --- -->
+  <section class="t conect" style="grid-area:2/1">
+    <header>
+      <span class="ojo">02</span>
+      <h2>Cuándo se libera cada espacio</h2>
+      <div class="der">
+        <p class="lectura" id="lectura">si arrancás el <b><span class="dig">26</span> de sep</b> → <b class="n dig">17</b> libres</p>
+      </div>
+    </header>
+    <div class="graf">
+      <svg id="esc" viewBox="0 0 974 202" preserveAspectRatio="xMidYMid meet" role="img"
+           tabindex="0" aria-label="Escalera de espacios libres a lo largo del periodo: 15 hasta el 25 de septiembre, 17 desde el 25, 18 desde el 27 y 20 desde el 29."></svg>
+    </div>
+  </section>
+
+  <!-- 03 · CONTRATO ------------------------------------------------------ -->
+  <section class="t" style="grid-area:1/2">
+    <header>
+      <span class="ojo">03</span>
+      <h2>Contrato</h2>
+      <div class="der"><span class="pill">sin firmar</span></div>
+    </header>
+    <div class="cuerpo">
+      <div class="espacios" id="espacios"></div>
+      <p class="pista">Agregá otro espacio <b>tocándolo en el plano</b></p>
+
+      <hr class="corte">
+
+      <div class="campo par">
+        <div><span class="rotulo">Proveedor</span>
+          <div class="entrada foco" id="prov">ALPINA</div></div>
+        <div><span class="rotulo">Marca</span>
+          <div class="entrada" id="marca">Alpinito</div></div>
+      </div>
+      <div class="campo par">
+        <div><span class="rotulo">Desde</span>
+          <div class="entrada cif" id="desde">15 sep 2026</div></div>
+        <div><span class="rotulo">Hasta</span>
+          <div class="entrada cif" id="hasta">14 nov 2026</div></div>
+      </div>
+      <p class="plazo" id="plazo">61 días · 2 espacios</p>
+
+      <div class="total">
+        <span class="rotulo">Total del contrato</span>
+        <span class="n" id="total">$4.575.000</span>
+      </div>
+      <div class="cubre">
+        <span class="sello">Cubre Amor y Amistad</span>
+        <span class="sello">Cubre Halloween</span>
+      </div>
+
+      <div class="acciones">
+        <button class="btn-principal" type="button">Guardar contrato y avisar</button>
+        <a class="btn2" href="#">Guardalo como reserva</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 · TARIFA -------------------------------------------------------- -->
+  <section class="t conect" style="grid-area:2/2">
+    <header>
+      <span class="ojo">04</span>
+      <h2>Tarifa de referencia</h2>
+      <div class="der"><span class="pill">al mes</span></div>
+    </header>
+    <div class="tabla">
+      <table>
+        <thead><tr>
+          <th scope="col">Tipo de espacio</th>
+          <th scope="col" class="der2 c2">Libres · entran</th>
+          <th scope="col" class="der2 c3">Tarifa</th>
+        </tr></thead>
+        <tbody>
+          <tr data-tipo="Isla"><td>Isla</td><td class="der2 cif ct">2</td><td class="der2 cif">$1.200.000</td></tr>
+          <tr data-tipo="Punta de góndola"><td>Punta de góndola</td><td class="der2 cif ct"><span class="cero">0</span> <span class="entran">+3</span></td><td class="der2 cif">$1.150.000</td></tr>
+          <tr data-tipo="Exhibición de piso"><td>Exhibición de piso</td><td class="der2 cif ct"><span class="cero">0</span> <span class="entran">+2</span></td><td class="der2 cif">$900.000</td></tr>
+          <tr data-tipo="Cabecera de caja"><td>Cabecera de caja</td><td class="der2 cif ct">1</td><td class="der2 cif">$850.000</td></tr>
+          <tr data-tipo="Nevera de bebidas"><td>Nevera de bebidas</td><td class="der2 cif ct">2</td><td class="der2 cif">$420.000</td></tr>
+          <tr data-tipo="Frutas y verduras"><td>Frutas y verduras</td><td class="der2 cif ct">3</td><td class="der2 cif">$380.000</td></tr>
+          <tr data-tipo="Góndola, por cara"><td>Góndola, por cara</td><td class="der2 cif ct">5</td><td class="der2 cif">$230.000</td></tr>
+        </tbody>
+        <tfoot><tr>
+          <td id="tTotal">23 espacios comercializables</td>
+          <td class="der2 cif" id="tLibres">13 <span class="entran">+5</span></td>
+          <td class="der2 cif" id="tCierre">18 al cerrar</td>
+        </tr></tfoot>
+      </table>
+    </div>
+  </section>
+
+</main>
+<script>
+(function(){
+"use strict";
+var $=function(s,c){return (c||document).querySelector(s);};
+var $$=function(s,c){return Array.prototype.slice.call((c||document).querySelectorAll(s));};
+var NS='http://www.w3.org/2000/svg';
+function el(t,a,txt){ var n=document.createElementNS(NS,t);
+  for(var k in a) n.setAttribute(k,a[k]); if(txt!=null) n.textContent=txt; return n; }
+
+/* ---------- tema: claro por defecto, oscuro a un clic ------------------- */
+var btnTema=$('#tema');
+function pintaTema(){
+  var osc=document.documentElement.getAttribute('data-tema')==='oscuro';
+  btnTema.setAttribute('aria-pressed', osc?'true':'false');
+  btnTema.setAttribute('aria-label', osc?'Cambiar a modo claro':'Cambiar a modo oscuro');
+}
+btnTema.addEventListener('click',function(){
+  var osc=document.documentElement.getAttribute('data-tema')==='oscuro';
+  document.documentElement.setAttribute('data-tema', osc?'claro':'oscuro');
+  try{localStorage.setItem('recabra-tema', osc?'claro':'oscuro');}catch(e){}
+  pintaTema();
+});
+pintaTema();
+
+/* ---------- los 23 espacios de NAVE (los datos de B, sin tocar) ---------
+   Un espacio tomado dice QUE lo está y, si se libera adentro del periodo,
+   CUÁNDO. Nunca de quién: esta pantalla la mira el proveedor.             */
+var TARIFA={'Isla':1200000,'Punta de góndola':1150000,'Exhibición de piso':900000,
+  'Cabecera de caja':850000,'Nevera de bebidas':420000,'Frutas y verduras':380000,
+  'Góndola, por cara':230000};
+/* código: [tipo, ubicación, estado, se libera] */
+var ESP={
+ 'ISL-03':['Isla','frente a la entrada','tomado',''],
+ 'ISL-04':['Isla','frente a la entrada','libre',''],
+ 'ISL-05':['Isla','zona de paso','libre',''],
+ 'ISL-06':['Isla','zona de paso','libre',''],
+ 'PUN-03':['Punta de góndola','cabecera este, pasillo 1','entra','25 sep'],
+ 'PUN-04':['Punta de góndola','cabecera este, pasillo 2','entra','25 sep'],
+ 'PUN-05':['Punta de góndola','pasillo 5, de cara a las cajas','libre',''],
+ 'PUN-17':['Punta de góndola','cabecera oeste, pasillo 1','entra','27 sep'],
+ 'EXP-01':['Exhibición de piso','pasillo central','entra','29 sep'],
+ 'EXP-02':['Exhibición de piso','pasillo central, fondo','entra','29 sep'],
+ 'CAR-01':['Cabecera de caja','cabecera de caja 3','libre',''],
+ 'BEB-01':['Nevera de bebidas','pared este','tomado',''],
+ 'BEB-02':['Nevera de bebidas','pared este','libre',''],
+ 'BEB-03':['Nevera de bebidas','pared este','libre',''],
+ 'FRU-01':['Frutas y verduras','frescos, fondo','libre',''],
+ 'FRU-04':['Frutas y verduras','frescos, fondo','libre',''],
+ 'FRU-05':['Frutas y verduras','frescos, pared este','libre',''],
+ 'GON-60·A':['Góndola, cara A','pasillo 1, lado frutas','tomado',''],
+ 'GON-60·B':['Góndola, cara B','pasillo 2, lado cajas','libre',''],
+ 'GON-61·A':['Góndola, cara A','pasillo 2, lado entrada','libre',''],
+ 'GON-61·B':['Góndola, cara B','pasillo 3, lado fondo','libre',''],
+ 'GON-67·A':['Góndola, cara A','pasillo 3, lado cajas','libre',''],
+ 'GON-67·B':['Góndola, cara B','pasillo 4, lado islas','libre','']};
+var PALABRA={libre:'libre todo el periodo',entra:'se libera en el periodo',
+             tomado:'tomado todo el periodo',elegido:'en el contrato'};
+function tipo(cod){ return ESP[cod]?ESP[cod][0]:''; }
+function ubic(cod){ return ESP[cod]?ESP[cod][1]:''; }
+function estado(cod){ return ESP[cod]?ESP[cod][2]:''; }
+function libera(cod){ return ESP[cod]?ESP[cod][3]:''; }
+function tipoTarifa(cod){ var t=tipo(cod); return t.indexOf('Góndola')===0?'Góndola, por cara':t; }
+function pesos(n){
+  var s=String(Math.round(n)), o='', k=0;
+  for(var i=s.length-1;i>=0;i--){ o=s[i]+o; if(++k%3===0&&i>0) o='.'+o; }
+  return '$'+o;
+}
+
+/* =======================================================================
+   01 · EL PLANO — la geometría de NAVE de B; el rótulo, de A.
+   ======================================================================= */
+var svgPlano=$('#svgPlano'), escena=$('#escena'), lienzo=$('#lienzo');
+var VB={x:-416.5,y:-39.5,w:1032.5,h:557.8};
+var LBL=10.5;                       /* px medidos en pantalla, a todo zoom */
+var SEP=16;                         /* separación de las dos caras de una góndola */
+/* Ajustes de ancla, en unidades del plano y siempre del mismo tamaño (20):
+   dos pares de rótulos quedaban a menos de un cuerpo de distancia con el
+   ancla en el centro de la tapa. En vez de achicar letra, el rótulo se
+   corre al costado o al frente de SU mueble. */
+var AJUSTE={'EXP-01':[-20,0],'PUN-03':[20,0],'EXP-02':[-20,0],'PUN-05':[20,0],'ISL-04':[0,20]};
+
+var PIEZAS=[];  /* {cod, g, txt, ax, ay} */
+
+function centroide(pol){
+  var p=pol.getAttribute('points').trim().split(/\s+/).map(function(v){
+    var c=v.split(','); return [parseFloat(c[0]),parseFloat(c[1])]; });
+  var x=0,y=0; p.forEach(function(v){ x+=v[0]; y+=v[1]; });
+  return [x/p.length, y/p.length];
+}
+function norm(v){ var m=Math.hypot(v[0],v[1])||1; return [v[0]/m, v[1]/m]; }
+
+function construirRotulos(){
+  var gs=$$('.pz', escena), centro={};
+  var capa=el('g',{id:'rotulos'}); escena.appendChild(capa);
+  gs.forEach(function(g){
+    var tapa=g.querySelector('polygon.pl-lt, polygon.pl-at, polygon.pl-tt');
+    centro[g.getAttribute('data-cod')]=centroide(tapa);
+  });
+  /* las dos caras de una góndola: cada rótulo se ancla en la punta de SU
+     cara, en direcciones opuestas, así nunca se pisan (la regla de A). */
+  var desl={};
+  gs.forEach(function(g){
+    var par=g.getAttribute('data-par'); if(!par) return;
+    var dos=par.split('|'), a=centro[dos[0]], b=centro[dos[1]];
+    var u=norm([a[0]-b[0], a[1]-b[1]]);
+    desl[dos[0]]=[ u[0]*SEP,  u[1]*SEP];
+    desl[dos[1]]=[-u[0]*SEP, -u[1]*SEP];
+  });
+
+  gs.forEach(function(g){
+    var cod=g.getAttribute('data-cod'), est=estado(cod), c=centro[cod];
+    var d=desl[cod]||[0,0], j=AJUSTE[cod]||[0,0];
+    var ax=c[0]+d[0]+j[0], ay=c[1]+d[1]+j[1];
+
+    g.setAttribute('data-est', est);
+    g.setAttribute('role','button'); g.setAttribute('tabindex','0');
+    if(est!=='libre') g.setAttribute('aria-disabled','true');
+    /* el aro de foco: el contorno de la tapa, no una caja del navegador */
+    var tapa=g.querySelector('polygon.pl-lt, polygon.pl-at, polygon.pl-tt');
+    var aro=el('polygon',{'class':'pz-aro',points:tapa.getAttribute('points')});
+    g.appendChild(aro);
+
+    /* EL ROTULO: un <text> con dos <tspan>, interlineado en em, sin caja. */
+    var fec=libera(cod), dos=!!fec;
+    var t=el('text',{'class':'p-cod',x:ax.toFixed(2),y:ay.toFixed(2)});
+    var l1=el('tspan',{x:ax.toFixed(2),dy:dos?'-.22em':'.36em'}); l1.textContent=cod;
+    t.appendChild(l1);
+    if(dos){
+      var l2=el('tspan',{'class':'p-fec',x:ax.toFixed(2),dy:'1.18em'});
+      l2.textContent='libre '+fec; t.appendChild(l2);
+    }
+    capa.appendChild(t);
+    /* la caja de impacto: el rotulo se dibuja arriba de todo pero el clic lo
+       cobra el mueble, asi que el mueble se lleva tambien el area del rotulo */
+    var hit=el('rect',{'class':'pl-hit',x:0,y:0,width:0,height:0});
+    g.insertBefore(hit, g.firstChild);
+    PIEZAS.push({cod:cod,g:g,txt:t,est:est,hit:hit,ax:ax,ay:ay});
+  });
+  /* orden de prioridad para deschocar: primero lo que se está vendiendo,
+     después lo que se libera (lleva fecha), después lo libre y lo tomado. */
+  var peso={entra:1,libre:2,tomado:3};
+  PIEZAS.sort(function(a,b){ return (peso[a.est]-peso[b.est]) || (a.cod<b.cod?-1:1); });
+}
+
+/* ---------- acercar, alejar, arrastrar --------------------------------- */
+var C=[VB.x+VB.w/2, VB.y+VB.h/2];
+var zoom=1, T=[0,0];
+function escalaSVG(){
+  var r=svgPlano.getBoundingClientRect();
+  return {k:Math.min(r.width/VB.w, r.height/VB.h), r:r};
+}
+/* un punto de #escena → pantalla, con la geometria NUEVA: no se le pregunta
+   al navegador donde quedo nada, se calcula con el zoom y el arrastre que
+   acabamos de escribir. Es lo que evita que acomodar() decida un paso tarde. */
+function aPantalla(x,y,e){
+  e=e||escalaSVG(); var r=e.r, k=e.k;
+  var ox=r.left+(r.width-VB.w*k)/2, oy=r.top+(r.height-VB.h*k)/2;
+  return [ox+(T[0]+zoom*x-VB.x)*k, oy+(T[1]+zoom*y-VB.y)*k];
+}
+function escribir(){
+  var e=escalaSVG(), S=e.k*zoom;
+  escena.style.setProperty('--lbl',(LBL/S).toFixed(3)+'px');
+  escena.setAttribute('transform','translate('+T[0].toFixed(2)+','+T[1].toFixed(2)+') scale('+zoom.toFixed(4)+')');
+}
+function aplicar(){ escribir(); acomodar(); }
+function aVB(cx,cy){                       /* punto de pantalla → plano */
+  var e=escalaSVG(), r=e.r, k=e.k;
+  var ox=r.left+(r.width-VB.w*k)/2, oy=r.top+(r.height-VB.h*k)/2;
+  return [(cx-ox)/k+VB.x, (cy-oy)/k+VB.y];
+}
+function ponerZoom(z,cx,cy){
+  var e=escalaSVG(), r=e.r;
+  if(cx===undefined){ cx=r.left+r.width/2; cy=r.top+r.height/2; }
+  var u=aVB(cx,cy), z0=zoom;
+  var z1=Math.max(.7,Math.min(4,z));
+  T=[u[0]-z1*(u[0]-T[0])/z0, u[1]-z1*(u[1]-T[1])/z0];
+  zoom=z1; aplicar();
+}
+$('#zMas').addEventListener('click',function(){ ponerZoom(zoom*1.25); });
+$('#zMenos').addEventListener('click',function(){ ponerZoom(zoom/1.25); });
+$('#zCentrar').addEventListener('click',function(){ zoom=1; T=[0,0]; aplicar(); });
+lienzo.addEventListener('wheel',function(ev){
+  ev.preventDefault(); ponerZoom(zoom*(ev.deltaY<0?1.1:1/1.1), ev.clientX, ev.clientY);
+},{passive:false});
+(function(){
+  var arr=false,x0=0,y0=0,t0=[0,0];
+  lienzo.addEventListener('pointerdown',function(ev){
+    if(ev.target.closest('.herr')) return;
+    arr=true; x0=ev.clientX; y0=ev.clientY; t0=T.slice();
+  });
+  window.addEventListener('pointermove',function(ev){
+    if(!arr) return;
+    var k=escalaSVG().k;
+    T=[t0[0]+(ev.clientX-x0)/k, t0[1]+(ev.clientY-y0)/k]; aplicar();
+  });
+  window.addEventListener('pointerup',function(){ arr=false; });
+})();
+/* al cambiar la ventana cambia la caja del plano y el ancho de la escalera:
+   se vuelve a escribir el transform, se vuelve a acomodar y se redibuja. */
+window.addEventListener('resize',function(){ aplicar(); dibujaEscalera(); });
+if(window.ResizeObserver) new ResizeObserver(function(){ aplicar(); }).observe(lienzo);
+
+/* ---------- que ningún rótulo pise una letra ---------------------------
+   Se comparan las 23 cajas de los rótulos, las de las letras pintadas en el
+   piso (ENTRADA, CAJAS) y las de lo que flota encima del plano (el periodo y
+   la herramienta). Si una caja se cruza con otra ya aceptada, o se sale del
+   lienzo, esa cede — y vuelve sola en cuanto el acercamiento le abre lugar.
+
+   CÓMO SE MIDE, que era el error: preguntarle al navegador por el rect de un
+   rótulo justo después de escribir el transform devuelve la geometría del
+   paso anterior, y la pasada no converge (por eso un segundo `resize` daba
+   otro resultado). Aquí no se pregunta: se calcula.
+     · el rótulo mide siempre lo mismo EN PANTALLA (--lbl son 10,5 px a todo
+       zoom), así que su ancho y su alto se miden UNA vez y ya no cambian;
+     · ENTRADA y CAJAS sí crecen con el plano: de ellos se guarda el tamaño en
+       unidades del plano, que tampoco cambia, y se multiplica por la escala;
+     · lo único que se mueve es el ancla, y el ancla la da aPantalla().
+   Esa medición única es calibrar(): corre al arrancar, al terminar de cargar,
+   cuando la tipografía queda lista y cuando cambia la caja del plano — cada
+   vez encolada en requestAnimationFrame, que es cuando el navegador ya
+   aplicó lo que le escribimos.                                            */
+/* dos cajas se pisan si se tocan, y tambien si se acercan a menos de AIRE:
+   un rotulo pegado a otra letra se lee mal aunque no la toque. */
+var AIRE=2;
+function cruza(a,b){ return a.left-AIRE<b.right&&b.left-AIRE<a.right&&a.top-AIRE<b.bottom&&b.top-AIRE<a.bottom; }
+function seSale(b,lz){ return b.left<lz.left+2||b.right>lz.right-2||b.top<lz.top+2||b.bottom>lz.bottom-2; }
+
+var SALA=[], SALA_PX=12.5, calibrado=false, calPend=0;
+function armarSala(){
+  SALA=$$('.pl-sala-t',escena).map(function(t){
+    var c=t.transform.baseVal.consolidate(), m=c?c.matrix:{e:0,f:0};
+    return {t:t, x:m.e, y:m.f};
+  });
+}
+/* Medir bien es todo el asunto. Un `requestAnimationFrame` NO alcanza: el
+   navegador corre esos avisos ANTES de rehacer el dibujo, asi que la caja que
+   devuelve todavia es la del cuerpo anterior —era exactamente el error que
+   hacia falta arreglar, un paso mas atras. Por eso se mide en el segundo
+   cuadro, cuando lo que escribimos ya se pinto; y por si el navegador tarda
+   mas (tipografia que llega tarde, barras que aparecen), la medida se repite
+   hasta que dos pasadas dan lo mismo. */
+function medir(){
+  var e=escalaSVG(), S=e.k*zoom, cambio=false;
+  if(!(S>0)) return false;
+  PIEZAS.forEach(function(p){
+    var a=aPantalla(p.ax,p.ay,e), r=p.txt.getBoundingClientRect();
+    if(!(r.width>0)) return;
+    if(p.w===undefined||Math.abs(p.w-r.width)>.5||Math.abs(p.h-r.height)>.5) cambio=true;
+    p.w=r.width; p.h=r.height; p.ox=r.left-a[0]; p.oy=r.top-a[1];
+  });
+  SALA.forEach(function(s){
+    var a=aPantalla(s.x,s.y,e), r=s.t.getBoundingClientRect();
+    if(!(r.width>0)) return;
+    if(s.w===undefined||Math.abs(s.w*S-r.width)>.5) cambio=true;
+    s.w=r.width/S; s.h=r.height/S; s.ox=(r.left-a[0])/S; s.oy=(r.top-a[1])/S;
+  });
+  calibrado=PIEZAS.every(function(p){ return p.w>0; });
+  return cambio;
+}
+function calibrar(intento){
+  intento=intento||0;
+  PIEZAS.forEach(function(p){ p.txt.style.display=''; });
+  SALA.forEach(function(s){ s.t.style.display=''; });
+  escribir();
+  if(calPend) cancelAnimationFrame(calPend);
+  calPend=requestAnimationFrame(function(){
+    calPend=requestAnimationFrame(function(){
+      calPend=0;
+      var cambio=medir();
+      acomodar();
+      if(cambio && intento<3) calibrar(intento+1);
+    });
+  });
+}
+function acomodar(){
+  if(!calibrado) return;
+  var e=escalaSVG(), S=e.k*zoom;
+  var lz=lienzo.getBoundingClientRect();
+  /* lo que flota encima del plano manda sobre todo lo demas */
+  var fijos=[$('.periodo').getBoundingClientRect(), $('.herr').getBoundingClientRect()];
+  /* ENTRADA y CAJAS estan pintados en el piso y crecen con el plano: si al
+     acercar pasan por debajo del periodo o de la herramienta, O SI SE SALEN
+     DEL LIENZO, ceden ellos como cualquier otro rotulo. */
+  SALA.forEach(function(s){
+    var a=aPantalla(s.x,s.y,e);
+    var b={left:a[0]+s.ox*S, top:a[1]+s.oy*S};
+    b.right=b.left+s.w*S; b.bottom=b.top+s.h*S;
+    /* y ceden tambien cuando el plano se aleja tanto que la palabra deja de
+       serlo: por debajo de 8 px en pantalla ENTRADA y CAJAS son una mancha. */
+    var cede=SALA_PX*S<8||seSale(b,lz)||fijos.some(function(o){ return cruza(b,o); });
+    s.t.style.display=cede?'none':'';
+    if(!cede) fijos.push(b);
+  });
+  var ok=[];
+  PIEZAS.forEach(function(p){
+    var a=aPantalla(p.ax,p.ay,e);
+    var b={left:a[0]+p.ox, top:a[1]+p.oy};
+    b.right=b.left+p.w; b.bottom=b.top+p.h;
+    var choca=seSale(b,lz);
+    if(!choca) choca=fijos.some(function(o){ return cruza(b,o); });
+    if(!choca) choca=ok.some(function(o){ return cruza(b,o); });
+    if(choca){ p.txt.style.display='none'; p.hit.setAttribute('width',0); p.hit.setAttribute('height',0); }
+    else{
+      p.txt.style.display=''; ok.push(b);
+      /* la caja de impacto, en unidades del plano: seis pixeles de pantalla
+         de margen alrededor de lo que ocupa el rotulo. */
+      var m=6/S;
+      p.hit.setAttribute('x',(p.ax+p.ox/S-m).toFixed(1));
+      p.hit.setAttribute('y',(p.ay+p.oy/S-m).toFixed(1));
+      p.hit.setAttribute('width',(p.w/S+2*m).toFixed(1));
+      p.hit.setAttribute('height',(p.h/S+2*m).toFixed(1));
+    }
+  });
+}
+
+/* ---------- el contrato ------------------------------------------------ */
+var DIAS=61;
+var contrato=[{cod:'PUN-05',mes:1050000},{cod:'ISL-04',mes:1200000}];
+function enContrato(cod){ for(var i=0;i<contrato.length;i++) if(contrato[i].cod===cod) return i; return -1; }
+
+function pintaContrato(){
+  var cont=$('#espacios'); cont.innerHTML='';
+  contrato.forEach(function(e,i){
+    var d=document.createElement('div');
+    d.className='eitem'+(i===0?' mk':''); d.setAttribute('data-cod',e.cod);
+    d.innerHTML='<span class="cod">'+e.cod+'</span><span class="d">'+tipo(e.cod)+
+      '<br>'+ubic(e.cod)+'</span><span class="m">'+pesos(e.mes)+'</span>'+
+      '<button class="x" type="button" aria-label="Quitar '+e.cod+' del contrato">×</button>';
+    d.querySelector('.x').addEventListener('click',function(ev){ ev.stopPropagation(); quitar(e.cod); });
+    d.addEventListener('mouseenter',function(){ destacar([e.cod]); });
+    d.addEventListener('mouseleave',function(){ destacar(null); });
+    cont.appendChild(d);
+  });
+  var mes=contrato.reduce(function(a,b){return a+b.mes;},0);
+  $('#total').textContent=pesos(mes*DIAS/30);
+  $('#plazo').textContent=DIAS+' días · '+contrato.length+' espacio'+(contrato.length===1?'':'s');
+  pintaConteos();
+
+  PIEZAS.forEach(function(p){
+    if(enContrato(p.cod)>=0){ p.g.setAttribute('data-sel','1'); p.txt.setAttribute('data-sel','1'); }
+    else { p.g.removeAttribute('data-sel'); p.txt.removeAttribute('data-sel'); }
+    var est=enContrato(p.cod)>=0?'elegido':p.est;
+    p.g.setAttribute('aria-label', p.cod+' · '+tipo(p.cod)+' · '+PALABRA[est]+
+      (p.est==='entra'?' · libre desde el '+libera(p.cod):''));
+  });
+  $('.pista').hidden = contrato.length>=3;
+  var tipos={}; contrato.forEach(function(e){ tipos[tipoTarifa(e.cod)]=1; });
+  $$('tbody tr').forEach(function(tr){
+    tr.classList.toggle('mk', !!tipos[tr.getAttribute('data-tipo')]);
+  });
+}
+/* ---------- los conteos: se derivan, no se escriben --------------------
+   La clave del plano, la columna «Libres · entran» y el pie de la tarifa son
+   la misma cuenta mirada tres veces. Se rehacen en cada pintado del contrato,
+   asi que la pantalla no puede contradecirse a si misma: lo que entra al
+   contrato deja de estar libre en los tres lugares a la vez.              */
+function cuenta(f){ var n=0; for(var c in ESP) if(f(c)) n++; return n; }
+function libreAhora(c){ return estado(c)==='libre' && enContrato(c)<0; }
+function entraLuego(c){ return estado(c)==='entra'; }
+function celda(l,e){
+  return (l===0?'<span class="cero">0</span>':String(l))+
+         (e>0?' <span class="entran">+'+e+'</span>':'');
+}
+function pintaConteos(){
+  var libres=cuenta(libreAhora), entran=cuenta(entraLuego);
+  $('#cLibre').textContent=libres;
+  $('#cEntra').textContent=entran;
+  $('#cTomado').textContent=cuenta(function(c){ return estado(c)==='tomado'; });
+  $('#cEleg').textContent=contrato.length;
+  $$('tbody tr').forEach(function(tr){
+    var t=tr.getAttribute('data-tipo');
+    tr.querySelector('.ct').innerHTML=celda(
+      cuenta(function(c){ return tipoTarifa(c)===t && libreAhora(c); }),
+      cuenta(function(c){ return tipoTarifa(c)===t && entraLuego(c); }));
+  });
+  $('#tTotal').textContent=Object.keys(ESP).length+' espacios comercializables';
+  $('#tLibres').innerHTML=celda(libres,entran);
+  $('#tCierre').textContent=(libres+entran)+' al cerrar';
+}
+
+function agregar(cod){
+  if(enContrato(cod)>=0) return;
+  contrato.push({cod:cod, mes:TARIFA[tipoTarifa(cod)]||0});
+  pintaContrato();
+}
+function quitar(cod){
+  var i=enContrato(cod); if(i<0) return;
+  contrato.splice(i,1); pintaContrato();
+}
+function alternar(cod){
+  if(estado(cod)!=='libre') return;
+  if(enContrato(cod)>=0) quitar(cod); else agregar(cod);
+}
+
+/* ---------- EL RESALTADO (de A): apaga la sala, enciende esos muebles --- */
+function destacar(cods){
+  var on=cods&&cods.length, set={};
+  if(on) cods.forEach(function(c){ set[c]=1; });
+  escena.setAttribute('data-foco', on?'1':'0');
+  PIEZAS.forEach(function(p){
+    p.g.classList.toggle('mk', !!set[p.cod]);
+    p.txt.classList.toggle('mk', !!set[p.cod]);
+  });
+  $$('.eitem').forEach(function(d){ d.classList.toggle('hl', !!set[d.getAttribute('data-cod')]); });
+}
+
+/* ---------- el clic: el objetivo es el mueble entero, rótulo incluido --- */
+function conectaPlano(){
+  PIEZAS.forEach(function(p){
+    p.g.addEventListener('click',function(){ alternar(p.cod); });
+    p.g.addEventListener('keydown',function(ev){
+      if(ev.key==='Enter'||ev.key===' '){ ev.preventDefault(); alternar(p.cod); }
+    });
+    p.g.addEventListener('mouseenter',function(){ p.g.classList.add('mk'); });
+    p.g.addEventListener('mouseleave',function(){ if(escena.getAttribute('data-foco')!=='1') p.g.classList.remove('mk'); });
+  });
+}
+
+/* =======================================================================
+   02 · CUÁNDO SE LIBERA CADA ESPACIO — la escalera A·4, entera:
+        sin columna lateral · sin eje vertical · peine de días · el cursor
+        vivo · los chips bajo su fecha. La lectura la escribe el encabezado
+        del panel, en display 800 a 21 px (eso es de B).
+   ======================================================================= */
+var esc=$('#esc');
+var X0=12, X1=962, ND=30, P=(X1-X0)/ND, YE=126, ESCA=11, BASE=15;
+var EV=[{d:25,n:17,cods:['PUN-03','PUN-04'],tipo:'PUNTA DE GÓNDOLA'},
+        {d:27,n:18,cods:['PUN-17'],tipo:'PUNTA DE GÓNDOLA'},
+        {d:29,n:20,cods:['EXP-01','EXP-02'],tipo:'EXHIBICIÓN DE PISO'}];
+function lx(d){ return X0+d*P; }
+function ly(n){ return YE-(n-BASE+2)*ESCA; }
+function libresEn(d){ var n=BASE; EV.forEach(function(e){ if(d>=e.d) n=e.n; }); return n; }
+/* la fecha en dos piezas: la cifra —que va en tabular para que no baile al
+   mover el cursor— y las palabras, que van en la display con su espacio
+   normal. Juntas en una sola caja mono se leia «el 26  de  sep». */
+function dm(d){ return d===0?['31','ago']:[String(d),'de sep']; }
+var curD=26;
+
+function dibujaEscalera(){
+  esc.textContent='';
+  var f=document.createDocumentFragment();
+  f.appendChild(el('text',{'class':'gRot',x:X0,y:13},'ESPACIOS LIBRES A LO LARGO DEL PERIODO'));
+
+  /* la temporada, detrás: explica por qué las entregas caen juntas */
+  var ti=lx(19), tf=lx(26);
+  f.appendChild(el('rect',{'class':'gTemp',x:ti,y:26,width:(tf-ti),height:(YE-26)}));
+  f.appendChild(el('text',{'class':'gTempT',x:(ti+tf)/2,y:38},'AMOR Y AMISTAD'));
+
+  var pts=[[X0,ly(BASE)]], n=BASE;
+  EV.forEach(function(e){ pts.push([lx(e.d),ly(n)]); pts.push([lx(e.d),ly(e.n)]); n=e.n; });
+  pts.push([X1,ly(n)]);
+  var d=pts.map(function(p){ return p[0].toFixed(1)+','+p[1].toFixed(1); }).join(' ');
+  f.appendChild(el('polygon',{'class':'gArea',points:X0+','+YE+' '+d+' '+X1+','+YE}));
+  f.appendChild(el('line',{'class':'gEje',x1:X0,y1:YE,x2:X1,y2:YE}));
+
+  /* peine de días: un diente por día, largo cada cinco */
+  for(var i=0;i<=ND;i++)
+    f.appendChild(el('line',{'class':'gComb',x1:lx(i),y1:YE,x2:lx(i),y2:YE+((i%5===0||i===ND)?5:2.5)}));
+  f.appendChild(el('polyline',{'class':'gPaso',points:d}));
+
+  /* la cifra al inicio de cada meseta: no hace falta eje vertical */
+  f.appendChild(el('circle',{'class':'gPto',cx:X0,cy:ly(BASE),r:3.6}));
+  f.appendChild(el('text',{'class':'gNum',x:X0+2,y:ly(BASE)-11},String(BASE)));
+  f.appendChild(el('text',{'class':'gNota',x:X0+36,y:ly(BASE)-11},'sin cambios durante 25 días'));
+  EV.forEach(function(e){
+    f.appendChild(el('circle',{'class':'gPto',cx:lx(e.d),cy:ly(e.n),r:3.6}));
+    f.appendChild(el('text',{'class':'gNum',x:lx(e.d)+8,y:ly(e.n)-12},String(e.n)));
+  });
+
+  /* el cursor: una línea, un anillo, y la lectura que va al encabezado */
+  var cx=lx(curD), cy=ly(libresEn(curD));
+  f.appendChild(el('line',{id:'curL','class':'gCruz',x1:cx,y1:26,x2:cx,y2:YE}));
+  f.appendChild(el('circle',{id:'curC','class':'gAnillo',cx:cx,cy:cy,r:6.5}));
+
+  /* fechas bajo el eje y, debajo, los códigos que entran en cada una */
+  f.appendChild(el('text',{'class':'gHoy',x:X0,y:YE+20},'hoy · 31 ago'));
+  EV.forEach(function(e){
+    f.appendChild(el('text',{'class':'gFecha',x:lx(e.d),y:YE+20,'text-anchor':'middle'},e.d+' sep'));
+  });
+  var y0=YE+28;
+  EV.forEach(function(e){
+    e.cods.forEach(function(cod,j){
+      var g=el('g',{'class':'gChip'+(curD>=e.d?' paso':''),'data-cod':cod});
+      g.appendChild(el('rect',{x:lx(e.d)-29,y:y0+j*23,width:58,height:19,rx:9.5}));
+      g.appendChild(el('text',{x:lx(e.d),y:y0+13.5+j*23},cod));
+      g.addEventListener('mouseenter',function(){ destacar([cod]); });
+      g.addEventListener('mouseleave',function(){ destacar(null); });
+      f.appendChild(g);
+    });
+  });
+  var vistos=[];
+  EV.forEach(function(e){
+    var pre=e.cods[0].split('-')[0];
+    if(vistos.indexOf(pre)<0){ vistos.push(pre);
+      f.appendChild(el('text',{'class':'gTipo',x:X0,y:y0+13.5+(vistos.length-1)*23}, pre+' · '+e.tipo));
+    }
+  });
+  esc.appendChild(f);
+  ajustaGraf();
+}
+/* cuando la escalera no cabe entera (390 px), el encuadre arranca por los
+   escalones —que es lo que hay que ver— y el resto queda a un deslizamiento,
+   con su barra a la vista. Si cabe entera, no hay nada que correr. */
+function ajustaGraf(){
+  var g=esc.parentNode, s=g.scrollWidth-g.clientWidth;
+  if(s>0) g.scrollLeft=s;
+}
+function pintaCursor(){
+  var n=libresEn(curD), x=lx(curD);
+  $('#curL').setAttribute('x1',x); $('#curL').setAttribute('x2',x);
+  $('#curC').setAttribute('cx',x); $('#curC').setAttribute('cy',ly(n));
+  var f=dm(curD);
+  $('#lectura').innerHTML='si arrancás el <b><span class="dig">'+f[0]+'</span> '+f[1]+
+    '</b> → <b class="n dig">'+n+'</b> libres';
+  $$('.gChip',esc).forEach(function(g){
+    var c=g.getAttribute('data-cod'), e=null;
+    EV.forEach(function(v){ if(v.cods.indexOf(c)>=0) e=v; });
+    g.classList.toggle('paso', !!e && curD>=e.d);
+  });
+}
+function desdeEvento(ev){
+  var r=esc.getBoundingClientRect();
+  var mx=(ev.clientX-r.left)/r.width*974;
+  curD=Math.max(0,Math.min(ND,Math.round((mx-X0)/P)));
+  pintaCursor();
+}
+esc.addEventListener('pointermove',desdeEvento);
+esc.addEventListener('pointerdown',desdeEvento);
+esc.addEventListener('keydown',function(ev){
+  if(ev.key==='ArrowLeft'){ curD=Math.max(0,curD-1); pintaCursor(); ev.preventDefault(); }
+  if(ev.key==='ArrowRight'){ curD=Math.min(ND,curD+1); pintaCursor(); ev.preventDefault(); }
+});
+
+/* =======================================================================
+   04 · TARIFA — pasar el mouse por una fila apaga la sala y enciende los
+        muebles de ese tipo (libres y los que se liberan).
+   ======================================================================= */
+$$('tbody tr').forEach(function(tr){
+  var t=tr.getAttribute('data-tipo');
+  var cods=Object.keys(ESP).filter(function(c){
+    return tipoTarifa(c)===t && estado(c)!=='tomado'; });
+  tr.addEventListener('mouseenter',function(){ destacar(cods); });
+  tr.addEventListener('mouseleave',function(){ destacar(null); });
+});
+
+/* ---------- arranque ---------------------------------------------------- */
+construirRotulos();
+armarSala();
+conectaPlano();
+dibujaEscalera();
+pintaCursor();
+pintaContrato();
+calibrar();
+/* la tipografia del sistema puede llegar despues del primer pintado: cada vez
+   que puede haber cambiado el ancho de una letra, se vuelve a medir. */
+window.addEventListener('load',calibrar);
+if(document.fonts&&document.fonts.ready) document.fonts.ready.then(calibrar);
+/* gancho de verificación: fija el acercamiento del plano desde afuera */
+window.__plano={zoom:function(z){ zoom=1; T=[0,0]; ponerZoom(z); return z; },
+                estado:function(){ return {z:zoom, T:T}; }};
+})();
+</script>
+</body>
+</html>
