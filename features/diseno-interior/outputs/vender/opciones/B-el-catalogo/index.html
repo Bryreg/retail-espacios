@@ -1,0 +1,725 @@
+<!doctype html>
+<html lang="es" data-tema="claro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RECABRA · NAVE · Vender</title>
+<meta name="color-scheme" content="light dark">
+<script>
+/* Tema antes del primer pintado: claro por defecto (decision del dueno, spec §0);
+   el oscuro queda a un clic y se recuerda. Misma llave que el interior: recabra-tema. */
+(function(){try{var t=localStorage.getItem('recabra-tema');
+document.documentElement.setAttribute('data-tema', t==='oscuro'?'oscuro':'claro');}catch(e){}})();
+</script>
+<style>
+/* ===========================================================================
+   RECABRA · Vender · direccion B — «El catalogo»
+   Tokens copiados de frontend/src/tema.css (capa 1 primitivos + capa 2
+   semanticos: claro en :root, oscuro en html[data-tema="oscuro"]).
+   Forma: la de la landing E (display 800 con tracking cerrado, mono con cifras
+   tabulares, rotulos pill, lineas finas, tarjetas con aire, conectores).
+   Autocontenido: cero recursos externos, pilas de sistema, sin librerias.
+   =========================================================================== */
+
+/* --- CAPA 1 · PRIMITIVOS (tema.css, sin mover un digito) ----------------- */
+:root{
+  --n-1000:#04070A; --n-950:#070B0F; --n-900:#0B1116; --n-850:#101820;
+  --n-800:#16212A;  --n-700:#1F2C36; --n-600:#2C3B47; --n-500:#4A5C68;
+  --n-400:#788994;  --n-300:#A6B4BC; --n-200:#CBD5DA; --n-100:#E6EBEC;
+  --n-050:#F2F5F3;  --n-000:#FFFFFF;
+  --p-000:#FFFFFF; --p-050:#F7F8F5; --p-100:#EFF1ED; --p-200:#E4E7E1;
+  --st-libre-d:#00BE86; --st-libera-d:#F5A524; --st-tomado-d:#F4544E; --st-resto-d:#33414F;
+  --st-libre-l:#00805A; --st-libera-l:#CE8A0A; --st-tomado-l:#D8342E; --st-resto-l:#AAB3BE;
+  --y-400:#FFE067; --y-500:#FFD028; --y-600:#E0B000; --y-700:#8A6100;
+
+  --f-display:"Helvetica Neue","Segoe UI Variable Display",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans",Arial,sans-serif;
+  --f-text:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans","Helvetica Neue",Arial,sans-serif;
+  --f-mono:ui-monospace,SFMono-Regular,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --peso-display:800;
+
+  /* --- LA ESCALA DE LETRA -------------------------------------------------
+     Los siete pasos de la maqueta vieja eran de una pantalla con Chivo +
+     Archivo Narrow. Con las pilas de sistema y la voz de E la escala se
+     rehace en ocho pasos, con los nombres de E. Razon de cada uno:
+       10    versalitas y rotulos pill (a 9,5 la versalita del sistema se
+             empasta; 10 con .16em de tracking es el piso legible)
+       11.5  notas, pies, ejes, codigos sobre el mueble
+       12.5  secundario (subtitulo de panel, ubicaciones)
+       13.5  cuerpo y tablas
+       15    titulos de panel, campos y boton
+       17.5  codigos de espacio (el mono pide medio punto mas que la
+             condensada para el mismo color de mancha)
+       21    la lectura de la escalera — el argumento de venta
+       30    el total del contrato
+     Ocho y ninguno mas. El contraste lo dan la familia, el peso y el color. */
+  --t-3xs:10px; --t-2xs:11.5px; --t-xs:12.5px; --t-sm:13.5px;
+  --t-base:15px; --t-md:17.5px; --t-lg:21px; --t-xl:30px;
+
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px;
+  --r-xs:4px; --r-sm:6px; --r-md:10px; --r-lg:16px; --r-pill:999px; --hair:1px;
+  --dur-1:140ms; --dur-2:260ms; --dur-3:420ms;
+  --ease:cubic-bezier(.22,.68,.24,1);
+  --ease-out:cubic-bezier(.16,.84,.44,1);
+}
+
+/* --- CAPA 2 · SEMANTICOS · CLARO (el modo de la casa) -------------------- */
+:root{
+  color-scheme:light;
+  --bg:#EFF1ED; --surface:#FFFFFF; --surface-2:#F7F8F5; --surface-3:#E4E7E1;
+  --panel:rgba(255,255,255,.82); --panel-2:rgba(11,17,22,.045);
+  --floor:#F7F8F5; --floor-edge:rgba(11,17,22,.16);
+  --line-soft:#F0F1F1; --line:#DDDEDE; --line-strong:#BBBCBE;
+  --brd-soft:rgba(11,17,22,.06); --brd:rgba(11,17,22,.14); --brd-strong:rgba(11,17,22,.28);
+  --ink-1:#0A1014; --ink-2:#4A5B65; --ink-3:#54646E; --ink-4:#68788A;
+  --brd-control:var(--ink-4);
+  --fg:var(--ink-1); --fg-2:var(--ink-2); --fg-3:var(--ink-3); --fg-4:var(--ink-4);
+  --accent:var(--ink-1); --accent-ink:#FFFFFF;
+  --signal:#F2B300; --signal-borde:#A87C00; --on-signal:#120E00; --ring:var(--ink-1);
+
+  --libre:#00805A;   --libre-suave:#E0F0EB; --libre-borde:#9ECFC0; --libre-txt:#006B4C;
+  --entra:#CE8A0A;   --entra-suave:#F9F1E2; --entra-borde:#ECD3A2; --entra-txt:#8A5A06;
+  --ocupado:#D8342E; --ocupado-suave:#FAE7E6; --ocupado-borde:#F0B2B0; --ocupado-txt:#B32720;
+  --resto:#AAB3BE;   --resto-suave:#ECEEF1; --resto-borde:#D5D9DF;
+
+  --sh-1:0 1px 2px rgba(16,21,30,.07);
+  --sh-2:0 10px 28px -14px rgba(16,21,30,.24), 0 2px 6px rgba(16,21,30,.05);
+
+  /* --- El plano: tres caras por estado, no tres colores nuevos.
+     tapa mas clara · cara izquierda con el color de identidad · cara derecha
+     mas oscura. Los hex salen de los tokens de arriba, no de una paleta nueva. */
+  --pl-piso:var(--floor); --pl-reja:rgba(11,17,22,.055); --pl-cont:var(--floor-edge);
+  --pl-muro:#D9DEE0; --pl-murot:#E9EDEC;
+  --pl-ri:#D5D9DF; --pl-rd:#B3B6BB; --pl-rt:#F0F2F5;
+  --pl-ni:#E2E6EA; --pl-nd:#BEC1C5; --pl-nt:#F1F3F6;
+  --pl-li:#00805A; --pl-ld:#006C4C; --pl-lt:#389C7E;
+  --pl-ai:#CE8A0A; --pl-ad:#AD7408; --pl-at:#D9A440;
+  --pl-ti:#D8342E; --pl-td:#B52C27; --pl-tt:#E0605C;
+  --pl-ei:#232C33; --pl-ed:#131A1F; --pl-et:#46525B;
+  --pl-cod:var(--ink-1); --pl-codsel:#FFFFFF; --pl-halosel:#131A1F;
+  --pl-fec:var(--entra-txt); --pl-sala:var(--ink-4); --pl-sep:rgba(0,0,0,.30);
+}
+
+/* --- CAPA 2 · SEMANTICOS · OSCURO --------------------------------------- */
+html[data-tema="oscuro"]{
+  color-scheme:dark;
+  --bg:#04070A; --surface:#0B1116; --surface-2:#101820; --surface-3:#16212A;
+  --panel:rgba(12,19,25,.72); --panel-2:rgba(255,255,255,.045);
+  --floor:#0A1015; --floor-edge:rgba(255,255,255,.10);
+  --line-soft:#1A1F24; --line:#262B30; --line-strong:#3E4347;
+  --brd-soft:rgba(255,255,255,.06); --brd:rgba(255,255,255,.11); --brd-strong:rgba(255,255,255,.21);
+  --ink-1:#EDF3F2; --ink-2:#9DAEB6; --ink-3:#788A94; --ink-4:#6E8190;
+  --accent-ink:#04070A;
+  --signal:#FFD028; --signal-borde:transparent; --on-signal:#0A0C06; --ring:var(--ink-1);
+
+  --libre:#00BE86;   --libre-suave:#092D28; --libre-borde:#065A45; --libre-txt:#00BE86;
+  --entra:#F5A524;   --entra-suave:#302918; --entra-borde:#6D4F1C; --entra-txt:#F5A524;
+  --ocupado:#F4544E; --ocupado-suave:#301C1F; --ocupado-borde:#6D2D2E; --ocupado-txt:#F4544E;
+  --resto:#33414F;   --resto-suave:#1B242D; --resto-borde:#293541;
+
+  --sh-1:0 1px 2px rgba(0,0,0,.5);
+  --sh-2:0 12px 34px -14px rgba(0,0,0,.8), 0 2px 8px rgba(0,0,0,.4);
+
+  --pl-reja:rgba(255,255,255,.05);
+  --pl-muro:#16212A; --pl-murot:#1F2C36;
+  --pl-ri:#293541; --pl-rd:#202932; --pl-rt:#394550;
+  --pl-ni:#1B242D; --pl-nd:#151C23; --pl-nt:#2C343C;
+  --pl-li:#00BE86; --pl-ld:#008960; --pl-lt:#24C899;
+  --pl-ai:#F5A524; --pl-ad:#B0771A; --pl-at:#FAB133;
+  --pl-ti:#F4544E; --pl-td:#B03C38; --pl-tt:#F5625D;
+  --pl-ei:#C6D2D6; --pl-ed:#9FAEB5; --pl-et:#E6EFF1;
+  --pl-codsel:#04070A; --pl-halosel:#C6D2D6;
+  --pl-sep:rgba(0,0,0,.45);
+}
+
+/* --- BASE --------------------------------------------------------------- */
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:var(--f-text); font-size:var(--t-sm); line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+  height:100vh; display:flex; flex-direction:column; padding:8px 12px 12px; gap:10px;
+}
+@media (min-width:1440px){ html,body{overflow:hidden} body{height:900px} }
+h1,h2,h3,p,ul,table,figure{margin:0}
+ul{padding:0;list-style:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:var(--r-xs)}
+.sr{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* --- TIPOGRAFIA DE COMPONENTE (la voz de E) ----------------------------- */
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.fig{font-family:var(--f-mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em;font-weight:700}
+h2,.h2{font-family:var(--f-display);font-weight:800;letter-spacing:-.022em;font-size:var(--t-base);line-height:1.1}
+.rotulo{font-size:var(--t-3xs);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-4);font-weight:600}
+.ojo{font-family:var(--f-mono);font-size:var(--t-3xs);letter-spacing:.2em;color:var(--ink-4);
+  display:inline-flex;align-items:center;gap:7px;flex:none}
+.ojo::after{content:"";width:14px;height:1px;background:currentColor;opacity:.55}
+.sub{font-size:var(--t-xs);color:var(--ink-3)}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:var(--r-pill);
+  border:var(--hair) solid var(--brd);font-size:var(--t-3xs);letter-spacing:.13em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:600;white-space:nowrap}
+
+/* --- RAIL (la barra pildora de E) --------------------------------------- */
+.rail{display:flex;align-items:center;gap:var(--s4);height:56px;flex:none;
+  padding-inline:16px;border-radius:var(--r-pill);
+  border:var(--hair) solid var(--brd);background:var(--surface);box-shadow:var(--sh-1)}
+.marca{display:flex;align-items:center;gap:9px;flex:none}
+.marca b{font-family:var(--f-mono);font-weight:700;font-size:var(--t-xs);letter-spacing:.26em}
+.marca span{font-size:var(--t-xs);color:var(--ink-4)}
+.sede{display:flex;align-items:baseline;gap:8px;padding-left:var(--s4);
+  border-left:var(--hair) solid var(--line);flex:none}
+.sede .v{font-family:var(--f-display);font-weight:800;font-size:var(--t-md);letter-spacing:-.02em}
+.sede .c{font-size:var(--t-xs);color:var(--ink-4)}
+.modos{display:flex;gap:2px;margin-left:var(--s2)}
+.modos a{padding:7px 13px;border-radius:var(--r-pill);font-size:var(--t-sm);color:var(--ink-3);font-weight:500}
+.modos a:hover{color:var(--fg);background:var(--panel-2)}
+.modos a.on{color:var(--fg);font-weight:700;background:var(--panel-2);
+  box-shadow:inset 0 0 0 1px var(--brd)}
+.rail .der{margin-left:auto;display:flex;align-items:center;gap:var(--s3)}
+.hoy{font-family:var(--f-mono);font-size:var(--t-2xs);color:var(--ink-3);font-variant-numeric:tabular-nums}
+.iconbtn{width:34px;height:34px;display:grid;place-items:center;border-radius:var(--r-pill);
+  border:var(--hair) solid var(--brd);color:var(--ink-2);flex:none;
+  transition:color var(--dur-1),border-color var(--dur-1),background var(--dur-1)}
+.iconbtn:hover{color:var(--fg);border-color:var(--brd-strong);background:var(--panel-2)}
+html[data-tema="oscuro"] .solo{display:none}
+html:not([data-tema="oscuro"]) .luna{display:none}
+
+/* --- LA HOJA ------------------------------------------------------------ */
+.hoja{flex:1;min-height:0;display:grid;gap:10px;
+  grid-template-columns:1004fr 402fr; grid-template-rows:558fr 246fr}
+.t{background:var(--surface);border:var(--hair) solid var(--brd);border-radius:var(--r-lg);
+  display:flex;flex-direction:column;overflow:hidden;min-height:0;position:relative}
+.t>header{display:flex;align-items:baseline;gap:10px;padding:13px 16px 9px;flex:none}
+.t>header .der{margin-left:auto;display:flex;align-items:center;gap:var(--s3)}
+
+/* El conector de E, traido literal: una linea fina que baja del panel de
+   arriba al numero del de abajo. No decora: dice que 02 se lee despues de 01. */
+.t.conect::before{content:"";position:absolute;left:29px;top:-10px;width:1px;height:10px;background:var(--brd-strong)}
+
+/* --- PLANO -------------------------------------------------------------- */
+.lienzo{flex:1;min-height:0;padding:0 14px 10px;position:relative}
+.lienzo svg{width:100%;height:100%;display:block}
+.periodo{position:absolute;left:26px;top:2px;z-index:3;background:var(--panel);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  font-family:var(--f-mono);font-variant-numeric:tabular-nums;
+  font-size:var(--t-2xs);letter-spacing:.06em;color:var(--ink-2);
+  border:var(--hair) solid var(--brd);border-radius:var(--r-pill);padding:5px 12px}
+.clave{display:flex;align-items:center;gap:11px;font-size:var(--t-xs);color:var(--ink-2)}
+.clave i{width:10px;height:10px;border-radius:2px;display:inline-block;flex:none;border:1px solid}
+.clave b{font-family:var(--f-mono);font-weight:700;color:var(--fg);font-variant-numeric:tabular-nums}
+.clave span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.clave .sep{width:1px;height:15px;background:var(--line);flex:none}
+
+/* piezas del plano */
+.pz,.etq{cursor:default}
+.pz[data-est="libre"],.etq[data-est="libre"]{cursor:pointer}
+.pl-piso{fill:var(--pl-piso)} .pl-sreja{stroke:var(--pl-reja);fill:none}
+.pl-scont{stroke:var(--pl-cont);fill:none}
+.pl-muro{fill:var(--pl-muro)} .pl-murot{fill:var(--pl-murot)}
+.pl-ri{fill:var(--pl-ri)} .pl-rd{fill:var(--pl-rd)} .pl-rt{fill:var(--pl-rt)}
+.pl-ni{fill:var(--pl-ni)} .pl-nd{fill:var(--pl-nd)} .pl-nt{fill:var(--pl-nt)}
+.pl-li{fill:var(--pl-li)} .pl-ld{fill:var(--pl-ld)} .pl-lt{fill:var(--pl-lt)}
+.pl-ai{fill:var(--pl-ai)} .pl-ad{fill:var(--pl-ad)} .pl-at{fill:var(--pl-at)}
+.pl-ti{fill:var(--pl-ti)} .pl-td{fill:var(--pl-td)} .pl-tt{fill:var(--pl-tt)}
+.pl-ei{fill:var(--pl-ei)} .pl-ed{fill:var(--pl-ed)} .pl-et{fill:var(--pl-et)}
+.pl-ssep{stroke:var(--pl-sep);stroke-width:1}
+.pl-sent{stroke:var(--pl-ad);stroke-width:1.6;stroke-linejoin:round;fill:none}
+.pl-stinta{stroke:var(--ink-1);stroke-width:1.2;fill:none}
+.pl-ssala,.pl-ssala-f{stroke:var(--pl-sala)} .pl-ssala-f{fill:var(--pl-sala);stroke:none}
+.pl-guia{stroke:var(--ink-4);stroke-opacity:.6;stroke-width:1}
+.pl-pto{fill:var(--ink-3)}
+.pl-hit{fill:transparent}
+.pl-cod-t{font-family:var(--f-mono);font-size:11px;font-weight:700;letter-spacing:0;
+  fill:var(--pl-cod);paint-order:stroke;stroke:var(--pl-piso);stroke-width:2.6px;stroke-linejoin:round}
+.pl-fec-t{font-family:var(--f-mono);font-size:10.5px;font-weight:600;letter-spacing:0;
+  fill:var(--pl-fec);paint-order:stroke;stroke:var(--pl-piso);stroke-width:2.6px;stroke-linejoin:round}
+.pl-sala-t{font-family:var(--f-text);font-size:12.5px;font-weight:700;letter-spacing:.2em;fill:var(--pl-sala)}
+/* elegido: la pieza pasa a tinta y su codigo se invierte */
+.pz[data-sel="1"] .pl-li{fill:var(--pl-ei)}
+.pz[data-sel="1"] .pl-ld{fill:var(--pl-ed)}
+.pz[data-sel="1"] .pl-lt{fill:var(--pl-et)}
+.etq[data-sel="1"] .pl-cod-t{fill:var(--pl-codsel);stroke:var(--pl-halosel);stroke-width:4.6px}
+.etq[data-sel="1"] .pl-pto{fill:var(--pl-ei)}
+/* foco y hover: el codigo se agranda un punto y la guia se enciende */
+.etq:hover .pl-cod-t,.etq.mk .pl-cod-t,.etq:focus-visible .pl-cod-t{font-size:12px}
+.etq:hover .pl-guia,.etq.mk .pl-guia,.etq:focus-visible .pl-guia{stroke:var(--ink-1);stroke-opacity:1}
+.etq:focus-visible{outline:none}
+.pz.mk .pl-li,.pz.mk .pl-ai{filter:brightness(1.14)}
+.pz.mk .pl-lt,.pz.mk .pl-at{filter:brightness(1.1)}
+
+/* --- ESCALERA ----------------------------------------------------------- */
+.lectura{font-family:var(--f-display);font-weight:800;font-size:var(--t-lg);
+  letter-spacing:-.028em;line-height:1;white-space:nowrap}
+.lectura b{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:800;letter-spacing:-.03em}
+.lectura .n{color:var(--libre-txt)}
+.graf{flex:1;min-height:0;padding:0 14px 8px}
+.graf svg{width:100%;height:100%;display:block;touch-action:none}
+.gEje{stroke:var(--line-strong);stroke-width:1}
+.gComb{stroke:var(--line-strong);stroke-width:1;opacity:.75}
+.gArea{fill:var(--libre-suave)}
+.gTemp{fill:var(--panel-2)}
+.gTempT{font-family:var(--f-text);font-size:10.6px;font-weight:700;letter-spacing:.16em;
+  fill:var(--ink-4);text-anchor:middle}
+.gPaso{fill:none;stroke:var(--libre);stroke-width:2.4;stroke-linejoin:round;stroke-linecap:round}
+.gPto{fill:var(--libre)}
+.gNum{font-family:var(--f-mono);font-weight:700;font-size:15px;fill:var(--libre-txt);
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.gNota{font-family:var(--f-text);font-size:11.5px;fill:var(--ink-3)}
+.gHoy{font-family:var(--f-mono);font-size:11.5px;fill:var(--ink-1);font-weight:700}
+.gFecha{font-family:var(--f-mono);font-size:11.5px;fill:var(--ink-2);text-anchor:middle;font-variant-numeric:tabular-nums}
+.gTipo{font-family:var(--f-text);font-size:10.6px;font-weight:600;letter-spacing:.13em;
+  text-transform:uppercase;fill:var(--ink-4)}
+.gChip{fill:var(--entra-suave);stroke:var(--entra-borde);stroke-width:1}
+.gChip.mk{stroke:var(--entra);stroke-width:1.6}
+.gCod{font-family:var(--f-mono);font-weight:700;font-size:11.5px;fill:var(--entra-txt);
+  text-anchor:middle;letter-spacing:0}
+.gCur{stroke:var(--ink-1);stroke-width:1.2}
+.gAnillo{fill:none;stroke:var(--ink-1);stroke-width:2}
+.gGrupo{cursor:pointer}
+
+/* --- CONTRATO (la ficha de E: filas mono, separador punteado, total grande) */
+.cuerpo{padding:0 16px 14px;display:flex;flex-direction:column;flex:1;min-height:0;overflow-y:auto}
+.espacios{display:flex;flex-direction:column;gap:6px}
+.eitem{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:var(--r-sm);
+  border:var(--hair) solid var(--line);background:var(--surface-2)}
+.eitem.mk{border-color:var(--brd-strong)}
+.eitem.hl{border-color:var(--ink-1);background:var(--surface)}
+.eitem .cod{font-family:var(--f-mono);font-weight:700;font-size:var(--t-md);letter-spacing:-.01em;
+  width:9ch;flex:none}
+.eitem .d{font-size:var(--t-2xs);color:var(--ink-3);line-height:1.3;flex:1;min-width:0}
+.eitem .m{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:var(--t-sm);font-weight:700}
+.eitem .x{width:20px;height:20px;display:grid;place-items:center;border-radius:var(--r-xs);
+  color:var(--ink-4);flex:none;font-size:15px;line-height:1}
+.eitem .x:hover{color:var(--ocupado-txt);background:var(--ocupado-suave)}
+.pista{margin-top:6px;font-size:var(--t-2xs);color:var(--ink-3)}
+.pista b{font-weight:600;color:var(--ink-2);border-bottom:1px solid var(--line-strong)}
+.corte{border:0;border-top:1px dashed var(--brd);margin:10px 0 8px}
+.campo{margin-bottom:6px}
+.campo .rotulo{display:block;margin-bottom:4px}
+.entrada{border:var(--hair) solid var(--brd-control);border-radius:var(--r-sm);background:var(--surface);
+  padding:6px 10px;font-size:var(--t-base);font-weight:500;color:var(--fg);min-height:32px;
+  display:flex;align-items:center}
+.entrada.cif{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:var(--t-sm)}
+.entrada.foco{border-color:var(--ink-1);box-shadow:0 0 0 2px var(--panel-2)}
+.par{display:flex;gap:8px}.par>*{flex:1;min-width:0}
+.plazo{font-family:var(--f-mono);font-size:var(--t-2xs);color:var(--ink-3);margin-top:2px;
+  font-variant-numeric:tabular-nums}
+.total{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+  border-top:2px solid var(--ink-1);padding-top:8px;margin-top:10px}
+.total .n{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:800;
+  font-size:var(--t-xl);letter-spacing:-.035em;line-height:1}
+.cubre{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+.sello{font-size:var(--t-3xs);letter-spacing:.1em;text-transform:uppercase;font-weight:600;
+  color:var(--libre-txt);background:var(--libre-suave);border:var(--hair) solid var(--libre-borde);
+  padding:3px 9px;border-radius:var(--r-pill)}
+.acciones{margin-top:auto;padding-top:10px}
+.btn-principal{display:block;width:100%;background:var(--signal);color:var(--on-signal);
+  border:var(--hair) solid var(--signal-borde);border-radius:var(--r-md);
+  padding:11px;font-size:var(--t-base);font-weight:700;letter-spacing:.005em;
+  transition:filter var(--dur-1)}
+.btn-principal:hover{filter:brightness(1.05)}
+.btn-principal:active{transform:translateY(1px)}
+.btn2{display:block;width:100%;text-align:center;margin-top:6px;font-size:var(--t-xs);
+  color:var(--ink-3);padding:4px}
+.btn2:hover{color:var(--fg)}
+
+/* --- TARIFA ------------------------------------------------------------- */
+.tabla{padding:0 16px 12px;overflow:auto}
+table{width:100%;border-collapse:collapse}
+th{font-size:var(--t-3xs);letter-spacing:.13em;text-transform:uppercase;color:var(--ink-4);
+  font-weight:600;text-align:left;padding:0 0 5px;border-bottom:var(--hair) solid var(--line)}
+td{padding:1.5px 0;border-bottom:var(--hair) solid var(--line-soft);font-size:var(--t-sm);line-height:1.3}
+.der2{text-align:right}
+.cif{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+tfoot td{border-bottom:0;border-top:var(--hair) solid var(--line-strong);padding-top:6px;
+  color:var(--ink-3);font-size:var(--t-xs)}
+tfoot td.der2{color:var(--fg);font-weight:700}
+.entran{color:var(--entra-txt);font-weight:700}
+.cero{color:var(--ink-4)}
+tr.mk td{background:var(--panel-2)}
+
+/* --- 390 px: razonable, no perfecto ------------------------------------- */
+@media (max-width:1200px){
+  body{height:auto;padding:8px}
+  .hoja{grid-template-columns:1fr;grid-template-rows:none;grid-auto-rows:min-content}
+  .t{min-height:0}
+  .lienzo{height:52vw;min-height:230px}
+  .graf{height:190px}
+  .rail{height:auto;flex-wrap:wrap;gap:8px;padding:10px 12px;border-radius:var(--r-lg)}
+  .rail .der{margin-left:0;width:100%;justify-content:space-between}
+  .sede{border-left:0;padding-left:0}
+  .clave{flex-wrap:wrap;gap:8px}
+  .t.conect::before{display:none}
+  .lectura{font-size:var(--t-base);white-space:normal}
+  .t>header{flex-wrap:wrap}
+}
+</style>
+</head>
+<body>
+
+<div class="rail">
+  <div class="marca">
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+      <polygon points="12,3 21,8 12,13 3,8" fill="var(--ink-1)"/>
+      <polygon points="3,8 12,13 12,21 3,16" fill="var(--ink-3)"/>
+      <polygon points="21,8 12,13 12,21 21,16" fill="var(--ink-4)"/>
+    </svg>
+    <b>RECABRA</b><span>Galerías</span>
+  </div>
+  <div class="sede">
+    <span class="rotulo">Sede</span><span class="v">NAVE</span><span class="c">de 7</span>
+  </div>
+  <nav class="modos" aria-label="Modo">
+    <a href="#" class="on" aria-current="page">Vender</a>
+    <a href="#">Supervisar</a>
+  </nav>
+  <div class="der">
+    <span class="hoy">lunes 31 de agosto de 2026</span>
+    <button class="iconbtn" id="tema" type="button" aria-label="Cambiar a modo oscuro" aria-pressed="false">
+      <svg class="solo" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>
+      </svg>
+      <svg class="luna" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<main class="hoja">
+
+  <!-- 01 · EL PISO ------------------------------------------------------- -->
+  <section class="t" style="grid-area:1/1">
+    <header>
+      <span class="ojo">01</span>
+      <h2>Piso de NAVE</h2>
+      <span class="sub">106 muebles</span>
+      <div class="der clave" id="clave">
+        <span><i style="background:var(--pl-li);border-color:var(--libre-borde)"></i>Libre todo el periodo <b id="cLibre">15</b></span>
+        <span><i style="background:var(--pl-ai);border-color:var(--entra-borde)"></i>Se libera <b>5</b></span>
+        <span><i style="background:var(--pl-ti);border-color:var(--ocupado-borde)"></i>Tomado <b>3</b></span>
+        <span><i style="background:var(--pl-ri);border-color:var(--resto)"></i>Resto de la sala</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span><i style="background:var(--pl-ei);border-color:var(--ink-3)"></i>En el contrato <b id="cEleg">2</b></span>
+      </div>
+    </header>
+    <div class="lienzo">
+      <p class="periodo">31 ago → 30 sep 2026 · 31 días</p>
+      <svg viewBox="-416.5 -39.5 1032.5 557.8" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" role="group" aria-label="Plano isométrico de la sede NAVE: 23 espacios comercializables. Cada espacio libre se puede agregar al contrato."><defs><marker id="pta" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L8,4 L0,8 z" class="pl-ssala-f"/></marker></defs><polygon class="pl-piso" points="0.0,0.0 608.0,304.0 199.5,508.2 -408.5,204.2"/><path class="pl-sreja" d="M38.0,19.0L-370.5,223.2M76.0,38.0L-332.5,242.2M114.0,57.0L-294.5,261.2M152.0,76.0L-256.5,280.2M190.0,95.0L-218.5,299.2M228.0,114.0L-180.5,318.2M266.0,133.0L-142.5,337.2M304.0,152.0L-104.5,356.2M342.0,171.0L-66.5,375.2M380.0,190.0L-28.5,394.2M418.0,209.0L9.5,413.2M456.0,228.0L47.5,432.2M494.0,247.0L85.5,451.2M532.0,266.0L123.5,470.2M570.0,285.0L161.5,489.2M-38.0,19.0L570.0,323.0M-76.0,38.0L532.0,342.0M-114.0,57.0L494.0,361.0M-152.0,76.0L456.0,380.0M-190.0,95.0L418.0,399.0M-228.0,114.0L380.0,418.0M-266.0,133.0L342.0,437.0M-304.0,152.0L304.0,456.0M-342.0,171.0L266.0,475.0M-380.0,190.0L228.0,494.0" fill="none"/><polygon class="pl-scont" points="0.0,0.0 608.0,304.0 199.5,508.2 -408.5,204.2" fill="none"/><polygon class="pl-muro" points="608.0,304.0 602.7,306.7 602.7,290.9 608.0,288.2"/><polygon class="pl-muro" points="-5.3,2.7 602.7,306.7 602.7,290.9 -5.3,-13.1"/><polygon class="pl-murot" points="0.0,-15.8 608.0,288.2 602.7,290.9 -5.3,-13.1"/><polygon class="pl-muro" points="5.3,2.7 -403.2,206.9 -403.2,191.2 5.3,-13.1"/><polygon class="pl-muro" points="-408.5,204.2 -403.2,206.9 -403.2,191.2 -408.5,188.5"/><polygon class="pl-murot" points="0.0,-15.8 5.3,-13.1 -403.2,191.2 -408.5,188.5"/><polygon class="pl-muro" points="608.0,304.0 199.5,508.2 199.5,492.5 608.0,288.2"/><polygon class="pl-muro" points="194.2,505.6 199.5,508.2 199.5,492.5 194.2,489.8"/><polygon class="pl-murot" points="602.7,285.6 608.0,288.2 199.5,492.5 194.2,489.8"/><polygon class="pl-muro" points="-346.2,230.1 -351.5,232.8 -351.5,217.0 -346.2,214.3"/><polygon class="pl-muro" points="-408.5,204.2 -351.5,232.8 -351.5,217.0 -408.5,188.5"/><polygon class="pl-murot" points="-403.2,185.8 -346.2,214.3 -351.5,217.0 -408.5,188.5"/><polygon class="pl-muro" points="204.8,505.6 199.5,508.2 199.5,492.5 204.8,489.8"/><polygon class="pl-muro" points="-256.5,280.2 199.5,508.2 199.5,492.5 -256.5,264.5"/><polygon class="pl-murot" points="-251.2,261.8 204.8,489.8 199.5,492.5 -256.5,264.5"/><g class="pz" data-cod="CAR-01" data-est="libre"><polygon class="pl-li" points="72.2,47.5 43.7,61.8 43.7,40.0 72.2,25.8"/><polygon class="pl-ld" points="-1.9,38.9 43.7,61.8 43.7,40.0 -1.9,17.2"/><polygon class="pl-lt" points="26.6,2.9 72.2,25.8 43.7,40.0 -1.9,17.2"/></g><polygon class="pl-ri" points="121.6,72.2 93.1,86.5 93.1,64.7 121.6,50.5"/><polygon class="pl-rd" points="47.5,63.6 93.1,86.5 93.1,64.7 47.5,41.9"/><polygon class="pl-rt" points="76.0,27.6 121.6,50.5 93.1,64.7 47.5,41.9"/><polygon class="pl-ri" points="-7.6,79.8 -36.1,94.0 -36.1,80.8 -7.6,66.6"/><polygon class="pl-rd" points="-85.5,69.4 -36.1,94.0 -36.1,80.8 -85.5,56.2"/><polygon class="pl-rt" points="-57.0,41.9 -7.6,66.6 -36.1,80.8 -85.5,56.2"/><polygon class="pl-ri" points="171.0,96.9 142.5,111.1 142.5,89.4 171.0,75.1"/><polygon class="pl-rd" points="96.9,88.4 142.5,111.1 142.5,89.4 96.9,66.6"/><polygon class="pl-rt" points="125.4,52.3 171.0,75.1 142.5,89.4 96.9,66.6"/><polygon class="pl-ri" points="-49.4,100.7 -77.9,115.0 -77.9,101.8 -49.4,87.5"/><polygon class="pl-rd" points="-127.3,90.2 -77.9,115.0 -77.9,101.8 -127.3,77.0"/><polygon class="pl-rt" points="-98.8,62.8 -49.4,87.5 -77.9,101.8 -127.3,77.0"/><polygon class="pl-ri" points="53.2,110.2 24.7,124.5 24.7,111.2 53.2,97.0"/><polygon class="pl-rd" points="-24.7,99.8 24.7,124.5 24.7,111.2 -24.7,86.5"/><polygon class="pl-rt" points="3.8,72.3 53.2,97.0 24.7,111.2 -24.7,86.5"/><polygon class="pl-ri" points="-91.2,121.6 -119.7,135.8 -119.7,122.6 -91.2,108.4"/><polygon class="pl-rd" points="-169.1,111.2 -119.7,135.8 -119.7,122.6 -169.1,98.0"/><polygon class="pl-rt" points="-140.6,83.7 -91.2,108.4 -119.7,122.6 -169.1,98.0"/><polygon class="pl-ri" points="220.4,121.6 191.9,135.8 191.9,114.1 220.4,99.9"/><polygon class="pl-rd" points="146.3,113.0 191.9,135.8 191.9,114.1 146.3,91.3"/><polygon class="pl-rt" points="174.8,77.0 220.4,99.9 191.9,114.1 146.3,91.3"/><polygon class="pl-ri" points="11.4,131.1 -17.1,145.3 -17.1,132.2 11.4,117.9"/><polygon class="pl-rd" points="-66.5,120.6 -17.1,145.3 -17.1,132.2 -66.5,107.4"/><polygon class="pl-rt" points="-38.0,93.2 11.4,117.9 -17.1,132.2 -66.5,107.4"/><g class="pz" data-cod="FRU-04" data-est="libre"><polygon class="pl-li" points="-133.0,142.5 -161.5,156.8 -161.5,143.6 -133.0,129.3"/><polygon class="pl-ld" points="-210.9,132.1 -161.5,156.8 -161.5,143.6 -210.9,118.9"/><polygon class="pl-lt" points="-182.4,104.6 -133.0,129.3 -161.5,143.6 -210.9,118.9"/></g><polygon class="pl-ri" points="121.6,133.9 105.5,142.0 105.5,118.3 121.6,110.2"/><polygon class="pl-rd" points="81.7,130.2 105.5,142.0 105.5,118.3 81.7,106.5"/><polygon class="pl-rt" points="97.9,98.4 121.6,110.2 105.5,118.3 81.7,106.5"/><polygon class="pl-ri" points="269.8,146.3 241.3,160.6 241.3,138.8 269.8,124.6"/><polygon class="pl-rd" points="195.7,137.8 241.3,160.6 241.3,138.8 195.7,116.0"/><polygon class="pl-rt" points="224.2,101.8 269.8,124.6 241.3,138.8 195.7,116.0"/><g class="pz" data-cod="FRU-05" data-est="libre"><polygon class="pl-li" points="-30.4,152.0 -58.9,166.2 -58.9,153.1 -30.4,138.8"/><polygon class="pl-ld" points="-108.3,141.6 -58.9,166.2 -58.9,153.1 -108.3,128.4"/><polygon class="pl-lt" points="-79.8,114.1 -30.4,138.8 -58.9,153.1 -108.3,128.4"/></g><polygon class="pl-ri" points="103.5,143.0 71.2,159.1 71.2,132.4 103.5,116.3"/><polygon class="pl-rd" points="47.5,147.2 71.2,159.1 71.2,132.4 47.5,120.5"/><polygon class="pl-rt" points="79.8,104.4 103.5,116.3 71.2,132.4 47.5,120.5"/><g class="pz" data-cod="FRU-01" data-est="libre"><polygon class="pl-li" points="-72.2,172.9 -100.7,187.2 -100.7,174.0 -72.2,159.7"/><polygon class="pl-ld" points="-150.1,162.5 -100.7,187.2 -100.7,174.0 -150.1,149.3"/><polygon class="pl-lt" points="-121.6,135.0 -72.2,159.7 -100.7,174.0 -150.1,149.3"/></g><polygon class="pl-ri" points="68.4,160.5 36.1,176.7 36.1,150.0 68.4,133.8"/><polygon class="pl-rd" points="12.4,164.8 36.1,176.7 36.1,150.0 12.4,138.1"/><polygon class="pl-rt" points="44.6,122.0 68.4,133.8 36.1,150.0 12.4,138.1"/><polygon class="pl-ri" points="-207.1,170.0 -245.1,189.0 -245.1,171.3 -207.1,152.3"/><polygon class="pl-rd" points="-285.0,169.1 -245.1,189.0 -245.1,171.3 -285.0,151.4"/><polygon class="pl-rt" points="-247.0,132.4 -207.1,152.3 -245.1,171.3 -285.0,151.4"/><g class="pz" data-cod="PUN-17" data-est="entra"><polygon class="pl-ai" points="178.6,162.5 162.5,170.5 162.5,146.8 178.6,138.8"/><polygon class="pl-ad" points="138.7,158.7 162.5,170.5 162.5,146.8 138.7,134.9"/><polygon class="pl-at" points="154.8,126.9 178.6,138.8 162.5,146.8 138.7,134.9"/><polyline class="pl-sent" points="154.8,126.9 178.6,138.8 162.5,146.8 162.5,170.5 138.7,158.7 138.7,134.9" fill="none" stroke-linejoin="round"/></g><polygon class="pl-ri" points="330.6,176.7 302.1,191.0 302.1,169.2 330.6,155.0"/><polygon class="pl-rd" points="256.5,168.2 302.1,191.0 302.1,169.2 256.5,146.4"/><polygon class="pl-rt" points="285.0,132.2 330.6,155.0 302.1,169.2 256.5,146.4"/><polygon class="pl-ti" points="160.5,171.5 128.2,187.6 128.2,160.9 160.5,144.8"/><polygon class="pl-ld" points="104.5,175.8 128.2,187.6 128.2,160.9 104.5,149.1"/><polygon class="pl-lt" points="136.8,132.9 148.7,138.8 116.4,155.0 104.5,149.1"/><polygon class="pl-tt" points="148.7,138.8 160.5,144.8 128.2,160.9 116.4,155.0"/><line class="pl-ssep" x1="148.7" y1="138.8" x2="116.4" y2="155.0"/><polygon class="pl-ri" points="33.2,178.1 1.0,194.3 1.0,167.6 33.2,151.4"/><polygon class="pl-rd" points="-22.8,182.4 1.0,194.3 1.0,167.6 -22.8,155.7"/><polygon class="pl-rt" points="9.5,139.6 33.2,151.4 1.0,167.6 -22.8,155.7"/><polygon class="pl-ti" points="125.4,189.0 93.1,205.2 93.1,178.5 125.4,162.3"/><polygon class="pl-ld" points="69.4,193.3 93.1,205.2 93.1,178.5 69.4,166.6"/><polygon class="pl-lt" points="101.6,150.5 113.5,156.4 81.2,172.6 69.4,166.6"/><polygon class="pl-tt" points="113.5,156.4 125.4,162.3 93.1,178.5 81.2,172.6"/><line class="pl-ssep" x1="113.5" y1="156.4" x2="81.2" y2="172.6"/><g class="pz" data-cod="ISL-06" data-est="libre"><polygon class="pl-li" points="-150.1,198.5 -188.1,217.5 -188.1,199.8 -150.1,180.8"/><polygon class="pl-ld" points="-228.0,197.6 -188.1,217.5 -188.1,199.8 -228.0,179.9"/><polygon class="pl-lt" points="-190.0,160.9 -150.1,180.8 -188.1,199.8 -228.0,179.9"/></g><polygon class="pl-ri" points="380.0,201.4 351.5,215.7 351.5,193.9 380.0,179.7"/><polygon class="pl-rd" points="305.9,192.8 351.5,215.7 351.5,193.9 305.9,171.1"/><polygon class="pl-rt" points="334.4,156.8 380.0,179.7 351.5,193.9 305.9,171.1"/><polygon class="pl-ri" points="235.6,191.0 219.5,199.0 219.5,175.3 235.6,167.2"/><polygon class="pl-rd" points="195.7,187.2 219.5,199.0 219.5,175.3 195.7,163.4"/><polygon class="pl-rt" points="211.8,155.4 235.6,167.2 219.5,175.3 195.7,163.4"/><g class="pz" data-cod="ISL-05" data-est="libre"><polygon class="pl-li" points="-266.0,199.5 -304.0,218.5 -304.0,200.8 -266.0,181.8"/><polygon class="pl-ld" points="-343.9,198.5 -304.0,218.5 -304.0,200.8 -343.9,180.8"/><polygon class="pl-lt" points="-305.9,161.8 -266.0,181.8 -304.0,200.8 -343.9,180.8"/></g><polygon class="pl-ri" points="-1.9,195.7 -34.2,211.8 -34.2,185.1 -1.9,169.0"/><polygon class="pl-rd" points="-57.9,200.0 -34.2,211.8 -34.2,185.1 -57.9,173.3"/><polygon class="pl-rt" points="-25.6,157.1 -1.9,169.0 -34.2,185.1 -57.9,173.3"/><polygon class="pl-ri" points="217.5,200.0 185.2,216.1 185.2,189.4 217.5,173.3"/><polygon class="pl-rd" points="161.5,204.2 185.2,216.1 185.2,189.4 161.5,177.6"/><polygon class="pl-rt" points="193.8,161.4 217.5,173.3 185.2,189.4 161.5,177.6"/><g class="pz" data-cod="GON-60·A|GON-60·B" data-est="tomado"><polygon class="pl-ti" points="90.2,206.6 58.0,222.8 58.0,196.1 90.2,179.9"/><polygon class="pl-ld" points="34.2,210.9 58.0,222.8 58.0,196.1 34.2,184.2"/><polygon class="pl-lt" points="66.5,168.1 78.4,174.0 46.1,190.1 34.2,184.2"/><polygon class="pl-tt" points="78.4,174.0 90.2,179.9 58.0,196.1 46.1,190.1"/><line class="pl-ssep" x1="78.4" y1="174.0" x2="46.1" y2="190.1"/></g><polygon class="pl-ri" points="-104.5,221.3 -142.5,240.3 -142.5,222.6 -104.5,203.7"/><polygon class="pl-rd" points="-182.4,220.4 -142.5,240.3 -142.5,222.6 -182.4,202.7"/><polygon class="pl-rt" points="-144.4,183.7 -104.5,203.7 -142.5,222.6 -182.4,202.7"/><polygon class="pl-ri" points="-37.0,213.3 -69.3,229.4 -69.3,202.7 -37.0,186.6"/><polygon class="pl-rd" points="-93.1,217.5 -69.3,229.4 -69.3,202.7 -93.1,190.8"/><polygon class="pl-rt" points="-60.8,174.7 -37.0,186.6 -69.3,202.7 -93.1,190.8"/><polygon class="pl-ri" points="182.4,217.5 150.1,233.7 150.1,207.0 182.4,190.8"/><polygon class="pl-rd" points="126.4,221.8 150.1,233.7 150.1,207.0 126.4,195.1"/><polygon class="pl-rt" points="158.7,179.0 182.4,190.8 150.1,207.0 126.4,195.1"/><polygon class="pl-ri" points="292.6,219.5 276.4,227.5 276.4,203.8 292.6,195.8"/><polygon class="pl-rd" points="252.7,215.7 276.4,227.5 276.4,203.8 252.7,191.9"/><polygon class="pl-rt" points="268.9,183.9 292.6,195.8 276.4,203.8 252.7,191.9"/><g class="pz" data-cod="ISL-03" data-est="tomado"><polygon class="pl-ti" points="-209.0,228.0 -247.0,247.0 -247.0,229.3 -209.0,210.3"/><polygon class="pl-td" points="-286.9,227.0 -247.0,247.0 -247.0,229.3 -286.9,209.3"/><polygon class="pl-tt" points="-248.9,190.3 -209.0,210.3 -247.0,229.3 -286.9,209.3"/></g><polygon class="pl-ri" points="440.8,231.8 412.3,246.0 412.3,216.0 440.8,201.8"/><polygon class="pl-rd" points="366.7,223.2 412.3,246.0 412.3,216.0 366.7,193.2"/><polygon class="pl-rt" points="395.2,179.0 440.8,201.8 412.3,216.0 366.7,193.2"/><polygon class="pl-ti" points="55.1,224.2 22.8,240.3 22.8,213.6 55.1,197.5"/><polygon class="pl-ld" points="-0.9,228.5 22.8,240.3 22.8,213.6 -0.9,201.8"/><polygon class="pl-lt" points="31.4,185.6 43.2,191.6 10.9,207.7 -0.9,201.8"/><polygon class="pl-tt" points="43.2,191.6 55.1,197.5 22.8,213.6 10.9,207.7"/><line class="pl-ssep" x1="43.2" y1="191.6" x2="10.9" y2="207.7"/><polygon class="pl-li" points="274.6,228.5 242.2,244.6 242.2,217.9 274.6,201.8"/><polygon class="pl-ld" points="218.5,232.8 242.2,244.6 242.2,217.9 218.5,206.1"/><polygon class="pl-lt" points="250.8,189.9 262.7,195.8 230.4,212.0 218.5,206.1"/><polygon class="pl-lt" points="262.7,195.8 274.6,201.8 242.2,217.9 230.4,212.0"/><line class="pl-ssep" x1="262.7" y1="195.8" x2="230.4" y2="212.0"/><polygon class="pl-ri" points="-72.2,230.8 -104.5,247.0 -104.5,220.3 -72.2,204.2"/><polygon class="pl-rd" points="-128.2,235.1 -104.5,247.0 -104.5,220.3 -128.2,208.4"/><polygon class="pl-rt" points="-96.0,192.3 -72.2,204.2 -104.5,220.3 -128.2,208.4"/><polygon class="pl-ri" points="147.2,235.1 115.0,251.3 115.0,224.6 147.2,208.4"/><polygon class="pl-rd" points="91.2,239.4 115.0,251.3 115.0,224.6 91.2,212.7"/><polygon class="pl-rt" points="123.5,196.6 147.2,208.4 115.0,224.6 91.2,212.7"/><polygon class="pl-ti" points="20.0,241.8 -12.3,257.9 -12.3,231.2 20.0,215.1"/><polygon class="pl-ld" points="-36.1,246.0 -12.3,257.9 -12.3,231.2 -36.1,219.3"/><polygon class="pl-lt" points="-3.8,203.2 8.1,209.1 -24.2,225.3 -36.1,219.3"/><polygon class="pl-tt" points="8.1,209.1 20.0,215.1 -12.3,231.2 -24.2,225.3"/><line class="pl-ssep" x1="8.1" y1="209.1" x2="-24.2" y2="225.3"/><polygon class="pl-ri" points="490.2,256.5 461.7,270.8 461.7,240.8 490.2,226.5"/><polygon class="pl-rd" points="416.1,248.0 461.7,270.8 461.7,240.8 416.1,218.0"/><polygon class="pl-rt" points="444.6,203.7 490.2,226.5 461.7,240.8 416.1,218.0"/><polygon class="pl-li" points="239.4,246.0 207.1,262.2 207.1,235.5 239.4,219.3"/><polygon class="pl-ld" points="183.3,250.3 207.1,262.2 207.1,235.5 183.3,223.6"/><polygon class="pl-lt" points="215.7,207.5 227.5,213.4 195.2,229.6 183.3,223.6"/><polygon class="pl-lt" points="227.5,213.4 239.4,219.3 207.1,235.5 195.2,229.6"/><line class="pl-ssep" x1="227.5" y1="213.4" x2="195.2" y2="229.6"/><g class="pz" data-cod="PUN-04" data-est="entra"><polygon class="pl-ai" points="-106.4,248.0 -122.5,256.0 -122.5,232.3 -106.4,224.2"/><polygon class="pl-ad" points="-146.3,244.2 -122.5,256.0 -122.5,232.3 -146.3,220.4"/><polygon class="pl-at" points="-130.2,212.4 -106.4,224.2 -122.5,232.3 -146.3,220.4"/><polyline class="pl-sent" points="-130.2,212.4 -106.4,224.2 -122.5,232.3 -122.5,256.0 -146.3,244.2 -146.3,220.4" fill="none" stroke-linejoin="round"/></g><polygon class="pl-ri" points="349.6,248.0 333.4,256.0 333.4,232.3 349.6,224.2"/><polygon class="pl-rd" points="309.7,244.2 333.4,256.0 333.4,232.3 309.7,220.4"/><polygon class="pl-rt" points="325.8,212.4 349.6,224.2 333.4,232.3 309.7,220.4"/><g class="pz" data-cod="ISL-04" data-est="libre" data-sel="1"><polygon class="pl-li" points="-152.0,256.5 -190.0,275.5 -190.0,257.8 -152.0,238.8"/><polygon class="pl-ld" points="-229.9,255.5 -190.0,275.5 -190.0,257.8 -229.9,237.8"/><polygon class="pl-lt" points="-191.9,218.8 -152.0,238.8 -190.0,257.8 -229.9,237.8"/></g><polygon class="pl-ri" points="112.1,252.7 79.8,268.8 79.8,242.1 112.1,226.0"/><polygon class="pl-rd" points="56.1,257.0 79.8,268.8 79.8,242.1 56.1,230.3"/><polygon class="pl-rt" points="88.4,214.1 112.1,226.0 79.8,242.1 56.1,230.3"/><polygon class="pl-ri" points="331.6,257.0 299.2,273.1 299.2,246.4 331.6,230.3"/><polygon class="pl-rd" points="275.5,261.2 299.2,273.1 299.2,246.4 275.5,234.6"/><polygon class="pl-rt" points="307.8,218.4 331.6,230.3 299.2,246.4 275.5,234.6"/><polygon class="pl-ti" points="-15.2,259.4 -47.5,275.5 -47.5,248.8 -15.2,232.7"/><polygon class="pl-ld" points="-71.2,263.6 -47.5,275.5 -47.5,248.8 -71.2,236.9"/><polygon class="pl-lt" points="-39.0,220.8 -27.1,226.7 -59.4,242.9 -71.2,236.9"/><polygon class="pl-tt" points="-27.1,226.7 -15.2,232.7 -47.5,248.8 -59.4,242.9"/><line class="pl-ssep" x1="-27.1" y1="226.7" x2="-59.4" y2="242.9"/><g class="pz" data-cod="GON-61·A|GON-61·B" data-est="libre"><polygon class="pl-li" points="204.2,263.6 172.0,279.8 172.0,253.1 204.2,236.9"/><polygon class="pl-ld" points="148.2,267.9 172.0,279.8 172.0,253.1 148.2,241.2"/><polygon class="pl-lt" points="180.5,225.1 192.4,231.0 160.1,247.1 148.2,241.2"/><polygon class="pl-lt" points="192.4,231.0 204.2,236.9 172.0,253.1 160.1,247.1"/><line class="pl-ssep" x1="192.4" y1="231.0" x2="160.1" y2="247.1"/></g><polygon class="pl-ri" points="-116.8,267.4 -135.8,276.9 -135.8,265.2 -116.8,255.7"/><polygon class="pl-rd" points="-154.8,267.4 -135.8,276.9 -135.8,265.2 -154.8,255.7"/><polygon class="pl-rt" points="-135.8,246.2 -116.8,255.7 -135.8,265.2 -154.8,255.7"/><polygon class="pl-ri" points="77.0,270.3 44.7,286.4 44.7,259.7 77.0,243.6"/><polygon class="pl-rd" points="20.9,274.6 44.7,286.4 44.7,259.7 20.9,247.9"/><polygon class="pl-rt" points="53.2,231.7 77.0,243.6 44.7,259.7 20.9,247.9"/><polygon class="pl-ri" points="539.6,281.2 511.1,295.4 511.1,265.4 539.6,251.2"/><polygon class="pl-rd" points="465.5,272.7 511.1,295.4 511.1,265.4 465.5,242.7"/><polygon class="pl-rt" points="494.0,228.4 539.6,251.2 511.1,265.4 465.5,242.7"/><polygon class="pl-ri" points="296.4,274.6 264.1,290.7 264.1,264.0 296.4,247.9"/><polygon class="pl-rd" points="240.3,278.8 264.1,290.7 264.1,264.0 240.3,252.1"/><polygon class="pl-rt" points="272.6,236.0 296.4,247.9 264.1,264.0 240.3,252.1"/><polygon class="pl-ri" points="-49.4,276.4 -65.5,284.5 -65.5,260.8 -49.4,252.8"/><polygon class="pl-rd" points="-89.3,272.6 -65.5,284.5 -65.5,260.8 -89.3,248.9"/><polygon class="pl-rt" points="-73.1,240.9 -49.4,252.8 -65.5,260.8 -89.3,248.9"/><polygon class="pl-ri" points="406.6,276.4 390.4,284.5 390.4,260.8 406.6,252.8"/><polygon class="pl-rd" points="366.7,272.6 390.4,284.5 390.4,260.8 366.7,248.9"/><polygon class="pl-rt" points="382.8,240.9 406.6,252.8 390.4,260.8 366.7,248.9"/><polygon class="pl-li" points="169.1,281.2 136.8,297.3 136.8,270.6 169.1,254.5"/><polygon class="pl-ld" points="113.1,285.5 136.8,297.3 136.8,270.6 113.1,258.8"/><polygon class="pl-lt" points="145.3,242.6 157.2,248.6 124.9,264.7 113.1,258.8"/><polygon class="pl-lt" points="157.2,248.6 169.1,254.5 136.8,270.6 124.9,264.7"/><line class="pl-ssep" x1="157.2" y1="248.6" x2="124.9" y2="264.7"/><polygon class="pl-ri" points="-90.2,280.7 -109.2,290.2 -109.2,278.5 -90.2,269.0"/><polygon class="pl-rd" points="-128.2,280.7 -109.2,290.2 -109.2,278.5 -128.2,269.0"/><polygon class="pl-rt" points="-109.2,259.5 -90.2,269.0 -109.2,278.5 -128.2,269.0"/><polygon class="pl-li" points="388.6,285.5 356.2,301.6 356.2,274.9 388.6,258.8"/><polygon class="pl-ld" points="332.5,289.8 356.2,301.6 356.2,274.9 332.5,263.1"/><polygon class="pl-lt" points="364.8,246.9 376.7,252.8 344.4,269.0 332.5,263.1"/><polygon class="pl-lt" points="376.7,252.8 388.6,258.8 356.2,274.9 344.4,269.0"/><line class="pl-ssep" x1="376.7" y1="252.8" x2="344.4" y2="269.0"/><polygon class="pl-ri" points="-167.2,285.0 -186.2,294.5 -186.2,282.8 -167.2,273.3"/><polygon class="pl-rd" points="-205.2,285.0 -186.2,294.5 -186.2,282.8 -205.2,273.3"/><polygon class="pl-rt" points="-186.2,263.8 -167.2,273.3 -186.2,282.8 -205.2,273.3"/><polygon class="pl-ri" points="41.8,287.9 9.5,304.0 9.5,277.3 41.8,261.2"/><polygon class="pl-rd" points="-14.2,292.1 9.5,304.0 9.5,277.3 -14.2,265.4"/><polygon class="pl-rt" points="18.0,249.3 41.8,261.2 9.5,277.3 -14.2,265.4"/><polygon class="pl-ri" points="261.2,292.1 229.0,308.3 229.0,281.6 261.2,265.4"/><polygon class="pl-rd" points="205.2,296.4 229.0,308.3 229.0,281.6 205.2,269.7"/><polygon class="pl-rt" points="237.5,253.6 261.2,265.4 229.0,281.6 205.2,269.7"/><polygon class="pl-ni" points="-112.1,293.6 -159.6,317.3 -159.6,301.1 -112.1,277.4"/><polygon class="pl-nd" points="-178.6,307.8 -159.6,317.3 -159.6,301.1 -178.6,291.6"/><polygon class="pl-nt" points="-131.1,267.9 -112.1,277.4 -159.6,301.1 -178.6,291.6"/><g class="pz" data-cod="EXP-01" data-est="entra"><polygon class="pl-ai" points="-39.9,303.1 -64.6,315.4 -64.6,294.7 -39.9,282.4"/><polygon class="pl-ad" points="-96.9,299.2 -64.6,315.4 -64.6,294.7 -96.9,278.6"/><polygon class="pl-at" points="-72.2,266.2 -39.9,282.4 -64.6,294.7 -96.9,278.6"/><polyline class="pl-sent" points="-72.2,266.2 -39.9,282.4 -64.6,294.7 -64.6,315.4 -96.9,299.2 -96.9,278.6" fill="none" stroke-linejoin="round"/></g><polygon class="pl-li" points="134.0,298.8 101.7,314.9 101.7,288.2 134.0,272.1"/><polygon class="pl-ld" points="77.9,303.1 101.7,314.9 101.7,288.2 77.9,276.4"/><polygon class="pl-lt" points="110.2,260.2 122.1,266.1 89.8,282.3 77.9,276.4"/><polygon class="pl-lt" points="122.1,266.1 134.0,272.1 101.7,288.2 89.8,282.3"/><line class="pl-ssep" x1="122.1" y1="266.1" x2="89.8" y2="282.3"/><polygon class="pl-li" points="353.4,303.1 321.1,319.2 321.1,292.5 353.4,276.4"/><polygon class="pl-ld" points="297.4,307.3 321.1,319.2 321.1,292.5 297.4,280.6"/><polygon class="pl-lt" points="329.7,264.5 341.5,270.4 309.2,286.6 297.4,280.6"/><polygon class="pl-lt" points="341.5,270.4 353.4,276.4 321.1,292.5 309.2,286.6"/><line class="pl-ssep" x1="341.5" y1="270.4" x2="309.2" y2="286.6"/><g class="pz" data-cod="PUN-03" data-est="entra"><polygon class="pl-ai" points="7.6,304.9 -8.5,313.0 -8.5,289.3 7.6,281.2"/><polygon class="pl-ad" points="-32.3,301.1 -8.5,313.0 -8.5,289.3 -32.3,277.4"/><polygon class="pl-at" points="-16.1,269.4 7.6,281.2 -8.5,289.3 -32.3,277.4"/><polyline class="pl-sent" points="-16.1,269.4 7.6,281.2 -8.5,289.3 -8.5,313.0 -32.3,301.1 -32.3,277.4" fill="none" stroke-linejoin="round"/></g><polygon class="pl-ri" points="463.6,304.9 447.4,313.0 447.4,289.3 463.6,281.2"/><polygon class="pl-rd" points="423.7,301.1 447.4,313.0 447.4,289.3 423.7,277.4"/><polygon class="pl-rt" points="439.8,269.4 463.6,281.2 447.4,289.3 423.7,277.4"/><polygon class="pl-ri" points="226.1,309.7 193.8,325.8 193.8,299.1 226.1,283.0"/><polygon class="pl-rd" points="170.1,314.0 193.8,325.8 193.8,299.1 170.1,287.3"/><polygon class="pl-rt" points="202.3,271.1 226.1,283.0 193.8,299.1 170.1,287.3"/><polygon class="pl-ri" points="445.6,314.0 413.2,330.1 413.2,303.4 445.6,287.3"/><polygon class="pl-rd" points="389.5,318.2 413.2,330.1 413.2,303.4 389.5,291.6"/><polygon class="pl-rt" points="421.8,275.4 445.6,287.3 413.2,303.4 389.5,291.6"/><polygon class="pl-li" points="98.8,316.3 66.5,332.5 66.5,305.8 98.8,289.6"/><polygon class="pl-ld" points="42.8,320.6 66.5,332.5 66.5,305.8 42.8,293.9"/><polygon class="pl-lt" points="75.0,277.8 86.9,283.7 54.6,299.9 42.8,293.9"/><polygon class="pl-lt" points="86.9,283.7 98.8,289.6 66.5,305.8 54.6,299.9"/><line class="pl-ssep" x1="86.9" y1="283.7" x2="54.6" y2="299.9"/><polygon class="pl-ni" points="-64.6,317.3 -112.1,341.1 -112.1,324.9 -64.6,301.1"/><polygon class="pl-nd" points="-131.1,331.6 -112.1,341.1 -112.1,324.9 -131.1,315.4"/><polygon class="pl-nt" points="-83.6,291.6 -64.6,301.1 -112.1,324.9 -131.1,315.4"/><g class="pz" data-cod="GON-67·A|GON-67·B" data-est="libre"><polygon class="pl-li" points="318.2,320.6 285.9,336.8 285.9,310.1 318.2,293.9"/><polygon class="pl-ld" points="262.2,324.9 285.9,336.8 285.9,310.1 262.2,298.2"/><polygon class="pl-lt" points="294.5,282.1 306.4,288.0 274.1,304.1 262.2,298.2"/><polygon class="pl-lt" points="306.4,288.0 318.2,293.9 285.9,310.1 274.1,304.1"/><line class="pl-ssep" x1="306.4" y1="288.0" x2="274.1" y2="304.1"/></g><polygon class="pl-ri" points="-14.2,318.7 -33.2,328.2 -33.2,316.5 -14.2,307.0"/><polygon class="pl-rd" points="-52.2,318.7 -33.2,328.2 -33.2,316.5 -52.2,307.0"/><polygon class="pl-rt" points="-33.2,297.5 -14.2,307.0 -33.2,316.5 -52.2,307.0"/><polygon class="pl-ri" points="191.0,327.3 158.7,343.4 158.7,316.7 191.0,300.6"/><polygon class="pl-rd" points="134.9,331.6 158.7,343.4 158.7,316.7 134.9,304.9"/><polygon class="pl-rt" points="167.2,288.7 191.0,300.6 158.7,316.7 134.9,304.9"/><polygon class="pl-ri" points="537.7,329.7 488.3,354.3 488.3,323.6 537.7,298.9"/><polygon class="pl-rd" points="459.8,340.1 488.3,354.3 488.3,323.6 459.8,309.3"/><polygon class="pl-rt" points="509.2,284.7 537.7,298.9 488.3,323.6 459.8,309.3"/><polygon class="pl-ri" points="410.4,331.6 378.1,347.7 378.1,321.0 410.4,304.9"/><polygon class="pl-rd" points="354.3,335.8 378.1,347.7 378.1,321.0 354.3,309.1"/><polygon class="pl-rt" points="386.7,293.0 410.4,304.9 378.1,321.0 354.3,309.1"/><polygon class="pl-ri" points="64.6,333.4 48.5,341.5 48.5,317.8 64.6,309.8"/><polygon class="pl-rd" points="24.7,329.7 48.5,341.5 48.5,317.8 24.7,306.0"/><polygon class="pl-rt" points="40.9,297.9 64.6,309.8 48.5,317.8 24.7,306.0"/><polygon class="pl-ri" points="12.4,332.0 -6.6,341.5 -6.6,329.8 12.4,320.3"/><polygon class="pl-rd" points="-25.6,332.0 -6.6,341.5 -6.6,329.8 -25.6,320.3"/><polygon class="pl-rt" points="-6.6,310.8 12.4,320.3 -6.6,329.8 -25.6,320.3"/><polygon class="pl-li" points="283.1,338.2 250.8,354.3 250.8,327.6 283.1,311.5"/><polygon class="pl-ld" points="227.1,342.5 250.8,354.3 250.8,327.6 227.1,315.8"/><polygon class="pl-lt" points="259.4,299.6 271.2,305.6 238.9,321.7 227.1,315.8"/><polygon class="pl-lt" points="271.2,305.6 283.1,311.5 250.8,327.6 238.9,321.7"/><line class="pl-ssep" x1="271.2" y1="305.6" x2="238.9" y2="321.7"/><polygon class="pl-ni" points="-17.1,341.1 -64.6,364.8 -64.6,348.6 -17.1,324.9"/><polygon class="pl-nd" points="-83.6,355.3 -64.6,364.8 -64.6,348.6 -83.6,339.1"/><polygon class="pl-nt" points="-36.1,315.4 -17.1,324.9 -64.6,348.6 -83.6,339.1"/><polygon class="pl-ri" points="155.8,344.8 123.5,361.0 123.5,334.3 155.8,318.1"/><polygon class="pl-rd" points="99.8,349.1 123.5,361.0 123.5,334.3 99.8,322.4"/><polygon class="pl-rt" points="132.0,306.3 155.8,318.1 123.5,334.3 99.8,322.4"/><polygon class="pl-ri" points="39.0,345.3 20.0,354.8 20.0,343.1 39.0,333.6"/><polygon class="pl-rd" points="1.0,345.3 20.0,354.8 20.0,343.1 1.0,333.6"/><polygon class="pl-rt" points="20.0,324.1 39.0,333.6 20.0,343.1 1.0,333.6"/><polygon class="pl-ri" points="375.2,349.1 342.9,365.3 342.9,338.6 375.2,322.4"/><polygon class="pl-rd" points="319.2,353.4 342.9,365.3 342.9,338.6 319.2,326.7"/><polygon class="pl-rt" points="351.5,310.6 375.2,322.4 342.9,338.6 319.2,326.7"/><polygon class="pl-ri" points="484.5,356.2 435.1,380.9 435.1,350.2 484.5,325.5"/><polygon class="pl-rd" points="406.6,366.7 435.1,380.9 435.1,350.2 406.6,335.9"/><polygon class="pl-rt" points="456.0,311.2 484.5,325.5 435.1,350.2 406.6,335.9"/><polygon class="pl-li" points="248.0,355.8 215.7,371.9 215.7,345.2 248.0,329.1"/><polygon class="pl-ld" points="191.9,360.1 215.7,371.9 215.7,345.2 191.9,333.4"/><polygon class="pl-lt" points="224.2,317.2 236.1,323.1 203.8,339.3 191.9,333.4"/><polygon class="pl-lt" points="236.1,323.1 248.0,329.1 215.7,345.2 203.8,339.3"/><line class="pl-ssep" x1="236.1" y1="323.1" x2="203.8" y2="339.3"/><g class="pz" data-cod="EXP-02" data-est="entra"><polygon class="pl-ai" points="81.7,363.8 57.0,376.2 57.0,355.5 81.7,343.1"/><polygon class="pl-ad" points="24.7,360.1 57.0,376.2 57.0,355.5 24.7,339.4"/><polygon class="pl-at" points="49.4,327.0 81.7,343.1 57.0,355.5 24.7,339.4"/><polyline class="pl-sent" points="49.4,327.0 81.7,343.1 57.0,355.5 57.0,376.2 24.7,360.1 24.7,339.4" fill="none" stroke-linejoin="round"/></g><g class="pz" data-cod="PUN-05" data-est="libre" data-sel="1"><polygon class="pl-li" points="121.6,361.9 105.5,370.0 105.5,346.3 121.6,338.2"/><polygon class="pl-ld" points="81.7,358.2 105.5,370.0 105.5,346.3 81.7,334.5"/><polygon class="pl-lt" points="97.9,326.4 121.6,338.2 105.5,346.3 81.7,334.5"/></g><polygon class="pl-ri" points="340.1,366.7 307.8,382.8 307.8,356.1 340.1,340.0"/><polygon class="pl-rd" points="284.1,371.0 307.8,382.8 307.8,356.1 284.1,344.3"/><polygon class="pl-rt" points="316.3,328.1 340.1,340.0 307.8,356.1 284.1,344.3"/><polygon class="pl-ni" points="30.4,364.8 -17.1,388.6 -17.1,372.4 30.4,348.6"/><polygon class="pl-nd" points="-36.1,379.1 -17.1,388.6 -17.1,372.4 -36.1,362.9"/><polygon class="pl-nt" points="11.4,339.1 30.4,348.6 -17.1,372.4 -36.1,362.9"/><polygon class="pl-li" points="212.8,373.3 180.5,389.5 180.5,362.8 212.8,346.6"/><polygon class="pl-ld" points="156.8,377.6 180.5,389.5 180.5,362.8 156.8,350.9"/><polygon class="pl-lt" points="189.0,334.8 200.9,340.7 168.6,356.9 156.8,350.9"/><polygon class="pl-lt" points="200.9,340.7 212.8,346.6 180.5,362.8 168.6,356.9"/><line class="pl-ssep" x1="200.9" y1="340.7" x2="168.6" y2="356.9"/><g class="pz" data-cod="BEB-01" data-est="tomado"><polygon class="pl-ti" points="431.3,382.8 381.9,407.6 381.9,376.8 431.3,352.1"/><polygon class="pl-td" points="353.4,393.3 381.9,407.6 381.9,376.8 353.4,362.6"/><polygon class="pl-tt" points="402.8,337.8 431.3,352.1 381.9,376.8 353.4,362.6"/></g><polygon class="pl-ri" points="111.2,381.4 92.2,390.9 92.2,379.2 111.2,369.7"/><polygon class="pl-rd" points="73.2,381.4 92.2,390.9 92.2,379.2 73.2,369.7"/><polygon class="pl-rt" points="92.2,360.2 111.2,369.7 92.2,379.2 73.2,369.7"/><polygon class="pl-ri" points="304.9,384.3 272.7,400.4 272.7,373.7 304.9,357.6"/><polygon class="pl-rd" points="248.9,388.6 272.7,400.4 272.7,373.7 248.9,361.9"/><polygon class="pl-rt" points="281.2,345.7 304.9,357.6 272.7,373.7 248.9,361.9"/><polygon class="pl-ri" points="178.6,390.4 162.5,398.5 162.5,374.8 178.6,366.8"/><polygon class="pl-rd" points="138.7,386.7 162.5,398.5 162.5,374.8 138.7,363.0"/><polygon class="pl-rt" points="154.8,354.9 178.6,366.8 162.5,374.8 138.7,363.0"/><polygon class="pl-ni" points="77.9,388.6 30.4,412.3 30.4,396.1 77.9,372.4"/><polygon class="pl-nd" points="11.4,402.8 30.4,412.3 30.4,396.1 11.4,386.6"/><polygon class="pl-nt" points="58.9,362.9 77.9,372.4 30.4,396.1 11.4,386.6"/><polygon class="pl-ri" points="137.8,394.7 118.8,404.2 118.8,392.5 137.8,383.0"/><polygon class="pl-rd" points="99.8,394.7 118.8,404.2 118.8,392.5 99.8,383.0"/><polygon class="pl-rt" points="118.8,373.5 137.8,383.0 118.8,392.5 99.8,383.0"/><polygon class="pl-ri" points="269.8,401.8 237.5,418.0 237.5,391.3 269.8,375.1"/><polygon class="pl-rd" points="213.8,406.1 237.5,418.0 237.5,391.3 213.8,379.4"/><polygon class="pl-rt" points="246.0,363.3 269.8,375.1 237.5,391.3 213.8,379.4"/><g class="pz" data-cod="BEB-02" data-est="libre"><polygon class="pl-li" points="378.1,409.4 328.7,434.2 328.7,403.4 378.1,378.7"/><polygon class="pl-ld" points="300.2,419.9 328.7,434.2 328.7,403.4 300.2,389.2"/><polygon class="pl-lt" points="349.6,364.4 378.1,378.7 328.7,403.4 300.2,389.2"/></g><polygon class="pl-ri" points="164.4,408.0 145.4,417.5 145.4,405.8 164.4,396.3"/><polygon class="pl-rd" points="126.4,408.0 145.4,417.5 145.4,405.8 126.4,396.3"/><polygon class="pl-rt" points="145.4,386.8 164.4,396.3 145.4,405.8 126.4,396.3"/><polygon class="pl-ni" points="125.4,412.3 77.9,436.1 77.9,419.9 125.4,396.1"/><polygon class="pl-nd" points="58.9,426.6 77.9,436.1 77.9,419.9 58.9,410.4"/><polygon class="pl-nt" points="106.4,386.6 125.4,396.1 77.9,419.9 58.9,410.4"/><polygon class="pl-ri" points="235.6,418.9 219.5,427.0 219.5,403.3 235.6,395.2"/><polygon class="pl-rd" points="195.7,415.2 219.5,427.0 219.5,403.3 195.7,391.5"/><polygon class="pl-rt" points="211.8,383.4 235.6,395.2 219.5,403.3 195.7,391.5"/><polygon class="pl-ri" points="191.0,421.3 172.0,430.8 172.0,419.1 191.0,409.6"/><polygon class="pl-rd" points="153.0,421.3 172.0,430.8 172.0,419.1 153.0,409.6"/><polygon class="pl-rt" points="172.0,400.1 191.0,409.6 172.0,419.1 153.0,409.6"/><g class="pz" data-cod="BEB-03" data-est="libre"><polygon class="pl-li" points="324.9,436.1 275.5,460.8 275.5,430.0 324.9,405.3"/><polygon class="pl-ld" points="247.0,446.5 275.5,460.8 275.5,430.0 247.0,415.8"/><polygon class="pl-lt" points="296.4,391.1 324.9,405.3 275.5,430.0 247.0,415.8"/></g><polygon class="pl-ri" points="217.6,434.6 198.6,444.1 198.6,432.4 217.6,422.9"/><polygon class="pl-rd" points="179.6,434.6 198.6,444.1 198.6,432.4 179.6,422.9"/><polygon class="pl-rt" points="198.6,413.4 217.6,422.9 198.6,432.4 179.6,422.9"/><polygon class="pl-ni" points="172.9,436.1 125.4,459.8 125.4,443.6 172.9,419.9"/><polygon class="pl-nd" points="106.4,450.3 125.4,459.8 125.4,443.6 106.4,434.1"/><polygon class="pl-nt" points="153.9,410.4 172.9,419.9 125.4,443.6 106.4,434.1"/><polygon class="pl-ri" points="244.2,447.9 225.2,457.4 225.2,445.7 244.2,436.2"/><polygon class="pl-rd" points="206.2,447.9 225.2,457.4 225.2,445.7 206.2,436.2"/><polygon class="pl-rt" points="225.2,426.7 244.2,436.2 225.2,445.7 206.2,436.2"/><g class="etq" data-cod="CAR-01" data-est="libre" tabindex="0" role="button"><rect class="pl-hit" x="11.3" y="-10.7" width="47.6" height="13.0"/><line class="pl-guia" x1="35.1" y1="21.5" x2="35.1" y2="2.5"/><circle class="pl-pto" cx="35.1" cy="21.5" r="1.8"/><text class="pl-cod-t" x="35.1" y="-0.2" text-anchor="middle">CAR-01</text></g><g class="etq" data-cod="BEB-01" data-est="tomado" tabindex="0" role="button"><rect class="pl-hit" x="368.5" y="325.1" width="47.6" height="13.0"/><line class="pl-guia" x1="392.3" y1="357.3" x2="392.3" y2="338.3"/><circle class="pl-pto" cx="392.3" cy="357.3" r="1.8"/><text class="pl-cod-t" x="392.3" y="335.6" text-anchor="middle">BEB-01</text></g><g class="etq" data-cod="BEB-02" data-est="libre" tabindex="0" role="button"><rect class="pl-hit" x="315.4" y="351.7" width="47.6" height="13.0"/><line class="pl-guia" x1="339.2" y1="383.9" x2="339.2" y2="364.9"/><circle class="pl-pto" cx="339.2" cy="383.9" r="1.8"/><text class="pl-cod-t" x="339.2" y="362.2" text-anchor="middle">BEB-02</text></g><g class="etq" data-cod="BEB-03" data-est="libre" tabindex="0" role="button"><rect class="pl-hit" x="262.1" y="378.3" width="47.6" height="13.0"/><line class="pl-guia" x1="285.9" y1="410.5" x2="285.9" y2="391.5"/><circle class="pl-pto" cx="285.9" cy="410.5" r="1.8"/><text class="pl-cod-t" x="285.9" y="388.8" text-anchor="middle">BEB-03</text></g><g class="etq" data-cod="FRU-04" data-est="libre" tabindex="0" role="button"><rect class="pl-hit" x="-195.8" y="91.9" width="47.6" height="13.0"/><line class="pl-guia" x1="-172.0" y1="124.1" x2="-172.0" y2="105.1"/><circle class="pl-pto" cx="-172.0" cy="124.1" r="1.8"/><text class="pl-cod-t" x="-172" y="102.4" text-anchor="middle">FRU-04</text></g><g class="etq" data-cod="FRU-05" data-est="libre" tabindex="0" role="button"><rect class="pl-hit" x="-93.2" y="101.4" width="47.6" height="13.0"/><line class="pl-guia" x1="-69.4" y1="133.6" x2="-69.4" y2="114.6"/><circle class="pl-pto" cx="-69.4" cy="133.6" r="1.8"/><text class="pl-cod-t" x="-69.4" y="111.9" text-anchor="middle">FRU-05</text></g><g class="etq" data-cod="FRU-01" data-est="libre" tabindex="0" role="button"><rect class="pl-hit" x="-135.0" y="122.3" width="47.6" height="13.0"/><line class="pl-guia" x1="-111.2" y1="154.5" x2="-111.2" y2="135.5"/><circle class="pl-pto" cx="-111.2" cy="154.5" r="1.8"/><text class="pl-cod-t" x="-111.2" y="132.8" text-anchor="middle">FRU-01</text></g><g class="etq" data-cod="GON-60·A" data-est="tomado" tabindex="0" role="button"><rect class="pl-hit" x="37.8" y="159.0" width="60.8" height="13.0"/><line class="pl-guia" x1="68.2" y1="185.0" x2="68.2" y2="172.2"/><circle class="pl-pto" cx="68.2" cy="185.0" r="1.8"/><text class="pl-cod-t" x="68.2" y="169.5" text-anchor="middle">GON-60·A</text></g><g class="etq" data-cod="GON-60·B" data-est="libre" tabindex="0" role="button"><rect class="pl-hit" x="25.9" y="140.8" width="60.8" height="13.0"/><line class="pl-guia" x1="56.3" y1="179.1" x2="56.3" y2="154.0"/><circle class="pl-pto" cx="56.3" cy="179.1" r="1.8"/><text class="pl-cod-t" x="56.3" y="151.3" text-anchor="middle">GON-60·B</text></g><g class="etq" data-cod="GON-61·A" data-est="libre" tabindex="0" role="button"><rect class="pl-hit" x="151.8" y="216.0" width="60.8" height="13.0"/><line class="pl-guia" x1="182.2" y1="242.0" x2="182.2" y2="229.2"/><circle class="pl-pto" cx="182.2" cy="242.0" r="1.8"/><text class="pl-cod-t" x="182.2" y="226.5" text-anchor="middle">GON-61·A</text></g><g class="etq" data-cod="GON-61·B" data-est="libre" tabindex="0" role="button"><rect class="pl-hit" x="139.9" y="197.8" width="60.8" height="13.0"/><line class="pl-guia" x1="170.3" y1="236.1" x2="170.3" y2="211.0"/><circle class="pl-pto" cx="170.3" cy="236.1" r="1.8"/><text class="pl-cod-t" x="170.3" y="208.3" text-anchor="middle">GON-61·B</text></g><g class="etq" data-cod="GON-67·A" data-est="libre" tabindex="0" role="button"><rect class="pl-hit" x="265.8" y="273.0" width="60.8" height="13.0"/><line class="pl-guia" x1="296.2" y1="299.0" x2="296.2" y2="286.2"/><circle class="pl-pto" cx="296.2" cy="299.0" r="1.8"/><text class="pl-cod-t" x="296.2" y="283.5" text-anchor="middle">GON-67·A</text></g><g class="etq" data-cod="GON-67·B" data-est="libre" tabindex="0" role="button"><rect class="pl-hit" x="253.9" y="254.8" width="60.8" height="13.0"/><line class="pl-guia" x1="284.3" y1="293.1" x2="284.3" y2="268.0"/><circle class="pl-pto" cx="284.3" cy="293.1" r="1.8"/><text class="pl-cod-t" x="284.3" y="265.3" text-anchor="middle">GON-67·B</text></g><g class="etq" data-cod="PUN-04" data-est="entra" tabindex="0" role="button"><rect class="pl-hit" x="-168.1" y="189.6" width="83.6" height="24.0"/><line class="pl-guia" x1="-126.3" y1="222.3" x2="-126.3" y2="203.3"/><circle class="pl-pto" cx="-126.3" cy="222.3" r="1.8"/><text class="pl-cod-t" x="-126.3" y="200.1" text-anchor="middle">PUN-04</text><text class="pl-fec-t" x="-126.3" y="212.6" text-anchor="middle">libre 25 sep</text></g><g class="etq" data-cod="PUN-17" data-est="entra" tabindex="0" role="button"><rect class="pl-hit" x="116.9" y="104.1" width="83.6" height="24.0"/><line class="pl-guia" x1="158.7" y1="136.8" x2="158.7" y2="117.8"/><circle class="pl-pto" cx="158.7" cy="136.8" r="1.8"/><text class="pl-cod-t" x="158.7" y="114.6" text-anchor="middle">PUN-17</text><text class="pl-fec-t" x="158.7" y="127.1" text-anchor="middle">libre 27 sep</text></g><g class="etq" data-cod="PUN-03" data-est="entra" tabindex="0" role="button"><rect class="pl-hit" x="-33.4" y="246.7" width="83.6" height="24.0"/><line class="pl-guia" x1="-12.3" y1="279.4" x2="8.4" y2="260.4"/><circle class="pl-pto" cx="-12.3" cy="279.4" r="1.8"/><text class="pl-cod-t" x="8.4" y="257.2" text-anchor="middle">PUN-03</text><text class="pl-fec-t" x="8.4" y="269.7" text-anchor="middle">libre 25 sep</text></g><g class="etq" data-cod="PUN-05" data-est="libre" data-sel="1" tabindex="0" role="button"><rect class="pl-hit" x="81.6" y="304.2" width="47.6" height="13.0"/><line class="pl-guia" x1="101.7" y1="336.4" x2="105.4" y2="317.4"/><circle class="pl-pto" cx="101.7" cy="336.4" r="1.8"/><text class="pl-cod-t" x="105.4" y="314.7" text-anchor="middle">PUN-05</text></g><g class="etq" data-cod="ISL-06" data-est="libre" tabindex="0" role="button"><rect class="pl-hit" x="-212.8" y="148.2" width="47.6" height="13.0"/><line class="pl-guia" x1="-189.0" y1="180.4" x2="-189.0" y2="161.4"/><circle class="pl-pto" cx="-189.0" cy="180.4" r="1.8"/><text class="pl-cod-t" x="-189" y="158.7" text-anchor="middle">ISL-06</text></g><g class="etq" data-cod="ISL-05" data-est="libre" tabindex="0" role="button"><rect class="pl-hit" x="-328.7" y="149.1" width="47.6" height="13.0"/><line class="pl-guia" x1="-304.9" y1="181.3" x2="-304.9" y2="162.3"/><circle class="pl-pto" cx="-304.9" cy="181.3" r="1.8"/><text class="pl-cod-t" x="-304.9" y="159.6" text-anchor="middle">ISL-05</text></g><g class="etq" data-cod="ISL-03" data-est="tomado" tabindex="0" role="button"><rect class="pl-hit" x="-271.8" y="177.6" width="47.6" height="13.0"/><line class="pl-guia" x1="-248.0" y1="209.8" x2="-248.0" y2="190.8"/><circle class="pl-pto" cx="-248.0" cy="209.8" r="1.8"/><text class="pl-cod-t" x="-248" y="188.1" text-anchor="middle">ISL-03</text></g><g class="etq" data-cod="ISL-04" data-est="libre" data-sel="1" tabindex="0" role="button"><rect class="pl-hit" x="-214.7" y="206.1" width="47.6" height="13.0"/><line class="pl-guia" x1="-190.9" y1="238.3" x2="-190.9" y2="219.3"/><circle class="pl-pto" cx="-190.9" cy="238.3" r="1.8"/><text class="pl-cod-t" x="-190.9" y="216.6" text-anchor="middle">ISL-04</text></g><g class="etq" data-cod="EXP-01" data-est="entra" tabindex="0" role="button"><rect class="pl-hit" x="-133.0" y="247.7" width="83.6" height="24.0"/><line class="pl-guia" x1="-68.4" y1="280.4" x2="-91.2" y2="261.4"/><circle class="pl-pto" cx="-68.4" cy="280.4" r="1.8"/><text class="pl-cod-t" x="-91.2" y="258.2" text-anchor="middle">EXP-01</text><text class="pl-fec-t" x="-91.2" y="270.8" text-anchor="middle">libre 29 sep</text></g><g class="etq" data-cod="EXP-02" data-est="entra" tabindex="0" role="button"><rect class="pl-hit" x="1.7" y="308.5" width="83.6" height="24.0"/><line class="pl-guia" x1="53.2" y1="341.2" x2="43.5" y2="322.2"/><circle class="pl-pto" cx="53.2" cy="341.2" r="1.8"/><text class="pl-cod-t" x="43.5" y="319" text-anchor="middle">EXP-02</text><text class="pl-fec-t" x="43.5" y="331.6" text-anchor="middle">libre 29 sep</text></g><text class="pl-sala-t" transform="matrix(0.8944,0.4472,-0.8944,0.4472,-318.2,227.5)" text-anchor="start">ENTRADA</text><text class="pl-sala-t" transform="matrix(0.8944,0.4472,-0.8944,0.4472,-181.4,311.1)" text-anchor="start">CAJAS</text><path class="pl-ssala" d="M-304.0,256.5L-273.6,241.3" fill="none" marker-end="url(#pta)"/></svg>
+    </div>
+  </section>
+
+  <!-- 02 · CUÁNDO SE LIBERA --------------------------------------------- -->
+  <section class="t conect" style="grid-area:2/1">
+    <header>
+      <span class="ojo">02</span>
+      <h2>Cuándo se libera cada espacio</h2>
+      <span class="sub">de 15 hoy a 20 al cerrar</span>
+      <div class="der">
+        <p class="lectura" id="lectura">si arrancás el <b>26 de sep</b> → <b class="n">17</b> libres</p>
+      </div>
+    </header>
+    <div class="graf">
+      <svg id="esc" viewBox="0 0 994 216" preserveAspectRatio="xMidYMid meet" role="img"
+           tabindex="0" aria-label="Escalera de espacios libres a lo largo del periodo: 15 hasta el 25 de septiembre, 17 desde el 25, 18 desde el 27 y 20 desde el 29."></svg>
+    </div>
+  </section>
+
+  <!-- 03 · CONTRATO ------------------------------------------------------ -->
+  <section class="t" style="grid-area:1/2">
+    <header>
+      <span class="ojo">03</span>
+      <h2>Contrato</h2>
+      <div class="der"><span class="pill">sin firmar</span></div>
+    </header>
+    <div class="cuerpo">
+      <div class="espacios" id="espacios"></div>
+      <p class="pista">Agregá otro espacio <b>tocándolo en el plano</b></p>
+
+      <hr class="corte">
+
+      <div class="campo"><span class="rotulo">Proveedor</span>
+        <div class="entrada foco" id="prov">ALPINA</div></div>
+      <div class="campo"><span class="rotulo">Marca</span>
+        <div class="entrada" id="marca">Alpinito</div></div>
+      <div class="campo par">
+        <div><span class="rotulo">Desde</span>
+          <div class="entrada cif" id="desde">15 sep 2026</div></div>
+        <div><span class="rotulo">Hasta</span>
+          <div class="entrada cif" id="hasta">14 nov 2026</div></div>
+      </div>
+      <p class="plazo" id="plazo">61 días · 2 espacios</p>
+
+      <div class="total">
+        <span class="rotulo">Total del contrato</span>
+        <span class="n" id="total">$4.575.000</span>
+      </div>
+      <div class="cubre">
+        <span class="sello">Cubre Amor y Amistad</span>
+        <span class="sello">Cubre Halloween</span>
+      </div>
+
+      <div class="acciones">
+        <button class="btn-principal" type="button">Guardar contrato y avisar</button>
+        <a class="btn2" href="#">Guardalo como reserva</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 · TARIFA -------------------------------------------------------- -->
+  <section class="t conect" style="grid-area:2/2">
+    <header>
+      <span class="ojo">04</span>
+      <h2>Tarifa de referencia</h2>
+      <div class="der"><span class="pill">al mes</span></div>
+    </header>
+    <div class="tabla">
+      <table>
+        <thead><tr>
+          <th scope="col">Tipo de espacio</th>
+          <th scope="col" class="der2" style="width:84px">Libres · entran</th>
+          <th scope="col" class="der2" style="width:92px">Tarifa</th>
+        </tr></thead>
+        <tbody>
+          <tr data-tipo="Isla"><td>Isla</td><td class="der2 cif">3</td><td class="der2 cif">$1.200.000</td></tr>
+          <tr data-tipo="Punta de góndola"><td>Punta de góndola</td><td class="der2 cif">1 <span class="entran">+3</span></td><td class="der2 cif">$1.150.000</td></tr>
+          <tr data-tipo="Exhibición de piso"><td>Exhibición de piso</td><td class="der2 cif"><span class="cero">0</span> <span class="entran">+2</span></td><td class="der2 cif">$900.000</td></tr>
+          <tr data-tipo="Cabecera de caja"><td>Cabecera de caja</td><td class="der2 cif">1</td><td class="der2 cif">$850.000</td></tr>
+          <tr data-tipo="Nevera de bebidas"><td>Nevera de bebidas</td><td class="der2 cif">2</td><td class="der2 cif">$420.000</td></tr>
+          <tr data-tipo="Frutas y verduras"><td>Frutas y verduras</td><td class="der2 cif">3</td><td class="der2 cif">$380.000</td></tr>
+          <tr data-tipo="Góndola, por cara"><td>Góndola, por cara</td><td class="der2 cif">5</td><td class="der2 cif">$230.000</td></tr>
+        </tbody>
+        <tfoot><tr>
+          <td>23 espacios comercializables</td>
+          <td class="der2 cif">15 <span class="entran">+5</span></td>
+          <td class="der2 cif">20 al cerrar</td>
+        </tr></tfoot>
+      </table>
+    </div>
+  </section>
+
+</main>
+<script>
+(function(){
+"use strict";
+var $=function(s,c){return (c||document).querySelector(s);};
+var $$=function(s,c){return Array.prototype.slice.call((c||document).querySelectorAll(s));};
+
+/* ---------- tema: claro por defecto, oscuro a un clic ------------------- */
+var btnTema=$('#tema');
+function pintaTema(){
+  var osc=document.documentElement.getAttribute('data-tema')==='oscuro';
+  btnTema.setAttribute('aria-pressed', osc?'true':'false');
+  btnTema.setAttribute('aria-label', osc?'Cambiar a modo claro':'Cambiar a modo oscuro');
+}
+btnTema.addEventListener('click',function(){
+  var osc=document.documentElement.getAttribute('data-tema')==='oscuro';
+  document.documentElement.setAttribute('data-tema', osc?'claro':'oscuro');
+  try{localStorage.setItem('recabra-tema', osc?'claro':'oscuro');}catch(e){}
+  pintaTema();
+});
+pintaTema();
+
+/* ---------- los 23 espacios de NAVE ------------------------------------- */
+var TARIFA={'Isla':1200000,'Punta de góndola':1150000,'Exhibición de piso':900000,
+  'Cabecera de caja':850000,'Nevera de bebidas':420000,'Frutas y verduras':380000,
+  'Góndola, por cara':230000};
+var ESP={
+ 'ISL-03':['Isla',''], 'ISL-04':['Isla','frente a la entrada'], 'ISL-05':['Isla',''], 'ISL-06':['Isla',''],
+ 'PUN-03':['Punta de góndola',''], 'PUN-04':['Punta de góndola',''],
+ 'PUN-05':['Punta de góndola','pasillo 5, de cara a las cajas'], 'PUN-17':['Punta de góndola',''],
+ 'EXP-01':['Exhibición de piso',''], 'EXP-02':['Exhibición de piso',''],
+ 'CAR-01':['Cabecera de caja',''],
+ 'BEB-01':['Nevera de bebidas',''], 'BEB-02':['Nevera de bebidas',''], 'BEB-03':['Nevera de bebidas',''],
+ 'FRU-01':['Frutas y verduras',''], 'FRU-04':['Frutas y verduras',''], 'FRU-05':['Frutas y verduras',''],
+ 'GON-60·A':['Góndola, cara A',''], 'GON-60·B':['Góndola, cara B',''],
+ 'GON-61·A':['Góndola, cara A',''], 'GON-61·B':['Góndola, cara B',''],
+ 'GON-67·A':['Góndola, cara A',''], 'GON-67·B':['Góndola, cara B','']};
+var PALABRA={libre:'libre',entra:'se libera en el periodo',tomado:'tomado',elegido:'en el contrato'};
+function fila(cod){ return ESP[cod]?ESP[cod][0]:''; }
+function tipoTarifa(cod){ var t=fila(cod); return t.indexOf('Góndola')===0?'Góndola, por cara':t; }
+function pesos(n){
+  var s=String(Math.round(n)), o='', k=0;
+  for(var i=s.length-1;i>=0;i--){ o=s[i]+o; if(++k%3===0&&i>0) o='.'+o; }
+  return '$'+o;
+}
+
+/* ---------- el contrato: PUN-05 negociada, ISL-04 a tarifa -------------- */
+var DIAS=61;
+var contrato=[{cod:'PUN-05',mes:1050000},{cod:'ISL-04',mes:1200000}];
+
+function enContrato(cod){ for(var i=0;i<contrato.length;i++) if(contrato[i].cod===cod) return i; return -1; }
+
+function pintaContrato(){
+  var cont=$('#espacios'); cont.innerHTML='';
+  contrato.forEach(function(e,i){
+    var d=document.createElement('div');
+    d.className='eitem'+(i===0?' mk':''); d.setAttribute('data-cod',e.cod);
+    var ub=(i===0)?ESP[e.cod][1]:'';
+    d.innerHTML='<span class="cod">'+e.cod+'</span><span class="d">'+fila(e.cod)+
+      (ub?'<br>'+ub:'')+'</span><span class="m">'+pesos(e.mes)+'</span>'+
+      '<button class="x" type="button" aria-label="Quitar '+e.cod+' del contrato">×</button>';
+    d.querySelector('.x').addEventListener('click',function(ev){ ev.stopPropagation(); quitar(e.cod); });
+    d.addEventListener('mouseenter',function(){ marca([e.cod],true); });
+    d.addEventListener('mouseleave',function(){ marca([],true); });
+    cont.appendChild(d);
+  });
+  var mes=contrato.reduce(function(a,b){return a+b.mes;},0);
+  $('#total').textContent=pesos(mes*DIAS/30);
+  $('#plazo').textContent=DIAS+' días · '+contrato.length+' espacio'+(contrato.length===1?'':'s');
+  $('#cEleg').textContent=contrato.length;
+
+  $$('.pz').forEach(function(g){
+    var cods=g.getAttribute('data-cod').split('|');
+    var on=cods.some(function(c){return enContrato(c)>=0;});
+    if(on) g.setAttribute('data-sel','1'); else g.removeAttribute('data-sel');
+  });
+  $$('.etq').forEach(function(g){
+    var c=g.getAttribute('data-cod');
+    if(enContrato(c)>=0) g.setAttribute('data-sel','1'); else g.removeAttribute('data-sel');
+    var est=enContrato(c)>=0?'elegido':g.getAttribute('data-est');
+    g.setAttribute('aria-label', c+' · '+fila(c)+' · '+PALABRA[est]);
+  });
+  /* la pista de uso se retira cuando ya se uso: tres espacios y sobra */
+  $('.pista').hidden = contrato.length>=3;
+  var tipos={}; contrato.forEach(function(e){ tipos[tipoTarifa(e.cod)]=1; });
+  $$('tbody tr').forEach(function(tr){
+    tr.classList.toggle('mk', !!tipos[tr.getAttribute('data-tipo')]);
+  });
+}
+function agregar(cod){
+  if(enContrato(cod)>=0) return;
+  contrato.push({cod:cod, mes:TARIFA[tipoTarifa(cod)]||0});
+  pintaContrato();
+}
+function quitar(cod){
+  var i=enContrato(cod); if(i<0) return;
+  contrato.splice(i,1); pintaContrato();
+}
+function alternar(cod,est){
+  if(est!=='libre') return;
+  if(enContrato(cod)>=0) quitar(cod); else agregar(cod);
+}
+
+/* ---------- marcar piezas (el conector plano <-> escalera <-> contrato) -- */
+function marca(cods,soloEstos){
+  var set={}; cods.forEach(function(c){set[c]=1;});
+  $$('.etq').forEach(function(g){ g.classList.toggle('mk', !!set[g.getAttribute('data-cod')]); });
+  $$('.pz').forEach(function(g){
+    var on=g.getAttribute('data-cod').split('|').some(function(c){return set[c];});
+    g.classList.toggle('mk', on);
+  });
+  $$('.eitem').forEach(function(d){ d.classList.toggle('hl', !!set[d.getAttribute('data-cod')]); });
+}
+
+/* ---------- el plano: tocar un espacio libre lo mete al contrato -------- */
+$$('.etq').forEach(function(g){
+  var cod=g.getAttribute('data-cod'), est=g.getAttribute('data-est');
+  g.addEventListener('click',function(){ alternar(cod,est); });
+  g.addEventListener('keydown',function(e){
+    if(e.key==='Enter'||e.key===' '){ e.preventDefault(); alternar(cod,est); }
+  });
+  g.addEventListener('mouseenter',function(){ marca([cod]); });
+  g.addEventListener('mouseleave',function(){ marca([]); });
+});
+$$('.pz').forEach(function(g){
+  var cods=g.getAttribute('data-cod').split('|');
+  g.addEventListener('mouseenter',function(){ marca(cods); });
+  g.addEventListener('mouseleave',function(){ marca([]); });
+  if(cods.length===1) g.addEventListener('click',function(){ alternar(cods[0], g.getAttribute('data-est')); });
+});
+
+/* ---------- 02 · la escalera (A·4) -------------------------------------- */
+var X0=8, X1=986, ND=30, P=(X1-X0)/ND, YB=130, BASE=15;
+var EV=[{d:25,n:17,cods:['PUN-03','PUN-04']},
+        {d:27,n:18,cods:['PUN-17']},
+        {d:29,n:20,cods:['EXP-01','EXP-02']}];
+function yy(n){ return YB - (n-BASE)*12 - 24; }
+function xx(d){ return X0 + d*P; }
+function libres(d){ var n=BASE; EV.forEach(function(e){ if(d>=e.d) n=e.n; }); return n; }
+function fecha(d){ return d===0?'31 ago':(d+' de sep'); }
+
+var NS='http://www.w3.org/2000/svg';
+function el(t,a,txt){ var n=document.createElementNS(NS,t);
+  for(var k in a) n.setAttribute(k,a[k]); if(txt!=null) n.textContent=txt; return n; }
+
+var esc=$('#esc');
+(function dibuja(){
+  var f=document.createDocumentFragment();
+  /* banda de temporada: Amor y Amistad, 19 sep, dura 8 dias */
+  f.appendChild(el('rect',{x:xx(19),y:26,width:8*P,height:YB-26,'class':'gTemp'}));
+  f.appendChild(el('text',{x:xx(19)+4*P,y:38,'class':'gTempT'},'AMOR Y AMISTAD'));
+  /* area + escalera */
+  var pts=[[X0,yy(BASE)]], n=BASE;
+  EV.forEach(function(e){ pts.push([xx(e.d),yy(n)]); pts.push([xx(e.d),yy(e.n)]); n=e.n; });
+  pts.push([X1,yy(n)]);
+  var d=pts.map(function(p){return p[0].toFixed(1)+','+p[1].toFixed(1);}).join(' ');
+  f.appendChild(el('polygon',{points:X0+','+YB+' '+d+' '+X1+','+YB,'class':'gArea'}));
+  f.appendChild(el('line',{x1:X0,y1:YB,x2:X1,y2:YB,'class':'gEje'}));
+  /* peine de dias: un diente por dia */
+  for(var i=0;i<=ND;i++)
+    f.appendChild(el('line',{x1:xx(i),y1:YB,x2:xx(i),y2:YB+(i%5===0?5:2.5),'class':'gComb'}));
+  f.appendChild(el('polyline',{points:d,'class':'gPaso'}));
+  /* puntos y cifra al inicio de cada meseta */
+  f.appendChild(el('circle',{cx:X0,cy:yy(BASE),r:3.4,'class':'gPto'}));
+  f.appendChild(el('text',{x:X0+2,y:yy(BASE)-10,'class':'gNum'},'15'));
+  f.appendChild(el('text',{x:X0+36,y:yy(BASE)-10,'class':'gNota'},'sin cambios durante 25 días'));
+  EV.forEach(function(e){
+    f.appendChild(el('circle',{cx:xx(e.d),cy:yy(e.n),r:3.4,'class':'gPto'}));
+    f.appendChild(el('text',{x:xx(e.d)+7,y:yy(e.n)-11,'class':'gNum'},String(e.n)));
+  });
+  /* fechas bajo el eje */
+  f.appendChild(el('text',{x:X0,y:152,'class':'gHoy'},'hoy · 31 ago'));
+  EV.forEach(function(e){ f.appendChild(el('text',{x:xx(e.d),y:152,'class':'gFecha'},e.d+' sep')); });
+  /* los codigos que entran, bajo su fecha (A.4: sin columna lateral) */
+  EV.forEach(function(e){
+    var g=el('g',{'class':'gGrupo','data-cods':e.cods.join('|')});
+    e.cods.forEach(function(c,j){
+      g.appendChild(el('rect',{x:xx(e.d)-28,y:162+j*24,width:56,height:20,rx:3,'class':'gChip','data-cod':c}));
+      g.appendChild(el('text',{x:xx(e.d),y:176.5+j*24,'class':'gCod'},c));
+    });
+    g.addEventListener('mouseenter',function(){ marca(e.cods); });
+    g.addEventListener('mouseleave',function(){ marca([]); });
+    f.appendChild(g);
+  });
+  f.appendChild(el('text',{x:X0,y:176,'class':'gTipo'},'PUN · PUNTA DE GÓNDOLA'));
+  f.appendChild(el('text',{x:X0,y:192,'class':'gTipo'},'EXP · EXHIBICIÓN DE PISO'));
+  /* cursor: la linea que escribe la lectura */
+  var cur=el('g',{id:'cur'});
+  cur.appendChild(el('line',{id:'curL',x1:0,y1:26,x2:0,y2:YB,'class':'gCur'}));
+  cur.appendChild(el('circle',{id:'curC',cx:0,cy:0,r:6,'class':'gAnillo'}));
+  f.appendChild(cur);
+  esc.appendChild(f);
+})();
+
+var curD=26;
+function pintaCursor(){
+  var n=libres(curD), x=xx(curD);
+  $('#curL').setAttribute('x1',x); $('#curL').setAttribute('x2',x);
+  $('#curC').setAttribute('cx',x); $('#curC').setAttribute('cy',yy(n));
+  $('#lectura').innerHTML='si arrancás el <b>'+fecha(curD)+'</b> → <b class="n">'+n+'</b> libres';
+  var yaLibres=[];
+  EV.forEach(function(e){ if(curD>=e.d) yaLibres=yaLibres.concat(e.cods); });
+  var set={}; yaLibres.forEach(function(c){set[c]=1;});
+  $$('.gChip').forEach(function(r){ r.classList.toggle('mk', !!set[r.getAttribute('data-cod')]); });
+}
+function desdeEvento(ev){
+  var r=esc.getBoundingClientRect();
+  var mx=(ev.clientX-r.left)/r.width*994;
+  var d=Math.round((mx-X0)/P);
+  curD=Math.max(0,Math.min(ND,d)); pintaCursor();
+}
+esc.addEventListener('pointermove',desdeEvento);
+esc.addEventListener('pointerdown',desdeEvento);
+esc.addEventListener('keydown',function(e){
+  if(e.key==='ArrowLeft'){ curD=Math.max(0,curD-1); pintaCursor(); e.preventDefault(); }
+  if(e.key==='ArrowRight'){ curD=Math.min(ND,curD+1); pintaCursor(); e.preventDefault(); }
+});
+pintaCursor();
+pintaContrato();
+})();
+</script>
+</body>
+</html>
