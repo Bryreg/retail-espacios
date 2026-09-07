@@ -1,4 +1,5 @@
 import type React from "react";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import PlanoIsometrico, { PlanoEnTabla } from "./PlanoIsometrico";
 import { MiniMorfo, SalaPasos } from "./Miniaturas";
@@ -144,7 +145,10 @@ function Gancho({ n, titulo, a }: { n: string; titulo: string; a: string }) {
 
 /* ── la página ────────────────────────────────────────────────────────────── */
 
-export default function Landing() {
+/** `ingreso`: el formulario de ingreso, que `App.tsx` pasa armado cuando la
+ *  portada pidió entrar. Vive en la tarjeta del hero, al lado del plano, que
+ *  sigue vivo: esta página no sabe qué hay adentro (ni sesión ni API). */
+export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
   const raizRef = useRef<HTMLDivElement | null>(null);
   const progRef = useRef<HTMLElement | null>(null);
   const anilloRef = useRef<SVGCircleElement | null>(null);
@@ -167,6 +171,14 @@ export default function Landing() {
       delete html.dataset.lpTema;
     };
   }, [tema]);
+
+  /* El pedido de ingreso puede venir del pie o de la barra: la tarjeta que lo
+     muestra es la del hero, así que la página sube hasta ahí. */
+  useEffect(() => {
+    if (!ingreso) return;
+    const quieto = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: quieto ? "auto" : "smooth" });
+  }, [ingreso]);
 
   const cambiarTema = useCallback(() => {
     setTema((t) => {
@@ -310,7 +322,7 @@ export default function Landing() {
   const anio = new Date().getFullYear();
 
   return (
-    <div className="lp" ref={raizRef} data-lp-tema={tema}>
+    <div className="lp" ref={raizRef} data-lp-tema={tema} data-ingreso={ingreso ? "1" : undefined}>
       {/* El pliego de símbolos: todos los iconos de la página, en línea. */}
       <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true" focusable="false">
         <defs>
@@ -387,6 +399,9 @@ export default function Landing() {
           <div className="script">
             {/* ─ HERO ─ */}
             <section className="panel panel--hero" data-scene="hero" id="top">
+              {ingreso ? (
+                <div className="card card--ingreso">{ingreso}</div>
+              ) : (
               <div className="card">
                 <p className="mark__txt" style={{ display: "block", marginBottom: 10 }}>RECABRA</p>
                 <p className="eyebrow">Espacios comerciales de supermercado</p>
@@ -418,6 +433,7 @@ export default function Landing() {
                   real aparece acá.
                 </p>
               </div>
+              )}
             </section>
 
             {/* ─ 01 · LO QUE HACE ─ */}

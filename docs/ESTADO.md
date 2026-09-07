@@ -3411,25 +3411,39 @@ cerrar trato y revisar cada uno en su modo) siguen vigentes y son el PR 2.
   1,35:1. Los `-borde` de estado NO dan contorno (1,3–1,8:1): el refuerzo del
   estado es la palabra al lado, que es regla dura; no el borde.
 
-### La hoja de ingreso sobre la landing
+### El ingreso adentro de la landing
 
 «Crear mi cuenta» y «Ya tengo cuenta» ya **no saltan a `/login`** (dueño,
-2026-09-06: «la idea era poder ingresar ahí de una vez»). La portada dispara
-`recabra:ingresar` (con `registro` o `login`), `App.tsx` monta
-`components/HojaIngreso.tsx` encima, y el `Login` de siempre entra perezoso
-adentro con `enHoja` (sin pantalla completa ni tarjeta) y `modoInicial`.
-Mientras la hoja está abierta el `<html>` toma el tema de la landing (oscuro
-salvo que la portada esté en claro) para que los tokens pinten a juego, y al
-cerrar vuelve el del interior. Escape, el velo y la × cierran; el `href` a
-`/login` queda de respaldo (clic con modificadores, sin JS). `/login` sigue
-existiendo para la invitación, los enlaces guardados y el 401.
+2026-09-06: «la idea era poder ingresar ahí de una vez», y después: «¿tiene que
+ser encima? ¿no hay manera de que convivan?»). Conviven: el formulario entra
+**en la tarjeta del hero, al lado del plano, que sigue vivo** (se arrastra, se
+acerca, se toca). La portada dispara `recabra:ingresar` (con `registro` o
+`login`); `App.tsx` arma `components/IngresoPortada.tsx` y se lo pasa a
+`<Landing ingreso={…}>`, que lo pone en lugar del texto del hero y sube la
+página hasta ahí (el pedido puede venir del pie). Adentro va el `Login` de
+siempre, perezoso, con `enHoja` (sin pantalla completa ni tarjeta) y
+`modoInicial`. «← Volver a la portada» y Escape devuelven el texto.
+Mientras está abierto, el `<html>` toma el tema de la landing (oscuro salvo
+que la portada esté en claro) para que los tokens de :root del formulario
+pinten a juego; al cerrar vuelve el del interior. El `href` a `/login` queda
+de respaldo (clic con modificadores, sin JS), y `/login` sigue existiendo para
+la invitación, los enlaces guardados y el 401.
 
-**Frontera intacta:** la landing sigue sin importar sesión ni API (la hoja la
-importa `App.tsx`, no la landing). `test_landing_ataques.py` definía el
-«núcleo» de la landing como *todo archivo nuevo de la rama bajo `frontend/src`*
-(muleta de la construcción de la Fase 9): con la Fase 10 eso metía `tema.css`
-y la hoja adentro del núcleo. Ahora el núcleo es lo que se llama «landing»
-(`pages/Landing/`), que es lo que la landing es.
+**Frontera intacta:** la landing sigue sin importar sesión ni API (recibe el
+formulario armado por `App.tsx` como `ReactNode`; no sabe qué es).
+`test_landing_ataques.py` definía el «núcleo» de la landing como *todo archivo
+nuevo de la rama bajo `frontend/src`* (muleta de la construcción de la Fase 9):
+con la Fase 10 eso metía `tema.css` y el ingreso adentro del núcleo. Ahora el
+núcleo es lo que se llama «landing» (`pages/Landing/`), que es lo que es.
+
+**Gotchas del formulario adentro de `.lp`:** (1) los resets de la landing
+(`.lp a`, `.lp button`) no entran en `.card--ingreso`, con `:not(:where(…))`
+para no subir la especificidad (sin `:where` el reset le ganaba a `.lp .tool`
+y a `.lp .btn` y les borraba el borde); (2) `.lp .rotulo` pasó a
+`.lp .hud .rotulo`: le estaba aplicando el pill flotante del plano al
+«Acceso anterior» del formulario; (3) con el ingreso abierto
+(`.lp[data-ingreso="1"]`) el HUD del plano baja de z-index, porque en el
+celular la tarjeta pasa por debajo y el HUD le robaba los toques.
 
 ### Gotchas de la Fase 10
 

@@ -17,8 +17,8 @@ amarillo entra acotado al botón principal, y el oscuro entra como modo
 opcional, nunca por defecto. Hay que dejarlo escrito en ESTADO.
 
 **Revisión (2026-09-06, viendo el antes/después):** el dueño confirmó **claro por
-defecto**, y pidió que el ingreso pase **encima de la landing** en vez de saltar a
-`/login` (hoja de ingreso, ver ESTADO).
+defecto**, y pidió que el ingreso pase **adentro de la landing**, en la tarjeta del hero al
+lado del plano, en vez de saltar a `/login` (ver ESTADO).
 
 ## PR 1 — Un solo sistema de tokens
 

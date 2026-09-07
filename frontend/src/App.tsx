@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Landing from "./pages/Landing/Landing";
 import BloqueoCuenta from "./components/BloqueoCuenta";
-import HojaIngreso from "./components/HojaIngreso";
+import IngresoPortada from "./components/IngresoPortada";
 import ModalConsentimiento from "./components/ModalConsentimiento";
 import { usarToken } from "./api/montaje";
 import { useAuthStore } from "./store/authStore";
@@ -102,8 +102,9 @@ const TOKEN_MONTAJE = (() => {
 
 export default function App() {
   // Fase 10: «Crear mi cuenta» / «Ya tengo cuenta» de la landing abren el
-  // ingreso encima de la portada. La landing sólo dispara el evento; el login
-  // (que sí conoce la API y la sesión) lo monta App, y entra perezoso.
+  // ingreso ADENTRO de la portada (en la tarjeta del hero, al lado del plano).
+  // La landing sólo dispara el evento; el login (que sí conoce la API y la
+  // sesión) lo arma App y se lo pasa, y entra perezoso.
   const [hoja, setHoja] = useState<"login" | "registro" | null>(null);
   useEffect(() => {
     const abrir = (e: Event) => {
@@ -181,10 +182,7 @@ export default function App() {
     const esPortada = ruta === "/" || ruta === "" || ruta === "/index.html";
     if (!esPortada) return <Pantalla><Login /></Pantalla>;
     return (
-      <>
-        <Landing />
-        {hoja && <HojaIngreso modo={hoja} onCerrar={() => setHoja(null)} />}
-      </>
+      <Landing ingreso={hoja ? <IngresoPortada modo={hoja} onCerrar={() => setHoja(null)} /> : undefined} />
     );
   }
 

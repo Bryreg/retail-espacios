@@ -458,7 +458,7 @@ export default function Login({ enHoja = false, modoInicial }: {
           background: enHoja ? "transparent" : "var(--surface)",
           border: enHoja ? 0 : "1px solid var(--line)",
           borderRadius: "var(--r-xl)",
-          padding: enHoja ? "8px 20px 24px" : "26px 28px 28px",
+          padding: enHoja ? 0 : "26px 28px 28px",
           display: "flex", flexDirection: "column", alignItems: "flex-start",
         }}
       >

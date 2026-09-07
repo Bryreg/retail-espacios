@@ -176,8 +176,12 @@ html.lp-activa body {
 .lp svg { max-width: 100%; }
 .lp h1, .lp h2, .lp h3, .lp h4, .lp p, .lp ul, .lp ol, .lp figure, .lp table { margin: 0; }
 .lp ul, .lp ol { padding: 0; list-style: none; } /* incluye ol.pasos: E tampoco numera con el navegador, el número lo pone .paso__n */
-.lp a { color: inherit; text-decoration: none; }
-.lp button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+/* Los resets no entran en la tarjeta del ingreso: ahí vive el formulario de
+   la app, con sus propios botones y enlaces (`.card--ingreso`, ver abajo). */
+.lp a:not(:where(.card--ingreso *)) { color: inherit; text-decoration: none; }
+.lp button:not(:where(.card--ingreso *)) { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+/* `:where()` deja la especificidad como estaba ((0,1,1)): sin él, el reset
+   pasaba por encima de `.lp .tool` y `.lp .btn` y les borraba el borde. */
 .lp :focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; border-radius: var(--r-xs); }
 .lp ::selection { background: color-mix(in srgb, var(--signal) 30%, transparent); color: var(--fg); }
 .lp .sr {
@@ -380,7 +384,7 @@ html.lp-activa body {
 .lp .hud > * { pointer-events: auto; }
 /* `.rotulo` también existe global en src/index.css (versalita 600, 9.5 px);
    acá se redeclara entero para que el pill del plano no herede ese estilo. */
-.lp .rotulo {
+.lp .hud .rotulo {
   position: absolute; left: clamp(12px, 2.2vw, 26px); top: calc(var(--railh) + 6px);
   font-family: var(--f-mono); font-size: var(--t-2xs); font-weight: 400; letter-spacing: .1em;
   text-transform: none; color: var(--fg-2);
@@ -554,6 +558,16 @@ html.lp-activa body {
   transition: opacity var(--dur-5) var(--ease), transform var(--dur-5) var(--ease);
 }
 .lp .panel.is-in > .card { opacity: 1; transform: none; }
+/* La tarjeta del hero con el ingreso adentro: mismo vidrio, el plano sigue
+   vivo al lado. Los tokens de :root (los del formulario) siguen al tema de la
+   landing mientras está abierta (ver `components/IngresoPortada.tsx`). */
+.lp .card--ingreso { padding: clamp(14px, 1.6vw, 22px) clamp(16px, 1.8vw, 24px) clamp(18px, 2vw, 26px); }
+.lp .card--ingreso p + p { margin-top: 0; }
+.lp .card--ingreso h1, .lp .card--ingreso h2 { letter-spacing: 0; }
+/* Con el ingreso abierto, el HUD del plano (rótulo, herramientas) baja debajo
+   de la tarjeta: en el celular la tarjeta pasa por debajo al scrollear y el
+   HUD le robaba los toques. */
+.lp[data-ingreso="1"] .hud { z-index: 0; }
 .lp .card__i {
   width: 32px; height: 32px; border-radius: var(--r-sm); display: grid; place-items: center;
   border: var(--hair) solid var(--brd); color: var(--signal-ink);
@@ -600,7 +614,7 @@ html.lp-activa body {
   .lp .legend li { font-size: var(--t-3xs); }
   .lp .legend .n { margin-left: 5px; }
   .lp .help { display: none; }
-  .lp .rotulo { top: 8px; left: 10px; font-size: 10px; padding: 5px 9px; max-width: calc(100% - 160px); line-height: 1.35; }
+  .lp .hud .rotulo { top: 8px; left: 10px; font-size: 10px; padding: 5px 9px; max-width: calc(100% - 160px); line-height: 1.35; }
   .lp .tools { top: 8px; right: 10px; }
   .lp .tool { height: 32px; min-width: 32px; padding: 0 8px; }
   .lp .tool span { display: none; }
