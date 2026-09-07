@@ -1,32 +1,54 @@
-import { AlertTriangle, Check, Loader2, Lock, X } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, Check, ImageUp, Loader2, Lock, X } from "lucide-react";
 import type { DateRange } from "../SeasonPicker/SeasonPicker";
-import { isRentable, type UnifiedFixture } from "../../types/fixtures";
+import { isRentable, rateTypeLabel, rateTypeOf, type UnifiedFixture } from "../../types/fixtures";
+import NotifyPreview from "../NotifyPreview";
 import {
-  CabezaContrato, CamposContrato, fechaCorta, money, useContrato,
-  type CaraElegida, type ParcheDeCara, type ResumenContrato, type SemillaContrato,
+  fechaCorta, money, useContrato,
+  type CaraElegida, type Contrato, type ParcheDeCara, type ResumenContrato, type SemillaContrato,
 } from "./Contrato";
 
 /**
- * El modo Vender: el mapa grande a la izquierda, la ficha del contrato a la
- * derecha y una barra al pie con el resumen de lo que se está por firmar.
+ * 03 · EL CONTRATO — la ficha de D, con lugar fijo en la hoja.
  *
- * La barra no es decoración. El botón de guardar salió de adentro del
- * formulario para que, antes de tocarlo, se lea de corrido lo que va a quedar
- * escrito —espacio → proveedor → valor → fechas—, que es la revisión que uno
- * hace en voz alta antes de colgar el teléfono. Y deja la ficha respirando: los
- * campos ya no compiten con un botón grande al final de un panel angosto.
+ * Filas mono con el código a 17,5 px, separador punteado, los cuatro campos que
+ * se teclean en cada acuerdo, el total en tinta a 30 px, los sellos de
+ * temporada y el único botón amarillo de la pantalla.
+ *
+ * LO QUE CAMBIÓ RESPECTO DE LO QUE HABÍA, y por qué:
+ *
+ * · **El botón volvió adentro de la ficha.** Estaba en una barra pegada al pie
+ *   de la pantalla, y esa barra era la consecuencia de que la pantalla rodara.
+ *   Con la hoja de D no rueda: los cuatro paneles caben, así que el botón puede
+ *   estar donde termina lo que se está firmando. Una barra flotante menos.
+ * · **La ficha existe siempre**, con espacios o sin ellos. La composición es
+ *   fija —es la regla del dueño, «si armar el contrato es la mitad del trabajo,
+ *   la mitad del trabajo tiene lugar fijo»— y el panel vacío no es un hueco
+ *   reservado: se puede teclear el proveedor y las fechas antes de elegir el
+ *   primer espacio, que es como de verdad empieza una llamada.
+ * · **Correo, nota y planometría viven en un desplegable.** Son opcionales y
+ *   ninguno de los tres se toca en la llamada típica; con los tres siempre
+ *   abiertos la ficha no cierra con dos espacios sin esconder algo, y esconder
+ *   sin avisar es exactamente lo que este PR vino a sacar. Abrirlos es un gesto
+ *   deliberado, y ahí sí el cuerpo rueda con su barra a la vista.
+ *
+ * La válvula declarada: con dos y con tres espacios el panel cierra con 12 px de
+ * aire —que los pone el margen de `.acciones`, así que se ven Y se cuentan como
+ * contenido: la ficha avisa antes de romper—; del cuarto en adelante rueda, y
+ * sólo él.
  */
-
-const ANCHO_FICHA = 428;
 
 interface ModoVenderProps {
   /** Los espacios que van en el contrato, en el orden en que se tocaron. */
   espacios: CaraElegida[];
-  /** El que se tocó último: es el que decide si la columna muestra el
-   *  formulario o el cartel de «esto no se alquila». */
+  /** El que se tocó último: es el que decide si hay que explicar que ese mueble
+   *  no se alquila. */
   ultimo: UnifiedFixture | null;
   onQuitar: (fixtureId: string, face: "A" | "B") => void;
   onCambiarCara: (fixtureId: string, face: "A" | "B") => void;
+  /** Apagar la sala y encender estos muebles. Pasar el mouse por una fila del
+   *  contrato señala en el plano de qué espacio habla. */
+  onResaltar: (claves: string[] | null) => void;
   sede: string;
   rango: DateRange | null;
   /** El contrato que se acaba de guardar, si hay uno. */
@@ -34,107 +56,134 @@ interface ModoVenderProps {
   onGuardado: (parches: ParcheDeCara[], resumen: ResumenContrato) => void;
   onCancelar: () => void;
   onSeguir: () => void;
-  /** La columna izquierda: el plano y la escalera de «cuándo se libera».
-   *  Viene del tablero para que sea exactamente la misma en los dos modos. */
-  children: React.ReactNode;
-  /** La lista de precios, debajo de la ficha. Se dibuja SIEMPRE —haya o no un
-   *  espacio elegido— porque es lo que se mira mientras se decide cuál tocar:
-   *  qué familias quedan y a cuánto salen. Antes vivía detrás de un botón, y
-   *  abrir un modal para consultar un precio en cada llamada es lo que hace
-   *  que la gente termine con la lista impresa al lado del teclado. */
-  panelTarifas?: React.ReactNode;
   /** Con qué abre el formulario cuando se llegó por «Renovar»: el mismo
    *  proveedor, el mismo valor y el periodo siguiente al que está corriendo. */
   semilla?: SemillaContrato | null;
 }
 
-// ─── Armazón ─────────────────────────────────────────────────────────────────
-
-function Armazon({
-  mapa, ficha, barra, tarifas,
-}: {
-  mapa: React.ReactNode;
-  /** Sin ficha —y sin tarifas— el riel no se dibuja y el mapa se lleva todo. */
-  ficha: React.ReactNode | null;
-  barra: React.ReactNode;
-  tarifas?: React.ReactNode;
-}) {
+/** El panel 03 de la hoja. Siempre en el mismo lugar de la rejilla. */
+function Panel({ derecha, children }: { derecha?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* Las dos columnas terminan a la misma altura, y lo que absorbe la
-          diferencia es SIEMPRE el último panel de la columna corta: la lista
-          de precios a la derecha, la de espacios libres a la izquierda. Nunca
-          la tarjeta del plano ni la escalera, que se miden con su dibujo —
-          estirarlas les agrega blanco adentro, que fue el error anterior.
-          Por eso `stretch` acá y `flex` sólo en el último de cada columna. */}
-      <div style={{ display: "flex", gap: 12, alignItems: "stretch" }}>
-        {mapa}
-        {/* Mientras no hay un espacio elegido, acá había 428 px de blanco con
-            un rótulo chiquito arriba explicando que ahí iba a aparecer algo.
-            Media pantalla reservada para lo que no está: es la interfaz
-            avisando que le falta contenido, y es de lo que más delata que
-            nadie se sentó a mirarla trabajando.
-
-            Ahora el riel simplemente no existe hasta que hay algo que poner, y
-            el mapa ocupa todo. Cuando se toca un espacio el riel entra y el
-            mapa se corre: el movimiento es la respuesta al clic. */}
-        {(ficha !== null || tarifas) && (
-          <div
-            style={{
-              width: ANCHO_FICHA, flexShrink: 0, minWidth: 0,
-              display: "flex", flexDirection: "column", gap: 10,
-              /* Con ficha la columna es alta y se pega arriba al hacer scroll.
-                 Sin ficha queda sólo la lista de precios —unos 380 px— al lado
-                 de un plano que puede medir 700, y eso dejaba trescientos
-                 píxeles de fondo gris que se leen como que falta algo. Estirada,
-                 la tabla queda arriba y lo que sobra es hoja en blanco: una
-                 lista de precios que no llena su hoja es una lista de precios,
-                 no un hueco. */
-              ...(ficha !== null
-                ? { alignSelf: "flex-start" as const, position: "sticky" as const, top: 0 }
-                : { alignSelf: "stretch" as const }),
-            }}
-          >
-            {ficha}
-            {tarifas}
-          </div>
-        )}
-      </div>
-      {barra}
-    </div>
+    <section className="vp" style={{ gridArea: "1 / 2" }}>
+      <header>
+        <span className="ojo">03</span>
+        <h2>Contrato</h2>
+        <div className="der">{derecha}</div>
+      </header>
+      {children}
+    </section>
   );
 }
 
-/*  La ficha del contrato es un panel como el plano y como la tabla: mismo
- *  blanco, misma línea de 1 px, misma esquina de 3. Un rato fue una «lámina»
- *  sin borde con una línea de tinta arriba, para que se leyera como la otra
- *  mitad del plano; el problema es que en esta pantalla hay cuatro paneles y
- *  dos de ellos no pueden tener una gramática distinta de los otros dos. La
- *  jerarquía la dan el tamaño y la posición, no el tratamiento del borde. */
-const tarjeta: React.CSSProperties = {
-  display: "flex", flexDirection: "column",
-  borderRadius: "var(--r-xl)", background: "var(--surface)",
-  border: "1px solid var(--line)",
-  boxShadow: "none",
-  overflow: "hidden",
-};
+// ─── Los espacios del contrato ───────────────────────────────────────────────
 
-/** La barra del pie. Pegada abajo mientras se hace scroll: el resumen y el
- *  botón no pueden quedar fuera de pantalla justo cuando hacen falta. */
-function Barra({ children }: { children: React.ReactNode }) {
+/** Una fila: qué espacio es, dónde queda y cuánto sale.
+ *
+ *  El valor va ADENTRO de la fila y no en un campo aparte, porque en un
+ *  contrato de tres espacios hay tres precios y no uno: la punta de la entrada
+ *  no vale lo que la del fondo, y ese es justamente el detalle que se negocia.
+ *  Arranca con la tarifa de referencia escrita —el precio de lista es el punto
+ *  de partida real— y al lado se ve el desvío, así que bajar el precio es una
+ *  decisión que se toma mirando cuánto se está bajando. */
+function Fila({
+  l, c, sePuedeQuitar, onResaltar,
+}: {
+  l: Contrato["lineas"][number];
+  c: Contrato;
+  sePuedeQuitar: boolean;
+  onResaltar: (claves: string[] | null) => void;
+}) {
+  const clave = `${l.fixture.id}-${l.face}`;
+  /* Dos renglones y ni uno más: la fila mide 46 px y la ficha tiene que cerrar
+     con tres espacios adentro. Arriba el TIPO —que es lo que se está
+     vendiendo—, abajo dónde queda y lo único que hay que mirar del precio: el
+     desvío contra la referencia, si lo hay. La referencia entera («referencia
+     $1.200.000») era un tercer renglón para un número que ya está en la tabla
+     de tarifa, a dos paneles de distancia. */
+  const segunda = [
+    l.ubicacion,
+    l.ref === null
+      ? "sin tarifa de referencia"
+      : l.desvio !== null && l.desvio !== 0
+      ? l.desvio >= 1 ? `${l.desvio}% bajo la referencia` : `${Math.abs(l.desvio)}% sobre la referencia`
+      : "",
+    l.disponibilidad !== "libre"
+      ? l.disponibilidad === "parcial" ? "parte del periodo vendida" : "vendido en el periodo"
+      : "",
+  ].filter(Boolean).join(" · ");
+
   return (
     <div
-      style={{
-        position: "sticky", bottom: -20, zIndex: 5,
-        display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
-        minHeight: 62, padding: "10px 16px", marginBottom: -20,
-        borderRadius: "var(--r-xl) var(--r-xl) 0 0",
-        background: "var(--surface)", borderTop: "1px solid var(--line)",
-        borderLeft: "1px solid var(--line)", borderRight: "1px solid var(--line)",
-        boxShadow: "0 -6px 18px rgba(26,24,20,.06)",
-      }}
+      className="eitem"
+      data-clave={clave}
+      onMouseEnter={() => onResaltar([clave])}
+      onMouseLeave={() => onResaltar(null)}
     >
-      {children}
+      <span className="cod">{l.visible}</span>
+      <span className="d">
+        <span title={l.fixture.label || l.fixture.code}>{rateTypeLabel(rateTypeOf(l.fixture))}</span>
+        <span title={segunda}>{segunda}</span>
+      </span>
+      {/* Una góndola doble son DOS espacios que se venden por separado, y las
+          dos pueden ir en el mismo contrato: una marca que quiere el pasillo
+          entero compra las dos caras. Por eso cada letra es un interruptor y no
+          una opción — con un selector entre A y B eso eran dos contratos. */}
+      {l.doble && (
+        <span style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+          {(["A", "B"] as const).map((id) => {
+            const propia = l.face === id;
+            const puesta = c.lineas.some((o) => o.fixture.id === l.fixture.id && o.face === id);
+            return (
+              <button
+                key={id}
+                onClick={() => c.onCambiarCara(l.fixture.id, id)}
+                title={puesta ? `Sacar la cara ${id} del contrato` : `Sumar la cara ${id} al contrato`}
+                style={{
+                  height: 22, padding: "0 6px", borderRadius: "var(--r-xs)", cursor: "pointer",
+                  border: `1px solid ${propia ? "var(--ink-1)" : puesta ? "var(--line-strong)" : "var(--line)"}`,
+                  background: "var(--surface)",
+                  color: puesta ? "var(--ink-1)" : "var(--ink-3)",
+                  fontFamily: "var(--f-mono)", fontSize: "var(--t-2xs)",
+                  fontWeight: propia ? 700 : 600,
+                }}
+              >
+                {id}
+              </button>
+            );
+          })}
+        </span>
+      )}
+      <span className={`m${l.monto > 0 ? "" : " falta"}`}>
+        {/* El peso va como rótulo del campo y no adentro del texto: tecleado se
+            borra, y un campo de plata sin signo se confunde con los días. Con
+            su cuerpo declarado: heredado quedaba en los 16 px del navegador y
+            era el único tamaño de la pantalla fuera de la escala. */}
+        <span
+          aria-hidden
+          style={{
+            fontSize: "var(--t-sm)", fontFamily: "var(--f-mono)",
+            color: l.monto > 0 ? "var(--ink-3)" : "var(--ocupado-txt)",
+          }}
+        >
+          $
+        </span>
+        <input
+          value={l.valor}
+          onChange={(e) => c.escribirValor(l.codigo, e.target.value)}
+          placeholder="al mes"
+          inputMode="numeric"
+          aria-label={`Valor mensual de ${l.visible}`}
+        />
+      </span>
+      {sePuedeQuitar && (
+        <button
+          className="x"
+          onClick={() => c.onQuitar(l.fixture.id, l.face)}
+          aria-label={`Quitar ${l.visible} del contrato`}
+        >
+          ×
+        </button>
+      )}
     </div>
   );
 }
@@ -147,29 +196,17 @@ function NoComercializable({ fixture }: { fixture: UnifiedFixture }) {
   return (
     <div
       style={{
-        ...tarjeta,
-        alignItems: "center", justifyContent: "center", textAlign: "center",
-        padding: "30px 26px", gap: 12,
-        background: "var(--surface-2)", border: "1px dashed var(--line-strong)",
-        boxShadow: "none",
+        display: "flex", alignItems: "center", gap: 10,
+        padding: "10px 11px", borderRadius: "var(--r-sm)",
+        border: "1px dashed var(--line-strong)", background: "var(--surface-2)",
       }}
     >
-      <div
-        style={{
-          width: 46, height: 46, borderRadius: "var(--r-xl)",
-          background: "var(--surface-3)", color: "var(--ink-2)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }}
-      >
-        <Lock size={20} />
-      </div>
-      <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--ink-1)" }}>
-        {fixture.label || fixture.code} es parte del local
-      </div>
-      <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55, maxWidth: 280 }}>
-        Está marcado como no comercializable: no admite contrato y no cuenta en
-        la ocupación. Para alquilarlo, cambiá su destino desde el Plano.
-      </div>
+      <Lock size={16} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
+      <span style={{ fontSize: "var(--t-2xs)", color: "var(--ink-2)", lineHeight: 1.4 }}>
+        <b>{fixture.label || fixture.code}</b> es parte del local: está marcado como
+        no comercializable y no admite contrato. Para alquilarlo, cambiá su
+        destino desde el Plano.
+      </span>
     </div>
   );
 }
@@ -189,9 +226,9 @@ function NoComercializable({ fixture }: { fixture: UnifiedFixture }) {
  */
 function Avisos({ avisos }: { avisos?: ResumenContrato["avisos"] }) {
   const alerta: React.CSSProperties = {
-    marginTop: 4, padding: "9px 11px", borderRadius: "var(--r-md)",
+    marginTop: 6, padding: "8px 10px", borderRadius: "var(--r-sm)",
     background: "var(--warning-50)", color: "var(--warning)",
-    fontSize: 12.5, lineHeight: 1.5,
+    fontSize: "var(--t-2xs)", lineHeight: 1.45,
   };
 
   // Un servidor viejo no manda el campo: no se afirma nada.
@@ -202,8 +239,7 @@ function Avisos({ avisos }: { avisos?: ResumenContrato["avisos"] }) {
       <div style={alerta}>
         <b>No se avisó a nadie.</b> El correo no está configurado en el
         servidor, así que el contrato quedó guardado pero no salió ningún
-        mensaje. Se configura en las variables de entorno del servidor; el
-        botón de prueba, en ajustes, dice exactamente qué falta.
+        mensaje.
       </div>
     );
   }
@@ -213,7 +249,6 @@ function Avisos({ avisos }: { avisos?: ResumenContrato["avisos"] }) {
     return (
       <div style={alerta}>
         <b>No se avisó a nadie.</b> No hay contactos cargados para esta sede.
-        Se configuran en el ícono de ajustes del encabezado.
       </div>
     );
   }
@@ -221,7 +256,7 @@ function Avisos({ avisos }: { avisos?: ResumenContrato["avisos"] }) {
   const linea = (etiqueta: string, lista: string[], nota?: string) =>
     lista.length > 0 && (
       <div style={{ display: "flex", gap: 6, marginTop: 3 }}>
-        <span style={{ color: "var(--ink-3)", flexShrink: 0, minWidth: 78 }}>{etiqueta}</span>
+        <span style={{ color: "var(--ink-3)", flexShrink: 0, minWidth: 72 }}>{etiqueta}</span>
         <span style={{ color: "var(--ink-2)", wordBreak: "break-word" }}>
           {lista.join(", ")}
           {nota && <span style={{ color: "var(--ink-3)" }}> {nota}</span>}
@@ -236,7 +271,7 @@ function Avisos({ avisos }: { avisos?: ResumenContrato["avisos"] }) {
       {linea("Montaje", avisos.montaje, "· sin valores")}
       {linea("Proveedor", avisos.proveedor)}
       {avisos.montaje.length === 0 && (
-        <div style={{ ...alerta, marginTop: 8 }}>
+        <div style={alerta}>
           Nadie va a montar: no hay mercaderista cargado para esta sede.
         </div>
       )}
@@ -246,242 +281,307 @@ function Avisos({ avisos }: { avisos?: ResumenContrato["avisos"] }) {
 
 function Cerrado({ datos, onSeguir }: { datos: ResumenContrato; onSeguir: () => void }) {
   return (
-    <div
-      style={{
-        ...tarjeta,
-        padding: 20, gap: 0, justifyContent: "flex-start",
-        background: "var(--success-50)", border: "1px solid var(--success-100)",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
-        <Check size={17} style={{ color: "var(--success)" }} />
-        <b style={{ fontSize: 15 }}>Contrato guardado</b>
-      </div>
-      <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.55 }}>
-        <b>{datos.espacios.join(", ")}</b>
-        {datos.espacios.length > 1 ? " quedan contratados" : " queda contratado"} para{" "}
-        <b>{datos.proveedor}</b>, del {fechaCorta(datos.desde)} al {fechaCorta(datos.hasta)}
-        {datos.total > 0 && <> por <b>{money(datos.total)}</b></>}.
-        <br />
-        <br />
-        <Avisos avisos={datos.avisos} />
-      </div>
+    <Panel derecha={<span className="vpill">guardado</span>}>
+      <div className="cuerpo">
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <Check size={16} style={{ color: "var(--libre-txt)" }} />
+          <b style={{ fontSize: "var(--t-base)" }}>Contrato guardado</b>
+        </div>
+        <div style={{ fontSize: "var(--t-sm)", color: "var(--ink-2)", lineHeight: 1.5 }}>
+          <b>{datos.espacios.join(", ")}</b>
+          {datos.espacios.length > 1 ? " quedan contratados" : " queda contratado"} para{" "}
+          <b>{datos.proveedor}</b>, del {fechaCorta(datos.desde)} al {fechaCorta(datos.hasta)}
+          {datos.total > 0 && <> por <b>{money(datos.total)}</b></>}.
+          <div style={{ marginTop: 8 }}><Avisos avisos={datos.avisos} /></div>
+        </div>
 
-      {/* Lo que NO quedó. Un contrato de tres espacios son tres filas en la
-          base y la segunda puede fallar con la primera ya escrita; deshacerla
-          sería peor —el correo ya salió—. Así que no se deshace nada y se dice
-          exactamente qué falta, con el código a mano para reintentarlo. */}
-      {datos.fallaron && datos.fallaron.length > 0 && (
-        <div
-          style={{
-            marginTop: 12, padding: "9px 11px", borderRadius: "var(--r-md)",
-            background: "var(--ocupado-suave)", color: "var(--ocupado-txt)",
-            fontSize: 12.5, lineHeight: 1.45,
-          }}
-        >
-          <b>
-            {datos.fallaron.length === 1
-              ? "Un espacio no se pudo guardar."
-              : `${datos.fallaron.length} espacios no se pudieron guardar.`}
-          </b>{" "}
-          El resto del contrato sí quedó. Volvé a intentarlo con{" "}
-          {datos.fallaron.map((f) => f.espacio).join(", ")}.
-          <div style={{ marginTop: 5, color: "var(--ink-2)" }}>
+        {/* Lo que NO quedó. Un contrato de tres espacios son tres filas en la
+            base y la segunda puede fallar con la primera ya escrita; deshacerla
+            sería peor —el correo ya salió—. Así que no se deshace nada y se dice
+            exactamente qué falta, con el código a mano para reintentarlo. */}
+        {datos.fallaron && datos.fallaron.length > 0 && (
+          <div className="error-txt">
+            <b>
+              {datos.fallaron.length === 1
+                ? "Un espacio no se pudo guardar."
+                : `${datos.fallaron.length} espacios no se pudieron guardar.`}
+            </b>{" "}
+            El resto del contrato sí quedó. Volvé a intentarlo con{" "}
+            {datos.fallaron.map((f) => f.espacio).join(", ")}.
             {datos.fallaron.map((f) => (
-              <div key={f.espacio}>
-                {f.espacio}: {f.motivo}
-              </div>
+              <div key={f.espacio} style={{ color: "var(--ink-2)" }}>{f.espacio}: {f.motivo}</div>
             ))}
           </div>
-        </div>
-      )}
-      {datos.avisoPlanometria && (
-        <div
-          style={{
-            marginTop: 12, padding: "9px 11px", borderRadius: "var(--r-md)",
+        )}
+        {datos.avisoPlanometria && (
+          <div style={{
+            marginTop: 8, padding: "8px 10px", borderRadius: "var(--r-sm)",
             background: "var(--warning-50)", color: "var(--warning)",
-            fontSize: 12.5, lineHeight: 1.45,
-          }}
-        >
-          {datos.avisoPlanometria}
+            fontSize: "var(--t-2xs)", lineHeight: 1.45,
+          }}>
+            {datos.avisoPlanometria}
+          </div>
+        )}
+        {/* En tinta y no en amarillo, y no es un descuido: el amarillo dice
+            «acá está el trabajo», y con el contrato guardado el trabajo está
+            hecho. Además `probar:tema` cuenta los amarillos por archivo, y dos
+            usos de `.btn-principal` en el mismo componente —aunque nunca
+            aparezcan a la vez— es exactamente la forma en que la regla del
+            dueño se empieza a vaciar. */}
+        <div className="acciones">
+          <button
+            type="button"
+            onClick={onSeguir}
+            style={{
+              display: "block", width: "100%", padding: 11,
+              borderRadius: "var(--r-md)", border: 0, cursor: "pointer",
+              background: "var(--accent)", color: "var(--accent-ink)",
+              fontSize: "var(--t-base)", fontWeight: 700, fontFamily: "inherit",
+            }}
+          >
+            Vender otro espacio
+          </button>
         </div>
-      )}
-      <button
-        onClick={onSeguir}
-        style={{
-          marginTop: 15, alignSelf: "flex-start", padding: "9px 16px",
-          borderRadius: "var(--r-md)", border: "1px solid var(--success)",
-          background: "transparent", color: "var(--success)",
-          fontSize: 13.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
-        }}
-      >
-        Vender otro espacio
-      </button>
-    </div>
+      </div>
+    </Panel>
   );
 }
 
-// ─── Con espacios elegidos ───────────────────────────────────────────────────
+// ─── La ficha ────────────────────────────────────────────────────────────────
 
-function ConEspacios({
-  espacios, sede, rango, semilla, onQuitar, onCambiarCara, onGuardado, onCancelar,
-  children, panelTarifas,
-}: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
+function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
+  const {
+    espacios, ultimo, sede, rango, semilla, onQuitar, onCambiarCara,
+    onGuardado, onCancelar, onResaltar,
+  } = props;
   const c = useContrato({ espacios, sede, rango, semilla, onQuitar, onCambiarCara, onGuardado });
   const guardando = c.estado === "guardando";
+  /** Correo, nota y planometría: opcionales, y ninguno se toca en la llamada
+   *  típica. Cerrados, la ficha cierra con aire; abiertos, el cuerpo rueda y se
+   *  ve que rueda. */
+  const [masDatos, setMasDatos] = useState(false);
 
   return (
-    <Armazon
-      mapa={children}
-      tarifas={panelTarifas}
-      ficha={
-        <div style={tarjeta}>
-          <CabezaContrato c={c} />
-          <CamposContrato c={c} />
+    <Panel derecha={<span className="vpill">sin firmar</span>}>
+      <div className="cuerpo">
+        <div className="espacios">
+          {c.lineas.map((l) => (
+            <Fila
+              key={`${l.fixture.id}-${l.face}`}
+              l={l}
+              c={c}
+              onResaltar={onResaltar}
+              /* Con un solo espacio no se ofrece quitarlo: dejaría un contrato
+                 sin nada adentro, y para eso está «Empezar de nuevo». */
+              sePuedeQuitar={c.lineas.length > 1}
+            />
+          ))}
+          {c.lineas.length === 0 && ultimo && !isRentable(ultimo) && (
+            <NoComercializable fixture={ultimo} />
+          )}
         </div>
-      }
-      barra={
-        <Barra>
-          <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap", minWidth: 0 }}>
-            {/* Los espacios, cada uno en su plaquita. Juntos en una sola
-                cadena —«PUN-05, ISL-04»— se leen como un texto y hay que
-                contarlos; separados se ven de un golpe, que es lo que uno
-                revisa antes de firmar: cuántos y cuáles. */}
-            <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
-              {c.lineas.map((l) => (
-                <span
-                  key={`${l.fixture.id}-${l.face}`}
+        {/* Un solo renglón de guía, y dice lo que falta AHORA. Antes eran dos
+            —la pista de arriba y el «falta el proveedor» sobre el botón— que
+            nunca hablan del mismo momento y sumaban 40 px a una ficha que tiene
+            que cerrar con tres espacios adentro. */}
+        {/* Del tercer espacio en adelante, y sólo si no falta nada, la pista se
+            va: quien ya sumó tres sabe cómo se suma el cuarto, y ese renglón es
+            justo lo que la ficha necesita para no empezar a rodar. Es la misma
+            regla de D (`$('.pista').hidden = contrato.length >= 3`). */}
+        {(c.lineas.length < 3 || c.falta) && (
+          <p className="pista">
+            {c.lineas.length === 0
+              ? <>Elegí el primer espacio <b>tocándolo en el plano</b></>
+              : c.falta
+              ? c.falta
+              : <>Agregá otro espacio <b>tocándolo en el plano</b></>}
+          </p>
+        )}
+
+        <hr className="corte" />
+
+        <div className="campo par">
+          <div>
+            <span className="rotulo">Proveedor</span>
+            <input
+              className="entrada"
+              value={c.proveedor}
+              onChange={(e) => c.setProveedor(e.target.value)}
+              placeholder="Alpina, Nutresa…"
+            />
+          </div>
+          <div>
+            <span className="rotulo">Marca</span>
+            <input
+              className="entrada"
+              value={c.marca}
+              onChange={(e) => c.setMarca(e.target.value)}
+              placeholder="opcional"
+            />
+          </div>
+        </div>
+        <div className="campo par">
+          <div>
+            <span className="rotulo">Desde</span>
+            <input
+              className="entrada cif" type="date"
+              value={c.desde} onChange={(e) => c.setDesde(e.target.value)}
+            />
+          </div>
+          <div>
+            <span className="rotulo">Hasta</span>
+            <input
+              className="entrada cif" type="date"
+              value={c.hasta} onChange={(e) => c.setHasta(e.target.value)}
+            />
+          </div>
+        </div>
+        {/* El plazo y el desplegable comparten renglón: son las dos cosas que
+            cuelgan de las fechas, y en una ficha que tiene que cerrar en 448 px
+            un renglón entero para un enlace de tres palabras es alto que le
+            falta al botón. */}
+        <div className="plazo-fila">
+          <p className={`plazo${c.desde && c.hasta && !c.fechasEnOrden ? " mal" : ""}`}>
+            {c.desde && c.hasta && !c.fechasEnOrden
+              ? "La fecha de fin es anterior a la de inicio"
+              : c.fechasEnOrden
+              ? `${c.dias} día${c.dias === 1 ? "" : "s"} · ${c.lineas.length} espacio${c.lineas.length === 1 ? "" : "s"}`
+              : "Elegí las fechas del acuerdo"}
+          </p>
+          <button
+            className="btn2"
+            onClick={() => setMasDatos((v) => !v)}
+            aria-expanded={masDatos}
+          >
+            {masDatos ? "− " : "+ "}Correo, nota y planometría
+          </button>
+        </div>
+
+        {masDatos && (
+          <div style={{ marginTop: 4 }}>
+            <div className="campo">
+              <span className="rotulo">Correo · para la constancia</span>
+              <input
+                className="entrada"
+                value={c.correo}
+                onChange={(e) => c.setCorreo(e.target.value)}
+                placeholder="opcional"
+                inputMode="email"
+              />
+            </div>
+            <div className="campo">
+              <span className="rotulo">Nota</span>
+              <textarea
+                className="entrada"
+                rows={2}
+                value={c.nota}
+                onChange={(e) => c.setNota(e.target.value)}
+                placeholder="Algo que haya que saber de este acuerdo"
+                style={{ display: "block", resize: "none", lineHeight: 1.4, fontSize: "var(--t-sm)" }}
+              />
+            </div>
+            {/* La planometría: qué le prometimos armar al proveedor. Va acá y no
+                en el plano porque cuelga de ESTE contrato — la misma punta
+                recibe una distinta cada temporada. */}
+            <div className="campo">
+              <span className="rotulo">Planometría · foto o PDF del proveedor</span>
+              {c.planometria ? (
+                <div className="entrada" style={{ gap: 8 }}>
+                  <ImageUp size={14} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
+                  <span style={{
+                    flex: 1, minWidth: 0, fontSize: "var(--t-2xs)",
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>
+                    {c.planometria.name}
+                  </span>
+                  <button
+                    onClick={() => c.setPlanometria(null)}
+                    aria-label="Quitar la planometría"
+                    style={{ border: 0, background: "none", cursor: "pointer", color: "var(--ink-3)", display: "flex" }}
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ) : (
+                <label
+                  className="entrada"
                   style={{
-                    fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 700,
-                    padding: "4px 9px", borderRadius: "var(--r-sm)",
-                    background: "var(--accent-50)", color: "var(--accent-700)",
+                    gap: 8, cursor: "pointer", borderStyle: "dashed",
+                    color: "var(--ink-3)", fontSize: "var(--t-2xs)",
                   }}
                 >
-                  {l.nombre}
-                </span>
-              ))}
-            </span>
-            <span style={{ color: "var(--ink-4)" }}>→</span>
-            <span style={{ fontSize: 13.5, fontWeight: 600, color: c.proveedor ? "var(--ink-1)" : "var(--ink-4)" }}>
-              {c.proveedor.trim() || "sin proveedor"}
-            </span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            {/* El TOTAL del plazo, no el valor mensual: es lo que va a quedar
-                escrito, y es el número sobre el que alguien dice que sí. */}
-            <span
-              style={{
-                fontSize: 13.5, fontWeight: 700,
-                color: c.total > 0 ? "var(--libre)" : "var(--ink-4)",
-              }}
-            >
-              {c.total > 0 ? money(c.total) : "sin valor"}
-            </span>
-            {c.total > 0 && c.lineas.length > 0 && (
-              <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
-                {money(c.montoMensual)} al mes
-              </span>
-            )}
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            <span style={{ fontSize: 12.5, color: "var(--ink-2)" }}>
-              {c.fechasEnOrden
-                ? `${fechaCorta(c.desde)} → ${fechaCorta(c.hasta)} (${c.dias} día${c.dias === 1 ? "" : "s"})`
-                : "fechas por definir"}
-            </span>
-          </div>
-
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
-            {/* El error del servidor va ACÁ y no al pie del formulario.
-                Estaba abajo de la nota, fuera de la parte visible de la ficha,
-                mientras el botón que lo provoca vive en esta barra: se tocaba
-                "Guardar", el backend rechazaba el choque de fechas y en
-                pantalla no pasaba nada. */}
-            {c.error ? (
-              <span
-                style={{
-                  display: "inline-flex", alignItems: "center", gap: 6,
-                  maxWidth: 460, padding: "6px 10px", borderRadius: "var(--r-md)",
-                  background: "var(--danger-50)", color: "var(--danger)",
-                  fontSize: 12, fontWeight: 500, lineHeight: 1.4,
-                }}
-              >
-                <AlertTriangle size={13} style={{ flexShrink: 0 }} />
-                {c.error}
-              </span>
-            ) : c.falta ? (
-              <span style={{ fontSize: 12, color: "var(--ink-3)" }}>{c.falta}</span>
-            ) : null}
-            <button
-              onClick={onCancelar}
-              disabled={guardando}
-              style={{
-                height: 40, padding: "0 16px", borderRadius: "var(--r-lg)",
-                border: "1px solid var(--line)", background: "var(--surface)",
-                color: "var(--ink-2)", fontSize: 13.5, fontWeight: 600,
-                fontFamily: "inherit", cursor: guardando ? "default" : "pointer",
-                display: "inline-flex", alignItems: "center", gap: 6,
-              }}
-            >
-              <X size={13} /> Cancelar
-            </button>
-            {/* EL botón principal de Vender: el único amarillo de la pantalla
-                (`features/diseno-interior/outputs/tema.md` §2). Cancelar queda
-                en tinta, y el estado deshabilitado lo pinta
-                `.btn-principal:disabled` — por eso acá ya no hay ternarios de
-                color: el color no es una decisión de este componente. */}
-            <button
-              className="btn-principal"
-              onClick={c.guardar}
-              disabled={!c.puedeGuardar || guardando}
-              style={{
-                height: 40, padding: "0 20px", borderRadius: "var(--r-lg)",
-                display: "inline-flex", alignItems: "center", gap: 7,
-                fontSize: 14, fontFamily: "inherit",
-              }}
-            >
-              {guardando ? (
-                <Loader2 size={15} style={{ animation: "spin .9s linear infinite" }} />
-              ) : (
-                <Check size={15} />
+                  <ImageUp size={14} />
+                  Adjuntar cómo debe quedar la exhibición
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+                    style={{ display: "none" }}
+                    onChange={(e) => c.setPlanometria(e.target.files?.[0] ?? null)}
+                  />
+                </label>
               )}
-              {guardando ? "Guardando…" : "Guardar contrato y avisar"}
-            </button>
+            </div>
+            {/* Quién se va a enterar, ANTES de guardar. */}
+            <NotifyPreview sede={c.sede} />
           </div>
-        </Barra>
-      }
-    />
+        )}
+
+        {/* ── Lo que se firma ─────────────────────────────────────────────
+            El total del plazo, que no es el valor mensual: $2.250.000 al mes
+            por 61 días son $4.575.000, y esa cuenta se hacía de cabeza con el
+            proveedor esperando del otro lado. Es la única cifra grande de la
+            pantalla y se la gana: es lo que va a quedar escrito. */}
+        <div className="total">
+          <span className="rotulo">Total del contrato</span>
+          <span className="n">{c.total > 0 ? money(c.total) : "—"}</span>
+        </div>
+        {/* Las temporadas que el plazo cubre: el argumento de venta que una
+            planilla no puede dar, y a la vez el control de que las fechas
+            quedaron donde se querían. */}
+        {c.cubre.length > 0 && (
+          <div className="cubre">
+            {c.cubre.map((t) => <span className="sello" key={t}>Cubre {t}</span>)}
+          </div>
+        )}
+
+        {/* El error del servidor sí se dice acá, pegado al botón que lo
+            provocó: es lo que pasó al tocarlo, no lo que falta antes. */}
+        {c.error && (
+          <p className="error-txt">
+            <AlertTriangle size={12} style={{ verticalAlign: "-1px" }} /> {c.error}
+          </p>
+        )}
+
+        <div className="acciones">
+          {/* EL botón principal de Vender: el único amarillo de la pantalla
+              (`outputs/tema.md` §2). El estado deshabilitado lo pinta
+              `.btn-principal:disabled`, así que acá no hay ternarios de color:
+              el color no es una decisión de este componente. */}
+          <button
+            className="btn-principal"
+            type="button"
+            onClick={c.guardar}
+            disabled={!c.puedeGuardar || guardando}
+            title={c.falta ?? undefined}
+          >
+            {guardando
+              ? <><Loader2 size={14} style={{ verticalAlign: "-2px", animation: "spin .9s linear infinite" }} /> Guardando…</>
+              : "Guardar contrato y avisar"}
+          </button>
+          <button className="btn2" type="button" onClick={onCancelar} disabled={guardando}>
+            Empezar de nuevo
+          </button>
+        </div>
+      </div>
+    </Panel>
   );
 }
 
 // ─── ──────────────────────────────────────────────────────────────────────────
 
 export default function ModoVender(props: ModoVenderProps) {
-  const { espacios, ultimo, cerrado, onSeguir, children, panelTarifas } = props;
-
-  if (cerrado) {
-    return (
-      <Armazon
-        mapa={children} tarifas={panelTarifas} barra={null}
-        ficha={<Cerrado datos={cerrado} onSeguir={onSeguir} />}
-      />
-    );
-  }
-  // Un mueble que no se alquila no entra al contrato, así que la lista sigue
-  // vacía: lo que hay que explicar es por qué tocarlo no hizo nada.
-  if (espacios.length === 0 && ultimo && !isRentable(ultimo)) {
-    return (
-      <Armazon
-        mapa={children} tarifas={panelTarifas} barra={null}
-        ficha={<NoComercializable fixture={ultimo} />}
-      />
-    );
-  }
-  if (espacios.length === 0) {
-    // Sin espacios elegidos acá había 428 px de blanco con un rótulo chiquito
-    // explicando que ahí iba a aparecer algo. Media pantalla reservada para lo
-    // que no está. Ahora la columna la ocupa la lista de precios, que es
-    // justamente lo que se mira antes de elegir.
-    return <Armazon mapa={children} ficha={null} tarifas={panelTarifas} barra={null} />;
-  }
+  const { cerrado, onSeguir } = props;
+  if (cerrado) return <Cerrado datos={cerrado} onSeguir={onSeguir} />;
   // La clave remonta el formulario cuando cambia la sede, no cuando cambia la
   // lista: agregar un segundo espacio no puede borrar el proveedor que alguien
   // ya tecleó. Por eso NO entra la lista en la clave.
@@ -489,5 +589,5 @@ export default function ModoVender(props: ModoVenderProps) {
   // La semilla SÍ entra: los campos se siembran en el `useState` inicial, así
   // que sin remontar, tocar «Renovar» con un contrato a medio armar en pantalla
   // no haría nada visible.
-  return <ConEspacios key={`${props.sede}|${props.semilla?.id ?? ""}`} {...props} />;
+  return <Ficha key={`${props.sede}|${props.semilla?.id ?? ""}`} {...props} />;
 }

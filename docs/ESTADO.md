@@ -3470,11 +3470,35 @@ celular la tarjeta pasa por debajo y el HUD le robaba los toques.
 
 ### Pendientes para el PR 2 (Vender) y el PR 3
 
-- Rótulo del mueble en el plano isométrico con la mono (desborde de 7,6 px);
-  `EXH-CENTRAL` en el FloorMap se desborda de su caja en las dos versiones.
-- `DISPLAY_TOP` del plano: siete clases sobre cuatro colores validados
-  (`active`/`expired`/`no_contract` del mismo rojo). O una paleta de siete
-  validada, o borrar el respaldo (el mapa siempre tiene periodo).
+**Cerrados por el PR 2** (Vender con la forma de D — más abajo):
+
+- ~~Rótulo del mueble en el plano isométrico (desborde de 7,6 px)~~. El rótulo
+  se rehizo entero: dos `<tspan>`, halo por `paint-order` (sin caja de ancho
+  fijo, que era lo que desbordaba), cuerpo **constante en pantalla**
+  (`--lbl` = 10,5 px ÷ escala) y un deschocador que calcula en vez de medir el
+  DOM. Medido: **0 choques y 0 textos cortados** a 1× / 1,56× / 1,95× y en 27
+  encuadres de rueda, en los dos modos. `EXH-CENTRAL` en el **FloorMap** sigue
+  pendiente: ese es otro componente y no entra en Vender.
+- ~~`DISPLAY_TOP` del plano: siete clases sobre cuatro colores validados~~.
+  Resuelto por las dos puntas: **del plano se borró** (el mapa siempre tiene
+  periodo, así que `topColorFor()` era código muerto y ahora pinta siempre la
+  terna validada `RANGE_TOP`) y **de la tabla y el popover se quedó, pero sobre
+  los cuatro colores validados**: se fueron los dos tintes al 60 % que nadie
+  había validado. Cuatro de los siete estados comparten color y cada uno va con
+  su palabra al lado, que es la regla del sistema. El porqué está escrito en
+  `DashboardView.tsx`, sobre `ESTADO_CLARO`.
+- ~~Escala tipográfica~~. Los ocho pasos `--t-*` pasaron a los valores de D
+  (10 · 11,5 · 12,5 · 13,5 · 15 · 17,5 · 21 · 30). En Vender se renderizan
+  **nueve cuerpos y ninguno más**: los ocho pasos más el rótulo constante del
+  plano.
+- ~~`StoreView.tsx` y `Legend.tsx`~~: borrados.
+
+**Siguen abiertos:**
+
+- `--s5/--s6` (24/32) vs Tailwind `p-5/p-6` (20/24): conviven a propósito.
+  Vender ya no depende de eso —su composición es una rejilla propia— pero el
+  desfase sigue.
+- `EXH-CENTRAL` en el FloorMap se desborda de su caja en las dos versiones.
 - El «Guardar» del plano en el Editor 3D quedó en tinta y el del modal de artes
   en amarillo: probablemente al revés; decisión del dueño.
 - Paletas categóricas por TIPO de mueble (`FloorPlan2D`, `fixtureStore`,
@@ -3482,9 +3506,43 @@ celular la tarjeta pasa por debajo y el HUD le robaba los toques.
   datos, así que moverlas toca datos.
 - `--con-*` de la consola de plataforma reprueban contraste en los dos modos
   (`#8E979B` sobre blanco 2,98:1 ×33 nodos): preexistente, PR 3.
-- Escala tipográfica fluida de E y `--s5/--s6` (24/32) vs Tailwind `p-5/p-6`
-  (20/24): conviven a propósito; moverlos relayoutea (PR 2).
-- `StoreView.tsx` y `Legend.tsx` son código muerto: borrar.
+- **Las dos barras.** Vender tiene encima la barra de la aplicación (51 px,
+  compartida con Montajes / Plano / Editor 3D) **y** la de la pantalla (40 px
+  apretada). D tenía una sola —su rail ERA la barra—, así que la hoja del
+  sistema arranca con ~43 px menos de alto que la que aprobó el dueño. Eso
+  corre dos umbrales: la válvula de la ficha del contrato se abre en el tercer
+  espacio a 1440×800 en vez del cuarto, y por debajo de 790 px de alto la
+  pantalla rueda (en D era 760). Fusionar las dos barras es PR 3.
+
+### PR 2 — Vender con la forma de D
+
+La opción elegida por el dueño es **D · «La fusión»**
+(`features/diseno-interior/outputs/vender/opciones/D-fusion/`), y el port está
+en `features/diseno-interior/outputs/vender/port-frontend.md`: qué se portó tal
+cual, qué se adaptó a los datos reales y las mediciones.
+
+Lo que hay que saber para no deshacerlo sin querer:
+
+- **La hoja.** `/` en modo Vender es una rejilla de cuatro paneles numerados
+  (`01` plano · `02` escalera · `03` contrato · `04` tarifa) que llena la
+  ventana, con un piso por fila (`--fila1` / `--fila2`), un apretón bajo 880 px
+  de alto y scroll normal bajo 790. **No hay scroll de documento y no hay nada
+  escondido adentro de un panel**; la única válvula declarada es la ficha del
+  contrato, que rueda —con su barra a la vista— del cuarto espacio en adelante
+  en 1440×900. Todo cuelga de `.vender` en `src/vender.css`: Supervisar,
+  Montaje y el editor 3D no ven una sola de esas reglas.
+- **El rótulo del plano no se mide con `getBoundingClientRect` en el mismo
+  paso.** `acomodar()` es aritmética pura sobre un tamaño medido UNA vez
+  (`calibrar()`, en el segundo cuadro y repetido hasta que dos pasadas
+  coinciden) y sobre la cámara recién escrita. Si alguien lo «optimiza»
+  midiendo el DOM ahí, vuelven los choques a 0,8× y a 2,4×. La cámara
+  (`zoom`, `T`) tampoco es estado de React.
+- **El resaltado es una sola función** (`destacar`), imperativa: apaga la sala
+  al 20 % por CSS y enciende con `classList`. Con estado de React, pasar el
+  mouse por una fila de la tarifa repintaría 106 prismas por cada píxel.
+- **Los conteos se derivan.** La clave del plano, la columna «Libres · entran»
+  y el pie de la tarifa son la misma cuenta mirada tres veces, y descuentan lo
+  que ya entró al contrato. Ningún número escrito a mano.
 
 ## Herramientas de diseño en el repo
 
@@ -3528,6 +3586,23 @@ Al presentar el sistema, la devolución fue que **«se ve muy obvio que es hecho
 con IA»**. Lo que siguió fueron seis rondas y veinte maquetas. Vale la pena
 dejar escrito qué falló, porque el camino explica las cuatro que quedaron.
 
+
+**Conciliación al cierre (verificador de la ronda 2).** (1) A 390 px la
+escalera tenía 10 choques de texto porque el `viewBox` seguía a la caja
+angosta; ahora la caja mide 880 px (como D), se desliza dentro del panel y
+arranca por los escalones: 0 choques a 390 y a 1440, sin desborde de la
+página. (2) `probar:vender` aseveraba la escala tipográfica sobre TODO
+`DashboardView.tsx`, incluidos los 69 literales de Supervisar (PR 3); ahora
+asevera sólo sobre lo que pinta Vender. (3) Diferencias con D aceptadas a
+propósito: el periodo vive en la barra de la pantalla (es el selector real,
+no un rótulo); la acción secundaria es «Empezar de nuevo» (la app no tiene
+«guardar como reserva»); la clave dice «Se libera en el periodo»; la ficha
+suma «+ Correo, nota y planometría» (campos reales); la ubicación va en dos
+renglones con puntos suspensivos (la ficha tiene que cerrar con tres espacios
+y 12 px de aire). (4) Pendiente al PR 3: **las dos barras** (la de la app y la
+de la pantalla) le quitan ~43 px de hoja respecto de D y corren el umbral de
+rodar de 760 a 790 px de alto; fusionarlas devuelve el comportamiento exacto.
+El plano no rotula ENTRADA/CAJAS (no existen en los datos).
 ### Lo que no funcionó
 
 **Sacar los tells no alcanza.** La primera pasada quitó gradientes, sombras,

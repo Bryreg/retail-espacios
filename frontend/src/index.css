@@ -3,6 +3,9 @@
    3: las piezas que los consumen. Va primero de todo porque un `@import` tiene
    que ir antes de cualquier otra regla. */
 @import "./tema.css";
+/* Capa 3 de Vender: la forma de D. Todo cuelga de `.vender`, así que Supervisar,
+   Montaje y el editor 3D no ven una sola de sus reglas. */
+@import "./vender.css";
 
 @tailwind base;
 @tailwind components;
@@ -51,16 +54,24 @@
 }
 
 /* ─── La escala de letra ────────────────────────────────────────────────
-   Ocho pasos y ninguno más, y AHORA SON TOKENS (`--t-3xs` … `--t-xl`, en
+   Ocho pasos y ninguno más, y son TOKENS (`--t-3xs` … `--t-xl`, en
    `tema.css`). Antes esta lista vivía en prosa en este mismo comentario, con
    la explicación de que «un `font-size` suelto no se puede prohibir desde
    CSS»; con los tokens puestos ya hay contra qué medir, y el auditor puede
    grepear `fontSize:` suelto y compararlo con la escala.
 
-     9.5  versalitas y rótulos          14.5  títulos de panel, campos, botón
-    11    notas, ejes, pies             17    códigos de espacio y cifras jefe
-    12    secundario                    21    título de pantalla
-    13    cuerpo                        27    el total del contrato
+   PR 2: los valores pasaron a ser los de D, que es la opción que el dueño
+   aprobó. Vender los consume enteros desde `vender.css`; el resto de las
+   pantallas sigue con sus cuerpos en línea hasta el PR 3.
+
+    10    versalitas y rótulos          15    títulos de panel, campos, botón
+    11.5  notas, ejes, pies             17.5  códigos de espacio
+    12.5  secundario                    21    título de pantalla
+    13.5  cuerpo y tablas               30    el total del contrato
+
+   El rótulo sobre el mueble NO usa esta escala: usa `--lbl`, que son 10,5 px
+   medidos EN PANTALLA divididos por la escala vigente del plano, así que mide
+   lo mismo se acerque o se aleje el dibujo.
 
    El contraste lo dan la familia, el peso y el color, no el tamaño.        */
 
