@@ -44,7 +44,7 @@ document.documentElement.setAttribute('data-tema', t==='oscuro'?'oscuro':'claro'
        13.5  cuerpo y tablas
        15    titulos de panel, campos y boton
        17.5  codigos de espacio en la ficha del contrato
-       21    la lectura de la escalera — el argumento de venta
+       13    la lectura de la escalera (mono 700, como en A)
        30    el total del contrato
      El rotulo sobre el mueble NO usa esta escala: usa --lbl, que son 10,5 px
      medidos en pantalla, divididos por la escala vigente del plano. Asi el
@@ -301,13 +301,15 @@ html:not([data-tema="oscuro"]) .luna{display:none}
 .pz.mk .pl-lt,.pz.mk .pl-at,.pz.mk .pl-tt{filter:brightness(1.08)}
 
 /* --- ESCALERA (el modulo 02 de A) --------------------------------------- */
-.lectura{font-family:var(--f-display);font-weight:800;font-size:var(--t-lg);
-  letter-spacing:-.028em;line-height:1;white-space:nowrap}
+/* La lectura como en A: mono 700 a 13 px, a la derecha del encabezado, no el
+   titular grande de B (el dueño lo pidió chico, 2026-09-07). */
+.lectura{font-family:var(--f-mono);font-weight:700;font-size:var(--t-xs);
+  letter-spacing:0;line-height:1;white-space:nowrap;color:var(--fg)}
 /* «el 26 de sep», con un espacio normal. Antes la fecha entera iba en mono y
    los espacios de la mono son cajas: se leia «el 26  de  sep». Ahora la caja
    de ancho fijo la lleva solo la cifra —para que no baile al mover el
    cursor— y las palabras siguen en la display. */
-.lectura b{font-weight:800;letter-spacing:-.03em}
+.lectura b{font-weight:700;letter-spacing:0}
 .lectura .dig{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 .lectura .n{color:var(--libre-txt)}
 .graf{flex:1;min-height:0;padding:0 14px 8px}
@@ -564,7 +566,7 @@ tbody tr{cursor:default}
     </div>
   </section>
 
-  <!-- 02 · CUÁNDO SE LIBERA (el módulo de A, con el título grande de B) --- -->
+  <!-- 02 · CUÁNDO SE LIBERA (el módulo de A entero, la lectura chica de A) -- -->
   <section class="t conect" style="grid-area:2/1">
     <header>
       <span class="ojo">02</span>
