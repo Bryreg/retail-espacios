@@ -61,7 +61,7 @@ export default function SeasonsModal({ onClose }: { onClose: () => void }) {
 
   const spin: React.CSSProperties = {
     width: 54, height: 26, padding: "0 5px", textAlign: "center",
-    borderRadius: "var(--r-sm)", border: "1px solid var(--line)",
+    borderRadius: "var(--r-sm)", border: "1px solid var(--brd-control)",
     background: "var(--surface-2)", color: "var(--ink-1)",
     fontSize: 12, fontFamily: "var(--font-mono)", outline: "none",
   };
@@ -90,7 +90,7 @@ export default function SeasonsModal({ onClose }: { onClose: () => void }) {
         style={{
           width: "100%", maxWidth: 720, maxHeight: "86vh",
           display: "flex", flexDirection: "column",
-          background: "var(--surface)", border: "1px solid var(--line)",
+          background: "var(--surface)", border: "1px solid var(--brd-control)",
           borderRadius: "var(--r-xl)", boxShadow: "var(--shadow-lg)", overflow: "hidden",
         }}
       >

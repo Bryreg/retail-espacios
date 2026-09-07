@@ -25,9 +25,9 @@ export default function ReferenceRateHint({
   let delta: { text: string; color: string } | null = null;
   if (pct !== null) {
     // Typographic minus (−), matching the dashboard chips.
-    if (pct < -1) delta = { text: `−${Math.abs(pct)}% vs referencia`, color: "#F0B429" };
-    else if (pct > 1) delta = { text: `+${pct}% vs referencia`, color: "#4CC38A" };
-    else delta = { text: "en línea con la referencia", color: "#4CC38A" };
+    if (pct < -1) delta = { text: `−${Math.abs(pct)}% vs referencia`, color: "var(--entra-txt)" };
+    else if (pct > 1) delta = { text: `+${pct}% vs referencia`, color: "var(--libre-txt)" };
+    else delta = { text: "en línea con la referencia", color: "var(--libre-txt)" };
   }
 
   return (

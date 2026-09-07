@@ -275,7 +275,7 @@ function Cerrado({ datos, onSeguir }: { datos: ResumenContrato; onSeguir: () => 
         <div
           style={{
             marginTop: 12, padding: "9px 11px", borderRadius: "var(--r-md)",
-            background: "var(--ocupado-suave)", color: "var(--ocupado)",
+            background: "var(--ocupado-suave)", color: "var(--ocupado-txt)",
             fontSize: 12.5, lineHeight: 1.45,
           }}
         >
@@ -423,16 +423,19 @@ function ConEspacios({
             >
               <X size={13} /> Cancelar
             </button>
+            {/* EL botón principal de Vender: el único amarillo de la pantalla
+                (`features/diseno-interior/outputs/tema.md` §2). Cancelar queda
+                en tinta, y el estado deshabilitado lo pinta
+                `.btn-principal:disabled` — por eso acá ya no hay ternarios de
+                color: el color no es una decisión de este componente. */}
             <button
+              className="btn-principal"
               onClick={c.guardar}
               disabled={!c.puedeGuardar || guardando}
               style={{
-                height: 40, padding: "0 20px", borderRadius: "var(--r-lg)", border: "none",
+                height: 40, padding: "0 20px", borderRadius: "var(--r-lg)",
                 display: "inline-flex", alignItems: "center", gap: 7,
-                background: c.puedeGuardar ? "var(--accent)" : "var(--surface-3)",
-                color: c.puedeGuardar ? "#fff" : "var(--ink-4)",
-                fontSize: 14, fontWeight: 700, fontFamily: "inherit",
-                cursor: c.puedeGuardar && !guardando ? "pointer" : "default",
+                fontSize: 14, fontFamily: "inherit",
               }}
             >
               {guardando ? (

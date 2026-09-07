@@ -300,7 +300,7 @@ export default function FileViewerModal({ file, onClose }: FileViewerModalProps)
                 display: "flex", alignItems: "center", justifyContent: "center",
                 overflow: "hidden", position: "relative",
                 // Dark checkerboard so transparent PNG/WebP areas stay readable
-                backgroundColor: "#1b1c1f",
+                backgroundColor: "var(--n-900)",
                 backgroundImage:
                   "linear-gradient(45deg, rgba(255,255,255,0.05) 25%, transparent 25%)," +
                   "linear-gradient(-45deg, rgba(255,255,255,0.05) 25%, transparent 25%)," +

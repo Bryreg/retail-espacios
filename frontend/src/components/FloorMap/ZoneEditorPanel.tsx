@@ -90,10 +90,10 @@ function NumInput({ label, value, onChange, min = 0, max }: {
 
   return (
     <label className="flex flex-col gap-0.5">
-      <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="text-[10px] font-medium uppercase tracking-wide text-ink-4">{label}</span>
       <input
         type="number"
-        className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+        className="w-full rounded border border-line bg-surface px-2 py-1 text-xs font-mono text-ink-1 focus:outline-none focus:ring-1 focus:ring-accent"
         value={local} min={min} max={max}
         onChange={(e) => setLocal(e.target.value)}
         onBlur={(e) => commit(e.target.value)}
@@ -176,20 +176,20 @@ export default function ZoneEditorPanel({
     <div className="mt-auto space-y-2 pt-2">
       <button
         onClick={onSave}
-        className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors"
+        className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-libre-100 bg-libre-50 px-3 py-2 text-xs font-semibold text-libre-txt hover:bg-libre-100 transition-colors"
       >
         <Save size={13} />
         Guardar cambios
       </button>
       {savedAt && (
-        <p className="flex items-center justify-center gap-1 text-[10px] text-green-600">
+        <p className="flex items-center justify-center gap-1 text-[10px] text-libre-txt">
           <CheckCircle2 size={10} />
           Guardado {savedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </p>
       )}
       <button
         onClick={onExport}
-        className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-50 transition-colors"
+        className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs text-ink-3 hover:bg-surface-2 transition-colors"
       >
         <Download size={12} />
         Export zones.ts
@@ -204,8 +204,8 @@ export default function ZoneEditorPanel({
       onClick={() => setActiveTab(tab)}
       className={`flex flex-1 items-center justify-center gap-1 rounded py-1 text-[10px] font-medium transition-colors ${
         activeTab === tab
-          ? "bg-indigo-600 text-white"
-          : "text-slate-500 hover:bg-slate-100"
+          ? "bg-accent text-accent-ink"
+          : "text-ink-3 hover:bg-surface-3"
       }`}
     >
       {icon}{label}
@@ -216,9 +216,9 @@ export default function ZoneEditorPanel({
 
   if (activeTab === "library") {
     return (
-      <aside className="flex w-64 flex-col gap-0 border-l border-slate-200 bg-white overflow-hidden">
+      <aside className="flex w-64 flex-col gap-0 border-l border-line bg-surface overflow-hidden">
         {/* Tab bar */}
-        <div className="flex gap-1 border-b border-slate-100 bg-slate-50 p-1.5 flex-shrink-0">
+        <div className="flex gap-1 border-b border-line-soft bg-surface-2 p-1.5 flex-shrink-0">
           {tabBtn("library", <BookOpen size={10} />, "Biblioteca")}
           {tabBtn("editor",  <Settings2 size={10} />, "Editor")}
         </div>
@@ -226,7 +226,7 @@ export default function ZoneEditorPanel({
         <div className="flex-1 overflow-y-auto p-3 space-y-4">
           {LIBRARY.map((group) => (
             <div key={group.category}>
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-ink-4">
                 {group.category}
               </p>
               <div className="grid grid-cols-2 gap-1.5">
@@ -234,12 +234,12 @@ export default function ZoneEditorPanel({
                   <button
                     key={item.id}
                     onClick={() => addFromLibrary(item)}
-                    className="flex flex-col items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-center hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
+                    className="flex flex-col items-center gap-1 rounded-lg border border-line bg-surface-2 px-2 py-2 text-center hover:border-accent-200 hover:bg-accent-50 transition-colors"
                     title={`${item.width}×${item.height}px · ${item.type}`}
                   >
                     <span className="text-lg leading-none">{item.icon}</span>
-                    <span className="text-[10px] font-medium leading-tight text-slate-700">{item.label}</span>
-                    <span className="text-[9px] text-slate-400">{item.width}×{item.height}</span>
+                    <span className="text-[10px] font-medium leading-tight text-ink-1">{item.label}</span>
+                    <span className="text-[9px] text-ink-4">{item.width}×{item.height}</span>
                   </button>
                 ))}
               </div>
@@ -247,7 +247,7 @@ export default function ZoneEditorPanel({
           ))}
         </div>
 
-        <div className="border-t border-slate-100 p-3">
+        <div className="border-t border-line-soft p-3">
           <SaveBar />
         </div>
       </aside>
@@ -258,15 +258,15 @@ export default function ZoneEditorPanel({
 
   if (!zone) {
     return (
-      <aside className="flex w-64 flex-col border-l border-slate-200 bg-white overflow-hidden">
+      <aside className="flex w-64 flex-col border-l border-line bg-surface overflow-hidden">
         {/* Tab bar */}
-        <div className="flex gap-1 border-b border-slate-100 bg-slate-50 p-1.5 flex-shrink-0">
+        <div className="flex gap-1 border-b border-line-soft bg-surface-2 p-1.5 flex-shrink-0">
           {tabBtn("library", <BookOpen size={10} />, "Biblioteca")}
           {tabBtn("editor",  <Settings2 size={10} />, "Editor")}
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <div className="mt-4 text-center text-xs text-slate-400 leading-relaxed">
+          <div className="mt-4 text-center text-xs text-ink-4 leading-relaxed">
             Clic en una zona para seleccionarla.<br />
             Arrastrá para mover.<br />
             Handle para redimensionar.<br />
@@ -274,8 +274,8 @@ export default function ZoneEditorPanel({
           </div>
 
           {/* Keyboard shortcuts */}
-          <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 space-y-1">
-            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Shortcuts</p>
+          <div className="rounded-lg border border-line-soft bg-surface-2 p-3 space-y-1">
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-ink-3">Shortcuts</p>
             {[
               ["Ctrl+C", "Copiar zona"],
               ["Ctrl+V", "Pegar zona"],
@@ -283,23 +283,23 @@ export default function ZoneEditorPanel({
               ["Delete", "Eliminar"],
             ].map(([key, label]) => (
               <div key={key} className="flex items-center justify-between">
-                <kbd className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-mono text-slate-600">{key}</kbd>
-                <span className="text-[10px] text-slate-400">{label}</span>
+                <kbd className="rounded border border-line bg-surface px-1.5 py-0.5 text-[10px] font-mono text-ink-2">{key}</kbd>
+                <span className="text-[10px] text-ink-4">{label}</span>
               </div>
             ))}
           </div>
 
           {clipboard && (
-            <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-indigo-600">En clipboard</p>
-              <p className="mt-0.5 truncate text-xs font-mono text-indigo-800">{clipboard.id}</p>
+            <div className="rounded-lg border border-line bg-accent-50 px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-accent">En clipboard</p>
+              <p className="mt-0.5 truncate text-xs font-mono text-accent">{clipboard.id}</p>
             </div>
           )}
 
-          <p className="text-center text-[10px] text-slate-400">{zones.length} zonas en total</p>
+          <p className="text-center text-[10px] text-ink-4">{zones.length} zonas en total</p>
         </div>
 
-        <div className="border-t border-slate-100 p-3">
+        <div className="border-t border-line-soft p-3">
           <SaveBar />
         </div>
       </aside>
@@ -312,9 +312,9 @@ export default function ZoneEditorPanel({
   const maxH = IMG_H - zone.y;
 
   return (
-    <aside className="flex w-64 flex-col border-l border-slate-200 bg-white overflow-hidden">
+    <aside className="flex w-64 flex-col border-l border-line bg-surface overflow-hidden">
       {/* Tab bar */}
-      <div className="flex gap-1 border-b border-slate-100 bg-slate-50 p-1.5 flex-shrink-0">
+      <div className="flex gap-1 border-b border-line-soft bg-surface-2 p-1.5 flex-shrink-0">
         {tabBtn("library", <BookOpen size={10} />, "Biblioteca")}
         {tabBtn("editor",  <Settings2 size={10} />, "Editor")}
       </div>
@@ -323,15 +323,15 @@ export default function ZoneEditorPanel({
 
         {/* Header */}
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Zone Editor</span>
-          <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-mono text-indigo-600">{zone.id}</span>
+          <span className="text-xs font-semibold uppercase tracking-wide text-accent">Zone Editor</span>
+          <span className="rounded bg-accent-50 px-1.5 py-0.5 text-[10px] font-mono text-accent">{zone.id}</span>
         </div>
 
         {/* Label */}
         <label className="flex flex-col gap-0.5">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">Label</span>
+          <span className="text-[10px] font-medium uppercase tracking-wide text-ink-4">Label</span>
           <input
-            className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            className="w-full rounded border border-line bg-surface px-2 py-1 text-xs text-ink-1 focus:outline-none focus:ring-1 focus:ring-accent"
             value={zone.label}
             onChange={(e) => patch("label", e.target.value)}
           />
@@ -339,9 +339,9 @@ export default function ZoneEditorPanel({
 
         {/* Type */}
         <label className="flex flex-col gap-0.5">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">Type</span>
+          <span className="text-[10px] font-medium uppercase tracking-wide text-ink-4">Type</span>
           <select
-            className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            className="w-full rounded border border-line bg-surface px-2 py-1 text-xs text-ink-1 focus:outline-none focus:ring-1 focus:ring-accent"
             value={zone.type}
             onChange={(e) => patch("type", e.target.value as ZoneDef["type"])}
           >
@@ -355,8 +355,8 @@ export default function ZoneEditorPanel({
         </label>
 
         {/* Geometry */}
-        <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 space-y-2">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">Position & Size</span>
+        <div className="rounded-lg border border-line-soft bg-surface-2 p-3 space-y-2">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-ink-4">Position & Size</span>
           <div className="grid grid-cols-2 gap-2">
             <NumInput label="X" value={zone.x} max={IMG_W - zone.width}  onChange={(v) => patch("x", v)} />
             <NumInput label="Y" value={zone.y} max={IMG_H - zone.height} onChange={(v) => patch("y", v)} />
@@ -366,39 +366,39 @@ export default function ZoneEditorPanel({
         </div>
 
         {/* Zone count */}
-        <p className="text-center text-[10px] text-slate-400">
+        <p className="text-center text-[10px] text-ink-4">
           {zones.indexOf(zone) + 1} / {zones.length} zonas
         </p>
 
         {/* Split */}
-        <div className="rounded-lg border border-amber-100 bg-amber-50 p-3 space-y-2">
+        <div className="rounded-lg border border-entra-100 bg-entra-50 p-3 space-y-2">
           <div className="flex items-center gap-1.5">
-            <Scissors size={11} className="text-amber-600" />
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">Dividir zona</span>
+            <Scissors size={11} className="text-entra-txt" />
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-entra-txt">Dividir zona</span>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <label className="flex flex-col gap-0.5">
-              <span className="text-[10px] text-slate-500">Cortes verticales</span>
+              <span className="text-[10px] text-ink-3">Cortes verticales</span>
               <input type="number" min={0} max={20} value={vCuts}
                 onChange={(e) => handleSplitChange(Math.max(0, parseInt(e.target.value) || 0), hCuts)}
-                className="w-full rounded border border-amber-200 bg-white px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                className="w-full rounded border border-entra-100 bg-surface px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-entra" />
             </label>
             <label className="flex flex-col gap-0.5">
-              <span className="text-[10px] text-slate-500">Cortes horiz.</span>
+              <span className="text-[10px] text-ink-3">Cortes horiz.</span>
               <input type="number" min={0} max={20} value={hCuts}
                 onChange={(e) => handleSplitChange(vCuts, Math.max(0, parseInt(e.target.value) || 0))}
-                className="w-full rounded border border-amber-200 bg-white px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                className="w-full rounded border border-entra-100 bg-surface px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-entra" />
             </label>
           </div>
           {(vCuts > 0 || hCuts > 0) && (
-            <p className="text-[10px] text-amber-700">
+            <p className="text-[10px] text-entra-txt">
               → {vCuts + 1} col × {hCuts + 1} fil = <strong>{(vCuts + 1) * (hCuts + 1)} zonas</strong>
             </p>
           )}
           <button
             disabled={vCuts === 0 && hCuts === 0}
             onClick={() => onSplitApply(zone, vCuts, hCuts)}
-            className="flex w-full items-center justify-center gap-1.5 rounded border border-amber-300 bg-amber-100 px-2 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+            className="flex w-full items-center justify-center gap-1.5 rounded border border-entra-100 bg-entra-50 px-2 py-1.5 text-xs font-medium text-entra-txt hover:bg-entra-100 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
           >
             <Scissors size={11} /> Aplicar cortes
           </button>
@@ -408,20 +408,20 @@ export default function ZoneEditorPanel({
         <div className="flex gap-2">
           <button
             onClick={() => onDuplicate(zone)}
-            className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-50 transition-colors"
+            className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-line px-2 py-1.5 text-xs text-ink-2 hover:bg-surface-2 transition-colors"
           >
             <Copy size={12} /> Duplicate
           </button>
           <button
             onClick={() => onDelete(zone.id)}
-            className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-red-100 px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 transition-colors"
+            className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-ocupado-100 px-2 py-1.5 text-xs text-ocupado-txt hover:bg-ocupado-50 transition-colors"
           >
             <Trash2 size={12} /> Delete
           </button>
         </div>
       </div>
 
-      <div className="border-t border-slate-100 p-3">
+      <div className="border-t border-line-soft p-3">
         <SaveBar />
       </div>
     </aside>

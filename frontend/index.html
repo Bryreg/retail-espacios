@@ -32,17 +32,22 @@
          se ve como tarjeta chica; con una ruta rota, roto. Lo pendiente está
          anotado en `features/landing/outputs/frontend.md`. -->
 
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!-- Chivo para leer y Archivo Narrow para los códigos y las versalitas.
-         Es el par de las maquetas: Chivo tiene el 900 que necesita el total
-         del contrato y aguanta 12px en columna sin empastarse; Archivo Narrow
-         aprieta `GON-60·A` en 56px de columna, que es lo que hace que la tabla
-         de 23 caras entre sin cortar códigos. -->
-    <link
-      href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&family=Chivo:wght@400;500;600;700;900&display=swap"
-      rel="stylesheet"
-    />
+    <!-- CERO FUENTES WEB (Fase 10). Acá había un `preconnect` a
+         fonts.googleapis.com, otro a fonts.gstatic.com y la hoja de Chivo +
+         Archivo Narrow. Se fueron con las dos familias: el interior pasó a las
+         tres pilas de sistema de la landing (`--f-display`, `--f-text`,
+         `--f-mono`, en `src/tema.css`), que es lo que la landing ya usaba.
+
+         Las dos razones por las que ese par estaba elegido están contestadas
+         por escrito en `features/diseno-interior/outputs/tema.md` §3.2 — la del
+         «900 de verdad» refutada (el total del contrato es una CIFRA y le toca
+         el tratamiento mono, no un peso de titular) y la de la condensada
+         respetada como medición y resuelta ensanchando la COLUMNA en `ch`, que
+         es la regla del dueño: se ajusta la columna, no la tipografía.
+
+         Lo que se gana: dos orígenes externos menos, dos descargas bloqueantes
+         menos en el primer render, y un LCP de la landing que ya no espera a
+         una hoja de estilos de un tercero. -->
   </head>
   <body>
     <div id="root"></div>

@@ -486,14 +486,17 @@ export default function FormularioMontaje({
             <div style={{ marginBottom: 10, fontSize: 13, color: "var(--danger)" }}>{error}</div>
           )}
 
+          {/* EL botón principal de la pantalla de montaje. «Lo monté» / «No
+              pude» de más arriba NO son la acción: son una elección, y siguen
+              en tinta con el color del estado en el ícono. La acción que
+              cierra el trabajo es ésta. */}
           <button
+            className="btn-principal"
             onClick={enviar}
             disabled={enviando}
             style={{
               width: "100%", minHeight: 50, borderRadius: "var(--r-lg)",
-              background: "var(--accent)", color: "#fff", border: "none",
-              fontSize: 16, fontWeight: 700, fontFamily: "inherit",
-              cursor: enviando ? "default" : "pointer", opacity: enviando ? 0.6 : 1,
+              fontSize: 16, fontFamily: "inherit",
             }}
           >
             {enviando ? "Enviando…" : "Confirmar"}

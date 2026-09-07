@@ -1,3 +1,5 @@
+import type React from "react";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import PlanoIsometrico, { PlanoEnTabla } from "./PlanoIsometrico";
 import { MiniMorfo, SalaPasos } from "./Miniaturas";
@@ -35,6 +37,18 @@ import "./landing.css";
  */
 
 const LLAVE_TEMA = "recabra-tema-landing";
+
+/** «Crear mi cuenta» / «Ya tengo cuenta» abren el ingreso ENCIMA de la
+ *  portada (la hoja la monta `App.tsx`, que es quien conoce el login: esta
+ *  página sigue sin importar ni sesión ni API). El `href` queda de respaldo
+ *  para el clic con modificadores, el botón del medio y quien no tenga JS. */
+function irA(modo: "login" | "registro") {
+  return (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    window.dispatchEvent(new CustomEvent("recabra:ingresar", { detail: modo }));
+  };
+}
 
 type Tema = "claro" | "oscuro";
 
@@ -131,7 +145,10 @@ function Gancho({ n, titulo, a }: { n: string; titulo: string; a: string }) {
 
 /* ── la página ────────────────────────────────────────────────────────────── */
 
-export default function Landing() {
+/** `ingreso`: el formulario de ingreso, que `App.tsx` pasa armado cuando la
+ *  portada pidió entrar. Vive en la tarjeta del hero, al lado del plano, que
+ *  sigue vivo: esta página no sabe qué hay adentro (ni sesión ni API). */
+export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
   const raizRef = useRef<HTMLDivElement | null>(null);
   const progRef = useRef<HTMLElement | null>(null);
   const anilloRef = useRef<SVGCircleElement | null>(null);
@@ -154,6 +171,14 @@ export default function Landing() {
       delete html.dataset.lpTema;
     };
   }, [tema]);
+
+  /* El pedido de ingreso puede venir del pie o de la barra: la tarjeta que lo
+     muestra es la del hero, así que la página sube hasta ahí. */
+  useEffect(() => {
+    if (!ingreso) return;
+    const quieto = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: quieto ? "auto" : "smooth" });
+  }, [ingreso]);
 
   const cambiarTema = useCallback(() => {
     setTema((t) => {
@@ -297,7 +322,7 @@ export default function Landing() {
   const anio = new Date().getFullYear();
 
   return (
-    <div className="lp" ref={raizRef} data-lp-tema={tema}>
+    <div className="lp" ref={raizRef} data-lp-tema={tema} data-ingreso={ingreso ? "1" : undefined}>
       {/* El pliego de símbolos: todos los iconos de la página, en línea. */}
       <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true" focusable="false">
         <defs>
@@ -359,7 +384,7 @@ export default function Landing() {
                 title="Claro / oscuro">
                 <Ico n={tema === "oscuro" ? "sun" : "moon"} tam={18} />
               </button>
-              <a className="btn btn--primary btn--sm" href="/login#registro">Crear mi cuenta</a>
+              <a className="btn btn--primary btn--sm" href="/login#registro" onClick={irA("registro")}>Crear mi cuenta</a>
             </div>
             <div className="rail__prog" aria-hidden="true"><i ref={progRef} /></div>
           </div>
@@ -374,6 +399,9 @@ export default function Landing() {
           <div className="script">
             {/* ─ HERO ─ */}
             <section className="panel panel--hero" data-scene="hero" id="top">
+              {ingreso ? (
+                <div className="card card--ingreso">{ingreso}</div>
+              ) : (
               <div className="card">
                 <p className="mark__txt" style={{ display: "block", marginBottom: 10 }}>RECABRA</p>
                 <p className="eyebrow">Espacios comerciales de supermercado</p>
@@ -394,8 +422,8 @@ export default function Landing() {
                   esta es la pantalla que falta.
                 </p>
                 <div className="cta-row">
-                  <a className="btn btn--primary" href="/login#registro">Crear mi cuenta</a>
-                  <a className="btn btn--ghost" href="/login">Ya tengo cuenta</a>
+                  <a className="btn btn--primary" href="/login#registro" onClick={irA("registro")}>Crear mi cuenta</a>
+                  <a className="btn btn--ghost" href="/login" onClick={irA("login")}>Ya tengo cuenta</a>
                 </div>
                 <p className="fine">
                   Entrás con tu correo o con Google. Crear la cuenta y tu supermercado toma un minuto.
@@ -405,6 +433,7 @@ export default function Landing() {
                   real aparece acá.
                 </p>
               </div>
+              )}
             </section>
 
             {/* ─ 01 · LO QUE HACE ─ */}
@@ -1043,7 +1072,7 @@ export default function Landing() {
                     «Hablemos» lleva al registro en vez de a un `mailto:` vacío: un botón
                     primario que no hace nada es peor que uno que abre la puerta. */}
                 <p style={{ marginTop: 20 }}>
-                  <a className="btn btn--primary" href="/login#registro">Hablemos</a>
+                  <a className="btn btn--primary" href="/login#registro" onClick={irA("registro")}>Hablemos</a>
                 </p>
               </div>
             </div>
@@ -1068,8 +1097,8 @@ export default function Landing() {
             temporada. Si sirve, seguís con las demás.
           </p>
           <div className="cierre__cta rv rv-2">
-            <a className="btn btn--primary" href="/login#registro">Crear mi cuenta</a>
-            <a className="btn btn--ghost" href="/login">Ya tengo cuenta</a>
+            <a className="btn btn--primary" href="/login#registro" onClick={irA("registro")}>Crear mi cuenta</a>
+            <a className="btn btn--ghost" href="/login" onClick={irA("login")}>Ya tengo cuenta</a>
           </div>
           <p className="small rv rv-3">
             Entrás con Google o con tu correo. El plano de arriba es de ejemplo; el tuyo lo dibujás vos.
@@ -1101,8 +1130,8 @@ export default function Landing() {
             <div className="pie__col">
               <h4>Cuenta</h4>
               <ul>
-                <li><a href="/login#registro">Crear mi cuenta</a></li>
-                <li><a href="/login">Ya tengo cuenta</a></li>
+                <li><a href="/login#registro" onClick={irA("registro")}>Crear mi cuenta</a></li>
+                <li><a href="/login" onClick={irA("login")}>Ya tengo cuenta</a></li>
               </ul>
             </div>
             <div className="pie__col">

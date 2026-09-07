@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useModalAbiertoSi } from "../tema";
 import {
   login, getClientes, loginOauth, esRequiereCliente, esConsentimientoRequerido,
   type ClienteBreve, type Membresia,
@@ -79,7 +80,14 @@ function rolLabel(rol: Membresia["rol"]): string {
   return "trabajador";
 }
 
-export default function Login() {
+/** `enHoja`: el formulario vive adentro de la hoja de ingreso que se abre
+ *  sobre la landing (`components/HojaIngreso.tsx`): sin la pantalla completa
+ *  ni la tarjeta con borde, y con el modo inicial que pidió el botón de la
+ *  portada en vez del `#registro` de la URL. */
+export default function Login({ enHoja = false, modoInicial }: {
+  enHoja?: boolean;
+  modoInicial?: "login" | "registro";
+} = {}) {
   const setAuth = useAuthStore((s) => s.setAuth);
 
   // ─── Legado: clave compartida ─────────────────────────────────────────
@@ -132,7 +140,7 @@ export default function Login() {
   // (la invitación con `?invitacion=`, un enlace guardado, un 401) llega sin
   // `#` y ve exactamente la pantalla de siempre.
   const [fbMode, setFbMode] = useState<"login" | "registro">(
-    typeof window !== "undefined" && window.location.hash === "#registro" ? "registro" : "login",
+    modoInicial ?? (typeof window !== "undefined" && window.location.hash === "#registro" ? "registro" : "login"),
   );
   const [fbEmail, setFbEmail] = useState("");
   const [fbPassword, setFbPassword] = useState("");
@@ -165,9 +173,13 @@ export default function Login() {
   // reintentar apenas la persona acepte la política — el token no se
   // reemplaza por otro: es el mismo que ya se verificó, sólo faltaba el
   // consentimiento.
+  // Mientras el aviso de política está puesto, ÉL es la pantalla: se lleva el
+  // amarillo y el botón de entrar que quedó detrás pasa a tinta. Es la regla de
+  // «un amarillo por pantalla» (ver `src/tema.tsx` y `.btn-principal`).
   const [consentimientoPendiente, setConsentimientoPendiente] =
     useState<{ idToken: string; cliente?: string } | null>(null);
   const [consentimientoBusy, setConsentimientoBusy] = useState(false);
+  useModalAbiertoSi(!!consentimientoPendiente);
 
   const limpiarAvisos = () => {
     setFbError(null);
@@ -433,7 +445,7 @@ export default function Login() {
 
   return (
     <div
-      style={{
+      style={enHoja ? { padding: 0 } : {
         height: "100dvh",
         display: "flex", alignItems: "center", justifyContent: "center",
         background: "var(--bg)",
@@ -442,11 +454,11 @@ export default function Login() {
     >
       <div
         style={{
-          width: "100%", maxWidth: 348,
-          background: "var(--surface)",
-          border: "1px solid var(--line)",
+          width: "100%", maxWidth: enHoja ? "none" : 348,
+          background: enHoja ? "transparent" : "var(--surface)",
+          border: enHoja ? 0 : "1px solid var(--line)",
           borderRadius: "var(--r-xl)",
-          padding: "26px 28px 28px",
+          padding: enHoja ? 0 : "26px 28px 28px",
           display: "flex", flexDirection: "column", alignItems: "flex-start",
         }}
       >
@@ -555,16 +567,14 @@ export default function Login() {
                   )}
 
                   <button
+                    className="btn-principal"
                     type="submit"
                     disabled={altaBusy || !altaNombre.trim() || !altaSlug || !altaAceptaPolitica}
                     style={{
                       width: "100%", height: 38,
                       display: "flex", alignItems: "center", justifyContent: "center",
                       borderRadius: "var(--r-md)",
-                      background: "var(--accent)", color: "#fff",
-                      border: "none",
                       cursor: altaBusy || !altaNombre.trim() || !altaSlug || !altaAceptaPolitica ? "default" : "pointer",
-                      opacity: altaBusy || !altaNombre.trim() || !altaSlug || !altaAceptaPolitica ? 0.6 : 1,
                       fontSize: 13, fontWeight: 600, fontFamily: "inherit",
                     }}
                   >
@@ -596,6 +606,7 @@ export default function Login() {
                   ))}
                 </select>
                 <button
+                  className="btn-principal"
                   type="button"
                   onClick={confirmarCliente}
                   disabled={fbBusy || !clienteElegido}
@@ -603,10 +614,7 @@ export default function Login() {
                     width: "100%", height: 38,
                     display: "flex", alignItems: "center", justifyContent: "center",
                     borderRadius: "var(--r-md)",
-                    background: "var(--accent)", color: "#fff",
-                    border: "none",
                     cursor: fbBusy || !clienteElegido ? "default" : "pointer",
-                    opacity: fbBusy || !clienteElegido ? 0.6 : 1,
                     fontSize: 13, fontWeight: 600, fontFamily: "inherit",
                   }}
                 >
@@ -687,16 +695,14 @@ export default function Login() {
                   </div>
 
                   <button
+                    className="btn-principal"
                     type="submit"
                     disabled={fbBusy || !fbEmail || !fbPassword}
                     style={{
                       width: "100%", height: 38,
                       display: "flex", alignItems: "center", justifyContent: "center",
                       borderRadius: "var(--r-md)",
-                      background: "var(--accent)", color: "#fff",
-                      border: "none",
                       cursor: fbBusy || !fbEmail || !fbPassword ? "default" : "pointer",
-                      opacity: fbBusy || !fbEmail || !fbPassword ? 0.6 : 1,
                       fontSize: 13, fontWeight: 600, fontFamily: "inherit",
                     }}
                   >
@@ -809,17 +815,19 @@ export default function Login() {
             </div>
           )}
 
+          {/* Tinta, no amarillo: el «acceso anterior» convive en la misma
+              tarjeta con el ingreso por correo, y el amarillo es uno por
+              pantalla (el verificador midió los dos encendidos a la vez). */}
           <button
             type="submit"
             disabled={loading || !password}
             style={{
               width: "100%", height: 38, marginTop: 16,
               display: "flex", alignItems: "center", justifyContent: "center",
-              borderRadius: "var(--r-md)",
-              background: "var(--accent)", color: "#fff",
-              border: "none",
+              borderRadius: "var(--r-md)", border: 0,
+              background: "var(--accent)", color: "var(--accent-ink)",
+              opacity: loading || !password ? 0.5 : 1,
               cursor: loading || !password ? "default" : "pointer",
-              opacity: loading || !password ? 0.6 : 1,
               fontSize: 13, fontWeight: 600, fontFamily: "inherit",
                             transition: "opacity .12s, background .12s",
             }}
@@ -851,6 +859,7 @@ export default function Login() {
           ver `ModalConsentimiento`). */}
       {consentimientoPendiente && (
         <div
+          data-capa-modal
           role="dialog"
           aria-modal="true"
           style={{
@@ -907,16 +916,14 @@ export default function Login() {
                 Cancelar
               </button>
               <button
+                className="btn-principal"
                 type="button"
                 onClick={aceptarPoliticaYReintentar}
                 disabled={consentimientoBusy}
                 style={{
                   flex: 1, height: 38,
                   borderRadius: "var(--r-md)",
-                  background: "var(--accent)", color: "#fff",
-                  border: "none",
                   cursor: consentimientoBusy ? "default" : "pointer",
-                  opacity: consentimientoBusy ? 0.6 : 1,
                   fontSize: 13, fontWeight: 600, fontFamily: "inherit",
                 }}
               >

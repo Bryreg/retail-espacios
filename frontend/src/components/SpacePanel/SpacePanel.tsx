@@ -32,10 +32,10 @@ const STATUS_LABELS: Record<SpaceStatus, string> = {
 type DisplayStatus = "disponible" | "vigente" | "por_vencer" | "vencido";
 
 const DISPLAY_STATUS_STYLES: Record<DisplayStatus, string> = {
-  disponible: "bg-emerald-950 text-emerald-400 border border-emerald-800",
-  vigente:    "bg-blue-950 text-blue-400 border border-blue-800",
-  por_vencer: "bg-amber-950 text-amber-400 border border-amber-800",
-  vencido:    "bg-red-950 text-red-400 border border-red-800",
+  disponible: "bg-libre-50 text-libre-txt border border-libre-100",
+  vigente:    "bg-accent-50 text-ink-2 border border-line",
+  por_vencer: "bg-entra-50 text-entra-txt border border-entra-100",
+  vencido:    "bg-ocupado-50 text-ocupado-txt border border-ocupado-100",
 };
 
 const DISPLAY_STATUS_LABELS: Record<DisplayStatus, string> = {
@@ -215,46 +215,48 @@ export default function SpacePanel({ svgId, zoneDef, onClose, onRefresh }: Props
 
   // Determine border color for the panel based on display status
   const panelBorderColor =
-    displayStatus === "disponible" ? "#22c55e" :
-    displayStatus === "vigente"    ? "#3b82f6" :
-    displayStatus === "por_vencer" ? "#f59e0b" :
-    displayStatus === "vencido"    ? "#ef4444" :
-    "#e2e8f0";
+    displayStatus === "disponible" ? "var(--libre)" :
+    // «Vigente» no es un estado de color: un contrato en curso es lo normal.
+    // Va en tinta, que es lo que ya hacía el chip de la cabecera.
+    displayStatus === "vigente"    ? "var(--accent)" :
+    displayStatus === "por_vencer" ? "var(--entra)" :
+    displayStatus === "vencido"    ? "var(--ocupado)" :
+    "var(--line)";
 
   return (
     <div
-      className="flex h-full flex-col border-l border-slate-200 bg-white shadow-lg"
+      className="flex h-full flex-col border-l border-line bg-surface shadow-lg"
       style={{
         width: "clamp(260px, 28vw, 320px)",
         borderLeftWidth: "4px",
-        borderLeftColor: space ? panelBorderColor : "#e2e8f0",
+        borderLeftColor: space ? panelBorderColor : "var(--line)",
         flexShrink: 0,
       }}
     >
 
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+      <div className="flex items-center justify-between border-b border-line-soft px-4 py-3">
         <div className="min-w-0">
-          <h2 className="truncate text-sm font-semibold text-slate-800">
+          <h2 className="truncate text-sm font-semibold text-ink-1">
             {loading ? "Cargando..." : (space?.name ?? (regForm.name || "Nuevo espacio"))}
           </h2>
           <div className="flex items-center gap-2 mt-0.5">
             {space?.code && (
-              <span className="text-[10px] font-mono text-slate-400">{space.code}</span>
+              <span className="text-[10px] font-mono text-ink-4">{space.code}</span>
             )}
             {svgId && (
-              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-mono text-slate-400">{svgId}</span>
+              <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[9px] font-mono text-ink-4">{svgId}</span>
             )}
           </div>
         </div>
-        <button onClick={onClose} className="ml-2 shrink-0 rounded p-1 hover:bg-slate-100">
+        <button onClick={onClose} className="ml-2 shrink-0 rounded p-1 hover:bg-surface-3">
           <X size={16} />
         </button>
       </div>
 
       {/* Loading */}
       {loading && (
-        <div className="flex flex-1 items-center justify-center text-slate-400 text-sm">
+        <div className="flex flex-1 items-center justify-center text-ink-4 text-sm">
           Cargando...
         </div>
       )}
@@ -262,15 +264,15 @@ export default function SpacePanel({ svgId, zoneDef, onClose, onRefresh }: Props
       {/* Error */}
       {!loading && error && (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-          <AlertCircle size={32} className="text-red-400" />
-          <p className="text-sm text-slate-600">{error}</p>
+          <AlertCircle size={32} className="text-ocupado-txt" />
+          <p className="text-sm text-ink-2">{error}</p>
         </div>
       )}
 
       {/* ── Register form ──────────────────────────────────────────────────── */}
       {!loading && !error && view === "register" && (
         <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
-          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+          <div className="flex items-start gap-2 rounded-lg border border-entra-100 bg-entra-50 p-3 text-xs text-entra-txt">
             <AlertCircle size={14} className="mt-0.5 shrink-0" />
             <span>Este espacio aún no está registrado. Completá los datos para habilitarlo.</span>
           </div>
@@ -285,7 +287,7 @@ export default function SpacePanel({ svgId, zoneDef, onClose, onRefresh }: Props
           <div>
             <Field label="Código único *" type="text" value={regForm.code}
               onChange={(v) => setRegForm((f) => ({ ...f, code: v }))} />
-            <p className="mt-0.5 text-[10px] text-slate-400">
+            <p className="mt-0.5 text-[10px] text-ink-4">
               Formato sugerido: SEDE-TIPO-NRO · ej: TERRON-PG-001
             </p>
           </div>
@@ -299,7 +301,7 @@ export default function SpacePanel({ svgId, zoneDef, onClose, onRefresh }: Props
           <button
             onClick={handleRegister}
             disabled={saving || !regForm.name || !regForm.code || !regForm.zone || !regForm.area_m2}
-            className="mt-1 flex items-center justify-center gap-2 rounded-md bg-indigo-600 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+            className="mt-1 flex items-center justify-center gap-2 rounded-md bg-accent py-2 text-sm font-semibold text-accent-ink hover:bg-accent-600 disabled:opacity-50"
           >
             <PlusCircle size={15} />
             {saving ? "Registrando..." : "Registrar espacio"}
@@ -315,7 +317,7 @@ export default function SpacePanel({ svgId, zoneDef, onClose, onRefresh }: Props
           {displayStatus && (
             <span className={`self-start flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${DISPLAY_STATUS_STYLES[displayStatus]}`}>
               {displayStatus === "por_vencer" && (
-                <span className="animate-pulse inline-block w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+                <span className="animate-pulse inline-block w-2 h-2 rounded-full bg-entra flex-shrink-0" />
               )}
               {DISPLAY_STATUS_LABELS[displayStatus]}
               {daysLeft !== null && daysLeft >= 0 && (
@@ -331,11 +333,11 @@ export default function SpacePanel({ svgId, zoneDef, onClose, onRefresh }: Props
             const now       = Date.now();
             const total     = end - start;
             const pct       = total > 0 ? Math.min(100, Math.max(0, ((now - start) / total) * 100)) : 0;
-            const barColor  = pct > 90 ? "bg-red-500" : pct > 70 ? "bg-amber-500" : "bg-emerald-500";
-            const textColor = pct > 90 ? "text-red-400" : pct > 70 ? "text-amber-400" : "text-emerald-400";
+            const barColor  = pct > 90 ? "bg-ocupado" : pct > 70 ? "bg-entra" : "bg-libre";
+            const textColor = pct > 90 ? "text-ocupado-txt" : pct > 70 ? "text-entra-txt" : "text-libre-txt";
             return (
               <div>
-                <div className="h-1.5 rounded-full bg-slate-200">
+                <div className="h-1.5 rounded-full bg-surface-3">
                   <div className={`rounded-full h-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
                 </div>
                 <p className={`mt-1 text-[10px] ${textColor}`}>{daysLeft >= 0 ? `${daysLeft} días restantes` : `Vencido hace ${Math.abs(daysLeft)} días`}</p>
@@ -344,7 +346,7 @@ export default function SpacePanel({ svgId, zoneDef, onClose, onRefresh }: Props
           })()}
 
           {/* Info rows */}
-          <div className="space-y-2 text-sm text-slate-700">
+          <div className="space-y-2 text-sm text-ink-1">
             <Row icon={<MapPin size={14} />}    label="Zona"  value={space.zone} />
             {space.sede && <Row icon={<Building2 size={14} />} label="Sede" value={space.sede} />}
             <Row icon={<Package size={14} />}   label="Área"  value={`${space.area_m2} m²`} />
@@ -353,9 +355,9 @@ export default function SpacePanel({ svgId, zoneDef, onClose, onRefresh }: Props
 
           {/* Active lease */}
           {space.active_lease && (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
-              <p className="mb-2 font-semibold text-slate-800">Contrato activo</p>
-              <div className="space-y-1.5 text-slate-700">
+            <div className="rounded-lg border border-line bg-surface-2 p-3 text-sm">
+              <p className="mb-2 font-semibold text-ink-1">Contrato activo</p>
+              <div className="space-y-1.5 text-ink-1">
                 <Row icon={<User size={13} />}       label="Proveedor" value={space.active_lease.supplier.name} />
                 {space.active_lease.marca && (
                   <Row icon={<Tag size={13} />}      label="Marca"     value={space.active_lease.marca} />
@@ -374,7 +376,7 @@ export default function SpacePanel({ svgId, zoneDef, onClose, onRefresh }: Props
               </div>
               <button
                 onClick={handleCancelLease}
-                className="mt-3 w-full rounded-md border border-red-300 bg-red-50 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
+                className="mt-3 w-full rounded-md border border-ocupado-100 bg-ocupado-50 py-1.5 text-xs font-semibold text-ocupado-txt hover:bg-ocupado-100"
               >
                 Cancelar contrato
               </button>
@@ -386,7 +388,7 @@ export default function SpacePanel({ svgId, zoneDef, onClose, onRefresh }: Props
             {space.status !== "occupied" && (
               <button
                 onClick={() => setView("assign")}
-                className="w-full rounded-md bg-indigo-600 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+                className="w-full rounded-md bg-accent py-2 text-sm font-semibold text-accent-ink hover:bg-accent-600"
               >
                 Asignar proveedor
               </button>
@@ -398,7 +400,7 @@ export default function SpacePanel({ svgId, zoneDef, onClose, onRefresh }: Props
                   <button
                     key={s}
                     onClick={() => handleStatusChange(s)}
-                    className="rounded-md border border-slate-200 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                    className="rounded-md border border-line py-1.5 text-xs font-medium text-ink-2 hover:bg-surface-2"
                   >
                     Marcar {STATUS_LABELS[s].toLowerCase()}
                   </button>
@@ -411,15 +413,15 @@ export default function SpacePanel({ svgId, zoneDef, onClose, onRefresh }: Props
       {/* ── Assign form ────────────────────────────────────────────────────── */}
       {!loading && space && view === "assign" && (
         <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
-          <p className="text-sm font-semibold text-slate-800">Nuevo contrato</p>
+          <p className="text-sm font-semibold text-ink-1">Nuevo contrato</p>
 
           {/* Proveedor */}
-          <label className="text-xs text-slate-600">
+          <label className="text-xs text-ink-2">
             Proveedor *
             <select
               value={leaseForm.supplier_id}
               onChange={(e) => setLeaseForm((f) => ({ ...f, supplier_id: e.target.value }))}
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+              className="mt-1 w-full rounded border border-line-strong px-2 py-1.5 text-sm"
             >
               <option value="">Seleccionar...</option>
               {suppliers.map((s) => (
@@ -430,7 +432,7 @@ export default function SpacePanel({ svgId, zoneDef, onClose, onRefresh }: Props
 
           <button
             onClick={() => setView("new-supplier")}
-            className="self-start text-xs text-indigo-600 underline"
+            className="self-start text-xs text-accent underline"
           >
             + Crear proveedor nuevo
           </button>
@@ -450,13 +452,13 @@ export default function SpacePanel({ svgId, zoneDef, onClose, onRefresh }: Props
 
           <div className="flex gap-2 pt-1">
             <button onClick={() => setView("detail")}
-              className="flex-1 rounded-md border border-slate-200 py-2 text-sm text-slate-600 hover:bg-slate-50">
+              className="flex-1 rounded-md border border-line py-2 text-sm text-ink-2 hover:bg-surface-2">
               Cancelar
             </button>
             <button
               onClick={handleAssign}
               disabled={!leaseForm.supplier_id || !leaseForm.start_date || !leaseForm.end_date || !leaseForm.monthly_rent}
-              className="flex-1 rounded-md bg-indigo-600 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+              className="flex-1 rounded-md bg-accent py-2 text-sm font-semibold text-accent-ink hover:bg-accent-600 disabled:opacity-50"
             >
               Guardar
             </button>
@@ -467,7 +469,7 @@ export default function SpacePanel({ svgId, zoneDef, onClose, onRefresh }: Props
       {/* ── New supplier form ───────────────────────────────────────────────── */}
       {view === "new-supplier" && (
         <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
-          <p className="text-sm font-semibold text-slate-800">Nuevo proveedor</p>
+          <p className="text-sm font-semibold text-ink-1">Nuevo proveedor</p>
           <Field label="Nombre *" type="text" value={supplierForm.name}
             onChange={(v) => setSupplierForm((f) => ({ ...f, name: v }))} />
           <Field label="Contacto" type="text" value={supplierForm.contact_name}
@@ -478,13 +480,13 @@ export default function SpacePanel({ svgId, zoneDef, onClose, onRefresh }: Props
             onChange={(v) => setSupplierForm((f) => ({ ...f, email: v }))} />
           <div className="flex gap-2 pt-1">
             <button onClick={() => setView("assign")}
-              className="flex-1 rounded-md border border-slate-200 py-2 text-sm text-slate-600">
+              className="flex-1 rounded-md border border-line py-2 text-sm text-ink-2">
               Cancelar
             </button>
             <button
               onClick={handleCreateSupplier}
               disabled={!supplierForm.name}
-              className="flex-1 rounded-md bg-indigo-600 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="flex-1 rounded-md bg-accent py-2 text-sm font-semibold text-accent-ink disabled:opacity-50"
             >
               Crear
             </button>
@@ -500,8 +502,8 @@ export default function SpacePanel({ svgId, zoneDef, onClose, onRefresh }: Props
 function Row({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
     <div className="flex items-start gap-2">
-      <span className="mt-0.5 shrink-0 text-slate-400">{icon}</span>
-      <span className="shrink-0 text-slate-500">{label}:</span>
+      <span className="mt-0.5 shrink-0 text-ink-4">{icon}</span>
+      <span className="shrink-0 text-ink-3">{label}:</span>
       <span className="font-medium break-all">{value}</span>
     </div>
   );
@@ -514,14 +516,14 @@ function Field({
   onChange: (v: string) => void; placeholder?: string;
 }) {
   return (
-    <label className="text-xs text-slate-600">
+    <label className="text-xs text-ink-2">
       {label}
       <input
         type={type}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-indigo-400 placeholder:text-slate-300"
+        className="mt-1 w-full rounded border border-line-strong px-2 py-1.5 text-sm outline-none focus:border-accent placeholder:text-ink-4"
       />
     </label>
   );

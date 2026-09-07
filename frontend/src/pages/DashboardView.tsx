@@ -16,6 +16,7 @@ import {
   Box,
 } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
+import { temaActual, useTema } from "../tema";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
 import client from "../api/client";
 import { listSpaceFiles, type SpaceFileMeta } from "../api/files";
@@ -474,19 +475,59 @@ function darken(hex: string, amt: number): string {
  *  Esto queda como respaldo —el anillo del popover y la leyenda si algún día
  *  no hubiera periodo— y sale de la misma paleta de tres, sin el violeta que
  *  arrastraba del sistema anterior. */
-const DISPLAY_TOP: Record<DisplayStatus, string> = {
-  free:        "#00786A",
-  committed:   "#17A18C",
-  active:      "#8E1226",
-  expiring:    "#F08519",
-  expired:     "#B7364A",
-  no_contract: "#B7364A",
-  reserved:    "#F79E45",
-  maintenance: "#9AA3A7",
+/* Los colores del plano NO pueden ser `var(--x)`: `darken()` recibe un hex y le
+   hace la cuenta de las caras del prisma, así que acá el color tiene que ser un
+   valor de verdad. Por eso la terna vive dos veces —una cara clara y una
+   oscura— y se elige al pintar, leyendo el atributo de la raíz con
+   `temaActual()`. Son EXACTAMENTE los mismos hex que `tema.css`; si alguno se
+   despega, el que está mal es este archivo.
+
+   LO QUE CAMBIA DE FONDO, y hay que decirlo: las siete clases de «qué pasa hoy»
+   se apoyan ahora en los CUATRO colores validados (los tres estados + el resto)
+   y en dos tintes al 60 % de esos mismos, en vez de en siete matices elegidos
+   uno por uno. Es lo que el propio comentario de abajo ya decía —«siete clases
+   es más de lo que el color solo puede sostener: free contra maintenance daba
+   ΔE 3.6 en deuteranopía»— y es la única forma de tener una versión oscura sin
+   elegir siete colores nuevos a ojo, que es justo lo que este proyecto tiene
+   prohibido. El costo: `active`, `expired` y `no_contract` quedan del mismo
+   rojo, y `free` y `committed` se separan por claridad y no por matiz. Los tres
+   van SIEMPRE con su palabra al lado en la tabla y en el tooltip, que es la
+   regla que sostiene la identidad. Recuperar una lectura de siete clases —o
+   borrar el respaldo, que es lo que probablemente corresponde— queda anotado
+   para el PR 2 en `outputs/frontend.md`.
+
+   Los dos tintes al 60 % no son un color nuevo: son el mismo estado ya validado
+   mezclado con su superficie, la misma construcción que los `-suave` (que son
+   ese mismo estado al 12 % / 16 %). Al conservar el matiz, la separación CVD
+   entre familias no se mueve. */
+const DISPLAY_TOP_CLARO: Record<DisplayStatus, string> = {
+  free:        "#00805A",   // --libre
+  committed:   "#66B39C",   // --libre al 60 % sobre la tarjeta
+  active:      "#D8342E",   // --ocupado
+  expiring:    "#CE8A0A",   // --entra
+  expired:     "#D8342E",   // --ocupado
+  no_contract: "#D8342E",   // --ocupado
+  reserved:    "#E2B96C",   // --entra al 60 % sobre la tarjeta
+  maintenance: "#AAB3BE",   // --resto
 };
 
+const DISPLAY_TOP_OSCURO: Record<DisplayStatus, string> = {
+  free:        "#00BE86",   // --libre
+  committed:   "#047959",   // --libre al 60 % sobre el panel
+  active:      "#F4544E",   // --ocupado
+  expiring:    "#F5A524",   // --entra
+  expired:     "#F4544E",   // --ocupado
+  no_contract: "#F4544E",   // --ocupado
+  reserved:    "#976A1E",   // --entra al 60 % sobre el panel
+  maintenance: "#33414F",   // --resto
+};
+
+function displayTop(): Record<DisplayStatus, string> {
+  return temaActual() === "oscuro" ? DISPLAY_TOP_OSCURO : DISPLAY_TOP_CLARO;
+}
+
 function topColorFor(face: FaceEntry): string {
-  return DISPLAY_TOP[displayStatus(face)];
+  return displayTop()[displayStatus(face)];
 }
 
 /** Colours for the "available for this period" reading, which answers a
@@ -503,11 +544,21 @@ function topColorFor(face: FaceEntry): string {
  *  Antes de mover uno hay que volver a correr la cuenta sobre los cinco
  *  colores del plano —los tres estados, el cuerpo y lo no comercializable—.
  *  Que «se vean distintos» no es evidencia. */
-const RANGE_TOP: Record<RangeAvailability, string> = {
-  libre: "#00786A",
-  parcial: "#F08519",
-  tomado: "#8E1226",
+const RANGE_TOP_CLARO: Record<RangeAvailability, string> = {
+  libre:   "#00805A",   // --libre
+  parcial: "#CE8A0A",   // --entra
+  tomado:  "#D8342E",   // --ocupado
 };
+
+const RANGE_TOP_OSCURO: Record<RangeAvailability, string> = {
+  libre:   "#00BE86",
+  parcial: "#F5A524",
+  tomado:  "#F4544E",
+};
+
+function rangeTop(): Record<RangeAvailability, string> {
+  return temaActual() === "oscuro" ? RANGE_TOP_OSCURO : RANGE_TOP_CLARO;
+}
 
 const RANGE_LABEL: Record<RangeAvailability, string> = {
   libre: "Libre todo el periodo",
@@ -529,14 +580,23 @@ const RANGE_LABEL: Record<RangeAvailability, string> = {
  *
  *  Las caras y el contorno salen de acá por `darken()`, así que el prisma
  *  sigue leyéndose en tres dimensiones y no queda una silueta plana. */
-const NON_RENTABLE_TOP = "#E4E8E9";
+function noRentableTop(): string {
+  // Se acerca a la superficie del piso en cada modo: en claro es más CLARO que
+  // el mueble y se va al fondo; en oscuro es más OSCURO y se va al fondo
+  // igual. «Irse al fondo» es acercarse al piso, no ser más claro siempre.
+  return temaActual() === "oscuro" ? "#26313C" : "#DDE1E6";
+}
 
 /** El material del mueble. El cuerpo no toma el color del estado: se queda en
  *  el gris del acero y el color va en la CARA, que es lo que de verdad se
  *  vende. Una góndola doble con la cara A libre y la B tomada se veía toda
  *  roja; así se ve el mueble, y el rojo sólo en el lado que está tomado. */
-const CUERPO = "#C4CBCE";
-const CUERPO_LN = "#9AA3A7";
+function colorCuerpo(): string {
+  return temaActual() === "oscuro" ? "#33414F" : "#AAB3BE";   // --resto
+}
+function colorCuerpoLinea(): string {
+  return temaActual() === "oscuro" ? "#566779" : "#7C8794";
+}
 const NON_RENTABLE_LABEL = "Resto de la sala";
 
 function pts(...points: [number, number][]): string {
@@ -593,6 +653,10 @@ function IsoMap({
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [tip, setTip] = useState<{ x: number; y: number; title: string; sub: string } | null>(null);
+  /* La escena pinta con `temaActual()` adentro del memo: si el tema no es
+     dependencia, tocar el sol/luna deja el plano con la terna del modo viejo
+     hasta recargar (verificador, Fase 10). */
+  const [tema] = useTema();
 
   const scene = useMemo(() => {
     if (fixtures.length === 0) return null;
@@ -638,9 +702,9 @@ function IsoMap({
       const double = isDoubleGondola(f) && rentable;
       const faces = facesOf(f);
       const paint = (face: FaceEntry) =>
-        range ? RANGE_TOP[rangeAvailability(face, range.from, range.to)] : topColorFor(face);
-      const topA = rentable ? paint(faces[0]) : NON_RENTABLE_TOP;
-      const topB = rentable && faces[1] ? paint(faces[1]) : NON_RENTABLE_TOP;
+        range ? rangeTop()[rangeAvailability(face, range.from, range.to)] : topColorFor(face);
+      const topA = rentable ? paint(faces[0]) : noRentableTop();
+      const topB = rentable && faces[1] ? paint(faces[1]) : noRentableTop();
       // La cara que da al frente en isométrico: cuando el mueble es más ancho
       // que hondo el corte va por Z y la mitad de adelante es la B; si es más
       // hondo que ancho el corte va por X y la B queda a la derecha. El otro
@@ -650,12 +714,12 @@ function IsoMap({
       // deja el color en la cara equivocada en todo mueble rotado un cuarto
       // de vuelta —un pasillo cruzado, que es común.
       const anchoManda = fp.w >= fp.d;
-      const cuerpo = rentable ? CUERPO : NON_RENTABLE_TOP;
+      const cuerpo = rentable ? colorCuerpo() : noRentableTop();
       const caraFrente = double ? topB : topA;
       const pintaCara = rentable ? caraFrente : cuerpo;
       const sideL = anchoManda ? darken(pintaCara, 0.14) : darken(cuerpo, 0.14);
       const sideR = anchoManda ? darken(cuerpo, 0.26) : darken(pintaCara, 0.26);
-      const stroke = rentable ? CUERPO_LN : darken(NON_RENTABLE_TOP, 0.42);
+      const stroke = rentable ? colorCuerpoLinea() : darken(noRentableTop(), 0.42);
 
       // Top face — split into two halves for double gondolas
       const mitad = (color: string, esquinas: [number, number][]) => ({
@@ -750,7 +814,8 @@ function IsoMap({
       vb,
       viewBox: `${vb.x.toFixed(1)} ${vb.y.toFixed(1)} ${vb.w.toFixed(1)} ${vb.h.toFixed(1)}`,
     };
-  }, [fixtures, range]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fixtures, range, tema]);
 
   if (!scene) return null;
 
@@ -959,7 +1024,7 @@ function IsoMap({
                   fontWeight={600}
                   fontFamily="var(--font-mono)"
                   fill="var(--ink-2)"
-                  stroke="#FFFFFF"
+                  stroke="var(--surface)"
                   strokeWidth={2.4 / k}
                   paintOrder="stroke"
                   style={{ pointerEvents: "none", userSelect: "none" }}
@@ -1036,21 +1101,21 @@ function MapLegend({
 }) {
   const items: { c: string; l: string; n?: number }[] = range
     ? [
-        { c: RANGE_TOP.libre,   l: modo === "vender" ? RANGE_LABEL.libre : "Libre",
+        { c: rangeTop().libre,   l: modo === "vender" ? RANGE_LABEL.libre : "Libre",
           n: tally?.libres },
-        { c: RANGE_TOP.parcial, l: modo === "vender" ? RANGE_LABEL.parcial : "Vence dentro",
+        { c: rangeTop().parcial, l: modo === "vender" ? RANGE_LABEL.parcial : "Vence dentro",
           n: tally?.parciales },
-        { c: RANGE_TOP.tomado,  l: RANGE_LABEL.tomado, n: tally?.tomados },
-        { c: NON_RENTABLE_TOP,  l: NON_RENTABLE_LABEL },
+        { c: rangeTop().tomado,  l: RANGE_LABEL.tomado, n: tally?.tomados },
+        { c: noRentableTop(),   l: NON_RENTABLE_LABEL },
       ]
     : [
-    { c: DISPLAY_TOP.free,        l: "Libre" },
-    { c: DISPLAY_TOP.committed,   l: "Contratado" },
-    { c: DISPLAY_TOP.active,      l: "Ocupado" },
-    { c: DISPLAY_TOP.expired,     l: "Vencido" },
-    { c: DISPLAY_TOP.reserved,    l: "Reservado" },
-    { c: DISPLAY_TOP.maintenance, l: "Mantenimiento" },
-    { c: NON_RENTABLE_TOP,        l: NON_RENTABLE_LABEL },
+    { c: displayTop().free,        l: "Libre" },
+    { c: displayTop().committed,   l: "Contratado" },
+    { c: displayTop().active,      l: "Ocupado" },
+    { c: displayTop().expired,     l: "Vencido" },
+    { c: displayTop().reserved,    l: "Reservado" },
+    { c: displayTop().maintenance, l: "Mantenimiento" },
+    { c: noRentableTop(),         l: NON_RENTABLE_LABEL },
   ];
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
@@ -1153,7 +1218,7 @@ function FileRow({ file, onOpen }: { file: SpaceFileMeta; onOpen: () => void }) 
 function StatusPill({ fixture, face }: { fixture: UnifiedFixture; face: FaceEntry }) {
   const rentable = isRentable(fixture);
   const ds = displayStatus(face);
-  const ring = rentable ? DISPLAY_TOP[ds] : NON_RENTABLE_TOP;
+  const ring = rentable ? displayTop()[ds] : noRentableTop();
   const meta = STATUS_META[ds];
   return (
     <span
@@ -1780,7 +1845,7 @@ function AtencionRow({
       style={{
         display: "flex", alignItems: "center",
         borderTop: "1px solid var(--line-soft)",
-        background: selected ? "var(--surface-2)" : hover ? "#F6F8F8" : "transparent",
+        background: selected ? "var(--surface-2)" : hover ? "var(--surface-2)" : "transparent",
         borderLeft: `2px solid ${selected ? "var(--ink-1)" : "transparent"}`,
       }}
       onMouseEnter={() => setHover(true)}
@@ -1812,9 +1877,14 @@ function AtencionRow({
         </span>
         <span
           style={{
-            flexShrink: 0, width: 56,
+            // «Se ajusta la columna, no la tipografía»: con `--font-mono`
+            // puesto, `1ch` es un avance de carácter, así que `9ch` es el ancho
+            // de `GON-60·A` POR CONSTRUCCIÓN, resuelva el sistema SF Mono,
+            // Cascadia o Liberation Mono. Los 56px de antes estaban medidos
+            // contra una condensada que ya no está y cortaban el código.
+            flexShrink: 0, minWidth: "9ch",
             fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 13,
-            letterSpacing: "0.02em", color: "var(--ink-1)",
+            letterSpacing: 0, color: "var(--ink-1)",
           }}
         >
           {codigoVisible(entry)}
@@ -1938,7 +2008,7 @@ function SupplierRow({
           style={{
             fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 9.5,
             letterSpacing: "0.09em", textTransform: "uppercase",
-            color: "var(--ocupado)", background: "var(--ocupado-suave)",
+            color: "var(--ocupado-txt)", background: "var(--ocupado-suave)",
             borderRadius: "var(--r-xs)", padding: "1px 4px",
           }}
         >
@@ -1963,16 +2033,18 @@ function SupplierRow({
  *  permite leer una fila y encontrarla en la sala sin volver a pensar. Nunca
  *  va solo —al lado está la palabra, y a la derecha los días—, así que la
  *  identidad del estado no depende del color en ningún momento. */
-const PIN: Record<DisplayStatus, { punto: string; texto: string; palabra: string }> = {
-  free:        { punto: RANGE_TOP.libre,   texto: "var(--libre)",   palabra: "Libre" },
-  active:      { punto: RANGE_TOP.tomado,  texto: "var(--ink-2)",   palabra: "Activo" },
-  expiring:    { punto: RANGE_TOP.parcial, texto: "var(--ocupado)", palabra: "Por vencer" },
-  committed:   { punto: DISPLAY_TOP.committed, texto: "var(--ink-2)", palabra: "Contratado" },
-  expired:     { punto: RANGE_TOP.tomado,  texto: "var(--ocupado)", palabra: "Vencido" },
-  no_contract: { punto: RANGE_TOP.tomado,  texto: "var(--ocupado)", palabra: "Sin contrato" },
-  reserved:    { punto: DISPLAY_TOP.reserved, texto: "var(--ink-2)", palabra: "Reservado" },
-  maintenance: { punto: DISPLAY_TOP.maintenance, texto: "var(--ink-3)", palabra: "Mantenim." },
-};
+function pinDe(): Record<DisplayStatus, { punto: string; texto: string; palabra: string }> {
+  return {
+  free:        { punto: rangeTop().libre,   texto: "var(--libre-txt)",   palabra: "Libre" },
+  active:      { punto: rangeTop().tomado,  texto: "var(--ink-2)",   palabra: "Activo" },
+  expiring:    { punto: rangeTop().parcial, texto: "var(--ocupado-txt)", palabra: "Por vencer" },
+  committed:   { punto: displayTop().committed, texto: "var(--ink-2)", palabra: "Contratado" },
+  expired:     { punto: rangeTop().tomado,  texto: "var(--ocupado-txt)", palabra: "Vencido" },
+  no_contract: { punto: rangeTop().tomado,  texto: "var(--ocupado-txt)", palabra: "Sin contrato" },
+  reserved:    { punto: displayTop().reserved, texto: "var(--ink-2)", palabra: "Reservado" },
+  maintenance: { punto: displayTop().maintenance, texto: "var(--ink-3)", palabra: "Mantenim." },
+  };
+}
 
 /** El orden de la tabla: primero lo que pide acción.
  *
@@ -2094,7 +2166,7 @@ function SpacesTable({
           )}
           {filtered.map((entry) => {
             const ds = displayStatus(entry);
-            const pin = PIN[ds];
+            const pin = pinDe()[ds];
             const libre = ds === "free";
             const days = entry.endDate && !libre ? daysUntil(entry.endDate) : null;
             const sel = selectedId === entry.fixture.id;
@@ -2115,7 +2187,7 @@ function SpacesTable({
                 onMouseEnter={(e) => {
                   if (sel) return;
                   e.currentTarget.querySelectorAll("td").forEach((td) => {
-                    (td as HTMLElement).style.background = "#F6F8F8";
+                    (td as HTMLElement).style.background = "var(--surface-2)";
                   });
                 }}
                 onMouseLeave={(e) => {
@@ -2249,7 +2321,7 @@ function ChipEspacio({
         letterSpacing: "0.02em", lineHeight: 1.5,
         border: `1px solid ${puesto ? "var(--ink-1)" : entra ? "var(--entra-borde)" : "var(--libre-borde)"}`,
         background: puesto ? "var(--ink-1)" : entra ? "var(--entra-suave)" : "var(--libre-suave)",
-        color: puesto ? "#fff" : entra ? "var(--entra-txt)" : "var(--libre)",
+        color: puesto ? "#fff" : entra ? "var(--entra-txt)" : "var(--libre-txt)",
       }}
     >
       {code}
@@ -2290,7 +2362,7 @@ function Cifra({
   const cero = valor === "0" || valor === "$0" || valor === "0%";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 130 }}>
-      <span className="rotulo" style={alarma ? { color: "var(--ocupado)" } : undefined}>
+      <span className="rotulo" style={alarma ? { color: "var(--ocupado-txt)" } : undefined}>
         {rotulo}
       </span>
       <b style={{
@@ -2408,6 +2480,13 @@ function EmptyDashboard({
 // ─── Main view ────────────────────────────────────────────────────────────────
 
 export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () => void }) {
+  // El plano isométrico pinta con hex de verdad y no con `var(--x)` —`darken()`
+  // le hace la cuenta a cada cara del prisma—, así que las ternas se eligen al
+  // pintar con `temaActual()`. Esta suscripción es lo que hace que el plano se
+  // vuelva a pintar cuando alguien toca el sol/luna de la barra: sin ella el
+  // CSS cambiaría de tema y el plano se quedaría con los colores del otro.
+  useTema();
+
   const fixtures = useFixtureStore(selectFixtures);
   const { sedes, sede, setSede, fixturesBySede, syncFromServer, seasonWindows } = useFixtureStore();
   const referenceRates = useFixtureStore((s) => s.referenceRates);
@@ -3378,7 +3457,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                   {badge > 0 && (
                     <span style={{
                       fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 700,
-                      color: "var(--ocupado)",
+                      color: "var(--ocupado-txt)",
                     }}>
                       {badge}
                     </span>
@@ -3701,7 +3780,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               <Card style={{ height: 490, flexShrink: 0 }}>
                 <CardHeader title="Para revisar" right={<span>{attentionCount}</span>} />
                 {attentionCount === 0 ? (
-                  <div style={{ padding: "0 15px 14px", fontSize: 13, color: "var(--libre)" }}>
+                  <div style={{ padding: "0 15px 14px", fontSize: 13, color: "var(--libre-txt)" }}>
                     Sin contratos vencidos ni próximos a vencer.
                   </div>
                 ) : (

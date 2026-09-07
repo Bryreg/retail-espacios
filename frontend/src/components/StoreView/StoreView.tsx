@@ -428,27 +428,27 @@ export default function StoreView({ selectedSvgId, onSelect }: Props) {
 
   // ─── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col rounded-xl border border-slate-700 bg-slate-900 shadow-lg overflow-hidden" style={{ minHeight: 0 }}>
+    <div className="flex flex-col rounded-xl border border-dark-line bg-dark-bg shadow-lg overflow-hidden" style={{ minHeight: 0 }}>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-2 border-b border-slate-700 bg-slate-800 px-3 py-1.5 flex-shrink-0">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Vista 3D · Primera Persona</span>
-        <div className="mx-2 h-4 border-l border-slate-600" />
-        <span className="font-mono text-[11px] text-slate-300">
+      <div className="flex items-center gap-2 border-b border-dark-line bg-dark-surface px-3 py-1.5 flex-shrink-0">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">Vista 3D · Primera Persona</span>
+        <div className="mx-2 h-4 border-l border-dark-line-2" />
+        <span className="font-mono text-[11px] text-dark-ink-2">
           ({cam.x.toFixed(1)} , {cam.y.toFixed(1)}) m · {yawDeg}°
         </span>
         <button onClick={() => setShowLabels(v => !v)}
           className={`ml-2 flex h-6 items-center gap-1 rounded border px-2 text-[10px] font-medium transition-colors ${
-            showLabels ? "border-indigo-500 bg-indigo-900/60 text-indigo-300" : "border-slate-600 bg-slate-700 text-slate-400 hover:bg-slate-600"
+            showLabels ? "border-accent-200 bg-dark-surface-2 text-dark-ink-1" : "border-dark-line-2 bg-dark-surface-2 text-dark-ink-3 hover:bg-dark-line-2"
           }`}>
           {showLabels ? <Eye size={10}/> : <EyeOff size={10}/>}
           <span>Labels</span>
         </button>
         <button onClick={resetView} title="Restablecer vista"
-          className="flex h-6 w-6 items-center justify-center rounded border border-slate-600 bg-slate-700 text-slate-300 hover:bg-slate-600">
+          className="flex h-6 w-6 items-center justify-center rounded border border-dark-line-2 bg-dark-surface-2 text-dark-ink-2 hover:bg-dark-line-2">
           <RotateCcw size={10}/>
         </button>
-        <span className="ml-auto hidden text-[10px] text-slate-500 lg:block">
+        <span className="ml-auto hidden text-[10px] text-dark-ink-3 lg:block">
           WASD · ↑↓←→ mover · arrastrar mirar · rueda avanzar
         </span>
       </div>

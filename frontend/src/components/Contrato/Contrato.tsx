@@ -449,7 +449,7 @@ export type Contrato = ReturnType<typeof useContrato>;
 const campo: React.CSSProperties = {
   width: "100%", height: 36, padding: "0 10px", boxSizing: "border-box",
   borderRadius: "var(--r-xs)", border: "1px solid var(--line-strong)",
-  background: "#FCFDFD", color: "var(--ink-1)",
+  background: "var(--surface)", color: "var(--ink-1)",
   fontSize: 14.5, fontWeight: 500, fontFamily: "inherit", outline: "none",
 };
 
@@ -492,7 +492,7 @@ function Renglon({
     <div
       style={{
         border: "1px solid var(--line)", borderRadius: "var(--r-xs)",
-        padding: "7px 9px", background: "#FCFDFD",
+        padding: "7px 9px", background: "var(--surface)",
         display: "flex", flexDirection: "column", gap: 6,
       }}
     >
@@ -718,7 +718,7 @@ export function CamposContrato({ c }: { c: Contrato }) {
             display: "flex", alignItems: "flex-start", gap: 7,
             fontSize: 12, color: "var(--ink-3)", lineHeight: 1.45,
           }}>
-            <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1, color: "var(--entra)" }} />
+            <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1, color: "var(--entra-txt)" }} />
             <span>
               {enConflicto.length === 1
                 ? `${enConflicto[0].visible} ya tiene ${enConflicto[0].disponibilidad === "parcial" ? "parte del" : "todo el"} periodo vendido: revisá las fechas antes de guardar.`
@@ -868,10 +868,18 @@ export function CamposContrato({ c }: { c: Contrato }) {
           61 días son $3.050.000, y esa cuenta se hacía de cabeza con el
           proveedor esperando del otro lado.
 
-          Es la única cifra grande de la pantalla —27 px, el peso 900 de Chivo—
-          y se la gana: es lo que va a quedar escrito. Debajo, las temporadas
-          que el plazo cubre, que son a la vez el argumento de venta y el
-          control de que las fechas quedaron donde se querían. */}
+          Es la única cifra grande de la pantalla y se la gana: es lo que va a
+          quedar escrito. Debajo, las temporadas que el plazo cubre, que son a
+          la vez el argumento de venta y el control de que las fechas quedaron
+          donde se querían.
+
+          Fase 10: era «27 px, el peso 900 de Chivo». Chivo se fue con las
+          fuentes web, y el reemplazo no es un 800 que la imite: es que ESTO ES
+          UNA CIFRA, no un título, y le corresponde el tratamiento de cifra
+          (`.fig` = mono + tabular + 700 + tracking −.02em, en `index.css`), que
+          se lee más duro que un 900 sans porque se lee como cifra de sistema de
+          caja. La jerarquía la siguen dando el tamaño (`--t-xl`, 27 px), la
+          familia distinta y el color, que es de donde venía de verdad. */}
       {c.total > 0 && (
         <div>
           <div style={{
@@ -879,7 +887,7 @@ export function CamposContrato({ c }: { c: Contrato }) {
             borderTop: "2px solid var(--ink-1)", paddingTop: 9,
           }}>
             <span className="rotulo" style={{ fontSize: 11 }}>Total del contrato</span>
-            <span style={{ fontSize: 27, fontWeight: 900, letterSpacing: "-0.02em" }}>
+            <span className="fig" style={{ fontSize: "var(--t-xl)" }}>
               {money(c.total)}
             </span>
           </div>
@@ -889,7 +897,7 @@ export function CamposContrato({ c }: { c: Contrato }) {
                 <span
                   key={t}
                   style={{
-                    fontSize: 12, fontWeight: 500, color: "var(--libre)",
+                    fontSize: 12, fontWeight: 500, color: "var(--libre-txt)",
                     background: "var(--libre-suave)", padding: "3px 8px",
                     borderRadius: "var(--r-xs)",
                   }}

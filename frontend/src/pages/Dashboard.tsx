@@ -29,6 +29,7 @@ import {
 import { describeError } from "../api/client";
 import { descargarMiExport, solicitarSupresion } from "../api/derechos";
 import { useFixtureStore } from "../store/fixtureStore";
+import { TemaToggle, useModalAbierto } from "../tema";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -863,12 +864,19 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
+  // Mientras este panel está abierto, ÉL es la pantalla: el botón principal de
+  // lo que quedó atrás pierde el amarillo (regla del dueño, un amarillo por
+  // pantalla). Configuración no tiene botón principal propio —son interruptores
+  // que guardan solos— así que sólo apaga, no enciende.
+  useModalAbierto();
+
   return (
     <div
+      data-capa-modal
       onClick={onClose}
       style={{
         position: "fixed", inset: 0, zIndex: 150,
-        background: "rgba(22,21,15,0.28)",
+        background: "rgba(4,7,10,0.42)",
         display: "flex", alignItems: "stretch", justifyContent: "flex-end",
       }}
     >
@@ -1138,6 +1146,12 @@ function Topbar({
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
         {/* Server sync state — click to sync now */}
         <SyncStatus />
+
+        {/* Claro / oscuro. Misma pieza que la de la landing (sol / luna) y
+            misma convención: el ícono es el del tema AL QUE SE VA. La
+            preferencia queda en `localStorage` bajo `recabra-tema` y la
+            comparte con la consola de plataforma, que antes tenía la suya. */}
+        <TemaToggle />
 
         {/* Acá había una lupa. **No tenía `onClick`.** Era un botón que no
             hacía nada: se dibujó porque una barra superior "tiene" que llevar

@@ -88,20 +88,38 @@ export const ZONES: ZoneDef[] = [
   { id: "ref-col-d",    label: "Ref D", x: 958, y: 700, width: 48, height: 155, selectable: true, type: "refrigerator" },
 ];
 
+/** Los tres estados + «lo que no se alquila», pintados con los tokens del tema
+ *  y no con hex sueltos: son EXACTAMENTE los mismos tres colores que la tabla,
+ *  los chips y la leyenda, y tenerlos escritos dos veces era la forma de que un
+ *  día dejaran de coincidir. Los canales vienen de `tema.css`, así que estas
+ *  caras cambian solas al pasar a modo oscuro (donde la terna es la brillante).
+ *
+ *  El relleno va translúcido a propósito: debajo está el plano de la sede y
+ *  tiene que seguir leyéndose. El trazo sólido es el que dibuja el contorno —y
+ *  el contorno no es decoración: el ámbar «se libera» da 2,54:1 contra el papel
+ *  y sin borde un mueble ámbar sobre el piso claro se pierde. */
 export const STATUS_COLORS: Record<string, string> = {
-  free:        "rgba(34,  197, 94,  0.25)",
-  occupied:    "rgba(239, 68,  68,  0.40)",
-  reserved:    "rgba(245, 158, 11,  0.40)",
-  maintenance: "rgba(148, 163, 184, 0.40)",
+  free:        "rgb(var(--libre-rgb) / 0.25)",
+  occupied:    "rgb(var(--ocupado-rgb) / 0.35)",
+  reserved:    "rgb(var(--entra-rgb) / 0.35)",
+  maintenance: "rgb(var(--resto-rgb) / 0.40)",
 };
 
 export const STATUS_COLORS_SOLID: Record<string, string> = {
-  free:        "#22c55e",
-  occupied:    "#ef4444",
-  reserved:    "#f59e0b",
-  maintenance: "#94a3b8",
+  free:        "var(--libre)",
+  occupied:    "var(--ocupado)",
+  reserved:    "var(--entra)",
+  maintenance: "var(--resto)",
 };
 
+/** PENDIENTE DEL PR 2 (forma / dataviz). Estas diez son un arcoíris de TIPO de
+ *  mueble —góndola, ristra, robatope, punta— y no de estado, así que no entran
+ *  en la terna validada; pero diez matices saturados a ojo tampoco son una
+ *  paleta categórica: no están medidos contra daltonismo ni contra la
+ *  superficie, y en modo oscuro son todos igual de brillantes. Cambiarlos es
+ *  reelegir una paleta de diez, y eso es una decisión de diseño con validador,
+ *  no un cambio de piel. Quedan como estaban, anotados en
+ *  `features/diseno-interior/outputs/frontend.md`. */
 export const INFRASTRUCTURE_COLORS: Record<string, string> = {
   register:        "#ea580c",
   infrastructure:  "#6b7280",

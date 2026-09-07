@@ -3337,6 +3337,155 @@ minúsculas. En versales apretadas se lee como un error de impresión. Quedó en
 
 ---
 
+## Fase 10 — El estilo de la landing adentro del sistema
+
+**Decisión del dueño (2026-09-06).** «La landing quedó mejor que el diseño del
+sistema; quiero aplicar el mismo estilo adentro.» Con tres respuestas: **claro
+por defecto** (el oscuro a un clic), **amarillo solo en el botón principal** de
+cada pantalla, y **arrancar por los tokens** (PR 1), después Vender con la
+maqueta q1 (PR 2), después el resto (PR 3). Spec en
+`features/diseno-interior/spec.md`; entregables en `outputs/` (tema.md con la
+tabla token viejo → nuevo, frontend.md, auditor.md, verificacion.md y 61
+capturas antes/después).
+
+**Esto REVOCA la regla 4 del «Rediseño de la pantalla principal»** («nada de
+ámbar, oro ni ocre, y nada de fondos oscuros»): el amarillo `--signal`
+(`#FFD028`, botón `#F2B300` con borde `#A87C00`) entra acotado al botón
+principal, uno por pantalla, y el oscuro entra como modo opcional que nunca es
+el de arranque. Las otras tres reglas (la forma la manda el dato; pulcro;
+cerrar trato y revisar cada uno en su modo) siguen vigentes y son el PR 2.
+
+### PR 1 — un solo sistema de tokens (`frontend/src/tema.css`)
+
+- **Tres capas**: primitivos de E (`--n-*`, `--p-*`, `--y-*`, `--st-*`),
+  semánticos claro en `:root` y oscuro en `html[data-tema="oscuro"]`, y los
+  DOS juegos de nombres (los viejos `--bg`, `--surface*`, `--line*`,
+  `--ink-1..4`, `--accent*`, `--libre/--entra/--ocupado` + `-suave`/`-borde`/
+  `-txt`, y los de E `--signal`, `--panel`, `--brd`, `--fg*`, `--t-*`, `--s*`,
+  `--r-*`, `--sh-*`) apuntando al mismo valor. `index.css` quedó como capa 3
+  (`.rotulo`, `.fig`, `.codigo`, `.btn-principal`, la regla del modal, los
+  `--con-*` de la consola colgados del mismo interruptor).
+- **Tailwind consume los tokens por canales** `rgb(var(--x-rgb) / <alpha-value>)`
+  en vez de hex literales: la razón escrita en `tailwind.config.js`
+  («`bg-accent/20` necesita un color legible») se respeta y sigue funcionando,
+  y la consecuencia «si tocás uno, tocá los dos» se cae a propósito, porque un
+  hex congelado no se entera del modo. `darkMode: ["selector",
+  '[data-tema="oscuro"]']`. `probar:tema` compara config y tema.css token por
+  token (por color resuelto) y falla si vuelve un hex ciego al modo.
+- **Tipografía de E**: pilas de sistema (`--f-display` 800, `--f-text`,
+  `--f-mono` con `tabular-nums`). Se fueron Chivo y Archivo Narrow y con ellas
+  el `<link>` a Google Fonts: **cero orígenes externos en el dist**. Las dos
+  razones escritas en `index.css` quedaron contestadas en `outputs/tema.md`
+  §3: el total del contrato es una CIFRA y va en `.fig` (mono + tabular +
+  700), no en un 900 de foundry; y la condensada hacía tres trabajos que ahora
+  se reparten (cifras → mono; rótulos en versalita → texto 600, NO mono, que a
+  9,5 px es ~18 % más ancho; códigos → mono con la columna en `ch`).
+- **Toggle** sol/luna (`src/tema.tsx`): llave `recabra-tema`, claro por
+  defecto, sin leer `prefers-color-scheme`, `useSyncExternalStore` sobre
+  `html[data-tema]`. La consola de plataforma perdió su interruptor propio
+  (`recabra-consola-tema` ya no existe: quien lo tenía abre en claro una vez).
+- **Amarillo, uno por pantalla** (`.btn-principal`): Login (cuatro pasos
+  excluyentes + el aviso de política), Vender «Guardar contrato y avisar»,
+  Montaje «Confirmar», Reporte «Descargar JSON», Detalle «Reporte de
+  transparencia», modales Carga masiva / Consentimiento / Catálogo de artes.
+  Sin amarillo, con razón escrita: Supervisar (lectura), Montajes, Plataforma
+  (los «Guardar» de fila siguen en `--con-accent`), Política, Configuración,
+  Tarifas (no tiene Guardar: guarda con debounce). **Regla nueva**: con un
+  modal abierto (`useModalAbierto()` → `html[data-modal-abierto]`), el botón
+  principal de atrás pasa a tinta para que nunca haya dos amarillos.
+  El «acceso anterior» del Login quedó en **tinta**: convive en la misma
+  tarjeta con el ingreso por correo y el verificador midió los dos encendidos.
+- **Barrido**: 259 clases literales de Tailwind fuera de la landing → 0, y
+  cuatro copias a mano de la terna de estado (DashboardView, FloorPlan2D donde
+  «ocupado» era violeta, `zones.ts`, y varios chips) → tokens. El editor 3D va
+  en `[data-cajon-oscuro]`, que invierte los tokens adentro en vez de tocar
+  sus ~35 `bg-accent`. **No tokenizar nunca**: los ~170 hex de materiales del
+  editor 3D (son objetos físicos en una escena) ni `utils/propuesta.ts` (la
+  lámina que se manda al proveedor es papel: blanca aunque el vendedor tenga
+  el oscuro).
+- **Contraste**: tres hex de tema.md corregidos con la medición (`--ink-3`
+  claro `#54646E`, oscuro `#788A94`; `--signal-borde` `#A87C00`); `--ink-4`
+  subió a `#68788A` / `#6E8190` porque SÍ se usa como texto («Administrador»,
+  «sin tarifa», códigos a 10 px) y daba 3,6:1; `--brd-control` (sigue a
+  `--ink-4`) para el borde de campos y selectores, que con `--line` daba
+  1,35:1. Los `-borde` de estado NO dan contorno (1,3–1,8:1): el refuerzo del
+  estado es la palabra al lado, que es regla dura; no el borde.
+
+### El ingreso adentro de la landing
+
+«Crear mi cuenta» y «Ya tengo cuenta» ya **no saltan a `/login`** (dueño,
+2026-09-06: «la idea era poder ingresar ahí de una vez», y después: «¿tiene que
+ser encima? ¿no hay manera de que convivan?»). Conviven: el formulario entra
+**en la tarjeta del hero, al lado del plano, que sigue vivo** (se arrastra, se
+acerca, se toca). La portada dispara `recabra:ingresar` (con `registro` o
+`login`); `App.tsx` arma `components/IngresoPortada.tsx` y se lo pasa a
+`<Landing ingreso={…}>`, que lo pone en lugar del texto del hero y sube la
+página hasta ahí (el pedido puede venir del pie). Adentro va el `Login` de
+siempre, perezoso, con `enHoja` (sin pantalla completa ni tarjeta) y
+`modoInicial`. «← Volver a la portada» y Escape devuelven el texto.
+Mientras está abierto, el `<html>` toma el tema de la landing (oscuro salvo
+que la portada esté en claro) para que los tokens de :root del formulario
+pinten a juego; al cerrar vuelve el del interior. El `href` a `/login` queda
+de respaldo (clic con modificadores, sin JS), y `/login` sigue existiendo para
+la invitación, los enlaces guardados y el 401.
+
+**Frontera intacta:** la landing sigue sin importar sesión ni API (recibe el
+formulario armado por `App.tsx` como `ReactNode`; no sabe qué es).
+`test_landing_ataques.py` definía el «núcleo» de la landing como *todo archivo
+nuevo de la rama bajo `frontend/src`* (muleta de la construcción de la Fase 9):
+con la Fase 10 eso metía `tema.css` y el ingreso adentro del núcleo. Ahora el
+núcleo es lo que se llama «landing» (`pages/Landing/`), que es lo que es.
+
+**Gotchas del formulario adentro de `.lp`:** (1) los resets de la landing
+(`.lp a`, `.lp button`) no entran en `.card--ingreso`, con `:not(:where(…))`
+para no subir la especificidad (sin `:where` el reset le ganaba a `.lp .tool`
+y a `.lp .btn` y les borraba el borde); (2) `.lp .rotulo` pasó a
+`.lp .hud .rotulo`: le estaba aplicando el pill flotante del plano al
+«Acceso anterior» del formulario; (3) con el ingreso abierto
+(`.lp[data-ingreso="1"]`) el HUD del plano baja de z-index, porque en el
+celular la tarjeta pasa por debajo y el HUD le robaba los toques.
+
+### Gotchas de la Fase 10
+
+- **La terna oscura de estados reprueba la banda de claridad de `dataviz`**
+  (`validate_palette.js --mode dark` sale con exit 1 por luminosidad, no por
+  separación). Se aceptó a propósito: son los hex de E validados en la landing
+  y la separación entre pares pasa; el detalle está en el encabezado de
+  `tema.css`.
+- **La condensada vs la mono.** Los códigos `GON-140·A` pasan de 69 a 82 px.
+  La columna de código de Supervisar pasó de `width: 56` (que ENVOLVÍA en dos
+  renglones 3 de 9 filas: bug preexistente) a `min-width: 9ch`, y quedó en un
+  renglón. Pero el **rótulo sobre el mueble del plano isométrico** se desborda
+  7,6 px en los códigos de 7 caracteres (antes 0,8): no es recorte ni choca
+  con otro rótulo, pero el margen se consumió. Es forma → PR 2.
+- **El plano isométrico memoiza la escena** (`IsoMap`, `useMemo`) y pinta con
+  `temaActual()` adentro: el tema tiene que ser dependencia o el sol/luna deja
+  la terna vieja hasta recargar.
+- **Sin navegador en el sandbox de los agentes**: el frontend no pudo mirar
+  ninguna pantalla; el verificador sí (Chromium de Playwright preinstalado) y
+  además tuvo que servir Chivo/Archivo Narrow por `page.route` para que el
+  ANTES no midiera con la fuente de respaldo. Y las pilas de sistema resuelven
+  a Liberation/DejaVu en Linux: en macOS la mono es más angosta, en Windows
+  más ancha.
+
+### Pendientes para el PR 2 (Vender) y el PR 3
+
+- Rótulo del mueble en el plano isométrico con la mono (desborde de 7,6 px);
+  `EXH-CENTRAL` en el FloorMap se desborda de su caja en las dos versiones.
+- `DISPLAY_TOP` del plano: siete clases sobre cuatro colores validados
+  (`active`/`expired`/`no_contract` del mismo rojo). O una paleta de siete
+  validada, o borrar el respaldo (el mapa siempre tiene periodo).
+- El «Guardar» del plano en el Editor 3D quedó en tinta y el del modal de artes
+  en amarillo: probablemente al revés; decisión del dueño.
+- Paletas categóricas por TIPO de mueble (`FloorPlan2D`, `fixtureStore`,
+  `zones.ts`): a ojo, sin validar; y el color de cada mueble queda GUARDADO en
+  datos, así que moverlas toca datos.
+- `--con-*` de la consola de plataforma reprueban contraste en los dos modos
+  (`#8E979B` sobre blanco 2,98:1 ×33 nodos): preexistente, PR 3.
+- Escala tipográfica fluida de E y `--s5/--s6` (24/32) vs Tailwind `p-5/p-6`
+  (20/24): conviven a propósito; moverlos relayoutea (PR 2).
+- `StoreView.tsx` y `Legend.tsx` son código muerto: borrar.
+
 ## Herramientas de diseño en el repo
 
 `.claude/skills/` trae **ui-ux-pro-max** (MIT, `nextlevelbuilder/ui-ux-pro-max-skill`),

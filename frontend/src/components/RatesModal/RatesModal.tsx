@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { SlidersHorizontal, X } from "lucide-react";
 import { useFixtureStore } from "../../store/fixtureStore";
 import { RATE_TYPES, rateTypeLabel } from "../../types/fixtures";
+import { useModalAbierto } from "../../tema";
 
 /** Tariff editor (admin only). One general rate per fixture type plus an
  *  optional override for the sede being edited. Every keystroke goes through
@@ -47,7 +48,7 @@ export default function RatesModal({ onClose }: { onClose: () => void }) {
 
   const inputStyle: React.CSSProperties = {
     width: "100%", height: 30, padding: "0 8px",
-    borderRadius: "var(--r-md)", border: "1px solid var(--line)",
+    borderRadius: "var(--r-md)", border: "1px solid var(--brd-control)",
     background: "var(--surface-2)", color: "var(--ink-1)",
     fontSize: 12, fontFamily: "var(--font-mono)", outline: "none",
     textAlign: "right",
@@ -60,8 +61,16 @@ export default function RatesModal({ onClose }: { onClose: () => void }) {
     whiteSpace: "nowrap",
   };
 
+  // Este modal NO tiene botón principal amarillo, y no es un olvido: no tiene
+  // botón de guardar. Las tarifas se guardan al salir de cada campo, igual que
+  // las sedes y las etiquetas (ver el encabezado del archivo). El único botón
+  // es «Cerrar», que es salida, no acción. Lo que sí hace es APAGAR el amarillo
+  // de la pantalla de atrás mientras está abierto.
+  useModalAbierto();
+
   return (
     <div
+      data-capa-modal
       onClick={onClose}
       style={{
         position: "fixed", inset: 0, zIndex: 150,
@@ -125,7 +134,7 @@ export default function RatesModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setEditSede(e.target.value)}
               style={{
                 height: 28, padding: "0 8px",
-                borderRadius: "var(--r-md)", border: "1px solid var(--line)",
+                borderRadius: "var(--r-md)", border: "1px solid var(--brd-control)",
                 background: "var(--surface-2)", color: "var(--ink-1)",
                 fontSize: 12, fontFamily: "var(--font-mono)", fontWeight: 600,
                 outline: "none", cursor: "pointer",

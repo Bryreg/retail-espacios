@@ -5,6 +5,7 @@ import {
 import { confirmarLote, validarLote, type FilaRevisada, type Revision } from "../../api/bulkLeases";
 import { describeError } from "../../api/client";
 import { descargarPlantilla, leerPlanilla, type FilaPlanilla, type LecturaPlanilla } from "../../utils/planilla";
+import { useModalAbierto } from "../../tema";
 
 /**
  * Cargar una tanda de contratos desde la planilla de la reunión comercial.
@@ -61,6 +62,10 @@ export default function CargaMasiva({
   const [error, setError] = useState("");
   const [creados, setCreados] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Mientras la carga masiva está abierta, ELLA es la pantalla: se lleva el
+  // amarillo y el «Guardar contrato y avisar» de Vender pasa a tinta.
+  useModalAbierto();
 
   const porFila = useMemo(() => {
     const m = new Map<number, FilaPlanilla>();
@@ -132,6 +137,7 @@ export default function CargaMasiva({
 
   return (
     <div
+      data-capa-modal
       style={{
         position: "fixed", inset: 0, zIndex: 60,
         background: "rgba(26,24,20,.45)",
@@ -378,16 +384,17 @@ export default function CargaMasiva({
                 >
                   Cambiar el archivo
                 </button>
+                {/* Mientras este modal está abierto ÉL es la pantalla, así que
+                    se lleva el amarillo y el de Vender que quedó atrás pasa a
+                    tinta (`[data-modal-abierto]` en `index.css`). */}
                 <button
+                  className="btn-principal"
                   onClick={guardar}
                   disabled={!marcadas.length || ocupado}
                   style={{
-                    height: 38, padding: "0 18px", borderRadius: "var(--r-lg)", border: "none",
+                    height: 38, padding: "0 18px", borderRadius: "var(--r-lg)",
                     display: "inline-flex", alignItems: "center", gap: 7,
-                    background: marcadas.length ? "var(--accent)" : "var(--surface-3)",
-                    color: marcadas.length ? "#fff" : "var(--ink-4)",
-                    fontSize: 13.5, fontWeight: 700, fontFamily: "inherit",
-                    cursor: marcadas.length && !ocupado ? "pointer" : "default",
+                    fontSize: 13.5, fontFamily: "inherit",
                   }}
                 >
                   {ocupado
