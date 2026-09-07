@@ -86,6 +86,44 @@ las reglas, y son de cumplimiento:
 8. **Prioridad visible.** Lo urgente primero y se nota: por orden, por peso,
    por señal. Alta / media / baja son palabras, no sólo colores.
 
+## 3b. La forma de cada dato — el corazón del encargo
+
+**Lo que más pesa en este rediseño es la presentación de los datos.** Antes
+de dibujar cada bloque hay que contestar por escrito: ¿qué pregunta responde
+este dato? ¿qué trabajo hace (magnitud, partes de un total, ranking,
+cambio en el tiempo, ubicación, comparación contra una referencia, conteo)?
+¿qué forma le corresponde a ese trabajo? La guía completa está en la skill
+`dataviz` (`references/choosing-a-form.md`, `marks-and-anatomy.md`,
+`anti-patterns.md`): leerla entera antes de diseñar.
+
+Punto de partida (a discutir, no a copiar). Cada opción tiene que traer en su
+README **esta tabla completa, con su propia respuesta y su porqué**, para
+cada dato del inventario de §4:
+
+| Dato | Pregunta | Trabajo del dato | Forma que le toca | Contra qué |
+|---|---|---|---|---|
+| Ingreso contratado del mes (cliente o cartera) | ¿cuánto entra? | magnitud sola | cifra grande, con su variación al mes anterior al lado (una flecha con número, no un anillo) | mes anterior |
+| Ocupación % | ¿qué tan lleno está? | parte de un total | cifra + la proporción dibujada como unidades que suman (ocupados + libres = comercializables), no un anillo ni una torta | mes anterior · cartera |
+| Ocupación por sede | ¿qué sede rinde y cuál no? | ranking de partes | barras ordenadas de menor a mayor con la cifra al final de cada una; la peor primero porque es la llamada | la media del cliente |
+| Tendencia 12 meses (ingreso, ocupación) | ¿hacia dónde va? | cambio en el tiempo | línea con eje de tiempo, el mes parcial marcado, y los movimientos anotados sobre la línea (entró X, venció Y) | su propio pasado |
+| Movimientos (entradas / salidas por mes) | ¿qué se ganó y qué se perdió? | flujo con signo en el tiempo | barras divergentes sobre el eje de meses (entradas arriba, salidas abajo), rotuladas con plata, no con conteo | el saldo |
+| Espacios por estado (libre / se libera / ocupado) | ¿cuánto hay para vender? | conteo | unidades discretas (una marca por espacio, agrupadas por sede o tipo), con la palabra al lado del color | — |
+| Canon promedio por tipo vs benchmark | ¿cobra bien? | comparación contra referencia | par de puntos o barra con la referencia como línea, por tipo, con la brecha escrita en % | benchmark de la plataforma |
+| Spread % (cartera) | ¿quién cobra por debajo de lo que dice que vale? | comparación contra referencia, por cliente | puntos sobre un eje con el cero marcado; negativo a la izquierda; el nombre al lado | cero |
+| Proveedores: participación % | ¿de quién depende? | partes de un total, ranking | barras horizontales ordenadas que suman 100, con el umbral de concentración marcado | umbral |
+| Contratos por vencer | ¿qué se cae y cuándo? | hechos con fecha | eje de tiempo de los próximos 90 días con cada contrato como marca rotulada con plata, o una lista ordenada por fecha si son pocos | hoy |
+| Recomendaciones | ¿qué hago primero? | ranking por valor y prioridad | lista ordenada, cada una como acción + evidencia en una línea + valor; la prioridad como palabra y como orden | valor en juego total |
+| Oportunidades (espacio libre + candidatos) | ¿a quién le ofrezco qué? | asignación | tabla agrupada por sede y tipo, con el precio sugerido y su origen, y los candidatos como nombres; el plano de la sede si existe | precio sugerido |
+| Adopción (activa / dormida / fantasma / sin cuentas / nueva) | ¿quién no está usando lo que paga? | clasificación con conteo | conteo por clase en unidades, y la lista de los fantasma con días sin acceso | — |
+| Cohortes de adopción | ¿los nuevos se quedan? | retención en el tiempo | tabla de cohortes (mes de alta × retención a 30 días), sin gráfico si son pocas | — |
+| Valor en juego total | ¿cuánto vale hacer todo esto? | magnitud sola | cifra grande con las partes que la componen visibles (cuánto es espacios libres, cuánto precio, cuánto vencimientos) | ingreso actual |
+
+Reglas duras de esta tabla: **una sola escala por gráfico** (nunca dos ejes);
+color categórico en orden fijo y validado; los tres estados con sus hex de
+`tema.css`; el gris para lo que no se alquila o no tiene dato; cada gráfico
+con su tabla equivalente accesible; **ningún gráfico sin la frase de arriba
+que diga qué se ve**.
+
 ## 4. Lo que la plataforma SABE (inventario real, no inventar más)
 
 Todo esto ya lo calcula el sistema. Los diseñadores reciben además un
