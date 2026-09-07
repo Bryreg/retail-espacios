@@ -1,499 +1,391 @@
-# Verificación de D · La fusión — dirección de arte
+# Re-verificación de D · La fusión — dirección de arte
 
 **Pieza:** `/tmp/retail-espacios-test/features/plataforma-asesoria/outputs/opciones/D-fusion/index.html`
-(286.590 bytes · 2.164 líneas) · **README:** `.../D-fusion/README.md` (359 líneas)
-**Fecha:** 2026-09-07 · **Contra:** `features/plataforma-asesoria/brief.md` y el pedido del dueño
-(organización y UX de C · presentación de datos de A · letra a la escala del producto ·
-módulos de una pantalla con el detalle al clic).
+(290.694 bytes · 2.217 líneas) · **README:** `.../D-fusion/README.md` (602 líneas, con §7 nueva)
+**Fecha:** 2026-09-07 · **Contra:** el informe anterior de esta misma pieza (las 7 fallas) y,
+otra vez, `features/plataforma-asesoria/brief.md`.
 
 **Método.** Chromium 1194 (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`) sobre el
-`file://`, sin red. Seis pasadas de medición y una de captura, todas en el scratchpad:
-`D-shot.mjs` (capturas) · `D-med.mjs` (alto, letra, contraste, signal, 4 combinaciones) ·
-`D-letra.mjs` (letra por origen HTML/SVG) · `D-svg.mjs` (19 estados de gráfico) ·
-`D-color.mjs` (uso de token de color, 2 modos × 7 vistas) · `D-panel.mjs` / `D-contr.mjs` /
-`D-null.mjs` (panel) · `D-jer.mjs` (jerarquía) · `D-aire2.mjs` (aire muerto) ·
-`D-str.mjs` (bordes de estado) · `D-int.mjs` (detalle al clic) · `D-texto.mjs` (volcado de
-texto + PDF A4). Validador de paleta: el de la skill `dataviz`, corrido con los mismos
-argumentos que declara el README.
+`file://`, sin red. Once pasadas nuevas, todas en el scratchpad: `m1-null.mjs` (barrido de
+`null` en 12 vistas × 2 modos × 2 anchos) · `m1b-marca.mjs` (celdas de MARCA) ·
+`m2-informe.mjs` / `m2b.mjs` (cuadre del informe, tabla de sedes, PDF A4) · `m3-cap4.mjs`
+(conteo del capítulo 4 contra su tabla y su pie) · `m4-aire.mjs` (aire de cola, desborde,
+scroll a 5 anchos) · `m5-cola.mjs` (la `.ruta` y el eje x) · `m6-foco.mjs` (ciclo de teclado
+paso a paso) · `m7-reg.mjs` (contraste y `var(--signal)`) · `m8-letra.mjs` / `m9-svgtxt.mjs`
+(tamaños renderizados, ahora con `getScreenCTM`) · `m10-reg2.mjs` (formas, confidencialidad,
+detalle filtrado) · `m11-hueco.mjs` (**hueco interior máximo por columna** — la medición que
+faltaba) · `shots.mjs` (capturas).
 
-**Capturas** (27 archivos, `outputs/capturas/`): `D-cartera-{claro,oscuro}-1440.png`,
-`D-cartera-claro-1366.png`, `D-sesion-cap{1..5}-{claro,oscuro}-1440.png`,
-`D-sesion-cap{1..5}-claro-1366.png`, `D-informe-{claro,oscuro}-1440.png`,
-`D-informe-claro-1366.png`, `D-informe-completa-*.png`,
-`D-detalle-{claro,oscuro}-1440.png` (panel abierto al clic),
-`D-codigos-claro-1440.png` (los 113 códigos con el plano encendido).
+**Capturas** (35 archivos `D2-*.png`, `outputs/capturas/`): cartera, cola, los 5 capítulos,
+informe y detalle en `claro-1440`, `oscuro-1440` y `claro-1366`; más
+`D2-clave-7px-cap1-claro-1440.png` (recorte del dibujo) y `D2-thead-tapado-claro-1440.png`.
 
 ---
 
 ## Veredicto
 
-**D cumple el encargo y es la mejor construida de las cuatro.** La decisión —cinco capítulos
-conmutados, UNA superficie de detalle que llega filtrada— es fuerte y está sostenida en el
-código, no sólo en el README. Las 12 mediciones pedidas dan bien o muy bien: cero scroll de
-documento en las cuatro combinaciones, cero contraste por debajo de piso en 21 estados × 2
-modos, un solo `var(--signal)` por pantalla, nada por encima de 30 px, cero recursos externos,
-informe en 3 páginas A4 con el titular al 93 % del ancho, y el validador reproduce el README
-línea por línea.
+**Seis de las siete fallas están arregladas, y bien.** Las tres GRAVES —el `null` crudo, el
+informe que no cuadraba y el capítulo 4 que prometía 111 y entregaba 109— están resueltas con
+mediciones que reproduzco una por una, y en los tres casos la solución elegida es la honesta:
+se escribe la ausencia, se explica la diferencia, se cuenta lo que falta al pie en vez de
+inventar filas. Las dos MENORES y la `.ruta` de la cola también.
 
-**No firmo sin cuatro arreglos.** Dos son de honestidad del dato —que es la regla 7 del
-brief— y uno de ellos vive en la pieza que se le deja al cliente. Los otros dos son de
-composición: al ancho de referencia (1440×900) la mitad de la pantalla queda en blanco en dos
-capítulos, y en la cartera hay una línea que se corta con puntos suspensivos.
+**La falla 3 no está arreglada: está mudada.** El aire de cola bajó de 43,9 % a 4,6 % en el
+capítulo 4 —eso es cierto y lo confirmo—, pero el hueco no desapareció: se corrió al medio de
+la columna. A 1440×900 el capítulo 5 tenía **437 px** de blanco al pie; ahora tiene **463 px**
+de blanco **en el medio**, entre la tarjeta de metadatos y el aviso de cierre. El número que
+publica el README mide la cola, no el hueco, y por eso da bien mientras la pantalla sigue
+medio vacía. El propio README fija el límite —«la costura mide entre 150 y 250 px»— y la
+costura mide 260, 276, 384 y 463 px en cuatro de los cinco capítulos.
 
----
-
-## 1 · Alto por capítulo activo — documento y paneles
-
-`scrollHeight` vs `clientHeight` del documento, con el capítulo activo pintado. Cuatro
-combinaciones (1440×900 y 1366×768, claro y oscuro): los cuatro dan **idénticos**.
-
-| Vista | 1440×900 | 1366×768 | scroll de documento |
-|---|---|---|---|
-| Cartera | 900 / 900 | 768 / 768 | **0** |
-| Capítulo 1 | 900 / 900 | 768 / 768 | **0** |
-| Capítulo 2 | 900 / 900 | 768 / 768 | **0** |
-| Capítulo 3 | 900 / 900 | 768 / 768 | **0** |
-| Capítulo 4 | 900 / 900 | 768 / 768 | **0** |
-| Capítulo 5 | 900 / 900 | 768 / 768 | **0** |
-| Informe | 3.086 / 900 | 3.086 / 768 | rueda, con barra a la vista (es un documento, corresponde) |
-
-`scrollWidth` = `clientWidth` (1440/1440 y 1366/1366): **cero scroll horizontal de página**.
-
-**Paneles internos con desborde escondido: cero en los cinco capítulos**, en los dos modos.
-En la cartera hay dos, medidos:
-
-- `div.cola` (la cola de llamadas): `scrollWidth` 742 vs `clientWidth` 729 → **13 px de
-  desborde horizontal** con `overflow:auto` (`index.html:235`). Aparece barra horizontal en
-  una lista que no tiene nada que mostrar a la derecha. Vertical: 357/357, sin desborde.
-- `p.ruta` de la cola: `scrollWidth` 1.206 vs `clientWidth` 729 → **477 px de texto
-  recortados** (516 a 1366). Ver §13, falla 2.
-
-**Aire muerto** (última tinta —texto o SVG— contra el alto de la ventana). Es la medición que
-el README no hace y que un director de arte sí mira:
-
-| Vista | 1440×900 · px en blanco | % | 1366×768 · px en blanco | % |
-|---|---|---|---|---|
-| Cartera | 148 | 16,5 % | 16 | 2,1 % |
-| Capítulo 1 | 268 | 29,8 % | 63 | 8,3 % |
-| Capítulo 2 | 297 | 33,0 % | 156 | 20,3 % |
-| Capítulo 3 | 173 | 19,2 % | 25 | 3,2 % |
-| **Capítulo 4** | **393** | **43,7 %** | 261 | 34,0 % |
-| **Capítulo 5** | **437** | **48,5 %** | 287 | 37,3 % |
-
-La composición está afinada para 1366×768 y no crece a 1440×900. Ver §13, falla 3.
+**Y aparecen dos cosas que mi informe anterior no vio, una de ellas porque la medí mal.** La
+clave que va dentro de los dibujos —«ocupado · se libera este mes · libre»— se imprime a
+**7,0 px** a 1440×900 y a **6,6 px** a 1366×768. Mi §5 anterior decía «mínimo 10 px, 0 nodos
+por debajo de 10»: era falso, y lo retiro. No lo causó el arreglo (lo probé), pero es el
+argumento contra la respuesta que el arreglo eligió para la falla 3.
 
 ---
 
-## 2 · El detalle al clic
+## 1 · GRAVE — el `null` de la columna MARCA · **ARREGLADO**
 
-**Cerrado, no está renderizado.** Con la aplicación recién cargada y en cada capítulo:
-`#panel-cuerpo` tiene **0 `<tr>`** en el DOM (0 filas de cuerpo, 0 filas totales),
-`aria-hidden="true"`. No hay 254 filas escondidas.
+El helper es único y está donde dice: `escN` en `index.html:460`
+(`v==null || v==="" ? "—" : esc(v)`), usado en **1076** (celda de contrato de la pestaña
+Espacios), **1085** (columna MARCA de Contratos) y **1633** (el escalón «El espacio»).
+Medido en el navegador: `escN(null)` → `—`, `escN("")` → `—`, `escN("X")` → `X`.
 
-**Se abre al clic y llega filtrado.** Desde el capítulo 1, botón «Los 108 espacios de
-TERRÓN» (`[data-detalle='{"sede":"TERRON"}']`):
+**Barrido de `null` / `undefined` / `NaN`.** 12 vistas (cartera · capítulos 1 a 5 · informe ·
+las 5 pestañas del panel agotadas · el panel de los 113 códigos) × 2 modos × 2 anchos =
+**48 pasadas**, incluyendo nodos de texto visibles, `<title>` de SVG, `aria-label`, `title` y
+`alt`:
 
-- título «Las cinco tablas de Mercamío», subtítulo «…Llegaste con el filtro puesto: TERRON.»
-- **filtros:** una sola fila — `f-sede="TERRON"`, `f-tipo=""`, `f-estado=""`, `f-q=""`, «Limpiar»
-- **pestañas con conteo, recalculadas contra la misma rebanada:**
-  `Espacios 108 · Contratos 9 · Proveedores 7 · Movimientos 12 meses · 32 · Oportunidades 3`
-- sin filtro (desde el capítulo 4): `Espacios 254 · Contratos 109 · Proveedores 25 ·
-  Movimientos 12 meses · 86 · Oportunidades 30`
-- filas por pestaña, contadas en el DOM: 40 (de 108) · 9 · 7 · 32 · 3
-
-**Por tandas, medido:** abre con **40** filas → «Mostrar 40 más» → **80** → al rodar hasta el
-fondo → **108** (y **254** sin filtro), con el pie «109 de 109 filas — no queda ninguna» /
-«N de M filas · el resto llega al rodar» (`index.html:972-975`).
-
-**Teclado:** al abrir, el foco va a `#panel-x`; con `Esc` el panel cierra (`aria-hidden="true"`,
-0 filas) y **el foco vuelve al botón que lo abrió** (`.btn.lupa`). Verificado.
-*Salvedad:* tras pulsar «Mostrar 40 más» el foco cae a `BODY` — el botón se repinta y el
-teclado pierde el lugar (menor, §13 falla 6).
-
-**Otras dos superficies de detalle, verificadas al clic:**
-«Las otras 19 acciones» → panel con **19 filas** (6 a la vista + 19 = **25** recomendaciones
-alcanzables, que es el total del ejemplo). «Los 113 códigos de caras de góndola, por sede» →
-**113 códigos** agrupados en 3 sedes con **3 planos SVG** encendidos («El plano de TERRON, con
-estos 96 encendidos y el resto en gris»). El párrafo crudo de 113 códigos de
-`recomendaciones[].explicacion` **no aparece nunca** en pantalla — el defecto que el dueño
-citó por su nombre está resuelto.
-
----
-
-## 3 · Jerarquía — la conclusión primero
-
-El primer texto de cada capítulo es la frase-conclusión con su número, y debajo la ruta del
-dato en mono de 10 px. Volcado literal:
-
-| | Primera línea |
+| | resultado |
 |---|---|
-| Cartera | «La cartera factura **$ 382.107.500** sobre **513** espacios en **15** sedes, al **47,4 %**…» |
-| Cap. 1 | «Mercamío factura **$ 201.667.500** este mes con **111** contratos sobre **254** espacios en **7** sedes: **42,9 %** de ocupación, **−4,5** puntos…» |
-| Cap. 2 | «Seis hallazgos, en orden de lo que pesan: todo lo vacío está en una sola sede (**$ 82.960.000**)…» |
-| Cap. 3 | «Hacer todo esto no vale un número: vale **tres**, y no se suman…» |
-| Cap. 4 | «Cada cifra de los tres capítulos de arriba aterriza acá: **254** espacios, **111** contratos…» |
-| Cap. 5 | «Esta sesión sale de dos llamadas, no de una…» |
-| Informe | «Usted tiene **148** espacios sin vender de **254** y **$ 166.957.500** mensuales sobre la mesa: el **83 %** de lo que factura hoy.» |
+| coincidencias de `null` / `undefined` / `NaN` | **0** en las 48 pasadas |
+| errores o avisos de consola | **0** en las 4 combinaciones |
 
-**Gráficos sin frase de arriba: 0 sobre 19 estados de gráfico medidos** (5 módulos de cartera,
-4 del capítulo 1, 6 hallazgos, informe). Los módulos de la derecha (`.panelito`) abren siempre
-con su propia `.frase` + `.ruta`; la cadena se cumple sin excepción.
+**Las celdas de MARCA, con la tabla agotada:**
 
-Única observación: el capítulo 3 es el único cuya frase de apertura no lleva cifra en la frase
-misma («vale tres»). Es deliberado —las tres cifras van rotuladas inmediatamente debajo, y la
-suma falsa `$ 386.142.500` aparece tachada— y lo doy por bueno.
-
----
-
-## 4 · Las formas contra la guía
-
-Barrido de los 19 estados de gráfico, en los dos modos:
-
-| Anti-patrón | Resultado |
-|---|---|
-| Dos ejes en un gráfico | **0.** Cada SVG tiene una sola escala. Las dos barras por proveedor (H2) son dos series sobre **un mismo eje de %** (0–60 %), no dos ejes. Las dos líneas de doce meses son **dos conteos sobre una escala de espacios**. |
-| Torta o anillo | **0.** `path` con arco: **0**. `circle` de radio > 14: **0**. |
-| Color categórico cíclico | **0.** No hay paleta de series: tinta de dato (`--dato` / `--dato-tenue` / `--resto`) y los tres estados. Máximo 7 rellenos distintos en un dibujo (H2), y son roles, no una rueda. |
-| Gráfico sin frase que diga qué se ve | **0 sobre 19.** |
-| Referencia fuera del dibujo (leyenda HTML al lado) | **0.** Todas las claves están **dentro del SVG**: «ocupado / se libera este mes / libre», «al promedio del cliente, 42,9 %», «la línea negra es el umbral de concentración, 40 %», «lo que cobra Mercamío / promedio de la plataforma», «entradas, arriba del cero / salidas, abajo del cero», «sin dato», «parcial», «100 % de los 513 espacios comercializables». |
-| Anotación sobre el dato | Cumplido: «+108 caras · plano de TERRÓN», «Higiénicos Zafra cancela 6 contratos», «−74 · Guadual ilegible», «el escalón del inventario no tocó la plata», cada una escrita sobre su línea y en su carril. |
-| Textos pisados o fuera del dibujo | **0** dentro de los SVG. |
-
-Los cinco desvíos que el README declara (medidor en cartera, largo en espacios y no en %, dos
-conteos en vez de línea de %, tres cifras en vez de una suma, riel de 60 y no de 90) están
-efectivamente construidos así y cada uno lleva su motivo escrito **en pantalla**, no sólo en
-el README. Los apruebo los cinco: el de la ocupación por sede (ARRAYÁN 8/12 y VILLA 16/24 dan
-las dos 66,7 % pero no son el mismo negocio) es el que mejor demuestra que hay alguien que
-entiende de alquilar metros de góndola.
-
----
-
-## 5 · Tamaños de letra renderizados
-
-Recorriendo cartera + 5 capítulos + informe, contando nodos de texto visibles:
-
-- **Máximo: 30 px.** Nodos por encima de 30 px: **0**.
-- **Mínimo: 10 px** (`.ruta` y `.rotulo`, en monoespaciada). Nodos por debajo de 10 px: **0**.
-- **Pasos usados: 13** — 10 · 11 · 11,5 · 12,5 · 13 · 13,5 · 14,1 · 15 · 16,5 · 17,5 · 21 · 27 · 30.
-
-Contra la escala declarada de `vender.css` (10 · 11,5 · 12,5 · 13,5 · 15 · 17,5 · 21 · 30 =
-**8 pasos**), sobran cinco valores renderizados. Origen medido, y ninguno es un descuido de
-token:
-
-- **11 px y 13 px** salen de `<text>` dentro de SVG con `viewBox`: el token 11,5 / 13,5 se
-  escala con el dibujo. Es consecuencia de dibujar responsivo, no de elegir otro tamaño.
-- **14,1 · 16,5 · 27 px** salen de `.frase em{font-size:.94em}` (`index.html:133`) y de
-  `.titular em{font-size:.9em}` (`index.html:341`) — la cifra en monoespaciada dentro de la
-  frase. Es un ajuste óptico legítimo (la mono corre más grande a igual cuerpo) y ninguno pasa
-  de 30.
-
-**Cuerpo:** `body{font-size:var(--t-sm)}` = **13,5 px** (`index.html:85`), como declara el
-README. El tamaño más frecuente en pantalla es 12,5 px (249 nodos: pestañas, celdas de tabla,
-chips), después 11,5 (137) y 10 (108); 13,5 tiene 32 nodos. Es decir: **el cuerpo es 13,5 pero
-la pantalla la domina 12,5**. No es una falla —la escala es coherente y todo pasa contraste—
-pero el README debería decirlo así.
-
-**Una sola cifra de 30 px por pantalla:** cartera **1** (`$ 382.107.500`) · capítulo 1 **1**
-(`$ 201.667.500`) · capítulos 2, 3, 4 y 5 **0** (el máximo ahí es 21 px) · informe **1** (el
-titular). Cumplido con holgura.
-
----
-
-## 6 · Contraste, en los dos modos
-
-Recorrido de cada nodo de texto visible, color efectivo contra el fondo real heredado (con
-mezcla por alfa), piso WCAG 4,5:1 o 3,0:1 si ≥ 24 px o ≥ 18,66 px en negrita.
-
-**Nodos por debajo de su piso: 0.** En los dos modos, sobre **21 estados de pantalla**:
-5 módulos de la cartera, 4 módulos del capítulo 1, los 6 hallazgos, capítulos 3-4-5, el
-**panel abierto** y el informe. Total 42 mediciones, todas limpias.
-
-`--ink-4` (`#68788A`, 3,98:1 sobre el papel `--bg #EFF1ED`) **no se usa**: la única aparición
-en todo el archivo es el comentario que explica por qué no se usa (`index.html:45`). El
-hallazgo sobre `tema.css` es correcto y vale para el port.
-
-**Compensaciones del modo oscuro, verificadas:** de **324 rellenos de estado** medidos en
-`<rect>`/`<circle>`/`<path>` (capítulo 1 sedes 257, H1 20, H3 19, H4 4, informe 24),
-**324 llevan borde** y **0 van sin borde**. Y la palabra va siempre al lado del color, escrita
-dentro del dibujo. La desviación de banda del oscuro está compensada como el README dice.
-
----
-
-## 7 · `var(--signal)` — un amarillo por pantalla
-
-Contando elementos visibles cuyo `background-color` resuelve al token `--signal`:
-
-| Pantalla | claro | oscuro | cuál |
+| pestaña | filas | MARCA escrita «—» | celdas con `null` |
 |---|---|---|---|
-| Cartera | 1 | 1 | «Abrir la sesión de Mercamío →» |
-| Capítulos 1 a 5 | 1 cada uno | 1 cada uno | «Generar el informe →» |
-| Informe | 1 | 1 | el botón de imprimir |
-| Panel abierto | 1 | 1 | el de la pantalla de abajo, sin sumar otro |
+| Espacios | 254 | **21** | **0** |
+| Contratos | 109 | **21** | **0** |
 
-**Cumplido: exactamente uno, en las 4 combinaciones.** En el código hay una sola regla que lo
-usa (`index.html:162`, `.btn-signal`); no hay un segundo amarillo suelto.
+La fila que citaba el informe anterior, `TERRON-GON-02`, ahora lee
+«Higiene Nívola · **—**». Se ve en `D2-detalle-contratos-pie-claro-1440.png`
+(`CENTENARIO-ISL-01` y `PALMAR-CRZ-02`, columna MARCA).
 
----
-
-## 8 · Rojo, ámbar y verde sólo en los tres estados del espacio
-
-Barrido de `fill`, `stroke`, `color`, `background-color` y bordes, en los dos modos, sobre las
-7 pantallas:
-
-- `--ocupado` / `--entra` / `--libre` (y sus `-suave` / `-txt`) aparecen **sólo** en marcas de
-  estado de espacio: el mapa de unidades (107 ocupado + 4 se libera + 146 libre), las barras
-  de sede y de tipo, la marca cuadrada del riel, y el chip «113 libres» del capítulo 3.
-- La cartera **no usa ni un rojo ni un ámbar ni un verde**: la señal (`SIN DATO`, `FANTASMA`,
-  `COBRA POR DEBAJO`, `OCUPACIÓN BAJA`, `SIN TARIFA`, `NUEVA`), el estado de cuenta y la
-  prioridad van en gris o en tinta. Es la regla que A rompía; acá se cumple.
-- **Una excepción, y es a propósito:** `.aviso.cruce{border-left-color:var(--ocupado)}`
-  (`index.html:270`, usado en `index.html:1618`) — la tarjeta de advertencia entre la acción 1
-  y la 2 lleva filete rojo. Es **1** ocurrencia, no codifica ningún dato y el propio README la
-  describe. La dejo pasar, pero contradice la regla tal como el README la enuncia («SÓLO los
-  tres estados»); la regla debería decir «sólo los tres estados **codifican dato**».
+**La precisión del arreglo es correcta y la confirmo:** el `<title>` del mapa de unidades
+(`index.html:631`) **nunca** imprimía la marca. Volqué los 254 títulos del capítulo 1 y todos
+tienen la forma `CÓDIGO · tipo · estado · proveedor`
+(p. ej. «TERRON-GON-01 · cara de góndola · ocupado · Confites Marandúa»). El tercer sitio del
+`null` era el escalón «El espacio», que en el archivo de hoy está en la línea 1633 y que mi
+informe anterior citó como 1585. La corrección es del arreglo, no mía.
 
 ---
 
-## 9 · Los tres estados, siempre tres
+## 2 · GRAVE — el informe no cuadraba consigo mismo · **ARREGLADO**
 
-- La cadena «libre o se libera»: **0 apariciones** en todo el archivo.
-- Cada dibujo de estado lleva su clave con **los tres**: «ocupado · se libera este mes · libre»
-  (capítulo 1 sedes, capítulo 2 H1 y H3, informe).
-- Las filas rotulan el tercero por separado cuando existe: «15 de 30 · 50,0 % · **1 se libera**»,
-  «16 de 24 · 66,7 % · **1 se libera**», «27 de 34 · 79,4 % · **1 se libera**».
-- El riel de vencimientos distingue con marca cuadrada el espacio «ya está en «se libera»».
-- La tabla del informe tiene columna propia `SE LIBERA ESTE MES`.
+**La cuenta es una sola** (`index.html:920-921`): `CON_PLANO` = **109**, `CON_FUERA` = **2**,
+`CON_TOT` = **111**. Verificado en el navegador, más `OCUP` = 106 y `SELIB` = 3.
 
-**Cumplido.**
+**Lo que publica el informe, medido sobre el texto renderizado:**
 
----
+- Titular del capítulo 1: «Este mes tiene **111 contratos activos** sobre 254 espacios en
+  7 sedes, por $ 201.667.500 mensuales».
+- Párrafo nuevo, inmediatamente debajo: «**Por qué más abajo va a leer 109 y no 111:** de los
+  111 contratos, **109** están sobre espacios con cara en el plano —**106** ocupados más **3**
+  que se liberan este mes, que es exactamente lo que suma la tabla de sedes— y los otros **2**
+  están sobre códigos que no tienen cara: suman al ingreso y no pueden sumar a la ocupación,
+  porque no hay espacio que ocupar.»
+- Serie mes a mes: «septiembre 254 espacios, **109 con contrato**, 42,9 %, $ 201.667.500
+  (parcial)».
+- **Tabla de sedes, sumada columna por columna en el DOM: OCUPADO = 106 · SE LIBERA ESTE MES =
+  3.** 106 + 3 = 109 = `CON_PLANO`. **Cierra.**
+- Menciones de los contratos sin cara en el informe: **1** (antes 0).
 
-## 10 · Confidencialidad y frontera
+Un gerente que sume la columna obtiene 106 y encuentra los 106 escritos en la misma página,
+con el 3 y el 2 al lado. Eso era lo que faltaba y está.
 
-- **«tarifa de referencia»:** aparece en 3 vistas (hallazgo H6, capítulo 5, informe) y las
-  tres veces **como declaración de ausencia o de frontera**, nunca como cifra:
-  «robatope y batea no tienen tarifa de referencia cargada», «NUNCA SALE DE LA BASE DEL
-  CLIENTE: la tarifa de referencia. Sólo su relación (`spread_pct`) y si existe».
-  **Cifras de tarifa de referencia en pantalla: 0.**
-- El pie de las cinco tablas repite la frontera: sólo lectura, nombres saneados, la tarifa no
-  aparece, la consulta queda en bitácora (`index.html:1087`).
-- **Informe del cliente:** 0 apariciones de *fantasma, dormida, gracia, solo lectura,
-  suspendido, adopción, spread, cartera, bitácora, supresión, endpoint*, y **0 nombres de
-  otros clientes** (Superandes, Tiendas La Vereda, Almacenes Caribe, Provisiones Tolima,
-  Mercado El Guadual). Tampoco `GET /api`.
-- Códigos de espacio en el informe: **3** (`VILLA-PUN-01`, `CENTENARIO-NEV-01`,
-  `NAVE-CRZ-01`), los tres contratos que vencen. No hay volcado.
-- Nombres de proveedor saneados; **pero** ver §13 falla 1: la columna MARCA imprime `null`.
+**El A4 no se movió:** `/Count 3` en el PDF, **0** controles visibles con `media:print`.
 
----
-
-## 11 · El informe en A4
-
-Impreso con `emulateMedia('print')` y `page.pdf({format:'A4'})`:
-
-- **Páginas: 3** (`/Count 3` en el PDF). El defecto de C (5 páginas) está arreglado.
-- **Titular:** 30 px, **874 px de 940 px de ancho de papel = 93,0 %**, en **2 líneas**. El
-  defecto más visible de C (434 px de 900, 6 líneas) está arreglado.
-- **Controles visibles en `media:print`: 0** — ni cabecera, ni rail, ni botones.
-- Estructura: cabecera RECABRA / Mercamío / periodo → titular → bajada → «1 · Dónde está su
-  negocio hoy» → gráfico de sedes con su clave dentro + **tabla equivalente** → 2 → 3.
-- Nada interno, nada de la cartera, nada del capítulo 4. Se lo puede mostrar a un gerente
-  **salvo por la falla 1 de §13**, que está justo en la primera frase del capítulo 1.
+**Una precisión sobre el resumen del arreglo.** Dice «el informe publica 111 una sola vez».
+Contadas las ocurrencias literales en el informe renderizado, **«111» aparece 4 veces**: una
+en el titular, dos dentro del párrafo que explica la diferencia y una cuarta en la serie
+—«mayo 146 espacios, 111 con contrato»—, que es el valor de mayo y no tiene nada que ver.
+No cambia la conclusión (hay **una sola** cifra publicada como total del mes, y está
+explicada), pero el «una sola vez» no es lo que se mide.
 
 ---
 
-## 12 · El validador
+## 3 · GRAVE — el capítulo 4 prometía 111 y entregaba 109 · **ARREGLADO**
 
-Corrí el validador de la skill `dataviz`
-(`.../dataviz/scripts/validate_palette.js`) con **exactamente** los argumentos que el README
-declara. **Las cinco corridas reproducen el README línea por línea, incluidos los dos `exit=1`
-y el `WARN` del ámbar:**
+Tomó la salida honesta: contar 109 y decir al pie qué falta y por qué. Medido:
 
-| corrida | resultado | coincide con el README |
+| | resultado |
+|---|---|
+| Tarjeta índice «Contratos» | «Son los **109** que tienen cara en el plano; los 2 sin cara van contados aparte, al pie de la tabla: **111 contratos en total**.» · rótulo **109 FILAS** |
+| Frase de apertura del capítulo | «254 espacios, **111 contratos —109 en la tabla y 2 sin cara, contados al pie—**, 25 proveedores…» |
+| Pestañas | `Espacios 254 · Contratos 109 · Proveedores 25 · Movimientos 12 meses · 86 · Oportunidades 30` |
+| `<tr>` en `#t-con` con la tabla agotada | **109** |
+| Pie de la tabla | «**109 de 109 filas** — están los 109 que tienen cara en el plano. Faltan los **2** contratos sobre códigos sin cara (`PALMAR-VIT-03` y `CENTENARIO-EXH-07`): no hay espacio al que colgarlos, por eso no son fila. **109 + 2 = 111 contratos**» |
+
+El 5.º argumento `falta` de `tablaLarga()` (`980-981`, escrito en `1002`) es una adición limpia
+y **no se derrama**: verifiqué los pies de las otras tres tablas y siguen diciendo lo suyo
+—«254 de 254 filas — no queda ninguna», «25 de 25», «30 de 30»—. Además hay ahora una nota
+arriba de la tabla que dice lo mismo con el monto ($ 4.250.000). Con esto **la promesa del
+README §5 que antes no se cumplía —«una línea contada en el capítulo 4 y al pie de la tabla de
+contratos»— se cumple.**
+
+Se ve en `D2-detalle-contratos-pie-claro-1440.png` y en `D2-sesion-cap4-claro-1440.png`.
+
+---
+
+## 4 · MEDIA — la composición a 1440×900 · **NO ARREGLADO: MUDADO**
+
+Esta es la única que no firmo, y conviene separar lo que sí mejoró de lo que no.
+
+### Lo que el arreglo dice, y es cierto
+
+El **aire de cola** (última tinta contra el alto de la ventana) bajó como el README declara.
+Lo medí en las cuatro combinaciones y da **idéntico en claro y en oscuro**:
+
+| Vista | 1440×900 antes | 1440×900 ahora | 1366×768 ahora |
+|---|---|---|---|
+| Cartera | 148 px · 16,5 % | 136 px · **15,1 %** | 18 px · 2,3 % |
+| Capítulo 1 | 268 px · 29,8 % | 35 px · **3,9 %** | 35 px · 4,6 % |
+| Capítulo 2 | 297 px · 33,0 % | 18 px · **2,0 %** | 18 px · 2,3 % |
+| Capítulo 3 | 173 px · 19,2 % | 35 px · **3,9 %** | 24 px · 3,1 % |
+| Capítulo 4 | 393 px · 43,7 % | 41 px · **4,6 %** | 41 px · 5,3 % |
+| Capítulo 5 | 437 px · 48,5 % | 25 px · **2,8 %** | 25 px · 3,3 % |
+
+Y nada dejó de caber, verificado: documento **900/900** y **768/768** en cartera y en los cinco
+capítulos, **0** paneles con desborde escondido, `scrollWidth = clientWidth` en **390, 1024,
+1366, 1440 y 1920**, y **1080/1080** a 1920×1080. **0** errores de consola.
+
+También es cierto —y me importa decirlo— que **la costura está bien colocada**: medí la
+separación entre cada frase y su `.ruta`, entre cada cifra y su `.delta`, y dentro de cada
+`.blq`: **máximo 13 px, y el mismo 13 px a 1920×1080**. El aire nunca se mete donde rompería
+una lectura. Y las **listas** mejoraron de verdad: los seis hallazgos del capítulo 2 y las
+cinco tarjetas del capítulo 4 ahora se reparten el alto y se leen como una composición
+(`D2-sesion-cap2-claro-1440.png`, columna izquierda).
+
+### Lo que el arreglo no mide, y es donde vive la falla
+
+El aire de cola no es la falla. La falla era «a 1440×900 la mitad de la pantalla queda vacía»,
+y para eso hay que medir **el hueco interior máximo de cada columna**, no la cola. Lo medí
+(`m11-hueco.mjs`: se proyectan todas las tintas de la columna sobre el eje y y se busca el
+intervalo más largo sin tinta):
+
+| Vista · 1440×900 | hueco columna izq. | hueco columna der. |
 |---|---|---|
-| `"#00805A,#CE8A0A,#D8342E,#2E63C8" --mode light --surface "#EFF1ED" --pairs all` | ALL CHECKS PASS · `exit=0` · WARN contraste `#CE8A0A` 2,54 · CVD peor ΔE 9,2 protan · normal ΔE 17,9 | **sí** |
-| `"#00BE86,#F5A524,#F4544E,#4C89E8" --mode dark --surface "#0B1116" --pairs all` | FAILED · `exit=1` · FAIL banda de claridad (`#00BE86` 0,709 · `#F5A524` 0,782) · WARN CVD ΔE 7,5 deutan | **sí** |
-| `"#8FB3E8,#2E63C8" --mode light --surface "#FFFFFF" --ordinal` | ALL PASS · `exit=0` · extremo claro 2,15:1 · un solo tono 4° | **sí** |
-| `"#2F5EA6,#4C89E8" --mode dark --surface "#0B1116" --ordinal` | ALL PASS · `exit=0` · extremo claro 2,96:1 · un solo tono 0° | **sí** |
-| `"#AAB3BE" --mode light --surface "#FFFFFF"` | FAILED · `exit=1` · FAIL piso de croma 0,019 | **sí** |
+| Capítulo 1 | **260 px · 38,4 %** | **247 px · 36,6 %** |
+| Capítulo 2 | 76 px · 11,3 % | **276 px · 40,9 %** |
+| Capítulo 3 | 38 px · 7,1 % | **213 px · 39,5 %** |
+| Capítulo 4 | 91 px · 13,5 % | **384 px · 56,8 %** |
+| Capítulo 5 | **463 px · 59,9 %** | — |
 
-Las dos justificaciones de los `exit=1` son correctas y están medidas: la terna oscura es la
-desviación ya documentada en `tema.css` (y las dos compensaciones están construidas — ver §6:
-324 de 324 rellenos con borde, y la palabra siempre al lado), y el gris `--resto` reprueba el
-piso de croma **porque se lee gris, que es su trabajo**. No inventó resultados: los verifiqué
-uno por uno.
+A 1366×768, el ancho para el que la hoja estaba compuesta: capítulo 4 **252 px (46,3 %)** y
+capítulo 5 **313 px (48,8 %)** — antes el capítulo 5 tenía 287 px, y estaban al pie.
 
-Única elisión cosmética: en la corrida 5 el README omite el `WARN Contrast vs surface 2,12` y
-las tres líneas `PASS`; en la 2 omite `tritan 9,2`. No cambia ninguna conclusión.
+A 1920×1080: capítulo 4 **600 px (70,1 %)**, capítulo 5 **660 px (69,3 %)**, capítulo 1
+izquierda **512 px (59,8 %)**.
 
----
+**El README fija su propio límite y lo pasa.** Dice, textual: «A 1440×900, que es donde se
+juzga la pieza, la costura mide entre 150 y 250 px y se lee como composición». Mide 260, 276,
+384 y **463**. Cuatro de los cinco capítulos están fuera del límite que el propio arreglo se
+puso, y el peor —el capítulo 5— tiene **más** blanco que la falla original (463 contra 437),
+sólo que ahora enmarcado arriba y abajo por contenido, que es la peor forma de tenerlo: una
+cola blanca se lee como página corta, un hueco de 463 px entre dos bloques se lee como algo
+que no cargó. Se ve de un golpe en `D2-sesion-cap5-claro-1440.png` —el aviso de cierre queda
+pegado al borde inferior, a 430 px de su propia tarjeta— y en `D2-sesion-cap4-claro-1440.png`,
+columna derecha.
 
-## 13 · Lo que quedó mal
+Y hay una simetría incómoda con la falla 1: le pedí a la pieza que no publicara un número que
+no cuadra con lo que se ve. La tabla de aire muerto del README §7 publica **2,8 %** para el
+capítulo 5 mientras el capítulo 5 tiene un hueco de **59,9 %**. El número es verdadero y la
+impresión que deja no lo es. **La medición hay que cambiarla junto con la composición.**
 
-### Falla 1 — `null` en la columna MARCA: 42 celdas, y el informe no cierra sus propias cuentas
-**GRAVE · honestidad del dato (brief §3 regla 7) · `index.html:1032`, `1041`, `1585`, `1968`**
+### Sobre los dibujos
 
-Dos problemas de un mismo origen, los dos en la superficie que más se mira.
+El arreglo argumenta —y tiene razón en el hecho— que el mapa de sedes tiene `viewBox` 984×245
+en una columna de 630 px, o sea escala **0,64**: lo limita el ancho, y darle alto sólo lo
+centraría en un hueco. Lo verifiqué de dos maneras: la medida (630×157 renderizado) y la
+prueba de que **el arreglo no tocó los dibujos** —anulando las reglas nuevas
+(`flex:1 1 auto`, `.aire`, `.aire-arriba`) el SVG sigue midiendo exactamente **630×157**—.
 
-**(a) `null` literal en pantalla.** `index.html:1032` y `index.html:1041` interpolan
-`esc(e.k.m)` sin guarda de nulo. Medido abriendo el panel y rodando hasta el fondo:
-
-- pestaña **Espacios: 21 celdas** con la cadena `null` («Higiene Nívola · **null**»,
-  «Galletas Timbó · **null**», «Enlatados Corvina · **null**»…)
-- pestaña **Contratos: 21 celdas** con `null` en la columna MARCA
-- Proveedores, Movimientos y Oportunidades: 0 (limpias)
-- además `index.html:1585` mete `· marca null` en el `<title>` de las marcas del mapa de
-  unidades del capítulo 1 — el globo que sale al pasar el mouse.
-
-En toda la pieza la ausencia se escribe «—», «sin dato», «sin canon propio», «sin
-referencia». Acá se escapa el `null` crudo del JSON. Es exactamente lo que el brief prohíbe en
-la regla 7, y ocurre en la pantalla a la que el operador llega desde cualquier cifra.
-Se ve en `capturas/D-detalle-claro-1440.png`, fila `TERRON-GON-02`.
-
-**(b) El informe del cliente no cuadra consigo mismo.** `index.html:1968` escribe «Este mes
-tiene **111 contratos activos** sobre 254 espacios». En la misma página:
-
-- la línea equivalente de la serie dice «septiembre 254 espacios, **109 con contrato**, 42,9 %»
-- la columna OCUPADO de la tabla de sedes suma **106** (9+14+8+12+15+22+26)
-
-Tres números para la misma cosa, y el informe **no menciona ni una vez** los 2 contratos fuera
-del plano ni los 3 espacios que se liberan que explican la diferencia (0 apariciones de «fuera
-del plano» o «sin cara» en todo el informe). La sesión sí lo explica (capítulo 4); la pieza que
-el gerente lee solo, no. Un gerente que suma la columna obtiene 106 y deja de creerle al resto.
-
-**Arreglo:** guarda de nulo en las tres interpolaciones de `k.m` («—» o «sin marca»), y una
-línea en el informe que reconcilie 111 / 109 / 106 con las mismas palabras que ya usa el
-capítulo 4.
+Pero la conclusión que se saca del hecho es la que discuto. El hueco existe igual, está
+**justo debajo del dibujo**, y el dibujo está imprimiendo su clave a 7 px (§7 de este informe).
+La respuesta de dirección de arte no era estirar el SVG —eso, efectivamente, no se puede— sino
+**redibujarlo para esa columna**: un `viewBox` más alto, filas de sede más gruesas, la clave a
+cuerpo de texto. Repartir el aire fue la salida barata; la pantalla sigue medio vacía y la
+letra sigue a 7 px.
 
 ---
 
-### Falla 2 — el capítulo 4 promete 111 filas y la tabla entrega 109, en la pantalla cuya promesa es que los números concuerdan
-**GRAVE · `index.html:1788` vs `index.html:973`**
+## 5 · MEDIA — la `.ruta` de la cola · **ARREGLADO**
 
-`index.html:1788` calcula el conteo de la tarjeta índice como
-`R.conF.length + DET.fuera_del_plano` = 109 + 2 = **111**, y su propio copy dice
-«**Incluye los 2 que no están en el plano** y no suman a la ocupación».
+Se quitó el `nowrap` / `ellipsis` en línea (`index.html:1409`). Medido en las 4 combinaciones:
 
-La tabla que esa tarjeta abre tiene **109 filas**, la pestaña dice **«Contratos 109»**, y el
-pie (`index.html:973`) cierra con «**109 de 109 filas — no queda ninguna**». Los 2 contratos
-fuera del plano **no están en la tabla**, y el pie afirma que no falta nada.
-
-Y ocurre justo debajo de la nota del capítulo 4: «cada pestaña lleva su conteo: se recalculan
-contra la misma rebanada, **así que los números siempre concuerdan**».
-
-El README §5 además declara que la línea de `contratos_fuera_del_plano` va «una línea contada
-en el capítulo 4 **y al pie de la tabla de contratos**». Al pie de la tabla de contratos sólo
-está la nota de frontera (`index.html:1087`); esa línea no existe. **La afirmación del README
-no se cumple.**
-
-**Arreglo:** o la tabla incluye las 2 filas (y el conteo 111 es verdad), o la tarjeta dice 109
-y la línea de los 2 fuera del plano va al pie de la tabla, como el README promete.
-
----
-
-### Falla 3 — a 1440×900 la mitad de la pantalla queda vacía en dos capítulos
-**MEDIA · composición · `index.html:1787-1800` (cap. 4), `index.html:1839-1855` (cap. 5)**
-
-Medido (§1): al ancho de referencia del brief (1440×900) queda en blanco el **43,7 %** de la
-pantalla en el capítulo 4 y el **48,5 %** en el capítulo 5; también 33,0 % en el 2 y 29,8 % en
-el 1. A 1366×768 la misma pantalla queda entre 2 % y 37 %.
-
-La pieza está compuesta contra 1366×768 y a 1440×900 no crece: el bloque conserva su alto y
-la diferencia se va al pie. «Cabe en una pantalla» es cierto y es un logro real —el documento
-mide 900/900 exactos, cero scroll— pero el README lo presenta como si la pantalla estuviera
-llena, y no lo está. Se ve de un golpe en `capturas/D-sesion-cap5-claro-1440.png`: el contenido
-termina a 463 px de 900.
-
-No es un error de dato ni de accesibilidad; es un problema de dirección de arte. El capítulo 5
-en particular es media pantalla de aire debajo de tres columnas de metadatos.
-
-**Arreglo:** que el aire sobrante se reparta (más aire entre bloques, gráficos más altos) o que
-el capítulo 4 muestre una muestra viva de la tabla en el espacio libre.
-
----
-
-### Falla 4 — la regla de orden de la cola se corta con puntos suspensivos
-**MEDIA · `index.html:1361`**
-
-La `.ruta` de la cola de llamadas lleva `white-space:nowrap; overflow:hidden;
-text-overflow:ellipsis` en línea. Medido: `scrollWidth` **1.206 px** contra `clientWidth`
-**729 px** → se pierden **477 px** a 1440 y **516 px** a 1366, o sea **el 40 % de la frase**.
-
-Lo que se ve: `cartera.clientes[] · adopcion.clientes[] ·
-_derivado_frontend.cartera.orden_por_necesid…`
-Lo que nunca se lee: `…ad_de_asesoria — la adopción no es un panel aparte: es la señal de cada
-fila y los días sin acceso de su sub-línea`.
-
-Justamente la mitad que explica una de las decisiones que el README defiende (que la adopción
-no sea un panel aparte) es la que se corta. Es la **única** `.ruta` truncada de la pieza: en
-los cinco capítulos hay 0. Se ve al pie de `capturas/D-cartera-claro-1440.png`.
-
-**Arreglo:** quitar el `nowrap` en línea y dejarla envolver en dos líneas — hay 148 px de aire
-justo debajo (§1).
-
----
-
-### Falla 5 — barra horizontal de 13 px en la cola de llamadas
-**MENOR · `index.html:235`**
-
-`.cola{…overflow:auto}` con `scrollWidth` 742 contra `clientWidth` 729: **13 px** de desborde
-horizontal, en las cuatro combinaciones. Aparece una barra horizontal en una lista que no
-tiene nada que mostrar a la derecha. El documento no scrollea horizontalmente (1440/1440), así
-que el README puede decir «0 scroll horizontal» sin mentir, pero la barra está.
-
-**Arreglo:** `overflow-x:hidden` o descontar los 13 px de la grilla de la fila.
-
----
-
-### Falla 6 — el foco se pierde al pedir más filas
-**MENOR · `index.html:971-975` + `index.html:2122` (`btn-mas`)**
-
-Al pulsar «Mostrar 40 más» el pie se repinta, el botón se destruye y el foco cae a `BODY`. Con
-teclado hay que volver a tabular desde el principio del panel para pedir la tanda siguiente.
-El resto del teclado está bien resuelto (foco al abrir, `Esc`, retorno al botón de origen), así
-que este es el único agujero.
-
-**Arreglo:** devolver el foco al `#btn-mas` recién pintado después de `pintarTanda()`.
-
----
-
-### Observaciones que no son fallas
-
-- **`.aviso.cruce` en rojo** (`index.html:270`): 1 ocurrencia, no codifica dato. Lo apruebo,
-  pero el README debería enunciar la regla como «el rojo, el ámbar y el verde son los únicos
-  que **codifican estado de espacio**», no «sólo aparecen en los tres estados».
-- **Trece pasos de letra en vez de ocho** (§5): cinco vienen del escalado de SVG y del `em`
-  óptico de la mono. Correcto en la práctica; el README dice «la escala del producto» y son
-  trece valores renderizados.
-- **«El cuerpo es 13,5»** es cierto como default (`index.html:85`), pero la pantalla la domina
-  12,5 px (249 nodos contra 32). Vale decirlo con ese matiz.
-- **`$ 110.567.500 · EXPUESTO A UN PROVEEDOR`** es una de las tres cifras del capítulo 3 y su
-  propio rótulo dice «Ya está entrando: no es oportunidad, es dependencia». Es honesto, pero
-  entonces son dos cifras de valor en juego y una de riesgo, no tres del mismo tipo.
-- **El sub-título del panel** dice «Los 254 espacios del plano de Mercamío» aunque la pestaña
-  esté en 108 por el filtro TERRÓN. La cabecera sí avisa «Llegaste con el filtro puesto:
-  TERRON» y el conteo de la pestaña es correcto. Cosmético.
-
----
-
-## 14 · Resumen de las 12 mediciones pedidas
-
-| # | Medición | Resultado |
+| | antes | ahora |
 |---|---|---|
-| 1 | Alto por capítulo activo, documento y paneles | **900/900 y 768/768**, los cinco capítulos, claro y oscuro. 0 desborde escondido en capítulos. En la cartera: `.cola` +13 px en x (barra a la vista) y una `.ruta` recortada 477 px. Aire muerto de 16,5 % a 48,5 % a 1440×900. |
-| 2 | El detalle se abre al clic; qué muestra; cerrado no está renderizado | **Cerrado: 0 filas en el DOM.** Abre filtrado (1 fila de filtros + 5 pestañas con conteo, `108·9·7·32·3` con TERRÓN, `254·109·25·86·30` sin filtro). Por tandas 40 → 80 → 108/254. `Esc` cierra y el foco vuelve al botón de origen. |
-| 3 | Jerarquía: primer texto = frase-conclusión con número | **Cumplido en 7/7 vistas.** 0 gráficos sin frase sobre 19. |
-| 4 | Formas contra la guía | **0** dos ejes · **0** tortas · **0** anillos · **0** color cíclico · **0** gráficos sin frase · **19/19** con la referencia dentro del dibujo. |
-| 5 | Tamaños de letra | máx **30**, mín **10**, **13 pasos** (8 de token + 5 derivados de SVG y `em`). Cuerpo 13,5. Una cifra de 30 px por pantalla como máximo. |
-| 6 | Contraste, dos modos | **0 nodos bajo piso** en 21 estados × 2 modos. `--ink-4` sin usar. 324/324 rellenos de estado con borde. |
-| 7 | `var(--signal)` | **Exactamente 1 por pantalla**, en las 4 combinaciones. |
-| 8 | Rojo y ámbar sólo en estados de espacio | **Cumplido**, con 1 excepción declarada que no codifica dato (`.aviso.cruce`). |
-| 9 | Los tres estados siempre tres | **Cumplido.** 0 apariciones de «libre o se libera». |
-| 10 | Confidencialidad | **0 cifras de tarifa de referencia.** 0 palabras internas en el informe. 3 códigos. Pero 42 celdas con `null` (falla 1a). |
-| 11 | Informe en A4 | **3 páginas** · titular 30 px al **93 %** del ancho en 2 líneas · **0** controles en print · nada interno. Falla: 111/109/106 sin reconciliar (falla 1b). |
-| 12 | Validador | **5/5 corridas reproducen el README**, incluidos los dos `exit=1` justificados. |
+| `scrollWidth` / `clientWidth` a 1440 | 1.206 / 729 (**477 px recortados**) | **729 / 729** |
+| `scrollWidth` / `clientWidth` a 1366 | 1.206 / 690 (516 px recortados) | **690 / 690** |
+| `white-space` · `text-overflow` | `nowrap` · `ellipsis` | **`normal`** · **`clip`** |
+| alto | 1 línea | **28 px = 2 líneas de 14 px** |
 
-**Extras verificados:** 0 errores y 0 avisos de consola en las 3 combinaciones capturadas ·
-0 `<script src>`, 0 `<link>`, 0 `@import`, 0 `url(http…)`, 0 `<img>`/`<canvas>`/`<iframe>` ·
-25 recomendaciones alcanzables (6 + 19) · los 113 códigos sólo al pedirlos, con 3 planos ·
-el párrafo crudo de 113 códigos no aparece nunca.
+La frase se lee entera, incluida la mitad que explicaba por qué la adopción no es un panel
+aparte. **`.ruta` truncadas en toda la pieza: 0** (cartera 0 · capítulos 1-5: 0 de 8).
+`D2-cola-claro-1440.png`.
+
+---
+
+## 6 · MENOR — la barra horizontal de 13 px · **ARREGLADO**
+
+`.cola` lleva ahora `overflow-x:hidden` y la última columna de `.fila` pasó de `64px` a `auto`
+(`index.html:253-255`). El origen que declara el arreglo es correcto y lo medí: el botón
+«Sesión →» ocupa **81 px**, o sea 17 px más que la columna fija que había.
+
+| | antes | ahora |
+|---|---|---|
+| `div.cola` `scrollWidth`/`clientWidth` a 1440 | 742 / 729 (**+13 px**) | **729 / 729** |
+| a 1366 | 703 / 690 | **690 / 690** |
+| botones fuera de la caja | — | **0** (6 filas: 4 de 45 px «sin detalle», 2 de 81 px «Sesión →») |
+
+Vertical sigue con `overflow-y:auto`, que es lo que corresponde a una lista.
+
+---
+
+## 7 · MENOR — el foco tras «Mostrar 40 más» · **ARREGLADO**
+
+El razonamiento del arreglo —enfocar el botón lo trae a la vista, ese scroll dispara el
+auto-cargado, el repintado destruye el botón y el foco cae a BODY— es correcto, y la doble
+solución (foco a la primera fila nueva; la rueda no carga mientras el foco esté en el botón)
+funciona. Ciclo completo, medido paso a paso:
+
+| paso | foco | filas |
+|---|---|---|
+| panel cerrado | — | **0 `<tr>`**, `aria-hidden="true"` |
+| abrir | `#panel-x` | 40 |
+| clic «Mostrar 40 más» | **TR fila 41** (`CENTENARIO-GON-04`) | 80 |
+| Tab | `#btn-mas` | 80 |
+| *(esperar 400 ms)* | **`#btn-mas`, sobrevive** | 80 |
+| Enter | **TR fila 81** (`NAVE-ISL-01`) | 120 |
+| Tab | `#btn-mas` | 120 |
+| Enter | **TR fila 121** (`PALMAR-ROB-01`) | 160 |
+| rueda al fondo | **TR fila 121 — no se movió** | 200 |
+| agotar rodando | TR fila 121 | **254** · pie «254 de 254 filas — no queda ninguna» |
+| `Esc` | **vuelve al botón de origen** («Espacios…») | `aria-hidden="true"`, **0 `<tr>`** |
+
+Y no se encadena solo: tras Tab, esperando 1,2 s, sigue en `#btn-mas` con 80 filas.
+
+*(El resumen del arreglo dice «última tanda → TR fila 241 de 254». En mi corrida las últimas
+tandas las pidió la rueda, así que el foco se quedó —correctamente— en la fila 121. Es el
+mismo comportamiento visto desde otra secuencia.)*
+
+---
+
+## 8 · Lo que ya pasaba, confirmado
+
+| Medición | Resultado |
+|---|---|
+| Alto por capítulo | **900/900** y **768/768**, cartera + 5 capítulos, claro y oscuro. Informe scrollea (es un documento). |
+| Panel cerrado | **0 `<tr>`** en el DOM |
+| Detalle al clic, filtrado | Desde «Los 108 espacios de TERRÓN»: `f-sede=TERRON`, resto vacío · pestañas `108 · 9 · 7 · 32 · 3` · 40 filas de primera tanda · subtítulo «Llegaste con el filtro puesto: TERRON» |
+| `var(--signal)` | **exactamente 1** por pantalla en 8 pantallas × 2 modos = **16/16** |
+| Contraste | **0 nodos bajo su piso** (4,5:1 / 3,0:1) en 8 pantallas × 2 modos |
+| Formas | **0** arcos · **0** círculos de r>14 · **0** gráficos sin frase · clave siempre dentro del dibujo |
+| Los tres estados | «libre o se libera»: **0** apariciones en el archivo |
+| Confidencialidad | informe: **0** palabras internas · **1** «tarifa de referencia», como declaración de ausencia · **3** códigos (`VILLA-PUN-01`, `CENTENARIO-NEV-01`, `NAVE-CRZ-01`) |
+| Recursos externos | 0 `<script src>` · 0 `<link>` · 0 `@import` · 0 `url(http` · 0 `<img>`/`<canvas>`/`<iframe>` |
+| Informe A4 | **3 páginas** · **0** controles en print |
+| Letra máxima | **30 px** · nodos por encima de 30: **0** |
+| `.aviso.cruce` | **1** regla (`index.html:289`), **1** uso (`index.html:1666`). La regla 1 del README ahora dice «los únicos que **CODIFICAN** estado de espacio» y nombra la excepción. **Corrección aceptada.** |
+
+---
+
+## 9 · Dos cosas que no vi antes
+
+### A · La clave de los dibujos se imprime a 7 px *(y mi §5 anterior estaba mal)*
+**MEDIA · pre-existente, no la causó el arreglo**
+
+Medí los tamaños renderizados otra vez, ahora con `getScreenCTM()` de cada `<text>` en vez de
+la relación de anchos que usé la vez pasada. El resultado cambia:
+
+| ancho | nodos de texto por debajo de 10 px | mínimo | dónde |
+|---|---|---|---|
+| 1440×900 | **48** | **7,0 px** | cap 1 (18, escala 0,64) · cap 2 (19, 7,9 px) · cartera (4) · informe (7, 9,9 px) |
+| 1366×768 | **48** | **6,6 px** | ídem, escalas 0,60 y 0,67 |
+| 1920×1080 | 7 | 9,9 px | sólo el informe |
+
+Lo que se imprime a 7,0 / 6,6 px no es decoración: es **la clave obligatoria dentro del
+dibujo** —«ocupado · se libera este mes · libre»— y los rótulos de sede del mapa del capítulo
+1, más «al promedio del cliente, 42,9 %». Es decir, exactamente lo que mi §4 anterior
+certificó como «la referencia va dentro del dibujo, 19 de 19». Va dentro, sí, pero a 7 px.
+Recorte: `D2-clave-7px-cap1-claro-1440.png`.
+
+Dos aclaraciones que le debo al arreglo y al lector:
+
+1. **No es una regresión.** Anulando las tres reglas nuevas del arreglo el SVG sigue midiendo
+   630×157: el tamaño del dibujo no cambió. Estaba así antes.
+2. **Mi informe anterior lo dio por bueno y no lo era.** Decía «Mínimo: 10 px. Nodos por debajo
+   de 10 px: 0». Lo retiro. El contraste sí sigue pasando a esos cuerpos (0 nodos bajo piso),
+   así que es un problema de tamaño, no de color.
+
+Y es la bisagra con la falla 3: la pieza recuperó entre 213 y 463 px de alto por columna y los
+gastó enteros en una costura, mientras el dibujo que está justo encima de esa costura imprime
+su clave a 7 px. Los dos problemas se arreglan con el mismo movimiento —redibujar el mapa con
+un `viewBox` más alto para esa columna— y el arreglo eligió no hacerlo.
+
+### B · La cabecera de la tabla se tapa al rodar
+**MEDIA · pre-existente, tampoco la vi la vez pasada**
+
+Con `#panel-cuerpo` rodado 400 px, el primer `<th>` (`position:sticky; top:0`) queda en
+**y 111-132**, mientras la barra de filtros y pestañas —que también es fija— llega hasta
+**y 172**. Resultado: **los nombres de columna quedan tapados** y encima se ve texto de fila
+asomando por arriba de la barra de filtros. Captura: `D2-thead-tapado-claro-1440.png`.
+
+En una tabla de 109 o 254 filas eso significa que a partir de la fila ~10 se lee una grilla de
+nueve columnas sin saber cuál es cuál — incluida **la columna MARCA que la falla 1 acaba de
+arreglar**: se ve un «—» y no hay forma de saber que es la marca. Es la superficie a la que el
+operador llega desde cualquier cifra de la sesión.
+
+---
+
+## 10 · Observaciones menores
+
+- **`109 ocupados` contra `106 ocupados`, en el informe.** El rótulo del gráfico de doce meses
+  (`index.html:555`) escribe «**109 ocupados**» sobre el último punto, mientras el párrafo
+  nuevo de dos pantallas más arriba dice «**106** ocupados más **3** que se liberan». El
+  rótulo llama «ocupados» a los que tienen contrato. No es un error de dato —el punto de la
+  serie es 109 con contrato— pero es la única palabra del informe que ahora contradice la
+  explicación que se acaba de agregar. Debería decir «109 con contrato», que es como lo
+  escribe la serie en prosa dos líneas después.
+- **El `caption` de la tabla de Espacios** sigue diciendo «Los 254 espacios del plano de
+  Mercamío» cuando el filtro deja 108 a la vista. La cabecera del panel sí avisa del filtro y
+  los conteos de pestaña son correctos. Cosmético, y sigue igual que antes.
+- **El aire de la cartera** es lo único de composición que casi no se movió: 148 → **136 px**
+  (16,5 % → 15,1 %) a 1440×900, y a 1920×1080 la columna de módulos deja **556 px** de cola.
+  El arreglo lo declara y no lo tocó; queda anotado.
+
+---
+
+## 11 · Resumen
+
+| # | Falla del informe anterior | Estado |
+|---|---|---|
+| 1a | `null` en la columna MARCA (42 celdas) | **ARREGLADO** · 0 en 48 pasadas · 21 «—» + 21 «—» |
+| 1b | El informe no cuadraba (111 / 109 / 106) | **ARREGLADO** · párrafo que reconcilia · tabla suma 106+3=109 |
+| 2 | El capítulo 4 prometía 111 y daba 109 | **ARREGLADO** · 109 contadas + 2 al pie = 111 · README §5 ahora se cumple |
+| 3 | A 1440×900 media pantalla vacía | **NO ARREGLADO — MUDADO** · cola 2-5 %, pero hueco interior de 213 a **463 px**; el propio README se pone un techo de 250 px y lo pasa en 4 de 5 capítulos |
+| 4 | La `.ruta` de la cola truncada 477 px | **ARREGLADO** · 729/729 · 2 líneas · 0 truncadas en la pieza |
+| 5 | Barra horizontal de 13 px en la cola | **ARREGLADO** · 729/729 y 690/690 · 0 botones fuera |
+| 6 | El foco se perdía al pedir más filas | **ARREGLADO** · ciclo de teclado completo, sin encadenamiento |
+| — | *(nuevo)* Clave de los dibujos a 7,0 / 6,6 px | **ABIERTO** · pre-existente · **corrige mi §5 anterior** |
+| — | *(nuevo)* `<thead>` tapado por la barra de filtros | **ABIERTO** · pre-existente |
+
+**Lo que firmo hoy:** el trabajo sobre las tres GRAVES es el correcto y está bien medido —en
+las tres eligió decir la verdad incómoda en vez de maquillarla, que es lo que pedía el brief—,
+y las tres menores están cerradas. **Lo que no firmo:** la falla 3, porque el hueco sigue ahí
+y ahora se lee peor, y porque el número que se publica para declararla resuelta mide otra cosa.
+Con eso resuelto —y es el mismo movimiento que sube la clave de 7 px a cuerpo legible—, D es la
+pieza que hay que llevar adelante.

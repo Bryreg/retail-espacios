@@ -190,6 +190,24 @@ select.ctrl{padding-right:22px}
 .dos{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:var(--s4);min-height:0;flex:1 1 auto}
 .dos.izq-ancha{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr)}
 .col{display:flex;flex-direction:column;gap:var(--s2);min-height:0;min-width:0}
+/* La hoja estaba compuesta contra 1366×768 y a 1440×900 el sobrante se iba entero
+   al pie: hasta 48 % de la pantalla en los capítulos 4 y 5, 30 % en el 1 y el 2.
+   Ahora las tarjetas llegan hasta abajo y REPARTEN el sobrante entre sus bloques,
+   en vez de amontonarlo arriba y dejar media tarjeta vacía. Los dibujos no se
+   estiran —son anchos y chatos, ya se dibujan al ancho de la columna, que es su
+   límite—: lo que crece es el aire alrededor. Todo con flex-grow, así que a 768,
+   donde no sobra nada, la composición no se mueve un píxel. */
+.cap .col>.caja,.cap .col>.panelito,.cap .col>.lista{flex:1 1 auto}
+.cap .col>.caja{display:flex;flex-direction:column}
+.cap .lista>.item{flex:1 1 auto;align-content:center}
+/* El sobrante se abre en UNA sola costura, marcada a mano en cada tarjeta: arriba
+   queda lo que se lee primero (la cifra, la frase, el dibujo) y abajo lo que se
+   lee al final (la evidencia, la nota, los botones). Nunca se mete entre una
+   frase y su ruta, ni entre una cifra y su delta. */
+.aire{margin-bottom:auto}
+.aire-arriba{margin-top:auto}
+/* la frase y su ruta son UN bloque: el aire nunca se mete entre las dos */
+.blq{display:flex;flex-direction:column;gap:var(--s2)}
 
 /* ── el conmutador de módulos ───────────────────────────────────────────── */
 .modos{display:flex;gap:3px;flex-wrap:wrap;flex:0 0 auto}
@@ -232,8 +250,9 @@ figure{margin:0;min-width:0}
 .comp .tachado{color:var(--ink-3);text-decoration:line-through}
 
 /* ── la cola de llamadas ────────────────────────────────────────────────── */
-.cola{display:flex;flex-direction:column;border-top:var(--hair) solid var(--line);min-height:0;overflow:auto}
-.fila{display:grid;grid-template-columns:22px minmax(0,1fr) minmax(0,2fr) 134px 64px;
+.cola{display:flex;flex-direction:column;border-top:var(--hair) solid var(--line);min-height:0;
+  overflow-y:auto;overflow-x:hidden}
+.fila{display:grid;grid-template-columns:22px minmax(0,1fr) minmax(0,2fr) 134px auto;
   grid-template-rows:auto auto;gap:2px var(--s2);align-items:center;padding:4px;
   border-bottom:var(--hair) solid var(--line-soft)}
 .fila .orden{grid-row:1/3}
@@ -436,6 +455,9 @@ const $$ = (s,r)=> Array.from((r||document).querySelectorAll(s));
 
 /* ── formato ────────────────────────────────────────────────────────────── */
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+/* La ausencia se escribe, nunca se imprime el null crudo del JSON (brief §3, regla 7):
+   toda celda o rótulo que pueda venir vacío pasa por acá y sale como «—». */
+const escN = v => (v==null || v==="") ? "—" : esc(v);
 const miles  = n => Math.round(n).toLocaleString("de-DE");
 const pesos  = n => (n<0?"−":"")+"$ "+miles(Math.abs(n));
 const pesosF = n => (n<0?"−":"+")+"$ "+miles(Math.abs(n));
@@ -891,6 +913,12 @@ const nEstado = e => ESP.filter(x=>x.e===e).length;
 const LIBRES=nEstado("libre"), SELIB=nEstado("se_libera"), OCUP=nEstado("ocupado");
 const EN_OFERTA=LIBRES+SELIB;
 const NCON=contratosDe("mercamio");
+/* Los contratos, contados UNA sola vez y desglosados, para que las tres cifras que
+   antes discrepaban (111 / 109 / 106) salgan todas de acá:
+   CON_PLANO son los que tienen cara en el plano —los únicos que la tabla puede
+   listar y los únicos que suman ocupación—, CON_FUERA los que no la tienen. */
+const CON_PLANO=ESP.filter(e=>e.k).length, CON_FUERA=DET.fuera_del_plano;
+const CON_TOT=CON_PLANO+CON_FUERA;
 const rec = id => DET.recs.find(r=>r.id===id);
 const recsTipo = t => DET.recs.filter(r=>r.tipo===t);
 const V0=DET.prov[0];
@@ -949,15 +977,16 @@ function cerrarPanel(){
 /* ── una tabla que se entrega por tandas ────────────────────────────────── */
 const TANDA=40;
 let TB=null;
-function tablaLarga(id, cols, filas, caption){
-  TB={id, cols, filas, n:0};
+function tablaLarga(id, cols, filas, caption, falta){
+  TB={id, cols, filas, n:0, falta:falta||""};
   return `<table class="tbl compacta" id="${id}">${caption?`<caption>${caption}</caption>`:""}
     <thead><tr>${cols.map(c=>`<th${c.n?' class="n"':""}>${esc(c.t)}</th>`).join("")}</tr></thead>
     <tbody></tbody></table>
     <div class="mas" id="mas-${id}"></div>`;
 }
-function pintarTanda(){
+function pintarTanda(seguirFoco){
   if(!TB) return;
+  const primeraNueva=TB.n;
   const t=$("#"+TB.id); if(!t) return;
   const tb=t.querySelector("tbody");
   const hasta=Math.min(TB.n+TANDA, TB.filas.length);
@@ -970,11 +999,26 @@ function pintarTanda(){
   const pie=$("#mas-"+TB.id);
   if(!pie) return;
   pie.innerHTML = TB.n>=TB.filas.length
-    ? `<span>${TB.filas.length} de ${TB.filas.length} filas — no queda ninguna</span>`
+    ? `<span>${TB.filas.length} de ${TB.filas.length} filas — ${TB.falta||"no queda ninguna"}</span>`
     : `<button class="btn" id="btn-mas">Mostrar ${Math.min(TANDA,TB.filas.length-TB.n)} más</button>
        <span>${TB.n} de ${TB.filas.length} filas · el resto llega al rodar o al pedirlo — nunca se dibujan las ${TB.filas.length} de una vez</span>`;
+  /* El pie se repinta y el botón se destruye: sin esto el foco caía a BODY y con
+     teclado había que volver a tabular desde el principio del panel. Va a la
+     PRIMERA FILA NUEVA —lo que el usuario acaba de pedir— y no al botón: el botón
+     está al fondo, traerlo a la vista dispararía el auto-cargado de abajo y la
+     tanda siguiente se encadenaría sola. Desde la fila, el botón es un tabulador. */
+  if(seguirFoco){
+    const f=t.querySelectorAll("tbody tr")[primeraNueva];
+    if(f){ f.setAttribute("tabindex","-1"); f.focus(); }
+    else { const b=$("#btn-mas"); if(b) b.focus(); }
+  }
 }
 PC.addEventListener("scroll",()=>{
+  /* El cargado por rueda NO toca el foco: sólo lo mueve quien lo pidió con el botón.
+     Y si el foco YA está en el botón —se llegó tabulando, y el navegador lo trae a
+     la vista, que es un scroll— no se carga acá: repintar el pie lo destruiría y el
+     teclado volvería a perder el lugar. La tanda la pide él, con Enter. */
+  if(document.activeElement && document.activeElement.id==="btn-mas") return;
   if(TB && TB.n<TB.filas.length && PC.scrollTop+PC.clientHeight > PC.scrollHeight-140) pintarTanda();
 },{passive:true});
 
@@ -1000,7 +1044,7 @@ function pasa(o){
   return true;
 }
 function rebanada(){
-  const espF=ESP.filter(e=>pasa({sede:e.s,tipo:e.t,estado:e.e,txt:[e.c,e.z,e.k?e.k.pr:"",e.k?e.k.m:""].join(" ")}));
+  const espF=ESP.filter(e=>pasa({sede:e.s,tipo:e.t,estado:e.e,txt:[e.c,e.z,e.k?e.k.pr:"",e.k&&e.k.m?e.k.m:""].join(" ")}));
   const conF=espF.filter(e=>e.k);
   const provF=DET.prov.filter(p=>(!F.sede||p.sedes.includes(F.sede)) && (!F.tipo||p.tipos.includes(F.tipo))
     && (!F.q||p.n.toLowerCase().includes(F.q.toLowerCase())));
@@ -1029,18 +1073,22 @@ function pintarDetalle(){
     cuerpo=tablaLarga("t-esp",[{t:"Código"},{t:"Sede"},{t:"Cara"},{t:"Tipo"},{t:"Zona"},{t:"m²",n:1},{t:"Estado"},{t:"Contrato"},{t:"Canon",n:1}],
       R.espF.map(e=>[`<span class="mono">${esc(e.c)}</span>`, esc(e.s), `<span class="mono">${esc(e.cara||"—")}</span>`,
         esc(tnom(e.t)), esc(e.z||"—"), dec(e.a,1), chipEstado(e.e),
-        e.k?`${esc(e.k.pr)} <span class="ter">· ${esc(e.k.m)}</span>`:"—", e.k?pesos(e.k.v):"—"]),
+        e.k?`${esc(e.k.pr)} <span class="ter">· ${escN(e.k.m)}</span>`:"—", e.k?pesos(e.k.v):"—"]),
       "Los 254 espacios del plano de Mercamío. Cada uno con su estado del periodo y su contrato si lo tiene.");
   } else if(F.tab==="contratos"){
     nota=`<div class="aviso" style="margin-bottom:var(--s2)"><b>Dos filas que hay que contar y no esconder:</b>
       hay ${DET.fuera_del_plano} contratos sobre códigos que <b>no están en el plano</b>
       (<span class="mono">PALMAR-VIT-03</span> y <span class="mono">CENTENARIO-EXH-07</span>). Suman ${pesos(4250000)}
       al ingreso y <b>no suman a la ocupación</b>, porque no hay cara que ocupar. Por eso esta tabla trae ${OCUP+SELIB}
-      filas y el cliente tiene ≈ ${NCON} contratos: si esa línea no está escrita, los dos números no cierran.</div>`;
+      filas y el cliente tiene ${CON_TOT} contratos: si esa línea no está escrita, los dos números no cierran.</div>`;
     cuerpo=tablaLarga("t-con",[{t:"Espacio"},{t:"Sede"},{t:"Proveedor"},{t:"Marca"},{t:"Canon",n:1},{t:"Inicio"},{t:"Fin"},{t:"Días",n:1},{t:"Arranca acá"}],
-      R.conF.slice().sort((a,b)=>a.k.dv-b.k.dv).map(e=>[`<span class="mono">${esc(e.c)}</span>`, esc(e.s), esc(e.k.pr), esc(e.k.m),
+      R.conF.slice().sort((a,b)=>a.k.dv-b.k.dv).map(e=>[`<span class="mono">${esc(e.c)}</span>`, esc(e.s), esc(e.k.pr), escN(e.k.m),
         pesos(e.k.v), `<span class="mono">${esc(e.k.i)}</span>`, `<span class="mono">${esc(e.k.f)}</span>`, e.k.dv, e.k.ap?"sí":"no"]),
-      "Ordenados por días para vencer: lo que se cae primero, arriba.");
+      "Ordenados por días para vencer: lo que se cae primero, arriba.",
+      `están los ${OCUP+SELIB} que tienen cara en el plano. Faltan los ${DET.fuera_del_plano} contratos
+       sobre códigos sin cara (<span class="mono">PALMAR-VIT-03</span> y
+       <span class="mono">CENTENARIO-EXH-07</span>): no hay espacio al que colgarlos, por eso no son fila.
+       <b>${OCUP+SELIB} + ${DET.fuera_del_plano} = ${OCUP+SELIB+DET.fuera_del_plano} contratos</b>`);
   } else if(F.tab==="proveedores"){
     cuerpo=tablaLarga("t-prov",[{t:"Proveedor"},{t:"Espacios",n:1},{t:"Participación",n:1},{t:"Canon total",n:1},{t:"% del ingreso",n:1},{t:"Tipos"},{t:"Sedes",n:1},{t:"Desde"},{t:"Vencen 60 d",n:1}],
       R.provF.slice().sort((a,b)=>b.pp-a.pp).map(p=>[esc(p.n), p.esp, pct(p.pp), pesos(p.ct), pct(100*p.ct/CANON_TOT),
@@ -1280,9 +1328,9 @@ const MODULOS_C={
 
 function panelModulo(m){
   return `<div class="panelito">
-    <p class="frase chica">${m.frase}</p>
-    <p class="ruta">${esc(m.ruta)}</p>
-    <figure>${m.fig()}</figure>
+    <div class="blq"><p class="frase chica">${m.frase}</p>
+      <p class="ruta">${esc(m.ruta)}</p></div>
+    <figure class="aire">${m.fig()}</figure>
     <p class="nota">${m.nota}</p>
     ${m.tabla?`<div>${botonTabla(m.tabla)}</div>`:""}
     ${m.extra||""}
@@ -1358,7 +1406,7 @@ function vistaCartera(){
         mes, después la que no entra. ${["<button class='btn' id='ord-plata'>Ordenar por plata</button>",
         botonTabla("cohortes","Cohortes"), botonTabla("operativo","Operaciones")].join(" ")}</p>
       <div class="cola" id="cola">${filas}</div>
-      <p class="ruta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">cartera.clientes[] · adopcion.clientes[] · _derivado_frontend.cartera.orden_por_necesidad_de_asesoria — la adopción no es un panel aparte: es la señal de cada fila y los días sin acceso de su sub-línea</p>
+      <p class="ruta">cartera.clientes[] · adopcion.clientes[] · _derivado_frontend.cartera.orden_por_necesidad_de_asesoria — la adopción no es un panel aparte: es la señal de cada fila y los días sin acceso de su sub-línea</p>
     </div>
     <div class="col">
       <div class="modos" role="tablist" aria-label="Los módulos de la cartera">${
@@ -1582,7 +1630,7 @@ function accVencer(r){
          ${fecha(prov?prov.desde:null)}. Si no renueva${g?", los que ya tienen "+esc(tnom(d.tipo))+" en "+esc(esp.s)+":":"."}
          ${g?candChips(g.cand.filter(c=>(c.proveedor||c.p)!==d.proveedor).map(c=>({p:c.proveedor||c.p,v:c.canon_actual||c.v,mt:true})), V0.n):""}`],
       ["El espacio", esp? `<span class="mono">${esc(esp.c)}</span> · ${esc(tnom(esp.t))} · ${esc(esp.z||"sin zona")} ·
-         ${esc(String(esp.a))} m² · sede ${esc(esp.s)}${esp.k?` · marca ${esc(esp.k.m)} · contrato desde ${fecha(esp.k.i)}`:""}`
+         ${esc(String(esp.a))} m² · sede ${esc(esp.s)}${esp.k?` · marca ${escN(esp.k.m)} · contrato desde ${fecha(esp.k.i)}`:""}`
         : `<span class="mono">${esc(d.codigo)}</span> — <b>no está en el plano</b>: es uno de los
            ${DET.fuera_del_plano} contratos sobre códigos sin cara. Suma al ingreso y no suma a la ocupación.`]],
     det:{tab:"contratos", q:d.codigo}
@@ -1654,13 +1702,13 @@ function itemHTML(o){
 }
 function panelHallazgo(h){
   return `<div class="panelito">
-    <div style="display:flex;align-items:flex-start;gap:var(--s3)">
+    <div style="display:flex;align-items:flex-start;gap:var(--s3)"${h.fig?"":' class="aire"'}>
       <div style="min-width:0;flex:1"><p class="frase chica">${h.frase}</p>
         <p class="ruta">${esc(h.ruta)}</p></div>
       <div style="text-align:right;flex:0 0 auto;padding-left:var(--s3);border-left:var(--hair) solid var(--line)">
         <span class="cifra" style="font-size:var(--t-md);white-space:nowrap">${esc(h.val)}</span>
         <span class="rotulo" style="display:block">${esc(h.vrot)}</span></div></div>
-    ${h.fig?`<figure>${h.fig()}</figure>`:""}
+    ${h.fig?`<figure class="aire">${h.fig()}</figure>`:""}
     <p class="nota">${h.nota}</p>
     <div style="display:flex;gap:6px;flex-wrap:wrap;padding-top:2px">
       ${h.tabla?botonTabla(h.tabla):""}
@@ -1678,7 +1726,7 @@ function panelAccion(a){
       <div style="text-align:right;flex:0 0 auto;padding-left:var(--s3);border-left:var(--hair) solid var(--line)">
         <span class="cifra" style="font-size:var(--t-md);white-space:nowrap">${esc(a.val)}</span>
         <span class="rotulo" style="display:block">${esc(a.vrot)}</span></div></div>
-    <div class="esc">${a.esc.map(([k,v])=>`<div class="esc-l"><span class="k">${esc(k)}</span><span>${v}</span></div>`).join("")}</div>
+    <div class="esc aire">${a.esc.map(([k,v])=>`<div class="esc-l"><span class="k">${esc(k)}</span><span>${v}</span></div>`).join("")}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;padding-top:2px">
       ${a.cod?`<button class="btn lupa" data-cod='${JSON.stringify(a.cod)}'>${a.cod.titulo?esc(a.cod.titulo):"Los códigos, por sede"}</button>`:""}
       ${a.det?`<button class="btn lupa" data-detalle='${JSON.stringify(a.det)}'>Rastrear en las tablas</button>`:""}
@@ -1709,10 +1757,10 @@ function cap1(){
     </div>
     <div class="dos">
       <div class="col">
-        <div class="caja" style="flex:0 1 auto;overflow:auto">
+        <div class="caja" style="flex:1 1 auto;overflow:auto">
           <span class="rotulo">Ingreso contratado del mes</span>
           <span class="grande">${pesos(MET.ingreso_contratado_mes)}</span>
-          <div class="delta"><span class="n">${pesosF(MET.ingreso_contratado_mes-tmAgo.ing)}</span>
+          <div class="delta aire"><span class="n">${pesosF(MET.ingreso_contratado_mes-tmAgo.ing)}</span>
             <span class="n">${pctF(100*(MET.ingreso_contratado_mes/tmAgo.ing-1))}</span>
             <span class="ter">contra agosto (${pesos(tmAgo.ing)}) — y el mes es parcial</span></div>
           <div class="comp" style="margin-top:var(--s3)"><table>
@@ -1785,7 +1833,7 @@ function cap4(){
   const R=(()=>{ const g=F; F.sede=F.tipo=F.estado=F.q=""; const r=rebanada(); return r; })();
   const tarjetas=[
     ["espacios","Espacios", ESP.length, "Código, cara, sede, tipo, zona, m², estado y el contrato si lo hay. Cada marca del mapa del capítulo 1 es una fila de acá."],
-    ["contratos","Contratos", R.conF.length+DET.fuera_del_plano, `Proveedor, marca, canon, inicio, fin, días para vencer. Incluye los ${DET.fuera_del_plano} que no están en el plano y no suman a la ocupación.`],
+    ["contratos","Contratos", R.conF.length, `Proveedor, marca, canon, inicio, fin, días para vencer. Son los ${R.conF.length} que tienen cara en el plano; los ${DET.fuera_del_plano} sin cara van contados aparte, al pie de la tabla: ${R.conF.length+DET.fuera_del_plano} contratos en total.`],
     ["proveedores","Proveedores", DET.prov.length, "Espacios, tipos, sedes, canon total y participación. Los nombres van saneados: sin correos ni teléfonos."],
     ["movimientos","Movimientos", "12 meses", "Entradas y salidas por mes, con el motivo de cada salida: vencimiento o cancelación."],
     ["oportunidades","Oportunidades", `${DET.opo.length} en ${GRUPOS.length} grupos`, "Cada espacio libre o que se libera con su precio sugerido, el origen del precio y hasta tres candidatos."]
@@ -1794,12 +1842,12 @@ function cap4(){
       <span class="val">${esc(String(c))}<span>${k==="movimientos"?"de historia":"filas"}</span></span></button>`).join("");
   return `<div class="cap-cab">
       <p class="frase">Cada cifra de los tres capítulos de arriba aterriza acá: <em>${ESP.length}</em> espacios,
-        <em>${NCON}</em> contratos, <em>${DET.prov.length}</em> proveedores, <em>${DET.opo.length}</em>
+        <em>${CON_TOT}</em> contratos —<em>${CON_PLANO}</em> en la tabla y <em>${CON_FUERA}</em> sin cara, contados al pie—, <em>${DET.prov.length}</em> proveedores, <em>${DET.opo.length}</em>
         oportunidades en <em>${GRUPOS.length}</em> grupos y <em>12</em> meses de movimientos.
         <b>Nada de esto se dibuja hasta que se pide</b>, y llega filtrado por lo que se tocó.</p>
       <p class="ruta">detalle_cliente.espacios[] · .proveedores[] · .movimientos[] · .oportunidades[] · GET /api/plataforma/clientes/mercamio/detalle?periodo=2026-09</p>
     </div>
-    <div class="dos" style="align-items:start">
+    <div class="dos">
       <div class="col"><div class="lista">${tarjetas}</div></div>
       <div class="col"><div class="panelito">
         <p class="frase chica">Las cinco tablas comparten <b>una sola fila de filtros</b> —sede, tipo, estado,
@@ -1808,7 +1856,7 @@ function cap4(){
         <p class="nota"><b>Cómo se llega acá sin pasar por este capítulo.</b> Cada gráfico de los capítulos 1 a 3
           tiene su botón: «los espacios de TERRÓN», «los 46 contratos de Volcán», «rastrear en las tablas». Todos
           abren el mismo panel, ya filtrado. Este capítulo es el único que lo abre en blanco.</p>
-        <p class="nota"><b>Y no se cargan las ${ESP.length} filas de golpe:</b> el panel entrega de a 40 y sigue
+        <p class="nota aire"><b>Y no se cargan las ${ESP.length} filas de golpe:</b> el panel entrega de a 40 y sigue
           cuando se rueda o cuando se pide. A 300 espacios y 30 clientes, la lista no se vuelve la pantalla.</p>
         <div class="aviso"><b>Dos filas que hay que contar y no esconder:</b> hay ${DET.fuera_del_plano} contratos
           sobre códigos que no están en el plano (${pesos(4250000)} al mes). Suman al ingreso y <b>no suman a la
@@ -1847,7 +1895,7 @@ function cap5(){
         ${botonTabla("composicion","La corrección de composición de la cartera")}
       </div>
     </div>
-    <div class="aviso" style="flex:0 0 auto">Los tres capítulos que el cliente ve —dónde está, qué encontramos, qué
+    <div class="aviso aire-arriba" style="flex:0 0 auto">Los tres capítulos que el cliente ve —dónde está, qué encontramos, qué
       le proponemos— salen en el informe. <b>El capítulo 4 y todo lo de la cartera no salen</b>: el orden de la cola,
       la clasificación de adopción y el estado de cuenta son juicios internos. El botón para armarlo está arriba a
       la derecha, y es la única acción amarilla de esta pantalla.</div>`;
@@ -1965,11 +2013,16 @@ function vistaInforme(){
       en junio y que todavía no se ha vendido.</p>
 
     <h2>1 · Dónde está su negocio hoy</h2>
-    <p>Este mes tiene <b>${NCON} contratos activos</b> sobre <b>${ESP.length} espacios</b> en
+    <p>Este mes tiene <b>${CON_TOT} contratos activos</b> sobre <b>${ESP.length} espacios</b> en
       <b>${MET.sedes_con_plano} sedes</b>, por <b>${pesos(MET.ingreso_contratado_mes)}</b> mensuales. Eso es
       <b>${pct(MET.ocupacion_pct)}</b> de ocupación: ${dec(MET.ocupacion_pct-tmAgo.occ)} puntos contra agosto, que
       fue ${pct(tmAgo.occ)}. Su canon promedio es <b>${pesos(MET.canon_promedio_mensual)}</b> por espacio
       contratado. El mes todavía no termina: estas cifras son del ${fechaC(DET.generado_en.slice(0,10))}.</p>
+    <p style="margin-top:var(--s2)"><b>Por qué más abajo va a leer ${CON_PLANO} y no ${CON_TOT}:</b> de los
+      ${CON_TOT} contratos, <b>${CON_PLANO}</b> están sobre espacios con cara en el plano —<b>${OCUP}</b> ocupados
+      más <b>${SELIB}</b> que se liberan este mes, que es exactamente lo que suma la tabla de sedes— y los otros
+      <b>${CON_FUERA}</b> están sobre códigos que no tienen cara: suman al ingreso y no pueden sumar a la
+      ocupación, porque no hay espacio que ocupar.</p>
     <h3>Sus siete sedes no están igual de vendidas. El largo de cada barra son los espacios que tiene la sede.</h3>
     <figure style="margin-top:var(--s2)">${gSedes(DET.sedes, MET.ocupacion_pct, ESP)}</figure>
     <table class="tbl compacta" style="margin-top:var(--s2)">
@@ -2118,7 +2171,7 @@ document.addEventListener("click", e=>{
   const cds=t.closest("[data-codigos]");
   if(cds){ const [s,tp]=cds.dataset.codigos.split("|");
     verCodigos(GRUPOS.filter(g=>g.s===s&&g.t===tp)); return; }
-  if(t.id==="btn-mas"){ pintarTanda(); return; }
+  if(t.id==="btn-mas"){ pintarTanda(true); return; }
   const tab=t.closest("[data-tab]"); if(tab){ F.tab=tab.dataset.tab; pintarDetalle(); return; }
   if(t.id==="f-limpiar"){ F.sede=F.tipo=F.estado=F.q=""; pintarDetalle(); return; }
   if(t.id==="imprimir"){ window.print(); return; }

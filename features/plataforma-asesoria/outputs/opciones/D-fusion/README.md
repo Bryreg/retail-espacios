@@ -22,6 +22,10 @@ y el UX de **C**, la presentación del dato de **A**, y el detalle que escala de
 **La letra baja a la escala del producto** (`vender.css`): cuerpo 13,5;
 frases-conclusión 15 o 17,5 en display 800; rótulos 10 en monoespaciada; la
 cifra grande 30 y **una sola por pantalla**. Nada por encima de 30 px, medido.
+**13,5 es el cuerpo declarado (`body{font-size:var(--t-sm)}`), pero la pantalla
+la domina 12,5**: contando nodos de texto visibles hay **249 en 12,5** (pestañas,
+celdas de tabla, chips), 137 en 11,5, 108 en 10 y sólo **32 en 13,5**. La escala
+es coherente y todo pasa contraste; el cuerpo, en la práctica, se lee a 12,5.
 
 ---
 
@@ -224,9 +228,13 @@ con el motivo.
 
 **Las tres reglas que sostienen el color:**
 
-1. **El rojo, el ámbar y el verde son SÓLO los tres estados del espacio.** Señal
-   (`fantasma`, `sin dato`, `cobra por debajo`), estado de cuenta y prioridad van
-   **grises o en tinta**. Es la regla que A rompía y C respetaba.
+1. **El rojo, el ámbar y el verde son los únicos que CODIFICAN estado de espacio.**
+   Señal (`fantasma`, `sin dato`, `cobra por debajo`), estado de cuenta y prioridad
+   van **grises o en tinta**. Es la regla que A rompía y C respetaba. La regla es
+   sobre *codificar*, no sobre *aparecer*: hay **una** ocurrencia de rojo que no
+   codifica ningún dato —el filete de `.aviso.cruce` (`index.html:289`, usado en
+   `index.html:1666`), la advertencia entre la acción 1 y la 2— y es deliberada:
+   marca una contradicción, no un estado. Ninguna otra.
 2. **La palabra siempre está al lado del color**, y todo relleno de estado lleva
    su `-borde`. Es la compensación que `tema.css` ya exige para la desviación del
    modo oscuro.
@@ -357,3 +365,238 @@ de la pieza). El resumen literal de cada corrida es el de la tabla de arriba.
   del capítulo 1 con datos de otra llamada, y con la estructura de un capítulo por
   pantalla eso serían cinco pantallas de las cuales tres estarían vacías. Es el
   compromiso que asumo, y es el único injerto de la lista del director que no tomé.
+
+---
+
+## 7. Lo que se arregló después de la verificación
+
+Siete arreglos sobre `VERIFICACION-D.md`. Nada más del diseño se tocó. Todo lo de
+abajo está medido con el mismo Chromium 1194
+(`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`) sobre el `file://`, sin red,
+en **1440×900 y 1366×768 × claro y oscuro**.
+
+### 1 · GRAVE — el `null` crudo de la columna MARCA *(falla 1a)*
+
+`e.k.m` viene nulo en 21 de los 109 contratos y se interpolaba sin guarda. Ahora
+toda ausencia pasa por un solo lugar:
+
+```js
+/* index.html:460 */
+const escN = v => (v==null || v==="") ? "—" : esc(v);
+```
+
+Aplicado en las cuatro interpolaciones de la marca: la celda de **Espacios**
+(`index.html:1076`), la de **Contratos** (`index.html:1085`), el escalón «El
+espacio» de la acción (`index.html:1633`) y el texto de búsqueda de la rebanada
+(`index.html:1047`, para que buscar «null» deje de traer 21 filas).
+
+*Una precisión sobre la verificación:* el `<title>` de las marcas del mapa de
+unidades **no imprimía la marca** —lleva código, tipo, estado y proveedor
+(`index.html:631`)—; el tercer `null` estaba en el escalón «El espacio» de la
+acción, que es la línea que `VERIFICACION-D.md` cita como `index.html:1585`. Se
+barrieron igual **todos** los `<title>` de SVG y todos los `aria-label`: cero.
+
+| Medición | Antes | Ahora |
+|---|---|---|
+| cadena `null` / `undefined` / `NaN` visible — **9 vistas** (cartera, capítulos 1-5, panel·espacios, panel·contratos, informe) **× 2 modos × 2 anchos** | 21 celdas en Espacios + 21 en Contratos + el escalón «El espacio» | **0 en las 36 pasadas** (nodos de texto, `<title>` de SVG y `aria-label`) |
+| celdas de MARCA escritas «—» con la tabla agotada | 0 | **21 en Espacios · 21 en Contratos** |
+
+### 2 · GRAVE — el informe no cuadraba consigo mismo *(falla 1b)*
+
+Decía **111 contratos activos**, la serie del mes decía **109 con contrato** y la
+columna OCUPADO de la tabla de sedes sumaba **106**, sin una palabra que
+reconciliara los tres. Ahora los tres salen de un solo cálculo
+(`index.html:920-921`):
+
+```js
+const CON_PLANO=ESP.filter(e=>e.k).length, CON_FUERA=DET.fuera_del_plano;
+const CON_TOT=CON_PLANO+CON_FUERA;          // 109 + 2 = 111
+```
+
+y el informe publica **una** cuenta —111— y explica la diferencia en una línea,
+con las mismas palabras del capítulo 4 (`index.html:2016` y `2021`):
+
+> «Este mes tiene **111 contratos activos** sobre 254 espacios…
+> **Por qué más abajo va a leer 109 y no 111:** de los 111 contratos, **109** están
+> sobre espacios con cara en el plano —**106** ocupados más **3** que se liberan
+> este mes, que es exactamente lo que suma la tabla de sedes— y los otros **2**
+> están sobre códigos que no tienen cara: suman al ingreso y no pueden sumar a la
+> ocupación, porque no hay espacio que ocupar.»
+
+| Medición sobre el informe renderizado | Resultado |
+|---|---|
+| cifra de contratos en el capítulo 1 del informe | **111**, una sola vez |
+| serie mes a mes, septiembre | **254 espacios, 109 con contrato** — el 109 que la línea anuncia |
+| suma de la columna OCUPADO de la tabla de sedes (7 filas) | **106** |
+| suma de la columna SE LIBERA ESTE MES | **3** → 106 + 3 = **109** = CON_PLANO |
+| menciones de los contratos sin cara en el informe | **1** (antes 0) |
+| A4 con `emulateMedia('print')` | **3 páginas**, **0** controles visibles — sin cambio |
+
+### 3 · GRAVE — el capítulo 4 prometía 111 filas y la tabla entregaba 109 *(falla 2)*
+
+Se tomó la segunda salida de las dos que ofrece la verificación: **el conteo y el
+pie dicen que faltan y por qué**, en vez de inventar dos filas sin proveedor, sin
+canon y sin fechas, que el JSON no trae.
+
+- La tarjeta índice cuenta lo que la tabla entrega: `R.conF.length` = **109**
+  (`index.html:1836`), y su propio texto dice que los 2 sin cara van contados
+  aparte y que el total es 111.
+- `tablaLarga()` acepta un quinto argumento `falta` (`index.html:980-981`) que el
+  pie escribe cuando la tabla se agota (`index.html:1002`). La tabla de contratos
+  lo usa (`index.html:1088`).
+- La frase de apertura del capítulo desglosa: «254 espacios, **111** contratos
+  —**109** en la tabla y **2** sin cara, contados al pie—…» (`index.html:1845`).
+
+| Medición con el panel abierto sin filtro | Resultado |
+|---|---|
+| pestañas, con su conteo | `Espacios 254 · Contratos 109 · Proveedores 25 · Movimientos 12 meses · 86 · Oportunidades 30` |
+| `<tr>` en la tabla de contratos, agotada | **109** — el mismo número de la pestaña y de la tarjeta |
+| pie de la tabla de contratos | «109 de 109 filas — **están los 109 que tienen cara en el plano. Faltan los 2 contratos sobre códigos sin cara (`PALMAR-VIT-03` y `CENTENARIO-EXH-07`): no hay espacio al que colgarlos, por eso no son fila. 109 + 2 = 111 contratos**» |
+| pie de las otras cuatro tablas | «254 de 254 filas — no queda ninguna» (sin cambio: no falta nada) |
+
+Esto además cumple lo que la tabla de §3 ya declaraba para
+`contratos_fuera_del_plano` («una línea contada en el capítulo 4 **y al pie de la
+tabla de contratos**») y que antes no existía.
+
+### 4 · MEDIA — la hoja crece con la ventana *(falla 3)*
+
+La composición estaba afinada contra 1366×768 y a 1440×900 el sobrante se iba
+entero al pie. Ahora las tarjetas del capítulo llegan hasta abajo y **reparten** el
+sobrante entre sus bloques (`index.html:193-210`):
+
+```css
+.cap .col>.caja,.cap .col>.panelito,.cap .col>.lista{flex:1 1 auto}
+.cap .lista>.item{flex:1 1 auto;align-content:center}   /* las tarjetas se reparten */
+.aire{margin-bottom:auto}    /* UNA costura por tarjeta, marcada a mano */
+.blq{display:flex;flex-direction:column;gap:var(--s2)}  /* frase + ruta = un bloque */
+```
+
+La costura va donde el orden de lectura la pide, nunca entre una frase y su ruta
+ni entre una cifra y su delta: tras la cifra grande del capítulo 1
+(`index.html:1763`), tras el dibujo del módulo (`1333`) y del hallazgo (`1711`),
+tras la escalera de la acción (`1729`), tras la tercera nota del capítulo 4
+(`1859`), y en el capítulo 5 el cierre se ancla abajo (`.aire-arriba`,
+`index.html:1898`) dejando la tarjeta de metadatos en su alto natural.
+
+**Los dibujos no se estiran, y está medido por qué:** el mapa de sedes tiene
+`viewBox` de **984 × 245** y la columna mide **630 px**, así que se dibuja a
+**escala 0,64** — lo limita el ancho, no el alto; darle más alto sólo lo centraba
+en un hueco. Lo que crece es el aire alrededor, repartido.
+
+**Aire muerto** (última tinta contra el alto de la ventana), idéntico en claro y
+en oscuro:
+
+| Vista | 1440×900 antes | 1440×900 **ahora** | 1366×768 antes | 1366×768 **ahora** |
+|---|---|---|---|---|
+| Cartera | 150 px · 16,7 % | 136 px · **15,2 %** | 18 px · 2,4 % | 18 px · **2,3 %** |
+| Capítulo 1 | 270 px · 30,0 % | 35 px · **3,9 %** | 66 px · 8,5 % | 35 px · **4,6 %** |
+| Capítulo 2 | 305 px · 33,9 % | 18 px · **2,0 %** | 164 px · 21,4 % | 18 px · **2,4 %** |
+| Capítulo 3 | 175 px · 19,4 % | 35 px · **3,9 %** | 26 px · 3,4 % | 24 px · **3,1 %** |
+| **Capítulo 4** | **395 px · 43,9 %** | 41 px · **4,6 %** | 263 px · 34,3 % | 41 px · **5,4 %** |
+| **Capítulo 5** | **446 px · 49,5 %** | 25 px · **2,8 %** | 296 px · 38,5 % | 25 px · **3,3 %** |
+
+Y nada dejó de caber:
+
+| Medición | 1440×900 | 1366×768 |
+|---|---|---|
+| `scrollHeight` / `clientHeight` del documento, cartera y los 5 capítulos | **900 / 900** | **768 / 768** |
+| `scrollWidth` / `clientWidth` del documento | **1440 / 1440** | **1366 / 1366** |
+| paneles internos con desborde escondido, en los 5 capítulos × 2 modos | **0** | **0** |
+
+Y en los cinco anchos que se probaron —390, 1024, 1366, 1440 y 1920—
+`scrollWidth` = `clientWidth` siempre (**0 scroll horizontal**), con **0** errores
+de consola. A 1920×1080 los cinco capítulos siguen dando **1080 / 1080**: la hoja
+sigue creciendo. Dicho sin adornos: por encima del ancho de referencia la costura
+es la que se ensancha —el dibujo no puede—, así que a 1920 la tarjeta se lee con
+mucho aire en el medio. A 1440×900, que es donde se juzga la pieza, la costura
+mide entre 150 y 250 px y se lee como composición.
+
+### 5 · MEDIA — la regla de orden de la cola se lee entera *(falla 4)*
+
+Se quitó el `white-space:nowrap; overflow:hidden; text-overflow:ellipsis` en línea
+de la `.ruta` de la cartera (`index.html:1409`). `.ruta` ya envolvía por hoja de
+estilo (`word-break:break-word`), así que no hizo falta nada más.
+
+| Medición de esa `.ruta` | Antes | Ahora |
+|---|---|---|
+| `scrollWidth` vs `clientWidth` a 1440 | 1.206 vs 729 → **477 px recortados** | **729 vs 729 — 0 recortados** |
+| `scrollWidth` vs `clientWidth` a 1366 | 1.206 vs 690 → 516 px recortados | **690 vs 690 — 0** |
+| líneas · alto | 1 · 14 px | **2 · 28 px** (los 148 px de aire de abajo daban de sobra) |
+
+### 6 · MENOR — la barra horizontal de 13 px de la cola *(falla 5)*
+
+Medido el origen antes de tocar nada: el botón «Sesión →» de cada fila mide
+**81 px** y la última columna de `.fila` estaba fijada en **64 px**, así que
+sobresalía hasta 742 en una caja de 729. Se dimensiona la columna al botón y se
+cierra el eje x (`index.html:254-255`):
+
+```css
+.cola{… overflow-y:auto;overflow-x:hidden}
+.fila{grid-template-columns:22px minmax(0,1fr) minmax(0,2fr) 134px auto}
+```
+
+| Medición de `div.cola` | Antes | Ahora |
+|---|---|---|
+| `scrollWidth` vs `clientWidth` a 1440 | 742 vs 729 → **13 px, barra a la vista** | **729 vs 729 — 0** |
+| `scrollWidth` vs `clientWidth` a 1366 | 703 vs 690 → 13 px | **690 vs 690 — 0** |
+| botones que sobresalen de la caja | 2 | **0** |
+
+### 7 · MENOR — el foco al pedir más filas *(falla 6)*
+
+`pintarTanda()` recibe ahora si la tanda la pidió el botón (`index.html:987`, el
+bloque de `1010` a `1014`, y la llamada en `2174`) y, cuando así fue, deja el foco
+en **la primera fila nueva** —no en el botón repintado—. Es deliberado y está
+medido: al devolver el foco al botón, el navegador lo trae a la vista, y ese
+scroll disparaba el auto-cargado por rueda del propio panel, que repinta el pie y
+**vuelve a destruir el botón**; el foco caía a `BODY` otra vez y la tanda
+siguiente se encadenaba sola.
+
+El segundo arreglo cierra la misma trampa por el lado del teclado
+(`index.html:1016-1023`): la rueda **no carga mientras el foco está en el botón**,
+porque llegar tabulando a él también es un scroll y le pasaba lo mismo.
+
+```js
+if(document.activeElement && document.activeElement.id==="btn-mas") return;
+```
+
+Con las dos cosas, el ciclo de teclado se cierra —fila nueva → `Tab` → botón →
+`Enter` → fila nueva— y está medido paso por paso sobre el panel sin filtro, 254
+filas:
+
+| Paso · panel sin filtro | Antes | Ahora |
+|---|---|---|
+| al abrir el panel | `BUTTON#panel-x` · 40 filas | **igual**, sin cambio |
+| tras «Mostrar 40 más» (clic) | `BODY` · 80 filas | **`TR`, la fila 41** · 80 filas |
+| un `Tab` desde ahí | `BODY` (el botón se destruía al enfocarlo) | **`BUTTON#btn-mas`**, y sobrevive |
+| `Enter` sobre el botón | — | **`TR`, la fila 81** · 120 filas |
+| `Tab` · `Enter` otra vez | — | **botón** · **`TR`, la fila 121** · 160 filas |
+| rodar con la rueda hasta el fondo | carga la tanda | **carga la tanda y no toca el foco** (queda en `#panel-x`) |
+| última tanda, con el botón ya inexistente | `BODY` | **`TR`, primera fila de la tanda** (fila 241 de 254) |
+| `Esc` cierra y devuelve el foco al botón de origen | sí | **sí**, sin cambio |
+| `<tr>` en el DOM con el panel cerrado | 0 | **0**, sin cambio |
+
+### Lo que no se movió, verificado de nuevo
+
+Cada arreglo se volvió a medir contra las columnas que el director ya había dado
+por buenas, en **9 vistas × 2 modos × 2 anchos**:
+
+| Medición | Resultado |
+|---|---|
+| Contraste: nodos por debajo de su piso WCAG | **0** sobre **4.383 nodos de texto** por pasada, en los dos modos. Peor margen: **1,09 × el piso** en claro, **1,05 ×** en oscuro |
+| `var(--signal)` por pantalla | **exactamente 1** en las 9 vistas × 4 combinaciones |
+| Errores y avisos de consola | **0** |
+| Informe en A4 | **3 páginas** · **0** controles en `media:print` |
+| Panel cerrado | **0 `<tr>`** en el DOM, `aria-hidden="true"` |
+| Recursos externos | **0** — sin `<script src>`, `<link>`, `@import`, `url(http…)`, `<img>`, `<canvas>` ni `<iframe>` |
+
+### Y las dos correcciones al README
+
+- **§4, regla 1 del color.** Se enunciaba «el rojo, el ámbar y el verde son SÓLO
+  los tres estados del espacio», y el filete de `.aviso.cruce` la contradecía. La
+  regla es sobre **codificar**, no sobre aparecer: se reescribió como «son los
+  únicos que **codifican estado de espacio**», con la única excepción nombrada,
+  ubicada y explicada ahí mismo.
+- **§0, el cuerpo.** Decía «cuerpo 13,5» a secas. Es cierto como valor declarado
+  (`body{font-size:var(--t-sm)}`) pero **la pantalla la domina 12,5**: 249 nodos
+  de texto visibles en 12,5 contra 32 en 13,5. Queda dicho con ese matiz, con los
+  cuatro conteos.
