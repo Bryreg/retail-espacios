@@ -13,8 +13,8 @@ import { ClipboardCheck, Keyboard } from "lucide-react";
 import { useFixtureStore, selectFixtures, selectHasPendingWork, normalizeSede, DEFAULT_SEDES } from "../../store/fixtureStore";
 import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types/fixtures";
 import { isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
-import { siguienteCodigo, nombreDeMueble, nombrePropio, nombreRepetido, rotulosDelPlano } from "../../utils/nomenclatura";
-import { revisarPlano } from "../../utils/revision";
+import { siguienteCodigo, nombreDeMueble, nombrePropio, choqueDeNombre, textoDelChoque, rotulosDelPlano, nombresChocados } from "../../utils/nomenclatura";
+import { revisarPlano, contratosConNombreAjeno, type ContratoDelPlano } from "../../utils/revision";
 import { TOLERANCIA_CONTACTO } from "../../utils/planta";
 import { buscarHuecoGrupo } from "../../utils/acomodar";
 import { detectarCorridas, pasilloPorMueble } from "../../utils/pasillos";
@@ -531,7 +531,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   const [editingCodeId, setEditingCodeId] = useState<string | null>(null);
   const [editingCodeVal, setEditingCodeVal] = useState("");
   /** Nombre tecleado a mano que ya es el de otro mueble. Tiñe el campo. */
-  const [codigoChocado, setCodigoChocado] = useState<string | null>(null);
+  /** Por qué no se pudo poner ese nombre, en palabras. Null es que sí se pudo. */
+  const [avisoDeNombre, setAvisoDeNombre] = useState<string | null>(null);
   const [revisionAbierta, setRevisionAbierta] = useState(false);
   const [atajosAbiertos, setAtajosAbiertos] = useState(false);
   /** Mensaje corto de lo que acaba de pasar. El plano no tenía ninguno: un
@@ -1304,7 +1305,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     const cerrar = () => {
       setEditingCodeId(null);
       setEditingCodeVal("");
-      setCodigoChocado(null);
+      setAvisoDeNombre(null);
     };
     // Vacío, o el nombre del sistema tal cual: se borra la nomenclatura y el
     // mueble vuelve a llamarse como lo llamó el sistema.
@@ -1316,10 +1317,13 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
       return;
     }
     // Dos muebles con el mismo nombre en el plano no se distinguen: se rechaza
-    // y se deja el campo abierto para corregirlo. Se mira el nombre que se VE,
-    // no el código, porque es lo que confunde a quien lo lee.
-    if (nombreRepetido(val, items, editingCodeId)) {
-      setCodigoChocado(val.toUpperCase());
+    // y se deja el campo abierto para corregirlo. Se mira el nombre que se VE
+    // —es lo que confunde a quien lo lee— y TAMBIÉN el código de los demás: un
+    // nombre que es el código de otro mueble manda el contrato a ese otro,
+    // aunque en el plano no se vea ninguna repetición.
+    const choque = choqueDeNombre(val, items, editingCodeId);
+    if (choque) {
+      setAvisoDeNombre(textoDelChoque(val, choque));
       return;
     }
     setItems((prev) =>
@@ -1359,6 +1363,11 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   );
   const corridas = useMemo(() => detectarCorridas(enPlanta), [enPlanta]);
   const pasilloDe = useMemo(() => pasilloPorMueble(enPlanta, corridas), [enPlanta, corridas]);
+  // Qué nombres los lleva más de un mueble. Se arma UNA vez por plano y lo
+  // consulta cada caja al dibujarse: de los dos muebles que se llaman igual,
+  // el plano dibujaba uno solo y el otro quedaba mudo, así que quien miraba no
+  // podía sospechar que había dos. La regla vive en `nomenclatura.ts`.
+  const chocados = useMemo(() => nombresChocados(items), [items]);
   const ghostDef = pendingType ? CATALOG.find((c) => c.type === pendingType) : null;
 
   // Search + status filter matching (AND-combined); null set = no filter active
@@ -1703,6 +1712,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                 const rotulos = rotulosDelPlano(
                   item,
                   pw * zoom > 46 && ph * zoom > 12,
+                  chocados,
                 );
 
                 return (
@@ -1853,13 +1863,24 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                     {/* Nomenclatura pill — floats above the rect at constant screen
                         size, with a small leader line down to the top edge.
                         Filter matches always show their pill, Etiquetas toggle aside. */}
-                    {(showLabels || (filterActive && isFilterMatch)) && rotulos.pastilla && (() => {
+                    {(showLabels || (filterActive && isFilterMatch) || rotulos.choque) &&
+                     (rotulos.pastilla || rotulos.choque) && (() => {
                       // La pastilla existe para los muebles CHICOS, donde el
                       // nombre no entra adentro y se dibuja un emoji. Cuando
                       // entra, va adentro y la pastilla no se dibuja: si no, el
                       // mismo mueble queda diciendo su nombre dos veces.
                       // Quién decide qué va dónde: `rotulosDelPlano`.
-                      const text = rotulos.pastilla;
+                      //
+                      // La pastilla tiene un segundo trabajo, y es el que cierra
+                      // el hallazgo grave de la fase 12: cuando el nombre lo
+                      // lleva OTRO mueble de la sede, sale en los dos y sale
+                      // marcada —«IMP-08 ×2», en rojo—. Si el nombre ya entra
+                      // adentro de la caja no se repite acá: sube sólo la marca,
+                      // que no es un nombre sino la cuenta. Y no se apaga con
+                      // «Etiquetas»: una etiqueta se puede ocultar, un aviso de
+                      // que dos espacios se leen igual, no.
+                      const choque = rotulos.choque;
+                      const text = [rotulos.pastilla, choque?.marca].filter(Boolean).join(" ");
                       const fs = 10.5 / zoom;
                       const padX = 7 / zoom;
                       const bh = 16 / zoom;
@@ -1867,21 +1888,25 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                       const leader = 6 / zoom;
                       const cxPx = px + pw / 2;
                       const by = py - leader - bh;
+                      const linea = choque ? "var(--danger)" : "var(--line-strong)";
                       return (
                         <g style={{ pointerEvents: "none" }}>
+                          {choque && <title>{choque.texto}</title>}
                           <line
                             x1={cxPx} y1={py} x2={cxPx} y2={py - leader}
-                            stroke="var(--line-strong)" strokeWidth={1 / zoom}
+                            stroke={linea} strokeWidth={1 / zoom}
                           />
                           <rect
                             x={cxPx - bw / 2} y={by} width={bw} height={bh}
                             rx={bh / 2}
-                            fill="var(--surface)" stroke="var(--line-strong)" strokeWidth={1 / zoom}
+                            fill={choque ? "var(--danger-50)" : "var(--surface)"}
+                            stroke={linea} strokeWidth={(choque ? 1.5 : 1) / zoom}
                           />
                           <text
                             x={cxPx} y={by + bh / 2}
                             textAnchor="middle" dominantBaseline="central"
-                            fontSize={fs} fontWeight={600} fill="var(--ink-1)"
+                            fontSize={fs} fontWeight={choque ? 700 : 600}
+                            fill={choque ? "var(--danger)" : "var(--ink-1)"}
                             style={{ userSelect: "none" }}
                           >
                             {text}
@@ -1908,7 +1933,10 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                     {/* Labels — progressive disclosure based on on-screen size.
                         pw/ph are SVG coords; multiply by zoom for screen pixels.
                         Emoji: show only when code isn't visible (avoids double clutter).
-                        Code: show only when fixture is at least 46 px wide on screen. */}
+                        Code: show only when fixture is at least 46 px wide on screen.
+                        El nombre de un mueble que tiene gemelo en la sede se lee
+                        en rojo, igual que la marca «×2» de su pastilla: la caja
+                        de al lado dice exactamente lo mismo. */}
                     {(() => {
                       const screenW = pw * zoom;
                       const screenH = ph * zoom;
@@ -1940,17 +1968,17 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                               >
                                 <input
                                   className={`w-full h-full text-center text-xs rounded-sm outline-none px-1 border ${
-                                    codigoChocado
+                                    avisoDeNombre
                                       ? "border-danger bg-danger-50 text-danger"
                                       : "border-accent bg-surface"
                                   }`}
-                                  title={codigoChocado ? `${codigoChocado} ya es el nombre de otro mueble` : undefined}
+                                  title={avisoDeNombre ?? undefined}
                                   value={editingCodeVal}
-                                  onChange={(e) => { setEditingCodeVal(e.target.value); setCodigoChocado(null); }}
+                                  onChange={(e) => { setEditingCodeVal(e.target.value); setAvisoDeNombre(null); }}
                                   onBlur={commitCodeEdit}
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter") commitCodeEdit();
-                                    if (e.key === "Escape") { setEditingCodeId(null); setCodigoChocado(null); }
+                                    if (e.key === "Escape") { setEditingCodeId(null); setAvisoDeNombre(null); }
                                   }}
                                   autoFocus
                                   onClick={(e) => e.stopPropagation()}
@@ -1963,7 +1991,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                                 textAnchor="middle"
                                 dominantBaseline="middle"
                                 fontSize={fs}
-                                fill="var(--ink-1)"
+                                fill={rotulos.choque ? "var(--danger)" : "var(--ink-1)"}
                                 fontWeight="600"
                                 style={{ userSelect: "none", pointerEvents: "none" }}
                               >
@@ -2126,6 +2154,22 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               boxShadow: "0 4px 14px rgba(0,0,0,.18)",
             }}>
               {aviso}
+            </div>
+          )}
+
+          {/* El nombre que se rechazó, y contra qué mueble choca. No se va solo:
+              el campo sigue abierto hasta que se corrija, y un aviso que se
+              desvanece en dos segundos no alcanza para decidir qué escribir. */}
+          {avisoDeNombre && (
+            <div style={{
+              position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)",
+              zIndex: 21, pointerEvents: "none", maxWidth: "min(520px, calc(100% - 28px))",
+              padding: "8px 14px", borderRadius: "var(--r-lg)",
+              background: "var(--danger)", color: "var(--surface)",
+              fontSize: 12, fontWeight: 600, lineHeight: 1.45, textAlign: "center",
+              boxShadow: "0 4px 14px rgba(0,0,0,.18)",
+            }}>
+              {avisoDeNombre}
             </div>
           )}
 
@@ -2332,6 +2376,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
         ) : revisionAbierta ? (
           <RevisionPanel
             items={items}
+            sede={sede}
             corridas={corridas.length}
             onIr={(ids) => { setSelectedIds(new Set(ids)); }}
             onClose={() => setRevisionAbierta(false)}
@@ -2347,6 +2392,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           >
             <AssignmentPanel
               item={selectedItem}
+              items={items}
               sede={sede}
               sedes={storeSedeList}
               editMode={editMode}
@@ -2975,9 +3021,10 @@ function AtajosPanel({ onClose }: { onClose: () => void }) {
 }
 
 function RevisionPanel({
-  items, corridas, onIr, onClose,
+  items, sede, corridas, onIr, onClose,
 }: {
   items: PlacedItem2D[];
+  sede: string;
   corridas: number;
   onIr: (ids: string[]) => void;
   onClose: () => void;
@@ -2992,10 +3039,38 @@ function RevisionPanel({
       d: isRotated90(i.rotY ?? 0) ? i.w : i.h,
       h: H_DEFAULTS[i.type] ?? 1.8,
       rotY: i.rotY ?? 0,
+      // Sin esto la revisión miraba códigos contra códigos y declaraba limpio
+      // un plano con cuatro muebles dibujados con el nombre de otro.
+      nomenclatura: i.nomenclatura,
     }))),
     [items],
   );
   const errores = hallazgos.filter((h) => h.severidad === "error").length;
+
+  // La reconciliación: los contratos que YA están cargados sobre un mueble que
+  // el plano dibuja con otro nombre. Ninguna validación los arregla —se firman
+  // antes de que exista la validación— así que se listan para revisarlos uno
+  // por uno. Sale de lo que la pantalla ya tiene: los campos comerciales viven
+  // denormalizados en el mueble del layout, que es de donde se pinta el mapa.
+  const aRevisar = useMemo(() => {
+    const contratos: ContratoDelPlano[] = [];
+    for (const i of items) {
+      const base = { id: i.id, code: i.code, sede: i.sede || sede, nomenclatura: i.nomenclatura };
+      if (i.supplierName?.trim()) {
+        contratos.push({
+          ...base, cara: "A", proveedor: i.supplierName, marca: i.brandCategory,
+          desde: i.startDate, hasta: i.endDate, valor: i.negotiatedValue,
+        });
+      }
+      if (i.faceB?.supplierName?.trim()) {
+        contratos.push({
+          ...base, cara: "B", proveedor: i.faceB.supplierName, marca: i.faceB.brandCategory,
+          desde: i.faceB.startDate, hasta: i.faceB.endDate, valor: i.faceB.negotiatedValue,
+        });
+      }
+    }
+    return contratosConNombreAjeno(contratos, items);
+  }, [items, sede]);
 
   return (
     <div style={{
@@ -3022,8 +3097,9 @@ function RevisionPanel({
       <div style={{ padding: 13, display: "flex", flexDirection: "column", gap: 8 }}>
         {hallazgos.length === 0 ? (
           <p style={{ fontSize: 12.5, color: "var(--success)", lineHeight: 1.5 }}>
-            El plano está limpio: sin códigos repetidos, sin muebles encimados y
-            con pasillos por donde se puede caminar.
+            El plano está limpio: sin códigos ni nombres repetidos, sin nombres
+            que sean el código de otro mueble, sin muebles encimados y con
+            pasillos por donde se puede caminar.
           </p>
         ) : (
           <>
@@ -3055,6 +3131,52 @@ function RevisionPanel({
               </button>
             ))}
           </>
+        )}
+
+        {/* Lo que ya está cargado, que ninguna validación arregla ─────────── */}
+        {aRevisar.length > 0 && (
+          <div style={{ marginTop: 6, paddingTop: 11, borderTop: "1px solid var(--dark-line)" }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: "var(--dark-ink-1)" }}>
+              Contratos para revisar uno por uno
+            </p>
+            <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 3, lineHeight: 1.5 }}>
+              {aRevisar.length} contrato{aRevisar.length === 1 ? "" : "s"} vigente
+              {aRevisar.length === 1 ? "" : "s"} sobre muebles que el plano dibuja con
+              un nombre distinto de su código. El contrato dice el código; la persona
+              que lo negoció vio el nombre.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+              {aRevisar.map((c) => (
+                <button
+                  key={`${c.id}-${c.cara ?? "A"}`}
+                  onClick={() => onIr([c.id])}
+                  style={{
+                    textAlign: "left", padding: "8px 10px", borderRadius: "var(--r-md)",
+                    border: `1px solid ${c.pisaCodigoDe ? "var(--danger)" : "var(--dark-line-2)"}`,
+                    background: c.pisaCodigoDe ? "var(--danger-50)" : "var(--dark-surface)",
+                    color: c.pisaCodigoDe ? "var(--danger)" : "var(--dark-ink-2)",
+                    fontSize: 11.5, lineHeight: 1.45, fontFamily: "inherit", cursor: "pointer",
+                  }}
+                >
+                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>{c.codigo}</span>
+                  <span style={{ opacity: 0.8 }}> · se dibuja </span>
+                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>«{c.nombre}»</span>
+                  <span style={{ display: "block", marginTop: 3 }}>
+                    {c.proveedor}{c.marca ? ` · ${c.marca}` : ""}
+                  </span>
+                  <span style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: 10.5, opacity: 0.85 }}>
+                    {c.desde || "—"} → {c.hasta || "—"}
+                  </span>
+                  {c.pisaCodigoDe && (
+                    <span style={{ display: "block", marginTop: 3, fontWeight: 600 }}>
+                      Ese nombre es el código de {c.pisaCodigoDe}: hay otro mueble al que
+                      «{c.nombre}» apunta de verdad.
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -3430,11 +3552,14 @@ const EMPTY_FACE: FaceData = {
 };
 
 function AssignmentPanel({
-  item, sede, sedes, editMode, isAdmin, initialFace, pasillo, onUpdate, onDelete, onDuplicate, onClose,
+  item, items, sede, sedes, editMode, isAdmin, initialFace, pasillo, onUpdate, onDelete, onDuplicate, onClose,
 }: {
   /** En qué pasillo cae, deducido de la geometría. */
   pasillo?: number;
   item: PlacedItem2D;
+  /** Todo el plano: sin los demás muebles no se puede decir si el nombre que se
+   *  está escribiendo ya es de otro, que es la comprobación que faltaba acá. */
+  items: PlacedItem2D[];
   sede: string;
   sedes: string[];
   editMode: boolean;
@@ -3461,6 +3586,58 @@ function AssignmentPanel({
   useEffect(() => {
     setActiveFace(isDouble ? (initialFace ?? "A") : "A");
   }, [item.id, initialFace, isDouble]);
+
+  // ── El nombre del mueble ──────────────────────────────────────────────────
+  // Este campo escribía DIRECTO en el layout, sin ninguna comprobación, mientras
+  // el doble clic sobre la caja del plano sí validaba. Dos maneras de poner el
+  // mismo nombre y una sola protegida: por acá se metieron los nombres que son
+  // el código de otro mueble. Ahora las dos llaman a `choqueDeNombre`.
+  //
+  // Se escribe en un borrador y sólo se guarda lo que pasa: rechazar es no
+  // escribir, no borrar lo que había. Y lo que YA está guardado y choca se
+  // avisa pero no se toca — un plano que hoy está mal se tiene que poder abrir,
+  // mirar y guardar.
+  const [nombreBorrador, setNombreBorrador] = useState(item.nomenclatura ?? "");
+  // Sólo al cambiar de mueble: mientras se escribe, el borrador manda. Si se
+  // enganchara también a `item.nomenclatura`, revertir el nombre al detectar un
+  // choque (abajo) borraría lo que la persona está tecleando.
+  const nombrePrevio = useRef(item.nomenclatura ?? "");
+  useEffect(() => {
+    setNombreBorrador(item.nomenclatura ?? "");
+    nombrePrevio.current = item.nomenclatura ?? "";
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id]);
+  const choqueEscrito = useMemo(
+    () => (nombreBorrador.trim() === (item.nomenclatura ?? "").trim()
+      ? null
+      : choqueDeNombre(nombreBorrador, items, item.id)),
+    [nombreBorrador, items, item.id, item.nomenclatura],
+  );
+  // Lo que YA está guardado y choca, mirado desde LOS DOS lados. Miraba sólo
+  // `item.nomenclatura`, así que del par que se lee igual avisaba únicamente al
+  // renombrado: el mueble cuyo código quedó pisado —el que de verdad se llama
+  // IMP-08— abría el panel sin una palabra, y es justo el que se vende por
+  // error. Se pregunta por el nombre que se VE, que es el que confunde.
+  const choqueGuardado = useMemo(
+    () => choqueDeNombre(nombreDeMueble(item), items, item.id),
+    [items, item],
+  );
+
+  function escribirNombre(texto: string) {
+    setNombreBorrador(texto);
+    // Vacío devuelve el nombre del sistema: siempre se puede.
+    if (!texto.trim()) { guardarNombre(""); return; }
+    // Mientras lo escrito choque, el mueble se queda con el nombre que tenía al
+    // empezar a editar. Si no, tecleando «IMP-11» quedaría llamándose «IMP-1»:
+    // el prefijo válido se habría guardado en el camino y el rechazo del final
+    // dejaría al mueble renombrado a algo que nadie quiso.
+    if (choqueDeNombre(texto, items, item.id)) { guardarNombre(nombrePrevio.current); return; }
+    guardarNombre(texto);
+  }
+
+  function guardarNombre(valor: string) {
+    if ((item.nomenclatura ?? "") !== valor) onUpdate({ nomenclatura: valor });
+  }
 
   const face: FaceData = activeFace === "B"
     ? (item.faceB ?? EMPTY_FACE)
@@ -3612,24 +3789,47 @@ function AssignmentPanel({
       <Field label="Nomenclatura" icon="🔖">
         {editMode ? (
           <>
-            <input className={inp} placeholder={item.code}
-              value={item.nomenclatura ?? ""}
-              onChange={(e) => onUpdate({ nomenclatura: e.target.value })} />
-            <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 4 }}>
-              {nombrePropio(item)
-                ? `El sistema lo llamó ${item.code}. Vaciá el campo para volver a ese nombre.`
-                : `Heredada del nombre que le dio el sistema. Escribí uno para reemplazarlo.`}
-            </p>
+            <input
+              className={inp}
+              placeholder={item.code}
+              style={choqueEscrito ? { color: "var(--danger)", borderBottomColor: "var(--danger)" } : undefined}
+              value={nombreBorrador}
+              onChange={(e) => escribirNombre(e.target.value)} />
+            {choqueEscrito ? (
+              <p style={{ fontSize: 11, color: "var(--danger)", marginTop: 4, lineHeight: 1.45 }}>
+                No se guardó: {textoDelChoque(nombreBorrador, choqueEscrito)}
+                {" "}Sigue llamándose «{nombreDeMueble(item)}».
+              </p>
+            ) : (
+              <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 4 }}>
+                {nombrePropio(item)
+                  ? `El sistema lo llamó ${item.code}. Vaciá el campo para volver a ese nombre.`
+                  : `Heredada del nombre que le dio el sistema. Escribí uno para reemplazarlo.`}
+              </p>
+            )}
+            {/* Lo que ya estaba guardado así se avisa, nunca se bloquea. */}
+            {!choqueEscrito && choqueGuardado && (
+              <p style={{ fontSize: 11, color: "var(--warning)", marginTop: 4, lineHeight: 1.45 }}>
+                Ojo: {textoDelChoque(nombreDeMueble(item), choqueGuardado)}
+              </p>
+            )}
           </>
         ) : (
-          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>
-            {nombreDeMueble(item)}
-            {!nombrePropio(item) && (
-              <span style={{ fontSize: 11, color: "var(--dark-ink-3)", marginLeft: 6 }}>
-                · del sistema
-              </span>
+          <>
+            <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>
+              {nombreDeMueble(item)}
+              {!nombrePropio(item) && (
+                <span style={{ fontSize: 11, color: "var(--dark-ink-3)", marginLeft: 6 }}>
+                  · del sistema
+                </span>
+              )}
+            </p>
+            {choqueGuardado && (
+              <p style={{ fontSize: 11, color: "var(--warning)", marginTop: 4, lineHeight: 1.45 }}>
+                Ojo: {textoDelChoque(nombreDeMueble(item), choqueGuardado)}
+              </p>
             )}
-          </p>
+          </>
         )}
       </Field>
 

@@ -90,15 +90,31 @@ export function siguienteCodigo(
   return `${prefijo}-${Date.now()}`;
 }
 
+/**
+ * Qué OTRO mueble tiene ese código. El mueble, no un sí/no: quien avisa
+ * necesita poder decir cuál, y quien lo lee necesita poder ir a mirarlo.
+ *
+ * Sirve para las dos preguntas, que son la misma comparación leída al derecho
+ * y al revés: «este código, ¿ya es de otro?» y «este NOMBRE, ¿es el código de
+ * otro?». La segunda es la que faltaba, y es por donde se metió el error.
+ */
+export function muebleConCodigo<T extends { id: string; code: string }>(
+  texto: string,
+  existentes: T[],
+  exceptoId?: string,
+): T | null {
+  const c = normalizar(texto);
+  if (!c) return null;
+  return existentes.find((f) => f.id !== exceptoId && normalizar(f.code) === c) ?? null;
+}
+
 /** ¿Ese código ya lo usa OTRO mueble? */
 export function codigoRepetido(
   codigo: string,
   existentes: { id: string; code: string }[],
   exceptoId?: string,
 ): boolean {
-  const c = normalizar(codigo);
-  if (!c) return false;
-  return existentes.some((f) => f.id !== exceptoId && normalizar(f.code) === c);
+  return muebleConCodigo(codigo, existentes, exceptoId) !== null;
 }
 
 export interface Duplicado { codigo: string; ids: string[] }
@@ -162,6 +178,20 @@ export function nombrePropio(
   return puesto !== "" && puesto !== mueble.code;
 }
 
+/** Qué OTRO mueble se DIBUJA con ese nombre. El gemelo de `muebleConCodigo`,
+ *  del lado de lo que se ve. */
+export function muebleConNombre<T extends { id: string; code: string; nomenclatura?: string | null }>(
+  nombre: string,
+  existentes: T[],
+  exceptoId?: string,
+): T | null {
+  const n = normalizar(nombre);
+  if (!n) return null;
+  return existentes.find(
+    (f) => f.id !== exceptoId && normalizar(nombreDeMueble(f)) === n,
+  ) ?? null;
+}
+
 /** ¿Dos muebles quedarían llamándose igual? Lo mismo que `codigoRepetido`, pero
  *  sobre el nombre que se VE, que es el que confunde a quien mira el plano. */
 export function nombreRepetido(
@@ -169,11 +199,191 @@ export function nombreRepetido(
   existentes: { id: string; code: string; nomenclatura?: string | null }[],
   exceptoId?: string,
 ): boolean {
+  return muebleConNombre(nombre, existentes, exceptoId) !== null;
+}
+
+// ─── Un nombre que es el código de otro ──────────────────────────────────────
+
+/**
+ * Por qué un nombre no se puede usar.
+ *
+ * Son dos choques distintos y hay que decirlos distinto, porque el segundo es
+ * el que se coló durante meses:
+ *
+ *   - `nombre` — otro mueble ya se DIBUJA así. Se ven dos cajas iguales en el
+ *     plano y nadie sabe cuál es cuál. Esto ya se atrapaba.
+ *   - `codigo` — el texto es el CÓDIGO de otro mueble. En el plano puede no
+ *     verse ninguna repetición (el dueño de ese código puede estar renombrado
+ *     y no dibujarlo), pero la llave sigue existiendo: quien escriba ese texto
+ *     en la planilla va a firmar sobre el OTRO mueble, porque la planilla
+ *     resuelve contra `code`. Es la doble venta del diagnóstico de la fase 12.
+ *
+ * `otro` es el mueble con el que se choca, para poder nombrarlo en el aviso.
+ */
+export type ChoqueDeNombre = {
+  clase: "nombre" | "codigo";
+  otro: { id: string; code: string; nomenclatura?: string | null };
+};
+
+/**
+ * ¿Este mueble se puede llamar así? `null` es que sí.
+ *
+ * Es la comprobación única de los dos lugares donde se escribe un nombre: el
+ * doble clic sobre la caja del plano y el campo «Nomenclatura» del panel. Antes
+ * el panel no comprobaba nada y el doble clic sólo comparaba nombre contra
+ * nombre, que es justo la mitad que deja pasar el caso grave.
+ */
+export function choqueDeNombre(
+  nombre: string,
+  existentes: { id: string; code: string; nomenclatura?: string | null }[],
+  exceptoId?: string,
+): ChoqueDeNombre | null {
   const n = normalizar(nombre);
-  if (!n) return false;
-  return existentes.some(
-    (f) => f.id !== exceptoId && normalizar(nombreDeMueble(f)) === n,
+  if (!n) return null;
+  const mismoNombre = muebleConNombre(n, existentes, exceptoId);
+  if (mismoNombre) return { clase: "nombre", otro: mismoNombre };
+  const duenoDelCodigo = muebleConCodigo(n, existentes, exceptoId);
+  if (duenoDelCodigo) return { clase: "codigo", otro: duenoDelCodigo };
+  return null;
+}
+
+/**
+ * El aviso, en palabras, del choque que devuelve `choqueDeNombre`.
+ *
+ * Nombra siempre al otro mueble por su código, que es la llave: sin eso el
+ * aviso dice que algo está mal y no dice contra qué, y la persona no tiene
+ * cómo resolverlo.
+ */
+export function textoDelChoque(nombre: string, choque: ChoqueDeNombre): string {
+  const n = normalizar(nombre);
+  const otro = choque.otro;
+  if (choque.clase === "nombre") {
+    return nombrePropio(otro)
+      ? `«${n}» ya es el nombre del mueble ${otro.code}. Dos cajas con el mismo rótulo no se distinguen en el plano.`
+      : `«${n}» ya es el nombre del mueble ${otro.code}, que se dibuja con su código. Dos cajas con el mismo rótulo no se distinguen en el plano.`;
+  }
+  return (
+    `«${n}» es el código de otro mueble` +
+    (nombrePropio(otro) ? `, el que se dibuja «${nombreDeMueble(otro)}»` : "") +
+    `. Un contrato cargado como «${n}» se firma sobre ése, no sobre éste.`
   );
+}
+
+export interface NombreRepetidoEnPlano { nombre: string; ids: string[] }
+
+/** Los nombres DIBUJADOS que aparecen más de una vez. `duplicados`, pero sobre
+ *  lo que se lee en el plano, que es lo único que ve quien vende. */
+export function nombresRepetidos(
+  items: { id: string; code: string; nomenclatura?: string | null }[],
+): NombreRepetidoEnPlano[] {
+  const porNombre = new Map<string, string[]>();
+  for (const f of items) {
+    const n = normalizar(nombreDeMueble(f));
+    if (!n) continue;
+    porNombre.set(n, [...(porNombre.get(n) ?? []), f.id]);
+  }
+  return [...porNombre.entries()]
+    .filter(([, ids]) => ids.length > 1)
+    .map(([nombre, ids]) => ({ nombre, ids }));
+}
+
+export interface NombrePisaCodigo {
+  /** El mueble renombrado a mano. */
+  id: string;
+  code: string;
+  nombre: string;
+  /** El mueble cuyo código quedó pisado por ese nombre. */
+  otroId: string;
+  otroCode: string;
+}
+
+/**
+ * Los muebles cuyo nombre puesto a mano es el CÓDIGO de otro mueble.
+ *
+ * No se puede prohibir de entrada: los planos que ya están así se tienen que
+ * poder abrir, mirar y guardar. Se listan para poder revisarlos uno por uno.
+ */
+export function nombresQuePisanCodigo(
+  items: { id: string; code: string; nomenclatura?: string | null }[],
+): NombrePisaCodigo[] {
+  const out: NombrePisaCodigo[] = [];
+  for (const f of items) {
+    if (!nombrePropio(f)) continue;
+    const nombre = nombreDeMueble(f);
+    const otro = muebleConCodigo(nombre, items, f.id);
+    if (!otro) continue;
+    out.push({ id: f.id, code: f.code, nombre: normalizar(nombre), otroId: otro.id, otroCode: otro.code });
+  }
+  return out;
+}
+
+/**
+ * Cuántos muebles de la sede dibujan cada nombre REPETIDO.
+ *
+ * `nombresRepetidos` contesta «cuáles están repetidos» para listarlos en la
+ * revisión; esto contesta «este mueble que estoy por dibujar, ¿comparte su
+ * nombre?», que es la pregunta que hace el plano una vez por caja. Por eso es
+ * un mapa: se arma una vez por plano y se consulta N veces.
+ *
+ * La cuenta, no un sí/no: el aviso del plano tiene que poder decir CUÁNTOS
+ * son, porque «×2» es lo que convierte dos cajas iguales en dos cajas que se
+ * están señalando entre ellas.
+ */
+export function nombresChocados(
+  items: { id: string; code: string; nomenclatura?: string | null }[],
+): Map<string, number> {
+  return new Map(nombresRepetidos(items).map((r) => [r.nombre, r.ids.length]));
+}
+
+/**
+ * Que dos muebles se llamen igual EN EL PLANO, dicho para el que dibuja.
+ *
+ * Es el hallazgo grave que quedó abierto de la fase 12: en CIUDAD JARDIN el
+ * mueble de código IMP-12 se dibuja «IMP-08» y existe otro cuyo código es de
+ * verdad IMP-08. El plano dibujaba UNA sola pastilla «IMP-08» —la del
+ * renombrado— y el IMP-08 verdadero, chico, mostraba nada más el emoji: quien
+ * miraba el plano veía un solo IMP-08 y no tenía cómo sospechar que había otro.
+ * Después elegía, y el contrato caía en el que no era.
+ *
+ * Los dos muebles son FÍSICAMENTE DISTINTOS y contratar los dos es legítimo:
+ * esto no prohíbe nada, avisa. Y avisa en los DOS, porque el que no sabe que
+ * tiene un gemelo es justamente el que se vende por error.
+ */
+export interface ChoqueDeRotulo {
+  /** Cuántos muebles de la sede se dibujan con este mismo nombre. Siempre ≥ 2. */
+  veces: number;
+  /** La marca corta que va pegada al rótulo: «×2». NO es un nombre —el nombre
+   *  se dibuja una sola vez, ésa es la regla de `rotulosDelPlano`—: es la
+   *  cuenta de cuántos lo llevan. */
+  marca: string;
+  /** El código real de ESTE mueble, que es lo único que lo distingue del otro
+   *  cuando los dos se leen igual. `null` cuando el nombre dibujado YA es su
+   *  código: ahí no hay nada oculto que revelar. */
+  codigo: string | null;
+  /** El aviso en palabras, para el `title` del plano y para quien lo necesite
+   *  en texto. Una sola frase, sin ramas: siempre es cierta. */
+  texto: string;
+}
+
+/** ¿El nombre con el que se dibuja este mueble lo lleva alguien más?
+ *
+ *  `chocados` es el mapa de `nombresChocados` del plano entero. Sin él no hay
+ *  choque que reportar: un mueble solo nunca choca contra sí mismo. */
+export function choqueDeRotulo(
+  mueble: { code: string; nomenclatura?: string | null },
+  chocados?: ReadonlyMap<string, number>,
+): ChoqueDeRotulo | null {
+  const nombre = nombreDeMueble(mueble);
+  const veces = chocados?.get(normalizar(nombre)) ?? 0;
+  if (veces < 2) return null;
+  return {
+    veces,
+    marca: `×${veces}`,
+    codigo: nombrePropio(mueble) ? mueble.code : null,
+    texto:
+      `«${normalizar(nombre)}» lo dibujan ${veces} muebles de esta sede. ` +
+      `Éste es el de código ${mueble.code}: el nombre no los distingue, el código sí.`,
+  };
 }
 
 /**
@@ -193,15 +403,28 @@ export function nombreRepetido(
  * chico sin nombre propio el plano ya dice bastante con el emoji, y una pastilla
  * por cada cajita deja el plano ilegible al alejarse.
  *
+ * **La excepción son los que chocan**, y por eso se pasa `chocados`: si el
+ * nombre lo lleva otro mueble de la sede, éste MUESTRA su nombre aunque no
+ * tenga uno puesto a mano —si no, de los dos gemelos el plano dibuja uno solo—
+ * y además sale marcado. Sigue sin haber una pastilla por cajita: se marcan los
+ * que chocan, que en un plano sano son cero.
+ *
  * `cabeAdentro` lo decide quien dibuja, que es el único que sabe cuántos píxeles
- * mide el mueble en pantalla con el zoom que hay.
+ * mide el mueble en pantalla con el zoom que hay. `choque` también es para él:
+ * acá se decide QUÉ se dice, los píxeles los pone el plano.
  */
 export function rotulosDelPlano(
   mueble: { code: string; nomenclatura?: string | null },
   cabeAdentro: boolean,
-): { adentro: string | null; pastilla: string | null } {
+  chocados?: ReadonlyMap<string, number>,
+): { adentro: string | null; pastilla: string | null; choque: ChoqueDeRotulo | null } {
   const nombre = nombreDeMueble(mueble);
+  const choque = choqueDeRotulo(mueble, chocados);
   return cabeAdentro
-    ? { adentro: nombre, pastilla: null }
-    : { adentro: null, pastilla: nombrePropio(mueble) ? nombre : null };
+    ? { adentro: nombre, pastilla: null, choque }
+    : {
+        adentro: null,
+        pastilla: nombrePropio(mueble) || choque ? nombre : null,
+        choque,
+      };
 }

@@ -1829,10 +1829,81 @@ pesos y no un peso con ochocientas milésimas.
 
 **Qué se rechaza y qué sólo se avisa.** Error (la fila no entra): código que no existe en el
 plano, mueble no comercializable, falta proveedor/valor/fechas, fechas al revés, choque con
-un contrato existente y **choque con otra fila del mismo archivo** —el error más fácil de
-cometer en una planilla y el más difícil de ver leyéndola—. Aviso (entra, pero se mira): el
-valor 15% o más por debajo de la tarifa de referencia, y un correo con formato dudoso, que
-se descarta en vez de guardarse mal.
+un contrato existente, **choque con otra fila del mismo archivo** —el error más fácil de
+cometer en una planilla y el más difícil de ver leyéndola—, **código ambiguo** y **falta la
+sede**. Aviso (entra, pero se mira): el valor 15% o más por debajo de la tarifa de
+referencia, un correo con formato dudoso —que se descarta en vez de guardarse mal— y **el
+mueble que tiene un gemelo de nombre**.
+
+### El código ambiguo, que es cómo un contrato terminaba en el mueble equivocado
+
+Un mueble tiene dos nombres: el `code`, que es la llave con la que se guarda todo, y la
+`nomenclatura`, el nombre que la persona escribe y que lo reemplaza **en pantalla**. La
+planilla resolvía sólo contra el `code`. Entonces quien leía el plano, veía «IMP-08» y
+escribía «IMP-08», mandaba el contrato al mueble cuyo código es IMP-08 — que no es el que
+estaba mirando, porque el que el plano dibuja «IMP-08» tiene por código IMP-12.
+
+En CIUDAD JARDIN se renumeró a mano una corrida de impulsadores. Correr números dentro de un
+conjunto cerrado garantiza que **cada nombre nuevo sea el código viejo de otro**: seis de
+seis. Reproducido de punta a punta por la pantalla real, incluida la parte que importa: se
+vendió dos veces lo que para quien mira el plano es el mismo espacio, a dos proveedores, con
+las mismas fechas, y ninguna validación se quejó. El choque de fechas existe y funciona —con
+el plano limpio rechaza la segunda venta—; lo que lo esquiva es que el nombre que se lee y la
+llave que une sean dos cosas.
+
+**Un texto ambiguo no entra.** Si lo tecleado es el `code` de un mueble **y** el nombre
+dibujado de otro, la fila se rechaza y el mensaje ofrece **los dos caminos con su código
+completo**, primero el que el plano dibuja con ese texto. El consejo importa tanto como el
+rechazo: la primera versión decía «escribí el código completo» a secas, y seguirlo llevaba
+derecho al mueble equivocado. Un mensaje que manda a la trampa es peor que ninguno.
+
+**El código completo desempata, y por eso avisa en vez de rechazar.** `CIUDAD JARDIN-IMP-08`
+identifica un mueble sin ambigüedad, así que entra — rechazarlo dejaría seis muebles
+imposibles de contratar y rompería Vender, que manda siempre el código completo. Pero el
+mueble al que lleva tiene un gemelo de nombre, así que la fila sale en ámbar diciendo a cuál
+va y cuál es el otro. La pregunta que hace el aviso no es la del rechazo: el rechazo pregunta
+por el **texto** tecleado, el aviso por el **mueble** resuelto. Preguntar sólo por el texto
+dejaba pasar justo el camino que el rechazo recomendaba.
+
+**Los avisos no se abaratan.** Con el plano sano, una tanda normal sigue dando cero avisos —
+medido contra el código anterior a la fase, con los dos servidores en paralelo y la misma
+planilla. Un aviso que sale en todas las filas entrena a la gente a ignorarlo, que es la misma
+razón por la que «proveedor nuevo» no pinta la fila.
+
+**La sede, que era un agujero aparte.** Sin sede el código quedaba corto y creaba **un segundo
+espacio para el mismo mueble físico**, con su propio contrato y ciego al choque del otro: una
+doble venta literal, sin ningún renombre de por medio. Ahora la fila sin sede no entra, el
+código completo se arma con la sede **del mueble encontrado** y la sede de otra tienda se
+rechaza diciendo dónde sí existe ese código.
+
+**El eco de la revisión muestra lo que la persona reconoce.** Devolvía el `label` del tipo
+—«Impulsador Marca», idéntico en los once impulsadores— y el código que la persona acababa de
+teclear: dos campos indistinguibles entre el mueble correcto y el equivocado. Ahora devuelve
+además `nombre_dibujado`, que es el único que los distingue, y la revisión lo muestra en su
+propia columna.
+
+**Y lo que ya está mal se ve.** «Revisar antes de negociar» no recibía el campo del nombre y
+declaraba limpio un plano con cuatro nombres repetidos; ahora los lista, junto con los que
+pisan el código de otro, y lista además los **contratos vigentes cuyo mueble se dibuja con
+otro nombre**, con proveedor, fechas, código real y nombre dibujado. Ninguna validación nueva
+bloquea el guardado de un plano que ya está mal: se avisa, no se traba, o CIUDAD JARDIN
+quedaría sin poder guardarse.
+
+**Lo que esta fase NO hace, y por qué.** No renombra el `code` de verdad: arrastra
+`spaces.code` y `spaces.svg_id` (los dos UNIQUE), `mount_confirmations.space_code`, los
+enlaces de montaje y el histórico de la plataforma, y este proyecto no migra. Y no resuelve la
+planilla por nomenclatura, porque en el plano medido las seis nomenclaturas son ambiguas
+contra un código ajeno: sola, esa opción deja seis filas que no se pueden cargar. El camino
+para tener **un solo nombre** es otro y va aparte: que el `code` sea un identificador interno
+que nadie ve, que el nombre sea único contra los nombres **y** los códigos de la sede, y que
+todas las pantallas dibujen el nombre. Ahí renombrar propaga gratis, porque nada se une por el
+nombre.
+
+**Lo que queda abierto.** `PUT /layout/{sede}` acepta la lista de muebles sin mirar
+(`schemas/layout.py`), así que la prohibición de crear un nombre que pisa un código ajeno vive
+sólo en el navegador. El guardarraíl de servidor no puede ser «rechazar los choques» sino «no
+aceptar choques **nuevos**», comparando contra el snapshot anterior; si no, un plano que ya
+está mal deja de poder guardarse.
 
 Acá se es **más estricto que en el alta de a uno**: ahí un código sin mueble en el plano se
 acepta —hay filas sembradas y muebles borrados después del contrato— pero en una planilla es
@@ -4356,6 +4427,17 @@ queda anotado y no hecho.
   a secas adentro, así que un mueble renombrado mostraba el nombre puesto a mano
   arriba y el de fábrica adentro. El `code` es la llave del espacio y no se toca
   desde ninguna pantalla: renombrar escribe `nomenclatura`.
+- **Y si DOS muebles de la sede se dibujan con el mismo nombre, los dos lo
+  muestran y los dos salen marcados.** `nombresChocados()` cuenta los nombres
+  repetidos del plano y `rotulosDelPlano()` recibe esa cuenta: el gemelo sin
+  nombre puesto a mano —que por la regla de arriba no llevaba pastilla— pasa a
+  llevarla, y la marca «×2» va en rojo pegada al rótulo (en el mapa isométrico
+  de Vender, en una tercera línea con el código real: «×2 · IMP-12»). Sin esto,
+  de las dos cajas rotuladas «IMP-08» el plano dibujaba una sola y quien elegía
+  no tenía cómo sospechar que había otra: es la doble venta de la fase 12 vista
+  desde la pantalla donde se elige. El aviso **no se apaga** con el botón
+  «Etiquetas» —una etiqueta se oculta, un aviso no— y no bloquea nada: los dos
+  muebles existen, son distintos y contratar los dos es legítimo.
 - **Las filas de «Para revisar» abren la ficha.** Llamaban a `selectFixture` sin
   punto de anclaje, y con eso no salía ninguno de los dos paneles: el globito
   del mapa necesita un ancla y la ficha necesita `detailFull`, que sólo lo

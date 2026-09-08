@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, Check, Download, FileSpreadsheet, Loader2, Upload, X,
 } from "lucide-react";
@@ -264,15 +264,43 @@ export default function CargaMasiva({
               ) : null}
             </div>
 
+            {/* «Entra, pero se mira» es una categoría propia y hasta acá se
+                dependía de que alguien notara un fondo ámbar entre veinte
+                renglones. Una fila con aviso se guarda igual —tiene que poder
+                guardarse: los dos muebles existen y contratar los dos es
+                legítimo—, así que el aviso no puede vivir sólo en el color. */}
+            {revision.avisos > 0 && (
+              <div
+                style={{
+                  display: "flex", gap: 9, alignItems: "flex-start",
+                  padding: "10px 18px", background: "var(--warning-50)",
+                  borderBottom: "1px solid var(--warning-100)",
+                  fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.5,
+                }}
+              >
+                <AlertTriangle size={14} style={{ color: "var(--warning)", flexShrink: 0, marginTop: 2 }} />
+                <span>
+                  <b>{revision.avisos}</b>{" "}
+                  {revision.avisos === 1 ? "fila entra igual" : "filas entran igual"}, pero hay
+                  algo que mirar antes de guardar. {revision.avisos === 1 ? "Está" : "Están"} en
+                  ámbar, con el aviso completo debajo del renglón: si no es lo que quisiste,
+                  desmarcá{revision.avisos === 1 ? "la" : "las"} y arreglá la planilla.
+                </span>
+              </div>
+            )}
+
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                 <thead>
                   <tr style={{ background: "var(--surface-3)" }}>
-                    {["", "Fila", "Espacio", "Proveedor", "Periodo", "Valor", "Estado"].map((h, i) => (
+                    {/* «Nombre dibujado» va pegado al código a propósito: son los
+                        dos nombres del mismo mueble, y verlos separados es lo que
+                        dejó firmar dos veces el mismo espacio. */}
+                    {["", "Fila", "Espacio", "Nombre dibujado", "Proveedor", "Periodo", "Valor", "Estado"].map((h, i) => (
                       <th
                         key={i}
                         style={{
-                          textAlign: i >= 5 && i < 6 ? "right" : "left",
+                          textAlign: i === 6 ? "right" : "left",
                           padding: "8px 10px", fontSize: 10, fontWeight: 700,
                           letterSpacing: "0.06em", textTransform: "uppercase",
                           color: "var(--ink-3)", position: "sticky", top: 0,
@@ -289,16 +317,33 @@ export default function CargaMasiva({
                     const pinta = PINTA[r.estado];
                     const puede = r.estado !== "error";
                     const marcada = elegidas.has(r.fila);
+                    // El mueble se resolvió cuando el servidor pudo decir de qué
+                    // TIPO es: `nombre` sale del mueble del plano, nunca de la
+                    // planilla. Una fila que no entra por choque de fechas SÍ
+                    // tiene mueble resuelto —y es justo cuando hace falta ver
+                    // cuál era—; una ambigua o un código que no existe, no.
+                    const resuelto = puede || Boolean(r.nombre) || Boolean(r.nombre_dibujado);
+                    // El aviso se lee entero, en su propio renglón y a todo el
+                    // ancho: metido en la última celda, un mensaje que nombra el
+                    // otro mueble caía en seis líneas de columna angosta.
+                    const cuerpoFila = {
+                      background: pinta.fondo,
+                      opacity: puede && !marcada ? 0.55 : 1,
+                    };
+                    // «Entra sin que haya nada que mirar» es lo único que se
+                    // lee de corrido: lo demás lleva barra al costado y el aviso
+                    // en su propio renglón.
+                    const puedeSinMirar = r.estado === "ok";
+                    const barra = puedeSinMirar ? undefined : `inset 3px 0 0 ${pinta.color}`;
                     return (
+                      <Fragment key={r.fila}>
                       <tr
-                        key={r.fila}
                         style={{
-                          background: pinta.fondo,
-                          borderBottom: "1px solid var(--line-soft)",
-                          opacity: puede && !marcada ? 0.55 : 1,
+                          ...cuerpoFila,
+                          borderBottom: r.mensajes.length ? "none" : "1px solid var(--line-soft)",
                         }}
                       >
-                        <td style={{ padding: "8px 10px", width: 30 }}>
+                        <td style={{ padding: "8px 10px", width: 30, boxShadow: barra }}>
                           <input
                             type="checkbox"
                             checked={marcada}
@@ -319,6 +364,35 @@ export default function CargaMasiva({
                           </div>
                           {r.nombre && <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{r.nombre}</div>}
                         </td>
+                        {/* Cómo se llama ese mueble EN EL PLANO. Cuando alguien le
+                            puso un nombre a mano, es el único campo de la fila que
+                            la persona reconoce: el código se lo devuelve el
+                            servidor tal como ella lo tecleó, y el nombre de arriba
+                            es el del tipo de mueble, igual en los cuarenta. */}
+                        <td style={{ padding: "8px 10px" }}>
+                          {r.nombre_dibujado ? (
+                            <>
+                              <div style={{
+                                fontFamily: "var(--font-mono)", fontWeight: 700,
+                                whiteSpace: "nowrap", color: "var(--warning)",
+                              }}>
+                                {r.nombre_dibujado}
+                              </div>
+                              <div style={{ fontSize: 11, color: "var(--ink-3)" }}>
+                                así lo dibuja el plano
+                              </div>
+                            </>
+                          ) : (
+                            <div style={{ fontSize: 11, color: "var(--ink-3)" }}>
+                              {/* «—» es «no hay mueble del que hablar», y eso pasa
+                                  cuando el código es ambiguo o no existe. Una fila
+                                  rechazada por choque de fechas SÍ tiene mueble
+                                  resuelto: decirle «—» le escondía a la persona
+                                  contra cuál chocó, que es lo único que quería ver. */}
+                              {resuelto ? "se dibuja con su código" : "—"}
+                            </div>
+                          )}
+                        </td>
                         <td style={{ padding: "8px 10px" }}>
                           <div style={{ fontWeight: 600 }}>{r.proveedor || "—"}</div>
                           {r.marca && <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{r.marca}</div>}
@@ -330,7 +404,7 @@ export default function CargaMasiva({
                         <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "var(--font-mono)", whiteSpace: "nowrap" }}>
                           {money(r.valor)}
                         </td>
-                        <td style={{ padding: "8px 10px", minWidth: 200 }}>
+                        <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
                           <span
                             style={{
                               display: "inline-block", padding: "2px 8px", borderRadius: 999,
@@ -340,13 +414,32 @@ export default function CargaMasiva({
                           >
                             {pinta.texto}
                           </span>
-                          {r.mensajes.length > 0 && (
-                            <div style={{ fontSize: 11.5, color: pinta.color, marginTop: 4, lineHeight: 1.45 }}>
-                              {r.mensajes.join(" ")}
-                            </div>
-                          )}
                         </td>
                       </tr>
+                      {r.mensajes.length > 0 && (
+                        <tr style={{ ...cuerpoFila, borderBottom: "1px solid var(--line-soft)" }}>
+                          <td style={{ boxShadow: barra }} />
+                          <td colSpan={7} style={{ padding: "0 10px 9px" }}>
+                            {/* Una fila limpia también dice cosas —«proveedor
+                                nuevo»— y ésas NO llevan el triángulo ni el color
+                                del estado: si el aviso de una fila que hay que
+                                mirar se pinta igual que una nota de trámite, en
+                                una planilla de temporada entera se aprende a
+                                saltear los dos. */}
+                            <div style={{
+                              display: "flex", gap: 7, alignItems: "flex-start", fontSize: 12,
+                              color: puedeSinMirar ? "var(--ink-3)" : pinta.color,
+                              lineHeight: 1.5, maxWidth: 780,
+                            }}>
+                              {!puedeSinMirar && (
+                                <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 2 }} />
+                              )}
+                              <span>{r.mensajes.join(" ")}</span>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     );
                   })}
                 </tbody>

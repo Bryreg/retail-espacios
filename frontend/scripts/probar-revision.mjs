@@ -181,4 +181,127 @@ prueba("lo que mide menos de 25 cm no encierra nada", () => {
   assert.equal(R.zonasAisladas(marcas).celdas, 0);
 });
 
+console.log("\nrevisión · los nombres, que es lo que se lee");
+
+/** Once impulsadores en fila, seis renumerados a mano: el plano de CIUDAD
+ *  JARDIN del diagnóstico de la fase 12. Separados 1,5 m para que no haya
+ *  encimados ni pasillos angostos y quede a la vista lo de los nombres. */
+const impulsadores = (renombres = {}) =>
+  Array.from({ length: 11 }, (_, i) => {
+    const code = `IMP-${String(i + 7).padStart(2, "0")}`;
+    return {
+      id: "i" + code.slice(4), code, type: "impulsador",
+      cx: i * 1.5, cz: 0, w: 0.6, d: 0.4, h: 1.4, rotY: 0,
+      nomenclatura: renombres[code],
+    };
+  });
+
+const RENUMERADO = {
+  "IMP-09": "IMP-17", "IMP-11": "IMP-16", "IMP-12": "IMP-08",
+  "IMP-13": "IMP-10", "IMP-14": "IMP-12", "IMP-15": "IMP-14",
+};
+
+prueba("EL PLANO CON SEIS RENOMBRES YA NO SE DECLARA LIMPIO", () => {
+  // Antes: `revisarPlano` devolvía [] y el panel decía «El plano está limpio».
+  // Cuatro nombres dibujados dos veces y ningún código repetido.
+  const plano = impulsadores(RENUMERADO);
+  assert.deepEqual(clases(R.revisarPlano(plano)).filter(c => c === "codigo-repetido"), []);
+  const h = R.revisarPlano(plano);
+  assert.ok(h.length > 0, "siguió declarando limpio un plano con cuatro nombres repetidos");
+  assert.equal(h.filter(x => x.clase === "nombre-repetido").length, 4);
+  assert.equal(h.filter(x => x.clase === "nombre-pisa-codigo").length, 6);
+});
+
+prueba("dos muebles dibujados con el mismo nombre es un error, y los nombra", () => {
+  const plano = impulsadores({ "IMP-12": "IMP-08" });
+  const h = R.revisarPlano(plano).find(x => x.clase === "nombre-repetido");
+  assert.ok(h, "no lo detectó");
+  assert.equal(h.severidad, "error");
+  assert.deepEqual(h.ids.sort(), ["i08", "i12"]);
+  assert.ok(h.texto.includes("IMP-08"), h.texto);
+});
+
+prueba("un nombre que es el código de otro se reporta con los dos muebles", () => {
+  // Acá NO hay nombres repetidos: IMP-14 no lo dibuja nadie más. Y sin embargo
+  // cargar una planilla que diga «IMP-14» firma sobre el otro mueble.
+  const plano = impulsadores({ "IMP-15": "IMP-14", "IMP-14": "IMP-12", "IMP-12": "Punta 3" });
+  const h = R.revisarPlano(plano).find(x => x.clase === "nombre-pisa-codigo" && x.ids[0] === "i15");
+  assert.ok(h, "no lo detectó");
+  assert.equal(h.severidad, "error");
+  assert.deepEqual(h.ids, ["i15", "i14"]);
+  assert.ok(h.texto.includes("IMP-14"), h.texto);
+});
+
+prueba("renombrar sin pisar a nadie no molesta", () => {
+  // Renombrar está permitido y es lo normal: «la punta del pasillo 3».
+  const plano = impulsadores({ "IMP-08": "Punta del pasillo 3", "IMP-09": "Cabecera lácteos" });
+  const c = clases(R.revisarPlano(plano));
+  assert.ok(!c.includes("nombre-repetido"), c.join(","));
+  assert.ok(!c.includes("nombre-pisa-codigo"), c.join(","));
+});
+
+prueba("un plano sin nomenclaturas sigue limpio", () => {
+  assert.deepEqual(R.revisarPlano(impulsadores()), []);
+});
+
+console.log("\nrevisión · los contratos que ya están cargados");
+
+const contrato = (extra) => ({
+  id: "i12", code: "IMP-12", sede: "CIUDAD JARDIN", nomenclatura: "IMP-08",
+  proveedor: "CASA LUKER", marca: "ASEO",
+  desde: "2026-01-01", hasta: "2026-09-15", valor: 200000, ...extra,
+});
+const PLANO_CJ = impulsadores(RENUMERADO);
+
+prueba("lista el contrato cuyo mueble se dibuja con otro nombre", () => {
+  const r = R.contratosConNombreAjeno([contrato()], PLANO_CJ, "2026-09-08");
+  assert.equal(r.length, 1);
+  assert.equal(r[0].codigo, "CIUDAD JARDIN-IMP-12");   // lo que dice el contrato
+  assert.equal(r[0].nombre, "IMP-08");                  // lo que vio quien lo negoció
+  assert.equal(r[0].proveedor, "CASA LUKER");
+  assert.equal(r[0].desde, "2026-01-01");
+  assert.equal(r[0].hasta, "2026-09-15");
+  assert.equal(r[0].pisaCodigoDe, "IMP-08");            // y hay OTRO mueble que se llama así
+});
+
+prueba("el que se dibuja con su propio código no está en la lista", () => {
+  const solo = R.contratosConNombreAjeno(
+    [contrato({ id: "i07", code: "IMP-07", nomenclatura: undefined })], PLANO_CJ, "2026-09-08");
+  assert.deepEqual(solo, []);
+});
+
+prueba("un contrato vencido no se lista", () => {
+  // La reconciliación es para poder corregir; lo que ya terminó no se corrige.
+  assert.deepEqual(R.contratosConNombreAjeno([contrato()], PLANO_CJ, "2026-12-01"), []);
+  // El que arranca el mes que viene SÍ: es el que todavía se puede mover.
+  const futuro = R.contratosConNombreAjeno(
+    [contrato({ desde: "2026-10-01", hasta: "2026-12-31" })], PLANO_CJ, "2026-09-08");
+  assert.equal(futuro.length, 1);
+});
+
+prueba("un mueble sin proveedor no es un contrato", () => {
+  assert.deepEqual(R.contratosConNombreAjeno([contrato({ proveedor: "" })], PLANO_CJ, "2026-09-08"), []);
+});
+
+prueba("la cara B lleva su propio código de espacio", () => {
+  const r = R.contratosConNombreAjeno([contrato({ cara: "B" })], PLANO_CJ, "2026-09-08");
+  assert.equal(r[0].codigo, "CIUDAD JARDIN-IMP-12-B");
+});
+
+prueba("primero los que pisan el código de otro", () => {
+  // Son los peores: hay un mueble al que ese nombre apunta de verdad.
+  const inocente = contrato({ id: "i08", code: "IMP-08", nomenclatura: "Punta 3", proveedor: "COLGATE" });
+  const r = R.contratosConNombreAjeno([inocente, contrato()], PLANO_CJ, "2026-09-08");
+  assert.equal(r.length, 2);
+  assert.equal(r[0].pisaCodigoDe, "IMP-08");
+  assert.equal(r[1].pisaCodigoDe, null);
+});
+
+prueba("un plano sin renombres no deja nada para reconciliar", () => {
+  const limpio = impulsadores();
+  const c = { id: "i12", code: "IMP-12", sede: "CIUDAD JARDIN", proveedor: "CASA LUKER",
+              desde: "2026-01-01", hasta: "2026-09-15" };
+  assert.deepEqual(R.contratosConNombreAjeno([c], limpio, "2026-09-08"), []);
+});
+
 console.log("\n" + hechas + " pruebas" + (process.exitCode ? " · CON FALLAS" : " · todo en orden") + "\n");

@@ -10,7 +10,11 @@
  */
 
 import { huella, limitesDePlanta, chocaEn, puntoLibreCerca, RADIO_PERSONA, TOLERANCIA_CONTACTO } from "./planta";
-import { duplicados, prefijoDesalineado } from "./nomenclatura";
+import {
+  duplicados, prefijoDesalineado, nombreDeMueble, nombrePropio,
+  nombresRepetidos, nombresQuePisanCodigo, muebleConCodigo,
+} from "./nomenclatura";
+import { fullSpaceCode } from "../types/fixtures";
 import { detectarCorridas, type Corrida } from "./pasillos";
 
 export interface MuebleRevisable {
@@ -20,10 +24,16 @@ export interface MuebleRevisable {
   cx: number; cz: number;
   w: number; d: number; h?: number;
   rotY?: number;
+  /** El nombre puesto a mano, que REEMPLAZA al código en todo lo que se dibuja.
+   *  Faltaba: sin él la revisión miraba códigos contra códigos y declaraba
+   *  limpio un plano donde cuatro muebles se dibujaban con el nombre de otro. */
+  nomenclatura?: string | null;
 }
 
 export type Clase =
   | "codigo-repetido"
+  | "nombre-repetido"
+  | "nombre-pisa-codigo"
   | "prefijo"
   | "encimado"
   | "pasillo-angosto"
@@ -164,6 +174,26 @@ export function revisarPlano(fixtures: MuebleRevisable[]): Hallazgo[] {
     });
   }
 
+  // Los nombres, que es lo que se LEE. Un plano puede no tener un solo código
+  // repetido y aun así tener cuatro cajas rotuladas igual: el rótulo sale de la
+  // nomenclatura y la revisión miraba el código.
+  for (const n of nombresRepetidos(fixtures)) {
+    hallazgos.push({
+      clase: "nombre-repetido", severidad: "error", ids: n.ids,
+      texto: `${n.nombre} se dibuja en ${n.ids.length} muebles — en el plano no se distinguen, y quien lo escriba en una planilla no elige cuál`,
+    });
+  }
+
+  // El caso del diagnóstico: el nombre de un mueble es el CÓDIGO de otro. En el
+  // plano puede no verse ninguna repetición, y sin embargo escribir ese texto en
+  // la planilla firma sobre el otro mueble, porque la planilla resuelve por código.
+  for (const n of nombresQuePisanCodigo(fixtures)) {
+    hallazgos.push({
+      clase: "nombre-pisa-codigo", severidad: "error", ids: [n.id, n.otroId],
+      texto: `${n.code} se dibuja «${n.nombre}», que es el código de otro mueble (${n.otroCode}) — un contrato cargado como «${n.nombre}» se firma sobre ${n.otroCode}`,
+    });
+  }
+
   for (const p of prefijoDesalineado(fixtures)) {
     hallazgos.push({
       clase: "prefijo", severidad: "aviso", ids: [p.id],
@@ -207,4 +237,86 @@ export function revisarPlano(fixtures: MuebleRevisable[]): Hallazgo[] {
   return hallazgos.sort((a, b) =>
     a.severidad === b.severidad ? 0 : a.severidad === "error" ? -1 : 1,
   );
+}
+
+
+// ─── La reconciliación de lo que ya está cargado ─────────────────────────────
+
+/**
+ * Un contrato del plano, visto desde la revisión.
+ *
+ * Los campos comerciales viven denormalizados en el propio mueble del layout
+ * (es de ahí que el mapa se pinta), así que esto se arma en el navegador con lo
+ * que la pantalla ya tiene: no hace falta ningún endpoint nuevo.
+ */
+export interface ContratoDelPlano {
+  /** Id del mueble, para poder saltar a él. */
+  id: string;
+  code: string;
+  sede?: string;
+  nomenclatura?: string | null;
+  /** La góndola doble tiene dos caras y cada una es un espacio. */
+  cara?: "A" | "B";
+  proveedor: string;
+  marca?: string;
+  desde?: string | null;
+  hasta?: string | null;
+  valor?: number;
+}
+
+export interface ContratoARevisar extends ContratoDelPlano {
+  /** El nombre con el que el plano dibuja ese mueble. */
+  nombre: string;
+  /** El código real del espacio, el que viaja al contrato y a los correos. */
+  codigo: string;
+  /** Si ese nombre además es el código de otro mueble, cuál. Son los peores:
+   *  hay otro mueble al que ese texto apunta de verdad. */
+  pisaCodigoDe: string | null;
+}
+
+/**
+ * Los contratos vigentes cuyo mueble se dibuja con un nombre distinto de su
+ * código: los sospechosos de haber caído en el espacio equivocado.
+ *
+ * Ninguna validación arregla lo ya cargado. Esto no lo arregla tampoco: lo
+ * LISTA, con el proveedor, las fechas, el código real y el nombre dibujado,
+ * para poder revisarlos uno por uno. Es la consulta 2 del diagnóstico de la
+ * fase 12, hecha con los datos que la pantalla ya tiene.
+ *
+ * Vigente = todavía no venció (`hasta >= hoy`), igual que la consulta. Un
+ * contrato que arranca el mes que viene también cuenta: es el que todavía se
+ * puede corregir sin que nadie haya montado nada.
+ */
+function fechaLocalISO(d: Date): string {
+  const dosDigitos = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${dosDigitos(d.getMonth() + 1)}-${dosDigitos(d.getDate())}`;
+}
+
+export function contratosConNombreAjeno(
+  contratos: ContratoDelPlano[],
+  muebles: { id: string; code: string; nomenclatura?: string | null }[],
+  // En hora LOCAL: `toISOString()` pasa a UTC y en Colombia (UTC−5) eso corre la
+  // fecha un día en toda la tarde, que en el borde saca de la lista un contrato
+  // que todavía corre.
+  hoy: string = fechaLocalISO(new Date()),
+): ContratoARevisar[] {
+  const out: ContratoARevisar[] = [];
+  for (const c of contratos) {
+    if (!(c.proveedor ?? "").trim()) continue;
+    if (!nombrePropio(c)) continue;                       // se dibuja con su código: nada que revisar
+    if (c.hasta && c.hasta < hoy) continue;               // ya venció
+    const nombre = nombreDeMueble(c);
+    const base = fullSpaceCode(c.sede, c.code);
+    const otro = muebleConCodigo(nombre, muebles, c.id);
+    out.push({
+      ...c,
+      nombre,
+      codigo: c.cara === "B" ? `${base}-B` : base,
+      pisaCodigoDe: otro ? otro.code : null,
+    });
+  }
+  return out.sort((a, b) => {
+    if (!!a.pisaCodigoDe !== !!b.pisaCodigoDe) return a.pisaCodigoDe ? -1 : 1;
+    return a.codigo.localeCompare(b.codigo);
+  });
 }
