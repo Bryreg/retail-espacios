@@ -6,6 +6,10 @@
 /* Capa 3 de Vender: la forma de D. Todo cuelga de `.vender`, así que Supervisar,
    Montaje y el editor 3D no ven una sola de sus reglas. */
 @import "./vender.css";
+/* Capa 3 de la Plataforma: la forma de A («El informe»). Todo cuelga de
+   `.plat`, así que la consola vieja (`--con-*`), Vender, Supervisar, Montaje y
+   el editor 3D no ven una sola de sus reglas. */
+@import "./plataforma.css";
 
 @tailwind base;
 @tailwind components;

@@ -29,6 +29,7 @@ const PoliticaDatos = lazy(() => import("./pages/PoliticaDatos"));
 const Plataforma = lazy(() => import("./pages/Plataforma"));
 const ReportePlataforma = lazy(() => import("./pages/ReportePlataforma"));
 const DetalleCliente = lazy(() => import("./pages/DetalleCliente"));
+const InformeCliente = lazy(() => import("./pages/InformeCliente"));
 
 /** Mientras baja el chunk de la pantalla: fondo de la app y nada más, para no
  *  meter un parpadeo de texto en una espera que suele durar milisegundos. */
@@ -229,6 +230,13 @@ export default function App() {
             familia de rutas que "/plataforma" y "/plataforma/reporte/:slug",
             antes del "*" catch-all. */}
         <Route path="/plataforma/clientes/:slug" element={<DetalleCliente />} />
+        {/* Fase 11: el informe que se le deja al cliente -- la misma historia
+            de la sesión (capítulos 1 a 3), sin la cartera y sin "los datos
+            detrás", escrita para que un gerente de supermercado la lea solo y
+            se imprima en tres páginas A4. Cuelga de la ruta del detalle
+            porque es la misma consulta al mismo cliente, vista de otro lado;
+            va ANTES del "*" catch-all, como sus hermanas. */}
+        <Route path="/plataforma/clientes/:slug/informe" element={<InformeCliente />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

@@ -1,964 +1,1156 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { LogOut } from "lucide-react";
 import {
-  AgregadosMetricasCliente,
-  soyOperador, getClientesPlataforma, patchEstadoCliente, getMetricasPlataforma,
-  ESTADOS_CUENTA,
-  type ClientePlataforma, type EstadoCuenta, type MetricasPlataforma, type ClienteMetricas,
+  CONSOLIDADO_SLUG,
+  getAdopcion,
+  getClientesPlataforma,
+  getMetricasPlataforma,
+  getTendencia,
+  soyOperador,
+  type Adopcion,
+  type ClientePlataforma,
+  type MetricasPlataforma,
+  type PuntoTendencia,
+  type Tendencia,
 } from "../api/plataforma";
-import {
-  getSolicitudesSupresion, atenderSupresion, type SolicitudSupresion,
-} from "../api/derechos";
 import { describeError } from "../api/client";
 import { useAuthStore } from "../store/authStore";
+import { TemaToggle } from "../tema";
 import {
-  type ConsolaTema, temaInicial, guardarTema, TemaToggle,
-  Panel, EstadoVacio, EstadoError, KpiTile,
-  Barras, BarraFila, EstadoPill, etiquetaEstado, SinDato,
-  TablaScroll, TablaHead, TablaHeadCelda, Fila,
-} from "../components/plataforma/consola";
-import { PanelTendencia, useTendencia } from "../components/plataforma/tendencia";
-import { PanelAdopcion, useAdopcion } from "../components/plataforma/adopcion";
+  CLAVE_ADOPCION,
+  DosLineasConteo,
+  EjeSpread,
+  LineaIngreso,
+  Medidor,
+  Unidades,
+  unidadesAdopcion,
+} from "../components/plataforma/graficos";
+import {
+  mesCorto,
+  mesLargo,
+  num,
+  pct,
+  periodosOfrecidos,
+  plata,
+  plural,
+  puntos,
+  sig,
+  SIN_DATO,
+} from "../components/plataforma/formato";
+import {
+  anotacionIngreso,
+  anotacionesDenominador,
+  armarCola,
+  armarComposicion,
+  avisoDenominador,
+  casiCero,
+  fraseAdopcion,
+  fraseSpread,
+  movimiento,
+  urgentes,
+  type Composicion,
+  type OrdenCola,
+} from "../components/plataforma/cartera-datos";
+import { ColaLlamadas } from "../components/plataforma/cartera-cola";
+import {
+  TablaEstados,
+  TablaSupresiones,
+  useSupresiones,
+} from "../components/plataforma/cartera-operativo";
 
-// ─── /plataforma — Fase 4: ruta propia del operador ─────────────────────────
-//
-// Página completa, FUERA del layout de cliente (sin Topbar de sede, sin
-// Router-hermanos de Dashboard): monta directo adentro del `<BrowserRouter>`
-// de App.tsx, con su propio encabezado mínimo. Reemplaza al modal
-// `components/Plataforma/PlataformaPanel.tsx` (borrado en este mismo
-// cambio): la tabla de clientes con estado + botón Cambiar (FilaEditor,
-// motivo obligatorio, confirmación) y la sección de supresiones se mudan
-// acá TAL CUAL se comportaban, y se les suma el panel de métricas del
-// negocio (spec `features/plataforma/spec.md`).
-//
-// Fase 4b (diseño): la consola tiene ahora sistema visual PROPIO de
-// back-office/BI — tokens `--con-*`, tema claro/oscuro, y primitivas
-// reutilizables en `components/plataforma/consola.tsx` (KPI tiles, barras con
-// eje desde cero, estado de cuenta, sin-dato, tabla de densidad).
-//
-// Fase 7 (transparencia): el operador ve los agregados EXACTOS de todos los
-// clientes, sin umbral de privacidad -- la contrapartida es el reporte de
-// transparencia que cada cliente puede generar (botón "Reporte" por fila,
-// abajo, y desde el Dashboard del cliente).
-//
-// Guard de SPA: se pregunta `GET /api/plataforma/soy` al montar. Es
-// cortesía nada más -- el 403 real lo tira el backend en cada endpoint, y
-// si igual llega (carrera entre pestañas, revocación a mitad de sesión) se
-// muestra tal cual llegue, no se inventa un mensaje.
+/* ============================================================================
+   /plataforma — PIEZA 1 DE A («El informe»): LA CARTERA
 
-const COP = new Intl.NumberFormat("es-CO", {
-  style: "currency", currency: "COP", maximumFractionDigits: 0,
-});
+   La consola es un DOCUMENTO, no un tablero. Se lee de arriba abajo, cada
+   capítulo abre con su frase-conclusión —el hallazgo con su número—, debajo
+   de la frase va la RUTA del JSON en monoespaciada («¿de dónde sale?»
+   contestada sin abrir un panel), los gráficos van anotados sobre el dato y
+   el detalle va plegado. El índice de la izquierda es el «en esta pieza» de
+   A; la cola de llamadas es lo único operativo, y desde cada fila se entra a
+   la sesión de asesoría de ese cliente.
 
-const formatoCOP = (n: number | null): string => (n === null ? "—" : COP.format(n));
-const formatoPct = (n: number | null): string => (n === null ? "—" : `${n.toFixed(1)}%`);
+   Siete capítulos, los de A:
 
-/** Spread canon vs tarifa de referencia (Fase 6): signo menos tipográfico
- *  (U+2212, no el guion ASCII), coma decimal, espacio fino (U+2009) antes del
- *  "%". `0` explícito se pinta sin signo -- "0,0 %", nunca "+0,0 %". */
-const formatoSpread = (n: number): string => {
-  const cifra = Math.abs(n).toFixed(1).replace(".", ",");
-  const signo = n > 0 ? "+" : n < 0 ? "−" : "";
-  return `${signo}${cifra} %`;
-};
+     1.1 el titular con la corrección de composición · 1.2 la tendencia de
+     doce meses anotada · 1.3 la cola de llamadas · 1.4 quién cobra por
+     debajo · 1.5 la adopción · 1.6 lo operativo · 1.7 de dónde sale.
+
+   ── Lo que cambia respecto del prototipo, y por qué ───────────────────────
+
+   A es una maqueta con datos inventados y con un bloque `_derivado_frontend`
+   servido en el JSON. Acá los datos son los de la API real
+   (`/plataforma/metricas`, `/tendencia`, `/adopcion`, `/clientes`,
+   `/supresiones`) y **lo derivado se calcula de las claves que sí existen**
+   (`components/plataforma/cartera-datos.ts`). Lo que la API no trae se dice:
+
+     · La cartera **no publica el total de contratos activos** por cliente. Se
+       podría despejar (ingreso ÷ canon promedio) y sería una inferencia, no
+       un dato: no se muestra, y el pie lo dice.
+     · La cartera **no publica la participación** de un proveedor: sin el
+       total de contratos del cliente, un porcentaje sobre el top 5 es un
+       número inventado. Esa lectura vive en el detalle, no acá.
+     · `/tendencia` y `/adopcion` **no toman el periodo**: la serie termina
+       siempre en el mes en curso y la adopción se calcula a hoy. El selector
+       de arriba manda sobre `/metricas`, y el pie escribe esa asimetría en
+       vez de repintar un rótulo sobre los mismos números.
+     · La **tarifa de referencia** de un cliente no se pinta nunca: sólo su
+       relación (`spread_pct`) y si existe (`tarifa_configurada`).
+
+   ── Las reglas de forma que se respetan ───────────────────────────────────
+
+   Un solo amarillo por pantalla (`.btn-principal`), y es el botón de la
+   llamada #1 de la cola. Los chips de señal y de estado de cuenta van en
+   tinta gris con la palabra: el verde, el ámbar y el rojo codifican estado de
+   ESPACIO y nada más. Ningún gráfico sin su frase arriba, ninguno sin su
+   tabla equivalente alcanzable sin hover, y ni un tooltip como único camino a
+   un valor.
+
+   El guard `soyOperador` y el manejo de 401/403/503 se conservan tal cual: el
+   403 real lo tira el backend en cada endpoint, esto sólo evita que alguien
+   que no es operador vea la forma de la pantalla un instante, y el `detail`
+   que llegue se muestra tal cual, sin inventarle un mensaje.
+   ========================================================================== */
 
 const mesActual = (): string => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 };
 
-/** Fecha sola, sin hora -- la spec es explícita: "último acceso con cuenta"
- *  muestra la fecha, no la hora ni quién. */
-const soloFecha = (iso: string | null): string => {
-  if (!iso) return "—";
-  const t = new Date(iso);
-  if (Number.isNaN(t.getTime())) return "—";
-  return t.toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" });
-};
-
 const haceMin = (iso: string): string => {
   const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return "—";
+  if (!Number.isFinite(t)) return SIN_DATO;
   const min = Math.max(0, Math.round((Date.now() - t) / 60000));
   if (min < 1) return "recién";
   if (min === 1) return "hace 1 min";
   if (min < 60) return `hace ${min} min`;
-  const h = Math.round(min / 60);
-  return `hace ${h} h`;
+  return `hace ${Math.round(min / 60)} h`;
 };
 
-// ─── Estilos compartidos de formulario (tokens --con-* de la consola) ───────
+const CAPITULOS: Array<{ id: string; num: string; titulo: string }> = [
+  { id: "c-titular", num: "1.1", titulo: "El titular" },
+  { id: "c-tendencia", num: "1.2", titulo: "La tendencia de 12 meses" },
+  { id: "c-cola", num: "1.3", titulo: "La cola de llamadas" },
+  { id: "c-spread", num: "1.4", titulo: "Quién cobra por debajo" },
+  { id: "c-adopcion", num: "1.5", titulo: "La adopción" },
+  { id: "c-operativo", num: "1.6", titulo: "Lo operativo" },
+  { id: "c-fuente", num: "1.7", titulo: "De dónde sale" },
+];
 
-const inputStyle: React.CSSProperties = {
-  height: 32, padding: "0 10px",
-  borderRadius: "var(--r-md)", border: "1px solid var(--con-line)",
-  background: "var(--con-surface)", color: "var(--con-ink-1)",
-  fontSize: 12.5, fontFamily: "inherit", outline: "none",
-};
+// ─── Piezas del documento ──────────────────────────────────────────────────
 
-const botonStyle: React.CSSProperties = {
-  height: 28, padding: "0 12px",
-  borderRadius: "var(--r-md)",
-  border: "1px solid var(--con-line)",
-  background: "var(--con-surface)",
-  color: "var(--con-ink-2)",
-  fontSize: 11.5, fontWeight: 600, fontFamily: "inherit",
-  cursor: "pointer", whiteSpace: "nowrap",
-};
-
-const botonPrimarioStyle: React.CSSProperties = {
-  ...botonStyle,
-  background: "var(--con-accent)", color: "var(--con-accent-ink)", border: "none",
-};
-
-// ─── Fila en edición del estado de cuenta (mudada del modal, sin cambios de
-//     comportamiento: motivo obligatorio, confirmación antes del PATCH) ────
-
-function FilaEditor({
-  fila, onGuardado, onCancelar,
+function Capitulo({
+  id,
+  numero,
+  titulo,
+  der,
+  children,
 }: {
-  fila: ClientePlataforma;
-  onGuardado: (patch: Pick<ClientePlataforma, "estado" | "motivo" | "cambiado_en" | "cambiado_por">) => void;
-  onCancelar: () => void;
+  id: string;
+  numero: string;
+  titulo: string;
+  der?: string;
+  children: React.ReactNode;
 }) {
-  const [estado, setEstado] = useState<EstadoCuenta>(fila.estado);
-  const [motivo, setMotivo] = useState(fila.motivo ?? "");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const guardar = async () => {
-    if (!motivo.trim()) {
-      setError("El motivo es obligatorio.");
-      return;
-    }
-    const seguro = confirm(
-      `¿Cambiar "${fila.nombre}" (${fila.slug}) a "${etiquetaEstado(estado)}"?\n\nMotivo: ${motivo.trim()}`
-    );
-    if (!seguro) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await patchEstadoCliente(fila.slug, { estado, motivo: motivo.trim() });
-      onGuardado({
-        estado: r.estado, motivo: r.motivo,
-        cambiado_en: r.cambiado_en, cambiado_por: r.cambiado_por,
-      });
-    } catch (err) {
-      setError(describeError(err, "No se pudo cambiar el estado."));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
-    <div style={{ padding: "10px 16px", background: "var(--con-surface-2)", borderTop: "1px solid var(--con-line-soft)" }}>
-      <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-        <select
-          value={estado}
-          onChange={(e) => setEstado(e.target.value as EstadoCuenta)}
-          className="con-focusable"
-          style={{ ...inputStyle, width: 140 }}
-        >
-          {ESTADOS_CUENTA.map((e) => (
-            <option key={e} value={e}>{etiquetaEstado(e)}</option>
-          ))}
-        </select>
-        <input
-          type="text"
-          value={motivo}
-          onChange={(e) => setMotivo(e.target.value)}
-          placeholder="Motivo (obligatorio, también al reactivar)"
-          className="con-focusable"
-          style={{ ...inputStyle, flex: 1, minWidth: 220 }}
-        />
+    <section className="plat-cap" id={id}>
+      <div className="plat-cap-cab">
+        <span className="num">{numero}</span>
+        <h2>{titulo}</h2>
+        {der && <span className="der">{der}</span>}
       </div>
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button onClick={guardar} disabled={busy} className="con-focusable" style={{ ...botonPrimarioStyle, opacity: busy ? 0.6 : 1 }}>
-          {busy ? "Guardando…" : "Confirmar"}
-        </button>
-        <button onClick={onCancelar} disabled={busy} className="con-focusable" style={botonStyle}>
-          Cancelar
-        </button>
-        {error && <span style={{ fontSize: 11, fontWeight: 500, color: "var(--con-estado-corte)" }}>{error}</span>}
-      </div>
-    </div>
+      {children}
+    </section>
   );
 }
 
-// ─── Tabla de clientes: estado + métricas + Cambiar, en la misma fila ──────
-//
-// Fuente de verdad del estado y de la edición sigue siendo `GET
-// /plataforma/clientes` (igual que en el modal viejo): trae `motivo` /
-// `cambiado_en` / `cambiado_por`, que el endpoint de métricas no expone. Las
-// columnas de métricas se completan por slug desde `GET
-// /plataforma/metricas`, que puede llegar más tarde, quedar `null` en un
-// cliente con error, o venir cacheada -- ninguna de esas tres cosas debe
-// tapar el estado ni el botón Cambiar, que dependen sólo del primer fetch.
-
-
-/** Celda de importe (Fase 7: agregados EXACTOS, sin umbral). `null` significa
- *  únicamente "cero contratos activos en el período" -- nunca una supresión
- *  de privacidad; con 1 o más contratos el número sale exacto, sin ocultar
- *  nada. */
-function celdaPlata(v: number | null) {
-  if (v !== null) return <span style={{ color: "var(--con-ink-2)" }}>{formatoCOP(v)}</span>;
-  return <SinDato title="Sin contratos activos en el período" />;
-}
-
-/** Celda "vs tarifa" (Fase 6, oportunidad de precio): dos ausencias propias,
- *  ninguna es la ausencia genérica de `celdaPlata` --
- *   · `tarifa_configurada === false` → "sin tarifa" en tinta apagada (el
- *     cliente sencillamente no configuró nada todavía).
- *   · tarifa configurada pero `spread_pct === null` → "sin contratos con
- *     tarifa aplicable" (Fase 7: sin umbral -- con 1 contrato con tarifa
- *     aplicable, el número sale exacto).
- *   · valor → signo + magnitud; por debajo de tarifa (negativo) se resalta
- *     con el tono de aviso de la consola (mismo ámbar que gracia/solo
- *     lectura) porque es la lectura que dispara una conversación de
- *     asesoría -- por encima o en cero queda en tinta neutra, no es un
- *     problema. La tarifa en sí nunca se pinta ni se manda: sólo esta
- *     relación. */
-function celdaSpread(m: AgregadosMetricasCliente) {
-  if (!m.tarifa_configurada) {
-    return <span style={{ color: "var(--con-ink-4)" }}>sin tarifa</span>;
-  }
-  if (m.spread_pct === null) {
-    return <span style={{ color: "var(--con-ink-4)" }}>sin contratos con tarifa aplicable</span>;
-  }
-  const color = m.spread_pct < 0 ? "var(--con-estado-aviso)" : "var(--con-ink-2)";
-  return <span style={{ color, fontWeight: 600 }}>{formatoSpread(m.spread_pct)}</span>;
-}
-
-function hintSpread(m: AgregadosMetricasCliente | null): string {
-  if (!m) return "vs tarifa de referencia";
-  const base = !m.tarifa_configurada
-    ? "Sin tarifa de referencia configurada."
-    : m.spread_pct === null
-      ? "Sin contratos con tarifa aplicable en el período."
-      : "Canon vs tarifa de referencia (negativo = por debajo de su tarifa).";
-  if (m.contratos_sin_tarifa > 0) {
-    return `${base} ${m.contratos_sin_tarifa} contrato${m.contratos_sin_tarifa === 1 ? "" : "s"} sin tarifa aplicable.`;
-  }
-  return base;
-}
-
-const W_ESTADO = 118;
-const W_OCUP = 74;
-const W_CANON = 108;
-const W_ING = 118;
-const W_ACC = 90;
-const W_SPREAD = 96;
-const W_BTN = 76;
-const W_BTN_REPORTE = 74;
-const W_BTN_DETALLE = 84;
-const W_BOTONES = W_BTN_DETALLE + 6 + W_BTN_REPORTE + 6 + W_BTN;
-
-function FilaCliente({
-  fila, metricas, editando, onEditar, onGuardado, onCancelar,
-}: {
-  fila: ClientePlataforma;
-  metricas: ClienteMetricas | undefined;
-  editando: boolean;
-  onEditar: () => void;
-  onGuardado: (patch: Pick<ClientePlataforma, "estado" | "motivo" | "cambiado_en" | "cambiado_por">) => void;
-  onCancelar: () => void;
-}) {
-  const m = metricas?.metricas ?? null;
-  const error = metricas?.error ?? null;
-  const navigate = useNavigate();
-
+/** La frase-conclusión y, debajo, la ruta del JSON de la que sale. Es el
+ *  contrato de cada bloque: si el bloque dibujado no la deja leer en tres
+ *  segundos, el bloque está mal. */
+function Frase({ chica, ruta, children }: { chica?: boolean; ruta: string; children: React.ReactNode }) {
   return (
-    <div>
-      <Fila>
-        <div style={{ flex: "1.4 1 180px", minWidth: 150 }}>
-          <div style={{
-            fontSize: 12.5, fontWeight: 600, color: "var(--con-ink-1)",
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>
-            {fila.nombre}
-          </div>
-          <div style={{ fontSize: 11, color: "var(--con-ink-4)", fontFamily: "var(--font-mono)" }}>
-            {fila.slug}{!fila.activo && " · inactivo"}
-          </div>
+    <>
+      <p className={"plat-frase" + (chica ? " chica" : "")}>{children}</p>
+      <div className="plat-fuente">{ruta}</div>
+    </>
+  );
+}
+
+function Kpi({
+  hero,
+  et,
+  v,
+  c,
+}: {
+  hero?: boolean;
+  et: string;
+  v: string;
+  c?: React.ReactNode[];
+}) {
+  return (
+    <div className={"plat-kpi" + (hero ? " hero" : "")}>
+      <div className="et">{et}</div>
+      <div className="v">{v}</div>
+      {c && c.length > 0 && (
+        <div className="c">
+          {c.map((linea, i) => (
+            <div key={i}>{linea}</div>
+          ))}
         </div>
-
-        <div style={{ width: W_ESTADO, flexShrink: 0 }}>
-          <EstadoPill estado={fila.estado} />
-        </div>
-
-        {error ? (
-          <div style={{ flex: "3 1 260px", minWidth: 200, fontSize: 11.5, color: "var(--con-estado-corte)" }}>
-            {error}
-          </div>
-        ) : (
-          <>
-            <div style={{ width: W_OCUP, flexShrink: 0, fontSize: 11.5, color: "var(--con-ink-2)", fontFamily: "var(--font-mono)", textAlign: "right" }} title="Ocupación del período">
-              {m ? (m.ocupacion_pct !== null ? formatoPct(m.ocupacion_pct) : <SinDato />) : "—"}
-            </div>
-            <div style={{ width: W_CANON, flexShrink: 0, fontSize: 11.5, fontFamily: "var(--font-mono)", textAlign: "right" }} title="Canon promedio mensual">
-              {m ? celdaPlata(m.canon_promedio_mensual) : "—"}
-            </div>
-            <div style={{ width: W_ING, flexShrink: 0, fontSize: 11.5, fontFamily: "var(--font-mono)", textAlign: "right" }} title="Ingreso contratado del mes">
-              {m ? celdaPlata(m.ingreso_contratado_mes) : "—"}
-            </div>
-            <div style={{ width: W_SPREAD, flexShrink: 0, fontSize: 11.5, fontFamily: "var(--font-mono)", textAlign: "right" }} title={hintSpread(m)}>
-              {m ? celdaSpread(m) : "—"}
-            </div>
-            <div
-              style={{ width: W_ACC, flexShrink: 0, fontSize: 11, color: "var(--con-ink-3)" }}
-              title={
-                m
-                  ? `${m.usuarios_con_cuenta} cuenta${m.usuarios_con_cuenta === 1 ? "" : "s"} de usuario · último acceso ${m.ultimo_acceso ? soloFecha(m.ultimo_acceso) : "sin registrar"}`
-                  : "Último acceso con cuenta"
-              }
-            >
-              {m ? soloFecha(m.ultimo_acceso) : "—"}
-            </div>
-          </>
-        )}
-
-        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-          <button
-            onClick={() => navigate(`/plataforma/clientes/${encodeURIComponent(fila.slug)}`)}
-            className="con-focusable"
-            style={{ ...botonStyle, width: W_BTN_DETALLE }}
-            title="Detalle de espacios, contratos, proveedores y oportunidades de este cliente (Fase 8, asesoría)."
-          >
-            Ver detalle
-          </button>
-          <button
-            onClick={() => navigate(`/plataforma/reporte/${encodeURIComponent(fila.slug)}`)}
-            className="con-focusable"
-            style={{ ...botonStyle, width: W_BTN_REPORTE }}
-            title="Reporte de transparencia de este cliente -- qué toma la plataforma, cómo lo calcula y quién lo consultó."
-          >
-            Reporte
-          </button>
-          <button onClick={onEditar} className="con-focusable" style={{ ...botonStyle, width: W_BTN }}>
-            {editando ? "Cerrar" : "Cambiar"}
-          </button>
-        </div>
-      </Fila>
-
-      {editando && (
-        <FilaEditor fila={fila} onCancelar={onCancelar} onGuardado={onGuardado} />
       )}
     </div>
   );
 }
 
-// ─── Gráficos: barras con eje desde cero (primitivas de la consola) ─────────
-
-// Pregunta de negocio: "¿qué cliente necesita una conversación de asesoría
-// primero?" -- por eso el orden es de MENOR a MAYOR ocupación (el peor caso
-// arriba, no abajo) y los clientes sin dato de ocupación se muestran igual
-// (al final, como "sin dato") en vez de desaparecer del panel: un cliente sin
-// contratos activos en el período es, si acaso, el que MÁS necesita una
-// llamada -- ocultarlo sería el error de presentación opuesto al que se
-// está corrigiendo.
-function GraficoOcupacion({ clientes }: { clientes: ClienteMetricas[] }) {
-  const filas = useMemo(() => {
-    const conDato = clientes
-      .filter((c) => c.metricas && c.metricas.ocupacion_pct !== null)
-      .map((c) => ({
-        slug: c.slug,
-        nombre: c.nombre,
-        ocupacion: c.metricas!.ocupacion_pct as number,
-        espacios: c.metricas!.espacios_comercializables,
-        estado: "normal" as const,
-      }))
-      .sort((a, b) => a.ocupacion - b.ocupacion); // menor primero: el que necesita asesoría antes
-    const sinDato = clientes
-      .filter((c) => c.metricas && c.metricas.ocupacion_pct === null)
-      .map((c) => ({
-        slug: c.slug,
-        nombre: c.nombre,
-        ocupacion: 0,
-        espacios: c.metricas!.espacios_comercializables,
-        estado: "sindato" as const,
-      }));
-    return [...conDato, ...sinDato];
-  }, [clientes]);
-
+function Aviso({ rotulo, children }: { rotulo?: string; children: React.ReactNode }) {
   return (
-    <Panel
-      titulo="Ocupación por cliente"
-      subtitulo="Espacios con contrato activo sobre comercializables, en el período — de menor a mayor: el que necesita asesoría primero."
-    >
-      {filas.length === 0 ? (
-        <EstadoVacio texto="Sin datos de ocupación para este período." />
-      ) : (
-        <Barras etiquetaMax="100%">
+    <div className="plat-aviso">
+      {rotulo && <span className="rotulo">{rotulo}</span>}
+      {children}
+    </div>
+  );
+}
+
+// ─── 1.1 · La tabla de la corrección de composición ────────────────────────
+
+function TablaComposicion({ comp, mes }: { comp: Composicion; mes: string }) {
+  const cols = [
+    { k: "pub", t: comp.mesAnterior ? `${mesCorto(comp.mesAnterior)} publicado` : "mes anterior", col: comp.publicado },
+    {
+      k: "cmp",
+      t: comp.mesAnterior ? `${mesCorto(comp.mesAnterior)} comparable` : "comparable",
+      col: comp.comparable,
+      tachado: false,
+    },
+    { k: "act", t: mesCorto(mes), col: comp.actual },
+  ];
+  const filas: Array<{ q: string; f: (c: Composicion["actual"] | null) => string }> = [
+    { q: "clientes en la cuenta", f: (c) => (c ? c.clientes : SIN_DATO) },
+    { q: "espacios comercializables", f: (c) => (c ? num(c.espacios) : SIN_DATO) },
+    { q: "ocupación", f: (c) => (c ? pct(c.ocupacion) : SIN_DATO) },
+    { q: "ingreso contratado", f: (c) => (c ? plata(c.ingreso) : SIN_DATO) },
+  ];
+  return (
+    <div className="tabla-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th />
+            {cols.map((c) => (
+              <th key={c.k} className="num">
+                {c.t}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
           {filas.map((f) => (
-            <BarraFila
-              key={f.slug}
-              label={f.nombre}
-              valor={f.ocupacion}
-              max={100}
-              texto={f.estado === "sindato" ? "—" : formatoPct(f.ocupacion)}
-              tono="magnitud"
-              estado={f.estado}
-              hint={
-                f.estado === "sindato"
-                  ? `${f.nombre}: sin dato de ocupación este período (${f.espacios} espacios comercializables, sin contratos activos que la calculen).`
-                  : `${f.nombre}: ${formatoPct(f.ocupacion)} de ${f.espacios} espacios comercializables.`
-              }
-            />
+            <tr key={f.q}>
+              <td>{f.q}</td>
+              {cols.map((c) => (
+                <td key={c.k} className="num">
+                  {c.k === "pub" && !comp.mismaComposicion && comp.comparable ? (
+                    <span className="tachado">{f.f(c.col)}</span>
+                  ) : (
+                    f.f(c.col)
+                  )}
+                </td>
+              ))}
+            </tr>
           ))}
-        </Barras>
-      )}
-    </Panel>
+        </tbody>
+      </table>
+    </div>
   );
 }
 
-// Pregunta de negocio: "¿qué tan expuesta está la cartera a un solo
-// proveedor?" -- la concentración se calcula SOLO sobre el top-5 que trae el
-// endpoint (no hay un total de proveedores en el JSON), así que la lectura se
-// nombra explícitamente "entre los 5 principales" para no insinuar un
-// porcentaje de la cartera completa que no se puede calcular con estos datos.
-function GraficoProveedores({ metricas }: { metricas: MetricasPlataforma | null }) {
-  const top = (metricas?.consolidado.top_proveedores ?? []).slice(0, 5);
-  const maximo = top.reduce((m, p) => Math.max(m, p.contratos_activos), 0);
-  const totalTop = top.reduce((s, p) => s + p.contratos_activos, 0);
-  const liderPct = top.length > 0 && totalTop > 0 ? (top[0].contratos_activos / totalTop) * 100 : null;
+// ─── 1.5 · Cohortes: tabla, sin gráfico ────────────────────────────────────
 
+function TablaCohortes({ adopcion }: { adopcion: Adopcion }) {
+  if (adopcion.cohortes.length === 0) return <p className="plat-nota">Sin cohortes: ningún cliente tiene fecha de alta.</p>;
   return (
-    <Panel
-      titulo="Top proveedores (consolidado)"
-      subtitulo={
-        liderPct !== null
-          ? `Contratos activos por proveedor. "${top[0].nombre}" concentra ${liderPct.toFixed(1)}% de los contratos entre los 5 principales — cuanto más cerca del 100%, mayor el riesgo de depender de uno solo.`
-          : "Contratos activos por proveedor — concentración entre los 5 principales."
-      }
-    >
-      {top.length === 0 ? (
-        <EstadoVacio texto="Sin contratos activos en este período." />
-      ) : (
-        <Barras etiquetaMax={String(maximo)}>
-          {top.map((p) => {
-            const share = totalTop > 0 ? (p.contratos_activos / totalTop) * 100 : 0;
+    <div className="tabla-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Cohorte (mes de alta)</th>
+            <th className="num">Clientes</th>
+            <th className="num">Con acceso en 30 días</th>
+            <th className="num">Retención</th>
+            <th>Clases</th>
+          </tr>
+        </thead>
+        <tbody>
+          {adopcion.cohortes.map((h) => {
+            const ret = h.retencion_30d_pct === null ? null : Math.round((h.clientes * h.retencion_30d_pct) / 100);
+            const clases = (["activa", "fantasma", "dormida", "sin_cuentas", "nueva"] as const)
+              .filter((k) => h[k] > 0)
+              .map((k) => `${h[k]} ${k.replace("_", " ")}`)
+              .join(" · ");
             return (
-              <BarraFila
-                key={p.nombre}
-                label={p.nombre}
-                valor={p.contratos_activos}
-                max={maximo}
-                texto={String(p.contratos_activos)}
-                tono="conteo"
-                hint={`${p.nombre}: ${p.contratos_activos} contrato${p.contratos_activos === 1 ? "" : "s"} activo${p.contratos_activos === 1 ? "" : "s"} — ${share.toFixed(1)}% de los 5 principales.`}
-              />
+              <tr key={h.cohorte ?? "sin-fecha"}>
+                <td>{h.cohorte ?? "sin fecha de alta"}</td>
+                <td className="num">{h.clientes}</td>
+                <td className="num">{ret === null ? SIN_DATO : `${ret} de ${h.clientes}`}</td>
+                <td className="num">
+                  {h.retencion_30d_pct === null ? SIN_DATO : `${pct(h.retencion_30d_pct, 0)} (n = ${h.clientes})`}
+                </td>
+                <td>{clases || SIN_DATO}</td>
+              </tr>
             );
           })}
-        </Barras>
-      )}
-    </Panel>
-  );
-}
-
-// ─── Solicitudes de supresión (mudada del modal, sin cambios) ──────────────
-
-function etiquetaSupresion(e: SolicitudSupresion["estado"]): string {
-  if (e === "pendiente") return "Pendiente";
-  if (e === "atendida") return "Atendida";
-  return "Rechazada";
-}
-
-function colorSupresion(e: SolicitudSupresion["estado"]): string {
-  if (e === "pendiente") return "var(--con-estado-aviso)";
-  if (e === "atendida") return "var(--con-ink-3)";
-  return "var(--con-estado-corte)";
-}
-
-function FilaEditorSupresion({
-  fila, onGuardado, onCancelar,
-}: {
-  fila: SolicitudSupresion;
-  onGuardado: (actualizada: SolicitudSupresion) => void;
-  onCancelar: () => void;
-}) {
-  const [estado, setEstado] = useState<"atendida" | "rechazada">("atendida");
-  const [nota, setNota] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const guardar = async () => {
-    if (!nota.trim()) {
-      setError("La nota es obligatoria.");
-      return;
-    }
-    const seguro = confirm(
-      `¿Marcar la solicitud de "${fila.cliente_slug}" como "${etiquetaSupresion(estado)}"?\n\n` +
-      `Nota: ${nota.trim()}\n\n` +
-      "Esto NO borra nada: la supresión real, si corresponde, se ejecuta a mano, fuera del sistema."
-    );
-    if (!seguro) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const actualizada = await atenderSupresion(fila.id, { estado, nota: nota.trim() });
-      onGuardado(actualizada);
-    } catch (err) {
-      setError(describeError(err, "No se pudo actualizar la solicitud."));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div style={{ padding: "10px 16px", background: "var(--con-surface-2)", borderTop: "1px solid var(--con-line-soft)" }}>
-      <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-        <select
-          value={estado}
-          onChange={(e) => setEstado(e.target.value as "atendida" | "rechazada")}
-          className="con-focusable"
-          style={{ ...inputStyle, width: 140 }}
-        >
-          <option value="atendida">Atendida</option>
-          <option value="rechazada">Rechazada</option>
-        </select>
-        <input
-          type="text"
-          value={nota}
-          onChange={(e) => setNota(e.target.value)}
-          placeholder="Nota (obligatoria)"
-          className="con-focusable"
-          style={{ ...inputStyle, flex: 1, minWidth: 220 }}
-        />
-      </div>
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button onClick={guardar} disabled={busy} className="con-focusable" style={{ ...botonPrimarioStyle, opacity: busy ? 0.6 : 1 }}>
-          {busy ? "Guardando…" : "Confirmar"}
-        </button>
-        <button onClick={onCancelar} disabled={busy} className="con-focusable" style={botonStyle}>
-          Cancelar
-        </button>
-        {error && <span style={{ fontSize: 11, fontWeight: 500, color: "var(--con-estado-corte)" }}>{error}</span>}
-      </div>
+        </tbody>
+      </table>
     </div>
   );
 }
 
-function SupresionesSection() {
-  const [filas, setFilas] = useState<SolicitudSupresion[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [editando, setEditando] = useState<number | null>(null);
-
-  const cargar = () => {
-    setError(null);
-    getSolicitudesSupresion()
-      .then(setFilas)
-      .catch((err) => setError(describeError(err, "No se pudo leer las solicitudes de supresión.")));
-  };
-
-  useEffect(cargar, []);
-
-  return (
-    <Panel
-      titulo="Solicitudes de supresión"
-      subtitulo="Pedidos de un owner para suprimir su cliente. Nada se borra desde acá — la ejecución, si corresponde, es manual y fuera del sistema."
-      sinPadding
-    >
-      {filas === null ? (
-        <div style={{ padding: "12px 16px" }}>
-          {error ? <EstadoError texto={error} /> : <EstadoVacio texto="Cargando…" />}
-        </div>
-      ) : filas.length === 0 ? (
-        <div style={{ padding: "12px 16px" }}>
-          <EstadoVacio texto="No hay solicitudes todavía." />
-        </div>
-      ) : (
-        filas.map((f) => (
-          <div key={f.id}>
-            <Fila>
-              <div style={{ flex: 1.3, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--con-ink-1)" }}>
-                  {f.cliente_slug}
-                </div>
-                <div style={{
-                  fontSize: 11, color: "var(--con-ink-4)", fontFamily: "var(--font-mono)",
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                }} title={f.email}>
-                  {f.email}
-                </div>
-              </div>
-              <div style={{ width: 96, fontSize: 11.5, fontWeight: 700, color: colorSupresion(f.estado) }}>
-                {etiquetaSupresion(f.estado)}
-              </div>
-              <div
-                style={{
-                  flex: 1.6, minWidth: 0, fontSize: 11.5, color: "var(--con-ink-2)",
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                }}
-                title={f.motivo ?? undefined}
-              >
-                {f.motivo ?? "—"}
-              </div>
-              {f.estado === "pendiente" ? (
-                <button onClick={() => setEditando(editando === f.id ? null : f.id)} className="con-focusable" style={botonStyle}>
-                  {editando === f.id ? "Cerrar" : "Atender"}
-                </button>
-              ) : (
-                <div
-                  style={{ width: 130, fontSize: 10.5, color: "var(--con-ink-4)", whiteSpace: "nowrap" }}
-                  title={f.nota ?? undefined}
-                >
-                  {f.atendido_por ?? "—"}
-                </div>
-              )}
-            </Fila>
-
-            {editando === f.id && (
-              <FilaEditorSupresion
-                fila={f}
-                onCancelar={() => setEditando(null)}
-                onGuardado={(actualizada) => {
-                  setFilas((prev) => (prev ? prev.map((x) => (x.id === f.id ? actualizada : x)) : prev));
-                  setEditando(null);
-                }}
-              />
-            )}
-          </div>
-        ))
-      )}
-    </Panel>
-  );
-}
-
-// ─── Encabezado propio (sin Topbar de sede) ─────────────────────────────────
-
-function Encabezado({ email, tema, onToggleTema }: { email: string | null; tema: ConsolaTema; onToggleTema: () => void }) {
-  const logout = useAuthStore((s) => s.logout);
-  return (
-    <header
-      style={{
-        display: "flex", alignItems: "center", gap: 12,
-        padding: "12px 20px",
-        background: "var(--con-surface)",
-        borderBottom: "1px solid var(--con-line)",
-        flexShrink: 0,
-      }}
-    >
-      <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: "0.055em", color: "var(--con-ink-1)" }}>
-        RECABRA
-      </span>
-      <span style={{ color: "var(--con-ink-4)" }}>·</span>
-      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--con-ink-2)" }}>Plataforma</span>
-
-      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
-        {email && (
-          <span style={{ fontSize: 11.5, color: "var(--con-ink-4)", whiteSpace: "nowrap" }}>{email}</span>
-        )}
-        <TemaToggle tema={tema} onToggle={onToggleTema} />
-        <button
-          onClick={logout}
-          title="Salir"
-          className="con-focusable"
-          style={{
-            display: "flex", alignItems: "center", gap: 6,
-            height: 28, padding: "0 10px",
-            borderRadius: "var(--r-md)",
-            background: "transparent", border: "1px solid var(--con-line)",
-            color: "var(--con-ink-2)", cursor: "pointer",
-            fontSize: 11.5, fontWeight: 600, fontFamily: "inherit",
-          }}
-        >
-          <LogOut size={13} /> Salir
-        </button>
-      </div>
-    </header>
-  );
-}
-
-// ─── Página ──────────────────────────────────────────────────────────────────
+// ─── La página ─────────────────────────────────────────────────────────────
 
 export default function Plataforma() {
   const email = useAuthStore((s) => s.email);
+  const logout = useAuthStore((s) => s.logout);
+  const navigate = useNavigate();
 
-  // ── Tema de la consola (claro/oscuro) — preferencia de UI, no dato ────────
-  const [tema, setTema] = useState<ConsolaTema>(temaInicial);
-  const toggleTema = () => {
-    setTema((prev) => {
-      const siguiente: ConsolaTema = prev === "claro" ? "oscuro" : "claro";
-      guardarTema(siguiente);
-      return siguiente;
-    });
-  };
-
-  // Guard de cortesía: mientras no se sepa, no se pinta nada de negocio.
-  // El backend contesta 403 en CADA endpoint igual -- esto sólo evita que
-  // alguien que no es operador vea la forma de la pantalla un instante.
+  /* Guard de cortesía: mientras no se sepa, no se pinta nada de negocio. */
   const [operador, setOperador] = useState<"verificando" | "si" | "no">("verificando");
-
   useEffect(() => {
     let vivo = true;
     soyOperador()
-      .then((v) => { if (vivo) setOperador(v ? "si" : "no"); })
-      .catch(() => { if (vivo) setOperador("no"); });
-    return () => { vivo = false; };
+      .then((v) => {
+        if (vivo) setOperador(v ? "si" : "no");
+      })
+      .catch(() => {
+        if (vivo) setOperador("no");
+      });
+    return () => {
+      vivo = false;
+    };
   }, []);
 
-  // ── Clientes + estado (fuente de verdad para editar) ─────────────────────
-  const [clientes, setClientes] = useState<ClientePlataforma[] | null>(null);
-  const [clientesError, setClientesError] = useState<string | null>(null);
-  const [editando, setEditando] = useState<string | null>(null);
-
-  const cargarClientes = () => {
-    setClientesError(null);
-    getClientesPlataforma()
-      .then(setClientes)
-      .catch((err) => setClientesError(describeError(err, "No se pudo leer la lista de clientes.")));
-  };
-
-  useEffect(() => {
-    if (operador === "si") cargarClientes();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [operador]);
-
-  // ── Métricas del negocio ──────────────────────────────────────────────────
+  // ── El periodo manda sobre /metricas ────────────────────────────────────
   const [periodo, setPeriodo] = useState(mesActual());
   const [metricas, setMetricas] = useState<MetricasPlataforma | null>(null);
   const [metricasError, setMetricasError] = useState<string | null>(null);
-  const [metricasLoading, setMetricasLoading] = useState(false);
-
-  // Sube en cada resolución (éxito o error) de `cargarMetricas` -- la
-  // tendencia se dispara DESPUÉS, nunca antes: el backend hace write-through
-  // del snapshot del mes en curso al calcular métricas, así que pedir la
-  // tendencia antes de que eso corra deja el mes actual como "sin dato".
-  const [metricasVersion, setMetricasVersion] = useState(0);
-
-  const cargarMetricas = (p: string) => {
-    setMetricasLoading(true);
-    setMetricasError(null);
-    getMetricasPlataforma(p)
-      .then(setMetricas)
-      .catch((err) => setMetricasError(describeError(err, "No se pudieron leer las métricas.")))
-      .finally(() => {
-        setMetricasLoading(false);
-        setMetricasVersion((v) => v + 1);
-      });
-  };
+  const [cargando, setCargando] = useState(false);
+  /* Sube en cada resolución de /metricas. La tendencia y la adopción se piden
+     DESPUÉS, nunca antes: el backend hace write-through del snapshot del mes
+     en curso al calcular métricas, así que pedir la tendencia primero deja el
+     mes actual como «sin dato». */
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
-    if (operador === "si") cargarMetricas(periodo);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (operador !== "si") return;
+    let vivo = true;
+    setCargando(true);
+    setMetricasError(null);
+    getMetricasPlataforma(periodo)
+      .then((m) => {
+        if (vivo) setMetricas(m);
+      })
+      .catch((err) => {
+        if (vivo) setMetricasError(describeError(err, "No se pudieron leer las métricas."));
+      })
+      .finally(() => {
+        if (!vivo) return;
+        setCargando(false);
+        setVersion((v) => v + 1);
+      });
+    return () => {
+      vivo = false;
+    };
   }, [operador, periodo]);
 
-  // ── Tendencia temporal (Fase 5) ────────────────────────────────────────────
-  //
-  // Reusa la lista de clientes que la página YA cargó (`getClientesPlataforma`
-  // arriba) -- ni un fetch nuevo de clientes. Se recarga al cambiar cliente o
-  // meses, y cada vez que las métricas terminan de resolver (incluye la
-  // primera carga del período inicial).
-  const tend = useTendencia();
-
+  // ── Tendencia del consolidado ───────────────────────────────────────────
+  const [tendencia, setTendencia] = useState<Tendencia | null>(null);
+  const [tendenciaError, setTendenciaError] = useState<string | null>(null);
   useEffect(() => {
-    if (operador === "si" && metricasVersion > 0) tend.cargar(tend.cliente, tend.meses);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [operador, metricasVersion, tend.cliente, tend.meses]);
+    if (operador !== "si" || version === 0) return;
+    let vivo = true;
+    setTendenciaError(null);
+    getTendencia(CONSOLIDADO_SLUG, 12)
+      .then((t) => {
+        if (vivo) setTendencia(t);
+      })
+      .catch((err) => {
+        if (vivo) setTendenciaError(describeError(err, "No se pudo leer la tendencia."));
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [operador, version]);
 
-  // ── Adopción (Fase 6) ─────────────────────────────────────────────────────
-  //
-  // Mismo motivo que la tendencia: `con_contratos_activos` lo calcula el
-  // backend con el mismo caché de métricas de 5 min, así que se pide DESPUÉS
-  // de que `/metricas` haya resuelto al menos una vez (`metricasVersion > 0`),
-  // nunca antes.
-  const adop = useAdopcion();
-
+  // ── Adopción ────────────────────────────────────────────────────────────
+  const [adopcion, setAdopcion] = useState<Adopcion | null>(null);
+  const [adopcionError, setAdopcionError] = useState<string | null>(null);
   useEffect(() => {
-    if (operador === "si" && metricasVersion > 0) adop.cargar();
+    if (operador !== "si" || version === 0) return;
+    let vivo = true;
+    setAdopcionError(null);
+    getAdopcion()
+      .then((a) => {
+        if (vivo) setAdopcion(a);
+      })
+      .catch((err) => {
+        if (vivo) setAdopcionError(describeError(err, "No se pudo leer la adopción."));
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [operador, version]);
+
+  // ── La serie de los clientes que hoy no se dejan leer ───────────────────
+  //
+  // Es lo que hace posible la corrección de composición del titular sin
+  // inventar nada: `/tendencia?cliente=<slug>` lee el snapshot PERSISTIDO del
+  // registro, así que sigue contestando el mes anterior de un cliente cuya
+  // base está rota hoy. Si alguna de estas llamadas falla, ese cliente entra
+  // en «faltan» y la columna comparable no se publica: se dice por qué.
+  const [seriesIlegibles, setSeriesIlegibles] = useState<Map<string, PuntoTendencia[]>>(new Map());
+  const ilegibles = useMemo(
+    () => (metricas?.clientes ?? []).filter((c) => c.metricas === null).map((c) => c.slug),
+    [metricas]
+  );
+  const claveIlegibles = ilegibles.join(",");
+  useEffect(() => {
+    if (operador !== "si" || ilegibles.length === 0) {
+      setSeriesIlegibles(new Map());
+      return;
+    }
+    let vivo = true;
+    Promise.all(
+      ilegibles.map((slug) =>
+        getTendencia(slug, 12)
+          .then((t) => [slug, t.serie] as const)
+          .catch(() => null)
+      )
+    ).then((rs) => {
+      if (!vivo) return;
+      const m = new Map<string, PuntoTendencia[]>();
+      rs.forEach((r) => {
+        if (r) m.set(r[0], r[1]);
+      });
+      setSeriesIlegibles(m);
+    });
+    return () => {
+      vivo = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [operador, metricasVersion]);
+  }, [operador, claveIlegibles]);
 
-  const metricasPorSlug = useMemo(() => {
-    const mapa = new Map<string, ClienteMetricas>();
-    (metricas?.clientes ?? []).forEach((c) => mapa.set(c.slug, c));
-    return mapa;
-  }, [metricas]);
+  // ── Clientes (estado de cuenta: fuente de verdad para editar) ───────────
+  const [clientes, setClientes] = useState<ClientePlataforma[] | null>(null);
+  const [clientesError, setClientesError] = useState<string | null>(null);
+  useEffect(() => {
+    if (operador !== "si") return;
+    let vivo = true;
+    getClientesPlataforma()
+      .then((c) => {
+        if (vivo) setClientes(c);
+      })
+      .catch((err) => {
+        if (vivo) setClientesError(describeError(err, "No se pudo leer la lista de clientes."));
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [operador]);
 
-  // "Clientes activos" se cuenta desde la lista de ESTADOS (fuente fresca de
-  // cada apertura de la página), no desde `consolidado.clientes_total` de
-  // métricas, que cuenta TODOS los clientes sin importar su estado.
-  const clientesActivos = clientes ? clientes.filter((c) => c.estado === "activo").length : null;
-  const clientesConError = metricas?.consolidado.clientes_con_error ?? 0;
+  const supresiones = useSupresiones();
+
+  // ── Estado de la pantalla ───────────────────────────────────────────────
+  const [orden, setOrden] = useState<OrdenCola>("riesgo");
+  const [editandoEstado, setEditandoEstado] = useState<string | null>(null);
+  /* El cajón de estados de cuenta arranca ABIERTO, como en A: es el único
+     `<details>` que la cartera abre sola, porque el estado de cuenta es lo que
+     corta el servicio y se mira sin buscarlo. */
+  const [cajonAbierto, setCajonAbierto] = useState(true);
+  const [activo, setActivo] = useState<string>(CAPITULOS[0].id);
+  const docRef = useRef<HTMLElement | null>(null);
+
+  /* El índice marca el capítulo que se está leyendo. Un observador, no un
+     listener de scroll: el que entra más arriba manda. */
+  useEffect(() => {
+    if (operador !== "si") return;
+    const obs = new IntersectionObserver(
+      (entradas) => {
+        const visibles = entradas
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visibles[0]) setActivo(visibles[0].target.id);
+      },
+      { rootMargin: "-76px 0px -60% 0px" }
+    );
+    CAPITULOS.forEach((c) => {
+      const el = document.getElementById(c.id);
+      if (el) obs.observe(el);
+    });
+    return () => obs.disconnect();
+  }, [operador, metricas, adopcion, tendencia]);
+
+  /* El periodo VIAJA con el clic: la sesión que se abre desde la cartera abre
+     en el mismo mes que se estaba mirando, y desde ahí al informe. Sin esto,
+     el asesor analiza julio y el documento que imprime dice septiembre. */
+  const abrirSesion = useCallback(
+    (slug: string) => {
+      navigate(`/plataforma/clientes/${encodeURIComponent(slug)}?periodo=${encodeURIComponent(periodo)}`);
+    },
+    [navigate, periodo]
+  );
+
+  const revisarConexion = useCallback((slug: string) => {
+    setCajonAbierto(true);
+    setEditandoEstado(slug);
+    /* El cajón se abre en este mismo render; el scroll va después de que la
+       fila exista. */
+    window.setTimeout(() => {
+      document.getElementById(`plat-estado-${slug}`)?.scrollIntoView({ block: "center" });
+    }, 0);
+  }, []);
+
+  const cola = useMemo(() => (metricas ? armarCola(metricas, adopcion, orden) : []), [metricas, adopcion, orden]);
+  const periodos = useMemo(() => periodosOfrecidos(tendencia?.serie, periodo), [tendencia, periodo]);
+  const composicion = useMemo(
+    () => (metricas && tendencia ? armarComposicion(metricas, tendencia.serie, seriesIlegibles) : null),
+    [metricas, tendencia, seriesIlegibles]
+  );
 
   if (operador === "no") return <Navigate to="/" replace />;
 
+  const cons = metricas?.consolidado ?? null;
+  const esMesEnCurso = periodo === mesActual();
+  const filasUrgentes = urgentes(cola);
+
   return (
-    <div
-      style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--con-bg)", color: "var(--con-ink-1)" }}
-    >
-      <Encabezado email={email} tema={tema} onToggleTema={toggleTema} />
+    <div className="plat plat-pagina">
+      <header className="plat-barra">
+        <div className="plat-marca">
+          RECABRA <span>· Plataforma</span>
+        </div>
+        <div className="plat-ctrl">
+          <label htmlFor="plat-periodo">Periodo</label>
+          {/* El `<select>` de A, no un `<input type="month">`: ese control lo
+              pinta el navegador en SU idioma («September 2026» en una pantalla
+              escrita entera en español) y a 390 px se corta. Los meses salen de
+              la serie de doce, el más nuevo arriba; el que no tiene snapshot se
+              ofrece igual, deshabilitado y con la palabra escrita. */}
+          <select
+            id="plat-periodo"
+            value={periodo}
+            onChange={(e) => setPeriodo(e.target.value || mesActual())}
+            title="El periodo manda sobre las métricas de toda la pieza."
+          >
+            {periodos.map((o) => (
+              <option key={o.p} value={o.p} disabled={o.sinDato && o.p !== periodo}>
+                {mesLargo(o.p)}
+                {o.sinDato ? " · sin dato" : ""}
+              </option>
+            ))}
+          </select>
+          {esMesEnCurso && <span className="plat-chip plat-chip--parcial">mes en curso · parcial</span>}
+        </div>
+        <div className="sep" />
+        {email && <span className="plat-correo">{email}</span>}
+        <TemaToggle />
+        <button type="button" className="plat-btn mini" onClick={logout} title="Salir">
+          <LogOut size={13} /> Salir
+        </button>
+      </header>
 
       {operador === "verificando" ? (
-        <div style={{ padding: 40, fontSize: 12.5, color: "var(--con-ink-3)" }}>Verificando acceso…</div>
+        <div style={{ padding: 40 }} className="plat-nota">
+          Verificando acceso…
+        </div>
       ) : (
-        <div style={{ flex: 1, overflowY: "auto", padding: "20px 20px 60px" }}>
-          <div style={{ maxWidth: 1080, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
-
-            {/* ── Selector de período + indicador de frescura ── */}
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
-              <div>
-                <label htmlFor="plataforma-periodo" style={{ display: "block", fontSize: 11, fontWeight: 500, color: "var(--con-ink-3)", marginBottom: 4 }}>
-                  Período
-                </label>
-                <input
-                  id="plataforma-periodo"
-                  type="month"
-                  value={periodo}
-                  onChange={(e) => setPeriodo(e.target.value || mesActual())}
-                  className="con-focusable"
-                  style={inputStyle}
-                />
-              </div>
-              <div style={{ fontSize: 11, color: "var(--con-ink-4)", paddingBottom: 8 }}>
-                {metricasLoading
-                  ? "Cargando métricas…"
-                  : metricas
-                    ? `Actualizado ${haceMin(metricas.generado_en)}${metricas.de_cache ? " (caché)" : ""}`
+        <div className="plat-shell">
+          <nav className="plat-indice" aria-label="Índice de la cartera">
+            <h4>En esta pieza</h4>
+            <div className="plat-toc">
+              {CAPITULOS.map((c) => (
+                <Fragment key={c.id}>
+                  <a href={`#${c.id}`} className={activo === c.id ? "on" : undefined}>
+                    {c.num} · {c.titulo}
+                  </a>
+                  {/* Las sub-entradas de A: bajo «la cola de llamadas», los
+                      clientes por nombre, en el orden de la cola. Hacer clic en
+                      uno abre su sesión —con el periodo puesto—; el que no se
+                      deja leer no tiene sesión que abrir y lleva al cajón
+                      operativo, que es donde se le revisa la conexión. */}
+                  {c.id === "c-cola"
+                    ? cola.map((f) => (
+                        <a
+                          key={f.slug}
+                          className="sub"
+                          href={
+                            f.accion === "conexion"
+                              ? "#c-operativo"
+                              : `/plataforma/clientes/${encodeURIComponent(f.slug)}?periodo=${encodeURIComponent(periodo)}`
+                          }
+                          onClick={(e) => {
+                            if (f.accion === "conexion") return;
+                            e.preventDefault();
+                            abrirSesion(f.slug);
+                          }}
+                        >
+                          {f.nombre}
+                        </a>
+                      ))
                     : null}
+                </Fragment>
+              ))}
+            </div>
+          </nav>
+
+          <main className="plat-doc" ref={docRef}>
+            <div className="plat-tapa">
+              <div className="rotulo">Pieza 1 · Informe de cartera</div>
+              <h1>¿Cómo va el negocio y a quién llamo primero?</h1>
+              <div className="cred">
+                <span>
+                  <b>Periodo</b>{" "}
+                  <span className="cod">
+                    {metricas ? `${metricas.periodo.anio_mes} · ${metricas.periodo.desde} a ${metricas.periodo.hasta}` : periodo}
+                  </span>
+                </span>
+                <span>
+                  <b>Cobertura</b>{" "}
+                  {cons
+                    ? `${cons.clientes_total - cons.clientes_con_error} de ${cons.clientes_total} clientes leídos` +
+                      (cons.clientes_con_error > 0
+                        ? ` · ${plural(cons.clientes_con_error, "con error", "con error")}`
+                        : "")
+                    : SIN_DATO}
+                </span>
+                <span>
+                  <b>Generado</b>{" "}
+                  <span className="cod">
+                    {metricas ? `${haceMin(metricas.generado_en)}${metricas.de_cache ? " · de caché" : ""}` : cargando ? "cargando…" : SIN_DATO}
+                  </span>
+                </span>
               </div>
             </div>
 
-            {metricasError && <EstadoError texto={metricasError} />}
+            {metricasError && <Aviso rotulo="No se pudieron leer las métricas">{metricasError}</Aviso>}
 
-            {/* ── KPIs consolidados: el hero (ingreso contratado) grande y
-                   primero; el resto lo sostiene. Un nivel de énfasis por tile. */}
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <KpiTile
-                variante="hero"
-                rotulo="Ingreso contratado · mes"
-                valor={formatoCOP(metricas?.consolidado.ingreso_contratado_mes ?? null)}
-                hint="Suma del canon de los contratos activos del período, consolidada sobre todos los clientes."
-                contexto={
-                  clientesConError > 0
-                    ? `${clientesConError} cliente${clientesConError === 1 ? "" : "s"} sin leer este período`
-                    : undefined
-                }
-              />
-              <KpiTile
-                rotulo="Clientes activos"
-                valor={clientesActivos === null ? "—" : String(clientesActivos)}
-                hint="Clientes con estado de cuenta 'activo' (fuente: lista de estados, no las métricas)."
-                contexto={
-                  metricas ? `de ${metricas.consolidado.clientes_total} en el registro` : undefined
-                }
-              />
-              <KpiTile
-                rotulo="Ocupación media"
-                valor={formatoPct(metricas?.consolidado.ocupacion_pct ?? null)}
-                hint="Espacios con contrato activo sobre comercializables, consolidado."
-                contexto={
-                  metricas
-                    ? `sobre ${metricas.consolidado.espacios_comercializables} espacios comercializables en ${metricas.consolidado.sedes_con_plano} sede${metricas.consolidado.sedes_con_plano === 1 ? "" : "s"} con plano`
-                    : undefined
-                }
-              />
-              <KpiTile
-                rotulo="Canon promedio"
-                valor={formatoCOP(metricas?.consolidado.canon_promedio_mensual ?? null)}
-                hint="Canon mensual promedio de los contratos activos, consolidado."
-              />
-              <KpiTile
-                rotulo="vs tarifa de referencia"
-                valor={
-                  !metricas ? "—"
-                  : metricas.consolidado.clientes_con_tarifa === 0 ? "sin tarifa"
-                  : metricas.consolidado.spread_pct === null ? "—"
-                  : formatoSpread(metricas.consolidado.spread_pct)
-                }
-                hint="Ponderado: Σ canon / Σ tarifa de referencia de los clientes con tarifa configurada (nunca promedio de spreads). Fase 7: suma a todos los clientes legibles con tarifa configurada, sin umbral."
-                contexto={
-                  !metricas ? undefined
-                  : metricas.consolidado.clientes_con_tarifa === 0
-                    ? "ningún cliente configuró tarifa de referencia"
-                  : metricas.consolidado.spread_pct === null
-                    ? "ningún contrato con tarifa aplicable en el período"
-                  : metricas.consolidado.spread_pct < 0
-                    ? `la cartera cobra ${Math.abs(metricas.consolidado.spread_pct).toFixed(1).replace(".", ",")} % por debajo de sus tarifas de referencia`
-                  : metricas.consolidado.spread_pct > 0
-                    ? `la cartera cobra ${metricas.consolidado.spread_pct.toFixed(1).replace(".", ",")} % por encima de sus tarifas de referencia`
-                  : "la cartera cobra exactamente su tarifa de referencia"
-                }
-              />
-            </div>
+            {/* ═══ 1.1 · El titular ═══ */}
+            <Capitulo id="c-titular" numero="1.1" titulo="El titular" der="todo contra el mes comparable">
+              {cons && composicion ? (
+                <>
+                  <Frase ruta="metricas.consolidado · tendencia[__consolidado__].serie · tendencia[<slug ilegible>].serie">
+                    La cartera factura <em>{plata(cons.ingreso_contratado_mes)}</em> este mes sobre{" "}
+                    {num(cons.espacios_comercializables)} espacios en{" "}
+                    {plural(cons.sedes_con_plano, "sede", "sedes")}, al <em>{pct(cons.ocupacion_pct)}</em> de
+                    ocupación
+                    {composicion.mismaComposicion
+                      ? `. Contra ${mesLargo(composicion.mesAnterior)}, con los mismos clientes en la cuenta, el ingreso ${movimiento(composicion.deltaIngresoPct)} y la ocupación se movió ${puntos(casiCero(composicion.deltaOcupacion))}.`
+                      : composicion.comparable
+                        ? `. Contra el ${mesCorto(composicion.mesAnterior)} publicado parece ${(composicion.deltaIngresoCrudo ?? 0) < 0 ? "perder" : "ganar"} ${plata(Math.abs(composicion.deltaIngresoCrudo ?? 0))}, y no es eso lo que pasó: ${composicion.quitados.map((q) => q.nombre).join(", ")} ${composicion.quitados.length === 1 ? "salió" : "salieron"} de las dos puntas de la cuenta. A igual composición fueron ${plata(composicion.comparable.ingreso)} y ${pct(composicion.comparable.ocupacion)}: el ingreso ${movimiento(composicion.deltaIngresoPct)}.`
+                        : `. El mes anterior no se puede usar como referencia todavía: ${composicion.motivoSinComparable ?? "no hay con qué compararlo"}`}
+                  </Frase>
 
-            {/* ── Gráficos: barras con eje desde cero (SVG/CSS propio) ── */}
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-              <div style={{ flex: "1 1 380px", minWidth: 320 }}>
-                <GraficoOcupacion clientes={metricas?.clientes ?? []} />
-              </div>
-              <div style={{ flex: "1 1 380px", minWidth: 320 }}>
-                <GraficoProveedores metricas={metricas} />
-              </div>
-            </div>
-
-            {/* ── Clientes: estado + métricas + Cambiar en la misma fila ── */}
-            <Panel
-              titulo="Clientes"
-              subtitulo="Estado de cuenta y métricas del período por supermercado. Cambiar el estado corta o restringe el servicio de inmediato — el motivo queda de constancia, también al reactivar."
-              sinPadding
-            >
-              <TablaScroll minWidth={856 + W_BTN_REPORTE + 6 + W_BTN_DETALLE + 6}>
-                {clientes === null ? (
-                  <div style={{ padding: 16 }}>
-                    {clientesError ? <EstadoError texto={clientesError} /> : <EstadoVacio texto="Cargando…" />}
-                  </div>
-                ) : clientes.length === 0 ? (
-                  <div style={{ padding: 16 }}>
-                    <EstadoVacio texto="No hay clientes todavía." />
-                  </div>
-                ) : (
-                  <>
-                    {/* Encabezados: mismas anchuras que las celdas de FilaCliente. */}
-                    <TablaHead>
-                      <TablaHeadCelda flex="1.4 1 180px">Supermercado</TablaHeadCelda>
-                      <TablaHeadCelda width={W_ESTADO}>Estado</TablaHeadCelda>
-                      <TablaHeadCelda width={W_OCUP} alinear="right">Ocupación</TablaHeadCelda>
-                      <TablaHeadCelda width={W_CANON} alinear="right">Canon prom.</TablaHeadCelda>
-                      <TablaHeadCelda width={W_ING} alinear="right">Ingreso (mes)</TablaHeadCelda>
-                      <TablaHeadCelda width={W_SPREAD} alinear="right">vs tarifa</TablaHeadCelda>
-                      <TablaHeadCelda width={W_ACC}>Últ. acceso</TablaHeadCelda>
-                      <div style={{ marginLeft: "auto", width: W_BOTONES }} />
-                    </TablaHead>
-                    {clientes.map((f) => (
-                      <FilaCliente
-                        key={f.slug}
-                        fila={f}
-                        metricas={metricasPorSlug.get(f.slug)}
-                        editando={editando === f.slug}
-                        onEditar={() => setEditando(editando === f.slug ? null : f.slug)}
-                        onCancelar={() => setEditando(null)}
-                        onGuardado={(patch) => {
-                          setClientes((prev) =>
-                            prev ? prev.map((x) => (x.slug === f.slug ? { ...x, ...patch } : x)) : prev
-                          );
-                          setEditando(null);
-                        }}
+                  <div className="plat-bloque">
+                    <div className="plat-kpis" style={{ borderTop: 0, paddingTop: 0, marginTop: 0 }}>
+                      <Kpi
+                        hero
+                        et="Ingreso contratado del mes"
+                        v={plata(cons.ingreso_contratado_mes)}
+                        c={lineasDeltaIngreso(composicion)}
                       />
-                    ))}
-                  </>
+                      <Kpi
+                        et="Espacios · sedes con plano"
+                        v={`${num(cons.espacios_comercializables)} · ${cons.sedes_con_plano}`}
+                        c={[
+                          `sobre ${plural(cons.clientes_total - cons.clientes_con_error, "cliente leído", "clientes leídos")}`,
+                          composicion.publicado
+                            ? `${mesCorto(composicion.mesAnterior)} publicó ${num(composicion.publicado.espacios)}`
+                            : "sin mes anterior con qué compararlo",
+                        ]}
+                      />
+                      <Kpi
+                        et="Canon promedio mensual"
+                        v={plata(cons.canon_promedio_mensual)}
+                        c={[
+                          "promedio de la cartera",
+                          "es el «contra qué» de cada cliente en su sesión",
+                        ]}
+                      />
+                    </div>
+                    <Medidor
+                      ocupacionPct={cons.ocupacion_pct}
+                      espaciosComercializables={cons.espacios_comercializables}
+                      referencia={referenciaMedidor(composicion)}
+                      nota={notaMedidor(composicion)}
+                      tabla
+                    />
+                  </div>
+
+                  <div className="plat-bloque">
+                    <p className="plat-frase chica">{fraseComposicion(composicion)}</p>
+                    <div className="plat-fig-tit">La corrección de composición, para que se pueda auditar</div>
+                    <TablaComposicion comp={composicion} mes={periodo} />
+                    <p className="plat-nota">
+                      {composicion.mismaComposicion
+                        ? "Los dos meses cuentan los mismos clientes, así que el delta se lee directo: no hay corrección que hacer."
+                        : composicion.comparable
+                          ? "El delta grande va contra la columna del medio. La primera se muestra igual, tachada: nunca se esconde, se explica. La columna comparable se arma restándole al mes anterior lo que ese mismo mes aportaba cada cliente que hoy no se deja leer, leído de su propio snapshot."
+                          : `Sin columna del medio: ${composicion.motivoSinComparable ?? "no se puede recomponer"} Por eso el delta grande va tachado y no se publica ninguno en su lugar.`}
+                      <br />
+                      La cartera <b>no publica</b> el total de contratos activos. Se podría despejar (ingreso ÷ canon
+                      promedio) y eso es una inferencia, no un dato: no se muestra.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <p className="plat-nota">
+                  {metricasError
+                    ? "Sin métricas para este periodo."
+                    : tendenciaError
+                      ? `El titular necesita la tendencia para saber contra qué medirse, y no se pudo leer: ${tendenciaError}`
+                      : "Cargando el consolidado…"}
+                </p>
+              )}
+            </Capitulo>
+
+            {/* ═══ 1.2 · La tendencia ═══ */}
+            <Capitulo
+              id="c-tendencia"
+              numero="1.2"
+              titulo="La tendencia de 12 meses, anotada"
+              der="contra su propio pasado"
+            >
+              {tendenciaError && <Aviso rotulo="No se pudo leer la tendencia">{tendenciaError}</Aviso>}
+              {tendencia ? (
+                <>
+                  <Frase
+                    chica
+                    ruta={`tendencia[${CONSOLIDADO_SLUG}].serie[${tendencia.desde} … ${tendencia.hasta}]`}
+                  >
+                    {fraseTendencia(tendencia.serie)}
+                  </Frase>
+                  <div className="plat-bloque">
+                    <DosLineasConteo
+                      serie={tendencia.serie}
+                      anotaciones={anotacionesDenominador(tendencia.serie)}
+                      tabla
+                    />
+                    <p className="plat-frase chica">{fraseIngresoSerie(tendencia.serie)}</p>
+                    <LineaIngreso serie={tendencia.serie} anotaciones={anotacionIngreso(tendencia.serie)} />
+                  </div>
+                  {avisoDenominador(tendencia.serie) && (
+                    <Aviso rotulo="Por qué conteos y no un porcentaje">{avisoDenominador(tendencia.serie)}</Aviso>
+                  )}
+                </>
+              ) : (
+                !tendenciaError && <p className="plat-nota">Cargando los doce meses…</p>
+              )}
+            </Capitulo>
+
+            {/* ═══ 1.3 · La cola de llamadas ═══ */}
+            <Capitulo
+              id="c-cola"
+              numero="1.3"
+              titulo="La cola de llamadas"
+              der="la adopción es una columna, no un panel"
+            >
+              {metricas ? (
+                <>
+                  <Frase ruta="metricas.clientes[] · adopcion.clientes[] · orden calculado en el frontend">
+                    De {plural(cola.length, "cliente", "clientes")},{" "}
+                    <em>
+                      {filasUrgentes.length}{" "}
+                      {filasUrgentes.length === 1 ? "necesita una llamada" : "necesitan una llamada"} esta semana
+                    </em>
+                    {filasUrgentes.length > 0 ? `: ${resumenUrgentes(filasUrgentes)}.` : "."}
+                  </Frase>
+                  <ColaLlamadas
+                    filas={cola}
+                    orden={orden}
+                    onOrden={setOrden}
+                    onAbrirSesion={abrirSesion}
+                    onRevisarConexion={revisarConexion}
+                  />
+                  <p className="plat-nota">
+                    El orden por defecto es riesgo, no plata: el número más grande de la tabla casi nunca es el que se
+                    va esta semana. El orden por plata está a un clic y la regla se lee arriba de la lista.
+                    {adopcionError ? ` La adopción no se pudo leer (${adopcionError}), así que las señales de cuenta fantasma, dormida y sin cuentas no entran en este orden.` : ""}
+                  </p>
+                </>
+              ) : (
+                <p className="plat-nota">Cargando la cartera…</p>
+              )}
+            </Capitulo>
+
+            {/* ═══ 1.4 · El spread ═══ */}
+            <Capitulo
+              id="c-spread"
+              numero="1.4"
+              titulo="Quién cobra por debajo de lo que dice que vale"
+              der="contra cero"
+            >
+              {metricas ? (
+                <>
+                  <Frase chica ruta="metricas.clientes[].metricas.spread_pct · .tarifa_configurada · .contratos_sin_tarifa">
+                    {fraseSpread(metricas)}
+                  </Frase>
+                  <div className="plat-bloque">
+                    <EjeSpread clientes={metricas.clientes} tabla />
+                  </div>
+                  <p className="plat-nota">
+                    La <b>tarifa de referencia</b> de un cliente no sale nunca de su base: acá sólo viaja su relación
+                    (cuánto cobra contra ella) y si existe. Un cliente sin tarifa cargada no tiene spread: se cuenta
+                    aparte, con su nombre, y no se dibuja en cero.
+                  </p>
+                </>
+              ) : (
+                <p className="plat-nota">Cargando el spread…</p>
+              )}
+            </Capitulo>
+
+            {/* ═══ 1.5 · La adopción ═══ */}
+            <Capitulo id="c-adopcion" numero="1.5" titulo="La adopción" der="quién no usa lo que paga">
+              {adopcionError && <Aviso rotulo="No se pudo leer la adopción">{adopcionError}</Aviso>}
+              {adopcion ? (
+                <>
+                  <Frase chica ruta="adopcion.clientes[].clasificacion · adopcion.cohortes[]">
+                    {fraseAdopcion(adopcion)}
+                  </Frase>
+                  <div className="plat-bloque">
+                    <Unidades
+                      grupos={unidadesAdopcion(adopcion.clientes)}
+                      disposicion="columnas"
+                      clave={CLAVE_ADOPCION}
+                      titulo="Una marca por cliente, agrupadas por clase de adopción"
+                      tabla
+                    />
+                    <p className="plat-frase chica" style={{ marginTop: "var(--s5)" }}>
+                      {fraseCohortes(adopcion)}
+                    </p>
+                    <div className="plat-fig-tit">
+                      Cohortes por mes de alta · {plural(adopcion.cohortes.length, "fila", "filas")}, sin gráfico
+                    </div>
+                    <TablaCohortes adopcion={adopcion} />
+                    <p className="plat-nota">
+                      Con uno o dos clientes por cohorte, «0 % de retención» y «100 %» son la misma información que «0
+                      de 2» y «1 de 1». Manda el conteo; el porcentaje va al lado, con su n.
+                    </p>
+                  </div>
+                  <p className="plat-nota">
+                    La adopción no es un panel aparte: es la columna «señal» y la línea de días sin acceso de la cola
+                    de arriba. Un cliente fantasma no es una estadística, es una llamada.
+                  </p>
+                </>
+              ) : (
+                !adopcionError && <p className="plat-nota">Cargando la adopción…</p>
+              )}
+            </Capitulo>
+
+            {/* ═══ 1.6 · Lo operativo ═══ */}
+            <Capitulo id="c-operativo" numero="1.6" titulo="Lo operativo" der="fuera de la historia">
+              <p className="plat-nota" style={{ marginTop: 0 }}>
+                Estados de cuenta y solicitudes de supresión existen y tienen su lugar, pero no son análisis: son
+                operaciones. Lo único que sube a la historia es la línea de estado en la fila del cliente.
+              </p>
+              <details
+                className="plat-cajon"
+                open={cajonAbierto}
+                onToggle={(e) => setCajonAbierto((e.currentTarget as HTMLDetailsElement).open)}
+              >
+                <summary>
+                  Estados de cuenta
+                  <span className="cuenta">
+                    {clientes ? plural(clientes.length, "cliente", "clientes") : SIN_DATO}
+                  </span>
+                </summary>
+                <div>
+                  <TablaEstados
+                    clientes={clientes}
+                    error={clientesError}
+                    abierto={editandoEstado}
+                    onAbrir={setEditandoEstado}
+                    onGuardado={(slug, patch) =>
+                      setClientes((prev) => (prev ? prev.map((x) => (x.slug === slug ? { ...x, ...patch } : x)) : prev))
+                    }
+                    enlaceReporte={(slug) => navigate(`/plataforma/reporte/${encodeURIComponent(slug)}`)}
+                  />
+                  <p className="plat-nota">
+                    Cambiar el estado corta o restringe el servicio de inmediato. El motivo queda de constancia,
+                    también al reactivar.
+                  </p>
+                </div>
+              </details>
+              <details className="plat-cajon">
+                <summary>
+                  Solicitudes de supresión
+                  <span className="cuenta">
+                    {supresiones.filas
+                      ? `${plural(supresiones.filas.filter((f) => f.estado === "pendiente").length, "pendiente", "pendientes")} de ${supresiones.filas.length}`
+                      : SIN_DATO}
+                  </span>
+                </summary>
+                <div>
+                  <TablaSupresiones
+                    filas={supresiones.filas}
+                    error={supresiones.error}
+                    setFilas={supresiones.setFilas}
+                  />
+                  <p className="plat-nota">
+                    Nada se borra desde acá: la supresión real, si corresponde, se ejecuta a mano y fuera del sistema.
+                  </p>
+                </div>
+              </details>
+            </Capitulo>
+
+            {/* ═══ 1.7 · De dónde sale ═══ */}
+            <Capitulo id="c-fuente" numero="1.7" titulo="De dónde sale">
+              <div className="plat-pie">
+                <div>
+                  <b>Periodo</b>
+                  {metricas
+                    ? `${metricas.periodo.anio_mes} (${metricas.periodo.desde} a ${metricas.periodo.hasta})${esMesEnCurso ? " — mes en curso, parcial" : " — mes cerrado"}`
+                    : SIN_DATO}
+                </div>
+                <div>
+                  <b>Generado</b>
+                  {metricas
+                    ? `${metricas.generado_en.replace("T", " ").replace("Z", " UTC")}${metricas.de_cache ? " · de caché (5 min)" : " · lectura en vivo"}`
+                    : SIN_DATO}
+                </div>
+                <div>
+                  <b>Cobertura</b>
+                  {cons
+                    ? `${cons.clientes_total - cons.clientes_con_error} de ${cons.clientes_total} clientes leídos; el consolidado es la suma de esos${cons.clientes_con_error > 0 ? `. ${plural(cons.clientes_con_error, "base devolvió error", "bases devolvieron error")} y quedó fuera de las dos puntas de la cuenta` : ""}.`
+                    : SIN_DATO}
+                </div>
+                {!esMesEnCurso && (
+                  <div>
+                    <b>Un mes cerrado se recalcula, no se relee</b>
+                    Las métricas de un periodo pasado se vuelven a calcular sobre las bases de HOY, con los clientes
+                    que hay hoy: la base de un cliente guarda sus contratos como están ahora, no como estaban ese mes.
+                    La foto de ese mes tal como se publicó vive en la rejilla de doce meses de arriba, que sí sale del
+                    snapshot — si las dos no coinciden, ésa es la razón.
+                  </div>
                 )}
-              </TablaScroll>
-            </Panel>
-
-            <PanelTendencia
-              clientes={clientes}
-              tendencia={tend.tendencia}
-              loading={tend.loading}
-              error={tend.error}
-              cliente={tend.cliente}
-              meses={tend.meses}
-              onCambiarCliente={tend.setCliente}
-              onCambiarMeses={tend.setMeses}
-            />
-
-            <PanelAdopcion adopcion={adop.adopcion} loading={adop.loading} error={adop.error} />
-
-            <SupresionesSection />
-          </div>
+                <div>
+                  <b>La ventana de la tendencia</b>
+                  {tendencia
+                    ? `${tendencia.meses} meses, de ${tendencia.desde} a ${tendencia.hasta}. No toma el periodo de arriba: la serie termina siempre en el mes en curso.`
+                    : SIN_DATO}
+                </div>
+                <div>
+                  <b>La adopción</b>
+                  {adopcion
+                    ? `Calculada a hoy (${adopcion.generado_en.slice(0, 10)}), no al periodo elegido. Las clases las decide el backend una sola vez; el frontend no las re-deriva de fechas.`
+                    : SIN_DATO}
+                </div>
+                <div>
+                  <b>Lo que no se muestra nunca</b>
+                  La tarifa de referencia del cliente. Sólo su relación (spread) y si existe. Los nombres de proveedor
+                  llegan saneados del backend y se pintan tal cual.
+                </div>
+                <div>
+                  <b>Lo que no se publica</b>
+                  El total de contratos activos por cliente y la participación de un proveedor sobre él: sin
+                  denominador publicado, un porcentaje es un número inventado. Esa lectura vive en el detalle de cada
+                  cliente.
+                </div>
+                <div>
+                  <b>Bitácora</b>
+                  Cada consulta de métricas, tendencia, detalle y reporte queda anotada con el correo del operador, la
+                  fecha y el periodo — y el cliente la puede ver en su reporte de transparencia.
+                </div>
+              </div>
+            </Capitulo>
+          </main>
         </div>
       )}
     </div>
   );
 }
+
+// ─── Cuentas de render que no valen un archivo aparte ──────────────────────
+
+/** Las dos líneas que acompañan a la cifra hero. El delta va contra la
+ *  columna comparable; el crudo se muestra igual, tachado, con la palabra
+ *  «composición distinta». Nunca se esconde: se explica. */
+function lineasDeltaIngreso(c: Composicion): React.ReactNode[] {
+  if (!c.mesAnterior || !c.publicado) {
+    return [<span key="s">Sin mes anterior publicado con qué compararlo.</span>];
+  }
+  /* Un delta de cero se escribe «sin cambio», no «$ 0 · 0,0 %»: dos ceros con
+     signo es más difícil de leer que la palabra. */
+  const delta =
+    (c.deltaIngreso ?? 0) === 0 ? (
+      <b>sin cambio</b>
+    ) : (
+      <b>
+        {sig(c.deltaIngreso, (v) => plata(v))} · {sig(casiCero(c.deltaIngresoPct), (v) => pct(v))}
+      </b>
+    );
+  if (c.mismaComposicion) {
+    return [
+      <span key="a">
+        {delta} contra {mesLargo(c.mesAnterior)} ({plata(c.publicado.ingreso)}), con los mismos clientes en la
+        cuenta.
+      </span>,
+      <span key="b">
+        Ocupación: {puntos(casiCero(c.deltaOcupacion))} contra {pct(c.publicado.ocupacion)}.
+      </span>,
+    ];
+  }
+  if (c.comparable) {
+    return [
+      <span key="a">
+        {delta} contra {mesCorto(c.mesAnterior)} a igual composición ({plata(c.comparable.ingreso)}).
+      </span>,
+      <span key="b">
+        <span className="tachado">
+          {sig(c.deltaIngresoCrudo, (v) => plata(v))} contra el {mesCorto(c.mesAnterior)} publicado
+        </span>{" "}
+        — composición distinta: {c.quitados.map((q) => q.nombre).join(", ")} salió de la cuenta.
+      </span>,
+    ];
+  }
+  return [
+    <span key="a">
+      <span className="tachado">
+        {sig(c.deltaIngresoCrudo, (v) => plata(v))} contra el {mesCorto(c.mesAnterior)} publicado
+      </span>{" "}
+      — no es comparable.
+    </span>,
+    <span key="b">{c.motivoSinComparable}</span>,
+  ];
+}
+
+function referenciaMedidor(c: Composicion): { pct: number; rotulo: string } | null {
+  if (c.comparable && c.comparable.ocupacion !== null && c.mesAnterior) {
+    return {
+      pct: c.comparable.ocupacion,
+      rotulo: c.mismaComposicion ? `${mesCorto(c.mesAnterior)}` : `${mesCorto(c.mesAnterior)} comparable`,
+    };
+  }
+  return null;
+}
+
+function notaMedidor(c: Composicion): string {
+  if (c.comparable && c.comparable.ocupacion !== null && c.mesAnterior) {
+    return `contra ${mesCorto(c.mesAnterior)}${c.mismaComposicion ? "" : " a igual composición"}: ${puntos(casiCero(c.deltaOcupacion))}`;
+  }
+  return `sin marca de referencia: ${c.motivoSinComparable ?? "no hay mes anterior comparable"}`;
+}
+
+/** La frase-conclusión de la tabla de composición. La tabla es el paso a paso
+ *  de una resta; la frase dice CUÁNTO corrige esa resta, con la cifra. Sin
+ *  ella, el medidor de arriba se lleva la única conclusión del capítulo y la
+ *  auditoría queda sin titular. */
+function fraseComposicion(c: Composicion): string {
+  if (!c.mesAnterior || !c.publicado) {
+    return "No hay un mes anterior publicado con qué compararse: la tabla trae 1 sola columna, la de este mes, y no hay corrección que auditar.";
+  }
+  if (c.mismaComposicion) {
+    return (
+      `Los dos meses cuentan los mismos ${c.publicado.clientes} clientes: la corrección es de ` +
+      `${plata(0)} y el delta de arriba (${sig(c.deltaIngreso, (v) => plata(v))}) se lee directo, sin columna del medio.`
+    );
+  }
+  if (c.comparable) {
+    const ing = c.quitados.reduce((t, q) => t + q.ingreso, 0);
+    const esp = c.quitados.reduce((t, q) => t + q.espacios, 0);
+    return (
+      `${c.quitados.map((q) => q.nombre).join(", ")} ${c.quitados.length === 1 ? "aportaba" : "aportaban"} ` +
+      `${plata(ing)} y ${num(esp)} espacios en ${mesLargo(c.mesAnterior)}, y este mes ${c.quitados.length === 1 ? "no está" : "no están"} ` +
+      `en la cuenta: quitarlo${c.quitados.length === 1 ? "" : "s"} baja el mes anterior de ${plata(c.publicado.ingreso)} a ` +
+      `${plata(c.comparable.ingreso)}. Ésa es la columna del medio, y contra ella se mide el ` +
+      `${sig(c.deltaIngreso, (v) => plata(v))} de arriba.`
+    );
+  }
+  return (
+    `Sin columna del medio: ${c.motivoSinComparable ?? "no se puede recomponer"} El delta crudo contra ` +
+    `${mesLargo(c.mesAnterior)} (${sig(c.deltaIngresoCrudo, (v) => plata(v))}) queda tachado y no se publica ninguno en su lugar.`
+  );
+}
+
+/** La frase-conclusión del panel de plata. La rejilla de conteos de arriba
+ *  cuenta caras; ésta cuenta pesos, y son dos lecturas distintas sobre la
+ *  misma rejilla de meses: cada una necesita su propia conclusión. */
+function fraseIngresoSerie(serie: PuntoTendencia[]): string {
+  const con = serie.filter((p) => !p.sin_dato && p.ingreso_contratado_mes !== null);
+  if (con.length < 2)
+    return `${plural(con.length, "mes de la ventana trae", "meses de la ventana traen")} ingreso publicado: con menos de 2 no hay tramo que contar en el panel de plata.`;
+  const primero = con[0];
+  const ultimo = con[con.length - 1];
+  const a = primero.ingreso_contratado_mes as number;
+  const b = ultimo.ingreso_contratado_mes as number;
+  const pico = con.reduce((m, p) => ((p.ingreso_contratado_mes as number) > (m.ingreso_contratado_mes as number) ? p : m), con[0]);
+  return (
+    `En plata, de ${mesCorto(primero.periodo)} a ${mesCorto(ultimo.periodo)} la cartera pasó de ${plata(a)} a ` +
+    `${plata(b)} (${sig(b - a, (v) => plata(v))}${a > 0 ? ` · ${sig(((b / a - 1) * 100), (v) => pct(v))}` : ""}), ` +
+    `con el techo de la ventana en ${mesCorto(pico.periodo)} (${plata(pico.ingreso_contratado_mes)}). ` +
+    `Es el mismo eje de meses de arriba y otra unidad: por eso va en su propio panel y no en un segundo eje.`
+  );
+}
+
+/** La frase-conclusión de la tabla de cohortes. Manda el conteo, no el
+ *  porcentaje: con una o dos altas por mes, «0 %» y «100 %» son la misma
+ *  información que «0 de 2» y «1 de 1». */
+function fraseCohortes(adopcion: Adopcion): string {
+  const h = adopcion.cohortes;
+  if (h.length === 0) return "0 clientes tienen fecha de alta: no hay una sola cohorte que seguir.";
+  const conRet = h.filter((x) => x.retencion_30d_pct !== null);
+  const altas = h.reduce((t, x) => t + x.clientes, 0);
+  const entraron = conRet.reduce((t, x) => t + Math.round((x.clientes * (x.retencion_30d_pct as number)) / 100), 0);
+  const base = conRet.reduce((t, x) => t + x.clientes, 0);
+  if (base === 0) {
+    return `${plural(h.length, "cohorte de alta", "cohortes de alta")} y ${plural(altas, "cliente", "clientes")} en total, y ninguna tiene retención calculable todavía: la tabla dice «sin dato», no cero.`;
+  }
+  return (
+    `De ${plural(altas, "cliente dado de alta", "clientes dados de alta")} en ` +
+    `${plural(h.length, "cohorte", "cohortes")}, ${num(entraron)} de ${num(base)} entraron dentro de los 30 días ` +
+    `(${pct((entraron / base) * 100, 0)}). Con cohortes de uno o dos, el conteo manda y el porcentaje va al lado con su n: ` +
+    `por eso son cinco filas de tabla y no un gráfico.`
+  );
+}
+
+/** La frase-conclusión de la rejilla de doce meses. Sale del dato: el tramo
+ *  de ocupación más largo, y si el denominador se movió, la cifra que lo
+ *  explica. */
+function fraseTendencia(serie: PuntoTendencia[]): string {
+  const con = serie.filter((p) => !p.sin_dato && p.ocupacion_pct !== null);
+  if (con.length < 2) return "Todavía no hay dos meses con snapshot: la tendencia no tiene qué contar.";
+  const primero = con[0];
+  const ultimo = con[con.length - 1];
+  const dOc = (ultimo.ocupacion_pct as number) - (primero.ocupacion_pct as number);
+  const dEsp = (ultimo.espacios_comercializables ?? 0) - (primero.espacios_comercializables ?? 0);
+  const dIng =
+    ultimo.ingreso_contratado_mes !== null && primero.ingreso_contratado_mes !== null
+      ? ultimo.ingreso_contratado_mes - primero.ingreso_contratado_mes
+      : null;
+  const sinDato = serie.filter((p) => p.sin_dato).length;
+  return (
+    `De ${mesCorto(primero.periodo)} a ${mesCorto(ultimo.periodo)} la ocupación de la cartera pasó de ` +
+    `${pct(primero.ocupacion_pct)} a ${pct(ultimo.ocupacion_pct)} (${puntos(dOc)}) mientras el inventario se movía ` +
+    `${sig(dEsp, (v) => num(v))} espacios` +
+    (dIng !== null ? ` y el ingreso ${sig(dIng, (v) => plata(v))}` : "") +
+    `. Por eso el dibujo va en conteos: la brecha entre las dos líneas es la ocupación, y el escalón del denominador ` +
+    `se ve como lo que es.` +
+    (sinDato > 0 ? ` ${plural(sinDato, "mes no tiene snapshot", "meses no tienen snapshot")} y van como hueco, no como recta entre vecinos.` : "")
+  );
+}
+
+/** La enumeración de la frase de la cola: una razón por señal, sin repetir. */
+function resumenUrgentes(filas: ReturnType<typeof armarCola>): string {
+  const porSenal = new Map<string, number>();
+  filas.forEach((f) => porSenal.set(f.palabra, (porSenal.get(f.palabra) ?? 0) + 1));
+  const partes = [...porSenal].map(([palabra, n]) => `${n} ${n === 1 ? articulo(palabra) : articuloPlural(palabra)}`);
+  return partes.join(", ");
+}
+
+const FRASE_SENAL: Record<string, [string, string]> = {
+  "sin dato": ["no se deja leer", "no se dejan leer"],
+  fantasma: ["tiene contratos y nadie entra", "tienen contratos y nadie entra"],
+  dormida: ["tiene cuentas y no entra hace más de un mes", "tienen cuentas y no entran hace más de un mes"],
+  "sin cuentas": ["paga y no tiene ni una cuenta de usuario", "pagan y no tienen ni una cuenta de usuario"],
+  "cobra por debajo": ["cobra por debajo de su propia tarifa", "cobran por debajo de su propia tarifa"],
+};
+
+const articulo = (palabra: string) => FRASE_SENAL[palabra]?.[0] ?? palabra;
+const articuloPlural = (palabra: string) => FRASE_SENAL[palabra]?.[1] ?? palabra;
