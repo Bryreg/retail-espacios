@@ -121,7 +121,6 @@ export default function MountView({
           fixtureCode: f.code,
           sede: (data.sede as string) || sede,
           label: f.label || f.code,
-          nomenclatura: f.nomenclatura,
           marca: (data.brandCategory as string) || "",
           proveedor: (data.supplierName as string) || "",
           desde: data.startDate ?? "",
@@ -164,7 +163,6 @@ export default function MountView({
           fixtureCode: f.code,
           sede: (data?.sede as string) || (f.sede as string) || sede,
           label: f.label || f.code,
-          nomenclatura: f.nomenclatura,
           marca: (data?.brandCategory as string) || "",
           proveedor: (data?.supplierName as string) || "",
           desde: data?.startDate ?? "",
@@ -313,7 +311,7 @@ export default function MountView({
                   color: "var(--ink-1)",
                 }}
               >
-                {nombreDeMueble({ code: p.corto, nomenclatura: p.nomenclatura })}
+                {nombreDeMueble({ code: p.corto })}
               </span>
               {p.urgente && (
                 <span

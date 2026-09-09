@@ -36,6 +36,19 @@ def find_fixture_by_space_code(db: Session, space_code: str) -> dict | None:
 
     Face B of a double gondola shares its parent fixture, so the "-B" suffix is
     stripped before matching.
+
+    **Busca en TODAS las sedes y acepta el código corto pelado**, y las dos cosas
+    son a propósito acá: su único llamador es ``is_space_rentable``, que recibe
+    un ``Space.code`` ya guardado —de una fila sembrada, de una sede archivada, de
+    un mueble borrado del plano después del contrato— y cuya única decisión es
+    fallar abierto. Estrecharlo convertiría «no encontré el mueble» en «no es
+    comercializable» para espacios que hoy se alquilan sin problema.
+
+    Lo que NO puede entrar por acá es una fila de planilla: ahí el código corto
+    sin sede es justamente el agujero —resolvía el mueble y creaba un ``Space``
+    nuevo con el código corto, un segundo espacio para el mismo mueble físico—.
+    Para eso está ``PlanoIndexado.resolver``, que exige sede y arma el código
+    completo con la del fixture.
     """
     code = (space_code or "").strip().upper()
     if not code:
@@ -75,6 +88,350 @@ def is_space_rentable(db: Session, space_code: str) -> bool:
     return fixture.get("rentable") is not False
 
 
+# ── El nombre que se DIBUJA, que no es la llave ───────────────────────────────
+#
+# ATENCIÓN, lector de 2027: esto describe el modelo VIEJO, de dos nombres, y
+# sobrevive como RED. Desde la fase 13 el ``code`` es EL nombre y la
+# ``nomenclatura`` no se escribe más: ``services/renumeracion.py`` la saca de
+# todos los planos y ``choques_nuevos`` (al final de este archivo) impide que
+# vuelva a entrar una que pise el nombre de otro. Lo de abajo sigue vivo porque
+# una base que no se migró puede tener planos sucios de antes, y porque un
+# cliente viejo puede mandar el campo: mientras alguien pueda dibujar dos
+# muebles con el mismo rótulo, hay que poder verlo.
+#
+# En el modelo viejo un mueble tenía dos nombres. El ``code`` es la llave: con él
+# se arma ``SEDE-CODE``, que es lo que viaja a ``spaces``, a los archivos, al
+# correo del mercaderista y al enlace de montaje. La ``nomenclatura`` era texto
+# libre que alguien escribía a mano y que REEMPLAZABA al código **en la
+# pantalla**.
+#
+# Nada obliga a que coincidan, y nada impide que el nombre de un mueble sea el
+# código de otro: renumerar una corrida corriendo los números garantiza que cada
+# nombre nuevo sea el viejo de otro. Cuando eso pasa, quien lee el plano escribe
+# en la planilla un texto que para el servidor es un mueble distinto del que
+# estaba mirando, y el contrato cae en el espacio equivocado sin un solo aviso.
+#
+# Acá vive lo que hace falta para verlo desde el backend: el nombre efectivo de
+# un mueble, y si un texto tecleado calza dos muebles a la vez.
+
+
+def normalizar(texto) -> str:
+    """Trim + mayúsculas, igual que ``normalizar`` de ``utils/nomenclatura.ts``.
+
+    Los códigos y los nombres no distinguen mayúsculas ni espacios de sobra: si
+    acá se comparara distinto que en el navegador, el plano diría una cosa y el
+    servidor otra, que es exactamente el problema que este módulo ataca.
+    """
+    return ("" if texto is None else str(texto)).strip().upper()
+
+
+def nombre_de_mueble(fixture: dict) -> str:
+    """Cómo se llama un mueble en la pantalla: ``nomenclatura`` o, si no, ``code``.
+
+    Espejo exacto de ``nombreDeMueble`` (``frontend/src/utils/nomenclatura.ts:150``).
+    Si las dos reglas se separan, el sistema vuelve a mentir: el backend
+    rechazaría una ambigüedad que el plano no dibuja, o dejaría pasar una que sí.
+    """
+    return str(fixture.get("nomenclatura") or "").strip() or str(fixture.get("code") or "")
+
+
+def nombre_propio(fixture: dict) -> bool:
+    """¿El nombre lo puso una persona, o se heredó del código del sistema?
+
+    Espeja ``nombrePropio`` del frontend, con la comparación normalizada: para
+    esto ``imp-08`` y ``IMP-08`` son el mismo nombre, como en todo el resto.
+    """
+    puesto = str(fixture.get("nomenclatura") or "").strip()
+    return bool(puesto) and normalizar(puesto) != normalizar(fixture.get("code"))
+
+
+class FixtureResuelto:
+    """El mueble que resolvió un texto de la planilla, y con qué sede.
+
+    ``codigo`` se arma con la sede **del fixture**, nunca con el texto pelado:
+    ahí estaba el segundo agujero. Una fila sin sede resolvía igual contra el
+    código corto y creaba un ``Space`` nuevo —``IMP-08`` junto a
+    ``CIUDAD JARDIN-IMP-08``— para el mismo mueble físico, cada uno ciego al
+    contrato del otro.
+    """
+
+    __slots__ = ("fixture", "sede", "codigo")
+
+    def __init__(self, fixture: dict, sede: str, codigo: str):
+        self.fixture = fixture
+        self.sede = sede
+        self.codigo = codigo
+
+    @property
+    def nombre_dibujado(self) -> str | None:
+        """La nomenclatura puesta a mano, o None si el mueble se dibuja con su código."""
+        return nombre_de_mueble(self.fixture) if nombre_propio(self.fixture) else None
+
+    def __repr__(self) -> str:  # pragma: no cover - ayuda al depurar un test
+        return f"FixtureResuelto({self.codigo!r}, dibujado={self.nombre_dibujado!r})"
+
+
+class Ambiguedad:
+    """Un texto que es el código de un mueble Y el nombre dibujado de otro.
+
+    Las dos mitades del problema, en un solo objeto: ``codigo_tecleado`` es el
+    mueble al que el servidor mandaría el contrato, ``codigo_dibujado`` es el que
+    la persona estaba mirando en el plano. Nombrar los dos es la diferencia entre
+    un rechazo que se entiende y uno que se saltea.
+
+    ``nombre_tecleado`` es cómo dibuja el plano al mueble de ``codigo_tecleado``
+    (``None`` si se dibuja con su propio código). El mensaje ofrece los DOS
+    caminos y tiene que describir bien cada uno: el mueble de código ``IMP-12``
+    se dibuja ``IMP-08``, así que decir de él «el que se dibuja con su propio
+    código» mandaría a la persona al mueble equivocado otra vez.
+    """
+
+    __slots__ = ("texto", "sede", "codigo_tecleado", "codigo_dibujado", "nombre_tecleado")
+
+    def __init__(self, texto: str, sede: str, codigo_tecleado: str, codigo_dibujado: str,
+                 nombre_tecleado: str | None = None):
+        self.texto = texto
+        self.sede = sede
+        self.codigo_tecleado = codigo_tecleado
+        self.codigo_dibujado = codigo_dibujado
+        self.nombre_tecleado = nombre_tecleado
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"Ambiguedad({self.texto!r} → {self.codigo_tecleado!r} / {self.codigo_dibujado!r})"
+
+
+class Colision:
+    """El mueble que la fila SÍ resolvió, y el otro con el que se confunde.
+
+    La ambigüedad frena una fila que no se puede resolver. Esto es lo contrario:
+    la fila resolvió sin dudas —vino el código completo, o el corto no calzaba
+    ningún nombre dibujado— y el contrato va a entrar. Lo que falta decir es que
+    el mueble elegido tiene un gemelo de nombre en la misma sede, porque **el
+    plano es donde la persona elige** y ahí los dos se ven igual.
+
+    Dos direcciones, que pueden darse las dos a la vez sobre el mismo mueble:
+
+    · ``otro_se_dibuja_con_mi_codigo`` — mi código corto es el nombre que el plano
+      le pinta a OTRO. Es la trampa: quien miró la cajita rotulada «IMP-08» y
+      siguió el consejo de escribir el código completo llega a ``CIUDAD
+      JARDIN-IMP-08``, que es el mueble que NO estaba mirando.
+    · ``otro_tiene_por_codigo_mi_nombre`` — el plano me dibuja con un nombre que
+      es el código de OTRO. El caso simétrico: el contrato cae donde se pidió,
+      pero cualquiera que después lea «IMP-08» va a creer que se contrató el otro.
+
+    Los dos campos son códigos completos: un código corto adentro del aviso
+    volvería a ser el texto ambiguo del que estamos tratando de salir.
+    """
+
+    __slots__ = ("codigo", "corto", "nombre_dibujado",
+                 "otro_se_dibuja_con_mi_codigo", "otro_tiene_por_codigo_mi_nombre")
+
+    def __init__(self, codigo: str, corto: str, nombre_dibujado: str | None,
+                 otro_se_dibuja_con_mi_codigo: str | None = None,
+                 otro_tiene_por_codigo_mi_nombre: str | None = None):
+        self.codigo = codigo
+        self.corto = corto
+        self.nombre_dibujado = nombre_dibujado
+        self.otro_se_dibuja_con_mi_codigo = otro_se_dibuja_con_mi_codigo
+        self.otro_tiene_por_codigo_mi_nombre = otro_tiene_por_codigo_mi_nombre
+
+    def __bool__(self) -> bool:
+        return bool(self.otro_se_dibuja_con_mi_codigo or self.otro_tiene_por_codigo_mi_nombre)
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return (f"Colision({self.codigo!r}, dibujado={self.nombre_dibujado!r}, "
+                f"me_dibuja={self.otro_se_dibuja_con_mi_codigo!r}, "
+                f"me_nombra={self.otro_tiene_por_codigo_mi_nombre!r})")
+
+
+def _sin_cara_b(texto: str) -> str:
+    """La góndola doble comparte fixture entre sus dos caras; ``-B`` no es parte
+    del código del mueble ni de ningún nombre dibujado."""
+    return texto[:-2] if texto.endswith("-B") else texto
+
+
+def sin_prefijo_de_sede(texto: str, sede: str) -> str:
+    """``CIUDAD JARDIN-IMP-08`` + ``CIUDAD JARDIN`` → ``IMP-08``."""
+    t = normalizar(texto)
+    s = normalizar(sede)
+    return t[len(s) + 1:] if s and t.startswith(f"{s}-") else t
+
+
+class PlanoIndexado:
+    """Los muebles de todas las sedes, leídos UNA vez.
+
+    Cada fila de una planilla necesita resolver un código, mirar si es ambiguo y
+    —cuando no aparece— averiguar en qué otra sede sí existe. Hacer las tres con
+    funciones sueltas serían tres barridos de ``layout_snapshots`` por fila, o
+    novecientos en una planilla de trescientas.
+    """
+
+    def __init__(self, db: Session):
+        self._por_sede: dict[str, list[dict]] = {}
+        for snap in db.query(LayoutSnapshot).all():
+            try:
+                fixtures = json.loads(snap.fixtures_json or "[]")
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(fixtures, list):
+                continue
+            self._por_sede[normalizar(snap.sede)] = [f for f in fixtures if isinstance(f, dict)]
+
+    # ── Lectura ───────────────────────────────────────────────────────────────
+
+    def de_sede(self, sede: str) -> list[dict]:
+        """Los muebles de UNA sede. Acotar no es un detalle: el código corto se
+        repite entre tiendas, y buscar en todas devuelve el de la sede
+        equivocada."""
+        clave = normalizar(sede)
+        return self._por_sede.get(clave, []) if clave else []
+
+    def sedes(self) -> list[str]:
+        return sorted(self._por_sede)
+
+    # ── Resolver ──────────────────────────────────────────────────────────────
+
+    def resolver(self, sede: str, espacio: str) -> FixtureResuelto | None:
+        """El mueble de ESA sede que corresponde al texto, con su código completo.
+
+        Acepta el corto (``IMP-08``) y el completo (``CIUDAD JARDIN-IMP-08``),
+        como la planilla que trae la gente. Devuelve el código armado con la sede
+        del fixture: si el texto vino corto, el completo lo pone el plano y no la
+        fila.
+        """
+        fixtures = self.de_sede(sede)
+        if not fixtures:
+            return None
+        texto = normalizar(espacio)
+        if not texto:
+            return None
+        # El texto tal cual primero: un mueble podría llamarse literalmente
+        # ``GON-01-B``, y recortarle la cara lo dejaría sin resolver.
+        candidatos = [(texto, "")]
+        if texto.endswith("-B"):
+            candidatos.append((_sin_cara_b(texto), "-B"))
+
+        for buscado, sufijo in candidatos:
+            for fixture in fixtures:
+                raw = normalizar(fixture.get("code"))
+                if not raw:
+                    continue
+                propia = str(fixture.get("sede") or sede or "").strip()
+                completo = _full_code(raw, propia)
+                if buscado in (raw, completo):
+                    return FixtureResuelto(fixture, normalizar(propia), completo + sufijo)
+        return None
+
+    def sedes_con_codigo(self, espacio: str) -> list[str]:
+        """En qué sedes existe un mueble con ese código. Para poder decir «no
+        existe en NAVE; sí existe en CIUDAD JARDIN» en vez de un «no existe» a
+        secas, que manda a buscar un error de tipeo que no está."""
+        return [s for s in self.sedes() if self.resolver(s, espacio) is not None]
+
+    # ── El corazón: la ambigüedad ─────────────────────────────────────────────
+
+    def ambiguedad(self, sede: str, espacio: str) -> Ambiguedad | None:
+        """¿Ese texto es el código de un mueble Y el nombre dibujado de OTRO?
+
+        Es el caso reproducido: el mueble de código ``IMP-12`` se dibuja
+        ``IMP-08`` porque alguien lo renombró a mano, y existe otro cuyo código
+        es ``IMP-08``. Quien lee el plano escribe ``IMP-08`` señalando el
+        primero; el servidor lo resuelve contra el segundo. Los dos son
+        respuestas defendibles, así que la única respuesta honesta es no elegir
+        ninguna y pedir que lo desempate una persona.
+
+        **El código completo desempata**, y por eso el mensaje puede pedirlo: los
+        nombres dibujados son cortos —es lo que entra en una cajita del plano—,
+        así que ``CIUDAD JARDIN-IMP-08`` calza un código y ningún nombre. Escribir
+        el completo es decir «hablo de la llave», y ahí no hay nada que dirimir.
+        Si alguien llegara a escribir una nomenclatura CON el prefijo de sede,
+        vuelve a haber dos candidatos y esto vuelve a rechazar: la regla es la
+        misma, no una excepción.
+        """
+        objetivo = _sin_cara_b(normalizar(espacio))
+        if not objetivo:
+            return None
+        resuelto = self.resolver(sede, espacio)
+        if resuelto is None:
+            # Sin mueble por código no hay dos candidatos: es un «no existe», y
+            # esta fase no resuelve por nomenclatura (en el plano medido las 6 de
+            # 6 nomenclaturas son ambiguas: resolver por nombre dejaría seis
+            # filas imposibles de cargar y a la persona sin forma de desempatar).
+            return None
+        for fixture in self.de_sede(sede):
+            if fixture is resuelto.fixture:
+                continue
+            if not nombre_propio(fixture):
+                continue
+            if normalizar(nombre_de_mueble(fixture)) != objetivo:
+                continue
+            raw = normalizar(fixture.get("code"))
+            propia = str(fixture.get("sede") or sede or "").strip()
+            return Ambiguedad(
+                texto=objetivo,
+                sede=normalizar(sede),
+                codigo_tecleado=resuelto.codigo,
+                codigo_dibujado=_full_code(raw, propia),
+                nombre_tecleado=resuelto.nombre_dibujado,
+            )
+        return None
+
+    # ── El residuo: la fila que resuelve igual, y entra ───────────────────────
+
+    def colision(self, sede: str, resuelto: FixtureResuelto) -> "Colision | None":
+        """El gemelo de nombre del mueble ya resuelto, o ``None`` si no tiene.
+
+        Se pregunta sobre el MUEBLE, no sobre el texto tecleado, y ahí está la
+        diferencia con ``ambiguedad``: ``CIUDAD JARDIN-IMP-08`` no es un texto
+        ambiguo —calza una llave y ningún nombre— pero el mueble al que lleva sí
+        tiene un gemelo, porque otro de la sede se dibuja «IMP-08». Preguntar por
+        el texto deja pasar justo el camino que el mensaje de rechazo recomienda.
+
+        Devuelve ``None`` cuando el mueble no choca con nadie, que es el caso de
+        casi todas las filas de casi todas las planillas. Es a propósito: un aviso
+        que sale en todas las filas entrena a la gente a ignorar los avisos, y el
+        que importa se pierde entre ellos.
+        """
+        sede_fixture = resuelto.sede or sede
+        corto = _sin_cara_b(sin_prefijo_de_sede(resuelto.codigo, sede_fixture))
+        mi_nombre = normalizar(resuelto.nombre_dibujado or "")
+
+        otro_me_dibuja: str | None = None
+        otro_me_nombra: str | None = None
+        for fixture in self.de_sede(sede):
+            if fixture is resuelto.fixture:
+                continue
+            raw = normalizar(fixture.get("code"))
+            if not raw:
+                continue
+            propia = str(fixture.get("sede") or sede or "").strip()
+            completo = _full_code(raw, propia)
+            if otro_me_dibuja is None and corto and nombre_propio(fixture) \
+                    and normalizar(nombre_de_mueble(fixture)) == corto:
+                otro_me_dibuja = completo
+            if otro_me_nombra is None and mi_nombre and raw == mi_nombre:
+                otro_me_nombra = completo
+
+        if otro_me_dibuja is None and otro_me_nombra is None:
+            return None
+        return Colision(
+            codigo=resuelto.codigo,
+            corto=corto,
+            nombre_dibujado=resuelto.nombre_dibujado,
+            otro_se_dibuja_con_mi_codigo=otro_me_dibuja,
+            otro_tiene_por_codigo_mi_nombre=otro_me_nombra,
+        )
+
+
+def resolver_en_sede(db: Session, sede: str, espacio: str) -> FixtureResuelto | None:
+    """Un solo uso. Quien resuelve muchas filas construye un ``PlanoIndexado``."""
+    return PlanoIndexado(db).resolver(sede, espacio)
+
+
+def ambiguedad_de_nombre(db: Session, sede: str, espacio: str) -> Ambiguedad | None:
+    return PlanoIndexado(db).ambiguedad(sede, espacio)
+
+
 # ── Dónde queda el mueble, en palabras ───────────────────────────────────────
 #
 # El correo de montaje viaja a un celular y se abre en Gmail, que descarta el
@@ -111,18 +468,7 @@ def _fixtures_de_sede(db: Session, sede: str) -> list[dict]:
     """Los muebles de UNA sede. Acotar a la sede no es un detalle: la
     nomenclatura corta se repite entre tiendas, y buscar en todas devolvería el
     mueble de la sede equivocada."""
-    target = (sede or "").strip().upper()
-    if not target:
-        return []
-    for snap in db.query(LayoutSnapshot).all():
-        if (snap.sede or "").strip().upper() != target:
-            continue
-        try:
-            fixtures = json.loads(snap.fixtures_json or "[]")
-        except (ValueError, TypeError):
-            return []
-        return [f for f in fixtures if isinstance(f, dict)]
-    return []
+    return PlanoIndexado(db).de_sede(sede)
 
 
 def describe_location(db: Session, space_code: str, sede: str) -> str | None:
@@ -190,3 +536,172 @@ def describe_location(db: Session, space_code: str, sede: str) -> str | None:
     if mejor[1] < 0.6:
         return f"Pegado a {mejor[0]}"
     return f"A unos {max(1, round(mejor[1]))} m de {mejor[0]}"
+
+
+# ── El guardarraíl del servidor: no aceptar choques NUEVOS ───────────────────
+#
+# La fase 12 dejó esto abierto y lo dijo (F7): `PUT /layout/{sede}` aceptaba la
+# lista de muebles sin mirar, así que la prohibición de crear un nombre que pisa
+# el de otro vivía **sólo en el navegador**. Un guardarraíl que vive en el
+# cliente no es del sistema: basta con otra pantalla, un script o una versión
+# vieja para saltarlo.
+#
+# Con un solo nombre la regla es simple —no dos muebles con el mismo nombre en
+# la sede— pero no se puede aplicar a secas, porque **un plano que hoy ya está
+# mal se tiene que poder guardar**: CIUDAD JARDIN tiene seis nombres que pisan
+# el código de otro, y trabar su guardado dejaría al dueño sin poder mover un
+# mueble en su propia tienda. Entonces la pregunta no es «¿hay choques?» sino
+# «¿este guardado CREA un choque que no venía?», y se responde contra el
+# snapshot anterior.
+#
+# Comparar cuentas y no pares es lo que hace que el intercambio pase: si A se
+# llama X y B se llama Y, y el guardado los cruza, la cuenta de X sigue siendo 1
+# y la de Y también. Lo mismo una cadena de renombres. Lo que sube la cuenta es
+# meter un nombre donde ya había otro, que es exactamente el error que se
+# quiere impedir.
+
+
+def _cuenta_de_nombres(fixtures: list[dict]) -> dict[str, list[str]]:
+    """``{nombre dibujado normalizado: [ids de los muebles que lo llevan]}``."""
+    cuenta: dict[str, list[str]] = {}
+    for f in fixtures:
+        if not isinstance(f, dict):
+            continue
+        nombre = normalizar(nombre_de_mueble(f))
+        if not nombre:
+            continue
+        cuenta.setdefault(nombre, []).append(str(f.get("id") or "?"))
+    return cuenta
+
+
+def _cuenta_de_codigos(fixtures: list[dict]) -> dict[str, list[str]]:
+    """Lo mismo, pero por ``code``: la llave con la que se guarda todo.
+
+    Se mira aparte del nombre dibujado porque son dos daños distintos. Dos
+    muebles con el mismo nombre no se distinguen en el plano; dos muebles con el
+    mismo **código** comparten contratos, archivos y correos de montaje, que es
+    peor y sigue siendo posible mientras exista un segundo nombre que lo tape.
+    """
+    cuenta: dict[str, list[str]] = {}
+    for f in fixtures:
+        if not isinstance(f, dict):
+            continue
+        code = normalizar(f.get("code"))
+        if not code:
+            continue
+        cuenta.setdefault(code, []).append(str(f.get("id") or "?"))
+    return cuenta
+
+
+def _como_se_ven(previas: list[dict], nuevas: list[dict]) -> dict[str, str]:
+    """``{id del mueble: cómo lo ve la persona en la pantalla}``.
+
+    El mensaje del rechazo tiene que nombrar a los muebles con algo que exista
+    para quien lo lee. El ``id`` (``imp9``, ``pun8``) es una llave interna: no
+    aparece en el plano, ni en el panel, ni en un contrato, ni en el papel — y
+    nombrar con él es tan útil como no nombrar.
+
+    Lo que la persona tiene delante es el plano **guardado**, así que se los
+    nombra por el nombre que ese plano dibuja hoy, con su rótulo al lado para
+    poder encontrarlos («el que hoy se llama «PUN-08» (Punta de Góndola)»). Un
+    mueble que este guardado agrega todavía no está en ninguna pantalla, y se
+    dice así.
+
+    Se nombra por el ``code`` y NO por ``nombre_de_mueble``. Desde que el
+    código es el nombre, las pantallas dibujan el ``code`` y nada más; en el
+    único plano donde los dos difieren —uno que todavía arrastra una
+    ``nomenclatura`` vieja, o sea producción antes de renumerar— nombrar por
+    ``nomenclatura`` deja el mensaje **al revés**: le dice a la persona un
+    nombre que ninguna pantalla dibuja, y le da el nombre que sí ve al mueble
+    equivocado. Se nombra por lo que se ve.
+    """
+    como: dict[str, str] = {}
+    for fixtures, en_pantalla in ((nuevas, False), (previas, True)):
+        for f in fixtures:
+            if not isinstance(f, dict):
+                continue
+            ident = str(f.get("id") or "")
+            if not ident:
+                continue
+            nombre = normalizar(str(f.get("code") or ""))
+            rotulo = str(f.get("label") or f.get("type") or "").strip()
+            texto = f"«{nombre}»" if nombre else "un mueble sin nombre"
+            if rotulo:
+                texto += f" ({rotulo})"
+            como[ident] = (
+                f"el que hoy se llama {texto}" if en_pantalla
+                else f"el que se agrega en este guardado, {texto}"
+            )
+    return como
+
+
+def _y(frases: list[str]) -> str:
+    """``a``, ``a y b``, ``a, b y c``: se lee como lo diría una persona.
+
+    Vive acá y lo usa también ``services/renumeracion.py``: dos listas de cosas
+    escritas para una persona no tienen por qué separarse con comas distintas.
+    """
+    if len(frases) < 2:
+        return frases[0] if frases else ""
+    return ", ".join(frases[:-1]) + " y " + frases[-1]
+
+
+def _nombrados(ids: list[str], como: dict[str, str]) -> str:
+    """Los muebles del choque, nombrados por lo que se ve y en orden estable.
+
+    Dos muebles que hoy se dibujan IGUAL —un choque que ya venía— se describen
+    con la misma frase, y repetirla palabra por palabra se lee como un error de
+    la aplicación. Se dice una vez: la cuenta ya va en el encabezado del mensaje.
+    """
+    sueltos = (como.get(i) or "otro mueble de la sede, sin identidad en el plano"
+               for i in ids)
+    return _y(list(dict.fromkeys(sorted(sueltos))))
+
+
+def choques_nuevos(previas: list[dict], nuevas: list[dict]) -> list[str]:
+    """Los choques que este guardado CREA, en castellano. Vacío = se guarda.
+
+    Un choque preexistente —o uno que se guarda igual de mal que antes— no
+    aparece acá: es la regla que no se negocia, «el plano que ya está mal se
+    abre, se mira y se guarda».
+
+    Las frases salen listas para mostrar y **nombran a los muebles por su
+    nombre**, que es lo único que la persona ve. Ver ``_como_se_ven``.
+    """
+    antes = _cuenta_de_nombres(previas)
+    despues = _cuenta_de_nombres(nuevas)
+    por_nombre = [
+        (nombre, ids)
+        for nombre, ids in sorted(despues.items())
+        if len(ids) >= 2 and len(ids) > len(antes.get(nombre, []))
+    ]
+    ya_dicho = {nombre for nombre, _ in por_nombre}
+
+    antes_c = _cuenta_de_codigos(previas)
+    despues_c = _cuenta_de_codigos(nuevas)
+    por_codigo = [
+        (code, ids)
+        for code, ids in sorted(despues_c.items())
+        if code not in ya_dicho
+        and len(ids) >= 2
+        and len(ids) > len(antes_c.get(code, []))
+    ]
+
+    # Primero se decide si hay algo que decir y recién después se arma con qué
+    # nombrarlo: esto corre en CADA guardado, y el caso normal —no hay choque
+    # nuevo— no tiene por qué pagar un recorrido más de los muebles del plano.
+    if not por_nombre and not por_codigo:
+        return []
+    como = _como_se_ven(previas, nuevas)
+
+    return [
+        f"«{nombre}» quedaría como nombre de {len(ids)} muebles de la sede: "
+        f"{_nombrados(ids, como)}. Dos muebles con el mismo nombre no se "
+        "distinguen en el plano ni en un contrato."
+        for nombre, ids in por_nombre
+    ] + [
+        f"El código «{code}» quedaría en {len(ids)} muebles de la sede: "
+        f"{_nombrados(ids, como)}. Dos muebles con el mismo código son dos "
+        "espacios compartiendo contratos, archivos y correos de montaje."
+        for code, ids in por_codigo
+    ]

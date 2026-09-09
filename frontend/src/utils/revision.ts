@@ -10,7 +10,8 @@
  */
 
 import { huella, limitesDePlanta, chocaEn, puntoLibreCerca, RADIO_PERSONA, TOLERANCIA_CONTACTO } from "./planta";
-import { duplicados, prefijoDesalineado } from "./nomenclatura";
+import { duplicados, prefijoDesalineado, normalizar, muebleConCodigo } from "./nomenclatura";
+import { fullSpaceCode } from "../types/fixtures";
 import { detectarCorridas, type Corrida } from "./pasillos";
 
 export interface MuebleRevisable {
@@ -157,10 +158,18 @@ export function revisarPlano(fixtures: MuebleRevisable[]): Hallazgo[] {
   const hallazgos: Hallazgo[] = [];
   if (fixtures.length === 0) return hallazgos;
 
+  // Un solo hallazgo de nombres, porque hay un solo nombre. Antes eran tres —el
+  // código repetido, el nombre dibujado repetido y el nombre que pisaba el
+  // código de otro— y las tres decían variantes de lo mismo desde los dos campos
+  // que un mueble tenía. Con el nombre y la llave siendo la misma cosa, «dos
+  // muebles se llaman igual» las cubre a las tres.
+  //
+  // Se avisa, nunca se traba: la regla nueva impide CREAR un nombre repetido,
+  // pero un plano que ya está así se tiene que poder abrir, mirar y guardar.
   for (const d of duplicados(fixtures)) {
     hallazgos.push({
       clase: "codigo-repetido", severidad: "error", ids: d.ids,
-      texto: `${d.codigo} lo usan ${d.ids.length} muebles — comparten contratos, archivos y correos`,
+      texto: `${d.codigo} lo llevan ${d.ids.length} muebles — en el plano no se distinguen, comparten contratos, archivos y correos, y quien lo escriba en una planilla no elige cuál`,
     });
   }
 
@@ -207,4 +216,114 @@ export function revisarPlano(fixtures: MuebleRevisable[]): Hallazgo[] {
   return hallazgos.sort((a, b) =>
     a.severidad === b.severidad ? 0 : a.severidad === "error" ? -1 : 1,
   );
+}
+
+
+// ─── La reconciliación de lo que ya está cargado ─────────────────────────────
+
+/**
+ * Un contrato del plano, visto desde la revisión.
+ *
+ * Los campos comerciales viven denormalizados en el propio mueble del layout
+ * (es de ahí que el mapa se pinta), así que esto se arma en el navegador con lo
+ * que la pantalla ya tiene: no hace falta ningún endpoint nuevo.
+ */
+export interface ContratoDelPlano {
+  /** Id del mueble, para poder saltar a él. El id es la identidad real: sobrevive
+   *  a cualquier renumeración, que es justo lo que el nombre no hace. */
+  id: string;
+  /** Cómo se llama el mueble HOY. */
+  code: string;
+  sede?: string;
+  /** Cómo se llamaba cuando se negoció esto: el nombre viejo del mueble, el que
+   *  todavía está escrito en la cartelería de la tienda y en el papel que firmó
+   *  el proveedor. Lo resuelve `nombreAnterior` (en `utils/nomenclatura.ts`) y
+   *  tiene dos orígenes según el plano se haya renumerado o no: el registro de
+   *  renumeraciones del servidor, que sabe cómo se LEÍA cada mueble antes, o la
+   *  `nomenclatura` del layout, que dejó de ser un segundo nombre y queda como
+   *  este recuerdo hasta que se renumere. Vacío = nunca se llamó distinto. */
+  nombreAnterior?: string | null;
+  /** La góndola doble tiene dos caras y cada una es un espacio. */
+  cara?: "A" | "B";
+  proveedor: string;
+  marca?: string;
+  desde?: string | null;
+  hasta?: string | null;
+  valor?: number;
+}
+
+export interface ContratoARevisar extends ContratoDelPlano {
+  /** Cómo se llama HOY el mueble sobre el que está el contrato. */
+  nombre: string;
+  /** El código completo del espacio, el que viaja al contrato y a los correos. */
+  codigo: string;
+  /** Con qué nombre se negoció: el que la persona vio y el que dice el papel. */
+  seNegocioComo: string;
+  /** Si ese nombre viejo hoy lo lleva OTRO mueble, cuál. Son los peores: quien
+   *  lea el papel y camine hasta el cartel va a pararse frente al mueble
+   *  equivocado, y ahí no hay nada que le diga que se equivocó. */
+  loTieneAhora: string | null;
+}
+
+/**
+ * Los contratos vigentes cuyo mueble **ya no se llama como el contrato dice**.
+ *
+ * Ninguna validación arregla lo ya cargado, y renumerar tampoco: al contrario,
+ * lo mueve. Esto lo LISTA —proveedor, fechas, nombre de hoy y nombre con el que
+ * se negoció— para poder reconciliarlo uno por uno contra la cartelería de la
+ * tienda. Es la consulta 2 del diagnóstico de la fase 12, ahora con el sentido
+ * que le deja tener un solo nombre.
+ *
+ * Sale de lo que la pantalla ya tiene: los campos comerciales viven
+ * denormalizados en el propio mueble del layout, así que no hace falta pedir los
+ * contratos aparte. Lo único que necesita de afuera es `nombreAnterior` —cómo se
+ * llamaba el mueble—, y esa es la pieza que la renumeración se llevaba puesta:
+ * al renumerar, el servidor borra la `nomenclatura` y el navegador se quedaba
+ * sin nada, así que la lista se apagaba **justo después de renumerar**, que es
+ * cuando la cartelería de la tienda y el plano dicen cosas distintas y esto es
+ * lo único que las reconcilia. Hoy el recuerdo lo lleva el servidor en su
+ * registro de renumeraciones y lo devuelve con cada mueble del plano
+ * (`nombreAnterior`, en `utils/nomenclatura.ts`); quien arme estos contratos se
+ * lo pasa ya resuelto.
+ *
+ * Vigente = todavía no venció (`hasta >= hoy`), igual que la consulta. Un
+ * contrato que arranca el mes que viene también cuenta: es el que todavía se
+ * puede corregir sin que nadie haya montado nada.
+ */
+function fechaLocalISO(d: Date): string {
+  const dosDigitos = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${dosDigitos(d.getMonth() + 1)}-${dosDigitos(d.getDate())}`;
+}
+
+export function contratosConNombreAjeno(
+  contratos: ContratoDelPlano[],
+  muebles: { id: string; code: string }[],
+  // En hora LOCAL: `toISOString()` pasa a UTC y en Colombia (UTC−5) eso corre la
+  // fecha un día en toda la tarde, que en el borde saca de la lista un contrato
+  // que todavía corre.
+  hoy: string = fechaLocalISO(new Date()),
+): ContratoARevisar[] {
+  const out: ContratoARevisar[] = [];
+  for (const c of contratos) {
+    if (!(c.proveedor ?? "").trim()) continue;
+    const antes = normalizar(c.nombreAnterior ?? "");
+    if (!antes) continue;                                 // nunca se llamó distinto
+    const nombre = normalizar(c.code);
+    if (antes === nombre) continue;                       // se sigue llamando igual
+    if (c.hasta && c.hasta < hoy) continue;               // ya venció
+    const base = fullSpaceCode(c.sede, c.code);
+    // Lo peor que puede pasar con un nombre viejo: que hoy lo lleve otro mueble.
+    const otro = muebleConCodigo(antes, muebles, c.id);
+    out.push({
+      ...c,
+      nombre,
+      seNegocioComo: antes,
+      codigo: c.cara === "B" ? `${base}-B` : base,
+      loTieneAhora: otro ? otro.code : null,
+    });
+  }
+  return out.sort((a, b) => {
+    if (!!a.loTieneAhora !== !!b.loTieneAhora) return a.loTieneAhora ? -1 : 1;
+    return a.codigo.localeCompare(b.codigo);
+  });
 }

@@ -14,7 +14,11 @@ import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { useModalAbierto } from "../../tema";
 import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
-import { nombreDeMueble } from "../../utils/nomenclatura";
+import {
+  nombreDeMueble, renombrar, intercambiarNombres, choqueDeNombre,
+  textoDelChoque, textoDelIntercambio, normalizar as normalizarNombre,
+} from "../../utils/nomenclatura";
+import type { RechazoDeNombre } from "../../utils/nomenclatura";
 import { fileUrl, getFaceImages } from "../../api/files";
 import { arteUrl, listarCatalogo, subirArte, type Arte } from "../../api/catalogo";
 import { getSuppliers } from "../../api/suppliers";
@@ -316,7 +320,7 @@ const STATUS_META: Record<SpaceStatus, { bg: string; text: string; label: string
  * siguiente volviera a ser `GON-02` —dos muebles con el mismo código, y con
  * eso dos espacios compartiendo contratos y correos— y el plano 2D generaba
  * `GON-01` donde éste generaba `NAVE-GON-001`, así que el mismo plano quedaba
- * con dos nomenclaturas según por dónde se hubiera dibujado.
+ * con dos maneras de nombrar según por dónde se hubiera dibujado.
  *
  * La sede no va en el código: se antepone al guardar el espacio
  * (`fullSpaceCode`), que es donde hace falta que sea único entre sedes.
@@ -4316,9 +4320,10 @@ function fixturesToStore(
   const exhibicion = existingStore.filter((f) => f.type === "exhibicion");
 
   // PlacedFixture models only what the 3D scene needs. Any UnifiedFixture field
-  // the 3D editor does not know about (face B contracts, the 2D nomenclatura
-  // pill) must be carried over from the store, otherwise simply opening this
-  // editor would blank it out for every fixture and push the loss to the server.
+  // the 3D editor does not know about (face B contracts, the old name kept for
+  // reconciliation) must be carried over from the store, otherwise simply
+  // opening this editor would blank it out for every fixture and push the loss
+  // to the server.
   const existingMap = new Map(existingStore.map((f) => [f.id, f]));
 
   const updated: UnifiedFixture[] = fixtures.map((f) => {
@@ -4347,7 +4352,10 @@ function fixturesToStore(
       slots:           f.slots,
       rentable:        f.rentable,
       // ── Preserved from the store (not modelled in 3D) ──────────────────────
+      // El nombre VIEJO: nadie lo escribe ya, pero borrarlo dejaría sin fuente a
+      // la reconciliación de los contratos que se negociaron con ese nombre.
       nomenclatura:    existing?.nomenclatura,
+      nombreAnterior:  existing?.nombreAnterior,
       faceB:           existing?.faceB,
       // Las vistas guardadas viven en el layout pero no las modela el 3D: sin
       // esta línea, mover un mueble borraba todos los encuadres de la sede y
@@ -4372,6 +4380,15 @@ interface CommercialPanelProps {
   onRecargarCatalogo: () => void;
   selectedSlot:  ShelfSlot | null;
   onUpdate:      (id:string, u:Partial<PlacedFixture>) => void;
+  /** Todo el plano de la sede: sin los demás muebles no se puede decir si el
+   *  nombre que se está escribiendo ya es de otro. */
+  muebles:       PlacedFixture[];
+  /** El nombre NO se escribe con `onUpdate`. Va por acá, que es el mismo camino
+   *  que el doble clic del plano 2D y el campo de su panel: `renombrar`
+   *  comprueba y escribe en la misma llamada. Null = se pudo. */
+  onRenombrar:   (id:string, nombre:string) => RechazoDeNombre<PlacedFixture> | null;
+  /** Los dos nombres a la vez, que es cómo se renumera una corrida a mano. */
+  onIntercambiar:(esteId:string, otroId:string) => void;
   onUpdateSlot:  (fixtureId:string, slotId:string, u:Partial<ShelfSlot>) => void;
   onRotate:      () => void;
   onFlip:        () => void;
@@ -4382,7 +4399,7 @@ interface CommercialPanelProps {
 
 function CommercialPanel({
   fix, enCaminata, catalogo, cargandoCatalogo, prueba, onProbar, onRecargarCatalogo,
-  selectedSlot, onUpdate, onUpdateSlot,
+  selectedSlot, onUpdate, muebles, onRenombrar, onIntercambiar, onUpdateSlot,
   onRotate, onFlip, onDelete, onClose, onSlotClose,
 }: CommercialPanelProps) {
   const isAdmin = useAuthStore(selectIsAdmin);
@@ -4396,6 +4413,26 @@ function CommercialPanel({
 
   const inputCls = "w-full border-0 border-b border-dark-line-2 bg-transparent rounded-none px-0 py-1 text-sm text-dark-ink-1 focus:border-accent focus:outline-none placeholder:text-dark-ink-3 transition-colors";
   const labelCls = ETIQUETA_CLS;
+
+  // ── El nombre del mueble ──────────────────────────────────────────────────
+  // El editor 3D no tenía cómo renombrar: mostraba el nombre y punto, así que
+  // para cambiarlo había que ir al plano 2D. Ahora se puede desde acá y pasa por
+  // la MISMA regla —`renombrar`—, que es el punto: que no haya un tercer camino
+  // que escriba sin comprobar, como pasó con el campo del panel del 2D.
+  const [nombreBorrador, setNombreBorrador] = useState(fix.code);
+  const [rechazo, setRechazo] = useState<RechazoDeNombre<PlacedFixture> | null>(null);
+  useEffect(() => { setNombreBorrador(fix.code); setRechazo(null); }, [fix.id, fix.code]);
+  const choqueEscrito = useMemo(
+    () => (normalizarNombre(nombreBorrador) === normalizarNombre(fix.code)
+      ? null
+      : choqueDeNombre(nombreBorrador, muebles, fix.id)),
+    [nombreBorrador, muebles, fix.id, fix.code],
+  );
+  function guardarNombre() {
+    const r = onRenombrar(fix.id, nombreBorrador);
+    setRechazo(r);
+    if (!r) setNombreBorrador(normalizarNombre(nombreBorrador));
+  }
 
   function handleSlotStatusChange(newStatus: SpaceStatus) {
     if (!selectedSlot) return;
@@ -4551,6 +4588,54 @@ function CommercialPanel({
       </div>
 
       <div className="flex flex-col gap-3 p-3">
+
+        {/* Nombre — el del mueble, que es su código. Uno solo, y el mismo que
+            dibuja el plano 2D, la pantalla de montaje y la lámina. */}
+        <div>
+          <p className={labelCls}>Nombre</p>
+          <input
+            className={inputCls}
+            value={nombreBorrador}
+            style={choqueEscrito ? { color: "var(--danger)", borderBottomColor: "var(--danger)" } : undefined}
+            onChange={e => { setNombreBorrador(e.target.value); setRechazo(null); }}
+            onBlur={guardarNombre}
+            onKeyDown={e => {
+              if (e.key === "Enter") { e.preventDefault(); guardarNombre(); }
+              if (e.key === "Escape") { setNombreBorrador(fix.code); setRechazo(null); }
+            }}
+          />
+          {rechazo ? (
+            <>
+              <p className="mt-1 text-[11px] leading-snug text-danger">
+                No se guardó: {textoDelChoque(nombreBorrador, rechazo)} Sigue
+                llamándose «{fix.code}».
+              </p>
+              {rechazo.razon === "ocupado" && (
+                <>
+                  <button
+                    onClick={() => { onIntercambiar(fix.id, rechazo.ocupa.id); setRechazo(null); }}
+                    className="mt-1.5 rounded border border-danger/50 bg-danger/10 px-2 py-1 text-[11px] font-bold text-danger hover:bg-danger/20"
+                  >
+                    Intercambiar con ese mueble
+                  </button>
+                  <p className="mt-1 text-[11px] leading-snug text-dark-ink-3">
+                    {textoDelIntercambio(fix, rechazo.ocupa)}
+                  </p>
+                </>
+              )}
+            </>
+          ) : choqueEscrito ? (
+            <p className="mt-1 text-[11px] leading-snug text-danger">
+              {textoDelChoque(nombreBorrador, choqueEscrito)}
+            </p>
+          ) : (
+            <p className="mt-1 text-[11px] leading-snug text-dark-ink-3">
+              Es el nombre y es la llave: con él se arma{" "}
+              {fullSpaceCode(useFixtureStore.getState().sede, fix.code)} y con eso viaja
+              al contrato y al correo de montaje.
+            </p>
+          )}
+        </div>
 
         {fix.slots && fix.slots.length > 0 && (
           <div className="rounded border border-dark-line bg-dark-bg/40 p-2">
@@ -5025,6 +5110,22 @@ export default function StoreEditor3D() {
     }));
   },[u]);
 
+  // ── Renombrar, por el mismo camino que el plano 2D ──────────────────────────
+  // La regla vive en `utils/nomenclatura.ts` y comprueba y escribe en la misma
+  // llamada: acá no se decide nada, sólo se guarda el resultado por `u` para que
+  // el renombre entre en el historial de deshacer como cualquier otro cambio.
+  const renombrarFixture = useCallback((id:string, nombre:string) => {
+    const r = renombrar(placedFixtures, id, nombre);
+    if (!r.ok) return r.rechazo;
+    u(() => r.muebles);
+    return null;
+  }, [placedFixtures, u]);
+
+  /** Los dos nombres a la vez: en ningún momento intermedio hay dos iguales. */
+  const intercambiarFixtures = useCallback((esteId:string, otroId:string) => {
+    u(prev => intercambiarNombres(prev, esteId, otroId));
+  }, [u]);
+
   function rotateSelected(){ if(!selectedId) return; u(p=>p.map(f=>f.id===selectedId?{...f,rotY:f.rotY+Math.PI/2}:f)); }
   function flipSelected(){   if(!selectedId) return; u(p=>p.map(f=>f.id===selectedId?{...f,w:f.d,d:f.w}:f)); }
   function deleteSelected(){
@@ -5495,6 +5596,9 @@ export default function StoreEditor3D() {
           onRecargarCatalogo={recargarCatalogo}
           selectedSlot={selectedSlot}
           onUpdate={updateFixture}
+          muebles={placedFixtures}
+          onRenombrar={renombrarFixture}
+          onIntercambiar={intercambiarFixtures}
           onUpdateSlot={updateSlot}
           onRotate={rotateSelected}
           onFlip={flipSelected}

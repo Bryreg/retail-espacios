@@ -62,7 +62,7 @@ import { inclusiveDays, parseISODate, toISODate, upcomingSeasons } from "../type
    código vivo hasta que alguien pierde media hora averiguando que no lo es.
    Quedan en la historia de `claude/retail-espacios-continue-jdn085`, que es
    donde hay que ir a buscarlas si el parte vuelve. */
-import { nombreDeMueble } from "../utils/nomenclatura";
+import { nombreDeMueble, nombreAnterior, nombresChocados, choqueDeRotulo } from "../utils/nomenclatura";
 import type { SemillaContrato } from "../components/Contrato/Contrato";
 import { fechaEnCurso } from "../utils/propuesta";
 
@@ -316,7 +316,14 @@ function faceMatchesQuery(entry: FaceEntry, q: string): boolean {
     entry.brandCategory,
     entry.supplierName,
     entry.fixture.label,
-    entry.fixture.nomenclatura ?? "",
+    // El nombre VIEJO del mueble. Ya no se dibuja en ningún lado, pero la
+    // cartelería de la góndola y el papel del proveedor pueden seguir
+    // diciéndolo: buscar por él tiene que llevar igual al mueble. Sale de
+    // `nombreAnterior`, que es lo que sobrevive a la renumeración; leer
+    // `nomenclatura` a secas no servía, porque renumerar la borra y el
+    // buscador se quedaba sin el único dato que reconcilia el cartel viejo
+    // con el mueble de hoy.
+    nombreAnterior(entry.fixture) ?? "",
     entry.code,
   ].some((s) => s && normalizeText(s).includes(q));
 }
@@ -663,13 +670,23 @@ interface Rotulo {
   clave: string;
   cod: string;
   fecha: string;
+  /** La tercera línea, y sólo la llevan los que CHOCAN: cuántos muebles de la
+   *  sede se dibujan con este mismo nombre y cuál es el código de éste.
+   *  «×2 · IMP-12». Vacía es lo normal.
+   *
+   *  Es el hallazgo grave de la fase 12 traído al sitio donde se elige: dos
+   *  cajas rotuladas «IMP-08» son dos muebles distintos, los dos se pueden
+   *  contratar, y el rótulo solo no dice cuál se está tocando. El código sí. */
+  choque: string;
   /** El ancla, en unidades del plano: el CENTROIDE DE LA TAPA de su mueble.
    *  No hay una lista de posiciones a mano: los rótulos quedan todos a la
    *  misma distancia del mueble —cero— y alineados igual. */
   ax: number;
   ay: number;
-  /** Orden para deschocar: 1 lo que se libera (lleva fecha), 2 lo libre,
-   *  3 lo tomado. Lo que se está vendiendo manda. */
+  /** Orden para deschocar: 0 el que comparte su nombre con otro mueble, 1 lo
+   *  que se libera (lleva fecha), 2 lo libre, 3 lo tomado. Lo que se está
+   *  vendiendo manda, y por encima de todo el aviso: un rótulo repetido que
+   *  CEDE deja la colisión invisible otra vez, que es de donde venimos. */
   peso: number;
 }
 
@@ -878,10 +895,20 @@ function IsoMap({
     if (!scene) return [];
     const unidad = Math.max(scene.vb.w, scene.vb.h);
     const sep = SEP_CARA * unidad;
+    // Qué nombres los lleva más de un mueble de la sede. Una vez por plano.
+    const chocados = nombresChocados(fixtures);
     const salida: Rotulo[] = [];
     for (const p of scene.prisms) {
       if (!p.rentable) continue;
       const nombre = nombreDeMueble(p.f);
+      // El rótulo repetido es el que dejó vender dos veces el mismo cartel:
+      // dos cajas «IMP-08 · libre 16 sep», dos proveedores, el mismo periodo.
+      // Los dos muebles existen y los dos se pueden contratar; lo que faltaba
+      // era que el plano dijera que son dos. Con un solo nombre esto ya no se
+      // puede crear —la regla lo impide en los tres caminos de renombre— pero
+      // un plano guardado antes puede traerlo, y entonces se sigue viendo. La
+      // regla vive en `nomenclatura.ts` y se prueba sin navegador.
+      const choque = choqueDeRotulo(p.f, chocados);
       p.topHalves.forEach((mitad, i) => {
         const entry = p.faces[i];
         if (!entry) return;
@@ -899,15 +926,21 @@ function IsoMap({
           clave: `${p.f.id}-${entry.face}`,
           cod: p.double ? `${nombre}·${entry.face}` : nombre,
           fecha: desde ? `libre ${desde.getDate()} ${MONTHS_ES[desde.getMonth()]}` : "",
+          // Sólo la cuenta. Antes acompañaba el código del mueble, que era lo
+          // único que distinguía a los dos gemelos; ahora los dos se llaman
+          // igual de verdad y el código no distingue nada: lo que hay que hacer
+          // es renombrar uno, y eso lo dice la revisión del plano.
+          choque: choque ? choque.marca : "",
           ax, ay,
-          peso: dispo === "parcial" ? 1 : dispo === "libre" ? 2 : 3,
+          peso: choque ? 0 : dispo === "parcial" ? 1 : dispo === "libre" ? 2 : 3,
         });
       });
     }
-    // Primero lo que se libera (lleva fecha), después lo libre, después lo
-    // tomado: si dos se pisan, el que cede es el que menos se está vendiendo.
+    // Primero el que comparte su nombre con otro —el aviso no puede ser lo que
+    // cede—, después lo que se libera (lleva fecha), lo libre y lo tomado: si
+    // dos se pisan, el que cede es el que menos se está vendiendo.
     return salida.sort((a, b) => a.peso - b.peso || (a.cod < b.cod ? -1 : 1));
-  }, [scene, range]);
+  }, [scene, range, fixtures]);
 
   // ── La cámara ────────────────────────────────────────────────────────────
   //
@@ -1365,13 +1398,15 @@ function IsoMap({
                 key={l.clave}
                 className="p-cod"
                 data-cod={l.cod}
+                data-choque={l.choque || undefined}
                 data-sel={selectedKeys.includes(l.clave) ? "1" : undefined}
                 x={l.ax.toFixed(2)}
                 y={l.ay.toFixed(2)}
                 ref={(el) => { if (el) txtRefs.current.set(l.clave, el); else txtRefs.current.delete(l.clave); }}
               >
-                <tspan x={l.ax.toFixed(2)} dy={l.fecha ? "-.22em" : ".36em"}>{l.cod}</tspan>
+                <tspan x={l.ax.toFixed(2)} dy={l.fecha || l.choque ? "-.22em" : ".36em"}>{l.cod}</tspan>
                 {l.fecha && <tspan className="p-fec" x={l.ax.toFixed(2)} dy="1.18em">{l.fecha}</tspan>}
+                {l.choque && <tspan className="p-chq" x={l.ax.toFixed(2)} dy="1.18em">{l.choque}</tspan>}
               </text>
             ))}
         </g>
@@ -3126,7 +3161,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
 
   /** El último reporte de una cara, buscado por su código COMPLETO.
    *
-   *  `FaceEntry.code` es la nomenclatura corta, que se repite entre sedes; los
+   *  `FaceEntry.code` es el nombre corto, que se repite entre sedes; los
    *  reportes se guardan con la sede adentro. Buscar por el corto mezclaría
    *  tiendas — es el mismo error que ya costó un arreglo en la pantalla del
    *  mercaderista. */

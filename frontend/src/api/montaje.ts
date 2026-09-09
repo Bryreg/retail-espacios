@@ -43,6 +43,9 @@ export interface EspacioMontaje {
   /** El mueble del plano, sin el sufijo de cara. */
   fixture_code: string;
   label: string;
+  /** El nombre VIEJO del mueble, que el servidor sigue guardando. Ya no es un
+   *  nombre: el mueble se llama por su código. Nadie lo lee del lado del
+   *  navegador — está acá porque el servidor lo manda. */
   nomenclatura?: string | null;
   proveedor: string;
   marca: string;

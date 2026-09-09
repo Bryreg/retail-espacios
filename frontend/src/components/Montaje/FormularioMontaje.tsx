@@ -22,7 +22,7 @@ import type { UnifiedFixture } from "../../types/fixtures";
 /** El espacio que hay que montar, tal como lo muestra el formulario. */
 export interface EspacioAMontar {
   /** `SEDE-CODIGO`: el mismo que viaja en el enlace del correo y el que se
-   *  reporta. La nomenclatura corta se repite entre sedes y no sirve de llave. */
+   *  reporta. El nombre corto se repite entre sedes y no sirve de llave. */
   code: string;
   /** Lo que se le muestra a quien monta: `PUN-01`, no `NAVE-PUN-01`. */
   corto: string;
@@ -32,7 +32,6 @@ export interface EspacioAMontar {
   fixtureCode: string;
   sede: string;
   label: string;
-  nomenclatura?: string;
   marca: string;
   proveedor: string;
   desde: string;

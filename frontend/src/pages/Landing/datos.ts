@@ -17,8 +17,8 @@
  * una página indexable. Es la única palabra del copy que no se pudo usar.
  *
  * Los prefijos son los del código real (`src/utils/nomenclatura.ts`): GON, PUN,
- * EXP, ISL, CRS, BEB, FRU, BAT, CAJ, SAC, COL. La landing enseña la misma
- * nomenclatura que la persona va a usar adentro.
+ * EXP, ISL, CRS, BEB, FRU, BAT, CAJ, SAC, COL. La landing enseña los mismos
+ * nombres que la persona va a usar adentro.
  */
 
 export type Estado = "libre" | "libera" | "tomado" | "resto";

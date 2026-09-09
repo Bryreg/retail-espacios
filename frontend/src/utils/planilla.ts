@@ -99,10 +99,15 @@ function iso(d: Date): string {
 
 /** Una celda de fecha, venga como venga.
  *
- *  Con `cellDates` la librería ya devuelve `Date` para las celdas con formato de
- *  fecha. Lo demás es texto escrito a mano, y **se lee día primero**: `03/04/2026`
- *  es el 3 de abril. Es la convención local, y leerlo al revés no falla: crea un
- *  contrato de tres meses en el mes equivocado sin que nada avise. */
+ *  Una celda con FORMATO de fecha —sólo las hay en un .xlsx— llega ya como
+ *  `Date` y se toma tal cual: ahí quien decidió el día y el mes fue Excel, con
+ *  el formato guardado en el archivo, y no hay nada que adivinar.
+ *
+ *  Todo lo demás es texto escrito a mano y **se lee día primero**: `03/04/2026`
+ *  es el 3 de abril. Es la convención local, y leerlo al revés no falla ruidoso:
+ *  crea un contrato de tres meses en el mes equivocado sin que nada avise. Por
+ *  eso `leerPlanilla` le pide a la librería que NO interprete el texto de un CSV
+ *  (ver `OPCIONES_DE_LECTURA`): esa interpretación era mes primero. */
 export function leerFecha(valor: unknown): string | undefined {
   if (valor == null || valor === "") return undefined;
   if (valor instanceof Date && !isNaN(valor.getTime())) return iso(valor);
@@ -171,10 +176,36 @@ function texto(valor: unknown): string {
   return String(valor).trim();
 }
 
+/**
+ * Cómo se abre el archivo, y por qué `raw`.
+ *
+ * `cellDates` es para el .xlsx: convierte a `Date` las celdas que el archivo
+ * declara con formato de fecha. Eso está bien y no cambia.
+ *
+ * `raw` es para el CSV, y es un arreglo de un bicho que estuvo vivo en
+ * producción. Un CSV no tiene formatos: son textos. La librería, en cuanto uno
+ * de esos textos se le parece a una fecha, lo interpreta **mes primero**, que es
+ * la convención del inglés y no la nuestra. Medido dos veces: un CSV que decía
+ * `01/03/2026` —1 de marzo— entraba como `2026-01-03` y la pantalla mostraba
+ * «3 ene». Y era peor que una lectura equivocada pareja: en la MISMA fila,
+ * `30/06/2026` no se le parecía a ninguna fecha inglesa (no hay mes 30), así que
+ * quedaba texto y `leerFecha` lo leía bien, día primero. Un contrato con el
+ * inicio en un idioma y el fin en otro, sin un solo aviso, y sólo cuando el día
+ * es 12 o menos.
+ *
+ * Con `raw` las celdas de un CSV llegan como el texto que son y las resuelve
+ * `leerFecha`, que lee día primero como dice la convención del proyecto. Sobre
+ * un .xlsx `raw` **no cambia nada** —medido: las celdas con formato de fecha
+ * siguen llegando como `Date` y los números como números—, así que el camino de
+ * Excel queda exactamente igual y no hacen falta dos ramas que se puedan
+ * desfasar.
+ */
+const OPCIONES_DE_LECTURA = { cellDates: true, raw: true } as const;
+
 /** Abre el archivo y devuelve las filas ya normalizadas. */
 export async function leerPlanilla(archivo: File): Promise<LecturaPlanilla> {
   const buffer = await archivo.arrayBuffer();
-  const libro = XLSX.read(buffer, { cellDates: true });
+  const libro = XLSX.read(buffer, OPCIONES_DE_LECTURA);
   const hoja = libro.Sheets[libro.SheetNames[0]];
   if (!hoja) throw new Error("El archivo no tiene ninguna hoja.");
 

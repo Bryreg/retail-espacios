@@ -18,6 +18,9 @@ export default function SyncStatus() {
   const syncMessage = useFixtureStore((s) => s.syncMessage);
   const lastSyncedAt = useFixtureStore((s) => s.lastSyncedAt);
   const conflicts = useFixtureStore((s) => s.conflicts);
+  // Lo que el SERVIDOR rechazó por su regla. No es lo mismo que un conflicto
+  // entre dos equipos ni que estar sin red, y por eso se lee aparte.
+  const rechazos = useFixtureStore((s) => s.rechazos);
   const fixturesBySede = useFixtureStore((s) => s.fixturesBySede);
   const hasPending = useFixtureStore(selectHasPendingWork);
   const isAdmin = useAuthStore(selectIsAdmin);
@@ -25,6 +28,9 @@ export default function SyncStatus() {
   const busy = syncState === "pulling" || syncState === "pushing";
   const conflictSedes = Object.keys(conflicts);
   const hayConflicto = conflictSedes.length > 0;
+  const rechazoSedes = Object.keys(rechazos);
+  const hayRechazo = rechazoSedes.length > 0;
+  const hayPanel = hayConflicto || hayRechazo;
 
   // ── Dónde dibujar el panel ────────────────────────────────────────────────
   // El header lleva `overflow: hidden` para que la fila de pestañas no lo
@@ -36,7 +42,7 @@ export default function SyncStatus() {
   const [caja, setCaja] = useState<{ top: number; right: number } | null>(null);
 
   useLayoutEffect(() => {
-    if (!hayConflicto) { setCaja(null); return; }
+    if (!hayPanel) { setCaja(null); return; }
     const medir = () => {
       const r = anclaRef.current?.getBoundingClientRect();
       if (r) {
@@ -53,7 +59,7 @@ export default function SyncStatus() {
       window.removeEventListener("resize", medir);
       window.removeEventListener("scroll", medir, true);
     };
-  }, [hayConflicto]);
+  }, [hayPanel]);
 
   // ── Cuántos muebles hay de cada lado ──────────────────────────────────────
   // Elegir entre "la mía" y "la del servidor" a ciegas es lo que da miedo, y
@@ -83,6 +89,13 @@ export default function SyncStatus() {
   const { label, color, Icon } = (() => {
     if (hayConflicto)
       return { label: "Conflicto", color: "var(--warning)", Icon: AlertTriangle };
+    // El servidor contestó, no escribió nada y dijo por qué. Decir «Sin
+    // conexión» acá —que es lo que pasaba, con la nube tachada— manda a
+    // revisar el wifi por un nombre repetido que está explicado abajo, en el
+    // panel. Es el mismo triángulo del conflicto porque es la misma clase de
+    // cosa: algo que hay que resolver, no algo que se arregle solo.
+    if (hayRechazo)
+      return { label: "Rechazado por el servidor", color: "var(--danger)", Icon: AlertTriangle };
     if (syncState === "pulling") return { label: "Actualizando…", color: "var(--ink-3)", Icon: RefreshCw };
     if (syncState === "pushing") return { label: "Guardando…", color: "var(--ink-3)", Icon: UploadCloud };
     if (syncState === "error") return { label: "Sin conexión", color: "var(--danger)", Icon: CloudOff };
@@ -122,10 +135,10 @@ export default function SyncStatus() {
         {label}
       </button>
 
-      {hayConflicto && caja && createPortal(
+      {hayPanel && caja && createPortal(
         <div
           role="dialog"
-          aria-label="Cambios en conflicto"
+          aria-label={hayRechazo ? "El servidor rechazó el guardado" : "Cambios en conflicto"}
           style={{
             position: "fixed", top: caja.top, right: caja.right, zIndex: 200,
             width: 320, padding: 12,
@@ -135,50 +148,94 @@ export default function SyncStatus() {
             boxShadow: "var(--shadow-lg, 0 8px 24px rgba(0,0,0,.18))",
           }}
         >
-          <p style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-1)", marginBottom: 6 }}>
-            Cambios en conflicto
-          </p>
-          {conflictSedes.map((sede) => {
-            const mios = fixturesBySede[sede]?.length ?? 0;
-            const suyos = enServidor[sede];
-            return (
-              <div key={sede} style={{ marginBottom: 10 }}>
-                <p style={{ fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.45, marginBottom: 6 }}>
-                  {conflicts[sede]}
-                </p>
-                <div
-                  style={{
-                    display: "flex", gap: 6, marginBottom: 7,
-                    fontSize: 11, fontFamily: "var(--font-mono)",
-                  }}
-                >
-                  <Cifra etiqueta="Esta computadora" valor={`${mios} muebles`} />
-                  <Cifra
-                    etiqueta="El servidor"
-                    valor={suyos === undefined ? "—" : `${suyos} muebles`}
-                  />
+          {/* ── El servidor rechazó el guardado ─────────────────────────────
+              Va ARRIBA y con el texto entero, no en un tooltip: el servidor
+              contestó una cosa accionable —qué nombre y en qué muebles— y es lo
+              único que hace falta para arreglarlo. No hay botón: forzar volvería
+              a pasar por la misma comprobación y volvería a fallar, así que
+              «Conservar la mía» sería un lazo. Lo que destraba esto es corregir
+              el nombre en el plano, y entonces el reintento entra solo. */}
+          {hayRechazo && (
+            <div style={{ marginBottom: hayConflicto ? 14 : 0 }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: "var(--danger)", marginBottom: 6 }}>
+                El servidor no guardó el plano
+              </p>
+              {rechazoSedes.map((sede) => (
+                <div key={sede} style={{ marginBottom: 8 }}>
+                  {rechazoSedes.length > 1 && (
+                    <p style={{ fontSize: 9.5, color: "var(--ink-3)", letterSpacing: "0.03em",
+                      textTransform: "uppercase", marginBottom: 2 }}>
+                      {sede}
+                    </p>
+                  )}
+                  <p style={{ fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.45 }}>
+                    {rechazos[sede].message}
+                  </p>
+                  {rechazos[sede].choques.length > 0 && (
+                    <ul style={{
+                      margin: "5px 0 0", paddingLeft: "1.05em",
+                      fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.45,
+                    }}>
+                      {rechazos[sede].choques.map((c, i) => <li key={i}>{c}</li>)}
+                    </ul>
+                  )}
                 </div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <button
-                    onClick={() => useFixtureStore.getState().resolveConflict(sede, "server")}
-                    style={conflictBtn(false)}
-                  >
-                    Usar la del servidor
-                  </button>
-                  <button
-                    onClick={() => useFixtureStore.getState().resolveConflict(sede, "mine")}
-                    style={conflictBtn(true)}
-                  >
-                    Conservar la mía
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-          <p style={{ fontSize: 10.5, color: "var(--ink-3)", lineHeight: 1.45, marginTop: 2 }}>
-            «Conservar la mía» sube lo de esta computadora y pisa lo del servidor.
-            No borra nada de acá.
-          </p>
+              ))}
+              <p style={{ fontSize: 10.5, color: "var(--ink-3)", lineHeight: 1.45, marginTop: 2 }}>
+                No se escribió nada en el servidor y el cambio sigue en esta computadora, sin
+                subir. Corregí el nombre en el plano y se guarda solo.
+              </p>
+            </div>
+          )}
+
+          {hayConflicto && (
+            <>
+              <p style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-1)", marginBottom: 6 }}>
+                Cambios en conflicto
+              </p>
+              {conflictSedes.map((sede) => {
+                const mios = fixturesBySede[sede]?.length ?? 0;
+                const suyos = enServidor[sede];
+                return (
+                  <div key={sede} style={{ marginBottom: 10 }}>
+                    <p style={{ fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.45, marginBottom: 6 }}>
+                      {conflicts[sede]}
+                    </p>
+                    <div
+                      style={{
+                        display: "flex", gap: 6, marginBottom: 7,
+                        fontSize: 11, fontFamily: "var(--font-mono)",
+                      }}
+                    >
+                      <Cifra etiqueta="Esta computadora" valor={`${mios} muebles`} />
+                      <Cifra
+                        etiqueta="El servidor"
+                        valor={suyos === undefined ? "—" : `${suyos} muebles`}
+                      />
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button
+                        onClick={() => useFixtureStore.getState().resolveConflict(sede, "server")}
+                        style={conflictBtn(false)}
+                      >
+                        Usar la del servidor
+                      </button>
+                      <button
+                        onClick={() => useFixtureStore.getState().resolveConflict(sede, "mine")}
+                        style={conflictBtn(true)}
+                      >
+                        Conservar la mía
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              <p style={{ fontSize: 10.5, color: "var(--ink-3)", lineHeight: 1.45, marginTop: 2 }}>
+                «Conservar la mía» sube lo de esta computadora y pisa lo del servidor.
+                No borra nada de acá.
+              </p>
+            </>
+          )}
         </div>,
         document.body,
       )}

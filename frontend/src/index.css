@@ -6,6 +6,10 @@
 /* Capa 3 de Vender: la forma de D. Todo cuelga de `.vender`, así que Supervisar,
    Montaje y el editor 3D no ven una sola de sus reglas. */
 @import "./vender.css";
+/* Capa 3 de Renumerar: la hoja del informe antes → después, que es tanto la
+   pantalla como el papel que se lleva a la tienda. Todo cuelga de `.renum`, así
+   que su `@media print` no puede alcanzar a ninguna otra pantalla. */
+@import "./renumerar.css";
 /* Capa 3 de la Plataforma: la forma de A («El informe»). Todo cuelga de
    `.plat`, así que la consola vieja (`--con-*`), Vender, Supervisar, Montaje y
    el editor 3D no ven una sola de sus reglas. */

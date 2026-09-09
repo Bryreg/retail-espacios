@@ -284,6 +284,13 @@ html[data-tema="oscuro"] .vender {
   stroke-linecap: round;
 }
 .p-fec { fill: var(--entra-txt); font-weight: 500; }
+/* LA TERCERA LÍNEA: el aviso de que ese rótulo lo llevan DOS muebles, con el
+   código del que se está mirando («×2 · IMP-12»). Va en el rojo del plano
+   —el mismo de «ocupado»— porque es lo único del rótulo que no describe un
+   estado sino un peligro: dos cajas que se leen igual son dos espacios
+   distintos, y el nombre no dice cuál se está tocando. Sin caja ni ancho, como
+   el resto del rótulo: hereda el cuerpo (`--lbl`) y el halo de `.p-cod`. */
+.p-chq { fill: var(--ocupado-txt); font-weight: 700; }
 .p-cod[data-sel="1"] {
   fill: var(--pl-codsel);
   stroke: var(--pl-halosel);
