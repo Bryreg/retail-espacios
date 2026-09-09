@@ -188,6 +188,17 @@ cortan); `suspendido` corta todo salvo el login del owner, que es el ÚNICO que
 ve el `motivo` escrito por el operador — su gente ve el estado, nunca la deuda.
 Los datos jamás se borran por estado.
 
+**Enmendado en Fase 14**: el 402 sale rotulado con la cabecera
+`X-Estado-Cuenta` (`suspendido` | `solo_lectura`), expuesta en CORS. Es lo que
+le permite a la pantalla enterarse de un corte aplicado **a mitad de sesión**:
+antes el estado sólo viajaba en `aviso_cuenta`, una vez, en la respuesta del
+login, y una cuenta suspendida mientras su gente ya estaba adentro seguía
+viéndose entera. El `detail` no cambió: sigue siendo el texto para la persona,
+y el rótulo es el canal de la máquina. Los dos estados viajan distinto porque
+se dibujan distinto (`suspendido` tapa la app; `solo_lectura` sólo avisa), y un
+402 pelado no alcanza para elegir. Contrato medido de los dos lados en
+`frontend/scripts/probar-suspension.mjs`.
+
 **Operadores de plataforma**: correos en la env `OPERADOR_EMAILS`, solo para
 cuentas con `sub` (el legado jamás). Panel en `/api/plataforma/*`: listar
 clientes con estado y `PATCH` con motivo obligatorio. **Enmendado en Fase 4,
@@ -1275,8 +1286,18 @@ suite local; y después del merge, el run de `main`.
 - Un estado desconocido escrito a mano en `estados_cliente` **falla abierto**
   (pasa como activo): no cortarle el servicio a quien paga ante un valor que
   el código no entiende.
-- El estado se refresca al **entrar**: un cambio a mitad de sesión se ve en el
-  próximo login (el 402 puntual de cada mutación sí llega igual).
+- ~~El estado se refresca al **entrar**: un cambio a mitad de sesión se ve en el
+  próximo login (el 402 puntual de cada mutación sí llega igual).~~ **Cerrado
+  (Fase 14).** Era el agujero que hacía que suspender un cliente no se notara:
+  el 402 llegaba a cada pedido, pero el interceptor sólo conocía el 401, así que
+  la app seguía dibujada con lo que ya tenía en memoria y en `localStorage` —
+  navegación entera, pestañas, botones, y un chip de «Sin conexión» como único
+  síntoma, que se lee como un problema de red. Ahora el 402 viaja rotulado con
+  `X-Estado-Cuenta` (`suspendido` | `solo_lectura`) y el interceptor de
+  `api/client.ts` escribe ese estado en el store: `BloqueoCuenta` tapa la app
+  entera en el pedido siguiente, sin esperar a ningún login. El 402 **no**
+  cierra la sesión —eso lo sigue haciendo sólo el 401—, porque el owner tiene
+  que poder quedarse adentro para ver el motivo y pagar.
 - El cache del estado es de 60 s; el PATCH del operador lo invalida — mover la
   fila a mano en la base no.
 - **Para el abogado, abiertas por la Fase 8** (marcador nuevo en §5.3, además de

@@ -144,7 +144,6 @@
  * IMPRIME —— son pocos y un nombre nuevo ahí es una revisión.
  */
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -806,33 +805,24 @@ console.log("\n[5b] el control de periodo y el interruptor de tema");
 // ═══════════════════════════════════════════════════════════════════════════
 console.log("\n[6·7] lo que esta fase no toca");
 {
-  const git = (args) => {
-    try {
-      return execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-    } catch (e) {
-      return { error: String(e.stderr || e.message).trim().slice(0, 200) };
-    }
-  };
+  /* Acá había dos comprobaciones que diffeaban `backend/` y
+     `ReportePlataforma.tsx` contra `origin/main` y fallaban si algo había
+     cambiado. Eran las dos promesas del PR de la Fase 11 —«backend sin una
+     sola línea de cambio», «el reporte se enlaza, no se rediseña»— y mientras
+     la fase vivía en una rama medían exactamente eso.
 
-  const base = git(["rev-parse", "--verify", "origin/main"]);
-  if (typeof base === "object") {
-    aviso("no hay `origin/main` en este checkout: 6 y 7 se saltan (" + base.error + ")");
-  } else {
-    const backend = git(["diff", "--stat", "origin/main", "--", "backend"]);
-    if (typeof backend === "object") mal("no se pudo diffear backend", backend.error);
-    else if (backend === "") ok("el backend no cambió contra `origin/main`");
-    else mal("el backend cambió", backend.split("\n").slice(0, 8).join("\n         "));
+     Mergeada la fase, dejaron de medir la promesa: `origin/main` ya ES la
+     Fase 11, así que el diff pasó a ser «¿alguien tocó el backend después?»,
+     que es siempre que sí y no tiene nada que ver con esta área. La primera
+     rama que arregló otra cosa las puso en rojo.
 
-    const reporte = git(["diff", "--stat", "origin/main", "--", "frontend/src/pages/ReportePlataforma.tsx"]);
-    if (typeof reporte === "object") mal("no se pudo diffear ReportePlataforma.tsx", reporte.error);
-    else if (reporte === "") ok("`ReportePlataforma.tsx` no cambió: el reporte de transparencia se enlaza, no se rediseña");
-    else mal("`ReportePlataforma.tsx` cambió", reporte);
-
-    /* Y el enlace tiene que seguir estando: no rediseñarlo no es esconderlo. */
-    const enlaza = PANTALLAS.filter((p) => /\/plataforma\/reporte\//.test(leer(p.archivo)));
-    if (enlaza.length > 0) ok(`el reporte de transparencia se enlaza desde ${enlaza.map((p) => p.nombre).join(" · ")}`);
-    else mal("ninguna pantalla del área enlaza el reporte de transparencia");
-  }
+     Una prueba que no puede volver a pasar no protege nada: enseña a ignorar
+     la suite. Lo que sí sobrevive al merge es lo de abajo —el enlace tiene
+     que seguir estando, porque no rediseñar el reporte no es esconderlo—, y
+     eso se afirma leyendo la pantalla de hoy y no comparándola con ayer. */
+  const enlaza = PANTALLAS.filter((p) => /\/plataforma\/reporte\//.test(leer(p.archivo)));
+  if (enlaza.length > 0) ok(`el reporte de transparencia se enlaza desde ${enlaza.map((p) => p.nombre).join(" · ")}`);
+  else mal("ninguna pantalla del área enlaza el reporte de transparencia");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

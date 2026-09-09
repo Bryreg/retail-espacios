@@ -358,6 +358,27 @@ def _credencial(request: Request) -> str | None:
 CUENTA_SOLO_LECTURA = "Cuenta en solo lectura por pago pendiente."
 CUENTA_SUSPENDIDA = "La cuenta de este cliente está suspendida."
 
+# La cabecera que le dice al navegador POR QUÉ es este 402.
+#
+# El corte del servidor ya funcionaba; lo que faltaba era que la pantalla se
+# enterara. `aviso_cuenta` viaja UNA sola vez, en la respuesta del login, y se
+# guarda en el store — así que una cuenta suspendida MIENTRAS alguien ya está
+# adentro seguía viéndose entera: cada pedido daba 402, pero el interceptor de
+# `api/client.ts` sólo miraba el 401, y la app quedaba dibujada con lo que ya
+# tenía cargado. Reproducido por la pantalla real: barra de navegación
+# completa, pestañas, botones — todo, con un chip de "Sin conexión" como único
+# síntoma, que se lee como un problema de red y no como un corte de servicio.
+#
+# El estado va en una CABECERA y no adentro del `detail` porque el `detail` es
+# el texto que la pantalla le muestra a la persona: meterle un código lo
+# volvería un formato que alguien tiene que parsear, y todo lo que hoy lo
+# muestra tal cual tendría que aprender a desarmarlo. La cabecera es el canal
+# de la máquina; el `detail`, el de la persona. Los dos estados que cortan
+# viajan distinto a propósito: `suspendido` reemplaza la app entera y
+# `solo_lectura` sólo pone el banner, así que un 402 pelado no alcanza para
+# saber cuál de los dos dibujar.
+CABECERA_ESTADO_CUENTA = "X-Estado-Cuenta"
+
 # Un pedido que sólo lee no mueve el negocio de nadie: en `solo_lectura` pasa.
 _METODOS_DE_LECTURA = frozenset({"GET", "HEAD", "OPTIONS"})
 
@@ -441,11 +462,19 @@ def _aplicar_estado(cliente: Cliente, request: Request) -> Cliente:
             return cliente
         if _path_bajo(path, _EXENTOS_EN_SOLO_LECTURA):
             return cliente
-        raise HTTPException(status_code=402, detail=CUENTA_SOLO_LECTURA)
+        raise HTTPException(
+            status_code=402,
+            detail=CUENTA_SOLO_LECTURA,
+            headers={CABECERA_ESTADO_CUENTA: "solo_lectura"},
+        )
 
     if estado == "suspendido":
         # Todo método, GET incluido. Los datos no se borran; se dejan de servir.
-        raise HTTPException(status_code=402, detail=CUENTA_SUSPENDIDA)
+        raise HTTPException(
+            status_code=402,
+            detail=CUENTA_SUSPENDIDA,
+            headers={CABECERA_ESTADO_CUENTA: "suspendido"},
+        )
 
     return cliente
 

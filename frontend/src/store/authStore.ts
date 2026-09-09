@@ -64,6 +64,15 @@ interface AuthState {
     pedirConsentimiento?: boolean,
     plataforma?: boolean
   ) => void;
+  /** Deja el estado de cuenta que acaba de contestar el servidor, sin tocar
+   *  el resto de la sesión.
+   *
+   *  Lo llama el interceptor de `api/client.ts` cuando un pedido vuelve 402.
+   *  Hasta que existió, `avisoCuenta` se escribía UNA sola vez —en el login— y
+   *  se persistía: si a un cliente lo suspendían mientras su gente ya estaba
+   *  adentro, la pantalla no se enteraba hasta el próximo login. El corte del
+   *  servidor sí funcionaba; lo que seguía andando era la app dibujada. */
+  marcarEstadoCuenta: (estado: EstadoCuentaAviso, motivo: string) => void;
   /** Cierra el aviso de consentimiento sin más — el botón "Ahora no" y el
    *  que sigue a un `aceptar-politica` exitoso. No es un muro. */
   descartarConsentimiento: () => void;
@@ -98,6 +107,21 @@ export const useAuthStore = create<AuthState>()(
           pedirConsentimiento: pedirConsentimiento ?? false,
           plataforma: plataforma ?? false,
         }),
+      marcarEstadoCuenta: (estado, motivo) =>
+        set((s) =>
+          // Sin sesión no hay nada que marcar: un 402 del login mismo lo
+          // muestra la pantalla de ingreso con su propio mensaje, y escribir
+          // el aviso acá dejaría el estado de un cliente ajeno pegado en el
+          // store de quien todavía no entró.
+          //
+          // Y si el aviso ya dice lo mismo, no se toca: `set` con un objeto
+          // nuevo despierta a todos los suscriptores, y esto corre en CADA
+          // respuesta 402 — en `solo_lectura` eso es una vez por intento de
+          // guardar, con la app entera redibujándose al pedo.
+          !s.token || (s.avisoCuenta?.estado === estado && s.avisoCuenta?.motivo === motivo)
+            ? s
+            : { avisoCuenta: { estado, motivo } },
+        ),
       descartarConsentimiento: () => set({ pedirConsentimiento: false }),
       logout: () => {
         set({

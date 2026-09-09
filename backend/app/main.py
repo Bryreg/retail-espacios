@@ -241,6 +241,13 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    # `allow_headers` es lo que el navegador puede MANDAR; para leer una
+    # cabecera de la respuesta hace falta declararla acá. Hoy el SPA lo sirve
+    # esta misma app (y en dev lo proxea Vite), así que es mismo origen y esto
+    # no haría falta — pero el día que el front se sirva de otro dominio, sin
+    # esta línea el interceptor vería el 402 y no el motivo, y el corte de
+    # servicio volvería a leerse como una falla de red.
+    expose_headers=["X-Estado-Cuenta"],
 )
 
 # Tope de tamaño del cuerpo del pedido (hallazgo hardening-1c). Va acá, entre

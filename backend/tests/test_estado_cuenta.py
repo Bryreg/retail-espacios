@@ -375,3 +375,79 @@ def test_el_estado_de_un_cliente_no_toca_al_otro(client, admin):
 
     assert client.get("/api/spaces/", headers=cab_otro).status_code == 402
     assert client.get("/api/spaces/", headers=admin).status_code == 200
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# La cabecera que hace que la PANTALLA se entere del corte
+# ════════════════════════════════════════════════════════════════════════════
+#
+# El 402 ya estaba y era correcto: lo que seguía andando era la app dibujada.
+# `aviso_cuenta` viaja UNA sola vez, en la respuesta del login, y se guarda en
+# el store del navegador — así que a un cliente suspendido MIENTRAS su gente ya
+# estaba adentro, la pantalla no se le enteraba hasta el próximo login. Cada
+# pedido daba 402 y nadie los miraba: el interceptor sólo conocía el 401.
+#
+# `X-Estado-Cuenta` es el canal por el que el navegador distingue los dos
+# cortes, que se dibujan distinto: `suspendido` reemplaza la app entera,
+# `solo_lectura` sólo pone la franja de arriba. Un 402 pelado no alcanza.
+
+def test_el_402_de_suspendido_dice_en_la_cabecera_por_que(client, admin):
+    _sembrar("suspendido")
+
+    r = client.get("/api/spaces/", headers=admin)
+
+    assert r.status_code == 402
+    assert r.headers["X-Estado-Cuenta"] == "suspendido"
+    # El `detail` no cambia: es el texto que ve la persona, no un código.
+    assert r.json()["detail"] == SUSPENDIDA
+
+
+def test_el_402_de_solo_lectura_se_distingue_del_de_suspendido(client, admin):
+    """Los dos cortan con 402 y la pantalla los dibuja distinto: sin esto,
+    un `solo_lectura` taparía la app entera como si fuera una suspensión."""
+    _sembrar("solo_lectura")
+
+    r = client.post("/api/suppliers/", json={"name": "Proveedor X"}, headers=admin)
+
+    assert r.status_code == 402
+    assert r.headers["X-Estado-Cuenta"] == "solo_lectura"
+    assert r.json()["detail"] == SOLO_LECTURA
+
+
+def test_el_login_suspendido_tambien_manda_la_cabecera(client, admin):
+    """El legado nunca entra estando suspendido, y su 402 se rotula igual —
+    la pantalla de ingreso no tiene por qué adivinar de qué 402 se trata."""
+    _sembrar("suspendido")
+
+    r = client.post("/api/auth/login", json={"password": CLAVE_ADMIN})
+
+    assert r.status_code == 402
+    assert r.headers["X-Estado-Cuenta"] == "suspendido"
+
+
+def test_un_200_no_lleva_la_cabecera(client, admin):
+    """La cabecera es la excepción, no un campo más de toda respuesta."""
+    _sembrar("activo")
+
+    r = client.get("/api/spaces/", headers=admin)
+
+    assert r.status_code == 200
+    assert "X-Estado-Cuenta" not in r.headers
+
+
+def test_el_owner_que_entra_suspendido_recibe_la_cabecera_en_cada_pedido(client, admin):
+    """El caso que se reportó: la dueña entra —puede, para ver y pagar— y
+    desde ahí CADA pedido de negocio le contesta 402 rotulado. Es lo que hace
+    que la app se reemplace sola sin esperar a un login nuevo."""
+    _invitar(client, admin, "duena@x.co", rol="owner")
+    _sembrar("suspendido")
+    _usar_verificador(client, {"t": _claims("uid-owner", "duena@x.co")})
+
+    token = client.post(
+        "/api/auth/oauth", json={"id_token": "t", "acepta_politica": True}
+    ).json()["token"]
+
+    for ruta in ("/api/spaces/", "/api/spaces/map", "/api/suppliers/"):
+        r = client.get(ruta, headers=_cab(token))
+        assert r.status_code == 402, ruta
+        assert r.headers["X-Estado-Cuenta"] == "suspendido", ruta
