@@ -25,7 +25,9 @@ from app.auth import (
     sub_y_email_de_la_sesion,
     verificar_clave,
 )
-from app.clientes import Cliente, buscar, cliente_del_pedido, listar, sesion_de, unico
+from app.clientes import (
+    CABECERA_ESTADO_CUENTA, Cliente, buscar, cliente_del_pedido, listar, sesion_de, unico,
+)
 from app.database import get_db
 from app.models.models import LoginAttempt
 # Fase 4: quién es operador de la plataforma. Módulo de contrato, ya importado
@@ -253,7 +255,11 @@ def login(payload: LoginIn, request: Request):
             # Sin excepción de owner: el login legado es una contraseña
             # compartida, no una persona, y por construcción jamás es owner.
             # El motivo tampoco viaja acá — es para quien tiene cuenta propia.
-            raise HTTPException(status_code=402, detail=CUENTA_SUSPENDIDA)
+            raise HTTPException(
+                status_code=402,
+                detail=CUENTA_SUSPENDIDA,
+                headers={CABECERA_ESTADO_CUENTA: "suspendido"},
+            )
 
         anotar(db, request, role, "login.ok")
         db.commit()
@@ -583,7 +589,11 @@ def oauth_login(
             # multi-membresía. El motivo NO viaja: es información de la
             # relación comercial, y esa la tiene el owner, no su gente.
             borrar_fallos(reg, ip, modelo=IntentoOauth)
-            raise HTTPException(status_code=402, detail=CUENTA_SUSPENDIDA)
+            raise HTTPException(
+                status_code=402,
+                detail=CUENTA_SUSPENDIDA,
+                headers={CABECERA_ESTADO_CUENTA: "suspendido"},
+            )
 
         usuario.ultimo_login = datetime.now(timezone.utc)
         reg.commit()
