@@ -36,7 +36,9 @@ from app.auth import require_admin
 from app.database import get_db
 from app.models.models import Space, SpaceLease, SpaceStatus, Supplier
 from app.routers.layout import reference_rates_raw
-from app.services.layout_lookup import find_fixture_by_space_code
+from app.services.layout_lookup import (
+    Ambiguedad, Colision, PlanoIndexado, sin_prefijo_de_sede,
+)
 from app.schemas.spaces import AvisosContrato
 from app.services.contacts import recipients_for
 from app.services.mailer import (
@@ -86,6 +88,15 @@ class FilaOut(BaseModel):
     #: no sobre lo que la persona cree que escribió.
     codigo: Optional[str] = None
     nombre: Optional[str] = None
+    #: El nombre con el que el plano DIBUJA el mueble resuelto, cuando alguien se
+    #: lo puso a mano y no es su código. None cuando el mueble se dibuja con su
+    #: propio código, que es el caso normal.
+    #:
+    #: Sin esto la revisión no puede mostrar el desvío: ``codigo`` repite lo que
+    #: la persona tecleó con la sede antepuesta y ``nombre`` es el label del tipo
+    #: —«Impulsador Marca» para los once impulsadores—, así que los dos campos
+    #: son idénticos para el mueble correcto y para el equivocado.
+    nombre_dibujado: Optional[str] = None
     sede: Optional[str] = None
     proveedor: Optional[str] = None
     marca: Optional[str] = None
@@ -160,6 +171,78 @@ def _tipo_de_tarifa(tipo: str) -> str:
     return "gondola" if tipo in ("gondola_doble", "gondola_mural") else tipo
 
 
+# ─── Los dos nombres de un mueble, dichos en castellano ───────────────────────
+
+def _rechazo_ambiguo(a: Ambiguedad, sede: str) -> str:
+    """El rechazo tiene que ofrecer LOS DOS CAMINOS, cada uno con su código completo.
+
+    Antes terminaba en «Escribí el código completo del que quisiste», y seguir
+    ese consejo era una trampa: quien mira la cajita que el plano rotula
+    «IMP-08» escribe ``CIUDAD JARDIN-IMP-08``, que es el OTRO mueble —el que
+    lleva ese código de verdad—, y el contrato entraba callado en el equivocado.
+    Un mensaje que pide adivinar entre dos muebles que no nombra es tan mudo
+    como no decir nada.
+
+    Primero el que la persona probablemente quiso: el que el plano DIBUJA con el
+    texto que tecleó. Es lo que estaba mirando cuando escribió la fila.
+    """
+    #: El del código no siempre se dibuja con su código: en la corrida renumerada
+    #: de CIUDAD JARDIN, el mueble ``IMP-12`` se dibuja «IMP-08». Describirlo mal
+    #: sería volver a mandar a la persona al mueble que no quería.
+    el_del_codigo = (
+        f"tiene ese código, aunque el plano lo dibuje «{a.nombre_tecleado}»"
+        if a.nombre_tecleado
+        else "se dibuja con su propio código"
+    )
+    return (
+        f"«{a.texto}» es ambiguo en {sede}. "
+        f"Escribí {a.codigo_dibujado} para el mueble que el plano dibuja «{a.texto}», "
+        f"o {a.codigo_tecleado} para el que {el_del_codigo}."
+    )
+
+
+def _avisos_de_colision(c: Colision) -> list[str]:
+    """La fila entra, pero el mueble tiene un gemelo de nombre: hay que decirlo.
+
+    Es la categoría que esta pantalla ya tiene —«entra, pero se mira»— y es la
+    correcta acá: los dos muebles son FÍSICAMENTE DISTINTOS y contratar los dos
+    es legítimo, así que rechazar el código completo dejaría seis muebles de
+    CIUDAD JARDIN imposibles de contratar y rompería la pantalla de Vender, que
+    manda siempre el código completo.
+
+    Cada aviso dice **qué se está por contratar** y **cuál es el otro**, los dos
+    con su código completo. Cuando las dos direcciones se dan a la vez —el mueble
+    ``IMP-12`` se dibuja «IMP-08», que es el código de otro, y su propio código
+    «IMP-12» es el nombre dibujado de un tercero— el segundo aviso no repite el
+    encabezado: la pantalla los junta en un solo párrafo y dos preámbulos
+    idénticos se leen como ruido.
+    """
+    dibujo = (
+        f"que el plano dibuja «{c.nombre_dibujado}»"
+        if c.nombre_dibujado
+        else "que se dibuja con su propio código"
+    )
+    mensajes: list[str] = []
+    if c.otro_tiene_por_codigo_mi_nombre:
+        mensajes.append(
+            f"Ojo: este contrato va al mueble {c.codigo}, {dibujo}. Ese nombre es el "
+            f"código de OTRO mueble de la sede: {c.otro_tiene_por_codigo_mi_nombre}."
+        )
+    if c.otro_se_dibuja_con_mi_codigo:
+        if mensajes:
+            mensajes.append(
+                f"Y su código, «{c.corto}», es además el nombre con el que el plano "
+                f"dibuja a un tercero: {c.otro_se_dibuja_con_mi_codigo}."
+            )
+        else:
+            mensajes.append(
+                f"Ojo: este contrato va al mueble {c.codigo}, {dibujo}. OTRO mueble de "
+                f"la sede se dibuja «{c.corto}» y su código es "
+                f"{c.otro_se_dibuja_con_mi_codigo}."
+            )
+    return mensajes
+
+
 # ─── El corazón: revisar una tanda sin escribir nada ──────────────────────────
 
 def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
@@ -172,6 +255,9 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
         )
 
     rates = reference_rates_raw(db)
+    #: Los muebles de todas las sedes, leídos una sola vez: cada fila pregunta
+    #: tres cosas al plano y una planilla trae hasta trescientas.
+    plano = PlanoIndexado(db)
     proveedores = {
         (s.name or "").strip().lower(): s
         for s in db.query(Supplier).all()
@@ -203,29 +289,78 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
 
         # ── El espacio ────────────────────────────────────────────────────────
         fixture = None
-        if not codigo:
+        tecleado = (fila.espacio or "").strip()
+        if not tecleado:
+            # `_codigo_completo("", "NAVE")` devuelve «NAVE-», que no es el código
+            # de nada: devolverlo como "lo que el servidor entendió" sería otro
+            # eco que confirma un error en vez de mostrarlo.
+            out.codigo = None
             errores.append("Falta el código del espacio.")
+        elif not sede:
+            # Sin sede el código queda corto, y el corto resolvía igual contra el
+            # plano: la fila pasaba y creaba un Space nuevo —«IMP-08» al lado de
+            # «CIUDAD JARDIN-IMP-08»— para el mismo mueble físico, cada uno ciego
+            # al contrato del otro. Es una doble venta literal, sin nomenclatura
+            # de por medio.
+            errores.append(
+                "Falta la sede: sin ella el código queda corto y crea un espacio nuevo."
+            )
         else:
-            fixture = find_fixture_by_space_code(db, codigo)
-            if fixture is None:
-                errores.append(
-                    f"No hay ningún mueble con el código «{codigo}» en el plano"
-                    + (f" de {sede}." if sede else ".")
-                )
-            elif fixture.get("rentable") is False:
-                errores.append(
-                    f"«{codigo}» está marcado como no comercializable: es parte del local."
-                )
+            # Primero la ambigüedad: si el texto calza dos muebles, cuál resolvió
+            # el servidor es lo de menos, porque las dos respuestas son
+            # defendibles y sólo una es la que la persona quiso.
+            ambiguo = plano.ambiguedad(sede, tecleado)
+            resuelto = None if ambiguo else plano.resolver(sede, tecleado)
+            if ambiguo:
+                errores.append(_rechazo_ambiguo(ambiguo, sede))
+            elif resuelto is None:
+                corto = sin_prefijo_de_sede(tecleado, sede)
+                otras = [s for s in plano.sedes_con_codigo(corto) if s != sede]
+                if otras:
+                    # Un tipeo en la columna Sede mandaba el contrato a otro
+                    # supermercado sin un aviso. Decir dónde sí está es la
+                    # diferencia entre corregirlo y salir a buscar un error que
+                    # no existe.
+                    errores.append(
+                        f"«{corto}» no existe en {sede}; sí existe en {', '.join(otras)}."
+                    )
+                else:
+                    errores.append(
+                        f"No hay ningún mueble con el código «{codigo}» en el plano de {sede}."
+                    )
             else:
-                out.nombre = fixture.get("label") or fixture.get("code")
-                ref = None
-                tipo = _tipo_de_tarifa(str(fixture.get("type") or ""))
-                if rates:
-                    por_sede = (rates.get("by_sede") or {}).get(sede or "", {})
-                    ref = por_sede.get(tipo)
-                    if ref is None:
-                        ref = (rates.get("default") or {}).get(tipo)
-                out.referencia = ref
+                fixture = resuelto.fixture
+                # El código completo lo arma la sede DEL FIXTURE, nunca el texto
+                # pelado de la fila.
+                codigo = resuelto.codigo
+                out.codigo = codigo
+                out.sede = resuelto.sede or sede
+                # Se dice aunque la fila termine en error: la revisión tiene que
+                # poder ver contra qué mueble resolvió, sobre todo cuando no entra.
+                out.nombre_dibujado = resuelto.nombre_dibujado
+                if fixture.get("rentable") is False:
+                    errores.append(
+                        f"«{codigo}» está marcado como no comercializable: es parte del local."
+                    )
+                else:
+                    out.nombre = fixture.get("label") or fixture.get("code")
+                    # El texto resolvió sin dudas, pero el MUEBLE puede tener un
+                    # gemelo de nombre: es el residuo que dejaba abierta la doble
+                    # venta. Quien mira la cajita rotulada «IMP-08» y escribe el
+                    # código completo llega al otro mueble, y hasta acá entraba
+                    # sin una palabra. Entra igual —los dos muebles existen y los
+                    # dos se alquilan— pero se mira.
+                    colision = plano.colision(sede, resuelto)
+                    if colision:
+                        avisos.extend(_avisos_de_colision(colision))
+                    ref = None
+                    tipo = _tipo_de_tarifa(str(fixture.get("type") or ""))
+                    if rates:
+                        por_sede = (rates.get("by_sede") or {}).get(sede or "", {})
+                        ref = por_sede.get(tipo)
+                        if ref is None:
+                            ref = (rates.get("default") or {}).get(tipo)
+                    out.referencia = ref
 
         # ── El proveedor ──────────────────────────────────────────────────────
         #: Notas que se dicen pero NO pintan la fila. "Proveedor nuevo" es cierto
@@ -333,6 +468,7 @@ def confirmar(lote: LoteIn, background_tasks: BackgroundTasks, db: Session = Dep
     """
     filas = _revisar(db, lote)
     por_fila = {f.fila: f for f in filas}
+    plano = PlanoIndexado(db)
 
     creados: list[FilaOut] = []
     for fila in lote.filas:
@@ -340,7 +476,10 @@ def confirmar(lote: LoteIn, background_tasks: BackgroundTasks, db: Session = Dep
         if not v or v.estado == ERROR:
             continue
 
-        fixture = find_fixture_by_space_code(db, v.codigo or "")
+        # Acotado a la sede, como en la revisión: el código ya viene completo y
+        # con la sede del fixture, así que esto no puede caer en otra tienda.
+        resuelto = plano.resolver(v.sede or "", v.codigo or "")
+        fixture = resuelto.fixture if resuelto else None
         space = db.query(Space).filter(Space.code == v.codigo).first()
         if not space:
             area = 0.0

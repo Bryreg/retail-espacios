@@ -22,6 +22,15 @@ export interface FilaRevisada {
   /** Lo que el servidor entendió, no lo que la planilla decía. */
   codigo?: string | null;
   nombre?: string | null;
+  /** El nombre con el que el PLANO dibuja ese mueble, cuando alguien se lo puso
+   *  a mano y es distinto del código. `null` es que se dibuja con su código.
+   *
+   *  Es el dato que faltaba para que la revisión sirva: `codigo` le devuelve a
+   *  la persona lo que ella tecleó con la sede antepuesta, y `nombre` es el
+   *  nombre del TIPO («Impulsador Marca»), idéntico en los cuarenta
+   *  impulsadores de la sede. Ninguno de los dos distingue un mueble de otro.
+   *  Éste sí: es lo que la persona leyó en el plano. */
+  nombre_dibujado?: string | null;
   sede?: string | null;
   proveedor?: string | null;
   marca?: string | null;

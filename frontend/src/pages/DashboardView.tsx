@@ -62,7 +62,7 @@ import { inclusiveDays, parseISODate, toISODate, upcomingSeasons } from "../type
    código vivo hasta que alguien pierde media hora averiguando que no lo es.
    Quedan en la historia de `claude/retail-espacios-continue-jdn085`, que es
    donde hay que ir a buscarlas si el parte vuelve. */
-import { nombreDeMueble } from "../utils/nomenclatura";
+import { nombreDeMueble, nombresChocados, choqueDeRotulo } from "../utils/nomenclatura";
 import type { SemillaContrato } from "../components/Contrato/Contrato";
 import { fechaEnCurso } from "../utils/propuesta";
 
@@ -663,13 +663,23 @@ interface Rotulo {
   clave: string;
   cod: string;
   fecha: string;
+  /** La tercera línea, y sólo la llevan los que CHOCAN: cuántos muebles de la
+   *  sede se dibujan con este mismo nombre y cuál es el código de éste.
+   *  «×2 · IMP-12». Vacía es lo normal.
+   *
+   *  Es el hallazgo grave de la fase 12 traído al sitio donde se elige: dos
+   *  cajas rotuladas «IMP-08» son dos muebles distintos, los dos se pueden
+   *  contratar, y el rótulo solo no dice cuál se está tocando. El código sí. */
+  choque: string;
   /** El ancla, en unidades del plano: el CENTROIDE DE LA TAPA de su mueble.
    *  No hay una lista de posiciones a mano: los rótulos quedan todos a la
    *  misma distancia del mueble —cero— y alineados igual. */
   ax: number;
   ay: number;
-  /** Orden para deschocar: 1 lo que se libera (lleva fecha), 2 lo libre,
-   *  3 lo tomado. Lo que se está vendiendo manda. */
+  /** Orden para deschocar: 0 el que comparte su nombre con otro mueble, 1 lo
+   *  que se libera (lleva fecha), 2 lo libre, 3 lo tomado. Lo que se está
+   *  vendiendo manda, y por encima de todo el aviso: un rótulo repetido que
+   *  CEDE deja la colisión invisible otra vez, que es de donde venimos. */
   peso: number;
 }
 
@@ -878,10 +888,18 @@ function IsoMap({
     if (!scene) return [];
     const unidad = Math.max(scene.vb.w, scene.vb.h);
     const sep = SEP_CARA * unidad;
+    // Qué nombres los lleva más de un mueble de la sede. Una vez por plano.
+    const chocados = nombresChocados(fixtures);
     const salida: Rotulo[] = [];
     for (const p of scene.prisms) {
       if (!p.rentable) continue;
       const nombre = nombreDeMueble(p.f);
+      // El rótulo repetido es el que dejó vender dos veces el mismo cartel:
+      // dos cajas «IMP-08 · libre 16 sep», dos proveedores, el mismo periodo.
+      // Los dos muebles existen y los dos se pueden contratar; lo que faltaba
+      // era que el plano dijera que son dos. La regla —cuándo hay choque y qué
+      // se dice— vive en `nomenclatura.ts` y se prueba sin navegador.
+      const choque = choqueDeRotulo(p.f, chocados);
       p.topHalves.forEach((mitad, i) => {
         const entry = p.faces[i];
         if (!entry) return;
@@ -899,15 +917,17 @@ function IsoMap({
           clave: `${p.f.id}-${entry.face}`,
           cod: p.double ? `${nombre}·${entry.face}` : nombre,
           fecha: desde ? `libre ${desde.getDate()} ${MONTHS_ES[desde.getMonth()]}` : "",
+          choque: choque ? `${choque.marca} · ${p.f.code}` : "",
           ax, ay,
-          peso: dispo === "parcial" ? 1 : dispo === "libre" ? 2 : 3,
+          peso: choque ? 0 : dispo === "parcial" ? 1 : dispo === "libre" ? 2 : 3,
         });
       });
     }
-    // Primero lo que se libera (lleva fecha), después lo libre, después lo
-    // tomado: si dos se pisan, el que cede es el que menos se está vendiendo.
+    // Primero el que comparte su nombre con otro —el aviso no puede ser lo que
+    // cede—, después lo que se libera (lleva fecha), lo libre y lo tomado: si
+    // dos se pisan, el que cede es el que menos se está vendiendo.
     return salida.sort((a, b) => a.peso - b.peso || (a.cod < b.cod ? -1 : 1));
-  }, [scene, range]);
+  }, [scene, range, fixtures]);
 
   // ── La cámara ────────────────────────────────────────────────────────────
   //
@@ -1365,13 +1385,15 @@ function IsoMap({
                 key={l.clave}
                 className="p-cod"
                 data-cod={l.cod}
+                data-choque={l.choque || undefined}
                 data-sel={selectedKeys.includes(l.clave) ? "1" : undefined}
                 x={l.ax.toFixed(2)}
                 y={l.ay.toFixed(2)}
                 ref={(el) => { if (el) txtRefs.current.set(l.clave, el); else txtRefs.current.delete(l.clave); }}
               >
-                <tspan x={l.ax.toFixed(2)} dy={l.fecha ? "-.22em" : ".36em"}>{l.cod}</tspan>
+                <tspan x={l.ax.toFixed(2)} dy={l.fecha || l.choque ? "-.22em" : ".36em"}>{l.cod}</tspan>
                 {l.fecha && <tspan className="p-fec" x={l.ax.toFixed(2)} dy="1.18em">{l.fecha}</tspan>}
+                {l.choque && <tspan className="p-chq" x={l.ax.toFixed(2)} dy="1.18em">{l.choque}</tspan>}
               </text>
             ))}
         </g>
