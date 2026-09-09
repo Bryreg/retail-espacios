@@ -125,6 +125,20 @@ Conviven DOS formas de entrar, y las dos emiten el mismo JWT:
 - **Legado**: las dos claves compartidas por rol (admin/worker) de siempre —
   intacto, byte a byte el mismo payload. Se apagará por cliente cuando ese
   cliente haya migrado a cuentas.
+  **Fase 15: la pantalla ya no lo ofrece.** Se quitó de `Login.tsx` el bloque
+  «Acceso anterior» entero —el divisor, el selector de supermercado y la clave
+  compartida—: era una credencial de rol y no de persona, así que no distinguía
+  quién hizo qué ni se podía revocar de a una, y convivía con el ingreso
+  individual en la misma tarjeta, ofreciendo la puerta más débil al lado de la
+  más fuerte. `POST /api/auth/login` **sigue existiendo en el backend**: lo usa
+  toda la suite de pruebas para armar sesión sin montar Firebase, y sacarlo es
+  una fase aparte. Lo que ya no existe es la forma de llegar a él desde la
+  pantalla.
+  **Consecuencia, y es la que importa operativamente:** Google/correo pasó a ser
+  la ÚNICA puerta. Sin las tres `VITE_FIREBASE_*` en el front no se puede
+  entrar; antes ese caso caía parado porque quedaba el formulario viejo. La
+  pantalla ahora lo dice en vez de quedarse vacía, pero decirlo no es entrar:
+  esas variables son ahora tan críticas como `DATABASE_URL`.
 - **Cuentas individuales**: Google o correo/contraseña vía Firebase Auth
   (`POST /api/auth/oauth`). El backend NO corre SDK de Firebase: verifica el
   ID token contra el JWKS de Google (RS256 forzado desde el header — inmune a
@@ -1037,6 +1051,25 @@ después de entrar). Con sesión, `/` sigue siendo el tablero o `/plataforma`.
 «Crear mi cuenta». `/login?invitacion=…` no se tocó (el canje sigue en el
 backend). Sin backend nuevo: `/` es el mismo cascarón del SPA; no hay ningún
 `/api/landing/*` (barrido de la tabla de rutas en `test_landing_ataques.py::l13`).
+
+**La voz cambió en la Fase 15: de voseo a usted.** Por decisión del dueño la
+landing pasó a **español latino neutro formal**. La regla vieja («voz: voseo
+neutro… no mezclar con tuteo ni con usted») era explícita en `copy.md` §voz, y
+se reemplazó ahí, que es la fuente única — el `.tsx` sólo la sigue. Alcanza a
+`Landing.tsx`, `PlanoIsometrico.tsx` y a la copy visible de `Login.tsx`, que es
+la misma tarjeta cuando el ingreso se abre adentro de la portada. Verificado
+sobre la página dibujada: 13.879 caracteres de copy, cero formas de voseo y
+cero `tu`/`tus`.
+
+**Dos cosas quedaron en voseo, a propósito:**
+
+1. **El H1, «Recabrá cada metro.»** Es el juego con el nombre de la marca, lo
+   eligió el dueño y está fijado en `test_landing_ataques.py::TITULAR_E`.
+   Cambiarlo a «Recabre cada metro.» es una línea, pero es una decisión de
+   marca, no de gramática: se deja hasta que el dueño lo pida.
+2. **El interior de la aplicación** (Dashboard, Vender, Montaje, Carga masiva).
+   Cambiarlo entero es otra fase; una mezcla a mitad de camino sería peor que
+   cualquiera de las dos voces sostenidas.
 
 **Orden de trabajo (indicación del dueño, `features/landing/spec.md`).**
 Copy primero (`outputs/copy.md`: texto final sección por sección, cifras con

@@ -13,13 +13,17 @@ Lo que está en *cursiva bajo cada sección* es la **intención** y no se pega e
 
 ## 0. Decisiones de voz y reglas del copy
 
-**Voz: voseo neutro**, el mismo que ya habla la aplicación por dentro (`Login.tsx`: «Escribí el
-nombre del supermercado», «Confirmalo y volvé a entrar»; los correos; los mensajes de error).
-Se eligió consistencia de embudo: quien toca «Crear mi cuenta» aterriza en una pantalla que le
-habla igual. Es voseo **liviano** —nada de «vos sabés», «che», «acá nomás»—: verbos en voseo
-(`dibujás`, `vendés`, `cargá`) y vocabulario colombiano de retail (canon, sede, góndola, punta de
-góndola, mercaderista, proveedor, cuenta de cobro). **No mezclar con tuteo ni con usted en ninguna
-pantalla.**
+**Voz: español latino neutro, formal (usted)** — cambiado en la Fase 15 por decisión del dueño.
+Antes era voseo («dibujás», «vendés», «cargá»), elegido por consistencia con el interior de la
+aplicación; la landing le habla a alguien que todavía no es cliente, y ahí la cortesía pesa más que
+la cercanía. Sigue siendo **liviano**: usted sin solemnidad, frases cortas, y el mismo vocabulario
+colombiano de retail (canon, sede, góndola, punta de góndola, mercaderista, proveedor, cuenta de
+cobro). **No mezclar con tuteo ni con voseo en ninguna pantalla de la landing.**
+
+La aplicación por dentro sigue en voseo: cambiarla entera es otra fase, y una mezcla a mitad de
+camino sería peor que cualquiera de las dos voces sostenidas. La única excepción declarada es el
+H1 —«Recabrá cada metro.»—, que es el juego con el nombre de la marca y lo eligió el dueño: se
+deja como está hasta que él diga lo contrario.
 
 Reglas duras del texto:
 
@@ -30,8 +34,8 @@ Reglas duras del texto:
 3. **Frases cortas.** Un punto por idea. Nada de subordinadas de tres renglones.
 4. **Cero jerga técnica en la página.** Prohibido en el texto visible: multi-tenant, SaaS, JWT,
    endpoint, backend, snapshot, onboarding, dashboard, KPI, spread, benchmark, lazy-load.
-   («Spread» y «benchmark» existen adentro del producto; afuera se dicen «cuánto te estás corriendo
-   de tu propia tarifa» y «el promedio de los supermercados que usan RECABRA».)
+   («Spread» y «benchmark» existen adentro del producto; afuera se dicen «cuánto se está corriendo
+   de su propia tarifa» y «el promedio de los supermercados que usan RECABRA».)
 5. **Plata siempre en pesos colombianos con puntos de miles y espacio después del signo**:
    `$ 1.200.000`. Nunca decimales. Nunca «COP».
 6. **Fechas cortas en las tarjetas**: `24 sep`. Largas solo en el pie: `5 de septiembre de 2026`.
@@ -61,11 +65,11 @@ Glosario, para que las tres secciones y el frontend no inventen sinónimos:
 
 **`<title>`** (48 caracteres):
 
-> RECABRA — Espacios comerciales de tu supermercado
+> RECABRA — Espacios comerciales de su supermercado
 
 **`<meta name="description">`** (149 caracteres):
 
-> Qué mueble está libre, quién lo ocupa, a cuánto y hasta cuándo. RECABRA lleva la venta de espacios de exhibición de tu supermercado, sede por sede.
+> Qué mueble está libre, quién lo ocupa, a cuánto y hasta cuándo. RECABRA lleva la venta de espacios de exhibición de su supermercado, sede por sede.
 
 **`<meta name="robots">`**: `index, follow`
 
@@ -74,8 +78,8 @@ Glosario, para que las tres secciones y el frontend no inventen sinónimos:
 | Propiedad | Valor |
 |---|---|
 | `og:site_name` | `RECABRA` |
-| `og:title` | `RECABRA — Espacios comerciales de tu supermercado` |
-| `og:description` | `Dibujás el plano de cada sede, marcás qué muebles se alquilan y vendés tocando el mapa. Contratos, tarifas, vencimientos y montaje con foto.` |
+| `og:title` | `RECABRA — Espacios comerciales de su supermercado` |
+| `og:description` | `Dibuje el plano de cada sede, marque qué muebles se alquilan y venda tocando el mapa. Contratos, tarifas, vencimientos y montaje con foto.` |
 | `og:type` | `website` |
 | `og:url` | `https://retail-espacios.onrender.com/` |
 | `og:locale` | `es_CO` |
@@ -108,7 +112,7 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Frase de qué es (subtítulo 1):**
 
-> RECABRA es el sistema con el que un supermercado vende sus espacios de exhibición. Dibujás el plano de cada sede, marcás qué muebles se alquilan y armás el contrato ahí mismo, tocando el mueble.
+> RECABRA es el sistema con el que un supermercado vende sus espacios de exhibición. Dibuje el plano de cada sede, marque qué muebles se alquilan y arme el contrato ahí mismo, tocando el mueble.
 
 **Subtítulo 2:**
 
@@ -124,7 +128,7 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Línea bajo los botones:**
 
-> Entrás con tu correo o con Google. Crear la cuenta y tu supermercado toma un minuto.
+> Entre con su correo o con Google. Crear la cuenta y su supermercado toma un minuto.
 
 **Rótulo del plano interactivo (arriba a la izquierda del plano, siempre visible):**
 
@@ -150,11 +154,11 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 ### Bloque 1
 
-**Título:** `El plano de tu tienda, no una lista de códigos`
+**Título:** `El plano de su tienda, no una lista de códigos`
 
 **Texto:**
 
-> Dibujás cada sede como es: góndolas, puntas, islas, neveras, bateas, cajas. Cada mueble queda con su código y sus medidas. En el plano se ve de un vistazo qué está libre y qué está tomado, y cuando el proveedor quiere ver cómo le va a quedar la exhibición, la misma tienda se recorre en 3D.
+> Dibuje cada sede como es: góndolas, puntas, islas, neveras, bateas, cajas. Cada mueble queda con su código y sus medidas. En el plano se ve de un vistazo qué está libre y qué está tomado, y cuando el proveedor quiere ver cómo le va a quedar la exhibición, la misma tienda se recorre en 3D.
 
 **Pie del bloque:** `Plano 2D · vista 3D · una nomenclatura para toda la cadena`
 
@@ -164,27 +168,27 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Texto:**
 
-> Tocás el espacio y llenás una sola ficha: proveedor, marca, canon mensual, desde y hasta. Si el acuerdo cubre tres puntas de góndola, las tocás las tres y queda un solo contrato, no tres. Abajo del formulario está el total del plazo, que es lo que se firma: $ 1.500.000 al mes por 61 días son $ 3.050.000, y esa cuenta ya no se hace de cabeza con el proveedor esperando.
+> Toque el espacio y llene una sola ficha: proveedor, marca, canon mensual, desde y hasta. Si el acuerdo cubre tres puntas de góndola, las toca las tres y queda un solo contrato, no tres. Abajo del formulario está el total del plazo, que es lo que se firma: $ 1.500.000 al mes por 61 días son $ 3.050.000, y esa cuenta ya no se hace de cabeza con el proveedor esperando.
 
 **Pie del bloque:** `Un proveedor, un periodo, todos los espacios que haga falta`
 
 ### Bloque 3
 
-**Título:** `Qué hay libre en la temporada que estás vendiendo`
+**Título:** `Qué hay libre en la temporada que está vendiendo`
 
 **Texto:**
 
-> Elegís el periodo —Amor y Amistad, Halloween, Black Friday, Navidad, regreso a clases— y el plano entero se repinta para ese periodo: libre todo el tiempo, se libera adentro, o tomado. Un panel te dice cuántos espacios hay libres si el contrato arranca el 26 y cuántos si arranca el 29. Un mueble que se desocupa el 25 es inventario que podés ofrecer hoy.
+> Elija el periodo —Amor y Amistad, Halloween, Black Friday, Navidad, regreso a clases— y el plano entero se repinta para ese periodo: libre todo el tiempo, se libera adentro, o tomado. Un panel le dice cuántos espacios hay libres si el contrato arranca el 26 y cuántos si arranca el 29. Un mueble que se desocupa el 25 es inventario que puede ofrecer hoy.
 
-**Pie del bloque:** `Nueve temporadas del calendario colombiano, con la ventana de venta que vos definas`
+**Pie del bloque:** `Nueve temporadas del calendario colombiano, con la ventana de venta que usted defina`
 
 ### Bloque 4
 
-**Título:** `Tu tarifa, y cuánto te estás corriendo de ella`
+**Título:** `Su tarifa, y cuánto se está corriendo de ella`
 
 **Texto:**
 
-> Cargás una tarifa por tipo de mueble, con ajuste por sede si una tienda vale más que otra. Cuando escribís el valor de un contrato, al lado te aparece la referencia y el desvío: «−17 % vs referencia». En el tablero hay una lista de todo lo que está por debajo de tarifa, para revisarlo en la próxima renovación.
+> Cargue una tarifa por tipo de mueble, con ajuste por sede si una tienda vale más que otra. Cuando escribe el valor de un contrato, al lado le aparece la referencia y el desvío: «−17 % vs referencia». En el tablero hay una lista de todo lo que está por debajo de tarifa, para revisarlo en la próxima renovación.
 
 **Pie del bloque:** `La tarifa la ve el administrador. El mercaderista no ve un solo peso.`
 
@@ -210,7 +214,7 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Cierre de la sección (una línea, después de los seis bloques):**
 
-> Y además: cargás la temporada entera desde una planilla de Excel, revisás fila por fila antes de crear nada, manejás todas tus sedes desde la misma cuenta e invitás a tu equipo con el permiso que le toca a cada uno.
+> Y además: cargue la temporada entera desde una planilla de Excel, revise fila por fila antes de crear nada, maneje todas sus sedes desde la misma cuenta e invite a su equipo con el permiso que le toca a cada uno.
 
 *Intención: que reconozca su propio trabajo semana a semana en la pantalla. Cada bloque tiene que sonar a «esto lo hago yo los martes», no a una lista de funcionalidades. Si un bloque se puede decir de cualquier software, está mal escrito.*
 
@@ -258,14 +262,14 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Bajada del bloque:**
 
-> No son promesas. Son las cifras que la pantalla te muestra cada vez que la abrís.
+> No son promesas. Son las cifras que la pantalla le muestra cada vez que la abre.
 
 | Cifra | Cómo se lee |
 |---|---|
 | **Ocupación** | `35 %` · 8 de 23 caras vendidas en el periodo |
 | **Canon vigente** | lo que están pagando hoy los contratos vivos, al mes |
 | **Sin alquilar** | cuánto vale a tarifa lo que está vacío, y cuánto es eso por día vacío |
-| **Vence en 30 días** | cuántos espacios y cuánta plata se te caen si nadie los renueva |
+| **Vence en 30 días** | cuántos espacios y cuánta plata se le caen si nadie los renueva |
 | **Sin montar** | contratos ya cobrados que todavía no están armados en el piso |
 
 **Línea de cierre del bloque:**
@@ -289,10 +293,10 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 ### Paso 1
 
 **Número:** `1`
-**Título:** `Creá la cuenta y tu supermercado`
+**Título:** `Cree la cuenta y su supermercado`
 **Texto:**
 
-> Entrás con Google o con tu correo, le ponés nombre a tu supermercado y quedás como dueño de la cuenta. Después invitás a tu equipo: cada persona con su correo y con el permiso que le toca.
+> Entre con Google o con su correo, le pone nombre a su supermercado y queda como dueño de la cuenta. Después invite a su equipo: cada persona con su correo y con el permiso que le toca.
 
 ### Paso 2
 
@@ -300,7 +304,7 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 **Título:** `Dibujá el plano de cada sede`
 **Texto:**
 
-> Ponés los muebles como están en la sala y marcás cuáles se alquilan. Las cajas y las columnas quedan de contexto, en gris. Si ya tenés los contratos de la temporada en un Excel, los cargás de una vez: el sistema te muestra fila por fila qué entra y qué choca, antes de crear nada.
+> Ponga los muebles como están en la sala y marque cuáles se alquilan. Las cajas y las columnas quedan de contexto, en gris. Si ya tiene los contratos de la temporada en un Excel, los carga de una vez: el sistema le muestra fila por fila qué entra y qué choca, antes de crear nada.
 
 ### Paso 3
 
@@ -308,7 +312,7 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 **Título:** `Vendé tocando el mapa`
 **Texto:**
 
-> Elegís la temporada, mirás qué quedó verde, tocás el mueble y llenás el contrato. Al guardar salen los tres correos y el espacio cambia de color en el plano.
+> Elija la temporada, mire qué quedó verde, toque el mueble y llene el contrato. Al guardar salen los tres correos y el espacio cambia de color en el plano.
 
 **Nota bajo los tres pasos:**
 
@@ -322,15 +326,15 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Antetítulo:**
 
-> Lo que ningún Excel te va a decir
+> Lo que ningún Excel le va a decir
 
 **Título de sección:**
 
-> Además del sistema, te decimos qué proponer
+> Además del sistema, le decimos qué proponer
 
 **Bajada:**
 
-> Un sistema te muestra lo que pasó. Nosotros miramos tus números y te llevamos, por escrito, qué le podés ofrecer a quién esta semana.
+> Un sistema le muestra lo que pasó. Nosotros miramos sus números y le llevamos, por escrito, qué le puede ofrecer a quién esta semana.
 
 ### Bloque A
 
@@ -338,7 +342,7 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Texto:**
 
-> Cada recomendación viene con un valor al lado y una razón. «Tenés tres puntas de góndola libres: ofrecelas a $ 2.000.000 cada una, que es el promedio que vos mismo estás cobrando por ese tipo — $ 6.000.000 en juego.» «El contrato de esa punta vence en 19 días: renovalo o reasignalo — $ 2.000.000 en juego.» Primero las de mayor valor.
+> Cada recomendación viene con un valor al lado y una razón. «Tiene tres puntas de góndola libres: ofrézcalas a $ 2.000.000 cada una, que es el promedio que usted mismo está cobrando por ese tipo — $ 6.000.000 en juego.» «El contrato de esa punta vence en 19 días: renuévelo o reasígnelo — $ 2.000.000 en juego.» Primero las de mayor valor.
 
 ### Bloque B
 
@@ -346,7 +350,7 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Texto:**
 
-> Para cada mueble libre o que se libera en el periodo: un precio sugerido —el promedio que ya cobrás por ese tipo, o el promedio de los supermercados que usan RECABRA si vos todavía no cobrás ninguno— y hasta tres proveedores tuyos que podrían tomarlo, empezando por los que ya alquilan ese mismo tipo de mueble.
+> Para cada mueble libre o que se libera en el periodo: un precio sugerido —el promedio que ya cobra por ese tipo, o el promedio de los supermercados que usan RECABRA si usted todavía no cobra ninguno— y hasta tres proveedores suyos que podrían tomarlo, empezando por los que ya alquilan ese mismo tipo de mueble.
 
 ### Bloque C
 
@@ -354,11 +358,11 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Texto:**
 
-> Ocupación, ingreso contratado y canon promedio, guardados mes a mes desde que entrás. La pregunta «¿estamos mejorando?» deja de contestarse de memoria. Un mes sin datos aparece como un hueco, no como un cero: un cero sería mentira.
+> Ocupación, ingreso contratado y canon promedio, guardados mes a mes desde que entra. La pregunta «¿estamos mejorando?» deja de contestarse de memoria. Un mes sin datos aparece como un hueco, no como un cero: un cero sería mentira.
 
 **Cierre honesto de la sección (va completo, no se recorta):**
 
-> **Cómo funciona, sin vueltas.** Esta parte no es una pantalla tuya: la revisa una persona de RECABRA sobre tus propios datos, y te llega en la sesión de asesoría. Todo lo que se lee está escrito en la Política de Tratamiento de Datos, queda anotado con la fecha y el correo de quien lo consultó, y podés pedir ese registro cuando quieras desde tu propia cuenta.
+> **Cómo funciona, sin vueltas.** Esta parte no es una pantalla suya: la revisa una persona de RECABRA sobre sus propios datos, y le llega en la sesión de asesoría. Todo lo que se lee está escrito en la Política de Tratamiento de Datos, queda anotado con la fecha y el correo de quien lo consultó, y puede pedir ese registro cuando quiera desde su propia cuenta.
 
 **Enlace del cierre:** `Ver el reporte de transparencia` → `/politica-datos` (sección §5.3) o, para quien ya tiene sesión, `/reporte-plataforma`.
 
@@ -370,7 +374,7 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Título de sección:**
 
-> Dónde quedan tus datos
+> Dónde quedan sus datos
 
 **Bajada:**
 
@@ -381,7 +385,7 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 **Título:** `Cada supermercado, en su propia base`
 **Texto:**
 
-> Los planos, los contratos y los proveedores de tu supermercado viven en una base separada de la de cualquier otro cliente. No es un filtro por columna: es otra base.
+> Los planos, los contratos y los proveedores de su supermercado viven en una base separada de la de cualquier otro cliente. No es un filtro por columna: es otra base.
 
 ### Punto 2
 
@@ -399,7 +403,7 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 ### Punto 4
 
-**Título:** `Podés auditar qué se mira de vos`
+**Título:** `Puede auditar qué se mira de usted`
 **Texto:**
 
 > El dueño de la cuenta puede pedir, cuando quiera, el reporte de transparencia: qué datos toma RECABRA, cómo los calcula, de dónde salen, para qué, y quién los consultó y qué día. También puede descargar todos sus datos y pedir la supresión.
@@ -432,17 +436,17 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Cómo se paga:**
 
-> Por transferencia bancaria, contra cuenta de cobro. No hay pasarela de pagos ni te pedimos una tarjeta.
+> Por transferencia bancaria, contra cuenta de cobro. No hay pasarela de pagos ni le pedimos una tarjeta.
 
-**Qué pasa si un mes te atrasás (bloque de tres líneas):**
+**Qué pasa si un mes se atrasa (bloque de tres líneas):**
 
-> - Primero te avisamos en la pantalla, y todo sigue funcionando igual.
-> - Si el atraso sigue, la cuenta pasa a solo lectura: podés entrar, ver todo y consultar, pero no se cargan contratos nuevos.
-> - Tus datos no se borran nunca. Ponés la cuenta al día y volvés a trabajar donde lo dejaste.
+> - Primero le avisamos en la pantalla, y todo sigue funcionando igual.
+> - Si el atraso sigue, la cuenta pasa a solo lectura: puede entrar, ver todo y consultar, pero no se cargan contratos nuevos.
+> - Sus datos no se borran nunca. Ponga la cuenta al día y vuelve a trabajar donde lo dejó.
 
 **Contacto:**
 
-> ¿Tenés varias sedes o una cadena regional y querés que lo veamos juntos? Escribinos a `[COMPLETAR: correo de contacto]`.
+> ¿Tiene varias sedes o una cadena regional y quiere que lo veamos juntos? Escríbanos a `[COMPLETAR: correo de contacto]`.
 
 **CTA de la sección:** `Hablemos` → `mailto:[COMPLETAR: correo de contacto]`
 
@@ -454,11 +458,11 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Título:**
 
-> Empezá por una sede
+> Empiece por una sede
 
 **Texto:**
 
-> Creá la cuenta, dibujá la tienda que más espacios vende y mirá cuántos tenés libres esta temporada. Si sirve, seguís con las demás.
+> Cree la cuenta, dibuje la tienda que más espacios vende y mire cuántos tiene libres esta temporada. Si sirve, siga con las demás.
 
 **CTA primario** → `/login#registro`:
 
@@ -470,7 +474,7 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Línea de cierre bajo los botones:**
 
-> Entrás con Google o con tu correo. El plano de arriba es de ejemplo; el tuyo lo dibujás vos.
+> Entre con Google o con su correo. El plano de arriba es de ejemplo; el suyo lo dibuja usted.
 
 *Intención: bajar el compromiso a lo mínimo creíble —una sede, no la cadena— y dejar el último gesto de la página siendo un botón, no un párrafo.*
 
@@ -502,7 +506,7 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 > `[COMPLETAR: razón social]` · NIT `[COMPLETAR: NIT]` · `[COMPLETAR: ciudad, Colombia]`
 > Tratamiento de datos personales conforme a la Ley 1581 de 2012 y al Decreto 1377 de 2013.
-> Para ejercer tus derechos como titular, escribí a `[COMPLETAR: correo de protección de datos]`.
+> Para ejercer sus derechos como titular, escriba a `[COMPLETAR: correo de protección de datos]`.
 
 **Copyright:**
 
@@ -594,7 +598,7 @@ Las cuatro entradas, con el mismo texto que usa la aplicación por dentro
 
 Línea bajo la leyenda:
 
-> Es la misma lectura que vas a tener adentro, con tu propia tienda.
+> Es la misma lectura que va a tener adentro, con su propia tienda.
 
 ### 11.4 Estados vacíos y de error del plano
 
@@ -605,7 +609,7 @@ Línea bajo la leyenda:
 | El 3D no pudo cargar | `No pudimos abrir la vista 3D en este dispositivo. El plano de arriba sigue disponible.` |
 | El 3D no pudo cargar — acción | `Volver al plano` |
 | El navegador no soporta la vista 3D | `Este navegador no puede mostrar la vista 3D. Adentro de RECABRA vas a poder abrirla desde un equipo de escritorio.` |
-| `prefers-reduced-motion` activo, aviso opcional | `Animaciones reducidas, como pediste en tu sistema.` |
+| `prefers-reduced-motion` activo, aviso opcional | `Animaciones reducidas, como lo pidió en su sistema.` |
 | Ningún mueble bajo el cursor (panel lateral del plano, si el diseño lo usa) | `Pasá el mouse por un mueble para ver su ficha.` |
 | Lo mismo en móvil | `Tocá un mueble para ver su ficha.` |
 
@@ -799,7 +803,7 @@ tentación es llenarlo con algo de esta lista, el hueco se queda.
 
 13. **El supermercado no tiene un panel de recomendaciones dentro de su cuenta.** Las
     recomendaciones, las oportunidades y la tendencia se producen en la consola de RECABRA y llegan
-    por la sesión de asesoría. Decir «te aparecen en tu tablero» sería falso. La sección de asesoría
+    por la sesión de asesoría. Decir «le aparecen en su tablero» sería falso. La sección de asesoría
     (§6) está escrita para no prometer eso.
 14. **No mide ventas, tráfico, impresiones ni conversión.** El sistema no sabe cuánto vendió el
     proveedor en esa punta. No hay sensores, no hay reconocimiento de imagen, no hay auditoría
@@ -809,8 +813,8 @@ tentación es llenarlo con algo de esta lista, el hueco se queda.
     en el producto.
 17. **No hay histórico de la oportunidad de precio** mes a mes.
 18. **La tendencia arranca vacía** el día que el supermercado entra. No se rellena hacia atrás — eso
-    sería inventar datos. No prometer «mirá tu último año».
-19. **No hay pronósticos ni predicciones.** Ninguna cifra de la página puede decir «vas a».
+    sería inventar datos. No prometer «mire su último año».
+19. **No hay pronósticos ni predicciones.** Ninguna cifra de la página puede decir «va a».
 
 **Equipo y permisos**
 
@@ -821,8 +825,8 @@ tentación es llenarlo con algo de esta lista, el hueco se queda.
 
 **Cifras y comparaciones**
 
-22. **Ninguna cifra de impacto de negocio.** Nada de «+30 % de ingresos», «recuperá el 20 % de tus
-    espacios», «ahorrá 10 horas al mes». El documento del proyecto verificó una por una las cifras
+22. **Ninguna cifra de impacto de negocio.** Nada de «+30 % de ingresos», «recupere el 20 % de sus
+    espacios», «ahorre 10 horas al mes». El documento del proyecto verificó una por una las cifras
     que circulan en esta industria y **ninguna se sostiene** (`docs/ESTADO.md`, «Sobre las cifras que
     solían estar acá»). Escribir una acá sería repetir un error ya corregido.
 23. **Ningún nombre de cliente real, ningún logo de supermercado, ningún testimonio.** No hay

@@ -173,10 +173,10 @@ prueba("los dos CTA apuntan al login, y el de registro al ancla", () => {
 });
 
 prueba("las seis cosas que hace, con la cuenta del plazo verificada", () => {
-  contiene("El plano de tu tienda, no una lista de códigos");
+  contiene("El plano de su tienda, no una lista de códigos");
   contiene("El contrato se arma sobre el mueble");
-  contiene("Qué hay libre en la temporada que estás vendiendo");
-  contiene("Tu tarifa, y cuánto te estás corriendo de ella");
+  contiene("Qué hay libre en la temporada que está vendiendo");
+  contiene("Su tarifa, y cuánto se está corriendo de ella");
   contiene("Los avisos salen solos");
   contiene("El montaje se confirma con foto, desde el celular");
   contiene("$ 3.050.000");
@@ -184,15 +184,15 @@ prueba("las seis cosas que hace, con la cuenta del plazo verificada", () => {
 
 prueba("las tres personas, los tres pasos y la banda de asesoría", () => {
   contiene("Tres personas usan esto, y cada una ve otra cosa");
-  contiene("Creá la cuenta y tu supermercado");
-  contiene("Dibujá el plano de cada sede");
-  contiene("Vendé tocando el mapa");
-  contiene("Además del sistema, te decimos qué proponer");
+  contiene("Cree la cuenta y su supermercado");
+  contiene("Dibuje el plano de cada sede");
+  contiene("Venda tocando el mapa");
+  contiene("Además del sistema, le decimos qué proponer");
   contiene("Cómo funciona, sin vueltas.");
 });
 
 prueba("confianza, precio y pie legal, con los [COMPLETAR] a la vista", () => {
-  contiene("Dónde quedan tus datos");
+  contiene("Dónde quedan sus datos");
   contiene("Ley 1581 de 2012");
   contiene("[COMPLETAR: precio]");
   contiene("[COMPLETAR: razón social]");
@@ -201,7 +201,7 @@ prueba("confianza, precio y pie legal, con los [COMPLETAR] a la vista", () => {
 });
 
 prueba("el plano se rotula como ejemplo, en texto visible", () => {
-  contiene("Supermercado de ejemplo · Tocá un mueble");
+  contiene("Supermercado de ejemplo · Toque un mueble");
   contiene("Los datos del plano son inventados");
   contiene("El plano de esta página es un supermercado inventado");
 });
