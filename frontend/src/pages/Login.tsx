@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useModalAbiertoSi } from "../tema";
 import {
-  login, getClientes, loginOauth, esRequiereCliente, esConsentimientoRequerido,
+  getClientes, loginOauth, esRequiereCliente, esConsentimientoRequerido,
   type ClienteBreve, type Membresia,
 } from "../api/auth";
 import { altaCliente, sugerirSlug, SLUG_VALIDO } from "../api/clientes";
@@ -24,22 +24,27 @@ import { useAuthStore } from "../store/authStore";
 // pantalla es la plantilla de ingreso de cualquier producto; alineado, con la
 // regla arriba, se lee como la portada de un instrumento.
 //
-// ─── Fase 1 identidad: dos vías ────────────────────────────────────────────
+// ─── Fase 1 identidad, cerrada en Fase 15: una sola vía ────────────────────
 //
-// Arriba, Google/correo (Firebase) — la vía nueva, individual. Abajo, la
-// clave compartida de siempre, rotulada "Acceso anterior". Las dos conviven
-// hasta que cada cliente migre.
+// Google/correo (Firebase), individual. **La clave compartida por
+// supermercado —el "Acceso anterior"— se quitó**: era una credencial de rol y
+// no de persona, así que no distinguía quién hizo qué, no se podía revocar de
+// a una y convivía con el ingreso individual en la misma tarjeta, ofreciendo
+// la puerta más débil al lado de la más fuerte.
 //
-// `firebaseDisponible` decide TODO: si falta cualquiera de las tres
-// VITE_FIREBASE_*, la vía nueva ni se dibuja — ni el botón de Google, ni el
-// divisor, ni la etiqueta "Acceso anterior" (que no tendría de qué
-// distinguirse). La pantalla queda IDÉNTICA a como estaba antes de esta fase.
+// El endpoint `POST /api/auth/login` sigue existiendo en el backend a
+// propósito: lo usa toda la suite de pruebas para armar una sesión sin montar
+// Firebase, y sacarlo era una fase aparte, no un renglón de ésta. Lo que ya no
+// existe es la forma de llegar a él desde la pantalla.
+//
+// **Consecuencia de tener una sola vía:** sin las tres VITE_FIREBASE_* no hay
+// por dónde entrar. Antes ese caso caía parado —quedaba el formulario viejo—;
+// ahora la pantalla lo dice en lugar de quedarse vacía.
 //
 // Un 503 de `/api/auth/oauth` (backend sin `FIREBASE_PROJECT_ID`) es otra
 // cosa: ahí SÍ hay configuración del lado del cliente, pero el servidor no
 // la tiene. Sólo se entera al intentar, así que ese caso se resuelve en
-// tiempo de uso — no hay endpoint para "preguntar antes" — y cuando llega se
-// reemplaza toda la vía nueva por un aviso discreto, sin ocultar el resto.
+// tiempo de uso — no hay endpoint para "preguntar antes".
 //
 // ─── Fase 2 clientes: alta self-service ────────────────────────────────────
 //
@@ -90,46 +95,19 @@ export default function Login({ enHoja = false, modoInicial }: {
 } = {}) {
   const setAuth = useAuthStore((s) => s.setAuth);
 
-  // ─── Legado: clave compartida ─────────────────────────────────────────
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  // La lista de supermercados. **El selector aparece sólo cuando hay más de
-  // uno:** para las tiendas que ya usan esto, la pantalla de ingreso sigue
-  // siendo exactamente la de ayer. Si la lista no carga —red caída, servidor
-  // dormido— se entra igual, y el servidor resuelve el único cliente que haya.
+  // La lista de supermercados. Ya no dibuja ningún selector —el acceso por
+  // clave compartida, que era el único que preguntaba a qué supermercado se
+  // entraba, se fue— pero sigue haciendo falta: es de donde sale el nombre
+  // visible del cliente cuando `/oauth` resuelve la membresía y devuelve el
+  // slug pelado. Si no carga, la pantalla entra igual y el nombre se cae al
+  // que traiga la lista de membresías.
   const [clientes, setClientes] = useState<ClienteBreve[]>([]);
-  const [cliente, setCliente] = useState("");
 
   useEffect(() => {
     getClientes()
-      .then((lista) => {
-        setClientes(lista);
-        if (lista.length === 1) setCliente(lista[0].slug);
-      })
+      .then(setClientes)
       .catch(() => setClientes([]));
   }, []);
-
-  const varios = clientes.length > 1;
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!password || loading) return;
-    if (varios && !cliente) {
-      setError(true);
-      return;
-    }
-    setLoading(true);
-    setError(false);
-    try {
-      const r = await login(password, cliente || undefined);
-      setAuth(r.token, r.role, r.cliente, r.cliente_nombre, undefined, undefined, r.aviso_cuenta);
-    } catch {
-      setError(true);
-      setLoading(false);
-    }
-  };
 
   // ─── Nuevo: Google / correo (Firebase) ─────────────────────────────────
   //
@@ -489,16 +467,16 @@ export default function Login({ enHoja = false, modoInicial }: {
                   fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.5,
                 }}
               >
-                El ingreso con Google o correo no está disponible en este servidor
-                todavía. Usá el acceso anterior, más abajo.
+                El ingreso con Google o correo no está disponible en este
+                servidor todavía. Escríbanos para que lo revisemos.
               </div>
             ) : sinCliente ? (
               // ── Fase 2: sin membresías → ofrecer fundar el supermercado ──
               <div style={{ width: "100%", marginBottom: 18 }}>
                 <p style={{ margin: "0 0 14px", fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
-                  Tu cuenta todavía no tiene acceso a ningún supermercado. Si te
-                  invitaron, pedile a quien te invitó que revise el correo — o fundá
-                  el tuyo ahora mismo.
+                  Su cuenta todavía no tiene acceso a ningún supermercado. Si lo
+                  invitaron, pídale a quien lo invitó que revise el correo — o funde
+                  el suyo ahora mismo.
                 </p>
                 <form onSubmit={fundarCliente}>
                   <div style={{ marginBottom: 10 }}>
@@ -526,7 +504,7 @@ export default function Login({ enHoja = false, modoInicial }: {
                       style={{ ...inputStyle, fontFamily: "var(--font-mono)" }}
                     />
                     <div style={{ marginTop: 5, fontSize: 10.5, color: "var(--ink-4)", lineHeight: 1.4 }}>
-                      Minúsculas, sin espacios ni tildes, arranca con una letra. Así te
+                      Minúsculas, sin espacios ni tildes, arranca con una letra. Así lo
                       identifica el sistema — no se puede cambiar después.
                     </div>
                   </div>
@@ -591,7 +569,7 @@ export default function Login({ enHoja = false, modoInicial }: {
               // ── Selector de cliente: varias membresías activas ──────────
               <div style={{ width: "100%", marginBottom: 18 }}>
                 <label htmlFor="login-cliente-fb" style={etiquetaStyle}>
-                  Tu cuenta entra a varios supermercados — elegí uno
+                  Su cuenta entra a varios supermercados — elija uno
                 </label>
                 <select
                   id="login-cliente-fb"
@@ -662,7 +640,7 @@ export default function Login({ enHoja = false, modoInicial }: {
                       autoComplete="email"
                       value={fbEmail}
                       onChange={(e) => { setFbEmail(e.target.value); setResetEnviado(false); }}
-                      placeholder="vos@empresa.com"
+                      placeholder="nombre@empresa.com"
                       style={inputStyle}
                     />
                   </div>
@@ -732,109 +710,28 @@ export default function Login({ enHoja = false, modoInicial }: {
               </div>
             )}
 
-            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "6px 0 16px" }}>
-              <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
-              <span className="rotulo" style={{ fontSize: 9.5 }}>Acceso anterior</span>
-              <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
-            </div>
           </div>
         )}
 
-        <form onSubmit={submit} style={{ width: "100%" }}>
-          {varios && (
-            <div style={{ marginBottom: 14 }}>
-              <label htmlFor="login-cliente" style={etiquetaStyle}>
-                Supermercado
-              </label>
-              <select
-                id="login-cliente"
-                value={cliente}
-                onChange={(e) => {
-                  setCliente(e.target.value);
-                  setError(false);
-                }}
-                style={{
-                  width: "100%", height: 38, padding: "0 10px",
-                  borderRadius: "var(--r-md)",
-                  border: "1px solid var(--line)",
-                  background: "var(--surface-2)",
-                  color: cliente ? "var(--ink-1)" : "var(--ink-4)",
-                  fontSize: 13, fontFamily: "inherit",
-                  outline: "none",
-                }}
-              >
-                <option value="">Elegí el supermercado…</option>
-                {clientes.map((c) => (
-                  <option key={c.slug} value={c.slug}>{c.nombre}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          <label htmlFor="login-password" style={etiquetaStyle}>
-            Clave de acceso
-          </label>
-          <input
-            id="login-password"
-            type="password"
-            autoFocus={!varios && !firebaseDisponible}
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
-              setError(false);
-            }}
-            placeholder="••••••••"
+        {!firebaseDisponible && (
+          // Sin las tres VITE_FIREBASE_* no hay por dónde entrar: el acceso por
+          // clave compartida ya no existe. Antes este caso caía parado porque
+          // quedaba el formulario viejo; ahora dejaría una tarjeta vacía sin
+          // explicación, así que se dice qué falta y a quién avisarle.
+          <div
             style={{
-              width: "100%", height: 38, padding: "0 12px",
+              width: "100%",
+              padding: "10px 12px",
               borderRadius: "var(--r-md)",
-              border: `1px solid ${error ? "var(--danger)" : "var(--line)"}`,
+              border: "1px solid var(--line)",
               background: "var(--surface-2)",
-              color: "var(--ink-1)",
-              fontSize: 13, fontFamily: "inherit",
-              outline: "none",
-              transition: "border-color .12s, box-shadow .12s",
-            }}
-            onFocus={(e) => {
-              if (!error) e.currentTarget.style.borderColor = "var(--accent)";
-              e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent-50)";
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = error ? "var(--danger)" : "var(--line)";
-              e.currentTarget.style.boxShadow = "none";
-            }}
-          />
-
-          {error && (
-            <div
-              style={{
-                marginTop: 8, fontSize: 12, fontWeight: 500,
-                color: "var(--danger)",
-              }}
-            >
-              Clave incorrecta
-            </div>
-          )}
-
-          {/* Tinta, no amarillo: el «acceso anterior» convive en la misma
-              tarjeta con el ingreso por correo, y el amarillo es uno por
-              pantalla (el verificador midió los dos encendidos a la vez). */}
-          <button
-            type="submit"
-            disabled={loading || !password}
-            style={{
-              width: "100%", height: 38, marginTop: 16,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              borderRadius: "var(--r-md)", border: 0,
-              background: "var(--accent)", color: "var(--accent-ink)",
-              opacity: loading || !password ? 0.5 : 1,
-              cursor: loading || !password ? "default" : "pointer",
-              fontSize: 13, fontWeight: 600, fontFamily: "inherit",
-                            transition: "opacity .12s, background .12s",
+              fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.5,
             }}
           >
-            {loading ? "Ingresando…" : "Ingresar"}
-          </button>
-        </form>
+            El ingreso no está configurado en este servidor. Escríbanos para que
+            lo revisemos.
+          </div>
+        )}
 
         {/* Fase 3 compliance: la política tiene que poder leerse desde acá
             aunque nadie esté fundando un cliente ni aceptando nada — es
@@ -878,10 +775,10 @@ export default function Login({ enHoja = false, modoInicial }: {
             }}
           >
             <h2 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 700, color: "var(--ink-1)" }}>
-              Aceptá la Política de Tratamiento de Datos
+              Acepte la Política de Tratamiento de Datos
             </h2>
             <p style={{ margin: "0 0 16px", fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
-              Para sumarte a este supermercado hace falta aceptar la política antes
+              Para sumarse a este supermercado hace falta aceptar la política antes
               de terminar de entrar.
             </p>
             <a

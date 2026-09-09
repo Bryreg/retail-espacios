@@ -11,7 +11,7 @@ import { bbox, caras, leerPaleta, proy, quieto, PALETA_VACIA, type Paleta } from
 /**
  * La sala pegada de la dirección E: el plano vive en una sola pantalla
  * `sticky` y la cámara la guía el scroll mientras las tarjetas del guion pasan
- * al costado. El objeto que mirás no cambia nunca — cambia tu punto de vista.
+ * al costado. El objeto que se mira no cambia nunca — cambia el punto de vista.
  *
  * Portado del prototipo `E-fusion/index.html`, con tres reglas que allá están
  * escritas y acá también valen:
@@ -870,7 +870,7 @@ function Escenario() {
         </div>
 
         <div className="hud">
-          <p className="rotulo"><i className="pulse" aria-hidden="true" /> Supermercado de ejemplo · Tocá un mueble</p>
+          <p className="rotulo"><i className="pulse" aria-hidden="true" /> Supermercado de ejemplo · Toque un mueble</p>
           <div className="tools">
             <button className="tool" type="button" aria-label="Alejar" title="Alejar" onClick={() => zoomEn(1 / 1.22)}>
               <svg width="15" height="15" aria-hidden="true"><use href="#lp-i-minus" /></svg>
@@ -906,10 +906,10 @@ function Escenario() {
               <li><i className="dot dot--tomado" aria-hidden="true" /> Tomado <span className="n">6</span></li>
               <li><i className="dot dot--resto" aria-hidden="true" /> Resto de la sala</li>
             </ul>
-            <p className="foot">Es la misma lectura que vas a tener adentro, con tu propia tienda.</p>
+            <p className="foot">Es la misma lectura que va a tener adentro, con su propia tienda.</p>
           </div>
           <p className="help">
-            <span className="mouse">Arrastrá para moverte. Ctrl + rueda para acercar. Tocá un mueble para ver su ficha.</span>
+            <span className="mouse">Arrastre para moverse. Ctrl + rueda para acercar. Toque un mueble para ver su ficha.</span>
             <span className="touch">Deslizá para moverte. Pellizcá para acercar. Tocá un mueble.</span>
             <span className="kb">Flechas para moverte · + y − para acercar · Enter para abrir la ficha del mueble · Esc para cerrarla</span>
           </p>

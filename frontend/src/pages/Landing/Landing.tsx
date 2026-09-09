@@ -414,7 +414,7 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                 </p>
                 <p className="body">
                   RECABRA es el sistema con el que un supermercado vende sus espacios de exhibición.
-                  Dibujás el plano de cada sede, marcás qué muebles se alquilan y armás el contrato
+                  Dibuje el plano de cada sede, marque qué muebles se alquilan y arme el contrato
                   ahí mismo, tocando el mueble.
                 </p>
                 <p className="body" style={{ marginTop: "var(--s3)" }}>
@@ -426,7 +426,7 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                   <a className="btn btn--ghost" href="/login" onClick={irA("login")}>Ya tengo cuenta</a>
                 </div>
                 <p className="fine">
-                  Entrás con tu correo o con Google. Crear la cuenta y tu supermercado toma un minuto.
+                  Entre con su correo o con Google. Crear la cuenta y su supermercado toma un minuto.
                 </p>
                 <p className="fine">
                   Los datos del plano son inventados, para mostrar cómo se ve. Ningún supermercado
@@ -453,9 +453,9 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
               <div className="card">
                 <span className="num">01 <b>/</b> 06</span>
                 <span className="card__i"><Ico n="map" /></span>
-                <h3>El plano de tu tienda, no una lista de códigos</h3>
+                <h3>El plano de su tienda, no una lista de códigos</h3>
                 <p className="body">
-                  Dibujás cada sede como es: góndolas, puntas, islas, neveras, bateas, cajas. Cada
+                  Dibuje cada sede como es: góndolas, puntas, islas, neveras, bateas, cajas. Cada
                   mueble queda con su código y sus medidas. En el plano se ve de un vistazo qué está
                   libre y qué está tomado, y cuando el proveedor quiere ver cómo le va a quedar la
                   exhibición, la misma tienda se recorre en 3D.
@@ -471,8 +471,8 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                 <span className="card__i"><Ico n="doc" /></span>
                 <h3>El contrato se arma sobre el mueble</h3>
                 <p className="body">
-                  Tocás el espacio y llenás una sola ficha: proveedor, marca, canon mensual, desde y
-                  hasta. Si el acuerdo cubre tres puntas de góndola, las tocás las tres y queda un
+                  Toque el espacio y llene una sola ficha: proveedor, marca, canon mensual, desde y
+                  hasta. Si el acuerdo cubre tres puntas de góndola, las toca las tres y queda un
                   solo contrato, no tres. Abajo del formulario está el total del plazo, que es lo que
                   se firma: $ 1.500.000 al mes por 61 días son $ 3.050.000, y esa cuenta ya no se
                   hace de cabeza con el proveedor esperando.
@@ -498,13 +498,13 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
               <div className="card">
                 <span className="num">03 <b>/</b> 06</span>
                 <span className="card__i"><Ico n="cal" /></span>
-                <h3>Qué hay libre en la temporada que estás vendiendo</h3>
+                <h3>Qué hay libre en la temporada que está vendiendo</h3>
                 <p className="body">
-                  Elegís el periodo —Amor y Amistad, Halloween, Black Friday, Navidad, regreso a
+                  Elija el periodo —Amor y Amistad, Halloween, Black Friday, Navidad, regreso a
                   clases— y el plano entero se repinta para ese periodo: libre todo el tiempo, se
-                  libera adentro, o tomado. Un panel te dice cuántos espacios hay libres si el
+                  libera adentro, o tomado. Un panel le dice cuántos espacios hay libres si el
                   contrato arranca el 26 y cuántos si arranca el 29. Un mueble que se desocupa el 25
-                  es inventario que podés ofrecer hoy.
+                  es inventario que puede ofrecer hoy.
                 </p>
                 <div className="card__demo">
                   <div className="chips" role="group" aria-label="Temporada de ejemplo">
@@ -516,7 +516,7 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                   <GridTemporada n={temporada} />
                 </div>
                 <p className="card__foot">
-                  Nueve temporadas del calendario colombiano, con la ventana de venta que vos definas
+                  Nueve temporadas del calendario colombiano, con la ventana de venta que usted defina
                 </p>
               </div>
             </article>
@@ -525,10 +525,10 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
               <div className="card">
                 <span className="num">04 <b>/</b> 06</span>
                 <span className="card__i"><Ico n="tag" /></span>
-                <h3>Tu tarifa, y cuánto te estás corriendo de ella</h3>
+                <h3>Su tarifa, y cuánto se está corriendo de ella</h3>
                 <p className="body">
-                  Cargás una tarifa por tipo de mueble, con ajuste por sede si una tienda vale más
-                  que otra. Cuando escribís el valor de un contrato, al lado te aparece la referencia
+                  Cargue una tarifa por tipo de mueble, con ajuste por sede si una tienda vale más
+                  que otra. Cuando escribe el valor de un contrato, al lado le aparece la referencia
                   y el desvío: «−17 % vs referencia». En el tablero hay una lista de todo lo que está
                   por debajo de tarifa, para revisarlo en la próxima renovación.
                 </p>
@@ -645,9 +645,9 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
             <section className="panel panel--corto" data-scene="qh-cierre">
               <div className="card">
                 <p className="lead">
-                  Y además: cargás la temporada entera desde una planilla de Excel, revisás fila por
-                  fila antes de crear nada, manejás todas tus sedes desde la misma cuenta e invitás a
-                  tu equipo con el permiso que le toca a cada uno.
+                  Y además: cargue la temporada entera desde una planilla de Excel, revise fila por
+                  fila antes de crear nada, maneje todas sus sedes desde la misma cuenta e invite a
+                  su equipo con el permiso que le toca a cada uno.
                 </p>
                 <a className="hook" href="#para-quien">
                   <span className="hook__n">02</span>
@@ -751,12 +751,12 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
           <div className="glasscard rv" style={{ marginTop: 40, overflow: "hidden" }}>
             <div className="pbar">
               <span className="pbar__dots"><i /><i /><i /></span>
-              Los números que vas a tener a la vista
+              Los números que va a tener a la vista
               <span className="pbar__sp" /><span>Ocupación · ejemplo</span>
             </div>
             <div className="pad">
               <p className="lead" style={{ marginBottom: 24 }}>
-                No son promesas. Son las cifras que la pantalla te muestra cada vez que la abrís.
+                No son promesas. Son las cifras que la pantalla le muestra cada vez que la abre.
               </p>
               <div className="readout">
                 <div className="readout__hero">
@@ -778,7 +778,7 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                   <li className="rrow"><span className="rrow__k"><i className="dot dot--libre" aria-hidden="true" />Ocupación</span><span className="rrow__v">35 % · 8 de 23 caras vendidas en el periodo</span></li>
                   <li className="rrow"><span className="rrow__k"><i className="dot dot--tomado" aria-hidden="true" />Canon vigente</span><span className="rrow__v">lo que están pagando hoy los contratos vivos, al mes</span></li>
                   <li className="rrow"><span className="rrow__k"><i className="dot dot--libre" aria-hidden="true" />Sin alquilar</span><span className="rrow__v">cuánto vale a tarifa lo que está vacío, y cuánto es eso por día vacío</span></li>
-                  <li className="rrow"><span className="rrow__k"><i className="dot dot--libera" aria-hidden="true" />Vence en 30 días</span><span className="rrow__v">cuántos espacios y cuánta plata se te caen si nadie los renueva</span></li>
+                  <li className="rrow"><span className="rrow__k"><i className="dot dot--libera" aria-hidden="true" />Vence en 30 días</span><span className="rrow__v">cuántos espacios y cuánta plata se le caen si nadie los renueva</span></li>
                   <li className="rrow"><span className="rrow__k"><i className="dot dot--resto" aria-hidden="true" />Sin montar</span><span className="rrow__v">contratos ya cobrados que todavía no están armados en el piso</span></li>
                 </ul>
               </div>
@@ -809,10 +809,10 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
               <li className="paso" data-on="true">
                 <span className="paso__pipe"><i /></span>
                 <span className="paso__n">1</span>
-                <h3 className="h4">Creá la cuenta y tu supermercado</h3>
+                <h3 className="h4">Cree la cuenta y su supermercado</h3>
                 <p className="body">
-                  Entrás con Google o con tu correo, le ponés nombre a tu supermercado y quedás como
-                  dueño de la cuenta. Después invitás a tu equipo: cada persona con su correo y con
+                  Entre con Google o con su correo, le pone nombre a su supermercado y queda como
+                  dueño de la cuenta. Después invite a su equipo: cada persona con su correo y con
                   el permiso que le toca.
                 </p>
                 <div className="chips" style={{ marginTop: 6 }}>
@@ -824,20 +824,20 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
               <li className="paso" data-on="false">
                 <span className="paso__pipe"><i /></span>
                 <span className="paso__n">2</span>
-                <h3 className="h4">Dibujá el plano de cada sede</h3>
+                <h3 className="h4">Dibuje el plano de cada sede</h3>
                 <p className="body">
-                  Ponés los muebles como están en la sala y marcás cuáles se alquilan. Las cajas y
-                  las columnas quedan de contexto, en gris. Si ya tenés los contratos de la temporada
-                  en un Excel, los cargás de una vez: el sistema te muestra fila por fila qué entra y
+                  Ponga los muebles como están en la sala y marque cuáles se alquilan. Las cajas y
+                  las columnas quedan de contexto, en gris. Si ya tiene los contratos de la temporada
+                  en un Excel, los carga de una vez: el sistema le muestra fila por fila qué entra y
                   qué choca, antes de crear nada.
                 </p>
               </li>
               <li className="paso" data-on="false">
                 <span className="paso__pipe"><i /></span>
                 <span className="paso__n">3</span>
-                <h3 className="h4">Vendé tocando el mapa</h3>
+                <h3 className="h4">Venda tocando el mapa</h3>
                 <p className="body">
-                  Elegís la temporada, mirás qué quedó verde, tocás el mueble y llenás el contrato.
+                  Elija la temporada, mire qué quedó verde, toque el mueble y llene el contrato.
                   Al guardar salen los tres correos y el espacio cambia de color en el plano.
                 </p>
               </li>
@@ -848,7 +848,7 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
             <p className="small rv" style={{ marginTop: 20 }}>
               Cada supermercado empieza vacío. RECABRA no viene con datos de nadie adentro.
             </p>
-            <Gancho n="04" titulo="Además del sistema, te decimos qué proponer" a="#asesoria" />
+            <Gancho n="04" titulo="Además del sistema, le decimos qué proponer" a="#asesoria" />
           </div>
         </section>
 
@@ -856,11 +856,11 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
         <section className="wrap sec" id="asesoria">
           <header className="sec__head rv">
             <p className="sec__num mono">04 / ASESORÍA</p>
-            <p className="eyebrow">Lo que ningún Excel te va a decir</p>
-            <h2>Además del sistema, te decimos qué proponer</h2>
+            <p className="eyebrow">Lo que ningún Excel le va a decir</p>
+            <h2>Además del sistema, le decimos qué proponer</h2>
             <p className="lead">
-              Un sistema te muestra lo que pasó. Nosotros miramos tus números y te llevamos, por
-              escrito, qué le podés ofrecer a quién esta semana.
+              Un sistema le muestra lo que pasó. Nosotros miramos sus números y le llevamos, por
+              escrito, qué le puede ofrecer a quién esta semana.
             </p>
           </header>
 
@@ -870,17 +870,17 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                 <span className="card__i"><Ico n="chart" /></span>
                 <h3>Recomendaciones ordenadas por lo que hay en juego</h3>
                 <p className="body">
-                  Cada recomendación viene con un valor al lado y una razón. «Tenés tres puntas de
-                  góndola libres: ofrecelas a $ 2.000.000 cada una, que es el promedio que vos mismo
-                  estás cobrando por ese tipo — $ 6.000.000 en juego.» «El contrato de esa punta
-                  vence en 19 días: renovalo o reasignalo — $ 2.000.000 en juego.» Primero las de
+                  Cada recomendación viene con un valor al lado y una razón. «Tiene tres puntas de
+                  góndola libres: ofrézcalas a $ 2.000.000 cada una, que es el promedio que usted
+                  mismo está cobrando por ese tipo — $ 6.000.000 en juego.» «El contrato de esa punta
+                  vence en 19 días: renuévelo o reasígnelo — $ 2.000.000 en juego.» Primero las de
                   mayor valor.
                 </p>
                 <div className="reco">
                   <div className="reco__it">
                     <div>
                       <span className="reco__rank">01</span>
-                      <p className="reco__t">Tres puntas de góndola libres · ofrecelas a $ 2.000.000 cada una</p>
+                      <p className="reco__t">Tres puntas de góndola libres · ofrézcalas a $ 2.000.000 cada una</p>
                     </div>
                     <span className="reco__v">$ 6.000.000</span>
                   </div>
@@ -904,8 +904,8 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                 <h3>Oportunidades espacio por espacio</h3>
                 <p className="body">
                   Para cada mueble libre o que se libera en el periodo: un precio sugerido —el
-                  promedio que ya cobrás por ese tipo, o el promedio de los supermercados que usan
-                  RECABRA si vos todavía no cobrás ninguno— y hasta tres proveedores tuyos que
+                  promedio que ya cobra por ese tipo, o el promedio de los supermercados que usan
+                  RECABRA si usted todavía no cobra ninguno— y hasta tres proveedores suyos que
                   podrían tomarlo, empezando por los que ya alquilan ese mismo tipo de mueble.
                 </p>
                 <div className="mini">
@@ -927,7 +927,7 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                 <h3>Tendencia mes a mes</h3>
                 <p className="body">
                   Ocupación, ingreso contratado y canon promedio, guardados mes a mes desde que
-                  entrás. La pregunta «¿estamos mejorando?» deja de contestarse de memoria. Un mes
+                  entra. La pregunta «¿estamos mejorando?» deja de contestarse de memoria. Un mes
                   sin datos aparece como un hueco, no como un cero: un cero sería mentira.
                 </p>
                 <div className="chips">
@@ -943,7 +943,7 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                 <p className="tiny">Abril quedó como hueco: ese mes no hubo datos. No se rellena con un cero.</p>
               </div>
               <p className="card__foot bcard__pie">
-                La tendencia arranca vacía el día que entrás. No se rellena hacia atrás.
+                La tendencia arranca vacía el día que entra. No se rellena hacia atrás.
               </p>
             </article>
           </div>
@@ -951,10 +951,10 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
           <div className="honesto rv" style={{ marginTop: 24 }}>
             <h3 className="h4">Cómo funciona, sin vueltas.</h3>
             <p className="body">
-              Esta parte no es una pantalla tuya: la revisa una persona de RECABRA sobre tus propios
-              datos, y te llega en la sesión de asesoría. Todo lo que se lee está escrito en la
+              Esta parte no es una pantalla suya: la revisa una persona de RECABRA sobre sus propios
+              datos, y le llega en la sesión de asesoría. Todo lo que se lee está escrito en la
               Política de Tratamiento de Datos, queda anotado con la fecha y el correo de quien lo
-              consultó, y podés pedir ese registro cuando quieras desde tu propia cuenta.
+              consultó, y puede pedir ese registro cuando quiera desde su propia cuenta.
             </p>
             <p>
               <a className="lnk" href="/politica-datos">
@@ -963,14 +963,14 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
             </p>
           </div>
 
-          <Gancho n="05" titulo="Dónde quedan tus datos" a="#confianza" />
+          <Gancho n="05" titulo="Dónde quedan sus datos" a="#confianza" />
         </section>
 
         {/* ═══ 05 · CONFIANZA ═══ */}
         <section className="wrap sec" id="confianza">
           <header className="sec__head rv">
             <p className="sec__num mono">05 / DATOS</p>
-            <h2>Dónde quedan tus datos</h2>
+            <h2>Dónde quedan sus datos</h2>
             <p className="lead">
               Esto lo usa gente distinta de la misma tienda, y hay dinero adentro. Así está resuelto.
             </p>
@@ -982,7 +982,7 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
               <div>
                 <p className="trust__t">Cada supermercado, en su propia base</p>
                 <p className="body">
-                  Los planos, los contratos y los proveedores de tu supermercado viven en una base
+                  Los planos, los contratos y los proveedores de su supermercado viven en una base
                   separada de la de cualquier otro cliente. No es un filtro por columna: es otra base.
                 </p>
               </div>
@@ -993,7 +993,7 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                 <p className="trust__t">Cada persona entra con su cuenta</p>
                 <p className="body">
                   Con Google o con correo y contraseña. Nada de una clave compartida que sigue
-                  funcionando cuando alguien se va. Desactivás a esa persona y pierde el acceso en el
+                  funcionando cuando alguien se va. Desactive a esa persona y pierde el acceso en el
                   siguiente clic, sin tocar a nadie más.
                 </p>
               </div>
@@ -1015,7 +1015,7 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
             <li className="trust__it">
               <span className="trust__n">04</span>
               <div>
-                <p className="trust__t">Podés auditar qué se mira de vos</p>
+                <p className="trust__t">Puede auditar qué se mira de usted</p>
                 <p className="body">
                   El dueño de la cuenta puede pedir, cuando quiera, el reporte de transparencia: qué
                   datos toma RECABRA, cómo los calcula, de dónde salen, para qué, y quién los
@@ -1061,11 +1061,11 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                   </span>
                 </p>
                 <p className="body" style={{ marginTop: 20 }}>
-                  Por transferencia bancaria, contra cuenta de cobro. No hay pasarela de pagos ni te
+                  Por transferencia bancaria, contra cuenta de cobro. No hay pasarela de pagos ni le
                   pedimos una tarjeta.
                 </p>
                 <p className="body" style={{ marginTop: 20 }}>
-                  ¿Tenés varias sedes o una cadena regional y querés que lo veamos juntos? Escribinos
+                  ¿Tiene varias sedes o una cadena regional y quiere que lo veamos juntos? Escríbanos
                   a <span className="slot">[COMPLETAR: correo de contacto]</span>.
                 </p>
                 {/* Mientras el correo de contacto sea un [COMPLETAR] del dueño (copy §15),
@@ -1078,30 +1078,30 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
             </div>
             <div className="rv rv-2">
               <div className="estados" ref={estadosRef}>
-                <div className="estado" data-on={estados > 0}><span className="estado__d" /><p className="estado__t">Primero te avisamos en la pantalla, y todo sigue funcionando igual.</p></div>
-                <div className="estado" data-on={estados > 1}><span className="estado__d" /><p className="estado__t">Si el atraso sigue, la cuenta pasa a solo lectura: podés entrar, ver todo y consultar, pero no se cargan contratos nuevos.</p></div>
-                <div className="estado" data-on={estados > 2}><span className="estado__d" /><p className="estado__t">Tus datos no se borran nunca. Ponés la cuenta al día y volvés a trabajar donde lo dejaste.</p></div>
+                <div className="estado" data-on={estados > 0}><span className="estado__d" /><p className="estado__t">Primero le avisamos en la pantalla, y todo sigue funcionando igual.</p></div>
+                <div className="estado" data-on={estados > 1}><span className="estado__d" /><p className="estado__t">Si el atraso sigue, la cuenta pasa a solo lectura: puede entrar, ver todo y consultar, pero no se cargan contratos nuevos.</p></div>
+                <div className="estado" data-on={estados > 2}><span className="estado__d" /><p className="estado__t">Sus datos no se borran nunca. Ponga la cuenta al día y vuelve a trabajar donde lo dejó.</p></div>
               </div>
             </div>
           </div>
 
-          <Gancho n="07" titulo="Empezá por una sede" a="#cierre" />
+          <Gancho n="07" titulo="Empiece por una sede" a="#cierre" />
         </section>
 
         {/* ═══ 07 · CIERRE ═══ */}
         <section className="wrap cierre" id="cierre">
           <div className="beam" aria-hidden="true" />
-          <h2 className="rv">Empezá por una sede</h2>
+          <h2 className="rv">Empiece por una sede</h2>
           <p className="lead rv rv-1" style={{ maxWidth: "56ch" }}>
-            Creá la cuenta, dibujá la tienda que más espacios vende y mirá cuántos tenés libres esta
-            temporada. Si sirve, seguís con las demás.
+            Cree la cuenta, dibuje la tienda que más espacios vende y mire cuántos tiene libres esta
+            temporada. Si sirve, siga con las demás.
           </p>
           <div className="cierre__cta rv rv-2">
             <a className="btn btn--primary" href="/login#registro" onClick={irA("registro")}>Crear mi cuenta</a>
             <a className="btn btn--ghost" href="/login" onClick={irA("login")}>Ya tengo cuenta</a>
           </div>
           <p className="small rv rv-3">
-            Entrás con Google o con tu correo. El plano de arriba es de ejemplo; el tuyo lo dibujás vos.
+            Entre con Google o con su correo. El plano de arriba es de ejemplo; el suyo lo dibuja usted.
           </p>
         </section>
       </main>
@@ -1146,7 +1146,7 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
             <p className="tiny">
               <span className="slot">[COMPLETAR: razón social]</span> · NIT <span className="slot">[COMPLETAR: NIT]</span> · <span className="slot">[COMPLETAR: ciudad, Colombia]</span><br />
               Tratamiento de datos personales conforme a la Ley 1581 de 2012 y al Decreto 1377 de 2013.<br />
-              Para ejercer tus derechos como titular, escribí a <span className="slot">[COMPLETAR: correo de protección de datos]</span>.
+              Para ejercer sus derechos como titular, escriba a <span className="slot">[COMPLETAR: correo de protección de datos]</span>.
             </p>
             <p className="tiny">© {anio} RECABRA. Todos los derechos reservados.</p>
             <p className="tiny">
