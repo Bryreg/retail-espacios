@@ -90,10 +90,20 @@ def is_space_rentable(db: Session, space_code: str) -> bool:
 
 # ── El nombre que se DIBUJA, que no es la llave ───────────────────────────────
 #
-# Un mueble tiene dos nombres. El ``code`` es la llave: con él se arma
-# ``SEDE-CODE``, que es lo que viaja a ``spaces``, a los archivos, al correo del
-# mercaderista y al enlace de montaje. La ``nomenclatura`` es texto libre que
-# alguien escribe a mano y que REEMPLAZA al código **en la pantalla**.
+# ATENCIÓN, lector de 2027: esto describe el modelo VIEJO, de dos nombres, y
+# sobrevive como RED. Desde la fase 13 el ``code`` es EL nombre y la
+# ``nomenclatura`` no se escribe más: ``services/renumeracion.py`` la saca de
+# todos los planos y ``choques_nuevos`` (al final de este archivo) impide que
+# vuelva a entrar una que pise el nombre de otro. Lo de abajo sigue vivo porque
+# una base que no se migró puede tener planos sucios de antes, y porque un
+# cliente viejo puede mandar el campo: mientras alguien pueda dibujar dos
+# muebles con el mismo rótulo, hay que poder verlo.
+#
+# En el modelo viejo un mueble tenía dos nombres. El ``code`` es la llave: con él
+# se arma ``SEDE-CODE``, que es lo que viaja a ``spaces``, a los archivos, al
+# correo del mercaderista y al enlace de montaje. La ``nomenclatura`` era texto
+# libre que alguien escribía a mano y que REEMPLAZABA al código **en la
+# pantalla**.
 #
 # Nada obliga a que coincidan, y nada impide que el nombre de un mueble sea el
 # código de otro: renumerar una corrida corriendo los números garantiza que cada
@@ -526,3 +536,172 @@ def describe_location(db: Session, space_code: str, sede: str) -> str | None:
     if mejor[1] < 0.6:
         return f"Pegado a {mejor[0]}"
     return f"A unos {max(1, round(mejor[1]))} m de {mejor[0]}"
+
+
+# ── El guardarraíl del servidor: no aceptar choques NUEVOS ───────────────────
+#
+# La fase 12 dejó esto abierto y lo dijo (F7): `PUT /layout/{sede}` aceptaba la
+# lista de muebles sin mirar, así que la prohibición de crear un nombre que pisa
+# el de otro vivía **sólo en el navegador**. Un guardarraíl que vive en el
+# cliente no es del sistema: basta con otra pantalla, un script o una versión
+# vieja para saltarlo.
+#
+# Con un solo nombre la regla es simple —no dos muebles con el mismo nombre en
+# la sede— pero no se puede aplicar a secas, porque **un plano que hoy ya está
+# mal se tiene que poder guardar**: CIUDAD JARDIN tiene seis nombres que pisan
+# el código de otro, y trabar su guardado dejaría al dueño sin poder mover un
+# mueble en su propia tienda. Entonces la pregunta no es «¿hay choques?» sino
+# «¿este guardado CREA un choque que no venía?», y se responde contra el
+# snapshot anterior.
+#
+# Comparar cuentas y no pares es lo que hace que el intercambio pase: si A se
+# llama X y B se llama Y, y el guardado los cruza, la cuenta de X sigue siendo 1
+# y la de Y también. Lo mismo una cadena de renombres. Lo que sube la cuenta es
+# meter un nombre donde ya había otro, que es exactamente el error que se
+# quiere impedir.
+
+
+def _cuenta_de_nombres(fixtures: list[dict]) -> dict[str, list[str]]:
+    """``{nombre dibujado normalizado: [ids de los muebles que lo llevan]}``."""
+    cuenta: dict[str, list[str]] = {}
+    for f in fixtures:
+        if not isinstance(f, dict):
+            continue
+        nombre = normalizar(nombre_de_mueble(f))
+        if not nombre:
+            continue
+        cuenta.setdefault(nombre, []).append(str(f.get("id") or "?"))
+    return cuenta
+
+
+def _cuenta_de_codigos(fixtures: list[dict]) -> dict[str, list[str]]:
+    """Lo mismo, pero por ``code``: la llave con la que se guarda todo.
+
+    Se mira aparte del nombre dibujado porque son dos daños distintos. Dos
+    muebles con el mismo nombre no se distinguen en el plano; dos muebles con el
+    mismo **código** comparten contratos, archivos y correos de montaje, que es
+    peor y sigue siendo posible mientras exista un segundo nombre que lo tape.
+    """
+    cuenta: dict[str, list[str]] = {}
+    for f in fixtures:
+        if not isinstance(f, dict):
+            continue
+        code = normalizar(f.get("code"))
+        if not code:
+            continue
+        cuenta.setdefault(code, []).append(str(f.get("id") or "?"))
+    return cuenta
+
+
+def _como_se_ven(previas: list[dict], nuevas: list[dict]) -> dict[str, str]:
+    """``{id del mueble: cómo lo ve la persona en la pantalla}``.
+
+    El mensaje del rechazo tiene que nombrar a los muebles con algo que exista
+    para quien lo lee. El ``id`` (``imp9``, ``pun8``) es una llave interna: no
+    aparece en el plano, ni en el panel, ni en un contrato, ni en el papel — y
+    nombrar con él es tan útil como no nombrar.
+
+    Lo que la persona tiene delante es el plano **guardado**, así que se los
+    nombra por el nombre que ese plano dibuja hoy, con su rótulo al lado para
+    poder encontrarlos («el que hoy se llama «PUN-08» (Punta de Góndola)»). Un
+    mueble que este guardado agrega todavía no está en ninguna pantalla, y se
+    dice así.
+
+    Se nombra por el ``code`` y NO por ``nombre_de_mueble``. Desde que el
+    código es el nombre, las pantallas dibujan el ``code`` y nada más; en el
+    único plano donde los dos difieren —uno que todavía arrastra una
+    ``nomenclatura`` vieja, o sea producción antes de renumerar— nombrar por
+    ``nomenclatura`` deja el mensaje **al revés**: le dice a la persona un
+    nombre que ninguna pantalla dibuja, y le da el nombre que sí ve al mueble
+    equivocado. Se nombra por lo que se ve.
+    """
+    como: dict[str, str] = {}
+    for fixtures, en_pantalla in ((nuevas, False), (previas, True)):
+        for f in fixtures:
+            if not isinstance(f, dict):
+                continue
+            ident = str(f.get("id") or "")
+            if not ident:
+                continue
+            nombre = normalizar(str(f.get("code") or ""))
+            rotulo = str(f.get("label") or f.get("type") or "").strip()
+            texto = f"«{nombre}»" if nombre else "un mueble sin nombre"
+            if rotulo:
+                texto += f" ({rotulo})"
+            como[ident] = (
+                f"el que hoy se llama {texto}" if en_pantalla
+                else f"el que se agrega en este guardado, {texto}"
+            )
+    return como
+
+
+def _y(frases: list[str]) -> str:
+    """``a``, ``a y b``, ``a, b y c``: se lee como lo diría una persona.
+
+    Vive acá y lo usa también ``services/renumeracion.py``: dos listas de cosas
+    escritas para una persona no tienen por qué separarse con comas distintas.
+    """
+    if len(frases) < 2:
+        return frases[0] if frases else ""
+    return ", ".join(frases[:-1]) + " y " + frases[-1]
+
+
+def _nombrados(ids: list[str], como: dict[str, str]) -> str:
+    """Los muebles del choque, nombrados por lo que se ve y en orden estable.
+
+    Dos muebles que hoy se dibujan IGUAL —un choque que ya venía— se describen
+    con la misma frase, y repetirla palabra por palabra se lee como un error de
+    la aplicación. Se dice una vez: la cuenta ya va en el encabezado del mensaje.
+    """
+    sueltos = (como.get(i) or "otro mueble de la sede, sin identidad en el plano"
+               for i in ids)
+    return _y(list(dict.fromkeys(sorted(sueltos))))
+
+
+def choques_nuevos(previas: list[dict], nuevas: list[dict]) -> list[str]:
+    """Los choques que este guardado CREA, en castellano. Vacío = se guarda.
+
+    Un choque preexistente —o uno que se guarda igual de mal que antes— no
+    aparece acá: es la regla que no se negocia, «el plano que ya está mal se
+    abre, se mira y se guarda».
+
+    Las frases salen listas para mostrar y **nombran a los muebles por su
+    nombre**, que es lo único que la persona ve. Ver ``_como_se_ven``.
+    """
+    antes = _cuenta_de_nombres(previas)
+    despues = _cuenta_de_nombres(nuevas)
+    por_nombre = [
+        (nombre, ids)
+        for nombre, ids in sorted(despues.items())
+        if len(ids) >= 2 and len(ids) > len(antes.get(nombre, []))
+    ]
+    ya_dicho = {nombre for nombre, _ in por_nombre}
+
+    antes_c = _cuenta_de_codigos(previas)
+    despues_c = _cuenta_de_codigos(nuevas)
+    por_codigo = [
+        (code, ids)
+        for code, ids in sorted(despues_c.items())
+        if code not in ya_dicho
+        and len(ids) >= 2
+        and len(ids) > len(antes_c.get(code, []))
+    ]
+
+    # Primero se decide si hay algo que decir y recién después se arma con qué
+    # nombrarlo: esto corre en CADA guardado, y el caso normal —no hay choque
+    # nuevo— no tiene por qué pagar un recorrido más de los muebles del plano.
+    if not por_nombre and not por_codigo:
+        return []
+    como = _como_se_ven(previas, nuevas)
+
+    return [
+        f"«{nombre}» quedaría como nombre de {len(ids)} muebles de la sede: "
+        f"{_nombrados(ids, como)}. Dos muebles con el mismo nombre no se "
+        "distinguen en el plano ni en un contrato."
+        for nombre, ids in por_nombre
+    ] + [
+        f"El código «{code}» quedaría en {len(ids)} muebles de la sede: "
+        f"{_nombrados(ids, como)}. Dos muebles con el mismo código son dos "
+        "espacios compartiendo contratos, archivos y correos de montaje."
+        for code, ids in por_codigo
+    ]

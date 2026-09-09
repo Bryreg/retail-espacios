@@ -103,6 +103,76 @@ class LayoutSnapshot(Base):
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
+class RenumeracionNombre(Base):
+    """Cómo se llamaba un mueble ANTES de una renumeración. Es historia, no un nombre.
+
+    Un mueble tiene **un** nombre y es su ``code``. Esta tabla no es un segundo
+    nombre y no puede llegar a serlo: **nada resuelve contra ella**. Ni la
+    planilla (``PlanoIndexado.resolver`` mira ``code``), ni el guardarraíl
+    (``choques_nuevos`` mira el nombre dibujado y el código), ni la búsqueda del
+    servidor. Lo único que hace es contestar una pregunta que el sistema, hasta
+    ahora, no podía contestar: *«¿cómo se llamaba este mueble cuando se negoció
+    el contrato que tengo en la mano?»*.
+
+    Hace falta porque la renumeración **cambia el nombre de un mueble sin que
+    nadie lo teclee**, y del otro lado quedan dos cosas que no se enteran: el
+    papel que firmó el proveedor y el cartel de la góndola. Sin este registro,
+    la lista «Contratos para revisar uno por uno» se vacía justo el día en que
+    se la necesita —el dueño acaba de renombrar cuarenta muebles y la tienda
+    todavía dice los nombres viejos—.
+
+    **Por qué una tabla y no un campo más en el JSON del mueble.** Tres razones,
+    y cualquiera alcanza:
+
+    · Un segundo campo de nombre adentro del mueble es exactamente la clase de
+      error que la fase 13 eliminó. Estando ahí, tarde o temprano algo lo lee
+      como nombre. Acá no puede pasar: para usarlo hay que ir a buscarlo a otra
+      tabla, y quien lo haga ve el nombre del módulo.
+    · **Sobrevive a la segunda renumeración.** Un campo se pisa: renumerar dos
+      veces dejaría al mueble recordando un nombre intermedio que nunca estuvo
+      en una pared, y el original —el que dice el papel— perdido para siempre.
+      Acá cada renumeración agrega una fila y la cadena entera queda legible.
+    · Es el rastro de auditoría que esta operación no tenía: quién se llamaba
+      cómo, en qué se convirtió y cuándo. La bitácora anota que se renumeró una
+      sede; esto anota qué le pasó a cada mueble.
+
+    ``create_all`` crea tablas que faltan pero nunca agrega una columna a una que
+    ya existe, así que una tabla nueva es de lo que sí se puede hacer sin
+    migración — la misma razón por la que ``archived_spaces`` es una tabla.
+
+    Las tres columnas de nombre dicen tres cosas distintas y las tres hacen
+    falta:
+
+    · ``nombre_anterior`` — lo que el plano **dibujaba** (la ``nomenclatura``
+      escrita a mano o, si no había, el código). Es lo que leyó quien negoció y
+      lo que sigue diciendo el cartel, así que es el que usa la reconciliación.
+    · ``codigo_anterior`` — el código completo que tenía (``NAVE-GON-05``), que
+      es lo que dicen ``spaces.code`` y una planilla vieja.
+    · ``codigo_nuevo`` — en qué se convirtió, para poder contestar «ese código lo
+      retiró la renumeración del <fecha>; ahora se llama así».
+
+    Borrar una sede **no** se lleva sus filas: son historia, igual que
+    ``archived_spaces.original_code`` y que la bitácora, y borrarlas no arregla
+    nada. Tampoco estorban: se busca por sede **y** por ``fixture_id``, y los
+    ``id`` de mueble llevan la hora de creación adentro, así que una sede
+    recreada con el mismo nombre no hereda el recuerdo de la anterior.
+    """
+    __tablename__ = "renumeracion_nombres"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sede = Column(String, nullable=False, index=True)
+    #: La identidad real del mueble a través de la renumeración: el nombre se
+    #: mueve, el ``id`` no. Es la llave con la que se reconstruye la cadena.
+    fixture_id = Column(String, nullable=False, index=True)
+    nombre_anterior = Column(String, nullable=False)
+    codigo_anterior = Column(String, nullable=False, default="")
+    codigo_nuevo = Column(String, nullable=False, default="")
+    aplicado_en = Column(
+        DateTime(timezone=True), nullable=False,
+        default=lambda: datetime.now(timezone.utc), index=True,
+    )
+
+
 class AppConfig(Base):
     """Key/value application configuration (passwords, notification settings).
 

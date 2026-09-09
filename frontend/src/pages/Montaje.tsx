@@ -82,7 +82,6 @@ export default function Montaje() {
       fixtureCode: espacio.fixture_code,
       sede: espacio.sede,
       label: espacio.label,
-      nomenclatura: espacio.nomenclatura ?? undefined,
       marca: espacio.marca,
       proveedor: espacio.proveedor,
       desde: espacio.desde ?? "",
@@ -224,7 +223,7 @@ function Marco({ espacio, children }: { espacio: EspacioMontaje; children: React
         </div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 3 }}>
           <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.02em" }}>
-            {nombreDeMueble({ code: espacio.corto, nomenclatura: espacio.nomenclatura })}
+            {nombreDeMueble({ code: espacio.corto })}
           </span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 3,
             fontSize: 12, color: "var(--ink-3)" }}>

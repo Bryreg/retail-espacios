@@ -461,7 +461,7 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                   exhibición, la misma tienda se recorre en 3D.
                 </p>
                 <div className="card__demo"><MiniMorfo /></div>
-                <p className="card__foot">Plano 2D · vista 3D · una nomenclatura para toda la cadena</p>
+                <p className="card__foot">Plano 2D · vista 3D · un solo nombre para toda la cadena</p>
               </div>
             </article>
 

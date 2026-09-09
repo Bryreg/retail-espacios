@@ -89,10 +89,10 @@ export function footprint2D(f: { w: number; d: number; rotY?: number }): { w: nu
 
 /** El código con el que el espacio existe FUERA del plano: `SEDE-CODIGO`.
  *
- *  Dentro del layout un mueble se llama por su nomenclatura corta (`PUN-01`),
- *  que se repite en las tres sedes. Lo que se guarda en `spaces`, lo que viaja
- *  en el enlace de los correos y lo que se reporta como montado es siempre el
- *  código con sede, porque es el único único.
+ *  Dentro del layout un mueble se llama por su nombre corto (`PUN-01`), que se
+ *  repite en las tres sedes. Lo que se guarda en `spaces`, lo que viaja en el
+ *  enlace de los correos y lo que se reporta como montado es siempre el código
+ *  con sede, porque es el único único.
  *
  *  Convención de guardado de contratos (AssignmentPanel de FloorPlan2D):
  *  `` `${item.sede || sede}-${item.code}` ``, con `-B` para la cara B. Los
@@ -381,18 +381,42 @@ export interface UnifiedFixture {
    *  free zones — anything that is part of the store but never sold as space. */
   rentable?: boolean;
 
-  /** El nombre que alguien le puso al mueble, y que REEMPLAZA al código del
-   *  sistema en todas partes: el plano, el 3D, el montaje y la lámina. Vacío
-   *  significa «se llama como lo llamó el sistema», no «no tiene nombre».
+  /** EL NOMBRE VIEJO. Ya no es un nombre: es un recuerdo, y es de sólo lectura.
    *
-   *  El código sigue siendo la llave del espacio y no cambia por esto.
+   *  Durante meses un mueble tuvo dos nombres —el `code`, que es la llave, y
+   *  esta `nomenclatura`, texto libre que lo reemplazaba **en la pantalla**— y
+   *  nada obligaba a que coincidieran. De ahí salió que un contrato terminara
+   *  en el mueble equivocado: quien leía el plano escribía el nombre dibujado y
+   *  el sistema resolvía por el código. Ahora hay uno solo y es el `code`:
+   *  renombrar un mueble edita su nombre, que es su código.
    *
-   *  Acá decía que era un rótulo suelto que se dibuja AFUERA de la caja en el
-   *  plano 2D. Eso describía una versión anterior, y mientras el comentario
-   *  decía eso el plano dibujaba el nombre afuera y el código adentro: dos
-   *  nombres para el mismo mueble. Ver `nombreDeMueble` y `rotulosDelPlano`
-   *  en `utils/nomenclatura.ts`, que son la regla y están probadas. */
+   *  El campo sigue viajando en el JSON del layout —el servidor lo guarda— y
+   *  sirve para exactamente dos cosas: que buscar por lo que dice la cartelería
+   *  vieja de la tienda siga encontrando el mueble, y que la reconciliación
+   *  pueda listar los contratos que se negociaron mirando ese texto. Nadie lo
+   *  escribe desde la pantalla y nada lo dibuja. Ver `nombreDeMueble`,
+   *  `nombreAnterior` y `renombrar` en `utils/nomenclatura.ts`, que son la
+   *  regla y están probadas. */
   nomenclatura?: string;
+
+  /** Cómo se llamaba este mueble ANTES DE LA PRIMERA renumeración.
+   *
+   *  Es la punta más vieja de la cadena, no la penúltima: la pregunta real es
+   *  «qué dice el papel que tengo en la mano», y un nombre intermedio de una
+   *  segunda corrida nunca estuvo escrito en una pared. La cadena completa vive
+   *  en el servidor para quien la quiera entera.
+   *
+   *  Lo escribe el servidor al renumerar, que es cuando el nombre de un mueble
+   *  cambia sin que nadie lo haya tecleado: sin este dato, el papel que firmó el
+   *  proveedor y el cartel de la góndola quedan nombrando algo que ya no existe
+   *  y no hay con qué reconciliarlos. Es de sólo lectura y nada lo dibuja — el
+   *  mueble se llama por su `code` y por nada más. Se arrastra tal cual en los
+   *  dos editores para no perderlo al abrir el plano.
+   *
+   *  Reemplaza a `nomenclatura` en este papel: aquélla el servidor la sigue
+   *  leyendo como nombre dibujado, así que no puede sobrevivir a la
+   *  renumeración. Ver `nombreAnterior` en `utils/nomenclatura.ts`. */
+  nombreAnterior?: string;
 
   /** Physical assembly of face A — see FaceData.mountedAt. */
   mountedAt?: string;

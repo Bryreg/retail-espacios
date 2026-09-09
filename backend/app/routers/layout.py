@@ -9,6 +9,14 @@ from app.database import get_db
 from app.models.models import LayoutSnapshot
 from app.services.bitacora import anotar
 from app.services.sede_archive import archive_sede_spaces, count_commercial_rows
+from app.services.layout_lookup import choques_nuevos, normalizar
+from app.services.renumeracion import (
+    InvarianteRoto,
+    RenumeracionBloqueada,
+    aplicar as aplicar_renumeracion,
+    nombres_anteriores,
+    planificar,
+)
 from app.schemas.layout import (
     LayoutIn,
     LayoutOut,
@@ -17,6 +25,9 @@ from app.schemas.layout import (
     LayoutSettingsOut,
     ReferenceRatesIn,
     ReferenceRatesOut,
+    RenumeracionIn,
+    RenumeracionOut,
+    RenumeracionSedeOut,
     SeasonWindow,
     SeasonWindowsIn,
     SeasonWindowsOut,
@@ -150,6 +161,59 @@ def _restore_missing_prices(incoming: list, stored: list) -> None:
                 slot["negotiatedValue"] = value
 
 
+# ─── El nombre viejo: se lee del registro, no del mueble ──────────────────────
+#
+# Después de renumerar, la pantalla necesita poder contestar «¿de qué mueble era
+# este contrato?»: la cartelería de la tienda y el papel que firmó el proveedor
+# siguen diciendo el nombre viejo. Ese dato existe —lo escribe la renumeración
+# en ``renumeracion_nombres``— y viaja hasta el navegador como ``nombreAnterior``.
+#
+# Va DERIVADO en la respuesta y no guardado en el mueble, y es toda la
+# diferencia: el JSON del plano sigue teniendo **un solo nombre**, así que no
+# hay un segundo campo que alguien pueda leer como identidad ni que la próxima
+# renumeración pueda pisar. El servidor lo agrega al leer (``_con_nombre_viejo``)
+# y lo saca al escribir (``_sin_nombre_viejo``), que es lo que lo mantiene de
+# sólo lectura aunque el editor lo mande de vuelta.
+
+
+def _con_nombre_viejo(db: Session, outs: list[LayoutOut]) -> None:
+    """Agrega ``nombreAnterior`` a cada mueble que se llamaba distinto.
+
+    Sólo cuando difiere del nombre de hoy: un mueble que salió de la
+    renumeración llamándose como entró no tiene nada que recordar, y la clave de
+    más sería ruido en cada plano que baja.
+    """
+    if not outs:
+        return
+    memoria = nombres_anteriores(db, [o.sede for o in outs])
+    if not memoria:
+        return
+    for out in outs:
+        por_id = memoria.get(out.sede) or {}
+        if not por_id:
+            continue
+        for fixture in out.fixtures:
+            if not isinstance(fixture, dict):
+                continue
+            viejo = por_id.get(str(fixture.get("id") or ""))
+            if viejo and viejo != normalizar(fixture.get("code")):
+                fixture["nombreAnterior"] = viejo
+
+
+def _sin_nombre_viejo(fixtures: list) -> None:
+    """Saca ``nombreAnterior`` de lo que llega a guardarse.
+
+    El editor lo arrastra tal cual —hace bien: no es suyo— y lo devuelve en el
+    siguiente guardado. Si se guardara, el mueble volvería a tener dos campos de
+    nombre adentro del JSON, que es exactamente lo que esta fase eliminó, y
+    además quedaría una copia que la próxima renumeración no actualiza. El
+    registro manda; esto es una proyección de lectura.
+    """
+    for fixture in fixtures:
+        if isinstance(fixture, dict):
+            fixture.pop("nombreAnterior", None)
+
+
 def _no_store(response: Response) -> None:
     """Layout reads drive cross-workstation sync — they must never be cached."""
     response.headers["Cache-Control"] = "no-store, max-age=0"
@@ -165,6 +229,7 @@ def get_all_layouts(response: Response, role: str = Depends(require_auth), db: S
     """Return the saved fixture layout for every sede."""
     _no_store(response)
     outs = [_to_out(s) for s in db.query(LayoutSnapshot).all()]
+    _con_nombre_viejo(db, outs)
     if role != "admin":
         for out in outs:
             _redact_fixtures_for_worker(out.fixtures)
@@ -397,12 +462,122 @@ def save_reference_rates(payload: ReferenceRatesIn, db: Session = Depends(get_db
     return ReferenceRatesOut(default=default, by_sede=by_sede, updated_at=now)
 
 
+# ─── Renumerar: el código pasa a ser EL nombre ────────────────────────────────
+# Rutas literales, declaradas ANTES de "/{sede}" como manda la regla de este
+# router. Dos pasos, como la carga masiva: "previo" no escribe una sola fila y
+# "aplicar" escribe todo dentro de una transacción.
+
+
+def _a_salida(planes, aplicado: bool) -> RenumeracionOut:
+    return RenumeracionOut(
+        aplicado=aplicado,
+        sedes=[RenumeracionSedeOut.model_validate(p) for p in planes],
+        muebles=sum(p.muebles for p in planes),
+        cambian=sum(p.cambian for p in planes),
+    )
+
+
+def _planificar(db: Session, payload: RenumeracionIn):
+    try:
+        return planificar(db, payload.sedes)
+    except RenumeracionBloqueada as e:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "renumeracion_bloqueada",
+                "message": f"No se puede renumerar «{e.sede}» sin romper algo.",
+                "motivos": e.motivos,
+            },
+        )
+    except InvarianteRoto as e:
+        # Nunca debería pasar: significa que el cálculo perdió, agregó o movió un
+        # mueble. Se corta acá, con la sesión intacta y sin haber escrito nada,
+        # porque la promesa al dueño fue justamente ésa.
+        logger.error("renumeración: invariante roto en %s — %s", e.sede, e.fallas)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "renumeracion_invariante",
+                "message": (
+                    f"La renumeración de «{e.sede}» no conserva el plano; no se "
+                    "escribió nada."
+                ),
+                "fallas": e.fallas,
+            },
+        )
+
+
+@router.post("/renumeracion/previo", response_model=RenumeracionOut,
+             dependencies=[Depends(require_admin)])
+def renumeracion_previo(
+    payload: RenumeracionIn, db: Session = Depends(get_db)
+) -> RenumeracionOut:
+    """El antes → después de cada sede, sin escribir NADA.
+
+    Es el informe que el dueño imprime y camina con la tienda al lado: cada
+    mueble con el nombre que tenía, el que el plano dibujaba y el que va a
+    tener. Renumerar sin ese papel le deja el plano y la cartelería hablando
+    idiomas distintos.
+    """
+    return _a_salida(_planificar(db, payload), aplicado=False)
+
+
+@router.post("/renumeracion/aplicar", response_model=RenumeracionOut,
+             dependencies=[Depends(require_admin)])
+def renumeracion_aplicar(
+    payload: RenumeracionIn,
+    request: Request,
+    rol: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> RenumeracionOut:
+    """Escribe la renumeración: el plano, los espacios y los montajes, de una vez.
+
+    Todo en UNA transacción, con la bitácora adentro: o cae todo o no cae nada.
+    Y es idempotente — una segunda corrida vuelve a calcular lo mismo, no
+    encuentra nada que cambiar y no escribe.
+    """
+    planes = _planificar(db, payload)
+    try:
+        aplicar_renumeracion(db, planes)
+    except InvarianteRoto as e:
+        db.rollback()
+        logger.error("renumeración: invariante roto al aplicar %s — %s", e.sede, e.fallas)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "renumeracion_invariante",
+                "message": (
+                    f"La renumeración de «{e.sede}» no conserva el plano; no se "
+                    "escribió nada."
+                ),
+                "fallas": e.fallas,
+            },
+        )
+    except Exception:
+        db.rollback()
+        raise
+
+    for plan in planes:
+        if plan.cambian == 0:
+            continue
+        anotar(
+            db, request, rol, "sede.renumerar", entidad="sede", entidad_id=plan.sede,
+            detalle=(
+                f"{plan.cambian} de {plan.muebles} muebles renombrados · "
+                f"{len(plan.espacios)} espacios · {plan.montajes} montajes"
+            ),
+        )
+    db.commit()
+    return _a_salida(planes, aplicado=True)
+
+
 @router.get("/{sede}", response_model=LayoutOut)
 def get_layout(sede: str, response: Response, role: str = Depends(require_auth), db: Session = Depends(get_db)):
     """Return the fixture layout for a single sede (empty list if none saved yet)."""
     _no_store(response)
     snap = db.query(LayoutSnapshot).filter(LayoutSnapshot.sede == sede).first()
     out = _to_out(snap) if snap else LayoutOut(sede=sede, fixtures=[])
+    _con_nombre_viejo(db, [out])
     if role != "admin":
         _redact_fixtures_for_worker(out.fixtures)
     return out
@@ -453,11 +628,58 @@ def save_layout(sede: str, payload: LayoutIn, db: Session = Depends(get_db)):
             )
 
     fixtures = payload.fixtures
+    # El nombre viejo es del servidor: viaja en la respuesta y no se guarda.
+    _sin_nombre_viejo(fixtures)
     if snap:
         try:
             previous = json.loads(snap.fixtures_json or "[]")
         except (ValueError, TypeError):
             previous = []
+
+        # ── El guardarraíl que faltaba (fase 12, F7) ──────────────────────────
+        #
+        # Un mueble tiene UN nombre y es su código, así que la regla es «no dos
+        # muebles con el mismo nombre en la sede». Pero aplicada a secas dejaría
+        # sin poder guardarse a un plano que YA está mal —CIUDAD JARDIN tiene
+        # seis nombres que pisan el código de otro— y eso rompería la regla que
+        # no se negocia: el plano roto se abre, se mira, se mueve y se guarda.
+        #
+        # Entonces se rechaza sólo lo que este guardado CREA, comparando contra
+        # el snapshot anterior. Un intercambio de nombres entre dos muebles, o
+        # una cadena de renombres, no sube la cuenta de ningún nombre y pasa.
+        #
+        # Un plano que entra por primera vez (``snap`` es None) no se compara con
+        # nada y entra: es como llega un plano existente —el arranque, la
+        # sincronización desde otro equipo, una restauración— y trabarlo ahí
+        # sería hacerlo inimportable, no más seguro.
+        choques = choques_nuevos(
+            [f for f in previous if isinstance(f, dict)],
+            [f for f in fixtures if isinstance(f, dict)],
+        )
+        if choques:
+            # Los ``id`` internos no van en el mensaje: no aparecen en ninguna
+            # pantalla y nombrar con ellos es tan útil como no nombrar. Y no
+            # hay que consolarse pensando que quedan en el registro — acá se
+            # escriben las mismas frases, sin ids, y este proyecto no configura
+            # logging, así que bajo uvicorn esta línea puede no salir a ningún
+            # lado. El mensaje del 409 es lo que la persona ve y tiene que
+            # bastarse solo: por eso nombra a los muebles por su nombre.
+            logger.info(
+                "layout %s: guardado rechazado por nombres repetidos — %s",
+                sede, " · ".join(choques),
+            )
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "nombres_repetidos",
+                    "message": (
+                        f"Este guardado dejaría nombres repetidos en «{sede}» que "
+                        "antes no estaban."
+                    ),
+                    "choques": choques,
+                },
+            )
+
         _restore_missing_prices(fixtures, previous)
         snap.fixtures_json = json.dumps(fixtures)
         # fixtures_json is unchanged when a client re-saves identical data, and
@@ -468,7 +690,13 @@ def save_layout(sede: str, payload: LayoutIn, db: Session = Depends(get_db)):
         db.add(snap)
     db.commit()
     db.refresh(snap)
-    return _to_out(snap)
+    out = _to_out(snap)
+    # La respuesta del guardado tiene la misma forma que la de una lectura: el
+    # recuerdo vuelve puesto aunque el guardado lo haya sacado. Así ningún
+    # cliente que se quede con lo que le contesta el PUT pierde el nombre viejo
+    # hasta la próxima bajada completa.
+    _con_nombre_viejo(db, [out])
+    return out
 
 
 @router.get("/{sede}/impact", dependencies=[Depends(require_admin)])

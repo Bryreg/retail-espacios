@@ -62,7 +62,7 @@ import { inclusiveDays, parseISODate, toISODate, upcomingSeasons } from "../type
    código vivo hasta que alguien pierde media hora averiguando que no lo es.
    Quedan en la historia de `claude/retail-espacios-continue-jdn085`, que es
    donde hay que ir a buscarlas si el parte vuelve. */
-import { nombreDeMueble, nombresChocados, choqueDeRotulo } from "../utils/nomenclatura";
+import { nombreDeMueble, nombreAnterior, nombresChocados, choqueDeRotulo } from "../utils/nomenclatura";
 import type { SemillaContrato } from "../components/Contrato/Contrato";
 import { fechaEnCurso } from "../utils/propuesta";
 
@@ -316,7 +316,14 @@ function faceMatchesQuery(entry: FaceEntry, q: string): boolean {
     entry.brandCategory,
     entry.supplierName,
     entry.fixture.label,
-    entry.fixture.nomenclatura ?? "",
+    // El nombre VIEJO del mueble. Ya no se dibuja en ningún lado, pero la
+    // cartelería de la góndola y el papel del proveedor pueden seguir
+    // diciéndolo: buscar por él tiene que llevar igual al mueble. Sale de
+    // `nombreAnterior`, que es lo que sobrevive a la renumeración; leer
+    // `nomenclatura` a secas no servía, porque renumerar la borra y el
+    // buscador se quedaba sin el único dato que reconcilia el cartel viejo
+    // con el mueble de hoy.
+    nombreAnterior(entry.fixture) ?? "",
     entry.code,
   ].some((s) => s && normalizeText(s).includes(q));
 }
@@ -897,8 +904,10 @@ function IsoMap({
       // El rótulo repetido es el que dejó vender dos veces el mismo cartel:
       // dos cajas «IMP-08 · libre 16 sep», dos proveedores, el mismo periodo.
       // Los dos muebles existen y los dos se pueden contratar; lo que faltaba
-      // era que el plano dijera que son dos. La regla —cuándo hay choque y qué
-      // se dice— vive en `nomenclatura.ts` y se prueba sin navegador.
+      // era que el plano dijera que son dos. Con un solo nombre esto ya no se
+      // puede crear —la regla lo impide en los tres caminos de renombre— pero
+      // un plano guardado antes puede traerlo, y entonces se sigue viendo. La
+      // regla vive en `nomenclatura.ts` y se prueba sin navegador.
       const choque = choqueDeRotulo(p.f, chocados);
       p.topHalves.forEach((mitad, i) => {
         const entry = p.faces[i];
@@ -917,7 +926,11 @@ function IsoMap({
           clave: `${p.f.id}-${entry.face}`,
           cod: p.double ? `${nombre}·${entry.face}` : nombre,
           fecha: desde ? `libre ${desde.getDate()} ${MONTHS_ES[desde.getMonth()]}` : "",
-          choque: choque ? `${choque.marca} · ${p.f.code}` : "",
+          // Sólo la cuenta. Antes acompañaba el código del mueble, que era lo
+          // único que distinguía a los dos gemelos; ahora los dos se llaman
+          // igual de verdad y el código no distingue nada: lo que hay que hacer
+          // es renombrar uno, y eso lo dice la revisión del plano.
+          choque: choque ? choque.marca : "",
           ax, ay,
           peso: choque ? 0 : dispo === "parcial" ? 1 : dispo === "libre" ? 2 : 3,
         });
@@ -3148,7 +3161,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
 
   /** El último reporte de una cara, buscado por su código COMPLETO.
    *
-   *  `FaceEntry.code` es la nomenclatura corta, que se repite entre sedes; los
+   *  `FaceEntry.code` es el nombre corto, que se repite entre sedes; los
    *  reportes se guardan con la sede adentro. Buscar por el corto mezclaría
    *  tiendas — es el mismo error que ya costó un arreglo en la pantalla del
    *  mercaderista. */

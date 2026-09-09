@@ -39,6 +39,7 @@ from app.routers.layout import reference_rates_raw
 from app.services.layout_lookup import (
     Ambiguedad, Colision, PlanoIndexado, sin_prefijo_de_sede,
 )
+from app.services.renumeracion import Rastreador
 from app.schemas.spaces import AvisosContrato
 from app.services.contacts import recipients_for
 from app.services.mailer import (
@@ -258,6 +259,9 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
     #: Los muebles de todas las sedes, leídos una sola vez: cada fila pregunta
     #: tres cosas al plano y una planilla trae hasta trescientas.
     plano = PlanoIndexado(db)
+    #: El registro de renumeraciones, también leído una sola vez: cada fila que
+    #: no resuelve le pregunta lo mismo. No lee nada hasta que alguna pregunte.
+    rastreador = Rastreador(db)
     proveedores = {
         (s.name or "").strip().lower(): s
         for s in db.query(Supplier).all()
@@ -316,6 +320,13 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
             elif resuelto is None:
                 corto = sin_prefijo_de_sede(tecleado, sede)
                 otras = [s for s in plano.sedes_con_codigo(corto) if s != sede]
+                # El servidor sabe en qué se convirtió un nombre que él mismo
+                # retiró al renumerar, y hasta ahora se lo callaba. Después de
+                # renumerar, TODA planilla vieja de la casa cae en este renglón:
+                # sin esta línea el mensaje es cierto y deja a la persona sin
+                # ninguna pista de por qué. No resuelve la fila —adivinar el
+                # mueble es el error que esta fase eliminó—, la explica.
+                pista = rastreador.pista(sede, tecleado)
                 if otras:
                     # Un tipeo en la columna Sede mandaba el contrato a otro
                     # supermercado sin un aviso. Decir dónde sí está es la
@@ -328,6 +339,8 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
                     errores.append(
                         f"No hay ningún mueble con el código «{codigo}» en el plano de {sede}."
                     )
+                if pista:
+                    errores.append(pista)
             else:
                 fixture = resuelto.fixture
                 # El código completo lo arma la sede DEL FIXTURE, nunca el texto

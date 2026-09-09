@@ -29,6 +29,7 @@ const PoliticaDatos = lazy(() => import("./pages/PoliticaDatos"));
 const Plataforma = lazy(() => import("./pages/Plataforma"));
 const ReportePlataforma = lazy(() => import("./pages/ReportePlataforma"));
 const DetalleCliente = lazy(() => import("./pages/DetalleCliente"));
+const Renumerar = lazy(() => import("./pages/Renumerar"));
 
 /** Mientras baja el chunk de la pantalla: fondo de la app y nada más, para no
  *  meter un parpadeo de texto en una espera que suele durar milisegundos. */
@@ -229,6 +230,16 @@ export default function App() {
             familia de rutas que "/plataforma" y "/plataforma/reporte/:slug",
             antes del "*" catch-all. */}
         <Route path="/plataforma/clientes/:slug" element={<DetalleCliente />} />
+        {/* Fase 13 (un solo nombre): renumerar el plano. Es la higiene del
+            plano —se entra desde el botón «Renumerar» de la barra del plano 2D,
+            al lado de «Revisar»— pero vive como ruta propia y no como panel
+            porque la mitad de su valor está en el PAPEL: el dueño lo imprime y
+            camina la tienda tachando contra la cartelería, y un panel fijo
+            adentro de la rejilla del plano se imprime en una sola hoja,
+            cortado. Una página entera pagina en A4 y repite la cabecera de la
+            tabla. Es de administrador (la pantalla lo dice y el backend lo
+            exige con 403); el guard de sesión de arriba ya la cubre. */}
+        <Route path="/renumerar" element={<Renumerar />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
