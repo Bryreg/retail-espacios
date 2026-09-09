@@ -219,7 +219,9 @@ export function useContrato({
         doble: isDoubleGondola(fixture),
         /** `GON-60·A`, que es como se lee. El de la base sigue siendo `corto`. */
         visible: isDoubleGondola(fixture) ? `${fixture.code}·${face}` : corto,
-        nombre: nombreDeMueble({ code: corto, nomenclatura: fixture.nomenclatura }),
+        // Un mueble tiene UN nombre y es su código: lo que se lee acá es lo
+        // mismo que dibuja el plano, sin resolver nada.
+        nombre: nombreDeMueble({ code: corto }),
         ubicacion: describirUbicacion(fixtures, fixture.code),
         valor: texto,
         monto,

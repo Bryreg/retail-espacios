@@ -173,6 +173,23 @@ export const DEFAULT_SEDES = ["SEDE 1"];
 
 export type SyncState = "idle" | "pulling" | "pushing" | "error" | "conflict";
 
+/**
+ * Un guardado que el servidor RECHAZÓ por su propia regla.
+ *
+ * `error` de `SyncState` significa «no se pudo hablar con el servidor», y así
+ * lo dibuja la pantalla: «Sin conexión», nube tachada. Esto es lo contrario —
+ * hubo conexión, el servidor contestó, no escribió nada y explicó por qué—, y
+ * mostrarlo como una caída de red le miente al usuario justo cuando el sistema
+ * tenía algo útil que decirle. Por eso viaja aparte y entero: `message` es la
+ * frase del servidor y `choques` son sus frases, ya escritas para leerse.
+ */
+export interface RechazoDelServidor {
+  /** El `detail.code` del 409, tal cual. Hoy sólo `nombres_repetidos`. */
+  code: string;
+  message: string;
+  choques: string[];
+}
+
 interface FixtureStore {
   /** Fixtures stored per-sede — each sede has its own independent floor plan. */
   fixturesBySede: Record<string, UnifiedFixture[]>;
@@ -210,6 +227,12 @@ interface FixtureStore {
   dirty: Record<string, boolean>;
   /** Sedes another workstation modified while we held unsaved edits. */
   conflicts: Record<string, string>;
+  /** Sedes cuyo último guardado el SERVIDOR RECHAZÓ por su propia regla —hoy,
+   *  nombres repetidos—, con lo que el servidor contestó. No es un conflicto
+   *  entre dos equipos ni una caída de red: el servidor contestó, no escribió
+   *  nada, y dijo qué está mal. Se guarda aparte de `syncMessage` porque hay
+   *  que poder mostrarlo entero y por sede, no en un tooltip. */
+  rechazos: Record<string, RechazoDelServidor>;
   syncState: SyncState;
   syncMessage: string | null;
   lastSyncedAt: number | null;
@@ -330,6 +353,7 @@ export const useFixtureStore = create<FixtureStore>()(
       settingsRev: null,
       dirty: {},
       conflicts: {},
+      rechazos: {},
       syncState: "idle",
       syncMessage: null,
       lastSyncedAt: null,
@@ -367,6 +391,7 @@ export const useFixtureStore = create<FixtureStore>()(
           settingsRev: null,
           dirty: {},
           conflicts: {},
+          rechazos: {},
           past: [],
           future: [],
           syncState: "idle",
@@ -494,11 +519,14 @@ export const useFixtureStore = create<FixtureStore>()(
           // pushSede(force) on a sede whose fixtures are gone — writing an
           // empty layout that resurrects the row we just deleted.
           const conflicts = { ...state.conflicts };
+          // Lo mismo con el rechazo del servidor: es de una sede que ya no existe.
+          const rechazos = { ...state.rechazos };
           for (const key of keys) {
             delete fixturesBySede[key];
             delete dirty[key];
             delete serverRev[key];
             delete conflicts[key];
+            delete rechazos[key];
           }
           const remaining = state.sedes.filter((s) => !keys.has(s));
           const sedes = remaining.length > 0 ? remaining : [DEFAULT_SEDES[0]];
@@ -512,6 +540,7 @@ export const useFixtureStore = create<FixtureStore>()(
             serverRev,
             dirty,
             conflicts,
+            rechazos,
             sede,
             past: [],
             future: [],
@@ -697,13 +726,18 @@ export const useFixtureStore = create<FixtureStore>()(
           set((s) => {
             const dirty = { ...s.dirty };
             const conflicts = { ...s.conflicts };
+            const rechazos = { ...s.rechazos };
             delete conflicts[sede];
+            // El servidor aceptó: si esta sede venía rechazada, el nombre ya se
+            // corrigió y el aviso deja de tener sentido.
+            delete rechazos[sede];
             // Another edit landed while the request was in flight — stay dirty
             // so the follow-up save still happens.
             if (s.fixturesBySede[sede] === fixtures) delete dirty[sede];
             return {
               dirty,
               conflicts,
+              rechazos,
               serverRev: { ...s.serverRev, [sede]: saved.updated_at ?? "" },
               syncState: Object.keys(conflicts).length ? "conflict" : "idle",
               syncMessage: null,
@@ -724,22 +758,54 @@ export const useFixtureStore = create<FixtureStore>()(
                 const dirty = { ...s.dirty };
                 const serverRev = { ...s.serverRev };
                 const conflicts = { ...s.conflicts };
+                const rechazos = { ...s.rechazos };
                 delete fixturesBySede[sede];
                 delete dirty[sede];
                 delete serverRev[sede];
                 delete conflicts[sede];
+                delete rechazos[sede];
                 const sedes = s.sedes.filter((x) => x !== sede);
                 return {
                   fixturesBySede,
                   dirty,
                   serverRev,
                   conflicts,
+                  rechazos,
                   sedes: sedes.length > 0 ? sedes : s.sedes,
                   sede: s.sede === sede ? (sedes[0] ?? s.sede) : s.sede,
                   syncState: Object.keys(conflicts).length ? "conflict" : "idle",
                   syncMessage: `«${sede}» fue eliminada desde otro equipo.`,
                 };
               });
+              return;
+            }
+            // El guardarraíl de nombres del servidor: este guardado dejaría dos
+            // muebles llamados igual en la sede. NO es un conflicto entre dos
+            // equipos —ofrecer «Conservar la mía» sería un lazo, porque forzar
+            // vuelve a pasar por la misma comprobación y vuelve a fallar—: es un
+            // nombre que hay que corregir en el plano. Se dice cuál, con las
+            // frases que manda el servidor, y el guardado queda pendiente: en
+            // cuanto el nombre se arregle, el reintento entra.
+            if (typeof detail === "object" && detail?.code === "nombres_repetidos") {
+              const choques: string[] = (Array.isArray(detail?.choques) ? detail.choques : [])
+                .map((x: unknown) => String(x))
+                .filter(Boolean);
+              const message = String(
+                detail?.message ??
+                  `El servidor no guardó «${sede}»: quedarían dos muebles llamados igual.`,
+              );
+              set((s) => ({
+                rechazos: {
+                  ...s.rechazos,
+                  [sede]: { code: "nombres_repetidos", message, choques },
+                },
+                // `error` es «no se pudo hablar con el servidor» y se dibuja
+                // «Sin conexión»: acá hubo conexión y hubo respuesta, así que el
+                // estado no puede ser ése. El rechazo se muestra desde
+                // `rechazos`, que sobrevive a los pulls que vengan después.
+                syncState: Object.keys(s.conflicts).length ? "conflict" : "idle",
+                syncMessage: [message, ...choques].join(" "),
+              }));
               return;
             }
             const message =
@@ -1184,6 +1250,7 @@ export const useFixtureStore = create<FixtureStore>()(
           dirty: p.dirty ?? {},
           dataRole: p.dataRole ?? null,
           conflicts: {},
+          rechazos: {},
           syncState: "idle",
           syncMessage: null,
           lastSyncedAt: null,

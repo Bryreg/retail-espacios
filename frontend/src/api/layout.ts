@@ -1,6 +1,7 @@
 import client from "./client";
 import type { ReferenceRates, UnifiedFixture } from "../types/fixtures";
 import type { SeasonWindows } from "../types/seasons";
+import type { Renumeracion } from "../utils/renumeracion";
 
 export interface LayoutEntry {
   sede: string;
@@ -95,3 +96,64 @@ export interface DeleteImpact {
 /** What deleting a sede would close on the commercial side. Admin only. */
 export const fetchDeleteImpact = (sede: string): Promise<DeleteImpact> =>
   client.get(`/layout/${encodeURIComponent(sede)}/impact`).then((r) => r.data);
+
+// ─── Renumerar: el código pasa a ser EL nombre ───────────────────────────────
+//
+// DOS PASOS, y son dos endpoints distintos a propósito — la misma forma que la
+// carga masiva y por la misma razón: `previo` no escribe una sola fila y
+// devuelve el antes → después completo; `aplicar` escribe todo dentro de una
+// transacción. Una renumeración a ciegas que sale mal no se deshace con un
+// botón, así que la pantalla nunca llama al segundo sin haber mostrado el
+// primero.
+//
+// `sedes` vacío o `null` significa TODAS, que es lo que el dueño eligió («en
+// todas las sedes, parejo»): se normaliza el plano completo aunque hoy no tenga
+// conflicto, para que la numeración quede con la misma lógica en todas.
+//
+// Los dos son de admin: una sesión worker recibe 403.
+
+const renumeracion = (paso: "previo" | "aplicar", sedes?: string[] | null): Promise<Renumeracion> =>
+  client
+    .post(`/layout/renumeracion/${paso}`, { sedes: sedes && sedes.length ? sedes : null })
+    .then((r) => r.data);
+
+/** El antes → después de cada sede, SIN escribir nada. */
+export const renumeracionPrevio = (sedes?: string[] | null): Promise<Renumeracion> =>
+  renumeracion("previo", sedes);
+
+/** Escribe la renumeración: el plano, los espacios y los montajes, de una vez.
+ *
+ *  Después de esto el plano del servidor cambió, así que quien la llame TIENE
+ *  que volver a sincronizar: el caché local todavía tiene los códigos viejos y
+ *  cualquier edición posterior los volvería a subir, deshaciendo lo que se
+ *  acaba de hacer. */
+export const renumeracionAplicar = (sedes?: string[] | null): Promise<Renumeracion> =>
+  renumeracion("aplicar", sedes);
+
+/** Lo que el servidor manda cuando se niega a renumerar (409). Son dos casos y
+ *  los dos son del PLANO, no del cálculo: un espacio comercial que ya ocupa el
+ *  nombre destino y no se mueve, o dos muebles con el mismo código y un espacio
+ *  colgando. En los dos casos NO se escribió nada. */
+export interface RenumeracionBloqueada {
+  code: "renumeracion_bloqueada" | "renumeracion_invariante";
+  message: string;
+  motivos?: string[];
+  fallas?: string[];
+}
+
+/** El detalle estructurado de un rechazo de renumeración, o `null` si el error
+ *  es otra cosa (red, sesión, 403…). `describeError` alcanza para el título;
+ *  esto es para poder listar los motivos uno por uno. */
+export function bloqueoDeRenumeracion(err: unknown): RenumeracionBloqueada | null {
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  if (!detail || typeof detail !== "object") return null;
+  const code = (detail as { code?: unknown }).code;
+  if (code !== "renumeracion_bloqueada" && code !== "renumeracion_invariante") return null;
+  const d = detail as RenumeracionBloqueada;
+  return {
+    code: d.code,
+    message: String(d.message ?? ""),
+    motivos: Array.isArray(d.motivos) ? d.motivos.map(String) : [],
+    fallas: Array.isArray(d.fallas) ? d.fallas.map(String) : [],
+  };
+}

@@ -9,11 +9,17 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { ClipboardCheck, Keyboard } from "lucide-react";
+import { ClipboardCheck, Keyboard, ListOrdered } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useFixtureStore, selectFixtures, selectHasPendingWork, normalizeSede, DEFAULT_SEDES } from "../../store/fixtureStore";
 import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types/fixtures";
 import { isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
-import { siguienteCodigo, nombreDeMueble, nombrePropio, choqueDeNombre, textoDelChoque, rotulosDelPlano, nombresChocados } from "../../utils/nomenclatura";
+import {
+  siguienteCodigo, nombreDeMueble, nombreAnterior, choqueDeNombre, textoDelChoque,
+  renombrar, intercambiarNombres, textoDelIntercambio, rotulosDelPlano, nombresChocados,
+  muebleConCodigo, normalizar as normalizarNombre,
+} from "../../utils/nomenclatura";
+import type { RechazoDeNombre } from "../../utils/nomenclatura";
 import { revisarPlano, contratosConNombreAjeno, type ContratoDelPlano } from "../../utils/revision";
 import { TOLERANCIA_CONTACTO } from "../../utils/planta";
 import { buscarHuecoGrupo } from "../../utils/acomodar";
@@ -74,8 +80,14 @@ interface PlacedItem2D {
   endDate: string;
   observation: string;
   sede: string;
-  /** Short label rendered OUTSIDE the shape as a pill above the rect. */
+  /** El nombre VIEJO del mueble. Ya no es un nombre y nada lo dibuja: se
+   *  arrastra tal cual para que buscar por lo que dice la cartelería siga
+   *  encontrando el mueble y para que la reconciliación tenga contra qué
+   *  comparar. Ver `nombreAnterior` en `utils/nomenclatura.ts`. */
   nomenclatura?: string;
+  /** Lo mismo, pero escrito por la renumeración del servidor: cómo se llamaba
+   *  este mueble antes de que le cambiaran el nombre. */
+  nombreAnterior?: string;
   /** Face B commercial data (gondola_doble only); face A = top-level fields. */
   faceB?: FaceData;
   /** False marks infrastructure that is never rented out. Undefined = rentable. */
@@ -212,7 +224,13 @@ function matchesQuery(item: PlacedItem2D, normalizedQuery: string): boolean {
   const fields = [
     item.code,
     item.label,
-    item.nomenclatura ?? "",
+    // El nombre VIEJO. Ya no se dibuja, pero el cartel de la góndola puede
+    // seguir diciéndolo: buscar por él tiene que llevar igual al mueble. Y
+    // tiene que seguir sirviendo DESPUÉS de renumerar, que es justo cuando la
+    // tienda y el plano dejan de decir lo mismo: ahí la `nomenclatura` ya no
+    // está —la renumeración la borra— y el recuerdo llega en `nombreAnterior`,
+    // que el servidor deriva de su registro de renumeraciones.
+    nombreAnterior(item) ?? "",
     item.supplierName,
     item.brandCategory,
     item.faceB?.supplierName ?? "",
@@ -315,6 +333,7 @@ function storeToItems(fixtures: UnifiedFixture[]): PlacedItem2D[] {
       observation: f.observation,
       sede: f.sede,
       nomenclatura: f.nomenclatura,
+      nombreAnterior: f.nombreAnterior,
       faceB: f.faceB,
       rentable: f.rentable,
     };
@@ -369,6 +388,7 @@ function itemsToStore(
       endDate: item.endDate,
       observation: item.observation,
       nomenclatura: item.nomenclatura,
+      nombreAnterior: item.nombreAnterior,
       faceB: item.faceB,
       rentable: item.rentable,
     };
@@ -530,11 +550,24 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   const [pendingType, setPendingType] = useState<FixType2D | null>(null);
   const [editingCodeId, setEditingCodeId] = useState<string | null>(null);
   const [editingCodeVal, setEditingCodeVal] = useState("");
-  /** Nombre tecleado a mano que ya es el de otro mueble. Tiñe el campo. */
-  /** Por qué no se pudo poner ese nombre, en palabras. Null es que sí se pudo. */
-  const [avisoDeNombre, setAvisoDeNombre] = useState<string | null>(null);
+  /** Por qué no se pudo poner ese nombre, y qué se puede hacer al respecto.
+   *
+   *  `intercambio` es la otra mitad del rechazo: cuando el nombre lo tiene otro
+   *  mueble, casi siempre lo que la persona quiere es que se llamen al revés
+   *  —renumerar una corrida es exactamente eso— y sin una acción que escriba
+   *  los dos nombres a la vez la regla correcta vuelve imposible el trabajo
+   *  normal. Null es que el nombre se pudo poner. */
+  const [avisoDeNombre, setAvisoDeNombre] = useState<
+    { texto: string; intercambio: { esteId: string; otroId: string; detalle: string } | null } | null
+  >(null);
   const [revisionAbierta, setRevisionAbierta] = useState(false);
   const [atajosAbiertos, setAtajosAbiertos] = useState(false);
+  /** Renumerar vive en su propia ruta (`/renumerar`) y se entra desde acá, que
+   *  es donde vive la higiene del plano: al lado de «Revisar», que lista lo que
+   *  está mal, va lo único que además lo arregla. La pantalla es una ruta y no
+   *  un panel porque se imprime y se camina la tienda con ella — ver el
+   *  encabezado de `pages/Renumerar.tsx`. */
+  const navigate = useNavigate();
   /** Mensaje corto de lo que acaba de pasar. El plano no tenía ninguno: un
    *  atajo que no hacía nada no se distinguía de uno que no existía. */
   const [aviso, setAviso] = useState<string | null>(null);
@@ -1277,24 +1310,48 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     setResizeState({ id, ox: pt.x - item.w, oy: pt.y - item.h, origW: item.w, origH: item.h });
   }
 
-  // ── Doble clic: renombrar el mueble ─────────────────────────────────────────
+  // ── Renombrar un mueble ─────────────────────────────────────────────────────
   //
-  //  Editaba el CÓDIGO, que es la llave del espacio: la que arma el código que
-  //  viaja al contrato, a los archivos del proveedor y a los correos de montaje.
-  //  Y el panel de al lado, en «Nomenclatura», editaba otra cosa. Dos maneras de
-  //  nombrar el mismo mueble, cada una escribiendo un campo distinto, era lo que
-  //  dejaba un mueble llamándose de dos formas a la vez.
+  //  Un mueble tiene UN nombre y es su código. Hubo una época en la que el doble
+  //  clic escribía el `code` y el campo «Nomenclatura» del panel escribía otro
+  //  campo, sin comprobar nada: dos maneras de nombrar el mismo mueble, cada una
+  //  escribiendo algo distinto y sólo una protegida. Por ahí se metió el error
+  //  que mandó un contrato al mueble equivocado.
   //
-  //  Ahora las dos escriben el NOMBRE, que es lo que se ve, y el código no se
-  //  toca desde el plano. Vaciar el campo devuelve el nombre del sistema, igual
-  //  que en el panel.
+  //  Ahora los tres caminos —doble clic, campo del panel, panel del editor 3D—
+  //  pasan por `renombrar` de `utils/nomenclatura.ts`, que comprueba y escribe
+  //  en la misma llamada. Acá sólo se decide qué se muestra.
+
+  /** El ÚNICO lugar del plano 2D que escribe un nombre. Lo llaman el doble clic
+   *  sobre la caja y el campo del panel lateral, que es lo que faltaba: antes el
+   *  panel escribía por su cuenta, sin comprobar nada. Devuelve el rechazo, o
+   *  null si se pudo, para que cada uno lo cuente donde le corresponde. */
+  function aplicarRenombre(id: string, nombre: string): RechazoDeNombre<PlacedItem2D> | null {
+    const r = renombrar(items, id, nombre);
+    if (r.ok) { setItems(r.muebles); setAvisoDeNombre(null); return null; }
+    return r.rechazo;
+  }
+
+  /** El intercambio: los dos nombres se escriben a la vez, nunca uno primero. */
+  function aplicarIntercambio(esteId: string, otroId: string) {
+    const otro = items.find((i) => i.id === otroId);
+    setItems(intercambiarNombres(items, esteId, otroId));
+    setAvisoDeNombre(null);
+    setEditingCodeId(null);
+    setEditingCodeVal("");
+    const este = items.find((i) => i.id === esteId);
+    if (este && otro) {
+      setAviso(`Intercambiados: ${normalizarNombre(otro.code)} ↔ ${normalizarNombre(este.code)}`);
+    }
+  }
 
   function handleItemDblClick(e: React.MouseEvent, id: string) {
     e.stopPropagation();
     const item = items.find((i) => i.id === id)!;
     setEditingCodeId(id);
-    // Se abre con lo que dice la caja, no con lo que hay guardado debajo: si
-    // mostrara otra cosa, el que hace doble clic ya no está editando lo que vio.
+    setAvisoDeNombre(null);
+    // Se abre con lo que dice la caja: el que hace doble clic está editando
+    // exactamente lo que vio.
     setEditingCodeVal(nombreDeMueble(item));
   }
 
@@ -1307,29 +1364,21 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
       setEditingCodeVal("");
       setAvisoDeNombre(null);
     };
-    // Vacío, o el nombre del sistema tal cual: se borra la nomenclatura y el
-    // mueble vuelve a llamarse como lo llamó el sistema.
-    if (!val || (item && val === item.code)) {
-      setItems((prev) =>
-        prev.map((i) => (i.id === editingCodeId ? { ...i, nomenclatura: "" } : i))
-      );
-      cerrar();
-      return;
-    }
-    // Dos muebles con el mismo nombre en el plano no se distinguen: se rechaza
-    // y se deja el campo abierto para corregirlo. Se mira el nombre que se VE
-    // —es lo que confunde a quien lo lee— y TAMBIÉN el código de los demás: un
-    // nombre que es el código de otro mueble manda el contrato a ese otro,
-    // aunque en el plano no se vea ninguna repetición.
-    const choque = choqueDeNombre(val, items, editingCodeId);
-    if (choque) {
-      setAvisoDeNombre(textoDelChoque(val, choque));
-      return;
-    }
-    setItems((prev) =>
-      prev.map((i) => (i.id === editingCodeId ? { ...i, nomenclatura: val } : i))
-    );
-    cerrar();
+    // El mismo nombre que ya tenía: no es un renombre, es cerrar el campo.
+    if (item && normalizarNombre(val) === normalizarNombre(item.code)) { cerrar(); return; }
+    // Dos muebles con el mismo nombre no se distinguen, y un contrato cargado
+    // con ese nombre no elige cuál: se rechaza, se dice quién lo tiene y se
+    // deja el campo abierto —con el intercambio a mano— para resolverlo.
+    const rechazo = aplicarRenombre(editingCodeId, val);
+    if (!rechazo) { cerrar(); return; }
+    setAvisoDeNombre({
+      texto: textoDelChoque(val, rechazo),
+      // El intercambio se ofrece sólo cuando hay con quién: un nombre vacío no
+      // se intercambia con nadie.
+      intercambio: rechazo.razon === "ocupado" && item
+        ? { esteId: item.id, otroId: rechazo.ocupa.id, detalle: textoDelIntercambio(item, rechazo.ocupa) }
+        : null,
+    });
   }
 
   // ── Panel update helper ──────────────────────────────────────────────────────
@@ -1972,7 +2021,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                                       ? "border-danger bg-danger-50 text-danger"
                                       : "border-accent bg-surface"
                                   }`}
-                                  title={avisoDeNombre ?? undefined}
+                                  title={avisoDeNombre?.texto ?? undefined}
                                   value={editingCodeVal}
                                   onChange={(e) => { setEditingCodeVal(e.target.value); setAvisoDeNombre(null); }}
                                   onBlur={commitCodeEdit}
@@ -2157,19 +2206,51 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
             </div>
           )}
 
-          {/* El nombre que se rechazó, y contra qué mueble choca. No se va solo:
-              el campo sigue abierto hasta que se corrija, y un aviso que se
-              desvanece en dos segundos no alcanza para decidir qué escribir. */}
+          {/* El nombre que se rechazó, quién lo tiene, y la salida.
+              No se va solo: el campo sigue abierto hasta que se corrija, y un
+              aviso que se desvanece en dos segundos no alcanza para decidir qué
+              escribir.
+
+              El botón es la mitad que faltaba. Renumerar una corrida a mano es
+              intercambiar nombres entre muebles que YA existen, así que con la
+              regla puesta y sin intercambio no habría forma de hacerlo: todos
+              los nombres del medio de la corrida están tomados. Debajo del botón
+              va, con todas las letras, qué va a pasar con los DOS muebles —uno
+              de ellos no está seleccionado y nadie lo está mirando. */}
           {avisoDeNombre && (
             <div style={{
               position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)",
-              zIndex: 21, pointerEvents: "none", maxWidth: "min(520px, calc(100% - 28px))",
-              padding: "8px 14px", borderRadius: "var(--r-lg)",
+              zIndex: 21, maxWidth: "min(520px, calc(100% - 28px))",
+              padding: "9px 14px", borderRadius: "var(--r-lg)",
               background: "var(--danger)", color: "var(--surface)",
               fontSize: 12, fontWeight: 600, lineHeight: 1.45, textAlign: "center",
               boxShadow: "0 4px 14px rgba(0,0,0,.18)",
+              pointerEvents: avisoDeNombre.intercambio ? "auto" : "none",
             }}>
-              {avisoDeNombre}
+              {avisoDeNombre.texto}
+              {avisoDeNombre.intercambio && (
+                <>
+                  <button
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => aplicarIntercambio(
+                      avisoDeNombre.intercambio!.esteId,
+                      avisoDeNombre.intercambio!.otroId,
+                    )}
+                    style={{
+                      display: "block", margin: "8px auto 0", padding: "5px 12px",
+                      borderRadius: "var(--r-sm)", cursor: "pointer",
+                      border: "1px solid var(--surface)", background: "var(--surface)",
+                      color: "var(--danger)", fontSize: 12, fontWeight: 700,
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    Intercambiar con ese mueble
+                  </button>
+                  <span style={{ display: "block", marginTop: 5, fontSize: 11, fontWeight: 500, opacity: 0.92 }}>
+                    {avisoDeNombre.intercambio.detalle}
+                  </span>
+                </>
+              )}
             </div>
           )}
 
@@ -2378,7 +2459,9 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
             items={items}
             sede={sede}
             corridas={corridas.length}
+            isAdmin={isAdmin}
             onIr={(ids) => { setSelectedIds(new Set(ids)); }}
+            onRenumerar={() => navigate("/renumerar")}
             onClose={() => setRevisionAbierta(false)}
           />
         ) : selectedItem ? (
@@ -2400,6 +2483,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               initialFace={panelFace}
               pasillo={pasilloDe.get(selectedItem.id)}
               onUpdate={updateSelected}
+              onRenombrar={aplicarRenombre}
+              onIntercambiar={aplicarIntercambio}
               onDelete={() => { deleteItem(selectedItem.id); }}
               onDuplicate={() => duplicateSelected(new Set([selectedItem.id]))}
               onClose={() => setSelectedIds(new Set())}
@@ -2596,9 +2681,29 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           <ClipboardCheck size={12} /> Revisar
         </button>
 
+        {/* Al lado de «Revisar», que es donde vive la higiene del plano: uno
+            lista lo que está mal, el otro lo arregla de raíz. Sólo admin —
+            renumerar mueve los contratos y los montajes con su mueble. */}
+        {isAdmin && (
+          <button
+            onClick={() => navigate("/renumerar")}
+            title="Renumerar el plano siguiendo el recorrido de la tienda, con el informe antes → después para llevar a la sede"
+            style={{
+              display: "flex", alignItems: "center", gap: 4,
+              padding: "2px 8px", borderRadius: "var(--r-md)",
+              border: "1px solid var(--line)", fontSize: 11.5, fontWeight: 500,
+              cursor: "pointer", fontFamily: "inherit",
+              background: "var(--surface-2)", color: "var(--ink-3)",
+              transition: "all .12s",
+            }}
+          >
+            <ListOrdered size={12} /> Renumerar
+          </button>
+        )}
+
         <button
           onClick={() => setShowLabels((v) => !v)}
-          title={showLabels ? "Ocultar etiquetas de nomenclatura" : "Mostrar etiquetas de nomenclatura"}
+          title={showLabels ? "Ocultar las etiquetas de nombre" : "Mostrar las etiquetas de nombre"}
           style={{
             display: "flex", alignItems: "center", gap: 4,
             padding: "2px 8px", borderRadius: "var(--r-md)",
@@ -2854,6 +2959,12 @@ function SyncButton() {
   const hasPending = useFixtureStore(selectHasPendingWork);
   const lastSyncedAt = useFixtureStore((s) => s.lastSyncedAt);
   const conflictCount = useFixtureStore((s) => Object.keys(s.conflicts).length);
+  // Un guardado que el servidor rechazó por su regla —hoy, nombres repetidos—.
+  // No es estar sin conexión: hubo respuesta y dice qué está mal. El detalle
+  // entero se lee en el panel del estado de sincronización, arriba; acá cabe
+  // la palabra y el motivo en el título.
+  const rechazos = useFixtureStore((s) => s.rechazos);
+  const rechazado = Object.values(rechazos)[0] ?? null;
   const isAdmin = useAuthStore(selectIsAdmin);
 
   const busy = syncState === "pulling" || syncState === "pushing";
@@ -2867,6 +2978,7 @@ function SyncButton() {
 
   const label =
     conflictCount > 0 ? "⚠ Conflicto"
+    : rechazado ? "⚠ Rechazado por el servidor"
     : syncState === "pushing" ? "Subiendo…"
     : syncState === "pulling" ? "Actualizando…"
     : syncState === "error" ? "Sin conexión"
@@ -2875,7 +2987,7 @@ function SyncButton() {
 
   const color =
     conflictCount > 0 ? "var(--warning)"
-    : syncState === "error" ? "var(--danger)"
+    : rechazado || syncState === "error" ? "var(--danger)"
     : !hasPending && syncState === "idle" ? "var(--success)"
     : "var(--ink-2)";
 
@@ -2884,9 +2996,11 @@ function SyncButton() {
       onClick={handleSync}
       disabled={busy}
       title={
-        lastSyncedAt
-          ? `Última sincronización ${new Date(lastSyncedAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}`
-          : "Sincronizar con el servidor"
+        rechazado
+          ? [rechazado.message, ...rechazado.choques].join(" ")
+          : lastSyncedAt
+            ? `Última sincronización ${new Date(lastSyncedAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}`
+            : "Sincronizar con el servidor"
       }
       style={{
         display: "flex", alignItems: "center", gap: 4,
@@ -3021,11 +3135,13 @@ function AtajosPanel({ onClose }: { onClose: () => void }) {
 }
 
 function RevisionPanel({
-  items, sede, corridas, onIr, onClose,
+  items, sede, corridas, isAdmin, onIr, onRenumerar, onClose,
 }: {
   items: PlacedItem2D[];
   sede: string;
   corridas: number;
+  isAdmin: boolean;
+  onRenumerar: () => void;
   onIr: (ids: string[]) => void;
   onClose: () => void;
 }) {
@@ -3039,23 +3155,24 @@ function RevisionPanel({
       d: isRotated90(i.rotY ?? 0) ? i.w : i.h,
       h: H_DEFAULTS[i.type] ?? 1.8,
       rotY: i.rotY ?? 0,
-      // Sin esto la revisión miraba códigos contra códigos y declaraba limpio
-      // un plano con cuatro muebles dibujados con el nombre de otro.
-      nomenclatura: i.nomenclatura,
     }))),
     [items],
   );
   const errores = hallazgos.filter((h) => h.severidad === "error").length;
 
   // La reconciliación: los contratos que YA están cargados sobre un mueble que
-  // el plano dibuja con otro nombre. Ninguna validación los arregla —se firman
-  // antes de que exista la validación— así que se listan para revisarlos uno
-  // por uno. Sale de lo que la pantalla ya tiene: los campos comerciales viven
-  // denormalizados en el mueble del layout, que es de donde se pinta el mapa.
+  // hoy se llama distinto de como se llamaba cuando se negociaron. Ninguna
+  // validación los arregla, y renumerar tampoco —al contrario, los mueve—: se
+  // listan para revisarlos uno por uno contra la cartelería de la tienda. Sale
+  // de lo que la pantalla ya tiene: los campos comerciales viven denormalizados
+  // en el mueble del layout, que es de donde se pinta el mapa.
   const aRevisar = useMemo(() => {
     const contratos: ContratoDelPlano[] = [];
     for (const i of items) {
-      const base = { id: i.id, code: i.code, sede: i.sede || sede, nomenclatura: i.nomenclatura };
+      const base = {
+        id: i.id, code: i.code, sede: i.sede || sede,
+        nombreAnterior: nombreAnterior(i),
+      };
       if (i.supplierName?.trim()) {
         contratos.push({
           ...base, cara: "A", proveedor: i.supplierName, marca: i.brandCategory,
@@ -3097,9 +3214,8 @@ function RevisionPanel({
       <div style={{ padding: 13, display: "flex", flexDirection: "column", gap: 8 }}>
         {hallazgos.length === 0 ? (
           <p style={{ fontSize: 12.5, color: "var(--success)", lineHeight: 1.5 }}>
-            El plano está limpio: sin códigos ni nombres repetidos, sin nombres
-            que sean el código de otro mueble, sin muebles encimados y con
-            pasillos por donde se puede caminar.
+            El plano está limpio: sin dos muebles llamados igual, sin muebles
+            encimados y con pasillos por donde se puede caminar.
           </p>
         ) : (
           <>
@@ -3141,9 +3257,9 @@ function RevisionPanel({
             </p>
             <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 3, lineHeight: 1.5 }}>
               {aRevisar.length} contrato{aRevisar.length === 1 ? "" : "s"} vigente
-              {aRevisar.length === 1 ? "" : "s"} sobre muebles que el plano dibuja con
-              un nombre distinto de su código. El contrato dice el código; la persona
-              que lo negoció vio el nombre.
+              {aRevisar.length === 1 ? "" : "s"} sobre muebles que hoy se llaman distinto
+              de como se llamaban cuando se negociaron. El papel y el cartel de la
+              góndola dicen el nombre viejo; el plano dice el de ahora.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
               {aRevisar.map((c) => (
@@ -3152,30 +3268,57 @@ function RevisionPanel({
                   onClick={() => onIr([c.id])}
                   style={{
                     textAlign: "left", padding: "8px 10px", borderRadius: "var(--r-md)",
-                    border: `1px solid ${c.pisaCodigoDe ? "var(--danger)" : "var(--dark-line-2)"}`,
-                    background: c.pisaCodigoDe ? "var(--danger-50)" : "var(--dark-surface)",
-                    color: c.pisaCodigoDe ? "var(--danger)" : "var(--dark-ink-2)",
+                    border: `1px solid ${c.loTieneAhora ? "var(--danger)" : "var(--dark-line-2)"}`,
+                    background: c.loTieneAhora ? "var(--danger-50)" : "var(--dark-surface)",
+                    color: c.loTieneAhora ? "var(--danger)" : "var(--dark-ink-2)",
                     fontSize: 11.5, lineHeight: 1.45, fontFamily: "inherit", cursor: "pointer",
                   }}
                 >
                   <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>{c.codigo}</span>
-                  <span style={{ opacity: 0.8 }}> · se dibuja </span>
-                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>«{c.nombre}»</span>
+                  <span style={{ opacity: 0.8 }}> · se negoció como </span>
+                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>«{c.seNegocioComo}»</span>
                   <span style={{ display: "block", marginTop: 3 }}>
                     {c.proveedor}{c.marca ? ` · ${c.marca}` : ""}
                   </span>
                   <span style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: 10.5, opacity: 0.85 }}>
                     {c.desde || "—"} → {c.hasta || "—"}
                   </span>
-                  {c.pisaCodigoDe && (
+                  {c.loTieneAhora && (
                     <span style={{ display: "block", marginTop: 3, fontWeight: 600 }}>
-                      Ese nombre es el código de {c.pisaCodigoDe}: hay otro mueble al que
-                      «{c.nombre}» apunta de verdad.
+                      Cuidado: «{c.seNegocioComo}» hoy es el nombre de OTRO mueble
+                      ({c.loTieneAhora}). Quien lea el papel y camine hasta el cartel se
+                      va a parar frente al mueble equivocado.
                     </span>
                   )}
                 </button>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* La salida de fondo. «Revisar» lista lo que está mal; renumerar es lo
+            único que lo arregla de raíz —el sistema reasigna los nombres
+            siguiendo el recorrido, y caminar la tienda y leer los números pasan
+            a ir en el mismo orden—. Va al pie y no arriba a propósito: primero
+            se mira qué hay, después se decide. */}
+        {isAdmin && (
+          <div style={{ marginTop: 6, paddingTop: 11, borderTop: "1px solid var(--dark-line)" }}>
+            <button
+              onClick={onRenumerar}
+              style={{
+                width: "100%", textAlign: "left", padding: "9px 10px",
+                borderRadius: "var(--r-md)", border: "1px solid var(--dark-line-2)",
+                background: "var(--dark-surface)", color: "var(--dark-ink-2)",
+                fontSize: 11.5, lineHeight: 1.45, fontFamily: "inherit", cursor: "pointer",
+              }}
+            >
+              <b style={{ color: "var(--dark-ink-1)" }}>Renumerar el plano →</b>
+              <span style={{ display: "block", marginTop: 3 }}>
+                El sistema reasigna los nombres siguiendo el recorrido de la tienda, en todas
+                las sedes. Primero muestra el antes → después completo, imprimible, y no
+                escribe nada hasta que se aprueba.
+              </span>
+            </button>
           </div>
         )}
       </div>
@@ -3552,7 +3695,8 @@ const EMPTY_FACE: FaceData = {
 };
 
 function AssignmentPanel({
-  item, items, sede, sedes, editMode, isAdmin, initialFace, pasillo, onUpdate, onDelete, onDuplicate, onClose,
+  item, items, sede, sedes, editMode, isAdmin, initialFace, pasillo,
+  onUpdate, onRenombrar, onIntercambiar, onDelete, onDuplicate, onClose,
 }: {
   /** En qué pasillo cae, deducido de la geometría. */
   pasillo?: number;
@@ -3566,6 +3710,12 @@ function AssignmentPanel({
   isAdmin: boolean;
   initialFace?: "A" | "B";
   onUpdate: (patch: Partial<PlacedItem2D>) => void;
+  /** El nombre NO se escribe con `onUpdate`. Va por acá, que es el mismo camino
+   *  que el doble clic sobre la caja: comprueba y escribe en la misma llamada.
+   *  Devuelve el rechazo, o null si se pudo. */
+  onRenombrar: (id: string, nombre: string) => RechazoDeNombre<PlacedItem2D> | null;
+  /** Los dos nombres a la vez, que es cómo se renumera una corrida a mano. */
+  onIntercambiar: (esteId: string, otroId: string) => void;
   onDelete: () => void;
   onDuplicate: () => void;
   onClose: () => void;
@@ -3590,53 +3740,50 @@ function AssignmentPanel({
   // ── El nombre del mueble ──────────────────────────────────────────────────
   // Este campo escribía DIRECTO en el layout, sin ninguna comprobación, mientras
   // el doble clic sobre la caja del plano sí validaba. Dos maneras de poner el
-  // mismo nombre y una sola protegida: por acá se metieron los nombres que son
-  // el código de otro mueble. Ahora las dos llaman a `choqueDeNombre`.
+  // mismo nombre y una sola protegida: por acá se metieron los nombres que eran
+  // el código de otro mueble. Ahora los dos caminos son el mismo: `onRenombrar`,
+  // que llama a `renombrar` de `utils/nomenclatura.ts`.
   //
-  // Se escribe en un borrador y sólo se guarda lo que pasa: rechazar es no
-  // escribir, no borrar lo que había. Y lo que YA está guardado y choca se
-  // avisa pero no se toca — un plano que hoy está mal se tiene que poder abrir,
-  // mirar y guardar.
-  const [nombreBorrador, setNombreBorrador] = useState(item.nomenclatura ?? "");
-  // Sólo al cambiar de mueble: mientras se escribe, el borrador manda. Si se
-  // enganchara también a `item.nomenclatura`, revertir el nombre al detectar un
-  // choque (abajo) borraría lo que la persona está tecleando.
-  const nombrePrevio = useRef(item.nomenclatura ?? "");
+  // Se escribe en un borrador y se guarda al salir del campo o con Enter, no en
+  // cada tecla. Escribiendo el nombre en el propio código, tecla a tecla, el
+  // mueble pasaría por «I», «IM», «IMP-1»… y cualquiera de esos podría chocar o
+  // quedarse guardado. Rechazar es no escribir, no borrar lo que había.
+  const [nombreBorrador, setNombreBorrador] = useState(item.code);
+  const [rechazo, setRechazo] = useState<RechazoDeNombre<PlacedItem2D> | null>(null);
+  // Sólo al cambiar de mueble: mientras se escribe, el borrador manda.
   useEffect(() => {
-    setNombreBorrador(item.nomenclatura ?? "");
-    nombrePrevio.current = item.nomenclatura ?? "";
+    setNombreBorrador(item.code);
+    setRechazo(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item.id]);
+  }, [item.id, item.code]);
+
+  // Lo que se está tecleando, para teñir el campo antes de intentar guardarlo.
+  // No escribe nada: es el mismo `choqueDeNombre` que usa `renombrar`.
   const choqueEscrito = useMemo(
-    () => (nombreBorrador.trim() === (item.nomenclatura ?? "").trim()
+    () => (normalizarNombre(nombreBorrador) === normalizarNombre(item.code)
       ? null
       : choqueDeNombre(nombreBorrador, items, item.id)),
-    [nombreBorrador, items, item.id, item.nomenclatura],
+    [nombreBorrador, items, item.id, item.code],
   );
-  // Lo que YA está guardado y choca, mirado desde LOS DOS lados. Miraba sólo
-  // `item.nomenclatura`, así que del par que se lee igual avisaba únicamente al
-  // renombrado: el mueble cuyo código quedó pisado —el que de verdad se llama
-  // IMP-08— abría el panel sin una palabra, y es justo el que se vende por
-  // error. Se pregunta por el nombre que se VE, que es el que confunde.
+  // Lo que YA está guardado y choca: otro mueble de la sede se llama igual que
+  // éste. La regla nueva lo impide de ahora en adelante, pero un plano guardado
+  // antes puede tenerlo, y hay que verlo desde los DOS muebles — el que no sabe
+  // que tiene un gemelo es justamente el que se vende por error.
   const choqueGuardado = useMemo(
-    () => choqueDeNombre(nombreDeMueble(item), items, item.id),
-    [items, item],
+    () => muebleConCodigo(item.code, items, item.id),
+    [items, item.code, item.id],
   );
+  // El nombre viejo, si lo hay. No se edita ni se dibuja: se muestra para poder
+  // reconciliar con la cartelería de la tienda y con lo que dice el papel.
+  // Después de renumerar no sale de la `nomenclatura` —la renumeración la
+  // borra— sino de `nombreAnterior`, que el servidor deriva de su registro de
+  // renumeraciones y agrega al plano al leerlo.
+  const viejo = nombreAnterior(item);
 
-  function escribirNombre(texto: string) {
-    setNombreBorrador(texto);
-    // Vacío devuelve el nombre del sistema: siempre se puede.
-    if (!texto.trim()) { guardarNombre(""); return; }
-    // Mientras lo escrito choque, el mueble se queda con el nombre que tenía al
-    // empezar a editar. Si no, tecleando «IMP-11» quedaría llamándose «IMP-1»:
-    // el prefijo válido se habría guardado en el camino y el rechazo del final
-    // dejaría al mueble renombrado a algo que nadie quiso.
-    if (choqueDeNombre(texto, items, item.id)) { guardarNombre(nombrePrevio.current); return; }
-    guardarNombre(texto);
-  }
-
-  function guardarNombre(valor: string) {
-    if ((item.nomenclatura ?? "") !== valor) onUpdate({ nomenclatura: valor });
+  function guardarNombre() {
+    const r = onRenombrar(item.id, nombreBorrador);
+    setRechazo(r);
+    if (!r) setNombreBorrador(normalizarNombre(nombreBorrador));
   }
 
   const face: FaceData = activeFace === "B"
@@ -3782,54 +3929,93 @@ function AssignmentPanel({
         )}
       </Field>
 
-      {/* Nomenclatura — el NOMBRE del mueble, no un campo aparte.
-          Decía «—» mientras el plano mostraba `GON-800`: dos nombres para la
-          misma cosa. Ahora hereda el que puso el sistema, y escribir uno lo
-          reemplaza en el plano, en el 3D, en el montaje y en la lámina. */}
-      <Field label="Nomenclatura" icon="🔖">
+      {/* Nombre — el del mueble, que es su código. Uno solo.
+          Este campo decía «Nomenclatura» y escribía OTRA cosa, sin comprobar
+          nada, mientras el plano dibujaba el código: dos nombres para el mismo
+          mueble y sólo uno protegido. Ahora escribe el nombre —el código— por el
+          mismo camino que el doble clic sobre la caja. */}
+      <Field label="Nombre" icon="🔖">
         {editMode ? (
           <>
             <input
               className={inp}
-              placeholder={item.code}
-              style={choqueEscrito ? { color: "var(--danger)", borderBottomColor: "var(--danger)" } : undefined}
               value={nombreBorrador}
-              onChange={(e) => escribirNombre(e.target.value)} />
-            {choqueEscrito ? (
+              style={choqueEscrito ? { color: "var(--danger)", borderBottomColor: "var(--danger)" } : undefined}
+              onChange={(e) => { setNombreBorrador(e.target.value); setRechazo(null); }}
+              onBlur={guardarNombre}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); guardarNombre(); }
+                if (e.key === "Escape") { setNombreBorrador(item.code); setRechazo(null); }
+              }} />
+            {rechazo ? (
+              <>
+                <p style={{ fontSize: 11, color: "var(--danger)", marginTop: 4, lineHeight: 1.45 }}>
+                  No se guardó: {textoDelChoque(nombreBorrador, rechazo)}
+                  {" "}Sigue llamándose «{item.code}».
+                </p>
+                {/* Renumerar una corrida es intercambiar nombres entre muebles
+                    que ya existen: sin esto, con todos los nombres del medio
+                    tomados, no habría forma de hacerlo. Debajo del botón dice
+                    qué le pasa al OTRO mueble, que nadie está mirando. */}
+                {rechazo.razon === "ocupado" && (
+                  <>
+                    <button
+                      onClick={() => {
+                        onIntercambiar(item.id, (rechazo as { ocupa: PlacedItem2D }).ocupa.id);
+                        setRechazo(null);
+                      }}
+                      style={{
+                        marginTop: 6, padding: "5px 10px", borderRadius: "var(--r-sm)",
+                        border: "1px solid var(--danger)", background: "var(--danger-50)",
+                        color: "var(--danger)", fontSize: 11.5, fontWeight: 700,
+                        cursor: "pointer", fontFamily: "inherit",
+                      }}
+                    >
+                      Intercambiar con ese mueble
+                    </button>
+                    <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 4, lineHeight: 1.45 }}>
+                      {textoDelIntercambio(item, (rechazo as { ocupa: PlacedItem2D }).ocupa)}
+                    </p>
+                  </>
+                )}
+              </>
+            ) : choqueEscrito ? (
               <p style={{ fontSize: 11, color: "var(--danger)", marginTop: 4, lineHeight: 1.45 }}>
-                No se guardó: {textoDelChoque(nombreBorrador, choqueEscrito)}
-                {" "}Sigue llamándose «{nombreDeMueble(item)}».
+                {textoDelChoque(nombreBorrador, choqueEscrito)}
               </p>
             ) : (
-              <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 4 }}>
-                {nombrePropio(item)
-                  ? `El sistema lo llamó ${item.code}. Vaciá el campo para volver a ese nombre.`
-                  : `Heredada del nombre que le dio el sistema. Escribí uno para reemplazarlo.`}
+              <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 4, lineHeight: 1.45 }}>
+                Es el nombre y es la llave: con él se arma {fullCode} y con eso viaja
+                al contrato, al correo de montaje y a la lámina.
               </p>
             )}
             {/* Lo que ya estaba guardado así se avisa, nunca se bloquea. */}
-            {!choqueEscrito && choqueGuardado && (
+            {!rechazo && !choqueEscrito && choqueGuardado && (
               <p style={{ fontSize: 11, color: "var(--warning)", marginTop: 4, lineHeight: 1.45 }}>
-                Ojo: {textoDelChoque(nombreDeMueble(item), choqueGuardado)}
+                Ojo: otro mueble de esta sede también se llama «{normalizarNombre(item.code)}»
+                {choqueGuardado.label ? ` (${choqueGuardado.label})` : ""}. Renombrá
+                uno de los dos para que un contrato pueda decir a cuál va.
               </p>
             )}
           </>
         ) : (
           <>
-            <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>
-              {nombreDeMueble(item)}
-              {!nombrePropio(item) && (
-                <span style={{ fontSize: 11, color: "var(--dark-ink-3)", marginLeft: 6 }}>
-                  · del sistema
-                </span>
-              )}
-            </p>
+            <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{nombreDeMueble(item)}</p>
             {choqueGuardado && (
               <p style={{ fontSize: 11, color: "var(--warning)", marginTop: 4, lineHeight: 1.45 }}>
-                Ojo: {textoDelChoque(nombreDeMueble(item), choqueGuardado)}
+                Ojo: otro mueble de esta sede también se llama «{normalizarNombre(item.code)}»
+                {choqueGuardado.label ? ` (${choqueGuardado.label})` : ""}.
               </p>
             )}
           </>
+        )}
+        {/* El nombre viejo. No se edita ni se dibuja: está para reconciliar con
+            la cartelería de la tienda y con el papel que firmó el proveedor. */}
+        {viejo && (
+          <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 6, lineHeight: 1.45 }}>
+            Antes se llamaba «{viejo}». Es lo que puede seguir diciendo el cartel de
+            la góndola y lo que vio quien negoció lo que ya está contratado.
+          </p>
         )}
       </Field>
 

@@ -4,6 +4,22 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class LayoutIn(BaseModel):
+    """El plano de una sede tal como lo manda el editor.
+
+    ``fixtures`` sigue siendo ``list[Any]`` a propósito: el mueble tiene campos
+    que sólo el editor conoce —caras, ranuras, el arte probado encima— y
+    tipificarlos acá los haría desaparecer del guardado en cuanto el cliente
+    agregue uno. Lo que NO puede seguir siendo es «se acepta sin mirar», que es
+    el hueco que la fase 12 dejó anotado (F7): la regla de los nombres vivía sólo
+    en el navegador.
+
+    La regla que ahora sí aplica el servidor está en
+    ``services/layout_lookup.choques_nuevos`` y la llama ``routers/layout.py``
+    antes de escribir. No es «rechazar los choques» —eso dejaría a CIUDAD JARDIN
+    sin poder guardarse— sino **no aceptar choques nuevos**, comparando contra el
+    snapshot anterior.
+    """
+
     fixtures: list[Any] = Field(default=[], max_length=2000)
     # Revision the client started from, echoed back from a previous GET/PUT.
     # When present the server rejects the write if someone else saved in between
@@ -78,3 +94,91 @@ class ReferenceRatesIn(BaseModel):
 
 class ReferenceRatesOut(ReferenceRatesIn):
     updated_at: datetime | None = None
+
+
+# ─── Renumerar el plano: el código pasa a ser EL nombre ───────────────────────
+#
+# Dos pasos como la carga masiva, y por la misma razón: ``previo`` no escribe
+# nada y ``aplicar`` escribe. Renumerar toca el nombre de cada mueble de cada
+# sede y arrastra los espacios y los montajes; hacerlo a ciegas y mirar después
+# no se deshace con un botón.
+
+
+class RenumeracionIn(BaseModel):
+    """Qué sedes renumerar. Vacío = todas, que es lo que el dueño pidió.
+
+    «En todas las sedes, parejo»: se normaliza el plano completo aunque hoy no
+    tenga conflicto, para que la numeración quede con la misma lógica en todas.
+    """
+
+    sedes: list[str] | None = Field(default=None, max_length=100)
+
+
+class MuebleRenumeradoOut(BaseModel):
+    """Una línea del antes → después. Es lo que se imprime y se camina."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    tipo: str
+    etiqueta: str
+    #: Corrida del recorrido a la que pertenece: 1, 2, 3… en el sentido en que
+    #: se camina la tienda.
+    banda: int
+    antes: str
+    #: El nombre que el plano DIBUJABA antes: la nomenclatura escrita a mano o,
+    #: si no había, el código. Es el que el dueño reconoce de la cartelería.
+    se_leia: str
+    ahora: str
+    codigo_antes: str
+    codigo_ahora: str
+    cambia: bool
+    cx: float
+    cz: float
+
+
+class EspacioArrastradoOut(BaseModel):
+    """Una fila de ``spaces`` que se muda con su mueble."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    space_id: int
+    antes: str
+    ahora: str
+    svg_antes: str
+    svg_ahora: str
+    contratos: int
+
+
+class RenumeracionSedeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    sede: str
+    #: Eje que se camina ("z" o "x") y el perpendicular, sobre el que se cuentan
+    #: las bandas.
+    eje_recorrido: str
+    eje_bandas: str
+    #: Por qué se eligió ese eje, medido sobre la geometría de ESTE plano.
+    motivo_eje: str
+    bandas: int
+    muebles: int
+    cambian: int
+    nomenclaturas_borradas: int
+    filas: list[MuebleRenumeradoOut] = Field(default=[])
+    espacios: list[EspacioArrastradoOut] = Field(default=[])
+    montajes: int = 0
+    avisos: list[str] = Field(default=[])
+    #: El informe en texto plano, listo para imprimir y llevar a la tienda. Va
+    #: acá y no sólo en la tabla porque es lo que el dueño usa para reconciliar
+    #: con la cartelería: sin ese papel, renumerar deja el plano y el local
+    #: hablando idiomas distintos.
+    texto: str = ""
+
+
+class RenumeracionOut(BaseModel):
+    #: False en ``previo``, True en ``aplicar``. Que viaje en la respuesta evita
+    #: la peor confusión posible de esta pantalla: creer que ya se aplicó.
+    aplicado: bool
+    sedes: list[RenumeracionSedeOut] = Field(default=[])
+    muebles: int = 0
+    cambian: int = 0

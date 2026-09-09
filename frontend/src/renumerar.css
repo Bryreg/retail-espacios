@@ -1,0 +1,463 @@
+/* ============================================================================
+   RECABRA · RENUMERAR — la hoja de la pantalla con la que el dueño renumera
+
+   Capa 3 del sistema, como `vender.css`: consume los tokens de `tema.css` y no
+   define un solo color propio. TODO cuelga de `.renum`, así que el plano, el
+   editor 3D, Supervisar y Montaje no ven una sola de estas reglas.
+
+   ESTA PANTALLA ES UN DOCUMENTO, no un tablero. La mitad de su valor no está en
+   pantalla: el dueño la imprime, se la lleva a la tienda y camina el local
+   tachando renglón por renglón contra la cartelería. Todo lo de acá abajo sale
+   de esa frase.
+
+   TRES DECISIONES QUE VIENEN DE AHÍ, cada una con su porqué:
+
+   1. LO QUE SE IMPRIME ES LO QUE SE VE. No hay una «versión para imprimir»
+      aparte: es la misma tabla, con los controles escondidos en `@media print`.
+      Una segunda plantilla sería una segunda verdad, y el día que se desfasen
+      el papel diría una cosa y la pantalla otra — que es exactamente la clase
+      de error que la fase 13 vino a matar.
+
+   2. CLARO SIEMPRE AL IMPRIMIR, no importa el tema de pantalla. Mismo criterio
+      que `ReportePlataforma.tsx` (Fase 7) y `DetalleCliente.tsx` (Fase 8): un
+      documento en modo oscuro sale del papel como un rectángulo negro. Acá se
+      redefinen los CANALES (`--ink-1-rgb`, `--surface-rgb`…) y no los tokens
+      derivados, que es lo que hace que `--success`, `--danger` y compañía se
+      recalculen solos: `tema.css` los tiene escritos como `rgb(var(--x-rgb))`.
+
+   3. LA CABECERA SE REPITE EN CADA HOJA. Un informe de NAVE son cien renglones
+      y tres o cuatro páginas de A4; sin la cabecera repetida, la segunda página
+      es una lista de códigos sin sede y sin columnas. `thead` con
+      `display: table-header-group` es lo único que hace eso, y por eso el
+      nombre de la sede vive ADENTRO del `thead` y no en un `<h2>` afuera.
+
+   Una sola acción principal (`.btn-principal`, el único amarillo) y la escala
+   `--t-*` entera: acá no hay un `font-size` que no sea un token.
+   ========================================================================== */
+
+.renum {
+  /* La hoja: 210 mm de A4 menos los márgenes de impresión, traducidos a la
+     pantalla. Que el ancho de lectura sea el mismo en los dos lados es lo que
+     hace que lo que se ve encaje al imprimir sin sorpresas. */
+  --hoja: 186mm;
+  /* El aire entre secciones. Uno solo, porque el documento es una columna. */
+  --aire: var(--s5);
+
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--ink-1);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── La barra de controles ───────────────────────────────────────────────
+   Pegada arriba: la tabla es larga y el botón de aplicar tiene que estar donde
+   la persona lo dejó, no al final de cien renglones. No se imprime. */
+.renum-barra {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: var(--hair) solid var(--line);
+}
+.renum-barra h1 {
+  font-family: var(--f-display);
+  font-weight: var(--peso-display);
+  font-size: var(--t-base);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+/* Los controles envuelven, los dos niveles. Sin el `wrap` de adentro la barra
+   entera medía 633 px y era el documento el que rodaba de costado en un
+   teléfono; con él, la barra crece hacia abajo y el papel nunca se corre. */
+.renum-barra .der {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.renum-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--r-md);
+  border: var(--hair) solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.renum-btn:hover:not(:disabled) { background: var(--surface-2); }
+.renum-btn:disabled { color: var(--ink-4); cursor: default; }
+/* La forma del botón principal, sin el color: el color lo pone
+   `.btn-principal` en `index.css`, que es el único lugar donde vive el
+   amarillo. Un `background` acá sería un amarillo que ningún grep encuentra. */
+.renum-btn-principal {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 16px;
+  border-radius: var(--r-md);
+  font-family: inherit;
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+
+.renum-select {
+  height: 32px;
+  padding: 0 8px;
+  border-radius: var(--r-md);
+  border: var(--hair) solid var(--brd-control);
+  background: var(--surface);
+  color: var(--ink-1);
+  font-family: inherit;
+  font-size: var(--t-xs);
+}
+
+/* ─── El documento ───────────────────────────────────────────────────────── */
+.renum-hoja {
+  width: 100%;
+  max-width: var(--hoja);
+  margin: 0 auto;
+  padding: var(--s5) var(--s4) var(--s7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--aire);
+}
+
+.renum-portada h2 {
+  font-family: var(--f-display);
+  font-weight: var(--peso-display);
+  font-size: var(--t-lg);
+  letter-spacing: -0.024em;
+  margin: 0 0 var(--s2);
+}
+.renum-portada p {
+  font-size: var(--t-sm);
+  line-height: 1.6;
+  color: var(--ink-2);
+  margin: 0 0 var(--s2);
+  max-width: 62ch;
+}
+
+/* El estado del informe: previo (no se escribió nada) o aplicado. Es la única
+   cosa de esta pantalla que no se puede leer mal sin consecuencias, así que va
+   arriba de todo, dice la palabra y NO se apaga al imprimir: un papel que no
+   dice si esto ya pasó o todavía no es peor que ningún papel. */
+.renum-estado {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: 10px 13px;
+  border-radius: var(--r-md);
+  border: var(--hair) solid var(--line);
+  background: var(--surface-2);
+  font-size: var(--t-xs);
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.renum-estado b { color: var(--ink-1); }
+.renum-estado.es-previo { border-color: var(--warning-100); background: var(--warning-50); }
+.renum-estado.es-previo b { color: var(--warning); }
+.renum-estado.es-aplicado { border-color: var(--success-100); background: var(--success-50); }
+.renum-estado.es-aplicado b { color: var(--success); }
+.renum-estado.es-roto { border-color: var(--danger-100); background: var(--danger-50); color: var(--danger); }
+.renum-estado.es-roto b { color: var(--danger); }
+
+/* ─── La cuenta: la promesa, comprobable ─────────────────────────────────── */
+/* Siete cifras, todas del mismo peso: la promesa no tiene un dato principal y
+   seis de relleno. Una rejilla que se reparte sola las deja parejas y en una
+   sola fila mientras entren, en vez del escalón que dejaba `flex-wrap` con la
+   última cifra sola abajo. */
+.renum-cuenta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: var(--s3) var(--s2);
+  /* Las cifras se alinean abajo: los rótulos tienen largos distintos y alguno
+     envuelve en dos renglones, y sin esto la cifra de al lado queda un escalón
+     más arriba. Una fila de números que no alinea no se lee como una cuenta. */
+  align-items: end;
+  padding: 10px 13px;
+  border-radius: var(--r-md);
+  border: var(--hair) solid var(--line);
+  background: var(--surface);
+}
+.renum-cuenta.es-roto { border-color: var(--danger); background: var(--danger-50); }
+.renum-dato { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.renum-dato .valor {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-size: var(--t-md);
+  color: var(--ink-1);
+}
+.renum-dato .valor.ok { color: var(--success); }
+.renum-dato .valor.mal { color: var(--danger); }
+
+/* ─── Una sede ───────────────────────────────────────────────────────────── */
+.renum-sede { display: flex; flex-direction: column; gap: var(--s3); }
+.renum-sede > h3 {
+  font-family: var(--f-display);
+  font-weight: var(--peso-display);
+  font-size: var(--t-md);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.renum-sede .nota {
+  font-size: var(--t-xs);
+  line-height: 1.55;
+  color: var(--ink-3);
+  margin: 0;
+  max-width: 78ch;
+}
+
+/* ─── La tabla ───────────────────────────────────────────────────────────── */
+.renum-tabla-caja {
+  border: var(--hair) solid var(--line);
+  border-radius: var(--r-md);
+  overflow-x: auto;
+  background: var(--surface);
+}
+.renum-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-sm);
+}
+.renum-tabla th,
+.renum-tabla td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: var(--hair) solid var(--line-soft);
+  white-space: nowrap;
+}
+.renum-tabla thead th {
+  font-family: var(--f-text);
+  font-weight: 600;
+  font-size: var(--t-3xs);
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  border-bottom: var(--hair) solid var(--line-strong);
+  background: var(--surface);
+}
+/* El renglón de la sede, adentro del `thead` para que se repita en cada hoja
+   impresa (ver la decisión 3 de la cabecera). En pantalla es redundante con el
+   `<h3>` de arriba, así que se esconde ahí y sólo aparece en el papel. */
+.renum-tabla .fila-sede th {
+  font-size: var(--t-2xs);
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--ink-2);
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.renum-tabla .fila-sede { display: none; }
+
+.renum-tabla td.num {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--ink-3);
+  font-size: var(--t-2xs);
+}
+.renum-tabla td.cod {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  min-width: 9ch;
+}
+.renum-tabla td.mueble { white-space: normal; color: var(--ink-2); font-size: var(--t-xs); }
+.renum-tabla td.viejo { color: var(--ink-3); }
+.renum-tabla td.nuevo { font-weight: 700; color: var(--ink-1); }
+
+/* La fila que NO cambia se apaga: el ojo tiene que caer en lo que hay que ir a
+   cambiar en la tienda, y en una sede ya normalizada la mayoría no cambia. */
+.renum-tabla tr.igual td { color: var(--ink-3); }
+.renum-tabla tr.igual td.nuevo { font-weight: 400; }
+.renum-tabla td.marca {
+  font-size: var(--t-2xs);
+  font-weight: 700;
+  color: var(--ink-3);
+  text-align: center;
+}
+.renum-tabla tr.cambia td.marca { color: var(--warning); }
+/* Las corridas, en bloques alternados. Sin esto la tabla es un muro de cien
+   renglones imposible de seguir con el dedo mientras se camina un pasillo.
+
+   POR QUÉ UN FONDO Y NO UNA LÍNEA DE CORTE. La primera versión ponía una línea
+   gruesa al empezar cada corrida, y en CIUDAD JARDIN —donde las bandas son de
+   uno o dos muebles— quedaba una línea en casi todos los renglones: separaba
+   todo, o sea nada, y de paso el aire que le agregaba a cada fila empujó el
+   informe una hoja entera. El fondo alternado no ocupa un milímetro de alto y
+   dice exactamente lo mismo: estos renglones son la misma corrida. */
+.renum-tabla tr.banda-par td { background: var(--surface-2); }
+
+/* La casilla para tachar caminando la tienda. Sólo en el papel: en pantalla no
+   se puede tachar nada. */
+.renum-tilde { display: none; }
+
+/* ─── Anexos: los espacios que se mudan, los avisos ──────────────────────── */
+.renum-anexo {
+  border: var(--hair) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  padding: 10px 13px;
+  font-size: var(--t-xs);
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+.renum-anexo h4 {
+  font-family: var(--f-text);
+  font-weight: 600;
+  font-size: var(--t-3xs);
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 6px;
+}
+.renum-anexo ul { margin: 0; padding-left: 1.1em; }
+.renum-anexo li { margin-bottom: 2px; }
+.renum-anexo code {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--t-2xs);
+  color: var(--ink-1);
+}
+.renum-anexo.es-aviso {
+  border-color: var(--warning-100);
+  background: var(--warning-50);
+  color: var(--warning);
+}
+.renum-anexo.es-aviso h4 { color: var(--warning); }
+
+/* El pie: sólo se imprime. Sin él, una hoja suelta que aparece en un escritorio
+   tres meses después no dice de qué es ni de cuándo. */
+.renum-pie {
+  display: none;
+  font-size: var(--t-2xs);
+  color: var(--ink-3);
+  border-top: var(--hair) solid var(--line);
+  padding-top: 6px;
+}
+
+/* ─── Impresión ──────────────────────────────────────────────────────────── */
+@media print {
+  /* A4 y márgenes de verdad: la tabla mide 186 mm, que es 210 menos estos dos
+     márgenes de 12. Si alguien cambia uno, tiene que cambiar `--hoja`. */
+  @page { size: A4 portrait; margin: 14mm 12mm; }
+
+  .renum-noimprime { display: none !important; }
+
+  .renum {
+    /* CLARO SIEMPRE. Se redefinen los canales, no los derivados: `tema.css`
+       escribe `--danger: rgb(var(--danger-rgb))`, así que con estos puestos
+       toda la familia de estado se recalcula sola y no hay que listarla. */
+    --bg-rgb:        255 255 255 !important;
+    --surface-rgb:   255 255 255 !important;
+    --surface-2-rgb: 247 248 245 !important;
+    --surface-3-rgb: 228 231 225 !important;
+    --line-soft-rgb:   225 228 225 !important;
+    --line-rgb:        199 206 208 !important;
+    --line-strong-rgb: 140 148 150 !important;
+    --ink-1-rgb: 10 16 20 !important;
+    --ink-2-rgb: 74 91 101 !important;
+    --ink-3-rgb: 84 100 110 !important;
+    --ink-4-rgb: 104 120 138 !important;
+    --libre-txt-rgb:     0 107 76 !important;
+    --libre-suave-rgb:   224 240 235 !important;
+    --libre-borde-rgb:   158 207 192 !important;
+    --entra-txt-rgb:     138 90 6 !important;
+    --entra-suave-rgb:   249 241 226 !important;
+    --entra-borde-rgb:   236 211 162 !important;
+    --ocupado-txt-rgb:   179 39 32 !important;
+    --ocupado-suave-rgb: 250 231 230 !important;
+    --ocupado-borde-rgb: 240 178 176 !important;
+    background: #FFFFFF !important;
+    color: #0A1014 !important;
+    min-height: 0;
+  }
+  /* Los fondos de aviso son información (ámbar = mirar esto), no decoración:
+     sin esto el navegador los tira y el papel pierde la mitad del mensaje. */
+  .renum, .renum * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  .renum-hoja {
+    max-width: none;
+    width: auto;
+    margin: 0;
+    padding: 0;
+    gap: 8mm;
+  }
+
+  /* Una sede por hoja: es como se camina la tienda, una por vez. La primera no
+     rompe página, o el informe abriría con una hoja en blanco.
+
+     Y en bloque, no en flex: una sede larga TIENE que poder partirse entre dos
+     hojas (NAVE son cien muebles), y la fragmentación de un contenedor flex es
+     el rincón peor implementado de la impresión. Bloque con márgenes hace
+     exactamente lo mismo y se parte donde debe. */
+  .renum-sede { display: block; break-before: page; page-break-before: always; }
+  .renum-sede > * + * { margin-top: 4mm; }
+  .renum-sede:first-of-type { break-before: auto; page-break-before: auto; }
+  /* Un anexo de tres renglones partido entre dos hojas es ilegible y no ahorra
+     nada. */
+  .renum-anexo, .renum-cuenta { break-inside: avoid; page-break-inside: avoid; }
+
+  /* La cabecera de la tabla se repite en cada hoja, con el nombre de la sede
+     adentro. Es lo que hace legible la página 3 de NAVE. */
+  .renum-tabla thead { display: table-header-group; }
+  .renum-tabla .fila-sede { display: table-row; }
+  .renum-tabla tfoot { display: table-footer-group; }
+  .renum-tabla tr { break-inside: avoid; page-break-inside: avoid; }
+  .renum-tabla-caja { border: none; border-radius: 0; overflow: visible; }
+
+  /* Papel: la escala baja un paso entero. Cien renglones a 13,5 px son seis
+     hojas; a 9 pt son tres, y se siguen leyendo de pie en un pasillo.
+
+     Y van en `pt`, no en los tokens `--t-*`, a propósito: esa escala está
+     medida para una hoja de trabajo de 1440 × 900 px, no para 186 mm de papel,
+     y el punto tipográfico es la unidad en la que está definido el A4. Es el
+     único lugar de la hoja donde un tamaño no sale de un token. */
+  .renum-tabla { font-size: 9pt; }
+  .renum-tabla th, .renum-tabla td { padding: 2.4pt 5pt; }
+  .renum-tabla thead th { font-size: 7pt; }
+  .renum-portada h2 { font-size: 15pt; }
+  .renum-portada p, .renum-estado, .renum-anexo, .renum-sede .nota { font-size: 8.5pt; }
+  .renum-dato .valor { font-size: 12pt; }
+
+  .renum-tilde {
+    display: inline-block;
+    width: 3.2mm;
+    height: 3.2mm;
+    border: 0.3mm solid #6B7479;
+    border-radius: 0.5mm;
+    vertical-align: -0.4mm;
+  }
+
+  .renum-pie { display: block; }
+
+  /* Nada de sombras ni de posiciones pegajosas en papel: una barra `sticky`
+     impresa se dibuja una vez y tapa el primer renglón. */
+  .renum-barra { display: none !important; }
+  .renum-cuenta, .renum-anexo, .renum-estado { box-shadow: none; }
+}
+
+/* ─── Ventanas angostas ──────────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .renum-hoja { padding: var(--s4) var(--s3) var(--s6); }
+  .renum-cuenta { gap: var(--s2); }
+}
