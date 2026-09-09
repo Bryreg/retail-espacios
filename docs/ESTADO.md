@@ -3728,6 +3728,142 @@ Lo que hay que saber para no deshacerlo sin querer:
   y el pie de la tarifa son la misma cuenta mirada tres veces, y descuentan lo
   que ya entró al contrato. Ningún número escrito a mano.
 
+## Fase 11 — La Plataforma como espacio de análisis y asesoría
+
+**El pedido del dueño (2026-09-07).** Al abrir el detalle de un cliente en
+`/plataforma`: «un montón de información sin orden, súper largo, sin entender
+qué era cada cosa». La consola tenía los datos y no tenía la historia. La
+referencia pedida fue el **storytelling de científicos y analistas de datos**, y
+el encargo se escribió sin ninguna referencia visual (`features/plataforma-asesoria/brief.md`),
+para que los diseñadores no copiaran lo que ya había.
+
+Tres direcciones a ciegas, medidas por un director de arte sin elegir
+(`outputs/COMPARATIVA.md`): **A · El informe** (documento que se lee de arriba
+abajo), **B · El tablero** (hoja sin scroll con capítulos navegables) y **C · La
+conversación** (tarjetas de acción con evidencia desplegable). El dueño eligió
+**A tal cual**, después de ver y descartar una fusión de A con la organización
+de C: «no me gusta nada la vista dividida y la cantidad de letra grande con
+negrilla». Esa frase es la regla de la fase: **no se agranda ni se engruesa
+nada**, y no hay paneles que partan la pantalla.
+
+### La decisión de fondo: la consola es un documento
+
+Tres piezas navegables entre sí, cada una contestando una pregunta:
+
+| Pieza | Ruta | Contesta |
+|---|---|---|
+| **La cartera** | `/plataforma` | ¿cómo va el negocio y a quién llamo primero? |
+| **La sesión** | `/plataforma/clientes/:slug` | ¿qué le propongo a este cliente? |
+| **El informe** | `/plataforma/clientes/:slug/informe` | ¿qué gano yo, gerente de supermercado? |
+
+Cada bloque abre con su **frase-conclusión con cifra** y, debajo, **la ruta
+exacta del JSON en monoespaciada** (`cartera.clientes[].metricas ·
+tendencia_cliente.serie[2026-08]`). Eso último contesta solo la pregunta que el
+dueño hace siempre: ¿de dónde sale este número? El detalle va plegado en
+`<details>`, no en un panel aparte.
+
+**Una sola acción principal por pantalla**, en amarillo, y es la que sigue en el
+trabajo: en la cartera la llamada #1 de la cola, en la sesión «Armar el informe
+para el cliente», en el informe «Imprimir o guardar en PDF».
+
+### La forma de cada dato
+
+El corazón del encargo era **qué gráfico le toca a cada dato**, no decorar. Los
+diez dibujos viven en `frontend/src/components/plataforma/graficos.tsx` como SVG
+dibujado a mano (cero librerías, cero recursos externos) y su tabla completa
+está en `components/plataforma/README-graficos.md`. Los desvíos que se ganaron
+el lugar:
+
+- **La ocupación de la cartera es un medidor; la del cliente, unidades.** Para
+  un cliente las 254 marcas *señalan un lugar al que ir*; para la cartera, 513
+  marcas —3.000 con 30 clientes— no señalan nada.
+- **La tendencia se dibuja en CONTEOS, no en porcentaje.** El denominador se
+  mueve cuando entra o sale un cliente, y una línea de porcentaje dibuja un
+  derrumbe que no ocurrió. Dos líneas de conteo en una sola escala, y la
+  ocupación se lee como la brecha. El mes sin snapshot es un **hueco**, no una
+  recta entre vecinos.
+- **Las barras de sede miden espacios, no porcentaje**, y el «contra qué» es una
+  **marca por barra**: dónde terminaría lo ocupado si esa sede estuviera en el
+  promedio del cliente. Con barras de % dos sedes de tamaño muy distinto dibujan
+  la misma barra y no son el mismo negocio.
+- **El riel de vencimientos es de 60 días**, que es `DIAS_POR_VENCER` y lo que
+  el backend mira. Uno de 90 deja un tercio vacío que se lee como «no hay
+  vencimientos», y no es cierto: es que no se miran.
+- **El valor en juego son tres cifras, no una**, y la suma no se muestra: sumar
+  las recomendaciones cuenta dos veces los mismos espacios y mete adentro
+  ingreso que ya entra.
+- **El último mes de las barras divergentes se rotula con su SALDO**, con signo
+  y con la palabra. Rotularlo con las entradas anunciaba «+$ 0,6 M» a diez
+  píxeles de la anotación que decía, del mismo mes, «el peor saldo de la
+  ventana: −$ 1,4 M». Lo fijan los casos 17 y 18 del banco de `probar:graficos`.
+
+**Una escala por gráfico, nunca dos ejes.** Todo texto adentro de un SVG entre
+10 y 30 px reales en pantalla: el contrato de tamaño (`viewBox` del tamaño de la
+caja + `width:100% · min-width:W · height:H` + `xMinYMin meet`) fija el factor de
+escala en 1, así que el cuerpo declarado es el cuerpo que se ve.
+
+### Reglas de color que esta fase agrega
+
+- **Los tres estados de espacio (`--libre / --entra / --ocupado`) sólo codifican
+  estado de espacio.** Señal, estado de cuenta, prioridad y cobertura van en
+  **chip gris con la palabra escrita**. Se escapó una vez y de la peor manera:
+  `--entra-txt` **colapsa con `--entra` en el tema oscuro** (`tema.css`), así
+  que un chip que en claro era ámbar oscuro en oscuro pasaba a ser exactamente
+  el color del estado. Por eso `probar:plataforma` mide el color **computado en
+  los dos temas**, no el token escrito.
+- **`--ink-4` no se usa para texto sobre el papel**: 3,98:1. Va `--ink-3`.
+- Un `.btn-principal` por pantalla y `var(--signal)` fuera de esa clase = 0.
+
+### La frontera, que es lo que no puede fallar
+
+La sesión y el informe abren el negocio de un cliente espacio por espacio, así
+que la fase se auditó como frontera y no como pantalla:
+
+- **La tarifa de referencia de un cliente NUNCA se pinta.** Sólo su relación
+  (`spread_pct`) y el sí/no de `tarifa_configurada`. Se verifica sembrando una
+  tarifa con un valor reconocible y buscándolo en `innerText`, en los textos de
+  los SVG, en `title`/`aria-label`/`alt` y en el `outerHTML` entero con todos
+  los `<details>` abiertos.
+- **El informe no lleva nada interno**: ni cartera, ni señal, ni fantasma, ni
+  adopción, ni benchmark de otros, ni nombres de otros clientes.
+- **Todo es de sólo lectura** salvo el estado de cuenta y las supresiones, que
+  siguen siendo operaciones y viven en su cajón.
+- **Backend sin una sola línea de cambio**: `git diff origin/main -- backend`
+  vacío es una afirmación de `probar:plataforma`. El reporte de transparencia se
+  enlaza y no se rediseña.
+
+### Dos cosas que costaron y conviene no repetir
+
+- **El informe no heredaba el periodo.** Con la sesión en julio, «Armar el
+  informe» pedía septiembre y titulaba septiembre: un documento impreso con un
+  mes que el asesor no eligió, y nada en pantalla lo decía. Ahora **la URL es la
+  fuente** (`?periodo=`) y las cuatro líneas que decían «el mes en curso todavía
+  no terminó» salen del periodo que devolvió el backend, no de la fecha de hoy.
+- **`<input type="month">` no sirve para esto.** Chromium lo pinta en el idioma
+  del navegador («September 2026» en una pantalla íntegramente en español) y a
+  390 px se corta. Va un `<select>` armado con los periodos que de verdad
+  existen en la serie, en español, con los meses sin snapshot deshabilitados y
+  rotulados «· sin dato».
+
+### Cómo se prueba
+
+`npm run probar:graficos` levanta su propio Vite sobre un banco de casos
+(`frontend/pruebas/graficos.html`) y mide, en claro y oscuro y a dos anchos, que
+ningún texto de un SVG baje de 10 px ni pase de 30, que ninguno se pise con
+otro, que ninguno se salga de su caja, y las dos ramas del rótulo del último mes
+de las divergentes. `npm run probar:plataforma` afirma la frontera: los campos
+que no existen en `api/plataforma.ts` no se leen, los colores de estado no
+codifican otra cosa, el informe hereda el periodo, hay un solo interruptor de
+tema, cero código muerto en el área y el backend no cambió; con la app corriendo
+(`PROBAR_PLATAFORMA_URL` y `PROBAR_PLATAFORMA_TOKEN`, receta en la cabecera del
+archivo) agrega las afirmaciones sobre las tres pantallas de verdad.
+
+**El que deja el Vite vivo rompe la corrida siguiente.** `probar:graficos`
+prometía matar su servidor y no lo hacía: lanzaba `npx vite`, y matar al `npx`
+deja al `vite` huérfano. Ahora se lanza el binario local en su propio grupo de
+procesos y se mata el grupo entero, colgado de un `try/finally` más handlers de
+señal. Con `--strictPort`, un puerto ocupado se dice en vez de colgarse.
+
 ## Herramientas de diseño en el repo
 
 `.claude/skills/` trae **ui-ux-pro-max** (MIT, `nextlevelbuilder/ui-ux-pro-max-skill`),

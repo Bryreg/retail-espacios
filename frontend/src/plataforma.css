@@ -1,0 +1,847 @@
+/* ============================================================================
+   RECABRA · PLATAFORMA — la forma de A («El informe»)
+
+   Capa 3 del sistema, hermana de `vender.css`: consume los tokens de
+   `tema.css` y no inventa un solo color propio salvo la familia `--dato-*`,
+   que es la TINTA DE DATO del guion (§4.1) — el azul con el que se dibuja
+   todo lo que no es un estado de espacio. No es una paleta de series: es un
+   tono y su paso tenue, validados con `dataviz/scripts/validate_palette.js`
+   en las cuatro superficies (papel y tarjeta, claro y oscuro) y anotados en
+   `features/plataforma-asesoria/outputs/opciones/A-el-informe/README.md` §4.
+
+   Referencia exacta: `.../opciones/A-el-informe/index.html`. Lo que acá se
+   aparta de ese archivo está anotado con el porqué, y es SÓLO lo que la
+   comparativa marca como regla rota (nunca gusto):
+
+     (a) Los chips de señal, estado de cuenta y prioridad ya NO usan el rojo
+         ni el ámbar de `libre / se libera / ocupado`. Van en tinta gris con
+         la palabra. Los tres estados codifican estado de ESPACIO y nada más;
+         un chip `FANTASMA` en rojo le enseña al ojo que rojo = malo, y al
+         renglón siguiente rojo = ocupado = plata entrando.
+         (COMPARATIVA.md §5 «A A · El informe», punto 1: «se arregla cambiando
+         cinco reglas de CSS» — son estas cinco.)
+     (b) El rótulo de la rejilla de doce meses lleva su cifra. Eso es texto y
+         se calcula del dato: vive en `graficos.tsx`
+         (`rotuloRejillaMeses`), no acá.
+     (c) `--ink-4` NO se usa para texto. Da 4,52:1 sobre la tarjeta blanca
+         pero 3,98:1 sobre el papel `--bg #EFF1ED`, que es el fondo real del
+         documento. El escalón más tenue de TEXTO es `--ink-3` (5,36:1 sobre
+         el papel). `--ink-4` queda para trazos, guías y rejillas, que no son
+         texto y no tienen piso de contraste de texto.
+
+   Lo que NO cambia respecto de A: la escala. No se agranda ni se engrosa
+   nada — el dueño rechazó explícitamente «la cantidad de letra grande con
+   negrilla» de la fusión. Los cuerpos salen de los pasos `--t-*` de
+   `tema.css` y `--t-hero` es el único paso de capa 3 (la cifra que encabeza
+   un capítulo; `dataviz` pide ≥ 48 px para una cifra hero).
+
+   TODO cuelga de `.plat`. La consola vieja (`--con-*`), Supervisar, Montaje,
+   Vender y el editor 3D no ven una sola de estas reglas.
+
+   El AMARILLO no está acá. Un solo amarillo por pantalla y es el de la
+   acción principal, que ya es `.btn-principal` en `index.css` — global,
+   auditado por `probar:tema`. Este archivo no define ni una regla con
+   `--signal` de fondo, a propósito: si el amarillo se pudiera pedir desde
+   dos lugares, dejaría de ser uno.
+   ========================================================================== */
+
+.plat {
+  /* — La tinta de dato (guion §4.1). Claro: #2E63C8 · tenue #8FB3E8.
+       El paso tenue es ORDINAL del mismo tono (4° de diferencia), no una
+       segunda categoría: sirve para «el total» contra «lo ocupado», y para
+       el trazo que une los dos puntos de un dumbbell. */
+  --dato: #2E63C8;
+  --dato-tenue: #8FB3E8;
+  --dato-suave: rgba(46, 99, 200, 0.10);
+
+  /* — La cifra hero. Capa 3 porque es de esta pantalla: `tema.css` corta en
+       `--t-xl` (30 px), que es el total de un contrato, no el titular de un
+       capítulo. */
+  --t-hero: 48px;
+
+  color: var(--ink-1);
+  font-family: var(--f-text);
+  font-size: var(--t-sm);
+  line-height: 1.5;
+}
+
+html[data-tema="oscuro"] .plat {
+  --dato: #4C89E8;
+  --dato-tenue: #2F5EA6;
+  --dato-suave: rgba(76, 137, 232, 0.14);
+}
+
+/* ── Voz tipográfica ───────────────────────────────────────────────────────
+   `.rotulo`, `.fig` y `.codigo` ya existen en `index.css` y se usan tal cual.
+   Acá sólo lo que A agrega y no está allá.                                  */
+.plat .mut { color: var(--ink-3); }
+.plat .tab { font-variant-numeric: tabular-nums; }
+.plat .cod {
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: -0.01em;
+}
+
+/* ── El armazón de la pantalla: barra + índice + documento ─────────────────
+   AGREGADO POR EL PORT DE LA CARTERA (pieza 1 de A). `graficos.tsx` dibuja
+   adentro de un capítulo y no necesita saber dónde vive el capítulo; esta
+   sección es lo que A tiene en su `<header class="barra">` y su
+   `<div class="shell">`, que la hoja no traía porque el prototipo es un
+   archivo suelto y acá es una ruta del producto.
+
+   La barra es la ÚNICA fila de filtros y manda sobre todo lo de abajo
+   (guion §3.5.6: los filtros van arriba de todo lo que alcanzan, nunca
+   dentro de una tarjeta). El índice es el «en esta pieza» de A: los
+   capítulos 1.1 a 1.7, con el que se está leyendo marcado.                  */
+.plat-pagina {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.plat-barra {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  min-height: 52px;
+  padding: 0 var(--s5);
+  background: var(--surface);
+  border-bottom: var(--hair) solid var(--line);
+  flex-shrink: 0;
+}
+.plat-marca { display: flex; align-items: baseline; gap: var(--s2); font-weight: 700; letter-spacing: -0.01em; }
+.plat-marca span { font-weight: 400; color: var(--ink-3); font-size: var(--t-xs); }
+.plat-barra .sep { flex: 1; }
+.plat-ctrl { display: flex; align-items: center; gap: var(--s2); }
+.plat-ctrl label { font-size: var(--t-3xs); font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; color: var(--ink-3); }
+.plat-barra select {
+  background: var(--surface);
+  color: var(--ink-1);
+  border: var(--hair) solid var(--brd);
+  border-radius: var(--r-sm);
+  padding: 5px 9px;
+  font-size: var(--t-xs);
+  font-family: var(--f-mono);
+  font-weight: 600;
+  cursor: pointer;
+}
+.plat-barra select:hover { border-color: var(--line-strong); }
+.plat-barra select:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.plat-correo { font-size: var(--t-2xs); color: var(--ink-3); white-space: nowrap; }
+
+.plat-shell {
+  display: grid;
+  grid-template-columns: 246px minmax(0, 1fr);
+  gap: var(--s6);
+  width: 100%;
+  max-width: 1420px;
+  margin: 0 auto;
+  padding: var(--s5) var(--s5) var(--s8);
+}
+.plat-indice {
+  position: sticky;
+  top: 76px;
+  align-self: start;
+  max-height: calc(100dvh - 100px);
+  overflow: auto;
+  padding-right: var(--s2);
+}
+.plat-indice h4 {
+  font-size: var(--t-3xs);
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 var(--s2);
+}
+.plat-toc {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-left: var(--hair) solid var(--line);
+  margin-left: var(--s2);
+}
+.plat-toc a {
+  display: block;
+  padding: 5px var(--s3);
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  margin-left: -1px;
+}
+.plat-toc a:hover { color: var(--ink-1); }
+.plat-toc a.on { color: var(--ink-1); font-weight: 600; border-left-color: var(--dato); }
+/* Las sub-entradas de A: los clientes de la cola de llamadas, sangrados y un
+   paso más chicos. Es la única navegación de la cartera que lleva a otra
+   pieza, y se lee como lo que es: la lista de a quién llamar. */
+.plat-toc a.sub { padding-left: var(--s5); font-size: var(--t-2xs); }
+
+/* ── El documento ──────────────────────────────────────────────────────────
+   A se lee de arriba abajo. La medida de línea de un capítulo es la del
+   cuerpo (`.plat-doc`), y la frase-conclusión se corta antes (74ch) porque
+   es lo único que se lee de un vistazo.                                     */
+.plat-doc { max-width: 1000px; }
+
+.plat-tapa { margin-bottom: var(--s6); }
+.plat-tapa h1 {
+  font-size: var(--t-xl);
+  letter-spacing: -0.022em;
+  line-height: 1.12;
+  margin: var(--s2) 0;
+}
+.plat-tapa .cred {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s4);
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+  padding-top: var(--s3);
+  border-top: var(--hair) solid var(--line);
+}
+.plat-tapa .cred b { color: var(--ink-2); font-weight: 600; }
+
+.plat-cap { margin-bottom: var(--s7); scroll-margin-top: 76px; }
+.plat-cap-cab {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding-bottom: var(--s2);
+  border-bottom: 2px solid var(--ink-1);
+  margin-bottom: var(--s4);
+}
+.plat-cap-cab h2 { font-size: var(--t-md); letter-spacing: -0.015em; font-weight: 700; margin: 0; }
+.plat-cap-cab .num { font-family: var(--f-mono); font-size: var(--t-xs); color: var(--ink-3); font-weight: 700; }
+.plat-cap-cab .der { margin-left: auto; font-size: var(--t-2xs); color: var(--ink-3); }
+
+/* La frase-conclusión: el contrato de cada bloque. Va PRIMERO y dice el
+   hallazgo con su número. Un bloque sin frase es un gráfico sin conclusión. */
+.plat-frase {
+  font-size: var(--t-md);
+  line-height: 1.42;
+  letter-spacing: -0.012em;
+  font-weight: 600;
+  max-width: 74ch;
+  margin: 0 0 var(--s3);
+}
+.plat-frase.chica { font-size: var(--t-base); }
+/* El subrayado de la cifra dentro de la frase: es la tinta de dato al 10 %,
+   no un color de texto. El texto sigue en `--ink-1` (guion §4.4). */
+.plat-frase em {
+  font-style: normal;
+  background: linear-gradient(transparent 62%, var(--dato-suave) 62%);
+  padding: 0 1px;
+}
+
+/* La ruta del JSON, en mono, debajo de la frase: «¿de dónde sale?»
+   contestada sin abrir un panel. */
+.plat-fuente {
+  font-size: var(--t-2xs);
+  color: var(--ink-3);
+  font-family: var(--f-mono);
+  margin-top: var(--s1);
+  overflow-wrap: anywhere;
+}
+
+.plat-bloque {
+  background: var(--surface);
+  border: var(--hair) solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--s5);
+  margin-bottom: var(--s4);
+}
+.plat-bloque.plano { background: none; border: 0; padding: 0; }
+.plat-bloque + .plat-bloque { margin-top: var(--s4); }
+
+/* ── Cifras ────────────────────────────────────────────────────────────────
+   La cifra hero va con `--f-mono` y figuras PROPORCIONALES (`tabular-nums`
+   sólo en columna): a 48 px la retícula tabular abre huecos entre dígitos.  */
+.plat-kpis {
+  display: grid;
+  gap: var(--s4);
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  border-top: var(--hair) solid var(--line);
+  padding-top: var(--s4);
+  margin-top: var(--s4);
+}
+.plat-kpi .et { font-size: var(--t-2xs); color: var(--ink-3); margin-bottom: 2px; }
+.plat-kpi .v {
+  font-family: var(--f-mono);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-size: var(--t-lg);
+  line-height: 1.05;
+}
+.plat-kpi .c { font-size: var(--t-2xs); color: var(--ink-3); margin-top: 5px; line-height: 1.45; }
+.plat-kpi .c b { font-weight: 600; color: var(--ink-2); }
+.plat-kpi.hero {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  gap: var(--s2) var(--s5);
+  align-items: end;
+  padding-bottom: var(--s4);
+  border-bottom: var(--hair) solid var(--line);
+}
+.plat-kpi.hero .et { grid-column: 1 / -1; }
+.plat-kpi.hero .v { font-size: var(--t-hero); line-height: 1; white-space: nowrap; font-variant-numeric: proportional-nums; }
+.plat-kpi.hero .c { margin-top: 0; padding-bottom: 4px; font-size: var(--t-xs); }
+.plat .tachado { text-decoration: line-through; text-decoration-thickness: 1px; color: var(--ink-3); }
+.plat .arr { font-family: var(--f-mono); font-weight: 700; font-size: var(--t-xs); }
+
+/* ── Tablas ────────────────────────────────────────────────────────────────
+   Cada gráfico tiene la suya y se alcanza sin hover (guion §3.5.3). En
+   pantalla va plegada; en impresión, abierta.                               */
+.plat table { border-collapse: collapse; width: 100%; font-size: var(--t-xs); }
+.plat th {
+  text-align: left;
+  font-size: var(--t-3xs);
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 0 var(--s3) var(--s2) 0;
+  border-bottom: var(--hair) solid var(--line);
+  white-space: nowrap;
+}
+.plat td { padding: 6px var(--s3) 6px 0; border-bottom: var(--hair) solid var(--line-soft); vertical-align: top; }
+.plat th.num, .plat td.num { text-align: right; padding-right: var(--s4); }
+.plat td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.plat tbody tr:hover { background: var(--surface-2); }
+.plat .tabla-scroll { overflow-x: auto; }
+.plat .tot td { font-weight: 700; border-top: var(--hair) solid var(--line-strong); border-bottom: 0; }
+
+.plat-tabla-eq { margin-top: var(--s3); border-top: var(--hair) solid var(--line-soft); padding-top: var(--s2); }
+.plat-tabla-eq > summary {
+  font-size: var(--t-2xs);
+  color: var(--ink-3);
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+.plat-tabla-eq > summary::-webkit-details-marker { display: none; }
+.plat-tabla-eq > summary::before { content: "▸"; font-size: var(--t-3xs); color: var(--ink-3); }
+.plat-tabla-eq[open] > summary::before { content: "▾"; }
+.plat-tabla-eq > summary:hover { color: var(--ink-1); }
+.plat-tabla-eq > div { margin-top: var(--s3); max-height: 420px; overflow: auto; }
+
+/* ── Chips y señales — el ajuste (a) ───────────────────────────────────────
+   TODOS grises. La jerarquía la llevan el PESO y el BORDE, que son canales
+   que no colisionan con nada: `fuerte` (tinta llena, borde firme) para lo
+   que hay que mirar ya, `medio` para lo que espera, `suave` para lo que sólo
+   se anota. La palabra siempre está escrita adentro.
+
+   El color de estado de espacio existe en esta hoja SÓLO en `.plat-pt--*`,
+   que es la marca de la clave de un gráfico, y adentro de los `<svg>`.      */
+.plat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--t-3xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: var(--r-xs);
+  border: var(--hair) solid var(--line);
+  color: var(--ink-3);
+  background: var(--surface-2);
+  white-space: nowrap;
+}
+.plat-chip--fuerte { color: var(--ink-1); background: var(--surface-3); border-color: var(--line-strong); font-weight: 700; }
+.plat-chip--medio  { color: var(--ink-2); background: var(--surface-2); border-color: var(--line-strong); }
+.plat-chip--suave  { color: var(--ink-3); background: var(--surface-2); border-color: var(--line); }
+
+/* «Mes en curso · parcial» va en tinta NEUTRA, como todos los demás chips.
+   Llevaba el ámbar de A, y en el tema oscuro `--entra-txt` colapsa contra
+   `--entra` (`tema.css`: `--entra-txt-rgb: var(--entra-rgb)`), así que el chip
+   terminaba pintado con el color exacto de «se libera». Los tres colores de
+   estado codifican estado de ESPACIO y nada más; esto es honestidad del dato,
+   y su canal es la palabra escrita, no un color prestado. */
+.plat-chip--parcial {
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border-color: var(--line-strong);
+  text-transform: uppercase;
+}
+
+/* Las marcas de la clave. `--resto` es el gris de «no se alquila / sin dato»
+   y esa es exactamente su función: se lee gris a propósito. */
+.plat-pt { width: 9px; height: 9px; border-radius: 2px; flex: none; display: inline-block; }
+.plat-pt--libre { background: var(--libre); }
+.plat-pt--se-libera { background: var(--entra); }
+.plat-pt--ocupado { background: var(--ocupado); }
+.plat-pt--dato { background: var(--dato); }
+.plat-pt--dato-tenue { background: var(--dato-tenue); }
+.plat-pt--resto { background: var(--resto); }
+.plat-pt--hueco { background: none; border: 2px solid var(--dato); }
+
+/* ── Botones ───────────────────────────────────────────────────────────────
+   El neutro. El principal es `.btn-principal` de `index.css` y es el único
+   amarillo de la pantalla.                                                  */
+.plat-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: var(--r-md);
+  padding: 8px 14px;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  cursor: pointer;
+  border: var(--hair) solid var(--brd);
+  background: var(--surface);
+  color: var(--ink-1);
+  white-space: nowrap;
+}
+.plat-btn:hover:not(:disabled) { border-color: var(--line-strong); background: var(--surface-2); }
+.plat-btn:disabled { opacity: 0.5; cursor: default; }
+.plat-btn.mini { padding: 5px 10px; font-size: var(--t-2xs); }
+.plat-btn:focus-visible,
+.plat a:focus-visible,
+.plat summary:focus-visible,
+.plat select:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+/* ── La cola de llamadas ───────────────────────────────────────────────────
+   Es lo único operativo de la cartera: una fila por cliente, con su puesto,
+   su razón en una línea, su plata y su acción.                              */
+.plat-regla {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+  font-size: var(--t-2xs);
+  color: var(--ink-3);
+  margin-bottom: var(--s3);
+}
+.plat-orden { display: inline-flex; border: var(--hair) solid var(--brd); border-radius: var(--r-sm); overflow: hidden; }
+.plat-orden button {
+  background: var(--surface);
+  border: 0;
+  padding: 5px 10px;
+  font-size: var(--t-2xs);
+  cursor: pointer;
+  color: var(--ink-3);
+}
+.plat-orden button[aria-pressed="true"] { background: var(--ink-1); color: var(--surface); font-weight: 600; }
+
+.plat-fila-cli {
+  display: grid;
+  grid-template-columns: 26px minmax(170px, 1.05fr) 134px minmax(220px, 1.7fr) 160px 128px;
+  gap: var(--s3);
+  align-items: start;
+  padding: var(--s3) var(--s2);
+  border-bottom: var(--hair) solid var(--line);
+  background: var(--surface);
+}
+.plat-fila-cli:first-of-type { border-top: var(--hair) solid var(--line); }
+.plat-fila-cli:hover { background: var(--surface-2); }
+.plat-fila-cli .puesto { font-family: var(--f-mono); font-weight: 700; color: var(--ink-3); font-size: var(--t-xs); padding-top: 2px; }
+.plat-fila-cli .nom { font-weight: 600; font-size: var(--t-sm); }
+.plat-fila-cli .sub { font-size: var(--t-2xs); color: var(--ink-3); margin-top: 2px; }
+.plat-fila-cli .razon { font-size: var(--t-xs); color: var(--ink-2); line-height: 1.45; }
+.plat-fila-cli .plata {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--t-xs);
+  font-weight: 700;
+  text-align: right;
+}
+.plat-fila-cli .plata small {
+  display: block;
+  font-family: var(--f-text);
+  font-weight: 400;
+  font-size: var(--t-2xs);
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+.plat-fila-cli .acc { display: flex; justify-content: flex-end; }
+/* La primera llamada: un filete de tinta, no un fondo de color. */
+.plat-fila-cli.top { box-shadow: inset 3px 0 0 var(--ink-1); }
+
+/* ── El cajón de lo operativo ──────────────────────────────────────────────
+   AGREGADO POR EL PORT DE LA CARTERA. Estados de cuenta y supresiones no son
+   análisis: son operaciones, y viven plegadas fuera de la historia (guion
+   §1.5). El cajón es un `<details>`; adentro va la MISMA funcionalidad de la
+   consola vieja — cambiar estado con motivo obligatorio y confirmación, y
+   atender una supresión con su nota.                                        */
+.plat-cajon {
+  background: var(--surface);
+  border: var(--hair) solid var(--line);
+  border-radius: var(--r-lg);
+  margin-bottom: var(--s3);
+}
+.plat-cajon > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s3) var(--s4);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  color: var(--ink-1);
+}
+.plat-cajon > summary::-webkit-details-marker { display: none; }
+.plat-cajon > summary::before { content: "▸"; font-size: var(--t-3xs); color: var(--ink-3); }
+.plat-cajon[open] > summary::before { content: "▾"; }
+.plat-cajon > summary .cuenta { margin-left: auto; font-family: var(--f-mono); font-weight: 400; color: var(--ink-3); font-size: var(--t-2xs); }
+.plat-cajon > summary:hover { background: var(--surface-2); border-radius: var(--r-lg); }
+.plat-cajon > div { padding: 0 var(--s4) var(--s4); }
+
+/* La fila en edición: un select, un motivo obligatorio y dos botones. */
+.plat-editor {
+  padding: var(--s3);
+  margin: var(--s2) 0 var(--s3);
+  background: var(--surface-2);
+  border: var(--hair) solid var(--line);
+  border-radius: var(--r-md);
+}
+.plat-editor .linea { display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center; }
+.plat-editor .linea + .linea { margin-top: var(--s2); }
+.plat-editor select,
+.plat-editor input {
+  background: var(--surface);
+  color: var(--ink-1);
+  border: var(--hair) solid var(--brd);
+  border-radius: var(--r-sm);
+  padding: 6px 9px;
+  font-size: var(--t-xs);
+  font-family: var(--f-text);
+}
+.plat-editor input { flex: 1; min-width: 220px; }
+.plat-editor select:focus-visible,
+.plat-editor input:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.plat-editor .error { font-size: var(--t-2xs); font-weight: 600; color: var(--ink-1); }
+/* El botón de confirmar es TINTA, no amarillo: el único amarillo de esta
+   pantalla es la llamada #1 de la cola, y un cajón plegado no compite con
+   ella. */
+.plat-btn.fuerte { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.plat-btn.fuerte:hover:not(:disabled) { background: var(--accent); filter: brightness(1.15); }
+
+/* ── Hallazgos y recomendaciones ───────────────────────────────────────────
+   Cada recomendación es una ACCIÓN con su valor, no una descripción.        */
+.plat-hall { border-top: var(--hair) solid var(--line); padding-top: var(--s4); margin-top: var(--s4); }
+.plat-hall:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+.plat-hall .h-cab { display: flex; align-items: baseline; gap: var(--s2); margin-bottom: var(--s2); }
+.plat-hall .h-id { font-family: var(--f-mono); font-weight: 700; font-size: var(--t-xs); color: var(--dato); }
+.plat-hall .h-tit { font-weight: 700; font-size: var(--t-base); letter-spacing: -0.01em; }
+
+.plat-rec {
+  border: var(--hair) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  padding: var(--s4);
+  margin-bottom: var(--s3);
+}
+.plat-rec .r-top { display: flex; gap: var(--s3); align-items: flex-start; }
+.plat-rec .r-n { font-family: var(--f-mono); font-weight: 700; font-size: var(--t-xs); color: var(--ink-3); padding-top: 3px; }
+.plat-rec .r-cuerpo { flex: 1; min-width: 0; }
+.plat-rec .r-acc { font-size: var(--t-base); font-weight: 600; letter-spacing: -0.01em; line-height: 1.35; }
+.plat-rec .r-ev { font-size: var(--t-xs); color: var(--ink-3); margin-top: var(--s2); line-height: 1.5; }
+.plat-rec .r-val {
+  font-family: var(--f-mono);
+  font-weight: 700;
+  font-size: var(--t-md);
+  letter-spacing: -0.02em;
+  text-align: right;
+  white-space: nowrap;
+  padding-top: 1px;
+}
+.plat-rec .r-val small {
+  display: block;
+  font-family: var(--f-text);
+  font-weight: 400;
+  font-size: var(--t-2xs);
+  color: var(--ink-3);
+  letter-spacing: 0;
+}
+
+/* Los cuatro escalones de «113 góndolas»: frase · precio · a quién · dónde. */
+.plat-esc {
+  display: flex;
+  gap: var(--s2);
+  align-items: baseline;
+  font-size: var(--t-xs);
+  color: var(--ink-2);
+  padding: var(--s2) 0;
+  border-top: var(--hair) solid var(--line-soft);
+  line-height: 1.5;
+}
+.plat-esc .e-n { font-family: var(--f-mono); font-size: var(--t-3xs); color: var(--ink-3); flex: none; padding-top: 2px; }
+
+.plat-cands { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s1); }
+.plat-cand {
+  display: inline-flex;
+  flex-direction: column;
+  border: var(--hair) solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 5px 9px;
+  background: var(--surface-2);
+  font-size: var(--t-2xs);
+}
+.plat-cand b { font-size: var(--t-xs); font-weight: 600; }
+/* «ojo: ya tiene el 41,4 % del cliente». Es un AVISO sobre un candidato, no
+   un estado de espacio: borde firme y palabra, sin ámbar.
+
+   El modificador se llama `--ojo` y no `.ojo` a secas porque `vender.css`
+   define un `.ojo` GLOBAL (sin clase raíz: el número de panel, en mono, con
+   letter-spacing y un `::after`). Con `.plat-cand.ojo`, esa regla se cuela y
+   la ficha del candidato sale monoespaciada, centrada y con una rayita
+   colgando. Medido en la sesión de asesoría. */
+.plat-cand--ojo { border-color: var(--line-strong); background: var(--surface-3); }
+.plat-cand--ojo em { font-style: normal; color: var(--ink-1); font-weight: 700; }
+
+.plat-grupos { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: var(--s2); margin-top: var(--s2); }
+.plat-grupo summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  border: var(--hair) solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 7px 10px;
+  background: var(--surface-2);
+  font-size: var(--t-xs);
+}
+.plat-grupo summary::-webkit-details-marker { display: none; }
+.plat-grupo summary b { font-family: var(--f-mono); margin-left: auto; font-weight: 700; }
+.plat-grupo[open] summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.plat-grupo .codigos {
+  border: var(--hair) solid var(--line);
+  border-top: 0;
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  padding: var(--s2);
+  max-height: 190px;
+  overflow: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+/* Un código de espacio LIBRE: acá el verde sí codifica estado de espacio,
+   que es justo lo que la ficha dice. */
+.plat-grupo .codigos span {
+  font-family: var(--f-mono);
+  font-size: var(--t-3xs);
+  background: var(--libre-suave);
+  color: var(--libre-txt);
+  border: var(--hair) solid var(--libre-borde);
+  border-radius: 3px;
+  padding: 2px 5px;
+}
+
+/* ── Avisos de honestidad ──────────────────────────────────────────────────
+   «de cuántos clientes sale», «esto no se puede sumar», «no hay snapshot».
+   Filete de tinta y superficie apagada: no es una alarma, es una nota al pie
+   que se lee.                                                               */
+.plat-aviso {
+  border-left: 3px solid var(--ink-1);
+  background: var(--surface-2);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  padding: var(--s3) var(--s4);
+  font-size: var(--t-xs);
+  color: var(--ink-2);
+  line-height: 1.55;
+  margin: var(--s3) 0;
+}
+.plat-aviso b { color: var(--ink-1); }
+.plat-aviso .rotulo { color: var(--ink-3); margin-bottom: 3px; display: block; }
+.plat-nota { font-size: var(--t-2xs); color: var(--ink-3); line-height: 1.55; margin-top: var(--s2); }
+
+/* ── Figuras ───────────────────────────────────────────────────────────────
+   El contrato de tamaño de todo `<svg>` de `graficos.tsx`:
+
+     viewBox="0 0 W H"  ·  width:100%  ·  min-width:W  ·  height:H
+
+   Con `preserveAspectRatio="xMinYMin meet"` el factor de escala es
+   `min(ancho/W, alto/H)`. El alto está clavado en H, así que el factor NUNCA
+   pasa de 1 (un texto de 11,5 px no se infla a 17 px en una ventana ancha);
+   y el `min-width` impide que baje de 1 (un texto de 10 px no se hunde a 7 px
+   en una ventana angosta) — en su lugar la caja se desliza. Resultado: el
+   cuerpo declarado ES el cuerpo en pantalla, en cualquier ancho, y por eso la
+   escala `--t-*` significa algo adentro de un dibujo.                       */
+.plat-fig { margin: var(--s4) 0 0; }
+.plat-fig-cuerpo { overflow-x: auto; overflow-y: hidden; }
+.plat-fig svg { display: block; }
+.plat-fig-tit { font-size: var(--t-2xs); color: var(--ink-3); margin-bottom: var(--s2); line-height: 1.5; }
+.plat-fig figcaption.plat-fig-tit { margin-bottom: var(--s2); }
+.plat-leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s4);
+  font-size: var(--t-2xs);
+  color: var(--ink-3);
+  margin-top: var(--s2);
+}
+.plat-leyenda span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ── Pie / procedencia ─────────────────────────────────────────────────────
+   El periodo, la fecha de generación, la cobertura y el enlace al reporte de
+   transparencia (que se enlaza y no se rediseña).                           */
+.plat-pie {
+  border-top: 2px solid var(--ink-1);
+  padding-top: var(--s3);
+  font-size: var(--t-2xs);
+  color: var(--ink-3);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--s3) var(--s5);
+  line-height: 1.55;
+}
+.plat-pie b {
+  display: block;
+  font-weight: 600;
+  font-size: var(--t-3xs);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 2px;
+}
+
+/* ── Filtros ───────────────────────────────────────────────────────────────
+   Una fila arriba de todo lo que alcanzan (guion §3.5.6), nunca por gráfico. */
+.plat-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  align-items: center;
+  padding: var(--s3) 0;
+  margin-bottom: var(--s3);
+  border-bottom: var(--hair) solid var(--line);
+}
+.plat-filtros label { font-size: var(--t-2xs); color: var(--ink-3); margin-right: 2px; }
+.plat-filtros select,
+.plat-filtros input {
+  background: var(--surface);
+  color: var(--ink-1);
+  border: var(--hair) solid var(--brd);
+  border-radius: var(--r-sm);
+  padding: 5px 8px;
+  font-size: var(--t-2xs);
+  font-family: var(--f-text);
+}
+
+/* ── El informe para el cliente ────────────────────────────────────────────
+   La misma historia (capítulos 1 a 3), sin «los datos detrás» y sin nada
+   interno de la cartera. Tres páginas A4.                                   */
+.plat-hoja {
+  background: var(--surface);
+  border: var(--hair) solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--s7) var(--s7) var(--s6);
+  max-width: 860px;
+}
+.plat-hoja h1 { font-size: var(--t-xl); letter-spacing: -0.022em; line-height: 1.14; margin-bottom: var(--s2); }
+.plat-hoja h3 {
+  font-size: var(--t-base);
+  margin: var(--s6) 0 var(--s3);
+  padding-bottom: var(--s2);
+  border-bottom: var(--hair) solid var(--line);
+  letter-spacing: -0.01em;
+}
+.plat-hoja .membrete {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 2px solid var(--ink-1);
+  padding-bottom: var(--s2);
+  margin-bottom: var(--s5);
+}
+
+.plat .solo-impresion { display: none; }
+
+/* ── 1366×768 y más angosto ────────────────────────────────────────────────
+   Escritorio primero; el celular razonable, no perfecto.                    */
+@media (max-width: 1400px) {
+  .plat { --t-hero: 40px; }
+  .plat-shell { grid-template-columns: 214px minmax(0, 1fr); gap: var(--s5); padding: var(--s4) var(--s4) var(--s8); }
+  .plat-fila-cli {
+    grid-template-columns: 24px minmax(146px, 1fr) 122px minmax(178px, 1.6fr) 148px 116px;
+    gap: var(--s2);
+  }
+}
+@media (max-width: 1080px) {
+  .plat-shell { grid-template-columns: minmax(0, 1fr); }
+  .plat-indice {
+    position: static;
+    max-height: none;
+    border-bottom: var(--hair) solid var(--line);
+    padding-bottom: var(--s3);
+  }
+  .plat-toc { flex-direction: row; flex-wrap: wrap; border-left: 0; margin-left: 0; }
+  .plat-toc a { border-left: 0; border-bottom: 2px solid transparent; }
+  .plat-toc a.on { border-left-color: transparent; border-bottom-color: var(--dato); }
+  /* Con el índice en fila, las sub-entradas se leerían como capítulos: A las
+     esconde cuando el armazón se apila, y la cola de llamadas queda igual a un
+     scroll de distancia. */
+  .plat-toc a.sub { display: none; }
+  .plat-fila-cli { grid-template-columns: 22px 1fr 1fr; gap: var(--s2) var(--s3); }
+  .plat-fila-cli .razon { grid-column: 2 / 4; }
+  .plat-fila-cli .plata { text-align: left; }
+  .plat-fila-cli .acc { justify-content: flex-start; grid-column: 2 / 4; }
+  .plat-hoja { padding: var(--s5); }
+  .plat-kpi.hero { grid-template-columns: minmax(0, 1fr); }
+  .plat-kpi.hero .v { font-size: var(--t-xl); }
+}
+@media (max-width: 600px) {
+  .plat-bloque { padding: var(--s4); }
+  .plat-frase { font-size: var(--t-base); }
+  .plat-barra { position: static; flex-wrap: wrap; padding: var(--s2) var(--s3); gap: var(--s2); min-height: 0; }
+  .plat-barra .sep { flex-basis: 100%; height: 0; }
+  /* El grupo del periodo envuelve en vez de empujar el documento: el celular
+     es razonable, no perfecto, pero el scroll horizontal no se negocia. */
+  .plat-ctrl { flex-wrap: wrap; min-width: 0; }
+  /* El select toma el ancho de su rótulo más largo («septiembre de 2026») en
+     vez de encogerse a 130 px y elidirlo: el mes escrito entero es justamente
+     lo que se fue con el `<input type="month">`. Si no entra, el grupo envuelve
+     —nunca empuja el documento. */
+  .plat-barra select { min-width: 0; max-width: 100%; flex: 0 0 auto; }
+  .plat-correo { display: none; }
+  .plat-indice { top: 0; }
+  .plat-shell { padding: var(--s3); }
+}
+
+/* ── Impresión — el informe del cliente ────────────────────────────────────
+   Lo que se imprime es la hoja, con sus tablas ABIERTAS: en papel no hay
+   hover ni clic, así que la tabla equivalente de cada gráfico tiene que
+   estar desplegada o el gráfico se queda sin su camino accesible.
+
+   Los `<svg>` pierden el `min-width` (en papel no hay barra de desliz que
+   valga) y se ajustan al ancho de la caja.                                  */
+@media print {
+  .plat .no-imprime { display: none !important; }
+  .plat-barra, .plat-indice { display: none !important; }
+  .plat-shell { display: block; padding: 0; max-width: none; }
+  .plat-pagina { min-height: 0; background: #fff; }
+  .plat .solo-impresion { display: block; }
+  .plat-doc { max-width: none; }
+  .plat-hoja {
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    max-width: none;
+    background: #fff;
+  }
+  .plat-cap { break-inside: avoid; margin-bottom: var(--s5); }
+  .plat-bloque { break-inside: avoid; box-shadow: none; }
+  .plat-fig { break-inside: avoid; }
+  .plat-fig-cuerpo { overflow: visible; }
+  .plat-fig svg { min-width: 0 !important; width: 100% !important; }
+  .plat-tabla-eq > summary { display: none; }
+  .plat-tabla-eq > div { max-height: none; overflow: visible; display: block !important; }
+  /* Un `<details>` cerrado no imprime su contenido, y en papel no hay clic que
+     lo abra. `::details-content` lo destapa donde el motor lo soporta; donde
+     no, la pagina abre los `<details>` en `onbeforeprint` — por eso cada
+     componente acepta `tablaAbierta`. */
+  .plat-tabla-eq::details-content { content-visibility: visible !important; block-size: auto !important; }
+  .plat-hoja h3 { break-after: avoid; }
+  .plat-frase { break-after: avoid; }
+  .plat table { break-inside: auto; }
+  .plat tr { break-inside: avoid; }
+}
