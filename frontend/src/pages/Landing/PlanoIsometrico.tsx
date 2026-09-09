@@ -906,7 +906,7 @@ function Escenario() {
               <li><i className="dot dot--tomado" aria-hidden="true" /> Tomado <span className="n">6</span></li>
               <li><i className="dot dot--resto" aria-hidden="true" /> Resto de la sala</li>
             </ul>
-            <p className="foot">Es la misma lectura que va a tener adentro, con su propia tienda.</p>
+            <p className="foot">Es la misma lectura que tendrá dentro del sistema, con su propia tienda.</p>
           </div>
           <p className="help">
             <span className="mouse">Arrastre para moverse. Ctrl + rueda para acercar. Toque un mueble para ver su ficha.</span>

@@ -544,7 +544,7 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                     </div>
                   </div>
                 </div>
-                <p className="card__foot">La tarifa la ve el administrador. El mercaderista no ve un solo peso.</p>
+                <p className="card__foot">La tarifa la consulta el administrador. El mercaderista no accede a ningún valor.</p>
               </div>
             </article>
 
@@ -565,7 +565,7 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                   <div style={{ display: "grid", gap: 6 }}>
                     <div className="mailrow"><Ico n="mail" tam={14} /><b>Comercial</b> acuerdo <span className="mailrow__tag">con valor</span></div>
                     <div className="mailrow"><Ico n="mail" tam={14} /><b>Mercaderista</b> montaje <span className="mailrow__tag mailrow__tag--none">sin valor</span></div>
-                    <div className="mailrow"><Ico n="mail" tam={14} /><b>Proveedor</b> constancia <span className="mailrow__tag">de lo suyo</span></div>
+                    <div className="mailrow"><Ico n="mail" tam={14} /><b>Proveedor</b> constancia <span className="mailrow__tag">del acuerdo</span></div>
                   </div>
                   <div className="timeline" aria-hidden="true">
                     <span className="timeline__n">30</span><span className="timeline__l"><i /></span>
