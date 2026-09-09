@@ -155,14 +155,11 @@ console.log("\nlanding · la página se dibuja con el copy");
 
 const contiene = (t) => assert.ok(html.includes(t), `falta en la página: «${t.slice(0, 60)}»`);
 
-prueba("el titular, la frase de qué es y el dolor", () => {
-  // Dirección E: el H1 es el slogan que eligió el dueño («Recabrá cada metro.»)
-  // y el titular viejo baja intacto a subtítulo, con las cuatro palabras
-  // pintadas con los colores del estado — por eso va partido en `<span>`.
-  contiene("Recabrá cada metro.");
-  ["Qué mueble está", "libre", "quién lo ", "ocupa", "a cuánto", "hasta cuándo"].forEach(contiene);
-  contiene("RECABRA es el sistema con el que un supermercado vende sus espacios de exhibición.");
-  contiene("esta es la pantalla que falta.");
+prueba("el titular, la frase de qué es y el problema que resuelve", () => {
+  contiene("Recabre cada metro.");
+  contiene("Qué mueble está");
+  contiene("RECABRA es el sistema con el que un supermercado administra y comercializa sus");
+  contiene("deja de ser administrable.");
 });
 
 prueba("los dos CTA apuntan al login, y el de registro al ancla", () => {
@@ -172,27 +169,45 @@ prueba("los dos CTA apuntan al login, y el de registro al ancla", () => {
   contiene("Ya tengo cuenta");
 });
 
-prueba("las seis cosas que hace, con la cuenta del plazo verificada", () => {
-  contiene("El plano de su tienda, no una lista de códigos");
-  contiene("El contrato se arma sobre el mueble");
-  contiene("Qué hay libre en la temporada que está vendiendo");
-  contiene("Su tarifa, y cuánto se está corriendo de ella");
-  contiene("Los avisos salen solos");
-  contiene("El montaje se confirma con foto, desde el celular");
+prueba("las seis funciones, con la cuenta del plazo verificada", () => {
+  contiene("El inventario como plano, no como lista de códigos");
+  contiene("El contrato se registra sobre el mueble");
+  contiene("Disponibilidad por temporada comercial");
+  contiene("Tarifa de referencia y desviación");
+  contiene("Notificaciones automáticas");
+  contiene("Confirmación de montaje con evidencia fotográfica");
   contiene("$ 3.050.000");
 });
 
-prueba("las tres personas, los tres pasos y la banda de asesoría", () => {
-  contiene("Tres personas usan esto, y cada una ve otra cosa");
-  contiene("Cree la cuenta y su supermercado");
-  contiene("Dibuje el plano de cada sede");
-  contiene("Venda tocando el mapa");
-  contiene("Además del sistema, le decimos qué proponer");
-  contiene("Cómo funciona, sin vueltas.");
+prueba("los tres perfiles y las tres etapas de implementación", () => {
+  contiene("Tres perfiles, tres vistas distintas del mismo sistema");
+  contiene("Creación de la cuenta y del supermercado");
+  contiene("Levantamiento del plano de cada sede");
+  contiene("Comercialización sobre el plano");
 });
 
-prueba("confianza, precio y pie legal, con los [COMPLETAR] a la vista", () => {
-  contiene("Dónde quedan sus datos");
+/* Las secciones de ASESORÍA y de DATOS se quitaron de la landing por decisión
+   del dueño (Fase 16). No alcanza con haberlas borrado: el copy de las dos
+   vivía en `copy.md` y volver a pegarlo es exactamente el movimiento que hace
+   una sesión futura que lee el documento y no el historial. Se afirma la
+   ausencia, y con las frases que sólo existían ahí. */
+prueba("la asesoría y el bloque de datos NO volvieron a la página", () => {
+  const fuera = [
+    "Además del sistema, le decimos qué proponer",
+    "Recomendaciones ordenadas por lo que hay en juego",
+    "Oportunidades espacio por espacio",
+    "Tendencia mes a mes",
+    "Dónde quedan sus datos",
+    "Cada supermercado, en su propia base",
+    "Puede auditar qué se mira de usted",
+    "#asesoria",
+    "#confianza",
+  ];
+  const colados = fuera.filter((f) => html.includes(f));
+  assert.deepEqual(colados, [], "volvieron a la landing: " + colados.join(" · "));
+});
+
+prueba("el precio y el pie legal, con los [COMPLETAR] a la vista", () => {
   contiene("Ley 1581 de 2012");
   contiene("[COMPLETAR: precio]");
   contiene("[COMPLETAR: razón social]");
@@ -200,10 +215,19 @@ prueba("confianza, precio y pie legal, con los [COMPLETAR] a la vista", () => {
   contiene('href="/politica-datos#derechos"');
 });
 
+/* Quitar el bloque de datos NO puede llevarse el acceso a la política: es
+   obligación de Ley 1581, y hasta la Fase 16 el enlace vivía en dos lugares.
+   Ahora vive sólo en el pie, así que se afirma que el pie lo tiene. */
+prueba("el enlace a la política sobrevive en el pie, que es su único lugar", () => {
+  const pie = html.slice(html.indexOf("<footer"));
+  assert.ok(pie.includes('href="/politica-datos"'),
+    "el pie perdió el enlace a la Política de Tratamiento de Datos");
+});
+
 prueba("el plano se rotula como ejemplo, en texto visible", () => {
   contiene("Supermercado de ejemplo · Toque un mueble");
-  contiene("Los datos del plano son inventados");
-  contiene("El plano de esta página es un supermercado inventado");
+  contiene("Los datos del plano son ilustrativos");
+  contiene("El plano de esta página corresponde a un supermercado ficticio");
 });
 
 prueba("la leyenda escribe los cuatro estados: el color nunca va solo", () => {

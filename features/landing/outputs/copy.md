@@ -13,24 +13,38 @@ Lo que está en *cursiva bajo cada sección* es la **intención** y no se pega e
 
 ## 0. Decisiones de voz y reglas del copy
 
-**Voz: español latino neutro, formal (usted)** — cambiado en la Fase 15 por decisión del dueño.
-Antes era voseo («dibujás», «vendés», «cargá»), elegido por consistencia con el interior de la
-aplicación; la landing le habla a alguien que todavía no es cliente, y ahí la cortesía pesa más que
-la cercanía. Sigue siendo **liviano**: usted sin solemnidad, frases cortas, y el mismo vocabulario
-colombiano de retail (canon, sede, góndola, punta de góndola, mercaderista, proveedor, cuenta de
-cobro). **No mezclar con tuteo ni con voseo en ninguna pantalla de la landing.**
+**Voz: español latino neutro, registro comercial formal (usted)** — fijado en la Fase 16 por
+decisión del dueño, después de que la Fase 15 se quedara corta. El primer intento cambió los
+verbos de voseo a usted y dejó intacto el registro: la página seguía leyéndose conversacional
+—«esta es la pantalla que falta», «la plata», «sin vueltas», «no se hace de cabeza»— y el dueño lo
+vio de inmediato en la página dibujada. **Conjugar en usted no es escribir formal.**
+
+La regla, entonces, es de REGISTRO y no de conjugación:
+
+- **Enunciativo, no conversacional.** Se describe lo que el sistema hace; no se le habla al lector
+  como si estuviera del otro lado del mostrador. «El contrato se registra sobre el mueble», no
+  «toque el mueble y llene la ficha».
+- **Sin coloquialismos.** Prohibidos en el texto visible: «plata» (es *el valor*, *el canon*, *el
+  ingreso*), «sin vueltas», «de cabeza», «se le caen», «andan hoy», «al toque», «acá» por «aquí»
+  cuando se puede evitar la deixis.
+- **Vocabulario del oficio, que no es jerga técnica.** Canon, sede, góndola, punta de góndola,
+  mercaderista, proveedor, cuenta de cobro, vigencia, nomenclatura. La prohibición de jerga de la
+  regla 4 sigue siendo sobre jerga de SOFTWARE, no sobre el idioma del retail.
+- **Frases cortas igual.** Formal no es largo. Un punto por idea, como siempre.
+
+El H1 también cambió: **«Recabre cada metro.»** El juego con el nombre de la marca es el mismo
+—queda incluso más cerca de RECABRA escrito— pero en el registro de la página. Está fijado en
+`backend/tests/test_landing_ataques.py::TITULAR_E`.
 
 La aplicación por dentro sigue en voseo: cambiarla entera es otra fase, y una mezcla a mitad de
-camino sería peor que cualquiera de las dos voces sostenidas. La única excepción declarada es el
-H1 —«Recabrá cada metro.»—, que es el juego con el nombre de la marca y lo eligió el dueño: se
-deja como está hasta que él diga lo contrario.
+camino sería peor que cualquiera de las dos voces sostenidas.
 
 Reglas duras del texto:
 
 1. **Nada que el producto no haga.** Si no está en §12 («cifras verificadas») o en el código, no se
    escribe. La lista de lo que hay que evitar está en §14.
-2. **Verbos, no sustantivos abstractos.** «Vendés espacios tocando el mapa», no «optimización de la
-   comercialización».
+2. **Verbos concretos, no sustantivos abstractos.** «El contrato se registra sobre el mueble», no
+   «optimización de la comercialización». Formal no es vago: la frase sigue diciendo qué pasa.
 3. **Frases cortas.** Un punto por idea. Nada de subordinadas de tres renglones.
 4. **Cero jerga técnica en la página.** Prohibido en el texto visible: multi-tenant, SaaS, JWT,
    endpoint, backend, snapshot, onboarding, dashboard, KPI, spread, benchmark, lazy-load.
@@ -112,11 +126,11 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Frase de qué es (subtítulo 1):**
 
-> RECABRA es el sistema con el que un supermercado vende sus espacios de exhibición. Dibuje el plano de cada sede, marque qué muebles se alquilan y arme el contrato ahí mismo, tocando el mueble.
+> RECABRA es el sistema con el que un supermercado administra y comercializa sus espacios de exhibición. Cada sede se representa en un plano, se define qué muebles son alquilables y el contrato se registra sobre el mueble.
 
 **Subtítulo 2:**
 
-> Si hoy eso vive en un Excel, en un chat de WhatsApp o en la memoria de alguien, esta es la pantalla que falta.
+> Cuando esa información está repartida entre hojas de cálculo, conversaciones y la memoria de cada persona, deja de ser administrable.
 
 **CTA primario** → `/login#registro`:
 
@@ -128,37 +142,37 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Línea bajo los botones:**
 
-> Entre con su correo o con Google. Crear la cuenta y su supermercado toma un minuto.
+> El registro se hace con correo corporativo o con Google, y toma menos de un minuto.
 
 **Rótulo del plano interactivo (arriba a la izquierda del plano, siempre visible):**
 
-> Supermercado de ejemplo · Tocá un mueble
+> Supermercado de ejemplo · Toque un mueble
 
 **Nota chica bajo el plano:**
 
-> Los datos del plano son inventados, para mostrar cómo se ve. Ningún supermercado real aparece acá.
+> Los datos del plano son ilustrativos. No corresponden a ningún supermercado real.
 
 *Intención: en cinco segundos, un gerente que nunca oyó el nombre entiende que esto es para vender las puntas de góndola de su tienda, ve el piso de una tienda dibujado y siente que ya puede tocarlo. La duda que hay que matar acá es «¿esto es para mí o es un software de logística?».*
 
 ---
 
-## 3. Qué hace
+## 3. Funciones
 
 **Título de sección:**
 
-> Lo que hace
+> Funciones
 
 **Bajada:**
 
-> Seis cosas concretas. Todas están construidas y andan hoy.
+> Seis funciones, todas implementadas y en operación.
 
 ### Bloque 1
 
-**Título:** `El plano de su tienda, no una lista de códigos`
+**Título:** `El inventario como plano, no como lista de códigos`
 
 **Texto:**
 
-> Dibuje cada sede como es: góndolas, puntas, islas, neveras, bateas, cajas. Cada mueble queda con su código y sus medidas. En el plano se ve de un vistazo qué está libre y qué está tomado, y cuando el proveedor quiere ver cómo le va a quedar la exhibición, la misma tienda se recorre en 3D.
+> Cada sede se representa tal como está distribuida: góndolas, puntas, islas, neveras, bateas y cajas. Cada mueble conserva su código y sus medidas, y el plano muestra el estado de ocupación. Cuando el proveedor necesita evaluar cómo quedará la exhibición, la misma sede puede recorrerse en 3D.
 
 **Pie del bloque:** `Plano 2D · vista 3D · una nomenclatura para toda la cadena`
 
@@ -168,53 +182,53 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Texto:**
 
-> Toque el espacio y llene una sola ficha: proveedor, marca, canon mensual, desde y hasta. Si el acuerdo cubre tres puntas de góndola, las toca las tres y queda un solo contrato, no tres. Abajo del formulario está el total del plazo, que es lo que se firma: $ 1.500.000 al mes por 61 días son $ 3.050.000, y esa cuenta ya no se hace de cabeza con el proveedor esperando.
+> Al seleccionar el espacio se completa una sola ficha: proveedor, marca, canon mensual y vigencia. Si el acuerdo cubre tres puntas de góndola, se seleccionan las tres y se genera un único contrato. El formulario calcula el total del plazo, que es el valor que se firma: $ 1.500.000 mensuales por 61 días equivalen a $ 3.050.000, sin necesidad de calcularlo durante la negociación.
 
 **Pie del bloque:** `Un proveedor, un periodo, todos los espacios que haga falta`
 
 ### Bloque 3
 
-**Título:** `Qué hay libre en la temporada que está vendiendo`
+**Título:** `Disponibilidad por temporada comercial`
 
 **Texto:**
 
-> Elija el periodo —Amor y Amistad, Halloween, Black Friday, Navidad, regreso a clases— y el plano entero se repinta para ese periodo: libre todo el tiempo, se libera adentro, o tomado. Un panel le dice cuántos espacios hay libres si el contrato arranca el 26 y cuántos si arranca el 29. Un mueble que se desocupa el 25 es inventario que puede ofrecer hoy.
+> Al seleccionar el periodo —Amor y Amistad, Halloween, Black Friday, Navidad, regreso a clases— el plano se recalcula para esas fechas: disponible durante todo el periodo, con liberación intermedia, u ocupado. Un panel indica cuántos espacios quedan disponibles según la fecha de inicio del contrato. Un mueble que se desocupa el 25 es inventario comercializable desde hoy.
 
-**Pie del bloque:** `Nueve temporadas del calendario colombiano, con la ventana de venta que usted defina`
+**Pie del bloque:** `Nueve temporadas del calendario comercial colombiano, con la ventana de venta que cada supermercado defina`
 
 ### Bloque 4
 
-**Título:** `Su tarifa, y cuánto se está corriendo de ella`
+**Título:** `Tarifa de referencia y desviación`
 
 **Texto:**
 
-> Cargue una tarifa por tipo de mueble, con ajuste por sede si una tienda vale más que otra. Cuando escribe el valor de un contrato, al lado le aparece la referencia y el desvío: «−17 % vs referencia». En el tablero hay una lista de todo lo que está por debajo de tarifa, para revisarlo en la próxima renovación.
+> Se registra una tarifa por tipo de mueble, con ajuste por sede cuando una tienda tiene mayor valor comercial. Al registrar el valor de un contrato, el sistema muestra la referencia y la desviación: «−17 % vs referencia». El tablero lista los contratos por debajo de tarifa para revisarlos en la próxima renovación.
 
-**Pie del bloque:** `La tarifa la ve el administrador. El mercaderista no ve un solo peso.`
+**Pie del bloque:** `La tarifa la consulta el administrador. El mercaderista no accede a ningún valor.`
 
 ### Bloque 5
 
-**Título:** `Los avisos salen solos`
+**Título:** `Notificaciones automáticas`
 
 **Texto:**
 
-> Al guardar un contrato salen tres correos distintos: el comercial recibe el acuerdo con el valor, el mercaderista recibe la orden de montaje sin un solo monto y con el enlace para reportar, y el proveedor recibe la constancia de lo suyo. Antes de vencer, el sistema avisa tres veces: a 30, a 15 y a 6 días. A una semana ya no hay margen para negociar; a un día el correo llega para contar algo que ya pasó.
+> Al guardar un contrato se envían tres correos distintos: el área comercial recibe el acuerdo con el valor, el mercaderista recibe la orden de montaje sin ningún monto y con el enlace para reportar, y el proveedor recibe la constancia de su acuerdo. Antes del vencimiento el sistema notifica tres veces: a 30, 15 y 6 días. Con una semana de margen ya no queda espacio para renegociar; con un día, el aviso solo informa un hecho consumado.
 
-**Pie del bloque:** `Y cuando falta poco, el botón Renovar viene con el proveedor, la marca y el valor que se está pagando ya escritos.`
+**Pie del bloque:** `Al acercarse el vencimiento, la acción Renovar llega precargada con el proveedor, la marca y el valor vigente.`
 
 ### Bloque 6
 
-**Título:** `El montaje se confirma con foto, desde el celular`
+**Título:** `Confirmación de montaje con evidencia fotográfica`
 
 **Texto:**
 
-> El correo del mercaderista trae un enlace que abre directo en el espacio que le toca. Sin contraseña y sin ver el tablero de la tienda: solo el mueble, dónde queda —«a unos 4 m de las cajas», con el plano de la sala señalado— y dos botones. «Montado» exige foto. «No pude» exige motivo, porque sin motivo no se sabe a quién reclamarle.
+> El correo del mercaderista incluye un enlace que abre directamente en el espacio asignado. Sin contraseña y sin acceso al tablero de la tienda: únicamente el mueble, su ubicación —«a unos 4 m de las cajas», señalada sobre el plano de la sala— y dos acciones. «Montado» exige fotografía. «No pude» exige motivo: sin motivo registrado no hay responsable identificable.
 
-**Pie del bloque:** `La foto queda guardada. Es la que responde el reclamo del proveedor tres meses después.`
+**Pie del bloque:** `La fotografía queda archivada. Es el respaldo ante un reclamo del proveedor meses después.`
 
 **Cierre de la sección (una línea, después de los seis bloques):**
 
-> Y además: cargue la temporada entera desde una planilla de Excel, revise fila por fila antes de crear nada, maneje todas sus sedes desde la misma cuenta e invite a su equipo con el permiso que le toca a cada uno.
+> Además: la temporada completa puede cargarse desde una planilla de Excel y revisarse fila por fila antes de crear ningún contrato, todas las sedes se administran desde la misma cuenta, y cada integrante del equipo se incorpora con el nivel de permiso que le corresponde.
 
 *Intención: que reconozca su propio trabajo semana a semana en la pantalla. Cada bloque tiene que sonar a «esto lo hago yo los martes», no a una lista de funcionalidades. Si un bloque se puede decir de cualquier software, está mal escrito.*
 
@@ -224,211 +238,133 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Título de sección:**
 
-> Tres personas usan esto, y cada una ve otra cosa
+> Tres perfiles, tres vistas distintas del mismo sistema
 
 ### Perfil 1
 
 **Rótulo:** `Gerente o administrador`
 
-**Titular:** `Vende con datos, no de memoria`
+**Titular:** `Decide con datos a la vista`
 
 **Texto:**
 
-> Ve el plano, la plata y el calendario en la misma pantalla. Arma el contrato, pone el precio con la tarifa al lado y sabe qué se le cae el mes que viene. Puede girar el portátil y mostrarle el plano al proveedor que tiene enfrente: esa pantalla no muestra el nombre ni el canon de ningún otro proveedor.
+> Dispone del plano, los valores y el calendario en una sola pantalla. Registra el contrato, fija el precio con la tarifa de referencia a la vista y conoce qué vence el mes siguiente. Puede mostrar el plano al proveedor durante la negociación: esa pantalla no expone el nombre ni el canon de ningún otro proveedor.
 
 ### Perfil 2
 
 **Rótulo:** `Trabajador de piso`
 
-**Titular:** `Monta y reporta, sin ver dinero`
+**Titular:** `Ejecuta y reporta, sin acceso a valores`
 
 **Texto:**
 
-> Le llega un correo con el espacio que le toca y un enlace que abre en su celular. Confirma con una foto o dice qué pasó. No entra con una contraseña compartida y no ve valores: el sistema le borra la plata antes de mandarle la pantalla.
+> Recibe un correo con el espacio asignado y un enlace que abre en su teléfono. Confirma con una fotografía o registra el motivo del incumplimiento. No accede con contraseña compartida ni ve valores: el servidor los suprime antes de enviar la pantalla.
 
 ### Perfil 3
 
 **Rótulo:** `Proveedor`
 
-**Titular:** `Sabe qué compró`
+**Titular:** `Recibe constancia de lo contratado`
 
-**Titular alternativo (si el diseño necesita algo más corto):** `Ve lo que compró`
+**Titular alternativo (si el diseño necesita algo más corto):** `Constancia de lo contratado`
 
 **Texto:**
 
-> Recibe por correo la constancia de su acuerdo: qué espacios, en qué sede, desde cuándo y hasta cuándo. Y antes de firmar puede ver el mueble en 3D con su marca puesta, en una lámina de antes y después que se le manda adjunta.
+> Recibe por correo la constancia de su acuerdo: qué espacios, en qué sede y con qué vigencia. Antes de firmar puede visualizar el mueble en 3D con su marca aplicada, en una lámina de antes y después que se adjunta al envío.
 
-### Los números que vas a tener a la vista
+### Los indicadores disponibles en el tablero
 
 **Bajada del bloque:**
 
-> No son promesas. Son las cifras que la pantalla le muestra cada vez que la abre.
+> No son proyecciones. Son las cifras que el tablero calcula sobre los datos cargados.
 
 | Cifra | Cómo se lee |
 |---|---|
 | **Ocupación** | `35 %` · 8 de 23 caras vendidas en el periodo |
-| **Canon vigente** | lo que están pagando hoy los contratos vivos, al mes |
-| **Sin alquilar** | cuánto vale a tarifa lo que está vacío, y cuánto es eso por día vacío |
-| **Vence en 30 días** | cuántos espacios y cuánta plata se le caen si nadie los renueva |
-| **Sin montar** | contratos ya cobrados que todavía no están armados en el piso |
+| **Canon vigente** | ingreso mensual de los contratos vigentes |
+| **Sin alquilar** | valor a tarifa de los espacios desocupados, y su equivalente por día |
+| **Vence en 30 días** | espacios e ingreso mensual que se pierden si no se renuevan |
+| **Sin montar** | contratos ya facturados cuyo montaje aún no se ha ejecutado |
 
 **Línea de cierre del bloque:**
 
-> Y un contrato de tres puntas de góndola se arma una vez, no tres.
+> Un contrato que cubre tres puntas de góndola se registra una vez, no tres.
 
 *Intención: que el gerente se reconozca a él y a su gente; que entienda que darle acceso al mercaderista no le abre la caja; y que los beneficios se lean como cifras que él va a poder mirar, no como porcentajes de mejora inventados por un vendedor. La tabla es la prueba de que acá nadie promete «+30 % de ingresos».*
 
 ---
 
-## 5. Cómo se usa
+## 5. Implementación
 
 **Título de sección:**
 
-> Cómo se arranca
+> Cómo se implementa
 
 **Bajada:**
 
-> Tres pasos. El primero toma un minuto; el segundo es el trabajo de verdad y se hace una sola vez.
+> Tres etapas. La primera toma un minuto; la segunda concentra el trabajo de levantamiento y se realiza una sola vez.
 
 ### Paso 1
 
 **Número:** `1`
-**Título:** `Cree la cuenta y su supermercado`
+**Título:** `Creación de la cuenta y del supermercado`
 **Texto:**
 
-> Entre con Google o con su correo, le pone nombre a su supermercado y queda como dueño de la cuenta. Después invite a su equipo: cada persona con su correo y con el permiso que le toca.
+> El registro se hace con Google o con correo corporativo. Quien crea la cuenta queda como titular y desde ahí incorpora al equipo: cada integrante con su propio correo y con el nivel de permiso que le corresponde.
 
 ### Paso 2
 
 **Número:** `2`
-**Título:** `Dibujá el plano de cada sede`
+**Título:** `Levantamiento del plano de cada sede`
 **Texto:**
 
-> Ponga los muebles como están en la sala y marque cuáles se alquilan. Las cajas y las columnas quedan de contexto, en gris. Si ya tiene los contratos de la temporada en un Excel, los carga de una vez: el sistema le muestra fila por fila qué entra y qué choca, antes de crear nada.
+> Los muebles se ubican según la distribución real de la sala y se marca cuáles son alquilables. Cajas y columnas quedan como referencia, en gris. Si los contratos de la temporada ya existen en una planilla, se cargan en un solo paso: el sistema reporta fila por fila cuáles proceden y cuáles presentan conflicto, antes de crear ningún registro.
 
 ### Paso 3
 
 **Número:** `3`
-**Título:** `Vendé tocando el mapa`
+**Título:** `Comercialización sobre el plano`
 **Texto:**
 
-> Elija la temporada, mire qué quedó verde, toque el mueble y llene el contrato. Al guardar salen los tres correos y el espacio cambia de color en el plano.
+> Se selecciona la temporada, se identifican los espacios disponibles y se registra el contrato sobre el mueble. Al guardar se envían los tres correos y el espacio cambia de estado en el plano.
 
 **Nota bajo los tres pasos:**
 
-> Cada supermercado empieza vacío. RECABRA no viene con datos de nadie adentro.
+> Cada supermercado inicia con el sistema vacío. RECABRA no incorpora datos de terceros.
 
 *Intención: bajarle el miedo al paso 2, que es el único que cuesta, y dejar claro que el paso 3 es el trabajo de todos los días. Si alguien lee estos tres pasos y piensa «esto lo puedo hacer un sábado», la sección funcionó.*
 
 ---
 
-## 6. Asesoría
+## 6 y 7 · Asesoría y Confianza — RETIRADAS DE LA LANDING (Fase 16)
 
-**Antetítulo:**
+Las dos secciones se quitaron de la página por decisión del dueño. El texto no
+se conserva acá para «tenerlo a mano»: este documento es lo que la página DICE,
+y un bloque guardado en el mismo archivo del que la landing se escribe es una
+invitación a que vuelva. El copy retirado vive en el historial de git
+(`git log -p -- features/landing/outputs/copy.md`), que es donde va lo que ya
+no se publica.
 
-> Lo que ningún Excel le va a decir
+Lo que sí se movió y NO se perdió:
 
-**Título de sección:**
+- **El enlace a la Política de Tratamiento de Datos.** Vivía en el bloque de
+  Confianza y en el pie; ahora vive sólo en el pie, junto con el aviso de la
+  Ley 1581 de 2012 y el Decreto 1377 de 2013. Es obligación legal, no copy
+  comercial: no puede irse con la sección. `probar-landing.mjs` afirma que el
+  pie lo tiene.
+- **La numeración de las secciones visibles.** Con las dos afuera, la página
+  quedó en cinco: 01 Funciones, 02 Para quién, 03 Implementación, 04 Precio,
+  05 Cierre.
 
-> Además del sistema, le decimos qué proponer
-
-**Bajada:**
-
-> Un sistema le muestra lo que pasó. Nosotros miramos sus números y le llevamos, por escrito, qué le puede ofrecer a quién esta semana.
-
-### Bloque A
-
-**Título:** `Recomendaciones ordenadas por lo que hay en juego`
-
-**Texto:**
-
-> Cada recomendación viene con un valor al lado y una razón. «Tiene tres puntas de góndola libres: ofrézcalas a $ 2.000.000 cada una, que es el promedio que usted mismo está cobrando por ese tipo — $ 6.000.000 en juego.» «El contrato de esa punta vence en 19 días: renuévelo o reasígnelo — $ 2.000.000 en juego.» Primero las de mayor valor.
-
-### Bloque B
-
-**Título:** `Oportunidades espacio por espacio`
-
-**Texto:**
-
-> Para cada mueble libre o que se libera en el periodo: un precio sugerido —el promedio que ya cobra por ese tipo, o el promedio de los supermercados que usan RECABRA si usted todavía no cobra ninguno— y hasta tres proveedores suyos que podrían tomarlo, empezando por los que ya alquilan ese mismo tipo de mueble.
-
-### Bloque C
-
-**Título:** `Tendencia mes a mes`
-
-**Texto:**
-
-> Ocupación, ingreso contratado y canon promedio, guardados mes a mes desde que entra. La pregunta «¿estamos mejorando?» deja de contestarse de memoria. Un mes sin datos aparece como un hueco, no como un cero: un cero sería mentira.
-
-**Cierre honesto de la sección (va completo, no se recorta):**
-
-> **Cómo funciona, sin vueltas.** Esta parte no es una pantalla suya: la revisa una persona de RECABRA sobre sus propios datos, y le llega en la sesión de asesoría. Todo lo que se lee está escrito en la Política de Tratamiento de Datos, queda anotado con la fecha y el correo de quien lo consultó, y puede pedir ese registro cuando quiera desde su propia cuenta.
-
-**Enlace del cierre:** `Ver el reporte de transparencia` → `/politica-datos` (sección §5.3) o, para quien ya tiene sesión, `/reporte-plataforma`.
-
-*Intención: este es el diferencial y hay que decirlo sin humo. El gerente tiene que entender dos cosas al mismo tiempo: (a) alguien mira sus números y le trae propuestas concretas con plata al lado, y (b) eso lo mira una persona, está declarado y él lo puede auditar. Ocultar (b) para que suene más automático sería exactamente lo que la Fase 7 decidió no hacer.*
-
----
-
-## 7. Confianza
-
-**Título de sección:**
-
-> Dónde quedan sus datos
-
-**Bajada:**
-
-> Esto lo usa gente distinta de la misma tienda, y hay dinero adentro. Así está resuelto.
-
-### Punto 1
-
-**Título:** `Cada supermercado, en su propia base`
-**Texto:**
-
-> Los planos, los contratos y los proveedores de su supermercado viven en una base separada de la de cualquier otro cliente. No es un filtro por columna: es otra base.
-
-### Punto 2
-
-**Título:** `Cada persona entra con su cuenta`
-**Texto:**
-
-> Con Google o con correo y contraseña. Nada de una clave compartida que sigue funcionando cuando alguien se va. Desactivás a esa persona y pierde el acceso en el siguiente clic, sin tocar a nadie más.
-
-### Punto 3
-
-**Título:** `El dinero no le llega a quien no le toca`
-**Texto:**
-
-> Los valores no se ocultan en la pantalla: se borran en el servidor antes de mandarla. El mercaderista no tiene forma de verlos, ni siquiera mirando lo que le llegó al navegador.
-
-### Punto 4
-
-**Título:** `Puede auditar qué se mira de usted`
-**Texto:**
-
-> El dueño de la cuenta puede pedir, cuando quiera, el reporte de transparencia: qué datos toma RECABRA, cómo los calcula, de dónde salen, para qué, y quién los consultó y qué día. También puede descargar todos sus datos y pedir la supresión.
-
-### Punto 5
-
-**Título:** `Colombia, Ley 1581`
-**Texto:**
-
-> Tratamiento de datos personales conforme a la Ley 1581 de 2012 y al Decreto 1377 de 2013. La política es pública y se lee sin tener cuenta.
-
-**Enlaces de la sección:**
-
-- `Política de Tratamiento de Datos` → `/politica-datos`
-- `Reporte de transparencia` → `/politica-datos#transparencia` (para quien no tiene sesión) · `/reporte-plataforma` (para el dueño de la cuenta)
-
-*Intención: que el gerente que duda de meter la plata de su tienda en una página web encuentre respuestas concretas y verificables, no sellos ni escudos. Cada punto tiene que sonar a decisión de ingeniería tomada, no a promesa de marketing.*
-
----
+La asesoría sigue existiendo como servicio y las pantallas del operador siguen
+en el producto (`/plataforma`). Lo que se quitó es la promesa en la página
+pública, no la función.
 
 ## 8. Precio y modelo comercial
 
 **Título de sección:**
 
-> Cuánto cuesta
+> Modelo comercial
 
 **Precio:**
 
@@ -436,17 +372,17 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Cómo se paga:**
 
-> Por transferencia bancaria, contra cuenta de cobro. No hay pasarela de pagos ni le pedimos una tarjeta.
+> Pago por transferencia bancaria contra cuenta de cobro. No se utiliza pasarela de pagos ni se solicitan datos de tarjeta.
 
 **Qué pasa si un mes se atrasa (bloque de tres líneas):**
 
-> - Primero le avisamos en la pantalla, y todo sigue funcionando igual.
-> - Si el atraso sigue, la cuenta pasa a solo lectura: puede entrar, ver todo y consultar, pero no se cargan contratos nuevos.
-> - Sus datos no se borran nunca. Ponga la cuenta al día y vuelve a trabajar donde lo dejó.
+> - Primer aviso en pantalla; el servicio continúa sin cambios.
+> - Si la mora persiste, la cuenta pasa a solo lectura: se conserva el acceso y la consulta, pero no se registran contratos nuevos.
+> - Los datos no se eliminan en ningún caso. Regularizada la cuenta, la operación se reanuda donde quedó.
 
 **Contacto:**
 
-> ¿Tiene varias sedes o una cadena regional y quiere que lo veamos juntos? Escríbanos a `[COMPLETAR: correo de contacto]`.
+> Para cadenas regionales o multisede, escríbanos a `[COMPLETAR: correo de contacto]` y evaluamos el alcance en conjunto.
 
 **CTA de la sección:** `Hablemos` → `mailto:[COMPLETAR: correo de contacto]`
 
@@ -462,7 +398,7 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Texto:**
 
-> Cree la cuenta, dibuje la tienda que más espacios vende y mire cuántos tiene libres esta temporada. Si sirve, siga con las demás.
+> Comience por la sede con mayor volumen de espacios comercializables y evalúe la disponibilidad de esta temporada. Si el resultado es útil, incorpore las demás.
 
 **CTA primario** → `/login#registro`:
 
@@ -474,7 +410,7 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Línea de cierre bajo los botones:**
 
-> Entre con Google o con su correo. El plano de arriba es de ejemplo; el suyo lo dibuja usted.
+> Registro con Google o con correo corporativo. El plano de esta página es un ejemplo; el de cada supermercado se levanta con sus propias sedes.
 
 *Intención: bajar el compromiso a lo mínimo creíble —una sede, no la cadena— y dejar el último gesto de la página siendo un botón, no un párrafo.*
 
@@ -514,7 +450,7 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Nota chica final:**
 
-> El plano de esta página es un supermercado inventado, sembrado en el código de la propia página. No corresponde a ningún cliente.
+> El plano de esta página corresponde a un supermercado ficticio, definido en el código de la propia página. No representa a ningún cliente.
 
 *Intención: cerrar con lo obligatorio, sin que el pie se convierta en un mapa del sitio de veinte enlaces. Los `[COMPLETAR]` de razón social y NIT son los mismos que ya están abiertos en `docs/legal/politica-datos.md`: no inventar ninguno.*
 
@@ -576,7 +512,7 @@ Variantes por estado, con el texto exacto de cada línea:
 | Tomado | `● Tomado` | proveedor de ejemplo · canon · `hasta el 28 sep` |
 | Resto de la sala | `● Resto de la sala` | `No se alquila. Es parte del local.` |
 
-**Nota fija al pie de las tarjetas con proveedor y plata:**
+**Nota fija al pie de las tarjetas con proveedor y valores:**
 
 > Proveedor y valores de ejemplo
 
@@ -598,7 +534,7 @@ Las cuatro entradas, con el mismo texto que usa la aplicación por dentro
 
 Línea bajo la leyenda:
 
-> Es la misma lectura que va a tener adentro, con su propia tienda.
+> Es la misma lectura que tendrá dentro del sistema, con su propia tienda.
 
 ### 11.4 Estados vacíos y de error del plano
 
@@ -609,7 +545,7 @@ Línea bajo la leyenda:
 | El 3D no pudo cargar | `No pudimos abrir la vista 3D en este dispositivo. El plano de arriba sigue disponible.` |
 | El 3D no pudo cargar — acción | `Volver al plano` |
 | El navegador no soporta la vista 3D | `Este navegador no puede mostrar la vista 3D. Adentro de RECABRA vas a poder abrirla desde un equipo de escritorio.` |
-| `prefers-reduced-motion` activo, aviso opcional | `Animaciones reducidas, como lo pidió en su sistema.` |
+| `prefers-reduced-motion` activo, aviso opcional | `Animaciones reducidas, según la preferencia configurada en su sistema.` |
 | Ningún mueble bajo el cursor (panel lateral del plano, si el diseño lo usa) | `Pasá el mouse por un mueble para ver su ficha.` |
 | Lo mismo en móvil | `Tocá un mueble para ver su ficha.` |
 
@@ -730,7 +666,7 @@ no existe.
 
 ### Muebles de contexto (gris, «Resto de la sala»)
 
-No se alquilan y no llevan tarjeta con plata. Si el diseño les pone tarjeta, dice
+No se alquilan y no llevan tarjeta con valores. Si el diseño les pone tarjeta, dice
 `No se alquila. Es parte del local.`
 
 `CAJ-01` · `CAJ-03` · `CAJ-04` · `CAJ-05` (cajas registradoras) · `SAC-01` (mostrador de servicio al

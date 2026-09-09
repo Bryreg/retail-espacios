@@ -1185,7 +1185,7 @@ def test_l16_el_plano_se_puede_usar_sin_mouse():
 #
 # * una **cámara guiada por el scroll** sobre el plano, con nueve encuadres
 #   (el mapa `ESC` del prototipo) y capas de prueba ancladas a un mueble;
-# * un **titular nuevo** —«Recabrá cada metro.», elegido por el dueño— con el
+# * un **titular nuevo** —«Recabre cada metro.», elegido por el dueño— con el
 #   titular viejo bajado a subtítulo;
 # * **vidrio** (`backdrop-filter`) en las tarjetas, apagado bajo 720 px;
 # * una **barra de progreso** y **conectores** entre secciones;
@@ -1203,7 +1203,12 @@ def test_l16_el_plano_se_puede_usar_sin_mouse():
 # El slogan que el dueño eligió como H1 (commit «landing E: slogan de marca»).
 # Es, junto con el subtítulo, la ÚNICA licencia sobre el copy: todo lo demás
 # sale literal de `features/landing/outputs/copy.md`.
-TITULAR_E = "Recabrá cada metro."
+#
+# Fase 16: pasó de «Recabrá» a «Recabre». El juego con el nombre de la marca
+# es el mismo —queda incluso más cerca de RECABRA escrito— pero en el registro
+# formal que el dueño pidió para toda la página. Cambiar el H1 sin tocar esta
+# constante deja la prueba midiendo un slogan que ya no existe.
+TITULAR_E = "Recabre cada metro."
 
 # El titular viejo. No se borra: baja a subtítulo, porque es la línea que
 # enseña la leyenda de colores antes de que nadie la lea.
