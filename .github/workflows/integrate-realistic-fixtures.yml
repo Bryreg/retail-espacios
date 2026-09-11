@@ -35,9 +35,19 @@ jobs:
               print(f'StoreEditor3D already normalized: {s.count(chr(10)) + 1} lines.')
           PY
 
-      - name: Inspect syntax error context
+      - name: Repair gondola JSX wrapper
         run: |
-          nl -ba frontend/src/components/StoreEditor3D/StoreEditor3D.tsx | sed -n '575,600p'
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('frontend/src/components/StoreEditor3D/StoreEditor3D.tsx')
+          s = p.read_text(encoding='utf-8')
+          old = '''          {!isWall && (\n            <mesh position={[0, sy + shelfT * 0.5 + 0.019, d / 2 - 0.010]} castShadow>\n              <boxGeometry args={[w - 0.07, 0.038, 0.009]} />\n              <meshStandardMaterial color={G_RAIL} metalness={0.48} roughness={0.34} transparent opacity={op} />\n            </mesh>\n            <mesh position={[0, sy + shelfT * 0.5 + 0.019, d / 2 + 0.0005]}>\n              <boxGeometry args={[w - 0.13, 0.023, 0.004]} />\n              <meshStandardMaterial color="#f6f4ed" metalness={0.02} roughness={0.72} transparent opacity={op} />\n            </mesh>\n          )}'''
+          new = '''          {!isWall && (\n            <>\n              <mesh position={[0, sy + shelfT * 0.5 + 0.019, d / 2 - 0.010]} castShadow>\n                <boxGeometry args={[w - 0.07, 0.038, 0.009]} />\n                <meshStandardMaterial color={G_RAIL} metalness={0.48} roughness={0.34} transparent opacity={op} />\n              </mesh>\n              <mesh position={[0, sy + shelfT * 0.5 + 0.019, d / 2 + 0.0005]}>\n                <boxGeometry args={[w - 0.13, 0.023, 0.004]} />\n                <meshStandardMaterial color="#f6f4ed" metalness={0.02} roughness={0.72} transparent opacity={op} />\n              </mesh>\n            </>\n          )}'''
+          if old not in s:
+              raise SystemExit('expected gondola JSX block not found')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          print('Repaired gondola JSX sibling wrapper.')
+          PY
 
       - name: Wire realistic renderer into StoreEditor3D
         run: |
