@@ -25,13 +25,13 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import json
           p = Path('frontend/src/components/StoreEditor3D/StoreEditor3D.tsx')
           s = p.read_text(encoding='utf-8')
-          # The source was committed as a JSON-escaped string. Detect the malformed
-          # one-line representation even when a final real newline is present.
+          # The malformed source contains literal backslash-n sequences instead
+          # of real line breaks. Quotes themselves are normal TypeScript quotes,
+          # so decode only the escaped line-ending sequences.
           if '\\n' in s and s.count('\n') <= 2:
-              decoded = json.loads('"' + s.rstrip('\n') + '"')
+              decoded = s.replace('\\r\\n', '\n').replace('\\n', '\n')
               p.write_text(decoded, encoding='utf-8')
               print(f'Decoded StoreEditor3D to {decoded.count(chr(10)) + 1} lines.')
           else:
