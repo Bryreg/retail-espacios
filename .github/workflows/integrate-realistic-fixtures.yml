@@ -46,7 +46,25 @@ jobs:
           if old not in s:
               raise SystemExit('expected gondola JSX block not found')
           p.write_text(s.replace(old, new, 1), encoding='utf-8')
-          print('Repaired gondola JSX sibling wrapper.')
+          PY
+
+      - name: Repair remaining TypeScript integration errors
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('frontend/src/components/StoreEditor3D/StoreEditor3D.tsx')
+          s = p.read_text(encoding='utf-8')
+          # Legacy renderer cases use sentinel string types that are intentionally
+          # outside FixType; stringify the switch discriminant so those cases
+          # remain compatible without weakening the domain type.
+          s = s.replace('switch (fixture.type) {', 'switch (String(fixture.type)) {')
+          p.write_text(s, encoding='utf-8')
+
+          r = Path('frontend/src/components/StoreEditor3D/RealisticFixtureRenderer.tsx')
+          rs = r.read_text(encoding='utf-8')
+          rs = rs.replace('import React from "react";\n', '')
+          rs = rs.replace('case "gondola": return <RealisticGondola w={w} d={d} h={h} ghost={ghost} />;', 'case "gondola": return <RealisticGondola w={w} d={d} h={h} ghost={ghost} gondolaType={gondolaType} />;')
+          r.write_text(rs, encoding='utf-8')
           PY
 
       - name: Wire realistic renderer into StoreEditor3D
@@ -94,10 +112,10 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add frontend/src/components/StoreEditor3D/StoreEditor3D.tsx
+          git add frontend/src/components/StoreEditor3D/StoreEditor3D.tsx frontend/src/components/StoreEditor3D/RealisticFixtureRenderer.tsx
           if git diff --cached --quiet; then
             echo 'No source normalization changes needed.'
             exit 0
           fi
-          git commit -m 'fix: normalize StoreEditor3D source'
+          git commit -m 'fix: normalize and validate realistic fixture source'
           git push origin HEAD:codex/auditar-repositorio-para-visualizacion-3d
