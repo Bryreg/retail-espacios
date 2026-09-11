@@ -27,9 +27,6 @@ jobs:
           from pathlib import Path
           p = Path('frontend/src/components/StoreEditor3D/StoreEditor3D.tsx')
           s = p.read_text(encoding='utf-8')
-          # The malformed source contains literal backslash-n sequences instead
-          # of real line breaks. Quotes themselves are normal TypeScript quotes,
-          # so decode only the escaped line-ending sequences.
           if '\\n' in s and s.count('\n') <= 2:
               decoded = s.replace('\\r\\n', '\n').replace('\\n', '\n')
               p.write_text(decoded, encoding='utf-8')
@@ -37,6 +34,10 @@ jobs:
           else:
               print(f'StoreEditor3D already normalized: {s.count(chr(10)) + 1} lines.')
           PY
+
+      - name: Inspect syntax error context
+        run: |
+          nl -ba frontend/src/components/StoreEditor3D/StoreEditor3D.tsx | sed -n '575,600p'
 
       - name: Wire realistic renderer into StoreEditor3D
         run: |
