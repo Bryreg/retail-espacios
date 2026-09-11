@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - codex/auditar-repositorio-para-visualizacion-3d
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
@@ -19,22 +21,35 @@ jobs:
           ref: codex/auditar-repositorio-para-visualizacion-3d
           fetch-depth: 1
 
+      - name: Normalize StoreEditor3D source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          p = Path('frontend/src/components/StoreEditor3D/StoreEditor3D.tsx')
+          s = p.read_text(encoding='utf-8')
+          # The source was committed as a JSON-escaped string. Detect the malformed
+          # one-line representation even when a final real newline is present.
+          if '\\n' in s and s.count('\n') <= 2:
+              decoded = json.loads('"' + s.rstrip('\n') + '"')
+              p.write_text(decoded, encoding='utf-8')
+              print(f'Decoded StoreEditor3D to {decoded.count(chr(10)) + 1} lines.')
+          else:
+              print(f'StoreEditor3D already normalized: {s.count(chr(10)) + 1} lines.')
+          PY
+
       - name: Wire realistic renderer into StoreEditor3D
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('frontend/src/components/StoreEditor3D/StoreEditor3D.tsx')
           s = p.read_text(encoding='utf-8')
-
           old_import = 'import { RealisticGondola, RealisticPunta, RealisticRobatope, RealisticRistra, RealisticCross, RealisticMetro, RealisticMueble } from "./RealisticFixtureDesigns";'
           new_import = 'import { RealisticFixtureRenderer } from "./RealisticFixtureRenderer";'
           s = s.replace(old_import, new_import)
-          if new_import not in s:
-              raise SystemExit('realistic renderer import could not be installed')
-
           replacements = {
             'case "gondola": return <RealisticGondola w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;': 'case "gondola": return <RealisticFixtureRenderer type="gondola" w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} gondolaType={fixture.gondolaType} planogram={fixture.planogram} />;',
-            'case "punta": return <RealisticPunta w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;': 'case "punta": return <RealisticFixtureRenderer type="punta" w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} gondolaType={fixture.gondolaType} />;',
+            'case "punta": return <RealisticPunta w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;': 'case "punta": return <RealisticFixtureRenderer type="punta" w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;',
             'case "robatope": return <RealisticRobatope w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;': 'case "robatope": return <RealisticFixtureRenderer type="robatope" w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;',
             'case "ristra": return <RealisticRistra w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;': 'case "ristra": return <RealisticFixtureRenderer type="ristra" w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;',
             'case "cross": return <RealisticCross w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;': 'case "cross": return <RealisticFixtureRenderer type="cross" w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;',
@@ -42,9 +57,7 @@ jobs:
             'case "mueble": return <RealisticMueble w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;': 'case "mueble": return <RealisticFixtureRenderer type="mueble" w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;',
           }
           for old, new in replacements.items():
-              if old in s:
-                  s = s.replace(old, new, 1)
-
+              s = s.replace(old, new, 1)
           required = [
             'case "gondola": return <RealisticFixtureRenderer',
             'case "punta": return <RealisticFixtureRenderer',
@@ -57,18 +70,23 @@ jobs:
           missing = [x for x in required if x not in s]
           if missing:
               raise SystemExit('missing renderer cases: ' + ', '.join(missing))
-
           p.write_text(s, encoding='utf-8')
           PY
 
-      - name: Commit integration
+      - name: Typecheck and build frontend
+        run: |
+          npm ci --legacy-peer-deps
+          npm run build
+        working-directory: frontend
+
+      - name: Commit normalized source
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add frontend/src/components/StoreEditor3D/StoreEditor3D.tsx
           if git diff --cached --quiet; then
-            echo 'No integration changes needed.'
+            echo 'No source normalization changes needed.'
             exit 0
           fi
-          git commit -m 'feat: wire realistic fixture renderer'
+          git commit -m 'fix: normalize StoreEditor3D source'
           git push origin HEAD:codex/auditar-repositorio-para-visualizacion-3d
