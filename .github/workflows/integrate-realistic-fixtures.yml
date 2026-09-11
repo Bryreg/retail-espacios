@@ -1,0 +1,81 @@
+name: Integrate realistic fixture designs
+
+on:
+  push:
+    branches:
+      - codex/auditar-repositorio-para-visualizacion-3d
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/auditar-repositorio-para-visualizacion-3d
+          fetch-depth: 1
+
+      - name: Integrate realistic fixture renderer
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('frontend/src/components/StoreEditor3D/StoreEditor3D.tsx')
+          s = p.read_text(encoding='utf-8')
+
+          import_line = 'import { RealisticGondola, RealisticPunta, RealisticRobatope, RealisticRistra, RealisticCross, RealisticMetro, RealisticMueble } from "./RealisticFixtureDesigns";'
+          if import_line not in s:
+              lines = s.splitlines()
+              insert_at = 0
+              for i, line in enumerate(lines):
+                  if line.startswith('import '):
+                      insert_at = i + 1
+              lines.insert(insert_at, import_line)
+              s = '\\n'.join(lines) + ('\\n' if s.endswith('\\n') else '')
+
+          start = s.find('function FixtureMesh(')
+          if start < 0:
+              raise SystemExit('FixtureMesh not found')
+          switch_pos = s.find('switch (fixture.type)', start)
+          if switch_pos < 0:
+              raise SystemExit('FixtureMesh switch not found')
+          marker = 'case "gondola":'
+          case_pos = s.find(marker, switch_pos)
+          if case_pos < 0:
+              raise SystemExit('gondola case not found')
+
+          # Only replace the rendered component in the seven target cases;
+          # all existing slot/product behavior remains handled by their props.
+          replacements = {
+              'case "gondola":': 'case "gondola": return <RealisticGondola w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;\\n      /* legacy gondola renderer retained below for reference */\\n      case "__legacy_gondola__":',
+              'case "punta":': 'case "punta": return <RealisticPunta w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;\\n      case "__legacy_punta__":',
+              'case "robatope":': 'case "robatope": return <RealisticRobatope w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;\\n      case "__legacy_robatope__":',
+              'case "ristra":': 'case "ristra": return <RealisticRistra w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;\\n      case "__legacy_ristra__":',
+              'case "cross":': 'case "cross": return <RealisticCross w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;\\n      case "__legacy_cross__":',
+              'case "metro":': 'case "metro": return <RealisticMetro w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;\\n      case "__legacy_metro__":',
+              'case "mueble":': 'case "mueble": return <RealisticMueble w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;\\n      case "__legacy_mueble__":',
+          }
+          # Make each replacement only once, in FixtureMesh.
+          for old, new in replacements.items():
+              idx = s.find(old, switch_pos)
+              if idx < 0:
+                  raise SystemExit(f'{old} not found')
+              s = s[:idx] + new + s[idx+len(old):]
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Commit integration
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend/src/components/StoreEditor3D/StoreEditor3D.tsx
+          if git diff --cached --quiet; then
+            echo 'No integration changes needed.'
+            exit 0
+          fi
+          git commit -m 'feat: integrate realistic fixture renderers'
+          git push origin HEAD:codex/auditar-repositorio-para-visualizacion-3d
