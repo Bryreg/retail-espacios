@@ -1,4 +1,3 @@
-import React from "react";
 import type { FixturePlanogram } from "../../types/retail3d";
 import { RealisticGondola, RealisticPunta, RealisticRobatope, RealisticRistra, RealisticCross, RealisticMetro, RealisticMueble } from "./RealisticFixtureDesigns";
 import { ProductShelfContents } from "./ProductShelfContents";
@@ -9,7 +8,7 @@ type Props = {
   d: number;
   h: number;
   ghost?: boolean;
-  gondolaType?: string;
+  gondolaType?: "double" | "wall";
   planogram?: FixturePlanogram;
 };
 
@@ -17,7 +16,7 @@ type Props = {
 export function RealisticFixtureRenderer({ type, w, d, h, ghost, gondolaType, planogram }: Props) {
   const structural = (() => {
     switch (type) {
-      case "gondola": return <RealisticGondola w={w} d={d} h={h} ghost={ghost} />;
+      case "gondola": return <RealisticGondola w={w} d={d} h={h} ghost={ghost} gondolaType={gondolaType} />;
       case "punta": return <RealisticPunta w={w} d={d} h={h} ghost={ghost} />;
       case "robatope": return <RealisticRobatope w={w} d={d} h={h} ghost={ghost} />;
       case "ristra": return <RealisticRistra w={w} d={d} h={h} ghost={ghost} />;
