@@ -7,6 +7,8 @@ import type { SpaceStatus } from "./fixtures";
 
 export type ProductRenderMode = "IMAGE_2D" | "PRODUCT_2_5D" | "MODEL_3D";
 export type FixtureFaceId = "A" | "B";
+export type DisplayZoneType = "shelf" | "platform" | "hanging" | "cabinet" | "promotional";
+export type ProductOrientation = "front" | "side" | "hanging" | "free";
 
 export interface SupplierRef { id?: string; name: string; }
 export interface Brand { id: string; name: string; supplierId?: string; }
@@ -49,6 +51,47 @@ export interface Shelf {
   priceRail: boolean;
 }
 
+export interface DisplayBounds {
+  width: number;
+  height: number;
+  depth: number;
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  minZ: number;
+  maxZ: number;
+}
+
+export interface DisplayMargins {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+  front: number;
+  back: number;
+}
+
+export interface DisplayProductRules {
+  orientation: ProductOrientation;
+  allowMultipleRows: boolean;
+  allowMultipleColumns: boolean;
+  minimumGap: number;
+}
+
+/** Volumen físicamente disponible para exhibir producto dentro de un fixture. */
+export interface DisplayZone {
+  id: string;
+  fixtureId: string;
+  faceId: FixtureFaceId;
+  type: DisplayZoneType;
+  bounds: DisplayBounds;
+  margins: DisplayMargins;
+  productRules: DisplayProductRules;
+  shelfId?: string;
+  supportSurfaceY?: number;
+}
+
 export interface CommercialSpace {
   id: string;
   fixtureId: string;
@@ -68,6 +111,7 @@ export interface ProductPlacement {
   fixtureId: string;
   faceId: FixtureFaceId;
   shelfId: string;
+  displayZoneId?: string;
   position: [number, number, number];
   rotation: [number, number, number];
   scale: [number, number, number];
@@ -83,6 +127,7 @@ export interface FixturePlanogram {
   version: 1;
   faces: FixtureFace[];
   shelves: Shelf[];
+  displayZones?: DisplayZone[];
   products: Product[];
   placements: ProductPlacement[];
   commercialSpaces?: CommercialSpace[];
