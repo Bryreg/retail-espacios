@@ -54,15 +54,13 @@ jobs:
           from pathlib import Path
           p = Path('frontend/src/components/StoreEditor3D/StoreEditor3D.tsx')
           s = p.read_text(encoding='utf-8')
-          # Legacy renderer cases use sentinel string types that are intentionally
-          # outside FixType; stringify the switch discriminant so those cases
-          # remain compatible without weakening the domain type.
           s = s.replace('switch (fixture.type) {', 'switch (String(fixture.type)) {')
           p.write_text(s, encoding='utf-8')
 
           r = Path('frontend/src/components/StoreEditor3D/RealisticFixtureRenderer.tsx')
           rs = r.read_text(encoding='utf-8')
           rs = rs.replace('import React from "react";\n', '')
+          rs = rs.replace('gondolaType?: string;', 'gondolaType?: "double" | "wall";')
           rs = rs.replace('case "gondola": return <RealisticGondola w={w} d={d} h={h} ghost={ghost} />;', 'case "gondola": return <RealisticGondola w={w} d={d} h={h} ghost={ghost} gondolaType={gondolaType} />;')
           r.write_text(rs, encoding='utf-8')
           PY
