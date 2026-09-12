@@ -1,1 +1,0 @@
-Integration note: realistic fixture structures are implemented in RealisticFixtureDesigns.tsx and unified through RealisticFixtureRenderer.tsx. The renderer preserves fixture w/d/h as the outer dimensions and keeps gondola product instancing through ProductShelfContents.
