@@ -30,6 +30,7 @@ const Plataforma = lazy(() => import("./pages/Plataforma"));
 const ReportePlataforma = lazy(() => import("./pages/ReportePlataforma"));
 const DetalleCliente = lazy(() => import("./pages/DetalleCliente"));
 const Renumerar = lazy(() => import("./pages/Renumerar"));
+const TallerMuebles = lazy(() => import("./pages/TallerMuebles"));
 const InformeCliente = lazy(() => import("./pages/InformeCliente"));
 
 /** Mientras baja el chunk de la pantalla: fondo de la app y nada más, para no
@@ -241,6 +242,12 @@ export default function App() {
             tabla. Es de administrador (la pantalla lo dice y el backend lo
             exige con 403); el guard de sesión de arriba ya la cubre. */}
         <Route path="/renumerar" element={<Renumerar />} />
+        {/* El banco de pruebas del mobiliario 3D: un mueble solo, girable,
+            con luz neutra y nada alrededor. No es una pantalla de negocio —
+            es donde se le mira la FORMA a una pieza antes de meterla en el
+            editor, que son cinco mil líneas donde cambiar geometría es
+            cambiar a ciegas. */}
+        <Route path="/taller" element={<TallerMuebles />} />
         {/* Fase 11: el informe que se le deja al cliente -- la misma historia
             de la sesión (capítulos 1 a 3), sin la cartera y sin "los datos
             detrás", escrita para que un gerente de supermercado la lea solo y
