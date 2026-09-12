@@ -3,7 +3,7 @@ import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { describirUbicacion } from "../MiniMapa/MiniMapa";
 import type { DateRange } from "../SeasonPicker/SeasonPicker";
 import { parseISODate, upcomingSeasons } from "../../types/seasons";
-import { confirmarLote } from "../../api/bulkLeases";
+import { confirmarLote, validarLote } from "../../api/bulkLeases";
 import { subirPlanometria } from "../../api/planograms";
 import { describeError } from "../../api/client";
 import type { AvisosContrato } from "../../types";
@@ -174,7 +174,7 @@ export function useContrato({
   const [correo, setCorreo] = useState(semilla?.correo ?? "");
   const [marca, setMarca] = useState(semilla?.marca ?? "");
   const [nota, setNota] = useState("");
-  /** El valor mensual de cada espacio, tecleado, indexado por su código
+  /** El valor acordado de cada espacio, tecleado, indexado por su código
    *  completo. Vive en un mapa y no adentro de la lista porque la lista la
    *  manda la pantalla —se arma tocando el plano— y volver a montarla no
    *  puede borrar lo que alguien ya escribió. */
@@ -233,6 +233,7 @@ export function useContrato({
     });
   }, [espacios, valores, fixtures, referenceRates, sede, desde, hasta, fechasEnOrden, inicial]);
 
+
   /** Al entrar, cada espacio arranca con su tarifa de referencia escrita.
    *
    *  No es una comodidad: el precio de lista es el punto de partida real de la
@@ -262,18 +263,20 @@ export function useContrato({
     }));
   }, []);
 
-  /** Lo que se cobra por mes por TODO el contrato. */
-  const montoMensual = lineas.reduce((t, l) => t + l.monto, 0);
-
-  /** Lo que se firma, no lo que se cobra por mes.
+  /** Lo que vale el contrato: la suma de lo tecleado, sin tocar.
    *
-   *  El formulario pide el valor MENSUAL —así se negocia— pero lo que queda
-   *  escrito en el contrato es el total del plazo, y son dos números
-   *  distintos: $2.250.000 al mes por 61 días son $4.575.000. Sin este
-   *  renglón había que hacer la cuenta de cabeza con el proveedor esperando,
-   *  que es exactamente cuando se equivoca. Prorratea por día sobre 30, igual
-   *  que todo el resto del sistema. */
-  const total = montoMensual > 0 && fechasEnOrden ? Math.round((montoMensual / 30) * dias) : 0;
+   *  Acá había un prorrateo —`(valor / 30) * dias`— que convertía lo tecleado
+   *  en otro número: $200.000 por un mes del 11 de septiembre al 11 de octubre
+   *  salían $206.667, porque los dos extremos cuentan (31 días) y el mes se
+   *  tomaba de 30. La cuenta estaba bien y la premisa estaba mal.
+   *
+   *  **Quien negocia vende el espacio al valor que quiera por el tiempo que
+   *  quiera** (decisión del dueño). Si acuerda un mes por $200.000, el
+   *  contrato vale $200.000; si acuerda 31 días por $200.000, vale lo mismo.
+   *  No hay un valor mensual del que se derive un total: hay un precio, y es
+   *  el que se teclea. Derivar otro número sólo servía para que la pantalla
+   *  contradijera al que lo acordó. */
+  const total = lineas.reduce((t, l) => t + l.monto, 0);
 
   /** Las temporadas comerciales que caen adentro del plazo.
    *
@@ -290,13 +293,96 @@ export function useContrato({
       .map((t) => t.label);
   }, [desde, hasta, seasonWindows]);
 
+  /** El veredicto del SERVIDOR sobre las fechas, por código de espacio.
+   *
+   *  Esto no es un lujo: el plano y la disponibilidad de cada renglón salen
+   *  del JSON del layout, que es una copia — quien la mantiene al día es el
+   *  navegador que vendió, en el momento de vender. Si un contrato entró por
+   *  otro camino (otra sesión, un arreglo a mano, una carga cuyo push del
+   *  layout no llegó), la copia dice «libre» y la base dice «ocupado». Ahí el
+   *  aviso local no aparece, el botón se habilita, y el choque se descubre al
+   *  guardar, con todo tecleado. Reproducido así: contrato del 8 de septiembre
+   *  al 8 de octubre en la base, el plano pintándolo libre todo el periodo.
+   *
+   *  `/leases/bulk/validar` es el mismo control que corre al guardar pero **no
+   *  escribe nada**, así que se le puede preguntar mientras se arma. Manda la
+   *  base, no la copia. */
+  const [veredicto, setVeredicto] = useState<Record<string, string[]>>({});
+  const pedido = useRef(0);
+  const sedeContrato = lineas[0]?.fixture.sede || sede;
+  const firmaValidacion = JSON.stringify([
+    sedeContrato, desde, hasta, lineas.map((l) => l.codigo),
+  ]);
+
+  useEffect(() => {
+    if (lineas.length === 0 || !fechasEnOrden) { setVeredicto({}); return; }
+    const mio = ++pedido.current;
+    // Se espera a que dejen de teclear las fechas: el campo de fecha dispara
+    // un cambio por dígito y cada uno sería un viaje.
+    const t = setTimeout(() => {
+      validarLote(
+        sedeContrato,
+        lineas.map((l, i) => ({
+          fila: i + 1, espacio: l.codigo, sede: l.fixture.sede || sede,
+          // El proveedor todavía puede estar vacío: lo que se le pregunta al
+          // servidor son LAS FECHAS. Un nombre de relleno acá no crea nada
+          // —`/validar` no escribe— y evita que falte un campo obligatorio.
+          proveedor: proveedor.trim() || "—",
+          valor: l.monto, desde, hasta,
+        })),
+      ).then((r) => {
+        if (mio !== pedido.current) return;  // llegó una respuesta vieja
+        const out: Record<string, string[]> = {};
+        for (const f of r.filas) {
+          if (f.estado !== "error") continue;
+          // «Proveedor nuevo: se va a crear» no es un problema: viaja junto
+          // con el error y no tiene nada que ver con las fechas.
+          const ms = (f.mensajes ?? []).filter((m) => !/^Proveedor nuevo/i.test(m));
+          if (ms.length) out[(f.codigo || "").toUpperCase()] = ms;
+        }
+        setVeredicto(out);
+      }).catch(() => {
+        // Sin red no se inventa un veredicto: se cae al aviso local y el
+        // servidor vuelve a decidir al guardar, que es donde siempre mandó.
+        if (mio === pedido.current) setVeredicto({});
+      });
+    }, 500);
+    return () => clearTimeout(t);
+    // `proveedor` a propósito NO dispara: cambia mientras se teclea y no
+    // cambia el veredicto sobre las fechas.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firmaValidacion, fechasEnOrden]);
+
+  /** Las mismas líneas, con lo que dijo el servidor pegado a cada una.
+   *  Va en un paso aparte porque el veredicto llega después —es un viaje— y
+   *  recalcular las líneas enteras al llegar borraría lo que se esté
+   *  tecleando. */
+  const lineasConVeredicto = useMemo(
+    () => lineas.map((l) => ({ ...l, choqueServidor: veredicto[l.codigo.toUpperCase()] ?? [] })),
+    [lineas, veredicto],
+  );
+
   const sinValor = lineas.filter((l) => l.monto <= 0);
+  /** Los espacios cuyo periodo choca con un contrato que ya existe.
+   *
+   *  Antes esto no frenaba nada: el botón se habilitaba igual y el único que
+   *  se quejaba era el servidor, al guardar, con todo ya tecleado. Y el aviso
+   *  del renglón vivía adentro de un texto que se corta, así que en la
+   *  práctica no se veía. Se vendió dos veces el mismo espacio por ese hueco.
+   *
+   *  El servidor SIGUE validando —es él quien manda, y entre que se arma el
+   *  contrato y se toca el botón alguien pudo vender desde otra sesión—; esto
+   *  es para no llegar hasta ahí sabiéndolo desde el principio. */
+  const chocan = lineas.filter(
+    (l) => l.disponibilidad !== "libre" || (veredicto[l.codigo.toUpperCase()] ?? []).length > 0,
+  );
   const puedeGuardar =
-    lineas.length > 0 && proveedor.trim().length > 0 && fechasEnOrden && sinValor.length === 0;
+    lineas.length > 0 && proveedor.trim().length > 0 && fechasEnOrden
+    && sinValor.length === 0 && chocan.length === 0;
 
   /** Qué falta para poder guardar, dicho antes de que alguien busque el botón.
    *  Nombra el espacio al que le falta el valor: con tres renglones, «falta el
-   *  valor mensual» obliga a buscar cuál. */
+   *  valor» obliga a buscar cuál. */
   const falta = lineas.length === 0
     ? "Tocá un espacio en el plano"
     : !proveedor.trim()
@@ -307,6 +393,12 @@ export function useContrato({
       : `Faltan ${sinValor.length} valores`
     : !fechasEnOrden
     ? "Revisá las fechas"
+    : chocan.length > 0
+    // Nombra el espacio, igual que con el valor que falta: con tres renglones,
+    // «hay un choque» obliga a ir a buscar cuál.
+    ? chocan.length === 1
+      ? `${chocan[0].visible} ya está vendido en esas fechas`
+      : `${chocan.length} espacios ya están vendidos en esas fechas`
     : null;
 
   async function guardar() {
@@ -406,9 +498,10 @@ export function useContrato({
         proveedor: proveedor.trim(),
         desde,
         hasta,
-        total: Math.round(
-          (parches.reduce((t, p) => t + (p.patch.negotiatedValue ?? 0), 0) / 30) * dias,
-        ),
+        // Mismo criterio que el total de la pantalla: lo acordado, sumado y
+        // sin prorratear. Si estos dos números se separan, el aviso de
+        // «guardado» contradice a la ficha que se acaba de firmar.
+        total: parches.reduce((t, p) => t + (p.patch.negotiatedValue ?? 0), 0),
         avisoPlanometria,
         fallaron: fallaron.length ? fallaron : undefined,
         avisos: resp.avisos ?? undefined,
@@ -423,8 +516,8 @@ export function useContrato({
     // La sede efectiva: los muebles dibujados antes de que existiera esa
     // columna no la traen, y ahí manda la sede activa.
     sede: lineas[0]?.fixture.sede || sede,
-    lineas, onQuitar, onCambiarCara,
-    total, montoMensual, cubre,
+    lineas: lineasConVeredicto, onQuitar, onCambiarCara,
+    total, cubre,
     desde, setDesde, hasta, setHasta,
     proveedor, setProveedor, correo, setCorreo, marca, setMarca,
     escribirValor, nota, setNota,

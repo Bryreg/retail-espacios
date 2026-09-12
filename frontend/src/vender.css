@@ -410,6 +410,21 @@ html[data-tema="oscuro"] .vender {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* El choque de fechas es la excepción a los dos renglones con puntos
+   suspensivos, y a propósito.
+   Vivía adentro del renglón de arriba, de tercero, después de la ubicación y
+   de la tarifa: con una ubicación larga quedaba pasado el corte y no se veía
+   nunca — se llegaba a tocar «Guardar» con un espacio ya vendido y el único
+   que avisaba era el servidor. Un aviso que compite por ancho con la
+   ubicación no es un aviso, así que acá SÍ se deja crecer la fila: pasa
+   cuando hay algo que mirar, que es cuando la fila puede permitírselo. */
+.eitem .d > span.choque {
+  white-space: normal;
+  overflow: visible;
+  margin-top: 2px;
+  color: var(--danger);
+  font-weight: 600;
+}
 /* El valor es un campo, pero se lee como la cifra de la fila: mono, tabular,
    700, alineado a la derecha. El borde sólo aparece cuando falta el dato. */
 .eitem .m {

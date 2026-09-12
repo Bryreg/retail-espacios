@@ -176,7 +176,7 @@ prueba("las seis funciones, con la cuenta del plazo verificada", () => {
   contiene("Tarifa de referencia y desviación");
   contiene("Notificaciones automáticas");
   contiene("Confirmación de montaje con evidencia fotográfica");
-  contiene("$ 3.050.000");
+  contiene("$ 3.050.000");   // el total es la SUMA de lo acordado, no un prorrateo (fase 17)
 });
 
 prueba("los tres perfiles y las tres etapas de implementación", () => {

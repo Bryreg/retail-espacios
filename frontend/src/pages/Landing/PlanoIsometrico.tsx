@@ -833,10 +833,10 @@ function Escenario() {
           <div className="fxbox glass" id="lp-fxContrato" ref={(el) => { fx.current.fxContrato = el; }}>
             <div className="ttl">Una sola ficha</div>
             <div className="row"><span>proveedor</span><b>Bebidas Zafiro</b></div>
-            <div className="row"><span>canon mensual</span><b>$ 1.500.000</b></div>
+            <div className="row"><span>valor acordado</span><b>$ 3.050.000</b></div>
             <div className="row"><span>desde</span><b>1 sep</b></div>
             <div className="row"><span>hasta</span><b>31 oct</b></div>
-            <div className="tot"><span>61 días</span><b>$ 3.050.000</b></div>
+            <div className="tot"><span>61 días · 1 espacio</span><b>$ 3.050.000</b></div>
           </div>
           <div className="fxbox glass" id="lp-fxTemporada" ref={(el) => { fx.current.fxTemporada = el; }}>
             {TEMPORADAS.map((t, i) => (
