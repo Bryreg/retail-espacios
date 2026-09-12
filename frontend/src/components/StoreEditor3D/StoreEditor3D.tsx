@@ -37,6 +37,10 @@ import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 import MiniMapa, { type CamaraEnPlanta } from "../MiniMapa/MiniMapa";
 import { componerPropuesta, descargar, nombreDeArchivo } from "../../utils/propuesta";
 import { siguienteCodigo } from "../../utils/nomenclatura";
+import { calculateShelfCapacity, createGondolaPlanogram, generateProductPlacements } from "../../utils/planogram";
+import type { FixturePlanogram } from "../../types/retail3d";
+import { ProductShelfContents } from "./ProductShelfContents";
+import { RealisticFixtureRenderer } from "./RealisticFixtureRenderer";
 
 // ─── Scene constants ──────────────────────────────────────────────────────────
 
@@ -255,6 +259,7 @@ interface PlacedFixture {
   type:            FixType;
   gondolaType?:    GondolaType;
   slots?:          ShelfSlot[];
+  planogram?:      FixturePlanogram;
   x: number; z: number;
   rotY:            number;
   w: number; d: number; h: number;
@@ -275,8 +280,8 @@ interface PlacedFixture {
 
 const FIXTURE_DEFS: FixtureDef[] = [
   // ── Góndolas ──────────────────────────────────────────────────────────────
-  { type:"gondola", gondolaType:"double", label:"Góndola Doble",    w:0.90, d:0.90, h:1.80, color:"#6366f1", emoji:"📚", desc:"Módulo de estante central, doble cara",   code:"GON" },
-  { type:"gondola", gondolaType:"wall",   label:"Góndola Mural",    w:1.00, d:0.40, h:1.90, color:"#818cf8", emoji:"🧱", desc:"Módulo de estante contra pared",           code:"GON" },
+  { type:"gondola", gondolaType:"double", label:"Góndola Doble",    w:1.20, d:0.90, h:1.80, color:"#6366f1", emoji:"📚", desc:"Módulo de estante central, doble cara",   code:"GON" },
+  { type:"gondola", gondolaType:"wall",   label:"Góndola Mural",    w:1.20, d:0.45, h:1.90, color:"#818cf8", emoji:"🧱", desc:"Módulo de estante contra pared",           code:"GON" },
   { type:"punta",                         label:"Punta Góndola",    w:0.90, d:0.40, h:1.80, color:"#7c3aed", emoji:"🏷️",  desc:"Cabecera de góndola con topper promocional", code:"PUN" },
   // ── Displays ──────────────────────────────────────────────────────────────
   { type:"ristra",                        label:"Ristra",           w:0.40, d:0.40, h:1.60, color:"#d97706", emoji:"🪝",  desc:"Colgante de productos",                   code:"RIS" },
@@ -427,6 +432,7 @@ interface GondolaMeshProps {
   gondolaType?:   GondolaType;
   facePaint?:     FacePaint | null;
   slots?:         ShelfSlot[];
+  planogram?:     FixturePlanogram;
   selectedSlotId?: string | null;
   hoveredSlotId?:  string | null;
   onSlotClick?:    (slotId: string) => void;
@@ -434,30 +440,39 @@ interface GondolaMeshProps {
 }
 
 const GondolaMesh = memo(function GondolaMesh({
-  w, d, h, ghost,
+  w, d, h, statusColor, ghost,
   gondolaType = "double",
   facePaint,
-  slots, selectedSlotId, hoveredSlotId,
+  slots, planogram, selectedSlotId, hoveredSlotId,
   onSlotClick, onSlotHover,
 }: GondolaMeshProps) {
   const op     = ghost ? 0.42 : 1;
   const isWall = gondolaType === "wall";
+  const resolvedPlanogram = useMemo(() => planogram ?? createGondolaPlanogram({
+    fixtureId: "preview", width: w, depth: d, height: h, doubleSided: !isWall,
+  }), [planogram, w, d, h, isWall]);
 
   const G_WHITE = "#e6e6e3";
   const G_FRAME = "#c8c8c5";
   const G_PANEL = isWall ? "#d5d5d2" : "#dcdcda";
   const G_RAIL  = "#b8b8b5";
+  const STEEL = "#7a8388";
 
-  // Board layout mirrored by getPanelShelfSpan("gondola") — keep in sync.
+  // La misma entidad Shelf gobierna la elevación del tablero y la base de los
+  // productos. Así el auto-facing nunca deja envases flotando o atravesados.
   const { shelves, topH, shelfT } = useMemo(() => {
     const topH   = 0.08;
     const shelfT = 0.022;
     const n      = Math.max(4, Math.round((h - topH) / 0.38));
-    const shelfYs = Array.from({ length: n }, (_, i) =>
+    const generated = Array.from({ length: n }, (_, i) =>
       0.14 + i * ((h - topH - 0.16) / Math.max(n - 1, 1))
     );
-    return { shelves: shelfYs, topH, shelfT };
-  }, [h]);
+    const faceAShelves = resolvedPlanogram.shelves
+      .filter(shelf => shelf.faceId === "A")
+      .sort((a, b) => a.index - b.index)
+      .map(shelf => shelf.elevation);
+    return { shelves: faceAShelves.length ? faceAShelves : generated, topH, shelfT };
+  }, [h, resolvedPlanogram.shelves]);
 
   const slotAreaH  = h - topH - 0.06;
   const SLOT_PROTO = 0.12;
@@ -515,11 +530,28 @@ const GondolaMesh = memo(function GondolaMesh({
         <meshStandardMaterial color={G_FRAME} metalness={0.12} roughness={0.58} transparent opacity={op} />
       </mesh>
 
-      {/* Back / wall panel — estructura, siempre lisa */}
+      {/* Indicadores comerciales discretos: el estado nunca repinta el acero. */}
+      {([-1, 1] as const).map((side) => (
+        <mesh key={`status-${side}`} position={[side * (w / 2 - 0.065), h - 0.10, -(d / 2 + 0.006)]} castShadow>
+          <boxGeometry args={[0.035, 0.070, 0.012]} />
+          <meshStandardMaterial color={statusColor} emissive={statusColor} emissiveIntensity={0.18} roughness={0.35} transparent opacity={op} />
+        </mesh>
+      ))}
+
+      {/* Panel posterior modular: las líneas horizontales evocan panel metálico
+          ranurado y rompen la apariencia de bloque plano sin sumar texturas. */}
       <mesh position={[0, h / 2, backPosZ]} castShadow>
         <boxGeometry args={[w, h, backT]} />
-        <meshLambertMaterial color={G_PANEL} transparent opacity={op} />
+        <meshStandardMaterial color={G_PANEL} metalness={0.46} roughness={0.48} transparent opacity={op} />
       </mesh>
+      {Array.from({ length: Math.max(3, Math.round(h / 0.32)) }, (_, index) => {
+        const y = 0.13 + index * ((h - 0.26) / Math.max(2, Math.round(h / 0.32) - 1));
+        const z = backPosZ + (isWall ? -1 : -1) * (backT / 2 + 0.002);
+        return <mesh key={`panel-seam-${index}`} position={[0, y, z]}>
+          <boxGeometry args={[w - 0.08, 0.012, 0.004]} />
+          <meshStandardMaterial color="#9da3a3" metalness={0.55} roughness={0.36} transparent opacity={op * 0.7} />
+        </mesh>;
+      })}
 
       {/* El producto, al frente del entrepaño. La góndola mural va contra la
           pared: sólo se vende su cara de adelante. */}
@@ -535,30 +567,59 @@ const GondolaMesh = memo(function GondolaMesh({
         <group key={`sh${i}`}>
           <mesh position={[0, sy, 0]} castShadow>
             <boxGeometry args={[w - 0.055, shelfT, d - 0.015]} />
-            <meshLambertMaterial color={G_WHITE} transparent opacity={op} />
+            <meshStandardMaterial color={G_WHITE} metalness={0.38} roughness={0.42} transparent opacity={op} />
           </mesh>
+          {/* Refuerzos bajo cada entrepaño: ménsulas visibles desde el pasillo. */}
+          {([-1, 1] as const).flatMap(side => ([-1, 1] as const).map(face => (
+            <mesh key={`bracket-${side}-${face}`} position={[side * (w / 2 - 0.10), sy - 0.035, face * (d / 2 - 0.10)]} rotation={[0, 0, side * 0.22]} castShadow>
+              <boxGeometry args={[0.11, 0.055, 0.018]} />
+              <meshStandardMaterial color={STEEL} metalness={0.75} roughness={0.28} transparent opacity={op} />
+            </mesh>
+          )))}
           <mesh position={[0, sy + shelfT * 0.5 + 0.019, -(d / 2 - 0.010)]} castShadow>
             <boxGeometry args={[w - 0.07, 0.038, 0.009]} />
-            <meshLambertMaterial color={G_RAIL} transparent opacity={op} />
+            <meshStandardMaterial color={G_RAIL} metalness={0.48} roughness={0.34} transparent opacity={op} />
+          </mesh>
+          <mesh position={[0, sy + shelfT * 0.5 + 0.019, -(d / 2 + 0.0005)]}>
+            <boxGeometry args={[w - 0.13, 0.023, 0.004]} />
+            <meshStandardMaterial color="#f6f4ed" metalness={0.02} roughness={0.72} transparent opacity={op} />
           </mesh>
           {!isWall && (
-            <mesh position={[0, sy + shelfT * 0.5 + 0.019, d / 2 - 0.010]} castShadow>
-              <boxGeometry args={[w - 0.07, 0.038, 0.009]} />
-              <meshLambertMaterial color={G_RAIL} transparent opacity={op} />
-            </mesh>
+            <>
+              <mesh position={[0, sy + shelfT * 0.5 + 0.019, d / 2 - 0.010]} castShadow>
+                <boxGeometry args={[w - 0.07, 0.038, 0.009]} />
+                <meshStandardMaterial color={G_RAIL} metalness={0.48} roughness={0.34} transparent opacity={op} />
+              </mesh>
+              <mesh position={[0, sy + shelfT * 0.5 + 0.019, d / 2 + 0.0005]}>
+                <boxGeometry args={[w - 0.13, 0.023, 0.004]} />
+                <meshStandardMaterial color="#f6f4ed" metalness={0.02} roughness={0.72} transparent opacity={op} />
+              </mesh>
+            </>
           )}
         </group>
       ))}
+
+      {/* Los envases nacen del planograma, no de una textura sobre el respaldo.
+          Repeticiones del mismo SKU comparten InstancedMesh. */}
+      {!ghost && <ProductShelfContents planogram={resolvedPlanogram} depth={d} />}
 
       {/* End-cap uprights.
           Wall gondola  → full-depth slab (the upright runs along the wall).
           Double gondola → thin post (≈ 5 cm × 5 cm cross-section) so adjacent
           modules don't create visible vertical dividers between them. */}
       {([-1, 1] as const).map(side => (
-        <mesh key={`up${side}`} position={[side * (w / 2 - 0.026), h / 2, 0]} castShadow>
-          <boxGeometry args={[0.052, h, isWall ? d : 0.058]} />
-          <meshStandardMaterial color={G_FRAME} metalness={0.15} roughness={0.72} transparent opacity={op} />
-        </mesh>
+        <group key={`up${side}`}>
+          <mesh position={[side * (w / 2 - 0.026), h / 2, 0]} castShadow>
+            <boxGeometry args={[0.052, h, isWall ? d : 0.058]} />
+            <meshStandardMaterial color={STEEL} metalness={0.78} roughness={0.26} transparent opacity={op} />
+          </mesh>
+          {Array.from({ length: Math.max(4, Math.floor(h / 0.16)) }, (_, index) => (
+            <mesh key={`slot-${index}`} position={[side * (w / 2 + 0.001), 0.12 + index * 0.16, -(isWall ? d / 2 - 0.012 : 0.031)]}>
+              <boxGeometry args={[0.006, 0.028, 0.012]} />
+              <meshStandardMaterial color="#3f474a" metalness={0.4} roughness={0.55} transparent opacity={op} />
+            </mesh>
+          ))}
+        </group>
       ))}
 
       {/* Intermediate uprights */}
@@ -582,8 +643,17 @@ const GondolaMesh = memo(function GondolaMesh({
       {/* Tapa del zócalo: el borde donde se apoya el entrepaño más bajo */}
       <mesh position={[0, 0.118, 0]} castShadow>
         <boxGeometry args={[w, 0.016, d - 0.020]} />
-        <meshLambertMaterial color={G_FRAME} transparent opacity={op} />
+        <meshStandardMaterial color={STEEL} metalness={0.68} roughness={0.30} transparent opacity={op} />
       </mesh>
+
+      {/* Patas niveladoras retranqueadas: un detalle pequeño pero clave para que
+          el módulo se lea como mobiliario comercial, no como una caja apoyada. */}
+      {([-1, 1] as const).flatMap(xSide => ([-1, 1] as const).map(zSide => (
+        <group key={`foot-${xSide}-${zSide}`} position={[xSide * (w / 2 - 0.12), 0, zSide * (d / 2 - 0.12)]}>
+          <mesh position={[0, 0.045, 0]} castShadow><cylinderGeometry args={[0.032, 0.038, 0.09, 12]} /><meshStandardMaterial color={STEEL} metalness={0.8} roughness={0.24} transparent opacity={op} /></mesh>
+          <mesh position={[0, 0.006, 0]} castShadow><cylinderGeometry args={[0.055, 0.055, 0.012, 16]} /><meshStandardMaterial color="#42494b" metalness={0.55} roughness={0.44} transparent opacity={op} /></mesh>
+        </group>
+      )))}
 
       {/* Slot panels */}
       {renderSlotFace(-1)}
@@ -2081,19 +2151,23 @@ function FixtureMesh({ fixture, ghost, facePaint, selectedSlotId, hoveredSlotId,
     ? (STATUS_COLORS[fixture.status] ?? STATUS_COLORS.free)
     : NON_RENTABLE_COLOR;
   const base = { w:fixture.w, d:fixture.d, h:fixture.h, statusColor:sc, ghost };
-  switch (fixture.type) {
-    case "gondola": return (
+  switch (String(fixture.type)) {
+    case "gondola": return <RealisticFixtureRenderer type="gondola" w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} gondolaType={fixture.gondolaType} planogram={fixture.planogram} />;
+      /* legacy gondola renderer retained below for reference */
+      case "__legacy_gondola__": return (
       <GondolaMesh {...base}
         gondolaType={fixture.gondolaType ?? "double"}
         facePaint={facePaint}
         slots={fixture.slots}
+        planogram={fixture.planogram}
         selectedSlotId={selectedSlotId}
         hoveredSlotId={hoveredSlotId}
         onSlotClick={onSlotClick}
         onSlotHover={onSlotHover}
       />
     );
-    case "punta": return (
+    case "punta": return <RealisticFixtureRenderer type="punta" w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} gondolaType={fixture.gondolaType} />;
+      case "__legacy_punta__": return (
       <PuntaMesh {...base}
         facePaint={facePaint}
         slots={fixture.slots}
@@ -2103,11 +2177,16 @@ function FixtureMesh({ fixture, ghost, facePaint, selectedSlotId, hoveredSlotId,
         onSlotHover={onSlotHover}
       />
     );
-    case "robatope":      return <RobatopeMesh      {...base} facePaint={facePaint} />;
-    case "ristra":        return <RistraMesh         {...base} facePaint={facePaint} />;
-    case "cross":         return <CrossMesh          {...base} facePaint={facePaint} />;
-    case "metro":         return <MetroMesh          {...base} />;
-    case "mueble":        return <MuebleMesh         {...base} facePaint={facePaint} />;
+    case "robatope": return <RealisticFixtureRenderer type="robatope" w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;
+      case "__legacy_robatope__":      return <RobatopeMesh      {...base} facePaint={facePaint} />;
+    case "ristra": return <RealisticFixtureRenderer type="ristra" w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;
+      case "__legacy_ristra__":        return <RistraMesh         {...base} facePaint={facePaint} />;
+    case "cross": return <RealisticFixtureRenderer type="cross" w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;
+      case "__legacy_cross__":         return <CrossMesh          {...base} facePaint={facePaint} />;
+    case "metro": return <RealisticFixtureRenderer type="metro" w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;
+      case "__legacy_metro__":         return <MetroMesh          {...base} />;
+    case "mueble": return <RealisticFixtureRenderer type="mueble" w={fixture.w} d={fixture.d} h={fixture.h} ghost={ghost} />;
+      case "__legacy_mueble__":        return <MuebleMesh         {...base} facePaint={facePaint} />;
     case "isla":          return <IslaMesh           {...base} facePaint={facePaint} />;
     case "impulsador":    return <ImpulsadorMesh     {...base} facePaint={facePaint} />;
     case "batea":         return <BateaMesh          {...base} facePaint={facePaint} />;
@@ -4284,6 +4363,7 @@ function storeToFixtures(unifiedList: UnifiedFixture[]): PlacedFixture[] {
         type,
         gondolaType:     f.gondolaType,
         slots:           f.slots ?? defaultSlots({ type, w: f.w, h: f.h, code: f.code }),
+        planogram:       f.planogram,
         x:               f.cx,
         // Direct Z mapping — camera is on the north side (Z = STORE_D + 8),
         // so small Z = far from camera = top of viewport, which already matches
@@ -4350,6 +4430,7 @@ function fixturesToStore(
       endDate:         f.endDate,
       observation:     f.observation,
       slots:           f.slots,
+      planogram:       f.planogram ?? existing?.planogram,
       rentable:        f.rentable,
       // ── Preserved from the store (not modelled in 3D) ──────────────────────
       // El nombre VIEJO: nadie lo escribe ya, pero borrarlo dejaría sin fuente a
@@ -4395,6 +4476,56 @@ interface CommercialPanelProps {
   onDelete:      () => void;
   onClose:       () => void;
   onSlotClose:   () => void;
+}
+
+/** Biblioteca de producto inicial y acciones de auto-facing por repisa.
+ * Vive sobre el modelo `planogram`, no sobre `slots`: un slot es un espacio
+ * comercial y una shelf es la superficie física que sostiene producto. */
+function PlanogramPanel({ fix, onChange }: { fix: PlacedFixture; onChange: (planogram: FixturePlanogram) => void }) {
+  const planogram = useMemo(() => fix.planogram ?? createGondolaPlanogram({
+    fixtureId: fix.id, width: fix.w, depth: fix.d, height: fix.h,
+    doubleSided: fix.gondolaType !== "wall",
+  }), [fix]);
+  const [shelfId, setShelfId] = useState(planogram.shelves[0]?.id ?? "");
+  const [productId, setProductId] = useState(planogram.products[0]?.id ?? "");
+  const shelf = planogram.shelves.find(item => item.id === shelfId) ?? planogram.shelves[0];
+  const product = planogram.products.find(item => item.id === productId) ?? planogram.products[0];
+  const capacity = shelf && product ? calculateShelfCapacity(shelf, product) : null;
+
+  useEffect(() => {
+    setShelfId(current => planogram.shelves.some(item => item.id === current) ? current : (planogram.shelves[0]?.id ?? ""));
+    setProductId(current => planogram.products.some(item => item.id === current) ? current : (planogram.products[0]?.id ?? ""));
+  }, [planogram]);
+
+  if (!shelf || !product || !capacity) return null;
+  const fillShelf = (quantity = capacity.capacity) => {
+    const placements = generateProductPlacements({ fixtureId: fix.id, faceId: shelf.faceId, shelf, product, quantity });
+    onChange({ ...planogram, placements: [...planogram.placements.filter(item => item.shelfId !== shelf.id), ...placements] });
+  };
+  const itemsOnShelf = planogram.placements.filter(item => item.shelfId === shelf.id).length;
+  return (
+    <section className="rounded-lg border border-dark-line bg-dark-bg/50 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-dark-ink-3">Planograma · productos</p>
+        <span className="rounded bg-accent/15 px-1.5 py-0.5 font-mono text-[9px] text-accent-200">{planogram.placements.length} uds.</span>
+      </div>
+      <label className={ETIQUETA_CLS}>Repisa</label>
+      <select value={shelf.id} onChange={event => setShelfId(event.target.value)} className="mb-2 w-full rounded border border-dark-line-2 bg-dark-bg px-2 py-1 text-xs text-dark-ink-1">
+        {planogram.shelves.map(item => <option key={item.id} value={item.id}>Cara {item.faceId} · repisa {item.index + 1}</option>)}
+      </select>
+      <label className={ETIQUETA_CLS}>Producto</label>
+      <select value={product.id} onChange={event => setProductId(event.target.value)} className="w-full rounded border border-dark-line-2 bg-dark-bg px-2 py-1 text-xs text-dark-ink-1">
+        {planogram.products.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+      </select>
+      <p className="mt-2 text-[10px] leading-relaxed text-dark-ink-3">
+        {capacity.facings} facings × {capacity.rows} filas = <b className="text-dark-ink-1">{capacity.capacity}</b> unidades · {itemsOnShelf} colocadas.
+      </p>
+      <div className="mt-2 grid grid-cols-2 gap-1.5">
+        <button onClick={() => fillShelf(1)} className="rounded border border-dark-line-2 px-2 py-1 text-[10px] font-semibold text-dark-ink-2 hover:text-dark-ink-1">Colocar 1</button>
+        <button onClick={() => fillShelf()} className="rounded bg-accent px-2 py-1 text-[10px] font-bold text-accent-ink hover:brightness-110">Auto-llenar</button>
+      </div>
+    </section>
+  );
 }
 
 function CommercialPanel({
@@ -4654,6 +4785,10 @@ function CommercialPanel({
             </div>
             <p className="mt-1 text-[9px] text-dark-ink-3 italic">Hacé clic en un slot del panel frontal para editarlo</p>
           </div>
+        )}
+
+        {fix.type === "gondola" && (
+          <PlanogramPanel fix={fix} onChange={(planogram) => u({ planogram })} />
         )}
 
         <div>
@@ -5082,6 +5217,12 @@ export default function StoreEditor3D() {
         ...(NON_RENTABLE_BY_DEFAULT.has(placingDef.type) ? { rentable: false } : {}),
       };
       newFix.slots = defaultSlots({ type:newFix.type, w:newFix.w, h:newFix.h, code:newCode });
+      if (newFix.type === "gondola") {
+        newFix.planogram = createGondolaPlanogram({
+          fixtureId: newFix.id, width: newFix.w, depth: newFix.d, height: newFix.h,
+          doubleSided: newFix.gondolaType !== "wall",
+        });
+      }
       u(prev=>[...prev,newFix]);
     } else {
       setSelectedId(null);

@@ -13,6 +13,7 @@
 
 import { dayNumber, inclusiveDays, parseISODate } from "./seasons";
 import type { Vista3D } from "../utils/planta";
+import type { FixturePlanogram } from "./retail3d";
 
 export type SpaceStatus = "free" | "occupied" | "reserved" | "maintenance";
 
@@ -428,6 +429,9 @@ export interface UnifiedFixture {
 
   // ── 3D-specific ───────────────────────────────────────────────────────────
   slots?: ShelfSlot[];
+
+  /** Planograma físico opcional y aditivo; los layouts previos siguen válidos. */
+  planogram?: FixturePlanogram;
 
   /** Cámara guardada para mostrarle este espacio a un proveedor, por cara.
    *
