@@ -4,6 +4,8 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { GondolaReal } from "../components/StoreEditor3D/muebles/GondolaReal";
+import { ProductoEnGondola } from "../components/StoreEditor3D/muebles/ProductoEnGondola";
+import type { SlotDeProducto } from "../components/StoreEditor3D/muebles/ProductoEnGondola";
 
 /**
  * El taller: un mueble solo, girable, para mirarle la forma.
@@ -72,11 +74,24 @@ const campo: React.CSSProperties = {
   color: "var(--ink-1)", fontSize: 12.5, fontFamily: "inherit",
 };
 
+/** Una cara vendida entera, partida en rubros. No es dato de negocio: es lo
+ *  mínimo para poder mirar cómo queda un lineal lleno antes de que haya un
+ *  contrato de verdad cargado. Los rubros son los que más cambian de empaque,
+ *  a propósito — si se ven bien éstos, se ven bien todos. */
+const SLOTS_DE_MUESTRA: SlotDeProducto[] = [
+  { id: "a", x: 0.00, w: 0.34, y: 0.00, h: 0.5, status: "occupied", brandCategory: "Gaseosas" },
+  { id: "b", x: 0.34, w: 0.33, y: 0.00, h: 0.5, status: "occupied", brandCategory: "Galletas" },
+  { id: "c", x: 0.67, w: 0.33, y: 0.00, h: 0.5, status: "occupied", brandCategory: "Aceites" },
+  { id: "d", x: 0.00, w: 0.50, y: 0.50, h: 0.5, status: "occupied", brandCategory: "Snacks" },
+  { id: "e", x: 0.50, w: 0.50, y: 0.50, h: 0.5, status: "occupied", brandCategory: "Atún" },
+];
+
 export default function TallerMuebles() {
   const [ancho, setAncho] = useState(2.5);
   const [fondo, setFondo] = useState(1.0);
   const [alto, setAlto] = useState(1.8);
   const [tipo, setTipo] = useState<"double" | "wall">("double");
+  const [conProducto, setConProducto] = useState(true);
 
   const camara = useMemo(
     () => ({ position: [2.6, 1.7, 2.8] as [number, number, number], fov: 42, near: 0.05, far: 100 }),
@@ -116,6 +131,11 @@ export default function TallerMuebles() {
             <option value="wall">mural</option>
           </select>
         </label>
+        <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
+          <input type="checkbox" checked={conProducto}
+                 onChange={(e) => setConProducto(e.target.checked)} />{" "}
+          producto
+        </label>
         <span style={{ fontSize: 11, color: "var(--ink-4)" }}>
           Banco de pruebas de la forma. No es una pantalla de negocio.
         </span>
@@ -146,6 +166,13 @@ export default function TallerMuebles() {
             <directionalLight position={[-4, 3, -3]} intensity={0.35} />
             <Piso />
             <GondolaReal w={ancho} d={fondo} h={alto} gondolaType={tipo} />
+            {conProducto && (
+              <ProductoEnGondola
+                w={ancho} d={fondo} h={alto}
+                esMural={tipo === "wall"}
+                slots={SLOTS_DE_MUESTRA}
+              />
+            )}
           </Suspense>
         </Canvas>
       </div>

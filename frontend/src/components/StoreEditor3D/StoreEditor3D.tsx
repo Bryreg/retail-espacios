@@ -11,9 +11,11 @@ import {
 } from "lucide-react";
 import { Html } from "@react-three/drei";
 import { GondolaReal } from "./muebles/GondolaReal";
+import { ProductoEnGondola } from "./muebles/ProductoEnGondola";
 import { olvidarGeometrias } from "./muebles/perfiles";
 import {
-  ESPESOR_ESPINA, PARANTE, filasDeProducto, fondoPorCara,
+  ESPESOR_ESPINA, PARANTE, ZONA_DE_SLOTS, altoDeZonaDeSlots,
+  filasDeProducto, fondoPorCara,
 } from "./muebles/medidas";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { useModalAbierto } from "../../tema";
@@ -555,10 +557,10 @@ const GondolaMesh = memo(function GondolaMesh({
   // en los contratos de los clientes—, así que su geometría no se toca: el
   // mueble cambió de forma, el espacio vendido no.
 
-  // Espacio de los slots. Estos números definen dónde cayó cada espacio
-  // vendido, así que quedan clavados aunque cambie el mueble.
-  const topH       = 0.08;
-  const slotAreaH  = h - topH - 0.06;
+  // Espacio de los slots. Definen dónde cayó cada espacio vendido, así que
+  // quedan clavados aunque cambie el mueble; viven en `medidas.ts` porque el
+  // producto que se para sobre esos entrepaños necesita la misma cuenta.
+  const slotAreaH  = altoDeZonaDeSlots(h);
   const SLOT_PROTO = 0.12;
 
   // Las filas de producto salen de la misma cuenta que los entrepaños, no de
@@ -579,7 +581,7 @@ const GondolaMesh = memo(function GondolaMesh({
       const sw    = slot.w * w - 0.04;
       const sh    = slot.h * slotAreaH - 0.025;
       const cx    = (slot.x + slot.w * 0.5) * w - w / 2;
-      const cy    = 0.06 + (slot.y + slot.h * 0.5) * slotAreaH;
+      const cy    = ZONA_DE_SLOTS.desde + (slot.y + slot.h * 0.5) * slotAreaH;
       const sc    = STATUS_COLORS[slot.status] ?? STATUS_COLORS.free;
       const isSel = slot.id === selectedSlotId;
       const isHov = slot.id === hoveredSlotId;
@@ -607,6 +609,16 @@ const GondolaMesh = memo(function GondolaMesh({
   return (
     <group>
       <GondolaReal w={w} d={d} h={h} gondolaType={isWall ? "wall" : "double"} ghost={ghost} />
+
+      {/* El producto de los espacios vendidos, parado sobre los entrepaños.
+          Cuando el proveedor subió su arte manda el arte: la lámina es
+          información real y esto es una aproximación por rubro, así que las
+          dos no conviven sobre la misma cara. */}
+      {!pinta && (
+        <ProductoEnGondola
+          w={w} d={d} h={h} esMural={isWall} slots={slots} ghost={ghost}
+        />
+      )}
 
       {/* El producto, parado en el filo de cada entrepaño. La góndola mural va
           contra la pared: sólo se vende su cara de adelante. */}

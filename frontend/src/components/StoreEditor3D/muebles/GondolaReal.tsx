@@ -2,9 +2,10 @@ import { memo, useMemo } from "react";
 import * as THREE from "three";
 import {
   ENTREPANO, PANEL_FONDO, PARANTE, PORTA_PRECIOS, REMATE, ZOCALO,
-  ANCHO_MODULO_TIPICO, ESPESOR_ESPINA, fondoPorCara,
+  ESPESOR_ESPINA, fondoPorCara, vanosDeCorrido,
   nivelesDeEntrepano, profundidadDeNivel,
 } from "./medidas";
+import type { Vano } from "./medidas";
 import {
   geometriaEntrepano, geometriaLama, geometriaParante, geometriaPortaPrecios,
   geometriaRanura, geometriaRemate, geometriaRespaldo, alturasDeRanura,
@@ -118,14 +119,6 @@ function useMateriales(ghost: boolean, statusColor?: string) {
 }
 
 type Materiales = ReturnType<typeof useMateriales>;
-
-/** Un vano: el hueco de un módulo, entre dos parantes. */
-interface Vano {
-  /** Centro en X. */
-  x: number;
-  /** Ancho libre entre parante y parante. */
-  ancho: number;
-}
 
 /* ── Piezas ────────────────────────────────────────────────────────────────*/
 
@@ -324,15 +317,7 @@ export const GondolaReal = memo(function GondolaReal({
 
   /** El corrido se parte en módulos de ancho de catálogo. De acá salen los
    *  vanos —los paneles y entrepaños— y, de sus bordes, los parantes. */
-  const vanos = useMemo<Vano[]>(() => {
-    const cuantos = Math.max(1, Math.round(w / ANCHO_MODULO_TIPICO));
-    const anchoModulo = w / cuantos;
-    const libre = Math.max(0.1, anchoModulo - PARANTE.ancho);
-    return Array.from({ length: cuantos }, (_, i) => ({
-      x: -w / 2 + anchoModulo * (i + 0.5),
-      ancho: libre,
-    }));
-  }, [w]);
+  const vanos = useMemo(() => vanosDeCorrido(w), [w]);
 
   // La base es una sola pieza que abraza las dos caras, así que la monta el
   // mueble y no cada cara. Va retranqueada respecto del entrepaño de abajo:

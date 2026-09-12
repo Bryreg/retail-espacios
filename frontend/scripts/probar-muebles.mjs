@@ -102,8 +102,14 @@ prueba("la geometría del slot NO se movió con el mueble", () => {
   // La posición de cada slot está guardada en los contratos de los clientes.
   // El mueble cambió de forma; el espacio vendido no puede cambiar de lugar,
   // o los contratos vigentes pasan a señalar otro pedazo de góndola.
-  assert.match(cuerpoGondolaMesh, /const topH\s*=\s*0\.08/, "cambió `topH`");
-  assert.match(cuerpoGondolaMesh, /slotAreaH\s*=\s*h - topH - 0\.06/, "cambió el alto útil del slot");
+  assert.match(medidasCodigo, /desde:\s*0\.06/, "cambió dónde arranca la franja de slots");
+  assert.match(medidasCodigo, /remate:\s*0\.08/, "cambió cuánto descuenta el remate");
+  assert.match(
+    medidasCodigo, /altoDeZonaDeSlots[\s\S]{0,140}alto - ZONA_DE_SLOTS\.remate - ZONA_DE_SLOTS\.desde/,
+    "cambió el alto útil del slot",
+  );
+  assert.match(cuerpoGondolaMesh, /slotAreaH\s*=\s*altoDeZonaDeSlots\(h\)/, "el mesh dejó de usar la cuenta compartida");
+  assert.match(cuerpoGondolaMesh, /ZONA_DE_SLOTS\.desde \+ \(slot\.y/, "el mesh dejó de usar la base compartida");
   assert.match(cuerpoGondolaMesh, /SLOT_PROTO\s*=\s*0\.12/, "cambió cuánto sobresale el panel");
   assert.match(cuerpoGondolaMesh, /faceSign \* \(d \/ 2 \+ SLOT_PROTO\)/, "cambió el plano del panel");
 });
@@ -207,9 +213,10 @@ prueba("el corrido se arma por módulos, con un parante en cada junta", () => {
   // Dos postes en las puntas y nada en el medio es lo que delata un corrido
   // largo: una góndola de 5 m son cuatro módulos, no un mueble de 5 m.
   assert.match(
-    gondolaCodigo, /Math\.round\(w \/ ANCHO_MODULO_TIPICO\)/,
+    medidasCodigo, /Math\.round\(w \/ ANCHO_MODULO_TIPICO\)/,
     "el corrido dejó de partirse en módulos de ancho de catálogo",
   );
+  assert.match(gondolaCodigo, /vanosDeCorrido\(w\)/, "la góndola dejó de armarse por vanos");
 });
 
 prueba("el fondo es de listones sobre respaldo, no una chapa lisa", () => {
@@ -227,6 +234,210 @@ prueba("las geometrías cacheadas se sueltan al salir del editor", () => {
     editorCodigo, /useEffect\(\(\) => olvidarGeometrias, \[\]\)/,
     "nadie llama a `olvidarGeometrias`: el caché queda vivo al desmontar",
   );
+});
+
+// ── El producto sobre los entrepaños ────────────────────────────────────────
+
+const producto = leer(join(muebles, "producto.ts"));
+const enGondola = leer(join(muebles, "ProductoEnGondola.tsx"));
+const productoCodigo = sinComentarios(producto);
+const enGondolaCodigo = sinComentarios(enGondola);
+
+prueba("sólo se llena lo que está vendido", () => {
+  // Rellenar la góndola entera "para que se vea linda" miente sobre lo único
+  // que este sistema tiene que decir: dónde hay espacio libre.
+  assert.match(enGondolaCodigo, /VENDIDO\.has\(slot\.status\)/, "el producto dejó de mirar el estado del slot");
+  assert.match(
+    enGondolaCodigo, /new Set\(\["occupied", "reserved"\]\)/,
+    "cambió qué cuenta como vendido: un reservado también está comprometido",
+  );
+});
+
+prueba("el producto se para en los mismos entrepaños que se dibujan", () => {
+  assert.match(enGondolaCodigo, /filasDeProducto\(/, "el producto calcula las alturas por su cuenta");
+  assert.match(enGondolaCodigo, /filas\.alturas\[i\]/, "no usa la altura exacta del entrepaño");
+  assert.match(enGondolaCodigo, /vanosDeCorrido\(/, "el producto podría quedar apoyado sobre un parante");
+});
+
+prueba("el producto usa la misma franja de slots que los paneles", () => {
+  assert.match(enGondolaCodigo, /altoDeZonaDeSlots\(h\)/, "el producto tiene su propia copia de la franja");
+  assert.match(enGondolaCodigo, /ZONA_DE_SLOTS\.desde/, "el producto tiene su propia base de la franja");
+});
+
+prueba("el empaque va a escala real y no a fracción del mueble", () => {
+  // Es lo que hace que la cuenta de frentes sirva para negociar: sobre 1,20 m
+  // entran los once frentes que entran.
+  const tabla = productoCodigo.slice(
+    productoCodigo.indexOf("export const EMPAQUES"),
+    productoCodigo.indexOf("] satisfies") + 40 || undefined,
+  );
+  assert.ok(
+    !/[whd]\s*[*/]|ancho\s*\*|alto\s*\*/.test(tabla),
+    "alguna medida de empaque pasó a derivarse del tamaño del mueble",
+  );
+  assert.match(productoCodigo, /export function acomodar/, "se perdió la cuenta de frentes");
+});
+
+prueba("el producto se repone al frente del entrepaño", () => {
+  // Un lineal con el producto pegado al fondo y el filo vacío es exactamente
+  // lo que un supervisor manda a corregir.
+  assert.match(enGondolaCodigo, /filo - RETIRO_AL_FRENTE/, "el producto se paró desde el fondo");
+});
+
+prueba("el color del rubro es estable entre renders", () => {
+  // Sin esto la tienda titila cada vez que se mueve la cámara.
+  assert.match(productoCodigo, /export function colorDeRubro/, "falta el color por rubro");
+  assert.ok(!/Math\.random/.test(productoCodigo), "el color del producto salió al azar");
+  assert.ok(!/Math\.random/.test(enGondolaCodigo), "la ubicación del producto salió al azar");
+});
+
+prueba("el arte del proveedor le gana a la aproximación por rubro", () => {
+  assert.match(
+    cuerpoGondolaMesh, /\{!pinta && \(\s*<ProductoEnGondola/,
+    "el producto genérico se dibujaría encima del arte que subió el proveedor",
+  );
+});
+
+// ── Y estas se EJECUTAN ─────────────────────────────────────────────────────
+//
+// Todo lo de arriba lee el código. Alcanza para lo que se borra de un archivo,
+// y no alcanza para lo que se calcula mal: el emparejado de rubros pasó por
+// debajo de todas las pruebas de texto porque el código decía exactamente lo
+// que tenía que decir — y «Aceites» caía igual en la fila de los cereales,
+// porque «te» está adentro de «acei-te-s». El error se veía en pantalla como
+// un problema de tamaños.
+//
+// `producto.ts` son funciones puras sin DOM ni Three, así que se pueden correr.
+
+const { build } = await import("esbuild");
+const compilado = await build({
+  entryPoints: [join(raiz, muebles, "producto.ts")],
+  bundle: true, write: false, format: "esm", platform: "neutral",
+});
+const P = await import(
+  "data:text/javascript;base64," +
+  Buffer.from(compilado.outputFiles[0].text).toString("base64")
+);
+
+const compiladoM = await build({
+  entryPoints: [join(raiz, muebles, "medidas.ts")],
+  bundle: true, write: false, format: "esm", platform: "neutral",
+});
+const M = await import(
+  "data:text/javascript;base64," +
+  Buffer.from(compiladoM.outputFiles[0].text).toString("base64")
+);
+
+prueba("ninguna altura de mueble pierde su entrepaño de arriba", () => {
+  // El último entrepaño cae JUSTO en el límite, y con `y <= hasta` a secas la
+  // comparación la decide el último bit del flotante: una góndola de 1,80
+  // perdía su entrepaño más alto —y con él una fila entera de producto— y una
+  // de 1,85 lo conservaba. No es cosmético: cambia `rows`, y `rows` es lo que
+  // alinea las filas del arte que sube el proveedor.
+  for (let h = 1.0; h <= 2.4001; h += 0.05) {
+    const niveles = M.nivelesDeEntrepano(h);
+    const aire = h - niveles[niveles.length - 1];
+    assert.ok(
+      aire < 0.2,
+      `con alto ${h.toFixed(2)} quedan ${aire.toFixed(3)} m de aire arriba: se perdió un entrepaño`,
+    );
+  }
+});
+
+prueba("los entrepaños caen en alturas que el parante admite, de verdad", () => {
+  for (let h = 1.0; h <= 2.4001; h += 0.05) {
+    for (const y of M.nivelesDeEntrepano(h)) {
+      const pasos = y / 0.025;
+      assert.ok(
+        Math.abs(pasos - Math.round(pasos)) < 1e-6,
+        `con alto ${h.toFixed(2)} hay un entrepaño a ${y} m, que no es múltiplo del paso de ranura`,
+      );
+    }
+  }
+});
+
+prueba("cada fila tiene un entrepaño arriba donde terminar", () => {
+  // `rows` es uno menos que los niveles. Si alguna vez son iguales, la última
+  // fila lee `alturas[rows]` y se va afuera del arreglo.
+  for (let h = 1.0; h <= 2.4001; h += 0.05) {
+    const f = M.filasDeProducto(h, 0.5);
+    assert.equal(f.alturas.length, f.rows + 1, `con alto ${h.toFixed(2)} no cierra la última fila`);
+    assert.ok(Number.isFinite(f.alturas[f.rows]), "la última fila no tiene techo");
+  }
+});
+
+prueba("«Aceites» no cae en la fila de los cereales", () => {
+  // El rubro se compara contra el COMIENZO de cada palabra. Si alguien vuelve
+  // a `texto.includes(prefijo)`, esta prueba cae y sólo ésta.
+  assert.equal(P.empaqueDeRubro("Aceites").forma, "botella",
+    "«Aceites» emparejó con «te»: el lineal de aceites sale de cajas de cereal");
+  assert.equal(P.empaqueDeRubro("Aceite de girasol").ancho, 0.1);
+});
+
+prueba("los rubros conocidos caen donde tienen que caer", () => {
+  const esperado = [
+    ["Gaseosas", "botella"], ["Galletas", "caja"], ["Snacks", "bolsa"],
+    ["Atún", "lata"], ["Cerveza", "lata"], ["Leche", "caja"],
+    ["Té verde", "caja"], ["Detergente", "botella"],
+  ];
+  for (const [rubro, forma] of esperado) {
+    assert.equal(P.empaqueDeRubro(rubro).forma, forma, `«${rubro}» emparejó mal`);
+  }
+});
+
+prueba("un rubro vacío o desconocido no rompe", () => {
+  for (const r of ["", "   ", null, undefined, "Zzz 123", "!!!"]) {
+    const e = P.empaqueDeRubro(r);
+    assert.ok(e.ancho > 0 && e.alto > 0, `«${r}» devolvió un empaque inválido`);
+  }
+});
+
+prueba("el mismo rubro da siempre el mismo color", () => {
+  assert.equal(P.colorDeRubro("Gaseosas"), P.colorDeRubro("Gaseosas"));
+  assert.equal(P.colorDeRubro("Gaseosas"), P.colorDeRubro("gaseosas"),
+    "la mayúscula cambia el color: el mismo rubro titilaría entre muebles");
+  assert.notEqual(P.colorDeRubro("Gaseosas"), P.colorDeRubro("Galletas"));
+});
+
+prueba("el color se mantiene lejos del verde y del rojo", () => {
+  // Verde y rojo son los colores del estado comercial. Si el producto los usa,
+  // «disponible» y «ocupado» dejan de significar algo con el mueble lleno.
+  for (const r of ["Gaseosas", "Galletas", "Snacks", "Atún", "Aceites", "Leche", "Pastas", "Cafe"]) {
+    const tono = Number(/hsl\((\d+)/.exec(P.colorDeRubro(r))[1]);
+    assert.ok(
+      (tono >= 190 && tono <= 330) || (tono >= 30 && tono <= 60),
+      `«${r}» salió en tono ${tono}, que pisa el verde o el rojo del estado`,
+    );
+  }
+});
+
+prueba("el color sale en la sintaxis que THREE.Color entiende", () => {
+  // `THREE.Color` NO parsea `hsl(190 40% 50%)` —la sintaxis CSS moderna— y no
+  // falla: se queda en blanco. Todo el lineal sale del color del papel.
+  assert.match(P.colorDeRubro("Gaseosas"), /^hsl\(\d+, \d+%, \d+%\)$/);
+});
+
+prueba("la cuenta de frentes es la que entra de verdad", () => {
+  // Sobre 1,20 m de entrepaño con cajas de 11 cm entran once, no diez ni doce.
+  const caja = P.empaqueDeRubro("Galletas");        // 0.11 de frente
+  const a = P.acomodar(1.20, 0.45, 0.30, caja);
+  assert.equal(a.frentes, Math.floor((1.20 + 0.004) / (caja.ancho + 0.004)));
+  assert.ok(a.ocupado <= 1.20, "el producto se sale del entrepaño");
+});
+
+prueba("lo que no entra parado NO se dibuja aplastado", () => {
+  const alto = P.EMPAQUES.cajaAlta;                 // 0.28 de alto
+  assert.equal(P.acomodar(1.2, 0.45, 0.20, alto).frentes, 0,
+    "se paró un envase de 28 cm bajo un entrepaño a 20 cm");
+});
+
+prueba("el formato grande cae al chico antes de dejar el entrepaño vacío", () => {
+  // La botella de 1,5 L va abajo y arriba va la personal, como en tienda.
+  assert.equal(P.empaqueQueEntra("Gaseosas", 0.40).alto, 0.31);
+  assert.equal(P.empaqueQueEntra("Gaseosas", 0.30).alto, 0.23);
+  assert.equal(P.empaqueQueEntra("Gaseosas", 0.15).alto, 0.122);
+  assert.equal(P.empaqueQueEntra("Gaseosas", 0.05), null,
+    "se paró algo bajo un entrepaño de 5 cm");
 });
 
 console.log(`\n${hechas} pruebas del mobiliario 3D`);

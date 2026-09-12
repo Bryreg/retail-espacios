@@ -147,7 +147,14 @@ export function nivelesDeEntrepano(alto: number): number[] {
   const niveles: number[] = [];
   for (let i = 0; i <= cuantos; i++) {
     const y = alRasDeRanura(desde + i * paso);
-    if (y <= hasta) niveles.push(y);
+    // Con tolerancia, y no `y <= hasta` a secas. El último entrepaño cae
+    // JUSTO en el límite, y ahí la comparación la decide el último bit del
+    // flotante: con alto 1,80 el nivel de arriba sale 1.7000000000000002 y el
+    // tope sale 1.7000000000000002, y aun así una góndola de 1,80 perdía su
+    // entrepaño más alto mientras una de 1,85 lo conservaba. No es una
+    // diferencia cosmética: cambia `rows`, y `rows` es lo que alinea las filas
+    // del arte que sube el proveedor.
+    if (y <= hasta + 1e-6) niveles.push(y);
   }
   return niveles;
 }
@@ -183,6 +190,11 @@ export function profundidadDeNivel(indice: number, total: number, fondoMaximo: n
 export interface FilasDeProducto {
   /** Altura del plano de apoyo de la fila más baja. */
   rowBottom: number;
+  /** Altura EXACTA del plano de apoyo de cada entrepaño, redondeada al paso de
+   *  ranura. `rowBottom` + `rowPitch` es el promedio, que es lo que necesita el
+   *  mapeo de una textura; quien PARA algo encima necesita la de verdad, o el
+   *  producto queda hundido o flotando un centímetro. */
+  alturas: number[];
   /** Separación entre filas. */
   rowPitch: number;
   /** Cuántas filas hay. */
@@ -198,6 +210,7 @@ export function filasDeProducto(alto: number, fondoMaximo: number): FilasDeProdu
   if (niveles.length < 2) {
     return {
       rowBottom: ZOCALO.alto,
+      alturas: [ZOCALO.alto, alto],
       rowPitch: Math.max(0.2, alto - ZOCALO.alto),
       rows: 1,
       fondos: [Math.min(PROFUNDIDADES[0], fondoMaximo)],
@@ -206,6 +219,7 @@ export function filasDeProducto(alto: number, fondoMaximo: number): FilasDeProdu
   const rows = niveles.length - 1;
   return {
     rowBottom: niveles[0],
+    alturas: niveles,
     rowPitch: (niveles[niveles.length - 1] - niveles[0]) / rows,
     rows,
     fondos: Array.from({ length: rows }, (_, i) =>
@@ -219,4 +233,57 @@ export function filasDeProducto(alto: number, fondoMaximo: number): FilasDeProdu
 export const ESPESOR_ESPINA = 0.02;
 export function fondoPorCara(d: number, esMural: boolean): number {
   return esMural ? d - ESPESOR_ESPINA : (d - ESPESOR_ESPINA) / 2;
+}
+
+/** Un vano: el hueco de un módulo, entre parante y parante. */
+export interface Vano {
+  /** Centro en X, respecto del centro del corrido. */
+  x: number;
+  /** Ancho libre entre los dos parantes que lo bordean. */
+  ancho: number;
+}
+
+/**
+ * Cómo se parte un corrido en módulos.
+ *
+ * Un corrido de 5 m no es un mueble de 5 m: son cuatro módulos de catálogo
+ * atornillados, con un parante en cada junta. De acá salen los paneles de
+ * fondo, los entrepaños y los porta-precios — y también dónde se puede parar
+ * producto, que es la razón por la que esta cuenta vive acá y no adentro del
+ * componente que dibuja: si el producto la calculara por su lado, terminaría
+ * apoyado sobre un parante.
+ */
+export function vanosDeCorrido(w: number): Vano[] {
+  const cuantos = Math.max(1, Math.round(w / ANCHO_MODULO_TIPICO));
+  const anchoModulo = w / cuantos;
+  const libre = Math.max(0.1, anchoModulo - PARANTE.ancho);
+  return Array.from({ length: cuantos }, (_, i) => ({
+    x: -w / 2 + anchoModulo * (i + 0.5),
+    ancho: libre,
+  }));
+}
+
+/**
+ * La franja del mueble donde viven los espacios que se venden.
+ *
+ * Estas dos cotas deciden dónde cayó cada slot, y la posición de cada slot está
+ * guardada en los contratos de los clientes. **No se tocan.** El mueble puede
+ * cambiar de forma —de hecho cambió entero— pero el espacio vendido no puede
+ * cambiar de lugar, o los contratos vigentes pasan a señalar otro pedazo de
+ * góndola.
+ *
+ * Viven acá y no adentro del mesh porque ahora hay dos cosas que necesitan
+ * saberlo: el panel del slot y el producto que se para sobre los entrepaños de
+ * ese slot. Con una copia en cada lado, el día que una se corrija sin la otra
+ * el producto aparece un espacio más arriba de lo que se vendió.
+ */
+export const ZONA_DE_SLOTS = {
+  /** Altura a la que arranca la franja. */
+  desde: 0.06,
+  /** Cuánto se descuenta del alto total por el remate de arriba. */
+  remate: 0.08,
+} as const;
+
+export function altoDeZonaDeSlots(alto: number): number {
+  return alto - ZONA_DE_SLOTS.remate - ZONA_DE_SLOTS.desde;
 }
