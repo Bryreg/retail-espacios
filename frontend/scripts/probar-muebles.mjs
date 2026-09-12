@@ -1,0 +1,232 @@
+/**
+ * Pruebas del mobiliario 3D: que la góndola nueva no se lleve puesto el negocio.
+ *   npm run probar:muebles
+ *
+ * ── Por qué existe este archivo ──────────────────────────────────────────────
+ *
+ * El mobiliario estaba hecho de `boxGeometry`. Reemplazarlo por piezas de
+ * lámina plegada es un cambio de geometría, y la geometría de estos muebles
+ * carga DOS cosas que no son geometría:
+ *
+ *   · los paneles de slot — el espacio que se vende, cuya posición está
+ *     guardada en los contratos de los clientes; y
+ *   · el pintado de caras — la imagen del producto del proveedor.
+ *
+ * Las dos viven adentro del mismo componente que dibuja el mueble, así que
+ * cualquiera que entre a mejorar la forma las tiene delante y las puede borrar
+ * sin notarlo. **Ya pasó**: un intento previo de hacer los muebles más reales
+ * (PR #62) reescribió `GondolaMesh` entero y se llevó `statusColor`,
+ * `facePaint` y los cinco props de slot. La forma mejoraba; el mueble dejaba
+ * de poder venderse. Nada lo detectó, porque compila igual.
+ *
+ * Por eso acá se afirma lo que tiene que SEGUIR estando, no lo que se agregó.
+ *
+ * ── Y el segundo fantasma: las dos copias de la misma cuenta ────────────────
+ *
+ * La altura de los entrepaños estaba escrita dos veces —una en el mesh, otra
+ * en `getPanelShelfSpan`— con un comentario en cada una pidiendo mantenerlas
+ * iguales. Es una petición que ninguna herramienta verifica. Ahora las dos
+ * preguntan a `filasDeProducto`, y eso también se afirma: es la clase de
+ * unificación que se deshace sola en cuanto alguien necesita "sólo un ajuste
+ * chico" de un lado.
+ */
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const aqui = dirname(fileURLToPath(import.meta.url));
+const raiz = join(aqui, "..");
+const leer = (p) => readFileSync(join(raiz, p), "utf8");
+
+let hechas = 0;
+const prueba = (n, fn) => {
+  try { fn(); hechas++; console.log("  ok   " + n); }
+  catch (e) { console.error("  FALLA " + n + "\n         " + e.message); process.exitCode = 1; }
+};
+
+const muebles = join("src", "components", "StoreEditor3D", "muebles");
+const editor = leer(join("src", "components", "StoreEditor3D", "StoreEditor3D.tsx"));
+const medidas = leer(join(muebles, "medidas.ts"));
+const perfiles = leer(join(muebles, "perfiles.ts"));
+const gondola = leer(join(muebles, "GondolaReal.tsx"));
+
+/* Los comentarios de estos archivos explican largo POR QUÉ cada cota es la que
+   es, y citan nombres de props y de funciones al hacerlo. Se quitan antes de
+   buscar, para no aprobar una prueba con la documentación en vez del código. */
+const sinComentarios = (t) => t
+  .replace(/\/\*[\s\S]*?\*\//g, " ")
+  .replace(/^\s*\/\/.*$/gm, " ");
+
+const editorCodigo = sinComentarios(editor);
+const medidasCodigo = sinComentarios(medidas);
+const gondolaCodigo = sinComentarios(gondola);
+
+/** El cuerpo de `GondolaMesh`, que es donde puede perderse el negocio. */
+const cuerpoGondolaMesh = (() => {
+  const i = editorCodigo.indexOf("const GondolaMesh = memo(");
+  assert.ok(i > 0, "no se encontró `GondolaMesh`");
+  const j = editorCodigo.indexOf("interface PuntaMeshProps", i);
+  return editorCodigo.slice(i, j > i ? j : undefined);
+})();
+
+// ── Lo que el mueble no puede perder ────────────────────────────────────────
+
+prueba("la góndola sigue recibiendo los cinco props de slot", () => {
+  for (const prop of ["slots", "selectedSlotId", "hoveredSlotId", "onSlotClick", "onSlotHover"]) {
+    assert.match(
+      cuerpoGondolaMesh, new RegExp(`\\b${prop}\\b`),
+      `\`GondolaMesh\` ya no usa \`${prop}\`: el espacio vendido dejó de poder marcarse`,
+    );
+  }
+});
+
+prueba("los paneles de slot se siguen dibujando en las dos caras", () => {
+  assert.match(cuerpoGondolaMesh, /renderSlotFace\(-1\)/, "falta la cara -Z");
+  assert.match(cuerpoGondolaMesh, /renderSlotFace\(1\)/, "falta la cara +Z");
+});
+
+prueba("el slot sigue respondiendo al clic y al paso del mouse", () => {
+  assert.match(cuerpoGondolaMesh, /onClick=\{[^}]*onSlotClick/, "el slot dejó de ser clickeable");
+  assert.match(cuerpoGondolaMesh, /onPointerOver=\{[^}]*onSlotHover/, "el slot dejó de resaltarse");
+});
+
+prueba("el slot sigue pintándose con el color de su estado comercial", () => {
+  assert.match(
+    cuerpoGondolaMesh, /STATUS_COLORS\[slot\.status\]/,
+    "el panel del slot dejó de leer el estado: la ocupación no se vería",
+  );
+});
+
+prueba("la geometría del slot NO se movió con el mueble", () => {
+  // La posición de cada slot está guardada en los contratos de los clientes.
+  // El mueble cambió de forma; el espacio vendido no puede cambiar de lugar,
+  // o los contratos vigentes pasan a señalar otro pedazo de góndola.
+  assert.match(cuerpoGondolaMesh, /const topH\s*=\s*0\.08/, "cambió `topH`");
+  assert.match(cuerpoGondolaMesh, /slotAreaH\s*=\s*h - topH - 0\.06/, "cambió el alto útil del slot");
+  assert.match(cuerpoGondolaMesh, /SLOT_PROTO\s*=\s*0\.12/, "cambió cuánto sobresale el panel");
+  assert.match(cuerpoGondolaMesh, /faceSign \* \(d \/ 2 \+ SLOT_PROTO\)/, "cambió el plano del panel");
+});
+
+prueba("la góndola sigue pintando el producto del proveedor", () => {
+  assert.match(
+    cuerpoGondolaMesh, /facePaint/,
+    "`GondolaMesh` dejó de usar `facePaint`: el proveedor no vería su marca",
+  );
+  assert.match(
+    cuerpoGondolaMesh, /<LaminaDeProducto(PorFila)?\b/,
+    "no se dibuja ninguna lámina de producto",
+  );
+});
+
+prueba("la góndola mural sólo se vende de un lado", () => {
+  assert.match(cuerpoGondolaMesh, /\{!isWall && renderSlotFace\(1\)\}/,
+    "la mural mostraría slots contra la pared");
+  assert.match(cuerpoGondolaMesh, /doble=\{!isWall\}/,
+    "la mural pintaría producto contra la pared");
+});
+
+// ── Una sola cuenta para los entrepaños ─────────────────────────────────────
+
+prueba("el pintado de filas NO repite la cuenta de los entrepaños", () => {
+  const i = editorCodigo.indexOf('case "gondola_doble"');
+  const tramo = editorCodigo.slice(i, i + 900);
+  assert.match(tramo, /filasDeProducto\(/, "`getPanelShelfSpan` volvió a calcular las filas por su cuenta");
+  assert.ok(
+    !/Math\.max\(4,\s*Math\.round\(/.test(tramo),
+    "reapareció la fórmula duplicada de la cantidad de entrepaños",
+  );
+});
+
+prueba("las filas salen de los mismos niveles que dibujan los entrepaños", () => {
+  assert.match(
+    medidasCodigo, /export function filasDeProducto[\s\S]{0,400}nivelesDeEntrepano\(/,
+    "`filasDeProducto` dejó de derivar de `nivelesDeEntrepano`",
+  );
+});
+
+prueba("hay una fila menos que entrepaños", () => {
+  // Sobre el último entrepaño no se puede parar nada: la fila es el HUECO.
+  assert.match(medidasCodigo, /rows\s*=\s*niveles\.length - 1/, "la fila de arriba quedaría en el aire");
+});
+
+prueba("cada fila conoce el fondo de SU entrepaño", () => {
+  // La góndola es escalonada. Sin esto el producto de arriba queda flotando
+  // varios centímetros por delante del entrepaño que lo sostiene.
+  assert.match(medidasCodigo, /fondos:\s*Array\.from/, "`filasDeProducto` ya no devuelve los fondos");
+  assert.match(gondolaCodigo, /profundidadDeNivel\(/, "la góndola dejó de escalonar el fondo");
+});
+
+// ── Las cotas son de catálogo, no fracciones del mueble ─────────────────────
+
+prueba("ninguna cota se deriva del alto o del ancho del mueble", () => {
+  // El delator número uno de un mueble inventado: un entrepaño cuyo espesor
+  // cambia si la góndola es más alta. Una lámina mide lo que mide.
+  const constantes = medidasCodigo.slice(0, medidasCodigo.indexOf("export function"));
+  assert.ok(
+    !/\b(alto|ancho|fondo|h|w|d)\s*[*/]/.test(constantes),
+    "alguna cota de catálogo pasó a calcularse desde el tamaño del mueble",
+  );
+});
+
+prueba("el paso de ranura del parante es el estándar de 25 mm", () => {
+  assert.match(medidasCodigo, /pasoRanura:\s*0\.025/, "cambió el paso de ranura");
+  assert.match(medidasCodigo, /export function alRasDeRanura/, "se perdió el redondeo al paso de ranura");
+});
+
+prueba("los entrepaños caen en alturas que un parante admite", () => {
+  assert.match(
+    medidasCodigo, /nivelesDeEntrepano[\s\S]{0,600}alRasDeRanura\(/,
+    "los entrepaños volvieron a caer en alturas que ningún parante acepta",
+  );
+});
+
+prueba("el primer entrepaño se apoya en el zócalo", () => {
+  // Arrancar un paso más arriba deja abajo un hueco vacío que ninguna góndola
+  // tiene, y es de las cosas que más delatan un modelo inventado.
+  assert.match(medidasCodigo, /const desde = ZOCALO\.alto;/, "volvió el hueco de abajo");
+});
+
+// ── Que sigan siendo piezas y no cajas ──────────────────────────────────────
+
+prueba("las piezas son perfiles extruidos y no cajas", () => {
+  for (const pieza of ["geometriaEntrepano", "geometriaParante", "geometriaPortaPrecios", "geometriaLama"]) {
+    const i = perfiles.indexOf(`export function ${pieza}`);
+    assert.ok(i > 0, `falta \`${pieza}\``);
+    const cuerpo = perfiles.slice(i, i + 1400);
+    assert.match(cuerpo, /new THREE\.ExtrudeGeometry/, `\`${pieza}\` volvió a ser una primitiva`);
+  }
+});
+
+prueba("el entrepaño conserva el labio y el gancho", () => {
+  assert.match(medidasCodigo, /labio:\s*0\.0\d/, "se perdió el labio del entrepaño");
+  assert.match(medidasCodigo, /gancho:\s*0\.0\d/, "se perdió el gancho trasero");
+});
+
+prueba("el corrido se arma por módulos, con un parante en cada junta", () => {
+  // Dos postes en las puntas y nada en el medio es lo que delata un corrido
+  // largo: una góndola de 5 m son cuatro módulos, no un mueble de 5 m.
+  assert.match(
+    gondolaCodigo, /Math\.round\(w \/ ANCHO_MODULO_TIPICO\)/,
+    "el corrido dejó de partirse en módulos de ancho de catálogo",
+  );
+});
+
+prueba("el fondo es de listones sobre respaldo, no una chapa lisa", () => {
+  assert.match(gondolaCodigo, /geometriaLama\(/, "volvió el panel liso");
+  assert.match(gondolaCodigo, /geometriaRespaldo\(/, "no hay respaldo detrás de los listones");
+});
+
+// ── Higiene de GPU ──────────────────────────────────────────────────────────
+
+prueba("las geometrías cacheadas se sueltan al salir del editor", () => {
+  // Viven en la GPU y se cachean por firma: sin soltarlas, entrar y salir del
+  // editor de varias sedes deja una copia de cada mueble en memoria de video.
+  assert.match(perfiles, /export function olvidarGeometrias/, "se perdió el liberador");
+  assert.match(
+    editorCodigo, /useEffect\(\(\) => olvidarGeometrias, \[\]\)/,
+    "nadie llama a `olvidarGeometrias`: el caché queda vivo al desmontar",
+  );
+});
+
+console.log(`\n${hechas} pruebas del mobiliario 3D`);

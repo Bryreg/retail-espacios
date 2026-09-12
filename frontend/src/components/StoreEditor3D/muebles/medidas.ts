@@ -166,3 +166,57 @@ export function profundidadDeNivel(indice: number, total: number, fondoMaximo: n
   const cual = Math.min(lista.length - 1, Math.floor((indice / Math.max(total, 1)) * lista.length));
   return Math.min(lista[cual], fondoMaximo);
 }
+
+/**
+ * Dónde van las filas de producto de una góndola.
+ *
+ * Existe para que el pintado de caras no vuelva a desincronizarse de la
+ * geometría. Antes había dos copias de la misma cuenta —una en el mesh y otra
+ * en `getPanelShelfSpan`— con un comentario pidiendo mantenerlas iguales; la
+ * segunda vez que alguien tocó el mueble, el producto quedó pintado entre dos
+ * entrepaños. Ahora las dos preguntan acá.
+ *
+ * Una fila es el HUECO entre un entrepaño y el de arriba: es ahí donde se para
+ * el producto. Por eso hay una fila menos que entrepaños — sobre el último no
+ * se puede parar nada.
+ */
+export interface FilasDeProducto {
+  /** Altura del plano de apoyo de la fila más baja. */
+  rowBottom: number;
+  /** Separación entre filas. */
+  rowPitch: number;
+  /** Cuántas filas hay. */
+  rows: number;
+  /** Fondo del entrepaño de cada fila, de abajo hacia arriba. El escalonado
+   *  hace que no sean todos iguales, y quien pare producto encima necesita
+   *  saber a qué profundidad va cada uno o lo deja flotando en el aire. */
+  fondos: number[];
+}
+
+export function filasDeProducto(alto: number, fondoMaximo: number): FilasDeProducto {
+  const niveles = nivelesDeEntrepano(alto);
+  if (niveles.length < 2) {
+    return {
+      rowBottom: ZOCALO.alto,
+      rowPitch: Math.max(0.2, alto - ZOCALO.alto),
+      rows: 1,
+      fondos: [Math.min(PROFUNDIDADES[0], fondoMaximo)],
+    };
+  }
+  const rows = niveles.length - 1;
+  return {
+    rowBottom: niveles[0],
+    rowPitch: (niveles[niveles.length - 1] - niveles[0]) / rows,
+    rows,
+    fondos: Array.from({ length: rows }, (_, i) =>
+      profundidadDeNivel(i, niveles.length, fondoMaximo),
+    ),
+  };
+}
+
+/** El fondo que le toca a una cara de un mueble de fondo total `d`. En la
+ *  doble se reparte entre las dos caras, descontando la espina. */
+export const ESPESOR_ESPINA = 0.02;
+export function fondoPorCara(d: number, esMural: boolean): number {
+  return esMural ? d - ESPESOR_ESPINA : (d - ESPESOR_ESPINA) / 2;
+}

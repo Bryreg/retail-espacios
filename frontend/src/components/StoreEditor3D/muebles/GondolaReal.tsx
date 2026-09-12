@@ -2,7 +2,8 @@ import { memo, useMemo } from "react";
 import * as THREE from "three";
 import {
   ENTREPANO, PANEL_FONDO, PARANTE, PORTA_PRECIOS, REMATE, ZOCALO,
-  ANCHO_MODULO_TIPICO, nivelesDeEntrepano, profundidadDeNivel,
+  ANCHO_MODULO_TIPICO, ESPESOR_ESPINA, fondoPorCara,
+  nivelesDeEntrepano, profundidadDeNivel,
 } from "./medidas";
 import {
   geometriaEntrepano, geometriaLama, geometriaParante, geometriaPortaPrecios,
@@ -318,8 +319,8 @@ export const GondolaReal = memo(function GondolaReal({
 
   // En la doble, el fondo se reparte entre las dos caras y queda la espina en
   // el medio. En el mural, una sola cara usa todo el fondo.
-  const espesorEspina = 0.02;
-  const fondoPorCara = esMural ? d - espesorEspina : (d - espesorEspina) / 2;
+  const espesorEspina = ESPESOR_ESPINA;
+  const fondoDeCara = fondoPorCara(d, esMural);
 
   /** El corrido se parte en módulos de ancho de catálogo. De acá salen los
    *  vanos —los paneles y entrepaños— y, de sus bordes, los parantes. */
@@ -337,7 +338,7 @@ export const GondolaReal = memo(function GondolaReal({
   // mueble y no cada cara. Va retranqueada respecto del entrepaño de abajo:
   // ésa es la muesca donde entran los pies de quien está mirando la góndola.
   const fondoBase = esMural
-    ? Math.max(0.05, fondoPorCara - ZOCALO.retranqueo)
+    ? Math.max(0.05, fondoDeCara - ZOCALO.retranqueo)
     : Math.max(0.05, d - ZOCALO.retranqueo * 2);
 
   return (
@@ -371,7 +372,7 @@ export const GondolaReal = memo(function GondolaReal({
         <CaraDeEstanteria
           anchoTotal={w}
           vanos={vanos}
-          fondoMaximo={fondoPorCara}
+          fondoMaximo={fondoDeCara}
           alto={h}
           materiales={materiales}
         />
@@ -381,7 +382,7 @@ export const GondolaReal = memo(function GondolaReal({
           <CaraDeEstanteria
             anchoTotal={w}
             vanos={vanos}
-            fondoMaximo={fondoPorCara}
+            fondoMaximo={fondoDeCara}
             alto={h}
             materiales={materiales}
           />

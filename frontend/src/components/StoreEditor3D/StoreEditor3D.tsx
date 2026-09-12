@@ -10,6 +10,11 @@ import {
   Eye, EyeOff, Camera, User, Package, Plus, Search, Upload, Loader2,
 } from "lucide-react";
 import { Html } from "@react-three/drei";
+import { GondolaReal } from "./muebles/GondolaReal";
+import { olvidarGeometrias } from "./muebles/perfiles";
+import {
+  ESPESOR_ESPINA, PARANTE, filasDeProducto, fondoPorCara,
+} from "./muebles/medidas";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { useModalAbierto } from "../../tema";
 import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
@@ -112,6 +117,10 @@ const RETRANQUEO = 0.05;
 /** Espesor de la lámina. No es el envase: es lo mínimo para que de perfil no
  *  se vea un papel. */
 const ESPESOR_LAMINA = 0.03;
+/** Lo mismo, pero medido contra el filo del ENTREPAÑO y no contra el plano
+ *  exterior del mueble. Es más chico porque ahí no hay nada que descontar: el
+ *  labio y el riel de precio son milímetros, no la mitad del fondo. */
+const RETRANQUEO_ENTREPANO = 0.025;
 
 /** Material invisible para las caras de la lámina que NO llevan la textura.
  *  Sin esto la lámina sería una placa opaca tapando el estante entero. */
@@ -174,6 +183,98 @@ function LaminaDeProducto({
           <boxGeometry args={[ancho, alto, ESPESOR_LAMINA]} />
         </mesh>
       )}
+    </>
+  );
+}
+
+/** Una lámina recortada a una franja de la textura.
+ *
+ *  La imagen de producto viene compuesta de una sola pieza, con las filas ya
+ *  alineadas a los entrepaños. Para pararlas a distinta profundidad hay que
+ *  partirla, y partirla significa recortar la V del mapeo — no recortar la
+ *  imagen, que se compone una sola vez y se reusa. */
+function laminaDeFranja(ancho: number, alto: number, v0: number, v1: number) {
+  const g = new THREE.BoxGeometry(ancho, alto, ESPESOR_LAMINA);
+  const uv = g.attributes.uv as THREE.BufferAttribute;
+  for (let i = 0; i < uv.count; i++) {
+    uv.setY(i, v0 + uv.getY(i) * (v1 - v0));
+  }
+  uv.needsUpdate = true;
+  return g;
+}
+
+/**
+ * El producto de una góndola, parado fila por fila.
+ *
+ * `LaminaDeProducto` para una sola lámina plana delante del mueble, y eso
+ * alcanza mientras todos los entrepaños tengan el mismo fondo. La góndola de
+ * verdad es ESCALONADA: la bandeja de abajo es la más profunda y van
+ * achicándose hacia arriba. Con una lámina única, el producto de las filas de
+ * arriba queda colgado en el aire, varios centímetros por delante del
+ * entrepaño que supuestamente lo sostiene.
+ *
+ * Así que se parte en una franja por fila, cada una parada en el filo de SU
+ * entrepaño. La textura no cambia: lo que se recorta es la V del mapeo, de
+ * manera que cada franja muestra exactamente el pedazo de imagen que le toca.
+ */
+function LaminaDeProductoPorFila({
+  ancho, alto, filas, frentes, facePaint, doble = false,
+}: {
+  ancho: number;
+  /** Alto del panel completo, que es el espacio de la textura. */
+  alto: number;
+  filas: { rowBottom: number; rowPitch: number; rows: number };
+  /** Distancia del centro del mueble al filo del entrepaño de cada fila. */
+  frentes: number[];
+  facePaint?: FacePaint | null;
+  doble?: boolean;
+}) {
+  const caraA = facePaint?.front ?? null;
+  const caraB = doble ? (facePaint?.back ?? null) : null;
+
+  const matsA = useMemo(
+    () => (caraA ? facePaintArray(getInvisible(), caraA, null) : null), [caraA],
+  );
+  const matsB = useMemo(
+    () => (caraB ? facePaintArray(getInvisible(), null, caraB) : null), [caraB],
+  );
+
+  const franjas = useMemo(() => {
+    const fuera: { y: number; geo: THREE.BufferGeometry; frente: number }[] = [];
+    for (let i = 0; i < filas.rows; i++) {
+      const y0 = filas.rowBottom + i * filas.rowPitch;
+      const y1 = y0 + filas.rowPitch;
+      fuera.push({
+        y: (y0 + y1) / 2,
+        geo: laminaDeFranja(ancho, filas.rowPitch, y0 / alto, y1 / alto),
+        frente: frentes[i] ?? frentes[frentes.length - 1] ?? 0,
+      });
+    }
+    return fuera;
+  }, [ancho, alto, filas.rowBottom, filas.rowPitch, filas.rows, frentes]);
+
+  useEffect(() => () => { for (const f of franjas) f.geo.dispose(); }, [franjas]);
+
+  return (
+    <>
+      {franjas.map((f, i) => (
+        <group key={i}>
+          {matsA && (
+            <mesh
+              position={[0, f.y, -(f.frente - RETRANQUEO_ENTREPANO) + ESPESOR_LAMINA / 2]}
+              geometry={f.geo}
+              material={matsA}
+            />
+          )}
+          {matsB && (
+            <mesh
+              position={[0, f.y, (f.frente - RETRANQUEO_ENTREPANO) - ESPESOR_LAMINA / 2]}
+              geometry={f.geo}
+              material={matsB}
+            />
+          )}
+        </group>
+      ))}
     </>
   );
 }
@@ -440,38 +541,36 @@ const GondolaMesh = memo(function GondolaMesh({
   slots, selectedSlotId, hoveredSlotId,
   onSlotClick, onSlotHover,
 }: GondolaMeshProps) {
-  const op     = ghost ? 0.42 : 1;
   const isWall = gondolaType === "wall";
 
-  const G_WHITE = "#e6e6e3";
-  const G_FRAME = "#c8c8c5";
-  const G_PANEL = isWall ? "#d5d5d2" : "#dcdcda";
-  const G_RAIL  = "#b8b8b5";
+  // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
+  // Estaba armada con `boxGeometry`: entrepaños macizos de 22 mm, dos postes
+  // en las puntas y nada en el medio, el fondo liso. Mientras una pieza sea
+  // una caja no hay labio, ni pliegue, ni ranura, y son esos detalles los que
+  // hacen que el ojo lea «mueble de tienda». Ahora la dibuja `GondolaReal`,
+  // con cotas de catálogo y armada por módulos.
+  //
+  // Lo que NO se movió de acá, a propósito: los paneles de slot y el pintado
+  // de caras. El slot es el espacio que se vende —su posición está guardada
+  // en los contratos de los clientes—, así que su geometría no se toca: el
+  // mueble cambió de forma, el espacio vendido no.
 
-  // Board layout mirrored by getPanelShelfSpan("gondola") — keep in sync.
-  const { shelves, topH, shelfT } = useMemo(() => {
-    const topH   = 0.08;
-    const shelfT = 0.022;
-    const n      = Math.max(4, Math.round((h - topH) / 0.38));
-    const shelfYs = Array.from({ length: n }, (_, i) =>
-      0.14 + i * ((h - topH - 0.16) / Math.max(n - 1, 1))
-    );
-    return { shelves: shelfYs, topH, shelfT };
-  }, [h]);
-
+  // Espacio de los slots. Estos números definen dónde cayó cada espacio
+  // vendido, así que quedan clavados aunque cambie el mueble.
+  const topH       = 0.08;
   const slotAreaH  = h - topH - 0.06;
   const SLOT_PROTO = 0.12;
-  const backT = isWall ? d * 0.42 : 0.055;
-  // Wall gondola: solid back panel flush with rear face (goes against the wall).
-  // Double gondola: thin center spine at z=0 so both faces are open (symmetric).
-  const backPosZ = isWall ? d / 2 - backT / 2 : 0;
 
-  // El producto ya NO se pinta acá: la espina es estructura y queda al fondo
-  // del estante. Va en `LaminaDeProducto`, parado al frente del entrepaño.
+  // Las filas de producto salen de la misma cuenta que los entrepaños, no de
+  // una copia. Ver `filasDeProducto`.
+  const fondoCara = fondoPorCara(d, isWall);
+  const filas = useMemo(() => filasDeProducto(h, fondoCara), [h, fondoCara]);
+  const frentes = useMemo(
+    () => filas.fondos.map((f) => ESPESOR_ESPINA / 2 + f),
+    [filas.fondos],
+  );
+
   const pinta = !ghost && !!facePaint && !!(facePaint.front || facePaint.back);
-  // No mid-posts — gondola modules only have structural uprights at each end,
-  // not internal vertical dividers.
-  const nMidPosts = 0;
 
   function renderSlotFace(faceSign: -1 | 1) {
     if (!slots || ghost || !onSlotClick) return null; // slots disabled → skip
@@ -507,83 +606,20 @@ const GondolaMesh = memo(function GondolaMesh({
 
   return (
     <group>
-      {/* Remate superior. Antes era una barra blanca suspendida por encima del
-          mueble, sin apoyarse en nada; una góndola de verdad se cierra con una
-          tapa al ras que descansa sobre los montantes. */}
-      <mesh position={[0, h + 0.016, 0]} castShadow>
-        <boxGeometry args={[w, 0.032, isWall ? d : d * 0.94]} />
-        <meshStandardMaterial color={G_FRAME} metalness={0.12} roughness={0.58} transparent opacity={op} />
-      </mesh>
+      <GondolaReal w={w} d={d} h={h} gondolaType={isWall ? "wall" : "double"} ghost={ghost} />
 
-      {/* Back / wall panel — estructura, siempre lisa */}
-      <mesh position={[0, h / 2, backPosZ]} castShadow>
-        <boxGeometry args={[w, h, backT]} />
-        <meshLambertMaterial color={G_PANEL} transparent opacity={op} />
-      </mesh>
-
-      {/* El producto, al frente del entrepaño. La góndola mural va contra la
-          pared: sólo se vende su cara de adelante. */}
+      {/* El producto, parado en el filo de cada entrepaño. La góndola mural va
+          contra la pared: sólo se vende su cara de adelante. */}
       {pinta && (
-        <LaminaDeProducto
-          ancho={w} alto={h} y={h / 2} fondo={d}
-          doble={!isWall} facePaint={facePaint}
+        <LaminaDeProductoPorFila
+          ancho={w - PARANTE.ancho * 2}
+          alto={h}
+          filas={filas}
+          frentes={frentes}
+          doble={!isWall}
+          facePaint={facePaint}
         />
       )}
-
-      {/* Shelf boards + price rails */}
-      {shelves.map((sy, i) => (
-        <group key={`sh${i}`}>
-          <mesh position={[0, sy, 0]} castShadow>
-            <boxGeometry args={[w - 0.055, shelfT, d - 0.015]} />
-            <meshLambertMaterial color={G_WHITE} transparent opacity={op} />
-          </mesh>
-          <mesh position={[0, sy + shelfT * 0.5 + 0.019, -(d / 2 - 0.010)]} castShadow>
-            <boxGeometry args={[w - 0.07, 0.038, 0.009]} />
-            <meshLambertMaterial color={G_RAIL} transparent opacity={op} />
-          </mesh>
-          {!isWall && (
-            <mesh position={[0, sy + shelfT * 0.5 + 0.019, d / 2 - 0.010]} castShadow>
-              <boxGeometry args={[w - 0.07, 0.038, 0.009]} />
-              <meshLambertMaterial color={G_RAIL} transparent opacity={op} />
-            </mesh>
-          )}
-        </group>
-      ))}
-
-      {/* End-cap uprights.
-          Wall gondola  → full-depth slab (the upright runs along the wall).
-          Double gondola → thin post (≈ 5 cm × 5 cm cross-section) so adjacent
-          modules don't create visible vertical dividers between them. */}
-      {([-1, 1] as const).map(side => (
-        <mesh key={`up${side}`} position={[side * (w / 2 - 0.026), h / 2, 0]} castShadow>
-          <boxGeometry args={[0.052, h, isWall ? d : 0.058]} />
-          <meshStandardMaterial color={G_FRAME} metalness={0.15} roughness={0.72} transparent opacity={op} />
-        </mesh>
-      ))}
-
-      {/* Intermediate uprights */}
-      {Array.from({ length: nMidPosts }, (_, i) => {
-        const px = ((i + 1) / (nMidPosts + 1)) * w - w / 2;
-        return (
-          <mesh key={`mp${i}`} position={[px, h / 2, 0]} castShadow>
-            <boxGeometry args={[0.038, h, d * 0.10]} />
-            <meshStandardMaterial color={G_FRAME} metalness={0.15} roughness={0.72} transparent opacity={op} />
-          </mesh>
-        );
-      })}
-
-      {/* Zócalo. Antes eran dos patas y el mueble quedaba flotando con el
-          pasillo visible por debajo; una góndola se apoya en una base corrida
-          que va de punta a punta, retranqueada para el pie de quien compra. */}
-      <mesh position={[0, 0.055, 0]} castShadow receiveShadow>
-        <boxGeometry args={[w - 0.02, 0.110, d - 0.055]} />
-        <meshStandardMaterial color="#8e8e8a" metalness={0.20} roughness={0.68} transparent opacity={op} />
-      </mesh>
-      {/* Tapa del zócalo: el borde donde se apoya el entrepaño más bajo */}
-      <mesh position={[0, 0.118, 0]} castShadow>
-        <boxGeometry args={[w, 0.016, d - 0.020]} />
-        <meshLambertMaterial color={G_FRAME} transparent opacity={op} />
-      </mesh>
 
       {/* Slot panels */}
       {renderSlotFace(-1)}
@@ -3396,15 +3432,17 @@ function getPanelShelfSpan(type: string, w: number, h: number, d: number): Panel
   switch (type) {
     case "gondola":
     case "gondola_doble": {
-      // GondolaMesh — painted panel: back/spine box [w, h] spanning 0..h.
-      // Boards: n = max(4, round((h-topH)/0.38)) centres at
-      // 0.14 + i·(h-topH-0.16)/(n-1); topH = 0.08, shelfT = 0.022.
-      // The top board (h-0.10) has no display room above it → rows = n-1
-      // (the gaps BETWEEN boards); wall and double share the same layout.
-      const topH = 0.08, shelfT = 0.022;
-      const n     = Math.max(4, Math.round((h - topH) / 0.38));
-      const pitch = (h - topH - 0.16) / Math.max(n - 1, 1);
-      return { panelW: w, panelH: h, rowBottom: 0.14 + shelfT / 2, rowPitch: pitch, rows: Math.max(1, n - 1) };
+      // Acá había una COPIA de la cuenta de entrepaños de `GondolaMesh`, con
+      // un comentario pidiendo mantener las dos iguales. No se mantuvieron: la
+      // primera vez que se tocó el mueble, el producto quedó pintado a caballo
+      // entre dos entrepaños. Ahora las dos preguntan a `filasDeProducto`, que
+      // es la misma función que ubica los entrepaños de verdad, así que no
+      // pueden desincronizarse.
+      // El reparto de filas depende sólo del alto; el fondo entra únicamente
+      // en el escalonado, que acá no se usa. Por eso da igual si es mural o
+      // doble: las filas caen a la misma altura en las dos.
+      const { rowBottom, rowPitch, rows } = filasDeProducto(h, fondoPorCara(d, false));
+      return { panelW: w, panelH: h, rowBottom, rowPitch, rows };
     }
     case "punta": {
       // PuntaMesh — painted panel: back plate [w, bodyH] spanning 0..bodyH,
@@ -4808,6 +4846,11 @@ class CanvasErrorBoundary extends React.Component<
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function StoreEditor3D() {
+  // Las geometrías de los perfiles se cachean por firma y viven en la GPU.
+  // Sin soltarlas al desmontar, entrar y salir del editor de varias sedes deja
+  // una copia de cada mueble de cada sede en memoria de video.
+  useEffect(() => olvidarGeometrias, []);
+
   // ── Unified store (read once on mount; write on every change) ────────────────
   const { setFixtures: pushToStore, setSede: pushSedeToStore, commit, undo, redo } = useFixtureStore();
   // Reactive subscription — re-renders when fixtures change (replaces getState() calls in JSX)
