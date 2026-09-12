@@ -1063,24 +1063,51 @@ después de entrar). Con sesión, `/` sigue siendo el tablero o `/plataforma`.
 backend). Sin backend nuevo: `/` es el mismo cascarón del SPA; no hay ningún
 `/api/landing/*` (barrido de la tabla de rutas en `test_landing_ataques.py::l13`).
 
-**La voz cambió en la Fase 15: de voseo a usted.** Por decisión del dueño la
-landing pasó a **español latino neutro formal**. La regla vieja («voz: voseo
-neutro… no mezclar con tuteo ni con usted») era explícita en `copy.md` §voz, y
-se reemplazó ahí, que es la fuente única — el `.tsx` sólo la sigue. Alcanza a
-`Landing.tsx`, `PlanoIsometrico.tsx` y a la copy visible de `Login.tsx`, que es
-la misma tarjeta cuando el ingreso se abre adentro de la portada. Verificado
-sobre la página dibujada: 13.879 caracteres de copy, cero formas de voseo y
-cero `tu`/`tus`.
+**La voz, en dos pasos (Fases 15 y 16).** Por decisión del dueño la landing
+pasó primero de voseo a usted (Fase 15) y después a **registro comercial
+formal** (Fase 16). Los dos pasos hicieron falta y el segundo enseña algo:
 
-**Dos cosas quedaron en voseo, a propósito:**
+- **Fase 15** cambió los verbos —«dibujás» → «dibuje»— y dejó el registro
+  intacto. La página siguió leyéndose conversacional («esta es la pantalla que
+  falta», «la plata», «sin vueltas», «no se hace de cabeza») y el dueño lo vio
+  de inmediato en la página dibujada. **Conjugar en usted no es escribir
+  formal.**
+- **Fase 16** reescribió el registro: enunciativo en vez de conversacional
+  («el contrato se registra sobre el mueble», no «toque el mueble y llene la
+  ficha»), sin coloquialismos, y con el vocabulario del oficio intacto —canon,
+  sede, punta de góndola, mercaderista, vigencia— porque la prohibición de
+  jerga de `copy.md` §0 es sobre jerga de SOFTWARE, no sobre el idioma del
+  retail. La regla nueva está escrita en `copy.md` §0 y es de REGISTRO, no de
+  conjugación.
 
-1. **El H1, «Recabrá cada metro.»** Es el juego con el nombre de la marca, lo
-   eligió el dueño y está fijado en `test_landing_ataques.py::TITULAR_E`.
-   Cambiarlo a «Recabre cada metro.» es una línea, pero es una decisión de
-   marca, no de gramática: se deja hasta que el dueño lo pida.
-2. **El interior de la aplicación** (Dashboard, Vender, Montaje, Carga masiva).
-   Cambiarlo entero es otra fase; una mezcla a mitad de camino sería peor que
-   cualquiera de las dos voces sostenidas.
+**El H1 también cambió, en la Fase 16: «Recabre cada metro.»** El juego con el
+nombre de la marca es el mismo —queda incluso más cerca de RECABRA escrito— pero
+en el registro de la página. Está fijado en
+`backend/tests/test_landing_ataques.py::TITULAR_E`; cambiar el H1 sin tocar esa
+constante deja la prueba midiendo un slogan que ya no existe.
+
+**El interior de la aplicación sigue en voseo** (Dashboard, Vender, Montaje,
+Carga masiva). Cambiarlo entero es otra fase; una mezcla a mitad de camino sería
+peor que cualquiera de las dos voces sostenidas.
+
+**Fase 16: la landing quedó en cinco secciones.** Se retiraron **Asesoría** y
+**Confianza / dónde quedan sus datos**, por decisión del dueño. Quedan 01
+Funciones, 02 Para quién, 03 Implementación, 04 Precio, 05 Cierre. Dos cuidados
+que el borrado podía llevarse por delante:
+
+1. **El enlace a la Política de Tratamiento de Datos** vivía en el bloque de
+   Confianza *y* en el pie. Ahora vive sólo en el pie, junto con el aviso de la
+   Ley 1581 de 2012 y el Decreto 1377 de 2013. Es obligación legal, no copy
+   comercial: `probar-landing.mjs` afirma que el pie lo tiene.
+2. **El copy retirado NO se guardó en `copy.md`.** Un bloque comentado en el
+   mismo archivo del que la landing se escribe es una invitación a que vuelva;
+   vive en el historial de git, que es donde va lo que ya no se publica. Y hay
+   una prueba de AUSENCIA (`probar-landing.mjs`, «la asesoría y el bloque de
+   datos NO volvieron a la página») con las frases que sólo existían ahí.
+
+La asesoría sigue existiendo como servicio y las pantallas del operador siguen
+en el producto (`/plataforma`). Lo que se quitó es la promesa en la página
+pública, no la función.
 
 **Orden de trabajo (indicación del dueño, `features/landing/spec.md`).**
 Copy primero (`outputs/copy.md`: texto final sección por sección, cifras con

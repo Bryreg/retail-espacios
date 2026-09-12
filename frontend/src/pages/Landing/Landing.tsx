@@ -366,11 +366,9 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
               <span className="mark__txt">RECABRA</span>
             </a>
             <nav className="rail__nav" aria-label="Secciones">
-              <a href="#que-hace">Lo que hace</a>
+              <a href="#que-hace">Funciones</a>
               <a href="#para-quien">Para quién</a>
-              <a href="#como-se-usa">Cómo se usa</a>
-              <a href="#asesoria">Asesoría</a>
-              <a href="#confianza">Datos</a>
+              <a href="#como-se-usa">Implementación</a>
               <a href="#precio">Precio</a>
             </nav>
             <div className="rail__live" aria-hidden="true">
@@ -405,7 +403,7 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
               <div className="card">
                 <p className="mark__txt" style={{ display: "block", marginBottom: 10 }}>RECABRA</p>
                 <p className="eyebrow">Espacios comerciales de supermercado</p>
-                <h1 style={{ margin: "10px 0 14px" }}>Recabrá cada metro.</h1>
+                <h1 style={{ margin: "10px 0 14px" }}>Recabre cada metro.</h1>
                 <p className="lead" style={{ marginBottom: 14 }}>
                   Qué mueble está <span style={{ color: "var(--st-libre)" }}>libre</span>,
                   {" "}quién lo <span style={{ color: "var(--st-tomado)" }}>ocupa</span>,
@@ -413,24 +411,23 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                   {" "}<span style={{ color: "var(--st-libera)" }}>hasta cuándo</span>.
                 </p>
                 <p className="body">
-                  RECABRA es el sistema con el que un supermercado vende sus espacios de exhibición.
-                  Dibuje el plano de cada sede, marque qué muebles se alquilan y arme el contrato
-                  ahí mismo, tocando el mueble.
+                  RECABRA es el sistema con el que un supermercado administra y comercializa sus
+                  espacios de exhibición. Cada sede se representa en un plano, se define qué muebles
+                  son alquilables y el contrato se registra sobre el mueble.
                 </p>
                 <p className="body" style={{ marginTop: "var(--s3)" }}>
-                  Si hoy eso vive en un Excel, en un chat de WhatsApp o en la memoria de alguien,
-                  esta es la pantalla que falta.
+                  Cuando esa información está repartida entre hojas de cálculo, conversaciones y
+                  la memoria de cada persona, deja de ser administrable.
                 </p>
                 <div className="cta-row">
                   <a className="btn btn--primary" href="/login#registro" onClick={irA("registro")}>Crear mi cuenta</a>
                   <a className="btn btn--ghost" href="/login" onClick={irA("login")}>Ya tengo cuenta</a>
                 </div>
                 <p className="fine">
-                  Entre con su correo o con Google. Crear la cuenta y su supermercado toma un minuto.
+                  El registro se hace con correo corporativo o con Google, y toma menos de un minuto.
                 </p>
                 <p className="fine">
-                  Los datos del plano son inventados, para mostrar cómo se ve. Ningún supermercado
-                  real aparece acá.
+                  Los datos del plano son ilustrativos. No corresponden a ningún supermercado real.
                 </p>
               </div>
               )}
@@ -439,12 +436,12 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
             {/* ─ 01 · LO QUE HACE ─ */}
             <section className="panel panel--corto" data-scene="qh-intro" id="que-hace">
               <div className="card">
-                <p className="sec__num mono">01 / LO QUE HACE</p>
-                <h2 style={{ margin: "8px 0 12px" }}>Lo que hace</h2>
-                <p className="lead">Seis cosas concretas. Todas están construidas y andan hoy.</p>
+                <p className="sec__num mono">01 / FUNCIONES</p>
+                <h2 style={{ margin: "8px 0 12px" }}>Funciones</h2>
+                <p className="lead">Seis funciones, todas implementadas y en operación.</p>
                 <p className="card__foot">
-                  Seis tarjetas. El plano de al lado se mueve con cada una: acerca el mueble del que
-                  habla, lo repinta, lo separa en dos caras y saca los avisos.
+                  Seis tarjetas. El plano contiguo acompaña cada una: acerca el mueble
+                  correspondiente, lo repinta, lo separa en dos caras y despliega los avisos.
                 </p>
               </div>
             </section>
@@ -453,15 +450,15 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
               <div className="card">
                 <span className="num">01 <b>/</b> 06</span>
                 <span className="card__i"><Ico n="map" /></span>
-                <h3>El plano de su tienda, no una lista de códigos</h3>
+                <h3>El inventario como plano, no como lista de códigos</h3>
                 <p className="body">
-                  Dibuje cada sede como es: góndolas, puntas, islas, neveras, bateas, cajas. Cada
-                  mueble queda con su código y sus medidas. En el plano se ve de un vistazo qué está
-                  libre y qué está tomado, y cuando el proveedor quiere ver cómo le va a quedar la
-                  exhibición, la misma tienda se recorre en 3D.
+                  Cada sede se representa tal como está distribuida: góndolas, puntas, islas,
+                  neveras, bateas y cajas. Cada mueble conserva su código y sus medidas, y el plano
+                  muestra el estado de ocupación. Cuando el proveedor necesita evaluar cómo quedará
+                  la exhibición, la misma sede puede recorrerse en 3D.
                 </p>
                 <div className="card__demo"><MiniMorfo /></div>
-                <p className="card__foot">Plano 2D · vista 3D · un solo nombre para toda la cadena</p>
+                <p className="card__foot">Plano 2D · vista 3D · una sola nomenclatura para toda la cadena</p>
               </div>
             </article>
 
@@ -469,13 +466,13 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
               <div className="card">
                 <span className="num">02 <b>/</b> 06</span>
                 <span className="card__i"><Ico n="doc" /></span>
-                <h3>El contrato se arma sobre el mueble</h3>
+                <h3>El contrato se registra sobre el mueble</h3>
                 <p className="body">
-                  Toque el espacio y llene una sola ficha: proveedor, marca, canon mensual, desde y
-                  hasta. Si el acuerdo cubre tres puntas de góndola, las toca las tres y queda un
-                  solo contrato, no tres. Abajo del formulario está el total del plazo, que es lo que
-                  se firma: $ 1.500.000 al mes por 61 días son $ 3.050.000, y esa cuenta ya no se
-                  hace de cabeza con el proveedor esperando.
+                  Al seleccionar el espacio se completa una sola ficha: proveedor, marca, canon
+                  mensual y vigencia. Si el acuerdo cubre tres puntas de góndola, se seleccionan las
+                  tres y se genera un único contrato. El formulario calcula el total del plazo, que
+                  es el valor que se firma: $ 1.500.000 mensuales por 61 días equivalen a
+                  $ 3.050.000, sin necesidad de calcularlo durante la negociación.
                 </p>
                 <div className="card__demo">
                   <div className="mini">
@@ -490,7 +487,7 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                     </div>
                   </div>
                 </div>
-                <p className="card__foot">Un proveedor, un periodo, todos los espacios que haga falta</p>
+                <p className="card__foot">Un proveedor, un periodo, los espacios que el acuerdo requiera</p>
               </div>
             </article>
 
@@ -498,13 +495,13 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
               <div className="card">
                 <span className="num">03 <b>/</b> 06</span>
                 <span className="card__i"><Ico n="cal" /></span>
-                <h3>Qué hay libre en la temporada que está vendiendo</h3>
+                <h3>Disponibilidad por temporada comercial</h3>
                 <p className="body">
-                  Elija el periodo —Amor y Amistad, Halloween, Black Friday, Navidad, regreso a
-                  clases— y el plano entero se repinta para ese periodo: libre todo el tiempo, se
-                  libera adentro, o tomado. Un panel le dice cuántos espacios hay libres si el
-                  contrato arranca el 26 y cuántos si arranca el 29. Un mueble que se desocupa el 25
-                  es inventario que puede ofrecer hoy.
+                  Al seleccionar el periodo —Amor y Amistad, Halloween, Black Friday, Navidad,
+                  regreso a clases— el plano se recalcula para esas fechas: disponible durante todo
+                  el periodo, con liberación intermedia, u ocupado. Un panel indica cuántos espacios
+                  quedan disponibles según la fecha de inicio del contrato. Un mueble que se
+                  desocupa el 25 es inventario comercializable desde hoy.
                 </p>
                 <div className="card__demo">
                   <div className="chips" role="group" aria-label="Temporada de ejemplo">
@@ -516,7 +513,8 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                   <GridTemporada n={temporada} />
                 </div>
                 <p className="card__foot">
-                  Nueve temporadas del calendario colombiano, con la ventana de venta que usted defina
+                  Nueve temporadas del calendario comercial colombiano, con la ventana de venta que
+                  cada supermercado defina
                 </p>
               </div>
             </article>
@@ -525,12 +523,12 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
               <div className="card">
                 <span className="num">04 <b>/</b> 06</span>
                 <span className="card__i"><Ico n="tag" /></span>
-                <h3>Su tarifa, y cuánto se está corriendo de ella</h3>
+                <h3>Tarifa de referencia y desviación</h3>
                 <p className="body">
-                  Cargue una tarifa por tipo de mueble, con ajuste por sede si una tienda vale más
-                  que otra. Cuando escribe el valor de un contrato, al lado le aparece la referencia
-                  y el desvío: «−17 % vs referencia». En el tablero hay una lista de todo lo que está
-                  por debajo de tarifa, para revisarlo en la próxima renovación.
+                  Se registra una tarifa por tipo de mueble, con ajuste por sede cuando una tienda
+                  tiene mayor valor comercial. Al registrar el valor de un contrato, el sistema
+                  muestra la referencia y la desviación: «−17 % vs referencia». El tablero lista los
+                  contratos por debajo de tarifa para revisarlos en la próxima renovación.
                 </p>
                 <div className="card__demo">
                   <div className="mini">
@@ -546,7 +544,7 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                     </div>
                   </div>
                 </div>
-                <p className="card__foot">La tarifa la ve el administrador. El mercaderista no ve un solo peso.</p>
+                <p className="card__foot">La tarifa la consulta el administrador. El mercaderista no accede a ningún valor.</p>
               </div>
             </article>
 
@@ -554,19 +552,20 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
               <div className="card">
                 <span className="num">05 <b>/</b> 06</span>
                 <span className="card__i"><Ico n="bell" /></span>
-                <h3>Los avisos salen solos</h3>
+                <h3>Notificaciones automáticas</h3>
                 <p className="body">
-                  Al guardar un contrato salen tres correos distintos: el comercial recibe el acuerdo
-                  con el valor, el mercaderista recibe la orden de montaje sin un solo monto y con el
-                  enlace para reportar, y el proveedor recibe la constancia de lo suyo. Antes de
-                  vencer, el sistema avisa tres veces: a 30, a 15 y a 6 días. A una semana ya no hay
-                  margen para negociar; a un día el correo llega para contar algo que ya pasó.
+                  Al guardar un contrato se envían tres correos distintos: el área comercial recibe
+                  el acuerdo con el valor, el mercaderista recibe la orden de montaje sin ningún
+                  monto y con el enlace para reportar, y el proveedor recibe la constancia de su
+                  acuerdo. Antes del vencimiento el sistema notifica tres veces: a 30, 15 y 6 días.
+                  Con una semana de margen ya no queda espacio para renegociar; con un día, el aviso
+                  solo informa un hecho consumado.
                 </p>
                 <div className="card__demo">
                   <div style={{ display: "grid", gap: 6 }}>
                     <div className="mailrow"><Ico n="mail" tam={14} /><b>Comercial</b> acuerdo <span className="mailrow__tag">con valor</span></div>
                     <div className="mailrow"><Ico n="mail" tam={14} /><b>Mercaderista</b> montaje <span className="mailrow__tag mailrow__tag--none">sin valor</span></div>
-                    <div className="mailrow"><Ico n="mail" tam={14} /><b>Proveedor</b> constancia <span className="mailrow__tag">de lo suyo</span></div>
+                    <div className="mailrow"><Ico n="mail" tam={14} /><b>Proveedor</b> constancia <span className="mailrow__tag">del acuerdo</span></div>
                   </div>
                   <div className="timeline" aria-hidden="true">
                     <span className="timeline__n">30</span><span className="timeline__l"><i /></span>
@@ -575,8 +574,8 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                   </div>
                 </div>
                 <p className="card__foot">
-                  Y cuando falta poco, el botón Renovar viene con el proveedor, la marca y el valor
-                  que se está pagando ya escritos.
+                  Al acercarse el vencimiento, la acción Renovar llega precargada con el proveedor,
+                  la marca y el valor vigente.
                 </p>
               </div>
             </article>
@@ -585,13 +584,13 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
               <div className="card">
                 <span className="num">06 <b>/</b> 06</span>
                 <span className="card__i"><Ico n="camera" /></span>
-                <h3>El montaje se confirma con foto, desde el celular</h3>
+                <h3>Confirmación de montaje con evidencia fotográfica</h3>
                 <p className="body">
-                  El correo del mercaderista trae un enlace que abre directo en el espacio que le
-                  toca. Sin contraseña y sin ver el tablero de la tienda: solo el mueble, dónde
-                  queda —«a unos 4 m de las cajas», con el plano de la sala señalado— y dos botones.
-                  «Montado» exige foto. «No pude» exige motivo, porque sin motivo no se sabe a quién
-                  reclamarle.
+                  El correo del mercaderista incluye un enlace que abre directamente en el espacio
+                  asignado. Sin contraseña y sin acceso al tablero de la tienda: únicamente el
+                  mueble, su ubicación —«a unos 4 m de las cajas», señalada sobre el plano de la
+                  sala— y dos acciones. «Montado» exige fotografía. «No pude» exige motivo: sin
+                  motivo registrado no hay responsable identificable.
                 </p>
                 <div className="card__demo">
                   <div className="demo6">
@@ -631,13 +630,14 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                       </div>
                     </div>
                     <p className="tiny demo6__side">
-                      «Montado» exige foto: hasta que no hay foto, no hay montaje reportado. Probalo
-                      acá al lado.
+                      «Montado» exige fotografía: sin fotografía no hay montaje reportado. Puede
+                      probarlo en el ejemplo.
                     </p>
                   </div>
                 </div>
                 <p className="card__foot">
-                  La foto queda guardada. Es la que responde el reclamo del proveedor tres meses después.
+                  La fotografía queda archivada. Es el respaldo ante un reclamo del proveedor meses
+                  después.
                 </p>
               </div>
             </article>
@@ -645,13 +645,14 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
             <section className="panel panel--corto" data-scene="qh-cierre">
               <div className="card">
                 <p className="lead">
-                  Y además: cargue la temporada entera desde una planilla de Excel, revise fila por
-                  fila antes de crear nada, maneje todas sus sedes desde la misma cuenta e invite a
-                  su equipo con el permiso que le toca a cada uno.
+                  Además: la temporada completa puede cargarse desde una planilla de Excel y
+                  revisarse fila por fila antes de crear ningún contrato, todas las sedes se
+                  administran desde la misma cuenta, y cada integrante del equipo se incorpora con
+                  el nivel de permiso que le corresponde.
                 </p>
                 <a className="hook" href="#para-quien">
                   <span className="hook__n">02</span>
-                  <span className="hook__t">Tres personas usan esto, y cada una ve otra cosa</span>
+                  <span className="hook__t">Tres perfiles, tres vistas distintas del mismo sistema</span>
                   <span className="hook__arrow"><Ico n="down" /></span>
                 </a>
               </div>
@@ -665,29 +666,30 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
         <section className="wrap sec" id="para-quien">
           <header className="sec__head rv">
             <p className="sec__num mono">02 / PARA QUIÉN</p>
-            <h2>Tres personas usan esto, y cada una ve otra cosa</h2>
+            <h2>Tres perfiles, tres vistas distintas del mismo sistema</h2>
           </header>
 
           <div className="roles">
             <div className="roles__tabs" role="tablist" aria-label="Perfiles">
               <Perfil id="g" activo={perfil} onElegir={setPerfil}
-                rot="Gerente o administrador" titulo="Vende con datos, no de memoria">
-                Ve el plano, la plata y el calendario en la misma pantalla. Arma el contrato, pone el
-                precio con la tarifa al lado y sabe qué se le cae el mes que viene. Puede girar el
-                portátil y mostrarle el plano al proveedor que tiene enfrente: esa pantalla no
-                muestra el nombre ni el canon de ningún otro proveedor.
+                rot="Gerente o administrador" titulo="Decide con datos a la vista">
+                Dispone del plano, los valores y el calendario en una sola pantalla. Registra el
+                contrato, fija el precio con la tarifa de referencia a la vista y conoce qué vence
+                el mes siguiente. Puede mostrar el plano al proveedor durante la negociación: esa
+                pantalla no expone el nombre ni el canon de ningún otro proveedor.
               </Perfil>
               <Perfil id="t" activo={perfil} onElegir={setPerfil}
-                rot="Trabajador de piso" titulo="Monta y reporta, sin ver dinero">
-                Le llega un correo con el espacio que le toca y un enlace que abre en su celular.
-                Confirma con una foto o dice qué pasó. No entra con una contraseña compartida y no ve
-                valores: el sistema le borra la plata antes de mandarle la pantalla.
+                rot="Trabajador de piso" titulo="Ejecuta y reporta, sin acceso a valores">
+                Recibe un correo con el espacio asignado y un enlace que abre en su teléfono.
+                Confirma con una fotografía o registra el motivo del incumplimiento. No accede con
+                contraseña compartida ni ve valores: el servidor los suprime antes de enviar la
+                pantalla.
               </Perfil>
               <Perfil id="p" activo={perfil} onElegir={setPerfil}
-                rot="Proveedor" titulo="Sabe qué compró">
-                Recibe por correo la constancia de su acuerdo: qué espacios, en qué sede, desde
-                cuándo y hasta cuándo. Y antes de firmar puede ver el mueble en 3D con su marca
-                puesta, en una lámina de antes y después que se le manda adjunta.
+                rot="Proveedor" titulo="Recibe constancia de lo contratado">
+                Recibe por correo la constancia de su acuerdo: qué espacios, en qué sede y con qué
+                vigencia. Antes de firmar puede visualizar el mueble en 3D con su marca aplicada, en
+                una lámina de antes y después que se adjunta al envío.
               </Perfil>
             </div>
 
@@ -730,7 +732,7 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                   <span className="fono__b fono__b--ok"><Ico n="check" tam={14} /> Montado</span>
                   <span className="fono__b fono__b--no">No pude</span>
                 </div>
-                <p className="tiny">El sistema le borra la plata antes de mandarle la pantalla.</p>
+                <p className="tiny">El servidor suprime los valores antes de enviar la pantalla.</p>
               </div>
 
               <div className="rpane" id="lp-pane-p" role="tabpanel" aria-labelledby="lp-tab-p" data-on={perfil === "p"}>
@@ -751,12 +753,12 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
           <div className="glasscard rv" style={{ marginTop: 40, overflow: "hidden" }}>
             <div className="pbar">
               <span className="pbar__dots"><i /><i /><i /></span>
-              Los números que va a tener a la vista
+              Los indicadores disponibles en el tablero
               <span className="pbar__sp" /><span>Ocupación · ejemplo</span>
             </div>
             <div className="pad">
               <p className="lead" style={{ marginBottom: 24 }}>
-                No son promesas. Son las cifras que la pantalla le muestra cada vez que la abre.
+                No son proyecciones. Son las cifras que el tablero calcula sobre los datos cargados.
               </p>
               <div className="readout">
                 <div className="readout__hero">
@@ -776,30 +778,30 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                 </div>
                 <ul>
                   <li className="rrow"><span className="rrow__k"><i className="dot dot--libre" aria-hidden="true" />Ocupación</span><span className="rrow__v">35 % · 8 de 23 caras vendidas en el periodo</span></li>
-                  <li className="rrow"><span className="rrow__k"><i className="dot dot--tomado" aria-hidden="true" />Canon vigente</span><span className="rrow__v">lo que están pagando hoy los contratos vivos, al mes</span></li>
-                  <li className="rrow"><span className="rrow__k"><i className="dot dot--libre" aria-hidden="true" />Sin alquilar</span><span className="rrow__v">cuánto vale a tarifa lo que está vacío, y cuánto es eso por día vacío</span></li>
-                  <li className="rrow"><span className="rrow__k"><i className="dot dot--libera" aria-hidden="true" />Vence en 30 días</span><span className="rrow__v">cuántos espacios y cuánta plata se le caen si nadie los renueva</span></li>
-                  <li className="rrow"><span className="rrow__k"><i className="dot dot--resto" aria-hidden="true" />Sin montar</span><span className="rrow__v">contratos ya cobrados que todavía no están armados en el piso</span></li>
+                  <li className="rrow"><span className="rrow__k"><i className="dot dot--tomado" aria-hidden="true" />Canon vigente</span><span className="rrow__v">ingreso mensual de los contratos vigentes</span></li>
+                  <li className="rrow"><span className="rrow__k"><i className="dot dot--libre" aria-hidden="true" />Sin alquilar</span><span className="rrow__v">valor a tarifa de los espacios desocupados, y su equivalente por día</span></li>
+                  <li className="rrow"><span className="rrow__k"><i className="dot dot--libera" aria-hidden="true" />Vence en 30 días</span><span className="rrow__v">espacios e ingreso mensual que se pierden si no se renuevan</span></li>
+                  <li className="rrow"><span className="rrow__k"><i className="dot dot--resto" aria-hidden="true" />Sin montar</span><span className="rrow__v">contratos ya facturados cuyo montaje aún no se ha ejecutado</span></li>
                 </ul>
               </div>
               <p className="body" style={{ marginTop: 24 }}>
-                Y un contrato de tres puntas de góndola se arma una vez, no tres.
+                Un contrato que cubre tres puntas de góndola se registra una vez, no tres.
               </p>
             </div>
           </div>
 
-          <Gancho n="03" titulo="Cómo se arranca" a="#como-se-usa" />
+          <Gancho n="03" titulo="Cómo se implementa" a="#como-se-usa" />
         </section>
 
-        {/* ═══ 03 · CÓMO SE ARRANCA ═══ */}
+        {/* ═══ 03 · IMPLEMENTACIÓN ═══ */}
         <section className="sec" id="como-se-usa" style={{ paddingBottom: 0 }}>
           <div className="wrap">
             <header className="sec__head rv">
-              <p className="sec__num mono">03 / CÓMO SE USA</p>
-              <h2>Cómo se arranca</h2>
+              <p className="sec__num mono">03 / IMPLEMENTACIÓN</p>
+              <h2>Cómo se implementa</h2>
               <p className="lead">
-                Tres pasos. El primero toma un minuto; el segundo es el trabajo de verdad y se hace
-                una sola vez.
+                Tres etapas. La primera toma un minuto; la segunda concentra el trabajo de
+                levantamiento y se realiza una sola vez.
               </p>
             </header>
           </div>
@@ -809,11 +811,11 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
               <li className="paso" data-on="true">
                 <span className="paso__pipe"><i /></span>
                 <span className="paso__n">1</span>
-                <h3 className="h4">Cree la cuenta y su supermercado</h3>
+                <h3 className="h4">Creación de la cuenta y del supermercado</h3>
                 <p className="body">
-                  Entre con Google o con su correo, le pone nombre a su supermercado y queda como
-                  dueño de la cuenta. Después invite a su equipo: cada persona con su correo y con
-                  el permiso que le toca.
+                  El registro se hace con Google o con correo corporativo. Quien crea la cuenta
+                  queda como titular y desde ahí incorpora al equipo: cada integrante con su propio
+                  correo y con el nivel de permiso que le corresponde.
                 </p>
                 <div className="chips" style={{ marginTop: 6 }}>
                   <span className="chip chip--stat">dueño de la cuenta</span>
@@ -824,21 +826,23 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
               <li className="paso" data-on="false">
                 <span className="paso__pipe"><i /></span>
                 <span className="paso__n">2</span>
-                <h3 className="h4">Dibuje el plano de cada sede</h3>
+                <h3 className="h4">Levantamiento del plano de cada sede</h3>
                 <p className="body">
-                  Ponga los muebles como están en la sala y marque cuáles se alquilan. Las cajas y
-                  las columnas quedan de contexto, en gris. Si ya tiene los contratos de la temporada
-                  en un Excel, los carga de una vez: el sistema le muestra fila por fila qué entra y
-                  qué choca, antes de crear nada.
+                  Los muebles se ubican según la distribución real de la sala y se marca cuáles son
+                  alquilables. Cajas y columnas quedan como referencia, en gris. Si los contratos de
+                  la temporada ya existen en una planilla, se cargan en un solo paso: el sistema
+                  reporta fila por fila cuáles proceden y cuáles presentan conflicto, antes de crear
+                  ningún registro.
                 </p>
               </li>
               <li className="paso" data-on="false">
                 <span className="paso__pipe"><i /></span>
                 <span className="paso__n">3</span>
-                <h3 className="h4">Venda tocando el mapa</h3>
+                <h3 className="h4">Comercialización sobre el plano</h3>
                 <p className="body">
-                  Elija la temporada, mire qué quedó verde, toque el mueble y llene el contrato.
-                  Al guardar salen los tres correos y el espacio cambia de color en el plano.
+                  Se selecciona la temporada, se identifican los espacios disponibles y se registra
+                  el contrato sobre el mueble. Al guardar se envían los tres correos y el espacio
+                  cambia de estado en el plano.
                 </p>
               </li>
             </ol>
@@ -846,208 +850,17 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
 
           <div className="wrap">
             <p className="small rv" style={{ marginTop: 20 }}>
-              Cada supermercado empieza vacío. RECABRA no viene con datos de nadie adentro.
+              Cada supermercado inicia con el sistema vacío. RECABRA no incorpora datos de terceros.
             </p>
-            <Gancho n="04" titulo="Además del sistema, le decimos qué proponer" a="#asesoria" />
+            <Gancho n="04" titulo="Modelo comercial" a="#precio" />
           </div>
         </section>
 
-        {/* ═══ 04 · ASESORÍA ═══ */}
-        <section className="wrap sec" id="asesoria">
-          <header className="sec__head rv">
-            <p className="sec__num mono">04 / ASESORÍA</p>
-            <p className="eyebrow">Lo que ningún Excel le va a decir</p>
-            <h2>Además del sistema, le decimos qué proponer</h2>
-            <p className="lead">
-              Un sistema le muestra lo que pasó. Nosotros miramos sus números y le llevamos, por
-              escrito, qué le puede ofrecer a quién esta semana.
-            </p>
-          </header>
-
-          <div className="bento">
-            <article className="glasscard bcard bA rv rv-1">
-              <div className="pad">
-                <span className="card__i"><Ico n="chart" /></span>
-                <h3>Recomendaciones ordenadas por lo que hay en juego</h3>
-                <p className="body">
-                  Cada recomendación viene con un valor al lado y una razón. «Tiene tres puntas de
-                  góndola libres: ofrézcalas a $ 2.000.000 cada una, que es el promedio que usted
-                  mismo está cobrando por ese tipo — $ 6.000.000 en juego.» «El contrato de esa punta
-                  vence en 19 días: renuévelo o reasígnelo — $ 2.000.000 en juego.» Primero las de
-                  mayor valor.
-                </p>
-                <div className="reco">
-                  <div className="reco__it">
-                    <div>
-                      <span className="reco__rank">01</span>
-                      <p className="reco__t">Tres puntas de góndola libres · ofrézcalas a $ 2.000.000 cada una</p>
-                    </div>
-                    <span className="reco__v">$ 6.000.000</span>
-                  </div>
-                  <div className="reco__it">
-                    <div>
-                      <span className="reco__rank">02</span>
-                      <p className="reco__t">Esa punta vence en 19 días · renovala o reasignala</p>
-                    </div>
-                    <span className="reco__v">$ 2.000.000</span>
-                  </div>
-                </div>
-              </div>
-              <p className="card__foot bcard__pie">
-                Primero las de mayor valor · «en juego» es lo que se gana o se pierde según qué hagas
-              </p>
-            </article>
-
-            <article className="glasscard bcard bB rv rv-2">
-              <div className="pad">
-                <span className="card__i"><Ico n="grid" /></span>
-                <h3>Oportunidades espacio por espacio</h3>
-                <p className="body">
-                  Para cada mueble libre o que se libera en el periodo: un precio sugerido —el
-                  promedio que ya cobra por ese tipo, o el promedio de los supermercados que usan
-                  RECABRA si usted todavía no cobra ninguno— y hasta tres proveedores suyos que
-                  podrían tomarlo, empezando por los que ya alquilan ese mismo tipo de mueble.
-                </p>
-                <div className="mini">
-                  <div className="mini__bar"><span>PUN-05 · libre</span></div>
-                  <div className="mini__body" style={{ display: "grid", gap: 6 }}>
-                    <div className="kvrow"><span>Precio sugerido</span><b>$ 1.000.000</b></div>
-                    <span className="chip chip--stat">Bebidas Zafiro</span>
-                    <span className="chip chip--stat">Confites Milagro</span>
-                    <span className="chip chip--stat">Café Alto Bosque</span>
-                  </div>
-                </div>
-              </div>
-              <p className="card__foot bcard__pie">Proveedores y valores de ejemplo</p>
-            </article>
-
-            <article className="glasscard bcard bC rv rv-3">
-              <div className="pad">
-                <span className="card__i"><Ico n="cal" /></span>
-                <h3>Tendencia mes a mes</h3>
-                <p className="body">
-                  Ocupación, ingreso contratado y canon promedio, guardados mes a mes desde que
-                  entra. La pregunta «¿estamos mejorando?» deja de contestarse de memoria. Un mes
-                  sin datos aparece como un hueco, no como un cero: un cero sería mentira.
-                </p>
-                <div className="chips">
-                  <span className="chip chip--stat">Ocupación</span>
-                  <span className="chip chip--stat">Ingreso contratado</span>
-                  <span className="chip chip--stat">Canon promedio</span>
-                </div>
-                <div className="meses" aria-hidden="true">
-                  {["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"].map((m, i) => (
-                    <span key={m} className={"mes" + (m === "abr" ? " mes--hueco" : i > 8 ? " mes--futuro" : "")}>{m}</span>
-                  ))}
-                </div>
-                <p className="tiny">Abril quedó como hueco: ese mes no hubo datos. No se rellena con un cero.</p>
-              </div>
-              <p className="card__foot bcard__pie">
-                La tendencia arranca vacía el día que entra. No se rellena hacia atrás.
-              </p>
-            </article>
-          </div>
-
-          <div className="honesto rv" style={{ marginTop: 24 }}>
-            <h3 className="h4">Cómo funciona, sin vueltas.</h3>
-            <p className="body">
-              Esta parte no es una pantalla suya: la revisa una persona de RECABRA sobre sus propios
-              datos, y le llega en la sesión de asesoría. Todo lo que se lee está escrito en la
-              Política de Tratamiento de Datos, queda anotado con la fecha y el correo de quien lo
-              consultó, y puede pedir ese registro cuando quiera desde su propia cuenta.
-            </p>
-            <p>
-              <a className="lnk" href="/politica-datos">
-                Ver el reporte de transparencia <Ico n="arrow" tam={15} />
-              </a>
-            </p>
-          </div>
-
-          <Gancho n="05" titulo="Dónde quedan sus datos" a="#confianza" />
-        </section>
-
-        {/* ═══ 05 · CONFIANZA ═══ */}
-        <section className="wrap sec" id="confianza">
-          <header className="sec__head rv">
-            <p className="sec__num mono">05 / DATOS</p>
-            <h2>Dónde quedan sus datos</h2>
-            <p className="lead">
-              Esto lo usa gente distinta de la misma tienda, y hay dinero adentro. Así está resuelto.
-            </p>
-          </header>
-
-          <ul className="trust rv rv-1">
-            <li className="trust__it">
-              <span className="trust__n">01</span>
-              <div>
-                <p className="trust__t">Cada supermercado, en su propia base</p>
-                <p className="body">
-                  Los planos, los contratos y los proveedores de su supermercado viven en una base
-                  separada de la de cualquier otro cliente. No es un filtro por columna: es otra base.
-                </p>
-              </div>
-            </li>
-            <li className="trust__it">
-              <span className="trust__n">02</span>
-              <div>
-                <p className="trust__t">Cada persona entra con su cuenta</p>
-                <p className="body">
-                  Con Google o con correo y contraseña. Nada de una clave compartida que sigue
-                  funcionando cuando alguien se va. Desactive a esa persona y pierde el acceso en el
-                  siguiente clic, sin tocar a nadie más.
-                </p>
-              </div>
-            </li>
-            <li className="trust__it">
-              <span className="trust__n">03</span>
-              <div>
-                <p className="trust__t">El dinero no le llega a quien no le toca</p>
-                <p className="body">
-                  Los valores no se ocultan en la pantalla: se borran en el servidor antes de
-                  mandarla. El mercaderista no tiene forma de verlos, ni siquiera mirando lo que le
-                  llegó al navegador.
-                </p>
-                <p className="tiny" style={{ marginTop: 8 }}>
-                  Canon del contrato tal como le llega al mercaderista: <span className="redact">$ 1.300.000</span>
-                </p>
-              </div>
-            </li>
-            <li className="trust__it">
-              <span className="trust__n">04</span>
-              <div>
-                <p className="trust__t">Puede auditar qué se mira de usted</p>
-                <p className="body">
-                  El dueño de la cuenta puede pedir, cuando quiera, el reporte de transparencia: qué
-                  datos toma RECABRA, cómo los calcula, de dónde salen, para qué, y quién los
-                  consultó y qué día. También puede descargar todos sus datos y pedir la supresión.
-                </p>
-              </div>
-            </li>
-            <li className="trust__it">
-              <span className="trust__n">05</span>
-              <div>
-                <p className="trust__t">Colombia, Ley 1581</p>
-                <p className="body">
-                  Tratamiento de datos personales conforme a la Ley 1581 de 2012 y al Decreto 1377 de
-                  2013. La política es pública y se lee sin tener cuenta.
-                </p>
-              </div>
-            </li>
-          </ul>
-
-          <div className="links rv rv-2">
-            <a className="lnk" href="/politica-datos"><Ico n="lock" tam={15} /> Política de Tratamiento de Datos</a>
-            <a className="lnk" href="/politica-datos#transparencia"><Ico n="shield" tam={15} /> Reporte de transparencia</a>
-          </div>
-
-          <Gancho n="06" titulo="Cuánto cuesta" a="#precio" />
-        </section>
-
-        {/* ═══ 06 · PRECIO ═══ */}
+        {/* ═══ 04 · PRECIO ═══ */}
         <section className="wrap sec" id="precio">
           <header className="sec__head rv">
-            <p className="sec__num mono">06 / PRECIO</p>
-            <h2>Cuánto cuesta</h2>
+            <p className="sec__num mono">04 / PRECIO</p>
+            <h2>Modelo comercial</h2>
           </header>
 
           <div className="precio">
@@ -1061,12 +874,13 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                   </span>
                 </p>
                 <p className="body" style={{ marginTop: 20 }}>
-                  Por transferencia bancaria, contra cuenta de cobro. No hay pasarela de pagos ni le
-                  pedimos una tarjeta.
+                  Pago por transferencia bancaria contra cuenta de cobro. No se utiliza pasarela de
+                  pagos ni se solicitan datos de tarjeta.
                 </p>
                 <p className="body" style={{ marginTop: 20 }}>
-                  ¿Tiene varias sedes o una cadena regional y quiere que lo veamos juntos? Escríbanos
-                  a <span className="slot">[COMPLETAR: correo de contacto]</span>.
+                  Para cadenas regionales o multisede, escríbanos a
+                  <span className="slot">[COMPLETAR: correo de contacto]</span> y evaluamos el
+                  alcance en conjunto.
                 </p>
                 {/* Mientras el correo de contacto sea un [COMPLETAR] del dueño (copy §15),
                     «Hablemos» lleva al registro en vez de a un `mailto:` vacío: un botón
@@ -1078,30 +892,31 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
             </div>
             <div className="rv rv-2">
               <div className="estados" ref={estadosRef}>
-                <div className="estado" data-on={estados > 0}><span className="estado__d" /><p className="estado__t">Primero le avisamos en la pantalla, y todo sigue funcionando igual.</p></div>
-                <div className="estado" data-on={estados > 1}><span className="estado__d" /><p className="estado__t">Si el atraso sigue, la cuenta pasa a solo lectura: puede entrar, ver todo y consultar, pero no se cargan contratos nuevos.</p></div>
-                <div className="estado" data-on={estados > 2}><span className="estado__d" /><p className="estado__t">Sus datos no se borran nunca. Ponga la cuenta al día y vuelve a trabajar donde lo dejó.</p></div>
+                <div className="estado" data-on={estados > 0}><span className="estado__d" /><p className="estado__t">Primer aviso en pantalla; el servicio continúa sin cambios.</p></div>
+                <div className="estado" data-on={estados > 1}><span className="estado__d" /><p className="estado__t">Si la mora persiste, la cuenta pasa a solo lectura: se conserva el acceso y la consulta, pero no se registran contratos nuevos.</p></div>
+                <div className="estado" data-on={estados > 2}><span className="estado__d" /><p className="estado__t">Los datos no se eliminan en ningún caso. Regularizada la cuenta, la operación se reanuda donde quedó.</p></div>
               </div>
             </div>
           </div>
 
-          <Gancho n="07" titulo="Empiece por una sede" a="#cierre" />
+          <Gancho n="05" titulo="Empiece por una sede" a="#cierre" />
         </section>
 
-        {/* ═══ 07 · CIERRE ═══ */}
+        {/* ═══ 05 · CIERRE ═══ */}
         <section className="wrap cierre" id="cierre">
           <div className="beam" aria-hidden="true" />
           <h2 className="rv">Empiece por una sede</h2>
           <p className="lead rv rv-1" style={{ maxWidth: "56ch" }}>
-            Cree la cuenta, dibuje la tienda que más espacios vende y mire cuántos tiene libres esta
-            temporada. Si sirve, siga con las demás.
+            Comience por la sede con mayor volumen de espacios comercializables y evalúe la
+            disponibilidad de esta temporada. Si el resultado es útil, incorpore las demás.
           </p>
           <div className="cierre__cta rv rv-2">
             <a className="btn btn--primary" href="/login#registro" onClick={irA("registro")}>Crear mi cuenta</a>
             <a className="btn btn--ghost" href="/login" onClick={irA("login")}>Ya tengo cuenta</a>
           </div>
           <p className="small rv rv-3">
-            Entre con Google o con su correo. El plano de arriba es de ejemplo; el suyo lo dibuja usted.
+            Registro con Google o con correo corporativo. El plano de esta página es un ejemplo;
+            el de cada supermercado se levanta con sus propias sedes.
           </p>
         </section>
       </main>
@@ -1122,8 +937,8 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
             <div className="pie__col">
               <h4>Producto</h4>
               <ul>
-                <li><a href="#que-hace">Qué hace</a></li>
-                <li><a href="#como-se-usa">Cómo se usa</a></li>
+                <li><a href="#que-hace">Funciones</a></li>
+                <li><a href="#como-se-usa">Implementación</a></li>
                 <li><a href="#precio">Precio</a></li>
               </ul>
             </div>
@@ -1150,8 +965,8 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
             </p>
             <p className="tiny">© {anio} RECABRA. Todos los derechos reservados.</p>
             <p className="tiny">
-              El plano de esta página es un supermercado inventado, sembrado en el código de la
-              propia página. No corresponde a ningún cliente.
+              El plano de esta página corresponde a un supermercado ficticio, definido en el código
+              de la propia página. No representa a ningún cliente.
             </p>
           </div>
         </div>
