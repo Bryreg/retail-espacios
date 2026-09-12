@@ -63,6 +63,23 @@ El código de espacio es `"SEDE-CODE"` en mayúsculas. La cara B de una góndola
 sufijo `-B`; los campos top-level del fixture son la Cara A y `fixture.faceB` es la B
 (helper `isDoubleGondola`).
 
+**No todo mueble del plano es espacio vendible.** La columna sostiene el techo; la
+caja registradora y el mostrador de servicio al cliente son puestos de trabajo de la
+tienda. Esos tres tipos están en `NUNCA_ALQUILABLE` —`frontend/src/types/fixtures.ts` y
+`backend/app/services/layout_lookup.py`, y hay pruebas de los dos lados que verifican
+que las dos listas digan lo mismo— y no tienen tarifa, no suman a la disponibilidad de
+la sede y no aceptan contrato.
+
+La regla pregunta **primero por el tipo y después por la bandera `rentable`**, y ese
+orden es lo que la hace funcionar: la bandera se estampa al CREAR el mueble, así que un
+plano guardado antes de que existiera no la trae, y `rentable` ausente significa
+comercializable —tiene que significarlo, o esos planos se vaciarían—. Mirando sólo la
+bandera, todas las cajas de los planos viejos seguían aceptando contratos. Mirando el
+tipo primero, quedan bien sin migrar una sola fila.
+
+La `metro` (zona libre) es distinta: nace no comercializable pero **se puede habilitar a
+mano**, porque un metro de piso sí se le alquila a una marca para su stand.
+
 **Dentro del plano el código es corto; afuera lleva la sede.** `PUN-01` es nomenclatura
 de sede y se repite en las tres tiendas. Todo lo que salga del layout — la fila en
 `spaces`, el enlace del correo, el reporte de montaje — usa el código completo, que arma
