@@ -3849,6 +3849,7 @@ interface SceneProps {
 
 function Scene({
   placedFixtures, selectedId, selectedSlotId,
+  hoveredSlotId, setHoveredSlotId, onSelectSlot,
   placingDef, ghostX, ghostZ, ghostRotY, ghostCollides,
   draggingId, orbitRef, onFloorMove, onFloorClick,
   onSelectFixture, setPlacedFixtures,
@@ -4182,13 +4183,26 @@ function Scene({
 
       {/* Placed fixtures */}
       {placedFixtures.map(fix => {
-        const hasSlots = fix.type==="gondola"||fix.type==="punta";
+        /* Los espacios internos, que es lo que de verdad se vende de una
+           góndola o de una punta: cada uno tiene su proveedor, su valor y su
+           vigencia. Los paneles se dibujan SÓLO sobre el mueble seleccionado.
+           Encendidos en toda la planta, un local de cincuenta muebles queda
+           cubierto de rectángulos de colores flotando y no se ve la tienda;
+           encendidos en ninguno —que es como estuvo hasta ahora— el panel
+           lateral dice «hacé clic en un slot del panel frontal» señalando algo
+           que nunca se dibujó, y la ocupación por espacio no se podía marcar
+           desde el 3D. */
+        const hasSlots = fix.type === "gondola" || fix.type === "punta";
+        const conEspacios = hasSlots && fix.id === selectedId && !placingDef && !firstPerson;
         return (
           <group key={fix.id} position={[fix.x,0,fix.z]} rotation={[0,fix.rotY,0]}>
             <FixtureMesh
               fixture={fix}
               facePaint={facePaintById.get(fix.id) ?? null}
-              /* slots disabled — omit onSlotClick/onSlotHover to skip all slot meshes */
+              selectedSlotId={conEspacios ? selectedSlotId : null}
+              hoveredSlotId={conEspacios ? hoveredSlotId : null}
+              onSlotClick={conEspacios ? (slotId) => onSelectSlot(fix.id, slotId) : undefined}
+              onSlotHover={conEspacios ? setHoveredSlotId : undefined}
             />
             {fix.id===selectedId && !selectedSlotId && <SelectionBox w={fix.w} d={fix.d} h={fix.h} />}
             {/* CHANGE 4 — Unauthorized placement badge (distance-gated + occluded) */}

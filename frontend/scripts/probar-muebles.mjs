@@ -132,6 +132,47 @@ prueba("la góndola mural sólo se vende de un lado", () => {
     "la mural pintaría producto contra la pared");
 });
 
+// ── Que los espacios lleguen a dibujarse ────────────────────────────────────
+//
+// Todo lo de arriba comprueba que `GondolaMesh` SABE dibujar los paneles de
+// slot. Durante mucho tiempo eso fue verdad y no servía de nada: la escena
+// llamaba a `FixtureMesh` sin `onSlotClick`, que es la condición que enciende
+// los paneles, con un comentario que decía «slots disabled». El panel lateral
+// invitaba a hacer clic en un slot del panel frontal y ese panel no existía en
+// ninguna pantalla. La ocupación por espacio no se podía marcar desde el 3D.
+//
+// Compilaba, y las pruebas del mesh pasaban.
+
+const cuerpoEscena = (() => {
+  const i = editorCodigo.indexOf("function Scene({");
+  assert.ok(i > 0, "no se encontró `Scene`");
+  return editorCodigo.slice(i, editorCodigo.indexOf("export default function StoreEditor3D", i));
+})();
+
+prueba("la escena enciende los paneles de slot de verdad", () => {
+  assert.match(
+    cuerpoEscena, /onSlotClick=\{conEspacios \? \(slotId\) => onSelectSlot\(fix\.id, slotId\)/,
+    "la escena volvió a llamar a `FixtureMesh` sin `onSlotClick`: los paneles no se dibujan",
+  );
+  assert.match(cuerpoEscena, /onSlotHover=\{conEspacios \? setHoveredSlotId/, "el slot no resalta al pasar el mouse");
+});
+
+prueba("los espacios se dibujan sólo sobre el mueble seleccionado", () => {
+  // Encendidos en toda la planta, un local de cincuenta muebles queda cubierto
+  // de rectángulos de colores y no se ve la tienda.
+  assert.match(
+    cuerpoEscena, /const conEspacios = hasSlots && fix\.id === selectedId && !placingDef && !firstPerson/,
+    "cambió la condición que decide sobre qué mueble se ven los espacios",
+  );
+});
+
+prueba("la escena recibe y usa el estado de selección de slot", () => {
+  assert.match(
+    cuerpoEscena, /hoveredSlotId, setHoveredSlotId, onSelectSlot/,
+    "`Scene` volvió a recibir los props de slot sin desestructurarlos",
+  );
+});
+
 // ── Una sola cuenta para los entrepaños ─────────────────────────────────────
 
 prueba("el pintado de filas NO repite la cuenta de los entrepaños", () => {

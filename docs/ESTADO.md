@@ -70,9 +70,21 @@ de sede y se repite en las tres tiendas. Todo lo que salga del layout — la fil
 corto es un bug silencioso: parece funcionar con una sola sede y con dos empieza a
 mezclar tiendas.
 
-**El 3D pinta, no construye.** La foto del proveedor se aplica *como material* de la cara
-del mesh, tileada como planograma y alineada a las tablas reales vía `getPanelShelfSpan`.
-Nunca crear geometría nueva posicionada para esto: se intentó dos veces y falló las dos.
+**El 3D pinta el ARTE; la geometría del mueble vive aparte.** La foto del proveedor se
+aplica *como material* de la cara del mesh y se alinea a los entrepaños reales. La regla
+que decía «nunca crear geometría nueva posicionada para esto» sigue valiendo **para el
+arte**: se intentó dos veces y falló las dos. Lo que sí cambió es de dónde sale la forma
+del mueble — ver *La góndola se construye con las piezas que tiene una de verdad*.
+
+**La cuenta de los entrepaños se hace en un solo lugar.** `muebles/medidas.ts` es la
+fuente: `nivelesDeEntrepano` ubica las bandejas, `filasDeProducto` deriva de ahí las filas
+de arte, y `getPanelShelfSpan` y el producto 3D preguntan las dos a esa función. Antes
+había dos copias con un comentario pidiendo mantenerlas iguales, y no se mantuvieron.
+
+**La geometría del slot no se mueve aunque se mueva el mueble.** `ZONA_DE_SLOTS` y
+`SLOT_PROTO` deciden dónde cayó cada espacio vendido, y esa posición viaja en los
+contratos de los clientes. El mueble puede cambiar de forma entero —y cambió—; el espacio
+vendido no puede cambiar de lugar.
 
 **Orden de rutas en FastAPI.** Las rutas literales van declaradas **antes** de las
 paramétricas y del catch-all, o éste se las traga. Aplica en `layout.py`
@@ -3313,12 +3325,121 @@ en una escena y mirándola dos veces: una con el mismo arte cargado en todos
 —para ver que ninguno queda sin vestir—, y otra con los espacios vacíos, que es
 el estado en el que están casi siempre. Las dos capturas están en la conversación.
 
-### Lo que sigue debiendo
+### Lo que seguía debiendo — saldado para la góndola
 
-El producto **se estira para llenar el hueco entre entrepaños**: el compositor
-sabe cuántas filas caben pero no cuánto mide el empaque, así que una chocolatina
-en una góndola de 38 cm de paso se dibuja de 38 cm de alto. Arreglarlo pide un
-campo «alto del empaque» en el arte, no un cambio en las mallas.
+El producto **se estiraba para llenar el hueco entre entrepaños**: el compositor
+sabía cuántas filas caben pero no cuánto mide el empaque, así que una chocolatina
+en una góndola de 38 cm de paso se dibujaba de 38 cm de alto.
+
+Para la góndola ya no: `muebles/producto.ts` tiene los formatos de empaque a escala real
+y `acomodar()` cuenta los frentes que entran de verdad. **Sigue debiéndolo el resto del
+catálogo**, que se pinta con el compositor de arte.
+
+---
+
+## La góndola se construye con las piezas que tiene una de verdad
+
+Todo el mobiliario 3D estaba hecho de `boxGeometry`. Mientras una pieza sea una caja no
+hay labio, ni pliegue, ni gancho, ni ranura — y son esos cuatro detalles los que hacen que
+el ojo lea «mueble de tienda» en vez de «primitiva de Three.js». No es un problema de
+material ni de iluminación: **con una caja no hay nada que iluminar.**
+
+### Dónde vive
+
+`frontend/src/components/StoreEditor3D/muebles/`:
+
+| archivo | qué es |
+|---|---|
+| `medidas.ts` | Las cotas de catálogo, en metros. Una sola fuente para todo el que necesite saber dónde cae un entrepaño. |
+| `perfiles.ts` | Las secciones de lámina plegada como `Shape` extruido, cacheadas por firma. |
+| `GondolaReal.tsx` | El ensamblaje del mueble. |
+| `producto.ts` | Formatos de empaque y la cuenta de frentes. |
+| `ProductoEnGondola.tsx` | El producto parado sobre los entrepaños. |
+
+Y `/taller` (`pages/TallerMuebles.tsx`) es el banco de pruebas: un mueble solo, girable,
+con luz neutra y nada alrededor. **Se construye ahí y después se enchufa**, porque el
+editor son más de cinco mil líneas y cambiar geometría ahí adentro es cambiar a ciegas.
+
+### Las siete cosas que hacen que se lea como una góndola
+
+1. **Se arma por módulos** de ancho de catálogo, con un parante en cada junta. Un corrido
+   de 5 m no es un mueble de 5 m: son cuatro módulos. Dos postes en las puntas y nada en
+   el medio es lo que delata un corrido largo.
+2. **Dos juegos de entrepaños independientes**, espalda con espalda, cada uno con su
+   fondo. De perfil, una góndola doble modelada como una tabla profunda se lee como mesa.
+3. **Paneles de fondo de listones sobre respaldo.** Es la superficie más grande del
+   mueble; lisa, lo convierte en una pared blanca. La luz entre listones es la ranura de
+   verdad y tira sombra propia.
+4. **Perfil escalonado**: la bandeja de abajo es la más profunda y van achicándose.
+5. **Entrepaños de lámina plegada**, con labio y gancho.
+6. **Base retranqueada** con la muesca donde entran los pies, y **remate superior**.
+7. **Parantes con la cara calada hacia el pasillo**, apoyados sobre la base.
+
+**Ninguna cota se deriva del alto o del ancho del mueble.** Ése es el delator número uno
+de un mueble inventado: un entrepaño cuyo espesor cambia si la góndola es más alta. Una
+lámina mide lo que mide. El día que llegue el catálogo del proveedor real del cliente se
+corrigen las cotas en `medidas.ts` y se corrige todo — **y ese catálogo sigue pendiente**:
+las medidas de hoy son estándares de industria, un punto de partida honesto.
+
+### Sistema de coordenadas
+
+Toda pieza de una cara nace apoyada en `z = 0` y crece hacia **-Z**, que es el pasillo. La
+cara de +Z es el mismo subárbol girado media vuelta. Mantener esa convención es lo que
+permite montar entrepaño, panel, parante, porta-precios y remate sin corrimientos a mano.
+
+### El producto: lo vendido, no lo decorativo
+
+Lo que se para sobre los entrepaños es **lo que está vendido**. Los slots ocupados o
+reservados se llenan; los libres quedan vacíos. Rellenar la góndola entera «para que se
+vea linda» miente sobre la disponibilidad, que es el dato que este sistema tiene que dar.
+
+No hay catálogo de SKUs y **no se inventa uno**: el sistema vende espacio, no productos.
+De cada espacio sabe el proveedor, el valor, la vigencia y un rubro escrito a mano. Así
+que lo que se dibuja es el **empaque del rubro a escala real** — y con eso la góndola
+muestra los siete frentes de aceite que entran de verdad, que es justo la cuenta que
+discute quien negocia.
+
+Cuando el proveedor subió su arte, manda el arte: la lámina tapa esta capa, porque es
+información real y el empaque por rubro es una aproximación.
+
+### Los espacios internos ya se pueden marcar desde el 3D
+
+`GondolaMesh` y `PuntaMesh` siempre supieron dibujar los paneles de slot, y **nunca se
+dibujaron**: la escena llamaba a `FixtureMesh` sin `onSlotClick`, que es la condición que
+los enciende. El panel lateral invitaba a hacer clic en un slot del panel frontal y ese
+panel no existía en ninguna pantalla. Compilaba, y las pruebas del mesh pasaban.
+
+Ahora se encienden **sobre el mueble seleccionado**, y sólo sobre ése: encendidos en toda
+la planta, un local de cincuenta muebles queda cubierto de rectángulos de colores y no se
+ve la tienda.
+
+### Cómo se prueba
+
+`npm run probar:muebles`. Afirma lo que tiene que **seguir** estando —los slots, su
+geometría, el pintado de caras, la cuenta única de filas— y no lo que se agregó, porque el
+modo de falla real ya ocurrió: un intento previo de hacer los muebles más reales (PR #62)
+reescribió `GondolaMesh` entero y se llevó `statusColor`, `facePaint` y los cinco props de
+slot. La forma mejoraba; el mueble dejaba de poder venderse.
+
+Una parte de las pruebas **se ejecuta** en vez de leer el código: `producto.ts` y
+`medidas.ts` son funciones puras, se compilan con esbuild y se corren. Hizo falta — tres
+defectos pasaron por debajo de las pruebas de texto porque el código decía exactamente lo
+que tenía que decir:
+
+- «Aceites» caía en la fila de los cereales, porque «te» está adentro de «acei**te**s».
+- Una góndola de 1,80 perdía su entrepaño más alto y una de 1,85 no: el último nivel cae
+  justo en el límite y la comparación la decidía el último bit del flotante.
+- `THREE.Color` no entiende `hsl(190 40% 50%)` —la sintaxis CSS moderna— y no falla: se
+  queda en blanco.
+
+### Lo que falta
+
+- **Sólo la góndola.** Punta, robatope, vitrina, neveras y el resto del catálogo siguen
+  con la geometría vieja de cajas. La estructura de `muebles/` está hecha para que el
+  siguiente cueste mucho menos.
+- **Las cotas del proveedor real del cliente**, que reemplazan las de `medidas.ts`.
+- El producto no distingue forma: una botella se dibuja como caja. `Empaque.forma` ya
+  lleva el dato («caja», «botella», «lata», «bolsa») y nadie lo usa todavía.
 
 ---
 
