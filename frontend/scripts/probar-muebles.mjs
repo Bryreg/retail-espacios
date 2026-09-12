@@ -881,11 +881,90 @@ prueba("el mostrador de carnes tiene vidrio CURVO", () => {
 });
 
 prueba("el mostrador tiene la bandeja inclinada y su lado de servicio", () => {
-  // Sin la caída, lo de atrás queda tapado por lo de adelante; sin la franja
-  // de servicio, el mueble es simétrico y no se entiende de qué lado se
-  // atiende.
+  // Sin la caída, lo de atrás queda tapado por lo de adelante; sin el mueble
+  // de servicio de atrás el mostrador es simétrico y no se entiende de qué
+  // lado se atiende.
   assert.match(mostradorCodigo, /rotation=\{\[CAIDA, 0, 0\]\}/, "la bandeja volvió a ser plana");
   assert.match(mostradorCodigo, /export function bandejaDeMostrador/, "nadie sabe dónde va el producto");
+  assert.match(mostradorCodigo, /fondoDeServicio/, "se perdió el mueble de servicio de atrás");
+});
+
+// ── Los tres rasgos que la foto de uno real manda ───────────────────────────
+// El mostrador ya tenía el vidrio curvo y seguía sin parecerse. Puesto al lado
+// de la foto se ve por qué, y las tres diferencias son de FORMA: apoyaba en el
+// piso en vez de colgar sobre patas, era casi negro en vez de acero claro, y
+// el vidrio colgaba POR DELANTE del mueble como una visera en vez de nacer en
+// el filo y tumbarse hacia atrás sobre el producto.
+
+prueba("el mostrador NO apoya en el piso: cuelga sobre patas", () => {
+  assert.match(medidas, /export function cotasDeMostrador/, "las cotas del mostrador volvieron al componente");
+  assert.match(mostradorCodigo, /cotasDeMostrador\(/, "el mostrador dejó de leer sus cotas");
+  assert.match(mostradorCodigo, /xDePatas\.map/, "el mostrador volvió a ser un cajón hasta el piso");
+
+  for (const [w, d, h] of [[1.2, 0.9, 1.15], [2.5, 1.1, 1.3], [0.8, 0.7, 1.0], [4, 1.2, 1.5]]) {
+    const c = M.cotasDeMostrador(w, d, h);
+    const donde = `${w}×${d}×${h}`;
+    assert.ok(c.altoDePata >= 0.12, `${donde}: sin hueco bajo el mueble`);
+    assert.ok(c.filo > c.altoDePata + 0.15, `${donde}: la carrocería no tiene alto`);
+    assert.ok(c.filo < h, `${donde}: el filo se comió la bóveda`);
+    assert.ok(c.xDePatas.length >= 2, `${donde}: el mueble se cae`);
+    for (const x of c.xDePatas) assert.ok(Math.abs(x) <= w / 2, `${donde}: pata fuera del mueble`);
+  }
+});
+
+prueba("la bóveda nace EN el filo y se tumba hacia ATRÁS", () => {
+  // Montada en `zFrente - VUELO` la curva entera quedaba por delante del
+  // mueble: una visera colgando en el aire, con el producto afuera de ella.
+  assert.match(
+    mostradorCodigo, /position=\{\[0, c\.filo, c\.zFrente\]\}/,
+    "la bóveda volvió a colgar por delante del filo",
+  );
+  assert.match(mostradorCodigo, /geometriaTapaDeVidrio\(/, "la bóveda quedó abierta de costado");
+
+  for (const [w, d, h] of [[1.2, 0.9, 1.15], [2.5, 1.1, 1.3], [4, 1.2, 1.5]]) {
+    const c = M.cotasDeMostrador(w, d, h);
+    const donde = `${w}×${d}×${h}`;
+    assert.ok(c.zRemate > c.zFrente, `${donde}: la bóveda no se tumba hacia atrás`);
+    assert.ok(c.zRemate <= d / 2 + 1e-9, `${donde}: la bóveda se sale por el fondo`);
+    assert.ok(c.vuelo > d * 0.5, `${donde}: la bóveda no llega a tapar el producto`);
+    assert.ok(c.altoDeVidrio > (h - c.altoDePata) * 0.4, `${donde}: el vidrio dejó de ser la pieza dominante`);
+  }
+});
+
+prueba("la carrocería es acero CLARO, no un cajón negro", () => {
+  // El contraste entre la chapa clara y los pocos negros —marco del vidrio,
+  // reja, trasero— es la mitad de lo que el ojo reconoce. Pintado todo de
+  // casi-negro no queda contraste ninguno y el mueble se lee como un
+  // contenedor.
+  const cuerpo = /acero: new THREE\.MeshStandardMaterial\(\{\s*color: "(#[0-9a-fA-F]{6})"/.exec(mostradorCodigo);
+  assert.ok(cuerpo, "se perdió el material de la carrocería");
+  const claro = parseInt(cuerpo[1].slice(1, 3), 16);
+  assert.ok(claro > 0x90, `la carrocería volvió a ser oscura (${cuerpo[1]})`);
+});
+
+prueba("el producto y el mueble leen la MISMA cuenta", () => {
+  // Con dos cuentas la carne flota sobre la cubeta o se hunde adentro de la
+  // carrocería, y nadie lo nota hasta que se ve el plano.
+  const cuerpo = mostradorCodigo.slice(mostradorCodigo.indexOf("export function bandejaDeMostrador"));
+  assert.match(cuerpo, /cotasDeMostrador\(w, d, h\)/, "`bandejaDeMostrador` volvió a tener su propia cuenta");
+
+  for (const [w, d, h] of [[1.2, 0.9, 1.15], [2.5, 1.1, 1.3], [4, 1.2, 1.5]]) {
+    const c = M.cotasDeMostrador(w, d, h);
+    const fondo = Math.max(0.12, c.vuelo - 0.1);
+    const z = c.zFrente + 0.05 + fondo / 2;
+    const donde = `${w}×${d}×${h}`;
+    assert.ok(z - fondo / 2 >= c.zFrente - 1e-9, `${donde}: la cubeta se sale por el frente`);
+    assert.ok(z + fondo / 2 <= d / 2 + 1e-9, `${donde}: la cubeta atraviesa el fondo`);
+  }
+});
+
+prueba("el espesor entra en la firma del vidrio curvo", () => {
+  // Los montantes negros de la bóveda son ESE mismo arco, angosto y grueso.
+  // Sin el espesor en la clave, el primero que se dibuja se queda con la
+  // ranura del caché y el otro sale con el espesor ajeno.
+  const firma = /const firma =?\s*\n?\s*`vidriocurvo:[^`]*`/.exec(perfiles);
+  assert.ok(firma, "se perdió la firma del vidrio curvo");
+  assert.match(firma[0], /espesor/, "el espesor volvió a quedar fuera de la clave del caché");
 });
 
 prueba("el mural hereda el arte del proveedor, no tiene un camino propio", () => {

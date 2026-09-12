@@ -500,3 +500,110 @@ export function nivelesDeMural(alto: number): number[] {
   const paso = (hasta - desde) / cuantos;
   return Array.from({ length: cuantos + 1 }, (_, i) => alRasDeRanura(desde + i * paso));
 }
+
+/* ── El mostrador de servicio refrigerado ────────────────────────────────────
+   (carnes, fiambres, quesos, pescadería)
+
+   La foto de uno real manda tres cosas que el modelo no tenía, y las tres son
+   de FORMA, no de material ni de color:
+
+   · **No es un cajón hasta el piso.** La carrocería fría va colgada a media
+     altura sobre PATAS ACAMPANADAS —troncos de cono que se abren hacia el
+     suelo—. Ese hueco por debajo es lo primero que se ve de lejos, y es lo que
+     separa un mostrador de servicio de una isla o de una batea, que sí apoyan.
+   · **No es oscuro.** La carrocería es acero inoxidable CLARO, con un bocel
+     gordo de acero corrido en el filo del frente. Lo único negro es el marco
+     del vidrio, la reja del compresor y el trasero de servicio. Pintado de
+     casi-negro el mueble se leía como un contenedor.
+   · **El vidrio es una BÓVEDA, no una visera.** Nace EN el filo del frente
+     —no por delante, colgando en el aire, que es donde estaba— y se tumba
+     hacia atrás por encima de todo el producto hasta el mueble de servicio.
+     Se lleva más de la mitad del alto: es la pieza dominante del mueble.
+
+   Las cotas viven acá y no en el componente porque el que vuelca el producto
+   adentro necesita las mismas: si hay dos cuentas, la carne flota o se hunde. */
+
+export const MOSTRADOR = {
+  /** Reparto del alto total entre las tres franjas que se leen de lejos:
+   *  patas, carrocería fría y bóveda. El resto es vidrio. */
+  fraccionDePata: 0.24,
+  fraccionHastaElFilo: 0.48,
+  /** Cuánto del fondo tapa la bóveda. Lo que sobra atrás es el mueble de
+   *  servicio, cerrado, por donde el carnicero saca y repone. */
+  fraccionDeVuelo: 0.8,
+  /** Radio del bocel de acero del filo del frente. Es una cota de forma: sin
+   *  él el frente es una arista viva y el mueble se ve de chapa doblada. */
+  bocel: 0.055,
+  /** Espesor de la carrocería. */
+  chapa: 0.02,
+  /** La pata: tronco de cono que se ABRE hacia el piso, y ovalado en planta
+   *  (más largo de fondo que de ancho, como el de la foto). */
+  pata: { arriba: 0.07, abajo: 0.13, ovalo: 1.6, paso: 0.95 },
+  /** Cuánto se hunde el plano de la cubeta respecto del filo del frente: el
+   *  cliente mira POR ENCIMA del bocel, no a través de él. */
+  hundido: 0.06,
+  /** Ancho de paño entre montantes negros del vidrio. El de la foto es
+   *  modular: cada paño tiene su arco y entre paño y paño hay un montante. */
+  panoDeVidrio: 1.15,
+  /** El compresor: cajón oscuro con reja de malla, colgado bajo un extremo. */
+  compresor: { ancho: 0.44, fondo: 0.6, fraccionDeCaida: 0.55 },
+} as const;
+
+export interface CotasDeMostrador {
+  /** Alto del hueco bajo la carrocería: donde van las patas. */
+  altoDePata: number;
+  /** Alto del filo del frente — el tope de la carrocería y el arranque del
+   *  vidrio. */
+  filo: number;
+  /** Alto de la bóveda, del filo para arriba. */
+  altoDeVidrio: number;
+  /** Cuánto se tumba la bóveda hacia atrás. */
+  vuelo: number;
+  /** Z de la cara del frente. */
+  zFrente: number;
+  /** Z donde la bóveda toca el mueble de servicio de atrás. */
+  zRemate: number;
+  /** Fondo del mueble de servicio cerrado, detrás de la bóveda. */
+  fondoDeServicio: number;
+  /** Dónde apoyan las patas, a lo ancho. */
+  xDePatas: number[];
+  /** Dónde van los montantes negros del vidrio, a lo ancho. */
+  xDeMontantes: number[];
+}
+
+function entre(v: number, min: number, max: number): number {
+  return Math.min(Math.max(v, min), Math.max(min, max));
+}
+
+export function cotasDeMostrador(w: number, d: number, h: number): CotasDeMostrador {
+  const altoDePata = entre(h * MOSTRADOR.fraccionDePata, 0.12, h * 0.34);
+  const filo = entre(h * MOSTRADOR.fraccionHastaElFilo, altoDePata + 0.16, h * 0.72);
+  const vuelo = entre(d * MOSTRADOR.fraccionDeVuelo, 0.18, d - 0.08);
+  const zFrente = -d / 2;
+
+  const margen = MOSTRADOR.pata.abajo * 1.3;
+  const util = Math.max(0, w - margen * 2);
+  const cuantas = Math.max(2, Math.round(util / MOSTRADOR.pata.paso) + 1);
+  const xDePatas = Array.from({ length: cuantas }, (_, i) =>
+    cuantas === 1 ? 0 : -util / 2 + (util * i) / (cuantas - 1),
+  );
+
+  // Los montantes van en las JUNTAS entre paños, más los dos de las puntas:
+  // un vidrio sin canto oscuro se ve como una calcomanía pegada al aire.
+  const panos = Math.max(1, Math.round(w / MOSTRADOR.panoDeVidrio));
+  const xDeMontantes = Array.from({ length: panos + 1 }, (_, i) =>
+    -w / 2 + (w * i) / panos,
+  );
+
+  return {
+    altoDePata,
+    filo,
+    altoDeVidrio: Math.max(0.16, h - filo),
+    vuelo,
+    zFrente,
+    zRemate: zFrente + vuelo,
+    fondoDeServicio: Math.max(0.06, d - vuelo),
+    xDePatas,
+    xDeMontantes,
+  };
+}

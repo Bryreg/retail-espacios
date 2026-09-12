@@ -528,7 +528,11 @@ export function geometriaDeEmpaque(
 export function geometriaVidrioCurvo(
   ancho: number, alto: number, vuelo: number, espesor = 0.006,
 ): THREE.BufferGeometry {
-  const firma = `vidriocurvo:${ancho.toFixed(4)}:${alto.toFixed(4)}:${vuelo.toFixed(4)}`;
+  // El espesor va en la firma: los montantes negros del vidrio son ESTE mismo
+  // arco, angosto y grueso. Sin el espesor en la clave, el primero que se
+  // dibuja se queda con la ranura del caché y el otro sale con su espesor.
+  const firma =
+    `vidriocurvo:${ancho.toFixed(4)}:${alto.toFixed(4)}:${vuelo.toFixed(4)}:${espesor.toFixed(4)}`;
 
   return cacheada(firma, () => {
     const PASOS = 12;
@@ -556,6 +560,40 @@ export function geometriaVidrioCurvo(
 
     const g = new THREE.ExtrudeGeometry(s, { depth: ancho, bevelEnabled: false });
     g.translate(0, 0, -ancho / 2);
+    g.rotateY(-Math.PI / 2);
+    g.computeVertexNormals();
+    return g;
+  });
+}
+
+/**
+ * La TAPA de vidrio que cierra el extremo de la bóveda de un mostrador.
+ *
+ * Con la bóveda sola el mueble queda abierto de costado: se ve el hueco frío
+ * por dentro desde la punta, y el vidrio se lee como dos costillas negras
+ * paradas en el aire. Lo que cierra el extremo es un paño plano recortado con
+ * la misma curva del arco — el mismo perfil, pero relleno en vez de hueco.
+ */
+export function geometriaTapaDeVidrio(
+  alto: number, vuelo: number, espesor = 0.006,
+): THREE.BufferGeometry {
+  const firma = `tapavidrio:${alto.toFixed(4)}:${vuelo.toFixed(4)}:${espesor.toFixed(4)}`;
+
+  return cacheada(firma, () => {
+    const PASOS = 12;
+    const s = new THREE.Shape();
+    s.moveTo(0, 0);
+    for (let i = 1; i <= PASOS; i++) {
+      const a = (i / PASOS) * (Math.PI / 2);
+      s.lineTo(-vuelo * Math.cos(a) + vuelo, alto * Math.sin(a));
+    }
+    // La esquina de atrás y abajo: el rincón que queda entre el arco, la
+    // cubeta y el mueble de servicio.
+    s.lineTo(vuelo, 0);
+    s.closePath();
+
+    const g = new THREE.ExtrudeGeometry(s, { depth: espesor, bevelEnabled: false });
+    g.translate(0, 0, -espesor / 2);
     g.rotateY(-Math.PI / 2);
     g.computeVertexNormals();
     return g;
