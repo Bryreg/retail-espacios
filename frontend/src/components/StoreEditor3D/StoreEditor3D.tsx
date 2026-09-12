@@ -17,6 +17,8 @@ import { ProductoEnPunta } from "./muebles/ProductoEnPunta";
 import { NeveraReal } from "./muebles/NeveraReal";
 import { ProductoAGranel } from "./muebles/ProductoAGranel";
 import { BateaReal, bocaDeBatea } from "./muebles/BateaReal";
+import { ProductoEnRepisas } from "./muebles/ProductoEnRepisas";
+import { colorDeRubro } from "./muebles/producto";
 import { olvidarGeometrias } from "./muebles/perfiles";
 import {
   COPETE, ESPESOR_ESPINA, NEVERA, PANEL_FONDO, PARANTE, ZONA_DE_SLOTS,
@@ -780,7 +782,7 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
 // que al colocarlo junto a la Punta forme una unidad coherente.
 // Dimensiones: w=0.30 (ancho panel), d=0.40 (= profundidad Punta → encaja ras)
 
-function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
+function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;rubro?:string }) {
   const op      = ghost ? 0.42 : 1;
   // Board layout mirrored by getPanelShelfSpan("robatope") — keep in sync.
   const capH    = 0.055;                 // thin dark cap at top (no promotional topper)
@@ -853,13 +855,24 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:n
         <boxGeometry args={[w * 0.70, 0.040, 0.010]} />
         <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
       </mesh>
+      <ProductoEnRepisas
+        alturas={Array.from(
+          { length: nShelves },
+          (_, i) => 0.12 + (i + 1) * (bodyH - 0.16) / (nShelves + 1) + 0.011,
+        )}
+        techo={bodyH}
+        ancho={w - 0.055} fondo={d - 0.01}
+        montaje={(d - 0.01) / 2} hacia={-1}
+        rubro={rubro} ghost={ghost}
+      />
+
     </group>
   );
 }
 
 // ─── Mesh: Ristra ─────────────────────────────────────────────────────────────
 
-function RistraMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
+function RistraMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;rubro?:string }) {
   const op     = ghost ? 0.42 : 1;
   // Una ristra es una TIRA: unidades colgadas una debajo de otra. Sin producto
   // era un riel con ganchos vacíos, que no se parece a nada.
@@ -908,6 +921,19 @@ function RistraMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:num
               <boxGeometry args={[0.018, 0.018, 0.008]} />
               <meshLambertMaterial color={statusColor} transparent opacity={0.80 * op} />
             </mesh>
+            {/* El sobre colgado del gancho.
+                Una ristra es una TIRA: lo que se vende son unidades colgando
+                una debajo de otra, no bandejas. Con los ganchos pelados el
+                mueble no se parece a nada — ni a una ristra ni a un estante. */}
+            {!ghost && rubro && (
+              <mesh position={[0, -sp * 0.42, -d * 0.50 - 0.012]} castShadow>
+                <boxGeometry args={[w * 0.52, sp * 0.72, 0.022]} />
+                <meshStandardMaterial
+                  color={colorDeRubro(rubro)} metalness={0} roughness={0.7}
+                  transparent opacity={op}
+                />
+              </mesh>
+            )}
           </group>
         );
       })}
@@ -917,7 +943,7 @@ function RistraMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:num
 
 // ─── Mesh: Cross ──────────────────────────────────────────────────────────────
 
-function CrossMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
+function CrossMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;rubro?:string }) {
   const op      = ghost ? 0.42 : 1;
   // Era casi negro y se leía como un librero, no como un exhibidor. Un metal
   // claro con estantes blancos es lo que se ve en una punta de pasillo, y
@@ -985,6 +1011,22 @@ function CrossMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:numb
               <boxGeometry args={[w * 0.60, 0.024, 0.009]} />
               <meshLambertMaterial color={statusColor} transparent opacity={0.70 * op} />
             </mesh>
+            {/* El producto del contrato, DENTRO del grupo de la repisa: es el
+                que lleva la inclinación. Colgado afuera queda a la altura del
+                eje y la repisa se le va varios centímetros por delante.
+
+                La repisa de más arriba va sin producto: es la tapa del
+                exhibidor, no un anaquel, y lo que se pare encima sobresale por
+                arriba del mueble. */}
+            {i < nLevels - 1 && (
+            <ProductoEnRepisas
+              alturas={[0.013]}
+              techo={(h - 0.12) / Math.max(nLevels - 1, 1)}
+              ancho={w - 0.068} fondo={d - 0.04}
+              montaje={(d - 0.04) / 2} hacia={-1}
+              rubro={rubro} ghost={ghost}
+            />
+            )}
           </group>
         );
       })}
@@ -997,6 +1039,7 @@ function CrossMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:numb
             transparent={ghost} opacity={op} />
         </mesh>
       ))}
+
     </group>
   );
 }
@@ -1280,7 +1323,7 @@ function IslaMesh({ w, d, h, ghost, facePaint, id, rubro }: { w:number;d:number;
 // Narrow central spine + cantilevered shelves (wider than spine) + mushroom topper.
 // Inspired by Nestlé Fitness / brand impulse floor display style.
 
-function ImpulsadorMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
+function ImpulsadorMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;rubro?:string }) {
   const op      = ghost ? 0.42 : 1;
   const WHITE   = "#f0f0ef";
   const LIGHT   = "#e2e8f0";
@@ -1370,6 +1413,14 @@ function ImpulsadorMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d
         <boxGeometry args={[w * 0.70, 0.022, 0.007]} />
         <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
       </mesh>
+      <ProductoEnRepisas
+        alturas={Array.from({ length: nShelves }, (_, si) => baseH + si * shelfGap + 0.009)}
+        techo={baseH + bodyH}
+        ancho={w} fondo={d}
+        montaje={d / 2} hacia={-1}
+        rubro={rubro} ghost={ghost}
+      />
+
     </group>
   );
 }
@@ -2039,13 +2090,13 @@ export function FixtureMesh({ fixture, ghost, facePaint, selectedSlotId, hovered
         onSlotHover={onSlotHover}
       />
     );
-    case "robatope":      return <RobatopeMesh      {...base} facePaint={facePaint} />;
-    case "ristra":        return <RistraMesh         {...base} facePaint={facePaint} />;
-    case "cross":         return <CrossMesh          {...base} facePaint={facePaint} />;
+    case "robatope":      return <RobatopeMesh      {...base} facePaint={facePaint} rubro={fixture.brandCategory} />;
+    case "ristra":        return <RistraMesh         {...base} facePaint={facePaint} rubro={fixture.brandCategory} />;
+    case "cross":         return <CrossMesh          {...base} facePaint={facePaint} rubro={fixture.brandCategory} />;
     case "metro":         return <MetroMesh          {...base} />;
     case "mueble":        return <MuebleMesh         {...base} facePaint={facePaint} />;
     case "isla":          return <IslaMesh           {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
-    case "impulsador":    return <ImpulsadorMesh     {...base} facePaint={facePaint} />;
+    case "impulsador":    return <ImpulsadorMesh     {...base} facePaint={facePaint} rubro={fixture.brandCategory} />;
     case "batea":         return <BateaMesh          {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "isla_fria":        return <IslaFriaMesh         {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "nevera_carnes":    return <NeveraCarnesMesh     {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;

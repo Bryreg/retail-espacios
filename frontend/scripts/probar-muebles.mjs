@@ -742,4 +742,70 @@ prueba("el casco del canasto respeta las cotas del plano", () => {
   );
 });
 
+// ── Los exhibidores que se venden enteros ───────────────────────────────────
+
+const repisas = leer(join(muebles, "ProductoEnRepisas.tsx"));
+const repisasCodigo = sinComentarios(repisas);
+const enMuebleCod2 = sinComentarios(leer(join(muebles, "ProductoEnMueble.tsx")));
+
+prueba("un mueble contratado entero se llena entero", () => {
+  // La góndola se vende por espacios y el hueco vacío ES el dato. Un
+  // exhibidor de cruz o un impulsador se contratan completos: la marca compra
+  // el mueble, no un estante, así que un mueble contratado y dibujado vacío no
+  // informa nada.
+  assert.match(enMuebleCod2, /vendidoEntero/, "se perdió el modo de mueble entero");
+  assert.match(
+    enMuebleCod2, /if \(!vendidoEntero && \(apoyo </,
+    "la franja de slots vuelve a recortar las repisas de un mueble sin slots",
+  );
+});
+
+prueba("sin contrato, el exhibidor se ve vacío", () => {
+  // Que es la verdad: lo contrario pintaría ocupado lo que está libre.
+  assert.match(repisasCodigo, /if \(!rubro \|\| filas\.rows === 0\) return null/,
+    "un mueble libre se dibujaría lleno");
+});
+
+prueba("el producto de las repisas NO recalcula nada", () => {
+  // Si esta traducción se volviera un cálculo, ya serían dos formas distintas
+  // de acomodar producto en el sistema.
+  assert.match(repisasCodigo, /<ProductoEnMueble/, "el producto de repisas se fue por su lado");
+  assert.ok(!/acomodar\(|empaqueQueEntra\(/.test(repisasCodigo),
+    "`ProductoEnRepisas` volvió a calcular los frentes por su cuenta");
+});
+
+prueba("los exhibidores reciben el rubro del contrato", () => {
+  for (const comp of ["CrossMesh", "ImpulsadorMesh", "RobatopeMesh", "RistraMesh"]) {
+    assert.match(
+      editorCodigo, new RegExp("<" + comp + "[^/]*rubro=\\{fixture\\.brandCategory\\}"),
+      `\`${comp}\` no recibe el rubro: su producto saldría siempre del mismo color`,
+    );
+  }
+});
+
+prueba("el producto va DENTRO del grupo de la repisa que se inclina", () => {
+  // Colgado afuera queda a la altura del eje y la repisa se le va varios
+  // centímetros por delante.
+  const cruz = cuerpoDe("function CrossMesh(", "function VitrinaMesh(") ||
+               cuerpoDe("function CrossMesh(", "function MuebleMesh(");
+  assert.match(cruz, /rotation=\{\[-0\.09, 0, 0\]\}[\s\S]*<ProductoEnRepisas/,
+    "el producto del exhibidor de cruz salió del grupo inclinado");
+  assert.match(cruz, /\{i < nLevels - 1 && \(/,
+    "la repisa de más arriba es la tapa: lo que se pare encima sobresale del mueble");
+});
+
+prueba("un mueble entero se llena también en profundidad", () => {
+  // Con dos filas, un exhibidor de 80 cm de fondo muestra siete centímetros de
+  // producto y setenta de estante vacío.
+  assert.match(enMuebleCod2, /PROFUNDIDAD_DE_MUEBLE_ENTERO/, "el mueble entero volvió a llenarse como una góndola");
+});
+
+prueba("la ristra cuelga producto de sus ganchos", () => {
+  // Una ristra es una TIRA: unidades colgando una debajo de otra. Con los
+  // ganchos pelados no se parece ni a una ristra ni a un estante.
+  const ristra = cuerpoDe("function RistraMesh(", "function CheckoutMesh(");
+  assert.match(ristra, /!ghost && rubro &&/, "la ristra dejó de colgar producto");
+  assert.match(ristra, /colorDeRubro\(rubro\)/, "el sobre colgado no toma el color del rubro");
+});
+
 console.log(`\n${hechas} pruebas del mobiliario 3D`);

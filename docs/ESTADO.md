@@ -3472,13 +3472,45 @@ eso un mueble alto salía con un zócalo de 28 cm.
 góndola —donde el hueco vacío ES el dato— la nevera se vende entera, no por pedazos, así
 que mostrarla llena no esconde ninguna disponibilidad; mostrarla vacía sí miente.
 
+### El defecto que compartía medio catálogo: estaban VACÍOS
+
+El cajón de frutas tenía sus listones, la isla su guarda de acrílico, el mostrador su
+vidrio curvo — y los tres se leían como maquetas. Un mostrador de carnes sin carne es un
+mueble; con carne es una carnicería.
+
+Hay dos maneras de llenar, y la diferencia no es de dibujo sino de negocio:
+
+| | qué se vende | qué se dibuja |
+|---|---|---|
+| `ProductoEnMueble` | la góndola y la punta, **por espacios internos** | sólo los slots vendidos; el hueco vacío ES el dato |
+| `ProductoEnRepisas` | el resto, **el mueble entero** | todas las repisas, con el rubro del contrato |
+| `ProductoAGranel` | lo volcado: batea, cajón, isla, mostrador | montón desparejo, sembrado con el id del mueble |
+
+Y **lo volcado está acostado.** Nadie tira cajas a un canasto y quedan paradas: con el
+envase de pie, una capa de 19 cm llena el cajón entero y desde arriba se ve una tapa lisa.
+Además, lo que se vende suelto no viene en envase — «Frutas» no casaba con ningún rubro y
+caía en la caja por defecto, así que el cajón salía lleno de cajas de galletas.
+
+El desorden del volcado sale de un generador **sembrado con el id del mueble**, no de
+`Math.random`: al azar, la fruta se reacomoda sola cada vez que se mueve la cámara, el
+plano titila entero y nadie puede señalar nada.
+
+### `/taller` dibuja cualquier mueble del catálogo
+
+`FixtureMesh` y `FIXTURE_DEFS` se exportan sólo para eso. Sin ello, mirarle la forma a un
+mueble obliga a colocarlo en una sede y pelear con la cámara del editor — y la mitad de
+los defectos de forma sólo se ven poniendo el ojo a la altura del producto. El taller
+también toma un **rubro**, porque lo que se dibuja adentro depende del contrato.
+
 ### Lo que falta
 
-- **Falta la mayoría del catálogo.** Hechos: góndola (doble y mural), punta y nevera de
-  refrescos. La vitrina (`mueble`) ya estaba razonablemente armada —marco, puertas de
-  vidrio, manijas— y se dejó. Siguen con geometría de cajas: robatope, exhibidor cruz,
-  exhibidor de piso, impulsador, ristra, batea, isla de piso, isla fría, nevera de carnes,
-  stand de frutas, checkout y servicio al cliente.
+- **Reconstruidos de cero**: góndola (doble y mural), punta, nevera de refrescos y batea.
+- **Ya estaban bien y se dejaron**: vitrina, checkout, servicio al cliente, isla fría,
+  stand de frutas, nevera de carnes, exhibidor de piso — tenían forma correcta y lo que
+  les faltaba era producto, que ahora tienen.
+- **Sólo se les agregó producto**: exhibidor cruz, impulsador, robatope, ristra. Su
+  estructura sigue siendo de cajas, aunque razonable para muebles de ese tamaño.
+- **Sin tocar**: columna y zona libre, que son infraestructura y no se alquilan.
 - **Las cotas del proveedor real del cliente**, que reemplazan las de `medidas.ts`.
 - El producto no distingue forma: una botella se dibuja como caja. `Empaque.forma` ya
   lleva el dato («caja», «botella», «lata», «bolsa») y nadie lo usa todavía.

@@ -79,6 +79,16 @@ export interface ProductoEnMuebleProps {
   /** Alto de la franja donde viven los slots. */
   franja: number;
   slots?: SlotDeProducto[];
+  /**
+   * El mueble se vende ENTERO y no por espacios internos.
+   *
+   * Es el caso de casi todo el catálogo fuera de la góndola y la punta: un
+   * exhibidor de cartón, un impulsador o un robatope se contratan completos —
+   * la marca compra el mueble, no un estante—. Entonces no hay slots que
+   * consultar, y el hueco vacío no dice nada sobre disponibilidad: lo dice el
+   * estado del mueble. Se llenan todas las repisas con el rubro del contrato.
+   */
+  vendidoEntero?: { rubro?: string };
   ghost?: boolean;
 }
 
@@ -94,6 +104,10 @@ const VENDIDO = new Set(["occupied", "reserved"]);
  *  deja el entrepaño con aire raro, y la tercera ya no se ve desde ningún
  *  lado y sólo cuesta instancias. */
 const PROFUNDIDAD_VISIBLE = 2;
+/** Y cuántas en un mueble que se contrata completo. Más, porque es chico y se
+ *  mira desde todos lados: lo que en una góndola queda tapado por su propio
+ *  frente, acá se ve. */
+const PROFUNDIDAD_DE_MUEBLE_ENTERO = 5;
 
 interface Pieza {
   clave: string;
@@ -103,15 +117,22 @@ interface Pieza {
 }
 
 export const ProductoEnMueble = memo(function ProductoEnMueble({
-  anchoTotal, filas, vanos, caras, franja, slots, ghost = false,
+  anchoTotal, filas, vanos, caras, franja, slots, vendidoEntero, ghost = false,
 }: ProductoEnMuebleProps) {
   const piezas = useMemo<Pieza[]>(() => {
-    if (!slots || slots.length === 0 || ghost || filas.rows <= 0) return [];
+    // Un mueble que se vende entero es un solo espacio que toma todo el
+    // frente. Se arma acá y no en cada mueble para que el camino del producto
+    // siga siendo uno: lo que cambia es de dónde sale el contrato, no cómo se
+    // acomoda el producto encima.
+    const espacios: SlotDeProducto[] = vendidoEntero
+      ? [{ id: "todo", x: 0, w: 1, y: 0, h: 1, status: "occupied", brandCategory: vendidoEntero.rubro }]
+      : (slots ?? []);
+    if (espacios.length === 0 || ghost || filas.rows <= 0) return [];
 
     const porClave = new Map<string, Pieza>();
     const m = new THREE.Matrix4();
 
-    for (const slot of slots) {
+    for (const slot of espacios) {
       if (!VENDIDO.has(slot.status)) continue;
 
       const color = colorDeRubro(slot.brandCategory);
@@ -125,8 +146,10 @@ export const ProductoEnMueble = memo(function ProductoEnMueble({
       for (let i = 0; i < filas.rows; i++) {
         const apoyo = filas.alturas[i];
         // El entrepaño tiene que caer DENTRO del slot para que su producto
-        // sea de este contrato y no del de al lado.
-        if (apoyo < yBajo - 0.001 || apoyo > yAlto + 0.001) continue;
+        // sea de este contrato y no del de al lado. En un mueble que se vende
+        // entero no hay «el de al lado»: todas las repisas son del mismo
+        // contrato, así que la franja no las recorta.
+        if (!vendidoEntero && (apoyo < yBajo - 0.001 || apoyo > yAlto + 0.001)) continue;
 
         const libre = filas.alturas[i + 1] - apoyo;
         const fondoEntrepano = filas.fondos[i];
@@ -149,7 +172,13 @@ export const ProductoEnMueble = memo(function ProductoEnMueble({
           // Centrado en el tramo, que es como se repone: el hueco sobrante se
           // reparte a los costados y no queda todo de un lado.
           const desdeX = (vx0 + vx1) / 2 - acomodo.ocupado / 2 + e.ancho / 2;
-          const fondos = Math.min(acomodo.filas, PROFUNDIDAD_VISIBLE);
+          // Un mueble que se vende entero se llena en profundidad: es chico,
+          // se mira desde todos lados y está contratado completo. Con dos
+          // filas, un exhibidor de 80 cm de fondo muestra siete centímetros de
+          // producto y setenta de estante vacío.
+          const fondos = Math.min(
+            acomodo.filas, vendidoEntero ? PROFUNDIDAD_DE_MUEBLE_ENTERO : PROFUNDIDAD_VISIBLE,
+          );
 
           const pieza = porClave.get(clave) ?? {
             clave, color, ancho: e.ancho, alto: e.alto, fondo: e.fondo, matrices: [],
@@ -179,7 +208,7 @@ export const ProductoEnMueble = memo(function ProductoEnMueble({
     }
 
     return [...porClave.values()].filter((p) => p.matrices.length > 0);
-  }, [anchoTotal, filas, vanos, caras, franja, slots, ghost]);
+  }, [anchoTotal, filas, vanos, caras, franja, slots, vendidoEntero, ghost]);
 
   if (piezas.length === 0) return null;
 
