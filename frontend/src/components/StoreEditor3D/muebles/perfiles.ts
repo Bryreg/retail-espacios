@@ -285,6 +285,59 @@ export function geometriaMarcoDeCopete(
   });
 }
 
+/**
+ * El marco de una puerta de nevera: un anillo rectangular extruido.
+ *
+ * Una nevera de refrescos SIN puerta no se lee como nevera: se lee como una
+ * estantería pintada de oscuro. Y una puerta modelada como una placa de vidrio
+ * suelta tampoco, porque lo que el ojo reconoce es el MARCO — el perfil de
+ * aluminio ancho que rodea el vidrio, con su propia sombra contra el cuerpo.
+ * El vidrio, en cambio, casi no se ve.
+ *
+ * Se dibuja como un rectángulo con un agujero rectangular adentro, así que
+ * sale en una sola malla en vez de cuatro barras a las que hay que cuidarles
+ * las esquinas.
+ */
+export function geometriaMarcoDePuerta(
+  ancho: number, alto: number, marco: number, fondo: number,
+): THREE.BufferGeometry {
+  const firma = `puerta:${ancho.toFixed(4)}:${alto.toFixed(4)}:${marco.toFixed(4)}:${fondo.toFixed(4)}`;
+
+  return cacheada(firma, () => {
+    const s = new THREE.Shape();
+    s.moveTo(-ancho / 2, -alto / 2);
+    s.lineTo(ancho / 2, -alto / 2);
+    s.lineTo(ancho / 2, alto / 2);
+    s.lineTo(-ancho / 2, alto / 2);
+    s.closePath();
+
+    const hueco = new THREE.Path();
+    const hx = Math.max(0.01, ancho / 2 - marco);
+    const hy = Math.max(0.01, alto / 2 - marco);
+    hueco.moveTo(-hx, -hy);
+    hueco.lineTo(-hx, hy);
+    hueco.lineTo(hx, hy);
+    hueco.lineTo(hx, -hy);
+    hueco.closePath();
+    s.holes.push(hueco);
+
+    const g = new THREE.ExtrudeGeometry(s, {
+      depth: fondo,
+      bevelEnabled: true,
+      // Un bisel chico en el canto del aluminio: es donde se engancha el
+      // brillo que hace que el marco se separe del vidrio.
+      bevelThickness: 0.0012,
+      bevelSize: 0.0012,
+      bevelSegments: 1,
+    });
+    // Nace extruido en +Z; se corre para que ocupe z ∈ [-fondo, 0], igual que
+    // el resto de las piezas: apoyado en su plano y creciendo hacia el pasillo.
+    g.translate(0, 0, -fondo);
+    g.computeVertexNormals();
+    return g;
+  });
+}
+
 /** La geometría de UNA ranura del parante. Se dibuja con `InstancedMesh`, así
  *  que un parante de 2 m con ranuras cada 25 mm son ~80 calados en una sola
  *  llamada de dibujo. */

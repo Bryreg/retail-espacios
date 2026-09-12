@@ -593,4 +593,65 @@ prueba("el copete no se tiñe con el estado comercial", () => {
   assert.ok(!/statusColor/.test(tramo), "el copete quedó teñido con el estado del mueble");
 });
 
+// ── Los muebles de frío ─────────────────────────────────────────────────────
+
+const nevera = leer(join(muebles, "NeveraReal.tsx"));
+const neveraCodigo = sinComentarios(nevera);
+const cuerpoNeveraMesh = cuerpoDe("function NeveraRefrescosMesh(", "function StandFrutasMesh(");
+
+prueba("el multideck tiene su cortina de aire", () => {
+  // Es lo que hace que el ojo lo lea como mueble de frío abierto: la boca de
+  // impulsión bajo el copete y la reja de retorno abajo. Cumplen el mismo
+  // papel que la puerta en una nevera cerrada — sin ellas es una estantería
+  // pintada de oscuro, que es como se veía.
+  assert.match(neveraCodigo, /!conPuertas && \(/, "se perdió la variante de frente abierto");
+  assert.match(neveraCodigo, /variante === "puertas"/, "se perdieron las dos variantes de mueble frío");
+});
+
+prueba("la nevera de refrescos es de frente ABIERTO", () => {
+  // Su ficha del catálogo dice «vitrina multideck abierta para bebidas».
+  assert.match(cuerpoNeveraMesh, /variante="multideck"/, "la nevera de refrescos se cerró con puertas");
+});
+
+prueba("el relleno mudo se apaga cuando entra el arte del proveedor", () => {
+  // Lo que se ve en el mueble tiene que ser SU producto, no uno inventado.
+  assert.match(cuerpoNeveraMesh, /conRelleno=\{!pinta\}/, "el relleno taparía el arte del proveedor");
+});
+
+prueba("el pintado de la nevera NO repite la cuenta de entrepaños", () => {
+  const span = editorCodigo.slice(editorCodigo.indexOf("function getPanelShelfSpan"));
+  const tramo = span.slice(span.indexOf('case "nevera_refrescos"'), span.indexOf('case "isla_fria"') + 1 || undefined).slice(0, 900);
+  assert.match(tramo, /filasDeNevera\(/, "volvió a calcular las filas por su cuenta");
+  assert.ok(!/h \* 0\.14/.test(tramo), "reapareció la cota derivada del alto del mueble");
+});
+
+prueba("las cotas del frío son de fabricación, no fracciones del alto", () => {
+  // El compresor mide lo que mide: una nevera de 2 m no lo tiene más alto que
+  // una de 1,8. Era `h * 0.14`.
+  const tabla = medidasCodigo.slice(
+    medidasCodigo.indexOf("export const NEVERA"),
+    medidasCodigo.indexOf("export function altoUtilDeNevera"),
+  );
+  assert.ok(!/[whd]\s*[*/]|alto\s*\*/.test(tabla), "alguna cota del frío se derivó del tamaño del mueble");
+  assert.match(medidasCodigo, /zocalo: 0\.17/, "cambió el alto del compresor");
+});
+
+prueba("un frente ancho se parte en varias puertas", () => {
+  // Una hoja de más de 75 cm no la fabrica nadie: no la aguanta la bisagra.
+  assert.equal(M.puertasDeNevera(0.6), 1);
+  assert.equal(M.puertasDeNevera(1.2), 2);
+  assert.equal(M.puertasDeNevera(2.4), 4);
+  assert.ok(M.puertasDeNevera(1.2) >= 1 && M.puertasDeNevera(0.01) >= 1, "una puerta como mínimo");
+});
+
+prueba("la nevera no pierde entrepaños por redondeo", () => {
+  for (let h = 1.2; h <= 2.2001; h += 0.05) {
+    const f = M.filasDeNevera(h, 0.5);
+    assert.ok(f.rows >= 1, `con alto ${h.toFixed(2)} la nevera quedó sin filas`);
+    assert.equal(f.alturas.length, f.rows + 1, "no cierra la última fila");
+    const aire = (M.NEVERA.zocalo + M.altoUtilDeNevera(h)) - f.alturas[f.rows - 1];
+    assert.ok(aire > 0.05 && aire < 0.45, `con alto ${h.toFixed(2)} la fila de arriba mide ${aire.toFixed(3)} m`);
+  }
+});
+
 console.log(`\n${hechas} pruebas del mobiliario 3D`);

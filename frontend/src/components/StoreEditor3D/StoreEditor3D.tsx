@@ -14,11 +14,12 @@ import { GondolaReal } from "./muebles/GondolaReal";
 import { ProductoEnGondola } from "./muebles/ProductoEnGondola";
 import { PuntaReal } from "./muebles/PuntaReal";
 import { ProductoEnPunta } from "./muebles/ProductoEnPunta";
+import { NeveraReal } from "./muebles/NeveraReal";
 import { olvidarGeometrias } from "./muebles/perfiles";
 import {
-  COPETE, ESPESOR_ESPINA, PANEL_FONDO, PARANTE, ZONA_DE_SLOTS,
-  altoDeZonaDeSlots, altoDeZonaDeSlotsDePunta,
-  filasDeProducto, filasDePunta, fondoPorCara,
+  COPETE, ESPESOR_ESPINA, NEVERA, PANEL_FONDO, PARANTE, ZONA_DE_SLOTS,
+  altoDeZonaDeSlots, altoDeZonaDeSlotsDePunta, altoUtilDeNevera,
+  filasDeNevera, filasDeProducto, filasDePunta, fondoPorCara,
 } from "./muebles/medidas";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { useModalAbierto } from "../../tema";
@@ -1672,113 +1673,46 @@ function NeveraCarnesMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number
 // estantes iluminados con tiras LED, productos visibles desde el pasillo.
 
 function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
-  const op      = ghost ? 0.42 : 1;
-  const BODY    = "#1e293b";
-  const SHELF_C = "#334155";
-  const LED_C   = "#e0f2fe";
-  // Board layout mirrored by getPanelShelfSpan("nevera_refrescos") — keep in sync.
-  const compH   = h * 0.14;
-  const topH    = h * 0.05;
-  const dispH   = h - compH - topH;
-  const nShelves = Math.max(3, Math.floor(dispH / 0.35));
-  /** Relleno genérico. Una nevera vacía no se lee como nevera, así que cuando
-   *  el espacio todavía no tiene producto cargado se muestran botellas mudas
-   *  —un solo tono frío, sin marca—. En cuanto entra el arte del proveedor
-   *  desaparecen: lo que se ve por los huecos entre facings tiene que ser el
-   *  fondo iluminado de la nevera, no un producto que nadie compró. */
-  const RELLENO = "#94a3b8";
-  const pinta   = !ghost && !!facePaint?.front;
+  // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
+  // Era una caja oscura con estantes y tiras de luz. Le faltaba lo que hace
+  // que el ojo lea «mueble de frío»: en un multideck, la CORTINA DE AIRE —la
+  // boca de impulsión bajo el copete y la reja de retorno al ras de la
+  // bandeja de abajo—. Ese par de bocas cumple el mismo papel que la puerta
+  // en una nevera cerrada: sin ellas, el mueble se lee como una estantería
+  // pintada de oscuro.
+  //
+  // `nevera_refrescos` es de frente ABIERTO, como dice su ficha del catálogo
+  // («vitrina multideck abierta para bebidas»). La variante con puertas de
+  // vidrio existe en `NeveraReal` y la usa la vitrina.
+
+  const util = altoUtilDeNevera(h);
+  const fondoInterior = Math.max(0.1, d - NEVERA.chapa - NEVERA.fondoPuerta);
+  const filas = useMemo(() => filasDeNevera(h, fondoInterior), [h, fondoInterior]);
+
+  const pinta = !ghost && !!facePaint?.front;
 
   return (
     <group>
-      {/* Paneles laterales */}
-      {([-1, 1] as const).map(sx => (
-        <mesh key={sx} position={[sx * (w / 2 - 0.017), h / 2, 0]} castShadow>
-          <boxGeometry args={[0.032, h, d]} />
-          <meshStandardMaterial color={BODY} roughness={0.55} transparent opacity={op} />
-        </mesh>
-      ))}
-      {/* Panel trasero */}
-      <mesh position={[0, h / 2, d / 2 - 0.017]} castShadow>
-        <boxGeometry args={[w, h, 0.032]} />
-        <meshStandardMaterial color={BODY} roughness={0.55} transparent opacity={op} />
-      </mesh>
-      {/* Panel superior */}
-      <mesh position={[0, h - topH / 2, 0]} castShadow>
-        <boxGeometry args={[w, topH, d]} />
-        <meshStandardMaterial color={BODY} roughness={0.55} transparent opacity={op} />
-      </mesh>
-      {/* Bloque compresor (parte inferior) */}
-      <mesh position={[0, compH / 2, 0]} castShadow>
-        <boxGeometry args={[w, compH, d]} />
-        <meshStandardMaterial color={BODY} roughness={0.65} transparent opacity={op} />
-      </mesh>
-      {/* Rejilla de ventilación del compresor */}
-      {Array.from({ length: 5 }, (_, i) => (
-        <mesh key={i} position={[0, compH * 0.22 + i * (compH * 0.16), -(d / 2 + 0.005)]}>
-          <boxGeometry args={[w * 0.68, 0.011, 0.009]} />
-          <meshStandardMaterial color="#475569" metalness={0.40} transparent opacity={op} />
-        </mesh>
-      ))}
+      <NeveraReal
+        w={w} d={d} h={h}
+        statusColor={statusColor}
+        ghost={ghost}
+        variante="multideck"
+        // El relleno mudo se apaga cuando el proveedor subió su arte: lo que
+        // se ve en el mueble tiene que ser SU producto, no uno inventado.
+        conRelleno={!pinta}
+      />
 
-      {/* Pared interior iluminada (back wall de la zona fría) — queda lisa: el
-          producto va adelante, contra el vidrio, no pegado al fondo. */}
-      {!ghost && facePaint?.front ? (
-        <>
-          <mesh position={[0, compH + dispH / 2, d / 2 - 0.055]}>
-            <boxGeometry args={[w - 0.040, dispH, 0.010]} />
-            <meshStandardMaterial color="#f0f9ff" emissive={LED_C} emissiveIntensity={0.30}
-              transparent opacity={0.85 * op} />
-          </mesh>
-          <LaminaDeProducto
-            ancho={w - 0.040} alto={dispH}
-            y={compH + dispH / 2} fondo={d} facePaint={facePaint}
-          />
-        </>
-      ) : (
-        <mesh position={[0, compH + dispH / 2, d / 2 - 0.055]}>
-          <boxGeometry args={[w - 0.040, dispH, 0.010]} />
-          <meshStandardMaterial color="#f0f9ff" emissive={LED_C} emissiveIntensity={0.30}
-            transparent opacity={0.85 * op} />
-        </mesh>
+      {pinta && (
+        <LaminaDeProductoPorFila
+          ancho={w - NEVERA.chapa * 2 - 0.02}
+          alto={util}
+          filas={{ ...filas, rowBottom: filas.rowBottom }}
+          fondos={filas.fondos}
+          montajeA={d / 2 - NEVERA.chapa} haciaA={-1}
+          facePaint={facePaint}
+        />
       )}
-
-      {/* Estantes + tira LED + productos */}
-      {Array.from({ length: nShelves }, (_, si) => {
-        const sy      = compH + 0.06 + (si + 1) * dispH / (nShelves + 1);
-        const nItems  = Math.max(2, Math.floor((w - 0.06) / 0.085));
-        return (
-          <group key={si}>
-            {/* Estante */}
-            <mesh position={[0, sy, 0]} castShadow>
-              <boxGeometry args={[w - 0.040, 0.010, d - 0.060]} />
-              <meshStandardMaterial color={SHELF_C} metalness={0.40} roughness={0.55} transparent opacity={op} />
-            </mesh>
-            {/* Tira LED bajo el estante */}
-            <mesh position={[0, sy - 0.009, -(d / 2 - 0.040)]}>
-              <boxGeometry args={[w - 0.060, 0.005, 0.008]} />
-              <meshStandardMaterial color={LED_C} emissive={LED_C} emissiveIntensity={0.70}
-                transparent opacity={0.75 * op} />
-            </mesh>
-            {/* Botellas mudas — sólo mientras el espacio esté sin vender */}
-            {!pinta && Array.from({ length: nItems }, (_, bi) => {
-              const bx = -w / 2 + 0.04 + bi * ((w - 0.05) / nItems) + (w - 0.05) / nItems / 2;
-              return (
-                <mesh key={bi} position={[bx, sy + 0.070, 0]}>
-                  <boxGeometry args={[0.068, 0.13, d * 0.65]} />
-                  <meshStandardMaterial color={RELLENO} roughness={0.40} transparent opacity={0.88 * op} />
-                </mesh>
-              );
-            })}
-          </group>
-        );
-      })}
-
-      {/* Indicador de estado — parte frontal inferior */}
-      <mesh position={[0, compH * 0.50, -(d / 2 + 0.008)]}>
-        <boxGeometry args={[w * 0.60, 0.028, 0.010]} />
-        <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
-      </mesh>
     </group>
   );
 }
@@ -3477,16 +3411,19 @@ function getPanelShelfSpan(type: string, w: number, h: number, d: number): Panel
       return { panelW: w - 0.036, panelH: doorH - 0.036, rowBottom: 0.10 - 0.018 + 0.007, rowPitch: pitch, rows: Math.max(1, n - 1) };
     }
     case "nevera_refrescos": {
-      // NeveraRefrescosMesh — painted panel: lit back wall [w-0.040, dispH]
-      // whose bottom sits at world compH; compH = 0.14h, topH = 0.05h,
-      // dispH = h - compH - topH. Shelves: n = max(3, floor(dispH/0.35)) at
-      // compH + 0.06 + (i+1)·dispH/(n+1), thickness 0.010. The 3D product
-      // boxes stand on every shelf → rows = n (top row shrinks to fit the
-      // panel top; see getPhotoFaceMaterial).
-      const dispH = h - h * 0.14 - h * 0.05;
-      const n     = Math.max(3, Math.floor(dispH / 0.35));
-      const pitch = dispH / (n + 1);
-      return { panelW: w - 0.040, panelH: dispH, rowBottom: 0.06 + pitch + 0.005, rowPitch: pitch, rows: n };
+      // Otra copia de la misma cuenta, como tenían la góndola y la punta.
+      // Ahora la pide. Las alturas de `filasDeNevera` son absolutas —desde el
+      // piso— y el panel pintado empieza arriba del zócalo, así que se
+      // restan: el pintado se mide contra SU panel, no contra el mueble.
+      const util = altoUtilDeNevera(h);
+      const filas = filasDeNevera(h, Math.max(0.1, d - NEVERA.chapa - NEVERA.fondoPuerta));
+      return {
+        panelW: w - NEVERA.chapa * 2 - 0.02,
+        panelH: util,
+        rowBottom: filas.rowBottom - NEVERA.zocalo,
+        rowPitch: filas.rowPitch,
+        rows: filas.rows,
+      };
     }
     case "ristra": {
       // RistraMesh — tira colgante: una columna de unidades, no filas.

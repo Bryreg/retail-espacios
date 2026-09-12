@@ -375,3 +375,97 @@ export function filasDePunta(altoDeCuerpo: number, fondoMaximo: number): FilasDe
 export function altoDeZonaDeSlotsDePunta(altoDeCuerpo: number): number {
   return altoDeCuerpo - ZONA_DE_SLOTS.remate;
 }
+
+/* ── Los muebles refrigerados ────────────────────────────────────────────────
+   La nevera de refrescos y la vitrina son el mismo mueble con otro alto: una
+   carrocería de chapa, un zócalo que esconde el compresor, un copete arriba
+   con la marca y la luz, y adelante una CORTINA DE AIRE —si es de frente
+   abierto— o PUERTAS DE VIDRIO —si es cerrado—.
+
+   Ese frente es lo que las define. Sin él el mueble se lee como una estantería
+   pintada de oscuro, que es exactamente como se veía. */
+
+export const NEVERA = {
+  /** Alto del zócalo, que es donde vive el compresor. Es una cota de
+   *  fabricación —el compresor mide lo que mide— y no una fracción del alto:
+   *  una nevera de 2 m no tiene un compresor más alto que una de 1,8. Era
+   *  `h * 0.14`, y con eso un mueble alto salía con un zócalo de 28 cm. */
+  zocalo: 0.17,
+  /** Alto del copete: la banda de arriba donde va la marca y la luminaria. */
+  copete: 0.14,
+  /** Espesor de la carrocería. Es panel aislado, no chapa sola: por eso son
+   *  35 mm y no los 2 mm de un entrepaño. */
+  chapa: 0.035,
+  /** Ancho del perfil de aluminio que rodea el vidrio. Es lo que el ojo
+   *  reconoce como puerta; el vidrio casi no se ve. */
+  marcoPuerta: 0.045,
+  /** Espesor del conjunto de la puerta. El vidrio es doble con cámara. */
+  fondoPuerta: 0.028,
+  /** A partir de qué ancho el frente se parte en dos puertas. Una hoja de más
+   *  de 75 cm no la fabrica nadie: no la aguanta la bisagra y no abre en un
+   *  pasillo. */
+  anchoMaximoDePuerta: 0.75,
+  /** Luz entre el vidrio y el producto. */
+  holguraDePuerta: 0.02,
+  /** Alto de la manija vertical. */
+  manija: 0.9,
+} as const;
+
+/** El alto libre del interior de un mueble refrigerado. */
+export function altoUtilDeNevera(alto: number): number {
+  return Math.max(0.2, alto - NEVERA.zocalo - NEVERA.copete);
+}
+
+/** Cuántas puertas lleva un frente. */
+export function puertasDeNevera(ancho: number): number {
+  return Math.max(1, Math.ceil(ancho / NEVERA.anchoMaximoDePuerta));
+}
+
+/** Los entrepaños de un mueble refrigerado.
+ *
+ *  Van más juntos que los de una góndola: lo que se guarda en frío es chico y
+ *  el metro cúbico refrigerado es caro, así que se aprovecha. */
+export function nivelesDeNevera(alto: number): number[] {
+  const util = altoUtilDeNevera(alto);
+  const desde = NEVERA.zocalo + 0.04;
+  const hasta = NEVERA.zocalo + util - 0.04;
+  if (hasta <= desde) return [];
+
+  const disponible = hasta - desde;
+  const cuantos = Math.max(1, Math.round(disponible / 0.3));
+  const paso = disponible / cuantos;
+  const niveles: number[] = [];
+  for (let i = 0; i <= cuantos; i++) {
+    const y = alRasDeRanura(desde + i * paso);
+    if (y <= hasta + 1e-6) niveles.push(y);
+  }
+  return niveles;
+}
+
+/** Las filas de producto de un mueble refrigerado. */
+export function filasDeNevera(alto: number, fondoMaximo: number): FilasDeProducto {
+  const niveles = nivelesDeNevera(alto);
+  const techo = NEVERA.zocalo + altoUtilDeNevera(alto);
+  if (niveles.length === 0) {
+    return {
+      rowBottom: NEVERA.zocalo,
+      alturas: [NEVERA.zocalo, techo],
+      rowPitch: Math.max(0.2, techo - NEVERA.zocalo),
+      rows: 1,
+      fondos: [Math.min(PROFUNDIDADES[0], fondoMaximo)],
+    };
+  }
+  // Igual que la punta: sobre el entrepaño de arriba también se vende, porque
+  // lo que lo techa es el copete y no otro entrepaño.
+  const alturas = [...niveles, techo];
+  const rows = niveles.length;
+  return {
+    rowBottom: niveles[0],
+    alturas,
+    rowPitch: (alturas[rows] - alturas[0]) / rows,
+    rows,
+    // El frío no escalona: la carrocería es una caja y todos los entrepaños
+    // tienen el mismo fondo.
+    fondos: Array.from({ length: rows }, () => fondoMaximo),
+  };
+}

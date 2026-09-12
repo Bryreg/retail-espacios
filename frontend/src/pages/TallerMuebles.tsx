@@ -7,6 +7,7 @@ import { GondolaReal } from "../components/StoreEditor3D/muebles/GondolaReal";
 import { ProductoEnGondola } from "../components/StoreEditor3D/muebles/ProductoEnGondola";
 import { PuntaReal } from "../components/StoreEditor3D/muebles/PuntaReal";
 import { ProductoEnPunta } from "../components/StoreEditor3D/muebles/ProductoEnPunta";
+import { NeveraReal } from "../components/StoreEditor3D/muebles/NeveraReal";
 import type { SlotDeProducto } from "../components/StoreEditor3D/muebles/ProductoEnGondola";
 
 /**
@@ -92,7 +93,7 @@ export default function TallerMuebles() {
   const [ancho, setAncho] = useState(2.5);
   const [fondo, setFondo] = useState(1.0);
   const [alto, setAlto] = useState(1.8);
-  const [tipo, setTipo] = useState<"double" | "wall" | "punta">("double");
+  const [tipo, setTipo] = useState<"double" | "wall" | "punta" | "nevera">("double");
   const [conProducto, setConProducto] = useState(true);
 
   const camara = useMemo(
@@ -128,10 +129,11 @@ export default function TallerMuebles() {
         <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
           tipo{" "}
           <select value={tipo} style={{ ...campo, width: 96 }}
-                  onChange={(e) => setTipo(e.target.value as "double" | "wall" | "punta")}>
+                  onChange={(e) => setTipo(e.target.value as "double" | "wall" | "punta" | "nevera")}>
             <option value="double">góndola doble</option>
             <option value="wall">góndola mural</option>
             <option value="punta">punta de góndola</option>
+            <option value="nevera">nevera de refrescos</option>
           </select>
         </label>
         <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
@@ -168,7 +170,9 @@ export default function TallerMuebles() {
             />
             <directionalLight position={[-4, 3, -3]} intensity={0.35} />
             <Piso />
-            {tipo === "punta" ? (
+            {tipo === "nevera" ? (
+              <NeveraReal w={ancho} d={fondo} h={alto} />
+            ) : tipo === "punta" ? (
               <>
                 <PuntaReal w={ancho} d={fondo} h={alto} />
                 {conProducto && (

@@ -3432,11 +3432,53 @@ que tenía que decir:
 - `THREE.Color` no entiende `hsl(190 40% 50%)` —la sintaxis CSS moderna— y no falla: se
   queda en blanco.
 
+### La punta de góndola
+
+Es **el espacio más caro de un supermercado**: se ve de frente desde todo el pasillo
+transversal y se negocia aparte del lineal. Lo que la distingue del corrido:
+
+- **El copete**, que es lo que el proveedor compra. Va centrado en el fondo y apoyado
+  sobre una tapa. Montado al filo de adelante se lee como un cartel suelto flotando por
+  delante del mueble — se probó y se ve exactamente así.
+- **Una sola cara vendible, y montada ATRÁS**: el cuerpo se cuelga contra el corrido y
+  crece hacia el frente. Con el montaje de la góndola, el arte y el producto aparecen
+  detrás del mueble.
+- **La barra de luz** bajo el copete.
+
+Todo lo demás es el mismo herraje del corrido, y por eso existe `piezas.tsx`: parante,
+panel de fondo y juego de entrepaños son los MISMOS objetos físicos en los dos muebles.
+
+Dos cosas cuidadas a propósito: **la franja de slots de la punta no es la misma cuenta
+que la de la góndola** y así queda —unificarlas corre todos los espacios ya vendidos—, y
+**el copete no se tiñe con el estado comercial**, porque es donde va la marca.
+
+### Los muebles de frío
+
+`NeveraReal` cubre dos muebles que se compran por separado:
+
+- **`multideck`** — frente ABIERTO, con cortina de aire. Es el de bebidas y lácteos, y es
+  lo que el catálogo declara para `nevera_refrescos` («vitrina multideck abierta»). Lo que
+  lo delata es el par de bocas: impulsión bajo el copete y retorno al ras de la bandeja de
+  abajo. **Cumplen el mismo papel que la puerta en una nevera cerrada** — sin ellas, el
+  mueble se lee como una estantería pintada de oscuro, que es como se veía.
+- **`puertas`** — cerrado con vidrio. Lo que se reconoce de una puerta no es el vidrio,
+  que casi no se ve, sino el marco de aluminio. Un frente de más de 75 cm se parte en dos
+  hojas: no la aguanta la bisagra y no abre en un pasillo.
+
+Sus cotas también son de fabricación: el compresor mide lo que mide. Era `h * 0.14`, y con
+eso un mueble alto salía con un zócalo de 28 cm.
+
+**El relleno mudo se apaga cuando entra el arte del proveedor.** A diferencia de la
+góndola —donde el hueco vacío ES el dato— la nevera se vende entera, no por pedazos, así
+que mostrarla llena no esconde ninguna disponibilidad; mostrarla vacía sí miente.
+
 ### Lo que falta
 
-- **Sólo la góndola.** Punta, robatope, vitrina, neveras y el resto del catálogo siguen
-  con la geometría vieja de cajas. La estructura de `muebles/` está hecha para que el
-  siguiente cueste mucho menos.
+- **Falta la mayoría del catálogo.** Hechos: góndola (doble y mural), punta y nevera de
+  refrescos. La vitrina (`mueble`) ya estaba razonablemente armada —marco, puertas de
+  vidrio, manijas— y se dejó. Siguen con geometría de cajas: robatope, exhibidor cruz,
+  exhibidor de piso, impulsador, ristra, batea, isla de piso, isla fría, nevera de carnes,
+  stand de frutas, checkout y servicio al cliente.
 - **Las cotas del proveedor real del cliente**, que reemplazan las de `medidas.ts`.
 - El producto no distingue forma: una botella se dibuja como caja. `Empaque.forma` ya
   lleva el dato («caja», «botella», «lata», «bolsa») y nadie lo usa todavía.
