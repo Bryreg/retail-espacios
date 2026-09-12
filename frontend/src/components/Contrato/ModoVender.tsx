@@ -107,10 +107,22 @@ function Fila({
       : l.desvio !== null && l.desvio !== 0
       ? l.desvio >= 1 ? `${l.desvio}% bajo la referencia` : `${Math.abs(l.desvio)}% sobre la referencia`
       : "",
-    l.disponibilidad !== "libre"
-      ? l.disponibilidad === "parcial" ? "parte del periodo vendida" : "vendido en el periodo"
-      : "",
   ].filter(Boolean).join(" · ");
+
+  /* El choque de fechas sale de ese renglón y se dibuja aparte.
+     Estaba ahí adentro, de tercero, en un texto de una línea que se corta con
+     puntos suspensivos: con una ubicación larga («a unos 2 m del mostrador de
+     carnes») más «sin tarifa de referencia», el aviso quedaba pasado el corte
+     y no se veía NUNCA. Se vendió un espacio ocupado y el único que avisó fue
+     el backend, al guardar, cuando ya estaba todo tecleado.
+     Un aviso que compite por ancho con la ubicación no es un aviso. */
+  const choque = l.choqueServidor.length > 0
+    // Lo que dice la base gana: nombra las fechas del contrato que ya existe,
+    // que es lo que hace falta para corregir las propias.
+    ? l.choqueServidor.join(" ")
+    : l.disponibilidad === "libre" ? null
+    : l.disponibilidad === "parcial" ? "Parte del periodo ya está vendida"
+    : "Ya está vendido en el periodo";
 
   return (
     <div
@@ -123,6 +135,7 @@ function Fila({
       <span className="d">
         <span title={l.fixture.label || l.fixture.code}>{rateTypeLabel(rateTypeOf(l.fixture))}</span>
         <span title={segunda}>{segunda}</span>
+        {choque && <span className="choque" role="alert">{choque}</span>}
       </span>
       {/* Una góndola doble son DOS espacios que se venden por separado, y las
           dos pueden ir en el mismo contrato: una marca que quiere el pasillo
@@ -172,7 +185,7 @@ function Fila({
           onChange={(e) => c.escribirValor(l.codigo, e.target.value)}
           placeholder="al mes"
           inputMode="numeric"
-          aria-label={`Valor mensual de ${l.visible}`}
+          aria-label={`Valor acordado de ${l.visible}`}
         />
       </span>
       {sePuedeQuitar && (
@@ -527,10 +540,13 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
         )}
 
         {/* ── Lo que se firma ─────────────────────────────────────────────
-            El total del plazo, que no es el valor mensual: $2.250.000 al mes
-            por 61 días son $4.575.000, y esa cuenta se hacía de cabeza con el
-            proveedor esperando del otro lado. Es la única cifra grande de la
-            pantalla y se la gana: es lo que va a quedar escrito. */}
+            La suma de lo acordado, sin prorratear. Acá había un total que se
+            derivaba del valor por día sobre un mes de 30 —$200.000 por un mes
+            del 11 de septiembre al 11 de octubre salían $206.667— y la cuenta
+            estaba bien pero la premisa estaba mal: quien negocia vende el
+            espacio al valor que quiera por el tiempo que quiera, así que lo
+            tecleado ES el precio. Es la única cifra grande de la pantalla y se
+            la gana: es lo que va a quedar escrito. */}
         <div className="total">
           <span className="rotulo">Total del contrato</span>
           <span className="n">{c.total > 0 ? money(c.total) : "—"}</span>

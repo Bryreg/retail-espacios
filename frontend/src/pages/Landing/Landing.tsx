@@ -468,20 +468,20 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
                 <span className="card__i"><Ico n="doc" /></span>
                 <h3>El contrato se registra sobre el mueble</h3>
                 <p className="body">
-                  Al seleccionar el espacio se completa una sola ficha: proveedor, marca, canon
-                  mensual y vigencia. Si el acuerdo cubre tres puntas de góndola, se seleccionan las
-                  tres y se genera un único contrato. El formulario calcula el total del plazo, que
-                  es el valor que se firma: $ 1.500.000 mensuales por 61 días equivalen a
-                  $ 3.050.000, sin necesidad de calcularlo durante la negociación.
+                  Al seleccionar el espacio se completa una sola ficha: proveedor, marca, valor
+                  acordado y vigencia. Si el acuerdo cubre tres puntas de góndola, se seleccionan
+                  las tres y se genera un único contrato, con el total sumado. El valor es el que se
+                  pactó: el sistema no lo prorratea ni lo reinterpreta.
                 </p>
                 <div className="card__demo">
                   <div className="mini">
                     <div className="mini__bar"><span>Ficha del contrato</span></div>
                     <div className="mini__body">
-                      <div className="kvrow"><span>Canon mensual</span><b>$ 1.500.000</b></div>
+                      <div className="kvrow"><span>Punta de góndola</span><b>$ 1.500.000</b></div>
+                      <div className="kvrow"><span>Punta de góndola</span><b>$ 1.550.000</b></div>
                       <div className="kvrow"><span>Plazo</span><b>61 días</b></div>
                       <div className="total">
-                        <span className="tiny" style={{ textTransform: "uppercase", letterSpacing: ".12em" }}>Total del plazo</span>
+                        <span className="tiny" style={{ textTransform: "uppercase", letterSpacing: ".12em" }}>Total del contrato</span>
                         <Contador hasta={3050000} plata />
                       </div>
                     </div>

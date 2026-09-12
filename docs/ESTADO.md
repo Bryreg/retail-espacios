@@ -3395,6 +3395,35 @@ de información para sostener a mano un dato que el contrato nuevo ya deja escri
 
 ## Backlog
 
+0. **El plano es una COPIA, y puede mentir** (abierto en la Fase 17, sin cerrar).
+   La disponibilidad que pinta el mapa y la que responde cada renglón del
+   contrato **no salen de `spaces`/`leases`**: salen de los campos comerciales
+   del JSON del layout (`status`, `startDate`, `endDate`, `negotiatedValue`…),
+   que es una copia. Quien la mantiene al día es el navegador que vende, en el
+   momento de vender: `Contrato.tsx` aplica `parches` después de
+   `confirmarLote`, y `DashboardView` hace lo mismo después de la carga masiva
+   —con un comentario que ya decía por qué: *«sin esto los contratos existirían
+   en la base y los espacios seguirían viéndose libres»*—.
+
+   Los dos caminos de la UI están cubiertos. **Lo que no está cubierto es todo
+   lo demás**: un contrato creado desde otra sesión, un arreglo a mano, un
+   `PUT /layout` de otra pestaña que pisa el parche, o —el más probable— un
+   `confirmarLote` que salió bien y cuyo push del layout (con 1.200 ms de
+   debounce) no llegó a salir. En todos esos casos la base dice «ocupado» y la
+   copia dice «libre».
+
+   Reproducido: contrato del 8 de septiembre al 8 de octubre en la base, y el
+   plano pintando el mueble **libre todo el periodo** —los nueve `<g>` del piso
+   con `data-est="libre"`, y el panel de tarifa contando 9 espacios libres—.
+
+   **Mitigado, no resuelto.** La Fase 17 hace que el panel de contrato le
+   pregunte a `/leases/bulk/validar` (el mismo control que el guardado, que no
+   escribe nada), así que el choque se ve y frena aunque la copia mienta. Pero
+   el MAPA sigue pintando con la copia: un espacio ocupado puede seguir
+   viéndose verde hasta que se lo toca. El arreglo de raíz es que la
+   disponibilidad la sirva el servidor —o que el layout se reconcilie contra
+   `/api/spaces/` al cargar la sede—, y es una fase propia.
+
 1. **Histórico por espacio**. Es además prerrequisito de la tarifa de referencia: no hay
    tarifario público de exhibición en Colombia (los acuerdos son confidenciales), así que
    la única referencia calibrable es "a cuánto se cerró este mueble en esta sede antes".

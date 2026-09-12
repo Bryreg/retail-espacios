@@ -182,7 +182,7 @@ landing hereda Chivo + Archivo Narrow como están. Decisión de diseño/frontend
 
 **Texto:**
 
-> Al seleccionar el espacio se completa una sola ficha: proveedor, marca, canon mensual y vigencia. Si el acuerdo cubre tres puntas de góndola, se seleccionan las tres y se genera un único contrato. El formulario calcula el total del plazo, que es el valor que se firma: $ 1.500.000 mensuales por 61 días equivalen a $ 3.050.000, sin necesidad de calcularlo durante la negociación.
+> Al seleccionar el espacio se completa una sola ficha: proveedor, marca, valor acordado y vigencia. Si el acuerdo cubre tres puntas de góndola, se seleccionan las tres y se genera un único contrato, con el total sumado. El valor es el que se pactó: el sistema no lo prorratea ni lo reinterpreta.
 
 **Pie del bloque:** `Un proveedor, un periodo, todos los espacios que haga falta`
 
@@ -596,7 +596,7 @@ Línea bajo la leyenda:
 | Temporadas del calendario | **9**: Escolar, Semana Santa, Día de la Madre, Día del Padre, Vacaciones, Amor y Amistad, Halloween, Black Friday, Navidad | `frontend/src/types/seasons.ts` |
 | Tipos de mueble con tarifa propia | **15** | `frontend/src/types/fixtures.ts` — `RATE_TYPES` |
 | Umbral de marcado del desvío vs tarifa | **1 %** | `docs/ESTADO.md`, «Tarifa de referencia» |
-| Ejemplo del total del plazo | `$ 1.500.000 al mes × 61 días = $ 3.050.000` | `docs/ESTADO.md`, «Cómo quedaron las dos pantallas» (el ejemplo del documento) |
+| Ejemplo del total del contrato | `$ 1.500.000 + $ 1.550.000 = $ 3.050.000` (dos espacios en el mismo acuerdo) | Fase 17: el valor acordado NO se prorratea — se suma. Ver `frontend/src/components/Contrato/Contrato.tsx` |
 | Ejemplo de ocupación | `35 %`, 8 de 23 caras | `docs/maquetas/elegida-supervisar.png` (datos sintéticos) |
 | Roles | **3**: dueño de la cuenta, administrador, trabajador de piso | `features/identidad/spec.md` — `owner` / `admin` / `worker` |
 | Estados de la cuenta | **4**: `activo`, `gracia` (que en la landing se dice «te avisamos»), `solo_lectura`, `suspendido` | `features/clientes/spec.md` |
