@@ -360,8 +360,18 @@ export function geometriaCanasto(
 ): THREE.BufferGeometry {
   const firma = `canasto:${anchoArriba.toFixed(3)}:${fondoArriba.toFixed(3)}:` +
                 `${anchoAbajo.toFixed(3)}:${fondoAbajo.toFixed(3)}:${alto.toFixed(3)}`;
+  return cacheada(firma, () => cascoDeTronco(anchoArriba, fondoArriba, anchoAbajo, fondoAbajo, alto));
+}
 
-  return cacheada(firma, () => {
+/** El casco, SIN cachear. Quien necesite moverlo o escalarlo tiene que partir
+ *  de acá: las geometrías del caché son compartidas, y un `translate` sobre
+ *  una de ellas se lo lleva puesto a todos los muebles que la usan. */
+function cascoDeTronco(
+  anchoArriba: number, fondoArriba: number,
+  anchoAbajo: number, fondoAbajo: number,
+  alto: number,
+): THREE.BufferGeometry {
+  {
     const aa = anchoArriba / 2, fa = fondoArriba / 2;
     const ab = anchoAbajo / 2, fb = fondoAbajo / 2;
     // Abajo (y = 0) y arriba (y = alto), en sentido antihorario visto de arriba.
@@ -382,6 +392,171 @@ export function geometriaCanasto(
 
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.computeVertexNormals();
+    return g;
+  }
+}
+
+/**
+ * La geometría de un envase, según su FORMA.
+ *
+ * ## Por qué esto no podía seguir siendo una caja
+ *
+ * Todo el producto del sistema se dibujaba como `BoxGeometry` escalada. Con
+ * eso, un lineal de gaseosas es una pared de ladrillos y una nevera de bebidas
+ * se ve como un archivador. **La silueta es lo primero que el ojo clasifica**,
+ * antes que el color y mucho antes que la etiqueta: un cilindro con cuello se
+ * lee «botella» a diez metros, y un prisma no se lee como nada.
+ *
+ * `Empaque.forma` ya traía el dato —«botella», «lata», «pieza»— desde que se
+ * armó el catálogo de empaques. No se usaba: todo terminaba en el mismo cubo.
+ *
+ * ## Por qué tan pocos segmentos
+ *
+ * Una góndola llena son cientos de envases, y van instanciados. Con 10 lados
+ * un cilindro de 6 cm de diámetro ya se lee redondo a distancia de pasillo, y
+ * cada lado que se agrega se multiplica por esos cientos. La fruta usa un
+ * icosaedro y no una esfera por lo mismo, y de paso queda facetada, que es
+ * más parecido a una manzana que una bola perfecta.
+ */
+export function geometriaDeEmpaque(
+  forma: "caja" | "botella" | "lata" | "bolsa" | "pieza" | "bandeja",
+  ancho: number, alto: number, fondo: number,
+  acostado = false,
+): THREE.BufferGeometry {
+  const firma = `empaque:${forma}:${ancho.toFixed(4)}:${alto.toFixed(4)}:${fondo.toFixed(4)}:${acostado}`;
+
+  return cacheada(firma, () => {
+    // Un envase acostado se dibuja DE PIE y se gira, no se achata: una botella
+    // tumbada sigue teniendo cuello, y con 9 cm de alto sale un disco.
+    if (acostado && (forma === "botella" || forma === "lata")) {
+      const g = geometriaDeEmpaque(forma, alto, ancho, fondo).clone();
+      g.rotateZ(Math.PI / 2);
+      g.computeVertexNormals();
+      return g;
+    }
+    const r = Math.min(ancho, fondo) / 2;
+
+    if (forma === "botella") {
+      // Perfil de media botella, de abajo hacia arriba: base, cuerpo recto,
+      // hombro, cuello y tapa. Girado da el envase entero en una sola malla.
+      const cuello = r * 0.42;
+      const perfil: THREE.Vector2[] = [
+        new THREE.Vector2(0, 0),
+        new THREE.Vector2(r * 0.92, 0),
+        new THREE.Vector2(r, alto * 0.04),
+        new THREE.Vector2(r, alto * 0.62),
+        new THREE.Vector2(r * 0.96, alto * 0.70),
+        // El hombro: la curva que lleva del cuerpo al cuello. Es lo que hace
+        // que se lea botella y no tubo.
+        new THREE.Vector2(r * 0.72, alto * 0.80),
+        new THREE.Vector2(cuello, alto * 0.86),
+        new THREE.Vector2(cuello, alto * 0.93),
+        new THREE.Vector2(cuello * 1.18, alto * 0.94),
+        new THREE.Vector2(cuello * 1.18, alto),
+        new THREE.Vector2(0, alto),
+      ];
+      const g = new THREE.LatheGeometry(perfil, 10);
+      g.translate(0, -alto / 2, 0);
+      g.computeVertexNormals();
+      return g;
+    }
+
+    if (forma === "lata") {
+      // Cuerpo recto con los dos cantos rebajados: una lata no es un cilindro
+      // a secas, tiene el reborde de la tapa y el pie engargolado.
+      const perfil: THREE.Vector2[] = [
+        new THREE.Vector2(0, 0),
+        new THREE.Vector2(r * 0.86, 0),
+        new THREE.Vector2(r, alto * 0.06),
+        new THREE.Vector2(r, alto * 0.94),
+        new THREE.Vector2(r * 0.86, alto),
+        new THREE.Vector2(0, alto),
+      ];
+      const g = new THREE.LatheGeometry(perfil, 10);
+      g.translate(0, -alto / 2, 0);
+      g.computeVertexNormals();
+      return g;
+    }
+
+    if (forma === "pieza") {
+      // Una manzana, un tomate, una papa. Facetada a propósito: una esfera
+      // perfecta se lee como una bola de billar.
+      const g = new THREE.IcosahedronGeometry(0.5, 1);
+      g.scale(ancho, alto * 1.05, fondo);
+      g.computeVertexNormals();
+      return g;
+    }
+
+    if (forma === "bandeja") {
+      // Bandeja de carne o fiambre: el film estirado arriba queda abombado, y
+      // ese lomo es lo que la distingue de una caja plana.
+      const g = new THREE.SphereGeometry(0.5, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2);
+      g.scale(ancho, alto * 1.6, fondo);
+      g.translate(0, -alto / 2, 0);
+      g.computeVertexNormals();
+      return g;
+    }
+
+    if (forma === "bolsa") {
+      // Una bolsa de snack va inflada y más ancha arriba que abajo, que es por
+      // donde la sueldan.
+      const g = cascoDeTronco(ancho, fondo, ancho * 0.62, fondo * 0.62, alto);
+      g.translate(0, -alto / 2, 0);
+      return g;
+    }
+
+    return new THREE.BoxGeometry(ancho, alto, fondo);
+  });
+}
+
+/**
+ * El vidrio curvo de un mostrador de carnes o de fiambres.
+ *
+ * Es LA pieza que identifica un mostrador de servicio. Un panel de vidrio
+ * plano y vertical lo convierte en una vitrina cualquiera; lo que dice
+ * «carnicería» a diez metros es esa curva que arranca casi horizontal sobre la
+ * bandeja y se levanta hacia el cliente, porque es la que deja ver el producto
+ * desde arriba mientras lo protege.
+ *
+ * El perfil se dibuja como un arco en XY —X es el vuelo hacia el cliente, Y el
+ * alto— y se extruye a lo ancho del mueble, igual que el entrepaño. El arco se
+ * hace con dos curvas paralelas separadas por el espesor, y no con una curva
+ * sola: un vidrio sin canto no atrapa luz en el borde y se ve como una
+ * calcomanía.
+ */
+export function geometriaVidrioCurvo(
+  ancho: number, alto: number, vuelo: number, espesor = 0.006,
+): THREE.BufferGeometry {
+  const firma = `vidriocurvo:${ancho.toFixed(4)}:${alto.toFixed(4)}:${vuelo.toFixed(4)}`;
+
+  return cacheada(firma, () => {
+    const PASOS = 12;
+    // El arco: arranca al frente y abajo, y termina arriba y atrás. Se usa un
+    // cuarto de elipse, que es la forma del vidrio templado que se fabrica.
+    const punto = (t: number, desfase: number) => {
+      const a = (t * Math.PI) / 2;
+      return new THREE.Vector2(
+        -(vuelo + desfase) * Math.cos(a) + vuelo,
+        (alto + desfase) * Math.sin(a),
+      );
+    };
+
+    const s = new THREE.Shape();
+    const fuera: THREE.Vector2[] = [];
+    const dentro: THREE.Vector2[] = [];
+    for (let i = 0; i <= PASOS; i++) {
+      fuera.push(punto(i / PASOS, 0));
+      dentro.push(punto(i / PASOS, -espesor));
+    }
+    s.moveTo(fuera[0].x, fuera[0].y);
+    for (const p of fuera.slice(1)) s.lineTo(p.x, p.y);
+    for (const p of dentro.slice().reverse()) s.lineTo(p.x, p.y);
+    s.closePath();
+
+    const g = new THREE.ExtrudeGeometry(s, { depth: ancho, bevelEnabled: false });
+    g.translate(0, 0, -ancho / 2);
+    g.rotateY(-Math.PI / 2);
     g.computeVertexNormals();
     return g;
   });

@@ -24,7 +24,17 @@
  * `medidas.ts`, están acá para poder corregirse en un solo lugar.
  */
 
-export type FormaDeEmpaque = "caja" | "botella" | "lata" | "bolsa";
+/** La silueta del envase. Es lo PRIMERO que el ojo clasifica —antes que el
+ *  color y mucho antes que la etiqueta—, así que decide la geometría con la
+ *  que se dibuja. Durante un tiempo este dato existió y no se usaba: todo
+ *  terminaba en el mismo cubo, y un lineal de gaseosas se veía como una pared
+ *  de ladrillos. */
+export type FormaDeEmpaque =
+  | "caja" | "botella" | "lata" | "bolsa"
+  /** Suelto, sin envase: una manzana, un tomate, una papa. */
+  | "pieza"
+  /** Bandeja de carne o fiambre, con el film abombado arriba. */
+  | "bandeja";
 
 export interface Empaque {
   /** Frente del envase: lo que se ve mirando la góndola. */
@@ -33,6 +43,10 @@ export interface Empaque {
   /** Cuánto ocupa hacia el fondo del entrepaño. */
   fondo: number;
   forma: FormaDeEmpaque;
+  /** El envase está volcado de costado: su eje largo quedó horizontal. Lo
+   *  marca `acostar`, y lo necesita la geometría — una botella acostada sigue
+   *  siendo una botella, pero dibujada de pie y aplastada sale un disco. */
+  acostado?: boolean;
 }
 
 /** Los formatos que se repiten en cualquier supermercado. */
@@ -58,9 +72,9 @@ export const EMPAQUES = {
   /** Una pieza suelta: una manzana, un tomate, una papa. Lo que se vende a
    *  granel no viene en envase, así que no tiene un formato de catálogo — mide
    *  lo que mide la fruta. */
-  pieza:         { ancho: 0.075, alto: 0.070, fondo: 0.075, forma: "caja" },
+  pieza:         { ancho: 0.075, alto: 0.070, fondo: 0.075, forma: "pieza" },
   /** Una bandeja de carne o fiambre, de las del mostrador. */
-  bandeja:       { ancho: 0.180, alto: 0.045, fondo: 0.130, forma: "caja" },
+  bandeja:       { ancho: 0.180, alto: 0.045, fondo: 0.130, forma: "bandeja" },
 } as const satisfies Record<string, Empaque>;
 
 /** Rubros que NO vienen en envase: se venden sueltos o en bandeja. En un
@@ -120,10 +134,17 @@ export function colorVolcado(rubro: string | undefined | null): string {
   return colorDeRubro(rubro);
 }
 
-/** Vuelca un envase de costado: el lado más corto pasa a ser el alto. */
+/** Vuelca un envase de costado: el lado más corto pasa a ser el alto.
+ *
+ *  Se marca `acostado` porque no alcanza con permutar las medidas: una botella
+ *  acostada sigue teniendo cuello, y dibujada de pie con 9 cm de alto sale un
+ *  disco. La geometría necesita saber que hay que girarla, no achatarla. */
 function acostar(e: Empaque): Empaque {
   const lados = [e.ancho, e.alto, e.fondo].sort((a, b) => b - a);
-  return { ancho: lados[0], alto: lados[2], fondo: lados[1], forma: e.forma };
+  return {
+    ancho: lados[0], alto: lados[2], fondo: lados[1],
+    forma: e.forma, acostado: true,
+  };
 }
 
 /** Cada entrada es [palabras que puede escribir quien carga el rubro, empaque].

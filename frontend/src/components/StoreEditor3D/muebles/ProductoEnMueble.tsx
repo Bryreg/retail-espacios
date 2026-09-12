@@ -3,6 +3,8 @@ import * as THREE from "three";
 import type { FilasDeProducto, Vano } from "./medidas";
 import { ZONA_DE_SLOTS } from "./medidas";
 import { acomodar, colorDeRubro, empaqueQueEntra, RETIRO_AL_FRENTE } from "./producto";
+import type { FormaDeEmpaque } from "./producto";
+import { geometriaDeEmpaque } from "./perfiles";
 
 /**
  * El producto parado sobre los entrepaños de un mueble.
@@ -113,6 +115,8 @@ interface Pieza {
   clave: string;
   color: string;
   ancho: number; alto: number; fondo: number;
+  forma: FormaDeEmpaque;
+  acostado?: boolean;
   matrices: THREE.Matrix4[];
 }
 
@@ -157,7 +161,7 @@ export const ProductoEnMueble = memo(function ProductoEnMueble({
         // arriba va la personal, igual que en tienda.
         const e = empaqueQueEntra(slot.brandCategory, libre);
         if (!e) continue;
-        const clave = `${e.ancho}|${e.alto}|${e.fondo}|${color}`;
+        const clave = `${e.forma}|${e.ancho}|${e.alto}|${e.fondo}|${color}`;
 
         for (const vano of vanos) {
           // El producto se para dentro del vano, nunca encima de un parante.
@@ -181,7 +185,8 @@ export const ProductoEnMueble = memo(function ProductoEnMueble({
           );
 
           const pieza = porClave.get(clave) ?? {
-            clave, color, ancho: e.ancho, alto: e.alto, fondo: e.fondo, matrices: [],
+            clave, color, ancho: e.ancho, alto: e.alto, fondo: e.fondo,
+            forma: e.forma, acostado: e.acostado, matrices: [],
           };
           if (!porClave.has(clave)) porClave.set(clave, pieza);
 
@@ -225,8 +230,8 @@ export const ProductoEnMueble = memo(function ProductoEnMueble({
  *  y una sola llamada de dibujo. */
 function InstanciasDeEmpaque({ pieza }: { pieza: Pieza }) {
   const geometria = useMemo(
-    () => new THREE.BoxGeometry(pieza.ancho, pieza.alto, pieza.fondo),
-    [pieza.ancho, pieza.alto, pieza.fondo],
+    () => geometriaDeEmpaque(pieza.forma, pieza.ancho, pieza.alto, pieza.fondo, pieza.acostado),
+    [pieza.forma, pieza.ancho, pieza.alto, pieza.fondo, pieza.acostado],
   );
   const material = useMemo(
     () => new THREE.MeshStandardMaterial({

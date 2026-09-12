@@ -17,6 +17,8 @@ import { ProductoEnPunta } from "./muebles/ProductoEnPunta";
 import { NeveraReal } from "./muebles/NeveraReal";
 import { ProductoAGranel } from "./muebles/ProductoAGranel";
 import { BateaReal, bocaDeBatea } from "./muebles/BateaReal";
+import { MostradorFrioReal, bandejaDeMostrador } from "./muebles/MostradorFrioReal";
+import { ProductoEnMural } from "./muebles/ProductoEnMural";
 import { ProductoEnRepisas } from "./muebles/ProductoEnRepisas";
 import { colorDeRubro } from "./muebles/producto";
 import { olvidarGeometrias } from "./muebles/perfiles";
@@ -438,6 +440,7 @@ export const FIXTURE_DEFS: FixtureDef[] = [
   { type:"isla_fria",        label:"Isla Helados/Cong.",  w:1.80, d:1.00, h:0.90, color:"#e5e7eb", emoji:"🍦", desc:"Isla abierta refrigerada con guarda de acrílico",code:"ISL" },
   { type:"nevera_carnes",    label:"Nevera Carnes",       w:2.00, d:0.90, h:1.05, color:"#111827", emoji:"🥩", desc:"Mostrador con vidrio curvo para carnes y deli",  code:"CAR" },
   { type:"nevera_refrescos", label:"Nevera Refrescos",    w:1.20, d:0.75, h:1.80, color:"#1e293b", emoji:"🥤", desc:"Vitrina multideck abierta para bebidas",         code:"BEB" },
+  { type:"nevera_vegetales", label:"Nevera Vegetales",    w:1.80, d:0.90, h:1.60, color:"#1e293b", emoji:"🥬", desc:"Mural refrigerado de frutas y verduras, con bandejas inclinadas", code:"VEG" },
   // ── Servicio ──────────────────────────────────────────────────────────────
   { type:"stand_frutas",                  label:"Stand Frutas/Verd",w:1.50, d:1.20, h:0.95, color:"#84cc16", emoji:"🍎", desc:"Cajón expositor de frutas y verduras", code:"FRU" },
   { type:"checkout",                      label:"Checkout / Caja",  w:1.80, d:0.70, h:0.90, color:"#8b5cf6", emoji:"🛒", desc:"Caja registradora con cinta transportadora", code:"CAJ" },
@@ -909,31 +912,42 @@ function RistraMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:numbe
         const py = h - 0.08 - i * sp;
         return (
           <group key={i} position={[0, py, 0]}>
-            <mesh position={[0, 0, -d * 0.28]} castShadow>
-              <boxGeometry args={[w * 0.82, 0.010, d * 0.55]} />
-              <meshStandardMaterial color={HOOK} metalness={0.60} roughness={0.32} transparent opacity={op} />
+            {/* El GANCHO: una varilla corta que sale de la tira y se dobla
+                hacia arriba en la punta. Acá había una bandeja —una placa
+                horizontal del ancho del mueble— y eso convertía la ristra en
+                una repisera angosta. Una ristra no lleva entrepaño: el
+                producto CUELGA de la varilla por su troquel. */}
+            <mesh position={[0, 0, -d * 0.16]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+              <cylinderGeometry args={[0.0035, 0.0035, d * 0.32, 6]} />
+              <meshStandardMaterial color={HOOK} metalness={0.7} roughness={0.28} transparent opacity={op} />
             </mesh>
-            <mesh position={[0, -0.018, -d * 0.50]}>
-              <boxGeometry args={[w * 0.70, 0.030, 0.006]} />
-              <meshLambertMaterial color="#f0f0ee" transparent opacity={0.88 * op} />
+            {/* La punta doblada hacia arriba, que es lo que retiene el sobre. */}
+            <mesh position={[0, 0.009, -d * 0.32]} castShadow>
+              <cylinderGeometry args={[0.0035, 0.0035, 0.018, 6]} />
+              <meshStandardMaterial color={HOOK} metalness={0.7} roughness={0.28} transparent opacity={op} />
             </mesh>
-            <mesh position={[(w * 0.28), -0.018, -d * 0.50]}>
-              <boxGeometry args={[0.018, 0.018, 0.008]} />
-              <meshLambertMaterial color={statusColor} transparent opacity={0.80 * op} />
-            </mesh>
-            {/* El sobre colgado del gancho.
-                Una ristra es una TIRA: lo que se vende son unidades colgando
-                una debajo de otra, no bandejas. Con los ganchos pelados el
-                mueble no se parece a nada — ni a una ristra ni a un estante. */}
+            {/* El sobre, COLGADO de la varilla: su borde de arriba queda al
+                ras del gancho y el resto pende. Los sobres se superponen un
+                poco unos con otros, como en una ristra de verdad, donde cada
+                uno tapa el troquel del de abajo. */}
             {!ghost && rubro && (
-              <mesh position={[0, -sp * 0.42, -d * 0.50 - 0.012]} castShadow>
-                <boxGeometry args={[w * 0.52, sp * 0.72, 0.022]} />
+              <mesh
+                position={[0, -sp * 0.46, -d * 0.22]}
+                rotation={[0.06, 0, 0]}
+                castShadow
+              >
+                <boxGeometry args={[w * 0.58, sp * 0.92, 0.016]} />
                 <meshStandardMaterial
-                  color={colorDeRubro(rubro)} metalness={0} roughness={0.7}
+                  color={colorDeRubro(rubro)} metalness={0} roughness={0.72}
                   transparent opacity={op}
                 />
               </mesh>
             )}
+            {/* La franja de estado, sobre la tira y no sobre una bandeja. */}
+            <mesh position={[0, 0.016, -0.008]}>
+              <boxGeometry args={[0.022, 0.012, 0.006]} />
+              <meshLambertMaterial color={statusColor} transparent opacity={0.85 * op} />
+            </mesh>
           </group>
         );
       })}
@@ -1598,90 +1612,27 @@ function IslaFriaMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: { w
 // dos paneles de vidrio simulando la curva, arcos laterales de metal negro.
 
 function NeveraCarnesMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
-  const op    = ghost ? 0.42 : 1;
-  const DARK  = "#111827";
-  const FRAME = "#1f2937";
-  const GLASS = "#bae6fd";
-
-  const bodyH  = h * 0.52;                   // cuerpo bajo oscuro
-  const glassH = h - bodyH + 0.05;           // panel de vidrio, solapa ligeramente el borde
-
+  // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
+  // Era un cajón oscuro con una placa de vidrio PLANA y vertical parada
+  // encima. Eso no es un mostrador de carnes: es una vitrina cualquiera. Le
+  // faltaban las tres cosas que lo identifican, y son de forma: el vidrio
+  // curvo, la bandeja inclinada hacia el cliente y la franja de servicio del
+  // lado del que atiende.
+  const bandeja = bandejaDeMostrador(w, d, h);
   return (
     <group>
-      {/* Cuerpo principal oscuro */}
-      <mesh position={[0, bodyH / 2, 0]} castShadow>
-        <boxGeometry args={[w, bodyH, d]} />
-        <meshStandardMaterial color={DARK} roughness={0.55} metalness={0.25} transparent opacity={op} />
-      </mesh>
-
-      {/* La bandeja fría, y el producto volcado encima. Antes era una tapa
-          roja translúcida —«carne» genérica— que tapaba el mostrador entero. */}
-      <mesh position={[0, bodyH + 0.015, 0]}>
-        <boxGeometry args={[w - 0.08, 0.03, d - 0.06]} />
-        <meshStandardMaterial color="#e8eaed" roughness={0.55} metalness={0.20} transparent opacity={op} />
-      </mesh>
-      <VolcadoDeProducto
-        ancho={w - 0.10} fondo={d - 0.08}
-        y={bodyH + 0.033} material={ghost ? null : (facePaint?.front ?? null)}
-        semilla={`${id}|carnes`} rubro={rubro || "Carnes"}
-        altoLibre={0.16} ghost={ghost}
-      />
-
-      {/* Rejillas de ventilación en el frente inferior del cuerpo */}
-      {Array.from({ length: 4 }, (_, i) => (
-        <mesh key={i} position={[0, bodyH * 0.12 + i * (bodyH * 0.16), -(d / 2 - 0.002)]}>
-          <boxGeometry args={[w * 0.70, 0.010, 0.006]} />
-          <meshStandardMaterial color={FRAME} metalness={0.50} transparent opacity={op} />
-        </mesh>
-      ))}
-
-      {/* Borde superior del cuerpo */}
-      <mesh position={[0, bodyH + 0.007, 0]}>
-        <boxGeometry args={[w + 0.010, 0.014, d + 0.010]} />
-        <meshStandardMaterial color="#374151" metalness={0.55} roughness={0.30} transparent opacity={op} />
-      </mesh>
-
-      {/* Panel de vidrio PLANO vertical al frente — SIN rotación */}
-      <mesh position={[0, bodyH + glassH / 2, -(d / 2 - 0.005)]}>
-        <boxGeometry args={[w - 0.020, glassH, 0.008]} />
-        <meshStandardMaterial color={GLASS} roughness={0.03} metalness={0.01}
-          transparent opacity={0.28 * op} />
-      </mesh>
-
-      {/* Marco del vidrio — 4 perfiles delgados oscuros alrededor del panel */}
-      {/* Riel superior */}
-      <mesh position={[0, h + 0.007, -(d / 2 - 0.005)]}>
-        <boxGeometry args={[w, 0.014, 0.014]} />
-        <meshStandardMaterial color={DARK} metalness={0.55} roughness={0.30} transparent opacity={op} />
-      </mesh>
-      {/* Riel inferior (sobre el borde del cuerpo) */}
-      <mesh position={[0, bodyH + 0.007, -(d / 2 - 0.005)]}>
-        <boxGeometry args={[w, 0.014, 0.014]} />
-        <meshStandardMaterial color={DARK} metalness={0.55} roughness={0.30} transparent opacity={op} />
-      </mesh>
-      {/* Poste izquierdo */}
-      <mesh position={[-(w / 2 - 0.015), bodyH + glassH / 2, -(d / 2 - 0.005)]}>
-        <boxGeometry args={[0.016, glassH, 0.014]} />
-        <meshStandardMaterial color={DARK} metalness={0.55} roughness={0.30} transparent opacity={op} />
-      </mesh>
-      {/* Poste derecho */}
-      <mesh position={[w / 2 - 0.015, bodyH + glassH / 2, -(d / 2 - 0.005)]}>
-        <boxGeometry args={[0.016, glassH, 0.014]} />
-        <meshStandardMaterial color={DARK} metalness={0.55} roughness={0.30} transparent opacity={op} />
-      </mesh>
-
-      {/* Indicador de estado en el frente inferior */}
-      <mesh position={[0, 0.08, -(d / 2 + 0.008)]}>
-        <boxGeometry args={[w * 0.60, 0.032, 0.010]} />
-        <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
-      </mesh>
+      <MostradorFrioReal w={w} d={d} h={h} statusColor={statusColor} ghost={ghost} />
+      <group position={[0, 0, bandeja.z]}>
+        <VolcadoDeProducto
+          ancho={bandeja.ancho} fondo={bandeja.fondo}
+          y={bandeja.y} material={ghost ? null : (facePaint?.front ?? null)}
+          semilla={`${id}|carnes`} rubro={rubro || "Carnes"}
+          altoLibre={bandeja.altoLibre} ghost={ghost}
+        />
+      </group>
     </group>
   );
 }
-
-// ─── Mesh: Nevera Refrescos ───────────────────────────────────────────────────
-// Vitrina multideck de frente abierto para bebidas y lácteos: cuerpo oscuro,
-// estantes iluminados con tiras LED, productos visibles desde el pasillo.
 
 function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
   // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
@@ -1731,6 +1682,37 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:num
 // ─── Mesh: Stand Frutas / Verduras ───────────────────────────────────────────
 // Cajón estilo madera (tipo Alkosto): costillas horizontales, esquineros metálicos,
 // patas cortas, relleno de producto con tinte verde/amarillo.
+
+/**
+ * El mural refrigerado de frutas y verduras.
+ *
+ * Es el mismo cuerpo que el multideck de bebidas —carrocería, zócalo con
+ * compresor, copete y cortina de aire— con la diferencia que cambia todo: sus
+ * niveles son BANDEJAS INCLINADAS y no entrepaños planos. Lo que se carga
+ * encima es fruta suelta, que rueda y hay que verla desde arriba; con estantes
+ * planos el mueble se lee como una estantería con cosas apoyadas.
+ */
+function NeveraVegetalesMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
+  const pinta = !ghost && !!facePaint?.front;
+  return (
+    <group>
+      <NeveraReal
+        w={w} d={d} h={h}
+        statusColor={statusColor}
+        ghost={ghost}
+        variante="vegetales"
+        conRelleno={false}
+      />
+      {/* El producto sólo cuando el proveedor NO subió su arte: cuando lo
+          subió, manda el arte. */}
+      {!pinta && (
+        <ProductoEnMural
+          w={w} d={d} h={h} rubro={rubro} semilla={id ?? "mural"} ghost={ghost}
+        />
+      )}
+    </group>
+  );
+}
 
 function StandFrutasMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
   const op      = ghost ? 0.42 : 1;
@@ -2101,6 +2083,7 @@ export function FixtureMesh({ fixture, ghost, facePaint, selectedSlotId, hovered
     case "isla_fria":        return <IslaFriaMesh         {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "nevera_carnes":    return <NeveraCarnesMesh     {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "nevera_refrescos": return <NeveraRefrescosMesh  {...base} facePaint={facePaint} />;
+    case "nevera_vegetales": return <NeveraVegetalesMesh   {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "stand_frutas":     return <StandFrutasMesh       {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "checkout":      return <CheckoutMesh       {...base} />;
     case "servicio_cliente": return <ServicioClienteMesh {...base} />;
@@ -3124,7 +3107,7 @@ function FirstPersonControls({
 const TIPOS_CON_PRODUCTO = new Set<string>([
   "gondola", "gondola_doble", "punta", "robatope", "mueble", "nevera_refrescos",
   "isla", "batea", "impulsador", "ristra", "cross",
-  "stand_frutas", "nevera_carnes", "isla_fria", "exhibicion",
+  "stand_frutas", "nevera_carnes", "nevera_vegetales", "isla_fria", "exhibicion",
 ]);
 
 /** Lowercase + strip accents so "Lácteos" matches "lacteo". */

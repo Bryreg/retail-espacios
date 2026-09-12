@@ -64,12 +64,20 @@ const medidasCodigo = sinComentarios(medidas);
 const gondolaCodigo = sinComentarios(gondola);
 const piezasCodigo = sinComentarios(piezas);
 
-/** El cuerpo de un mesh del editor, acotado hasta el siguiente. */
+/** El cuerpo de un mesh del editor, acotado hasta el siguiente.
+ *
+ *  Los DOS marcadores tienen que existir. Antes, un marcador de cierre que no
+ *  aparecía hacía que el corte llegara hasta el final del archivo, y entonces
+ *  la prueba medía medio editor en vez del mueble: una afirmación sobre lo que
+ *  la ristra NO tiene pasaba a fallar por lo que tiene el impulsador, y una
+ *  sobre lo que el exhibidor de cruz SÍ tiene pasaba porque lo tenía
+ *  cualquiera. Un anclaje mal escrito no puede quedar mudo. */
 function cuerpoDe(desde, hasta) {
   const i = editorCodigo.indexOf(desde);
   assert.ok(i > 0, `no se encontró \`${desde}\``);
   const j = editorCodigo.indexOf(hasta, i);
-  return editorCodigo.slice(i, j > i ? j : undefined);
+  assert.ok(j > i, `no se encontró \`${hasta}\` después de \`${desde}\`: el corte mediría el archivo entero`);
+  return editorCodigo.slice(i, j);
 }
 
 /** El cuerpo de `GondolaMesh`, que es donde puede perderse el negocio. */
@@ -667,7 +675,7 @@ const granelCodigo = sinComentarios(granel);
 const bateaCodigo = sinComentarios(batea);
 
 prueba("sin arte del proveedor, los muebles de volcado se llenan solos", () => {
-  const volcado = cuerpoDe("function VolcadoDeProducto(", "function EtiquetaDeEspacio(");
+  const volcado = cuerpoDe("function VolcadoDeProducto(", "interface ShelfSlot");
   assert.match(volcado, /<ProductoAGranel/, "sin arte, el mueble vuelve a quedar vacío");
   assert.match(volcado, /if \(!material\)/, "el genérico taparía el arte del proveedor");
 });
@@ -786,8 +794,7 @@ prueba("los exhibidores reciben el rubro del contrato", () => {
 prueba("el producto va DENTRO del grupo de la repisa que se inclina", () => {
   // Colgado afuera queda a la altura del eje y la repisa se le va varios
   // centímetros por delante.
-  const cruz = cuerpoDe("function CrossMesh(", "function VitrinaMesh(") ||
-               cuerpoDe("function CrossMesh(", "function MuebleMesh(");
+  const cruz = cuerpoDe("function CrossMesh(", "function MetroMesh(");
   assert.match(cruz, /rotation=\{\[-0\.09, 0, 0\]\}[\s\S]*<ProductoEnRepisas/,
     "el producto del exhibidor de cruz salió del grupo inclinado");
   assert.match(cruz, /\{i < nLevels - 1 && \(/,
@@ -803,9 +810,131 @@ prueba("un mueble entero se llena también en profundidad", () => {
 prueba("la ristra cuelga producto de sus ganchos", () => {
   // Una ristra es una TIRA: unidades colgando una debajo de otra. Con los
   // ganchos pelados no se parece ni a una ristra ni a un estante.
-  const ristra = cuerpoDe("function RistraMesh(", "function CheckoutMesh(");
+  const ristra = cuerpoDe("function RistraMesh(", "function CrossMesh(");
   assert.match(ristra, /!ghost && rubro &&/, "la ristra dejó de colgar producto");
   assert.match(ristra, /colorDeRubro\(rubro\)/, "el sobre colgado no toma el color del rubro");
+});
+
+// ── La silueta del envase ───────────────────────────────────────────────────
+//
+// Todo el producto se dibujaba como una caja escalada. Con eso, un lineal de
+// gaseosas es una pared de ladrillos y una nevera de bebidas se ve como un
+// archivador. La silueta es lo PRIMERO que el ojo clasifica —antes que el
+// color y mucho antes que la etiqueta—, y `Empaque.forma` traía el dato desde
+// que se armó el catálogo: existía y no se usaba.
+
+const mostrador = leer(join(muebles, "MostradorFrioReal.tsx"));
+const mural = leer(join(muebles, "ProductoEnMural.tsx"));
+const mostradorCodigo = sinComentarios(mostrador);
+const muralCodigo = sinComentarios(mural);
+
+prueba("cada envase se dibuja con SU forma, no con una caja", () => {
+  assert.match(perfiles, /export function geometriaDeEmpaque/, "se perdió la geometría por forma");
+  for (const [llamador, archivo] of [
+    ["ProductoEnMueble", enMuebleCod2],
+    ["ProductoAGranel", granelCodigo],
+    ["NeveraReal", neveraCodigo],
+  ]) {
+    assert.match(archivo, /geometriaDeEmpaque\(/, `\`${llamador}\` volvió a dibujar cajas`);
+    assert.ok(
+      !/new THREE\.BoxGeometry\(\s*(pieza|empaque|EMPAQUES)/.test(archivo),
+      `\`${llamador}\` volvió a dibujar el producto como caja`,
+    );
+  }
+});
+
+prueba("la botella tiene cuello y la lata es cilíndrica", () => {
+  const g = perfiles.slice(perfiles.indexOf("export function geometriaDeEmpaque"));
+  assert.match(g, /forma === "botella"[\s\S]{0,1400}LatheGeometry/, "la botella dejó de ser de revolución");
+  assert.match(g, /forma === "lata"[\s\S]{0,900}LatheGeometry/, "la lata dejó de ser cilíndrica");
+  assert.match(g, /forma === "pieza"[\s\S]{0,500}Icosahedron/, "la fruta dejó de ser una pieza redonda");
+});
+
+prueba("una botella acostada se GIRA, no se achata", () => {
+  // Dibujada de pie con 9 cm de alto sale un disco.
+  assert.match(productoCodigo, /acostado: true/, "`acostar` dejó de marcar el volcado");
+  const g = perfiles.slice(perfiles.indexOf("export function geometriaDeEmpaque"));
+  assert.match(g, /acostado && \(forma === "botella" \|\| forma === "lata"\)/,
+    "el envase acostado vuelve a dibujarse aplastado");
+});
+
+prueba("el volcado del rubro trae su forma", () => {
+  assert.equal(P.empaqueVolcado("Frutas").forma, "pieza");
+  assert.equal(P.empaqueVolcado("Carnes").forma, "bandeja");
+  assert.equal(P.empaqueVolcado("Gaseosas").acostado, true, "la gaseosa volcada no quedó acostada");
+});
+
+prueba("la geometría cacheada no se muta al reusarla", () => {
+  // `geometriaCanasto` la comparten varios muebles. Un `translate` sobre la
+  // copia del caché se lo lleva puesto a todos.
+  assert.match(perfiles, /function cascoDeTronco/, "se perdió la versión sin cachear del casco");
+  const bolsa = perfiles.slice(perfiles.indexOf('forma === "bolsa"'), perfiles.indexOf('forma === "bolsa"') + 400);
+  assert.ok(!/geometriaCanasto\(/.test(bolsa), "la bolsa vuelve a mutar la geometría compartida");
+});
+
+// ── El mostrador de servicio y el mural de vegetales ────────────────────────
+
+prueba("el mostrador de carnes tiene vidrio CURVO", () => {
+  // Una placa plana y vertical lo convierte en una vitrina cualquiera.
+  assert.match(perfiles, /export function geometriaVidrioCurvo/, "se perdió el vidrio curvo");
+  assert.match(mostradorCodigo, /geometriaVidrioCurvo\(/, "el mostrador volvió al vidrio plano");
+});
+
+prueba("el mostrador tiene la bandeja inclinada y su lado de servicio", () => {
+  // Sin la caída, lo de atrás queda tapado por lo de adelante; sin la franja
+  // de servicio, el mueble es simétrico y no se entiende de qué lado se
+  // atiende.
+  assert.match(mostradorCodigo, /rotation=\{\[CAIDA, 0, 0\]\}/, "la bandeja volvió a ser plana");
+  assert.match(mostradorCodigo, /export function bandejaDeMostrador/, "nadie sabe dónde va el producto");
+});
+
+prueba("el mural de vegetales lleva bandejas inclinadas, no estantes", () => {
+  // La fruta suelta rueda y hay que verla desde arriba.
+  assert.match(medidasCodigo, /export const MURAL_VEGETALES/, "se perdieron las cotas del mural");
+  assert.match(neveraCodigo, /variante === "vegetales"/, "se perdió la variante de vegetales");
+  assert.match(neveraCodigo, /MURAL_VEGETALES\.tope/, "las bandejas quedaron sin tope: la fruta se cae");
+});
+
+prueba("la bandeja gira sobre SÍ MISMA, no sobre el piso del mueble", () => {
+  // Rotando el grupo desde el origen, una bandeja a 1,2 m se corre treinta
+  // centímetros en Z y sale por el costado de la carrocería.
+  assert.match(
+    neveraCodigo, /position=\{\[0, y, NEVERA\.chapa \/ 2\]\}\s*\n\s*rotation=/,
+    "la bandeja del mural vuelve a girar desde el origen del mueble",
+  );
+  assert.match(
+    muralCodigo, /position=\{\[0, y, NEVERA\.chapa \/ 2\]\}\s*\n\s*rotation=/,
+    "la fruta del mural vuelve a girar desde el origen del mueble",
+  );
+});
+
+prueba("la nevera de vegetales está dada de alta en todo el sistema", () => {
+  // Un tipo nuevo toca diez lugares. Si falta uno, el mueble se puede colocar
+  // y después no tiene código, o no aparece en el plano 2D.
+  const donde = [
+    ["types/fixtures.ts", "el tipo no existe"],
+    ["utils/nomenclatura.ts", "el mueble no tiene prefijo de código"],
+    ["components/FloorPlan2D/FloorPlan2D.tsx", "no se puede colocar en el plano 2D"],
+    ["components/MiniMapa/MiniMapa.tsx", "no tiene nombre en el minimapa"],
+    ["components/plataforma/formato.ts", "no tiene nombre en los informes"],
+  ];
+  for (const [ruta, porque] of donde) {
+    assert.match(leer(join("src", ruta)), /nevera_vegetales/, `${ruta}: ${porque}`);
+  }
+  assert.match(editorCodigo, /case "nevera_vegetales":/, "el editor 3D no sabe dibujarla");
+  assert.match(editorCodigo, /code:"VEG"/, "el mueble no tiene código de espacio");
+});
+
+prueba("la ristra NO lleva entrepaño", () => {
+  // Una ristra es una TIRA: el producto CUELGA de una varilla por su troquel.
+  // Tenía una placa horizontal del ancho del mueble en cada gancho, y eso la
+  // convertía en una repisera angosta.
+  const ristra = cuerpoDe("function RistraMesh(", "function CrossMesh(");
+  assert.match(ristra, /cylinderGeometry args=\{\[0\.0035/, "el gancho volvió a ser una bandeja");
+  assert.ok(
+    !/boxGeometry args=\{\[w \* 0\.82/.test(ristra),
+    "volvió la placa horizontal: la ristra es una repisera otra vez",
+  );
 });
 
 console.log(`\n${hechas} pruebas del mobiliario 3D`);

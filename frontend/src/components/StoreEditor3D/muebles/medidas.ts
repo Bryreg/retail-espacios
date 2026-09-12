@@ -469,3 +469,34 @@ export function filasDeNevera(alto: number, fondoMaximo: number): FilasDeProduct
     fondos: Array.from({ length: rows }, () => fondoMaximo),
   };
 }
+
+/* ── El mural de frutas y verduras ───────────────────────────────────────────
+   Es un mueble de frío abierto como el multideck de bebidas, con dos
+   diferencias que cambian la forma entera:
+
+   · sus niveles son BANDEJAS INCLINADAS hacia el cliente, no entrepaños
+     planos. La fruta suelta rueda y hay que verla desde arriba, así que el
+     plano de apoyo cae unos quince grados; y
+   · van muchos menos y mucho más hondos, porque lo que se carga encima es una
+     caja de producto y no una fila de envases. */
+
+export const MURAL_VEGETALES = {
+  /** Inclinación de la bandeja hacia el cliente, en radianes. */
+  caida: (15 * Math.PI) / 180,
+  /** Alto del borde de contención del frente. Sin él la fruta se cae, y sin
+   *  dibujarlo el mueble se lee como una estantería con cosas encima. */
+  tope: 0.07,
+  /** Separación mínima entre bandejas. */
+  paso: 0.42,
+} as const;
+
+/** Las bandejas de un mural de vegetales: pocas, hondas e inclinadas. */
+export function nivelesDeMural(alto: number): number[] {
+  const util = altoUtilDeNevera(alto);
+  const desde = NEVERA.zocalo + 0.05;
+  const hasta = NEVERA.zocalo + util - 0.06;
+  if (hasta <= desde) return [];
+  const cuantos = Math.max(1, Math.round((hasta - desde) / MURAL_VEGETALES.paso));
+  const paso = (hasta - desde) / cuantos;
+  return Array.from({ length: cuantos + 1 }, (_, i) => alRasDeRanura(desde + i * paso));
+}

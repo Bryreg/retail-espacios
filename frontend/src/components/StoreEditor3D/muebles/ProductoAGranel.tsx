@@ -1,6 +1,7 @@
 import { memo, useMemo } from "react";
 import * as THREE from "three";
 import { colorVolcado, empaqueVolcado } from "./producto";
+import { geometriaDeEmpaque } from "./perfiles";
 
 /**
  * Producto a granel, visto desde arriba: lo que llena una batea, un cajón de
@@ -144,8 +145,8 @@ export const ProductoAGranel = memo(function ProductoAGranel({
   }, [ancho, fondo, y, altoLibre, rubro, semilla, ghost]);
 
   const geometria = useMemo(
-    () => new THREE.BoxGeometry(empaque.ancho, empaque.alto, empaque.fondo),
-    [empaque.ancho, empaque.alto, empaque.fondo],
+    () => geometriaDeEmpaque(empaque.forma, empaque.ancho, empaque.alto, empaque.fondo, empaque.acostado),
+    [empaque.forma, empaque.ancho, empaque.alto, empaque.fondo, empaque.acostado],
   );
   const material = useMemo(
     () => new THREE.MeshStandardMaterial({

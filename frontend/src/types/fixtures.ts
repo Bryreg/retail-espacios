@@ -30,6 +30,7 @@ export type FixType =
   | "isla_fria"
   | "nevera_carnes"
   | "nevera_refrescos"
+  | "nevera_vegetales"
   | "stand_frutas"
   | "checkout"
   | "servicio_cliente"
@@ -162,6 +163,7 @@ export const RATE_TYPES: { type: string; label: string }[] = [
   { type: "batea",            label: "Batea" },
   { type: "isla_fria",        label: "Isla de congelados" },
   { type: "nevera_carnes",    label: "Nevera de carnes" },
+  { type: "nevera_vegetales", label: "Nevera de vegetales" },
   { type: "nevera_refrescos", label: "Nevera de bebidas" },
   { type: "stand_frutas",     label: "Frutas y verduras" },
   { type: "checkout",         label: "Cabecera de caja" },
@@ -177,6 +179,7 @@ export const CATEGORIA_DE_TIPO: Record<string, string> = {
   ristra: "Displays", cross: "Displays", impulsador: "Displays",
   mueble: "Muebles", isla: "Muebles", batea: "Muebles",
   isla_fria: "Refrigeración", nevera_carnes: "Refrigeración",
+  nevera_vegetales: "Refrigeración",
   nevera_refrescos: "Refrigeración",
   stand_frutas: "Frescos",
   metro: "Zona libre",

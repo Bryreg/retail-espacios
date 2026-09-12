@@ -3495,6 +3495,52 @@ El desorden del volcado sale de un generador **sembrado con el id del mueble**, 
 `Math.random`: al azar, la fruta se reacomoda sola cada vez que se mueve la cámara, el
 plano titila entero y nadie puede señalar nada.
 
+### La silueta del envase decide si se reconoce el producto
+
+Todo el producto se dibujaba como una caja escalada. Con eso un lineal de gaseosas es una
+pared de ladrillos y una nevera de bebidas se ve como un archivador. **La silueta es lo
+primero que el ojo clasifica** — antes que el color y mucho antes que la etiqueta.
+
+`Empaque.forma` traía el dato desde que se armó el catálogo de empaques y no se usaba.
+Ahora `geometriaDeEmpaque` lo convierte en geometría: la botella es de revolución con
+hombro y cuello, la lata un cilindro con sus cantos engargolados, la fruta un icosaedro
+facetado (una esfera perfecta se lee como bola de billar) y la carne una bandeja con el
+film abombado.
+
+Dos trampas que costó ver:
+
+- **Un envase acostado se GIRA, no se achata.** Una botella tumbada sigue teniendo
+  cuello; dibujada de pie con 9 cm de alto sale un disco. `acostar` marca `acostado` y la
+  geometría se encarga.
+- **Una geometría del caché no se puede mover.** `geometriaCanasto` la comparten varios
+  muebles: un `translate` sobre la copia cacheada se lo lleva puesto a todos. El casco sin
+  cachear vive aparte, en `cascoDeTronco`.
+
+### El mostrador de servicio y el mural de vegetales
+
+Un mostrador de carnes no es un cajón con una placa de vidrio vertical encima: eso es una
+vitrina cualquiera. Lo identifican tres cosas, y las tres son de forma — el **vidrio
+curvo**, que arranca casi horizontal sobre la bandeja y se levanta hacia el cliente; la
+**bandeja inclinada**, para que lo de atrás se vea por encima de lo de adelante; y la
+**franja de servicio**, del lado del que atiende. Sin ella el mueble es simétrico y no se
+entiende de qué lado se despacha.
+
+El **mural de frutas y verduras** (`nevera_vegetales`) es un tipo nuevo del catálogo. Es
+el mismo cuerpo que el multideck de bebidas con una diferencia que cambia todo: sus
+niveles son **bandejas inclinadas con tope**, no entrepaños planos. Lo que se carga encima
+es fruta suelta, que rueda y hay que verla desde arriba.
+
+**Un tipo de mueble nuevo toca diez lugares**: el tipo, el prefijo de código, el catálogo
+del editor 3D, el del plano 2D, el alto por defecto, el color, el minimapa, los nombres de
+los informes, y el prefijo y el nombre en el backend. Si falta uno, el mueble se coloca y
+después no tiene código, o no aparece en el plano. `probar:muebles` lo verifica.
+
+### Y la bandeja gira sobre sí misma
+
+Rotando el grupo desde el origen del mueble, una bandeja a 1,2 m de altura se corre treinta
+centímetros en Z y sale por el costado de la carrocería. El giro va sobre el grupo ya
+puesto en su altura. Es el mismo error que tuvo el producto del exhibidor de cruz.
+
 ### `/taller` dibuja cualquier mueble del catálogo
 
 `FixtureMesh` y `FIXTURE_DEFS` se exportan sólo para eso. Sin ello, mirarle la forma a un
@@ -3508,8 +3554,11 @@ también toma un **rubro**, porque lo que se dibuja adentro depende del contrato
 - **Ya estaban bien y se dejaron**: vitrina, checkout, servicio al cliente, isla fría,
   stand de frutas, nevera de carnes, exhibidor de piso — tenían forma correcta y lo que
   les faltaba era producto, que ahora tienen.
-- **Sólo se les agregó producto**: exhibidor cruz, impulsador, robatope, ristra. Su
-  estructura sigue siendo de cajas, aunque razonable para muebles de ese tamaño.
+- **Sólo se les agregó producto**: exhibidor cruz, impulsador y robatope. Su estructura
+  sigue siendo de cajas, aunque razonable para muebles de ese tamaño.
+- **La ristra dejó de llevar entrepaño.** Tenía una placa horizontal del ancho del mueble
+  en cada gancho, y eso la convertía en una repisera angosta. Una ristra es una TIRA: el
+  producto cuelga de una varilla por su troquel.
 - **Sin tocar**: columna y zona libre, que son infraestructura y no se alquilan.
 - **Las cotas del proveedor real del cliente**, que reemplazan las de `medidas.ts`.
 - El producto no distingue forma: una botella se dibuja como caja. `Empaque.forma` ya

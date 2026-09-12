@@ -448,6 +448,7 @@ _REFERENCIAS = {
     "checkout": "las cajas",
     "nevera_refrescos": "las neveras",
     "nevera_carnes": "el mostrador de carnes",
+    "nevera_vegetales": "el mural de frutas y verduras",
     "stand_frutas": "las frutas",
 }
 

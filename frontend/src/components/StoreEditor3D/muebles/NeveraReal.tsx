@@ -1,9 +1,10 @@
 import { memo, useMemo } from "react";
 import * as THREE from "three";
 import {
-  NEVERA, PORTA_PRECIOS, altoUtilDeNevera, nivelesDeNevera, puertasDeNevera,
+  MURAL_VEGETALES, NEVERA, PORTA_PRECIOS,
+  altoUtilDeNevera, nivelesDeMural, nivelesDeNevera, puertasDeNevera,
 } from "./medidas";
-import { geometriaMarcoDePuerta, geometriaPortaPrecios } from "./perfiles";
+import { geometriaDeEmpaque, geometriaMarcoDePuerta, geometriaPortaPrecios } from "./perfiles";
 import { acomodar, EMPAQUES } from "./producto";
 
 /**
@@ -55,8 +56,12 @@ export interface NeveraRealProps {
    * · `puertas` — cerrado con puertas de vidrio. El de un autoservicio o una
    *   tienda de conveniencia, donde el consumo eléctrico manda más que la
    *   velocidad de compra.
+   * · `vegetales` — el mural de frutas y verduras. Abierto como el multideck,
+   *   pero sus niveles son BANDEJAS INCLINADAS y no entrepaños planos: lo que
+   *   se carga encima es fruta suelta, que rueda y hay que verla desde arriba.
+   *   Con estantes planos se lee como una estantería con cosas encima.
    */
-  variante?: "multideck" | "puertas";
+  variante?: "multideck" | "puertas" | "vegetales";
   /** Llena los entrepaños con envases mudos. Se apaga cuando el proveedor
    *  subió su arte: lo que se ve por el vidrio tiene que ser SU producto. */
   conRelleno?: boolean;
@@ -109,7 +114,11 @@ const RellenoDeNevera = memo(function RellenoDeNevera({
     return fuera;
   }, [niveles, techo, ancho, fondo]);
 
-  const geometria = useMemo(() => new THREE.BoxGeometry(
+  // Con forma de BOTELLA. Un multideck de bebidas lleno de prismas se lee como
+  // un archivador: el cilindro con cuello es lo que dice «bebida» a diez
+  // metros, y es lo primero que el ojo clasifica.
+  const geometria = useMemo(() => geometriaDeEmpaque(
+    EMPAQUES.botellaChica.forma,
     EMPAQUES.botellaChica.ancho, EMPAQUES.botellaChica.alto, EMPAQUES.botellaChica.fondo,
   ), []);
 
@@ -148,6 +157,12 @@ function useMaterialesDeFrio(ghost: boolean, statusColor?: string) {
       rejilla: new THREE.MeshStandardMaterial({
         color: "#b9c2cb", metalness: 0.55, roughness: 0.35,
         envMapIntensity: 0.7, ...comun,
+      }),
+      /** La cubeta de un mural de vegetales: plástico claro, mate, lavable.
+       *  No es rejilla de alambre — sobre rejilla la fruta se marca. */
+      cubeta: new THREE.MeshStandardMaterial({
+        color: "#dfe7ea", metalness: 0.05, roughness: 0.72,
+        envMapIntensity: 0.4, ...comun,
       }),
       /** El marco de aluminio de la puerta. */
       marco: new THREE.MeshStandardMaterial({
@@ -195,11 +210,14 @@ export const NeveraReal = memo(function NeveraReal({
   w, d, h, statusColor, ghost = false, variante = "multideck", conRelleno = true,
 }: NeveraRealProps) {
   const conPuertas = variante === "puertas";
+  const esMural = variante === "vegetales";
   const m = useMaterialesDeFrio(ghost, statusColor);
 
   const util = altoUtilDeNevera(h);
   const yInterior = NEVERA.zocalo + util / 2;
-  const niveles = useMemo(() => nivelesDeNevera(h), [h]);
+  const niveles = useMemo(
+    () => (esMural ? nivelesDeMural(h) : nivelesDeNevera(h)), [h, esMural],
+  );
   const cuantasPuertas = puertasDeNevera(w);
   const anchoDePuerta = w / cuantasPuertas;
 
@@ -284,14 +302,33 @@ export const NeveraReal = memo(function NeveraReal({
       {/* ── Entrepaños de rejilla, con su tira de luz ─────────────────────*/}
       {niveles.map((y) => (
         <group key={`e${y.toFixed(3)}`}>
-          <mesh
+          {/* En el mural de vegetales la bandeja CAE hacia el cliente y lleva
+              un tope al frente. Sin la caída, la fruta de atrás queda tapada
+              por la de adelante; sin el tope, se cae al pasillo — y dibujado
+              plano el mueble se lee como una estantería con cosas encima. */}
+          {/* El giro va SOBRE LA BANDEJA, con el grupo ya puesto en su
+              altura. Rotando el grupo desde el origen del mueble, una bandeja
+              a 1,2 m se corre treinta centímetros en Z y sale por el costado
+              de la carrocería — se probó y se ve exactamente así. */}
+          <group
             position={[0, y, NEVERA.chapa / 2]}
-            castShadow
-            receiveShadow
-            material={m.rejilla}
+            rotation={[esMural ? MURAL_VEGETALES.caida : 0, 0, 0]}
           >
-            <boxGeometry args={[anchoInterior - 0.01, 0.009, fondoInterior]} />
-          </mesh>
+            <mesh castShadow receiveShadow material={esMural ? m.cubeta : m.rejilla}>
+              <boxGeometry args={[
+                anchoInterior - 0.01, esMural ? 0.016 : 0.009, fondoInterior,
+              ]} />
+            </mesh>
+            {esMural && (
+              <mesh
+                position={[0, MURAL_VEGETALES.tope / 2, -fondoInterior / 2]}
+                castShadow
+                material={m.marco}
+              >
+                <boxGeometry args={[anchoInterior - 0.01, MURAL_VEGETALES.tope, 0.012]} />
+              </mesh>
+            )}
+          </group>
           {/* El porta-precios en el filo. Un multideck lo lleva igual que el
               lineal: es donde va el precio de la bebida. */}
           <mesh
@@ -313,7 +350,7 @@ export const NeveraReal = memo(function NeveraReal({
       ))}
 
       {/* ── El producto ───────────────────────────────────────────────────*/}
-      {conRelleno && !ghost && (
+      {conRelleno && !ghost && !esMural && (
         <RellenoDeNevera
           niveles={niveles}
           techo={NEVERA.zocalo + util}
