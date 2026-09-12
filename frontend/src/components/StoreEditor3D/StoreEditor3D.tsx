@@ -12,10 +12,13 @@ import {
 import { Html } from "@react-three/drei";
 import { GondolaReal } from "./muebles/GondolaReal";
 import { ProductoEnGondola } from "./muebles/ProductoEnGondola";
+import { PuntaReal } from "./muebles/PuntaReal";
+import { ProductoEnPunta } from "./muebles/ProductoEnPunta";
 import { olvidarGeometrias } from "./muebles/perfiles";
 import {
-  ESPESOR_ESPINA, PARANTE, ZONA_DE_SLOTS, altoDeZonaDeSlots,
-  filasDeProducto, fondoPorCara,
+  COPETE, ESPESOR_ESPINA, PANEL_FONDO, PARANTE, ZONA_DE_SLOTS,
+  altoDeZonaDeSlots, altoDeZonaDeSlotsDePunta,
+  filasDeProducto, filasDePunta, fondoPorCara,
 } from "./muebles/medidas";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { useModalAbierto } from "../../tema";
@@ -220,14 +223,23 @@ function laminaDeFranja(ancho: number, alto: number, v0: number, v1: number) {
  * manera que cada franja muestra exactamente el pedazo de imagen que le toca.
  */
 function LaminaDeProductoPorFila({
-  ancho, alto, filas, frentes, facePaint, doble = false,
+  ancho, alto, filas, fondos, montajeA, haciaA, montajeB, haciaB, facePaint, doble = false,
 }: {
   ancho: number;
   /** Alto del panel completo, que es el espacio de la textura. */
   alto: number;
   filas: { rowBottom: number; rowPitch: number; rows: number };
-  /** Distancia del centro del mueble al filo del entrepaño de cada fila. */
-  frentes: number[];
+  /** Fondo del entrepaño de cada fila, de abajo hacia arriba. */
+  fondos: number[];
+  /** Z del plano donde se cuelgan los entrepaños de la cara A, y hacia dónde
+   *  crecen desde ahí. Se dan por separado porque no siempre coinciden: la
+   *  góndola monta cada cara en su lado de la espina y crece hacia afuera,
+   *  pero la punta monta ATRÁS —contra el corrido— y crece hacia adelante. Con
+   *  un signo único, el arte de la punta aparece detrás del mueble. */
+  montajeA: number;
+  haciaA: 1 | -1;
+  montajeB?: number;
+  haciaB?: 1 | -1;
   facePaint?: FacePaint | null;
   doble?: boolean;
 }) {
@@ -242,18 +254,25 @@ function LaminaDeProductoPorFila({
   );
 
   const franjas = useMemo(() => {
-    const fuera: { y: number; geo: THREE.BufferGeometry; frente: number }[] = [];
+    const fuera: { y: number; geo: THREE.BufferGeometry; zA: number; zB: number }[] = [];
     for (let i = 0; i < filas.rows; i++) {
       const y0 = filas.rowBottom + i * filas.rowPitch;
       const y1 = y0 + filas.rowPitch;
+      const fondo = fondos[i] ?? fondos[fondos.length - 1] ?? 0;
+      // La cara PINTADA de la lámina es la exterior, así que el centro se
+      // corre medio espesor hacia adentro para que la imagen quede justo
+      // sobre el retranqueo.
+      const desdeElFilo = fondo - RETRANQUEO_ENTREPANO;
       fuera.push({
         y: (y0 + y1) / 2,
         geo: laminaDeFranja(ancho, filas.rowPitch, y0 / alto, y1 / alto),
-        frente: frentes[i] ?? frentes[frentes.length - 1] ?? 0,
+        zA: montajeA + haciaA * (desdeElFilo - ESPESOR_LAMINA / 2),
+        zB: (montajeB ?? 0) + (haciaB ?? 1) * (desdeElFilo - ESPESOR_LAMINA / 2),
       });
     }
     return fuera;
-  }, [ancho, alto, filas.rowBottom, filas.rowPitch, filas.rows, frentes]);
+  }, [ancho, alto, filas.rowBottom, filas.rowPitch, filas.rows, fondos,
+      montajeA, haciaA, montajeB, haciaB]);
 
   useEffect(() => () => { for (const f of franjas) f.geo.dispose(); }, [franjas]);
 
@@ -262,18 +281,10 @@ function LaminaDeProductoPorFila({
       {franjas.map((f, i) => (
         <group key={i}>
           {matsA && (
-            <mesh
-              position={[0, f.y, -(f.frente - RETRANQUEO_ENTREPANO) + ESPESOR_LAMINA / 2]}
-              geometry={f.geo}
-              material={matsA}
-            />
+            <mesh position={[0, f.y, f.zA]} geometry={f.geo} material={matsA} />
           )}
           {matsB && (
-            <mesh
-              position={[0, f.y, (f.frente - RETRANQUEO_ENTREPANO) - ESPESOR_LAMINA / 2]}
-              geometry={f.geo}
-              material={matsB}
-            />
+            <mesh position={[0, f.y, f.zB]} geometry={f.geo} material={matsB} />
           )}
         </group>
       ))}
@@ -567,10 +578,6 @@ const GondolaMesh = memo(function GondolaMesh({
   // una copia. Ver `filasDeProducto`.
   const fondoCara = fondoPorCara(d, isWall);
   const filas = useMemo(() => filasDeProducto(h, fondoCara), [h, fondoCara]);
-  const frentes = useMemo(
-    () => filas.fondos.map((f) => ESPESOR_ESPINA / 2 + f),
-    [filas.fondos],
-  );
 
   const pinta = !ghost && !!facePaint && !!(facePaint.front || facePaint.back);
 
@@ -627,7 +634,9 @@ const GondolaMesh = memo(function GondolaMesh({
           ancho={w - PARANTE.ancho * 2}
           alto={h}
           filas={filas}
-          frentes={frentes}
+          fondos={filas.fondos}
+          montajeA={-ESPESOR_ESPINA / 2} haciaA={-1}
+          montajeB={ESPESOR_ESPINA / 2} haciaB={1}
           doble={!isWall}
           facePaint={facePaint}
         />
@@ -654,89 +663,63 @@ interface PuntaMeshProps {
 }
 
 function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: PuntaMeshProps) {
-  const op      = ghost ? 0.42 : 1;
-  // Board layout mirrored by getPanelShelfSpan("punta") — keep in sync.
-  const topperH = 0.36;              // promotional header height
-  const bodyH   = h - topperH;
-  const nShelves = Math.max(3, Math.round(bodyH / 0.38));
-  const slotAreaH = bodyH - 0.08;
-  const panelZ  = -(d / 2 + 0.10);  // slot projection forward
+  // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
+  // La punta es el espacio más caro de un supermercado: se ve de frente desde
+  // todo el pasillo transversal y se negocia aparte del lineal. Estaba armada
+  // con `boxGeometry` —placas planas y un cartel que era una caja— y la dibuja
+  // ahora `PuntaReal`, con el mismo herraje que el corrido.
+  //
+  // Lo que NO se movió de acá, a propósito: los paneles de slot y el pintado
+  // de caras. La posición de cada slot está guardada en los contratos de los
+  // clientes, así que su geometría queda clavada aunque el mueble haya
+  // cambiado de forma entero.
 
-  const G_WHITE = "#efefed";
-  const G_FRAME = "#c0c0bc";
-  const G_BACK  = "#d8d8d5";
+  const altoDeCuerpo = Math.max(0.4, h - COPETE.alto);
+  const fondoDeCara = Math.max(0.12, d - PANEL_FONDO.espesor);
+
+  // Espacio de los slots. `altoDeZonaDeSlotsDePunta` NO es la misma cuenta que
+  // la de la góndola, y es deliberado: así se repartieron los slots de las
+  // puntas cuando se dibujaron. Unificarlas corre todos los espacios vendidos.
+  const slotAreaH = altoDeZonaDeSlotsDePunta(altoDeCuerpo);
+  const panelZ = -(d / 2 + 0.10);
+
+  // Las filas de producto salen de la misma cuenta que los entrepaños.
+  const filas = useMemo(
+    () => filasDePunta(altoDeCuerpo, fondoDeCara), [altoDeCuerpo, fondoDeCara],
+  );
 
   const pinta = !ghost && !!facePaint?.front;
 
   return (
     <group>
-      {/* Structural back plate (faces the gondola) — estructura, lisa */}
-      <mesh position={[0, bodyH / 2, d * 0.40]} castShadow>
-        <boxGeometry args={[w, bodyH, d * 0.22]} />
-        <meshLambertMaterial color={G_BACK} transparent opacity={op} />
-      </mesh>
+      <PuntaReal w={w} d={d} h={h} ghost={ghost} />
 
-      {/* El producto, al frente del entrepaño */}
+      {/* El arte del proveedor, parado en el filo de cada entrepaño. La punta
+          se cuelga ATRÁS —contra el corrido— y crece hacia el frente: con el
+          montaje de la góndola, el arte aparecería detrás del mueble. */}
       {pinta && (
-        <LaminaDeProducto ancho={w} alto={bodyH} y={bodyH / 2} fondo={d} facePaint={facePaint} />
+        <LaminaDeProductoPorFila
+          ancho={w - PARANTE.ancho * 2}
+          alto={altoDeCuerpo}
+          filas={filas}
+          fondos={filas.fondos}
+          montajeA={d / 2} haciaA={-1}
+          facePaint={facePaint}
+        />
       )}
 
-      {/* Left & right uprights */}
-      {([-1, 1] as const).map(side => (
-        <mesh key={side} position={[side * (w / 2 - 0.025), bodyH / 2, 0]} castShadow>
-          <boxGeometry args={[0.050, bodyH, d]} />
-          <meshStandardMaterial color={G_FRAME} metalness={0.18} roughness={0.70} transparent opacity={op} />
-        </mesh>
-      ))}
-
-      {/* Shelf boards — angled slightly toward viewer */}
-      {Array.from({ length: nShelves }, (_, i) => {
-        const sy = 0.12 + (i + 1) * (bodyH - 0.16) / (nShelves + 1);
-        return (
-          <group key={i} rotation={[-0.08, 0, 0]}>
-            <mesh position={[0, sy, 0]} castShadow>
-              <boxGeometry args={[w - 0.055, 0.022, d - 0.01]} />
-              <meshLambertMaterial color={G_WHITE} transparent opacity={op} />
-            </mesh>
-            {/* Front price rail */}
-            <mesh position={[0, sy + 0.030, -(d / 2 - 0.008)]}>
-              <boxGeometry args={[w - 0.06, 0.036, 0.007]} />
-              <meshLambertMaterial color="#b0b0ad" transparent opacity={op} />
-            </mesh>
-          </group>
-        );
-      })}
-
-      {/* Promotional topper — dark frame + white face */}
-      <mesh position={[0, bodyH + topperH / 2, 0]} castShadow>
-        <boxGeometry args={[w + 0.10, topperH, d * 0.09]} />
-        <meshStandardMaterial color="#2e2e2c" metalness={0.30} roughness={0.55} transparent opacity={op} />
-      </mesh>
-      {/* White printable face */}
-      <mesh position={[0, bodyH + topperH / 2, -(d * 0.045 + 0.004)]}>
-        <boxGeometry args={[w + 0.02, topperH * 0.80, 0.006]} />
-        <meshLambertMaterial color="#f8f8f6" transparent opacity={op} />
-      </mesh>
-      {/* Top light bar */}
-      <mesh position={[0, bodyH + topperH + 0.030, -(d * 0.04)]}>
-        <boxGeometry args={[w + 0.04, 0.050, 0.100]} />
-        <meshStandardMaterial color="#eeeeed" metalness={0.08} roughness={0.25} transparent opacity={op} />
-      </mesh>
-
-      {/* Corner feet */}
-      {([-1, 1] as const).map(sx => (
-        <mesh key={`ft${sx}`} position={[sx * (w / 2 - 0.09), 0.045, 0]} castShadow>
-          <boxGeometry args={[0.16, 0.090, d * 0.60]} />
-          <meshLambertMaterial color={G_FRAME} transparent opacity={op} />
-        </mesh>
-      ))}
+      {/* El producto de los espacios vendidos. Cuando el proveedor subió su
+          arte manda el arte: las dos no conviven sobre la misma cara. */}
+      {!pinta && (
+        <ProductoEnPunta w={w} d={d} h={h} slots={slots} ghost={ghost} />
+      )}
 
       {/* Slot panels (same as GondolaMesh pattern) — disabled when onSlotClick is absent */}
       {!ghost && !!onSlotClick && slots?.map(slot => {
         const sw    = slot.w * w - 0.04;
         const sh    = slot.h * slotAreaH - 0.025;
         const cx    = (slot.x + slot.w * 0.5) * w - w / 2;
-        const cy    = 0.06 + (slot.y + slot.h * 0.5) * slotAreaH;
+        const cy    = ZONA_DE_SLOTS.desde + (slot.y + slot.h * 0.5) * slotAreaH;
         const sc    = STATUS_COLORS[slot.status] ?? STATUS_COLORS.free;
         const isSel = slot.id === selectedSlotId;
         const isHov = slot.id === hoveredSlotId;
@@ -3457,15 +3440,19 @@ function getPanelShelfSpan(type: string, w: number, h: number, d: number): Panel
       return { panelW: w, panelH: h, rowBottom, rowPitch, rows };
     }
     case "punta": {
-      // PuntaMesh — painted panel: back plate [w, bodyH] spanning 0..bodyH,
-      // bodyH = h - topperH (0.36). Boards: n = max(3, round(bodyH/0.38))
-      // centres at 0.12 + (i+1)·(bodyH-0.16)/(n+1), thickness 0.022 (the
-      // -0.08 rad board tilt shifts edges <1 cm — visually negligible).
-      // Every board incl. the top one has display room above it → rows = n.
-      const bodyH = h - 0.36;
-      const n     = Math.max(3, Math.round(bodyH / 0.38));
-      const pitch = (bodyH - 0.16) / (n + 1);
-      return { panelW: w, panelH: bodyH, rowBottom: 0.12 + pitch + 0.011, rowPitch: pitch, rows: n };
+      // Acá había una COPIA de la cuenta de entrepaños de `PuntaMesh`, igual
+      // que la tenía la góndola, con el mismo comentario pidiendo mantener las
+      // dos iguales. Ahora las dos preguntan a `filasDePunta`, que es la misma
+      // función que ubica los entrepaños que se dibujan.
+      //
+      // Una punta tiene tantas filas como entrepaños —y no una menos, como la
+      // góndola— porque el techo de la fila de arriba es el COPETE: sobre el
+      // entrepaño más alto de una punta también se vende.
+      const altoDeCuerpo = Math.max(0.4, h - COPETE.alto);
+      const { rowBottom, rowPitch, rows } = filasDePunta(
+        altoDeCuerpo, Math.max(0.12, d - PANEL_FONDO.espesor),
+      );
+      return { panelW: w, panelH: altoDeCuerpo, rowBottom, rowPitch, rows };
     }
     case "robatope": {
       // RobatopeMesh — same layout language as PuntaMesh: panel [w, bodyH],

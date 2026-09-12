@@ -133,8 +133,20 @@ export function nivelesDeEntrepano(alto: number): number[] {
   // más profunda y en tienda es la que lleva el producto pesado. Arrancar el
   // primer nivel un paso más arriba deja un hueco vacío abajo que ninguna
   // góndola tiene, y es de las cosas que más delatan un modelo inventado.
-  const desde = ZOCALO.alto;
-  const hasta = alto - 0.1; // aire arriba: el último entrepaño no toca el techo
+  //
+  // Aire arriba: el último entrepaño no toca el remate.
+  return nivelesEntre(ZOCALO.alto, alto - 0.1);
+}
+
+/**
+ * Las alturas de entrepaño que entran entre dos cotas, al ras de ranura.
+ *
+ * Lo comparten la góndola y la punta, que reparten sus bandejas con la misma
+ * regla y se diferencian sólo en dónde empiezan y dónde terminan. Tenerlo
+ * escrito una vez es lo que hace que agregar un mueble nuevo no reabra la
+ * discusión de cuántos entrepaños van.
+ */
+export function nivelesEntre(desde: number, hasta: number): number[] {
   if (hasta <= desde) return [];
 
   const disponible = hasta - desde;
@@ -286,4 +298,80 @@ export const ZONA_DE_SLOTS = {
 
 export function altoDeZonaDeSlots(alto: number): number {
   return alto - ZONA_DE_SLOTS.remate - ZONA_DE_SLOTS.desde;
+}
+
+/* ── La punta de góndola ─────────────────────────────────────────────────────
+   Es el espacio más caro de un supermercado: se ve de frente desde todo el
+   pasillo transversal y por eso se vende aparte y más caro que el lineal. Su
+   forma tiene dos cosas que la góndola no tiene — un COPETE arriba, que es la
+   cartelería de la marca, y una sola cara vendible, porque la de atrás da
+   contra el corrido. */
+
+export const COPETE = {
+  /** Alto del cartel de arriba. Es la cota que separa el cuerpo del copete y
+   *  la que decide, por resta, cuántos entrepaños entran. */
+  alto: 0.36,
+  /** Fondo del marco del copete. Va mucho más fino que el cuerpo: el cartel es
+   *  una chapa con marco, no un cajón. */
+  fondo: 0.055,
+  /** Cuánto sobresale a cada lado del cuerpo. Ese vuelo es lo que hace que el
+   *  copete se lea como cartel y no como la tapa del mueble. */
+  vuelo: 0.05,
+  /** Alto de la barra de luz que lo remata. */
+  altoLuz: 0.05,
+} as const;
+
+/** Los entrepaños de una punta, dentro de su cuerpo (sin el copete).
+ *
+ *  Terminan un poco antes del copete: el cartel necesita su aire o se lee
+ *  como un entrepaño más. */
+export function nivelesDePunta(altoDeCuerpo: number): number[] {
+  return nivelesEntre(ZOCALO.alto, altoDeCuerpo - 0.06);
+}
+
+/**
+ * Las filas de producto de una punta.
+ *
+ * Se diferencia de la góndola en el techo de la última fila: en la góndola es
+ * el entrepaño de arriba, y acá es **el copete**. Por eso una punta tiene
+ * tantas filas como entrepaños —sobre el de más arriba también se para
+ * producto— y una góndola tiene una menos.
+ */
+export function filasDePunta(altoDeCuerpo: number, fondoMaximo: number): FilasDeProducto {
+  const niveles = nivelesDePunta(altoDeCuerpo);
+  if (niveles.length === 0) {
+    return {
+      rowBottom: ZOCALO.alto,
+      alturas: [ZOCALO.alto, altoDeCuerpo],
+      rowPitch: Math.max(0.2, altoDeCuerpo - ZOCALO.alto),
+      rows: 1,
+      fondos: [Math.min(PROFUNDIDADES[0], fondoMaximo)],
+    };
+  }
+  // El techo de la última fila es la parte de abajo del copete.
+  const alturas = [...niveles, altoDeCuerpo];
+  const rows = niveles.length;
+  return {
+    rowBottom: niveles[0],
+    alturas,
+    rowPitch: (alturas[rows] - alturas[0]) / rows,
+    rows,
+    fondos: Array.from({ length: rows }, (_, i) =>
+      profundidadDeNivel(i, alturas.length, fondoMaximo),
+    ),
+  };
+}
+
+/**
+ * El alto de la franja de slots de una PUNTA.
+ *
+ * Deliberadamente NO es `altoDeZonaDeSlots`. La góndola descuenta el remate y
+ * la base; la punta descuenta sólo el remate, y su franja se mide sobre el
+ * cuerpo (sin el copete). Son dos fórmulas distintas porque así se repartieron
+ * los slots cuando se dibujaron, y la posición de cada slot viaja en los
+ * contratos de los clientes: unificarlas «para que quede prolijo» corre todos
+ * los espacios vendidos de las puntas.
+ */
+export function altoDeZonaDeSlotsDePunta(altoDeCuerpo: number): number {
+  return altoDeCuerpo - ZONA_DE_SLOTS.remate;
 }

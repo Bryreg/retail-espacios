@@ -50,6 +50,7 @@ const editor = leer(join("src", "components", "StoreEditor3D", "StoreEditor3D.ts
 const medidas = leer(join(muebles, "medidas.ts"));
 const perfiles = leer(join(muebles, "perfiles.ts"));
 const gondola = leer(join(muebles, "GondolaReal.tsx"));
+const piezas = leer(join(muebles, "piezas.tsx"));
 
 /* Los comentarios de estos archivos explican largo POR QUÉ cada cota es la que
    es, y citan nombres de props y de funciones al hacerlo. Se quitan antes de
@@ -61,6 +62,15 @@ const sinComentarios = (t) => t
 const editorCodigo = sinComentarios(editor);
 const medidasCodigo = sinComentarios(medidas);
 const gondolaCodigo = sinComentarios(gondola);
+const piezasCodigo = sinComentarios(piezas);
+
+/** El cuerpo de un mesh del editor, acotado hasta el siguiente. */
+function cuerpoDe(desde, hasta) {
+  const i = editorCodigo.indexOf(desde);
+  assert.ok(i > 0, `no se encontró \`${desde}\``);
+  const j = editorCodigo.indexOf(hasta, i);
+  return editorCodigo.slice(i, j > i ? j : undefined);
+}
 
 /** El cuerpo de `GondolaMesh`, que es donde puede perderse el negocio. */
 const cuerpoGondolaMesh = (() => {
@@ -201,7 +211,7 @@ prueba("cada fila conoce el fondo de SU entrepaño", () => {
   // La góndola es escalonada. Sin esto el producto de arriba queda flotando
   // varios centímetros por delante del entrepaño que lo sostiene.
   assert.match(medidasCodigo, /fondos:\s*Array\.from/, "`filasDeProducto` ya no devuelve los fondos");
-  assert.match(gondolaCodigo, /profundidadDeNivel\(/, "la góndola dejó de escalonar el fondo");
+  assert.match(piezasCodigo, /profundidadDeNivel\(/, "el mueble dejó de escalonar el fondo");
 });
 
 // ── Las cotas son de catálogo, no fracciones del mueble ─────────────────────
@@ -231,7 +241,10 @@ prueba("los entrepaños caen en alturas que un parante admite", () => {
 prueba("el primer entrepaño se apoya en el zócalo", () => {
   // Arrancar un paso más arriba deja abajo un hueco vacío que ninguna góndola
   // tiene, y es de las cosas que más delatan un modelo inventado.
-  assert.match(medidasCodigo, /const desde = ZOCALO\.alto;/, "volvió el hueco de abajo");
+  assert.match(
+    medidasCodigo, /nivelesEntre\(ZOCALO\.alto, alto - 0\.1\)/,
+    "volvió el hueco de abajo: el primer entrepaño ya no arranca en el zócalo",
+  );
 });
 
 // ── Que sigan siendo piezas y no cajas ──────────────────────────────────────
@@ -261,8 +274,8 @@ prueba("el corrido se arma por módulos, con un parante en cada junta", () => {
 });
 
 prueba("el fondo es de listones sobre respaldo, no una chapa lisa", () => {
-  assert.match(gondolaCodigo, /geometriaLama\(/, "volvió el panel liso");
-  assert.match(gondolaCodigo, /geometriaRespaldo\(/, "no hay respaldo detrás de los listones");
+  assert.match(piezasCodigo, /geometriaLama\(/, "volvió el panel liso");
+  assert.match(piezasCodigo, /geometriaRespaldo\(/, "no hay respaldo detrás de los listones");
 });
 
 // ── Higiene de GPU ──────────────────────────────────────────────────────────
@@ -281,28 +294,30 @@ prueba("las geometrías cacheadas se sueltan al salir del editor", () => {
 
 const producto = leer(join(muebles, "producto.ts"));
 const enGondola = leer(join(muebles, "ProductoEnGondola.tsx"));
+const enMueble = leer(join(muebles, "ProductoEnMueble.tsx"));
 const productoCodigo = sinComentarios(producto);
 const enGondolaCodigo = sinComentarios(enGondola);
+const enMuebleCodigo = sinComentarios(enMueble);
 
 prueba("sólo se llena lo que está vendido", () => {
   // Rellenar la góndola entera "para que se vea linda" miente sobre lo único
   // que este sistema tiene que decir: dónde hay espacio libre.
-  assert.match(enGondolaCodigo, /VENDIDO\.has\(slot\.status\)/, "el producto dejó de mirar el estado del slot");
+  assert.match(enMuebleCodigo, /VENDIDO\.has\(slot\.status\)/, "el producto dejó de mirar el estado del slot");
   assert.match(
-    enGondolaCodigo, /new Set\(\["occupied", "reserved"\]\)/,
+    enMuebleCodigo, /new Set\(\["occupied", "reserved"\]\)/,
     "cambió qué cuenta como vendido: un reservado también está comprometido",
   );
 });
 
 prueba("el producto se para en los mismos entrepaños que se dibujan", () => {
   assert.match(enGondolaCodigo, /filasDeProducto\(/, "el producto calcula las alturas por su cuenta");
-  assert.match(enGondolaCodigo, /filas\.alturas\[i\]/, "no usa la altura exacta del entrepaño");
+  assert.match(enMuebleCodigo, /filas\.alturas\[i\]/, "no usa la altura exacta del entrepaño");
   assert.match(enGondolaCodigo, /vanosDeCorrido\(/, "el producto podría quedar apoyado sobre un parante");
 });
 
 prueba("el producto usa la misma franja de slots que los paneles", () => {
   assert.match(enGondolaCodigo, /altoDeZonaDeSlots\(h\)/, "el producto tiene su propia copia de la franja");
-  assert.match(enGondolaCodigo, /ZONA_DE_SLOTS\.desde/, "el producto tiene su propia base de la franja");
+  assert.match(enMuebleCodigo, /ZONA_DE_SLOTS\.desde/, "el producto tiene su propia base de la franja");
 });
 
 prueba("el empaque va a escala real y no a fracción del mueble", () => {
@@ -322,14 +337,17 @@ prueba("el empaque va a escala real y no a fracción del mueble", () => {
 prueba("el producto se repone al frente del entrepaño", () => {
   // Un lineal con el producto pegado al fondo y el filo vacío es exactamente
   // lo que un supervisor manda a corregir.
-  assert.match(enGondolaCodigo, /filo - RETIRO_AL_FRENTE/, "el producto se paró desde el fondo");
+  assert.match(
+    enMuebleCodigo, /fondoEntrepano - RETIRO_AL_FRENTE/,
+    "el producto se paró desde el fondo del entrepaño y no desde su filo",
+  );
 });
 
 prueba("el color del rubro es estable entre renders", () => {
   // Sin esto la tienda titila cada vez que se mueve la cámara.
   assert.match(productoCodigo, /export function colorDeRubro/, "falta el color por rubro");
   assert.ok(!/Math\.random/.test(productoCodigo), "el color del producto salió al azar");
-  assert.ok(!/Math\.random/.test(enGondolaCodigo), "la ubicación del producto salió al azar");
+  assert.ok(!/Math\.random/.test(enMuebleCodigo), "la ubicación del producto salió al azar");
 });
 
 prueba("el arte del proveedor le gana a la aproximación por rubro", () => {
@@ -479,6 +497,100 @@ prueba("el formato grande cae al chico antes de dejar el entrepaño vacío", () 
   assert.equal(P.empaqueQueEntra("Gaseosas", 0.15).alto, 0.122);
   assert.equal(P.empaqueQueEntra("Gaseosas", 0.05), null,
     "se paró algo bajo un entrepaño de 5 cm");
+});
+
+// ── La punta de góndola ─────────────────────────────────────────────────────
+//
+// Es el espacio más caro de un supermercado. Vale lo mismo acá que en la
+// góndola: la forma puede cambiar entera, lo que se vende no.
+
+const punta = leer(join(muebles, "PuntaReal.tsx"));
+const enPunta = leer(join(muebles, "ProductoEnPunta.tsx"));
+const puntaCodigo = sinComentarios(punta);
+const enPuntaCodigo = sinComentarios(enPunta);
+const cuerpoPuntaMesh = cuerpoDe("function PuntaMesh(", "function RobatopeMesh(");
+
+prueba("la punta sigue recibiendo los cinco props de slot", () => {
+  for (const prop of ["slots", "selectedSlotId", "hoveredSlotId", "onSlotClick", "onSlotHover"]) {
+    assert.match(
+      cuerpoPuntaMesh, new RegExp(`\\b${prop}\\b`),
+      `\`PuntaMesh\` ya no usa \`${prop}\``,
+    );
+  }
+  assert.match(cuerpoPuntaMesh, /STATUS_COLORS\[slot\.status\]/, "el slot dejó de leer su estado");
+  assert.match(cuerpoPuntaMesh, /onClick=\{[^}]*onSlotClick/, "el slot dejó de ser clickeable");
+});
+
+prueba("la geometría del slot de la punta NO se movió", () => {
+  // Su franja se mide sobre el CUERPO y descuenta sólo el remate: no es la
+  // misma cuenta que la góndola, y así tiene que seguir siendo.
+  assert.match(
+    medidasCodigo, /altoDeZonaDeSlotsDePunta[\s\S]{0,160}altoDeCuerpo - ZONA_DE_SLOTS\.remate/,
+    "cambió el alto de la franja de slots de la punta",
+  );
+  assert.match(cuerpoPuntaMesh, /altoDeZonaDeSlotsDePunta\(altoDeCuerpo\)/, "el mesh dejó de usarla");
+  assert.match(cuerpoPuntaMesh, /panelZ = -\(d \/ 2 \+ 0\.10\)/, "cambió el plano del panel de slot");
+});
+
+prueba("la punta sigue pintando el arte del proveedor", () => {
+  assert.match(cuerpoPuntaMesh, /<LaminaDeProductoPorFila/, "no se dibuja el arte");
+  assert.match(cuerpoPuntaMesh, /<ProductoEnPunta/, "no se dibuja producto");
+  assert.match(
+    cuerpoPuntaMesh, /\{!pinta && \(\s*<ProductoEnPunta/,
+    "el producto genérico se dibujaría encima del arte que subió el proveedor",
+  );
+});
+
+prueba("la punta monta atrás y crece hacia el frente", () => {
+  // Con el montaje de la góndola —adelante, creciendo hacia afuera— el arte y
+  // el producto de la punta aparecen DETRÁS del mueble.
+  assert.match(cuerpoPuntaMesh, /montajeA=\{d \/ 2\} haciaA=\{-1\}/, "el arte de la punta se montó al revés");
+  assert.match(enPuntaCodigo, /montaje: d \/ 2, hacia: -1/, "el producto de la punta se montó al revés");
+  assert.match(puntaCodigo, /position=\{\[0, 0, d \/ 2\]\}/, "el cuerpo de la punta se colgó al revés");
+});
+
+prueba("la punta se vende por UNA sola cara", () => {
+  // La de atrás da contra el corrido.
+  assert.ok(!/doble/.test(cuerpoPuntaMesh), "la punta pintaría su cara trasera");
+  assert.match(enPuntaCodigo, /\[\{ montaje: d \/ 2, hacia: -1 \}\]/, "la punta tiene más de una cara de producto");
+});
+
+prueba("el pintado de filas de la punta NO repite la cuenta", () => {
+  // Desde `getPanelShelfSpan` y no desde el primer `case "punta"` que aparezca:
+  // el switch de `FixtureMesh` tiene uno antes y no es el que se mide.
+  const span = editorCodigo.slice(editorCodigo.indexOf("function getPanelShelfSpan"));
+  const tramo = span.slice(span.indexOf('case "punta"'), span.indexOf('case "robatope"'));
+  assert.match(tramo, /filasDePunta\(/, "`getPanelShelfSpan` volvió a calcular las filas por su cuenta");
+  assert.ok(!/Math\.max\(3,\s*Math\.round\(/.test(tramo), "reapareció la fórmula duplicada");
+});
+
+prueba("la punta tiene tantas filas como entrepaños", () => {
+  // El techo de la fila de arriba es el copete, no otro entrepaño: sobre el
+  // entrepaño más alto de una punta también se vende.
+  for (let h = 1.2; h <= 2.2001; h += 0.05) {
+    const cuerpo = Math.max(0.4, h - 0.36);
+    const f = M.filasDePunta(cuerpo, 0.4);
+    assert.equal(f.rows, M.nivelesDePunta(cuerpo).length || 1,
+      `con alto ${h.toFixed(2)} la punta perdió una fila`);
+    assert.equal(f.alturas.length, f.rows + 1, "no cierra la última fila");
+  }
+});
+
+prueba("la punta reusa el herraje del corrido, no una copia", () => {
+  // Una punta se arma del mismo catálogo que la góndola. Si alguien vuelve a
+  // definirle sus propios entrepaños, vuelven las dos copias.
+  assert.match(puntaCodigo, /from "\.\/piezas"/, "la punta dejó de usar las piezas compartidas");
+  assert.ok(
+    !/geometriaEntrepano|geometriaParante/.test(puntaCodigo),
+    "la punta se dibujó sus propios entrepaños en vez de usar `CaraDeEstanteria`",
+  );
+});
+
+prueba("el copete no se tiñe con el estado comercial", () => {
+  // Es el lugar de la marca del proveedor. Pintarlo de verde o rojo lo
+  // convierte en un semáforo donde va un logo.
+  const tramo = puntaCodigo.slice(puntaCodigo.indexOf("El copete"));
+  assert.ok(!/statusColor/.test(tramo), "el copete quedó teñido con el estado del mueble");
 });
 
 console.log(`\n${hechas} pruebas del mobiliario 3D`);

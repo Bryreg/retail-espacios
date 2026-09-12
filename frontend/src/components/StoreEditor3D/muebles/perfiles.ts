@@ -243,6 +243,48 @@ export function geometriaRemate(ancho: number, saliente: number): THREE.BufferGe
   });
 }
 
+/**
+ * El marco del copete de una punta: perfil en U que envuelve la chapa impresa.
+ *
+ * El copete es lo que el proveedor compra cuando compra una punta: se ve de
+ * frente desde todo el pasillo transversal. Un cartel modelado como una caja
+ * plana se lee como una etiqueta pegada; lo que lo hace leer como cartelería
+ * es el MARCO, que sobresale unos milímetros de la cara impresa y le tira una
+ * sombra propia alrededor.
+ *
+ * La sección se dibuja en XY —X es el fondo, Y el alto— y se extruye a lo
+ * ancho, igual que el entrepaño.
+ */
+export function geometriaMarcoDeCopete(
+  ancho: number, alto: number, fondo: number,
+): THREE.BufferGeometry {
+  const t = 0.008;          // espesor del marco
+  const rebaje = 0.006;     // cuánto se hunde la cara impresa dentro del marco
+  const firma = `copete:${ancho.toFixed(4)}:${alto.toFixed(4)}:${fondo.toFixed(4)}`;
+
+  return cacheada(firma, () => {
+    const h = alto / 2;
+    const s = new THREE.Shape();
+    // Contorno exterior, de atrás hacia adelante por abajo.
+    s.moveTo(0, -h);
+    s.lineTo(-fondo, -h);
+    s.lineTo(-fondo, -h + t);
+    // Escalón donde apoya la chapa impresa.
+    s.lineTo(-fondo + rebaje, -h + t);
+    s.lineTo(-fondo + rebaje, h - t);
+    s.lineTo(-fondo, h - t);
+    s.lineTo(-fondo, h);
+    s.lineTo(0, h);
+    s.closePath();
+
+    const g = new THREE.ExtrudeGeometry(s, { depth: ancho, bevelEnabled: false });
+    g.translate(0, 0, -ancho / 2);
+    g.rotateY(-Math.PI / 2);
+    g.computeVertexNormals();
+    return g;
+  });
+}
+
 /** La geometría de UNA ranura del parante. Se dibuja con `InstancedMesh`, así
  *  que un parante de 2 m con ranuras cada 25 mm son ~80 calados en una sola
  *  llamada de dibujo. */

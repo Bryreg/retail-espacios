@@ -5,6 +5,8 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { GondolaReal } from "../components/StoreEditor3D/muebles/GondolaReal";
 import { ProductoEnGondola } from "../components/StoreEditor3D/muebles/ProductoEnGondola";
+import { PuntaReal } from "../components/StoreEditor3D/muebles/PuntaReal";
+import { ProductoEnPunta } from "../components/StoreEditor3D/muebles/ProductoEnPunta";
 import type { SlotDeProducto } from "../components/StoreEditor3D/muebles/ProductoEnGondola";
 
 /**
@@ -90,7 +92,7 @@ export default function TallerMuebles() {
   const [ancho, setAncho] = useState(2.5);
   const [fondo, setFondo] = useState(1.0);
   const [alto, setAlto] = useState(1.8);
-  const [tipo, setTipo] = useState<"double" | "wall">("double");
+  const [tipo, setTipo] = useState<"double" | "wall" | "punta">("double");
   const [conProducto, setConProducto] = useState(true);
 
   const camara = useMemo(
@@ -126,9 +128,10 @@ export default function TallerMuebles() {
         <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
           tipo{" "}
           <select value={tipo} style={{ ...campo, width: 96 }}
-                  onChange={(e) => setTipo(e.target.value as "double" | "wall")}>
-            <option value="double">doble</option>
-            <option value="wall">mural</option>
+                  onChange={(e) => setTipo(e.target.value as "double" | "wall" | "punta")}>
+            <option value="double">góndola doble</option>
+            <option value="wall">góndola mural</option>
+            <option value="punta">punta de góndola</option>
           </select>
         </label>
         <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
@@ -165,13 +168,24 @@ export default function TallerMuebles() {
             />
             <directionalLight position={[-4, 3, -3]} intensity={0.35} />
             <Piso />
-            <GondolaReal w={ancho} d={fondo} h={alto} gondolaType={tipo} />
-            {conProducto && (
-              <ProductoEnGondola
-                w={ancho} d={fondo} h={alto}
-                esMural={tipo === "wall"}
-                slots={SLOTS_DE_MUESTRA}
-              />
+            {tipo === "punta" ? (
+              <>
+                <PuntaReal w={ancho} d={fondo} h={alto} />
+                {conProducto && (
+                  <ProductoEnPunta w={ancho} d={fondo} h={alto} slots={SLOTS_DE_MUESTRA} />
+                )}
+              </>
+            ) : (
+              <>
+                <GondolaReal w={ancho} d={fondo} h={alto} gondolaType={tipo} />
+                {conProducto && (
+                  <ProductoEnGondola
+                    w={ancho} d={fondo} h={alto}
+                    esMural={tipo === "wall"}
+                    slots={SLOTS_DE_MUESTRA}
+                  />
+                )}
+              </>
             )}
           </Suspense>
         </Canvas>
