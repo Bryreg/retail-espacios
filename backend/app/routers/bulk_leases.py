@@ -37,7 +37,7 @@ from app.database import get_db
 from app.models.models import Space, SpaceLease, SpaceStatus, Supplier
 from app.routers.layout import reference_rates_raw
 from app.services.layout_lookup import (
-    Ambiguedad, Colision, PlanoIndexado, sin_prefijo_de_sede,
+    Ambiguedad, Colision, PlanoIndexado, es_comercializable, sin_prefijo_de_sede,
 )
 from app.services.renumeracion import Rastreador
 from app.schemas.spaces import AvisosContrato
@@ -351,7 +351,7 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
                 # Se dice aunque la fila termine en error: la revisión tiene que
                 # poder ver contra qué mueble resolvió, sobre todo cuando no entra.
                 out.nombre_dibujado = resuelto.nombre_dibujado
-                if fixture.get("rentable") is False:
+                if not es_comercializable(fixture):
                     errores.append(
                         f"«{codigo}» está marcado como no comercializable: es parte del local."
                     )

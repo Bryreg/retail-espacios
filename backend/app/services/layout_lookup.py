@@ -74,18 +74,47 @@ def find_fixture_by_space_code(db: Session, space_code: str) -> dict | None:
     return None
 
 
+#: Tipos que NUNCA son espacio vendible, diga lo que diga la bandera.
+#:
+#: No son muebles a los que hoy no se les vendió el frente: son **operación de
+#: la tienda**. Una columna sostiene el techo; la caja registradora y el
+#: mostrador de servicio al cliente son puestos de trabajo del supermercado —
+#: ahí se cobra y se atienden reclamos, no se exhibe la marca de un proveedor.
+#:
+#: Va por TIPO y no por bandera a propósito, y el motivo es retrocompatible al
+#: revés de lo que parece: la bandera se estampa al CREAR el mueble, así que
+#: una caja guardada antes de que existiera no la tiene, y ``rentable``
+#: ausente significa alquilable. O sea que todas las cajas de los planos
+#: viejos seguían aceptando un contrato por API. Mirando el tipo, esos planos
+#: quedan bien sin migrar una sola fila.
+#:
+#: Espeja ``NUNCA_ALQUILABLE`` de ``frontend/src/types/fixtures.ts``.
+NUNCA_ALQUILABLE = frozenset({"columna", "checkout", "servicio_cliente"})
+
+
+def es_comercializable(fixture: dict) -> bool:
+    """``isRentable`` del frontend, para un fixture ya resuelto.
+
+    Dos preguntas, en orden: primero el TIPO (ver ``NUNCA_ALQUILABLE``),
+    después la bandera. La bandera se lee al revés de lo que parece —ausente
+    es comercializable— porque un layout guardado antes de que existiera no la
+    tiene y todos sus muebles tienen que seguir siendo vendibles.
+    """
+    if str(fixture.get("type") or "") in NUNCA_ALQUILABLE:
+        return False
+    return fixture.get("rentable") is not False
+
+
 def is_space_rentable(db: Session, space_code: str) -> bool:
     """Whether a contract may be attached to this space code.
 
     Fails open: a space with no matching fixture (seeded demo rows, fixtures
-    deleted from the plan after the contract existed) stays rentable. Only an
-    explicit ``rentable: false`` blocks the write, mirroring the frontend's
-    ``isRentable`` helper.
+    deleted from the plan after the contract existed) stays rentable.
     """
     fixture = find_fixture_by_space_code(db, space_code)
     if fixture is None:
         return True
-    return fixture.get("rentable") is not False
+    return es_comercializable(fixture)
 
 
 # ── El nombre que se DIBUJA, que no es la llave ───────────────────────────────

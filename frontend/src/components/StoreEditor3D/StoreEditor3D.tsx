@@ -31,7 +31,7 @@ import {
 } from "./muebles/medidas";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { useModalAbierto } from "../../tema";
-import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
+import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
 import {
   nombreDeMueble, renombrar, intercambiarNombres, choqueDeNombre,
@@ -4569,25 +4569,35 @@ function CommercialPanel({
           </div>
         )}
 
+        {/* Destino del mueble. Cuando el TIPO ya lo decide —columna, caja
+            registradora, servicio al cliente: puestos de trabajo de la tienda—
+            el par de botones sería un control muerto: se pintaría el elegido y
+            `isRentable` lo seguiría negando. En su lugar va la razón. */}
         <div>
           <label className={labelCls}>Destino del mueble</label>
-          <div className="flex gap-1.5">
-            {([true, false] as const).map((value) => (
-              <button
-                key={String(value)}
-                onClick={() => u({ rentable: value })}
-                className={`flex-1 rounded px-1 py-1.5 text-[10.5px] font-semibold transition-colors ${
-                  rentable === value
-                    ? "bg-accent text-accent-ink"
-                    : "border border-dark-line-2 text-dark-ink-3 hover:text-dark-ink-1"
-                }`}
-              >
-                {value ? "Comercializable" : "No comercial."}
-              </button>
-            ))}
-          </div>
+          {NUNCA_ALQUILABLE.has(fix.type) ? (
+            <p className="text-[11px] font-semibold text-dark-ink-2">No comercializable</p>
+          ) : (
+            <div className="flex gap-1.5">
+              {([true, false] as const).map((value) => (
+                <button
+                  key={String(value)}
+                  onClick={() => u({ rentable: value })}
+                  className={`flex-1 rounded px-1 py-1.5 text-[10.5px] font-semibold transition-colors ${
+                    rentable === value
+                      ? "bg-accent text-accent-ink"
+                      : "border border-dark-line-2 text-dark-ink-3 hover:text-dark-ink-1"
+                  }`}
+                >
+                  {value ? "Comercializable" : "No comercial."}
+                </button>
+              ))}
+            </div>
+          )}
           <p className="mt-1.5 text-[9.5px] leading-relaxed text-dark-ink-3">
-            {rentable
+            {NUNCA_ALQUILABLE.has(fix.type)
+              ? "Puesto de trabajo de la tienda: no se alquila, no lleva tarifa y queda fuera de la ocupación."
+              : rentable
               ? "Se puede alquilar y cuenta en la disponibilidad de la sede."
               : "Mobiliario propio del local: no admite contrato y queda fuera de la ocupación."}
           </p>

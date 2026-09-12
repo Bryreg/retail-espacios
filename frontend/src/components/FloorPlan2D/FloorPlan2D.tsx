@@ -13,7 +13,7 @@ import { ClipboardCheck, Keyboard, ListOrdered } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useFixtureStore, selectFixtures, selectHasPendingWork, normalizeSede, DEFAULT_SEDES } from "../../store/fixtureStore";
 import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types/fixtures";
-import { isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
+import { isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
 import {
   siguienteCodigo, nombreDeMueble, nombreAnterior, choqueDeNombre, textoDelChoque,
   renombrar, intercambiarNombres, textoDelIntercambio, rotulosDelPlano, nombresChocados,
@@ -3868,9 +3868,16 @@ function AssignmentPanel({
         </span>
       </div>
 
-      {/* Destino del mueble — decides whether it can ever hold a contract */}
+      {/* Destino del mueble — decides whether it can ever hold a contract.
+          Salvo cuando el TIPO ya lo decide: una columna, una caja registradora
+          y el mostrador de servicio al cliente son operación de la tienda y no
+          se venden nunca. Ahí el par de botones sería un control muerto —se
+          pintaría el elegido y `isRentable` lo seguiría negando—, así que en
+          su lugar va la razón escrita. */}
       <Field label="Destino del mueble" icon="🎯">
-        {editMode && isAdmin ? (
+        {NUNCA_ALQUILABLE.has(item.type) ? (
+          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>No comercializable</p>
+        ) : editMode && isAdmin ? (
           <div style={{ display: "flex", gap: 6 }}>
             {([true, false] as const).map((value) => (
               <button
@@ -3897,7 +3904,9 @@ function AssignmentPanel({
           </p>
         )}
         <p style={{ marginTop: 6, fontSize: 10, color: "var(--dark-ink-3)", lineHeight: 1.45 }}>
-          {rentable
+          {NUNCA_ALQUILABLE.has(item.type)
+            ? "Puesto de trabajo de la tienda: no se alquila, no lleva tarifa y queda fuera de la ocupación."
+            : rentable
             ? "Se puede alquilar y cuenta en la disponibilidad de la sede."
             : "Mobiliario propio del local: no admite contrato y queda fuera de la ocupación."}
         </p>
