@@ -888,6 +888,20 @@ prueba("el mostrador tiene la bandeja inclinada y su lado de servicio", () => {
   assert.match(mostradorCodigo, /export function bandejaDeMostrador/, "nadie sabe dónde va el producto");
 });
 
+prueba("el mural hereda el arte del proveedor, no tiene un camino propio", () => {
+  // Con un componente propio, el mueble calculaba si el proveedor había subido
+  // su arte y después no lo dibujaba en ningún lado: las bandejas quedaban
+  // vacías justo cuando había información real que mostrar.
+  const mesh = cuerpoDe("function NeveraVegetalesMesh(", "function StandFrutasMesh(");
+  assert.match(mesh, /<VolcadoDeProducto/, "el mural volvió a tener su propio dibujo de producto");
+  assert.match(mesh, /facePaint\?\.front/, "el mural no mira el arte del proveedor");
+  const span = editorCodigo.slice(editorCodigo.indexOf("function getPanelShelfSpan"));
+  assert.match(
+    span, /case "nevera_vegetales"[\s\S]{0,600}modo: "volcado"/,
+    "el arte del mural se compondría como cara vertical y saldría estirada",
+  );
+});
+
 prueba("el mural de vegetales lleva bandejas inclinadas, no estantes", () => {
   // La fruta suelta rueda y hay que verla desde arriba.
   assert.match(medidasCodigo, /export const MURAL_VEGETALES/, "se perdieron las cotas del mural");
@@ -902,8 +916,11 @@ prueba("la bandeja gira sobre SÍ MISMA, no sobre el piso del mueble", () => {
     neveraCodigo, /position=\{\[0, y, NEVERA\.chapa \/ 2\]\}\s*\n\s*rotation=/,
     "la bandeja del mural vuelve a girar desde el origen del mueble",
   );
+  // El producto del mural ya no tiene componente propio: lo dibuja el mismo
+  // `VolcadoDeProducto` que la batea, adentro del grupo que el mesh pone en la
+  // altura de cada bandeja.
   assert.match(
-    muralCodigo, /position=\{\[0, y, NEVERA\.chapa \/ 2\]\}\s*\n\s*rotation=/,
+    editorCodigo, /position=\{\[0, b\.y, b\.z\]\}\s*rotation=\{\[b\.caida, 0, 0\]\}/,
     "la fruta del mural vuelve a girar desde el origen del mueble",
   );
 });
@@ -935,6 +952,47 @@ prueba("la ristra NO lleva entrepaño", () => {
     !/boxGeometry args=\{\[w \* 0\.82/.test(ristra),
     "volvió la placa horizontal: la ristra es una repisera otra vez",
   );
+});
+
+// ── Ningún mueble mira el arte y después no lo dibuja ───────────────────────
+//
+// Es un defecto que compila, pasa toda prueba de tipos y sólo se ve cuando un
+// proveedor sube su arte a ese mueble concreto — o sea, en producción y
+// delante del cliente. La nevera de vegetales nació así: calculaba `pinta` y
+// no lo usaba en ningún lado, de modo que las bandejas quedaban vacías justo
+// cuando había información real que mostrar.
+
+prueba("todo mueble que lee el arte del proveedor lo dibuja", () => {
+  // Los meshes que reciben `facePaint` tienen que hacer algo con él: pintarlo
+  // en una lámina, volcarlo sobre una superficie, o decidir con él si va el
+  // producto genérico. Leerlo y descartarlo es el defecto.
+  const dibuja = /<LaminaDeProducto|<VolcadoDeProducto|<ProductoEn(Gondola|Punta|Mural|Repisas)|facePaint=\{/;
+  const meshes = [...editorCodigo.matchAll(/function (\w+Mesh)\(/g)].map((m) => m[1]);
+  assert.ok(meshes.length > 10, "no se encontraron los meshes del catálogo");
+
+  // Cada cuerpo se corta en la LLAVE DE CIERRE de su propia función, no en el
+  // mueble siguiente. Entre dos meshes hay declaraciones sueltas —entre la
+  // columna y el mostrador de servicio vive `interface FixtureMeshProps`, que
+  // declara `facePaint`—, y cortando de mueble a mueble la columna heredaba
+  // una mención que no es suya y salía señalada sin recibir nada.
+  const cuerpoDeMesh = (nombre) => {
+    const i = editorCodigo.indexOf(`function ${nombre}(`);
+    assert.ok(i > 0, `no se encontró \`${nombre}\``);
+    const j = editorCodigo.indexOf("\n}\n", i);
+    assert.ok(j > i, `\`${nombre}\` no cierra: el corte mediría el archivo entero`);
+    return editorCodigo.slice(i, j);
+  };
+
+  for (const nombre of meshes) {
+    const cuerpo = cuerpoDeMesh(nombre);
+    // Sólo interesan los que RECIBEN el arte.
+    if (!/facePaint/.test(cuerpo)) continue;
+    assert.match(
+      cuerpo, dibuja,
+      `\`${nombre}\` recibe \`facePaint\` y no lo dibuja en ningún lado: ` +
+      "el arte del proveedor no se vería en ese mueble",
+    );
+  }
 });
 
 console.log(`\n${hechas} pruebas del mobiliario 3D`);

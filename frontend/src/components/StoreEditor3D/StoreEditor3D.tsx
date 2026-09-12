@@ -18,7 +18,7 @@ import { NeveraReal } from "./muebles/NeveraReal";
 import { ProductoAGranel } from "./muebles/ProductoAGranel";
 import { BateaReal, bocaDeBatea } from "./muebles/BateaReal";
 import { MostradorFrioReal, bandejaDeMostrador } from "./muebles/MostradorFrioReal";
-import { ProductoEnMural } from "./muebles/ProductoEnMural";
+import { bandejasDeMural } from "./muebles/ProductoEnMural";
 import { ProductoEnRepisas } from "./muebles/ProductoEnRepisas";
 import { colorDeRubro } from "./muebles/producto";
 import { olvidarGeometrias } from "./muebles/perfiles";
@@ -1693,7 +1693,6 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:num
  * planos el mueble se lee como una estantería con cosas apoyadas.
  */
 function NeveraVegetalesMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
-  const pinta = !ghost && !!facePaint?.front;
   return (
     <group>
       <NeveraReal
@@ -1703,13 +1702,21 @@ function NeveraVegetalesMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro
         variante="vegetales"
         conRelleno={false}
       />
-      {/* El producto sólo cuando el proveedor NO subió su arte: cuando lo
-          subió, manda el arte. */}
-      {!pinta && (
-        <ProductoEnMural
-          w={w} d={d} h={h} rubro={rubro} semilla={id ?? "mural"} ghost={ghost}
-        />
-      )}
+      {/* Cada bandeja se llena con el MISMO componente que la batea y el cajón
+          de frutas: con el arte del proveedor si lo subió, y con producto
+          genérico si no. Tener uno propio para el mural dejaba el mueble sin
+          arte — calculaba si el proveedor tenía el suyo y después no lo
+          dibujaba en ningún lado. */}
+      {bandejasDeMural(w, d, h).map((b, i) => (
+        <group key={i} position={[0, b.y, b.z]} rotation={[b.caida, 0, 0]}>
+          <VolcadoDeProducto
+            ancho={b.ancho} fondo={b.fondo}
+            y={0} material={ghost ? null : (facePaint?.front ?? null)}
+            semilla={`${id}|mural|${i}`} rubro={rubro || "Frutas"}
+            altoLibre={b.altoLibre} ghost={ghost}
+          />
+        </group>
+      ))}
     </group>
   );
 }
@@ -3475,6 +3482,18 @@ function getPanelShelfSpan(type: string, w: number, h: number, d: number): Panel
     case "batea": {
       // BateaMesh — canasto. Una sola superficie: el fondo falso, cerca del borde.
       return { modo: "volcado", panelW: w - 0.06, panelH: d - 0.06, rowBottom: 0, rowPitch: 0, rows: 0 };
+    }
+    case "nevera_vegetales": {
+      // El mural se pinta VOLCADO, como la batea y el exhibidor de piso: lo
+      // que se compone es la superficie horizontal de una bandeja vista desde
+      // arriba, no una cara vertical. Sin este caso caía en la grilla legado y
+      // el arte salía estirado sobre todo el frente del mueble.
+      const b = bandejasDeMural(w, d, h)[0];
+      return {
+        modo: "volcado",
+        panelW: b?.ancho ?? w, panelH: b?.fondo ?? d,
+        rowBottom: 0, rowPitch: 0, rows: 0,
+      };
     }
     default: {
       // Unknown paintable type — legacy whole-face grid (pre-alignment rules).
