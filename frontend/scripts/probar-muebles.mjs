@@ -717,12 +717,19 @@ prueba("el desorden del volcado es determinista", () => {
 
 prueba("cada mueble siembra su propio desorden", () => {
   // Sin esto, dos bateas contiguas salen clonadas.
-  for (const marca of ["batea", "frutas", "carnes", "isla_fria", "isla"]) {
+  for (const marca of ["batea", "stand", "carnes", "isla_fria", "isla"]) {
     assert.match(
       editorCodigo, new RegExp("semilla=\\{`\\$\\{id\\}\\|" + marca),
       `el volcado de \`${marca}\` no se siembra con el id del mueble`,
     );
   }
+  // Y dentro de un mismo mueble, cada bandeja lleva la suya: con una sola
+  // semilla, las dos bandejas del stand salen clonadas una de la otra y el
+  // escalonado se ve como un espejo.
+  assert.match(
+    editorCodigo, /semilla=\{`\$\{id\}\|stand\$\{i\}`\}/,
+    "las dos bandejas del stand comparten semilla y salen clonadas",
+  );
 });
 
 prueba("el montículo no se come el relleno cuando entran pocas piezas", () => {
@@ -1062,6 +1069,38 @@ prueba("lo que entra parado se para: una batea no es un pozo", () => {
     undefined,
     "en una batea de tamaño de catálogo la gaseosa vuelve a acostarse",
   );
+});
+
+prueba("el stand de frutas tiene bandejas INCLINADAS y escalonadas", () => {
+  // Era un mesón macizo con un cajón plano arriba: una mesa con cosas encima.
+  // La ficha del fabricante da escalones inclinados con cajones de cosecha —y
+  // las dos cosas son de función: la inclinación para mirar la fruta desde
+  // arriba, el escalón para que la bandeja de atrás no quede tapada, que es
+  // media cara vendible.
+  assert.match(medidas, /export function bandejasDeStand/, "se perdieron las bandejas del stand");
+  const mesh = cuerpoDe("function StandFrutasMesh(", "function CheckoutMesh(");
+  assert.match(mesh, /<StandFrutasReal/, "el stand volvió a dibujarse dentro del editor");
+  assert.match(mesh, /rotation=\{\[b\.caida, 0, 0\]\}/, "las bandejas del stand volvieron a ser planas");
+  assert.match(mesh, /<VolcadoDeProducto/, "el stand se quedó sin fruta");
+
+  for (const [w, d, h] of [[1.5, 1.2, 0.95], [1.0, 0.8, 0.9], [2.2, 1.4, 1.1]]) {
+    const b = M.bandejasDeStand(w, d, h);
+    const donde = `${w}×${d}×${h}`;
+    assert.equal(b.length, 2, `${donde}: el stand dejó de ser escalonado`);
+    assert.ok(b[1].y > b[0].y, `${donde}: la bandeja de atrás no sube`);
+    assert.ok(b[1].z > b[0].z, `${donde}: la bandeja de atrás no está atrás`);
+    assert.ok(b[1].y < h, `${donde}: la bandeja de arriba se salió del mueble`);
+    for (const t of b) {
+      assert.ok(t.caida > 0, `${donde}: bandeja sin inclinación`);
+      assert.ok(t.cajones >= 1, `${donde}: bandeja sin cajones`);
+      // Las bandejas no se pisan entre sí ni se salen por el fondo.
+      assert.ok(t.z - t.fondo / 2 >= -d / 2 - 1e-9, `${donde}: bandeja fuera por el frente`);
+      assert.ok(t.z + t.fondo / 2 <= d / 2 + 1e-9, `${donde}: bandeja fuera por el fondo`);
+      // El cajón va lleno: con una capa en el fondo, la pared lo tapa.
+      assert.ok(t.altoLibre >= M.STAND_FRUTAS.cajon.alto,
+        `${donde}: el cajón de cosecha vuelve a quedar a medio llenar`);
+    }
+  }
 });
 
 prueba("el mural hereda el arte del proveedor, no tiene un camino propio", () => {

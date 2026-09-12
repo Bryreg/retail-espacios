@@ -19,6 +19,7 @@ import { ProductoAGranel } from "./muebles/ProductoAGranel";
 import { BateaReal, bocaDeBatea } from "./muebles/BateaReal";
 import { MostradorFrioReal, bandejaDeMostrador } from "./muebles/MostradorFrioReal";
 import { CheckoutReal } from "./muebles/CheckoutReal";
+import { StandFrutasReal } from "./muebles/StandFrutasReal";
 import { bandejasDeMural } from "./muebles/ProductoEnMural";
 import { ProductoEnRepisas } from "./muebles/ProductoEnRepisas";
 import { colorDeRubro } from "./muebles/producto";
@@ -26,7 +27,7 @@ import { olvidarGeometrias } from "./muebles/perfiles";
 import {
   COPETE, ESPESOR_ESPINA, NEVERA, PANEL_FONDO, PARANTE, ZONA_DE_SLOTS,
   altoDeZonaDeSlots, altoDeZonaDeSlotsDePunta, altoUtilDeNevera,
-  filasDeNevera, filasDeProducto, filasDePunta, fondoPorCara,
+  bandejasDeStand, filasDeNevera, filasDeProducto, filasDePunta, fondoPorCara,
 } from "./muebles/medidas";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { useModalAbierto } from "../../tema";
@@ -1743,122 +1744,33 @@ function NeveraVegetalesMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro
 }
 
 function StandFrutasMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
-  const op      = ghost ? 0.42 : 1;
-  const WOOD    = "#c8a465";   // madera clara
-  const WOOD_D  = "#a07c3a";   // madera oscura (costillas)
-  const METAL   = "#1f2937";   // esquineros / ángulos metálicos negros
-
-  // Patas cortas en las 4 esquinas
-  const legH  = 0.12;
-  const legSz = 0.06;
-  const legY  = legH / 2;
-  const legs  = [
-    [-w / 2 + legSz / 2,  -d / 2 + legSz / 2],
-    [ w / 2 - legSz / 2,  -d / 2 + legSz / 2],
-    [-w / 2 + legSz / 2,   d / 2 - legSz / 2],
-    [ w / 2 - legSz / 2,   d / 2 - legSz / 2],
-  ] as const;
-
-  // Un stand de frutas de verdad no es un cajón hondo de un metro: es un mesón
-  // con un cajón poco profundo arriba, para que la fruta quede a la vista y al
-  // alcance de la mano. Apilando costillas hasta la altura total se leía como
-  // una ruma de tablas.
-  const cajonH = Math.min(0.26, (h - legH) * 0.32);   // el cajón, poco profundo
-  const mesaTop = h - cajonH;                          // tapa del mesón = piso del cajón
-  const mesaH   = mesaTop - legH;
-
-  // Costillas del cajón: pocas y gruesas, con hueco entre ellas
-  const plankT = 0.040;
-  const gap    = 0.022;
-  const pitch  = plankT + gap;
-  const nPlanks = Math.max(2, Math.floor(cajonH / pitch));
-  const planks  = Array.from({ length: nPlanks }, (_, i) => mesaTop + i * pitch + plankT / 2);
-
-  // Esquineros metálicos verticales (8 aristas del cajón)
-  const crnW = 0.030;
-  const corners = [
-    [-w / 2,  -d / 2],
-    [ w / 2,  -d / 2],
-    [-w / 2,   d / 2],
-    [ w / 2,   d / 2],
-  ] as const;
-
+  // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
+  // Era un mesón macizo con un cajón poco profundo arriba: la fruta volcada
+  // sobre una tabla plana rodeada de costillas. Eso es una mesa con cosas
+  // encima. La ficha del fabricante da bandejas INCLINADAS y ESCALONADAS con
+  // CAJONES plásticos apoyados: la inclinación es para mirar la fruta desde
+  // arriba, el escalón para que la bandeja de atrás no quede tapada —o el
+  // mueble pierde la mitad de su frente vendible— y el cajón porque la fruta
+  // llega en cajón y se exhibe en el cajón.
+  const bandejas = bandejasDeStand(w, d, h);
   return (
     <group>
-      {/* Patas */}
-      {legs.map(([lx, lz], i) => (
-        <mesh key={`leg${i}`} position={[lx, legY, lz]} castShadow>
-          <boxGeometry args={[legSz, legH, legSz]} />
-          <meshStandardMaterial color={WOOD_D} roughness={0.8} transparent opacity={op} />
-        </mesh>
-      ))}
-
-      {/* El mesón: el cuerpo macizo sobre el que se apoya el cajón */}
-      <mesh position={[0, legH + mesaH / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[w - 0.02, mesaH, d - 0.02]} />
-        <meshStandardMaterial color={WOOD_D} roughness={0.85} transparent opacity={op} />
-      </mesh>
-      {/* Tapa del mesón, en madera clara: es el piso del cajón */}
-      <mesh position={[0, mesaTop - 0.014, 0]} castShadow>
-        <boxGeometry args={[w, 0.028, d]} />
-        <meshStandardMaterial color={WOOD} roughness={0.75} transparent opacity={op} />
-      </mesh>
-
-      {/* Costillas del cajón — cara delantera y trasera */}
-      {planks.map((py, i) => (
-        <group key={`plk${i}`}>
-          {/* Delantera */}
-          <mesh position={[0, py, -d / 2 + plankT / 2]} castShadow>
-            <boxGeometry args={[w, plankT, plankT]} />
-            <meshStandardMaterial color={WOOD} roughness={0.75} transparent opacity={op} />
-          </mesh>
-          {/* Trasera */}
-          <mesh position={[0, py, d / 2 - plankT / 2]} castShadow>
-            <boxGeometry args={[w, plankT, plankT]} />
-            <meshStandardMaterial color={WOOD} roughness={0.75} transparent opacity={op} />
-          </mesh>
-          {/* Lateral izquierdo */}
-          <mesh position={[-w / 2 + plankT / 2, py, 0]} castShadow>
-            <boxGeometry args={[plankT, plankT, d]} />
-            <meshStandardMaterial color={WOOD} roughness={0.75} transparent opacity={op} />
-          </mesh>
-          {/* Lateral derecho */}
-          <mesh position={[w / 2 - plankT / 2, py, 0]} castShadow>
-            <boxGeometry args={[plankT, plankT, d]} />
-            <meshStandardMaterial color={WOOD} roughness={0.75} transparent opacity={op} />
-          </mesh>
+      <StandFrutasReal w={w} d={d} h={h} statusColor={statusColor} ghost={ghost} />
+      {bandejas.map((b, i) => (
+        // El producto va DENTRO del grupo que se inclina. Afuera, la fila de
+        // atrás flota sobre el cajón y la de adelante se hunde en la madera.
+        <group key={i} position={[0, b.y, b.z]} rotation={[b.caida, 0, 0]}>
+          <VolcadoDeProducto
+            ancho={b.ancho - 0.06} fondo={b.fondo - 0.09}
+            y={0.012 + 0.016} material={ghost ? null : (facePaint?.front ?? null)}
+            semilla={`${id}|stand${i}`} rubro={rubro || "Frutas"}
+            altoLibre={b.altoLibre} ghost={ghost}
+          />
         </group>
       ))}
-
-      {/* Esquineros metálicos verticales */}
-      {corners.map(([cx, cz], i) => (
-        <mesh key={`crn${i}`} position={[cx, mesaTop + cajonH / 2, cz]} castShadow>
-          <boxGeometry args={[crnW, cajonH, crnW]} />
-          <meshStandardMaterial color={METAL} metalness={0.6} roughness={0.3} transparent opacity={op} />
-        </mesh>
-      ))}
-
-      {/* El producto, adentro del cajón. Iba al ras del borde de arriba, y así
-          no se veía fruta en un cajón sino una tapa impresa. Acá había además
-          un bloque verde fijo: un cajón genérico que ningún proveedor podía
-          reemplazar. */}
-      <VolcadoDeProducto
-        ancho={w - 0.07} fondo={d - 0.07}
-        y={mesaTop + 0.006} material={ghost ? null : (facePaint?.front ?? null)}
-        semilla={`${id}|frutas`} rubro={rubro || "Frutas"}
-        altoLibre={Math.max(0.08, cajonH - 0.02)} ghost={ghost}
-      />
-
-      {/* Indicador de estado en la cara delantera */}
-      <mesh position={[0, legH + 0.045, -(d / 2 + 0.008)]}>
-        <boxGeometry args={[w * 0.60, 0.036, 0.010]} />
-        <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
-      </mesh>
     </group>
   );
 }
-
-// ─── Mesh: Checkout ───────────────────────────────────────────────────────────
 
 function CheckoutMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
   // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────

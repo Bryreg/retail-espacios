@@ -755,3 +755,72 @@ export function cotasDeBatea(w: number, d: number, h: number) {
     altoLibre: Math.max(0.08, h - piso + BATEA.rebose),
   };
 }
+
+/* ── El stand de frutas y verduras ───────────────────────────────────────────
+   La ficha del fabricante da una forma muy concreta, y no es la de un cajón:
+   son BANDEJAS INCLINADAS ESCALONADAS —tres a cinco escalones— con CAJONES
+   PLÁSTICOS apoyados encima, riel porta-precios en el filo de cada escalón y
+   un cartel arriba.
+
+   Las tres cosas importan y ninguna es decorativa:
+
+   · **La inclinación.** La fruta suelta se mira desde arriba. Un plano
+     horizontal la esconde detrás de la fila de adelante.
+   · **El escalón.** Sin él, la bandeja de atrás queda tapada por la de
+     adelante, y el mueble pierde la mitad de su frente vendible.
+   · **Los cajones.** La fruta no se vuelca sobre la madera: llega en cajón y
+     se exhibe EN el cajón. Es lo que hace que el mueble se lea como frutería
+     y no como una mesa con cosas encima. */
+
+export const STAND_FRUTAS = {
+  /** Inclinación de la bandeja hacia el cliente, en radianes. */
+  caida: (14 * Math.PI) / 180,
+  /** El cajón plástico que se apoya en la bandeja. */
+  cajon: { alto: 0.14, largo: 0.5, luz: 0.02, pared: 0.014 },
+  /** Estructura: marco perimetral y zócalo. */
+  marco: 0.045,
+  zocalo: 0.1,
+  /** Alturas de las dos bandejas, como fracción del alto total. El escalón
+   *  entre las dos es corto a propósito: separadas, las bandejas se ven
+   *  flotando una sobre otra y el mueble deja de leerse como una superficie
+   *  escalonada continua, que es lo que es. */
+  bandejaBaja: 0.44,
+  bandejaAlta: 0.72,
+  /** Riel porta-precios del filo de cada bandeja. */
+  porta: 0.05,
+} as const;
+
+export interface BandejaDeStand {
+  /** Altura del plano de apoyo, antes de inclinar. */
+  y: number;
+  ancho: number;
+  fondo: number;
+  /** Z del centro de la bandeja. */
+  z: number;
+  /** Inclinación hacia el cliente, en radianes. */
+  caida: number;
+  /** Cuánto se amontona dentro del cajón. */
+  altoLibre: number;
+  /** Cuántos cajones entran a lo ancho. */
+  cajones: number;
+}
+
+/** Las dos bandejas escalonadas de un stand de frutas: la baja adelante, la
+ *  alta atrás. Devuelve descripciones y no geometría, igual que el mural de
+ *  vegetales, para que el producto lo dibuje el mismo `VolcadoDeProducto` que
+ *  usan los demás muebles de volcado. */
+export function bandejasDeStand(w: number, d: number, h: number): BandejaDeStand[] {
+  const ancho = Math.max(0.1, w - STAND_FRUTAS.marco * 2);
+  const fondo = Math.max(0.12, (d - STAND_FRUTAS.marco * 2 - 0.04) / 2);
+  const cajones = Math.max(1, Math.floor(ancho / (STAND_FRUTAS.cajon.largo + STAND_FRUTAS.cajon.luz)));
+  const comun = { ancho, fondo, caida: STAND_FRUTAS.caida, cajones };
+  // El cajón va LLENO y un poco rebosado: un cajón de cosecha con una capa de
+  // fruta en el fondo se ve vacío desde el pasillo, porque la pared del cajón
+  // la tapa. Es el mismo defecto que tenía la batea.
+  const altoLibre = STAND_FRUTAS.cajon.alto * 1.15;
+
+  return [
+    { y: h * STAND_FRUTAS.bandejaBaja, z: -d / 2 + STAND_FRUTAS.marco + fondo / 2, altoLibre, ...comun },
+    { y: h * STAND_FRUTAS.bandejaAlta, z: d / 2 - STAND_FRUTAS.marco - fondo / 2, altoLibre, ...comun },
+  ];
+}
