@@ -158,12 +158,26 @@ prueba("el frontend y el backend dicen lo MISMO", () => {
 prueba("el panel no ofrece un botón que la regla ignora", () => {
   // Un par de botones «Comercializable / No comercial» sobre una caja sería un
   // control muerto: se pinta el elegido y `isRentable` lo sigue negando.
-  for (const [nombre, ruta] of [
-    ["el editor 3D", join(raiz, "src/components/StoreEditor3D/StoreEditor3D.tsx")],
-    ["el plano 2D", join(raiz, "src/components/FloorPlan2D/FloorPlan2D.tsx")],
+  //
+  // Se mide DÓNDE está la condición, no que el nombre aparezca en el archivo.
+  // La primera versión de esta prueba buscaba `NUNCA_ALQUILABLE.has(` en todo
+  // el texto, y una mutación que desarmaba la condición del botón pasaba en
+  // verde: el nombre seguía estando más abajo, en el párrafo que explica por
+  // qué el mueble no se alquila.
+  for (const [nombre, ruta, boton] of [
+    ["el editor 3D", join(raiz, "src/components/StoreEditor3D/StoreEditor3D.tsx"), "u({ rentable: value })"],
+    ["el plano 2D", join(raiz, "src/components/FloorPlan2D/FloorPlan2D.tsx"), "onUpdate({ rentable: value })"],
   ]) {
     const t = leer(ruta);
-    assert.match(t, /NUNCA_ALQUILABLE\.has\(/, `${nombre} volvió a ofrecer el botón siempre`);
+    const label = t.indexOf("Destino del mueble");
+    assert.ok(label > 0, `${nombre} perdió el campo «Destino del mueble»`);
+    const click = t.indexOf(boton, label);
+    assert.ok(click > 0, `${nombre} perdió el botón de destino`);
+    assert.match(
+      t.slice(label, click),
+      /NUNCA_ALQUILABLE\.has\(/,
+      `${nombre} ofrece el botón sin preguntar por el tipo: es un control muerto`,
+    );
   }
 });
 
