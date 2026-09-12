@@ -1038,7 +1038,30 @@ prueba("lo que entra parado se para: una batea no es un pozo", () => {
   // Lo suelto no tiene envase y no cambia nunca.
   assert.equal(P.empaqueVolcadoEn("Frutas", 0.5).forma, "pieza");
   assert.equal(P.empaqueVolcadoEn("Carnes", 0.05).forma, "bandeja");
-  assert.match(bateaCodigo, /const REBOSE =/, "la batea volvió a medirse enrasada y no rebosada");
+  // Se EJECUTA la cuenta, no se mira el nombre de la constante: una guarda
+  // que sólo verificaba que `REBOSE` existiera dejó pasar una mutación que
+  // devolvía la batea a medirse enrasada, porque la constante seguía ahí y la
+  // fórmula ya no la usaba.
+  assert.match(medidas, /export function cotasDeBatea/, "las cotas de la batea volvieron al componente");
+  assert.match(bateaCodigo, /cotasDeBatea\(/, "la batea volvió a tener su propia cuenta");
+  const ALTO_DE_BOTELLA = 0.31;   // la de litro y medio, de `EMPAQUES`
+  for (const [w, d, h] of [[0.8, 0.6, 0.8], [1.0, 0.7, 0.85], [0.7, 0.5, 0.75]]) {
+    const c = M.cotasDeBatea(w, d, h);
+    const donde = `${w}×${d}×${h}`;
+    assert.ok(
+      c.altoLibre >= ALTO_DE_BOTELLA,
+      `${donde}: una botella de litro y medio no entra parada (${c.altoLibre.toFixed(3)} m)`,
+    );
+    assert.ok(c.piso > h * 0.5, `${donde}: el piso del canasto quedó bajo y el producto se hunde`);
+    assert.ok(c.piso < h, `${donde}: el piso se salió por arriba del mueble`);
+    assert.ok(c.ancho > 0 && c.fondo > 0, `${donde}: la boca se cerró`);
+  }
+  // Y la regla que las dos cosas sirven: en esa batea, la gaseosa va PARADA.
+  assert.equal(
+    P.empaqueVolcadoEn("Gaseosas", M.cotasDeBatea(0.8, 0.6, 0.8).altoLibre).acostado,
+    undefined,
+    "en una batea de tamaño de catálogo la gaseosa vuelve a acostarse",
+  );
 });
 
 prueba("el mural hereda el arte del proveedor, no tiene un camino propio", () => {

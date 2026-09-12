@@ -712,3 +712,46 @@ export function cotasDeCheckout(w: number, d: number, h: number): CotasDeCheckou
     yDeImpulso,
   };
 }
+
+/* ── La batea de promoción ───────────────────────────────────────────────────
+   Un tacho poco hondo sobre patas largas, con las paredes inclinadas. Las dos
+   cotas que decidían si se veía llena o vacía estaban mal, y las dos por el
+   mismo motivo: se la midió como un contenedor y no como un mueble de venta.
+
+   · **Va REBOSADA, no enrasada.** El montón que asoma por encima del borde es
+     justamente lo que la hace leer como oferta.
+   · **El piso va alto.** A 0,58 del alto total el canasto quedaba de 34 cm y
+     una botella de litro y medio —31 cm— desaparecía adentro, tapada por la
+     pared del frente: desde el pasillo, un mueble lleno se veía vacío.
+
+   Entre las dos, el alto libre daba 30,6 cm y la botella no entraba parada
+   POR CUATRO MILÍMETROS. Acostada mide 30 cm de largo, así que en el fondo
+   entraba una sola fila. */
+
+export const BATEA = {
+  /** Cuánto más angosto es el fondo que la boca, por lado. */
+  estrechamiento: 0.11,
+  /** Radio de las ruedas. */
+  rueda: 0.045,
+  /** Espesor del borde volcado de la boca. */
+  borde: 0.022,
+  /** A qué altura va el piso del canasto, como fracción del alto total. */
+  fraccionDePiso: 0.66,
+  /** Cuánto sobresale el montón por encima del borde. */
+  rebose: 0.09,
+} as const;
+
+export function pisoDeBatea(h: number): number {
+  return Math.max(BATEA.rueda * 2 + 0.05, h * BATEA.fraccionDePiso);
+}
+
+export function cotasDeBatea(w: number, d: number, h: number) {
+  const piso = pisoDeBatea(h);
+  return {
+    piso,
+    y: piso + 0.016,
+    ancho: Math.max(0.1, w - BATEA.estrechamiento * 2),
+    fondo: Math.max(0.1, d - BATEA.estrechamiento * 2),
+    altoLibre: Math.max(0.08, h - piso + BATEA.rebose),
+  };
+}

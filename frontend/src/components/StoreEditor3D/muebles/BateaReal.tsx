@@ -1,6 +1,7 @@
 import { memo, useMemo } from "react";
 import * as THREE from "three";
 import { geometriaCanasto, geometriaMarcoDePuerta } from "./perfiles";
+import { BATEA, cotasDeBatea, pisoDeBatea } from "./medidas";
 
 /**
  * Una batea de promoción: el canasto donde se vuelca el producto de oferta.
@@ -39,20 +40,12 @@ export interface BateaRealProps {
   ghost?: boolean;
 }
 
-/** Cuánto más angosto es el fondo que la boca, por lado. Es lo que da la
- *  inclinación de las paredes. */
-const ESTRECHAMIENTO = 0.11;
-/** Radio de las ruedas. */
-const RUEDA = 0.045;
-/** Espesor del borde volcado de la boca. */
-const BORDE = 0.022;
-/** A qué altura va el piso del canasto, como fracción del alto total.
- *
- *  Una batea es un tacho POCO HONDO sobre patas largas: a 0,58 el canasto
- *  quedaba de 34 cm y una botella de litro y medio —31 cm— desaparecía
- *  adentro, con la pared del frente tapándola. Desde el pasillo, un mueble
- *  lleno se veía vacío. */
-const FRACCION_DE_PISO = 0.66;
+/* Las cotas viven en `medidas.ts` (`BATEA`, `cotasDeBatea`): quien vuelca el
+   producto adentro necesita las mismas, y con dos cuentas el montón flota o se
+   hunde. Se re-exportan con los nombres de siempre para no tocar el cuerpo. */
+const ESTRECHAMIENTO = BATEA.estrechamiento;
+const RUEDA = BATEA.rueda;
+const BORDE = BATEA.borde;
 
 export const BateaReal = memo(function BateaReal({
   w, d, h, statusColor, ghost = false,
@@ -83,7 +76,7 @@ export const BateaReal = memo(function BateaReal({
   // oferta, y una batea de verdad es un tacho poco hondo sobre patas largas.
   // A media altura el canasto queda tan hondo que el producto se hunde y el
   // mueble se ve vacío desde el pasillo — que es como se veía.
-  const pisoDelCanasto = Math.max(RUEDA * 2 + 0.05, h * FRACCION_DE_PISO);
+  const pisoDelCanasto = pisoDeBatea(h);
   const altoDelCanasto = Math.max(0.12, h - pisoDelCanasto);
   const anchoAbajo = Math.max(0.1, w - ESTRECHAMIENTO * 2);
   const fondoAbajo = Math.max(0.1, d - ESTRECHAMIENTO * 2);
@@ -154,25 +147,12 @@ export const BateaReal = memo(function BateaReal({
   );
 });
 
-/** Cuánto sobresale el montón por encima del borde.
- *
- *  Una batea de promoción va REBOSADA, no enrasada: el montón que asoma sobre
- *  el borde es justamente lo que la hace leer como oferta y no como canasto
- *  vacío. Midiendo el alto libre hasta tres centímetros POR DEBAJO del borde,
- *  una botella de litro y medio (31 cm) no entraba parada en los 30,6 cm que
- *  quedaban —por cuatro milímetros— y se acostaba; acostada mide 30 cm de
- *  largo, así que en el fondo de la batea entraba UNA fila y el mueble se veía
- *  vacío con producto adentro. */
-const REBOSE = 0.09;
-
 /** Dónde queda el piso del canasto y cuánto cabe encima. Lo necesita quien
- *  vuelca el producto adentro, y vive acá para que no haya dos cuentas. */
+ *  vuelca el producto adentro; la cuenta vive en `medidas.ts` para que no haya
+ *  dos, y para que se pueda EJECUTAR en las pruebas: la guarda que sólo miraba
+ *  el nombre de la constante dejó pasar una mutación que devolvía la batea a
+ *  medirse enrasada. */
 export function bocaDeBatea(w: number, d: number, h: number) {
-  const piso = Math.max(RUEDA * 2 + 0.05, h * FRACCION_DE_PISO);
-  return {
-    y: piso + 0.016,
-    ancho: Math.max(0.1, w - ESTRECHAMIENTO * 2),
-    fondo: Math.max(0.1, d - ESTRECHAMIENTO * 2),
-    altoLibre: Math.max(0.08, h - piso + REBOSE),
-  };
+  const c = cotasDeBatea(w, d, h);
+  return { y: c.y, ancho: c.ancho, fondo: c.fondo, altoLibre: c.altoLibre };
 }
