@@ -1,167 +1,47 @@
-import React, { memo } from "react";
+import React, { memo, useMemo } from "react";
+import * as THREE from "three";
 
-/**
- * Reusable physically-plausible fixture primitives.
- *
- * Important: w/d/h are the OUTER dimensions supplied by the floor plan.
- * These components never mutate them; every structural element is derived
- * inside that envelope.
- */
+type Props = { w:number; d:number; h:number; color?:string; ghost?:boolean; gondolaType?:"double"|"wall" };
+const PAINT="#68727c", DARK="#343b41", SHELF="#e7e2d8";
+const opacity=(ghost?:boolean)=>ghost?0.38:1;
+function Painted({color=PAINT,ghost=false,roughness=.46,metalness=.05}:{color?:string;ghost?:boolean;roughness?:number;metalness?:number}){return <meshStandardMaterial color={color} metalness={metalness} roughness={roughness} transparent={ghost} opacity={opacity(ghost)}/>}
+function Glass({ghost=false}:{ghost?:boolean}){return <meshPhysicalMaterial color="#dbe7ef" metalness={.02} roughness={.1} transmission={.16} transparent opacity={ghost?.22:.28}/>}
+function Part({position,size,material=<Painted/>,rotation}:{position:[number,number,number];size:[number,number,number];material?:React.ReactElement;rotation?:[number,number,number]}){return <mesh position={position} rotation={rotation} castShadow receiveShadow><boxGeometry args={size}/>{material}</mesh>}
 
-type Props = {
-  w: number;
-  d: number;
-  h: number;
-  color?: string;
-  ghost?: boolean;
-  gondolaType?: "double" | "wall";
-};
-
-const metal = (color = "#69717a", roughness = 0.34) => (
-  <meshStandardMaterial color={color} metalness={0.72} roughness={roughness} />
-);
-const darkMetal = () => <meshStandardMaterial color="#30363b" metalness={0.82} roughness={0.28} />;
-const glass = () => <meshPhysicalMaterial color="#dbe7ef" metalness={0.05} roughness={0.08} transmission={0.18} transparent opacity={0.28} />;
-const neutral = () => <meshStandardMaterial color="#ece8df" metalness={0.04} roughness={0.58} />;
-
-function Part({
-  position,
-  size,
-  material = metal(),
-}: {
-  position: [number, number, number];
-  size: [number, number, number];
-  material?: React.ReactElement;
-}) {
-  return (
-    <mesh position={position}>
-      <boxGeometry args={size} />
-      {material}
-    </mesh>
-  );
+/** Folded-sheet shelf: thin deck plus front price lip and rear return. */
+function ProfiledShelf({width,depth,y,frontZ,tilt=0,ghost=false}:{width:number;depth:number;y:number;frontZ:number;tilt?:number;ghost?:boolean}){
+  const geometry=useMemo(()=>{const s=new THREE.Shape();s.moveTo(-.014,-.006);s.lineTo(depth*.92,-.006);s.lineTo(depth*.92,.022);s.lineTo(depth*.84,.022);s.lineTo(depth*.84,.052);s.lineTo(depth*.78,.052);s.lineTo(depth*.78,.006);s.lineTo(0,.006);s.lineTo(0,.030);s.lineTo(-.014,.030);s.closePath();const g=new THREE.ExtrudeGeometry(s,{depth:width,bevelEnabled:false});g.translate(-width/2,0,-depth*.46);g.rotateY(Math.PI/2);g.computeVertexNormals();return g},[width,depth]);
+  return <mesh geometry={geometry} position={[0,y,frontZ]} rotation={[tilt,0,0]} castShadow receiveShadow><meshStandardMaterial color={SHELF} metalness={.04} roughness={.56} transparent={ghost} opacity={opacity(ghost)}/></mesh>
 }
+function SlottedPost({x,z,h,ghost}:{x:number;z:number;h:number;ghost?:boolean}){const slots=Math.max(6,Math.floor(h/.025));return <group><Part position={[x,h/2,z]} size={[.032,h,.032]} material={<Painted ghost={ghost}/>} />{Array.from({length:slots},(_,i)=><mesh key={i} position={[x,.055+i*.025,z+(z>=0?.016:-.016)]} castShadow receiveShadow><boxGeometry args={[.012,.008,.004]}/><Painted color={DARK} ghost={ghost} metalness={.12} roughness={.48}/></mesh>)}</group>}
 
-/** Real supermarket gondola: uprights, perforated back, adjustable shelves, feet and price rails. */
-export const RealisticGondola = memo(function RealisticGondola({ w, d, h, gondolaType }: Props) {
-  const post = Math.max(0.026, Math.min(0.042, w * 0.035));
-  const shelf = Math.max(0.018, Math.min(0.028, h * 0.014));
-  const usableW = Math.max(0.1, w - post * 2);
-  const rows = Math.max(3, Math.min(6, Math.floor((h - 0.34) / 0.28)));
-  const levels = Array.from({ length: rows }, (_, i) => 0.16 + i * ((h - 0.42) / Math.max(rows - 1, 1)));
-  const double = gondolaType ? gondolaType === "double" : d >= 0.72;
+export const RealisticGondola=memo(function RealisticGondola({w,d,h,gondolaType,ghost=false}:Props){
+  const double=gondolaType?gondolaType==="double":d>=.72;
+  const postCount=Math.max(2,Math.ceil(w/1.25)+1), moduleW=(w-.06)/Math.max(postCount-1,1);
+  const rows=Math.max(4,Math.min(6,Math.floor((h-.34)/.28))), safeTop=h-.12;
+  const levels=Array.from({length:rows},(_,i)=>.16+i*((safeTop-.42)/Math.max(rows-1,1)));
+  const sideDepth=Math.min(.52,Math.max(.34,double?d/2-.055:d-.075));
   return <group>
-    <Part position={[-w / 2 + post / 2, h / 2, 0]} size={[post, h, post]} material={metal()} />
-    <Part position={[w / 2 - post / 2, h / 2, 0]} size={[post, h, post]} material={metal()} />
-    <Part position={[0, 0.035, 0]} size={[w * 0.92, 0.07, d * 0.82]} material={darkMetal()} />
-    <Part position={[0, h - 0.025, 0]} size={[w * 0.96, 0.05, d * 0.9]} material={metal()} />
-    <Part position={[0, h * 0.52, 0]} size={[w * 0.92, h * 0.72, 0.018]} material={metal("#58616a", 0.42)} />
-    {levels.map((y, i) => <React.Fragment key={i}>
-      <Part position={[0, y, 0]} size={[usableW, shelf, Math.max(0.25, d * (double ? 0.86 : 0.82))]} material={neutral()} />
-      <Part position={[0, y + 0.018, -Math.max(0.1, d / 2 - 0.035)]} size={[usableW, 0.035, 0.025]} material={darkMetal()} />
-    </React.Fragment>)}
-    {double && levels.map((y, i) => <Part key={`b${i}`} position={[0, y + 0.018, Math.max(0.1, d / 2 - 0.035)]} size={[usableW, 0.035, 0.025]} material={darkMetal()} />)}
-    <Part position={[-w / 2 + 0.045, 0.085, -d / 2 + 0.03]} size={[0.09, 0.045, 0.12]} material={darkMetal()} />
-    <Part position={[w / 2 - 0.045, 0.085, -d / 2 + 0.03]} size={[0.09, 0.045, 0.12]} material={darkMetal()} />
-  </group>;
+    <Part position={[0,h*.5,double?0:d/2-.018]} size={[w*.94,h*.76,.026]} material={<Painted color="#59636c" ghost={ghost} roughness={.52}/>} />
+    {Array.from({length:postCount},(_,i)=><SlottedPost key={i} x={-w/2+.03+i*moduleW} z={double?0:d/2-.028} h={h} ghost={ghost}/>)}
+    {levels.flatMap((y,i)=>{const depth=sideDepth*(1-i*.075);const frontA=double?-(d/4+.02):-(d/2-depth/2-.025);const a=<ProfiledShelf key={`a-${i}`} width={w-.065} depth={depth} y={y} frontZ={frontA} tilt={i>0?-.045:0} ghost={ghost}/>;return double?[a,<ProfiledShelf key={`b-${i}`} width={w-.065} depth={depth} y={y} frontZ={d/4+.02} tilt={i>0?.045:0} ghost={ghost}/>]:[a]})}
+    <Part position={[0,.075,double?-.17*d:-d/2+.055]} size={[w*.94,.10,.075]} material={<Painted color={DARK} ghost={ghost} roughness={.55}/>} />
+    {double&&<Part position={[0,.075,.17*d]} size={[w*.94,.10,.075]} material={<Painted color={DARK} ghost={ghost} roughness={.55}/>} />}
+    {Array.from({length:postCount},(_,i)=><React.Fragment key={`feet-${i}`}><Part position={[-w/2+.03+i*moduleW,.055,double?-.34*d:-d/2+.045]} size={[.07,.055,.07]} material={<Painted color={DARK} ghost={ghost}/>} />{double&&<Part position={[-w/2+.03+i*moduleW,.055,.34*d]} size={[.07,.055,.07]} material={<Painted color={DARK} ghost={ghost}/>} />}</React.Fragment>)}
+  </group>
 });
 
-/** End-cap: a structurally independent promotional face attached to a gondola end. */
-export const RealisticPunta = memo(function RealisticPunta({ w, d, h }: Props) {
-  const baseH = Math.min(0.16, h * 0.09);
-  const headerH = Math.min(0.30, h * 0.18);
-  const bodyH = Math.max(0.25, h - baseH - headerH);
-  const rows = Math.max(3, Math.min(5, Math.floor(bodyH / 0.34)));
-  return <group>
-    <Part position={[0, baseH / 2, 0]} size={[w * 0.94, baseH, d * 0.96]} material={darkMetal()} />
-    <Part position={[-w * 0.42, baseH + bodyH / 2, 0]} size={[0.035, bodyH, d * 0.82]} material={metal()} />
-    <Part position={[w * 0.42, baseH + bodyH / 2, 0]} size={[0.035, bodyH, d * 0.82]} material={metal()} />
-    {Array.from({ length: rows }, (_, i) => {
-      const y = baseH + 0.07 + i * ((bodyH - 0.12) / Math.max(rows - 1, 1));
-      return <React.Fragment key={i}>
-        <Part position={[0, y, 0]} size={[w * 0.84, 0.022, d * 0.78]} material={neutral()} />
-        <Part position={[0, y + 0.018, -d * 0.39]} size={[w * 0.84, 0.035, 0.025]} material={darkMetal()} />
-      </React.Fragment>;
-    })}
-    <Part position={[0, h - headerH / 2, 0]} size={[w * 0.94, headerH, d * 0.72]} material={metal("#4b5560", 0.4)} />
-    <Part position={[0, h - 0.035, 0]} size={[w * 0.97, 0.05, d * 0.78]} material={darkMetal()} />
-  </group>;
-});
+export const RealisticPunta=memo(function RealisticPunta({w,d,h,ghost=false}:Props){const base=Math.min(.14,h*.09),header=Math.min(.28,h*.16),rows=Math.max(3,Math.min(5,Math.floor((h-base-header)/.30)));return <group><Part position={[0,base/2,0]} size={[w*.94,base,d*.94]} material={<Painted color={DARK} ghost={ghost}/>} /><Part position={[-w*.43,(h+base)/2,0]} size={[.035,h-base,d*.8]} material={<Painted ghost={ghost}/>} /><Part position={[w*.43,(h+base)/2,0]} size={[.035,h-base,d*.8]} material={<Painted ghost={ghost}/>} />{Array.from({length:rows},(_,i)=>{const y=base+.09+i*((h-base-header-.15)/Math.max(rows-1,1));return <ProfiledShelf key={i} width={w*.84} depth={d*.72} y={y} frontZ={-d*.37} tilt={i>0?-.04:0} ghost={ghost}/>})}<Part position={[0,h-header/2,0]} size={[w*.94,header,d*.68]} material={<Painted color="#505b65" ghost={ghost} roughness={.5}/>} /><Part position={[0,h-.035,0]} size={[w*.98,.05,d*.72]} material={<Painted color={DARK} ghost={ghost}/>} /></group>});
 
-/** Robatope: robust promotional tower with a stable plinth and repeated display bands. */
-export const RealisticRobatope = memo(function RealisticRobatope({ w, d, h }: Props) {
-  const base = Math.min(0.14, h * 0.1);
-  const rows = Math.max(3, Math.min(5, Math.floor((h - base - 0.08) / 0.32)));
-  return <group>
-    <Part position={[0, base / 2, 0]} size={[w * 0.98, base, d * 0.98]} material={darkMetal()} />
-    <Part position={[-w * 0.40, h / 2, 0]} size={[0.028, h - base, d * 0.92]} material={metal()} />
-    <Part position={[w * 0.40, h / 2, 0]} size={[0.028, h - base, d * 0.92]} material={metal()} />
-    {Array.from({ length: rows }, (_, i) => {
-      const y = base + 0.08 + i * ((h - base - 0.14) / Math.max(rows - 1, 1));
-      return <Part key={i} position={[0, y, 0]} size={[w * 0.90, 0.025, d * 0.86]} material={neutral()} />;
-    })}
-    <Part position={[0, h - 0.03, 0]} size={[w * 0.96, 0.06, d * 0.9]} material={darkMetal()} />
-  </group>;
-});
+export const RealisticRobatope=memo(function RealisticRobatope({w,d,h,ghost=false}:Props){const base=Math.min(.14,h*.09),bands=Math.max(3,Math.min(5,Math.floor((h-base)/.30)));return <group><Part position={[0,base/2,0]} size={[w*.98,base,d*.96]} material={<Painted color={DARK} ghost={ghost}/>} /><Part position={[-w*.4,h/2,0]} size={[.03,h-base,.035]} material={<Painted ghost={ghost}/>} /><Part position={[w*.4,h/2,0]} size={[.03,h-base,.035]} material={<Painted ghost={ghost}/>} />{Array.from({length:bands},(_,i)=>{const y=base+.08+i*((h-base-.16)/Math.max(bands-1,1));return <Part key={i} position={[0,y,0]} size={[w*.88,.028,d*.8]} material={<Painted color={SHELF} ghost={ghost} metalness={.03}/>} />})}<Part position={[0,h-.04,0]} size={[w*.96,.07,d*.84]} material={<Painted color={DARK} ghost={ghost}/>} /></group>});
 
-/** Ristra: slim perforated panel with genuinely vertical hanging rails/hooks. */
-export const RealisticRistra = memo(function RealisticRistra({ w, d, h }: Props) {
-  const post = Math.max(0.024, w * 0.07);
-  const hooks = Math.max(3, Math.floor(h / 0.24));
-  return <group>
-    <Part position={[0, h / 2, 0]} size={[w * 0.78, h * 0.94, 0.028]} material={metal("#555e66", 0.38)} />
-    <Part position={[-w * 0.40, h / 2, 0]} size={[post, h * 0.96, post]} material={darkMetal()} />
-    <Part position={[w * 0.40, h / 2, 0]} size={[post, h * 0.96, post]} material={darkMetal()} />
-    {Array.from({ length: hooks }, (_, i) => {
-      const y = 0.10 + i * ((h - 0.22) / Math.max(hooks - 1, 1));
-      return <Part key={i} position={[0, y, -d * 0.22]} size={[w * 0.62, 0.018, d * 0.38]} material={darkMetal()} />;
-    })}
-    <Part position={[0, 0.035, 0]} size={[w * 0.95, 0.07, d * 0.82]} material={darkMetal()} />
-  </group>;
-});
+/** Ristra / clip-strip: vertical carrier with hooks and hanging rails. */
+export const RealisticRistra=memo(function RealisticRistra({w,d,h,ghost=false}:Props){const post=Math.max(.024,w*.055),hooks=Math.max(4,Math.floor(h/.22));return <group><Part position={[0,h/2,0]} size={[w*.55,h*.92,.018]} material={<Painted color="#737c83" ghost={ghost} roughness={.5}/>} /><Part position={[-w*.36,h/2,0]} size={[post,h*.95,post]} material={<Painted color={DARK} ghost={ghost}/>} /><Part position={[w*.36,h/2,0]} size={[post,h*.95,post]} material={<Painted color={DARK} ghost={ghost}/>} />{Array.from({length:hooks},(_,i)=>{const y=.12+i*((h-.25)/Math.max(hooks-1,1));return <group key={i}><Part position={[0,y,-d*.12]} size={[w*.5,.012,.035]} material={<Painted color={DARK} ghost={ghost} metalness={.18}/>} /><Part position={[0,y,-d*.28]} size={[.018,.018,d*.30]} material={<Painted color={DARK} ghost={ghost} metalness={.18}/>} /></group>})}<Part position={[0,.035,0]} size={[w*.88,.07,d*.72]} material={<Painted color={DARK} ghost={ghost}/>} /></group>});
 
-/** Cross display: low multi-directional impulse rack, not a tall gondola. */
-export const RealisticCross = memo(function RealisticCross({ w, d, h }: Props) {
-  const levels = Math.max(3, Math.min(6, Math.floor(h / 0.30)));
-  return <group>
-    <Part position={[0, 0.06, 0]} size={[w * 0.82, 0.12, d * 0.82]} material={darkMetal()} />
-    <Part position={[0, h / 2, 0]} size={[0.06, h - 0.10, 0.06]} material={metal()} />
-    {Array.from({ length: levels }, (_, i) => {
-      const y = 0.16 + i * ((h - 0.30) / Math.max(levels - 1, 1));
-      return <React.Fragment key={i}>
-        <Part position={[0, y, 0]} size={[w * 0.82, 0.028, d * 0.82]} material={neutral()} />
-        <Part position={[0, y + 0.018, -d * 0.40]} size={[w * 0.84, 0.04, 0.025]} material={darkMetal()} />
-      </React.Fragment>;
-    })}
-  </group>;
-});
+/** Four-sided cross display with inclined trays. */
+export const RealisticCross=memo(function RealisticCross({w,d,h,ghost=false}:Props){const levels=Math.max(3,Math.min(5,Math.floor(h/.31))),armW=w*.38,armD=d*.38;return <group><Part position={[0,.06,0]} size={[w*.78,.12,d*.78]} material={<Painted color={DARK} ghost={ghost}/>} /><Part position={[0,h/2,0]} size={[.055,h-.10,.055]} material={<Painted ghost={ghost}/>} />{Array.from({length:levels},(_,i)=>{const y=.20+i*((h-.38)/Math.max(levels-1,1));return <React.Fragment key={i}><Part position={[0,y,-d*.25]} size={[armW,.028,armD]} material={<Painted color={SHELF} ghost={ghost} />} rotation={[-.10,0,0]}/><Part position={[0,y,d*.25]} size={[armW,.028,armD]} material={<Painted color={SHELF} ghost={ghost} />} rotation={[.10,0,0]}/><Part position={[-w*.25,y,0]} size={[armD,.028,armW]} material={<Painted color={SHELF} ghost={ghost} />} rotation={[0,0,.10]}/><Part position={[w*.25,y,0]} size={[armD,.028,armW]} material={<Painted color={SHELF} ghost={ghost} />} rotation={[0,0,-.10]}/></React.Fragment>})}</group>});
 
-/** Metro: deliberately low, linear modular merchandising platform. */
-export const RealisticMetro = memo(function RealisticMetro({ w, d, h }: Props) {
-  const z = Math.max(0.05, h);
-  return <group>
-    <Part position={[0, z / 2, 0]} size={[w * 0.96, z, d * 0.94]} material={metal("#66707a", 0.44)} />
-    <Part position={[0, z + 0.018, 0]} size={[w * 0.98, 0.035, d * 0.96]} material={darkMetal()} />
-    <Part position={[-w * 0.46, z / 2, 0]} size={[0.028, z, d * 0.96]} material={darkMetal()} />
-    <Part position={[w * 0.46, z / 2, 0]} size={[0.028, z, d * 0.96]} material={darkMetal()} />
-  </group>;
-});
+/** Low open metro platform, with deck, perimeter rails and four feet. */
+export const RealisticMetro=memo(function RealisticMetro({w,d,h,ghost=false}:Props){const deck=Math.max(.035,Math.min(.075,h)),rail=Math.max(.018,Math.min(.028,h*.55));return <group><Part position={[0,deck/2,0]} size={[w*.94,deck,d*.92]} material={<Painted ghost={ghost}/>} /><Part position={[0,deck+rail/2,-d*.45]} size={[w*.94,rail,.028]} material={<Painted color={DARK} ghost={ghost}/>} /><Part position={[0,deck+rail/2,d*.45]} size={[w*.94,rail,.028]} material={<Painted color={DARK} ghost={ghost}/>} />{[[-w*.42,-d*.38],[w*.42,-d*.38],[-w*.42,d*.38],[w*.42,d*.38]].map(([x,z],i)=><Part key={i} position={[x,.02,z]} size={[.06,.04,.06]} material={<Painted color={DARK} ghost={ghost}/>} />)}</group>});
 
-/** Mueble/vitrina: cabinet envelope, glass doors, profiles, shelves and handles. */
-export const RealisticMueble = memo(function RealisticMueble({ w, d, h }: Props) {
-  const base = Math.min(0.12, h * 0.07);
-  const profile = Math.max(0.022, Math.min(0.035, w * 0.025));
-  const shelves = Math.max(2, Math.min(5, Math.floor((h - base - 0.18) / 0.34)));
-  return <group>
-    <Part position={[0, base / 2, 0]} size={[w * 0.98, base, d * 0.98]} material={darkMetal()} />
-    <Part position={[-w / 2 + profile / 2, h / 2, 0]} size={[profile, h - base, profile]} material={metal("#56616a", 0.28)} />
-    <Part position={[w / 2 - profile / 2, h / 2, 0]} size={[profile, h - base, profile]} material={metal("#56616a", 0.28)} />
-    <Part position={[0, h - profile / 2, 0]} size={[w, profile, profile]} material={metal("#56616a", 0.28)} />
-    <Part position={[0, (h - base) / 2 + base, -d / 2 + profile / 2]} size={[w - profile * 2, h - base - profile, profile]} material={glass()} />
-    {Array.from({ length: shelves }, (_, i) => {
-      const y = base + 0.16 + i * ((h - base - 0.26) / Math.max(shelves - 1, 1));
-      return <Part key={i} position={[0, y, 0]} size={[w - profile * 2, 0.022, d - profile * 2]} material={neutral()} />;
-    })}
-    <Part position={[-w * 0.018, h * 0.53, -d / 2 - 0.018]} size={[0.018, h * 0.26, 0.018]} material={darkMetal()} />
-    <Part position={[w * 0.018, h * 0.53, -d / 2 - 0.018]} size={[0.018, h * 0.26, 0.018]} material={darkMetal()} />
-  </group>;
-});
+export const RealisticMueble=memo(function RealisticMueble({w,d,h,ghost=false}:Props){const base=Math.min(.12,h*.07),profile=Math.max(.022,Math.min(.035,w*.025)),shelves=Math.max(2,Math.min(5,Math.floor((h-base-.18)/.34)));return <group><Part position={[0,base/2,0]} size={[w*.98,base,d*.98]} material={<Painted color={DARK} ghost={ghost}/>} /><Part position={[-w/2+profile/2,h/2,0]} size={[profile,h-base,profile]} material={<Painted color="#56616a" ghost={ghost} roughness={.35}/>} /><Part position={[w/2-profile/2,h/2,0]} size={[profile,h-base,profile]} material={<Painted color="#56616a" ghost={ghost} roughness={.35}/>} /><Part position={[0,h-profile/2,0]} size={[w,profile,profile]} material={<Painted color="#56616a" ghost={ghost} roughness={.35}/>} /><Part position={[0,(h-base)/2+base,-d/2+profile/2]} size={[w-profile*2,h-base-profile,profile]} material={<Glass ghost={ghost}/>} />{Array.from({length:shelves},(_,i)=>{const y=base+.16+i*((h-base-.26)/Math.max(shelves-1,1));return <Part key={i} position={[0,y,0]} size={[w-profile*2,.022,d-profile*2]} material={<Painted color={SHELF} ghost={ghost} metalness={.03} roughness={.56}/>} />})}<Part position={[0,base+(h-base)/2,-d/2-.018]} size={[.012,h-base-.06,.014]} material={<Painted color={DARK} ghost={ghost}/>} /><Part position={[-.028,h*.53,-d/2-.028]} size={[.012,h*.16,.012]} material={<Painted color="#a8adb1" ghost={ghost} metalness={.65} roughness={.24}/>} /><Part position={[.028,h*.53,-d/2-.028]} size={[.012,h*.16,.012]} material={<Painted color="#a8adb1" ghost={ghost} metalness={.65} roughness={.24}/>} /></group>});
