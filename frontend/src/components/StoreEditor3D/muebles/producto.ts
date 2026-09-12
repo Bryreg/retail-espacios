@@ -101,11 +101,31 @@ const A_GRANEL: [readonly string[], Empaque][] = [
  *    como una tela estirada. Acostado entran tres capas y aparece el relieve.
  */
 export function empaqueVolcado(rubro: string | undefined | null): Empaque {
+  return empaqueVolcadoEn(rubro, 0);
+}
+
+/**
+ * El empaque de lo volcado, sabiendo CUÁNTO ALTO LIBRE hay encima.
+ *
+ * Lo que se vende suelto —fruta, verdura, carne— no cambia: no tiene envase.
+ * Lo envasado se acuesta **sólo si no entra parado**, y eso importa más de lo
+ * que parece: una botella de litro y medio acostada mide 30 cm de largo, así
+ * que en una batea de 60 cm de fondo entra UNA fila y el canasto se ve vacío
+ * —con producto adentro, pero vacío—, que es justo el defecto que el volcado
+ * vino a arreglar. Y en la tienda tampoco es cierto: una batea de promoción de
+ * gaseosas tiene las botellas PARADAS. Lo que se tira de costado es lo que no
+ * entra de pie.
+ */
+export function empaqueVolcadoEn(
+  rubro: string | undefined | null, altoLibre: number,
+): Empaque {
   const palabras = palabrasDe(rubro ?? "");
   for (const [prefijos, empaque] of A_GRANEL) {
     if (prefijos.some((p) => palabras.some((w) => w.startsWith(p)))) return empaque;
   }
-  return acostar(empaqueDeRubro(rubro));
+  const parado = empaqueDeRubro(rubro);
+  if (altoLibre > 0 && parado.alto <= altoLibre) return parado;
+  return acostar(parado);
 }
 
 /**

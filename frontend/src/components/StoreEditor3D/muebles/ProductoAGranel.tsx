@@ -1,6 +1,6 @@
 import { memo, useMemo } from "react";
 import * as THREE from "three";
-import { colorVolcado, empaqueVolcado } from "./producto";
+import { colorVolcado, empaqueVolcadoEn } from "./producto";
 import { geometriaDeEmpaque } from "./perfiles";
 
 /**
@@ -76,7 +76,8 @@ export const ProductoAGranel = memo(function ProductoAGranel({
   ancho, fondo, y, altoLibre, rubro, semilla, ghost = false,
 }: ProductoAGranelProps) {
   const { matrices, empaque, color } = useMemo(() => {
-    const e = empaqueVolcado(rubro);
+    // Con el alto libre: lo envasado se acuesta sólo si no entra parado.
+    const e = empaqueVolcadoEn(rubro, altoLibre);
     const color = colorVolcado(rubro);
     const vacio = { matrices: [] as THREE.Matrix4[], empaque: e, color };
     if (ghost || altoLibre <= 0) return vacio;
@@ -84,11 +85,26 @@ export const ProductoAGranel = memo(function ProductoAGranel({
     const util = { w: ancho - RETIRO * 2, d: fondo - RETIRO * 2 };
     if (util.w <= 0 || util.d <= 0) return vacio;
 
-    const pasoX = e.ancho + LUZ;
-    const pasoZ = e.fondo + LUZ;
-    const nx = Math.floor((util.w + LUZ) / pasoX);
-    const nz = Math.floor((util.d + LUZ) / pasoZ);
-    if (nx <= 0 || nz <= 0) return vacio;
+    // ── De qué lado cae lo alargado ──────────────────────────────────────
+    // Nadie vuelca las cosas alineadas: caen en el sentido en que entran. Con
+    // una sola orientación, lo alargado deja media boca sin usar. Así que se
+    // prueban las dos en planta y se usa la que mete más unidades.
+    const opciones = [
+      { girado: false, w: e.ancho, d: e.fondo },
+      { girado: true,  w: e.fondo, d: e.ancho },
+    ];
+    let mejor: { girado: boolean; nx: number; nz: number; pasoX: number; pasoZ: number } | null = null;
+    for (const o of opciones) {
+      const nx = Math.floor((util.w + LUZ) / (o.w + LUZ));
+      const nz = Math.floor((util.d + LUZ) / (o.d + LUZ));
+      if (nx <= 0 || nz <= 0) continue;
+      if (!mejor || nx * nz > mejor.nx * mejor.nz) {
+        mejor = { girado: o.girado, nx, nz, pasoX: o.w + LUZ, pasoZ: o.d + LUZ };
+      }
+    }
+    if (!mejor) return vacio;
+    const { nx, nz, pasoX, pasoZ } = mejor;
+    const giro = mejor.girado ? Math.PI / 2 : 0;
 
     // Cuántas capas se apilan. Se llena casi hasta el borde, que es como está
     // una batea de promoción de verdad: con tres capas fijas, un canasto hondo
@@ -98,8 +114,16 @@ export const ProductoAGranel = memo(function ProductoAGranel({
     // capas se asientan unas sobre otras y se hunden un 12 %. Contando con el
     // alto entero, el montón termina bastante más bajo de lo pedido y en un
     // canasto hondo eso se nota, porque la pared de adelante lo tapa.
+    //
+    // Pero no todo se apila: **una botella parada no va encima de otra**. Lo
+    // que se amontona es lo bajo y lo suelto —fruta, bolsas, cajas—; lo alto y
+    // esbelto se para en UNA capa, hombro con hombro. Apilando botellas salía
+    // una torre en el medio del canasto que no existe en ninguna tienda.
+    const apilable = e.alto <= Math.max(e.ancho, e.fondo) * 1.6;
     const altoDeCapa = e.alto * (1 - ASIENTO);
-    const capas = Math.max(1, Math.min(8, Math.floor((altoLibre * 0.9) / altoDeCapa)));
+    const capas = apilable
+      ? Math.max(1, Math.min(8, Math.floor((altoLibre * 0.9) / altoDeCapa)))
+      : 1;
 
     const azar = azarDe(semilla);
     const m = new THREE.Matrix4();
@@ -125,7 +149,7 @@ export const ProductoAGranel = memo(function ProductoAGranel({
         const dx = nx > 1 ? (ix / (nx - 1)) * 2 - 1 : 0;
         const dz = nz > 1 ? (iz / (nz - 1)) * 2 - 1 : 0;
         const centro = 1 - Math.min(1, Math.hypot(dx, dz) / Math.SQRT2);
-        const aqui = capas + (centro > 0.45 ? 1 : 0);
+        const aqui = capas + (apilable && centro > 0.45 ? 1 : 0);
 
         for (let c = 0; c < aqui; c++) {
           pos.set(
@@ -135,7 +159,7 @@ export const ProductoAGranel = memo(function ProductoAGranel({
           );
           // Un giro chico, distinto en cada unidad. Sin esto, todas las caras
           // devuelven la misma luz y el montón se ve como un bloque tallado.
-          eje.set(0, (azar() - 0.5) * 0.5, (azar() - 0.5) * 0.12);
+          eje.set(0, giro + (azar() - 0.5) * 0.5, (azar() - 0.5) * 0.12);
           rot.setFromEuler(eje);
           fuera.push(m.clone().compose(pos, rot, esc));
         }

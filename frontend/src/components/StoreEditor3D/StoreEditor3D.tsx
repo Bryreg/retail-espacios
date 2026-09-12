@@ -18,6 +18,7 @@ import { NeveraReal } from "./muebles/NeveraReal";
 import { ProductoAGranel } from "./muebles/ProductoAGranel";
 import { BateaReal, bocaDeBatea } from "./muebles/BateaReal";
 import { MostradorFrioReal, bandejaDeMostrador } from "./muebles/MostradorFrioReal";
+import { CheckoutReal } from "./muebles/CheckoutReal";
 import { bandejasDeMural } from "./muebles/ProductoEnMural";
 import { ProductoEnRepisas } from "./muebles/ProductoEnRepisas";
 import { colorDeRubro } from "./muebles/producto";
@@ -879,12 +880,21 @@ function RistraMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:numbe
   const op     = ghost ? 0.42 : 1;
   // Una ristra es una TIRA: unidades colgadas una debajo de otra. Sin producto
   // era un riel con ganchos vacíos, que no se parece a nada.
-  const RISTRA_W = w * 0.55;
+  const RISTRA_W = Math.min(0.13, Math.max(0.076, w * 0.45));
   const RISTRA_H = h - 0.12;
   const RAIL   = "#8a8a88";
   const HOOK   = "#9e9e9c";
   const nHooks = Math.max(4, Math.round(h / 0.28));
   const sp     = (h - 0.10) / nHooks;
+  /** Ancho de la tira y del cabezal. Son cotas de FABRICACIÓN, no fracciones
+   *  del mueble: la ficha del fabricante da 3,8 cm de ancho de tira y 12
+   *  ganchos. Atadas al ancho del mueble, una ristra colocada con 40 cm de
+   *  huella salía de 28 cm de ancho — o sea, una tabla. */
+  const TIRA    = 0.038;
+  const CABEZAL = Math.min(0.12, Math.max(TIRA * 2, w * 0.4));
+  /** Lo que cuelga de cada gancho es un SOBRE, no una plancha del ancho del
+   *  mueble. */
+  const SOBRE   = Math.min(0.13, Math.max(TIRA * 2, w * 0.45));
 
   return (
     <group>
@@ -892,21 +902,32 @@ function RistraMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:numbe
         ancho={RISTRA_W} alto={RISTRA_H} y={RISTRA_H / 2 + 0.06} fondo={d}
         facePaint={ghost ? null : facePaint}
       />
-      <mesh position={[0, h + 0.03, 0]} castShadow>
-        <boxGeometry args={[w * 0.55, 0.06, 0.04]} />
-        <meshStandardMaterial color={RAIL} metalness={0.65} roughness={0.30} transparent opacity={op} />
+      {/* El CABEZAL porta-cartel, que es lo que compra la marca: la tarjeta
+          impresa que corona la tira. Va del ancho de la tarjeta y no del ancho
+          del mueble. */}
+      <mesh position={[0, h + 0.005, 0]} castShadow>
+        <boxGeometry args={[CABEZAL, 0.075, 0.005]} />
+        <meshStandardMaterial color="#e8eaec" metalness={0.10} roughness={0.60} transparent opacity={op} />
       </mesh>
-
-      <mesh position={[0, h / 2, 0]} castShadow>
-        <boxGeometry args={[0.028, h, 0.012]} />
-        <meshStandardMaterial color={RAIL} metalness={0.65} roughness={0.28} transparent opacity={op} />
-      </mesh>
-      {w > 0.12 && (
-        <mesh position={[0, h / 2, 0]}>
-          <boxGeometry args={[w * 0.70, h, 0.006]} />
-          <meshStandardMaterial color={RAIL} metalness={0.55} roughness={0.35} transparent opacity={0.35 * op} />
+      {!ghost && rubro && (
+        <mesh position={[0, h + 0.005, -0.004]}>
+          <boxGeometry args={[CABEZAL - 0.014, 0.048, 0.004]} />
+          <meshStandardMaterial
+            color={colorDeRubro(rubro)} metalness={0} roughness={0.7}
+            transparent opacity={op}
+          />
         </mesh>
       )}
+
+      {/* La TIRA. Angosta: una ristra no es un panel, es una tira de plástico
+          que cuelga del filo de un entrepaño por delante de la mercadería. Acá
+          había además un panel translúcido de 28 cm de ancho DETRÁS de la
+          tira, y eso era lo que la hacía leer como una tabla: un clip strip no
+          tiene respaldo — se ve la góndola a través de él. */}
+      <mesh position={[0, h / 2, 0]} castShadow>
+        <boxGeometry args={[TIRA, h, 0.010]} />
+        <meshStandardMaterial color={RAIL} metalness={0.35} roughness={0.45} transparent opacity={op} />
+      </mesh>
 
       {Array.from({ length: nHooks }, (_, i) => {
         const py = h - 0.08 - i * sp;
@@ -936,7 +957,7 @@ function RistraMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:numbe
                 rotation={[0.06, 0, 0]}
                 castShadow
               >
-                <boxGeometry args={[w * 0.58, sp * 0.92, 0.016]} />
+                <boxGeometry args={[SOBRE, sp * 0.92, 0.016]} />
                 <meshStandardMaterial
                   color={colorDeRubro(rubro)} metalness={0} roughness={0.72}
                   transparent opacity={op}
@@ -1840,71 +1861,14 @@ function StandFrutasMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: 
 // ─── Mesh: Checkout ───────────────────────────────────────────────────────────
 
 function CheckoutMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
-  const op     = ghost ? 0.42 : 1;
-  const BODY   = "#e5e7eb";
-  const BELT_C = "#374151";
-  const STEEL  = "#9ca3af";
-  const beltW  = w * 0.60;
-  const beltD  = d * 0.50;
-  const posH   = h + 0.22;          // POS terminal height above counter
-  const posW   = 0.25;
-  const posD   = 0.04;
-
-  return (
-    <group>
-      {/* Main counter body */}
-      <mesh position={[0, h / 2, 0]} castShadow>
-        <boxGeometry args={[w, h, d]} />
-        <meshStandardMaterial color={BODY} metalness={0.15} roughness={0.60} transparent opacity={op} />
-      </mesh>
-
-      {/* Counter top surface */}
-      <mesh position={[0, h + 0.010, 0]} castShadow>
-        <boxGeometry args={[w + 0.008, 0.020, d + 0.008]} />
-        <meshStandardMaterial color={STEEL} metalness={0.40} roughness={0.35} transparent opacity={op} />
-      </mesh>
-
-      {/* Conveyor belt strip */}
-      <mesh position={[-(w / 2 - beltW / 2) + 0.04, h + 0.022, 0]}>
-        <boxGeometry args={[beltW, 0.018, beltD]} />
-        <meshStandardMaterial color={BELT_C} metalness={0.30} roughness={0.70} transparent opacity={op} />
-      </mesh>
-      {/* Belt divider / pusher */}
-      <mesh position={[-0.04, h + 0.052, 0]}>
-        <boxGeometry args={[0.020, 0.060, beltD + 0.05]} />
-        <meshStandardMaterial color={STEEL} metalness={0.45} roughness={0.35} transparent opacity={op} />
-      </mesh>
-
-      {/* POS terminal base / arm */}
-      <mesh position={[w * 0.30, h + posH * 0.40, -(d * 0.20)]} castShadow>
-        <boxGeometry args={[0.040, posH * 0.75, 0.040]} />
-        <meshStandardMaterial color={STEEL} metalness={0.40} roughness={0.35} transparent opacity={op} />
-      </mesh>
-      {/* POS screen */}
-      <mesh position={[w * 0.30, h + posH, -(d * 0.20)]} rotation={[0.25, 0, 0]} castShadow>
-        <boxGeometry args={[posW, 0.180, posD]} />
-        <meshStandardMaterial color="#1f2937" metalness={0.50} roughness={0.30} transparent opacity={op} />
-      </mesh>
-      {/* Screen display area */}
-      <mesh position={[w * 0.30, h + posH, -(d * 0.20 - posD * 0.1)]} rotation={[0.25, 0, 0]}>
-        <boxGeometry args={[posW - 0.020, 0.150, 0.004]} />
-        <meshStandardMaterial color="#1e40af" emissive="#1e40af" emissiveIntensity={0.20}
-          transparent opacity={0.80 * op} />
-      </mesh>
-
-      {/* Card reader */}
-      <mesh position={[w * 0.30 + 0.14, h + 0.065, -(d * 0.20)]}>
-        <boxGeometry args={[0.070, 0.110, 0.030]} />
-        <meshStandardMaterial color="#1f2937" metalness={0.50} roughness={0.30} transparent opacity={op} />
-      </mesh>
-
-      {/* Status indicator on front face */}
-      <mesh position={[0, h * 0.12, -(d / 2 + 0.008)]}>
-        <boxGeometry args={[w * 0.60, 0.040, 0.012]} />
-        <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
-      </mesh>
-    </group>
-  );
+  // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
+  // Era un cajón liso con una placa oscura de cinta y la PANTALLA FLOTANDO:
+  // el poste medía `posH * 0.75` y la pantalla se colocaba a `posH`, así que
+  // quedaban veinticinco centímetros de aire entre los dos. Y le faltaba lo
+  // que hace que una caja se lea como una caja: la cama hundida con su bocel,
+  // la consola de la registradora de la que sale el poste, el sector de
+  // empaque con su guarda y los estantes de impulso del lado del cliente.
+  return <CheckoutReal w={w} d={d} h={h} statusColor={statusColor} ghost={ghost} />;
 }
 
 // ─── Mesh: Columna ────────────────────────────────────────────────────────────
@@ -2024,15 +1988,40 @@ function ServicioClienteMesh({ w, d, h, ghost }: { w:number;d:number;h:number;gh
         <meshStandardMaterial color={TINTA} transparent opacity={0.85 * op} />
       </mesh>
 
-      {/* Monitor de consulta */}
-      <mesh position={[w * 0.22, h + 0.20, d * 0.10]} rotation={[0.22, 0, 0]} castShadow>
-        <boxGeometry args={[0.26, 0.17, 0.030]} />
-        <meshStandardMaterial color="#1f2937" metalness={0.45} roughness={0.35} transparent opacity={op} />
-      </mesh>
-      <mesh position={[w * 0.22, h + 0.11, d * 0.10]}>
-        <boxGeometry args={[0.10, 0.020, 0.10]} />
-        <meshStandardMaterial color={TAPA} metalness={0.40} roughness={0.40} transparent opacity={op} />
-      </mesh>
+      {/* Monitor de consulta, APOYADO en la tapa.
+          La base era una placa suelta a 11 cm por encima del mostrador y el
+          monitor otra pieza más arriba: el conjunto flotaba sobre la tapa sin
+          tocarla. Ahora la base se apoya en la tapa, el cuello sale de la base
+          y la pantalla se apoya en el cuello — las tres piezas ENCADENADAS,
+          que es lo único que garantiza que ninguna quede en el aire. */}
+      {(() => {
+        const yTapa  = h + 0.024;
+        const BASE   = 0.014;
+        const CUELLO = 0.085;
+        const ALTO   = 0.17;
+        const x = w * 0.22, z = d * 0.10;
+        const yCuello = yTapa + BASE;
+        return (
+          <group>
+            <mesh position={[x, yTapa + BASE / 2, z]} castShadow>
+              <boxGeometry args={[0.11, BASE, 0.10]} />
+              <meshStandardMaterial color={TAPA} metalness={0.40} roughness={0.40} transparent opacity={op} />
+            </mesh>
+            <mesh position={[x, yCuello + CUELLO / 2, z]} castShadow>
+              <boxGeometry args={[0.030, CUELLO, 0.026]} />
+              <meshStandardMaterial color={TAPA} metalness={0.45} roughness={0.35} transparent opacity={op} />
+            </mesh>
+            <mesh
+              position={[x, yCuello + CUELLO + ALTO / 2 - 0.015, z]}
+              rotation={[0.22, 0, 0]}
+              castShadow
+            >
+              <boxGeometry args={[0.26, ALTO, 0.030]} />
+              <meshStandardMaterial color="#1f2937" metalness={0.45} roughness={0.35} transparent opacity={op} />
+            </mesh>
+          </group>
+        );
+      })()}
 
       {/* Zócalo */}
       <mesh position={[0, 0.045, 0]}>

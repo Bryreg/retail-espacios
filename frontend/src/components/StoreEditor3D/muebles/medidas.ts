@@ -607,3 +607,108 @@ export function cotasDeMostrador(w: number, d: number, h: number): CotasDeMostra
     xDeMontantes,
   };
 }
+
+/* ── La caja registradora ────────────────────────────────────────────────────
+   La ficha de catálogo de una de verdad manda una forma que el modelo no tenía:
+
+   · **La mesa no es una tapa lisa.** Es una CAMA HUNDIDA —por donde corre la
+     cinta y donde el cliente descarga— rodeada de un bocel de goma oscuro que
+     da la vuelta completa. Ese contraste entre la bandeja clara y el marco
+     oscuro es lo que se ve desde el pasillo, mucho antes que la registradora.
+   · **La registradora va sobre una consola**, un pupitre de chapa doblada
+     apoyado en la mesa, y el poste de la pantalla NACE de esa consola.
+   · **Del lado del cajero, el sector de empaque**, más alto que la cama y con
+     una guarda parada atrás para que nada se caiga del otro lado.
+   · **Del lado del cliente, los estantes de impulso.** Son el espacio más caro
+     de toda la línea de cajas —chicles, pilas, revistas— y son ESPACIO
+     VENDIBLE: en un plano que se le muestra a un proveedor no pueden faltar.
+   · Un parachoques corrido a media altura, que es lo que come los carros. */
+
+export const CHECKOUT = {
+  /** Bocel de goma del perímetro de la mesa. */
+  bocel: 0.038,
+  /** Cuánto se hunde la cama respecto del bocel. */
+  hundido: 0.03,
+  /** Fracción del largo que se lleva la cama de la cinta; el resto es el
+   *  sector de empaque. */
+  fraccionDeCama: 0.58,
+  /** El pupitre de la registradora. */
+  consola: { ancho: 0.3, fondo: 0.32, alto: 0.24 },
+  /** Poste y pantalla del punto de venta. */
+  poste: { radio: 0.018, alto: 0.4 },
+  pantalla: { ancho: 0.3, alto: 0.21, espesor: 0.024, caida: 0.22 },
+  /** Guarda parada al fondo del sector de empaque. */
+  guarda: 0.2,
+  /** Zócalo retranqueado y parachoques corrido. */
+  zocalo: 0.09,
+  parachoques: 0.05,
+  /** Los estantes de impulso del lado del cliente. */
+  impulso: { fondo: 0.15, niveles: 3 },
+} as const;
+
+export interface CotasDeCheckout {
+  /** Alto de la cara superior del bocel: la mesa. */
+  mesa: number;
+  /** Alto de la cama hundida por donde corre la cinta. */
+  cama: number;
+  /** Largo de la cama, y dónde está centrada. */
+  largoDeCama: number;
+  xDeCama: number;
+  /** El sector de empaque, del otro extremo. */
+  largoDeEmpaque: number;
+  xDeEmpaque: number;
+  /** Dónde se apoya la consola de la registradora. */
+  xDeConsola: number;
+  zDeConsola: number;
+  /** La cadena que sostiene la pantalla: tapa de la consola → punta del poste
+   *  → centro de la pantalla. Van juntas y no sueltas porque el defecto que
+   *  arreglaron fue justamente calcularlas por separado: el poste medía
+   *  `posH * 0.75`, la pantalla se colocaba a `posH`, y quedaban veinticinco
+   *  centímetros de aire entre las dos. Compilaba. */
+  yConsola: number;
+  yPoste: number;
+  yPantalla: number;
+  /** Alturas de los estantes de impulso, del lado del cliente. */
+  yDeImpulso: number[];
+}
+
+export function cotasDeCheckout(w: number, d: number, h: number): CotasDeCheckout {
+  const mesa = h;
+  const cama = mesa - CHECKOUT.bocel - CHECKOUT.hundido;
+  const largoDeCama = Math.max(0.3, w * CHECKOUT.fraccionDeCama);
+  const largoDeEmpaque = Math.max(0.25, w - largoDeCama - 0.04);
+
+  // La cama arranca del lado del cliente; el empaque queda del lado del
+  // cajero, que es el orden en el que se recorre una caja.
+  const xDeCama = -w / 2 + largoDeCama / 2 + 0.02;
+  const xDeEmpaque = w / 2 - largoDeEmpaque / 2 - 0.02;
+
+  const desde = CHECKOUT.zocalo + 0.1;
+  const hasta = h - CHECKOUT.bocel - 0.12;
+  const n = Math.max(1, Math.min(CHECKOUT.impulso.niveles, Math.floor((hasta - desde) / 0.2) + 1));
+  const paso = n > 1 ? (hasta - desde) / (n - 1) : 0;
+  const yDeImpulso = hasta > desde
+    ? Array.from({ length: n }, (_, i) => desde + i * paso)
+    : [];
+
+  const yConsola = mesa + CHECKOUT.consola.alto;
+  const yPoste = yConsola + CHECKOUT.poste.alto;
+
+  return {
+    mesa,
+    cama,
+    largoDeCama,
+    xDeCama,
+    largoDeEmpaque,
+    xDeEmpaque,
+    // El pupitre va entre la cama y el empaque, del lado del cajero.
+    xDeConsola: xDeCama + largoDeCama / 2 - CHECKOUT.consola.ancho / 2 - 0.02,
+    zDeConsola: d / 2 - CHECKOUT.consola.fondo / 2 - 0.03,
+    yConsola,
+    yPoste,
+    // La pantalla se APOYA en la punta del poste: su borde de abajo baja dos
+    // centímetros por dentro, para que la unión no quede a hueso.
+    yPantalla: yPoste + CHECKOUT.pantalla.alto / 2 - 0.02,
+    yDeImpulso,
+  };
+}

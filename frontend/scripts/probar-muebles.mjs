@@ -729,7 +729,10 @@ prueba("el montículo no se come el relleno cuando entran pocas piezas", () => {
   // Multiplicando, una grilla de 2×2 deja todas las celdas en el borde, el
   // factor cae a 0,45 y el canasto entero termina con UNA capa en el fondo.
   // Pasó: la batea se veía vacía.
-  assert.match(granelCodigo, /const aqui = capas \+ \(centro > /, "volvió el montículo multiplicativo");
+  // Se afirma la SUMA, no la línea exacta: el montículo ya no se aplica a lo
+  // que no se apila, y eso le cambió la forma sin cambiarle la cuenta.
+  assert.match(granelCodigo, /const aqui = capas \+ \(/, "volvió el montículo multiplicativo");
+  assert.ok(!/const aqui = [^\n]*capas \*/.test(granelCodigo), "el montículo vuelve a multiplicar las capas");
 });
 
 prueba("la batea es un canasto y no un carro de reposición", () => {
@@ -965,6 +968,77 @@ prueba("el espesor entra en la firma del vidrio curvo", () => {
   const firma = /const firma =?\s*\n?\s*`vidriocurvo:[^`]*`/.exec(perfiles);
   assert.ok(firma, "se perdió la firma del vidrio curvo");
   assert.match(firma[0], /espesor/, "el espesor volvió a quedar fuera de la clave del caché");
+});
+
+// ── Lo que la foto de un mueble de verdad corrigió ──────────────────────────
+// El mostrador de carnes sólo se arregló cuando hubo una foto delante. Estas
+// pruebas fijan lo que salió de mirar las fichas de fábrica del resto: la caja
+// registradora, la ristra y la batea.
+
+const checkout = leer(join(muebles, "CheckoutReal.tsx"));
+const checkoutCodigo = sinComentarios(checkout);
+
+prueba("la pantalla de la caja se apoya en el poste, no flota", () => {
+  // El defecto real: el poste medía `posH * 0.75` y la pantalla se colocaba a
+  // `posH`. Veinticinco centímetros de aire entre las dos, y compilaba.
+  assert.match(medidas, /export function cotasDeCheckout/, "las cotas de la caja volvieron al componente");
+  assert.match(checkoutCodigo, /c\.yPantalla/, "la pantalla volvió a calcular su propia altura");
+
+  for (const [w, d, h] of [[1.8, 0.7, 0.9], [1.2, 0.6, 0.85], [3, 0.8, 1.0]]) {
+    const c = M.cotasDeCheckout(w, d, h);
+    const donde = `${w}×${d}×${h}`;
+    const pieDePantalla = c.yPantalla - M.CHECKOUT.pantalla.alto / 2;
+    assert.ok(pieDePantalla <= c.yPoste + 1e-9, `${donde}: la pantalla flota sobre el poste`);
+    assert.ok(pieDePantalla > c.yConsola, `${donde}: la pantalla se hundió en la consola`);
+    assert.ok(c.yConsola > c.mesa, `${donde}: la consola no se apoya en la mesa`);
+    assert.ok(c.cama < c.mesa, `${donde}: la cama dejó de estar hundida`);
+  }
+});
+
+prueba("la caja tiene los estantes de impulso, que son espacio vendible", () => {
+  // Chicles, pilas y revistas: el espacio más caro de la línea de cajas. Un
+  // plano que se le muestra a un proveedor no puede no tenerlos.
+  assert.match(checkoutCodigo, /yDeImpulso\.map/, "la caja se quedó sin estantes de impulso");
+  for (const [w, d, h] of [[1.8, 0.7, 0.9], [1.2, 0.6, 0.85]]) {
+    const c = M.cotasDeCheckout(w, d, h);
+    assert.ok(c.yDeImpulso.length >= 1, `${w}×${d}×${h}: ningún estante de impulso`);
+    for (const y of c.yDeImpulso) {
+      assert.ok(y > 0 && y < c.mesa, `${w}×${d}×${h}: estante fuera del cuerpo`);
+    }
+  }
+});
+
+prueba("la ristra es una TIRA angosta, no un panel", () => {
+  // La ficha del fabricante: 3,8 cm de ancho y 12 ganchos. Atada al ancho del
+  // mueble, una ristra con 40 cm de huella salía de 28 cm de ancho —una
+  // tabla— y encima llevaba un respaldo translúcido detrás. Un clip strip no
+  // tiene respaldo: cuelga suelto por delante de la mercadería.
+  const r = cuerpoDe("function RistraMesh(", "function CrossMesh(");
+  assert.match(r, /const TIRA\s*=\s*0\.0[0-9]+/, "el ancho de la tira volvió a ser una fracción del mueble");
+  assert.ok(!/args=\{\[w \* 0\.70, h,/.test(r), "volvió el panel de respaldo detrás de la tira");
+  assert.match(r, /CABEZAL/, "la ristra perdió el cabezal porta-cartel, que es lo que compra la marca");
+});
+
+prueba("lo alto no se apila: una botella parada no va sobre otra", () => {
+  // Apilando, salía una torre de botellas en el medio del canasto que no
+  // existe en ninguna tienda.
+  assert.match(granelCodigo, /const apilable =/, "el volcado vuelve a apilar cualquier cosa");
+  assert.match(granelCodigo, /apilable && centro > 0\.45/, "el montículo vuelve a apilar lo que no se apila");
+});
+
+prueba("lo que entra parado se para: una batea no es un pozo", () => {
+  // Una botella de litro y medio mide 31 cm; acostada mide 30 de largo, así
+  // que en una batea de 60 cm de fondo entraba UNA fila y el mueble se veía
+  // vacío con producto adentro. Y en la tienda tampoco es cierto: una batea de
+  // promoción tiene las botellas paradas.
+  assert.equal(P.empaqueVolcadoEn("Gaseosas", 0.42).acostado, undefined,
+    "la botella que entra parada se sigue acostando");
+  assert.equal(P.empaqueVolcadoEn("Gaseosas", 0.12).acostado, true,
+    "la botella que NO entra parada dejó de acostarse");
+  // Lo suelto no tiene envase y no cambia nunca.
+  assert.equal(P.empaqueVolcadoEn("Frutas", 0.5).forma, "pieza");
+  assert.equal(P.empaqueVolcadoEn("Carnes", 0.05).forma, "bandeja");
+  assert.match(bateaCodigo, /const REBOSE =/, "la batea volvió a medirse enrasada y no rebosada");
 });
 
 prueba("el mural hereda el arte del proveedor, no tiene un camino propio", () => {

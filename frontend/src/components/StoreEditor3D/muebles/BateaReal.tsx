@@ -46,6 +46,13 @@ const ESTRECHAMIENTO = 0.11;
 const RUEDA = 0.045;
 /** Espesor del borde volcado de la boca. */
 const BORDE = 0.022;
+/** A qué altura va el piso del canasto, como fracción del alto total.
+ *
+ *  Una batea es un tacho POCO HONDO sobre patas largas: a 0,58 el canasto
+ *  quedaba de 34 cm y una botella de litro y medio —31 cm— desaparecía
+ *  adentro, con la pared del frente tapándola. Desde el pasillo, un mueble
+ *  lleno se veía vacío. */
+const FRACCION_DE_PISO = 0.66;
 
 export const BateaReal = memo(function BateaReal({
   w, d, h, statusColor, ghost = false,
@@ -76,7 +83,7 @@ export const BateaReal = memo(function BateaReal({
   // oferta, y una batea de verdad es un tacho poco hondo sobre patas largas.
   // A media altura el canasto queda tan hondo que el producto se hunde y el
   // mueble se ve vacío desde el pasillo — que es como se veía.
-  const pisoDelCanasto = Math.max(RUEDA * 2 + 0.05, h * 0.58);
+  const pisoDelCanasto = Math.max(RUEDA * 2 + 0.05, h * FRACCION_DE_PISO);
   const altoDelCanasto = Math.max(0.12, h - pisoDelCanasto);
   const anchoAbajo = Math.max(0.1, w - ESTRECHAMIENTO * 2);
   const fondoAbajo = Math.max(0.1, d - ESTRECHAMIENTO * 2);
@@ -147,14 +154,25 @@ export const BateaReal = memo(function BateaReal({
   );
 });
 
+/** Cuánto sobresale el montón por encima del borde.
+ *
+ *  Una batea de promoción va REBOSADA, no enrasada: el montón que asoma sobre
+ *  el borde es justamente lo que la hace leer como oferta y no como canasto
+ *  vacío. Midiendo el alto libre hasta tres centímetros POR DEBAJO del borde,
+ *  una botella de litro y medio (31 cm) no entraba parada en los 30,6 cm que
+ *  quedaban —por cuatro milímetros— y se acostaba; acostada mide 30 cm de
+ *  largo, así que en el fondo de la batea entraba UNA fila y el mueble se veía
+ *  vacío con producto adentro. */
+const REBOSE = 0.09;
+
 /** Dónde queda el piso del canasto y cuánto cabe encima. Lo necesita quien
  *  vuelca el producto adentro, y vive acá para que no haya dos cuentas. */
 export function bocaDeBatea(w: number, d: number, h: number) {
-  const piso = Math.max(RUEDA * 2 + 0.05, h * 0.58);
+  const piso = Math.max(RUEDA * 2 + 0.05, h * FRACCION_DE_PISO);
   return {
     y: piso + 0.016,
     ancho: Math.max(0.1, w - ESTRECHAMIENTO * 2),
     fondo: Math.max(0.1, d - ESTRECHAMIENTO * 2),
-    altoLibre: Math.max(0.08, h - piso - 0.03),
+    altoLibre: Math.max(0.08, h - piso + REBOSE),
   };
 }
