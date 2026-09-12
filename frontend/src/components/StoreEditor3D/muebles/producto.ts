@@ -55,7 +55,76 @@ export const EMPAQUES = {
   bolsa:         { ancho: 0.160, alto: 0.230, fondo: 0.060, forma: "bolsa" },
   /** Botella de limpieza o aceite, con asa. */
   botellaAncha:  { ancho: 0.100, alto: 0.250, fondo: 0.065, forma: "botella" },
+  /** Una pieza suelta: una manzana, un tomate, una papa. Lo que se vende a
+   *  granel no viene en envase, así que no tiene un formato de catálogo — mide
+   *  lo que mide la fruta. */
+  pieza:         { ancho: 0.075, alto: 0.070, fondo: 0.075, forma: "caja" },
+  /** Una bandeja de carne o fiambre, de las del mostrador. */
+  bandeja:       { ancho: 0.180, alto: 0.045, fondo: 0.130, forma: "caja" },
 } as const satisfies Record<string, Empaque>;
+
+/** Rubros que NO vienen en envase: se venden sueltos o en bandeja. En un
+ *  canasto o un mostrador, lo que se ve de ellos es la pieza, no una caja. */
+const A_GRANEL: [readonly string[], Empaque][] = [
+  [["carne", "pollo", "res", "cerdo", "fiambre", "embutido", "queso", "deli", "pescado"], EMPAQUES.bandeja],
+  [["fruta", "verdura", "hortaliza", "tomate", "papa", "cebolla", "manzana", "banano",
+    "platano", "naranja", "limon", "aguacate", "granel"], EMPAQUES.pieza],
+];
+
+/**
+ * El empaque de un rubro cuando va VOLCADO: en un canasto, un cajón o una
+ * bandeja de mostrador.
+ *
+ * Dos diferencias con el de un entrepaño, y las dos se vieron en pantalla
+ * antes de razonarlas:
+ *
+ * 1. **Lo que se vende suelto no tiene envase.** Un cajón de frutas lleno de
+ *    cajas de galletas es lo que salía antes, porque el rubro «Frutas» no
+ *    casaba con nada y caía en la caja por defecto.
+ * 2. **Lo volcado está ACOSTADO.** Nadie tira cajas a un canasto y quedan
+ *    paradas. Con el envase de pie, una capa de 19 cm de alto llena el cajón
+ *    entero y lo que se ve desde arriba es una tapa lisa — se veía exactamente
+ *    como una tela estirada. Acostado entran tres capas y aparece el relieve.
+ */
+export function empaqueVolcado(rubro: string | undefined | null): Empaque {
+  const palabras = palabrasDe(rubro ?? "");
+  for (const [prefijos, empaque] of A_GRANEL) {
+    if (prefijos.some((p) => palabras.some((w) => w.startsWith(p)))) return empaque;
+  }
+  return acostar(empaqueDeRubro(rubro));
+}
+
+/**
+ * El color de un producto VOLCADO.
+ *
+ * `colorDeRubro` se mantiene lejos del verde y del rojo a propósito, porque
+ * ésos son los colores del estado comercial. Para un envase impreso eso no
+ * cuesta nada — una caja de galletas puede ser azul—, pero para lo que se vende
+ * suelto sí: un cajón de frutas magenta es lo que salía, y no ayuda a nadie a
+ * entender qué está mirando.
+ *
+ * Así que lo suelto se lleva a la banda cálida, que ya estaba permitida:
+ * ámbar y ocre para la fruta y la verdura, ladrillo apagado para la carne.
+ * Ninguno de los dos se confunde con el verde «disponible» ni con el rojo
+ * «ocupado», que siguen siendo colores saturados y planos de interfaz.
+ */
+export function colorVolcado(rubro: string | undefined | null): string {
+  const e = empaqueVolcado(rubro);
+  const n = Math.abs(hashDe(sinTildes(rubro ?? "")));
+  if (e === EMPAQUES.pieza) {
+    return `hsl(${24 + (n % 26)}, ${44 + (n % 16)}%, ${40 + ((n >> 3) % 12)}%)`;
+  }
+  if (e === EMPAQUES.bandeja) {
+    return `hsl(${8 + (n % 8)}, ${26 + (n % 10)}%, ${42 + ((n >> 3) % 8)}%)`;
+  }
+  return colorDeRubro(rubro);
+}
+
+/** Vuelca un envase de costado: el lado más corto pasa a ser el alto. */
+function acostar(e: Empaque): Empaque {
+  const lados = [e.ancho, e.alto, e.fondo].sort((a, b) => b - a);
+  return { ancho: lados[0], alto: lados[2], fondo: lados[1], forma: e.forma };
+}
 
 /** Cada entrada es [palabras que puede escribir quien carga el rubro, empaque].
  *
@@ -114,14 +183,17 @@ export function empaqueDeRubro(rubro: string | undefined | null): Empaque {
  * estado comercial (disponible / ocupado) y son los que tienen que seguir
  * significando algo cuando el mueble está lleno de producto.
  */
-export function colorDeRubro(rubro: string | undefined | null): string {
-  const t = sinTildes(rubro ?? "");
+function hashDe(t: string): number {
   let h = 2166136261;
   for (let i = 0; i < t.length; i++) {
     h ^= t.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
-  const n = Math.abs(h);
+  return h;
+}
+
+export function colorDeRubro(rubro: string | undefined | null): string {
+  const n = Math.abs(hashDe(sinTildes(rubro ?? "")));
   // Azules, violetas, ocres y turquesas: 190°–330° y 30°–60°.
   const tono = n % 2 === 0 ? 190 + (n % 140) : 30 + (n % 30);
   // Saturación contenida: un envase impreso tiene color, pero un lineal de

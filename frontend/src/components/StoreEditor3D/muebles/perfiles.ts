@@ -338,6 +338,55 @@ export function geometriaMarcoDePuerta(
   });
 }
 
+/**
+ * El casco de un canasto: cuatro paredes inclinadas, más anchas arriba que
+ * abajo.
+ *
+ * Es la forma de una batea de promoción, y no es un capricho de diseño: el
+ * canasto se hace en tronco de pirámide para que se pueda apilar vacío, y esa
+ * inclinación es justo lo que el ojo usa para distinguir una batea de un
+ * cajón. Con paredes rectas se lee como una caja; con la boca más ancha que el
+ * fondo se lee como algo en lo que se hurga.
+ *
+ * Se arma a mano con los ocho vértices en vez de deformar un cilindro de
+ * cuatro lados, que es el atajo: el cilindro mide su radio a los VÉRTICES, así
+ * que las caras planas quedan metidas un 29 % y el mueble sale más chico que
+ * las cotas que pidió el plano.
+ */
+export function geometriaCanasto(
+  anchoArriba: number, fondoArriba: number,
+  anchoAbajo: number, fondoAbajo: number,
+  alto: number,
+): THREE.BufferGeometry {
+  const firma = `canasto:${anchoArriba.toFixed(3)}:${fondoArriba.toFixed(3)}:` +
+                `${anchoAbajo.toFixed(3)}:${fondoAbajo.toFixed(3)}:${alto.toFixed(3)}`;
+
+  return cacheada(firma, () => {
+    const aa = anchoArriba / 2, fa = fondoArriba / 2;
+    const ab = anchoAbajo / 2, fb = fondoAbajo / 2;
+    // Abajo (y = 0) y arriba (y = alto), en sentido antihorario visto de arriba.
+    const abajo: [number, number, number][] = [
+      [-ab, 0, -fb], [ab, 0, -fb], [ab, 0, fb], [-ab, 0, fb],
+    ];
+    const arriba: [number, number, number][] = [
+      [-aa, alto, -fa], [aa, alto, -fa], [aa, alto, fa], [-aa, alto, fa],
+    ];
+
+    const pos: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      const j = (i + 1) % 4;
+      const [a, b, c, d] = [abajo[i], abajo[j], arriba[j], arriba[i]];
+      // Dos triángulos por pared, con la normal hacia AFUERA.
+      pos.push(...a, ...b, ...c, ...a, ...c, ...d);
+    }
+
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.computeVertexNormals();
+    return g;
+  });
+}
+
 /** La geometría de UNA ranura del parante. Se dibuja con `InstancedMesh`, así
  *  que un parante de 2 m con ranuras cada 25 mm son ~80 calados en una sola
  *  llamada de dibujo. */

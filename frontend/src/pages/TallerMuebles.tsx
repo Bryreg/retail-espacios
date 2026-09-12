@@ -8,6 +8,8 @@ import { ProductoEnGondola } from "../components/StoreEditor3D/muebles/ProductoE
 import { PuntaReal } from "../components/StoreEditor3D/muebles/PuntaReal";
 import { ProductoEnPunta } from "../components/StoreEditor3D/muebles/ProductoEnPunta";
 import { NeveraReal } from "../components/StoreEditor3D/muebles/NeveraReal";
+import { FixtureMesh, FIXTURE_DEFS } from "../components/StoreEditor3D/StoreEditor3D";
+import type { PlacedFixture } from "../components/StoreEditor3D/StoreEditor3D";
 import type { SlotDeProducto } from "../components/StoreEditor3D/muebles/ProductoEnGondola";
 
 /**
@@ -89,7 +91,27 @@ const SLOTS_DE_MUESTRA: SlotDeProducto[] = [
   { id: "e", x: 0.50, w: 0.50, y: 0.50, h: 0.5, status: "occupied", brandCategory: "Atún" },
 ];
 
+/** Un mueble del catálogo, armado con lo mínimo que pide `FixtureMesh`. No es
+ *  un mueble de una sede: no tiene contrato, ni código de espacio, ni posición.
+ *  Es el mismo dibujo que usa el editor, traído acá para poder mirarlo. */
+function delCatalogo(indice: number, w: number, d: number, h: number, rubro: string): PlacedFixture {
+  const def = FIXTURE_DEFS[indice] ?? FIXTURE_DEFS[0];
+  return {
+    id: "taller", code: def.code, type: def.type, gondolaType: def.gondolaType,
+    x: 0, z: 0, rotY: 0, w, d, h,
+    label: def.label, color: def.color,
+    supplierName: rubro ? "Proveedor de prueba" : "", brandCategory: rubro,
+    status: rubro ? "occupied" : "free",
+    negotiatedValue: 0, startDate: "", endDate: "", observation: "",
+  };
+}
+
 export default function TallerMuebles() {
+  /** Qué mueble del catálogo se está mirando. -1 = los del taller. */
+  const [catalogo, setCatalogo] = useState(-1);
+  /** El rubro del contrato. Decide qué producto se dibuja adentro del mueble,
+   *  así que hace falta poder cambiarlo sin ir a cargar un contrato. */
+  const [rubro, setRubro] = useState("");
   const [ancho, setAncho] = useState(2.5);
   const [fondo, setFondo] = useState(1.0);
   const [alto, setAlto] = useState(1.8);
@@ -137,6 +159,26 @@ export default function TallerMuebles() {
           </select>
         </label>
         <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
+          catálogo{" "}
+          <select value={catalogo} style={{ ...campo, width: 170 }}
+                  onChange={(e) => {
+                    const i = +e.target.value;
+                    setCatalogo(i);
+                    const def = FIXTURE_DEFS[i];
+                    if (def) { setAncho(def.w); setFondo(def.d); setAlto(def.h); }
+                  }}>
+            <option value={-1}>— piezas del taller —</option>
+            {FIXTURE_DEFS.map((d, i) => (
+              <option key={`${d.type}-${i}`} value={i}>{d.label}</option>
+            ))}
+          </select>
+        </label>
+        <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
+          rubro{" "}
+          <input type="text" value={rubro} placeholder="sin contrato" style={{ ...campo, width: 120 }}
+                 onChange={(e) => setRubro(e.target.value)} />
+        </label>
+        <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
           <input type="checkbox" checked={conProducto}
                  onChange={(e) => setConProducto(e.target.checked)} />{" "}
           producto
@@ -170,7 +212,9 @@ export default function TallerMuebles() {
             />
             <directionalLight position={[-4, 3, -3]} intensity={0.35} />
             <Piso />
-            {tipo === "nevera" ? (
+            {catalogo >= 0 ? (
+              <FixtureMesh fixture={delCatalogo(catalogo, ancho, fondo, alto, rubro)} />
+            ) : tipo === "nevera" ? (
               <NeveraReal w={ancho} d={fondo} h={alto} />
             ) : tipo === "punta" ? (
               <>

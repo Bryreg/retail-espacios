@@ -654,4 +654,92 @@ prueba("la nevera no pierde entrepaños por redondeo", () => {
   }
 });
 
+// ── El producto volcado ─────────────────────────────────────────────────────
+//
+// Media docena de muebles tenían la forma bien —el cajón con sus listones, la
+// isla con su guarda de acrílico, el mostrador con su vidrio curvo— y se leían
+// como maquetas, porque estaban VACÍOS. Un mostrador de carnes sin carne es un
+// mueble; con carne es una carnicería.
+
+const granel = leer(join(muebles, "ProductoAGranel.tsx"));
+const batea = leer(join(muebles, "BateaReal.tsx"));
+const granelCodigo = sinComentarios(granel);
+const bateaCodigo = sinComentarios(batea);
+
+prueba("sin arte del proveedor, los muebles de volcado se llenan solos", () => {
+  const volcado = cuerpoDe("function VolcadoDeProducto(", "function EtiquetaDeEspacio(");
+  assert.match(volcado, /<ProductoAGranel/, "sin arte, el mueble vuelve a quedar vacío");
+  assert.match(volcado, /if \(!material\)/, "el genérico taparía el arte del proveedor");
+});
+
+prueba("lo volcado está ACOSTADO, no parado", () => {
+  // Nadie tira cajas a un canasto y quedan paradas. Con el envase de pie, una
+  // sola capa llena el cajón y desde arriba se ve una tapa lisa — se veía
+  // exactamente como una tela estirada.
+  assert.match(productoCodigo, /export function empaqueVolcado/, "se perdió el empaque volcado");
+  const e = P.empaqueVolcado("Galletas");
+  assert.ok(e.alto < e.ancho && e.alto < e.fondo, "el envase volcado quedó parado");
+});
+
+prueba("lo que se vende suelto no se dibuja en caja", () => {
+  // Un cajón de frutas lleno de cajas de galletas es lo que salía antes.
+  const fruta = P.empaqueVolcado("Frutas y verduras");
+  assert.ok(fruta.ancho < 0.1 && fruta.alto < 0.1, "la fruta salió del tamaño de una caja de cereal");
+  const carne = P.empaqueVolcado("Carnes");
+  assert.ok(carne.alto < 0.06 && carne.ancho > 0.1, "la carne no salió en bandeja");
+});
+
+prueba("el color de lo suelto es de producto y no de interfaz", () => {
+  // `colorDeRubro` esquiva el verde y el rojo porque son los del estado
+  // comercial. Para un envase impreso da igual; para fruta, no: salía magenta.
+  for (const r of ["Frutas", "Verduras", "Tomates", "Papas"]) {
+    const tono = Number(/hsl\((\d+)/.exec(P.colorVolcado(r))[1]);
+    assert.ok(tono >= 20 && tono <= 55, `«${r}» salió en tono ${tono}: la fruta no es magenta`);
+  }
+  const carne = Number(/hsl\((\d+)/.exec(P.colorVolcado("Carnes"))[1]);
+  assert.ok(carne >= 5 && carne <= 20, "la carne no salió en ladrillo apagado");
+});
+
+prueba("el desorden del volcado es determinista", () => {
+  // Al azar, la fruta se reacomoda sola cada vez que se mueve la cámara.
+  assert.ok(!/Math\.random/.test(granelCodigo), "el volcado salió al azar: el plano titilaría");
+  assert.match(granelCodigo, /function azarDe\(semilla: string\)/, "se perdió el generador sembrado");
+  assert.match(granelCodigo, /semilla/, "el volcado dejó de sembrarse");
+});
+
+prueba("cada mueble siembra su propio desorden", () => {
+  // Sin esto, dos bateas contiguas salen clonadas.
+  for (const marca of ["batea", "frutas", "carnes", "isla_fria", "isla"]) {
+    assert.match(
+      editorCodigo, new RegExp("semilla=\\{`\\$\\{id\\}\\|" + marca),
+      `el volcado de \`${marca}\` no se siembra con el id del mueble`,
+    );
+  }
+});
+
+prueba("el montículo no se come el relleno cuando entran pocas piezas", () => {
+  // Multiplicando, una grilla de 2×2 deja todas las celdas en el borde, el
+  // factor cae a 0,45 y el canasto entero termina con UNA capa en el fondo.
+  // Pasó: la batea se veía vacía.
+  assert.match(granelCodigo, /const aqui = capas \+ \(centro > /, "volvió el montículo multiplicativo");
+});
+
+prueba("la batea es un canasto y no un carro de reposición", () => {
+  // Una jaula de tubos con repisas planas es lo que usa quien repone, no lo
+  // que ve el cliente.
+  assert.match(bateaCodigo, /geometriaCanasto\(/, "la batea dejó de tener paredes inclinadas");
+  assert.match(bateaCodigo, /ESTRECHAMIENTO/, "se perdió la inclinación de las paredes");
+  assert.ok(!/repisa|estante/i.test(bateaCodigo), "le volvieron a poner repisas a la batea");
+});
+
+prueba("el casco del canasto respeta las cotas del plano", () => {
+  // Deformar un cilindro de cuatro lados es el atajo, y mide el radio a los
+  // VÉRTICES: las caras planas quedan metidas un 29 % y el mueble sale más
+  // chico que lo que pidió el plano.
+  assert.ok(
+    !/CylinderGeometry/.test(perfiles.slice(perfiles.indexOf("export function geometriaCanasto"), perfiles.indexOf("export function geometriaCanasto") + 2000)),
+    "el canasto volvió a salir de un cilindro deformado",
+  );
+});
+
 console.log(`\n${hechas} pruebas del mobiliario 3D`);

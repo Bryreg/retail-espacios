@@ -15,6 +15,8 @@ import { ProductoEnGondola } from "./muebles/ProductoEnGondola";
 import { PuntaReal } from "./muebles/PuntaReal";
 import { ProductoEnPunta } from "./muebles/ProductoEnPunta";
 import { NeveraReal } from "./muebles/NeveraReal";
+import { ProductoAGranel } from "./muebles/ProductoAGranel";
+import { BateaReal, bocaDeBatea } from "./muebles/BateaReal";
 import { olvidarGeometrias } from "./muebles/perfiles";
 import {
   COPETE, ESPESOR_ESPINA, NEVERA, PANEL_FONDO, PARANTE, ZONA_DE_SLOTS,
@@ -305,14 +307,43 @@ function LaminaDeProductoPorFila({
  * borde del canasto: un volcado al ras del borde se ve como una tapa impresa.
  */
 function VolcadoDeProducto({
-  ancho, fondo, y, material,
+  ancho, fondo, y, material, semilla, rubro, altoLibre = 0.22, ghost = false,
 }: {
   ancho: number;
   fondo: number;
   y: number;
   material: THREE.Material | null | undefined;
+  /** Semilla del desparejo del producto genérico. El id del mueble: estable
+   *  entre sesiones y distinto entre muebles, así que dos bateas contiguas no
+   *  salen clonadas. */
+  semilla?: string;
+  /** Rubro del contrato. Decide qué empaque se amontona: una batea vendida a
+   *  gaseosas se llena de botellas y no de cajas. */
+  rubro?: string;
+  /** Cuánto se puede amontonar hacia arriba desde `y`. */
+  altoLibre?: number;
+  ghost?: boolean;
 }) {
-  if (!material) return null;
+  // Sin arte del proveedor, producto genérico volcado.
+  //
+  // Esto es lo que le faltaba a la mitad del catálogo. El cajón de frutas
+  // tenía sus listones, la isla su guarda de acrílico y el mostrador su vidrio
+  // curvo — y los tres se leían como maquetas, porque estaban VACÍOS. Un
+  // mostrador de carnes sin carne es un mueble; con carne es una carnicería.
+  //
+  // A diferencia de la góndola, donde el hueco vacío ES el dato —dice qué
+  // espacio queda libre—, estos muebles se venden ENTEROS y no por pedazos:
+  // mostrarlos llenos no esconde ninguna disponibilidad, y mostrarlos vacíos
+  // sí miente sobre cómo se ven.
+  if (!material) {
+    if (ghost) return null;
+    return (
+      <ProductoAGranel
+        ancho={ancho} fondo={fondo} y={y} altoLibre={altoLibre}
+        rubro={rubro} semilla={semilla ?? `${ancho}|${fondo}`}
+      />
+    );
+  }
   return (
     <mesh position={[0, y, 0]} rotation={[-Math.PI / 2, 0, 0]} material={material}>
       <planeGeometry args={[ancho, fondo]} />
@@ -364,7 +395,7 @@ interface FixtureDef {
   code:         string;
 }
 
-interface PlacedFixture {
+export interface PlacedFixture {
   id:              string;
   code:            string;
   type:            FixType;
@@ -388,7 +419,7 @@ interface PlacedFixture {
 
 // ─── Fixture catalogue ────────────────────────────────────────────────────────
 
-const FIXTURE_DEFS: FixtureDef[] = [
+export const FIXTURE_DEFS: FixtureDef[] = [
   // ── Góndolas ──────────────────────────────────────────────────────────────
   { type:"gondola", gondolaType:"double", label:"Góndola Doble",    w:0.90, d:0.90, h:1.80, color:"#6366f1", emoji:"📚", desc:"Módulo de estante central, doble cara",   code:"GON" },
   { type:"gondola", gondolaType:"wall",   label:"Góndola Mural",    w:1.00, d:0.40, h:1.90, color:"#818cf8", emoji:"🧱", desc:"Módulo de estante contra pared",           code:"GON" },
@@ -1181,7 +1212,7 @@ function MuebleMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:num
 // Stepped promotional floor display — cardboard base boxes + product rows per level,
 // narrowing like stairs as it goes up. Front price card at bottom.
 
-function IslaMesh({ w, d, h, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
+function IslaMesh({ w, d, h, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
   const op       = ghost ? 0.42 : 1;
   const CARTON   = "#c9a06a";   // cartón corrugado
   const CARTON_D = "#a97c46";   // canto, más oscuro
@@ -1226,6 +1257,7 @@ function IslaMesh({ w, d, h, ghost, facePaint }: { w:number;d:number;h:number;st
             <VolcadoDeProducto
               ancho={lw - 0.05} fondo={ld - 0.05}
               y={tapa + 0.004} material={producto}
+              semilla={`${id}|isla|${i}`} rubro={rubro} altoLibre={0.2} ghost={ghost}
             />
           </group>
         );
@@ -1344,104 +1376,28 @@ function ImpulsadorMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d
 
 // ─── Mesh: Batea ──────────────────────────────────────────────────────────────
 
-function BateaMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
-  const op    = ghost ? 0.42 : 1;
-  const WIRE  = "#6b7280";
-  const WHEEL = "#374151";
-  const wheelR = 0.045;
-  // Producto volcado dentro del canasto, un poco por debajo del borde: al ras
-  // se ve como una tapa impresa y no como una batea llena.
-  const producto = ghost ? null : (facePaint?.front ?? null);
-  /** Fondo falso. Una batea se llena hasta cerca del borde, así que abajo lleva
-   *  una bandeja que sube el producto; sin ella el volcado quedaba flotando en
-   *  el aire, en el medio de la jaula, sin nada que lo sostuviera. */
-  const fondoY = wheelR + h * 0.72;
-
+function BateaMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
+  // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
+  // Estaba dibujada como un CARRO DE REPOSICIÓN: una jaula de tubos con tres
+  // repisas planas y ruedas. Eso existe en una tienda, pero es lo que usa
+  // quien repone, no lo que ve el cliente. Una batea es un canasto de paredes
+  // inclinadas en el que se hurga, y esa inclinación es justo lo que el ojo
+  // usa para distinguirla de un cajón.
+  const boca = bocaDeBatea(w, d, h);
   return (
     <group>
-      {/* Bandeja del fondo falso */}
-      <mesh position={[0, fondoY, 0]} castShadow receiveShadow>
-        <boxGeometry args={[w - 0.05, 0.016, d - 0.05]} />
-        <meshStandardMaterial color={WIRE} metalness={0.45} roughness={0.50} transparent opacity={op} />
-      </mesh>
+      <BateaReal w={w} d={d} h={h} statusColor={statusColor} ghost={ghost} />
       <VolcadoDeProducto
-        ancho={w - 0.06} fondo={d - 0.06}
-        y={fondoY + 0.012} material={producto}
+        ancho={boca.ancho} fondo={boca.fondo}
+        y={boca.y} material={ghost ? null : (facePaint?.front ?? null)}
+        semilla={`${id}|batea`} rubro={rubro}
+        altoLibre={boca.altoLibre} ghost={ghost}
       />
-      {/* Wheels (4 corners) */}
-      {([-1, 1] as const).flatMap(sx =>
-        ([-1, 1] as const).map(sz => (
-          <mesh key={`w${sx}${sz}`} position={[sx * (w / 2 - 0.08), wheelR, sz * (d / 2 - 0.06)]}
-            rotation={[0, 0, Math.PI / 2]} castShadow>
-            <cylinderGeometry args={[wheelR, wheelR, 0.030, 12]} />
-            <meshStandardMaterial color={WHEEL} metalness={0.50} roughness={0.40} transparent opacity={op} />
-          </mesh>
-        ))
-      )}
-
-      {/* Bottom frame */}
-      <mesh position={[0, wheelR * 2 + 0.020, 0]} castShadow>
-        <boxGeometry args={[w, 0.030, d]} />
-        <meshStandardMaterial color={WIRE} metalness={0.45} roughness={0.45} transparent opacity={op} />
-      </mesh>
-
-      {/* 4 corner uprights */}
-      {([-1, 1] as const).flatMap(sx =>
-        ([-1, 1] as const).map(sz => (
-          <mesh key={`u${sx}${sz}`} position={[sx * (w / 2 - 0.018), h / 2 + wheelR, sz * (d / 2 - 0.018)]} castShadow>
-            <boxGeometry args={[0.022, h, 0.022]} />
-            <meshStandardMaterial color={WIRE} metalness={0.45} roughness={0.45} transparent opacity={op} />
-          </mesh>
-        ))
-      )}
-
-      {/* Wire mesh sides — represented by thin horizontal rails */}
-      {[0.25, 0.50, 0.75, 1.00].map((t, ri) => {
-        // Sobre el montante, no 4,5 cm por encima: el riel de arriba tiene que
-        // ser el borde del canasto, no un aro suelto flotando.
-        const ry = wheelR + t * h;
-        const sideW = w - 0.036;
-        const sideD = d - 0.036;
-        return (
-          <group key={ri}>
-            <mesh position={[0, ry, -(d / 2 - 0.018)]} castShadow>
-              <boxGeometry args={[sideW, 0.012, 0.012]} />
-              <meshStandardMaterial color={WIRE} metalness={0.45} roughness={0.45} transparent opacity={op} />
-            </mesh>
-            <mesh position={[0, ry, (d / 2 - 0.018)]} castShadow>
-              <boxGeometry args={[sideW, 0.012, 0.012]} />
-              <meshStandardMaterial color={WIRE} metalness={0.45} roughness={0.45} transparent opacity={op} />
-            </mesh>
-            <mesh position={[-(w / 2 - 0.018), ry, 0]} castShadow>
-              <boxGeometry args={[0.012, 0.012, sideD]} />
-              <meshStandardMaterial color={WIRE} metalness={0.45} roughness={0.45} transparent opacity={op} />
-            </mesh>
-            <mesh position={[(w / 2 - 0.018), ry, 0]} castShadow>
-              <boxGeometry args={[0.012, 0.012, sideD]} />
-              <meshStandardMaterial color={WIRE} metalness={0.45} roughness={0.45} transparent opacity={op} />
-            </mesh>
-          </group>
-        );
-      })}
-
-      {/* Status indicator on front rail top */}
-      <mesh position={[0, wheelR + h - 0.02, -(d / 2 - 0.02)]}>
-        <boxGeometry args={[w * 0.60, 0.024, 0.014]} />
-        <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
-      </mesh>
     </group>
   );
 }
 
-// ─── Mesh: Nevera Mural ───────────────────────────────────────────────────────
-// Branded glass-door refrigerator: dark body, large topper, wheels, cans & bottles
-// visible on wire shelves through semi-transparent glass doors.
-
-// ─── Mesh: Isla Fría / Helados ────────────────────────────────────────────────
-// Isla abierta refrigerada (tipo supermercado): cuerpo blanco con sección
-// inferior oscura de compresor, rejillas perimetrales y guarda de acrílico.
-
-function IslaFriaMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
+function IslaFriaMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
   const op      = ghost ? 0.42 : 1;
   const BODY    = "#f3f4f6";   // blanco/gris claro — cuerpo superior
   const COMP    = "#374151";   // compresor oscuro
@@ -1529,6 +1485,8 @@ function IslaFriaMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:n
       <VolcadoDeProducto
         ancho={w - PARED * 2 - 0.02} fondo={d - PARED * 2 - 0.02}
         y={pisoY + 0.014} material={ghost ? null : (facePaint?.front ?? null)}
+        semilla={`${id}|isla_fria`} rubro={rubro}
+        altoLibre={Math.max(0.08, h - pisoY - 0.10)} ghost={ghost}
       />
 
       {/* Rim de acero — 4 perfiles delgados en las aristas superiores (no tapa el pozo) */}
@@ -1588,7 +1546,7 @@ function IslaFriaMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:n
 // Mostrador negro con gran vidrio curvo al frente (foto real): cuerpo oscuro bajo,
 // dos paneles de vidrio simulando la curva, arcos laterales de metal negro.
 
-function NeveraCarnesMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
+function NeveraCarnesMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
   const op    = ghost ? 0.42 : 1;
   const DARK  = "#111827";
   const FRAME = "#1f2937";
@@ -1614,6 +1572,8 @@ function NeveraCarnesMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number
       <VolcadoDeProducto
         ancho={w - 0.10} fondo={d - 0.08}
         y={bodyH + 0.033} material={ghost ? null : (facePaint?.front ?? null)}
+        semilla={`${id}|carnes`} rubro={rubro || "Carnes"}
+        altoLibre={0.16} ghost={ghost}
       />
 
       {/* Rejillas de ventilación en el frente inferior del cuerpo */}
@@ -1721,7 +1681,7 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:num
 // Cajón estilo madera (tipo Alkosto): costillas horizontales, esquineros metálicos,
 // patas cortas, relleno de producto con tinte verde/amarillo.
 
-function StandFrutasMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
+function StandFrutasMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
   const op      = ghost ? 0.42 : 1;
   const WOOD    = "#c8a465";   // madera clara
   const WOOD_D  = "#a07c3a";   // madera oscura (costillas)
@@ -1824,6 +1784,8 @@ function StandFrutasMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;
       <VolcadoDeProducto
         ancho={w - 0.07} fondo={d - 0.07}
         y={mesaTop + 0.006} material={ghost ? null : (facePaint?.front ?? null)}
+        semilla={`${id}|frutas`} rubro={rubro || "Frutas"}
+        altoLibre={Math.max(0.08, cajonH - 0.02)} ghost={ghost}
       />
 
       {/* Indicador de estado en la cara delantera */}
@@ -2041,7 +2003,16 @@ function ServicioClienteMesh({ w, d, h, ghost }: { w:number;d:number;h:number;gh
   );
 }
 
-function FixtureMesh({ fixture, ghost, facePaint, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: FixtureMeshProps) {
+/**
+ * El despachador del catálogo: de un tipo de mueble al mesh que lo dibuja.
+ *
+ * Se exporta para el TALLER (`/taller`), que necesita poder pedir cualquier
+ * mueble del catálogo por su tipo. Sin eso, mirarle la forma a un mueble
+ * obliga a colocarlo en una sede y pelear con la cámara del editor, y la mitad
+ * de los defectos de forma sólo se ven poniendo el ojo a la altura del
+ * producto. No lo usa nadie más: el editor lo llama desde acá adentro.
+ */
+export function FixtureMesh({ fixture, ghost, facePaint, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: FixtureMeshProps) {
   const sc = isRentable(fixture)
     ? (STATUS_COLORS[fixture.status] ?? STATUS_COLORS.free)
     : NON_RENTABLE_COLOR;
@@ -2073,17 +2044,17 @@ function FixtureMesh({ fixture, ghost, facePaint, selectedSlotId, hoveredSlotId,
     case "cross":         return <CrossMesh          {...base} facePaint={facePaint} />;
     case "metro":         return <MetroMesh          {...base} />;
     case "mueble":        return <MuebleMesh         {...base} facePaint={facePaint} />;
-    case "isla":          return <IslaMesh           {...base} facePaint={facePaint} />;
+    case "isla":          return <IslaMesh           {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "impulsador":    return <ImpulsadorMesh     {...base} facePaint={facePaint} />;
-    case "batea":         return <BateaMesh          {...base} facePaint={facePaint} />;
-    case "isla_fria":        return <IslaFriaMesh         {...base} facePaint={facePaint} />;
-    case "nevera_carnes":    return <NeveraCarnesMesh     {...base} facePaint={facePaint} />;
+    case "batea":         return <BateaMesh          {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
+    case "isla_fria":        return <IslaFriaMesh         {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
+    case "nevera_carnes":    return <NeveraCarnesMesh     {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "nevera_refrescos": return <NeveraRefrescosMesh  {...base} facePaint={facePaint} />;
-    case "stand_frutas":     return <StandFrutasMesh       {...base} facePaint={facePaint} />;
+    case "stand_frutas":     return <StandFrutasMesh       {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "checkout":      return <CheckoutMesh       {...base} />;
     case "servicio_cliente": return <ServicioClienteMesh {...base} />;
     case "columna":       return <ColumnaMesh        {...base} />;
-    default:              return <IslaMesh           {...base} facePaint={facePaint} />;  // legacy exhibicion + unknown
+    default:              return <IslaMesh           {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;  // legacy exhibicion + unknown
   }
 }
 
