@@ -3519,11 +3519,35 @@ Dos trampas que costó ver:
 ### El mostrador de servicio y el mural de vegetales
 
 Un mostrador de carnes no es un cajón con una placa de vidrio vertical encima: eso es una
-vitrina cualquiera. Lo identifican tres cosas, y las tres son de forma — el **vidrio
-curvo**, que arranca casi horizontal sobre la bandeja y se levanta hacia el cliente; la
-**bandeja inclinada**, para que lo de atrás se vea por encima de lo de adelante; y la
-**franja de servicio**, del lado del que atiende. Sin ella el mueble es simétrico y no se
-entiende de qué lado se despacha.
+vitrina cualquiera. Lo identifican el **vidrio curvo**, la **bandeja inclinada** —para que
+lo de atrás se vea por encima de lo de adelante— y el **lado de servicio**, sin el cual el
+mueble es simétrico y no se entiende de qué lado se despacha.
+
+Con el vidrio curvo puesto **seguía sin parecerse**, y eso sólo se vio poniéndolo al lado
+de la foto de uno real. Las tres diferencias volvían a ser de forma:
+
+- **No apoya en el piso: cuelga sobre patas acampanadas**, troncos de cono que se abren
+  hacia el suelo. Ese hueco por debajo es lo primero que se ve de lejos y es lo que separa
+  un mostrador de servicio de una isla o de una batea, que sí apoyan. Como cajón hasta el
+  piso se leía como un contenedor.
+- **Es acero inoxidable claro, no negro.** Lo único oscuro son el marco del vidrio, la
+  reja del compresor y el trasero de servicio. Ese contraste es la mitad de lo que el ojo
+  reconoce; pintado todo de casi-negro no queda contraste ninguno.
+- **El vidrio es una bóveda, no una visera.** Estaba montado en `zFrente - vuelo`: la
+  curva entera por DELANTE del mueble, colgando en el aire, con el producto fuera de ella.
+  Nace en el filo del frente y se tumba hacia atrás por encima de toda la cubeta.
+
+Lo demás son los detalles que lo hacen leer como máquina y no como maqueta: el bocel de
+acero corrido en el filo, las puntas redondeadas, los montantes negros que parten la
+bóveda en paños, las tapas de vidrio de los extremos —sin ellas el vidrio son dos
+costillas paradas en el aire— y el cajón del compresor con su reja bajo un extremo. Sus
+cotas viven en `medidas.ts` (`MOSTRADOR`, `cotasDeMostrador`) y no en el componente,
+porque quien vuelca el producto adentro necesita las mismas: **con dos cuentas la carne
+flota sobre la cubeta o se hunde dentro de la carrocería.**
+
+Y un error latente que salió de ahí: la firma del caché de `geometriaVidrioCurvo` no
+incluía el espesor. Los montantes son ese mismo arco, angosto y grueso, así que el primero
+en dibujarse se quedaba con la ranura del caché y el otro salía con el espesor ajeno.
 
 El **mural de frutas y verduras** (`nevera_vegetales`) es un tipo nuevo del catálogo. Es
 el mismo cuerpo que el multideck de bebidas con una diferencia que cambia todo: sus
@@ -3551,9 +3575,10 @@ también toma un **rubro**, porque lo que se dibuja adentro depende del contrato
 ### Lo que falta
 
 - **Reconstruidos de cero**: góndola (doble y mural), punta, nevera de refrescos y batea.
+- **Reconstruido contra la foto de uno real**: el mostrador de carnes.
 - **Ya estaban bien y se dejaron**: vitrina, checkout, servicio al cliente, isla fría,
-  stand de frutas, nevera de carnes, exhibidor de piso — tenían forma correcta y lo que
-  les faltaba era producto, que ahora tienen.
+  stand de frutas, exhibidor de piso — tenían forma correcta y lo que les faltaba era
+  producto, que ahora tienen.
 - **Sólo se les agregó producto**: exhibidor cruz, impulsador y robatope. Su estructura
   sigue siendo de cajas, aunque razonable para muebles de ese tamaño.
 - **La ristra dejó de llevar entrepaño.** Tenía una placa horizontal del ancho del mueble
