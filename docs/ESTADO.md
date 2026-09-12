@@ -3565,6 +3565,82 @@ Rotando el grupo desde el origen del mueble, una bandeja a 1,2 m de altura se co
 centímetros en Z y sale por el costado de la carrocería. El giro va sobre el grupo ya
 puesto en su altura. Es el mismo error que tuvo el producto del exhibidor de cruz.
 
+### Hizo falta una foto, así que se buscó la ficha de todos
+
+El mostrador de carnes sólo se arregló cuando hubo una foto de uno real
+delante. Eso es un dato sobre el método, no sobre ese mueble: **lo que se
+modela de memoria sale parecido a la idea que uno tiene del mueble, no al
+mueble.** Así que se revisó el catálogo entero contra fichas de fabricante y
+fotos de producto, y salieron tres defectos grandes, dos reglas falsas y un
+error latente.
+
+**La caja registradora tenía la pantalla flotando.** El poste medía
+`posH * 0.75` y la pantalla se colocaba a `posH`: veinticinco centímetros de
+aire entre las dos. Compilaba, y sólo se vio poniéndola en el taller. Le
+faltaba además todo lo que hace que una caja se lea como una caja: la mesa no
+es una tapa lisa sino una **cama hundida** rodeada de un bocel de goma; la
+registradora se apoya en una **consola** y el poste nace de ahí; del lado del
+cajero va el **sector de empaque** con su guarda; y del lado del cliente van
+los **estantes de impulso** —chicles, pilas, revistas—, que son el espacio más
+caro de la línea de cajas y son espacio VENDIBLE. Las tres alturas que
+sostienen la pantalla salen ahora de **una sola cuenta encadenada**
+(`yConsola` → `yPoste` → `yPantalla`): es lo único que garantiza que ninguna
+pieza quede en el aire. El monitor del mostrador de servicio al cliente tenía
+el mismo defecto y se arregló igual.
+
+**La ristra era una tabla.** La ficha del fabricante da una tira de 3,8 cm de
+ancho con doce ganchos y un cabezal porta-cartel. La nuestra ataba el ancho de
+la tira al ancho del mueble —40 cm de huella daban 28 cm de tira— y encima
+llevaba un panel translúcido detrás. **Un clip strip no tiene respaldo**:
+cuelga suelto por delante de la mercadería y se ve la góndola a través de él.
+El cabezal importa aparte: es lo que compra la marca.
+
+**El stand de frutas era una mesa con cosas encima.** La ficha da bandejas
+inclinadas y escalonadas con cajones de cosecha: la inclinación para mirar la
+fruta desde arriba, el escalón para que la bandeja de atrás no quede tapada
+—media cara vendible— y el cajón porque la fruta llega en cajón y se exhibe en
+el cajón.
+
+**Y la batea se veía vacía con producto adentro**, por dos cuentas encadenadas
+y dos reglas falsas. Una botella de litro y medio mide 31 cm y el alto libre
+daba 30,6: por cuatro milímetros se acostaba, y acostada mide 30 cm de largo,
+así que en el fondo entraba una sola fila. Las cuentas: una batea de promoción
+va **rebosada**, no enrasada, y su piso va **alto** —es un tacho poco hondo
+sobre patas largas—. Las reglas:
+
+- **lo que entra parado se para.** En la tienda, una batea de gaseosas tiene
+  las botellas paradas; lo que se tira de costado es lo que no entra de pie; y
+- **lo alto no se apila.** Una botella parada no va encima de otra. Apilando
+  salía una torre en el medio del canasto que no existe en ninguna tienda.
+
+De paso, un error latente: la firma del caché de `geometriaVidrioCurvo` no
+incluía el espesor, y los montantes de la bóveda son ese mismo arco angosto y
+grueso — el primero en dibujarse se quedaba con la ranura del caché.
+
+**Los que se revisaron y quedaron como estaban**, porque coinciden con su
+ficha: el robatope (la ficha de un exhibidor lateral de puntera da 35–45 cm de
+ancho con estantes de poca profundidad y respaldo, que es lo que tiene), el
+exhibidor cruz —«cruz» es de *cross-selling*, no de forma: un rack de cuatro
+postes con respaldo de marca es exactamente eso—, el exhibidor de piso
+escalonado, el impulsador, la vitrina y la isla fría. La única diferencia
+medida que quedó sin corregir es el **fondo del robatope**: el catálogo dice
+40 cm y la ficha del fabricante 25.
+
+### Dos lecciones de método que costaron caro
+
+**No se revierte con `git checkout --` un archivo con cambios sin commitear.**
+Pasó dos veces en la misma sesión: al deshacer una mutación de prueba, el
+archivo volvió a HEAD y se llevó puesto todo lo que no estaba commiteado. La
+regla es commitear ANTES de mutar, y verificar que el árbol quede limpio
+después de cada reversión.
+
+**Una guarda que mira el nombre de una constante no es una guarda.** La prueba
+de la batea verificaba que existiera `REBOSE`; una mutación que dejaba la
+constante en su lugar y la sacaba de la fórmula pasaba en verde. Por eso las
+cotas viven en `medidas.ts`: desde ahí la prueba puede **ejecutar la cuenta** y
+afirmar lo que de verdad importa —que en una batea de tamaño de catálogo una
+botella de litro y medio entra parada—, en vez de leer el código.
+
 ### `/taller` dibuja cualquier mueble del catálogo
 
 `FixtureMesh` y `FIXTURE_DEFS` se exportan sólo para eso. Sin ello, mirarle la forma a un
