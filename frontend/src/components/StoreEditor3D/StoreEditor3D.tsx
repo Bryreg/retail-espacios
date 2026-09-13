@@ -800,6 +800,9 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:num
   const G_BACK  = "#d8d8d5";
 
   const pinta = !ghost && !!facePaint?.front;
+  // La MISMA cuenta de entrepaños que usa el pintado de caras. Repetida acá,
+  // la primera vez que se toque el mueble el arte queda a caballo entre dos.
+  const span = getPanelShelfSpan("robatope", w, h, d);
 
   return (
     <group>
@@ -809,9 +812,20 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:num
         <meshLambertMaterial color={G_BACK} transparent opacity={op} />
       </mesh>
 
-      {/* El producto, al frente del entrepaño */}
+      {/* El arte del proveedor, REBANADO POR ENTREPAÑO.
+          Como lámina entera era un póster del alto del mueble colgado por
+          delante de todo: tapaba los estantes en vez de pararse sobre ellos.
+          Por fila, cada tramo de la textura se para en su entrepaño, que es
+          cómo está el producto de verdad. */}
       {pinta && (
-        <LaminaDeProducto ancho={w} alto={bodyH} y={bodyH / 2} fondo={d} facePaint={facePaint} />
+        <LaminaDeProductoPorFila
+          ancho={span.panelW}
+          alto={span.panelH}
+          filas={{ rowBottom: span.rowBottom, rowPitch: span.rowPitch, rows: span.rows }}
+          fondos={Array.from({ length: span.rows }, () => d - 0.01)}
+          montajeA={(d - 0.01) / 2} haciaA={-1}
+          facePaint={facePaint}
+        />
       )}
 
       {/* Left & right uprights — identical profile to PuntaMesh */}
@@ -860,16 +874,23 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:num
         <boxGeometry args={[w * 0.70, 0.040, 0.010]} />
         <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
       </mesh>
-      <ProductoEnRepisas
-        alturas={Array.from(
-          { length: nShelves },
-          (_, i) => 0.12 + (i + 1) * (bodyH - 0.16) / (nShelves + 1) + 0.011,
-        )}
-        techo={bodyH}
-        ancho={w - 0.055} fondo={d - 0.01}
-        montaje={(d - 0.01) / 2} hacia={-1}
-        rubro={rubro} ghost={ghost}
-      />
+      {/* El relleno mudo se apaga cuando el proveedor subió su arte: lo que se
+          ve en el mueble tiene que ser SU producto, no uno inventado por el
+          rubro. Dibujando los dos, el arte quedaba de póster por delante y los
+          estantes llenos por detrás — el mueble mostraba dos cosas distintas a
+          la vez. */}
+      {!pinta && (
+        <ProductoEnRepisas
+          alturas={Array.from(
+            { length: nShelves },
+            (_, i) => 0.12 + (i + 1) * (bodyH - 0.16) / (nShelves + 1) + 0.011,
+          )}
+          techo={bodyH}
+          ancho={w - 0.055} fondo={d - 0.01}
+          montaje={(d - 0.01) / 2} hacia={-1}
+          rubro={rubro} ghost={ghost}
+        />
+      )}
 
     </group>
   );
@@ -988,6 +1009,9 @@ function CrossMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number
   const LADO    = "#cbced2";   // montantes laterales
   const SHELF_C = "#eceef0";
   const nLevels = Math.max(4, Math.round(h / 0.36));
+  const pinta = !ghost && !!facePaint?.front;
+  // La MISMA cuenta de entrepaños que usa el pintado de caras.
+  const span = getPanelShelfSpan("cross", w, h, d);
 
   return (
     <group>
@@ -998,10 +1022,19 @@ function CrossMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number
         <meshLambertMaterial color="#dfe2e5" transparent={ghost} opacity={op} />
       </mesh>
 
-      <LaminaDeProducto
-        ancho={w - 0.07} alto={h} y={h / 2} fondo={d}
-        facePaint={ghost ? null : facePaint}
-      />
+      {/* El arte del proveedor, REBANADO POR ENTREPAÑO. Como lámina entera era
+          un póster del alto del mueble colgado por delante de todo: tapaba los
+          estantes en vez de pararse sobre ellos. */}
+      {pinta && (
+        <LaminaDeProductoPorFila
+          ancho={span.panelW}
+          alto={span.panelH}
+          filas={{ rowBottom: span.rowBottom, rowPitch: span.rowPitch, rows: span.rows }}
+          fondos={Array.from({ length: span.rows }, () => d - 0.04)}
+          montajeA={(d - 0.04) / 2} haciaA={-1}
+          facePaint={facePaint}
+        />
+      )}
       {/* Montantes. Eran dos paneles del fondo entero, en gris casi negro: dos
           paredes oscuras enmarcando el producto. Un rack se para en cuatro
           postes de esquina, y en metal claro el que resalta es lo que exhibe. */}
@@ -1054,7 +1087,7 @@ function CrossMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number
                 La repisa de más arriba va sin producto: es la tapa del
                 exhibidor, no un anaquel, y lo que se pare encima sobresale por
                 arriba del mueble. */}
-            {i < nLevels - 1 && (
+            {!pinta && i < nLevels - 1 && (
             <ProductoEnRepisas
               alturas={[0.013]}
               techo={(h - 0.12) / Math.max(nLevels - 1, 1)}
@@ -1370,13 +1403,25 @@ function ImpulsadorMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:n
   const bodyH   = h - topperH - baseH;
   const nShelves = Math.max(3, Math.round(bodyH / 0.30));
   const shelfGap = bodyH / (nShelves - 1);
+  const pinta = !ghost && !!facePaint?.front;
+  // La MISMA cuenta de entrepaños que usa el pintado de caras.
+  const span = getPanelShelfSpan("impulsador", w, h, d);
 
   return (
     <group>
-      <LaminaDeProducto
-        ancho={w} alto={h - topperH} y={(h - topperH) / 2} fondo={d}
-        facePaint={ghost ? null : facePaint}
-      />
+      {/* El arte del proveedor, REBANADO POR ENTREPAÑO. Como lámina entera era
+          un póster del alto del mueble colgado por delante de todo: tapaba los
+          estantes en vez de pararse sobre ellos. */}
+      {pinta && (
+        <LaminaDeProductoPorFila
+          ancho={span.panelW}
+          alto={span.panelH}
+          filas={{ rowBottom: span.rowBottom, rowPitch: span.rowPitch, rows: span.rows }}
+          fondos={Array.from({ length: span.rows }, () => d)}
+          montajeA={d / 2} haciaA={-1}
+          facePaint={facePaint}
+        />
+      )}
       {/* Wedge base — wider than spine, smaller than shelves */}
       <mesh position={[0, baseH/2, 0]} castShadow>
         <boxGeometry args={[w * 0.65, baseH, d * 0.70]} />
@@ -1449,13 +1494,18 @@ function ImpulsadorMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:n
         <boxGeometry args={[w * 0.70, 0.022, 0.007]} />
         <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
       </mesh>
-      <ProductoEnRepisas
-        alturas={Array.from({ length: nShelves }, (_, si) => baseH + si * shelfGap + 0.009)}
-        techo={baseH + bodyH}
-        ancho={w} fondo={d}
-        montaje={d / 2} hacia={-1}
-        rubro={rubro} ghost={ghost}
-      />
+      {/* El relleno mudo se apaga cuando el proveedor subió su arte: lo que se
+          ve tiene que ser SU producto, no uno inventado por el rubro. Con los
+          dos dibujados, el mueble mostraba dos cosas distintas a la vez. */}
+      {!pinta && (
+        <ProductoEnRepisas
+          alturas={Array.from({ length: nShelves }, (_, si) => baseH + si * shelfGap + 0.009)}
+          techo={baseH + bodyH}
+          ancho={w} fondo={d}
+          montaje={d / 2} hacia={-1}
+          rubro={rubro} ghost={ghost}
+        />
+      )}
 
     </group>
   );

@@ -807,7 +807,9 @@ prueba("el producto va DENTRO del grupo de la repisa que se inclina", () => {
   const cruz = cuerpoDe("function CrossMesh(", "function MetroMesh(");
   assert.match(cruz, /rotation=\{\[-0\.09, 0, 0\]\}[\s\S]*<ProductoEnRepisas/,
     "el producto del exhibidor de cruz salió del grupo inclinado");
-  assert.match(cruz, /\{i < nLevels - 1 && \(/,
+  // Sin atar el regex a la condición ENTERA: al arte del proveedor se le sumó
+  // un `!pinta &&` delante, y eso no afloja lo que esta guarda afirma.
+  assert.match(cruz, /i < nLevels - 1 && \(/,
     "la repisa de más arriba es la tapa: lo que se pare encima sobresale del mueble");
 });
 
@@ -1222,6 +1224,53 @@ prueba("la ristra NO lleva entrepaño", () => {
 // delante del cliente. La nevera de vegetales nació así: calculaba `pinta` y
 // no lo usaba en ningún lado, de modo que las bandejas quedaban vacías justo
 // cuando había información real que mostrar.
+
+prueba("ningún mueble dibuja el arte del proveedor Y el relleno a la vez", () => {
+  // El defecto, reportado sobre la tienda en producción: el robatope tenía el
+  // arte del proveedor colgado de póster por delante Y los estantes llenos de
+  // producto genérico por detrás. El mueble mostraba DOS cosas distintas al
+  // mismo tiempo, y ninguna de las dos se entendía.
+  //
+  // La regla ya estaba escrita para la nevera —«el relleno mudo se apaga
+  // cuando entra el arte del proveedor», porque el arte es información real y
+  // el empaque por rubro es una aproximación— y tres muebles no la cumplían.
+  // Se afirma para TODOS, y no mueble por mueble: así el próximo que se agregue
+  // tampoco puede saltársela.
+  const meshes = [...editorCodigo.matchAll(/\nfunction (\w*Mesh)\(/g)]
+    .map((m) => ({ nombre: m[1], desde: m.index }));
+  assert.ok(meshes.length > 8, "no se encontraron los meshes del editor");
+
+  for (let i = 0; i < meshes.length; i++) {
+    const cuerpo = editorCodigo.slice(meshes[i].desde, meshes[i + 1]?.desde ?? editorCodigo.length);
+    const arte = cuerpo.includes("LaminaDeProducto");
+    const relleno = cuerpo.includes("ProductoEnRepisas");
+    if (!arte || !relleno) continue;
+    assert.match(
+      cuerpo, /\{!pinta && /,
+      `\`${meshes[i].nombre}\` dibuja el arte del proveedor y el relleno por rubro a la vez`,
+    );
+  }
+});
+
+prueba("el arte se rebana POR ENTREPAÑO, no se cuelga de póster", () => {
+  // Como lámina entera, el arte es una imagen del alto del mueble colgada por
+  // delante de todo: tapa los estantes en vez de pararse sobre ellos. Por fila,
+  // cada tramo de la textura se para en su entrepaño, que es donde está el
+  // producto de verdad.
+  for (const [nombre, desde, hasta] of [
+    ["RobatopeMesh", "function RobatopeMesh(", "function RistraMesh("],
+    ["CrossMesh", "function CrossMesh(", "function MetroMesh("],
+    ["ImpulsadorMesh", "function ImpulsadorMesh(", "function BateaMesh("],
+  ]) {
+    const cuerpo = cuerpoDe(desde, hasta);
+    assert.match(cuerpo, /<LaminaDeProductoPorFila/, `\`${nombre}\` volvió a colgar el arte de póster`);
+    // Y la cuenta de entrepaños es UNA: la del pintado de caras.
+    assert.match(
+      cuerpo, /getPanelShelfSpan\(/,
+      `\`${nombre}\` volvió a tener su propia cuenta de entrepaños para el arte`,
+    );
+  }
+});
 
 prueba("todo mueble que lee el arte del proveedor lo dibuja", () => {
   // Los meshes que reciben `facePaint` tienen que hacer algo con él: pintarlo
