@@ -966,3 +966,79 @@ export function cotasDeServicio(w: number, d: number, h: number): CotasDeServici
     yCartel: h + SERVICIO.cartel.sobre,
   };
 }
+
+/* ── El exhibidor de piso ────────────────────────────────────────────────────
+   La ficha de un fabricante de material de punto de venta lo describe entero:
+   «estructura metálica con CUATRO BANDEJAS para autodispensado de producto,
+   con ZÓCALO, CENEFAS, BASE y HEADER impresos a color». Y la foto de catálogo
+   lo confirma: dos costados impresos que son la estructura, las bandejas entre
+   ellos, una cenefa impresa en el filo de cada bandeja y el header de marca
+   coronando el mueble.
+
+   Lo que teníamos era otra cosa: una pirámide de tres cajones de cartón
+   macizos, apilados. Y con un defecto de bulto encima — el producto se
+   dibujaba sobre la tapa de TODOS los niveles, incluidos los que tenían otro
+   nivel apoyado arriba, así que quedaba ADENTRO de la caja de más arriba y
+   sólo se veía el del último.
+
+   Lo que compra la marca acá no es el hueco: son el header y las cenefas. */
+
+export const EXHIBIDOR = {
+  /** Inclinación de la bandeja hacia el cliente, en radianes. */
+  caida: (10 * Math.PI) / 180,
+  /** Cuántas bandejas, cuando el alto da. */
+  bandejas: 4,
+  /** Alto del header de marca, que corona el mueble. */
+  header: 0.26,
+  /** Zócalo impreso de la base. */
+  zocalo: 0.12,
+  /** Espesor de los costados impresos y de la bandeja. */
+  costado: 0.022,
+  bandeja: 0.02,
+  /** Tope del filo de la bandeja, para que el producto no ruede. */
+  tope: 0.03,
+  /** Alto de la cenefa impresa del filo: es lo que la marca compra junto con
+   *  el header, y lo que se lee desde el pasillo. */
+  cenefa: 0.05,
+} as const;
+
+export interface CotasDeExhibidor {
+  /** Alturas del plano de apoyo de cada bandeja, de abajo hacia arriba. */
+  alturas: number[];
+  /** Separación entre bandejas. */
+  paso: number;
+  /** Ancho y fondo útiles entre costados. */
+  ancho: number;
+  fondo: number;
+  /** Dónde arranca el header y hasta dónde llega el cuerpo. */
+  topeDeCuerpo: number;
+  /** Alto del header de marca. Sale de la misma cuenta que el tope del cuerpo
+   *  y no de una resta suelta en el componente: son la misma cota mirada por
+   *  los dos lados. */
+  header: number;
+  /** Z del centro de la bandeja. */
+  z: number;
+  /** Cuánto entra de alto sobre una bandeja. */
+  altoLibre: number;
+}
+
+export function cotasDeExhibidor(w: number, d: number, h: number): CotasDeExhibidor {
+  const topeDeCuerpo = Math.max(EXHIBIDOR.zocalo + 0.3, h - EXHIBIDOR.header);
+  const desde = EXHIBIDOR.zocalo + 0.06;
+  const util = Math.max(0.2, topeDeCuerpo - desde);
+  const cuantas = Math.max(2, Math.min(EXHIBIDOR.bandejas, Math.floor(util / 0.22)));
+  const paso = util / cuantas;
+
+  return {
+    // La de más arriba NO va al ras del tope: sobre ella también se para
+    // producto, y necesita su aire igual que las de abajo.
+    alturas: Array.from({ length: cuantas }, (_, i) => desde + i * paso),
+    paso,
+    ancho: Math.max(0.1, w - EXHIBIDOR.costado * 2 - 0.01),
+    fondo: Math.max(0.12, d - EXHIBIDOR.costado - 0.02),
+    topeDeCuerpo,
+    header: h - topeDeCuerpo,
+    z: EXHIBIDOR.costado / 2,
+    altoLibre: Math.max(0.1, paso - EXHIBIDOR.bandeja - 0.02),
+  };
+}

@@ -717,9 +717,14 @@ prueba("el desorden del volcado es determinista", () => {
 
 prueba("cada mueble siembra su propio desorden", () => {
   // Sin esto, dos bateas contiguas salen clonadas.
-  for (const marca of ["batea", "stand", "carnes", "isla_fria", "isla"]) {
+  // El marcador se ANCLA con lo que puede venir después —el cierre de la
+  // plantilla o un `${i}`—, o un prefijo satisface la guarda de otro: con
+  // «isla» a secas, `${id}|isla_fria` la daba por cumplida, y el exhibidor de
+  // piso podía quedarse sin semilla sin que nada lo dijera. Ya no es mueble de
+  // volcado —tiene bandejas y el producto se para en ellas—, así que sale.
+  for (const marca of ["batea", "stand", "carnes", "isla_fria"]) {
     assert.match(
-      editorCodigo, new RegExp("semilla=\\{`\\$\\{id\\}\\|" + marca),
+      editorCodigo, new RegExp("semilla=\\{`\\$\\{id\\}\\|" + marca + "[`$]"),
       `el volcado de \`${marca}\` no se siembra con el id del mueble`,
     );
   }
@@ -1122,6 +1127,46 @@ prueba("el stand de frutas es una ISLA DE DOS CARAS", () => {
     const izq = b.filter((t) => t.lado === -1).map((t) => t.y).sort();
     const der = b.filter((t) => t.lado === 1).map((t) => t.y).sort();
     assert.deepEqual(izq, der, `${donde}: las dos caras no están a la misma altura`);
+  }
+});
+
+prueba("el exhibidor de piso no esconde el producto adentro del mueble", () => {
+  // El defecto, visto en la tienda: era una pirámide de cajones macizos y el
+  // producto se dibujaba sobre la tapa de TODOS los niveles —también los que
+  // tenían otro nivel apoyado encima—, así que quedaba adentro de la caja de
+  // más arriba y sólo se veía el del último.
+  //
+  // La ficha del fabricante da un mueble ABIERTO: dos costados impresos que
+  // son la estructura, cuatro bandejas entre ellos, una cenefa impresa en el
+  // filo de cada una y el header de marca arriba.
+  assert.match(medidas, /export function cotasDeExhibidor/, "se perdieron las cotas del exhibidor");
+  const mesh = cuerpoDe("function IslaMesh(", "function ImpulsadorMesh(");
+  assert.match(mesh, /<ExhibidorPisoReal/, "el exhibidor volvió a dibujarse dentro del editor");
+  assert.ok(!/<VolcadoDeProducto/.test(mesh), "el exhibidor volvió a volcar producto sobre cajones");
+  assert.match(mesh, /<ProductoEnRepisas/, "el exhibidor se quedó sin producto en las bandejas");
+  // Y el relleno se apaga con el arte, como todos los demás.
+  assert.match(mesh, /\{!pinta && /, "el exhibidor dibuja el arte y el relleno a la vez");
+
+  const exhibidor = sinComentarios(leer(join(muebles, "ExhibidorPisoReal.tsx")));
+  assert.match(exhibidor, /cenefa/i, "se perdió la cenefa del filo, que es lo que compra la marca");
+  assert.match(exhibidor, /c\.header/, "se perdió el header de marca");
+
+  for (const [w, d, h] of [[1.2, 0.8, 1.4], [0.9, 0.6, 1.2], [1.6, 1.0, 1.8]]) {
+    const c = M.cotasDeExhibidor(w, d, h);
+    const donde = `${w}×${d}×${h}`;
+    assert.ok(c.alturas.length >= 2, `${donde}: el exhibidor se quedó sin bandejas`);
+    assert.ok(c.topeDeCuerpo < h, `${donde}: el cuerpo se comió el header`);
+    for (let i = 0; i < c.alturas.length; i++) {
+      assert.ok(c.alturas[i] < c.topeDeCuerpo, `${donde}: bandeja por encima del cuerpo`);
+      // Ninguna bandeja se pisa con la de arriba: es exactamente el defecto
+      // que escondía el producto adentro del mueble.
+      const arriba = c.alturas[i + 1] ?? c.topeDeCuerpo;
+      assert.ok(
+        arriba - c.alturas[i] >= c.altoLibre,
+        `${donde}: sobre la bandeja ${i} no cabe lo que se dice que cabe`,
+      );
+    }
+    assert.ok(c.ancho < w && c.fondo < d, `${donde}: la bandeja se sale de los costados`);
   }
 });
 

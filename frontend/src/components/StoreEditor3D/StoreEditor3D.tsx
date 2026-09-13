@@ -21,14 +21,16 @@ import { MostradorFrioReal, bandejaDeMostrador } from "./muebles/MostradorFrioRe
 import { CheckoutReal } from "./muebles/CheckoutReal";
 import { StandFrutasReal } from "./muebles/StandFrutasReal";
 import { ServicioClienteReal } from "./muebles/ServicioClienteReal";
+import { ExhibidorPisoReal } from "./muebles/ExhibidorPisoReal";
 import { bandejasDeMural } from "./muebles/ProductoEnMural";
 import { ProductoEnRepisas } from "./muebles/ProductoEnRepisas";
 import { colorDeRubro } from "./muebles/producto";
 import { olvidarGeometrias } from "./muebles/perfiles";
 import {
-  COPETE, ESPESOR_ESPINA, NEVERA, PANEL_FONDO, PARANTE, ZONA_DE_SLOTS,
+  COPETE, ESPESOR_ESPINA, EXHIBIDOR, NEVERA, PANEL_FONDO, PARANTE, ZONA_DE_SLOTS,
   altoDeZonaDeSlots, altoDeZonaDeSlotsDePunta, altoUtilDeNevera,
-  bandejasDeStand, filasDeNevera, filasDeProducto, filasDePunta, fondoPorCara,
+  bandejasDeStand, cotasDeExhibidor, filasDeNevera, filasDeProducto, filasDePunta,
+  fondoPorCara,
 } from "./muebles/medidas";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { useModalAbierto } from "../../tema";
@@ -1325,73 +1327,55 @@ function MuebleMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:num
 // Stepped promotional floor display — cardboard base boxes + product rows per level,
 // narrowing like stairs as it goes up. Front price card at bottom.
 
-function IslaMesh({ w, d, h, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
-  const op       = ghost ? 0.42 : 1;
-  const CARTON   = "#c9a06a";   // cartón corrugado
-  const CARTON_D = "#a97c46";   // canto, más oscuro
-  const CINTA    = "#8a6234";
-  // Escalonado real de un exhibidor de piso: la base más ancha y cada nivel
-  // metido hacia atrás, para que desde el pasillo se vean los tres a la vez.
-  const niveles  = Math.max(2, Math.min(4, Math.round(h / 0.42)));
-  const altoNiv  = h / niveles;
-
-  // El producto va como VOLCADO sobre cada andén. Antes esta malla traía
-  // botellas y cajas de colores fijos INCRUSTADAS en la geometría: no era
-  // textura, así que el arte del proveedor no las podía reemplazar y la isla
-  // mostraba siempre el mismo producto inventado, alquilada por quien fuera.
-  const producto = ghost ? null : (facePaint?.front ?? null);
+function IslaMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
+  // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
+  // Era una PIRÁMIDE de tres cajones de cartón macizos, y con un defecto de
+  // bulto: el producto se dibujaba sobre la tapa de TODOS los niveles —también
+  // los que tenían otro nivel apoyado encima—, así que quedaba adentro de la
+  // caja de más arriba y sólo se veía el del último.
+  //
+  // La ficha del fabricante da un mueble abierto: dos costados impresos que
+  // son la estructura, cuatro bandejas entre ellos, una cenefa impresa en el
+  // filo de cada una y el header de marca arriba. Y ahí está el punto
+  // comercial: lo que la marca compra no es el hueco, son el header y las
+  // cenefas.
+  const c = cotasDeExhibidor(w, d, h);
+  const span = getPanelShelfSpan("isla", w, h, d);
+  const pinta = !ghost && !!facePaint?.front;
 
   return (
     <group>
-      {Array.from({ length: niveles }, (_, i) => {
-        const escala = 1 - i * 0.16;
-        const lw = w * escala;
-        const ld = d * escala;
-        // Cada nivel se recuesta contra el fondo: el frente queda escalonado.
-        const cz = (d - ld) / 2;
-        const baseY = i * altoNiv;
-        // Cada nivel es un cajón MACIZO que va del piso del nivel a su tapa, no
-        // una bandeja: apilados sin hueco entre uno y otro es como se ve un
-        // exhibidor de cartón. Con bandejas separadas se veían tres platos
-        // flotando uno sobre otro.
-        const tapa = baseY + altoNiv;
-        return (
-          <group key={i} position={[0, 0, cz]}>
-            <mesh position={[0, baseY + altoNiv / 2, 0]} castShadow>
-              <boxGeometry args={[lw, altoNiv, ld]} />
-              <meshLambertMaterial color={i === 0 ? CARTON_D : CARTON} transparent opacity={op} />
-            </mesh>
-            {/* Cinta del canto frontal — lo que hace que se lea «cartón» */}
-            <mesh position={[0, tapa - 0.045, -(ld / 2 + 0.004)]}>
-              <boxGeometry args={[lw - 0.02, 0.045, 0.006]} />
-              <meshLambertMaterial color={CINTA} transparent opacity={0.75 * op} />
-            </mesh>
-            {/* El producto, volcado sobre la tapa del nivel */}
-            <VolcadoDeProducto
-              ancho={lw - 0.05} fondo={ld - 0.05}
-              y={tapa + 0.004} material={producto}
-              semilla={`${id}|isla|${i}`} rubro={rubro} altoLibre={0.2} ghost={ghost}
-            />
-          </group>
-        );
-      })}
+      <ExhibidorPisoReal w={w} d={d} h={h} statusColor={statusColor} ghost={ghost} />
 
-      {/* Cartel de precio, pegado al frente del nivel de abajo */}
-      <mesh position={[0, altoNiv * 0.45, -(d / 2 + 0.006)]}>
-        <boxGeometry args={[Math.min(0.32, w * 0.44), 0.13, 0.006]} />
-        <meshLambertMaterial color="#ffffff" transparent opacity={0.94 * op} />
-      </mesh>
-      <mesh position={[0, altoNiv * 0.45, -(d / 2 + 0.010)]}>
-        <boxGeometry args={[Math.min(0.28, w * 0.38), 0.055, 0.004]} />
-        <meshLambertMaterial color="#1e293b" transparent opacity={0.85 * op} />
-      </mesh>
+      {/* El arte del proveedor, rebanado por bandeja. */}
+      {pinta && (
+        <LaminaDeProductoPorFila
+          ancho={span.panelW}
+          alto={span.panelH}
+          filas={{ rowBottom: span.rowBottom, rowPitch: span.rowPitch, rows: span.rows }}
+          fondos={Array.from({ length: span.rows }, () => c.fondo)}
+          montajeA={c.fondo / 2 + c.z} haciaA={-1}
+          facePaint={facePaint}
+        />
+      )}
+
+      {/* El producto va DENTRO del grupo que se inclina: afuera, la fila de
+          atrás flota sobre la bandeja y la de adelante se hunde. Y el relleno
+          mudo se apaga cuando entra el arte del proveedor. */}
+      {!pinta && c.alturas.map((y, i) => (
+        <group key={i} position={[0, y, c.z]} rotation={[EXHIBIDOR.caida, 0, 0]}>
+          <ProductoEnRepisas
+            alturas={[EXHIBIDOR.bandeja / 2]}
+            techo={c.altoLibre}
+            ancho={c.ancho - 0.03} fondo={c.fondo - 0.03}
+            montaje={(c.fondo - 0.03) / 2} hacia={-1}
+            rubro={rubro} ghost={ghost}
+          />
+        </group>
+      ))}
     </group>
   );
 }
-
-// ─── Mesh: Impulsador de Marca ────────────────────────────────────────────────
-// Narrow central spine + cantilevered shelves (wider than spine) + mushroom topper.
-// Inspired by Nestlé Fitness / brand impulse floor display style.
 
 function ImpulsadorMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;rubro?:string }) {
   const op      = ghost ? 0.42 : 1;
@@ -3338,12 +3322,18 @@ function getPanelShelfSpan(type: string, w: number, h: number, d: number): Panel
       return { modo: "volcado", panelW: w - 0.13, panelH: d - 0.13, rowBottom: 0, rowPitch: 0, rows: 0 };
     }
     case "isla": {
-      // IslaMesh — exhibidor de piso escalonado. El producto va VOLCADO sobre
-      // cada andén, así que lo que se compone es una superficie horizontal: acá
-      // `panelH` es el FONDO, no un alto. Se describe el andén más grande —el
-      // de abajo— y los de arriba usan la misma textura a su tamaño; como es un
-      // montón a granel y no una grilla, la diferencia de escala no se lee.
-      return { modo: "volcado", panelW: w, panelH: d, rowBottom: 0, rowPitch: 0, rows: 0 };
+      // IslaMesh — exhibidor de piso. Dejó de ser un volcado: el mueble tiene
+      // BANDEJAS, y el producto se para en ellas. La cuenta sale de
+      // `cotasDeExhibidor`, que es la misma que ubica las bandejas de verdad,
+      // así que el arte no puede quedar a caballo entre dos.
+      const c = cotasDeExhibidor(w, d, h);
+      return {
+        panelW: c.ancho,
+        panelH: c.topeDeCuerpo,
+        rowBottom: c.alturas[0] + EXHIBIDOR.bandeja,
+        rowPitch: c.paso,
+        rows: c.alturas.length,
+      };
     }
     case "batea": {
       // BateaMesh — canasto. Una sola superficie: el fondo falso, cerca del borde.
