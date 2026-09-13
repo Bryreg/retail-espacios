@@ -1125,12 +1125,28 @@ prueba("el stand de frutas es una ISLA DE DOS CARAS", () => {
 
 prueba("la isla de frutas no se para sobre postes", () => {
   // Cuatro postes asomando por encima de las cubiertas la hacían leer como
-  // andamio. En la ficha la estructura es baja: zócalo y espina, y nada por
+  // andamio. En la ficha la estructura es BAJA: zócalo y espina, y nada por
   // arriba salvo el peine de pinzas de precio.
+  //
+  // La primera versión de esta prueba buscaba las palabras «postes» y
+  // «parantes» en el archivo, y una mutación que agregaba cuatro postes de
+  // verdad —sin llamarlos así— pasaba en verde. Un poste no es una palabra: es
+  // un elemento que sube TODO el alto del mueble. Eso es lo que se afirma.
   const stand = sinComentarios(leer(join(muebles, "StandFrutasReal.tsx")));
-  assert.ok(!/parantes|postes/i.test(stand), "volvieron los postes del stand");
   assert.match(stand, /espina/, "se perdió la espina central, que es lo que hace la isla");
-  assert.match(stand, /STAND_FRUTAS\.respaldo/, "se perdió el respaldo donde va el peine de precios");
+  assert.match(stand, /alturaDeEspina\(/, "el stand volvió a calcularse su propia altura de estructura");
+
+  // Nada dimensionado con el alto entero del mueble...
+  const conAltoEntero = /args=\{\[[^\]]*(?:^|[,[])\s*h\s*(?:,|\])/m.exec(stand);
+  assert.ok(!conAltoEntero, `hay una pieza que mide el alto entero: ${conAltoEntero?.[0]}`);
+  // ...ni centrado a media altura, que es cómo se coloca un poste.
+  assert.ok(!/position=\{\[[^\]]*\bh \/ 2\b/.test(stand), "hay una pieza centrada a media altura: es un poste");
+
+  // Y la cuenta: la estructura queda por debajo del alto del mueble.
+  for (const h of [0.95, 0.8, 1.1, 1.4]) {
+    assert.ok(M.alturaDeEspina(h) < h, `la estructura sobresale del mueble con h=${h}`);
+    assert.ok(M.alturaDeEspina(h) > h * 0.5, `la espina se hundió con h=${h}`);
+  }
 });
 
 prueba("el mural hereda el arte del proveedor, no tiene un camino propio", () => {

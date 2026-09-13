@@ -1,6 +1,6 @@
 import { memo, useMemo } from "react";
 import * as THREE from "three";
-import { STAND_FRUTAS, bandejasDeStand } from "./medidas";
+import { STAND_FRUTAS, alturaDeEspina, bandejasDeStand } from "./medidas";
 
 /**
  * El stand de frutas y verduras, contra la ficha del fabricante.
@@ -60,7 +60,7 @@ export const StandFrutasReal = memo(function StandFrutasReal({
   }, [ghost, statusColor]);
 
   const bandejas = bandejasDeStand(w, d, h);
-  const espina = h * STAND_FRUTAS.escalonAlto + STAND_FRUTAS.respaldo;
+  const espina = alturaDeEspina(h);
 
   return (
     <group>

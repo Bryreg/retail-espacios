@@ -807,6 +807,22 @@ export const STAND_FRUTAS = {
   escalonAlto: 0.8,
 } as const;
 
+/** Hasta dónde llega la ESTRUCTURA de la isla: el remate de la espina, donde
+ *  se prende el peine de pinzas de precio.
+ *
+ *  Existe como cuenta aparte para que se pueda afirmar lo que importa: que la
+ *  estructura queda POR DEBAJO del alto del mueble. Cuatro postes subiendo
+ *  hasta `h` por encima de las cubiertas es lo que hacía leer el stand como un
+ *  andamio, y en la ficha no hay nada por arriba salvo el peine. */
+export function alturaDeEspina(h: number): number {
+  // Acotado al alto del mueble. Sin el tope, `0,8·h + 0,16` pasa de `h` en
+  // cuanto el mueble mide menos de 80 cm: la espina y su peine de precios
+  // asomaban POR ENCIMA del alto declarado, y ese alto es el que usan la
+  // revisión de choques y el plano. Un mueble más alto que su propia ficha es
+  // un error de datos, no de dibujo.
+  return Math.min(h * STAND_FRUTAS.escalonAlto + STAND_FRUTAS.respaldo, h - 0.03);
+}
+
 export interface BandejaDeStand {
   /** Altura del plano de apoyo, antes de inclinar. */
   y: number;
