@@ -1179,7 +1179,11 @@ prueba("el exhibidor de piso es una ESTIBA con la mercancía apilada encima", ()
     );
   }
 
-  for (const [w, d, h] of [[1.2, 0.8, 1.4], [1.0, 0.8, 1.1], [1.6, 1.2, 1.8], [0.9, 0.6, 1.2]]) {
+  // La huella chica está a propósito: es donde el enlistonado de la tarima
+  // de catálogo no entra y hay que recortarlo.
+  for (const [w, d, h] of [
+    [1.2, 0.8, 1.4], [1.0, 0.8, 1.1], [1.6, 1.2, 1.8], [0.9, 0.6, 1.2], [0.7, 0.45, 1.0],
+  ]) {
     // La cubierta deja pasar la uña del montacargas y no se come el mueble.
     const cero = M.cotasDeEstiba(w, d, h);
     const donde = `${w}×${d}×${h}`;
