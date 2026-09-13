@@ -21,15 +21,15 @@ import { MostradorFrioReal, bandejaDeMostrador } from "./muebles/MostradorFrioRe
 import { CheckoutReal } from "./muebles/CheckoutReal";
 import { StandFrutasReal } from "./muebles/StandFrutasReal";
 import { ServicioClienteReal } from "./muebles/ServicioClienteReal";
-import { ExhibidorPisoReal } from "./muebles/ExhibidorPisoReal";
+import { EstibaReal } from "./muebles/EstibaReal";
 import { bandejasDeMural } from "./muebles/ProductoEnMural";
 import { ProductoEnRepisas } from "./muebles/ProductoEnRepisas";
-import { colorDeRubro } from "./muebles/producto";
+import { colorDeRubro, empaqueQueEntra } from "./muebles/producto";
 import { olvidarGeometrias } from "./muebles/perfiles";
 import {
-  COPETE, ESPESOR_ESPINA, EXHIBIDOR, NEVERA, PANEL_FONDO, PARANTE, ZONA_DE_SLOTS,
+  COPETE, ESPESOR_ESPINA, ESTIBA, NEVERA, PANEL_FONDO, PARANTE, ZONA_DE_SLOTS,
   altoDeZonaDeSlots, altoDeZonaDeSlotsDePunta, altoUtilDeNevera,
-  bandejasDeStand, cotasDeExhibidor, filasDeNevera, filasDeProducto, filasDePunta,
+  bandejasDeStand, cotasDeEstiba, filasDeNevera, filasDeProducto, filasDePunta,
   fondoPorCara,
 } from "./muebles/medidas";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
@@ -1329,50 +1329,52 @@ function MuebleMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:num
 
 function IslaMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
   // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
-  // Era una PIRÁMIDE de tres cajones de cartón macizos, y con un defecto de
-  // bulto: el producto se dibujaba sobre la tapa de TODOS los niveles —también
-  // los que tenían otro nivel apoyado encima—, así que quedaba adentro de la
-  // caja de más arriba y sólo se veía el del último.
+  // Un «exhibidor de piso» no es un mueble: es una ESTIBA plantada en el
+  // pasillo con la mercancía apilada encima. Lo confirma el propio catálogo —
+  // la huella del tipo es 1,20 × 0,80 m, que es la medida de una tarima
+  // estándar—, y el dato estaba escrito desde el principio sin leerse.
   //
-  // La ficha del fabricante da un mueble abierto: dos costados impresos que
-  // son la estructura, cuatro bandejas entre ellos, una cenefa impresa en el
-  // filo de cada una y el header de marca arriba. Y ahí está el punto
-  // comercial: lo que la marca compra no es el hueco, son el header y las
-  // cenefas.
-  const c = cotasDeExhibidor(w, d, h);
+  // Antes fue una pirámide de cajones de cartón que además escondía el
+  // producto adentro, y después un mueble impreso con bandejas. Ninguno es
+  // esto.
+  //
+  // El paso de la torre lo pone el EMPAQUE, no un alto nominal: los tendidos
+  // de una estiba van pegados. Con un paso fijo de 30 cm, una caja de galletas
+  // de 19 cm dejaba 11 cm de aire y la torre salía flotando en pisos.
+  const empaque = empaqueQueEntra(rubro, Math.max(0.05, h - ESTIBA.alto));
+  const c = cotasDeEstiba(w, d, h, empaque?.alto);
   const span = getPanelShelfSpan("isla", w, h, d);
   const pinta = !ghost && !!facePaint?.front;
 
   return (
     <group>
-      <ExhibidorPisoReal w={w} d={d} h={h} statusColor={statusColor} ghost={ghost} />
+      <EstibaReal w={w} d={d} h={h} statusColor={statusColor} ghost={ghost} />
 
-      {/* El arte del proveedor, rebanado por bandeja. */}
+      {/* El arte del proveedor, rebanado por capa de la torre. */}
       {pinta && (
         <LaminaDeProductoPorFila
           ancho={span.panelW}
           alto={span.panelH}
           filas={{ rowBottom: span.rowBottom, rowPitch: span.rowPitch, rows: span.rows }}
           fondos={Array.from({ length: span.rows }, () => c.fondo)}
-          montajeA={c.fondo / 2 + c.z} haciaA={-1}
+          montajeA={c.fondo / 2} haciaA={-1}
           facePaint={facePaint}
         />
       )}
 
-      {/* El producto va DENTRO del grupo que se inclina: afuera, la fila de
-          atrás flota sobre la bandeja y la de adelante se hunde. Y el relleno
-          mudo se apaga cuando entra el arte del proveedor. */}
-      {!pinta && c.alturas.map((y, i) => (
-        <group key={i} position={[0, y, c.z]} rotation={[EXHIBIDOR.caida, 0, 0]}>
-          <ProductoEnRepisas
-            alturas={[EXHIBIDOR.bandeja / 2]}
-            techo={c.altoLibre}
-            ancho={c.ancho - 0.03} fondo={c.fondo - 0.03}
-            montaje={(c.fondo - 0.03) / 2} hacia={-1}
-            rubro={rubro} ghost={ghost}
-          />
-        </group>
-      ))}
+      {/* La mercancía, apilada en capas sobre la cubierta de la tarima. Una
+          estiba de promoción viene cargada hasta el filo, así que se apila al
+          ras y no centrada con aire alrededor. El relleno mudo se apaga cuando
+          entra el arte del proveedor. */}
+      {!pinta && (
+        <ProductoEnRepisas
+          alturas={c.capas}
+          techo={c.techo}
+          ancho={c.ancho} fondo={c.fondo}
+          montaje={c.fondo / 2} hacia={-1}
+          rubro={rubro} ghost={ghost}
+        />
+      )}
     </group>
   );
 }
@@ -3322,17 +3324,16 @@ function getPanelShelfSpan(type: string, w: number, h: number, d: number): Panel
       return { modo: "volcado", panelW: w - 0.13, panelH: d - 0.13, rowBottom: 0, rowPitch: 0, rows: 0 };
     }
     case "isla": {
-      // IslaMesh — exhibidor de piso. Dejó de ser un volcado: el mueble tiene
-      // BANDEJAS, y el producto se para en ellas. La cuenta sale de
-      // `cotasDeExhibidor`, que es la misma que ubica las bandejas de verdad,
-      // así que el arte no puede quedar a caballo entre dos.
-      const c = cotasDeExhibidor(w, d, h);
+      // IslaMesh — la estiba. Cada CAPA de la torre de mercancía es una fila:
+      // la cuenta sale de `cotasDeEstiba`, la misma que apila el producto, así
+      // que el arte no puede quedar a caballo entre dos capas.
+      const c = cotasDeEstiba(w, d, h);
       return {
         panelW: c.ancho,
-        panelH: c.topeDeCuerpo,
-        rowBottom: c.alturas[0] + EXHIBIDOR.bandeja,
+        panelH: c.techo,
+        rowBottom: c.capas[0],
         rowPitch: c.paso,
-        rows: c.alturas.length,
+        rows: c.capas.length,
       };
     }
     case "batea": {

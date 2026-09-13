@@ -967,78 +967,138 @@ export function cotasDeServicio(w: number, d: number, h: number): CotasDeServici
   };
 }
 
-/* ── El exhibidor de piso ────────────────────────────────────────────────────
-   La ficha de un fabricante de material de punto de venta lo describe entero:
-   «estructura metálica con CUATRO BANDEJAS para autodispensado de producto,
-   con ZÓCALO, CENEFAS, BASE y HEADER impresos a color». Y la foto de catálogo
-   lo confirma: dos costados impresos que son la estructura, las bandejas entre
-   ellos, una cenefa impresa en el filo de cada bandeja y el header de marca
-   coronando el mueble.
+/* ── El exhibidor de piso: una ESTIBA con mercancía encima ───────────────────
+   No es un mueble impreso con bandejas: es una TARIMA DE MADERA plantada en el
+   pasillo con el producto apilado arriba. Lo confirma el propio catálogo —la
+   huella del tipo es 1,20 × 0,80 m, que es exactamente la medida de una estiba
+   estándar— y el alto de 1,40 es la tarima más la torre de mercancía.
 
-   Lo que teníamos era otra cosa: una pirámide de tres cajones de cartón
-   macizos, apilados. Y con un defecto de bulto encima — el producto se
-   dibujaba sobre la tapa de TODOS los niveles, incluidos los que tenían otro
-   nivel apoyado arriba, así que quedaba ADENTRO de la caja de más arriba y
-   sólo se veía el del último.
+   Es el exhibidor más común de una promoción: llega el camión, se baja la
+   estiba entera y se planta en el pasillo. Por eso lo que se le alquila a la
+   marca es la POSICIÓN, no un mueble.
 
-   Lo que compra la marca acá no es el hueco: son el header y las cenefas. */
+   Las cotas son las de la tarima de verdad: 144 mm de alto, tablas de 22 mm y
+   travesaños de 100 mm entre la cubierta y el piso. */
 
-export const EXHIBIDOR = {
-  /** Inclinación de la bandeja hacia el cliente, en radianes. */
-  caida: (10 * Math.PI) / 180,
-  /** Cuántas bandejas, cuando el alto da. */
-  bandejas: 4,
-  /** Alto del header de marca, que corona el mueble. */
-  header: 0.26,
-  /** Zócalo impreso de la base. */
-  zocalo: 0.12,
-  /** Espesor de los costados impresos y de la bandeja. */
-  costado: 0.022,
-  bandeja: 0.02,
-  /** Tope del filo de la bandeja, para que el producto no ruede. */
-  tope: 0.03,
-  /** Alto de la cenefa impresa del filo: es lo que la marca compra junto con
-   *  el header, y lo que se lee desde el pasillo. */
-  cenefa: 0.05,
+export const ESTIBA = {
+  /** Alto total de la tarima. */
+  alto: 0.144,
+  /** Espesor de las tablas de la cubierta y del piso. */
+  tabla: 0.022,
+  /** Ancho de una tabla. */
+  anchoDeTabla: 0.1,
+  /** Cuántas tablas lleva la cubierta y cuántas el piso, como máximo: una
+   *  tarima de 1,20 × 0,80 lleva cinco arriba y tres abajo. Se recortan si la
+   *  huella es más chica — con las cinco a la fuerza sobre 60 cm de fondo las
+   *  tablas se pisan y la cubierta queda maciza, que es justo lo contrario de
+   *  lo que hace que se lea «estiba». */
+  tablasArriba: 5,
+  tablasAbajo: 3,
+  /** La luz mínima entre tabla y tabla de la cubierta. Es lo que hace que se
+   *  vea el enlistonado y no una tapa. */
+  luzDeTabla: 0.035,
+  /** Los travesaños que separan cubierta y piso, y dejan entrar la uña del
+   *  montacargas. */
+  travesano: { ancho: 0.1, cuantos: 3 },
+  /** Alto de una capa de mercancía cuando todavía no se sabe qué se apila:
+   *  es el que usa el arte del proveedor para rebanarse por tendido. */
+  capa: 0.3,
+  /** Lo que separa un tendido del siguiente: la lámina de cartón o el film.
+   *  Milímetros, no centímetros — una estiba se apila AL RAS.
+   *
+   *  Acá estuvo el defecto que se vio en pantalla: las capas se repartían en
+   *  pasos de 30 cm nominales y encima de cada una se paraba el empaque que
+   *  entrara, así que una caja de galletas de 19 cm dejaba 11 cm de aire y la
+   *  torre salía flotando en pisos separados. Una estiba no tiene estantes:
+   *  cada tendido se apoya sobre el de abajo. */
+  separacion: 0.006,
 } as const;
 
-export interface CotasDeExhibidor {
-  /** Alturas del plano de apoyo de cada bandeja, de abajo hacia arriba. */
-  alturas: number[];
-  /** Separación entre bandejas. */
+/** Un tendido de mercancía sobre la tarima. */
+export interface CapasDeEstiba {
+  /** Alturas de apoyo de cada tendido, de abajo hacia arriba. */
+  capas: number[];
+  /** Cuánto sube un tendido respecto del de abajo. */
   paso: number;
-  /** Ancho y fondo útiles entre costados. */
-  ancho: number;
-  fondo: number;
-  /** Dónde arranca el header y hasta dónde llega el cuerpo. */
-  topeDeCuerpo: number;
-  /** Alto del header de marca. Sale de la misma cuenta que el tope del cuerpo
-   *  y no de una resta suelta en el componente: son la misma cota mirada por
-   *  los dos lados. */
-  header: number;
-  /** Z del centro de la bandeja. */
-  z: number;
-  /** Cuánto entra de alto sobre una bandeja. */
-  altoLibre: number;
+  /** Hasta dónde llega la torre. */
+  techo: number;
 }
 
-export function cotasDeExhibidor(w: number, d: number, h: number): CotasDeExhibidor {
-  const topeDeCuerpo = Math.max(EXHIBIDOR.zocalo + 0.3, h - EXHIBIDOR.header);
-  const desde = EXHIBIDOR.zocalo + 0.06;
-  const util = Math.max(0.2, topeDeCuerpo - desde);
-  const cuantas = Math.max(2, Math.min(EXHIBIDOR.bandejas, Math.floor(util / 0.22)));
-  const paso = util / cuantas;
+/**
+ * Cómo se apila una torre de `altoDeCapa` sobre una cubierta a `cubierta`, sin
+ * pasarse del alto `h` del espacio contratado.
+ *
+ * Los tendidos van pegados —`paso` es el alto del empaque más la lámina que lo
+ * separa del de arriba—, así que la cuenta es cuántos ENTEROS entran y no cómo
+ * repartir el alto disponible: media caja no se apila, y una torre que llega
+ * justo al tope declarado del mueble es una torre inventada.
+ */
+export function capasDeEstiba(cubierta: number, h: number, altoDeCapa: number): CapasDeEstiba {
+  const paso = Math.max(0.05, altoDeCapa) + ESTIBA.separacion;
+  const cuantas = Math.max(1, Math.floor((h - cubierta) / paso));
+  return {
+    capas: Array.from({ length: cuantas }, (_, i) => cubierta + i * paso),
+    paso,
+    // Nunca por encima del alto del espacio: ese alto es el que mira el
+    // chequeo de choques y el que se le cobra a la marca.
+    techo: Math.min(cubierta + cuantas * paso, h),
+  };
+}
+
+export interface CotasDeEstiba extends CapasDeEstiba {
+  /** Alto de la cara de arriba de la tarima: donde apoya la mercancía. */
+  cubierta: number;
+  /** Huella útil de la mercancía sobre la tarima. */
+  ancho: number;
+  fondo: number;
+  /** Posición de las tablas de la cubierta y del piso, a lo ancho del fondo. */
+  zDeTablas: number[];
+  zDePiso: number[];
+  /** Posición de los travesaños, a lo largo. */
+  xDeTravesanos: number[];
+}
+
+/** Las tablas repartidas a lo largo del fondo, sin pisarse y dejando luz. */
+function enlistonado(cuantas: number, d: number): number[] {
+  const n = Math.max(
+    2,
+    Math.min(cuantas, Math.floor(d / (ESTIBA.anchoDeTabla + ESTIBA.luzDeTabla))),
+  );
+  return Array.from(
+    { length: n },
+    (_, i) => -d / 2 + ESTIBA.anchoDeTabla / 2 + (i * (d - ESTIBA.anchoDeTabla)) / (n - 1),
+  );
+}
+
+/**
+ * Las cotas de la estiba: la tarima, y la torre que se le apila encima.
+ *
+ * `altoDeCapa` es el alto del empaque que se va a apilar. Sin ese dato —el
+ * caso del arte del proveedor, que se rebana por tendido antes de saber qué
+ * producto va— cae en el tendido nominal de `ESTIBA.capa`.
+ */
+export function cotasDeEstiba(w: number, d: number, h: number, altoDeCapa?: number): CotasDeEstiba {
+  const cubierta = Math.min(ESTIBA.alto, h * 0.3);
+  const torre = capasDeEstiba(cubierta, h, altoDeCapa ?? ESTIBA.capa);
+
+  // La mercancía se apila AL RAS de la tarima, no centrada con aire alrededor:
+  // una estiba de promoción viene cargada hasta el filo.
+  const ancho = Math.max(0.1, w - 0.04);
+  const fondo = Math.max(0.1, d - 0.04);
+
+  const nV = Math.max(2, ESTIBA.travesano.cuantos);
+  const xDeTravesanos = Array.from(
+    { length: nV },
+    (_, i) => -w / 2 + ESTIBA.travesano.ancho / 2 + (i * (w - ESTIBA.travesano.ancho)) / (nV - 1),
+  );
 
   return {
-    // La de más arriba NO va al ras del tope: sobre ella también se para
-    // producto, y necesita su aire igual que las de abajo.
-    alturas: Array.from({ length: cuantas }, (_, i) => desde + i * paso),
-    paso,
-    ancho: Math.max(0.1, w - EXHIBIDOR.costado * 2 - 0.01),
-    fondo: Math.max(0.12, d - EXHIBIDOR.costado - 0.02),
-    topeDeCuerpo,
-    header: h - topeDeCuerpo,
-    z: EXHIBIDOR.costado / 2,
-    altoLibre: Math.max(0.1, paso - EXHIBIDOR.bandeja - 0.02),
+    ...torre,
+    cubierta,
+    ancho,
+    fondo,
+    zDeTablas: enlistonado(ESTIBA.tablasArriba, d),
+    zDePiso: enlistonado(ESTIBA.tablasAbajo, d),
+    xDeTravesanos,
   };
 }

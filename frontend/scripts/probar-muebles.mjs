@@ -1130,44 +1130,128 @@ prueba("el stand de frutas es una ISLA DE DOS CARAS", () => {
   }
 });
 
-prueba("el exhibidor de piso no esconde el producto adentro del mueble", () => {
-  // El defecto, visto en la tienda: era una pirámide de cajones macizos y el
-  // producto se dibujaba sobre la tapa de TODOS los niveles —también los que
-  // tenían otro nivel apoyado encima—, así que quedaba adentro de la caja de
-  // más arriba y sólo se veía el del último.
+prueba("el exhibidor de piso es una ESTIBA con la mercancía apilada encima", () => {
+  // Tres formas tuvo este mueble y las tres estaban mal, cada una por su lado:
   //
-  // La ficha del fabricante da un mueble ABIERTO: dos costados impresos que
-  // son la estructura, cuatro bandejas entre ellos, una cenefa impresa en el
-  // filo de cada una y el header de marca arriba.
-  assert.match(medidas, /export function cotasDeExhibidor/, "se perdieron las cotas del exhibidor");
+  //   1. una pirámide de cajones macizos, que además dibujaba producto sobre la
+  //      tapa de TODOS los niveles —también los que tenían otro nivel encima—,
+  //      así que el producto quedaba adentro de la caja de arriba;
+  //   2. un mueble impreso con bandejas, cenefa y header de marca;
+  //   3. la tarima correcta, pero con la torre FLOTANDO: las capas se repartían
+  //      en pasos nominales de 30 cm y encima de cada una se paraba el empaque
+  //      que entrara, así que una caja de galletas de 19 cm dejaba 11 cm de
+  //      aire y la torre salía en pisos separados.
+  //
+  // No es un mueble. La huella del tipo —1,20 × 0,80 m— es exactamente la de
+  // una estiba estándar: es una TARIMA plantada en el pasillo con la mercancía
+  // apilada arriba, y lo que se le alquila a la marca es la posición.
+  assert.match(medidas, /export function cotasDeEstiba/, "se perdieron las cotas de la estiba");
   const mesh = cuerpoDe("function IslaMesh(", "function ImpulsadorMesh(");
-  assert.match(mesh, /<ExhibidorPisoReal/, "el exhibidor volvió a dibujarse dentro del editor");
+  assert.match(mesh, /<EstibaReal/, "el exhibidor volvió a dibujarse dentro del editor");
   assert.ok(!/<VolcadoDeProducto/.test(mesh), "el exhibidor volvió a volcar producto sobre cajones");
-  assert.match(mesh, /<ProductoEnRepisas/, "el exhibidor se quedó sin producto en las bandejas");
+  assert.match(mesh, /<ProductoEnRepisas/, "la estiba se quedó sin mercancía encima");
   // Y el relleno se apaga con el arte, como todos los demás.
   assert.match(mesh, /\{!pinta && /, "el exhibidor dibuja el arte y el relleno a la vez");
+  // El paso de la torre lo pone el EMPAQUE. Sin ese dato vuelve al paso
+  // nominal de 30 cm, que es el defecto 3: la torre flota.
+  assert.match(
+    mesh, /cotasDeEstiba\(w, d, h, empaque\?\.alto\)/,
+    "la torre volvió al paso nominal: la mercancía queda flotando en pisos",
+  );
 
-  const exhibidor = sinComentarios(leer(join(muebles, "ExhibidorPisoReal.tsx")));
-  assert.match(exhibidor, /cenefa/i, "se perdió la cenefa del filo, que es lo que compra la marca");
-  assert.match(exhibidor, /c\.header/, "se perdió el header de marca");
+  const estiba = sinComentarios(leer(join(muebles, "EstibaReal.tsx")));
+  // Una tarima es ABIERTA: piso, travesaños y cubierta. El hueco que dejan los
+  // travesaños es por donde entra la uña del montacargas, y es lo que hace que
+  // se lea «estiba» y no «cajón de madera».
+  for (const [pieza, que] of [
+    ["c.zDePiso.map", "el piso"], ["c.xDeTravesanos.map", "los travesaños"],
+    ["c.zDeTablas.map", "la cubierta"],
+  ]) {
+    assert.ok(estiba.includes(pieza), `la tarima se quedó sin ${que}`);
+  }
+  // Ninguna pieza de madera se dimensiona con el alto del mueble: la tarima
+  // mide 144 mm y todo lo que hay arriba es producto. Con una caja de alto `h`
+  // esto vuelve a ser un mueble macizo.
+  for (const args of estiba.match(/<boxGeometry args=\{\[[^\]]*\]/g) ?? []) {
+    assert.ok(
+      !/\bh\b/.test(args.replace(/\w+\.h\b/g, "")),
+      `la tarima creció hasta el alto del mueble: \`${args}\``,
+    );
+  }
 
-  for (const [w, d, h] of [[1.2, 0.8, 1.4], [0.9, 0.6, 1.2], [1.6, 1.0, 1.8]]) {
-    const c = M.cotasDeExhibidor(w, d, h);
+  for (const [w, d, h] of [[1.2, 0.8, 1.4], [1.0, 0.8, 1.1], [1.6, 1.2, 1.8], [0.9, 0.6, 1.2]]) {
+    // La cubierta deja pasar la uña del montacargas y no se come el mueble.
+    const cero = M.cotasDeEstiba(w, d, h);
     const donde = `${w}×${d}×${h}`;
-    assert.ok(c.alturas.length >= 2, `${donde}: el exhibidor se quedó sin bandejas`);
-    assert.ok(c.topeDeCuerpo < h, `${donde}: el cuerpo se comió el header`);
-    for (let i = 0; i < c.alturas.length; i++) {
-      assert.ok(c.alturas[i] < c.topeDeCuerpo, `${donde}: bandeja por encima del cuerpo`);
-      // Ninguna bandeja se pisa con la de arriba: es exactamente el defecto
-      // que escondía el producto adentro del mueble.
-      const arriba = c.alturas[i + 1] ?? c.topeDeCuerpo;
+    assert.ok(cero.cubierta > 0 && cero.cubierta < h, `${donde}: la cubierta no está entre el piso y el tope`);
+    assert.ok(
+      cero.cubierta - M.ESTIBA.tabla * 2 > 0.04,
+      `${donde}: se cerró el hueco de los travesaños, esto es un cajón de madera`,
+    );
+    // El enlistonado deja luz: sin luz la cubierta es una tapa.
+    for (const tablas of [cero.zDeTablas, cero.zDePiso]) {
+      assert.ok(tablas.length >= 2, `${donde}: enlistonado de una sola tabla`);
       assert.ok(
-        arriba - c.alturas[i] >= c.altoLibre,
-        `${donde}: sobre la bandeja ${i} no cabe lo que se dice que cabe`,
+        tablas.length * M.ESTIBA.anchoDeTabla < d,
+        `${donde}: las tablas cubren el fondo entero, la cubierta quedó maciza`,
+      );
+      for (let i = 1; i < tablas.length; i++) {
+        assert.ok(
+          tablas[i] - tablas[i - 1] >= M.ESTIBA.anchoDeTabla - 1e-9,
+          `${donde}: dos tablas se pisan`,
+        );
+      }
+      assert.ok(
+        Math.abs(tablas[0]) + M.ESTIBA.anchoDeTabla / 2 <= d / 2 + 1e-9,
+        `${donde}: la tabla del filo se sale de la tarima`,
       );
     }
-    assert.ok(c.ancho < w && c.fondo < d, `${donde}: la bandeja se sale de los costados`);
+
+    for (const rubro of ["Galletas", "Gaseosas", "Atún", "Snacks", undefined]) {
+      const e = P.empaqueQueEntra(rubro, Math.max(0.05, h - M.ESTIBA.alto));
+      assert.ok(e, `${donde}: no entra ningún empaque sobre la tarima`);
+      const c = M.cotasDeEstiba(w, d, h, e.alto);
+      const caso = `${donde} ${rubro ?? "sin rubro"}`;
+
+      // La mercancía se apila AL RAS: el primer tendido apoya en la cubierta.
+      assert.equal(c.capas[0], c.cubierta, `${caso}: el primer tendido no apoya en la tarima`);
+      assert.ok(c.capas.length >= 1, `${caso}: la estiba se quedó sin tendidos`);
+      // La torre no pasa el alto del espacio contratado: ese alto es el que
+      // mira el chequeo de choques y el que se le cobra a la marca.
+      assert.ok(c.techo <= h + 1e-9, `${caso}: la torre sobresale del espacio (${c.techo} > ${h})`);
+
+      for (let i = 0; i < c.capas.length; i++) {
+        const arriba = c.capas[i + 1] ?? c.techo;
+        const libre = arriba - c.capas[i];
+        assert.ok(libre > 0, `${caso}: el tendido ${i} no deja alto libre`);
+        if (i + 1 < c.capas.length) {
+          assert.ok(
+            Math.abs(libre - c.paso) < 1e-9,
+            `${caso}: los tendidos no suben de a un paso parejo`,
+          );
+        }
+        // Y acá está el defecto que se vio en pantalla: lo que se para encima
+        // del tendido es lo que `ProductoEnMueble` elige para ESE alto libre,
+        // y si sobra aire la torre sale flotando en pisos separados.
+        const puesto = P.empaqueQueEntra(rubro, libre);
+        assert.ok(puesto, `${caso}: sobre el tendido ${i} no entra nada`);
+        assert.ok(
+          libre - puesto.alto <= 0.02,
+          `${caso}: sobre el tendido ${i} quedan ${((libre - puesto.alto) * 100).toFixed(1)} cm de aire: la torre flota`,
+        );
+      }
+
+      // Cargada hasta el filo, y sin pasarse de la tarima: una estiba de
+      // promoción no viene con una cajita en el centro.
+      assert.ok(c.ancho <= w && c.fondo <= d, `${caso}: la mercancía se sale de la tarima`);
+      assert.ok(c.ancho > w * 0.9 && c.fondo > d * 0.9, `${caso}: la mercancía no llega al filo`);
+    }
   }
+
+  // Una estiba de catálogo lleva VARIOS tendidos: con uno solo esto es una
+  // tarima con una caja encima.
+  const galletas = M.cotasDeEstiba(1.2, 0.8, 1.4, P.empaqueDeRubro("Galletas").alto);
+  assert.ok(galletas.capas.length >= 3, "la estiba de catálogo se quedó en un tendido");
 });
 
 prueba("el mostrador de servicio tiene DOS NIVELES", () => {
