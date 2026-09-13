@@ -61,10 +61,10 @@ import re
 import threading
 import time
 import unicodedata
-
-from app.services.layout_lookup import es_comercializable
 from collections import OrderedDict
 from datetime import date, datetime, timezone
+
+from app.services.layout_lookup import es_comercializable
 
 log = logging.getLogger("recabra.plataforma.metricas")
 

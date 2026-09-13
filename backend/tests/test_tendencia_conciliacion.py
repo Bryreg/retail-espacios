@@ -278,7 +278,8 @@ def _filas_snapshot(slug=None, periodo=None):
 #   PUN-01  punta                  -> NAVE-PUN-01
 #   GON-01  góndola DOBLE          -> NAVE-GON-01 + NAVE-GON-01-B   (dos caras)
 #   GON-02  góndola mural          -> NAVE-GON-02
-#   CHK-01  checkout (sin bandera)  -> NAVE-CHK-01
+#   BAT-01  batea (sin bandera)     -> NAVE-BAT-01
+#   CAJ-01  checkout               -> (ninguna: el tipo no se vende)
 #
 #   caras = 5
 #
@@ -289,7 +290,7 @@ def _filas_snapshot(slug=None, periodo=None):
 #   C2 Bimbo       NAVE-GON-01     M-2 .. M-2      200.000   (termina en M-2)
 #   C3 Alpina      NAVE-GON-02     M-2 .. M        100.000   (cruza los TRES)
 #   C4 Bimbo       NAVE-GON-01-B   M-1 .. M        400.000   (empieza en M-1)
-#   C5 Nutresa     NAVE-CHK-01     M   .. M        600.000   (sólo M)
+#   C5 Nutresa     NAVE-BAT-01     M   .. M        600.000   (sólo M)
 #   C6 Alpina      NAVE-PUN-01     M   .. M        250.000   (sólo M)
 #   C7 Fantasma SA FANTASMA-99     M-1 .. M-1      700.000   (NO está en el plano)
 #   C8 Cancelada   NAVE-GON-01     M-2 .. M      9.999.999   is_active=False
@@ -310,7 +311,7 @@ def _filas_snapshot(slug=None, periodo=None):
 #       top: Alpina 1, Bimbo 1, Fantasma SA 1 → empate, orden alfabético
 #
 #  M  : activos C3,C4,C5,C6 = 4 contratos
-#       ocupadas {NAVE-GON-02, NAVE-GON-01-B, NAVE-CHK-01, NAVE-PUN-01} = 4
+#       ocupadas {NAVE-GON-02, NAVE-GON-01-B, NAVE-BAT-01, NAVE-PUN-01} = 4
 #                                                     → 4/5 = 80.0 %
 #       canon_total = 100.000+400.000+600.000+250.000 = 1.350.000
 #       canon promedio = 1.350.000/4 = 337.500,00
@@ -323,7 +324,10 @@ _PLANO_ACME = [
     {"code": "PUN-01", "type": "punta", "sede": "NAVE"},
     {"code": "GON-01", "type": "gondola", "gondolaType": "double", "sede": "NAVE"},
     {"code": "GON-02", "type": "gondola", "gondolaType": "wall", "sede": "NAVE"},
-    {"code": "CHK-01", "type": "checkout", "sede": "NAVE"},
+    {"code": "BAT-01", "type": "batea", "sede": "NAVE"},
+    # Y una caja registradora, que NO cuenta: lo decide el TIPO, no la
+    # bandera — un plano viejo tampoco la trae.
+    {"code": "CAJ-01", "type": "checkout", "sede": "NAVE"},
 ]
 
 ESC1 = {
@@ -348,7 +352,7 @@ def _escenario_serie(client, monkeypatch):
         ("NAVE-GON-01",   "Bimbo",       d2, h2,   200_000.0, True),
         ("NAVE-GON-02",   "Alpina",      d2, h0,   100_000.0, True),
         ("NAVE-GON-01-B", "Bimbo",       d1, h0,   400_000.0, True),
-        ("NAVE-CHK-01",   "Nutresa",     d0, h0,   600_000.0, True),
+        ("NAVE-BAT-01",   "Nutresa",     d0, h0,   600_000.0, True),
         ("NAVE-PUN-01",   "Alpina",      d0, h0,   250_000.0, True),
         ("FANTASMA-99",   "Fantasma SA", d1, h1,   700_000.0, True),
         ("NAVE-GON-01",   "Cancelada",   d2, h0, 9_999_999.0, False),
@@ -499,12 +503,13 @@ def test_consolidado_usuarios_son_distintos(client, monkeypatch):
 # 3. Fase 7 — agregados EXACTOS por mes en el histórico, sin umbral
 # ════════════════════════════════════════════════════════════════════════════
 #
-# ACME, sede NAVE: PUN-01, PUN-02, GON-01 (doble), CHK-01 → 5 caras
+# ACME, sede NAVE: PUN-01, PUN-02, GON-01 (doble), BAT-01 → 5 caras
+#   (y una CAJ-01, checkout, que no cuenta: el tipo no se vende)
 #   A1 Alpina   NAVE-PUN-01     M-2 .. M-2    100
 #   A2 Bimbo    NAVE-PUN-02     M-2 .. M-2    200
 #   A3 Alpina   NAVE-GON-01     M-1 .. M-1    300
 #   A4 Bimbo    NAVE-GON-01-B   M-1 .. M-1    400
-#   A5 Nutresa  NAVE-CHK-01     M-1 .. M      500
+#   A5 Nutresa  NAVE-BAT-01     M-1 .. M      500
 #
 # BETA, sede B: E-01, E-02 → 2 caras
 #   B1 Nutresa  B-E-01          M-2 .. M-2   1000
@@ -514,7 +519,7 @@ def test_consolidado_usuarios_son_distintos(client, monkeypatch):
 #   acme M-2: 2 contratos. ingreso 300,00, canon 150,00, top Alpina 1 / Bimbo 1
 #             ocupadas 2/5 = 40.0 %
 #   acme M-1: 3 contratos. canon_total 1.200, promedio 400,00
-#             ocupadas {GON-01, GON-01-B, CHK-01} 3/5 = 60.0 %
+#             ocupadas {GON-01, GON-01-B, BAT-01} 3/5 = 60.0 %
 #   acme M  : 1 contrato. ingreso 500,00, canon 500,00, top Nutresa 1
 #             ocupadas 1/5 = 20.0 %
 #
@@ -533,7 +538,10 @@ _PLANO_K = [
     {"code": "PUN-01", "type": "punta", "sede": "NAVE"},
     {"code": "PUN-02", "type": "punta", "sede": "NAVE"},
     {"code": "GON-01", "type": "gondola", "gondolaType": "double", "sede": "NAVE"},
-    {"code": "CHK-01", "type": "checkout", "sede": "NAVE"},
+    {"code": "BAT-01", "type": "batea", "sede": "NAVE"},
+    # Y una caja registradora, que NO cuenta: lo decide el TIPO, no la
+    # bandera — un plano viejo tampoco la trae.
+    {"code": "CAJ-01", "type": "checkout", "sede": "NAVE"},
 ]
 
 
@@ -550,7 +558,7 @@ def _escenario_k3(client, monkeypatch):
         ("NAVE-PUN-02",   "Bimbo",   d2, h2, 200.0, True),
         ("NAVE-GON-01",   "Alpina",  d1, h1, 300.0, True),
         ("NAVE-GON-01-B", "Bimbo",   d1, h1, 400.0, True),
-        ("NAVE-CHK-01",   "Nutresa", d1, h0, 500.0, True),
+        ("NAVE-BAT-01",   "Nutresa", d1, h0, 500.0, True),
     ])
     _sembrar("beta", {"B": [
         {"code": "E-01", "type": "punta", "sede": "B"},
@@ -656,7 +664,7 @@ def test_saneo_del_proveedor_en_la_serie(client, monkeypatch):
     _sembrar("acme", {"NAVE": _PLANO_K}, [
         ("NAVE-PUN-01", SUCIO, d0, h0, 100.0, True),
         ("NAVE-PUN-02", SUCIO, d0, h0, 200.0, True),
-        ("NAVE-CHK-01", SUCIO, d0, h0, 300.0, True),
+        ("NAVE-BAT-01", SUCIO, d0, h0, 300.0, True),
     ])
     consola = _operador_sin_membresias(ids, monkeypatch)
     cab = _cab(consola["token"])
@@ -690,7 +698,7 @@ def _escenario_congelado(client, monkeypatch):
         ("NAVE-PUN-02",   "Bimbo",   d1, h1, 200.0, True),
         ("NAVE-GON-01",   "Nutresa", d1, h1, 300.0, True),
         ("NAVE-GON-01-B", "Alpina",  d0, h0, 100.0, True),
-        ("NAVE-CHK-01",   "Bimbo",   d0, h0, 200.0, True),
+        ("NAVE-BAT-01",   "Bimbo",   d0, h0, 200.0, True),
         ("NAVE-PUN-02",   "Nutresa", d0, h0, 300.0, True),
     ])
     consola = _operador_sin_membresias(ids, monkeypatch)
@@ -710,7 +718,7 @@ def test_mes_pasado_queda_congelado(client, monkeypatch):
     assert antes["ingreso_contratado_mes"] == 600.0
     assert antes["capturado_en"] is not None
 
-    _sembrar("acme", {}, [("NAVE-CHK-01", "Tardio SA", d1, h1, 5000.0, True)])
+    _sembrar("acme", {}, [("NAVE-BAT-01", "Tardio SA", d1, h1, 5000.0, True)])
     _metricas(client, cab, m1)
 
     despues = _punto(_tendencia(client, cab, cliente="acme", meses=3), m1)
@@ -978,7 +986,7 @@ def test_BUG_consolidado_congelado_no_incluye_al_cliente_que_llego_despues(
     _sembrar("acme", {"NAVE": _PLANO_K}, [
         ("NAVE-PUN-01", "Alpina",  d1, h1, 100.0, True),
         ("NAVE-PUN-02", "Bimbo",   d1, h1, 200.0, True),
-        ("NAVE-CHK-01", "Nutresa", d1, h1, 900.0, True),
+        ("NAVE-BAT-01", "Nutresa", d1, h1, 900.0, True),
     ])
 
     # 3) Alguien mira M-1: acme recibe SU fila.

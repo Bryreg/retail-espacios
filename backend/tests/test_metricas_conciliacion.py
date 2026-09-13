@@ -90,8 +90,11 @@ _NORTE_N1 = [
     # Columna marcada como infraestructura: NO es inventario.  -> (ninguna)
     {"code": "COL-01", "type": "columna", "sede": "N1", "rentable": False},
     # Sin la bandera `rentable`: ausente significa comercializable (regla
-    # retrocompatible de `isRentable`).                        -> N1-CHK-01
-    {"code": "CHK-01", "type": "checkout", "sede": "N1"},
+    # retrocompatible de `isRentable`).                        -> N1-BAT-01
+    {"code": "BAT-01", "type": "batea", "sede": "N1"},
+    # Y un mueble que no se vende NUNCA, aunque tampoco traiga bandera: el TIPO
+    # manda antes que la bandera.                              -> (ninguna)
+    {"code": "CAJ-01", "type": "checkout", "sede": "N1"},
 ]
 _NORTE_N2 = [{"code": "PUN-01", "type": "punta", "sede": "N2"}]
 # Una sede cuyo plano se guardó vacío NO es una "sede con plano".
@@ -129,7 +132,7 @@ _CONTRATOS_NORTE = [
     ("FANTASMA-99", "Alpina",   "2026-09-01", "2026-09-30",   700_000.00, True),
     # (e) vencido: termina el día ANTERIOR a `desde`. En septiembre no cuenta;
     #     en agosto sí (es la mitad de la prueba de período).
-    ("N1-CHK-01",   "Bavaria",  "2026-08-01", "2026-08-31",   800_000.00, True),
+    ("N1-BAT-01",   "Bavaria",  "2026-08-01", "2026-08-31",   800_000.00, True),
     # (f) futuro: arranca el día SIGUIENTE a `hasta`.
     ("N1-GON-01",   "Postobon", "2026-10-01", "2026-10-31", 3_000_000.00, True),
     # (g) CANCELADO (is_active=False) aunque las fechas caigan justo adentro.
@@ -181,8 +184,9 @@ _CONTRATOS_SUSP = [
 # el número dos veces.
 
 # ── norte ── 4 contratos activos en 2026-09, se publica entero (como siempre).
-# caras: N1-PUN-01, N1-GON-01, N1-GON-01-B, N1-CHK-01, N2-PUN-01 = 5
-#        (COL-01 es `rentable: false`; N0 no tiene muebles)
+# caras: N1-PUN-01, N1-GON-01, N1-GON-01-B, N1-BAT-01, N2-PUN-01 = 5
+#        (COL-01 es `rentable: false`; CAJ-01 es checkout, que no se vende
+#         nunca; N0 no tiene muebles)
 # activos en 2026-09: (a) (b) (c) (d) = 4   [(h) es de agosto]
 # ocupadas: {N1-PUN-01, N1-GON-01-B, N2-PUN-01} = 3   (FANTASMA-99 no está)
 NORTE = {
@@ -352,11 +356,11 @@ SUMA_DE_USUARIOS_POR_FILA = 6
 # ── agosto, sólo norte ──
 # Activos del 1 al 31 de agosto: (c) 06-01..09-01 = 500.000, (e) 08-01..08-31 =
 # 800.000 y (h) 08-01..08-31 = 200.000. Sin umbral, agosto se publica exacto.
-# Ocupadas: N2-PUN-01 por (c) y N1-CHK-01 por (e). (h) es sobre FANTASMA-98, que
+# Ocupadas: N2-PUN-01 por (c) y N1-BAT-01 por (e). (h) es sobre FANTASMA-98, que
 # no está en el plano: suma plata, no ocupación.
 NORTE_AGOSTO = {
     "espacios_comercializables": 5,
-    "ocupacion_pct": 40.0,                      # 2/5 (N2-PUN-01 y N1-CHK-01)
+    "ocupacion_pct": 40.0,                      # 2/5 (N2-PUN-01 y N1-BAT-01)
     "canon_promedio_mensual": 500_000.00,       # 1.500.000 / 3
     "ingreso_contratado_mes": 1_500_000.00,     # 500.000 + 800.000 + 200.000
     "top_proveedores": [                        # empate 2-1, sin empate real
@@ -753,10 +757,13 @@ def test_gondola_doble_dos_caras_no_comercializable_ninguna_y_mural_una(panel):
     assert caras == {
         "N1-PUN-01",
         "N1-GON-01", "N1-GON-01-B",     # góndola doble: cara A y cara B (sufijo -B)
-        "N1-CHK-01",                    # `rentable` ausente = comercializable
+        "N1-BAT-01",                    # `rentable` ausente = comercializable
         "N2-PUN-01",
     }
     assert "N1-COL-01" not in caras     # `rentable: false` explícito
+    # El TIPO manda antes que la bandera: una caja registradora es un puesto de
+    # trabajo de la tienda y no entra al inventario ni sin bandera.
+    assert "N1-CAJ-01" not in caras
     assert _m(cuerpo, "norte")["espacios_comercializables"] == len(caras) == 5
 
     # La góndola MURAL de susp aporta UNA sola cara.

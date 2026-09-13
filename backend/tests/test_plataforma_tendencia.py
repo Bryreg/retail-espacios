@@ -41,7 +41,10 @@ _NAVE = [
     {"code": "GON-01", "type": "gondola", "gondolaType": "double", "sede": "NAVE"},
     {"code": "GON-02", "type": "gondola", "gondolaType": "wall", "sede": "NAVE"},
     {"code": "COL-01", "type": "columna", "sede": "NAVE", "rentable": False},
-    {"code": "CHK-01", "type": "checkout", "sede": "NAVE"},
+    {"code": "BAT-01", "type": "batea", "sede": "NAVE"},
+    # Y una caja registradora, que NO cuenta: lo decide el TIPO, no la
+    # bandera — un plano viejo tampoco la trae.
+    {"code": "CAJ-01", "type": "checkout", "sede": "NAVE"},
 ]
 _SUR = [{"code": "PUN-01", "type": "punta", "sede": "SUR"}]
 

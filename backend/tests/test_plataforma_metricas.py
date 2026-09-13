@@ -30,7 +30,8 @@ import pytest
 #              GON-01     góndola doble SIN faceB    -> NAVE-GON-01 + NAVE-GON-01-B
 #              GON-02     góndola mural (una cara)   -> NAVE-GON-02
 #              COL-01     rentable: false            -> NO cuenta
-#              CHK-01     sin la bandera `rentable`  -> SÍ cuenta (ausente = vendible)
+#              BAT-01     sin la bandera `rentable`  -> SÍ cuenta (ausente = vendible)
+#              CAJ-01     checkout                   -> NO cuenta (el TIPO no se vende)
 #   sede SUR   PUN-01                                -> SUR-PUN-01
 #   sede VACIA plano guardado sin muebles            -> NO es "sede con plano"
 #
@@ -51,7 +52,11 @@ _NAVE = [
     {"code": "GON-02", "type": "gondola", "gondolaType": "wall", "sede": "NAVE"},
     {"code": "COL-01", "type": "columna", "sede": "NAVE", "rentable": False},
     # Sin la bandera: `isRentable` dice que sí. Sólo un `false` explícito excluye.
-    {"code": "CHK-01", "type": "checkout", "sede": "NAVE"},
+    {"code": "BAT-01", "type": "batea", "sede": "NAVE"},
+    # Y un mueble que NO se vende nunca, aunque tampoco traiga la bandera: una
+    # caja registradora es un puesto de trabajo de la tienda. Antes contaba,
+    # porque la regla miraba sólo la bandera y los planos viejos no la traen.
+    {"code": "CAJ-01", "type": "checkout", "sede": "NAVE"},
 ]
 _SUR = [{"code": "PUN-01", "type": "punta", "sede": "SUR"}]
 
@@ -65,7 +70,7 @@ _CONTRATOS_ACME = [
     # puede contar como cara ocupada (el denominador no lo incluye).
     ("FANTASMA-01", "Alpina", "2026-09-10", "2026-09-20", 400_000.0, True),
     ("NAVE-GON-02", "Nutresa", "2026-10-01", "2026-10-31", 9_999_999.0, True),   # futuro
-    ("NAVE-CHK-01", "Bimbo", "2026-07-01", "2026-08-31", 8_888_888.0, True),     # vencido
+    ("NAVE-BAT-01", "Bimbo", "2026-07-01", "2026-08-31", 8_888_888.0, True),     # vencido
     ("NAVE-GON-01", "Bimbo", "2026-09-01", "2026-09-30", 7_777_777.0, False),    # cancelado
 ]
 
@@ -83,7 +88,7 @@ _CONTRATOS_BETA = [
 ]
 
 # Lo que tiene que dar ACME, calculado a mano:
-ACME_CARAS = 6           # PUN-01, GON-01, GON-01-B, GON-02, CHK-01, SUR-PUN-01
+ACME_CARAS = 6           # PUN-01, GON-01, GON-01-B, GON-02, BAT-01, SUR-PUN-01
 ACME_OCUPADAS = 3        # NAVE-PUN-01, NAVE-GON-01-B, SUR-PUN-01 (FANTASMA no está en el plano)
 ACME_INGRESO = 3_900_000.0
 ACME_CONTRATOS = 4
@@ -330,7 +335,9 @@ def test_gondola_doble_suma_dos_caras_y_el_no_comercializable_ninguna(client, mo
         # el tipo; `faceB` sólo guarda los datos comerciales de esa cara.
         "NAVE-GON-01", "NAVE-GON-01-B",
         "NAVE-GON-02",                     # mural: sólo A
-        "NAVE-CHK-01",                     # `rentable` ausente = comercializable
+        "NAVE-BAT-01",                     # `rentable` ausente = comercializable
+        # NAVE-CAJ-01 no está: una caja registradora no es espacio que se venda,
+        # y eso lo decide el TIPO, no la bandera que el plano no trae.
         "SUR-PUN-01",
     }
     assert "NAVE-COL-01" not in caras       # `rentable: false` explícito
