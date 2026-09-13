@@ -1071,36 +1071,66 @@ prueba("lo que entra parado se para: una batea no es un pozo", () => {
   );
 });
 
-prueba("el stand de frutas tiene bandejas INCLINADAS y escalonadas", () => {
-  // Era un mesón macizo con un cajón plano arriba: una mesa con cosas encima.
-  // La ficha del fabricante da escalones inclinados con cajones de cosecha —y
-  // las dos cosas son de función: la inclinación para mirar la fruta desde
-  // arriba, el escalón para que la bandeja de atrás no quede tapada, que es
-  // media cara vendible.
+prueba("el stand de frutas es una ISLA DE DOS CARAS", () => {
+  // Primero fue un mesón con un cajón plano —una mesa con cosas encima—, y
+  // después un mueble de UNA cara con paneles ciegos de madera mirando al
+  // pasillo. La ficha del fabricante da una isla: espina central y, a cada
+  // lado, sus dos escalones. Una cara sola desperdicia la mitad del frente
+  // vendible, que es exactamente lo que se le está vendiendo al proveedor.
   assert.match(medidas, /export function bandejasDeStand/, "se perdieron las bandejas del stand");
   const mesh = cuerpoDe("function StandFrutasMesh(", "function CheckoutMesh(");
   assert.match(mesh, /<StandFrutasReal/, "el stand volvió a dibujarse dentro del editor");
-  assert.match(mesh, /rotation=\{\[b\.caida, 0, 0\]\}/, "las bandejas del stand volvieron a ser planas");
+  assert.match(mesh, /rotation=\{\[b\.caida, 0, 0\]\}/, "los escalones del stand volvieron a ser planos");
   assert.match(mesh, /<VolcadoDeProducto/, "el stand se quedó sin fruta");
 
   for (const [w, d, h] of [[1.5, 1.2, 0.95], [1.0, 0.8, 0.9], [2.2, 1.4, 1.1]]) {
     const b = M.bandejasDeStand(w, d, h);
     const donde = `${w}×${d}×${h}`;
-    assert.equal(b.length, 2, `${donde}: el stand dejó de ser escalonado`);
-    assert.ok(b[1].y > b[0].y, `${donde}: la bandeja de atrás no sube`);
-    assert.ok(b[1].z > b[0].z, `${donde}: la bandeja de atrás no está atrás`);
-    assert.ok(b[1].y < h, `${donde}: la bandeja de arriba se salió del mueble`);
-    for (const t of b) {
-      assert.ok(t.caida > 0, `${donde}: bandeja sin inclinación`);
-      assert.ok(t.cajones >= 1, `${donde}: bandeja sin cajones`);
-      // Las bandejas no se pisan entre sí ni se salen por el fondo.
-      assert.ok(t.z - t.fondo / 2 >= -d / 2 - 1e-9, `${donde}: bandeja fuera por el frente`);
-      assert.ok(t.z + t.fondo / 2 <= d / 2 + 1e-9, `${donde}: bandeja fuera por el fondo`);
-      // El cajón va lleno: con una capa en el fondo, la pared lo tapa.
-      assert.ok(t.altoLibre >= M.STAND_FRUTAS.cajon.alto,
-        `${donde}: el cajón de cosecha vuelve a quedar a medio llenar`);
+    assert.equal(b.length, 4, `${donde}: el stand dejó de tener dos caras con dos escalones`);
+
+    for (const lado of [-1, 1]) {
+      const cara = b.filter((t) => t.lado === lado);
+      assert.equal(cara.length, 2, `${donde}: la cara ${lado} no tiene sus dos escalones`);
+      const [bajo, alto] = cara[0].y < cara[1].y ? cara : [cara[1], cara[0]];
+      assert.ok(alto.y > bajo.y, `${donde}: la cara ${lado} no escalona`);
+      // El escalón bajo va ADELANTE (más lejos de la espina) y el alto atrás,
+      // contra la espina. Al revés, el de atrás tapa al de adelante.
+      assert.ok(
+        Math.abs(bajo.z) > Math.abs(alto.z),
+        `${donde}: en la cara ${lado} el escalón alto se adelantó y tapa al bajo`,
+      );
+      for (const t of cara) {
+        // Cae hacia SU pasillo: con el signo cambiado, la fruta de una cara
+        // se derrama hacia adentro del mueble.
+        assert.ok(t.caida * lado > 0, `${donde}: la cara ${lado} cae para el lado equivocado`);
+        assert.ok(t.cajones >= 1, `${donde}: escalón sin cajones`);
+        assert.ok(t.y < h, `${donde}: escalón fuera del mueble por arriba`);
+        assert.ok(
+          Math.abs(t.z) + t.fondo / 2 <= d / 2 + 1e-9,
+          `${donde}: el escalón de la cara ${lado} se sale por el costado`,
+        );
+        // El cajón va lleno: con una capa en el fondo, la pared lo tapa.
+        assert.ok(
+          t.altoLibre >= M.STAND_FRUTAS.cajon.alto,
+          `${donde}: el cajón de cosecha vuelve a quedar a medio llenar`,
+        );
+      }
     }
+    // Las dos caras son simétricas respecto de la espina.
+    const izq = b.filter((t) => t.lado === -1).map((t) => t.y).sort();
+    const der = b.filter((t) => t.lado === 1).map((t) => t.y).sort();
+    assert.deepEqual(izq, der, `${donde}: las dos caras no están a la misma altura`);
   }
+});
+
+prueba("la isla de frutas no se para sobre postes", () => {
+  // Cuatro postes asomando por encima de las cubiertas la hacían leer como
+  // andamio. En la ficha la estructura es baja: zócalo y espina, y nada por
+  // arriba salvo el peine de pinzas de precio.
+  const stand = sinComentarios(leer(join(muebles, "StandFrutasReal.tsx")));
+  assert.ok(!/parantes|postes/i.test(stand), "volvieron los postes del stand");
+  assert.match(stand, /espina/, "se perdió la espina central, que es lo que hace la isla");
+  assert.match(stand, /STAND_FRUTAS\.respaldo/, "se perdió el respaldo donde va el peine de precios");
 });
 
 prueba("el mural hereda el arte del proveedor, no tiene un camino propio", () => {

@@ -7,22 +7,24 @@ import { STAND_FRUTAS, bandejasDeStand } from "./medidas";
  *
  * ## Qué lo hacía no parecerse
  *
- * Era un **mesón macizo con un cajón poco profundo arriba**: la fruta se
- * volcaba sobre una tabla plana rodeada de costillas de madera. Eso no es un
- * exhibidor de frutas, es una mesa con cosas encima. La ficha del fabricante
- * da otra forma, y las tres piezas que la componen son de función, no de
- * adorno:
+ * Primero fue un mesón macizo con un cajón plano arriba: una mesa con cosas
+ * encima. Después se le pusieron los escalones inclinados, y seguía sin
+ * parecerse, porque le faltaba lo que decide el mueble entero:
  *
- * 1. **Bandejas INCLINADAS.** La fruta suelta se mira desde arriba. Sobre un
- *    plano horizontal, la fila de adelante esconde todo lo que hay detrás.
- * 2. **ESCALONADAS.** Sin escalón, la bandeja de atrás queda tapada por la de
- *    adelante y el mueble pierde la mitad de su frente vendible — que es
- *    exactamente lo que se le está vendiendo al proveedor.
- * 3. **Con CAJONES.** La fruta no se vuelca sobre la madera: llega en cajón y
- *    se exhibe en el cajón. Es lo que hace que el mueble se lea como frutería.
- *
- * Y el riel porta-precios en el filo de cada escalón, que en una frutería es
- * donde va el precio por kilo.
+ * 1. **Es una ISLA DE DOS CARAS.** Una espina central y, a cada lado, sus dos
+ *    escalones. Con una sola cara —y paneles ciegos de madera mirando al
+ *    pasillo, que es lo que teníamos— se desperdicia la mitad del frente
+ *    vendible, que es justamente lo que se le está vendiendo al proveedor.
+ * 2. **La cubierta de MADERA es la superficie dominante**, un plano ancho
+ *    inclinado que corre todo el largo, con los cajones apoyados encima en
+ *    fila apretada. Nosotros teníamos una bandeja angosta y verde.
+ * 3. **Los cajones van llenos y rebosados.** Con una capa de fruta en el
+ *    fondo, la pared del cajón la tapa y desde el pasillo el mueble se ve
+ *    vacío. Es el mismo defecto que tenía la batea.
+ * 4. **Riel de precios en el filo de cada escalón y peine de pinzas arriba**,
+ *    sobre el respaldo del escalón alto.
+ * 5. **La estructura es negra y BAJA**: zócalo y perfiles, nada por encima de
+ *    las cubiertas. Cuatro postes asomando lo hacían leer como andamio.
  */
 
 export interface StandFrutasRealProps {
@@ -39,17 +41,17 @@ export const StandFrutasReal = memo(function StandFrutasReal({
   const m = useMemo(() => {
     const comun = { transparent: ghost, opacity: ghost ? 0.42 : 1 };
     return {
-      /** La madera clara de las bandejas. */
+      /** La cubierta: madera clara de tablero, que es la cara del mueble. */
       madera: new THREE.MeshStandardMaterial({
-        color: "#c8a465", metalness: 0, roughness: 0.78, ...comun,
+        color: "#c49a5f", metalness: 0, roughness: 0.72, ...comun,
       }),
-      /** La estructura: ángulo de hierro negro, como el de la ficha. */
+      /** La estructura: perfil de hierro negro, como el de la ficha. */
       hierro: new THREE.MeshStandardMaterial({
-        color: "#22262b", metalness: 0.45, roughness: 0.55, ...comun,
+        color: "#1c2024", metalness: 0.4, roughness: 0.55, ...comun,
       }),
-      /** El cajón plástico de cosecha. */
+      /** El cajón de cosecha. */
       cajon: new THREE.MeshStandardMaterial({
-        color: "#2f4636", metalness: 0.05, roughness: 0.8, ...comun,
+        color: "#24382b", metalness: 0.05, roughness: 0.82, ...comun,
       }),
       estado: new THREE.MeshStandardMaterial({
         color: statusColor ?? "#64748b", metalness: 0.1, roughness: 0.6, ...comun,
@@ -58,56 +60,72 @@ export const StandFrutasReal = memo(function StandFrutasReal({
   }, [ghost, statusColor]);
 
   const bandejas = bandejasDeStand(w, d, h);
+  const espina = h * STAND_FRUTAS.escalonAlto + STAND_FRUTAS.respaldo;
 
   return (
     <group>
-      {/* ── El zócalo y los parantes ──────────────────────────────────────*/}
-      <mesh position={[0, STAND_FRUTAS.zocalo / 2, 0]} castShadow material={m.hierro}>
-        <boxGeometry args={[w - 0.06, STAND_FRUTAS.zocalo, d - 0.06]} />
+      {/* ── El zócalo negro ───────────────────────────────────────────────*/}
+      <mesh position={[0, STAND_FRUTAS.zocalo / 2, 0]} castShadow receiveShadow material={m.hierro}>
+        <boxGeometry args={[w - 0.05, STAND_FRUTAS.zocalo, d - 0.05]} />
       </mesh>
-      {([-1, 1] as const).flatMap((sx) =>
-        ([-1, 1] as const).map((sz) => (
+
+      {/* ── La espina central ─────────────────────────────────────────────
+          El alma del mueble: lo que sostiene los dos pares de escalones y los
+          separa. Termina en el respaldo del escalón alto, donde va el peine de
+          pinzas de precio. */}
+      <mesh
+        position={[0, STAND_FRUTAS.zocalo + (espina - STAND_FRUTAS.zocalo) / 2, 0]}
+        castShadow
+        receiveShadow
+        material={m.hierro}
+      >
+        <boxGeometry args={[w - 0.05, espina - STAND_FRUTAS.zocalo, 0.07]} />
+      </mesh>
+      {/* El peine de pinzas de precio, corrido por el remate de la espina. */}
+      {(() => {
+        const cuantas = Math.max(2, Math.round(w / 0.13));
+        return Array.from({ length: cuantas }, (_, i) => (
           <mesh
-            key={`${sx}${sz}`}
-            position={[
-              sx * (w / 2 - STAND_FRUTAS.marco / 2),
-              STAND_FRUTAS.zocalo + (h - STAND_FRUTAS.zocalo) / 2,
-              sz * (d / 2 - STAND_FRUTAS.marco / 2),
-            ]}
-            castShadow
+            key={i}
+            position={[-w / 2 + 0.05 + ((w - 0.1) * i) / (cuantas - 1), espina + 0.012, 0]}
             material={m.hierro}
           >
-            <boxGeometry
-              args={[STAND_FRUTAS.marco, h - STAND_FRUTAS.zocalo, STAND_FRUTAS.marco]}
-            />
+            <boxGeometry args={[0.035, 0.03, 0.09]} />
           </mesh>
-        )),
-      )}
+        ));
+      })()}
 
-      {/* ── Las bandejas escalonadas ──────────────────────────────────────
+      {/* ── Los cuatro escalones ──────────────────────────────────────────
           El grupo se pone PRIMERO en su altura y recién ahí se gira. Girando
-          desde el origen del mueble, una bandeja a 80 cm se corre veinte
-          centímetros en Z y los cajones salen por el costado — es el mismo
-          error que ya se pagó en el mural de vegetales. */}
+          desde el origen del mueble, un escalón a 80 cm se corre veinte
+          centímetros en Z y los cajones salen por el costado — el mismo error
+          que ya se pagó en el mural de vegetales. */}
       {bandejas.map((b, i) => (
         <group key={i} position={[0, b.y, b.z]} rotation={[b.caida, 0, 0]}>
-          {/* El plano de apoyo. */}
+          {/* La cubierta de madera. */}
           <mesh castShadow receiveShadow material={m.madera}>
-            <boxGeometry args={[b.ancho, 0.024, b.fondo]} />
+            <boxGeometry args={[b.ancho, STAND_FRUTAS.cubierta, b.fondo]} />
           </mesh>
 
-          {/* Los cajones de cosecha, en fila. Van dibujados como cajas
-              abiertas —cuatro paredes y un piso— porque un cajón cerrado
+          {/* Los cajones de cosecha, en fila apretada. Van dibujados como
+              cajas abiertas —cuatro paredes y un piso— porque un cajón cerrado
               esconde justo lo que se está exhibiendo. */}
           {Array.from({ length: b.cajones }, (_, k) => {
             const paso = b.ancho / b.cajones;
             const x = -b.ancho / 2 + paso * (k + 0.5);
             const largo = paso - STAND_FRUTAS.cajon.luz;
-            const fondo = b.fondo - 0.04;
+            // El cajón no cubre la cubierta entera: en la ficha queda una banda
+            // de madera a la vista delante de la fila, y es la que hace que el
+            // mueble se lea como frutería de tablero y no como una hilera de
+            // cajones flotando.
+            const fondo = b.fondo * 0.68;
             const alto = STAND_FRUTAS.cajon.alto;
             const p = STAND_FRUTAS.cajon.pared;
             return (
-              <group key={k} position={[x, 0.012 + alto / 2, 0]}>
+              <group
+                key={k}
+                position={[x, STAND_FRUTAS.cubierta / 2 + alto / 2, -b.lado * (b.fondo * 0.13)]}
+              >
                 <mesh position={[0, -alto / 2 + p / 2, 0]} material={m.cajon} castShadow>
                   <boxGeometry args={[largo, p, fondo]} />
                 </mesh>
@@ -125,42 +143,25 @@ export const StandFrutasReal = memo(function StandFrutasReal({
             );
           })}
 
-          {/* El riel porta-precios del filo: en una frutería es donde va el
-              precio por kilo, y es lo que remata visualmente el escalón. */}
+          {/* El riel de precios del filo: en una frutería es donde va el precio
+              por kilo, y es lo que remata visualmente el escalón. */}
           <mesh
-            position={[0, 0.012 + STAND_FRUTAS.porta / 2, -b.fondo / 2 - 0.008]}
+            position={[
+              0,
+              STAND_FRUTAS.cubierta / 2 + STAND_FRUTAS.porta / 2,
+              b.lado * (b.fondo / 2 + 0.009),
+            ]}
             material={m.hierro}
             castShadow
           >
-            <boxGeometry args={[b.ancho, STAND_FRUTAS.porta, 0.016]} />
+            <boxGeometry args={[b.ancho, STAND_FRUTAS.porta, 0.018]} />
           </mesh>
         </group>
       ))}
 
-      {/* Los costados de madera: cierran la silueta y atan las dos bandejas a
-          la estructura. Sin ellos, los escalones se ven flotando entre los
-          parantes y el mueble se lee como dos repisas sueltas. */}
-      {([-1, 1] as const).map((sx) => (
-        <mesh
-          key={sx}
-          position={[
-            sx * (w / 2 - STAND_FRUTAS.marco / 2 - 0.004),
-            STAND_FRUTAS.zocalo + (h * STAND_FRUTAS.bandejaAlta - STAND_FRUTAS.zocalo) / 2,
-            0,
-          ]}
-          castShadow
-          receiveShadow
-          material={m.madera}
-        >
-          <boxGeometry
-            args={[0.018, h * STAND_FRUTAS.bandejaAlta - STAND_FRUTAS.zocalo, d - STAND_FRUTAS.marco * 2]}
-          />
-        </mesh>
-      ))}
-
       {/* La franja de estado, en el zócalo del frente. */}
       <mesh position={[0, STAND_FRUTAS.zocalo * 0.55, -(d / 2 - 0.02)]} material={m.estado}>
-        <boxGeometry args={[w * 0.5, 0.03, 0.012]} />
+        <boxGeometry args={[w * 0.4, 0.028, 0.014]} />
       </mesh>
     </group>
   );

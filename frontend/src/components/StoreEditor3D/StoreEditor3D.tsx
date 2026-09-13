@@ -1759,10 +1759,12 @@ function StandFrutasMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: 
       {bandejas.map((b, i) => (
         // El producto va DENTRO del grupo que se inclina. Afuera, la fila de
         // atrás flota sobre el cajón y la de adelante se hunde en la madera.
+        // Y cada escalón lleva SU semilla: con una sola, los cuatro salen
+        // clonados y la isla se ve como un espejo de sí misma.
         <group key={i} position={[0, b.y, b.z]} rotation={[b.caida, 0, 0]}>
           <VolcadoDeProducto
-            ancho={b.ancho - 0.06} fondo={b.fondo - 0.09}
-            y={0.012 + 0.016} material={ghost ? null : (facePaint?.front ?? null)}
+            ancho={b.ancho - 0.05} fondo={b.fondo - 0.06}
+            y={0.03} material={ghost ? null : (facePaint?.front ?? null)}
             semilla={`${id}|stand${i}`} rubro={rubro || "Frutas"}
             altoLibre={b.altoLibre} ghost={ghost}
           />

@@ -600,6 +600,86 @@ export function geometriaTapaDeVidrio(
   });
 }
 
+/**
+ * Un MARCO de esquinas redondeadas, acostado: el bocel que rodea la bandeja de
+ * una caja registradora.
+ *
+ * En la ficha del fabricante esa moldura es lo primero que se ve de la mesa —
+ * una banda oscura y gorda que da la vuelta completa y dobla en curva en las
+ * puntas, con la bandeja clara hundida adentro—. Dibujado con cuatro barras
+ * rectas quedan cuatro esquinas vivas y el mueble se lee de chapa cortada; el
+ * radio en planta es justamente lo que hace que se lea como una moldura.
+ *
+ * Se dibuja como un rectángulo redondeado con otro adentro de agujero, y se
+ * extruye hacia arriba: alto = espesor de la moldura.
+ */
+export function geometriaMarcoRedondeado(
+  ancho: number, fondo: number, grosor: number, radio: number, alto: number,
+): THREE.BufferGeometry {
+  const firma =
+    `marcoredondo:${ancho.toFixed(4)}:${fondo.toFixed(4)}:${grosor.toFixed(4)}:${radio.toFixed(4)}:${alto.toFixed(4)}`;
+
+  return cacheada(firma, () => {
+    const rect = (w: number, d: number, r: number) => {
+      const rr = Math.max(0, Math.min(r, w / 2 - 0.001, d / 2 - 0.001));
+      const s = new THREE.Path();
+      s.moveTo(-w / 2 + rr, -d / 2);
+      s.lineTo(w / 2 - rr, -d / 2);
+      s.quadraticCurveTo(w / 2, -d / 2, w / 2, -d / 2 + rr);
+      s.lineTo(w / 2, d / 2 - rr);
+      s.quadraticCurveTo(w / 2, d / 2, w / 2 - rr, d / 2);
+      s.lineTo(-w / 2 + rr, d / 2);
+      s.quadraticCurveTo(-w / 2, d / 2, -w / 2, d / 2 - rr);
+      s.lineTo(-w / 2, -d / 2 + rr);
+      s.quadraticCurveTo(-w / 2, -d / 2, -w / 2 + rr, -d / 2);
+      return s;
+    };
+
+    const fuera = rect(ancho, fondo, radio);
+    const forma = new THREE.Shape(fuera.getPoints(48));
+    const g2 = Math.min(grosor, Math.min(ancho, fondo) / 2 - 0.002);
+    forma.holes.push(
+      new THREE.Path(rect(ancho - g2 * 2, fondo - g2 * 2, Math.max(0.002, radio - g2)).getPoints(48)),
+    );
+
+    const g = new THREE.ExtrudeGeometry(forma, { depth: alto, bevelEnabled: false });
+    g.rotateX(-Math.PI / 2);
+    g.translate(0, alto, 0);
+    g.computeVertexNormals();
+    return g;
+  });
+}
+
+/** El plano hundido de adentro del marco: la bandeja por donde corre la cinta.
+ *  Va con las mismas esquinas redondeadas que el bocel, o el rectángulo blanco
+ *  asoma por las cuatro puntas curvas. */
+export function geometriaBandejaRedondeada(
+  ancho: number, fondo: number, radio: number, espesor: number,
+): THREE.BufferGeometry {
+  const firma =
+    `bandejaredonda:${ancho.toFixed(4)}:${fondo.toFixed(4)}:${radio.toFixed(4)}:${espesor.toFixed(4)}`;
+
+  return cacheada(firma, () => {
+    const rr = Math.max(0, Math.min(radio, ancho / 2 - 0.001, fondo / 2 - 0.001));
+    const s = new THREE.Shape();
+    s.moveTo(-ancho / 2 + rr, -fondo / 2);
+    s.lineTo(ancho / 2 - rr, -fondo / 2);
+    s.quadraticCurveTo(ancho / 2, -fondo / 2, ancho / 2, -fondo / 2 + rr);
+    s.lineTo(ancho / 2, fondo / 2 - rr);
+    s.quadraticCurveTo(ancho / 2, fondo / 2, ancho / 2 - rr, fondo / 2);
+    s.lineTo(-ancho / 2 + rr, fondo / 2);
+    s.quadraticCurveTo(-ancho / 2, fondo / 2, -ancho / 2, fondo / 2 - rr);
+    s.lineTo(-ancho / 2, -fondo / 2 + rr);
+    s.quadraticCurveTo(-ancho / 2, -fondo / 2, -ancho / 2 + rr, -fondo / 2);
+
+    const g = new THREE.ExtrudeGeometry(s, { depth: espesor, bevelEnabled: false });
+    g.rotateX(-Math.PI / 2);
+    g.translate(0, espesor, 0);
+    g.computeVertexNormals();
+    return g;
+  });
+}
+
 /** La geometría de UNA ranura del parante. Se dibuja con `InstancedMesh`, así
  *  que un parante de 2 m con ranuras cada 25 mm son ~80 calados en una sola
  *  llamada de dibujo. */

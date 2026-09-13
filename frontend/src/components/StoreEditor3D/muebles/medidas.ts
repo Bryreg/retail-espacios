@@ -609,83 +609,96 @@ export function cotasDeMostrador(w: number, d: number, h: number): CotasDeMostra
 }
 
 /* ── La caja registradora ────────────────────────────────────────────────────
-   La ficha de catálogo de una de verdad manda una forma que el modelo no tenía:
+   Contra la ficha de catálogo de una de verdad. La forma tiene cinco rasgos y
+   los cinco se ven de lejos:
 
-   · **La mesa no es una tapa lisa.** Es una CAMA HUNDIDA —por donde corre la
-     cinta y donde el cliente descarga— rodeada de un bocel de goma oscuro que
-     da la vuelta completa. Ese contraste entre la bandeja clara y el marco
-     oscuro es lo que se ve desde el pasillo, mucho antes que la registradora.
-   · **La registradora va sobre una consola**, un pupitre de chapa doblada
-     apoyado en la mesa, y el poste de la pantalla NACE de esa consola.
-   · **Del lado del cajero, el sector de empaque**, más alto que la cama y con
-     una guarda parada atrás para que nada se caiga del otro lado.
-   · **Del lado del cliente, los estantes de impulso.** Son el espacio más caro
-     de toda la línea de cajas —chicles, pilas, revistas— y son ESPACIO
-     VENDIBLE: en un plano que se le muestra a un proveedor no pueden faltar.
-   · Un parachoques corrido a media altura, que es lo que come los carros. */
+   · **Es una L en planta.** La mesa larga con la cinta, y en el extremo de
+     salida una ESTACIÓN DE EMPAQUE perpendicular que se adelanta hacia el
+     cliente, más alta que la cama y con una guarda parada atrás. Modelada como
+     una barra recta, la caja se lee como un mostrador cualquiera.
+   · **El cuerpo es oscuro y las puntas claras.** Carcasa de chapa gris grafito
+     con dos paneles laterales claros y un parachoques corrido a media altura.
+     Nosotros lo teníamos al revés: cuerpo claro con molduras oscuras.
+   · **La mesa es una bandeja hundida dentro de un bocel gordo** que da la
+     vuelta completa y dobla EN CURVA en las puntas. Ese radio en planta es lo
+     que hace que se lea como moldura y no como chapa cortada.
+   · **Del lado del cliente el zócalo está ABIERTO**, en dos bahías grandes.
+     Ése es el espacio de impulso, y es lo más caro de la línea de cajas.
+   · **La registradora se apoya en una consola** —un pupitre de chapa doblada
+     con la cara inclinada— y el poste de la pantalla nace de esa consola. */
 
 export const CHECKOUT = {
-  /** Bocel de goma del perímetro de la mesa. */
-  bocel: 0.038,
-  /** Cuánto se hunde la cama respecto del bocel. */
-  hundido: 0.03,
-  /** Fracción del largo que se lleva la cama de la cinta; el resto es el
-   *  sector de empaque. */
-  fraccionDeCama: 0.58,
+  /** El bocel: espesor de la moldura, alto y radio de la esquina en planta. */
+  bocel: { grosor: 0.055, alto: 0.05, radio: 0.1 },
+  /** Cuánto se hunde la bandeja respecto de la cara de arriba del bocel. */
+  hundido: 0.032,
+  /** Cuánto del largo se lleva la estación de empaque, en el extremo. */
+  fraccionDeAla: 0.3,
+  /** Cuánto se retira del filo del cliente la mesa larga. Es lo que dibuja la
+   *  L: el ala de empaque sí llega hasta el filo. */
+  fraccionDeRetiro: 0.24,
   /** El pupitre de la registradora. */
-  consola: { ancho: 0.3, fondo: 0.32, alto: 0.24 },
+  consola: { ancho: 0.3, fondo: 0.3, alto: 0.2, respaldo: 0.16 },
   /** Poste y pantalla del punto de venta. */
-  poste: { radio: 0.018, alto: 0.4 },
-  pantalla: { ancho: 0.3, alto: 0.21, espesor: 0.024, caida: 0.22 },
-  /** Guarda parada al fondo del sector de empaque. */
-  guarda: 0.2,
+  poste: { radio: 0.016, alto: 0.38 },
+  pantalla: { ancho: 0.29, alto: 0.2, espesor: 0.022, caida: 0.2 },
+  /** Guarda parada al fondo del ala de empaque, y cuánto sube su plano. */
+  ala: { guarda: 0.22, sobrealto: 0.055, cajones: 3 },
   /** Zócalo retranqueado y parachoques corrido. */
-  zocalo: 0.09,
-  parachoques: 0.05,
-  /** Los estantes de impulso del lado del cliente. */
-  impulso: { fondo: 0.15, niveles: 3 },
+  zocalo: 0.085,
+  parachoques: 0.055,
+  /** Las bahías abiertas de impulso, del lado del cliente. */
+  impulso: { fondo: 0.2, bahias: 2 },
 } as const;
 
 export interface CotasDeCheckout {
-  /** Alto de la cara superior del bocel: la mesa. */
+  /** Alto de la cara de arriba del bocel: la mesa. */
   mesa: number;
-  /** Alto de la cama hundida por donde corre la cinta. */
+  /** Alto del plano hundido de la cinta. */
   cama: number;
-  /** Largo de la cama, y dónde está centrada. */
-  largoDeCama: number;
-  xDeCama: number;
-  /** El sector de empaque, del otro extremo. */
-  largoDeEmpaque: number;
-  xDeEmpaque: number;
+  /** La mesa larga: cuánto mide y dónde está. */
+  largoDeMesa: number;
+  xDeMesa: number;
+  fondoDeMesa: number;
+  zDeMesa: number;
+  /** La estación de empaque, en el extremo y a fondo completo. */
+  largoDeAla: number;
+  xDeAla: number;
+  /** Alto del plano de empaque: sube sobre la mesa. */
+  mesaDeAla: number;
   /** Dónde se apoya la consola de la registradora. */
   xDeConsola: number;
   zDeConsola: number;
   /** La cadena que sostiene la pantalla: tapa de la consola → punta del poste
    *  → centro de la pantalla. Van juntas y no sueltas porque el defecto que
-   *  arreglaron fue justamente calcularlas por separado: el poste medía
-   *  `posH * 0.75`, la pantalla se colocaba a `posH`, y quedaban veinticinco
-   *  centímetros de aire entre las dos. Compilaba. */
+   *  arreglaron fue calcularlas por separado: el poste medía `posH * 0.75`, la
+   *  pantalla se colocaba a `posH`, y quedaban veinticinco centímetros de aire
+   *  entre las dos. Compilaba. */
   yConsola: number;
   yPoste: number;
   yPantalla: number;
-  /** Alturas de los estantes de impulso, del lado del cliente. */
+  /** Alturas de los entrepaños de las bahías de impulso. */
   yDeImpulso: number[];
 }
 
 export function cotasDeCheckout(w: number, d: number, h: number): CotasDeCheckout {
   const mesa = h;
-  const cama = mesa - CHECKOUT.bocel - CHECKOUT.hundido;
-  const largoDeCama = Math.max(0.3, w * CHECKOUT.fraccionDeCama);
-  const largoDeEmpaque = Math.max(0.25, w - largoDeCama - 0.04);
+  const cama = mesa - CHECKOUT.hundido;
 
-  // La cama arranca del lado del cliente; el empaque queda del lado del
-  // cajero, que es el orden en el que se recorre una caja.
-  const xDeCama = -w / 2 + largoDeCama / 2 + 0.02;
-  const xDeEmpaque = w / 2 - largoDeEmpaque / 2 - 0.02;
+  const largoDeAla = entre(w * CHECKOUT.fraccionDeAla, 0.32, w * 0.45);
+  const largoDeMesa = Math.max(0.3, w - largoDeAla);
+  const retiro = entre(d * CHECKOUT.fraccionDeRetiro, 0.08, d * 0.35);
+  const fondoDeMesa = Math.max(0.2, d - retiro);
 
-  const desde = CHECKOUT.zocalo + 0.1;
-  const hasta = h - CHECKOUT.bocel - 0.12;
-  const n = Math.max(1, Math.min(CHECKOUT.impulso.niveles, Math.floor((hasta - desde) / 0.2) + 1));
+  const xDeMesa = -w / 2 + largoDeMesa / 2;
+  const xDeAla = w / 2 - largoDeAla / 2;
+  // La mesa larga se retira del filo del cliente; el ala llega hasta el filo.
+  // Ese escalón en planta ES la L.
+  const zDeMesa = -d / 2 + retiro + fondoDeMesa / 2;
+
+  const desde = CHECKOUT.zocalo + 0.09;
+  const hasta = h - CHECKOUT.bocel.alto - 0.14;
+  const n = Math.max(1, Math.min(CHECKOUT.impulso.bahias, Math.floor((hasta - desde) / 0.24) + 1));
   const paso = n > 1 ? (hasta - desde) / (n - 1) : 0;
   const yDeImpulso = hasta > desde
     ? Array.from({ length: n }, (_, i) => desde + i * paso)
@@ -697,13 +710,16 @@ export function cotasDeCheckout(w: number, d: number, h: number): CotasDeCheckou
   return {
     mesa,
     cama,
-    largoDeCama,
-    xDeCama,
-    largoDeEmpaque,
-    xDeEmpaque,
-    // El pupitre va entre la cama y el empaque, del lado del cajero.
-    xDeConsola: xDeCama + largoDeCama / 2 - CHECKOUT.consola.ancho / 2 - 0.02,
-    zDeConsola: d / 2 - CHECKOUT.consola.fondo / 2 - 0.03,
+    largoDeMesa,
+    xDeMesa,
+    fondoDeMesa,
+    zDeMesa,
+    largoDeAla,
+    xDeAla,
+    mesaDeAla: mesa + CHECKOUT.ala.sobrealto,
+    // El pupitre va del lado del cajero, cerca de la salida.
+    xDeConsola: xDeMesa + largoDeMesa / 2 - CHECKOUT.consola.ancho / 2 - 0.04,
+    zDeConsola: zDeMesa + fondoDeMesa / 2 - CHECKOUT.consola.fondo / 2 - 0.02,
     yConsola,
     yPoste,
     // La pantalla se APOYA en la punta del poste: su borde de abajo baja dos
@@ -757,37 +773,38 @@ export function cotasDeBatea(w: number, d: number, h: number) {
 }
 
 /* ── El stand de frutas y verduras ───────────────────────────────────────────
-   La ficha del fabricante da una forma muy concreta, y no es la de un cajón:
-   son BANDEJAS INCLINADAS ESCALONADAS —tres a cinco escalones— con CAJONES
-   PLÁSTICOS apoyados encima, riel porta-precios en el filo de cada escalón y
-   un cartel arriba.
+   La ficha del fabricante da una ISLA DE DOS CARAS, y eso cambia el mueble
+   entero:
 
-   Las tres cosas importan y ninguna es decorativa:
-
-   · **La inclinación.** La fruta suelta se mira desde arriba. Un plano
-     horizontal la esconde detrás de la fila de adelante.
-   · **El escalón.** Sin él, la bandeja de atrás queda tapada por la de
-     adelante, y el mueble pierde la mitad de su frente vendible.
-   · **Los cajones.** La fruta no se vuelca sobre la madera: llega en cajón y
-     se exhibe EN el cajón. Es lo que hace que el mueble se lea como frutería
-     y no como una mesa con cosas encima. */
+   · **Dos caras.** Una espina central, y a cada lado sus escalones. Un lado
+     solo, con paneles ciegos mirando al pasillo, desperdicia la mitad del
+     frente vendible — que es exactamente lo que se le está vendiendo al
+     proveedor.
+   · **La cubierta es de MADERA y es la superficie dominante.** Un plano ancho
+     inclinado que corre todo el largo, y los cajones apoyados encima en fila.
+   · **Los cajones van llenos y rebosados**, en una hilera apretada. Con una
+     capa de fruta en el fondo, la pared del cajón la tapa y el mueble se ve
+     vacío desde el pasillo.
+   · **Riel de precios en el filo de cada escalón** y **peine de pinzas arriba**,
+     sobre el respaldo del escalón alto. Es lo que remata el mueble.
+   · **La estructura es negra y baja**: zócalo y perfiles. Cuatro postes
+     asomando por encima de las cubiertas es lo que lo hacía leer como andamio.
+*/
 
 export const STAND_FRUTAS = {
-  /** Inclinación de la bandeja hacia el cliente, en radianes. */
-  caida: (14 * Math.PI) / 180,
-  /** El cajón plástico que se apoya en la bandeja. */
-  cajon: { alto: 0.14, largo: 0.5, luz: 0.02, pared: 0.014 },
-  /** Estructura: marco perimetral y zócalo. */
-  marco: 0.045,
-  zocalo: 0.1,
-  /** Alturas de las dos bandejas, como fracción del alto total. El escalón
-   *  entre las dos es corto a propósito: separadas, las bandejas se ven
-   *  flotando una sobre otra y el mueble deja de leerse como una superficie
-   *  escalonada continua, que es lo que es. */
-  bandejaBaja: 0.44,
-  bandejaAlta: 0.72,
-  /** Riel porta-precios del filo de cada bandeja. */
-  porta: 0.05,
+  /** Inclinación de la cubierta hacia el cliente, en radianes. */
+  caida: (15 * Math.PI) / 180,
+  /** El cajón de cosecha que se apoya en la cubierta. */
+  cajon: { alto: 0.15, largo: 0.42, luz: 0.015, pared: 0.013 },
+  /** Espesor de la cubierta de madera y del riel de precios del filo. */
+  cubierta: 0.03,
+  porta: 0.055,
+  /** Zócalo negro y alto de la espina central sobre el escalón alto. */
+  zocalo: 0.11,
+  respaldo: 0.16,
+  /** Reparto del alto: el escalón bajo y el alto, como fracción del total. */
+  escalonBajo: 0.52,
+  escalonAlto: 0.8,
 } as const;
 
 export interface BandejaDeStand {
@@ -797,30 +814,43 @@ export interface BandejaDeStand {
   fondo: number;
   /** Z del centro de la bandeja. */
   z: number;
-  /** Inclinación hacia el cliente, en radianes. */
+  /** Inclinación, con el signo del lado al que cae. */
   caida: number;
+  /** Hacia qué pasillo mira: -1 es el frente (-Z), +1 el otro. */
+  lado: 1 | -1;
   /** Cuánto se amontona dentro del cajón. */
   altoLibre: number;
   /** Cuántos cajones entran a lo ancho. */
   cajones: number;
 }
 
-/** Las dos bandejas escalonadas de un stand de frutas: la baja adelante, la
- *  alta atrás. Devuelve descripciones y no geometría, igual que el mural de
- *  vegetales, para que el producto lo dibuje el mismo `VolcadoDeProducto` que
- *  usan los demás muebles de volcado. */
+/** Los cuatro escalones de una isla de frutas: dos por cara, el bajo adelante
+ *  y el alto contra la espina. Devuelve descripciones y no geometría, igual
+ *  que el mural de vegetales, para que el producto lo dibuje el mismo
+ *  `VolcadoDeProducto` que usan los demás muebles de volcado. */
 export function bandejasDeStand(w: number, d: number, h: number): BandejaDeStand[] {
-  const ancho = Math.max(0.1, w - STAND_FRUTAS.marco * 2);
-  const fondo = Math.max(0.12, (d - STAND_FRUTAS.marco * 2 - 0.04) / 2);
+  const ancho = Math.max(0.1, w - 0.08);
+  // Cada cara se lleva la mitad del fondo, menos el espesor de la espina.
+  const porCara = Math.max(0.16, (d - 0.06) / 2);
+  const fondo = Math.max(0.12, porCara / 2);
   const cajones = Math.max(1, Math.floor(ancho / (STAND_FRUTAS.cajon.largo + STAND_FRUTAS.cajon.luz)));
-  const comun = { ancho, fondo, caida: STAND_FRUTAS.caida, cajones };
-  // El cajón va LLENO y un poco rebosado: un cajón de cosecha con una capa de
-  // fruta en el fondo se ve vacío desde el pasillo, porque la pared del cajón
-  // la tapa. Es el mismo defecto que tenía la batea.
+  // El cajón va lleno y algo rebosado: con una capa en el fondo, la pared lo
+  // tapa y el mueble se ve vacío. Es el mismo defecto que tenía la batea.
   const altoLibre = STAND_FRUTAS.cajon.alto * 1.15;
 
-  return [
-    { y: h * STAND_FRUTAS.bandejaBaja, z: -d / 2 + STAND_FRUTAS.marco + fondo / 2, altoLibre, ...comun },
-    { y: h * STAND_FRUTAS.bandejaAlta, z: d / 2 - STAND_FRUTAS.marco - fondo / 2, altoLibre, ...comun },
-  ];
+  const caras: (1 | -1)[] = [-1, 1];
+  return caras.flatMap((lado) => [
+    {
+      y: h * STAND_FRUTAS.escalonBajo,
+      z: lado * (porCara - fondo / 2),
+      caida: STAND_FRUTAS.caida * lado,
+      lado, ancho, fondo, altoLibre, cajones,
+    },
+    {
+      y: h * STAND_FRUTAS.escalonAlto,
+      z: lado * (fondo / 2 + 0.02),
+      caida: STAND_FRUTAS.caida * lado,
+      lado, ancho, fondo, altoLibre, cajones,
+    },
+  ]);
 }
