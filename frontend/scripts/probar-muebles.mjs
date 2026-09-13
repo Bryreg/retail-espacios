@@ -717,9 +717,14 @@ prueba("el desorden del volcado es determinista", () => {
 
 prueba("cada mueble siembra su propio desorden", () => {
   // Sin esto, dos bateas contiguas salen clonadas.
-  for (const marca of ["batea", "stand", "carnes", "isla_fria", "isla"]) {
+  // El marcador se ANCLA con lo que puede venir después —el cierre de la
+  // plantilla o un `${i}`—, o un prefijo satisface la guarda de otro: con
+  // «isla» a secas, `${id}|isla_fria` la daba por cumplida, y el exhibidor de
+  // piso podía quedarse sin semilla sin que nada lo dijera. Ya no es mueble de
+  // volcado —tiene bandejas y el producto se para en ellas—, así que sale.
+  for (const marca of ["batea", "stand", "carnes", "isla_fria"]) {
     assert.match(
-      editorCodigo, new RegExp("semilla=\\{`\\$\\{id\\}\\|" + marca),
+      editorCodigo, new RegExp("semilla=\\{`\\$\\{id\\}\\|" + marca + "[`$]"),
       `el volcado de \`${marca}\` no se siembra con el id del mueble`,
     );
   }
@@ -807,7 +812,9 @@ prueba("el producto va DENTRO del grupo de la repisa que se inclina", () => {
   const cruz = cuerpoDe("function CrossMesh(", "function MetroMesh(");
   assert.match(cruz, /rotation=\{\[-0\.09, 0, 0\]\}[\s\S]*<ProductoEnRepisas/,
     "el producto del exhibidor de cruz salió del grupo inclinado");
-  assert.match(cruz, /\{i < nLevels - 1 && \(/,
+  // Sin atar el regex a la condición ENTERA: al arte del proveedor se le sumó
+  // un `!pinta &&` delante, y eso no afloja lo que esta guarda afirma.
+  assert.match(cruz, /i < nLevels - 1 && \(/,
     "la repisa de más arriba es la tapa: lo que se pare encima sobresale del mueble");
 });
 
@@ -1123,6 +1130,204 @@ prueba("el stand de frutas es una ISLA DE DOS CARAS", () => {
   }
 });
 
+prueba("el exhibidor de piso es una ESTIBA con la mercancía apilada encima", () => {
+  // Tres formas tuvo este mueble y las tres estaban mal, cada una por su lado:
+  //
+  //   1. una pirámide de cajones macizos, que además dibujaba producto sobre la
+  //      tapa de TODOS los niveles —también los que tenían otro nivel encima—,
+  //      así que el producto quedaba adentro de la caja de arriba;
+  //   2. un mueble impreso con bandejas, cenefa y header de marca;
+  //   3. la tarima correcta, pero con la torre FLOTANDO: las capas se repartían
+  //      en pasos nominales de 30 cm y encima de cada una se paraba el empaque
+  //      que entrara, así que una caja de galletas de 19 cm dejaba 11 cm de
+  //      aire y la torre salía en pisos separados.
+  //
+  // No es un mueble. La huella del tipo —1,20 × 0,80 m— es exactamente la de
+  // una estiba estándar: es una TARIMA plantada en el pasillo con la mercancía
+  // apilada arriba, y lo que se le alquila a la marca es la posición.
+  assert.match(medidas, /export function cotasDeEstiba/, "se perdieron las cotas de la estiba");
+  const mesh = cuerpoDe("function IslaMesh(", "function ImpulsadorMesh(");
+  assert.match(mesh, /<EstibaReal/, "el exhibidor volvió a dibujarse dentro del editor");
+  assert.ok(!/<VolcadoDeProducto/.test(mesh), "el exhibidor volvió a volcar producto sobre cajones");
+  assert.match(mesh, /<ProductoEnRepisas/, "la estiba se quedó sin mercancía encima");
+  // Y el relleno se apaga con el arte, como todos los demás.
+  assert.match(mesh, /\{!pinta && /, "el exhibidor dibuja el arte y el relleno a la vez");
+  // El paso de la torre lo pone el EMPAQUE. Sin ese dato vuelve al paso
+  // nominal de 30 cm, que es el defecto 3: la torre flota.
+  assert.match(
+    mesh, /cotasDeEstiba\(w, d, h, empaque\?\.alto\)/,
+    "la torre volvió al paso nominal: la mercancía queda flotando en pisos",
+  );
+
+  const estiba = sinComentarios(leer(join(muebles, "EstibaReal.tsx")));
+  // Una tarima es ABIERTA: piso, travesaños y cubierta. El hueco que dejan los
+  // travesaños es por donde entra la uña del montacargas, y es lo que hace que
+  // se lea «estiba» y no «cajón de madera».
+  for (const [pieza, que] of [
+    ["c.zDePiso.map", "el piso"], ["c.xDeTravesanos.map", "los travesaños"],
+    ["c.zDeTablas.map", "la cubierta"],
+  ]) {
+    assert.ok(estiba.includes(pieza), `la tarima se quedó sin ${que}`);
+  }
+  // Ninguna pieza de madera se dimensiona con el alto del mueble: la tarima
+  // mide 144 mm y todo lo que hay arriba es producto. Con una caja de alto `h`
+  // esto vuelve a ser un mueble macizo.
+  for (const args of estiba.match(/<boxGeometry args=\{\[[^\]]*\]/g) ?? []) {
+    assert.ok(
+      !/\bh\b/.test(args.replace(/\w+\.h\b/g, "")),
+      `la tarima creció hasta el alto del mueble: \`${args}\``,
+    );
+  }
+
+  // La huella chica está a propósito: es donde el enlistonado de la tarima
+  // de catálogo no entra y hay que recortarlo.
+  for (const [w, d, h] of [
+    [1.2, 0.8, 1.4], [1.0, 0.8, 1.1], [1.6, 1.2, 1.8], [0.9, 0.6, 1.2], [0.7, 0.45, 1.0],
+  ]) {
+    // La cubierta deja pasar la uña del montacargas y no se come el mueble.
+    const cero = M.cotasDeEstiba(w, d, h);
+    const donde = `${w}×${d}×${h}`;
+    assert.ok(cero.cubierta > 0 && cero.cubierta < h, `${donde}: la cubierta no está entre el piso y el tope`);
+    assert.ok(
+      cero.cubierta - M.ESTIBA.tabla * 2 > 0.04,
+      `${donde}: se cerró el hueco de los travesaños, esto es un cajón de madera`,
+    );
+    // El enlistonado deja luz: sin luz la cubierta es una tapa.
+    for (const tablas of [cero.zDeTablas, cero.zDePiso]) {
+      assert.ok(tablas.length >= 2, `${donde}: enlistonado de una sola tabla`);
+      assert.ok(
+        tablas.length * M.ESTIBA.anchoDeTabla < d,
+        `${donde}: las tablas cubren el fondo entero, la cubierta quedó maciza`,
+      );
+      for (let i = 1; i < tablas.length; i++) {
+        assert.ok(
+          tablas[i] - tablas[i - 1] >= M.ESTIBA.anchoDeTabla - 1e-9,
+          `${donde}: dos tablas se pisan`,
+        );
+      }
+      assert.ok(
+        Math.abs(tablas[0]) + M.ESTIBA.anchoDeTabla / 2 <= d / 2 + 1e-9,
+        `${donde}: la tabla del filo se sale de la tarima`,
+      );
+    }
+
+    for (const rubro of ["Galletas", "Gaseosas", "Atún", "Snacks", undefined]) {
+      const e = P.empaqueQueEntra(rubro, Math.max(0.05, h - M.ESTIBA.alto));
+      assert.ok(e, `${donde}: no entra ningún empaque sobre la tarima`);
+      const c = M.cotasDeEstiba(w, d, h, e.alto);
+      const caso = `${donde} ${rubro ?? "sin rubro"}`;
+
+      // La mercancía se apila AL RAS: el primer tendido apoya en la cubierta.
+      assert.equal(c.capas[0], c.cubierta, `${caso}: el primer tendido no apoya en la tarima`);
+      assert.ok(c.capas.length >= 1, `${caso}: la estiba se quedó sin tendidos`);
+      // La torre no pasa el alto del espacio contratado: ese alto es el que
+      // mira el chequeo de choques y el que se le cobra a la marca.
+      assert.ok(c.techo <= h + 1e-9, `${caso}: la torre sobresale del espacio (${c.techo} > ${h})`);
+
+      for (let i = 0; i < c.capas.length; i++) {
+        const arriba = c.capas[i + 1] ?? c.techo;
+        const libre = arriba - c.capas[i];
+        assert.ok(libre > 0, `${caso}: el tendido ${i} no deja alto libre`);
+        if (i + 1 < c.capas.length) {
+          assert.ok(
+            Math.abs(libre - c.paso) < 1e-9,
+            `${caso}: los tendidos no suben de a un paso parejo`,
+          );
+        }
+        // Y acá está el defecto que se vio en pantalla: lo que se para encima
+        // del tendido es lo que `ProductoEnMueble` elige para ESE alto libre,
+        // y si sobra aire la torre sale flotando en pisos separados.
+        const puesto = P.empaqueQueEntra(rubro, libre);
+        assert.ok(puesto, `${caso}: sobre el tendido ${i} no entra nada`);
+        assert.ok(
+          libre - puesto.alto <= 0.02,
+          `${caso}: sobre el tendido ${i} quedan ${((libre - puesto.alto) * 100).toFixed(1)} cm de aire: la torre flota`,
+        );
+      }
+
+      // Cargada hasta el filo, y sin pasarse de la tarima: una estiba de
+      // promoción no viene con una cajita en el centro.
+      assert.ok(c.ancho <= w && c.fondo <= d, `${caso}: la mercancía se sale de la tarima`);
+      assert.ok(c.ancho > w * 0.9 && c.fondo > d * 0.9, `${caso}: la mercancía no llega al filo`);
+    }
+  }
+
+  // Una estiba de catálogo lleva VARIOS tendidos: con uno solo esto es una
+  // tarima con una caja encima.
+  const galletas = M.cotasDeEstiba(1.2, 0.8, 1.4, P.empaqueDeRubro("Galletas").alto);
+  assert.ok(galletas.capas.length >= 3, "la estiba de catálogo se quedó en un tendido");
+});
+
+prueba("el mostrador de servicio tiene DOS NIVELES", () => {
+  // Era una tapa lisa sobre un cajón con un cartel colgado de dos postes: ese
+  // mueble no existe en ninguna tienda. Lo que identifica un mostrador de
+  // atención es el escalón — abajo el plano de trabajo del que atiende, encima
+  // y volando hacia el cliente la repisa donde el cliente apoya y firma. Sin
+  // ese escalón esto es un podio.
+  assert.match(medidas, /export function cotasDeServicio/, "se perdieron las cotas del mostrador");
+  const mesh = cuerpoDe("function ServicioClienteMesh(", "function FixtureMesh(");
+  assert.match(mesh, /<ServicioClienteReal/, "el mostrador volvió a dibujarse dentro del editor");
+
+  for (const [w, d, h] of [[1.6, 0.7, 1.1], [1.2, 0.6, 1.0], [2.4, 0.9, 1.25]]) {
+    const c = M.cotasDeServicio(w, d, h);
+    const donde = `${w}×${d}×${h}`;
+    assert.ok(c.repisa > c.trabajo, `${donde}: se perdió el escalón, quedó una tapa lisa`);
+    assert.ok(c.trabajo < h, `${donde}: el plano de trabajo llegó al tope del mueble`);
+    // La repisa vuela hacia el CLIENTE, que es -Z. Del otro lado le queda la
+    // espalda al pasillo y el cliente apoya sobre el hombro del que atiende.
+    assert.ok(c.zDeRepisa < 0, `${donde}: la repisa quedó del lado del que atiende`);
+    assert.ok(
+      Math.abs(c.zDeRepisa) + c.fondoDeRepisa / 2 <= d / 2 + 1e-9,
+      `${donde}: la repisa se sale por el frente`,
+    );
+    // El tramo bajo es BAJO respecto de la REPISA DE ATENCIÓN, que es el
+    // mostrador contra el que se atiende de pie. No respecto del plano de
+    // trabajo del que atiende, que es un escritorio y siempre va más abajo:
+    // esa comparación era una afirmación mal planteada de esta misma prueba.
+    assert.ok(c.altoAccesible < c.repisa, `${donde}: el tramo accesible dejó de ser bajo`);
+    assert.ok(c.altoAccesible < h, `${donde}: el tramo accesible pasó el alto del mueble`);
+    assert.ok(c.anchoAccesible > 0 && c.anchoAlto > 0, `${donde}: uno de los dos tramos desapareció`);
+    assert.ok(
+      Math.abs(c.anchoAccesible + c.anchoAlto - w) < 1e-9,
+      `${donde}: los dos tramos no cubren el frente`,
+    );
+  }
+  // La altura del tramo accesible sale de la norma —0,86 m para atender a
+  // alguien sentado—, no de una fracción inventada del mueble.
+  assert.equal(M.SERVICIO.accesible.alto, 0.86, "el tramo accesible dejó de tener la altura de norma");
+  assert.equal(
+    M.cotasDeServicio(1.6, 0.7, 1.1).altoAccesible, 0.86,
+    "el tramo accesible dejó de respetar la norma en un mueble de tamaño de catálogo",
+  );
+});
+
+prueba("la fruta va DENTRO del cajón, no encima de la bandeja", () => {
+  // El cajón no cubre la bandeja entera —queda una banda de madera a la vista
+  // delante de la fila— y está corrido hacia el fondo. Esas dos cotas estaban
+  // repetidas: en el componente y, mal, en el volcado del editor, que seguía
+  // usando el fondo ENTERO de la bandeja y sin correr. La fruta se salía del
+  // cajón por el borde de abajo, y así se vio en la tienda.
+  const mesh = cuerpoDe("function StandFrutasMesh(", "function CheckoutMesh(");
+  assert.match(mesh, /b\.cajonFondo/, "el volcado del stand volvió a medirse con el fondo de la bandeja");
+  assert.match(mesh, /b\.cajonZ/, "el volcado del stand volvió a ir sin correr");
+  const stand = sinComentarios(leer(join(muebles, "StandFrutasReal.tsx")));
+  assert.match(stand, /b\.cajonFondo/, "el cajón volvió a calcular su propio fondo");
+  assert.match(stand, /b\.cajonZ/, "el cajón volvió a calcular su propio corrimiento");
+
+  for (const [w, d, h] of [[1.5, 1.2, 0.95], [1.0, 0.8, 0.9], [2.2, 1.4, 1.1]]) {
+    for (const b of M.bandejasDeStand(w, d, h)) {
+      const donde = `${w}×${d}×${h} cara ${b.lado}`;
+      assert.ok(b.cajonFondo > 0, `${donde}: cajón sin fondo`);
+      assert.ok(b.cajonFondo < b.fondo, `${donde}: el cajón tapa la banda de madera entera`);
+      // El cajón, corrido y todo, entra completo dentro de la bandeja.
+      assert.ok(
+        Math.abs(b.cajonZ) + b.cajonFondo / 2 <= b.fondo / 2 + 1e-9,
+        `${donde}: el cajón se sale de su bandeja`,
+      );
+    }
+  }
+});
+
 prueba("la isla de frutas no se para sobre postes", () => {
   // Cuatro postes asomando por encima de las cubiertas la hacían leer como
   // andamio. En la ficha la estructura es BAJA: zócalo y espina, y nada por
@@ -1222,6 +1427,53 @@ prueba("la ristra NO lleva entrepaño", () => {
 // delante del cliente. La nevera de vegetales nació así: calculaba `pinta` y
 // no lo usaba en ningún lado, de modo que las bandejas quedaban vacías justo
 // cuando había información real que mostrar.
+
+prueba("ningún mueble dibuja el arte del proveedor Y el relleno a la vez", () => {
+  // El defecto, reportado sobre la tienda en producción: el robatope tenía el
+  // arte del proveedor colgado de póster por delante Y los estantes llenos de
+  // producto genérico por detrás. El mueble mostraba DOS cosas distintas al
+  // mismo tiempo, y ninguna de las dos se entendía.
+  //
+  // La regla ya estaba escrita para la nevera —«el relleno mudo se apaga
+  // cuando entra el arte del proveedor», porque el arte es información real y
+  // el empaque por rubro es una aproximación— y tres muebles no la cumplían.
+  // Se afirma para TODOS, y no mueble por mueble: así el próximo que se agregue
+  // tampoco puede saltársela.
+  const meshes = [...editorCodigo.matchAll(/\nfunction (\w*Mesh)\(/g)]
+    .map((m) => ({ nombre: m[1], desde: m.index }));
+  assert.ok(meshes.length > 8, "no se encontraron los meshes del editor");
+
+  for (let i = 0; i < meshes.length; i++) {
+    const cuerpo = editorCodigo.slice(meshes[i].desde, meshes[i + 1]?.desde ?? editorCodigo.length);
+    const arte = cuerpo.includes("LaminaDeProducto");
+    const relleno = cuerpo.includes("ProductoEnRepisas");
+    if (!arte || !relleno) continue;
+    assert.match(
+      cuerpo, /\{!pinta && /,
+      `\`${meshes[i].nombre}\` dibuja el arte del proveedor y el relleno por rubro a la vez`,
+    );
+  }
+});
+
+prueba("el arte se rebana POR ENTREPAÑO, no se cuelga de póster", () => {
+  // Como lámina entera, el arte es una imagen del alto del mueble colgada por
+  // delante de todo: tapa los estantes en vez de pararse sobre ellos. Por fila,
+  // cada tramo de la textura se para en su entrepaño, que es donde está el
+  // producto de verdad.
+  for (const [nombre, desde, hasta] of [
+    ["RobatopeMesh", "function RobatopeMesh(", "function RistraMesh("],
+    ["CrossMesh", "function CrossMesh(", "function MetroMesh("],
+    ["ImpulsadorMesh", "function ImpulsadorMesh(", "function BateaMesh("],
+  ]) {
+    const cuerpo = cuerpoDe(desde, hasta);
+    assert.match(cuerpo, /<LaminaDeProductoPorFila/, `\`${nombre}\` volvió a colgar el arte de póster`);
+    // Y la cuenta de entrepaños es UNA: la del pintado de caras.
+    assert.match(
+      cuerpo, /getPanelShelfSpan\(/,
+      `\`${nombre}\` volvió a tener su propia cuenta de entrepaños para el arte`,
+    );
+  }
+});
 
 prueba("todo mueble que lee el arte del proveedor lo dibuja", () => {
   // Los meshes que reciben `facePaint` tienen que hacer algo con él: pintarlo

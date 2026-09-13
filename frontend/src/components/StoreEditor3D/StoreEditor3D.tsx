@@ -20,14 +20,17 @@ import { BateaReal, bocaDeBatea } from "./muebles/BateaReal";
 import { MostradorFrioReal, bandejaDeMostrador } from "./muebles/MostradorFrioReal";
 import { CheckoutReal } from "./muebles/CheckoutReal";
 import { StandFrutasReal } from "./muebles/StandFrutasReal";
+import { ServicioClienteReal } from "./muebles/ServicioClienteReal";
+import { EstibaReal } from "./muebles/EstibaReal";
 import { bandejasDeMural } from "./muebles/ProductoEnMural";
 import { ProductoEnRepisas } from "./muebles/ProductoEnRepisas";
-import { colorDeRubro } from "./muebles/producto";
+import { colorDeRubro, empaqueQueEntra } from "./muebles/producto";
 import { olvidarGeometrias } from "./muebles/perfiles";
 import {
-  COPETE, ESPESOR_ESPINA, NEVERA, PANEL_FONDO, PARANTE, ZONA_DE_SLOTS,
+  COPETE, ESPESOR_ESPINA, ESTIBA, NEVERA, PANEL_FONDO, PARANTE, ZONA_DE_SLOTS,
   altoDeZonaDeSlots, altoDeZonaDeSlotsDePunta, altoUtilDeNevera,
-  bandejasDeStand, filasDeNevera, filasDeProducto, filasDePunta, fondoPorCara,
+  bandejasDeStand, cotasDeEstiba, filasDeNevera, filasDeProducto, filasDePunta,
+  fondoPorCara,
 } from "./muebles/medidas";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { useModalAbierto } from "../../tema";
@@ -800,6 +803,9 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:num
   const G_BACK  = "#d8d8d5";
 
   const pinta = !ghost && !!facePaint?.front;
+  // La MISMA cuenta de entrepaños que usa el pintado de caras. Repetida acá,
+  // la primera vez que se toque el mueble el arte queda a caballo entre dos.
+  const span = getPanelShelfSpan("robatope", w, h, d);
 
   return (
     <group>
@@ -809,9 +815,20 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:num
         <meshLambertMaterial color={G_BACK} transparent opacity={op} />
       </mesh>
 
-      {/* El producto, al frente del entrepaño */}
+      {/* El arte del proveedor, REBANADO POR ENTREPAÑO.
+          Como lámina entera era un póster del alto del mueble colgado por
+          delante de todo: tapaba los estantes en vez de pararse sobre ellos.
+          Por fila, cada tramo de la textura se para en su entrepaño, que es
+          cómo está el producto de verdad. */}
       {pinta && (
-        <LaminaDeProducto ancho={w} alto={bodyH} y={bodyH / 2} fondo={d} facePaint={facePaint} />
+        <LaminaDeProductoPorFila
+          ancho={span.panelW}
+          alto={span.panelH}
+          filas={{ rowBottom: span.rowBottom, rowPitch: span.rowPitch, rows: span.rows }}
+          fondos={Array.from({ length: span.rows }, () => d - 0.01)}
+          montajeA={(d - 0.01) / 2} haciaA={-1}
+          facePaint={facePaint}
+        />
       )}
 
       {/* Left & right uprights — identical profile to PuntaMesh */}
@@ -860,16 +877,23 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:num
         <boxGeometry args={[w * 0.70, 0.040, 0.010]} />
         <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
       </mesh>
-      <ProductoEnRepisas
-        alturas={Array.from(
-          { length: nShelves },
-          (_, i) => 0.12 + (i + 1) * (bodyH - 0.16) / (nShelves + 1) + 0.011,
-        )}
-        techo={bodyH}
-        ancho={w - 0.055} fondo={d - 0.01}
-        montaje={(d - 0.01) / 2} hacia={-1}
-        rubro={rubro} ghost={ghost}
-      />
+      {/* El relleno mudo se apaga cuando el proveedor subió su arte: lo que se
+          ve en el mueble tiene que ser SU producto, no uno inventado por el
+          rubro. Dibujando los dos, el arte quedaba de póster por delante y los
+          estantes llenos por detrás — el mueble mostraba dos cosas distintas a
+          la vez. */}
+      {!pinta && (
+        <ProductoEnRepisas
+          alturas={Array.from(
+            { length: nShelves },
+            (_, i) => 0.12 + (i + 1) * (bodyH - 0.16) / (nShelves + 1) + 0.011,
+          )}
+          techo={bodyH}
+          ancho={w - 0.055} fondo={d - 0.01}
+          montaje={(d - 0.01) / 2} hacia={-1}
+          rubro={rubro} ghost={ghost}
+        />
+      )}
 
     </group>
   );
@@ -988,6 +1012,9 @@ function CrossMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number
   const LADO    = "#cbced2";   // montantes laterales
   const SHELF_C = "#eceef0";
   const nLevels = Math.max(4, Math.round(h / 0.36));
+  const pinta = !ghost && !!facePaint?.front;
+  // La MISMA cuenta de entrepaños que usa el pintado de caras.
+  const span = getPanelShelfSpan("cross", w, h, d);
 
   return (
     <group>
@@ -998,10 +1025,19 @@ function CrossMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number
         <meshLambertMaterial color="#dfe2e5" transparent={ghost} opacity={op} />
       </mesh>
 
-      <LaminaDeProducto
-        ancho={w - 0.07} alto={h} y={h / 2} fondo={d}
-        facePaint={ghost ? null : facePaint}
-      />
+      {/* El arte del proveedor, REBANADO POR ENTREPAÑO. Como lámina entera era
+          un póster del alto del mueble colgado por delante de todo: tapaba los
+          estantes en vez de pararse sobre ellos. */}
+      {pinta && (
+        <LaminaDeProductoPorFila
+          ancho={span.panelW}
+          alto={span.panelH}
+          filas={{ rowBottom: span.rowBottom, rowPitch: span.rowPitch, rows: span.rows }}
+          fondos={Array.from({ length: span.rows }, () => d - 0.04)}
+          montajeA={(d - 0.04) / 2} haciaA={-1}
+          facePaint={facePaint}
+        />
+      )}
       {/* Montantes. Eran dos paneles del fondo entero, en gris casi negro: dos
           paredes oscuras enmarcando el producto. Un rack se para en cuatro
           postes de esquina, y en metal claro el que resalta es lo que exhibe. */}
@@ -1054,7 +1090,7 @@ function CrossMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number
                 La repisa de más arriba va sin producto: es la tapa del
                 exhibidor, no un anaquel, y lo que se pare encima sobresale por
                 arriba del mueble. */}
-            {i < nLevels - 1 && (
+            {!pinta && i < nLevels - 1 && (
             <ProductoEnRepisas
               alturas={[0.013]}
               techo={(h - 0.12) / Math.max(nLevels - 1, 1)}
@@ -1291,73 +1327,57 @@ function MuebleMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:num
 // Stepped promotional floor display — cardboard base boxes + product rows per level,
 // narrowing like stairs as it goes up. Front price card at bottom.
 
-function IslaMesh({ w, d, h, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
-  const op       = ghost ? 0.42 : 1;
-  const CARTON   = "#c9a06a";   // cartón corrugado
-  const CARTON_D = "#a97c46";   // canto, más oscuro
-  const CINTA    = "#8a6234";
-  // Escalonado real de un exhibidor de piso: la base más ancha y cada nivel
-  // metido hacia atrás, para que desde el pasillo se vean los tres a la vez.
-  const niveles  = Math.max(2, Math.min(4, Math.round(h / 0.42)));
-  const altoNiv  = h / niveles;
-
-  // El producto va como VOLCADO sobre cada andén. Antes esta malla traía
-  // botellas y cajas de colores fijos INCRUSTADAS en la geometría: no era
-  // textura, así que el arte del proveedor no las podía reemplazar y la isla
-  // mostraba siempre el mismo producto inventado, alquilada por quien fuera.
-  const producto = ghost ? null : (facePaint?.front ?? null);
+function IslaMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
+  // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
+  // Un «exhibidor de piso» no es un mueble: es una ESTIBA plantada en el
+  // pasillo con la mercancía apilada encima. Lo confirma el propio catálogo —
+  // la huella del tipo es 1,20 × 0,80 m, que es la medida de una tarima
+  // estándar—, y el dato estaba escrito desde el principio sin leerse.
+  //
+  // Antes fue una pirámide de cajones de cartón que además escondía el
+  // producto adentro, y después un mueble impreso con bandejas. Ninguno es
+  // esto.
+  //
+  // El paso de la torre lo pone el EMPAQUE, no un alto nominal: los tendidos
+  // de una estiba van pegados. Con un paso fijo de 30 cm, una caja de galletas
+  // de 19 cm dejaba 11 cm de aire y la torre salía flotando en pisos.
+  const empaque = empaqueQueEntra(rubro, Math.max(0.05, h - ESTIBA.alto));
+  const c = cotasDeEstiba(w, d, h, empaque?.alto);
+  const span = getPanelShelfSpan("isla", w, h, d);
+  const pinta = !ghost && !!facePaint?.front;
 
   return (
     <group>
-      {Array.from({ length: niveles }, (_, i) => {
-        const escala = 1 - i * 0.16;
-        const lw = w * escala;
-        const ld = d * escala;
-        // Cada nivel se recuesta contra el fondo: el frente queda escalonado.
-        const cz = (d - ld) / 2;
-        const baseY = i * altoNiv;
-        // Cada nivel es un cajón MACIZO que va del piso del nivel a su tapa, no
-        // una bandeja: apilados sin hueco entre uno y otro es como se ve un
-        // exhibidor de cartón. Con bandejas separadas se veían tres platos
-        // flotando uno sobre otro.
-        const tapa = baseY + altoNiv;
-        return (
-          <group key={i} position={[0, 0, cz]}>
-            <mesh position={[0, baseY + altoNiv / 2, 0]} castShadow>
-              <boxGeometry args={[lw, altoNiv, ld]} />
-              <meshLambertMaterial color={i === 0 ? CARTON_D : CARTON} transparent opacity={op} />
-            </mesh>
-            {/* Cinta del canto frontal — lo que hace que se lea «cartón» */}
-            <mesh position={[0, tapa - 0.045, -(ld / 2 + 0.004)]}>
-              <boxGeometry args={[lw - 0.02, 0.045, 0.006]} />
-              <meshLambertMaterial color={CINTA} transparent opacity={0.75 * op} />
-            </mesh>
-            {/* El producto, volcado sobre la tapa del nivel */}
-            <VolcadoDeProducto
-              ancho={lw - 0.05} fondo={ld - 0.05}
-              y={tapa + 0.004} material={producto}
-              semilla={`${id}|isla|${i}`} rubro={rubro} altoLibre={0.2} ghost={ghost}
-            />
-          </group>
-        );
-      })}
+      <EstibaReal w={w} d={d} h={h} statusColor={statusColor} ghost={ghost} />
 
-      {/* Cartel de precio, pegado al frente del nivel de abajo */}
-      <mesh position={[0, altoNiv * 0.45, -(d / 2 + 0.006)]}>
-        <boxGeometry args={[Math.min(0.32, w * 0.44), 0.13, 0.006]} />
-        <meshLambertMaterial color="#ffffff" transparent opacity={0.94 * op} />
-      </mesh>
-      <mesh position={[0, altoNiv * 0.45, -(d / 2 + 0.010)]}>
-        <boxGeometry args={[Math.min(0.28, w * 0.38), 0.055, 0.004]} />
-        <meshLambertMaterial color="#1e293b" transparent opacity={0.85 * op} />
-      </mesh>
+      {/* El arte del proveedor, rebanado por capa de la torre. */}
+      {pinta && (
+        <LaminaDeProductoPorFila
+          ancho={span.panelW}
+          alto={span.panelH}
+          filas={{ rowBottom: span.rowBottom, rowPitch: span.rowPitch, rows: span.rows }}
+          fondos={Array.from({ length: span.rows }, () => c.fondo)}
+          montajeA={c.fondo / 2} haciaA={-1}
+          facePaint={facePaint}
+        />
+      )}
+
+      {/* La mercancía, apilada en capas sobre la cubierta de la tarima. Una
+          estiba de promoción viene cargada hasta el filo, así que se apila al
+          ras y no centrada con aire alrededor. El relleno mudo se apaga cuando
+          entra el arte del proveedor. */}
+      {!pinta && (
+        <ProductoEnRepisas
+          alturas={c.capas}
+          techo={c.techo}
+          ancho={c.ancho} fondo={c.fondo}
+          montaje={c.fondo / 2} hacia={-1}
+          rubro={rubro} ghost={ghost}
+        />
+      )}
     </group>
   );
 }
-
-// ─── Mesh: Impulsador de Marca ────────────────────────────────────────────────
-// Narrow central spine + cantilevered shelves (wider than spine) + mushroom topper.
-// Inspired by Nestlé Fitness / brand impulse floor display style.
 
 function ImpulsadorMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;rubro?:string }) {
   const op      = ghost ? 0.42 : 1;
@@ -1370,13 +1390,25 @@ function ImpulsadorMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:n
   const bodyH   = h - topperH - baseH;
   const nShelves = Math.max(3, Math.round(bodyH / 0.30));
   const shelfGap = bodyH / (nShelves - 1);
+  const pinta = !ghost && !!facePaint?.front;
+  // La MISMA cuenta de entrepaños que usa el pintado de caras.
+  const span = getPanelShelfSpan("impulsador", w, h, d);
 
   return (
     <group>
-      <LaminaDeProducto
-        ancho={w} alto={h - topperH} y={(h - topperH) / 2} fondo={d}
-        facePaint={ghost ? null : facePaint}
-      />
+      {/* El arte del proveedor, REBANADO POR ENTREPAÑO. Como lámina entera era
+          un póster del alto del mueble colgado por delante de todo: tapaba los
+          estantes en vez de pararse sobre ellos. */}
+      {pinta && (
+        <LaminaDeProductoPorFila
+          ancho={span.panelW}
+          alto={span.panelH}
+          filas={{ rowBottom: span.rowBottom, rowPitch: span.rowPitch, rows: span.rows }}
+          fondos={Array.from({ length: span.rows }, () => d)}
+          montajeA={d / 2} haciaA={-1}
+          facePaint={facePaint}
+        />
+      )}
       {/* Wedge base — wider than spine, smaller than shelves */}
       <mesh position={[0, baseH/2, 0]} castShadow>
         <boxGeometry args={[w * 0.65, baseH, d * 0.70]} />
@@ -1449,13 +1481,18 @@ function ImpulsadorMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:n
         <boxGeometry args={[w * 0.70, 0.022, 0.007]} />
         <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
       </mesh>
-      <ProductoEnRepisas
-        alturas={Array.from({ length: nShelves }, (_, si) => baseH + si * shelfGap + 0.009)}
-        techo={baseH + bodyH}
-        ancho={w} fondo={d}
-        montaje={d / 2} hacia={-1}
-        rubro={rubro} ghost={ghost}
-      />
+      {/* El relleno mudo se apaga cuando el proveedor subió su arte: lo que se
+          ve tiene que ser SU producto, no uno inventado por el rubro. Con los
+          dos dibujados, el mueble mostraba dos cosas distintas a la vez. */}
+      {!pinta && (
+        <ProductoEnRepisas
+          alturas={Array.from({ length: nShelves }, (_, si) => baseH + si * shelfGap + 0.009)}
+          techo={baseH + bodyH}
+          ancho={w} fondo={d}
+          montaje={d / 2} hacia={-1}
+          rubro={rubro} ghost={ghost}
+        />
+      )}
 
     </group>
   );
@@ -1762,12 +1799,17 @@ function StandFrutasMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: 
         // Y cada escalón lleva SU semilla: con una sola, los cuatro salen
         // clonados y la isla se ve como un espejo de sí misma.
         <group key={i} position={[0, b.y, b.z]} rotation={[b.caida, 0, 0]}>
-          <VolcadoDeProducto
-            ancho={b.ancho - 0.05} fondo={b.fondo - 0.06}
-            y={0.03} material={ghost ? null : (facePaint?.front ?? null)}
-            semilla={`${id}|stand${i}`} rubro={rubro || "Frutas"}
-            altoLibre={b.altoLibre} ghost={ghost}
-          />
+          {/* La fruta va DENTRO del cajón: mismo fondo y mismo corrimiento que
+              le da `bandejasDeStand`. Con el fondo de la bandeja entera y sin
+              correr —que es como estaba— la fruta se salía por el borde. */}
+          <group position={[0, 0, b.cajonZ]}>
+            <VolcadoDeProducto
+              ancho={b.ancho - 0.05} fondo={b.cajonFondo - 0.04}
+              y={0.03} material={ghost ? null : (facePaint?.front ?? null)}
+              semilla={`${id}|stand${i}`} rubro={rubro || "Frutas"}
+              altoLibre={b.altoLibre} ghost={ghost}
+            />
+          </group>
         </group>
       ))}
     </group>
@@ -1842,108 +1884,15 @@ interface FixtureMeshProps {
  * frente, no de costado con una cinta; lleva un mostrador bajo accesible de un
  * lado y un cartel colgante, que es como se lo reconoce desde el pasillo.
  */
-function ServicioClienteMesh({ w, d, h, ghost }: { w:number;d:number;h:number;ghost?:boolean }) {
-  const op    = ghost ? 0.42 : 1;
-  const BODY  = "#e8eef3";
-  const TAPA  = "#8fa3b0";
-  const SENAL = "#0ea5e9";
-  const TINTA = "#0b3d54";
-  // Tramo bajo accesible: un tercio del frente a la altura de una silla de
-  // ruedas. No es adorno — es lo que distingue este mueble de una caja.
-  const bajoW = w * 0.34;
-  const bajoH = h - 0.28;
-
-  return (
-    <group>
-      {/* Cuerpo del mostrador */}
-      <mesh position={[bajoW / 2, h / 2, 0]} castShadow>
-        <boxGeometry args={[w - bajoW, h, d]} />
-        <meshStandardMaterial color={BODY} metalness={0.10} roughness={0.65} transparent opacity={op} />
-      </mesh>
-      {/* Tramo bajo accesible */}
-      <mesh position={[-(w / 2 - bajoW / 2), bajoH / 2, 0]} castShadow>
-        <boxGeometry args={[bajoW, bajoH, d]} />
-        <meshStandardMaterial color={BODY} metalness={0.10} roughness={0.65} transparent opacity={op} />
-      </mesh>
-
-      {/* Tapas */}
-      <mesh position={[bajoW / 2, h + 0.012, 0]} castShadow>
-        <boxGeometry args={[w - bajoW + 0.05, 0.024, d + 0.05]} />
-        <meshStandardMaterial color={TAPA} metalness={0.35} roughness={0.40} transparent opacity={op} />
-      </mesh>
-      <mesh position={[-(w / 2 - bajoW / 2), bajoH + 0.012, 0]} castShadow>
-        <boxGeometry args={[bajoW + 0.05, 0.024, d + 0.05]} />
-        <meshStandardMaterial color={TAPA} metalness={0.35} roughness={0.40} transparent opacity={op} />
-      </mesh>
-
-      {/* Franja de color al frente: lo que hace que se lea «acá se pregunta» */}
-      <mesh position={[0, h * 0.62, -(d / 2 + 0.004)]}>
-        <boxGeometry args={[w * 0.98, 0.09, 0.010]} />
-        <meshStandardMaterial color={SENAL} emissive={SENAL} emissiveIntensity={0.18}
-          transparent opacity={op} />
-      </mesh>
-
-      {/* Cartel, montado sobre parantes que salen del propio mostrador.
-          Colgado del techo quedaba flotando: acá no se dibuja techo, así que un
-          cartel suspendido se ve suelto en el aire. */}
-      {([-1, 1] as const).map(sx => (
-        <mesh key={sx} position={[sx * (w * 0.30), h + 0.235, 0]} castShadow>
-          <boxGeometry args={[0.030, 0.47, 0.030]} />
-          <meshStandardMaterial color={TAPA} metalness={0.45} roughness={0.35} transparent opacity={op} />
-        </mesh>
-      ))}
-      <mesh position={[0, h + 0.62, 0]} castShadow>
-        <boxGeometry args={[w * 0.72, 0.30, 0.05]} />
-        <meshStandardMaterial color={SENAL} metalness={0.20} roughness={0.50} transparent opacity={op} />
-      </mesh>
-      {/* Renglón oscuro del cartel: de lejos se lee como un letrero escrito */}
-      <mesh position={[0, h + 0.62, -(0.028)]}>
-        <boxGeometry args={[w * 0.58, 0.13, 0.006]} />
-        <meshStandardMaterial color={TINTA} transparent opacity={0.85 * op} />
-      </mesh>
-
-      {/* Monitor de consulta, APOYADO en la tapa.
-          La base era una placa suelta a 11 cm por encima del mostrador y el
-          monitor otra pieza más arriba: el conjunto flotaba sobre la tapa sin
-          tocarla. Ahora la base se apoya en la tapa, el cuello sale de la base
-          y la pantalla se apoya en el cuello — las tres piezas ENCADENADAS,
-          que es lo único que garantiza que ninguna quede en el aire. */}
-      {(() => {
-        const yTapa  = h + 0.024;
-        const BASE   = 0.014;
-        const CUELLO = 0.085;
-        const ALTO   = 0.17;
-        const x = w * 0.22, z = d * 0.10;
-        const yCuello = yTapa + BASE;
-        return (
-          <group>
-            <mesh position={[x, yTapa + BASE / 2, z]} castShadow>
-              <boxGeometry args={[0.11, BASE, 0.10]} />
-              <meshStandardMaterial color={TAPA} metalness={0.40} roughness={0.40} transparent opacity={op} />
-            </mesh>
-            <mesh position={[x, yCuello + CUELLO / 2, z]} castShadow>
-              <boxGeometry args={[0.030, CUELLO, 0.026]} />
-              <meshStandardMaterial color={TAPA} metalness={0.45} roughness={0.35} transparent opacity={op} />
-            </mesh>
-            <mesh
-              position={[x, yCuello + CUELLO + ALTO / 2 - 0.015, z]}
-              rotation={[0.22, 0, 0]}
-              castShadow
-            >
-              <boxGeometry args={[0.26, ALTO, 0.030]} />
-              <meshStandardMaterial color="#1f2937" metalness={0.45} roughness={0.35} transparent opacity={op} />
-            </mesh>
-          </group>
-        );
-      })()}
-
-      {/* Zócalo */}
-      <mesh position={[0, 0.045, 0]}>
-        <boxGeometry args={[w - 0.06, 0.09, d - 0.06]} />
-        <meshStandardMaterial color="#6b7785" metalness={0.20} roughness={0.70} transparent opacity={op} />
-      </mesh>
-    </group>
-  );
+function ServicioClienteMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
+  // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
+  // Era una tapa lisa sobre un cajón con un cartel colgado de dos postes: ese
+  // mueble no existe en ninguna tienda. Contra las fichas de dos fabricantes
+  // de mobiliario comercial, lo que identifica un mostrador de atención es que
+  // tiene DOS NIVELES — el plano de trabajo del que atiende, y encima la
+  // repisa de atención volando hacia el cliente, donde el cliente apoya, firma
+  // y deja lo que trae. Sin ese escalón, esto es un podio.
+  return <ServicioClienteReal w={w} d={d} h={h} statusColor={statusColor} ghost={ghost} />;
 }
 
 /**
@@ -3375,12 +3324,17 @@ function getPanelShelfSpan(type: string, w: number, h: number, d: number): Panel
       return { modo: "volcado", panelW: w - 0.13, panelH: d - 0.13, rowBottom: 0, rowPitch: 0, rows: 0 };
     }
     case "isla": {
-      // IslaMesh — exhibidor de piso escalonado. El producto va VOLCADO sobre
-      // cada andén, así que lo que se compone es una superficie horizontal: acá
-      // `panelH` es el FONDO, no un alto. Se describe el andén más grande —el
-      // de abajo— y los de arriba usan la misma textura a su tamaño; como es un
-      // montón a granel y no una grilla, la diferencia de escala no se lee.
-      return { modo: "volcado", panelW: w, panelH: d, rowBottom: 0, rowPitch: 0, rows: 0 };
+      // IslaMesh — la estiba. Cada CAPA de la torre de mercancía es una fila:
+      // la cuenta sale de `cotasDeEstiba`, la misma que apila el producto, así
+      // que el arte no puede quedar a caballo entre dos capas.
+      const c = cotasDeEstiba(w, d, h);
+      return {
+        panelW: c.ancho,
+        panelH: c.techo,
+        rowBottom: c.capas[0],
+        rowPitch: c.paso,
+        rows: c.capas.length,
+      };
     }
     case "batea": {
       // BateaMesh — canasto. Una sola superficie: el fondo falso, cerca del borde.

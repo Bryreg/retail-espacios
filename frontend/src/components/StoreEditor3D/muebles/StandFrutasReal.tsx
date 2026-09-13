@@ -114,18 +114,14 @@ export const StandFrutasReal = memo(function StandFrutasReal({
             const paso = b.ancho / b.cajones;
             const x = -b.ancho / 2 + paso * (k + 0.5);
             const largo = paso - STAND_FRUTAS.cajon.luz;
-            // El cajón no cubre la cubierta entera: en la ficha queda una banda
-            // de madera a la vista delante de la fila, y es la que hace que el
-            // mueble se lea como frutería de tablero y no como una hilera de
-            // cajones flotando.
-            const fondo = b.fondo * 0.68;
+            // El fondo y el corrimiento del cajón salen de `bandejasDeStand`:
+            // el que vuelca la fruta usa los MISMOS, y con dos copias la fruta
+            // se sale del cajón.
+            const fondo = b.cajonFondo;
             const alto = STAND_FRUTAS.cajon.alto;
             const p = STAND_FRUTAS.cajon.pared;
             return (
-              <group
-                key={k}
-                position={[x, STAND_FRUTAS.cubierta / 2 + alto / 2, -b.lado * (b.fondo * 0.13)]}
-              >
+              <group key={k} position={[x, STAND_FRUTAS.cubierta / 2 + alto / 2, b.cajonZ]}>
                 <mesh position={[0, -alto / 2 + p / 2, 0]} material={m.cajon} castShadow>
                   <boxGeometry args={[largo, p, fondo]} />
                 </mesh>

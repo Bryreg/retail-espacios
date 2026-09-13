@@ -799,6 +799,9 @@ export const STAND_FRUTAS = {
   /** Espesor de la cubierta de madera y del riel de precios del filo. */
   cubierta: 0.03,
   porta: 0.055,
+  /** Qué fracción del fondo de la bandeja ocupa el cajón. Lo que sobra es la
+   *  banda de madera que queda a la vista delante de la fila. */
+  fraccionDeCajon: 0.68,
   /** Zócalo negro y alto de la espina central sobre el escalón alto. */
   zocalo: 0.11,
   respaldo: 0.16,
@@ -838,6 +841,16 @@ export interface BandejaDeStand {
   altoLibre: number;
   /** Cuántos cajones entran a lo ancho. */
   cajones: number;
+  /** Fondo INTERIOR del cajón y cuánto está corrido respecto del centro de la
+   *  bandeja.
+   *
+   *  Van acá y no dentro del componente porque el que vuelca la fruta necesita
+   *  exactamente los mismos números. Estaban repetidos, y al achicar el cajón
+   *  para dejar ver la banda de madera sólo se corrigió una de las dos copias:
+   *  la fruta siguió usando el fondo entero de la bandeja, sin correr, y se
+   *  salía del cajón por el borde de abajo. */
+  cajonFondo: number;
+  cajonZ: number;
 }
 
 /** Los cuatro escalones de una isla de frutas: dos por cara, el bajo adelante
@@ -853,20 +866,239 @@ export function bandejasDeStand(w: number, d: number, h: number): BandejaDeStand
   // El cajón va lleno y algo rebosado: con una capa en el fondo, la pared lo
   // tapa y el mueble se ve vacío. Es el mismo defecto que tenía la batea.
   const altoLibre = STAND_FRUTAS.cajon.alto * 1.15;
+  // El cajón no cubre la bandeja entera: en la ficha queda una banda de madera
+  // a la vista delante de la fila, y es la que hace que el mueble se lea como
+  // frutería de tablero y no como una hilera de cajones flotando. Por eso el
+  // cajón es más corto que la bandeja y está corrido hacia el fondo.
+  const cajonFondo = fondo * STAND_FRUTAS.fraccionDeCajon;
 
   const caras: (1 | -1)[] = [-1, 1];
+  const comun = { ancho, fondo, altoLibre, cajones, cajonFondo };
   return caras.flatMap((lado) => [
     {
       y: h * STAND_FRUTAS.escalonBajo,
       z: lado * (porCara - fondo / 2),
       caida: STAND_FRUTAS.caida * lado,
-      lado, ancho, fondo, altoLibre, cajones,
+      cajonZ: -lado * ((fondo - cajonFondo) / 2),
+      lado, ...comun,
     },
     {
       y: h * STAND_FRUTAS.escalonAlto,
       z: lado * (fondo / 2 + 0.02),
       caida: STAND_FRUTAS.caida * lado,
-      lado, ancho, fondo, altoLibre, cajones,
+      cajonZ: -lado * ((fondo - cajonFondo) / 2),
+      lado, ...comun,
     },
   ]);
+}
+
+/* ── El mostrador de servicio al cliente ─────────────────────────────────────
+   Devoluciones, reclamos, información. Contra las fichas de dos fabricantes de
+   mobiliario comercial, lo que lo identifica es UNA cosa y no la teníamos:
+
+   · **Tiene DOS NIVELES.** Abajo, el plano de trabajo del que atiende —donde
+     está el monitor y donde se escribe—; encima y hacia el cliente, la REPISA
+     DE ATENCIÓN, más alta, donde el cliente apoya, firma y deja lo que trae.
+     Ese escalón es lo que separa un mostrador de atención de una tapa lisa
+     sobre un cajón, que es como se veía el nuestro.
+   · Tapas oscuras con bocel redondeado sobre cuerpo claro de laminado: el
+     contraste es lo que se ve desde el pasillo.
+   · Zócalo oscuro retranqueado, y cajonera con puerta del lado del que
+     atiende. Del lado del cliente el frente es ciego.
+   · Y el TRAMO BAJO accesible, que ya estaba y es lo único que el modelo viejo
+     tenía bien: un tramo del frente a 0,86 m para atender a alguien sentado.
+     Sale de la norma de accesibilidad (34"), no de una fracción inventada. */
+
+export const SERVICIO = {
+  /** Alto del plano de trabajo del que atiende, como fracción del total. */
+  fraccionDeTrabajo: 0.7,
+  /** La repisa alta de atención: cuánto vuela hacia el cliente y su canto. */
+  repisa: { vuelo: 0.18, espesor: 0.045, radio: 0.05 },
+  /** El tramo bajo accesible: alto de norma y qué parte del frente ocupa. */
+  accesible: { alto: 0.86, fraccion: 0.3 },
+  /** Espesor de las tapas y radio de sus esquinas. */
+  tapa: { espesor: 0.045, radio: 0.06 },
+  /** Zócalo oscuro retranqueado. */
+  zocalo: 0.1,
+  /** Cajonera del lado del que atiende. */
+  cajones: 2,
+  /** El cartel colgante: es como se reconoce el mueble desde el pasillo. */
+  cartel: { alto: 0.28, fondo: 0.05, poste: 0.028, sobre: 0.4 },
+} as const;
+
+export interface CotasDeServicio {
+  /** Alto del plano de trabajo del que atiende. */
+  trabajo: number;
+  /** Alto de la repisa de atención, del lado del cliente. */
+  repisa: number;
+  /** Fondo de la repisa y Z de su centro. */
+  fondoDeRepisa: number;
+  zDeRepisa: number;
+  /** El tramo bajo accesible: dónde empieza, cuánto mide y a qué altura. */
+  anchoAccesible: number;
+  xAccesible: number;
+  altoAccesible: number;
+  /** El tramo alto: el resto del frente. */
+  anchoAlto: number;
+  xAlto: number;
+  /** Dónde arranca el cartel colgante. */
+  yCartel: number;
+}
+
+export function cotasDeServicio(w: number, d: number, h: number): CotasDeServicio {
+  const trabajo = entre(h * SERVICIO.fraccionDeTrabajo, 0.6, h - 0.12);
+  const fondoDeRepisa = entre(SERVICIO.repisa.vuelo, 0.1, d * 0.45);
+  const anchoAccesible = entre(w * SERVICIO.accesible.fraccion, 0.35, w * 0.45);
+  const anchoAlto = Math.max(0.3, w - anchoAccesible);
+
+  return {
+    trabajo,
+    repisa: h,
+    fondoDeRepisa,
+    // La repisa vuela hacia el CLIENTE, que es -Z.
+    zDeRepisa: -d / 2 + fondoDeRepisa / 2,
+    anchoAccesible,
+    xAccesible: -w / 2 + anchoAccesible / 2,
+    // Nunca por encima del propio mostrador: es un tramo BAJO.
+    altoAccesible: Math.min(SERVICIO.accesible.alto, h - 0.1),
+    anchoAlto,
+    xAlto: w / 2 - anchoAlto / 2,
+    yCartel: h + SERVICIO.cartel.sobre,
+  };
+}
+
+/* ── El exhibidor de piso: una ESTIBA con mercancía encima ───────────────────
+   No es un mueble impreso con bandejas: es una TARIMA DE MADERA plantada en el
+   pasillo con el producto apilado arriba. Lo confirma el propio catálogo —la
+   huella del tipo es 1,20 × 0,80 m, que es exactamente la medida de una estiba
+   estándar— y el alto de 1,40 es la tarima más la torre de mercancía.
+
+   Es el exhibidor más común de una promoción: llega el camión, se baja la
+   estiba entera y se planta en el pasillo. Por eso lo que se le alquila a la
+   marca es la POSICIÓN, no un mueble.
+
+   Las cotas son las de la tarima de verdad: 144 mm de alto, tablas de 22 mm y
+   travesaños de 100 mm entre la cubierta y el piso. */
+
+export const ESTIBA = {
+  /** Alto total de la tarima. */
+  alto: 0.144,
+  /** Espesor de las tablas de la cubierta y del piso. */
+  tabla: 0.022,
+  /** Ancho de una tabla. */
+  anchoDeTabla: 0.1,
+  /** Cuántas tablas lleva la cubierta y cuántas el piso, como máximo: una
+   *  tarima de 1,20 × 0,80 lleva cinco arriba y tres abajo. Se recortan si la
+   *  huella es más chica — con las cinco a la fuerza sobre 60 cm de fondo las
+   *  tablas se pisan y la cubierta queda maciza, que es justo lo contrario de
+   *  lo que hace que se lea «estiba». */
+  tablasArriba: 5,
+  tablasAbajo: 3,
+  /** La luz mínima entre tabla y tabla de la cubierta. Es lo que hace que se
+   *  vea el enlistonado y no una tapa. */
+  luzDeTabla: 0.035,
+  /** Los travesaños que separan cubierta y piso, y dejan entrar la uña del
+   *  montacargas. */
+  travesano: { ancho: 0.1, cuantos: 3 },
+  /** Alto de una capa de mercancía cuando todavía no se sabe qué se apila:
+   *  es el que usa el arte del proveedor para rebanarse por tendido. */
+  capa: 0.3,
+  /** Lo que separa un tendido del siguiente: la lámina de cartón o el film.
+   *  Milímetros, no centímetros — una estiba se apila AL RAS.
+   *
+   *  Acá estuvo el defecto que se vio en pantalla: las capas se repartían en
+   *  pasos de 30 cm nominales y encima de cada una se paraba el empaque que
+   *  entrara, así que una caja de galletas de 19 cm dejaba 11 cm de aire y la
+   *  torre salía flotando en pisos separados. Una estiba no tiene estantes:
+   *  cada tendido se apoya sobre el de abajo. */
+  separacion: 0.006,
+} as const;
+
+/** Un tendido de mercancía sobre la tarima. */
+export interface CapasDeEstiba {
+  /** Alturas de apoyo de cada tendido, de abajo hacia arriba. */
+  capas: number[];
+  /** Cuánto sube un tendido respecto del de abajo. */
+  paso: number;
+  /** Hasta dónde llega la torre. */
+  techo: number;
+}
+
+/**
+ * Cómo se apila una torre de `altoDeCapa` sobre una cubierta a `cubierta`, sin
+ * pasarse del alto `h` del espacio contratado.
+ *
+ * Los tendidos van pegados —`paso` es el alto del empaque más la lámina que lo
+ * separa del de arriba—, así que la cuenta es cuántos ENTEROS entran y no cómo
+ * repartir el alto disponible: media caja no se apila, y una torre que llega
+ * justo al tope declarado del mueble es una torre inventada.
+ */
+export function capasDeEstiba(cubierta: number, h: number, altoDeCapa: number): CapasDeEstiba {
+  const paso = Math.max(0.05, altoDeCapa) + ESTIBA.separacion;
+  const cuantas = Math.max(1, Math.floor((h - cubierta) / paso));
+  return {
+    capas: Array.from({ length: cuantas }, (_, i) => cubierta + i * paso),
+    paso,
+    // Nunca por encima del alto del espacio: ese alto es el que mira el
+    // chequeo de choques y el que se le cobra a la marca.
+    techo: Math.min(cubierta + cuantas * paso, h),
+  };
+}
+
+export interface CotasDeEstiba extends CapasDeEstiba {
+  /** Alto de la cara de arriba de la tarima: donde apoya la mercancía. */
+  cubierta: number;
+  /** Huella útil de la mercancía sobre la tarima. */
+  ancho: number;
+  fondo: number;
+  /** Posición de las tablas de la cubierta y del piso, a lo ancho del fondo. */
+  zDeTablas: number[];
+  zDePiso: number[];
+  /** Posición de los travesaños, a lo largo. */
+  xDeTravesanos: number[];
+}
+
+/** Las tablas repartidas a lo largo del fondo, sin pisarse y dejando luz. */
+function enlistonado(cuantas: number, d: number): number[] {
+  const n = Math.max(
+    2,
+    Math.min(cuantas, Math.floor(d / (ESTIBA.anchoDeTabla + ESTIBA.luzDeTabla))),
+  );
+  return Array.from(
+    { length: n },
+    (_, i) => -d / 2 + ESTIBA.anchoDeTabla / 2 + (i * (d - ESTIBA.anchoDeTabla)) / (n - 1),
+  );
+}
+
+/**
+ * Las cotas de la estiba: la tarima, y la torre que se le apila encima.
+ *
+ * `altoDeCapa` es el alto del empaque que se va a apilar. Sin ese dato —el
+ * caso del arte del proveedor, que se rebana por tendido antes de saber qué
+ * producto va— cae en el tendido nominal de `ESTIBA.capa`.
+ */
+export function cotasDeEstiba(w: number, d: number, h: number, altoDeCapa?: number): CotasDeEstiba {
+  const cubierta = Math.min(ESTIBA.alto, h * 0.3);
+  const torre = capasDeEstiba(cubierta, h, altoDeCapa ?? ESTIBA.capa);
+
+  // La mercancía se apila AL RAS de la tarima, no centrada con aire alrededor:
+  // una estiba de promoción viene cargada hasta el filo.
+  const ancho = Math.max(0.1, w - 0.04);
+  const fondo = Math.max(0.1, d - 0.04);
+
+  const nV = Math.max(2, ESTIBA.travesano.cuantos);
+  const xDeTravesanos = Array.from(
+    { length: nV },
+    (_, i) => -w / 2 + ESTIBA.travesano.ancho / 2 + (i * (w - ESTIBA.travesano.ancho)) / (nV - 1),
+  );
+
+  return {
+    ...torre,
+    cubierta,
+    ancho,
+    fondo,
+    zDeTablas: enlistonado(ESTIBA.tablasArriba, d),
+    zDePiso: enlistonado(ESTIBA.tablasAbajo, d),
+    xDeTravesanos,
+  };
 }

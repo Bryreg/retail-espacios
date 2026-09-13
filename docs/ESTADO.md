@@ -3638,10 +3638,67 @@ grueso — el primero en dibujarse se quedaba con la ranura del caché.
 ficha: el robatope (la ficha de un exhibidor lateral de puntera da 35–45 cm de
 ancho con estantes de poca profundidad y respaldo, que es lo que tiene), el
 exhibidor cruz —«cruz» es de *cross-selling*, no de forma: un rack de cuatro
-postes con respaldo de marca es exactamente eso—, el exhibidor de piso
-escalonado, el impulsador, la vitrina y la isla fría. La única diferencia
-medida que quedó sin corregir es el **fondo del robatope**: el catálogo dice
-40 cm y la ficha del fabricante 25.
+postes con respaldo de marca es exactamente eso—, el impulsador, la vitrina y
+la isla fría. La única diferencia medida que quedó sin corregir es el **fondo
+del robatope**: el catálogo dice 40 cm y la ficha del fabricante 25.
+
+> El **exhibidor de piso** también salió de esa revisión como «correcto», y no
+> lo era: se revisó sin buscarle ficha. Ver *Lo que se vio en pantalla y la
+> ficha no decía*, más abajo.
+
+### Lo que se vio en pantalla y la ficha no decía
+
+La revisión contra fichas arregló medidas. Lo que no podía arreglar es lo que
+sólo aparece **mirando el mueble dibujado con producto adentro**, que fue de
+donde salió esta ronda entera: el cliente abrió el editor y los señaló uno por
+uno.
+
+**El robatope, el exhibidor cruz y el impulsador mostraban dos cosas a la vez.**
+El arte del proveedor pintado encima y, debajo, el relleno genérico por rubro
+con los estantes llenos. La regla ya existía —el arte del proveedor le gana a
+la aproximación por rubro— y estos tres muebles no la aplicaban: el relleno se
+dibujaba incondicionalmente. Ahora los tres calculan `pinta` y apagan el
+relleno con `{!pinta && …}`, y hay una guarda **general** que recorre todos los
+`*Mesh` del editor: ningún mueble puede dibujar las dos cosas. La guarda por
+mueble se había escrito tres veces y tres muebles se habían quedado afuera.
+
+**La fruta del stand se salía del cajón.** Se había achicado el cajón sin
+achicar lo que se mete adentro: el relleno seguía usando el fondo completo de
+la bandeja. Las dos cuentas viven ahora en `bandejasDeStand`, que es la misma
+que dibuja el cajón.
+
+**El mostrador de servicio al cliente no parecía uno.** Era una tapa lisa sobre
+un cajón con un cartel colgado de dos postes. Lo que identifica un mostrador de
+atención es el **escalón**: abajo el plano de trabajo del que atiende —que es
+un escritorio y va bajo—, encima y volando hacia el cliente la repisa contra la
+que el cliente apoya y firma, más un tramo accesible a 0,80 m para silla de
+ruedas. Sin el escalón esto es un podio. Se había marcado «revisado, sin
+cambios» sin haberle buscado ficha: el mismo atajo que la revisión anterior ya
+había desmentido.
+
+**El exhibidor de piso no es un mueble.** Fueron tres formas y las tres estaban
+mal: una pirámide de cajones macizos que escondía el producto adentro de la
+caja de arriba; después un exhibidor impreso con bandejas, cenefa y header; y
+recién entonces, con una foto de una tarima de madera delante, lo que en
+realidad es: una **estiba** plantada en el pasillo con la mercancía apilada
+encima. Llega el camión, se baja la estiba entera y se planta — lo que se le
+alquila a la marca es la POSICIÓN, no un herraje.
+
+El dato estaba escrito en el catálogo desde el principio y no se había leído:
+la huella del tipo es **1,20 × 0,80 m**, que es exactamente la medida de una
+tarima estándar, y el alto de 1,40 es la tarima más la torre.
+
+Y quedaba un defecto propio: la torre **flotaba**. Las capas se repartían en
+pasos nominales de 30 cm y sobre cada una se paraba el empaque que entrara, así
+que una caja de galletas de 19 cm dejaba 11 cm de aire y la torre salía en
+pisos separados. Una estiba no tiene estantes: cada tendido se apoya sobre el
+de abajo. El paso lo pone ahora el **empaque** —`cotasDeEstiba(w, d, h,
+empaque.alto)`—, y la torre no sobresale del alto del espacio, que es el que
+mira el chequeo de choques y el que se le cobra a la marca.
+
+La prueba de este mueble **ejecuta** las cotas y le pregunta a `producto.ts`
+qué empaque se pararía sobre cada tendido: si sobra aire, falla. Las siete
+mutaciones que se le probaron —incluida la de volver al paso nominal— caen.
 
 ### Dos lecciones de método que costaron caro
 
@@ -3669,9 +3726,10 @@ también toma un **rubro**, porque lo que se dibuja adentro depende del contrato
 
 - **Reconstruidos de cero**: góndola (doble y mural), punta, nevera de refrescos y batea.
 - **Reconstruido contra la foto de uno real**: el mostrador de carnes.
-- **Ya estaban bien y se dejaron**: vitrina, checkout, servicio al cliente, isla fría,
-  stand de frutas, exhibidor de piso — tenían forma correcta y lo que les faltaba era
-  producto, que ahora tienen.
+- **Ya estaban bien y se dejaron**: vitrina, checkout e isla fría — tenían forma correcta
+  y lo que les faltaba era producto, que ahora tienen.
+- **Corregidos después, al mirarlos en pantalla**: stand de frutas, mostrador de servicio
+  al cliente y exhibidor de piso. Los tres habían pasado la revisión contra fichas.
 - **Sólo se les agregó producto**: exhibidor cruz, impulsador y robatope. Su estructura
   sigue siendo de cajas, aunque razonable para muebles de ese tamaño.
 - **La ristra dejó de llevar entrepaño.** Tenía una placa horizontal del ancho del mueble
