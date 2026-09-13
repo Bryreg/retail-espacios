@@ -1,10 +1,79 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-09-05 (Fase 8 — Detalle por cliente para asesoría: el operador ve espacios, contratos y proveedores de cada cliente, solo lectura, con bitácora, reporte y política ampliada).
+Última actualización: 2026-09-13 (Fase 18b — Correcciones del mobiliario 3D salidas de mirar
+los muebles con producto adentro: el arte del proveedor tapando el relleno en tres muebles,
+la fruta fuera del cajón, el mostrador de servicio y el exhibidor de piso, que es una estiba).
 
 Gestión de espacios comerciales en supermercados: se dibuja el plano de cada sede, se
 marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
+
+---
+
+## Dónde retomar
+
+Lo que quedó abierto al cerrar la sesión del 2026-09-13, en orden de lo que más
+conviene atacar primero. Nada de esto está empezado: son hilos, no trabajo a medias.
+
+### 1. La nomenclatura por pasillo (conversación abierta con el dueño)
+
+Un supermercado no se recorre por códigos sueltos: se recorre por pasillos. Quien
+negocia dice «la punta del pasillo 3», no «PUN-07». La pregunta que quedó sobre la
+mesa fue si la nomenclatura no debería armarse por pasillo, y la respuesta técnica es
+que **el salto es más corto de lo que parece**: `frontend/src/utils/pasillos.ts` ya
+deduce las corridas de la geometría —si dos góndolas comparten la coordenada
+perpendicular están en la misma corrida— y ya está probado sin navegador. Lo que falta
+es **usarlo para nombrar**, no sólo para agrupar.
+
+Tres cosas quedaron contestadas y conviene no volver a averiguarlas:
+
+- **Dos sedes del mismo supermercado NO pueden compartir una nomenclatura.**
+  `Space.code` es `unique=True` y cada supermercado tiene **su propia base**
+  (`backend/app/database.py` elige la base por cliente en `get_db`, y por eso separar
+  clientes no obligó a tocar los doce routers). Entonces: entre clientes distintos los
+  códigos pueden repetirse sin riesgo; **dentro de un cliente, el código es único y
+  atraviesa todas sus sedes**. No hay forma de que un contrato caiga en la sede
+  equivocada por un código repetido, pero tampoco hay nada que impida que un plano
+  nuevo agote nombres que «se sienten» de otra sede.
+- **Subir un contrato no obliga a elegir la sede** justamente porque el código ya la
+  determina. Si la nomenclatura pasa a ser por pasillo, eso hay que revisarlo: dos
+  sedes tienen las dos un «pasillo 3».
+- **Los botones «Revisar» y «Renumerar»** (`frontend/src/pages/Renumerar.tsx`) son de
+  cuando se cuadró la nomenclatura. Siguen siendo la única herramienta para arreglar un
+  plano cuyos códigos quedaron desordenados, así que quitarlos ahora dejaría sin salida
+  ese caso; lo que corresponde es decidirlo junto con el esquema por pasillo.
+
+### 2. El 409 le pide al usuario algo que ya no puede hacer
+
+`backend/app/routers/spaces.py:297` rechaza un contrato sobre un mueble no
+comercializable con: *«Cambiá su destino a "Comercializable" en el plano»*. Para una
+caja registradora o un mostrador de servicio eso es **imposible por diseño** — están en
+`NUNCA_ALQUILABLE` y el editor ni siquiera ofrece el botón. El mensaje tiene que
+distinguir los dos casos: «este mueble es operación de la tienda y nunca se alquila»
+contra «este mueble está marcado como no comercializable, cambialo en el plano».
+Defecto conocido, sin arreglar, chico.
+
+### 3. El fondo del robatope
+
+El catálogo le da 40 cm; la ficha del fabricante, 25. Es la única diferencia medida que
+quedó sin corregir de toda la revisión del mobiliario, y se dejó así porque cambiarla
+mueve muebles ya colocados en planos reales.
+
+### 4. Datos de TERRON
+
+Sigue pendiente y es lo más urgente en términos de negocio: ver
+*Pendiente urgente: datos de TERRON*, más abajo.
+
+### Dos PRs de terceros abiertos
+
+- [#62](https://github.com/Bryreg/retail-espacios/pull/62) (`codex/…`) toca el mismo
+  dominio 3D que se reconstruyó acá. **Un intento previo suyo se llevó puesto
+  `statusColor`, `facePaint` y los cinco props de slot** — el mueble mejoraba y dejaba
+  de poder venderse. Ese es el origen de `frontend/scripts/probar-muebles.mjs`. Si se
+  retoma, el criterio de aceptación es que esa suite pase.
+- [#37](https://github.com/Bryreg/retail-espacios/pull/37) trae el trabajo de la
+  instancia `sistemas-maestros` en la rama `claude/sistemas-maestros-retail-mzb1om`,
+  que **no comparte historia con `main`**: sale de `c4dc404`. Ojo al mergear.
 
 ---
 
@@ -3721,6 +3790,13 @@ botella de litro y medio entra parada—, en vez de leer el código.
 mueble obliga a colocarlo en una sede y pelear con la cámara del editor — y la mitad de
 los defectos de forma sólo se ven poniendo el ojo a la altura del producto. El taller
 también toma un **rubro**, porque lo que se dibuja adentro depende del contrato.
+
+Y se le saca una foto desde la línea de comandos con
+**`frontend/scripts/taller/mirar-mueble.py`**, que levanta Chromium, entra al taller,
+gira la cámara a tres cuartos —de frente casi todo parece una caja, y «el producto está
+adentro del mueble» sólo se ve en tres cuartos— y guarda el PNG. Ese guion se escribió y
+se perdió tres veces por vivir en `/tmp` de un contenedor que se recicla; por eso está en
+el repo. El token de sesión no: se pasa por `TALLER_TOKEN`.
 
 ### Lo que falta
 

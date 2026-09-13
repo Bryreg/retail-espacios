@@ -15,6 +15,7 @@ número de observación en el encabezado, como hace `docs/context/`.
 |---|---|---|
 | [01-rediseno-pantalla-principal.md](01-rediseno-pantalla-principal.md) | `diseno/rediseno-2026-09` | Por qué el sistema «se veía hecho con IA», qué se probó, qué quedó |
 | [02-gotchas-de-diseno.md](02-gotchas-de-diseno.md) | `tooling/gotchas-diseno` | Lo que salió mal armando las maquetas y cómo se resolvió |
+| [03-mobiliario-3d.md](03-mobiliario-3d.md) | `mobiliario/catalogo-3d` | Cómo se reconstruyó el catálogo 3D: no modelar de memoria, guardas que ejecutan, el modelo de producto |
 
 Diferencia con las otras dos carpetas de documentación:
 
