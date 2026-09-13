@@ -1125,6 +1125,49 @@ prueba("el stand de frutas es una ISLA DE DOS CARAS", () => {
   }
 });
 
+prueba("el mostrador de servicio tiene DOS NIVELES", () => {
+  // Era una tapa lisa sobre un cajón con un cartel colgado de dos postes: ese
+  // mueble no existe en ninguna tienda. Lo que identifica un mostrador de
+  // atención es el escalón — abajo el plano de trabajo del que atiende, encima
+  // y volando hacia el cliente la repisa donde el cliente apoya y firma. Sin
+  // ese escalón esto es un podio.
+  assert.match(medidas, /export function cotasDeServicio/, "se perdieron las cotas del mostrador");
+  const mesh = cuerpoDe("function ServicioClienteMesh(", "function FixtureMesh(");
+  assert.match(mesh, /<ServicioClienteReal/, "el mostrador volvió a dibujarse dentro del editor");
+
+  for (const [w, d, h] of [[1.6, 0.7, 1.1], [1.2, 0.6, 1.0], [2.4, 0.9, 1.25]]) {
+    const c = M.cotasDeServicio(w, d, h);
+    const donde = `${w}×${d}×${h}`;
+    assert.ok(c.repisa > c.trabajo, `${donde}: se perdió el escalón, quedó una tapa lisa`);
+    assert.ok(c.trabajo < h, `${donde}: el plano de trabajo llegó al tope del mueble`);
+    // La repisa vuela hacia el CLIENTE, que es -Z. Del otro lado le queda la
+    // espalda al pasillo y el cliente apoya sobre el hombro del que atiende.
+    assert.ok(c.zDeRepisa < 0, `${donde}: la repisa quedó del lado del que atiende`);
+    assert.ok(
+      Math.abs(c.zDeRepisa) + c.fondoDeRepisa / 2 <= d / 2 + 1e-9,
+      `${donde}: la repisa se sale por el frente`,
+    );
+    // El tramo bajo es BAJO respecto de la REPISA DE ATENCIÓN, que es el
+    // mostrador contra el que se atiende de pie. No respecto del plano de
+    // trabajo del que atiende, que es un escritorio y siempre va más abajo:
+    // esa comparación era una afirmación mal planteada de esta misma prueba.
+    assert.ok(c.altoAccesible < c.repisa, `${donde}: el tramo accesible dejó de ser bajo`);
+    assert.ok(c.altoAccesible < h, `${donde}: el tramo accesible pasó el alto del mueble`);
+    assert.ok(c.anchoAccesible > 0 && c.anchoAlto > 0, `${donde}: uno de los dos tramos desapareció`);
+    assert.ok(
+      Math.abs(c.anchoAccesible + c.anchoAlto - w) < 1e-9,
+      `${donde}: los dos tramos no cubren el frente`,
+    );
+  }
+  // La altura del tramo accesible sale de la norma —0,86 m para atender a
+  // alguien sentado—, no de una fracción inventada del mueble.
+  assert.equal(M.SERVICIO.accesible.alto, 0.86, "el tramo accesible dejó de tener la altura de norma");
+  assert.equal(
+    M.cotasDeServicio(1.6, 0.7, 1.1).altoAccesible, 0.86,
+    "el tramo accesible dejó de respetar la norma en un mueble de tamaño de catálogo",
+  );
+});
+
 prueba("la fruta va DENTRO del cajón, no encima de la bandeja", () => {
   // El cajón no cubre la bandeja entera —queda una banda de madera a la vista
   // delante de la fila— y está corrido hacia el fondo. Esas dos cotas estaban

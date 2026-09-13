@@ -891,3 +891,78 @@ export function bandejasDeStand(w: number, d: number, h: number): BandejaDeStand
     },
   ]);
 }
+
+/* ── El mostrador de servicio al cliente ─────────────────────────────────────
+   Devoluciones, reclamos, información. Contra las fichas de dos fabricantes de
+   mobiliario comercial, lo que lo identifica es UNA cosa y no la teníamos:
+
+   · **Tiene DOS NIVELES.** Abajo, el plano de trabajo del que atiende —donde
+     está el monitor y donde se escribe—; encima y hacia el cliente, la REPISA
+     DE ATENCIÓN, más alta, donde el cliente apoya, firma y deja lo que trae.
+     Ese escalón es lo que separa un mostrador de atención de una tapa lisa
+     sobre un cajón, que es como se veía el nuestro.
+   · Tapas oscuras con bocel redondeado sobre cuerpo claro de laminado: el
+     contraste es lo que se ve desde el pasillo.
+   · Zócalo oscuro retranqueado, y cajonera con puerta del lado del que
+     atiende. Del lado del cliente el frente es ciego.
+   · Y el TRAMO BAJO accesible, que ya estaba y es lo único que el modelo viejo
+     tenía bien: un tramo del frente a 0,86 m para atender a alguien sentado.
+     Sale de la norma de accesibilidad (34"), no de una fracción inventada. */
+
+export const SERVICIO = {
+  /** Alto del plano de trabajo del que atiende, como fracción del total. */
+  fraccionDeTrabajo: 0.7,
+  /** La repisa alta de atención: cuánto vuela hacia el cliente y su canto. */
+  repisa: { vuelo: 0.18, espesor: 0.045, radio: 0.05 },
+  /** El tramo bajo accesible: alto de norma y qué parte del frente ocupa. */
+  accesible: { alto: 0.86, fraccion: 0.3 },
+  /** Espesor de las tapas y radio de sus esquinas. */
+  tapa: { espesor: 0.045, radio: 0.06 },
+  /** Zócalo oscuro retranqueado. */
+  zocalo: 0.1,
+  /** Cajonera del lado del que atiende. */
+  cajones: 2,
+  /** El cartel colgante: es como se reconoce el mueble desde el pasillo. */
+  cartel: { alto: 0.28, fondo: 0.05, poste: 0.028, sobre: 0.4 },
+} as const;
+
+export interface CotasDeServicio {
+  /** Alto del plano de trabajo del que atiende. */
+  trabajo: number;
+  /** Alto de la repisa de atención, del lado del cliente. */
+  repisa: number;
+  /** Fondo de la repisa y Z de su centro. */
+  fondoDeRepisa: number;
+  zDeRepisa: number;
+  /** El tramo bajo accesible: dónde empieza, cuánto mide y a qué altura. */
+  anchoAccesible: number;
+  xAccesible: number;
+  altoAccesible: number;
+  /** El tramo alto: el resto del frente. */
+  anchoAlto: number;
+  xAlto: number;
+  /** Dónde arranca el cartel colgante. */
+  yCartel: number;
+}
+
+export function cotasDeServicio(w: number, d: number, h: number): CotasDeServicio {
+  const trabajo = entre(h * SERVICIO.fraccionDeTrabajo, 0.6, h - 0.12);
+  const fondoDeRepisa = entre(SERVICIO.repisa.vuelo, 0.1, d * 0.45);
+  const anchoAccesible = entre(w * SERVICIO.accesible.fraccion, 0.35, w * 0.45);
+  const anchoAlto = Math.max(0.3, w - anchoAccesible);
+
+  return {
+    trabajo,
+    repisa: h,
+    fondoDeRepisa,
+    // La repisa vuela hacia el CLIENTE, que es -Z.
+    zDeRepisa: -d / 2 + fondoDeRepisa / 2,
+    anchoAccesible,
+    xAccesible: -w / 2 + anchoAccesible / 2,
+    // Nunca por encima del propio mostrador: es un tramo BAJO.
+    altoAccesible: Math.min(SERVICIO.accesible.alto, h - 0.1),
+    anchoAlto,
+    xAlto: w / 2 - anchoAlto / 2,
+    yCartel: h + SERVICIO.cartel.sobre,
+  };
+}

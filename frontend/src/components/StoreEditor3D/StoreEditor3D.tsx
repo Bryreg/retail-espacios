@@ -20,6 +20,7 @@ import { BateaReal, bocaDeBatea } from "./muebles/BateaReal";
 import { MostradorFrioReal, bandejaDeMostrador } from "./muebles/MostradorFrioReal";
 import { CheckoutReal } from "./muebles/CheckoutReal";
 import { StandFrutasReal } from "./muebles/StandFrutasReal";
+import { ServicioClienteReal } from "./muebles/ServicioClienteReal";
 import { bandejasDeMural } from "./muebles/ProductoEnMural";
 import { ProductoEnRepisas } from "./muebles/ProductoEnRepisas";
 import { colorDeRubro } from "./muebles/producto";
@@ -1897,108 +1898,15 @@ interface FixtureMeshProps {
  * frente, no de costado con una cinta; lleva un mostrador bajo accesible de un
  * lado y un cartel colgante, que es como se lo reconoce desde el pasillo.
  */
-function ServicioClienteMesh({ w, d, h, ghost }: { w:number;d:number;h:number;ghost?:boolean }) {
-  const op    = ghost ? 0.42 : 1;
-  const BODY  = "#e8eef3";
-  const TAPA  = "#8fa3b0";
-  const SENAL = "#0ea5e9";
-  const TINTA = "#0b3d54";
-  // Tramo bajo accesible: un tercio del frente a la altura de una silla de
-  // ruedas. No es adorno — es lo que distingue este mueble de una caja.
-  const bajoW = w * 0.34;
-  const bajoH = h - 0.28;
-
-  return (
-    <group>
-      {/* Cuerpo del mostrador */}
-      <mesh position={[bajoW / 2, h / 2, 0]} castShadow>
-        <boxGeometry args={[w - bajoW, h, d]} />
-        <meshStandardMaterial color={BODY} metalness={0.10} roughness={0.65} transparent opacity={op} />
-      </mesh>
-      {/* Tramo bajo accesible */}
-      <mesh position={[-(w / 2 - bajoW / 2), bajoH / 2, 0]} castShadow>
-        <boxGeometry args={[bajoW, bajoH, d]} />
-        <meshStandardMaterial color={BODY} metalness={0.10} roughness={0.65} transparent opacity={op} />
-      </mesh>
-
-      {/* Tapas */}
-      <mesh position={[bajoW / 2, h + 0.012, 0]} castShadow>
-        <boxGeometry args={[w - bajoW + 0.05, 0.024, d + 0.05]} />
-        <meshStandardMaterial color={TAPA} metalness={0.35} roughness={0.40} transparent opacity={op} />
-      </mesh>
-      <mesh position={[-(w / 2 - bajoW / 2), bajoH + 0.012, 0]} castShadow>
-        <boxGeometry args={[bajoW + 0.05, 0.024, d + 0.05]} />
-        <meshStandardMaterial color={TAPA} metalness={0.35} roughness={0.40} transparent opacity={op} />
-      </mesh>
-
-      {/* Franja de color al frente: lo que hace que se lea «acá se pregunta» */}
-      <mesh position={[0, h * 0.62, -(d / 2 + 0.004)]}>
-        <boxGeometry args={[w * 0.98, 0.09, 0.010]} />
-        <meshStandardMaterial color={SENAL} emissive={SENAL} emissiveIntensity={0.18}
-          transparent opacity={op} />
-      </mesh>
-
-      {/* Cartel, montado sobre parantes que salen del propio mostrador.
-          Colgado del techo quedaba flotando: acá no se dibuja techo, así que un
-          cartel suspendido se ve suelto en el aire. */}
-      {([-1, 1] as const).map(sx => (
-        <mesh key={sx} position={[sx * (w * 0.30), h + 0.235, 0]} castShadow>
-          <boxGeometry args={[0.030, 0.47, 0.030]} />
-          <meshStandardMaterial color={TAPA} metalness={0.45} roughness={0.35} transparent opacity={op} />
-        </mesh>
-      ))}
-      <mesh position={[0, h + 0.62, 0]} castShadow>
-        <boxGeometry args={[w * 0.72, 0.30, 0.05]} />
-        <meshStandardMaterial color={SENAL} metalness={0.20} roughness={0.50} transparent opacity={op} />
-      </mesh>
-      {/* Renglón oscuro del cartel: de lejos se lee como un letrero escrito */}
-      <mesh position={[0, h + 0.62, -(0.028)]}>
-        <boxGeometry args={[w * 0.58, 0.13, 0.006]} />
-        <meshStandardMaterial color={TINTA} transparent opacity={0.85 * op} />
-      </mesh>
-
-      {/* Monitor de consulta, APOYADO en la tapa.
-          La base era una placa suelta a 11 cm por encima del mostrador y el
-          monitor otra pieza más arriba: el conjunto flotaba sobre la tapa sin
-          tocarla. Ahora la base se apoya en la tapa, el cuello sale de la base
-          y la pantalla se apoya en el cuello — las tres piezas ENCADENADAS,
-          que es lo único que garantiza que ninguna quede en el aire. */}
-      {(() => {
-        const yTapa  = h + 0.024;
-        const BASE   = 0.014;
-        const CUELLO = 0.085;
-        const ALTO   = 0.17;
-        const x = w * 0.22, z = d * 0.10;
-        const yCuello = yTapa + BASE;
-        return (
-          <group>
-            <mesh position={[x, yTapa + BASE / 2, z]} castShadow>
-              <boxGeometry args={[0.11, BASE, 0.10]} />
-              <meshStandardMaterial color={TAPA} metalness={0.40} roughness={0.40} transparent opacity={op} />
-            </mesh>
-            <mesh position={[x, yCuello + CUELLO / 2, z]} castShadow>
-              <boxGeometry args={[0.030, CUELLO, 0.026]} />
-              <meshStandardMaterial color={TAPA} metalness={0.45} roughness={0.35} transparent opacity={op} />
-            </mesh>
-            <mesh
-              position={[x, yCuello + CUELLO + ALTO / 2 - 0.015, z]}
-              rotation={[0.22, 0, 0]}
-              castShadow
-            >
-              <boxGeometry args={[0.26, ALTO, 0.030]} />
-              <meshStandardMaterial color="#1f2937" metalness={0.45} roughness={0.35} transparent opacity={op} />
-            </mesh>
-          </group>
-        );
-      })()}
-
-      {/* Zócalo */}
-      <mesh position={[0, 0.045, 0]}>
-        <boxGeometry args={[w - 0.06, 0.09, d - 0.06]} />
-        <meshStandardMaterial color="#6b7785" metalness={0.20} roughness={0.70} transparent opacity={op} />
-      </mesh>
-    </group>
-  );
+function ServicioClienteMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
+  // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
+  // Era una tapa lisa sobre un cajón con un cartel colgado de dos postes: ese
+  // mueble no existe en ninguna tienda. Contra las fichas de dos fabricantes
+  // de mobiliario comercial, lo que identifica un mostrador de atención es que
+  // tiene DOS NIVELES — el plano de trabajo del que atiende, y encima la
+  // repisa de atención volando hacia el cliente, donde el cliente apoya, firma
+  // y deja lo que trae. Sin ese escalón, esto es un podio.
+  return <ServicioClienteReal w={w} d={d} h={h} statusColor={statusColor} ghost={ghost} />;
 }
 
 /**
