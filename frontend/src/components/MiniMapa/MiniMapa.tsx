@@ -25,6 +25,7 @@ const REFERENCIAS: Record<string, { corto: string; frase: string }> = {
   checkout: { corto: "Cajas", frase: "las cajas" },
   nevera_refrescos: { corto: "Neveras", frase: "las neveras" },
   nevera_carnes: { corto: "Carnes", frase: "el mostrador de carnes" },
+  nevera_vegetales: { corto: "Vegetales", frase: "el mural de frutas y verduras" },
   stand_frutas: { corto: "Frutas", frase: "las frutas" },
 };
 

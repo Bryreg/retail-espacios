@@ -13,7 +13,7 @@ import { ClipboardCheck, Keyboard, ListOrdered } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useFixtureStore, selectFixtures, selectHasPendingWork, normalizeSede, DEFAULT_SEDES } from "../../store/fixtureStore";
 import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types/fixtures";
-import { isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
+import { isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
 import {
   siguienteCodigo, nombreDeMueble, nombreAnterior, choqueDeNombre, textoDelChoque,
   renombrar, intercambiarNombres, textoDelIntercambio, rotulosDelPlano, nombresChocados,
@@ -52,6 +52,7 @@ type FixType2D =
   | "batea"
   | "isla_fria"
   | "nevera_carnes"
+  | "nevera_vegetales"
   | "nevera_refrescos"
   | "stand_frutas"
   | "checkout"
@@ -121,6 +122,7 @@ const CATALOG: {
   // ── Refrigeración ─────────────────────────────────────────────────────
   { type: "isla_fria",        label: "Isla Helados/Cong.", w: 1.80, h: 1.00, emoji: "🍦", prefix: "ISL", category: "Refrigeración" },
   { type: "nevera_carnes",    label: "Nevera Carnes",      w: 2.00, h: 0.85, emoji: "🥩", prefix: "CAR", category: "Refrigeración" },
+  { type: "nevera_vegetales", label: "Nevera Vegetales",   w: 1.80, h: 0.90, emoji: "🥬", prefix: "VEG", category: "Refrigeración" },
   { type: "nevera_refrescos", label: "Nevera Refrescos",   w: 1.20, h: 0.75, emoji: "🥤", prefix: "BEB", category: "Refrigeración" },
   // ── Servicio ──────────────────────────────────────────────────────────
   { type: "stand_frutas",  label: "Stand Frutas/Verd", w: 1.50, h: 1.20, emoji: "🍎", prefix: "FRU", category: "Frescos" },
@@ -272,7 +274,7 @@ const H_DEFAULTS: Record<string, number> = {
   cross: 1.80, metro: 0.05, mueble: 2.00, exhibicion: 1.50,
   isla: 1.40, impulsador: 1.50,
   batea: 0.80, isla_fria: 0.90,
-  nevera_carnes: 1.05, nevera_refrescos: 1.80,
+  nevera_carnes: 1.05, nevera_refrescos: 1.80, nevera_vegetales: 1.60,
   stand_frutas: 0.95, checkout: 0.90, columna: 3.00,
 };
 
@@ -293,6 +295,7 @@ const COLOR_DEFAULTS: Record<string, string> = {
   mueble: "#475569", exhibicion: "#ec4899",
   isla: "#f59e0b", batea: "#84cc16", nevera_mural: "#06b6d4",
   isla_fria: "#e5e7eb", nevera_carnes: "#1e293b", nevera_refrescos: "#1e293b",
+  nevera_vegetales: "#1e293b",
   stand_frutas: "#84cc16",
   checkout: "#8b5cf6", columna: "#94a3b8",
 };
@@ -3865,9 +3868,16 @@ function AssignmentPanel({
         </span>
       </div>
 
-      {/* Destino del mueble — decides whether it can ever hold a contract */}
+      {/* Destino del mueble — decides whether it can ever hold a contract.
+          Salvo cuando el TIPO ya lo decide: una columna, una caja registradora
+          y el mostrador de servicio al cliente son operación de la tienda y no
+          se venden nunca. Ahí el par de botones sería un control muerto —se
+          pintaría el elegido y `isRentable` lo seguiría negando—, así que en
+          su lugar va la razón escrita. */}
       <Field label="Destino del mueble" icon="🎯">
-        {editMode && isAdmin ? (
+        {NUNCA_ALQUILABLE.has(item.type) ? (
+          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>No comercializable</p>
+        ) : editMode && isAdmin ? (
           <div style={{ display: "flex", gap: 6 }}>
             {([true, false] as const).map((value) => (
               <button
@@ -3894,7 +3904,9 @@ function AssignmentPanel({
           </p>
         )}
         <p style={{ marginTop: 6, fontSize: 10, color: "var(--dark-ink-3)", lineHeight: 1.45 }}>
-          {rentable
+          {NUNCA_ALQUILABLE.has(item.type)
+            ? "Puesto de trabajo de la tienda: no se alquila, no lleva tarifa y queda fuera de la ocupación."
+            : rentable
             ? "Se puede alquilar y cuenta en la disponibilidad de la sede."
             : "Mobiliario propio del local: no admite contrato y queda fuera de la ocupación."}
         </p>

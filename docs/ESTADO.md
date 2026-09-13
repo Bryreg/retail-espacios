@@ -63,6 +63,23 @@ El código de espacio es `"SEDE-CODE"` en mayúsculas. La cara B de una góndola
 sufijo `-B`; los campos top-level del fixture son la Cara A y `fixture.faceB` es la B
 (helper `isDoubleGondola`).
 
+**No todo mueble del plano es espacio vendible.** La columna sostiene el techo; la
+caja registradora y el mostrador de servicio al cliente son puestos de trabajo de la
+tienda. Esos tres tipos están en `NUNCA_ALQUILABLE` —`frontend/src/types/fixtures.ts` y
+`backend/app/services/layout_lookup.py`, y hay pruebas de los dos lados que verifican
+que las dos listas digan lo mismo— y no tienen tarifa, no suman a la disponibilidad de
+la sede y no aceptan contrato.
+
+La regla pregunta **primero por el tipo y después por la bandera `rentable`**, y ese
+orden es lo que la hace funcionar: la bandera se estampa al CREAR el mueble, así que un
+plano guardado antes de que existiera no la trae, y `rentable` ausente significa
+comercializable —tiene que significarlo, o esos planos se vaciarían—. Mirando sólo la
+bandera, todas las cajas de los planos viejos seguían aceptando contratos. Mirando el
+tipo primero, quedan bien sin migrar una sola fila.
+
+La `metro` (zona libre) es distinta: nace no comercializable pero **se puede habilitar a
+mano**, porque un metro de piso sí se le alquila a una marca para su stand.
+
 **Dentro del plano el código es corto; afuera lleva la sede.** `PUN-01` es nomenclatura
 de sede y se repite en las tres tiendas. Todo lo que salga del layout — la fila en
 `spaces`, el enlace del correo, el reporte de montaje — usa el código completo, que arma
@@ -70,9 +87,21 @@ de sede y se repite en las tres tiendas. Todo lo que salga del layout — la fil
 corto es un bug silencioso: parece funcionar con una sola sede y con dos empieza a
 mezclar tiendas.
 
-**El 3D pinta, no construye.** La foto del proveedor se aplica *como material* de la cara
-del mesh, tileada como planograma y alineada a las tablas reales vía `getPanelShelfSpan`.
-Nunca crear geometría nueva posicionada para esto: se intentó dos veces y falló las dos.
+**El 3D pinta el ARTE; la geometría del mueble vive aparte.** La foto del proveedor se
+aplica *como material* de la cara del mesh y se alinea a los entrepaños reales. La regla
+que decía «nunca crear geometría nueva posicionada para esto» sigue valiendo **para el
+arte**: se intentó dos veces y falló las dos. Lo que sí cambió es de dónde sale la forma
+del mueble — ver *La góndola se construye con las piezas que tiene una de verdad*.
+
+**La cuenta de los entrepaños se hace en un solo lugar.** `muebles/medidas.ts` es la
+fuente: `nivelesDeEntrepano` ubica las bandejas, `filasDeProducto` deriva de ahí las filas
+de arte, y `getPanelShelfSpan` y el producto 3D preguntan las dos a esa función. Antes
+había dos copias con un comentario pidiendo mantenerlas iguales, y no se mantuvieron.
+
+**La geometría del slot no se mueve aunque se mueva el mueble.** `ZONA_DE_SLOTS` y
+`SLOT_PROTO` deciden dónde cayó cada espacio vendido, y esa posición viaja en los
+contratos de los clientes. El mueble puede cambiar de forma entero —y cambió—; el espacio
+vendido no puede cambiar de lugar.
 
 **Orden de rutas en FastAPI.** Las rutas literales van declaradas **antes** de las
 paramétricas y del catch-all, o éste se las traga. Aplica en `layout.py`
@@ -3313,12 +3342,345 @@ en una escena y mirándola dos veces: una con el mismo arte cargado en todos
 —para ver que ninguno queda sin vestir—, y otra con los espacios vacíos, que es
 el estado en el que están casi siempre. Las dos capturas están en la conversación.
 
-### Lo que sigue debiendo
+### Lo que seguía debiendo — saldado para la góndola
 
-El producto **se estira para llenar el hueco entre entrepaños**: el compositor
-sabe cuántas filas caben pero no cuánto mide el empaque, así que una chocolatina
-en una góndola de 38 cm de paso se dibuja de 38 cm de alto. Arreglarlo pide un
-campo «alto del empaque» en el arte, no un cambio en las mallas.
+El producto **se estiraba para llenar el hueco entre entrepaños**: el compositor
+sabía cuántas filas caben pero no cuánto mide el empaque, así que una chocolatina
+en una góndola de 38 cm de paso se dibujaba de 38 cm de alto.
+
+Para la góndola ya no: `muebles/producto.ts` tiene los formatos de empaque a escala real
+y `acomodar()` cuenta los frentes que entran de verdad. **Sigue debiéndolo el resto del
+catálogo**, que se pinta con el compositor de arte.
+
+---
+
+## La góndola se construye con las piezas que tiene una de verdad
+
+Todo el mobiliario 3D estaba hecho de `boxGeometry`. Mientras una pieza sea una caja no
+hay labio, ni pliegue, ni gancho, ni ranura — y son esos cuatro detalles los que hacen que
+el ojo lea «mueble de tienda» en vez de «primitiva de Three.js». No es un problema de
+material ni de iluminación: **con una caja no hay nada que iluminar.**
+
+### Dónde vive
+
+`frontend/src/components/StoreEditor3D/muebles/`:
+
+| archivo | qué es |
+|---|---|
+| `medidas.ts` | Las cotas de catálogo, en metros. Una sola fuente para todo el que necesite saber dónde cae un entrepaño. |
+| `perfiles.ts` | Las secciones de lámina plegada como `Shape` extruido, cacheadas por firma. |
+| `GondolaReal.tsx` | El ensamblaje del mueble. |
+| `producto.ts` | Formatos de empaque y la cuenta de frentes. |
+| `ProductoEnGondola.tsx` | El producto parado sobre los entrepaños. |
+
+Y `/taller` (`pages/TallerMuebles.tsx`) es el banco de pruebas: un mueble solo, girable,
+con luz neutra y nada alrededor. **Se construye ahí y después se enchufa**, porque el
+editor son más de cinco mil líneas y cambiar geometría ahí adentro es cambiar a ciegas.
+
+### Las siete cosas que hacen que se lea como una góndola
+
+1. **Se arma por módulos** de ancho de catálogo, con un parante en cada junta. Un corrido
+   de 5 m no es un mueble de 5 m: son cuatro módulos. Dos postes en las puntas y nada en
+   el medio es lo que delata un corrido largo.
+2. **Dos juegos de entrepaños independientes**, espalda con espalda, cada uno con su
+   fondo. De perfil, una góndola doble modelada como una tabla profunda se lee como mesa.
+3. **Paneles de fondo de listones sobre respaldo.** Es la superficie más grande del
+   mueble; lisa, lo convierte en una pared blanca. La luz entre listones es la ranura de
+   verdad y tira sombra propia.
+4. **Perfil escalonado**: la bandeja de abajo es la más profunda y van achicándose.
+5. **Entrepaños de lámina plegada**, con labio y gancho.
+6. **Base retranqueada** con la muesca donde entran los pies, y **remate superior**.
+7. **Parantes con la cara calada hacia el pasillo**, apoyados sobre la base.
+
+**Ninguna cota se deriva del alto o del ancho del mueble.** Ése es el delator número uno
+de un mueble inventado: un entrepaño cuyo espesor cambia si la góndola es más alta. Una
+lámina mide lo que mide. El día que llegue el catálogo del proveedor real del cliente se
+corrigen las cotas en `medidas.ts` y se corrige todo — **y ese catálogo sigue pendiente**:
+las medidas de hoy son estándares de industria, un punto de partida honesto.
+
+### Sistema de coordenadas
+
+Toda pieza de una cara nace apoyada en `z = 0` y crece hacia **-Z**, que es el pasillo. La
+cara de +Z es el mismo subárbol girado media vuelta. Mantener esa convención es lo que
+permite montar entrepaño, panel, parante, porta-precios y remate sin corrimientos a mano.
+
+### El producto: lo vendido, no lo decorativo
+
+Lo que se para sobre los entrepaños es **lo que está vendido**. Los slots ocupados o
+reservados se llenan; los libres quedan vacíos. Rellenar la góndola entera «para que se
+vea linda» miente sobre la disponibilidad, que es el dato que este sistema tiene que dar.
+
+No hay catálogo de SKUs y **no se inventa uno**: el sistema vende espacio, no productos.
+De cada espacio sabe el proveedor, el valor, la vigencia y un rubro escrito a mano. Así
+que lo que se dibuja es el **empaque del rubro a escala real** — y con eso la góndola
+muestra los siete frentes de aceite que entran de verdad, que es justo la cuenta que
+discute quien negocia.
+
+Cuando el proveedor subió su arte, manda el arte: la lámina tapa esta capa, porque es
+información real y el empaque por rubro es una aproximación.
+
+### Los espacios internos ya se pueden marcar desde el 3D
+
+`GondolaMesh` y `PuntaMesh` siempre supieron dibujar los paneles de slot, y **nunca se
+dibujaron**: la escena llamaba a `FixtureMesh` sin `onSlotClick`, que es la condición que
+los enciende. El panel lateral invitaba a hacer clic en un slot del panel frontal y ese
+panel no existía en ninguna pantalla. Compilaba, y las pruebas del mesh pasaban.
+
+Ahora se encienden **sobre el mueble seleccionado**, y sólo sobre ése: encendidos en toda
+la planta, un local de cincuenta muebles queda cubierto de rectángulos de colores y no se
+ve la tienda.
+
+### Cómo se prueba
+
+`npm run probar:muebles`. Afirma lo que tiene que **seguir** estando —los slots, su
+geometría, el pintado de caras, la cuenta única de filas— y no lo que se agregó, porque el
+modo de falla real ya ocurrió: un intento previo de hacer los muebles más reales (PR #62)
+reescribió `GondolaMesh` entero y se llevó `statusColor`, `facePaint` y los cinco props de
+slot. La forma mejoraba; el mueble dejaba de poder venderse.
+
+Una parte de las pruebas **se ejecuta** en vez de leer el código: `producto.ts` y
+`medidas.ts` son funciones puras, se compilan con esbuild y se corren. Hizo falta — tres
+defectos pasaron por debajo de las pruebas de texto porque el código decía exactamente lo
+que tenía que decir:
+
+- «Aceites» caía en la fila de los cereales, porque «te» está adentro de «acei**te**s».
+- Una góndola de 1,80 perdía su entrepaño más alto y una de 1,85 no: el último nivel cae
+  justo en el límite y la comparación la decidía el último bit del flotante.
+- `THREE.Color` no entiende `hsl(190 40% 50%)` —la sintaxis CSS moderna— y no falla: se
+  queda en blanco.
+
+### La punta de góndola
+
+Es **el espacio más caro de un supermercado**: se ve de frente desde todo el pasillo
+transversal y se negocia aparte del lineal. Lo que la distingue del corrido:
+
+- **El copete**, que es lo que el proveedor compra. Va centrado en el fondo y apoyado
+  sobre una tapa. Montado al filo de adelante se lee como un cartel suelto flotando por
+  delante del mueble — se probó y se ve exactamente así.
+- **Una sola cara vendible, y montada ATRÁS**: el cuerpo se cuelga contra el corrido y
+  crece hacia el frente. Con el montaje de la góndola, el arte y el producto aparecen
+  detrás del mueble.
+- **La barra de luz** bajo el copete.
+
+Todo lo demás es el mismo herraje del corrido, y por eso existe `piezas.tsx`: parante,
+panel de fondo y juego de entrepaños son los MISMOS objetos físicos en los dos muebles.
+
+Dos cosas cuidadas a propósito: **la franja de slots de la punta no es la misma cuenta
+que la de la góndola** y así queda —unificarlas corre todos los espacios ya vendidos—, y
+**el copete no se tiñe con el estado comercial**, porque es donde va la marca.
+
+### Los muebles de frío
+
+`NeveraReal` cubre dos muebles que se compran por separado:
+
+- **`multideck`** — frente ABIERTO, con cortina de aire. Es el de bebidas y lácteos, y es
+  lo que el catálogo declara para `nevera_refrescos` («vitrina multideck abierta»). Lo que
+  lo delata es el par de bocas: impulsión bajo el copete y retorno al ras de la bandeja de
+  abajo. **Cumplen el mismo papel que la puerta en una nevera cerrada** — sin ellas, el
+  mueble se lee como una estantería pintada de oscuro, que es como se veía.
+- **`puertas`** — cerrado con vidrio. Lo que se reconoce de una puerta no es el vidrio,
+  que casi no se ve, sino el marco de aluminio. Un frente de más de 75 cm se parte en dos
+  hojas: no la aguanta la bisagra y no abre en un pasillo.
+
+Sus cotas también son de fabricación: el compresor mide lo que mide. Era `h * 0.14`, y con
+eso un mueble alto salía con un zócalo de 28 cm.
+
+**El relleno mudo se apaga cuando entra el arte del proveedor.** A diferencia de la
+góndola —donde el hueco vacío ES el dato— la nevera se vende entera, no por pedazos, así
+que mostrarla llena no esconde ninguna disponibilidad; mostrarla vacía sí miente.
+
+### El defecto que compartía medio catálogo: estaban VACÍOS
+
+El cajón de frutas tenía sus listones, la isla su guarda de acrílico, el mostrador su
+vidrio curvo — y los tres se leían como maquetas. Un mostrador de carnes sin carne es un
+mueble; con carne es una carnicería.
+
+Hay dos maneras de llenar, y la diferencia no es de dibujo sino de negocio:
+
+| | qué se vende | qué se dibuja |
+|---|---|---|
+| `ProductoEnMueble` | la góndola y la punta, **por espacios internos** | sólo los slots vendidos; el hueco vacío ES el dato |
+| `ProductoEnRepisas` | el resto, **el mueble entero** | todas las repisas, con el rubro del contrato |
+| `ProductoAGranel` | lo volcado: batea, cajón, isla, mostrador | montón desparejo, sembrado con el id del mueble |
+
+Y **lo volcado está acostado.** Nadie tira cajas a un canasto y quedan paradas: con el
+envase de pie, una capa de 19 cm llena el cajón entero y desde arriba se ve una tapa lisa.
+Además, lo que se vende suelto no viene en envase — «Frutas» no casaba con ningún rubro y
+caía en la caja por defecto, así que el cajón salía lleno de cajas de galletas.
+
+El desorden del volcado sale de un generador **sembrado con el id del mueble**, no de
+`Math.random`: al azar, la fruta se reacomoda sola cada vez que se mueve la cámara, el
+plano titila entero y nadie puede señalar nada.
+
+### La silueta del envase decide si se reconoce el producto
+
+Todo el producto se dibujaba como una caja escalada. Con eso un lineal de gaseosas es una
+pared de ladrillos y una nevera de bebidas se ve como un archivador. **La silueta es lo
+primero que el ojo clasifica** — antes que el color y mucho antes que la etiqueta.
+
+`Empaque.forma` traía el dato desde que se armó el catálogo de empaques y no se usaba.
+Ahora `geometriaDeEmpaque` lo convierte en geometría: la botella es de revolución con
+hombro y cuello, la lata un cilindro con sus cantos engargolados, la fruta un icosaedro
+facetado (una esfera perfecta se lee como bola de billar) y la carne una bandeja con el
+film abombado.
+
+Dos trampas que costó ver:
+
+- **Un envase acostado se GIRA, no se achata.** Una botella tumbada sigue teniendo
+  cuello; dibujada de pie con 9 cm de alto sale un disco. `acostar` marca `acostado` y la
+  geometría se encarga.
+- **Una geometría del caché no se puede mover.** `geometriaCanasto` la comparten varios
+  muebles: un `translate` sobre la copia cacheada se lo lleva puesto a todos. El casco sin
+  cachear vive aparte, en `cascoDeTronco`.
+
+### El mostrador de servicio y el mural de vegetales
+
+Un mostrador de carnes no es un cajón con una placa de vidrio vertical encima: eso es una
+vitrina cualquiera. Lo identifican el **vidrio curvo**, la **bandeja inclinada** —para que
+lo de atrás se vea por encima de lo de adelante— y el **lado de servicio**, sin el cual el
+mueble es simétrico y no se entiende de qué lado se despacha.
+
+Con el vidrio curvo puesto **seguía sin parecerse**, y eso sólo se vio poniéndolo al lado
+de la foto de uno real. Las tres diferencias volvían a ser de forma:
+
+- **No apoya en el piso: cuelga sobre patas acampanadas**, troncos de cono que se abren
+  hacia el suelo. Ese hueco por debajo es lo primero que se ve de lejos y es lo que separa
+  un mostrador de servicio de una isla o de una batea, que sí apoyan. Como cajón hasta el
+  piso se leía como un contenedor.
+- **Es acero inoxidable claro, no negro.** Lo único oscuro son el marco del vidrio, la
+  reja del compresor y el trasero de servicio. Ese contraste es la mitad de lo que el ojo
+  reconoce; pintado todo de casi-negro no queda contraste ninguno.
+- **El vidrio es una bóveda, no una visera.** Estaba montado en `zFrente - vuelo`: la
+  curva entera por DELANTE del mueble, colgando en el aire, con el producto fuera de ella.
+  Nace en el filo del frente y se tumba hacia atrás por encima de toda la cubeta.
+
+Lo demás son los detalles que lo hacen leer como máquina y no como maqueta: el bocel de
+acero corrido en el filo, las puntas redondeadas, los montantes negros que parten la
+bóveda en paños, las tapas de vidrio de los extremos —sin ellas el vidrio son dos
+costillas paradas en el aire— y el cajón del compresor con su reja bajo un extremo. Sus
+cotas viven en `medidas.ts` (`MOSTRADOR`, `cotasDeMostrador`) y no en el componente,
+porque quien vuelca el producto adentro necesita las mismas: **con dos cuentas la carne
+flota sobre la cubeta o se hunde dentro de la carrocería.**
+
+Y un error latente que salió de ahí: la firma del caché de `geometriaVidrioCurvo` no
+incluía el espesor. Los montantes son ese mismo arco, angosto y grueso, así que el primero
+en dibujarse se quedaba con la ranura del caché y el otro salía con el espesor ajeno.
+
+El **mural de frutas y verduras** (`nevera_vegetales`) es un tipo nuevo del catálogo. Es
+el mismo cuerpo que el multideck de bebidas con una diferencia que cambia todo: sus
+niveles son **bandejas inclinadas con tope**, no entrepaños planos. Lo que se carga encima
+es fruta suelta, que rueda y hay que verla desde arriba.
+
+**Un tipo de mueble nuevo toca diez lugares**: el tipo, el prefijo de código, el catálogo
+del editor 3D, el del plano 2D, el alto por defecto, el color, el minimapa, los nombres de
+los informes, y el prefijo y el nombre en el backend. Si falta uno, el mueble se coloca y
+después no tiene código, o no aparece en el plano. `probar:muebles` lo verifica.
+
+### Y la bandeja gira sobre sí misma
+
+Rotando el grupo desde el origen del mueble, una bandeja a 1,2 m de altura se corre treinta
+centímetros en Z y sale por el costado de la carrocería. El giro va sobre el grupo ya
+puesto en su altura. Es el mismo error que tuvo el producto del exhibidor de cruz.
+
+### Hizo falta una foto, así que se buscó la ficha de todos
+
+El mostrador de carnes sólo se arregló cuando hubo una foto de uno real
+delante. Eso es un dato sobre el método, no sobre ese mueble: **lo que se
+modela de memoria sale parecido a la idea que uno tiene del mueble, no al
+mueble.** Así que se revisó el catálogo entero contra fichas de fabricante y
+fotos de producto, y salieron tres defectos grandes, dos reglas falsas y un
+error latente.
+
+**La caja registradora tenía la pantalla flotando.** El poste medía
+`posH * 0.75` y la pantalla se colocaba a `posH`: veinticinco centímetros de
+aire entre las dos. Compilaba, y sólo se vio poniéndola en el taller. Le
+faltaba además todo lo que hace que una caja se lea como una caja: la mesa no
+es una tapa lisa sino una **cama hundida** rodeada de un bocel de goma; la
+registradora se apoya en una **consola** y el poste nace de ahí; del lado del
+cajero va el **sector de empaque** con su guarda; y del lado del cliente van
+los **estantes de impulso** —chicles, pilas, revistas—, que son el espacio más
+caro de la línea de cajas y son espacio VENDIBLE. Las tres alturas que
+sostienen la pantalla salen ahora de **una sola cuenta encadenada**
+(`yConsola` → `yPoste` → `yPantalla`): es lo único que garantiza que ninguna
+pieza quede en el aire. El monitor del mostrador de servicio al cliente tenía
+el mismo defecto y se arregló igual.
+
+**La ristra era una tabla.** La ficha del fabricante da una tira de 3,8 cm de
+ancho con doce ganchos y un cabezal porta-cartel. La nuestra ataba el ancho de
+la tira al ancho del mueble —40 cm de huella daban 28 cm de tira— y encima
+llevaba un panel translúcido detrás. **Un clip strip no tiene respaldo**:
+cuelga suelto por delante de la mercadería y se ve la góndola a través de él.
+El cabezal importa aparte: es lo que compra la marca.
+
+**El stand de frutas era una mesa con cosas encima.** La ficha da bandejas
+inclinadas y escalonadas con cajones de cosecha: la inclinación para mirar la
+fruta desde arriba, el escalón para que la bandeja de atrás no quede tapada
+—media cara vendible— y el cajón porque la fruta llega en cajón y se exhibe en
+el cajón.
+
+**Y la batea se veía vacía con producto adentro**, por dos cuentas encadenadas
+y dos reglas falsas. Una botella de litro y medio mide 31 cm y el alto libre
+daba 30,6: por cuatro milímetros se acostaba, y acostada mide 30 cm de largo,
+así que en el fondo entraba una sola fila. Las cuentas: una batea de promoción
+va **rebosada**, no enrasada, y su piso va **alto** —es un tacho poco hondo
+sobre patas largas—. Las reglas:
+
+- **lo que entra parado se para.** En la tienda, una batea de gaseosas tiene
+  las botellas paradas; lo que se tira de costado es lo que no entra de pie; y
+- **lo alto no se apila.** Una botella parada no va encima de otra. Apilando
+  salía una torre en el medio del canasto que no existe en ninguna tienda.
+
+De paso, un error latente: la firma del caché de `geometriaVidrioCurvo` no
+incluía el espesor, y los montantes de la bóveda son ese mismo arco angosto y
+grueso — el primero en dibujarse se quedaba con la ranura del caché.
+
+**Los que se revisaron y quedaron como estaban**, porque coinciden con su
+ficha: el robatope (la ficha de un exhibidor lateral de puntera da 35–45 cm de
+ancho con estantes de poca profundidad y respaldo, que es lo que tiene), el
+exhibidor cruz —«cruz» es de *cross-selling*, no de forma: un rack de cuatro
+postes con respaldo de marca es exactamente eso—, el exhibidor de piso
+escalonado, el impulsador, la vitrina y la isla fría. La única diferencia
+medida que quedó sin corregir es el **fondo del robatope**: el catálogo dice
+40 cm y la ficha del fabricante 25.
+
+### Dos lecciones de método que costaron caro
+
+**No se revierte con `git checkout --` un archivo con cambios sin commitear.**
+Pasó dos veces en la misma sesión: al deshacer una mutación de prueba, el
+archivo volvió a HEAD y se llevó puesto todo lo que no estaba commiteado. La
+regla es commitear ANTES de mutar, y verificar que el árbol quede limpio
+después de cada reversión.
+
+**Una guarda que mira el nombre de una constante no es una guarda.** La prueba
+de la batea verificaba que existiera `REBOSE`; una mutación que dejaba la
+constante en su lugar y la sacaba de la fórmula pasaba en verde. Por eso las
+cotas viven en `medidas.ts`: desde ahí la prueba puede **ejecutar la cuenta** y
+afirmar lo que de verdad importa —que en una batea de tamaño de catálogo una
+botella de litro y medio entra parada—, en vez de leer el código.
+
+### `/taller` dibuja cualquier mueble del catálogo
+
+`FixtureMesh` y `FIXTURE_DEFS` se exportan sólo para eso. Sin ello, mirarle la forma a un
+mueble obliga a colocarlo en una sede y pelear con la cámara del editor — y la mitad de
+los defectos de forma sólo se ven poniendo el ojo a la altura del producto. El taller
+también toma un **rubro**, porque lo que se dibuja adentro depende del contrato.
+
+### Lo que falta
+
+- **Reconstruidos de cero**: góndola (doble y mural), punta, nevera de refrescos y batea.
+- **Reconstruido contra la foto de uno real**: el mostrador de carnes.
+- **Ya estaban bien y se dejaron**: vitrina, checkout, servicio al cliente, isla fría,
+  stand de frutas, exhibidor de piso — tenían forma correcta y lo que les faltaba era
+  producto, que ahora tienen.
+- **Sólo se les agregó producto**: exhibidor cruz, impulsador y robatope. Su estructura
+  sigue siendo de cajas, aunque razonable para muebles de ese tamaño.
+- **La ristra dejó de llevar entrepaño.** Tenía una placa horizontal del ancho del mueble
+  en cada gancho, y eso la convertía en una repisera angosta. Una ristra es una TIRA: el
+  producto cuelga de una varilla por su troquel.
+- **Sin tocar**: columna y zona libre, que son infraestructura y no se alquilan.
+- **Las cotas del proveedor real del cliente**, que reemplazan las de `medidas.ts`.
+- El producto no distingue forma: una botella se dibuja como caja. `Empaque.forma` ya
+  lleva el dato («caja», «botella», «lata», «bolsa») y nadie lo usa todavía.
 
 ---
 

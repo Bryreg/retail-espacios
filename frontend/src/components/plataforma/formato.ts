@@ -145,6 +145,7 @@ const TIPOS: Record<string, string> = {
   batea: "batea", fuera_del_plano: "fuera del plano",
   stand_frutas: "stand de frutas", isla_fria: "isla fría",
   nevera_carnes: "nevera de carnes",
+  nevera_vegetales: "nevera de vegetales",
 };
 
 const TIPOS_PLURAL: Record<string, string> = {
@@ -153,6 +154,7 @@ const TIPOS_PLURAL: Record<string, string> = {
   cross: "exhibiciones de piso", robatope: "robatopes", batea: "bateas",
   stand_frutas: "stands de frutas", isla_fria: "islas frías",
   nevera_carnes: "neveras de carnes",
+  nevera_vegetales: "neveras de vegetales",
 };
 
 export function tipoN(tipo: string): string {

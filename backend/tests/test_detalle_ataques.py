@@ -261,8 +261,10 @@ def _operador_sin_membresias(ids: Identidades, monkeypatch, uid=UID_OP, email=CO
 # ─── El plano sembrado ───────────────────────────────────────────────────────
 #
 # A: sede ALFA -> PUN-01 (punta), PUN-02 (punta), GON-01 (góndola DOBLE: dos
-#    caras, A y B), NEV-01 (nevera); sede SUR -> PUN-01 (punta), CHK-01
-#    (checkout). Siete caras comercializables.
+#    caras, A y B), NEV-01 (nevera); sede SUR -> PUN-01 (punta), BAT-01
+#    (batea). Siete caras comercializables. Y un CAJ-01 (checkout) que NO
+#    cuenta: una caja registradora es un puesto de trabajo de la tienda, y eso
+#    lo decide el TIPO — ni siquiera hace falta la bandera `rentable`.
 # B: sede BETA -> E-01 (punta). Una sola.
 # C: sede GAMA -> G-01 (punta), G-02 (nevera). Sin un solo contrato.
 #
@@ -300,8 +302,12 @@ _SUR = [
         "cx": 2, "cz": 2, "rotY": 0, "w": 1.2, "d": 0.9, "h": 1.8,
     },
     {
-        "id": "fx-6", "code": "CHK-01", "type": "checkout", "sede": "SUR",
-        "cx": 5, "cz": 2, "rotY": 0, "w": 6.0, "d": 1.2, "h": 1.2,
+        "id": "fx-6", "code": "BAT-01", "type": "batea", "sede": "SUR",
+        "cx": 5, "cz": 2, "rotY": 0, "w": 0.8, "d": 0.6, "h": 0.8,
+    },
+    {
+        "id": "fx-7", "code": "CAJ-01", "type": "checkout", "sede": "SUR",
+        "cx": 8, "cz": 2, "rotY": 0, "w": 6.0, "d": 1.2, "h": 1.2,
     },
 ]
 _BETA = [
@@ -320,7 +326,7 @@ _GAMA = [
 # Los siete espacios de A, en el orden en que el endpoint los publica.
 ESPACIOS_A = [
     "ALFA-GON-01", "ALFA-GON-01-B", "ALFA-NEV-01", "ALFA-PUN-01", "ALFA-PUN-02",
-    "SUR-CHK-01", "SUR-PUN-01",
+    "SUR-BAT-01", "SUR-PUN-01",
 ]
 
 
@@ -923,7 +929,7 @@ def test_d11_el_benchmark_es_un_numero_por_tipo_y_nada_mas(client, monkeypatch):
         assert isinstance(tipo, str), tipo
         assert isinstance(valor, float) and not isinstance(valor, bool), (tipo, valor)
 
-    tipos_a_y_b = {"punta", "gondola", "nevera", "checkout"}
+    tipos_a_y_b = {"punta", "gondola", "nevera", "batea"}
     assert set(bench) <= tipos_a_y_b, set(bench)
     assert bench["punta"] == _plata(BENCHMARK_PUNTA), bench
     # El promedio de A solo, y el de B solo, NO son el benchmark: si alguno de
@@ -932,7 +938,7 @@ def test_d11_el_benchmark_es_un_numero_por_tipo_y_nada_mas(client, monkeypatch):
     # Y los tipos que sólo tiene A salen con el promedio de A, sin desglose.
     assert bench["gondola"] == _plata(CANON_A_GONDOLA)
     assert bench["nevera"] == _plata(CANON_A_NEVERA)
-    assert "checkout" not in bench  # nadie tiene un contrato de checkout
+    assert "batea" not in bench  # nadie tiene un contrato de batea
 
 
 def test_d12_ninguna_cabecera_ni_query_cambia_de_base(client, monkeypatch):
@@ -1632,7 +1638,7 @@ def test_d54_la_cara_b_es_un_espacio_con_el_tipo_de_su_gondola(client, monkeypat
 
     # Un mueble de una sola cara no inventa una cara.
     assert por_codigo["ALFA-NEV-01"]["cara"] is None
-    assert por_codigo["SUR-CHK-01"]["cara"] is None
+    assert por_codigo["SUR-BAT-01"]["cara"] is None
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1822,7 +1828,7 @@ def test_d55_un_contrato_fuera_del_plano_no_inventa_un_espacio(client, monkeypat
     # Los tipos publicados siguen siendo los del plano más el marcador
     # explícito: nunca un `None` ni un tipo inventado.
     tipos = {e["tipo"] for e in cuerpo["espacios"]}
-    assert tipos == {"punta", "gondola", "nevera", "checkout"}, tipos
+    assert tipos == {"punta", "gondola", "nevera", "batea"}, tipos
     for m in cuerpo["movimientos"]:
         for mov in m["entradas"] + m["salidas"]:
             assert isinstance(mov["tipo"], str) and mov["tipo"], mov

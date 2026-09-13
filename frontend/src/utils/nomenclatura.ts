@@ -56,6 +56,7 @@ export const PREFIJO_POR_TIPO: Record<string, string> = {
   batea: "BAT",
   isla_fria: "ISL",
   nevera_carnes: "CAR",
+  nevera_vegetales: "VEG",
   nevera_refrescos: "BEB",
   stand_frutas: "FRU",
   checkout: "CAJ",

@@ -64,6 +64,8 @@ import unicodedata
 from collections import OrderedDict
 from datetime import date, datetime, timezone
 
+from app.services.layout_lookup import es_comercializable
+
 log = logging.getLogger("recabra.plataforma.metricas")
 
 # El texto que ve el operador cuando la base de un cliente no se deja leer.
@@ -194,13 +196,14 @@ def normalizar_periodo(crudo: str | None) -> str:
 # deja de ser el mismo negocio que ve el cliente en su plano.
 
 def _es_comercializable(fixture: dict) -> bool:
-    """``isRentable``: ausente = comercializable; sólo un ``false`` explícito no.
+    """``isRentable``: primero el TIPO, después la bandera.
 
-    Un layout guardado antes de que la bandera existiera no tiene la propiedad
-    y todos sus muebles siguen siendo vendibles — la compatibilidad hacia atrás
-    es el motivo entero de que la regla se lea al revés de lo que parece.
+    Delega en ``layout_lookup.es_comercializable`` para que las métricas de la
+    plataforma cuenten exactamente lo mismo que bloquea la escritura de un
+    contrato. Con dos copias de la regla, el tablero informaba ocupación sobre
+    muebles que el backend no dejaba vender.
     """
-    return fixture.get("rentable") is not False
+    return es_comercializable(fixture)
 
 
 def _es_gondola_doble(fixture: dict) -> bool:

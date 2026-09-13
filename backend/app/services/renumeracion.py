@@ -142,6 +142,7 @@ PREFIJO_POR_TIPO: dict[str, str] = {
     "batea": "BAT",
     "isla_fria": "ISL",
     "nevera_carnes": "CAR",
+    "nevera_vegetales": "VEG",
     "nevera_refrescos": "BEB",
     "stand_frutas": "FRU",
     "checkout": "CAJ",

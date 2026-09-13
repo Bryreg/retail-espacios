@@ -10,9 +10,28 @@ import {
   Eye, EyeOff, Camera, User, Package, Plus, Search, Upload, Loader2,
 } from "lucide-react";
 import { Html } from "@react-three/drei";
+import { GondolaReal } from "./muebles/GondolaReal";
+import { ProductoEnGondola } from "./muebles/ProductoEnGondola";
+import { PuntaReal } from "./muebles/PuntaReal";
+import { ProductoEnPunta } from "./muebles/ProductoEnPunta";
+import { NeveraReal } from "./muebles/NeveraReal";
+import { ProductoAGranel } from "./muebles/ProductoAGranel";
+import { BateaReal, bocaDeBatea } from "./muebles/BateaReal";
+import { MostradorFrioReal, bandejaDeMostrador } from "./muebles/MostradorFrioReal";
+import { CheckoutReal } from "./muebles/CheckoutReal";
+import { StandFrutasReal } from "./muebles/StandFrutasReal";
+import { bandejasDeMural } from "./muebles/ProductoEnMural";
+import { ProductoEnRepisas } from "./muebles/ProductoEnRepisas";
+import { colorDeRubro } from "./muebles/producto";
+import { olvidarGeometrias } from "./muebles/perfiles";
+import {
+  COPETE, ESPESOR_ESPINA, NEVERA, PANEL_FONDO, PARANTE, ZONA_DE_SLOTS,
+  altoDeZonaDeSlots, altoDeZonaDeSlotsDePunta, altoUtilDeNevera,
+  bandejasDeStand, filasDeNevera, filasDeProducto, filasDePunta, fondoPorCara,
+} from "./muebles/medidas";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { useModalAbierto } from "../../tema";
-import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT } from "../../types/fixtures";
+import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
 import {
   nombreDeMueble, renombrar, intercambiarNombres, choqueDeNombre,
@@ -112,6 +131,10 @@ const RETRANQUEO = 0.05;
 /** Espesor de la lámina. No es el envase: es lo mínimo para que de perfil no
  *  se vea un papel. */
 const ESPESOR_LAMINA = 0.03;
+/** Lo mismo, pero medido contra el filo del ENTREPAÑO y no contra el plano
+ *  exterior del mueble. Es más chico porque ahí no hay nada que descontar: el
+ *  labio y el riel de precio son milímetros, no la mitad del fondo. */
+const RETRANQUEO_ENTREPANO = 0.025;
 
 /** Material invisible para las caras de la lámina que NO llevan la textura.
  *  Sin esto la lámina sería una placa opaca tapando el estante entero. */
@@ -178,6 +201,106 @@ function LaminaDeProducto({
   );
 }
 
+/** Una lámina recortada a una franja de la textura.
+ *
+ *  La imagen de producto viene compuesta de una sola pieza, con las filas ya
+ *  alineadas a los entrepaños. Para pararlas a distinta profundidad hay que
+ *  partirla, y partirla significa recortar la V del mapeo — no recortar la
+ *  imagen, que se compone una sola vez y se reusa. */
+function laminaDeFranja(ancho: number, alto: number, v0: number, v1: number) {
+  const g = new THREE.BoxGeometry(ancho, alto, ESPESOR_LAMINA);
+  const uv = g.attributes.uv as THREE.BufferAttribute;
+  for (let i = 0; i < uv.count; i++) {
+    uv.setY(i, v0 + uv.getY(i) * (v1 - v0));
+  }
+  uv.needsUpdate = true;
+  return g;
+}
+
+/**
+ * El producto de una góndola, parado fila por fila.
+ *
+ * `LaminaDeProducto` para una sola lámina plana delante del mueble, y eso
+ * alcanza mientras todos los entrepaños tengan el mismo fondo. La góndola de
+ * verdad es ESCALONADA: la bandeja de abajo es la más profunda y van
+ * achicándose hacia arriba. Con una lámina única, el producto de las filas de
+ * arriba queda colgado en el aire, varios centímetros por delante del
+ * entrepaño que supuestamente lo sostiene.
+ *
+ * Así que se parte en una franja por fila, cada una parada en el filo de SU
+ * entrepaño. La textura no cambia: lo que se recorta es la V del mapeo, de
+ * manera que cada franja muestra exactamente el pedazo de imagen que le toca.
+ */
+function LaminaDeProductoPorFila({
+  ancho, alto, filas, fondos, montajeA, haciaA, montajeB, haciaB, facePaint, doble = false,
+}: {
+  ancho: number;
+  /** Alto del panel completo, que es el espacio de la textura. */
+  alto: number;
+  filas: { rowBottom: number; rowPitch: number; rows: number };
+  /** Fondo del entrepaño de cada fila, de abajo hacia arriba. */
+  fondos: number[];
+  /** Z del plano donde se cuelgan los entrepaños de la cara A, y hacia dónde
+   *  crecen desde ahí. Se dan por separado porque no siempre coinciden: la
+   *  góndola monta cada cara en su lado de la espina y crece hacia afuera,
+   *  pero la punta monta ATRÁS —contra el corrido— y crece hacia adelante. Con
+   *  un signo único, el arte de la punta aparece detrás del mueble. */
+  montajeA: number;
+  haciaA: 1 | -1;
+  montajeB?: number;
+  haciaB?: 1 | -1;
+  facePaint?: FacePaint | null;
+  doble?: boolean;
+}) {
+  const caraA = facePaint?.front ?? null;
+  const caraB = doble ? (facePaint?.back ?? null) : null;
+
+  const matsA = useMemo(
+    () => (caraA ? facePaintArray(getInvisible(), caraA, null) : null), [caraA],
+  );
+  const matsB = useMemo(
+    () => (caraB ? facePaintArray(getInvisible(), null, caraB) : null), [caraB],
+  );
+
+  const franjas = useMemo(() => {
+    const fuera: { y: number; geo: THREE.BufferGeometry; zA: number; zB: number }[] = [];
+    for (let i = 0; i < filas.rows; i++) {
+      const y0 = filas.rowBottom + i * filas.rowPitch;
+      const y1 = y0 + filas.rowPitch;
+      const fondo = fondos[i] ?? fondos[fondos.length - 1] ?? 0;
+      // La cara PINTADA de la lámina es la exterior, así que el centro se
+      // corre medio espesor hacia adentro para que la imagen quede justo
+      // sobre el retranqueo.
+      const desdeElFilo = fondo - RETRANQUEO_ENTREPANO;
+      fuera.push({
+        y: (y0 + y1) / 2,
+        geo: laminaDeFranja(ancho, filas.rowPitch, y0 / alto, y1 / alto),
+        zA: montajeA + haciaA * (desdeElFilo - ESPESOR_LAMINA / 2),
+        zB: (montajeB ?? 0) + (haciaB ?? 1) * (desdeElFilo - ESPESOR_LAMINA / 2),
+      });
+    }
+    return fuera;
+  }, [ancho, alto, filas.rowBottom, filas.rowPitch, filas.rows, fondos,
+      montajeA, haciaA, montajeB, haciaB]);
+
+  useEffect(() => () => { for (const f of franjas) f.geo.dispose(); }, [franjas]);
+
+  return (
+    <>
+      {franjas.map((f, i) => (
+        <group key={i}>
+          {matsA && (
+            <mesh position={[0, f.y, f.zA]} geometry={f.geo} material={matsA} />
+          )}
+          {matsB && (
+            <mesh position={[0, f.y, f.zB]} geometry={f.geo} material={matsB} />
+          )}
+        </group>
+      ))}
+    </>
+  );
+}
+
 /**
  * El producto a granel, visto desde arriba.
  *
@@ -190,14 +313,43 @@ function LaminaDeProducto({
  * borde del canasto: un volcado al ras del borde se ve como una tapa impresa.
  */
 function VolcadoDeProducto({
-  ancho, fondo, y, material,
+  ancho, fondo, y, material, semilla, rubro, altoLibre = 0.22, ghost = false,
 }: {
   ancho: number;
   fondo: number;
   y: number;
   material: THREE.Material | null | undefined;
+  /** Semilla del desparejo del producto genérico. El id del mueble: estable
+   *  entre sesiones y distinto entre muebles, así que dos bateas contiguas no
+   *  salen clonadas. */
+  semilla?: string;
+  /** Rubro del contrato. Decide qué empaque se amontona: una batea vendida a
+   *  gaseosas se llena de botellas y no de cajas. */
+  rubro?: string;
+  /** Cuánto se puede amontonar hacia arriba desde `y`. */
+  altoLibre?: number;
+  ghost?: boolean;
 }) {
-  if (!material) return null;
+  // Sin arte del proveedor, producto genérico volcado.
+  //
+  // Esto es lo que le faltaba a la mitad del catálogo. El cajón de frutas
+  // tenía sus listones, la isla su guarda de acrílico y el mostrador su vidrio
+  // curvo — y los tres se leían como maquetas, porque estaban VACÍOS. Un
+  // mostrador de carnes sin carne es un mueble; con carne es una carnicería.
+  //
+  // A diferencia de la góndola, donde el hueco vacío ES el dato —dice qué
+  // espacio queda libre—, estos muebles se venden ENTEROS y no por pedazos:
+  // mostrarlos llenos no esconde ninguna disponibilidad, y mostrarlos vacíos
+  // sí miente sobre cómo se ven.
+  if (!material) {
+    if (ghost) return null;
+    return (
+      <ProductoAGranel
+        ancho={ancho} fondo={fondo} y={y} altoLibre={altoLibre}
+        rubro={rubro} semilla={semilla ?? `${ancho}|${fondo}`}
+      />
+    );
+  }
   return (
     <mesh position={[0, y, 0]} rotation={[-Math.PI / 2, 0, 0]} material={material}>
       <planeGeometry args={[ancho, fondo]} />
@@ -249,7 +401,7 @@ interface FixtureDef {
   code:         string;
 }
 
-interface PlacedFixture {
+export interface PlacedFixture {
   id:              string;
   code:            string;
   type:            FixType;
@@ -273,7 +425,7 @@ interface PlacedFixture {
 
 // ─── Fixture catalogue ────────────────────────────────────────────────────────
 
-const FIXTURE_DEFS: FixtureDef[] = [
+export const FIXTURE_DEFS: FixtureDef[] = [
   // ── Góndolas ──────────────────────────────────────────────────────────────
   { type:"gondola", gondolaType:"double", label:"Góndola Doble",    w:0.90, d:0.90, h:1.80, color:"#6366f1", emoji:"📚", desc:"Módulo de estante central, doble cara",   code:"GON" },
   { type:"gondola", gondolaType:"wall",   label:"Góndola Mural",    w:1.00, d:0.40, h:1.90, color:"#818cf8", emoji:"🧱", desc:"Módulo de estante contra pared",           code:"GON" },
@@ -290,6 +442,7 @@ const FIXTURE_DEFS: FixtureDef[] = [
   { type:"isla_fria",        label:"Isla Helados/Cong.",  w:1.80, d:1.00, h:0.90, color:"#e5e7eb", emoji:"🍦", desc:"Isla abierta refrigerada con guarda de acrílico",code:"ISL" },
   { type:"nevera_carnes",    label:"Nevera Carnes",       w:2.00, d:0.90, h:1.05, color:"#111827", emoji:"🥩", desc:"Mostrador con vidrio curvo para carnes y deli",  code:"CAR" },
   { type:"nevera_refrescos", label:"Nevera Refrescos",    w:1.20, d:0.75, h:1.80, color:"#1e293b", emoji:"🥤", desc:"Vitrina multideck abierta para bebidas",         code:"BEB" },
+  { type:"nevera_vegetales", label:"Nevera Vegetales",    w:1.80, d:0.90, h:1.60, color:"#1e293b", emoji:"🥬", desc:"Mural refrigerado de frutas y verduras, con bandejas inclinadas", code:"VEG" },
   // ── Servicio ──────────────────────────────────────────────────────────────
   { type:"stand_frutas",                  label:"Stand Frutas/Verd",w:1.50, d:1.20, h:0.95, color:"#84cc16", emoji:"🍎", desc:"Cajón expositor de frutas y verduras", code:"FRU" },
   { type:"checkout",                      label:"Checkout / Caja",  w:1.80, d:0.70, h:0.90, color:"#8b5cf6", emoji:"🛒", desc:"Caja registradora con cinta transportadora", code:"CAJ" },
@@ -440,38 +593,32 @@ const GondolaMesh = memo(function GondolaMesh({
   slots, selectedSlotId, hoveredSlotId,
   onSlotClick, onSlotHover,
 }: GondolaMeshProps) {
-  const op     = ghost ? 0.42 : 1;
   const isWall = gondolaType === "wall";
 
-  const G_WHITE = "#e6e6e3";
-  const G_FRAME = "#c8c8c5";
-  const G_PANEL = isWall ? "#d5d5d2" : "#dcdcda";
-  const G_RAIL  = "#b8b8b5";
+  // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
+  // Estaba armada con `boxGeometry`: entrepaños macizos de 22 mm, dos postes
+  // en las puntas y nada en el medio, el fondo liso. Mientras una pieza sea
+  // una caja no hay labio, ni pliegue, ni ranura, y son esos detalles los que
+  // hacen que el ojo lea «mueble de tienda». Ahora la dibuja `GondolaReal`,
+  // con cotas de catálogo y armada por módulos.
+  //
+  // Lo que NO se movió de acá, a propósito: los paneles de slot y el pintado
+  // de caras. El slot es el espacio que se vende —su posición está guardada
+  // en los contratos de los clientes—, así que su geometría no se toca: el
+  // mueble cambió de forma, el espacio vendido no.
 
-  // Board layout mirrored by getPanelShelfSpan("gondola") — keep in sync.
-  const { shelves, topH, shelfT } = useMemo(() => {
-    const topH   = 0.08;
-    const shelfT = 0.022;
-    const n      = Math.max(4, Math.round((h - topH) / 0.38));
-    const shelfYs = Array.from({ length: n }, (_, i) =>
-      0.14 + i * ((h - topH - 0.16) / Math.max(n - 1, 1))
-    );
-    return { shelves: shelfYs, topH, shelfT };
-  }, [h]);
-
-  const slotAreaH  = h - topH - 0.06;
+  // Espacio de los slots. Definen dónde cayó cada espacio vendido, así que
+  // quedan clavados aunque cambie el mueble; viven en `medidas.ts` porque el
+  // producto que se para sobre esos entrepaños necesita la misma cuenta.
+  const slotAreaH  = altoDeZonaDeSlots(h);
   const SLOT_PROTO = 0.12;
-  const backT = isWall ? d * 0.42 : 0.055;
-  // Wall gondola: solid back panel flush with rear face (goes against the wall).
-  // Double gondola: thin center spine at z=0 so both faces are open (symmetric).
-  const backPosZ = isWall ? d / 2 - backT / 2 : 0;
 
-  // El producto ya NO se pinta acá: la espina es estructura y queda al fondo
-  // del estante. Va en `LaminaDeProducto`, parado al frente del entrepaño.
+  // Las filas de producto salen de la misma cuenta que los entrepaños, no de
+  // una copia. Ver `filasDeProducto`.
+  const fondoCara = fondoPorCara(d, isWall);
+  const filas = useMemo(() => filasDeProducto(h, fondoCara), [h, fondoCara]);
+
   const pinta = !ghost && !!facePaint && !!(facePaint.front || facePaint.back);
-  // No mid-posts — gondola modules only have structural uprights at each end,
-  // not internal vertical dividers.
-  const nMidPosts = 0;
 
   function renderSlotFace(faceSign: -1 | 1) {
     if (!slots || ghost || !onSlotClick) return null; // slots disabled → skip
@@ -480,7 +627,7 @@ const GondolaMesh = memo(function GondolaMesh({
       const sw    = slot.w * w - 0.04;
       const sh    = slot.h * slotAreaH - 0.025;
       const cx    = (slot.x + slot.w * 0.5) * w - w / 2;
-      const cy    = 0.06 + (slot.y + slot.h * 0.5) * slotAreaH;
+      const cy    = ZONA_DE_SLOTS.desde + (slot.y + slot.h * 0.5) * slotAreaH;
       const sc    = STATUS_COLORS[slot.status] ?? STATUS_COLORS.free;
       const isSel = slot.id === selectedSlotId;
       const isHov = slot.id === hoveredSlotId;
@@ -507,83 +654,32 @@ const GondolaMesh = memo(function GondolaMesh({
 
   return (
     <group>
-      {/* Remate superior. Antes era una barra blanca suspendida por encima del
-          mueble, sin apoyarse en nada; una góndola de verdad se cierra con una
-          tapa al ras que descansa sobre los montantes. */}
-      <mesh position={[0, h + 0.016, 0]} castShadow>
-        <boxGeometry args={[w, 0.032, isWall ? d : d * 0.94]} />
-        <meshStandardMaterial color={G_FRAME} metalness={0.12} roughness={0.58} transparent opacity={op} />
-      </mesh>
+      <GondolaReal w={w} d={d} h={h} gondolaType={isWall ? "wall" : "double"} ghost={ghost} />
 
-      {/* Back / wall panel — estructura, siempre lisa */}
-      <mesh position={[0, h / 2, backPosZ]} castShadow>
-        <boxGeometry args={[w, h, backT]} />
-        <meshLambertMaterial color={G_PANEL} transparent opacity={op} />
-      </mesh>
-
-      {/* El producto, al frente del entrepaño. La góndola mural va contra la
-          pared: sólo se vende su cara de adelante. */}
-      {pinta && (
-        <LaminaDeProducto
-          ancho={w} alto={h} y={h / 2} fondo={d}
-          doble={!isWall} facePaint={facePaint}
+      {/* El producto de los espacios vendidos, parado sobre los entrepaños.
+          Cuando el proveedor subió su arte manda el arte: la lámina es
+          información real y esto es una aproximación por rubro, así que las
+          dos no conviven sobre la misma cara. */}
+      {!pinta && (
+        <ProductoEnGondola
+          w={w} d={d} h={h} esMural={isWall} slots={slots} ghost={ghost}
         />
       )}
 
-      {/* Shelf boards + price rails */}
-      {shelves.map((sy, i) => (
-        <group key={`sh${i}`}>
-          <mesh position={[0, sy, 0]} castShadow>
-            <boxGeometry args={[w - 0.055, shelfT, d - 0.015]} />
-            <meshLambertMaterial color={G_WHITE} transparent opacity={op} />
-          </mesh>
-          <mesh position={[0, sy + shelfT * 0.5 + 0.019, -(d / 2 - 0.010)]} castShadow>
-            <boxGeometry args={[w - 0.07, 0.038, 0.009]} />
-            <meshLambertMaterial color={G_RAIL} transparent opacity={op} />
-          </mesh>
-          {!isWall && (
-            <mesh position={[0, sy + shelfT * 0.5 + 0.019, d / 2 - 0.010]} castShadow>
-              <boxGeometry args={[w - 0.07, 0.038, 0.009]} />
-              <meshLambertMaterial color={G_RAIL} transparent opacity={op} />
-            </mesh>
-          )}
-        </group>
-      ))}
-
-      {/* End-cap uprights.
-          Wall gondola  → full-depth slab (the upright runs along the wall).
-          Double gondola → thin post (≈ 5 cm × 5 cm cross-section) so adjacent
-          modules don't create visible vertical dividers between them. */}
-      {([-1, 1] as const).map(side => (
-        <mesh key={`up${side}`} position={[side * (w / 2 - 0.026), h / 2, 0]} castShadow>
-          <boxGeometry args={[0.052, h, isWall ? d : 0.058]} />
-          <meshStandardMaterial color={G_FRAME} metalness={0.15} roughness={0.72} transparent opacity={op} />
-        </mesh>
-      ))}
-
-      {/* Intermediate uprights */}
-      {Array.from({ length: nMidPosts }, (_, i) => {
-        const px = ((i + 1) / (nMidPosts + 1)) * w - w / 2;
-        return (
-          <mesh key={`mp${i}`} position={[px, h / 2, 0]} castShadow>
-            <boxGeometry args={[0.038, h, d * 0.10]} />
-            <meshStandardMaterial color={G_FRAME} metalness={0.15} roughness={0.72} transparent opacity={op} />
-          </mesh>
-        );
-      })}
-
-      {/* Zócalo. Antes eran dos patas y el mueble quedaba flotando con el
-          pasillo visible por debajo; una góndola se apoya en una base corrida
-          que va de punta a punta, retranqueada para el pie de quien compra. */}
-      <mesh position={[0, 0.055, 0]} castShadow receiveShadow>
-        <boxGeometry args={[w - 0.02, 0.110, d - 0.055]} />
-        <meshStandardMaterial color="#8e8e8a" metalness={0.20} roughness={0.68} transparent opacity={op} />
-      </mesh>
-      {/* Tapa del zócalo: el borde donde se apoya el entrepaño más bajo */}
-      <mesh position={[0, 0.118, 0]} castShadow>
-        <boxGeometry args={[w, 0.016, d - 0.020]} />
-        <meshLambertMaterial color={G_FRAME} transparent opacity={op} />
-      </mesh>
+      {/* El producto, parado en el filo de cada entrepaño. La góndola mural va
+          contra la pared: sólo se vende su cara de adelante. */}
+      {pinta && (
+        <LaminaDeProductoPorFila
+          ancho={w - PARANTE.ancho * 2}
+          alto={h}
+          filas={filas}
+          fondos={filas.fondos}
+          montajeA={-ESPESOR_ESPINA / 2} haciaA={-1}
+          montajeB={ESPESOR_ESPINA / 2} haciaB={1}
+          doble={!isWall}
+          facePaint={facePaint}
+        />
+      )}
 
       {/* Slot panels */}
       {renderSlotFace(-1)}
@@ -606,89 +702,63 @@ interface PuntaMeshProps {
 }
 
 function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: PuntaMeshProps) {
-  const op      = ghost ? 0.42 : 1;
-  // Board layout mirrored by getPanelShelfSpan("punta") — keep in sync.
-  const topperH = 0.36;              // promotional header height
-  const bodyH   = h - topperH;
-  const nShelves = Math.max(3, Math.round(bodyH / 0.38));
-  const slotAreaH = bodyH - 0.08;
-  const panelZ  = -(d / 2 + 0.10);  // slot projection forward
+  // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
+  // La punta es el espacio más caro de un supermercado: se ve de frente desde
+  // todo el pasillo transversal y se negocia aparte del lineal. Estaba armada
+  // con `boxGeometry` —placas planas y un cartel que era una caja— y la dibuja
+  // ahora `PuntaReal`, con el mismo herraje que el corrido.
+  //
+  // Lo que NO se movió de acá, a propósito: los paneles de slot y el pintado
+  // de caras. La posición de cada slot está guardada en los contratos de los
+  // clientes, así que su geometría queda clavada aunque el mueble haya
+  // cambiado de forma entero.
 
-  const G_WHITE = "#efefed";
-  const G_FRAME = "#c0c0bc";
-  const G_BACK  = "#d8d8d5";
+  const altoDeCuerpo = Math.max(0.4, h - COPETE.alto);
+  const fondoDeCara = Math.max(0.12, d - PANEL_FONDO.espesor);
+
+  // Espacio de los slots. `altoDeZonaDeSlotsDePunta` NO es la misma cuenta que
+  // la de la góndola, y es deliberado: así se repartieron los slots de las
+  // puntas cuando se dibujaron. Unificarlas corre todos los espacios vendidos.
+  const slotAreaH = altoDeZonaDeSlotsDePunta(altoDeCuerpo);
+  const panelZ = -(d / 2 + 0.10);
+
+  // Las filas de producto salen de la misma cuenta que los entrepaños.
+  const filas = useMemo(
+    () => filasDePunta(altoDeCuerpo, fondoDeCara), [altoDeCuerpo, fondoDeCara],
+  );
 
   const pinta = !ghost && !!facePaint?.front;
 
   return (
     <group>
-      {/* Structural back plate (faces the gondola) — estructura, lisa */}
-      <mesh position={[0, bodyH / 2, d * 0.40]} castShadow>
-        <boxGeometry args={[w, bodyH, d * 0.22]} />
-        <meshLambertMaterial color={G_BACK} transparent opacity={op} />
-      </mesh>
+      <PuntaReal w={w} d={d} h={h} ghost={ghost} />
 
-      {/* El producto, al frente del entrepaño */}
+      {/* El arte del proveedor, parado en el filo de cada entrepaño. La punta
+          se cuelga ATRÁS —contra el corrido— y crece hacia el frente: con el
+          montaje de la góndola, el arte aparecería detrás del mueble. */}
       {pinta && (
-        <LaminaDeProducto ancho={w} alto={bodyH} y={bodyH / 2} fondo={d} facePaint={facePaint} />
+        <LaminaDeProductoPorFila
+          ancho={w - PARANTE.ancho * 2}
+          alto={altoDeCuerpo}
+          filas={filas}
+          fondos={filas.fondos}
+          montajeA={d / 2} haciaA={-1}
+          facePaint={facePaint}
+        />
       )}
 
-      {/* Left & right uprights */}
-      {([-1, 1] as const).map(side => (
-        <mesh key={side} position={[side * (w / 2 - 0.025), bodyH / 2, 0]} castShadow>
-          <boxGeometry args={[0.050, bodyH, d]} />
-          <meshStandardMaterial color={G_FRAME} metalness={0.18} roughness={0.70} transparent opacity={op} />
-        </mesh>
-      ))}
-
-      {/* Shelf boards — angled slightly toward viewer */}
-      {Array.from({ length: nShelves }, (_, i) => {
-        const sy = 0.12 + (i + 1) * (bodyH - 0.16) / (nShelves + 1);
-        return (
-          <group key={i} rotation={[-0.08, 0, 0]}>
-            <mesh position={[0, sy, 0]} castShadow>
-              <boxGeometry args={[w - 0.055, 0.022, d - 0.01]} />
-              <meshLambertMaterial color={G_WHITE} transparent opacity={op} />
-            </mesh>
-            {/* Front price rail */}
-            <mesh position={[0, sy + 0.030, -(d / 2 - 0.008)]}>
-              <boxGeometry args={[w - 0.06, 0.036, 0.007]} />
-              <meshLambertMaterial color="#b0b0ad" transparent opacity={op} />
-            </mesh>
-          </group>
-        );
-      })}
-
-      {/* Promotional topper — dark frame + white face */}
-      <mesh position={[0, bodyH + topperH / 2, 0]} castShadow>
-        <boxGeometry args={[w + 0.10, topperH, d * 0.09]} />
-        <meshStandardMaterial color="#2e2e2c" metalness={0.30} roughness={0.55} transparent opacity={op} />
-      </mesh>
-      {/* White printable face */}
-      <mesh position={[0, bodyH + topperH / 2, -(d * 0.045 + 0.004)]}>
-        <boxGeometry args={[w + 0.02, topperH * 0.80, 0.006]} />
-        <meshLambertMaterial color="#f8f8f6" transparent opacity={op} />
-      </mesh>
-      {/* Top light bar */}
-      <mesh position={[0, bodyH + topperH + 0.030, -(d * 0.04)]}>
-        <boxGeometry args={[w + 0.04, 0.050, 0.100]} />
-        <meshStandardMaterial color="#eeeeed" metalness={0.08} roughness={0.25} transparent opacity={op} />
-      </mesh>
-
-      {/* Corner feet */}
-      {([-1, 1] as const).map(sx => (
-        <mesh key={`ft${sx}`} position={[sx * (w / 2 - 0.09), 0.045, 0]} castShadow>
-          <boxGeometry args={[0.16, 0.090, d * 0.60]} />
-          <meshLambertMaterial color={G_FRAME} transparent opacity={op} />
-        </mesh>
-      ))}
+      {/* El producto de los espacios vendidos. Cuando el proveedor subió su
+          arte manda el arte: las dos no conviven sobre la misma cara. */}
+      {!pinta && (
+        <ProductoEnPunta w={w} d={d} h={h} slots={slots} ghost={ghost} />
+      )}
 
       {/* Slot panels (same as GondolaMesh pattern) — disabled when onSlotClick is absent */}
       {!ghost && !!onSlotClick && slots?.map(slot => {
         const sw    = slot.w * w - 0.04;
         const sh    = slot.h * slotAreaH - 0.025;
         const cx    = (slot.x + slot.w * 0.5) * w - w / 2;
-        const cy    = 0.06 + (slot.y + slot.h * 0.5) * slotAreaH;
+        const cy    = ZONA_DE_SLOTS.desde + (slot.y + slot.h * 0.5) * slotAreaH;
         const sc    = STATUS_COLORS[slot.status] ?? STATUS_COLORS.free;
         const isSel = slot.id === selectedSlotId;
         const isHov = slot.id === hoveredSlotId;
@@ -717,7 +787,7 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
 // que al colocarlo junto a la Punta forme una unidad coherente.
 // Dimensiones: w=0.30 (ancho panel), d=0.40 (= profundidad Punta → encaja ras)
 
-function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
+function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;rubro?:string }) {
   const op      = ghost ? 0.42 : 1;
   // Board layout mirrored by getPanelShelfSpan("robatope") — keep in sync.
   const capH    = 0.055;                 // thin dark cap at top (no promotional topper)
@@ -790,22 +860,42 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:n
         <boxGeometry args={[w * 0.70, 0.040, 0.010]} />
         <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
       </mesh>
+      <ProductoEnRepisas
+        alturas={Array.from(
+          { length: nShelves },
+          (_, i) => 0.12 + (i + 1) * (bodyH - 0.16) / (nShelves + 1) + 0.011,
+        )}
+        techo={bodyH}
+        ancho={w - 0.055} fondo={d - 0.01}
+        montaje={(d - 0.01) / 2} hacia={-1}
+        rubro={rubro} ghost={ghost}
+      />
+
     </group>
   );
 }
 
 // ─── Mesh: Ristra ─────────────────────────────────────────────────────────────
 
-function RistraMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
+function RistraMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;rubro?:string }) {
   const op     = ghost ? 0.42 : 1;
   // Una ristra es una TIRA: unidades colgadas una debajo de otra. Sin producto
   // era un riel con ganchos vacíos, que no se parece a nada.
-  const RISTRA_W = w * 0.55;
+  const RISTRA_W = Math.min(0.13, Math.max(0.076, w * 0.45));
   const RISTRA_H = h - 0.12;
   const RAIL   = "#8a8a88";
   const HOOK   = "#9e9e9c";
   const nHooks = Math.max(4, Math.round(h / 0.28));
   const sp     = (h - 0.10) / nHooks;
+  /** Ancho de la tira y del cabezal. Son cotas de FABRICACIÓN, no fracciones
+   *  del mueble: la ficha del fabricante da 3,8 cm de ancho de tira y 12
+   *  ganchos. Atadas al ancho del mueble, una ristra colocada con 40 cm de
+   *  huella salía de 28 cm de ancho — o sea, una tabla. */
+  const TIRA    = 0.038;
+  const CABEZAL = Math.min(0.12, Math.max(TIRA * 2, w * 0.4));
+  /** Lo que cuelga de cada gancho es un SOBRE, no una plancha del ancho del
+   *  mueble. */
+  const SOBRE   = Math.min(0.13, Math.max(TIRA * 2, w * 0.45));
 
   return (
     <group>
@@ -813,37 +903,72 @@ function RistraMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:num
         ancho={RISTRA_W} alto={RISTRA_H} y={RISTRA_H / 2 + 0.06} fondo={d}
         facePaint={ghost ? null : facePaint}
       />
-      <mesh position={[0, h + 0.03, 0]} castShadow>
-        <boxGeometry args={[w * 0.55, 0.06, 0.04]} />
-        <meshStandardMaterial color={RAIL} metalness={0.65} roughness={0.30} transparent opacity={op} />
+      {/* El CABEZAL porta-cartel, que es lo que compra la marca: la tarjeta
+          impresa que corona la tira. Va del ancho de la tarjeta y no del ancho
+          del mueble. */}
+      <mesh position={[0, h + 0.005, 0]} castShadow>
+        <boxGeometry args={[CABEZAL, 0.075, 0.005]} />
+        <meshStandardMaterial color="#e8eaec" metalness={0.10} roughness={0.60} transparent opacity={op} />
       </mesh>
-
-      <mesh position={[0, h / 2, 0]} castShadow>
-        <boxGeometry args={[0.028, h, 0.012]} />
-        <meshStandardMaterial color={RAIL} metalness={0.65} roughness={0.28} transparent opacity={op} />
-      </mesh>
-      {w > 0.12 && (
-        <mesh position={[0, h / 2, 0]}>
-          <boxGeometry args={[w * 0.70, h, 0.006]} />
-          <meshStandardMaterial color={RAIL} metalness={0.55} roughness={0.35} transparent opacity={0.35 * op} />
+      {!ghost && rubro && (
+        <mesh position={[0, h + 0.005, -0.004]}>
+          <boxGeometry args={[CABEZAL - 0.014, 0.048, 0.004]} />
+          <meshStandardMaterial
+            color={colorDeRubro(rubro)} metalness={0} roughness={0.7}
+            transparent opacity={op}
+          />
         </mesh>
       )}
+
+      {/* La TIRA. Angosta: una ristra no es un panel, es una tira de plástico
+          que cuelga del filo de un entrepaño por delante de la mercadería. Acá
+          había además un panel translúcido de 28 cm de ancho DETRÁS de la
+          tira, y eso era lo que la hacía leer como una tabla: un clip strip no
+          tiene respaldo — se ve la góndola a través de él. */}
+      <mesh position={[0, h / 2, 0]} castShadow>
+        <boxGeometry args={[TIRA, h, 0.010]} />
+        <meshStandardMaterial color={RAIL} metalness={0.35} roughness={0.45} transparent opacity={op} />
+      </mesh>
 
       {Array.from({ length: nHooks }, (_, i) => {
         const py = h - 0.08 - i * sp;
         return (
           <group key={i} position={[0, py, 0]}>
-            <mesh position={[0, 0, -d * 0.28]} castShadow>
-              <boxGeometry args={[w * 0.82, 0.010, d * 0.55]} />
-              <meshStandardMaterial color={HOOK} metalness={0.60} roughness={0.32} transparent opacity={op} />
+            {/* El GANCHO: una varilla corta que sale de la tira y se dobla
+                hacia arriba en la punta. Acá había una bandeja —una placa
+                horizontal del ancho del mueble— y eso convertía la ristra en
+                una repisera angosta. Una ristra no lleva entrepaño: el
+                producto CUELGA de la varilla por su troquel. */}
+            <mesh position={[0, 0, -d * 0.16]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+              <cylinderGeometry args={[0.0035, 0.0035, d * 0.32, 6]} />
+              <meshStandardMaterial color={HOOK} metalness={0.7} roughness={0.28} transparent opacity={op} />
             </mesh>
-            <mesh position={[0, -0.018, -d * 0.50]}>
-              <boxGeometry args={[w * 0.70, 0.030, 0.006]} />
-              <meshLambertMaterial color="#f0f0ee" transparent opacity={0.88 * op} />
+            {/* La punta doblada hacia arriba, que es lo que retiene el sobre. */}
+            <mesh position={[0, 0.009, -d * 0.32]} castShadow>
+              <cylinderGeometry args={[0.0035, 0.0035, 0.018, 6]} />
+              <meshStandardMaterial color={HOOK} metalness={0.7} roughness={0.28} transparent opacity={op} />
             </mesh>
-            <mesh position={[(w * 0.28), -0.018, -d * 0.50]}>
-              <boxGeometry args={[0.018, 0.018, 0.008]} />
-              <meshLambertMaterial color={statusColor} transparent opacity={0.80 * op} />
+            {/* El sobre, COLGADO de la varilla: su borde de arriba queda al
+                ras del gancho y el resto pende. Los sobres se superponen un
+                poco unos con otros, como en una ristra de verdad, donde cada
+                uno tapa el troquel del de abajo. */}
+            {!ghost && rubro && (
+              <mesh
+                position={[0, -sp * 0.46, -d * 0.22]}
+                rotation={[0.06, 0, 0]}
+                castShadow
+              >
+                <boxGeometry args={[SOBRE, sp * 0.92, 0.016]} />
+                <meshStandardMaterial
+                  color={colorDeRubro(rubro)} metalness={0} roughness={0.72}
+                  transparent opacity={op}
+                />
+              </mesh>
+            )}
+            {/* La franja de estado, sobre la tira y no sobre una bandeja. */}
+            <mesh position={[0, 0.016, -0.008]}>
+              <boxGeometry args={[0.022, 0.012, 0.006]} />
+              <meshLambertMaterial color={statusColor} transparent opacity={0.85 * op} />
             </mesh>
           </group>
         );
@@ -854,7 +979,7 @@ function RistraMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:num
 
 // ─── Mesh: Cross ──────────────────────────────────────────────────────────────
 
-function CrossMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
+function CrossMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;rubro?:string }) {
   const op      = ghost ? 0.42 : 1;
   // Era casi negro y se leía como un librero, no como un exhibidor. Un metal
   // claro con estantes blancos es lo que se ve en una punta de pasillo, y
@@ -922,6 +1047,22 @@ function CrossMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:numb
               <boxGeometry args={[w * 0.60, 0.024, 0.009]} />
               <meshLambertMaterial color={statusColor} transparent opacity={0.70 * op} />
             </mesh>
+            {/* El producto del contrato, DENTRO del grupo de la repisa: es el
+                que lleva la inclinación. Colgado afuera queda a la altura del
+                eje y la repisa se le va varios centímetros por delante.
+
+                La repisa de más arriba va sin producto: es la tapa del
+                exhibidor, no un anaquel, y lo que se pare encima sobresale por
+                arriba del mueble. */}
+            {i < nLevels - 1 && (
+            <ProductoEnRepisas
+              alturas={[0.013]}
+              techo={(h - 0.12) / Math.max(nLevels - 1, 1)}
+              ancho={w - 0.068} fondo={d - 0.04}
+              montaje={(d - 0.04) / 2} hacia={-1}
+              rubro={rubro} ghost={ghost}
+            />
+            )}
           </group>
         );
       })}
@@ -934,6 +1075,7 @@ function CrossMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:numb
             transparent={ghost} opacity={op} />
         </mesh>
       ))}
+
     </group>
   );
 }
@@ -1149,7 +1291,7 @@ function MuebleMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:num
 // Stepped promotional floor display — cardboard base boxes + product rows per level,
 // narrowing like stairs as it goes up. Front price card at bottom.
 
-function IslaMesh({ w, d, h, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
+function IslaMesh({ w, d, h, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
   const op       = ghost ? 0.42 : 1;
   const CARTON   = "#c9a06a";   // cartón corrugado
   const CARTON_D = "#a97c46";   // canto, más oscuro
@@ -1194,6 +1336,7 @@ function IslaMesh({ w, d, h, ghost, facePaint }: { w:number;d:number;h:number;st
             <VolcadoDeProducto
               ancho={lw - 0.05} fondo={ld - 0.05}
               y={tapa + 0.004} material={producto}
+              semilla={`${id}|isla|${i}`} rubro={rubro} altoLibre={0.2} ghost={ghost}
             />
           </group>
         );
@@ -1216,7 +1359,7 @@ function IslaMesh({ w, d, h, ghost, facePaint }: { w:number;d:number;h:number;st
 // Narrow central spine + cantilevered shelves (wider than spine) + mushroom topper.
 // Inspired by Nestlé Fitness / brand impulse floor display style.
 
-function ImpulsadorMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
+function ImpulsadorMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;rubro?:string }) {
   const op      = ghost ? 0.42 : 1;
   const WHITE   = "#f0f0ef";
   const LIGHT   = "#e2e8f0";
@@ -1306,110 +1449,42 @@ function ImpulsadorMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d
         <boxGeometry args={[w * 0.70, 0.022, 0.007]} />
         <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
       </mesh>
+      <ProductoEnRepisas
+        alturas={Array.from({ length: nShelves }, (_, si) => baseH + si * shelfGap + 0.009)}
+        techo={baseH + bodyH}
+        ancho={w} fondo={d}
+        montaje={d / 2} hacia={-1}
+        rubro={rubro} ghost={ghost}
+      />
+
     </group>
   );
 }
 
 // ─── Mesh: Batea ──────────────────────────────────────────────────────────────
 
-function BateaMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
-  const op    = ghost ? 0.42 : 1;
-  const WIRE  = "#6b7280";
-  const WHEEL = "#374151";
-  const wheelR = 0.045;
-  // Producto volcado dentro del canasto, un poco por debajo del borde: al ras
-  // se ve como una tapa impresa y no como una batea llena.
-  const producto = ghost ? null : (facePaint?.front ?? null);
-  /** Fondo falso. Una batea se llena hasta cerca del borde, así que abajo lleva
-   *  una bandeja que sube el producto; sin ella el volcado quedaba flotando en
-   *  el aire, en el medio de la jaula, sin nada que lo sostuviera. */
-  const fondoY = wheelR + h * 0.72;
-
+function BateaMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
+  // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
+  // Estaba dibujada como un CARRO DE REPOSICIÓN: una jaula de tubos con tres
+  // repisas planas y ruedas. Eso existe en una tienda, pero es lo que usa
+  // quien repone, no lo que ve el cliente. Una batea es un canasto de paredes
+  // inclinadas en el que se hurga, y esa inclinación es justo lo que el ojo
+  // usa para distinguirla de un cajón.
+  const boca = bocaDeBatea(w, d, h);
   return (
     <group>
-      {/* Bandeja del fondo falso */}
-      <mesh position={[0, fondoY, 0]} castShadow receiveShadow>
-        <boxGeometry args={[w - 0.05, 0.016, d - 0.05]} />
-        <meshStandardMaterial color={WIRE} metalness={0.45} roughness={0.50} transparent opacity={op} />
-      </mesh>
+      <BateaReal w={w} d={d} h={h} statusColor={statusColor} ghost={ghost} />
       <VolcadoDeProducto
-        ancho={w - 0.06} fondo={d - 0.06}
-        y={fondoY + 0.012} material={producto}
+        ancho={boca.ancho} fondo={boca.fondo}
+        y={boca.y} material={ghost ? null : (facePaint?.front ?? null)}
+        semilla={`${id}|batea`} rubro={rubro}
+        altoLibre={boca.altoLibre} ghost={ghost}
       />
-      {/* Wheels (4 corners) */}
-      {([-1, 1] as const).flatMap(sx =>
-        ([-1, 1] as const).map(sz => (
-          <mesh key={`w${sx}${sz}`} position={[sx * (w / 2 - 0.08), wheelR, sz * (d / 2 - 0.06)]}
-            rotation={[0, 0, Math.PI / 2]} castShadow>
-            <cylinderGeometry args={[wheelR, wheelR, 0.030, 12]} />
-            <meshStandardMaterial color={WHEEL} metalness={0.50} roughness={0.40} transparent opacity={op} />
-          </mesh>
-        ))
-      )}
-
-      {/* Bottom frame */}
-      <mesh position={[0, wheelR * 2 + 0.020, 0]} castShadow>
-        <boxGeometry args={[w, 0.030, d]} />
-        <meshStandardMaterial color={WIRE} metalness={0.45} roughness={0.45} transparent opacity={op} />
-      </mesh>
-
-      {/* 4 corner uprights */}
-      {([-1, 1] as const).flatMap(sx =>
-        ([-1, 1] as const).map(sz => (
-          <mesh key={`u${sx}${sz}`} position={[sx * (w / 2 - 0.018), h / 2 + wheelR, sz * (d / 2 - 0.018)]} castShadow>
-            <boxGeometry args={[0.022, h, 0.022]} />
-            <meshStandardMaterial color={WIRE} metalness={0.45} roughness={0.45} transparent opacity={op} />
-          </mesh>
-        ))
-      )}
-
-      {/* Wire mesh sides — represented by thin horizontal rails */}
-      {[0.25, 0.50, 0.75, 1.00].map((t, ri) => {
-        // Sobre el montante, no 4,5 cm por encima: el riel de arriba tiene que
-        // ser el borde del canasto, no un aro suelto flotando.
-        const ry = wheelR + t * h;
-        const sideW = w - 0.036;
-        const sideD = d - 0.036;
-        return (
-          <group key={ri}>
-            <mesh position={[0, ry, -(d / 2 - 0.018)]} castShadow>
-              <boxGeometry args={[sideW, 0.012, 0.012]} />
-              <meshStandardMaterial color={WIRE} metalness={0.45} roughness={0.45} transparent opacity={op} />
-            </mesh>
-            <mesh position={[0, ry, (d / 2 - 0.018)]} castShadow>
-              <boxGeometry args={[sideW, 0.012, 0.012]} />
-              <meshStandardMaterial color={WIRE} metalness={0.45} roughness={0.45} transparent opacity={op} />
-            </mesh>
-            <mesh position={[-(w / 2 - 0.018), ry, 0]} castShadow>
-              <boxGeometry args={[0.012, 0.012, sideD]} />
-              <meshStandardMaterial color={WIRE} metalness={0.45} roughness={0.45} transparent opacity={op} />
-            </mesh>
-            <mesh position={[(w / 2 - 0.018), ry, 0]} castShadow>
-              <boxGeometry args={[0.012, 0.012, sideD]} />
-              <meshStandardMaterial color={WIRE} metalness={0.45} roughness={0.45} transparent opacity={op} />
-            </mesh>
-          </group>
-        );
-      })}
-
-      {/* Status indicator on front rail top */}
-      <mesh position={[0, wheelR + h - 0.02, -(d / 2 - 0.02)]}>
-        <boxGeometry args={[w * 0.60, 0.024, 0.014]} />
-        <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
-      </mesh>
     </group>
   );
 }
 
-// ─── Mesh: Nevera Mural ───────────────────────────────────────────────────────
-// Branded glass-door refrigerator: dark body, large topper, wheels, cans & bottles
-// visible on wire shelves through semi-transparent glass doors.
-
-// ─── Mesh: Isla Fría / Helados ────────────────────────────────────────────────
-// Isla abierta refrigerada (tipo supermercado): cuerpo blanco con sección
-// inferior oscura de compresor, rejillas perimetrales y guarda de acrílico.
-
-function IslaFriaMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
+function IslaFriaMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
   const op      = ghost ? 0.42 : 1;
   const BODY    = "#f3f4f6";   // blanco/gris claro — cuerpo superior
   const COMP    = "#374151";   // compresor oscuro
@@ -1497,6 +1572,8 @@ function IslaFriaMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:n
       <VolcadoDeProducto
         ancho={w - PARED * 2 - 0.02} fondo={d - PARED * 2 - 0.02}
         y={pisoY + 0.014} material={ghost ? null : (facePaint?.front ?? null)}
+        semilla={`${id}|isla_fria`} rubro={rubro}
+        altoLibre={Math.max(0.08, h - pisoY - 0.10)} ghost={ghost}
       />
 
       {/* Rim de acero — 4 perfiles delgados en las aristas superiores (no tapa el pozo) */}
@@ -1556,198 +1633,70 @@ function IslaFriaMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:n
 // Mostrador negro con gran vidrio curvo al frente (foto real): cuerpo oscuro bajo,
 // dos paneles de vidrio simulando la curva, arcos laterales de metal negro.
 
-function NeveraCarnesMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
-  const op    = ghost ? 0.42 : 1;
-  const DARK  = "#111827";
-  const FRAME = "#1f2937";
-  const GLASS = "#bae6fd";
-
-  const bodyH  = h * 0.52;                   // cuerpo bajo oscuro
-  const glassH = h - bodyH + 0.05;           // panel de vidrio, solapa ligeramente el borde
-
+function NeveraCarnesMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
+  // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
+  // Era un cajón oscuro con una placa de vidrio PLANA y vertical parada
+  // encima. Eso no es un mostrador de carnes: es una vitrina cualquiera. Le
+  // faltaban las tres cosas que lo identifican, y son de forma: el vidrio
+  // curvo, la bandeja inclinada hacia el cliente y la franja de servicio del
+  // lado del que atiende.
+  const bandeja = bandejaDeMostrador(w, d, h);
   return (
     <group>
-      {/* Cuerpo principal oscuro */}
-      <mesh position={[0, bodyH / 2, 0]} castShadow>
-        <boxGeometry args={[w, bodyH, d]} />
-        <meshStandardMaterial color={DARK} roughness={0.55} metalness={0.25} transparent opacity={op} />
-      </mesh>
-
-      {/* La bandeja fría, y el producto volcado encima. Antes era una tapa
-          roja translúcida —«carne» genérica— que tapaba el mostrador entero. */}
-      <mesh position={[0, bodyH + 0.015, 0]}>
-        <boxGeometry args={[w - 0.08, 0.03, d - 0.06]} />
-        <meshStandardMaterial color="#e8eaed" roughness={0.55} metalness={0.20} transparent opacity={op} />
-      </mesh>
-      <VolcadoDeProducto
-        ancho={w - 0.10} fondo={d - 0.08}
-        y={bodyH + 0.033} material={ghost ? null : (facePaint?.front ?? null)}
-      />
-
-      {/* Rejillas de ventilación en el frente inferior del cuerpo */}
-      {Array.from({ length: 4 }, (_, i) => (
-        <mesh key={i} position={[0, bodyH * 0.12 + i * (bodyH * 0.16), -(d / 2 - 0.002)]}>
-          <boxGeometry args={[w * 0.70, 0.010, 0.006]} />
-          <meshStandardMaterial color={FRAME} metalness={0.50} transparent opacity={op} />
-        </mesh>
-      ))}
-
-      {/* Borde superior del cuerpo */}
-      <mesh position={[0, bodyH + 0.007, 0]}>
-        <boxGeometry args={[w + 0.010, 0.014, d + 0.010]} />
-        <meshStandardMaterial color="#374151" metalness={0.55} roughness={0.30} transparent opacity={op} />
-      </mesh>
-
-      {/* Panel de vidrio PLANO vertical al frente — SIN rotación */}
-      <mesh position={[0, bodyH + glassH / 2, -(d / 2 - 0.005)]}>
-        <boxGeometry args={[w - 0.020, glassH, 0.008]} />
-        <meshStandardMaterial color={GLASS} roughness={0.03} metalness={0.01}
-          transparent opacity={0.28 * op} />
-      </mesh>
-
-      {/* Marco del vidrio — 4 perfiles delgados oscuros alrededor del panel */}
-      {/* Riel superior */}
-      <mesh position={[0, h + 0.007, -(d / 2 - 0.005)]}>
-        <boxGeometry args={[w, 0.014, 0.014]} />
-        <meshStandardMaterial color={DARK} metalness={0.55} roughness={0.30} transparent opacity={op} />
-      </mesh>
-      {/* Riel inferior (sobre el borde del cuerpo) */}
-      <mesh position={[0, bodyH + 0.007, -(d / 2 - 0.005)]}>
-        <boxGeometry args={[w, 0.014, 0.014]} />
-        <meshStandardMaterial color={DARK} metalness={0.55} roughness={0.30} transparent opacity={op} />
-      </mesh>
-      {/* Poste izquierdo */}
-      <mesh position={[-(w / 2 - 0.015), bodyH + glassH / 2, -(d / 2 - 0.005)]}>
-        <boxGeometry args={[0.016, glassH, 0.014]} />
-        <meshStandardMaterial color={DARK} metalness={0.55} roughness={0.30} transparent opacity={op} />
-      </mesh>
-      {/* Poste derecho */}
-      <mesh position={[w / 2 - 0.015, bodyH + glassH / 2, -(d / 2 - 0.005)]}>
-        <boxGeometry args={[0.016, glassH, 0.014]} />
-        <meshStandardMaterial color={DARK} metalness={0.55} roughness={0.30} transparent opacity={op} />
-      </mesh>
-
-      {/* Indicador de estado en el frente inferior */}
-      <mesh position={[0, 0.08, -(d / 2 + 0.008)]}>
-        <boxGeometry args={[w * 0.60, 0.032, 0.010]} />
-        <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
-      </mesh>
+      <MostradorFrioReal w={w} d={d} h={h} statusColor={statusColor} ghost={ghost} />
+      <group position={[0, 0, bandeja.z]}>
+        <VolcadoDeProducto
+          ancho={bandeja.ancho} fondo={bandeja.fondo}
+          y={bandeja.y} material={ghost ? null : (facePaint?.front ?? null)}
+          semilla={`${id}|carnes`} rubro={rubro || "Carnes"}
+          altoLibre={bandeja.altoLibre} ghost={ghost}
+        />
+      </group>
     </group>
   );
 }
 
-// ─── Mesh: Nevera Refrescos ───────────────────────────────────────────────────
-// Vitrina multideck de frente abierto para bebidas y lácteos: cuerpo oscuro,
-// estantes iluminados con tiras LED, productos visibles desde el pasillo.
-
 function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
-  const op      = ghost ? 0.42 : 1;
-  const BODY    = "#1e293b";
-  const SHELF_C = "#334155";
-  const LED_C   = "#e0f2fe";
-  // Board layout mirrored by getPanelShelfSpan("nevera_refrescos") — keep in sync.
-  const compH   = h * 0.14;
-  const topH    = h * 0.05;
-  const dispH   = h - compH - topH;
-  const nShelves = Math.max(3, Math.floor(dispH / 0.35));
-  /** Relleno genérico. Una nevera vacía no se lee como nevera, así que cuando
-   *  el espacio todavía no tiene producto cargado se muestran botellas mudas
-   *  —un solo tono frío, sin marca—. En cuanto entra el arte del proveedor
-   *  desaparecen: lo que se ve por los huecos entre facings tiene que ser el
-   *  fondo iluminado de la nevera, no un producto que nadie compró. */
-  const RELLENO = "#94a3b8";
-  const pinta   = !ghost && !!facePaint?.front;
+  // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
+  // Era una caja oscura con estantes y tiras de luz. Le faltaba lo que hace
+  // que el ojo lea «mueble de frío»: en un multideck, la CORTINA DE AIRE —la
+  // boca de impulsión bajo el copete y la reja de retorno al ras de la
+  // bandeja de abajo—. Ese par de bocas cumple el mismo papel que la puerta
+  // en una nevera cerrada: sin ellas, el mueble se lee como una estantería
+  // pintada de oscuro.
+  //
+  // `nevera_refrescos` es de frente ABIERTO, como dice su ficha del catálogo
+  // («vitrina multideck abierta para bebidas»). La variante con puertas de
+  // vidrio existe en `NeveraReal` y la usa la vitrina.
+
+  const util = altoUtilDeNevera(h);
+  const fondoInterior = Math.max(0.1, d - NEVERA.chapa - NEVERA.fondoPuerta);
+  const filas = useMemo(() => filasDeNevera(h, fondoInterior), [h, fondoInterior]);
+
+  const pinta = !ghost && !!facePaint?.front;
 
   return (
     <group>
-      {/* Paneles laterales */}
-      {([-1, 1] as const).map(sx => (
-        <mesh key={sx} position={[sx * (w / 2 - 0.017), h / 2, 0]} castShadow>
-          <boxGeometry args={[0.032, h, d]} />
-          <meshStandardMaterial color={BODY} roughness={0.55} transparent opacity={op} />
-        </mesh>
-      ))}
-      {/* Panel trasero */}
-      <mesh position={[0, h / 2, d / 2 - 0.017]} castShadow>
-        <boxGeometry args={[w, h, 0.032]} />
-        <meshStandardMaterial color={BODY} roughness={0.55} transparent opacity={op} />
-      </mesh>
-      {/* Panel superior */}
-      <mesh position={[0, h - topH / 2, 0]} castShadow>
-        <boxGeometry args={[w, topH, d]} />
-        <meshStandardMaterial color={BODY} roughness={0.55} transparent opacity={op} />
-      </mesh>
-      {/* Bloque compresor (parte inferior) */}
-      <mesh position={[0, compH / 2, 0]} castShadow>
-        <boxGeometry args={[w, compH, d]} />
-        <meshStandardMaterial color={BODY} roughness={0.65} transparent opacity={op} />
-      </mesh>
-      {/* Rejilla de ventilación del compresor */}
-      {Array.from({ length: 5 }, (_, i) => (
-        <mesh key={i} position={[0, compH * 0.22 + i * (compH * 0.16), -(d / 2 + 0.005)]}>
-          <boxGeometry args={[w * 0.68, 0.011, 0.009]} />
-          <meshStandardMaterial color="#475569" metalness={0.40} transparent opacity={op} />
-        </mesh>
-      ))}
+      <NeveraReal
+        w={w} d={d} h={h}
+        statusColor={statusColor}
+        ghost={ghost}
+        variante="multideck"
+        // El relleno mudo se apaga cuando el proveedor subió su arte: lo que
+        // se ve en el mueble tiene que ser SU producto, no uno inventado.
+        conRelleno={!pinta}
+      />
 
-      {/* Pared interior iluminada (back wall de la zona fría) — queda lisa: el
-          producto va adelante, contra el vidrio, no pegado al fondo. */}
-      {!ghost && facePaint?.front ? (
-        <>
-          <mesh position={[0, compH + dispH / 2, d / 2 - 0.055]}>
-            <boxGeometry args={[w - 0.040, dispH, 0.010]} />
-            <meshStandardMaterial color="#f0f9ff" emissive={LED_C} emissiveIntensity={0.30}
-              transparent opacity={0.85 * op} />
-          </mesh>
-          <LaminaDeProducto
-            ancho={w - 0.040} alto={dispH}
-            y={compH + dispH / 2} fondo={d} facePaint={facePaint}
-          />
-        </>
-      ) : (
-        <mesh position={[0, compH + dispH / 2, d / 2 - 0.055]}>
-          <boxGeometry args={[w - 0.040, dispH, 0.010]} />
-          <meshStandardMaterial color="#f0f9ff" emissive={LED_C} emissiveIntensity={0.30}
-            transparent opacity={0.85 * op} />
-        </mesh>
+      {pinta && (
+        <LaminaDeProductoPorFila
+          ancho={w - NEVERA.chapa * 2 - 0.02}
+          alto={util}
+          filas={{ ...filas, rowBottom: filas.rowBottom }}
+          fondos={filas.fondos}
+          montajeA={d / 2 - NEVERA.chapa} haciaA={-1}
+          facePaint={facePaint}
+        />
       )}
-
-      {/* Estantes + tira LED + productos */}
-      {Array.from({ length: nShelves }, (_, si) => {
-        const sy      = compH + 0.06 + (si + 1) * dispH / (nShelves + 1);
-        const nItems  = Math.max(2, Math.floor((w - 0.06) / 0.085));
-        return (
-          <group key={si}>
-            {/* Estante */}
-            <mesh position={[0, sy, 0]} castShadow>
-              <boxGeometry args={[w - 0.040, 0.010, d - 0.060]} />
-              <meshStandardMaterial color={SHELF_C} metalness={0.40} roughness={0.55} transparent opacity={op} />
-            </mesh>
-            {/* Tira LED bajo el estante */}
-            <mesh position={[0, sy - 0.009, -(d / 2 - 0.040)]}>
-              <boxGeometry args={[w - 0.060, 0.005, 0.008]} />
-              <meshStandardMaterial color={LED_C} emissive={LED_C} emissiveIntensity={0.70}
-                transparent opacity={0.75 * op} />
-            </mesh>
-            {/* Botellas mudas — sólo mientras el espacio esté sin vender */}
-            {!pinta && Array.from({ length: nItems }, (_, bi) => {
-              const bx = -w / 2 + 0.04 + bi * ((w - 0.05) / nItems) + (w - 0.05) / nItems / 2;
-              return (
-                <mesh key={bi} position={[bx, sy + 0.070, 0]}>
-                  <boxGeometry args={[0.068, 0.13, d * 0.65]} />
-                  <meshStandardMaterial color={RELLENO} roughness={0.40} transparent opacity={0.88 * op} />
-                </mesh>
-              );
-            })}
-          </group>
-        );
-      })}
-
-      {/* Indicador de estado — parte frontal inferior */}
-      <mesh position={[0, compH * 0.50, -(d / 2 + 0.008)]}>
-        <boxGeometry args={[w * 0.60, 0.028, 0.010]} />
-        <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
-      </mesh>
     </group>
   );
 }
@@ -1756,188 +1705,84 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:num
 // Cajón estilo madera (tipo Alkosto): costillas horizontales, esquineros metálicos,
 // patas cortas, relleno de producto con tinte verde/amarillo.
 
-function StandFrutasMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
-  const op      = ghost ? 0.42 : 1;
-  const WOOD    = "#c8a465";   // madera clara
-  const WOOD_D  = "#a07c3a";   // madera oscura (costillas)
-  const METAL   = "#1f2937";   // esquineros / ángulos metálicos negros
-
-  // Patas cortas en las 4 esquinas
-  const legH  = 0.12;
-  const legSz = 0.06;
-  const legY  = legH / 2;
-  const legs  = [
-    [-w / 2 + legSz / 2,  -d / 2 + legSz / 2],
-    [ w / 2 - legSz / 2,  -d / 2 + legSz / 2],
-    [-w / 2 + legSz / 2,   d / 2 - legSz / 2],
-    [ w / 2 - legSz / 2,   d / 2 - legSz / 2],
-  ] as const;
-
-  // Un stand de frutas de verdad no es un cajón hondo de un metro: es un mesón
-  // con un cajón poco profundo arriba, para que la fruta quede a la vista y al
-  // alcance de la mano. Apilando costillas hasta la altura total se leía como
-  // una ruma de tablas.
-  const cajonH = Math.min(0.26, (h - legH) * 0.32);   // el cajón, poco profundo
-  const mesaTop = h - cajonH;                          // tapa del mesón = piso del cajón
-  const mesaH   = mesaTop - legH;
-
-  // Costillas del cajón: pocas y gruesas, con hueco entre ellas
-  const plankT = 0.040;
-  const gap    = 0.022;
-  const pitch  = plankT + gap;
-  const nPlanks = Math.max(2, Math.floor(cajonH / pitch));
-  const planks  = Array.from({ length: nPlanks }, (_, i) => mesaTop + i * pitch + plankT / 2);
-
-  // Esquineros metálicos verticales (8 aristas del cajón)
-  const crnW = 0.030;
-  const corners = [
-    [-w / 2,  -d / 2],
-    [ w / 2,  -d / 2],
-    [-w / 2,   d / 2],
-    [ w / 2,   d / 2],
-  ] as const;
-
+/**
+ * El mural refrigerado de frutas y verduras.
+ *
+ * Es el mismo cuerpo que el multideck de bebidas —carrocería, zócalo con
+ * compresor, copete y cortina de aire— con la diferencia que cambia todo: sus
+ * niveles son BANDEJAS INCLINADAS y no entrepaños planos. Lo que se carga
+ * encima es fruta suelta, que rueda y hay que verla desde arriba; con estantes
+ * planos el mueble se lee como una estantería con cosas apoyadas.
+ */
+function NeveraVegetalesMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
   return (
     <group>
-      {/* Patas */}
-      {legs.map(([lx, lz], i) => (
-        <mesh key={`leg${i}`} position={[lx, legY, lz]} castShadow>
-          <boxGeometry args={[legSz, legH, legSz]} />
-          <meshStandardMaterial color={WOOD_D} roughness={0.8} transparent opacity={op} />
-        </mesh>
-      ))}
-
-      {/* El mesón: el cuerpo macizo sobre el que se apoya el cajón */}
-      <mesh position={[0, legH + mesaH / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[w - 0.02, mesaH, d - 0.02]} />
-        <meshStandardMaterial color={WOOD_D} roughness={0.85} transparent opacity={op} />
-      </mesh>
-      {/* Tapa del mesón, en madera clara: es el piso del cajón */}
-      <mesh position={[0, mesaTop - 0.014, 0]} castShadow>
-        <boxGeometry args={[w, 0.028, d]} />
-        <meshStandardMaterial color={WOOD} roughness={0.75} transparent opacity={op} />
-      </mesh>
-
-      {/* Costillas del cajón — cara delantera y trasera */}
-      {planks.map((py, i) => (
-        <group key={`plk${i}`}>
-          {/* Delantera */}
-          <mesh position={[0, py, -d / 2 + plankT / 2]} castShadow>
-            <boxGeometry args={[w, plankT, plankT]} />
-            <meshStandardMaterial color={WOOD} roughness={0.75} transparent opacity={op} />
-          </mesh>
-          {/* Trasera */}
-          <mesh position={[0, py, d / 2 - plankT / 2]} castShadow>
-            <boxGeometry args={[w, plankT, plankT]} />
-            <meshStandardMaterial color={WOOD} roughness={0.75} transparent opacity={op} />
-          </mesh>
-          {/* Lateral izquierdo */}
-          <mesh position={[-w / 2 + plankT / 2, py, 0]} castShadow>
-            <boxGeometry args={[plankT, plankT, d]} />
-            <meshStandardMaterial color={WOOD} roughness={0.75} transparent opacity={op} />
-          </mesh>
-          {/* Lateral derecho */}
-          <mesh position={[w / 2 - plankT / 2, py, 0]} castShadow>
-            <boxGeometry args={[plankT, plankT, d]} />
-            <meshStandardMaterial color={WOOD} roughness={0.75} transparent opacity={op} />
-          </mesh>
+      <NeveraReal
+        w={w} d={d} h={h}
+        statusColor={statusColor}
+        ghost={ghost}
+        variante="vegetales"
+        conRelleno={false}
+      />
+      {/* Cada bandeja se llena con el MISMO componente que la batea y el cajón
+          de frutas: con el arte del proveedor si lo subió, y con producto
+          genérico si no. Tener uno propio para el mural dejaba el mueble sin
+          arte — calculaba si el proveedor tenía el suyo y después no lo
+          dibujaba en ningún lado. */}
+      {bandejasDeMural(w, d, h).map((b, i) => (
+        <group key={i} position={[0, b.y, b.z]} rotation={[b.caida, 0, 0]}>
+          <VolcadoDeProducto
+            ancho={b.ancho} fondo={b.fondo}
+            y={0} material={ghost ? null : (facePaint?.front ?? null)}
+            semilla={`${id}|mural|${i}`} rubro={rubro || "Frutas"}
+            altoLibre={b.altoLibre} ghost={ghost}
+          />
         </group>
       ))}
-
-      {/* Esquineros metálicos verticales */}
-      {corners.map(([cx, cz], i) => (
-        <mesh key={`crn${i}`} position={[cx, mesaTop + cajonH / 2, cz]} castShadow>
-          <boxGeometry args={[crnW, cajonH, crnW]} />
-          <meshStandardMaterial color={METAL} metalness={0.6} roughness={0.3} transparent opacity={op} />
-        </mesh>
-      ))}
-
-      {/* El producto, adentro del cajón. Iba al ras del borde de arriba, y así
-          no se veía fruta en un cajón sino una tapa impresa. Acá había además
-          un bloque verde fijo: un cajón genérico que ningún proveedor podía
-          reemplazar. */}
-      <VolcadoDeProducto
-        ancho={w - 0.07} fondo={d - 0.07}
-        y={mesaTop + 0.006} material={ghost ? null : (facePaint?.front ?? null)}
-      />
-
-      {/* Indicador de estado en la cara delantera */}
-      <mesh position={[0, legH + 0.045, -(d / 2 + 0.008)]}>
-        <boxGeometry args={[w * 0.60, 0.036, 0.010]} />
-        <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
-      </mesh>
     </group>
   );
 }
 
-// ─── Mesh: Checkout ───────────────────────────────────────────────────────────
-
-function CheckoutMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
-  const op     = ghost ? 0.42 : 1;
-  const BODY   = "#e5e7eb";
-  const BELT_C = "#374151";
-  const STEEL  = "#9ca3af";
-  const beltW  = w * 0.60;
-  const beltD  = d * 0.50;
-  const posH   = h + 0.22;          // POS terminal height above counter
-  const posW   = 0.25;
-  const posD   = 0.04;
-
+function StandFrutasMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
+  // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
+  // Era un mesón macizo con un cajón poco profundo arriba: la fruta volcada
+  // sobre una tabla plana rodeada de costillas. Eso es una mesa con cosas
+  // encima. La ficha del fabricante da bandejas INCLINADAS y ESCALONADAS con
+  // CAJONES plásticos apoyados: la inclinación es para mirar la fruta desde
+  // arriba, el escalón para que la bandeja de atrás no quede tapada —o el
+  // mueble pierde la mitad de su frente vendible— y el cajón porque la fruta
+  // llega en cajón y se exhibe en el cajón.
+  const bandejas = bandejasDeStand(w, d, h);
   return (
     <group>
-      {/* Main counter body */}
-      <mesh position={[0, h / 2, 0]} castShadow>
-        <boxGeometry args={[w, h, d]} />
-        <meshStandardMaterial color={BODY} metalness={0.15} roughness={0.60} transparent opacity={op} />
-      </mesh>
-
-      {/* Counter top surface */}
-      <mesh position={[0, h + 0.010, 0]} castShadow>
-        <boxGeometry args={[w + 0.008, 0.020, d + 0.008]} />
-        <meshStandardMaterial color={STEEL} metalness={0.40} roughness={0.35} transparent opacity={op} />
-      </mesh>
-
-      {/* Conveyor belt strip */}
-      <mesh position={[-(w / 2 - beltW / 2) + 0.04, h + 0.022, 0]}>
-        <boxGeometry args={[beltW, 0.018, beltD]} />
-        <meshStandardMaterial color={BELT_C} metalness={0.30} roughness={0.70} transparent opacity={op} />
-      </mesh>
-      {/* Belt divider / pusher */}
-      <mesh position={[-0.04, h + 0.052, 0]}>
-        <boxGeometry args={[0.020, 0.060, beltD + 0.05]} />
-        <meshStandardMaterial color={STEEL} metalness={0.45} roughness={0.35} transparent opacity={op} />
-      </mesh>
-
-      {/* POS terminal base / arm */}
-      <mesh position={[w * 0.30, h + posH * 0.40, -(d * 0.20)]} castShadow>
-        <boxGeometry args={[0.040, posH * 0.75, 0.040]} />
-        <meshStandardMaterial color={STEEL} metalness={0.40} roughness={0.35} transparent opacity={op} />
-      </mesh>
-      {/* POS screen */}
-      <mesh position={[w * 0.30, h + posH, -(d * 0.20)]} rotation={[0.25, 0, 0]} castShadow>
-        <boxGeometry args={[posW, 0.180, posD]} />
-        <meshStandardMaterial color="#1f2937" metalness={0.50} roughness={0.30} transparent opacity={op} />
-      </mesh>
-      {/* Screen display area */}
-      <mesh position={[w * 0.30, h + posH, -(d * 0.20 - posD * 0.1)]} rotation={[0.25, 0, 0]}>
-        <boxGeometry args={[posW - 0.020, 0.150, 0.004]} />
-        <meshStandardMaterial color="#1e40af" emissive="#1e40af" emissiveIntensity={0.20}
-          transparent opacity={0.80 * op} />
-      </mesh>
-
-      {/* Card reader */}
-      <mesh position={[w * 0.30 + 0.14, h + 0.065, -(d * 0.20)]}>
-        <boxGeometry args={[0.070, 0.110, 0.030]} />
-        <meshStandardMaterial color="#1f2937" metalness={0.50} roughness={0.30} transparent opacity={op} />
-      </mesh>
-
-      {/* Status indicator on front face */}
-      <mesh position={[0, h * 0.12, -(d / 2 + 0.008)]}>
-        <boxGeometry args={[w * 0.60, 0.040, 0.012]} />
-        <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
-      </mesh>
+      <StandFrutasReal w={w} d={d} h={h} statusColor={statusColor} ghost={ghost} />
+      {bandejas.map((b, i) => (
+        // El producto va DENTRO del grupo que se inclina. Afuera, la fila de
+        // atrás flota sobre el cajón y la de adelante se hunde en la madera.
+        // Y cada escalón lleva SU semilla: con una sola, los cuatro salen
+        // clonados y la isla se ve como un espejo de sí misma.
+        <group key={i} position={[0, b.y, b.z]} rotation={[b.caida, 0, 0]}>
+          <VolcadoDeProducto
+            ancho={b.ancho - 0.05} fondo={b.fondo - 0.06}
+            y={0.03} material={ghost ? null : (facePaint?.front ?? null)}
+            semilla={`${id}|stand${i}`} rubro={rubro || "Frutas"}
+            altoLibre={b.altoLibre} ghost={ghost}
+          />
+        </group>
+      ))}
     </group>
   );
+}
+
+function CheckoutMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
+  // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
+  // Era un cajón liso con una placa oscura de cinta y la PANTALLA FLOTANDO:
+  // el poste medía `posH * 0.75` y la pantalla se colocaba a `posH`, así que
+  // quedaban veinticinco centímetros de aire entre los dos. Y le faltaba lo
+  // que hace que una caja se lea como una caja: la cama hundida con su bocel,
+  // la consola de la registradora de la que sale el poste, el sector de
+  // empaque con su guarda y los estantes de impulso del lado del cliente.
+  return <CheckoutReal w={w} d={d} h={h} statusColor={statusColor} ghost={ghost} />;
 }
 
 // ─── Mesh: Columna ────────────────────────────────────────────────────────────
@@ -2057,15 +1902,40 @@ function ServicioClienteMesh({ w, d, h, ghost }: { w:number;d:number;h:number;gh
         <meshStandardMaterial color={TINTA} transparent opacity={0.85 * op} />
       </mesh>
 
-      {/* Monitor de consulta */}
-      <mesh position={[w * 0.22, h + 0.20, d * 0.10]} rotation={[0.22, 0, 0]} castShadow>
-        <boxGeometry args={[0.26, 0.17, 0.030]} />
-        <meshStandardMaterial color="#1f2937" metalness={0.45} roughness={0.35} transparent opacity={op} />
-      </mesh>
-      <mesh position={[w * 0.22, h + 0.11, d * 0.10]}>
-        <boxGeometry args={[0.10, 0.020, 0.10]} />
-        <meshStandardMaterial color={TAPA} metalness={0.40} roughness={0.40} transparent opacity={op} />
-      </mesh>
+      {/* Monitor de consulta, APOYADO en la tapa.
+          La base era una placa suelta a 11 cm por encima del mostrador y el
+          monitor otra pieza más arriba: el conjunto flotaba sobre la tapa sin
+          tocarla. Ahora la base se apoya en la tapa, el cuello sale de la base
+          y la pantalla se apoya en el cuello — las tres piezas ENCADENADAS,
+          que es lo único que garantiza que ninguna quede en el aire. */}
+      {(() => {
+        const yTapa  = h + 0.024;
+        const BASE   = 0.014;
+        const CUELLO = 0.085;
+        const ALTO   = 0.17;
+        const x = w * 0.22, z = d * 0.10;
+        const yCuello = yTapa + BASE;
+        return (
+          <group>
+            <mesh position={[x, yTapa + BASE / 2, z]} castShadow>
+              <boxGeometry args={[0.11, BASE, 0.10]} />
+              <meshStandardMaterial color={TAPA} metalness={0.40} roughness={0.40} transparent opacity={op} />
+            </mesh>
+            <mesh position={[x, yCuello + CUELLO / 2, z]} castShadow>
+              <boxGeometry args={[0.030, CUELLO, 0.026]} />
+              <meshStandardMaterial color={TAPA} metalness={0.45} roughness={0.35} transparent opacity={op} />
+            </mesh>
+            <mesh
+              position={[x, yCuello + CUELLO + ALTO / 2 - 0.015, z]}
+              rotation={[0.22, 0, 0]}
+              castShadow
+            >
+              <boxGeometry args={[0.26, ALTO, 0.030]} />
+              <meshStandardMaterial color="#1f2937" metalness={0.45} roughness={0.35} transparent opacity={op} />
+            </mesh>
+          </group>
+        );
+      })()}
 
       {/* Zócalo */}
       <mesh position={[0, 0.045, 0]}>
@@ -2076,7 +1946,16 @@ function ServicioClienteMesh({ w, d, h, ghost }: { w:number;d:number;h:number;gh
   );
 }
 
-function FixtureMesh({ fixture, ghost, facePaint, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: FixtureMeshProps) {
+/**
+ * El despachador del catálogo: de un tipo de mueble al mesh que lo dibuja.
+ *
+ * Se exporta para el TALLER (`/taller`), que necesita poder pedir cualquier
+ * mueble del catálogo por su tipo. Sin eso, mirarle la forma a un mueble
+ * obliga a colocarlo en una sede y pelear con la cámara del editor, y la mitad
+ * de los defectos de forma sólo se ven poniendo el ojo a la altura del
+ * producto. No lo usa nadie más: el editor lo llama desde acá adentro.
+ */
+export function FixtureMesh({ fixture, ghost, facePaint, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: FixtureMeshProps) {
   const sc = isRentable(fixture)
     ? (STATUS_COLORS[fixture.status] ?? STATUS_COLORS.free)
     : NON_RENTABLE_COLOR;
@@ -2103,22 +1982,23 @@ function FixtureMesh({ fixture, ghost, facePaint, selectedSlotId, hoveredSlotId,
         onSlotHover={onSlotHover}
       />
     );
-    case "robatope":      return <RobatopeMesh      {...base} facePaint={facePaint} />;
-    case "ristra":        return <RistraMesh         {...base} facePaint={facePaint} />;
-    case "cross":         return <CrossMesh          {...base} facePaint={facePaint} />;
+    case "robatope":      return <RobatopeMesh      {...base} facePaint={facePaint} rubro={fixture.brandCategory} />;
+    case "ristra":        return <RistraMesh         {...base} facePaint={facePaint} rubro={fixture.brandCategory} />;
+    case "cross":         return <CrossMesh          {...base} facePaint={facePaint} rubro={fixture.brandCategory} />;
     case "metro":         return <MetroMesh          {...base} />;
     case "mueble":        return <MuebleMesh         {...base} facePaint={facePaint} />;
-    case "isla":          return <IslaMesh           {...base} facePaint={facePaint} />;
-    case "impulsador":    return <ImpulsadorMesh     {...base} facePaint={facePaint} />;
-    case "batea":         return <BateaMesh          {...base} facePaint={facePaint} />;
-    case "isla_fria":        return <IslaFriaMesh         {...base} facePaint={facePaint} />;
-    case "nevera_carnes":    return <NeveraCarnesMesh     {...base} facePaint={facePaint} />;
+    case "isla":          return <IslaMesh           {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
+    case "impulsador":    return <ImpulsadorMesh     {...base} facePaint={facePaint} rubro={fixture.brandCategory} />;
+    case "batea":         return <BateaMesh          {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
+    case "isla_fria":        return <IslaFriaMesh         {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
+    case "nevera_carnes":    return <NeveraCarnesMesh     {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "nevera_refrescos": return <NeveraRefrescosMesh  {...base} facePaint={facePaint} />;
-    case "stand_frutas":     return <StandFrutasMesh       {...base} facePaint={facePaint} />;
+    case "nevera_vegetales": return <NeveraVegetalesMesh   {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
+    case "stand_frutas":     return <StandFrutasMesh       {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "checkout":      return <CheckoutMesh       {...base} />;
     case "servicio_cliente": return <ServicioClienteMesh {...base} />;
     case "columna":       return <ColumnaMesh        {...base} />;
-    default:              return <IslaMesh           {...base} facePaint={facePaint} />;  // legacy exhibicion + unknown
+    default:              return <IslaMesh           {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;  // legacy exhibicion + unknown
   }
 }
 
@@ -3137,7 +3017,7 @@ function FirstPersonControls({
 const TIPOS_CON_PRODUCTO = new Set<string>([
   "gondola", "gondola_doble", "punta", "robatope", "mueble", "nevera_refrescos",
   "isla", "batea", "impulsador", "ristra", "cross",
-  "stand_frutas", "nevera_carnes", "isla_fria", "exhibicion",
+  "stand_frutas", "nevera_carnes", "nevera_vegetales", "isla_fria", "exhibicion",
 ]);
 
 /** Lowercase + strip accents so "Lácteos" matches "lacteo". */
@@ -3396,26 +3276,32 @@ function getPanelShelfSpan(type: string, w: number, h: number, d: number): Panel
   switch (type) {
     case "gondola":
     case "gondola_doble": {
-      // GondolaMesh — painted panel: back/spine box [w, h] spanning 0..h.
-      // Boards: n = max(4, round((h-topH)/0.38)) centres at
-      // 0.14 + i·(h-topH-0.16)/(n-1); topH = 0.08, shelfT = 0.022.
-      // The top board (h-0.10) has no display room above it → rows = n-1
-      // (the gaps BETWEEN boards); wall and double share the same layout.
-      const topH = 0.08, shelfT = 0.022;
-      const n     = Math.max(4, Math.round((h - topH) / 0.38));
-      const pitch = (h - topH - 0.16) / Math.max(n - 1, 1);
-      return { panelW: w, panelH: h, rowBottom: 0.14 + shelfT / 2, rowPitch: pitch, rows: Math.max(1, n - 1) };
+      // Acá había una COPIA de la cuenta de entrepaños de `GondolaMesh`, con
+      // un comentario pidiendo mantener las dos iguales. No se mantuvieron: la
+      // primera vez que se tocó el mueble, el producto quedó pintado a caballo
+      // entre dos entrepaños. Ahora las dos preguntan a `filasDeProducto`, que
+      // es la misma función que ubica los entrepaños de verdad, así que no
+      // pueden desincronizarse.
+      // El reparto de filas depende sólo del alto; el fondo entra únicamente
+      // en el escalonado, que acá no se usa. Por eso da igual si es mural o
+      // doble: las filas caen a la misma altura en las dos.
+      const { rowBottom, rowPitch, rows } = filasDeProducto(h, fondoPorCara(d, false));
+      return { panelW: w, panelH: h, rowBottom, rowPitch, rows };
     }
     case "punta": {
-      // PuntaMesh — painted panel: back plate [w, bodyH] spanning 0..bodyH,
-      // bodyH = h - topperH (0.36). Boards: n = max(3, round(bodyH/0.38))
-      // centres at 0.12 + (i+1)·(bodyH-0.16)/(n+1), thickness 0.022 (the
-      // -0.08 rad board tilt shifts edges <1 cm — visually negligible).
-      // Every board incl. the top one has display room above it → rows = n.
-      const bodyH = h - 0.36;
-      const n     = Math.max(3, Math.round(bodyH / 0.38));
-      const pitch = (bodyH - 0.16) / (n + 1);
-      return { panelW: w, panelH: bodyH, rowBottom: 0.12 + pitch + 0.011, rowPitch: pitch, rows: n };
+      // Acá había una COPIA de la cuenta de entrepaños de `PuntaMesh`, igual
+      // que la tenía la góndola, con el mismo comentario pidiendo mantener las
+      // dos iguales. Ahora las dos preguntan a `filasDePunta`, que es la misma
+      // función que ubica los entrepaños que se dibujan.
+      //
+      // Una punta tiene tantas filas como entrepaños —y no una menos, como la
+      // góndola— porque el techo de la fila de arriba es el COPETE: sobre el
+      // entrepaño más alto de una punta también se vende.
+      const altoDeCuerpo = Math.max(0.4, h - COPETE.alto);
+      const { rowBottom, rowPitch, rows } = filasDePunta(
+        altoDeCuerpo, Math.max(0.12, d - PANEL_FONDO.espesor),
+      );
+      return { panelW: w, panelH: altoDeCuerpo, rowBottom, rowPitch, rows };
     }
     case "robatope": {
       // RobatopeMesh — same layout language as PuntaMesh: panel [w, bodyH],
@@ -3440,16 +3326,19 @@ function getPanelShelfSpan(type: string, w: number, h: number, d: number): Panel
       return { panelW: w - 0.036, panelH: doorH - 0.036, rowBottom: 0.10 - 0.018 + 0.007, rowPitch: pitch, rows: Math.max(1, n - 1) };
     }
     case "nevera_refrescos": {
-      // NeveraRefrescosMesh — painted panel: lit back wall [w-0.040, dispH]
-      // whose bottom sits at world compH; compH = 0.14h, topH = 0.05h,
-      // dispH = h - compH - topH. Shelves: n = max(3, floor(dispH/0.35)) at
-      // compH + 0.06 + (i+1)·dispH/(n+1), thickness 0.010. The 3D product
-      // boxes stand on every shelf → rows = n (top row shrinks to fit the
-      // panel top; see getPhotoFaceMaterial).
-      const dispH = h - h * 0.14 - h * 0.05;
-      const n     = Math.max(3, Math.floor(dispH / 0.35));
-      const pitch = dispH / (n + 1);
-      return { panelW: w - 0.040, panelH: dispH, rowBottom: 0.06 + pitch + 0.005, rowPitch: pitch, rows: n };
+      // Otra copia de la misma cuenta, como tenían la góndola y la punta.
+      // Ahora la pide. Las alturas de `filasDeNevera` son absolutas —desde el
+      // piso— y el panel pintado empieza arriba del zócalo, así que se
+      // restan: el pintado se mide contra SU panel, no contra el mueble.
+      const util = altoUtilDeNevera(h);
+      const filas = filasDeNevera(h, Math.max(0.1, d - NEVERA.chapa - NEVERA.fondoPuerta));
+      return {
+        panelW: w - NEVERA.chapa * 2 - 0.02,
+        panelH: util,
+        rowBottom: filas.rowBottom - NEVERA.zocalo,
+        rowPitch: filas.rowPitch,
+        rows: filas.rows,
+      };
     }
     case "ristra": {
       // RistraMesh — tira colgante: una columna de unidades, no filas.
@@ -3496,6 +3385,18 @@ function getPanelShelfSpan(type: string, w: number, h: number, d: number): Panel
     case "batea": {
       // BateaMesh — canasto. Una sola superficie: el fondo falso, cerca del borde.
       return { modo: "volcado", panelW: w - 0.06, panelH: d - 0.06, rowBottom: 0, rowPitch: 0, rows: 0 };
+    }
+    case "nevera_vegetales": {
+      // El mural se pinta VOLCADO, como la batea y el exhibidor de piso: lo
+      // que se compone es la superficie horizontal de una bandeja vista desde
+      // arriba, no una cara vertical. Sin este caso caía en la grilla legado y
+      // el arte salía estirado sobre todo el frente del mueble.
+      const b = bandejasDeMural(w, d, h)[0];
+      return {
+        modo: "volcado",
+        panelW: b?.ancho ?? w, panelH: b?.fondo ?? d,
+        rowBottom: 0, rowPitch: 0, rows: 0,
+      };
     }
     default: {
       // Unknown paintable type — legacy whole-face grid (pre-alignment rules).
@@ -3799,6 +3700,7 @@ interface SceneProps {
 
 function Scene({
   placedFixtures, selectedId, selectedSlotId,
+  hoveredSlotId, setHoveredSlotId, onSelectSlot,
   placingDef, ghostX, ghostZ, ghostRotY, ghostCollides,
   draggingId, orbitRef, onFloorMove, onFloorClick,
   onSelectFixture, setPlacedFixtures,
@@ -4132,13 +4034,26 @@ function Scene({
 
       {/* Placed fixtures */}
       {placedFixtures.map(fix => {
-        const hasSlots = fix.type==="gondola"||fix.type==="punta";
+        /* Los espacios internos, que es lo que de verdad se vende de una
+           góndola o de una punta: cada uno tiene su proveedor, su valor y su
+           vigencia. Los paneles se dibujan SÓLO sobre el mueble seleccionado.
+           Encendidos en toda la planta, un local de cincuenta muebles queda
+           cubierto de rectángulos de colores flotando y no se ve la tienda;
+           encendidos en ninguno —que es como estuvo hasta ahora— el panel
+           lateral dice «hacé clic en un slot del panel frontal» señalando algo
+           que nunca se dibujó, y la ocupación por espacio no se podía marcar
+           desde el 3D. */
+        const hasSlots = fix.type === "gondola" || fix.type === "punta";
+        const conEspacios = hasSlots && fix.id === selectedId && !placingDef && !firstPerson;
         return (
           <group key={fix.id} position={[fix.x,0,fix.z]} rotation={[0,fix.rotY,0]}>
             <FixtureMesh
               fixture={fix}
               facePaint={facePaintById.get(fix.id) ?? null}
-              /* slots disabled — omit onSlotClick/onSlotHover to skip all slot meshes */
+              selectedSlotId={conEspacios ? selectedSlotId : null}
+              hoveredSlotId={conEspacios ? hoveredSlotId : null}
+              onSlotClick={conEspacios ? (slotId) => onSelectSlot(fix.id, slotId) : undefined}
+              onSlotHover={conEspacios ? setHoveredSlotId : undefined}
             />
             {fix.id===selectedId && !selectedSlotId && <SelectionBox w={fix.w} d={fix.d} h={fix.h} />}
             {/* CHANGE 4 — Unauthorized placement badge (distance-gated + occluded) */}
@@ -4656,25 +4571,35 @@ function CommercialPanel({
           </div>
         )}
 
+        {/* Destino del mueble. Cuando el TIPO ya lo decide —columna, caja
+            registradora, servicio al cliente: puestos de trabajo de la tienda—
+            el par de botones sería un control muerto: se pintaría el elegido y
+            `isRentable` lo seguiría negando. En su lugar va la razón. */}
         <div>
           <label className={labelCls}>Destino del mueble</label>
-          <div className="flex gap-1.5">
-            {([true, false] as const).map((value) => (
-              <button
-                key={String(value)}
-                onClick={() => u({ rentable: value })}
-                className={`flex-1 rounded px-1 py-1.5 text-[10.5px] font-semibold transition-colors ${
-                  rentable === value
-                    ? "bg-accent text-accent-ink"
-                    : "border border-dark-line-2 text-dark-ink-3 hover:text-dark-ink-1"
-                }`}
-              >
-                {value ? "Comercializable" : "No comercial."}
-              </button>
-            ))}
-          </div>
+          {NUNCA_ALQUILABLE.has(fix.type) ? (
+            <p className="text-[11px] font-semibold text-dark-ink-2">No comercializable</p>
+          ) : (
+            <div className="flex gap-1.5">
+              {([true, false] as const).map((value) => (
+                <button
+                  key={String(value)}
+                  onClick={() => u({ rentable: value })}
+                  className={`flex-1 rounded px-1 py-1.5 text-[10.5px] font-semibold transition-colors ${
+                    rentable === value
+                      ? "bg-accent text-accent-ink"
+                      : "border border-dark-line-2 text-dark-ink-3 hover:text-dark-ink-1"
+                  }`}
+                >
+                  {value ? "Comercializable" : "No comercial."}
+                </button>
+              ))}
+            </div>
+          )}
           <p className="mt-1.5 text-[9.5px] leading-relaxed text-dark-ink-3">
-            {rentable
+            {NUNCA_ALQUILABLE.has(fix.type)
+              ? "Puesto de trabajo de la tienda: no se alquila, no lleva tarifa y queda fuera de la ocupación."
+              : rentable
               ? "Se puede alquilar y cuenta en la disponibilidad de la sede."
               : "Mobiliario propio del local: no admite contrato y queda fuera de la ocupación."}
           </p>
@@ -4808,6 +4733,11 @@ class CanvasErrorBoundary extends React.Component<
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function StoreEditor3D() {
+  // Las geometrías de los perfiles se cachean por firma y viven en la GPU.
+  // Sin soltarlas al desmontar, entrar y salir del editor de varias sedes deja
+  // una copia de cada mueble de cada sede en memoria de video.
+  useEffect(() => olvidarGeometrias, []);
+
   // ── Unified store (read once on mount; write on every change) ────────────────
   const { setFixtures: pushToStore, setSede: pushSedeToStore, commit, undo, redo } = useFixtureStore();
   // Reactive subscription — re-renders when fixtures change (replaces getState() calls in JSX)

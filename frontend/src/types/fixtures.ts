@@ -30,6 +30,7 @@ export type FixType =
   | "isla_fria"
   | "nevera_carnes"
   | "nevera_refrescos"
+  | "nevera_vegetales"
   | "stand_frutas"
   | "checkout"
   | "servicio_cliente"
@@ -44,26 +45,54 @@ export function isDoubleGondola(f: { type: FixType; gondolaType?: GondolaType })
   return f.type === "gondola" && (f.gondolaType ?? "double") === "double";
 }
 
-/** Fixture types that are infrastructure by nature — never rented to a supplier.
- *  Used only as the default when a fixture is first created; the user can always
- *  override the flag per fixture from the editor panels. */
-export const NON_RENTABLE_BY_DEFAULT: ReadonlySet<string> = new Set<FixType>([
-  "metro",
+/**
+ * Tipos que NUNCA son espacio vendible, decida lo que decida la bandera.
+ *
+ * No son muebles a los que hoy no se les vendió el frente: son **operación de
+ * la tienda**. Una columna sostiene el techo. Una caja registradora y el
+ * mostrador de servicio al cliente son puestos de trabajo del supermercado —
+ * lo que pasa ahí es cobrar y atender reclamos, no exhibir la marca de un
+ * proveedor. Ofrecerlos en la tabla de tarifas es ofrecer algo que no se
+ * vende.
+ *
+ * Va por TIPO y no por bandera a propósito. La bandera se estampa al crear el
+ * mueble, así que un checkout guardado ANTES de que la bandera existiera no la
+ * tiene — y `rentable` ausente significa alquilable. O sea: todas las cajas de
+ * los planos viejos seguían contando como espacio vendible, aparecían en «qué
+ * queda por vender» y podían recibir un contrato. Mirando el tipo, esos planos
+ * quedan bien sin migrar nada.
+ */
+export const NUNCA_ALQUILABLE: ReadonlySet<string> = new Set<FixType>([
   "columna",
   "checkout",
-  // El punto de servicio al cliente es operación de la tienda, no espacio que
-  // se le venda a un proveedor. Como con las cajas, la bandera se puede
-  // cambiar a mano si alguna sede decide alquilar ese frente.
   "servicio_cliente",
 ]);
 
+/** Fixture types that are infrastructure by nature — never rented to a supplier.
+ *  Used as the default when a fixture is first created.
+ *
+ *  Los de `NUNCA_ALQUILABLE` entran acá también, para que el mueble nazca con
+ *  la bandera puesta y el dato guardado diga lo mismo que la regla. La `metro`
+ *  —la zona libre— es el único que sí se puede dar vuelta a mano: un metro de
+ *  piso SÍ se le alquila a una marca para que plante su stand. */
+export const NON_RENTABLE_BY_DEFAULT: ReadonlySet<string> = new Set<FixType>([
+  "metro",
+  ...NUNCA_ALQUILABLE,
+] as FixType[]);
+
 /** True when the fixture can hold a commercial contract.
  *
- *  Backward compatible on purpose: fixtures saved before this flag existed have
- *  no `rentable` property, and every one of them must stay rentable. Only an
- *  explicit `false` marks a fixture as infrastructure.
+ *  Dos preguntas, en orden. Primero el TIPO: hay muebles que son operación de
+ *  la tienda y no se venden nunca (ver `NUNCA_ALQUILABLE`). Después la
+ *  bandera, que es por mueble y la maneja quien arma el plano.
+ *
+ *  La bandera es retrocompatible a propósito: los muebles guardados antes de
+ *  que existiera no la traen, y todos ésos tienen que seguir siendo
+ *  alquilables. Sólo un `false` explícito marca infraestructura. El tipo tapa
+ *  ese hueco justo donde importaba: una caja vieja sin bandera.
  */
-export function isRentable(f: { rentable?: boolean }): boolean {
+export function isRentable(f: { type?: string; rentable?: boolean }): boolean {
+  if (f.type && NUNCA_ALQUILABLE.has(f.type)) return false;
   return f.rentable !== false;
 }
 
@@ -147,9 +176,13 @@ export function referenceRateFor(
  *  mayúscula en el medio de la frase. Eso es cómo se nombra una columna de
  *  base de datos, no cómo un encargado nombra un espacio por teléfono — y esa
  *  clase de abreviatura es lo que hace que una pantalla se lea como un volcado
- *  de tabla. Ninguna clave cambió: se cambia sólo lo que se lee. Infrastructure
- *  types are still listed (any fixture can be flipped to "comercializable"),
- *  columns excepted — a column is never sellable space. */
+ *  de tabla. Ninguna clave cambió: se cambia sólo lo que se lee.
+ *
+ *  Acá SÓLO va lo que se vende. Los muebles que son operación de la tienda
+ *  —columna, caja registradora, servicio al cliente— no llevan tarifa: ver
+ *  `NUNCA_ALQUILABLE`. La caja estaba listada como «Cabecera de caja» y eso
+ *  era ofrecer un precio por algo que no está a la venta. La zona libre sí
+ *  queda: un metro de piso se le alquila a una marca para su stand. */
 export const RATE_TYPES: { type: string; label: string }[] = [
   { type: "gondola",          label: "Góndola, por cara" },
   { type: "punta",            label: "Punta de góndola" },
@@ -162,9 +195,9 @@ export const RATE_TYPES: { type: string; label: string }[] = [
   { type: "batea",            label: "Batea" },
   { type: "isla_fria",        label: "Isla de congelados" },
   { type: "nevera_carnes",    label: "Nevera de carnes" },
+  { type: "nevera_vegetales", label: "Nevera de vegetales" },
   { type: "nevera_refrescos", label: "Nevera de bebidas" },
   { type: "stand_frutas",     label: "Frutas y verduras" },
-  { type: "checkout",         label: "Cabecera de caja" },
   { type: "metro",            label: "Zona libre" },
 ];
 
@@ -177,6 +210,7 @@ export const CATEGORIA_DE_TIPO: Record<string, string> = {
   ristra: "Displays", cross: "Displays", impulsador: "Displays",
   mueble: "Muebles", isla: "Muebles", batea: "Muebles",
   isla_fria: "Refrigeración", nevera_carnes: "Refrigeración",
+  nevera_vegetales: "Refrigeración",
   nevera_refrescos: "Refrigeración",
   stand_frutas: "Frescos",
   metro: "Zona libre",
