@@ -799,6 +799,9 @@ export const STAND_FRUTAS = {
   /** Espesor de la cubierta de madera y del riel de precios del filo. */
   cubierta: 0.03,
   porta: 0.055,
+  /** Qué fracción del fondo de la bandeja ocupa el cajón. Lo que sobra es la
+   *  banda de madera que queda a la vista delante de la fila. */
+  fraccionDeCajon: 0.68,
   /** Zócalo negro y alto de la espina central sobre el escalón alto. */
   zocalo: 0.11,
   respaldo: 0.16,
@@ -838,6 +841,16 @@ export interface BandejaDeStand {
   altoLibre: number;
   /** Cuántos cajones entran a lo ancho. */
   cajones: number;
+  /** Fondo INTERIOR del cajón y cuánto está corrido respecto del centro de la
+   *  bandeja.
+   *
+   *  Van acá y no dentro del componente porque el que vuelca la fruta necesita
+   *  exactamente los mismos números. Estaban repetidos, y al achicar el cajón
+   *  para dejar ver la banda de madera sólo se corrigió una de las dos copias:
+   *  la fruta siguió usando el fondo entero de la bandeja, sin correr, y se
+   *  salía del cajón por el borde de abajo. */
+  cajonFondo: number;
+  cajonZ: number;
 }
 
 /** Los cuatro escalones de una isla de frutas: dos por cara, el bajo adelante
@@ -853,20 +866,28 @@ export function bandejasDeStand(w: number, d: number, h: number): BandejaDeStand
   // El cajón va lleno y algo rebosado: con una capa en el fondo, la pared lo
   // tapa y el mueble se ve vacío. Es el mismo defecto que tenía la batea.
   const altoLibre = STAND_FRUTAS.cajon.alto * 1.15;
+  // El cajón no cubre la bandeja entera: en la ficha queda una banda de madera
+  // a la vista delante de la fila, y es la que hace que el mueble se lea como
+  // frutería de tablero y no como una hilera de cajones flotando. Por eso el
+  // cajón es más corto que la bandeja y está corrido hacia el fondo.
+  const cajonFondo = fondo * STAND_FRUTAS.fraccionDeCajon;
 
   const caras: (1 | -1)[] = [-1, 1];
+  const comun = { ancho, fondo, altoLibre, cajones, cajonFondo };
   return caras.flatMap((lado) => [
     {
       y: h * STAND_FRUTAS.escalonBajo,
       z: lado * (porCara - fondo / 2),
       caida: STAND_FRUTAS.caida * lado,
-      lado, ancho, fondo, altoLibre, cajones,
+      cajonZ: -lado * ((fondo - cajonFondo) / 2),
+      lado, ...comun,
     },
     {
       y: h * STAND_FRUTAS.escalonAlto,
       z: lado * (fondo / 2 + 0.02),
       caida: STAND_FRUTAS.caida * lado,
-      lado, ancho, fondo, altoLibre, cajones,
+      cajonZ: -lado * ((fondo - cajonFondo) / 2),
+      lado, ...comun,
     },
   ]);
 }

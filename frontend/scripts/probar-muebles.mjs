@@ -1125,6 +1125,33 @@ prueba("el stand de frutas es una ISLA DE DOS CARAS", () => {
   }
 });
 
+prueba("la fruta va DENTRO del cajón, no encima de la bandeja", () => {
+  // El cajón no cubre la bandeja entera —queda una banda de madera a la vista
+  // delante de la fila— y está corrido hacia el fondo. Esas dos cotas estaban
+  // repetidas: en el componente y, mal, en el volcado del editor, que seguía
+  // usando el fondo ENTERO de la bandeja y sin correr. La fruta se salía del
+  // cajón por el borde de abajo, y así se vio en la tienda.
+  const mesh = cuerpoDe("function StandFrutasMesh(", "function CheckoutMesh(");
+  assert.match(mesh, /b\.cajonFondo/, "el volcado del stand volvió a medirse con el fondo de la bandeja");
+  assert.match(mesh, /b\.cajonZ/, "el volcado del stand volvió a ir sin correr");
+  const stand = sinComentarios(leer(join(muebles, "StandFrutasReal.tsx")));
+  assert.match(stand, /b\.cajonFondo/, "el cajón volvió a calcular su propio fondo");
+  assert.match(stand, /b\.cajonZ/, "el cajón volvió a calcular su propio corrimiento");
+
+  for (const [w, d, h] of [[1.5, 1.2, 0.95], [1.0, 0.8, 0.9], [2.2, 1.4, 1.1]]) {
+    for (const b of M.bandejasDeStand(w, d, h)) {
+      const donde = `${w}×${d}×${h} cara ${b.lado}`;
+      assert.ok(b.cajonFondo > 0, `${donde}: cajón sin fondo`);
+      assert.ok(b.cajonFondo < b.fondo, `${donde}: el cajón tapa la banda de madera entera`);
+      // El cajón, corrido y todo, entra completo dentro de la bandeja.
+      assert.ok(
+        Math.abs(b.cajonZ) + b.cajonFondo / 2 <= b.fondo / 2 + 1e-9,
+        `${donde}: el cajón se sale de su bandeja`,
+      );
+    }
+  }
+});
+
 prueba("la isla de frutas no se para sobre postes", () => {
   // Cuatro postes asomando por encima de las cubiertas la hacían leer como
   // andamio. En la ficha la estructura es BAJA: zócalo y espina, y nada por

@@ -1812,12 +1812,17 @@ function StandFrutasMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: 
         // Y cada escalón lleva SU semilla: con una sola, los cuatro salen
         // clonados y la isla se ve como un espejo de sí misma.
         <group key={i} position={[0, b.y, b.z]} rotation={[b.caida, 0, 0]}>
-          <VolcadoDeProducto
-            ancho={b.ancho - 0.05} fondo={b.fondo - 0.06}
-            y={0.03} material={ghost ? null : (facePaint?.front ?? null)}
-            semilla={`${id}|stand${i}`} rubro={rubro || "Frutas"}
-            altoLibre={b.altoLibre} ghost={ghost}
-          />
+          {/* La fruta va DENTRO del cajón: mismo fondo y mismo corrimiento que
+              le da `bandejasDeStand`. Con el fondo de la bandeja entera y sin
+              correr —que es como estaba— la fruta se salía por el borde. */}
+          <group position={[0, 0, b.cajonZ]}>
+            <VolcadoDeProducto
+              ancho={b.ancho - 0.05} fondo={b.cajonFondo - 0.04}
+              y={0.03} material={ghost ? null : (facePaint?.front ?? null)}
+              semilla={`${id}|stand${i}`} rubro={rubro || "Frutas"}
+              altoLibre={b.altoLibre} ghost={ghost}
+            />
+          </group>
         </group>
       ))}
     </group>
