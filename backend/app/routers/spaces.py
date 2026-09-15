@@ -160,7 +160,8 @@ def estado_comercial(
             propio = getattr(space.status, "value", space.status) or "free"
             if propio not in ("free", "occupied"):
                 salida[(space.code or "").strip().upper()] = EstadoComercial(
-                    status=propio, observation=space.notes or "",
+                    status=propio,
+                    observation=(space.notes or "") if admin else "",
                 )
             continue
         salida[(space.code or "").strip().upper()] = EstadoComercial(
@@ -170,7 +171,11 @@ def estado_comercial(
             negotiatedValue=(lease.monthly_rent or 0) if admin else 0,
             startDate=lease.start_date.isoformat(),
             endDate=lease.end_date.isoformat(),
-            observation=lease.notes or "",
+            # La nota del contrato es TEXTO LIBRE, y ahí es donde alguien
+            # escribe «descuento del 25% cerrado por teléfono». Redactar sólo
+            # el número y dejar pasar la nota es dejar la puerta de al lado
+            # abierta: la plata se fuga igual, escrita en castellano.
+            observation=(lease.notes or "") if admin else "",
         )
     return salida
 

@@ -195,3 +195,50 @@ def test_el_contrato_le_gana_a_la_marca_de_mantenimiento(client, admin):
     e = _comercial(client, admin)["NAVE-IMP-17"]
     assert e["status"] == "occupied"
     assert e["supplierName"] == "MACA MANI"
+
+
+
+def test_LA_NOTA_DEL_CONTRATO_TAMPOCO_LE_LLEGA_AL_MERCADERISTA(client, admin, worker):
+    """Redactar el número y dejar pasar la nota es dejar la puerta de al lado
+    abierta: la plata se fuga igual, escrita en castellano.
+
+    `notes` es texto libre. Ahí es donde alguien escribe «descuento del 25%
+    cerrado por teléfono», que reconstruye el precio negociado sin que aparezca
+    un solo dígito en el campo del valor.
+    """
+    _plano(client, admin, [_mueble("IMP-17")])
+    r = client.post("/api/leases/bulk/confirmar", headers=admin, json={
+        "sede": "NAVE",
+        "filas": [{"fila": 1, "espacio": "IMP-17", "sede": "NAVE",
+                   "proveedor": "MACA MANI", "marca": "Maní", "valor": 200000,
+                   "desde": HOY.isoformat(),
+                   "hasta": (HOY + timedelta(days=30)).isoformat(),
+                   "nota": "descuento del 25% cerrado por telefono"}],
+    })
+    assert r.json()["creados"] == 1, r.text
+
+    canaria = "descuento del 25%"
+    del_worker = _comercial(client, worker)["NAVE-IMP-17"]
+    assert canaria not in del_worker["observation"], (
+        "el mercaderista vio la nota del contrato — fuga de plata en castellano"
+    )
+    assert del_worker["observation"] == ""
+    # Y por las dudas: en NINGUNA parte de la respuesta entera.
+    entero = client.get("/api/spaces/comercial", headers=worker).text
+    assert canaria not in entero, entero
+
+    # El admin sí la ve: es suya y la necesita.
+    assert canaria in _comercial(client, admin)["NAVE-IMP-17"]["observation"]
+
+
+def test_la_nota_de_MANTENIMIENTO_tampoco(client, admin, worker):
+    """Misma puerta, otro camino: `space.notes` también es texto libre."""
+    _plano(client, admin, [_mueble("IMP-17")])
+    e = client.post("/api/spaces/find-or-create", headers=admin, json={
+        "code": "NAVE-IMP-17", "sede": "NAVE", "name": "IMP-17",
+    }).json()
+    client.patch(f"/api/spaces/{e['id']}/status", headers=admin,
+                 json={"status": "maintenance", "notes": "lo baja Alpina por 3 millones"})
+
+    assert _comercial(client, worker)["NAVE-IMP-17"]["observation"] == ""
+    assert "3 millones" in _comercial(client, admin)["NAVE-IMP-17"]["observation"]
