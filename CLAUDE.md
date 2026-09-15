@@ -8,4 +8,8 @@ Gestión de espacios comerciales en supermercados. Deploy: retail-espacios.onren
 
 `docs/engram/` es la **cola de entrada al store de Engram**: lo aprendido después de ese snapshot y todavía sin cargar (el rediseño de la pantalla principal, los gotchas de las sesiones de diseño). Se carga desde la máquina local, que es la que tiene Engram conectado.
 
+Si algo «está libre y el sistema dice que está ocupado»: el plano y la base son
+dos verdades distintas. `cd backend && python scripts/auditar_desfase.py` lista,
+por sede, todo lo que la base tiene vendido y el plano no. Sólo lee.
+
 Verificación mínima: `cd frontend && npx tsc --noEmit` · `cd backend && python -c "import app.main"` · `npm install` requiere `--legacy-peer-deps`.

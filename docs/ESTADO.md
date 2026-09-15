@@ -5241,6 +5241,42 @@ cerradas: el guardado va con **1200 ms de debounce** (cerrar la pestaña justo
 después de confirmar lo pierde) y `pushSede` **se salta** la escritura si esa
 sede ya está en conflicto. Las dos dejan la base adelante del plano.
 
+### La auditoría: las tres puertas del mismo agujero
+
+Se ejercitó el sistema por su API —no se leyó el código— operación por
+operación, comparando las dos verdades después de cada una. El resultado no son
+bugs sueltos: es **una** regla que no existe, con tres puertas.
+
+**El layout NUNCA escribe en la base.** No es un olvido: ese camino no existe.
+`PUT /api/layout/{sede}` no toca `space_leases` ni una vez. Así que **toda
+edición del plano que saca un espacio de circulación deja su contrato vivo**:
+
+| Puerta | Qué queda |
+|---|---|
+| Borrar el mueble del plano | el contrato sigue vivo, atado a un código que el plano ya no ofrece |
+| Góndola doble → simple | la cara B desaparece del plano y su contrato queda huérfano |
+| Marcarlo «no comercializable» | sale de la venta y de la ocupación, y se sigue cobrando |
+
+Y la consecuencia que lo vuelve visible: **recrear un mueble con el mismo código
+hereda el contrato fantasma** y nace invendible, con el mensaje exacto del
+reporte — «ya tiene un contrato del … Cancelalo primero».
+
+Cancelar solo no se puede hacer: un contrato es plata y un compromiso con un
+proveedor, y una edición del plano no puede cancelarlo en silencio. Lo que sí se
+puede es **verlo**: `backend/scripts/auditar_desfase.py` lista, por sede, todo
+lo que la base tiene vendido y el plano no. Sólo lee.
+
+**Dos cosas que la auditoría descartó**, y conviene que queden descartadas:
+
+- **Renumerar NO produce desfase.** `services/renumeracion.py` actualiza
+  `spaces.code`, `svg_id` y `mount_confirmations.space_code` en una sola
+  transacción. Está bien resuelto.
+- **El vencimiento automático tampoco.** `expire_leases` libera la base cada 12 h
+  y el plano queda con `status: "occupied"`, pero todo lo que importa
+  —disponibilidad, canon vigente, los KPI— se calcula por FECHAS
+  (`contractPhase`), así que ese espacio cae en «Vencidos», que es donde tiene
+  que estar. No infla la plata.
+
 ---
 
 ## Gotchas
