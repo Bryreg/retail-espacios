@@ -149,6 +149,99 @@ prueba("se le pregunta al endpoint que NO escribe", () => {
   );
 });
 
+/* ── 3 · lo que se rellena, no se cree ───────────────────────────────────────
+
+   La validación en vivo pregunta por LAS FECHAS. Para llegar a esa respuesta
+   manda un proveedor de relleno cuando está vacío, porque si no la fila se cae
+   por un campo obligatorio y nunca se entera de las fechas.
+
+   El valor iba de verdad, y la firma del efecto no lo mira. O sea: la primera
+   validación salía con el campo en cero, el servidor contestaba «Falta el valor
+   mensual, o quedó en cero», y ESO QUEDABA GUARDADO — tipear el valor después
+   no volvía a preguntar. Y como `chocan` cuenta cualquier mensaje del servidor
+   como choque, el espacio quedaba marcado «ya está vendido en esas fechas» y no
+   se podía guardar NUNCA. Reportado con PUN-15 en $1.000.000 en pantalla. */
+
+prueba("el valor que se manda a validar no puede ser cero", () => {
+  const m = codigoContrato.match(/validarLote\(([\s\S]*?)\n\s*\)\.then/);
+  assert.ok(m, "no se encontró la llamada a `validarLote`");
+  assert.match(
+    m[1], /valor:\s*l\.monto\s*>\s*0\s*\?\s*l\.monto\s*:/,
+    "el valor viaja tal cual: con el campo vacío el servidor contesta «falta el "
+    + "valor» y ese mensaje se queda pegado, porque la firma no mira el monto",
+  );
+});
+
+prueba("no se le cree al servidor sobre los campos que se le rellenaron", () => {
+  // La contracara obligatoria del relleno. Sin esto el mensaje sobre un campo
+  // inventado se trata como si fuera sobre las fechas.
+  assert.match(
+    codigoContrato, /RELLENADO\s*=\s*\/\^\(/,
+    "no hay una lista de los mensajes que hablan de los campos rellenados",
+  );
+  const filtro = codigoContrato.match(/const RELLENADO = (\/[^\n]*\/i?)/);
+  assert.ok(filtro, "no se encontró la definición de RELLENADO");
+  const re = new RegExp(filtro[1].slice(1, filtro[1].lastIndexOf("/")), "i");
+  for (const msg of [
+    "Falta el valor mensual, o quedó en cero.",
+    "Falta el proveedor.",
+    "Proveedor nuevo: se va a crear.",
+  ]) {
+    assert.ok(re.test(msg), `«${msg}» habla de un campo rellenado y no se filtra`);
+  }
+  // Y lo que SÍ se preguntó tiene que pasar.
+  for (const msg of [
+    "«CIUDAD JARDIN-IMP-17» ya tiene un contrato del 2026-09-08 al 2026-10-08.",
+    "Faltan las fechas, o no se entendieron.",
+  ]) {
+    assert.ok(!re.test(msg), `«${msg}» es sobre las fechas y se estaría descartando`);
+  }
+});
+
+prueba("el filtro se aplica donde se arma el veredicto", () => {
+  assert.match(
+    codigoContrato, /mensajes\s*\?\?\s*\[\]\)\.filter\(\(m\) => !RELLENADO\.test\(m\)\)/,
+    "el veredicto no filtra los mensajes de los campos rellenados",
+  );
+});
+
+/* ── 4 · se puede soltar el contrato que sólo tiene la base ──────────────────
+
+   El otro lado del mismo desfase. El servidor rechaza la venta nombrando un
+   contrato («IMP-17 ya tiene un contrato del 2026-09-08 al 2026-10-08.
+   Cancelalo primero») y el botón para cancelarlo colgaba de `hasContract`, que
+   sale del JSON del layout. En el caso que hay que resolver el layout dice que
+   está libre — así que el botón desaparecía justo cuando hacía falta, y
+   «cancelalo primero» volvía a señalar algo que la aplicación no permitía.
+
+   `CancelarContrato` le pregunta a la base y se dibuja solo si hay algo que
+   soltar: la condición correcta la tiene él. */
+
+const tablero = leer(join("src", "pages", "DashboardView.tsx"));
+const cancelar = leer(join("src", "components", "Contrato", "CancelarContrato.tsx"));
+
+prueba("cancelar NO cuelga del plano, que puede estar desfasado", () => {
+  const m = sinComentarios(tablero).match(/\{[^{}]*onCancelado && \(\s*<CancelarContrato/);
+  assert.ok(m, "no se encontró dónde se dibuja `CancelarContrato`");
+  assert.ok(
+    !/hasContract/.test(m[0]),
+    "el botón de cancelar vuelve a colgar de `hasContract`: con la base "
+    + "ocupada y el plano libre desaparece justo cuando hace falta",
+  );
+});
+
+prueba("el contrato que el plano no tiene se NOMBRA antes de ofrecer borrarlo", () => {
+  // Un botón de borrar sobre algo que la ficha de arriba jura que no existe es
+  // peor que no tenerlo: hay que decir qué encontró la base.
+  assert.match(
+    cancelar, /segunElPlano/,
+    "`CancelarContrato` no sabe si el plano muestra el contrato",
+  );
+  const c = sinComentarios(cancelar);
+  assert.match(c, /start_date/, "no se nombran las fechas del contrato encontrado");
+  assert.match(c, /supplier\?\.name/, "no se nombra el proveedor del contrato encontrado");
+});
+
 prueba("una respuesta vieja no pisa a una nueva", () => {
   // Las fechas se teclean dígito a dígito: sin esto, la respuesta de una fecha
   // a medio escribir puede llegar después y dejar un veredicto que no

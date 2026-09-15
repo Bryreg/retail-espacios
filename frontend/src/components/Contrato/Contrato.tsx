@@ -134,6 +134,14 @@ function iso(d: Date): string {
  *
  *  Prellenar es deliberado: reescribir dos fechas a mano era el paso que más se
  *  equivocaba, y una pantalla en blanco tampoco dice qué hacer primero. */
+/** Los mensajes del servidor que hablan de un campo que le mandamos RELLENO.
+ *
+ *  La validación en vivo pregunta por las fechas, y para eso manda un proveedor
+ *  y un valor de mentira cuando todavía están vacíos —si no, la fila se cae por
+ *  un campo obligatorio y no se llega nunca a la respuesta sobre las fechas—.
+ *  La contracara obligatoria: lo que se rellena, no se cree. */
+const RELLENADO = /^(Proveedor nuevo|Falta el proveedor|Falta el valor)/i;
+
 function rangoPorDefecto(): DateRange {
   const hoy = new Date();
   const to = new Date(hoy);
@@ -324,20 +332,33 @@ export function useContrato({
         sedeContrato,
         lineas.map((l, i) => ({
           fila: i + 1, espacio: l.codigo, sede: l.fixture.sede || sede,
-          // El proveedor todavía puede estar vacío: lo que se le pregunta al
-          // servidor son LAS FECHAS. Un nombre de relleno acá no crea nada
+          // El proveedor y el valor todavía pueden estar vacíos: lo que se le
+          // pregunta al servidor son LAS FECHAS. Un relleno acá no crea nada
           // —`/validar` no escribe— y evita que falte un campo obligatorio.
+          //
+          // El valor iba de verdad, y ésa era la falla: la firma de abajo NO lo
+          // mira, así que la primera validación salía con el campo en cero, el
+          // servidor contestaba «Falta el valor mensual», y eso quedaba
+          // guardado para siempre — tipear el valor no volvía a preguntar. Peor
+          // todavía: `chocan` cuenta CUALQUIER mensaje del servidor como choque
+          // de fechas, así que el espacio quedaba marcado «ya está vendido en
+          // esas fechas» y no se podía guardar nunca más.
           proveedor: proveedor.trim() || "—",
-          valor: l.monto, desde, hasta,
+          valor: l.monto > 0 ? l.monto : 1,
+          desde, hasta,
         })),
       ).then((r) => {
         if (mio !== pedido.current) return;  // llegó una respuesta vieja
         const out: Record<string, string[]> = {};
         for (const f of r.filas) {
           if (f.estado !== "error") continue;
-          // «Proveedor nuevo: se va a crear» no es un problema: viaja junto
-          // con el error y no tiene nada que ver con las fechas.
-          const ms = (f.mensajes ?? []).filter((m) => !/^Proveedor nuevo/i.test(m));
+          // Lo que se rellena, no se cree. Arriba van un proveedor y un valor
+          // de mentira para que la fila no se caiga por un campo que todavía no
+          // se llenó; creerle al servidor sobre ESOS campos sería creerle sobre
+          // el relleno. El proveedor y el valor de verdad los controla la
+          // pantalla —`sinValor` y el botón— y el servidor los vuelve a mirar
+          // al guardar, que es donde manda.
+          const ms = (f.mensajes ?? []).filter((m) => !RELLENADO.test(m));
           if (ms.length) out[(f.codigo || "").toUpperCase()] = ms;
         }
         setVeredicto(out);

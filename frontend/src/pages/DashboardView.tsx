@@ -2163,11 +2163,23 @@ function FixtureDetailCard({
         {/* Soltar el espacio. Al final del panel y con confirmación: es
             destructivo, y hasta ahora no existía en ninguna pantalla pese a que
             el backend lo soporta —el mensaje de choque de fechas mandaba a
-            «cancelalo primero» señalando algo que no se podía hacer. */}
-        {isAdmin && rentable && hasContract && onCancelado && (
+            «cancelalo primero» señalando algo que no se podía hacer.
+
+            NO se pide `hasContract`, y es el arreglo: `hasContract` sale del
+            JSON del layout, que es una copia. El caso que hay que poder
+            resolver es justamente aquel en que la copia y la base no coinciden
+            —la base tiene el contrato, el plano pinta el mueble libre—, y ahí
+            `hasContract` es `false`: el botón desaparecía justo cuando hacía
+            falta, y «cancelalo primero» volvía a señalar algo imposible.
+
+            `CancelarContrato` le pregunta al servidor y se dibuja solo si hay
+            un contrato de verdad que soltar, así que la condición correcta la
+            tiene él, no esta pantalla. */}
+        {isAdmin && rentable && onCancelado && (
           <CancelarContrato
             key={entry.code}
             spaceCode={fullSpaceCode(fixture.sede, entry.code)}
+            segunElPlano={hasContract}
             onCancelado={onCancelado}
           />
         )}
