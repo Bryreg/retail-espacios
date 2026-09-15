@@ -131,9 +131,15 @@ def auditar(db, solo_sede: str | None = None) -> int:
             corto = code[len(sede) + 1:] if code.startswith(f"{sede}-") else code
             if corto not in caras:
                 fantasmas.append((corto, lease, "el plano no lo ofrece"))
-            elif ((caras[corto].get("status") or "free") != "occupied"):
-                # El plano lo ofrece pero lo pinta libre: la pantalla dice
-                # «vendé esto» y el servidor lo va a rechazar.
+            elif "status" in caras[corto] and caras[corto].get("status") != "occupied":
+                # El plano lo ofrece y lo pinta LIBRE: la pantalla dice «vendé
+                # esto» y el servidor lo va a rechazar.
+                #
+                # Sólo cuenta si el plano OPINA. Desde que lo comercial es de la
+                # base, el layout no guarda `status` y no opinar es lo correcto:
+                # tomar la ausencia por «libre» marcaría como desfasado todo lo
+                # vendido de todas las sedes. Esta rama queda para los planos
+                # viejos, guardados cuando el JSON todavía llevaba el contrato.
                 fantasmas.append((corto, lease, "el plano lo pinta LIBRE"))
 
         # ── La dirección contraria: contratos que sólo tiene el PLANO ──────

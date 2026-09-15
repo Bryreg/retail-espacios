@@ -33,6 +33,29 @@ def _poner(client, admin, fixtures):
     return client.put("/api/layout/NAVE", headers=admin,
                       json={"fixtures": fixtures, "base_updated_at": _rev(client, admin)})
 
+def _plano_viejo(fixtures, sede="NAVE"):
+    """Escribe el snapshot DIRECTO, sin pasar por la API.
+
+    Hace falta porque `PUT /api/layout/{sede}` ya descarta el estado comercial:
+    lo comercial es de la base. O sea que un JSON con contratos adentro ya no se
+    puede crear por la API — y es exactamente el dato que estas pruebas
+    necesitan, porque es cómo quedaron los planos guardados ANTES del corte.
+    """
+    import json as _json
+    from app.database import SessionLocal
+    from app.models.models import LayoutSnapshot
+    db = SessionLocal()
+    try:
+        snap = db.query(LayoutSnapshot).filter(LayoutSnapshot.sede == sede).first()
+        if snap is None:
+            snap = LayoutSnapshot(sede=sede, fixtures_json="[]")
+            db.add(snap)
+        snap.fixtures_json = _json.dumps(fixtures)
+        db.commit()
+    finally:
+        db.close()
+
+
 
 def _vender(client, admin, code, dias=30):
     return client.post("/api/leases/bulk/confirmar", headers=admin, json={
@@ -59,8 +82,9 @@ def test_un_plano_al_dia_no_reporta_nada(client, admin, capsys):
     client.put("/api/layout/NAVE", headers=admin,
                json={"fixtures": [_mueble("PUN-01")], "base_updated_at": None})
     _vender(client, admin, "PUN-01")
-    # El navegador pinta el contrato en el plano, que es lo que hace de verdad.
-    _poner(client, admin, [_mueble(
+    # Un plano VIEJO que todavía pinta el contrato: es el dato que quedó de
+    # antes del corte, y sobre él el auditor no tiene que reportar nada.
+    _plano_viejo([_mueble(
         "PUN-01", status="occupied", supplierName="MACA MANI",
         startDate=HOY.isoformat(), endDate=(HOY + timedelta(days=30)).isoformat(),
     )])
@@ -105,15 +129,31 @@ def test_LA_CARA_B_QUE_DESAPARECE_deja_el_contrato_vivo(client, admin, capsys):
     assert "GON-60-B" in salida
 
 
-def test_el_plano_que_lo_pinta_libre_tambien_se_reporta(client, admin, capsys):
-    """El caso del reporte original: el mueble está, y el plano lo pinta libre.
+def test_UN_PLANO_QUE_NO_OPINA_NO_ES_DESFASE(client, admin, capsys):
+    """Y acá se ve por qué el corte arregla el problema de raíz.
 
-    Es el que produce «está libre y el sistema no me deja venderlo»: la pantalla
-    invita a vender y el servidor rechaza.
+    Éste es el caso del reporte original —IMP-17 vendido en la base, nadie pintó
+    el plano— y ya NO es desfase: desde que lo comercial es de la base, el
+    layout no guarda `status` y no tiene ninguna opinión que pueda contradecirla.
+    El navegador pide el estado a `/spaces/comercial` y lo pinta vendido.
+
+    Tomar la ausencia por «libre» sería marcar como desfasado todo lo vendido de
+    todas las sedes, que es la manera más rápida de que un auditor se deje de
+    leer.
     """
     client.put("/api/layout/NAVE", headers=admin,
                json={"fixtures": [_mueble("IMP-17")], "base_updated_at": None})
-    _vender(client, admin, "IMP-17")                     # nadie pinta el plano
+    _vender(client, admin, "IMP-17")
+
+    n, salida = _auditar(capsys)
+    assert n == 0, salida
+
+
+def test_un_plano_VIEJO_que_lo_pinta_libre_si_se_reporta(client, admin, capsys):
+    """Los planos guardados antes del corte sí llevan `status`, y ahí la
+    contradicción es real: el plano dice libre y la base dice vendido."""
+    _plano_viejo([_mueble("IMP-17", status="free")])
+    _vender(client, admin, "IMP-17")
 
     n, salida = _auditar(capsys)
     assert n == 1, salida
@@ -139,8 +179,9 @@ def test_un_contrato_vencido_no_es_desfase(client, admin, capsys):
 
 def test_se_puede_auditar_una_sola_sede(client, admin, capsys):
     client.put("/api/layout/NAVE", headers=admin,
-               json={"fixtures": [_mueble("PUN-01")], "base_updated_at": None})
+               json={"fixtures": [_mueble("PUN-01"), _mueble("PUN-02")], "base_updated_at": None})
     _vender(client, admin, "PUN-01")
+    _poner(client, admin, [_mueble("PUN-02")])           # PUN-01 sale del plano
 
     n, _ = _auditar(capsys, "NAVE")
     assert n == 1
@@ -156,14 +197,11 @@ def test_UN_CONTRATO_QUE_SOLO_VIVE_EN_EL_PLANO_tambien_se_reporta(client, admin,
     cargado así sigue viviendo sólo ahí: no sale en ningún reporte, no genera
     aviso de vencimiento y no existe para nada que consulte la base.
     """
-    client.put("/api/layout/NAVE", headers=admin, json={
-        "fixtures": [_mueble(
-            "PUN-07", status="occupied", supplierName="SÓLO EN EL PLANO",
-            negotiatedValue=500000, startDate=HOY.isoformat(),
-            endDate=(HOY + timedelta(days=20)).isoformat(),
-        )],
-        "base_updated_at": None,
-    })
+    _plano_viejo([_mueble(
+        "PUN-07", status="occupied", supplierName="SÓLO EN EL PLANO",
+        negotiatedValue=500000, startDate=HOY.isoformat(),
+        endDate=(HOY + timedelta(days=20)).isoformat(),
+    )])
 
     n, salida = _auditar(capsys)
     assert n == 1, salida
@@ -172,13 +210,10 @@ def test_UN_CONTRATO_QUE_SOLO_VIVE_EN_EL_PLANO_tambien_se_reporta(client, admin,
 
 
 def test_un_contrato_del_plano_ya_vencido_no_es_desfase(client, admin, capsys):
-    client.put("/api/layout/NAVE", headers=admin, json={
-        "fixtures": [_mueble(
-            "PUN-07", status="occupied", supplierName="VIEJO",
-            startDate=(HOY - timedelta(days=90)).isoformat(),
-            endDate=(HOY - timedelta(days=5)).isoformat(),
-        )],
-        "base_updated_at": None,
-    })
+    _plano_viejo([_mueble(
+        "PUN-07", status="occupied", supplierName="VIEJO",
+        startDate=(HOY - timedelta(days=90)).isoformat(),
+        endDate=(HOY - timedelta(days=5)).isoformat(),
+    )])
     n, salida = _auditar(capsys)
     assert n == 0, salida

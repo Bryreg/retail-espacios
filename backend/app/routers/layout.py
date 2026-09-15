@@ -128,6 +128,52 @@ def _price_map(fixtures: list) -> dict:
     return index
 
 
+#: Los campos que describen un CONTRATO, no un mueble.
+#:
+#: Vivieron años acá adentro, en el JSON del layout, al mismo tiempo que en
+#: ``space_leases``. Dos lugares para el mismo hecho, y ningún mecanismo que los
+#: obligara a coincidir: el plano nunca le escribió a la base —ese camino no
+#: existe— y el parche del navegador hacia el plano se podía perder de varias
+#: maneras. De ahí salían los tres síntomas de la auditoría, todos con la misma
+#: cara: «el espacio está libre y el sistema dice que está ocupado».
+#:
+#: Ahora la base es la única verdad y esto se descarta al guardar. El layout
+#: guarda lo que ES el mueble —dónde está, cuánto mide, cómo se llama— y el
+#: navegador pide lo comercial a ``GET /api/spaces/comercial``.
+#:
+#: Los ``slots`` NO están en esta lista y es a propósito: el estado por repisa
+#: del editor 3D no tiene contraparte en ninguna tabla, así que tiene una sola
+#: fuente y no puede discrepar con nada. El desfase necesita DOS verdades.
+CAMPOS_DE_CONTRATO = (
+    "status", "supplierName", "brandCategory", "negotiatedValue",
+    "startDate", "endDate", "observation",
+)
+
+
+def _sin_contrato(fixtures: list) -> None:
+    """Saca del layout lo que es de la base, en el lugar.
+
+    Se descarta en silencio en vez de rechazar el guardado: un cliente viejo
+    —una pestaña abierta desde antes del despliegue— sigue mandando estos
+    campos, y trabarle el plano por eso sería romperle el trabajo por una razón
+    que no puede entender ni arreglar.
+    """
+    for fixture in fixtures:
+        if not isinstance(fixture, dict):
+            continue
+        for campo in CAMPOS_DE_CONTRATO:
+            fixture.pop(campo, None)
+        cara_b = fixture.get("faceB")
+        if isinstance(cara_b, dict):
+            for campo in CAMPOS_DE_CONTRATO:
+                cara_b.pop(campo, None)
+            # Una cara B que queda vacía se va: `facesOf` no la mira para saber
+            # si la góndola es doble —eso lo dice `gondolaType`— así que un
+            # objeto vacío no significa nada y sólo ocupa.
+            if not cara_b:
+                fixture.pop("faceB", None)
+
+
 def _restore_missing_prices(incoming: list, stored: list) -> None:
     """Refill negotiated amounts the client did not send, in place.
 
@@ -630,6 +676,8 @@ def save_layout(sede: str, payload: LayoutIn, db: Session = Depends(get_db)):
     fixtures = payload.fixtures
     # El nombre viejo es del servidor: viaja en la respuesta y no se guarda.
     _sin_nombre_viejo(fixtures)
+    # El contrato es de la base. Ver `CAMPOS_DE_CONTRATO`.
+    _sin_contrato(fixtures)
     if snap:
         try:
             previous = json.loads(snap.fixtures_json or "[]")
@@ -680,7 +728,8 @@ def save_layout(sede: str, payload: LayoutIn, db: Session = Depends(get_db)):
                 },
             )
 
-        _restore_missing_prices(fixtures, previous)
+        # `_restore_missing_prices` ya no corre: el precio no viaja en el layout
+        # desde que el contrato es de la base, así que no hay nada que rellenar.
         snap.fixtures_json = json.dumps(fixtures)
         # fixtures_json is unchanged when a client re-saves identical data, and
         # SQLAlchemy would then skip the UPDATE and leave updated_at stale.

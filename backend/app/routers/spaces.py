@@ -98,6 +98,75 @@ def get_map_status(db: Session = Depends(get_db)):
     return result
 
 
+# ─── El estado comercial, que es de la BASE ───────────────────────────────────
+
+
+class EstadoComercial(BaseModel):
+    """Lo que la base sabe de un espacio hoy. La forma es la que ya usa el
+    plano, a propósito: así el navegador lo fusiona sin traducir nada."""
+    status: str
+    supplierName: str = ""
+    brandCategory: str = ""
+    negotiatedValue: float = 0
+    startDate: str = ""
+    endDate: str = ""
+    observation: str = ""
+
+
+@router.get("/comercial", response_model=dict[str, EstadoComercial])
+def estado_comercial(
+    sede: str | None = None,
+    role: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """Quién tiene vendido cada espacio, por código completo.
+
+    **Es la única verdad sobre lo comercial.** El JSON del layout guarda la
+    geometría —dónde está el mueble, cuánto mide, cómo se llama— y nada más.
+
+    Existió mucho tiempo al revés: el JSON guardaba también el contrato, así que
+    el mismo hecho estaba escrito dos veces y podían discrepar. Se rompía de tres
+    maneras distintas, todas con el mismo síntoma («está libre y el sistema dice
+    que está ocupado»), porque el plano no le escribe a la base y el parche del
+    navegador se puede perder. Con una sola verdad no hay nada que sincronizar.
+
+    **Un espacio sin fila es libre.** No hace falta pre-crear nada: la fila
+    aparece cuando se vende. Por eso la respuesta sólo trae lo que tiene algo que
+    decir, y todo lo que no está es libre.
+
+    **Cuál contrato manda.** El que corre hoy; si no hay, el que ya está firmado
+    y todavía no arranca —eso es «comprometido», no «libre», y venderlo encima
+    sería venderlo dos veces—. Un vencido no manda: es historia.
+
+    La plata no sale para un mercaderista, como en todas partes.
+    """
+    # Los vencidos se cierran al leer: así el mapa nunca muestra como ocupado
+    # algo que la base ya considera libre.
+    expire_leases(db)
+
+    q = db.query(Space).options(joinedload(Space.leases).joinedload(SpaceLease.supplier))
+    if sede:
+        q = q.filter(Space.sede == sede.strip().upper())
+
+    admin = role == "admin"
+    salida: dict[str, EstadoComercial] = {}
+    for space in q.all():
+        lease = space.active_lease or space.upcoming_lease
+        if lease is None:
+            # Sin contrato vivo no se dice nada: lo que no está, está libre.
+            continue
+        salida[(space.code or "").strip().upper()] = EstadoComercial(
+            status="occupied",
+            supplierName=lease.supplier.name if lease.supplier else "",
+            brandCategory=lease.marca or "",
+            negotiatedValue=(lease.monthly_rent or 0) if admin else 0,
+            startDate=lease.start_date.isoformat(),
+            endDate=lease.end_date.isoformat(),
+            observation=lease.notes or "",
+        )
+    return salida
+
+
 @router.post("/find-or-create", response_model=SpaceOut, status_code=200, dependencies=[Depends(require_admin)])
 def find_or_create_space(payload: SpaceFindOrCreate, db: Session = Depends(get_db)):
     """Return the existing Space whose code matches, or create a new one on the fly.
