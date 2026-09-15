@@ -371,8 +371,14 @@ export default function SpacePanel({ svgId, zoneDef, onClose, onRefresh }: Props
                     value={daysLeft >= 0 ? `${daysLeft} días` : `Vencido hace ${Math.abs(daysLeft)} días`}
                   />
                 )}
-                <Row icon={<DollarSign size={13} />} label="Valor negociado"
-                  value={`$${space.active_lease.monthly_rent.toLocaleString()}`} />
+                {/* `monthly_rent` viene en `null` para un mercaderista: el
+                    servidor lo tacha. Sin esta guarda el renglón reventaba con
+                    «cannot read toLocaleString of null» — y se veía sólo en la
+                    sesión de un mercaderista, que es donde nadie prueba. */}
+                {space.active_lease.monthly_rent !== null && (
+                  <Row icon={<DollarSign size={13} />} label="Valor negociado"
+                    value={`$${space.active_lease.monthly_rent.toLocaleString()}`} />
+                )}
               </div>
               <button
                 onClick={handleCancelLease}

@@ -4,15 +4,43 @@ from sqlalchemy.orm import Session
 from app.auth import require_admin, require_auth
 from app.database import get_db
 from app.models.models import Supplier, SpaceLease
-from app.schemas.spaces import SupplierCreate, SupplierOut
+from app.schemas.spaces import SupplierCreate, SupplierOut, SupplierPublicOut
 
 # Every route requires a valid token; mutations additionally require admin.
 router = APIRouter(prefix="/suppliers", tags=["suppliers"], dependencies=[Depends(require_auth)])
 
 
-@router.get("/", response_model=list[SupplierOut])
-def list_suppliers(db: Session = Depends(get_db)):
-    return db.query(Supplier).order_by(Supplier.name).all()
+def _para_el_rol(supplier: Supplier, role: str):
+    """El proveedor entero para un admin; sólo id y nombre para el resto.
+
+    ── Qué se estaba filtrando ─────────────────────────────────────────────
+
+    `Supplier` guarda `contact_name`, `phone`, `email` y `notes`. Estas dos
+    rutas de lectura sólo exigían sesión —no admin— así que **un mercaderista
+    recibía los datos de contacto de todos los proveedores del supermercado**.
+    Son datos personales de un tercero, con la Ley 1581 encima, y no le hacen
+    falta para nada: monta una exhibición, no llama a nadie.
+
+    ── Por qué lista blanca y no redacción ─────────────────────────────────
+
+    Se devuelve otro esquema, con los dos campos que sí van, en vez de poner en
+    `None` los cuatro que no. Un campo que alguien le agregue mañana a
+    `Supplier` queda AFUERA por defecto; con una redacción quedaría adentro
+    hasta que alguien se acuerde de taparlo, que es precisamente la clase de
+    olvido que produjo esta fuga.
+    """
+    if role == "admin":
+        return SupplierOut.model_validate(supplier, from_attributes=True)
+    return SupplierPublicOut.model_validate(supplier, from_attributes=True)
+
+
+# `response_model` va en None a propósito: la forma depende del rol, y dejar
+# acá el esquema de admin volvería a serializar los cuatro campos justamente
+# para quien no debe verlos.
+@router.get("/", response_model=None)
+def list_suppliers(role: str = Depends(require_auth), db: Session = Depends(get_db)):
+    filas = db.query(Supplier).order_by(Supplier.name).all()
+    return [_para_el_rol(s, role) for s in filas]
 
 
 @router.post("/find-or-create", response_model=SupplierOut, status_code=200, dependencies=[Depends(require_admin)])
@@ -51,12 +79,14 @@ def create_supplier(payload: SupplierCreate, db: Session = Depends(get_db)):
     return supplier
 
 
-@router.get("/{supplier_id}", response_model=SupplierOut)
-def get_supplier(supplier_id: int, db: Session = Depends(get_db)):
+@router.get("/{supplier_id}", response_model=None)
+def get_supplier(
+    supplier_id: int, role: str = Depends(require_auth), db: Session = Depends(get_db),
+):
     supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
-    return supplier
+    return _para_el_rol(supplier, role)
 
 
 @router.put("/{supplier_id}", response_model=SupplierOut, dependencies=[Depends(require_admin)])

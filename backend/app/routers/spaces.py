@@ -37,6 +37,10 @@ def _space_out_for_role(space: Space, role: str) -> SpaceOut:
         for lease in (out.active_lease, out.upcoming_lease):
             if lease is not None:
                 lease.monthly_rent = None
+                # Y la nota, que es TEXTO LIBRE: ahí es donde alguien escribe
+                # «descuento del 25% cerrado por teléfono». Tachar el número y
+                # dejar pasar la nota deja la plata fugándose en castellano.
+                lease.notes = None
     return out
 
 
