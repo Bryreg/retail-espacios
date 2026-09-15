@@ -29,8 +29,6 @@ export default function CancelarContrato({
    *  con ofrecer el botón: hay que decir qué se encontró, porque la ficha de
    *  arriba está diciendo «sin contrato activo» en la misma pantalla. */
   segunElPlano: boolean;
-  /** Lo que hay que escribir en el JSON del layout para que el mapa repinte.
-   *  Sin esto el contrato desaparece de la base y el mueble sigue rojo. */
   /** El contrato ya se soltó en la base. No lleva parche: no hay copia. */
   onCancelado: () => void;
 }) {

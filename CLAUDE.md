@@ -8,8 +8,12 @@ Gestión de espacios comerciales en supermercados. Deploy: retail-espacios.onren
 
 `docs/engram/` es la **cola de entrada al store de Engram**: lo aprendido después de ese snapshot y todavía sin cargar (el rediseño de la pantalla principal, los gotchas de las sesiones de diseño). Se carga desde la máquina local, que es la que tiene Engram conectado.
 
-Si algo «está libre y el sistema dice que está ocupado»: el plano y la base son
-dos verdades distintas. `cd backend && python scripts/auditar_desfase.py` lista,
-por sede, todo lo que la base tiene vendido y el plano no. Sólo lee.
+Si algo «está libre y el sistema dice que está ocupado»: hay un contrato vivo
+sobre un espacio que ningún plano dibuja. **Se ve en la pantalla**, en
+Supervisar → «Para revisar» → *Contrato sin mueble en el plano*: sale el
+espacio, el proveedor y hasta cuándo va, y se resuelve ahí. La cuenta la hace
+`utils/auditoriaDesfase.ts` con los datos que el navegador ya bajó.
+`backend/scripts/auditar_desfase.py` hace lo mismo contra la base y además ve la
+dirección contraria, pero necesita consola en el servidor (plan pago de Render).
 
 Verificación mínima: `cd frontend && npx tsc --noEmit` · `cd backend && python -c "import app.main"` · `npm install` requiere `--legacy-peer-deps`.

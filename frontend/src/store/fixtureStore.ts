@@ -86,6 +86,31 @@ function sinComercial(fixtures: UnifiedFixture[]): UnifiedFixture[] {
 }
 
 /**
+ * ¿Los dos mapas comerciales dicen lo mismo?
+ *
+ * Hace falta aparte de la identidad de los planos por una razón concreta: un
+ * contrato para un espacio que ningún plano dibuja NO se le pega a ningún
+ * mueble, así que puede aparecer, cambiar o irse sin que se mueva un solo
+ * arreglo de muebles. Comparando sólo los planos, el fantasma se dibujaría una
+ * vez y después se quedaría congelado en la pantalla.
+ */
+function mismoMapa(a: EstadoPorEspacio, b: EstadoPorEspacio): boolean {
+  if (a === b) return true;
+  const claves = Object.keys(a);
+  if (claves.length !== Object.keys(b).length) return false;
+  for (const clave of claves) {
+    const x = a[clave];
+    const y = b[clave];
+    if (!y) return false;
+    if (x.status !== y.status || x.supplierName !== y.supplierName ||
+        x.brandCategory !== y.brandCategory || x.negotiatedValue !== y.negotiatedValue ||
+        x.startDate !== y.startDate || x.endDate !== y.endDate ||
+        x.observation !== y.observation) return false;
+  }
+  return true;
+}
+
+/**
  * Repintar TODAS las sedes con lo que la base dice que está vendido.
  *
  * Se hace sobre todas y no sólo sobre las que acaban de bajar: el estado
@@ -294,6 +319,16 @@ interface FixtureStore {
   dirty: Record<string, boolean>;
   /** Sedes another workstation modified while we held unsaved edits. */
   conflicts: Record<string, string>;
+  /** Lo que la BASE dice de cada espacio, crudo, tal como bajó. Es la fuente;
+   *  lo que queda pegado a cada mueble es la copia derivada.
+   *
+   *  Se conserva porque hay una pregunta que la copia no puede contestar: un
+   *  contrato para un espacio que NINGÚN plano dibuja no se le pega a nada, así
+   *  que desaparece en la fusión. Es justo el fantasma que hay que encontrar.
+   *
+   *  Fuera de `partialize` a propósito: lleva plata, y esa clave sobrevive al
+   *  logout. */
+  estadoComercial: EstadoPorEspacio;
   /** Sedes cuyo último guardado el SERVIDOR RECHAZÓ por una regla suya —dos
    *  muebles llamados igual, o un espacio con contrato vivo que este guardado
    *  sacaría del plano—, con lo que el servidor contestó. No es un conflicto
@@ -426,6 +461,7 @@ export const useFixtureStore = create<FixtureStore>()(
       settingsRev: null,
       dirty: {},
       conflicts: {},
+      estadoComercial: {},
       rechazos: {},
       syncState: "idle",
       syncMessage: null,
@@ -464,6 +500,7 @@ export const useFixtureStore = create<FixtureStore>()(
           settingsRev: null,
           dirty: {},
           conflicts: {},
+          estadoComercial: {},
           rechazos: {},
           past: [],
           future: [],
@@ -1133,6 +1170,9 @@ export const useFixtureStore = create<FixtureStore>()(
               // y no sólo sobre las que cambiaron de revisión. Una venta no
               // toca el plano, así que no hay revisión nueva que la delate.
               fixturesBySede: fusionarTodo(fixturesBySede, estado),
+              // El mapa crudo, además de fundido: la fusión no puede guardar un
+              // contrato que no tiene mueble donde pegarse.
+              estadoComercial: estado,
               serverRev,
               dataRole: role,
               syncState: Object.keys(state.conflicts).length ? "conflict" : "idle",
@@ -1242,11 +1282,13 @@ export const useFixtureStore = create<FixtureStore>()(
           const estado = await fetchEstadoComercial();
           set((state) => {
             const fixturesBySede = fusionarTodo(state.fixturesBySede, estado);
-            // Identidad: si nada cambió no se toca el store, y el plano no se
-            // vuelve a dibujar cada 20 segundos.
-            return fixturesBySede === state.fixturesBySede
-              ? state
-              : ({ fixturesBySede } as FixtureStore);
+            // Identidad: si nada cambió no se redibuja el plano. El mapa crudo
+            // se guarda igual —es barato y es la fuente—, pero sólo cuando algo
+            // se movió de verdad, para no despertar a la pantalla cada 20 s.
+            const igual =
+              fixturesBySede === state.fixturesBySede &&
+              mismoMapa(state.estadoComercial, estado);
+            return igual ? state : ({ fixturesBySede, estadoComercial: estado } as FixtureStore);
           });
         } catch (err: any) {
           if (err?.response?.status === 401) return;

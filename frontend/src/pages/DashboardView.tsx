@@ -16,7 +16,7 @@ import {
   FileSpreadsheet,
   Box,
 } from "lucide-react";
-import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
+import { useFixtureStore, selectFixtures, normalizeSede } from "../store/fixtureStore";
 import { temaActual, useTema } from "../tema";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
 import client from "../api/client";
@@ -46,6 +46,7 @@ import type {
 import SeasonPicker, { describeRange, hoyComoRango, type DateRange } from "../components/SeasonPicker/SeasonPicker";
 import Libera from "../components/Libera/Libera";
 import ModoVender from "../components/Contrato/ModoVender";
+import { fechaCorta } from "../components/Contrato/Contrato";
 import type { ResumenContrato } from "../components/Contrato/Contrato";
 import Planometria from "../components/Contrato/Planometria";
 import CancelarContrato from "../components/Contrato/CancelarContrato";
@@ -67,6 +68,7 @@ import { nombreDeMueble, nombreAnterior, nombresChocados, choqueDeRotulo } from 
 import type { SemillaContrato } from "../components/Contrato/Contrato";
 import { fechaEnCurso } from "../utils/propuesta";
 import { espaciosSinMueble } from "../utils/espaciosSinMueble";
+import { contratosSinMueble, type ContratoSinMueble } from "../utils/auditoriaDesfase";
 
 // ─── Date / money helpers ────────────────────────────────────────────────────
 
@@ -2296,6 +2298,98 @@ function AtencionSection({
   );
 }
 
+/**
+ * Un contrato vivo que NINGÚN plano puede mostrar.
+ *
+ * No es una fila como las otras y por eso no reusa `AtencionRow`: las demás
+ * cuelgan de un mueble —tocarlas lo señala en el plano de al lado— y ésta,
+ * justamente, no tiene mueble. Ése es el hallazgo.
+ *
+ * Por eso trae su propia salida en vez de mandar a mirar el mapa: o se dibuja
+ * el mueble con ese código en el plano de esa sede —y el contrato aparece
+ * solo—, o se cancela desde acá. `CancelarContrato` ya sabe nombrar lo que
+ * encuentra cuando el plano no lo tiene: se construyó para este caso.
+ */
+function FantasmaRow({
+  fila, isAdmin, abierto, onAbrir, onCancelado,
+}: {
+  fila: ContratoSinMueble;
+  isAdmin: boolean;
+  abierto: boolean;
+  onAbrir: () => void;
+  onCancelado: () => void;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onAbrir}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onAbrir(); } }}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        style={{
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "6px 6px", borderRadius: "var(--r-md)", cursor: "pointer",
+          background: abierto || hover ? "var(--surface-2)" : "transparent",
+          transition: "background .12s",
+        }}
+      >
+        <span
+          style={{
+            fontFamily: "var(--font-mono)", fontSize: 9, fontWeight: 700,
+            letterSpacing: "0.06em", padding: "2px 5px", borderRadius: 3,
+            background: "var(--warning-50, var(--surface-2))",
+            color: "var(--warning, var(--ink-2))", flexShrink: 0,
+          }}
+        >
+          {fila.sede || "?"}
+        </span>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+          {fila.code}
+        </span>
+        <span style={{
+          fontSize: 11.5, color: "var(--ink-2)", flex: 1, minWidth: 0,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          {fila.supplierName || "sin proveedor"}
+        </span>
+        <span style={{ fontSize: 10.5, color: "var(--ink-3)", flexShrink: 0 }}>
+          {fila.endDate ? `hasta ${fechaCorta(fila.endDate)}` : "sin fecha"}
+        </span>
+      </div>
+      {abierto && (
+        <div style={{
+          margin: "2px 6px 8px", padding: "9px 10px",
+          borderRadius: "var(--r-lg)", background: "var(--surface-2)",
+          border: "1px solid var(--line)",
+        }}>
+          <p style={{ fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5, margin: "0 0 8px" }}>
+            El plano de <b>{fila.sede || "esa sede"}</b> no tiene ningún mueble con el
+            código <b>{fila.code}</b>, así que este contrato no se ve en el mapa — y ese
+            espacio va a rechazar cualquier venta nueva nombrándolo.
+            <br /><br />
+            Dibujá el mueble con ese código y el contrato aparece solo. Si el espacio ya
+            no existe, cancelalo.
+          </p>
+          {isAdmin ? (
+            <CancelarContrato
+              spaceCode={fila.espacio}
+              segunElPlano={false}
+              onCancelado={onCancelado}
+            />
+          ) : (
+            <p style={{ fontSize: 11, color: "var(--ink-3)", margin: 0 }}>
+              Pedile a un administrador que lo resuelva.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Una fila de «Para revisar»: días, código, quién, y cuándo.
  *
  *  Es un BOTÓN, no un renglón. Antes la lista y el plano eran dos paneles que
@@ -2967,11 +3061,29 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const { sedes, sede, setSede, fixturesBySede, syncFromServer, seasonWindows } = useFixtureStore();
   const referenceRates = useFixtureStore((s) => s.referenceRates);
   const refrescarComercial = useFixtureStore((s) => s.refrescarComercial);
+  const estadoComercial = useFixtureStore((s) => s.estadoComercial);
+  /** La auditoría de desfase, calculada en la pantalla.
+   *
+   *  Existe `backend/scripts/auditar_desfase.py`, que hace esto contra la base
+   *  — pero necesita una consola en el servidor, que es un plan pago. Y acá no
+   *  hace falta: el store ya bajó TODOS los planos y el mapa comercial entero,
+   *  porque los necesita para pintar. La auditoría es una resta entre dos cosas
+   *  que ya están en memoria, sin consola y sin credenciales.
+   *
+   *  Además deja de ser una corrida que alguien tiene que acordarse de hacer:
+   *  se ve sola, al lado de lo demás que hay que revisar. */
+  const fantasmas = useMemo(
+    () => contratosSinMueble(fixturesBySede, estadoComercial, normalizeSede),
+    [fixturesBySede, estadoComercial],
+  );
   /** Espacios con contrato que NINGÚN plano dibuja, después de una planilla.
    *  Se muestran: el contrato existe y vale, pero no hay mueble donde verlo, y
    *  un fantasma que nadie nombra es el que aparece meses después al vender
    *  como «está libre y no me deja venderlo». */
   const [sinMueble, setSinMueble] = useState<string[] | null>(null);
+  /** Qué fantasma está desplegado, por código completo. Uno a la vez: cada uno
+   *  abre su propio `CancelarContrato`, que consulta la base al montarse. */
+  const [fantasmaAbierto, setFantasmaAbierto] = useState<string | null>(null);
   const isAdmin = useAuthStore(selectIsAdmin);
   const [ratesOpen, setRatesOpen] = useState(false);
 
@@ -3598,6 +3710,10 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
 
   const attentionCount =
     kpis.expired.length + kpis.expiring.length + kpis.noContract.length +
+    // Los fantasmas cuentan para TODAS las sedes, no sólo la abierta: un
+    // contrato sin mueble no se ve en ningún plano, así que si sólo contara en
+    // la suya no se vería nunca. Es lo único de esta lista que cruza tiendas.
+    fantasmas.length +
     (isAdmin ? kpis.belowReference.length + montaje.noMontado.length + montaje.sinMontar.length : 0);
 
   /** Cuántas caras contesta cada chip de la tabla. Un filtro que no puede
@@ -4275,13 +4391,41 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 <CardHeader title="Para revisar" right={<span>{attentionCount}</span>} />
                 {attentionCount === 0 ? (
                   <div style={{ padding: "0 15px 14px", fontSize: 13, color: "var(--libre-txt)" }}>
-                    Sin contratos vencidos ni próximos a vencer.
+                    Sin contratos vencidos ni próximos a vencer, y todo lo que la base
+                    tiene vendido se ve en el plano.
                   </div>
                 ) : (
                   <div style={{
                     flex: 1, minHeight: 0, padding: "0 9px 10px",
                     display: "flex", flexDirection: "column", gap: 12, overflowY: "auto",
                   }}>
+                    {/* Primero los fantasmas: es lo único acá que la pantalla no
+                        puede mostrar de ninguna otra forma. Todo lo demás se ve
+                        también en el mapa; esto, por definición, no. */}
+                    {fantasmas.length > 0 && (
+                      <div>
+                        <AtencionSection
+                          label="Contrato sin mueble en el plano"
+                          color="var(--warning, var(--ocupado))"
+                          monto={fantasmas.length}
+                        />
+                        {fantasmas.map((f) => (
+                          <FantasmaRow
+                            key={f.espacio}
+                            fila={f}
+                            isAdmin={isAdmin}
+                            abierto={fantasmaAbierto === f.espacio}
+                            onAbrir={() => setFantasmaAbierto(
+                              fantasmaAbierto === f.espacio ? null : f.espacio,
+                            )}
+                            onCancelado={() => {
+                              setFantasmaAbierto(null);
+                              void refrescarComercial();
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
                     {kpis.noContract.length > 0 && (
                       <div>
                         <AtencionSection

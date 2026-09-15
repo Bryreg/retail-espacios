@@ -2334,11 +2334,32 @@ contratos, hazlo»*. Sin datos reales encima, el corte se pudo hacer entero de u
 5. Vender, cancelar, la planilla y los selectores de estado dejan de parchear y recargan.
 6. Las tres puertas se cierran en el guardado del plano (409 `contratos_vivos`).
 
-**Lo que queda del auditor.** Sigue haciendo falta: lo que ya está desfasado en
-producción se guardó antes de que el guardarraíl existiera y nadie lo va a arreglar solo.
-Se corre con `cd backend && python scripts/auditar_desfase.py` (sólo lee, ni una fila ni
-un correo) y necesita el `DATABASE_URL` de producción, así que va desde la consola del
-servicio en Render.
+**Lo que queda del auditor, y dónde se ve.** Sigue haciendo falta: lo que ya está
+desfasado en producción se guardó antes de que el guardarraíl existiera y nadie lo va a
+arreglar solo.
+
+La auditoría **vive en la pantalla**, en Supervisar → «Para revisar» → *Contrato sin
+mueble en el plano*. Sale el espacio, la sede, el proveedor y hasta cuándo va, y se
+resuelve ahí mismo: o se dibuja el mueble con ese código —y el contrato aparece solo— o
+se cancela, con el botón que ya sabe nombrar lo que encuentra cuando el plano no lo
+tiene.
+
+No necesita consola ni credenciales, y ésa es la razón de que se calcule en el navegador
+y no con el script: **el store ya bajó todo lo que hace falta**. `fetchAllLayouts` trae
+todos los planos y `fetchEstadoComercial` el mapa comercial entero, porque los necesita
+para pintar; la auditoría es una resta entre dos cosas que ya están en memoria
+(`utils/auditoriaDesfase.ts`). La consola del servicio en Render, que es donde correría
+el script, es un plan pago. Y de paso deja de ser una corrida que alguien tiene que
+acordarse de hacer.
+
+`backend/scripts/auditar_desfase.py` se queda igual, sin cambios: sólo lee, ve las DOS
+direcciones —incluida la que el navegador no puede ver, un contrato que vive sólo en el
+JSON, porque la fusión la pisa antes de que nadie la mire— y sirve donde sí haya consola.
+
+`espacios_ofrecidos` (servidor) y `espaciosOfrecidos` (navegador) tienen que contestar lo
+mismo: el primero decide qué se FRENA al guardar y el segundo qué se AVISA en la
+pantalla. Hay pruebas que atan las tres decisiones —tipo, bandera `rentable` y cara B—
+para que no se separen en silencio.
 
 **Lo que ninguna fusión arregla**, y por eso se avisa: un contrato sobre un espacio que
 NINGÚN plano dibuja. Ahí no hay nada que pintar. Después de una carga por planilla,
