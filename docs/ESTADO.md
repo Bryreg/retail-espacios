@@ -5203,6 +5203,46 @@ suyo, y por API el primero tiene 41 espacios y el segundo 0.
 
 ---
 
+## El desfase entre el plano y la base
+
+El plano sale del **JSON del layout**, que es una copia que mantiene al día el
+navegador que vende. La **base** (`space_leases`) es la que manda: es la que
+valida al guardar. Cuando las dos no coinciden, la pantalla y el servidor dicen
+cosas distintas y los dos tienen razón — por eso no se arregla mirando uno solo.
+
+Se reportó así: *«no me deja alquilar la IMP-17 que está libre, el sistema la
+toma como ocupada y no tiene ningún contrato»*.
+
+**De dónde salía.** La carga por planilla acepta una columna «sede», así que UNA
+planilla crea contratos en varias tiendas. El parche del mapa, en cambio, se
+armaba con el código **corto** —`IMP-17`— y se aplicaba sobre los muebles de la
+sede **abierta**. Como los códigos se repiten entre sedes (casi todas tienen un
+`IMP-17`), una fila de NAVE cargada con CIUDAD JARDIN en pantalla hacía dos
+daños de un golpe: pintaba vendido el `IMP-17` de CIUDAD JARDIN, que no se
+vendió, y dejaba el de NAVE —el que sí se vendió— viéndose libre.
+
+**La regla, ahora en `utils/contratosEnPlano.ts` con sus pruebas:** un mueble es
+único por **sede + código**. El código solo no lo es, y usarlo solo era el bug.
+
+**Lo que no se puede pintar se dice.** Un layout que no está cargado en la
+sesión no se inventa —mandar uno parcial borraría los muebles que no vinieron—
+así que esas sedes se devuelven y la pantalla avisa que hay que abrirlas una vez
+para ponerlas al día. Un desfase callado es el que muerde meses después.
+
+**Y el desfase que ya existe se puede resolver.** El botón de cancelar colgaba
+de `hasContract`, que sale del layout: en el caso que hay que resolver el layout
+dice «libre», así que el botón desaparecía justo cuando hacía falta y
+«cancelalo primero» señalaba algo imposible. Ahora `CancelarContrato` decide
+solo —le pregunta a la base— y cuando encuentra un contrato que el plano no
+tiene, lo **nombra** (proveedor y fechas) antes de ofrecer soltarlo.
+
+Otras dos vías por las que el parche del layout puede no llegar, conocidas y no
+cerradas: el guardado va con **1200 ms de debounce** (cerrar la pestaña justo
+después de confirmar lo pierde) y `pushSede` **se salta** la escritura si esa
+sede ya está en conflicto. Las dos dejan la base adelante del plano.
+
+---
+
 ## Gotchas
 
 **La librería de Excel está vieja.** `xlsx@0.18.5` en npm arrastra vulnerabilidades

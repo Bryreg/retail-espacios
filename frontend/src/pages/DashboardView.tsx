@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
+  AlertTriangle,
   RefreshCw,
   Building2,
   Plus,
@@ -2188,6 +2189,64 @@ function FixtureDetailCard({
   );
 }
 
+/** Lo que la carga por planilla creó en la base y el mapa no pudo reflejar.
+ *
+ *  Pasa cuando la planilla trae filas de una sede cuyo layout no está cargado
+ *  en esta sesión, o cuyo plano no tiene ese mueble. El contrato QUEDÓ —lo
+ *  escribió el servidor— pero el mapa de esa tienda sigue pintándolo libre.
+ *
+ *  Se dice en vez de callarlo, y se dice cómo se arregla: abrir esa sede pone
+ *  su layout al día contra la base. Callarlo es lo que produce, meses después,
+ *  «el espacio está libre y el sistema no me deja venderlo». */
+function AvisoDesfase({ sedes, onCerrar }: { sedes: string[]; onCerrar: () => void }) {
+  return (
+    <div
+      data-capa-modal
+      role="alertdialog"
+      style={{
+        position: "fixed", inset: 0, zIndex: 70,
+        background: "rgba(26,24,20,.45)",
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onCerrar(); }}
+    >
+      <div
+        style={{
+          width: "min(460px, 100%)", padding: 18,
+          background: "var(--surface)", borderRadius: "var(--r-2xl)",
+          border: "1px solid var(--line)", boxShadow: "var(--shadow-lg)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 9, marginBottom: 10 }}>
+          <AlertTriangle size={17} style={{ color: "var(--warning, var(--ink-2))", flexShrink: 0, marginTop: 1 }} />
+          <div style={{ fontSize: 14.5, fontWeight: 700 }}>
+            Los contratos quedaron guardados, pero {sedes.length === 1 ? "un mapa" : "unos mapas"} no
+          </div>
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6, marginBottom: 14 }}>
+          La planilla creó contratos en{" "}
+          <b>{sedes.join(", ")}</b>, y el plano de {sedes.length === 1 ? "esa sede" : "esas sedes"}{" "}
+          no está abierto acá, así que sigue pintando esos espacios libres.
+          <br /><br />
+          Los contratos existen y valen. <b>Abrí {sedes.length === 1 ? "esa sede" : "esas sedes"}</b>{" "}
+          una vez para que su mapa se ponga al día — si no, el espacio se va a ver
+          libre y no se va a dejar vender.
+        </div>
+        <button
+          onClick={onCerrar}
+          style={{
+            width: "100%", height: 34, borderRadius: "var(--r-md)", border: "none",
+            background: "var(--accent)", color: "#fff",
+            fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
+          }}
+        >
+          Entendido
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Atención (vencidos + por vencer + anomalías, one-line rows) ─────────────
 
 interface ContractEntry extends FaceEntry {
@@ -2901,6 +2960,11 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const { sedes, sede, setSede, fixturesBySede, syncFromServer, seasonWindows } = useFixtureStore();
   const referenceRates = useFixtureStore((s) => s.referenceRates);
   const commit = useFixtureStore((s) => s.commit);
+  const aplicarContratos = useFixtureStore((s) => s.aplicarContratos);
+  /** Sedes cuyo mapa no se pudo poner al día después de una carga por planilla.
+   *  Se muestran: un desfase que nadie ve es el que aparece meses después, al
+   *  vender, como «está libre y no me deja venderlo». */
+  const [sedesDesfasadas, setSedesDesfasadas] = useState<string[] | null>(null);
   const isAdmin = useAuthStore(selectIsAdmin);
   const [ratesOpen, setRatesOpen] = useState(false);
 
@@ -4476,45 +4540,50 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           sede={sede}
           onCerrar={() => setCargaAbierta(false)}
           onGuardado={({ creados }) => {
-            // Igual que al vender de a uno: el JSON del layout es lo que pinta
-            // el mapa y responde la disponibilidad. Sin esto los contratos
-            // existirían en la base y los espacios seguirían viéndose libres.
-            const patches = new Map<string, { face: "A" | "B"; patch: Partial<FaceData> }[]>();
-            for (const c of creados) {
+            // El JSON del layout es lo que pinta el mapa y responde la
+            // disponibilidad. Sin esto los contratos existen en la base y los
+            // espacios se siguen viendo libres.
+            //
+            // Cada fila va a SU sede, no a la abierta. Acá se armaba el parche
+            // con el código corto —`IMP-17`— y se aplicaba sobre los muebles de
+            // la sede que estuviera en pantalla; como los códigos se repiten
+            // entre tiendas, una planilla con la columna «sede» apuntando a
+            // otra pintaba vendido el mueble equivocado y dejaba el realmente
+            // vendido viéndose libre. La regla vive ahora en el store, que es
+            // el único que sabe qué layouts tiene cargados.
+            const filas = creados.map((c) => {
               const completo = (c.codigo || "").toUpperCase();
               const sedeFila = (c.sede || sede || "").toUpperCase();
               const corto = sedeFila && completo.startsWith(`${sedeFila}-`)
                 ? completo.slice(sedeFila.length + 1)
                 : completo;
               const face: "A" | "B" = corto.endsWith("-B") ? "B" : "A";
-              const base = face === "B" ? corto.slice(0, -2) : corto;
-              const patch = {
-                status: "occupied",
-                supplierName: c.proveedor || "",
-                brandCategory: c.marca || "",
-                negotiatedValue: c.valor || 0,
-                startDate: c.desde || "",
-                endDate: c.hasta || "",
-                observation: c.nota || "",
-              } as Partial<FaceData>;
-              patches.set(base, [...(patches.get(base) ?? []), { face, patch }]);
-            }
-            if (patches.size) {
-              commit(
-                fixtures.map((f) => {
-                  const suyos = patches.get(f.code.toUpperCase());
-                  if (!suyos) return f;
-                  let siguiente = f;
-                  for (const { face, patch } of suyos) {
-                    siguiente = face === "B"
-                      ? { ...siguiente, faceB: { ...(siguiente.faceB ?? {}), ...patch } as FaceData }
-                      : { ...siguiente, ...patch };
-                  }
-                  return siguiente;
-                }),
-              );
-            }
+              return {
+                sede: sedeFila,
+                code: face === "B" ? corto.slice(0, -2) : corto,
+                face,
+                patch: {
+                  status: "occupied",
+                  supplierName: c.proveedor || "",
+                  brandCategory: c.marca || "",
+                  negotiatedValue: c.valor || 0,
+                  startDate: c.desde || "",
+                  endDate: c.hasta || "",
+                  observation: c.nota || "",
+                } as Partial<FaceData>,
+              };
+            });
+            const faltantes = aplicarContratos(filas);
+            // Lo que quedó desfasado se DICE. Callarlo es lo que produce el
+            // «está libre pero no me deja venderlo» meses después.
+            if (faltantes.length) setSedesDesfasadas(faltantes);
           }}
+        />
+      )}
+      {sedesDesfasadas && (
+        <AvisoDesfase
+          sedes={sedesDesfasadas}
+          onCerrar={() => setSedesDesfasadas(null)}
         />
       )}
     </div>
