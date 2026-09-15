@@ -66,6 +66,7 @@ import { inclusiveDays, parseISODate, toISODate, upcomingSeasons } from "../type
 import { nombreDeMueble, nombreAnterior, nombresChocados, choqueDeRotulo } from "../utils/nomenclatura";
 import type { SemillaContrato } from "../components/Contrato/Contrato";
 import { fechaEnCurso } from "../utils/propuesta";
+import { espaciosSinMueble } from "../utils/espaciosSinMueble";
 
 // ─── Date / money helpers ────────────────────────────────────────────────────
 
@@ -1961,9 +1962,9 @@ function FixtureDetailCard({
   /** El mismo acuerdo otra vez, prellenado. Sólo llega cuando el contrato se
    *  está por caer: antes de eso no hay nada que renovar. */
   onRenovar?: () => void;
-  /** El contrato se canceló: hay que escribir el JSON del layout para que el
-   *  mapa repinte el mueble como libre. */
-  onCancelado?: (patch: Partial<FaceData>) => void;
+  /** El contrato se canceló en la base. No lleva parche: el mapa se pinta
+   *  desde ahí, así que alcanza con volver a leer. */
+  onCancelado?: () => void;
   onOpenFile: (f: SpaceFileMeta) => void;
 }) {
   const rentable = isRentable(fixture);
@@ -2189,16 +2190,19 @@ function FixtureDetailCard({
   );
 }
 
-/** Lo que la carga por planilla creó en la base y el mapa no pudo reflejar.
+/** Contratos que la planilla creó sobre espacios que NINGÚN plano dibuja.
  *
- *  Pasa cuando la planilla trae filas de una sede cuyo layout no está cargado
- *  en esta sesión, o cuyo plano no tiene ese mueble. El contrato QUEDÓ —lo
- *  escribió el servidor— pero el mapa de esa tienda sigue pintándolo libre.
+ *  El contrato QUEDÓ —lo escribió el servidor, es plata y es un compromiso con
+ *  un proveedor— pero no hay mueble donde verlo. No es un desfase entre dos
+ *  copias: desde que lo comercial vive sólo en la base, el mapa se pinta de ahí
+ *  y siempre coincide. Es que ese espacio no está en el plano: se borró el
+ *  mueble, se pasó la góndola de doble a simple y desapareció la cara B, o
+ *  nunca se dibujó y el código de la planilla tiene un error de tipeo.
  *
- *  Se dice en vez de callarlo, y se dice cómo se arregla: abrir esa sede pone
- *  su layout al día contra la base. Callarlo es lo que produce, meses después,
- *  «el espacio está libre y el sistema no me deja venderlo». */
-function AvisoDesfase({ sedes, onCerrar }: { sedes: string[]; onCerrar: () => void }) {
+ *  Se dice en vez de callarlo, y se dice qué hacer. Callarlo es lo que produce,
+ *  meses después, «el espacio está libre y el sistema no me deja venderlo». */
+function AvisoSinMueble({ espacios, onCerrar }: { espacios: string[]; onCerrar: () => void }) {
+  const uno = espacios.length === 1;
   return (
     <div
       data-capa-modal
@@ -2220,17 +2224,20 @@ function AvisoDesfase({ sedes, onCerrar }: { sedes: string[]; onCerrar: () => vo
         <div style={{ display: "flex", alignItems: "flex-start", gap: 9, marginBottom: 10 }}>
           <AlertTriangle size={17} style={{ color: "var(--warning, var(--ink-2))", flexShrink: 0, marginTop: 1 }} />
           <div style={{ fontSize: 14.5, fontWeight: 700 }}>
-            Los contratos quedaron guardados, pero {sedes.length === 1 ? "un mapa" : "unos mapas"} no
+            {uno ? "Un contrato quedó guardado" : `${espacios.length} contratos quedaron guardados`}
+            {" "}sobre {uno ? "un espacio" : "espacios"} que el plano no dibuja
           </div>
         </div>
         <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6, marginBottom: 14 }}>
-          La planilla creó contratos en{" "}
-          <b>{sedes.join(", ")}</b>, y el plano de {sedes.length === 1 ? "esa sede" : "esas sedes"}{" "}
-          no está abierto acá, así que sigue pintando esos espacios libres.
+          <b>{espacios.join(" · ")}</b>
           <br /><br />
-          Los contratos existen y valen. <b>Abrí {sedes.length === 1 ? "esa sede" : "esas sedes"}</b>{" "}
-          una vez para que su mapa se ponga al día — si no, el espacio se va a ver
-          libre y no se va a dejar vender.
+          {uno ? "El contrato existe y vale" : "Los contratos existen y valen"}, pero no hay
+          mueble con ese código en el plano de esa tienda, así que no {uno ? "se va" : "se van"} a
+          ver en el mapa — y el espacio va a rechazar cualquier venta nueva
+          nombrando un contrato que la ficha no muestra.
+          <br /><br />
+          Revisá el código en la planilla, o dibujá el mueble en el plano de esa
+          sede: en cuanto exista, el contrato aparece solo.
         </div>
         <button
           onClick={onCerrar}
@@ -2959,12 +2966,12 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const fixtures = useFixtureStore(selectFixtures);
   const { sedes, sede, setSede, fixturesBySede, syncFromServer, seasonWindows } = useFixtureStore();
   const referenceRates = useFixtureStore((s) => s.referenceRates);
-  const commit = useFixtureStore((s) => s.commit);
-  const aplicarContratos = useFixtureStore((s) => s.aplicarContratos);
-  /** Sedes cuyo mapa no se pudo poner al día después de una carga por planilla.
-   *  Se muestran: un desfase que nadie ve es el que aparece meses después, al
-   *  vender, como «está libre y no me deja venderlo». */
-  const [sedesDesfasadas, setSedesDesfasadas] = useState<string[] | null>(null);
+  const refrescarComercial = useFixtureStore((s) => s.refrescarComercial);
+  /** Espacios con contrato que NINGÚN plano dibuja, después de una planilla.
+   *  Se muestran: el contrato existe y vale, pero no hay mueble donde verlo, y
+   *  un fantasma que nadie nombra es el que aparece meses después al vender
+   *  como «está libre y no me deja venderlo». */
+  const [sinMueble, setSinMueble] = useState<string[] | null>(null);
   const isAdmin = useAuthStore(selectIsAdmin);
   const [ratesOpen, setRatesOpen] = useState(false);
 
@@ -4115,34 +4122,14 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
             sede={sede}
             rango={mapRange}
             cerrado={cerrado}
-            onGuardado={(parches, resumen) => {
-              // El JSON del layout es lo que pinta el mapa y responde la
-              // disponibilidad; sin esto el contrato existiría en la base y los
-              // espacios seguirían viéndose libres. Se aplican TODOS los parches
-              // en un solo `commit`: uno por espacio dispararía N guardados del
-              // layout, y el último pisaría a los anteriores.
-              if (parches.length > 0) {
-                const porMueble = new Map<string, { face: "A" | "B"; patch: Partial<FaceData> }[]>();
-                for (const p of parches) {
-                  porMueble.set(p.fixtureId, [
-                    ...(porMueble.get(p.fixtureId) ?? []),
-                    { face: p.face, patch: p.patch },
-                  ]);
-                }
-                commit(
-                  fixtures.map((f) => {
-                    const suyos = porMueble.get(f.id);
-                    if (!suyos) return f;
-                    let siguiente = f;
-                    for (const { face, patch } of suyos) {
-                      siguiente = face === "B"
-                        ? { ...siguiente, faceB: { ...(siguiente.faceB ?? {}), ...patch } as FaceData }
-                        : { ...siguiente, ...patch };
-                    }
-                    return siguiente;
-                  }),
-                );
-              }
+            onGuardado={(resumen) => {
+              // El contrato ya está en la base, que es la única verdad de lo
+              // comercial. Acá se parcheaba el JSON del layout a mano, mueble
+              // por mueble: era la copia que pintaba el mapa, y si esta pestaña
+              // se cerraba antes de que el guardado saliera, el contrato
+              // quedaba en la base y el espacio se seguía viendo libre. Ahora
+              // se vuelve a leer y listo.
+              void refrescarComercial();
               setSelected(null);
               setAnchor(null);
               setEnContrato([]);
@@ -4275,21 +4262,10 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                   onRenovar={isAdmin && entradaDetalle && renovable(entradaDetalle)
                     ? () => renovar(entradaDetalle)
                     : undefined}
-                  onCancelado={(patch) => {
-                    // Igual que al guardar: el JSON del layout es lo que
-                    // pinta el mapa, así que soltar el contrato en la base
-                    // sin tocarlo dejaría el mueble vendido en pantalla.
-                    const objetivo = selected;
-                    const cara = detailFace;
-                    commit(
-                      fixtures.map((f) =>
-                        f.id !== objetivo.id
-                          ? f
-                          : cara === "B"
-                          ? { ...f, faceB: { ...(f.faceB ?? {}), ...patch } as FaceData }
-                          : { ...f, ...patch },
-                      ),
-                    );
+                  onCancelado={() => {
+                    // Igual que al guardar: la fila ya no está en la base y el
+                    // mapa se vuelve a leer de ahí. No hay copia que limpiar.
+                    void refrescarComercial();
                     closeDetail();
                   }}
                   onOpenFile={setViewerFile}
@@ -4540,17 +4516,21 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           sede={sede}
           onCerrar={() => setCargaAbierta(false)}
           onGuardado={({ creados }) => {
-            // El JSON del layout es lo que pinta el mapa y responde la
-            // disponibilidad. Sin esto los contratos existen en la base y los
-            // espacios se siguen viendo libres.
+            // Los contratos ya están en la base, que es la única verdad de lo
+            // comercial: alcanza con volver a leerla y el mapa se repinta solo,
+            // en todas las sedes y no sólo en la que esté abierta.
             //
-            // Cada fila va a SU sede, no a la abierta. Acá se armaba el parche
-            // con el código corto —`IMP-17`— y se aplicaba sobre los muebles de
-            // la sede que estuviera en pantalla; como los códigos se repiten
-            // entre tiendas, una planilla con la columna «sede» apuntando a
-            // otra pintaba vendido el mueble equivocado y dejaba el realmente
-            // vendido viéndose libre. La regla vive ahora en el store, que es
-            // el único que sabe qué layouts tiene cargados.
+            // Acá se armaba un parche con el código corto —`IMP-17`— y se
+            // aplicaba sobre los muebles de la sede EN PANTALLA. Como los
+            // códigos se repiten entre tiendas, una planilla con la columna
+            // «sede» apuntando a otra pintaba vendido el mueble equivocado y
+            // dejaba el realmente vendido viéndose libre.
+            void refrescarComercial();
+
+            // Queda un desfase que ninguna fusión arregla: un contrato para un
+            // espacio que NINGÚN plano dibuja. Ahí no hay nada que pintar, y
+            // por eso hay que decirlo — callarlo es lo que produce el «está
+            // libre pero no me deja venderlo» meses después.
             const filas = creados.map((c) => {
               const completo = (c.codigo || "").toUpperCase();
               const sedeFila = (c.sede || sede || "").toUpperCase();
@@ -4562,28 +4542,17 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 sede: sedeFila,
                 code: face === "B" ? corto.slice(0, -2) : corto,
                 face,
-                patch: {
-                  status: "occupied",
-                  supplierName: c.proveedor || "",
-                  brandCategory: c.marca || "",
-                  negotiatedValue: c.valor || 0,
-                  startDate: c.desde || "",
-                  endDate: c.hasta || "",
-                  observation: c.nota || "",
-                } as Partial<FaceData>,
               };
             });
-            const faltantes = aplicarContratos(filas);
-            // Lo que quedó desfasado se DICE. Callarlo es lo que produce el
-            // «está libre pero no me deja venderlo» meses después.
-            if (faltantes.length) setSedesDesfasadas(faltantes);
+            const fantasmas = espaciosSinMueble(fixturesBySede, filas);
+            if (fantasmas.length) setSinMueble(fantasmas);
           }}
         />
       )}
-      {sedesDesfasadas && (
-        <AvisoDesfase
-          sedes={sedesDesfasadas}
-          onCerrar={() => setSedesDesfasadas(null)}
+      {sinMueble && (
+        <AvisoSinMueble
+          espacios={sinMueble}
+          onCerrar={() => setSinMueble(null)}
         />
       )}
     </div>

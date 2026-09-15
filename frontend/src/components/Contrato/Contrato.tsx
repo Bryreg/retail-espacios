@@ -56,13 +56,6 @@ export interface CaraElegida {
   face: "A" | "B";
 }
 
-/** El parche que hay que escribirle al layout, por cara. */
-export interface ParcheDeCara {
-  fixtureId: string;
-  face: "A" | "B";
-  patch: Partial<FaceData>;
-}
-
 /** Con qué llega prellenado un contrato al que se entra por «Renovar». */
 export interface SemillaContrato {
   /** Qué renovación es. La pantalla lo usa de `key` para REMONTAR el
@@ -108,7 +101,9 @@ export interface ArgsContrato {
    *  no un selector entre las dos: vendérselas ambas al mismo proveedor en el
    *  mismo contrato es lo normal, y con un selector había que hacer dos. */
   onCambiarCara: (fixtureId: string, face: "A" | "B") => void;
-  onGuardado: (parches: ParcheDeCara[], resumen: ResumenContrato) => void;
+  /** El contrato YA está en la base cuando esto se llama. No hay nada que
+   *  escribirle al plano: quien dibuja vuelve a leer. */
+  onGuardado: (resumen: ResumenContrato) => void;
 }
 
 // ─── Utilidades ──────────────────────────────────────────────────────────────
@@ -458,9 +453,9 @@ export function useContrato({
       );
 
       const porFila = new Map(resp.filas.map((f) => [f.fila, f]));
-      const parches: ParcheDeCara[] = [];
       const guardados: string[] = [];
       const fallaron: { espacio: string; motivo: string }[] = [];
+      let total = 0;
 
       lineas.forEach((l, i) => {
         const fila = porFila.get(i + 1);
@@ -472,19 +467,7 @@ export function useContrato({
           return;
         }
         guardados.push(l.visible);
-        parches.push({
-          fixtureId: l.fixture.id,
-          face: l.face,
-          patch: {
-            status: "occupied",
-            supplierName: proveedor.trim(),
-            brandCategory: marca.trim(),
-            negotiatedValue: l.monto,
-            startDate: desde,
-            endDate: hasta,
-            observation: nota.trim(),
-          } as Partial<FaceData>,
-        });
+        total += l.monto;
       });
 
       if (guardados.length === 0) {
@@ -514,7 +497,7 @@ export function useContrato({
         }
       }
 
-      onGuardado(parches, {
+      onGuardado({
         espacios: guardados,
         proveedor: proveedor.trim(),
         desde,
@@ -522,7 +505,7 @@ export function useContrato({
         // Mismo criterio que el total de la pantalla: lo acordado, sumado y
         // sin prorratear. Si estos dos números se separan, el aviso de
         // «guardado» contradice a la ficha que se acaba de firmar.
-        total: parches.reduce((t, p) => t + (p.patch.negotiatedValue ?? 0), 0),
+        total,
         avisoPlanometria,
         fallaron: fallaron.length ? fallaron : undefined,
         avisos: resp.avisos ?? undefined,

@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { FaceData, ReferenceRates, UnifiedFixture } from "../types/fixtures";
-import { aplicarContratosEnPlanos } from "../utils/contratosEnPlano";
+import type { ReferenceRates, UnifiedFixture } from "../types/fixtures";
 import { fusionarEstadoComercial } from "../utils/estadoComercial";
 import type { EstadoPorEspacio } from "../utils/estadoComercial";
 import type { SeasonWindows } from "../types/seasons";
@@ -346,28 +345,6 @@ interface FixtureStore {
   // Undoable mutation — use this for all user-initiated changes
   commit: (fixtures: UnifiedFixture[]) => void;
 
-  /** Pintar en el layout contratos que la BASE ya tiene, cada uno en SU sede.
-   *
-   *  Existe por un desfase real: la carga por planilla acepta una columna
-   *  «sede», así que una misma planilla crea contratos en varias tiendas, pero
-   *  el parche del mapa se armaba con el código CORTO —`IMP-17`— y se aplicaba
-   *  sobre la sede ABIERTA. Con dos tiendas que tienen un `IMP-17` —y casi
-   *  todas lo tienen, los códigos se repiten entre sedes— eso hacía dos daños
-   *  a la vez: pintaba vendido el IMP-17 de la sede equivocada, y dejaba el
-   *  IMP-17 realmente vendido viéndose libre. Lo segundo es lo que se ve como
-   *  «el sistema dice que está ocupado y no tiene contrato»: la base sabe, el
-   *  plano no.
-   *
-   *  Devuelve las sedes que NO se pudieron parchear porque su layout no está
-   *  cargado en esta sesión. No se inventan: mandar un layout parcial borraría
-   *  los muebles que no vinieron. Quien llama tiene que DECIRLO, no callarlo —
-   *  un desfase que nadie ve es el que aparece meses después al vender.
-   *
-   *  No entra al historial: deshacer con Ctrl+Z despintaría un contrato que en
-   *  la base sigue existiendo, que es exactamente el desfase que esto arregla. */
-  aplicarContratos: (
-    filas: { sede: string; code: string; face: "A" | "B"; patch: Partial<FaceData> }[],
-  ) => string[];
   undo: () => void;
   redo: () => void;
 
@@ -707,22 +684,6 @@ export const useFixtureStore = create<FixtureStore>()(
             future: [],
           };
         }),
-
-      aplicarContratos: (filas) => {
-        // La regla vive en `utils/contratosEnPlano`, pura y con sus pruebas:
-        // acá sólo se la conecta al store y se agenda el guardado.
-        const { fixturesBySede, tocadas, faltantes } =
-          aplicarContratosEnPlanos(get().fixturesBySede, filas, normalizeSede);
-        if (tocadas.length) {
-          set((state) => {
-            const dirty = { ...state.dirty };
-            for (const clave of tocadas) dirty[clave] = true;
-            return { fixturesBySede, dirty };
-          });
-          for (const clave of tocadas) scheduleSave(clave);
-        }
-        return faltantes;
-      },
 
       undo: () =>
         set((state) => {

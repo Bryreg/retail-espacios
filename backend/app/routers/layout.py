@@ -174,14 +174,21 @@ def _sin_contrato(fixtures: list) -> None:
                 fixture.pop("faceB", None)
 
 
-def _restore_missing_prices(incoming: list, stored: list) -> None:
-    """Refill negotiated amounts the client did not send, in place.
+def _restore_missing_slot_prices(incoming: list, stored: list) -> None:
+    """Refill the SLOT amounts the client did not send, in place.
 
-    Worker responses have every ``negotiatedValue`` stripped server-side. Only
-    an admin may write, so a redacted payload should never come back — but if
-    one ever did, silently zeroing every contract in a sede would be
-    unrecoverable. An ABSENT key is refilled from the stored snapshot; an
-    explicit value (including 0) is a real edit and is always honoured.
+    Worker responses have every ``negotiatedValue`` stripped server-side. Sólo
+    un admin puede escribir, así que una copia redactada no debería volver
+    nunca — pero si volviera, poner en cero la plata de una sede entera no se
+    puede deshacer. Una llave AUSENTE se rellena del snapshot guardado; un valor
+    explícito (el 0 incluido) es una edición de verdad y siempre manda.
+
+    **Sólo los slots, y es la línea que no se puede mover.** El mueble y su cara
+    B ya no llevan precio: ``_sin_contrato`` lo saca porque el contrato es de la
+    base. Rellenarlos acá volvería a meter en el JSON justo lo que se acaba de
+    cortar, y el desfase entero volvería con ellos. El estado por repisa, en
+    cambio, no tiene contraparte en ninguna tabla: tiene UNA fuente, que es
+    esta, y por eso hay que cuidarla.
     """
     if not stored:
         return
@@ -194,11 +201,6 @@ def _restore_missing_prices(incoming: list, stored: list) -> None:
         entry = index.get(fixture.get("id"))
         if not entry:
             continue
-        if "top" in entry and "negotiatedValue" not in fixture:
-            fixture["negotiatedValue"] = entry["top"]
-        face_b = fixture.get("faceB")
-        if isinstance(face_b, dict) and "faceB" in entry and "negotiatedValue" not in face_b:
-            face_b["negotiatedValue"] = entry["faceB"]
         for slot in fixture.get("slots") or []:
             if not isinstance(slot, dict):
                 continue
@@ -728,8 +730,11 @@ def save_layout(sede: str, payload: LayoutIn, db: Session = Depends(get_db)):
                 },
             )
 
-        # `_restore_missing_prices` ya no corre: el precio no viaja en el layout
-        # desde que el contrato es de la base, así que no hay nada que rellenar.
+        # El precio del MUEBLE ya no viaja en el layout —es de la base— pero el
+        # de cada repisa sí, y sigue saliendo redactado para un mercaderista.
+        # Sin esto, un guardado hecho desde una copia redactada borraría la
+        # plata de todos los slots de la sede sin manera de recuperarla.
+        _restore_missing_slot_prices(fixtures, previous)
         snap.fixtures_json = json.dumps(fixtures)
         # fixtures_json is unchanged when a client re-saves identical data, and
         # SQLAlchemy would then skip the UPDATE and leave updated_at stale.

@@ -1,4 +1,5 @@
 import type { FaceData, UnifiedFixture } from "../types/fixtures";
+import { fullSpaceCode } from "../types/fixtures";
 
 /**
  * Pegarle a cada mueble del plano lo que la BASE dice de él.
@@ -55,20 +56,22 @@ const CAMPOS = Object.keys(LIBRE) as (keyof EstadoComercial)[];
  * Lo que la base tiene guardado para este código, o `LIBRE`.
  *
  * El código del mueble es el CORTO (`PUN-04`) y el de la base el COMPLETO
- * (`NAVE-PUN-04`), salvo que el editor 3D ya lo haya generado con la sede
- * adentro — misma guarda contra el doble prefijo que `_full_code` en el
- * servidor y que el resto del frontend. Se prueba también el código pelado:
- * un espacio creado en 2D pudo guardarse con la sede en minúscula y quedar
- * bajo una llave que no es la que arma esta cuenta.
+ * (`NAVE-PUN-04`). La cuenta la hace `fullSpaceCode`, que es la MISMA que usan
+ * el contrato, el correo de montaje y `_full_code` del servidor — incluida la
+ * guarda contra el doble prefijo, porque el editor 3D genera los códigos con la
+ * sede ya adentro. Tener una segunda definición de esto acá sería otra fuente
+ * de verdad, en pequeño.
+ *
+ * Se prueba también el código pelado: un espacio creado en 2D pudo guardarse
+ * con la sede en minúscula y quedar bajo una llave que no es la que arma la
+ * cuenta.
  */
 function loSuyo(
   estado: EstadoPorEspacio, sede: string, code: string,
 ): EstadoComercial {
   const c = (code || "").trim().toUpperCase();
   if (!c) return LIBRE;
-  const s = (sede || "").trim().toUpperCase();
-  const completo = s && !c.startsWith(`${s}-`) ? `${s}-${c}` : c;
-  return estado[completo] ?? estado[c] ?? LIBRE;
+  return estado[fullSpaceCode(sede, c)] ?? estado[c] ?? LIBRE;
 }
 
 /** ¿Es una góndola de dos caras? Se pregunta por el tipo, no por si existe

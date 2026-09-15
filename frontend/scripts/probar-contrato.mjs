@@ -25,14 +25,18 @@
  * leía nunca. Y no frenaba nada: el botón se habilitaba igual y el único que se
  * quejaba era el servidor, al guardar, con todo tecleado.
  *
- * Y hay un agravante que decide el diseño: **el plano no es la verdad.** La
- * disponibilidad de cada renglón sale del JSON del layout, que es una copia que
- * mantiene al día el navegador que vende. Si un contrato entró por otro camino,
- * la copia dice «libre» y la base dice «ocupado» — reproducido acá: contrato
- * del 8 de septiembre al 8 de octubre en la base, y el plano pintando el mueble
- * libre todo el periodo, con `data-est="libre"`. Por eso el bloqueo NO puede
- * colgar sólo de la copia: se le pregunta a `/leases/bulk/validar`, que corre
- * el mismo control que el guardado y no escribe nada.
+ * Y hay un agravante que decide el diseño: **el plano no alcanza.** Esto nació
+ * cuando el plano era otra verdad —el JSON del layout guardaba el contrato, una
+ * copia que mantenía al día el navegador que vendía— y decía «libre» donde la
+ * base decía «ocupado»: reproducido acá, contrato del 8 de septiembre al 8 de
+ * octubre en la base y el mueble pintado libre, con `data-est="libre"`.
+ *
+ * Esa mitad se cerró de raíz: lo comercial vive sólo en la base y el plano se
+ * pinta de ahí. Pero el bloqueo sigue sin poder colgar del plano, y ahora por
+ * una razón que no se va a ir: **el mapa dice el HOY y el contrato es un
+ * RANGO.** Un mueble libre hoy puede estar comprometido en diciembre, y el
+ * mapa no tiene cómo saberlo. Por eso se le pregunta a `/leases/bulk/validar`,
+ * que corre el mismo control que el guardado y no escribe nada.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -82,12 +86,19 @@ prueba("el total es la suma de lo acordado, sin tocar", () => {
   );
 });
 
-prueba("el total que viaja al aviso de guardado es el mismo", () => {
+prueba("el total que viaja al aviso de guardado se suma con el mismo criterio", () => {
   // Si estos dos se separan, el «guardado» contradice a la ficha que se firmó.
+  // Los dos suman `l.monto` —lo acordado, sin prorratear—; el del aviso sólo
+  // sobre las líneas que el servidor aceptó, que es lo que se guardó de verdad.
   assert.match(
     codigoContrato,
-    /total: parches\.reduce\(\(t, p\) => t \+ \(p\.patch\.negotiatedValue \?\? 0\), 0\)/,
-    "el total del resumen de guardado no es la misma suma que la pantalla",
+    /const total = lineas\.reduce\(\(t, l\) => t \+ l\.monto, 0\)/,
+    "la pantalla dejó de sumar `l.monto`",
+  );
+  assert.match(
+    codigoContrato,
+    /guardados\.push\(l\.visible\);\s*\n\s*total \+= l\.monto;/,
+    "el total del aviso ya no se suma línea por línea sobre lo guardado",
   );
 });
 

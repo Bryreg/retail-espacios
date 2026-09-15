@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { cancelLease, getSpaceByCode } from "../../api/spaces";
 import { describeError } from "../../api/client";
-import type { FaceData } from "../../types/fixtures";
 import type { Lease } from "../../types";
 import { fechaCorta } from "./Contrato";
 
@@ -32,7 +31,8 @@ export default function CancelarContrato({
   segunElPlano: boolean;
   /** Lo que hay que escribir en el JSON del layout para que el mapa repinte.
    *  Sin esto el contrato desaparece de la base y el mueble sigue rojo. */
-  onCancelado: (patch: Partial<FaceData>) => void;
+  /** El contrato ya se soltó en la base. No lleva parche: no hay copia. */
+  onCancelado: () => void;
 }) {
   const [ids, setIds] = useState<{ spaceId: number; leaseId: number } | null>(null);
   /** El contrato que encontró la BASE. Se guarda entero, no sólo el id, para
@@ -63,16 +63,9 @@ export default function CancelarContrato({
     setError("");
     try {
       await cancelLease(ids.spaceId, ids.leaseId);
-      // El JSON del layout es lo que pinta el mapa: si no se limpia acá, el
-      // contrato deja de existir en la base y el mueble sigue viéndose vendido.
-      onCancelado({
-        status: "free",
-        supplierName: "",
-        brandCategory: "",
-        negotiatedValue: 0,
-        startDate: "",
-        endDate: "",
-      } as Partial<FaceData>);
+      // No hay nada que limpiar en el plano: el contrato era una fila y ya no
+      // está. Quien dibuja vuelve a leer la base y lo pinta libre solo.
+      onCancelado();
     } catch (e) {
       setError(describeError(e, "No se pudo cancelar el contrato."));
       setBorrando(false);

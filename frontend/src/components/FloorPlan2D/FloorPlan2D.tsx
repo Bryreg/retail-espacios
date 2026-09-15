@@ -25,7 +25,7 @@ import { TOLERANCIA_CONTACTO } from "../../utils/planta";
 import { buscarHuecoGrupo } from "../../utils/acomodar";
 import { detectarCorridas, pasilloPorMueble } from "../../utils/pasillos";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
-import { findOrCreateSpace } from "../../api/spaces";
+import { findOrCreateSpace, updateSpaceStatus } from "../../api/spaces";
 import { fetchDeleteImpact } from "../../api/layout";
 import type { DeleteImpact } from "../../api/layout";
 import { listSpaceFiles, uploadSpaceFile, deleteSpaceFile, fileUrl } from "../../api/files";
@@ -3783,6 +3783,9 @@ function AssignmentPanel({
   // renumeraciones y agrega al plano al leerlo.
   const viejo = nombreAnterior(item);
 
+  const [guardandoEstado, setGuardandoEstado] = useState(false);
+  const [estadoError, setEstadoError] = useState("");
+
   function guardarNombre() {
     const r = onRenombrar(item.id, nombreBorrador);
     setRechazo(r);
@@ -3807,6 +3810,36 @@ function AssignmentPanel({
       onUpdate({ faceB: { ...(item.faceB ?? EMPTY_FACE), ...patch } });
     } else {
       onUpdate(patch as Partial<PlacedItem2D>);
+    }
+  }
+
+  /**
+   * Retirar el espacio de circulación, o devolverlo.
+   *
+   * Va a la BASE —`PATCH /spaces/{id}/status`— y no al plano. Acá se escribía
+   * `status` en el JSON del layout: era una segunda copia del mismo hecho, sin
+   * nada que la obligara a coincidir con `spaces`, y desde el corte el servidor
+   * la descarta al guardar, así que el select se veía cambiar y no cambiaba
+   * nada. Un control que miente es peor que no tenerlo.
+   *
+   * «Ocupado» no está entre las opciones y es a propósito: un espacio se ocupa
+   * vendiéndolo. Ponerlo a mano crearía un ocupado sin contrato, sin proveedor
+   * y sin fechas — el fantasma exacto que todo esto vino a eliminar.
+   */
+  async function cambiarEstado(nuevo: SpaceStatus) {
+    setEstadoError("");
+    setGuardandoEstado(true);
+    try {
+      const espacio = await findOrCreateSpace({
+        code: activeCode, name: item.code, sede: item.sede || sede,
+      });
+      await updateSpaceStatus(espacio.id, nuevo);
+      // El mapa se pinta de la base: se vuelve a leer y aparece solo.
+      await useFixtureStore.getState().refrescarComercial();
+    } catch {
+      setEstadoError("No se pudo guardar el estado. Probá de nuevo.");
+    } finally {
+      setGuardandoEstado(false);
     }
   }
 
@@ -3915,16 +3948,29 @@ function AssignmentPanel({
       {/* Estado */}
       {rentable && (
       <Field label="Estado del espacio" icon="◉">
-        {editMode ? (
-          <select className={sel} value={face.status}
-            onChange={(e) => updateFace({ status: e.target.value as SpaceStatus })}>
-            <option value="free">Disponible</option>
-            <option value="occupied">Ocupado</option>
-            <option value="reserved">Reservado</option>
-            <option value="maintenance">Mantenimiento</option>
-          </select>
+        {editMode && face.status !== "occupied" ? (
+          <>
+            <select className={sel} value={face.status} disabled={guardandoEstado}
+              onChange={(e) => void cambiarEstado(e.target.value as SpaceStatus)}>
+              <option value="free">Disponible</option>
+              <option value="reserved">Reservado</option>
+              <option value="maintenance">Mantenimiento</option>
+            </select>
+            {estadoError && (
+              <p style={{ fontSize: 11, color: "var(--danger, #b91c1c)", marginTop: 4 }}>
+                {estadoError}
+              </p>
+            )}
+          </>
         ) : (
-          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{STATUS_LABELS[face.status]}</p>
+          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>
+            {STATUS_LABELS[face.status]}
+            {face.status === "occupied" && (
+              <span style={{ fontSize: 11, color: "var(--dark-ink-3)", display: "block", marginTop: 2 }}>
+                Lo pone el contrato. Para liberarlo hay que cancelarlo.
+              </span>
+            )}
+          </p>
         )}
       </Field>
       )}
