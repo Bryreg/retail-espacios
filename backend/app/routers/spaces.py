@@ -153,7 +153,15 @@ def estado_comercial(
     for space in q.all():
         lease = space.active_lease or space.upcoming_lease
         if lease is None:
-            # Sin contrato vivo no se dice nada: lo que no está, está libre.
+            # Sin contrato vivo no se dice nada… salvo que el espacio esté
+            # retirado a mano: «reservado» o «en mantenimiento» no es plata pero
+            # tampoco es libre, y también vive acá, no en el plano. Es lo que
+            # pone el panel de espacios con `PATCH /spaces/{id}/status`.
+            propio = getattr(space.status, "value", space.status) or "free"
+            if propio not in ("free", "occupied"):
+                salida[(space.code or "").strip().upper()] = EstadoComercial(
+                    status=propio, observation=space.notes or "",
+                )
             continue
         salida[(space.code or "").strip().upper()] = EstadoComercial(
             status="occupied",

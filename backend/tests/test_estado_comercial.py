@@ -140,3 +140,58 @@ def test_la_cara_B_es_un_espacio_aparte(client, admin):
     todo = _comercial(client, admin)
     assert "NAVE-GON-60-B" in todo
     assert "NAVE-GON-60" not in todo, "vender la cara B ocupó también la A"
+
+
+# ─── Retirado a mano ─────────────────────────────────────────────────────────
+
+def _espacio(client, admin, code, sede="NAVE"):
+    r = client.post("/api/spaces/find-or-create", headers=admin, json={
+        "code": f"{sede}-{code}", "sede": sede, "name": code,
+    })
+    assert r.status_code in (200, 201), r.text
+    return r.json()["id"]
+
+
+def test_RESERVADO_Y_MANTENIMIENTO_TAMBIEN_SALEN(client, admin):
+    """No es plata, pero tampoco es libre — y también vive en la base.
+
+    El panel de espacios lo escribe con `PATCH /spaces/{id}/status`. Si el mapa
+    no lo dijera, la fusión del navegador lo borraría en la primera vuelta del
+    poll: reemplaza, no rellena.
+    """
+    _plano(client, admin, [_mueble("IMP-17"), _mueble("IMP-18")])
+    a = _espacio(client, admin, "IMP-17")
+    b = _espacio(client, admin, "IMP-18")
+    client.patch(f"/api/spaces/{a}/status", headers=admin,
+                 json={"status": "maintenance", "notes": "vitrina rota"})
+    client.patch(f"/api/spaces/{b}/status", headers=admin, json={"status": "reserved"})
+
+    todo = _comercial(client, admin)
+    assert todo["NAVE-IMP-17"]["status"] == "maintenance"
+    assert todo["NAVE-IMP-17"]["observation"] == "vitrina rota"
+    assert todo["NAVE-IMP-18"]["status"] == "reserved"
+    # Retirado no es vendido: no hay proveedor ni plata que mostrar.
+    assert todo["NAVE-IMP-18"]["supplierName"] == ""
+    assert todo["NAVE-IMP-18"]["negotiatedValue"] == 0
+
+
+def test_un_espacio_marcado_ocupado_sin_contrato_sigue_libre(client, admin):
+    """`spaces.status` es una copia; la verdad de «ocupado» son las filas de
+    `space_leases`. Sin contrato vivo no hay nada que decir."""
+    _plano(client, admin, [_mueble("IMP-17")])
+    a = _espacio(client, admin, "IMP-17")
+    client.patch(f"/api/spaces/{a}/status", headers=admin, json={"status": "occupied"})
+    assert _comercial(client, admin) == {}
+
+
+def test_el_contrato_le_gana_a_la_marca_de_mantenimiento(client, admin):
+    """Si está vendido, lo que importa es el contrato: el proveedor tiene que
+    ver a quién le pertenece el espacio, no una nota vieja."""
+    _plano(client, admin, [_mueble("IMP-17")])
+    a = _espacio(client, admin, "IMP-17")
+    client.patch(f"/api/spaces/{a}/status", headers=admin, json={"status": "maintenance"})
+    _vender(client, admin, "IMP-17", HOY, HOY + timedelta(days=30))
+
+    e = _comercial(client, admin)["NAVE-IMP-17"]
+    assert e["status"] == "occupied"
+    assert e["supplierName"] == "MACA MANI"
