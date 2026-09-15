@@ -218,6 +218,14 @@ class IncompletoOut(BaseModel):
     hasta: str = ""
     #: Dicho para que se pueda arreglar: «le falta el proveedor».
     motivo: str
+    #: Lo que sí tiene, para poder juzgarlo sin abrir el plano.
+    marca: str = ""
+    valor: float = 0
+    #: No es un contrato a medias: es un «Ocupado» que alguien puso a mano en el
+    #: plano cuando el selector todavía lo permitía. No hay nada que completarle
+    #: y se va solo al guardar ese plano. El consejo es el contrario, así que la
+    #: pantalla los muestra aparte.
+    residuo: bool = False
 
 
 class ImportacionOut(BaseModel):
@@ -228,3 +236,32 @@ class ImportacionOut(BaseModel):
     ya_estaban: int = 0
     #: `false` en el previo, `true` cuando ya se escribió.
     aplicado: bool = False
+
+
+# ─── Empezar de cero ─────────────────────────────────────────────────────────
+
+
+class BarridoOut(BaseModel):
+    """Qué hay para barrer, o qué se barrió."""
+    contratos: int = 0
+    planometrias: int = 0
+    avisos: int = 0
+    espacios_ocupados: int = 0
+    muebles_con_residuo: int = 0
+    sedes_con_residuo: list[str] = []
+    #: Lo que se deja en pie, para que se vea que se deja.
+    proveedores_intactos: int = 0
+    espacios_intactos: int = 0
+    montajes_intactos: int = 0
+    aplicado: bool = False
+
+
+class BarridoIn(BaseModel):
+    """El seguro: hay que decir CUÁNTOS contratos se van a barrer.
+
+    No es burocracia. Un botón que se lleva todos los contratos con un clic se
+    aprieta sin querer, y esto no se deshace. Mandar el número obliga a leer el
+    previo; y si la cuenta cambió entre que se miró y se apretó —alguien vendió
+    algo en otra pestaña— el servidor se niega en vez de llevárselo también.
+    """
+    contratos_esperados: int

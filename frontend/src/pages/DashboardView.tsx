@@ -46,11 +46,12 @@ import type {
 import SeasonPicker, { describeRange, hoyComoRango, type DateRange } from "../components/SeasonPicker/SeasonPicker";
 import Libera from "../components/Libera/Libera";
 import ModoVender from "../components/Contrato/ModoVender";
-import { fechaCorta } from "../components/Contrato/Contrato";
+import { fechaCorta, money } from "../components/Contrato/Contrato";
 import type { ResumenContrato } from "../components/Contrato/Contrato";
 import Planometria from "../components/Contrato/Planometria";
 import CancelarContrato from "../components/Contrato/CancelarContrato";
 import CargaMasiva from "../components/CargaMasiva/CargaMasiva";
+import EmpezarDeCero from "../components/EmpezarDeCero/EmpezarDeCero";
 import { inclusiveDays, parseISODate, toISODate, upcomingSeasons } from "../types/seasons";
 /* El parte —la zona superior escrita en prosa— salió de las dos pantallas.
    En Supervisar lo reemplaza la franja de cinco cifras: quien pone el canon no
@@ -2334,6 +2335,8 @@ function ImportarDelPlano({
   const [aplicando, setAplicando] = useState(false);
   const [error, setError] = useState("");
   const n = datos.importables.length;
+  const residuos = datos.incompletos.filter((x) => x.residuo);
+  const aMedias = datos.incompletos.filter((x) => !x.residuo);
 
   async function importar() {
     setError("");
@@ -2400,7 +2403,11 @@ function ImportarDelPlano({
         </div>
       ))}
 
-      {datos.incompletos.length > 0 && (
+      {/* Dos cosas muy distintas, y por eso van separadas: un contrato a medias
+          hay que COMPLETARLO, y un «Ocupado» puesto a mano no tiene nada que
+          completar. Juntos, el consejo del primero manda a inventar contratos
+          que no existen para el segundo. */}
+      {aMedias.length > 0 && (
         <div style={{
           margin: "8px 6px 4px", padding: "9px 10px",
           borderRadius: "var(--r-lg)", background: "var(--surface-2)",
@@ -2411,20 +2418,66 @@ function ImportarDelPlano({
             letterSpacing: "0.09em", textTransform: "uppercase",
             color: "var(--ink-3)", margin: "0 0 6px",
           }}>
-            {datos.incompletos.length} para arreglar a mano
+            {aMedias.length} contrato{aMedias.length === 1 ? "" : "s"} a medias
           </p>
-          {datos.incompletos.map((x) => (
+          {aMedias.map((x) => (
             <div key={x.espacio} style={{ display: "flex", gap: 8, padding: "2px 0" }}>
               <span style={{
                 fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700, flexShrink: 0,
               }}>
                 {x.sede} · {x.code}
               </span>
-              <span style={{ fontSize: 11, color: "var(--ink-2)" }}>{x.motivo}</span>
+              <span style={{ fontSize: 11, color: "var(--ink-2)", flex: 1, minWidth: 0 }}>
+                {x.motivo}
+                {/* Lo que SÍ tiene: es con lo que se decide si vale la pena
+                    reconstruirlo o si se descarta. */}
+                {(x.proveedor || x.marca || x.valor > 0) && (
+                  <span style={{ color: "var(--ink-3)" }}>
+                    {" — tiene "}
+                    {[x.proveedor, x.marca, x.valor > 0 ? money(x.valor) : ""]
+                      .filter(Boolean).join(" · ")}
+                  </span>
+                )}
+              </span>
             </div>
           ))}
           <p style={{ fontSize: 10.5, color: "var(--ink-3)", lineHeight: 1.45, margin: "6px 0 0" }}>
             Abrí ese espacio y cargá el contrato desde Vender, con los datos que falten.
+          </p>
+        </div>
+      )}
+
+      {residuos.length > 0 && (
+        <div style={{
+          margin: "8px 6px 4px", padding: "9px 10px",
+          borderRadius: "var(--r-lg)", background: "var(--surface-2)",
+          border: "1px solid var(--line)",
+        }}>
+          <p style={{
+            fontFamily: "var(--font-mono)", fontSize: 9.5, fontWeight: 600,
+            letterSpacing: "0.09em", textTransform: "uppercase",
+            color: "var(--ink-3)", margin: "0 0 6px",
+          }}>
+            {residuos.length} marcado{residuos.length === 1 ? "" : "s"} «Ocupado» a mano
+          </p>
+          <p style={{ fontSize: 11, color: "var(--ink-2)", lineHeight: 1.5, margin: "0 0 6px" }}>
+            Sin proveedor, sin fechas y sin valor: <b>no hay ningún contrato detrás</b>.
+            El plano tuvo un selector que dejaba marcar un mueble como ocupado a mano;
+            se quitó, porque un espacio se ocupa vendiéndolo.
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 10px", marginBottom: 6 }}>
+            {residuos.map((x) => (
+              <span key={x.espacio} style={{
+                fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700,
+              }}>
+                {x.sede} · {x.code}
+              </span>
+            ))}
+          </div>
+          <p style={{ fontSize: 10.5, color: "var(--ink-3)", lineHeight: 1.45, margin: 0 }}>
+            <b>No hay que hacer nada.</b> Se van solos la próxima vez que se guarde
+            ese plano — el servidor ya no acepta ese campo. Para apurarlo, abrí el
+            plano de esa sede y movés cualquier mueble.
           </p>
         </div>
       )}
@@ -3277,6 +3330,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  esto, apretar el botón haría desaparecer la sección sin decir qué pasó. */
   const [importados, setImportados] = useState(0);
   const [ratesOpen, setRatesOpen] = useState(false);
+  /** El barrido de contratos. Vive detrás de escribir la cantidad, así que un
+   *  clic sin querer abre el cartel y no se lleva nada. */
+  const [ceroAbierto, setCeroAbierto] = useState(false);
 
   const [selected, setSelected] = useState<UnifiedFixture | null>(null);
   /** Los espacios que van en el contrato que se está armando, en el orden en
@@ -4395,6 +4451,15 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               <SlidersHorizontal size={13} style={{ color: "var(--ink-3)" }} /> Tarifas
             </button>
           )}
+          {isAdmin && (
+            <button
+              onClick={() => setCeroAbierto(true)}
+              title="Borrar todos los contratos y limpiar los planos, para volver a cargar sobre limpio"
+              style={{ ...botonBarra, color: "var(--danger)" }}
+            >
+              <AlertTriangle size={13} style={{ color: "var(--danger)" }} /> Empezar de cero
+            </button>
+          )}
           <button onClick={() => syncFromServer()} title="Traer los cambios del servidor" style={botonBarra}>
             <RefreshCw size={13} style={{ color: "var(--ink-3)" }} /> Actualizar
           </button>
@@ -4868,6 +4933,18 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
         <FileViewerModal file={viewerFile} onClose={() => setViewerFile(null)} />
       )}
       {ratesOpen && isAdmin && <RatesModal onClose={() => setRatesOpen(false)} />}
+      {ceroAbierto && isAdmin && (
+        <EmpezarDeCero
+          onCerrar={() => setCeroAbierto(false)}
+          onListo={() => {
+            // Todo lo que muestre contratos sale de estas dos: el mapa se pinta
+            // del estado comercial, y el informe de importables del servidor.
+            void refrescarComercial();
+            revisarImportacion().then(setImportacion).catch(() => {});
+            setImportados(0);
+          }}
+        />
+      )}
       {cargaAbierta && isAdmin && (
         <CargaMasiva
           sede={sede}

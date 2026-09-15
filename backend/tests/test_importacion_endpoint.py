@@ -203,3 +203,66 @@ def test_un_previo_no_ensucia_la_bitacora(client, admin):
 
     filas = client.get("/api/bitacora/", headers=admin).json()
     assert [x for x in filas if x["accion"] == "contrato.importado"] == []
+
+
+# ─── Residuo: el «Ocupado» puesto a mano ─────────────────────────────────────
+
+def test_UN_OCUPADO_A_MANO_NO_ES_UN_CONTRATO_A_MEDIAS(client, admin):
+    """La distinción que evita mandar a alguien a inventar contratos.
+
+    El plano tuvo un selector que dejaba marcar un mueble «Ocupado» sin
+    contrato detrás. Se quitó —un espacio se ocupa vendiéndolo— pero lo marcado
+    así sigue escrito en el JSON, y entra a este informe sólo por el `status`.
+
+    A un contrato a medias hay que COMPLETARLE lo que falta. A esto no hay nada
+    que completarle: decirle «cargá el contrato desde Vender» es mandarlo a
+    fabricar un contrato que nadie firmó.
+    """
+    _plano_viejo([_mueble("PUN-02", status="occupied", supplierName="",
+                          brandCategory="", negotiatedValue=0,
+                          startDate="", endDate="", observation="")])
+    x = _previo(client, admin)["incompletos"][0]
+    assert x["residuo"] is True
+    assert x["motivo"] == "marcado «Ocupado» a mano en el plano, sin contrato detrás"
+
+
+def test_con_CUALQUIER_dato_ya_no_es_residuo(client, admin):
+    """Si hay valor, marca o proveedor, hubo una negociación de por medio y sí
+    hay algo que reconstruir. El umbral es «no hay absolutamente nada»."""
+    base = dict(status="occupied", supplierName="", brandCategory="",
+                negotiatedValue=0, startDate="", endDate="", observation="")
+    _plano_viejo([
+        _mueble("PUN-03", **{**base, "negotiatedValue": 700000}),
+        _mueble("PUN-04", **{**base, "brandCategory": "Aseo"}),
+        _mueble("PUN-05", **{**base, "supplierName": "CAA"}),
+        _mueble("PUN-06", **base),
+    ])
+    por_code = {x["code"]: x for x in _previo(client, admin)["incompletos"]}
+    assert por_code["PUN-03"]["residuo"] is False, "tenía valor: hubo negociación"
+    assert por_code["PUN-04"]["residuo"] is False, "tenía marca"
+    assert por_code["PUN-05"]["residuo"] is False, "tenía proveedor"
+    assert por_code["PUN-06"]["residuo"] is True, "no tenía nada"
+
+
+def test_el_informe_trae_lo_que_SI_tiene(client, admin):
+    """Para poder juzgarlo sin abrir el plano."""
+    _plano_viejo([_mueble("PUN-03", status="occupied", supplierName="",
+                          brandCategory="Aseo", negotiatedValue=700000,
+                          startDate="", endDate="", observation="")])
+    x = _previo(client, admin)["incompletos"][0]
+    assert x["marca"] == "Aseo"
+    assert x["valor"] == 700000
+
+
+def test_ni_los_residuos_ni_los_a_medias_se_importan(client, admin):
+    """Ninguno de los dos puede ser una fila: la distinción es de CONSEJO."""
+    base = dict(status="occupied", supplierName="", brandCategory="",
+                negotiatedValue=0, startDate="", endDate="", observation="")
+    _plano_viejo([
+        _mueble("PUN-06", **base),
+        _mueble("PUN-03", **{**base, "negotiatedValue": 700000}),
+    ])
+    r = _aplicar(client, admin)
+    assert r["importables"] == []
+    assert len(r["incompletos"]) == 2
+    assert _comercial(client, admin) == {}
