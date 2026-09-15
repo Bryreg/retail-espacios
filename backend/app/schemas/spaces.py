@@ -22,6 +22,24 @@ class SupplierOut(SupplierBase):
     model_config = {"from_attributes": True}
 
 
+class SupplierPublicOut(BaseModel):
+    """El proveedor para quien no es admin: **sólo el nombre.**
+
+    Es una LISTA BLANCA y no una redacción de campos, y la diferencia importa:
+    con una lista blanca, un campo que alguien le agregue mañana a `Supplier`
+    —un NIT, una dirección, un contacto de bodega— queda afuera por defecto. Con
+    una redacción, se filtra por defecto hasta que alguien se acuerde de taparlo.
+
+    El nombre del proveedor SÍ sale: el mercaderista tiene que saber de quién es
+    la exhibición que va a montar. Lo que no tiene que salir es cómo contactarlo,
+    que es dato personal de un tercero (Ley 1581) y no le hace falta para nada.
+    """
+    id: int
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
 class LeaseBase(BaseModel):
     supplier_id: int
     marca: Optional[str] = None
@@ -57,7 +75,11 @@ class LeaseOut(LeaseBase):
     id: int
     space_id: int
     is_active: bool
-    supplier: SupplierOut
+    #: Anidado SIEMPRE en su forma pública, para todos los roles. Nadie necesita
+    #: el teléfono del proveedor colgando de un contrato: quien lo necesita lo
+    #: pide por `/suppliers/{id}`, que sí mira el rol. Así esta rama no puede
+    #: filtrar aunque alguien se olvide de redactarla.
+    supplier: SupplierPublicOut
     # Overridden as Optional so responses for non-admin roles can redact the amount.
     monthly_rent: Optional[float] = None
     # Sólo viene al CREAR el contrato; al listar no tiene sentido.
