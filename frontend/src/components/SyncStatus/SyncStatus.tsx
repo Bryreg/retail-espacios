@@ -13,6 +13,29 @@ import { fetchRevisions } from "../../api/layout";
  * "✓ Sincronizado" regardless — so a workstation could look perfectly in sync
  * while showing data nobody else had.
  */
+
+/** Qué hacer para que el guardado pendiente entre.
+ *
+ *  Es la mitad que vuelve útil el aviso: decir que no se guardó, sin decir qué
+ *  destraba, deja a alguien mirando un cartel rojo que no se va. Se arma con
+ *  los códigos que mandó el servidor porque los dos rechazos se destraban de
+ *  maneras distintas, y pueden coincidir en sedes distintas a la vez. */
+function salidaDelRechazo(codes: string[]): string {
+  const hay = new Set(codes);
+  const salidas: string[] = [];
+  if (hay.has("nombres_repetidos")) {
+    salidas.push("Corregí el nombre en el plano");
+  }
+  if (hay.has("contratos_vivos")) {
+    // No se cancela solo: es plata y un compromiso con un proveedor.
+    salidas.push(
+      "Cancelá el contrato desde el espacio, o volvé a poner el mueble en el plano",
+    );
+  }
+  if (salidas.length === 0) return "Revisá lo que dice el servidor.";
+  return `${salidas.join(", o bien: ")} y se guarda solo.`;
+}
+
 export default function SyncStatus() {
   const syncState = useFixtureStore((s) => s.syncState);
   const syncMessage = useFixtureStore((s) => s.syncMessage);
@@ -183,7 +206,7 @@ export default function SyncStatus() {
               ))}
               <p style={{ fontSize: 10.5, color: "var(--ink-3)", lineHeight: 1.45, marginTop: 2 }}>
                 No se escribió nada en el servidor y el cambio sigue en esta computadora, sin
-                subir. Corregí el nombre en el plano y se guarda solo.
+                subir. {salidaDelRechazo(rechazoSedes.map((x) => rechazos[x].code))}
               </p>
             </div>
           )}

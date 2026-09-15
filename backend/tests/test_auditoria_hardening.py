@@ -346,12 +346,27 @@ def test_h3b_cors_preflight_de_un_origen_no_listado_no_autoriza(client):
 # ─── Hipótesis 4: redacción de dinero (control positivo) ──────────────────────
 
 def test_h4_worker_no_ve_negotiated_value_en_layout(client, admin, worker):
+    """La plata del MUEBLE ya no está en el layout — y la del SLOT sigue.
+
+    El control positivo se mudó, porque se mudó la plata. Desde *Una sola verdad
+    para lo comercial* el layout no guarda el contrato: el servidor lo descarta
+    al recibir, así que ni el worker ni el admin ven ahí un `negotiatedValue` de
+    mueble. **No es que el worker deje de estar protegido: es que ahí ya no hay
+    nada que proteger**, y una prueba que afirme lo contrario da una seguridad
+    que no existe.
+
+    Lo que sí sigue viviendo en el JSON es el precio por repisa —los `slots` no
+    tienen contraparte en ninguna tabla—, así que el control positivo apunta
+    ahora ahí, que es donde queda plata que redactar.
+    """
     fixture = {
         "id": "f1", "code": "H4-01", "sede": "NAVE-H4", "type": "gondola",
         "label": "H4-01", "cx": 1, "cz": 1, "rotY": 0,
         "w": 1, "d": 1, "h": 1, "color": "#000000", "status": "free",
         "supplierName": "ProveedorX", "brandCategory": "", "negotiatedValue": 999999,
         "startDate": "", "endDate": "", "observation": "",
+        "slots": [{"id": "s1", "x": 0, "w": 0.5, "status": "occupied",
+                   "supplierName": "ProveedorX", "negotiatedValue": 888888}],
     }
     r = client.put(
         "/api/layout/NAVE-H4",
@@ -360,13 +375,57 @@ def test_h4_worker_no_ve_negotiated_value_en_layout(client, admin, worker):
     )
     assert r.status_code == 200, r.text
 
-    visto_worker = client.get("/api/layout/NAVE-H4", headers=worker).json()
-    assert "negotiatedValue" not in visto_worker["fixtures"][0], (
+    visto_worker = client.get("/api/layout/NAVE-H4", headers=worker).json()["fixtures"][0]
+    assert "negotiatedValue" not in visto_worker, (
         "el worker vio negotiatedValue en el layout — fuga de dinero fuera de rol"
     )
+    assert "negotiatedValue" not in visto_worker["slots"][0], (
+        "el worker vio la plata de un slot — fuga de dinero fuera de rol"
+    )
 
-    visto_admin = client.get("/api/layout/NAVE-H4", headers=admin).json()
-    assert visto_admin["fixtures"][0]["negotiatedValue"] == 999999
+    visto_admin = client.get("/api/layout/NAVE-H4", headers=admin).json()["fixtures"][0]
+    assert "negotiatedValue" not in visto_admin, (
+        "el layout volvió a guardar la plata del mueble: eso es la segunda "
+        "verdad que se cortó, y con ella vuelve el desfase entero"
+    )
+    assert visto_admin["slots"][0]["negotiatedValue"] == 888888
+
+
+def test_h4b_worker_no_ve_la_plata_en_el_mapa_comercial(client, admin, worker):
+    """Y el control positivo donde AHORA vive la plata del contrato.
+
+    `/api/spaces/comercial` es lo que el navegador fusiona sobre el plano: si la
+    redacción no estuviera ahí, el mercaderista vería el canon de cada espacio
+    en el mapa, que es exactamente lo que la app cierra por todas las otras
+    puertas.
+    """
+    from datetime import date, timedelta
+    hoy = date.today()
+    fixture = {
+        "id": "f1", "code": "H4-02", "sede": "NAVE-H4B", "type": "punta",
+        "label": "H4-02", "cx": 1, "cz": 1, "rotY": 0,
+        "w": 1, "d": 1, "h": 1, "color": "#000000",
+    }
+    assert client.put("/api/layout/NAVE-H4B", headers=admin, json={
+        "fixtures": [fixture], "base_updated_at": None}).status_code == 200
+    r = client.post("/api/leases/bulk/confirmar", headers=admin, json={
+        "sede": "NAVE-H4B",
+        "filas": [{"fila": 1, "espacio": "H4-02", "sede": "NAVE-H4B",
+                   "proveedor": "ProveedorX", "marca": "Aseo", "valor": 777777,
+                   "desde": hoy.isoformat(),
+                   "hasta": (hoy + timedelta(days=30)).isoformat()}],
+    })
+    assert r.json()["creados"] == 1, r.text
+
+    clave = "NAVE-H4B-H4-02"
+    del_worker = client.get("/api/spaces/comercial", headers=worker).json()
+    assert del_worker[clave]["negotiatedValue"] == 0, (
+        "el worker vio el canon en el mapa comercial — fuga de dinero fuera de rol"
+    )
+    # Y lo que NO es plata sí lo ve: sin eso no sabría qué está ocupado.
+    assert del_worker[clave]["supplierName"] == "ProveedorX"
+    assert client.get("/api/spaces/comercial", headers=admin).json()[clave][
+        "negotiatedValue"] == 777777
 
 
 # ─── Hipótesis 5: SVG rechazado en mounts (no ejecuta al servirse inline) ─────

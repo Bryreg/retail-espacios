@@ -25,14 +25,18 @@
  * leía nunca. Y no frenaba nada: el botón se habilitaba igual y el único que se
  * quejaba era el servidor, al guardar, con todo tecleado.
  *
- * Y hay un agravante que decide el diseño: **el plano no es la verdad.** La
- * disponibilidad de cada renglón sale del JSON del layout, que es una copia que
- * mantiene al día el navegador que vende. Si un contrato entró por otro camino,
- * la copia dice «libre» y la base dice «ocupado» — reproducido acá: contrato
- * del 8 de septiembre al 8 de octubre en la base, y el plano pintando el mueble
- * libre todo el periodo, con `data-est="libre"`. Por eso el bloqueo NO puede
- * colgar sólo de la copia: se le pregunta a `/leases/bulk/validar`, que corre
- * el mismo control que el guardado y no escribe nada.
+ * Y hay un agravante que decide el diseño: **el plano no alcanza.** Esto nació
+ * cuando el plano era otra verdad —el JSON del layout guardaba el contrato, una
+ * copia que mantenía al día el navegador que vendía— y decía «libre» donde la
+ * base decía «ocupado»: reproducido acá, contrato del 8 de septiembre al 8 de
+ * octubre en la base y el mueble pintado libre, con `data-est="libre"`.
+ *
+ * Esa mitad se cerró de raíz: lo comercial vive sólo en la base y el plano se
+ * pinta de ahí. Pero el bloqueo sigue sin poder colgar del plano, y ahora por
+ * una razón que no se va a ir: **el mapa dice el HOY y el contrato es un
+ * RANGO.** Un mueble libre hoy puede estar comprometido en diciembre, y el
+ * mapa no tiene cómo saberlo. Por eso se le pregunta a `/leases/bulk/validar`,
+ * que corre el mismo control que el guardado y no escribe nada.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -82,12 +86,19 @@ prueba("el total es la suma de lo acordado, sin tocar", () => {
   );
 });
 
-prueba("el total que viaja al aviso de guardado es el mismo", () => {
+prueba("el total que viaja al aviso de guardado se suma con el mismo criterio", () => {
   // Si estos dos se separan, el «guardado» contradice a la ficha que se firmó.
+  // Los dos suman `l.monto` —lo acordado, sin prorratear—; el del aviso sólo
+  // sobre las líneas que el servidor aceptó, que es lo que se guardó de verdad.
   assert.match(
     codigoContrato,
-    /total: parches\.reduce\(\(t, p\) => t \+ \(p\.patch\.negotiatedValue \?\? 0\), 0\)/,
-    "el total del resumen de guardado no es la misma suma que la pantalla",
+    /const total = lineas\.reduce\(\(t, l\) => t \+ l\.monto, 0\)/,
+    "la pantalla dejó de sumar `l.monto`",
+  );
+  assert.match(
+    codigoContrato,
+    /guardados\.push\(l\.visible\);\s*\n\s*total \+= l\.monto;/,
+    "el total del aviso ya no se suma línea por línea sobre lo guardado",
   );
 });
 
@@ -147,6 +158,99 @@ prueba("se le pregunta al endpoint que NO escribe", () => {
     !/confirmarLote\([\s\S]{0,200}veredicto/.test(codigoContrato),
     "la comprobación previa no puede pasar por `confirmarLote`: eso ESCRIBE",
   );
+});
+
+/* ── 3 · lo que se rellena, no se cree ───────────────────────────────────────
+
+   La validación en vivo pregunta por LAS FECHAS. Para llegar a esa respuesta
+   manda un proveedor de relleno cuando está vacío, porque si no la fila se cae
+   por un campo obligatorio y nunca se entera de las fechas.
+
+   El valor iba de verdad, y la firma del efecto no lo mira. O sea: la primera
+   validación salía con el campo en cero, el servidor contestaba «Falta el valor
+   mensual, o quedó en cero», y ESO QUEDABA GUARDADO — tipear el valor después
+   no volvía a preguntar. Y como `chocan` cuenta cualquier mensaje del servidor
+   como choque, el espacio quedaba marcado «ya está vendido en esas fechas» y no
+   se podía guardar NUNCA. Reportado con PUN-15 en $1.000.000 en pantalla. */
+
+prueba("el valor que se manda a validar no puede ser cero", () => {
+  const m = codigoContrato.match(/validarLote\(([\s\S]*?)\n\s*\)\.then/);
+  assert.ok(m, "no se encontró la llamada a `validarLote`");
+  assert.match(
+    m[1], /valor:\s*l\.monto\s*>\s*0\s*\?\s*l\.monto\s*:/,
+    "el valor viaja tal cual: con el campo vacío el servidor contesta «falta el "
+    + "valor» y ese mensaje se queda pegado, porque la firma no mira el monto",
+  );
+});
+
+prueba("no se le cree al servidor sobre los campos que se le rellenaron", () => {
+  // La contracara obligatoria del relleno. Sin esto el mensaje sobre un campo
+  // inventado se trata como si fuera sobre las fechas.
+  assert.match(
+    codigoContrato, /RELLENADO\s*=\s*\/\^\(/,
+    "no hay una lista de los mensajes que hablan de los campos rellenados",
+  );
+  const filtro = codigoContrato.match(/const RELLENADO = (\/[^\n]*\/i?)/);
+  assert.ok(filtro, "no se encontró la definición de RELLENADO");
+  const re = new RegExp(filtro[1].slice(1, filtro[1].lastIndexOf("/")), "i");
+  for (const msg of [
+    "Falta el valor mensual, o quedó en cero.",
+    "Falta el proveedor.",
+    "Proveedor nuevo: se va a crear.",
+  ]) {
+    assert.ok(re.test(msg), `«${msg}» habla de un campo rellenado y no se filtra`);
+  }
+  // Y lo que SÍ se preguntó tiene que pasar.
+  for (const msg of [
+    "«CIUDAD JARDIN-IMP-17» ya tiene un contrato del 2026-09-08 al 2026-10-08.",
+    "Faltan las fechas, o no se entendieron.",
+  ]) {
+    assert.ok(!re.test(msg), `«${msg}» es sobre las fechas y se estaría descartando`);
+  }
+});
+
+prueba("el filtro se aplica donde se arma el veredicto", () => {
+  assert.match(
+    codigoContrato, /mensajes\s*\?\?\s*\[\]\)\.filter\(\(m\) => !RELLENADO\.test\(m\)\)/,
+    "el veredicto no filtra los mensajes de los campos rellenados",
+  );
+});
+
+/* ── 4 · se puede soltar el contrato que sólo tiene la base ──────────────────
+
+   El otro lado del mismo desfase. El servidor rechaza la venta nombrando un
+   contrato («IMP-17 ya tiene un contrato del 2026-09-08 al 2026-10-08.
+   Cancelalo primero») y el botón para cancelarlo colgaba de `hasContract`, que
+   sale del JSON del layout. En el caso que hay que resolver el layout dice que
+   está libre — así que el botón desaparecía justo cuando hacía falta, y
+   «cancelalo primero» volvía a señalar algo que la aplicación no permitía.
+
+   `CancelarContrato` le pregunta a la base y se dibuja solo si hay algo que
+   soltar: la condición correcta la tiene él. */
+
+const tablero = leer(join("src", "pages", "DashboardView.tsx"));
+const cancelar = leer(join("src", "components", "Contrato", "CancelarContrato.tsx"));
+
+prueba("cancelar NO cuelga del plano, que puede estar desfasado", () => {
+  const m = sinComentarios(tablero).match(/\{[^{}]*onCancelado && \(\s*<CancelarContrato/);
+  assert.ok(m, "no se encontró dónde se dibuja `CancelarContrato`");
+  assert.ok(
+    !/hasContract/.test(m[0]),
+    "el botón de cancelar vuelve a colgar de `hasContract`: con la base "
+    + "ocupada y el plano libre desaparece justo cuando hace falta",
+  );
+});
+
+prueba("el contrato que el plano no tiene se NOMBRA antes de ofrecer borrarlo", () => {
+  // Un botón de borrar sobre algo que la ficha de arriba jura que no existe es
+  // peor que no tenerlo: hay que decir qué encontró la base.
+  assert.match(
+    cancelar, /segunElPlano/,
+    "`CancelarContrato` no sabe si el plano muestra el contrato",
+  );
+  const c = sinComentarios(cancelar);
+  assert.match(c, /start_date/, "no se nombran las fechas del contrato encontrado");
+  assert.match(c, /supplier\?\.name/, "no se nombra el proveedor del contrato encontrado");
 });
 
 prueba("una respuesta vieja no pisa a una nueva", () => {

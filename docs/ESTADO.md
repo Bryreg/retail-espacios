@@ -1,9 +1,9 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-09-13 (Fase 18b — Correcciones del mobiliario 3D salidas de mirar
-los muebles con producto adentro: el arte del proveedor tapando el relleno en tres muebles,
-la fruta fuera del cajón, el mostrador de servicio y el exhibidor de piso, que es una estiba).
+Última actualización: 2026-09-15 (Una sola verdad para lo comercial — el plano guarda lo
+que ES el mueble y la base lo que se le VENDIÓ, se acabó el modelo dual. Ver *Reglas
+duras* y *Una sola verdad para lo comercial*).
 
 Gestión de espacios comerciales en supermercados: se dibuja el plano de cada sede, se
 marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
@@ -121,16 +121,47 @@ Estas no son preferencias. Romperlas rompe producción.
 hizo falta guardar algo nuevo, se usó la tabla `app_config` (clave/valor) o el propio
 JSON del layout.
 
-**Modelo de datos dual.** Los datos comerciales viven en dos lados a la vez:
+**Una sola verdad: el plano guarda lo que ES el mueble, la base lo que se le VENDIÓ.**
+Esto REEMPLAZA al modelo dual, que fue el mayor generador de bugs del proyecto — ver
+*Una sola verdad para lo comercial*, más abajo, para el porqué y la migración.
 
-- Denormalizados dentro de cada fixture, en el JSON por sede de `layout_snapshots`
-  (tipo `UnifiedFixture` en `frontend/src/types/fixtures.ts`).
-- Normalizados en `spaces` / `space_leases` / `suppliers`, pero **solo** cuando se pulsa
-  "Guardar contrato".
+- **Geometría e identidad → el JSON por sede de `layout_snapshots`.** Dónde está el
+  mueble, cuánto mide, cómo se llama, si se alquila (tipo `UnifiedFixture` en
+  `frontend/src/types/fixtures.ts`).
+- **Lo comercial → `spaces` / `space_leases` / `suppliers`.** Estado, proveedor, marca,
+  valor, fechas, observación. **El layout NO los guarda**: `PUT /api/layout/{sede}` los
+  descarta al recibir (`CAMPOS_DE_CONTRATO` en `routers/layout.py`) y `pushSede` los
+  recorta al mandar. Los dos lados cortan, así que ningún camino los devuelve al JSON.
+- **El navegador las junta al leer**, en el borde del store:
+  `GET /api/spaces/comercial` + `fusionarEstadoComercial` en
+  `frontend/src/utils/estadoComercial.ts`. Por eso `DashboardView`, `FloorPlan2D`, el
+  editor 3D y la escalera siguen leyendo `f.status` y `f.supplierName` sin un cambio.
+- **La única excepción son los `slots`** (el estado por repisa del editor 3D): no tienen
+  contraparte en ninguna tabla, así que tienen UNA fuente —el JSON— y no pueden
+  discrepar con nada. Su precio SÍ sigue viajando en el layout y sigue redactándose para
+  un mercaderista, así que `_restore_missing_slot_prices` lo rellena al guardar.
 
 El código de espacio es `"SEDE-CODE"` en mayúsculas. La cara B de una góndola doble usa
 sufijo `-B`; los campos top-level del fixture son la Cara A y `fixture.faceB` es la B
 (helper `isDoubleGondola`).
+
+**Lo que no está en el mapa comercial está LIBRE, y la fusión REEMPLAZA.** No hace falta
+pre-crear ningún `space`: la fila aparece cuando se vende. Y la fusión no rellena huecos
+—escribe los siete campos siempre—, porque rellenar dejaría un contrato cancelado pintado
+desde la copia vieja de `localStorage` hasta que alguien recargara.
+
+**Un espacio se ocupa vendiéndolo.** Los selectores de estado del 2D y del 3D ofrecen
+sólo «Disponible», «Reservado» y «Mantenimiento», y escriben en la BASE
+(`PATCH /spaces/{id}/status`). Poner «Ocupado» a mano creaba un ocupado sin contrato, sin
+proveedor y sin fechas: el fantasma exacto que todo esto vino a eliminar.
+
+**Sacar de circulación algo vendido se frena al guardar el plano.** Borrar el mueble,
+pasar la góndola de doble a simple o marcarlo no comercializable retira el espacio de la
+venta y dejaba su contrato vivo y sin nada que lo mostrara. Ahora el `PUT` contesta 409
+`contratos_vivos` nombrando proveedor y fecha, y el guardado queda pendiente. Se frena en
+vez de cancelar solo: cancelar es plata y un compromiso con un proveedor, no lo decide un
+guardado del plano. Se comprueba **sólo lo que ese guardado retira**, comparando contra el
+snapshot anterior — un plano que ya venía desfasado tiene que poder guardarse igual.
 
 **No todo mueble del plano es espacio vendible.** La columna sostiene el techo; la
 caja registradora y el mostrador de servicio al cliente son puestos de trabajo de la
@@ -1791,8 +1822,9 @@ Detalles que sobrevivieron de la pantalla anterior porque se ganaron el lugar:
 - Una **góndola doble son dos espacios**: la ficha trae el selector de cara A/B.
 - Un mueble no comercializable no abre contrato: la ficha explica que es parte del local.
 
-Al guardar hace lo mismo que hacía el panel del plano —`find-or-create` del espacio y del
-proveedor, `POST /leases`, y escribe el contrato en el JSON del layout— y muestra una
+Al guardar hace `find-or-create` del espacio y del proveedor y `POST /leases`. Ya **no**
+escribe el contrato en el JSON del layout —eso dejó de existir con *Una sola verdad para
+lo comercial*: el contrato es una fila y el mapa se pinta de ahí— y muestra una
 confirmación que **se queda hasta que la cierren**: al cerrar un trato lo que hay que ver
 es a quién le llegó el aviso, y un mensaje que se va solo a los dos segundos no lo dice.
 Esa confirmación vive en la pantalla y no en el formulario, porque al guardar el mueble
@@ -2247,10 +2279,121 @@ empezar, y era el más difícil de alcanzar porque su id no salía en ninguna re
 una columna nueva**. La redacción para el mercaderista cubre las dos: agregar el próximo
 sin tacharle el valor habría abierto por la ventana lo que la app cierra por la puerta.
 
-Al cancelar se escribe también el JSON del layout. Sin eso el contrato desaparece de la
-base y el mueble sigue pintado como vendido en el mapa, que es de donde salen todas las
-pantallas. La planometría y el reporte de montaje **no se borran**: son la prueba de lo
-que se acordó y de lo que se armó.
+Al cancelar **ya no se escribe nada en el layout**: el contrato era una fila y ya no
+está, y el mapa se pinta de la base. (Hasta el cambio de *Una sola verdad para lo
+comercial*, acá había que parchear el JSON o el mueble seguía pintado como vendido.) La
+planometría y el reporte de montaje **no se borran**: son la prueba de lo que se acordó y
+de lo que se armó.
+
+### Una sola verdad para lo comercial
+
+El cambio más grande del proyecto y el que elimina una familia entera de bugs, no uno.
+
+**De dónde salió.** El dueño reportó dos cosas mirando la pantalla real: *«no me deja
+alquilar la IMP-17 que está libre, el sistema la toma como ocupada y no tiene ningún
+contrato»* y *«aún colocando el precio del contrato me salía que estaba en 0»*. El
+segundo era un efecto que mandaba un campo que no miraba. El primero no tenía un culpable:
+la base tenía el contrato y el plano no, **y los dos decían la verdad que conocían**.
+
+**La causa.** El mismo hecho estaba escrito dos veces —en `space_leases` y adentro del
+JSON del layout— y nada los obligaba a coincidir. El plano NUNCA le escribió a la base:
+no es un olvido, es que ese camino no existe. La dirección que sí existía —de la base al
+plano— la hacía **el navegador, por cortesía**: al vender, al cancelar y al subir una
+planilla, la pantalla parcheaba el JSON y lo guardaba. Si esa pestaña se cerraba antes,
+o guardaba sobre la sede equivocada, el desfase quedaba para siempre.
+
+**La auditoría.** Antes de decidir nada se escribió `scripts/auditar_desfase.py`, que
+lee las dos y mira **las dos direcciones**. Encontró que toda edición del plano que saca
+un espacio de circulación deja su contrato vivo: borrar el mueble, pasar la góndola de
+doble a simple y marcarlo no comercializable. Ninguna avisaba. Y encontró la dirección
+contraria, que es la que decidió la arquitectura: **contratos que viven SÓLO en el JSON**,
+sin fila en ninguna tabla — no salen en ningún reporte, no generan aviso de vencimiento y
+no existen para nada que consulte la base.
+
+**La decisión, y lo que la hizo posible.** Dijo el dueño: *«actualmente no hay nada real
+que merezca la pena mantener; si es necesario tocar todos los muebles y todos los
+contratos, hazlo»*. Sin datos reales encima, el corte se pudo hacer entero de una vez.
+
+**El corte, en orden.**
+
+1. `GET /api/spaces/comercial` devuelve, por código completo, lo que la base sabe. Manda
+   el contrato que corre hoy; si no hay, el firmado que todavía no arranca —eso es
+   *comprometido*, no libre, y venderlo encima sería venderlo dos veces—. Un vencido no
+   manda. También reporta «reservado» y «en mantenimiento», que no son plata pero tampoco
+   son libre. La plata no sale para un mercaderista.
+2. `scripts/importar_contratos_del_plano.py` pasa a la base lo que vivía sólo en el JSON.
+   Una sola corrida, idempotente, con `--ensayo` primero. Lo que no se puede importar
+   —sin proveedor o sin fechas, que en la base son obligatorios— se **reporta**;
+   inventarlo sería peor.
+3. `PUT /api/layout/{sede}` descarta los siete campos de contrato. En silencio, no con un
+   rechazo: una pestaña abierta desde antes del despliegue los sigue mandando, y trabarle
+   el plano sería romperle el trabajo por algo que no puede entender ni arreglar.
+4. El store fusiona al leer, y el poll mira lo comercial aparte: vender o cancelar no
+   cambia ninguna revisión de plano, así que atarlo a la adopción dejaba una venta hecha
+   en otro equipo sin aparecer nunca.
+5. Vender, cancelar, la planilla y los selectores de estado dejan de parchear y recargan.
+6. Las tres puertas se cierran en el guardado del plano (409 `contratos_vivos`).
+
+**Lo que queda del auditor, y dónde se ve.** Sigue haciendo falta: lo que ya está
+desfasado en producción se guardó antes de que el guardarraíl existiera y nadie lo va a
+arreglar solo.
+
+La auditoría **vive en la pantalla**, en Supervisar → «Para revisar» → *Contrato sin
+mueble en el plano*. Sale el espacio, la sede, el proveedor y hasta cuándo va, y se
+resuelve ahí mismo: o se dibuja el mueble con ese código —y el contrato aparece solo— o
+se cancela, con el botón que ya sabe nombrar lo que encuentra cuando el plano no lo
+tiene.
+
+No necesita consola ni credenciales, y ésa es la razón de que se calcule en el navegador
+y no con el script: **el store ya bajó todo lo que hace falta**. `fetchAllLayouts` trae
+todos los planos y `fetchEstadoComercial` el mapa comercial entero, porque los necesita
+para pintar; la auditoría es una resta entre dos cosas que ya están en memoria
+(`utils/auditoriaDesfase.ts`). La consola del servicio en Render, que es donde correría
+el script, es un plan pago. Y de paso deja de ser una corrida que alguien tiene que
+acordarse de hacer.
+
+`backend/scripts/auditar_desfase.py` se queda igual, sin cambios: sólo lee, ve las DOS
+direcciones y sirve donde sí haya consola.
+
+**La otra dirección también se resuelve desde la pantalla**, en la misma tarjeta:
+*Contrato que sólo vive en el plano*. Ésa el navegador NO la puede calcular —la fusión
+reemplaza lo comercial con lo que dice la base, así que un contrato que sólo está en el
+JSON desaparece antes de que ninguna pantalla lo mire—, así que se le pregunta al
+servidor, que es el único que ve el snapshot crudo:
+
+- `GET /api/layout/importacion/previo` — qué habría para importar. **No escribe una
+  fila.** Se pide sola al abrir Supervisar, una vez por sesión y sólo para un admin.
+- `POST /api/layout/importacion/aplicar` — lo escribe, todo en una transacción.
+  Idempotente, así que el botón se puede apretar dos veces sin miedo. Queda en la
+  bitácora como `contrato.importado`: esto CREA contratos, que es plata.
+
+Los dos pasos son la misma forma que la renumeración y por la misma razón: lo que
+escribe contratos se mira antes de escribirlo. Y lo que no se puede importar —sin
+proveedor o sin fechas, que en `space_leases` son obligatorias— se muestra aparte con el
+motivo dicho para que se pueda arreglar («le falta el proveedor»). Rellenarlo con algo
+plausible sería fabricar un contrato que nadie firmó.
+
+**La lógica vive en `app/services/importar_del_plano.py`**, y el script pasó a ser una
+cáscara de consola sobre ella. Tener dos implementaciones de algo que escribe contratos
+era justo la clase de duplicación que este cambio viene sacando.
+
+Es una migración de **una sola vez**: desde el corte el layout no puede guardar un
+contrato nuevo, así que en cuanto se importe lo que había, esto contesta vacío para
+siempre y la sección no vuelve a aparecer.
+
+`espacios_ofrecidos` (servidor) y `espaciosOfrecidos` (navegador) tienen que contestar lo
+mismo: el primero decide qué se FRENA al guardar y el segundo qué se AVISA en la
+pantalla. Hay pruebas que atan las tres decisiones —tipo, bandera `rentable` y cara B—
+para que no se separen en silencio.
+
+**Lo que ninguna fusión arregla**, y por eso se avisa: un contrato sobre un espacio que
+NINGÚN plano dibuja. Ahí no hay nada que pintar. Después de una carga por planilla,
+`utils/espaciosSinMueble.ts` los nombra uno por uno.
+
+**La prueba que cierra el cambio** es `tests/test_punta_a_punta.py`: dibuja dos tiendas,
+vende, sube una planilla que las cruza, choca contra las tres puertas, cancela, retira un
+espacio a mano — y le pregunta al auditor. Una sola verdad quiere decir que después de
+usar todo, el auditor da cero.
 
 ### El contrato tiene un solo dueño
 
@@ -3891,34 +4034,30 @@ de información para sostener a mano un dato que el contrato nuevo ya deja escri
 
 ## Backlog
 
-0. **El plano es una COPIA, y puede mentir** (abierto en la Fase 17, sin cerrar).
-   La disponibilidad que pinta el mapa y la que responde cada renglón del
-   contrato **no salen de `spaces`/`leases`**: salen de los campos comerciales
-   del JSON del layout (`status`, `startDate`, `endDate`, `negotiatedValue`…),
-   que es una copia. Quien la mantiene al día es el navegador que vende, en el
-   momento de vender: `Contrato.tsx` aplica `parches` después de
-   `confirmarLote`, y `DashboardView` hace lo mismo después de la carga masiva
-   —con un comentario que ya decía por qué: *«sin esto los contratos existirían
-   en la base y los espacios seguirían viéndose libres»*—.
+0. **El plano es una COPIA, y puede mentir** — ✅ **CERRADO** (2026-09-15).
+   Era el punto más viejo del backlog y el de más consecuencias: la
+   disponibilidad que pintaba el mapa salía de los campos comerciales del JSON
+   del layout, una copia que mantenía al día el navegador que vendía. Los dos
+   caminos de la UI estaban parcheados; todo lo demás no —un contrato creado
+   desde otra sesión, un arreglo a mano, un `PUT /layout` de otra pestaña que
+   pisa el parche, o el más probable: un `confirmarLote` que salió bien y cuyo
+   push del layout, con 1.200 ms de debounce, no llegó a salir—.
 
-   Los dos caminos de la UI están cubiertos. **Lo que no está cubierto es todo
-   lo demás**: un contrato creado desde otra sesión, un arreglo a mano, un
-   `PUT /layout` de otra pestaña que pisa el parche, o —el más probable— un
-   `confirmarLote` que salió bien y cuyo push del layout (con 1.200 ms de
-   debounce) no llegó a salir. En todos esos casos la base dice «ocupado» y la
-   copia dice «libre».
+   Reproducido en su momento: contrato del 8 de septiembre al 8 de octubre en la
+   base, y el plano pintando el mueble **libre todo el periodo**.
 
-   Reproducido: contrato del 8 de septiembre al 8 de octubre en la base, y el
-   plano pintando el mueble **libre todo el periodo** —los nueve `<g>` del piso
-   con `data-est="libre"`, y el panel de tarifa contando 9 espacios libres—.
+   La Fase 17 lo mitigó preguntándole a `/leases/bulk/validar`, pero el mapa
+   seguía pintando con la copia. **Ya no hay copia**: lo comercial vive sólo en
+   `spaces`/`space_leases` y el navegador lo fusiona al leer. Ver *Una sola
+   verdad para lo comercial*. Con eso caen también las dos vías que quedaban
+   anotadas —el debounce de 1200 ms y el `pushSede` que se salta una sede en
+   conflicto—: las dos dejaban la base adelante del plano, y ahora no hay nada
+   del plano que pueda quedar atrás.
 
-   **Mitigado, no resuelto.** La Fase 17 hace que el panel de contrato le
-   pregunte a `/leases/bulk/validar` (el mismo control que el guardado, que no
-   escribe nada), así que el choque se ve y frena aunque la copia mienta. Pero
-   el MAPA sigue pintando con la copia: un espacio ocupado puede seguir
-   viéndose verde hasta que se lo toca. El arreglo de raíz es que la
-   disponibilidad la sirva el servidor —o que el layout se reconcilie contra
-   `/api/spaces/` al cargar la sede—, y es una fase propia.
+   Lo que sigue valiendo del arreglo de la Fase 17: **el bloqueo del contrato no
+   puede colgar del mapa**, ahora por otra razón — el mapa dice el HOY y el
+   contrato es un RANGO. Un mueble libre hoy puede estar comprometido en
+   diciembre. Por eso `/leases/bulk/validar` se queda.
 
 1. **Histórico por espacio**. Es además prerrequisito de la tarifa de referencia: no hay
    tarifario público de exhibición en Colombia (los acuerdos son confidenciales), así que
@@ -5200,6 +5339,100 @@ montaje del segundo. Si la separación fallara, ahí saldría «Alpina».
 
 Y en navegador, con dos clientes vivos: el selector aparece, cada uno entra al
 suyo, y por API el primero tiene 41 espacios y el segundo 0.
+
+---
+
+## El desfase entre el plano y la base
+
+> **Esta sección es HISTORIA.** Describe el problema como se vivía cuando el
+> plano guardaba lo comercial, y se conserva porque explica el porqué de todo lo
+> que vino después. El diagnóstico de acá abajo —una regla que no existe, con
+> tres puertas— es el que llevó a *Una sola verdad para lo comercial*, que lo
+> elimina de raíz. **Lo único que sigue vivo de acá es el auditor**, porque lo
+> que ya está desfasado en producción se guardó antes del corte.
+
+El plano salía del **JSON del layout**, que era una copia que mantenía al día el
+navegador que vendía. La **base** (`space_leases`) es la que manda: es la que
+valida al guardar. Cuando las dos no coincidían, la pantalla y el servidor decían
+cosas distintas y los dos tenían razón — por eso no se arreglaba mirando uno solo.
+
+Se reportó así: *«no me deja alquilar la IMP-17 que está libre, el sistema la
+toma como ocupada y no tiene ningún contrato»*.
+
+**De dónde salía.** La carga por planilla acepta una columna «sede», así que UNA
+planilla crea contratos en varias tiendas. El parche del mapa, en cambio, se
+armaba con el código **corto** —`IMP-17`— y se aplicaba sobre los muebles de la
+sede **abierta**. Como los códigos se repiten entre sedes (casi todas tienen un
+`IMP-17`), una fila de NAVE cargada con CIUDAD JARDIN en pantalla hacía dos
+daños de un golpe: pintaba vendido el `IMP-17` de CIUDAD JARDIN, que no se
+vendió, y dejaba el de NAVE —el que sí se vendió— viéndose libre.
+
+**La regla:** un mueble es único por **sede + código**. El código solo no lo es,
+y usarlo solo era el bug. Sigue viva y con sus pruebas, ahora en
+`utils/espaciosSinMueble.ts` — el parcheo desapareció con el corte, la regla no.
+
+**Lo que no se puede pintar se dice.** Con una sola verdad ya no hay sede que
+«poner al día»: el mapa comercial baja entero en cada sincronización y se funde
+en todas las sedes cargadas. Lo que queda, y ninguna fusión arregla, es un
+contrato sobre un espacio que **ningún plano dibuja**: ahí no hay nada que
+pintar, y se nombra uno por uno. Un desfase callado es el que muerde meses
+después.
+
+**Y el desfase que ya existe se puede resolver.** El botón de cancelar colgaba
+de `hasContract`, que sale del layout: en el caso que hay que resolver el layout
+dice «libre», así que el botón desaparecía justo cuando hacía falta y
+«cancelalo primero» señalaba algo imposible. Ahora `CancelarContrato` decide
+solo —le pregunta a la base— y cuando encuentra un contrato que el plano no
+tiene, lo **nombra** (proveedor y fechas) antes de ofrecer soltarlo.
+
+Otras dos vías por las que el parche del layout puede no llegar, conocidas y no
+cerradas: el guardado va con **1200 ms de debounce** (cerrar la pestaña justo
+después de confirmar lo pierde) y `pushSede` **se salta** la escritura si esa
+sede ya está en conflicto. Las dos dejan la base adelante del plano.
+
+### La auditoría: las tres puertas del mismo agujero
+
+Se ejercitó el sistema por su API —no se leyó el código— operación por
+operación, comparando las dos verdades después de cada una. El resultado no son
+bugs sueltos: es **una** regla que no existe, con tres puertas.
+
+**El layout NUNCA escribe en la base.** No es un olvido: ese camino no existe.
+`PUT /api/layout/{sede}` no toca `space_leases` ni una vez. Así que **toda
+edición del plano que saca un espacio de circulación deja su contrato vivo**:
+
+| Puerta | Qué queda |
+|---|---|
+| Borrar el mueble del plano | el contrato sigue vivo, atado a un código que el plano ya no ofrece |
+| Góndola doble → simple | la cara B desaparece del plano y su contrato queda huérfano |
+| Marcarlo «no comercializable» | sale de la venta y de la ocupación, y se sigue cobrando |
+
+Y la consecuencia que lo vuelve visible: **recrear un mueble con el mismo código
+hereda el contrato fantasma** y nace invendible, con el mensaje exacto del
+reporte — «ya tiene un contrato del … Cancelalo primero».
+
+**Las tres están cerradas hacia adelante.** El guardado del plano las frena con
+un 409 `contratos_vivos` que nombra proveedor y fecha. Se frena en vez de
+cancelar solo, que sigue siendo la regla: un contrato es plata y un compromiso
+con un proveedor, y una edición del plano no puede cancelarlo en silencio. Se
+comprueba en el guardado y no en cada botón de borrar porque es el único lugar
+por el que pasan las tres puertas y los cuatro caminos —el panel del 2D, el del
+3D, la tecla Supr y el borrado en lote—.
+
+**Y lo que ya está desfasado se ve**: `backend/scripts/auditar_desfase.py` lista,
+por sede, todo lo que la base tiene vendido y el plano no, y también la dirección
+contraria. Sólo lee. Sigue haciendo falta porque el guardarraíl es de acá en
+adelante: lo que ya está mal se guardó antes de que existiera.
+
+**Dos cosas que la auditoría descartó**, y conviene que queden descartadas:
+
+- **Renumerar NO produce desfase.** `services/renumeracion.py` actualiza
+  `spaces.code`, `svg_id` y `mount_confirmations.space_code` en una sola
+  transacción. Está bien resuelto.
+- **El vencimiento automático tampoco.** `expire_leases` libera la base cada 12 h
+  y el plano queda con `status: "occupied"`, pero todo lo que importa
+  —disponibilidad, canon vigente, los KPI— se calcula por FECHAS
+  (`contractPhase`), así que ese espacio cae en «Vencidos», que es donde tiene
+  que estar. No infla la plata.
 
 ---
 

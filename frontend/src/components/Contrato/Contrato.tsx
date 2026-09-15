@@ -56,13 +56,6 @@ export interface CaraElegida {
   face: "A" | "B";
 }
 
-/** El parche que hay que escribirle al layout, por cara. */
-export interface ParcheDeCara {
-  fixtureId: string;
-  face: "A" | "B";
-  patch: Partial<FaceData>;
-}
-
 /** Con qué llega prellenado un contrato al que se entra por «Renovar». */
 export interface SemillaContrato {
   /** Qué renovación es. La pantalla lo usa de `key` para REMONTAR el
@@ -108,7 +101,9 @@ export interface ArgsContrato {
    *  no un selector entre las dos: vendérselas ambas al mismo proveedor en el
    *  mismo contrato es lo normal, y con un selector había que hacer dos. */
   onCambiarCara: (fixtureId: string, face: "A" | "B") => void;
-  onGuardado: (parches: ParcheDeCara[], resumen: ResumenContrato) => void;
+  /** El contrato YA está en la base cuando esto se llama. No hay nada que
+   *  escribirle al plano: quien dibuja vuelve a leer. */
+  onGuardado: (resumen: ResumenContrato) => void;
 }
 
 // ─── Utilidades ──────────────────────────────────────────────────────────────
@@ -134,6 +129,14 @@ function iso(d: Date): string {
  *
  *  Prellenar es deliberado: reescribir dos fechas a mano era el paso que más se
  *  equivocaba, y una pantalla en blanco tampoco dice qué hacer primero. */
+/** Los mensajes del servidor que hablan de un campo que le mandamos RELLENO.
+ *
+ *  La validación en vivo pregunta por las fechas, y para eso manda un proveedor
+ *  y un valor de mentira cuando todavía están vacíos —si no, la fila se cae por
+ *  un campo obligatorio y no se llega nunca a la respuesta sobre las fechas—.
+ *  La contracara obligatoria: lo que se rellena, no se cree. */
+const RELLENADO = /^(Proveedor nuevo|Falta el proveedor|Falta el valor)/i;
+
 function rangoPorDefecto(): DateRange {
   const hoy = new Date();
   const to = new Date(hoy);
@@ -324,20 +327,33 @@ export function useContrato({
         sedeContrato,
         lineas.map((l, i) => ({
           fila: i + 1, espacio: l.codigo, sede: l.fixture.sede || sede,
-          // El proveedor todavía puede estar vacío: lo que se le pregunta al
-          // servidor son LAS FECHAS. Un nombre de relleno acá no crea nada
+          // El proveedor y el valor todavía pueden estar vacíos: lo que se le
+          // pregunta al servidor son LAS FECHAS. Un relleno acá no crea nada
           // —`/validar` no escribe— y evita que falte un campo obligatorio.
+          //
+          // El valor iba de verdad, y ésa era la falla: la firma de abajo NO lo
+          // mira, así que la primera validación salía con el campo en cero, el
+          // servidor contestaba «Falta el valor mensual», y eso quedaba
+          // guardado para siempre — tipear el valor no volvía a preguntar. Peor
+          // todavía: `chocan` cuenta CUALQUIER mensaje del servidor como choque
+          // de fechas, así que el espacio quedaba marcado «ya está vendido en
+          // esas fechas» y no se podía guardar nunca más.
           proveedor: proveedor.trim() || "—",
-          valor: l.monto, desde, hasta,
+          valor: l.monto > 0 ? l.monto : 1,
+          desde, hasta,
         })),
       ).then((r) => {
         if (mio !== pedido.current) return;  // llegó una respuesta vieja
         const out: Record<string, string[]> = {};
         for (const f of r.filas) {
           if (f.estado !== "error") continue;
-          // «Proveedor nuevo: se va a crear» no es un problema: viaja junto
-          // con el error y no tiene nada que ver con las fechas.
-          const ms = (f.mensajes ?? []).filter((m) => !/^Proveedor nuevo/i.test(m));
+          // Lo que se rellena, no se cree. Arriba van un proveedor y un valor
+          // de mentira para que la fila no se caiga por un campo que todavía no
+          // se llenó; creerle al servidor sobre ESOS campos sería creerle sobre
+          // el relleno. El proveedor y el valor de verdad los controla la
+          // pantalla —`sinValor` y el botón— y el servidor los vuelve a mirar
+          // al guardar, que es donde manda.
+          const ms = (f.mensajes ?? []).filter((m) => !RELLENADO.test(m));
           if (ms.length) out[(f.codigo || "").toUpperCase()] = ms;
         }
         setVeredicto(out);
@@ -437,9 +453,9 @@ export function useContrato({
       );
 
       const porFila = new Map(resp.filas.map((f) => [f.fila, f]));
-      const parches: ParcheDeCara[] = [];
       const guardados: string[] = [];
       const fallaron: { espacio: string; motivo: string }[] = [];
+      let total = 0;
 
       lineas.forEach((l, i) => {
         const fila = porFila.get(i + 1);
@@ -451,19 +467,7 @@ export function useContrato({
           return;
         }
         guardados.push(l.visible);
-        parches.push({
-          fixtureId: l.fixture.id,
-          face: l.face,
-          patch: {
-            status: "occupied",
-            supplierName: proveedor.trim(),
-            brandCategory: marca.trim(),
-            negotiatedValue: l.monto,
-            startDate: desde,
-            endDate: hasta,
-            observation: nota.trim(),
-          } as Partial<FaceData>,
-        });
+        total += l.monto;
       });
 
       if (guardados.length === 0) {
@@ -493,7 +497,7 @@ export function useContrato({
         }
       }
 
-      onGuardado(parches, {
+      onGuardado({
         espacios: guardados,
         proveedor: proveedor.trim(),
         desde,
@@ -501,7 +505,7 @@ export function useContrato({
         // Mismo criterio que el total de la pantalla: lo acordado, sumado y
         // sin prorratear. Si estos dos números se separan, el aviso de
         // «guardado» contradice a la ficha que se acaba de firmar.
-        total: parches.reduce((t, p) => t + (p.patch.negotiatedValue ?? 0), 0),
+        total,
         avisoPlanometria,
         fallaron: fallaron.length ? fallaron : undefined,
         avisos: resp.avisos ?? undefined,

@@ -44,6 +44,7 @@ import type { RechazoDeNombre } from "../../utils/nomenclatura";
 import { fileUrl, getFaceImages } from "../../api/files";
 import { arteUrl, listarCatalogo, subirArte, type Arte } from "../../api/catalogo";
 import { getSuppliers } from "../../api/suppliers";
+import { findOrCreateSpace, updateSpaceStatus } from "../../api/spaces";
 import { describeError } from "../../api/client";
 // Extensión real del local y física de la caminata — geometría pura, probada
 // aparte. STORE_W/STORE_D describen una tienda ficticia que ninguna sede ocupa.
@@ -4303,6 +4304,38 @@ function CommercialPanel({
     if (!r) setNombreBorrador(normalizarNombre(nombreBorrador));
   }
 
+  // ── Retirar el mueble de circulación, o devolverlo ────────────────────────
+  // Va a la BASE y no al plano. Acá se escribía `status` en el JSON del layout:
+  // era una segunda copia del mismo hecho, sin nada que la obligara a coincidir
+  // con `spaces`, y desde que el servidor la descarta al guardar el select se
+  // veía cambiar sin cambiar nada. Un control que miente es peor que no tenerlo.
+  const [guardandoEstado, setGuardandoEstado] = useState(false);
+  const [estadoError, setEstadoError] = useState("");
+
+  async function cambiarEstado(nuevo: SpaceStatus) {
+    // La sede del MUEBLE, no la abierta: un plano copiado de otra tienda dibuja
+    // muebles que no son de ésta, y el código del espacio lleva la suya.
+    const st = useFixtureStore.getState();
+    const propio = st.fixturesBySede[st.sede]?.find((f) => f.id === fix.id);
+    const sedeDelMueble = propio?.sede || st.sede;
+    setEstadoError("");
+    setGuardandoEstado(true);
+    try {
+      const espacio = await findOrCreateSpace({
+        code: fullSpaceCode(sedeDelMueble, fix.code),
+        name: fix.code,
+        sede: sedeDelMueble,
+      });
+      await updateSpaceStatus(espacio.id, nuevo);
+      // El mapa se pinta de la base: se vuelve a leer y aparece solo.
+      await useFixtureStore.getState().refrescarComercial();
+    } catch {
+      setEstadoError("No se pudo guardar el estado. Probá de nuevo.");
+    } finally {
+      setGuardandoEstado(false);
+    }
+  }
+
   function handleSlotStatusChange(newStatus: SpaceStatus) {
     if (!selectedSlot) return;
     if (selectedSlot.status==="occupied" && newStatus==="free") {
@@ -4562,13 +4595,29 @@ function CommercialPanel({
         {rentable && (
         <div>
           <label className={labelCls}><Info size={9} className="inline mr-1"/>Estado fixture</label>
-          <select value={fix.status} onChange={e=>u({status:e.target.value as SpaceStatus})}
-            className="w-full rounded border border-dark-line-2 bg-dark-bg px-2 py-1 text-xs text-dark-ink-1 focus:border-accent focus:outline-none">
-            <option value="free">Disponible</option>
-            <option value="occupied">Ocupado</option>
-            <option value="reserved">Reservado</option>
-            <option value="maintenance">Mantenimiento</option>
-          </select>
+          {/* «Ocupado» no está entre las opciones y es a propósito: un espacio
+              se ocupa vendiéndolo, en Sede → Vender. Ponerlo a mano crearía un
+              ocupado sin contrato, sin proveedor y sin fechas — el fantasma
+              exacto que todo esto vino a eliminar. */}
+          {fix.status === "occupied" ? (
+            <p className="text-xs text-dark-ink-1">
+              Ocupado
+              <span className="mt-0.5 block text-[10px] text-dark-ink-3">
+                Lo pone el contrato. Para liberarlo hay que cancelarlo.
+              </span>
+            </p>
+          ) : (
+            <select value={fix.status} disabled={guardandoEstado}
+              onChange={e=>void cambiarEstado(e.target.value as SpaceStatus)}
+              className="w-full rounded border border-dark-line-2 bg-dark-bg px-2 py-1 text-xs text-dark-ink-1 focus:border-accent focus:outline-none">
+              <option value="free">Disponible</option>
+              <option value="reserved">Reservado</option>
+              <option value="maintenance">Mantenimiento</option>
+            </select>
+          )}
+          {estadoError && (
+            <p className="mt-1 text-[10px] text-danger">{estadoError}</p>
+          )}
         </div>
         )}
 

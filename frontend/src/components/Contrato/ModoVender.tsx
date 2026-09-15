@@ -5,7 +5,7 @@ import { isRentable, rateTypeLabel, rateTypeOf, type UnifiedFixture } from "../.
 import NotifyPreview from "../NotifyPreview";
 import {
   fechaCorta, money, useContrato,
-  type CaraElegida, type Contrato, type ParcheDeCara, type ResumenContrato, type SemillaContrato,
+  type CaraElegida, type Contrato, type ResumenContrato, type SemillaContrato,
 } from "./Contrato";
 
 /**
@@ -53,7 +53,7 @@ interface ModoVenderProps {
   rango: DateRange | null;
   /** El contrato que se acaba de guardar, si hay uno. */
   cerrado: ResumenContrato | null;
-  onGuardado: (parches: ParcheDeCara[], resumen: ResumenContrato) => void;
+  onGuardado: (resumen: ResumenContrato) => void;
   onCancelar: () => void;
   onSeguir: () => void;
   /** Con qué abre el formulario cuando se llegó por «Renovar»: el mismo

@@ -429,6 +429,14 @@ def test_worker_por_membresia_no_ve_negotiatedvalue_ni_monthly_rent(client, admi
         layout = client.get("/api/layout/NAVE", headers=cab).json()
         assert "negotiatedValue" not in layout["fixtures"][0]
 
+        # Donde vive la plata desde *Una sola verdad para lo comercial*: el
+        # mapa que el navegador funde sobre el plano. El layout ya no la lleva
+        # —el servidor la descarta al guardar— así que comprobarla sólo ahí
+        # daría una seguridad que ya no significa nada.
+        comercial = client.get("/api/spaces/comercial", headers=cab).json()
+        assert comercial["NAVE-PUN-01"]["negotiatedValue"] == 0
+        assert comercial["NAVE-PUN-01"]["supplierName"] == "Alpina"
+
         kpis = client.get("/api/dashboard/kpis", headers=cab).json()
         assert kpis["monthly_revenue"] == 0.0
         assert all(s["revenue"] == 0.0 for s in kpis["top_suppliers"])
@@ -440,10 +448,13 @@ def test_worker_por_membresia_no_ve_negotiatedvalue_ni_monthly_rent(client, admi
 
         assert client.get("/api/layout/rates", headers=cab).status_code == 403
 
-    # El admin sí lo ve, por las dos vías.
-    layout_admin = client.get("/api/layout/NAVE", headers=admin).json()
-    assert layout_admin["fixtures"][0]["negotiatedValue"] == 1_500_000
+    # El admin sí lo ve, por las dos vías que quedan.
+    assert client.get("/api/spaces/comercial", headers=admin).json()[
+        "NAVE-PUN-01"]["negotiatedValue"] == 1_500_000
     assert client.get(f"/api/spaces/{space_id}", headers=admin).json()["active_lease"]["monthly_rent"] == 1_500_000
+    # Y el layout no se la guarda a NADIE: ésa era la segunda verdad.
+    assert "negotiatedValue" not in client.get(
+        "/api/layout/NAVE", headers=admin).json()["fixtures"][0]
 
 
 # ════════════════════════════════════════════════════════════════════════════

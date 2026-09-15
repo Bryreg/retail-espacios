@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { cancelLease, getSpaceByCode } from "../../api/spaces";
 import { describeError } from "../../api/client";
-import type { FaceData } from "../../types/fixtures";
+import type { Lease } from "../../types";
+import { fechaCorta } from "./Contrato";
 
 /**
  * Cancelar el contrato de un espacio.
@@ -19,15 +20,22 @@ import type { FaceData } from "../../types/fixtures";
  */
 
 export default function CancelarContrato({
-  spaceCode, onCancelado,
+  spaceCode, segunElPlano, onCancelado,
 }: {
   /** `SEDE-CODIGO`, el completo. */
   spaceCode: string;
-  /** Lo que hay que escribir en el JSON del layout para que el mapa repinte.
-   *  Sin esto el contrato desaparece de la base y el mueble sigue rojo. */
-  onCancelado: (patch: Partial<FaceData>) => void;
+  /** Si el JSON del layout —lo que pinta el mapa— dice que este espacio tiene
+   *  contrato. Cuando dice que NO y acá igual aparece un contrato, no alcanza
+   *  con ofrecer el botón: hay que decir qué se encontró, porque la ficha de
+   *  arriba está diciendo «sin contrato activo» en la misma pantalla. */
+  segunElPlano: boolean;
+  /** El contrato ya se soltó en la base. No lleva parche: no hay copia. */
+  onCancelado: () => void;
 }) {
   const [ids, setIds] = useState<{ spaceId: number; leaseId: number } | null>(null);
+  /** El contrato que encontró la BASE. Se guarda entero, no sólo el id, para
+   *  poder nombrarlo cuando el plano no lo tiene. */
+  const [enLaBase, setEnLaBase] = useState<Lease | null>(null);
   const [preguntando, setPreguntando] = useState(false);
   const [borrando, setBorrando] = useState(false);
   const [error, setError] = useState("");
@@ -36,11 +44,12 @@ export default function CancelarContrato({
     const espacio = await getSpaceByCode(spaceCode);
     const lease = espacio?.active_lease ?? espacio?.upcoming_lease ?? null;
     setIds(espacio && lease ? { spaceId: espacio.id, leaseId: lease.id } : null);
+    setEnLaBase(lease);
   }, [spaceCode]);
 
   useEffect(() => {
     let vivo = true;
-    buscar().catch(() => { if (vivo) setIds(null); });
+    buscar().catch(() => { if (vivo) { setIds(null); setEnLaBase(null); } });
     return () => { vivo = false; };
   }, [buscar]);
 
@@ -52,24 +61,52 @@ export default function CancelarContrato({
     setError("");
     try {
       await cancelLease(ids.spaceId, ids.leaseId);
-      // El JSON del layout es lo que pinta el mapa: si no se limpia acá, el
-      // contrato deja de existir en la base y el mueble sigue viéndose vendido.
-      onCancelado({
-        status: "free",
-        supplierName: "",
-        brandCategory: "",
-        negotiatedValue: 0,
-        startDate: "",
-        endDate: "",
-      } as Partial<FaceData>);
+      // No hay nada que limpiar en el plano: el contrato era una fila y ya no
+      // está. Quien dibuja vuelve a leer la base y lo pinta libre solo.
+      onCancelado();
     } catch (e) {
       setError(describeError(e, "No se pudo cancelar el contrato."));
       setBorrando(false);
     }
   }
 
+  /** Un contrato que la base tiene y el plano no.
+   *
+   *  Es el caso que deja el espacio invendible sin que se vea por qué: el
+   *  servidor rechaza la venta nombrando un contrato, y la ficha, que lee el
+   *  layout, dice «sin contrato activo». Antes el botón de cancelar ni siquiera
+   *  aparecía —lo escondía esa misma ficha— así que «cancelalo primero»
+   *  señalaba algo imposible. Ahora aparece, y con el contrato nombrado: sin
+   *  eso sería un botón de borrar sobre algo que la pantalla jura que no
+   *  existe, que es peor que no tenerlo. */
+  const fantasma = !segunElPlano && enLaBase !== null;
+
+  const cartelFantasma = fantasma && (
+    <div
+      style={{
+        padding: "10px 12px", borderRadius: "var(--r-lg)", marginBottom: 8,
+        background: "var(--warning-50, var(--surface-2))",
+        border: "1px solid var(--warning-100, var(--line))",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 7 }}>
+        <AlertTriangle size={14} style={{ color: "var(--warning, var(--ink-2))", flexShrink: 0, marginTop: 1 }} />
+        <div style={{ fontSize: 12, color: "var(--ink-2)", lineHeight: 1.5 }}>
+          <b>La base tiene un contrato que el plano no muestra.</b>{" "}
+          {enLaBase.supplier?.name || "Sin proveedor"} · del{" "}
+          {fechaCorta(enLaBase.start_date)} al {fechaCorta(enLaBase.end_date)}.
+          <br />
+          Por eso el espacio no se deja vender en esas fechas, aunque acá arriba
+          figure libre. Si ese contrato ya no va, cancelalo.
+        </div>
+      </div>
+    </div>
+  );
+
   if (!preguntando) {
     return (
+      <>
+      {cartelFantasma}
       <button
         onClick={() => setPreguntando(true)}
         style={{
@@ -80,12 +117,15 @@ export default function CancelarContrato({
           fontFamily: "inherit", cursor: "pointer",
         }}
       >
-        <Trash2 size={13} /> Cancelar el contrato
+        <Trash2 size={13} /> {fantasma ? "Cancelar el contrato de la base" : "Cancelar el contrato"}
       </button>
+      </>
     );
   }
 
   return (
+    <>
+    {cartelFantasma}
     <div
       style={{
         padding: "11px 12px", borderRadius: "var(--r-lg)",
@@ -130,5 +170,6 @@ export default function CancelarContrato({
         </button>
       </div>
     </div>
+    </>
   );
 }

@@ -44,6 +44,7 @@ ACCIONES = {
     "archivo.descarga": "Documento descargado",
     "sede.baja": "Sede borrada",
     "sede.renumerar": "Plano renumerado",
+    "contrato.importado": "Contratos importados del plano",
 }
 
 # Un año. Suficiente para cualquier reclamo de un proveedor sobre un contrato

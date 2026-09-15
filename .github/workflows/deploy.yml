@@ -38,6 +38,17 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
         working-directory: frontend
+      # Las suites puras del frontend: geometría, nomenclatura, disponibilidad y
+      # el estado comercial. Corren sin navegador —transpilan el .ts con el
+      # esbuild que ya trae vite y afirman en node— y tardan seis segundos.
+      # Estuvieron fuera de CI hasta acá, que es como una suite se pudre: la
+      # escribe alguien, pasa en su máquina y nadie se entera cuando deja de
+      # pasar. Lo que fijan es justo lo que no se cae solo — que un contrato se
+      # pinte en SU sede, que la fusión reemplace en vez de rellenar — y de eso
+      # nadie se entera hasta que alguien vende mal.
+      - name: Pruebas puras
+        run: npm run probar
+        working-directory: frontend
       - name: Build
         run: npm run build
         working-directory: frontend

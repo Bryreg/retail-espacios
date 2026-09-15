@@ -1,14 +1,19 @@
 """Resolve a normalised Space back to the fixture it came from.
 
-The project keeps commercial data in two places: denormalised inside each
-fixture of a sede's ``layout_snapshots`` JSON, and normalised in
-spaces/space_leases once a contract is saved. The ``rentable`` flag lives only
-in the fixture JSON — the ``spaces`` table cannot gain a column because the app
-creates its schema with ``create_all`` and never migrates, so a new column would
-simply not exist on the already-deployed database.
+El plano y la base guardan cosas distintas, a propósito: el JSON del layout
+guarda lo que ES el mueble —dónde está, cuánto mide, cómo se llama, si se
+alquila— y ``spaces``/``space_leases`` guardan lo que se le VENDIÓ. Lo comercial
+estuvo mucho tiempo escrito en los dos lados a la vez, sin nada que los obligara
+a coincidir; desde el corte hay una sola verdad y este módulo une las dos mitades
+en la dirección que hace falta: del código de un espacio al mueble que lo dibuja.
 
-This module bridges the two so the API can refuse a contract on a fixture the
-user marked as infrastructure.
+La bandera ``rentable`` vive sólo en el JSON — ``spaces`` no puede ganar una
+columna porque la aplicación crea su esquema con ``create_all`` y nunca migra,
+así que una columna nueva simplemente no existiría en la base ya desplegada.
+
+Con eso la API puede negarle un contrato a un mueble marcado como infraestructura
+—y, al final del archivo, frenar un guardado que sacaría del plano un espacio que
+todavía tiene contrato vivo.
 """
 import json
 import math
@@ -735,3 +740,103 @@ def choques_nuevos(previas: list[dict], nuevas: list[dict]) -> list[str]:
         "espacios compartiendo contratos, archivos y correos de montaje."
         for code, ids in por_codigo
     ]
+
+
+# ─── La tercera puerta: sacar de circulación algo que está vendido ────────────
+#
+# La auditoría encontró que TODA edición del plano que retira un espacio de la
+# venta deja su contrato vivo en la base, por tres puertas distintas:
+#
+#   1. borrar el mueble;
+#   2. pasar una góndola de doble a simple — la cara B desaparece;
+#   3. marcarlo «no comercializable».
+#
+# Ninguna avisaba, porque el plano NO le escribe a la base: ese camino no
+# existe. El contrato quedaba vivo, sin nada en pantalla que lo mostrara, y
+# aparecía meses después al intentar vender: «está libre y el sistema dice que
+# está ocupado». Así se reportó el caso que originó todo esto.
+#
+# Se comprueba acá, al guardar el plano, y no en cada botón de borrar: es el
+# único lugar por el que pasan las tres puertas y los cuatro caminos —el panel
+# del 2D, el del 3D, la tecla Supr y el borrado en lote—. Un guardarraíl que hay
+# que acordarse de poner en cada botón es un guardarraíl que se va a olvidar.
+
+
+def espacios_ofrecidos(fixtures: list[dict], sede: str) -> set[str]:
+    """Los códigos COMPLETOS que este plano pone a la venta hoy.
+
+    Una góndola doble son dos espacios: ``NAVE-GON-60`` y ``NAVE-GON-60-B``.
+    Un mueble no comercializable NO está — y ése es justamente uno de los casos
+    que hay que encontrar.
+    """
+    ofrecidos: set[str] = set()
+    for fixture in fixtures:
+        if not isinstance(fixture, dict):
+            continue
+        code = (fixture.get("code") or "").strip().upper()
+        if not code or not es_comercializable(fixture):
+            continue
+        completo = _full_code(code, sede)
+        ofrecidos.add(completo)
+        if fixture.get("gondolaType") == "double" or fixture.get("type") == "gondola_doble":
+            ofrecidos.add(f"{completo}-B")
+    return ofrecidos
+
+
+def contratos_que_quedarian_sin_mueble(
+    db: Session, sede: str, previas: list[dict], nuevas: list[dict],
+) -> list[str]:
+    """Las frases de los contratos vivos que este guardado dejaría huérfanos.
+
+    **Sólo lo que este guardado CREA**, igual que ``choques_nuevos`` y por la
+    misma razón: una sede que YA tiene un contrato sin mueble —las que había
+    antes de que esto existiera— quedaría imposible de guardar para siempre, y
+    la regla que no se negocia es que un plano roto se abre, se mira, se mueve
+    y se guarda. Sólo se frena el espacio que este guardado retira.
+
+    Un plano que entra por primera vez no se compara con nada y pasa.
+
+    La plata no entra en las frases. Para decidir alcanza con el proveedor y
+    hasta cuándo va; el valor no ayuda a nadie a elegir y es un dato menos
+    viajando.
+    """
+    if not previas:
+        return []
+    perdidos = espacios_ofrecidos(previas, sede) - espacios_ofrecidos(nuevas, sede)
+    if not perdidos:
+        return []
+
+    # Import local: `models` ya está importado arriba para `LayoutSnapshot`,
+    # pero `date` sólo hace falta acá.
+    from datetime import date
+
+    from app.models.models import Space, SpaceLease
+
+    hoy = date.today()
+    vivos = (
+        db.query(SpaceLease, Space)
+        .join(Space, Space.id == SpaceLease.space_id)
+        .filter(
+            Space.sede == sede.strip().upper(),
+            SpaceLease.is_active.is_(True),
+            SpaceLease.end_date >= hoy,
+        )
+        .all()
+    )
+
+    frases = []
+    for lease, space in vivos:
+        completo = (space.code or "").strip().upper()
+        if completo not in perdidos:
+            continue
+        # Se nombra por el código CORTO: es el que está en el plano y en la
+        # cartelería de la tienda, y es el que la persona acaba de tocar.
+        corto = sin_prefijo_de_sede(completo, sede)
+        quien = lease.supplier.name if lease.supplier else "sin proveedor"
+        frases.append(
+            f"«{corto}» tiene un contrato de {quien} hasta el "
+            f"{lease.end_date.isoformat()}. Cancelalo primero, o volvé a poner "
+            f"el mueble: si se va del plano, el contrato queda vivo y sin nada "
+            f"que lo muestre."
+        )
+    return sorted(frases)

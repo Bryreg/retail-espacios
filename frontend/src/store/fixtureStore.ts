@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ReferenceRates, UnifiedFixture } from "../types/fixtures";
+import { fusionarEstadoComercial } from "../utils/estadoComercial";
+import type { EstadoPorEspacio } from "../utils/estadoComercial";
 import type { SeasonWindows } from "../types/seasons";
 import type { Vista3D } from "../utils/planta";
 import {
@@ -15,6 +17,7 @@ import {
   saveReferenceRates,
   saveSeasonWindows,
 } from "../api/layout";
+import { fetchEstadoComercial } from "../api/spaces";
 import { useAuthStore } from "./authStore";
 
 const MAX_UNDO = 50;
@@ -49,6 +52,90 @@ function cancelScheduledSave(sede: string) {
     clearTimeout(existing);
     _saveTimers.delete(sede);
   }
+}
+
+// ─── Lo comercial vive en la base, no en el plano ─────────────────────────────
+
+/**
+ * Los campos que la BASE manda y el layout ya no guarda.
+ *
+ * El servidor los recorta al recibir un plano (`_sin_contrato` en
+ * `routers/layout.py`); esto los recorta también **al mandarlos**, para que lo
+ * que viaja por el cable sea sólo geometría. Con los dos lados cortando, ningún
+ * camino —un guardado viejo en cola, un `force` de conflicto, un bootstrap—
+ * puede volver a escribir un contrato en el JSON.
+ */
+const CAMPOS_DE_CONTRATO = [
+  "status", "supplierName", "brandCategory", "negotiatedValue",
+  "startDate", "endDate", "observation",
+] as const;
+
+/** El mismo plano sin una sola palabra de lo comercial. No toca el original. */
+function sinComercial(fixtures: UnifiedFixture[]): UnifiedFixture[] {
+  return fixtures.map((f) => {
+    const limpio: Record<string, unknown> = { ...f };
+    for (const campo of CAMPOS_DE_CONTRATO) delete limpio[campo];
+    if (limpio.faceB && typeof limpio.faceB === "object") {
+      const caraB: Record<string, unknown> = { ...(limpio.faceB as object) };
+      for (const campo of CAMPOS_DE_CONTRATO) delete caraB[campo];
+      if (Object.keys(caraB).length > 0) limpio.faceB = caraB;
+      else delete limpio.faceB;
+    }
+    return limpio as unknown as UnifiedFixture;
+  });
+}
+
+/**
+ * ¿Los dos mapas comerciales dicen lo mismo?
+ *
+ * Hace falta aparte de la identidad de los planos por una razón concreta: un
+ * contrato para un espacio que ningún plano dibuja NO se le pega a ningún
+ * mueble, así que puede aparecer, cambiar o irse sin que se mueva un solo
+ * arreglo de muebles. Comparando sólo los planos, el fantasma se dibujaría una
+ * vez y después se quedaría congelado en la pantalla.
+ */
+function mismoMapa(a: EstadoPorEspacio, b: EstadoPorEspacio): boolean {
+  if (a === b) return true;
+  const claves = Object.keys(a);
+  if (claves.length !== Object.keys(b).length) return false;
+  for (const clave of claves) {
+    const x = a[clave];
+    const y = b[clave];
+    if (!y) return false;
+    if (x.status !== y.status || x.supplierName !== y.supplierName ||
+        x.brandCategory !== y.brandCategory || x.negotiatedValue !== y.negotiatedValue ||
+        x.startDate !== y.startDate || x.endDate !== y.endDate ||
+        x.observation !== y.observation) return false;
+  }
+  return true;
+}
+
+/**
+ * Repintar TODAS las sedes con lo que la base dice que está vendido.
+ *
+ * Se hace sobre todas y no sólo sobre las que acaban de bajar: el estado
+ * comercial cambia sin que cambie una sola revisión de plano, así que atarlo a
+ * la adopción dejaría una venta hecha en otro equipo sin aparecer nunca.
+ *
+ * Devuelve el MISMO objeto cuando ninguna sede cambió — `fusionarEstadoComercial`
+ * conserva la identidad de los arreglos que no toca, y acá se propaga: sin eso,
+ * cada vuelta del poll redibujaría el plano entero y marcaría todo como
+ * modificado.
+ */
+function fusionarTodo(
+  fixturesBySede: Record<string, UnifiedFixture[]>,
+  estado: EstadoPorEspacio,
+): Record<string, UnifiedFixture[]> {
+  let cambio = false;
+  const salida: Record<string, UnifiedFixture[]> = {};
+  for (const [sede, fixtures] of Object.entries(fixturesBySede)) {
+    const fusionado = Array.isArray(fixtures)
+      ? fusionarEstadoComercial(sede, fixtures, estado)
+      : fixtures;
+    if (fusionado !== fixtures) cambio = true;
+    salida[sede] = fusionado;
+  }
+  return cambio ? salida : fixturesBySede;
 }
 
 // Pushes currently awaiting a server response, per sede. Cancelling the timer
@@ -183,8 +270,13 @@ export type SyncState = "idle" | "pulling" | "pushing" | "error" | "conflict";
  * tenía algo útil que decirle. Por eso viaja aparte y entero: `message` es la
  * frase del servidor y `choques` son sus frases, ya escritas para leerse.
  */
+/** Los 409 que son «el servidor miró y dijo que no», con su lista de motivos.
+ *  Se enumeran para no confundirlos con los otros dos 409 del guardado —el
+ *  conflicto entre equipos y la sede borrada—, que se resuelven de otra manera. */
+const RECHAZOS_CONOCIDOS = new Set(["nombres_repetidos", "contratos_vivos"]);
+
 export interface RechazoDelServidor {
-  /** El `detail.code` del 409, tal cual. Hoy sólo `nombres_repetidos`. */
+  /** El `detail.code` del 409, tal cual: `nombres_repetidos` o `contratos_vivos`. */
   code: string;
   message: string;
   choques: string[];
@@ -227,8 +319,19 @@ interface FixtureStore {
   dirty: Record<string, boolean>;
   /** Sedes another workstation modified while we held unsaved edits. */
   conflicts: Record<string, string>;
-  /** Sedes cuyo último guardado el SERVIDOR RECHAZÓ por su propia regla —hoy,
-   *  nombres repetidos—, con lo que el servidor contestó. No es un conflicto
+  /** Lo que la BASE dice de cada espacio, crudo, tal como bajó. Es la fuente;
+   *  lo que queda pegado a cada mueble es la copia derivada.
+   *
+   *  Se conserva porque hay una pregunta que la copia no puede contestar: un
+   *  contrato para un espacio que NINGÚN plano dibuja no se le pega a nada, así
+   *  que desaparece en la fusión. Es justo el fantasma que hay que encontrar.
+   *
+   *  Fuera de `partialize` a propósito: lleva plata, y esa clave sobrevive al
+   *  logout. */
+  estadoComercial: EstadoPorEspacio;
+  /** Sedes cuyo último guardado el SERVIDOR RECHAZÓ por una regla suya —dos
+   *  muebles llamados igual, o un espacio con contrato vivo que este guardado
+   *  sacaría del plano—, con lo que el servidor contestó. No es un conflicto
    *  entre dos equipos ni una caída de red: el servidor contestó, no escribió
    *  nada, y dijo qué está mal. Se guarda aparte de `syncMessage` porque hay
    *  que poder mostrarlo entero y por sede, no en un tooltip. */
@@ -282,6 +385,7 @@ interface FixtureStore {
 
   // Undoable mutation — use this for all user-initiated changes
   commit: (fixtures: UnifiedFixture[]) => void;
+
   undo: () => void;
   redo: () => void;
 
@@ -299,6 +403,10 @@ interface FixtureStore {
   // ── Sync actions ────────────────────────────────────────────────────────────
   /** Pull every sede from the server and adopt whatever changed. */
   syncFromServer: () => Promise<void>;
+  /** Volver a leer de la base qué está vendido y repintarlo en TODAS las sedes.
+   *  Lo comercial ya no viaja en el layout, así que cambia sin que cambie una
+   *  sola revisión de plano: vender, cancelar o subir una planilla lo mueve. */
+  refrescarComercial: () => Promise<void>;
   /** Push one sede now, bypassing the debounce. */
   pushSede: (sede: string, opts?: { force?: boolean }) => Promise<void>;
   /** Push the shared sede list / catalog labels. */
@@ -353,6 +461,7 @@ export const useFixtureStore = create<FixtureStore>()(
       settingsRev: null,
       dirty: {},
       conflicts: {},
+      estadoComercial: {},
       rechazos: {},
       syncState: "idle",
       syncMessage: null,
@@ -391,6 +500,7 @@ export const useFixtureStore = create<FixtureStore>()(
           settingsRev: null,
           dirty: {},
           conflicts: {},
+          estadoComercial: {},
           rechazos: {},
           past: [],
           future: [],
@@ -718,7 +828,11 @@ export const useFixtureStore = create<FixtureStore>()(
         set({ syncState: "pushing", syncMessage: null });
         const run = (async () => {
         try {
-          const saved = await saveLayout(sede, fixtures, base);
+          // Geometría y nada más. Lo comercial es de la base: el servidor lo
+          // recorta al recibir, y esto lo recorta al mandar — así el JSON que
+          // se guarda no vuelve a tener una segunda copia del contrato ni por
+          // un guardado que quedó en cola desde antes del corte.
+          const saved = await saveLayout(sede, sinComercial(fixtures), base);
           // The sede may have been deleted while this request was in flight.
           // Writing serverRev/dirty back would leave bookkeeping for a sede
           // that is gone, and the next pull would read it as live again.
@@ -779,25 +893,25 @@ export const useFixtureStore = create<FixtureStore>()(
               });
               return;
             }
-            // El guardarraíl de nombres del servidor: este guardado dejaría dos
-            // muebles llamados igual en la sede. NO es un conflicto entre dos
-            // equipos —ofrecer «Conservar la mía» sería un lazo, porque forzar
-            // vuelve a pasar por la misma comprobación y vuelve a fallar—: es un
-            // nombre que hay que corregir en el plano. Se dice cuál, con las
-            // frases que manda el servidor, y el guardado queda pendiente: en
-            // cuanto el nombre se arregle, el reintento entra.
-            if (typeof detail === "object" && detail?.code === "nombres_repetidos") {
+            // Los guardarraíles del servidor: este guardado dejaría dos muebles
+            // llamados igual, o sacaría del plano un espacio con contrato vivo.
+            // NO es un conflicto entre dos equipos —ofrecer «Conservar la mía»
+            // sería un lazo, porque forzar vuelve a pasar por la misma
+            // comprobación y vuelve a fallar—: es algo que hay que arreglar en
+            // el plano, o un contrato que hay que cancelar. Se dice cuál, con
+            // las frases que manda el servidor, y el guardado queda pendiente:
+            // en cuanto se arregle, el reintento entra solo.
+            if (typeof detail === "object" && RECHAZOS_CONOCIDOS.has(detail?.code)) {
               const choques: string[] = (Array.isArray(detail?.choques) ? detail.choques : [])
                 .map((x: unknown) => String(x))
                 .filter(Boolean);
               const message = String(
-                detail?.message ??
-                  `El servidor no guardó «${sede}»: quedarían dos muebles llamados igual.`,
+                detail?.message ?? `El servidor no guardó «${sede}».`,
               );
               set((s) => ({
                 rechazos: {
                   ...s.rechazos,
-                  [sede]: { code: "nombres_repetidos", message, choques },
+                  [sede]: { code: String(detail.code), message, choques },
                 },
                 // `error` es «no se pudo hablar con el servidor» y se dibuja
                 // «Sin conexión»: acá hubo conexión y hubo respuesta, así que el
@@ -987,8 +1101,13 @@ export const useFixtureStore = create<FixtureStore>()(
         // above all must not push them back.
         const roleChanged = get().dataRole !== role;
         try {
-          const [entries, settings, rates, seasons] = await Promise.all([
+          const [entries, estado, settings, rates, seasons] = await Promise.all([
             fetchAllLayouts(),
+            // Lo comercial es tan obligatorio como el plano: sin esto no se sabe
+            // qué está vendido, y un plano sin fusionar pinta TODO libre. Si
+            // falla, falla la sincronización entera y nos quedamos con la copia
+            // que ya teníamos — mentir es peor que no actualizar.
+            fetchEstadoComercial(),
             fetchLayoutSettings().catch(() => null),
             // The rates endpoint is admin-only (it's money) — a worker session
             // must not even ask for it, and always holds null.
@@ -1047,7 +1166,13 @@ export const useFixtureStore = create<FixtureStore>()(
             }
 
             const next: Partial<FixtureStore> = {
-              fixturesBySede,
+              // La fusión va acá, DESPUÉS de reconciliar: sobre todas las sedes
+              // y no sólo sobre las que cambiaron de revisión. Una venta no
+              // toca el plano, así que no hay revisión nueva que la delate.
+              fixturesBySede: fusionarTodo(fixturesBySede, estado),
+              // El mapa crudo, además de fundido: la fusión no puede guardar un
+              // contrato que no tiene mueble donde pegarse.
+              estadoComercial: estado,
               serverRev,
               dataRole: role,
               syncState: Object.keys(state.conflicts).length ? "conflict" : "idle",
@@ -1148,6 +1273,31 @@ export const useFixtureStore = create<FixtureStore>()(
         }
       },
 
+      // ── Sólo lo comercial ─────────────────────────────────────────────────
+      // Barata: la base sólo tiene fila para lo que se vendió alguna vez, así
+      // que la respuesta es del tamaño de los contratos vivos, no del plano.
+      refrescarComercial: async () => {
+        if (!canRead()) return;
+        try {
+          const estado = await fetchEstadoComercial();
+          set((state) => {
+            const fixturesBySede = fusionarTodo(state.fixturesBySede, estado);
+            // Identidad: si nada cambió no se redibuja el plano. El mapa crudo
+            // se guarda igual —es barato y es la fuente—, pero sólo cuando algo
+            // se movió de verdad, para no despertar a la pantalla cada 20 s.
+            const igual =
+              fixturesBySede === state.fixturesBySede &&
+              mismoMapa(state.estadoComercial, estado);
+            return igual ? state : ({ fixturesBySede, estadoComercial: estado } as FixtureStore);
+          });
+        } catch (err: any) {
+          if (err?.response?.status === 401) return;
+          // Sin respuesta se conserva lo que ya está pintado. Pintar todo libre
+          // porque la red falló sería justo el fantasma que esto vino a matar.
+          console.warn("[layout sync] no se pudo leer el estado comercial:", err);
+        }
+      },
+
       // ── Cheap change detection ────────────────────────────────────────────
       pollForChanges: async () => {
         if (!canRead()) return;
@@ -1164,7 +1314,15 @@ export const useFixtureStore = create<FixtureStore>()(
             revisions.some((r) => (serverRev[r.sede] ?? null) !== (r.updated_at ?? "")) ||
             // A sede vanished server-side.
             Object.keys(serverRev).some((s) => !revisions.find((r) => r.sede === s));
-          if (changed) await get().syncFromServer();
+          if (changed) {
+            await get().syncFromServer();
+          } else {
+            // El plano no se movió, pero lo comercial ya no vive en el plano:
+            // una venta, una cancelación o una planilla cargada en otro equipo
+            // no cambian ninguna revisión. Sin esta rama, esta pestaña seguiría
+            // mostrando el mapa de contratos de cuando se abrió.
+            await get().refrescarComercial();
+          }
         } catch {
           /* offline or transient — the next tick retries */
         }

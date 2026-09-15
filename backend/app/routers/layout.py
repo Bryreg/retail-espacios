@@ -9,7 +9,11 @@ from app.database import get_db
 from app.models.models import LayoutSnapshot
 from app.services.bitacora import anotar
 from app.services.sede_archive import archive_sede_spaces, count_commercial_rows
-from app.services.layout_lookup import choques_nuevos, normalizar
+from app.services.layout_lookup import (
+    choques_nuevos,
+    contratos_que_quedarian_sin_mueble,
+    normalizar,
+)
 from app.services.renumeracion import (
     InvarianteRoto,
     RenumeracionBloqueada,
@@ -17,7 +21,12 @@ from app.services.renumeracion import (
     nombres_anteriores,
     planificar,
 )
+from app.services.importar_del_plano import (
+    aplicar as aplicar_importacion,
+    revisar as revisar_importacion,
+)
 from app.schemas.layout import (
+    ImportacionOut,
     LayoutIn,
     LayoutOut,
     LayoutRevision,
@@ -128,14 +137,67 @@ def _price_map(fixtures: list) -> dict:
     return index
 
 
-def _restore_missing_prices(incoming: list, stored: list) -> None:
-    """Refill negotiated amounts the client did not send, in place.
+#: Los campos que describen un CONTRATO, no un mueble.
+#:
+#: Vivieron años acá adentro, en el JSON del layout, al mismo tiempo que en
+#: ``space_leases``. Dos lugares para el mismo hecho, y ningún mecanismo que los
+#: obligara a coincidir: el plano nunca le escribió a la base —ese camino no
+#: existe— y el parche del navegador hacia el plano se podía perder de varias
+#: maneras. De ahí salían los tres síntomas de la auditoría, todos con la misma
+#: cara: «el espacio está libre y el sistema dice que está ocupado».
+#:
+#: Ahora la base es la única verdad y esto se descarta al guardar. El layout
+#: guarda lo que ES el mueble —dónde está, cuánto mide, cómo se llama— y el
+#: navegador pide lo comercial a ``GET /api/spaces/comercial``.
+#:
+#: Los ``slots`` NO están en esta lista y es a propósito: el estado por repisa
+#: del editor 3D no tiene contraparte en ninguna tabla, así que tiene una sola
+#: fuente y no puede discrepar con nada. El desfase necesita DOS verdades.
+CAMPOS_DE_CONTRATO = (
+    "status", "supplierName", "brandCategory", "negotiatedValue",
+    "startDate", "endDate", "observation",
+)
 
-    Worker responses have every ``negotiatedValue`` stripped server-side. Only
-    an admin may write, so a redacted payload should never come back — but if
-    one ever did, silently zeroing every contract in a sede would be
-    unrecoverable. An ABSENT key is refilled from the stored snapshot; an
-    explicit value (including 0) is a real edit and is always honoured.
+
+def _sin_contrato(fixtures: list) -> None:
+    """Saca del layout lo que es de la base, en el lugar.
+
+    Se descarta en silencio en vez de rechazar el guardado: un cliente viejo
+    —una pestaña abierta desde antes del despliegue— sigue mandando estos
+    campos, y trabarle el plano por eso sería romperle el trabajo por una razón
+    que no puede entender ni arreglar.
+    """
+    for fixture in fixtures:
+        if not isinstance(fixture, dict):
+            continue
+        for campo in CAMPOS_DE_CONTRATO:
+            fixture.pop(campo, None)
+        cara_b = fixture.get("faceB")
+        if isinstance(cara_b, dict):
+            for campo in CAMPOS_DE_CONTRATO:
+                cara_b.pop(campo, None)
+            # Una cara B que queda vacía se va: `facesOf` no la mira para saber
+            # si la góndola es doble —eso lo dice `gondolaType`— así que un
+            # objeto vacío no significa nada y sólo ocupa.
+            if not cara_b:
+                fixture.pop("faceB", None)
+
+
+def _restore_missing_slot_prices(incoming: list, stored: list) -> None:
+    """Refill the SLOT amounts the client did not send, in place.
+
+    Worker responses have every ``negotiatedValue`` stripped server-side. Sólo
+    un admin puede escribir, así que una copia redactada no debería volver
+    nunca — pero si volviera, poner en cero la plata de una sede entera no se
+    puede deshacer. Una llave AUSENTE se rellena del snapshot guardado; un valor
+    explícito (el 0 incluido) es una edición de verdad y siempre manda.
+
+    **Sólo los slots, y es la línea que no se puede mover.** El mueble y su cara
+    B ya no llevan precio: ``_sin_contrato`` lo saca porque el contrato es de la
+    base. Rellenarlos acá volvería a meter en el JSON justo lo que se acaba de
+    cortar, y el desfase entero volvería con ellos. El estado por repisa, en
+    cambio, no tiene contraparte en ninguna tabla: tiene UNA fuente, que es
+    esta, y por eso hay que cuidarla.
     """
     if not stored:
         return
@@ -148,11 +210,6 @@ def _restore_missing_prices(incoming: list, stored: list) -> None:
         entry = index.get(fixture.get("id"))
         if not entry:
             continue
-        if "top" in entry and "negotiatedValue" not in fixture:
-            fixture["negotiatedValue"] = entry["top"]
-        face_b = fixture.get("faceB")
-        if isinstance(face_b, dict) and "faceB" in entry and "negotiatedValue" not in face_b:
-            face_b["negotiatedValue"] = entry["faceB"]
         for slot in fixture.get("slots") or []:
             if not isinstance(slot, dict):
                 continue
@@ -507,6 +564,71 @@ def _planificar(db: Session, payload: RenumeracionIn):
         )
 
 
+# ─── Los contratos que viven sólo en el JSON del layout ───────────────────────
+#
+# La otra mitad del desfase, y la que NO se puede ver desde el navegador: la
+# fusión del store reemplaza lo comercial con lo que dice la base, así que un
+# contrato que sólo está en el JSON desaparece antes de que ninguna pantalla lo
+# mire. Sólo se ve leyendo el snapshot crudo, que es lo que pasa acá.
+#
+# Los dos pasos son la misma forma que la renumeración y por la misma razón: lo
+# que escribe contratos se mira antes de escribirlo. El previo no toca una fila.
+#
+# Admin-only los dos: esto lleva plata, y el de aplicar además CREA contratos.
+
+
+def _a_importacion(plan, aplicado: bool) -> ImportacionOut:
+    return ImportacionOut(
+        importables=[vars(x) for x in plan.importables],
+        incompletos=[vars(x) for x in plan.incompletos],
+        ya_estaban=plan.ya_estaban,
+        aplicado=aplicado,
+    )
+
+
+@router.get("/importacion/previo", response_model=ImportacionOut,
+            dependencies=[Depends(require_admin)])
+def importacion_previo(db: Session = Depends(get_db)) -> ImportacionOut:
+    """Qué contratos hay en los planos que la base no tiene. **No escribe.**
+
+    Es un GET porque no cambia nada y porque así la pantalla lo puede pedir sola
+    al abrir Supervisar, sin que nadie tenga que acordarse de ir a buscarlo.
+    """
+    return _a_importacion(revisar_importacion(db), aplicado=False)
+
+
+@router.post("/importacion/aplicar", response_model=ImportacionOut,
+             dependencies=[Depends(require_admin)])
+def importacion_aplicar(
+    request: Request,
+    rol: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> ImportacionOut:
+    """Crear en la base los contratos que hoy sólo existen en el JSON.
+
+    Idempotente: lo que ya tiene contrato vivo no se toca, así que apretarlo dos
+    veces no duplica nada. Lo que no se puede importar —sin proveedor o sin
+    fechas— se devuelve igual, para mirarlo a mano.
+
+    Queda en la bitácora: esto crea contratos, que es plata.
+    """
+    plan = aplicar_importacion(db)
+    if plan.importables:
+        anotar(
+            db, request, rol,
+            accion="contrato.importado",
+            detalle=(
+                f"{len(plan.importables)} contrato(s) importados del JSON del "
+                f"layout: " + ", ".join(x.espacio for x in plan.importables)
+            ),
+        )
+        # `anotar` no hace commit —lo hace quien llama— y el servicio ya cerró
+        # su transacción con los contratos adentro. Sin esta línea la bitácora
+        # se perdería en silencio, que es la peor forma de no tener bitácora.
+        db.commit()
+    return _a_importacion(plan, aplicado=True)
+
+
 @router.post("/renumeracion/previo", response_model=RenumeracionOut,
              dependencies=[Depends(require_admin)])
 def renumeracion_previo(
@@ -630,6 +752,8 @@ def save_layout(sede: str, payload: LayoutIn, db: Session = Depends(get_db)):
     fixtures = payload.fixtures
     # El nombre viejo es del servidor: viaja en la respuesta y no se guarda.
     _sin_nombre_viejo(fixtures)
+    # El contrato es de la base. Ver `CAMPOS_DE_CONTRATO`.
+    _sin_contrato(fixtures)
     if snap:
         try:
             previous = json.loads(snap.fixtures_json or "[]")
@@ -680,7 +804,45 @@ def save_layout(sede: str, payload: LayoutIn, db: Session = Depends(get_db)):
                 },
             )
 
-        _restore_missing_prices(fixtures, previous)
+        # ── La tercera puerta: sacar de circulación algo que está vendido ────
+        #
+        # Borrar el mueble, pasar la góndola de doble a simple o marcarlo «no
+        # comercializable» retira el espacio de la venta — y dejaba su contrato
+        # vivo en la base, sin nada en pantalla que lo mostrara. Ése es el caso
+        # que se reportó: «está libre y el sistema dice que está ocupado».
+        #
+        # Se frena acá porque es el único lugar por el que pasan las tres
+        # puertas y los cuatro caminos de borrado. Y se frena en vez de cancelar
+        # solo: cancelar un contrato es plata y un compromiso con un proveedor,
+        # no lo decide un guardado del plano. Se dice cuál, y el guardado queda
+        # pendiente hasta que la persona cancele o devuelva el mueble.
+        huerfanos = contratos_que_quedarian_sin_mueble(
+            db, sede,
+            [f for f in previous if isinstance(f, dict)],
+            [f for f in fixtures if isinstance(f, dict)],
+        )
+        if huerfanos:
+            logger.info(
+                "layout %s: guardado rechazado por contratos sin mueble — %s",
+                sede, " · ".join(huerfanos),
+            )
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "contratos_vivos",
+                    "message": (
+                        f"Este guardado sacaría de «{sede}» {len(huerfanos)} "
+                        f"espacio(s) que tienen contrato vivo."
+                    ),
+                    "choques": huerfanos,
+                },
+            )
+
+        # El precio del MUEBLE ya no viaja en el layout —es de la base— pero el
+        # de cada repisa sí, y sigue saliendo redactado para un mercaderista.
+        # Sin esto, un guardado hecho desde una copia redactada borraría la
+        # plata de todos los slots de la sede sin manera de recuperarla.
+        _restore_missing_slot_prices(fixtures, previous)
         snap.fixtures_json = json.dumps(fixtures)
         # fixtures_json is unchanged when a client re-saves identical data, and
         # SQLAlchemy would then skip the UPDATE and leave updated_at stale.

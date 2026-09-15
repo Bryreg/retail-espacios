@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
+  AlertTriangle,
   RefreshCw,
   Building2,
   Plus,
@@ -15,10 +16,10 @@ import {
   FileSpreadsheet,
   Box,
 } from "lucide-react";
-import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
+import { useFixtureStore, selectFixtures, normalizeSede } from "../store/fixtureStore";
 import { temaActual, useTema } from "../tema";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
-import client from "../api/client";
+import client, { describeError } from "../api/client";
 import { listSpaceFiles, type SpaceFileMeta } from "../api/files";
 import FileViewerModal from "../components/FileViewerModal";
 import {
@@ -45,6 +46,7 @@ import type {
 import SeasonPicker, { describeRange, hoyComoRango, type DateRange } from "../components/SeasonPicker/SeasonPicker";
 import Libera from "../components/Libera/Libera";
 import ModoVender from "../components/Contrato/ModoVender";
+import { fechaCorta } from "../components/Contrato/Contrato";
 import type { ResumenContrato } from "../components/Contrato/Contrato";
 import Planometria from "../components/Contrato/Planometria";
 import CancelarContrato from "../components/Contrato/CancelarContrato";
@@ -65,6 +67,9 @@ import { inclusiveDays, parseISODate, toISODate, upcomingSeasons } from "../type
 import { nombreDeMueble, nombreAnterior, nombresChocados, choqueDeRotulo } from "../utils/nomenclatura";
 import type { SemillaContrato } from "../components/Contrato/Contrato";
 import { fechaEnCurso } from "../utils/propuesta";
+import { espaciosSinMueble } from "../utils/espaciosSinMueble";
+import { contratosSinMueble, type ContratoSinMueble } from "../utils/auditoriaDesfase";
+import { revisarImportacion, aplicarImportacion, type Importacion } from "../api/layout";
 
 // ─── Date / money helpers ────────────────────────────────────────────────────
 
@@ -1960,9 +1965,9 @@ function FixtureDetailCard({
   /** El mismo acuerdo otra vez, prellenado. Sólo llega cuando el contrato se
    *  está por caer: antes de eso no hay nada que renovar. */
   onRenovar?: () => void;
-  /** El contrato se canceló: hay que escribir el JSON del layout para que el
-   *  mapa repinte el mueble como libre. */
-  onCancelado?: (patch: Partial<FaceData>) => void;
+  /** El contrato se canceló en la base. No lleva parche: el mapa se pinta
+   *  desde ahí, así que alcanza con volver a leer. */
+  onCancelado?: () => void;
   onOpenFile: (f: SpaceFileMeta) => void;
 }) {
   const rentable = isRentable(fixture);
@@ -2163,16 +2168,92 @@ function FixtureDetailCard({
         {/* Soltar el espacio. Al final del panel y con confirmación: es
             destructivo, y hasta ahora no existía en ninguna pantalla pese a que
             el backend lo soporta —el mensaje de choque de fechas mandaba a
-            «cancelalo primero» señalando algo que no se podía hacer. */}
-        {isAdmin && rentable && hasContract && onCancelado && (
+            «cancelalo primero» señalando algo que no se podía hacer.
+
+            NO se pide `hasContract`, y es el arreglo: `hasContract` sale del
+            JSON del layout, que es una copia. El caso que hay que poder
+            resolver es justamente aquel en que la copia y la base no coinciden
+            —la base tiene el contrato, el plano pinta el mueble libre—, y ahí
+            `hasContract` es `false`: el botón desaparecía justo cuando hacía
+            falta, y «cancelalo primero» volvía a señalar algo imposible.
+
+            `CancelarContrato` le pregunta al servidor y se dibuja solo si hay
+            un contrato de verdad que soltar, así que la condición correcta la
+            tiene él, no esta pantalla. */}
+        {isAdmin && rentable && onCancelado && (
           <CancelarContrato
             key={entry.code}
             spaceCode={fullSpaceCode(fixture.sede, entry.code)}
+            segunElPlano={hasContract}
             onCancelado={onCancelado}
           />
         )}
       </div>
     </Card>
+  );
+}
+
+/** Contratos que la planilla creó sobre espacios que NINGÚN plano dibuja.
+ *
+ *  El contrato QUEDÓ —lo escribió el servidor, es plata y es un compromiso con
+ *  un proveedor— pero no hay mueble donde verlo. No es un desfase entre dos
+ *  copias: desde que lo comercial vive sólo en la base, el mapa se pinta de ahí
+ *  y siempre coincide. Es que ese espacio no está en el plano: se borró el
+ *  mueble, se pasó la góndola de doble a simple y desapareció la cara B, o
+ *  nunca se dibujó y el código de la planilla tiene un error de tipeo.
+ *
+ *  Se dice en vez de callarlo, y se dice qué hacer. Callarlo es lo que produce,
+ *  meses después, «el espacio está libre y el sistema no me deja venderlo». */
+function AvisoSinMueble({ espacios, onCerrar }: { espacios: string[]; onCerrar: () => void }) {
+  const uno = espacios.length === 1;
+  return (
+    <div
+      data-capa-modal
+      role="alertdialog"
+      style={{
+        position: "fixed", inset: 0, zIndex: 70,
+        background: "rgba(26,24,20,.45)",
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onCerrar(); }}
+    >
+      <div
+        style={{
+          width: "min(460px, 100%)", padding: 18,
+          background: "var(--surface)", borderRadius: "var(--r-2xl)",
+          border: "1px solid var(--line)", boxShadow: "var(--shadow-lg)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 9, marginBottom: 10 }}>
+          <AlertTriangle size={17} style={{ color: "var(--warning, var(--ink-2))", flexShrink: 0, marginTop: 1 }} />
+          <div style={{ fontSize: 14.5, fontWeight: 700 }}>
+            {uno ? "Un contrato quedó guardado" : `${espacios.length} contratos quedaron guardados`}
+            {" "}sobre {uno ? "un espacio" : "espacios"} que el plano no dibuja
+          </div>
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6, marginBottom: 14 }}>
+          <b>{espacios.join(" · ")}</b>
+          <br /><br />
+          {uno ? "El contrato existe y vale" : "Los contratos existen y valen"}, pero no hay
+          mueble con ese código en el plano de esa tienda, así que no {uno ? "se va" : "se van"} a
+          ver en el mapa — y el espacio va a rechazar cualquier venta nueva
+          nombrando un contrato que la ficha no muestra.
+          <br /><br />
+          Revisá el código en la planilla, o dibujá el mueble en el plano de esa
+          sede: en cuanto exista, el contrato aparece solo.
+        </div>
+        <button
+          onClick={onCerrar}
+          style={{
+            width: "100%", height: 34, borderRadius: "var(--r-md)", border: "none",
+            background: "var(--accent)", color: "#fff",
+            fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
+          }}
+        >
+          Entendido
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -2213,6 +2294,258 @@ function AtencionSection({
       </span>
       {monto !== undefined && (
         <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-1)" }}>{monto}</span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Los contratos que viven SÓLO en el JSON del layout, y el botón que los pasa.
+ *
+ * Es la otra mitad del desfase, y la más silenciosa: estos contratos no están
+ * en ninguna tabla, así que no salen en ningún reporte, no generan aviso de
+ * vencimiento y no existen para nada que consulte la base. Es plata y es un
+ * compromiso con un proveedor que el sistema no sabe que tiene.
+ *
+ * Salieron de un panel del plano 2D que tuvo campos de contrato editables y
+ * escribía el JSON sin tocar la base. Se quitó justamente por esto, pero lo que
+ * se cargó así sigue ahí.
+ *
+ * ── Dos cosas que hacen que esto no sea un botón peligroso ───────────────────
+ *
+ * **Se ve antes de escribir.** La lista de arriba es exactamente lo que se va a
+ * crear, con proveedor, fechas y valor. El servidor la calcula sin tocar una
+ * fila.
+ *
+ * **Lo que falta no se inventa.** Un contrato del plano sin proveedor o sin
+ * fechas no puede ser una fila de `space_leases` —esas columnas son
+ * obligatorias— así que se muestra aparte, con el motivo, para arreglarlo a
+ * mano. Rellenarlo con algo plausible sería fabricar un contrato que nadie
+ * firmó.
+ */
+function ImportarDelPlano({
+  datos, importados, onAplicado,
+}: {
+  datos: Importacion;
+  /** Cuántos se acaban de pasar en esta sesión, para confirmarlo. */
+  importados: number;
+  onAplicado: (r: Importacion) => void;
+}) {
+  const [aplicando, setAplicando] = useState(false);
+  const [error, setError] = useState("");
+  const n = datos.importables.length;
+
+  async function importar() {
+    setError("");
+    setAplicando(true);
+    try {
+      onAplicado(await aplicarImportacion());
+    } catch (e) {
+      setError(describeError(e, "No se pudo importar. Probá de nuevo."));
+    } finally {
+      setAplicando(false);
+    }
+  }
+
+  return (
+    <div>
+      <AtencionSection
+        label="Contrato que sólo vive en el plano"
+        color="var(--warning, var(--ocupado))"
+        monto={n + datos.incompletos.length}
+      />
+      {importados > 0 && (
+        <p style={{
+          fontSize: 11.5, color: "var(--success, var(--ink-2))", lineHeight: 1.5,
+          padding: "2px 6px 8px", fontWeight: 600,
+        }}>
+          {importados} contrato{importados === 1 ? "" : "s"} pasado
+          {importados === 1 ? "" : "s"} a la base. Ya se {importados === 1 ? "ve" : "ven"}
+          {" "}en el mapa.
+        </p>
+      )}
+      <p style={{ fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5, padding: "2px 6px 8px" }}>
+        {n > 0
+          ? "Están escritos en el plano pero no tienen fila en la base: no salen en " +
+            "ningún reporte ni generan aviso de vencimiento. Pasarlos es de una sola vez."
+          : datos.incompletos.length > 0
+          ? "Ninguno de los que quedan se puede pasar automáticamente: hay que " +
+            "completarlos a mano."
+          : "No queda nada por pasar."}
+      </p>
+
+      {datos.importables.map((f) => (
+        <div key={f.espacio} style={{
+          display: "flex", alignItems: "center", gap: 8, padding: "5px 6px",
+        }}>
+          <span style={{
+            fontFamily: "var(--font-mono)", fontSize: 9, fontWeight: 700,
+            letterSpacing: "0.06em", padding: "2px 5px", borderRadius: 3,
+            background: "var(--surface-2)", color: "var(--ink-2)", flexShrink: 0,
+          }}>
+            {f.sede}
+          </span>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+            {f.code}
+          </span>
+          <span style={{
+            fontSize: 11.5, color: "var(--ink-2)", flex: 1, minWidth: 0,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>
+            {f.proveedor}
+          </span>
+          <span style={{ fontSize: 10.5, color: "var(--ink-3)", flexShrink: 0 }}>
+            {fechaCorta(f.desde)} → {fechaCorta(f.hasta)}
+          </span>
+        </div>
+      ))}
+
+      {datos.incompletos.length > 0 && (
+        <div style={{
+          margin: "8px 6px 4px", padding: "9px 10px",
+          borderRadius: "var(--r-lg)", background: "var(--surface-2)",
+          border: "1px solid var(--line)",
+        }}>
+          <p style={{
+            fontFamily: "var(--font-mono)", fontSize: 9.5, fontWeight: 600,
+            letterSpacing: "0.09em", textTransform: "uppercase",
+            color: "var(--ink-3)", margin: "0 0 6px",
+          }}>
+            {datos.incompletos.length} para arreglar a mano
+          </p>
+          {datos.incompletos.map((x) => (
+            <div key={x.espacio} style={{ display: "flex", gap: 8, padding: "2px 0" }}>
+              <span style={{
+                fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700, flexShrink: 0,
+              }}>
+                {x.sede} · {x.code}
+              </span>
+              <span style={{ fontSize: 11, color: "var(--ink-2)" }}>{x.motivo}</span>
+            </div>
+          ))}
+          <p style={{ fontSize: 10.5, color: "var(--ink-3)", lineHeight: 1.45, margin: "6px 0 0" }}>
+            Abrí ese espacio y cargá el contrato desde Vender, con los datos que falten.
+          </p>
+        </div>
+      )}
+
+      {error && (
+        <p style={{ fontSize: 11, color: "var(--danger)", padding: "4px 6px 0" }}>{error}</p>
+      )}
+
+      {n > 0 && (
+        <button
+          onClick={() => void importar()}
+          disabled={aplicando}
+          style={{
+            width: "calc(100% - 12px)", margin: "8px 6px 0", height: 32,
+            borderRadius: "var(--r-md)", border: "none",
+            background: "var(--accent)", color: "#fff",
+            fontSize: 12.5, fontWeight: 700, fontFamily: "inherit",
+            cursor: aplicando ? "wait" : "pointer",
+          }}
+        >
+          {aplicando
+            ? "Importando…"
+            : `Pasar ${n} contrato${n === 1 ? "" : "s"} a la base`}
+        </button>
+      )}
+      {datos.ya_estaban > 0 && (
+        <p style={{ fontSize: 10.5, color: "var(--ink-3)", padding: "6px 6px 0" }}>
+          {datos.ya_estaban} ya {datos.ya_estaban === 1 ? "estaba" : "estaban"} en la base.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Un contrato vivo que NINGÚN plano puede mostrar.
+ *
+ * No es una fila como las otras y por eso no reusa `AtencionRow`: las demás
+ * cuelgan de un mueble —tocarlas lo señala en el plano de al lado— y ésta,
+ * justamente, no tiene mueble. Ése es el hallazgo.
+ *
+ * Por eso trae su propia salida en vez de mandar a mirar el mapa: o se dibuja
+ * el mueble con ese código en el plano de esa sede —y el contrato aparece
+ * solo—, o se cancela desde acá. `CancelarContrato` ya sabe nombrar lo que
+ * encuentra cuando el plano no lo tiene: se construyó para este caso.
+ */
+function FantasmaRow({
+  fila, isAdmin, abierto, onAbrir, onCancelado,
+}: {
+  fila: ContratoSinMueble;
+  isAdmin: boolean;
+  abierto: boolean;
+  onAbrir: () => void;
+  onCancelado: () => void;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onAbrir}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onAbrir(); } }}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        style={{
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "6px 6px", borderRadius: "var(--r-md)", cursor: "pointer",
+          background: abierto || hover ? "var(--surface-2)" : "transparent",
+          transition: "background .12s",
+        }}
+      >
+        <span
+          style={{
+            fontFamily: "var(--font-mono)", fontSize: 9, fontWeight: 700,
+            letterSpacing: "0.06em", padding: "2px 5px", borderRadius: 3,
+            background: "var(--warning-50, var(--surface-2))",
+            color: "var(--warning, var(--ink-2))", flexShrink: 0,
+          }}
+        >
+          {fila.sede || "?"}
+        </span>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+          {fila.code}
+        </span>
+        <span style={{
+          fontSize: 11.5, color: "var(--ink-2)", flex: 1, minWidth: 0,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          {fila.supplierName || "sin proveedor"}
+        </span>
+        <span style={{ fontSize: 10.5, color: "var(--ink-3)", flexShrink: 0 }}>
+          {fila.endDate ? `hasta ${fechaCorta(fila.endDate)}` : "sin fecha"}
+        </span>
+      </div>
+      {abierto && (
+        <div style={{
+          margin: "2px 6px 8px", padding: "9px 10px",
+          borderRadius: "var(--r-lg)", background: "var(--surface-2)",
+          border: "1px solid var(--line)",
+        }}>
+          <p style={{ fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5, margin: "0 0 8px" }}>
+            El plano de <b>{fila.sede || "esa sede"}</b> no tiene ningún mueble con el
+            código <b>{fila.code}</b>, así que este contrato no se ve en el mapa — y ese
+            espacio va a rechazar cualquier venta nueva nombrándolo.
+            <br /><br />
+            Dibujá el mueble con ese código y el contrato aparece solo. Si el espacio ya
+            no existe, cancelalo.
+          </p>
+          {isAdmin ? (
+            <CancelarContrato
+              spaceCode={fila.espacio}
+              segunElPlano={false}
+              onCancelado={onCancelado}
+            />
+          ) : (
+            <p style={{ fontSize: 11, color: "var(--ink-3)", margin: 0 }}>
+              Pedile a un administrador que lo resuelva.
+            </p>
+          )}
+        </div>
       )}
     </div>
   );
@@ -2888,8 +3221,61 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const fixtures = useFixtureStore(selectFixtures);
   const { sedes, sede, setSede, fixturesBySede, syncFromServer, seasonWindows } = useFixtureStore();
   const referenceRates = useFixtureStore((s) => s.referenceRates);
-  const commit = useFixtureStore((s) => s.commit);
+  const refrescarComercial = useFixtureStore((s) => s.refrescarComercial);
+  const estadoComercial = useFixtureStore((s) => s.estadoComercial);
+  /** La auditoría de desfase, calculada en la pantalla.
+   *
+   *  Existe `backend/scripts/auditar_desfase.py`, que hace esto contra la base
+   *  — pero necesita una consola en el servidor, que es un plan pago. Y acá no
+   *  hace falta: el store ya bajó TODOS los planos y el mapa comercial entero,
+   *  porque los necesita para pintar. La auditoría es una resta entre dos cosas
+   *  que ya están en memoria, sin consola y sin credenciales.
+   *
+   *  Además deja de ser una corrida que alguien tiene que acordarse de hacer:
+   *  se ve sola, al lado de lo demás que hay que revisar. */
+  const fantasmas = useMemo(
+    () => contratosSinMueble(fixturesBySede, estadoComercial, normalizeSede),
+    [fixturesBySede, estadoComercial],
+  );
+  /** Espacios con contrato que NINGÚN plano dibuja, después de una planilla.
+   *  Se muestran: el contrato existe y vale, pero no hay mueble donde verlo, y
+   *  un fantasma que nadie nombra es el que aparece meses después al vender
+   *  como «está libre y no me deja venderlo». */
+  const [sinMueble, setSinMueble] = useState<string[] | null>(null);
+  /** Qué fantasma está desplegado, por código completo. Uno a la vez: cada uno
+   *  abre su propio `CancelarContrato`, que consulta la base al montarse. */
+  const [fantasmaAbierto, setFantasmaAbierto] = useState<string | null>(null);
+
   const isAdmin = useAuthStore(selectIsAdmin);
+
+  /** La OTRA mitad del desfase: contratos que viven sólo en el JSON del layout.
+   *
+   *  Ésta no se puede calcular acá. La fusión del store reemplaza lo comercial
+   *  con lo que dice la base, así que un contrato que sólo está en el JSON
+   *  desaparece antes de que esta pantalla lo mire — hay que preguntárselo al
+   *  servidor, que es el único que ve el snapshot crudo.
+   *
+   *  Se pide UNA vez por sesión y sólo para un admin. Es una migración de una
+   *  sola vez: desde el corte el layout no puede guardar un contrato nuevo, así
+   *  que en cuanto se importe lo que había, esto contesta vacío para siempre. */
+  const [importacion, setImportacion] = useState<Importacion | null>(null);
+  useEffect(() => {
+    if (!isAdmin) { setImportacion(null); return; }
+    let vivo = true;
+    revisarImportacion()
+      .then((r) => { if (vivo) setImportacion(r); })
+      // Sin ruido: es un extra de diagnóstico, no algo que la pantalla necesite
+      // para funcionar. Si el servidor no contesta, no se muestra y ya.
+      .catch(() => { if (vivo) setImportacion(null); });
+    return () => { vivo = false; };
+  }, [isAdmin]);
+
+  const pendientesDelPlano = importacion
+    ? importacion.importables.length + importacion.incompletos.length
+    : 0;
+  /** Cuántos se acaban de pasar. Sostiene la confirmación en pantalla: sin
+   *  esto, apretar el botón haría desaparecer la sección sin decir qué pasó. */
+  const [importados, setImportados] = useState(0);
   const [ratesOpen, setRatesOpen] = useState(false);
 
   const [selected, setSelected] = useState<UnifiedFixture | null>(null);
@@ -3515,7 +3901,14 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
 
   const attentionCount =
     kpis.expired.length + kpis.expiring.length + kpis.noContract.length +
-    (isAdmin ? kpis.belowReference.length + montaje.noMontado.length + montaje.sinMontar.length : 0);
+    // Los fantasmas cuentan para TODAS las sedes, no sólo la abierta: un
+    // contrato sin mueble no se ve en ningún plano, así que si sólo contara en
+    // la suya no se vería nunca. Es lo único de esta lista que cruza tiendas.
+    fantasmas.length +
+    (isAdmin
+      ? kpis.belowReference.length + montaje.noMontado.length +
+        montaje.sinMontar.length + pendientesDelPlano
+      : 0);
 
   /** Cuántas caras contesta cada chip de la tabla. Un filtro que no puede
    *  devolver nada no se dibuja: es la misma regla que ya gobernaba el parte,
@@ -4039,34 +4432,14 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
             sede={sede}
             rango={mapRange}
             cerrado={cerrado}
-            onGuardado={(parches, resumen) => {
-              // El JSON del layout es lo que pinta el mapa y responde la
-              // disponibilidad; sin esto el contrato existiría en la base y los
-              // espacios seguirían viéndose libres. Se aplican TODOS los parches
-              // en un solo `commit`: uno por espacio dispararía N guardados del
-              // layout, y el último pisaría a los anteriores.
-              if (parches.length > 0) {
-                const porMueble = new Map<string, { face: "A" | "B"; patch: Partial<FaceData> }[]>();
-                for (const p of parches) {
-                  porMueble.set(p.fixtureId, [
-                    ...(porMueble.get(p.fixtureId) ?? []),
-                    { face: p.face, patch: p.patch },
-                  ]);
-                }
-                commit(
-                  fixtures.map((f) => {
-                    const suyos = porMueble.get(f.id);
-                    if (!suyos) return f;
-                    let siguiente = f;
-                    for (const { face, patch } of suyos) {
-                      siguiente = face === "B"
-                        ? { ...siguiente, faceB: { ...(siguiente.faceB ?? {}), ...patch } as FaceData }
-                        : { ...siguiente, ...patch };
-                    }
-                    return siguiente;
-                  }),
-                );
-              }
+            onGuardado={(resumen) => {
+              // El contrato ya está en la base, que es la única verdad de lo
+              // comercial. Acá se parcheaba el JSON del layout a mano, mueble
+              // por mueble: era la copia que pintaba el mapa, y si esta pestaña
+              // se cerraba antes de que el guardado saliera, el contrato
+              // quedaba en la base y el espacio se seguía viendo libre. Ahora
+              // se vuelve a leer y listo.
+              void refrescarComercial();
               setSelected(null);
               setAnchor(null);
               setEnContrato([]);
@@ -4199,21 +4572,10 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                   onRenovar={isAdmin && entradaDetalle && renovable(entradaDetalle)
                     ? () => renovar(entradaDetalle)
                     : undefined}
-                  onCancelado={(patch) => {
-                    // Igual que al guardar: el JSON del layout es lo que
-                    // pinta el mapa, así que soltar el contrato en la base
-                    // sin tocarlo dejaría el mueble vendido en pantalla.
-                    const objetivo = selected;
-                    const cara = detailFace;
-                    commit(
-                      fixtures.map((f) =>
-                        f.id !== objetivo.id
-                          ? f
-                          : cara === "B"
-                          ? { ...f, faceB: { ...(f.faceB ?? {}), ...patch } as FaceData }
-                          : { ...f, ...patch },
-                      ),
-                    );
+                  onCancelado={() => {
+                    // Igual que al guardar: la fila ya no está en la base y el
+                    // mapa se vuelve a leer de ahí. No hay copia que limpiar.
+                    void refrescarComercial();
                     closeDetail();
                   }}
                   onOpenFile={setViewerFile}
@@ -4223,13 +4585,60 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 <CardHeader title="Para revisar" right={<span>{attentionCount}</span>} />
                 {attentionCount === 0 ? (
                   <div style={{ padding: "0 15px 14px", fontSize: 13, color: "var(--libre-txt)" }}>
-                    Sin contratos vencidos ni próximos a vencer.
+                    Sin contratos vencidos ni próximos a vencer, y todo lo que la base
+                    tiene vendido se ve en el plano.
                   </div>
                 ) : (
                   <div style={{
                     flex: 1, minHeight: 0, padding: "0 9px 10px",
                     display: "flex", flexDirection: "column", gap: 12, overflowY: "auto",
                   }}>
+                    {/* Las dos mitades del desfase van primero, juntas: son lo
+                        único acá que la pantalla no puede mostrar de ninguna otra
+                        forma. Todo lo demás se ve también en el mapa; esto, por
+                        definición, no.
+
+                        Primero la importable, porque tiene arreglo de un botón. */}
+                    {isAdmin && importacion && (pendientesDelPlano > 0 || importados > 0) && (
+                      <ImportarDelPlano
+                        datos={importacion}
+                        importados={importados}
+                        onAplicado={(r) => {
+                          setImportados(r.importables.length);
+                          // Lo importado ya es de la base: el mapa se repinta de
+                          // ahí, y los fantasmas se recalculan solos.
+                          void refrescarComercial();
+                          // Y se vuelve a preguntar. La respuesta de aplicar dice
+                          // qué se ESCRIBIÓ, no qué queda: ponerla de vuelta tal
+                          // cual dejaría el botón ofreciendo lo que ya se importó.
+                          revisarImportacion().then(setImportacion).catch(() => {});
+                        }}
+                      />
+                    )}
+                    {fantasmas.length > 0 && (
+                      <div>
+                        <AtencionSection
+                          label="Contrato sin mueble en el plano"
+                          color="var(--warning, var(--ocupado))"
+                          monto={fantasmas.length}
+                        />
+                        {fantasmas.map((f) => (
+                          <FantasmaRow
+                            key={f.espacio}
+                            fila={f}
+                            isAdmin={isAdmin}
+                            abierto={fantasmaAbierto === f.espacio}
+                            onAbrir={() => setFantasmaAbierto(
+                              fantasmaAbierto === f.espacio ? null : f.espacio,
+                            )}
+                            onCancelado={() => {
+                              setFantasmaAbierto(null);
+                              void refrescarComercial();
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
                     {kpis.noContract.length > 0 && (
                       <div>
                         <AtencionSection
@@ -4464,45 +4873,43 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           sede={sede}
           onCerrar={() => setCargaAbierta(false)}
           onGuardado={({ creados }) => {
-            // Igual que al vender de a uno: el JSON del layout es lo que pinta
-            // el mapa y responde la disponibilidad. Sin esto los contratos
-            // existirían en la base y los espacios seguirían viéndose libres.
-            const patches = new Map<string, { face: "A" | "B"; patch: Partial<FaceData> }[]>();
-            for (const c of creados) {
+            // Los contratos ya están en la base, que es la única verdad de lo
+            // comercial: alcanza con volver a leerla y el mapa se repinta solo,
+            // en todas las sedes y no sólo en la que esté abierta.
+            //
+            // Acá se armaba un parche con el código corto —`IMP-17`— y se
+            // aplicaba sobre los muebles de la sede EN PANTALLA. Como los
+            // códigos se repiten entre tiendas, una planilla con la columna
+            // «sede» apuntando a otra pintaba vendido el mueble equivocado y
+            // dejaba el realmente vendido viéndose libre.
+            void refrescarComercial();
+
+            // Queda un desfase que ninguna fusión arregla: un contrato para un
+            // espacio que NINGÚN plano dibuja. Ahí no hay nada que pintar, y
+            // por eso hay que decirlo — callarlo es lo que produce el «está
+            // libre pero no me deja venderlo» meses después.
+            const filas = creados.map((c) => {
               const completo = (c.codigo || "").toUpperCase();
               const sedeFila = (c.sede || sede || "").toUpperCase();
               const corto = sedeFila && completo.startsWith(`${sedeFila}-`)
                 ? completo.slice(sedeFila.length + 1)
                 : completo;
               const face: "A" | "B" = corto.endsWith("-B") ? "B" : "A";
-              const base = face === "B" ? corto.slice(0, -2) : corto;
-              const patch = {
-                status: "occupied",
-                supplierName: c.proveedor || "",
-                brandCategory: c.marca || "",
-                negotiatedValue: c.valor || 0,
-                startDate: c.desde || "",
-                endDate: c.hasta || "",
-                observation: c.nota || "",
-              } as Partial<FaceData>;
-              patches.set(base, [...(patches.get(base) ?? []), { face, patch }]);
-            }
-            if (patches.size) {
-              commit(
-                fixtures.map((f) => {
-                  const suyos = patches.get(f.code.toUpperCase());
-                  if (!suyos) return f;
-                  let siguiente = f;
-                  for (const { face, patch } of suyos) {
-                    siguiente = face === "B"
-                      ? { ...siguiente, faceB: { ...(siguiente.faceB ?? {}), ...patch } as FaceData }
-                      : { ...siguiente, ...patch };
-                  }
-                  return siguiente;
-                }),
-              );
-            }
+              return {
+                sede: sedeFila,
+                code: face === "B" ? corto.slice(0, -2) : corto,
+                face,
+              };
+            });
+            const fantasmas = espaciosSinMueble(fixturesBySede, filas);
+            if (fantasmas.length) setSinMueble(fantasmas);
           }}
+        />
+      )}
+      {sinMueble && (
+        <AvisoSinMueble
+          espacios={sinMueble}
+          onCerrar={() => setSinMueble(null)}
         />
       )}
     </div>

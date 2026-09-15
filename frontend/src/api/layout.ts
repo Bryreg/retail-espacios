@@ -157,3 +157,56 @@ export function bloqueoDeRenumeracion(err: unknown): RenumeracionBloqueada | nul
     fallas: Array.isArray(d.fallas) ? d.fallas.map(String) : [],
   };
 }
+
+
+// ─── Los contratos que viven sólo en el JSON del layout ──────────────────────
+
+/** Uno que se puede importar tal como está. */
+export interface ContratoDelPlano {
+  espacio: string;
+  sede: string;
+  code: string;
+  proveedor: string;
+  marca: string;
+  desde: string;
+  hasta: string;
+  valor: number;
+  observacion: string;
+}
+
+/** Uno que el plano da por vendido y que la base no puede aceptar. */
+export interface ContratoIncompleto {
+  espacio: string;
+  sede: string;
+  code: string;
+  proveedor: string;
+  desde: string;
+  hasta: string;
+  /** Dicho para que se pueda arreglar: «le falta el proveedor». */
+  motivo: string;
+}
+
+export interface Importacion {
+  importables: ContratoDelPlano[];
+  incompletos: ContratoIncompleto[];
+  ya_estaban: number;
+  aplicado: boolean;
+}
+
+/**
+ * Qué contratos hay en los planos que la base no tiene. **No escribe nada.**
+ *
+ * Es la mitad del desfase que el navegador NO puede calcular solo: la fusión
+ * del store reemplaza lo comercial con lo que dice la base, así que un contrato
+ * que sólo vive en el JSON desaparece antes de que ninguna pantalla lo mire.
+ * Sólo se ve leyendo el snapshot crudo, que es lo que hace el servidor acá.
+ *
+ * Admin-only: lleva plata.
+ */
+export const revisarImportacion = (): Promise<Importacion> =>
+  client.get<Importacion>("/layout/importacion/previo").then((r) => r.data);
+
+/** Crear en la base los contratos que hoy sólo existen en el JSON.
+ *  Idempotente: lo que ya tiene contrato vivo no se toca. */
+export const aplicarImportacion = (): Promise<Importacion> =>
+  client.post<Importacion>("/layout/importacion/aplicar").then((r) => r.data);
