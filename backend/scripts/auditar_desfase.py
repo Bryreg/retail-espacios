@@ -57,6 +57,34 @@ def caras_del_plano(fixtures: list[dict]) -> dict[str, dict]:
     return caras
 
 
+def contratos_del_plano(caras: dict[str, dict]) -> dict[str, dict]:
+    """Los espacios que el PLANO da por vendidos hoy, con fecha de fin vigente.
+
+    Es la dirección contraria, y la que más pesa para decidir arquitectura: un
+    contrato que vive SÓLO en el JSON del layout no está en ninguna tabla. Si
+    algún día la base pasa a ser la única verdad, ése es el que se pierde.
+
+    Existe porque existió: el panel del plano 2D tuvo campos de contrato
+    editables que escribían el layout sin tocar la base —se quitaron justamente
+    por esto—, y cualquier contrato cargado así sigue viviendo sólo ahí.
+    """
+    hoy = date.today()
+    vendidos = {}
+    for corto, cara in caras.items():
+        if (cara.get("status") or "free") != "occupied":
+            continue
+        fin = (cara.get("endDate") or "").strip()
+        if not fin:
+            continue
+        try:
+            if date.fromisoformat(fin[:10]) < hoy:
+                continue  # vencido: es historia, no desfase
+        except ValueError:
+            continue
+        vendidos[corto] = cara
+    return vendidos
+
+
 def auditar(db, solo_sede: str | None = None) -> int:
     hoy = date.today()
     planos = {
@@ -108,18 +136,36 @@ def auditar(db, solo_sede: str | None = None) -> int:
                 # «vendé esto» y el servidor lo va a rechazar.
                 fantasmas.append((corto, lease, "el plano lo pinta LIBRE"))
 
-        if not fantasmas:
+        # ── La dirección contraria: contratos que sólo tiene el PLANO ──────
+        con_fila = set()
+        for _lease, space in contratos:
+            code = (space.code or "").strip().upper()
+            con_fila.add(code[len(sede) + 1:] if code.startswith(f"{sede}-") else code)
+        solo_plano = [
+            (corto, cara) for corto, cara in contratos_del_plano(caras).items()
+            if corto not in con_fila
+        ]
+
+        if not fantasmas and not solo_plano:
             print(f"\n■ {sede} — {len(caras)} espacios, {len(contratos)} "
                   f"contrato(s) vivo(s), sin desfase ✓")
             continue
 
-        print(f"\n■ {sede} — {len(fantasmas)} espacio(s) que la base tiene "
-              f"vendidos y el plano no:")
-        for corto, lease, motivo in sorted(fantasmas, key=lambda x: x[0]):
-            prov = lease.supplier.name if lease.supplier else "—"
-            print(f"    {corto:<14} {lease.start_date} → {lease.end_date}  "
-                  f"{prov:<26} ({motivo})")
-        total += len(fantasmas)
+        print(f"\n■ {sede}")
+        if fantasmas:
+            print(f"  {len(fantasmas)} que la BASE tiene vendidos y el plano no:")
+            for corto, lease, motivo in sorted(fantasmas, key=lambda x: x[0]):
+                prov = lease.supplier.name if lease.supplier else "—"
+                print(f"    {corto:<14} {lease.start_date} → {lease.end_date}  "
+                      f"{prov:<26} ({motivo})")
+        if solo_plano:
+            print(f"  {len(solo_plano)} que el PLANO tiene vendidos y la base no"
+                  f"  ← estos NO están en ninguna tabla:")
+            for corto, cara in sorted(solo_plano, key=lambda x: x[0]):
+                print(f"    {corto:<14} {cara.get('startDate') or '—'} → "
+                      f"{cara.get('endDate') or '—'}  "
+                      f"{(cara.get('supplierName') or '—'):<26} (sólo en el JSON)")
+        total += len(fantasmas) + len(solo_plano)
 
     print("\n" + "─" * 72)
     if total == 0:
@@ -132,7 +178,11 @@ def auditar(db, solo_sede: str | None = None) -> int:
             "muestra, la ficha lo NOMBRA y ofrece cancelarlo.\n\n"
             "Antes de cancelar: un contrato es plata y un acuerdo con un proveedor.\n"
             "Si el contrato es real y el que está mal es el plano, lo que hay que\n"
-            "corregir es el plano."
+            "corregir es el plano.\n\n"
+            "Los «sólo en el JSON» son distintos y más delicados: no están en\n"
+            "ninguna tabla, así que no salen en ningún reporte, no generan aviso de\n"
+            "vencimiento y no existen para nada que consulte la base. Si algún día\n"
+            "la base pasa a ser la única verdad, ésos son los que se pierden."
         )
     return total
 

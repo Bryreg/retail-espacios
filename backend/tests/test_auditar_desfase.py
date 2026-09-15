@@ -146,3 +146,39 @@ def test_se_puede_auditar_una_sola_sede(client, admin, capsys):
     assert n == 1
     n2, salida = _auditar(capsys, "TERRON")
     assert n2 == 0 and "No hay ninguna sede" in salida
+
+
+def test_UN_CONTRATO_QUE_SOLO_VIVE_EN_EL_PLANO_tambien_se_reporta(client, admin, capsys):
+    """La dirección contraria, y la que decide si se puede ir a relacional.
+
+    El panel del plano 2D tuvo campos de contrato editables que escribían el
+    JSON sin tocar la base —se quitaron por esto mismo—, así que un contrato
+    cargado así sigue viviendo sólo ahí: no sale en ningún reporte, no genera
+    aviso de vencimiento y no existe para nada que consulte la base.
+    """
+    client.put("/api/layout/NAVE", headers=admin, json={
+        "fixtures": [_mueble(
+            "PUN-07", status="occupied", supplierName="SÓLO EN EL PLANO",
+            negotiatedValue=500000, startDate=HOY.isoformat(),
+            endDate=(HOY + timedelta(days=20)).isoformat(),
+        )],
+        "base_updated_at": None,
+    })
+
+    n, salida = _auditar(capsys)
+    assert n == 1, salida
+    assert "SÓLO EN EL PLANO" in salida
+    assert "sólo en el JSON" in salida
+
+
+def test_un_contrato_del_plano_ya_vencido_no_es_desfase(client, admin, capsys):
+    client.put("/api/layout/NAVE", headers=admin, json={
+        "fixtures": [_mueble(
+            "PUN-07", status="occupied", supplierName="VIEJO",
+            startDate=(HOY - timedelta(days=90)).isoformat(),
+            endDate=(HOY - timedelta(days=5)).isoformat(),
+        )],
+        "base_updated_at": None,
+    })
+    n, salida = _auditar(capsys)
+    assert n == 0, salida
