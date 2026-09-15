@@ -245,8 +245,13 @@ export type SyncState = "idle" | "pulling" | "pushing" | "error" | "conflict";
  * tenía algo útil que decirle. Por eso viaja aparte y entero: `message` es la
  * frase del servidor y `choques` son sus frases, ya escritas para leerse.
  */
+/** Los 409 que son «el servidor miró y dijo que no», con su lista de motivos.
+ *  Se enumeran para no confundirlos con los otros dos 409 del guardado —el
+ *  conflicto entre equipos y la sede borrada—, que se resuelven de otra manera. */
+const RECHAZOS_CONOCIDOS = new Set(["nombres_repetidos", "contratos_vivos"]);
+
 export interface RechazoDelServidor {
-  /** El `detail.code` del 409, tal cual. Hoy sólo `nombres_repetidos`. */
+  /** El `detail.code` del 409, tal cual: `nombres_repetidos` o `contratos_vivos`. */
   code: string;
   message: string;
   choques: string[];
@@ -289,8 +294,9 @@ interface FixtureStore {
   dirty: Record<string, boolean>;
   /** Sedes another workstation modified while we held unsaved edits. */
   conflicts: Record<string, string>;
-  /** Sedes cuyo último guardado el SERVIDOR RECHAZÓ por su propia regla —hoy,
-   *  nombres repetidos—, con lo que el servidor contestó. No es un conflicto
+  /** Sedes cuyo último guardado el SERVIDOR RECHAZÓ por una regla suya —dos
+   *  muebles llamados igual, o un espacio con contrato vivo que este guardado
+   *  sacaría del plano—, con lo que el servidor contestó. No es un conflicto
    *  entre dos equipos ni una caída de red: el servidor contestó, no escribió
    *  nada, y dijo qué está mal. Se guarda aparte de `syncMessage` porque hay
    *  que poder mostrarlo entero y por sede, no en un tooltip. */
@@ -850,25 +856,25 @@ export const useFixtureStore = create<FixtureStore>()(
               });
               return;
             }
-            // El guardarraíl de nombres del servidor: este guardado dejaría dos
-            // muebles llamados igual en la sede. NO es un conflicto entre dos
-            // equipos —ofrecer «Conservar la mía» sería un lazo, porque forzar
-            // vuelve a pasar por la misma comprobación y vuelve a fallar—: es un
-            // nombre que hay que corregir en el plano. Se dice cuál, con las
-            // frases que manda el servidor, y el guardado queda pendiente: en
-            // cuanto el nombre se arregle, el reintento entra.
-            if (typeof detail === "object" && detail?.code === "nombres_repetidos") {
+            // Los guardarraíles del servidor: este guardado dejaría dos muebles
+            // llamados igual, o sacaría del plano un espacio con contrato vivo.
+            // NO es un conflicto entre dos equipos —ofrecer «Conservar la mía»
+            // sería un lazo, porque forzar vuelve a pasar por la misma
+            // comprobación y vuelve a fallar—: es algo que hay que arreglar en
+            // el plano, o un contrato que hay que cancelar. Se dice cuál, con
+            // las frases que manda el servidor, y el guardado queda pendiente:
+            // en cuanto se arregle, el reintento entra solo.
+            if (typeof detail === "object" && RECHAZOS_CONOCIDOS.has(detail?.code)) {
               const choques: string[] = (Array.isArray(detail?.choques) ? detail.choques : [])
                 .map((x: unknown) => String(x))
                 .filter(Boolean);
               const message = String(
-                detail?.message ??
-                  `El servidor no guardó «${sede}»: quedarían dos muebles llamados igual.`,
+                detail?.message ?? `El servidor no guardó «${sede}».`,
               );
               set((s) => ({
                 rechazos: {
                   ...s.rechazos,
-                  [sede]: { code: "nombres_repetidos", message, choques },
+                  [sede]: { code: String(detail.code), message, choques },
                 },
                 // `error` es «no se pudo hablar con el servidor» y se dibuja
                 // «Sin conexión»: acá hubo conexión y hubo respuesta, así que el

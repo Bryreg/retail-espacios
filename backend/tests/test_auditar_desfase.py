@@ -5,8 +5,16 @@ peor que no tenerlo. Las dos mitades se prueban.
 
 Los tres casos que encuentra salieron de ejercitar el sistema, no de leerlo:
 borrar un mueble del plano, pasar una góndola de doble a simple y marcarla «no
-comercializable» dejan, las tres, el contrato vivo en la base. El plano nunca
+comercializable» dejaban, las tres, el contrato vivo en la base. El plano nunca
 escribe en la base — no es un olvido, es que no existe ese camino.
+
+**Las tres puertas ya están cerradas hacia adelante**: el guardado del plano las
+frena y nombra el contrato (`tests/test_contrato_sin_mueble.py`). Pero el auditor
+sigue haciendo falta, y por eso estas pruebas siguen acá: lo que ya está
+desfasado en la base de producción se guardó antes de que ese guardarraíl
+existiera, y nadie lo va a arreglar solo. Por eso el desfase se fabrica acá
+escribiendo el snapshot por abajo, con `_plano_viejo` — que es exactamente cómo
+quedó.
 """
 from datetime import date, timedelta
 
@@ -98,7 +106,13 @@ def test_BORRAR_EL_MUEBLE_DEL_PLANO_deja_el_contrato_vivo(client, admin, capsys)
     client.put("/api/layout/NAVE", headers=admin,
                json={"fixtures": [_mueble("PUN-01"), _mueble("PUN-02")], "base_updated_at": None})
     _vender(client, admin, "PUN-01")
-    _poner(client, admin, [_mueble("PUN-02")])          # PUN-01 se borra del plano
+
+    # Hoy el guardado lo frena y nombra el contrato: la puerta está cerrada.
+    assert _poner(client, admin, [_mueble("PUN-02")]).status_code == 409
+
+    # Pero lo que ya está desfasado se guardó antes de que ese guardarraíl
+    # existiera, y sigue ahí hasta que alguien lo mire.
+    _plano_viejo([_mueble("PUN-02")])
 
     n, salida = _auditar(capsys)
     assert n == 1, salida
@@ -109,7 +123,9 @@ def test_MARCARLO_NO_COMERCIALIZABLE_deja_el_contrato_vivo(client, admin, capsys
     client.put("/api/layout/NAVE", headers=admin,
                json={"fixtures": [_mueble("PUN-01")], "base_updated_at": None})
     _vender(client, admin, "PUN-01")
-    _poner(client, admin, [_mueble("PUN-01", rentable=False)])
+
+    assert _poner(client, admin, [_mueble("PUN-01", rentable=False)]).status_code == 409
+    _plano_viejo([_mueble("PUN-01", rentable=False)])
 
     n, salida = _auditar(capsys)
     assert n == 1, salida
@@ -122,7 +138,9 @@ def test_LA_CARA_B_QUE_DESAPARECE_deja_el_contrato_vivo(client, admin, capsys):
     client.put("/api/layout/NAVE", headers=admin,
                json={"fixtures": [doble], "base_updated_at": None})
     assert _vender(client, admin, "GON-60-B").json()["creados"] == 1
-    _poner(client, admin, [dict(doble, gondolaType="single")])
+
+    assert _poner(client, admin, [dict(doble, gondolaType="single")]).status_code == 409
+    _plano_viejo([dict(doble, gondolaType="single")])
 
     n, salida = _auditar(capsys)
     assert n == 1, salida
@@ -181,7 +199,7 @@ def test_se_puede_auditar_una_sola_sede(client, admin, capsys):
     client.put("/api/layout/NAVE", headers=admin,
                json={"fixtures": [_mueble("PUN-01"), _mueble("PUN-02")], "base_updated_at": None})
     _vender(client, admin, "PUN-01")
-    _poner(client, admin, [_mueble("PUN-02")])           # PUN-01 sale del plano
+    _plano_viejo([_mueble("PUN-02")])                    # PUN-01 sale del plano
 
     n, _ = _auditar(capsys, "NAVE")
     assert n == 1

@@ -9,7 +9,11 @@ from app.database import get_db
 from app.models.models import LayoutSnapshot
 from app.services.bitacora import anotar
 from app.services.sede_archive import archive_sede_spaces, count_commercial_rows
-from app.services.layout_lookup import choques_nuevos, normalizar
+from app.services.layout_lookup import (
+    choques_nuevos,
+    contratos_que_quedarian_sin_mueble,
+    normalizar,
+)
 from app.services.renumeracion import (
     InvarianteRoto,
     RenumeracionBloqueada,
@@ -727,6 +731,40 @@ def save_layout(sede: str, payload: LayoutIn, db: Session = Depends(get_db)):
                         "antes no estaban."
                     ),
                     "choques": choques,
+                },
+            )
+
+        # ── La tercera puerta: sacar de circulación algo que está vendido ────
+        #
+        # Borrar el mueble, pasar la góndola de doble a simple o marcarlo «no
+        # comercializable» retira el espacio de la venta — y dejaba su contrato
+        # vivo en la base, sin nada en pantalla que lo mostrara. Ése es el caso
+        # que se reportó: «está libre y el sistema dice que está ocupado».
+        #
+        # Se frena acá porque es el único lugar por el que pasan las tres
+        # puertas y los cuatro caminos de borrado. Y se frena en vez de cancelar
+        # solo: cancelar un contrato es plata y un compromiso con un proveedor,
+        # no lo decide un guardado del plano. Se dice cuál, y el guardado queda
+        # pendiente hasta que la persona cancele o devuelva el mueble.
+        huerfanos = contratos_que_quedarian_sin_mueble(
+            db, sede,
+            [f for f in previous if isinstance(f, dict)],
+            [f for f in fixtures if isinstance(f, dict)],
+        )
+        if huerfanos:
+            logger.info(
+                "layout %s: guardado rechazado por contratos sin mueble — %s",
+                sede, " · ".join(huerfanos),
+            )
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "contratos_vivos",
+                    "message": (
+                        f"Este guardado sacaría de «{sede}» {len(huerfanos)} "
+                        f"espacio(s) que tienen contrato vivo."
+                    ),
+                    "choques": huerfanos,
                 },
             )
 

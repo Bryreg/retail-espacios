@@ -2962,10 +2962,11 @@ function SyncButton() {
   const hasPending = useFixtureStore(selectHasPendingWork);
   const lastSyncedAt = useFixtureStore((s) => s.lastSyncedAt);
   const conflictCount = useFixtureStore((s) => Object.keys(s.conflicts).length);
-  // Un guardado que el servidor rechazó por su regla —hoy, nombres repetidos—.
-  // No es estar sin conexión: hubo respuesta y dice qué está mal. El detalle
-  // entero se lee en el panel del estado de sincronización, arriba; acá cabe
-  // la palabra y el motivo en el título.
+  // Un guardado que el servidor rechazó por una regla suya: nombres repetidos,
+  // o un espacio con contrato vivo que este guardado sacaría del plano. No es
+  // estar sin conexión: hubo respuesta y dice qué está mal. El detalle entero
+  // se lee en el panel del estado de sincronización, arriba; acá cabe la
+  // palabra y el motivo en el título.
   const rechazos = useFixtureStore((s) => s.rechazos);
   const rechazado = Object.values(rechazos)[0] ?? null;
   const isAdmin = useAuthStore(selectIsAdmin);
