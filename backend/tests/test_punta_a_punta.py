@@ -147,3 +147,60 @@ def test_DESPUES_DE_USAR_TODO_EL_AUDITOR_DA_CERO(client, admin, worker, capsys):
     total, salida = _auditar(capsys)
     assert total == 0, salida
     assert "sin desfase" in salida
+
+
+def test_UN_PLANO_VIEJO_SE_IMPORTA_Y_DESPUES_EL_AUDITOR_DA_CERO(client, admin, capsys):
+    """La otra mitad, de punta a punta y por HTTP.
+
+    Un contrato que vive sólo en el JSON no está en ninguna tabla: no sale en
+    ningún reporte, no genera aviso de vencimiento y no existe para nada que
+    consulte la base. El auditor lo ve —es la dirección que el navegador no
+    puede calcular— y los dos endpoints lo resuelven desde la pantalla, sin
+    consola.
+    """
+    import json as _json
+    from app.database import SessionLocal
+    from app.models.models import LayoutSnapshot
+
+    vendido = {
+        **_mueble("PUN-07", "NAVE"),
+        "status": "occupied", "supplierName": "CAA", "brandCategory": "Snacks",
+        "negotiatedValue": 500_000, "startDate": HOY.isoformat(),
+        "endDate": (HOY + timedelta(days=30)).isoformat(), "observation": "",
+    }
+    sin_proveedor = {
+        **_mueble("PUN-08", "NAVE"),
+        "status": "occupied", "supplierName": "", "brandCategory": "",
+        "negotiatedValue": 0, "startDate": HOY.isoformat(),
+        "endDate": (HOY + timedelta(days=30)).isoformat(), "observation": "",
+    }
+    # Escrito directo: por la API ya no entra, el servidor lo descarta.
+    db = SessionLocal()
+    try:
+        db.add(LayoutSnapshot(sede="NAVE", fixtures_json=_json.dumps([vendido, sin_proveedor])))
+        db.commit()
+    finally:
+        db.close()
+
+    # El auditor lo ve, y ve que son dos.
+    total, salida = _auditar(capsys)
+    assert total == 2, salida
+    assert "sólo en el JSON" in salida
+
+    # El previo no escribe.
+    previo = client.get("/api/layout/importacion/previo", headers=admin).json()
+    assert len(previo["importables"]) == 1
+    assert previo["incompletos"][0]["motivo"] == "le falta el proveedor"
+    assert _comercial(client, admin) == {}, "el previo escribió"
+
+    # Aplicar sí, y lo importado aparece en el mapa comercial.
+    aplicado = client.post("/api/layout/importacion/aplicar", headers=admin).json()
+    assert len(aplicado["importables"]) == 1
+    e = _comercial(client, admin)["NAVE-PUN-07"]
+    assert e["supplierName"] == "CAA" and e["negotiatedValue"] == 500_000
+
+    # Y el auditor baja a UNO: queda el que no se puede importar, que es
+    # correcto que siga marcado — es un contrato del plano que nadie puede usar.
+    total, salida = _auditar(capsys)
+    assert total == 1, salida
+    assert "PUN-08" in salida

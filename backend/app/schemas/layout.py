@@ -182,3 +182,49 @@ class RenumeracionOut(BaseModel):
     sedes: list[RenumeracionSedeOut] = Field(default=[])
     muebles: int = 0
     cambian: int = 0
+
+
+# ─── Los contratos que viven sólo en el JSON ─────────────────────────────────
+#
+# Lleva PLATA (`valor`), así que sus dos endpoints son admin-only. No hay
+# variante redactada: un mercaderista no tiene nada que hacer con esto.
+
+
+class ContratoDelPlanoOut(BaseModel):
+    """Uno que se puede importar tal como está."""
+    espacio: str
+    sede: str
+    code: str
+    proveedor: str
+    marca: str = ""
+    desde: str
+    hasta: str
+    valor: float = 0
+    observacion: str = ""
+
+
+class IncompletoOut(BaseModel):
+    """Uno que el plano da por vendido y que la base no puede aceptar.
+
+    Se reporta en vez de inventarle lo que falta: `space_leases` exige
+    proveedor y fechas, y rellenarlas con algo plausible sería fabricar un
+    contrato que nadie firmó.
+    """
+    espacio: str
+    sede: str
+    code: str
+    proveedor: str = ""
+    desde: str = ""
+    hasta: str = ""
+    #: Dicho para que se pueda arreglar: «le falta el proveedor».
+    motivo: str
+
+
+class ImportacionOut(BaseModel):
+    importables: list[ContratoDelPlanoOut] = []
+    incompletos: list[IncompletoOut] = []
+    #: Cuántos ya tenían contrato en la base. Es lo que hace visible que
+    #: correrlo de nuevo no duplica nada.
+    ya_estaban: int = 0
+    #: `false` en el previo, `true` cuando ya se escribió.
+    aplicado: bool = False

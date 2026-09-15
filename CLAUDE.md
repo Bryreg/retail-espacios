@@ -13,7 +13,11 @@ sobre un espacio que ningún plano dibuja. **Se ve en la pantalla**, en
 Supervisar → «Para revisar» → *Contrato sin mueble en el plano*: sale el
 espacio, el proveedor y hasta cuándo va, y se resuelve ahí. La cuenta la hace
 `utils/auditoriaDesfase.ts` con los datos que el navegador ya bajó.
-`backend/scripts/auditar_desfase.py` hace lo mismo contra la base y además ve la
-dirección contraria, pero necesita consola en el servidor (plan pago de Render).
+La dirección contraria —un contrato que vive sólo en el JSON del layout— está en
+la misma tarjeta, como *Contrato que sólo vive en el plano*, con el botón que lo
+pasa a la base (`GET`/`POST /api/layout/importacion/…`, admin-only). Esa mitad
+la calcula el servidor: la fusión la pisa antes de que el navegador la vea.
+Los scripts de `backend/scripts/` hacen lo mismo por consola, que en Render es
+plan pago; la lógica es la misma, en `app/services/importar_del_plano.py`.
 
 Verificación mínima: `cd frontend && npx tsc --noEmit` · `cd backend && python -c "import app.main"` · `npm install` requiere `--legacy-peer-deps`.

@@ -19,7 +19,7 @@ import {
 import { useFixtureStore, selectFixtures, normalizeSede } from "../store/fixtureStore";
 import { temaActual, useTema } from "../tema";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
-import client from "../api/client";
+import client, { describeError } from "../api/client";
 import { listSpaceFiles, type SpaceFileMeta } from "../api/files";
 import FileViewerModal from "../components/FileViewerModal";
 import {
@@ -69,6 +69,7 @@ import type { SemillaContrato } from "../components/Contrato/Contrato";
 import { fechaEnCurso } from "../utils/propuesta";
 import { espaciosSinMueble } from "../utils/espaciosSinMueble";
 import { contratosSinMueble, type ContratoSinMueble } from "../utils/auditoriaDesfase";
+import { revisarImportacion, aplicarImportacion, type Importacion } from "../api/layout";
 
 // ─── Date / money helpers ────────────────────────────────────────────────────
 
@@ -2299,6 +2300,166 @@ function AtencionSection({
 }
 
 /**
+ * Los contratos que viven SÓLO en el JSON del layout, y el botón que los pasa.
+ *
+ * Es la otra mitad del desfase, y la más silenciosa: estos contratos no están
+ * en ninguna tabla, así que no salen en ningún reporte, no generan aviso de
+ * vencimiento y no existen para nada que consulte la base. Es plata y es un
+ * compromiso con un proveedor que el sistema no sabe que tiene.
+ *
+ * Salieron de un panel del plano 2D que tuvo campos de contrato editables y
+ * escribía el JSON sin tocar la base. Se quitó justamente por esto, pero lo que
+ * se cargó así sigue ahí.
+ *
+ * ── Dos cosas que hacen que esto no sea un botón peligroso ───────────────────
+ *
+ * **Se ve antes de escribir.** La lista de arriba es exactamente lo que se va a
+ * crear, con proveedor, fechas y valor. El servidor la calcula sin tocar una
+ * fila.
+ *
+ * **Lo que falta no se inventa.** Un contrato del plano sin proveedor o sin
+ * fechas no puede ser una fila de `space_leases` —esas columnas son
+ * obligatorias— así que se muestra aparte, con el motivo, para arreglarlo a
+ * mano. Rellenarlo con algo plausible sería fabricar un contrato que nadie
+ * firmó.
+ */
+function ImportarDelPlano({
+  datos, importados, onAplicado,
+}: {
+  datos: Importacion;
+  /** Cuántos se acaban de pasar en esta sesión, para confirmarlo. */
+  importados: number;
+  onAplicado: (r: Importacion) => void;
+}) {
+  const [aplicando, setAplicando] = useState(false);
+  const [error, setError] = useState("");
+  const n = datos.importables.length;
+
+  async function importar() {
+    setError("");
+    setAplicando(true);
+    try {
+      onAplicado(await aplicarImportacion());
+    } catch (e) {
+      setError(describeError(e, "No se pudo importar. Probá de nuevo."));
+    } finally {
+      setAplicando(false);
+    }
+  }
+
+  return (
+    <div>
+      <AtencionSection
+        label="Contrato que sólo vive en el plano"
+        color="var(--warning, var(--ocupado))"
+        monto={n + datos.incompletos.length}
+      />
+      {importados > 0 && (
+        <p style={{
+          fontSize: 11.5, color: "var(--success, var(--ink-2))", lineHeight: 1.5,
+          padding: "2px 6px 8px", fontWeight: 600,
+        }}>
+          {importados} contrato{importados === 1 ? "" : "s"} pasado
+          {importados === 1 ? "" : "s"} a la base. Ya se {importados === 1 ? "ve" : "ven"}
+          {" "}en el mapa.
+        </p>
+      )}
+      <p style={{ fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5, padding: "2px 6px 8px" }}>
+        {n > 0
+          ? "Están escritos en el plano pero no tienen fila en la base: no salen en " +
+            "ningún reporte ni generan aviso de vencimiento. Pasarlos es de una sola vez."
+          : datos.incompletos.length > 0
+          ? "Ninguno de los que quedan se puede pasar automáticamente: hay que " +
+            "completarlos a mano."
+          : "No queda nada por pasar."}
+      </p>
+
+      {datos.importables.map((f) => (
+        <div key={f.espacio} style={{
+          display: "flex", alignItems: "center", gap: 8, padding: "5px 6px",
+        }}>
+          <span style={{
+            fontFamily: "var(--font-mono)", fontSize: 9, fontWeight: 700,
+            letterSpacing: "0.06em", padding: "2px 5px", borderRadius: 3,
+            background: "var(--surface-2)", color: "var(--ink-2)", flexShrink: 0,
+          }}>
+            {f.sede}
+          </span>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+            {f.code}
+          </span>
+          <span style={{
+            fontSize: 11.5, color: "var(--ink-2)", flex: 1, minWidth: 0,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>
+            {f.proveedor}
+          </span>
+          <span style={{ fontSize: 10.5, color: "var(--ink-3)", flexShrink: 0 }}>
+            {fechaCorta(f.desde)} → {fechaCorta(f.hasta)}
+          </span>
+        </div>
+      ))}
+
+      {datos.incompletos.length > 0 && (
+        <div style={{
+          margin: "8px 6px 4px", padding: "9px 10px",
+          borderRadius: "var(--r-lg)", background: "var(--surface-2)",
+          border: "1px solid var(--line)",
+        }}>
+          <p style={{
+            fontFamily: "var(--font-mono)", fontSize: 9.5, fontWeight: 600,
+            letterSpacing: "0.09em", textTransform: "uppercase",
+            color: "var(--ink-3)", margin: "0 0 6px",
+          }}>
+            {datos.incompletos.length} para arreglar a mano
+          </p>
+          {datos.incompletos.map((x) => (
+            <div key={x.espacio} style={{ display: "flex", gap: 8, padding: "2px 0" }}>
+              <span style={{
+                fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700, flexShrink: 0,
+              }}>
+                {x.sede} · {x.code}
+              </span>
+              <span style={{ fontSize: 11, color: "var(--ink-2)" }}>{x.motivo}</span>
+            </div>
+          ))}
+          <p style={{ fontSize: 10.5, color: "var(--ink-3)", lineHeight: 1.45, margin: "6px 0 0" }}>
+            Abrí ese espacio y cargá el contrato desde Vender, con los datos que falten.
+          </p>
+        </div>
+      )}
+
+      {error && (
+        <p style={{ fontSize: 11, color: "var(--danger)", padding: "4px 6px 0" }}>{error}</p>
+      )}
+
+      {n > 0 && (
+        <button
+          onClick={() => void importar()}
+          disabled={aplicando}
+          style={{
+            width: "calc(100% - 12px)", margin: "8px 6px 0", height: 32,
+            borderRadius: "var(--r-md)", border: "none",
+            background: "var(--accent)", color: "#fff",
+            fontSize: 12.5, fontWeight: 700, fontFamily: "inherit",
+            cursor: aplicando ? "wait" : "pointer",
+          }}
+        >
+          {aplicando
+            ? "Importando…"
+            : `Pasar ${n} contrato${n === 1 ? "" : "s"} a la base`}
+        </button>
+      )}
+      {datos.ya_estaban > 0 && (
+        <p style={{ fontSize: 10.5, color: "var(--ink-3)", padding: "6px 6px 0" }}>
+          {datos.ya_estaban} ya {datos.ya_estaban === 1 ? "estaba" : "estaban"} en la base.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
  * Un contrato vivo que NINGÚN plano puede mostrar.
  *
  * No es una fila como las otras y por eso no reusa `AtencionRow`: las demás
@@ -3084,7 +3245,37 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   /** Qué fantasma está desplegado, por código completo. Uno a la vez: cada uno
    *  abre su propio `CancelarContrato`, que consulta la base al montarse. */
   const [fantasmaAbierto, setFantasmaAbierto] = useState<string | null>(null);
+
   const isAdmin = useAuthStore(selectIsAdmin);
+
+  /** La OTRA mitad del desfase: contratos que viven sólo en el JSON del layout.
+   *
+   *  Ésta no se puede calcular acá. La fusión del store reemplaza lo comercial
+   *  con lo que dice la base, así que un contrato que sólo está en el JSON
+   *  desaparece antes de que esta pantalla lo mire — hay que preguntárselo al
+   *  servidor, que es el único que ve el snapshot crudo.
+   *
+   *  Se pide UNA vez por sesión y sólo para un admin. Es una migración de una
+   *  sola vez: desde el corte el layout no puede guardar un contrato nuevo, así
+   *  que en cuanto se importe lo que había, esto contesta vacío para siempre. */
+  const [importacion, setImportacion] = useState<Importacion | null>(null);
+  useEffect(() => {
+    if (!isAdmin) { setImportacion(null); return; }
+    let vivo = true;
+    revisarImportacion()
+      .then((r) => { if (vivo) setImportacion(r); })
+      // Sin ruido: es un extra de diagnóstico, no algo que la pantalla necesite
+      // para funcionar. Si el servidor no contesta, no se muestra y ya.
+      .catch(() => { if (vivo) setImportacion(null); });
+    return () => { vivo = false; };
+  }, [isAdmin]);
+
+  const pendientesDelPlano = importacion
+    ? importacion.importables.length + importacion.incompletos.length
+    : 0;
+  /** Cuántos se acaban de pasar. Sostiene la confirmación en pantalla: sin
+   *  esto, apretar el botón haría desaparecer la sección sin decir qué pasó. */
+  const [importados, setImportados] = useState(0);
   const [ratesOpen, setRatesOpen] = useState(false);
 
   const [selected, setSelected] = useState<UnifiedFixture | null>(null);
@@ -3714,7 +3905,10 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     // contrato sin mueble no se ve en ningún plano, así que si sólo contara en
     // la suya no se vería nunca. Es lo único de esta lista que cruza tiendas.
     fantasmas.length +
-    (isAdmin ? kpis.belowReference.length + montaje.noMontado.length + montaje.sinMontar.length : 0);
+    (isAdmin
+      ? kpis.belowReference.length + montaje.noMontado.length +
+        montaje.sinMontar.length + pendientesDelPlano
+      : 0);
 
   /** Cuántas caras contesta cada chip de la tabla. Un filtro que no puede
    *  devolver nada no se dibuja: es la misma regla que ya gobernaba el parte,
@@ -4399,9 +4593,28 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                     flex: 1, minHeight: 0, padding: "0 9px 10px",
                     display: "flex", flexDirection: "column", gap: 12, overflowY: "auto",
                   }}>
-                    {/* Primero los fantasmas: es lo único acá que la pantalla no
-                        puede mostrar de ninguna otra forma. Todo lo demás se ve
-                        también en el mapa; esto, por definición, no. */}
+                    {/* Las dos mitades del desfase van primero, juntas: son lo
+                        único acá que la pantalla no puede mostrar de ninguna otra
+                        forma. Todo lo demás se ve también en el mapa; esto, por
+                        definición, no.
+
+                        Primero la importable, porque tiene arreglo de un botón. */}
+                    {isAdmin && importacion && (pendientesDelPlano > 0 || importados > 0) && (
+                      <ImportarDelPlano
+                        datos={importacion}
+                        importados={importados}
+                        onAplicado={(r) => {
+                          setImportados(r.importables.length);
+                          // Lo importado ya es de la base: el mapa se repinta de
+                          // ahí, y los fantasmas se recalculan solos.
+                          void refrescarComercial();
+                          // Y se vuelve a preguntar. La respuesta de aplicar dice
+                          // qué se ESCRIBIÓ, no qué queda: ponerla de vuelta tal
+                          // cual dejaría el botón ofreciendo lo que ya se importó.
+                          revisarImportacion().then(setImportacion).catch(() => {});
+                        }}
+                      />
+                    )}
                     {fantasmas.length > 0 && (
                       <div>
                         <AtencionSection

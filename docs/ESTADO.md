@@ -2353,8 +2353,33 @@ el script, es un plan pago. Y de paso deja de ser una corrida que alguien tiene 
 acordarse de hacer.
 
 `backend/scripts/auditar_desfase.py` se queda igual, sin cambios: sólo lee, ve las DOS
-direcciones —incluida la que el navegador no puede ver, un contrato que vive sólo en el
-JSON, porque la fusión la pisa antes de que nadie la mire— y sirve donde sí haya consola.
+direcciones y sirve donde sí haya consola.
+
+**La otra dirección también se resuelve desde la pantalla**, en la misma tarjeta:
+*Contrato que sólo vive en el plano*. Ésa el navegador NO la puede calcular —la fusión
+reemplaza lo comercial con lo que dice la base, así que un contrato que sólo está en el
+JSON desaparece antes de que ninguna pantalla lo mire—, así que se le pregunta al
+servidor, que es el único que ve el snapshot crudo:
+
+- `GET /api/layout/importacion/previo` — qué habría para importar. **No escribe una
+  fila.** Se pide sola al abrir Supervisar, una vez por sesión y sólo para un admin.
+- `POST /api/layout/importacion/aplicar` — lo escribe, todo en una transacción.
+  Idempotente, así que el botón se puede apretar dos veces sin miedo. Queda en la
+  bitácora como `contrato.importado`: esto CREA contratos, que es plata.
+
+Los dos pasos son la misma forma que la renumeración y por la misma razón: lo que
+escribe contratos se mira antes de escribirlo. Y lo que no se puede importar —sin
+proveedor o sin fechas, que en `space_leases` son obligatorias— se muestra aparte con el
+motivo dicho para que se pueda arreglar («le falta el proveedor»). Rellenarlo con algo
+plausible sería fabricar un contrato que nadie firmó.
+
+**La lógica vive en `app/services/importar_del_plano.py`**, y el script pasó a ser una
+cáscara de consola sobre ella. Tener dos implementaciones de algo que escribe contratos
+era justo la clase de duplicación que este cambio viene sacando.
+
+Es una migración de **una sola vez**: desde el corte el layout no puede guardar un
+contrato nuevo, así que en cuanto se importe lo que había, esto contesta vacío para
+siempre y la sección no vuelve a aparecer.
 
 `espacios_ofrecidos` (servidor) y `espaciosOfrecidos` (navegador) tienen que contestar lo
 mismo: el primero decide qué se FRENA al guardar y el segundo qué se AVISA en la

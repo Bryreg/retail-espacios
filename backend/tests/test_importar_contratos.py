@@ -63,11 +63,19 @@ def _plano_viejo(fixtures, sede="NAVE"):
 
 
 def _importar(ensayo=False):
+    """La misma función que usa la pantalla y que usa el script de consola.
+
+    Vivía en el script; se mudó a `app/services/importar_del_plano.py` cuando la
+    importación pasó a hacerse también desde Supervisar. Tener dos
+    implementaciones de algo que ESCRIBE contratos era la clase de duplicación
+    que este proyecto viene sacando, así que el script quedó de cáscara.
+    """
     from app.database import SessionLocal
-    from scripts.importar_contratos_del_plano import importar
+    from app.services.importar_del_plano import aplicar, revisar
     db = SessionLocal()
     try:
-        return importar(db, ensayo)
+        plan = revisar(db) if ensayo else aplicar(db)
+        return len(plan.importables), plan.ya_estaban, plan.incompletos
     finally:
         db.close()
 
@@ -133,7 +141,12 @@ def test_LO_QUE_NO_SE_PUEDE_IMPORTAR_SE_REPORTA_NO_SE_INVENTA(client, admin):
     creados, _, incompletos = _importar()
     assert creados == 0
     assert len(incompletos) == 2
-    assert any("PUN-01" in x for x in incompletos)
+    assert any(x.code == "PUN-01" for x in incompletos)
+    # El motivo se dice para que se pueda arreglar, no como un código.
+    assert {x.code: x.motivo for x in incompletos} == {
+        "PUN-01": "le falta el proveedor",
+        "PUN-02": "le faltan las dos fechas",
+    }
     assert _comercial(client, admin) == {}
 
 

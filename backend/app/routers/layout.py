@@ -21,7 +21,12 @@ from app.services.renumeracion import (
     nombres_anteriores,
     planificar,
 )
+from app.services.importar_del_plano import (
+    aplicar as aplicar_importacion,
+    revisar as revisar_importacion,
+)
 from app.schemas.layout import (
+    ImportacionOut,
     LayoutIn,
     LayoutOut,
     LayoutRevision,
@@ -557,6 +562,71 @@ def _planificar(db: Session, payload: RenumeracionIn):
                 "fallas": e.fallas,
             },
         )
+
+
+# ─── Los contratos que viven sólo en el JSON del layout ───────────────────────
+#
+# La otra mitad del desfase, y la que NO se puede ver desde el navegador: la
+# fusión del store reemplaza lo comercial con lo que dice la base, así que un
+# contrato que sólo está en el JSON desaparece antes de que ninguna pantalla lo
+# mire. Sólo se ve leyendo el snapshot crudo, que es lo que pasa acá.
+#
+# Los dos pasos son la misma forma que la renumeración y por la misma razón: lo
+# que escribe contratos se mira antes de escribirlo. El previo no toca una fila.
+#
+# Admin-only los dos: esto lleva plata, y el de aplicar además CREA contratos.
+
+
+def _a_importacion(plan, aplicado: bool) -> ImportacionOut:
+    return ImportacionOut(
+        importables=[vars(x) for x in plan.importables],
+        incompletos=[vars(x) for x in plan.incompletos],
+        ya_estaban=plan.ya_estaban,
+        aplicado=aplicado,
+    )
+
+
+@router.get("/importacion/previo", response_model=ImportacionOut,
+            dependencies=[Depends(require_admin)])
+def importacion_previo(db: Session = Depends(get_db)) -> ImportacionOut:
+    """Qué contratos hay en los planos que la base no tiene. **No escribe.**
+
+    Es un GET porque no cambia nada y porque así la pantalla lo puede pedir sola
+    al abrir Supervisar, sin que nadie tenga que acordarse de ir a buscarlo.
+    """
+    return _a_importacion(revisar_importacion(db), aplicado=False)
+
+
+@router.post("/importacion/aplicar", response_model=ImportacionOut,
+             dependencies=[Depends(require_admin)])
+def importacion_aplicar(
+    request: Request,
+    rol: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> ImportacionOut:
+    """Crear en la base los contratos que hoy sólo existen en el JSON.
+
+    Idempotente: lo que ya tiene contrato vivo no se toca, así que apretarlo dos
+    veces no duplica nada. Lo que no se puede importar —sin proveedor o sin
+    fechas— se devuelve igual, para mirarlo a mano.
+
+    Queda en la bitácora: esto crea contratos, que es plata.
+    """
+    plan = aplicar_importacion(db)
+    if plan.importables:
+        anotar(
+            db, request, rol,
+            accion="contrato.importado",
+            detalle=(
+                f"{len(plan.importables)} contrato(s) importados del JSON del "
+                f"layout: " + ", ".join(x.espacio for x in plan.importables)
+            ),
+        )
+        # `anotar` no hace commit —lo hace quien llama— y el servicio ya cerró
+        # su transacción con los contratos adentro. Sin esta línea la bitácora
+        # se perdería en silencio, que es la peor forma de no tener bitácora.
+        db.commit()
+    return _a_importacion(plan, aplicado=True)
 
 
 @router.post("/renumeracion/previo", response_model=RenumeracionOut,
