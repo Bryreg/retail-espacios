@@ -62,6 +62,22 @@ class Incompleto:
     desde: str
     hasta: str
     motivo: str
+    #: Lo que sí tiene, para poder juzgarlo sin abrir el plano.
+    marca: str = ""
+    valor: float = 0
+    #: **No es un contrato a medias: es un «Ocupado» puesto a mano.**
+    #:
+    #: El plano tuvo un selector de estado que dejaba marcar un mueble como
+    #: ocupado sin contrato, sin proveedor, sin fechas y sin valor. Se quitó
+    #: —un espacio se ocupa vendiéndolo— pero lo que se marcó así sigue escrito
+    #: en el JSON.
+    #:
+    #: Importa distinguirlo porque el consejo es el contrario: a un contrato a
+    #: medias hay que completarle lo que falta; a esto no hay nada que
+    #: completarle. Se va solo la próxima vez que se guarde ese plano, porque
+    #: el servidor ya no acepta `status`. Mandar a alguien a «cargar el
+    #: contrato» de esto es mandarlo a inventar nueve contratos que no existen.
+    residuo: bool = False
 
 
 @dataclass
@@ -105,6 +121,22 @@ def _fecha(v) -> date | None:
         return None
 
 
+def _es_residuo(cara: dict, proveedor: str, desde, hasta) -> bool:
+    """¿Está marcado ocupado y no hay NADA más? Entonces no es un contrato.
+
+    Se exige que falte todo —proveedor, las dos fechas, el valor y la marca—
+    porque con cualquiera de esos datos hubo una negociación de por medio y sí
+    hay algo que completar.
+    """
+    return (
+        not proveedor
+        and desde is None
+        and hasta is None
+        and not float(cara.get("negotiatedValue") or 0)
+        and not (cara.get("brandCategory") or "").strip()
+    )
+
+
 def _motivo(proveedor: str, desde: date | None, hasta: date | None) -> str | None:
     """Por qué éste no se puede importar, dicho para que se pueda arreglar."""
     if not proveedor and not (desde and hasta):
@@ -142,12 +174,19 @@ def revisar(db: Session) -> Importacion:
 
             motivo = _motivo(proveedor, desde, hasta)
             if motivo:
+                residuo = _es_residuo(cara, proveedor, desde, hasta)
                 salida.incompletos.append(Incompleto(
                     espacio=completo, sede=sede, code=corto,
                     proveedor=proveedor,
                     desde=(cara.get("startDate") or ""),
                     hasta=(cara.get("endDate") or ""),
-                    motivo=motivo,
+                    motivo=(
+                        "marcado «Ocupado» a mano en el plano, sin contrato detrás"
+                        if residuo else motivo
+                    ),
+                    marca=(cara.get("brandCategory") or "").strip(),
+                    valor=float(cara.get("negotiatedValue") or 0),
+                    residuo=residuo,
                 ))
                 continue
 

@@ -45,6 +45,7 @@ ACCIONES = {
     "sede.baja": "Sede borrada",
     "sede.renumerar": "Plano renumerado",
     "contrato.importado": "Contratos importados del plano",
+    "contrato.barrido": "Empezar de cero: contratos y planos limpiados",
 }
 
 # Un año. Suficiente para cualquier reclamo de un proveedor sobre un contrato

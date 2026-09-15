@@ -218,9 +218,17 @@ export default function CargaMasiva({
               }}
             >
               <div style={{ flex: 1, minWidth: 240, fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
+                {/* Decía «Valor mensual», y desde la fase 17 el valor NO es
+                    mensual: es lo acordado por el periodo, tal como se teclea,
+                    sin prorratear. Llamarlo mensual acá invitaba a escribir una
+                    tarifa de mes para un contrato de diez días. El lector de
+                    encabezados acepta igual «valor mensual», «precio», «canon»,
+                    «monto» y «tarifa», así que ninguna planilla ya hecha se
+                    rompe por esto. */}
                 Columnas: <b>Espacio</b>, Sede, <b>Proveedor</b>, Correo, Marca,
-                {" "}<b>Valor mensual</b>, <b>Desde</b>, <b>Hasta</b> y Nota.
+                {" "}<b>Valor</b>, <b>Desde</b>, <b>Hasta</b> y Nota.
                 Las fechas se leen <b>día primero</b> (3/4/2026 es el 3 de abril).
+                El valor es <b>lo acordado por el periodo</b>, no una tarifa mensual.
               </div>
               <button
                 onClick={() => descargarPlantilla(sede)}

@@ -23,6 +23,32 @@ from sqlalchemy.orm import Session
 from app.models.models import LayoutSnapshot
 
 
+#: Los campos que describen un CONTRATO, no un mueble.
+#:
+#: Vivieron años adentro del JSON del layout, al mismo tiempo que en
+#: ``space_leases``. Dos lugares para el mismo hecho, y ningún mecanismo que los
+#: obligara a coincidir: el plano nunca le escribió a la base —ese camino no
+#: existe— y el parche del navegador hacia el plano se podía perder de varias
+#: maneras. De ahí salían los tres síntomas de la auditoría, todos con la misma
+#: cara: «el espacio está libre y el sistema dice que está ocupado».
+#:
+#: Ahora la base es la única verdad y esto se descarta al guardar. El layout
+#: guarda lo que ES el mueble —dónde está, cuánto mide, cómo se llama— y el
+#: navegador pide lo comercial a ``GET /api/spaces/comercial``.
+#:
+#: Los ``slots`` NO están en esta lista y es a propósito: el estado por repisa
+#: del editor 3D no tiene contraparte en ninguna tabla, así que tiene una sola
+#: fuente y no puede discrepar con nada. El desfase necesita DOS verdades.
+#:
+#: Vive acá y no en el router porque hay dos que la necesitan —el corte al
+#: guardar y el barrido de `empezar_de_cero`— y un servicio importando de un
+#: router es la capa al revés: da un import circular en la cara.
+CAMPOS_DE_CONTRATO = (
+    "status", "supplierName", "brandCategory", "negotiatedValue",
+    "startDate", "endDate", "observation",
+)
+
+
 def _full_code(fixture_code: str, sede: str) -> str:
     """Rebuild the "SEDE-CODE" space code for one fixture.
 

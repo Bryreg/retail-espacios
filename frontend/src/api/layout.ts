@@ -184,6 +184,13 @@ export interface ContratoIncompleto {
   hasta: string;
   /** Dicho para que se pueda arreglar: «le falta el proveedor». */
   motivo: string;
+  /** Lo que sí tiene, para poder juzgarlo sin abrir el plano. */
+  marca: string;
+  valor: number;
+  /** No es un contrato a medias: es un «Ocupado» que alguien puso a mano en el
+   *  plano cuando el selector todavía lo permitía. No hay nada que completarle
+   *  y se va solo al guardar ese plano — el consejo es el contrario. */
+  residuo: boolean;
 }
 
 export interface Importacion {
@@ -210,3 +217,40 @@ export const revisarImportacion = (): Promise<Importacion> =>
  *  Idempotente: lo que ya tiene contrato vivo no se toca. */
 export const aplicarImportacion = (): Promise<Importacion> =>
   client.post<Importacion>("/layout/importacion/aplicar").then((r) => r.data);
+
+// ─── Empezar de cero ─────────────────────────────────────────────────────────
+
+/** Qué hay para barrer, o qué se barrió. */
+export interface Barrido {
+  contratos: number;
+  planometrias: number;
+  avisos: number;
+  espacios_ocupados: number;
+  muebles_con_residuo: number;
+  sedes_con_residuo: string[];
+  /** Lo que se deja en pie, para que se vea que se deja. */
+  proveedores_intactos: number;
+  espacios_intactos: number;
+  montajes_intactos: number;
+  aplicado: boolean;
+}
+
+/** Qué se llevaría. **No escribe una sola fila.** Admin-only. */
+export const revisarBarrido = (): Promise<Barrido> =>
+  client.get<Barrido>("/layout/empezar-de-cero/previo").then((r) => r.data);
+
+/**
+ * Dejar la base sin contratos y los planos sin estado comercial.
+ *
+ * **No se deshace.** Hay que mandar el número de contratos que mostró el previo:
+ * si no coincide con lo que hay en el servidor, contesta 409 y no toca nada. No
+ * es burocracia — o quien apretó no miró lo que iba a llevarse, o alguien vendió
+ * algo mientras tanto, y en los dos casos seguir sería pasar por encima de algo
+ * que nadie vio.
+ */
+export const aplicarBarrido = (contratosEsperados: number): Promise<Barrido> =>
+  client
+    .post<Barrido>("/layout/empezar-de-cero/aplicar", {
+      contratos_esperados: contratosEsperados,
+    })
+    .then((r) => r.data);

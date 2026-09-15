@@ -287,8 +287,10 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
         out.proveedor = proveedor or None
         out.marca = (fila.marca or "").strip() or None
         out.correo = (fila.correo or "").strip() or None
-        # Viaja de vuelta para que la pantalla la escriba en el plano: el panel
-        # del plano y el detalle del espacio la leen de ahí, no de la base.
+        # Se guarda en el contrato (`notes`), que es donde vive desde que lo
+        # comercial es de la base. Viaja de vuelta sólo para que la pantalla la
+        # muestre en el previo, antes de confirmar: hubo un tiempo en que la
+        # pantalla la escribía en el JSON del plano, y ya no.
         out.nota = (fila.nota or "").strip() or None
 
         # ── El espacio ────────────────────────────────────────────────────────
@@ -396,7 +398,7 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
         valor = float(fila.valor or 0)
         out.valor = valor or None
         if valor <= 0:
-            errores.append("Falta el valor mensual, o quedó en cero.")
+            errores.append("Falta el valor, o quedó en cero.")
         elif out.referencia:
             desvio = round((1 - valor / out.referencia) * 100)
             if desvio >= 15:

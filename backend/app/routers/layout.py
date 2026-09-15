@@ -10,6 +10,7 @@ from app.models.models import LayoutSnapshot
 from app.services.bitacora import anotar
 from app.services.sede_archive import archive_sede_spaces, count_commercial_rows
 from app.services.layout_lookup import (
+    CAMPOS_DE_CONTRATO,
     choques_nuevos,
     contratos_que_quedarian_sin_mueble,
     normalizar,
@@ -25,7 +26,13 @@ from app.services.importar_del_plano import (
     aplicar as aplicar_importacion,
     revisar as revisar_importacion,
 )
+from app.services.empezar_de_cero import (
+    aplicar as aplicar_barrido,
+    revisar as revisar_barrido,
+)
 from app.schemas.layout import (
+    BarridoIn,
+    BarridoOut,
     ImportacionOut,
     LayoutIn,
     LayoutOut,
@@ -137,26 +144,9 @@ def _price_map(fixtures: list) -> dict:
     return index
 
 
-#: Los campos que describen un CONTRATO, no un mueble.
-#:
-#: Vivieron años acá adentro, en el JSON del layout, al mismo tiempo que en
-#: ``space_leases``. Dos lugares para el mismo hecho, y ningún mecanismo que los
-#: obligara a coincidir: el plano nunca le escribió a la base —ese camino no
-#: existe— y el parche del navegador hacia el plano se podía perder de varias
-#: maneras. De ahí salían los tres síntomas de la auditoría, todos con la misma
-#: cara: «el espacio está libre y el sistema dice que está ocupado».
-#:
-#: Ahora la base es la única verdad y esto se descarta al guardar. El layout
-#: guarda lo que ES el mueble —dónde está, cuánto mide, cómo se llama— y el
-#: navegador pide lo comercial a ``GET /api/spaces/comercial``.
-#:
-#: Los ``slots`` NO están en esta lista y es a propósito: el estado por repisa
-#: del editor 3D no tiene contraparte en ninguna tabla, así que tiene una sola
-#: fuente y no puede discrepar con nada. El desfase necesita DOS verdades.
-CAMPOS_DE_CONTRATO = (
-    "status", "supplierName", "brandCategory", "negotiatedValue",
-    "startDate", "endDate", "observation",
-)
+# Qué es «lo comercial» se define en `services/layout_lookup.py`
+# (`CAMPOS_DE_CONTRATO`, importado arriba): lo necesitan el corte de acá y el
+# barrido de `empezar_de_cero`, y una sola definición es el punto de todo esto.
 
 
 def _sin_contrato(fixtures: list) -> None:
@@ -627,6 +617,64 @@ def importacion_aplicar(
         # se perdería en silencio, que es la peor forma de no tener bitácora.
         db.commit()
     return _a_importacion(plan, aplicado=True)
+
+
+# ─── Empezar de cero ─────────────────────────────────────────────────────────
+#
+# Para un momento puntual, no para el uso diario: barrer los contratos de prueba
+# y el estado comercial que quedó escrito en los planos, para volver a cargar
+# sobre limpio. Ver `services/empezar_de_cero.py` para qué alcanza y qué no.
+
+
+@router.get("/empezar-de-cero/previo", response_model=BarridoOut,
+            dependencies=[Depends(require_admin)])
+def barrido_previo(db: Session = Depends(get_db)) -> BarridoOut:
+    """Qué se llevaría. **No escribe una sola fila.**"""
+    return BarridoOut(**vars(revisar_barrido(db)))
+
+
+@router.post("/empezar-de-cero/aplicar", response_model=BarridoOut,
+             dependencies=[Depends(require_admin)])
+def barrido_aplicar(
+    payload: BarridoIn,
+    request: Request,
+    rol: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> BarridoOut:
+    """Dejar la base sin contratos y los planos sin estado comercial.
+
+    **No se deshace.** Pide el número de contratos que mostró el previo: si no
+    coincide con lo que hay ahora, se niega. O quien apretó no miró lo que iba a
+    llevarse, o alguien vendió algo mientras tanto — y en los dos casos seguir
+    sería pasar por encima de algo que nadie vio.
+    """
+    hay = revisar_barrido(db).contratos
+    if payload.contratos_esperados != hay:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "cuenta_no_coincide",
+                "message": (
+                    f"Ibas a limpiar {payload.contratos_esperados} contrato(s) y "
+                    f"ahora hay {hay}. No se tocó nada: mirá el previo otra vez."
+                ),
+                "contratos": hay,
+            },
+        )
+
+    plan = aplicar_barrido(db)
+    anotar(
+        db, request, rol,
+        accion="contrato.barrido",
+        detalle=(
+            f"Empezar de cero: {plan.contratos} contrato(s), "
+            f"{plan.planometrias} planometría(s) y {plan.avisos} aviso(s); "
+            f"{plan.muebles_con_residuo} mueble(s) del plano limpiados en "
+            f"{', '.join(plan.sedes_con_residuo) or 'ninguna sede'}"
+        ),
+    )
+    db.commit()
+    return BarridoOut(**vars(plan))
 
 
 @router.post("/renumeracion/previo", response_model=RenumeracionOut,
