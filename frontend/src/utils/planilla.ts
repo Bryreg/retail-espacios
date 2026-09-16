@@ -1,4 +1,7 @@
 import * as XLSX from "xlsx";
+// Sólo los TIPOS: `import type` se borra al compilar, así que exceljs sigue
+// entrando únicamente por el `import()` perezoso de más abajo.
+import type { Cell, Row } from "exceljs";
 
 /**
  * Leer la planilla de contratos que llega de una reunión comercial.
@@ -386,34 +389,182 @@ function filasDeInstrucciones(sede: string): unknown[][] {
   ];
 }
 
-/** El libro entero. Aparte para poder PROBAR lo que de verdad se descarga:
- *  las pruebas leen esto con el mismo `leerPlanilla` que abre lo que manda la
- *  gente, en vez de una aproximación armada a mano. */
-export function libroDePlantilla(sede: string): XLSX.WorkBook {
-  const datos = XLSX.utils.aoa_to_sheet(filasDeContratosDePlantilla(sede));
-  datos["!cols"] = [
-    { wch: 16 }, { wch: 14 }, { wch: 20 }, { wch: 26 }, { wch: 20 },
-    { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 44 },
-  ];
-  // Los dos renglones de arriba se leen como un bloque y no como una fila de
-  // datos cortada en la columna B.
-  datos["!merges"] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 8 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 8 } },
-  ];
-  datos["!rows"] = [{ hpt: 20 }, { hpt: 20 }];
+// ─── El archivo, con diseño ──────────────────────────────────────────────────
+//
+// Se arma con ExcelJS y no con la librería que LEE, y no es capricho: SheetJS
+// en su versión community no escribe estilos —ni fondos, ni negritas, ni
+// bordes—, así que todo lo de abajo sale en gris plano. ExcelJS sí, y no
+// arrastra de vuelta el SheetJS 0.18, que es la versión con vulnerabilidades
+// conocidas de la que este proyecto ya se había movido.
+//
+// Entra por `import()` perezoso: sólo se descarga cuando alguien pide la
+// plantilla, que es una acción de admin y poco frecuente. El mismo trato que
+// tiene three.js en la landing.
+//
+// La paleta es la de la aplicación (`tema.css`), no una inventada: papel
+// #EFF1ED, tinta #0A1014, líneas #DDDEDE. Restringida a propósito — una
+// planilla de colores se ve hecha por una plantilla de Office, no por el
+// sistema que la va a leer.
 
-  const ayuda = XLSX.utils.aoa_to_sheet(filasDeInstrucciones(sede));
-  ayuda["!cols"] = [{ wch: 15 }, { wch: 78 }];
+const TINTA = "FF0A1014";      // --ink-1
+const TINTA_2 = "FF4A5B65";    // --ink-2
+const TINTA_3 = "FF54646E";    // --ink-3
+const PAPEL = "FFF7F8F5";      // --surface-2
+const LINEA = "FFDDDEDE";      // --line
+const BLANCO = "FFFFFFFF";
 
-  const libro = XLSX.utils.book_new();
-  // «Contratos» PRIMERO: `leerPlanilla` lee `SheetNames[0]`, así que el orden
-  // de estas dos líneas es funcional, no estético.
-  XLSX.utils.book_append_sheet(libro, datos, "Contratos");
-  XLSX.utils.book_append_sheet(libro, ayuda, "Cómo llenarla");
+/** Un borde fino, del color de las líneas de la aplicación. */
+const borde = {
+  top: { style: "thin" as const, color: { argb: LINEA } },
+  left: { style: "thin" as const, color: { argb: LINEA } },
+  bottom: { style: "thin" as const, color: { argb: LINEA } },
+  right: { style: "thin" as const, color: { argb: LINEA } },
+};
+
+const relleno = (argb: string) =>
+  ({ type: "pattern" as const, pattern: "solid" as const, fgColor: { argb } });
+
+/**
+ * El libro con diseño. Devuelve el workbook de ExcelJS, ya armado.
+ *
+ * Aparte de `descargarPlantilla` para poder PROBAR lo que de verdad se baja:
+ * las pruebas lo escriben a un buffer y lo leen con el mismo `leerPlanilla` que
+ * abre lo que manda la gente. Probar una aproximación armada a mano sería
+ * probar otra cosa.
+ */
+export async function libroDePlantilla(sede: string) {
+  // La interoperabilidad de exceljs cambia según quién lo cargue: Vite entrega
+  // el CJS bajo `default`, y node lo expone plano. Se aceptan las dos formas en
+  // vez de casarse con una y descubrir en producción que era la otra.
+  const mod = (await import("exceljs")) as unknown as Record<string, any>;
+  const Workbook = mod.Workbook ?? mod.default?.Workbook;
+  const libro = new Workbook();
+  libro.creator = "RECABRA";
+
+  // ── Hoja 1 · Contratos ────────────────────────────────────────────────────
+  // PRIMERA a propósito: `leerPlanilla` lee la hoja 0, así que el orden de
+  // estas dos hojas es funcional, no estético.
+  const datos = libro.addWorksheet("Contratos", {
+    views: [{ state: "frozen", ySplit: 4 }],   // los títulos quedan fijos al bajar
+  });
+  datos.columns = [
+    { width: 16 }, { width: 15 }, { width: 20 }, { width: 28 }, { width: 20 },
+    { width: 14 }, { width: 13 }, { width: 13 }, { width: 44 },
+  ];
+
+  const filas = filasDeContratosDePlantilla(sede);
+  filas.forEach((f) => datos.addRow(f));
+
+  // Franja de título: tinta llena, letra blanca. Es lo primero que se ve.
+  datos.mergeCells("A1:I1");
+  const titulo = datos.getRow(1);
+  titulo.height = 26;
+  titulo.getCell(1).fill = relleno(TINTA);
+  titulo.getCell(1).font = { bold: true, size: 12, color: { argb: BLANCO } };
+  titulo.getCell(1).alignment = { vertical: "middle", indent: 1 };
+
+  // Franja de lo imprescindible: papel, para que se lea como una nota y no
+  // como un dato.
+  datos.mergeCells("A2:I2");
+  const aviso = datos.getRow(2);
+  aviso.height = 22;
+  aviso.getCell(1).fill = relleno(PAPEL);
+  aviso.getCell(1).font = { size: 10, color: { argb: TINTA_2 } };
+  aviso.getCell(1).alignment = { vertical: "middle", indent: 1 };
+
+  // Los títulos de columna: la misma tinta del encabezado, para que el ojo los
+  // lea como el borde de arriba de la tabla y no como una fila más.
+  const cabecera = datos.getRow(4);
+  cabecera.height = 20;
+  cabecera.eachCell((celda: Cell) => {
+    celda.fill = relleno(TINTA);
+    celda.font = { bold: true, size: 10, color: { argb: BLANCO } };
+    celda.alignment = { vertical: "middle", indent: 1 };
+    celda.border = borde;
+  });
+
+  // Los ejemplos van en cursiva y apagados: tienen que LEERSE como ejemplo,
+  // no como el primer contrato de la lista.
+  for (const n of [5, 6]) {
+    const fila = datos.getRow(n);
+    fila.height = 18;
+    fila.eachCell((celda: Cell) => {
+      celda.fill = relleno(PAPEL);
+      celda.font = { italic: true, size: 10, color: { argb: TINTA_3 } };
+      celda.alignment = { vertical: "middle", indent: 1 };
+      celda.border = borde;
+    });
+    // El valor como número, alineado a la derecha y con separador de miles:
+    // es lo que hace obvio que va un número pelado y no «$2.100.000».
+    const valor = fila.getCell(6);
+    valor.numFmt = "#,##0";
+    valor.alignment = { vertical: "middle", horizontal: "right" };
+  }
+
+  // ── Hoja 2 · Cómo llenarla ────────────────────────────────────────────────
+  const ayuda = libro.addWorksheet("Cómo llenarla");
+  ayuda.columns = [{ width: 16 }, { width: 82 }];
+  filasDeInstrucciones(sede).forEach((f) => ayuda.addRow(f));
+
+  ayuda.mergeCells("A1:B1");
+  const t2 = ayuda.getRow(1);
+  t2.height = 28;
+  t2.getCell(1).fill = relleno(TINTA);
+  t2.getCell(1).font = { bold: true, size: 13, color: { argb: BLANCO } };
+  t2.getCell(1).alignment = { vertical: "middle", indent: 1 };
+
+  ayuda.mergeCells("A2:B2");
+  ayuda.getRow(2).getCell(1).font = { size: 10, color: { argb: TINTA_2 } };
+  ayuda.getRow(2).getCell(1).alignment = { indent: 1 };
+
+  ayuda.eachRow((fila: Row, n: number) => {
+    if (n <= 2) return;
+    const etiqueta = String(fila.getCell(1).value ?? "");
+    const texto = String(fila.getCell(2).value ?? "");
+    fila.height = 17;
+
+    // Los tres rótulos de sección —COLUMNA, ANTES DE SUBIRLA, AL SUBIRLA— son
+    // los que dan el ritmo de la hoja: van en franja.
+    const esSeccion = etiqueta === etiqueta.toUpperCase() && etiqueta.length > 3;
+    if (esSeccion) {
+      fila.height = 20;
+      for (const c of [1, 2]) {
+        fila.getCell(c).fill = relleno(PAPEL);
+        fila.getCell(c).font = { bold: true, size: 9.5, color: { argb: TINTA } };
+        fila.getCell(c).alignment = { vertical: "middle", indent: 1 };
+        fila.getCell(c).border = { bottom: borde.bottom };
+      }
+      return;
+    }
+
+    // La etiqueta de columna en negrita; su explicación, en tinta suave. Las
+    // líneas de continuación llevan la etiqueta vacía y quedan sangradas solas.
+    fila.getCell(1).font = { bold: true, size: 10, color: { argb: TINTA } };
+    fila.getCell(1).alignment = { vertical: "middle", indent: 1 };
+    fila.getCell(2).font = { size: 10, color: { argb: texto ? TINTA_2 : TINTA_3 } };
+    fila.getCell(2).alignment = { vertical: "middle", indent: 1 };
+  });
+
   return libro;
 }
 
-export function descargarPlantilla(sede: string) {
-  XLSX.writeFile(libroDePlantilla(sede), "plantilla-contratos-recabra.xlsx");
+/** El archivo, listo para guardar o para leer en una prueba. */
+export async function bufferDePlantilla(sede: string): Promise<ArrayBuffer> {
+  const libro = await libroDePlantilla(sede);
+  return libro.xlsx.writeBuffer() as Promise<ArrayBuffer>;
+}
+
+export async function descargarPlantilla(sede: string) {
+  const datos = await bufferDePlantilla(sede);
+  const url = URL.createObjectURL(
+    new Blob([datos], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+  );
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "plantilla-contratos-recabra.xlsx";
+  a.click();
+  // Sin esto el blob queda en memoria hasta que se cierre la pestaña.
+  URL.revokeObjectURL(url);
 }

@@ -5438,12 +5438,25 @@ adelante: lo que ya está mal se guardó antes de que existiera.
 
 ## Gotchas
 
-**La librería de Excel está vieja.** `xlsx@0.18.5` en npm arrastra vulnerabilidades
-conocidas (prototype pollution, ReDoS) que sólo están corregidas en versiones que SheetJS
-publica **fuera de npm**, en su propio CDN. Ya estaba en el proyecto para abrir adjuntos, y
-la carga masiva le agrega una segunda entrada: siempre archivos que sube un admin
-autenticado, nunca de terceros. Actualizarla implica cambiar el origen del paquete, así que
-queda anotado y no hecho.
+**Excel: DOS librerías, y cada una tiene su motivo.**
+
+`xlsx` **LEE** —adjuntos y carga masiva— y ya está en **0.20.3 desde el CDN de SheetJS**,
+no desde npm. Esto resolvió el problema que quedó anotado un tiempo: la versión de npm
+(`0.18.5`) arrastra vulnerabilidades conocidas (prototype pollution, ReDoS) que SheetJS
+sólo corrige en las versiones que publica fuera de npm. Por eso `package.json` apunta a
+`https://cdn.sheetjs.com/xlsx-0.20.3/...` y no a un rango de versión: **cualquier cambio
+que lo devuelva a npm reintroduce esas vulnerabilidades.**
+
+`exceljs` **ESCRIBE** la plantilla de carga, y existe por una sola razón: SheetJS en su
+versión community **no escribe estilos**. Sin él la plantilla sale en gris plano, sin
+fondos, negritas ni bordes. La alternativa cómoda —`xlsx-js-style`, que es un fork con
+estilos y hubiera sido un cambio de una línea— está pegada a SheetJS 0.18, o sea que
+habría traído de vuelta justo lo que el cambio al CDN sacó.
+
+Entra por `import()` perezoso y Vite le da su propio chunk (271 KB gzip): sólo se descarga
+al pedir la plantilla, que es una acción de admin y poco frecuente. Mismo trato que
+three.js en la landing. **No agregarlo al camino de lectura**: ahí no hace falta y el
+arranque lo pagaría todo el mundo.
 
 
 - `npm install` requiere `--legacy-peer-deps`.

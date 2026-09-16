@@ -234,7 +234,9 @@ export default function CargaMasiva({
                 La plantilla trae las instrucciones completas en su segunda pestaña.
               </div>
               <button
-                onClick={() => descargarPlantilla(sede)}
+                // Ahora es asíncrona: la librería que le pone el diseño entra
+                // por `import()` perezoso, para no cargarla en el arranque.
+                onClick={() => void descargarPlantilla(sede)}
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 6,
                   height: 32, padding: "0 13px", borderRadius: "var(--r-md)",

@@ -14,15 +14,21 @@ import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
-import { writeFileSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync, rmSync } from "node:fs";
 import * as XLSX from "xlsx";
 
 const aqui = dirname(fileURLToPath(import.meta.url));
-const salida = join(mkdtempSync(join(tmpdir(), "planilla-")), "planilla.mjs");
+// DENTRO del proyecto, no en /tmp: `exceljs` y `xlsx` quedan externos al
+// bundle y node los busca subiendo desde la carpeta del archivo. Desde /tmp no
+// hay `node_modules` arriba y la importación falla con ERR_MODULE_NOT_FOUND.
+const salida = join(aqui, ".planilla-bundle.mjs");
 const { outputFiles } = await build({
   entryPoints: [join(aqui, "..", "src", "utils", "planilla.ts")],
   bundle: true, format: "esm", write: false, platform: "node",
+  // `exceljs` y `xlsx` quedan afuera del bundle: traen dependencias de node
+  // —`crypto`, `stream`— que esbuild no inlinea. Node las resuelve solo
+  // desde node_modules, igual que el navegador con su empaquetador.
+  external: ["exceljs", "xlsx"],
 });
 writeFileSync(salida, outputFiles[0].text);
 const P = await import(pathToFileURL(salida).href);
@@ -186,22 +192,28 @@ console.log("\n" + hechas + " pruebas" + (process.exitCode ? " · CON FALLAS" : 
    la pestaña equivocada, que no encuentre los títulos, o que el ejemplo se suba
    solo porque nadie lo borró. */
 
-/** La plantilla tal como sale, sin pasar por el navegador. */
-const plantilla = (sede = "NAVE") =>
-  archivo(XLSX.write(P.libroDePlantilla(sede), { type: "buffer", bookType: "xlsx" }));
+/** La plantilla tal como sale, sin pasar por el navegador.
+ *
+ *  El archivo lo arma ExcelJS —SheetJS community no escribe estilos— y se lee
+ *  con el mismo `leerPlanilla` de la aplicación, que sí usa SheetJS. Que el
+ *  redondeo funcione es parte de lo que se prueba: un .xlsx con diseño tiene
+ *  que seguir siendo un .xlsx que el lector entiende. */
+const plantilla = async (sede = "NAVE") =>
+  archivo(Buffer.from(await P.bufferDePlantilla(sede)));
 
 console.log("\nplanilla · la plantilla que se descarga");
 
 await pruebaAsync("LA HOJA DE DATOS ES LA PRIMERA", async () => {
   // `leerPlanilla` lee `SheetNames[0]`. Si las instrucciones quedaran primeras,
   // la carga fallaría entera con «no encontré la fila de encabezados».
-  const libro = P.libroDePlantilla("NAVE");
-  assert.equal(libro.SheetNames[0], "Contratos");
-  assert.ok(libro.SheetNames.includes("Cómo llenarla"), "falta la hoja de ayuda");
+  const libro = await P.libroDePlantilla("NAVE");
+  const nombres = libro.worksheets.map((h) => h.name);
+  assert.equal(nombres[0], "Contratos");
+  assert.ok(nombres.includes("Cómo llenarla"), "falta la hoja de ayuda");
 });
 
 await pruebaAsync("los títulos se encuentran y las columnas se reconocen", async () => {
-  const { filas, faltan, mapeo } = await P.leerPlanilla(plantilla());
+  const { filas, faltan, mapeo } = await P.leerPlanilla(await plantilla());
   assert.deepEqual(faltan, [], "no reconoció alguna columna obligatoria");
   assert.equal(mapeo.espacio, "Espacio");
   assert.equal(mapeo.valor, "Valor", "la columna dejó de llamarse «Valor»");
@@ -211,7 +223,7 @@ await pruebaAsync("los títulos se encuentran y las columnas se reconocen", asyn
 await pruebaAsync("NINGÚN RENGLÓN DE ARRIBA SE CONFUNDE CON LOS TÍTULOS", async () => {
   // Si un renglón de orientación calzara dos campos, el lector lo tomaría por
   // la fila de títulos y todo lo de abajo quedaría en columnas equivocadas.
-  const { filas } = await P.leerPlanilla(plantilla());
+  const { filas } = await P.leerPlanilla(await plantilla());
   assert.equal(filas[0].espacio, "EJEMPLO-01");
   assert.equal(filas[0].proveedor, "Nutresa");
   assert.equal(filas[0].valor, 2100000);
@@ -234,7 +246,7 @@ await pruebaAsync("y se lee como el mismo día que dice", async () => {
   const filas = P.filasDeContratosDePlantilla("NAVE");
   const iTitulos = filas.findIndex((f) => f[0] === "Espacio");
   const [dd, mm, aaaa] = String(filas[iTitulos + 1][6]).split("/");
-  const { filas: leidas } = await P.leerPlanilla(plantilla());
+  const { filas: leidas } = await P.leerPlanilla(await plantilla());
   assert.equal(leidas[0].desde, `${aaaa}-${mm}-${dd}`);
 });
 
@@ -242,7 +254,7 @@ await pruebaAsync("EL EJEMPLO NO SE PUEDE SUBIR POR ACCIDENTE", async () => {
   // Las filas sin error vienen MARCADAS en la pantalla de carga: un ejemplo con
   // un código real se subiría solo si alguien se olvida de borrarlo, y eso es
   // un contrato inventado en la base.
-  const { filas } = await P.leerPlanilla(plantilla());
+  const { filas } = await P.leerPlanilla(await plantilla());
   for (const f of filas) {
     assert.match(f.espacio, /^EJEMPLO-/,
       "el ejemplo volvió a usar un código real: se sube solo si nadie lo borra");
@@ -266,3 +278,6 @@ await pruebaAsync("cada renglón de orientación va en UNA sola celda", async ()
       "hacerse pasar por la fila de títulos");
   }
 });
+
+// El bundle es un intermedio, no un artefacto: se borra al terminar.
+rmSync(salida, { force: true });
