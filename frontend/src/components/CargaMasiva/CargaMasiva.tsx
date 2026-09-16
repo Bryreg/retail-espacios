@@ -227,11 +227,16 @@ export default function CargaMasiva({
                     rompe por esto. */}
                 Columnas: <b>Espacio</b>, Sede, <b>Proveedor</b>, Correo, Marca,
                 {" "}<b>Valor</b>, <b>Desde</b>, <b>Hasta</b> y Nota.
-                Las fechas se leen <b>día primero</b> (3/4/2026 es el 3 de abril).
-                El valor es <b>lo acordado por el periodo</b>, no una tarifa mensual.
+                Las fechas se leen <b>día primero</b>: 15/09/2026 es el 15 de
+                septiembre. Sirve con <b>/</b>, <b>-</b> o <b>.</b>, y también
+                2026-09-15 (año-mes-día). El valor es{" "}
+                <b>lo acordado por el periodo</b>, no una tarifa mensual.
+                La plantilla trae las instrucciones completas en su segunda pestaña.
               </div>
               <button
-                onClick={() => descargarPlantilla(sede)}
+                // Ahora es asíncrona: la librería que le pone el diseño entra
+                // por `import()` perezoso, para no cargarla en el arranque.
+                onClick={() => void descargarPlantilla(sede)}
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 6,
                   height: 32, padding: "0 13px", borderRadius: "var(--r-md)",
