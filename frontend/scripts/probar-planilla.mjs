@@ -178,24 +178,29 @@ console.log("\n" + hechas + " pruebas" + (process.exitCode ? " · CON FALLAS" : 
 
 // ─── La plantilla que se descarga ────────────────────────────────────────────
 
-/* Lleva las instrucciones ARRIBA de los títulos, y eso puede romper la lectura
-   de dos maneras que no se ven mirando el archivo: que el lector no encuentre
-   la fila de títulos, o que confunda una línea de ayuda CON los títulos. Las
-   dos se prueban leyendo la plantilla de verdad, generada por la misma función
-   que la descarga. */
+/* Se prueba EL LIBRO REAL —el mismo que arma `descargarPlantilla`— leído con el
+   mismo `leerPlanilla` que abre lo que manda la gente. Una aproximación armada
+   a mano probaría otra cosa.
+
+   Lo que puede romperse acá no se ve mirando el archivo: que el lector agarre
+   la pestaña equivocada, que no encuentre los títulos, o que el ejemplo se suba
+   solo porque nadie lo borró. */
 
 /** La plantilla tal como sale, sin pasar por el navegador. */
-const plantilla = (sede = "NAVE") => {
-  const filas = P.filasDePlantilla(sede);
-  const hoja = XLSX.utils.aoa_to_sheet(filas);
-  const libro = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(libro, hoja, "Contratos");
-  return archivo(XLSX.write(libro, { type: "buffer", bookType: "xlsx" }));
-};
+const plantilla = (sede = "NAVE") =>
+  archivo(XLSX.write(P.libroDePlantilla(sede), { type: "buffer", bookType: "xlsx" }));
 
-console.log("\nplanilla · la plantilla con instrucciones se sigue leyendo");
+console.log("\nplanilla · la plantilla que se descarga");
 
-await pruebaAsync("LOS TÍTULOS SE ENCUENTRAN DEBAJO DE LAS INSTRUCCIONES", async () => {
+await pruebaAsync("LA HOJA DE DATOS ES LA PRIMERA", async () => {
+  // `leerPlanilla` lee `SheetNames[0]`. Si las instrucciones quedaran primeras,
+  // la carga fallaría entera con «no encontré la fila de encabezados».
+  const libro = P.libroDePlantilla("NAVE");
+  assert.equal(libro.SheetNames[0], "Contratos");
+  assert.ok(libro.SheetNames.includes("Cómo llenarla"), "falta la hoja de ayuda");
+});
+
+await pruebaAsync("los títulos se encuentran y las columnas se reconocen", async () => {
   const { filas, faltan, mapeo } = await P.leerPlanilla(plantilla());
   assert.deepEqual(faltan, [], "no reconoció alguna columna obligatoria");
   assert.equal(mapeo.espacio, "Espacio");
@@ -203,21 +208,40 @@ await pruebaAsync("LOS TÍTULOS SE ENCUENTRAN DEBAJO DE LAS INSTRUCCIONES", asyn
   assert.equal(filas.length, 2, "tiene que leer las dos filas de ejemplo y nada más");
 });
 
-await pruebaAsync("NINGUNA LÍNEA DE AYUDA SE CONFUNDE CON LOS TÍTULOS", async () => {
-  // Si una línea de ayuda calzara dos campos, el lector la tomaría por la fila
-  // de títulos y todo lo de abajo quedaría en columnas equivocadas. Cada
-  // instrucción va en UNA celda justamente para que eso no pueda pasar.
+await pruebaAsync("NINGÚN RENGLÓN DE ARRIBA SE CONFUNDE CON LOS TÍTULOS", async () => {
+  // Si un renglón de orientación calzara dos campos, el lector lo tomaría por
+  // la fila de títulos y todo lo de abajo quedaría en columnas equivocadas.
   const { filas } = await P.leerPlanilla(plantilla());
   assert.equal(filas[0].espacio, "EJEMPLO-01");
   assert.equal(filas[0].proveedor, "Nutresa");
   assert.equal(filas[0].valor, 2100000);
 });
 
+await pruebaAsync("LA FECHA DEL EJEMPLO SE ESCRIBE COMO DICE LA INSTRUCCIÓN", async () => {
+  // El bicho que reportó el dueño: el renglón prometía «día primero, con /» y
+  // el ejemplo mostraba `2026-09-15`. Justo en el campo donde la ambigüedad no
+  // avisa — leer 3/4 al revés crea el contrato tres meses corrido en silencio.
+  const filas = P.filasDeContratosDePlantilla("NAVE");
+  const iTitulos = filas.findIndex((f) => f[0] === "Espacio");
+  const ejemplo = filas[iTitulos + 1];
+  const desde = String(ejemplo[6]);
+  assert.match(desde, /^\d{2}\/\d{2}\/\d{4}$/,
+    `el ejemplo escribe la fecha como «${desde}» y la instrucción promete día primero con /`);
+});
+
+await pruebaAsync("y se lee como el mismo día que dice", async () => {
+  // No alcanza con que PAREZCA día primero: tiene que LEERSE así.
+  const filas = P.filasDeContratosDePlantilla("NAVE");
+  const iTitulos = filas.findIndex((f) => f[0] === "Espacio");
+  const [dd, mm, aaaa] = String(filas[iTitulos + 1][6]).split("/");
+  const { filas: leidas } = await P.leerPlanilla(plantilla());
+  assert.equal(leidas[0].desde, `${aaaa}-${mm}-${dd}`);
+});
+
 await pruebaAsync("EL EJEMPLO NO SE PUEDE SUBIR POR ACCIDENTE", async () => {
   // Las filas sin error vienen MARCADAS en la pantalla de carga: un ejemplo con
   // un código real se subiría solo si alguien se olvida de borrarlo, y eso es
-  // un contrato inventado en la base. Con un código que no existe en ningún
-  // plano, el servidor lo rechaza y la fila no se puede marcar.
+  // un contrato inventado en la base.
   const { filas } = await P.leerPlanilla(plantilla());
   for (const f of filas) {
     assert.match(f.espacio, /^EJEMPLO-/,
@@ -225,21 +249,20 @@ await pruebaAsync("EL EJEMPLO NO SE PUEDE SUBIR POR ACCIDENTE", async () => {
   }
 });
 
-await pruebaAsync("las instrucciones caben en la ventana que el lector mira", async () => {
+await pruebaAsync("los títulos caben en la ventana que el lector mira", async () => {
   // `leerPlanilla` sólo recorre las primeras 15 filas buscando los títulos.
-  // Una instrucción más y la plantilla dejaría de poder leerse.
-  const filas = P.filasDePlantilla("NAVE");
+  const filas = P.filasDeContratosDePlantilla("NAVE");
   const iTitulos = filas.findIndex((f) => f[0] === "Espacio");
-  assert.ok(iTitulos >= 0, "la plantilla perdió su fila de títulos");
+  assert.ok(iTitulos >= 0, "la hoja de datos perdió su fila de títulos");
   assert.ok(iTitulos < 15, `los títulos quedaron en la fila ${iTitulos + 1}, fuera de las 15`);
 });
 
-await pruebaAsync("cada instrucción va en UNA sola celda", async () => {
-  const filas = P.filasDePlantilla("NAVE");
+await pruebaAsync("cada renglón de orientación va en UNA sola celda", async () => {
+  const filas = P.filasDeContratosDePlantilla("NAVE");
   const iTitulos = filas.findIndex((f) => f[0] === "Espacio");
   for (const f of filas.slice(0, iTitulos)) {
     assert.ok(f.length <= 1,
-      "una línea de ayuda ocupa más de una celda: puede calzar dos campos y " +
+      "un renglón de arriba ocupa más de una celda: puede calzar dos campos y " +
       "hacerse pasar por la fila de títulos");
   }
 });

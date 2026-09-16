@@ -296,56 +296,121 @@ export async function leerPlanilla(archivo: File): Promise<LecturaPlanilla> {
  * servidor lo rechaza, la fila no se puede marcar, y el formato se sigue viendo
  * entero. Falla cerrado en vez de depender de que alguien se acuerde.
  */
-/** Las filas de la plantilla, sin el archivo alrededor.
+/**
+ * La plantilla: DOS hojas, y el reparto no es cosmético.
  *
- *  Aparte para poder PROBARLA: la plantilla lleva instrucciones encima de los
- *  títulos, y eso puede romper la lectura de dos maneras que no se ven mirando
- *  el archivo —que el lector no encuentre los títulos, o que confunda una línea
- *  de ayuda CON los títulos—. Las pruebas leen lo que sale de acá con el mismo
- *  `leerPlanilla` que abre lo que manda la gente. */
-export function filasDePlantilla(sede: string): unknown[][] {
+ * `leerPlanilla` lee `SheetNames[0]` — sólo la primera. Poner las instrucciones
+ * en la segunda las saca por completo del camino del lector: pueden tener
+ * títulos, dos columnas y el largo que haga falta sin ninguna chance de que una
+ * línea de ayuda se haga pasar por la fila de títulos. Antes estaban encima de
+ * los datos, y eso obligaba a escribirlas apretadas y en una sola celda.
+ *
+ * La hoja de datos conserva DOS renglones de orientación, porque quien abre el
+ * archivo cae ahí y puede no mirar nunca la otra pestaña: lo mínimo que arruina
+ * una carga si se ignora —cómo se leen las fechas, qué es el valor y que hay
+ * que borrar los ejemplos—. Lo demás vive en «Cómo llenarla».
+ */
+export function filasDeContratosDePlantilla(sede: string): unknown[][] {
   const hoy = new Date();
   const luego = new Date(hoy);
   luego.setDate(luego.getDate() + 30);
   const tienda = sede || "NAVE";
   return [
-    ["CÓMO LLENAR ESTA PLANILLA"],
-    ["Escribí un contrato por fila, debajo de la fila de títulos."],
-    ["Columna ESPACIO — el código tal como está en el plano: PUN-04, IMP-17. " +
-     "La cara de atrás de una góndola doble lleva «-B» al final: GON-60-B."],
-    [`Columna SEDE — escrita igual que en el sistema (${tienda}). Una misma ` +
-     "planilla puede tener filas de tiendas distintas: cada una va a la suya."],
-    ["Columna DESDE y HASTA — día primero: 3/4/2026 es el 3 de abril. Los dos " +
-     "extremos cuentan, así que del 1 al 30 son treinta días."],
-    ["Columna VALOR — lo acordado por TODO el periodo, no una tarifa mensual. " +
-     "Sólo el número, sin puntos ni signo de pesos."],
-    ["Columna PROVEEDOR — si no existe todavía, se crea. El correo es opcional: " +
-     "con él se le manda la constancia del contrato."],
-    ["Nada de estas líneas se sube. Y antes de confirmar vas a ver fila por " +
-     "fila qué se va a crear, con sus errores si los hay."],
+    ["CONTRATOS — escribí uno por fila, debajo de los títulos. " +
+     "Las instrucciones completas están en la pestaña «Cómo llenarla»."],
+    ["Las fechas van DÍA PRIMERO (15/09/2026 es el 15 de septiembre) · " +
+     "El valor es por TODO el periodo · Borrá las dos filas de EJEMPLO."],
     [],
     // «Valor» y no «Valor mensual»: desde la fase 17 el valor NO es mensual —
     // es lo acordado por el periodo, tal como se teclea, sin prorratear.
     // Encabezarlo «mensual» invitaba a escribir una tarifa de mes para un
-    // contrato de diez días, que es justo la cuenta que se quitó. El lector de
-    // encabezados sigue aceptando la grafía vieja, así que las plantillas ya
-    // descargadas siguen entrando.
+    // contrato de diez días. El lector sigue aceptando la grafía vieja, así que
+    // las plantillas ya descargadas siguen entrando.
     ["Espacio", "Sede", "Proveedor", "Correo", "Marca o categoría",
      "Valor", "Desde", "Hasta", "Nota"],
+    // Las fechas del ejemplo se escriben DÍA PRIMERO, igual que la instrucción.
+    // Antes salían en ISO —`2026-09-15`— y eso contradecía el renglón de arriba
+    // justo en el campo donde la ambigüedad no avisa: leer 3/4 al revés no
+    // falla ruidoso, crea el contrato tres meses corrido y nadie se entera.
     ["EJEMPLO-01", tienda, "Nutresa", "comercial@nutresa.com.co", "Chocolatinas",
-     2100000, iso(hoy), iso(luego), "Borrá esta fila: es un ejemplo del formato"],
+     2100000, diaPrimero(hoy), diaPrimero(luego),
+     "Borrá esta fila: es un ejemplo del formato"],
     ["EJEMPLO-02", tienda, "Alpina", "", "Lácteos",
-     1800000, iso(hoy), iso(luego), "Borrá esta fila también"],
+     1800000, diaPrimero(hoy), diaPrimero(luego), "Borrá esta fila también"],
   ];
 }
 
-export function descargarPlantilla(sede: string) {
-  const hoja = XLSX.utils.aoa_to_sheet(filasDePlantilla(sede));
-  hoja["!cols"] = [
-    { wch: 16 }, { wch: 12 }, { wch: 20 }, { wch: 26 }, { wch: 20 },
+/** `15/09/2026`. La forma que una persona escribe, y la que la instrucción
+ *  promete: el ejemplo tiene que poder copiarse tal cual. */
+function diaPrimero(d: Date): string {
+  const dd = `${d.getDate()}`.padStart(2, "0");
+  const m = `${d.getMonth() + 1}`.padStart(2, "0");
+  return `${dd}/${m}/${d.getFullYear()}`;
+}
+
+/** La hoja de ayuda. Vive en la segunda pestaña, así que puede respirar. */
+function filasDeInstrucciones(sede: string): unknown[][] {
+  const tienda = sede || "NAVE";
+  return [
+    ["CÓMO LLENAR LA PLANILLA"],
+    ["Un contrato por fila, en la pestaña «Contratos»."],
+    [],
+    ["COLUMNA", "QUÉ VA AHÍ"],
+    ["Espacio", "El código tal como está en el plano: PUN-04, IMP-17."],
+    ["", "La cara de atrás de una góndola doble lleva «-B»: GON-60-B."],
+    ["Sede", `Escrita igual que en el sistema: ${tienda}.`],
+    ["", "Una misma planilla puede tener filas de tiendas distintas:"],
+    ["", "cada fila va a la suya, no a la que tengas abierta."],
+    ["Proveedor", "Si todavía no existe, se crea solo."],
+    ["Correo", "Opcional. Con él se le manda la constancia del contrato."],
+    ["Marca", "Opcional. La marca o el rubro que se va a exhibir."],
+    ["Valor", "Lo acordado por TODO el periodo, no una tarifa mensual."],
+    ["", "Sólo el número: 2100000. Sin puntos y sin signo de pesos."],
+    ["Desde", "DÍA PRIMERO: 15/09/2026 es el 15 de septiembre."],
+    ["Hasta", "Sirve con / - o . — y también 2026-09-15 (año-mes-día)."],
+    ["", "Los dos extremos cuentan: del 1 al 30 son treinta días."],
+    ["Nota", "Opcional. Queda guardada en el contrato."],
+    [],
+    ["ANTES DE SUBIRLA"],
+    ["1.", "Borrá las dos filas que dicen EJEMPLO."],
+    ["2.", "No hace falta borrar estas instrucciones: el sistema lee sólo"],
+    ["", "la pestaña «Contratos»."],
+    [],
+    ["AL SUBIRLA"],
+    ["", "Vas a ver fila por fila qué se va a crear, con sus errores si los"],
+    ["", "hay, y podés destildar las que no quieras. Nada se guarda hasta"],
+    ["", "que confirmes."],
+  ];
+}
+
+/** El libro entero. Aparte para poder PROBAR lo que de verdad se descarga:
+ *  las pruebas leen esto con el mismo `leerPlanilla` que abre lo que manda la
+ *  gente, en vez de una aproximación armada a mano. */
+export function libroDePlantilla(sede: string): XLSX.WorkBook {
+  const datos = XLSX.utils.aoa_to_sheet(filasDeContratosDePlantilla(sede));
+  datos["!cols"] = [
+    { wch: 16 }, { wch: 14 }, { wch: 20 }, { wch: 26 }, { wch: 20 },
     { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 44 },
   ];
+  // Los dos renglones de arriba se leen como un bloque y no como una fila de
+  // datos cortada en la columna B.
+  datos["!merges"] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 8 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 8 } },
+  ];
+  datos["!rows"] = [{ hpt: 20 }, { hpt: 20 }];
+
+  const ayuda = XLSX.utils.aoa_to_sheet(filasDeInstrucciones(sede));
+  ayuda["!cols"] = [{ wch: 13 }, { wch: 78 }];
+
   const libro = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(libro, hoja, "Contratos");
-  XLSX.writeFile(libro, "plantilla-contratos-recabra.xlsx");
+  // «Contratos» PRIMERO: `leerPlanilla` lee `SheetNames[0]`, así que el orden
+  // de estas dos líneas es funcional, no estético.
+  XLSX.utils.book_append_sheet(libro, datos, "Contratos");
+  XLSX.utils.book_append_sheet(libro, ayuda, "Cómo llenarla");
+  return libro;
+}
+
+export function descargarPlantilla(sede: string) {
+  XLSX.writeFile(libroDePlantilla(sede), "plantilla-contratos-recabra.xlsx");
 }
