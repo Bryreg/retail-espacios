@@ -366,8 +366,11 @@ function filasDeInstrucciones(sede: string): unknown[][] {
     ["Marca", "Opcional. La marca o el rubro que se va a exhibir."],
     ["Valor", "Lo acordado por TODO el periodo, no una tarifa mensual."],
     ["", "Sólo el número: 2100000. Sin puntos y sin signo de pesos."],
-    ["Desde", "DÍA PRIMERO: 15/09/2026 es el 15 de septiembre."],
-    ["Hasta", "Sirve con / - o . — y también 2026-09-15 (año-mes-día)."],
+    // Las dos fechas van bajo UNA etiqueta: partirlas dejaba «Hasta»
+    // encabezando la línea de los separadores, como si eso fuera lo que
+    // significa Hasta.
+    ["Desde y Hasta", "DÍA PRIMERO: 15/09/2026 es el 15 de septiembre."],
+    ["", "Sirve con / - o . — y también 2026-09-15 (año-mes-día)."],
     ["", "Los dos extremos cuentan: del 1 al 30 son treinta días."],
     ["Nota", "Opcional. Queda guardada en el contrato."],
     [],
@@ -401,7 +404,7 @@ export function libroDePlantilla(sede: string): XLSX.WorkBook {
   datos["!rows"] = [{ hpt: 20 }, { hpt: 20 }];
 
   const ayuda = XLSX.utils.aoa_to_sheet(filasDeInstrucciones(sede));
-  ayuda["!cols"] = [{ wch: 13 }, { wch: 78 }];
+  ayuda["!cols"] = [{ wch: 15 }, { wch: 78 }];
 
   const libro = XLSX.utils.book_new();
   // «Contratos» PRIMERO: `leerPlanilla` lee `SheetNames[0]`, así que el orden
