@@ -16,6 +16,26 @@
    del PR («`--con-*`, Supervisar, Montaje, Editor 3D: NO se rediseñan»).
    ========================================================================== */
 
+/* LA HOJA DE SUPERVISAR: la rejilla de Vender, con otras cuatro tarjetas.
+   Las mismas dos columnas (1004 : 402) y cada fila del alto del panel del
+   plano, así el plano mide lo mismo en las dos pantallas y cada tarjeta tiene
+   al lado otra de su misma altura:
+
+       el plano             │ para revisar
+       estado por espacio   │ quién paga el canon
+
+   Cada tarjeta desplaza lo suyo por dentro. A lo angosto, una columna, igual
+   que Vender. */
+.supervisar-hoja {
+  display: grid;
+  grid-template-columns: minmax(0, 1004fr) minmax(0, 402fr);
+  grid-auto-rows: var(--alto-plano);
+  gap: 10px;
+}
+@media (max-width: 1100px) {
+  .supervisar-hoja { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* EL ALTO DEL PLANO, el mismo en las dos pantallas. En Vender lo pone la
    rejilla de la hoja: la fila 1 se lleva 550/804 de lo que queda debajo de las
    dos barras y el hueco entre filas, y nunca menos de 448 px (`--fila1`).

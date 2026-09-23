@@ -3,9 +3,10 @@
  *
  * El dueño pidió (2026-09-23) mover el mapa de Vender y de Supervisar «de la
  * misma manera que se mueve en el editor 3D», sin la primera persona ni el
- * resto del editor, y que arranque «desde la vista superior como se ve en el
- * plano». Eso es exactamente lo que hace el `OrbitControls` de three.js que usa
- * el editor, y este archivo lo replica con la misma aritmética:
+ * resto del editor, y que el mapa se siga viendo como se veía: abre en el
+ * isométrico de siempre (`VISTA_INICIAL`). Moverlo es exactamente lo que hace
+ * el `OrbitControls` de three.js que usa el editor, y este archivo lo replica
+ * con la misma aritmética:
  *
  *   · **Los mismos gestos.** Botón izquierdo gira; el derecho —o el izquierdo
  *     con Shift, Ctrl o ⌘— mueve; la rueda acerca; el botón del medio acerca
@@ -19,11 +20,11 @@
  *     arriba de la pantalla (`screenSpacePanning`, que es lo que trae el
  *     editor).
  *
- * Lo que NO copia: la perspectiva. El plano es un plano —se lee como el del
- * editor 2D, con las medidas parejas en toda la sala—, así que la proyección
- * es ORTOGRÁFICA y acercar es escalar. Y el tope de arriba: el editor no deja
- * mirar a menos de 30° de la vertical, y este plano arranca justamente en 0°,
- * mirando derecho hacia abajo.
+ * Lo que NO copia: la perspectiva. El plano es un plano —el isométrico de
+ * siempre, con las medidas parejas en toda la sala—, así que la proyección es
+ * ORTOGRÁFICA y acercar es escalar. Y el tope de arriba: el editor no deja
+ * mirar a menos de 30° de la vertical, y este plano deja llegar a 0°, mirando
+ * derecho hacia abajo como el plano 2D.
  *
  * Por qué SVG y no el lienzo 3D del editor: el mapa ya es SVG y todo lo que
  * cuelga de él —los rótulos que miden 10,5 px a todo acercamiento y se
@@ -42,8 +43,35 @@ export interface Vista {
   pol: number;
 }
 
-/** La vista con la que abre: desde arriba, orientada como el plano 2D. */
+/** Desde arriba, orientada como el plano 2D. No es con la que abre: se llega
+ *  arrastrando hacia abajo. */
 export const VISTA_SUPERIOR: Vista = { az: 0, pol: 0 };
+
+/** LA VISTA CON LA QUE ABRE: el isométrico que el plano tuvo siempre.
+ *
+ *  La primera versión de la cámara abría desde arriba, y el dueño la devolvió
+ *  (2026-09-23): «antes se veía mejor, ahora se ve más apretado y con mucho
+ *  espacio a los lados». Tenía razón por geometría: una sede vista desde arriba
+ *  es un rectángulo de 1,3 : 1 metido en un panel de 2,5 : 1, y sobran los dos
+ *  costados; en isométrico la misma sede es un rombo de 2 : 1, que es la forma
+ *  del panel. Así que abre donde abría —la cámara en la esquina de +x y +z, a
+ *  35° sobre el piso— y la cámara del editor sirve para salir de ahí.
+ *
+ *  φ = arccos(1/√3) es el ángulo del isométrico verdadero: el mismo rombo que
+ *  dibujaba la fórmula fija de antes, `(x − z)·0,866` por `(x + z)·0,5`. */
+export const VISTA_INICIAL: Vista = { az: Math.PI / 4, pol: Math.acos(1 / Math.sqrt(3)) };
+
+/** Cuánto se achatan los muebles. El isométrico de antes los dibujaba al 55 %
+ *  de su alto (`y·0,55` contra el 1 del isométrico verdadero), y eso es parte
+ *  de por qué se leía bien: un mueble alto no tapa al de atrás. Se conserva en
+ *  todas las vistas; desde arriba no cambia nada. */
+export const ALTURA = 0.55;
+
+/** Una unidad del isométrico de antes, en metros de pantalla. Aquel dibujaba a
+ *  14 unidades por metro con la fórmula fija, que es el isométrico verdadero a
+ *  14·√1,5 = 17,15 unidades por metro proyectado. Los trazos y el margen de
+ *  encuadre se escriben en esta unidad para salir con el grosor de siempre. */
+export const UNIDAD_ISO = 1 / (14 * Math.sqrt(1.5));
 
 /** El tope de abajo, el mismo del editor (`maxPolarAngle = π / 2,1`): casi al
  *  ras del piso, sin pasar por debajo. */
@@ -118,6 +146,42 @@ export function factorDeRueda(deltaY: number, deltaMode = 0, ctrl = false): numb
   if (d === 0) return 1;
   const escala = Math.pow(0.95, Math.abs(d * 0.01));
   return d < 0 ? 1 / escala : escala;
+}
+
+/** Cómo abre el plano: la sede vista con `VISTA_INICIAL`.
+ *
+ *  `ancho` y `alto` son la caja de la sede proyectada —el piso y cada mueble—,
+ *  con el margen del isométrico de antes (26 unidades por lado): es el
+ *  `viewBox` que aquel encajaba en el panel, así que abre del mismo tamaño y
+ *  en el mismo lugar. `mira` es el punto del PISO que cae en el centro de esa
+ *  caja: el punto alrededor del cual se gira, como el `target` del editor.
+ *
+ *  No depende de hacia dónde mire la cámara después: girar no agranda ni
+ *  achica la sala, igual que en el editor. */
+export function encuadreInicial(puntos: [number, number, number][]): {
+  ancho: number;
+  alto: number;
+  mira: [number, number, number];
+} {
+  const e = ejes(VISTA_INICIAL);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const [x, y, z] of puntos) {
+    const [sx, sy] = proyectar(e, x, y, z);
+    if (sx < x0) x0 = sx;
+    if (sx > x1) x1 = sx;
+    if (sy < y0) y0 = sy;
+    if (sy > y1) y1 = sy;
+  }
+  if (!Number.isFinite(x0)) return { ancho: 1, alto: 1, mira: [0, 0, 0] };
+  const margen = 26 * UNIDAD_ISO;
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  // El punto (x, 0, z) que se proyecta en (cx, cy): sobre el piso.
+  const k = cy / e.cp;
+  return {
+    ancho: x1 - x0 + 2 * margen,
+    alto: y1 - y0 + 2 * margen,
+    mira: [cx * e.ca + k * e.sa, 0, -cx * e.sa + k * e.ca],
+  };
 }
 
 // ─── Qué se ve de cada mueble ────────────────────────────────────────────────

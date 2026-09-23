@@ -3,22 +3,24 @@
  *   npm run probar:camara
  *
  * El dueño pidió mover el mapa de Vender y de Supervisar «de la misma manera
- * que se mueve en el editor 3D», arrancando desde la vista superior. Lo que se
- * fija acá:
+ * que se mueve en el editor 3D», sin que el mapa deje de verse como se veía. Lo
+ * que se fija acá:
  *
  *  · Los gestos hacen lo mismo que el OrbitControls del editor, con sus
  *    mismas cuentas: cuánto gira un arrastre, cuánto acerca un clic de rueda,
  *    que mover arrastre la sala pegada al puntero.
- *  · La vista con la que abre es el plano 2D: x a la derecha, z hacia abajo, y
- *    sin un solo lado de mueble a la vista.
+ *  · La vista con la que abre es el isométrico que el plano tuvo siempre: la
+ *    misma proyección, el mismo achatado de las alturas y el mismo encuadre.
+ *    (La primera versión abría desde arriba y el dueño la devolvió: «antes se
+ *    veía mejor».) La vista superior sigue estando, arrastrando hacia abajo.
  *  · Ningún mueble se pinta encima de otro que en realidad lo tapa. Esto se
  *    comprueba como lo vería un ojo: tirando rayos desde la cámara contra los
  *    prismas, en cientos de vistas al azar, y comparando lo que el rayo toca
  *    primero con lo que el pintor dejó arriba.
- *  · Vender y Supervisar muestran el MISMO plano, del mismo alto y con los
- *    mismos colores de rótulo; y la tabla de Supervisar no le regala al
- *    proveedor el ancho que sobra, y filtra con el mismo filtro que el plano.
- *    Eso último lo pidió el dueño en la misma captura que la cámara.
+ *  · Vender y Supervisar muestran el MISMO plano, en una celda del mismo tamaño
+ *    —Supervisar es una hoja con la rejilla de Vender— y con los mismos colores
+ *    de rótulo; y la tabla de Supervisar llena su columna sin huecos y filtra
+ *    con el mismo filtro que el plano.
  */
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -49,6 +51,44 @@ let semilla = 7351;
 const azar = () => ((semilla = (semilla * 1103515245 + 12345) % 2147483648) / 2147483648);
 
 console.log("\ncámara · la vista con la que abre");
+
+/** El isométrico de antes, tal cual estaba escrito en DashboardView. */
+const S = 14;
+const isoViejo = (x, z, y) => [(x - z) * 0.866 * S, (x + z) * 0.5 * S - y * S * 0.55];
+
+prueba("abre con el isométrico de siempre: la misma proyección que la fórmula vieja", () => {
+  const e = C.ejes(C.VISTA_INICIAL);
+  for (let k = 0; k < 200; k++) {
+    const x = (azar() - 0.5) * 60, z = (azar() - 0.5) * 60, y = azar() * 3;
+    const [sx, sy] = C.proyectar(e, x, y * C.ALTURA, z).map((v) => v / C.UNIDAD_ISO);
+    const [vx, vy] = isoViejo(x, z, y);
+    // 0,866 es √3/2 redondeado: la diferencia es de milésimas por metro.
+    assert.ok(Math.abs(sx - vx) < 0.01 * (1 + Math.abs(vx)) && Math.abs(sy - vy) < 0.01 * (1 + Math.abs(vy)),
+      `(${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}): ahora (${sx.toFixed(2)}, ${sy.toFixed(2)}), antes (${vx.toFixed(2)}, ${vy.toFixed(2)})`);
+  }
+});
+
+prueba("el encuadre con el que abre es el viewBox de antes: la caja más 26 unidades por lado", () => {
+  const puntos = [[-10, 0, -8], [10, 0, -8], [10, 0, 8], [-10, 0, 8], [2, 1, 3]];
+  const r = C.encuadreInicial(puntos);
+  const viejos = puntos.map(([x, y, z]) => isoViejo(x, z, y / C.ALTURA));
+  const ancho = Math.max(...viejos.map((p) => p[0])) - Math.min(...viejos.map((p) => p[0])) + 52;
+  const alto = Math.max(...viejos.map((p) => p[1])) - Math.min(...viejos.map((p) => p[1])) + 52;
+  assert.ok(Math.abs(r.ancho / C.UNIDAD_ISO - ancho) < 0.5, `ancho ${r.ancho / C.UNIDAD_ISO} contra ${ancho}`);
+  assert.ok(Math.abs(r.alto / C.UNIDAD_ISO - alto) < 0.5, `alto ${r.alto / C.UNIDAD_ISO} contra ${alto}`);
+});
+
+prueba("se gira alrededor del punto del PISO que cae en el centro del encuadre", () => {
+  const puntos = [[-12, 0, -3], [7, 0, -3], [7, 0, 15], [-12, 0, 15], [0, 1.5, 0]];
+  const r = C.encuadreInicial(puntos);
+  assert.equal(r.mira[1], 0, "el punto de mira quedó en el aire");
+  const e = C.ejes(C.VISTA_INICIAL);
+  const ps = puntos.map(([x, y, z]) => C.proyectar(e, x, y, z));
+  const cx = (Math.min(...ps.map((p) => p[0])) + Math.max(...ps.map((p) => p[0]))) / 2;
+  const cy = (Math.min(...ps.map((p) => p[1])) + Math.max(...ps.map((p) => p[1]))) / 2;
+  const [mx, my] = C.proyectar(e, ...r.mira);
+  assert.ok(cerca(mx, cx, 1e-9) && cerca(my, cy, 1e-9), `mira en (${mx}, ${my}), centro (${cx}, ${cy})`);
+});
 
 prueba("la vista superior es el plano 2D: x a la derecha, z hacia abajo", () => {
   const e = C.ejes(C.VISTA_SUPERIOR);
@@ -251,12 +291,14 @@ prueba("el mapa proyecta con la cámara y no con el isométrico fijo", () => {
   assert.ok(!/cx \+ a\.cz|a\.cx \+ a\.cz/.test(iso), "volvió el orden por centro");
 });
 
-prueba("abre en la vista superior y «Centrar» vuelve a ella", () => {
-  assert.match(iso, /useState<Vista>\(VISTA_SUPERIOR\)/, "no abre en la vista superior");
+prueba("abre con el isométrico de siempre y «Centrar» vuelve a él", () => {
+  assert.match(iso, /useState<Vista>\(VISTA_INICIAL\)/, "no abre con el isométrico de siempre");
+  assert.match(iso, /\* ALTURA/, "las alturas no se achatan como en el isométrico de siempre");
+  assert.match(iso, /encuadreInicial\(/, "no encuadra como encuadraba el isométrico de siempre");
   const i = iso.indexOf("const centrar = useCallback(");
   assert.ok(i > 0, "no se encontró `centrar`");
   const cuerpo = iso.slice(i, iso.indexOf("}, [", i));
-  assert.match(cuerpo, /setVista\(VISTA_SUPERIOR\)/, "«Centrar» no vuelve a la vista superior");
+  assert.match(cuerpo, /setVista\(VISTA_INICIAL\)/, "«Centrar» no vuelve a la vista de siempre");
   assert.match(cuerpo, /zoom: 1/, "«Centrar» no vuelve a encuadrar la sede entera");
   const boton = iso.slice(iso.lastIndexOf("<button", iso.indexOf(">\n          Centrar")), iso.indexOf(">\n          Centrar"));
   assert.match(boton, /centrar\(\)/, "el botón «Centrar» no llama a `centrar()`");
@@ -282,13 +324,28 @@ prueba("las dos pantallas usan el plano sin opciones propias de encuadre", () =>
   }
 });
 
-prueba("la tarjeta del plano de Supervisar mide lo mismo que el panel de Vender", () => {
-  const i = vista.indexOf("const tarjetaMapa = ");
-  assert.ok(i > 0, "no se encontró la tarjeta del plano de Supervisar");
-  assert.match(vista.slice(i, i + 400), /height: "var\(--alto-plano\)"/, "Supervisar no usa `--alto-plano`");
-  const css = readFileSync(join(raiz, "src", "vender.css"), "utf8");
+prueba("Supervisar es una hoja con las columnas y el alto de fila de Vender", () => {
+  const css = readFileSync(join(raiz, "src", "vender.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  const regla = (sel) => new RegExp(`${sel.replace(".", "\\.")}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? "";
+  const vender = regla(".vender-hoja");
+  const supervisar = regla(".supervisar-hoja");
+  assert.ok(supervisar, "no hay `.supervisar-hoja`");
+  assert.match(vender, /1004fr 402fr/, "cambió la proporción de la hoja de Vender: ajustar las dos");
+  assert.match(supervisar, /minmax\(0, 1004fr\) minmax\(0, 402fr\)/, "Supervisar no usa las columnas de Vender");
+  assert.match(supervisar, /grid-auto-rows:\s*var\(--alto-plano\)/, "las filas de Supervisar no miden lo que el plano de Vender");
   assert.match(css, /--alto-plano:\s*max\(448px/, "falta `--alto-plano` (con el piso de la fila 1 de Vender)");
   assert.match(css, /550 \/ 804/, "`--alto-plano` ya no reparte como la hoja de Vender (550 : 254)");
+  assert.match(vista, /className="supervisar-hoja"/, "Supervisar no arma su hoja");
+});
+
+prueba("en la hoja, la tabla va debajo del plano y «Quién paga el canon» debajo de «Para revisar»", () => {
+  const i = vista.indexOf('className="supervisar-hoja"');
+  const trozo = vista.slice(i, vista.indexOf("── Overlays", i));
+  const orden = ["{tarjetaMapa}", 'title="Para revisar"', "<SpacesTable", 'title="Quién paga el canon"']
+    .map((t) => [t, trozo.indexOf(t)]);
+  for (const [t, k] of orden) assert.ok(k >= 0, `falta ${t} en la hoja`);
+  const posiciones = orden.map(([, k]) => k);
+  assert.deepEqual(posiciones, [...posiciones].sort((a, b) => a - b), `las tarjetas no van en el orden de la rejilla: ${orden.map(([t]) => t).join(" → ")}`);
 });
 
 prueba("los colores del rótulo cuelgan del lienzo, que está en las dos pantallas", () => {
@@ -311,11 +368,15 @@ console.log("\nsupervisar · «Estado por espacio»");
 const inicioTabla = vista.indexOf("function SpacesTable(");
 const tabla = vista.slice(inicioTabla, vista.indexOf("\nfunction ", inicioTabla + 10));
 
-prueba("el proveedor mide su nombre más largo y no se lleva el ancho que sobra", () => {
+prueba("el proveedor mide su nombre más largo y lo que sobra se reparte, no se lo lleva él", () => {
   assert.ok(inicioTabla > 0, "no se encontró SpacesTable");
   assert.match(tabla, /etiqueta: "Proveedor", ancho: anchos\.proveedor/, "Proveedor volvió a no tener ancho");
-  assert.match(tabla, /width: anchoDatos/, "la tabla volvió al 100 % del ancho: el sobrante cae entre columnas");
-  assert.ok(!/width: "100%"/.test(tabla), "la tabla volvió al 100 % del ancho");
+  assert.match(tabla, /repartirAnchos\(/, "la tabla no reparte el ancho sobrante");
+  assert.ok(!/width: "100%"/.test(tabla), "la tabla volvió al 100 % del ancho: el navegador reparte a ojo");
+});
+
+prueba("los títulos de las columnas quedan fijos al desplazar la tabla", () => {
+  assert.match(tabla, /position: "sticky", top: 0/, "los títulos de las columnas se van con el desplazamiento");
 });
 
 prueba("la tabla tiene su filtro, y es el mismo del plano", () => {
@@ -330,6 +391,53 @@ prueba("filtrar encuentra también por el tipo del espacio", () => {
   assert.ok(i > 0, "no se encontró faceMatchesQuery");
   assert.match(vista.slice(i, vista.indexOf("\n}\n", i)), /rateTypeLabel\(rateTypeOf\(entry\.fixture\)\)/,
     "«punta» o «impulsador» ya no filtran");
+});
+
+console.log("\nsupervisar · cuánto mide cada columna");
+
+const salidaA = join(mkdtempSync(join(tmpdir(), "anc-")), "a.mjs");
+const { outputFiles: oa } = await build({
+  entryPoints: [join(raiz, "src", "utils", "anchosTabla.ts")],
+  bundle: true, format: "esm", write: false, platform: "neutral",
+});
+writeFileSync(salidaA, oa[0].text);
+const T = await import(pathToFileURL(salidaA).href);
+
+const COLS = [
+  { ancho: 104, minimo: 104 },
+  { ancho: 141, minimo: 104, cede: 2 },
+  { ancho: 323, minimo: 150, cede: 1 },
+  { ancho: 100, minimo: 100 },
+  { ancho: 100, minimo: 100 },
+  { ancho: 88, minimo: 88 },
+  { ancho: 88, minimo: 88 },
+  { ancho: 56, minimo: 56 },
+  { ancho: 112, minimo: 112 },
+];
+const suma = (xs) => xs.reduce((t, v) => t + v, 0);
+
+prueba("con lugar de sobra, la tabla llena su caja y el sobrante va parejo a todas", () => {
+  const r = T.repartirAnchos(COLS, 1310);
+  assert.ok(cerca(suma(r), 1310, 1e-6), `mide ${suma(r)} en una caja de 1310`);
+  const extras = r.map((v, i) => v - COLS[i].ancho);
+  assert.ok(extras.every((x) => cerca(x, extras[0], 1e-9)), `el sobrante no es parejo: ${extras.map((x) => x.toFixed(1)).join(" ")}`);
+});
+
+prueba("con poco lugar cede primero el proveedor, después el tipo, y las cifras nunca", () => {
+  const r = T.repartirAnchos(COLS, 919);
+  assert.ok(cerca(suma(r), 919, 1e-6), `mide ${suma(r)} en una caja de 919`);
+  assert.equal(r[2], 150, "el proveedor no cedió hasta su mínimo antes que el tipo");
+  assert.ok(r[1] < 141 && r[1] >= 104, "el tipo no cedió lo que faltaba");
+  for (const i of [0, 3, 4, 5, 6, 7, 8]) assert.equal(r[i], COLS[i].ancho, `la columna ${i} se achicó`);
+});
+
+prueba("si ni con los mínimos entra, mide la suma de los mínimos y se desliza", () => {
+  const r = T.repartirAnchos(COLS, 600);
+  assert.deepEqual(r, COLS.map((c) => c.minimo));
+});
+
+prueba("sin medida todavía (primer pintado), cada columna mide lo que quiere", () => {
+  assert.deepEqual(T.repartirAnchos(COLS, 0), COLS.map((c) => c.ancho));
 });
 
 console.log(`\n${hechas} pruebas pasaron${process.exitCode ? " — HAY FALLAS" : ""}\n`);

@@ -70,10 +70,11 @@ import type { SemillaContrato } from "../components/Contrato/Contrato";
 import { fechaEnCurso } from "../utils/propuesta";
 import { espaciosSinMueble } from "../utils/espaciosSinMueble";
 import { contratosSinMueble, type ContratoSinMueble } from "../utils/auditoriaDesfase";
+import { repartirAnchos, type Columna as ColumnaTabla } from "../utils/anchosTabla";
 import { revisarImportacion, aplicarImportacion, type Importacion } from "../api/layout";
 import {
-  VISTA_SUPERIOR, ZOOM_MAX, ZOOM_MIN, enElMundo, ejes, esquinasDelLado, factorDeRueda, girar,
-  ladosVisibles, ordenDePintado, proyectar, sombraDelLado,
+  ALTURA, UNIDAD_ISO, VISTA_INICIAL, ZOOM_MAX, ZOOM_MIN, encuadreInicial, enElMundo, ejes,
+  esquinasDelLado, factorDeRueda, girar, ladosVisibles, ordenDePintado, proyectar, sombraDelLado,
   type Huella, type Lado, type Vista,
 } from "../utils/camaraPlano";
 
@@ -700,10 +701,15 @@ const SEP_CARA = 16 / 1032.5;
  *  mismo se acerque o se aleje el plano. */
 const LBL = 10.5;
 
-/** El aire, en píxeles, entre la sede entera y el borde del lienzo cuando se
- *  encuadra. Alcanza para que la ayuda de los gestos, abajo a la izquierda, no
- *  pise el piso de la sala. */
-const MARGEN_PX = 34;
+/** Los trazos, en unidades del isométrico de antes (`UNIDAD_ISO`): escalan con
+ *  el acercamiento como escalaban, y a acercamiento 1 miden lo que medían. */
+const TRAZO = {
+  mueble: 0.5 * UNIDAD_ISO,
+  piso: 0.8 * UNIDAD_ISO,
+  elegido: 1.6 * UNIDAD_ISO,
+  brillo: 3.4 * UNIDAD_ISO,
+  filtro: 1.3 * UNIDAD_ISO,
+};
 
 /** Dos cajas se pisan si se cruzan y también si se acercan a menos de esto: un
  *  rótulo pegado a otra letra se lee mal aunque no la toque. */
@@ -723,9 +729,9 @@ type Gesto = "girar" | "mover" | "acercar" | "pellizco";
 /**
  * EL PLANO DE LA SEDE — el mismo en Vender y en Supervisar.
  *
- * Abre en la VISTA SUPERIOR, orientado como el plano 2D del editor, y se mueve
- * con los gestos del Editor 3D: la cámara está en `utils/camaraPlano.ts`, que
- * es donde se explica por qué es la misma y en qué no.
+ * Abre como abrió siempre —el isométrico, encuadrado igual— y se mueve con los
+ * gestos del Editor 3D: la cámara está en `utils/camaraPlano.ts`, que es donde
+ * se explica por qué es la misma y en qué no. «Centrar» vuelve a esa vista.
  *
  * La cámara son dos cosas y no una:
  *
@@ -747,26 +753,25 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar }: Is
      hasta recargar (verificador, Fase 10). */
   const [tema] = useTema();
 
-  const [vista, setVista] = useState<Vista>(VISTA_SUPERIOR);
+  const [vista, setVista] = useState<Vista>(VISTA_INICIAL);
   /** La orientación pedida. Durante un arrastre va un cuadro adelante del
    *  estado: se junta lo que se movió y se pinta una vez por cuadro. */
-  const vistaPedida = useRef<Vista>(VISTA_SUPERIOR);
+  const vistaPedida = useRef<Vista>(VISTA_INICIAL);
   const cuadro = useRef(0);
-  /** Acercamiento (contra el encuadre de la sede entera) y punto de mira, en
-   *  metros desde el centro de la sede. Es el `target` de OrbitControls: se
-   *  gira alrededor de él y el arrastre para mover lo desliza. */
+  /** Acercamiento (contra el encuadre con el que abre) y cuánto se corrió el
+   *  punto de mira desde el de ese encuadre, en metros. Es el `target` de
+   *  OrbitControls: se gira alrededor de él y el arrastre para mover lo
+   *  desliza. */
   const cam = useRef({ zoom: 1, T: [0, 0, 0] as [number, number, number] });
   /** La ayuda de los gestos se va con el primer gesto. */
   const [ayuda, setAyuda] = useState(true);
 
-  const scene = useMemo(() => {
+  /** LA PLANTA: lo que no cambia al mover la cámara. La huella de cada mueble
+   *  —con su giro aplicado— relativa al centro de la sala, su alto ya achatado
+   *  como en el isométrico de siempre (`ALTURA`), el piso con un metro de aire,
+   *  y el encuadre con el que abre. */
+  const planta = useMemo(() => {
     if (fixtures.length === 0) return null;
-    const e = ejes(vista);
-    const lados = ladosVisibles(e);
-
-    // La sala: la huella de todos los muebles más un metro. Su centro es el
-    // origen de la proyección, y su largo y su ancho —vistos desde arriba—
-    // son los que se encuadran.
     const huellas = fixtures.map((f) => {
       const fp = footprint2D(f);
       return { f, fp, x0: f.cx - fp.w / 2, x1: f.cx + fp.w / 2, z0: f.cz - fp.d / 2, z1: f.cz + fp.d / 2 };
@@ -776,16 +781,33 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar }: Is
     const gz0 = Math.min(...huellas.map((q) => q.z0)) - 1;
     const gz1 = Math.max(...huellas.map((q) => q.z1)) + 1;
     const cx = (gx0 + gx1) / 2, cz = (gz0 + gz1) / 2;
-    const P = (x: number, y: number, z: number) => proyectar(e, x - cx, y, z - cz);
-    const piso = pts(P(gx0, 0, gz0), P(gx1, 0, gz0), P(gx1, 0, gz1), P(gx0, 0, gz1));
+    const cajas: Huella[] = huellas.map((q) => ({
+      x0: q.x0 - cx, x1: q.x1 - cx, z0: q.z0 - cz, z1: q.z1 - cz,
+      h: Math.max(q.f.h || 1, 0.4) * ALTURA,
+    }));
+    const esquinasPiso: [number, number, number][] = [
+      [gx0 - cx, 0, gz0 - cz], [gx1 - cx, 0, gz0 - cz], [gx1 - cx, 0, gz1 - cz], [gx0 - cx, 0, gz1 - cz],
+    ];
+    const encuadre = encuadreInicial([
+      ...esquinasPiso,
+      ...cajas.flatMap((c): [number, number, number][] => [
+        [c.x0, 0, c.z0], [c.x1, 0, c.z0], [c.x1, 0, c.z1], [c.x0, 0, c.z1],
+        [c.x0, c.h, c.z0], [c.x1, c.h, c.z0], [c.x1, c.h, c.z1], [c.x0, c.h, c.z1],
+      ]),
+    ]);
+    return { huellas, cajas, esquinasPiso, encuadre };
+  }, [fixtures]);
+
+  const scene = useMemo(() => {
+    if (!planta) return null;
+    const { huellas, cajas, esquinasPiso, encuadre: base } = planta;
+    const e = ejes(vista);
+    const lados = ladosVisibles(e);
+    const piso = pts(...esquinasPiso.map(([x, y, z]) => proyectar(e, x, y, z)));
 
     // De atrás hacia adelante, con el orden de verdad (ver `ordenDePintado`):
     // con la cámara girando, el orden por centro se equivoca con los muebles
     // largos.
-    const cajas: Huella[] = huellas.map((q) => ({
-      x0: q.x0 - cx, x1: q.x1 - cx, z0: q.z0 - cz, z1: q.z1 - cz,
-      h: Math.max(q.f.h || 1, 0.4),
-    }));
     const orden = ordenDePintado(cajas, e);
 
     const prisms = orden.map((k) => {
@@ -896,9 +918,10 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar }: Is
        uno del lado de la cara que nombra. Sin eso los dos caen casi en el mismo
        punto y uno de los dos tiene que ceder siempre.
 
-       La unidad es el largo de la sede, que no cambia al girar: así los
-       rótulos no se acercan ni se alejan de su mueble con la cámara. */
-    const unidad = Math.max(gx1 - gx0, gz1 - gz0);
+       La unidad es el lado mayor del encuadre con el que abre —el viewBox de
+       antes—, que no cambia al girar: así los rótulos no se acercan ni se
+       alejan de su mueble con la cámara. */
+    const unidad = Math.max(base.ancho, base.alto);
     const sep = SEP_CARA * unidad;
     const anclas = new Map<string, [number, number]>();
     for (const p of prisms) {
@@ -918,9 +941,9 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar }: Is
       });
     }
 
-    return { prisms, piso, anclas, e, unidad, ancho: gx1 - gx0, fondo: gz1 - gz0 };
+    return { prisms, piso, anclas, e, unidad, base };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fixtures, range, tema, vista]);
+  }, [planta, range, tema, vista]);
   /** El lienzo existe: los oyentes que se cuelgan de él esperan a esto. Sin
    *  muebles el componente no dibuja nada, y un efecto que corrió en ese
    *  momento no vuelve a correr cuando los muebles llegan. */
@@ -970,9 +993,10 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar }: Is
   //
   // El SVG no lleva viewBox: sus unidades son los píxeles de su caja. El grupo
   // de la escena lleva `translate(centro − k·mira) scale(k)`, con k los
-  // píxeles por metro: los de encuadrar la sede entera vista desde arriba, por
-  // el acercamiento. Girar no cambia k — igual que en el editor, la sala no se
-  // agranda ni se achica porque la cámara dé la vuelta.
+  // píxeles por metro: los de encajar el encuadre con el que abre —el viewBox
+  // del isométrico de antes, con su mismo margen—, por el acercamiento. Girar
+  // no cambia k: igual que en el editor, la sala no se agranda ni se achica
+  // porque la cámara dé la vuelta.
   const escenaActual = useRef(scene);
   escenaActual.current = scene;
 
@@ -980,12 +1004,11 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar }: Is
     const sc = escenaActual.current;
     const r = svgRef.current?.getBoundingClientRect();
     if (!sc || !r || !(r.width > 0) || !(r.height > 0)) return null;
-    const k0 = Math.max(0.001, Math.min(
-      (r.width - 2 * MARGEN_PX) / sc.ancho,
-      (r.height - 2 * MARGEN_PX) / sc.fondo,
-    ));
+    const k0 = Math.max(0.001, Math.min(r.width / sc.base.ancho, r.height / sc.base.alto));
     const k = k0 * cam.current.zoom;
-    const [mx, my] = proyectar(sc.e, ...cam.current.T);
+    const [ox, oy, oz] = sc.base.mira;
+    const T = cam.current.T;
+    const [mx, my] = proyectar(sc.e, ox + T[0], oy + T[1], oz + T[2]);
     return { r, k, mx, my, e: sc.e };
   }, []);
   type Encuadre = NonNullable<ReturnType<typeof encuadre>>;
@@ -1250,8 +1273,8 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar }: Is
 
   const centrar = useCallback(() => {
     cam.current = { zoom: 1, T: [0, 0, 0] };
-    vistaPedida.current = VISTA_SUPERIOR;
-    setVista(VISTA_SUPERIOR);
+    vistaPedida.current = VISTA_INICIAL;
+    setVista(VISTA_INICIAL);
     aplicar();
   }, [aplicar]);
 
@@ -1394,7 +1417,7 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar }: Is
           onClick={(e) => { e.stopPropagation(); ponerZoom(cam.current.zoom * 1.25); }}>+</button>
         <button type="button" aria-label="Alejar el plano"
           onClick={(e) => { e.stopPropagation(); ponerZoom(cam.current.zoom / 1.25); }}>−</button>
-        <button type="button" title="Volver a la vista de arriba, con la sede entera"
+        <button type="button" title="Volver a la vista de siempre, con la sede entera"
           onClick={(e) => { e.stopPropagation(); centrar(); }}>
           Centrar
         </button>
@@ -1416,8 +1439,7 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar }: Is
           points={scene.piso}
           fill="var(--surface-2)"
           stroke="var(--line)"
-          strokeWidth={0.8}
-          vectorEffect="non-scaling-stroke"
+          strokeWidth={TRAZO.piso}
         />
 
         {scene.prisms.map(({ f, topHalves, sides, stroke, topOutline, tooltipSub, faces, rentable }) => {
@@ -1462,9 +1484,8 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar }: Is
                   points={s.points}
                   fill={s.fill}
                   stroke={stroke}
-                  strokeWidth={0.5}
+                  strokeWidth={TRAZO.mueble}
                   strokeLinejoin="round"
-                  vectorEffect="non-scaling-stroke"
                 />
               ))}
               {/* Top face (1 or 2 halves) — non-matching halves of a double dim per face */}
@@ -1477,24 +1498,23 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar }: Is
                   fill={th.color}
                   fillOpacity={match && matched && topHalves.length > 1 && flags && !flags[i] ? 0.25 : 1}
                   stroke={stroke}
-                  strokeWidth={0.5}
+                  strokeWidth={TRAZO.mueble}
                   strokeLinejoin="round"
-                  vectorEffect="non-scaling-stroke"
                 />
               ))}
               {/* Match highlight — accent glow + outline */}
               {match !== null && matched && !selected && (
                 <>
-                  <polygon points={topOutline} fill="none" stroke="var(--accent)" strokeWidth={3.4} opacity={0.3}
-                    strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-                  <polygon points={topOutline} fill="none" stroke="var(--accent)" strokeWidth={1.3}
-                    strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                  <polygon points={topOutline} fill="none" stroke="var(--accent)" strokeWidth={TRAZO.brillo} opacity={0.3}
+                    strokeLinejoin="round" />
+                  <polygon points={topOutline} fill="none" stroke="var(--accent)" strokeWidth={TRAZO.filtro}
+                    strokeLinejoin="round" />
                 </>
               )}
               {/* Selection ring */}
               {selected && (
-                <polygon points={topOutline} fill="none" stroke="var(--accent)" strokeWidth={1.6}
-                  strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                <polygon points={topOutline} fill="none" stroke="var(--accent)" strokeWidth={TRAZO.elegido}
+                  strokeLinejoin="round" />
               )}
             </g>
           );
@@ -3100,31 +3120,49 @@ function SpacesTable({
   // navegador toma las medidas de la PRIMERA fila, que es la del encabezado.
   // Puestos en las celdas se ignoran en silencio y la tabla vuelve a repartir
   // el ancho a ojo — que es exactamente lo que hacía antes de esto.
-  const columnas: { etiqueta: string; ancho: number; derecha?: boolean }[] = [
-    { etiqueta: "Código", ancho: 104 },
-    { etiqueta: "Tipo", ancho: anchos.tipo },
-    { etiqueta: "Proveedor", ancho: anchos.proveedor },
-    { etiqueta: "Estado", ancho: 100 },
-    { etiqueta: "Montaje", ancho: 100 },
-    { etiqueta: "Desde", ancho: 88 },
-    { etiqueta: "Hasta", ancho: 88 },
-    { etiqueta: "Días", ancho: 56, derecha: true },
+  const pedidas: (ColumnaTabla & { etiqueta: string; derecha?: boolean })[] = [
+    { etiqueta: "Código", ancho: 104, minimo: 104 },
+    { etiqueta: "Tipo", ancho: anchos.tipo, minimo: Math.min(anchos.tipo, 104), cede: 2 },
+    { etiqueta: "Proveedor", ancho: anchos.proveedor, minimo: Math.min(anchos.proveedor, 150), cede: 1 },
+    { etiqueta: "Estado", ancho: 100, minimo: 100 },
+    { etiqueta: "Montaje", ancho: 100, minimo: 100 },
+    { etiqueta: "Desde", ancho: 88, minimo: 88 },
+    { etiqueta: "Hasta", ancho: 88, minimo: 88 },
+    { etiqueta: "Días", ancho: 56, minimo: 56, derecha: true },
   ];
-  if (isAdmin) columnas.push({ etiqueta: "Renta / mes", ancho: 112, derecha: true });
+  if (isAdmin) pedidas.push({ etiqueta: "Renta / mes", ancho: 112, minimo: 112, derecha: true });
+
+  /* LA TABLA LLENA SU CAJA: lo que sobra se reparte parejo entre las columnas
+     y, si falta, ceden Proveedor y Tipo (ver `utils/anchosTabla.ts`). La caja
+     se mide: es la columna de la hoja, que cambia con la ventana. */
+  const cajaRef = useRef<HTMLDivElement>(null);
+  const [disponible, setDisponible] = useState(0);
+  useLayoutEffect(() => {
+    const el = cajaRef.current;
+    if (!el) return;
+    const medir = () => setDisponible(Math.max(0, el.clientWidth - 30));
+    medir();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(medir);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const repartidos = repartirAnchos(pedidas, disponible);
+  const columnas = pedidas.map((c, i) => ({ ...c, ancho: Math.floor(repartidos[i]) }));
   const anchoDatos = columnas.reduce((t, c) => t + c.ancho, 0);
 
   const vacio = <span style={{ color: "var(--ink-vacio)" }}>—</span>;
 
   return (
     <>
-    <div style={{ maxWidth: anchoDatos + 30 }}>
-      <CardHeader title={titulo} sub={sub} right={derecha} />
-    </div>
-    <div style={{ padding: "0 15px 12px", overflowX: "auto" }}>
+    <CardHeader title={titulo} sub={sub} right={derecha} />
+    {/* Rueda adentro de su tarjeta, con los títulos de las columnas fijos
+        arriba: la tarjeta mide lo mismo que la de al lado, como en Vender. */}
+    <div ref={cajaRef} style={{ padding: "0 15px 12px", overflow: "auto", flex: 1, minHeight: 0 }}>
       <table
         style={{
           width: anchoDatos, minWidth: anchoDatos,
-          borderCollapse: "collapse", tableLayout: "fixed",
+          borderCollapse: "separate", borderSpacing: 0, tableLayout: "fixed",
         }}
       >
         <thead>
@@ -3141,6 +3179,7 @@ function SpacesTable({
                   textTransform: "uppercase", letterSpacing: "0.1em",
                   borderBottom: "1px solid var(--line-strong)",
                   whiteSpace: "nowrap",
+                  position: "sticky", top: 0, zIndex: 1, background: "var(--surface)",
                 }}
               >
                 {c.etiqueta}
@@ -4204,12 +4243,13 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  abajo), con la clave de cinco estados; acá es una tarjeta de una fila,
    *  con el filtro del plano al costado.
    *
-   *  El alto es `--alto-plano`, la misma cuenta que reparte la hoja de Vender.
-   *  Antes lo ponía la proporción del dibujo, y el mismo plano salía mucho más
-   *  grande acá que en Vender (captura del dueño, 2026-09-23). Con la cámara
-   *  del editor la proporción ya no existe: el dibujo gira. */
-  const tarjetaMapa = (flex: React.CSSProperties["flex"]) => (
-        <Card style={{ position: "relative", flex, minWidth: 0, height: "var(--alto-plano)" }}>
+   *  Ocupa la celda de arriba a la izquierda de la hoja de Supervisar, que
+   *  tiene las mismas columnas y el mismo alto de fila que la de Vender: el
+   *  plano mide lo mismo en las dos pantallas. Antes el alto lo ponía la
+   *  proporción del dibujo y el mismo plano salía mucho más grande acá
+   *  (captura del dueño, 2026-09-23). */
+  const tarjetaMapa = (
+        <Card style={{ position: "relative", minWidth: 0, minHeight: 0 }}>
           <CardHeader
             title={`Piso de ${sede}`}
             right={
@@ -4767,27 +4807,24 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
             </div>
           </Card>
 
-          {/* ── El plano y lo que hay que revisar ─────────────────────────── */}
-          <div
-            style={{
-              display: "flex", flexWrap: "wrap", alignItems: "stretch",
-              gap: 10, marginBottom: 10,
-            }}
-          >
-            {/* En fila: 480 px de ancho base, y se lleva lo que sobre. */}
-            {tarjetaMapa("1 1 480px")}
+          {/* ── LA HOJA DE SUPERVISAR: la misma rejilla que la de Vender ──────
+              Dos columnas en la misma proporción (1004 : 402) y filas del
+              mismo alto que el panel del plano de Vender:
 
-            {/* La columna de la derecha mide lo mismo que el plano y reparte
-                ese alto: «Para revisar» lo que necesita —hasta seis décimos—
-                y «Quién paga el canon» el resto, cada una con su propio
-                desplazamiento. Si la columna mandara el alto, el plano
-                volvería a crecer con ella. */}
-            <div
-              style={{
-                flex: "0 1 382px", minWidth: 300, height: "var(--alto-plano)",
-                display: "flex", flexDirection: "column", gap: 10,
-              }}
-            >
+                  el plano             │ para revisar
+                  estado por espacio   │ quién paga el canon
+
+              Antes era una fila con el plano y una columna de dos tarjetas, y
+              debajo la tabla a todo el ancho: con la tabla apretada quedaba un
+              hueco a la derecha, y con la tabla estirada el hueco quedaba
+              adentro (capturas del dueño, 2026-09-23). Así cada tarjeta tiene
+              al lado otra de su mismo alto, y cada una desplaza lo suyo. */}
+          <div className="supervisar-hoja">
+            {tarjetaMapa}
+
+            {/* Lo que hay que revisar —o la ficha del espacio elegido, que
+                ocupa su lugar—, al lado del plano donde se lo busca. */}
+            <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
               {selected && detailFull ? (
                 <FixtureDetailCard
                   fixture={selected}
@@ -4811,9 +4848,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                   onOpenFile={setViewerFile}
                 />
               ) : (
-              <Card style={isAdmin
-                ? { flex: "0 1 auto", minHeight: 150, maxHeight: "60%" }
-                : { flex: "1 1 auto", minHeight: 0 }}>
+              <Card style={{ flex: 1, minHeight: 0 }}>
                 <CardHeader title="Para revisar" right={<span>{attentionCount}</span>} />
                 {attentionCount === 0 ? (
                   <div style={{ padding: "0 15px 14px", fontSize: 13, color: "var(--libre-txt)" }}>
@@ -5020,33 +5055,12 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               </Card>
               )}
 
-              {isAdmin && !(selected && detailFull) && (
-                <Card style={{ flex: 1, minHeight: 0 }}>
-                  <CardHeader title="Quién paga el canon" right={<span>al mes</span>} />
-                  <div style={{ flex: 1, minHeight: 0, padding: "0 15px 12px", overflowY: "auto" }}>
-                    {proveedores.length === 0 ? (
-                      <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
-                        Sin contratos vigentes con valor registrado.
-                      </div>
-                    ) : (
-                      proveedores.map((x) => (
-                        <SupplierRow
-                          key={x.name}
-                          name={x.name}
-                          revenue={x.revenue}
-                          pct={x.pct}
-                          vence={x.vence}
-                        />
-                      ))
-                    )}
-                  </div>
-                </Card>
-              )}
             </div>
-          </div>
 
-          {/* ── Estado por espacio, a todo el ancho ───────────────────────── */}
-          <Card>
+          {/* ── Estado por espacio: abajo del plano, y del mismo ancho. Para
+              quien no ve plata no hay «quién paga el canon», así que la tabla
+              se queda con la fila entera. */}
+          <Card style={{ minWidth: 0, minHeight: 0, gridColumn: isAdmin ? undefined : "1 / -1" }}>
             <SpacesTable
               titulo="Estado por espacio"
               sub={visiblesEnTabla === kpis.total
@@ -5095,6 +5109,30 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               onSelect={selectFixture}
             />
           </Card>
+
+          {isAdmin && (
+            <Card style={{ minWidth: 0, minHeight: 0 }}>
+              <CardHeader title="Quién paga el canon" right={<span>al mes</span>} />
+              <div style={{ flex: 1, minHeight: 0, padding: "0 15px 12px", overflowY: "auto" }}>
+                {proveedores.length === 0 ? (
+                  <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
+                    Sin contratos vigentes con valor registrado.
+                  </div>
+                ) : (
+                  proveedores.map((x) => (
+                    <SupplierRow
+                      key={x.name}
+                      name={x.name}
+                      revenue={x.revenue}
+                      pct={x.pct}
+                      vence={x.vence}
+                    />
+                  ))
+                )}
+              </div>
+            </Card>
+          )}
+          </div>
         </>
       )}
 
