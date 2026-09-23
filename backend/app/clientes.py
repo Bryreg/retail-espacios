@@ -217,9 +217,67 @@ def unico() -> Cliente | None:
 
     Mientras haya uno solo la pantalla de ingreso no pregunta nada y los enlaces
     viejos siguen sirviendo. El selector aparece recién con el segundo.
+
+    **Y ese uno tiene que ser el de siempre** (2026-09-23). Lo que se resuelve
+    con esto son credenciales SIN claim `cliente` —tokens y enlaces de montaje
+    emitidos antes del multi-tenant, un login legado sin `cliente`—, y todas
+    nacieron en la instalación original, la de la base por defecto. Desde que
+    la consola puede archivar clientes, «queda uno solo» dejó de querer decir
+    «es el de siempre»: con GALERIAS archivado y otro cliente activo, un
+    enlace viejo de montaje se habría resuelto contra la base del OTRO, con
+    el mismo código de espacio. Ahora no se cae a nadie.
     """
     todos = listar()
-    return todos[0] if len(todos) == 1 else None
+    if len(todos) == 1 and es_el_de_siempre(todos[0]):
+        return todos[0]
+    return None
+
+
+def es_el_de_siempre(cliente) -> bool:
+    """¿Este cliente (o fila de `clientes`) vive en la base por defecto?
+
+    Es el cliente de la instalación original, y su base es además la del
+    REGISTRO —usuarios, membresías, la lista de clientes—: se puede archivar,
+    pero borrarla sería borrar el sistema entero. Se decide por la base y no por
+    el slug porque `registrar_el_de_siempre` sigue a `DATABASE_URL`, no a un
+    nombre.
+    """
+    return cliente.db_name == _db_por_defecto()
+
+
+def nombre_normalizado(nombre: str) -> str:
+    """El nombre para COMPARAR, no para mostrar: sin tildes, sin mayúsculas y
+    sin nada que no sea letra o número.
+
+    «Galerías», «GALERIAS» y «galerías.» son el mismo supermercado para quien
+    los lee en un selector, y dos clientes con el mismo nombre visible son
+    justo la confusión que hace entrar a alguien al supermercado equivocado.
+    """
+    import unicodedata
+
+    sin_tildes = "".join(
+        c for c in unicodedata.normalize("NFKD", nombre or "") if not unicodedata.combining(c)
+    )
+    return "".join(c for c in sin_tildes.casefold() if c.isalnum())
+
+
+def nombre_ocupado(reg: Session, nombre: str, excepto: str | None = None):
+    """La fila de un cliente ACTIVO que ya se llama así (ver
+    `nombre_normalizado`), o `None`.
+
+    Sólo los activos: un cliente archivado no aparece en ningún selector, así
+    que su nombre no confunde a nadie — y archivar el viejo es justamente cómo
+    se libera un nombre para dárselo a otro.
+    """
+    from app.models.models import ClienteRow
+
+    buscado = nombre_normalizado(nombre)
+    if not buscado:
+        return None
+    for fila in reg.query(ClienteRow).filter(ClienteRow.activo == True).all():  # noqa: E712
+        if fila.slug != excepto and nombre_normalizado(fila.nombre) == buscado:
+            return fila
+    return None
 
 
 def registrar_el_de_siempre() -> Cliente:
@@ -337,6 +395,74 @@ def crear_cliente(slug: str, nombre: str) -> Cliente:
 
     log.warning("Cliente nuevo dado de alta: %s (base %s)", cliente.slug, cliente.db_name)
     return cliente
+
+
+# ─── Borrar un cliente ────────────────────────────────────────────────────────
+
+class ErrorDeBaja(Exception):
+    pass
+
+
+def soltar_motor(slug: str) -> None:
+    """Cierra las conexiones de ese cliente y olvida su motor.
+
+    Postgres no borra una base con alguien conectado, y el grupo de conexiones
+    de este proceso deja algunas abiertas aunque nadie esté pidiendo nada.
+    """
+    with _candado:
+        motor = _motores.pop(slug, None)
+        _fabricas.pop(slug, None)
+    if motor is not None and motor is not motor_por_defecto:
+        motor.dispose()
+
+
+def borrar_base(slug: str, db_name: str) -> None:
+    """Borra la base de un supermercado. **No hay vuelta atrás.**
+
+    Tres candados antes del paso irreversible, y ninguno confía en el llamador:
+
+    · la base tiene que llamarse exactamente como la que `crear_cliente` le
+      armó a ESE slug (`recabra_<slug>`) — una fila que apuntara a otra base,
+      escrita a mano o corrida de lugar, no se lleva puesta una base ajena;
+    · nunca la base por defecto: es la del cliente de siempre y también la del
+      registro de todos los demás;
+    · el slug pasa por `SLUG_VALIDO`, así que el nombre que va entre comillas
+      en el `DROP` no puede traer nada más que minúsculas, dígitos y `_`.
+
+    `WITH (FORCE)` (Postgres 13+) corta las conexiones que otro proceso tenga
+    abiertas; en un Postgres más viejo se intenta sin él.
+    """
+    if not SLUG_VALIDO.match(slug or ""):
+        raise ErrorDeBaja("El código del cliente no es válido.")
+    if db_name != nombre_de_base(slug) or db_name == _db_por_defecto():
+        raise ErrorDeBaja(
+            "La base de este cliente no es una base propia: no se borra desde acá."
+        )
+
+    soltar_motor(slug)
+
+    if _es_sqlite():
+        ruta = url_para(db_name)[len("sqlite:///"):]
+        if os.path.exists(ruta):
+            os.remove(ruta)
+        return
+
+    # El texto del driver va al log y no a la respuesta: suele traer el nombre
+    # del servidor y del usuario de Postgres.
+    no_se_pudo = "No se pudo borrar la base del cliente. El detalle quedó en el log del servidor."
+    with motor_por_defecto.connect().execution_options(isolation_level="AUTOCOMMIT") as cx:
+        try:
+            cx.execute(text(f'DROP DATABASE IF EXISTS "{db_name}" WITH (FORCE)'))
+        except Exception as e:  # noqa: BLE001
+            if "syntax" not in str(e).lower():
+                log.exception("DROP DATABASE %s falló", db_name)
+                raise ErrorDeBaja(no_se_pudo) from e
+            try:
+                cx.execute(text(f'DROP DATABASE IF EXISTS "{db_name}"'))
+            except Exception as e2:  # noqa: BLE001
+                log.exception("DROP DATABASE %s (sin FORCE) falló", db_name)
+                raise ErrorDeBaja(no_se_pudo) from e2
+    log.warning("Base del cliente %s borrada: %s", slug, db_name)
 
 
 # ─── A qué base se conecta este pedido ────────────────────────────────────────

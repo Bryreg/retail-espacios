@@ -191,7 +191,13 @@ def calcular_adopcion() -> dict:
 
     reg = sesion_registro()
     try:
-        filas = reg.query(ClienteRow).order_by(ClienteRow.slug).all()
+        # Los archivados no son cartera: misma regla que `/metricas`.
+        filas = (
+            reg.query(ClienteRow)
+            .filter(ClienteRow.activo == True)  # noqa: E712
+            .order_by(ClienteRow.slug)
+            .all()
+        )
         estados = {e.slug: e.estado for e in reg.query(EstadoCliente).all()}
         alta_por_slug = _alta_por_slug(reg)
         contratos_por_slug = contratos_activos_por_cliente(periodo)

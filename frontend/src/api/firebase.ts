@@ -62,7 +62,13 @@ export interface ResultadoFirebase {
 export async function loginConGoogle(): Promise<ResultadoFirebase> {
   const { GoogleAuthProvider, signInWithPopup } = await import("firebase/auth");
   const instancia = await auth();
-  const cred = await signInWithPopup(instancia, new GoogleAuthProvider());
+  const proveedor = new GoogleAuthProvider();
+  // Que Google pregunte SIEMPRE con qué cuenta (2026-09-23). Sin esto, quien
+  // tiene una sola sesión de Google abierta —la personal, casi siempre— entra
+  // con ésa sin ver el selector, y la invitación, que llegó al correo del
+  // trabajo, no la encuentra. «Ingresar con otra cuenta» no servía de nada.
+  proveedor.setCustomParameters({ prompt: "select_account" });
+  const cred = await signInWithPopup(instancia, proveedor);
   return {
     idToken: await cred.user.getIdToken(),
     emailVerified: cred.user.emailVerified,

@@ -10,12 +10,13 @@ paramétrica (``/{usuario_id}``), como manda la regla dura del repo.
 """
 import secrets
 from datetime import datetime, timedelta, timezone
+from html import escape
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from app.auth import invalidar_cache_membresia, require_admin
+from app.auth import invalidar_cache_membresia, require_admin, sub_y_email_de_la_sesion
 from app.clientes import Cliente, buscar, cliente_del_pedido
 from app.models.identidad import ROLES_MEMBRESIA, Invitacion, Membresia, Usuario
 from app.services.mailer import app_base_url, html_shell, send_mail_to_bg
@@ -23,6 +24,35 @@ from app.services.mailer import app_base_url, html_shell, send_mail_to_bg
 router = APIRouter(prefix="/usuarios", tags=["usuarios"])
 
 INVITACION_TTL_DIAS = 7
+
+ROL_EN_EL_CORREO = {"owner": "Dueño", "admin": "Administrador", "worker": "Trabajador"}
+
+SOLO_DUENIO_INVITA_DUENIO = "Sólo un dueño puede invitar a otro dueño."
+SOLO_DUENIO_TOCA_DUENIO = "Sólo un dueño puede activar o desactivar a otro dueño."
+
+
+def _actor_es_duenio(reg, sub, cliente_slug: str) -> bool:
+    """¿Quien hace el pedido es DUEÑO (membresía activa ``owner``) de este cliente?
+
+    El token no lo dice: ``owner`` y ``admin`` viajan los dos como ``admin``
+    (spec de la Fase 1, decisión 5), así que se pregunta a la membresía. Sin
+    esto, cualquier administrador se fabricaba un dueño —invitándolo o
+    reactivándolo— y el dueño es quien ve el motivo del corte de cuenta, entra
+    aunque la cuenta esté suspendida y ejerce los derechos del titular.
+
+    El login legado (token sin ``sub``) no pasa por acá: es la clave maestra de
+    la instalación, no una persona, y ya no tiene pantalla desde la Fase 15.
+    """
+    fila = (
+        reg.query(Membresia)
+        .filter(
+            Membresia.usuario_id == sub,
+            Membresia.cliente_slug == cliente_slug,
+            Membresia.activo == True,  # noqa: E712
+        )
+        .first()
+    )
+    return fila is not None and fila.rol == "owner"
 
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
@@ -69,6 +99,7 @@ def invitar_usuario(
     request: Request,
     rol: str = Depends(require_admin),
     cliente: Cliente = Depends(cliente_del_pedido),
+    identidad: tuple = Depends(sub_y_email_de_la_sesion),
 ):
     email = (payload.email or "").strip().lower()
     if not email or "@" not in email or " " in email:
@@ -84,6 +115,10 @@ def invitar_usuario(
 
     reg = sesion_registro()
     try:
+        sub_actor = identidad[0]
+        if rol_nuevo == "owner" and sub_actor is not None and not _actor_es_duenio(reg, sub_actor, cliente.slug):
+            raise HTTPException(status_code=403, detail=SOLO_DUENIO_INVITA_DUENIO)
+
         usuario = reg.query(Usuario).filter(Usuario.email == email).first()
         if usuario is not None:
             ya_miembro = (
@@ -120,12 +155,24 @@ def invitar_usuario(
         reg.commit()
 
         enlace = f"{app_base_url()}/login?invitacion={token}"
+        # El correo le dice a la persona CON QUÉ CUENTA entrar (2026-09-23):
+        # la invitación se canjea por correo, y quien entraba con otra cuenta
+        # —la personal en vez de la del trabajo— terminaba sin acceso y con el
+        # formulario de fundar un supermercado adelante. Los valores van
+        # escapados: el nombre del supermercado lo escribió quien lo fundó.
+        nombre = escape(cliente.nombre)
         html = html_shell(
-            f"Te invitaron a {cliente.nombre}",
-            [("Cliente", cliente.nombre), ("Rol", rol_nuevo)],
+            f"Invitación a {nombre}",
+            [
+                ("Supermercado", nombre),
+                ("Rol", ROL_EN_EL_CORREO.get(rol_nuevo, rol_nuevo)),
+                ("Ingrese con", escape(email)),
+            ],
             footer=(
-                f'Entrá con tu cuenta de Google o de correo desde '
-                f'<a href="{enlace}">{enlace}</a>. El enlace vence en {INVITACION_TTL_DIAS} días.'
+                f'Ingrese desde <a href="{enlace}">{enlace}</a> con la cuenta '
+                f'<b>{escape(email)}</b>: con Google, si es una cuenta de Google, o creando '
+                f'una cuenta de correo con esa misma dirección. Si ingresa con otra cuenta, la '
+                f'invitación no la va a encontrar. El enlace vence en {INVITACION_TTL_DIAS} días.'
             ),
         )
         send_mail_to_bg([email], f"Invitación a {cliente.nombre} — RECABRA", html)
@@ -186,6 +233,7 @@ def patch_usuario(
     payload: PatchUsuarioIn,
     rol: str = Depends(require_admin),
     cliente: Cliente = Depends(cliente_del_pedido),
+    identidad: tuple = Depends(sub_y_email_de_la_sesion),
 ):
     from app.clientes import sesion_registro
 
@@ -198,6 +246,10 @@ def patch_usuario(
         )
         if membresia is None:
             raise HTTPException(status_code=404, detail="Esa persona no es miembro de este cliente.")
+
+        sub_actor = identidad[0]
+        if membresia.rol == "owner" and sub_actor is not None and not _actor_es_duenio(reg, sub_actor, cliente.slug):
+            raise HTTPException(status_code=403, detail=SOLO_DUENIO_TOCA_DUENIO)
 
         if payload.activo is False and membresia.activo and membresia.rol == "owner":
             otros_owners_activos = (

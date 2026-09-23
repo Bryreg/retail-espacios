@@ -142,6 +142,11 @@ class OAuthIn(BaseModel):
     # cuando el canje de invitaciones pendientes va a crear una membresía
     # nueva y esta cuenta todavía no tiene fila para la versión vigente.
     acepta_politica: bool = False
+    # El token del enlace del correo (`/login?invitacion=…`), cuando la persona
+    # llegó por ahí. No canjea nada por sí solo —el canje sigue siendo por
+    # correo—: dice A QUÉ supermercado venía a entrar, y permite avisarle que
+    # entró con otra cuenta en vez de dejarla sin acceso. Ver `oauth_login`.
+    invitacion: Optional[str] = None
 
 
 class PasswordsUpdate(BaseModel):
@@ -296,6 +301,112 @@ def _registrar_consentimiento(reg: Session, usuario_id: int, ip: str, origen: st
     reg.add(Consentimiento(usuario_id=usuario_id, version=VERSION_POLITICA, ip=ip, origen=origen))
 
 
+# ─── El enlace de la invitación (2026-09-23) ─────────────────────────────────
+#
+# Hasta acá el enlace del correo (`/login?invitacion=<token>`) era decorativo:
+# ni la pantalla ni el backend leían el token, y la invitación se canjeaba
+# SÓLO si la persona entraba con el mismo correo al que se la mandaron. Quien
+# entraba con otra cuenta —la personal en vez de la del trabajo, que es lo más
+# común— se encontraba con «su cuenta no tiene acceso a ningún supermercado» y,
+# en el mismo cuadro, con el formulario para FUNDAR uno. Así nacieron
+# supermercados que nadie quería, y así un administrador o una mercaderista
+# podía terminar trabajando en una base vacía creyendo que era la de su
+# empresa.
+#
+# El canje sigue atado al correo, a propósito: un enlace reenviado o filtrado
+# no le da acceso a quien lo tenga. Lo que cambia es que el token ahora sirve
+# para dos cosas que antes no se podían: mostrar ANTES de entrar a qué
+# supermercado y con qué cuenta (`GET /invitacion/{token}`), y, al entrar,
+# llevar a la persona a ESE supermercado o decirle con claridad que la cuenta
+# no es la invitada — nunca ofrecerle fundar otro.
+
+def enmascarar_correo(email: str) -> str:
+    """``brayan@gmail.com`` → ``b•••n@gmail.com``.
+
+    Alcanza para que la persona reconozca cuál de sus cuentas es, sin dejar el
+    correo entero en la pantalla de quien tenga el enlace. Siempre tres puntos,
+    para no contar el largo."""
+    local, _, dominio = (email or "").partition("@")
+    if not local or not dominio:
+        return "•••"
+    visible = local[0] + "•••" + (local[-1] if len(local) > 2 else "")
+    return f"{visible}@{dominio}"
+
+
+def _con_zona(momento: datetime) -> datetime:
+    """SQLite devuelve las fechas sin zona aunque se hayan guardado con ella."""
+    return momento if momento.tzinfo is not None else momento.replace(tzinfo=timezone.utc)
+
+
+def _fecha_corta(momento: datetime) -> str:
+    meses = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic")
+    return f"{momento.day} {meses[momento.month - 1]} {momento.year}"
+
+
+INVITACION_INVALIDA = (
+    "Este enlace de invitación no es válido. Solicite uno nuevo a quien lo invitó."
+)
+
+
+def _acceso_desactivado(nombre_cliente: str) -> HTTPException:
+    """La cuenta es la invitada, pero su acceso a ese supermercado está
+    desactivado (la invitación ya se había usado y después la dieron de baja)."""
+    return HTTPException(
+        status_code=403,
+        detail={
+            "codigo": "invitacion_sin_acceso",
+            "cliente_nombre": nombre_cliente,
+            "mensaje": (
+                f"Su acceso a {nombre_cliente} está desactivado. "
+                "Solicite a quien lo invitó que lo reactive."
+            ),
+        },
+    )
+
+
+@router.get("/invitacion/{token}")
+def ver_invitacion(token: str, request: Request):
+    """Lo que la pantalla de ingreso muestra ANTES de que la persona entre: a
+    qué supermercado la invitaron, con qué rol, y con qué correo tiene que
+    entrar (enmascarado).
+
+    Pública, porque quien la pide todavía no tiene sesión. El token tiene 256
+    bits y no se adivina; igual, cada token que no existe cuenta como intento
+    fallido en el mismo freno de `/oauth`, para que esto no sea una manera
+    gratis de probar tokens. Un cliente archivado o borrado contesta lo mismo
+    que un token inventado.
+    """
+    from app.clientes import sesion_registro
+    from app.models.identidad import IntentoOauth, Invitacion
+
+    reg = sesion_registro()
+    try:
+        ip = ip_del_cliente(request)
+        frenar_si_hay_muchos_fallos(reg, ip, modelo=IntentoOauth)
+        limpio = (token or "").strip()
+        inv = reg.query(Invitacion).filter(Invitacion.token == limpio).first() if limpio else None
+        cliente = buscar(inv.cliente_slug) if inv is not None else None
+        if inv is None or cliente is None:
+            anotar_fallo(reg, ip, modelo=IntentoOauth)
+            raise HTTPException(status_code=404, detail=INVITACION_INVALIDA)
+        vence = _con_zona(inv.expira_en)
+        if inv.usada_en is not None:
+            estado = "usada"
+        elif vence <= datetime.now(timezone.utc):
+            estado = "vencida"
+        else:
+            estado = "vigente"
+        return {
+            "estado": estado,
+            "cliente_nombre": cliente.nombre,
+            "rol": inv.rol,
+            "correo": enmascarar_correo(inv.email),
+            "expira_en": vence,
+        }
+    finally:
+        reg.close()
+
+
 def _rol_de_token(rol_membresia: str) -> str:
     """``owner``/``admin`` de membresía entran al middleware como ``admin``.
 
@@ -429,6 +540,54 @@ def oauth_login(
             anotar_fallo(reg, ip, modelo=IntentoOauth)
             raise HTTPException(status_code=401, detail="Token inválido o expirado")
 
+        ahora = datetime.now(timezone.utc)
+
+        # La invitación del enlace, si la persona llegó por él (ver el bloque
+        # de `enmascarar_correo`). Se resuelve ANTES de tocar nada: cuando la
+        # cuenta no es la invitada no se crea usuario, no se canjea ninguna
+        # invitación y no se entra a ningún otro supermercado — lo que la
+        # persona venía a hacer era entrar a ESE, y entrar a otro en silencio
+        # sería exactamente «entrar al supermercado equivocado».
+        del_enlace = None
+        cliente_del_enlace = None
+        token_enlace = (payload.invitacion or "").strip()
+        if token_enlace:
+            del_enlace = reg.query(Invitacion).filter(Invitacion.token == token_enlace).first()
+            cliente_del_enlace = buscar(del_enlace.cliente_slug) if del_enlace is not None else None
+            if del_enlace is None or cliente_del_enlace is None:
+                anotar_fallo(reg, ip, modelo=IntentoOauth)
+                raise HTTPException(
+                    status_code=404,
+                    detail={"codigo": "invitacion_invalida", "mensaje": INVITACION_INVALIDA},
+                )
+            if del_enlace.email != email:
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "codigo": "invitacion_otro_correo",
+                        "correo": enmascarar_correo(del_enlace.email),
+                        "cliente_nombre": cliente_del_enlace.nombre,
+                        "mensaje": (
+                            f"La invitación a {cliente_del_enlace.nombre} es para "
+                            f"{enmascarar_correo(del_enlace.email)} y usted ingresó con {email}. "
+                            "Cierre esta sesión e ingrese con la cuenta invitada."
+                        ),
+                    },
+                )
+            if del_enlace.usada_en is None and _con_zona(del_enlace.expira_en) <= ahora:
+                raise HTTPException(
+                    status_code=410,
+                    detail={
+                        "codigo": "invitacion_vencida",
+                        "cliente_nombre": cliente_del_enlace.nombre,
+                        "mensaje": (
+                            f"La invitación a {cliente_del_enlace.nombre} venció el "
+                            f"{_fecha_corta(_con_zona(del_enlace.expira_en))}. "
+                            "Solicite una nueva a quien lo invitó."
+                        ),
+                    },
+                )
+
         usuario = reg.query(Usuario).filter(Usuario.firebase_uid == claims.uid).first()
 
         if usuario is None:
@@ -450,7 +609,6 @@ def oauth_login(
         # `firebase_uid` y nunca vuelve a mirar la tabla. Se canjean TODAS las
         # que haya, no sólo una: dos clientes distintos pueden haber invitado
         # al mismo correo, y las dos membresías nacen juntas.
-        ahora = datetime.now(timezone.utc)
         invitaciones = (
             reg.query(Invitacion)
             .filter(
@@ -534,9 +692,19 @@ def oauth_login(
             .filter(Membresia.usuario_id == usuario.id, Membresia.activo == True)  # noqa: E712
             .all()
         )
+        # Las de un cliente archivado no cuentan (2026-09-23): no se puede
+        # entrar ahí, y ofrecerlas en el selector sólo lleva a un 403 después
+        # de elegir. `buscar` ya los trata como inexistentes.
+        membresias = [m for m in membresias if buscar(m.cliente_slug) is not None]
         if not membresias:
             if es_op:
                 return _entrar_a_la_consola(reg, ip, usuario, email)
+            if del_enlace is not None:
+                # Vino por el enlace, la cuenta es la invitada y aun así no
+                # tiene acceso: la invitación ya se había usado y a esa
+                # membresía la desactivaron. Un token válido no es un fallo.
+                borrar_fallos(reg, ip, modelo=IntentoOauth)
+                raise _acceso_desactivado(cliente_del_enlace.nombre)
             anotar_fallo(reg, ip, modelo=IntentoOauth)
             raise HTTPException(
                 status_code=403,
@@ -550,6 +718,15 @@ def oauth_login(
             if elegida is None:
                 anotar_fallo(reg, ip, modelo=IntentoOauth)
                 raise HTTPException(status_code=403, detail="No tenés acceso a ese cliente.")
+        elif del_enlace is not None:
+            # Llegó por el enlace de ESTE supermercado: entra ahí, aunque tenga
+            # otros — el selector está para cuando nadie dijo adónde iba.
+            elegida = next((m for m in membresias if m.cliente_slug == del_enlace.cliente_slug), None)
+            if elegida is None:
+                # Tiene otros accesos, pero el de ESTE supermercado está
+                # desactivado: no se lo manda a otro en silencio.
+                borrar_fallos(reg, ip, modelo=IntentoOauth)
+                raise _acceso_desactivado(cliente_del_enlace.nombre)
         elif len(membresias) == 1:
             elegida = membresias[0]
 

@@ -278,6 +278,11 @@ function rolLabelUsuario(rol: Miembro["rol"]): string {
  *  administra necesita ver los dos para saber a quién todavía le falta
  *  pasarse a cuenta propia. */
 function UsuariosSection() {
+  // A qué supermercado se invita, dicho en la pantalla (2026-09-23): con dos
+  // supermercados en la misma cuenta, invitar desde el equivocado mandaba a
+  // la persona al equivocado.
+  const clienteNombre = useAuthStore((s) => s.clienteNombre);
+  const miCorreo = useAuthStore((s) => s.email);
   const [datos, setDatos] = useState<UsuariosResponse | null>(null);
   const [cargando, setCargando] = useState(true);
   const [msg, setMsg] = useState<Feedback>(null);
@@ -302,6 +307,10 @@ function UsuariosSection() {
 
   useEffect(cargar, []);
 
+  const soyDuenio =
+    !miCorreo ||
+    (datos?.miembros ?? []).some((m) => m.email === miCorreo && m.rol === "owner" && m.activo);
+
   const invitar = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!invEmail.trim() || invitando) return;
@@ -309,7 +318,10 @@ function UsuariosSection() {
     setInvMsg(null);
     try {
       await invitarUsuario({ email: invEmail.trim(), rol: invRol });
-      setInvMsg({ ok: true, text: `Invitación enviada a ${invEmail.trim()}.` });
+      setInvMsg({
+        ok: true,
+        text: `Invitación enviada a ${invEmail.trim()}: entra a ${clienteNombre ?? "este supermercado"} como ${rolLabelUsuario(invRol).toLowerCase()}, con esa misma cuenta.`,
+      });
       setInvEmail("");
       cargar();
     } catch (err) {
@@ -353,10 +365,12 @@ function UsuariosSection() {
 
   return (
     <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }}>
-      <div style={sectionLabelStyle}>Usuarios</div>
+      <div style={sectionLabelStyle}>Usuarios{clienteNombre ? ` de ${clienteNombre}` : ""}</div>
       <p style={{ fontSize: 11.5, color: "var(--ink-2)", margin: "-4px 0 12px", lineHeight: 1.5 }}>
-        Cuentas individuales con Google o correo, para este supermercado. Conviven
-        con la clave compartida de arriba mientras dure la transición.
+        Cuentas individuales con Google o correo, para {clienteNombre ?? "este supermercado"}. La
+        persona tiene que entrar con el correo que escribas acá: si entra con otra cuenta, la
+        invitación no la encuentra. Conviven con la clave compartida de arriba mientras dure la
+        transición.
       </p>
 
       {/* Invitar */}
@@ -380,7 +394,10 @@ function UsuariosSection() {
           >
             <option value="worker">Trabajador</option>
             <option value="admin">Administrador</option>
-            <option value="owner">Dueño</option>
+            {/* Sólo un dueño hace dueños: el backend lo exige (403) y acá ni
+                se ofrece. La sesión de clave compartida, sin correo, sigue
+                pudiendo — igual que en el backend. */}
+            {soyDuenio && <option value="owner">Dueño</option>}
           </select>
         </div>
         <ActionButton onClick={() => {}} disabled={invitando || !invEmail.trim()} primary>
@@ -433,6 +450,7 @@ function UsuariosSection() {
                   <div style={{ fontSize: 10.5, color: "var(--ink-4)", whiteSpace: "nowrap" }}>
                     {m.ultimo_login ? haceCuanto(m.ultimo_login) : "nunca entró"}
                   </div>
+                  {(m.rol !== "owner" || soyDuenio) && (
                   <button
                     onClick={() => cambiarActivo(m)}
                     disabled={cambiando === m.id}
@@ -450,6 +468,7 @@ function UsuariosSection() {
                   >
                     {cambiando === m.id ? "…" : m.activo ? "Desactivar" : "Activar"}
                   </button>
+                  )}
                 </div>
               ))}
 

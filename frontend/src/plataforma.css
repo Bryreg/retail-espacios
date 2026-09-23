@@ -523,6 +523,13 @@ html[data-tema="oscuro"] .plat {
    ella. */
 .plat-btn.fuerte { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
 .plat-btn.fuerte:hover:not(:disabled) { background: var(--accent); filter: brightness(1.15); }
+/* Borrar un cliente es lo único irreversible de la consola: el botón lo dice
+   con el color de peligro, y su aviso también. Un cliente archivado se lee
+   atenuado en la lista, sin desaparecer: ahí es donde se reactiva. */
+.plat-btn.peligro { color: var(--danger); border-color: var(--danger); }
+.plat-btn.peligro:hover:not(:disabled) { background: var(--danger-50); border-color: var(--danger); }
+.plat-peligro { color: var(--danger); }
+.plat-archivado > td > div:first-child { color: var(--ink-3); }
 
 /* ── Hallazgos y recomendaciones ───────────────────────────────────────────
    Cada recomendación es una ACCIÓN con su valor, no una descripción.        */

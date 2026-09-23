@@ -338,6 +338,9 @@ export default function Plataforma() {
      en curso al calcular métricas, así que pedir la tendencia primero deja el
      mes actual como «sin dato». */
   const [version, setVersion] = useState(0);
+  /* Sube cuando la consola archiva, reactiva, renombra o borra un cliente:
+     cambió quién cuenta en el análisis y se vuelve a pedir todo. */
+  const [recarga, setRecarga] = useState(0);
 
   useEffect(() => {
     if (operador !== "si") return;
@@ -359,7 +362,7 @@ export default function Plataforma() {
     return () => {
       vivo = false;
     };
-  }, [operador, periodo]);
+  }, [operador, periodo, recarga]);
 
   // ── Tendencia del consolidado ───────────────────────────────────────────
   const [tendencia, setTendencia] = useState<Tendencia | null>(null);
@@ -870,11 +873,18 @@ export default function Plataforma() {
                     onGuardado={(slug, patch) =>
                       setClientes((prev) => (prev ? prev.map((x) => (x.slug === slug ? { ...x, ...patch } : x)) : prev))
                     }
+                    onBorrado={(slug) => setClientes((prev) => (prev ? prev.filter((x) => x.slug !== slug) : prev))}
+                    onCicloCambiado={() => setRecarga((n) => n + 1)}
                     enlaceReporte={(slug) => navigate(`/plataforma/reporte/${encodeURIComponent(slug)}`)}
                   />
                   <p className="plat-nota">
                     Cambiar el estado corta o restringe el servicio de inmediato. El motivo queda de constancia,
                     también al reactivar.
+                  </p>
+                  <p className="plat-nota">
+                    <b>Archivar</b> saca al cliente del ingreso y del análisis sin tocar sus datos, y se deshace.{" "}
+                    <b>Borrar</b> elimina su base para siempre: sólo se ofrece con el cliente ya archivado y nunca con
+                    el de la base principal, que guarda también la lista de clientes y sus usuarios.
                   </p>
                 </div>
               </details>

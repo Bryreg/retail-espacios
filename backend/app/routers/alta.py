@@ -24,7 +24,9 @@ from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
 from app.auth import create_token, epoca_de
-from app.clientes import SLUG_VALIDO, ErrorDeAlta, crear_cliente, sesion_de, sesion_registro
+from app.clientes import (
+    SLUG_VALIDO, ErrorDeAlta, crear_cliente, nombre_ocupado, sesion_de, sesion_registro,
+)
 from app.red import ip_del_cliente
 from app.routers.auth import (
     _tiene_consentimiento_vigente,
@@ -45,6 +47,17 @@ SLUGS_RESERVADOS = {
 }
 
 MENSAJE_SLUG_TOMADO = "Ese código ya está tomado. Probá con otro."
+# Un supermercado con el nombre de otro que ya usa el sistema es, casi
+# siempre, alguien de ESE supermercado que no encontró su invitación: fundar
+# acá lo deja trabajando en una base vacía creyendo que es la de su empresa
+# (2026-09-23 — así nacieron clientes que nadie quería). Se le dice qué hacer
+# en vez de crearlo. El nombre no es un secreto: la lista de clientes activos
+# ya es pública en `GET /api/auth/clientes`.
+MENSAJE_NOMBRE_TOMADO = (
+    "Ya hay un supermercado con ese nombre en RECABRA. Si usted trabaja allí, no lo cree "
+    "de nuevo: solicite a su dueño una invitación a su correo. Si es otro supermercado, "
+    "agregue la ciudad o la sede al nombre."
+)
 MAX_FUNDACIONES_POR_USUARIO = 2
 
 
@@ -108,6 +121,13 @@ def alta_self_service(
         nombre = (payload.nombre or "").strip()
         if not nombre:
             raise HTTPException(status_code=422, detail="El nombre del supermercado no puede estar vacío")
+
+        # 5.5) Nombre repetido entre los clientes activos (ver
+        # `MENSAJE_NOMBRE_TOMADO`). Antes del slug a propósito: quien escribió
+        # el nombre de su empresa tiene que leer esto, no «el código está
+        # tomado», que lo invita a probar con otro código.
+        if nombre_ocupado(reg, nombre) is not None:
+            raise HTTPException(status_code=409, detail=MENSAJE_NOMBRE_TOMADO)
 
         # 6) Slug -- mismo régimen que `crear_cliente`.
         slug = (payload.slug or "").strip().lower()

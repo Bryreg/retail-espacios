@@ -16,6 +16,13 @@
      · el enlace al **reporte de transparencia** de cada cliente, que se
        enlaza y no se rediseña.
 
+   Y desde el 2026-09-23, el ciclo de vida de cada cliente —pedido del dueño
+   de la plataforma, que tenía cinco clientes y trabaja en uno—: **renombrar**
+   (sólo el nombre visible; el código no cambia), **archivar** / **reactivar**
+   (reversible, con motivo) y **borrar** (irreversible: sólo un cliente ya
+   archivado, nunca el de la base principal, escribiendo su código). Cada
+   paso pide confirmación con lo que va a pasar dicho en palabras.
+
    El botón de confirmar va en TINTA, no en amarillo: el único amarillo de
    esta pantalla es la llamada #1 de la cola, y un cajón plegado no compite
    con ella.
@@ -25,7 +32,11 @@ import { useEffect, useState } from "react";
 import { describeError } from "../../api/client";
 import {
   ESTADOS_CUENTA,
+  archivarCliente,
+  borrarCliente,
   patchEstadoCliente,
+  reactivarCliente,
+  renombrarCliente,
   type ClientePlataforma,
   type EstadoCuenta,
 } from "../../api/plataforma";
@@ -111,12 +122,140 @@ function EditorEstado({
   );
 }
 
+// ─── El ciclo de vida: renombrar, archivar, reactivar, borrar ───────────────
+
+type AccionCiclo = "renombrar" | "archivar" | "reactivar" | "borrar";
+
+/** Lo que cada acción le cuenta a quien está por confirmarla. */
+function confirmacionDe(accion: AccionCiclo, fila: ClientePlataforma, valor: string): string {
+  const quien = `«${fila.nombre}» (${fila.slug})`;
+  if (accion === "renombrar") {
+    return `¿Renombrar ${quien} a «${valor}»?\n\nEl código no cambia: nadie pierde la sesión.`;
+  }
+  if (accion === "archivar") {
+    return (
+      `¿Archivar ${quien}?\n\nNadie va a poder entrar, deja de aparecer en el ingreso y en el ` +
+      `análisis de la consola, y sus datos quedan intactos. Se puede reactivar.\n\nMotivo: ${valor}`
+    );
+  }
+  if (accion === "reactivar") {
+    return `¿Reactivar ${quien}?\n\nSus usuarios vuelven a poder entrar.\n\nMotivo: ${valor}`;
+  }
+  return (
+    `¿Borrar ${quien} PARA SIEMPRE?\n\nSe elimina su base —sedes, planos, contratos, proveedores— ` +
+    `y sus usuarios pierden el acceso. No hay forma de deshacerlo.`
+  );
+}
+
+function EditorCiclo({
+  fila,
+  accion,
+  onHecho,
+  onCancelar,
+}: {
+  fila: ClientePlataforma;
+  accion: AccionCiclo;
+  /** El cambio a mezclar en la fila, o `null` si la fila se borró. */
+  onHecho: (patch: Partial<ClientePlataforma> | null) => void;
+  onCancelar: () => void;
+}) {
+  const [texto, setTexto] = useState(accion === "renombrar" ? fila.nombre : "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const valor = accion === "renombrar" ? texto.replace(/\s+/g, " ").trim() : texto.trim();
+  const codigoOk = accion !== "borrar" || valor.toLowerCase() === fila.slug;
+
+  const guardar = async () => {
+    if (!valor) {
+      setError(accion === "renombrar" ? "El nombre no puede quedar vacío." : "El motivo es obligatorio.");
+      return;
+    }
+    if (!codigoOk) {
+      setError(`Escribí el código exacto: ${fila.slug}`);
+      return;
+    }
+    if (!confirm(confirmacionDe(accion, fila, valor))) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (accion === "renombrar") onHecho({ nombre: (await renombrarCliente(fila.slug, valor)).nombre });
+      else if (accion === "archivar") onHecho({ activo: (await archivarCliente(fila.slug, valor)).activo });
+      else if (accion === "reactivar") onHecho({ activo: (await reactivarCliente(fila.slug, valor)).activo });
+      else {
+        await borrarCliente(fila.slug, valor);
+        onHecho(null);
+      }
+    } catch (err) {
+      setError(describeError(err, "No se pudo completar."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const placeholder =
+    accion === "renombrar" ? "Nombre visible del cliente"
+    : accion === "borrar" ? `Escribí ${fila.slug} para confirmar`
+    : "Motivo (obligatorio)";
+  const boton =
+    accion === "renombrar" ? "Guardar nombre"
+    : accion === "archivar" ? "Confirmar archivo"
+    : accion === "reactivar" ? "Confirmar reactivación"
+    : "Borrar para siempre";
+
+  return (
+    <div className="plat-editor">
+      {accion === "renombrar" && (
+        <p className="plat-nota" style={{ margin: "0 0 var(--s2)" }}>
+          Cambia sólo el nombre que se ve. El código <span className="cod">{fila.slug}</span> no cambia.
+        </p>
+      )}
+      {accion === "archivar" && (
+        <p className="plat-nota" style={{ margin: "0 0 var(--s2)" }}>
+          Nadie entra, sale del ingreso y del análisis, y los datos quedan intactos. Se deshace con «Reactivar».
+        </p>
+      )}
+      {accion === "borrar" && (
+        <p className="plat-nota plat-peligro" style={{ margin: "0 0 var(--s2)" }}>
+          Borra la base de «{fila.nombre}» con todo lo que tiene. <b>No se puede deshacer.</b>
+        </p>
+      )}
+      <div className="linea">
+        <input
+          type="text"
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          placeholder={placeholder}
+          aria-label={`${boton}: ${fila.nombre}`}
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </div>
+      <div className="linea">
+        <button
+          type="button"
+          className={`plat-btn mini ${accion === "borrar" ? "peligro" : "fuerte"}`}
+          onClick={guardar}
+          disabled={busy || !valor || !codigoOk}
+        >
+          {busy ? "Un momento…" : boton}
+        </button>
+        <button type="button" className="plat-btn mini" onClick={onCancelar} disabled={busy}>
+          Cancelar
+        </button>
+        {error && <span className="error">{error}</span>}
+      </div>
+    </div>
+  );
+}
+
 export function TablaEstados({
   clientes,
   error,
   abierto,
   onAbrir,
   onGuardado,
+  onBorrado,
+  onCicloCambiado,
   enlaceReporte,
 }: {
   clientes: ClientePlataforma[] | null;
@@ -125,9 +264,22 @@ export function TablaEstados({
    *  conexión» de la cola abre esta fila desde afuera. */
   abierto: string | null;
   onAbrir: (slug: string | null) => void;
-  onGuardado: (slug: string, patch: Pick<ClientePlataforma, "estado" | "motivo" | "cambiado_en" | "cambiado_por">) => void;
+  onGuardado: (slug: string, patch: Partial<ClientePlataforma>) => void;
+  /** La fila se borró para siempre: sale de la lista. */
+  onBorrado: (slug: string) => void;
+  /** Cambió qué clientes cuentan (archivar, reactivar, borrar, renombrar):
+   *  el análisis de arriba se vuelve a pedir. */
+  onCicloCambiado: () => void;
   enlaceReporte: (slug: string) => void;
 }) {
+  // Qué editor del ciclo está abierto, y en qué fila. Local: nadie de afuera
+  // abre estos, a diferencia del de estado.
+  const [ciclo, setCiclo] = useState<{ slug: string; accion: AccionCiclo } | null>(null);
+  const abrirCiclo = (slug: string, accion: AccionCiclo) => {
+    onAbrir(null);
+    setCiclo((actual) => (actual?.slug === slug && actual.accion === accion ? null : { slug, accion }));
+  };
+
   if (error) return <div className="plat-aviso">{error}</div>;
   if (clientes === null) return <p className="plat-nota">Cargando los estados de cuenta…</p>;
   if (clientes.length === 0) return <p className="plat-nota">No hay clientes en el registro todavía.</p>;
@@ -147,12 +299,13 @@ export function TablaEstados({
         </thead>
         <tbody>
           {clientes.map((c) => (
-            <tr key={c.slug} id={`plat-estado-${c.slug}`}>
+            <tr key={c.slug} id={`plat-estado-${c.slug}`} className={c.activo ? undefined : "plat-archivado"}>
               <td>
                 <div style={{ fontWeight: 600 }}>{c.nombre}</div>
                 <div className="cod mut">
                   {c.slug}
-                  {!c.activo && " · inactivo"}
+                  {!c.activo && " · archivado"}
+                  {c.base_principal && " · base principal"}
                 </div>
                 {abierto === c.slug && (
                   <EditorEstado
@@ -161,6 +314,20 @@ export function TablaEstados({
                     onGuardado={(patch) => {
                       onGuardado(c.slug, patch);
                       onAbrir(null);
+                    }}
+                  />
+                )}
+                {ciclo?.slug === c.slug && (
+                  <EditorCiclo
+                    key={ciclo.accion}
+                    fila={c}
+                    accion={ciclo.accion}
+                    onCancelar={() => setCiclo(null)}
+                    onHecho={(patch) => {
+                      setCiclo(null);
+                      if (patch === null) onBorrado(c.slug);
+                      else onGuardado(c.slug, patch);
+                      onCicloCambiado();
                     }}
                   />
                 )}
@@ -173,10 +340,37 @@ export function TablaEstados({
                 <button
                   type="button"
                   className="plat-btn mini"
-                  onClick={() => onAbrir(abierto === c.slug ? null : c.slug)}
+                  onClick={() => {
+                    setCiclo(null);
+                    onAbrir(abierto === c.slug ? null : c.slug);
+                  }}
                 >
                   {abierto === c.slug ? "Cerrar" : "Cambiar"}
                 </button>{" "}
+                <button type="button" className="plat-btn mini" onClick={() => abrirCiclo(c.slug, "renombrar")}>
+                  Renombrar
+                </button>{" "}
+                {c.activo ? (
+                  <button type="button" className="plat-btn mini" onClick={() => abrirCiclo(c.slug, "archivar")}>
+                    Archivar
+                  </button>
+                ) : (
+                  <button type="button" className="plat-btn mini" onClick={() => abrirCiclo(c.slug, "reactivar")}>
+                    Reactivar
+                  </button>
+                )}{" "}
+                {!c.activo && !c.base_principal && (
+                  <>
+                    <button
+                      type="button"
+                      className="plat-btn mini peligro"
+                      onClick={() => abrirCiclo(c.slug, "borrar")}
+                      title="Borra la base de este cliente para siempre. Sólo se ofrece con el cliente archivado."
+                    >
+                      Borrar
+                    </button>{" "}
+                  </>
+                )}
                 <button
                   type="button"
                   className="plat-btn mini"

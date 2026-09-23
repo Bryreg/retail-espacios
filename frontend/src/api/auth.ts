@@ -94,15 +94,54 @@ export const esRequiereCliente = (r: OauthResponse): r is OauthRequiereCliente =
 export const loginOauth = (
   idToken: string,
   cliente?: string,
-  aceptaPolitica?: boolean
+  aceptaPolitica?: boolean,
+  invitacion?: string
 ): Promise<OauthResponse> =>
   client
     .post<OauthResponse>("/auth/oauth", {
       id_token: idToken,
       ...(cliente ? { cliente } : {}),
       ...(aceptaPolitica ? { acepta_politica: true } : {}),
+      ...(invitacion ? { invitacion } : {}),
     })
     .then((r) => r.data);
+
+// ─── El enlace de la invitación (2026-09-23) ────────────────────────────────
+//
+// El correo apunta a `/login?invitacion=<token>`. Antes nadie leía ese token:
+// quien entraba con otra cuenta que la invitada terminaba «sin acceso» y con
+// el formulario de fundar un supermercado adelante. Ahora la pantalla muestra
+// a qué supermercado y con qué cuenta entrar, y `/oauth` lleva a ese
+// supermercado o explica por qué no.
+
+export interface InvitacionVista {
+  estado: "vigente" | "usada" | "vencida";
+  cliente_nombre: string;
+  rol: "owner" | "admin" | "worker";
+  /** Enmascarado por el backend: `b•••o@gmail.com`. */
+  correo: string;
+  expira_en: string;
+}
+
+export const verInvitacion = (token: string): Promise<InvitacionVista> =>
+  client.get<InvitacionVista>(`/auth/invitacion/${encodeURIComponent(token)}`).then((r) => r.data);
+
+/** Lo que `/oauth` contesta cuando el enlace no lleva a ninguna parte: otra
+ *  cuenta que la invitada, invitación vencida o inexistente, o un acceso que
+ *  ya estaba y lo desactivaron. `mensaje` viene redactado para la persona. */
+export interface ErrorDeInvitacion {
+  codigo: "invitacion_otro_correo" | "invitacion_vencida" | "invitacion_invalida" | "invitacion_sin_acceso";
+  mensaje: string;
+  correo?: string;
+  cliente_nombre?: string;
+}
+
+export function esErrorDeInvitacion(err: unknown): ErrorDeInvitacion | null {
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  if (!detail || typeof detail !== "object") return null;
+  const codigo = (detail as { codigo?: unknown }).codigo;
+  return typeof codigo === "string" && codigo.startsWith("invitacion_") ? (detail as ErrorDeInvitacion) : null;
+}
 
 // ─── Consentimiento a la Política de Tratamiento de Datos (Fase 3) ─────────
 
