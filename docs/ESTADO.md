@@ -1,9 +1,10 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-09-15 (Una sola verdad para lo comercial — el plano guarda lo
-que ES el mueble y la base lo que se le VENDIÓ, se acabó el modelo dual. Ver *Reglas
-duras* y *Una sola verdad para lo comercial*).
+Última actualización: 2026-09-23 (El plano se mueve como el Editor 3D — abre desde
+arriba, se gira, se mueve y se acerca con los gestos del editor, y mide lo mismo en
+Vender y en Supervisar. Ver *El plano se mueve como el Editor 3D*, dentro de *Una
+pantalla de sede, dos modos*).
 
 Gestión de espacios comerciales en supermercados: se dibuja el plano de cada sede, se
 marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
@@ -1861,10 +1862,13 @@ depende la sede. **«Estado por espacio»** queda a todo el ancho debajo del pla
 chips de filtro en su encabezado —Todas / Por vencer / Sin montar / Libres, y el que no
 puede devolver nada no se dibuja—.
 
-Y el plano **deja de ser un directorio**: la tabla ya lista las 23 caras con su código, así
-que arriba se rotula sólo la fila abierta. Veintitrés rótulos en un panel de 700 px caen a
-un cuerpo ilegible. Lo no comercializable no se rotula nunca: es el contexto donde está lo
-que se vende, y el contexto se dibuja.
+~~Y el plano **deja de ser un directorio**: la tabla ya lista las 23 caras con su código, así
+que arriba se rotula sólo la fila abierta.~~ **Ya no (2026-09-23):** el plano de Supervisar
+es el mismo que el de Vender y rotula todo. El argumento era de medida —«veintitrés rótulos
+en un panel de 700 px caen a un cuerpo ilegible»— y dejó de valer cuando el rótulo pasó a
+medir 10,5 px en pantalla a todo acercamiento y a ceder cuando no entra (ver *El plano se
+mueve como el Editor 3D*). Lo no comercializable sigue sin rotularse nunca: es el contexto
+donde está lo que se vende, y el contexto se dibuja.
 
 **Vender** suma dos paneles. **«Cuándo se libera cada espacio»** (`components/Libera/`) es
 una escalera sobre el eje de fechas con peine de días y un cursor que escribe la respuesta
@@ -1935,6 +1939,12 @@ mismo desde, mismo hasta, misma sede. Cancelar sigue siendo de a un espacio.
 
 #### El encuadre del plano
 
+> **Reemplazado en parte (2026-09-23).** Con la cámara del editor el dibujo gira, así que
+> la «proporción del plano» dejó de existir: el lienzo mide `--alto-plano` en las dos
+> pantallas, y la cámara ya no se acerca sola a nada —tampoco en Supervisar—. Lo que
+> sigue queda como el porqué de lo que había; lo vigente está en *El plano se mueve como
+> el Editor 3D*.
+
 Tres cosas que salieron de mirar la pantalla desplegada y no de diseñarla.
 
 **La tarjeta del plano no lleva alto: lo pone la PROPORCIÓN DEL PLANO.** Con alto fijo
@@ -1989,6 +1999,100 @@ exactamente el primer bicho que encontró—. Corre en tres modos: `admin`, `tra
 (replica lo que el servidor le borra a un mercaderista y verifica que **no le quede un
 solo peso en pantalla**) y `ficha`.
 
+
+#### El plano se mueve como el Editor 3D (2026-09-23)
+
+El pedido del dueño, con tres capturas de TERRON: mover el mapa de Vender y de
+Supervisar «de la misma manera que se mueve en el editor 3D» —sólo la cámara, sin la
+primera persona ni el resto del editor— y que aparezca «desde la vista superior como se
+ve en el plano». Con eso vinieron tres detalles que se arreglaron en el mismo cambio.
+
+**La cámara es la del editor, en SVG.** `frontend/src/utils/camaraPlano.ts` replica el
+`OrbitControls` de three.js que usa el editor, con sus mismas cuentas:
+
+- Izquierdo **gira**; derecho —o izquierdo con Shift, Ctrl o ⌘— **mueve**; la rueda
+  **acerca** (1/0,95 por clic, con la normalización de ruedas por línea y del pellizco del
+  panel táctil); el botón del medio acerca arrastrando. Un dedo gira; dos acercan y mueven.
+- Arrastrar el **alto** del lienzo entero es una vuelta (así lo hace OrbitControls). El
+  lienzo del plano es más bajo que el del editor, así que el mismo arrastre gira un poco
+  más: es la misma regla, no la misma cantidad de píxeles.
+- Mover desliza el punto de mira sobre la pantalla (`screenSpacePanning`), y se gira
+  alrededor de ese punto. El tope de abajo es el del editor (π/2,1). El de arriba NO: el
+  editor no baja de 30° de la vertical y este plano **abre en 0°**, mirando derecho hacia
+  abajo, orientado como el editor 2D (x a la derecha, z hacia abajo).
+- Lo que no se copió: la perspectiva. El plano es ortográfico —las medidas parejas en
+  toda la sala, como el 2D— y acercar es escalar. «Centrar» vuelve a la vista superior
+  con la sede entera.
+
+**Por qué SVG y no el lienzo de three.js.** Todo lo que cuelga del mapa —el rótulo que
+mide 10,5 px a todo acercamiento y cede cuando no entra, el resaltado que apaga la sala
+desde la tarifa y la escalera, la cara A o B que se toca, el tooltip— es SVG y se quedó
+como estaba. Cambió sólo cómo se proyecta un punto. De paso el tablero no carga WebGL.
+
+**El orden de pintado dejó de ser por centro.** El isométrico fijo ordenaba por `cx + cz`,
+que falla con los muebles largos: una góndola de diez metros tiene el centro lejos de la
+punta que tiene pegada, y con la cámara girando ese error aparece y desaparece según el
+ángulo. `ordenDePintado` compara, para cada par que se toca EN PANTALLA, quién está
+delante sobre una columna de pantalla que cruce a los dos —para prismas parados en el
+mismo piso y cámara ortográfica eso decide quién tapa a quién— y ordena topológicamente.
+`scripts/probar-camara.mjs` lo comprueba como un ojo: tira rayos contra los prismas en
+cientos de salas y vistas al azar y compara lo que el rayo toca primero con lo que el
+pintor dejó arriba. El orden por centro falla esa prueba.
+
+**Qué se ve de cada mueble.** Desde arriba, sólo las tapas (el plano 2D pintado por
+disponibilidad). Inclinado, los dos lados que dan a la cámara: los largos son la cara que
+se vende y llevan su color —el de −z (o −x) es la A, el otro la B; tocarlo elige esa
+cara—; las cabeceras son el cuerpo. La luz viene de la izquierda de la pantalla y con la
+cámara del isométrico de antes da las mismas sombras (0,14 y 0,26).
+
+**La orientación es estado; el acercamiento, no.** Girar cambia qué lados se ven y en qué
+orden se pintan, así que rehace la escena (un cuadro por vez: ~7 ms para 223 muebles).
+Acercar y mover siguen siendo un `transform` escrito a mano sobre el grupo de la escena,
+como antes. Los rótulos se miden una vez; al girar sólo se mueven sus anclas y se vuelven
+a acomodar.
+
+**El mismo plano en las dos pantallas.** Supervisar pasaba otras opciones —rótulos sólo
+del elegido, alto por la proporción del dibujo, acercarse solo al mueble elegido— y el
+mismo plano salía mucho más grande que en Vender. Ahora `IsoMap` no tiene opciones de
+encuadre: las dos pantallas usan el mismo componente con los mismos rótulos y
+herramientas, y el lienzo mide `--alto-plano` (en `vender.css`: la misma cuenta que
+reparte la hoja de Vender, 550/804 de lo que queda debajo de las barras, nunca menos de
+448 px). Medido con el navegador: 16,7 contra 16,4 px por metro a 1920×960, 12,1 contra
+12,2 a 1366×768. La columna derecha de Supervisar mide ese mismo alto: «Para revisar» se
+lleva lo que necesita —hasta seis décimos— y «Quién paga el canon» el resto, cada una con
+su desplazamiento; si la columna mandara el alto, el plano volvería a crecer con ella.
+La ayuda de los gestos («Arrastrá para girar · clic derecho para mover · rueda para
+acercar») está hasta el primer gesto y se va.
+
+**«Cuándo se libera cada espacio» ya no pisa letras** (`components/Libera/acomodo.ts`,
+`scripts/probar-libera.mjs`). Un contrato que arrancaba al día siguiente —PUN-13 en la
+captura— ponía su fecha y su chip contra el borde izquierdo, donde vivían «hoy · 23 sep»
+y «PUN · PUNTA DE GÓNDOLA», y las tres se encimaban:
+
+- La leyenda de los prefijos sube al renglón del título, a la derecha. En el renglón de
+  los chips sólo hay chips.
+- Cada fecha va con su columna de chips, siempre juntas, centradas en su día; se pueden
+  correr a la derecha para esquivar la anterior, pero sin dejar de tapar su diente del
+  peine. La que no entra se queda sin columna (su escalón y su cifra siguen, y el cursor
+  la lee).
+- «hoy · 23 sep» cede su lugar a la fecha del primer cambio. **No se acorta a «hoy»**: la
+  primera versión lo hacía, y pegado a «24 sep» se leía «hoy 24 sep».
+- Las cifras de los escalones no se tapan entre sí; la nota «sin cambios durante N días»
+  sólo se escribe si termina antes del primer escalón.
+- Con tres o más códigos el mismo día, el segundo renglón dice «+2 más» (y los enciende en
+  el plano): el tercer renglón de antes se salía de la caja y no se veía.
+- El chip de un contrato que ARRANCA va con el color de «Tomado». Iba con el de «Se
+  libera», que decía lo contrario de lo que pasa ese día.
+
+**«Estado por espacio», compacta y con filtro.** Proveedor no tenía ancho y se quedaba con
+todo lo sobrante: mil píxeles para nombres de trescientos, y el estado a media pantalla del
+proveedor. Ahora Tipo y Proveedor miden su texto más largo (con techo; el que se pasa se
+corta con «…» y el nombre entero queda al pasar por encima), la tabla mide la suma de sus
+columnas y el encabezado mide lo mismo. El encabezado lleva un **filtro de texto** que es
+el MISMO que el del plano —escribir en uno escribe en los dos: la tabla está a una
+pantalla de distancia del plano, y dos campos con un solo valor no pueden decir cosas
+distintas— y el subtítulo cuenta «18 de 68 espacios». El filtro ahora encuentra también
+por tipo («punta», «impulsador»).
 
 ### Tres cosas que estaban rotas y no se veían
 

@@ -1,6 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { daysTakenInRange, type UnifiedFixture } from "../../types/fixtures";
 import type { SeasonOccurrence } from "../../types/seasons";
+import {
+  acomodarFechas, anchoMono, cifrasQueEntran, leyendaQueEntra, notaQueEntra,
+} from "./acomodo";
 
 /**
  * «Cuándo se libera cada espacio» — la forma A·4, con el tratamiento de D.
@@ -55,6 +58,13 @@ const CHIP_H = 19;
 const MES = ["ene", "feb", "mar", "abr", "may", "jun",
              "jul", "ago", "sep", "oct", "nov", "dic"];
 
+const TITULO = "Espacios libres a lo largo del periodo";
+
+/** Los cuerpos de `tema.css` en px, para las cuentas de choque de `acomodo.ts`.
+ *  Se leen de los tokens al medir la caja; estos son sólo el valor con el que
+ *  arranca el primer pintado, antes de que haya hoja de estilos que leer. */
+const CUERPOS_INICIALES = { lbl: 10.5, t2xs: 11.5, base: 15 };
+
 const dm = (d: Date) => `${d.getDate()} ${MES[d.getMonth()]}`;
 const f = (v: number) => (Math.round(v * 10) / 10).toString();
 
@@ -97,6 +107,26 @@ export default function Libera({
    *  este archivo no son los que se ven, y «diez cuerpos en pantalla» deja de
    *  poder comprobarse. */
   const [caja, setCaja] = useState({ w: 974, h: ALTO_BASE });
+  const [cuerpos, setCuerpos] = useState(CUERPOS_INICIALES);
+
+  useLayoutEffect(() => {
+    const el = cajaRef.current;
+    if (!el) return;
+    // Los tamaños de letra con los que se cuentan los choques son los de los
+    // tokens, no una copia: si la escala se mueve, las cuentas la siguen.
+    const cs = getComputedStyle(el);
+    const leer = (v: string, d: number) => {
+      const n = parseFloat(cs.getPropertyValue(v));
+      return Number.isFinite(n) && n > 0 ? n : d;
+    };
+    const leidos = {
+      lbl: leer("--lbl-px", CUERPOS_INICIALES.lbl),
+      t2xs: leer("--t-2xs", CUERPOS_INICIALES.t2xs),
+      base: leer("--t-base", CUERPOS_INICIALES.base),
+    };
+    setCuerpos((c) => (c.lbl === leidos.lbl && c.t2xs === leidos.t2xs && c.base === leidos.base
+      ? c : leidos));
+  }, []);
 
   useLayoutEffect(() => {
     const el = cajaRef.current;
@@ -210,20 +240,40 @@ export default function Libera({
   pasos.push([x(dias), y(previo)]);
   const poli = (p: [number, number][]) => p.map(([a, b]) => `${f(a)},${f(b)}`).join(" ");
 
-  // Qué fechas se ganan una columna de chips. Dos entregas a menos de 60 px
-  // dibujarían los códigos uno encima del otro; la de más a la izquierda se
-  // queda con la columna y la otra conserva su fecha bajo el eje.
-  const columnas: { i: number; cambios: Cambio[] }[] = [];
-  let ultimoX = -Infinity;
-  for (const [i, lista] of cambios) {
-    if (x(i) - ultimoX < CHIP_W + 2) continue;
-    ultimoX = x(i);
-    columnas.push({ i, cambios: lista });
-  }
+  // Qué fechas se ganan una columna: su fecha bajo el eje y sus chips debajo,
+  // SIEMPRE juntos. Dos cambios más cerca de lo que miden sus fechas (o sus
+  // chips) se quedan con una sola columna, la de más a la izquierda; y el
+  // primero le gana el lugar a «hoy · 23 sep». La regla y el porqué, en
+  // `acomodo.ts`.
+  const porDia = new Map(cambios);
+  const { hoy: rotuloHoy, columnas } = acomodarFechas({
+    X0, X1, x,
+    cambios: cambios.map(([i]) => ({ i, fecha: dm(fecha(i)) })),
+    hoy: dm(fecha(0)),
+    pxFecha: cuerpos.t2xs,
+    chipW: CHIP_W,
+  });
+
+  // Las cifras de cada tramo. La del arranque siempre; las otras, si no tapan
+  // a una ya puesta —dos escalones a un día de distancia las encimaban—.
+  const cifras = [
+    { x: X0 + 2, y: y(serie[0]) - 11, txt: String(serie[0]) },
+    ...cambios.map(([i]) => ({ x: x(i) + 8, y: y(serie[i]) - 12, txt: String(serie[i]) })),
+  ];
+  const cifraVisible = cifrasQueEntran(cifras, cuerpos.base, -0.02);
 
   // El primer tramo plano: «sin cambios durante N días» es la mitad del valor
-  // de este gráfico, y es lo único que no se ve mirando la escalera.
+  // de este gráfico, y es lo único que no se ve mirando la escalera. Arranca
+  // después de la cifra de partida —que puede tener tres o cuatro dígitos— y
+  // sólo se escribe si termina antes del primer escalón.
   const primerCambio = cambios[0]?.[0] ?? null;
+  const notaX = X0 + 2 + anchoMono(cifras[0].txt, cuerpos.base, -0.02) + 14;
+  const notaTramo = primerCambio !== null && primerCambio > 1
+    ? notaQueEntra(notaX, x(primerCambio), [
+        `sin cambios durante ${primerCambio} días`,
+        `${primerCambio} días sin cambios`,
+      ], cuerpos.t2xs)
+    : null;
 
   const tipos: [string, string][] = [];
   const vistos = new Set<string>();
@@ -235,6 +285,16 @@ export default function Libera({
       tipos.push([pre, c.tipo]);
     }
   }
+  // Qué quiere decir cada prefijo de los chips, en el renglón del título y a
+  // la derecha. Vivía en el renglón de los chips, contra el borde izquierdo,
+  // que es donde cae el chip de un contrato que arranca mañana: «PUN-13» se
+  // escribía encima de «PUN · PUNTA DE GÓNDOLA».
+  const leyenda = leyendaQueEntra(
+    X0 + anchoMono(TITULO, cuerpos.lbl, 0.16),
+    X1,
+    tipos.map(([pre, tipo]) => `${pre} · ${tipo.toUpperCase()}`),
+    cuerpos.lbl, 0.16, 22,
+  );
 
   /** De píxeles de pantalla a unidades del viewBox, con la matriz del SVG.
    *
@@ -269,7 +329,10 @@ export default function Libera({
           if (e.key === "ArrowRight") { setCursor(Math.min(dias, iCursor + 1)); e.preventDefault(); }
         }}
       >
-        <text x={f(X0)} y="13" style={rot}>Espacios libres a lo largo del periodo</text>
+        <text x={f(X0)} y="13" style={rot}>{TITULO}</text>
+        {leyenda.map((r) => (
+          <text key={r.txt} x={f(r.x)} y="13" style={tipoT}>{r.txt}</text>
+        ))}
 
         {/* La temporada, detrás: explica por qué varias entregas caen juntas. */}
         {temporadas.map((t) => {
@@ -311,15 +374,12 @@ export default function Libera({
         {/* La cifra de cada tramo, en vez de un eje vertical. Arranca donde
             arranca su tramo —no en el medio de la meseta— para quedar pegada a
             su escalón y no chocar con el anillo del cursor. */}
-        <text x={f(X0 + 2)} y={f(y(serie[0]) - 11)} style={num}>{serie[0]}</text>
-        {primerCambio !== null && primerCambio > 1 && (
-          <text x={f(X0 + 36)} y={f(y(serie[0]) - 11)} style={nota}>
-            sin cambios durante {primerCambio} días
-          </text>
-        )}
-        {cambios.map(([i]) => (
-          <text key={i} x={f(x(i) + 8)} y={f(y(serie[i]) - 12)} style={num}>{serie[i]}</text>
+        {cifras.map((c, k) => cifraVisible[k] && (
+          <text key={k} x={f(c.x)} y={f(c.y)} style={num}>{c.txt}</text>
         ))}
+        {notaTramo && (
+          <text x={f(notaX)} y={f(y(serie[0]) - 11)} style={nota}>{notaTramo}</text>
+        )}
 
         {/* El cursor: una línea punteada y un anillo sobre el escalón. La
             lectura la escribe el encabezado del panel. */}
@@ -330,27 +390,37 @@ export default function Libera({
           r="6.5" fill="none" stroke="var(--ink-1)" strokeWidth="1.6"
         />
 
-        {/* Las fechas y, debajo, los códigos que se mueven en cada una. */}
-        <text x={f(X0)} y={f(YE + 20)} style={hoy}>hoy · {dm(fecha(0))}</text>
-        {cambios.map(([i]) => (
-          <text key={i} x={f(x(i))} y={f(YE + 20)} style={fechaT} textAnchor="middle">
+        {/* Las fechas y, debajo, los códigos que se mueven en cada una. Cada
+            fecha va con su columna: la que no entra se va con sus chips. */}
+        {rotuloHoy && <text x={f(X0)} y={f(YE + 20)} style={hoy}>{rotuloHoy}</text>}
+        {columnas.map(({ i, cx }) => (
+          <text key={i} x={f(cx)} y={f(YE + 20)} style={fechaT} textAnchor="middle">
             {dm(fecha(i))}
           </text>
         ))}
-        {columnas.map(({ i, cambios: lista }) => {
-          const cx = x(i);
-          const visibles = lista.slice(0, 2);
-          const sobran = lista.length - visibles.length;
+        {columnas.map(({ i, cx }) => {
+          const lista = porDia.get(i) ?? [];
+          // Hay lugar para DOS renglones. Con tres o más códigos el segundo
+          // renglón dice cuántos faltan —y los enciende en el plano—: un
+          // tercer renglón se salía por abajo de la caja y no se veía nunca.
+          const visibles = lista.length > 2 ? lista.slice(0, 1) : lista;
+          const resto = lista.slice(visibles.length);
           return (
             <g key={i}>
               {visibles.map((c, j) => (
                 <g
                   key={c.code}
-                  className={`gChip${iCursor >= i ? " paso" : ""}`}
+                  /* Un contrato que ARRANCA saca el espacio del inventario: su
+                     chip va con el color de «Tomado» y no con el de «Se libera»,
+                     que es el que tenía y decía lo contrario. */
+                  className={`gChip${c.sentido === "sale" ? " sale" : ""}${iCursor >= i ? " paso" : ""}`}
                   data-cod={c.code}
                   onMouseEnter={() => onResaltar?.([c.clave])}
                   onMouseLeave={() => onResaltar?.(null)}
                 >
+                  <title>{c.sentido === "sale"
+                    ? `${c.code}: se ocupa el ${dm(fecha(i))}`
+                    : `${c.code}: se libera el ${dm(fecha(i))}`}</title>
                   <rect
                     x={f(cx - CHIP_W / 2)} y={f(YE + 28 + j * 23)}
                     width={CHIP_W} height={CHIP_H} rx="9.5"
@@ -358,19 +428,19 @@ export default function Libera({
                   <text x={f(cx)} y={f(YE + 41.5 + j * 23)}>{c.code}</text>
                 </g>
               ))}
-              {sobran > 0 && (
-                <text x={f(cx)} y={f(YE + 41.5 + visibles.length * 23)} textAnchor="middle" style={nota}>
-                  +{sobran}
+              {resto.length > 0 && (
+                <text
+                  x={f(cx)} y={f(YE + 41.5 + 23)} textAnchor="middle" style={masT}
+                  onMouseEnter={() => onResaltar?.(resto.map((c) => c.clave))}
+                  onMouseLeave={() => onResaltar?.(null)}
+                >
+                  <title>{resto.map((c) => c.code).join(" · ")}</title>
+                  +{resto.length} más
                 </text>
               )}
             </g>
           );
         })}
-        {tipos.slice(0, 2).map(([pre, tipo], i) => (
-          <text key={pre} x={f(X0)} y={f(YE + 41.5 + i * 23)} style={tipoT}>
-            {pre} · {tipo.toUpperCase()}
-          </text>
-        ))}
       </svg>
     </div>
   );
@@ -390,6 +460,8 @@ const num: React.CSSProperties = {
   letterSpacing: "-0.02em", fill: "var(--libre-txt)",
 };
 const nota: React.CSSProperties = { fontFamily: "var(--f-mono)", fontSize: "var(--t-2xs)", fill: "var(--ink-3)" };
+/** «+2 más»: los códigos de una columna que no entran, contados. */
+const masT: React.CSSProperties = { ...nota, fontWeight: 600, cursor: "default" };
 const hoy: React.CSSProperties = { fontFamily: "var(--f-mono)", fontSize: "var(--t-2xs)", fontWeight: 700, fill: "var(--ink-2)" };
 const fechaT: React.CSSProperties = { fontFamily: "var(--f-mono)", fontSize: "var(--t-2xs)", fill: "var(--ink-2)" };
 const temp: React.CSSProperties = {

@@ -16,6 +16,17 @@
    del PR («`--con-*`, Supervisar, Montaje, Editor 3D: NO se rediseñan»).
    ========================================================================== */
 
+/* EL ALTO DEL PLANO, el mismo en las dos pantallas. En Vender lo pone la
+   rejilla de la hoja: la fila 1 se lleva 550/804 de lo que queda debajo de las
+   dos barras y el hueco entre filas, y nunca menos de 448 px (`--fila1`).
+   Supervisar no tiene hoja —es un documento que rueda— y hace la misma cuenta
+   con esta variable: así el plano mide lo mismo al pasar de una a la otra. Los
+   132 px son la barra de la aplicación, la de la pantalla con su margen, el
+   aire de arriba y de abajo de la hoja y el hueco entre sus filas. */
+:root {
+  --alto-plano: max(448px, calc((100dvh - 132px) * 550 / 804));
+}
+
 .vender {
   /* --- EL MARCO DE LA PANTALLA -------------------------------------------
      La pantalla no tiene alto propio: toma el que le deja la barra de la
@@ -31,11 +42,8 @@
   --fila2: 248px;
 
   /* El plano: tres caras por estado. Los hex salen de los tokens, no de una
-     paleta nueva. `-i` izquierda · `-d` derecha · `-t` tapa. */
-  --pl-piso: var(--surface-2);
-  --pl-cod: var(--ink-1);
-  --pl-codsel: var(--accent-ink);
-  --pl-halosel: var(--ink-1);
+     paleta nueva. `-i` izquierda · `-d` derecha · `-t` tapa. Los colores del
+     RÓTULO no van acá: van en `.plano-lienzo`, que está en las dos pantallas. */
   /* El anillo de foco, EN TINTA. `tema.css` lo deja en `--signal-ink` para
      todo el interior; en Vender la regla del dueño es más dura —un amarillo,
      el del botón— y un anillo de teclado ámbar es un segundo amarillo. Es la
@@ -221,6 +229,46 @@ html[data-tema="oscuro"] .vender {
   color: var(--fg);
   border-color: var(--brd-strong);
 }
+/* El lienzo del plano, el mismo en Vender y en Supervisar.
+   Los colores del rótulo vivían en `.vender`, y en Supervisar —que no cuelga de
+   `.vender`— el rótulo salía negro y sin halo: en oscuro, negro sobre el piso
+   oscuro. Pasaba con un solo rótulo, el del mueble elegido, hasta que las dos
+   pantallas pasaron a rotular todo. Acá los ven las dos.
+   Arrastrar es girar o mover la cámara, no seleccionar: sin `user-select` el
+   navegador pintaba de azul, como texto elegido, los rótulos que el puntero
+   cruzaba. */
+.plano-lienzo {
+  --pl-piso: var(--surface-2);
+  --pl-cod: var(--ink-1);
+  --pl-codsel: var(--accent-ink);
+  --pl-halosel: var(--ink-1);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Cómo se mueve el plano: los gestos del Editor 3D. Está hasta el primer
+   gesto y se va; abajo a la izquierda, donde no tapa la sala ni las
+   herramientas. Con el dedo los gestos son otros, y la ayuda también. */
+.herr-ayuda {
+  position: absolute;
+  left: 18px;
+  bottom: 8px;
+  z-index: 3;
+  margin: 0;
+  pointer-events: none;
+  font-family: var(--f-mono);
+  font-size: var(--t-3xs);
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+  background: var(--panel);
+  padding: 3px 7px;
+  border-radius: var(--r-sm);
+}
+.herr-ayuda .con-dedo { display: none; }
+@media (pointer: coarse) {
+  .herr-ayuda .con-mouse { display: none; }
+  .herr-ayuda .con-dedo { display: inline; }
+}
 
 /* La clave: qué quiere decir cada color y cuántas caras hay de cada uno. */
 .clave {
@@ -358,6 +406,12 @@ html[data-tema="oscuro"] .vender {
 .gChip rect { fill: var(--entra-suave); stroke: var(--entra-borde); stroke-width: 1; }
 .gChip text { font-family: var(--f-mono); font-size: var(--t-2xs); font-weight: 700; fill: var(--entra-txt); text-anchor: middle; }
 .gChip:hover rect, .gChip.paso rect { stroke: var(--entra); stroke-width: 1.6; }
+/* Un contrato que ARRANCA saca el espacio del inventario ese día: su chip va con
+   el color de «Tomado», el mismo del plano y de la clave. Con el de «Se libera»
+   decía lo contrario de lo que pasa. */
+.gChip.sale rect { fill: var(--ocupado-suave); stroke: var(--ocupado-borde); }
+.gChip.sale text { fill: var(--ocupado-txt); }
+.gChip.sale:hover rect, .gChip.sale.paso rect { stroke: var(--ocupado); }
 
 /* --- 03 · EL CONTRATO ---------------------------------------------------
    La ficha de E: filas mono, separador punteado, total grande, sellos.

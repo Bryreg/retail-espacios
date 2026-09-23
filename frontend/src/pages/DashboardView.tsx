@@ -71,6 +71,11 @@ import { fechaEnCurso } from "../utils/propuesta";
 import { espaciosSinMueble } from "../utils/espaciosSinMueble";
 import { contratosSinMueble, type ContratoSinMueble } from "../utils/auditoriaDesfase";
 import { revisarImportacion, aplicarImportacion, type Importacion } from "../api/layout";
+import {
+  VISTA_SUPERIOR, ZOOM_MAX, ZOOM_MIN, enElMundo, ejes, esquinasDelLado, factorDeRueda, girar,
+  ladosVisibles, ordenDePintado, proyectar, sombraDelLado,
+  type Huella, type Lado, type Vista,
+} from "../utils/camaraPlano";
 
 // ─── Date / money helpers ────────────────────────────────────────────────────
 
@@ -331,6 +336,9 @@ function faceMatchesQuery(entry: FaceEntry, q: string): boolean {
     // con el mueble de hoy.
     nombreAnterior(entry.fixture) ?? "",
     entry.code,
+    // El TIPO —«punta», «impulsador»—: es la segunda columna de la tabla y la
+    // pregunta más común que se le hace («¿qué impulsadores tengo libres?»).
+    rateTypeLabel(rateTypeOf(entry.fixture)),
   ].some((s) => s && normalizeText(s).includes(q));
 }
 
@@ -458,13 +466,7 @@ function CardHeader({
  *  used for occupancy, where the ratio matters more than the raw count.
  *  `note` is a second fact on its own line: `sub` sits inline beside the value
  *  and a long one breaks across three lines in a card this narrow. */
-// ─── Isometric occupancy map (hero) ──────────────────────────────────────────
-
-const S = 14;
-
-function iso(x: number, z: number, y: number): [number, number] {
-  return [(x - z) * 0.866 * S, (x + z) * 0.5 * S - y * S * 0.55];
-}
+// ─── El plano de la sede (hero) ──────────────────────────────────────────────
 
 function darken(hex: string, amt: number): string {
   const n = parseInt(hex.slice(1), 16);
@@ -614,19 +616,6 @@ export interface MapAnchor {
   h: number;
 }
 
-/** Cuántos rótulos se dibujan sobre el plano.
- *
- *  `todos` es Vender: el plano ES el directorio —se busca un espacio para
- *  ofrecerlo— y hay que poder leer los códigos sin tocar nada.
- *
- *  `elegido` es Supervisar: ahí la tabla de abajo ya lista las veintitrés
- *  caras con su código, su estado y su plata, así que el plano no es un
- *  directorio sino un UBICADOR — contesta «¿dónde queda ésta?»— y le alcanza
- *  con rotular la fila que está abierta. De paso resuelve un problema de
- *  medida: veintitrés rótulos en un panel de 700 px caen a un cuerpo ilegible,
- *  y sacarlos deja lugar para agrandar el que importa. */
-type Rotulos = "todos" | "elegido";
-
 interface IsoMapProps {
   fixtures: UnifiedFixture[];
   /** Las CARAS marcadas, por su llave `${fixtureId}-${cara}`. En Supervisar es
@@ -646,29 +635,18 @@ interface IsoMapProps {
    *  compartían tinta. «Hoy» es un periodo de un día, que es lo que de verdad
    *  es. */
   range: DateRange;
-  rotulos?: Rotulos;
-  /** Acercar, alejar y arrastrar (`+ − Centrar`, rueda, arrastre). Sólo en
-   *  Vender: sin esto, «el rótulo mide lo mismo a todo acercamiento» sería una
-   *  promesa sin manera de probarla. */
-  herramientas?: boolean;
-  /** El lienzo llena su caja (Vender, donde el alto lo pone la rejilla) en vez
-   *  de medirse con la proporción del plano (Supervisar). */
-  llenar?: boolean;
   /** Dónde deja el plano su función de resaltado, para que la tarifa, la
    *  escalera y el contrato la llamen sin volver a pintar la escena. */
   resaltar?: React.MutableRefObject<((claves: string[] | null) => void) | null>;
-  /** ¿La cámara se acerca al mueble elegido?
-   *
-   *  En Supervisar sí: se abre UNA fila de la tabla y la pregunta es dónde
-   *  queda. En Vender no, y no es una preferencia: ahí tocar un espacio lo suma
-   *  al contrato, así que el gesto siguiente es tocar OTRO — y acercarse al
-   *  primero esconde justamente los que faltan elegir. */
-  enfocar?: boolean;
 }
 
 /** Un rótulo del plano: el código del espacio y, si se libera adentro del
  *  periodo, cuándo. Dos `<tspan>` que miden lo mismo y se distinguen por peso
- *  y color, como en D. */
+ *  y color, como en D.
+ *
+ *  Acá va lo que el rótulo DICE, que no cambia al mover la cámara. Dónde cae
+ *  —el ancla— sale de la escena (`scene.anclas`), que sí se rehace con cada
+ *  giro. */
 interface Rotulo {
   /** `${fixtureId}-${cara}` — la misma llave con la que el contrato, la tarifa
    *  y la escalera nombran una cara. Es lo que permite que el resaltado sea
@@ -684,11 +662,6 @@ interface Rotulo {
    *  cajas rotuladas «IMP-08» son dos muebles distintos, los dos se pueden
    *  contratar, y el rótulo solo no dice cuál se está tocando. El código sí. */
   choque: string;
-  /** El ancla, en unidades del plano: el CENTROIDE DE LA TAPA de su mueble.
-   *  No hay una lista de posiciones a mano: los rótulos quedan todos a la
-   *  misma distancia del mueble —cero— y alineados igual. */
-  ax: number;
-  ay: number;
   /** Orden para deschocar: 0 el que comparte su nombre con otro mueble, 1 lo
    *  que se libera (lleva fecha), 2 lo libre, 3 lo tomado. Lo que se está
    *  vendiendo manda, y por encima de todo el aviso: un rótulo repetido que
@@ -696,12 +669,14 @@ interface Rotulo {
   peso: number;
 }
 
-/** Lo que `acomodar()` necesita de cada rótulo. Todo en magnitudes que NO
- *  cambian con la cámara: el ancla en unidades del plano y la caja en píxeles
- *  de pantalla (el rótulo mide siempre lo mismo en pantalla). */
+/** Lo que `acomodar()` necesita de cada rótulo: su ancla en unidades del plano
+ *  (se rehace con cada giro de la cámara) y su caja en píxeles de pantalla
+ *  (se mide una vez: el rótulo mide siempre lo mismo en pantalla). */
 interface Pieza extends Rotulo {
   txt: SVGTextElement;
   hit: SVGRectElement | null;
+  ax: number;
+  ay: number;
   w: number;
   h: number;
   ox: number;
@@ -709,7 +684,7 @@ interface Pieza extends Rotulo {
 }
 
 /** Cuánto se corre un rótulo cuando su ancla natural choca, en milésimas del
- *  ancho del plano. D corría cinco anclas a mano y todas exactamente 20
+ *  largo de la sede. D corría cinco anclas a mano y todas exactamente 20
  *  unidades de su viewBox (1032,5 de ancho) en una de cuatro direcciones. Acá
  *  no puede haber lista —los muebles los pone el usuario, no un generador—,
  *  así que es la misma regla CALCULADA: un solo valor, cuatro direcciones, y
@@ -725,6 +700,11 @@ const SEP_CARA = 16 / 1032.5;
  *  mismo se acerque o se aleje el plano. */
 const LBL = 10.5;
 
+/** El aire, en píxeles, entre la sede entera y el borde del lienzo cuando se
+ *  encuadra. Alcanza para que la ayuda de los gestos, abajo a la izquierda, no
+ *  pise el piso de la sala. */
+const MARGEN_PX = 34;
+
 /** Dos cajas se pisan si se cruzan y también si se acercan a menos de esto: un
  *  rótulo pegado a otra letra se lee mal aunque no la toque. */
 const AIRE_TXT = 2;
@@ -735,11 +715,29 @@ function cruza(a: Caja, b: Caja): boolean {
 }
 interface Caja { left: number; top: number; right: number; bottom: number }
 
-function IsoMap({
-  fixtures, selectedKeys, onSelect, match, range,
-  rotulos = "todos", enfocar = true, herramientas = false, llenar = false,
-  resaltar,
-}: IsoMapProps) {
+/** Qué gesto está en curso sobre el plano. Los del Editor 3D (`OrbitControls`):
+ *  izquierdo gira, derecho mueve, el del medio acerca; con Shift, Ctrl o ⌘ el
+ *  izquierdo mueve y el derecho gira. Dos dedos, acercar y mover a la vez. */
+type Gesto = "girar" | "mover" | "acercar" | "pellizco";
+
+/**
+ * EL PLANO DE LA SEDE — el mismo en Vender y en Supervisar.
+ *
+ * Abre en la VISTA SUPERIOR, orientado como el plano 2D del editor, y se mueve
+ * con los gestos del Editor 3D: la cámara está en `utils/camaraPlano.ts`, que
+ * es donde se explica por qué es la misma y en qué no.
+ *
+ * La cámara son dos cosas y no una:
+ *
+ *  · **Hacia dónde mira** (azimut y polar) es ESTADO de React: girarla cambia
+ *    qué lados de cada mueble se ven y en qué orden se pintan, así que la
+ *    escena se vuelve a armar. Durante un arrastre se pide un cuadro por vez.
+ *  · **Cuánto se acerca y dónde mira** NO es estado: es un `transform` escrito
+ *    a mano sobre el grupo de la escena. Si entra a `useState`, el plano
+ *    tiembla y —peor— la medición del deschoque se hace contra la geometría
+ *    del paso anterior.
+ */
+function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar }: IsoMapProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const escenaRef = useRef<SVGGElement>(null);
@@ -749,43 +747,52 @@ function IsoMap({
      hasta recargar (verificador, Fase 10). */
   const [tema] = useTema();
 
+  const [vista, setVista] = useState<Vista>(VISTA_SUPERIOR);
+  /** La orientación pedida. Durante un arrastre va un cuadro adelante del
+   *  estado: se junta lo que se movió y se pinta una vez por cuadro. */
+  const vistaPedida = useRef<Vista>(VISTA_SUPERIOR);
+  const cuadro = useRef(0);
+  /** Acercamiento (contra el encuadre de la sede entera) y punto de mira, en
+   *  metros desde el centro de la sede. Es el `target` de OrbitControls: se
+   *  gira alrededor de él y el arrastre para mover lo desliza. */
+  const cam = useRef({ zoom: 1, T: [0, 0, 0] as [number, number, number] });
+  /** La ayuda de los gestos se va con el primer gesto. */
+  const [ayuda, setAyuda] = useState(true);
+
   const scene = useMemo(() => {
     if (fixtures.length === 0) return null;
+    const e = ejes(vista);
+    const lados = ladosVisibles(e);
 
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    const addPt = ([x, y]: [number, number]) => {
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    };
-
-    // Ground plate covering the plan footprint + 1 m margin
-    const gx0 = Math.min(...fixtures.map((f) => f.cx - f.w / 2)) - 1;
-    const gx1 = Math.max(...fixtures.map((f) => f.cx + f.w / 2)) + 1;
-    const gz0 = Math.min(...fixtures.map((f) => f.cz - f.d / 2)) - 1;
-    const gz1 = Math.max(...fixtures.map((f) => f.cz + f.d / 2)) + 1;
-    const groundPts: [number, number][] = [
-      iso(gx0, gz0, 0), iso(gx1, gz0, 0), iso(gx1, gz1, 0), iso(gx0, gz1, 0),
-    ];
-    groundPts.forEach(addPt);
-
-    // Painter's algorithm: draw back-to-front
-    const sorted = [...fixtures].sort((a, b) => a.cx + a.cz - (b.cx + b.cz));
-
-    const prisms = sorted.map((f) => {
-      // La huella va con el giro aplicado. Sin esto, una góndola rotada un
-      // cuarto de vuelta —un pasillo cruzado, que es común— se dibujaba
-      // atravesada respecto del plano real.
+    // La sala: la huella de todos los muebles más un metro. Su centro es el
+    // origen de la proyección, y su largo y su ancho —vistos desde arriba—
+    // son los que se encuadran.
+    const huellas = fixtures.map((f) => {
       const fp = footprint2D(f);
-      const x0 = f.cx - fp.w / 2, x1 = f.cx + fp.w / 2;
-      const z0 = f.cz - fp.d / 2, z1 = f.cz + fp.d / 2;
-      const h = Math.max(f.h || 1, 0.4);
+      return { f, fp, x0: f.cx - fp.w / 2, x1: f.cx + fp.w / 2, z0: f.cz - fp.d / 2, z1: f.cz + fp.d / 2 };
+    });
+    const gx0 = Math.min(...huellas.map((q) => q.x0)) - 1;
+    const gx1 = Math.max(...huellas.map((q) => q.x1)) + 1;
+    const gz0 = Math.min(...huellas.map((q) => q.z0)) - 1;
+    const gz1 = Math.max(...huellas.map((q) => q.z1)) + 1;
+    const cx = (gx0 + gx1) / 2, cz = (gz0 + gz1) / 2;
+    const P = (x: number, y: number, z: number) => proyectar(e, x - cx, y, z - cz);
+    const piso = pts(P(gx0, 0, gz0), P(gx1, 0, gz0), P(gx1, 0, gz1), P(gx0, 0, gz1));
 
-      const tA = iso(x0, z0, h), tB = iso(x1, z0, h);
-      const tC = iso(x1, z1, h), tD = iso(x0, z1, h);
-      const bB = iso(x1, z0, 0), bC = iso(x1, z1, 0), bD = iso(x0, z1, 0);
-      [tA, tB, tC, tD, bB, bC, bD].forEach(addPt);
+    // De atrás hacia adelante, con el orden de verdad (ver `ordenDePintado`):
+    // con la cámara girando, el orden por centro se equivoca con los muebles
+    // largos.
+    const cajas: Huella[] = huellas.map((q) => ({
+      x0: q.x0 - cx, x1: q.x1 - cx, z0: q.z0 - cz, z1: q.z1 - cz,
+      h: Math.max(q.f.h || 1, 0.4),
+    }));
+    const orden = ordenDePintado(cajas, e);
+
+    const prisms = orden.map((k) => {
+      const { f, fp } = huellas[k];
+      const caja = cajas[k];
+      const { x0, x1, z0, z1, h } = caja;
+      const Q = (x: number, y: number, z: number) => proyectar(e, x, y, z);
 
       const rentable = isRentable(f);
       // A non-rentable fixture is drawn as one neutral block: no face split, no
@@ -795,17 +802,14 @@ function IsoMap({
       const paint = (face: FaceEntry) => rangeTop()[rangeAvailability(face, range.from, range.to)];
       const topA = rentable ? paint(faces[0]) : noRentableTop();
       const topB = rentable && faces[1] ? paint(faces[1]) : noRentableTop();
-      // La cara que da al frente en isométrico: cuando el mueble es más ancho
-      // que hondo el corte va por Z y la mitad de adelante es la B; si es más
-      // hondo que ancho el corte va por X y la B queda a la derecha. El otro
-      // lado visible es la tapa, que no se vende y va del color del material.
+      // Cuando el mueble es más ancho que hondo el corte va por Z y la mitad
+      // de adelante (+z) es la B; si es más hondo que ancho el corte va por X
+      // y la B queda del lado de +x.
       const anchoManda = fp.w >= fp.d;
       const cuerpo = rentable ? colorCuerpo() : noRentableTop();
-      const caraFrente = double ? topB : topA;
-      const pintaCara = rentable ? caraFrente : cuerpo;
-      const sideL = anchoManda ? darken(pintaCara, 0.14) : darken(cuerpo, 0.14);
-      const sideR = anchoManda ? darken(cuerpo, 0.26) : darken(pintaCara, 0.26);
       const stroke = rentable ? colorCuerpoLinea() : darken(noRentableTop(), 0.42);
+
+      const tA = Q(x0, h, z0), tB = Q(x1, h, z0), tC = Q(x1, h, z1), tD = Q(x0, h, z1);
 
       // Top face — split into two halves for double gondolas
       const mitad = (color: string, cara: "A" | "B", esquinas: [number, number][]) => ({
@@ -820,19 +824,46 @@ function IsoMap({
         if (anchoManda) {
           const zm = (z0 + z1) / 2;
           topHalves = [
-            mitad(topA, "A", [iso(x0, z0, h), iso(x1, z0, h), iso(x1, zm, h), iso(x0, zm, h)]),
-            mitad(topB, "B", [iso(x0, zm, h), iso(x1, zm, h), iso(x1, z1, h), iso(x0, z1, h)]),
+            mitad(topA, "A", [Q(x0, h, z0), Q(x1, h, z0), Q(x1, h, zm), Q(x0, h, zm)]),
+            mitad(topB, "B", [Q(x0, h, zm), Q(x1, h, zm), Q(x1, h, z1), Q(x0, h, z1)]),
           ];
         } else {
           const xm = (x0 + x1) / 2;
           topHalves = [
-            mitad(topA, "A", [iso(x0, z0, h), iso(xm, z0, h), iso(xm, z1, h), iso(x0, z1, h)]),
-            mitad(topB, "B", [iso(xm, z0, h), iso(x1, z0, h), iso(x1, z1, h), iso(xm, z1, h)]),
+            mitad(topA, "A", [Q(x0, h, z0), Q(xm, h, z0), Q(xm, h, z1), Q(x0, h, z1)]),
+            mitad(topB, "B", [Q(xm, h, z0), Q(x1, h, z0), Q(x1, h, z1), Q(xm, h, z1)]),
           ];
         }
       } else {
         topHalves = [mitad(topA, "A", [tA, tB, tC, tD])];
       }
+
+      // LOS LADOS que miran a la cámara —ninguno desde arriba—. Los dos
+      // largos son la cara que se vende y van con su color: el de −z (o −x)
+      // es la A, el otro la B; en un mueble de una sola cara, los dos son la A.
+      // Las cabeceras son el cuerpo, que no se vende y va del color del
+      // material. Cada lado sabe qué cara es: tocarlo elige esa cara.
+      const caraDelLado = (lado: Lado): "A" | "B" | null => {
+        if (!rentable) return null;
+        const largo = anchoManda ? lado[0] === "z" : lado[0] === "x";
+        if (!largo) return null;
+        if (!double) return "A";
+        return lado[1] === "-" ? "A" : "B";
+      };
+      const sides = lados.map((lado) => {
+        const cara = caraDelLado(lado);
+        const sombra = sombraDelLado(e, lado);
+        const color = cara === "B" ? topB : cara === "A" ? topA : cuerpo;
+        return {
+          lado,
+          cara,
+          points: pts(...esquinasDelLado(e, caja, lado)),
+          fill: darken(color, sombra),
+          // El más claro lleva la clase de la izquierda: es la que tiñe la
+          // selección de Vender (`.pz[data-sel] .c-izq`).
+          clase: sombra < 0.2 ? "c-izq" : "c-der",
+        };
+      });
 
       // Asking about a period changes the question the tooltip should answer:
       // not "who is here" but "can I sell this, and if not, how much of it".
@@ -851,62 +882,60 @@ function IsoMap({
         ? `A: ${rangeSub(faces[0])} · B: ${faces[1] ? rangeSub(faces[1]) : "—"}`
         : rangeSub(faces[0]);
 
-      // Dónde cae el mueble ya proyectado, para poder encuadrarlo.
-      const proy = [tA, tB, tC, tD, bB, bC, bD];
-      const ex0 = Math.min(...proy.map((q) => q[0])), ex1 = Math.max(...proy.map((q) => q[0]));
-      const ey0 = Math.min(...proy.map((q) => q[1])), ey1 = Math.max(...proy.map((q) => q[1]));
-      const foco = {
-        x: (ex0 + ex1) / 2,
-        y: (ey0 + ey1) / 2,
-        r: Math.max(ex1 - ex0, ey1 - ey0, 1) / 2,
-      };
-
       return {
-        f, foco, topHalves, rentable, double, faces,
-        // Visible sides: the z1 face (front-left) and the x1 face (front-right)
-        left:  pts(tD, tC, bC, bD),
-        right: pts(tB, bB, bC, tC),
-        sideL, sideR, stroke,
+        f, topHalves, sides, rentable, double, faces, stroke,
         topOutline: pts(tA, tB, tC, tD),
         tooltipSub,
       };
     });
 
-    const pad = 26;
-    const vb = {
-      x: minX - pad, y: minY - pad,
-      w: maxX - minX + pad * 2, h: maxY - minY + pad * 2,
-    };
-    return {
-      prisms,
-      groundPts: pts(...groundPts),
-      vb,
-      viewBox: `${vb.x.toFixed(1)} ${vb.y.toFixed(1)} ${vb.w.toFixed(1)} ${vb.h.toFixed(1)}`,
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fixtures, range, tema]);
+    /* LAS ANCLAS DE LOS RÓTULOS. No están escritas a mano: son el centroide de
+       la tapa de su mueble, que sale de la misma geometría que dibuja el
+       prisma. Las dos caras de una góndola se anclan EN PUNTAS OPUESTAS: cada
+       rótulo se corre `SEP_CARA` sobre el eje que separa las dos mitades, cada
+       uno del lado de la cara que nombra. Sin eso los dos caen casi en el mismo
+       punto y uno de los dos tiene que ceder siempre.
 
-  /** Los rótulos, con su ancla ya calculada.
-   *
-   *  El ancla por defecto NO está escrita a mano: es el centroide de la tapa
-   *  de su mueble, que sale de la misma geometría que dibuja el prisma. De ahí
-   *  se sale sólo cuando hay que salir —las dos caras de una góndola— y con un
-   *  único valor.
-   *
-   *  Las dos caras de una góndola se anclan EN PUNTAS OPUESTAS: cada rótulo se
-   *  corre `SEP_CARA` sobre el eje que separa las dos mitades, cada uno del
-   *  lado de la cara que nombra. Sin eso los dos caen casi en el mismo punto y
-   *  uno de los dos tiene que ceder siempre. */
-  const labels = useMemo<Rotulo[]>(() => {
-    if (!scene) return [];
-    const unidad = Math.max(scene.vb.w, scene.vb.h);
+       La unidad es el largo de la sede, que no cambia al girar: así los
+       rótulos no se acercan ni se alejan de su mueble con la cámara. */
+    const unidad = Math.max(gx1 - gx0, gz1 - gz0);
     const sep = SEP_CARA * unidad;
+    const anclas = new Map<string, [number, number]>();
+    for (const p of prisms) {
+      if (!p.rentable) continue;
+      p.topHalves.forEach((m, i) => {
+        const entry = p.faces[i];
+        if (!entry) return;
+        let ax = m.cx, ay = m.cy;
+        if (p.double && p.topHalves.length > 1) {
+          const otra = p.topHalves[1 - i];
+          const dx = m.cx - otra.cx, dy = m.cy - otra.cy;
+          const largo = Math.hypot(dx, dy) || 1;
+          ax += (dx / largo) * sep;
+          ay += (dy / largo) * sep;
+        }
+        anclas.set(`${p.f.id}-${entry.face}`, [ax, ay]);
+      });
+    }
+
+    return { prisms, piso, anclas, e, unidad, ancho: gx1 - gx0, fondo: gz1 - gz0 };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fixtures, range, tema, vista]);
+  /** El lienzo existe: los oyentes que se cuelgan de él esperan a esto. Sin
+   *  muebles el componente no dibuja nada, y un efecto que corrió en ese
+   *  momento no vuelve a correr cuando los muebles llegan. */
+  const hayEscena = scene !== null;
+
+  /** Lo que dicen los rótulos. No depende de la cámara: girar no vuelve a
+   *  medir ni a ordenar nada de esto. */
+  const labels = useMemo<Rotulo[]>(() => {
     // Qué nombres los lleva más de un mueble de la sede. Una vez por plano.
     const chocados = nombresChocados(fixtures);
     const salida: Rotulo[] = [];
-    for (const p of scene.prisms) {
-      if (!p.rentable) continue;
-      const nombre = nombreDeMueble(p.f);
+    for (const f of fixtures) {
+      if (!isRentable(f)) continue;
+      const nombre = nombreDeMueble(f);
+      const doble = isDoubleGondola(f);
       // El rótulo repetido es el que dejó vender dos veces el mismo cartel:
       // dos cajas «IMP-08 · libre 16 sep», dos proveedores, el mismo periodo.
       // Los dos muebles existen y los dos se pueden contratar; lo que faltaba
@@ -914,108 +943,87 @@ function IsoMap({
       // puede crear —la regla lo impide en los tres caminos de renombre— pero
       // un plano guardado antes puede traerlo, y entonces se sigue viendo. La
       // regla vive en `nomenclatura.ts` y se prueba sin navegador.
-      const choque = choqueDeRotulo(p.f, chocados);
-      p.topHalves.forEach((mitad, i) => {
-        const entry = p.faces[i];
-        if (!entry) return;
-        let ax = mitad.cx, ay = mitad.cy;
-        if (p.double && p.topHalves.length > 1) {
-          const otra = p.topHalves[1 - i];
-          const dx = mitad.cx - otra.cx, dy = mitad.cy - otra.cy;
-          const m = Math.hypot(dx, dy) || 1;
-          ax += (dx / m) * sep;
-          ay += (dy / m) * sep;
-        }
+      const choque = choqueDeRotulo(f, chocados);
+      for (const entry of facesOf(f)) {
         const dispo = rangeAvailability(entry, range.from, range.to);
         const desde = dispo === "parcial" ? primerDiaLibre(entry, range.from, range.to) : undefined;
         salida.push({
-          clave: `${p.f.id}-${entry.face}`,
-          cod: p.double ? `${nombre}·${entry.face}` : nombre,
+          clave: `${f.id}-${entry.face}`,
+          cod: doble ? `${nombre}·${entry.face}` : nombre,
           fecha: desde ? `libre ${desde.getDate()} ${MONTHS_ES[desde.getMonth()]}` : "",
           // Sólo la cuenta. Antes acompañaba el código del mueble, que era lo
           // único que distinguía a los dos gemelos; ahora los dos se llaman
           // igual de verdad y el código no distingue nada: lo que hay que hacer
           // es renombrar uno, y eso lo dice la revisión del plano.
           choque: choque ? choque.marca : "",
-          ax, ay,
           peso: choque ? 0 : dispo === "parcial" ? 1 : dispo === "libre" ? 2 : 3,
         });
-      });
+      }
     }
     // Primero el que comparte su nombre con otro —el aviso no puede ser lo que
     // cede—, después lo que se libera (lleva fecha), lo libre y lo tomado: si
     // dos se pisan, el que cede es el que menos se está vendiendo.
     return salida.sort((a, b) => a.peso - b.peso || (a.cod < b.cod ? -1 : 1));
-  }, [scene, range, fixtures]);
+  }, [fixtures, range]);
 
-  // ── La cámara ────────────────────────────────────────────────────────────
+  // ── Del plano a la pantalla ──────────────────────────────────────────────
   //
-  // NO es estado de React: es escritura imperativa de un solo `transform`. Si
-  // entra a `useState`, el plano tiembla y —peor— la medición del deschoque se
-  // hace contra la geometría del paso anterior.
-  const cam = useRef({ zoom: 1, T: [0, 0] as [number, number] });
-  /** La otra cámara: el acercamiento al mueble elegido de Supervisar. Se
-   *  guarda acá para que `aPantalla()` la tenga en cuenta. */
-  const foco = useRef({ k: 1, tx: 0, ty: 0 });
-  const piezas = useRef<Pieza[]>([]);
-  const calibrado = useRef(false);
-  const pendiente = useRef(0);
-  const txtRefs = useRef(new Map<string, SVGTextElement>());
-  const hitRefs = useRef(new Map<string, SVGRectElement>());
-  const grupoRefs = useRef(new Map<string, SVGGElement>());
+  // El SVG no lleva viewBox: sus unidades son los píxeles de su caja. El grupo
+  // de la escena lleva `translate(centro − k·mira) scale(k)`, con k los
+  // píxeles por metro: los de encuadrar la sede entera vista desde arriba, por
+  // el acercamiento. Girar no cambia k — igual que en el editor, la sala no se
+  // agranda ni se achica porque la cámara dé la vuelta.
+  const escenaActual = useRef(scene);
+  escenaActual.current = scene;
 
-  /** La escala del SVG contra su caja: `xMidYMid meet` encaja por el lado que
-   *  queda corto y centra lo que sobra. */
-  const escalaSVG = useCallback(() => {
-    const vb = scene?.vb;
+  const encuadre = useCallback(() => {
+    const sc = escenaActual.current;
     const r = svgRef.current?.getBoundingClientRect();
-    if (!vb || !r || !(r.width > 0)) return null;
-    return { k: Math.min(r.width / vb.w, r.height / vb.h), r, vb };
-  }, [scene]);
+    if (!sc || !r || !(r.width > 0) || !(r.height > 0)) return null;
+    const k0 = Math.max(0.001, Math.min(
+      (r.width - 2 * MARGEN_PX) / sc.ancho,
+      (r.height - 2 * MARGEN_PX) / sc.fondo,
+    ));
+    const k = k0 * cam.current.zoom;
+    const [mx, my] = proyectar(sc.e, ...cam.current.T);
+    return { r, k, mx, my, e: sc.e };
+  }, []);
+  type Encuadre = NonNullable<ReturnType<typeof encuadre>>;
 
-  /** Un punto del plano → pantalla, con la geometría NUEVA: no se le pregunta
-   *  al navegador dónde quedó nada, se calcula con el acercamiento y el
-   *  arrastre que acabamos de escribir. Es lo que evita que `acomodar()` decida
-   *  un paso tarde (README de D §4.3). */
-  const aPantalla = useCallback(
-    (x: number, y: number, e: NonNullable<ReturnType<typeof escalaSVG>>): [number, number] => {
-      const { k, r, vb } = e;
-      const ox = r.left + (r.width - vb.w * k) / 2;
-      const oy = r.top + (r.height - vb.h * k) / 2;
-      const { zoom, T } = cam.current;
-      // cámara interior (arrastre + acercamiento) y después la del enfoque
-      const px = foco.current.k * (T[0] + zoom * x) + foco.current.tx;
-      const py = foco.current.k * (T[1] + zoom * y) + foco.current.ty;
-      return [ox + (px - vb.x) * k, oy + (py - vb.y) * k];
-    },
-    [],
-  );
+  /** Un punto del plano → pantalla, con la cámara que ACABA de escribirse: no
+   *  se le pregunta al navegador dónde quedó nada. Es lo que evita que
+   *  `acomodar()` decida un paso tarde (README de D §4.3). */
+  const aPantalla = useCallback((x: number, y: number, c: Encuadre): [number, number] => [
+    c.r.left + c.r.width / 2 + c.k * (x - c.mx),
+    c.r.top + c.r.height / 2 + c.k * (y - c.my),
+  ], []);
 
-  /** Pantalla → plano. Sólo para acercar con la rueda sobre el puntero. */
-  const aPlano = useCallback((cx: number, cy: number): [number, number] => {
-    const e = escalaSVG();
-    if (!e) return [0, 0];
-    const { k, r, vb } = e;
-    const ox = r.left + (r.width - vb.w * k) / 2;
-    const oy = r.top + (r.height - vb.h * k) / 2;
-    return [(cx - ox) / k + vb.x, (cy - oy) / k + vb.y];
-  }, [escalaSVG]);
+  /** Pantalla → plano. Para acercar sobre el puntero. */
+  const aPlano = useCallback((px: number, py: number, c: Encuadre): [number, number] => [
+    (px - c.r.left - c.r.width / 2) / c.k + c.mx,
+    (py - c.r.top - c.r.height / 2) / c.k + c.my,
+  ], []);
 
   /** Escribir la cámara: un `transform` y el cuerpo del rótulo. `--lbl` es la
    *  pieza que hay que portar con cuidado — se escribe como propiedad en el
    *  grupo de la escena, fuera de React. */
   const escribir = useCallback(() => {
     const g = escenaRef.current;
-    const e = escalaSVG();
-    if (!g || !e) return;
-    const S = e.k * cam.current.zoom * foco.current.k;
-    g.style.setProperty("--lbl", `${(LBL / S).toFixed(3)}px`);
-    const { zoom, T } = cam.current;
+    const c = encuadre();
+    if (!g || !c) return;
+    g.style.setProperty("--lbl", `${(LBL / c.k).toFixed(4)}px`);
     g.setAttribute(
       "transform",
-      `translate(${T[0].toFixed(2)},${T[1].toFixed(2)}) scale(${zoom.toFixed(4)})`,
+      `translate(${(c.r.width / 2 - c.k * c.mx).toFixed(2)},${(c.r.height / 2 - c.k * c.my).toFixed(2)}) scale(${c.k.toFixed(4)})`,
     );
-  }, [escalaSVG]);
+  }, [encuadre]);
+
+  const piezas = useRef<Pieza[]>([]);
+  const calibrado = useRef(false);
+  const pendiente = useRef(0);
+  const txtRefs = useRef(new Map<string, SVGTextElement>());
+  const hitRefs = useRef(new Map<string, SVGRectElement>());
+  const grupoRefs = useRef(new Map<string, SVGGElement>());
 
   /** Que ningún rótulo pise una letra.
    *
@@ -1031,14 +1039,13 @@ function IsoMap({
    *  achica: el cuerpo es constante. */
   const acomodar = useCallback(() => {
     if (!calibrado.current) return;
-    const e = escalaSVG();
+    const c = encuadre();
     const lz = wrapRef.current?.getBoundingClientRect();
-    if (!e || !lz) return;
-    const S = e.k * cam.current.zoom * foco.current.k;
-    const d = DESVIO * Math.max(e.vb.w, e.vb.h);
+    const sc = escenaActual.current;
+    if (!c || !lz || !sc) return;
+    const d = DESVIO * sc.unidad;
     const fijos: Caja[] = [];
-    const herr = wrapRef.current?.querySelector(".herr");
-    if (herr) fijos.push(herr.getBoundingClientRect());
+    wrapRef.current?.querySelectorAll(".herr, .herr-ayuda").forEach((n) => fijos.push(n.getBoundingClientRect()));
     const seSale = (b: Caja) =>
       b.left < lz.left + 2 || b.right > lz.right - 2 || b.top < lz.top + 2 || b.bottom > lz.bottom - 2;
 
@@ -1047,7 +1054,7 @@ function IsoMap({
       const intentos: [number, number][] = [[0, 0], [-d, 0], [d, 0], [0, d], [0, -d]];
       let puesto: { b: Caja; dx: number; dy: number } | null = null;
       for (const [dx, dy] of intentos) {
-        const a = aPantalla(p.ax + dx, p.ay + dy, e);
+        const a = aPantalla(p.ax + dx, p.ay + dy, c);
         const b: Caja = {
           left: a[0] + p.ox, top: a[1] + p.oy,
           right: a[0] + p.ox + p.w, bottom: a[1] + p.oy + p.h,
@@ -1065,24 +1072,24 @@ function IsoMap({
         continue;
       }
       p.txt.style.display = "";
-      p.txt.setAttribute("x", (p.ax + puesto.dx).toFixed(2));
-      p.txt.setAttribute("y", (p.ay + puesto.dy).toFixed(2));
+      p.txt.setAttribute("x", (p.ax + puesto.dx).toFixed(3));
+      p.txt.setAttribute("y", (p.ay + puesto.dy).toFixed(3));
       for (const hijo of Array.from(p.txt.children)) {
-        hijo.setAttribute("x", (p.ax + puesto.dx).toFixed(2));
+        hijo.setAttribute("x", (p.ax + puesto.dx).toFixed(3));
       }
       ok.push(puesto.b);
       // La caja de impacto, en unidades del plano: seis píxeles de pantalla de
       // margen alrededor de lo que ocupa el rótulo. El clic lo cobra el mueble,
       // no el rótulo.
       if (p.hit) {
-        const m = 6 / S;
-        p.hit.setAttribute("x", (p.ax + puesto.dx + p.ox / S - m).toFixed(1));
-        p.hit.setAttribute("y", (p.ay + puesto.dy + p.oy / S - m).toFixed(1));
-        p.hit.setAttribute("width", (p.w / S + 2 * m).toFixed(1));
-        p.hit.setAttribute("height", (p.h / S + 2 * m).toFixed(1));
+        const m = 6 / c.k;
+        p.hit.setAttribute("x", (p.ax + puesto.dx + p.ox / c.k - m).toFixed(3));
+        p.hit.setAttribute("y", (p.ay + puesto.dy + p.oy / c.k - m).toFixed(3));
+        p.hit.setAttribute("width", (p.w / c.k + 2 * m).toFixed(3));
+        p.hit.setAttribute("height", (p.h / c.k + 2 * m).toFixed(3));
       }
     }
-  }, [aPantalla, escalaSVG]);
+  }, [aPantalla, encuadre]);
 
   const aplicar = useCallback(() => { escribir(); acomodar(); }, [escribir, acomodar]);
 
@@ -1091,17 +1098,16 @@ function IsoMap({
    *  que devuelve todavía es la del cuerpo anterior. Por eso se mide en el
    *  SEGUNDO cuadro y se repite hasta que dos pasadas dan lo mismo. */
   const calibrar = useCallback((intento = 0) => {
-    const e = escalaSVG();
-    if (!e) return;
+    if (!encuadre()) return;
     // Volver TODOS al ancla natural antes de medir. Sin esto se mide un rótulo
     // que `acomodar()` ya corrió, el desplazamiento se cuenta dos veces, y las
     // cajas quedan corridas justo lo que hace falta para que dos se crucen sin
     // que la cuenta lo vea.
     for (const p of piezas.current) {
       p.txt.style.display = "";
-      p.txt.setAttribute("x", p.ax.toFixed(2));
-      p.txt.setAttribute("y", p.ay.toFixed(2));
-      for (const hijo of Array.from(p.txt.children)) hijo.setAttribute("x", p.ax.toFixed(2));
+      p.txt.setAttribute("x", p.ax.toFixed(3));
+      p.txt.setAttribute("y", p.ay.toFixed(3));
+      for (const hijo of Array.from(p.txt.children)) hijo.setAttribute("x", p.ax.toFixed(3));
     }
     escribir();
     if (pendiente.current) cancelAnimationFrame(pendiente.current);
@@ -1109,10 +1115,10 @@ function IsoMap({
       pendiente.current = requestAnimationFrame(() => {
         pendiente.current = 0;
         let cambio = false;
-        const e2 = escalaSVG();
-        if (!e2) return;
+        const c = encuadre();
+        if (!c) return;
         for (const p of piezas.current) {
-          const a = aPantalla(p.ax, p.ay, e2);
+          const a = aPantalla(p.ax, p.ay, c);
           const r = p.txt.getBoundingClientRect();
           if (!(r.width > 0)) continue;
           if (Math.abs(p.w - r.width) > 0.5 || Math.abs(p.h - r.height) > 0.5) cambio = true;
@@ -1124,20 +1130,35 @@ function IsoMap({
         if (cambio && intento < 3) calibrar(intento + 1);
       });
     });
-  }, [aPantalla, acomodar, escalaSVG, escribir]);
+  }, [aPantalla, acomodar, encuadre, escribir]);
 
-  /** Rearmar la lista de piezas cada vez que cambian los rótulos dibujados. */
+  /** Rearmar la lista de piezas cada vez que cambian los rótulos: lo que DICEN
+   *  —que es lo que se mide—, no dónde caen. */
   useLayoutEffect(() => {
+    const anclas = escenaActual.current?.anclas;
     piezas.current = labels
       .map((l) => {
         const txt = txtRefs.current.get(l.clave);
-        if (!txt) return null;
-        return { ...l, txt, hit: hitRefs.current.get(l.clave) ?? null, w: 0, h: 0, ox: 0, oy: 0 };
+        const a = anclas?.get(l.clave);
+        if (!txt || !a) return null;
+        return { ...l, txt, hit: hitRefs.current.get(l.clave) ?? null, ax: a[0], ay: a[1], w: 0, h: 0, ox: 0, oy: 0 };
       })
       .filter((p): p is Pieza => p !== null);
     calibrado.current = false;
     calibrar();
   }, [labels, calibrar]);
+
+  /** Con cada escena nueva —un giro de la cámara, otro periodo, otro tema—
+   *  las anclas se mueven: se les da la nueva posición y se vuelven a
+   *  acomodar, sin medir otra vez. */
+  useLayoutEffect(() => {
+    if (!scene) return;
+    for (const p of piezas.current) {
+      const a = scene.anclas.get(p.clave);
+      if (a) { p.ax = a[0]; p.ay = a[1]; }
+    }
+    aplicar();
+  }, [scene, aplicar]);
 
   // La tipografía del sistema puede llegar después del primer pintado: cada vez
   // que puede haber cambiado el ancho de una letra, se vuelve a medir.
@@ -1156,7 +1177,7 @@ function IsoMap({
     ro.observe(el);
     window.addEventListener("resize", aplicar);
     return () => { ro.disconnect(); window.removeEventListener("resize", aplicar); };
-  }, [aplicar]);
+  }, [aplicar, hayEscena]);
 
   /** EL RESALTADO: apaga la sala y enciende esos muebles.
    *
@@ -1184,21 +1205,138 @@ function IsoMap({
     return () => { if (resaltar) resaltar.current = null; };
   }, [resaltar]);
 
-  const ponerZoom = useCallback((z: number, cx?: number, cy?: number) => {
-    const e = escalaSVG();
-    if (!e) return;
-    const centro: [number, number] = cx === undefined
-      ? [e.r.left + e.r.width / 2, e.r.top + e.r.height / 2]
-      : [cx, cy as number];
-    const u = aPlano(centro[0], centro[1]);
-    const z0 = cam.current.zoom;
-    const z1 = Math.max(0.7, Math.min(4, z));
-    cam.current = {
-      zoom: z1,
-      T: [u[0] - (z1 * (u[0] - cam.current.T[0])) / z0, u[1] - (z1 * (u[1] - cam.current.T[1])) / z0],
-    };
+  // ── Los gestos ───────────────────────────────────────────────────────────
+
+  /** Acercar a `z`, dejando quieto el punto del plano que está bajo (px, py):
+   *  lo que se mira no se escapa de abajo del puntero. */
+  const ponerZoom = useCallback((z: number, px?: number, py?: number) => {
+    const c = encuadre();
+    if (!c) return;
+    const x = px ?? c.r.left + c.r.width / 2;
+    const y = py ?? c.r.top + c.r.height / 2;
+    const [qx, qy] = aPlano(x, y, c);
+    const z1 = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+    const k1 = (c.k / cam.current.zoom) * z1;
+    const mx1 = qx - (x - c.r.left - c.r.width / 2) / k1;
+    const my1 = qy - (y - c.r.top - c.r.height / 2) / k1;
+    const [dx, dy, dz] = enElMundo(c.e, mx1 - c.mx, my1 - c.my);
+    const T = cam.current.T;
+    cam.current = { zoom: z1, T: [T[0] + dx, T[1] + dy, T[2] + dz] };
     aplicar();
-  }, [aPlano, aplicar, escalaSVG]);
+  }, [aPlano, aplicar, encuadre]);
+
+  /** Mover: la sala sigue al puntero, (dx, dy) píxeles. */
+  const desplazar = useCallback((dx: number, dy: number) => {
+    const c = encuadre();
+    if (!c) return;
+    const [ex, ey, ez] = enElMundo(c.e, -dx / c.k, -dy / c.k);
+    const T = cam.current.T;
+    cam.current = { ...cam.current, T: [T[0] + ex, T[1] + ey, T[2] + ez] };
+    aplicar();
+  }, [aplicar, encuadre]);
+
+  /** Girar: se pide un cuadro por vez. */
+  const orbitar = useCallback((dx: number, dy: number) => {
+    const alto = svgRef.current?.clientHeight || wrapRef.current?.clientHeight || 600;
+    vistaPedida.current = girar(vistaPedida.current, dx, dy, alto);
+    if (!cuadro.current) {
+      cuadro.current = requestAnimationFrame(() => {
+        cuadro.current = 0;
+        setVista(vistaPedida.current);
+      });
+    }
+  }, []);
+  useEffect(() => () => { if (cuadro.current) cancelAnimationFrame(cuadro.current); }, []);
+
+  const centrar = useCallback(() => {
+    cam.current = { zoom: 1, T: [0, 0, 0] };
+    vistaPedida.current = VISTA_SUPERIOR;
+    setVista(VISTA_SUPERIOR);
+    aplicar();
+  }, [aplicar]);
+
+  /** Los punteros apoyados, para el pellizco con dos dedos. */
+  const punteros = useRef(new Map<number, { x: number; y: number }>());
+  const gesto = useRef<{ modo: Gesto; x: number; y: number; dist: number; movido: boolean } | null>(null);
+  /** Hubo arrastre: el clic que el navegador manda al soltar no elige nada. */
+  const arrastro = useRef(false);
+
+  const alBajar = (ev: React.PointerEvent<HTMLDivElement>) => {
+    // Un gesto nuevo: el arrastre anterior ya no tiene clic que anular (pudo
+    // soltarse afuera del plano). Antes de mirar las herramientas, o el «+»
+    // quedaba sin responder una vez.
+    if (punteros.current.size === 0) arrastro.current = false;
+    if ((ev.target as Element).closest?.(".herr")) return;
+
+    // El segundo dedo: acercar y mover a la vez.
+    if (punteros.current.size === 1 && ev.pointerType === "touch") {
+      punteros.current.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      const [a, b] = [...punteros.current.values()];
+      gesto.current = {
+        modo: "pellizco", x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
+        dist: Math.hypot(a.x - b.x, a.y - b.y) || 1, movido: true,
+      };
+      arrastro.current = true;
+      return;
+    }
+    if (punteros.current.size > 0) return;
+
+    // Los botones de OrbitControls, con sus modificadores.
+    const conTecla = ev.shiftKey || ev.ctrlKey || ev.metaKey;
+    const modo: Gesto | null =
+      ev.button === 1 ? "acercar"
+      : ev.button === 2 ? (conTecla ? "girar" : "mover")
+      : ev.button === 0 ? (conTecla ? "mover" : "girar")
+      : null;
+    if (!modo) return;
+    // El botón del medio abre el desplazamiento automático del navegador.
+    if (ev.button === 1) ev.preventDefault();
+    punteros.current.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    gesto.current = { modo, x: ev.clientX, y: ev.clientY, dist: 0, movido: false };
+
+    const mover = (e2: PointerEvent) => {
+      const p = punteros.current.get(e2.pointerId);
+      if (!p) return;
+      p.x = e2.clientX; p.y = e2.clientY;
+      const g = gesto.current;
+      if (!g) return;
+      if (g.modo === "pellizco") {
+        if (punteros.current.size < 2) return;
+        const [a, b] = [...punteros.current.values()];
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        const dist = Math.hypot(a.x - b.x, a.y - b.y) || g.dist;
+        ponerZoom(cam.current.zoom * (dist / g.dist), mx, my);
+        desplazar(mx - g.x, my - g.y);
+        g.x = mx; g.y = my; g.dist = dist;
+        return;
+      }
+      const dx = e2.clientX - g.x, dy = e2.clientY - g.y;
+      if (!g.movido) {
+        if (Math.abs(dx) + Math.abs(dy) < 3) return;
+        g.movido = true;
+        arrastro.current = true;
+        setTip(null);
+        setAyuda(false);
+      }
+      if (g.modo === "girar") orbitar(dx, dy);
+      else if (g.modo === "mover") desplazar(dx, dy);
+      else ponerZoom(cam.current.zoom * factorDeRueda(dy));
+      g.x = e2.clientX; g.y = e2.clientY;
+    };
+    const soltar = (e2: PointerEvent) => {
+      punteros.current.delete(e2.pointerId);
+      // Con un dedo menos, el pellizco termina: seguir con el que queda
+      // giraría la sala sin que nadie lo haya pedido.
+      if (gesto.current?.modo === "pellizco" || punteros.current.size === 0) gesto.current = null;
+      if (punteros.current.size > 0) return;
+      window.removeEventListener("pointermove", mover);
+      window.removeEventListener("pointerup", soltar);
+      window.removeEventListener("pointercancel", soltar);
+    };
+    window.addEventListener("pointermove", mover);
+    window.addEventListener("pointerup", soltar);
+    window.addEventListener("pointercancel", soltar);
+  };
 
   /** La rueda va como oyente NATIVO y no como `onWheel` de React.
    *
@@ -1209,117 +1347,80 @@ function IsoMap({
    *  `{ passive: false }` sobre el lienzo, el gesto es del plano. */
   useEffect(() => {
     const el = wrapRef.current;
-    if (!el || !herramientas) return;
+    if (!el) return;
     const rueda = (ev: WheelEvent) => {
       ev.preventDefault();
-      ponerZoom(cam.current.zoom * (ev.deltaY < 0 ? 1.1 : 1 / 1.1), ev.clientX, ev.clientY);
+      setAyuda(false);
+      ponerZoom(cam.current.zoom * factorDeRueda(ev.deltaY, ev.deltaMode, ev.ctrlKey), ev.clientX, ev.clientY);
     };
     el.addEventListener("wheel", rueda, { passive: false });
     return () => el.removeEventListener("wheel", rueda);
-  }, [herramientas, ponerZoom]);
+  }, [ponerZoom, hayEscena]);
 
   if (!scene) return null;
 
-  // Al elegir un mueble el mapa se le acerca (sólo Supervisar). Con dos o más
-  // acercarse a uno esconde al resto y, peor, esconde los que todavía faltan
-  // tocar: ahí el trabajo es seguir eligiendo sobre el plano entero.
-  const idsElegidos = new Set(selectedKeys.map((c) => c.slice(0, c.lastIndexOf("-"))));
-  const unico = idsElegidos.size === 1 ? [...idsElegidos][0] : null;
-  const enfocado = enfocar && unico
-    ? scene.prisms.find((q) => q.f.id === unico)?.foco ?? null
-    : null;
-  const k = enfocado
-    ? Math.min(1.9, Math.max(1, 0.17 * Math.min(scene.vb.w, scene.vb.h) / enfocado.r))
-    : 1;
-  const camara = enfocado
-    ? `translate(${(scene.vb.x + scene.vb.w / 2 - enfocado.x * k).toFixed(2)}px, ${(scene.vb.y + scene.vb.h / 2 - enfocado.y * k).toFixed(2)}px) scale(${k.toFixed(3)})`
-    : "translate(0px, 0px) scale(1)";
-  foco.current = enfocado
-    ? { k, tx: scene.vb.x + scene.vb.w / 2 - enfocado.x * k, ty: scene.vb.y + scene.vb.h / 2 - enfocado.y * k }
-    : { k: 1, tx: 0, ty: 0 };
-
   const handleMove = (e: React.MouseEvent, title: string, sub: string) => {
+    if (gesto.current?.movido) return;
     const rect = wrapRef.current?.getBoundingClientRect();
     if (!rect) return;
     setTip({ x: e.clientX - rect.left, y: e.clientY - rect.top, title, sub });
   };
 
-  /** El lienzo toma la PROPORCIÓN DEL PLANO en Supervisar (donde la tarjeta se
-   *  mide con su dibujo) y LLENA su caja en Vender, donde el alto lo pone la
-   *  rejilla de la hoja y el dibujo se encaja adentro con `meet`. */
-  const marco: React.CSSProperties = llenar
-    ? { position: "relative", flex: 1, minHeight: 0, minWidth: 0, display: "flex" }
-    : {
-        position: "relative", width: "100%", margin: "0 auto",
-        aspectRatio: `${scene.vb.w.toFixed(1)} / ${scene.vb.h.toFixed(1)}`,
-        maxHeight: "min(1000px, 80vh)", minHeight: 360, display: "flex",
-      };
+  const porId = new Map(scene.prisms.map((p) => [p.f.id, p]));
+
+  const elegir = (f: UnifiedFixture, e: React.MouseEvent, cara: "A" | "B") => {
+    const rect = wrapRef.current?.getBoundingClientRect();
+    onSelect(
+      f,
+      rect ? { x: e.clientX - rect.left, y: e.clientY - rect.top, w: rect.width, h: rect.height } : undefined,
+      cara,
+    );
+  };
 
   return (
     <div
       ref={wrapRef}
-      style={marco}
-      data-proporcion={(scene.vb.w / scene.vb.h).toFixed(2)}
-      onPointerDown={herramientas ? (ev) => {
-        if ((ev.target as Element).closest?.(".herr")) return;
-        const x0 = ev.clientX, y0 = ev.clientY;
-        const t0 = cam.current.T.slice() as [number, number];
-        let movido = false;
-        const mover = (e2: PointerEvent) => {
-          const e = escalaSVG();
-          if (!e) return;
-          if (Math.abs(e2.clientX - x0) + Math.abs(e2.clientY - y0) < 3 && !movido) return;
-          movido = true;
-          cam.current.T = [t0[0] + (e2.clientX - x0) / e.k, t0[1] + (e2.clientY - y0) / e.k];
-          aplicar();
-        };
-        const soltar = () => {
-          window.removeEventListener("pointermove", mover);
-          window.removeEventListener("pointerup", soltar);
-        };
-        window.addEventListener("pointermove", mover);
-        window.addEventListener("pointerup", soltar);
-      } : undefined}
+      className="plano-lienzo"
+      style={{ position: "relative", flex: 1, minHeight: 0, minWidth: 0, display: "flex" }}
+      onPointerDown={alBajar}
+      onContextMenu={(e) => e.preventDefault()}
+      onClickCapture={(e) => {
+        // Soltar después de girar o mover no es tocar un mueble.
+        if (arrastro.current) { arrastro.current = false; e.stopPropagation(); e.preventDefault(); }
+      }}
     >
-      {herramientas && (
-        <div className="herr">
-          <button type="button" aria-label="Acercar el plano"
-            onClick={(e) => { e.stopPropagation(); ponerZoom(cam.current.zoom * 1.25); }}>+</button>
-          <button type="button" aria-label="Alejar el plano"
-            onClick={(e) => { e.stopPropagation(); ponerZoom(cam.current.zoom / 1.25); }}>−</button>
-          <button type="button"
-            onClick={(e) => { e.stopPropagation(); cam.current = { zoom: 1, T: [0, 0] }; aplicar(); }}>
-            Centrar
-          </button>
-        </div>
+      <div className="herr">
+        <button type="button" aria-label="Acercar el plano"
+          onClick={(e) => { e.stopPropagation(); ponerZoom(cam.current.zoom * 1.25); }}>+</button>
+        <button type="button" aria-label="Alejar el plano"
+          onClick={(e) => { e.stopPropagation(); ponerZoom(cam.current.zoom / 1.25); }}>−</button>
+        <button type="button" title="Volver a la vista de arriba, con la sede entera"
+          onClick={(e) => { e.stopPropagation(); centrar(); }}>
+          Centrar
+        </button>
+      </div>
+      {ayuda && (
+        <p className="herr-ayuda" aria-hidden>
+          <span className="con-mouse">Arrastrá para girar · clic derecho para mover · rueda para acercar</span>
+          <span className="con-dedo">Un dedo gira · dos dedos acercan y mueven</span>
+        </p>
       )}
       <svg
         ref={svgRef}
-        viewBox={scene.viewBox}
-        preserveAspectRatio="xMidYMid meet"
         style={{ width: "100%", height: "100%", display: "block", touchAction: "none" }}
         onClick={() => onSelect(null)}
       >
-        <g
-          className="mapa-camara"
-          style={{
-            transform: camara,
-            transformBox: "view-box",
-            transformOrigin: "0 0",
-            transition: "transform 620ms cubic-bezier(.22,.72,.24,1)",
-          }}
-          onTransitionEnd={() => acomodar()}
-        >
         <g ref={escenaRef} className="iso-escena" data-foco="0">
         {/* Ground */}
         <polygon
-          points={scene.groundPts}
+          points={scene.piso}
           fill="var(--surface-2)"
           stroke="var(--line)"
           strokeWidth={0.8}
+          vectorEffect="non-scaling-stroke"
         />
 
-        {scene.prisms.map(({ f, topHalves, left, right, sideL, sideR, stroke, topOutline, tooltipSub, faces, rentable }) => {
+        {scene.prisms.map(({ f, topHalves, sides, stroke, topOutline, tooltipSub, faces, rentable }) => {
           const selected = faces.some((x) => selectedKeys.includes(`${f.id}-${x.face}`));
           const flags = match?.faceFlags.get(f.id);
           const matched = !match || (flags?.some(Boolean) ?? false);
@@ -1335,21 +1436,12 @@ function IsoMap({
               ref={(el) => { if (el) grupoRefs.current.set(f.id, el); else grupoRefs.current.delete(f.id); }}
               onClick={(e) => {
                 e.stopPropagation();
-                const rect = wrapRef.current?.getBoundingClientRect();
                 /* QUÉ CARA se tocó. Una góndola doble son dos espacios que se
                    venden por separado, y en el plano cada uno tiene su media
-                   tapa, su rótulo y su caja de impacto: tocar la mitad de
-                   atrás tiene que sumar la cara de atrás. Sin esto el plano
-                   sólo sabía sumar la A y la B había que ir a buscarla al
-                   renglón del contrato. */
+                   tapa, su lado largo, su rótulo y su caja de impacto: tocar
+                   la mitad de atrás tiene que sumar la cara de atrás. */
                 const cara = (e.target as Element).getAttribute?.("data-cara");
-                onSelect(
-                  f,
-                  rect
-                    ? { x: e.clientX - rect.left, y: e.clientY - rect.top, w: rect.width, h: rect.height }
-                    : undefined,
-                  cara === "B" ? "B" : "A",
-                );
+                elegir(f, e, cara === "B" ? "B" : "A");
               }}
               onMouseMove={(e) => {
                 // The popover already describes this one — a tooltip on top of
@@ -1358,12 +1450,23 @@ function IsoMap({
                 handleMove(e, f.label || f.code, tooltipSub);
               }}
               onMouseLeave={() => setTip(null)}
-              opacity={dimmed ? 0.18 : enfocado && !selected ? 0.45 : 1}
+              opacity={dimmed ? 0.18 : 1}
               style={{ cursor: "pointer", transition: "filter .12s, opacity .15s" }}
             >
-              {/* Side faces */}
-              <polygon className="c-izq" points={left} fill={sideL} stroke={stroke} strokeWidth={0.5} strokeLinejoin="round" />
-              <polygon className="c-der" points={right} fill={sideR} stroke={stroke} strokeWidth={0.5} strokeLinejoin="round" />
+              {/* Los lados que miran a la cámara: ninguno desde arriba. */}
+              {sides.map((s) => (
+                <polygon
+                  key={s.lado}
+                  className={s.clase}
+                  data-cara={s.cara ?? undefined}
+                  points={s.points}
+                  fill={s.fill}
+                  stroke={stroke}
+                  strokeWidth={0.5}
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+              ))}
               {/* Top face (1 or 2 halves) — non-matching halves of a double dim per face */}
               {topHalves.map((th, i) => (
                 <polygon
@@ -1376,18 +1479,22 @@ function IsoMap({
                   stroke={stroke}
                   strokeWidth={0.5}
                   strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
                 />
               ))}
               {/* Match highlight — accent glow + outline */}
               {match !== null && matched && !selected && (
                 <>
-                  <polygon points={topOutline} fill="none" stroke="var(--accent)" strokeWidth={3.4} opacity={0.3} strokeLinejoin="round" />
-                  <polygon points={topOutline} fill="none" stroke="var(--accent)" strokeWidth={1.3} strokeLinejoin="round" />
+                  <polygon points={topOutline} fill="none" stroke="var(--accent)" strokeWidth={3.4} opacity={0.3}
+                    strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                  <polygon points={topOutline} fill="none" stroke="var(--accent)" strokeWidth={1.3}
+                    strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
                 </>
               )}
               {/* Selection ring */}
               {selected && (
-                <polygon points={topOutline} fill="none" stroke="var(--accent)" strokeWidth={1.6} strokeLinejoin="round" />
+                <polygon points={topOutline} fill="none" stroke="var(--accent)" strokeWidth={1.6}
+                  strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
               )}
             </g>
           );
@@ -1397,24 +1504,27 @@ function IsoMap({
             el rótulo colgando de su pieza, los prismas de adelante le comen
             media palabra al de atrás. */}
         <g className="rotulos">
-          {labels
-            .filter((l) => rotulos === "todos" || selectedKeys.includes(l.clave))
-            .map((l) => (
+          {labels.map((l) => {
+            const a = scene.anclas.get(l.clave);
+            if (!a) return null;
+            const ax = a[0].toFixed(3), ay = a[1].toFixed(3);
+            return (
               <text
                 key={l.clave}
                 className="p-cod"
                 data-cod={l.cod}
                 data-choque={l.choque || undefined}
                 data-sel={selectedKeys.includes(l.clave) ? "1" : undefined}
-                x={l.ax.toFixed(2)}
-                y={l.ay.toFixed(2)}
+                x={ax}
+                y={ay}
                 ref={(el) => { if (el) txtRefs.current.set(l.clave, el); else txtRefs.current.delete(l.clave); }}
               >
-                <tspan x={l.ax.toFixed(2)} dy={l.fecha || l.choque ? "-.22em" : ".36em"}>{l.cod}</tspan>
-                {l.fecha && <tspan className="p-fec" x={l.ax.toFixed(2)} dy="1.18em">{l.fecha}</tspan>}
-                {l.choque && <tspan className="p-chq" x={l.ax.toFixed(2)} dy="1.18em">{l.choque}</tspan>}
+                <tspan x={ax} dy={l.fecha || l.choque ? "-.22em" : ".36em"}>{l.cod}</tspan>
+                {l.fecha && <tspan className="p-fec" x={ax} dy="1.18em">{l.fecha}</tspan>}
+                {l.choque && <tspan className="p-chq" x={ax} dy="1.18em">{l.choque}</tspan>}
               </text>
-            ))}
+            );
+          })}
         </g>
 
         {/* LAS CAJAS DE IMPACTO DEL RÓTULO, en una capa por encima de todo.
@@ -1427,53 +1537,26 @@ function IsoMap({
             —o uno que no se alquila, que además vaciaba el contrato—.
             Las miden `calibrar()` y `acomodar()`, no un `style`. */}
         <g className="impactos">
-          {labels
-            .filter((l) => rotulos === "todos" || selectedKeys.includes(l.clave))
-            .map((l) => {
-              const id = l.clave.slice(0, l.clave.lastIndexOf("-"));
-              const cara = l.clave.slice(l.clave.lastIndexOf("-") + 1) as "A" | "B";
-              const pieza = scene.prisms.find((q) => q.f.id === id);
-              return (
-                <rect
-                  key={l.clave}
-                  className="pl-hit"
-                  x={0} y={0} width={0} height={0}
-                  ref={(el) => { if (el) hitRefs.current.set(l.clave, el); else hitRefs.current.delete(l.clave); }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!pieza) return;
-                    const rect = wrapRef.current?.getBoundingClientRect();
-                    onSelect(
-                      pieza.f,
-                      rect
-                        ? { x: e.clientX - rect.left, y: e.clientY - rect.top, w: rect.width, h: rect.height }
-                        : undefined,
-                      cara,
-                    );
-                  }}
-                />
-              );
-            })}
-        </g>
+          {labels.map((l) => {
+            const id = l.clave.slice(0, l.clave.lastIndexOf("-"));
+            const cara = l.clave.slice(l.clave.lastIndexOf("-") + 1) as "A" | "B";
+            const pieza = porId.get(id);
+            return (
+              <rect
+                key={l.clave}
+                className="pl-hit"
+                x={0} y={0} width={0} height={0}
+                ref={(el) => { if (el) hitRefs.current.set(l.clave, el); else hitRefs.current.delete(l.clave); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (pieza) elegir(pieza.f, e, cara);
+                }}
+              />
+            );
+          })}
         </g>
         </g>
       </svg>
-
-      {/* Volver a ver la sede entera. Sólo aparece cuando hay algo enfocado. */}
-      {enfocado && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onSelect(null); }}
-          style={{
-            position: "absolute", left: 8, top: 8, zIndex: 4,
-            background: "var(--surface)", border: "1px solid var(--line)",
-            borderRadius: "var(--r-sm)", padding: "4px 10px",
-            fontSize: "var(--t-2xs)", color: "var(--ink-2)", cursor: "pointer",
-            boxShadow: "var(--shadow-sm)",
-          }}
-        >
-          ‹ Ver la sede
-        </button>
-      )}
 
       {/* Tooltip */}
       {tip && (
@@ -2861,10 +2944,93 @@ function ordenDeFila(e: FaceEntry): [number, number, string] {
   return [grupo, dias, e.code];
 }
 
+/** Filtrar por texto: código, proveedor, marca, tipo o nombre viejo.
+ *
+ *  Sin caja y con una línea abajo: vacío —que es como está el 95% del tiempo—
+ *  no ocupa. Y dice «filtrar», que es lo que hace, y no «buscar», que promete
+ *  llevarte a otra pantalla.
+ *
+ *  Está dos veces en Supervisar —al borde del plano y en el encabezado de la
+ *  tabla— y las dos escriben el MISMO filtro: la tabla queda a una pantalla de
+ *  distancia del plano, y pedirle a alguien que suba a filtrar lo que está
+ *  mirando abajo es esconderle el control. Dos campos con un solo valor no
+ *  pueden decir cosas distintas. */
+function FiltroTexto({ valor, onCambio, etiqueta, ancho = 118 }: {
+  valor: string;
+  onCambio: (v: string) => void;
+  etiqueta: string;
+  ancho?: number;
+}) {
+  return (
+    <div style={{ position: "relative", width: ancho, flexShrink: 0 }}>
+      <Search
+        size={12}
+        style={{
+          position: "absolute", left: 1, top: "50%",
+          transform: "translateY(-50%)", color: "var(--ink-4)", pointerEvents: "none",
+        }}
+      />
+      <input
+        type="text"
+        value={valor}
+        onChange={(e) => onCambio(e.target.value)}
+        placeholder="Filtrar"
+        aria-label={etiqueta}
+        style={{
+          width: "100%", height: 24, padding: "0 20px 0 17px",
+          borderRadius: 0, border: "none",
+          borderBottom: "1px solid var(--line)",
+          background: "transparent", color: "var(--ink-1)",
+          fontSize: 12, fontFamily: "inherit", outline: "none",
+        }}
+        onFocus={(e) => { e.currentTarget.style.borderBottomColor = "var(--ink-1)"; }}
+        onBlur={(e) => { e.currentTarget.style.borderBottomColor = "var(--line)"; }}
+      />
+      {valor && (
+        <button
+          onClick={() => onCambio("")}
+          title="Limpiar el filtro"
+          style={{
+            position: "absolute", right: 0, top: "50%",
+            transform: "translateY(-50%)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: 18, height: 18, borderRadius: 99,
+            background: "var(--surface-3)", border: "none",
+            color: "var(--ink-2)", cursor: "pointer",
+          }}
+        >
+          <X size={10} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Cuánto mide el más largo de estos textos en esa letra. Un solo lienzo para
+ *  todas las medidas: crear uno por llamada se nota en una tabla de doscientas
+ *  filas. Sin documento (pruebas en node) contesta 0 y quien llama pone su
+ *  piso. */
+let lienzoDeMedir: CanvasRenderingContext2D | null = null;
+function anchoDeTexto(textos: string[], fuente: string): number {
+  if (typeof document === "undefined") return 0;
+  lienzoDeMedir ??= document.createElement("canvas").getContext("2d");
+  if (!lienzoDeMedir) return 0;
+  lienzoDeMedir.font = fuente;
+  let max = 0;
+  for (const t of textos) if (t) max = Math.max(max, lienzoDeMedir.measureText(t).width);
+  return max;
+}
+
 function SpacesTable({
   fixtures, isAdmin, query, filter, montajeDe, tarifaDe,
-  selectedId, onSelect, sinMontar,
+  selectedId, onSelect, sinMontar, titulo, sub, derecha,
 }: {
+  /** El encabezado de la tarjeta. Lo dibuja la tabla porque mide lo mismo que
+   *  sus columnas: el filtro y los chips terminan donde termina la última, y
+   *  no flotan sobre el blanco de una pantalla ancha. */
+  titulo: string;
+  sub?: React.ReactNode;
+  derecha?: React.ReactNode;
   fixtures: UnifiedFixture[];
   isAdmin: boolean;
   /** El último reporte de montaje de esa cara, si lo hay. */
@@ -2902,29 +3068,62 @@ function SpacesTable({
     );
   }, [rows, filter, query, sinMontar]);
 
+  /* LOS ANCHOS, MEDIDOS.
+     Proveedor no llevaba ancho y se quedaba con todo lo que sobraba: en una
+     pantalla de 1920 eran mil píxeles para nombres de trescientos, y el estado
+     quedaba a media pantalla del proveedor (captura del dueño, 2026-09-23).
+     Ahora Tipo y Proveedor miden lo que mide su texto más largo —con un techo:
+     el que se pasa se corta con «…» y el nombre entero queda al pasar por
+     encima— y la tabla mide la suma de sus columnas. Lo que sobra de una
+     pantalla ancha queda a la derecha, afuera de la tabla, y no entre el
+     proveedor y su estado. */
+  const [fuentes, setFuentes] = useState(0);
+  useEffect(() => {
+    const f = (document as Document & { fonts?: FontFaceSet }).fonts;
+    if (f?.ready) void f.ready.then(() => setFuentes((n) => n + 1));
+  }, []);
+  const anchos = useMemo(() => {
+    const familia = typeof document !== "undefined" ? getComputedStyle(document.body).fontFamily : "";
+    const fuente = `400 12.5px ${familia || "sans-serif"}`;
+    const tipos = rows.map((e) => rateTypeLabel(rateTypeOf(e.fixture)));
+    const nombres = rows.map((e) => (displayStatus(e) === "free" && e.supplierName
+      ? `último: ${e.supplierName}` : e.supplierName));
+    return {
+      tipo: Math.round(Math.min(200, Math.max(110, anchoDeTexto(tipos, fuente) + 24))),
+      proveedor: Math.round(Math.min(340, Math.max(150, anchoDeTexto(nombres, fuente) + 24))),
+    };
+  // `fuentes` vuelve a medir cuando llega la tipografía de la página.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, fuentes]);
+
   // Los anchos van en el `th` y no en el `td`: con `table-layout:fixed` el
   // navegador toma las medidas de la PRIMERA fila, que es la del encabezado.
   // Puestos en las celdas se ignoran en silencio y la tabla vuelve a repartir
   // el ancho a ojo — que es exactamente lo que hacía antes de esto.
-  const columnas: { etiqueta: string; ancho?: number; derecha?: boolean }[] = [
+  const columnas: { etiqueta: string; ancho: number; derecha?: boolean }[] = [
     { etiqueta: "Código", ancho: 104 },
-    { etiqueta: "Tipo", ancho: 150 },
-    { etiqueta: "Proveedor" },
-    { etiqueta: "Estado", ancho: 104 },
-    { etiqueta: "Montaje", ancho: 92 },
-    { etiqueta: "Desde", ancho: 96 },
-    { etiqueta: "Hasta", ancho: 96 },
+    { etiqueta: "Tipo", ancho: anchos.tipo },
+    { etiqueta: "Proveedor", ancho: anchos.proveedor },
+    { etiqueta: "Estado", ancho: 100 },
+    { etiqueta: "Montaje", ancho: 100 },
+    { etiqueta: "Desde", ancho: 88 },
+    { etiqueta: "Hasta", ancho: 88 },
     { etiqueta: "Días", ancho: 56, derecha: true },
   ];
-  if (isAdmin) columnas.push({ etiqueta: "Renta / mes", ancho: 110, derecha: true });
+  if (isAdmin) columnas.push({ etiqueta: "Renta / mes", ancho: 112, derecha: true });
+  const anchoDatos = columnas.reduce((t, c) => t + c.ancho, 0);
 
   const vacio = <span style={{ color: "var(--ink-vacio)" }}>—</span>;
 
   return (
+    <>
+    <div style={{ maxWidth: anchoDatos + 30 }}>
+      <CardHeader title={titulo} sub={sub} right={derecha} />
+    </div>
     <div style={{ padding: "0 15px 12px", overflowX: "auto" }}>
       <table
         style={{
-          width: "100%", minWidth: 880,
+          width: anchoDatos, minWidth: anchoDatos,
           borderCollapse: "collapse", tableLayout: "fixed",
         }}
       >
@@ -3076,6 +3275,7 @@ function SpacesTable({
         </tbody>
       </table>
     </div>
+    </>
   );
 }
 
@@ -3966,6 +4166,15 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
         montaje.sinMontar.length + pendientesDelPlano
       : 0);
 
+  /** Cuántas filas deja ver la tabla con el filtro y el chip puestos: la misma
+   *  cuenta que hace `SpacesTable`, para decir «12 de 68» en el encabezado. */
+  const visiblesEnTabla = useMemo(() => {
+    const q = normalizeText(mapQuery.trim());
+    return fixtures.flatMap(commercialFacesOf)
+      .filter((e) => (!q || faceMatchesQuery(e, q)) && faceMatchesFilter(e, mapFilter, sinMontarSet))
+      .length;
+  }, [fixtures, mapQuery, mapFilter, sinMontarSet]);
+
   /** Cuántas caras contesta cada chip de la tabla. Un filtro que no puede
    *  devolver nada no se dibuja: es la misma regla que ya gobernaba el parte,
    *  y es lo que evita que alguien toque «Sin montar 0» y crea que se rompió. */
@@ -3990,18 +4199,17 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   }, []);
 
   /** La tarjeta del plano DE SUPERVISAR. El mapa es el mismo componente en los
-   *  dos modos —no cambia porque cambie para qué lo estás mirando— pero el
-   *  panel que lo enmarca sí: en Vender es el panel `01` de la hoja (más
-   *  abajo), con la clave de cinco estados y las herramientas de acercamiento;
-   *  acá es una tarjeta de una fila, con el filtro del plano al costado.
+   *  dos modos —no cambia porque cambie para qué lo estás mirando— y el panel
+   *  que lo enmarca MIDE LO MISMO: en Vender es el panel `01` de la hoja (más
+   *  abajo), con la clave de cinco estados; acá es una tarjeta de una fila,
+   *  con el filtro del plano al costado.
    *
-   *  Supervisar NO se rediseña en este PR: esta tarjeta queda como estaba.
-   *
-   *  No lleva alto: lo pone el lienzo, que se mide con la proporción del plano
-   *  de la sede. Fijarlo dejaba medio panel en blanco alrededor de un dibujo
-   *  chico. */
+   *  El alto es `--alto-plano`, la misma cuenta que reparte la hoja de Vender.
+   *  Antes lo ponía la proporción del dibujo, y el mismo plano salía mucho más
+   *  grande acá que en Vender (captura del dueño, 2026-09-23). Con la cámara
+   *  del editor la proporción ya no existe: el dibujo gira. */
   const tarjetaMapa = (flex: React.CSSProperties["flex"]) => (
-        <Card style={{ position: "relative", flex, minWidth: 0 }}>
+        <Card style={{ position: "relative", flex, minWidth: 0, height: "var(--alto-plano)" }}>
           <CardHeader
             title={`Piso de ${sede}`}
             right={
@@ -4009,57 +4217,14 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 {/* El filtro estaba arriba, en la franja de controles, junto a
                     cosas que no filtran el mapa. Filtrar tacha los muebles del
                     plano: es un control DEL mapa y vive en el borde del mapa,
-                    como la regla al costado de un plano impreso.
-
-                    Sin caja y con una línea abajo: vacío —que es como está el
-                    95% del tiempo— no ocupa. Y dice «filtrar», que es lo que
-                    hace, y no «buscar», que promete llevarte a otra pantalla. */}
-                <div style={{ position: "relative", width: 118, flexShrink: 0 }}>
-                  <Search
-                    size={12}
-                    style={{
-                      position: "absolute", left: 1, top: "50%",
-                      transform: "translateY(-50%)", color: "var(--ink-4)", pointerEvents: "none",
-                    }}
-                  />
-                  <input
-                    type="text"
-                    value={mapQuery}
-                    onChange={(e) => setMapQuery(e.target.value)}
-                    placeholder="Filtrar"
-                    style={{
-                      width: "100%", height: 24, padding: "0 20px 0 17px",
-                      borderRadius: 0, border: "none",
-                      borderBottom: "1px solid var(--line)",
-                      background: "transparent", color: "var(--ink-1)",
-                      fontSize: 12, fontFamily: "inherit", outline: "none",
-                    }}
-                    onFocus={(e) => { e.currentTarget.style.borderBottomColor = "var(--ink-1)"; }}
-                    onBlur={(e) => { e.currentTarget.style.borderBottomColor = "var(--line)"; }}
-                  />
-                  {mapQuery && (
-                    <button
-                      onClick={() => setMapQuery("")}
-                      title="Limpiar el filtro"
-                      style={{
-                        position: "absolute", right: 0, top: "50%",
-                        transform: "translateY(-50%)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        width: 18, height: 18, borderRadius: 99,
-                        background: "var(--surface-3)", border: "none",
-                        color: "var(--ink-2)", cursor: "pointer",
-                      }}
-                    >
-                      <X size={10} />
-                    </button>
-                  )}
-                </div>
+                    como la regla al costado de un plano impreso. */}
+                <FiltroTexto valor={mapQuery} onCambio={setMapQuery} etiqueta="Filtrar el plano" />
                 <MapLegend tally={rangeTally} modo="supervisar" />
               </>
             }
           />
 
-          <div style={{ padding: "0 14px 12px", display: "flex" }}>
+          <div style={{ padding: "0 14px 12px", display: "flex", flex: 1, minHeight: 0 }}>
             {mapRange && (
               <IsoMap
                 fixtures={fixtures}
@@ -4068,7 +4233,6 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 onSelect={selectFixture}
                 match={mapMatch}
                 range={mapRange}
-                rotulos="elegido"
               />
             )}
           </div>
@@ -4122,10 +4286,6 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           onSelect={selectFixture}
           match={mapMatch}
           range={mapRange}
-          rotulos="todos"
-          enfocar={false}
-          herramientas
-          llenar
           resaltar={resaltarPlano}
         />
       </div>
@@ -4617,9 +4777,14 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
             {/* En fila: 480 px de ancho base, y se lleva lo que sobre. */}
             {tarjetaMapa("1 1 480px")}
 
+            {/* La columna de la derecha mide lo mismo que el plano y reparte
+                ese alto: «Para revisar» lo que necesita —hasta seis décimos—
+                y «Quién paga el canon» el resto, cada una con su propio
+                desplazamiento. Si la columna mandara el alto, el plano
+                volvería a crecer con ella. */}
             <div
               style={{
-                flex: "0 1 382px", minWidth: 300,
+                flex: "0 1 382px", minWidth: 300, height: "var(--alto-plano)",
                 display: "flex", flexDirection: "column", gap: 10,
               }}
             >
@@ -4646,7 +4811,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                   onOpenFile={setViewerFile}
                 />
               ) : (
-              <Card style={{ height: 490, flexShrink: 0 }}>
+              <Card style={isAdmin
+                ? { flex: "0 1 auto", minHeight: 150, maxHeight: "60%" }
+                : { flex: "1 1 auto", minHeight: 0 }}>
                 <CardHeader title="Para revisar" right={<span>{attentionCount}</span>} />
                 {attentionCount === 0 ? (
                   <div style={{ padding: "0 15px 14px", fontSize: 13, color: "var(--libre-txt)" }}>
@@ -4880,10 +5047,14 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
 
           {/* ── Estado por espacio, a todo el ancho ───────────────────────── */}
           <Card>
-            <CardHeader
-              title="Estado por espacio"
-              sub={`${sede} · ${kpis.total} espacio${kpis.total !== 1 ? "s" : ""}`}
-              right={
+            <SpacesTable
+              titulo="Estado por espacio"
+              sub={visiblesEnTabla === kpis.total
+                ? `${sede} · ${kpis.total} espacio${kpis.total !== 1 ? "s" : ""}`
+                : `${sede} · ${visiblesEnTabla} de ${kpis.total} espacios`}
+              derecha={
+                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <FiltroTexto valor={mapQuery} onCambio={setMapQuery} etiqueta="Filtrar la tabla" ancho={160} />
                 <div style={{ display: "flex", alignItems: "center" }}>
                   {chipsTabla.map((c, i) => {
                     const on = mapFilter === c.id;
@@ -4911,9 +5082,8 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                     );
                   })}
                 </div>
+                </div>
               }
-            />
-            <SpacesTable
               fixtures={fixtures}
               isAdmin={isAdmin}
               query={mapQuery}
