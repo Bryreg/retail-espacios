@@ -536,7 +536,11 @@ def test_e_el_operador_no_ve_ni_toca_datos_de_negocio_de_nadie(client, monkeypat
     r = client.get("/api/plataforma/clientes", headers=cab_op)
     assert r.status_code == 200, r.text
     assert SECRETO not in r.text
-    esperadas = {"slug", "nombre", "activo", "estado", "motivo", "cambiado_en", "cambiado_por"}
+    # `base_principal` (2026-09-23) también es del registro: compara el
+    # `db_name` de la fila con el de `DATABASE_URL`, sin abrir ninguna base.
+    esperadas = {
+        "slug", "nombre", "activo", "base_principal", "estado", "motivo", "cambiado_en", "cambiado_por",
+    }
     for fila in r.json()["clientes"]:
         assert set(fila) == esperadas, fila
     assert {f["slug"] for f in r.json()["clientes"]} >= {"galerias", "ajenita", "operadora"}

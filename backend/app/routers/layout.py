@@ -58,6 +58,9 @@ router = APIRouter(prefix="/layout", tags=["layout"], dependencies=[Depends(requ
 SEDES_KEY = "layout_sedes"
 CATALOG_LABELS_KEY = "layout_catalog_labels"
 SETTINGS_UPDATED_KEY = "layout_settings_updated_at"
+# La generación de los datos (ver `services/traspaso.py`). Se lee acá y se
+# escribe sólo allá.
+from app.services.traspaso import CLAVE_GENERACION  # noqa: E402
 RATES_KEY = "layout_reference_rates"
 RATES_UPDATED_KEY = "layout_reference_rates_updated_at"
 SEASONS_KEY = "layout_season_windows"
@@ -322,6 +325,7 @@ def get_settings(response: Response, db: Session = Depends(get_db)):
         sedes=[s for s in sedes if isinstance(s, str)],
         catalog_labels={k: v for k, v in labels.items() if isinstance(v, str)} if isinstance(labels, dict) else {},
         updated_at=updated_at,
+        generacion=get_config(db, CLAVE_GENERACION),
     )
 
 
@@ -366,6 +370,7 @@ def save_settings(payload: LayoutSettingsIn, db: Session = Depends(get_db)):
         sedes=payload.sedes,
         catalog_labels=payload.catalog_labels,
         updated_at=now,
+        generacion=get_config(db, CLAVE_GENERACION),
     )
 
 

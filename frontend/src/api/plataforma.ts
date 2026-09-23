@@ -19,7 +19,12 @@ export const ESTADOS_CUENTA: EstadoCuenta[] = ["activo", "gracia", "solo_lectura
 export interface ClientePlataforma {
   slug: string;
   nombre: string;
+  /** `false` = archivado: nadie entra, no sale en el ingreso ni en el
+   *  análisis de la consola, y los datos siguen intactos. */
   activo: boolean;
+  /** El cliente de la instalación original, que vive en la base del
+   *  registro: se archiva, pero nunca se borra. */
+  base_principal: boolean;
   estado: EstadoCuenta;
   motivo: string | null;
   cambiado_en: string | null;
@@ -58,6 +63,58 @@ export const patchEstadoCliente = (
 ): Promise<EstadoClienteActualizado> =>
   client
     .patch<EstadoClienteActualizado>(`/plataforma/clientes/${encodeURIComponent(slug)}`, payload)
+    .then((r) => r.data);
+
+// ─── El ciclo de vida de un cliente (2026-09-23) ────────────────────────────
+//
+// Renombrar cambia sólo el nombre visible (el código queda: va adentro de
+// cada token). Archivar se deshace; borrar no, y el backend sólo lo acepta
+// sobre un cliente ya archivado, que no sea el de la base principal, y con el
+// código escrito a mano en `confirmacion`.
+
+export interface ClienteDeConsola {
+  slug: string;
+  nombre: string;
+  activo: boolean;
+}
+
+const rutaCliente = (slug: string) => `/plataforma/clientes/${encodeURIComponent(slug)}`;
+
+export const renombrarCliente = (slug: string, nombre: string): Promise<ClienteDeConsola> =>
+  client.put<ClienteDeConsola>(`${rutaCliente(slug)}/nombre`, { nombre }).then((r) => r.data);
+
+export const archivarCliente = (slug: string, motivo: string): Promise<ClienteDeConsola> =>
+  client.post<ClienteDeConsola>(`${rutaCliente(slug)}/archivar`, { motivo }).then((r) => r.data);
+
+export const reactivarCliente = (slug: string, motivo: string): Promise<ClienteDeConsola> =>
+  client.post<ClienteDeConsola>(`${rutaCliente(slug)}/reactivar`, { motivo }).then((r) => r.data);
+
+/** Filas copiadas por tabla de negocio. Se nombran las tres que la consola
+ *  cuenta al terminar; las demás tablas viajan igual, sin nombre acá. */
+export interface FilasTraspaso {
+  spaces?: number;
+  space_leases?: number;
+  suppliers?: number;
+  [tabla: string]: number | undefined;
+}
+
+export interface ResultadoTraspaso {
+  principal: string;
+  origen: string;
+  filas: FilasTraspaso;
+}
+
+/** Los datos de este cliente reemplazan a los de la base principal; este queda
+ *  archivado, intacto, de respaldo. `confirmacion` es el código del PRINCIPAL,
+ *  que es el que pierde lo que tenía. Ver `backend/app/services/traspaso.py`. */
+export const pasarAlPrincipal = (slug: string, confirmacion: string): Promise<ResultadoTraspaso> =>
+  client
+    .post<ResultadoTraspaso>(`${rutaCliente(slug)}/pasar-al-principal`, { confirmacion })
+    .then((r) => r.data);
+
+export const borrarCliente = (slug: string, confirmacion: string): Promise<{ ok: boolean; slug: string }> =>
+  client
+    .post<{ ok: boolean; slug: string }>(`${rutaCliente(slug)}/borrar`, { confirmacion })
     .then((r) => r.data);
 
 // ─── Métricas del negocio (Fase 4 plataforma) ───────────────────────────────

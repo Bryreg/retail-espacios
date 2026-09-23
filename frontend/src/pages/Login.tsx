@@ -1,9 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useModalAbiertoSi } from "../tema";
 import {
   getClientes, loginOauth, esRequiereCliente, esConsentimientoRequerido,
-  type ClienteBreve, type Membresia,
+  verInvitacion, esErrorDeInvitacion,
+  type ClienteBreve, type Membresia, type InvitacionVista, type ErrorDeInvitacion,
 } from "../api/auth";
+import {
+  tokenDeInvitacion, clientePreseleccionado, etiquetaDeMembresia, CLAVE_ULTIMO_CLIENTE,
+} from "../utils/ingreso";
 import { altaCliente, sugerirSlug, SLUG_VALIDO } from "../api/clientes";
 import { describeError } from "../api/client";
 import {
@@ -55,6 +59,23 @@ import { useAuthStore } from "../store/authStore";
 // `/oauth`: para cuando la persona termina de escribir puede estar por
 // vencer). El éxito se trata exactamente como un oauth exitoso: se guarda
 // la sesión y entra como admin.
+//
+// ─── 2026-09-23: nadie funda un supermercado por error ─────────────────────
+//
+// Así nacieron clientes que nadie quería: una persona invitada entraba con
+// OTRA cuenta que la del correo de la invitación, `/oauth` no le encontraba
+// acceso y esta pantalla le ofrecía, en el mismo cuadro, fundar su
+// supermercado. Tres cambios:
+//
+// · el enlace del correo (`?invitacion=…`) se lee: arriba se dice a qué
+//   supermercado y con qué cuenta (enmascarada) entrar, y el token viaja a
+//   `/oauth`, que lleva a ESE supermercado o explica por qué no (otra cuenta,
+//   vencida, desactivada) — nunca a otro en silencio;
+// · el 403 «sin acceso» ya no abre el formulario de fundar: explica qué
+//   hacer si lo invitaron, y fundar queda detrás de un botón propio con su
+//   advertencia. Con un enlace de invitación en la URL, ni eso;
+// · con varios supermercados el selector arranca vacío (o en el último que se
+//   usó en este navegador), no en el primero de la lista.
 
 const etiquetaStyle: React.CSSProperties = {
   display: "block", marginBottom: 5,
@@ -85,6 +106,70 @@ function rolLabel(rol: Membresia["rol"]): string {
   return "trabajador";
 }
 
+/** El último supermercado al que se entró desde este navegador. Almacenamiento
+ *  bloqueado o en modo privado: sin recuerdo, y el selector arranca vacío. */
+function leerUltimoCliente(): string | null {
+  try {
+    return localStorage.getItem(CLAVE_ULTIMO_CLIENTE);
+  } catch {
+    return null;
+  }
+}
+
+function recordarUltimoCliente(slug: string): void {
+  try {
+    localStorage.setItem(CLAVE_ULTIMO_CLIENTE, slug);
+  } catch {
+    // Sin almacenamiento no pasa nada: la próxima vez se elige a mano.
+  }
+}
+
+const cajaAvisoStyle: React.CSSProperties = {
+  width: "100%", marginBottom: 18,
+  padding: "10px 12px",
+  borderRadius: "var(--r-md)",
+  border: "1px solid var(--line)",
+  background: "var(--surface-2)",
+  fontSize: 12, color: "var(--ink-2)", lineHeight: 1.55,
+};
+
+/** Lo que dice el enlace del correo, ANTES de entrar: a qué supermercado,
+ *  con qué rol y con qué cuenta. La cuenta llega enmascarada del backend. */
+function AvisoInvitacion({ vista }: { vista: InvitacionVista | "invalida" }) {
+  if (vista === "invalida") {
+    return (
+      <div style={cajaAvisoStyle} role="status">
+        Este enlace de invitación no es válido. Solicite uno nuevo a quien lo invitó.
+      </div>
+    );
+  }
+  if (vista.estado === "vencida") {
+    const fecha = new Date(vista.expira_en).toLocaleDateString("es-CO", {
+      day: "numeric", month: "short", year: "numeric",
+    });
+    return (
+      <div style={cajaAvisoStyle} role="status">
+        La invitación a <b style={{ color: "var(--ink-1)" }}>{vista.cliente_nombre}</b> venció
+        el {fecha}. Solicite una nueva a quien lo invitó.
+      </div>
+    );
+  }
+  return (
+    <div style={cajaAvisoStyle} role="status">
+      <div style={{ fontWeight: 700, color: "var(--ink-1)", marginBottom: 2 }}>
+        Invitación a {vista.cliente_nombre}
+      </div>
+      {vista.estado === "usada"
+        ? "Esta invitación ya fue aceptada. "
+        : `Rol: ${rolLabel(vista.rol)}. `}
+      Ingrese con la cuenta{" "}
+      <b style={{ color: "var(--ink-1)", fontFamily: "var(--font-mono)" }}>{vista.correo}</b>: con
+      Google, si es una cuenta de Google, o con correo y contraseña, si creó la cuenta con esa
+      dirección.
+    </div>
+  );
+}
+
 /** `enHoja`: el formulario vive adentro de la hoja de ingreso que se abre
  *  sobre la landing (`components/HojaIngreso.tsx`): sin la pantalla completa
  *  ni la tarjeta con borde, y con el modo inicial que pidió el botón de la
@@ -108,6 +193,33 @@ export default function Login({ enHoja = false, modoInicial }: {
       .then(setClientes)
       .catch(() => setClientes([]));
   }, []);
+
+  // ─── El enlace de la invitación ─────────────────────────────────────────
+  // Se lee UNA vez, al montar. `vistaInvitacion` es lo que dice el backend
+  // del token antes de entrar; `"invalida"` cuando el token no existe (un
+  // error de red no se muestra: `/oauth` lo va a validar igual).
+  const [invitacion] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : tokenDeInvitacion(window.location.search),
+  );
+  const [vistaInvitacion, setVistaInvitacion] = useState<InvitacionVista | "invalida" | null>(null);
+  useEffect(() => {
+    if (!invitacion) return;
+    verInvitacion(invitacion)
+      .then(setVistaInvitacion)
+      .catch((err) => {
+        if ((err as { response?: { status?: number } })?.response?.status === 404) setVistaInvitacion("invalida");
+      });
+  }, [invitacion]);
+  // «Continuar sin la invitación»: una ref y no un estado, porque el
+  // reintento sale en el mismo clic que la prende y el cierre de
+  // `completarOauth` todavía vería el valor viejo.
+  const sinEnlace = useRef(false);
+  // El enlace no llevó a ninguna parte: otra cuenta, vencida, desactivada.
+  // Guarda el id_token para poder seguir sin el enlace sin volver a Google.
+  const [errorInvitacion, setErrorInvitacion] =
+    useState<(ErrorDeInvitacion & { idToken: string }) | null>(null);
+  // Con qué cuenta se intentó entrar, para decirla en el aviso de «sin acceso».
+  const [correoDelIntento, setCorreoDelIntento] = useState<string | null>(null);
 
   // ─── Nuevo: Google / correo (Firebase) ─────────────────────────────────
   //
@@ -137,6 +249,9 @@ export default function Login({ enHoja = false, modoInicial }: {
 
   // ─── Fase 2: sin membresías → ofrecer fundar el supermercado ───────────
   const [sinCliente, setSinCliente] = useState(false);
+  // El formulario de fundar se abre SÓLO con su botón (2026-09-23): antes
+  // aparecía solo, en el mismo cuadro que decía «no tiene acceso».
+  const [fundando, setFundando] = useState(false);
   const [altaNombre, setAltaNombre] = useState("");
   const [altaSlug, setAltaSlug] = useState("");
   const [altaSlugTocado, setAltaSlugTocado] = useState(false);
@@ -176,6 +291,12 @@ export default function Login({ enHoja = false, modoInicial }: {
       return;
     }
     setConsentimientoPendiente(null);
+    const deInvitacion = esErrorDeInvitacion(err);
+    if (deInvitacion) {
+      limpiarAvisos();
+      setErrorInvitacion({ ...deInvitacion, idToken: idToken ?? "" });
+      return;
+    }
     const status = (err as { response?: { status?: number } })?.response?.status;
     if (status === 503) {
       // El servidor no tiene FIREBASE_PROJECT_ID: el resto de la app sigue
@@ -184,7 +305,8 @@ export default function Login({ enHoja = false, modoInicial }: {
       return;
     }
     if (status === 403) {
-      // Sin membresías: no es un error, es el punto de partida del alta.
+      // Sin membresías. Ya no es el punto de partida del alta: es un aviso
+      // que dice qué hacer si lo invitaron; fundar queda detrás de su botón.
       setSinCliente(true);
       return;
     }
@@ -250,11 +372,12 @@ export default function Login({ enHoja = false, modoInicial }: {
    *  consentimiento — el reintento del MISMO id_token, con el campo puesto. */
   const completarOauth = async (idToken: string, clienteElegido?: string, aceptaPolitica?: boolean) => {
     try {
-      const r = await loginOauth(idToken, clienteElegido, aceptaPolitica);
+      const conEnlace = invitacion && !sinEnlace.current ? invitacion : undefined;
+      const r = await loginOauth(idToken, clienteElegido, aceptaPolitica, conEnlace);
       if (esRequiereCliente(r)) {
         setPendingIdToken(idToken);
         setMembresias(r.membresias);
-        setClienteElegido(r.membresias[0]?.cliente ?? "");
+        setClienteElegido(clientePreseleccionado(r.membresias, leerUltimoCliente()));
         return;
       }
       setConsentimientoPendiente(null);
@@ -294,6 +417,7 @@ export default function Login({ enHoja = false, modoInicial }: {
       const nombreVisibleCliente =
         clientes.find((c) => c.slug === r.cliente)?.nombre ??
         membresias?.find((m) => m.cliente === r.cliente)?.nombre;
+      recordarUltimoCliente(r.cliente);
       setAuth(
         r.token, r.role, r.cliente, nombreVisibleCliente, r.email, r.nombre,
         r.aviso_cuenta, r.pedir_consentimiento
@@ -319,6 +443,7 @@ export default function Login({ enHoja = false, modoInicial }: {
     setFbBusy(true);
     try {
       const r = await loginConGoogle();
+      setCorreoDelIntento(r.email);
       await completarOauth(r.idToken);
     } catch (err) {
       // signInWithPopup cancelado por la persona no es un error que valga
@@ -352,6 +477,7 @@ export default function Login({ enHoja = false, modoInicial }: {
         );
         return;
       }
+      setCorreoDelIntento(r.email);
       await completarOauth(r.idToken);
     } catch (err) {
       setFbError(describirErrorFirebase(err));
@@ -418,7 +544,27 @@ export default function Login({ enHoja = false, modoInicial }: {
     setAltaError(null);
     setAltaAceptaPolitica(false);
     setConsentimientoPendiente(null);
+    setFundando(false);
+    setErrorInvitacion(null);
+    setCorreoDelIntento(null);
+    sinEnlace.current = false;
     limpiarAvisos();
+  };
+
+  /** La persona vino por un enlace que no la lleva a ninguna parte, pero
+   *  tiene otros accesos con esta cuenta: entra como si no hubiera enlace —
+   *  al suyo, o al selector si tiene varios —, porque lo eligió ella. */
+  const seguirSinEnlace = async () => {
+    if (!errorInvitacion || fbBusy) return;
+    const idToken = errorInvitacion.idToken;
+    sinEnlace.current = true;
+    setErrorInvitacion(null);
+    setFbBusy(true);
+    try {
+      await completarOauth(idToken);
+    } finally {
+      setFbBusy(false);
+    }
   };
 
   return (
@@ -456,6 +602,7 @@ export default function Login({ enHoja = false, modoInicial }: {
 
         {firebaseDisponible && (
           <div style={{ width: "100%" }}>
+            {vistaInvitacion && !errorInvitacion && !membresias && <AvisoInvitacion vista={vistaInvitacion} />}
             {backendSinConfig ? (
               <div
                 style={{
@@ -470,13 +617,84 @@ export default function Login({ enHoja = false, modoInicial }: {
                 El ingreso con Google o correo no está disponible en este
                 servidor todavía. Escríbanos para que lo revisemos.
               </div>
+            ) : errorInvitacion ? (
+              // ── El enlace no lleva a ninguna parte con esta cuenta ───────
+              <div style={{ width: "100%", marginBottom: 18 }}>
+                <p style={{ margin: "0 0 14px", fontSize: 12, color: "var(--ink-1)", lineHeight: 1.55 }}>
+                  {errorInvitacion.mensaje}
+                </p>
+                <button
+                  className="btn-principal"
+                  type="button"
+                  onClick={empezarDeNuevo}
+                  style={{
+                    width: "100%", height: 38,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    borderRadius: "var(--r-md)", cursor: "pointer",
+                    fontSize: 13, fontWeight: 600, fontFamily: "inherit",
+                  }}
+                >
+                  {errorInvitacion.codigo === "invitacion_otro_correo" ? "Ingresar con otra cuenta" : "Volver"}
+                </button>
+                <div style={{ marginTop: 12 }}>
+                  <button type="button" onClick={seguirSinEnlace} disabled={fbBusy} style={linkButtonStyle}>
+                    Continuar sin la invitación
+                  </button>
+                </div>
+              </div>
+            ) : sinCliente && !fundando ? (
+              // ── Sin acceso: qué hacer si lo invitaron; fundar, aparte ────
+              <div style={{ width: "100%", marginBottom: 18 }}>
+                <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--ink-1)", lineHeight: 1.55 }}>
+                  {correoDelIntento ? (
+                    <>
+                      La cuenta{" "}
+                      <b style={{ fontFamily: "var(--font-mono)" }}>{correoDelIntento}</b>{" "}
+                      no tiene acceso a ningún supermercado.
+                    </>
+                  ) : (
+                    "Su cuenta no tiene acceso a ningún supermercado."
+                  )}
+                </p>
+                <p style={{ margin: "0 0 14px", fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
+                  Si lo invitaron, ingrese con la misma cuenta a la que llegó la invitación.
+                  Si no la encuentra, solicite a quien lo invitó que la envíe de nuevo: la
+                  invitación vence a los 7 días.
+                </p>
+                <button
+                  className="btn-principal"
+                  type="button"
+                  onClick={empezarDeNuevo}
+                  style={{
+                    width: "100%", height: 38,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    borderRadius: "var(--r-md)", cursor: "pointer",
+                    fontSize: 13, fontWeight: 600, fontFamily: "inherit",
+                  }}
+                >
+                  Ingresar con otra cuenta
+                </button>
+                {/* Con un enlace de invitación en la URL, fundar no se ofrece:
+                    quien llegó por ahí viene a entrar a un supermercado que ya
+                    existe, no a crear otro. */}
+                {!invitacion && (
+                  <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+                    <p style={{ margin: "0 0 6px", fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.5 }}>
+                      ¿Va a registrar su supermercado en RECABRA?
+                    </p>
+                    <button type="button" onClick={() => setFundando(true)} style={linkButtonStyle}>
+                      Registrar un supermercado nuevo
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : sinCliente ? (
-              // ── Fase 2: sin membresías → ofrecer fundar el supermercado ──
+              // ── Fase 2: fundar el supermercado, ahora a pedido ──────────
               <div style={{ width: "100%", marginBottom: 18 }}>
                 <p style={{ margin: "0 0 14px", fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
-                  Su cuenta todavía no tiene acceso a ningún supermercado. Si lo
-                  invitaron, pídale a quien lo invitó que revise el correo — o funde
-                  el suyo ahora mismo.
+                  Esto crea un supermercado <b>nuevo y vacío</b>, con usted como dueño,
+                  separado de cualquier otro. Si trabaja para un supermercado que ya usa
+                  RECABRA, no lo cree: solicite a su dueño una invitación a su correo.
                 </p>
                 <form onSubmit={fundarCliente}>
                   <div style={{ marginBottom: 10 }}>
@@ -560,7 +778,10 @@ export default function Login({ enHoja = false, modoInicial }: {
                   </button>
                 </form>
                 <div style={{ marginTop: 12 }}>
-                  <button type="button" onClick={empezarDeNuevo} style={linkButtonStyle}>
+                  {/* Vuelve al aviso de «sin acceso», no al principio: quien
+                      abrió esto por error tiene que poder leer de nuevo qué
+                      hacer si lo invitaron. */}
+                  <button type="button" onClick={() => { setFundando(false); setAltaError(null); }} style={linkButtonStyle}>
                     Volver
                   </button>
                 </div>
@@ -577,9 +798,12 @@ export default function Login({ enHoja = false, modoInicial }: {
                   onChange={(e) => setClienteElegido(e.target.value)}
                   style={{ ...inputStyle, height: 38, marginBottom: 10 }}
                 >
+                  {/* Vacío salvo que se recuerde el último: elegir el primero
+                      de la lista por la persona era mandarla al que tocara. */}
+                  {!clienteElegido && <option value="">Elija un supermercado…</option>}
                   {membresias.map((m) => (
                     <option key={m.cliente} value={m.cliente}>
-                      {m.nombre} · {rolLabel(m.rol)}
+                      {etiquetaDeMembresia(m, membresias, rolLabel)}
                     </option>
                   ))}
                 </select>

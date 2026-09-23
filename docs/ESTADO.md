@@ -1,10 +1,14 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-09-23 (El plano se mueve como el Editor 3D — abre con el
-isométrico de siempre y se gira, se mueve y se acerca con los gestos del editor; y
-Supervisar pasa a ser una hoja de 2×2 con la rejilla de Vender. Ver *El plano se mueve
-como el Editor 3D*, dentro de *Una pantalla de sede, dos modos*).
+Última actualización: 2026-09-23 (Invitaciones y ciclo de vida de los clientes: el
+enlace del correo lleva al supermercado que invitó, nadie funda uno por error, y la
+consola renombra, archiva, borra y **pasa un cliente a la base principal** —así el
+supermercado real, que vivía como `pepito`, queda como `galerias` desde el código—.
+Ver *Invitaciones: nadie funda un supermercado por error*, *El ciclo de vida de un
+cliente* y *Pasar un cliente a la base principal*, después de la Fase 2.
+Antes, el mismo día: el plano se mueve como el Editor 3D y Supervisar es una hoja
+de 2×2 — ver *El plano se mueve como el Editor 3D*).
 
 Gestión de espacios comerciales en supermercados: se dibuja el plano de cada sede, se
 marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
@@ -239,6 +243,23 @@ que abre pertenece a otro cliente, ANTES de cualquier sync. Se llama desde el
 efecto de sesión de `App.tsx`, antes de `startAutoSync`. El dinero ya salía de
 `partialize`; esto hace lo propio con los planos ante un cambio de inquilino.
 
+**Un cliente se borra archivado, escribiendo su código, y nunca el de la base
+principal.** Borrar (`POST /api/plataforma/clientes/{slug}/borrar`) hace `DROP
+DATABASE` y no tiene vuelta atrás; por eso exige el cliente ya archivado (el archivo
+es el período de gracia contra el clic equivocado), el código escrito a mano, y
+rechaza el cliente cuya base es la de `DATABASE_URL` —que además es el registro de
+todos—. Y **borra membresías, invitaciones y estado de cuenta de ese slug**: no es
+limpieza, es seguridad — un cliente nuevo que tome el mismo slug heredaría miembros,
+invitaciones pendientes y una suspensión ajena. Ver *El ciclo de vida de un cliente*.
+
+**Toda tabla nueva se clasifica: de negocio o de registro.** `services/traspaso.py`
+tiene las dos listas (`TABLAS_DEL_CLIENTE`, `TABLAS_DEL_REGISTRO`). Pasar un cliente a
+la base principal VACÍA las de negocio de esa base, que es también la del registro:
+una tabla de registro mal clasificada —usuarios, membresías— se borraría con el
+sistema entero adentro. Por eso una tabla sin clasificar hace que el traspaso se
+niegue a correr, y `tests/test_traspaso.py` falla hasta que alguien decide de qué
+lado está.
+
 **Los espejos comparan identidad, no booleanos.** El plano 2D y el editor 3D mantienen
 una copia local del store. Los guards que evitan el eco comparan la *identidad del array*,
 no una bandera: un booleano lo consume la pasada equivocada del ciclo de montaje, y eso
@@ -344,6 +365,179 @@ contactos y notas de proveedores, notas de espacios y contratos, fotos y
 archivos, datos de usuarios y la tarifa de referencia.
 Red-team dedicado en `tests/test_plataforma_ataques.py` (30 ataques; la
 frontera resistió).
+
+### Invitaciones: nadie funda un supermercado por error (2026-09-23)
+
+**Lo que pasó.** El dueño de la plataforma entró a la consola y encontró cinco
+clientes: Galerías (la instalación original, suspendida, sin una sola cuenta de
+usuario), «pepitos», «Pepito», «Medium» y «SUPERMERCADO POBLADO». Él trabaja en
+«Pepito», que fundó con su cuenta el día que estrenó el login, y lo invitaron
+después a Galerías. Esperaba que la invitación lo llevara a Galerías y que Pepito
+dejara de existir. No pasó ninguna de las dos cosas, y la razón está en el código:
+
+- **Una invitación no mueve a nadie: suma una membresía.** Si la persona ya tenía
+  un supermercado, queda con dos y el login pregunta a cuál entrar. Ningún
+  supermercado se borra ni se fusiona con otro por una invitación.
+- **La invitación se canjea por CORREO, y sólo por correo.** El enlace del mail
+  (`/login?invitacion=<token>`) no lo leía nadie —ni la pantalla ni el backend—.
+  Quien entraba con OTRA cuenta que la invitada (la personal en vez de la del
+  trabajo, lo más común) recibía «su cuenta no tiene acceso a ningún
+  supermercado»… con el formulario de **fundar uno** en el mismo cuadro. Así nacen
+  supermercados vacíos que nadie quería, y así un administrador o una mercaderista
+  podía terminar trabajando en una base vacía creyendo que era la de su empresa.
+- **Galerías «sin cuentas de usuario»** quiere decir que ninguna membresía activa
+  apunta a `galerias`: la invitación nunca se convirtió en acceso (se mandó a otro
+  correo, o venció a los 7 días sin que se entrara con ESE correo). Todo lo que se
+  cargó desde entonces vive en la base de Pepito (`recabra_pepito`), no en la de
+  Galerías.
+
+**Lo que cambió:**
+
+- **El enlace se lee.** `GET /api/auth/invitacion/{token}` (pública, con el freno de
+  `/oauth`: cada token inexistente cuenta como intento fallido) dice a qué
+  supermercado, con qué rol y **con qué cuenta** entrar —el correo va enmascarado,
+  `b•••o@gmail.com`— y si la invitación está vigente, usada o vencida. La pantalla
+  lo muestra arriba del botón de Google.
+- **`/oauth` recibe `invitacion`** y, con él: entra a ESE supermercado aunque la
+  cuenta tenga otros (sin selector); con otra cuenta que la invitada contesta 403
+  `invitacion_otro_correo` **sin crear usuario, sin canjear nada y sin entrar a
+  ningún otro supermercado**; vencida, 410 `invitacion_vencida`; inexistente, 404
+  `invitacion_invalida`; un acceso que ya existía y está desactivado, 403
+  `invitacion_sin_acceso`. El `detail` es `{codigo, mensaje, …}` y `mensaje` va
+  redactado para la persona. El canje sigue atado al correo: un enlace reenviado no
+  le da acceso a quien lo tenga.
+- **La pantalla de ingreso ya no ofrece fundar ante un 403.** Dice qué hacer si lo
+  invitaron (entrar con la cuenta a la que llegó el correo) y deja fundar detrás de
+  un botón propio, «Registrar un supermercado nuevo», con la advertencia de que crea
+  uno nuevo y vacío. **Con un enlace de invitación en la URL, fundar no se ofrece.**
+- **El selector de supermercados arranca vacío** (o en el último que se usó desde
+  ese navegador, `recabra-ultimo-cliente` en `localStorage`): antes arrancaba en el
+  primero de la lista, y un Enter mandaba a cualquiera. Dos supermercados que se
+  leen igual se distinguen por su código.
+- **Google pregunta siempre con qué cuenta** (`prompt: "select_account"`): sin eso,
+  quien tenía una sola sesión de Google abierta entraba con ésa sin ver el selector,
+  y «entrar con otra cuenta» no servía de nada.
+- **El alta rechaza el nombre de un supermercado activo** (409, comparando sin
+  tildes, mayúsculas ni signos — `clientes.nombre_normalizado`): quien escribe
+  «Galerías» casi siempre es alguien de Galerías que no encontró su invitación. El
+  mensaje le dice que pida una invitación, o que agregue ciudad o sede si es otro.
+- **Sólo un dueño hace dueños.** Invitar con rol `owner`, y activar o desactivar a un
+  owner, exige que quien lo pide sea owner de ese cliente (se pregunta a la
+  membresía: el token lleva owner y admin como `admin`). Antes cualquier
+  administrador se fabricaba un dueño. El login legado (sin `sub`) queda como
+  estaba: es la clave de la instalación y no tiene pantalla desde la Fase 15.
+- **El correo de invitación dice con qué cuenta entrar**, y escapa el nombre del
+  supermercado (lo escribe quien lo funda). El panel de Usuarios dice a qué
+  supermercado se invita.
+
+**Lo que NO cambió, y conviene no suponer:** la invitación es al supermercado
+entero —todas sus sedes—, no a una sede. Los roles siguen siendo owner / admin /
+trabajador (mercaderista), y lo que ve cada uno no cambió.
+
+Pruebas: `tests/test_invitacion_enlace.py` (backend) y
+`frontend/scripts/probar-ingreso.mjs`, verificadas en reversa (28 mutaciones, todas
+detectadas).
+
+### El ciclo de vida de un cliente: renombrar, archivar, borrar (2026-09-23)
+
+Desde la consola del operador, en *Lo operativo → Estados de cuenta*, con un botón
+por acción y una confirmación que dice en palabras lo que va a pasar. Cada una deja
+línea en `bitacora_plataforma` (`renombre` / `archivo` / `reactivacion` / `borrado`,
+con `periodo = "<slug>:<YYYY-MM>"`) y el cliente la ve en su reporte de
+transparencia.
+
+- **Renombrar** (`PUT /clientes/{slug}/nombre`) cambia sólo el nombre VISIBLE. El
+  slug no se toca: va adentro de cada token y arma el nombre de la base. Dos
+  clientes ACTIVOS no pueden llamarse igual (409).
+- **Archivar / reactivar** (`POST /clientes/{slug}/archivar` · `/reactivar`, motivo
+  obligatorio) usa la columna `clientes.activo` que ya existía: nadie entra (los
+  tokens de ese cliente dan 401 en el pedido siguiente), deja de salir en la
+  pantalla de ingreso, en el selector y en el **análisis de la consola** (métricas,
+  adopción, benchmark), y el mantenimiento de fondo lo saltea. Los datos quedan
+  intactos. Reactivar con un nombre que ya usa otro activo da 409.
+- **Borrar** (`POST /clientes/{slug}/borrar`, `{confirmacion: "<slug>"}`): ver la
+  regla dura. Borra la base y, del registro, la fila del cliente, sus membresías,
+  invitaciones, estado de cuenta, fundaciones y fotos mensuales propias. Quedan las
+  cuentas de las personas, sus consentimientos, las solicitudes de supresión
+  (constancia legal), la bitácora y el consolidado mensual.
+- **`GET /clientes` dice `base_principal`**, para que la consola no ofrezca borrar
+  el cliente de la instalación original.
+- **`unico()` ahora exige que ese único cliente sea el de siempre.** Resuelve las
+  credenciales SIN claim `cliente` (tokens y enlaces de montaje de antes del
+  multi-tenant, el login legado sin `cliente`), que nacieron todas en la
+  instalación original. Con Galerías archivado y otro cliente activo, un enlace
+  viejo de montaje se habría resuelto contra la base del otro.
+
+Pruebas: `tests/test_plataforma_ciclo.py`, verificada en reversa.
+
+### Pasar un cliente a la base principal (2026-09-23)
+
+**Por qué.** El dueño de la plataforma no quería que su supermercado se *llamara*
+Galerías: quería que lo *fuera*, «desde el código». Su supermercado real vivía con el
+código `pepito` (base `recabra_pepito`), y `galerias` —el cliente de la base
+principal— tenía los datos de práctica de la instalación original. Cambiarle el slug
+a Pepito no sirve: `galerias` es el cliente de `DATABASE_URL`, y esa base es también
+la del registro de todos; no se puede apuntar a otra. Lo que se mueve son los DATOS.
+
+**Qué hace** (`POST /api/plataforma/clientes/{slug}/pasar-al-principal`,
+`{confirmacion: "<slug del principal>"}`, lógica en `app/services/traspaso.py`):
+
+1. Archiva el origen (su propio commit): nadie escribe en él mientras se copia.
+2. En UNA transacción sobre la base principal: vacía sus tablas de negocio, copia las
+   del origen fila por fila (con sus `id`, archivos incluidos, de a pocas filas las
+   que guardan archivos), corre los contadores de `id` en Postgres, sube las épocas
+   de sesión por encima de las de ambos (ninguna sesión de antes sobrevive, y copiar
+   una época más baja no resucita tokens revocados), marca una **generación** nueva,
+   mueve al slug principal las membresías, invitaciones, estado de cuenta,
+   fundación, fotos mensuales, supresiones y bitácora del origen —borrando antes las
+   del principal viejo, para que una invitación de práctica no lleve a los datos
+   reales— y deja activo al principal. Si algo falla, no cambia nada y el origen
+   vuelve a quedar activo.
+3. El origen queda archivado con su base intacta: es el respaldo. Se borra desde la
+   consola cuando se confirma que todo pasó.
+
+**Sólo se pasa un cliente ACTIVO.** El archivado es el respaldo de un traspaso: pasarlo
+otra vez —un clic de más, semanas después— pisaría todo lo trabajado desde entonces en
+el principal. Para usar el respaldo hay que reactivarlo antes, a propósito; la consola
+ni ofrece el botón en una fila archivada, y el backend contesta 409.
+
+**Del lado del navegador: la generación.** El caché de planos está scoped por slug
+(`clienteCache`), y el slug del principal no cambia: un equipo que guardaba planos
+de la Galerías de práctica los habría mostrado y —si alguna sede nunca había llegado
+al servidor— subido encima de los datos reales. `GET /api/layout/settings` devuelve
+`generacion`, y `syncFromServer` descarta lo guardado de otra generación ANTES de
+reconciliar (`generacionCache`, `planosVacios()` en `store/fixtureStore.ts`).
+Comprobado en el navegador con un control: sin el chequeo, la sede vieja se subía.
+
+**Verificado contra Postgres 16 real**, no sólo SQLite: filas idénticas, archivos,
+un alta nueva después del traspaso sin chocar ids (los contadores), y
+`DROP DATABASE … WITH (FORCE)` cortando una conexión ajena abierta.
+
+**El procedimiento para el caso de arriba** (lo ejecuta el operador desde la
+consola; nadie tiene acceso a la base de producción desde fuera):
+
+1. Asegurarse de que no quede nada sin guardar en Pepito (el indicador de
+   sincronización en verde).
+2. En la fila de **Pepito**, «Pasar a la base principal», escribir `galerias` y
+   confirmar. Los datos de práctica de la Galerías original se pierden; Pepito queda
+   archivado de respaldo; todos vuelven a entrar.
+3. Entrar con la cuenta de siempre (ahora aterriza en `galerias`) y revisar que esté
+   todo.
+4. Borrar **Pepito** (ya archivado), y archivar y borrar **pepitos**, **Medium** y
+   **SUPERMERCADO POBLADO**.
+
+**Lo que no se arrastra:** los enlaces de montaje mandados desde Pepito llevan
+`pepito` adentro, firmado, y dejan de abrir: hay que reenviarlos desde Galerías.
+
+Pruebas: `tests/test_traspaso.py` (17 mutaciones detectadas) y
+`frontend/scripts/probar-traspaso.mjs` (7).
+
+**Pendiente, anotado y no resuelto acá:** `crear_cliente` le pone a cada cliente
+nuevo las claves compartidas de `ADMIN_PASSWORD` / `WORKER_PASSWORD` si esas
+variables están definidas, y `POST /api/auth/login` (sin pantalla, pero vivo) acepta
+`cliente` de quien sea. Si en Render están definidas, quien sepa esa clave entra como
+admin a cualquier supermercado fundado por el alta. Hay que decidir si el login
+legado se apaga en producción o si los clientes nuevos nacen sin clave compartida.
 
 ### Compliance: Ley 1581, consentimiento y hardening (Fase 3 comercial)
 

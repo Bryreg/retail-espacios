@@ -242,7 +242,13 @@ def _calcular_benchmark(anio_mes: str) -> dict[str, float]:
 
     reg = sesion_registro()
     try:
-        filas = reg.query(ClienteRow).order_by(ClienteRow.slug).all()
+        # Los archivados no entran al benchmark: misma regla que `/metricas`.
+        filas = (
+            reg.query(ClienteRow)
+            .filter(ClienteRow.activo == True)  # noqa: E712
+            .order_by(ClienteRow.slug)
+            .all()
+        )
         objetivos = [
             Cliente(slug=f.slug, nombre=f.nombre, db_name=f.db_name, activo=f.activo)
             for f in filas

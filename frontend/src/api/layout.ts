@@ -21,6 +21,10 @@ export interface LayoutSettings {
   sedes: string[];
   catalog_labels: Record<string, string>;
   updated_at?: string;
+  /** Cambia cuando los datos de este supermercado se reemplazan enteros (el
+   *  traspaso a la base principal, 2026-09-23). `null`: nunca se reemplazaron.
+   *  Ver `generacionCache` en `store/fixtureStore.ts`. */
+  generacion?: string | null;
 }
 
 export const fetchAllLayouts = (): Promise<LayoutEntry[]> =>

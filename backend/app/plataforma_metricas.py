@@ -781,7 +781,15 @@ def _calcular(anio_mes: str, origen: str = "vista") -> tuple[dict, dict[str, int
 
     reg = sesion_registro()
     try:
-        filas = reg.query(ClienteRow).order_by(ClienteRow.slug).all()
+        # Los archivados no son cartera (2026-09-23): nadie entra ahí y el
+        # operador los sacó de la vista a propósito. Siguen en `GET
+        # /plataforma/clientes`, que es donde se reactivan o se borran.
+        filas = (
+            reg.query(ClienteRow)
+            .filter(ClienteRow.activo == True)  # noqa: E712
+            .order_by(ClienteRow.slug)
+            .all()
+        )
         estados = {e.slug: e.estado for e in reg.query(EstadoCliente).all()}
         # Se materializa la lista ANTES de abrir ninguna base de cliente: la
         # sesión del registro queda libre y no depende de cuánto tarde la

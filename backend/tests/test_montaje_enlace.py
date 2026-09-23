@@ -140,7 +140,13 @@ def test_el_token_no_abre_ningun_otro_endpoint(client, admin):
     # `/api/auth/clientes` es la lista del selector de la pantalla de ingreso:
     # hay que mostrarla ANTES de que nadie se identifique, así que no puede
     # pedir sesión. Devuelve sólo código y nombre de cada supermercado.
-    publicas = {"/api/health", "/api/auth/clientes"}
+    #
+    # `/api/auth/invitacion/{token}` (2026-09-23) es lo que la pantalla de
+    # ingreso muestra del enlace del correo ANTES de entrar: el supermercado,
+    # el rol, el estado y el correo invitado ENMASCARADO. Pide el token de la
+    # invitación (256 bits) en vez de sesión, y cada token inexistente cuenta
+    # en el freno de `/oauth` (`test_invitacion_enlace.py`).
+    publicas = {"/api/health", "/api/auth/clientes", "/api/auth/invitacion/{token}"}
 
     # Se enumera por el esquema OpenAPI y no por `app.routes`: desde FastAPI
     # 0.141 / Starlette 1.x `include_router` deja en `app.routes` un

@@ -402,7 +402,11 @@ for (const p of CSS_APP) {
      primero — pero sólo si el modal marca su raíz, y por eso se cuenta la
      marca y no el botón. */
 const MULTIPASO = {
-  "src/pages/Login.tsx": 4,  // elegir cliente · crear cuenta · entrar con clave · entrar con correo
+  // Una sola cadena de ternarios, así que se ve uno por vez (2026-09-23: se
+  // sumaron «sin acceso» y «el enlace no lleva a ninguna parte»; «entrar con
+  // clave» se había ido en la Fase 15):
+  // entrar con correo · elegir supermercado · sin acceso · el enlace no lleva · fundar
+  "src/pages/Login.tsx": 5,
 };
 
 prueba("existe una clase de botón principal y es la única que pinta con --signal", () => {

@@ -920,11 +920,16 @@ def test_l13_la_landing_no_agrego_superficie_publica_en_la_api(client):
     de supermercados del selector de ingreso, que es pública por diseño).
     Un ``/api/landing/demo`` para alimentar el plano —o cualquier otro
     endpoint público nuevo— hace fallar esta prueba.
+
+    La tercera puerta sin sesión, ``/api/auth/invitacion/{token}``
+    (2026-09-23), no contesta 200 acá porque el barrido no conoce ningún token
+    de invitación: pide uno de 256 bits, y con uno inventado da 404. Va en la
+    lista igual, para que sea una decisión escrita y no un hueco del barrido.
     """
     from tests.conftest import rutas_planas
     from app.main import app as fastapi_app
 
-    PUBLICAS = {"/api/health", "/api/auth/clientes"}
+    PUBLICAS = {"/api/health", "/api/auth/clientes", "/api/auth/invitacion/{token}"}
     filtradas: list[str] = []
     for ruta in rutas_planas(fastapi_app):
         if not ruta.path.startswith("/api/") or "GET" not in ruta.methods:

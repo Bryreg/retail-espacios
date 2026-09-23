@@ -351,6 +351,7 @@ def listar_clientes_plataforma(email: str = Depends(require_operador)):
     allá: la línea va después de armar la respuesta, sin nada del contenido
     adentro, con el mes en curso como ``periodo``.
     """
+    from app.clientes import es_el_de_siempre
     from app.models.models import ClienteRow
     from app.models.plataforma import EstadoCliente
     from app.plataforma_metricas import periodo_actual
@@ -362,14 +363,18 @@ def listar_clientes_plataforma(email: str = Depends(require_operador)):
         clientes = []
         for f in filas:
             e = estados.get(f.slug)
+            # `base_principal`: el cliente vive en la base del registro, así
+            # que la consola le ofrece archivar pero nunca borrar (2026-09-23).
             if e is None:
                 clientes.append({
                     "slug": f.slug, "nombre": f.nombre, "activo": f.activo,
+                    "base_principal": es_el_de_siempre(f),
                     "estado": "activo", "motivo": None, "cambiado_en": None, "cambiado_por": None,
                 })
             else:
                 clientes.append({
                     "slug": f.slug, "nombre": f.nombre, "activo": f.activo,
+                    "base_principal": es_el_de_siempre(f),
                     "estado": e.estado, "motivo": e.motivo,
                     "cambiado_en": e.cambiado_en, "cambiado_por": e.cambiado_por,
                 })
@@ -438,6 +443,310 @@ def cambiar_estado_cliente(slug: str, payload: PatchEstadoIn, email: str = Depen
     from app.plataforma_metricas import limpiar_cache_metricas
     limpiar_cache_metricas()
     return resultado
+
+
+# ─── El ciclo de vida de un cliente: renombrar, archivar, borrar ───────────
+#
+# Pedido del dueño de la plataforma (2026-09-23): la consola mostraba cinco
+# clientes y él usa uno. Tres los habían fundado cuentas que no encontraron su
+# invitación (ver `routers/auth.py`, el bloque de `enmascarar_correo`); el que
+# de verdad usa se llamaba «Pepito» porque así lo bautizó quien lo fundó; y el
+# viejo GALERIAS —el de la instalación original— seguía ahí, suspendido.
+#
+# Tres operaciones, de menos a más grave, y cada una deja línea en la bitácora
+# con el slug adelante (`"<slug>:<YYYY-MM>"`), igual que `detalle`: el cliente
+# la ve en su reporte de transparencia (`plataforma_reporte._accesos_del_cliente`).
+#
+# · **Renombrar** cambia sólo el nombre VISIBLE. El slug no se toca: va adentro
+#   de cada token emitido y arma el nombre de la base (`recabra_<slug>`).
+#   Dos clientes activos no pueden llamarse igual (`clientes.nombre_ocupado`):
+#   es la confusión que manda a alguien al supermercado equivocado.
+# · **Archivar** es reversible: `clientes.activo = False`. Nadie entra (los
+#   tokens de ese cliente dan 401 en el pedido siguiente, porque `buscar` ya no
+#   lo ve), deja de aparecer en la pantalla de ingreso y en el análisis de la
+#   consola, y el mantenimiento de fondo lo saltea. Los datos quedan intactos.
+# · **Pasar a la base principal** (`/pasar-al-principal`): los datos de un
+#   cliente reemplazan a los del principal, y el origen queda archivado de
+#   respaldo. Ver `app/services/traspaso.py`.
+# · **Borrar** no tiene vuelta atrás: la base del cliente se elimina y sus
+#   filas del registro también. Sólo un cliente YA ARCHIVADO —el archivo es el
+#   período de gracia contra el clic equivocado—, nunca el de la base por
+#   defecto (que es también la del registro de todos) y sólo escribiendo su
+#   código a mano.
+
+class NombreIn(BaseModel):
+    nombre: str
+
+
+class MotivoIn(BaseModel):
+    motivo: str
+
+
+class BorrarIn(BaseModel):
+    confirmacion: str
+
+
+LARGO_MAXIMO_NOMBRE_CLIENTE = 60
+CLIENTE_DESCONOCIDO = "No hay un cliente con ese código."
+
+
+def _fila_cliente_o_404(reg, slug: str):
+    from app.models.models import ClienteRow
+
+    fila = reg.query(ClienteRow).filter(ClienteRow.slug == (slug or "").strip().lower()).first()
+    if fila is None:
+        raise HTTPException(status_code=404, detail=CLIENTE_DESCONOCIDO)
+    return fila
+
+
+def _motivo_o_422(payload: MotivoIn) -> str:
+    motivo = (payload.motivo or "").strip()
+    if not motivo:
+        raise HTTPException(status_code=422, detail="El motivo es obligatorio.")
+    return motivo
+
+
+def _olvidar_caches_de_consola() -> None:
+    """Lo que la consola ya calculó con la lista vieja de clientes."""
+    from app.plataforma_detalle import limpiar_cache_detalle
+    from app.plataforma_metricas import limpiar_cache_metricas
+
+    limpiar_cache_metricas()
+    limpiar_cache_detalle()
+
+
+def _fila_de_consola(fila) -> dict:
+    return {"slug": fila.slug, "nombre": fila.nombre, "activo": fila.activo}
+
+
+@router.put("/clientes/{slug}/nombre")
+def renombrar_cliente(slug: str, payload: NombreIn, email: str = Depends(require_operador)):
+    from app.clientes import nombre_ocupado
+    from app.plataforma_metricas import periodo_actual
+
+    nombre = " ".join((payload.nombre or "").split())
+    if not nombre:
+        raise HTTPException(status_code=422, detail="El nombre no puede quedar vacío.")
+    if len(nombre) > LARGO_MAXIMO_NOMBRE_CLIENTE:
+        raise HTTPException(
+            status_code=422,
+            detail=f"El nombre puede tener hasta {LARGO_MAXIMO_NOMBRE_CLIENTE} caracteres.",
+        )
+
+    reg = sesion_registro()
+    try:
+        fila = _fila_cliente_o_404(reg, slug)
+        if fila.activo:
+            otro = nombre_ocupado(reg, nombre, excepto=fila.slug)
+            if otro is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Ya hay un cliente activo que se llama así ({otro.slug}). "
+                        "Dos clientes con el mismo nombre se confunden en la pantalla de ingreso: "
+                        "renombrá o archivá el otro primero."
+                    ),
+                )
+        fila.nombre = nombre
+        reg.commit()
+        resultado = _fila_de_consola(fila)
+    finally:
+        reg.close()
+
+    _olvidar_caches_de_consola()
+    _anotar_consulta(email, "renombre", f"{resultado['slug']}:{periodo_actual()}")
+    return resultado
+
+
+@router.post("/clientes/{slug}/archivar")
+def archivar_cliente(slug: str, payload: MotivoIn, email: str = Depends(require_operador)):
+    from app.auth import invalidar_cache_membresia
+    from app.models.identidad import Membresia
+    from app.plataforma_metricas import periodo_actual
+
+    _motivo_o_422(payload)
+    reg = sesion_registro()
+    try:
+        fila = _fila_cliente_o_404(reg, slug)
+        fila.activo = False
+        reg.commit()
+        resultado = _fila_de_consola(fila)
+        miembros = [
+            m.usuario_id
+            for m in reg.query(Membresia).filter(Membresia.cliente_slug == fila.slug).all()
+        ]
+    finally:
+        reg.close()
+
+    for usuario_id in miembros:
+        invalidar_cache_membresia(usuario_id, resultado["slug"])
+    _olvidar_caches_de_consola()
+    # El motivo NO va a la bitácora: la regla de `_anotar_consulta` es que ahí
+    # no viaja texto libre. Se le pide igual a quien archiva, como con el
+    # estado de cuenta: obliga a pensarlo un segundo antes del clic.
+    _anotar_consulta(email, "archivo", f"{resultado['slug']}:{periodo_actual()}")
+    return resultado
+
+
+@router.post("/clientes/{slug}/reactivar")
+def reactivar_cliente(slug: str, payload: MotivoIn, email: str = Depends(require_operador)):
+    from app.clientes import nombre_ocupado
+    from app.plataforma_metricas import periodo_actual
+
+    _motivo_o_422(payload)
+    reg = sesion_registro()
+    try:
+        fila = _fila_cliente_o_404(reg, slug)
+        otro = nombre_ocupado(reg, fila.nombre, excepto=fila.slug)
+        if otro is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Ya hay un cliente activo que se llama «{otro.nombre}» ({otro.slug}). "
+                    "Renombrá uno de los dos antes de reactivar este."
+                ),
+            )
+        fila.activo = True
+        reg.commit()
+        resultado = _fila_de_consola(fila)
+    finally:
+        reg.close()
+
+    _olvidar_caches_de_consola()
+    _anotar_consulta(email, "reactivacion", f"{resultado['slug']}:{periodo_actual()}")
+    return resultado
+
+
+@router.post("/clientes/{slug}/borrar")
+def borrar_cliente(slug: str, payload: BorrarIn, email: str = Depends(require_operador)):
+    """Borra el cliente para siempre: su base y sus filas del registro.
+
+    **Qué se va**: la base `recabra_<slug>`, la fila de `clientes`, las
+    membresías y las invitaciones de ese slug, su estado de cuenta, sus
+    fundaciones y sus fotos mensuales por cliente. Las cuatro primeras NO son
+    limpieza: un cliente nuevo que alguna vez tome el mismo slug heredaría
+    miembros, invitaciones pendientes y hasta una suspensión ajena.
+
+    **Qué queda**: las cuentas de las personas (pueden estar en otros
+    supermercados), sus consentimientos, las solicitudes de supresión (son
+    constancia legal), la bitácora de la plataforma y la fila CONSOLIDADA de
+    las fotos mensuales — la historia de la plataforma no se reescribe.
+
+    La base se borra ANTES que las filas: si el `DROP` falla no se tocó nada, y
+    si lo que falla es el registro, el cliente sigue archivado y el borrado se
+    puede repetir (`DROP DATABASE IF EXISTS`).
+    """
+    from app.auth import invalidar_cache_membresia
+    from app.clientes import ErrorDeBaja, borrar_base, es_el_de_siempre
+    from app.models.identidad import Invitacion, Membresia
+    from app.models.plataforma import EstadoCliente, Fundacion, SnapshotMetricas
+    from app.plataforma_estado import invalidar_cache_estado
+    from app.plataforma_metricas import periodo_actual
+
+    reg = sesion_registro()
+    try:
+        fila = _fila_cliente_o_404(reg, slug)
+        slug_real, db_name = fila.slug, fila.db_name
+        if es_el_de_siempre(fila):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Este cliente vive en la base principal del sistema, la misma que guarda la lista "
+                    "de todos los clientes y sus usuarios: se puede archivar, pero no borrar."
+                ),
+            )
+        if fila.activo:
+            raise HTTPException(
+                status_code=409,
+                detail="Primero archivalo: un cliente activo no se borra. El archivo se puede deshacer; el borrado no.",
+            )
+        if (payload.confirmacion or "").strip().lower() != slug_real:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Para borrarlo, escribí su código exacto: {slug_real}",
+            )
+    finally:
+        reg.close()
+
+    try:
+        borrar_base(slug_real, db_name)
+    except ErrorDeBaja as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    reg = sesion_registro()
+    try:
+        fila = _fila_cliente_o_404(reg, slug_real)
+        miembros = [
+            m.usuario_id
+            for m in reg.query(Membresia).filter(Membresia.cliente_slug == slug_real).all()
+        ]
+        for modelo, columna in (
+            (Membresia, Membresia.cliente_slug),
+            (Invitacion, Invitacion.cliente_slug),
+            (Fundacion, Fundacion.cliente_slug),
+            (SnapshotMetricas, SnapshotMetricas.cliente_slug),
+            (EstadoCliente, EstadoCliente.slug),
+        ):
+            reg.query(modelo).filter(columna == slug_real).delete(synchronize_session=False)
+        reg.delete(fila)
+        reg.commit()
+    finally:
+        reg.close()
+
+    for usuario_id in miembros:
+        invalidar_cache_membresia(usuario_id, slug_real)
+    invalidar_cache_estado(slug_real)
+    _olvidar_caches_de_consola()
+    _anotar_consulta(email, "borrado", f"{slug_real}:{periodo_actual()}")
+    return {"ok": True, "slug": slug_real}
+
+
+class TraspasoIn(BaseModel):
+    confirmacion: str
+
+
+@router.post("/clientes/{slug}/pasar-al-principal")
+def pasar_al_principal(slug: str, payload: TraspasoIn, email: str = Depends(require_operador)):
+    """Los datos de este cliente reemplazan a los de la base principal
+    (`app/services/traspaso.py`).
+
+    Pedido del dueño de la plataforma (2026-09-23): su supermercado real vivía
+    con el código `pepito` y quería que fuera `galerias` «desde el código», no
+    sólo de nombre. Se confirma escribiendo el código del PRINCIPAL, que es el
+    que pierde lo que tenía; el origen queda archivado, intacto, de respaldo.
+    """
+    from app.clientes import es_el_de_siempre
+    from app.models.models import ClienteRow
+    from app.plataforma_estado import invalidar_cache_estado
+    from app.plataforma_metricas import periodo_actual
+    from app.services.traspaso import ErrorDeTraspaso, traspasar_al_principal
+
+    reg = sesion_registro()
+    try:
+        principal = next((f for f in reg.query(ClienteRow).all() if es_el_de_siempre(f)), None)
+        slug_principal = principal.slug if principal is not None else None
+    finally:
+        reg.close()
+    if slug_principal is None:
+        raise HTTPException(status_code=409, detail="No hay un cliente en la base principal.")
+    if (payload.confirmacion or "").strip().lower() != slug_principal:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Para confirmar, escribí el código del cliente principal: {slug_principal}",
+        )
+
+    try:
+        resumen = traspasar_al_principal(slug)
+    except LookupError:
+        raise HTTPException(status_code=404, detail=CLIENTE_DESCONOCIDO)
+    except ErrorDeTraspaso as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    invalidar_cache_estado(resumen["principal"])
+    invalidar_cache_estado(resumen["origen"])
+    _olvidar_caches_de_consola()
+    _anotar_consulta(email, "traspaso", f"{resumen['principal']}:{periodo_actual()}")
+    return resumen
 
 
 # ─── Reporte de transparencia, para el operador (Fase 7, Parte B) ──────────

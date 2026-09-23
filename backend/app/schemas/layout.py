@@ -58,6 +58,10 @@ class LayoutSettingsOut(BaseModel):
     sedes: list[str] = Field(default=[], max_length=100)
     catalog_labels: dict[str, str] = Field(default={})
     updated_at: datetime | None = None
+    # Cambia cuando los datos de este supermercado se reemplazan enteros
+    # (`services/traspaso.py`). El navegador descarta los planos que guardaba de
+    # otra generación antes de sincronizar. `None` = nunca se reemplazaron.
+    generacion: str | None = None
 
 
 class SeasonWindow(BaseModel):
