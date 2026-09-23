@@ -98,7 +98,7 @@ class BitacoraPlataforma(Base):
     # Código estable, como en `audit_log`: "metricas" | "tendencia" | "adopcion"
     # | "clientes" | "supresiones" | "reporte" | "detalle" | y, sobre un cliente
     # desde la consola (2026-09-23): "renombre" | "archivo" | "reactivacion" |
-    # "borrado".
+    # "borrado" | "traspaso".
     accion = Column(String, nullable=False, default="metricas")
     # El período consultado, "YYYY-MM". Es el QUÉ de la línea: sin él, saber
     # que alguien miró no dice qué miró.

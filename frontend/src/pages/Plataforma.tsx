@@ -457,7 +457,9 @@ export default function Plataforma() {
     return () => {
       vivo = false;
     };
-  }, [operador]);
+    // `recarga`: pasar un cliente a la base principal cambia dos filas a la vez
+    // (y el estado de cuenta de una), así que se vuelve a pedir la lista entera.
+  }, [operador, recarga]);
 
   const supresiones = useSupresiones();
 

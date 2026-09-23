@@ -141,7 +141,7 @@ prueba("«Borrar» sólo se ofrece con el cliente archivado y fuera de la base p
 });
 
 prueba("borrar exige escribir el código exacto antes de habilitar el botón", () => {
-  assert.match(operativo, /const codigoOk = accion !== "borrar" \|\| valor\.toLowerCase\(\) === fila\.slug;/);
+  assert.match(operativo, /accion === "borrar" \? valor\.toLowerCase\(\) === fila\.slug/);
   assert.match(operativo, /disabled=\{busy \|\| !valor \|\| !codigoOk\}/);
 });
 

@@ -593,7 +593,7 @@ def _accesos_del_cliente(reg, slug: str, desde_dt: datetime, hasta_dt: datetime)
       (``periodo="<slug>:<desde>..<hasta>"``).
     * ``detalle`` (Fase 8) -- el detalle de espacios y contratos de ESTE
       cliente (``periodo="<slug>:<YYYY-MM>"``).
-    * ``renombre``, ``archivo``, ``reactivacion``, ``borrado`` (2026-09-23) --
+    * ``renombre``, ``archivo``, ``reactivacion``, ``borrado``, ``traspaso`` (2026-09-23) --
       lo que el operador le HIZO a este cliente desde la consola, con la misma
       forma de ``periodo`` que ``detalle``. El borrado no llega a verse en
       ningún reporte (el cliente ya no existe), pero se declara igual: la
@@ -630,7 +630,7 @@ def _accesos_del_cliente(reg, slug: str, desde_dt: datetime, hasta_dt: datetime)
             alcanza = tiene_supresion
         elif f.accion == "reporte":
             alcanza = periodo.startswith(f"{slug}:")
-        elif f.accion in ("renombre", "archivo", "reactivacion", "borrado"):
+        elif f.accion in ("renombre", "archivo", "reactivacion", "borrado", "traspaso"):
             alcanza = periodo.startswith(f"{slug}:")
         elif f.accion == "detalle":
             # Fase 8: `GET /api/plataforma/clientes/{slug}/detalle` anota

@@ -3,8 +3,10 @@
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
 Última actualización: 2026-09-23 (Invitaciones y ciclo de vida de los clientes: el
 enlace del correo lleva al supermercado que invitó, nadie funda uno por error, y la
-consola renombra, archiva y borra clientes. Ver *Invitaciones: nadie funda un
-supermercado por error* y *El ciclo de vida de un cliente*, después de la Fase 2.
+consola renombra, archiva, borra y **pasa un cliente a la base principal** —así el
+supermercado real, que vivía como `pepito`, queda como `galerias` desde el código—.
+Ver *Invitaciones: nadie funda un supermercado por error*, *El ciclo de vida de un
+cliente* y *Pasar un cliente a la base principal*, después de la Fase 2.
 Antes, el mismo día: el plano se mueve como el Editor 3D y Supervisar es una hoja
 de 2×2 — ver *El plano se mueve como el Editor 3D*).
 
@@ -250,6 +252,14 @@ todos—. Y **borra membresías, invitaciones y estado de cuenta de ese slug**: 
 limpieza, es seguridad — un cliente nuevo que tome el mismo slug heredaría miembros,
 invitaciones pendientes y una suspensión ajena. Ver *El ciclo de vida de un cliente*.
 
+**Toda tabla nueva se clasifica: de negocio o de registro.** `services/traspaso.py`
+tiene las dos listas (`TABLAS_DEL_CLIENTE`, `TABLAS_DEL_REGISTRO`). Pasar un cliente a
+la base principal VACÍA las de negocio de esa base, que es también la del registro:
+una tabla de registro mal clasificada —usuarios, membresías— se borraría con el
+sistema entero adentro. Por eso una tabla sin clasificar hace que el traspaso se
+niegue a correr, y `tests/test_traspaso.py` falla hasta que alguien decide de qué
+lado está.
+
 **Los espejos comparan identidad, no booleanos.** El plano 2D y el editor 3D mantienen
 una copia local del store. Los guards que evitan el eco comparan la *identidad del array*,
 no una bandera: un booleano lo consume la pasada equivocada del ciclo de montaje, y eso
@@ -458,16 +468,69 @@ transparencia.
   instalación original. Con Galerías archivado y otro cliente activo, un enlace
   viejo de montaje se habría resuelto contra la base del otro.
 
+Pruebas: `tests/test_plataforma_ciclo.py`, verificada en reversa.
+
+### Pasar un cliente a la base principal (2026-09-23)
+
+**Por qué.** El dueño de la plataforma no quería que su supermercado se *llamara*
+Galerías: quería que lo *fuera*, «desde el código». Su supermercado real vivía con el
+código `pepito` (base `recabra_pepito`), y `galerias` —el cliente de la base
+principal— tenía los datos de práctica de la instalación original. Cambiarle el slug
+a Pepito no sirve: `galerias` es el cliente de `DATABASE_URL`, y esa base es también
+la del registro de todos; no se puede apuntar a otra. Lo que se mueve son los DATOS.
+
+**Qué hace** (`POST /api/plataforma/clientes/{slug}/pasar-al-principal`,
+`{confirmacion: "<slug del principal>"}`, lógica en `app/services/traspaso.py`):
+
+1. Archiva el origen (su propio commit): nadie escribe en él mientras se copia.
+2. En UNA transacción sobre la base principal: vacía sus tablas de negocio, copia las
+   del origen fila por fila (con sus `id`, archivos incluidos, de a pocas filas las
+   que guardan archivos), corre los contadores de `id` en Postgres, sube las épocas
+   de sesión por encima de las de ambos (ninguna sesión de antes sobrevive, y copiar
+   una época más baja no resucita tokens revocados), marca una **generación** nueva,
+   mueve al slug principal las membresías, invitaciones, estado de cuenta,
+   fundación, fotos mensuales, supresiones y bitácora del origen —borrando antes las
+   del principal viejo, para que una invitación de práctica no lleve a los datos
+   reales— y deja activo al principal. Si algo falla, no cambia nada y el origen
+   vuelve a quedar activo.
+3. El origen queda archivado con su base intacta: es el respaldo. Se borra desde la
+   consola cuando se confirma que todo pasó.
+
+**Sólo se pasa un cliente ACTIVO.** El archivado es el respaldo de un traspaso: pasarlo
+otra vez —un clic de más, semanas después— pisaría todo lo trabajado desde entonces en
+el principal. Para usar el respaldo hay que reactivarlo antes, a propósito; la consola
+ni ofrece el botón en una fila archivada, y el backend contesta 409.
+
+**Del lado del navegador: la generación.** El caché de planos está scoped por slug
+(`clienteCache`), y el slug del principal no cambia: un equipo que guardaba planos
+de la Galerías de práctica los habría mostrado y —si alguna sede nunca había llegado
+al servidor— subido encima de los datos reales. `GET /api/layout/settings` devuelve
+`generacion`, y `syncFromServer` descarta lo guardado de otra generación ANTES de
+reconciliar (`generacionCache`, `planosVacios()` en `store/fixtureStore.ts`).
+Comprobado en el navegador con un control: sin el chequeo, la sede vieja se subía.
+
+**Verificado contra Postgres 16 real**, no sólo SQLite: filas idénticas, archivos,
+un alta nueva después del traspaso sin chocar ids (los contadores), y
+`DROP DATABASE … WITH (FORCE)` cortando una conexión ajena abierta.
+
 **El procedimiento para el caso de arriba** (lo ejecuta el operador desde la
 consola; nadie tiene acceso a la base de producción desde fuera):
 
-1. Archivar **Galerías** (`galerias`). Es la base principal: se archiva, no se borra,
-   y sus datos quedan donde están.
-2. Renombrar **Pepito** a «Galerías». El código sigue siendo `pepito`, y nadie
-   pierde la sesión.
-3. Archivar y después borrar **pepitos**, **Medium** y **SUPERMERCADO POBLADO**.
+1. Asegurarse de que no quede nada sin guardar en Pepito (el indicador de
+   sincronización en verde).
+2. En la fila de **Pepito**, «Pasar a la base principal», escribir `galerias` y
+   confirmar. Los datos de práctica de la Galerías original se pierden; Pepito queda
+   archivado de respaldo; todos vuelven a entrar.
+3. Entrar con la cuenta de siempre (ahora aterriza en `galerias`) y revisar que esté
+   todo.
+4. Borrar **Pepito** (ya archivado), y archivar y borrar **pepitos**, **Medium** y
+   **SUPERMERCADO POBLADO**.
 
-Pruebas: `tests/test_plataforma_ciclo.py`, verificada en reversa.
+**Lo que no se arrastra:** los enlaces de montaje mandados desde Pepito llevan
+`pepito` adentro, firmado, y dejan de abrir: hay que reenviarlos desde Galerías.
+
+Pruebas: `tests/test_traspaso.py` (17 mutaciones detectadas) y
+`frontend/scripts/probar-traspaso.mjs` (7).
 
 **Pendiente, anotado y no resuelto acá:** `crear_cliente` le pone a cada cliente
 nuevo las claves compartidas de `ADMIN_PASSWORD` / `WORKER_PASSWORD` si esas

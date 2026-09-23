@@ -345,6 +345,11 @@ interface FixtureStore {
   /** El slug del cliente al que pertenece el caché de planos persistido.
    *  `null` hasta que una sesión lo reclame. Ver `scopeToCliente`. */
   clienteCache: string | null;
+  /** La generación de los datos de ese cliente que este caché conoce
+   *  (`GET /api/layout/settings`). Cambia cuando los datos se reemplazan
+   *  enteros —el traspaso a la base principal—: mismo código, otros datos.
+   *  Ver `syncFromServer`. */
+  generacionCache: string | null;
 
   // Undo / redo (session-only — not persisted to localStorage)
   past: UnifiedFixture[][];
@@ -445,6 +450,28 @@ export const selectHasPendingWork = (state: FixtureStore): boolean =>
 
 // ─── Store implementation ─────────────────────────────────────────────────────
 
+/** Los planos de este navegador, en blanco: lo que se descarta cuando el caché
+ *  es de OTROS datos — otro cliente (`scopeToCliente`) o el mismo cliente con
+ *  sus datos reemplazados (la generación, en `syncFromServer`). El servidor
+ *  repuebla lo que de verdad corresponde. */
+function planosVacios(): Partial<FixtureStore> {
+  return {
+    fixturesBySede: {},
+    sedes: DEFAULT_SEDES,
+    sede: DEFAULT_SEDES[0],
+    catalogLabels: {},
+    seasonWindows: {},
+    serverRev: {},
+    settingsRev: null,
+    dirty: {},
+    conflicts: {},
+    estadoComercial: {},
+    rechazos: {},
+    past: [],
+    future: [],
+  };
+}
+
 export const useFixtureStore = create<FixtureStore>()(
   persist(
     (set, get) => ({
@@ -468,6 +495,7 @@ export const useFixtureStore = create<FixtureStore>()(
       lastSyncedAt: null,
       dataRole: null,
       clienteCache: null,
+      generacionCache: null,
       past: [],
       future: [],
 
@@ -489,21 +517,10 @@ export const useFixtureStore = create<FixtureStore>()(
         // que en un mundo multi-cliente no pueden sobrevivir a un cambio de
         // inquilino en la misma máquina.
         set({
+          ...planosVacios(),
           clienteCache: cliente,
-          fixturesBySede: {},
-          sedes: DEFAULT_SEDES,
-          sede: DEFAULT_SEDES[0],
-          catalogLabels: {},
+          generacionCache: null,
           referenceRates: null,
-          seasonWindows: {},
-          serverRev: {},
-          settingsRev: null,
-          dirty: {},
-          conflicts: {},
-          estadoComercial: {},
-          rechazos: {},
-          past: [],
-          future: [],
           syncState: "idle",
           syncMessage: null,
         });
@@ -1118,6 +1135,17 @@ export const useFixtureStore = create<FixtureStore>()(
             fetchSeasonWindows().catch(() => null),
           ]);
 
+          // Los datos de este supermercado se reemplazaron enteros (el traspaso a
+          // la base principal, 2026-09-23): lo que este navegador guarda es de
+          // ANTES —del mismo código, pero de otros datos— y no puede ni
+          // mostrarse ni subirse. Se descarta ANTES de reconciliar, así la vuelta
+          // de abajo sólo adopta lo del servidor y no «siembra» ninguna sede
+          // vieja en la base nueva.
+          const generacion = settings?.generacion ?? null;
+          if (generacion && generacion !== get().generacionCache) {
+            set({ ...planosVacios(), generacionCache: generacion });
+          }
+
           const bootstrap: string[] = [];
           let settingsNeedPush = false;
 
@@ -1375,6 +1403,7 @@ export const useFixtureStore = create<FixtureStore>()(
         dirty: state.dirty,
         dataRole: state.dataRole,
         clienteCache: state.clienteCache,
+        generacionCache: state.generacionCache,
         // referenceRates stays out on purpose: it's admin-only money, and this
         // key survives logout — a worker on the same machine must not find it.
       }),
