@@ -65,7 +65,12 @@ from types import SimpleNamespace
 
 import pytest
 
+from conftest import SEPTIEMBRE_DE_2026
+
 PERIODO = "2026-09"          # 2026-09-01 .. 2026-09-30, ambos inclusive
+# Los datos son de ese mes y se piden por la API, que sólo acepta los últimos
+# 24: estas pruebas corren con el reloj ahí (`conftest.SEPTIEMBRE_DE_2026`).
+pytestmark = SEPTIEMBRE_DE_2026
 MES_ANTERIOR = "2026-08"
 MES_SIN_NADA = "2026-11"
 

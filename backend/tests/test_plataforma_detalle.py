@@ -27,6 +27,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from conftest import SEPTIEMBRE_DE_2026
+
 # ─── Datos sembrados ─────────────────────────────────────────────────────────
 #
 # Cliente `detcli`, período 2026-09 (2026-09-01 .. 2026-09-30):
@@ -49,6 +51,9 @@ import pytest
 #   Ingreso del período = 3.600.000. Alpina 2 de 3 contratos = 66,7 %.
 
 PERIODO = "2026-09"
+# Los datos son de ese mes y se piden por la API, que sólo acepta los últimos
+# 24: estas pruebas corren con el reloj ahí (`conftest.SEPTIEMBRE_DE_2026`).
+pytestmark = SEPTIEMBRE_DE_2026
 
 # Un proveedor con el contacto metido adentro del nombre: es texto libre que
 # teclea el supermercado y es el único string de negocio que sale al JSON.

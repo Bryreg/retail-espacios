@@ -66,9 +66,12 @@ from tests.test_metricas_ataques import (
     _sembrar_negocio,
     _textos,
 )
-from conftest import CLAVE_ADMIN
+from conftest import CLAVE_ADMIN, SEPTIEMBRE_DE_2026
 
 PERIODO = "2026-09"
+# Los datos son de ese mes y se piden por la API, que sólo acepta los últimos
+# 24: estas pruebas corren con el reloj ahí (`conftest.SEPTIEMBRE_DE_2026`).
+pytestmark = SEPTIEMBRE_DE_2026
 NO_OPERADOR = "Solo para operadores de la plataforma."
 
 CORREO_OPERADOR = "op@recabra.example"

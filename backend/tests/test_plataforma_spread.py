@@ -17,8 +17,12 @@ from tests.test_plataforma_metricas import (
     _pedir,
     _sembrar,
 )
+from conftest import SEPTIEMBRE_DE_2026
 
 PERIODO = "2026-09"
+# Los datos son de ese mes y se piden por la API, que sólo acepta los últimos
+# 24: estas pruebas corren con el reloj ahí (`conftest.SEPTIEMBRE_DE_2026`).
+pytestmark = SEPTIEMBRE_DE_2026
 
 
 def _tarifas(slug, rates: dict):

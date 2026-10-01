@@ -55,12 +55,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from conftest import CLAVE_ADMIN
+from conftest import CLAVE_ADMIN, SEPTIEMBRE_DE_2026
 
 NO_OPERADOR = "Solo para operadores de la plataforma."
 ERROR_FIJO = "No se pudo leer la base de este cliente."
 
 PERIODO = "2026-09"
+# Los datos son de ese mes y se piden por la API, que sólo acepta los últimos
+# 24: estas pruebas corren con el reloj ahí (`conftest.SEPTIEMBRE_DE_2026`).
+pytestmark = SEPTIEMBRE_DE_2026
 
 
 # ════════════════════════════════════════════════════════════════════════════
