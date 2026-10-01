@@ -1639,6 +1639,36 @@ todos de tests, ninguno del producto — y ninguno reproducible local:
 **Regla:** antes de mergear, mirar los checks del PR en GitHub, no solo la
 suite local; y después del merge, el run de `main`.
 
+### Pruebas con el mes escrito a mano: rojas desde el 2026-10-01
+
+El 1.º de octubre de 2026 cinco pruebas del backend amanecieron rojas sin que la
+app cambiara: `test_t14`, `test_t18` y `test_t25` (`test_tendencia_ataques.py`),
+`test_m25` (`test_metricas_ataques.py`) y `test_compliance1`
+(`test_auditoria_compliance.py`). Hablaban del **mes en curso** —el último punto
+de la serie de la consola, el mes que cierra el mantenimiento, el que se calcula
+al abrir el panel— pero lo tenían escrito: «2026-09», «coherente con la fecha
+fijada del entorno de test». Ninguna fecha estaba fijada. Con octubre, la serie
+terminó en un mes sin datos, los contratos sembrados (del 1 al 30 de septiembre)
+dejaron de ser del mes en curso y el arranque de la app pasó a cerrar septiembre
+por su cuenta antes de que la prueba contara filas.
+
+Ahora toman el mes de `periodo_actual()` —el reloj de la consola, en UTC— y
+siembran los contratos del primer al último día de ese mes. En
+`test_tendencia_ataques.py`, además, `_fijar_mes_en_curso` deja el mes quieto
+mientras dura la prueba: leído del reloj y nada más, una corrida justo en el
+cambio de mes (las 7 p. m. del último día, hora de Colombia) sembraba en uno y
+preguntaba por el otro.
+
+Verificado moviendo el reloj del proceso entero (`time-machine`, sólo en la
+máquina de la sesión: no entra al repo). Las cinco pasan con el reloj el 15 de
+septiembre, el 1.º y el último día de varios meses, el cambio de año, el 29 de
+febrero de 2028 y en 2031. Con el cambio de mes cayendo en 28 instantes
+distintos de la corrida: 0 fallas, contra 6 sin `_fijar_mes_en_curso`.
+
+**Regla:** una prueba que habla del mes en curso lo lee de `periodo_actual()`.
+Un mes escrito a mano es un dato, y la prueba tiene que seguir pasando cuando
+ese mes ya pasó.
+
 ### Pendientes conocidos: clientes y plataforma
 
 - **R-3 (menor)**: el tope de 2 fundaciones es count+insert sin barrera en la

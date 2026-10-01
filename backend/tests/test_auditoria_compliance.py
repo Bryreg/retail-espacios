@@ -173,17 +173,22 @@ def _snapshot_de(cliente_slug: str, periodo: str):
 def test_compliance1_snapshot_metricas_no_deberia_guardar_el_contacto_del_proveedor_sin_sanear(
     client, monkeypatch,
 ):
-    from app.plataforma_metricas import calcular, limpiar_cache_metricas, periodo_actual
+    from app.plataforma_metricas import (
+        calcular, limpiar_cache_metricas, periodo_actual, rango_del_periodo,
+    )
 
     ids = Identidades(client)
     _fundar(ids, "uid-acme", "duena@acme.example", "acme", "Acme")
     # 3 contratos activos: el conteo no importa desde Fase 7 (sin umbral) para
     # que el proveedor jugoso entre al cálculo; se mantiene por continuidad
-    # con el resto del escenario.
+    # con el resto del escenario. Van del primer al último día del mes EN
+    # CURSO: fijos en 2026-09, el 2026-10-01 el cálculo dejó de verlos.
+    periodo = periodo_actual()
+    desde, hasta = (dia.isoformat() for dia in rango_del_periodo(periodo))
     contratos = [
-        ("NAVE-E-01", PROVEEDOR_CON_CONTACTO, "2026-09-01", "2026-09-30", 100_000.0, True),
-        ("NAVE-E-02", PROVEEDOR_CON_CONTACTO, "2026-09-01", "2026-09-30", 100_000.0, True),
-        ("NAVE-E-03", PROVEEDOR_CON_CONTACTO, "2026-09-01", "2026-09-30", 100_000.0, True),
+        ("NAVE-E-01", PROVEEDOR_CON_CONTACTO, desde, hasta, 100_000.0, True),
+        ("NAVE-E-02", PROVEEDOR_CON_CONTACTO, desde, hasta, 100_000.0, True),
+        ("NAVE-E-03", PROVEEDOR_CON_CONTACTO, desde, hasta, 100_000.0, True),
     ]
     _sembrar("acme", {"NAVE": [
         {"code": "E-01", "type": "punta", "sede": "NAVE"},
@@ -192,7 +197,6 @@ def test_compliance1_snapshot_metricas_no_deberia_guardar_el_contacto_del_provee
     ]}, contratos)
     limpiar_cache_metricas()
 
-    periodo = periodo_actual()
     calcular(periodo, origen="vista")  # write-through: deja la fila en snapshot_metricas
 
     fila = _snapshot_de("acme", periodo)

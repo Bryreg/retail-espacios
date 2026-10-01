@@ -1265,6 +1265,7 @@ def test_m25_lo_unico_que_crece_en_el_registro_es_la_bitacora_y_el_snapshot(clie
     from sqlalchemy import inspect, text
 
     from app.database import engine as motor_registro
+    from app.plataforma_metricas import periodo_actual
 
     _ids, cab, _ = _escenario(client, monkeypatch)
 
@@ -1273,9 +1274,14 @@ def test_m25_lo_unico_que_crece_en_el_registro_es_la_bitacora_y_el_snapshot(clie
         with motor_registro.connect() as con:
             return {t: con.execute(text(f'SELECT COUNT(*) FROM "{t}"')).scalar() for t in tablas}
 
+    # El mes EN CURSO, no `PERIODO`: de un mes ya pasado el write-through sólo
+    # completa las filas que falten, y el arranque de la app ya cerró el mes
+    # anterior con las que había. Con `PERIODO` fijo, la cuenta de abajo dependía
+    # del día en que se corriera.
+    periodo = periodo_actual()
     antes = foto()
-    _pedir(client, cab, "2026-09")
-    _pedir(client, cab, "2026-09")   # la segunda sale del caché y anota igual
+    _pedir(client, cab, periodo)
+    _pedir(client, cab, periodo)   # la segunda sale del caché y anota igual
     despues = foto()
 
     crecieron = {t: (antes[t], despues[t]) for t in antes if antes[t] != despues[t]}
