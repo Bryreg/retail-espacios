@@ -30,6 +30,11 @@ def client():
     os.environ["ENV"] = "test"
     os.environ["ADMIN_PASSWORD"] = CLAVE_ADMIN
     os.environ["WORKER_PASSWORD"] = CLAVE_WORKER
+    # El acceso por clave compartida está apagado por defecto desde 2026-10-01
+    # (`routers/auth.py::exigir_login_legado`), pero toda la suite arma sus
+    # sesiones con él sin montar Firebase. `test_login_legado.py` prueba el
+    # apagado sacando esta variable.
+    os.environ["LOGIN_LEGADO"] = "1"
 
     # Imported here, and purged afterwards, so each test builds a fresh engine
     # bound to its own file instead of sharing the first test's database.

@@ -1,7 +1,11 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-09-23 (Invitaciones y ciclo de vida de los clientes: el
+Última actualización: 2026-10-01 (El acceso por clave compartida se apagó: la
+sección «Claves de acceso» de Configuración se fue y `POST /api/auth/login` contesta
+410 salvo `LOGIN_LEGADO=1`. Ver *Identidad*, el punto «Legado»).
+
+Antes, 2026-09-23 (Invitaciones y ciclo de vida de los clientes: el
 enlace del correo lleva al supermercado que invitó, nadie funda uno por error, y la
 consola renombra, archiva, borra y **pasa un cliente a la base principal** —así el
 supermercado real, que vivía como `pepito`, queda como `galerias` desde el código—.
@@ -285,6 +289,22 @@ Conviven DOS formas de entrar, y las dos emiten el mismo JWT:
   toda la suite de pruebas para armar sesión sin montar Firebase, y sacarlo es
   una fase aparte. Lo que ya no existe es la forma de llegar a él desde la
   pantalla.
+  **2026-10-01: apagado también en el servidor.** El dueño preguntó, mirando
+  «Claves de acceso» en Configuración, si eso seguía siendo necesario con el
+  acceso por correo. No lo era, y además estorbaba: esas claves no abrían nada
+  desde la app, sólo este endpoint, y como `crear_cliente` le pone a cada
+  supermercado nuevo las claves de `ADMIN_PASSWORD` / `WORKER_PASSWORD`, y el
+  endpoint aceptaba el `cliente` de quien fuera, quien supiera esa clave entraba
+  como admin a cualquier supermercado fundado por el alta. Ahora
+  `POST /api/auth/login` y `PUT /api/auth/passwords` contestan **410** salvo que
+  `LOGIN_LEGADO=1` (`exigir_login_legado`, como dependencia de la ruta: corta
+  antes de mirar la clave, así que tampoco se cuentan intentos). La suite lo
+  prende en `conftest.py`; en producción es un interruptor de emergencia, por si
+  Firebase no dejara entrar a nadie. La sección de Configuración se quitó: a una
+  persona se le corta el acceso desde Usuarios, de a una. Para armar una sesión
+  sin Firebase en el entorno local hace falta `LOGIN_LEGADO=1` y
+  `ADMIN_PASSWORD`. Pruebas: `tests/test_login_legado.py` (verificada en
+  reversa) y el apartado de `probar-ingreso.mjs`.
   **Consecuencia, y es la que importa operativamente:** Google/correo pasó a ser
   la ÚNICA puerta. Sin las tres `VITE_FIREBASE_*` en el front no se puede
   entrar; antes ese caso caía parado porque quedaba el formulario viejo. La
@@ -532,12 +552,10 @@ consola; nadie tiene acceso a la base de producción desde fuera):
 Pruebas: `tests/test_traspaso.py` (17 mutaciones detectadas) y
 `frontend/scripts/probar-traspaso.mjs` (7).
 
-**Pendiente, anotado y no resuelto acá:** `crear_cliente` le pone a cada cliente
-nuevo las claves compartidas de `ADMIN_PASSWORD` / `WORKER_PASSWORD` si esas
-variables están definidas, y `POST /api/auth/login` (sin pantalla, pero vivo) acepta
-`cliente` de quien sea. Si en Render están definidas, quien sepa esa clave entra como
-admin a cualquier supermercado fundado por el alta. Hay que decidir si el login
-legado se apaga en producción o si los clientes nuevos nacen sin clave compartida.
+**Resuelto el 2026-10-01:** `crear_cliente` le sigue poniendo a cada cliente nuevo
+las claves compartidas de `ADMIN_PASSWORD` / `WORKER_PASSWORD`, pero la única puerta
+que abrían —`POST /api/auth/login`— está apagada salvo `LOGIN_LEGADO=1` (ver
+*Identidad*, punto «Legado»).
 
 ### Compliance: Ley 1581, consentimiento y hardening (Fase 3 comercial)
 

@@ -8,6 +8,7 @@ escribió para una sola tienda y ahora se vende a varias—:
   cada despliegue;
 * cambiar una contraseña cierra las sesiones abiertas de ese rol.
 """
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -214,7 +215,44 @@ def _aviso_sin_motivo(aviso: Optional[AvisoCuenta]) -> Optional[AvisoCuenta]:
     return AvisoCuenta(estado=aviso.estado, motivo=None)
 
 
-@router.post("/login", response_model=LoginOut, response_model_exclude_none=True)
+# ─── El acceso por clave compartida, apagado (2026-10-01) ────────────────────
+#
+# Desde la Fase 15 la pantalla sólo ofrece Google o correo, así que las claves
+# compartidas por rol no abrían nada desde la app. Lo que sí seguían abriendo era
+# este endpoint, vivo para la suite de pruebas: y `crear_cliente` le pone a cada
+# supermercado nuevo las claves de `ADMIN_PASSWORD` / `WORKER_PASSWORD` cuando
+# están definidas, y este endpoint acepta el `cliente` de quien sea. Quien
+# supiera esa clave entraba como administrador a cualquier supermercado fundado
+# por el alta. La pregunta del dueño —«ahora que el acceso es por correo, ¿esto
+# sigue siendo necesario?»— tenía respuesta: no, y además estorbaba.
+#
+# Apagado por defecto, y sin ruta para adivinar: ni se mira la clave ni se
+# cuentan intentos. `LOGIN_LEGADO=1` lo prende —la suite lo prende en
+# `conftest.py`, y en producción queda como interruptor de emergencia, por si
+# algún día Firebase no deja entrar a nadie—. Se lee en cada pedido.
+
+LOGIN_LEGADO_APAGADO = (
+    "El acceso por clave compartida está apagado: se entra con la cuenta de Google o de correo."
+)
+
+
+def login_legado_prendido() -> bool:
+    return (os.getenv("LOGIN_LEGADO") or "").strip().lower() in ("1", "true", "si", "sí", "on")
+
+
+def exigir_login_legado() -> None:
+    """410 cuando el acceso por clave compartida está apagado. Va como
+    dependencia de la ruta, así corta antes de leer el cuerpo o el token."""
+    if not login_legado_prendido():
+        raise HTTPException(status_code=410, detail=LOGIN_LEGADO_APAGADO)
+
+
+@router.post(
+    "/login",
+    response_model=LoginOut,
+    response_model_exclude_none=True,
+    dependencies=[Depends(exigir_login_legado)],
+)
 def login(payload: LoginIn, request: Request):
     """Single-field login: the password decides the role (admin first, then worker).
 
@@ -858,7 +896,9 @@ def aceptar_politica(
         reg.close()
 
 
-@router.put("/passwords", response_model=PasswordsOut)
+# Cambiar las claves compartidas sólo tiene sentido con la puerta que abren:
+# apagada una, se apaga la otra (ver `exigir_login_legado`).
+@router.put("/passwords", response_model=PasswordsOut, dependencies=[Depends(exigir_login_legado)])
 def update_passwords(
     payload: PasswordsUpdate,
     request: Request,
