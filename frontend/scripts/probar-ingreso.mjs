@@ -145,4 +145,17 @@ prueba("borrar exige escribir el código exacto antes de habilitar el botón", (
   assert.match(operativo, /disabled=\{busy \|\| !valor \|\| !codigoOk\}/);
 });
 
+console.log("La configuración, sin claves compartidas");
+
+prueba("ni la pantalla ni la API ofrecen cambiar claves compartidas", () => {
+  // Pregunta del dueño (2026-10-01): «ahora que el acceso es por correo, ¿esto
+  // sigue siendo necesario?». No: se entra sólo con Google o correo, y la puerta
+  // que esas claves abrían en el backend se apagó (`exigir_login_legado`).
+  const dashboard = fuente("pages", "Dashboard.tsx");
+  for (const [nombre, texto] of [["Dashboard.tsx", dashboard], ["api/auth.ts", fuente("api", "auth.ts")]]) {
+    assert.doesNotMatch(texto, /updatePasswords|["'`]\/auth\/passwords|["'`]\/auth\/login|Guardar claves/, `${nombre} volvió a ofrecer las claves compartidas`);
+  }
+  assert.doesNotMatch(dashboard, /Conviven con la clave compartida/);
+});
+
 console.log(`\n${hechas} pruebas`);

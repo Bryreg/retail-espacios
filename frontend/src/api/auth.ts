@@ -1,17 +1,6 @@
 import client from "./client";
 import type { AvisoCuenta, Role } from "../store/authStore";
 
-export interface LoginResponse {
-  token: string;
-  role: Role;
-  cliente: string;
-  cliente_nombre: string;
-  /** Fase 2 clientes: presente cuando el cliente está en `gracia` o
-   *  `solo_lectura` (nunca `suspendido` acá — eso da 402 en el login legado,
-   *  para los dos roles). */
-  aviso_cuenta?: AvisoCuenta;
-}
-
 /** Un supermercado que usa el sistema, para el selector de la pantalla de ingreso. */
 export interface ClienteBreve {
   slug: string;
@@ -22,16 +11,6 @@ export interface ClienteBreve {
  *  nadie se identifique; sólo trae código y nombre. */
 export const getClientes = (): Promise<ClienteBreve[]> =>
   client.get<ClienteBreve[]>("/auth/clientes").then((r) => r.data);
-
-/** Exchange an access password for a session token.
- *  The backend decides the role by which password matched.
- *
- *  El supermercado va explícito y **nunca se deduce de la contraseña**: si dos
- *  clientes eligieran la misma, el sistema entraría al que revise primero. */
-export const login = (password: string, cliente?: string): Promise<LoginResponse> =>
-  client
-    .post<LoginResponse>("/auth/login", cliente ? { password, cliente } : { password })
-    .then((r) => r.data);
 
 // ─── Login con Google/correo (Firebase) ─────────────────────────────────────
 //
@@ -213,22 +192,6 @@ export const invitarUsuario = (payload: InvitarPayload): Promise<{ ok: boolean; 
 export const setMiembroActivo = (usuarioId: number, activo: boolean): Promise<{ ok: boolean }> =>
   client.patch<{ ok: boolean }>(`/usuarios/${usuarioId}`, { activo }).then((r) => r.data);
 
-export interface PasswordsResponse {
-  ok: boolean;
-  /** Sólo viene cuando el admin cambió SU propia clave.
-   *
-   *  Cambiar una clave cierra las sesiones abiertas de ese rol —para eso se
-   *  cambia—, así que el token con el que se guardó acaba de morir. El backend
-   *  devuelve uno nuevo para no echar de la pantalla a quien acaba de guardar. */
-  token: string | null;
-}
-
-/** Admin only — update either access password. */
-export const updatePasswords = (payload: {
-  admin_password?: string;
-  worker_password?: string;
-}): Promise<PasswordsResponse> =>
-  client.put<PasswordsResponse>("/auth/passwords", payload).then((r) => r.data);
 
 export interface NotificationConfig {
   notify_emails: string;   // comma-separated recipient list

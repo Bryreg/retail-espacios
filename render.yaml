@@ -43,6 +43,11 @@ services:
       # Solo aplica a cuentas con sub (el login legado jamás es operador).
       - key: OPERADOR_EMAILS
         sync: false
+      # El acceso por clave compartida (POST /api/auth/login) está APAGADO
+      # desde 2026-10-01: se entra sólo con Google/correo. LOGIN_LEGADO=1 lo
+      # prende, sólo como emergencia si Firebase no deja entrar a nadie — con
+      # él prendido, quien sepa ADMIN_PASSWORD entra como admin a cualquier
+      # supermercado fundado por el alta. No se declara acá a propósito.
       # Correo. DOS caminos, y en el plan gratuito de Render sólo sirve el segundo:
       # el plan gratuito bloquea la salida SMTP y connect() devuelve
       # "[Errno 101] Network is unreachable" antes de intentar autenticarse, así

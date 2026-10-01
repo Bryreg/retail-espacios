@@ -10,7 +10,6 @@ import AvisoCuentaBanner from "../components/AvisoCuentaBanner";
 import { soyOperador } from "../api/plataforma";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
 import {
-  updatePasswords,
   getNotificationConfig,
   updateNotificationConfig,
   sendTestNotification,
@@ -273,10 +272,9 @@ function rolLabelUsuario(rol: Miembro["rol"]): string {
  *  todavía nadie aceptó, para el cliente de la sesión actual — el token
  *  manda, no hay selector de cliente acá.
  *
- *  Convive con "Claves de acceso" de arriba a propósito: mientras dure la
- *  transición de la Fase 1 los dos caminos entran al mismo lugar, y quien
- *  administra necesita ver los dos para saber a quién todavía le falta
- *  pasarse a cuenta propia. */
+ *  Es la ÚNICA forma de dar acceso desde 2026-10-01: «Claves de acceso», que
+ *  convivía con esta sección durante la transición, se fue junto con el
+ *  acceso por clave compartida. */
 function UsuariosSection() {
   // A qué supermercado se invita, dicho en la pantalla (2026-09-23): con dos
   // supermercados en la misma cuenta, invitar desde el equivocado mandaba a
@@ -369,8 +367,7 @@ function UsuariosSection() {
       <p style={{ fontSize: 11.5, color: "var(--ink-2)", margin: "-4px 0 12px", lineHeight: 1.5 }}>
         Cuentas individuales con Google o correo, para {clienteNombre ?? "este supermercado"}. La
         persona tiene que entrar con el correo que escribas acá: si entra con otra cuenta, la
-        invitación no la encuentra. Conviven con la clave compartida de arriba mientras dure la
-        transición.
+        invitación no la encuentra.
       </p>
 
       {/* Invitar */}
@@ -395,8 +392,9 @@ function UsuariosSection() {
             <option value="worker">Trabajador</option>
             <option value="admin">Administrador</option>
             {/* Sólo un dueño hace dueños: el backend lo exige (403) y acá ni
-                se ofrece. La sesión de clave compartida, sin correo, sigue
-                pudiendo — igual que en el backend. */}
+                se ofrece. Una sesión sin correo —sólo existe con el acceso por
+                clave compartida prendido a mano, `LOGIN_LEGADO`— sigue
+                pudiendo, igual que en el backend. */}
             {soyDuenio && <option value="owner">Dueño</option>}
           </select>
         </div>
@@ -787,10 +785,11 @@ function TusDatosSection() {
 }
 
 function SettingsModal({ onClose }: { onClose: () => void }) {
-  // Passwords
-  const [adminPw, setAdminPw] = useState("");
-  const [workerPw, setWorkerPw] = useState("");
-  const [pwMsg, setPwMsg] = useState<Feedback>(null);
+  // «Claves de acceso» vivía acá arriba y se fue (2026-10-01): desde la Fase 15
+  // se entra sólo con Google o correo, y las claves compartidas por rol ya no
+  // abrían nada desde la app — sólo una puerta del backend, que se apagó (ver
+  // `exigir_login_legado` en `backend/app/routers/auth.py`). A una persona se le
+  // corta el acceso desde Usuarios, de a una.
 
   // Notifications
   const [emails, setEmails] = useState("");
@@ -799,10 +798,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
   const [cfgMsg, setCfgMsg] = useState<Feedback>(null);
   const [testMsg, setTestMsg] = useState<Feedback>(null);
 
-  const [busy, setBusy] = useState<"pw" | "cfg" | "test" | null>(null);
-
-  // Para reemplazar el token propio cuando el admin cambia su propia clave.
-  const setAuth = useAuthStore((s) => s.setAuth);
+  const [busy, setBusy] = useState<"cfg" | "test" | null>(null);
 
   // The contact book is keyed by sede, so it needs the same list the rest of
   // the app uses rather than a second one that could drift out of step.
@@ -827,35 +823,6 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-
-  const savePasswords = async () => {
-    const payload: { admin_password?: string; worker_password?: string } = {};
-    if (adminPw.trim()) payload.admin_password = adminPw.trim();
-    if (workerPw.trim()) payload.worker_password = workerPw.trim();
-    if (!payload.admin_password && !payload.worker_password) {
-      setPwMsg({ ok: false, text: "Ingresa al menos una clave nueva." });
-      return;
-    }
-    setBusy("pw");
-    setPwMsg(null);
-    try {
-      const r = await updatePasswords(payload);
-      // Cambiar la clave del admin cierra TODAS las sesiones de admin, incluida
-      // esta. El backend manda un token nuevo justamente para que quien acaba
-      // de guardar no salga expulsado de la pantalla.
-      if (r.token) setAuth(r.token, "admin");
-      const cerradas = payload.admin_password
-        ? "Se cerraron las demás sesiones de administrador."
-        : "Las sesiones de trabajador abiertas se cerraron.";
-      setPwMsg({ ok: true, text: `Claves actualizadas. ${cerradas}` });
-      setAdminPw("");
-      setWorkerPw("");
-    } catch (err) {
-      setPwMsg({ ok: false, text: describeError(err, "No se pudieron actualizar las claves.") });
-    } finally {
-      setBusy(null);
-    }
-  };
 
   const saveConfig = async () => {
     setBusy("cfg");
@@ -937,43 +904,6 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
           >
             <X size={15} />
           </button>
-        </div>
-
-        {/* Passwords */}
-        <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--line-soft)" }}>
-          <div style={sectionLabelStyle}>Claves de acceso</div>
-          <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginBottom: 10, lineHeight: 1.5 }}>
-            Mínimo 8 caracteres. Al cambiar una clave se cierran las sesiones abiertas
-            de ese rol: avisá antes a quien la use.
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div>
-              <label style={fieldLabelStyle}>Clave administrador</label>
-              <input
-                type="password"
-                value={adminPw}
-                onChange={(e) => setAdminPw(e.target.value)}
-                placeholder="Sin cambio"
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <label style={fieldLabelStyle}>Clave trabajador</label>
-              <input
-                type="password"
-                value={workerPw}
-                onChange={(e) => setWorkerPw(e.target.value)}
-                placeholder="Sin cambio"
-                style={inputStyle}
-              />
-            </div>
-          </div>
-          <div style={{ marginTop: 12 }}>
-            <ActionButton onClick={savePasswords} disabled={busy !== null} primary>
-              {busy === "pw" ? "Guardando…" : "Guardar claves"}
-            </ActionButton>
-          </div>
-          <FeedbackNote msg={pwMsg} />
         </div>
 
         <UsuariosSection />
