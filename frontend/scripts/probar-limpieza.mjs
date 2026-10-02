@@ -90,4 +90,26 @@ prueba("el ingreso no pide la lista de supermercados", () => {
   assert.doesNotMatch(fuente("pages", "Login.tsx"), /getClientes\b/);
 });
 
+console.log("El enlace de montaje dice su contrato");
+
+const montaje = fuente("pages", "Montaje.tsx");
+
+prueba("un contrato cancelado (410) lo dice y no ofrece reintentar", () => {
+  assert.match(montaje, /if \(codigo === 410\) \{\s*setEstado\("cancelado"\);/);
+  assert.match(montaje, /if \(estado === "cancelado"\) \{/);
+});
+
+prueba("antes de la víspera dice desde cuándo, en vez de ofrecer el formulario", () => {
+  const aviso = montaje.indexOf("if (espacio.se_confirma_desde) {");
+  const formulario = montaje.indexOf("<FormularioMontaje");
+  assert.ok(aviso > 0 && aviso < formulario, "el aviso tiene que ir antes del formulario");
+  assert.match(montaje, /diaLargo\(espacio\.se_confirma_desde\)/);
+});
+
+prueba("las fechas del contrato no pasan por new Date (en Colombia caerían un día antes)", () => {
+  const dia = montaje.slice(montaje.indexOf("function diaLargo("), montaje.indexOf("function fechaLarga("));
+  assert.ok(dia.length > 0, "falta diaLargo");
+  assert.doesNotMatch(dia, /new Date/);
+});
+
 console.log(`\n${hechas} pruebas`);

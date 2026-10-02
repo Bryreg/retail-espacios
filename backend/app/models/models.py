@@ -265,8 +265,9 @@ class MountConfirmation(Base):
     # Foto en space_files. Opcional: un "no montado" no siempre tiene qué
     # fotografiar.
     file_id = Column(Integer, ForeignKey("space_files.id"), nullable=True)
-    # Rol que reportó. No hay tabla de usuarios; el nombre lo escribe quien
-    # confirma, para que el registro diga algo más que "worker".
+    # Quién reportó. Con cuenta propia lo pone el servidor —el nombre o el
+    # correo de la sesión, desde el 2026-10-02—; por el enlace firmado, que no
+    # tiene cuenta detrás, lo escribe quien confirma.
     reportado_por = Column(String, nullable=True)
     rol = Column(String, nullable=True)
     # La pone el SERVIDOR al recibir, nunca el dispositivo: el EXIF de un

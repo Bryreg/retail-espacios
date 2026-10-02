@@ -574,13 +574,13 @@ def confirmar(
 def _enlace_de_montaje(fila: FilaOut, cliente: Cliente) -> str:
     """El enlace firmado que abre ESE espacio para confirmar su montaje.
 
-    Lleva el cliente adentro del token —sin eso, el enlace de un supermercado
-    abriría la pantalla contra la base de otro— y vive hasta un mes después de
-    que arranca el contrato (`auth.dias_del_enlace_de_montaje`).
+    Lleva adentro del token el cliente —sin eso, el enlace de un supermercado
+    abriría la pantalla contra la base de otro— y el contrato que se monta, y
+    vive hasta un mes después de que arranca (`auth.dias_del_enlace_de_montaje`).
     """
     codigo = fila.codigo or ""
     dias = dias_del_enlace_de_montaje(_fecha(fila.desde))
-    token = create_mount_token(codigo, cliente.slug, days=dias)
+    token = create_mount_token(codigo, cliente.slug, days=dias, contrato=fila.lease_id)
     return f"{app_base_url()}/?montar={quote(codigo)}&t={quote(token)}"
 
 

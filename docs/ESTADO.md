@@ -138,7 +138,9 @@ Estas no son preferencias. Romperlas rompe producción.
 *tablas* nuevas pero **no agrega columnas a tablas existentes**: una columna nueva en
 `spaces` o `layout_snapshots` simplemente no existiría en la base ya desplegada. Cuando
 hizo falta guardar algo nuevo, se usó la tabla `app_config` (clave/valor) o el propio
-JSON del layout.
+JSON del layout. `test_t22` (`tests/test_tendencia_ataques.py`) lo vigila contra
+`origin/main`: ninguna clase que ya existía gana una línea `Column(` o
+`mapped_column(`; las tablas nuevas, sí.
 
 **Una sola verdad: el plano guarda lo que ES el mueble, la base lo que se le VENDIÓ.**
 Esto REEMPLAZA al modelo dual, que fue el mayor generador de bugs del proyecto — ver
@@ -284,7 +286,8 @@ vencimientos, recordatorios, montajes— pregunta a `app/fechas.py` (`hoy()`,
 UTC, que son instantes y no días, y el mes de la consola de la plataforma
 (`periodo_actual`) sigue en UTC por decisión propia. Las pruebas comparan contra
 `app.fechas.hoy` (importado como `hoy_en_colombia`), nunca contra `date.today()`, y
-`tests/test_hora_colombia.py` corre a las 9 p. m. de Colombia.
+`tests/test_hora_colombia.py` corre a las 9 p. m. de Colombia. Los scripts de
+consola también (`backend/scripts/auditar_desfase.py`).
 
 **`frontend/public/` es público.** Todo lo que está ahí se sirve en la raíz del sitio,
 sin sesión. Ahí estuvieron el plano real de Galerías y 21 recortes hasta el
@@ -3548,8 +3551,9 @@ pregunta — ¿lo montaste? —. Y una contraseña compartida repartida por corr
 sobrevive a la persona que deja de trabajar ahí.
 
 Ahora el correo lleva un **enlace firmado**: un JWT de rol `montaje`, acotado a
-ESE espacio y con vencimiento a 30 días (`MONTAJE_TTL_DAYS`). Se toca y se está
-adentro, sin contraseña, en una pantalla que sólo tiene ese espacio.
+ESE espacio y con vencimiento a 30 días (`MONTAJE_TTL_DAYS`; desde el 2026-10-02,
+contados desde que arranca el contrato, y el enlace dice cuál es — ver más abajo). Se
+toca y se está adentro, sin contraseña, en una pantalla que sólo tiene ese espacio.
 
 ### La regla de la que cuelga todo: cerrado por defecto
 
@@ -3620,7 +3624,9 @@ enlace, ve la pantalla de montaje, vuelve a `/` y sigue siendo admin.
 
 Un enlace inválido o vencido **no dice «iniciá sesión»** — dice que el enlace ya
 no sirve y que pida que se lo reenvíen. Decirle a alguien que inicie sesión es
-mandarlo a buscar una contraseña que ya no necesita tener.
+mandarlo a buscar una contraseña que ya no necesita tener. (Cambió el 2026-10-02:
+ya no hay cómo reenviarlo, y quien tiene cuenta propia sí puede confirmar desde
+«Montajes», así que ahora ofrece las dos salidas — ver más abajo.)
 
 ### 2026-10-02: el enlace volvió al correo, y vive lo que dura el trabajo
 
@@ -3642,13 +3648,44 @@ de armar la exhibición. Vale igual para el correo de un contrato suelto
 «Montajes» —con el botón a `/login`—; si no, pedirle a quien administra el
 supermercado que lo invite con su correo.
 
+**El enlace dice qué contrato se monta.** Como sale al vender y vive hasta un mes
+después del arranque, se abre mientras el espacio todavía es de otro proveedor. Sin
+decir su contrato, la pantalla mostraba el que corre hoy —otro proveedor, otra
+planometría como «así debe quedar»— y un «lo monté» quedaba anotado sobre el código,
+a nombre de ése (lo encontró la revisión del cambio, con una prueba). Ahora el token
+lleva `contrato` (`create_mount_token`, `contrato_del_montaje` en `app/auth.py`) y
+`routers/montaje.py` trabaja sobre ése:
+
+* muestra su proveedor, sus fechas y su planometría;
+* **se confirma desde la víspera del arranque** —el día en que se desarma lo
+  anterior y se arma esto—; antes, `/montaje/reportar` contesta 409 con la fecha, y
+  la pantalla lo dice («Todavía no se monta») en vez de ofrecer el formulario;
+* sólo da por reportado lo confirmado desde esa víspera: el «montado» del proveedor
+  anterior no es el de éste. El reporte se guarda por código —no hay columna para el
+  contrato, y no se agregan columnas—, así que se separa por fecha;
+* si el contrato se canceló, o no es de ese espacio, contesta 410 y la pantalla dice
+  que ya no hay nada que montar.
+
+Los enlaces de antes, sin contrato adentro, siguen como eran: el contrato que manda
+hoy (`contrato_para_montar`).
+
+**Pendiente, y viene de antes:** el tablero de *Montajes* (`MountView`,
+`latestByCode`) toma el último reporte de cada código sin mirar fechas. Cuando un
+espacio pasa de un contrato a otro, el «montado» del anterior saca al nuevo de la
+lista de pendientes. El arreglo es el mismo corte por fecha, del lado del tablero.
+
+El título de los correos también se escapa (`html_shell` en `services/mailer.py`):
+es el asunto, lleva la sede o el código, y los escribe quien administra.
+
 **Con cuenta propia, el reporte dice quién fue.** En la pestaña *Montajes* el
 formulario muestra «Reporta <nombre>» en vez de pedir «Tu nombre», y el servidor
 guarda la cuenta de la sesión, no lo que se tecleara. Por el enlace no hay cuenta
 detrás, y el nombre se sigue pidiendo.
 
 Pruebas: `tests/test_montaje_enlace.py` (el enlace del lote abre ESE espacio de ESE
-supermercado, y vive lo que dura el trabajo) y `tests/test_mounts.py`.
+supermercado, vive lo que dura el trabajo y dice su contrato: 9 mutaciones
+detectadas), `tests/test_mounts.py`, y en `probar-limpieza.mjs` los dos avisos de la
+pantalla.
 
 ### Lo que NO cambió
 

@@ -352,15 +352,27 @@ def dias_del_enlace_de_montaje(inicio) -> int:
 
 
 def create_mount_token(
-    space_code: str, cliente: str | None = None, days: int = MONTAJE_TTL_DAYS
+    space_code: str,
+    cliente: str | None = None,
+    days: int = MONTAJE_TTL_DAYS,
+    contrato: int | None = None,
 ) -> str:
-    """Un token que sólo sirve para montar ESE espacio, y sólo por un tiempo."""
+    """Un token que sólo sirve para montar ESE espacio, y sólo por un tiempo.
+
+    ``contrato`` es el que se monta (2026-10-02). El enlace sale al vender y
+    vive hasta un mes después de que el contrato ARRANCA, así que se puede abrir
+    mientras el espacio todavía es de otro proveedor: sin decir cuál es, la
+    pantalla mostraba el contrato que corre hoy —otro proveedor, otra
+    planometría— y un «lo monté» quedaba anotado a nombre de ese otro.
+    """
     payload = {
         "role": "montaje",
         "code": (space_code or "").strip().upper(),
         "cliente": cliente,
         "exp": datetime.now(timezone.utc) + timedelta(days=days),
     }
+    if contrato is not None:
+        payload["contrato"] = int(contrato)
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
@@ -527,6 +539,18 @@ def decode_token(token: str, db: Session | None = None) -> str | None:
     return role
 
 
+def _payload_de_montaje(token: str) -> dict | None:
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.PyJWTError:
+        return None
+    if payload.get("role") != "montaje":
+        return None
+    if not (payload.get("code") or "").strip():
+        return None
+    return payload
+
+
 def decode_montaje(token: str) -> tuple[str, datetime | None] | None:
     """``(código, vencimiento)`` de un token de montaje, o None si no lo es.
 
@@ -534,18 +558,20 @@ def decode_montaje(token: str) -> tuple[str, datetime | None] | None:
     semanas y la mercaderista tiene que poder ver que se le está por vencir
     ANTES de llegar a la tienda y descubrirlo con el celular en la mano.
     """
-    try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    except jwt.PyJWTError:
+    payload = _payload_de_montaje(token)
+    if payload is None:
         return None
-    if payload.get("role") != "montaje":
-        return None
-    code = (payload.get("code") or "").strip().upper()
-    if not code:
-        return None
+    code = payload["code"].strip().upper()
     exp = payload.get("exp")
     vence = datetime.fromtimestamp(exp, tz=timezone.utc) if isinstance(exp, (int, float)) else None
     return code, vence
+
+
+def contrato_del_montaje(token: str) -> int | None:
+    """El contrato que dice el enlace, o None en los de antes del 2026-10-02."""
+    payload = _payload_de_montaje(token)
+    contrato = payload.get("contrato") if payload else None
+    return contrato if isinstance(contrato, int) and not isinstance(contrato, bool) else None
 
 
 def cliente_del_token(raw: str) -> str | None:
@@ -618,14 +644,22 @@ def require_admin(role: str = Depends(require_auth)) -> str:
 
 
 class Quien:
-    """Quién está pidiendo. ``code`` sólo viene con un token de montaje."""
+    """Quién está pidiendo. ``code`` —y ``contrato``, en los enlaces desde el
+    2026-10-02— sólo vienen con un token de montaje."""
 
-    __slots__ = ("role", "code", "vence")
+    __slots__ = ("role", "code", "vence", "contrato")
 
-    def __init__(self, role: str, code: str | None = None, vence: datetime | None = None):
+    def __init__(
+        self,
+        role: str,
+        code: str | None = None,
+        vence: datetime | None = None,
+        contrato: int | None = None,
+    ):
         self.role = role
         self.code = code
         self.vence = vence
+        self.contrato = contrato
 
     @property
     def es_montaje(self) -> bool:
@@ -667,7 +701,7 @@ def require_montaje(
     montaje = decode_montaje(raw)
     if montaje is not None:
         code, vence = montaje
-        return Quien("montaje", code, vence)
+        return Quien("montaje", code, vence, contrato_del_montaje(raw))
     raise HTTPException(status_code=401, detail="Token inválido o expirado")
 
 

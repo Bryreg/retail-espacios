@@ -498,6 +498,7 @@ def create_lease(
         # un supermercado abriría la pantalla de montaje contra la base de otro.
         token = create_mount_token(
             space.code, cliente.slug, days=dias_del_enlace_de_montaje(lease.start_date),
+            contrato=lease.id,
         )
         link = f"{app_base_url()}/?montar={quote(space.code)}&t={quote(token)}"
         footer = (

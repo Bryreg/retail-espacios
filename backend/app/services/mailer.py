@@ -33,6 +33,7 @@ import time
 import urllib.error
 import urllib.request
 from email.message import EmailMessage
+from html import escape
 
 from sqlalchemy.orm import Session
 
@@ -104,7 +105,13 @@ def format_cop(value: float) -> str:
 
 
 def html_shell(title: str, rows: list[tuple[str, str]], footer: str = "") -> str:
-    """Simple inline-styled HTML email body: a title, a key/value table, a footer."""
+    """Simple inline-styled HTML email body: a title, a key/value table, a footer.
+
+    El título es TEXTO —es el asunto del correo— y se escapa acá (2026-10-02):
+    lleva la sede o el código del espacio, que escribe quien administra, y un
+    nombre de sede con `<` armaba HTML en el correo. Las filas y el pie, en
+    cambio, son HTML (llevan enlaces): quien llama escapa lo que pone adentro.
+    """
     rows_html = "".join(
         "<tr>"
         f'<td style="padding:6px 12px;color:#6b7280;font-size:13px;white-space:nowrap;">{label}</td>'
@@ -118,7 +125,7 @@ def html_shell(title: str, rows: list[tuple[str, str]], footer: str = "") -> str
     return (
         '<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;'
         'padding:24px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">'
-        f'<h2 style="margin:0 0 16px;font-size:18px;color:#111827;">{title}</h2>'
+        f'<h2 style="margin:0 0 16px;font-size:18px;color:#111827;">{escape(title)}</h2>'
         f'<table style="border-collapse:collapse;width:100%;background:#f9fafb;border-radius:6px;">'
         f"{rows_html}</table>"
         f"{footer_html}"

@@ -16,7 +16,8 @@ from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombi
 # `conftest` los purga de `sys.modules` entre pruebas para que cada una arme su
 # propio motor contra su propio archivo. Un import de módulo se resolvería una
 # sola vez, en la carga, y todas las pruebas quedarían hablándole a la base de
-# la primera — que para entonces ya está borrada.
+# la primera — que para entonces ya está borrada. `app.fechas`, arriba, es la
+# excepción: es sólo el reloj de Colombia, sin motor ni variables.
 
 
 @pytest.fixture()

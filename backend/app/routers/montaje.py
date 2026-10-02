@@ -16,7 +16,7 @@ Tres cosas necesita esa pantalla y tres cosas hay acá: qué montar y dónde
 queda, cómo debe quedar armado, y el botón para reportarlo.
 """
 import json
-from datetime import datetime
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
@@ -26,7 +26,8 @@ from sqlalchemy.orm import Session, defer
 
 from app.auth import Quien, require_montaje
 from app.database import get_db
-from app.models.models import LayoutSnapshot, LeaseFile, MountConfirmation, Space, SpaceFile
+from app.fechas import ZONA_DEL_NEGOCIO, hoy
+from app.models.models import LayoutSnapshot, LeaseFile, MountConfirmation, Space, SpaceFile, SpaceLease
 from app.routers.mounts import MountOut, registrar_montaje
 from app.services.contratos import contrato_para_montar
 from app.services.layout_lookup import describe_location
@@ -80,6 +81,10 @@ class EspacioMontaje(BaseModel):
     ultimo: Optional[MountOut] = None
     #: Cuándo se vence el enlace. La pantalla avisa antes de que pase.
     vence: Optional[datetime] = None
+    #: Desde qué día se puede confirmar, cuando todavía no se puede: la víspera
+    #: del arranque del contrato del enlace. Mientras tanto la pantalla lo dice
+    #: en vez de ofrecer el formulario.
+    se_confirma_desde: Optional[str] = None
 
 
 # ─── Resolución ───────────────────────────────────────────────────────────────
@@ -139,11 +144,43 @@ def _sede_de(code: str, db: Session) -> str:
     return ""
 
 
-def _planometria(db: Session, space: Optional[Space]) -> Optional[LeaseFile]:
-    """La planometría del contrato que manda hoy sobre ese espacio."""
+_MESES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+          "agosto", "septiembre", "octubre", "noviembre", "diciembre")
+
+CONTRATO_CANCELADO = "Ese contrato se canceló: ya no hay nada que montar con este enlace."
+
+
+def _contrato(quien: Quien, space: Optional[Space]) -> Optional[SpaceLease]:
+    """El contrato que se monta.
+
+    Con un enlace que dice su contrato (desde el 2026-10-02), ése, aunque
+    todavía no arranque: el enlace sale al vender y vive hasta un mes después
+    del arranque, así que se abre mientras el espacio sigue siendo de otro, y
+    mostrar el que corre hoy era mostrar otro proveedor con otra planometría.
+    Si se canceló, o no es de este espacio, ninguno.
+
+    Sin contrato en el enlace —los de antes, o una sesión—, el que manda hoy.
+    """
     if space is None:
         return None
-    lease = contrato_para_montar(space)
+    if quien.contrato is not None:
+        return next((l for l in space.leases if l.id == quien.contrato and l.is_active), None)
+    return contrato_para_montar(space)
+
+
+def _se_confirma_desde(lease: SpaceLease) -> date:
+    """La víspera del arranque: el día en que se desarma lo anterior y se arma
+    esto. Antes, el espacio puede seguir siendo de otro contrato, y un reporte
+    por código quedaría a nombre de ése."""
+    return lease.start_date - timedelta(days=1)
+
+
+def _fecha_larga(d: date) -> str:
+    return f"{d.day} de {_MESES[d.month - 1]}"
+
+
+def _planometria(db: Session, lease: Optional[SpaceLease]) -> Optional[LeaseFile]:
+    """La planometría del contrato que se monta."""
     if lease is None:
         return None
     return (
@@ -195,18 +232,31 @@ def mi_espacio(
             break
 
     space = _espacio(db, codigo)
-    lease = contrato_para_montar(space) if space else None
-    plano = _planometria(db, space)
+    lease = _contrato(quien, space)
+    if quien.contrato is not None and lease is None:
+        raise HTTPException(status_code=410, detail=CONTRATO_CANCELADO)
+    plano = _planometria(db, lease)
 
-    ultimo = (
+    reportes = (
         db.query(MountConfirmation)
         .filter(
             MountConfirmation.space_code == codigo,
             MountConfirmation.archivado_en.is_(None),
         )
         .order_by(MountConfirmation.confirmado_en.desc(), MountConfirmation.id.desc())
-        .first()
     )
+    se_confirma_desde = None
+    if quien.contrato is not None:
+        # Sólo cuenta lo reportado para ESTE contrato. El reporte se guarda por
+        # código —no hay columna para el contrato—, así que se separa por fecha:
+        # el «montado» del proveedor anterior no es el de éste.
+        desde = _se_confirma_desde(lease)
+        if hoy() < desde:
+            se_confirma_desde = desde.isoformat()
+        inicio = datetime.combine(desde, time.min, tzinfo=ZONA_DEL_NEGOCIO)
+        ultimo = next((r for r in reportes if _utc(r.confirmado_en) >= inicio), None)
+    else:
+        ultimo = reportes.first()
     ultimo_out = None
     if ultimo is not None:
         ultimo_out = MountOut.model_validate(ultimo)
@@ -240,7 +290,13 @@ def mi_espacio(
         planometria_tipo=plano.content_type if plano else None,
         ultimo=ultimo_out,
         vence=quien.vence,
+        se_confirma_desde=se_confirma_desde,
     )
+
+
+def _utc(t: datetime) -> datetime:
+    """SQLite devuelve la hora sin huso; lo guardado es UTC."""
+    return t if t.tzinfo is not None else t.replace(tzinfo=timezone.utc)
 
 
 @router.get("/planometria")
@@ -257,7 +313,10 @@ def planometria(
     cambiar en la barra de direcciones.
     """
     codigo = _codigo(quien, code)
-    row = _planometria(db, _espacio(db, codigo))
+    lease = _contrato(quien, _espacio(db, codigo))
+    if quien.contrato is not None and lease is None:
+        raise HTTPException(status_code=410, detail=CONTRATO_CANCELADO)
+    row = _planometria(db, lease)
     if row is None:
         raise HTTPException(status_code=404, detail="Ese espacio no tiene planometría cargada")
     # `_planometria` difiere el binario para el listado; acá sí hace falta.
@@ -299,6 +358,19 @@ async def reportar(
     codigo = _codigo(quien, space_code)
     if not codigo:
         raise HTTPException(status_code=404, detail="Espacio no encontrado")
+    if quien.contrato is not None:
+        lease = _contrato(quien, _espacio(db, codigo))
+        if lease is None:
+            raise HTTPException(status_code=410, detail=CONTRATO_CANCELADO)
+        desde = _se_confirma_desde(lease)
+        if hoy() < desde:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Todavía no: el contrato arranca el {_fecha_larga(lease.start_date)} "
+                    f"y el montaje se confirma desde el {_fecha_larga(desde)}."
+                ),
+            )
     return await registrar_montaje(
         db,
         space_code=codigo,
