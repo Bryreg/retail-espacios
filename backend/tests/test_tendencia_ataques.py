@@ -656,8 +656,9 @@ def test_t22_ninguna_tabla_existente_gano_columnas(client):
        columnas que tenían en `main` -- se compara `Base.metadata` (con la
        tabla nueva ya importada) contra `git show main:...` re-parseado en un
        subproceso limpio, para no mezclar dos `Base` del mismo proceso.
-    2. La única tabla que aparece en el diff de `backend/app/models/**` contra
-       `main` es `snapshot_metricas` -- ni una columna agregada a otro modelo.
+    2. En el diff de `backend/app/models/**` contra `main`, ninguna tabla que
+       ya existía gana una línea `Column(` -- ni una columna agregada a otro
+       modelo. Las tablas NUEVAS (su línea `class` también es agregada) sí.
     """
     import subprocess
     from app.database import Base
@@ -672,44 +673,34 @@ def test_t22_ninguna_tabla_existente_gano_columnas(client):
 
     raiz = os.path.dirname(os.path.dirname(__file__))
     resultado = subprocess.run(
-        ["git", "diff", "--name-only", "main", "--", "app/models/"],
+        ["git", "diff", "--unified=0", "main", "--", "app/models/"],
         cwd=raiz, capture_output=True, text=True,
     )
     if resultado.returncode != 0:
         pytest.skip("no se pudo diffear contra main (branch no disponible en este checkout)")
-    archivos_tocados = [l for l in resultado.stdout.splitlines() if l.strip()]
-    # Sólo `plataforma.py` puede tener tocado un modelo -- si `models.py`,
-    # `identidad.py` o cualquier otro aparece acá, alguien agregó una columna a
-    # una tabla existente en OTRO archivo y hay que mirarlo a mano.
-    # `consentimiento.py` está en la lista por Fase 7 Parte C: sólo cambia el
-    # VALOR de la constante `VERSION_POLITICA` ("2026-09-v1" -> "2026-09-v2"),
-    # ninguna columna nueva ni tocada -- se verifica en el diff de abajo, que
-    # sólo mira `plataforma.py` en busca de `Column(` agregadas.
-    assert set(archivos_tocados) <= {
-        "backend/app/models/plataforma.py",
-        "backend/app/models/consentimiento.py",
-    }, archivos_tocados
-
-    diff_plataforma = subprocess.run(
-        ["git", "diff", "main", "--", "app/models/plataforma.py"],
-        cwd=raiz, capture_output=True, text=True,
-    ).stdout
-    # Ninguna clase preexistente (`EstadoCliente`, `IntentoAlta`, `Fundacion`,
-    # `BitacoraPlataforma`) puede tener una línea `Column(` agregada: sólo se
-    # tolera un `+from ... import Float, Text` (tipos que la tabla nueva usa) y
-    # la clase `SnapshotMetricas` entera.
-    lineas_agregadas = [l[1:] for l in diff_plataforma.splitlines()
-                        if l.startswith("+") and not l.startswith("+++")]
-    fuera_de_snapshot = []
-    dentro = False
-    for l in lineas_agregadas:
-        if "class SnapshotMetricas" in l:
-            dentro = True
-        if dentro:
+    # Hasta el 2026-10-02 esto se miraba por ARCHIVO: sólo `plataforma.py` y
+    # `consentimiento.py` podían aparecer en el diff, y cualquier cambio en
+    # `models.py` lo hacía saltar aunque no tocara una columna -- ese día saltó
+    # porque la fecha del negocio pasó a ser la de Colombia (`app/fechas.py`).
+    # Lo que la regla protege no es el archivo: es que `create_all` nunca
+    # agrega columnas a una tabla que ya existe. Así que se mira cada línea
+    # agregada, en todos los modelos: una `Column(` sólo vale adentro de una
+    # clase cuya línea `class` también es agregada, que es una tabla nueva.
+    # Sin contexto (`--unified=0`), un tramo que agrega algo adentro de una
+    # clase vieja nunca muestra su `class`: arranca fuera de una clase nueva.
+    columnas_en_tablas_viejas = []
+    en_clase_nueva = False
+    for linea in resultado.stdout.splitlines():
+        if linea.startswith(("diff --git", "@@")):
+            en_clase_nueva = False
             continue
-        if "Column(" in l:
-            fuera_de_snapshot.append(l)
-    assert fuera_de_snapshot == [], fuera_de_snapshot
+        if linea.startswith(("+++", "---")):
+            continue
+        if linea.startswith("+class "):
+            en_clase_nueva = True
+        elif linea.startswith("+") and "Column(" in linea and not en_clase_nueva:
+            columnas_en_tablas_viejas.append(linea[1:].strip())
+    assert columnas_en_tablas_viejas == [], columnas_en_tablas_viejas
 
 
 def test_t23_import_app_main_crea_la_tabla_con_create_all_sin_alembic(client):
