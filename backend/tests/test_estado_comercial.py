@@ -8,9 +8,11 @@ mitad que reemplaza al JSON.
 Lo que se prueba no es que devuelva filas. Es CUÁL contrato manda, qué pasa con
 lo que no tiene fila, y que la plata no se le escape a un mercaderista.
 """
-from datetime import date, timedelta
+from datetime import timedelta
 
-HOY = date.today()
+from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
+
+HOY = hoy_en_colombia()
 
 
 def _mueble(code, sede="NAVE", **extra):

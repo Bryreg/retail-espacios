@@ -1,16 +1,5 @@
 import client from "./client";
-import type { AvisoCuenta, Role } from "../store/authStore";
-
-/** Un supermercado que usa el sistema, para el selector de la pantalla de ingreso. */
-export interface ClienteBreve {
-  slug: string;
-  nombre: string;
-}
-
-/** La lista de supermercados. Pública porque hay que mostrarla ANTES de que
- *  nadie se identifique; sólo trae código y nombre. */
-export const getClientes = (): Promise<ClienteBreve[]> =>
-  client.get<ClienteBreve[]>("/auth/clientes").then((r) => r.data);
+import type { AvisoCuenta, Role, RolCliente } from "../store/authStore";
 
 // ─── Login con Google/correo (Firebase) ─────────────────────────────────────
 //
@@ -22,9 +11,9 @@ export const getClientes = (): Promise<ClienteBreve[]> =>
  *  más de una y hay que preguntar en cuál entra. */
 export interface Membresia {
   cliente: string;
-  /** Nombre visible del supermercado — el mismo que trae `getClientes()`. */
+  /** Nombre visible del supermercado. */
   nombre: string;
-  rol: "owner" | "admin" | "worker";
+  rol: RolCliente;
 }
 
 /** Éxito: una sola membresía activa (o ya se mandó `cliente` y es válida). */
@@ -32,6 +21,11 @@ export interface OauthOk {
   token: string;
   role: Role;
   cliente: string;
+  /** Nombre visible del supermercado y el rol de la persona en él
+   *  (2026-10-02; antes el nombre salía de la lista pública `/auth/clientes`,
+   *  que se fue). Ausentes en la sesión de plataforma. */
+  cliente_nombre?: string;
+  rol_cliente?: RolCliente;
   email: string;
   nombre: string;
   /** Fase 2 clientes: presente en `gracia`/`solo_lectura` para cualquier
@@ -47,8 +41,7 @@ export interface OauthOk {
    *  membresía. Reemplaza, sólo para operadores, la rama que antes ofrecía
    *  "fundá tu supermercado" ante el 403 -- esa rama sigue existiendo tal
    *  cual para cualquier cuenta que NO sea operadora. `cliente` viene como
-   *  `"plataforma"` (no es un supermercado real; no aparece en `getClientes`
-   *  ni tiene tarifas ni layout) y el aterrizaje es directo a `/plataforma`,
+   *  `"plataforma"` (no es un supermercado real; no tiene tarifas ni layout) y el aterrizaje es directo a `/plataforma`,
    *  resuelto en `Login.tsx` antes de guardar la sesión. */
   plataforma?: boolean;
 }
@@ -195,7 +188,7 @@ export const setMiembroActivo = (usuarioId: number, activo: boolean): Promise<{ 
 
 export interface NotificationConfig {
   notify_emails: string;   // comma-separated recipient list
-  reminder_days: string;   // comma-separated day thresholds, e.g. "30,15,7,1"
+  reminder_days: string;   // comma-separated day thresholds, e.g. "30,15,6"
 }
 
 export const getNotificationConfig = (): Promise<NotificationConfig> =>

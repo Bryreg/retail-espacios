@@ -72,13 +72,6 @@ export interface Space {
   upcoming_lease?: Lease | null;
 }
 
-export interface SpaceMapItem {
-  svg_id: string;
-  status: SpaceStatus;
-  name: string;
-  supplier_name: string | null;
-}
-
 export type ZoneType =
   | "gondola"
   | "punta_gondola"

@@ -26,14 +26,18 @@ nadie va a montar.
 
 from collections import defaultdict
 from datetime import date, datetime
+from html import escape
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.auth import require_admin
+from app.auth import create_mount_token, dias_del_enlace_de_montaje, require_admin
+from app.clientes import Cliente, cliente_del_pedido
 from app.database import get_db
+from app.fechas import hoy
 from app.models.models import Space, SpaceLease, SpaceStatus, Supplier
 from app.routers.layout import reference_rates_raw
 from app.services.layout_lookup import (
@@ -474,7 +478,12 @@ def validar(lote: LoteIn, db: Session = Depends(get_db)):
 
 
 @router.post("/confirmar", response_model=ConfirmadoOut, dependencies=[Depends(require_admin)])
-def confirmar(lote: LoteIn, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def confirmar(
+    lote: LoteIn,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    cliente: Cliente = Depends(cliente_del_pedido),
+):
     """Crea los contratos de las filas que pasan. Vuelve a validar antes.
 
     Revalidar no es paranoia: entre la revisión y el botón alguien pudo vender
@@ -544,7 +553,7 @@ def confirmar(lote: LoteIn, background_tasks: BackgroundTasks, db: Session = Dep
         v.lease_id = lease.id
         # Sólo lo que ya arrancó ocupa: firmar en agosto para diciembre no puede
         # esconder cuatro meses vendibles detrás de un estado que no es cierto.
-        if lease.start_date <= date.today():
+        if lease.start_date <= hoy():
             space.status = SpaceStatus.occupied
         creados.append(v)
 
@@ -552,7 +561,7 @@ def confirmar(lote: LoteIn, background_tasks: BackgroundTasks, db: Session = Dep
 
     avisos: Optional[AvisosContrato] = None
     if creados:
-        avisos = _avisar(db, background_tasks, lote.sede, creados)
+        avisos = _avisar(db, background_tasks, lote.sede, creados, cliente)
 
     return ConfirmadoOut(
         creados=len(creados),
@@ -562,10 +571,27 @@ def confirmar(lote: LoteIn, background_tasks: BackgroundTasks, db: Session = Dep
     )
 
 
+def _enlace_de_montaje(fila: FilaOut, cliente: Cliente) -> str:
+    """El enlace firmado que abre ESE espacio para confirmar su montaje.
+
+    Lleva el cliente adentro del token —sin eso, el enlace de un supermercado
+    abriría la pantalla contra la base de otro— y vive hasta un mes después de
+    que arranca el contrato (`auth.dias_del_enlace_de_montaje`).
+    """
+    codigo = fila.codigo or ""
+    dias = dias_del_enlace_de_montaje(_fecha(fila.desde))
+    token = create_mount_token(codigo, cliente.slug, days=dias)
+    return f"{app_base_url()}/?montar={quote(codigo)}&t={quote(token)}"
+
+
 # ─── Los avisos, uno por rol y uno por tanda ──────────────────────────────────
 
 def _avisar(
-    db: Session, background_tasks: BackgroundTasks, sede_lote, creados: list[FilaOut]
+    db: Session,
+    background_tasks: BackgroundTasks,
+    sede_lote,
+    creados: list[FilaOut],
+    cliente: Cliente,
 ) -> AvisosContrato:
     """Un correo por rol para TODA la tanda, no uno por contrato.
 
@@ -593,26 +619,42 @@ def _avisar(
             encolados.comercial.extend(who["comercial"])
             asunto = f"{cuantos} contrato{'s' if cuantos != 1 else ''} nuevo{'s' if cuantos != 1 else ''} — {sede or 'sede'}"
             rows = [
-                (f"{f.codigo} · {f.proveedor}",
+                (f"{escape(f.codigo or '')} · {escape(f.proveedor or '')}",
                  f"{f.desde} → {f.hasta} · {format_cop(float(f.valor or 0))}")
                 for f in filas
             ]
             rows.append(("Total mensual", format_cop(total)))
+            # Antes decía «Cargados desde una planilla.» también para lo vendido
+            # en el mapa, que pasa por el mismo camino (2026-10-02).
             background_tasks.add_task(
                 send_mail_to_bg, who["comercial"], asunto,
-                html_shell(asunto, rows, "Cargados desde una planilla."),
+                html_shell(asunto, rows, f"Contratos de {escape(cliente.nombre)}, recién guardados en RECABRA."),
             )
 
         if who["montaje"] and listo:
             encolados.montaje.extend(who["montaje"])
             asunto = f"{cuantos} espacio{'s' if cuantos != 1 else ''} por montar — {sede or 'sede'}"
+            # Cada espacio con SU enlace firmado (2026-10-02). Entre el 2026-09-02
+            # y esta fecha el correo sólo decía «Abrir RECABRA»: quien monta sin
+            # cuenta propia —la mayoría, gente del proveedor— recibía un aviso
+            # con el que no podía hacer nada.
             rows = [
-                (f"{f.codigo}", f"{f.proveedor}{f' · {f.marca}' if f.marca else ''} · desde el {f.desde}")
+                (escape(f.codigo or ""),
+                 f"{escape(f.proveedor or '')}{f' · {escape(f.marca)}' if f.marca else ''} · "
+                 f"desde el {f.desde}<br>"
+                 f'<a href="{_enlace_de_montaje(f, cliente)}" style="color:#0369A1;font-weight:600;">'
+                 "Ver dónde queda y confirmar</a>")
                 for f in filas
             ]
             pie = (
-                "Cada espacio se confirma desde la pantalla de Montajes, con foto. "
-                f'<a href="{app_base_url()}/" style="color:#0369A1;font-weight:600;">Abrir RECABRA</a>'
+                "Cada enlace abre ese espacio señalado en el plano, y ahí mismo se "
+                "confirma el montaje — sin contraseña. <strong>La foto es "
+                "obligatoria</strong>: es la prueba de que la exhibición quedó armada. "
+                "Quien tenga cuenta en RECABRA también los ve en "
+                f'<a href="{app_base_url()}/" style="color:#0369A1;">Montajes</a>.'
+                '<br><br><span style="color:#94A3B8;font-size:12px;">'
+                "Los enlaces son personales: no los reenvíes. Vencen un mes después de "
+                "que arranca cada contrato.</span>"
             )
             background_tasks.add_task(
                 send_mail_to_bg, who["montaje"], asunto,
@@ -634,14 +676,20 @@ def _avisar(
         encolados.proveedor.append(supplier.email)
         cuantos = len(filas)
         asunto = f"Confirmación de {cuantos} espacio{'s' if cuantos != 1 else ''}"
-        rows = [
-            (f"{f.codigo} — {f.nombre or ''}".strip(" —"),
+        # Con el nombre del supermercado (2026-10-02): el proveedor trabaja con
+        # varios, y «respondé este correo» le escribía a la plataforma, no a la
+        # tienda —el remitente es el de RECABRA para todos los clientes—.
+        rows = [("Supermercado", escape(cliente.nombre))] + [
+            (escape(f"{f.codigo} — {f.nombre or ''}".strip(" —")),
              f"{f.desde} → {f.hasta} · {format_cop(float(f.valor or 0))}")
             for f in filas
         ]
         background_tasks.add_task(
             send_mail_to_bg, [supplier.email], asunto,
-            html_shell(asunto, rows, "Cualquier ajuste sobre lo acordado, respondé este correo."),
+            html_shell(
+                asunto, rows,
+                f"Cualquier ajuste sobre lo acordado, comunicate con {escape(cliente.nombre)}.",
+            ),
         )
 
     return encolados

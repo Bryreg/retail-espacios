@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.auth import require_auth
+from app.auth import require_auth, sub_y_email_de_la_sesion
 from app.database import get_db
 from app.models.models import MountConfirmation, Space, SpaceFile
 from app.services.subidas import leer_con_tope
@@ -231,9 +231,16 @@ async def confirm_mount(
     reportado_por: Optional[str] = Form(None),
     foto: Optional[UploadFile] = File(None),
     role: str = Depends(require_auth),
+    identidad: tuple = Depends(sub_y_email_de_la_sesion),
     db: Session = Depends(get_db),
 ):
-    """Reporta el montaje de un espacio. Abierto a worker: es su trabajo."""
+    """Reporta el montaje de un espacio. Abierto a worker: es su trabajo.
+
+    Con sesión de cuenta propia, quién reportó es ESA cuenta, no lo que se
+    tecleó (2026-10-02). El campo «Tu nombre» viene de cuando todos entraban
+    con la misma clave de trabajador y no había otra forma de saberlo; queda
+    sólo para el enlace del correo, que no tiene cuenta detrás.
+    """
     return await registrar_montaje(
         db,
         space_code=space_code,
@@ -242,9 +249,26 @@ async def confirm_mount(
         sede=sede,
         motivo=motivo,
         nota=nota,
-        reportado_por=reportado_por,
+        reportado_por=_quien_es(identidad) or reportado_por,
         foto=foto,
     )
+
+
+def _quien_es(identidad: tuple) -> Optional[str]:
+    """El nombre de la cuenta de la sesión (o su correo), o None sin cuenta."""
+    sub, email = identidad
+    if sub is None:
+        return None
+    from app.clientes import sesion_registro
+    from app.models.identidad import Usuario
+
+    reg = sesion_registro()
+    try:
+        usuario = reg.get(Usuario, sub)
+        nombre = (usuario.nombre or "").strip() if usuario else ""
+    finally:
+        reg.close()
+    return nombre or email
 
 
 @router.get("/files/{file_id}/exists", response_model=dict)

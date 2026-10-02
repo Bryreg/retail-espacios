@@ -16,6 +16,11 @@ Lo que estas pruebas fijan:
 * el origen queda archivado e intacto, de respaldo;
 * todo o nada: una falla a la mitad no cambia nada;
 * una tabla sin clasificar frena el traspaso antes de tocar nada.
+
+Desde el 2026-10-02 no tiene botón ni ruta: sirvió para UNA mudanza, y hecha,
+desde la consola sólo podía pisar por error los datos reales de Galerías. Las
+pruebas llaman al servicio como se lo llamaría hoy, desde una consola del
+servidor; `test_desde_la_web_ya_no_se_puede` fija que la ruta no vuelva.
 """
 import datetime as dt
 from types import SimpleNamespace
@@ -155,10 +160,30 @@ def escenario(client, admin, monkeypatch):
     return SimpleNamespace(cab_op=cab_op, cab_pepito=cab_pepito, cab_legado=admin, motor_pepito=motor_pepito)
 
 
-def _pasar(client, cab, slug="pepito", confirmacion="galerias"):
-    return client.post(
-        f"/api/plataforma/clientes/{slug}/pasar-al-principal", json={"confirmacion": confirmacion}, headers=cab,
-    )
+class _Resultado:
+    """Lo que contestaba la ruta, para que las pruebas se lean igual."""
+
+    def __init__(self, status_code, cuerpo):
+        self.status_code, self._cuerpo = status_code, cuerpo
+
+    def json(self):
+        return self._cuerpo
+
+    @property
+    def text(self):
+        return str(self._cuerpo)
+
+
+def _pasar(client=None, cab=None, slug="pepito"):
+    """El traspaso llamado desde el servidor: ya no tiene ruta."""
+    from app.services.traspaso import ErrorDeTraspaso, traspasar_al_principal
+
+    try:
+        return _Resultado(200, traspasar_al_principal(slug))
+    except LookupError as e:
+        return _Resultado(404, {"detail": str(e)})
+    except ErrorDeTraspaso as e:
+        return _Resultado(409, {"detail": str(e)})
 
 
 # ─── El caso del dueño ────────────────────────────────────────────────────────
@@ -201,7 +226,7 @@ def test_la_duenia_entra_a_galerias_y_ve_lo_suyo(client, escenario):
     assert ajustes["generacion"], "sin generación, un navegador viejo subiría los planos de práctica"
     reporte = client.get("/api/clientes/mi-reporte-plataforma", headers=cab).json()
     acciones = [l["accion"] for l in reporte["accesos"]["lineas"]]
-    assert "traspaso" in acciones and "detalle" in acciones, acciones
+    assert "detalle" in acciones, acciones  # la bitácora del operador acompañó
 
     # La invitación pendiente de Pepito lleva a Galerías.
     r = _oauth(client, "uid-merc", "mercaderista@x.co")
@@ -263,10 +288,6 @@ def test_ninguna_sesion_de_antes_sobrevive(client, escenario):
 def test_rechazos(client, escenario):
     from app.models.models import ClienteRow
 
-    assert _pasar(client, escenario.cab_pepito).status_code == 403
-    assert _pasar(client, escenario.cab_legado).status_code == 403
-    r = _pasar(client, escenario.cab_op, confirmacion="pepito")
-    assert r.status_code == 422 and "galerias" in r.json()["detail"]
     assert _pasar(client, escenario.cab_op, slug="galerias").status_code == 409
     assert _pasar(client, escenario.cab_op, slug="noexiste").status_code == 404
     # Un archivado es el respaldo de un traspaso: pasarlo otra vez pisaría lo
@@ -280,6 +301,20 @@ def test_rechazos(client, escenario):
     assert pepito.activo is True
     assert client.get("/api/spaces/", headers=escenario.cab_pepito).status_code == 200
 
+
+
+def test_desde_la_web_ya_no_se_puede(client, escenario):
+    """La ruta salió el 2026-10-02: ni la operadora la encuentra, y nada se mueve."""
+    from app.models.models import ClienteRow
+
+    r = client.post(
+        "/api/plataforma/clientes/pepito/pasar-al-principal",
+        json={"confirmacion": "galerias"}, headers=escenario.cab_op,
+    )
+    assert r.status_code in (404, 405), r.text
+    (pepito,) = _registro(ClienteRow, ClienteRow.slug == "pepito")
+    assert pepito.activo is True
+    assert client.get("/api/spaces/", headers=escenario.cab_pepito).status_code == 200
 
 # ─── Todo o nada ──────────────────────────────────────────────────────────────
 

@@ -2051,5 +2051,5 @@ export const CLAVE_ESTADOS: Array<{ t: string; c: string; forma?: "rect" | "huec
 export const CLAVE_ADOPCION: Array<{ t: string; c: string; forma?: "rect" | "hueco" }> = [
   { t: "entró en los últimos 30 días", c: "var(--dato)" },
   { t: "tiene cuentas y no entró", c: "var(--dato)", forma: "hueco" },
-  { t: "sin cuentas: no se puede saber", c: "var(--resto)" },
+  { t: "sin cuentas: nadie entra todavía", c: "var(--resto)" },
 ];

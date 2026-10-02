@@ -14,7 +14,8 @@ COPY frontend/ ./
 # el bundle, así que tienen que existir cuando corre `npm run build`. Render
 # pasa sus variables de entorno como build-args al build de Docker, pero
 # Docker solo entrega las que el Dockerfile declara con ARG — sin este bloque,
-# Vite construye sin Firebase y el login degrada al legado en producción.
+# Vite construye sin Firebase y la pantalla de ingreso queda sin puerta: el
+# acceso por clave compartida está apagado desde 2026-10-01.
 ARG VITE_FIREBASE_API_KEY
 ARG VITE_FIREBASE_AUTH_DOMAIN
 ARG VITE_FIREBASE_PROJECT_ID

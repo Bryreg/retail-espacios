@@ -16,6 +16,7 @@ from app.routers import auth as auth_routes
 from app.routers import usuarios as usuarios_routes
 from app.routers import alta as alta_routes
 from app.routers import derechos as derechos_routes
+from app.routers import copia as copia_routes
 from app.routers import plataforma as plataforma_routes
 from app.models.models import Space, SpaceStatus
 from app.services.subidas import LimiteDeCuerpo
@@ -361,6 +362,9 @@ app.include_router(usuarios_routes.router, prefix="/api")
 # contrato de esta fase. Registra `solicitudes_supresion`/`export_attempts` en
 # Base.metadata al importar `app/models/supresion.py`.
 app.include_router(derechos_routes.router,   prefix="/api")
+# La copia de seguridad del dueño (`GET /clientes/mi-copia`). Mismo prefix y
+# mismo `require_owner` que los derechos, también ruta literal.
+app.include_router(copia_routes.router,      prefix="/api")
 # Alta self-service (funda su cliente y nace owner) y panel del operador de
 # plataforma (estado de cuenta por cliente). Fase 2 -- las tablas nuevas ya
 # quedan registradas en Base.metadata porque `app/plataforma_estado.py` las

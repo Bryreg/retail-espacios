@@ -1,8 +1,10 @@
 import enum
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
+
 from sqlalchemy import Column, Integer, String, Float, Boolean, Date, DateTime, ForeignKey, Enum as SAEnum, Text, LargeBinary
 from sqlalchemy.orm import relationship
 from app.database import Base
+from app.fechas import hoy
 
 
 class SpaceStatus(str, enum.Enum):
@@ -50,7 +52,7 @@ class Space(Base):
         actually free. The dates are the truth; the flag only says the lease
         was not cancelled.
         """
-        today = date.today()
+        today = hoy()
         for lease in self.leases:
             if lease.is_active and lease.start_date <= today <= lease.end_date:
                 return lease
@@ -64,7 +66,7 @@ class Space(Base):
         as "earning". Callers that need to know the space is not sellable for
         that period must consult both.
         """
-        today = date.today()
+        today = hoy()
         future = [
             lease for lease in self.leases
             if lease.is_active and lease.start_date > today

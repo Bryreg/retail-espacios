@@ -260,3 +260,52 @@ def test_a_report_without_a_photo_says_so(client, worker):
     fila = client.get("/api/mounts/", headers=worker).json()[0]
     assert fila["file_id"] is None
     assert fila["foto_nombre"] is None
+
+
+def test_borrar_la_foto_de_un_montaje_deja_el_montaje_sin_foto(client, admin, worker):
+    """Un admin puede borrar la foto (el ✕ del plano 2D en edición se la ofrece
+    como a cualquier archivo). Antes de 2026-10-02 eso daba 500 en producción:
+    `mount_confirmations.file_id` apunta al archivo sin regla de borrado, y
+    Postgres —no SQLite— se niega a dejar la referencia colgando. El montaje
+    pasó y la bitácora lo dice: se queda, sin la foto."""
+    r = _confirm(client, worker, "NAVE-GON-01")
+    assert r.status_code == 201, r.text
+    foto = r.json()["file_id"]
+    assert foto
+
+    assert client.delete(f"/api/files/{foto}", headers=admin).status_code == 204
+
+    fila = client.get("/api/mounts/", headers=admin).json()[0]
+    assert fila["estado"] == "montado"
+    assert fila["file_id"] is None, "el montaje sigue apuntando a un archivo borrado"
+    assert fila["foto_nombre"] is None
+
+
+def test_con_cuenta_propia_el_montaje_dice_quien_fue(client, admin):
+    """Desde el 2026-10-02 el reporte con sesión de cuenta propia guarda ESA
+    cuenta, no lo que se tecleó en «Tu nombre» (que es del tiempo de la clave
+    compartida, cuando todos entraban como el mismo «worker»)."""
+    from types import SimpleNamespace
+
+    from app.services.firebase_tokens import get_verificador
+
+    class Verificador:
+        def verificar(self, id_token):
+            return SimpleNamespace(uid="uid-m", email="mario@tienda.co", email_verificado=True,
+                                   proveedor="google.com", nombre="Mario Montajes")
+
+    client.app.dependency_overrides[get_verificador] = lambda: Verificador()
+    r = client.post("/api/usuarios/invitar", json={"email": "mario@tienda.co", "rol": "worker"}, headers=admin)
+    assert r.status_code == 200, r.text
+    r = client.post("/api/auth/oauth", json={"id_token": "x", "acepta_politica": True})
+    assert r.status_code == 200, r.text
+    mario = {"Authorization": f"Bearer {r.json()['token']}"}
+
+    r = _confirm(client, mario, "NAVE-GON-01", reportado_por="Otro Nombre")
+    assert r.status_code == 201, r.text
+    assert r.json()["reportado_por"] == "Mario Montajes"
+
+
+def test_por_el_enlace_sin_cuenta_sigue_valiendo_el_nombre_escrito(client, worker):
+    r = _confirm(client, worker, "NAVE-GON-01", reportado_por="Andrés")
+    assert r.json()["reportado_por"] == "Andrés"

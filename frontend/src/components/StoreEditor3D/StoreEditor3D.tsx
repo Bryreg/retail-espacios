@@ -5201,7 +5201,7 @@ export default function StoreEditor3D() {
           <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">Sede</label>
           <input type="text" value={sede} maxLength={10} onChange={e=>setSede(e.target.value.toUpperCase())}
             className="w-full border-0 border-b-2 border-dark-line-2 bg-transparent rounded-none px-0 font-mono text-sm text-accent-200 focus:border-accent focus:outline-none"
-            placeholder="TERRON" />
+            placeholder="CENTRO" />
         </div>
 
         <div className="border-t border-dark-line" />

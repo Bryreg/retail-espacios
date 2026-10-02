@@ -19,10 +19,11 @@ services:
       - key: JWT_SECRET
         generateValue: true
       # Identidad (Fase 1): login con Google/correo vía Firebase Auth.
-      # Sin FIREBASE_PROJECT_ID el endpoint /api/auth/oauth responde 503 y el
-      # login legado sigue funcionando solo. Las VITE_* son config PÚBLICA del
-      # cliente (no son secretos) pero Vite las hornea EN EL BUILD: tienen que
-      # estar definidas cuando corre el build del Docker, no solo en runtime.
+      # Es la ÚNICA puerta: sin FIREBASE_PROJECT_ID el endpoint /api/auth/oauth
+      # responde 503 y nadie entra (la clave compartida está apagada, ver
+      # LOGIN_LEGADO abajo). Las VITE_* son config PÚBLICA del cliente (no son
+      # secretos) pero Vite las hornea EN EL BUILD: tienen que estar definidas
+      # cuando corre el build del Docker, no solo en runtime.
       # Valores del proyecto Firebase "recabra":
       #   FIREBASE_PROJECT_ID=recabra
       #   VITE_FIREBASE_API_KEY=<apiKey de la consola>

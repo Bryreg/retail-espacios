@@ -53,7 +53,7 @@ class RecipientPreview(BaseModel):
 def get_notification_config(db: Session = Depends(get_db)):
     return NotificationConfigOut(
         notify_emails=get_config(db, "notify_emails", "") or "",
-        reminder_days=get_config(db, "reminder_days", "30,15,7,1") or "",
+        reminder_days=get_config(db, "reminder_days", "30,15,6") or "",
     )
 
 
@@ -69,7 +69,7 @@ def update_notification_config(payload: NotificationConfigIn, db: Session = Depe
         if payload.reminder_days.strip() and not cleaned:
             raise HTTPException(
                 status_code=422,
-                detail="reminder_days debe ser una lista de días separados por comas (ej: 30,15,7,1)",
+                detail="reminder_days debe ser una lista de días separados por comas (ej: 30,15,6)",
             )
         set_config(db, "reminder_days", cleaned)
 

@@ -5,10 +5,10 @@ Every test gets a throwaway SQLite file. The environment has to be set before
 at module level — so nothing from ``app`` may be imported at the top of this
 file.
 
-Las contraseñas ya no vienen escritas en el código: una instalación nueva las
-toma de ADMIN_PASSWORD / WORKER_PASSWORD o se inventa uno al azar. Los tests
-son una instalación nueva en cada prueba, así que las fijan por el entorno —
-que es exactamente el camino que va a usar un supermercado al desplegar.
+Las claves compartidas ya no vienen escritas en el código: con el ingreso por
+clave prendido (`LOGIN_LEGADO`, apagado en producción desde el 2026-10-01) se
+toman de ADMIN_PASSWORD / WORKER_PASSWORD. La suite arma sus sesiones con ese
+ingreso, así que el fixture `client` prende el interruptor y fija las claves.
 """
 
 import os

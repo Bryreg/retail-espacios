@@ -70,7 +70,7 @@ function fecha(iso: string): string {
 
 
 export default function FormularioMontaje({
-  item, vecinos, plano, donde: dondeDelServidor, onEnviar, onCancel, onSaved,
+  item, vecinos, plano, donde: dondeDelServidor, quienReporta, onEnviar, onCancel, onSaved,
 }: {
   item: EspacioAMontar;
   /** Todos los muebles de la sede: el plano necesita el contexto, no solo el destino. */
@@ -85,6 +85,10 @@ export default function FormularioMontaje({
   /** La frase de ubicación del servidor. Sólo se usa si el plano no se puede
    *  dibujar: cuando sí, la calcula MiniMapa con la misma regla. */
   donde?: string | null;
+  /** Quién reporta, cuando hay sesión con cuenta propia: el servidor guarda
+   *  esa cuenta y no hace falta escribir el nombre (2026-10-02). Sin cuenta
+   *  —el enlace del correo— se sigue pidiendo «Tu nombre». */
+  quienReporta?: string | null;
   /** Quién guarda el reporte. El tablero manda el suyo con sesión; el enlace
    *  del correo, con su token. Las reglas de qué es un reporte válido son las
    *  mismas y viven acá; a dónde va, no. */
@@ -184,7 +188,7 @@ export default function FormularioMontaje({
         estado: modo,
         motivo: modo === "no_montado" ? motivo! : undefined,
         nota: nota.trim() || undefined,
-        reportadoPor: quien.trim() || undefined,
+        reportadoPor: quienReporta ? undefined : quien.trim() || undefined,
         foto,
       });
       onSaved(saved);
@@ -455,18 +459,24 @@ export default function FormularioMontaje({
             </button>
           </div>
 
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)", marginBottom: 6 }}>
-              Tu nombre
+          {quienReporta ? (
+            <div style={{ marginBottom: 12, fontSize: 12.5, color: "var(--ink-3)" }}>
+              Reporta <span style={{ fontWeight: 600, color: "var(--ink-2)" }}>{quienReporta}</span>
             </div>
-            <input
-              type="text"
-              value={quien}
-              onChange={(e) => setQuien(e.target.value)}
-              placeholder="Quién reporta"
-              style={campo}
-            />
-          </div>
+          ) : (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)", marginBottom: 6 }}>
+                Tu nombre
+              </div>
+              <input
+                type="text"
+                value={quien}
+                onChange={(e) => setQuien(e.target.value)}
+                placeholder="Quién reporta"
+                style={campo}
+              />
+            </div>
+          )}
 
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)", marginBottom: 6 }}>

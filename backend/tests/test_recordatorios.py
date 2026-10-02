@@ -6,9 +6,11 @@ eso mismo, y que llegue a la libreta de contactos de la sede y no a una lista
 global que hoy está vacía — que es la razón por la que estos correos existían y
 no llegaban.
 """
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
+
+from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
 
 # Los módulos de `app` se importan DENTRO de las fixtures, nunca arriba:
 # `conftest` los purga de `sys.modules` entre pruebas para que cada una arme su
@@ -76,8 +78,8 @@ def _contrato(db, dias, sede="NAVE", code=None):
     db.flush()
     contrato = SpaceLease(
         space_id=espacio.id, supplier_id=prov.id,
-        start_date=date.today() - timedelta(days=60),
-        end_date=date.today() + timedelta(days=dias),
+        start_date=hoy_en_colombia() - timedelta(days=60),
+        end_date=hoy_en_colombia() + timedelta(days=dias),
         monthly_rent=800_000, is_active=True,
     )
     db.add(contrato)

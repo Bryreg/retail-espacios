@@ -46,7 +46,18 @@ ACCIONES = {
     "sede.renumerar": "Plano renumerado",
     "contrato.importado": "Contratos importados del plano",
     "contrato.barrido": "Empezar de cero: contratos y planos limpiados",
+    "copia.descarga": "Copia de seguridad descargada",
 }
+
+# Lo que ya no puede pasar (2026-10-02) y por eso el filtro de la pantalla no lo
+# ofrece. El título se queda en ACCIONES: las filas viejas, de hasta un año, se
+# siguen leyendo con su nombre.
+#
+# · `login.fallo` y `clave.cambio` los escribían el ingreso y el cambio de las
+#   claves compartidas, apagados desde el 2026-10-01 (sólo vuelven con el
+#   interruptor de emergencia `LOGIN_LEGADO`).
+# · `contrato.barrido` lo escribía «Empezar de cero», que salió de producción.
+RETIRADAS = {"login.fallo", "clave.cambio", "contrato.barrido"}
 
 # Un año. Suficiente para cualquier reclamo de un proveedor sobre un contrato
 # de temporada, y corto para que la tabla no crezca sin techo en una base de

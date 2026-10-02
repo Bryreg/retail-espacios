@@ -51,7 +51,6 @@ import type { ResumenContrato } from "../components/Contrato/Contrato";
 import Planometria from "../components/Contrato/Planometria";
 import CancelarContrato from "../components/Contrato/CancelarContrato";
 import CargaMasiva from "../components/CargaMasiva/CargaMasiva";
-import EmpezarDeCero from "../components/EmpezarDeCero/EmpezarDeCero";
 import { inclusiveDays, parseISODate, toISODate, upcomingSeasons } from "../types/seasons";
 /* El parte —la zona superior escrita en prosa— salió de las dos pantallas.
    En Supervisar lo reemplaza la franja de cinco cifras: quien pone el canon no
@@ -3569,9 +3568,6 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  esto, apretar el botón haría desaparecer la sección sin decir qué pasó. */
   const [importados, setImportados] = useState(0);
   const [ratesOpen, setRatesOpen] = useState(false);
-  /** El barrido de contratos. Vive detrás de escribir la cantidad, así que un
-   *  clic sin querer abre el cartel y no se lleva nada. */
-  const [ceroAbierto, setCeroAbierto] = useState(false);
 
   const [selected, setSelected] = useState<UnifiedFixture | null>(null);
   /** Los espacios que van en el contrato que se está armando, en el orden en
@@ -4651,15 +4647,6 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               <SlidersHorizontal size={13} style={{ color: "var(--ink-3)" }} /> Tarifas
             </button>
           )}
-          {isAdmin && (
-            <button
-              onClick={() => setCeroAbierto(true)}
-              title="Borrar todos los contratos y limpiar los planos, para volver a cargar sobre limpio"
-              style={{ ...botonBarra, color: "var(--danger)" }}
-            >
-              <AlertTriangle size={13} style={{ color: "var(--danger)" }} /> Empezar de cero
-            </button>
-          )}
           <button onClick={() => syncFromServer()} title="Traer los cambios del servidor" style={botonBarra}>
             <RefreshCw size={13} style={{ color: "var(--ink-3)" }} /> Actualizar
           </button>
@@ -5141,18 +5128,6 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
         <FileViewerModal file={viewerFile} onClose={() => setViewerFile(null)} />
       )}
       {ratesOpen && isAdmin && <RatesModal onClose={() => setRatesOpen(false)} />}
-      {ceroAbierto && isAdmin && (
-        <EmpezarDeCero
-          onCerrar={() => setCeroAbierto(false)}
-          onListo={() => {
-            // Todo lo que muestre contratos sale de estas dos: el mapa se pinta
-            // del estado comercial, y el informe de importables del servidor.
-            void refrescarComercial();
-            revisarImportacion().then(setImportacion).catch(() => {});
-            setImportados(0);
-          }}
-        />
-      )}
       {cargaAbierta && isAdmin && (
         <CargaMasiva
           sede={sede}

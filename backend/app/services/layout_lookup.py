@@ -40,9 +40,9 @@ from app.models.models import LayoutSnapshot
 #: del editor 3D no tiene contraparte en ninguna tabla, así que tiene una sola
 #: fuente y no puede discrepar con nada. El desfase necesita DOS verdades.
 #:
-#: Vive acá y no en el router porque hay dos que la necesitan —el corte al
-#: guardar y el barrido de `empezar_de_cero`— y un servicio importando de un
-#: router es la capa al revés: da un import circular en la cara.
+#: Vive acá y no en el router porque la necesitan servicios —el corte al
+#: guardar, la importación del plano— y un servicio importando de un router es
+#: la capa al revés: da un import circular en la cara.
 CAMPOS_DE_CONTRATO = (
     "status", "supplierName", "brandCategory", "negotiatedValue",
     "startDate", "endDate", "observation",
@@ -832,13 +832,10 @@ def contratos_que_quedarian_sin_mueble(
     if not perdidos:
         return []
 
-    # Import local: `models` ya está importado arriba para `LayoutSnapshot`,
-    # pero `date` sólo hace falta acá.
-    from datetime import date
-
+    from app.fechas import hoy as hoy_en_colombia
     from app.models.models import Space, SpaceLease
 
-    hoy = date.today()
+    hoy = hoy_en_colombia()
     vivos = (
         db.query(SpaceLease, Space)
         .join(Space, Space.id == SpaceLease.space_id)

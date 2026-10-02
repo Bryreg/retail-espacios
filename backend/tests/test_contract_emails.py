@@ -9,9 +9,11 @@ Se capturan los envíos en vez de mandarlos: lo que importa es el CONTENIDO, y
 un SMTP de mentira agrega una pieza que se puede romper sola.
 """
 import re
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
+
+from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
 
 FIXTURES = [
     {
@@ -80,7 +82,7 @@ def _contratar(client, admin, code="NAVE-PUN-01", monto=1_800_000):
         json={"name": "Nutresa", "email": "ventas@nutresa.co"},
         headers=admin,
     ).json()
-    hoy = date.today()
+    hoy = hoy_en_colombia()
     r = client.post(
         f"/api/spaces/{space_id}/leases",
         json={
@@ -170,7 +172,7 @@ def test_a_space_with_no_fixture_still_sends_the_email(client, admin, enviados):
         headers=admin,
     )
     sup = client.post("/api/suppliers/find-or-create", json={"name": "X"}, headers=admin).json()
-    hoy = date.today()
+    hoy = hoy_en_colombia()
     r2 = client.post(
         f"/api/spaces/{r.json()['id']}/leases",
         json={"supplier_id": sup["id"], "marca": "M",
@@ -217,7 +219,7 @@ def test_the_location_is_measured_edge_to_edge(client, admin, enviados):
         headers=admin,
     )
     sup = client.post("/api/suppliers/find-or-create", json={"name": "N"}, headers=admin).json()
-    hoy = date.today()
+    hoy = hoy_en_colombia()
     r2 = client.post(
         f"/api/spaces/{r.json()['id']}/leases",
         json={"supplier_id": sup["id"], "marca": "M",

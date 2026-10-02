@@ -51,8 +51,8 @@ MENSAJE_SLUG_TOMADO = "Ese código ya está tomado. Probá con otro."
 # siempre, alguien de ESE supermercado que no encontró su invitación: fundar
 # acá lo deja trabajando en una base vacía creyendo que es la de su empresa
 # (2026-09-23 — así nacieron clientes que nadie quería). Se le dice qué hacer
-# en vez de crearlo. El nombre no es un secreto: la lista de clientes activos
-# ya es pública en `GET /api/auth/clientes`.
+# en vez de crearlo. Decir que el nombre existe no es contar un secreto: está
+# en la fachada de la tienda, y sólo lo ve quien ya entró con una cuenta.
 MENSAJE_NOMBRE_TOMADO = (
     "Ya hay un supermercado con ese nombre en RECABRA. Si usted trabaja allí, no lo cree "
     "de nuevo: solicite a su dueño una invitación a su correo. Si es otro supermercado, "
@@ -227,6 +227,7 @@ def alta_self_service(
             "role": "admin",
             "cliente": cliente.slug,
             "cliente_nombre": cliente.nombre,
+            "rol_cliente": "owner",
             "email": email,
             "nombre": usuario.nombre,
         }

@@ -12,6 +12,9 @@
  *
  * Son pruebas de fuente —el store vive de `fetch` y de `localStorage`—, y se
  * verifican en reversa rompiendo el fuente a mano.
+ *
+ * El botón de la consola salió el 2026-10-02 (ver abajo); la generación del
+ * caché se queda: protege de cualquier reemplazo de datos, no sólo de éste.
  */
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
@@ -58,27 +61,20 @@ prueba("la generación se guarda con el caché y vuelve a cero al cambiar de cli
   assert.match(alcance, /\.\.\.planosVacios\(\),\s*clienteCache: cliente,\s*generacionCache: null,/);
 });
 
-console.log("La consola");
+console.log("La consola, sin el traspaso");
 
 const operativo = fuente("components", "plataforma", "cartera-operativo.tsx");
 
-prueba("«Pasar a la base principal» sólo en un cliente activo que no sea el principal", () => {
-  // Ni en la fila del principal, ni en la de un archivado: ése es el respaldo de
-  // un traspaso, y pasarlo otra vez pisaría lo trabajado desde entonces.
-  assert.match(operativo, /\{c\.activo && !c\.base_principal && principal && \(\s*<>\s*<button[\s\S]{0,300}abrirCiclo\(c\.slug, "principal"\)/);
+prueba("«Pasar a la base principal» ya no se ofrece (2026-10-02)", () => {
+  // Sirvió UNA vez —Pepito → Galerías—. Hecha la mudanza, el botón sólo servía
+  // para pisar por error los datos reales de Galerías con los de otro cliente.
+  assert.doesNotMatch(operativo, /Pasar a la base principal<|abrirCiclo\(c\.slug, "principal"\)|accion === "principal"/,
+    "volvió el botón del traspaso a la consola");
+  assert.doesNotMatch(operativo, /pasarAlPrincipal/);
 });
 
-prueba("se confirma con el código del PRINCIPAL, que es el que pierde lo que tenía", () => {
-  assert.match(operativo, /accion === "principal" \? !!principal && valor\.toLowerCase\(\) === principal\.slug/);
-  assert.match(operativo, /disabled=\{busy \|\| !valor \|\| !codigoOk\}/);
-});
-
-prueba("el botón de confirmar va con el color de peligro", () => {
-  assert.match(operativo, /accion === "borrar" \|\| accion === "principal" \? "peligro" : "fuerte"/);
-});
-
-prueba("la API pega al endpoint del traspaso", () => {
-  assert.match(fuente("api", "plataforma.ts"), /`\$\{rutaCliente\(slug\)\}\/pasar-al-principal`/);
+prueba("…ni la API del navegador sabe pegarle a la ruta", () => {
+  assert.doesNotMatch(fuente("api", "plataforma.ts"), /pasar-al-principal|pasarAlPrincipal/);
 });
 
 console.log(`\n${hechas} pruebas`);

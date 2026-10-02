@@ -21,10 +21,11 @@ explican ``conftest.py`` y ``test_identidad.py``: el fixture ``client`` purga
 ``sys.modules`` entre pruebas, y una referencia tomada en la colección de pytest
 apuntaría a un módulo que ya no es el que usa la app fresca.
 """
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from conftest import CLAVE_ADMIN, CLAVE_WORKER
+from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
 
 SOLO_LECTURA = "Cuenta en solo lectura por pago pendiente."
 SUSPENDIDA = "La cuenta de este cliente está suspendida."
@@ -185,8 +186,8 @@ def test_solo_lectura_no_rompe_el_get_que_escribe_por_dentro(client, admin):
         contrato = SpaceLease(
             space_id=espacio.id,
             supplier_id=proveedor.id,
-            start_date=date.today() - timedelta(days=60),
-            end_date=date.today() - timedelta(days=1),
+            start_date=hoy_en_colombia() - timedelta(days=60),
+            end_date=hoy_en_colombia() - timedelta(days=1),
             monthly_rent=100000.0,
             is_active=True,
         )

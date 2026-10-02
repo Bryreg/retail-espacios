@@ -125,9 +125,9 @@ def test_renombrar_pepito_a_galerias_pide_archivar_la_vieja_antes(client, operad
     assert r.status_code == 200, r.text
     assert r.json() == {"slug": "pepito", "nombre": "Galerías", "activo": True}
 
-    publicos = {c["slug"]: c["nombre"] for c in client.get("/api/auth/clientes").json()}
-    assert publicos.get("pepito") == "Galerías"
-    assert "galerias" not in publicos
+    consola = {c["slug"]: c for c in client.get("/api/plataforma/clientes", headers=operador).json()["clientes"]}
+    assert consola["pepito"]["nombre"] == "Galerías"
+    assert consola["galerias"]["activo"] is False
 
     # El dueño de Pepito sigue adentro: el slug —y su token— no cambiaron.
     assert client.get("/api/spaces/", headers=cab_pepito).status_code == 200
@@ -160,7 +160,6 @@ def test_archivar_corta_el_acceso_y_lo_saca_de_la_vista_sin_borrar_nada(client, 
 
     assert client.get("/api/spaces/", headers=cab).status_code == 401
     assert _oauth(client, "uid-m", "medium@x.co").status_code == 403
-    assert "medium" not in {c["slug"] for c in client.get("/api/auth/clientes").json()}
     metricas = client.get("/api/plataforma/metricas", headers=operador).json()
     assert "medium" not in {c["slug"] for c in metricas["clientes"]}
     adopcion = client.get("/api/plataforma/adopcion", headers=operador).json()

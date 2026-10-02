@@ -104,3 +104,42 @@ def test_el_interruptor_se_lee_en_cada_pedido(client, monkeypatch):
     assert client.post("/api/auth/login", json={"password": CLAVE_ADMIN}).status_code == 410
     monkeypatch.setenv("LOGIN_LEGADO", "1")
     assert client.post("/api/auth/login", json={"password": CLAVE_ADMIN}).status_code == 200
+
+
+def _claves_guardadas(slug):
+    from app.auth import CLAVES, get_config
+    from app.clientes import buscar, sesion_de
+
+    db = sesion_de(buscar(slug))
+    try:
+        return {rol: (get_config(db, k_hash) or get_config(db, k_plano))
+                for rol, (k_hash, k_plano) in CLAVES.items()}
+    finally:
+        db.close()
+
+
+def test_apagado_un_supermercado_nuevo_nace_sin_claves_compartidas(client, monkeypatch):
+    """Con el ingreso por clave apagado, una clave compartida no abre nada:
+    no se le crea una a cada supermercado del alta (2026-10-02)."""
+    monkeypatch.delenv("LOGIN_LEGADO", raising=False)
+    _fundar(client, "uid-z", "duenia@zeta.co", "zeta", "Zeta")
+    assert _claves_guardadas("zeta") == {"admin": None, "worker": None}
+
+    # Prender el interruptor después tampoco lo abre con la clave del entorno.
+    monkeypatch.setenv("LOGIN_LEGADO", "1")
+    r = client.post("/api/auth/login", json={"password": CLAVE_ADMIN, "cliente": "zeta"})
+    assert r.status_code == 401
+
+
+def test_nunca_se_inventa_una_clave_al_azar_para_el_registro(client, monkeypatch, caplog):
+    """Antes, sin ADMIN_PASSWORD/WORKER_PASSWORD, se generaba una al azar y se
+    escribía EN CLARO en el registro de Render. Ahora el rol queda sin clave."""
+    import logging
+
+    monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
+    monkeypatch.delenv("WORKER_PASSWORD", raising=False)
+    with caplog.at_level(logging.INFO, logger="recabra.auth"):
+        _fundar(client, "uid-w", "duenia@wuu.co", "wuu", "Wuu")
+    assert _claves_guardadas("wuu") == {"admin": None, "worker": None}
+    assert "queda sin clave" in caplog.text
+    assert "al azar" not in caplog.text

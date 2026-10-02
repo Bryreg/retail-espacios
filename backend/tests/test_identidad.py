@@ -36,6 +36,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from jwt.algorithms import RSAAlgorithm
 
 from conftest import CLAVE_ADMIN, CLAVE_WORKER
+from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
 
 PROJECT_ID = "recabra-test"
 
@@ -385,7 +386,6 @@ def test_desactivar_un_owner_cuando_hay_otro_owner_activo_si_funciona(client, ad
 # ════════════════════════════════════════════════════════════════════════════
 
 def test_worker_por_membresia_no_ve_negotiatedvalue_ni_monthly_rent(client, admin):
-    from datetime import date
 
     _invitar(client, admin, "mercaderista@x.co", rol="worker")
     _usar_verificador(client, {"t": _claims("uid-merc", "mercaderista@x.co")})
@@ -406,7 +406,7 @@ def test_worker_por_membresia_no_ve_negotiatedvalue_ni_monthly_rent(client, admi
         headers=admin,
     ).json()["id"]
     supplier_id = client.post("/api/suppliers/find-or-create", json={"name": "Alpina"}, headers=admin).json()["id"]
-    hoy = date.today()
+    hoy = hoy_en_colombia()
     assert client.post(
         f"/api/spaces/{space_id}/leases",
         json={

@@ -27,10 +27,12 @@ impulsadores.
 import json
 import math
 import re
-from datetime import date, timedelta
+from datetime import timedelta
 from pathlib import Path
 
-HOY = date.today()
+from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
+
+HOY = hoy_en_colombia()
 SEDE = "NAVE"
 
 #: Las tres corridas, y dónde cae cada góndola sobre el eje largo.

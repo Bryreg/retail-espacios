@@ -37,7 +37,7 @@ type EstadoQueCorta = (typeof ESTADOS_QUE_CORTAN)[number];
  *  de cierto: que el corte pasó recién y dónde está el detalle. */
 const MOTIVO_EN_CALIENTE: Record<EstadoQueCorta, string> = {
   suspendido:
-    "El servicio se suspendió mientras esta sesión estaba abierta. Volvé a entrar para ver el motivo.",
+    "El servicio de este supermercado se suspendió mientras esta sesión estaba abierta. El dueño ve el motivo al volver a entrar.",
   solo_lectura: "Pago pendiente: se puede ver y consultar, pero no guardar cambios.",
 };
 

@@ -6,13 +6,15 @@ anterior, y con ella la única prueba de qué se acordó armar. Colgada del
 contrato, cada acuerdo lleva la suya y el histórico queda.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
+
+from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
 
 # Un JPEG mínimo de verdad: SOI + APP0 + EOI.
 JPG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
 PDF = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"
 
-HOY = date.today()
+HOY = hoy_en_colombia()
 
 
 def _espacio(client, admin, code="NAVE-PUN-04"):

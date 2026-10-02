@@ -99,15 +99,21 @@ export default function Montaje() {
 
   if (estado === "cargando") return <Aviso texto="Cargando el espacio…" />;
 
+  // Antes decía «pedí que te reenvíen el aviso»: no hay cómo reenviarlo, y el
+  // enlace ahora vive hasta un mes después de que arranca el contrato. Lo que
+  // sí funciona es entrar con cuenta propia y confirmar desde «Montajes».
   if (estado === "vencido") {
     return (
       <Aviso
         titulo="Este enlace ya no sirve"
         texto={
           "Los enlaces de montaje vencen para que no queden dando vueltas por correo. " +
-          "Pedí que te reenvíen el aviso de este espacio y vas a recibir uno nuevo."
+          "Si tenés cuenta en RECABRA, entrá y confirmalo desde «Montajes»; si no, " +
+          "pedile a quien administra el supermercado que te invite con tu correo."
         }
-      />
+      >
+        <a href="/login" style={{ ...BOTON, textDecoration: "none" }}>Entrar a RECABRA</a>
+      </Aviso>
     );
   }
 

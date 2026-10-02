@@ -11,8 +11,10 @@ Ningún correo, nombre ni id de usuario sale al JSON. Las fechas van SIN hora
 (regla de Fase 4). La clasificación se calcula UNA sola vez, acá, en este
 orden:
 
-1. ``sin_cuentas`` — cero membresías activas (cliente legado con claves
-   compartidas: el login viejo no deja ``ultimo_login``).
+1. ``sin_cuentas`` — cero membresías activas. Desde el 2026-10-01 sólo se
+   entra con cuenta propia, así que un cliente sin cuentas es uno en el que
+   nadie entra todavía (antes era el legado de claves compartidas, que no
+   dejaba ``ultimo_login``).
 2. ``nueva`` — alta hace menos de 30 días.
 3. ``activa`` — algún usuario entró en los últimos 30 días.
 4. ``fantasma`` — tiene contratos activos este período y NINGÚN acceso en 30+

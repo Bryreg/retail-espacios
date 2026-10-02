@@ -128,6 +128,7 @@ export default function App() {
   // eso entra en la MISMA condición que ya frenaba el sync por el enlace de
   // montaje, no una aparte: es el mismo "esta sesión no tiene layout".
   const plataforma = useAuthStore((s) => s.plataforma);
+  const esAdmin = useAuthStore((s) => s.role === "admin");
 
   // Server sync starts only once there is a session, and stops on logout.
   // Doing this at module load (as it used to) meant the very first pull ran
@@ -246,8 +247,9 @@ export default function App() {
             con luz neutra y nada alrededor. No es una pantalla de negocio —
             es donde se le mira la FORMA a una pieza antes de meterla en el
             editor, que son cinco mil líneas donde cambiar geometría es
-            cambiar a ciegas. */}
-        <Route path="/taller" element={<TallerMuebles />} />
+            cambiar a ciegas. Sólo admin (2026-10-02): abría para cualquiera con
+            sesión, el mercaderista incluido, escribiendo la dirección a mano. */}
+        <Route path="/taller" element={esAdmin ? <TallerMuebles /> : <Navigate to="/" replace />} />
         {/* Fase 11: el informe que se le deja al cliente -- la misma historia
             de la sesión (capítulos 1 a 3), sin la cartera y sin "los datos
             detrás", escrita para que un gerente de supermercado la lea solo y

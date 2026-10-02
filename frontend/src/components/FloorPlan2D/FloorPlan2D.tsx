@@ -133,8 +133,7 @@ const CATALOG: {
   { type: "columna",       label: "Columna",           w: 0.30, h: 0.30, emoji: "🏛️", prefix: "COL", category: "Infraestructura" },
 ];
 
-// Status palette, shared with the Dashboard's occupancy map, con el editor 3D y
-// con el mapa de la sede (components/FloorMap/zones.ts).
+// Status palette, shared with the Dashboard's occupancy map y con el editor 3D.
 //
 // Ocupado es ROJO: es la convención de cualquier mapa de disponibilidad —verde
 // se puede vender, rojo no—. Estuvo un tiempo en violeta para no chocar con el

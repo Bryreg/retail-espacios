@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useModalAbiertoSi } from "../tema";
 import {
-  getClientes, loginOauth, esRequiereCliente, esConsentimientoRequerido,
+  loginOauth, esRequiereCliente, esConsentimientoRequerido,
   verInvitacion, esErrorDeInvitacion,
-  type ClienteBreve, type Membresia, type InvitacionVista, type ErrorDeInvitacion,
+  type Membresia, type InvitacionVista, type ErrorDeInvitacion,
 } from "../api/auth";
 import {
   tokenDeInvitacion, clientePreseleccionado, etiquetaDeMembresia, CLAVE_ULTIMO_CLIENTE,
@@ -180,20 +180,6 @@ export default function Login({ enHoja = false, modoInicial }: {
 } = {}) {
   const setAuth = useAuthStore((s) => s.setAuth);
 
-  // La lista de supermercados. Ya no dibuja ningún selector —el acceso por
-  // clave compartida, que era el único que preguntaba a qué supermercado se
-  // entraba, se fue— pero sigue haciendo falta: es de donde sale el nombre
-  // visible del cliente cuando `/oauth` resuelve la membresía y devuelve el
-  // slug pelado. Si no carga, la pantalla entra igual y el nombre se cae al
-  // que traiga la lista de membresías.
-  const [clientes, setClientes] = useState<ClienteBreve[]>([]);
-
-  useEffect(() => {
-    getClientes()
-      .then(setClientes)
-      .catch(() => setClientes([]));
-  }, []);
-
   // ─── El enlace de la invitación ─────────────────────────────────────────
   // Se lee UNA vez, al montar. `vistaInvitacion` es lo que dice el backend
   // del token antes de entrar; `"invalida"` cuando el token no existe (un
@@ -357,7 +343,10 @@ export default function Login({ enHoja = false, modoInicial }: {
       // Éxito == un oauth exitoso: se guarda la sesión y entra como admin.
       // Acá `cliente_nombre` viene directo del backend — no hace falta
       // buscarlo en ninguna lista, como sí pasa en `completarOauth`.
-      setAuth(r.token, r.role, r.cliente, r.cliente_nombre, r.email, r.nombre);
+      setAuth(
+        r.token, r.role, r.cliente, r.cliente_nombre, r.email, r.nombre,
+        undefined, undefined, undefined, r.rol_cliente ?? "owner"
+      );
     } catch (err) {
       // 409/403/422/429: el detail del backend se muestra tal cual.
       setAltaError(describeError(err, "No se pudo crear el supermercado."));
@@ -412,15 +401,14 @@ export default function Login({ enHoja = false, modoInicial }: {
         return;
       }
 
-      // Superset del legado: además de token/role/cliente trae email y
-      // nombre de la persona, que el legado nunca tuvo por no ser individual.
-      const nombreVisibleCliente =
-        clientes.find((c) => c.slug === r.cliente)?.nombre ??
-        membresias?.find((m) => m.cliente === r.cliente)?.nombre;
+      // El nombre del supermercado y el rol de la persona en él vienen en la
+      // respuesta (2026-10-02). La lista de membresías queda de respaldo para
+      // un backend de antes de ese cambio.
+      const membresia = membresias?.find((m) => m.cliente === r.cliente);
       recordarUltimoCliente(r.cliente);
       setAuth(
-        r.token, r.role, r.cliente, nombreVisibleCliente, r.email, r.nombre,
-        r.aviso_cuenta, r.pedir_consentimiento
+        r.token, r.role, r.cliente, r.cliente_nombre ?? membresia?.nombre, r.email, r.nombre,
+        r.aviso_cuenta, r.pedir_consentimiento, undefined, r.rol_cliente ?? membresia?.rol
       );
     } catch (err) {
       manejarErrorOauth(err, idToken, clienteElegido);
@@ -707,7 +695,7 @@ export default function Login({ enHoja = false, modoInicial }: {
                       autoFocus
                       value={altaNombre}
                       onChange={(e) => cambiarAltaNombre(e.target.value)}
-                      placeholder="Supermercado Terrón"
+                      placeholder="Supermercado La Esquina"
                       style={inputStyle}
                     />
                   </div>
@@ -718,7 +706,7 @@ export default function Login({ enHoja = false, modoInicial }: {
                       type="text"
                       value={altaSlug}
                       onChange={(e) => cambiarAltaSlug(e.target.value)}
-                      placeholder="supermercado_terron"
+                      placeholder="la_esquina"
                       style={{ ...inputStyle, fontFamily: "var(--font-mono)" }}
                     />
                     <div style={{ marginTop: 5, fontSize: 10.5, color: "var(--ink-4)", lineHeight: 1.4 }}>

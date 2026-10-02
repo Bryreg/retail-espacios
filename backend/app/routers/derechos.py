@@ -27,7 +27,7 @@ ambos con rutas literales (``/mi-export``, ``/solicitar-supresion``,
 declara antes en ``main.py`` porque así lo pide el contrato de esta fase.
 """
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -38,6 +38,7 @@ from app.clientes import Cliente, cliente_del_pedido, sesion_de, sesion_registro
 # Import a nivel de módulo: registra `solicitudes_supresion` y
 # `export_attempts` en `Base.metadata` ANTES de que corra `create_all()` --
 # mismo patrón que `plataforma_estado.py` con `models/plataforma.py`.
+from app.fechas import hoy
 from app.models.consentimiento import VERSION_POLITICA
 from app.models.supresion import IntentoExport, SolicitudSupresion
 # El default de `?meses=` del reporte de transparencia (Fase 7, Parte B): se
@@ -214,7 +215,7 @@ def mi_export(dueno: tuple = Depends(require_owner)):
         "layouts": layouts,
     }
 
-    nombre_archivo = f"recabra-export-{cliente.slug}-{date.today().isoformat()}.json"
+    nombre_archivo = f"recabra-export-{cliente.slug}-{hoy().isoformat()}.json"
     return Response(
         content=json.dumps(payload, ensure_ascii=False),
         media_type="application/json",

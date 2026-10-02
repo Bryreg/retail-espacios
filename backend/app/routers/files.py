@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, defer
 
 from app.auth import require_admin, require_auth, require_auth_or_query_token
 from app.database import get_db
-from app.models.models import Space, SpaceFace, SpaceFile
+from app.models.models import MountConfirmation, Space, SpaceFace, SpaceFile
 from app.routers.mounts import MOUNT_FILE_PREFIX
 from app.services.bitacora import anotar
 from app.services.subidas import leer_con_tope
@@ -303,5 +303,13 @@ def delete_file(
     # sin que nadie lo pidiera. Fail closed: el espacio queda sin cara hasta
     # que un admin designe de nuevo — mejor eso que una designación fantasma.
     db.query(SpaceFace).filter(SpaceFace.file_id == file_id).delete()
+    # Y si era la foto de un montaje, el montaje queda —pasó, y la bitácora lo
+    # dice— pero sin la foto. `mount_confirmations.file_id` es una clave
+    # foránea SIN regla de borrado: en Postgres, borrar el archivo con el
+    # montaje apuntándole daba 500 (2026-10-02); SQLite no hace cumplir las
+    # claves foráneas y las pruebas no lo veían.
+    db.query(MountConfirmation).filter(MountConfirmation.file_id == file_id).update(
+        {MountConfirmation.file_id: None}, synchronize_session=False,
+    )
     db.delete(row)
     db.commit()

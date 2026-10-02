@@ -121,7 +121,7 @@ export default function SeasonsModal({ onClose }: { onClose: () => void }) {
           <p style={{ margin: 0, fontSize: 12, color: "var(--ink-2)", lineHeight: 1.5 }}>
             La fecha del ancla la calcula el sistema y no se toca: el día del padre es el tercer
             domingo de junio, la semana santa se deriva de la pascua. Lo que sí depende de vos es
-            cuántos días alrededor de esa fecha vendés el espacio. Se aplica a las tres sedes.
+            cuántos días alrededor de esa fecha vendés el espacio. Se aplica a todas las sedes.
           </p>
         </div>
 
