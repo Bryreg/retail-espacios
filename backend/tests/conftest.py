@@ -20,6 +20,64 @@ import pytest
 CLAVE_ADMIN = "admin123"
 CLAVE_WORKER = "galerias"
 
+# Para los archivos cuyos datos son de septiembre de 2026 y que lo piden por la
+# API (`?periodo=2026-09`): corren con el reloj en ese mes. La consola sólo deja
+# consultar los últimos 24 meses (`plataforma_metricas.ventana_de_periodos`), y
+# con el reloj de verdad esas pruebas empezarían a recibir 422 el 2028-10-01.
+# El mediodía del 15 queda lejos de los dos bordes del mes en cualquier huso.
+SEPTIEMBRE_DE_2026 = pytest.mark.reloj("2026-09-15T12:00:00+00:00")
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--reloj", metavar="MOMENTO", default=None,
+        help="corre toda la suite con el reloj del proceso en MOMENTO (ISO 8601, "
+             "p. ej. 2028-10-01T00:00:05+00:00): ninguna prueba puede depender "
+             "del día en que se corre, y así se comprueba antes de que llegue.",
+    )
+
+
+_viaje_de_la_suite = None
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "reloj(momento): la prueba corre con el reloj del proceso en `momento` "
+        "(ISO 8601); desde ahí sigue andando.",
+    )
+    global _viaje_de_la_suite
+    momento = config.getoption("--reloj")
+    if momento:
+        import time_machine
+
+        _viaje_de_la_suite = time_machine.travel(momento, tick=True)
+        _viaje_de_la_suite.start()
+
+
+def pytest_unconfigure(config):
+    if _viaje_de_la_suite is not None:
+        _viaje_de_la_suite.stop()
+
+
+@pytest.fixture(autouse=True)
+def _reloj(request):
+    """Mueve el reloj de TODO el proceso —la app, su hilo de mantenimiento, los
+    JWT— al momento de la marca ``reloj``, si la prueba la tiene.
+
+    Es autouse para que corra antes que ``client``: el arranque de la app cierra
+    el mes anterior, y tiene que cerrar el del mismo calendario que la prueba.
+    ``test_reloj.py`` lo vigila.
+    """
+    marca = request.node.get_closest_marker("reloj")
+    if marca is None:
+        yield
+        return
+    import time_machine
+
+    with time_machine.travel(marca.args[0], tick=True):
+        yield
+
 
 @pytest.fixture()
 def client():

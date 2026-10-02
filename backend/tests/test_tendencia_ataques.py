@@ -49,7 +49,29 @@ from conftest import CLAVE_ADMIN, CLAVE_WORKER
 
 NO_OPERADOR = "Solo para operadores de la plataforma."
 
-PERIODO_ACTUAL = "2026-09"   # coherente con la fecha fijada del entorno de test
+
+def _fijar_mes_en_curso(monkeypatch) -> str:
+    """El mes en curso de la consola (UTC), quieto hasta que termine la prueba.
+
+    Fue la constante ``"2026-09"``, «coherente con la fecha fijada del entorno
+    de test» — pero ninguna fecha estaba fijada: el 2026-10-01 la serie empezó a
+    terminar en octubre y T-14, T-18 y T-25 cayeron sin que la app cambiara.
+
+    Leerlo del reloj no alcanza: una prueba que corriera justo cuando cambia el
+    mes (las 7 p. m. del último día, en Colombia) sembraría en uno y preguntaría
+    por el otro. Así que se fija ``periodo_actual`` en cada módulo de la app que
+    lo tenga a mano —``plataforma_tendencia`` lo importó por nombre—, y nada
+    más: los contratos y los JWT siguen con el reloj de verdad.
+    """
+    import sys
+
+    from app.plataforma_metricas import periodo_actual
+
+    fijo = periodo_actual()
+    for nombre, modulo in list(sys.modules.items()):
+        if nombre.startswith("app.") and getattr(modulo, "periodo_actual", None) is periodo_actual:
+            monkeypatch.setattr(modulo, "periodo_actual", lambda: fijo)
+    return fijo
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -262,8 +284,10 @@ CORREO_OPERADOR = "operador.jugoso@recabra.example"
 MONTO_CARACTERISTICO = 4321.99
 
 _NAVE = [{"code": "PUN-01", "type": "punta", "sede": "NAVE"}]
+# (código, proveedor, canon, activo): las fechas las pone `_vigentes_en`, porque
+# el mes que importa es el que esté corriendo cuando se corra la prueba.
 _CONTRATO_UNICO = [
-    ("NAVE-PUN-01", PROVEEDOR_JUGOSO, "2026-09-01", "2026-09-30", MONTO_CARACTERISTICO, True),
+    ("NAVE-PUN-01", PROVEEDOR_JUGOSO, MONTO_CARACTERISTICO, True),
 ]
 
 # Un segundo cliente con TRES contratos, para que el consolidado tenga más de
@@ -275,21 +299,31 @@ _BETA = [
     {"code": "E-03", "type": "punta", "sede": "BETA"},
 ]
 _CONTRATOS_BETA = [
-    ("BETA-E-01", "Nutresa", "2026-09-01", "2026-09-30", 400_000.0, True),
-    ("BETA-E-02", "Bimbo", "2026-09-01", "2026-09-30", 200_000.0, True),
-    ("BETA-E-03", "Alpina", "2026-09-01", "2026-09-30", 750_000.0, True),
+    ("BETA-E-01", "Nutresa", 400_000.0, True),
+    ("BETA-E-02", "Bimbo", 200_000.0, True),
+    ("BETA-E-03", "Alpina", 750_000.0, True),
 ]
+
+
+def _vigentes_en(periodo, contratos):
+    """Los ``contratos`` de arriba, del primer al último día de ``periodo``."""
+    from app.plataforma_metricas import rango_del_periodo
+
+    desde, hasta = rango_del_periodo(periodo)
+    return [(codigo, proveedor, desde.isoformat(), hasta.isoformat(), canon, activo)
+            for codigo, proveedor, canon, activo in contratos]
 
 
 def _escenario_jugoso(client, monkeypatch):
     """acme (1 contrato, publica exacto sin umbral) + beta (3 contratos) + roto + operador."""
     from app.plataforma_metricas import limpiar_cache_metricas
 
+    periodo = _fijar_mes_en_curso(monkeypatch)
     ids = Identidades(client)
     _fundar(ids, "uid-acme", CORREO_DUENA, "acme", "Acme")
     _fundar(ids, "uid-beta", "dueno@beta.co", "beta", "Beta")
-    _sembrar("acme", {"NAVE": _NAVE}, _CONTRATO_UNICO)
-    _sembrar("beta", {"BETA": _BETA}, _CONTRATOS_BETA)
+    _sembrar("acme", {"NAVE": _NAVE}, _vigentes_en(periodo, _CONTRATO_UNICO))
+    _sembrar("beta", {"BETA": _BETA}, _vigentes_en(periodo, _CONTRATOS_BETA))
     _romper()
     consola = _operador_sin_membresias(ids, monkeypatch, email=CORREO_OPERADOR)
     limpiar_cache_metricas()
@@ -297,7 +331,7 @@ def _escenario_jugoso(client, monkeypatch):
     # Calcular el período actual dispara el write-through: deja los snapshots
     # crudos de acme, beta y el consolidado (roto queda afuera, con error).
     from app.plataforma_metricas import calcular
-    calcular(PERIODO_ACTUAL)
+    calcular(periodo)
 
     return ids, _cab(consola["token"])
 
@@ -545,7 +579,7 @@ def test_t18_beta_publica_el_agregado_sin_filtrar_datos_individuales(client, mon
     assert r.status_code == 200, r.text
     punto = r.json()["serie"][-1]
     numeros = _todos_los_numeros(r.json())
-    for _codigo, _prov, _ini, _fin, canon, _activo in _CONTRATOS_BETA:
+    for _codigo, _prov, canon, _activo in _CONTRATOS_BETA:
         assert canon not in numeros
     # El agregado SÍ está, exacto.
     assert punto["ingreso_contratado_mes"] == 1_350_000.0
@@ -716,13 +750,11 @@ def test_t25_los_demas_clientes_tienen_snapshot_del_mes_anterior_y_el_roto_no(cl
     ids = Identidades(client)
     _fundar(ids, "uid-acme", "duena@acme.co", "acme", "Acme")
     _fundar(ids, "uid-beta", "dueno@beta.co", "beta", "Beta")
-    mes_pasado = periodo_anterior(PERIODO_ACTUAL)
-    _sembrar("acme", {"NAVE": _NAVE}, [
-        ("NAVE-PUN-01", "Alpina", f"{mes_pasado}-01", f"{mes_pasado}-28", 100_000.0, True),
-    ])
-    _sembrar("beta", {"BETA": _BETA}, [
-        (c, p, f"{mes_pasado}-01", f"{mes_pasado}-28", v, a) for c, p, _i, _f, v, a in _CONTRATOS_BETA
-    ])
+    mes_pasado = periodo_anterior(_fijar_mes_en_curso(monkeypatch))
+    _sembrar("acme", {"NAVE": _NAVE}, _vigentes_en(mes_pasado, [
+        ("NAVE-PUN-01", "Alpina", 100_000.0, True),
+    ]))
+    _sembrar("beta", {"BETA": _BETA}, _vigentes_en(mes_pasado, _CONTRATOS_BETA))
     _romper()
 
     from app.main import _run_lease_maintenance
@@ -754,7 +786,7 @@ def test_t26_cliente_roto_no_rompe_metricas(client, monkeypatch):
     from app.main import _run_lease_maintenance
     _run_lease_maintenance()
 
-    r = client.get(f"/api/plataforma/metricas?periodo={PERIODO_ACTUAL}", headers=cab)
+    r = client.get(f"/api/plataforma/metricas?periodo={_fijar_mes_en_curso(monkeypatch)}", headers=cab)
     assert r.status_code == 200, r.text
 
 

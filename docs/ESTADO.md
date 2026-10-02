@@ -1,9 +1,12 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-01 (El acceso por clave compartida se apagó: la
-sección «Claves de acceso» de Configuración se fue y `POST /api/auth/login` contesta
-410 salvo `LOGIN_LEGADO=1`. Ver *Identidad*, el punto «Legado»).
+Última actualización: 2026-10-01 (Ninguna prueba del backend depende del día en que
+se corre: cinco amanecieron rojas el 1.º de octubre por tener septiembre escrito como
+mes en curso, y otras 132 iban a caer el 2028-10-01. Ver *Pruebas con el mes escrito
+a mano*. Antes, el mismo día: el acceso por clave compartida se apagó —la sección
+«Claves de acceso» de Configuración se fue y `POST /api/auth/login` contesta 410
+salvo `LOGIN_LEGADO=1`—; ver *Identidad*, el punto «Legado»).
 
 Antes, 2026-09-23 (Invitaciones y ciclo de vida de los clientes: el
 enlace del correo lleva al supermercado que invitó, nadie funda uno por error, y la
@@ -1638,6 +1641,57 @@ todos de tests, ninguno del producto — y ninguno reproducible local:
 
 **Regla:** antes de mergear, mirar los checks del PR en GitHub, no solo la
 suite local; y después del merge, el run de `main`.
+
+### Pruebas con el mes escrito a mano: rojas desde el 2026-10-01
+
+El 1.º de octubre de 2026 cinco pruebas del backend amanecieron rojas sin que la
+app cambiara: `test_t14`, `test_t18` y `test_t25` (`test_tendencia_ataques.py`),
+`test_m25` (`test_metricas_ataques.py`) y `test_compliance1`
+(`test_auditoria_compliance.py`). Hablaban del **mes en curso** —el último punto
+de la serie de la consola, el mes que cierra el mantenimiento, el que se calcula
+al abrir el panel— pero lo tenían escrito: «2026-09», «coherente con la fecha
+fijada del entorno de test». Ninguna fecha estaba fijada. Con octubre, la serie
+terminó en un mes sin datos, los contratos sembrados (del 1 al 30 de septiembre)
+dejaron de ser del mes en curso y el arranque de la app pasó a cerrar septiembre
+por su cuenta antes de que la prueba contara filas.
+
+Ahora toman el mes de `periodo_actual()` —el reloj de la consola, en UTC— y
+siembran los contratos del primer al último día de ese mes. En
+`test_tendencia_ataques.py`, además, `_fijar_mes_en_curso` deja el mes quieto
+mientras dura la prueba: leído del reloj y nada más, una corrida justo en el
+cambio de mes (las 7 p. m. del último día, hora de Colombia) sembraba en uno y
+preguntaba por el otro.
+
+**La misma bomba, con fecha: 2028-10-01.** Corriendo la suite con el reloj del
+proceso adelantado apareció otra tanda: 132 pruebas de seis archivos
+(`test_plataforma_metricas`, `test_plataforma_detalle`, `test_metricas_ataques`,
+`test_plataforma_spread`, `test_asesoria_ataques`, `test_metricas_conciliacion`)
+tienen sus datos en septiembre de 2026 y los piden por la API
+(`?periodo=2026-09`), que sólo acepta los últimos 24 meses
+(`ventana_de_periodos`): desde octubre de 2028, 422. Ésas no hablan del mes en
+curso sino de UN mes, así que no se reescriben: corren con el reloj en ese mes.
+`conftest.py` trae la marca `reloj` —esos archivos llevan
+`pytestmark = SEPTIEMBRE_DE_2026`, el 15 a mediodía— y mueve el reloj de todo el
+proceso con `time-machine` (en `requirements-dev.txt`) **antes** de levantar la
+app, para que el arranque cierre el mes anterior del mismo calendario que la
+prueba. `test_reloj.py` vigila ese orden.
+
+Verificado con el reloj del proceso movido: la suite entera pasa el 15 de
+septiembre de 2026, el 1.º de enero de 2027 y el 1.º de octubre de 2028 (ese día,
+sin la marca: 100 fallas y 32 errores). Las cinco del principio, además, el 1.º
+y el último día de varios meses, el 29 de febrero de 2028 y en 2031, y con el
+cambio de mes cayendo en 28 instantes distintos de la corrida: 0 fallas, contra
+6 sin `_fijar_mes_en_curso`.
+
+Para repetirlo, la suite acepta `--reloj`: `cd backend && python -m pytest
+--reloj 2028-10-01T00:00:05+00:00` corre todo con el reloj del proceso en esa
+fecha (las pruebas con la marca `reloj` siguen yendo a la suya).
+
+**Regla:** ninguna prueba depende del día en que se corre. La que habla del mes
+en curso lo lee de `periodo_actual()`; la que tiene sus datos en un mes escrito
+a mano y lo pide por la API lleva la marca `reloj` en ese mes. Una prueba nueva
+con fechas se corre también con `--reloj` en una fecha de dentro de un par de
+años antes de darla por buena.
 
 ### Pendientes conocidos: clientes y plataforma
 
