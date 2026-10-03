@@ -1194,6 +1194,17 @@ aguantaron todo sin un solo cruce: lo que se encontró fue de segundo orden.
   fix` cerró `browserslist` (HIGH); queda `vite ≤ 6.4.2` (HIGH, sólo servidor
   de desarrollo: path traversal en `.map` y `launch-editor` en Windows) porque
   el salto a Vite 8 es mayor y se hace aparte.
+- **2026-10-03: PyJWT 2.15.1 y `@grpc/grpc-js` forzado a 1.14.5.** Con el mes
+  nuevo, los checks de dependencias volvieron a correr y marcaron dos cosas que
+  no venían de ningún cambio. Primero, 13 avisos sobre PyJWT 2.13.0, seis altos o
+  críticos. Casi todos piden mezclar HMAC y RSA en una misma verificación, o usar
+  `PyJWKClient`, y acá no pasa ninguna de las dos (HS256 para las sesiones, RS256
+  para Firebase, cada uno por su lado); igual se subió a 2.15.1. Segundo,
+  `@grpc/grpc-js` 1.9.16, que trae Firestore —viene dentro del paquete
+  `firebase`— aunque la app sólo importa `firebase/app` y `firebase/auth` y grpc no
+  llega al bundle. Hasta la última versión de Firestore lo fija en `~1.9.0`, así
+  que se fuerza con `overrides` en `package.json`. Quedan avisos moderados en
+  `react-router` y en `uuid` (vía `exceljs`), que el gate no cuenta.
 - **Dockerfile sin `USER`** (hardening-9): no verificable contra el disco de
   datos de Render desde acá.
 - **H-7 / H-8** (identidad) y **R-3 / R-4 / R-5** (alta self-service) siguen
