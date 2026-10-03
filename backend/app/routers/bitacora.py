@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.auth import require_admin
 from app.database import get_db
 from app.models.models import AuditEntry
-from app.services.bitacora import ACCIONES
+from app.services.bitacora import ACCIONES, RETIRADAS
 
 router = APIRouter(prefix="/bitacora", tags=["bitacora"], dependencies=[Depends(require_admin)])
 
@@ -67,5 +67,6 @@ def listar(
 
 @router.get("/acciones", response_model=dict[str, str])
 def acciones():
-    """El diccionario de códigos, para que el filtro de la pantalla no lo repita."""
-    return ACCIONES
+    """El diccionario de códigos, para que el filtro de la pantalla no lo repita.
+    Sin las retiradas: filtrar por algo que ya no puede pasar no sirve."""
+    return {codigo: titulo for codigo, titulo in ACCIONES.items() if codigo not in RETIRADAS}

@@ -9,9 +9,11 @@ usar todo, el auditor da cero**. Cada pieza tiene sus pruebas; ésta comprueba
 que juntas no dejan un hueco — que es donde vivía el bug original, en la juntura
 entre el plano y la base y no adentro de ninguno de los dos.
 """
-from datetime import date, timedelta
+from datetime import timedelta
 
-HOY = date.today()
+from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
+
+HOY = hoy_en_colombia()
 
 
 def _mueble(code, sede, **extra):
@@ -206,18 +208,15 @@ def test_UN_PLANO_VIEJO_SE_IMPORTA_Y_DESPUES_EL_AUDITOR_DA_CERO(client, admin, c
     assert "PUN-08" in salida
 
 
-def test_BARRER_Y_VOLVER_A_CARGAR_LA_PLANILLA_QUEDA_LIMPIO(client, admin, capsys):
-    """La pregunta que importa antes de apretar el botón: después de barrer,
-    ¿una planilla entra sin un solo error y queda derecho?
+def test_LA_PLANILLA_CRUZANDO_SEDES_Y_CON_CARA_B_QUEDA_DERECHA(client, admin, capsys):
+    """Una planilla que cruza sedes —dos tiendas con el mismo código, que es lo
+    normal— y vende una cara B entra sin un solo error y queda derecha: cada
+    contrato en SU tienda y el auditor sin desfase.
 
-    Recorre el camino entero: dos tiendas dibujadas, contratos de prueba y
-    residuo del selector viejo, barrido, carga por planilla cruzando sedes, y
-    el auditor al final.
+    Hasta el 2026-10-02 esto arrancaba barriendo con «Empezar de cero», la
+    limpieza de la etapa de prueba; esa herramienta salió de producción (borraba
+    todos los contratos con un botón en la barra de todos los días).
     """
-    import json as _json
-    from app.database import SessionLocal
-    from app.models.models import LayoutSnapshot
-
     # ── Dos tiendas con el mismo código, que es lo normal ────────────────────
     nave = [_mueble("IMP-17", "NAVE"), _mueble("PUN-01", "NAVE"),
             _mueble("GON-60", "NAVE", type="gondola", gondolaType="double", d=0.9)]
@@ -226,29 +225,7 @@ def test_BARRER_Y_VOLVER_A_CARGAR_LA_PLANILLA_QUEDA_LIMPIO(client, admin, capsys
         "fixtures": nave, "base_updated_at": None}).status_code == 200
     assert client.put("/api/layout/CIUDAD JARDIN", headers=admin, json={
         "fixtures": cj, "base_updated_at": None}).status_code == 200
-
-    # Un contrato de prueba…
-    _vender(client, admin, [_fila(1, "IMP-17", "NAVE", "VIEJO", 111_111)])
-    # …y el residuo del selector de estado, escrito directo como quedó.
-    db = SessionLocal()
-    try:
-        snap = db.query(LayoutSnapshot).filter(
-            LayoutSnapshot.sede == "CIUDAD JARDIN").first()
-        sucio = [dict(f, status="occupied") for f in _json.loads(snap.fixtures_json)]
-        snap.fixtures_json = _json.dumps(sucio)
-        db.commit()
-    finally:
-        db.close()
-
-    # ── Barrer ───────────────────────────────────────────────────────────────
-    previo = client.get("/api/layout/empezar-de-cero/previo", headers=admin).json()
-    assert previo["contratos"] == 1
-    assert previo["muebles_con_residuo"] == 2
-
-    r = client.post("/api/layout/empezar-de-cero/aplicar", headers=admin,
-                    json={"contratos_esperados": previo["contratos"]})
-    assert r.status_code == 200, r.text
-    assert _comercial(client, admin) == {}, "quedó algo vendido"
+    assert _comercial(client, admin) == {}, "la base arranca con algo vendido"
 
     # ── Y ahora la planilla, cruzando sedes y con una cara B ─────────────────
     resp = _vender(client, admin, [

@@ -7,9 +7,11 @@ están en ninguna tabla, así que nada los podría volver a dibujar.
 Lo que se prueba: que traiga lo que sólo estaba en el JSON, que NO duplique lo
 que ya estaba, y que lo que no se puede importar se reporte en vez de inventarse.
 """
-from datetime import date, timedelta
+from datetime import timedelta
 
-HOY = date.today()
+from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
+
+HOY = hoy_en_colombia()
 
 
 def _mueble(code, **extra):

@@ -26,6 +26,8 @@ export interface AltaClienteResponse {
   role: Role;
   cliente: string;
   cliente_nombre: string;
+  /** Siempre `"owner"`: quien funda es el dueño. */
+  rol_cliente?: "owner";
   email: string;
   nombre: string;
 }

@@ -4,6 +4,10 @@ import { signOutFirebase } from "../api/firebase";
 
 export type Role = "admin" | "worker";
 
+/** El rol de la persona EN ese supermercado. `Role` es el del token y junta al
+ *  dueño con el administrador; para mostrar quién es quién hace falta éste. */
+export type RolCliente = "owner" | "admin" | "worker";
+
 /** Fase 2 clientes: lo que trae el login cuando el cliente NO está
  *  `activo`. `motivo` lo escribió el operador al mover el interruptor;
  *  `suspendido` sólo lo puede traer una sesión de owner (worker/admin
@@ -23,6 +27,9 @@ interface AuthState {
    *  quien manda es el que va firmado adentro del token. */
   cliente: string | null;
   clienteNombre: string | null;
+  /** `null` en sesiones de antes del 2026-10-02 (o del login legado): la barra
+   *  cae entonces a la palabra del rol del token. */
+  rolCliente: RolCliente | null;
   /** Sólo presentes en sesiones nacidas de Google/correo (Fase 1 identidad):
    *  el login legado no manda ninguno de los dos, y quedan en `null`. */
   email: string | null;
@@ -62,7 +69,8 @@ interface AuthState {
     nombre?: string,
     avisoCuenta?: AvisoCuenta | null,
     pedirConsentimiento?: boolean,
-    plataforma?: boolean
+    plataforma?: boolean,
+    rolCliente?: RolCliente
   ) => void;
   /** Deja el estado de cuenta que acaba de contestar el servidor, sin tocar
    *  el resto de la sesión.
@@ -88,19 +96,22 @@ export const useAuthStore = create<AuthState>()(
       role: null,
       cliente: null,
       clienteNombre: null,
+      rolCliente: null,
       email: null,
       nombre: null,
       avisoCuenta: null,
       pedirConsentimiento: false,
       plataforma: false,
       setAuth: (
-        token, role, cliente, clienteNombre, email, nombre, avisoCuenta, pedirConsentimiento, plataforma
+        token, role, cliente, clienteNombre, email, nombre, avisoCuenta, pedirConsentimiento, plataforma,
+        rolCliente,
       ) =>
         set({
           token,
           role,
           cliente: cliente ?? null,
           clienteNombre: clienteNombre ?? null,
+          rolCliente: rolCliente ?? null,
           email: email ?? null,
           nombre: nombre ?? null,
           avisoCuenta: avisoCuenta ?? null,
@@ -125,7 +136,7 @@ export const useAuthStore = create<AuthState>()(
       descartarConsentimiento: () => set({ pedirConsentimiento: false }),
       logout: () => {
         set({
-          token: null, role: null, cliente: null, clienteNombre: null,
+          token: null, role: null, cliente: null, clienteNombre: null, rolCliente: null,
           email: null, nombre: null, avisoCuenta: null, pedirConsentimiento: false,
           plataforma: false,
         });

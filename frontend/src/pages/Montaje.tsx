@@ -37,12 +37,19 @@ function diasHasta(iso: string): number {
   return Math.ceil((cuando - Date.now()) / 86_400_000);
 }
 
+/** «9 de octubre» de un `AAAA-MM-DD`, sin pasar por `new Date`: ése lo toma
+ *  como medianoche UTC y en Colombia lo muestra un día antes. */
+function diaLargo(dia: string): string {
+  const [, m, d] = dia.split("-").map(Number);
+  return m && d ? `${d} de ${MESES[m - 1]}` : dia;
+}
+
 function fechaLarga(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "" : `${d.getDate()} de ${MESES[d.getMonth()]}`;
 }
 
-type Estado = "cargando" | "listo" | "vencido" | "error";
+type Estado = "cargando" | "listo" | "vencido" | "cancelado" | "error";
 
 export default function Montaje() {
   const [espacio, setEspacio] = useState<EspacioMontaje | null>(null);
@@ -65,6 +72,11 @@ export default function Montaje() {
         const codigo = (e as { response?: { status?: number } })?.response?.status;
         if (codigo === 401) {
           setEstado("vencido");
+          return;
+        }
+        // 410: el enlace dice su contrato y ese contrato se canceló.
+        if (codigo === 410) {
+          setEstado("cancelado");
           return;
         }
         setError(describeError(e, "No se pudo cargar el espacio."));
@@ -99,14 +111,29 @@ export default function Montaje() {
 
   if (estado === "cargando") return <Aviso texto="Cargando el espacio…" />;
 
+  // Antes decía «pedí que te reenvíen el aviso»: no hay cómo reenviarlo, y el
+  // enlace ahora vive hasta un mes después de que arranca el contrato. Lo que
+  // sí funciona es entrar con cuenta propia y confirmar desde «Montajes».
   if (estado === "vencido") {
     return (
       <Aviso
         titulo="Este enlace ya no sirve"
         texto={
           "Los enlaces de montaje vencen para que no queden dando vueltas por correo. " +
-          "Pedí que te reenvíen el aviso de este espacio y vas a recibir uno nuevo."
+          "Si tenés cuenta en RECABRA, entrá y confirmalo desde «Montajes»; si no, " +
+          "pedile a quien administra el supermercado que te invite con tu correo."
         }
+      >
+        <a href="/login" style={{ ...BOTON, textDecoration: "none" }}>Entrar a RECABRA</a>
+      </Aviso>
+    );
+  }
+
+  if (estado === "cancelado") {
+    return (
+      <Aviso
+        titulo="Este contrato se canceló"
+        texto="Ya no hay nada que montar con este enlace. Si te parece un error, avisale a quien administra el supermercado."
       />
     );
   }
@@ -118,6 +145,35 @@ export default function Montaje() {
           <RefreshCw size={15} /> Reintentar
         </button>
       </Aviso>
+    );
+  }
+
+  // El enlace sale al vender, y el contrato puede arrancar dentro de semanas:
+  // hasta la víspera el espacio puede seguir siendo de otro contrato, y un
+  // «lo monté» quedaría a nombre de ése. Se dice desde cuándo, en vez de
+  // ofrecer un formulario que el servidor va a rechazar.
+  if (espacio.se_confirma_desde) {
+    return (
+      <Marco espacio={espacio}>
+        <div style={TARJETA}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <Clock size={18} style={{ color: "var(--ink-3)" }} />
+            <b style={{ fontSize: 16 }}>Todavía no se monta</b>
+          </div>
+          <div style={{ fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
+            {espacio.proveedor ? `El contrato de ${espacio.proveedor}` : "Este contrato"}
+            {espacio.desde ? ` arranca el ${diaLargo(espacio.desde)}` : " todavía no arranca"}.
+            {" "}El montaje se confirma desde el {diaLargo(espacio.se_confirma_desde)}, con este
+            mismo enlace: hasta entonces el espacio puede seguir siendo de otro contrato.
+          </div>
+          {espacio.donde && (
+            <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 10,
+              fontSize: 13, color: "var(--ink-3)" }}>
+              <MapPin size={13} /> {espacio.donde}
+            </div>
+          )}
+        </div>
+      </Marco>
     );
   }
 

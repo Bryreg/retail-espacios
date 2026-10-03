@@ -61,6 +61,10 @@ export interface EspacioMontaje {
   ultimo?: MountConfirmation | null;
   /** Cuándo se vence el enlace, en ISO. */
   vence?: string | null;
+  /** `AAAA-MM-DD` desde el que se puede confirmar, sólo mientras todavía no
+   *  se puede: la víspera del arranque del contrato del enlace (2026-10-02).
+   *  Antes, el espacio puede seguir siendo de otro contrato. */
+  se_confirma_desde?: string | null;
 }
 
 export const miEspacio = (): Promise<EspacioMontaje> =>

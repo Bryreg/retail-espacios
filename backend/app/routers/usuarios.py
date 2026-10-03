@@ -162,7 +162,8 @@ def invitar_usuario(
         # escapados: el nombre del supermercado lo escribió quien lo fundó.
         nombre = escape(cliente.nombre)
         html = html_shell(
-            f"Invitación a {nombre}",
+            # El título lo escapa `html_shell`: acá va el nombre tal cual.
+            f"Invitación a {cliente.nombre}",
             [
                 ("Supermercado", nombre),
                 ("Rol", ROL_EN_EL_CORREO.get(rol_nuevo, rol_nuevo)),

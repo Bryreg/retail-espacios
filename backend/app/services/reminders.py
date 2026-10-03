@@ -27,11 +27,11 @@ que todo lo demás, con la misma caída a `notify_emails` para la instalación q
 todavía no la cargó.
 """
 import logging
-from datetime import date
 
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth import get_config
+from app.fechas import hoy
 from app.models.models import NotificationLog, SpaceLease
 from app.services.contacts import recipients_for
 from app.services.mailer import format_cop, html_shell, send_mail_to
@@ -66,7 +66,7 @@ def _hito(days_left: int, hitos: list[int]) -> int | None:
 
 def check_expiring_leases(db: Session) -> int:
     """Manda los avisos de vencimiento. Devuelve cuántos correos salieron."""
-    today = date.today()
+    today = hoy()
     hitos = _parse_reminder_days(get_config(db, "reminder_days", "30,15,6") or "")
     if not hitos:
         return 0

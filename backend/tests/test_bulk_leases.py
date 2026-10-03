@@ -6,9 +6,11 @@ archivo, fechas al revés. El valor de esta función no es crear contratos rápi
 —eso es fácil— sino **decir qué está mal antes de crear nada**.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 
-HOY = date.today()
+from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
+
+HOY = hoy_en_colombia()
 
 FIXTURES = [
     {

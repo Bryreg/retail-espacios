@@ -1,9 +1,11 @@
-from datetime import date, timedelta
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from app.auth import require_auth
 from app.database import get_db
+from app.fechas import hoy
 from app.models.models import Space, SpaceLease, Supplier
 from app.routers.spaces import expire_leases
 
@@ -14,7 +16,7 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depend
 @router.get("/kpis")
 def get_kpis(role: str = Depends(require_auth), db: Session = Depends(get_db)):
     expire_leases(db)
-    today = date.today()
+    today = hoy()
     expiry_threshold = today + timedelta(days=30)
 
     # Space counts grouped by status
@@ -97,7 +99,7 @@ def get_spaces(role: str = Depends(require_auth), db: Session = Depends(get_db))
     (status=occupied but no active lease).
     """
     expire_leases(db)
-    today = date.today()
+    today = hoy()
     spaces = (
         db.query(Space)
         .options(

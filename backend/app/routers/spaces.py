@@ -4,9 +4,10 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
-from app.auth import MONTAJE_TTL_DAYS, create_mount_token, require_admin, require_auth
+from app.auth import create_mount_token, dias_del_enlace_de_montaje, require_admin, require_auth
 from app.clientes import Cliente, cliente_del_pedido
 from app.database import get_db
+from app.fechas import hoy
 from app.models.models import Space, SpaceFace, SpaceLease, Supplier, SpaceStatus
 from app.services.bitacora import anotar
 from app.schemas.spaces import (
@@ -51,7 +52,7 @@ def expire_leases(db: Session) -> int:
 
     Returns the number of leases expired.
     """
-    today = date.today()
+    today = hoy()
     expired = (
         db.query(SpaceLease)
         .filter(SpaceLease.is_active == True, SpaceLease.end_date < today)  # noqa: E712
@@ -413,7 +414,7 @@ def create_lease(
     # Only a contract that is already running makes the space occupied. Signing
     # in August for December used to flip the space to "occupied" on the spot,
     # which hid four sellable months behind a status that was simply wrong.
-    if payload.start_date <= date.today():
+    if payload.start_date <= hoy():
         space.status = SpaceStatus.occupied
     # `flush` asigna el id sin cerrar la transacción, así que la bitácora puede
     # nombrar el contrato y seguir viajando con el mismo commit.
@@ -495,7 +496,10 @@ def create_lease(
         # que sobrevive a la persona que deja de trabajar ahí.
         # El enlace lleva el cliente adentro del token. Sin eso, el enlace de
         # un supermercado abriría la pantalla de montaje contra la base de otro.
-        token = create_mount_token(space.code, cliente.slug)
+        token = create_mount_token(
+            space.code, cliente.slug, days=dias_del_enlace_de_montaje(lease.start_date),
+            contrato=lease.id,
+        )
         link = f"{app_base_url()}/?montar={quote(space.code)}&t={quote(token)}"
         footer = (
             "El enlace abre el espacio señalado en el plano, y ahí mismo se "
@@ -504,8 +508,8 @@ def create_lease(
             "exhibición quedó armada.<br><br>"
             f'<a href="{link}" '
             'style="color:#0369A1;font-weight:600;">Ver dónde queda y confirmar</a>'
-            f'<br><br><span style="color:#94A3B8;font-size:12px;">'
-            f"El enlace es personal y vence en {MONTAJE_TTL_DAYS} días.</span>"
+            '<br><br><span style="color:#94A3B8;font-size:12px;">'
+            "El enlace es personal y vence un mes después de que arranca el contrato.</span>"
         )
         background_tasks.add_task(
             send_mail_to_bg, who["montaje"], subject, html_shell(subject, rows, footer)

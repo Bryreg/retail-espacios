@@ -6,7 +6,9 @@ the shared list, expiry reminders for a sede nobody can open, and a recreated
 sede inheriting the previous one's contracts.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
+
+from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
 
 FIXTURE = {
     "id": "f1", "code": "GON-01", "sede": "NAVE", "type": "gondola",
@@ -44,8 +46,8 @@ def _make_contract(client, admin, code, sede, *, days_left=10, supplier="Colgate
         json={
             "supplier_id": supplier_id,
             "marca": "Marca",
-            "start_date": str(date.today() - timedelta(days=5)),
-            "end_date": str(date.today() + timedelta(days=days_left)),
+            "start_date": str(hoy_en_colombia() - timedelta(days=5)),
+            "end_date": str(hoy_en_colombia() + timedelta(days=days_left)),
             "monthly_rent": 500000,
         },
         headers=admin,
@@ -149,7 +151,7 @@ def test_closed_contracts_no_longer_trigger_reminders(client, admin):
 
     db = SessionLocal()
     try:
-        due = [l for l in _active_leases(db) if (l.end_date - date.today()).days == 30]
+        due = [l for l in _active_leases(db) if (l.end_date - hoy_en_colombia()).days == 30]
         assert due, "precondición: el contrato debería estar en la ventana de aviso"
     finally:
         db.close()

@@ -8,10 +8,12 @@ abierto. Acá se barre la API entera con el token y se exige 401 en todo lo que
 no sea ``/api/montaje``.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
+
+from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
 
 JPG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
-HOY = date.today()
+HOY = hoy_en_colombia()
 
 #: Dos muebles, uno alquilado y otro no. El segundo existe para comprobar que
 #: viaja como geometría y nada más: es el vecino que el plano necesita dibujar.
@@ -137,16 +139,15 @@ def test_el_token_no_abre_ningun_otro_endpoint(client, admin):
     # Lo abierto a propósito, escrito acá para que agregar algo público sea una
     # decisión visible y no un test que se acomoda solo.
     #
-    # `/api/auth/clientes` es la lista del selector de la pantalla de ingreso:
-    # hay que mostrarla ANTES de que nadie se identifique, así que no puede
-    # pedir sesión. Devuelve sólo código y nombre de cada supermercado.
+    # `/api/auth/clientes` —la lista de supermercados del viejo selector de
+    # ingreso— salió el 2026-10-02: le contaba a cualquiera quién usa el sistema.
     #
     # `/api/auth/invitacion/{token}` (2026-09-23) es lo que la pantalla de
     # ingreso muestra del enlace del correo ANTES de entrar: el supermercado,
     # el rol, el estado y el correo invitado ENMASCARADO. Pide el token de la
     # invitación (256 bits) en vez de sesión, y cada token inexistente cuenta
     # en el freno de `/oauth` (`test_invitacion_enlace.py`).
-    publicas = {"/api/health", "/api/auth/clientes", "/api/auth/invitacion/{token}"}
+    publicas = {"/api/health", "/api/auth/invitacion/{token}"}
 
     # Se enumera por el esquema OpenAPI y no por `app.routes`: desde FastAPI
     # 0.141 / Starlette 1.x `include_router` deja en `app.routes` un
@@ -443,7 +444,7 @@ def test_el_correo_de_montaje_lleva_el_enlace_firmado(client, admin, monkeypatch
         headers=admin,
     )
 
-    _armado(client, admin)
+    _space_id, lease_id = _armado(client, admin)
 
     montaje = [e for e in enviados if e[1].startswith("Montar ")]
     assert montaje, f"no salió el correo de montaje: {[e[1] for e in enviados]}"
@@ -456,6 +457,8 @@ def test_el_correo_de_montaje_lleva_el_enlace_firmado(client, admin, monkeypatch
     code, vence = decode_montaje(token)
     assert code == "NAVE-PUN-04"
     assert vence is not None
+    from app.auth import contrato_del_montaje
+    assert contrato_del_montaje(token) == lease_id, "el enlace no dice qué contrato se monta"
 
     # Y el token del correo abre exactamente ese espacio, nada más.
     assert client.get("/api/montaje/mi-espacio", headers=_cab(token)).json()["code"] == "NAVE-PUN-04"
@@ -482,3 +485,217 @@ def test_el_correo_comercial_no_lleva_ningun_enlace_firmado(client, admin, monke
     for to, subject, html in enviados:
         if not subject.startswith("Montar "):
             assert "?montar=" not in html and "&t=" not in html, subject
+
+
+# ─── El camino de hoy: lo vendido en el mapa o por planilla ───────────────────
+#
+# Desde el 2026-09-02 todo contrato nuevo sale por `/leases/bulk/confirmar`, y
+# hasta el 2026-10-02 su correo de montaje sólo decía «Abrir RECABRA»: quien
+# monta sin cuenta propia recibía un aviso con el que no podía hacer nada.
+
+def _vender_por_lote(client, admin, monkeypatch, desde, hasta):
+    """Contactos cargados y un contrato de DOS espacios por el camino del mapa.
+    Devuelve los correos que salieron: [(para, asunto, html)]."""
+    import app.routers.bulk_leases as lotes
+
+    enviados = []
+    monkeypatch.setattr(lotes, "correo_configurado", lambda: True)
+    monkeypatch.setattr(
+        lotes, "send_mail_to_bg", lambda to, subject, html: enviados.append((to, subject, html))
+    )
+    _plano(client, admin, fixtures=[dict(f, status="free", supplierName="", negotiatedValue=0)
+                                    for f in FIXTURES])
+    assert client.put(
+        "/api/notifications/contacts",
+        json={"gerente": ["g@x.co"], "by_sede": {"NAVE": {"admin": ["a@x.co"], "mercaderista": ["m@x.co"]}}},
+        headers=admin,
+    ).status_code == 200
+    filas = [
+        {"fila": 1, "espacio": "PUN-04", "sede": "NAVE", "proveedor": "Alpina", "correo": "ventas@alpina.co",
+         "marca": "Yogurt <b>", "valor": 1_000_000, "desde": desde.isoformat(), "hasta": hasta.isoformat()},
+        {"fila": 2, "espacio": "GON-09", "sede": "NAVE", "proveedor": "Alpina", "correo": "ventas@alpina.co",
+         "marca": "Yogurt <b>", "valor": 500_000, "desde": desde.isoformat(), "hasta": hasta.isoformat()},
+    ]
+    r = client.post("/api/leases/bulk/confirmar", json={"sede": "NAVE", "filas": filas}, headers=admin)
+    assert r.status_code == 200, r.text
+    assert r.json()["creados"] == 2, r.json()
+    return enviados
+
+
+def _enlaces(html):
+    import re
+    from urllib.parse import parse_qs, unquote, urlparse
+
+    salida = []
+    for href in re.findall(r'href="([^"]+\?montar=[^"]+)"', html):
+        q = parse_qs(urlparse(unquote(href.replace("&amp;", "&"))).query)
+        salida.append((q["montar"][0], q["t"][0]))
+    return salida
+
+
+def test_el_aviso_de_montaje_del_mapa_trae_un_enlace_por_espacio(client, admin, monkeypatch):
+    enviados = _vender_por_lote(client, admin, monkeypatch, HOY, HOY + timedelta(days=60))
+
+    (montaje,) = [(to, html) for to, subject, html in enviados if "por montar" in subject]
+    assert montaje[0] == ["m@x.co"]
+    enlaces = _enlaces(montaje[1])
+    assert sorted(c for c, _t in enlaces) == ["NAVE-GON-09", "NAVE-PUN-04"]
+    # Cada enlace abre SU espacio y nada más, sin contraseña.
+    for codigo, token in enlaces:
+        r = client.get("/api/montaje/mi-espacio", headers=_cab(token))
+        assert r.status_code == 200, r.text
+        assert r.json()["code"] == codigo
+        assert client.get("/api/layout/NAVE", headers=_cab(token)).status_code == 401
+    # Lo que tecleó el supermercado va escapado: el correo no ejecuta HTML ajeno.
+    assert "Yogurt <b>" not in montaje[1] and "Yogurt &lt;b&gt;" in montaje[1]
+
+
+def test_el_enlace_es_una_credencial_y_solo_va_a_quien_monta(client, admin, monkeypatch):
+    enviados = _vender_por_lote(client, admin, monkeypatch, HOY, HOY + timedelta(days=60))
+    otros = [(subject, html) for to, subject, html in enviados if "por montar" not in subject]
+    assert otros, "no salió el resumen comercial ni la constancia al proveedor"
+    for subject, html in otros:
+        assert "?montar=" not in html and "&t=" not in html, subject
+    # Y el proveedor sabe de qué supermercado le escriben (no de «la plataforma»).
+    (constancia,) = [html for to, subject, html in enviados if to == ["ventas@alpina.co"]]
+    assert "Supermercado" in constancia and "Cargados desde una planilla" not in "".join(h for _s, h in otros)
+
+
+def test_el_enlace_vive_hasta_un_mes_despues_de_que_arranca_el_contrato(client, admin, monkeypatch):
+    """Contado desde la firma, el enlace de un contrato vendido para dentro de
+    dos meses llegaba muerto al día del montaje."""
+    from datetime import datetime, timezone
+
+    from app.auth import decode_montaje
+
+    inicio = HOY + timedelta(days=60)
+    enviados = _vender_por_lote(client, admin, monkeypatch, inicio, inicio + timedelta(days=30))
+    (html,) = [html for to, subject, html in enviados if "por montar" in subject]
+    enlaces = _enlaces(html)
+    assert len(enlaces) == 2, html
+    for _codigo, token in enlaces:
+        _code, vence = decode_montaje(token)
+        dias = (vence - datetime.now(timezone.utc)).days
+        assert 88 <= dias <= 90, dias
+
+
+# ─── El enlace dice qué contrato se monta (2026-10-02) ───────────────────────
+#
+# Sale al vender y vive hasta un mes después de que el contrato arranca, así que
+# se abre mientras el espacio todavía es de otro. Sin decir su contrato, la
+# pantalla mostraba el que corre hoy —otro proveedor, otra planometría— y un
+# «lo monté» quedaba anotado sobre el código, a nombre de ése.
+
+def _relevo(client, admin, colanta_desde=21):
+    """Alpina corre hasta dentro de 20 días; Colanta compró a continuación."""
+    _plano(client, admin)
+    space_id = _espacio(client, admin)
+    alpina = _contrato(client, admin, space_id, _proveedor(client, admin, "Alpina"), "Yogurt",
+                       desde=HOY - timedelta(days=40), hasta=HOY + timedelta(days=colanta_desde - 1))
+    colanta = _contrato(client, admin, space_id, _proveedor(client, admin, "Colanta"), "Leche",
+                        desde=HOY + timedelta(days=colanta_desde), hasta=HOY + timedelta(days=90))
+    return space_id, alpina, colanta
+
+
+def _enlace_de(contrato, code="NAVE-PUN-04"):
+    from app.auth import create_mount_token
+    return create_mount_token(code, days=120, contrato=contrato)
+
+
+def test_el_enlace_muestra_su_contrato_aunque_el_espacio_todavia_sea_de_otro(client, admin):
+    _space_id, alpina, colanta = _relevo(client, admin)
+    _subir_plano(client, admin, alpina)
+
+    token = _enlace_de(colanta)
+    r = client.get("/api/montaje/mi-espacio", headers=_cab(token))
+    assert r.status_code == 200, r.text
+    e = r.json()
+    assert (e["proveedor"], e["marca"]) == ("Colanta", "Leche")
+    assert e["desde"] == (HOY + timedelta(days=21)).isoformat()
+    assert e["se_confirma_desde"] == (HOY + timedelta(days=20)).isoformat()
+    # La planometría de Alpina no es «así debe quedar» para Colanta.
+    assert e["tiene_planometria"] is False
+    assert client.get("/api/montaje/planometria", headers=_cab(token)).status_code == 404
+
+    # Un enlace de antes, sin contrato adentro, sigue mostrando el que corre hoy.
+    viejo = client.get("/api/montaje/mi-espacio", headers=_cab(_mount_token())).json()
+    assert viejo["proveedor"] == "Alpina" and viejo["se_confirma_desde"] is None
+    assert viejo["tiene_planometria"] is True
+
+
+def test_antes_de_la_vispera_no_se_confirma_y_nada_queda_a_nombre_del_otro(client, admin):
+    _s, _alpina, colanta = _relevo(client, admin)
+    r = _reportar(client, _enlace_de(colanta))
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"].startswith("Todavía no:")
+    assert client.get("/api/mounts/", headers=admin).json() == [], "quedó un reporte sobre el código"
+
+
+def test_desde_la_vispera_se_confirma_y_el_montado_del_anterior_no_cuenta(client, admin):
+    from datetime import datetime, timezone
+
+    from app.database import SessionLocal
+    from app.models.models import MountConfirmation
+
+    _s, _alpina, colanta = _relevo(client, admin, colanta_desde=1)
+    # Alpina se reportó montada hace un mes, con un enlace de los de antes.
+    assert _reportar(client, _mount_token(), reportado_por="Yenny").status_code == 201
+    db = SessionLocal()
+    try:
+        db.query(MountConfirmation).update(
+            {MountConfirmation.confirmado_en: datetime.now(timezone.utc) - timedelta(days=30)})
+        db.commit()
+    finally:
+        db.close()
+
+    token = _enlace_de(colanta)
+    e = client.get("/api/montaje/mi-espacio", headers=_cab(token)).json()
+    assert e["se_confirma_desde"] is None, "la víspera del arranque ya se puede confirmar"
+    assert e["ultimo"] is None, "el «montado» de Alpina se le atribuyó a Colanta"
+
+    r = _reportar(client, token, reportado_por="Mario")
+    assert r.status_code == 201, r.text
+    e = client.get("/api/montaje/mi-espacio", headers=_cab(token)).json()
+    assert e["ultimo"]["reportado_por"] == "Mario"
+
+
+def test_un_contrato_cancelado_deja_el_enlace_sin_nada_que_montar(client, admin):
+    space_id, _alpina, colanta = _relevo(client, admin)
+    assert client.delete(f"/api/spaces/{space_id}/leases/{colanta}", headers=admin).status_code == 204
+
+    token = _enlace_de(colanta)
+    for r in (
+        client.get("/api/montaje/mi-espacio", headers=_cab(token)),
+        client.get("/api/montaje/planometria", headers=_cab(token)),
+        _reportar(client, token),
+    ):
+        assert r.status_code == 410, r.text
+        assert "se canceló" in r.json()["detail"]
+
+
+def test_el_contrato_del_enlace_tiene_que_ser_de_su_espacio(client, admin):
+    """Un enlace con el contrato de OTRO espacio no abre ese contrato: el
+    código y el contrato van firmados juntos, pero igual se comprueba."""
+    _s, _alpina, colanta = _relevo(client, admin)
+    otro = _espacio(client, admin, "NAVE-GON-09", "Góndola")
+    ajeno = _contrato(client, admin, otro, _proveedor(client, admin, "Nutresa"), "Café")
+    r = client.get("/api/montaje/mi-espacio", headers=_cab(_enlace_de(ajeno)))
+    assert r.status_code == 410, r.text
+
+
+def test_cada_enlace_del_lote_dice_su_contrato(client, admin, monkeypatch):
+    from app.auth import contrato_del_montaje
+    from app.database import SessionLocal
+    from app.models.models import SpaceLease
+
+    enviados = _vender_por_lote(client, admin, monkeypatch, HOY, HOY + timedelta(days=60))
+    (html,) = [html for to, subject, html in enviados if "por montar" in subject]
+    enlaces = _enlaces(html)
+    assert len(enlaces) == 2, html
+    db = SessionLocal()
+    try:
+        for codigo, token in enlaces:
+            lease = db.get(SpaceLease, contrato_del_montaje(token))
+            assert lease is not None and lease.space.code == codigo, codigo
+    finally:
+        db.close()

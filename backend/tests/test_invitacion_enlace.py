@@ -367,6 +367,19 @@ def test_el_correo_dice_con_que_cuenta_entrar_y_escapa_el_nombre(client, monkeyp
     assert "Ingrese desde" in html and "?invitacion=" in html
     assert "&lt;i&gt;Uno&lt;/i&gt;" in html
     assert "<i>Uno</i>" not in html
+    # Escapado UNA vez: el título lo escapa `html_shell` (2026-10-02), así que
+    # quien llama ya no lo escapa por su cuenta.
+    assert "&amp;lt;" not in html
+
+
+def test_el_titulo_del_correo_es_texto_y_no_arma_html(client):
+    """El título es el asunto, con la sede o el código adentro, y los escribe
+    quien administra: una sede con `<` no puede armar HTML en el correo."""
+    from app.services.mailer import html_shell
+
+    html = html_shell("3 espacios por montar — <b>NAVE</b>", [("Espacio", "x")])
+    assert "<b>NAVE</b>" not in html
+    assert "&lt;b&gt;NAVE&lt;/b&gt;" in html
 
 
 # ─── Credenciales sin claim `cliente` y el cliente de siempre archivado ──────

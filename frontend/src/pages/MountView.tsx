@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, MapPin, X } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
+import { useAuthStore } from "../store/authStore";
 import { confirmMount, fetchMounts, latestByCode, type MountConfirmation } from "../api/mounts";
 import { contractPhase, fullSpaceCode, isRentable, isDoubleGondola } from "../types/fixtures";
 import { planometriaDelEspacio, planometriaUrl } from "../api/planograms";
@@ -382,6 +383,10 @@ function FormularioDelTablero({
    *  monta no tiene por qué saber que existen contratos. Que no haya es normal
    *  —no todas lo traen—, así que la ausencia no se anuncia como un error. */
   const [plano, setPlano] = useState<PlanoDelEspacio | null>(null);
+  // Con cuenta propia el servidor guarda quién reportó: no se pregunta.
+  const nombre = useAuthStore((s) => s.nombre);
+  const email = useAuthStore((s) => s.email);
+  const quienReporta = email ? nombre?.trim() || email : null;
   useEffect(() => {
     let vivo = true;
     planometriaDelEspacio(item.code).then((p) => {
@@ -395,6 +400,7 @@ function FormularioDelTablero({
       item={item}
       vecinos={vecinos}
       plano={plano}
+      quienReporta={quienReporta}
       onEnviar={(datos) => confirmMount({ ...datos, spaceCode: item.code, sede: item.sede })}
       onCancel={onCancel}
       onSaved={onSaved}

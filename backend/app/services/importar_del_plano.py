@@ -32,6 +32,7 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
+from app.fechas import hoy as hoy_en_colombia
 from app.models.models import (
     LayoutSnapshot, Space, SpaceLease, SpaceStatus, Supplier,
 )
@@ -218,7 +219,7 @@ def aplicar(db: Session) -> Importacion:
     if not plan.importables:
         return plan
 
-    hoy = date.today()
+    hoy = hoy_en_colombia()
     for fila in plan.importables:
         space = db.query(Space).filter(Space.code == fila.espacio).first()
         if space is None:

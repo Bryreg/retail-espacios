@@ -7,6 +7,7 @@ contrato y los datos del otro.
 """
 from datetime import date
 
+from app.fechas import hoy as hoy_en_colombia
 from app.models.models import Space, SpaceLease
 
 
@@ -22,7 +23,7 @@ def contrato_para_montar(space: Space, hoy: date | None = None) -> SpaceLease | 
     cuando se prepara el montaje—. Los vencidos no responden: "así debe quedar"
     de algo que ya se desmontó no es una respuesta.
     """
-    hoy = hoy or date.today()
+    hoy = hoy or hoy_en_colombia()
     activos = [l for l in space.leases if l.is_active]
     corriendo = [l for l in activos if l.start_date <= hoy <= l.end_date]
     if corriendo:

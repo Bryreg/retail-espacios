@@ -36,6 +36,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.database import SessionLocal  # noqa: E402
+from app.fechas import hoy as hoy_en_colombia  # noqa: E402
 from app.models.models import LayoutSnapshot, Space, SpaceLease  # noqa: E402
 
 
@@ -68,7 +69,7 @@ def contratos_del_plano(caras: dict[str, dict]) -> dict[str, dict]:
     editables que escribían el layout sin tocar la base —se quitaron justamente
     por esto—, y cualquier contrato cargado así sigue viviendo sólo ahí.
     """
-    hoy = date.today()
+    hoy = hoy_en_colombia()  # el día de Colombia, como la app (app/fechas.py)
     vendidos = {}
     for corto, cara in caras.items():
         if (cara.get("status") or "free") != "occupied":
@@ -86,7 +87,7 @@ def contratos_del_plano(caras: dict[str, dict]) -> dict[str, dict]:
 
 
 def auditar(db, solo_sede: str | None = None) -> int:
-    hoy = date.today()
+    hoy = hoy_en_colombia()  # el día de Colombia, como la app (app/fechas.py)
     planos = {
         (s.sede or "").strip().upper(): json.loads(s.fixtures_json or "[]")
         for s in db.query(LayoutSnapshot).all()

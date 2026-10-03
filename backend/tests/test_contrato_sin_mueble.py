@@ -13,9 +13,11 @@ Se frena al GUARDAR EL PLANO, que es el único lugar por el que pasan las tres
 puertas y los cuatro caminos de borrado. Y se frena en vez de cancelar solo:
 cancelar es plata y un compromiso con un proveedor, no lo decide un guardado.
 """
-from datetime import date, timedelta
+from datetime import timedelta
 
-HOY = date.today()
+from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
+
+HOY = hoy_en_colombia()
 
 MUEBLE = {
     "id": "f1", "code": "IMP-17", "sede": "NAVE", "type": "punta",

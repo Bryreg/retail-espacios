@@ -1042,7 +1042,10 @@ def test_operador_con_membresias_conserva_el_flujo_de_siempre(client, monkeypatc
     assert cuerpo["cliente"] == "opmarket"
     assert cuerpo["role"] == "admin"       # owner viaja como admin
     assert "plataforma" not in cuerpo
-    assert "cliente_nombre" not in cuerpo  # el cuerpo de /oauth de siempre
+    # El cuerpo de /oauth de siempre: desde el 2026-10-02 trae el nombre y el
+    # rol de SU supermercado, no el «Plataforma» del cuerpo de la consola.
+    assert cuerpo["cliente_nombre"] == "Op Market"
+    assert cuerpo["rol_cliente"] == "owner"
 
     # Y su token sí abre su base de negocio, como antes.
     assert client.get("/api/spaces/", headers=_cab(cuerpo["token"])).status_code == 200

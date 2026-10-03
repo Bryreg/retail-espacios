@@ -360,7 +360,7 @@ export default function ReportePlataforma({ modo }: { modo: Modo }) {
         // significado posible (esta ruta es del dueño), así que se traduce
         // al mensaje específico de la spec en vez de dejar pasar el genérico.
         if (modo === "dueno" && (err as { response?: { status?: number } })?.response?.status === 403) {
-          setError("Sólo el owner del cliente puede generar este reporte.");
+          setError("Sólo el dueño del supermercado puede generar este reporte.");
           return;
         }
         setError(describeError(err, "No se pudo generar el reporte."));

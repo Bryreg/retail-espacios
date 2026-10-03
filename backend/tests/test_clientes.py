@@ -11,6 +11,7 @@ import jwt
 import pytest
 
 from conftest import CLAVE_ADMIN, CLAVE_WORKER
+from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
 
 
 def _crear(slug="olimpica", nombre="Olímpica"):
@@ -157,17 +158,15 @@ def test_con_dos_clientes_hay_que_decir_cual(client, admin):
     assert "supermercado" in r.json()["detail"].lower()
 
 
-# ─── La lista del selector ────────────────────────────────────────────────────
+# ─── La lista del viejo selector ──────────────────────────────────────────────
 
-def test_la_lista_es_publica_pero_no_cuenta_nada(client, admin):
-    """Hay que mostrarla antes de que nadie se identifique, así que sale sin
-    sesión. Justamente por eso no puede traer nada de adentro."""
+def test_la_lista_de_supermercados_ya_no_es_publica(client, admin):
+    """Era la lista del selector de la pantalla de ingreso con clave compartida.
+    Ese selector se fue con la clave, y la lista quedó contándole a cualquiera
+    qué supermercados usan el sistema (2026-10-02). El nombre del supermercado
+    al que se entra viaja ahora en la respuesta de `/oauth`."""
     _crear()
-    r = client.get("/api/auth/clientes")
-    assert r.status_code == 200, r.text
-    filas = r.json()
-    assert {f["slug"] for f in filas} == {"galerias", "olimpica"}
-    assert all(set(f) == {"slug", "nombre"} for f in filas), filas
+    assert client.get("/api/auth/clientes").status_code == 404
 
 
 def test_un_cliente_que_no_existe_responde_como_clave_errada(client):
@@ -204,7 +203,7 @@ def test_el_enlace_de_montaje_solo_abre_la_base_de_su_cliente(client, admin):
     fechas, el mueble en el plano— y después se pide lo mismo con el enlace del
     segundo. Si la separación fallara, acá saldría «Alpina».
     """
-    from datetime import date, timedelta
+    from datetime import timedelta
 
     from app.auth import create_mount_token
 
@@ -225,7 +224,7 @@ def test_el_enlace_de_montaje_solo_abre_la_base_de_su_cliente(client, admin):
         headers=admin,
     ).json()["id"]
     prov = _proveedor(client, admin, "Alpina")
-    hoy = date.today()
+    hoy = hoy_en_colombia()
     assert client.post(
         f"/api/spaces/{esp}/leases",
         json={"supplier_id": prov, "marca": "Yogurt Griego",

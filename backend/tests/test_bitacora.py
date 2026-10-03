@@ -8,11 +8,12 @@ hacen útil de verdad:
 * que la línea y el cambio caigan juntos o no caiga ninguno;
 * que no la pueda leer cualquiera, y que nunca guarde un secreto.
 """
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 from conftest import CLAVE_ADMIN
+from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
 
-HOY = date.today()
+HOY = hoy_en_colombia()
 
 
 def _lineas(client, admin, **params):
@@ -223,8 +224,16 @@ def test_el_diccionario_de_acciones_cubre_lo_que_se_anota(client, admin):
     client.patch(f"/api/spaces/{space_id}/status", json={"status": "maintenance"}, headers=admin)
     client.post("/api/auth/login", json={"password": "no-es"})
 
+    from app.services.bitacora import ACCIONES, RETIRADAS
+
     for accion in set(_acciones(client, admin)):
-        assert accion in catalogo, f"`{accion}` no está en el diccionario"
+        assert accion in ACCIONES, f"`{accion}` no está en el diccionario"
+
+    # El filtro no ofrece lo que ya no puede pasar (2026-10-02): el intento
+    # fallido y el cambio de clave son del ingreso con clave compartida, y el
+    # barrido, de «Empezar de cero». Sus filas viejas se siguen leyendo.
+    assert not set(catalogo) & RETIRADAS, catalogo
+    assert set(catalogo) | RETIRADAS == set(ACCIONES)
 
 
 # ─── Que no crezca para siempre ───────────────────────────────────────────────

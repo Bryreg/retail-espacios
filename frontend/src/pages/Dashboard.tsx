@@ -27,6 +27,7 @@ import {
 } from "../api/auth";
 import { describeError } from "../api/client";
 import { descargarMiExport, solicitarSupresion } from "../api/derechos";
+import { descargarCopia } from "../api/copia";
 import { useFixtureStore } from "../store/fixtureStore";
 import { TemaToggle, useModalAbierto } from "../tema";
 
@@ -410,7 +411,7 @@ function UsuariosSection() {
         <>
           {datos.miembros.length === 0 && datos.invitaciones.length === 0 ? (
             <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 8 }}>
-              Todavía nadie entró con cuenta propia en este supermercado.
+              Todavía no hay nadie más: invitá a tu equipo con su correo.
             </div>
           ) : (
             <div
@@ -681,6 +682,70 @@ function BitacoraSection() {
   );
 }
 
+/** Bytes para una persona: «850 KB», «12,4 MB». */
+function peso(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toLocaleString("es-CO", { maximumFractionDigits: 1 })} MB`;
+}
+
+/** «Copia de seguridad»: todo el supermercado en un ZIP, para guardarlo fuera
+ *  de RECABRA (2026-10-02). Reemplaza a `scripts/respaldo.py`, que entraba con
+ *  la clave compartida y quedó sin puerta cuando se apagó.
+ *
+ *  Sólo el dueño —la membresía `owner`, como «Tus datos»—: lleva la plata de
+ *  los contratos y los contactos de los proveedores, así que a un admin
+ *  invitado ni se le muestra. Una sesión abierta antes de que el ingreso dijera
+ *  el rol (`rolCliente` en null) la ve, y si no es el dueño el 403 lo dice. */
+function CopiaSection() {
+  const rolCliente = useAuthStore((s) => s.rolCliente);
+  const [avance, setAvance] = useState<string | null>(null);
+  const [msg, setMsg] = useState<Feedback>(null);
+
+  if (rolCliente && rolCliente !== "owner") return null;
+
+  const bajar = async () => {
+    setAvance("Armando la copia…");
+    setMsg(null);
+    try {
+      const { nombre, bytes } = await descargarCopia((bajado, total) =>
+        setAvance(
+          total
+            ? `Descargando… ${Math.min(100, Math.round((bajado / total) * 100))} %`
+            : `Descargando… ${peso(bajado)}`
+        )
+      );
+      setMsg({ ok: true, text: `Listo: ${nombre} (${peso(bytes)}).` });
+    } catch (err) {
+      setMsg({
+        ok: false,
+        text: describeError(err, "No se pudo armar la copia. Probá de nuevo en un rato."),
+      });
+    } finally {
+      setAvance(null);
+    }
+  };
+
+  return (
+    <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }}>
+      <div style={sectionLabelStyle}>Copia de seguridad</div>
+      <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginBottom: 12, lineHeight: 1.5 }}>
+        Todo el supermercado en un archivo ZIP: planos, espacios, contratos, proveedores,
+        montajes con sus fotos, documentos y configuración. Bajala cada tanto y guardala
+        fuera de RECABRA, en tu computador o en Drive.
+      </div>
+      <ActionButton onClick={bajar} disabled={avance !== null}>
+        <Download size={12} />
+        {avance ?? "Descargar copia de seguridad"}
+      </ActionButton>
+      <FeedbackNote msg={msg} />
+      <div style={{ marginTop: 8, fontSize: 11, color: "var(--ink-3)", lineHeight: 1.4 }}>
+        Trae los valores de los contratos y los datos de contacto: tratala como un documento
+        confidencial. Cada descarga queda en la bitácora.
+      </div>
+    </div>
+  );
+}
+
 /** "Tus datos" (Fase 3, Ley 1581/2012): derechos del titular, propios de esta
  *  fase y en su propio archivo (`api/derechos.ts`) -- no comparten código con
  *  el resto de Configuración a propósito, porque su frontera es distinta: acá
@@ -744,7 +809,7 @@ function TusDatosSection() {
       <div style={sectionLabelStyle}>Tus datos</div>
       <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginBottom: 12, lineHeight: 1.5 }}>
         Política de Tratamiento de Datos Personales (Ley 1581/2012). Estas dos acciones sólo
-        las puede hacer quien fundó el cliente -- si no sos el owner, el sistema te lo va a decir.
+        las puede hacer el dueño del supermercado.
       </div>
 
       <div style={{ marginBottom: 14 }}>
@@ -931,7 +996,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
                   type="text"
                   value={days}
                   onChange={(e) => setDays(e.target.value)}
-                  placeholder="30,15,7,1"
+                  placeholder="30,15,6"
                   style={{ ...inputStyle, fontFamily: "var(--font-mono)" }}
                 />
               </div>
@@ -951,6 +1016,8 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <ContactsSection sedes={sedes} />
+
+        <CopiaSection />
 
         <TusDatosSection />
 
@@ -997,6 +1064,35 @@ interface TopbarProps {
   onOpenSettings: () => void;
   onIrPlataforma: () => void;
   onLogout: () => void;
+}
+
+/** Supermercado, persona y rol, a la derecha de la barra. El rol dicta la mitad
+ *  de lo que se ve en pantalla —la plata va tachada para el trabajador—, así que
+ *  va con la palabra. Una sesión de antes del 2026-10-02 no trae el rol en el
+ *  supermercado y cae a la palabra del token. */
+function QuienSoy({ isAdmin }: { isAdmin: boolean }) {
+  const clienteNombre = useAuthStore((s) => s.clienteNombre);
+  const nombre = useAuthStore((s) => s.nombre);
+  const email = useAuthStore((s) => s.email);
+  const rolCliente = useAuthStore((s) => s.rolCliente);
+  const rol = rolCliente ? rolLabelUsuario(rolCliente) : isAdmin ? "Administrador" : "Trabajador";
+  const persona = nombre?.trim() || email || null;
+  const linea: React.CSSProperties = {
+    maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+  };
+  return (
+    <span
+      title={[clienteNombre, persona, rol].filter(Boolean).join(" · ")}
+      style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.25, minWidth: 0, maxWidth: 220 }}
+    >
+      {clienteNombre && (
+        <span style={{ ...linea, fontSize: 12, fontWeight: 600, color: "var(--ink-2)" }}>{clienteNombre}</span>
+      )}
+      <span style={{ ...linea, fontSize: 11, color: "var(--ink-4)" }}>
+        {persona ? `${persona} · ${rol}` : rol}
+      </span>
+    </span>
+  );
 }
 
 function Topbar({
@@ -1108,13 +1204,12 @@ function Topbar({
             delatora que puede tener una pantalla — nadie que use el sistema
             todos los días deja un botón muerto ahí arriba. Se va.
 
-            Y el avatar: un círculo con "AD" adentro. Acá hay dos roles, no una
-            organización con nombres. El rol dicta la mitad de lo que se ve en
-            pantalla —la plata va tachada para el trabajador— así que decirlo
-            con la palabra informa, y el círculo con iniciales sólo decoraba. */}
-        <span style={{ fontSize: 11.5, color: "var(--ink-4)", whiteSpace: "nowrap" }}>
-          {isAdmin ? "Administrador" : "Trabajador"}
-        </span>
+            Y el avatar: un círculo con "AD" adentro, que sólo decoraba. Lo
+            reemplazó la palabra del rol, cuando el acceso era con dos claves
+            compartidas y no había personas. Hoy sí las hay, con su cuenta, en
+            más de un supermercado: se dice en cuál se está, quién es y con qué
+            rol —el dueño no es «Administrador»— (2026-10-02). */}
+        <QuienSoy isAdmin={isAdmin} />
 
         {/* Fase 2 clientes: sólo existe en el DOM si el backend confirmó
             `operador === true` — no es un botón deshabilitado para el resto

@@ -40,6 +40,7 @@ de CADA prueba — sin aislar TMPDIR, una corrida ajena puede pisar archivos de
 import hashlib
 import json
 import os
+import re
 from datetime import date
 from types import SimpleNamespace
 
@@ -638,10 +639,11 @@ def test_t21_grep_estatico_plataforma_tendencia_no_escribe_bases_de_cliente():
 
 # El encargo pide comparar contra esta lista puntual de tablas del contrato
 # (las que la frontera del operador toca de cerca) -- se verifica que TODAS
-# sigan existiendo y sin columnas nuevas. La comprobación de que NO aparezca
-# ninguna otra tabla nueva en absoluto es la de abajo, contra `git diff main`,
-# que es la fuente de verdad real (esta lista puntual no pretende ser el
-# universo completo de tablas del repo -- `models.py` solo trae más de 15).
+# sigan existiendo. La de que ninguna tabla que ya existía gane una columna es
+# la de abajo, contra el diff de los modelos con `main`, que es la fuente de
+# verdad real (esta lista puntual no pretende ser el universo completo de tablas
+# del repo -- `models.py` solo trae más de 15). Tablas NUEVAS sí puede haber:
+# `create_all` las crea sin migración.
 TABLAS_DEL_CONTRATO = [
     "estados_cliente", "bitacora_plataforma", "fundaciones", "alta_attempts",
     "clientes", "usuarios", "membresias", "space_leases", "spaces",
@@ -656,8 +658,9 @@ def test_t22_ninguna_tabla_existente_gano_columnas(client):
        columnas que tenían en `main` -- se compara `Base.metadata` (con la
        tabla nueva ya importada) contra `git show main:...` re-parseado en un
        subproceso limpio, para no mezclar dos `Base` del mismo proceso.
-    2. La única tabla que aparece en el diff de `backend/app/models/**` contra
-       `main` es `snapshot_metricas` -- ni una columna agregada a otro modelo.
+    2. En el diff de `backend/app/models/**` contra `main`, ninguna tabla que
+       ya existía gana una línea `Column(` -- ni una columna agregada a otro
+       modelo. Las tablas NUEVAS (su línea `class` también es agregada) sí.
     """
     import subprocess
     from app.database import Base
@@ -671,45 +674,56 @@ def test_t22_ninguna_tabla_existente_gano_columnas(client):
         assert nombre in tablas, f"tabla del contrato {nombre} desapareció"
 
     raiz = os.path.dirname(os.path.dirname(__file__))
-    resultado = subprocess.run(
-        ["git", "diff", "--name-only", "main", "--", "app/models/"],
-        cwd=raiz, capture_output=True, text=True,
-    )
-    if resultado.returncode != 0:
-        pytest.skip("no se pudo diffear contra main (branch no disponible en este checkout)")
-    archivos_tocados = [l for l in resultado.stdout.splitlines() if l.strip()]
-    # Sólo `plataforma.py` puede tener tocado un modelo -- si `models.py`,
-    # `identidad.py` o cualquier otro aparece acá, alguien agregó una columna a
-    # una tabla existente en OTRO archivo y hay que mirarlo a mano.
-    # `consentimiento.py` está en la lista por Fase 7 Parte C: sólo cambia el
-    # VALOR de la constante `VERSION_POLITICA` ("2026-09-v1" -> "2026-09-v2"),
-    # ninguna columna nueva ni tocada -- se verifica en el diff de abajo, que
-    # sólo mira `plataforma.py` en busca de `Column(` agregadas.
-    assert set(archivos_tocados) <= {
-        "backend/app/models/plataforma.py",
-        "backend/app/models/consentimiento.py",
-    }, archivos_tocados
 
-    diff_plataforma = subprocess.run(
-        ["git", "diff", "main", "--", "app/models/plataforma.py"],
-        cwd=raiz, capture_output=True, text=True,
-    ).stdout
-    # Ninguna clase preexistente (`EstadoCliente`, `IntentoAlta`, `Fundacion`,
-    # `BitacoraPlataforma`) puede tener una línea `Column(` agregada: sólo se
-    # tolera un `+from ... import Float, Text` (tipos que la tabla nueva usa) y
-    # la clase `SnapshotMetricas` entera.
-    lineas_agregadas = [l[1:] for l in diff_plataforma.splitlines()
-                        if l.startswith("+") and not l.startswith("+++")]
-    fuera_de_snapshot = []
-    dentro = False
-    for l in lineas_agregadas:
-        if "class SnapshotMetricas" in l:
-            dentro = True
-        if dentro:
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=raiz, capture_output=True, text=True)
+
+    # `origin/main` antes que `main`: el `main` local de un checkout puede tener
+    # semanas, y entonces el diff mezcla lo de otros con lo de este cambio.
+    base = next((r for r in ("origin/main", "main")
+                 if git("rev-parse", "--verify", "--quiet", r).returncode == 0), None)
+    if base is None:
+        pytest.skip("no hay main contra qué comparar en este checkout")
+    resultado = git("diff", "--unified=0", base, "--", "app/models/")
+    if resultado.returncode != 0:
+        pytest.skip("no se pudo diffear contra main en este checkout")
+
+    # Hasta el 2026-10-02 esto se miraba por ARCHIVO: sólo `plataforma.py` y
+    # `consentimiento.py` podían aparecer en el diff, y cualquier cambio en
+    # `models.py` lo hacía saltar aunque no tocara una columna -- ese día saltó
+    # porque la fecha del negocio pasó a ser la de Colombia (`app/fechas.py`).
+    # Lo que la regla protege no es el archivo: es que `create_all` nunca
+    # agrega columnas a una tabla que ya existe. Así que se mira cada línea
+    # agregada, en todos los modelos: una `Column(` o `mapped_column(` sólo vale
+    # adentro de una clase que NO existía en `main` -- una tabla nueva --.
+    # Sin contexto (`--unified=0`), un tramo que agrega algo adentro de una
+    # clase vieja no muestra su `class`: arranca como clase vieja. Y una línea
+    # `class` reescrita (un comentario agregado) sigue siendo la clase vieja,
+    # porque el nombre se busca en el archivo de `main`.
+    def clases_en_main(archivo):
+        r = git("show", f"{base}:{archivo}")
+        return set(re.findall(r"^class (\w+)", r.stdout, re.M)) if r.returncode == 0 else set()
+
+    columnas_en_tablas_viejas = []
+    viejas: set = set()
+    en_clase_nueva = False
+    for linea in resultado.stdout.splitlines():
+        if linea.startswith("diff --git"):
+            viejas = clases_en_main(linea.split(" b/", 1)[1])
+            en_clase_nueva = False
             continue
-        if "Column(" in l:
-            fuera_de_snapshot.append(l)
-    assert fuera_de_snapshot == [], fuera_de_snapshot
+        if linea.startswith("@@"):
+            en_clase_nueva = False
+            continue
+        if linea.startswith(("+++", "---")):
+            continue
+        clase = re.match(r"\+class (\w+)", linea)
+        if clase:
+            en_clase_nueva = clase.group(1) not in viejas
+        elif (linea.startswith("+") and not en_clase_nueva
+              and re.search(r"\b(Column|mapped_column)\(", linea)):
+            columnas_en_tablas_viejas.append(linea[1:].strip())
+    assert columnas_en_tablas_viejas == [], columnas_en_tablas_viejas
 
 
 def test_t23_import_app_main_crea_la_tabla_con_create_all_sin_alembic(client):

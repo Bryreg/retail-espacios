@@ -13,6 +13,8 @@ respuesta, no campo por campo. Buscar campo por campo sólo encuentra las fugas
 que uno ya sospecha.
 """
 
+from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
+
 TELEFONO = "3009998877"
 CORREO = "gerencia.secreta@proveedor-x.com"
 CONTACTO = "Marta Secreta"
@@ -76,8 +78,8 @@ def _vender(client, admin, nota_contrato):
         "code": "NAVE-PUN-01", "sede": "NAVE", "name": "PUN-01",
     }).json()
     sid = _crear(client, admin)
-    from datetime import date, timedelta
-    hoy = date.today()
+    from datetime import timedelta
+    hoy = hoy_en_colombia()
     r = client.post(f"/api/spaces/{espacio['id']}/leases", headers=admin, json={
         "supplier_id": sid, "marca": "Aseo",
         "start_date": hoy.isoformat(),

@@ -28,6 +28,8 @@ import io
 
 import pytest
 
+from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
+
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -162,7 +164,7 @@ def test_h1e_planograms_corta_la_lectura_al_pasarse_del_limite(client, admin, mo
     413 — es el que ese endpoint contestaba desde siempre y el arreglo lo
     conserva: no se cambian códigos ni textos, sólo el momento del corte."""
     import app.routers.planograms as planograms_mod
-    from datetime import date, timedelta
+    from datetime import timedelta
 
     r = client.post(
         "/api/spaces/find-or-create",
@@ -174,7 +176,7 @@ def test_h1e_planograms_corta_la_lectura_al_pasarse_del_limite(client, admin, mo
     space_id = r.json()["id"]
     r = client.post("/api/suppliers/find-or-create", json={"name": "AlpinaH1E"}, headers=admin)
     assert r.status_code in (200, 201), r.text
-    hoy = date.today()
+    hoy = hoy_en_colombia()
     r = client.post(
         f"/api/spaces/{space_id}/leases",
         json={
@@ -399,8 +401,8 @@ def test_h4b_worker_no_ve_la_plata_en_el_mapa_comercial(client, admin, worker):
     en el mapa, que es exactamente lo que la app cierra por todas las otras
     puertas.
     """
-    from datetime import date, timedelta
-    hoy = date.today()
+    from datetime import timedelta
+    hoy = hoy_en_colombia()
     fixture = {
         "id": "f1", "code": "H4-02", "sede": "NAVE-H4B", "type": "punta",
         "label": "H4-02", "cx": 1, "cz": 1, "rotY": 0,

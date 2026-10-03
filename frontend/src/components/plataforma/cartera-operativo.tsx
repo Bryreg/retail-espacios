@@ -23,11 +23,12 @@
    archivado, nunca el de la base principal, escribiendo su código). Cada
    paso pide confirmación con lo que va a pasar dicho en palabras.
 
-   Y **pasar a la base principal**: los datos de un cliente reemplazan a los
-   del principal (el de la instalación original, `galerias`), y el origen queda
-   archivado de respaldo. Es lo que pidió el dueño de la plataforma cuando su
-   supermercado real vivía con el código `pepito`: que quedara como Galerías
-   «desde el código», no sólo de nombre. Ver `backend/app/services/traspaso.py`.
+   «Pasar a la base principal» —los datos de un cliente reemplazan a los del
+   principal— estuvo acá del 2026-09-23 al 2026-10-02: sirvió UNA vez, para que
+   el supermercado real, que vivía como `pepito`, quedara como Galerías. Hecha
+   la mudanza, el botón sólo servía para pisar por error los datos reales de
+   Galerías, así que salió; el código queda en `backend/app/services/traspaso.py`,
+   sin botón ni ruta.
 
    El botón de confirmar va en TINTA, no en amarillo: el único amarillo de
    esta pantalla es la llamada #1 de la cola, y un cajón plegado no compite
@@ -40,7 +41,6 @@ import {
   ESTADOS_CUENTA,
   archivarCliente,
   borrarCliente,
-  pasarAlPrincipal,
   patchEstadoCliente,
   reactivarCliente,
   renombrarCliente,
@@ -129,25 +129,17 @@ function EditorEstado({
   );
 }
 
-// ─── El ciclo de vida: renombrar, archivar, reactivar, borrar, pasar ────────
+// ─── El ciclo de vida: renombrar, archivar, reactivar, borrar ──────────────
 
-type AccionCiclo = "renombrar" | "archivar" | "reactivar" | "borrar" | "principal";
+type AccionCiclo = "renombrar" | "archivar" | "reactivar" | "borrar";
 
 /** Lo que cada acción le cuenta a quien está por confirmarla. */
 function confirmacionDe(
   accion: AccionCiclo,
   fila: ClientePlataforma,
   valor: string,
-  principal: ClientePlataforma | null,
 ): string {
   const quien = `«${fila.nombre}» (${fila.slug})`;
-  if (accion === "principal" && principal) {
-    return (
-      `¿Reemplazar los datos de «${principal.nombre}» (${principal.slug}) con los de ${quien}?\n\n` +
-      `Lo que hoy tiene ${principal.nombre} se pierde. ${fila.nombre} queda archivado, intacto, de ` +
-      `respaldo. Se cierran las sesiones abiertas de los dos.`
-    );
-  }
   if (accion === "renombrar") {
     return `¿Renombrar ${quien} a «${valor}»?\n\nEl código no cambia: nadie pierde la sesión.`;
   }
@@ -169,14 +161,11 @@ function confirmacionDe(
 function EditorCiclo({
   fila,
   accion,
-  principal,
   onHecho,
   onCancelar,
 }: {
   fila: ClientePlataforma;
   accion: AccionCiclo;
-  /** El cliente de la base principal: el que recibe los datos al «pasar». */
-  principal: ClientePlataforma | null;
   /** El cambio a mezclar en la fila, o `null` si la fila se borró. */
   onHecho: (patch: Partial<ClientePlataforma> | null) => void;
   onCancelar: () => void;
@@ -185,12 +174,8 @@ function EditorCiclo({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const valor = accion === "renombrar" ? texto.replace(/\s+/g, " ").trim() : texto.trim();
-  // Borrar se confirma con el código de ESTE cliente; pasar a la base
-  // principal, con el del principal, que es el que pierde lo que tenía.
-  const codigoOk =
-    accion === "borrar" ? valor.toLowerCase() === fila.slug
-    : accion === "principal" ? !!principal && valor.toLowerCase() === principal.slug
-    : true;
+  // Borrar se confirma escribiendo el código de ESTE cliente.
+  const codigoOk = accion === "borrar" ? valor.toLowerCase() === fila.slug : true;
 
   const guardar = async () => {
     if (!valor) {
@@ -198,27 +183,17 @@ function EditorCiclo({
       return;
     }
     if (!codigoOk) {
-      setError(`Escribí el código exacto: ${accion === "principal" ? principal?.slug ?? "" : fila.slug}`);
+      setError(`Escribí el código exacto: ${fila.slug}`);
       return;
     }
-    if (!confirm(confirmacionDe(accion, fila, valor, principal))) return;
+    if (!confirm(confirmacionDe(accion, fila, valor))) return;
     setBusy(true);
     setError(null);
     try {
       if (accion === "renombrar") onHecho({ nombre: (await renombrarCliente(fila.slug, valor)).nombre });
       else if (accion === "archivar") onHecho({ activo: (await archivarCliente(fila.slug, valor)).activo });
       else if (accion === "reactivar") onHecho({ activo: (await reactivarCliente(fila.slug, valor)).activo });
-      else if (accion === "principal") {
-        const r = await pasarAlPrincipal(fila.slug, valor);
-        alert(
-          `Listo: los datos de «${fila.nombre}» ya están en «${principal?.nombre ?? r.principal}» ` +
-            `(${r.filas.spaces ?? 0} espacios, ${r.filas.space_leases ?? 0} contratos, ` +
-            `${r.filas.suppliers ?? 0} proveedores).\n\n«${fila.nombre}» quedó archivado de respaldo: ` +
-            `cuando confirmes que está todo, lo podés borrar. Las sesiones abiertas se cerraron; si la ` +
-            `tuya era una de ellas, vas a volver a la pantalla de ingreso.`,
-        );
-        onHecho({ activo: false });
-      } else {
+      else {
         await borrarCliente(fila.slug, valor);
         onHecho(null);
       }
@@ -232,13 +207,11 @@ function EditorCiclo({
   const placeholder =
     accion === "renombrar" ? "Nombre visible del cliente"
     : accion === "borrar" ? `Escribí ${fila.slug} para confirmar`
-    : accion === "principal" ? `Escribí ${principal?.slug ?? ""} para confirmar`
     : "Motivo (obligatorio)";
   const boton =
     accion === "renombrar" ? "Guardar nombre"
     : accion === "archivar" ? "Confirmar archivo"
     : accion === "reactivar" ? "Confirmar reactivación"
-    : accion === "principal" ? `Reemplazar ${principal?.nombre ?? "el principal"}`
     : "Borrar para siempre";
 
   return (
@@ -258,16 +231,6 @@ function EditorCiclo({
           Borra la base de «{fila.nombre}» con todo lo que tiene. <b>No se puede deshacer.</b>
         </p>
       )}
-      {accion === "principal" && principal && (
-        <p className="plat-nota plat-peligro" style={{ margin: "0 0 var(--s2)" }}>
-          Los datos de «{fila.nombre}» —sedes, planos, contratos, proveedores, archivos y
-          configuración— pasan a «{principal.nombre}» (<span className="cod">{principal.slug}</span>), la
-          base principal, y <b>reemplazan lo que tiene hoy: eso se pierde.</b> Las cuentas y las
-          invitaciones de «{fila.nombre}» pasan a «{principal.nombre}», y «{fila.nombre}» queda archivado,
-          intacto, de respaldo. Se cierran las sesiones abiertas de los dos: antes, fijate que no quede
-          nada sin guardar.
-        </p>
-      )}
       <div className="linea">
         <input
           type="text"
@@ -282,7 +245,7 @@ function EditorCiclo({
       <div className="linea">
         <button
           type="button"
-          className={`plat-btn mini ${accion === "borrar" || accion === "principal" ? "peligro" : "fuerte"}`}
+          className={`plat-btn mini ${accion === "borrar" ? "peligro" : "fuerte"}`}
           onClick={guardar}
           disabled={busy || !valor || !codigoOk}
         >
@@ -324,7 +287,6 @@ export function TablaEstados({
   // Qué editor del ciclo está abierto, y en qué fila. Local: nadie de afuera
   // abre estos, a diferencia del de estado.
   const [ciclo, setCiclo] = useState<{ slug: string; accion: AccionCiclo } | null>(null);
-  const principal = clientes?.find((c) => c.base_principal) ?? null;
   const abrirCiclo = (slug: string, accion: AccionCiclo) => {
     onAbrir(null);
     setCiclo((actual) => (actual?.slug === slug && actual.accion === accion ? null : { slug, accion }));
@@ -372,7 +334,6 @@ export function TablaEstados({
                     key={ciclo.accion}
                     fila={c}
                     accion={ciclo.accion}
-                    principal={principal}
                     onCancelar={() => setCiclo(null)}
                     onHecho={(patch) => {
                       setCiclo(null);
@@ -410,20 +371,6 @@ export function TablaEstados({
                     Reactivar
                   </button>
                 )}{" "}
-                {/* Sólo un cliente ACTIVO: el archivado es el respaldo de un
-                    traspaso, y pasarlo otra vez pisaría lo trabajado después. */}
-                {c.activo && !c.base_principal && principal && (
-                  <>
-                    <button
-                      type="button"
-                      className="plat-btn mini"
-                      onClick={() => abrirCiclo(c.slug, "principal")}
-                      title={`Sus datos reemplazan a los de ${principal.nombre} (${principal.slug}); este queda archivado de respaldo.`}
-                    >
-                      Pasar a la base principal
-                    </button>{" "}
-                  </>
-                )}
                 {!c.activo && !c.base_principal && (
                   <>
                     <button

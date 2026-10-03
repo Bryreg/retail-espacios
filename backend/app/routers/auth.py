@@ -21,13 +21,14 @@ from app.auth import (
     epoca_de,
     guardar_clave,
     invalidar_sesiones,
+    login_legado_prendido,
     require_admin,
     require_auth,
     sub_y_email_de_la_sesion,
     verificar_clave,
 )
 from app.clientes import (
-    CABECERA_ESTADO_CUENTA, Cliente, buscar, cliente_del_pedido, listar, sesion_de, unico,
+    CABECERA_ESTADO_CUENTA, Cliente, buscar, cliente_del_pedido, sesion_de, unico,
 )
 from app.database import get_db
 from app.models.models import LoginAttempt
@@ -129,11 +130,6 @@ class LoginOut(BaseModel):
     aviso_cuenta: Optional[AvisoCuenta] = None
 
 
-class ClienteOut(BaseModel):
-    slug: str
-    nombre: str
-
-
 class OAuthIn(BaseModel):
     id_token: str
     # Con qué supermercado entrar, cuando la cuenta tiene membresía en varios.
@@ -164,17 +160,6 @@ class PasswordsOut(BaseModel):
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
-
-@router.get("/clientes", response_model=list[ClienteOut])
-def clientes_disponibles():
-    """La lista para el selector de la pantalla de ingreso.
-
-    Es pública porque hay que mostrarla antes de que nadie se identifique. Sólo
-    salen el código y el nombre — ni cuántas tiendas tiene cada uno, ni nada de
-    adentro. Mientras haya un solo cliente la pantalla ni lo pregunta.
-    """
-    return [ClienteOut(slug=c.slug, nombre=c.nombre) for c in listar()]
-
 
 def _cliente_para_entrar(slug: Optional[str]) -> Cliente:
     if slug:
@@ -234,10 +219,6 @@ def _aviso_sin_motivo(aviso: Optional[AvisoCuenta]) -> Optional[AvisoCuenta]:
 LOGIN_LEGADO_APAGADO = (
     "El acceso por clave compartida está apagado: se entra con la cuenta de Google o de correo."
 )
-
-
-def login_legado_prendido() -> bool:
-    return (os.getenv("LOGIN_LEGADO") or "").strip().lower() in ("1", "true", "si", "sí", "on")
 
 
 def exigir_login_legado() -> None:
@@ -833,6 +814,12 @@ def oauth_login(
             "token": token,
             "role": role,
             "cliente": cliente_obj.slug,
+            # El nombre visible y el rol de ESTA persona en ESTE supermercado
+            # (2026-10-02): la barra de arriba dice «Galerías · Dueño», y el
+            # nombre ya no se busca en `GET /auth/clientes`, que era pública y
+            # le contaba a cualquiera qué supermercados usan el sistema.
+            "cliente_nombre": cliente_obj.nombre,
+            "rol_cliente": elegida.rol,
             "email": email,
             "nombre": usuario.nombre,
         }

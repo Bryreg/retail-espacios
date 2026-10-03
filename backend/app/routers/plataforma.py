@@ -465,9 +465,10 @@ def cambiar_estado_cliente(slug: str, payload: PatchEstadoIn, email: str = Depen
 #   tokens de ese cliente dan 401 en el pedido siguiente, porque `buscar` ya no
 #   lo ve), deja de aparecer en la pantalla de ingreso y en el análisis de la
 #   consola, y el mantenimiento de fondo lo saltea. Los datos quedan intactos.
-# · **Pasar a la base principal** (`/pasar-al-principal`): los datos de un
-#   cliente reemplazan a los del principal, y el origen queda archivado de
-#   respaldo. Ver `app/services/traspaso.py`.
+# · «Pasar a la base principal» (los datos de un cliente reemplazan a los del
+#   principal) tuvo ruta acá del 2026-09-23 al 2026-10-02: sirvió UNA vez, para
+#   la mudanza Pepito → Galerías, y después sólo podía pisar por error los datos
+#   reales de Galerías. Queda `app/services/traspaso.py`, sin ruta.
 # · **Borrar** no tiene vuelta atrás: la base del cliente se elimina y sus
 #   filas del registro también. Sólo un cliente YA ARCHIVADO —el archivo es el
 #   período de gracia contra el clic equivocado—, nunca el de la base por
@@ -699,54 +700,6 @@ def borrar_cliente(slug: str, payload: BorrarIn, email: str = Depends(require_op
     _olvidar_caches_de_consola()
     _anotar_consulta(email, "borrado", f"{slug_real}:{periodo_actual()}")
     return {"ok": True, "slug": slug_real}
-
-
-class TraspasoIn(BaseModel):
-    confirmacion: str
-
-
-@router.post("/clientes/{slug}/pasar-al-principal")
-def pasar_al_principal(slug: str, payload: TraspasoIn, email: str = Depends(require_operador)):
-    """Los datos de este cliente reemplazan a los de la base principal
-    (`app/services/traspaso.py`).
-
-    Pedido del dueño de la plataforma (2026-09-23): su supermercado real vivía
-    con el código `pepito` y quería que fuera `galerias` «desde el código», no
-    sólo de nombre. Se confirma escribiendo el código del PRINCIPAL, que es el
-    que pierde lo que tenía; el origen queda archivado, intacto, de respaldo.
-    """
-    from app.clientes import es_el_de_siempre
-    from app.models.models import ClienteRow
-    from app.plataforma_estado import invalidar_cache_estado
-    from app.plataforma_metricas import periodo_actual
-    from app.services.traspaso import ErrorDeTraspaso, traspasar_al_principal
-
-    reg = sesion_registro()
-    try:
-        principal = next((f for f in reg.query(ClienteRow).all() if es_el_de_siempre(f)), None)
-        slug_principal = principal.slug if principal is not None else None
-    finally:
-        reg.close()
-    if slug_principal is None:
-        raise HTTPException(status_code=409, detail="No hay un cliente en la base principal.")
-    if (payload.confirmacion or "").strip().lower() != slug_principal:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Para confirmar, escribí el código del cliente principal: {slug_principal}",
-        )
-
-    try:
-        resumen = traspasar_al_principal(slug)
-    except LookupError:
-        raise HTTPException(status_code=404, detail=CLIENTE_DESCONOCIDO)
-    except ErrorDeTraspaso as e:
-        raise HTTPException(status_code=409, detail=str(e))
-
-    invalidar_cache_estado(resumen["principal"])
-    invalidar_cache_estado(resumen["origen"])
-    _olvidar_caches_de_consola()
-    _anotar_consulta(email, "traspaso", f"{resumen['principal']}:{periodo_actual()}")
-    return resumen
 
 
 # ─── Reporte de transparencia, para el operador (Fase 7, Parte B) ──────────

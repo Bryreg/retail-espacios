@@ -1,7 +1,14 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-01 (Ninguna prueba del backend depende del día en que
+Última actualización: 2026-10-02 (Auditoría de producción: lo que quedó del modelo
+viejo. El plano real de Galerías ya no se baja sin sesión, salen «Empezar de cero» y
+«Pasar a la base principal», borrar la foto de un montaje ya no da error, la fecha del
+negocio es la de Colombia, el correo a la mercaderista vuelve a traer su enlace y el
+dueño baja la copia de seguridad desde Configuración. Ver *Auditoría de producción
+(2026-10-02)*, al principio de *Qué está hecho*).
+
+Antes, 2026-10-01 (Ninguna prueba del backend depende del día en que
 se corre: cinco amanecieron rojas el 1.º de octubre por tener septiembre escrito como
 mes en curso, y otras 132 iban a caer el 2028-10-01. Ver *Pruebas con el mes escrito
 a mano*. Antes, el mismo día: el acceso por clave compartida se apagó —la sección
@@ -131,7 +138,9 @@ Estas no son preferencias. Romperlas rompe producción.
 *tablas* nuevas pero **no agrega columnas a tablas existentes**: una columna nueva en
 `spaces` o `layout_snapshots` simplemente no existiría en la base ya desplegada. Cuando
 hizo falta guardar algo nuevo, se usó la tabla `app_config` (clave/valor) o el propio
-JSON del layout.
+JSON del layout. `test_t22` (`tests/test_tendencia_ataques.py`) lo vigila contra
+`origin/main`: ninguna clase que ya existía gana una línea `Column(` o
+`mapped_column(`; las tablas nuevas, sí.
 
 **Una sola verdad: el plano guarda lo que ES el mueble, la base lo que se le VENDIÓ.**
 Esto REEMPLAZA al modelo dual, que fue el mayor generador de bugs del proyecto — ver
@@ -265,7 +274,25 @@ la base principal VACÍA las de negocio de esa base, que es también la del regi
 una tabla de registro mal clasificada —usuarios, membresías— se borraría con el
 sistema entero adentro. Por eso una tabla sin clasificar hace que el traspaso se
 niegue a correr, y `tests/test_traspaso.py` falla hasta que alguien decide de qué
-lado está.
+lado está. La copia de seguridad sale de la misma lista: una tabla de negocio nueva
+entra sola a la copia, y dejarla afuera es una decisión escrita
+(`TABLAS_QUE_NO_SALEN` en `services/copia.py`).
+
+**La fecha del negocio es la de Colombia.** Render corre en UTC, cinco horas
+adelante: preguntando `date.today()`, desde las 7 p. m. el servidor vivía en el día
+siguiente. Toda decisión que dependa de qué día es —vigencia de un contrato,
+vencimientos, recordatorios, montajes— pregunta a `app/fechas.py` (`hoy()`,
+`ahora()`; UTC−5 fijo, Colombia no cambia de hora). Las marcas de tiempo siguen en
+UTC, que son instantes y no días, y el mes de la consola de la plataforma
+(`periodo_actual`) sigue en UTC por decisión propia. Las pruebas comparan contra
+`app.fechas.hoy` (importado como `hoy_en_colombia`), nunca contra `date.today()`, y
+`tests/test_hora_colombia.py` corre a las 9 p. m. de Colombia. Los scripts de
+consola también (`backend/scripts/auditar_desfase.py`).
+
+**`frontend/public/` es público.** Todo lo que está ahí se sirve en la raíz del sitio,
+sin sesión. Ahí estuvieron el plano real de Galerías y 21 recortes hasta el
+2026-10-02. `probar-limpieza.mjs` tiene la lista de lo permitido (`_redirects`,
+`robots.txt`): agregar algo es publicarlo, y tiene que ser una decisión.
 
 **Los espejos comparan identidad, no booleanos.** El plano 2D y el editor 3D mantienen
 una copia local del store. Los guards que evitan el eco comparan la *identidad del array*,
@@ -275,6 +302,78 @@ causó una pérdida de datos real (ver más abajo).
 ---
 
 ## Qué está hecho
+
+### Auditoría de producción (2026-10-02): lo que quedó del modelo viejo
+
+El dueño vio «Claves de acceso» en Configuración —la pantalla de un modelo que ya no
+existía— y pidió revisar si había más cosas así. Se recorrió el código que corre en
+producción y la app en un navegador como dueño, mercaderista y operador. Lo que salió,
+y cómo quedó:
+
+**Lo peligroso**
+
+- **El plano real de Galerías se podía bajar sin sesión.** `frontend/public/` tenía
+  `plano.png` y 21 recortes —restos del mapa SVG viejo, con la marca de agua de un
+  proveedor—, y todo lo que está ahí se sirve en la raíz del sitio sin login. Se
+  borraron, junto con el mapa viejo que los usaba (`FloorMap`, `SpacePanel`,
+  `ReferenceRateHint`, `api/dashboard.ts` y las funciones de `api/spaces.ts` que sólo
+  él llamaba). Ver la regla dura *`frontend/public/` es público*.
+- **«Empezar de cero»** estaba en la barra de todo administrador y borraba todos los
+  contratos: era para limpiar la etapa de práctica. Salió entero: el componente,
+  `GET/POST /api/layout/empezar-de-cero/…` y `services/empezar_de_cero.py`.
+- **«Pasar a la base principal»** seguía en la consola. Era de un solo uso (Pepito →
+  Galerías, ya hecho) y, usado con otro cliente, reemplazaba los datos reales de
+  Galerías. Ver *Pasar un cliente a la base principal*.
+
+**Lo que fallaba**
+
+- **Borrar la foto de un montaje daba 500 en Postgres** (SQLite no lo muestra):
+  `mount_confirmations.file_id` apunta al archivo sin regla de borrado. Ahora el
+  montaje se queda —es la prueba de que algo pasó— y pierde la foto
+  (`routers/files.py::delete_file`). Reproducido y verificado contra Postgres 16.
+- **La hora del servidor.** Render corre en UTC: desde las 7 p. m. el sistema vivía en
+  el día siguiente, y un contrato que vencía hoy se liberaba a esa hora y se podía
+  volver a vender esa misma noche. Ver la regla dura *La fecha del negocio es la de
+  Colombia*.
+- **El correo a la mercaderista no traía su enlace** desde el 2026-09-02: la venta por
+  lote decía «Abrir RECABRA», y sin cuenta no había nada que abrir. Ver *La
+  mercaderista ya no entra con contraseña*, el apartado del 2026-10-02.
+- **La copia de seguridad no corría desde el 2026-10-01**: `scripts/respaldo.py`
+  entraba con la clave compartida que se apagó ese día. Ahora la baja el dueño desde
+  Configuración; ver *La copia de seguridad*.
+
+**Restos del modelo de claves compartidas**
+
+- La barra decía sólo «Administrador» o «Trabajador». Ahora dice el supermercado y la
+  persona con su rol (`QuienSoy` en `pages/Dashboard.tsx`): `/auth/oauth` y el alta
+  devuelven `cliente_nombre` y `rol_cliente`, y el store los guarda.
+- El montaje con cuenta propia ya no pide «Tu nombre»: guarda la cuenta de la sesión
+  (`routers/mounts.py`, con `sub_y_email_de_la_sesion`). Por el enlace firmado, que no
+  tiene cuenta detrás, se sigue pidiendo.
+- El filtro de la bitácora ya no ofrece «Intento fallido», «Cambio de contraseña» ni el
+  barrido (`RETIRADAS` en `services/bitacora.py`); las filas viejas se siguen leyendo
+  con su título.
+- `bootstrap_claves` ya no crea claves compartidas ni las escribe en el registro de
+  Render (ver *Identidad*, «Legado»). `scripts/alta_cliente.py` se borró: daba de alta
+  un supermercado imprimiendo dos claves que ya no abren nada.
+- `GET /api/auth/clientes`, la lista pública de supermercados, se fue: sólo servía
+  para nombrar el supermercado al entrar, y eso ahora lo dice `/auth/oauth`.
+- `/taller` abría para cualquier sesión; ahora, sólo para administradores.
+- Textos: «las tres sedes», «Terrón» como ejemplo en el registro, «todavía nadie
+  entró con cuenta propia», la página pública que decía «No accede con contraseña
+  compartida», y los comentarios de `render.yaml` y del `Dockerfile` que daban por
+  vivo el ingreso con clave.
+
+**Lo que no es código** y queda del lado del dueño: la política de datos que todos
+aceptan al entrar sigue diciendo «BORRADOR PARA REVISIÓN DE ABOGADO», con espacios
+sin llenar, y la página pública tiene siete «[COMPLETAR…]» (precio, correo de
+contacto, razón social, NIT y ciudad). Necesitan sus datos y un abogado.
+
+Pruebas: `tests/test_copia_de_seguridad.py`, `tests/test_hora_colombia.py`,
+`tests/test_montaje_enlace.py`; en `tests/test_mounts.py`, la foto borrada y el
+montaje con cuenta; en `tests/test_traspaso.py`, que la ruta ya no existe; y
+`frontend/scripts/probar-limpieza.mjs` (lo público, la copia, lo que salió). Todas
+verificadas en reversa, rompiendo el código a propósito.
 
 ### Identidad: cuentas individuales con Google/correo (Fase 1)
 
@@ -308,6 +407,10 @@ Conviven DOS formas de entrar, y las dos emiten el mismo JWT:
   sin Firebase en el entorno local hace falta `LOGIN_LEGADO=1` y
   `ADMIN_PASSWORD`. Pruebas: `tests/test_login_legado.py` (verificada en
   reversa) y el apartado de `probar-ingreso.mjs`.
+  **2026-10-02: tampoco se crean.** `bootstrap_claves` le ponía a cada base nueva
+  las claves de esas variables, y si faltaban inventaba una al azar y la escribía
+  en el registro de Render. Ahora sólo actúa con `LOGIN_LEGADO=1`, sólo desde las
+  variables, y nunca escribe una clave en el registro.
   **Consecuencia, y es la que importa operativamente:** Google/correo pasó a ser
   la ÚNICA puerta. Sin las tres `VITE_FIREBASE_*` en el front no se puede
   entrar; antes ese caso caía parado porque quedaba el formulario viejo. La
@@ -335,10 +438,16 @@ login legado. Un correo es confiable si viene verificado o si el token lo
 emitió Google — LA MISMA vara en la puerta y en la vinculación por correo
 (tener dos varas causaba un 500 que además era oráculo de correos).
 
-Config: backend `FIREBASE_PROJECT_ID` (sin ella, `/oauth` da 503 y el legado
-sigue solo); frontend `VITE_FIREBASE_API_KEY` / `VITE_FIREBASE_AUTH_DOMAIN` /
-`VITE_FIREBASE_PROJECT_ID` (sin ellas, la pantalla muestra solo el login
-legado). Ver `render.yaml` para el deploy. Verificado de punta a punta contra
+**Quién está adentro, en la barra (2026-10-02).** `/auth/oauth` y el alta devuelven
+también `cliente_nombre` y `rol_cliente` (el de la membresía: owner, admin o
+worker), y la barra muestra el supermercado y «persona · rol». Una sesión abierta
+antes de eso no los tiene (`rolCliente` en null) y cae a la palabra del rol del
+token hasta que vuelva a entrar.
+
+Config: backend `FIREBASE_PROJECT_ID` (sin ella, `/oauth` da 503 y nadie
+entra); frontend `VITE_FIREBASE_API_KEY` / `VITE_FIREBASE_AUTH_DOMAIN` /
+`VITE_FIREBASE_PROJECT_ID` (sin ellas, la pantalla dice que el ingreso no está
+configurado). Ver `render.yaml` para el deploy. Verificado de punta a punta contra
 el proyecto Firebase real (`recabra`): firma, JWKS, audiencia y emisor.
 
 ### Clientes comerciales: alta self-service y estado de cuenta (Fase 2)
@@ -495,6 +604,15 @@ Pruebas: `tests/test_plataforma_ciclo.py`, verificada en reversa.
 
 ### Pasar un cliente a la base principal (2026-09-23)
 
+**2026-10-02: el botón y la ruta se fueron.** Era de un solo uso —Pepito pasó a
+Galerías— y, usado por error con otro cliente, reemplazaba los datos reales de
+Galerías. La consola ya no lo ofrece y `POST /api/plataforma/clientes/{slug}/
+pasar-al-principal` no existe (`test_desde_la_web_ya_no_se_puede`). La lógica sigue
+en `app/services/traspaso.py`, probada llamándola directo, por si alguna vez hace
+falta desde la consola del servidor; la generación del caché de planos se queda,
+porque protege de cualquier reemplazo de datos (también de cargar una copia de
+seguridad). Lo que sigue describe cómo era.
+
 **Por qué.** El dueño de la plataforma no quería que su supermercado se *llamara*
 Galerías: quería que lo *fuera*, «desde el código». Su supermercado real vivía con el
 código `pepito` (base `recabra_pepito`), y `galerias` —el cliente de la base
@@ -549,8 +667,11 @@ consola; nadie tiene acceso a la base de producción desde fuera):
 4. Borrar **Pepito** (ya archivado), y archivar y borrar **pepitos**, **Medium** y
    **SUPERMERCADO POBLADO**.
 
-**Lo que no se arrastra:** los enlaces de montaje mandados desde Pepito llevan
-`pepito` adentro, firmado, y dejan de abrir: hay que reenviarlos desde Galerías.
+**Lo que no se arrastra** —corregido el 2026-10-02—: acá decía que los enlaces de
+montaje mandados desde Pepito dejaban de abrir y había que reenviarlos. No hubo
+ninguno: desde el 2026-09-02 el correo de la venta por lote ya no traía el enlace
+firmado (ver *La mercaderista ya no entra con contraseña*), así que no había nada
+que reenviar.
 
 Pruebas: `tests/test_traspaso.py` (17 mutaciones detectadas) y
 `frontend/scripts/probar-traspaso.mjs` (7).
@@ -558,7 +679,8 @@ Pruebas: `tests/test_traspaso.py` (17 mutaciones detectadas) y
 **Resuelto el 2026-10-01:** `crear_cliente` le sigue poniendo a cada cliente nuevo
 las claves compartidas de `ADMIN_PASSWORD` / `WORKER_PASSWORD`, pero la única puerta
 que abrían —`POST /api/auth/login`— está apagada salvo `LOGIN_LEGADO=1` (ver
-*Identidad*, punto «Legado»).
+*Identidad*, punto «Legado»). Y desde el 2026-10-02 ni eso: sin `LOGIN_LEGADO` no
+se las pone.
 
 ### Compliance: Ley 1581, consentimiento y hardening (Fase 3 comercial)
 
@@ -3429,8 +3551,9 @@ pregunta — ¿lo montaste? —. Y una contraseña compartida repartida por corr
 sobrevive a la persona que deja de trabajar ahí.
 
 Ahora el correo lleva un **enlace firmado**: un JWT de rol `montaje`, acotado a
-ESE espacio y con vencimiento a 30 días (`MONTAJE_TTL_DAYS`). Se toca y se está
-adentro, sin contraseña, en una pantalla que sólo tiene ese espacio.
+ESE espacio y con vencimiento a 30 días (`MONTAJE_TTL_DAYS`; desde el 2026-10-02,
+contados desde que arranca el contrato, y el enlace dice cuál es — ver más abajo). Se
+toca y se está adentro, sin contraseña, en una pantalla que sólo tiene ese espacio.
 
 ### La regla de la que cuelga todo: cerrado por defecto
 
@@ -3501,17 +3624,74 @@ enlace, ve la pantalla de montaje, vuelve a `/` y sigue siendo admin.
 
 Un enlace inválido o vencido **no dice «iniciá sesión»** — dice que el enlace ya
 no sirve y que pida que se lo reenvíen. Decirle a alguien que inicie sesión es
-mandarlo a buscar una contraseña que ya no necesita tener.
+mandarlo a buscar una contraseña que ya no necesita tener. (Cambió el 2026-10-02:
+ya no hay cómo reenviarlo, y quien tiene cuenta propia sí puede confirmar desde
+«Montajes», así que ahora ofrece las dos salidas — ver más abajo.)
+
+### 2026-10-02: el enlace volvió al correo, y vive lo que dura el trabajo
+
+**El correo de la venta por lote no lo traía.** Desde el 2026-09-02 el aviso a la
+mercaderista decía «Abrir RECABRA» y nada más: sin cuenta de trabajador, no había
+nada que abrir. Ahora cada fila del correo trae su propio enlace firmado, «Ver dónde
+queda y confirmar» (`_enlace_de_montaje` en `routers/bulk_leases.py`), con el
+supermercado adentro del token: sin eso, el enlace de un supermercado abriría la
+pantalla contra la base de otro. Los textos que vienen de la planilla salen
+escapados (`html.escape`): un proveedor llamado `<b>…` no arma HTML en el correo.
+
+**Y vive hasta un mes después de que arranca el contrato**, no un mes desde que se
+firmó (`dias_del_enlace_de_montaje` en `app/auth.py`, con techo de 400 días): el
+enlace de un contrato vendido con dos meses de anticipación llegaba muerto al día
+de armar la exhibición. Vale igual para el correo de un contrato suelto
+(`routers/spaces.py`).
+
+**Un enlace vencido dice qué hacer**: si tiene cuenta, entrar y confirmar desde
+«Montajes» —con el botón a `/login`—; si no, pedirle a quien administra el
+supermercado que lo invite con su correo.
+
+**El enlace dice qué contrato se monta.** Como sale al vender y vive hasta un mes
+después del arranque, se abre mientras el espacio todavía es de otro proveedor. Sin
+decir su contrato, la pantalla mostraba el que corre hoy —otro proveedor, otra
+planometría como «así debe quedar»— y un «lo monté» quedaba anotado sobre el código,
+a nombre de ése (lo encontró la revisión del cambio, con una prueba). Ahora el token
+lleva `contrato` (`create_mount_token`, `contrato_del_montaje` en `app/auth.py`) y
+`routers/montaje.py` trabaja sobre ése:
+
+* muestra su proveedor, sus fechas y su planometría;
+* **se confirma desde la víspera del arranque** —el día en que se desarma lo
+  anterior y se arma esto—; antes, `/montaje/reportar` contesta 409 con la fecha, y
+  la pantalla lo dice («Todavía no se monta») en vez de ofrecer el formulario;
+* sólo da por reportado lo confirmado desde esa víspera: el «montado» del proveedor
+  anterior no es el de éste. El reporte se guarda por código —no hay columna para el
+  contrato, y no se agregan columnas—, así que se separa por fecha;
+* si el contrato se canceló, o no es de ese espacio, contesta 410 y la pantalla dice
+  que ya no hay nada que montar.
+
+Los enlaces de antes, sin contrato adentro, siguen como eran: el contrato que manda
+hoy (`contrato_para_montar`).
+
+**Pendiente, y viene de antes:** el tablero de *Montajes* (`MountView`,
+`latestByCode`) toma el último reporte de cada código sin mirar fechas. Cuando un
+espacio pasa de un contrato a otro, el «montado» del anterior saca al nuevo de la
+lista de pendientes. El arreglo es el mismo corte por fecha, del lado del tablero.
+
+El título de los correos también se escapa (`html_shell` en `services/mailer.py`):
+es el asunto, lleva la sede o el código, y los escribe quien administra.
+
+**Con cuenta propia, el reporte dice quién fue.** En la pestaña *Montajes* el
+formulario muestra «Reporta <nombre>» en vez de pedir «Tu nombre», y el servidor
+guarda la cuenta de la sesión, no lo que se tecleara. Por el enlace no hay cuenta
+detrás, y el nombre se sigue pidiendo.
+
+Pruebas: `tests/test_montaje_enlace.py` (el enlace del lote abre ESE espacio de ESE
+supermercado, vive lo que dura el trabajo y dice su contrato: 9 mutaciones
+detectadas), `tests/test_mounts.py`, y en `probar-limpieza.mjs` los dos avisos de la
+pantalla.
 
 ### Lo que NO cambió
 
-El rol `worker` sigue existiendo y la pestaña *Montajes* del tablero sigue ahí:
-quien tenga la contraseña puede seguir entrando por ese camino. Lo que cambió es
-que la mercaderista **ya no la necesita**. Cuando esto esté rodando, la
-contraseña de worker se le puede dejar de dar.
-
-Los correos ya enviados llevan enlaces sin `?t=`: siguen cayendo en el login y
-funcionando como antes.
+El rol `worker` sigue existiendo y la pestaña *Montajes* del tablero sigue ahí. Desde
+el 2026-10-01 se entra con cuenta propia —una invitación desde Usuarios—: la
+contraseña compartida ya no abre nada.
 
 ---
 
@@ -4334,6 +4514,9 @@ gira la cámara a tres cuartos —de frente casi todo parece una caja, y «el pr
 adentro del mueble» sólo se ve en tres cuartos— y guarda el PNG. Ese guion se escribió y
 se perdió tres veces por vivir en `/tmp` de un contenedor que se recicla; por eso está en
 el repo. El token de sesión no: se pasa por `TALLER_TOKEN`.
+
+Desde el 2026-10-02 `/taller` es **sólo para administradores**: cualquier otra sesión
+vuelve a `/`. Es una herramienta de diseño, no una pantalla del producto.
 
 ### Lo que falta
 
@@ -5510,7 +5693,8 @@ viewport de celular: llega, recarga, y `/` a secas vuelve al login.
 
 *Lo que NO se tocó:* los 30 días de vigencia. Es una decisión de operación —el
 correo sale al firmar y la exhibición se arma en los días siguientes—, no un
-descuido. Y el `Referrer-Policy` de la fase 1 ya evita que el token se filtre por
+descuido. (Cambió el 2026-10-02: ahora se cuentan desde que arranca el contrato.
+Ver *La mercaderista ya no entra con contraseña*.) Y el `Referrer-Policy` de la fase 1 ya evita que el token se filtre por
 la cabecera `referer`.
 
 **La bitácora.** No había ninguna: si faltaba un contrato o cambiaba un valor,
@@ -5539,6 +5723,12 @@ Tres decisiones que valen más de lo que parecen:
 Se purga a los 365 días, en el ciclo de mantenimiento que ya corría cada 12
 horas: en una base de plan gratuito no puede crecer sin techo, y guardar de más
 es su propio riesgo.
+
+Desde el 2026-10-02 se anota también **cada copia de seguridad que se baja**
+(`copia.descarga`, con filas, archivos, tamaño y el correo de quien la bajó). Y el
+filtro de la pantalla deja de ofrecer lo que ya no puede pasar —«Intento fallido» y
+«Cambio de contraseña», que escribían las claves compartidas, y el barrido de
+«Empezar de cero»— (`RETIRADAS`); las filas viejas se siguen leyendo con su título.
 
 *Un bug encontrado al probarlo en pantalla:* SQLite guarda la fecha **sin huso**,
 y el navegador lee eso como hora local. En Colombia son cinco horas: la bitácora
@@ -5628,9 +5818,13 @@ despliegue.
 
 ### Cómo entra la gente
 
-`GET /api/auth/clientes` devuelve la lista, y el selector aparece en la pantalla
-de ingreso **sólo cuando hay más de un cliente**. Para las siete tiendas que ya
-usan esto, el día del despliegue no cambia nada.
+*Histórico: desde la Fase 15 se entra con cuenta propia y el supermercado sale de la
+membresía. El selector de la pantalla de ingreso se fue con el «Acceso anterior», y
+`GET /api/auth/clientes` —que seguía siendo pública, sólo para nombrar el
+supermercado al entrar— se fue el 2026-10-02: el nombre lo devuelve `/auth/oauth`.*
+
+`GET /api/auth/clientes` devolvía la lista, y el selector aparecía en la pantalla
+de ingreso **sólo cuando había más de un cliente**.
 
 El supermercado se manda explícito y **nunca se deduce de la contraseña**. Si se
 dedujera, habría que probar la clave contra la base de cada cliente —lento a
@@ -5660,16 +5854,14 @@ averiguar quiénes son los clientes.
 
 ### Cómo se da de alta un supermercado
 
-```
-cd backend
-DATABASE_URL="<la de producción>" JWT_SECRET="<el del servicio>" \
-  python ../scripts/alta_cliente.py olimpica "Olímpica"
-```
+Desde la pantalla de ingreso: quien entra con su cuenta sin pertenecer a ningún
+supermercado puede registrar uno nuevo (`POST /api/clientes/alta`, Fase 2) y nace su
+dueño. A los demás los invita el dueño desde Configuración → Usuarios.
 
-Crea la base, sus tablas, la configuración y dos contraseñas al azar que
-**imprime una sola vez**. No hay pantalla para esto a propósito: pediría inventar
-un rol por encima del administrador —alguien que pueda tocar a TODOS los
-supermercados—, que es justo la llave que no conviene que ande en un navegador.
+Hasta el 2026-10-02 había además un script de consola, `scripts/alta_cliente.py`, que
+creaba la base y dos claves compartidas al azar que imprimía una sola vez. Se borró:
+desde el 2026-10-01 esas claves no abren nada, y un supermercado dado de alta así
+quedaba sin nadie que pudiera entrar.
 
 ### Si la base se muda de proveedor
 
@@ -5683,42 +5875,69 @@ no lo reconocería como el de siempre, y abriría un motor aparte contra una bas
 que en el destino no existe. Se encontró preparando justamente esa mudanza, y
 está fijado en `test_si_la_base_se_muda_el_registro_la_sigue`.
 
-### La copia de seguridad, con varios clientes
+### La copia de seguridad
 
-`scripts/respaldo.py` baja todo por HTTPS con la clave de admin — sin acceso al
-servidor ni credenciales de la base. Con una base por cliente hubo que cambiarle
-una cosa de fondo: **una sola clave no abre a todos**, porque cada supermercado
-tiene la suya.
+**Desde el 2026-10-02 la baja el dueño, desde Configuración → «Copia de
+seguridad».** Antes la bajaba `scripts/respaldo.py` por HTTPS, entrando con la clave
+compartida de admin de cada supermercado; cuando esa clave se apagó (2026-10-01) el
+script se quedó sin puerta, se caía y dejaba una carpeta vacía con la fecha. Se borró.
 
-```
-export RECABRA_CLAVE_GALERIAS='...'
-export RECABRA_CLAVE_OLIMPICA='...'
-python3 scripts/respaldo.py --base https://retail-espacios.onrender.com
+Render, en plan gratuito, no hace respaldos, así que esta copia es la única. Conviene
+bajarla cada semana y guardarla fuera de RECABRA.
 
-# o uno solo, con RECABRA_CLAVE a secas
-python3 scripts/respaldo.py --base https://... --cliente olimpica
-```
+**Qué es** (`GET /api/clientes/mi-copia`, lógica en `app/services/copia.py`): un ZIP
+con todo lo del supermercado.
 
-Con un cliente solo alcanza `RECABRA_CLAVE`, que es como venía siendo: quien ya
-lo tuviera programado no tiene que tocar nada.
+* `tablas/<tabla>.json`: cada tabla de negocio, fila por fila y columna por columna,
+  tal como está en la base. Son las de `TABLAS_DEL_CLIENTE` —la lista del traspaso—,
+  así que una tabla nueva entra sola.
+* `archivos/<tabla>/<id>-<nombre>`: documentos de contrato, fotos de montaje,
+  planometrías y artes del catálogo. En el JSON, la columna `data` trae la ruta del
+  archivo adentro del ZIP. El nombre se limpia: nada que al descomprimir salga de su
+  carpeta.
+* `personas.json`: quién tenía acceso y con qué rol (vive en el registro, no se
+  restaura: es para volver a invitar).
+* `MANIFIESTO.json` (de quién, cuándo —hora de Colombia—, cuántas filas y archivos)
+  y `LEEME.txt`.
 
-**Cómo falla importa más que cómo funciona**, porque un respaldo se mira el día
-que algo se rompió:
+**Qué no trae, a propósito:** las claves compartidas de `app_config` —ya no abren
+nada, y un hash en un archivo que anda por correos es material para adivinarlas— y
+`login_attempts`, IPs de intentos de ingreso que no hacen falta para volver.
 
-* Si falta la clave de un cliente, se copia el resto y **se dice cuál faltó**;
-  la salida es 1, no 0.
-* Si la copia quedó a medias, la carpeta se llama `...-INCOMPLETO`. El
-  MANIFIESTO también lo dice, pero el nombre es lo que se ve cuando hay que
-  restaurar apurado.
-* Si no se copió ningún cliente, **no queda carpeta**. En una urgencia uno
-  agarra la de fecha más nueva, y una carpeta vacía con la fecha de hoy es lo
-  peor que puede encontrar ahí.
-* Y sigue en pie la regla vieja: una copia sin ningún plano no sirve para
-  volver, y lo avisa.
+**La puerta:**
 
-Se probó contra un servidor con dos clientes sembrados con datos distintos, y se
-verificó que **la copia respeta el aislamiento**: la carpeta de cada uno tiene
-sólo sus proveedores y sus sedes, sin rastro del otro.
+* **Sólo el dueño**, con el mismo `require_owner` de «Descargar mis datos»: la
+  membresía `owner`, no el rol del token. La copia lleva la plata de los contratos y
+  los contactos de los proveedores; a un admin invitado la pantalla ni se la muestra.
+* **Tres por hora por persona** (429 después). Armarla lee la base entera. El freno
+  vive en memoria: corre un solo proceso, y lo que protege es la máquina.
+* **Cada descarga queda en la bitácora** (`copia.descarga`).
+* **Sin caché** (`Cache-Control: no-store`) y con el nombre
+  `recabra-copia-<slug>-<AAAA-MM-DD-HHMM>.zip`.
+* **Con la cuenta suspendida no sale**, como ningún otro dato; para el derecho del
+  titular está «Descargar mis datos», que sí sale. En sólo lectura, sí.
+* **Memoria:** la instancia tiene 512 MB y un supermercado puede juntar cientos de
+  fotos de hasta 10 MB. Los binarios se leen de a uno y el ZIP se arma en un archivo
+  temporal que pasa a disco apenas crece.
+
+**Volver.** `backend/scripts/restaurar_copia.py copia.zip [--cliente <slug>]`, desde
+la consola del servicio en Render (que ya tiene `DATABASE_URL` y `JWT_SECRET`). Carga
+la copia **sólo en una base sin datos de negocio** —se niega antes de escribir nada si
+hay un espacio, un contrato o un plano—, en una sola transacción. La configuración
+de la copia pisa a la que trae toda base nueva, los contadores de `id` de Postgres
+quedan detrás del último, y se marca una generación nueva para que los navegadores
+tiren los planos que tenían guardados. Ojo con la base de siempre: el arranque le
+siembra pasillos de ejemplo si no tiene espacios, así que en una base nueva hay que
+cargar la copia antes del primer arranque.
+
+**Cómo se probó.** `tests/test_copia_de_seguridad.py` (12 pruebas, 11 mutaciones
+detectadas): quién la baja, que trae cada tabla con sus archivos idénticos, que no
+trae ninguna clave —busca `$argon2` en cada archivo del ZIP—, y **de ida y vuelta**:
+copia un supermercado con un poco de todo, la carga en una base nueva y compara
+tabla por tabla. Lo mismo contra Postgres 16 real (bytea, fechas con huso, el orden
+de las claves foráneas, y un alta nueva después de cargar sin chocar ids), el script
+de consola en sus cinco salidas, y en el navegador como dueña (baja el ZIP) y como
+admin invitada (no ve la sección).
 
 ### Cómo se probó
 

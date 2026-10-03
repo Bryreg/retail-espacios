@@ -89,29 +89,6 @@ export const archivarCliente = (slug: string, motivo: string): Promise<ClienteDe
 export const reactivarCliente = (slug: string, motivo: string): Promise<ClienteDeConsola> =>
   client.post<ClienteDeConsola>(`${rutaCliente(slug)}/reactivar`, { motivo }).then((r) => r.data);
 
-/** Filas copiadas por tabla de negocio. Se nombran las tres que la consola
- *  cuenta al terminar; las demás tablas viajan igual, sin nombre acá. */
-export interface FilasTraspaso {
-  spaces?: number;
-  space_leases?: number;
-  suppliers?: number;
-  [tabla: string]: number | undefined;
-}
-
-export interface ResultadoTraspaso {
-  principal: string;
-  origen: string;
-  filas: FilasTraspaso;
-}
-
-/** Los datos de este cliente reemplazan a los de la base principal; este queda
- *  archivado, intacto, de respaldo. `confirmacion` es el código del PRINCIPAL,
- *  que es el que pierde lo que tenía. Ver `backend/app/services/traspaso.py`. */
-export const pasarAlPrincipal = (slug: string, confirmacion: string): Promise<ResultadoTraspaso> =>
-  client
-    .post<ResultadoTraspaso>(`${rutaCliente(slug)}/pasar-al-principal`, { confirmacion })
-    .then((r) => r.data);
-
 export const borrarCliente = (slug: string, confirmacion: string): Promise<{ ok: boolean; slug: string }> =>
   client
     .post<{ ok: boolean; slug: string }>(`${rutaCliente(slug)}/borrar`, { confirmacion })

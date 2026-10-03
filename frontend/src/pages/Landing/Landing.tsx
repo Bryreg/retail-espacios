@@ -681,8 +681,8 @@ export default function Landing({ ingreso }: { ingreso?: ReactNode } = {}) {
               <Perfil id="t" activo={perfil} onElegir={setPerfil}
                 rot="Trabajador de piso" titulo="Ejecuta y reporta, sin acceso a valores">
                 Recibe un correo con el espacio asignado y un enlace que abre en su teléfono.
-                Confirma con una fotografía o registra el motivo del incumplimiento. No accede con
-                contraseña compartida ni ve valores: el servidor los suprime antes de enviar la
+                Confirma con una fotografía o registra el motivo del incumplimiento. El enlace abre
+                sin contraseña y no muestra valores: el servidor los suprime antes de enviar la
                 pantalla.
               </Perfil>
               <Perfil id="p" activo={perfil} onElegir={setPerfil}
