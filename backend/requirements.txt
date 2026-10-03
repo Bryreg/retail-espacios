@@ -20,7 +20,12 @@ psycopg2-binary==2.9.9
 # 2.13 valida que el claim `sub` sea TEXTO (RFC 7519): los tokens llevan el
 # id de usuario como str desde la auditoría integral (antes iba como int y
 # 2.13 los rechazaba con 401).
-PyJWT[crypto]==2.13.0
+# 2.15.1 (2026-10-03): pip-audit marcó 13 avisos sobre 2.13.0, seis altos o
+# críticos. Casi todos piden mezclar HMAC y RSA en la misma verificación, o
+# usar `PyJWKClient`, y acá ninguna de las dos cosas pasa (HS256 para las
+# sesiones, RS256 para Firebase, cada uno por su lado). Se sube igual: las
+# correcciones están en 2.14.0 y 2.15.0, y 2.15.1 es la última.
+PyJWT[crypto]==2.15.1
 # Las contraseñas se guardaban en texto plano en `app_config`: un volcado de
 # la base las entregaba todas. Argon2id es el algoritmo que recomienda OWASP
 # para contraseñas —costo en memoria, no sólo en CPU, que es lo que arruina
