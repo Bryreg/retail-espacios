@@ -23,9 +23,10 @@ import client, { describeError } from "../api/client";
 import { listSpaceFiles, type SpaceFileMeta } from "../api/files";
 import FileViewerModal from "../components/FileViewerModal";
 import {
-  fetchMounts, latestByCode, estadoMontaje, MOTIVO_LABEL,
+  fetchMounts, estadoMontaje, MOTIVO_LABEL,
   type MountConfirmation, type MountMotivo,
 } from "../api/mounts";
+import { reportesPorCodigo, reporteDelContrato } from "../utils/montajeDelContrato";
 import RatesModal from "../components/RatesModal/RatesModal";
 import type { Space } from "../types";
 import {
@@ -3834,18 +3835,23 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       .catch(() => { if (vivo) setMontajes([]); });
     return () => { vivo = false; };
   }, []);
-  const ultimoMontaje = useMemo(() => latestByCode(montajes), [montajes]);
+  const reportesDeMontaje = useMemo(() => reportesPorCodigo(montajes), [montajes]);
 
-  /** El último reporte de una cara, buscado por su código COMPLETO.
+  /** El último reporte de una cara PARA SU CONTRATO, buscado por su código
+   *  COMPLETO.
    *
    *  `FaceEntry.code` es el nombre corto, que se repite entre sedes; los
    *  reportes se guardan con la sede adentro. Buscar por el corto mezclaría
    *  tiendas — es el mismo error que ya costó un arreglo en la pantalla del
-   *  mercaderista. */
+   *  mercaderista. Y cuenta sólo lo reportado desde la víspera del arranque
+   *  (2026-10-05, `utils/montajeDelContrato.ts`): el «montado» del contrato
+   *  anterior no es prueba de que el actual se haya montado. */
   const montajeDe = useCallback(
     (entry: FaceEntry): MountConfirmation | undefined =>
-      ultimoMontaje[fullSpaceCode(entry.fixture.sede || sede, entry.code)],
-    [ultimoMontaje, sede],
+      reporteDelContrato(
+        reportesDeMontaje, fullSpaceCode(entry.fixture.sede || sede, entry.code), entry.startDate,
+      ),
+    [reportesDeMontaje, sede],
   );
 
   const [mapQuery, setMapQuery] = useState("");

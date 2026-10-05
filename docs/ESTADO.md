@@ -3680,10 +3680,25 @@ lleva `contrato` (`create_mount_token`, `contrato_del_montaje` en `app/auth.py`)
 Los enlaces de antes, sin contrato adentro, siguen como eran: el contrato que manda
 hoy (`contrato_para_montar`).
 
-**Pendiente, y viene de antes:** el tablero de *Montajes* (`MountView`,
-`latestByCode`) toma el último reporte de cada código sin mirar fechas. Cuando un
-espacio pasa de un contrato a otro, el «montado» del anterior saca al nuevo de la
-lista de pendientes. El arreglo es el mismo corte por fecha, del lado del tablero.
+**El tablero, con la misma regla (2026-10-05).** *Montajes* (`MountView`) y
+Sede/Supervisar (`DashboardView`: la columna de montaje, «No se pudo», el filtro y la
+cifra de «Sin montar») tomaban el último reporte de cada código sin mirar fechas.
+Cuando un espacio pasaba de un contrato a otro, el «montado» del anterior sacaba al
+nuevo de la lista de pendientes y Supervisar lo pintaba «Montado» con la foto del
+proveedor anterior: justo el contrato que se está cobrando sin que nadie haya ido.
+Ahora las dos pantallas preguntan a `utils/montajeDelContrato.ts`
+(`reporteDelContrato`): cuenta lo reportado desde la víspera del arranque de ESE
+contrato, a medianoche de Colombia, igual que el enlace. La hora del reporte sin
+huso (SQLite) se lee como UTC; el navegador la tomaría como hora local. Una
+renovación con el mismo proveedor también vuelve a pedir el reporte: es otro
+contrato, y la foto del anterior no prueba el período nuevo. `probar-montajes.mjs`
+prueba la función de verdad (con `esbuild`, el proceso en hora de Bogotá para que
+la hora sin huso muerda), vigila que las dos pantallas la usen y que
+`routers/montaje.py` siga diciendo la misma víspera: 8 mutaciones detectadas.
+Comprobado en el navegador con el relevo real (Alpina se reportó montada, Colanta
+arranca hoy): con `main`, Colanta no salía en *Montajes*, Supervisar decía
+«Montado» y «Sin montar» contaba 1; con el arreglo sale pendiente, dice
+«Pendiente», cuenta 2, y al reportarla desaparece de la lista.
 
 El título de los correos también se escapa (`html_shell` en `services/mailer.py`):
 es el asunto, lleva la sede o el código, y los escribe quien administra.

@@ -3,6 +3,7 @@ import { Check, MapPin, X } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
 import { useAuthStore } from "../store/authStore";
 import { confirmMount, fetchMounts, latestByCode, type MountConfirmation } from "../api/mounts";
+import { reportesPorCodigo, reporteDelContrato } from "../utils/montajeDelContrato";
 import { contractPhase, fullSpaceCode, isRentable, isDoubleGondola } from "../types/fixtures";
 import { planometriaDelEspacio, planometriaUrl } from "../api/planograms";
 import FormularioMontaje, {
@@ -79,6 +80,7 @@ export default function MountView({
   }, []);
 
   const ultimo = useMemo(() => latestByCode(mounts), [mounts]);
+  const porCodigo = useMemo(() => reportesPorCodigo(mounts), [mounts]);
 
   // Todas las sedes, no solo la activa: el mercaderista puede cubrir varias y
   // el enlace del correo puede apuntar a cualquiera.
@@ -114,8 +116,11 @@ export default function MountView({
         // Solo lo que tiene contrato por delante o corriendo. Lo vencido ya no
         // se monta, y lo libre no tiene qué montar.
         if (fase !== "vigente" && fase !== "pendiente") continue;
-        // Ya reportado como montado: sale de la lista.
-        if (ultimo[code]?.estado === "montado") continue;
+        // Ya reportado como montado PARA ESTE CONTRATO: sale de la lista. El
+        // «montado» del contrato anterior sobre el mismo espacio no cuenta
+        // (2026-10-05, `utils/montajeDelContrato.ts`): antes sacaba de acá al
+        // contrato nuevo, que nadie había ido a montar.
+        if (reporteDelContrato(porCodigo, code, cara.startDate)?.estado === "montado") continue;
         out.push({
           code,
           corto,
@@ -137,7 +142,7 @@ export default function MountView({
     const tramo = (p: Pendiente) => (p.urgente ? 0 : p.viejo ? 2 : 1);
     out.sort((a, b) => tramo(a) - tramo(b) || a.desde.localeCompare(b.desde));
     return out;
-  }, [fixturesBySede, sedes, fixtures, activeSede, ultimo]);
+  }, [fixturesBySede, sedes, fixtures, activeSede, porCodigo]);
 
   // Enlace del correo: abrir directamente ese espacio.
   const [yaConfirmado, setYaConfirmado] = useState<MountConfirmation | null>(null);
@@ -190,7 +195,9 @@ export default function MountView({
       return;
     }
     // Tocar el enlace dos veces es lo más normal del mundo. Decir por qué no
-    // hay nada que hacer es mejor que dejar la lista sin explicación.
+    // hay nada que hacer es mejor que dejar la lista sin explicación. Si no
+    // está entre los pendientes es porque su contrato ya se reportó —y ése es
+    // su último reporte— o porque no tiene contrato por montar.
     const previo = ultimo[code];
     if (previo) setYaConfirmado(previo);
   }, [initialCode, cargando, layoutListo, pendientes, ultimo]);
