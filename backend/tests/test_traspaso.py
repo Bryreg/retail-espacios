@@ -149,7 +149,8 @@ def escenario(client, admin, monkeypatch):
         s.add(arte)
         s.flush()
         s.add(SupplierAssetSpec(asset_id=arte.id, forma="vaso", alto_mm=90, ancho_mm=75,
-                                fondo_mm=75, apilable=True, acostado=False, fondo_foto="auto"))
+                                fondo_mm=75, apilable=True, acostado=False, fondo_foto="auto",
+                                precio_publico=4900))
         s.merge(AppConfig(key="notify_emails", value="real@galerias.co"))
         s.commit()
     # Algo de práctica con archivo, para ver que se va.
@@ -219,6 +220,9 @@ def test_los_datos_de_pepito_pasan_a_galerias_identicos(client, escenario):
         if not clave.startswith("token_epoch_"):
             assert config[clave] == valor, clave
     assert config.get("generacion_datos")
+    # La ficha del arte viajó con su precio al público (el del hablador).
+    assert any(4900 in fila for fila in despues_principal["supplier_asset_specs"]), \
+        despues_principal["supplier_asset_specs"]
     # Y el origen quedó intacto, de respaldo.
     assert _contenido(escenario.motor_pepito) == antes_pepito
 

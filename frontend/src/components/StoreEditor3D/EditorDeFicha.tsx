@@ -22,8 +22,21 @@ import type { FichaDeArte, FormaDeFicha } from "./muebles/producto";
 
 export const FICHA_VACIA: FichaDeArte = {
   forma: "auto", alto_mm: null, ancho_mm: null, fondo_mm: null,
-  apilable: false, acostado: false, fondo_foto: "auto",
+  apilable: false, acostado: false, fondo_foto: "auto", precio_publico: null,
 };
+
+/** Los topes del precio (los mismos que valida el servidor). */
+export const PRECIO_MINIMO = 50;
+export const PRECIO_MAXIMO = 10_000_000;
+/** Lo que se teclea como precio → pesos enteros, o null. Acá el punto separa
+ *  los miles y no hay centavos: «4.900», «$ 4900» y «4 900» son 4.900. */
+export function aPesos(texto: string): number | null {
+  const limpio = texto.replace(/[$\s.]/g, "").replace(/,\d{0,2}$/, "");
+  if (!/^\d+$/.test(limpio)) return null;
+  const n = Number(limpio);
+  return n >= PRECIO_MINIMO && n <= PRECIO_MAXIMO ? n : null;
+}
+const pesosATexto = (n: number | null | undefined) => (n == null ? "" : n.toLocaleString("es-CO"));
 
 const FORMAS: [FormaDeFicha, string][] = [
   ["caja", "Caja"], ["botella", "Botella"], ["lata", "Lata"], ["vaso", "Vaso"],
@@ -100,6 +113,12 @@ export default function EditorDeFicha({
   const [textos, setTextos] = useState(() => ({
     alto: mmACm(ficha.alto_mm), ancho: mmACm(ficha.ancho_mm), fondo: mmACm(ficha.fondo_mm),
   }));
+  const [textoPrecio, setTextoPrecio] = useState(() => pesosATexto(ficha.precio_publico));
+  // Igual que las medidas: si la ficha cambia desde afuera, el campo la sigue.
+  useEffect(() => {
+    setTextoPrecio((t) => (aPesos(t) === (ficha.precio_publico ?? null) ? t : pesosATexto(ficha.precio_publico)));
+  }, [ficha.precio_publico]);
+  const precioInvalido = textoPrecio.trim() !== "" && aPesos(textoPrecio) === null;
   // Si la ficha cambia DESDE AFUERA —otra foto en el alta, que la vacía, o
   // «Medidas» de otro producto sin cerrar el editor—, los campos la siguen.
   // Antes quedaba el «9» viejo escrito con la ficha ya vacía: el campo en
@@ -276,6 +295,30 @@ export default function EditorDeFicha({
             ))}
           </div>
         </div>
+
+        {/* El precio del hablador: opcional y vacío por defecto. Sin él, el
+            hablador del porta-precios va sin cifra en la pantalla de venta;
+            el sistema nunca pone un precio que nadie cargó. */}
+        <label className="text-[10px] text-dark-ink-3">
+          Precio en góndola (opcional)
+          <input
+            value={textoPrecio}
+            inputMode="numeric"
+            onChange={(e) => {
+              setTextoPrecio(e.target.value);
+              cambiar({ precio_publico: aPesos(e.target.value) });
+            }}
+            placeholder="sin precio: el hablador va sin cifra"
+            className={`${campo} ${precioInvalido ? "border-danger" : ""}`}
+            aria-label="Precio al público en pesos"
+            data-precio-publico
+          />
+        </label>
+        {precioInvalido && (
+          <p className="text-[11px] text-danger">
+            El precio va en pesos, entre $ {PRECIO_MINIMO} y $ {PRECIO_MAXIMO.toLocaleString("es-CO")}.
+          </p>
+        )}
 
         {faltaAlto && (
           <p className="text-[11px] text-danger">

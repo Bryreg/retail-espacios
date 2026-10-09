@@ -53,12 +53,15 @@ export interface GondolaRealProps {
   statusColor?: string;
   /** Previsualización al colocar: todo translúcido. */
   ghost?: boolean;
+  /** Sólo en venta: por cara, los (entrepaño, vano) con habladores genéricos
+   *  (`tramosConRelleno`). */
+  habladores?: readonly (ReadonlySet<string> | null | undefined)[];
 }
 
 /* ── El mueble ─────────────────────────────────────────────────────────────*/
 
 export const GondolaReal = memo(function GondolaReal({
-  w, d, h, gondolaType = "double", statusColor, ghost = false,
+  w, d, h, gondolaType = "double", statusColor, ghost = false, habladores,
 }: GondolaRealProps) {
   const materiales = useMateriales(ghost, statusColor);
   const esMural = gondolaType === "wall";
@@ -115,6 +118,10 @@ export const GondolaReal = memo(function GondolaReal({
           alto={h}
           niveles={niveles}
           materiales={materiales}
+          // La espina cierra atrás: el respaldo, una cara sola (las líneas
+          // del copete de la punta pegada, ver `geometriaRespaldo`).
+          respaldoCerrado={false}
+          habladores={habladores?.[0]}
         />
       </group>
       {!esMural && (
@@ -126,6 +133,8 @@ export const GondolaReal = memo(function GondolaReal({
             alto={h}
             niveles={niveles}
             materiales={materiales}
+            respaldoCerrado={false}
+            habladores={habladores?.[1]}
           />
         </group>
       )}

@@ -33,11 +33,16 @@ import { useThree } from "@react-three/fiber";
 import { recortarFondo } from "./recorte";
 import type { ModoDeFondo, Recorte } from "./recorte";
 import {
-  aplanar, colorDeCostado, erosionarYSangrar, llenarBotella, oscurecerCantos, rectificarCaja, tapaDeFoto, tenirCantos,
+  aplanar, colorDeCostado, erosionarYSangrar, espaldaDeEtiqueta, filasDeEtiqueta, franjaDeEtiqueta, liquidoDe,
+  llenarBotella, oscurecerCantos, rectificarCaja, tapaDeFoto, tenirCantos,
 } from "./texturas";
+import type { BotellaLlena, FranjaDeEtiqueta } from "./texturas";
 import type { Imagen, TapaDeFoto } from "./texturas";
 import type { FormaDeEnvase } from "./producto";
 import { arteUrl } from "../../../api/catalogo";
+import { HABLADOR, pintarHablador } from "./habladores";
+import type { ContenidoDelHablador } from "./habladores";
+import { BRILLO, conLuzDeVenta, K_ENTORNO_MUEBLE } from "./luzDeVenta";
 
 // ─── La calibración ───────────────────────────────────────────────────────────
 //
@@ -96,6 +101,10 @@ export interface Etiqueta {
   /** Para la botella transparente: el PET teñido con el color del líquido
    *  (`llenarBotella`), que en la foto dejaba ver el blanco del estudio. */
   texturaDeBotella(): THREE.CanvasTexture;
+  /** La espalda de un envase torneado (`espaldaDeEtiqueta`): el color de
+   *  los costados con la tabla nutricional sin texto. De la botella llena si
+   *  es transparente. */
+  texturaDeEspalda(transparente: boolean): THREE.CanvasTexture;
   /** El color del costado y la tapa de la caja (`colorDeCostado`). */
   colorDeCostado(): string;
   /** Vaso o lata: la franja de tapa de la foto y sus colores (`tapaDeFoto`). */
@@ -104,6 +113,11 @@ export interface Etiqueta {
   texturaDeTapa(): THREE.CanvasTexture;
   /** Si la foto de la caja venía en tres cuartos y se enderezó el frente. */
   cajaEnderezada(): boolean;
+  /** Dónde está la etiqueta en la foto (`franjaDeEtiqueta`): las filas y la
+   *  silueta en ellas. Sale del `rgba` del recorte —pop.ts no lo tiene, y
+   *  releer el lienzo devuelve NEGRO en lo transparente—, la primera vez que
+   *  alguien la pide (el cabezote de la nevera). */
+  franja(): FranjaDeEtiqueta;
 }
 
 /** «reintentando» es «cargando» después de un error: quien dibuja la trata
@@ -321,6 +335,10 @@ export function etiquetaDeArte(
       let costado: string | null = null;
       let deLaTapa: TapaDeFoto | null = null;
       const tapa = () => (deLaTapa ??= tapaDeFoto(conBorde()));
+      // La botella llena, con su alfa: de ella salen el frente y la espalda.
+      let llena: BotellaLlena | null = null;
+      const conLiquido = () => (llena ??= llenarBotella(erosionarYSangrar(recorte, 4, 10)));
+      let franja: FranjaDeEtiqueta | null = null;
       const texturas: Record<string, THREE.CanvasTexture> = {};
       const una = (k: string, hacer: () => Imagen) => (texturas[k] ??= textura(lienzoDe(hacer()), e));
       const { rgba: _rgba, ...metricas } = recorte;
@@ -335,11 +353,21 @@ export function etiquetaDeArte(
         texturaDeCaja: () => una("caja", frente),
         // La botella, con 4 px de borde encogido y no 2: de cerca quedaba un
         // serrucho blanco de 8–15 px en la base y el contorno de abajo.
-        texturaDeBotella: () => una("botella", () => aplanar(llenarBotella(erosionarYSangrar(recorte, 4, 10)))),
+        texturaDeBotella: () => una("botella", () => aplanar(conLiquido())),
+        // La espalda de la botella lleva la tabla sólo sobre la etiqueta: sobre
+        // el líquido sería un parche blanco.
+        texturaDeEspalda: (transparente: boolean) => (transparente
+          ? una("espalda-llena", () => {
+            const b = conLiquido();
+            const L = b.liquido ? [1, 3, 5].map((i) => parseInt(b.liquido!.slice(i, i + 2), 16)) : null;
+            return espaldaDeEtiqueta(b, L ? filasDeEtiqueta(b, L) : undefined);
+          })
+          : una("espalda", () => espaldaDeEtiqueta(conBorde()))),
         colorDeCostado: () => (costado ??= colorDeCostado(frente())),
         tapa,
         texturaDeTapa: () => (texturas.tapa ??= textura(dibujarTapa(tapa()), e)),
         cajaEnderezada: () => { frente(); return enderezada; },
+        franja: () => (franja ??= franjaDeEtiqueta(recorte, liquidoDe(recorte))),
       };
       entradaDe.set(e.etiqueta, e);
       e.estado = "lista";
@@ -513,29 +541,39 @@ function materialConLuz(
 
 /** Un material impreso con la luz del producto (el copete de la punta, en
  *  `pop.ts`): lo mismo que la etiqueta, para que la marca de arriba y la del
- *  envase se vean del mismo color. */
-export function materialImpreso(map: THREE.Texture, entorno: THREE.Texture | null): THREE.MeshStandardMaterial {
-  return materialConLuz("caja", entorno, { map, emissive: new THREE.Color(1, 1, 1), emissiveMap: map });
+ *  envase se vean del mismo color. `retroiluminado` (el cabezote de la
+ *  nevera, que es un aviso luminoso): el doble de emisión, sólo en esa chapa. */
+export function materialImpreso(
+  map: THREE.Texture, entorno: THREE.Texture | null, retroiluminado = false,
+): THREE.MeshStandardMaterial {
+  return materialConLuz("caja", entorno, {
+    map, emissive: new THREE.Color(1, 1, 1), emissiveMap: map,
+    ...(retroiluminado ? { emissiveIntensity: 2 * K_EMISION } : {}),
+  });
 }
 
 /**
- * Los materiales del envase, por etiqueta y forma. Es una LISTA: la caja
- * parada lleva dos —la foto en el frente y el dorso, y el color del costado
- * en los cantos y la tapa (`geometriaDeEtiqueta` le pone los grupos)—; las
- * demás formas, uno.
+ * Los materiales del envase, por etiqueta y forma. Es una LISTA, y en los
+ * envases torneados con ÍNDICES FIJOS: 0 la foto, 1 la tapa y 2 la espalda.
  *
- * - **caja**: el frente enderezado (`texturaDeCaja`). El costado es UN color
- *   con un degradé hacia atrás (colores de vértice): con la última columna de
- *   la foto estirada salían rayas, como una textura rota.
- * - **revolución**: la textura opaca, o la botella llena si es transparente.
- *   El vaso y la lata llevan un segundo material para la tapa (el foil
- *   dibujado, `dibujarTapa`), que va en el segundo grupo de su geometría.
+ * - **caja**: [frente, costado]. El frente enderezado (`texturaDeCaja`); el
+ *   costado es UN color con un degradé hacia atrás (colores de vértice): con
+ *   la última columna de la foto estirada salían rayas, como una textura rota.
+ * - **revolución**: [foto, tapa, espalda]. La foto es la textura opaca o la
+ *   botella llena si es transparente; la tapa, el foil dibujado del vaso y la
+ *   lata (`dibujarTapa`), y en la botella —que no tiene tapa aparte— la misma
+ *   foto; la espalda, la de `espaldaDeEtiqueta`. Antes el orden cambiaba por
+ *   envase (el vaso [foto, tapa], la botella [foto]) y un grupo con el índice 2
+ *   habría apuntado a nada sin que tsc lo viera.
  * - **almohada**: la silueta CON alfa, que corta la bolsa por la forma de la
  *   foto —el sello ondulado de arriba, las esquinas redondeadas—: en
  *   rectángulo, las esquinas vacías de la foto eran parches de color.
  * - **recorte**: la silueta con alfa, en la pasada opaca (`alphaTest` +
  *   `alphaToCoverage`, que pide el `antialias` que el lienzo del editor ya
  *   tiene): sin ordenar instancias y sin halos.
+ *
+ * Quien dibuja elige POR GEOMETRÍA: la lista si la geometría tiene grupos, y
+ * si no el primero (una `InstancedMesh` con lista y sin grupos no dibuja).
  */
 export function materialDeEtiqueta(
   et: Etiqueta, envase: FormaDeEnvase, entorno: THREE.Texture | null,
@@ -558,24 +596,68 @@ export function materialDeEtiqueta(
     emissive: new THREE.Color(1, 1, 1),
     emissiveMap: map,
     ...(conAlfa ? { alphaTest: 0.5, alphaToCoverage: true, side: THREE.DoubleSide } : {}),
+    // La bolsa: el sello un 8 % más claro, por color de vértice (`almohada`).
+    ...(envase === "almohada" ? { vertexColors: true } : {}),
   });
   const lista = [foto];
   if (envase === "caja") {
     const color = new THREE.Color(et.colorDeCostado());
     lista.push(materialConLuz(envase, entorno, { color, emissive: color, vertexColors: true }));
   }
-  if (envase === "revolucion" && !transparente) {
-    // La tapa del vaso o la lata: el foil dibujado, SIN emisión —el disco era
-    // lo más claro del cuadro— y con algo de brillo metálico. Un poco más
+  if (envase === "revolucion") {
+    // 1 · La tapa del vaso o la lata: el foil dibujado, SIN emisión —el disco
+    // era lo más claro del cuadro— y con algo de brillo metálico. Un poco más
     // oscuro que la foto: mira al techo pero en tienda la tapa queda bajo el
-    // entrepaño de arriba.
-    lista.push(materialConLuz(envase, entorno, {
+    // entrepaño de arriba. La botella repite la foto (su torno no tiene tapa
+    // aparte: el índice 1 no se usa, pero existe).
+    lista.push(transparente ? foto : materialConLuz(envase, entorno, {
       map: et.texturaDeTapa(), color: new THREE.Color(0.8, 0.8, 0.8),
       metalness: 0.3, roughness: 0.45,
+    }));
+    // 2 · La espalda, con la misma luz que la foto.
+    const espalda = et.texturaDeEspalda(transparente);
+    lista.push(materialConLuz(envase, entorno, {
+      map: espalda, emissive: new THREE.Color(1, 1, 1), emissiveMap: espalda,
     }));
   }
   e?.materiales.set(clave, lista);
   return lista;
+}
+
+// ─── El hablador del producto en prueba ──────────────────────────────────────
+
+/**
+ * El material del hablador de un arte (`pintarHablador`): la textura es UNA
+ * por arte y por lo que dice, y vive en la entrada de su etiqueta —se suelta
+ * con ella, como sus otras texturas—. Papel mate con la luz de los muebles de
+ * venta (los habladores sólo se dibujan ahí): en la tira es un papel más, no
+ * una calcomanía con luz propia.
+ */
+export function materialDeHablador(et: Etiqueta, c: ContenidoDelHablador): THREE.MeshStandardMaterial {
+  const e = entradaDe.get(et);
+  const clave = `hablador:${c.nombre}|${c.precio ?? "-"}`;
+  const ya = e?.materiales.get(clave) as THREE.MeshStandardMaterial | undefined;
+  if (ya) return ya;
+  const lienzo = document.createElement("canvas");
+  lienzo.width = HABLADOR.lienzo.ancho;
+  lienzo.height = HABLADOR.lienzo.alto;
+  pintarHablador(lienzo.getContext("2d")!, c, lienzo.width, lienzo.height);
+  const t = new THREE.CanvasTexture(lienzo);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  if (e) e.texturas.push(t);
+  const m = new THREE.MeshStandardMaterial({
+    map: t, metalness: 0, roughness: 0.85,
+    ...conLuzDeVenta(true, K_ENTORNO_MUEBLE, BRILLO.precios),
+  });
+  e?.materiales.set(clave, m);
+  return m;
+}
+
+let geometriaDelHablador: THREE.BufferGeometry | null = null;
+/** El plano del hablador, mirando al pasillo (−Z). Uno para todos. */
+export function planoDeHablador(): THREE.BufferGeometry {
+  return (geometriaDelHablador ??= new THREE.PlaneGeometry(HABLADOR.ancho, HABLADOR.alto).rotateY(Math.PI));
 }
 
 // ─── La sombra de contacto ───────────────────────────────────────────────────

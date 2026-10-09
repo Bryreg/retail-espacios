@@ -110,12 +110,14 @@ def _llenar(client, cab):
     assert r.status_code == 201, r.text
 
     # La ficha del arte vive en su propia tabla: sin una fila, la ida y
-    # vuelta pasaría con `supplier_asset_specs` vacía.
+    # vuelta pasaría con `supplier_asset_specs` vacía. Con el precio al
+    # público del hablador, que también tiene que viajar.
     r = client.put(f"/api/catalogo/{r.json()['id']}/ficha", headers=cab, json={
         "forma": "vaso", "alto_mm": 90, "ancho_mm": 75, "fondo_mm": 75,
-        "apilable": True, "acostado": False, "fondo_foto": "auto",
+        "apilable": True, "acostado": False, "fondo_foto": "auto", "precio_publico": 4900,
     })
     assert r.status_code == 200, r.text
+    assert r.json()["ficha"]["precio_publico"] == 4900
 
 
 def _bajar(client, cab):
@@ -227,6 +229,8 @@ def test_trae_cada_tabla_del_supermercado_con_sus_archivos(client):
     assert zf.read(planometria["data"]) == FOTO
     (arte,) = _tabla(zf, "supplier_assets")
     assert zf.read(arte["data"]) == ARTE
+    (ficha,) = _tabla(zf, "supplier_asset_specs")
+    assert ficha["asset_id"] == arte["id"] and ficha["precio_publico"] == 4900
     assert manifiesto["tablas"]["supplier_assets"] == {"filas": 1, "archivos": 1, "bytes": len(ARTE)}
 
     (plano,) = _tabla(zf, "layout_snapshots")

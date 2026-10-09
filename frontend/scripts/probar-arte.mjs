@@ -315,6 +315,50 @@ prueba("la gaseosa es transparente y el vaso se apila de a tres", () => {
   assert.equal(P.empaqueDeArte({ nombre: "Lata" }, f("lata"), rec).pisosMaximos, 3);
 });
 
+prueba("lo que va refrigerado se sabe por su rubro y su nombre", () => {
+  // Sí: el yogur de Alpina (lo que la crítica marcó en la punta seca), kumis,
+  // queso, carne, un lácteo fresco.
+  assert.equal(P.vaRefrigerado("Lácteos", "Finesse yogurt fresa 200 g"), true);
+  assert.equal(P.vaRefrigerado("Lácteos", "Kumis Alpina 1 L"), true);
+  assert.equal(P.vaRefrigerado("Quesos", "Queso campesino 500 g"), true);
+  assert.equal(P.vaRefrigerado("Carnes", "Carne molida 500 g"), true);
+  assert.equal(P.vaRefrigerado("Lácteos frescos", "Leche entera 1 L"), true);
+  // No: la larga vida, la UHT y el arequipe van en seco aunque sean lácteos,
+  // y le GANAN al rubro: un supermercado que archiva toda la leche en
+  // «Lácteos frescos» no avisa por la de larga vida.
+  assert.equal(P.vaRefrigerado("Lácteos frescos", "Leche Alpina larga vida 1 L"), false);
+  assert.equal(P.vaRefrigerado("Lácteos frescos", "Leche entera UHT 1,1 L"), false);
+  assert.equal(P.vaRefrigerado("Lácteos frescos", "Arequipe Alpina 250 g"), false);
+  assert.equal(P.vaRefrigerado("Lácteos frescos", "Leche Alpina larga  vida"), false, "dos espacios");
+  // «Lácteos» solo no dice nada: la leche condensada va en seco.
+  assert.equal(P.vaRefrigerado("Lácteos", "Leche condensada Alpina 395 g"), false);
+  assert.equal(P.vaRefrigerado("Cereales", "Müsli arándanos 410 g"), false);
+  assert.equal(P.vaRefrigerado(null, null), false);
+});
+
+prueba("el aviso de frío sale en la punta seca y no en la nevera", () => {
+  assert.equal(P.avisoDeFrio("punta", "Lácteos", "Finesse yogurt fresa 200 g"), true);
+  assert.equal(P.avisoDeFrio("gondola", "Lácteos", "Finesse yogurt fresa 200 g"), true);
+  for (const frio of ["nevera_refrescos", "nevera_carnes", "isla_fria", "nevera_vegetales"]) {
+    assert.equal(P.avisoDeFrio(frio, "Lácteos", "Finesse yogurt fresa 200 g"), false, `avisa en ${frio}`);
+  }
+  // Lo seco no avisa en ningún lado.
+  assert.equal(P.avisoDeFrio("punta", "Lácteos", "Leche Alpina larga vida 1 L"), false);
+  // Los muebles fríos son los que existen en el editor: si se renombra uno,
+  // el aviso empezaría a salir en la nevera.
+  const fuente = readFileSync(join(raiz, "src", "components", "StoreEditor3D", "StoreEditor3D.tsx"), "utf8");
+  for (const frio of P.MUEBLES_FRIOS) assert.match(fuente, new RegExp(`type:\\s*"${frio}"`), `${frio} no es un mueble del editor`);
+});
+
+prueba("el vaso de yogur sin ficha no se apila: sólo la ficha lo dice", () => {
+  const e = P.empaqueDeArte(
+    { nombre: "Finesse yogurt fresa 200 g", categoria: "Lácteos" }, null,
+    { aspecto: 0.81, relleno: 0.78, simetria: 0.01 },
+  );
+  assert.equal(e.apilable, false, "un vaso de frío sin ficha se apiló de a tres");
+  assert.equal(P.empaqueDeArte({ nombre: "Finesse" }, FICHA_VASO, VASO_FOTO).apilable, true);
+});
+
 prueba("acostada, la botella gira y no se achata", () => {
   const ficha = { ...FICHA_VASO, forma: "botella", alto_mm: 330, ancho_mm: 105, fondo_mm: 105, apilable: false };
   const e = P.empaqueDeArte({ nombre: "Manzana Postobón 2 L", categoria: "Gaseosas" }, ficha, { aspecto: 0.27, relleno: 0.86, simetria: 0.02 }, { acostado: true });
@@ -380,6 +424,21 @@ prueba("los campos de la ficha siguen a la ficha cuando cambia desde afuera", ()
   // La foto con fondo pide el ancho; y «va acostado» se puede marcar.
   assert.match(src, /const pideAncho = !!estimado\?\.anchoEstimado;/);
   assert.match(src, /checked=\{ficha\.acostado\}/, "la ficha no tiene la casilla «va acostado»");
+});
+
+prueba("el precio al público: pesos enteros o nada, con los mismos topes que el servidor", () => {
+  for (const [texto, pesos] of [["4.900", 4900], ["$ 4900", 4900], ["4 900", 4900], ["4900,00", 4900], ["1.234", 1234]]) {
+    assert.equal(ficha.aPesos(texto), pesos, `«${texto}»`);
+  }
+  // Lo que no es un precio no se guarda como uno: el hablador va sin cifra.
+  for (const texto of ["", "  ", "abc", "4,9", "49", "-4900", "20.000.000", "4900 pesos"]) {
+    assert.equal(ficha.aPesos(texto), null, `«${texto}» se guardó como precio`);
+  }
+  const back = readFileSync(join(raiz, "..", "backend", "app", "routers", "catalogo.py"), "utf8");
+  assert.match(back, new RegExp(`precio_publico: Optional\\[int\\] = Field\\(None, ge=${ficha.PRECIO_MINIMO}, le=${ficha.PRECIO_MAXIMO.toLocaleString("en-US").replace(/,/g, "_")}\\)`),
+    "los topes del precio en la ficha y en el servidor no son los mismos");
+  const src = readFileSync(join(raiz, "src", "components", "StoreEditor3D", "EditorDeFicha.tsx"), "utf8");
+  assert.match(src, /cambiar\(\{ precio_publico: aPesos\(e\.target\.value\) \}\);/, "el campo del precio no guarda lo que se tecleó");
 });
 
 // ── La textura de cada envase (texturas.ts) ─────────────────────────────────
@@ -572,6 +631,270 @@ prueba("los costados de la bolsa toman el color del plástico", () => {
   assert.deepEqual(px(t, 50, 5), px(img, 50, 5), "se tiñó el frente");
   // Sin color dominante válido, no se toca nada.
   assert.deepEqual(Array.from(T.tenirCantos(img, "").rgba), Array.from(img.rgba));
+});
+
+// ── La botella llena hasta el borde (ronda 2 de la dueña) ───────────────────
+//
+// La crítica midió en la 2 L dos bandas crema de ~10 px en los hombros: p95
+// 240 contra 37 del cuerpo, «un arnés blanco». Dos causas: el tinte decidía
+// por fila y en el hombro la fila mezcla líquido oscuro con el anillo claro
+// de la refracción, y el torno era más ancho que la foto en el hombro.
+
+const G = await (async () => {
+  const r = await build({ entryPoints: [join(muebles, "perfiles.ts")], bundle: true, write: false, format: "esm", platform: "node", logLevel: "silent" });
+  return import("data:text/javascript;base64," + Buffer.from(r.outputFiles[0].text).toString("base64"));
+})();
+const lum = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+const percentil95 = (vs) => { const v = vs.slice().sort((a, b) => a - b); return v[Math.floor(v.length * 0.95)]; };
+
+/** Una 2 L de frente con HOMBRO: la tapa, el cuello, el hombro que se abre
+ *  y el cuerpo; el líquido rojo, la etiqueta rosa con letra blanca y, en el
+ *  hombro, el anillo claro de 10 px que la refracción deja en el borde. */
+const SEMI = (y) => (y < 20 ? 14 : y < 40 ? 16 : y < 140 ? 16 + 34 * Math.sin(((y - 40) / 100) * Math.PI / 2) : 50);
+function botellaConHombro({ fondo = [255, 255, 255, 0] } = {}) {
+  const W = 120, H = 400;
+  return { ancho: W, alto: H, rgba: foto(W, H, (x, y) => {
+    const d = SEMI(y) - Math.abs(x + 0.5 - W / 2);
+    if (y < 4 || y > 395 || d < 0) return fondo;
+    if (y < 20) return [235, 110, 40, 255];                                        // tapa
+    if (y >= 200 && y < 280) return x % 7 < 2 && y % 11 < 6 ? [248, 248, 248, 255] : [225, 70, 140, 255]; // etiqueta
+    if (y >= 40 && y < 140 && d < 10) return [205, 200, 194, 255];                // el anillo claro
+    return [140, 38, 40, 255];                                                     // el líquido
+  }) };
+}
+
+prueba("el hombro de la botella queda lleno: sin el anillo claro (p95 < 150)", () => {
+  const b = botellaConHombro();
+  // El mismo camino que la etiqueta: el borde encogido 4 px y después llena.
+  const l = T.llenarBotella(T.erosionarYSangrar(b, 4, 10));
+  assert.ok(l.liquido, "no encontró el líquido");
+  const hombro = [], antes = [];
+  for (let y = 45; y < 135; y++) for (let x = 0; x < b.ancho; x++) {
+    if (b.rgba[(y * b.ancho + x) * 4 + 3] < 128) continue;
+    hombro.push(lum(px(l, x, y)));
+    antes.push(lum(px(b, x, y)));
+  }
+  assert.ok(percentil95(antes) > 180, "la botella de prueba no tiene el anillo: la prueba no prueba nada");
+  assert.ok(percentil95(hombro) < 150, `el hombro sigue con el anillo claro: p95 ${percentil95(hombro)}`);
+  // Lo de AFUERA de la silueta (el sangrado, que se ve si el torno queda un
+  // pelo más ancho) también es líquido oscuro, no crema.
+  const afuera = [];
+  for (let y = 45; y < 135; y++) {
+    const x = Math.round(b.ancho / 2 + SEMI(y) + 1);
+    if (x < b.ancho) afuera.push(lum(px(l, x, y)));
+  }
+  assert.ok(percentil95(afuera) < 150, `el sangrado del hombro sigue claro: p95 ${percentil95(afuera)}`);
+  // La letra blanca y el rosa de la etiqueta siguen intactos, y la tapa.
+  for (let y = 200; y < 280; y++) for (let x = 40; x < 80; x++) {
+    if (x % 7 < 2 && y % 11 < 6) assert.deepEqual(px(l, x, y), [248, 248, 248, 255], "se tiñó la letra de la etiqueta");
+    else assert.deepEqual(px(l, x, y), [225, 70, 140, 255], "se tiñó la etiqueta");
+  }
+  assert.deepEqual(px(l, 60, 10), [235, 110, 40, 255], "se tiñó la tapa");
+  // La pared de canto, más oscura que el centro; y el reflejo, más claro.
+  const centro = lum(px(l, 60, 100)), canto = lum(px(l, 60 - SEMI(100) + 1, 100));
+  assert.ok(canto < centro, `el canto no se oscurece: ${canto} contra ${centro}`);
+});
+
+prueba("la clasificación de la botella es por cromaticidad: el rosa no es líquido", () => {
+  // Con la cubeta de tono, el líquido [140,38,40] y el rosa [225,70,140]
+  // caían en la misma y la letra blanca de la etiqueta se teñía.
+  const L = [140, 38, 40];
+  assert.equal(T.claseDePixel(140, 38, 40, L), "liquido");
+  assert.equal(T.claseDePixel(110, 30, 32, L), "liquido");
+  assert.equal(T.claseDePixel(225, 70, 140, L), "otro");
+  assert.equal(T.claseDePixel(235, 110, 40, L), "otro", "la tapa naranja pasa por líquido");
+  // Tan oscuros como el líquido: los separa el COLOR, no la luz (el rosa y la
+  // tapa de arriba ya caían afuera por claros).
+  assert.equal(T.claseDePixel(150, 40, 90, L), "otro", "un rosa oscuro pasa por líquido");
+  assert.equal(T.claseDePixel(150, 60, 20, L), "otro", "un marrón anaranjado pasa por líquido");
+  assert.equal(T.claseDePixel(248, 248, 248, L), "claro");
+  assert.equal(T.claseDePixel(205, 200, 194, L), "claro");
+  assert.equal(T.claseDePixel(250, 214, 226, L), "claro", "el claro apenas rosado del hombro no es claro");
+  const filas = T.filasDeEtiqueta(botellaConHombro(), L);
+  assert.ok(filas[10] && filas[240], "la tapa o la etiqueta no son filas de etiqueta");
+  assert.ok(!filas[100] && !filas[330], "el hombro o el cuerpo quedaron como etiqueta");
+});
+
+prueba("el perfil de 64 bandas: el torno no queda más ancho que la foto (+1 px)", () => {
+  const W = 160, H = 440;
+  // La misma botella, sobre blanco, para que el recorte saque su perfil.
+  const b = botellaConHombro();
+  const p = foto(W, H, (x, y) => {
+    const xx = x - 20, yy = y - 20;
+    if (xx < 0 || xx >= b.ancho || yy < 0 || yy >= b.alto) return BLANCO;
+    const i = (yy * b.ancho + xx) * 4;
+    return b.rgba[i + 3] ? [b.rgba[i], b.rgba[i + 1], b.rgba[i + 2]] : BLANCO;
+  });
+  const r = R.recortarFondo(p, W, H, "auto");
+  assert.equal(r.perfil.length, 64, `el perfil tiene ${r.perfil.length} bandas`);
+  assert.equal(R.PUNTOS_DE_PERFIL, 64);
+  const ancho = 0.105, alto = 0.33;
+  const g = G.geometriaDeEtiqueta("revolucion", ancho, alto, ancho, r.perfil, false, true);
+  // La silueta del torno vista de frente: los vértices del meridiano +X.
+  const pos = g.attributes.position;
+  const mer = [];
+  for (let i = 0; i < pos.count; i++) {
+    if (pos.getX(i) > 0 && Math.abs(pos.getZ(i)) < 1e-6 * ancho) mer.push([pos.getY(i), pos.getX(i)]);
+  }
+  mer.sort((a, c) => a[0] - c[0]);
+  assert.ok(mer.length > 20, "no se encontró el meridiano del torno");
+  let peor = -Infinity, donde = -1;
+  for (let y = 0; y < r.alto; y++) {
+    const f = 1 - (y + 0.5) / r.alto;
+    // El pie se redondea a propósito y la tapa termina en su labio.
+    if (f < 0.08 || f > 0.95) continue;
+    let l = -1, d = -1;
+    for (let x = 0; x < r.ancho; x++) if (r.rgba[(y * r.ancho + x) * 4 + 3] >= 128) { if (l < 0) l = x; d = x; }
+    if (l < 0) continue;
+    const yy = alto / 2 - ((y + 0.5) / r.alto) * alto;
+    let rad = 0;
+    for (let k = 0; k < mer.length - 1; k++) {
+      const [y0, r0] = mer[k], [y1, r1] = mer[k + 1];
+      if (yy >= y0 && yy <= y1 && y1 > y0) { rad = r0 + ((r1 - r0) * (yy - y0)) / (y1 - y0); break; }
+    }
+    const exceso = (rad / ancho) * r.ancho - (d - l + 1) / 2;
+    if (exceso > peor) { peor = exceso; donde = y; }
+  }
+  if (process.env.VER) console.log("    exceso máximo", peor.toFixed(2), "px en", donde);
+  assert.ok(peor <= 1, `el torno sale ${peor.toFixed(2)} px más ancho que la foto en la fila ${donde}`);
+});
+
+prueba("la botella de frente: 2.200 triángulos o menos; el vaso recto no cambia", () => {
+  const tris = (g) => (g.index ? g.index.count : g.attributes.position.count) / 3;
+  // Un hombro brusco: el ajuste suma filas, pero hasta el tope.
+  const brusco = Array.from({ length: 64 }, (_, k) => (k < 40 ? 1 : k < 48 ? 1 - (k - 39) * 0.08 : 0.35));
+  const b = G.geometriaDeEtiqueta("revolucion", 0.105, 0.33, 0.105, brusco, false, true);
+  assert.ok(tris(b) <= 2200, `la botella pesa ${tris(b)} triángulos`);
+  assert.ok(tris(b) > 1664, "el hombro no ganó filas");
+  assert.equal(G.TOPE_DE_BOTELLA, 2200);
+  // Lo de atrás no cambia (12 lados, 8 filas): 312.
+  assert.equal(tris(G.geometriaDeEtiqueta("revolucion", 0.105, 0.33, 0.105, brusco, false, true, 0, "bajo")), 312);
+  // El vaso recto sigue con 4 filas: 512 con la tapa aparte.
+  const recto = Array.from({ length: 64 }, (_, k) => 0.8 + 0.2 * (k / 63));
+  assert.equal(tris(G.geometriaDeEtiqueta("revolucion", 0.075, 0.09, 0.075, recto, false, false, 0.04)), 512);
+  // Con 64 bandas la de abajo es el canto redondeado de la base (el Finesse:
+  // 0,49 contra 0,60): el vaso sigue recto, con UNA fila más para ese canto,
+  // y no se va a las dieciséis (1.280 triángulos por vaso del frente).
+  const conCanto = recto.map((v, k) => (k === 0 ? v - 0.12 : v));
+  assert.equal(tris(G.geometriaDeEtiqueta("revolucion", 0.075, 0.09, 0.075, conCanto, false, false, 0.04)), 576,
+    "el canto de la base manda el vaso a dieciséis filas");
+  assert.equal(tris(G.geometriaDeEtiqueta("revolucion", 0.075, 0.09, 0.075, conCanto, false, false, 0.04, "bajo")), 192);
+  // Un vaso con un escalón (un reborde a media altura) sigue con sus dieciséis:
+  // cuatro filas no lo siguen.
+  const curvo = Array.from({ length: 64 }, (_, k) => (k < 40 ? 0.7 : 1));
+  assert.equal(tris(G.geometriaDeEtiqueta("revolucion", 0.075, 0.09, 0.075, curvo, false, false, 0.04)), 1280);
+  // Las filas adaptadas: una de más donde el salto pasa del 4 %, ninguna
+  // donde la silueta es pareja.
+  const parejo = G.filasAdaptadas([0, 0.5, 1], () => 1, 32, 2200);
+  assert.deepEqual(parejo, [0, 0.5, 1]);
+  const conSalto = G.filasAdaptadas([0, 0.5, 1], (f) => (f < 0.75 ? 1 : 0.5), 32, 2200);
+  assert.ok(conSalto.length > 3 && conSalto.every((f, i) => i === 0 || f > conSalto[i - 1]), `${conSalto}`);
+});
+
+// ── La espalda del envase torneado ──────────────────────────────────────────
+//
+// La UV del frente es plana: la mitad de atrás recibía la foto espejada, y a
+// ~70° la columna de la punta repetía «esse» y las fresas comprimidas.
+
+/** Un vaso con silueta (cono truncado) y «texto»: trazos verticales de
+ *  colores distintos en cada columna, como letras, sobre fondo transparente. */
+function vasoConTexto() {
+  const W = 120, H = 200;
+  return { ancho: W, alto: H, rgba: foto(W, H, (x, y) => {
+    const semi = 45 + (y / H) * 12;                          // más ancho abajo
+    if (Math.abs(x + 0.5 - W / 2) > semi) return [255, 255, 255, 0];
+    if (y < 6) return [176, 170, 200, 255];                  // el foil
+    if (y > 186) return [90, 60, 140, 255];                  // el pie
+    if (x < 30) return [210, 40, 90, 255];                   // el costado izquierdo, fresa
+    if (x > 92) return [60, 30, 120, 255];                   // el derecho, morado
+    return (x * 7 + y * 3) % 11 < 3 ? [30, 30, 30, 255] : [240, 236, 230, 255];  // «finesse»
+  }) };
+}
+
+prueba("la espalda no repite el frente: los costados, interpolados, y la tabla sin texto", () => {
+  const v = vasoConTexto();
+  const e = T.espaldaDeEtiqueta(v);
+  const W = v.ancho, H = v.alto;
+  assert.equal(e.ancho, W); assert.equal(e.alto, H);
+  // Opaca: es la textura de un envase sólido.
+  for (let i = 3; i < e.rgba.length; i += 4) assert.equal(e.rgba[i], 255);
+  // Ninguna columna de la espalda es una columna del frente (filas 7 %-97 %).
+  const desde = Math.ceil(H * 0.03), hasta = Math.floor(H * 0.93);
+  const col = (img, x) => { const c = []; for (let y = desde; y < hasta; y++) c.push(...px(img, x, y).slice(0, 3)); return c; };
+  const dif = (a, b) => a.reduce((s, x, i) => s + Math.abs(x - b[i]), 0) / a.length;
+  // Las columnas con «texto» del frente (las de los costados son lisas, del
+  // color del cuerpo, que la espalda sí repite a propósito).
+  const frente = Array.from({ length: 92 - 30 + 1 }, (_, k) => col(v, 30 + k));
+  for (let x = Math.round(W * 0.15); x < Math.round(W * 0.85); x++) {
+    const c = col(e, x);
+    const min = Math.min(...frente.map((f) => dif(c, f)));
+    assert.ok(min > 8, `la columna ${x} de la espalda es una columna del frente (diferencia ${min.toFixed(1)})`);
+  }
+  // Empalma en ±90°: la columna 0 es el promedio de los 3 px de adentro del
+  // borde izquierdo de la silueta, y la última el del derecho (±2 niveles).
+  for (let y = desde; y < hasta; y += 7) {
+    let l = -1, r = -1;
+    for (let x = 0; x < W; x++) if (v.rgba[(y * W + x) * 4 + 3] >= 128) { if (l < 0) l = x; r = x; }
+    for (const [xe, x0] of [[0, l], [W - 1, r - 2]]) {
+      for (let c = 0; c < 3; c++) {
+        const esperado = (px(v, x0, y)[c] + px(v, x0 + 1, y)[c] + px(v, x0 + 2, y)[c]) / 3;
+        assert.ok(Math.abs(px(e, xe, y)[c] - esperado) <= 2, `fila ${y}: no empalma en ${xe === 0 ? "+X" : "−X"} (${px(e, xe, y)} contra ${esperado})`);
+      }
+    }
+  }
+  // La tabla nutricional: en el 35 % central, cada fila pareja (sin trazos de
+  // texto) donde no hay borde suave.
+  let filasDeTabla = 0;
+  for (let y = Math.round(H * 0.33); y < Math.round(H * 0.67); y++) {
+    const ls = [];
+    for (let x = Math.round(W * 0.36); x <= Math.round(W * 0.64); x++) ls.push(lum(px(e, x, y)));
+    assert.ok(Math.max(...ls) - Math.min(...ls) <= 3, `fila ${y} de la tabla con trazos: ${Math.min(...ls)}–${Math.max(...ls)}`);
+    if (ls[0] > 200 || ls[0] < 190) filasDeTabla++;
+  }
+  assert.ok(filasDeTabla > 0, "no hay tabla");
+  // La tabla es más clara que los costados, y tiene renglones.
+  const enTabla = [...Array(Math.round(H * 0.3)).keys()].map((k) => lum(px(e, W / 2, Math.round(H * 0.35) + k)));
+  assert.ok(Math.max(...enTabla) > 225 && Math.min(...enTabla) < 200, "la tabla no tiene papel claro con renglones");
+  // Las filas de la tapa (arriba del 97 %) y del pie (abajo del 7 %) son las
+  // del frente: ahí muestrean las tapas del torno de la botella.
+  for (const y of [0, 2, H - 1, H - 5]) for (let x = 0; x < W; x += 3) {
+    assert.deepEqual(px(e, x, y).slice(0, 3), px(v, x, y).slice(0, 3), `la fila ${y} no es la del frente`);
+  }
+  // `banda` dice en qué filas puede ir la tabla: en la botella, sólo sobre la
+  // etiqueta (sobre el líquido sería un parche blanco).
+  const sinTabla = T.espaldaDeEtiqueta(v, Array.from({ length: H }, () => false));
+  assert.ok(lum(px(sinTabla, W / 2, H / 2)) < 200, "la tabla salió en filas que no son de etiqueta");
+  // Pura: no toca la entrada.
+  assert.deepEqual(Array.from(vasoConTexto().rgba), Array.from(v.rgba));
+});
+
+prueba("la franja de la etiqueta cae en las filas rosas de la botella; sin líquido, la del medio", () => {
+  const b = botella();
+  const L = T.liquidoDe(b);
+  assert.ok(L, "no encontró el líquido");
+  const f = T.franjaDeEtiqueta(b, L);
+  // Las filas rosas son de la 110 a la 179 de 300.
+  assert.ok(Math.abs(f.desde - 110 / 300) <= 0.01 && Math.abs(f.hasta - 180 / 300) <= 0.01, `franja ${f.desde}–${f.hasta}`);
+  // Las columnas, las de la silueta (10 a 69 de 80), sin el aire de afuera.
+  assert.ok(Math.abs(f.x0 - 10 / 80) <= 0.0001 && Math.abs(f.x1 - 70 / 80) <= 0.0001, `columnas ${f.x0}–${f.x1}`);
+  // Con la marca en letra clara en una banda de la etiqueta, el cabezote va
+  // a esa banda: la etiqueta entera de una 2 L es casi cuadrada y al alto
+  // del cabezote quedaba un sello chico en un aviso de 1,1 m.
+  const W = 80, H = 300;
+  const conMarca = { ancho: W, alto: H, rgba: foto(W, H, (x, y) => {
+    if (x < 10 || x > 69) return [255, 255, 255, 0];
+    if (y < 15) return [235, 110, 40, 255];
+    if (y < 110) return [140, 38, 40, 255];
+    if (y < 180) return y >= 125 && y < 150 && x % 4 < 2 ? [248, 248, 248, 255] : [225, 70, 140, 255];
+    return [140, 38, 40, 255];
+  }) };
+  const fm = T.franjaDeEtiqueta(conMarca, T.liquidoDe(conMarca));
+  assert.ok(fm.desde * H >= 110 - 1 && fm.hasta * H <= 180 + 1, `la franja se sale de la etiqueta: ${fm.desde * H}–${fm.hasta * H}`);
+  assert.ok(fm.desde * H <= 126 && fm.hasta * H >= 149, `la franja no toma la marca: ${fm.desde * H}–${fm.hasta * H}`);
+  assert.ok((fm.hasta - fm.desde) * H < 60, "la franja no se acotó a la marca");
+  // Sin líquido (un vaso, una caja), la del medio de siempre.
+  const m = T.franjaDeEtiqueta(b, null);
+  assert.ok(Math.abs(m.desde - 0.34) < 0.005 && Math.abs(m.hasta - 0.66) < 0.005);
 });
 
 console.log(`\n${hechas} pruebas del arte del proveedor` + (process.exitCode ? " · CON FALLAS" : " · todo en orden") + "\n");

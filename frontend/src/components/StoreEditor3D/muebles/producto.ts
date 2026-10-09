@@ -220,6 +220,44 @@ function rubroQueCasa(rubro: string | undefined | null): Empaque | null {
   return null;
 }
 
+// ─── El frío ───────────────────────────────────────────────────────────────
+
+/** Los muebles de frío que existen en el editor (`FIXTURE_DEFS`). */
+export const MUEBLES_FRIOS = new Set<string>(["nevera_refrescos", "nevera_carnes", "isla_fria", "nevera_vegetales"]);
+
+/** Lo que va en frío, comparado contra el COMIENZO de cada palabra (como
+ *  `rubroQueCasa`): «yogur» caza «yogurt» y «yogures», «queso» caza «quesos». */
+const FRIO = ["yogur", "kumis", "queso", "mantequilla", "carne", "embutido", "pollo", "pescado", "helado", "refrigerad"];
+/** Lo que no, aunque diga «leche» o «lácteo»: le gana a lo de arriba. */
+const SIN_FRIO = ["uht", "arequipe", "polvo", "ultrapasteuriz"];
+
+/**
+ * Si un producto va refrigerado, por su categoría y su nombre.
+ *
+ * La crítica de la ronda 2: el caso de Alpina mostraba el yogur Finesse
+ * —refrigerado— en una punta seca, de a tres apilados. Un KAM de Alpina lo
+ * descarta en el primer segundo: el yogur va en la nevera. El sistema no lo
+ * prohíbe —decide la dueña—, pero lo avisa.
+ *
+ * - Sí: lácteos frescos, yogur, kumis, queso, mantequilla, carne, embutido,
+ *   pollo, pescado, helado, «refrigerado».
+ * - No: larga vida, UHT, arequipe, leche en polvo. Le ganan a los «sí»: una
+ *   leche larga vida de Alpina va en góndola seca aunque sea un lácteo.
+ */
+export function vaRefrigerado(categoria: string | null | undefined, nombre: string | null | undefined): boolean {
+  const palabras = palabrasDe(`${categoria ?? ""} ${nombre ?? ""}`);
+  const empieza = (lista: readonly string[]) => palabras.some((w) => lista.some((p) => w.startsWith(p)));
+  const largaVida = palabras.some((w, i) => w.startsWith("larga") && palabras[i + 1]?.startsWith("vida"));
+  if (largaVida || empieza(SIN_FRIO)) return false;
+  const lacteoFresco = palabras.some((w) => w.startsWith("lacteo")) && palabras.some((w) => w.startsWith("fresc"));
+  return lacteoFresco || empieza(FRIO);
+}
+
+/** El aviso del panel: un producto de frío probado en un mueble SECO. */
+export function avisoDeFrio(tipoDeMueble: string, categoria: string | null | undefined, nombre: string | null | undefined): boolean {
+  return vaRefrigerado(categoria, nombre) && !MUEBLES_FRIOS.has(tipoDeMueble);
+}
+
 /** El hash FNV-1a de un texto. Es la semilla de todo lo que tiene que salir
  *  IGUAL en cada render y en cada sesión: el color de un rubro y el desorden
  *  del producto de prueba (`frentes.ts`). */
@@ -386,6 +424,10 @@ export interface FichaDeArte {
   acostado: boolean;
   /** Qué hacer con el fondo de la foto (ver `recorte.ts`). */
   fondo_foto: "auto" | "quitar" | "conservar";
+  /** El precio al público en pesos enteros, para el hablador del
+   *  porta-precios. Opcional: sin él el hablador va sin cifra — nunca con
+   *  una inventada. */
+  precio_publico?: number | null;
 }
 
 /** Con qué geometría se dibuja el envase. */

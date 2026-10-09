@@ -51,6 +51,29 @@ prueba("el producto que se está probando sale como su propio renglón", () => {
   assert.ok(f.indexOf(producto) < f.findIndex(x => x.etiqueta === "Categoría"));
 });
 
+prueba("la exhibición acomodada sale como renglón sólo cuando se pasa", () => {
+  // «Hoy» con las rejillas de fábrica y «Con …» con las acomodadas para la
+  // 2 L: la lámina no lo esconde, porque es lo que hará el mercaderista.
+  const con = lineasDePie({ ...base, producto: "Manzana Postobón 2 L", exhibicion: "rejillas acomodadas para este producto" });
+  const ex = con.find(x => x.etiqueta === "Exhibición");
+  assert.equal(ex?.valor, "rejillas acomodadas para este producto");
+  for (const sin of [lineasDePie(base), lineasDePie({ ...base, exhibicion: "" }), lineasDePie({ ...base, exhibicion: "  " })]) {
+    assert.ok(!sin.some(x => x.etiqueta === "Exhibición"), "el renglón sale sin que nadie lo pase");
+  }
+  assert.equal(con.length, lineasDePie({ ...base, producto: "Manzana Postobón 2 L" }).length + 1);
+});
+
+prueba("el pie del surtido nombra los productos, sin período ni valor", () => {
+  // Una propuesta con varios productos del mismo proveedor: el renglón
+  // «Producto» los nombra a todos; de lo que se propone no hay nada acordado.
+  const f = lineasDePie({
+    ...base, proveedor: "Kellogg's", producto: "Müsli arándanos 410 g · Choco Krispis · Zucaritas",
+    desde: "", hasta: "", valorMensual: null,
+  });
+  assert.equal(f.find(x => x.etiqueta === "Producto")?.valor, "Müsli arándanos 410 g · Choco Krispis · Zucaritas");
+  assert.ok(!f.some(x => x.etiqueta === "Período" || x.etiqueta === "Valor mensual"), "el pie del surtido inventa período o valor");
+});
+
 prueba("sin producto el pie queda como estaba", () => {
   const sin = lineasDePie(base);
   const vacio = lineasDePie({ ...base, producto: "   " });

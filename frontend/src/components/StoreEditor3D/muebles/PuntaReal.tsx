@@ -59,10 +59,13 @@ export interface PuntaRealProps {
   /** La cenefa con el color de la marca (`materialDeCenefa`): tapa el hueco
    *  entre el último entrepaño y el copete. Va junto con `copete`. */
   cenefa?: THREE.Material;
+  /** Sólo en venta: los (entrepaño, vano) con habladores genéricos
+   *  (`tramosConRelleno`). */
+  habladores?: ReadonlySet<string> | null;
 }
 
 export const PuntaReal = memo(function PuntaReal({
-  w, d, h, statusColor, ghost = false, copete, cenefa,
+  w, d, h, statusColor, ghost = false, copete, cenefa, habladores,
 }: PuntaRealProps) {
   const materiales = useMateriales(ghost, statusColor);
   // La chapa impresa: la marca va SÓLO en la cara que mira al pasillo (−Z;
@@ -113,6 +116,7 @@ export const PuntaReal = memo(function PuntaReal({
           niveles={niveles}
           materiales={materiales}
           conRemate={false}
+          habladores={habladores}
         />
       </group>
 

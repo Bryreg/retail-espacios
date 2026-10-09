@@ -29,6 +29,8 @@ const {
   ALTURA_PISABLE, VEL_CAMINANDO, VEL_APURADA, PASO_MAXIMO, RADIO_PERSONA,
   normalDeCara, vistaDeCara, lugarDeLaFigura,
   distanciaLibre, vistaDeVenta, FOV_DE_CERCA,
+  ALTO_CIELO_RASO, LUMINARIA, luminariasDeTienda, direccionDeGondolas, ejesDeGrilla,
+  proyectar, rayoDeVista, choqueEnElLocal, sombraDeHuellas, sombraEn, SOMBRA_AL_PIE,
 } = await import(pathToFileURL(salida).href);
 
 let hechas = 0;
@@ -493,6 +495,180 @@ prueba("«De cerca» con teleobjetivo: el entrepaño llena el cuadro, de frente"
     const a = polar(w);
     assert.ok(a >= Math.PI / 6 - 1e-9 && a <= Math.PI / 2.1 + 1e-9, `${f.id}: ángulo polar ${(a * 180 / Math.PI).toFixed(1)}°`);
   }
+});
+
+// ── El cielo raso de la pantalla de venta ─────────────────────────────────────
+
+console.log("\nplanta · el cielo raso y sus luminarias");
+
+/** Si (x, z) cae en alguna tira, con la grilla (la cuenta del shader). */
+const enGrilla = (g, x, z) => {
+  const { u, v } = ejesDeGrilla(g.giro);
+  const rx = x - g.origen.x, rz = z - g.origen.z;
+  const cu = rx * u.x + rz * u.z, cv = rx * v.x + rz * v.z;
+  const i = Math.max(0, Math.min(g.cuantas.u - 1, Math.floor(cu / g.paso.u + 0.5)));
+  const j = Math.max(0, Math.min(g.cuantas.v - 1, Math.floor(cv / g.paso.v + 0.5)));
+  return Math.abs(cu - i * g.paso.u) <= g.tamano.u / 2 + 1e-9 && Math.abs(cv - j * g.paso.v) <= g.tamano.v / 2 + 1e-9;
+};
+/** Las cuatro puntas de una tira. */
+const puntas = (l, g) => {
+  const { u, v } = ejesDeGrilla(l.rotY);
+  return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => ({
+    x: l.x + u.x * a * g.tamano.u / 2 + v.x * b * g.tamano.v / 2,
+    z: l.z + u.z * a * g.tamano.u / 2 + v.z * b * g.tamano.v / 2,
+  }));
+};
+
+prueba("las luminarias quedan dentro de la planta, con su margen, y la grilla las reproduce", () => {
+  for (const sede of [SEDE, [gondola(0, 0, Math.PI / 2), gondola(3, 0, Math.PI / 2), gondola(6, 0, Math.PI / 2)], [gondola(-20, 3), gondola(15, 8)]]) {
+    const L = limitesDePlanta(sede, 2.5);
+    const { instancias, grilla } = luminariasDeTienda(L, sede);
+    assert.ok(instancias.length >= 4, `sólo ${instancias.length} luminarias`);
+    assert.equal(instancias.length, grilla.cuantas.u * grilla.cuantas.v);
+    for (const l of instancias) for (const p of puntas(l, grilla)) {
+      assert.ok(p.x >= L.minX + LUMINARIA.margen - 1e-6 && p.x <= L.maxX - LUMINARIA.margen + 1e-6
+        && p.z >= L.minZ + LUMINARIA.margen - 1e-6 && p.z <= L.maxZ - LUMINARIA.margen + 1e-6,
+        `una luminaria se sale de la planta (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
+    }
+    // La grilla (lo que lee el shader) reproduce cada instancia, y nada más.
+    const { u, v } = ejesDeGrilla(grilla.giro);
+    let k = 0;
+    for (let j = 0; j < grilla.cuantas.v; j++) for (let i = 0; i < grilla.cuantas.u; i++, k++) {
+      const x = grilla.origen.x + u.x * i * grilla.paso.u + v.x * j * grilla.paso.v;
+      const z = grilla.origen.z + u.z * i * grilla.paso.u + v.z * j * grilla.paso.v;
+      assert.ok(Math.hypot(x - instancias[k].x, z - instancias[k].z) < 1e-9, "la grilla no reproduce la instancia");
+      assert.ok(enGrilla(grilla, instancias[k].x, instancias[k].z), "el centro de una tira no cae en la grilla");
+    }
+    // Entre dos tiras de una fila hay techo, no luz; y dos tiras no se tocan.
+    assert.ok(grilla.paso.u >= LUMINARIA.largo + 0.2 - 1e-9 && grilla.paso.v >= LUMINARIA.ancho + 0.2);
+    if (grilla.cuantas.u > 1) {
+      const a = instancias[0];
+      assert.ok(!enGrilla(grilla, a.x + u.x * grilla.paso.u / 2, a.z + u.z * grilla.paso.u / 2), "entre tira y tira la grilla da luz");
+    }
+    assert.ok(Math.abs(grilla.y - (ALTO_CIELO_RASO - 0.005)) < 1e-9, "las luminarias no van embutidas en el cielo raso");
+  }
+});
+
+prueba("las filas de luminarias corren paralelas a las góndolas", () => {
+  const enX = [gondola(0, 0, 0), gondola(0, 3, 0), { x: 5, z: 0, w: 0.9, d: 0.4, h: 1.8, rotY: Math.PI / 2 }];
+  const enZ = [gondola(0, 0, Math.PI / 2), gondola(3, 0, -Math.PI / 2), { x: 0, z: 5, w: 0.9, d: 0.4, h: 1.8, rotY: 0 }];
+  assert.equal(direccionDeGondolas(enX, limitesDePlanta(enX)), 0);
+  assert.equal(direccionDeGondolas(enZ, limitesDePlanta(enZ)), Math.PI / 2);
+  // Con la sede sembrada: las góndolas (3,6 m) le ganan a las tres puntas.
+  const { grilla, instancias } = luminariasDeTienda(LIMITES, SEDE);
+  assert.equal(grilla.giro, 0);
+  // Y la tira tiene el largo a lo largo de la góndola.
+  const giradas = luminariasDeTienda(limitesDePlanta(enZ), enZ);
+  const p = puntas(giradas.instancias[0], giradas.grilla);
+  assert.ok(Math.abs(p[1].z - p[0].z) > 2 && Math.abs(p[1].x - p[0].x) < 1e-9, "la tira no va a lo largo de la góndola girada");
+  assert.ok(instancias.length > 0);
+});
+
+prueba("una sede vacía o diminuta no rompe las luminarias", () => {
+  const vacia = limitesDePlanta([], 2.5, NOMINAL);
+  const r = luminariasDeTienda(vacia, []);
+  assert.ok(r.instancias.length > 0 && r.instancias.every((l) => Number.isFinite(l.x) && Number.isFinite(l.z)));
+  const chica = { minX: 0, maxX: 2, minZ: 0, maxZ: 2, cx: 1, cz: 1, w: 2, d: 2 };
+  assert.deepEqual(luminariasDeTienda(chica, []).instancias, [], "en un local de 2 m entra una tira de 2,4 m");
+});
+
+/** Las luminarias que se ven en una toma: alguna muestra de la tira dentro del
+ *  cuadro, delante de la cámara y antes que el muro en ese rayo. */
+function luminariasEnCuadro(v, L, sede, fov = 50, asp = 16 / 9) {
+  const { instancias, grilla } = luminariasDeTienda(L, sede);
+  const o = { x: v.posX, y: v.posY, z: v.posZ };
+  return instancias.filter((l) => {
+    const { u } = ejesDeGrilla(l.rotY);
+    for (let k = -1; k <= 1.0001; k += 0.125) {
+      const p = { x: l.x + u.x * k * grilla.tamano.u / 2, y: grilla.y, z: l.z + u.z * k * grilla.tamano.u / 2 };
+      const q = proyectar(v, fov, asp, p);
+      if (q.profundidad <= 0 || Math.abs(q.x) > 1 || Math.abs(q.y) > 1) continue;
+      const d = { x: p.x - o.x, y: p.y - o.y, z: p.z - o.z };
+      const dist = Math.hypot(d.x, d.y, d.z);
+      const choque = choqueEnElLocal(o, { x: d.x / dist, y: d.y / dist, z: d.z / dist }, L, ALTO_CIELO_RASO + 0.01);
+      if (choque.t >= dist - 1e-6) return true;
+    }
+    return false;
+  }).length;
+}
+
+prueba("proyectar y rayoDeVista son la misma cámara (ida y vuelta)", () => {
+  const v = { posX: 1, posY: 1.4, posZ: 5, targetX: -2, targetY: 0.8, targetZ: 1 };
+  for (const [nx, ny] of [[0, 0], [0.7, -0.3], [-1, 1], [0.2, 0.9]]) {
+    const d = rayoDeVista(v, 50, 16 / 9, nx, ny);
+    const q = proyectar(v, 50, 16 / 9, { x: v.posX + d.x * 4, y: v.posY + d.y * 4, z: v.posZ + d.z * 4 });
+    assert.ok(Math.abs(q.x - nx) < 1e-9 && Math.abs(q.y - ny) < 1e-9 && q.profundidad > 0, `(${nx}, ${ny}) → (${q.x}, ${q.y})`);
+  }
+  // Lo que está detrás tiene profundidad negativa.
+  assert.ok(proyectar(v, 50, 16 / 9, { x: 4, y: 1.4, z: 9 }).profundidad < 0);
+});
+
+prueba("en las tomas de venta se ven el cielo raso y al menos dos luminarias", () => {
+  const toma = (id, t) => {
+    const f = SEDE.find((x) => x.id === id);
+    return vistaDeVenta(comoMueble(f), "A", t, { yBajo: 0, yAlto: f.h }, otros(id), LIMITES);
+  };
+  for (const [id, t] of [["PUN-01", "frente"], ["PUN-01", "tres_cuartos"], ["ROB-01", "tres_cuartos"]]) {
+    const n = luminariasEnCuadro(toma(id, t), LIMITES, SEDE);
+    assert.ok(n >= 2, `${id} ${t}: ${n} luminarias en el cuadro`);
+  }
+  // La columna del medio de la toma de frente de la punta: filas de cielo
+  // raso (de 1080) antes del muro. Con el techo a 4,5 m eran cero.
+  const v = toma("PUN-01", "frente");
+  const filas = (techo) => {
+    let n = 0;
+    for (let py = 0; py < 1080; py++) {
+      const d = rayoDeVista(v, 50, 16 / 9, 0, 1 - (py + 0.5) / 540);
+      if (choqueEnElLocal({ x: v.posX, y: v.posY, z: v.posZ }, d, LIMITES, techo).que === "techo") n++;
+    }
+    return n;
+  };
+  assert.ok(filas(ALTO_CIELO_RASO) >= 60, `sólo ${filas(ALTO_CIELO_RASO)} filas de cielo raso`);
+  assert.equal(filas(4.5), 0, "la prueba ya no muestra por qué el techo va a 3,2 m");
+});
+
+prueba("una góndola girada en el borde de la planta queda dentro del muro", () => {
+  // El muro sale de `limites` (con la rotación). Con la caja vieja de
+  // StoreRoom —`f.x ± f.w/2`, sin girar— la góndola de 3,6 m girada 90°
+  // asomaba 1,35 m del lado del muro.
+  const sede = [gondola(0, 0, 0), gondola(10, 0, Math.PI / 2)];
+  const L = limitesDePlanta(sede, 2.5);
+  const h = huella(sede[1]);
+  assert.ok(h.maxZ <= L.maxZ - 2.5 + 1e-9 && h.minZ >= L.minZ + 2.5 - 1e-9, "la huella girada no entra en los límites");
+  const vieja = { minZ: Math.min(...sede.map((f) => f.z - f.d / 2)) - 2.5, maxZ: Math.max(...sede.map((f) => f.z + f.d / 2)) + 2.5 };
+  assert.ok(h.maxZ > vieja.maxZ - 2.5 + 1, "la prueba ya no muestra el defecto de la caja sin rotación");
+});
+
+console.log("\nplanta · el piso de la pantalla de venta");
+
+prueba("la sombra al pie: oscura junto al mueble, nada a un metro, con la rotación", () => {
+  for (const rotY of [0, Math.PI / 2]) {
+    const sede = [gondola(5, 5, rotY)];
+    const L = limitesDePlanta(sede, 2.5);
+    const m = sombraDeHuellas(sede, L);
+    assert.ok(m.datos.length === m.ancho * m.alto && m.paso === SOMBRA_AL_PIE.paso);
+    const h = huella(sede[0]);
+    // A 5 cm del canto largo (el que mira al pasillo), y a 1 m.
+    const [pie, lejos] = rotY === 0
+      ? [{ x: 5, z: h.maxZ + 0.05 }, { x: 5, z: h.maxZ + 1 }]
+      : [{ x: h.maxX + 0.05, z: 5 }, { x: h.maxX + 1, z: 5 }];
+    const a = sombraEn(m, pie.x, pie.z), b = sombraEn(m, lejos.x, lejos.z);
+    // El piso al pie, al menos un 10 % más oscuro que a 1 m.
+    assert.ok(SOMBRA_AL_PIE.maximo * a >= 0.10, `rot ${rotY}: al pie sólo oscurece ${(SOMBRA_AL_PIE.maximo * a * 100).toFixed(0)} %`);
+    assert.equal(b, 0, `rot ${rotY}: a 1 m el piso sigue sombreado`);
+    assert.equal(sombraEn(m, 5, 5), 1, "bajo el mueble no hay sombra");
+    // La rotación cuenta: con la huella sin girar, a 1 m del lado largo
+    // GIRADO estaría la góndola.
+    if (rotY !== 0) assert.ok(sombraEn(m, 5, h.maxZ + 0.05) > 0.5, "la sombra no sigue la huella girada");
+  }
+  // Una sede vacía no rompe; un mueble pisable no hace sombra.
+  const v = sombraDeHuellas([], limitesDePlanta([], 2.5, NOMINAL));
+  assert.ok(v.datos.every((x) => x === 0));
+  const plano = sombraDeHuellas([{ x: 1, z: 1, w: 1, d: 1, h: 0.05 }], { minX: -2, maxX: 4, minZ: -2, maxZ: 4 });
+  assert.ok(plano.datos.every((x) => x === 0), "una zona libre de 5 cm hace sombra");
+  // 40 × 30 m son unos 120 KB.
+  const grande = sombraDeHuellas([gondola(0, 0)], { minX: 0, maxX: 40, minZ: 0, maxZ: 30 });
+  assert.ok(grande.datos.length <= 121000, `${grande.datos.length} bytes`);
 });
 
 console.log("\n" + hechas + " pruebas" + (process.exitCode ? " · CON FALLAS" : " · todo en orden") + "\n");

@@ -15,13 +15,17 @@ import { ProductoEnGondola, ventaDeGondola } from "./muebles/ProductoEnGondola";
 import { PuntaReal } from "./muebles/PuntaReal";
 import { ProductoEnPunta, ventaDePunta } from "./muebles/ProductoEnPunta";
 import { ProductoDePrueba } from "./muebles/ProductoDePrueba";
+import { useHabladoresDeRelleno } from "./muebles/ProductoEnMueble";
 import type { PruebaDeCara } from "./muebles/ProductoDePrueba";
 import {
-  cubiertasDe, entrepanosDelEspacio, focoDeLaPrueba, rejillasParaProducto, unidadesDePrueba, VENDIDO,
+  ajusteDeRejillas, bloquesDeSurtido, claveDeFilas, cubiertasDe, entrepanosDelEspacio, focoDeLaPrueba, moverRejilla, rejillasDeLaPrueba,
+  rubroDeContratoEntero, unidadesDePrueba, VENDIDO,
 } from "./muebles/frentes";
+import type { AccionDeRejillas, EleccionDeRejillas, FilaDePrueba, RejillasDeLaPrueba } from "./muebles/frentes";
+import type { FilasDeProducto } from "./muebles/medidas";
 import { ventaDeTipo } from "./muebles/venta";
 import {
-  arteALaVista, hayReunion, supplierPorNombre, proveedorParaPresentar, pruebaAjenaDelMueble, pruebasDeLaReunion,
+  arteALaVista, habladorALaVista, hayReunion, MAXIMO_DE_SURTIDO, supplierPorNombre, surtidoALaVista, proveedorParaPresentar, pruebaAjenaDelMueble, pruebasDeLaReunion,
   ultimaPrueba,
 } from "./muebles/privacidad";
 import type { PrivadoPara } from "./muebles/privacidad";
@@ -29,8 +33,14 @@ import {
   claveDeArte, estadoDeEtiqueta, etiquetaDeArte, marcarEnUso, olvidarEtiquetas, reintentarEtiqueta,
   useEntornoDeProducto, useEtiqueta,
 } from "./muebles/etiqueta";
+import type { Etiqueta } from "./muebles/etiqueta";
 import { materialDeCenefa, materialDeCopete, olvidarCopetes } from "./muebles/pop";
-import { conLuzDeVenta, LuzDeVenta, useLuzDeVenta } from "./muebles/luzDeVenta";
+import {
+  BRILLO, FocoDeVenta, K_ENTORNO_MUEBLE, LuzDeVenta, parcheDelPiso, ponerTienda, useLuzDeVenta, usePropsDeLuzDeVenta,
+} from "./muebles/luzDeVenta";
+import { useAtenuacion } from "./muebles/atenuacion";
+import type { UniformesDelPiso } from "./muebles/luzDeVenta";
+import { geometriaDeCieloRaso, geometriaDeMurosDeVenta } from "./muebles/sala";
 import { NeveraReal } from "./muebles/NeveraReal";
 import { ProductoAGranel } from "./muebles/ProductoAGranel";
 import { BateaReal, bocaDeBatea } from "./muebles/BateaReal";
@@ -41,7 +51,7 @@ import { ServicioClienteReal } from "./muebles/ServicioClienteReal";
 import { EstibaReal } from "./muebles/EstibaReal";
 import { bandejasDeMural } from "./muebles/ProductoEnMural";
 import { ProductoEnRepisas } from "./muebles/ProductoEnRepisas";
-import { colorDeRubro, empaqueDeArte, empaqueQueEntra } from "./muebles/producto";
+import { avisoDeFrio, colorDeRubro, empaqueDeArte, empaqueQueEntra, vaRefrigerado } from "./muebles/producto";
 import { olvidarGeometrias } from "./muebles/perfiles";
 import {
   COPETE, ESPESOR_ESPINA, ESTIBA, NEVERA, PANEL_FONDO, PARANTE, ROBATOPE, ZONA_DE_SLOTS,
@@ -71,6 +81,7 @@ import {
   huella, limitesDePlanta, lugarDeLaFigura, murosDeCaminata, puntoDeEntrada, puntoLibreCerca, resolverPaso,
   TOLERANCIA_CONTACTO,
   vistaGeneral, miradaSensata, vistaDeCara, vistaDeVenta, FOV_DE_CERCA,
+  ALTO_CIELO_RASO, LUMINARIA, luminariasDeTienda, sombraDeHuellas,
   type Vista3D, type TomaDeVenta,
   VEL_CAMINANDO, VEL_APURADA,
   type LimitesPlanta,
@@ -151,12 +162,18 @@ type ComoSePrueba = {
    *  pararla»: mientras tanto decide la ficha del arte (`ficha.acostado`).
    *  Con un `false` de arranque la ficha nunca se aplicaba. */
   acostado?: boolean;
-  /** Las rejillas de la nevera reacomodadas para que el producto entre parado
-   *  en todas (`rejillasParaProducto`). Sólo en la sesión. */
-  rejillas?: boolean;
+  /** Las rejillas de la nevera de refrescos (`rejillasDeLaPrueba`):
+   *  `undefined` = AUTOMÁTICAS, el valor de entrada —si el producto parado no
+   *  entra, se acomodan solas—; `"fabrica"` = las del mueble; o a mano,
+   *  cuántas y, si se movieron, dónde. Sólo en la sesión: el plano no cambia. */
+  rejillas?: EleccionDeRejillas;
   /** La marca del producto en el copete de la punta (`pop.ts`). Prendida si
    *  no se dice nada; sólo vale con «Toda la cara». */
   copete?: boolean;
+  /** Hasta tres artes MÁS del mismo proveedor que el principal, en bloques
+   *  verticales por vano (`bloquesDeSurtido`). Sólo góndola y punta. Como
+   *  todo lo de acá, de la sesión: no va al layout. */
+  surtido?: number[];
 };
 
 /** Lo que la escena YA dibujó, para quien saca capturas (la lámina): el
@@ -164,7 +181,12 @@ type ComoSePrueba = {
  *  tarda lo que tarda en llegar. Esperar «dos cuadros» no alcanzaba: con la
  *  punta llena (360 vasos) la toma «Con Alpina» salía sin el producto, igual
  *  a «Hoy», y la lámina quedaba con una sola imagen. */
-type EstadoDeEscena = { sinArte: boolean; privadoPara: PrivadoPara; toma: number; primeraPersona: boolean };
+type EstadoDeEscena = {
+  sinArte: boolean; privadoPara: PrivadoPara; toma: number; primeraPersona: boolean;
+  /** Las caras (`${fixtureId}|${cara}`) cuya prueba se dibuja con OTRAS
+   *  rejillas que las de fábrica: la lámina lo dice en el pie. */
+  rejillasAcomodadas: string[];
+};
 
 /** Una toma de venta pedida para Presentar (o para la lámina). `n` cambia en
  *  cada pedido, para que pedir dos veces la misma vuelva a encuadrar.
@@ -662,6 +684,11 @@ interface GondolaMeshProps {
   hoveredSlotId?:  string | null;
   onSlotClick?:    (slotId: string) => void;
   onSlotHover?:    (slotId: string | null) => void;
+  /** Sólo en venta: el rubro del contrato, si el mueble está contratado
+   *  ENTERO y ninguno de sus slots está vendido (`rubroDeContratoEntero`). */
+  rubroEntero?:    string;
+  /** El id del mueble: siembra la variación del relleno en venta. */
+  semilla?:        string;
 }
 
 const GondolaMesh = memo(function GondolaMesh({
@@ -669,7 +696,7 @@ const GondolaMesh = memo(function GondolaMesh({
   gondolaType = "double",
   facePaint,
   slots, selectedSlotId, hoveredSlotId,
-  onSlotClick, onSlotHover,
+  onSlotClick, onSlotHover, rubroEntero, semilla,
 }: GondolaMeshProps) {
   const isWall = gondolaType === "wall";
 
@@ -702,6 +729,16 @@ const GondolaMesh = memo(function GondolaMesh({
   // cuenta que el relleno, y donde está la prueba no va relleno.
   const enPrueba = !ghost && !!(facePaint?.pruebaA || facePaint?.pruebaB);
   const ventaGondola = useMemo(() => ventaDeGondola(w, d, h, isWall), [w, d, h, isWall]);
+  // Contratada entera con los slots libres (la góndola de Bimbo): en venta
+  // se ve con el relleno neutro de su rubro, como cualquier cosa vendida.
+  // Contratada entera: todas las filas, pero sólo las dos de adelante en
+  // profundidad, como lo vendido por slot (`VendidoEntero.hondo`).
+  const vendidoEntero = useMemo(() => (rubroEntero !== undefined ? { rubro: rubroEntero, hondo: false } : undefined), [rubroEntero]);
+  // Los habladores genéricos de la tira, sobre lo que el relleno cubre (sólo
+  // en venta: `useHabladoresDeRelleno` no hace nada en el editor).
+  const habladores = useHabladoresDeRelleno(
+    !pinta && !ghost, ventaGondola, w, slots, vendidoEntero, cubiertasDe(facePaint, isWall),
+  );
 
   function renderSlotFace(faceSign: -1 | 1) {
     if (!slots || ghost || !onSlotClick) return null; // slots disabled → skip
@@ -747,7 +784,7 @@ const GondolaMesh = memo(function GondolaMesh({
 
   return (
     <group>
-      <GondolaReal w={w} d={d} h={h} gondolaType={isWall ? "wall" : "double"} ghost={ghost} />
+      <GondolaReal w={w} d={d} h={h} gondolaType={isWall ? "wall" : "double"} ghost={ghost} habladores={habladores ?? undefined} />
 
       {/* El producto de los espacios vendidos, parado sobre los entrepaños.
           Cuando el proveedor subió su arte manda el arte: la lámina es
@@ -757,12 +794,15 @@ const GondolaMesh = memo(function GondolaMesh({
         <ProductoEnGondola
           w={w} d={d} h={h} esMural={isWall} slots={slots} ghost={ghost}
           cubiertas={cubiertasDe(facePaint, isWall)}
+          vendidoEntero={vendidoEntero}
+          semilla={semilla}
         />
       )}
       {enPrueba && (
         <ProductoDePrueba
           venta={ventaGondola}
           pruebas={[facePaint?.pruebaA, isWall ? null : facePaint?.pruebaB]}
+          tipo="gondola"
         />
       )}
 
@@ -819,9 +859,12 @@ interface PuntaMeshProps {
   hoveredSlotId?:  string | null;
   onSlotClick?:    (slotId: string) => void;
   onSlotHover?:    (slotId: string | null) => void;
+  /** Ver `GondolaMeshProps.rubroEntero`. */
+  rubroEntero?:    string;
+  semilla?:        string;
 }
 
-function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: PuntaMeshProps) {
+function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover, rubroEntero, semilla }: PuntaMeshProps) {
   // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
   // La punta es el espacio más caro de un supermercado: se ve de frente desde
   // todo el pasillo transversal y se negocia aparte del lineal. Estaba armada
@@ -851,6 +894,13 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
   // El producto del proveedor en prueba, como envases 3D. Una sola cara.
   const enPrueba = !ghost && !!facePaint?.pruebaA;
   const ventaPunta = useMemo(() => ventaDePunta(w, d, h), [w, d, h]);
+  // Contratada entera con los slots libres: relleno neutro en venta.
+  // Contratada entera: todas las filas, pero sólo las dos de adelante en
+  // profundidad, como lo vendido por slot (`VendidoEntero.hondo`).
+  const vendidoEntero = useMemo(() => (rubroEntero !== undefined ? { rubro: rubroEntero, hondo: false } : undefined), [rubroEntero]);
+  const [habladores] = useHabladoresDeRelleno(
+    !pinta && !ghost, ventaPunta, w, slots, vendidoEntero, cubiertasDe(facePaint, true),
+  ) ?? [null];
   // La marca en el copete: sólo con la punta ENTERA probada (si se prueba un
   // entrepaño, el copete no es de ese proveedor) y si no se apagó en el panel.
   const entorno = useEntornoDeProducto();
@@ -863,7 +913,7 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
 
   return (
     <group>
-      <PuntaReal w={w} d={d} h={h} ghost={ghost} copete={copete} cenefa={cenefa} />
+      <PuntaReal w={w} d={d} h={h} ghost={ghost} copete={copete} cenefa={cenefa} habladores={habladores} />
 
       {/* El arte del proveedor, parado en el filo de cada entrepaño. La punta
           se cuelga ATRÁS —contra el corrido— y crece hacia el frente: con el
@@ -883,9 +933,9 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
           arte manda el arte: las dos no conviven sobre la misma cara. */}
       {!pinta && (
         <ProductoEnPunta w={w} d={d} h={h} slots={slots} ghost={ghost}
-          cubiertas={cubiertasDe(facePaint, true)} />
+          cubiertas={cubiertasDe(facePaint, true)} vendidoEntero={vendidoEntero} semilla={semilla} />
       )}
-      {enPrueba && <ProductoDePrueba venta={ventaPunta} pruebas={[facePaint?.pruebaA]} />}
+      {enPrueba && <ProductoDePrueba venta={ventaPunta} pruebas={[facePaint?.pruebaA]} tipo="punta" />}
 
       {/* Slot panels (same as GondolaMesh pattern) — disabled when onSlotClick is absent */}
       {!ghost && !!onSlotClick && slots?.map(slot => {
@@ -929,11 +979,18 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
 /** La chapa clara del robatope. En el editor, Lambert como siempre; en la
  *  pantalla de venta, Standard con la misma luz que el producto
  *  (`luzDeVenta.ts`): con Lambert sus caras de frente quedaban en la sombra
- *  de la luz ambiente, al lado de una bolsa de arroz llena de luz. */
+ *  de la luz ambiente, al lado de una bolsa de arroz llena de luz.
+ *
+ *  Las props de venta, ESTABLES (`usePropsDeLuzDeVenta`): llamando
+ *  `conLuzDeVenta` en cada render, el material recibía uniformes nuevos en
+ *  cada cuadro y los del programa compilado —los que atenúa un vecino—
+ *  quedaban huérfanos. */
 function ChapaDeRobatope({ color, op, luz }: { color: string; op: number; luz: boolean }) {
+  const venta = usePropsDeLuzDeVenta(luz, K_ENTORNO_MUEBLE, BRILLO.robatope);
+  useAtenuacion([venta]);
   return luz
     ? <meshStandardMaterial color={color} metalness={0.04} roughness={0.75}
-        transparent={op < 1} opacity={op} {...conLuzDeVenta(true)} />
+        transparent={op < 1} opacity={op} {...venta} />
     : <meshLambertMaterial color={color} transparent opacity={op} />;
 }
 
@@ -958,8 +1015,13 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:num
   // La MISMA cuenta de entrepaños que usa el pintado de caras. Repetida acá,
   // la primera vez que se toque el mueble el arte queda a caballo entre dos.
   const span = getPanelShelfSpan("robatope", w, h, d);
-  // En la pantalla de venta, con la luz del producto (`luzDeVenta.ts`).
+  // En la pantalla de venta, con la luz del producto (`luzDeVenta.ts`). Las
+  // props, estables: ver `ChapaDeRobatope`.
   const luz = useLuzDeVenta();
+  const ventaParante = usePropsDeLuzDeVenta(luz, K_ENTORNO_MUEBLE, BRILLO.estructura);
+  const ventaRemate = usePropsDeLuzDeVenta(luz, K_ENTORNO_MUEBLE, BRILLO.robatope);
+  const ventaFilo = usePropsDeLuzDeVenta(luz, K_ENTORNO_MUEBLE, BRILLO.estructura);
+  useAtenuacion([ventaParante, ventaRemate, ventaFilo]);
 
   return (
     <group>
@@ -990,7 +1052,7 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:num
         <mesh key={side} position={[side * (w / 2 - 0.025), bodyH / 2, 0]} castShadow>
           <boxGeometry args={[0.050, bodyH, d]} />
           <meshStandardMaterial key={luz ? "venta" : "editor"} color={G_FRAME} metalness={0.18} roughness={0.70}
-            transparent opacity={op} {...conLuzDeVenta(luz)} />
+            transparent opacity={op} {...ventaParante} />
         </mesh>
       ))}
 
@@ -1002,8 +1064,8 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:num
               <boxGeometry args={[cotas.anchoUtil, ROBATOPE.espesorRepisa, cotas.fondo]} />
               <ChapaDeRobatope color={G_WHITE} op={op} luz={luz} />
             </mesh>
-            <mesh position={[0, sy + 0.030, -(d / 2 - 0.008)]}>
-              <boxGeometry args={[w - 0.06, 0.036, 0.007]} />
+            <mesh position={[0, sy + ROBATOPE.rielSube, -(d / 2 - ROBATOPE.rielAdentro)]}>
+              <boxGeometry args={[w - ROBATOPE.rielRetiro, ROBATOPE.rielAlto, ROBATOPE.rielEspesor]} />
               <ChapaDeRobatope color="#b0b0ad" op={op} luz={luz} />
             </mesh>
           </group>
@@ -1018,12 +1080,12 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:num
       <mesh position={[0, bodyH + capH / 2, 0]} castShadow>
         <boxGeometry args={[w + 0.08, capH, d + 0.04]} />
         <meshStandardMaterial key={luz ? "venta" : "editor"} color="#9a9b96" metalness={0.22} roughness={0.6}
-          transparent opacity={op} {...conLuzDeVenta(luz)} />
+          transparent opacity={op} {...ventaRemate} />
       </mesh>
       <mesh position={[0, bodyH + 0.006, -(d / 2 + 0.02)]}>
         <boxGeometry args={[w + 0.08, 0.012, 0.004]} />
         <meshStandardMaterial key={luz ? "venta" : "editor"} color="#c4c4bf" metalness={0.22} roughness={0.5}
-          transparent opacity={op} {...conLuzDeVenta(luz)} />
+          transparent opacity={op} {...ventaFilo} />
       </mesh>
 
       {/* Corner feet — same style as PuntaMesh */}
@@ -1046,7 +1108,7 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:num
           rubro. Dibujando los dos, el arte quedaba de póster por delante y los
           estantes llenos por detrás — el mueble mostraba dos cosas distintas a
           la vez. */}
-      {enPrueba && <ProductoDePrueba venta={ventaRobatope} pruebas={[facePaint?.pruebaA]} />}
+      {enPrueba && <ProductoDePrueba venta={ventaRobatope} pruebas={[facePaint?.pruebaA]} tipo="robatope" />}
       {!pinta && !enPrueba && (
         <ProductoEnRepisas
           alturas={cotas.apoyos}
@@ -1883,8 +1945,12 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:num
   // la marca y recortes del producto, sin texto.
   const entorno = useEntornoDeProducto();
   const pa = facePaint?.pruebaA;
+  // Es un aviso LUMINOSO (retroiluminado) y, en una botella transparente,
+  // recorta la franja de su etiqueta y no la del medio de la foto.
   const cabezote = enPrueba && pa?.etiqueta && pa.donde === "todas" && pa.copete !== false
-    ? materialDeCopete(pa.etiqueta, w - NEVERA.chapa * 2, NEVERA.copete * 0.62, entorno)
+    ? materialDeCopete(pa.etiqueta, w - NEVERA.chapa * 2, NEVERA.copete * 0.62, entorno, {
+      retroiluminado: true, franja: !!pa.empaque?.transparente,
+    })
     : undefined;
 
   return (
@@ -1903,7 +1969,7 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:num
         niveles={enPrueba && facePaint?.pruebaA?.filas
           ? facePaint.pruebaA.filas.alturas.slice(0, -1) : undefined}
       />
-      {enPrueba && <ProductoDePrueba venta={ventaNevera} pruebas={[facePaint?.pruebaA]} />}
+      {enPrueba && <ProductoDePrueba venta={ventaNevera} pruebas={[facePaint?.pruebaA]} tipo="nevera_refrescos" />}
 
       {pinta && (
         <LaminaDeProductoPorFila
@@ -2096,9 +2162,12 @@ export function FixtureMesh({ fixture, ghost, neutro = false, facePaint, selecte
       ? (STATUS_COLORS[fixture.status] ?? STATUS_COLORS.free)
       : NON_RENTABLE_COLOR;
   const base = { w:fixture.w, d:fixture.d, h:fixture.h, statusColor:sc, ghost };
+  const rubroEntero = rubroDeContratoEntero(fixture, neutro);
   switch (fixture.type) {
     case "gondola": return (
       <GondolaMesh {...base}
+        rubroEntero={rubroEntero}
+        semilla={fixture.id}
         gondolaType={fixture.gondolaType ?? "double"}
         facePaint={facePaint}
         slots={fixture.slots}
@@ -2110,6 +2179,8 @@ export function FixtureMesh({ fixture, ghost, neutro = false, facePaint, selecte
     );
     case "punta": return (
       <PuntaMesh {...base}
+        rubroEntero={rubroEntero}
+        semilla={fixture.id}
         facePaint={facePaint}
         slots={fixture.slots}
         selectedSlotId={selectedSlotId}
@@ -2178,36 +2249,39 @@ function usarTexturaDePiso(): THREE.Texture {
   }, [gl]);
 }
 
-/** Floor + border that adapts to the bounding box of all placed fixtures.
- *  `muros` los levanta sólo en primera persona: al caminar ya te frena
- *  `murosDeCaminata` en el perímetro, y hasta ahora ese tope era invisible —
- *  chocabas contra nada. En la vista orbital estorban, así que ahí no van. */
-function StoreRoom({ fixtures, muros = false }: { fixtures: PlacedFixture[]; muros?: boolean }) {
-  const PAD = 2.5; // metres of padding around fixture bbox
-  const MIN_SIZE = 8;
-  // 4,5 m: la altura de un supermercado de verdad, y suficiente para que el
-  // remate del muro salga del cuadro salvo mirando de lejos.
-  const ALTO_MURO = 4.5;
-  const ESPESOR    = 0.12;
-  const ZOCALO     = 0.12;
+/** Alto del muro de la caminata: el de un supermercado de verdad, y
+ *  suficiente para que su remate salga del cuadro salvo mirando de lejos. */
+const ALTO_MURO = 4.5;
+const ESPESOR_DE_MURO = 0.12;
+const ZOCALO_DE_MURO = 0.12;
 
-  const { cx, cz, fw, fd } = useMemo(() => {
-    if (fixtures.length === 0) {
-      return { cx: STORE_W / 2, cz: STORE_D / 2, fw: MIN_SIZE, fd: MIN_SIZE };
-    }
-    const xs = fixtures.flatMap(f => [f.x - f.w / 2, f.x + f.w / 2]);
-    const zs = fixtures.flatMap(f => [f.z - f.d / 2, f.z + f.d / 2]);
-    const minX = Math.min(...xs) - PAD;
-    const maxX = Math.max(...xs) + PAD;
-    const minZ = Math.min(...zs) - PAD;
-    const maxZ = Math.max(...zs) + PAD;
-    return {
-      cx: (minX + maxX) / 2,
-      cz: (minZ + maxZ) / 2,
-      fw: Math.max(MIN_SIZE, maxX - minX),
-      fd: Math.max(MIN_SIZE, maxZ - minZ),
-    };
-  }, [fixtures]);
+/**
+ * El local: piso, bordes y —según la pantalla— muros y cielo raso.
+ *
+ * Todo sale de `limites` (`limitesDePlanta`, con la rotación de cada mueble):
+ * es la MISMA caja de la grilla, de la caminata y de la cámara de venta. Antes
+ * se calculaba aparte, con `f.x ± f.w/2` sin la rotación, y con las góndolas
+ * giradas 90° los muros quedaban corridos hasta 1,35 m de la caminata.
+ *
+ * - En el editor: el piso de baldosa y sus bordes, como siempre.
+ * - En primera persona: los muros de 4,5 m con su zócalo (al caminar ya te
+ *   frena `murosDeCaminata` en el perímetro, y ese tope era invisible). En la
+ *   órbita del editor no van: taparían el plano.
+ * - En la pantalla de venta (Presentar y la lámina): el CIELO RASO a 3,2 m con
+ *   las luminarias embutidas y los muros como planos que miran hacia adentro.
+ *   Ninguno arroja ni recibe sombra (el mapa de sombras y su calibración no se
+ *   tocan) ni suma luces (no recompila ningún material). Son cuatro llamadas:
+ *   cielo raso, luminarias, muros y zócalos. Con primera persona, los muros de
+ *   siempre y NO los planos: las dos cosas juntas se superponen y titilan.
+ */
+function StoreRoom({ limites, muebles, venta, primeraPersona }: {
+  limites: LimitesPlanta;
+  /** Para orientar las filas de luminarias con las góndolas. */
+  muebles: PlacedFixture[];
+  venta: boolean;
+  primeraPersona: boolean;
+}) {
+  const { cx, cz, w: fw, d: fd } = limites;
 
   const piso = usarTexturaDePiso();
   const { invalidate } = useThree();
@@ -2219,13 +2293,88 @@ function StoreRoom({ fixtures, muros = false }: { fixtures: PlacedFixture[]; mur
     invalidate();
   }, [piso, fw, fd, invalidate]);
 
+  // Las luminarias y su grilla, que es lo que leen el brillo del acero y el
+  // reflejo del piso (los uniformes compartidos de `luzDeVenta.ts`). La
+  // orientación depende de los muebles; la clave es primitiva para no
+  // rehacerla con cada arrastre que no cambia nada.
+  const claveDeMuebles = muebles.map((f) => `${f.w.toFixed(2)}:${f.d.toFixed(2)}:${(f.rotY ?? 0).toFixed(3)}`).join(",");
+  const luminarias = useMemo(
+    () => luminariasDeTienda(limites, muebles),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [limites.minX, limites.maxX, limites.minZ, limites.maxZ, claveDeMuebles],
+  );
+  useEffect(() => {
+    if (ponerTienda(luminarias.grilla, limites)) invalidate();
+  }, [luminarias, limites, invalidate]);
+
+  const planos = venta && !primeraPersona;
+  const geometrias = useMemo(() => planos ? {
+    muros: geometriaDeMurosDeVenta(limites, ALTO_CIELO_RASO),
+    zocalos: geometriaDeMurosDeVenta(limites, ZOCALO_DE_MURO, 0.012),
+    cielo: geometriaDeCieloRaso(limites),
+    tira: new THREE.PlaneGeometry(LUMINARIA.largo, LUMINARIA.ancho).rotateX(Math.PI / 2),
+  } : null,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [planos, limites.minX, limites.maxX, limites.minZ, limites.maxZ]);
+  useEffect(() => () => {
+    if (geometrias) Object.values(geometrias).forEach((g) => g.dispose());
+  }, [geometrias]);
+
+  // El piso de venta: el mismo Lambert de la baldosa con la sombra al pie de
+  // cada mueble y el reflejo de las luminarias (`parcheDelPiso`). El mapa de
+  // la sombra se arma sólo en venta y sólo cuando cambia el plano.
+  const claveDePie = venta
+    ? muebles.map((f) => `${f.x.toFixed(2)}:${f.z.toFixed(2)}:${f.w}:${f.d}:${f.h}:${(f.rotY ?? 0).toFixed(3)}`).join(",")
+    : "";
+  const pisoDeVenta = useMemo(() => {
+    if (!venta) return null;
+    const m = sombraDeHuellas(muebles, limites);
+    const textura = new THREE.DataTexture(m.datos, m.ancho, m.alto, THREE.RedFormat, THREE.UnsignedByteType);
+    // Una fila de un byte por píxel no viene alineada a 4.
+    textura.unpackAlignment = 1;
+    textura.magFilter = THREE.LinearFilter;
+    textura.minFilter = THREE.LinearFilter;
+    textura.needsUpdate = true;
+    const uniformes: UniformesDelPiso = {
+      uSombraPiso: { value: textura },
+      uSombraCaja: { value: new THREE.Vector4(m.origen.x, m.origen.z, m.ancho * m.paso, m.alto * m.paso) },
+    };
+    const material = new THREE.MeshLambertMaterial({ map: piso });
+    material.onBeforeCompile = parcheDelPiso(uniformes);
+    material.customProgramCacheKey = () => "piso-de-venta";
+    return { textura, material };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [venta, claveDePie, limites.minX, limites.maxX, limites.minZ, limites.maxZ, piso]);
+  useEffect(() => () => { pisoDeVenta?.textura.dispose(); pisoDeVenta?.material.dispose(); }, [pisoDeVenta]);
+
+  const ponerLuminarias = useCallback((m: THREE.InstancedMesh | null) => {
+    if (!m) return;
+    const matriz = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const eje = new THREE.Vector3(0, 1, 0);
+    const p = new THREE.Vector3();
+    const uno = new THREE.Vector3(1, 1, 1);
+    luminarias.instancias.forEach((l, i) => {
+      m.setMatrixAt(i, matriz.compose(p.set(l.x, luminarias.grilla.y, l.z), q.setFromAxisAngle(eje, l.rotY), uno));
+    });
+    m.instanceMatrix.needsUpdate = true;
+    m.computeBoundingSphere();
+    invalidate();
+  }, [luminarias, invalidate]);
+
   type V3 = [number, number, number];
   return (
     <group>
-      <mesh rotation={[-Math.PI/2,0,0]} position={[cx,0,cz] as V3} receiveShadow>
-        <planeGeometry args={[fw,fd]} />
-        <meshLambertMaterial map={piso} />
-      </mesh>
+      {pisoDeVenta ? (
+        <mesh rotation={[-Math.PI/2,0,0]} position={[cx,0,cz] as V3} receiveShadow material={pisoDeVenta.material}>
+          <planeGeometry args={[fw,fd]} />
+        </mesh>
+      ) : (
+        <mesh rotation={[-Math.PI/2,0,0]} position={[cx,0,cz] as V3} receiveShadow>
+          <planeGeometry args={[fw,fd]} />
+          <meshLambertMaterial map={piso} />
+        </mesh>
+      )}
       {[
         { pos:[cx,       0.001, cz-fd/2] as V3, args:[fw,   0.001, 0.06] as V3 },
         { pos:[cx,       0.001, cz+fd/2] as V3, args:[fw,   0.001, 0.06] as V3 },
@@ -2238,17 +2387,18 @@ function StoreRoom({ fixtures, muros = false }: { fixtures: PlacedFixture[]; mur
         </mesh>
       ))}
 
-      {/* Los muros, con su zócalo. La cara interior queda justo sobre el borde
-          del piso, y los del eje X se alargan un espesor para cerrar esquina. */}
-      {muros && ([
-        { pos:[cx, ALTO_MURO/2, cz - fd/2 - ESPESOR/2] as V3, args:[fw + ESPESOR*2, ALTO_MURO, ESPESOR] as V3,
-          zoc:[cx, ZOCALO/2, cz - fd/2 + 0.012] as V3,        zargs:[fw, ZOCALO, 0.024] as V3 },
-        { pos:[cx, ALTO_MURO/2, cz + fd/2 + ESPESOR/2] as V3, args:[fw + ESPESOR*2, ALTO_MURO, ESPESOR] as V3,
-          zoc:[cx, ZOCALO/2, cz + fd/2 - 0.012] as V3,        zargs:[fw, ZOCALO, 0.024] as V3 },
-        { pos:[cx - fw/2 - ESPESOR/2, ALTO_MURO/2, cz] as V3, args:[ESPESOR, ALTO_MURO, fd] as V3,
-          zoc:[cx - fw/2 + 0.012, ZOCALO/2, cz] as V3,        zargs:[0.024, ZOCALO, fd] as V3 },
-        { pos:[cx + fw/2 + ESPESOR/2, ALTO_MURO/2, cz] as V3, args:[ESPESOR, ALTO_MURO, fd] as V3,
-          zoc:[cx + fw/2 - 0.012, ZOCALO/2, cz] as V3,        zargs:[0.024, ZOCALO, fd] as V3 },
+      {/* Los muros de la caminata, con su zócalo. La cara interior queda justo
+          sobre el borde del piso, y los del eje X se alargan un espesor para
+          cerrar esquina. */}
+      {primeraPersona && ([
+        { pos:[cx, ALTO_MURO/2, cz - fd/2 - ESPESOR_DE_MURO/2] as V3, args:[fw + ESPESOR_DE_MURO*2, ALTO_MURO, ESPESOR_DE_MURO] as V3,
+          zoc:[cx, ZOCALO_DE_MURO/2, cz - fd/2 + 0.012] as V3,        zargs:[fw, ZOCALO_DE_MURO, 0.024] as V3 },
+        { pos:[cx, ALTO_MURO/2, cz + fd/2 + ESPESOR_DE_MURO/2] as V3, args:[fw + ESPESOR_DE_MURO*2, ALTO_MURO, ESPESOR_DE_MURO] as V3,
+          zoc:[cx, ZOCALO_DE_MURO/2, cz + fd/2 - 0.012] as V3,        zargs:[fw, ZOCALO_DE_MURO, 0.024] as V3 },
+        { pos:[cx - fw/2 - ESPESOR_DE_MURO/2, ALTO_MURO/2, cz] as V3, args:[ESPESOR_DE_MURO, ALTO_MURO, fd] as V3,
+          zoc:[cx - fw/2 + 0.012, ZOCALO_DE_MURO/2, cz] as V3,        zargs:[0.024, ZOCALO_DE_MURO, fd] as V3 },
+        { pos:[cx + fw/2 + ESPESOR_DE_MURO/2, ALTO_MURO/2, cz] as V3, args:[ESPESOR_DE_MURO, ALTO_MURO, fd] as V3,
+          zoc:[cx + fw/2 - 0.012, ZOCALO_DE_MURO/2, cz] as V3,        zargs:[0.024, ZOCALO_DE_MURO, fd] as V3 },
       ]).map((m, i) => (
         <group key={`mu${i}`}>
           {/* El `emissive` no es un efecto: la direccional principal cuelga a
@@ -2267,6 +2417,35 @@ function StoreRoom({ fixtures, muros = false }: { fixtures: PlacedFixture[]; mur
           </mesh>
         </group>
       ))}
+
+      {/* La tienda de la pantalla de venta: muros y zócalos que miran hacia
+          adentro, el cielo raso que mira abajo y las luminarias. Con el mismo
+          `emissive` que los muros de la caminata, y por la misma razón: la
+          direccional les da de canto (a los muros) o de espaldas (al cielo
+          raso), que sin él quedaría negro. */}
+      {geometrias && (
+        <>
+          <mesh geometry={geometrias.muros} castShadow={false} receiveShadow={false}>
+            <meshLambertMaterial color="#efeae0" emissive="#a8a294" side={THREE.FrontSide} />
+          </mesh>
+          <mesh geometry={geometrias.zocalos} castShadow={false} receiveShadow={false}>
+            <meshLambertMaterial color="#b9b2a3" emissive="#6e695d" side={THREE.FrontSide} />
+          </mesh>
+          <mesh geometry={geometrias.cielo} castShadow={false} receiveShadow={false}>
+            <meshLambertMaterial color="#e4e2dc" emissive="#a9a7a1" side={THREE.FrontSide} />
+          </mesh>
+          {luminarias.instancias.length > 0 && (
+            <instancedMesh
+              key={`l${luminarias.instancias.length}`}
+              args={[geometrias.tira, undefined, luminarias.instancias.length]}
+              castShadow={false} receiveShadow={false}
+              ref={ponerLuminarias}
+            >
+              <meshBasicMaterial color="#ffffff" toneMapped={false} side={THREE.FrontSide} />
+            </instancedMesh>
+          )}
+        </>
+      )}
     </group>
   );
 }
@@ -2651,8 +2830,13 @@ function SelectorDeProducto({
                           />
                         </div>
                         <div className="px-2 pt-1.5">
-                          <p className="truncate text-[11px] font-semibold text-dark-ink-1" title={a.nombre}>
-                            {a.nombre}
+                          <p className="flex items-center gap-1 text-[11px] font-semibold text-dark-ink-1" title={a.nombre}>
+                            <span className="truncate">{a.nombre}</span>
+                            {/* Va en frío: probarlo en un mueble seco es lo
+                                primero que descarta el que compra. */}
+                            {vaRefrigerado(a.categoria, a.nombre) && (
+                              <span className="shrink-0 rounded bg-sky-500/20 px-1 text-[9px] font-semibold text-sky-300" data-frio>frío</span>
+                            )}
                           </p>
                           {/* «≈»: sin alto cargado, el 3D lo estima por el
                               contenido o por el rubro. Se ve a escala, pero
@@ -2923,8 +3107,147 @@ function textoDeLibres(filas: { alturas: number[] }): string {
   return enCm(min) === enCm(max) ? `${enCm(min)} cm` : `${enCm(min)} a ${enCm(max)} cm`;
 }
 
+/**
+ * Las rejillas de la nevera: **Automáticas · De fábrica · A mano**.
+ *
+ * Es el pedido de la dueña: que se acomoden SOLAS cuando el producto no entra
+ * parado, y que si el acomodo no queda bien haya salida a mano. Todo sale de
+ * `rejillasDeLaPrueba` (la misma cuenta que dibuja) y de `moverRejilla`.
+ *
+ * Cambiar de modo o de cantidad vuelve «Dónde va» a la cara entera: los
+ * índices de «Por entrepaño» son de las filas VIGENTES, y con otras filas
+ * apuntarían a otra rejilla. Mover una rejilla no lo toca: las filas siguen
+ * siendo las mismas, sólo más altas o más bajas.
+ */
+function BloqueDeRejillas({
+  rejillas, fabrica, vigentes, alto, porFila, onAjustar,
+}: {
+  rejillas: RejillasDeLaPrueba;
+  fabrica: FilasDeProducto;
+  vigentes: FilasDeProducto;
+  alto: number;
+  /** Lo que entra en cada rejilla vigente (`unidadesDePrueba`). */
+  porFila: readonly FilaDePrueba[];
+  onAjustar: (cambios: Partial<ComoSePrueba>) => void;
+}) {
+  const { modo } = rejillas;
+  // Tres chips en 200 px: sin cortar «De fábrica» en dos renglones.
+  const chip = (activo: boolean) =>
+    `flex-1 whitespace-nowrap rounded px-0.5 py-1 text-[10px] font-semibold tracking-tight transition-colors ${
+      activo ? "bg-accent text-accent-ink" : "border border-dark-line-2 text-dark-ink-3 hover:text-dark-ink-1"
+    }`;
+  const libresDeFabrica = fabrica.alturas.slice(1).map((y, i) => y - fabrica.alturas[i]);
+  const mover = (i: number, pasos: number) => moverRejilla(vigentes, i, pasos);
+  const ajustar = (accion: AccionDeRejillas) => onAjustar(ajusteDeRejillas(accion, vigentes));
+
+  return (
+    <div className="flex flex-col gap-1" data-rejillas data-modo-rejillas={modo}>
+      <p className="text-[10px] uppercase tracking-widest text-dark-ink-3">Rejillas</p>
+      <div className="flex gap-1.5">
+        <button className={chip(modo === "auto")} data-rejillas-modo="auto"
+          onClick={() => modo !== "auto" && ajustar({ modo: "auto" })}>
+          Automáticas
+        </button>
+        <button className={chip(modo === "fabrica")} data-rejillas-modo="fabrica"
+          onClick={() => modo !== "fabrica" && ajustar({ modo: "fabrica" })}>
+          De fábrica
+        </button>
+        <button className={chip(modo === "manual")} data-rejillas-modo="manual"
+          // Arranca con las que se ven: tocar «A mano» no cambia nada hasta
+          // que se mueve algo.
+          onClick={() => modo !== "manual" && ajustar({ modo: "manual" })}>
+          A mano
+        </button>
+      </div>
+
+      {modo === "auto" && (
+        <p className="text-[10.5px] leading-snug text-dark-ink-2" data-rejillas-texto>
+          {rejillas.filas
+            ? `${rejillas.filas.rows} rejillas con ${textoDeLibres(rejillas.filas)} libres: entra parada en todas. Es sólo para mostrar: el plano no cambia.`
+            : libresDeFabrica.every((l) => l >= alto)
+              ? "Las de fábrica: ya entra parada."
+              : rejillas.nMax === 0
+                ? "Las de fábrica: no entra parada ni acomodando las rejillas."
+                : "Las de fábrica: acomodarlas no suma frentes."}
+        </p>
+      )}
+      {modo === "fabrica" && (
+        <p className="text-[10.5px] leading-snug text-dark-ink-3" data-rejillas-texto>
+          Las {fabrica.rows} de fábrica, como está la nevera hoy.
+        </p>
+      )}
+      {modo === "manual" && (
+        <div className="flex flex-col gap-1" data-rejillas-a-mano>
+          <div className="flex items-center gap-2 text-[11px] text-dark-ink-1">
+            <button
+              className="rounded border border-dark-line-2 px-2 font-bold disabled:opacity-40"
+              disabled={rejillas.cuantas <= 1}
+              data-rejillas-menos
+              onClick={() => ajustar({ cuantas: rejillas.cuantas - 1 })}
+            >−</button>
+            <span className="font-semibold" data-rejillas-cuantas={rejillas.cuantas}>
+              {rejillas.cuantas} {rejillas.cuantas === 1 ? "rejilla" : "rejillas"}
+            </span>
+            <button
+              className="rounded border border-dark-line-2 px-2 font-bold disabled:opacity-40"
+              // Hasta las de fábrica: no se inventan rejillas. Y no hasta las
+              // que entran: con más, el panel dice dónde no entra.
+              disabled={rejillas.cuantas >= fabrica.rows}
+              data-rejillas-mas
+              onClick={() => ajustar({ cuantas: rejillas.cuantas + 1 })}
+            >+</button>
+          </div>
+          {/* De arriba hacia abajo, como se ve la nevera. */}
+          {Array.from({ length: vigentes.rows }, (_, i) => vigentes.rows - 1 - i).map((i) => {
+            const libre = vigentes.alturas[i + 1] - vigentes.alturas[i];
+            const f = porFila[i];
+            const noEntra = f?.motivo === "no-entra-alto";
+            const arriba = mover(i, 1), abajo = mover(i, -1);
+            return (
+              <div key={i} data-rejilla={i}
+                className="flex items-center gap-1.5 rounded border border-dark-line/60 px-1.5 py-0.5 text-[10.5px] text-dark-ink-2">
+                <span className="w-3 font-mono font-bold">{i + 1}</span>
+                <span className="flex-1">
+                  a {enCm(vigentes.alturas[i])} cm · {enCm(libre)} cm libres
+                  {noEntra && <span className="block text-warning">no entra parada: {enCm(alto)} cm en {enCm(libre)} cm</span>}
+                </span>
+                {i > 0 && (
+                  <>
+                    <button data-subir title="Subir una ranura (2,5 cm)"
+                      disabled={arriba.alturas[i] === vigentes.alturas[i]}
+                      className="px-1 disabled:opacity-30"
+                      onClick={() => ajustar({ mover: i, pasos: 1 })}>▲</button>
+                    <button data-bajar title="Bajar una ranura (2,5 cm)"
+                      disabled={abajo.alturas[i] === vigentes.alturas[i]}
+                      className="px-1 disabled:opacity-30"
+                      onClick={() => ajustar({ mover: i, pasos: -1 })}>▼</button>
+                  </>
+                )}
+              </div>
+            );
+          })}
+          <p className="text-[10px] leading-snug text-dark-ink-3">Es sólo para mostrar: el plano no cambia.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Las etiquetas de varios artes, para un panel FUERA del lienzo (como
+ *  `useEtiqueta`, pero para una lista): se vuelve a dibujar cuando cargan. */
+function useEtiquetas(ids: readonly number[], catalogo: readonly Arte[]): (Etiqueta | null)[] {
+  const [, setVersion] = useState(0);
+  const [avisar] = useState(() => () => setVersion((v) => v + 1));
+  return ids.map((id) => {
+    const a = catalogo.find((x) => x.id === id);
+    if (!a) return null;
+    const modo = a.ficha?.fondo_foto ?? "auto";
+    return etiquetaDeArte(claveDeArte(id, modo), arteUrl(id), modo, avisar);
+  });
+}
+
 function PanelDePrueba({
-  fix, cara, arte, como, onAjustar, isAdmin, onRecargarCatalogo,
+  fix, cara, arte, como, onAjustar, isAdmin, onRecargarCatalogo, catalogo,
 }: {
   fix: PlacedFixture;
   cara: "A" | "B";
@@ -2933,6 +3256,8 @@ function PanelDePrueba({
   onAjustar: (cambios: Partial<ComoSePrueba>) => void;
   isAdmin: boolean;
   onRecargarCatalogo: () => void;
+  /** Para ofrecer el surtido: los OTROS artes de este proveedor. */
+  catalogo: Arte[];
 }) {
   const venta = useMemo(
     () => (TIPOS_CON_PRUEBA_3D.has(fix.type) ? ventaDeTipo(fix.type, fix.w, fix.d, fix.h, fix.gondolaType) : null),
@@ -2953,17 +3278,17 @@ function PanelDePrueba({
     () => (etiqueta ? empaqueDeArte(arte, arte.ficha ?? null, etiqueta.recorte, { acostado: como.acostado }) : null),
     [etiqueta, arte, como.acostado],
   );
-  // En la nevera, las rejillas reacomodadas para que entre parado en todas
-  // (lo que hace el mercaderista con la de 2 L). `null` si no hace falta o
-  // si ni así entra. Es lo que se ofrece ANTES que acostarla.
+  // En la nevera, las rejillas con que se prueba: la MISMA cuenta que dibuja
+  // (`rejillasDeLaPrueba`, la usa también `construirPrueba`). Automáticas de
+  // entrada: lo que hace el mercaderista cuando llega la de 2 L.
+  const esNevera = fix.type === "nevera_refrescos";
   const rejillas = useMemo(
-    () => (venta && empaque && !empaque.acostado && fix.type === "nevera_refrescos"
-      ? rejillasParaProducto(venta.filas, empaque.alto) : null),
-    [venta, empaque, fix.type],
+    () => (venta && esNevera ? rejillasDeLaPrueba(venta, empaque, como.rejillas) : null),
+    [venta, esNevera, empaque, como.rejillas],
   );
   const ventaUsada = useMemo(
-    () => (venta && como.rejillas && rejillas ? { ...venta, filas: rejillas } : venta),
-    [venta, como.rejillas, rejillas],
+    () => (venta && rejillas?.filas ? { ...venta, filas: rejillas.filas } : venta),
+    [venta, rejillas],
   );
   // Lo que entraría en cada entrepaño, elegido o no: es lo que ofrecen los
   // chips. Y lo que se dibuja, con lo elegido.
@@ -2976,7 +3301,10 @@ function PanelDePrueba({
     [ventaUsada, empaque, como.donde],
   );
   // Los entrepaños con un espacio vendido encima, por la misma regla que el
-  // relleno por rubro (`entrepanosDelEspacio`).
+  // relleno por rubro (`entrepanosDelEspacio`). Se miran sobre las filas de
+  // FÁBRICA y no sobre las rejillas acomodadas: en la nevera no importa,
+  // porque no tiene franja de slots (`ventaDeNevera` no la trae: se vende
+  // entera) y esto sale siempre vacío.
   const vendidos = useMemo(() => {
     const s = new Set<number>();
     if (!venta || venta.franja == null) return s;
@@ -2986,6 +3314,46 @@ function PanelDePrueba({
     }
     return s;
   }, [venta, fix.slots]);
+
+  // El surtido (góndola y punta): los OTROS artes de este proveedor, en
+  // bloques verticales por vano. Lo que se dibuja sale de la misma cuenta
+  // (`surtidoALaVista`, `bloquesDeSurtido`, `unidadesDePrueba` con su tramo).
+  const conSurtido = TIPOS_CON_SURTIDO.has(fix.type);
+  const idsSurtido = useMemo(
+    () => (conSurtido ? surtidoALaVista(arte.id, como.surtido, catalogo, undefined) : []),
+    [conSurtido, arte.id, como.surtido, catalogo],
+  );
+  const etiquetasSurtido = useEtiquetas(idsSurtido, catalogo);
+  const claveEtiquetasSurtido = etiquetasSurtido.map((e) => e?.clave ?? "-").join(",");
+  const resumenDeSurtido = useMemo(() => {
+    if (!ventaUsada || !empaque || idsSurtido.length === 0) return null;
+    const tramos = bloquesDeSurtido(ventaUsada.vanos, idsSurtido.length + 1);
+    const productos = [
+      { arte, empaque },
+      ...idsSurtido.map((id, k) => {
+        const a = catalogo.find((x) => x.id === id)!;
+        const et = etiquetasSurtido[k];
+        return { arte: a, empaque: et ? empaqueDeArte(a, a.ficha ?? null, et.recorte, { acostado: como.acostado }) : null };
+      }),
+    ];
+    let total = 0;
+    const partes = productos.map((x, k) => {
+      if (!x.empaque) return `${x.arte.nombre} …`;
+      const r = unidadesDePrueba({
+        venta: ventaUsada, empaque: x.empaque, donde: como.donde, semilla: "panel", tramo: tramos[k], surtido: true,
+      });
+      total += r.frentesALaVista;
+      const fs = r.porFila.filter((f) => f.motivo === null).map((f) => f.frentes);
+      if (fs.length === 0) return `${x.arte.nombre} 0`;
+      const mn = Math.min(...fs), mx = Math.max(...fs);
+      return `${x.arte.nombre} ${mn === mx ? mn : `${mn} a ${mx}`}`;
+    });
+    return { texto: `${partes.join(" · ")} por entrepaño · ${total} de frente` };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ventaUsada, empaque, idsSurtido, claveEtiquetasSurtido, como.donde, como.acostado, arte, catalogo]);
+  const disponiblesParaSurtido = conSurtido
+    ? catalogo.filter((a) => a.supplier_id === arte.supplier_id && a.id !== arte.id && !idsSurtido.includes(a.id))
+    : [];
 
   // Los muebles sin entrepaños (vitrina, isla…) muestran la prueba como
   // lámina: no hay dónde elegir.
@@ -3080,34 +3448,56 @@ function PanelDePrueba({
         </p>
       )}
 
-      {/* Las rejillas de la nevera: primero se ofrece SUBIRLAS (parada se
-          ve; acostada, en una nevera de gaseosas, casi no) y recién después
-          acostarla. Las dos son de la sesión. */}
-      {empaque && rejillas && !como.rejillas && (
-        <button
-          onClick={() => onAjustar({ rejillas: true, acostado: false })}
-          className="rounded border border-accent/60 px-2 py-1 text-left text-[11px] font-semibold text-dark-ink-1 hover:bg-accent/10"
-          data-acomodar-rejillas
-        >
-          Acomodar las rejillas para este producto
-          <span className="block text-[10px] font-normal text-dark-ink-3">
-            {rejillas.rows} rejillas con {textoDeLibres(rejillas)} libres: entra parada en todas
-          </span>
-        </button>
+      {/* Un producto de frío en un mueble seco: no se bloquea —decide la
+          dueña—, pero se dice, antes que la cuenta. */}
+      {avisoDeFrio(fix.type, arte.categoria, arte.nombre) && (
+        <p className="rounded border border-warning/60 bg-warning/10 px-2 py-1 text-[10.5px] leading-snug text-warning" data-aviso-frio>
+          Este producto va refrigerado: probalo en una nevera.
+        </p>
       )}
-      {empaque && como.rejillas && rejillas && (
-        <div className="flex flex-col gap-0.5" data-rejillas-acomodadas>
-          <p className="text-[10.5px] leading-snug text-dark-ink-2">
-            Rejillas acomodadas para este producto: {rejillas.rows}, con {textoDeLibres(rejillas)} libres.
-            Es sólo para mostrar: el plano no cambia.
-          </p>
-          <button
-            onClick={() => onAjustar({ rejillas: false })}
-            className="self-start text-[10px] text-dark-ink-3 hover:text-dark-ink-1"
-          >
-            Volver a las rejillas de la nevera
-          </button>
+
+      {/* El surtido: más productos del MISMO proveedor, cada uno en su bloque
+          vertical. Sólo los de ese proveedor, sacados del catálogo, sin
+          buscador libre: la pantalla puede estar compartida. */}
+      {conSurtido && empaque && (idsSurtido.length > 0 || disponiblesParaSurtido.length > 0) && (
+        <div className="flex flex-col gap-1" data-surtido>
+          <p className="text-[10px] uppercase tracking-widest text-dark-ink-3">Más productos de {arte.proveedor} en esta cara</p>
+          <div className="flex flex-wrap gap-1">
+            {idsSurtido.map((id) => {
+              const a = catalogo.find((x) => x.id === id);
+              return (
+                <span key={id} data-surtido-elegido={id}
+                  className="flex items-center gap-1 rounded bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-accent-ink">
+                  {a?.nombre ?? id}
+                  <button title="Quitar del surtido" className="font-bold"
+                    onClick={() => onAjustar({ surtido: idsSurtido.filter((x) => x !== id) })}>×</button>
+                </span>
+              );
+            })}
+            {idsSurtido.length + 1 < MAXIMO_DE_SURTIDO && disponiblesParaSurtido.map((a) => (
+              <button key={a.id} data-surtido-agregar={a.id}
+                className="rounded border border-dark-line-2 px-1.5 py-0.5 text-[10px] text-dark-ink-2 hover:text-dark-ink-1"
+                onClick={() => onAjustar({ surtido: [...idsSurtido, a.id] })}>
+                + {a.nombre}
+              </button>
+            ))}
+          </div>
         </div>
+      )}
+
+      {/* Las rejillas de la nevera: se acomodan SOLAS si el producto parado
+          no entra (parada se ve; acostada, en una nevera de gaseosas, casi
+          no), y si el acomodo no queda bien hay salida a mano. Todo es de la
+          sesión. */}
+      {esNevera && empaque && !empaque.acostado && rejillas && venta && (
+        <BloqueDeRejillas
+          rejillas={rejillas}
+          fabrica={venta.filas}
+          vigentes={ventaUsada?.filas ?? venta.filas}
+          alto={empaque.alto}
+          porFila={capacidad?.porFila ?? []}
+          onAjustar={onAjustar}
+        />
       )}
 
       {!empaque ? (
@@ -3140,7 +3530,10 @@ function PanelDePrueba({
           </p>
           {empaque.envase === "revolucion" && !empaque.acostado && (
             <button
-              onClick={() => onAjustar({ acostado: true, rejillas: false })}
+              // Acostada, las rejillas se ignoran (van las de fábrica): si
+              // estaban acomodadas, los índices de «Por entrepaño» quedarían
+              // apuntando a otra rejilla, así que vuelve a «Toda la cara».
+              onClick={() => onAjustar(rejillas?.filas ? { acostado: true, donde: "todas" } : { acostado: true })}
               className="rounded border border-dark-line-2 px-2 py-1 text-[11px] font-semibold text-dark-ink-2 hover:text-dark-ink-1"
             >
               Mostrarla acostada
@@ -3151,12 +3544,20 @@ function PanelDePrueba({
         <p className="text-[10.5px] text-dark-ink-3">Elegí al menos un entrepaño donde entre.</p>
       ) : (
         <>
-          <p className="text-[11px] leading-snug text-dark-ink-1" data-resumen-prueba>
-            {aprox}Entran {minF === maxF ? minF : `${minF} a ${maxF}`} por entrepaño
-            {fondo > 1 ? ` · ${fondo} de fondo` : ""}
-            {pisos > 1 ? ` · ${pisos} apilados` : ""}
-            {` · ${acomodo?.frentesALaVista ?? 0} de frente`}
-          </p>
+          {resumenDeSurtido ? (
+            // Con surtido, la cuenta por producto: «Müsli 5 · Choco Krispis 5
+            // · Zucaritas 5 por entrepaño · 75 de frente».
+            <p className="text-[11px] leading-snug text-dark-ink-1" data-resumen-prueba data-resumen-surtido>
+              {aprox}{resumenDeSurtido.texto}
+            </p>
+          ) : (
+            <p className="text-[11px] leading-snug text-dark-ink-1" data-resumen-prueba>
+              {aprox}Entran {minF === maxF ? minF : `${minF} a ${maxF}`} por entrepaño
+              {fondo > 1 ? ` · ${fondo} de fondo` : ""}
+              {pisos > 1 ? ` · ${pisos} apilados` : ""}
+              {` · ${acomodo?.frentesALaVista ?? 0} de frente`}
+            </p>
+          )}
           {/* Los entrepaños donde no entra, con medidas: la de 1,5 L dejaba
               las dos rejillas del medio vacías sin que nadie dijera por qué. */}
           {como.donde === "todas" && filas.some((f) => f.motivo === "no-entra-alto") && (
@@ -3208,7 +3609,11 @@ function PanelDePrueba({
       )}
       {empaque?.acostado && (
         <button
-          onClick={() => onAjustar({ acostado: false, rejillas: false })}
+          // De vuelta parada y con las rejillas AUTOMÁTICAS: en la nevera las
+          // filas cambian, y con ellas lo que señalan los entrepaños elegidos.
+          onClick={() => onAjustar(esNevera
+            ? { acostado: false, rejillas: undefined, donde: "todas" }
+            : { acostado: false, rejillas: undefined })}
           className="self-start text-[10px] text-dark-ink-3 hover:text-dark-ink-1"
         >
           Volver a pararla
@@ -3384,6 +3789,7 @@ function VistaProveedor({
             onAjustar={(cambios) => onAjustarPrueba(fix.id, caraUsada, cambios)}
             isAdmin={isAdmin}
             onRecargarCatalogo={onRecargarCatalogo}
+            catalogo={catalogo}
           />
         )}
         {probando && (
@@ -3814,6 +4220,23 @@ const TIPOS_CON_PRODUCTO = new Set<string>([
  * isla siguen con la lámina, como antes: no tienen entrepaños donde pararlo.
  */
 const TIPOS_CON_PRUEBA_3D = new Set<string>(["gondola", "punta", "nevera_refrescos", "robatope"]);
+/** El renglón «Producto» de la lámina: el principal y, con surtido, los
+ *  demás del mismo proveedor que se ven, unidos por « · » (`surtidoALaVista`
+ *  con la misma pantalla que las tomas). */
+function nombresDeLaPrueba(
+  arte: Arte, surtido: number[] | undefined, para: PrivadoPara, catalogo: readonly Arte[],
+): string {
+  const otros = surtidoALaVista(arte.id, surtido, catalogo, para)
+    .map((id) => catalogo.find((a) => a.id === id)?.nombre ?? "")
+    .filter(Boolean);
+  return [arte.nombre, ...otros].join(" · ");
+}
+
+/** Dónde se ofrece el surtido (varios productos del proveedor en bloques).
+ *  No en la nevera —las rejillas automáticas se acomodan a UN producto, y
+ *  con alturas distintas los demás no entrarían— ni en el robatope, que
+ *  tiene un solo vano de 30 cm. */
+const TIPOS_CON_SURTIDO = new Set<string>(["gondola", "punta"]);
 
 /** Lowercase + strip accents so "Lácteos" matches "lacteo". */
 function normalizeText(s: string): string {
@@ -4595,14 +5018,47 @@ function Scene({
       const empaque = etiqueta
         ? empaqueDeArte(arte, arte.ficha ?? null, etiqueta.recorte, { acostado: como?.acostado })
         : null;
-      // Las rejillas de la nevera, reacomodadas para que entre parado: las
+      // Las rejillas de la nevera (automáticas, de fábrica o a mano): las
       // dibuja la nevera y apoya el producto en ellas, con las MISMAS alturas.
-      const filas = como?.rejillas && empaque && !empaque.acostado && fix.type === "nevera_refrescos"
-        ? rejillasParaProducto(ventaDeNevera(fix.w, fix.d, fix.h).filas, empaque.alto) ?? undefined
+      // Las automáticas existen recién con la foto: mientras carga, `filas`
+      // queda sin definir y la toma re-encuadra cuando llegan (ver el efecto
+      // de la toma).
+      const filas = fix.type === "nevera_refrescos"
+        ? rejillasDeLaPrueba(ventaDeNevera(fix.w, fix.d, fix.h), empaque, como?.rejillas).filas ?? undefined
         : undefined;
+      // El surtido: más productos del MISMO proveedor, en bloques verticales
+      // (sólo góndola y punta). Cada uno pasa por la misma privacidad que el
+      // principal (`surtidoALaVista`). Los tramos se reparten entre todos los
+      // que valen, carguen o no su foto: el principal no salta de la cara
+      // entera a un tercio cuando llega la foto del segundo.
+      const delSurtido = TIPOS_CON_SURTIDO.has(fix.type)
+        ? surtidoALaVista(arteId, como?.surtido, catalogo, privadoPara) : [];
+      let surtido: PruebaDeCara["surtido"];
+      let tramos: PruebaDeCara["tramos"];
+      if (delSurtido.length > 0) {
+        const venta = ventaDeTipo(fix.type, fix.w, fix.d, fix.h, fix.gondolaType);
+        tramos = venta ? bloquesDeSurtido(venta.vanos, delSurtido.length + 1) : undefined;
+        surtido = delSurtido.map((id) => {
+          const otro = catalogo.find((a) => a.id === id)!;
+          const modoOtro = otro.ficha?.fondo_foto ?? "auto";
+          const claveOtro = claveDeArte(id, modoOtro);
+          enUso.push(claveOtro);
+          const et = etiquetaDeArte(claveOtro, arteUrl(id), modoOtro, notifyTexLoaded);
+          return {
+            etiqueta: et,
+            empaque: et ? empaqueDeArte(otro, otro.ficha ?? null, et.recorte, { acostado: como?.acostado }) : null,
+            semilla: `${fixId}|${cara}|${id}`,
+            hablador: habladorALaVista(otro, catalogo, privadoPara),
+          };
+        });
+      }
       return {
         etiqueta, empaque, donde: como?.donde ?? "todas", semilla: `${fixId}|${cara}|${arteId}`, filas,
         copete: como?.copete ?? true,
+        // El hablador: el nombre sin cifras y el precio SÓLO si está cargado
+        // en la ficha; de un arte que esta pantalla no puede ver, ninguno.
+        hablador: habladorALaVista(arte, catalogo, privadoPara),
+        ...(surtido && tramos ? { surtido, tramos } : {}),
       };
     };
     for (const fix of placedFixtures) {
@@ -4673,6 +5129,26 @@ function Scene({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [placedFixtures, unifiedById, faceImages, texVersion, notifyTexLoaded, sinArte, prueba,
       catalogo, comoSePrueba, privadoPara]);
+  // El foco de la pantalla de venta: los muebles con una prueba a la vista y
+  // el de la toma. Los demás —los vecinos— se atenúan para no competir con lo
+  // que se vende; sin ninguno (Presentar sin proveedor ni toma), nadie. En el
+  // editor, ninguno: la tienda se ve entera como siempre.
+  const conFoco = useMemo(() => {
+    const s = new Set<string>();
+    if (privadoPara === undefined) return s;
+    facePaintById.forEach((p, id) => { if (p.pruebaA || p.pruebaB) s.add(id); });
+    if (pedidoDeToma) s.add(pedidoDeToma.fixtureId);
+    return s;
+  }, [privadoPara, facePaintById, pedidoDeToma]);
+  // Qué caras se dibujan con las rejillas acomodadas, para el pie de la lámina.
+  React.useLayoutEffect(() => {
+    const acomodadas: string[] = [];
+    facePaintById.forEach((p, id) => {
+      if (p.pruebaA?.filas) acomodadas.push(`${id}|A`);
+      if (p.pruebaB?.filas) acomodadas.push(`${id}|B`);
+    });
+    estadoDeEscena.current.rejillasAcomodadas = acomodadas;
+  }, [facePaintById, estadoDeEscena]);
 
   // CHANGE 1 — Restore camera + wire persistence once OrbitControls are ready.
   // W1: Read camera3D from getState() at call time (not from closure) to avoid stale values.
@@ -4828,6 +5304,20 @@ function Scene({
   // Un corte, sin animación: por videollamada el movimiento se empasta y el
   // proveedor ve una mancha.
   const tomaAtendida = useRef<number>(-1);
+  /** Lo que dejó la última toma: las filas que encuadró y dónde quedó la
+   *  cámara. Con eso se sabe si hay que re-encuadrar (abajo). */
+  const tomaHecha = useRef<{ n: number; filas: string; pos: THREE.Vector3; mira: THREE.Vector3 } | null>(null);
+  const filasDeLaToma = (p: PedidoDeToma) => {
+    const paint = facePaintById.get(p.fixtureId);
+    return claveDeFilas((p.cara === "A" ? paint?.pruebaA : paint?.pruebaB)?.filas);
+  };
+  const recordarToma = (p: PedidoDeToma) => {
+    const mira = orbitRef.current?.target;
+    tomaHecha.current = {
+      n: p.n, filas: filasDeLaToma(p),
+      pos: camera.position.clone(), mira: mira ? mira.clone() : new THREE.Vector3(),
+    };
+  };
   useEffect(() => {
     if (!pedidoDeToma || firstPerson) return;
     if (tomaAtendida.current === pedidoDeToma.n) return;
@@ -4835,9 +5325,33 @@ function Scene({
     if (!fix) return;
     tomaAtendida.current = pedidoDeToma.n;
     tomaDeVenta(fix, pedidoDeToma.cara, pedidoDeToma.toma, pedidoDeToma.holgura);
+    recordarToma(pedidoDeToma);
     estadoDeEscena.current.toma = pedidoDeToma.n;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pedidoDeToma, firstPerson, placedFixtures, aplicarVista]);
+
+  // Las rejillas automáticas de la nevera existen recién con la foto cargada:
+  // la toma pedida antes encuadraba las de FÁBRICA, que después cambiaban, y
+  // la 2 L quedaba cortada arriba. Cuando cambian las filas de la cara de la
+  // toma se vuelve a encuadrar, pero SÓLO si la cámara sigue donde la dejó la
+  // toma: un giro a mano no se pisa. Con `sinArte` (el «Hoy» de la lámina)
+  // no se mira: las filas vuelven a ser las de fábrica un momento y la toma
+  // de «Hoy» tiene que ser la MISMA que la de «Con …».
+  useEffect(() => {
+    const hecha = tomaHecha.current;
+    if (!pedidoDeToma || firstPerson || sinArte || !hecha || hecha.n !== pedidoDeToma.n) return;
+    const filas = filasDeLaToma(pedidoDeToma);
+    if (filas === hecha.filas) return;
+    const mira = orbitRef.current?.target;
+    const quieta = camera.position.distanceTo(hecha.pos) < 1e-3 && (!mira || mira.distanceTo(hecha.mira) < 1e-3);
+    hecha.filas = filas;
+    if (!quieta) return;
+    const fix = placedFixtures.find((f) => f.id === pedidoDeToma.fixtureId);
+    if (!fix) return;
+    tomaDeVenta(fix, pedidoDeToma.cara, pedidoDeToma.toma, pedidoDeToma.holgura);
+    recordarToma(pedidoDeToma);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [facePaintById, sinArte]);
 
   // CHANGE 2B — Double-click to reset orbit pivot to clicked point
   function handleSceneDoubleClick(e: any) {
@@ -4907,7 +5421,8 @@ function Scene({
       <directionalLight position={[limites.minX,25,limites.minZ]} intensity={0.3} color="#fffaee" />
       <directionalLight position={[limites.maxX,25,limites.maxZ]} intensity={0.2} color="#e0eeff" />
 
-      <StoreRoom fixtures={placedFixtures} muros={firstPerson} />
+      <StoreRoom limites={limites} muebles={placedFixtures}
+        venta={privadoPara !== undefined} primeraPersona={firstPerson} />
 
       {/* La persona, al lado del mueble elegido. En primera persona no va: la
           persona sos vos, y una segunda parada al lado del estante distrae. */}
@@ -4936,8 +5451,10 @@ function Scene({
         const p = lugarDeLaFigura(sel, muros, SEPARACION_EN_VENTA, { d: sel.d, cara });
         return p ? <SiluetaDeEscala x={p.x} z={p.z} rotY={p.rotY} /> : null;
       })()}
-      <primitive object={gridMinor} />
-      <primitive object={gridMajor} />
+      {/* La grilla es del editor: en la pantalla de venta el piso es la
+          baldosa de la tienda, sin las líneas de 1 m y 0,5 m. */}
+      {privadoPara === undefined && <primitive object={gridMinor} />}
+      {privadoPara === undefined && <primitive object={gridMajor} />}
 
       {/* Alignment guides + snap crosshair: during placement AND during drag */}
       {(() => {
@@ -5026,6 +5543,8 @@ function Scene({
         const conEspacios = hasSlots && fix.id === selectedId && !placingDef && !firstPerson && !presentationMode;
         return (
           <group key={fix.id} position={[fix.x,0,fix.z]} rotation={[0,fix.rotY,0]}>
+            {/* El foco de la pantalla de venta: un boolean (ver `FocoDeVenta`). */}
+            <FocoDeVenta.Provider value={conFoco.size === 0 || conFoco.has(fix.id)}>
             <FixtureMesh
               fixture={fix}
               neutro={privadoPara !== undefined}
@@ -5035,6 +5554,7 @@ function Scene({
               onSlotClick={conEspacios ? (slotId) => onSelectSlot(fix.id, slotId) : undefined}
               onSlotHover={conEspacios ? setHoveredSlotId : undefined}
             />
+            </FocoDeVenta.Provider>
             {fix.id===selectedId && !selectedSlotId && !presentationMode && <SelectionBox w={fix.w} d={fix.d} h={fix.h} />}
             {/* CHANGE 4 — Unauthorized placement badge (distance-gated + occluded) */}
             {/* En Presentar no: «sin contrato» es un dato de la tienda, no
@@ -5963,7 +6483,9 @@ export default function StoreEditor3D() {
     setPedidoDeToma({ fixtureId, cara, toma, n, holgura });
     return n;
   }, []);
-  const estadoDeEscena = useRef<EstadoDeEscena>({ sinArte: false, privadoPara: undefined, toma: 0, primeraPersona: false });
+  const estadoDeEscena = useRef<EstadoDeEscena>({
+    sinArte: false, privadoPara: undefined, toma: 0, primeraPersona: false, rejillasAcomodadas: [],
+  });
   useEffect(() => { if (!presentationMode) setPedidoDeToma(null); }, [presentationMode]);
 
   // MEJORA 8: First-person mode
@@ -6431,6 +6953,10 @@ export default function StoreEditor3D() {
       setSinArte(false);
       await esperarEscena((e) => !e.sinArte);
       const despues = await preparar(capturar());
+      // «Hoy» sale con las rejillas de fábrica y «Con …» con las acomodadas
+      // para el producto: es lo que haría el mercaderista, y la lámina no lo
+      // esconde (renglón «Exhibición» del pie).
+      const conRejillas = !!cara && estadoDeEscena.current.rejillasAcomodadas.includes(`${fix.id}|${cara}`);
 
       let deCerca: string | null = null;
       if (conTomas && cara) {
@@ -6457,7 +6983,12 @@ export default function StoreEditor3D() {
         espacio: fullSpaceCode(uf.sede || sede, uf.code),
         mueble: uf.label || uf.code,
         proveedor: arte ? arte.proveedor : (uf.supplierName ?? ""),
-        producto: arte?.nombre,
+        // Con surtido, los productos de la cara unidos por « · » (los del
+        // mismo proveedor que se ven en las tomas); sin período ni valor.
+        producto: arte
+          ? nombresDeLaPrueba(arte, cara && TIPOS_CON_SURTIDO.has(fix.type) ? comoSePrueba.get(`${fix.id}|${cara}`)?.surtido : undefined, para, catalogo)
+          : undefined,
+        exhibicion: conRejillas ? "rejillas acomodadas para este producto" : undefined,
         categoria: proponiendo ? (arte?.categoria ?? "") : (uf.brandCategory ?? ""),
         desde: proponiendo ? "" : (uf.startDate ?? ""),
         hasta: proponiendo ? "" : (uf.endDate ?? ""),
@@ -6497,7 +7028,7 @@ export default function StoreEditor3D() {
       setExportando(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exportando, sinArte, selectedFix, fixtures, sede, isAdmin, prueba, catalogo, pedirToma, supplierDeReunion, firstPerson]);
+  }, [exportando, sinArte, selectedFix, fixtures, sede, isAdmin, prueba, catalogo, pedirToma, supplierDeReunion, firstPerson, comoSePrueba]);
   const selectedSlot = selectedFix?.slots?.find(s=>s.id===selectedSlotId)??null;
 
   // ── Render ────────────────────────────────────────────────────────────────

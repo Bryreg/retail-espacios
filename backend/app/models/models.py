@@ -432,6 +432,12 @@ class SupplierAssetSpec(Base):
     acostado = Column(Boolean, nullable=False, default=False)
     # auto | quitar | conservar
     fondo_foto = Column(String, nullable=False, default="auto")
+    # El precio al público, en pesos enteros, OPCIONAL: lo que dice el hablador
+    # del porta-precios en la pantalla de venta. Sin cargar, el hablador va sin
+    # cifra — el sistema nunca inventa un precio. Entró antes del primer
+    # despliegue de esta tabla (después ya no podría ganar la columna); en una
+    # base local creada desde la rama hace falta el ALTER que dice ESTADO.md.
+    precio_publico = Column(Integer, nullable=True)
     extra_json = Column(Text, nullable=True)
     actualizado_en = Column(
         DateTime(timezone=True),

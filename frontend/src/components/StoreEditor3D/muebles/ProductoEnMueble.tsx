@@ -1,11 +1,15 @@
 import { memo, useEffect, useMemo } from "react";
 import * as THREE from "three";
+import type { VendidoEntero } from "./frentes";
 import type { FilasDeProducto, Vano } from "./medidas";
 import type { FormaDeEmpaque } from "./producto";
 import { geometriaDeEmpaque } from "./perfiles";
-import { claveDeCubiertas, rellenoPorRubro } from "./frentes";
+import { claveDeCubiertas, rellenoPorRubro, tonosDelRelleno } from "./frentes";
 import type { Cubiertas, SlotDeProducto } from "./frentes";
-import { conLuzDeVenta, K_ENTORNO_MUEBLE, useLuzDeVenta } from "./luzDeVenta";
+import { BRILLO, conLuzDeVenta, K_ENTORNO_MUEBLE, useLuzDeVenta } from "./luzDeVenta";
+import { tramosConRelleno } from "./habladores";
+import { useAtenuacion } from "./atenuacion";
+import type { VentaDeMueble } from "./medidas";
 
 /**
  * El producto parado sobre los entrepaños de un mueble.
@@ -81,11 +85,13 @@ export interface ProductoEnMuebleProps {
    * consultar, y el hueco vacío no dice nada sobre disponibilidad: lo dice el
    * estado del mueble. Se llenan todas las repisas con el rubro del contrato.
    */
-  vendidoEntero?: { rubro?: string };
+  vendidoEntero?: VendidoEntero;
   /** Los entrepaños que tapa la prueba del producto del proveedor, por cara:
    *  ahí no va relleno (ver `rellenoPorRubro`). */
   cubiertas?: Cubiertas;
   ghost?: boolean;
+  /** El mueble (su id): siembra la variación de tono del relleno en venta. */
+  semilla?: string;
 }
 
 interface Pieza {
@@ -98,7 +104,7 @@ interface Pieza {
 }
 
 export const ProductoEnMueble = memo(function ProductoEnMueble({
-  anchoTotal, filas, vanos, caras, franja, slots, vendidoEntero, cubiertas, ghost = false,
+  anchoTotal, filas, vanos, caras, franja, slots, vendidoEntero, cubiertas, ghost = false, semilla = "",
 }: ProductoEnMuebleProps) {
   // Las cubiertas llegan como un arreglo nuevo en cada render: se compara por
   // una clave primitiva, o el memo se rearmaría con cada arrastre.
@@ -125,7 +131,7 @@ export const ProductoEnMueble = memo(function ProductoEnMueble({
   return (
     <group>
       {piezas.map((p) => (
-        <InstanciasDeEmpaque key={p.clave} pieza={p} />
+        <InstanciasDeEmpaque key={p.clave} pieza={p} semilla={`${semilla}|${p.clave}`} />
       ))}
     </group>
   );
@@ -133,15 +139,22 @@ export const ProductoEnMueble = memo(function ProductoEnMueble({
 
 /** Un empaque repetido. Un pasillo entero de gaseosas son cientos de botellas
  *  y una sola llamada de dibujo. */
-function InstanciasDeEmpaque({ pieza }: { pieza: Pieza }) {
-  const geometria = useMemo(
-    () => geometriaDeEmpaque(pieza.forma, pieza.ancho, pieza.alto, pieza.fondo, pieza.acostado),
-    [pieza.forma, pieza.ancho, pieza.alto, pieza.fondo, pieza.acostado],
-  );
+function InstanciasDeEmpaque({ pieza, semilla }: { pieza: Pieza; semilla: string }) {
   // En la pantalla de venta, con la luz del cuarto del producto y del mueble
   // (`luzDeVenta.ts`): el relleno neutro de los slots vendidos a otros no
-  // puede quedar en sombra al lado de un mueble iluminado.
+  // puede quedar en sombra al lado de un mueble iluminado. Y con variación:
+  // la banda de la etiqueta por color de vértice (`conBanda`) y un tono por
+  // unidad (`tonosDelRelleno`). En el editor, la geometría y el material de
+  // siempre, sin color por instancia.
   const luz = useLuzDeVenta();
+  const geometria = useMemo(
+    () => geometriaDeEmpaque(pieza.forma, pieza.ancho, pieza.alto, pieza.fondo, pieza.acostado, luz),
+    [pieza.forma, pieza.ancho, pieza.alto, pieza.fondo, pieza.acostado, luz],
+  );
+  const tonos = useMemo(
+    () => (luz ? tonosDelRelleno(semilla, pieza.matrices.length) : null),
+    [luz, semilla, pieza.matrices.length],
+  );
   const material = useMemo(
     () => new THREE.MeshStandardMaterial({
       color: pieza.color,
@@ -153,24 +166,62 @@ function InstanciasDeEmpaque({ pieza }: { pieza: Pieza }) {
       // dejarlos pastel, y el lineal pierde justo lo que lo hace legible, que
       // es que cada rubro sea un bloque de color distinto.
       envMapIntensity: 0.25,
-      ...conLuzDeVenta(luz, K_ENTORNO_MUEBLE * 0.8),
+      ...(luz ? { vertexColors: true } : {}),
+      ...conLuzDeVenta(luz, K_ENTORNO_MUEBLE * 0.8, BRILLO.relleno),
     }),
     [pieza.color, luz],
   );
   // Cada entrada y salida de Presentar rehace el material: el viejo se suelta.
   useEffect(() => () => material.dispose(), [material]);
+  // En un vecino del mueble que se muestra, con menos luz.
+  useAtenuacion([material]);
 
   return (
     <instancedMesh
+      // Con y sin color por instancia son mallas distintas: un
+      // `instanceColor` puesto no se saca, y el editor vuelve al de siempre.
+      key={tonos ? "venta" : "editor"}
       args={[geometria, material, pieza.matrices.length]}
-      castShadow
+      // En venta no tira sombra, como el producto de prueba: el mapa de
+      // 1.024 px de toda la tienda no resuelve un envase, y la pasada de
+      // sombra dibujaba OTRA VEZ cada caja del relleno —en bolsa-4, 3.540
+      // envases por cuadro contando las dos pasadas—. La recibe igual.
+      castShadow={!luz}
       receiveShadow
       ref={(nodo) => {
         if (!nodo) return;
         pieza.matrices.forEach((mat, i) => nodo.setMatrixAt(i, mat));
         nodo.instanceMatrix.needsUpdate = true;
+        if (tonos) {
+          const c = new THREE.Color();
+          tonos.forEach(([r, g, b], i) => nodo.setColorAt(i, c.setRGB(r, g, b)));
+          if (nodo.instanceColor) nodo.instanceColor.needsUpdate = true;
+        }
         nodo.computeBoundingSphere();
       }}
     />
   );
+}
+
+/**
+ * Los (entrepaño, vano) de cada cara que llevan habladores GENÉRICOS en la
+ * pantalla de venta: los que el relleno de lo vendido cubre en un 80 % o más
+ * (`tramosConRelleno`, con la MISMA cuenta que dibuja el relleno). En el
+ * editor —o sin relleno— `null`: la tira sigue con el color de estado.
+ */
+export function useHabladoresDeRelleno(
+  conRelleno: boolean, venta: VentaDeMueble, anchoTotal: number,
+  slots: SlotDeProducto[] | undefined, vendidoEntero: VendidoEntero | undefined, cubiertas: Cubiertas,
+): Set<string>[] | null {
+  const enVenta = useLuzDeVenta();
+  const claveCubiertas = claveDeCubiertas(cubiertas);
+  return useMemo(() => {
+    if (!enVenta || !conRelleno) return null;
+    const grupos = rellenoPorRubro({
+      anchoTotal, filas: venta.filas, vanos: venta.vanos, caras: venta.caras,
+      franja: venta.franja ?? 0, slots, vendidoEntero, cubiertas,
+    });
+    return tramosConRelleno(grupos, venta.vanos, venta.caras.length);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enVenta, conRelleno, venta, anchoTotal, slots, vendidoEntero, claveCubiertas]);
 }

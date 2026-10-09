@@ -29,7 +29,7 @@
  * otros sigue viéndose como vendido.
  */
 import type { FilasDeProducto, Vano, VentaDeMueble } from "./medidas";
-import { ZONA_DE_SLOTS, alRasDeRanura } from "./medidas";
+import { PARANTE, ZONA_DE_SLOTS, alRasDeRanura } from "./medidas";
 import { acomodar, colorDeRubro, empaqueQueEntra, entraDeFondo, hashTexto, RETIRO_AL_FRENTE } from "./producto";
 import type { Empaque } from "./producto";
 
@@ -155,6 +155,18 @@ export interface GrupoDeRelleno {
   posiciones: PosicionDeRelleno[];
 }
 
+/**
+ * Un mueble contratado ENTERO: el rubro de su relleno y si se llena en
+ * profundidad. `hondo` (lo de siempre, el robatope y los exhibidores de
+ * `ProductoEnRepisas`) llena `PROFUNDIDAD_DE_MUEBLE_ENTERO` filas hacia el
+ * fondo, porque es chico y se mira desde todos lados. La góndola y la punta
+ * contratadas enteras (`rubroDeContratoEntero`, sólo en venta) van con
+ * `hondo: false`: las dos filas que se ven, como lo vendido por slot. Con
+ * cinco, la góndola de Bimbo eran 1.635 cajas en el cuadro de bolsa-4, tres
+ * de cada cinco tapadas por su propio frente.
+ */
+export interface VendidoEntero { rubro?: string; hondo?: boolean }
+
 export interface EntradaDeRelleno {
   /** Ancho total del mueble, para pasar los slots de fracción a metros. */
   anchoTotal: number;
@@ -165,7 +177,7 @@ export interface EntradaDeRelleno {
   franja: number;
   slots?: SlotDeProducto[];
   /** El mueble se vende ENTERO (ver `ProductoEnMueble`). */
-  vendidoEntero?: { rubro?: string };
+  vendidoEntero?: VendidoEntero;
   /** Lo que tapa la prueba del proveedor, por cara. */
   cubiertas?: Cubiertas;
 }
@@ -240,7 +252,7 @@ export function rellenoPorRubro({
         // filas, un exhibidor de 80 cm de fondo muestra siete centímetros de
         // producto y setenta de estante vacío.
         const fondos = Math.min(
-          acomodo.filas, vendidoEntero ? PROFUNDIDAD_DE_MUEBLE_ENTERO : PROFUNDIDAD_VISIBLE,
+          acomodo.filas, vendidoEntero && vendidoEntero.hondo !== false ? PROFUNDIDAD_DE_MUEBLE_ENTERO : PROFUNDIDAD_VISIBLE,
         );
 
         const grupo = porClave.get(clave) ?? { clave, color, empaque: e, posiciones: [] };
@@ -350,6 +362,75 @@ const HUECO_DE_ATRAS = 0.05;
 export const TONO_POR_FONDO = [1, 0.82, 0.68] as const;
 /** Probabilidad de que una columna quede corrida hacia adentro, y cuánto. */
 const COLUMNA_CORRIDA = 0.22;
+/** Con UN solo arte en una cara de más de `CARA_LARGA` (una góndola entera),
+ *  la crítica leyó «papel de colgadura»: 75 frentes del mismo Müsli, misma
+ *  caja, misma altura, misma alineación. Lo que delata el clonado es la
+ *  perfección. Dos cosas lo rompen sin inventar producto:
+ *  - el FRENTE CORRIDO: en un (vano, entrepaño), con esta probabilidad, falta
+ *    la unidad del frente de una columna (con su pila) y se ve la de atrás,
+ *    que ya va más oscura (`TONO_POR_FONDO`). Uno como mucho, y sólo si hay
+ *    una de atrás (con una sola de fondo sería un hueco al frente, que es lo
+ *    que se descartó: el frente se vende lleno);
+ *  - una de cada cuatro cajas gira ±1,5° (las demás ±0,9°, como siempre).
+ *  Con surtido no hace falta: los bloques de cada producto ya lo rompen. */
+const FRENTE_CORRIDO = 0.35;
+const CARA_LARGA = 1.2;
+/** La caja que más gira, y cada cuántas (una de cuatro). */
+const GIRO_DE_CAJA_SUELTA = 1.5;
+const CAJA_SUELTA = 0.25;
+
+/** El tramo de una cara que le toca a un producto del surtido, en
+ *  coordenadas de la cara (x a lo ancho). */
+export interface TramoDeSurtido { x0: number; x1: number }
+
+/**
+ * Los bloques verticales de un surtido: `n` productos del MISMO proveedor
+ * repartidos en la cara, en el orden en que se ven desde el pasillo.
+ *
+ * Es el bloque de marca de cualquier supermercado: cada producto de arriba
+ * abajo en su vano, no mezclados. Con un solo arte en una góndola entera la
+ * crítica vio «papel de colgadura» (75 frentes del mismo Müsli).
+ *
+ * - En coordenadas de la cara quien mira desde el pasillo ve +X a su
+ *   IZQUIERDA (la UV del envase, `perfiles.ts`): el primero —el principal—
+ *   va del lado de +X.
+ * - Con tantos vanos como productos o más, cada corte va al parante más
+ *   cercano: un producto por vano con 3 y 3, 2+1 con 3 vanos y 2 productos
+ *   (el principal se lleva el vano de más). Ningún producto queda sobre un
+ *   parante.
+ * - Con menos vanos que productos (una punta de un vano), se parte el ancho
+ *   en partes iguales: es la única forma de que entren.
+ */
+export function bloquesDeSurtido(vanos: readonly Vano[], n: number): TramoDeSurtido[] {
+  const cuantos = Math.max(1, Math.floor(n));
+  if (vanos.length === 0) return [];
+  // De izquierda a derecha según quien mira: de +X hacia −X.
+  const orden = [...vanos].sort((a, b) => b.x - a.x);
+  const izq = (v: Vano) => v.x + v.ancho / 2, der = (v: Vano) => v.x - v.ancho / 2;
+  if (cuantos === 1) return [{ x0: der(orden[orden.length - 1]), x1: izq(orden[0]) }];
+  if (orden.length >= cuantos) {
+    // Los cortes, en número de vanos desde la izquierda: el ideal k·V/n
+    // redondeado al parante más cercano (hacia el principal en un empate),
+    // sin dejar a nadie sin vano.
+    const V = orden.length;
+    const cortes: number[] = [0];
+    for (let k = 1; k < cuantos; k++) {
+      // `Math.round` sube el medio: con 3 vanos y 2 productos el corte va
+      // después del 2.º, y el principal se lleva dos.
+      const ideal = (k * V) / cuantos;
+      cortes.push(Math.max(cortes[k - 1] + 1, Math.min(V - (cuantos - k), Math.round(ideal + 1e-9))));
+    }
+    cortes.push(V);
+    return Array.from({ length: cuantos }, (_, k) => {
+      const grupo = orden.slice(cortes[k], cortes[k + 1]);
+      return { x0: der(grupo[grupo.length - 1]), x1: izq(grupo[0]) };
+    });
+  }
+  // Menos vanos que productos: partes iguales de punta a punta.
+  const desde = izq(orden[0]), hasta = der(orden[orden.length - 1]);
+  const paso = (desde - hasta) / cuantos;
+  return Array.from({ length: cuantos }, (_, k) => ({ x0: desde - (k + 1) * paso, x1: desde - k * paso }));
+}
 
 /** Un generador sembrado (mulberry32): el mismo mueble se ve igual siempre.
  *  Al azar, el producto se reacomodaría solo cada vez que se mueve la cámara
@@ -365,6 +446,43 @@ function azarDe(semilla: number): () => number {
 }
 
 const GRADO = Math.PI / 180;
+
+/**
+ * El rubro con que se rellena un mueble contratado ENTERO cuyos slots están
+ * todos libres (la góndola de Bimbo), o `undefined`.
+ *
+ * Sólo en la pantalla de venta (`venta`): en el editor un mueble así se sigue
+ * viendo vacío, como siempre. Y sólo sin slots vendidos: si alguno lo está,
+ * el relleno es el de esos slots y lo libre queda vacío (ningún mueble
+ * inventa producto donde nadie compró). El estado del mueble es el comercial
+ * (el de la base), no el del plano.
+ */
+export function rubroDeContratoEntero(
+  f: { status: string; brandCategory?: string; slots?: readonly { status: string }[] }, venta: boolean,
+): string | undefined {
+  if (!venta || !VENDIDO.has(f.status)) return undefined;
+  if (f.slots?.some((s) => VENDIDO.has(s.status))) return undefined;
+  return f.brandCategory ?? "";
+}
+
+/** Cuánto varía el tono del relleno neutro de una unidad a otra (±). */
+export const VARIACION_DE_RELLENO = 0.06;
+
+/**
+ * El tono de cada unidad del relleno neutro en la pantalla de venta: un
+ * multiplicador cerca de 1 (±6 %), apenas más cálido o más frío, SEMBRADO por
+ * mueble y grupo como todo el desorden —el mismo mueble se ve igual siempre—.
+ * Un lineal de cien cajas del mismo color exacto se lee como una pared de
+ * bloques; con esto, como mercadería distinta, sin ninguna marca.
+ */
+export function tonosDelRelleno(semilla: string, n: number): [number, number, number][] {
+  const azar = azarDe(hashTexto(`relleno|${semilla}`));
+  return Array.from({ length: n }, () => {
+    const k = 1 + (azar() * 2 - 1) * VARIACION_DE_RELLENO;
+    const t = (azar() * 2 - 1) * VARIACION_DE_RELLENO * 0.4;
+    return [k * (1 + t), k, k * (1 - t)];
+  });
+}
 
 /**
  * Las unidades del producto de prueba sobre UNA cara del mueble.
@@ -385,19 +503,33 @@ const GRADO = Math.PI / 180;
  * `[0, apoyo, 0]` girado `giro`, adentro del grupo de la cara.
  */
 export function unidadesDePrueba({
-  venta, empaque, donde, semilla, profundidad = 3,
+  venta, empaque, donde, semilla, profundidad = 3, tramo, surtido = false,
 }: {
   venta: Pick<VentaDeMueble, "filas" | "vanos" | "sobreApoyo">;
   empaque: EmpaqueDePrueba;
   donde: "todas" | readonly number[];
   semilla: string;
   profundidad?: number;
+  /** Con surtido, el tramo de la cara que le toca a ESTE producto
+   *  (`bloquesDeSurtido`): cada vano se recorta a él, igual que el relleno
+   *  recorta al tramo de un slot. */
+  tramo?: TramoDeSurtido;
+  /** Es uno de varios productos en la cara: sin frente corrido. */
+  surtido?: boolean;
 }): PruebaAcomodada {
   const { filas, vanos } = venta;
   const porFila: FilaDePrueba[] = [];
   const unidades: UnidadDePrueba[] = [];
   let frentesALaVista = 0;
   const e = empaque;
+  // Una cara larga con UN solo arte se varía (ver `FRENTE_CORRIDO`).
+  const anchoDeCara = vanos.length
+    ? Math.max(...vanos.map((v) => v.x + v.ancho / 2)) - Math.min(...vanos.map((v) => v.x - v.ancho / 2))
+    : 0;
+  const variado = !surtido && anchoDeCara > CARA_LARGA;
+  // De planta redonda (botella, lata, vaso): girar no la ensancha.
+  const redondaEnPlanta = e.forma === "botella" || e.forma === "lata"
+    || (e as EmpaqueDePrueba & { envase?: string }).envase === "revolucion";
 
   for (let i = 0; i < filas.rows; i++) {
     const apoyo = filas.alturas[i] + (venta.sobreApoyo ?? 0);
@@ -443,10 +575,14 @@ export function unidadesDePrueba({
     );
 
     for (const vano of vanos) {
-      // El vano ENTERO: la prueba es por entrepaño, no por el tramo de un slot.
-      const a = acomodar(vano.ancho, filas.fondos[i], libre, eAncho);
+      // El vano ENTERO: la prueba es por entrepaño, no por el tramo de un
+      // slot. Con surtido, sólo lo que el tramo de este producto toca.
+      const vx0 = Math.max(tramo ? tramo.x0 : -Infinity, vano.x - vano.ancho / 2);
+      const vx1 = Math.min(tramo ? tramo.x1 : Infinity, vano.x + vano.ancho / 2);
+      if (vx1 - vx0 <= 1e-6) continue;
+      const a = acomodar(tramo ? vx1 - vx0 : vano.ancho, filas.fondos[i], libre, eAncho);
       if (a.frentes === 0) continue;
-      const desdeX = vano.x - a.ocupado / 2 + eAncho.ancho / 2;
+      const desdeX = (tramo ? (vx0 + vx1) / 2 : vano.x) - a.ocupado / 2 + eAncho.ancho / 2;
       const fondoVisible = Math.min(a.filas, profundidad);
       fila.frentes += a.frentes;
       fila.fondoVisible = Math.max(fila.fondoVisible, fondoVisible);
@@ -456,6 +592,14 @@ export function unidadesDePrueba({
       // Lo que queda libre detrás de la última unidad visible: hasta ahí se
       // puede correr una columna sin salirse del entrepaño por atrás.
       const libreAtras = Math.max(0, (a.filas - fondoVisible) * a.pasoZ);
+      // El frente corrido de este (vano, entrepaño): una columna como mucho,
+      // y sólo con algo detrás que se vea.
+      const sinFrente = variado && fondoVisible >= 2 && azar() < FRENTE_CORRIDO
+        ? Math.floor(azar() * a.frentes) : -1;
+      // La luz entre dos unidades vecinas (4 mm): cada una se corre a lo
+      // ancho a lo sumo la mitad, MENOS lo que la ensancha su propio giro.
+      // Así dos vecinas giradas y corridas una hacia la otra no se cruzan.
+      const luz = a.pasoX - eAncho.ancho;
 
       for (let f = 0; f < a.frentes; f++) {
         // Una columna de cada tanto quedó sin «frentear»: corrida hacia
@@ -463,18 +607,30 @@ export function unidadesDePrueba({
         // Entera, para que la de adelante no se meta en la de atrás.
         const corrida = azar() < COLUMNA_CORRIDA ? Math.min(libreAtras, 0.01 + azar() * 0.01) : 0;
         for (let p = 0; p < fondoVisible; p++) {
-          // Un hueco de reposición, sólo atrás y con toda su pila.
-          const hueco = p > 0 && azar() < HUECO_DE_ATRAS;
+          // Un hueco de reposición, sólo atrás y con toda su pila; nunca
+          // detrás de un frente corrido (sería un hueco de punta a punta).
+          const hueco = p > 0 && azar() < HUECO_DE_ATRAS && !(f === sinFrente && p === 1);
+          // Una de cada cuatro cajas, más girada (sólo en la cara variada).
+          const suelta = variado && !redondo && !e.acostado && p === 0 && azar() < CAJA_SUELTA;
           for (let piso = 0; piso < pisos; piso++) {
             const desdeElFilo = filas.fondos[i] - RETIRO_AL_FRENTE - e.fondo / 2 - p * a.pasoZ;
-            // ±2 mm a lo ancho (la luz entre dos es de 4: no se tocan) y ±3 mm
-            // de fondo: con ±1,5 mm la fila se leía como una grilla perfecta.
-            const dx = entre(0.002), dz = entre(0.003), giro = entre(p === 0 ? giroFrente : giroAtras);
+            // ±2 mm a lo ancho (la luz entre dos es de 4) y ±3 mm de fondo:
+            // con ±1,5 mm la fila se leía como una grilla perfecta.
+            const giro = entre(p === 0 ? (suelta ? GIRO_DE_CAJA_SUELTA * GRADO : giroFrente) : giroAtras);
+            const ensancha = redondaEnPlanta ? 0
+              : (eAncho.ancho / 2) * (Math.cos(giro) - 1) + (e.fondo / 2) * Math.abs(Math.sin(giro));
+            const tope = Math.max(0, Math.min(0.002, luz / 2 - ensancha));
+            // Lo mismo de fondo, contra la de adelante y la de atrás: ±3 mm
+            // con 4 mm de luz metían un vaso en el otro (con otra semilla).
+            const ensanchaZ = redondaEnPlanta ? 0
+              : (e.fondo / 2) * (Math.cos(giro) - 1) + (eAncho.ancho / 2) * Math.abs(Math.sin(giro));
+            const topeZ = Math.max(0, Math.min(0.003, (a.pasoZ - e.fondo) / 2 - ensanchaZ));
+            const dx = entre(0.002), dz = Math.max(-topeZ, Math.min(topeZ, entre(0.003)));
             const tono = TONO_POR_FONDO[Math.min(p, TONO_POR_FONDO.length - 1)] * (0.97 + azar() * 0.06);
-            if (hueco) continue;
+            if (hueco || (p === 0 && f === sinFrente)) continue;
             unidades.push({
               fila: i,
-              x: desdeX + f * a.pasoX + dx,
+              x: desdeX + f * a.pasoX + Math.max(-tope, Math.min(tope, dx)),
               y: piso * e.alto + e.alto / 2 - hundir,
               z: -(desdeElFilo - corrida + dz),
               giroY: giro,
@@ -522,22 +678,193 @@ const HOLGURA_DE_REJILLA = 0.02;
 export function rejillasParaProducto(filas: FilasDeProducto, alto: number): FilasDeProducto | null {
   const libres = filas.alturas.slice(1).map((y, i) => y - filas.alturas[i]);
   if (libres.every((l) => l >= alto)) return null;
-  const desde = filas.alturas[0], techo = filas.alturas[filas.rows];
-  const n = Math.min(filas.rows, Math.floor((techo - desde) / (alto + HOLGURA_DE_REJILLA)));
+  const n = rejillasQueEntran(filas, alto);
   if (n < 1) return null;
+  const techo = filas.alturas[filas.rows];
+  const entra = (ys: number[]) => ys.slice(1).every((y, i) => y - ys[i] >= alto + 0.005);
+  // Al ras de una ranura si así siguen entrando; si no, donde caen parejas.
+  const enRanura = repartirRejillas(filas, n);
+  return entra(enRanura.alturas) ? enRanura : filasConNiveles(filas, parejas(filas, n), techo);
+}
+
+/** Cuántas rejillas entran como mucho con el producto PARADO y su aire, sin
+ *  pasar de las que tiene la nevera. */
+function rejillasQueEntran(filas: FilasDeProducto, alto: number): number {
+  const desde = filas.alturas[0], techo = filas.alturas[filas.rows];
+  return Math.min(filas.rows, Math.floor((techo - desde) / (alto + HOLGURA_DE_REJILLA)));
+}
+
+/** `n` niveles parejos entre la primera rejilla y el techo, sin redondear. */
+function parejas(filas: FilasDeProducto, n: number): number[] {
+  const desde = filas.alturas[0], techo = filas.alturas[filas.rows];
   const paso = (techo - desde) / n;
-  const parejas = Array.from({ length: n }, (_, i) => desde + i * paso);
-  const enRanura = parejas.map((y, i) => (i === 0 ? y : alRasDeRanura(y)));
-  const entra = (ys: number[]) => [...ys, techo].slice(1).every((y, i) => y - ys[i] >= alto + 0.005);
-  const niveles = entra(enRanura) ? enRanura : parejas;
+  return Array.from({ length: n }, (_, i) => desde + i * paso);
+}
+
+/** Las filas de la nevera con otras rejillas: el techo y la primera, las de
+ *  fábrica; el fondo y el giro, copiados (el frío no escalona ni inclina). */
+function filasConNiveles(fabrica: FilasDeProducto, niveles: number[], techo: number): FilasDeProducto {
+  const n = niveles.length;
   return {
-    rowBottom: desde,
+    rowBottom: niveles[0],
     alturas: [...niveles, techo],
-    rowPitch: paso,
+    rowPitch: (techo - niveles[0]) / n,
     rows: n,
-    fondos: Array.from({ length: n }, () => filas.fondos[0]),
-    giros: Array.from({ length: n }, () => 0),
+    fondos: Array.from({ length: n }, (_, i) => fabrica.fondos[Math.min(i, fabrica.rows - 1)]),
+    giros: Array.from({ length: n }, (_, i) => fabrica.giros?.[Math.min(i, fabrica.rows - 1)] ?? 0),
   };
+}
+
+/**
+ * `cuantas` rejillas repartidas parejas entre la primera de fábrica y el techo,
+ * cada una (salvo la primera, que no se mueve) al ras de una ranura.
+ *
+ * Es la ÚNICA cuenta de dónde van las rejillas: la usan las automáticas
+ * (`rejillasParaProducto`) y «A mano» cuando se cambia cuántas. NO mira si el
+ * producto entra: eso lo dice `unidadesDePrueba` («no-entra-alto»), y «A mano»
+ * tiene que poder mostrar justamente dónde no entra.
+ *
+ * `cuantas` se acota a 1…las de fábrica: no se inventan rejillas.
+ */
+export function repartirRejillas(fabrica: FilasDeProducto, cuantas: number): FilasDeProducto {
+  const n = Math.max(1, Math.min(fabrica.rows, Math.round(cuantas) || 1));
+  const niveles = parejas(fabrica, n).map((y, i) => (i === 0 ? y : alRasDeRanura(y)));
+  return filasConNiveles(fabrica, niveles, fabrica.alturas[fabrica.rows]);
+}
+
+/** Lo mínimo entre dos rejillas: con menos no entra la mano, ni una lata. */
+export const SEPARACION_MINIMA_DE_REJILLAS = 0.05;
+
+/**
+ * La rejilla `i` (1…rows−1) corrida `pasos` ranuras (25 mm cada una, hacia
+ * arriba si es positivo), al ras de ranura. La de abajo y el techo no se
+ * mueven, y ninguna se acerca a menos de 5 cm de sus vecinas: se frena ahí,
+ * en la última ranura permitida. Un índice fuera de rango devuelve las
+ * mismas filas.
+ */
+export function moverRejilla(filas: FilasDeProducto, i: number, pasos: number): FilasDeProducto {
+  if (!Number.isInteger(i) || i < 1 || i >= filas.rows || !pasos) return filas;
+  const paso = PARANTE.pasoRanura;
+  const abajo = filas.alturas[i - 1] + SEPARACION_MINIMA_DE_REJILLAS;
+  const arriba = filas.alturas[i + 1] - SEPARACION_MINIMA_DE_REJILLAS;
+  // Los topes, en ranuras: la primera ranura por encima del de abajo y la
+  // última por debajo del de arriba (con 1e-6 contra el último bit).
+  const min = Math.ceil(abajo / paso - 1e-6) * paso;
+  const max = Math.floor(arriba / paso + 1e-6) * paso;
+  if (max < min) return filas;
+  const y = Math.min(max, Math.max(min, alRasDeRanura(filas.alturas[i] + pasos * paso)));
+  const alturas = [...filas.alturas];
+  alturas[i] = Number(y.toFixed(6));
+  return { ...filas, alturas, rowPitch: (alturas[filas.rows] - alturas[0]) / filas.rows };
+}
+
+/** Lo que se eligió para las rejillas de la nevera en la sesión.
+ *  `undefined` = automáticas (el valor de entrada); `"fabrica"` = las del
+ *  mueble; o a mano: cuántas y, si se movieron, sus alturas (sin el techo). */
+export type EleccionDeRejillas = undefined | "fabrica" | { cuantas: number; alturas?: readonly number[] };
+
+export interface RejillasDeLaPrueba {
+  /** Las filas con que se prueba, o `null` = las de fábrica. */
+  filas: FilasDeProducto | null;
+  modo: "auto" | "fabrica" | "manual";
+  /** Cuántas rejillas quedan (las de fábrica si `filas` es null). */
+  cuantas: number;
+  /** Cuántas entran como mucho con el producto parado (0 si ni una). */
+  nMax: number;
+}
+
+/** Las alturas guardadas a mano sirven si son tantas como `cuantas`, la
+ *  primera es la de fábrica, crecen con 5 cm entre una y otra y quedan
+ *  dentro del mueble. Si no (otra nevera, otro tamaño), se reparten. */
+function alturasCoherentes(fabrica: FilasDeProducto, cuantas: number, alturas?: readonly number[]): boolean {
+  if (!alturas || alturas.length !== cuantas) return false;
+  const techo = fabrica.alturas[fabrica.rows];
+  if (Math.abs(alturas[0] - fabrica.alturas[0]) > 1e-4) return false;
+  const todas = [...alturas, techo];
+  return todas.every((y, k) => Number.isFinite(y) && (k === 0 || y - todas[k - 1] >= SEPARACION_MINIMA_DE_REJILLAS - 1e-6));
+}
+
+/**
+ * Con qué rejillas se prueba el producto en la nevera de refrescos.
+ *
+ * Es la ÚNICA cuenta: la usan el dibujo (`construirPrueba`) y el panel, que
+ * antes tenían cada uno su copia, y la toma de venta encuadra las mismas filas.
+ *
+ * - **Acostada**: siempre las de fábrica (las rejillas se acomodan para
+ *   pararla; acostada no hace falta).
+ * - **`"fabrica"`**: las de fábrica, aunque no entre.
+ * - **A mano**: las alturas guardadas si son coherentes; si no, `cuantas`
+ *   repartidas. Las cuantas van de 1 a las de fábrica y NO hasta las que
+ *   entran: con 4 rejillas «A mano» tiene que poder decir dónde no entra.
+ * - **Automáticas** (`undefined`): se acomodan sólo si el producto parado no
+ *   entra en alguna de fábrica Y acomodadas muestran MÁS frentes con la cara
+ *   entera. Un producto que ya entra en todas queda en las de fábrica, y la
+ *   2 L, que no entraba en ninguna, sale parada en todas sin tocar nada.
+ *
+ * Sin empaque (la foto todavía carga) no hay automáticas: las de fábrica.
+ */
+export function rejillasDeLaPrueba(
+  venta: Pick<VentaDeMueble, "filas" | "vanos" | "sobreApoyo">,
+  empaque: EmpaqueDePrueba | null,
+  eleccion: EleccionDeRejillas,
+): RejillasDeLaPrueba {
+  const fabrica = venta.filas;
+  const nMax = empaque && !empaque.acostado ? Math.max(0, rejillasQueEntran(fabrica, empaque.alto)) : 0;
+  const deFabrica = (modo: RejillasDeLaPrueba["modo"]): RejillasDeLaPrueba =>
+    ({ filas: null, modo, cuantas: fabrica.rows, nMax });
+  if (!empaque || empaque.acostado) return deFabrica(eleccion === undefined ? "auto" : eleccion === "fabrica" ? "fabrica" : "manual");
+  if (eleccion === "fabrica") return deFabrica("fabrica");
+  if (eleccion && typeof eleccion === "object") {
+    const cuantas = Math.max(1, Math.min(fabrica.rows, Math.round(eleccion.cuantas) || 1));
+    const filas = alturasCoherentes(fabrica, cuantas, eleccion.alturas)
+      ? filasConNiveles(fabrica, [...eleccion.alturas!], fabrica.alturas[fabrica.rows])
+      : repartirRejillas(fabrica, cuantas);
+    return { filas, modo: "manual", cuantas, nMax };
+  }
+  // Automáticas.
+  const libres = fabrica.alturas.slice(1).map((y, i) => y - fabrica.alturas[i]);
+  if (libres.every((l) => l >= empaque.alto)) return deFabrica("auto");
+  const acomodadas = rejillasParaProducto(fabrica, empaque.alto);
+  if (!acomodadas) return deFabrica("auto");
+  const frentes = (filas: FilasDeProducto) =>
+    unidadesDePrueba({ venta: { ...venta, filas }, empaque, donde: "todas", semilla: "rejillas" }).frentesALaVista;
+  if (frentes(acomodadas) <= frentes(fabrica)) return deFabrica("auto");
+  return { filas: acomodadas, modo: "auto", cuantas: acomodadas.rows, nMax };
+}
+
+/** Lo que se toca en el bloque «Rejillas» del panel. */
+export type AccionDeRejillas =
+  | { modo: "auto" | "fabrica" | "manual" }
+  | { cuantas: number }
+  | { mover: number; pasos: number };
+
+/**
+ * El cambio de sesión que pide cada botón del bloque «Rejillas».
+ *
+ * Cambiar de modo o de cantidad vuelve «Dónde va» a la cara entera: los
+ * índices de «Por entrepaño» son de las filas VIGENTES, y con otras filas
+ * apuntarían a otra rejilla (el entrepaño 3 de cinco no es el 3 de cuatro).
+ * Mover una rejilla no lo toca: las filas son las mismas, más arriba o más
+ * abajo. «A mano» arranca con las que se ven, para que tocarlo no cambie
+ * nada hasta mover algo.
+ */
+export function ajusteDeRejillas(
+  accion: AccionDeRejillas, vigentes: FilasDeProducto,
+): { rejillas: EleccionDeRejillas; donde?: "todas" } {
+  if ("modo" in accion) {
+    const rejillas: EleccionDeRejillas = accion.modo === "auto"
+      ? undefined
+      : accion.modo === "fabrica" ? "fabrica" : { cuantas: vigentes.rows, alturas: vigentes.alturas.slice(0, -1) };
+    return { rejillas, donde: "todas" };
+  }
+  if ("cuantas" in accion) return { rejillas: { cuantas: accion.cuantas }, donde: "todas" };
+  const m = moverRejilla(vigentes, accion.mover, accion.pasos);
+  return { rejillas: { cuantas: m.rows, alturas: m.alturas.slice(0, -1) } };
+}
+
+/** Una clave de texto de unas filas, para re-encuadrar cuando cambian. */
+export function claveDeFilas(filas: FilasDeProducto | null | undefined): string {
+  return filas ? filas.alturas.map((y) => y.toFixed(4)).join(",") : "-";
 }
 
 // ─── A dónde mira la cámara de venta ─────────────────────────────────────────

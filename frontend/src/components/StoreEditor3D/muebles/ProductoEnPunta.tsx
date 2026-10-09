@@ -5,7 +5,7 @@ import {
 import type { VentaDeMueble } from "./medidas";
 import { ProductoEnMueble } from "./ProductoEnMueble";
 import type { SlotDeProducto } from "./ProductoEnMueble";
-import type { Cubiertas } from "./frentes";
+import type { Cubiertas, VendidoEntero } from "./frentes";
 
 /**
  * Dónde vende una punta de góndola.
@@ -36,7 +36,7 @@ export function ventaDePunta(w: number, d: number, h: number): VentaDeMueble {
 /** El producto de una punta de góndola: todo el trabajo lo hace
  *  `ProductoEnMueble`, y dónde vende lo dice `ventaDePunta`. */
 export const ProductoEnPunta = memo(function ProductoEnPunta({
-  w, d, h, slots, cubiertas, ghost = false,
+  w, d, h, slots, cubiertas, ghost = false, vendidoEntero, semilla,
 }: {
   w: number;
   d: number;
@@ -47,6 +47,11 @@ export const ProductoEnPunta = memo(function ProductoEnPunta({
    *  relleno. Arte o relleno vale por (cara, entrepaño). */
   cubiertas?: Cubiertas;
   ghost?: boolean;
+  /** Contratado ENTERO con los slots libres (sólo en venta): el relleno
+   *  neutro de su rubro en todos los entrepaños. */
+  vendidoEntero?: VendidoEntero;
+  /** El mueble (su id): siembra la variación del relleno en venta. */
+  semilla?: string;
 }) {
   const venta = useMemo(() => ventaDePunta(w, d, h), [w, d, h]);
 
@@ -59,7 +64,9 @@ export const ProductoEnPunta = memo(function ProductoEnPunta({
       franja={venta.franja ?? 0}
       slots={slots}
       cubiertas={cubiertas}
+      vendidoEntero={vendidoEntero}
       ghost={ghost}
+      semilla={semilla}
     />
   );
 });

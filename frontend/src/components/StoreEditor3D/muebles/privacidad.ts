@@ -19,6 +19,9 @@
  * Es puro (sin React ni three) para que `probar-muebles` lo corra.
  */
 
+import { contenidoDelHablador } from "./habladores";
+import type { ArteConFicha, ContenidoDelHablador } from "./habladores";
+
 /** Lo que hace falta de un arte del catálogo para decidir. */
 export interface ArteDeProveedor {
   id: number;
@@ -54,6 +57,60 @@ export function arteALaVista(
   if (privadoPara === null) return null;
   const arte = catalogo.find((a) => a.id === arteId);
   return arte && arte.supplier_id === privadoPara ? arteId : null;
+}
+
+/** Cuántos productos como mucho lleva una cara con surtido (el principal y
+ *  hasta tres más). */
+export const MAXIMO_DE_SURTIDO = 4;
+
+/**
+ * Los artes del surtido de una cara que se pueden dibujar.
+ *
+ * El surtido son productos del MISMO proveedor que el principal, en bloques
+ * verticales (`bloquesDeSurtido`). Cada uno pasa por `arteALaVista` con la
+ * misma pantalla, y se descarta si su `supplier_id` no es el del principal:
+ * un arte de otro proveedor colado en el surtido (por un error de la sesión,
+ * o el catálogo que cambió) nunca se dibuja al lado del de quien mira. Sin
+ * repetidos, sin el principal y a lo sumo `MAXIMO_DE_SURTIDO − 1`.
+ */
+export function surtidoALaVista(
+  principal: number | null | undefined,
+  surtido: readonly number[] | null | undefined,
+  catalogo: readonly ArteDeProveedor[],
+  privadoPara: PrivadoPara,
+): number[] {
+  if (principal == null || !surtido?.length) return [];
+  const delPrincipal = catalogo.find((a) => a.id === principal);
+  if (!delPrincipal) return [];
+  const fuera: number[] = [];
+  for (const id of surtido) {
+    if (id === principal || fuera.includes(id)) continue;
+    const arte = catalogo.find((a) => a.id === id);
+    if (!arte || arte.supplier_id !== delPrincipal.supplier_id) continue;
+    if (arteALaVista(id, catalogo, privadoPara) == null) continue;
+    fuera.push(id);
+    if (fuera.length >= MAXIMO_DE_SURTIDO - 1) break;
+  }
+  return fuera;
+}
+
+/**
+ * Lo que dice el hablador del producto en prueba (`contenidoDelHablador`), o
+ * `null` si el arte no se puede mostrar en esta pantalla.
+ *
+ * El hablador lleva el NOMBRE del producto: en la pantalla de un proveedor,
+ * el de un arte de otro no se escribe en ninguna tira, aunque la prueba se
+ * haya colado (la misma regla que `arteALaVista`). En la pantalla de la dueña
+ * pasa: los habladores sólo se dibujan en venta, pero la cuenta no supone de
+ * dónde la llaman.
+ */
+export function habladorALaVista(
+  arte: (ArteDeProveedor & ArteConFicha) | null | undefined,
+  catalogo: readonly ArteDeProveedor[],
+  privadoPara: PrivadoPara,
+): ContenidoDelHablador | null {
+  if (!arte) return null;
+  return arteALaVista(arte.id, catalogo, privadoPara) == null ? null : contenidoDelHablador(arte);
 }
 
 /**

@@ -28,6 +28,13 @@ export interface DatosPropuesta {
    * proveedor del contrato vigente al lado de la foto del producto de otro.
    */
   producto?: string;
+  /**
+   * Cómo se acomodó el mueble para mostrar el producto, si no es como está
+   * hoy: la nevera con las rejillas acomodadas para la 2 L. «Hoy» sale con
+   * las de fábrica y «Con …» con las acomodadas; la lámina no lo esconde,
+   * porque es lo que va a tener que hacer el mercaderista.
+   */
+  exhibicion?: string;
   desde: string;
   hasta: string;
   /**
@@ -89,6 +96,7 @@ export function lineasDePie(d: DatosPropuesta): Renglon[] {
     filas.push({ etiqueta: "Valor mensual", valor: montoCorto(d.valorMensual) });
   }
   if (d.mueble.trim()) filas.push({ etiqueta: "Mueble", valor: d.mueble.trim() });
+  if ((d.exhibicion ?? "").trim()) filas.push({ etiqueta: "Exhibición", valor: d.exhibicion!.trim() });
   return filas;
 }
 

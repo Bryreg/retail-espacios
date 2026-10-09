@@ -295,6 +295,299 @@ export function resolverPaso(
   return actual;
 }
 
+// ─── El cielo raso de la pantalla de venta ────────────────────────────────────
+
+/**
+ * Altura del cielo raso de la pantalla de venta, en metros.
+ *
+ * Es el de un supermercado mediano, y no los 4,5 m de los muros de la
+ * caminata, por una cuenta y no por gusto: con la toma de venta de hoy (la
+ * cámara a 1,25 m, el borde de arriba del cuadro a ~16° sobre la horizontal)
+ * y el muro del fondo a 5-11 m, un techo a 4,5 m no entra en NINGUNA toma
+ * —lo que llena la mitad de arriba del cuadro es el muro—, y uno a 3,2 m deja
+ * entre 56 y 127 filas de cielo raso (de 1080) en las tomas de la punta y del
+ * robatope. En la nevera, con el muro de atrás a 2,5 m, lo de arriba es el
+ * muro en los dos casos.
+ */
+export const ALTO_CIELO_RASO = 3.2;
+
+/**
+ * Las luminarias embutidas en el cielo raso: tiras de 2,4 × 0,2 m, en filas
+ * paralelas a las góndolas cada 3 m, con 0,6 m entre tira y tira, centradas en
+ * la planta con 0,5 m de margen contra el muro. Es el paño de luz corrido que
+ * tiene cualquier supermercado, y lo que dice «tienda» en la parte de arriba
+ * del cuadro.
+ */
+export const LUMINARIA = {
+  largo: 2.4,
+  ancho: 0.2,
+  /** Entre centro y centro de dos tiras de la misma fila: el largo y 0,6 m. */
+  pasoEnFila: 3.0,
+  /** Entre fila y fila. */
+  pasoEntreFilas: 3.0,
+  /** Lo que queda libre entre la tira y el muro. */
+  margen: 0.5,
+} as const;
+
+/**
+ * La grilla de las luminarias, dicha con parámetros y no como lista.
+ *
+ * El brillo de las luminarias en el acero y su reflejo en el piso (la luz de
+ * venta, en `luzDeVenta.ts`) se calculan POR PÍXEL: recorrer cien tiras por
+ * píxel, pasadas en uniformes, es caro y en una placa integrada puede pasarse
+ * del límite de uniformes. Con la grilla, saber si un punto del cielo raso cae
+ * en una tira es una cuenta de `floor`, en O(1).
+ *
+ * Las tiras están en `origen + i·pasoU·U + j·pasoV·V` (i < cuantas.u, j <
+ * cuantas.v), con U = (cos giro, −sin giro) y V = (sin giro, cos giro) en
+ * (x, z): el giro es el `rotY` de three, así que una tira girada `giro` tiene
+ * el largo en U.
+ */
+export interface GrillaDeLuminarias {
+  origen: { x: number; z: number };
+  paso: { u: number; v: number };
+  /** Largo (u) y ancho (v) de cada tira. */
+  tamano: { u: number; v: number };
+  /** 0 (filas a lo largo de X) o π/2 (a lo largo de Z). */
+  giro: number;
+  cuantas: { u: number; v: number };
+  /** A qué altura cuelgan (5 mm bajo el cielo raso). */
+  y: number;
+}
+
+export interface Luminaria { x: number; z: number; rotY: number }
+
+/** Los dos ejes de la grilla, en (x, z). */
+export function ejesDeGrilla(giro: number): { u: { x: number; z: number }; v: { x: number; z: number } } {
+  const c = Math.cos(giro), s = Math.sin(giro);
+  return { u: { x: c, z: -s }, v: { x: s, z: c } };
+}
+
+/**
+ * Hacia dónde corren las góndolas de una planta: 0 si la mayoría corre a lo
+ * largo de X, π/2 si a lo largo de Z.
+ *
+ * Vota cada mueble alargado (el lado largo al menos 1,3 veces el corto) con
+ * su largo: dos góndolas de 3,6 m pesan más que tres puntas de 0,9. Sin
+ * ningún mueble alargado, a lo largo del lado más largo del local. Sólo dos
+ * direcciones porque el local es una caja alineada a los ejes (`limites`): una
+ * grilla girada 20° dentro de un rectángulo recto deja tiras cortadas por el
+ * muro.
+ */
+export function direccionDeGondolas(muebles: MuebleEnPlanta[], limites: LimitesPlanta): number {
+  let enX = 0, enZ = 0;
+  for (const f of muebles) {
+    const largo = Math.max(f.w, f.d), corto = Math.min(f.w, f.d);
+    if (largo < corto * 1.3) continue;
+    const eje = (f.rotY ?? 0) + (f.w >= f.d ? 0 : Math.PI / 2);
+    if (Math.abs(Math.cos(eje)) >= Math.abs(Math.sin(eje))) enX += largo; else enZ += largo;
+  }
+  if (enX === 0 && enZ === 0) return limites.w >= limites.d ? 0 : Math.PI / 2;
+  return enX >= enZ ? 0 : Math.PI / 2;
+}
+
+/**
+ * Dónde van las luminarias del cielo raso: la lista de tiras (para dibujarlas,
+ * una `InstancedMesh`) y la grilla que las reproduce (para la luz de venta).
+ *
+ * Una planta vacía cae en la caja nominal de `limites` y lleva su grilla igual;
+ * una planta tan chica que no entra una tira, ninguna.
+ */
+export function luminariasDeTienda(
+  limites: LimitesPlanta,
+  muebles: MuebleEnPlanta[],
+): { instancias: Luminaria[]; grilla: GrillaDeLuminarias } {
+  const giro = direccionDeGondolas(muebles, limites);
+  const { u, v } = ejesDeGrilla(giro);
+  // Lo que mide el local a lo largo de cada eje de la grilla.
+  const largoU = giro === 0 ? limites.w : limites.d;
+  const largoV = giro === 0 ? limites.d : limites.w;
+  const { largo, ancho, pasoEnFila, pasoEntreFilas, margen } = LUMINARIA;
+  // Cuántas y cada cuánto, de margen a margen. El paso de 3 m es el nominal:
+  // se ajusta para que la primera y la última tira queden a 0,5 m del muro,
+  // como las deja un luminotécnico (las tiras son de medida fija; lo que se
+  // corre es la separación). Centradas con el paso fijo, en la sede de
+  // pruebas quedaba 1,3 m de cielo raso sin luz contra cada muro, y la toma en
+  // tres cuartos del robatope —que mira a una esquina— no veía ninguna.
+  const repartir = (lado: number, tira: number, paso: number) => {
+    const util = lado - 2 * margen - tira;
+    if (util < 0) return { n: 0, paso };
+    if (util < 1e-9) return { n: 1, paso };
+    const menos = Math.max(1, Math.floor(util / paso + 1e-9));
+    // De las dos cantidades que rodean el paso nominal, la que más se le
+    // acerca, sin que dos tiras queden a menos de 20 cm.
+    const opciones = [menos, menos + 1]
+      .map((intervalos) => ({ n: intervalos + 1, paso: util / intervalos }))
+      .filter((o) => o.paso >= tira + 0.2)
+      .sort((a, b) => Math.abs(a.paso - paso) - Math.abs(b.paso - paso));
+    return opciones[0] ?? { n: 1, paso };
+  };
+  const enU = repartir(largoU, largo, pasoEnFila);
+  const enV = repartir(largoV, ancho, pasoEntreFilas);
+  const nu = enU.n, nv = enV.n;
+  // Centradas en la planta: la primera tira, media grilla atrás del centro.
+  const du = (Math.max(0, nu - 1) * enU.paso) / 2;
+  const dv = (Math.max(0, nv - 1) * enV.paso) / 2;
+  const origen = {
+    x: limites.cx - u.x * du - v.x * dv,
+    z: limites.cz - u.z * du - v.z * dv,
+  };
+  const grilla: GrillaDeLuminarias = {
+    origen,
+    paso: { u: enU.paso, v: enV.paso },
+    tamano: { u: largo, v: ancho },
+    giro,
+    cuantas: { u: nu, v: nv },
+    y: ALTO_CIELO_RASO - 0.005,
+  };
+  const instancias: Luminaria[] = [];
+  for (let j = 0; j < nv; j++) {
+    for (let i = 0; i < nu; i++) {
+      instancias.push({
+        x: origen.x + u.x * i * enU.paso + v.x * j * enV.paso,
+        z: origen.z + u.z * i * enU.paso + v.z * j * enV.paso,
+        rotY: giro,
+      });
+    }
+  }
+  return { instancias, grilla };
+}
+
+/** Un punto del mundo visto por una cámara: en coordenadas normalizadas del
+ *  cuadro (−1…1, y hacia arriba) y su profundidad a lo largo de la mirada, en
+ *  metros (negativa: detrás de la cámara). Es la misma proyección que hace
+ *  three con una `PerspectiveCamera` sin roll mirando de `pos` a `target`. */
+export function proyectar(
+  vista: Vista3D, fovGrados: number, aspecto: number, punto: { x: number; y: number; z: number },
+): { x: number; y: number; profundidad: number } {
+  const { f, r, arriba } = marcoDeVista(vista);
+  const d = { x: punto.x - vista.posX, y: punto.y - vista.posY, z: punto.z - vista.posZ };
+  const zc = d.x * f.x + d.y * f.y + d.z * f.z;
+  const t = Math.tan((fovGrados * Math.PI) / 360);
+  return {
+    x: (d.x * r.x + d.y * r.y + d.z * r.z) / (zc * t * aspecto),
+    y: (d.x * arriba.x + d.y * arriba.y + d.z * arriba.z) / (zc * t),
+    profundidad: zc,
+  };
+}
+
+/** La dirección (normalizada) del rayo de un punto del cuadro (−1…1). */
+export function rayoDeVista(
+  vista: Vista3D, fovGrados: number, aspecto: number, nx: number, ny: number,
+): { x: number; y: number; z: number } {
+  const { f, r, arriba } = marcoDeVista(vista);
+  const t = Math.tan((fovGrados * Math.PI) / 360);
+  const d = {
+    x: f.x + r.x * nx * t * aspecto + arriba.x * ny * t,
+    y: f.y + r.y * nx * t * aspecto + arriba.y * ny * t,
+    z: f.z + r.z * nx * t * aspecto + arriba.z * ny * t,
+  };
+  const l = Math.hypot(d.x, d.y, d.z);
+  return { x: d.x / l, y: d.y / l, z: d.z / l };
+}
+
+function marcoDeVista(v: Vista3D) {
+  const n = (a: { x: number; y: number; z: number }) => {
+    const l = Math.hypot(a.x, a.y, a.z);
+    return { x: a.x / l, y: a.y / l, z: a.z / l };
+  };
+  const f = n({ x: v.targetX - v.posX, y: v.targetY - v.posY, z: v.targetZ - v.posZ });
+  // derecha = f × arriba del mundo; arriba de la cámara = derecha × f.
+  const r = n({ x: -f.z, y: 0, z: f.x });
+  const arriba = { x: r.y * f.z - r.z * f.y, y: r.z * f.x - r.x * f.z, z: r.x * f.y - r.y * f.x };
+  return { f, r, arriba };
+}
+
+/**
+ * Dónde choca un rayo que sale de adentro del local: con el piso, con el
+ * cielo raso o con un muro (el primero), y a qué distancia. Los muros de
+ * venta van de piso a cielo raso en el borde de `limites`.
+ */
+export function choqueEnElLocal(
+  o: { x: number; y: number; z: number }, d: { x: number; y: number; z: number },
+  limites: Caja, techo = ALTO_CIELO_RASO,
+): { que: "piso" | "techo" | "muro"; t: number } {
+  let t = Infinity, que: "piso" | "techo" | "muro" = "muro";
+  if (d.y > 1e-9) { t = (techo - o.y) / d.y; que = "techo"; }
+  else if (d.y < -1e-9) { t = -o.y / d.y; que = "piso"; }
+  for (const [eje, val] of [["x", limites.minX], ["x", limites.maxX], ["z", limites.minZ], ["z", limites.maxZ]] as const) {
+    const de = d[eje];
+    if (Math.abs(de) < 1e-12) continue;
+    const tm = (val - o[eje]) / de;
+    if (tm > 1e-9 && tm < t) { t = tm; que = "muro"; }
+  }
+  return { que, t };
+}
+
+// ─── El piso de la pantalla de venta ──────────────────────────────────────────
+
+/** La sombra al pie de los muebles: cuánto se oscurece el piso, cada cuánto
+ *  se mide y hasta dónde llega. */
+export const SOMBRA_AL_PIE = {
+  /** Metros por píxel del mapa: una sede de 40 × 30 m son 120 KB. */
+  paso: 0.1,
+  /** Hasta dónde se difumina desde el borde de la huella. */
+  alcance: 0.3,
+  /** Cuánto oscurece al pie (en el shader del piso). */
+  maximo: 0.3,
+} as const;
+
+/**
+ * El mapa de la sombra al pie de cada mueble, para el piso de la pantalla de
+ * venta: un valor por píxel de 10 cm, 255 bajo el mueble y a su pie, que se
+ * desvanece hasta 0 a 30 cm del borde. Es lo que hace que un mueble se APOYE
+ * en el piso y no flote sobre él («muebles apoyados en nada», dijo la
+ * crítica): la sombra de la direccional cae casi a plomo y no asoma.
+ *
+ * Las huellas son las de la caminata (`huella`, con la rotación), de los
+ * muebles que estorban (más altos que `ALTURA_PISABLE`). Cada mueble pinta
+ * sólo su caja agrandada, así que cuesta lo que miden los muebles y no la
+ * sede por la cantidad de muebles. Pura: se prueba sin DOM.
+ */
+export function sombraDeHuellas(
+  muebles: MuebleEnPlanta[], limites: Caja,
+): { datos: Uint8Array; ancho: number; alto: number; origen: { x: number; z: number }; paso: number } {
+  const { paso, alcance } = SOMBRA_AL_PIE;
+  const ancho = Math.max(1, Math.ceil((limites.maxX - limites.minX) / paso));
+  const alto = Math.max(1, Math.ceil((limites.maxZ - limites.minZ) / paso));
+  const datos = new Uint8Array(ancho * alto);
+  const origen = { x: limites.minX, z: limites.minZ };
+  for (const f of muebles) {
+    if ((f.h ?? Infinity) <= ALTURA_PISABLE) continue;
+    const c = huella(f);
+    const i0 = Math.max(0, Math.floor((c.minX - alcance - origen.x) / paso));
+    const i1 = Math.min(ancho - 1, Math.ceil((c.maxX + alcance - origen.x) / paso));
+    const j0 = Math.max(0, Math.floor((c.minZ - alcance - origen.z) / paso));
+    const j1 = Math.min(alto - 1, Math.ceil((c.maxZ + alcance - origen.z) / paso));
+    for (let j = j0; j <= j1; j++) {
+      const z = origen.z + (j + 0.5) * paso;
+      const dz = Math.max(0, c.minZ - z, z - c.maxZ);
+      for (let i = i0; i <= i1; i++) {
+        const x = origen.x + (i + 0.5) * paso;
+        const dx = Math.max(0, c.minX - x, x - c.maxX);
+        const d = Math.hypot(dx, dz);
+        if (d >= alcance) continue;
+        const v = Math.round(255 * Math.pow(1 - d / alcance, 1.5));
+        const k = j * ancho + i;
+        if (v > datos[k]) datos[k] = v;
+      }
+    }
+  }
+  return { datos, ancho, alto, origen, paso };
+}
+
+/** El valor del mapa en un punto del piso (0…1), con el mismo filtro
+ *  bilineal que hace la placa: lo usan las pruebas. */
+export function sombraEn(m: ReturnType<typeof sombraDeHuellas>, x: number, z: number): number {
+  const fx = (x - m.origen.x) / m.paso - 0.5, fz = (z - m.origen.z) / m.paso - 0.5;
+  const i = Math.floor(fx), j = Math.floor(fz), ax = fx - i, az = fz - j;
+  const v = (ii: number, jj: number) => {
+    const a = Math.max(0, Math.min(m.ancho - 1, ii)), b = Math.max(0, Math.min(m.alto - 1, jj));
+    return m.datos[b * m.ancho + a] / 255;
+  };
+  return (v(i, j) * (1 - ax) + v(i + 1, j) * ax) * (1 - az) + (v(i, j + 1) * (1 - ax) + v(i + 1, j + 1) * ax) * az;
+}
+
 // ─── La figura de escala ──────────────────────────────────────────────────────
 
 /**

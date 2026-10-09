@@ -4082,15 +4082,16 @@ no es la misma textura para todas (`muebles/texturas.ts`, puro, ejecutado en
 **3. La nevera: las rejillas se acomodan, en sesión.** La de 2 L no entraba parada en
 ninguna rejilla y la única salida era acostarla; en Colombia una 2 L acostada en la
 nevera de gaseosas casi no se ve — el mercaderista sube una rejilla. Y la de 1,5 L
-dejaba vacías las dos del medio, la zona caliente. Ahora el panel ofrece primero
-**«Acomodar las rejillas para este producto»** (`rejillasParaProducto`, puro): las
-reparte parejas entre la primera y el techo, tantas como entren con el producto más
-2 cm, nunca más que las que tiene la nevera, al ras de una ranura si así siguen
-entrando. La nevera DIBUJA esas rejillas (`NeveraReal` recibe `niveles`) y el producto
-apoya en ellas, con las mismas alturas; la cámara de venta las encuadra. Es de la
-sesión, como toda la prueba (`comoSePrueba.rejillas`): el plano no cambia. «Mostrarla
-acostada» queda como segunda opción, y el panel dice qué entrepaños quedan vacíos y por
-qué («Los entrepaños 2 y 3 quedan vacíos: 30 cm no entran en 27,5 cm»).
+dejaba vacías las dos del medio, la zona caliente. La cuenta es `rejillasParaProducto`
+(pura): las reparte parejas entre la primera y el techo, tantas como entren con el
+producto más 2 cm, nunca más que las que tiene la nevera, al ras de una ranura si así
+siguen entrando. La nevera DIBUJA esas rejillas (`NeveraReal` recibe `niveles`) y el
+producto apoya en ellas, con las mismas alturas; la cámara de venta las encuadra. Es de
+la sesión, como toda la prueba (`comoSePrueba.rejillas`): el plano no cambia. *Desde la
+tanda 1 (ver «nevera y envases», más abajo) ya no es un botón que se ofrece: las
+rejillas se acomodan SOLAS, y si el acomodo no queda bien hay «De fábrica» y «A
+mano».* El panel dice qué entrepaños quedan vacíos y por qué («Los entrepaños 2 y 3
+quedan vacíos: 30 cm no entran en 27,5 cm»).
 
 **4. La escena de venta.**
 
@@ -4442,6 +4443,123 @@ de la build nueva. Dos diferencias que no son de encuadre y hay que contar al mo
 la nevera nueva lleva las rejillas acomodadas (la de 2 L no entra parada en las de
 fábrica; la lámina vieja la estiraba), y en el robatope la punta vecina sale vacía en el
 «después» porque la reunión es de Diana y los vasos son de Alpina.
+
+### 2026-10-09 (tanda 1): nevera y envases — que se acomode sola, y que se pueda a mano
+
+La dueña aprobó el rumbo y las exigencias del revisor, con una regla para todo lo que
+se acomoda: **que se mejore sola, y si no lo hace bien, que haya cómo hacerlo a mano.**
+Ocho pasos; todo lo que se elige sigue siendo de la sesión (`comoSePrueba`), nunca del
+plano, y la pantalla del mercaderista y Vender no se tocaron.
+
+**1. Las rejillas de la nevera: automáticas, «De fábrica» o «A mano».** La cuenta es una
+sola, `rejillasDeLaPrueba` (`frentes.ts`, pura), y la usan el dibujo, el panel y la toma
+de venta. *Automáticas* (lo que hay sin tocar nada): se acomodan sólo si el producto
+parado no entra en alguna de fábrica Y acomodadas muestran más frentes; un producto que
+ya entra queda en las de fábrica. *De fábrica*: las del mueble, aunque no entre (el panel
+dice «No entra parada: 33 cm en 31 cm libres»). *A mano*: cuántas (de 1 a las de fábrica
+—no hasta las que entran: con más, el panel tiene que poder decir dónde no entra—) y cada
+rejilla se sube o se baja de a una ranura (`PARANTE.pasoRanura`, 2,5 cm) con 5 cm como
+mínimo entre dos; la de abajo y el techo no se mueven. «A mano» arranca con las que se
+ven, así que tocarlo no cambia nada hasta mover algo. Cambiar de modo o de cantidad
+vuelve «Dónde va» a «Toda la cara» (los índices de «Por entrepaño» son de las filas
+vigentes: el 3 de cinco no es el 3 de cuatro); mover una rejilla no (`ajusteDeRejillas`).
+La toma de venta re-encuadra cuando las rejillas llegan tarde (la foto carga después
+del primer encuadre), sin pisar un giro a mano, y la lámina lo dice en un renglón
+«Exhibición». Con las fotos de prueba: la 2 L sale parada en **4** rejillas automáticas
+(35 a 37,5 cm libres, 40 de frente) — el plan esperaba 3, pero `rejillasParaProducto`,
+que no se cambió, reparte las que entran y entran 4; la 1,5 L, 4 × 11 = 44. «Mostrarla
+acostada» sigue y acostada ignora la elección (las rejillas se acomodan para pararla).
+
+**2. La botella PET: hombros llenos y torno fiel.** El hombro de la 2 L salía con un
+anillo claro: el PET apenas teñido no caía en la cubeta de tono del líquido. Ahora la
+clasificación es por **cromaticidad** (`claseDePixel`: líquido si el color normalizado
+se aparta ≤ 0,06 del líquido y la luz está entre 0,3 y 1,8 veces la suya; claro, si es
+neutro), las filas que son etiqueta o tapa no se tocan (`filasDeEtiqueta`) y el claro
+del PET se llena con el líquido por distancia al borde. En la toma «De cerca» el hombro
+mide p95 de luminancia 115 (la prueba exige menos de 150 sobre una botella sintética) y
+mediana 54: L* 28 contra 27 del cuerpo, el mismo rojo. El perfil del torno es de **64 bandas** (era 24), cada una la
+mediana de sus tres filas centrales, y `filasAdaptadas` suma filas donde el semiancho
+salta más del 4 % o la cuerda del torno se sale de la silueta, hasta `TOPE_DE_BOTELLA`
+(2.200; la botella del frente pasa de 1.664 a 2.176). El torno no queda más ancho que la
+foto en más de 1 px. *Un costo que apareció al medir:* con 64 bandas la de abajo del
+vaso Finesse es el canto redondeado de la base y mandaba el vaso «casi recto» a
+dieciséis filas (1.280 triángulos por vaso del frente, +184 K en la punta). Ahora se
+prueba si la quebrada de cuatro filas —más una para el canto que se aparta— sigue al
+perfil: el Finesse queda en 576.
+
+**3. La espalda de los envases torneados.** La UV del frente es plana: la mitad de atrás
+recibía la foto espejada y a 70° se leía «esse» al revés. El torno del frente se arma
+en dos medias vueltas (`mitadDeTorno`: el frente de +X a −X por −Z, la espalda de −X a
++X por +Z, cada una con su UV y sin costura compartida) y la espalda lleva una textura
+propia (`espaldaDeEtiqueta`): los costados de la foto interpolados y la tabla del medio
+sin texto, suavizada en vertical. `materialDeEtiqueta` tiene **índices fijos**: 0 la foto,
+1 la tapa (o la foto, en la botella), 2 la espalda — los grupos de cada geometría
+apuntan a un material que existe en todos los envases. Lo de atrás («bajo») no lleva
+espalda: no se ve.
+
+**4. La bolsa almohadillada.** Se para en su fuelle: el lomo curvo, ~5 mm en los
+costados (`MEDIO_COSTADO`), un sello plano arriba (1,2 cm o el 7 % del alto) un 8 % más
+claro por color de vértice, y lo de atrás con la mitad de filas y columnas.
+
+**5. El cabezote de la nevera es un aviso luminoso.** Un recorte grande de la etiqueta
+—la banda de la marca, con un 15 % de aire, no la etiqueta entera: la de una 2 L es
+casi cuadrada y al alto del cabezote quedaba un sello chico en un aviso de 1,1 m—,
+retroiluminado y sólo en la cara del frente de la chapa (los otros cinco lados, color).
+
+**6. Las dos líneas del copete: bisectadas.** La causa no era el copete: era el
+**respaldo de la góndola vecina** (GON-01), una caja cerrada que desde el eje de la
+toma se ve exactamente de canto; con triángulos casi de perfil, swiftshader deja pasar
+la profundidad y dibuja dos líneas sobre lo que está detrás. Se encontró apagando piezas
+con interruptores de `localStorage` en una build de depuración (el árbol se restauró
+con `cp` y quedó sin rastro). La góndola ahora lleva un respaldo de **una cara**
+(`geometriaRespaldo(…, cerrado=false)`, `respaldoCerrado={false}` sólo en
+`GondolaReal`: la espina cierra atrás): el salto de luminancia en la línea pasó de 27,1
+a 0,0. La punta conserva la caja: con una cara sola se veía a través y `/taller`
+cambiaba un 4,2 %; así queda idéntico píxel a píxel (8 de 8). *Visto de paso, sin
+arreglar:* los parantes del extremo de GON-01 se meten 2,5 cm en la punta pegada.
+
+**7. El surtido del mismo proveedor, y la variación con un solo arte.** En la góndola y la
+punta (`TIPOS_CON_SURTIDO`), el panel ofrece «Más productos de <proveedor> en esta
+cara»: sólo artes de ESE proveedor, sacados del catálogo, sin buscador libre (la
+pantalla puede estar compartida), hasta 4 en total (`MAXIMO_DE_SURTIDO`). Cada producto
+va en un **bloque vertical** (`bloquesDeSurtido`): un bloque por vano, empezando por el
+que se ve primero desde el pasillo (+X), con cortes redondeados en los vanos; con menos
+vanos que productos, partes iguales. Cada producto llena su bloque en todos los
+entrepaños y ningún frente cae sobre un parante. `surtidoALaVista` filtra lo que no es
+del proveedor (y en la reunión de otro, nada). El copete, el cabezote, la toma y
+`/taller` siguen con el principal, y el pie de la lámina nombra los productos, sin
+período ni valor. **Con un solo arte** en una cara de más de 1,2 m (el «papel de
+colgadura»): en un 35 % de los entrepaños de cada vano falta una columna del frente
+(sólo con dos o más de fondo, y la de atrás está: nunca un hueco de punta a punta) y una
+caja de cada cuatro va girada ±1,5°, acotada para no cruzarse con la vecina. Con surtido
+no hay frente corrido.
+
+**8. El frío.** `vaRefrigerado(categoría, nombre)` (`producto.ts`, pura): sí yogur, kumis,
+queso, mantequilla, carne, embutido, pollo, pescado, helado, «refrigerado» o «lácteos
+frescos»; no larga vida, UHT, arequipe, en polvo — y esos le ganan a los «sí». El
+selector marca «frío» en la tarjeta y el panel avisa «Este producto va refrigerado:
+probalo en una nevera» cuando el mueble no es de frío (`avisoDeFrio`, con los cuatro
+muebles fríos de `FIXTURE_DEFS`). **Avisa, no prohíbe:** decide la dueña. Y un vaso sin
+ficha no se apila: sólo la ficha lo dice (`apilable = ficha?.apilable ?? lata`).
+
+**El costo, medido** (un cuadro de la toma «De frente», contando las llamadas de WebGL
+con la build de HEAD y la nueva sobre la misma base): nevera con la 2 L 710 → 750
+llamadas y 93 K → 317 K triángulos (en HEAD la 2 L no entraba parada; ahora son 40
+botellas de pie), punta con el Finesse 1.196 → 1.204 y 391 K → 406 K, góndola con la
+caja 986 → 966 y 180 K igual,
+robatope con la bolsa 1.188 igual y 219 K → 208 K. Sigue `frameloop="demand"` y sin
+postproceso.
+
+**Cómo se comprobó.** `probar-muebles` 162, `probar-arte` 38, `probar-propuesta` 20 (con el
+renglón «Exhibición» y el pie del surtido); `tsc` y `build` limpios. Cada guarda nueva se
+rompió a propósito con `mutar.py`: 27 mutaciones, 27 cayeron (tres sobrevivieron la
+primera vez —la UHT y la larga vida no ganaban contra nada; el rosa caía afuera por
+claro, no por color— y las pruebas se reforzaron), todo restaurado con `cp`. Las
+capturas (`scratchpad/realismo/capturas/r2-nevera-y-envases/final/`, nunca en el repo):
+la nevera automática, de fábrica, a mano y con la 1,5 L; la botella de cerca; el vaso a
+70° y la bolsa a 60°; la góndola de Kellogg's con un arte y con el surtido (Müsli,
+Barbie y Zucaritas, fotos de Open Food Facts); el aviso de frío en la punta y su
+ausencia en la nevera.
 
 ---
 

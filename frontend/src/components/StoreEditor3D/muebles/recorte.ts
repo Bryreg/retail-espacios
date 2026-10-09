@@ -54,7 +54,7 @@ export interface Recorte {
   relleno: number;
   /** 0 = silueta simétrica respecto del eje vertical. */
   simetria: number;
-  /** 24 semianchos de 0 a 1, de abajo hacia arriba: la silueta, para tornear
+  /** 64 semianchos de 0 a 1, de abajo hacia arriba: la silueta, para tornear
    *  una botella o un vaso. */
   perfil: number[];
   /** El color de la marca: el más presente entre los saturados. */
@@ -62,8 +62,10 @@ export interface Recorte {
   avisos: string[];
 }
 
-/** Cuántos semianchos lleva el perfil. */
-export const PUNTOS_DE_PERFIL = 24;
+/** Cuántos semianchos lleva el perfil. 64 y no 24: con bandas de 4 % del
+ *  alto, el hombro de una botella de 2 L cambia de ancho un 30 % dentro de
+ *  una banda, y el torno salía más ancho que la foto (ver `perfilDe`). */
+export const PUNTOS_DE_PERFIL = 64;
 
 /** Luminancia aproximada en 0–255, sobre sRGB tal cual: alcanza para decidir
  *  «claro» u «oscuro», que es lo único que se le pregunta. */
@@ -114,8 +116,16 @@ function tramosPorFila(m: Uint8Array, w: number, h: number) {
   return { l, r };
 }
 
-/** El perfil: 24 semianchos de abajo hacia arriba, sacados del tramo de cada
- *  banda de filas de la máscara, relativos al ancho de la caja. */
+/** El perfil: `PUNTOS_DE_PERFIL` semianchos de abajo hacia arriba, sacados
+ *  del tramo de cada banda de filas de la máscara, relativos al ancho de la
+ *  caja.
+ *
+ *  Cada banda da la MEDIANA de los anchos de sus tres filas centrales, y no
+ *  el máximo de la banda: con el máximo, en el hombro de la botella el torno
+ *  quedaba más ancho que la silueta de la foto en casi toda la banda, y la UV
+ *  plana terminaba mostrando el borde de la foto —el anillo claro de la
+ *  refracción— como dos bandas crema sobre cada botella. La mediana de tres
+ *  sigue ignorando un renglón suelto que cae en una muesca. */
 function perfilDe(m: Uint8Array, w: number, h: number): number[] {
   const { l, r } = tramosPorFila(m, w, h);
   let y0 = -1, y1 = -1, x0 = w, x1 = -1;
@@ -130,15 +140,17 @@ function perfilDe(m: Uint8Array, w: number, h: number): number[] {
   const bw = x1 - x0 + 1;
   const bh = y1 - y0 + 1;
   const fuera: number[] = [];
+  const anchoEn = (y: number) => (y >= y0 && y <= y1 && l[y] >= 0 ? r[y] - l[y] + 1 : 0);
   for (let k = 0; k < PUNTOS_DE_PERFIL; k++) {
-    // Banda k contando desde ABAJO; se toma el tramo más ancho de la banda,
-    // que es la silueta (un renglón suelto puede caer en una muesca).
-    const desde = y1 - Math.floor(((k + 1) * bh) / PUNTOS_DE_PERFIL) + 1;
-    const hasta = y1 - Math.floor((k * bh) / PUNTOS_DE_PERFIL);
-    let ancho = 0;
-    for (let y = Math.max(y0, desde); y <= Math.min(y1, hasta); y++) {
-      if (l[y] >= 0) ancho = Math.max(ancho, r[y] - l[y] + 1);
-    }
+    // Banda k contando desde ABAJO; la mediana de sus tres filas centrales.
+    const desde = Math.max(y0, y1 - Math.floor(((k + 1) * bh) / PUNTOS_DE_PERFIL) + 1);
+    const hasta = Math.min(y1, y1 - Math.floor((k * bh) / PUNTOS_DE_PERFIL));
+    const medio = Math.floor((desde + hasta) / 2);
+    const tres = [anchoEn(medio - 1), anchoEn(medio), anchoEn(medio + 1)]
+      // En una banda de una o dos filas, las de afuera no son de la banda.
+      .filter((_, i) => medio - 1 + i >= desde && medio - 1 + i <= hasta);
+    tres.sort((a, b) => a - b);
+    const ancho = tres.length ? tres[(tres.length - 1) >> 1] : 0;
     fuera.push(Math.min(1, ancho / bw));
   }
   return fuera;

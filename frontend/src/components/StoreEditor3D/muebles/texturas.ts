@@ -291,38 +291,76 @@ export function rectificarCaja(img: Imagen): CajaRectificada | null {
 
 // ─── La botella transparente ─────────────────────────────────────────────────
 
-export interface BotellaLlena extends Imagen {
-  /** El color del líquido, o `null` si no se ve uno (agua, una botella
-   *  opaca): entonces la imagen vuelve sin tocar. */
-  liquido: string | null;
+/** Qué es un píxel opaco de la botella, comparado con el líquido `L`.
+ *
+ *  Por CROMATICIDAD —(r, g, b)/(r + g + b)— y no por la cubeta de tono con que
+ *  se encuentra el líquido: el líquido [140, 38, 40] y la etiqueta rosa
+ *  [225, 70, 140] caen en la misma cubeta de tono, y con ella la letra blanca
+ *  de la etiqueta se teñía. En cromaticidad están a 0,14 uno del otro. */
+export function claseDePixel(r: number, g: number, b: number, L: readonly number[]): "liquido" | "claro" | "otro" {
+  const s = r + g + b, sL = L[0] + L[1] + L[2];
+  const l = luminancia(r, g, b), lL = luminancia(L[0], L[1], L[2]);
+  if (s > 0 && sL > 0) {
+    const d = Math.max(Math.abs(r / s - L[0] / sL), Math.abs(g / s - L[1] / sL), Math.abs(b / s - L[2] / sL));
+    if (d <= 0.06 && l >= 0.3 * lL && l <= 1.8 * lL) return "liquido";
+  }
+  if (esClaroNeutro(r, g, b) || (l >= 150 && Math.max(r, g, b) - Math.min(r, g, b) <= 60)) return "claro";
+  return "otro";
+}
+
+/** Las filas que son ETIQUETA (o tapa): más del 40 % de lo opaco no es ni el
+ *  líquido ni el claro del PET. Ésas no se tocan. */
+export function filasDeEtiqueta(img: Imagen, L: readonly number[]): boolean[] {
+  const { ancho: w, alto: h, rgba } = img;
+  const fuera: boolean[] = [];
+  for (let y = 0; y < h; y++) {
+    let n = 0, otros = 0;
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (rgba[i + 3] < 128) continue;
+      n++;
+      if (claseDePixel(rgba[i], rgba[i + 1], rgba[i + 2], L) === "otro") otros++;
+    }
+    fuera.push(n > 0 && otros > n * 0.4);
+  }
+  return fuera;
+}
+
+/** Cuántos píxeles hay hasta lo transparente (alfa < 128), con la distancia
+ *  de chaflán 3-4 (casi euclídea), hasta `tope`. 0 = transparente. */
+function distanciaAlBorde(img: Imagen, tope: number): Uint8Array {
+  const { ancho: w, alto: h, rgba } = img;
+  const T = tope * 3;
+  const d = new Uint16Array(w * h);
+  for (let i = 0; i < w * h; i++) d[i] = rgba[i * 4 + 3] < 128 ? 0 : T;
+  const ver = (i: number, j: number, k: number) => { if (d[j] + k < d[i]) d[i] = d[j] + k; };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    if (x > 0) ver(i, i - 1, 3);
+    if (y > 0) { ver(i, i - w, 3); if (x > 0) ver(i, i - w - 1, 4); if (x < w - 1) ver(i, i - w + 1, 4); }
+  }
+  for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) {
+    const i = y * w + x;
+    if (x < w - 1) ver(i, i + 1, 3);
+    if (y < h - 1) { ver(i, i + w, 3); if (x < w - 1) ver(i, i + w + 1, 4); if (x > 0) ver(i, i + w - 1, 4); }
+  }
+  const fuera = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) fuera[i] = Math.round(d[i] / 3);
+  return fuera;
 }
 
 /**
- * Tiñe con el color del líquido el PET por el que se veía el fondo.
+ * El color del líquido de una botella transparente, o `null` si no se ve uno
+ * (agua, una botella opaca).
  *
- * La foto de una gaseosa trae el tramo de arriba —sobre la etiqueta— casi
- * blanco: es el fondo del estudio visto a través del plástico. En el 3D eso
- * es pintura blanca, una botella de kumis; y acostada, la mitad blanca y la
- * mitad roja con el nivel en vertical. En la nevera, una botella se lee
- * LLENA.
- *
- * - El líquido se lee en el cuarto de abajo de la silueta: el color que más
- *   hay entre lo saturado. Si ahí no hay un color claro y parejo (agua, una
- *   botella blanca de shampoo) no se toca nada.
- * - Se tiñen los claros neutros de las filas «transparentes» (más de la mitad
- *   de la fila es claro neutro) y los del pie (el 8 % de abajo, donde los
- *   lóbulos de la base dejan ver el fondo). Las filas de la etiqueta —su
- *   letra blanca es menos de la mitad de la fila— quedan como están.
- * - El tinte conserva la luz de la foto (los brillos y las burbujas): es el
- *   color del líquido por la luminancia relativa, y lo muy brillante se
- *   mezcla un poco con blanco, que es el reflejo del plástico.
+ * El TONO que más hay en el cuarto de abajo de la silueta, entre lo saturado.
+ * Por tono y no por color exacto: el líquido es un degradé —más oscuro en los
+ * bordes del cuerpo, más claro donde le da la luz— y repartido en cubetas de
+ * color ninguna llegaba a ser mayoría. (Para CLASIFICAR los píxeles no sirve
+ * la cubeta: ver `claseDePixel`.)
  */
-export function llenarBotella(img: Imagen): BotellaLlena {
+export function liquidoDe(img: Imagen): number[] | null {
   const { ancho: w, alto: h, rgba } = img;
-  // El líquido: el TONO que más hay en el cuarto de abajo, entre lo saturado.
-  // Por tono y no por color exacto: el líquido es un degradé —más oscuro en
-  // los bordes del cuerpo, más claro donde le da la luz— y repartido en
-  // cubetas de color ninguna llegaba a ser mayoría.
   const tonos = Array.from({ length: 12 }, () => ({ n: 0, r: 0, g: 0, b: 0 }));
   let opacosAbajo = 0;
   for (let y = Math.round(h * 0.7); y < Math.round(h * 0.95); y++) {
@@ -343,12 +381,170 @@ export function llenarBotella(img: Imagen): BotellaLlena {
   let mejor: { n: number; r: number; g: number; b: number } | null = null;
   for (const e of tonos) if (e.n > 0 && (!mejor || e.n > mejor.n)) mejor = e;
   // Un líquido de color se ve en buena parte del cuarto de abajo.
-  if (!mejor || mejor.n < opacosAbajo * 0.35) return { ...img, rgba: new Uint8ClampedArray(rgba), liquido: null };
-  const L = [mejor.r / mejor.n, mejor.g / mejor.n, mejor.b / mejor.n];
+  if (!mejor || mejor.n < opacosAbajo * 0.35) return null;
+  return [mejor.r / mejor.n, mejor.g / mejor.n, mejor.b / mejor.n];
+}
+
+/** La franja de la ETIQUETA de un envase: qué filas (relativas al alto, desde
+ *  arriba) y qué columnas (relativas al ancho) ocupa. */
+export interface FranjaDeEtiqueta { desde: number; hasta: number; x0: number; x1: number }
+
+/**
+ * Dónde está la etiqueta en la foto: con un líquido, el tramo más largo de
+ * filas de ETIQUETA (`filasDeEtiqueta`, el mismo criterio que llena la
+ * botella; la tapa, que también cae ahí, es un tramo corto); sin líquido (un
+ * vaso, una caja), la franja del medio de siempre (34-66 %). Las columnas son
+ * las de la silueta en esas filas: el cabezote recorta ahí, sin el PET de los
+ * costados.
+ */
+export function franjaDeEtiqueta(img: Imagen, liquido: readonly number[] | null): FranjaDeEtiqueta {
+  const { ancho: w, alto: h, rgba } = img;
+  let desde = Math.round(h * 0.34), hasta = Math.round(h * 0.66);
+  if (liquido) {
+    const filas = filasDeEtiqueta(img, liquido);
+    // Un hueco de una o dos filas (un renglón blanco de la etiqueta) no corta
+    // el tramo.
+    const hueco = Math.max(1, Math.round(h * 0.01));
+    let mejor: [number, number] | null = null, inicio = -1, fallas = 0, ultimo = -1;
+    for (let y = 0; y <= h; y++) {
+      const si = y < h && filas[y];
+      if (si) { if (inicio < 0) inicio = y; ultimo = y; fallas = 0; continue; }
+      if (inicio >= 0 && (++fallas > hueco || y === h)) {
+        if (!mejor || ultimo - inicio > mejor[1] - mejor[0]) mejor = [inicio, ultimo + 1];
+        inicio = -1; fallas = 0;
+      }
+    }
+    if (mejor && mejor[1] - mejor[0] >= h * 0.05) [desde, hasta] = mejor;
+    // Dentro de la etiqueta, la banda donde está la MARCA: la de más letra
+    // clara (en una gaseosa, «MANZANA POSTOBÓN» en blanco sobre el rosa). La
+    // etiqueta entera de una 2 L es casi cuadrada, y al alto del cabezote
+    // quedaba un sello de 7 cm en un aviso de 1,1 m. Si ninguna banda se
+    // destaca (letra pareja, o sin letra clara), va la etiqueta entera.
+    const n = hasta - desde, k = Math.max(Math.round(n * 0.45), Math.round(h * 0.05));
+    if (k < n) {
+      const claros: number[] = [];
+      for (let y = desde; y < hasta; y++) {
+        let c = 0, o = 0;
+        for (let x = 0; x < w; x++) {
+          const i = (y * w + x) * 4;
+          if (rgba[i + 3] < 128) continue;
+          o++;
+          if (claseDePixel(rgba[i], rgba[i + 1], rgba[i + 2], liquido) === "claro") c++;
+        }
+        claros.push(o ? c / o : 0);
+      }
+      const total = claros.reduce((a, b) => a + b, 0);
+      let suma = claros.slice(0, k).reduce((a, b) => a + b, 0), mejorSuma = suma, inicio = 0;
+      for (let y = k; y < n; y++) {
+        suma += claros[y] - claros[y - k];
+        if (suma > mejorSuma) { mejorSuma = suma; inicio = y - k + 1; }
+      }
+      if (total > 0 && mejorSuma / k >= 1.3 * (total / n)) {
+        // Con aire arriba y abajo (un 15 % de la banda, sin salir de la
+        // etiqueta): la letra al ras del corte se leía mordida.
+        const aire = Math.round(k * 0.15);
+        const d0 = desde;
+        desde = Math.max(d0, d0 + inicio - aire);
+        hasta = Math.min(d0 + n, d0 + inicio + k + aire);
+      }
+    }
+  }
+  let x0 = w, x1 = -1;
+  for (let y = desde; y < hasta; y++) {
+    for (let x = 0; x < w; x++) if (rgba[(y * w + x) * 4 + 3] >= 128) { if (x < x0) x0 = x; if (x > x1) x1 = x; }
+  }
+  if (x1 < x0) { x0 = 0; x1 = w - 1; }
+  return { desde: desde / h, hasta: hasta / h, x0: x0 / w, x1: (x1 + 1) / w };
+}
+
+export interface BotellaLlena extends Imagen {
+  /** El color del líquido, o `null` si no se ve uno (agua, una botella
+   *  opaca): entonces la imagen vuelve sin tocar. */
+  liquido: string | null;
+}
+
+/**
+ * Tiñe con el color del líquido el PET por el que se veía el fondo.
+ *
+ * La foto de una gaseosa trae el tramo de arriba —sobre la etiqueta— casi
+ * blanco: es el fondo del estudio visto a través del plástico. En el 3D eso
+ * es pintura blanca, una botella de kumis; y acostada, la mitad blanca y la
+ * mitad roja con el nivel en vertical. En la nevera, una botella se lee
+ * LLENA.
+ *
+ * - El líquido se lee en el cuarto de abajo de la silueta: el color que más
+ *   hay entre lo saturado. Si ahí no hay un color claro y parejo (agua, una
+ *   botella blanca de shampoo) no se toca nada.
+ * - Cada píxel se clasifica por cromaticidad (`claseDePixel`): como el
+ *   líquido, claro (el PET con el fondo detrás) u otro. Una fila es ETIQUETA
+ *   si «otro» pasa del 40 % de lo opaco (la tapa naranja también cae ahí) y
+ *   queda como está.
+ * - En las demás se tiñe TODO lo claro dentro de la silueta, el anillo del
+ *   borde incluido. Antes se decidía por fila («transparente» si más de la
+ *   mitad era claro neutro), y en el hombro la fila mezcla líquido oscuro con
+ *   el anillo claro de la refracción: no contaba, y el anillo quedaba pintado
+ *   como dos bandas crema, un arnés sobre cada botella de 2 L.
+ * - En los 3 px del borde el líquido va un 20 % más oscuro (la pared del PET
+ *   vista de canto), y lo de afuera de la silueta —el sangrado, que se ve si
+ *   el torno queda un pelo más ancho que la foto— también.
+ * - Un reflejo vertical de 3 px, al 30 % de blanco en el centro, a un cuarto
+ *   del ancho de la silueta: el brillo que el anillo pretendía ser.
+ * - El pie (el 8 % de abajo, donde los lóbulos de la base dejan ver el
+ *   fondo) queda como antes: sus claros neutros se tiñen.
+ * - El tinte conserva la luz de la foto (las burbujas): es el color del
+ *   líquido por la luminancia relativa.
+ */
+export function llenarBotella(img: Imagen): BotellaLlena {
+  const { ancho: w, alto: h, rgba } = img;
+  const L = liquidoDe(img);
+  if (!L) return { ...img, rgba: new Uint8ClampedArray(rgba), liquido: null };
 
   const p = new Uint8ClampedArray(rgba);
   const pie = Math.round(h * 0.92);
-  for (let y = 0; y < h; y++) {
+  const etiqueta = filasDeEtiqueta(img, L);
+  // Lo que está a 3 px o menos de lo transparente: la pared del PET de canto.
+  const borde = distanciaAlBorde(img, 4);
+  const tinte = (i: number, k: number, oscuro: number, brillo: number) => {
+    for (let c = 0; c < 3; c++) p[i + c] = Math.round(L[c] * k * oscuro * (1 - brillo) + 255 * brillo);
+  };
+  for (let y = 0; y < pie; y++) {
+    // Las filas de ETIQUETA (y la tapa, que también cae ahí) quedan como
+    // están: su letra blanca no es PET.
+    if (etiqueta[y]) continue;
+    let l = -1, r = -1;
+    for (let x = 0; x < w; x++) if (rgba[(y * w + x) * 4 + 3] >= 128) { if (l < 0) l = x; r = x; }
+    if (l < 0) continue;
+    // El reflejo del PET: una franja vertical de 3 px a un cuarto del ancho
+    // de la silueta, siempre del mismo lado (la luz de la tienda no se mueve
+    // con cada botella).
+    const xBrillo = l + (r - l) * 0.25;
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const r0 = rgba[i], g0 = rgba[i + 1], b0 = rgba[i + 2];
+      const cerca = borde[y * w + x];
+      const adentro = rgba[i + 3] >= 128;
+      const clase = adentro ? claseDePixel(r0, g0, b0, L) : "afuera";
+      // Lo de afuera de la silueta es el sangrado del anillo claro: si el
+      // torno queda un pelo más ancho que la foto es lo que se ve, así que
+      // también va del color del líquido, oscuro como la pared.
+      if (clase === "otro") continue;
+      const oscuro = clase === "afuera" || cerca <= 3 ? 0.8 : 1;
+      const d = Math.abs(x - xBrillo);
+      const brillo = clase === "afuera" ? 0 : d <= 0.5 ? 0.3 : d <= 1.5 ? 0.15 : 0;
+      if (clase === "liquido") {
+        // El líquido de la foto se queda, con la pared y el reflejo encima.
+        if (oscuro === 1 && brillo === 0) continue;
+        for (let c = 0; c < 3; c++) p[i + c] = Math.round(rgba[i + c] * oscuro * (1 - brillo) + 255 * brillo);
+        continue;
+      }
+      // Claro (el PET con el fondo detrás, el anillo de refracción del borde)
+      // o afuera: el líquido a la luz de ESE píxel, como siempre.
+      const luz = clase === "afuera" ? 0.85 : luminancia(r0, g0, b0) / 235;
+      tinte(i, Math.min(1.35, Math.max(0.4, luz)), oscuro, brillo);
+    }
+  }
+  // El pie, como siempre: los lóbulos de la base dejan ver el fondo.
+  for (let y = pie; y < h; y++) {
     let enFila = 0, claros = 0;
     for (let x = 0; x < w; x++) {
       const i = (y * w + x) * 4;
@@ -358,7 +554,6 @@ export function llenarBotella(img: Imagen): BotellaLlena {
     }
     if (!enFila) continue;
     const transparente = claros > enFila * 0.5;
-    if (!transparente && y < pie) continue;
     for (let x = 0; x < w; x++) {
       const i = (y * w + x) * 4;
       if (rgba[i + 3] < 8) continue;
@@ -381,6 +576,119 @@ export function llenarBotella(img: Imagen): BotellaLlena {
     }
   }
   return { rgba: p, ancho: w, alto: h, liquido: hex(L[0], L[1], L[2]) };
+}
+
+// ─── La espalda del envase torneado ──────────────────────────────────────────
+
+/** El papel de la tabla nutricional y sus renglones. */
+const PAPEL = [238, 235, 227] as const;
+const RENGLON = [176, 172, 165] as const;
+
+/**
+ * La ESPALDA de un vaso, una lata, un frasco o una botella: lo que se ve al
+ * girar más de 90° alrededor del envase.
+ *
+ * La UV del frente es plana (la foto proyectada desde −Z), así que la mitad de
+ * atrás recibía la misma foto espejada: a ~70° la columna de la punta repetía
+ * «esse», «nesse» y las fresas comprimidas. Pero tampoco hay foto de atrás.
+ * Se arma con lo que se sabe sin inventar nada:
+ *
+ * - Por fila, el color de los 3 px de adentro del borde de la silueta, a la
+ *   izquierda y a la derecha, interpolado a lo ancho: la columna 0 empalma
+ *   con el costado +X del frente y la última con el −X (la UV de la espalda
+ *   va de 0 a 1 rodeando por detrás, ver `geometriaDeEtiqueta`). En el medio,
+ *   esos colores suavizados a lo alto, para que no quede rayada.
+ * - En el 35 % central del alto, y lejos de los costados, una banda blanco
+ *   roto con renglones grises de 1 px: la tabla nutricional, SIN texto ni
+ *   números (nada que el proveedor no haya puesto). `banda`, si viene, dice
+ *   en qué filas puede ir —en la botella, sólo sobre la etiqueta: sobre el
+ *   líquido sería un parche blanco—.
+ * - Las filas de arriba del 97 % y de abajo del 7 % se copian del frente: ahí
+ *   muestrean las tapas del torno de la botella, que también tienen espalda.
+ *
+ * Pura: entra el RGBA del frente CON su alfa (la silueta) y sale uno opaco.
+ */
+export function espaldaDeEtiqueta(img: Imagen, banda?: readonly boolean[]): Imagen {
+  const { ancho: w, alto: h, rgba } = img;
+  const p = new Uint8ClampedArray(w * h * 4);
+  const arriba = Math.floor(h * 0.03), abajo = Math.ceil(h * 0.93);
+  const desdeBanda = Math.round(h * 0.325), hastaBanda = Math.round(h * 0.675);
+  const promedio = (y: number, x0: number, x1: number) => {
+    const c = [0, 0, 0];
+    let n = 0;
+    for (let x = Math.max(0, x0); x <= Math.min(w - 1, x1); x++) {
+      const i = (y * w + x) * 4;
+      c[0] += rgba[i]; c[1] += rgba[i + 1]; c[2] += rgba[i + 2]; n++;
+    }
+    return n ? c.map((v) => v / n) : c;
+  };
+  // Los colores de borde de cada fila; una fila sin silueta toma los de la
+  // más cercana que tenga.
+  const bordes: ({ izq: number[]; der: number[] } | null)[] = [];
+  for (let y = 0; y < h; y++) {
+    let l = -1, r = -1;
+    for (let x = 0; x < w; x++) if (rgba[(y * w + x) * 4 + 3] >= 128) { if (l < 0) l = x; r = x; }
+    bordes.push(l < 0 ? null : { izq: promedio(y, l, l + 2), der: promedio(y, r - 2, r) });
+  }
+  for (let y = 0; y < h; y++) {
+    if (bordes[y]) continue;
+    for (let d = 1; d < h; d++) {
+      const b = bordes[y - d] ?? bordes[y + d];
+      if (b) { bordes[y] = b; break; }
+    }
+  }
+  // Los mismos colores, suavizados a lo alto (±3 % del alto): fila por fila,
+  // una fresa o una gota en el borde de la foto dejaban la espalda rayada
+  // como un código de barras. La costura (las columnas de las puntas) usa los
+  // de la fila tal cual —empalma con el frente— y el medio, los suaves.
+  const radio = Math.max(2, Math.round(h * 0.03));
+  const suaves = bordes.map((_, y) => {
+    const izq = [0, 0, 0], der = [0, 0, 0];
+    let n = 0;
+    for (let k = Math.max(0, y - radio); k <= Math.min(h - 1, y + radio); k++) {
+      const b = bordes[k];
+      if (!b) continue;
+      for (let c = 0; c < 3; c++) { izq[c] += b.izq[c]; der[c] += b.der[c]; }
+      n++;
+    }
+    return n ? { izq: izq.map((v) => v / n), der: der.map((v) => v / n) } : null;
+  });
+  for (let y = 0; y < h; y++) {
+    const copia = y < arriba || y >= abajo;
+    const b = bordes[y], m = suaves[y];
+    const conBanda = !copia && y >= desdeBanda && y < hastaBanda && (!banda || banda[y]);
+    // Un renglón cada 6 px, y el primero y el último de la tabla.
+    const renglon = conBanda && ((y - desdeBanda) % 6 === 0 || y === hastaBanda - 1);
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (copia || !b) {
+        p[i] = rgba[i]; p[i + 1] = rgba[i + 1]; p[i + 2] = rgba[i + 2]; p[i + 3] = 255;
+        continue;
+      }
+      const u = w > 1 ? x / (w - 1) : 0;
+      // De la punta (el color de la fila) al suave en el primer 15 %, y del
+      // suave de un lado al del otro en el medio.
+      const izq = m ? b.izq.map((v, c) => v + (m.izq[c] - v) * Math.min(1, u / 0.15)) : b.izq;
+      const der = m ? b.der.map((v, c) => v + (m.der[c] - v) * Math.min(1, (1 - u) / 0.15)) : b.der;
+      const t = Math.max(0, Math.min(1, (u - 0.15) / 0.7));
+      const pIzq = u < 0.15 ? 1 : 1 - t, pDer = u > 0.85 ? 1 : t;
+      const suma = pIzq + pDer || 1;
+      let c0 = (izq[0] * pIzq + der[0] * pDer) / suma;
+      let c1 = (izq[1] * pIzq + der[1] * pDer) / suma;
+      let c2 = (izq[2] * pIzq + der[2] * pDer) / suma;
+      if (conBanda) {
+        // La tabla, del 30 al 70 % de la espalda (lejos de los costados, que
+        // tienen que empalmar con el frente), con 4 % de borde suave.
+        const k = Math.max(0, Math.min(1, (Math.min(u - 0.3, 0.7 - u)) / 0.04));
+        if (k > 0) {
+          const t = renglon ? RENGLON : PAPEL;
+          c0 += (t[0] - c0) * k; c1 += (t[1] - c1) * k; c2 += (t[2] - c2) * k;
+        }
+      }
+      p[i] = Math.round(c0); p[i + 1] = Math.round(c1); p[i + 2] = Math.round(c2); p[i + 3] = 255;
+    }
+  }
+  return { rgba: p, ancho: w, alto: h };
 }
 
 // ─── La tapa del vaso ─────────────────────────────────────────────────────────

@@ -314,6 +314,36 @@ def test_la_ficha_es_una_lista_cerrada_con_topes(client, admin):
     assert _fichas_en_la_base() == 0
 
 
+def test_el_precio_al_publico_es_opcional_y_va_y_vuelve(client, admin):
+    """El hablador del porta-precios: muestra precio sólo si alguien lo cargó.
+    Sin cargar, la ficha lo trae en null y el hablador va sin cifra."""
+    prov = _proveedor(client, admin)
+    arte = _subir(client, admin, prov, forma="vaso", alto_mm="90").json()["id"]
+    assert client.get("/api/catalogo/", headers=admin).json()[0]["ficha"]["precio_publico"] is None
+    r = client.put(f"/api/catalogo/{arte}/ficha", json={**FICHA_VASO, "precio_publico": 4900}, headers=admin)
+    assert r.status_code == 200, r.text
+    assert r.json()["ficha"]["precio_publico"] == 4900
+    assert client.get("/api/catalogo/", headers=admin).json()[0]["ficha"]["precio_publico"] == 4900
+    # Borrarlo es mandarlo vacío: vuelve a null, no a cero.
+    r = client.put(f"/api/catalogo/{arte}/ficha", json=FICHA_VASO, headers=admin)
+    assert r.json()["ficha"]["precio_publico"] is None
+    # En el alta, en el mismo formulario.
+    r = _subir(client, admin, prov, nombre="Otro", forma="caja", alto_mm="200", precio_publico="12500")
+    assert r.status_code == 201, r.text
+    assert r.json()["ficha"]["precio_publico"] == 12500
+
+
+def test_el_precio_tiene_topes(client, admin):
+    prov = _proveedor(client, admin)
+    arte = _subir(client, admin, prov).json()["id"]
+    for malo in (0, 20_000_000, -100):
+        r = client.put(f"/api/catalogo/{arte}/ficha", json={**FICHA_VASO, "precio_publico": malo}, headers=admin)
+        assert r.status_code == 422, (malo, r.text)
+        r = _subir(client, admin, prov, nombre="Malo", precio_publico=str(malo))
+        assert r.status_code == 422, (malo, r.text)
+    assert _fichas_en_la_base() == 0
+
+
 def test_borrar_el_arte_borra_su_ficha(client, admin):
     prov = _proveedor(client, admin)
     arte = _subir(client, admin, prov, forma="caja", alto_mm="270").json()["id"]

@@ -90,6 +90,137 @@ export function geometriaEntrepano(ancho: number, fondo: number): THREE.BufferGe
   });
 }
 
+/** La sombra de las uniones del entrepaño (pantalla de venta). */
+export const UNION_DE_ENTREPANO = {
+  /** Contra el panel de fondo: el gancho y el arranque del plano de apoyo. */
+  fondo: 0.72,
+  /** Hasta dónde llega desde el fondo: a 5 cm ya es el entrepaño limpio. */
+  alcanceFondo: 0.05,
+  /** Contra el parante, en cada punta del ancho. */
+  parante: 0.85,
+  alcanceParante: 0.03,
+} as const;
+
+/** La sombra de las uniones en un punto del entrepaño (coordenadas de la
+ *  geometría: X a lo ancho, centrado; Z de 0 —el fondo— a −fondo). */
+export function sombraDeUnion(x: number, z: number, ancho: number): number {
+  const u = UNION_DE_ENTREPANO;
+  const t = ENTREPANO.espesor;
+  const desdeElFondo = Math.max(0, Math.min(1, (-z - t) / u.alcanceFondo));
+  const desdeLaPunta = Math.max(0, Math.min(1, (ancho / 2 - Math.abs(x)) / u.alcanceParante));
+  return (u.fondo + (1 - u.fondo) * desdeElFondo) * (u.parante + (1 - u.parante) * desdeLaPunta);
+}
+
+/**
+ * El entrepaño de la pantalla de venta: la misma sección, con la sombra de
+ * las uniones como COLOR DE VÉRTICE (sin una malla más). Oscuro contra el
+ * panel de fondo —el gancho y los primeros 5 cm del plano de apoyo: 0,72— y
+ * contra el parante —los 3 cm de cada punta: 0,85—. Es lo que le faltaba al
+ * mueble para dejar de verse como una maqueta de SketchUp: en una góndola de
+ * verdad cada encuentro de dos chapas es más oscuro que la chapa.
+ *
+ * Para que el color tenga dónde cambiar hacen falta vértices: la sección suma
+ * un punto a 5 cm del fondo (arriba y abajo), y a lo ancho van tres tramos
+ * —3 cm, el resto, 3 cm— sin tapas por dentro (`ExtrudeGeometry` no admite
+ * estaciones desiguales). Sin el bisel de medio milímetro de la del editor:
+ * en venta el brillo del filo lo da la luz de las luminarias. Va aparte de
+ * `geometriaEntrepano` a propósito: la del editor no cambia ni un vértice, y
+ * `/taller` sigue idéntico píxel a píxel. Se usa SÓLO con `pintadoAO`
+ * (`vertexColors`).
+ */
+export function geometriaEntrepanoDeVenta(ancho: number, fondo: number): THREE.BufferGeometry {
+  const t = ENTREPANO.espesor;
+  const labio = ENTREPANO.labio;
+  const gancho = ENTREPANO.gancho;
+  const a5 = Math.min(fondo - t * 3, t + UNION_DE_ENTREPANO.alcanceFondo);
+  const firma = `entrepano-venta:${ancho.toFixed(4)}:${fondo.toFixed(4)}`;
+
+  return cacheada(firma, () => {
+    const s = new THREE.Shape();
+    s.moveTo(0, -t);
+    s.lineTo(a5, -t);
+    s.lineTo(fondo, -t);
+    s.lineTo(fondo, labio);
+    s.lineTo(fondo - t, labio);
+    s.lineTo(fondo - t, 0);
+    s.lineTo(a5, 0);
+    s.lineTo(t, 0);
+    s.lineTo(t, gancho);
+    s.lineTo(0, gancho);
+    s.closePath();
+
+    const borde = Math.min(UNION_DE_ENTREPANO.alcanceParante, ancho / 4);
+    const tramos: [number, number][] = [[0, borde], [borde, ancho - borde], [ancho - borde, ancho]];
+    const partes: THREE.BufferGeometry[] = [];
+    for (const [desde, hasta] of tramos) {
+      const lado = new THREE.ExtrudeGeometry(s, { depth: hasta - desde, bevelEnabled: false });
+      // Sólo los costados (grupo 1); las tapas van aparte, nada más que en
+      // las dos puntas.
+      const g1 = lado.groups.find((g) => g.materialIndex === 1)!;
+      const pos = lado.getAttribute("position") as THREE.BufferAttribute;
+      const solo = new THREE.BufferGeometry();
+      solo.setAttribute("position", new THREE.Float32BufferAttribute(
+        (pos.array as Float32Array).slice(g1.start * 3, (g1.start + g1.count) * 3), 3));
+      solo.translate(0, 0, desde);
+      partes.push(solo);
+      lado.dispose();
+    }
+    for (const [z, mira] of [[0, -1], [ancho, 1]] as const) {
+      const tapa = new THREE.ShapeGeometry(s).toNonIndexed();
+      if (mira < 0) {
+        // La tapa de la punta de arriba mira a +Z; la de abajo, al revés.
+        const p = tapa.getAttribute("position") as THREE.BufferAttribute;
+        for (let i = 0; i < p.count; i += 3) {
+          const x = p.getX(i + 1), y = p.getY(i + 1);
+          p.setXY(i + 1, p.getX(i + 2), p.getY(i + 2));
+          p.setXY(i + 2, x, y);
+        }
+      }
+      tapa.deleteAttribute("normal");
+      tapa.deleteAttribute("uv");
+      tapa.translate(0, 0, z);
+      partes.push(tapa);
+    }
+    const g = mergeGeometries(partes)!;
+    partes.forEach((p) => p.dispose());
+    g.translate(0, 0, -ancho / 2);
+    g.rotateY(Math.PI / 2);
+    g.computeVertexNormals();
+    const p = g.getAttribute("position") as THREE.BufferAttribute;
+    const color = new Float32Array(p.count * 3);
+    for (let i = 0; i < p.count; i++) {
+      const k = sombraDeUnion(p.getX(i), p.getZ(i), ancho);
+      color[i * 3] = color[i * 3 + 1] = color[i * 3 + 2] = k;
+    }
+    g.setAttribute("color", new THREE.BufferAttribute(color, 3));
+    return g;
+  });
+}
+
+/** La sombra de un listón del panel de fondo según dónde queda respecto de
+ *  los entrepaños (`niveles`, en las mismas coordenadas que `y`): el listón
+ *  justo DEBAJO de un entrepaño queda en su sombra (0,72), el siguiente a
+ *  medias (0,86), y el de justo ENCIMA, en la unión (0,82). */
+export const SOMBRA_DE_LISTON = { debajo: 0.72, siguiente: 0.86, encima: 0.82 } as const;
+export function sombraDeListon(y: number, altoDeLama: number, paso: number, niveles: readonly number[]): number {
+  let k = 1;
+  const arriba = y + altoDeLama / 2;  // el canto de arriba del listón
+  const abajo = y - altoDeLama / 2;
+  for (const n of niveles) {
+    if (arriba <= n + 1e-6) {
+      const d = n - arriba;
+      if (d < paso) k = Math.min(k, SOMBRA_DE_LISTON.debajo);
+      else if (d < paso * 2) k = Math.min(k, SOMBRA_DE_LISTON.siguiente);
+    } else if (abajo >= n - 1e-6) {
+      if (abajo - n < paso) k = Math.min(k, SOMBRA_DE_LISTON.encima);
+    } else {
+      // El entrepaño cruza el listón: lo que queda a la vista es la unión.
+      k = Math.min(k, SOMBRA_DE_LISTON.encima);
+    }
+  }
+  return k;
+}
+
 /**
  * El parante: un perfil en C, extruido en altura.
  *
@@ -160,6 +291,16 @@ export function geometriaPortaPrecios(ancho: number, alto: number): THREE.Buffer
     g.translate(0, 0, -ancho / 2);
     g.rotateY(-Math.PI / 2);
     g.computeVertexNormals();
+    // La UV de la tira, para los habladores genéricos de la pantalla de
+    // venta (`pintarHabladoresGenericos`): u en METROS a lo ancho, creciendo
+    // hacia la derecha de quien mira desde el pasillo (−X), y v de 0 a 1 a lo
+    // alto. La de `ExtrudeGeometry` era el alto y el fondo de la sección, en
+    // metros: con un mapa, la etiqueta salía estirada a lo largo. Sin mapa
+    // (el editor, el taller) no cambia nada.
+    const p = g.getAttribute("position") as THREE.BufferAttribute;
+    const uv = g.getAttribute("uv") as THREE.BufferAttribute;
+    for (let i = 0; i < p.count; i++) uv.setXY(i, ancho / 2 - p.getX(i), p.getY(i) / alto);
+    uv.needsUpdate = true;
     return g;
   });
 }
@@ -207,11 +348,35 @@ export function geometriaLama(ancho: number, alto: number): THREE.BufferGeometry
 }
 
 /** El respaldo del panel: la chapa lisa que se ve por las ranuras. Va oscura
- *  porque lo que se ve ahí es sombra, no chapa iluminada. */
-export function geometriaRespaldo(ancho: number, alto: number): THREE.BufferGeometry {
-  return cacheada(`respaldo:${ancho.toFixed(4)}:${alto.toFixed(4)}`, () => {
-    const g = new THREE.BoxGeometry(ancho, alto, PANEL_FONDO.espesor);
-    g.translate(0, 0, -PANEL_FONDO.espesor / 2);
+ *  porque lo que se ve ahí es sombra, no chapa iluminada.
+ *
+ *  `cerrado` (la punta, el robatope): una caja de 4 mm, porque de atrás no
+ *  hay nada más y su cara de atrás ES el lomo del mueble. Sin cerrar (la
+ *  góndola, que tiene la espina detrás): UNA cara, la que mira al pasillo
+ *  (−Z), en el plano de la cara de adelante de esa caja.
+ *
+ *  Por qué en la góndola no va la caja: su cara de atrás, contra la espina,
+ *  no se ve nunca… salvo de canto. Desde el eje de la góndola —la toma «De
+ *  frente» de la punta que tiene pegada en la cabecera— queda casi paralela a
+ *  la mirada: un triángulo de 2-3 px de ancho y 3,6 m de largo, con la
+ *  profundidad interpolada de punta a punta. En swiftshader su borde cercano
+ *  pasaba la prueba de profundidad A TRAVÉS de la punta, y se veían dos líneas
+ *  verticales de 1 px —una por cara de la góndola, separadas lo que mide la
+ *  espina— cruzando el copete por «finesse» y bajando entre los vasos. Lo
+ *  encontró la bisección de la ronda 2 (ver ESTADO.md): sin este respaldo
+ *  las líneas no están; sin la espina, los parantes de punta, el remate, el
+ *  zócalo, las lamas, la grilla o las sombras, siguen. Una cara sola no se
+ *  dibuja de espaldas: desde el eje no hay nada que interpolar. */
+export function geometriaRespaldo(ancho: number, alto: number, cerrado = true): THREE.BufferGeometry {
+  return cacheada(`respaldo:${ancho.toFixed(4)}:${alto.toFixed(4)}:${cerrado ? "caja" : "cara"}`, () => {
+    if (cerrado) {
+      const g = new THREE.BoxGeometry(ancho, alto, PANEL_FONDO.espesor);
+      g.translate(0, 0, -PANEL_FONDO.espesor / 2);
+      return g;
+    }
+    const g = new THREE.PlaneGeometry(ancho, alto);
+    g.rotateY(Math.PI);
+    g.translate(0, 0, -PANEL_FONDO.espesor);
     return g;
   });
 }
@@ -425,18 +590,23 @@ export function geometriaDeEmpaque(
   forma: "caja" | "botella" | "lata" | "bolsa" | "pieza" | "bandeja",
   ancho: number, alto: number, fondo: number,
   acostado = false,
+  /** La de la pantalla de venta: con la banda de la etiqueta, más clara, como
+   *  color de vértice (ver `BANDA_DE_ETIQUETA`). Aparte de la del editor, que
+   *  no cambia ni un vértice. */
+  conBanda = false,
 ): THREE.BufferGeometry {
-  const firma = `empaque:${forma}:${ancho.toFixed(4)}:${alto.toFixed(4)}:${fondo.toFixed(4)}:${acostado}`;
+  const firma = `empaque:${forma}:${ancho.toFixed(4)}:${alto.toFixed(4)}:${fondo.toFixed(4)}:${acostado}${conBanda ? ":banda" : ""}`;
 
   return cacheada(firma, () => {
     // Un envase acostado se dibuja DE PIE y se gira, no se achata: una botella
     // tumbada sigue teniendo cuello, y con 9 cm de alto sale un disco.
     if (acostado && (forma === "botella" || forma === "lata")) {
-      const g = geometriaDeEmpaque(forma, alto, ancho, fondo).clone();
+      const g = geometriaDeEmpaque(forma, alto, ancho, fondo, false, conBanda).clone();
       g.rotateZ(Math.PI / 2);
       g.computeVertexNormals();
       return g;
     }
+    if (conBanda) return conBandaDeEtiqueta(forma, ancho, alto, fondo);
     const r = Math.min(ancho, fondo) / 2;
 
     if (forma === "botella") {
@@ -512,6 +682,60 @@ export function geometriaDeEmpaque(
   });
 }
 
+/**
+ * La banda de etiqueta del relleno neutro de la pantalla de venta: más clara
+ * en el medio del envase, como la etiqueta de un producto real, y un poco más
+ * oscura en la base y el hombro. Sin marca ni texto —sigue siendo relleno—,
+ * pero el lineal deja de ser una pared de bloques de un color.
+ */
+export const BANDA_DE_ETIQUETA = { clara: 1.12, borde: 0.94 } as const;
+
+/** El envase del relleno con la banda (venta). Mismas siluetas, con los
+ *  vértices que hacen falta para que el color cambie en la banda. */
+function conBandaDeEtiqueta(
+  forma: "caja" | "botella" | "lata" | "bolsa" | "pieza" | "bandeja",
+  ancho: number, alto: number, fondo: number,
+): THREE.BufferGeometry {
+  const { clara, borde } = BANDA_DE_ETIQUETA;
+  const r = Math.min(ancho, fondo) / 2;
+  let g: THREE.BufferGeometry;
+  /** La banda, por altura relativa del envase (0 abajo, 1 arriba). */
+  let banda: (f: number) => number = () => 1;
+  if (forma === "caja") {
+    // Dos tramos de alto, no cuatro: el color va del borde (base y tapa) a la
+    // banda clara en el medio, interpolado. Con cuatro eran 36 triángulos por
+    // caja; con dos, 20 (la caja lisa tiene 12). Es el envase más repetido de
+    // la tienda: en bolsa-4 se dibujan 3.540 por cuadro, contando la sombra,
+    // y con cuatro tramos sumaban 127 K triángulos.
+    g = new THREE.BoxGeometry(ancho, alto, fondo, 1, 2, 1);
+    banda = (f) => (f < 0.01 || f > 0.99 ? borde : clara);
+  } else if (forma === "botella" || forma === "lata") {
+    // El mismo perfil de `geometriaDeEmpaque`, con dos puntos más en el
+    // cuerpo: los bordes de la banda.
+    const p = forma === "botella"
+      ? [[0, 0], [0.92, 0], [1, 0.04], [1, 0.2], [1, 0.5], [1, 0.62], [0.96, 0.7], [0.72, 0.8],
+        [0.42, 0.86], [0.42, 0.93], [0.42 * 1.18, 0.94], [0.42 * 1.18, 1], [0, 1]]
+      : [[0, 0], [0.86, 0], [1, 0.06], [1, 0.3], [1, 0.7], [1, 0.94], [0.86, 1], [0, 1]];
+    const [b0, b1] = forma === "botella" ? [0.2, 0.5] : [0.3, 0.7];
+    g = new THREE.LatheGeometry(p.map(([x, y]) => new THREE.Vector2(r * x, alto * y)), 10);
+    g.translate(0, -alto / 2, 0);
+    g.computeVertexNormals();
+    banda = (f) => (f >= b0 - 1e-6 && f <= b1 + 1e-6 ? clara : borde);
+  } else {
+    g = geometriaDeEmpaque(forma, ancho, alto, fondo).clone();
+  }
+  g.computeBoundingBox();
+  const { min, max } = g.boundingBox!;
+  const pos = g.getAttribute("position") as THREE.BufferAttribute;
+  const color = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const k = banda((pos.getY(i) - min.y) / Math.max(1e-9, max.y - min.y));
+    color[i * 3] = color[i * 3 + 1] = color[i * 3 + 2] = k;
+  }
+  g.setAttribute("color", new THREE.BufferAttribute(color, 3));
+  return g;
+}
+
 /** Milímetros enteros: la firma del caché no puede depender del último bit. */
 const mm = (v: number) => Math.round(v * 1000);
 
@@ -539,74 +763,100 @@ function uvPlanar(g: THREE.BufferGeometry, ancho: number, alto: number): void {
 }
 
 /**
- * Una bolsa llena, parada: dos caras abombadas que se juntan en los cantos.
+ * Una bolsa llena, parada en su fuelle, con el sello termosellado arriba.
  *
- * La primera versión era una caja con el frente y el dorso inflados: los
- * costados quedaban como una losa, el lomo de un libro. Una bolsa de arroz
- * de verdad se afina a CERO en los costados —ahí está la costura—, tiene el
- * fondo apoyado (la base guarda espesor, si no se para en un filo) y arriba
- * un sello fino. El espesor es el producto de dos curvas:
+ * La segunda versión afinaba las dos caras a CERO en los costados con
+ * cos^0,4 —llena hasta casi el borde— y arrancaba la base en 0,72: de costado
+ * a 60° era una lámina de cantos rectos, una cartulina apoyada en el
+ * porta-precios. Una bolsa de arroz de 1 kg de verdad tiene el lomo curvo,
+ * los costados finitos pero con espesor (la costura y el plástico doblado),
+ * se para sobre el fuelle de abajo y se afina hacia un sello plano.
  *
- * - a lo ancho, cos(π·s/2)^0,4: lleno en el medio, cero en los costados;
- * - a lo alto, 0,72 + 0,28·sen(π·t) —lleno en la mitad— que se afina desde
- *   los dos tercios hasta el sello (el 7 % de arriba), donde queda en 6 %.
+ * El medio espesor de cada cara es fondo/2 · A(s) · B(t):
  *
- * El dorso es un poco más chato que el frente (90 %): la bolsa se apoya
- * contra la de atrás. La foto va planar en las dos caras y, con alfa
- * (`materialDeEtiqueta`), recorta la silueta de la foto.
+ * - A(s), a lo ancho (s de −1 a 1): e + (1 − e)·(1 − s²)^0,7, con `e` tal que
+ *   en los costados quedan ~5 mm entre las dos caras. El lomo es una curva.
+ * - B(t), a lo alto: la base guarda el 62 % (se para en el fuelle, no en un
+ *   filo), la panza llega a 1 al 35 % del alto —donde se asienta el arroz— y
+ *   desde ahí se afina hasta el sello.
+ * - El sello: una aleta PLANA de 1,2 cm (o el 7 % del alto, si es menos) y
+ *   3 mm de espesor, con su canto arriba (la tira que cose las dos caras), un
+ *   8 % más clara por color de vértice (el resto lleva 1: el material de la
+ *   bolsa prende `vertexColors` sólo para esto).
+ *
+ * Los costados, la base y el canto del sello se cosen con tiras de vértices
+ * PROPIOS, con la uv un 3 % adentro de la foto: la foto lleva alfa, y la
+ * columna del borde es transparente (se veía el hueco de la bolsa).
+ *
+ * El dorso es un 90 % del frente: la bolsa se apoya contra la de atrás. La
+ * foto va planar en las dos caras. «bajo» (lo de atrás de un entrepaño, que
+ * en una góndola de bolsas son cientos) va con la mitad de filas y columnas.
  */
-function almohada(ancho: number, alto: number, fondo: number): THREE.BufferGeometry {
-  const NX = 16, NY = 22, SELLO = 0.93;
-  const aLoAlto = (t: number) => {
-    if (t >= SELLO) return 0.06;
-    // La panza llega a 1 justo en la mitad: el espesor de la ficha es el de
-    // la bolsa llena en su parte más gorda.
-    const panza = 0.72 + 0.28 * Math.sin(Math.PI * t);
-    const a = t < 0.67 ? 0 : (t - 0.67) / (SELLO - 0.67);
-    return Math.max(0.06, panza * (1 - 0.92 * a * a * (3 - 2 * a)));
+function almohada(ancho: number, alto: number, fondo: number, nivel: "alto" | "bajo" = "alto"): THREE.BufferGeometry {
+  const NX = nivel === "alto" ? 20 : 10, NY = nivel === "alto" ? 20 : 10;
+  const medio = fondo / 2;
+  const MEDIO_SELLO = 0.0015;                      // 3 mm entre las dos caras
+  const MEDIO_COSTADO = 0.0025;                    // ~5 mm en los costados
+  const alSello = 1 - Math.min(0.012, alto * 0.07) / alto;
+  const e = Math.min(1, MEDIO_COSTADO / Math.max(1e-6, medio));
+  const A = (s: number) => e + (1 - e) * Math.pow(Math.max(0, 1 - s * s), 0.7);
+  const PANZA = 0.35, BASE = 0.62;
+  const bSello = Math.min(1, MEDIO_SELLO / Math.max(1e-6, medio));
+  const B = (t: number) => (t <= PANZA
+    ? BASE + (1 - BASE) * Math.sin((Math.PI / 2) * (t / PANZA))
+    : bSello + (1 - bSello) * Math.pow(Math.max(0, Math.cos((Math.PI / 2) * Math.min(1, (t - PANZA) / (alSello - PANZA)))), 0.8));
+  const espesor = (s: number, t: number) => (t >= alSello ? MEDIO_SELLO : Math.max(MEDIO_SELLO, medio * A(s) * B(t)));
+  // Filas: parejas hasta el sello, una casi encima (el borde nítido del color
+  // del sello) y el canto de arriba.
+  const ts = [...Array.from({ length: NY + 1 }, (_, j) => (j / NY) * alSello), Math.min(1, alSello + 0.001), 1];
+  const enSello = (j: number) => j >= NY + 1;
+  const FILA = ts.length;
+  const pos: number[] = [], uv: number[] = [], color: number[] = [], idx: number[] = [];
+  const punto = (x: number, y: number, z: number, u: number, v: number, c: number) => {
+    pos.push(x, y, z); uv.push(u, v); color.push(c, c, c);
+    return pos.length / 3 - 1;
   };
-  // 0,4 y no 0,55: con la curva más cerrada la bolsa de 6 cm se veía de 3
-  // desde el costado, una cartulina doblada; así queda llena hasta cerca de
-  // la costura, como una bolsa de arroz de verdad.
-  const aLoAncho = (s: number) => Math.pow(Math.max(0, Math.cos((s * Math.PI) / 2)), 0.4);
-  const pos: number[] = [], uv: number[] = [], idx: number[] = [];
-  // Filas de alto con más detalle cerca del sello.
-  const ts = Array.from({ length: NY + 1 }, (_, j) => j / NY);
-  ts.splice(ts.findIndex((t) => t > SELLO), 0, SELLO - 0.001);
-  const fila = ts.length;
-  for (const lado of [-1, 1] as const) {
+  // Las dos caras: [cara][fila][columna] → índice de vértice.
+  const caras = ([-1, 1] as const).map((lado) => {
     const k = lado < 0 ? 1 : 0.9;
-    for (const t of ts) {
-      for (let i = 0; i <= NX; i++) {
-        const s = (i / NX) * 2 - 1;
-        const x = (s * ancho) / 2, y = (t - 0.5) * alto;
-        pos.push(x, y, lado * k * (fondo / 2) * aLoAlto(t) * aLoAncho(s));
-        uv.push(0.5 - x / ancho, t);
-      }
-    }
-  }
-  const base = (lado: number, j: number, i: number) => (lado < 0 ? 0 : fila * (NX + 1)) + j * (NX + 1) + i;
-  for (let j = 0; j < fila - 1; j++) {
+    return ts.map((t, j) => Array.from({ length: NX + 1 }, (_, i) => {
+      const s = (i / NX) * 2 - 1;
+      const x = (s * ancho) / 2;
+      return punto(x, (t - 0.5) * alto, lado * k * espesor(s, t), 0.5 - x / ancho, t, enSello(j) ? 1.08 : 1);
+    }));
+  });
+  const [frente, dorso] = caras;
+  for (let j = 0; j < FILA - 1; j++) {
     for (let i = 0; i < NX; i++) {
       // El frente mira a −Z y el dorso a +Z: el orden de los vértices cambia.
-      const [a, b, c, d] = [base(-1, j, i), base(-1, j, i + 1), base(-1, j + 1, i), base(-1, j + 1, i + 1)];
-      idx.push(a, c, b, b, c, d);
-      const [e, f, g, h] = [base(1, j, i), base(1, j, i + 1), base(1, j + 1, i), base(1, j + 1, i + 1)];
-      idx.push(e, f, g, f, h, g);
+      idx.push(frente[j][i], frente[j + 1][i], frente[j][i + 1], frente[j][i + 1], frente[j + 1][i], frente[j + 1][i + 1]);
+      idx.push(dorso[j][i], dorso[j][i + 1], dorso[j + 1][i], dorso[j][i + 1], dorso[j + 1][i + 1], dorso[j + 1][i]);
     }
   }
-  // El fondo y el sello: las dos caras no se tocan ahí (tienen espesor), se
-  // cosen con una tira.
-  for (const j of [0, fila - 1]) {
-    for (let i = 0; i < NX; i++) {
-      const [a, b, c, d] = [base(-1, j, i), base(-1, j, i + 1), base(1, j, i), base(1, j, i + 1)];
-      if (j === 0) idx.push(a, b, c, b, d, c);
-      else idx.push(a, c, b, b, c, d);
-    }
+  // Una tira entre las dos caras, con vértices propios y la uv un poco adentro.
+  const copia = (v: number, u?: number, vv?: number) => punto(
+    pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2], u ?? uv[v * 2], vv ?? uv[v * 2 + 1], color[v * 3],
+  );
+  const coser = (a0: number, a1: number, b0: number, b1: number) => idx.push(a0, a1, b0, a1, b1, b0);
+  // Los costados: +X (s = 1, u = 0) mira a +X; −X al revés.
+  for (let j = 0; j < FILA - 1; j++) {
+    const der = [frente[j][NX], frente[j + 1][NX], dorso[j][NX], dorso[j + 1][NX]].map((v) => copia(v, 0.03));
+    coser(der[0], der[1], der[2], der[3]);
+    const izq = [frente[j][0], frente[j + 1][0], dorso[j][0], dorso[j + 1][0]].map((v) => copia(v, 0.97));
+    coser(izq[1], izq[0], izq[3], izq[2]);
+  }
+  // La base (el fuelle, mira abajo) y el canto del sello (mira arriba).
+  for (let i = 0; i < NX; i++) {
+    const ab = [frente[0][i], frente[0][i + 1], dorso[0][i], dorso[0][i + 1]].map((v) => copia(v, undefined, 0.03));
+    coser(ab[0], ab[1], ab[2], ab[3]);
+    const f = FILA - 1;
+    const ar = [frente[f][i], frente[f][i + 1], dorso[f][i], dorso[f][i + 1]].map((v) => copia(v, undefined, 0.985));
+    coser(ar[1], ar[0], ar[3], ar[2]);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute("color", new THREE.Float32BufferAttribute(color, 3));
   g.setIndex(idx);
   g.computeVertexNormals();
   return g;
@@ -628,6 +878,55 @@ export const DETALLE = {
   vaso: { alto: { filas: 16, lados: 32 }, bajo: { filas: 4, lados: 12 } },
   botella: { alto: { filas: 20, lados: 32 }, bajo: { filas: 8, lados: 12 } },
 } as const;
+
+/** El tope de triángulos de la botella del FRENTE con las filas que se le
+ *  suman en el hombro (`filasAdaptadas`). Sin el ajuste eran 1.664. */
+export const TOPE_DE_BOTELLA = 2200;
+
+/** Cuánto puede cambiar el semiancho (relativo al ancho) entre dos filas del
+ *  torno antes de que se agregue una en el medio. */
+const SALTO_DE_PERFIL = 0.04;
+/** Cuánto puede quedar la recta del torno por fuera de la silueta, en la
+ *  mitad de un tramo (relativo al ancho): medio píxel en una foto de 100. */
+const FUERA_DE_LA_SILUETA = 0.005;
+
+/**
+ * Las alturas del torno con filas de más donde la silueta cambia rápido.
+ *
+ * Entre dos filas el torno es una recta. En el hombro de una botella de 2 L
+ * el semiancho pasa de 0,4 a 1 en un 15 % del alto, y con filas parejas cada
+ * 5 % la recta quedaba por fuera de la curva de la foto: el borde de la foto
+ * —el anillo claro del PET— asomaba en el costado. Se parte el tramo de mayor
+ * salto mientras haya uno de más de `SALTO_DE_PERFIL` y entren en el tope de
+ * triángulos (`lados` × 2 por tramo, más las dos tapas).
+ */
+export function filasAdaptadas(
+  alturas: readonly number[], semiancho: (f: number) => number, lados: number, tope: number,
+): number[] {
+  const fs = [...alturas];
+  // El torno lleva, además de estas alturas, el centro y el labio de cada
+  // tapa: n alturas son n + 3 tramos de `lados` × 2 triángulos.
+  const filasMaximas = Math.floor(tope / (2 * lados)) - 3;
+  while (fs.length < filasMaximas) {
+    // Se parte el tramo que más se aparta: por el salto de semiancho entre
+    // sus puntas, o por cuánto la recta del torno queda por FUERA de la
+    // silueta en su mitad (la esquina entre el cuello y el hombro: ahí el
+    // salto es chico pero la recta corta por afuera de la curva).
+    let mejor = -1, peso = 0;
+    for (let i = 0; i < fs.length - 1; i++) {
+      // Un tramo de menos de cuatro milésimas del alto no se parte más.
+      if (fs[i + 1] - fs[i] <= 0.004) continue;
+      const a = semiancho(fs[i]), b = semiancho(fs[i + 1]);
+      const salto = Math.abs(b - a) / SALTO_DE_PERFIL;
+      const afuera = ((a + b) / 2 - semiancho((fs[i] + fs[i + 1]) / 2)) / FUERA_DE_LA_SILUETA;
+      const p = Math.max(salto, afuera);
+      if (p > 1 && p > peso) { peso = p; mejor = i; }
+    }
+    if (mejor < 0) break;
+    fs.splice(mejor + 1, 0, (fs[mejor] + fs[mejor + 1]) / 2);
+  }
+  return fs;
+}
 
 /**
  * El envase del producto del proveedor, con la foto como etiqueta.
@@ -674,7 +973,7 @@ export function geometriaDeEtiqueta(
 ): THREE.BufferGeometry {
   const huella = perfil ? hashTexto(perfil.map((p) => Math.round(p * 1000)).join(",")) : 0;
   const tapa = envase === "revolucion" && !botella ? Math.round(franjaDeTapa * 1000) : 0;
-  const nivel = envase === "revolucion" ? detalle : "alto";
+  const nivel = envase === "revolucion" || envase === "almohada" ? detalle : "alto";
   const firma = `etiqueta:${envase}:${mm(ancho)}:${mm(alto)}:${mm(fondo)}:${huella}:${acostado}:${botella}:${tapa}:${nivel}`;
 
   return cacheada(firma, () => {
@@ -753,21 +1052,29 @@ export function geometriaDeEtiqueta(
       // borde conserva la etiqueta y la tapa lleva SU color (ver abajo).
       const LABIO = 0.94;
       const puntos = [new THREE.Vector2(0, -alto / 2), new THREE.Vector2(radio(0) * LABIO, -alto / 2)];
-      const alturas = botella && nivel === "alto"
+      const parejas = botella && nivel === "alto"
         ? [0, 0.012, 0.03, 0.05, ...Array.from({ length: FILAS - 1 }, (_, k) => (k + 2) / FILAS)]
         : botella
           ? [0, 0.04, ...Array.from({ length: FILAS }, (_, k) => (k + 1) / FILAS)]
           : Array.from({ length: FILAS + 1 }, (_, k) => k / FILAS);
+      // La botella del FRENTE suma filas donde la silueta cambia rápido (el
+      // hombro, el cuello): entre dos filas el torno es una recta, y con 20
+      // parejas el hombro salía más ancho que la foto —se veía su borde claro—.
+      const alturas = botella && nivel === "alto"
+        ? filasAdaptadas(parejas, (f) => semianchoEn(perfil, f), LADOS, TOPE_DE_BOTELLA)
+        : parejas;
       for (const f of alturas) {
         puntos.push(new THREE.Vector2(radio(f), -alto / 2 + f * alto));
       }
       puntos.push(new THREE.Vector2(radio(1) * LABIO, alto / 2), new THREE.Vector2(0, alto / 2));
-      const g = new THREE.LatheGeometry(puntos, LADOS);
       // La proyección se cierra un 6 % hacia adentro: el borde exacto de la
       // silueta es el contorno antialiasado de la foto (y el sangrado), y
       // estirado sobre el costado del cuerpo se veía como una costura negra
-      // en cuanto la cámara no está justo de frente.
-      uvPlanar(g, ancho * 1.06, alto);
+      // en cuanto la cámara no está justo de frente. La del FRENTE lleva su
+      // espalda aparte (grupos [0 frente, 2 espalda]); la de atrás, no: su
+      // espalda no se ve.
+      const g = tornoConEspalda(puntos, LADOS, alto, nivel === "alto", (x) => uvPlanar(x, ancho * 1.06, alto));
+      if (g.groups.length === 2) g.groups[1].materialIndex = 2;
       // Las tapas, de UN color: el del centro de la boca y, abajo, uno del
       // cuerpo un poco arriba del pie (el 6 %): el borde de abajo de la foto
       // es el hueco entre los lóbulos de la base de una botella, o sea fondo
@@ -785,7 +1092,7 @@ export function geometriaDeEtiqueta(
       return g;
     }
 
-    if (envase === "almohada") return almohada(ancho, alto, fondo);
+    if (envase === "almohada") return almohada(ancho, alto, fondo, nivel);
 
     // recorte: la silueta plana, mirando a −Z.
     const g = new THREE.PlaneGeometry(ancho, alto);
@@ -826,29 +1133,53 @@ function vasoConTapa(
   const cuerpo = Math.max(0.5, 1 - Math.max(0, Math.min(0.2, franjaDeTapa)));
   const radio = (f: number) => Math.max(0.0005, (semianchoEn(perfil, f * cuerpo) * ancho) / 2);
   const { lados: LADOS } = DETALLE.vaso[nivel];
-  // Un vaso de yogur es un cono truncado: si el perfil es casi recto (se
-  // aparta menos del 1,5 % del ancho de la recta entre la base y el
-  // reborde), cuatro filas lo dibujan igual que dieciséis.
-  const recto = (() => {
-    const r0 = radio(0), r1 = radio(1);
-    for (let k = 1; k < 16; k++) {
-      const f = k / 16;
-      if (Math.abs(radio(f) - (r0 + (r1 - r0) * f)) > ancho * 0.015) return false;
+  // Un vaso de yogur es un cono truncado: si cuatro filas lo dibujan a menos
+  // del 1,5 % del ancho de su perfil, no hacen falta dieciséis. Se mide entre
+  // 1/16 y 15/16, y el canto que se aparta lleva su propia fila: con el
+  // perfil de 64 bandas (`recorte.ts`) la banda de abajo es el canto
+  // redondeado de la base —en el Finesse, 0,49 contra 0,59 de la siguiente—
+  // y sola mandaba el vaso a dieciséis filas: 1.280 triángulos en vez de 512
+  // en cada vaso del frente, +184 K en la punta. Lo de atrás («bajo») va
+  // siempre con sus cuatro filas parejas.
+  const filasDelLado = (() => {
+    const uniformes = (n: number) => Array.from({ length: n + 1 }, (_, k) => k / n);
+    if (nivel === "bajo") return uniformes(DETALLE.vaso.bajo.filas);
+    const A = 1 / 16, B = 15 / 16, tolerancia = ancho * 0.015;
+    /** Si la quebrada por esas filas sigue al perfil, de 1/16 a 15/16. */
+    const sigue = (fs: readonly number[]) => {
+      for (let k = 2; k <= 30; k++) {
+        const f = k / 32;
+        const i = Math.max(0, fs.findIndex((x) => x >= f) - 1);
+        const a = fs[i], b = fs[i + 1];
+        const enLaQuebrada = radio(a) + ((radio(b) - radio(a)) * (f - a)) / (b - a);
+        if (Math.abs(radio(f) - enLaQuebrada) > tolerancia) return false;
+      }
+      return true;
+    };
+    const parejas = [0.25, 0.5, 0.75];
+    for (const fs of [[0, ...parejas, 1], [0, A, ...parejas, 1], [0, ...parejas, B, 1], [0, A, ...parejas, B, 1]]) {
+      if (sigue(fs)) return fs;
     }
-    return true;
+    return uniformes(DETALLE.vaso.alto.filas);
   })();
-  const FILAS = recto ? 4 : DETALLE.vaso[nivel].filas;
-  // El costado: de la base al reborde.
-  const lado = new THREE.LatheGeometry(
-    Array.from({ length: FILAS + 1 }, (_, k) => new THREE.Vector2(radio(k / FILAS), -alto / 2 + (k / FILAS) * alto)),
-    LADOS,
-  );
-  // La proyección plana del frente, cerrada un 6 % hacia adentro (el borde
-  // exacto de la silueta es contorno y sangrado) y SÓLO hasta el reborde: la
-  // franja de tapa de la foto no va en el costado.
-  uvPlanar(lado, ancho * 1.06, alto);
-  const uvl = lado.attributes.uv as THREE.BufferAttribute;
-  for (let i = 0; i < uvl.count; i++) uvl.setY(i, uvl.getY(i) * cuerpo);
+  // El costado: de la base al reborde. La proyección plana del frente,
+  // cerrada un 6 % hacia adentro (el borde exacto de la silueta es contorno y
+  // sangrado) y SÓLO hasta el reborde: la franja de tapa de la foto no va en
+  // el costado. En el detalle «alto» (las unidades del frente) el costado va
+  // en dos mitades: el frente con la foto y la espalda con la suya.
+  const puntosDelLado = filasDelLado.map((f) => new THREE.Vector2(radio(f), -alto / 2 + f * alto));
+  const sinTapa = (g: THREE.BufferGeometry) => {
+    const uvl = g.attributes.uv as THREE.BufferAttribute;
+    for (let i = 0; i < uvl.count; i++) uvl.setY(i, uvl.getY(i) * cuerpo);
+  };
+  const conEspalda = nivel === "alto";
+  const mitades = conEspalda
+    ? [mitadDeTorno(puntosDelLado, LADOS, "frente", alto, (x) => uvPlanar(x, ancho * 1.06, alto)),
+      mitadDeTorno(puntosDelLado, LADOS, "espalda", alto)]
+    : [new THREE.LatheGeometry(puntosDelLado, LADOS)];
+  if (!conEspalda) uvPlanar(mitades[0], ancho * 1.06, alto);
+  mitades.forEach(sinTapa);
+  const lado = mitades[0];
   // La tapa (de afuera hacia el centro: la normal mira arriba) y el fondo
   // (del centro hacia afuera: mira abajo), con el anillo del reborde.
   const rArriba = radio(1), rAbajo = radio(0);
@@ -871,8 +1202,63 @@ function vasoConTapa(
     }
   }
   const tapas = mergeGeometries([arriba, abajo])!;
-  const g = mergeGeometries([lado, tapas], true)!;
-  for (const x of [lado, arriba, abajo, tapas]) x.dispose();
+  // Los grupos, con los índices fijos de `materialDeEtiqueta`: 0 la foto,
+  // 1 la tapa y 2 la espalda (la del frente, contigua en el índice).
+  const g = mergeGeometries(conEspalda ? [lado, tapas, mitades[1]] : [lado, tapas], true)!;
+  for (const x of [...mitades, arriba, abajo, tapas]) x.dispose();
+  return g;
+}
+
+/**
+ * Media vuelta de un torno: el FRENTE (+X → −Z → −X) o la ESPALDA
+ * (−X → +Z → +X), con `lados / 2` segmentos.
+ *
+ * Con `phiStart` = π/2 el torno de three arranca en +X y pasa por −Z (su
+ * vértice es (r·sen φ, y, r·cos φ)): la primera media vuelta es el frente. Van
+ * como dos tornos y no como uno partido porque los vértices de la costura (±X)
+ * llevan UNA uv, y el frente y la espalda necesitan otra cada uno.
+ *
+ * La uv de la espalda va de 0 en +X a 1 en −X rodeando por detrás, y la v
+ * igual que el frente: la columna 0 de la espalda (`espaldaDeEtiqueta`) es el
+ * color del costado izquierdo de la foto, que es el que el frente pone en +X.
+ */
+function mitadDeTorno(
+  puntos: THREE.Vector2[], lados: number, mitad: "frente" | "espalda", alto: number,
+  uvDelFrente?: (g: THREE.BufferGeometry) => void,
+): THREE.BufferGeometry {
+  const n = Math.max(1, Math.round(lados / 2));
+  const g = new THREE.LatheGeometry(puntos, n, mitad === "frente" ? Math.PI / 2 : (3 * Math.PI) / 2, Math.PI);
+  if (mitad === "frente") { uvDelFrente?.(g); return g; }
+  const pos = g.attributes.position as THREE.BufferAttribute;
+  const uv = g.attributes.uv as THREE.BufferAttribute;
+  // El torno de three ordena los vértices por segmento: el i-ésimo meridiano
+  // son los `puntos.length` siguientes. Por índice y no por atan2: en −X la z
+  // es ±1e-17 y atan2 saltaba de π a −π.
+  for (let i = 0; i <= n; i++) {
+    for (let j = 0; j < puntos.length; j++) {
+      const k = i * puntos.length + j;
+      uv.setXY(k, 1 - i / n, 0.5 + pos.getY(k) / alto);
+    }
+  }
+  uv.needsUpdate = true;
+  return g;
+}
+
+/** Un torno entero, o en dos mitades (frente y espalda, en ese orden de
+ *  índices y con un grupo cada una: 0 y 1, que quien llama renumera). */
+function tornoConEspalda(
+  puntos: THREE.Vector2[], lados: number, alto: number, conEspalda: boolean,
+  uvDelFrente: (g: THREE.BufferGeometry) => void,
+): THREE.BufferGeometry {
+  if (!conEspalda) {
+    const g = new THREE.LatheGeometry(puntos, lados);
+    uvDelFrente(g);
+    return g;
+  }
+  const frente = mitadDeTorno(puntos, lados, "frente", alto, uvDelFrente);
+  const espalda = mitadDeTorno(puntos, lados, "espalda", alto);
+  const g = mergeGeometries([frente, espalda], true)!;
+  frente.dispose(); espalda.dispose();
   return g;
 }
 

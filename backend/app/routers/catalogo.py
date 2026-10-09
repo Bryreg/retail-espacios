@@ -63,6 +63,10 @@ class FichaIn(BaseModel):
     apilable: bool = False
     acostado: bool = False
     fondo_foto: FondoDeFoto = "auto"
+    #: El precio al público, en pesos enteros, para el hablador del
+    #: porta-precios. Opcional: sin él el hablador va sin cifra, nunca con una
+    #: inventada. Con tope: 0 es un error y 20 millones, un tipeo.
+    precio_publico: Optional[int] = Field(None, ge=50, le=10_000_000)
 
 
 class FichaOut(BaseModel):
@@ -73,6 +77,7 @@ class FichaOut(BaseModel):
     apilable: bool = False
     acostado: bool = False
     fondo_foto: str = "auto"
+    precio_publico: Optional[int] = None
 
     model_config = {"from_attributes": True}
 
@@ -160,6 +165,7 @@ async def subir(
     apilable: Optional[bool] = Form(None),
     acostado: Optional[bool] = Form(None),
     fondo_foto: Optional[str] = Form(None),
+    precio_publico: Optional[int] = Form(None),
     db: Session = Depends(get_db),
 ):
     proveedor = db.query(Supplier).filter(Supplier.id == supplier_id).first()
@@ -172,6 +178,7 @@ async def subir(
         k: v for k, v in {
             "forma": forma, "alto_mm": alto_mm, "ancho_mm": ancho_mm, "fondo_mm": fondo_mm,
             "apilable": apilable, "acostado": acostado, "fondo_foto": fondo_foto,
+            "precio_publico": precio_publico,
         }.items() if v is not None
     }
     ficha: Optional[FichaIn] = None

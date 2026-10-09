@@ -466,6 +466,12 @@ export const NEVERA = {
   holguraDePuerta: 0.02,
   /** Alto de la manija vertical. */
   manija: 0.9,
+  /** El porta-precios del multideck, en el filo de cada rejilla: cuánto baja
+   *  su centro respecto de la rejilla y cuánto se mete detrás del frente de
+   *  la puerta. Constantes (y no números en `NeveraReal`) porque el hablador
+   *  del producto en prueba se cuelga de la MISMA tira (`labioDeFila`). */
+  portaBaja: 0.005,
+  portaAdentro: 0.012,
 } as const;
 
 /** El alto libre del interior de un mueble refrigerado. */
@@ -572,6 +578,15 @@ export const ROBATOPE = {
   /** Lo que la repisa es más angosta y más corta que el mueble. */
   retiroAncho: 0.055,
   retiroFondo: 0.01,
+  /** El riel de precios de cada repisa: cuánto sube su centro sobre el centro
+   *  de la tabla, su alto, su espesor, cuánto se mete desde el canto del
+   *  mueble y cuánto más angosto es que el mueble. Constantes porque el
+   *  hablador del producto en prueba va en el MISMO riel (`labioDeFila`). */
+  rielSube: 0.030,
+  rielAlto: 0.036,
+  rielEspesor: 0.007,
+  rielAdentro: 0.008,
+  rielRetiro: 0.06,
 } as const;
 
 export interface CotasDeRobatope {
@@ -1264,4 +1279,45 @@ export function cotasDeEstiba(w: number, d: number, h: number, altoDeCapa?: numb
     zDePiso: enlistonado(ESTIBA.tablasAbajo, d),
     xDeTravesanos,
   };
+}
+
+/* ── El hablador del porta-precios ───────────────────────────────────────────
+   El hablador (la etiqueta de precio) cuelga de la tira del porta-precios. El
+   producto en prueba lleva el suyo, y va HIJO del grupo de la fila
+   (`ProductoDePrueba`): se inclina con el entrepaño. Para eso hace falta saber
+   dónde queda la tira en esas coordenadas, y la tira la arma cada mueble a su
+   modo. Una sola cuenta, con las constantes de cada uno. */
+
+/** Dónde queda la tira del porta-precios de una fila, en las coordenadas del
+ *  grupo de la fila de `ProductoDePrueba` (origen en el plano de montaje de
+ *  la cara, `y = 0` en el plano de apoyo, el pasillo hacia −Z): la altura de
+ *  su centro, la `z` de su cara más adelantada (el borde de su caja) y su alto. */
+export function labioDeFila(tipo: string, venta: VentaDeMueble, fila: number): { y: number; z: number; alto: number } {
+  const cara = venta.caras[0];
+  const apoyo = venta.filas.alturas[fila] + (venta.sobreApoyo ?? 0);
+  switch (tipo) {
+    case "nevera_refrescos": {
+      // NeveraReal: la tira en [0, nivel − alto/2 − portaBaja, −d/2 +
+      // fondoPuerta + portaAdentro] del mueble, y la cara en z = (d − fp)/2.
+      const d = cara.montaje * 2 + NEVERA.fondoPuerta;
+      const z = -d / 2 + NEVERA.fondoPuerta + NEVERA.portaAdentro;
+      return { y: venta.filas.alturas[fila] - NEVERA.portaBaja - apoyo, z: z - cara.montaje, alto: PORTA_PRECIOS.alto };
+    }
+    case "robatope": {
+      // RobatopeMesh: el riel en [0, repisa + rielSube, −(d/2 − rielAdentro)]
+      // con `rielEspesor` de espesor, dentro del mismo grupo girado; la cara
+      // en z = (d − retiroFondo)/2 y el apoyo medio espesor sobre la tabla.
+      const d = cara.montaje * 2 + ROBATOPE.retiroFondo;
+      const repisa = venta.filas.alturas[fila] - ROBATOPE.espesorRepisa / 2;
+      const z = -(d / 2 - ROBATOPE.rielAdentro) - ROBATOPE.rielEspesor / 2;
+      return { y: repisa + ROBATOPE.rielSube - apoyo, z: z - cara.montaje, alto: ROBATOPE.rielAlto };
+    }
+    default: {
+      // Góndola y punta (CaraDeEstanteria): la tira centrada en el plano de
+      // apoyo, en z = −(fondo + saliente); su sección va de 0 a 8 mm hacia
+      // atrás desde ahí (`geometriaPortaPrecios`), así que su caja empieza
+      // justo en esa z.
+      return { y: 0, z: -(venta.filas.fondos[fila] + PORTA_PRECIOS.saliente), alto: PORTA_PRECIOS.alto };
+    }
+  }
 }
