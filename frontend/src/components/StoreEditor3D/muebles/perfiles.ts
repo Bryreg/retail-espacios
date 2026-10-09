@@ -92,10 +92,13 @@ export function geometriaEntrepano(ancho: number, fondo: number): THREE.BufferGe
 
 /** La sombra de las uniones del entrepaño (pantalla de venta). */
 export const UNION_DE_ENTREPANO = {
-  /** Contra el panel de fondo: el gancho y el arranque del plano de apoyo. */
-  fondo: 0.72,
-  /** Hasta dónde llega desde el fondo: a 5 cm ya es el entrepaño limpio. */
-  alcanceFondo: 0.05,
+  /** Contra el panel de fondo: el gancho y el arranque del plano de apoyo. En
+   *  el rincón, el panel tapa la mitad del cielo raso (≈ 0,5 de la luz de
+   *  arriba) y el entrepaño de encima otro poco: 0,64. Con 0,72 sobre 5 cm, en
+   *  las tomas desde 1,25 m la unión era una raya de 1 o 2 píxeles. */
+  fondo: 0.64,
+  /** Hasta dónde llega desde el fondo: a 7 cm ya es el entrepaño limpio. */
+  alcanceFondo: 0.07,
   /** Contra el parante, en cada punta del ancho. */
   parante: 0.85,
   alcanceParante: 0.03,
@@ -114,13 +117,13 @@ export function sombraDeUnion(x: number, z: number, ancho: number): number {
 /**
  * El entrepaño de la pantalla de venta: la misma sección, con la sombra de
  * las uniones como COLOR DE VÉRTICE (sin una malla más). Oscuro contra el
- * panel de fondo —el gancho y los primeros 5 cm del plano de apoyo: 0,72— y
+ * panel de fondo —el gancho y los primeros 7 cm del plano de apoyo: 0,64— y
  * contra el parante —los 3 cm de cada punta: 0,85—. Es lo que le faltaba al
  * mueble para dejar de verse como una maqueta de SketchUp: en una góndola de
  * verdad cada encuentro de dos chapas es más oscuro que la chapa.
  *
  * Para que el color tenga dónde cambiar hacen falta vértices: la sección suma
- * un punto a 5 cm del fondo (arriba y abajo), y a lo ancho van tres tramos
+ * un punto a 7 cm del fondo (arriba y abajo), y a lo ancho van tres tramos
  * —3 cm, el resto, 3 cm— sin tapas por dentro (`ExtrudeGeometry` no admite
  * estaciones desiguales). Sin el bisel de medio milímetro de la del editor:
  * en venta el brillo del filo lo da la luz de las luminarias. Va aparte de
@@ -199,9 +202,19 @@ export function geometriaEntrepanoDeVenta(ancho: number, fondo: number): THREE.B
 
 /** La sombra de un listón del panel de fondo según dónde queda respecto de
  *  los entrepaños (`niveles`, en las mismas coordenadas que `y`): el listón
- *  justo DEBAJO de un entrepaño queda en su sombra (0,72), el siguiente a
- *  medias (0,86), y el de justo ENCIMA, en la unión (0,82). */
-export const SOMBRA_DE_LISTON = { debajo: 0.72, siguiente: 0.86, encima: 0.82 } as const;
+ *  justo DEBAJO de un entrepaño queda en su sombra (0,62), el siguiente casi
+ *  igual (0,74), el tercero a medias (0,86), y el de justo ENCIMA, en la unión
+ *  (0,82).
+ *
+ *  Es la cuenta de cuánto cielo raso ve el fondo bajo un entrepaño de 37 cm:
+ *  a 5 cm el entrepaño tapa todo lo que sube más de 8°, y la mitad de arriba
+ *  de la luz llega apenas en un 17 % (0,5 + 0,5 × 0,17 ≈ 0,6); a 15 cm, lo que
+ *  sube más de 22° (≈ 0,73); a 25 cm, más de 34° (≈ 0,83). La primera versión
+ *  (0,72 y 0,86, dos listones) no se veía: en las tomas desde 1,25 m el listón
+ *  de justo debajo queda tapado por el labio y el porta-precios de los
+ *  entrepaños bajos, el que se ve es el SEGUNDO, y con el tono de la escena
+ *  (ACES) un 0,86 sale apenas un 7 % más oscuro en pantalla. */
+export const SOMBRA_DE_LISTON = { debajo: 0.62, siguiente: 0.74, tercero: 0.86, encima: 0.82 } as const;
 export function sombraDeListon(y: number, altoDeLama: number, paso: number, niveles: readonly number[]): number {
   let k = 1;
   const arriba = y + altoDeLama / 2;  // el canto de arriba del listón
@@ -211,6 +224,7 @@ export function sombraDeListon(y: number, altoDeLama: number, paso: number, nive
       const d = n - arriba;
       if (d < paso) k = Math.min(k, SOMBRA_DE_LISTON.debajo);
       else if (d < paso * 2) k = Math.min(k, SOMBRA_DE_LISTON.siguiente);
+      else if (d < paso * 3) k = Math.min(k, SOMBRA_DE_LISTON.tercero);
     } else if (abajo >= n - 1e-6) {
       if (abajo - n < paso) k = Math.min(k, SOMBRA_DE_LISTON.encima);
     } else {

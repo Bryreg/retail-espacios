@@ -2882,9 +2882,26 @@ prueba("la sombra de las uniones: cuánto y dónde", () => {
   const S = G.SOMBRA_DE_LISTON, alto = 0.093, paso = 0.1;
   assert.equal(G.sombraDeListon(1.0 - 0.06, alto, paso, [1.0]), S.debajo);
   assert.equal(G.sombraDeListon(1.0 - 0.16, alto, paso, [1.0]), S.siguiente);
+  assert.equal(G.sombraDeListon(1.0 - 0.26, alto, paso, [1.0]), S.tercero);
   assert.equal(G.sombraDeListon(1.0 + 0.06, alto, paso, [1.0]), S.encima);
   assert.equal(G.sombraDeListon(1.0 - 0.4, alto, paso, [1.0]), 1);
-  assert.ok(1 - S.debajo >= 0.12);
+  // Se aclara de a poco hacia abajo: nunca un listón más claro arriba que abajo.
+  assert.ok(S.debajo < S.siguiente && S.siguiente < S.tercero && S.tercero < 1);
+  // EN PANTALLA, no sólo en el albedo. Medido en las tomas desde 1,25 m: el
+  // listón de justo debajo de un entrepaño bajo queda tapado por el labio y el
+  // porta-precios, y el que se ve es el SEGUNDO. El tono de la escena (ACES,
+  // el de three por omisión en R3F) achica la diferencia en los grises claros:
+  // con 0,86 un panel a 170 sRGB salía un 7 % más oscuro. El segundo listón
+  // tiene que salir al menos un 12 % más oscuro que el panel a media altura,
+  // y la unión del entrepaño (contra un entrepaño a ~215) al menos un 10 %.
+  const rrt = (v) => (v * (v + 0.0245786) - 0.000090537) / (v * (0.983729 * v + 0.432951) + 0.238081);
+  const aces = (x) => Math.min(1, Math.max(0, rrt(x / 0.6)));
+  const srgb = (l) => 255 * (l <= 0.0031308 ? 12.92 * l : 1.055 * l ** (1 / 2.4) - 0.055);
+  const entrada = (t) => { let lo = 1e-4, hi = 20; for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (srgb(aces(m)) < t) lo = m; else hi = m; } return lo; };
+  const enPantalla = (k, base) => srgb(aces(entrada(base) * k)) / base;
+  assert.ok(1 - enPantalla(S.siguiente, 170) >= 0.12, `el segundo listón sale ${(100 * (1 - enPantalla(S.siguiente, 170))).toFixed(1)} % más oscuro`);
+  assert.ok(1 - enPantalla(S.debajo, 170) >= 0.18);
+  assert.ok(1 - enPantalla(a.fondo, 215) >= 0.10, `la unión sale ${(100 * (1 - enPantalla(a.fondo, 215))).toFixed(1)} % más oscura`);
 });
 
 prueba("el piso de venta: sombra al pie y reflejo con la grilla compartida, sólo en venta", () => {
