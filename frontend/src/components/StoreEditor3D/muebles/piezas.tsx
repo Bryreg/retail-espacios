@@ -1,8 +1,9 @@
 import { memo, useMemo } from "react";
 import * as THREE from "three";
+import { conLuzDeVenta, useLuzDeVenta, useSoltarMateriales } from "./luzDeVenta";
 import {
-  ENTREPANO, PANEL_FONDO, PARANTE, PORTA_PRECIOS, REMATE, ZOCALO,
-  profundidadDeNivel,
+  PANEL_FONDO, PARANTE, PORTA_PRECIOS, REMATE, ZOCALO,
+  inclinacionDeNivel, profundidadDeNivel,
 } from "./medidas";
 import type { Vano } from "./medidas";
 import {
@@ -36,14 +37,20 @@ import {
    Metálico de verdad es sólo la tornillería. */
 
 export function useMateriales(ghost: boolean, statusColor?: string) {
-  return useMemo(() => {
+  // En la pantalla de venta, la luz del mismo cuarto que el producto
+  // (`luzDeVenta.ts`): sin ella, de frente el acero claro salía grafito al lado
+  // de un envase lleno de luz. En el editor, `false`: nada cambia.
+  const luz = useLuzDeVenta();
+  const m = useMemo(() => {
     // `envMapIntensity` bajo a propósito. El mapa de entorno es lo que le da
     // volumen al acero pintado, pero a intensidad 1 lo lava: la góndola queda
     // blanca sobre blanca y deja de leerse la forma, que es justo lo que se
     // vino a arreglar. A ~0.4 el reflejo se nota y el pliegue del labio
-    // conserva su sombra propia.
+    // conserva su sombra propia. (En la pantalla de venta la luz del cuarto
+    // del producto va aparte: `K_ENTORNO_MUEBLE`.)
     const comun = {
       transparent: ghost, opacity: ghost ? 0.42 : 1, envMapIntensity: 0.4,
+      ...conLuzDeVenta(luz),
     };
     return {
       // Acero con pintura electrostática: dieléctrico, no metal.
@@ -82,7 +89,11 @@ export function useMateriales(ghost: boolean, statusColor?: string) {
         color: statusColor ?? "#767d83", metalness: 0.08, roughness: 0.5, ...comun,
       }),
     };
-  }, [ghost, statusColor]);
+  }, [ghost, statusColor, luz]);
+  // Cada entrada y salida de Presentar rehace los materiales de cada mueble:
+  // los viejos se sueltan (`useSoltarMateriales`).
+  useSoltarMateriales(m);
+  return m;
 }
 
 export type Materiales = ReturnType<typeof useMateriales>;
@@ -227,9 +238,9 @@ export const CaraDeEstanteria = memo(function CaraDeEstanteria({
       {niveles.map((y, i) => {
         const fondo = profundidadDeNivel(i, niveles.length, fondoMaximo);
         // Los entrepaños altos se inclinan hacia el cliente para que el
-        // producto se vea desde abajo.
-        const inclina = y / alto >= ENTREPANO.desdeFraccionDeAlto;
-        const giro = inclina ? -ENTREPANO.inclinacion : 0;
+        // producto se vea desde abajo. La cuenta es la de `medidas.ts`: el
+        // producto de prueba que se para encima gira con la misma.
+        const giro = inclinacionDeNivel(y, alto);
 
         return vanos.map((v) => (
           <group key={`e-${y.toFixed(3)}-${v.x.toFixed(3)}`} position={[v.x, y, 0]}>

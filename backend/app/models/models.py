@@ -396,6 +396,50 @@ class SupplierAsset(Base):
     uploaded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+class SupplierAssetSpec(Base):
+    """La ficha del arte: qué forma tiene el envase y cuánto mide.
+
+    Es lo que decide la ESCALA del producto en el 3D y cuántos frentes entran
+    por entrepaño, que es justamente la cuenta que se negocia. Sin dato propio,
+    la estimación por rubro se equivoca mucho —«yogur» cae en un tetra de 20 cm
+    contra los 9 cm de un vaso de 200 g— y una corrección hecha sólo en la
+    sesión se pierde en cada reunión. ``fondo_foto`` (auto / quitar / conservar)
+    es la única red cuando el recorte automático del fondo falla.
+
+    Tabla NUEVA a propósito, mismo patrón 1:1 que ``SpaceFace``:
+    ``supplier_assets`` no admite una columna nueva porque ``create_all`` crea
+    tablas que faltan pero nunca agrega columnas a una que ya existe (regla dura
+    del repo, sin migraciones). Por lo mismo, ``extra_json`` queda de reserva —
+    lateral, tapa, lo que venga—: una vez desplegada, ESTA tabla tampoco va a
+    poder ganar columnas.
+
+    ``forma`` y ``fondo_foto`` son String y no ``SAEnum``: en Postgres sumar un
+    valor a un enum es un ``ALTER TYPE``, que es una migración. La lista
+    cerrada la hace cumplir ``FichaIn`` en ``routers/catalogo.py``.
+
+    Un arte SIN fila acá no está roto: el navegador estima las medidas por el
+    contenido escrito en el nombre o por el rubro, y lo rotula «≈ estimado».
+    """
+    __tablename__ = "supplier_asset_specs"
+
+    asset_id = Column(Integer, ForeignKey("supplier_assets.id"), primary_key=True)
+    # auto | caja | botella | lata | vaso | frasco | bolsa | otro
+    forma = Column(String, nullable=False, default="auto")
+    alto_mm = Column(Integer, nullable=True)
+    ancho_mm = Column(Integer, nullable=True)
+    fondo_mm = Column(Integer, nullable=True)
+    apilable = Column(Boolean, nullable=False, default=False)
+    acostado = Column(Boolean, nullable=False, default=False)
+    # auto | quitar | conservar
+    fondo_foto = Column(String, nullable=False, default="auto")
+    extra_json = Column(Text, nullable=True)
+    actualizado_en = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
 class LoginAttempt(Base):
     """Un intento de entrar que falló, con la IP y la hora.
 

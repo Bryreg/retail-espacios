@@ -17,7 +17,9 @@
  * diez módulos reusa el mismo parante diez veces.
  */
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { ENTREPANO, PANEL_FONDO, PARANTE, REMATE } from "./medidas";
+import { hashTexto } from "./producto";
 
 /** Caché de geometrías por firma. Se vacía sola al recargar; no hace falta
  *  invalidarla porque la firma incluye todos los parámetros que la definen. */
@@ -508,6 +510,370 @@ export function geometriaDeEmpaque(
 
     return new THREE.BoxGeometry(ancho, alto, fondo);
   });
+}
+
+/** Milímetros enteros: la firma del caché no puede depender del último bit. */
+const mm = (v: number) => Math.round(v * 1000);
+
+/** El perfil, muestreado a una altura relativa `f` (0 = abajo, 1 = arriba),
+ *  interpolando entre las bandas. Sin perfil, un cilindro. */
+function semianchoEn(perfil: readonly number[] | undefined, f: number): number {
+  if (!perfil || perfil.length === 0) return 1;
+  const x = Math.min(perfil.length - 1, Math.max(0, f * perfil.length - 0.5));
+  const i = Math.floor(x);
+  const j = Math.min(perfil.length - 1, i + 1);
+  const t = x - i;
+  return perfil[i] * (1 - t) + perfil[j] * t;
+}
+
+/** Proyección PLANAR del frente: la foto se ve tal cual desde −Z. La derecha
+ *  de quien mira desde −Z es −X, por eso `u` crece hacia −X. */
+function uvPlanar(g: THREE.BufferGeometry, ancho: number, alto: number): void {
+  const pos = g.attributes.position as THREE.BufferAttribute;
+  const uv = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    uv[i * 2] = 0.5 - pos.getX(i) / ancho;
+    uv[i * 2 + 1] = 0.5 + pos.getY(i) / alto;
+  }
+  g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+}
+
+/**
+ * Una bolsa llena, parada: dos caras abombadas que se juntan en los cantos.
+ *
+ * La primera versión era una caja con el frente y el dorso inflados: los
+ * costados quedaban como una losa, el lomo de un libro. Una bolsa de arroz
+ * de verdad se afina a CERO en los costados —ahí está la costura—, tiene el
+ * fondo apoyado (la base guarda espesor, si no se para en un filo) y arriba
+ * un sello fino. El espesor es el producto de dos curvas:
+ *
+ * - a lo ancho, cos(π·s/2)^0,4: lleno en el medio, cero en los costados;
+ * - a lo alto, 0,72 + 0,28·sen(π·t) —lleno en la mitad— que se afina desde
+ *   los dos tercios hasta el sello (el 7 % de arriba), donde queda en 6 %.
+ *
+ * El dorso es un poco más chato que el frente (90 %): la bolsa se apoya
+ * contra la de atrás. La foto va planar en las dos caras y, con alfa
+ * (`materialDeEtiqueta`), recorta la silueta de la foto.
+ */
+function almohada(ancho: number, alto: number, fondo: number): THREE.BufferGeometry {
+  const NX = 16, NY = 22, SELLO = 0.93;
+  const aLoAlto = (t: number) => {
+    if (t >= SELLO) return 0.06;
+    // La panza llega a 1 justo en la mitad: el espesor de la ficha es el de
+    // la bolsa llena en su parte más gorda.
+    const panza = 0.72 + 0.28 * Math.sin(Math.PI * t);
+    const a = t < 0.67 ? 0 : (t - 0.67) / (SELLO - 0.67);
+    return Math.max(0.06, panza * (1 - 0.92 * a * a * (3 - 2 * a)));
+  };
+  // 0,4 y no 0,55: con la curva más cerrada la bolsa de 6 cm se veía de 3
+  // desde el costado, una cartulina doblada; así queda llena hasta cerca de
+  // la costura, como una bolsa de arroz de verdad.
+  const aLoAncho = (s: number) => Math.pow(Math.max(0, Math.cos((s * Math.PI) / 2)), 0.4);
+  const pos: number[] = [], uv: number[] = [], idx: number[] = [];
+  // Filas de alto con más detalle cerca del sello.
+  const ts = Array.from({ length: NY + 1 }, (_, j) => j / NY);
+  ts.splice(ts.findIndex((t) => t > SELLO), 0, SELLO - 0.001);
+  const fila = ts.length;
+  for (const lado of [-1, 1] as const) {
+    const k = lado < 0 ? 1 : 0.9;
+    for (const t of ts) {
+      for (let i = 0; i <= NX; i++) {
+        const s = (i / NX) * 2 - 1;
+        const x = (s * ancho) / 2, y = (t - 0.5) * alto;
+        pos.push(x, y, lado * k * (fondo / 2) * aLoAlto(t) * aLoAncho(s));
+        uv.push(0.5 - x / ancho, t);
+      }
+    }
+  }
+  const base = (lado: number, j: number, i: number) => (lado < 0 ? 0 : fila * (NX + 1)) + j * (NX + 1) + i;
+  for (let j = 0; j < fila - 1; j++) {
+    for (let i = 0; i < NX; i++) {
+      // El frente mira a −Z y el dorso a +Z: el orden de los vértices cambia.
+      const [a, b, c, d] = [base(-1, j, i), base(-1, j, i + 1), base(-1, j + 1, i), base(-1, j + 1, i + 1)];
+      idx.push(a, c, b, b, c, d);
+      const [e, f, g, h] = [base(1, j, i), base(1, j, i + 1), base(1, j + 1, i), base(1, j + 1, i + 1)];
+      idx.push(e, f, g, f, h, g);
+    }
+  }
+  // El fondo y el sello: las dos caras no se tocan ahí (tienen espesor), se
+  // cosen con una tira.
+  for (const j of [0, fila - 1]) {
+    for (let i = 0; i < NX; i++) {
+      const [a, b, c, d] = [base(-1, j, i), base(-1, j, i + 1), base(1, j, i), base(1, j, i + 1)];
+      if (j === 0) idx.push(a, b, c, b, d, c);
+      else idx.push(a, c, b, b, c, d);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+/**
+ * Cuántas facetas lleva un envase torneado, según dónde va.
+ *
+ * - «alto»: el FRENTE. 32 lados: a 150 px el borde se aparta del círculo
+ *   menos de medio píxel (la toma «De cerca»).
+ * - «bajo»: lo de ATRÁS. Desde el pasillo, de lo de atrás se ve la tapa
+ *   oscurecida y un filo del costado entre dos del frente. Con 32 lados una
+ *   góndola doble de 3,6 m con un vaso apilable eran 3.708 envases y 4,7 M de
+ *   triángulos —sólo 1.260 al frente—, y una PC con video integrado que
+ *   comparte pantalla en una videollamada giraba a tirones. Con 12 lados y
+ *   pocas filas, lo de atrás cuesta menos que una sexta parte.
+ */
+export const DETALLE = {
+  vaso: { alto: { filas: 16, lados: 32 }, bajo: { filas: 4, lados: 12 } },
+  botella: { alto: { filas: 20, lados: 32 }, bajo: { filas: 8, lados: 12 } },
+} as const;
+
+/**
+ * El envase del producto del proveedor, con la foto como etiqueta.
+ *
+ * ## Por qué cuatro formas
+ *
+ * La silueta es lo primero que el ojo clasifica: una lámina con la foto de un
+ * vaso, de canto, es una cartulina. Pero tampoco hay un modelo 3D de cada
+ * producto, ni lo va a haber. Lo que sí hay es la foto del frente y su
+ * silueta, y con eso alcanza para cuatro formas que cubren el supermercado:
+ *
+ * - **caja** — una caja con la foto en el frente y el dorso, y un color
+ *   liso en los cantos y la tapa (segundo material; ver
+ *   `materialDeEtiqueta`): el borde de la foto estirado salía a rayas.
+ * - **revolución** — botella, lata, vaso o frasco, TORNEADO con la silueta de
+ *   la foto (`perfil`, de `recorte.ts`): la botella de la foto tiene su hombro
+ *   y su cuello, y de costado sigue siendo una botella.
+ * - **almohada** — una bolsa: dos caras abombadas que se afinan a cero en
+ *   los costados, con el fondo apoyado y un sello fino arriba (`almohada`).
+ * - **recorte** — el último recurso: la silueta recortada, plana.
+ *
+ * Todas van centradas en el origen y con la etiqueta mirando a −Z, la misma
+ * convención de las piezas del mueble. La UV del frente es PLANAR: la foto es
+ * una vista de frente, así que proyectada de frente queda en su lugar, y en
+ * un cuerpo redondo se comprime hacia los costados como en uno de verdad.
+ *
+ * Va por el caché de geometrías; ninguna se muta. La acostada es la de pie
+ * con las medidas cambiadas, CLONADA y girada: un envase acostado se gira, no
+ * se achata (ver `geometriaDeEmpaque`).
+ */
+export function geometriaDeEtiqueta(
+  envase: "caja" | "revolucion" | "almohada" | "recorte",
+  ancho: number, alto: number, fondo: number,
+  perfil?: readonly number[],
+  acostado = false,
+  /** Una botella: el pie se redondea (ver abajo). Un vaso o una lata no. */
+  botella = false,
+  /** Vaso o lata: qué parte de arriba de la foto es tapa y reborde
+   *  (`tapaDeFoto`). El cuerpo se envuelve con lo de abajo y la tapa lleva
+   *  su propio material (segundo grupo). */
+  franjaDeTapa = 0,
+  /** «bajo»: las unidades de ATRÁS de un envase torneado (ver `DETALLE`). */
+  detalle: "alto" | "bajo" = "alto",
+): THREE.BufferGeometry {
+  const huella = perfil ? hashTexto(perfil.map((p) => Math.round(p * 1000)).join(",")) : 0;
+  const tapa = envase === "revolucion" && !botella ? Math.round(franjaDeTapa * 1000) : 0;
+  const nivel = envase === "revolucion" ? detalle : "alto";
+  const firma = `etiqueta:${envase}:${mm(ancho)}:${mm(alto)}:${mm(fondo)}:${huella}:${acostado}:${botella}:${tapa}:${nivel}`;
+
+  return cacheada(firma, () => {
+    if (acostado) {
+      if (envase === "revolucion" || envase === "recorte") {
+        // Eje horizontal: la de pie mide `alto` de ancho y `ancho` de alto.
+        const g = geometriaDeEtiqueta(envase, alto, ancho, fondo, perfil, false, botella, franjaDeTapa, nivel).clone();
+        g.rotateZ(Math.PI / 2);
+        return g;
+      }
+      // La caja (y la bolsa) acostadas, con la regla de `acostar`: tumbadas
+      // sobre la cara más grande, con la etiqueta mirando para arriba.
+      const g = new THREE.BoxGeometry(ancho, alto, fondo);
+      const pos = g.attributes.position as THREE.BufferAttribute;
+      const uv = g.attributes.uv as THREE.BufferAttribute;
+      for (let i = 0; i < pos.count; i++) {
+        // La foto se ve desde arriba, con su «arriba» hacia −X. El canto que
+        // da al pasillo toma una columna 3 % ADENTRO de la foto y no la del
+        // borde, que es contorno y sangrado: se veía una franja negra.
+        const u = Math.min(0.97, Math.max(0.03, 0.5 - pos.getZ(i) / fondo));
+        uv.setXY(i, u, 0.5 - pos.getX(i) / ancho);
+      }
+      uv.needsUpdate = true;
+      g.clearGroups();
+      return g;
+    }
+
+    if (envase === "caja") {
+      const g = new THREE.BoxGeometry(ancho, alto, fondo);
+      const pos = g.attributes.position as THREE.BufferAttribute;
+      const nor = g.attributes.normal as THREE.BufferAttribute;
+      const uv = g.attributes.uv as THREE.BufferAttribute;
+      const color = new Float32Array(pos.count * 3);
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+        const nx = nor.getX(i), ny = nor.getY(i);
+        const u = 0.5 - x / ancho, v = 0.5 + y / alto;
+        // Hacia adentro: 0 en el canto del frente, 1 en el del dorso.
+        const adentro = (z + fondo / 2) / fondo;
+        if (nx < -0.5) uv.setXY(i, 1 - 0.02 * adentro, v);        // −X: el borde derecho de la foto
+        else if (nx > 0.5) uv.setXY(i, 0.02 * adentro, v);       // +X: el izquierdo
+        else if (ny > 0.5) uv.setXY(i, u, 1 - 0.02 * adentro);   // tapa: el borde de arriba
+        else if (ny < -0.5) uv.setXY(i, u, 0.02 * adentro);      // fondo: el de abajo
+        else uv.setXY(i, u, v);                                  // frente, y el dorso espejado
+        // El costado se oscurece hacia atrás: un plano de un solo color se
+        // lee como cartulina, y en tienda el canto que se aleja recibe menos
+        // luz del pasillo. Lo leen sólo los cantos (su material lleva
+        // `vertexColors`); la foto lo ignora.
+        const k = 1 - 0.26 * adentro;
+        color[i * 3] = color[i * 3 + 1] = color[i * 3 + 2] = k;
+      }
+      uv.needsUpdate = true;
+      g.setAttribute("color", new THREE.BufferAttribute(color, 3));
+      // Dos materiales (`materialDeEtiqueta`): la foto en el frente y el
+      // dorso, y el color del costado en los cuatro cantos. Con la última
+      // columna de la foto estirada, el costado salía a rayas. BoxGeometry
+      // ordena las caras +X, −X, +Y, −Y, +Z, −Z, seis índices cada una.
+      g.clearGroups();
+      g.addGroup(0, 24, 1);
+      g.addGroup(24, 12, 0);
+      return g;
+    }
+
+    if (envase === "revolucion" && !botella) return vasoConTapa(ancho, alto, perfil, franjaDeTapa, nivel);
+
+    if (envase === "revolucion") {
+      const { filas: FILAS, lados: LADOS } = DETALLE.botella[nivel];
+      // El pie de una botella se redondea hacia adentro (el 7 % de abajo):
+      // con el perfil de la foto el cuerpo llegaba entero hasta el piso y
+      // terminaba en un disco plano, y acostada cada botella se leía como un
+      // salchichón rebanado. Un vaso o una lata tienen el canto vivo.
+      const PIE = 0.07;
+      const redondeo = (f: number) => (botella && f < PIE ? 1 - 0.2 * (1 - f / PIE) ** 2 : 1);
+      const radio = (f: number) => Math.max(0.0005, (semianchoEn(perfil, f) * ancho * redondeo(f)) / 2);
+      // Las tapas arrancan en un labio, un poco adentro del borde: así el
+      // borde conserva la etiqueta y la tapa lleva SU color (ver abajo).
+      const LABIO = 0.94;
+      const puntos = [new THREE.Vector2(0, -alto / 2), new THREE.Vector2(radio(0) * LABIO, -alto / 2)];
+      const alturas = botella && nivel === "alto"
+        ? [0, 0.012, 0.03, 0.05, ...Array.from({ length: FILAS - 1 }, (_, k) => (k + 2) / FILAS)]
+        : botella
+          ? [0, 0.04, ...Array.from({ length: FILAS }, (_, k) => (k + 1) / FILAS)]
+          : Array.from({ length: FILAS + 1 }, (_, k) => k / FILAS);
+      for (const f of alturas) {
+        puntos.push(new THREE.Vector2(radio(f), -alto / 2 + f * alto));
+      }
+      puntos.push(new THREE.Vector2(radio(1) * LABIO, alto / 2), new THREE.Vector2(0, alto / 2));
+      const g = new THREE.LatheGeometry(puntos, LADOS);
+      // La proyección se cierra un 6 % hacia adentro: el borde exacto de la
+      // silueta es el contorno antialiasado de la foto (y el sangrado), y
+      // estirado sobre el costado del cuerpo se veía como una costura negra
+      // en cuanto la cámara no está justo de frente.
+      uvPlanar(g, ancho * 1.06, alto);
+      // Las tapas, de UN color: el del centro de la boca y, abajo, uno del
+      // cuerpo un poco arriba del pie (el 6 %): el borde de abajo de la foto
+      // es el hueco entre los lóbulos de la base de una botella, o sea fondo
+      // quitado, y la base acostada salía negra. Con la proyección plana, la
+      // tapa repetía la primera fila de la foto estirada: rayas sobre cada vaso.
+      const pos = g.attributes.position as THREE.BufferAttribute;
+      const uv = g.attributes.uv as THREE.BufferAttribute;
+      const rArriba = radio(1), rAbajo = radio(0);
+      for (let i = 0; i < pos.count; i++) {
+        const y = pos.getY(i), r = Math.hypot(pos.getX(i), pos.getZ(i));
+        if (Math.abs(y - alto / 2) < 1e-6 && r < rArriba * 0.99) uv.setXY(i, 0.5, 0.985);
+        else if (Math.abs(y + alto / 2) < 1e-6 && r < rAbajo * 0.99) uv.setXY(i, 0.5, 0.06);
+      }
+      uv.needsUpdate = true;
+      return g;
+    }
+
+    if (envase === "almohada") return almohada(ancho, alto, fondo);
+
+    // recorte: la silueta plana, mirando a −Z.
+    const g = new THREE.PlaneGeometry(ancho, alto);
+    g.rotateY(Math.PI);
+    uvPlanar(g, ancho, alto);
+    return g;
+  });
+}
+
+/**
+ * Un vaso (o una lata) torneado con la silueta de su foto, con la TAPA aparte.
+ *
+ * La primera versión envolvía el cuerpo con la foto entera y ponía encima un
+ * disco de un color: la franja de arriba de la foto —el reborde y el foil
+ * doblado sobre el frente— quedaba pintada en el costado, y el disco liso
+ * encima. Doble tapa: un hongo de juguete, con el disco lavanda como lo más
+ * claro del cuadro. Y con 16 lados, de cerca se veían las facetas del borde.
+ *
+ * Ahora:
+ * - el cuerpo se tornea y se envuelve con la foto SIN su franja de tapa
+ *   (`franjaDeTapa`, de `tapaDeFoto`): perfil y etiqueta salen del mismo
+ *   tramo, de la base al reborde;
+ * - 32 lados: a 150 px el borde se aparta del círculo menos de medio píxel;
+ * - la tapa y el fondo son piezas aparte, unidas en la misma geometría como
+ *   SEGUNDO grupo (material de la tapa: el foil con su reborde,
+ *   `texturaDeTapa`), proyectadas desde arriba. Aparte también da el canto
+ *   vivo del reborde, que con las normales promediadas salía redondeado.
+ *
+ * Con índice y no «sin índice»: una punta llena son 360 vasos, y triplicar
+ * los vértices de cada uno hacía cada cuadro de la toma de venta bastante
+ * más caro en una máquina sin placa de video.
+ */
+function vasoConTapa(
+  ancho: number, alto: number, perfil: readonly number[] | undefined, franjaDeTapa: number,
+  nivel: "alto" | "bajo" = "alto",
+): THREE.BufferGeometry {
+  const LABIO = 0.94;
+  const cuerpo = Math.max(0.5, 1 - Math.max(0, Math.min(0.2, franjaDeTapa)));
+  const radio = (f: number) => Math.max(0.0005, (semianchoEn(perfil, f * cuerpo) * ancho) / 2);
+  const { lados: LADOS } = DETALLE.vaso[nivel];
+  // Un vaso de yogur es un cono truncado: si el perfil es casi recto (se
+  // aparta menos del 1,5 % del ancho de la recta entre la base y el
+  // reborde), cuatro filas lo dibujan igual que dieciséis.
+  const recto = (() => {
+    const r0 = radio(0), r1 = radio(1);
+    for (let k = 1; k < 16; k++) {
+      const f = k / 16;
+      if (Math.abs(radio(f) - (r0 + (r1 - r0) * f)) > ancho * 0.015) return false;
+    }
+    return true;
+  })();
+  const FILAS = recto ? 4 : DETALLE.vaso[nivel].filas;
+  // El costado: de la base al reborde.
+  const lado = new THREE.LatheGeometry(
+    Array.from({ length: FILAS + 1 }, (_, k) => new THREE.Vector2(radio(k / FILAS), -alto / 2 + (k / FILAS) * alto)),
+    LADOS,
+  );
+  // La proyección plana del frente, cerrada un 6 % hacia adentro (el borde
+  // exacto de la silueta es contorno y sangrado) y SÓLO hasta el reborde: la
+  // franja de tapa de la foto no va en el costado.
+  uvPlanar(lado, ancho * 1.06, alto);
+  const uvl = lado.attributes.uv as THREE.BufferAttribute;
+  for (let i = 0; i < uvl.count; i++) uvl.setY(i, uvl.getY(i) * cuerpo);
+  // La tapa (de afuera hacia el centro: la normal mira arriba) y el fondo
+  // (del centro hacia afuera: mira abajo), con el anillo del reborde.
+  const rArriba = radio(1), rAbajo = radio(0);
+  const arriba = new THREE.LatheGeometry([
+    new THREE.Vector2(rArriba, alto / 2), new THREE.Vector2(rArriba * LABIO, alto / 2), new THREE.Vector2(0, alto / 2),
+  ], LADOS);
+  const abajo = new THREE.LatheGeometry([
+    new THREE.Vector2(0, -alto / 2), new THREE.Vector2(rAbajo * LABIO, -alto / 2), new THREE.Vector2(rAbajo, -alto / 2),
+  ], LADOS);
+  // Proyectadas desde arriba: el centro de la textura en el eje, el borde en
+  // el reborde. Y las normales de un disco, sin promediar con el costado.
+  const rTapa = Math.max(rArriba, rAbajo);
+  for (const [g, ny] of [[arriba, 1], [abajo, -1]] as const) {
+    const pos = g.attributes.position as THREE.BufferAttribute;
+    const uv = g.attributes.uv as THREE.BufferAttribute;
+    const nor = g.attributes.normal as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      uv.setXY(i, 0.5 + pos.getX(i) / (2 * rTapa), 0.5 - pos.getZ(i) / (2 * rTapa));
+      nor.setXYZ(i, 0, ny, 0);
+    }
+  }
+  const tapas = mergeGeometries([arriba, abajo])!;
+  const g = mergeGeometries([lado, tapas], true)!;
+  for (const x of [lado, arriba, abajo, tapas]) x.dispose();
+  return g;
 }
 
 /**

@@ -13,15 +13,15 @@ catálogo es el que se usa para vender.
 """
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session, defer
 
 from app.auth import require_admin, require_auth, require_auth_or_query_token
 from app.database import get_db
-from app.models.models import Supplier, SupplierAsset
+from app.models.models import Supplier, SupplierAsset, SupplierAssetSpec
 from app.services.subidas import leer_con_tope
 
 router = APIRouter(prefix="/catalogo", tags=["catalogo"])
@@ -41,6 +41,42 @@ TIPOS = {
 }
 
 
+FormaDeFicha = Literal["auto", "caja", "botella", "lata", "vaso", "frasco", "bolsa", "otro"]
+FondoDeFoto = Literal["auto", "quitar", "conservar"]
+
+
+class FichaIn(BaseModel):
+    """La ficha del arte: forma del envase y medidas en milímetros.
+
+    Lista CERRADA de formas y de modos de fondo: la columna es String a
+    propósito (un enum de Postgres pide ``ALTER TYPE`` para crecer), así que el
+    único lugar donde se hace cumplir es acá. Las medidas tienen tope: un
+    envase de 0 mm rompe la cuenta de frentes y uno de 5 m es un error de
+    tipeo, no un producto.
+    """
+    model_config = {"extra": "forbid"}
+
+    forma: FormaDeFicha = "auto"
+    alto_mm: Optional[int] = Field(None, ge=10, le=1500)
+    ancho_mm: Optional[int] = Field(None, ge=10, le=1500)
+    fondo_mm: Optional[int] = Field(None, ge=5, le=1500)
+    apilable: bool = False
+    acostado: bool = False
+    fondo_foto: FondoDeFoto = "auto"
+
+
+class FichaOut(BaseModel):
+    forma: str = "auto"
+    alto_mm: Optional[int] = None
+    ancho_mm: Optional[int] = None
+    fondo_mm: Optional[int] = None
+    apilable: bool = False
+    acostado: bool = False
+    fondo_foto: str = "auto"
+
+    model_config = {"from_attributes": True}
+
+
 class ArteOut(BaseModel):
     id: int
     supplier_id: int
@@ -53,14 +89,38 @@ class ArteOut(BaseModel):
     content_type: str
     size: int
     uploaded_at: Optional[datetime] = None
+    #: Las medidas del envase, si alguien las cargó. Sin ficha el 3D las
+    #: estima por el contenido o por el rubro, y lo dice («≈»).
+    ficha: Optional[FichaOut] = None
 
     model_config = {"from_attributes": True}
 
 
-def _salida(fila: SupplierAsset, proveedor: str) -> ArteOut:
+def _salida(fila: SupplierAsset, proveedor: str, ficha: Optional[SupplierAssetSpec] = None) -> ArteOut:
     salida = ArteOut.model_validate(fila)
     salida.proveedor = proveedor
+    salida.ficha = FichaOut.model_validate(ficha) if ficha is not None else None
     return salida
+
+
+def _guardar_ficha(db: Session, arte_id: int, ficha: FichaIn) -> SupplierAssetSpec:
+    """Crea o reemplaza la ficha (1:1 con el arte, como ``SpaceFace``)."""
+    fila = db.query(SupplierAssetSpec).filter(SupplierAssetSpec.asset_id == arte_id).first()
+    if fila is None:
+        fila = SupplierAssetSpec(asset_id=arte_id)
+        db.add(fila)
+    for campo, valor in ficha.model_dump().items():
+        setattr(fila, campo, valor)
+    return fila
+
+
+def _error_de_ficha(e: ValidationError) -> HTTPException:
+    # Sin la entrada ni el contexto: el contexto de pydantic puede traer
+    # excepciones, que no se serializan.
+    return HTTPException(
+        status_code=422,
+        detail=e.errors(include_url=False, include_context=False, include_input=False),
+    )
 
 
 @router.get("/", response_model=list[ArteOut], dependencies=[Depends(require_auth)])
@@ -71,15 +131,18 @@ def listar(supplier_id: Optional[int] = None, db: Session = Depends(get_db)):
     uno, y quien vende necesita la lista completa para elegir de un vistazo.
     El binario NUNCA viaja en el listado — son megas por fila.
     """
+    # La ficha viene en la MISMA consulta (outerjoin): una consulta por arte
+    # para traer sus medidas sería un N+1 en la lista que se abre en la reunión.
     q = (
-        db.query(SupplierAsset, Supplier.name)
+        db.query(SupplierAsset, Supplier.name, SupplierAssetSpec)
         .join(Supplier, Supplier.id == SupplierAsset.supplier_id)
+        .outerjoin(SupplierAssetSpec, SupplierAssetSpec.asset_id == SupplierAsset.id)
         .options(defer(SupplierAsset.data))
     )
     if supplier_id is not None:
         q = q.filter(SupplierAsset.supplier_id == supplier_id)
     filas = q.order_by(Supplier.name.asc(), SupplierAsset.nombre.asc()).all()
-    return [_salida(arte, nombre) for arte, nombre in filas]
+    return [_salida(arte, nombre, ficha) for arte, nombre, ficha in filas]
 
 
 @router.post("/", response_model=ArteOut, status_code=201, dependencies=[Depends(require_admin)])
@@ -88,11 +151,35 @@ async def subir(
     nombre: str = Form(...),
     categoria: Optional[str] = Form(None),
     file: UploadFile = File(...),
+    # La ficha del envase, opcional y en el MISMO formulario: se pide al cargar
+    # el arte porque el alto es lo que decide cuántos frentes entran.
+    forma: Optional[str] = Form(None),
+    alto_mm: Optional[int] = Form(None),
+    ancho_mm: Optional[int] = Form(None),
+    fondo_mm: Optional[int] = Form(None),
+    apilable: Optional[bool] = Form(None),
+    acostado: Optional[bool] = Form(None),
+    fondo_foto: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
     proveedor = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+
+    # La ficha se valida ANTES de leer el archivo: no tiene sentido bajar cinco
+    # megas para después rechazar una forma que no existe.
+    campos = {
+        k: v for k, v in {
+            "forma": forma, "alto_mm": alto_mm, "ancho_mm": ancho_mm, "fondo_mm": fondo_mm,
+            "apilable": apilable, "acostado": acostado, "fondo_foto": fondo_foto,
+        }.items() if v is not None
+    }
+    ficha: Optional[FichaIn] = None
+    if campos:
+        try:
+            ficha = FichaIn(**campos)
+        except ValidationError as e:
+            raise _error_de_ficha(e)
 
     limpio = (nombre or "").strip()
     if not limpio:
@@ -129,9 +216,37 @@ async def subir(
         data=data,
     )
     db.add(fila)
+    spec = None
+    if ficha is not None:
+        # En el mismo commit que el arte: un arte sin su ficha porque el
+        # segundo paso falló es un arte que se mide mal en la reunión.
+        db.flush()
+        spec = _guardar_ficha(db, fila.id, ficha)
     db.commit()
     db.refresh(fila)
-    return _salida(fila, proveedor.name)
+    if spec is not None:
+        db.refresh(spec)
+    return _salida(fila, proveedor.name, spec)
+
+
+@router.put("/{arte_id}/ficha", response_model=ArteOut, dependencies=[Depends(require_admin)])
+def guardar_ficha(arte_id: int, ficha: FichaIn, db: Session = Depends(get_db)):
+    """Crea o reemplaza la ficha de un arte ya cargado.
+
+    Es el camino de las artes que se subieron antes de que existiera la ficha:
+    la dueña las mide una vez y desde ahí se ven a escala en cualquier mueble.
+    """
+    fila = (
+        db.query(SupplierAsset).options(defer(SupplierAsset.data))
+        .filter(SupplierAsset.id == arte_id).first()
+    )
+    if not fila:
+        raise HTTPException(status_code=404, detail="Arte no encontrada")
+    spec = _guardar_ficha(db, arte_id, ficha)
+    db.commit()
+    db.refresh(spec)
+    proveedor = db.query(Supplier).filter(Supplier.id == fila.supplier_id).first()
+    return _salida(fila, proveedor.name if proveedor else "", spec)
 
 
 @router.get("/{arte_id}/imagen")
@@ -166,6 +281,10 @@ def borrar(arte_id: int, db: Session = Depends(get_db)):
     fila = db.query(SupplierAsset).filter(SupplierAsset.id == arte_id).first()
     if not fila:
         raise HTTPException(status_code=404, detail="Arte no encontrada")
+    # La ficha primero: Postgres hace cumplir la clave foránea y no deja borrar
+    # un arte que tiene ficha. SQLite no la hace cumplir, y por eso la prueba
+    # lo comprueba contando filas.
+    db.query(SupplierAssetSpec).filter(SupplierAssetSpec.asset_id == arte_id).delete()
     db.delete(fila)
     db.commit()
     return Response(status_code=204)

@@ -1,7 +1,24 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-02 (Auditoría de producción: lo que quedó del modelo
+Última actualización: 2026-10-09, noche (la revisión de código del producto en el 3D: una
+foto con su fondo ya no infla el envase, «1.000 g» es un kilo, la foto que no carga cae a
+la lámina y se reintenta, la reunión manda en el cartel, en «Presentar» y en el editor, la
+caminata no rompe la lámina, y lo de atrás se dibuja con pocas facetas. Ver *2026-10-09
+(noche): la revisión de código*).
+
+Antes, 2026-10-09 (la segunda crítica del producto en el 3D: el mueble y el
+envase con la misma luz en la pantalla de venta, «Presentar» que ya no esconde la prueba,
+la tapa del vaso, la toma «De cerca» con teleobjetivo, la nevera encendida y la lámina con
+las tomas de venta. Ver *2026-10-09 (tarde): la segunda crítica*).
+
+Antes, 2026-10-08 (Probar un producto que se vea real: el producto del
+proveedor se para en el mueble como envases 3D a escala, con su foto sin fondo de
+etiqueta, en la cara entera o por entrepaño; «Mostrar al proveedor» abre una pantalla de
+venta limpia y privada con tres tomas de cámara. Tabla nueva `supplier_asset_specs`. Ver
+*2026-10-08: el producto se ve de verdad*, dentro de *Probarle el producto al mueble*).
+
+Antes, 2026-10-02 (Auditoría de producción: lo que quedó del modelo
 viejo. El plano real de Galerías ya no se baja sin sesión, salen «Empezar de cero» y
 «Pasar a la base principal», borrar la foto de un montaje ya no da error, la fecha del
 negocio es la de Colombia, el correo a la mercaderista vuelve a traer su enlace y el
@@ -210,9 +227,26 @@ mezclar tiendas.
 
 **El 3D pinta el ARTE; la geometría del mueble vive aparte.** La foto del proveedor se
 aplica *como material* de la cara del mesh y se alinea a los entrepaños reales. La regla
-que decía «nunca crear geometría nueva posicionada para esto» sigue valiendo **para el
-arte**: se intentó dos veces y falló las dos. Lo que sí cambió es de dónde sale la forma
-del mueble — ver *La góndola se construye con las piezas que tiene una de verdad*.
+que decía «nunca crear geometría nueva posicionada para esto» sigue valiendo **para
+PINTAR el arte** (la lámina): se intentó dos veces y falló las dos. Lo que sí cambió es de
+dónde sale la forma del mueble — ver *La góndola se construye con las piezas que tiene
+una de verdad*. Y el **producto en prueba** (los envases 3D de *2026-10-08: el producto
+se ve de verdad*) sí es geometría nueva, pero no posicionada a mano: es **hija del grupo
+del mueble** y reusa sus filas, vanos y caras (`VentaDeMueble`), que es lo que *El
+producto estaba pintado al fondo del mueble* dejó escrito como la forma que funciona.
+
+**Lo que mira un proveedor muestra SÓLO lo suyo.** La pantalla de venta (Presentar) y la
+lámina que se descarga son de un proveedor: ahí se dibujan sus pruebas y ninguna otra.
+La sesión acumula pruebas de varios proveedores (Alpina a la mañana, Diana a la tarde), y
+el filtro es uno solo, `arteALaVista` en `muebles/privacidad.ts`: con `privadoPara`
+indefinido (la pantalla de la dueña) pasa todo; con un `supplier_id`, sólo sus artes; con
+`null` (Presentar sin proveedor identificado), ninguna. Las caras ajenas caen al relleno
+neutro por rubro, sin fotos, patrones ni tiras de estado. Ver *2026-10-09: lo que vio la
+crítica*. Y con una **reunión fijada** (el selector la fija al elegir un producto) manda
+la reunión también fuera de Presentar: el editor dibuja sólo las pruebas de ese proveedor
+(`pruebasDeLaReunion`), «Presentar» es para él aunque esté elegido otro mueble, y el
+cartel del mouse y el panel callan nombres y precios con la misma cuenta (`hayReunion`).
+Ver *2026-10-09 (noche)*.
 
 **La cuenta de los entrepaños se hace en un solo lugar.** `muebles/medidas.ts` es la
 fuente: `nivelesDeEntrepano` ubica las bandejas, `filasDeProducto` deriva de ahí las filas
@@ -276,7 +310,9 @@ sistema entero adentro. Por eso una tabla sin clasificar hace que el traspaso se
 niegue a correr, y `tests/test_traspaso.py` falla hasta que alguien decide de qué
 lado está. La copia de seguridad sale de la misma lista: una tabla de negocio nueva
 entra sola a la copia, y dejarla afuera es una decisión escrita
-(`TABLAS_QUE_NO_SALEN` en `services/copia.py`).
+(`TABLAS_QUE_NO_SALEN` en `services/copia.py`). La última que entró así es
+`supplier_asset_specs` (la ficha del arte: forma y medidas del envase), de negocio, sin
+archivos propios: viaja en el traspaso y en la copia con su arte.
 
 **La fecha del negocio es la de Colombia.** Render corre en UTC, cinco horas
 adelante: preguntando `date.today()`, desde las 7 p. m. el servidor vivía en el día
@@ -3803,6 +3839,610 @@ punta sembrada con 0.9 m de fondo (las reales tienen 0.4) hace que sus propios
 entrepaños tapen el panel pintado y sólo se vea producto en el hueco de arriba.
 Con medidas reales llena los cuatro.
 
+### 2026-10-08: el producto se ve de verdad
+
+El dueño lo pidió con una captura en la mano: la prueba de Alpina «se ve muy poco
+realista, y tiene que verse bien para que el cliente se proyecte en ese espacio». Se
+veía una calcomanía: la foto del producto repetida, **con su fondo blanco**, estirada al
+alto de cada entrepaño (un vaso de 9 cm salía de 26), cortada por los entrepaños y
+tapada por el velo verde de los slots. Y el dueño contestó tres cosas que ordenan todo
+lo de abajo: (1) se le muestra la pantalla al proveedor, por videollamada o en persona;
+(2) puede volver, pero antes de producción quiere ver cómo queda; (3) se puede vender por
+repisa —proveedor y precio por entrepaño— **siempre con la opción de vender la cara
+entera**.
+
+**Cada unidad es un envase 3D a escala, con la foto sin fondo de etiqueta.**
+
+* **La ficha del arte** (`supplier_asset_specs`, 1:1 con `supplier_assets`; tabla nueva,
+  ninguna existente gana columnas): forma (auto, caja, botella, lata, vaso, frasco,
+  bolsa, otro), alto/ancho/fondo en mm, si se apila, si va acostada (desde la revisión de
+  código se aplica: la sesión la pisa sólo si la dueña toca «Mostrarla acostada» o
+  «Volver a pararla») y qué hacer con el fondo de la foto (auto, quitar, dejar). `forma` y `fondo_foto` son `String` y no enum,
+  para no necesitar `ALTER TYPE` en Postgres. `extra_json` queda de reserva, porque una
+  vez desplegada esta tabla tampoco puede ganar columnas. El alto es **obligatorio en un
+  arte nuevo**: es lo que decide la escala y cuántos frentes entran, que es justo lo que
+  se negocia. Las artes viejas, sin ficha, se estiman en el navegador —por el contenido
+  escrito en el nombre («200 g», «1,5 L») para líquidos y lácteos, si no por el rubro— y
+  se rotulan **«≈ medidas estimadas»** en el selector y en el panel; la dueña las fija
+  con **Medidas**. API: `GET /api/catalogo/` trae `ficha` por outerjoin; el alta acepta
+  la ficha en el mismo form (se valida ANTES de leer el archivo); `PUT
+  /api/catalogo/{id}/ficha` es sólo admin; borrar el arte borra su ficha primero.
+* **El recorte del fondo** (`muebles/recorte.ts`, puro): mediana y ruido del borde,
+  inundación desde el borde, componentes ≥ 2 % del mayor, relleno de huecos, sombra, un
+  alfa suave de 2 px con el color descontaminado, sangrado de 6 px y el resto pintado
+  con el color dominante. Si duda, **no recorta** (`dudoso`) y lo dice: la salida a mano
+  es «Quitar / Dejar» en la ficha, con la vista previa sobre un damero (`EditorDeFicha`).
+  Con el fondo puesto («conservado») la foto se recorta igual a la caja del producto —el
+  aspecto decide el ancho y los frentes—, y ese ancho se acota a la forma y se rotula «≈»
+  si la ficha no lo trae (ver *2026-10-09 (noche)*).
+  No se hace en el servidor: no hay nada que segmente, y meterlo es superficie de ataque.
+* **El envase** (`perfiles.ts`, `geometriaDeEtiqueta`): caja (la foto de frente y un
+  color liso en los cantos —ver 2026-10-09—), **cuerpo de revolución** torneado con la
+  silueta de la propia foto (botella, lata, vaso, frasco), almohada (bolsa: dos caras
+  abombadas que se afinan a cero en los costados) y, como último recurso, el recorte
+  plano. Las tapas de la botella van de UN color sacado de la foto: con la proyección
+  plana repetían la primera fila estirada (rayas sobre cada vaso). El vaso y la lata,
+  desde la segunda crítica, llevan su tapa aparte —el foil dibujado con los colores de la
+  foto— y el costado sin la franja de tapa de la foto (ver *2026-10-09 (tarde)*).
+* **El material** (`etiqueta.ts`): con luz, un entorno PMREM propio del producto (un
+  cuarto gris con cuatro tiras de luz, uno por lienzo) y **tono neutro sólo en ese
+  material**. La luz de la tienda no se toca: ni `scene.environment` ni el tone mapping
+  global. Calibrado con la carta de color de `/taller`: `K_ENTORNO 0,9 · K_EMISION 0,26`
+  dan el blanco de la etiqueta en rgb(237,234,230) y ΔE2000 medio 3,3 en los parches de
+  marca, con el tono corrido ≤ 1,3°.
+* **El acomodo** (`muebles/frentes.ts`, `unidadesDePrueba`, puro): frentes reales por
+  vano con la misma cuenta que el relleno (`acomodar`), hasta tres de fondo —la segunda
+  un 18 % y la tercera un 32 % más oscuras (`TONO_POR_FONDO`)—, apilado sólo si la ficha
+  lo dice (hasta tres pisos, también el vaso), un desorden **determinista** (sembrado por
+  mueble, cara y arte: el producto
+  no se reacomoda cuando se mueve la cámara; desde 2026-10-09 la botella y la lata giran
+  hasta 5° adelante, hay columnas corridas y huecos atrás) y una sombra de contacto. El
+  empaque es CONCRETO: si no entra, el entrepaño queda vacío y se dice por qué, nunca se
+  cambia por uno más chico.
+* **El dibujo** (`ProductoDePrueba.tsx`): hijo del grupo del mueble, con la misma
+  anidación que las piezas —la cara en su plano de montaje, la B girada media vuelta, cada
+  fila en la altura de su entrepaño girada lo que gira ese entrepaño—, así que en el
+  entrepaño alto inclinado el producto se inclina con él sin una línea de trigonometría.
+  Una `InstancedMesh` por fila (dos: el frente con 32 lados y lo de atrás con 12, ver
+  `DETALLE`). Lo usan la góndola, la punta, la nevera de refrescos y el
+  robatope (`TIPOS_CON_PRUEBA_3D`); los muebles sin entrepaños siguen con la lámina. Si
+  la foto no carga, la cara cae a la lámina y el panel ofrece «Reintentar».
+
+**Dónde va: «Toda la cara» o «Por entrepaño».** Es el pedido (3) del dueño. «Toda la
+cara» es el valor de entrada y está siempre a un clic. «Por entrepaño» muestra los
+entrepaños de arriba hacia abajo, numerados desde el piso, con sus cm libres: apagado
+con «no entra: 6,5 cm» si el producto no entra parado, y marcado **«vendido», sin
+nombre**, si un slot vendido lo cubre (la regla de `entrepanosDelEspacio`, la misma del
+relleno). Con la cara entera y entrepaños vendidos lo avisa: «Esta cara tiene 2
+entrepaños vendidos: la prueba los tapa». El panel dice la cuenta que se negocia —«Entran
+10 por entrepaño · 3 de fondo · 3 apilados · 40 de frente», con «≈» si las medidas son
+estimadas— y, cuando no entra, lo dice con medidas («No entra parada: 33 cm en 31 cm
+libres», o «No entra de fondo: 45 cm en 40 cm de entrepaño») y ofrece **«Mostrarla
+acostada»** para botellas y latas. El «cómo» vive al lado
+de `prueba`, en un mapa de sesión con la misma clave (`comoSePrueba`), y **tampoco va al
+layout**: probar o ajustar no llama a `setPlacedFixtures` (lo vigila una prueba).
+
+**«Mostrar al proveedor»: la pantalla de venta, limpia y privada.** Es el pedido (1): la
+pantalla la está mirando un proveedor. El botón (el amarillo del editor) prende
+Presentar y encuadra la cara de frente. En Presentar no hay paneles de slot, caja de
+selección, gizmo, tooltip, insignia «Sin contrato» ni tiras de estado (`FixtureMesh`
+recibe `neutro` y pinta gris lo que era verde o rojo), y **las caras sin prueba no
+muestran ni la foto del espacio ni el patrón de categoría**: son las marcas de OTROS
+proveedores, así que caen al relleno neutro por rubro, sin nombres. Desde 2026-10-09
+tampoco las PRUEBAS de otros proveedores de la misma sesión (`privacidad.ts`), y lo mismo
+vale para la lámina. La persona de 1,70 m queda —es la escala—, como silueta plana en el
+plano de la cara. Un clic en Presentar elige el mueble pero no lo arrastra. Fuera de
+Presentar, mientras haya una reunión (una prueba, el proveedor de la reunión fijado o el
+selector abierto: `hayReunion`), el tooltip no dice de quién es el espacio ni cuánto
+paga, y el bloque «Contratado» del panel dice sólo «Ocupado hasta jun 2027»: se puede
+estar compartiendo la pantalla sin haber apretado nada.
+
+**El selector de productos ya no abre el catálogo entero.** El catálogo es la lista de
+clientes de la tienda: abrirlo delante de Alpina le mostraba los productos de Nutresa y
+de Colanta. Ahora hay un **proveedor de la reunión** (estado de sesión): sin fijar, el
+selector no lista nada hasta tres letras del nombre del PROVEEDOR (no del producto);
+elegir un arte lo fija, y entonces sólo salen los suyos («Productos de Alpina», con
+«Cambiar de proveedor»). El alta de un arte llega con ese proveedor elegido.
+
+**La cámara del vendedor** (`vistaDeVenta`, en `utils/planta.ts`; `vistaDeCara` no se
+tocó): tres tomas quietas, **De frente**, **Tres cuartos** y **De cerca**, en el HUD de
+Presentar. Siempre DENTRO del pasillo —mide el pasillo libre con los mismos muros de la
+caminata, así que la cara B de una góndola ya no se mira desde detrás de la de
+enfrente—, a la altura de un comprador y dentro del rango polar de la órbita. El foco
+sale de la misma cuenta que dibuja el producto (`focoDeLaPrueba`): «De cerca» va al
+entrepaño con producto más cerca de 1,3 m, nunca a uno vacío. El tres cuartos gira hacia
+el lado contrario a la persona, si ahí hay pasillo. Es un corte, sin animación: por
+videollamada el movimiento se empasta. En Presentar la órbita deja acercarse a 0,5 m
+(`distanciaMinima`; fuera, 1,2 m desde la segunda crítica: con los 4 m de antes los
+controles empujaban «Encuadrar esta cara» detrás de la góndola de enfrente). «De cerca»
+va con teleobjetivo (`FOV_DE_CERCA`, 32°) y el entrepaño llena el 75 % del cuadro.
+
+**Lo que costó encontrar, para no volver a pagarlo:**
+
+* **El canvas 2D guarda el color premultiplicado.** La textura opaca se armaba
+  releyendo el lienzo con alfa, y lo transparente volvía NEGRO: justo donde el recorte
+  había dejado el sangrado y el color de la marca. Tapas de caja negras, bases de botella
+  negras, una costura oscura en cada vaso. Ahora sale del `rgba` del recorte (lo vigila
+  una prueba).
+* **La botella de 30 cm en 30 cm libres entra** —es la cuenta que se negocia—, pero
+  parada sobre el alambre asomaba la tapa por la rejilla de arriba (puntos naranjas en el
+  estante vacío). Se la hunde en el alambre lo que sobra, nunca más que lo que la
+  levanta la rejilla.
+* **El acento del editor era casi negro en el tema claro.** `[data-cajon-oscuro]`
+  invertía la tinta pero no volvía a declarar `--accent-rgb`, y una propiedad
+  personalizada se hereda ya resuelta: «Cara A» o «Toda la cara» activos quedaban
+  invisibles sobre la sala. Ahora el cajón la redeclara (`tema.css`).
+* Las posiciones de `BufferGeometry` son `Float32`: comparar contra `alto / 2` con
+  `1e-9` no encuentra nunca el vértice (0,165 en float32 es 0,16500000655…).
+
+**Lo que quedó afuera, a propósito (y lo que la ronda siguiente saldó):**
+
+* ~~La marca en el copete de la punta~~ — hecha el 2026-10-09 (`pop.ts`).
+* ~~El panel comercial seguía mostrando el contrato vigente con una prueba activa~~ —
+  desde el 2026-10-09 el bloque «Contratado» es discreto durante la reunión.
+* ~~La foto en tres cuartos se avisaba pero no se corregía~~ — desde el 2026-10-09 la
+  caja se endereza sola (`rectificarCaja`); el aviso queda, más suave.
+
+### Cómo se comprobó (2026-10-08)
+
+* **Pruebas.** `probar-muebles` pasó de 104 a 131 pruebas (el acomodo y el relleno,
+  ejecutados; la inclinación; la nevera con la botella de 2 L que no entra y la de 1,5 L
+  que entra en las rejillas 1, 4 y 5; los UV de cada envase; el parche de shader contra
+  los shaders de three; y las guardas de texto de Presentar, del selector y de la
+  prueba que no escribe el plano). `probar-arte` es nueva (15: el recorte con buffers
+  sintéticos, la estimación sin ficha, la caja en perspectiva). `probar-planta` suma la
+  cámara de venta (33 → 39: la cara B de GON-01 se mira desde adentro del pasillo, «De
+  cerca» a ≤ 1,2 m, el ángulo polar siempre en rango, la persona fuera del primer
+  plano). `probar-tema` suma el acento del cajón (25). En el backend, 6 pruebas nuevas
+  del catálogo (alta con ficha, `PUT` que crea y reemplaza, 403/401/404, 422 por cada
+  campo inválido, el `DELETE` que no deja la ficha huérfana, `ficha: null`) y la ficha
+  entra en las pruebas de la copia de seguridad y del traspaso. La suite entera del
+  backend: 1216 pasan, 2 saltadas, 7 xfail (21 min).
+* **Cada guarda nueva se probó rompiéndola**: el código se copia aparte, se muta, la
+  prueba tiene que caer y se restaura con `cp` (nunca `git checkout`). En los pasos 9
+  a 11, 39 mutaciones: una sobrevivió (el tres cuartos que esquiva a la persona y se
+  paraba detrás de una columna) y la prueba se reforzó hasta que cayó. Las del
+  backend, 7 de 7.
+* **El relleno genérico no cambió ni un píxel**: el refactor de la cuenta (pasos 2 y 3)
+  se comparó en `/taller` con capturas antes y después, píxel a píxel, en ocho casos.
+* **Mirado, no supuesto.** Con el servidor local sembrado (cuatro fotos reales de
+  producto con sus fichas, más una botella de 1,5 L) y Chromium en swiftshader a
+  1920×1080: las cuatro pruebas con «Mostrar al proveedor» y sus tres tomas, por
+  entrepaño, la nevera que avisa y la botella acostada, el selector privado, el panel
+  con el velo y la lámina descargada (sin paneles de slot; «Con Alpina» con los
+  envases). Y la videollamada: la toma «De cerca» del yogur, quieta, codificada en VP8
+  a 500 kbps y 720p — en el cuadro 40 se lee «finesse» y el logo.
+
+### 2026-10-09: lo que vio la crítica
+
+Antes de mostrárselo al dueño, las capturas de la primera ronda pasaron por una crítica
+con el ojo de un proveedor del otro lado de la videollamada. El veredicto fue «casi»: la
+escala, el recorte y las tres tomas ya funcionaban, pero había cuatro cosas que un
+representante de marca ve en el primer segundo, y una de ellas rompía una regla dura.
+
+**1. La pantalla de Diana mostraba a Alpina.** La sesión acumula pruebas: a la mañana la
+punta con el yogur de Alpina, a la tarde el robatope con el arroz de Diana, y las dos
+quedan puestas. «Mostrar al proveedor» con el arroz encuadraba el robatope… con los
+vasos de Alpina ocupando el 40 % del cuadro y las cajas de Kellogg's en la góndola de
+enfrente. El proveedor que mira veía a sus competidores y, de yapa, se enteraba de que
+la punta de al lado se le está ofreciendo a otro. El filtro de Presentar sólo apagaba
+las caras SIN prueba.
+
+* Ahora hay **un proveedor en pantalla** (`proveedorEnPantalla`). Lo fija «Mostrar al
+  proveedor» con el dueño del producto que va a encuadrar; el botón «Presentar», con el
+  del mueble elegido o, si no, con el de la reunión (`proveedorParaPresentar`).
+* La escena recibe `privadoPara` y pasa cada prueba por `arteALaVista`
+  (`muebles/privacidad.ts`, puro y ejecutado en `probar-muebles`): en la pantalla de un
+  proveedor sólo se dibujan sus artes. El HUD sólo ofrece tomas de lo que se ve.
+* **La lámina** («Propuesta») saca sus DOS tomas con el mismo filtro, puesto antes de la
+  primera (`laminaPara`). Antes «Con Alpina» traía el patrón de cajas de la góndola de al
+  lado y «Hoy» no; ahora la única diferencia entre las dos es el producto. Y las tiras de
+  estado también se apagan en la lámina (`neutro={privadoPara !== undefined}`).
+* **El panel de la dueña con la reunión en curso.** El selector pide tres letras
+  justamente porque se usa con la pantalla compartida, pero detrás seguía legible
+  «Bimbo · $1.500.000 / mes». Con una prueba puesta, un proveedor de reunión fijado o el
+  selector abierto, el bloque «Contratado» dice sólo «Ocupado hasta jun 2027» y un «Ver
+  contrato» que exige el clic. El panel de un SLOT (el formulario para editarlo) no se
+  tocó: se abre a propósito y es para escribir.
+
+**2. Los envases se leían como texturas rotas.** Lo que la foto le pasa a cada forma ya
+no es la misma textura para todas (`muebles/texturas.ts`, puro, ejecutado en
+`probar-arte`):
+
+* **El borde**: los últimos 2 px de la silueta traen el blanco del estudio. En la
+  botella y la bolsa, que se ven de costado, ese borde estirado era un halo y un serrucho
+  en la base. `erosionarYSangrar` encoge el alfa 2 px (mínimo de la ventana: el degradé
+  se corre sin perderse) y repinta lo que quedó afuera con el color de adentro.
+* **La caja en tres cuartos se endereza** (`rectificarCaja`): el contorno de arriba de
+  una caja fotografiada en tres cuartos son DOS rectas que se juntan en la arista más
+  cercana, que es la columna más alta. Si eso está clarísimo (dos rectas con pendientes
+  contrarias, la arista lejos de los bordes), la cara grande se endereza a un rectángulo
+  con la perspectiva de verdad —la mitad lejana sale más comprimida en la foto:
+  x(u) = (x₀(1−u)h₁ + x₁u·h₀)/((1−u)h₁ + u·h₀)—; si no, se usa la foto como venía. Se
+  acabó el «doble lomo» de la Müsli: cada caja tenía el frente y el panel nutricional.
+* **El costado de la caja es un color** (`colorDeCostado`: el dominante de la franja
+  del borde, sin blancos) con un degradé hacia atrás por color de vértice, en un SEGUNDO
+  material de la misma malla (la caja parada tiene dos grupos). Con la última columna de
+  la foto estirada salían rayas rojas y blancas, y en los vanos lejanos las cajas se
+  leían como cartulinas de canto.
+* **La botella se ve llena** (`llenarBotella`, sólo para `transparente`: ficha botella,
+  o rubro de botella sin ficha). Por el PET de la foto se ve el blanco del estudio: en
+  el 3D era una botella de kumis, y acostada la mitad blanca y la mitad roja con el nivel
+  en vertical. El líquido se lee por TONO en el cuarto de abajo y tiñe los claros de las
+  filas transparentes y del pie, conservando la luz de la foto; la letra blanca de la
+  etiqueta no se toca (sus filas tienen menos de la mitad de blanco). Sin un líquido de
+  color —agua, una botella blanca— no se toca nada.
+* **El pie de la botella se redondea** (el 7 % de abajo) y las botellas ACOSTADAS van con
+  1,2 cm más de aire y casi derechas (±0,5°): el pico de una se metía en la base de la
+  otra y la fila se leía como un salchichón rebanado.
+* **La bolsa** dejó de ser un ladrillo: dos caras abombadas que se afinan a CERO en los
+  costados (la costura), el fondo apoyado con espesor y un sello fino arriba; la textura
+  con alfa recorta la silueta de la foto (las esquinas onduladas del sello).
+
+**3. La nevera: las rejillas se acomodan, en sesión.** La de 2 L no entraba parada en
+ninguna rejilla y la única salida era acostarla; en Colombia una 2 L acostada en la
+nevera de gaseosas casi no se ve — el mercaderista sube una rejilla. Y la de 1,5 L
+dejaba vacías las dos del medio, la zona caliente. Ahora el panel ofrece primero
+**«Acomodar las rejillas para este producto»** (`rejillasParaProducto`, puro): las
+reparte parejas entre la primera y el techo, tantas como entren con el producto más
+2 cm, nunca más que las que tiene la nevera, al ras de una ranura si así siguen
+entrando. La nevera DIBUJA esas rejillas (`NeveraReal` recibe `niveles`) y el producto
+apoya en ellas, con las mismas alturas; la cámara de venta las encuadra. Es de la
+sesión, como toda la prueba (`comoSePrueba.rejillas`): el plano no cambia. «Mostrarla
+acostada» queda como segunda opción, y el panel dice qué entrepaños quedan vacíos y por
+qué («Los entrepaños 2 y 3 quedan vacíos: 30 cm no entran en 27,5 cm»).
+
+**4. La escena de venta.**
+
+* **La persona** era un muñeco de cápsulas parado delante del plano de la cara: la
+  perspectiva la agrandaba —salía más alta que la punta de 1,80 y la hacía ver de
+  juguete— y en la toma de una cara B quedaba detrás de la góndola. En Presentar ahora
+  es una **silueta plana** (desde la segunda crítica, opaca y de un gris cálido: ver
+  abajo), parada EN EL PLANO de la cara que se muestra, a 30 cm del canto
+  (`lugarDeLaFigura(…, enLaCara)`); no va en «De cerca», y si el borde del cuadro la
+  corta no se dibuja. (Desde la segunda crítica, también en el editor.)
+* **El copete de la punta lleva la marca** (`pop.ts`, el paso opcional del plan): un
+  degradé del color dominante de la foto, dos recortes del producto y una raya blanca,
+  SIN texto. Sólo con «Toda la cara» y con la casilla «Marca en el copete» (prendida por
+  defecto); va sólo en la cara que mira al pasillo.
+* **El remate del robatope** era casi negro y en la toma de cerca dominaba el cuadro: es
+  gris medio con un filo claro.
+* **La sombra**: `shadow-bias -0,0005` y `normalBias 0,02`. Las bandejas vacías tenían
+  rayas diagonales (shadow acne), y en «Por entrepaño» era lo que más se veía después
+  del producto.
+* **Los encuadres**: «De frente» por entrepaño mira lo elegido casi perpendicular, a su
+  altura, y no desde 1,2 m para abajo (`FocoDeVenta.porEntrepano`). Y el pasillo de un
+  mueble arrimado a otro (el robatope pegado a la punta) ya no mide cero:
+  `distanciaLibre` ignora las huellas que rodean el punto de partida —la del vecino
+  inflada por el radio del cuerpo cubre el canto—, y la toma de frente del robatope dejó
+  de pegarse a 90 cm cortándole las repisas.
+* **Los slots con una prueba puesta** se dibujan como contorno de 1 px (`ContornoDeSlot`)
+  y el panel queda transparente (sigue recibiendo el clic): aun al 15 % teñían de verde
+  menta el mueble y el producto.
+* **Menos clonado**: la botella y la lata paradas giran hasta 5° adelante y 8° atrás, una
+  columna de cada tanto queda corrida hacia adentro ENTERA (la de adelante no se mete en
+  la de atrás) y un 5 % de los huecos de ATRÁS está vacío; el frente siempre completo. El
+  vaso con tapa de foil se apilaba de a dos (`pisosMaximos`); la segunda crítica lo
+  devolvió a tres (ver abajo).
+
+**Lo que no se hizo, y por qué:**
+
+* **El relleno neutro en los muebles contratados ENTEROS** (la góndola de Bimbo vacía en
+  Presentar): el plan lo dejó fuera — el «Hoy» de un mueble contratado entero con los
+  slots libres se sigue viendo vacío.
+* **Brillo en el piso, luz cenital, techo**: son cambios globales de escena, fuera de
+  alcance por regla (la luz de la tienda está calibrada para los muebles).
+* **Fondo de 4–5 unidades** en vez de 3: más instancias en swiftshader por algo que sólo
+  se ve de costado. Queda en 3.
+* El yogur Finesse de la demo es refrigerado y va en una punta seca; para la demo se le
+  corrigió el nombre al gramaje de la foto (150 g) en la base LOCAL de capturas. Para
+  mostrársela a Alpina conviene un producto de góndola seca.
+
+**Cómo se comprobó.** `probar-muebles` 138 (privacidad ejecutada con dos proveedores, las
+rejillas, las acostadas que no se tocan, el vaso de a dos, el desorden que no mete un
+vaso en otro, la bolsa sin costados, el copete sin texto, el panel discreto, la lámina
+con el filtro antes de la primera toma); `probar-arte` 21 (el borde, la caja enderezada
+con su perspectiva y la que no se endereza, el costado, la botella llena y la de agua
+intacta); `probar-planta` 41 (la persona en el plano de la cara, el pasillo del robatope,
+el encuadre por entrepaño). Cada guarda nueva se probó rompiéndola: 38 mutaciones, 38
+cayeron, todo restaurado con `cp`. Las capturas, en el servidor local a 1920×1080, en
+`scratchpad/realismo/capturas/despues-r1`.
+
+**Gotcha nuevo.** Una `InstancedMesh` con una LISTA de materiales sólo dibuja los grupos
+de la geometría: una geometría sin grupos con una lista no dibuja nada. `ProductoDePrueba`
+pasa la lista sólo si la geometría tiene grupos (la caja parada), y si no el primer
+material.
+
+### 2026-10-09 (tarde): la segunda crítica — que el producto no parezca pegado
+
+La segunda pasada de la crítica dio otra vez «casi», con dos defectos graves que el
+proveedor ve sin buscarlos: el envase **brillaba más que el mueble** —se leía como una
+calcomanía sobre una maqueta grafito— y el botón «Presentar» de siempre **escondía la
+prueba**. Lo demás era de terminación: la tapa del vaso, el contacto con la bandeja, la
+punta medio surtida, la toma «De cerca», la nevera como caja negra, la persona fantasma y
+la lámina con puntitos.
+
+**1. Una misma luz para el mueble y el producto** (`muebles/luzDeVenta.ts`). Medido: el
+blanco de la caja de cereal en 232-240 sRGB contra 97-112 del porta-precios, que es casi
+blanco (#f7f5ef). No era el color de la góndola —el acero ya es gris claro, #c6cac9, la
+RAL 7035 de cualquier Éxito— sino la luz: el editor no lleva entorno, y una cara VERTICAL
+de un mueble sólo recibía la ambiente (0,55/π del albedo); el envase, en cambio, trae su
+propio cuarto de luz (`useEntornoDeProducto`).
+
+* En la pantalla de venta (Presentar y la lámina) cada material de mueble recibe la luz
+  **difusa** de ese mismo cuarto, como un hemisferio —el promedio del techo arriba, el
+  del piso abajo— sumado en el shader (`parcheDeLuzDeVenta`, con su propia clave de
+  programa). La reciben `useMateriales` (góndola y punta), la nevera, el robatope y el
+  relleno por rubro, por un contexto (`LuzDeVenta`) que la escena prende sólo con
+  `privadoPara` definido. Fuera de Presentar el editor se ve igual que siempre.
+* Medido después, en la toma de cerca de la punta: etiqueta 208-212, porta-precios 198,
+  frente de la bandeja 223, paneles ~180; la tapa del vaso, 146 (era lo más claro del
+  cuadro, 216). El blanco del producto queda por debajo del blanco del mueble, que es lo
+  que pedía el criterio (a no más de 15 por encima). La etiqueta no se tocó: sigue
+  calibrada como dice *La calibración* en `etiqueta.ts`.
+* **Por qué no el mapa de entorno.** La primera versión le ponía al mueble el MISMO
+  PMREM que al envase. Se veía igual, pero muestrear un PMREM en cada píxel de cada
+  mueble —en una toma de venta, la pantalla entera— hacía el cuadro mucho más caro, y los
+  muebles son mates: de ese mapa sólo se veía la parte difusa, que es casi exactamente un
+  hemisferio. **Por qué no `scene.environment` ni una `HemisphereLight`**: alumbran TODO,
+  el piso, las paredes y el propio envase, que ya trae su luz calibrada (y en three 0.184
+  `scene.environment` también lo toman los `MeshLambertMaterial`).
+
+**2. «Presentar» no puede esconder la prueba.** La punta de Alpina salía vacía delante de
+Alpina. La causa de fondo era un bug de una línea en el selector: el `map` de los grupos
+llamaba `proveedor` a su variable y **tapaba la prop**, así que `if (!proveedor)` leía el
+nombre del grupo —siempre lleno— y elegir un producto NUNCA fijaba el proveedor de la
+reunión; sin mueble elegido, Presentar quedaba sin proveedor y no mostraba ninguna prueba.
+
+* El grupo se llama `deGrupo` (lo vigila una prueba).
+* `proveedorParaPresentar` suma un paso: si todas las pruebas de la sesión son de UN
+  proveedor, ése. (Desde la revisión de código el proveedor de la REUNIÓN va antes que
+  el mueble elegido: ver *2026-10-09 (noche)*.) Con pruebas de dos y nada elegido no adivina: el HUD avisa «Hay una
+  prueba que no se está mostrando · Mostrarla», **sin nombres** (la pantalla ya puede
+  estar compartida) y muestra la última (`ultimaPrueba`).
+* Con el mueble elegido probado, el botón «Presentar» ES «Mostrar al proveedor» (si la
+  prueba es del proveedor de la reunión, cuando hay una).
+* **«Encuadrar esta cara» es la toma «De frente»** de la pantalla de venta, dentro del
+  pasillo; la vista guardada a mano sigue mandando. Y la órbita del editor deja acercarse
+  a 1,2 m (eran 4): con 4, los controles empujaban cualquier encuadre a 4 m de su mira, y
+  en un pasillo de 2 m eso es DETRÁS de la góndola de enfrente —el lomo vacío de GON-02 que
+  se veía en la cara B de GON-01 no era la cuenta del encuadre, era el mínimo de la
+  órbita—.
+* **El HUD no se pierde** con un arrastre que empieza sobre otro mueble (lo elige) ni con
+  un clic en el piso (suelta la selección): las tomas caen al mueble de la última toma
+  (`muebleDelHud`). Al salir de Presentar el pedido de toma se borra, con un contador
+  propio para que un número nuevo nunca coincida con uno ya atendido.
+
+**3. El vaso** (`vasoConTapa` en `perfiles.ts`, `tapaDeFoto` en `texturas.ts`). La foto de
+un vaso trae arriba el reborde y el foil; envuelta en el cuerpo, esa franja quedaba
+pintada en el costado, y encima el disco 3D: doble tapa, un hongo. Ahora la franja se lee
+de la foto (filas desde arriba con la mitad o más del color del reborde o del foil; nada
+si lo de arriba es del color del cuerpo, como una lata pareja) y el costado se envuelve
+sin ella; la tapa es otra pieza con otro material —el foil dibujado con los colores de la
+foto: degradé, un brillo en diagonal, textura fina, el sellado y el reborde, sin texto— y
+el canto del reborde queda vivo. 32 lados (a 150 px el borde se aparta del círculo menos
+de medio píxel) y **con índice**: una punta llena son 360 vasos.
+
+**4. Apoyado y menos clonado.** Cada fila lleva una tira de contacto (`tiraDeContacto`):
+oscura bajo el frente y desvanecida 2 cm hacia el pasillo, hija de la fila —se inclina con
+el entrepaño—. Lo de atrás cae un 18 % y un 32 % (`TONO_POR_FONDO`; con 12 % por fila las
+tapas de atrás se medían casi iguales a las del frente). El desorden es de ±2 mm a lo
+ancho y ±3 mm de fondo, y un 22 % de las columnas queda corrida 1-2 cm. Las cajas llevan
+los cantos verticales en sombra (`oscurecerCantos`): cinco cajas con la misma foto se
+leían como un empapelado continuo, «Kellogg'sKellogg'sKellogg's».
+
+**5. La punta surtida.** El vaso vuelve a apilarse de a tres (de a dos quedaba un 35 % de
+aire sobre cada entrepaño). Y el hueco de 6,5 cm entre el último entrepaño y el copete,
+que con el producto puesto se leía como una bandeja vacía a la altura de los ojos, lo tapa
+una **cenefa** del color de la marca (`materialDeCenefa`), sólo con la marca en el copete
+y sólo si el hueco no sirve para producto (< 12 cm). No hizo falta «acomodar los
+entrepaños» de la punta, como en la nevera: con tres apilados ya llenan.
+
+**6. «De cerca» con teleobjetivo** (`FOV_DE_CERCA`, 32°). Con 50° la cámara se pegaba a
+60 cm y miraba desde 1,6 m para abajo: un tercio del cuadro era metal y copete, dominaban
+las tapas y las cajas de los bordes se estiraban. Ahora el entrepaño (con su labio) llena
+el 75 % del alto, la cámara va 10 cm por encima de su centro y más atrás; en un mueble
+angosto (el robatope) encuadra dos repisas y media. El campo visual vuelve a 50° con
+cualquier otra toma, al salir de Presentar y en la vista superior. Los vasos de 9 cm
+miden ~165 px de alto en 1080p.
+
+**7. La nevera de venta.** En la pantalla de venta la nevera de refrescos lleva forro claro
+en los costados, el techo y la bandeja de abajo, la rejilla de alambre (una textura de
+varillas, opaca: con transparencia hay que ordenar contra las botellas) y una luminaria
+arriba, y el fondo no recibe la sombra de la luz de la tienda (la carrocería lo recortaba
+en rectángulos a media anchura). El cabezote lleva la marca como el copete de la punta
+—en un cartel apaisado, la franja del medio de la foto, que es la etiqueta, repetida—.
+**No lleva vidrio**: `nevera_refrescos` es un multideck de frente abierto por su ficha del
+catálogo (ver *Lo que le faltaba, y era todo*, en `NeveraReal.tsx`), y un vidrio delante
+mentiría sobre el mueble que se vende.
+
+**8. La persona** es una figura de escala de arquitectura: opaca, de un gris cálido
+(#8c867e) más oscuro que el piso, con los brazos pegados al cuerpo; la translúcida era un
+fantasma por el que se veían el piso y la pared. Va también en el EDITOR, en el plano de
+la cara: el muñeco de cápsulas, 35 cm por delante, quedaba en primer plano en cuanto
+«Encuadrar esta cara» pasó a ser la toma de frente, y se leía como un maniquí de prueba
+de choque.
+
+**9. La lámina** saca las tomas de la pantalla de venta: «Hoy» y «Con …» desde la toma «De
+frente» con aire (`HOLGURA_DE_LAMINA`: el mueble al ~65 % del alto) y una tercera **«De
+cerca»**; cada captura se recorta a la forma del mueble y se apoya sobre el color de la
+sala (el lienzo es transparente y el PNG salía con un cielo blanco). Al terminar, la
+cámara vuelve a donde estaba. Y cada toma **espera a que la escena la confirme**
+(`EstadoDeEscena`, escrito en un `useLayoutEffect` de la escena): el lienzo es otra raíz
+de React, y con la punta llena «dos cuadros» ya no alcanzaban — «Con Alpina» salía sin el
+producto, igual a «Hoy», y la lámina quedaba con una sola imagen.
+
+**10. Lo chico.** La botella encoge 4 px de borde (no 2) y tiñe también los claros
+apenas rosados de los hombros (el brillo del PET con el reflejo de la etiqueta), con el
+reflejo a lo sumo al 30 %: de cerca eran triángulos blancos. El copete lleva un recorte
+héroe al centro con dos más chicos arrimados y sin la raya blanca. La bolsa es más llena
+hacia los costados (cos^0,4) y su canto toma el color del plástico (`tenirCantos`).
+
+**Rendimiento: lo que se encontró de paso.** El editor entero estaba suscripto al store
+completo (`useFixtureStore()` sin selector), y la órbita escribe la cámara en el store en
+cada paso de un arrastre: cada giro re-renderizaba veinte veces el editor, la escena y
+cada mueble. Y la referencia de las instancias del producto, escrita en línea, pedía un
+cuadro en cada render. Ahora son selectores y una referencia estable. En swiftshader a
+1920×1080 una toma de venta tarda ~3,5 s por cuadro con la punta llena (~1 M de
+triángulos) — la misma toma de la góndola con la build de la ronda 1 tardaba 7 s: es el
+costo de llenar 2 M de píxeles con MSAA y sombras en una CPU, no del producto. Con una
+placa de video cualquiera son milisegundos.
+
+**Lo que no se hizo, y por qué:**
+
+* **Vidrio en la nevera**: es de frente abierto (ver 7).
+* **Sombras de 2048 recortadas al mueble encuadrado**: fuera de alcance por regla (cambio
+  global de escena). Las bandejas ya no tienen el acné; la sombra en escalera del costado
+  de una góndola en tres cuartos sigue.
+* **El robatope al 35 % del ancho en «De frente»**: mide 0,3 × 1,6 m; entero y de frente
+  en 16:9 no puede ocupar más del ~10 % sin cortarlo. «De cerca» lo encuadra (2,5 repisas).
+* **El Finesse refrigerado en una punta seca**: es el caso del dueño, y es dato de la
+  demo, no del render.
+
+**Cómo se comprobó.** `probar-muebles` 142 (la luz de venta ejecutada y sólo en la
+pantalla de venta, el vaso con su tapa y el costado sin la franja, la tira de contacto
+hija de la fila, la lámina que espera a la escena y deja la cámara, el HUD que no se
+pierde, el selector que fija al proveedor, el botón «Presentar» con la prueba, la cenefa,
+la silueta opaca y sin el muñeco de cápsulas); `probar-arte` 25 (la tapa leída de la foto, la lata pareja que no se
+recorta, los cantos de la caja y de la bolsa, los hombros de la botella); `probar-planta`
+42 («De cerca» con teleobjetivo: 70-80 % del cuadro, a la altura del entrepaño, el
+robatope con dos repisas y media). Cada guarda nueva se probó rompiéndola: 41 mutaciones,
+41 cayeron, todo restaurado con `cp`. Las capturas, en `scratchpad/realismo/capturas/despues-r2`.
+
+**Gotcha nuevo.** Un `ref` en línea en un componente de R3F se vuelve a llamar en CADA
+render (React lo trata como una referencia nueva), y si adentro hay un `invalidate()`, cada
+render pide un cuadro. Con `frameloop="demand"` eso es invisible en una máquina rápida y
+encola segundos de cuadros en una lenta. Las referencias que dibujan van con `useCallback`.
+
+### 2026-10-09 (noche): la revisión de código — que lo que se negocia no mienta
+
+Después de la segunda crítica (visual), una revisión del CÓDIGO buscó lo que las
+capturas no muestran: casos en que la cuenta de frentes miente, en que la cara queda
+vacía en plena reunión, en que la pantalla compartida nombra a otro proveedor, y lo que
+cuesta dibujarlo en una PC sin placa de video. Catorce hallazgos; los reales se arreglaron
+todos, cada uno con una prueba que se rompió a propósito (37 mutaciones, 37 cayeron).
+
+**1. Una foto con su fondo ya no infla el envase** (`recorte.ts`, `empaqueDeArte`). Si el
+fondo de la foto no se quita («conservado» o «dudoso»), el aspecto era el de la foto
+ENTERA, márgenes incluidos, y con el alto de la ficha el ancho salía de ahí: una botella
+de 10 cm sobre un estudio con degradé quedaba de 30 cm de diámetro, con 2 frentes por
+entrepaño en vez de 8 — justo la cuenta que se negocia, y sin «≈».
+
+* «Conservado» ahora se **recorta a la caja del producto** (`productoSobreFondo`): el
+  fondo se modela como una superficie que une los cuatro bordes (un parche de Coons:
+  reproduce exacto un degradé, que es lo que hace que un estudio no sea «parejo»), la
+  tolerancia sale del ruido del propio borde (18 a 60) y las manchas de menos del 2 % de
+  la mayor no cuentan (el ruido de una foto de celular). El fondo se deja —es lo que se
+  pidió o lo que no se pudo quitar—; los márgenes no. «Dudoso» no se recorta: es el
+  producto claro que toca los bordes, y la foto entera ES su caja.
+* Y en los dos casos el ancho **no se cree a ciegas**: sin `ancho_mm` en la ficha se acota
+  a 0,6–1,6 veces el aspecto típico de su forma (`ASPECTO_DE_FORMA`: botella 0,29, vaso
+  0,83…), se rotula «≈» (`anchoEstimado`) y la ficha lo pide en amarillo («La foto
+  conserva su fondo y el ancho no se puede medir de ella»).
+
+**2. «1.000 g» es un kilo** (`contenidoDelTexto`). Acá la coma es el decimal y el punto
+separa los miles; leído al revés, «Yogurt 1.000 g» era 1 g y el envase caía al mínimo de
+4 cm, con decenas de frentes de juguete. Punto seguido de grupos de exactamente tres
+cifras = miles; «1.5 L», con una cifra, sigue siendo litro y medio; y en litros o kilos un
+«1.250» de miles daría un envase de 1.250 L, así que ahí se lee como decimal.
+
+**3. La foto que no carga ya no deja la cara vacía** (`etiqueta.ts`). Con Render
+despertando (502), un token vencido (401) o la red cortada, la etiqueta quedaba en
+«error» para siempre: la cara probada sin producto, sin foto, sin patrón y sin relleno, y
+el panel en «Preparando el producto…» hasta recargar la página.
+
+* `cargar` mira `res.ok` (antes intentaba leer el HTML del error como imagen).
+* Un error se vuelve a pedir solo a los 15 s (`REINTENTO_MS`) y con **«Reintentar»** en el
+  panel, que dice «No se pudo cargar la foto del producto». Mientras reintenta, el estado
+  es «reintentando» y cuenta como el error, para que la cara no parpadee vacía.
+* `construirPrueba` devuelve `null` si la foto falló o si el arte ya no está en el
+  catálogo, y la cara **cae a la lámina de siempre** (`resolveFaceMaterial`), como hacía
+  el camino viejo a propósito. En una pantalla privada cae sólo a SU arte, nunca a la foto
+  del espacio, que es la marca del que hoy lo tiene.
+* Una recarga del catálogo que falla (después de «Guardar medidas») deja el catálogo que
+  había: vaciarlo dejaba sin arte todas las caras probadas.
+
+**4. La reunión manda en todo lo que se ve** (`privacidad.ts`). Tres agujeros con la
+misma forma: la pantalla se comparte aunque no se haya apretado «Presentar».
+
+* **El cartel del mouse** miraba sólo si había pruebas; con la reunión de Alpina en curso
+  y la prueba recién quitada mostraba «Bimbo · $1.500.000/mes». Ahora usa la misma cuenta
+  que el panel (`hayReunion`: prueba, proveedor de la reunión o selector abierto).
+* **«Presentar» le pasaba la pantalla a otro**: con la reunión de Diana, un arrastre que
+  empezó sobre la punta de Alpina la elegía, y el botón le mostraba a Diana los vasos de
+  Alpina a pantalla completa. Ahora el proveedor de la reunión va PRIMERO
+  (`proveedorParaPresentar`), el botón sólo «muestra al proveedor» la prueba del mueble
+  elegido si es de él, y la de otro queda vacía con el aviso sin nombres de siempre
+  (`pruebaAjenaDelMueble`).
+* **El editor dibujaba las pruebas de todos**: probándole arroz a Diana, la punta seguía
+  con los 345 vasos de Alpina de la mañana y su copete. Con una reunión fijada, la pantalla
+  de la dueña dibuja sólo las pruebas de ESE proveedor (`pruebasDeLaReunion`); las otras
+  no se borran —vuelven al cambiar de proveedor— y el panel dice «En esta cara hay una
+  prueba de otro proveedor: no se muestra mientras dura esta reunión», sin nombre ni foto,
+  con «Quitarla». Lo de los ESPACIOS (las fotos de los contratos vigentes) se sigue viendo
+  en el editor: es la tienda como está, la misma que el proveedor recorre.
+* **La lámina** sin producto en prueba era la pantalla de la dueña; ahora es para el que
+  tiene el contrato (si tiene artes) o para nadie, y el PNG sin mueble elegido, para el
+  proveedor de la reunión.
+
+**5. «Propuesta» en la caminata** sacaba «Hoy» y «Con …» desde la cámara de la caminata
+(la escena no atiende tomas en primera persona), «De cerca» igual a «Con …», y al
+terminar giraba la cámara de la caminata. Ahora sale de la caminata primero y espera a
+que la escena lo confirme (`primeraPersona` en `EstadoDeEscena`).
+
+**6. Lo que costaba dibujarlo** (`DETALLE` en `perfiles.ts`). Una góndola doble de 3,6 m con
+un vaso apilable eran 3.708 envases de 1.280 triángulos: 4,7 M, y sólo 1.260 envases al
+frente. Lo de atrás (`prof` ≥ 1) va con 12 lados y 4 filas (192 triángulos; la botella,
+312), y un vaso de perfil casi recto —un cono truncado, como el Finesse— lleva 4 filas
+también al frente (512). Esa góndola baja a 1,1 M; la punta de Alpina, de 441 K a 105 K.
+Las unidades se parten por profundidad una vez, en el memo, no en el render. Y entrar y
+salir de Presentar ya no deja materiales vivos: cada mueble suelta los de antes
+(`useSoltarMateriales`), la textura de alambre de la nevera es una por cantidad de
+varillas, compartida, y la nevera de puertas y el mural no arman alambre ni forro.
+
+**7. Lo chico.** La ficha `acostado` se guardaba y nunca se aplicaba (el editor pasaba
+siempre `false`): ahora la sesión la pisa sólo si la dueña tocó «Mostrarla acostada» o
+«Volver a pararla», y la ficha tiene la casilla «va acostado». Un envase que no entra de
+FONDO dice «No entra de fondo: 45 cm en 40 cm de entrepaño» y no «de ancho». Y los campos
+de la ficha siguen a la ficha cuando cambia desde afuera (otra foto en el alta, «Medidas»
+de otro producto): quedaba el «9» viejo escrito con la ficha vacía.
+
+**La guarda de «arte o relleno» ahora se corre.** Buscaba el texto
+`cubiertas={cubiertasDe(`; con `cubiertasDe` devolviendo siempre `[null, null]`, o con
+`ProductoEnMueble` sin pasarle `cubiertas` al relleno, seguía en verde mientras el relleno
+de Nutresa se dibujaba debajo de los vasos de Alpina. `cubiertasDe` vive en `frentes.ts`, y
+`probar-muebles` compila `ProductoEnGondola` y `ProductoEnPunta` con un React mínimo (los
+componentes se llaman como funciones), llama el `ref` de cada `instancedMesh` con un nodo
+falso y cuenta las instancias, cara por cara.
+
+**Lo que se descartó, y por qué:** ninguno de los catorce era falso. Bajar la profundidad
+a 2 para los envases torneados no hizo falta: con lo de atrás de pocas facetas el costo ya
+bajó a la cuarta parte, y la tercera fila es la que se ve desde arriba en los entrepaños
+bajos.
+
+**Cómo se comprobó.** `probar-muebles` 147 (la foto que falla, ejecutada con un `fetch`
+falso: 502, «Reintentar», el reintento solo; arte o relleno corrido; el tope de
+triángulos; no entra de fondo; la reunión primero en Presentar, las pruebas de la reunión
+en el editor, el cartel con `hayReunion`; la lámina privada; la caminata; los materiales
+que se sueltan); `probar-arte` 29 (el estudio con degradé recortado al producto, el ancho
+acotado, «1.000 g», la ficha acostada, los campos que siguen a la ficha). Cada guarda
+nueva se rompió a propósito: 37 mutaciones, 37 cayeron (tres sobrevivieron la primera
+vez y la prueba se reforzó), todo restaurado con `cp`. Mirado: la toma «De cerca» de la
+punta con lo de atrás en 12 lados y el vaso recto en 4 filas no se distingue de la de la
+ronda anterior; el editor durante la reunión de Diana muestra la punta de Alpina sin sus
+vasos.
+
+**El juego para el dueño** (`scratchpad/realismo/capturas/final/`): cada mueble ANTES y
+DESPUÉS con el mismo encuadre, de frente y de cerca, en Presentar. El «antes» es la
+build de HEAD (la lámina plana), exportada con `git archive` —sin tocar el árbol de
+trabajo— y construida aparte; la cámara la fija una vista guardada en la cara
+(`vista3D`), que las dos builds respetan con «Encuadrar esta cara», a ≥ 4,2 m del punto de
+mira (la órbita de HEAD no deja menos de 4) y con la misma dirección que la toma de venta
+de la build nueva. Dos diferencias que no son de encuadre y hay que contar al mostrarlo:
+la nevera nueva lleva las rejillas acomodadas (la de 2 L no entra parada en las de
+fábrica; la lámina vieja la estiraba), y en el robatope la punta vecina sale vacía en el
+«después» porque la reunión es de Diana y los vasos son de Alpina.
+
 ---
 
 ## El producto estaba pintado al fondo del mueble
@@ -3846,12 +4486,16 @@ robatope, vitrina y nevera de refrescos. Los paneles estructurales volvieron a
 ser lisos, y con eso `getPlainLambert` y `getPlainStandard` quedaron sin uso
 —existían sólo para ser el fondo de una caja pintada— y se borraron.
 
-### Lo que queda sabido
+### Lo que queda sabido — saldado para el producto en prueba (2026-10-08)
 
-El producto se estira hasta llenar el alto del entrepaño: una bolsa de café de
-25 cm ocupa los 39 cm del hueco. Es la convención del compositor de planograma
-y para vender se ve bien, pero no es fiel. Arreglarlo pide saber el alto real
-del empaque, que hoy no se pide al cargar el arte.
+El producto se estiraba hasta llenar el alto del entrepaño: una bolsa de café de
+25 cm ocupaba los 39 cm del hueco. Arreglarlo pedía saber el alto real del
+empaque, que no se pedía al cargar el arte. **Ya se pide**: la ficha del arte
+(`supplier_asset_specs`) guarda forma y medidas, el alto es obligatorio en un arte
+nuevo, y lo que se prueba en la góndola, la punta, la nevera de refrescos y el
+robatope se dibuja como envases a escala (ver *2026-10-08: el producto se ve de
+verdad*). La lámina estirada sigue sólo en los muebles sin entrepaños (vitrina,
+ristra, cruz, impulsador, isla) y en las fotos de espacio cargadas desde el plano.
 
 ---
 
@@ -4108,7 +4752,14 @@ Ahora el producto inventado se borró de todos, con una sola excepción
 deliberada: la nevera de refrescos conserva botellas **mudas, de un solo tono
 frío**, y sólo mientras el espacio esté sin vender. Una nevera vacía no se lee
 como nevera; una nevera con seis colores de marcas que no existen le roba el
-protagonismo a la que sí.
+protagonismo a la que sí. **Y mientras se prueba un producto en ella tampoco**
+(`conRelleno={!pinta && !enPrueba}`): la nevera probada muestra sólo lo probado.
+
+Desde 2026-10-08 la regla «arte o relleno» vale por **(cara, entrepaño)** y no por
+mueble entero: probando un producto en los entrepaños 2 y 3 de la cara B, el resto
+de la cara B y toda la cara A siguen con su relleno por rubro de lo vendido
+(`cubiertas`, en `muebles/frentes.ts`). Ningún mueble dibuja las dos cosas en el
+mismo entrepaño.
 
 ### Mueble por mueble
 
@@ -4241,6 +4892,14 @@ panel no existía en ninguna pantalla. Compilaba, y las pruebas del mesh pasaban
 Ahora se encienden **sobre el mueble seleccionado**, y sólo sobre ése: encendidos en toda
 la planta, un local de cincuenta muebles queda cubierto de rectángulos de colores y no se
 ve la tienda.
+
+Desde 2026-10-08: **en Presentar no hay slots** (`conEspacios` termina en
+`&& !presentationMode`: el estado de cada espacio no es asunto del proveedor que mira),
+con un producto en prueba los paneles son **sólo un contorno de 1 px** (`ContornoDeSlot`;
+el relleno, transparente, sube a 12 % al pasar el mouse y 22 % elegido, y sigue
+recibiendo el clic) —desde 2026-10-09: el velo al 15 % teñía de verde el mueble y el
+producto— y llevan `userData={CHROME}`, así que no salen en ninguna captura ni en la
+lámina «Hoy / Con».
 
 ### Cómo se prueba
 
@@ -6076,6 +6735,21 @@ adelante: lo que ya está mal se guardó antes de que existiera.
 ---
 
 ## Gotchas
+
+**El tono neutro del producto de prueba depende de nombres internos de three.**
+`muebles/etiqueta.ts` reemplaza en el shader del material estándar
+`#include <tonemapping_fragment>` (por `NeutralToneMapping`, sólo en ese material) y
+`#include <emissivemap_fragment>` (para teñir la emisión con el color de instancia, que
+en el fragmento llega como `USE_COLOR`/`vColor`, no `USE_INSTANCING_COLOR`). Si three
+renombra cualquiera de los dos, el parche deja de aplicarse **en silencio** y la marca
+vuelve a salir con el ACES de la escena. `probar-muebles` lee los shaders de
+`node_modules/three` y falla antes; al subir de versión de three, mirar esa prueba
+primero.
+
+**Un canvas 2D no devuelve el color de lo transparente.** Guarda el color
+premultiplicado: `putImageData` con alfa 0 y después `getImageData` devuelve negro. Toda
+textura opaca que se arme de un recorte sale del arreglo `rgba`, nunca de releer el
+lienzo (ver *2026-10-08: el producto se ve de verdad*).
 
 **Excel: DOS librerías, y cada una tiene su motivo.**
 

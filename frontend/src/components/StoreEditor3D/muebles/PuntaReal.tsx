@@ -1,4 +1,5 @@
 import { memo, useMemo } from "react";
+import type * as THREE from "three";
 import {
   COPETE, PANEL_FONDO, PARANTE, ZOCALO, nivelesDePunta, vanosDeCorrido,
 } from "./medidas";
@@ -52,12 +53,25 @@ export interface PuntaRealProps {
   statusColor?: string;
   /** Previsualización al colocar: todo translúcido. */
   ghost?: boolean;
+  /** La cara impresa del copete con la marca del producto en prueba
+   *  (`pop.ts`). Sin esto, la chapa clara y neutra de siempre. */
+  copete?: THREE.Material;
+  /** La cenefa con el color de la marca (`materialDeCenefa`): tapa el hueco
+   *  entre el último entrepaño y el copete. Va junto con `copete`. */
+  cenefa?: THREE.Material;
 }
 
 export const PuntaReal = memo(function PuntaReal({
-  w, d, h, statusColor, ghost = false,
+  w, d, h, statusColor, ghost = false, copete, cenefa,
 }: PuntaRealProps) {
   const materiales = useMateriales(ghost, statusColor);
+  // La chapa impresa: la marca va SÓLO en la cara que mira al pasillo (−Z;
+  // BoxGeometry ordena +X, −X, +Y, −Y, +Z, −Z). Los cantos siguen neutros.
+  const chapa = useMemo(
+    () => (copete ? [materiales.precios, materiales.precios, materiales.precios,
+      materiales.precios, materiales.precios, copete] : materiales.precios),
+    [copete, materiales.precios],
+  );
 
   const altoDeCuerpo = Math.max(0.4, h - COPETE.alto);
   const vanos = useMemo(() => vanosDeCorrido(w), [w]);
@@ -132,10 +146,23 @@ export const PuntaReal = memo(function PuntaReal({
         {/* La chapa impresa, hundida dentro del marco. Va clara y neutra: es
             del proveedor, y teñirla con el estado comercial la convertiría en
             un semáforo en el lugar donde va una marca. */}
-        <mesh position={[0, 0, -COPETE.fondo + 0.004]} castShadow material={materiales.precios}>
+        <mesh position={[0, 0, -COPETE.fondo + 0.004]} castShadow material={chapa}>
           <boxGeometry args={[anchoCopete - 0.016, COPETE.alto - 0.016, 0.004]} />
         </mesh>
       </group>
+
+      {/* ── La cenefa ─────────────────────────────────────────────────────
+          Sólo con la marca en el copete y si el hueco de arriba no sirve
+          para producto (menos de 12 cm): por delante de todo, del último
+          entrepaño —su porta-precios queda a la vista— hasta el copete. */}
+      {cenefa && altoDeCuerpo - niveles[niveles.length - 1] < 0.12 && (
+        <mesh
+          position={[0, (niveles[niveles.length - 1] + altoDeCuerpo) / 2 + 0.002, -d / 2 - 0.004]}
+          material={cenefa}
+        >
+          <boxGeometry args={[w, altoDeCuerpo - niveles[niveles.length - 1] - 0.004, 0.006]} />
+        </mesh>
+      )}
 
       {/* ── La barra de luz ───────────────────────────────────────────────
           Debajo del copete y apuntando al producto. En tienda es lo que hace

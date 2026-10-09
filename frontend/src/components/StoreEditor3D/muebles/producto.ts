@@ -23,6 +23,7 @@
  * Son de empaque comercial, en METROS, y salen de formatos estándar. Igual que
  * `medidas.ts`, están acá para poder corregirse en un solo lugar.
  */
+import type { EstadoDelRecorte } from "./recorte";
 
 /** La silueta del envase. Es lo PRIMERO que el ojo clasifica —antes que el
  *  color y mucho antes que la etiqueta—, así que decide la geometría con la
@@ -144,7 +145,7 @@ export function empaqueVolcadoEn(
  */
 export function colorVolcado(rubro: string | undefined | null): string {
   const e = empaqueVolcado(rubro);
-  const n = Math.abs(hashDe(sinTildes(rubro ?? "")));
+  const n = Math.abs(hashTexto(sinTildes(rubro ?? "")));
   if (e === EMPAQUES.pieza) {
     return `hsl(${24 + (n % 26)}, ${44 + (n % 16)}%, ${40 + ((n >> 3) % 12)}%)`;
   }
@@ -204,12 +205,31 @@ function palabrasDe(rubro: string): string[] {
  * «te» deja de cazar dentro de cualquier cosa.
  */
 export function empaqueDeRubro(rubro: string | undefined | null): Empaque {
+  return rubroQueCasa(rubro) ?? EMPAQUES.caja;
+}
+
+/** El empaque del rubro si el texto casa con alguno, o `null` si cae en el
+ *  formato por defecto. Quien estima las medidas de un arte necesita saber la
+ *  diferencia: «no casó nada» no es lo mismo que «es una caja». */
+function rubroQueCasa(rubro: string | undefined | null): Empaque | null {
   const palabras = palabrasDe(rubro ?? "");
-  if (palabras.length === 0) return EMPAQUES.caja;
+  if (palabras.length === 0) return null;
   for (const [prefijos, empaque] of POR_RUBRO) {
     if (prefijos.some((p) => palabras.some((w) => w.startsWith(p)))) return empaque;
   }
-  return EMPAQUES.caja;
+  return null;
+}
+
+/** El hash FNV-1a de un texto. Es la semilla de todo lo que tiene que salir
+ *  IGUAL en cada render y en cada sesión: el color de un rubro y el desorden
+ *  del producto de prueba (`frentes.ts`). */
+export function hashTexto(t: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < t.length; i++) {
+    h ^= t.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h;
 }
 
 /**
@@ -224,17 +244,8 @@ export function empaqueDeRubro(rubro: string | undefined | null): Empaque {
  * estado comercial (disponible / ocupado) y son los que tienen que seguir
  * significando algo cuando el mueble está lleno de producto.
  */
-function hashDe(t: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < t.length; i++) {
-    h ^= t.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h;
-}
-
 export function colorDeRubro(rubro: string | undefined | null): string {
-  const n = Math.abs(hashDe(sinTildes(rubro ?? "")));
+  const n = Math.abs(hashTexto(sinTildes(rubro ?? "")));
   // Azules, violetas, ocres y turquesas: 190°–330° y 30°–60°.
   const tono = n % 2 === 0 ? 190 + (n % 140) : 30 + (n % 30);
   // Saturación contenida: un envase impreso tiene color, pero un lineal de
@@ -340,8 +351,237 @@ export function acomodar(
   };
 }
 
+/** Si el envase entra de FONDO en un entrepaño, con los mismos retiros que
+ *  `acomodar`: es lo que distingue «no entra de fondo» de «no entra de
+ *  ancho» cuando un entrepaño queda vacío. */
+export function entraDeFondo(fondoUtil: number, e: Empaque): boolean {
+  return fondoUtil - RETIRO_FONDO - RETIRO_FRENTE >= e.fondo;
+}
+
 /** Desde dónde se empieza a apilar en profundidad, contando desde el filo del
  *  entrepaño hacia adentro. El producto se repone AL FRENTE: un lineal con el
  *  producto pegado al fondo y el filo vacío es exactamente lo que un supervisor
  *  manda a corregir. */
 export const RETIRO_AL_FRENTE = RETIRO_FRENTE;
+
+// ─── El empaque del ARTE del proveedor ───────────────────────────────────────
+//
+// Lo de arriba es una aproximación por rubro, para lo vendido de lo que no hay
+// foto. El producto que se PRUEBA es otra cosa: es uno concreto, con su foto,
+// y su medida decide la escala y cuántos frentes entran —justo la cuenta que
+// se negocia—. Por eso se le pide la ficha al cargar el arte; para lo que se
+// cargó antes, o sin ficha, se estima y se dice que es estimado.
+
+/** La forma que se elige en la ficha. `auto` deja que decidan el rubro y la
+ *  foto. */
+export type FormaDeFicha = "auto" | "caja" | "botella" | "lata" | "vaso" | "frasco" | "bolsa" | "otro";
+
+/** La ficha del arte, tal como la guarda `supplier_asset_specs`. */
+export interface FichaDeArte {
+  forma: FormaDeFicha;
+  alto_mm: number | null;
+  ancho_mm: number | null;
+  fondo_mm: number | null;
+  apilable: boolean;
+  acostado: boolean;
+  /** Qué hacer con el fondo de la foto (ver `recorte.ts`). */
+  fondo_foto: "auto" | "quitar" | "conservar";
+}
+
+/** Con qué geometría se dibuja el envase. */
+export type FormaDeEnvase = "caja" | "revolucion" | "almohada" | "recorte";
+
+export interface EmpaqueDeArte extends Empaque {
+  envase: FormaDeEnvase;
+  apilable: boolean;
+  /** El alto no lo cargó nadie: salió del contenido o del rubro. Se rotula
+   *  «≈» en el panel y en el selector. */
+  estimado: boolean;
+  /** El ancho tampoco es confiable: no está en la ficha y la foto conserva
+   *  su fondo, así que su aspecto puede traer márgenes (`recorte.ts`,
+   *  `sinQuitar`). Se acota a la forma, se rotula «≈» y la ficha lo pide. */
+  anchoEstimado: boolean;
+  /** De dónde salió el alto. */
+  de: "ficha" | "contenido" | "rubro";
+  /** Una botella de plástico transparente (gaseosa, agua, jugo, aceite): por
+   *  el PET de la foto se ve el fondo del estudio, y la etiqueta se tiñe con
+   *  el color del líquido (`llenarBotella`). Un vaso o una lata, no. */
+  transparente: boolean;
+  /** Cuántos se apilan como máximo, si se apila. Tres, también el vaso: de
+   *  a dos (la primera ronda) la punta de Alpina se veía medio surtida, con
+   *  un 35 % de aire sobre cada entrepaño, y así no se monta una punta
+   *  negociada —se surte casi hasta el entrepaño de arriba—. */
+  pisosMaximos: number;
+}
+
+/** Lo que dice el texto del producto sobre su contenido: «200 g», «1,5 L».
+ *
+ *  Con los números como se escriben acá: la COMA es el decimal y el punto
+ *  separa los miles. Leyendo el punto como decimal, «1.000 g» era 1 g y
+ *  «1.100 ml» 1,1 ml: el envase caía al mínimo de 4 cm y el entrepaño se
+ *  llenaba de decenas de frentes de juguete. El punto seguido de grupos de
+ *  EXACTAMENTE tres cifras es de miles; «1.5 L», con una sola cifra, sigue
+ *  siendo litro y medio. Y en litros o kilos un «1.250» de miles daría un
+ *  envase de 1.250 L, así que ahí, si da 100 o más, se lee como decimal. */
+export function contenidoDelTexto(t: string): { cm3: number; unidad: "volumen" | "masa" } | null {
+  const m = /(\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:[.,]\d+)?)\s*(ml|l|lt|litros?|cc|g|gr|kg)\b/i.exec(t ?? "");
+  if (!m) return null;
+  const u = m[2].toLowerCase();
+  const grande = u === "kg" || u === "l" || u === "lt" || u.startsWith("litro");
+  const deMiles = /^\d{1,3}(?:\.\d{3})+(?:,\d+)?$/.test(m[1]);
+  const comoMiles = Number(m[1].replace(/\./g, "").replace(",", "."));
+  const n = deMiles && !(grande && comoMiles >= 100) ? comoMiles : Number(m[1].replace(",", "."));
+  if (!(n > 0)) return null;
+  if (u === "ml" || u === "cc") return { cm3: n, unidad: "volumen" };
+  if (u === "l" || u === "lt" || u.startsWith("litro")) return { cm3: n * 1000, unidad: "volumen" };
+  if (u === "kg") return { cm3: n * 1000, unidad: "masa" };
+  return { cm3: n, unidad: "masa" };
+}
+
+/** Rubros donde un gramo ocupa más o menos un centímetro cúbico: lo líquido y
+ *  lo lácteo. Un kilo de arroz o de cereal no dice nada de su volumen. */
+const LIQUIDOS = ["leche", "lacteo", "yogur", "kumis", "bebida", "gaseosa", "jugo", "agua"];
+
+/** Acota a [min, max]. */
+const entre = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+
+/** El ancho sobre el alto típico de cada forma de la ficha: es la referencia
+ *  con que se acota un ancho que salió de una foto poco confiable. El vaso
+ *  es el de yogur de 200 g (7,5 × 9 cm). Sin forma, la del rubro. */
+const ASPECTO_DE_FORMA: Partial<Record<FormaDeFicha, number>> = {
+  caja: EMPAQUES.caja.ancho / EMPAQUES.caja.alto,
+  botella: EMPAQUES.botellaGrande.ancho / EMPAQUES.botellaGrande.alto,
+  lata: EMPAQUES.lata.ancho / EMPAQUES.lata.alto,
+  vaso: 0.83,
+  frasco: 0.7,
+  bolsa: EMPAQUES.bolsa.ancho / EMPAQUES.bolsa.alto,
+};
+
+/**
+ * Las medidas del producto que se prueba, con o sin ficha.
+ *
+ * Con ficha, manda la ficha. Sin ficha se estima, en este orden:
+ *
+ * 1. **El alto por el contenido** escrito en el nombre o el rubro —«200 g»,
+ *    «1,5 L»—, sólo para líquidos y lácteos, con el volumen y el aspecto de la
+ *    foto. Por rubro solo, «yogur» cae en un tetra de 20 cm contra los 9 cm de
+ *    un vaso de 200 g.
+ * 2. **El alto del rubro** (`empaqueDeRubro`).
+ * 3. **El ancho** sale del alto por el aspecto del recorte, acotado entre la
+ *    mitad y el doble del ancho del rubro.
+ *
+ * NUNCA cambia el producto por uno más chico del rubro, como hace el relleno:
+ * es un producto concreto. Si no entra, el entrepaño queda vacío y se dice.
+ */
+export function empaqueDeArte(
+  arte: { nombre: string; categoria?: string | null },
+  ficha: FichaDeArte | null,
+  recorte: { aspecto: number; relleno: number; simetria: number; estado?: EstadoDelRecorte } | null,
+  opciones: { acostado?: boolean } = {},
+): EmpaqueDeArte {
+  const texto = `${arte.categoria ?? ""} ${arte.nombre}`;
+  const casa = rubroQueCasa(texto);
+  const rubro = casa ?? EMPAQUES.caja;
+  const forma = ficha?.forma ?? "auto";
+
+  // ── Con qué geometría ─────────────────────────────────────────────────────
+  let envase: FormaDeEnvase;
+  if (forma === "caja") envase = "caja";
+  else if (forma === "botella" || forma === "lata" || forma === "vaso" || forma === "frasco") {
+    // Torneado sólo si la silueta es simétrica: una botella fotografiada en
+    // tres cuartos, torneada, sale deforme. Sin recorte todavía, se tornea.
+    envase = !recorte || recorte.simetria <= 0.08 ? "revolucion" : "recorte";
+  } else if (forma === "bolsa") envase = "almohada";
+  else if (forma === "otro") envase = "recorte";
+  else if (!casa) {
+    // El rubro no dice nada: decide la foto.
+    const relleno = recorte?.relleno ?? 1;
+    envase = relleno >= 0.95 ? "caja" : (recorte?.simetria ?? 1) < 0.06 ? "revolucion" : "recorte";
+  } else if (rubro.forma === "botella" || rubro.forma === "lata") envase = "revolucion";
+  else if (rubro.forma === "bolsa") envase = "almohada";
+  else envase = (recorte?.relleno ?? 1) >= 0.9 ? "caja" : "recorte";
+
+  // ── El alto ───────────────────────────────────────────────────────────────
+  const aspecto = recorte?.aspecto ?? rubro.ancho / rubro.alto;
+  let alto: number;
+  let de: EmpaqueDeArte["de"];
+  if (ficha?.alto_mm) {
+    alto = ficha.alto_mm / 1000;
+    de = "ficha";
+  } else {
+    const contenido = contenidoDelTexto(texto);
+    const palabras = palabrasDe(texto);
+    const liquido = palabras.some((w) => LIQUIDOS.some((l) => w.startsWith(l)))
+      || rubro === EMPAQUES.tetra || rubro === EMPAQUES.botellaGrande || rubro === EMPAQUES.botellaChica;
+    if (contenido && (contenido.unidad === "volumen" || liquido)) {
+      const V = contenido.cm3 * 1e-6;
+      if (envase === "revolucion" || envase === "recorte") {
+        // Un cilindro que llena el 80 % de su volumen: V = 0,8·π·(a·h/2)²·h.
+        alto = Math.cbrt((4 * V) / (Math.PI * aspecto * aspecto * 0.8));
+      } else {
+        // Una caja que llena el 90 %: V = 0,9·(a·h)·(c·a·h)·h.
+        const c = rubro.fondo / rubro.ancho;
+        alto = Math.cbrt(V / (aspecto * aspecto * c * 0.9));
+      }
+      alto = entre(alto, 0.04, 0.45);
+      de = "contenido";
+    } else {
+      alto = rubro.alto;
+      de = "rubro";
+    }
+  }
+  const estimado = !ficha?.alto_mm;
+
+  // ── Ancho y fondo ─────────────────────────────────────────────────────────
+  // Una foto que conserva su fondo («conservado» o «dudoso») puede traer su
+  // aspecto con márgenes: recortada a lo que se distingue del fondo casi
+  // siempre acierta, pero no siempre (un estudio con viñeta, un vaso blanco
+  // que toca los bordes). Ese ancho no se cree a ciegas, ni con el alto de la
+  // ficha: se acota alrededor del aspecto típico de su forma y se dice «≈».
+  const aspectoDudoso = recorte?.estado === "conservado" || recorte?.estado === "dudoso";
+  const anchoEstimado = !ficha?.ancho_mm && !!recorte && aspectoDudoso;
+  let ancho: number;
+  if (ficha?.ancho_mm) ancho = ficha.ancho_mm / 1000;
+  else if (!recorte) ancho = rubro.ancho;
+  else {
+    ancho = alto * recorte.aspecto;
+    if (estimado) ancho = entre(ancho, rubro.ancho * 0.5, rubro.ancho * 2);
+    if (anchoEstimado) {
+      const tipico = alto * (ASPECTO_DE_FORMA[forma] ?? rubro.ancho / rubro.alto);
+      ancho = entre(ancho, tipico * 0.6, tipico * 1.6);
+    }
+  }
+  let fondo: number;
+  if (ficha?.fondo_mm) fondo = ficha.fondo_mm / 1000;
+  else if (envase === "revolucion") fondo = ancho;
+  else if (envase === "almohada") fondo = Math.min(0.45 * ancho, rubro.fondo);
+  else fondo = rubro.fondo;
+
+  const apilable = ficha?.apilable ?? forma === "lata";
+  const formaDeEmpaque: FormaDeEmpaque =
+    envase === "revolucion" ? (forma === "lata" ? "lata" : "botella")
+      : envase === "almohada" ? "bolsa" : "caja";
+
+  const transparente = envase === "revolucion"
+    && (forma === "botella" || (forma === "auto" && casa?.forma === "botella"));
+  const base: EmpaqueDeArte = {
+    ancho, alto, fondo, forma: formaDeEmpaque, envase, apilable, estimado, anchoEstimado, de,
+    transparente, pisosMaximos: 3,
+  };
+  // Lo que se tocó en la sesión («Mostrarla acostada», «Volver a pararla»)
+  // manda; si no se tocó nada, la ficha. El editor pasa `undefined` hasta
+  // que la dueña aprieta uno de los dos.
+  if (!(opciones.acostado ?? ficha?.acostado)) return base;
+
+  // ── Acostado ──────────────────────────────────────────────────────────────
+  // Una botella acostada sigue siendo una botella: el eje queda horizontal y
+  // se GIRA (la geometría lo sabe por `acostado`), no se achata.
+  if (envase === "revolucion") {
+    return { ...base, ancho: alto, alto: ancho, fondo: ancho, acostado: true };
+  }
+  if (envase === "caja" || envase === "almohada") {
+    const a = acostar(base);
+    return { ...base, ancho: a.ancho, alto: a.alto, fondo: a.fondo, acostado: true };
+  }
+  return base;
+}

@@ -309,19 +309,206 @@ export function resolverPaso(
  * El test es el mismo con el que se camina (`murosDeCaminata` ya infla cada
  * huella por `RADIO_PERSONA`, y respeta la rotación), así que la figura se para
  * exactamente donde podría pararse alguien.
+ *
+ * `separacion` es cuánto queda del canto del mueble.
+ *
+ * `enLaCara` la para EN EL PLANO de la cara que se está mostrando (la A o la
+ * B), y no 35 cm por delante del centro. Es lo que pide la pantalla de venta:
+ * adelantada, la perspectiva la agrandaba —en la toma de frente de una punta
+ * de 1,80 la persona de 1,70 salía más alta que el mueble y lo hacía ver de
+ * juguete, justo lo contrario de dar la escala—; y del lado A, en la toma de
+ * una cara B quedaba detrás de la góndola.
  */
 export function lugarDeLaFigura(
   f: { x: number; z: number; w: number; rotY: number },
   muros: Caja[],
+  separacion = 0.45,
+  enLaCara?: { d: number; cara: "A" | "B" },
 ): { x: number; z: number; rotY: number } | null {
   const cos = Math.cos(f.rotY), sen = Math.sin(f.rotY);
   const aMundo = (lx: number, lz: number) => ({
     x: f.x + lx * cos + lz * sen,
     z: f.z - lx * sen + lz * cos,
   });
+  // La cara A mira a −Z local (`normalDeCara`): su plano está en z = −d/2.
+  const lz = enLaCara ? (enLaCara.cara === "A" ? -1 : 1) * (enLaCara.d / 2) : -0.35;
+  // Mirando hacia el mismo lado que la cara: de frente a quien la mira.
+  const rotY = enLaCara?.cara === "B" ? f.rotY + Math.PI : f.rotY;
   for (const lado of [1, -1] as const) {
-    const p = aMundo(lado * (f.w / 2 + 0.45), -0.35);
-    if (!chocaEn(muros, p.x, p.z)) return { ...p, rotY: f.rotY };
+    const p = aMundo(lado * (f.w / 2 + separacion), lz);
+    if (!chocaEn(muros, p.x, p.z)) return { ...p, rotY };
   }
   return null;
+}
+
+// ─── La cámara del vendedor ───────────────────────────────────────────────────
+
+/** Las tres tomas con que se le muestra un espacio al proveedor. */
+export type TomaDeVenta = "frente" | "tres_cuartos" | "cerca";
+
+/**
+ * El campo visual (vertical, en grados) de la toma «De cerca».
+ *
+ * Con los 50° de siempre, para llenar el cuadro con un entrepaño la cámara
+ * tenía que pegarse a 60 cm: un gran angular que estiraba las cajas de los
+ * bordes, con la cámara a 1,6 m mirando para abajo, las tapas de los vasos
+ * dominaban el cuadro y el entrepaño de arriba se comía un tercio. Con un
+ * teleobjetivo corto la cámara se para más atrás, casi a la altura del
+ * entrepaño, y el producto se ve de frente, como lo mira quien lo compra.
+ */
+export const FOV_DE_CERCA = 32;
+/** Qué parte del alto del cuadro llena el entrepaño en «De cerca». */
+const LLENADO_DE_CERCA = 0.75;
+
+/**
+ * Cuánto pasillo libre hay delante de una cara, en la dirección `normal`.
+ *
+ * Avanza de a 5 cm desde el plano de la cara hasta que choca con otro mueble
+ * (`chocaEn`, el mismo test de la caminata: los muebles ya vienen inflados por
+ * el radio del cuerpo) o se sale del local, y devuelve esa distancia menos un
+ * paso. Es lo que `vistaDeCara` no miraba: la cara B de una góndola que da a un
+ * pasillo de 2 m se encuadraba desde 5,7 m, DETRÁS de la góndola de enfrente,
+ * y el proveedor veía el lomo vacío de la vecina en vez de su producto.
+ */
+export function distanciaLibre(
+  origen: { x: number; z: number },
+  normal: { x: number; z: number },
+  obstaculos: Caja[],
+  limites: Caja,
+  max = 8,
+): number {
+  const PASO = 0.05;
+  // Lo que ya rodea al punto de partida no está DELANTE de la cara: es el
+  // mueble pegado al costado (el robatope arrimado a la punta), cuya huella
+  // inflada por el radio del cuerpo cubre el canto. Contándolo, el pasillo
+  // de un robatope medía cero y la toma de frente se pegaba a 90 cm,
+  // cortándole las repisas de arriba.
+  const delante = obstaculos.filter((c) => !chocaEn([c], origen.x, origen.z));
+  let libre = 0;
+  for (let s = PASO; s <= max + 1e-9; s += PASO) {
+    const x = origen.x + normal.x * s;
+    const z = origen.z + normal.z * s;
+    if (x < limites.minX || x > limites.maxX || z < limites.minZ || z > limites.maxZ) break;
+    if (chocaEn(delante, x, z)) break;
+    libre = s;
+  }
+  return Math.max(0, libre - PASO);
+}
+
+/** Lo que tiene que entrar en el cuadro: la franja vertical del producto y,
+ *  para «De cerca», el centro y el alto libre del entrepaño elegido. */
+export interface FocoDeVenta {
+  yBajo: number;
+  yAlto: number;
+  yEntrepano?: number;
+  libreEntrepano?: number;
+  /** La prueba va en algunos entrepaños y no en la cara entera: la toma de
+   *  frente los mira DE FRENTE, a su altura, y no desde 1,2 m para abajo. */
+  porEntrepano?: boolean;
+}
+
+/** El ángulo polar de OrbitControls va de π/6 a π/2,1 (`CameraControls`): una
+ *  cámara a la altura exacta de la mira queda FUERA y los controles la mueven
+ *  solos. Esto es la subida mínima, con margen, por metro de distancia. */
+const SUBIDA_MINIMA = Math.tan(Math.PI / 2 - Math.PI / 2.1) * 1.08;
+
+/**
+ * Una toma de venta: quieta, dentro del pasillo y a la altura de un comprador.
+ *
+ * - **De frente**: la franja del producto entera, de frente, desde donde se
+ *   para alguien en el pasillo. La distancia es la que hace falta para que
+ *   entre —por alto y por ancho— pero nunca más de lo que deja el pasillo, y
+ *   nunca menos de 90 cm.
+ * - **Tres cuartos**: la de frente girada 35° alrededor de la mira, hacia el
+ *   lado que tenga más lugar. Es la que muestra el volumen: la tapa y el
+ *   costado de cada envase. Si no hay lugar de ningún lado, queda de frente.
+ * - **De cerca**: el entrepaño elegido llena el 75 % del alto del cuadro, con
+ *   la cámara apenas por encima de su centro y el campo visual angosto de
+ *   `FOV_DE_CERCA` (el que llama lo pasa en `fovGrados`): es la que se lee
+ *   por videollamada. En un mueble angosto (el robatope de 30 cm, una bolsa
+ *   por repisa) encuadra dos repisas y media: con una sola, el producto
+ *   ocupaba el 13 % del cuadro y el resto era el costado del vecino.
+ *
+ * La cámara va siempre por encima de la mira —como un comprador mirando un
+ * estante— y dentro del rango polar de los controles, que si no la corrigen
+ * solos y la toma sale otra.
+ *
+ * `evitar` es un punto que no conviene tener entre la cámara y el mueble —la
+ * persona de 1,70 m parada al costado—: el tres cuartos gira hacia el OTRO
+ * lado si ahí también hay pasillo. Con la persona en primer plano, media
+ * punta quedaba tapada.
+ */
+export function vistaDeVenta(
+  mueble: { cx: number; cz: number; w: number; d: number; h: number; rotY?: number },
+  cara: "A" | "B",
+  toma: TomaDeVenta,
+  foco: FocoDeVenta,
+  obstaculos: Caja[],
+  limites: Caja,
+  fovGrados = 50,
+  aspecto = 16 / 9,
+  evitar?: { x: number; z: number },
+): Vista3D {
+  const n = normalDeCara(mueble.rotY ?? 0, cara);
+  const centro = { x: mueble.cx + (n.x * mueble.d) / 2, z: mueble.cz + (n.z * mueble.d) / 2 };
+  const libre = distanciaLibre(centro, n, obstaculos, limites);
+  const mitadV = ((fovGrados * Math.PI) / 180) / 2;
+  const mitadH = Math.atan(Math.tan(mitadV) * aspecto);
+
+  const conAltura = (pos: { x: number; z: number }, mira: number, y: number): Vista3D => {
+    const dist = Math.hypot(pos.x - centro.x, pos.z - centro.z);
+    const camY = Math.max(y, mira + 0.05, mira + SUBIDA_MINIMA * dist);
+    return { posX: pos.x, posY: camY, posZ: pos.z, targetX: centro.x, targetY: mira, targetZ: centro.z };
+  };
+
+  if (toma === "cerca") {
+    const mira = foco.yEntrepano ?? (foco.yBajo + foco.yAlto) / 2;
+    const alto = foco.libreEntrepano ?? 0.3;
+    // Lo que tiene que entrar de alto: el entrepaño con su labio y el
+    // porta-precios (6 cm), al 75 % del cuadro; o dos repisas y media.
+    const visible = mueble.w < 0.5 ? (alto + 0.03) * 2.6 : (alto + 0.06) / LLENADO_DE_CERCA;
+    const ideal = Math.min(1.8, Math.max(0.6, visible / (2 * Math.tan(mitadV))));
+    const dist = Math.max(0.6, Math.min(ideal, libre || ideal));
+    return conAltura({ x: centro.x + n.x * dist, z: centro.z + n.z * dist }, mira, Math.min(1.65, mira + 0.1));
+  }
+
+  const mira = (foco.yBajo + foco.yAlto) / 2;
+  const altoFoco = Math.max(0.1, foco.yAlto - foco.yBajo);
+  const ideal = Math.max(
+    (altoFoco * 1.12) / (2 * Math.tan(mitadV)),
+    (mueble.w * 1.1) / (2 * Math.tan(mitadH)),
+  );
+  const dist = Math.max(0.9, Math.min(ideal, libre));
+  // Por entrepaño, casi perpendicular a lo elegido: desde 1,2 m un entrepaño
+  // bajo se veía con 30° de picado y la bandeja vacía de arriba se llevaba
+  // la atención. La cara entera, desde la altura de un comprador.
+  const yCamara = foco.porEntrepano ? mira + 0.12 : Math.min(1.6, Math.max(1.2, mira + 0.35));
+  const frente = conAltura({ x: centro.x + n.x * dist, z: centro.z + n.z * dist }, mira, yCamara);
+  if (toma === "frente") return frente;
+
+  // Tres cuartos: el mismo punto girado alrededor de la mira, del lado con
+  // más pasillo. Se acerca si de ese lado hay menos lugar que de frente.
+  const girar = (a: number) => ({
+    x: n.x * Math.cos(a) - n.z * Math.sin(a),
+    z: n.x * Math.sin(a) + n.z * Math.cos(a),
+  });
+  const lados = [35, -35].map((g) => {
+    const dir = girar((g * Math.PI) / 180);
+    return { dir, libre: distanciaLibre(centro, dir, obstaculos, limites) };
+  }).sort((a, b) => b.libre - a.libre);
+  if (evitar) {
+    // Primero el lado que se ALEJA del punto a evitar, si tiene el pasillo
+    // mínimo; si no, queda el orden por lugar libre.
+    const haciaEvitar = (l: { dir: { x: number; z: number } }) =>
+      l.dir.x * (evitar.x - centro.x) + l.dir.z * (evitar.z - centro.z);
+    const lejos = lados.reduce((a, b) => (haciaEvitar(b) < haciaEvitar(a) ? b : a));
+    if (lejos.libre >= 0.9 && lados[0] !== lejos) lados.reverse();
+  }
+  for (const { dir, libre: l } of lados) {
+    const d = Math.max(0.9, Math.min(dist, l));
+    const pos = { x: centro.x + dir.x * d, z: centro.z + dir.z * d };
+    const adentro = pos.x > limites.minX && pos.x < limites.maxX && pos.z > limites.minZ && pos.z < limites.maxZ;
+    if (adentro && !chocaEn(obstaculos, pos.x, pos.z)) return conAltura(pos, mira, yCamara);
+  }
+  return frente;
 }

@@ -124,6 +124,21 @@ export function alRasDeRanura(altura: number): number {
   return Math.round(altura / PARANTE.pasoRanura) * PARANTE.pasoRanura;
 }
 
+/**
+ * Cuánto gira el entrepaño que apoya a `apoyo` metros en una cara de
+ * `altoDeCara` de alto, con el signo con que lo usa `rotation={[giro, 0, 0]}`.
+ *
+ * Vive acá y no adentro de la pieza que dibuja el entrepaño porque ahora hay
+ * dos que lo necesitan: el entrepaño y el producto de prueba que se para
+ * encima. Con una copia en cada lado, el día que se cambie la fracción el
+ * producto de los entrepaños altos queda flotando sobre una bandeja inclinada
+ * —o enterrado en ella—, que es el defecto que las cuentas compartidas de este
+ * archivo vinieron a cerrar.
+ */
+export function inclinacionDeNivel(apoyo: number, altoDeCara: number): number {
+  return apoyo / altoDeCara >= ENTREPANO.desdeFraccionDeAlto ? -ENTREPANO.inclinacion : 0;
+}
+
 /** Cuántos entrepaños entran, y a qué altura va cada uno.
  *
  *  Devuelve las alturas del PLANO SUPERIOR de cada entrepaño, ya redondeadas
@@ -215,6 +230,12 @@ export interface FilasDeProducto {
    *  hace que no sean todos iguales, y quien pare producto encima necesita
    *  saber a qué profundidad va cada uno o lo deja flotando en el aire. */
   fondos: number[];
+  /** Cuánto gira el entrepaño de cada fila, con el signo de
+   *  `rotation={[giro, 0, 0]}`. Sale de `inclinacionDeNivel`, la misma cuenta
+   *  que inclina la bandeja: quien para algo encima de un entrepaño alto tiene
+   *  que girar con él o queda apoyado en el aire de un lado y enterrado del
+   *  otro. Opcional porque el relleno genérico todavía no la usa. */
+  giros?: number[];
 }
 
 export function filasDeProducto(alto: number, fondoMaximo: number): FilasDeProducto {
@@ -226,6 +247,7 @@ export function filasDeProducto(alto: number, fondoMaximo: number): FilasDeProdu
       rowPitch: Math.max(0.2, alto - ZOCALO.alto),
       rows: 1,
       fondos: [Math.min(PROFUNDIDADES[0], fondoMaximo)],
+      giros: [inclinacionDeNivel(ZOCALO.alto, alto)],
     };
   }
   const rows = niveles.length - 1;
@@ -237,6 +259,9 @@ export function filasDeProducto(alto: number, fondoMaximo: number): FilasDeProdu
     fondos: Array.from({ length: rows }, (_, i) =>
       profundidadDeNivel(i, niveles.length, fondoMaximo),
     ),
+    // Con el alto del mueble, que es el que le pasa `GondolaReal` a
+    // `CaraDeEstanteria`: la fracción se mide contra la cara que se dibuja.
+    giros: niveles.slice(0, rows).map((y) => inclinacionDeNivel(y, alto)),
   };
 }
 
@@ -300,6 +325,33 @@ export function altoDeZonaDeSlots(alto: number): number {
   return alto - ZONA_DE_SLOTS.remate - ZONA_DE_SLOTS.desde;
 }
 
+/**
+ * Dónde vende un mueble: sus filas, sus vanos y sus caras, en una sola pieza.
+ *
+ * Es lo que necesita cualquiera que pare producto sobre el mueble —el relleno
+ * por rubro, la prueba del producto del proveedor— y lo que antes cada
+ * componente armaba por su cuenta a partir de las mismas funciones. Juntarlo
+ * no agrega ninguna cuenta: cada mueble lo arma con las que ya tenía
+ * (`ventaDeGondola`, `ventaDePunta`, `ventaDeNevera`, `ventaDeRobatope`).
+ */
+export interface VentaDeMueble {
+  filas: FilasDeProducto;
+  vanos: Vano[];
+  /** Dónde se cuelga cada cara y hacia dónde crece (ver `CaraDeProducto`). */
+  caras: { montaje: number; hacia: 1 | -1 }[];
+  /** Alto de la franja de slots, para los muebles que venden por espacios. */
+  franja?: number;
+  /** Alto de la cara contra el que se mide la inclinación de los entrepaños. */
+  altoDeCara: number;
+  /** Lo que el plano de apoyo queda por encima de `filas.alturas[i]`: la
+   *  rejilla de la nevera es una malla y lo que se apoya, se apoya en el
+   *  alambre. */
+  sobreApoyo?: number;
+  /** Giro de TODO el juego de repisas alrededor del origen del mueble, como
+   *  lo dibuja el robatope (sus repisas cuelgan de un único grupo girado). */
+  grupoGiro?: number;
+}
+
 /* ── La punta de góndola ─────────────────────────────────────────────────────
    Es el espacio más caro de un supermercado: se ve de frente desde todo el
    pasillo transversal y por eso se vende aparte y más caro que el lineal. Su
@@ -346,6 +398,7 @@ export function filasDePunta(altoDeCuerpo: number, fondoMaximo: number): FilasDe
       rowPitch: Math.max(0.2, altoDeCuerpo - ZOCALO.alto),
       rows: 1,
       fondos: [Math.min(PROFUNDIDADES[0], fondoMaximo)],
+      giros: [inclinacionDeNivel(ZOCALO.alto, altoDeCuerpo)],
     };
   }
   // El techo de la última fila es la parte de abajo del copete.
@@ -359,6 +412,10 @@ export function filasDePunta(altoDeCuerpo: number, fondoMaximo: number): FilasDe
     fondos: Array.from({ length: rows }, (_, i) =>
       profundidadDeNivel(i, alturas.length, fondoMaximo),
     ),
+    // Contra el alto del CUERPO, que es lo que `PuntaReal` le pasa a
+    // `CaraDeEstanteria`: medida contra el alto total con copete, la fila 3
+    // de una punta de 1,80 no se inclinaría y su entrepaño sí.
+    giros: niveles.map((y) => inclinacionDeNivel(y, altoDeCuerpo)),
   };
 }
 
@@ -453,6 +510,7 @@ export function filasDeNevera(alto: number, fondoMaximo: number): FilasDeProduct
       rowPitch: Math.max(0.2, techo - NEVERA.zocalo),
       rows: 1,
       fondos: [Math.min(PROFUNDIDADES[0], fondoMaximo)],
+      giros: [0],
     };
   }
   // Igual que la punta: sobre el entrepaño de arriba también se vende, porque
@@ -467,6 +525,111 @@ export function filasDeNevera(alto: number, fondoMaximo: number): FilasDeProduct
     // El frío no escalona: la carrocería es una caja y todos los entrepaños
     // tienen el mismo fondo.
     fondos: Array.from({ length: rows }, () => fondoMaximo),
+    // Ni se inclina: la rejilla del multideck va plana (`NeveraReal`).
+    giros: Array.from({ length: rows }, () => 0),
+  };
+}
+
+/** Lo que el envase queda por encima del plano del entrepaño de la nevera: la
+ *  rejilla es de alambre y lo que se apoya, se apoya en él. Estaba escrito a
+ *  mano adentro del relleno mudo; ahora lo lee también el producto de prueba. */
+export const SOBRE_REJILLA = 0.005;
+
+/** Dónde vende la nevera de refrescos (el multideck). Las cuentas son las de
+ *  `NeveraReal`: el interior descuenta la chapa del fondo y la puerta, la
+ *  rejilla va en `z = chapa/2` con ese fondo —así que su canto de atrás cae en
+ *  `(d − fondoPuerta)/2`—, y el relleno usa el ancho interior menos 3 cm. */
+export function ventaDeNevera(w: number, d: number, h: number): VentaDeMueble {
+  const fondoInterior = Math.max(0.1, d - NEVERA.chapa - NEVERA.fondoPuerta);
+  return {
+    filas: filasDeNevera(h, fondoInterior),
+    vanos: [{ x: 0, ancho: w - 2 * NEVERA.chapa - 0.03 }],
+    caras: [{ montaje: (d - NEVERA.fondoPuerta) / 2, hacia: -1 }],
+    sobreApoyo: SOBRE_REJILLA,
+    altoDeCara: h,
+  };
+}
+
+/* ── El robatope ─────────────────────────────────────────────────────────────
+   El panel lateral que flanquea la punta. Sus repisas estaban calculadas DOS
+   veces —en el mesh y en el pintado de caras— con un «keep in sync» en cada
+   una; ahora las dos preguntan acá, y también el producto de prueba. */
+
+export const ROBATOPE = {
+  /** El remate oscuro de arriba: no lleva copete. */
+  capa: 0.055,
+  /** Separación a la que se apunta al repartir las repisas. */
+  pasoObjetivo: 0.40,
+  /** Dónde arranca el reparto, sobre las patas. */
+  base: 0.12,
+  /** Lo que se descuenta del cuerpo antes de repartir. */
+  margen: 0.16,
+  /** Espesor de la tabla de cada repisa: el producto apoya en su cara de
+   *  arriba, medio espesor por encima del centro. */
+  espesorRepisa: 0.022,
+  /** Giro de todo el juego de repisas, alrededor del origen del mueble. */
+  giro: -0.06,
+  /** Lo que la repisa es más angosta y más corta que el mueble. */
+  retiroAncho: 0.055,
+  retiroFondo: 0.01,
+} as const;
+
+export interface CotasDeRobatope {
+  /** Alto del cuerpo, sin el remate. */
+  cuerpo: number;
+  /** Cuántas repisas, y su separación. */
+  n: number;
+  paso: number;
+  /** Centro de la tabla de cada repisa, de abajo hacia arriba. */
+  repisas: number[];
+  /** Cara de arriba de cada tabla: donde se apoya el producto. */
+  apoyos: number[];
+  anchoUtil: number;
+  fondo: number;
+  /** Z donde se cuelgan las repisas (crecen hacia −Z). */
+  montaje: number;
+  giro: number;
+}
+
+export function cotasDeRobatope(w: number, d: number, h: number): CotasDeRobatope {
+  const cuerpo = h - ROBATOPE.capa;
+  const n = Math.max(2, Math.round(cuerpo / ROBATOPE.pasoObjetivo));
+  const paso = (cuerpo - ROBATOPE.margen) / (n + 1);
+  // EXACTAMENTE la cuenta que tenía el mesh, con el mismo orden de operaciones
+  // —primero el producto y después la división—: el refactor no puede mover
+  // una repisa ni en el último bit.
+  const repisas = Array.from(
+    { length: n },
+    (_, i) => ROBATOPE.base + (i + 1) * (cuerpo - ROBATOPE.margen) / (n + 1),
+  );
+  const fondo = d - ROBATOPE.retiroFondo;
+  return {
+    cuerpo, n, paso, repisas,
+    apoyos: repisas.map((y) => y + ROBATOPE.espesorRepisa / 2),
+    anchoUtil: w - ROBATOPE.retiroAncho,
+    fondo,
+    montaje: fondo / 2,
+    giro: ROBATOPE.giro,
+  };
+}
+
+/** Dónde vende el robatope. Se vende entero, así que no lleva franja. */
+export function ventaDeRobatope(w: number, d: number, h: number): VentaDeMueble {
+  const c = cotasDeRobatope(w, d, h);
+  return {
+    filas: {
+      rowBottom: c.apoyos[0],
+      alturas: [...c.apoyos, c.cuerpo],
+      rowPitch: c.paso,
+      rows: c.n,
+      fondos: Array.from({ length: c.n }, () => c.fondo),
+      // Las repisas no se inclinan una por una: gira el juego entero.
+      giros: Array.from({ length: c.n }, () => 0),
+    },
+    vanos: [{ x: 0, ancho: c.anchoUtil }],
+    caras: [{ montaje: c.montaje, hacia: -1 }],
+    altoDeCara: c.cuerpo,
+    grupoGiro: c.giro,
   };
 }
 

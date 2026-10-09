@@ -179,8 +179,8 @@ prueba("los espacios se dibujan sólo sobre el mueble seleccionado", () => {
   // Encendidos en toda la planta, un local de cincuenta muebles queda cubierto
   // de rectángulos de colores y no se ve la tienda.
   assert.match(
-    cuerpoEscena, /const conEspacios = hasSlots && fix\.id === selectedId && !placingDef && !firstPerson/,
-    "cambió la condición que decide sobre qué mueble se ven los espacios",
+    cuerpoEscena, /const conEspacios = hasSlots && fix\.id === selectedId && !placingDef && !firstPerson && !presentationMode;/,
+    "cambió la condición que decide sobre qué mueble se ven los espacios (o volvieron a Presentar)",
   );
 });
 
@@ -306,26 +306,29 @@ const enMueble = leer(join(muebles, "ProductoEnMueble.tsx"));
 const productoCodigo = sinComentarios(producto);
 const enGondolaCodigo = sinComentarios(enGondola);
 const enMuebleCodigo = sinComentarios(enMueble);
+// La cuenta del relleno —qué es vendido, a qué altura, desde el filo— se mudó
+// de `ProductoEnMueble` a `frentes.ts`, que es pura. Las guardas la siguen.
+const frentesCodigo = sinComentarios(leer(join(muebles, "frentes.ts")));
 
 prueba("sólo se llena lo que está vendido", () => {
   // Rellenar la góndola entera "para que se vea linda" miente sobre lo único
   // que este sistema tiene que decir: dónde hay espacio libre.
-  assert.match(enMuebleCodigo, /VENDIDO\.has\(slot\.status\)/, "el producto dejó de mirar el estado del slot");
+  assert.match(frentesCodigo, /VENDIDO\.has\(slot\.status\)/, "el producto dejó de mirar el estado del slot");
   assert.match(
-    enMuebleCodigo, /new Set\(\["occupied", "reserved"\]\)/,
+    frentesCodigo, /new Set\(\["occupied", "reserved"\]\)/,
     "cambió qué cuenta como vendido: un reservado también está comprometido",
   );
 });
 
 prueba("el producto se para en los mismos entrepaños que se dibujan", () => {
   assert.match(enGondolaCodigo, /filasDeProducto\(/, "el producto calcula las alturas por su cuenta");
-  assert.match(enMuebleCodigo, /filas\.alturas\[i\]/, "no usa la altura exacta del entrepaño");
+  assert.match(frentesCodigo, /filas\.alturas\[i\]/, "no usa la altura exacta del entrepaño");
   assert.match(enGondolaCodigo, /vanosDeCorrido\(/, "el producto podría quedar apoyado sobre un parante");
 });
 
 prueba("el producto usa la misma franja de slots que los paneles", () => {
   assert.match(enGondolaCodigo, /altoDeZonaDeSlots\(h\)/, "el producto tiene su propia copia de la franja");
-  assert.match(enMuebleCodigo, /ZONA_DE_SLOTS\.desde/, "el producto tiene su propia base de la franja");
+  assert.match(frentesCodigo, /ZONA_DE_SLOTS\.desde/, "el producto tiene su propia base de la franja");
 });
 
 prueba("el empaque va a escala real y no a fracción del mueble", () => {
@@ -346,7 +349,7 @@ prueba("el producto se repone al frente del entrepaño", () => {
   // Un lineal con el producto pegado al fondo y el filo vacío es exactamente
   // lo que un supervisor manda a corregir.
   assert.match(
-    enMuebleCodigo, /fondoEntrepano - RETIRO_AL_FRENTE/,
+    frentesCodigo, /fondoEntrepano - RETIRO_AL_FRENTE/,
     "el producto se paró desde el fondo del entrepaño y no desde su filo",
   );
 });
@@ -356,6 +359,18 @@ prueba("el color del rubro es estable entre renders", () => {
   assert.match(productoCodigo, /export function colorDeRubro/, "falta el color por rubro");
   assert.ok(!/Math\.random/.test(productoCodigo), "el color del producto salió al azar");
   assert.ok(!/Math\.random/.test(enMuebleCodigo), "la ubicación del producto salió al azar");
+  // Y nada del producto de prueba: el mismo mueble se ve igual siempre.
+  for (const f of ["frentes.ts", "recorte.ts", "etiqueta.ts", "ProductoDePrueba.tsx", "pop.ts", "texturas.ts", "privacidad.ts"]) {
+    let codigo;
+    try { codigo = sinComentarios(leer(join(muebles, f))); } catch { continue; }
+    assert.ok(!/Math\.random/.test(codigo), `\`${f}\` usa Math.random: el producto titilaría`);
+  }
+  assert.match(
+    enMuebleCodigo, /import \{[^}]*\brellenoPorRubro\b[^}]*\} from "\.\/frentes"/,
+    "`ProductoEnMueble` volvió a acomodar el producto por su cuenta",
+  );
+  assert.ok(!/acomodar\(|empaqueQueEntra\(/.test(enMuebleCodigo),
+    "`ProductoEnMueble` calcula frentes en vez de dibujar los de `rellenoPorRubro`");
 });
 
 prueba("el arte del proveedor le gana a la aproximación por rubro", () => {
@@ -597,8 +612,42 @@ prueba("la punta reusa el herraje del corrido, no una copia", () => {
 prueba("el copete no se tiñe con el estado comercial", () => {
   // Es el lugar de la marca del proveedor. Pintarlo de verde o rojo lo
   // convierte en un semáforo donde va un logo.
-  const tramo = puntaCodigo.slice(puntaCodigo.indexOf("El copete"));
+  // Desde la chapa impresa hasta el final: el copete y su marca. (Antes se
+  // cortaba desde un comentario que `sinComentarios` borra, y la prueba
+  // miraba un solo carácter.)
+  const desde = puntaCodigo.indexOf("const chapa = useMemo(");
+  assert.ok(desde > 0, "no se encontró la chapa impresa del copete");
+  const tramo = puntaCodigo.slice(desde);
   assert.ok(!/statusColor/.test(tramo), "el copete quedó teñido con el estado del mueble");
+  // La marca del producto en prueba va sólo en la cara que mira al pasillo.
+  assert.match(tramo, /materiales\.precios, copete\] : materiales\.precios/);
+  assert.match(tramo, /material=\{chapa\}/);
+});
+
+prueba("la marca del copete sale sólo del arte en prueba, sin texto inventado", () => {
+  const pop = sinComentarios(leer(join(muebles, "pop.ts")));
+  assert.ok(!/fillText|strokeText|\.font\s*=/.test(pop), "el copete escribe texto que el proveedor no puso");
+  assert.match(pop, /et\.recorte\.colorDominante/, "el degradé no sale del color de la foto");
+  assert.match(pop, /g\.drawImage\(p, /, "el copete no lleva el producto");
+  // Sólo con la cara entera, si no se apagó, y nunca sin la prueba.
+  assert.match(cuerpoPuntaMesh,
+    /const conMarca = enPrueba && pa\?\.etiqueta && pa\.donde === "todas" && pa\.copete !== false;/,
+    "la marca va al copete aunque se pruebe un solo entrepaño");
+  assert.match(cuerpoPuntaMesh, /const copete = conMarca && pa\?\.etiqueta\s*\? materialDeCopete\(/);
+  assert.match(cuerpoPuntaMesh, /const cenefa = conMarca && pa\?\.etiqueta \? materialDeCenefa\(/,
+    "la cenefa va sin la marca en el copete");
+  assert.match(cuerpoPuntaMesh, /<PuntaReal w=\{w\} d=\{d\} h=\{h\} ghost=\{ghost\} copete=\{copete\} cenefa=\{cenefa\} \/>/);
+  // Segunda ronda: un héroe al centro (no dos recortes en las puntas con el
+  // centro vacío) y sin la raya blanca que cruzaba la base de los vasos.
+  assert.match(pop, /pegar\(W \/ 2, heroe\)/, "el copete no lleva el producto al centro");
+  assert.ok(!/fillRect\(0, Math\.round\(H \* 0\.86\)/.test(pop), "volvió la raya blanca del copete");
+  // La cenefa tapa SÓLO el hueco que no sirve para producto.
+  const punta = sinComentarios(leer(join(muebles, "PuntaReal.tsx")));
+  assert.match(punta, /\{cenefa && altoDeCuerpo - niveles\[niveles\.length - 1\] < 0\.12 && \(/,
+    "la cenefa tapa un entrepaño donde entra producto");
+  // El cabezote de la nevera, con la misma regla que el copete.
+  assert.match(cuerpoDe("function NeveraRefrescosMesh(", "function StandFrutasMesh("),
+    /const cabezote = enPrueba && pa\?\.etiqueta && pa\.donde === "todas" && pa\.copete !== false\s*\? materialDeCopete\(/);
 });
 
 // ── Los muebles de frío ─────────────────────────────────────────────────────
@@ -622,8 +671,9 @@ prueba("la nevera de refrescos es de frente ABIERTO", () => {
 });
 
 prueba("el relleno mudo se apaga cuando entra el arte del proveedor", () => {
-  // Lo que se ve en el mueble tiene que ser SU producto, no uno inventado.
-  assert.match(cuerpoNeveraMesh, /conRelleno=\{!pinta\}/, "el relleno taparía el arte del proveedor");
+  // Lo que se ve en el mueble tiene que ser SU producto, no uno inventado:
+  // ni con su arte pintado ni con su producto en prueba.
+  assert.match(cuerpoNeveraMesh, /conRelleno=\{!pinta && !enPrueba\}/, "el relleno taparía el arte del proveedor");
 });
 
 prueba("el pintado de la nevera NO repite la cuenta de entrepaños", () => {
@@ -776,9 +826,9 @@ prueba("un mueble contratado entero se llena entero", () => {
   // exhibidor de cruz o un impulsador se contratan completos: la marca compra
   // el mueble, no un estante, así que un mueble contratado y dibujado vacío no
   // informa nada.
-  assert.match(enMuebleCod2, /vendidoEntero/, "se perdió el modo de mueble entero");
+  assert.match(frentesCodigo, /vendidoEntero/, "se perdió el modo de mueble entero");
   assert.match(
-    enMuebleCod2, /if \(!vendidoEntero && \(apoyo </,
+    frentesCodigo, /if \(!vendidoEntero && \(apoyo </,
     "la franja de slots vuelve a recortar las repisas de un mueble sin slots",
   );
 });
@@ -821,7 +871,7 @@ prueba("el producto va DENTRO del grupo de la repisa que se inclina", () => {
 prueba("un mueble entero se llena también en profundidad", () => {
   // Con dos filas, un exhibidor de 80 cm de fondo muestra siete centímetros de
   // producto y setenta de estante vacío.
-  assert.match(enMuebleCod2, /PROFUNDIDAD_DE_MUEBLE_ENTERO/, "el mueble entero volvió a llenarse como una góndola");
+  assert.match(frentesCodigo, /PROFUNDIDAD_DE_MUEBLE_ENTERO/, "el mueble entero volvió a llenarse como una góndola");
 });
 
 prueba("la ristra cuelga producto de sus ganchos", () => {
@@ -1506,6 +1556,1275 @@ prueba("todo mueble que lee el arte del proveedor lo dibuja", () => {
       "el arte del proveedor no se vería en ese mueble",
     );
   }
+});
+
+// ── Una sola cuenta para lo que la prueba de producto necesita ──────────────
+//
+// El producto de prueba del proveedor se para SOBRE los entrepaños del mueble,
+// y eso pide saber cuatro cosas que vivían escritas adentro de cada componente:
+// cuánto se inclina un entrepaño alto, dónde van las repisas del robatope, a
+// qué altura se apoya algo en la rejilla de la nevera y dónde vende cada
+// mueble. Con una copia en el mueble y otra en el producto, el día que se toque
+// una el envase queda flotando o enterrado. Se ejecutan.
+
+const grados = (r) => Math.round((r * 180) / Math.PI * 1000) / 1000;
+
+prueba("la inclinación de los entrepaños es UNA cuenta, y la usan las piezas", () => {
+  // La punta de catálogo: 0,9 × 0,4 × 1,8, con su cuerpo de 1,44 bajo el copete.
+  const cuerpo = 1.8 - M.COPETE.alto;
+  const punta = M.filasDePunta(cuerpo, 0.4 - M.PANEL_FONDO.espesor);
+  assert.deepEqual(punta.alturas.slice(0, 5).map((y) => +y.toFixed(3)), [0.125, 0.425, 0.75, 1.075, 1.375]);
+  assert.deepEqual(punta.giros.map(grados), [0, 0, 0, -5, -5],
+    "la punta inclina otras filas que las que dibuja inclinadas");
+  // La góndola de 1,80: sólo la fila de 1,375 cae por encima del 60 % del alto.
+  const gon = M.filasDeProducto(1.8, M.fondoPorCara(0.9, false));
+  assert.deepEqual(gon.giros.map(grados), [0, 0, 0, 0, -5], "la góndola inclina otra fila");
+  // La rejilla del multideck va plana.
+  assert.ok(M.filasDeNevera(1.8, 0.687).giros.every((g) => g === 0), "la nevera inclinó una rejilla");
+  // El entrepaño y la fila preguntan lo mismo: para cada nivel, el giro de la
+  // fila es el que la pieza le da al entrepaño que la sostiene.
+  for (let h = 1.2; h <= 2.4001; h += 0.05) {
+    const f = M.filasDeProducto(h, 0.44);
+    f.giros.forEach((g, i) => assert.equal(g, M.inclinacionDeNivel(f.alturas[i], h)));
+  }
+  assert.match(piezasCodigo, /inclinacionDeNivel\(y, alto\)/, "el entrepaño calcula su giro por su cuenta");
+  assert.ok(!/ENTREPANO\.desdeFraccionDeAlto/.test(piezasCodigo),
+    "las piezas volvieron a comparar la fracción del alto por su lado");
+});
+
+prueba("las repisas del robatope salen de UNA cuenta, la de siempre", () => {
+  // La fórmula vieja, escrita acá a mano: es la tabla contra la que se mide.
+  // Si alguien «mejora» el reparto, el arte y el producto ya vendidos se corren.
+  for (let h = 1.2; h <= 2.2001; h += 0.05) {
+    const cuerpo = h - 0.055;
+    const n = Math.max(2, Math.round(cuerpo / 0.40));
+    const esperadas = Array.from({ length: n }, (_, i) => 0.12 + (i + 1) * (cuerpo - 0.16) / (n + 1) + 0.011);
+    const c = M.cotasDeRobatope(0.3, 0.4, h);
+    assert.equal(c.n, n, `con alto ${h.toFixed(2)} cambió la cantidad de repisas`);
+    c.apoyos.forEach((y, i) => assert.ok(Math.abs(y - esperadas[i]) < 1e-12,
+      `con alto ${h.toFixed(2)} la repisa ${i} se corrió de ${esperadas[i]} a ${y}`));
+    assert.ok(Math.abs(c.paso - (cuerpo - 0.16) / (n + 1)) < 1e-12, "cambió el paso");
+    assert.ok(Math.abs(c.cuerpo - cuerpo) < 1e-12 && Math.abs(c.fondo - 0.39) < 1e-12);
+    // Y la venta que se arma con eso cierra la última fila contra el cuerpo.
+    const v = M.ventaDeRobatope(0.3, 0.4, h);
+    assert.equal(v.filas.alturas.length, v.filas.rows + 1);
+    assert.equal(v.filas.alturas[v.filas.rows], c.cuerpo);
+    assert.equal(v.grupoGiro, -0.06, "el producto no gira con el juego de repisas");
+  }
+  const robatope = cuerpoDe("function RobatopeMesh(", "function RistraMesh(");
+  assert.ok(!/Math\.round\(bodyH \/ 0\.40\)/.test(robatope), "el robatope volvió a repartir sus repisas a mano");
+  assert.match(robatope, /cotasDeRobatope\(/, "el robatope no pregunta sus cotas");
+  const span = editorCodigo.slice(editorCodigo.indexOf("function getPanelShelfSpan"));
+  const tramo = span.slice(span.indexOf('case "robatope"'), span.indexOf('case "mueble"'));
+  assert.match(tramo, /cotasDeRobatope\(/, "el pintado del robatope volvió a tener su propia cuenta");
+  assert.ok(!/keep in sync/i.test(robatope + tramo), "volvió el «keep in sync»: dos copias de la misma cuenta");
+});
+
+prueba("la nevera apoya sobre la rejilla con UNA cota", () => {
+  assert.match(neveraCodigo, /apoyo \+ e\.alto \/ 2 \+ SOBRE_REJILLA/, "el relleno mudo volvió a su número a mano");
+  const v = M.ventaDeNevera(1.2, 0.75, 1.8);
+  assert.equal(v.sobreApoyo, M.SOBRE_REJILLA);
+  // El canto de atrás de la rejilla: grupo en z = chapa/2 con el fondo interior.
+  const fondoInterior = 0.75 - M.NEVERA.chapa - M.NEVERA.fondoPuerta;
+  assert.ok(Math.abs(v.caras[0].montaje - (M.NEVERA.chapa / 2 + fondoInterior / 2)) < 1e-12,
+    "el producto de la nevera se montó fuera de la rejilla");
+  assert.ok(Math.abs(v.vanos[0].ancho - (1.2 - 2 * M.NEVERA.chapa - 0.03)) < 1e-12);
+});
+
+prueba("la góndola y la punta dicen dónde venden desde su propio archivo", () => {
+  assert.match(enGondolaCodigo, /export function ventaDeGondola/, "la góndola perdió su venta");
+  assert.match(enPuntaCodigo, /export function ventaDePunta/, "la punta perdió su venta");
+  const venta = sinComentarios(leer(join(muebles, "venta.ts")));
+  for (const f of ["ventaDeGondola(", "ventaDePunta(", "ventaDeNevera(", "ventaDeRobatope("]) {
+    assert.ok(venta.includes(f), `\`ventaDeTipo\` no despacha a \`${f.slice(0, -1)}\``);
+  }
+  assert.ok(!/filasDe|vanosDeCorrido|nivelesDe/.test(venta), "`ventaDeTipo` calcula en vez de despachar");
+});
+
+// ── Dónde va cada unidad: el relleno y la prueba, ejecutados ────────────────
+//
+// `frentes.ts` es puro: se compila y se corre. `venta.ts` trae la góndola y la
+// punta, que viven en archivos de React; se compilan con React y three
+// adentro, que en Node se importan bien.
+
+const compiladoF = await build({
+  entryPoints: [join(raiz, muebles, "frentes.ts")],
+  bundle: true, write: false, format: "esm", platform: "neutral",
+});
+const F = await import(
+  "data:text/javascript;base64," + Buffer.from(compiladoF.outputFiles[0].text).toString("base64")
+);
+const compiladoX = await build({
+  entryPoints: [join(raiz, muebles, "privacidad.ts")],
+  bundle: true, write: false, format: "esm", platform: "neutral",
+});
+const X = await import(
+  "data:text/javascript;base64," + Buffer.from(compiladoX.outputFiles[0].text).toString("base64")
+);
+const compiladoV = await build({
+  entryPoints: [join(raiz, muebles, "venta.ts")],
+  bundle: true, write: false, format: "esm", platform: "node", jsx: "automatic",
+  logLevel: "silent",
+});
+const V = await import(
+  "data:text/javascript;base64," + Buffer.from(compiladoV.outputFiles[0].text).toString("base64")
+);
+
+prueba("el relleno por rubro cuenta lo que entra, y cada cara lo suyo", () => {
+  // Una góndola doble de catálogo con UN espacio vendido que toma la cara
+  // entera. El total tiene que ser, entrepaño por entrepaño y vano por vano,
+  // los frentes que entran por dos de fondo por las dos caras.
+  const v = V.ventaDeTipo("gondola", 3.6, 0.9, 1.8, "double");
+  const slot = { id: "g", x: 0, w: 1, y: 0, h: 1, status: "occupied", brandCategory: "Galletas" };
+  const base = { anchoTotal: 3.6, filas: v.filas, vanos: v.vanos, caras: v.caras, franja: v.franja, slots: [slot] };
+  let esperado = 0;
+  for (let i = 0; i < v.filas.rows; i++) {
+    const libre = v.filas.alturas[i + 1] - v.filas.alturas[i];
+    const e = P.empaqueQueEntra("Galletas", libre);
+    if (!e) continue;
+    for (const vano of v.vanos) {
+      const a = P.acomodar(vano.ancho, v.filas.fondos[i], libre, e);
+      esperado += a.frentes * Math.min(a.filas, 2) * 2;
+    }
+  }
+  const total = (g) => g.reduce((n, x) => n + x.posiciones.length, 0);
+  assert.ok(esperado > 100, "la cuenta esperada salió vacía");
+  assert.equal(total(F.rellenoPorRubro(base)), esperado);
+
+  // La prueba del proveedor tapa los entrepaños 1 y 2 de la cara A: ahí no
+  // va relleno, y la cara B conserva lo suyo.
+  const cubierto = F.rellenoPorRubro({ ...base, cubiertas: [[1, 2], null] }).flatMap((g) => g.posiciones);
+  assert.ok(!cubierto.some((p) => p.cara === 0 && (p.fila === 1 || p.fila === 2)),
+    "el relleno se dibuja debajo del producto de prueba");
+  assert.ok(cubierto.some((p) => p.cara === 1 && p.fila === 1), "la cara B perdió su slot vendido");
+  assert.ok(cubierto.some((p) => p.cara === 0 && p.fila === 0), "se tapó un entrepaño que no se eligió");
+  const toda = F.rellenoPorRubro({ ...base, cubiertas: ["todas"] }).flatMap((g) => g.posiciones);
+  assert.ok(toda.length > 0 && toda.every((p) => p.cara === 1), "«Toda la cara» dejó relleno en la cara A");
+  assert.equal(F.claveDeCubiertas(["todas", null]), "0:todas|1:-");
+});
+
+prueba("la regla de qué entrepaño es de qué espacio es la del relleno", () => {
+  const v = V.ventaDeTipo("gondola", 3.6, 0.9, 1.8, "double");
+  // Los cuatro de una góndola recién colocada (`defaultSlots`), y dos que
+  // terminan y empiezan JUSTO sobre un entrepaño: ahí se decide el ±1 mm.
+  const justo = (y) => (y - M.ZONA_DE_SLOTS.desde) / v.franja;
+  const bordes = [
+    { y: 0, h: justo(0.75) },
+    { y: justo(0.75), h: 1 - justo(0.75) },
+  ];
+  const cuartos = [0, 0.25, 0.5, 0.75].map((y) => ({ y, h: 0.25 }));
+  for (const slot of [{ y: 0, h: 0.5 }, { y: 0.5, h: 0.5 }, { y: 0, h: 1 }, ...cuartos, ...bordes]) {
+    const s = { id: "s", x: 0, w: 1, status: "occupied", brandCategory: "Galletas", ...slot };
+    const dibujadas = new Set(F.rellenoPorRubro({
+      anchoTotal: 3.6, filas: v.filas, vanos: v.vanos, caras: v.caras, franja: v.franja, slots: [s],
+    }).flatMap((g) => g.posiciones.map((p) => p.fila)));
+    assert.deepEqual(
+      F.entrepanosDelEspacio(s, v.filas, v.franja),
+      [...dibujadas].sort((a, b) => a - b),
+      `el espacio ${slot.y}–${slot.y + slot.h} no marca los mismos entrepaños que llena`,
+    );
+  }
+});
+
+const VASO = { ancho: 0.075, alto: 0.09, fondo: 0.075, forma: "caja" };
+const enMetros = (n) => +n.toFixed(4);
+
+prueba("el vaso en la punta: diez por entrepaño y el hueco del copete vacío", () => {
+  const v = V.ventaDeTipo("punta", 0.9, 0.4, 1.8);
+  const r = F.unidadesDePrueba({ venta: v, empaque: VASO, donde: "todas", semilla: "PUN-01|A|1" });
+  assert.deepEqual(r.porFila.map((f) => f.frentes), [10, 10, 10, 10, 0]);
+  assert.equal(r.porFila[4].motivo, "no-entra-alto", "el hueco bajo el copete no dice por qué quedó vacío");
+  assert.equal(r.frentesALaVista, 40);
+  r.porFila.forEach((f, i) => {
+    assert.equal(f.apoyo, v.filas.alturas[i], `la fila ${i} no apoya en su entrepaño`);
+    assert.equal(f.giro, v.filas.giros[i], `la fila ${i} no gira con su entrepaño`);
+  });
+  for (const u of r.unidades) {
+    const piso = u.y - VASO.alto / 2;
+    assert.ok(piso >= -1e-9, `una unidad de la fila ${u.fila} se hunde en el entrepaño`);
+    const tope = r.porFila[u.fila].apoyo + u.y + VASO.alto / 2;
+    assert.ok(tope <= v.filas.alturas[u.fila + 1] + 1e-9, `una unidad de la fila ${u.fila} atraviesa el de arriba`);
+    // Dentro del entrepaño, de adelante hacia atrás, y en la mitad que mira al pasillo.
+    assert.ok(u.z < 0 && -u.z <= v.filas.fondos[u.fila], `una unidad de la fila ${u.fila} quedó fuera del entrepaño`);
+  }
+  // Tres de fondo, y la de adelante al filo.
+  assert.ok(r.porFila.slice(0, 4).every((f) => f.fondoVisible === 3));
+
+  const dos = F.unidadesDePrueba({ venta: v, empaque: VASO, donde: [1, 2], semilla: "PUN-01|A|1" });
+  assert.deepEqual([...new Set(dos.unidades.map((u) => u.fila))].sort(), [1, 2], "«Por entrepaño» llenó otros");
+  assert.equal(dos.porFila[0].motivo, "no-elegida");
+  assert.equal(dos.frentesALaVista, 20);
+
+  const apilable = F.unidadesDePrueba({ venta: v, empaque: { ...VASO, apilable: true }, donde: "todas", semilla: "x" });
+  assert.deepEqual(apilable.porFila.map((f) => f.pisos), [3, 3, 3, 3, 0], "el vaso que se apila no se apiló de a tres");
+  for (const u of apilable.unidades) {
+    const tope = apilable.porFila[u.fila].apoyo + u.y + VASO.alto / 2;
+    assert.ok(tope <= v.filas.alturas[u.fila + 1] + 1e-9, "la pila atraviesa el entrepaño de arriba");
+  }
+  // Y la pila deja 2 cm arriba: sin ese aire la mano que repone no entra. En
+  // la nevera, con 27,5 cm libres, van DOS vasos y no tres.
+  const nev = V.ventaDeTipo("nevera_refrescos", 1.2, 0.75, 1.8);
+  const enNevera = F.unidadesDePrueba({ venta: nev, empaque: { ...VASO, apilable: true }, donde: "todas", semilla: "x" });
+  assert.deepEqual(enNevera.porFila.map((f) => f.pisos), [3, 2, 2, 3, 3], "la pila no deja aire arriba");
+  for (const u of enNevera.unidades) {
+    const tope = nev.filas.alturas[u.fila] + u.y + VASO.alto / 2;
+    assert.ok(tope + 0.02 <= nev.filas.alturas[u.fila + 1] + 1e-9, "la pila toca el entrepaño de arriba");
+  }
+});
+
+prueba("un envase que no entra de FONDO se dice así, no como ancho", () => {
+  // La punta tiene 40 cm de fondo (y bandejas más bajas de fondo arriba): un
+  // envase de 45 cm de hondo no entra en ninguna, aunque de ancho sobra.
+  const v = V.ventaDeTipo("punta", 0.9, 0.4, 1.8);
+  const hondo = { ancho: 0.1, alto: 0.09, fondo: 0.45, forma: "caja" };
+  const r = F.unidadesDePrueba({ venta: v, empaque: hondo, donde: "todas", semilla: "x" });
+  const conAlto = r.porFila.filter((f) => f.motivo !== "no-entra-alto");
+  assert.ok(conAlto.length > 0 && conAlto.every((f) => f.motivo === "no-entra-fondo"),
+    `el entrepaño dice ${conAlto.map((f) => f.motivo)}: se busca el problema en el ancho`);
+  assert.ok(r.porFila.every((f, i) => f.fondo === v.filas.fondos[i]), "la fila no lleva su fondo para decirlo");
+  // Y uno ancho de verdad sigue diciendo «ancho».
+  const ancho = F.unidadesDePrueba({ venta: v, empaque: { ...hondo, ancho: 1.2, fondo: 0.1 }, donde: "todas", semilla: "x" });
+  assert.ok(ancho.porFila.filter((f) => f.motivo !== "no-entra-alto").every((f) => f.motivo === "no-entra-ancho"));
+});
+
+prueba("la botella en la nevera: entra donde entra y el resto lo dice", () => {
+  const v = V.ventaDeTipo("nevera_refrescos", 1.2, 0.75, 1.8);
+  const libres = v.filas.alturas.slice(1).map((y, i) => enMetros(y - v.filas.alturas[i]));
+  assert.deepEqual(libres, [0.3, 0.275, 0.275, 0.3, 0.31]);
+  const dos = { ancho: 0.105, alto: 0.33, fondo: 0.105, forma: "botella" };
+  const r = F.unidadesDePrueba({ venta: v, empaque: dos, donde: "todas", semilla: "s" });
+  assert.deepEqual(r.porFila.map((f) => f.frentes), [0, 0, 0, 0, 0]);
+  assert.ok(r.porFila.every((f) => f.motivo === "no-entra-alto"));
+  assert.equal(r.unidades.length, 0, "se paró una botella de 33 cm en 31 cm");
+  // Acostada —la opción que ofrece el panel— entran tres por rejilla.
+  const ficha = { forma: "botella", alto_mm: 330, ancho_mm: 105, fondo_mm: 105, apilable: false, acostado: false, fondo_foto: "auto" };
+  const acostada = P.empaqueDeArte({ nombre: "Manzana Postobón 2 L", categoria: "Gaseosas" }, ficha,
+    { aspecto: 0.27, relleno: 0.86, simetria: 0.02 }, { acostado: true });
+  const ac = F.unidadesDePrueba({ venta: v, empaque: acostada, donde: "todas", semilla: "s" });
+  assert.deepEqual(ac.porFila.map((f) => f.frentes), [3, 3, 3, 3, 3], "acostada no entran tres por rejilla");
+  const litro = { ancho: 0.09, alto: 0.3, fondo: 0.09, forma: "botella" };
+  const l = F.unidadesDePrueba({ venta: v, empaque: litro, donde: "todas", semilla: "s" });
+  assert.deepEqual(l.porFila.map((f) => f.frentes), [11, 0, 0, 11, 11]);
+  // Y apoyada en la rejilla, no en el plano del entrepaño.
+  assert.ok(l.porFila.every((f, i) => Math.abs(f.apoyo - (v.filas.alturas[i] + M.SOBRE_REJILLA)) < 1e-12));
+  // La de 30 cm en 30 cm libres no asoma la tapa por la rejilla de arriba:
+  // se hunde en el alambre lo justo, y nunca por debajo del plano del estante.
+  for (const u of l.unidades) {
+    const f = l.porFila[u.fila];
+    const base = f.apoyo + u.y - litro.alto / 2, tope = f.apoyo + u.y + litro.alto / 2;
+    assert.ok(tope <= v.filas.alturas[u.fila + 1] + 1e-9, `fila ${u.fila}: la tapa asoma ${((tope - v.filas.alturas[u.fila + 1]) * 1000).toFixed(1)} mm`);
+    assert.ok(base >= v.filas.alturas[u.fila] - 1e-9, `fila ${u.fila}: la botella atraviesa su estante`);
+  }
+  // Con aire de sobra, sigue parada sobre el alambre.
+  const chica = F.unidadesDePrueba({ venta: v, empaque: { ...litro, alto: 0.2 }, donde: "todas", semilla: "s" });
+  assert.ok(chica.unidades.every((u) => Math.abs(u.y - 0.1) < 1e-12), "una botella chica se hundió en la rejilla");
+});
+
+prueba("la bolsa en el robatope: una por repisa, tres de fondo", () => {
+  const v = V.ventaDeTipo("robatope", 0.3, 0.4, 1.6);
+  const bolsa = { ancho: 0.14, alto: 0.23, fondo: 0.06, forma: "bolsa" };
+  const r = F.unidadesDePrueba({ venta: v, empaque: bolsa, donde: "todas", semilla: "ROB-01|A|4" });
+  assert.deepEqual(r.porFila.map((f) => f.frentes), [1, 1, 1, 1]);
+  assert.ok(r.porFila.every((f) => f.fondoVisible === 3));
+  // Centrada en la repisa: ya no hay media bolsa cortada al borde.
+  for (const u of r.unidades) assert.ok(Math.abs(u.x) + bolsa.ancho / 2 <= v.vanos[0].ancho / 2 + 0.002);
+});
+
+prueba("acostadas, dos botellas vecinas no se meten una en otra", () => {
+  const v = V.ventaDeTipo("nevera_refrescos", 1.2, 0.75, 1.8);
+  const ficha = { forma: "botella", alto_mm: 330, ancho_mm: 105, fondo_mm: 105, apilable: false, acostado: false, fondo_foto: "auto" };
+  const e = P.empaqueDeArte({ nombre: "Manzana Postobón 2 L", categoria: "Gaseosas" }, ficha,
+    { aspecto: 0.27, relleno: 0.86, simetria: 0.02 }, { acostado: true });
+  const r = F.unidadesDePrueba({ venta: v, empaque: e, donde: "todas", semilla: "NEV-01|A|2" });
+  assert.ok(r.unidades.length > 0);
+  // Por fila, profundidad y piso, las cajas a lo ancho no se tocan: el pico
+  // de una no entra en la base de la otra (1 cm de aire, al menos).
+  const grupos = new Map();
+  for (const u of r.unidades) {
+    const k = `${u.fila}|${u.prof}|${u.piso}`;
+    grupos.set(k, [...(grupos.get(k) ?? []), u]);
+  }
+  for (const [k, us] of grupos) {
+    us.sort((a, b) => a.x - b.x);
+    for (let i = 1; i < us.length; i++) {
+      // Con el giro, la caja que ocupa a lo ancho crece cos·largo + sen·diámetro.
+      const ocupa = (u) => e.ancho * Math.cos(u.giroY) + e.fondo * Math.abs(Math.sin(u.giroY));
+      const aire = us[i].x - us[i - 1].x - (ocupa(us[i]) + ocupa(us[i - 1])) / 2;
+      assert.ok(aire >= 0.008, `${k}: dos botellas acostadas a ${(aire * 1000).toFixed(1)} mm`);
+    }
+  }
+  // Y casi derechas: girarlas las cruza en la rejilla.
+  assert.ok(r.unidades.every((u) => Math.abs(u.giroY) <= (0.5 * Math.PI) / 180 + 1e-12));
+});
+
+prueba("el vaso se apila de a tres y la botella parada gira como en la tienda", () => {
+  const v = V.ventaDeTipo("punta", 0.9, 0.4, 1.8);
+  const ficha = { forma: "vaso", alto_mm: 90, ancho_mm: 75, fondo_mm: 75, apilable: true, acostado: false, fondo_foto: "auto" };
+  const vaso = P.empaqueDeArte({ nombre: "Finesse", categoria: "Lácteos" }, ficha, { aspecto: 0.81, relleno: 0.78, simetria: 0.01 });
+  const r = F.unidadesDePrueba({ venta: v, empaque: vaso, donde: "todas", semilla: "PUN-01|A|1" });
+  // De a tres (segunda ronda): de a dos la punta quedaba con un 35 % de aire
+  // sobre cada entrepaño, medio surtida. 3 × 9 cm entran en 30 cm con el
+  // aire de la mano.
+  assert.deepEqual(r.porFila.map((f) => f.pisos), [3, 3, 3, 3, 0], "el vaso no llena el entrepaño");
+  // Redondo parado: hasta 5° de frente y 8° atrás —cuarenta etiquetas
+  // mirando exactamente al frente se leen como un lineal clonado—, con los
+  // ±2 mm a lo ancho que no lo meten en el de al lado.
+  const grados = r.unidades.map((u) => (Math.abs(u.giroY) * 180) / Math.PI);
+  assert.ok(r.unidades.every((u, i) => grados[i] <= (u.prof === 0 ? 5 : 8) + 1e-9));
+  assert.ok(Math.max(...grados.filter((_, i) => r.unidades[i].prof === 0)) > 2.5, "la botella sigue sin girar");
+  // Los huecos de reposición son sólo atrás: el frente está completo.
+  for (let i = 0; i < 4; i++) {
+    const frente = r.unidades.filter((u) => u.fila === i && u.prof === 0 && u.piso === 0).length;
+    assert.equal(frente, r.porFila[i].frentes, `al frente del entrepaño ${i} falta producto`);
+  }
+  // Ninguna unidad se mete en la de adelante o la de atrás: una columna
+  // corrida se corre entera.
+  const vano = v.vanos[0];
+  const ac = P.acomodar(vano.ancho, v.filas.fondos[0], v.filas.alturas[1] - v.filas.alturas[0], vaso);
+  const columnas = new Map();
+  for (const u of r.unidades.filter((x) => x.piso === 0)) {
+    const k = `${u.fila}|${Math.round((u.x - vano.x) / ac.pasoX * 2)}`;
+    columnas.set(k, [...(columnas.get(k) ?? []), u]);
+  }
+  for (const [k, us] of columnas) {
+    us.sort((a, b) => a.prof - b.prof);
+    for (let i = 1; i < us.length; i++) {
+      assert.ok(us[i].z - us[i - 1].z >= vaso.fondo - 0.001, `${k}: dos vasos uno dentro del otro`);
+    }
+    for (const u of us) assert.ok(-u.z + vaso.fondo / 2 <= v.filas.fondos[u.fila] + 1e-9, `${k}: se sale por atrás`);
+  }
+});
+
+prueba("la nevera acomoda sus rejillas para el producto, sin inventar ninguna", () => {
+  const v = V.ventaDeTipo("nevera_refrescos", 1.2, 0.75, 1.8);
+  const libresDe = (f) => f.alturas.slice(1).map((y, i) => y - f.alturas[i]);
+  // La de 2 L no entraba parada en ninguna: con las rejillas acomodadas, en todas.
+  const dos = F.rejillasParaProducto(v.filas, 0.33);
+  assert.ok(dos, "no ofrece acomodar las rejillas para la de 2 L");
+  assert.ok(dos.rows >= 1 && dos.rows <= v.filas.rows, `inventó rejillas: ${dos.rows}`);
+  assert.ok(libresDe(dos).every((l) => l >= 0.33 + 0.005), `no entra en ${libresDe(dos)}`);
+  assert.equal(dos.alturas[0], v.filas.alturas[0], "movió la primera rejilla");
+  assert.equal(dos.alturas[dos.rows], v.filas.alturas[v.filas.rows], "movió el techo");
+  const botella = { ancho: 0.105, alto: 0.33, fondo: 0.105, forma: "botella" };
+  const r = F.unidadesDePrueba({ venta: { ...v, filas: dos }, empaque: botella, donde: "todas", semilla: "s" });
+  assert.ok(r.porFila.every((f) => f.frentes > 0 && f.motivo === null), "con las rejillas acomodadas sigue sin entrar");
+  // La de 1,5 L dejaba vacías las del medio: ahora van todas.
+  const litro = F.rejillasParaProducto(v.filas, 0.30);
+  assert.ok(litro && libresDe(litro).every((l) => l >= 0.305));
+  // Si ya entra en todas no se toca nada; si ni así entra, tampoco.
+  assert.equal(F.rejillasParaProducto(v.filas, 0.09), null);
+  assert.equal(F.rejillasParaProducto(v.filas, 2), null);
+  // La nevera dibuja ESAS rejillas, y el producto apoya en ellas.
+  const nevera = cuerpoDe("function NeveraRefrescosMesh(", "function StandFrutasMesh(");
+  assert.match(nevera, /niveles=\{enPrueba && facePaint\?\.pruebaA\?\.filas\s*\? facePaint\.pruebaA\.filas\.alturas\.slice\(0, -1\) : undefined\}/);
+  const dp = sinComentarios(leer(join(muebles, "ProductoDePrueba.tsx")));
+  assert.match(dp, /venta: p\.filas \? \{ \.\.\.venta, filas: p\.filas \} : venta/);
+  const fp = cuerpoDe("const facePaintById = useMemo(", "const handleOrbitReady");
+  assert.match(fp, /como\?\.rejillas && empaque && !empaque\.acostado && fix\.type === "nevera_refrescos"/);
+});
+
+prueba("el desorden de la prueba es determinista y chico", () => {
+  const v = V.ventaDeTipo("punta", 0.9, 0.4, 1.8);
+  const a = F.unidadesDePrueba({ venta: v, empaque: VASO, donde: "todas", semilla: "PUN-01|A|1" });
+  const b = F.unidadesDePrueba({ venta: v, empaque: VASO, donde: "todas", semilla: "PUN-01|A|1" });
+  const c = F.unidadesDePrueba({ venta: v, empaque: VASO, donde: "todas", semilla: "PUN-01|A|2" });
+  assert.deepEqual(a.unidades, b.unidades, "la misma semilla dio otro acomodo: el mueble titilaría");
+  assert.notDeepEqual(a.unidades, c.unidades, "otra semilla dio el mismo acomodo");
+  // Contra la grilla sin desorden: ±2 mm a lo ancho (menos que la luz de
+  // 4 mm entre dos: no se tocan) y ±2° de giro.
+  const vano = v.vanos[0];
+  for (const u of a.unidades) {
+    const ac = P.acomodar(vano.ancho, v.filas.fondos[u.fila], v.filas.alturas[u.fila + 1] - v.filas.alturas[u.fila], VASO);
+    const desde = vano.x - ac.ocupado / 2 + VASO.ancho / 2;
+    const f = Math.round((u.x - desde) / ac.pasoX);
+    assert.ok(Math.abs(u.x - (desde + f * ac.pasoX)) <= 0.002 + 1e-12, `dx = ${u.x - (desde + f * ac.pasoX)}`);
+    assert.ok(Math.abs(u.giroY) <= (2 * Math.PI) / 180 + 1e-12, `giro de ${(u.giroY * 180) / Math.PI}°`);
+    if (u.prof === 0) assert.ok(Math.abs(u.giroY) <= (0.9 * Math.PI) / 180 + 1e-12, "el frente gira más que lo de atrás");
+    const base = F.TONO_POR_FONDO[Math.min(u.prof, 2)];
+    assert.ok(u.tono <= base * 1.03 + 1e-12 && u.tono >= base * 0.97 - 1e-12, `tono ${u.tono} en la fila ${u.prof}`);
+  }
+  // Lo de atrás se lee atrás: la segunda un 18 % y la tercera un 32 % más
+  // oscuras (con un 12 % por fila la crítica midió las tapas de atrás casi
+  // iguales a las del frente).
+  assert.deepEqual([...F.TONO_POR_FONDO], [1, 0.82, 0.68]);
+  assert.ok(F.TONO_POR_FONDO[2] <= 0.85 * F.TONO_POR_FONDO[0], "la tercera fila no cae ni un 15 %");
+});
+
+// ── El envase 3D con etiqueta ───────────────────────────────────────────────
+//
+// La geometría se compila con three adentro y se CORRE: lo que importa es dónde
+// cae la foto en cada vértice, y eso no se lee del código.
+
+const compiladoG = await build({
+  entryPoints: [join(raiz, muebles, "perfiles.ts")],
+  bundle: true, write: false, format: "esm", platform: "node", logLevel: "silent",
+});
+const G = await import(
+  "data:text/javascript;base64," + Buffer.from(compiladoG.outputFiles[0].text).toString("base64")
+);
+
+const compiladoLV = await build({
+  entryPoints: [join(raiz, muebles, "luzDeVenta.ts")],
+  bundle: true, write: false, format: "esm", platform: "node", logLevel: "silent",
+});
+const LV = await import(
+  "data:text/javascript;base64," + Buffer.from(compiladoLV.outputFiles[0].text).toString("base64")
+);
+
+/** Los vértices de una geometría con su posición, normal y uv. */
+function vertices(g) {
+  const p = g.attributes.position, n = g.attributes.normal, uv = g.attributes.uv;
+  return Array.from({ length: p.count }, (_, i) => ({
+    x: p.getX(i), y: p.getY(i), z: p.getZ(i),
+    nx: n?.getX(i) ?? 0, ny: n?.getY(i) ?? 0, nz: n?.getZ(i) ?? 0,
+    u: uv.getX(i), v: uv.getY(i),
+  }));
+}
+
+prueba("la caja lleva la foto derecha en el frente y su borde en los costados", () => {
+  const W = 0.19, H = 0.27, D = 0.065;
+  const vs = vertices(G.geometriaDeEtiqueta("caja", W, H, D));
+  const frente = vs.filter((v) => v.nz < -0.5);
+  assert.ok(frente.length >= 4, "la caja no tiene cara −Z");
+  // Quien mira desde −Z tiene la derecha en −X: ahí va el borde derecho de la foto.
+  for (const v of frente) {
+    if (Math.abs(v.x + W / 2) < 1e-9) assert.ok(Math.abs(v.u - 1) < 1e-6, `u=${v.u} en x=−ancho/2`);
+    if (Math.abs(v.x - W / 2) < 1e-9) assert.ok(Math.abs(v.u) < 1e-6, `u=${v.u} en x=+ancho/2`);
+    assert.ok(Math.abs(v.v - (0.5 + v.y / H)) < 1e-6, "la v del frente no crece con la altura");
+  }
+  // Los costados toman una franja del 2 % del borde de la foto, no la foto entera.
+  for (const v of vs.filter((x) => Math.abs(x.nx) > 0.5)) {
+    assert.ok(v.nx < 0 ? v.u >= 0.98 - 1e-6 : v.u <= 0.02 + 1e-6, `costado con u=${v.u}`);
+  }
+  for (const v of vs.filter((x) => Math.abs(x.ny) > 0.5)) {
+    assert.ok(v.ny > 0 ? v.v >= 0.98 - 1e-6 : v.v <= 0.02 + 1e-6, `tapa o base con v=${v.v}`);
+  }
+});
+
+prueba("la botella torneada mira a −Z con el centro de la foto adelante", () => {
+  const perfil = Array.from({ length: 24 }, (_, k) => (k > 18 ? 0.4 : 1));
+  const g = G.geometriaDeEtiqueta("revolucion", 0.105, 0.33, 0.105, perfil, false, true);
+  const vs = vertices(g);
+  const zMin = Math.min(...vs.map((v) => v.z));
+  const adelante = vs.filter((v) => Math.abs(v.z - zMin) < 1e-6 && Math.abs(v.x) < 1e-4);
+  assert.ok(adelante.length > 0, "no hay vértice adelante en el eje");
+  for (const v of adelante) assert.ok(Math.abs(v.u - 0.5) < 1e-3, `el frente de la botella tiene u=${v.u}`);
+  // Torneada con la silueta: arriba (el cuello) es más angosta que el cuerpo.
+  const ancho = (desde, hasta) => Math.max(...vs.filter((v) => v.y > desde && v.y < hasta).map((v) => Math.abs(v.x)));
+  assert.ok(ancho(0.12, 0.164) < ancho(-0.1, 0) * 0.6, "el perfil de la foto no torneó el cuello");
+  // 32 lados (16 se veían facetados de cerca): unos 1.700 triángulos.
+  assert.ok(g.index ? g.index.count / 3 < 1800 : vs.length / 3 < 1800, "la botella pesa demasiado para instanciarse");
+  // Las tapas van de UN color (un solo punto de la foto): con la proyección
+  // plana repetían la primera fila estirada y salían rayadas.
+  const tapa = vs.filter((v) => Math.abs(v.y - 0.165) < 1e-6 && Math.hypot(v.x, v.z) < 0.4 * 0.0525 * 0.99);
+  assert.ok(tapa.length > 0, "la botella no tiene tapa");
+  for (const v of tapa) assert.ok(Math.abs(v.u - 0.5) < 1e-6 && Math.abs(v.v - 0.985) < 1e-6, `tapa rayada: ${v.u},${v.v}`);
+  // El costado no llega al borde exacto de la silueta (contorno y sangrado).
+  const costado = vs.filter((v) => Math.abs(v.y) < 0.16);
+  assert.ok(costado.every((v) => v.u > 0.02 && v.u < 0.98), "el costado toma el contorno de la foto");
+});
+
+prueba("la bolsa tiene el frente abombado y el recorte mira a −Z", () => {
+  const W = 0.14, H = 0.23, D = 0.06;
+  const vs = vertices(G.geometriaDeEtiqueta("almohada", W, H, D));
+  const zCentro = Math.min(...vs.filter((v) => Math.abs(v.x) < 0.01 && Math.abs(v.y) < 0.01).map((v) => v.z));
+  const zCanto = Math.min(...vs.filter((v) => Math.abs(Math.abs(v.x) - W / 2) < 1e-9).map((v) => v.z));
+  assert.ok(zCentro <= -D / 2 + 1e-9, `el centro no llega al fondo de la bolsa: ${zCentro}`);
+  assert.ok(zCentro < zCanto - D * 0.15, `la bolsa salió plana: centro ${zCentro} contra canto ${zCanto}`);
+  // Los costados se afinan a CERO (la costura): con espesor, de tres cuartos
+  // la bolsa era un ladrillo con un lomo de libro.
+  const costados = vs.filter((v) => Math.abs(Math.abs(v.x) - W / 2) < 1e-6);
+  assert.ok(costados.length > 0 && costados.every((v) => Math.abs(v.z) < 1e-6), "la bolsa tiene costados con espesor");
+  // El sello de arriba es fino; el fondo, apoyado (con espesor). La posición
+  // es Float32: se compara con tolerancia, o el filtro queda vacío y la
+  // afirmación pasa sola.
+  const arriba = vs.filter((v) => Math.abs(v.y - H / 2) < 1e-6).map((v) => Math.abs(v.z));
+  const abajo = vs.filter((v) => Math.abs(v.y + H / 2) < 1e-6).map((v) => Math.abs(v.z));
+  assert.ok(arriba.length > 0 && abajo.length > 0, "no se encontraron el sello ni el fondo");
+  assert.ok(Math.max(...arriba) <= D * 0.04, "el sello de arriba es grueso");
+  assert.ok(Math.max(...abajo) >= D * 0.3, "la bolsa se para sobre un filo");
+  const recorte = vertices(G.geometriaDeEtiqueta("recorte", 0.1, 0.2, 0.05));
+  assert.ok(recorte.every((v) => v.nz < -0.99), "el recorte no mira al pasillo");
+  for (const v of recorte) assert.ok(Math.abs(v.u - (0.5 - v.x / 0.1)) < 1e-6, "el recorte salió espejado");
+});
+
+prueba("la etiqueta va por el caché y no se muta", () => {
+  const a = G.geometriaDeEtiqueta("caja", 0.11, 0.19, 0.07);
+  assert.equal(G.geometriaDeEtiqueta("caja", 0.11, 0.19, 0.07), a, "dos pedidos iguales dieron dos geometrías");
+  // La firma no choca con la del relleno por rubro.
+  assert.notEqual(G.geometriaDeEmpaque("caja", 0.11, 0.19, 0.07), a);
+  // La acostada se arma de una COPIA de la de pie: la de pie queda igual.
+  const perfil = Array.from({ length: 24 }, () => 1);
+  const dePie = G.geometriaDeEtiqueta("revolucion", 0.105, 0.33, 0.105, perfil);
+  const antes = Float32Array.from(dePie.attributes.position.array);
+  const acostada = G.geometriaDeEtiqueta("revolucion", 0.33, 0.105, 0.105, perfil, true);
+  assert.notEqual(acostada, dePie);
+  assert.deepEqual(Float32Array.from(dePie.attributes.position.array), antes, "acostarla movió la de pie del caché");
+  const xs = vertices(acostada).map((v) => v.x);
+  assert.ok(Math.max(...xs) - Math.min(...xs) > 0.32, "la botella acostada no quedó horizontal");
+});
+
+prueba("el tono neutro de la etiqueta se apoya en nombres de three que siguen ahí", () => {
+  // `etiqueta.ts` reemplaza dos `#include` del shader del material estándar.
+  // Si three los renombra, el parche deja de aplicarse en silencio: esto lo
+  // dice antes de que se vea en una reunión.
+  const shaders = join(raiz, "node_modules", "three", "src", "renderers", "shaders");
+  const fisico = readFileSync(join(shaders, "ShaderLib", "meshphysical.glsl.js"), "utf8");
+  assert.ok(fisico.includes("#include <tonemapping_fragment>"), "three ya no incluye tonemapping_fragment");
+  assert.ok(fisico.includes("#include <emissivemap_fragment>"), "three ya no incluye emissivemap_fragment");
+  const tono = readFileSync(join(shaders, "ShaderChunk", "tonemapping_pars_fragment.glsl.js"), "utf8");
+  assert.match(tono, /vec3 NeutralToneMapping\(/, "three ya no define NeutralToneMapping");
+  const color = readFileSync(join(shaders, "ShaderChunk", "color_pars_fragment.glsl.js"), "utf8");
+  assert.match(color, /USE_COLOR[\s\S]*varying vec4 vColor/, "three cambió cómo llega el color de instancia");
+
+  const etiqueta = sinComentarios(leer(join(muebles, "etiqueta.ts")));
+  assert.match(etiqueta, /customProgramCacheKey/, "el parche del shader no tiene clave de programa propia");
+  assert.match(etiqueta, /#include <tonemapping_fragment>/);
+  assert.ok(!/scene\.environment\s*=/.test(etiqueta), "la etiqueta cambia el entorno de TODA la tienda");
+  assert.ok(!/\.toneMapping\s*=/.test(etiqueta), "la etiqueta cambia el tone mapping de TODA la tienda");
+  assert.match(etiqueta, /envMap: entorno/, "el entorno del producto no va en su material");
+});
+
+prueba("en la pantalla de venta el mueble toma la luz del cuarto del producto, y sólo ahí", () => {
+  // Medido en la segunda ronda: el blanco del envase en 232-240 sRGB contra
+  // 97-112 del porta-precios. Con la luz del cuarto el mueble queda a la par.
+  const shaders = join(raiz, "node_modules", "three", "src", "renderers", "shaders");
+  const fisico = readFileSync(join(shaders, "ShaderLib", "meshphysical.glsl.js"), "utf8");
+  // El parche usa `normal` ya en espacio de vista: el trozo de la emisión va
+  // DESPUÉS del de la normal.
+  assert.ok(fisico.indexOf("#include <normal_fragment_begin>") < fisico.indexOf("#include <emissivemap_fragment>"),
+    "three mueve la emisión antes de la normal: el parche de la luz de venta lee una normal sin definir");
+  const luz = sinComentarios(leer(join(muebles, "luzDeVenta.ts")));
+  assert.match(luz, /#include <emissivemap_fragment>/);
+  assert.match(luz, /customProgramCacheKey: \(\) => clave/, "el parche no tiene programa propio: se mezcla con el del editor");
+  // Ni entorno de escena ni luz global: la tienda del editor no cambia, y el
+  // mapa de entorno en cada mueble hacía cada cuadro 25 veces más caro.
+  for (const [n, t] of [["luzDeVenta.ts", luz], ["piezas.tsx", piezasCodigo], ["NeveraReal.tsx", neveraCodigo]]) {
+    assert.ok(!/scene\.environment\s*=|hemisphereLight|envMap:\s*luz/.test(t), `${n} ilumina toda la escena o muestrea un mapa de entorno por mueble`);
+  }
+  assert.match(piezasCodigo, /\.\.\.conLuzDeVenta\(luz\),/, "el herraje de la góndola y la punta no recibe la luz de venta");
+  assert.match(piezasCodigo, /\}, \[ghost, statusColor, luz\]\);/, "los materiales no se rearman al entrar o salir de la pantalla de venta");
+  // La escena la prende sólo para quien mira (Presentar y la lámina).
+  assert.match(cuerpoEscena, /<LuzDeVenta\.Provider value=\{privadoPara !== undefined\}>/);
+  // Ejecutado: en el editor no agrega nada; en venta, el parche suma la luz
+  // después de la emisión, y sin el trozo no rompe el shader.
+  assert.deepEqual(LV.conLuzDeVenta(false), {}, "el editor recibe la luz de venta");
+  const venta = LV.conLuzDeVenta(true);
+  const conTrozo = { fragmentShader: "a\n#include <emissivemap_fragment>\nb" };
+  venta.onBeforeCompile(conTrozo);
+  assert.match(conTrozo.fragmentShader, /#include <emissivemap_fragment>\n\{[\s\S]*totalEmissiveRadiance \+= diffuseColor\.rgb \* mix\(/);
+  const sinTrozo = { fragmentShader: "a\nb" };
+  venta.onBeforeCompile(sinTrozo);
+  assert.equal(sinTrozo.fragmentShader, "a\nb");
+  assert.notEqual(venta.customProgramCacheKey(), LV.conLuzDeVenta(true, 0.5).customProgramCacheKey());
+});
+
+prueba("el vaso lleva su tapa aparte y el costado sin la franja de tapa de la foto", () => {
+  const perfil = Array.from({ length: 24 }, (_, k) => 0.8 + 0.2 * (k / 23));
+  const ancho = 0.075, alto = 0.09, franja = 0.08;
+  const g = G.geometriaDeEtiqueta("revolucion", ancho, alto, ancho, perfil, false, false, franja);
+  assert.equal(g.groups.length, 2, "el vaso no separa costado y tapa");
+  const [lado, tapa] = g.groups;
+  assert.equal(lado.materialIndex, 0);
+  assert.equal(tapa.materialIndex, 1);
+  const vs = vertices(g);
+  // Los grupos cuentan ÍNDICES: los vértices de cada uno, por el índice.
+  const idx = g.index ? Array.from(g.index.array) : vs.map((_, i) => i);
+  const deGrupo = (gr) => [...new Set(idx.slice(gr.start, gr.start + gr.count))].map((i) => vs[i]);
+  const delLado = deGrupo(lado);
+  const deLaTapa = deGrupo(tapa);
+  // El costado no llega a la franja de tapa de la foto.
+  assert.ok(Math.max(...delLado.map((v) => v.v)) <= 1 - franja + 1e-6, "el costado lleva pintada la tapa de la foto: doble tapa");
+  // La tapa: sólo arriba y abajo, proyectada desde arriba dentro de la textura.
+  assert.ok(deLaTapa.every((v) => Math.abs(Math.abs(v.y) - alto / 2) < 1e-6), "la tapa se mete en el costado");
+  assert.ok(deLaTapa.every((v) => v.u >= -1e-6 && v.u <= 1 + 1e-6 && v.v >= -1e-6 && v.v <= 1 + 1e-6));
+  // 32 lados: a 150 px el borde se aparta del círculo menos de medio píxel
+  // (con 16 se veían las facetas).
+  const borde = delLado.filter((v) => Math.abs(v.y - alto / 2) < 1e-6);
+  const angulos = new Set(borde.map((v) => Math.round((Math.atan2(v.z, v.x) * 180) / Math.PI)));
+  assert.ok(angulos.size >= 32, `el vaso tiene ${angulos.size} lados`);
+  // Y liviano, con índice: 360 vasos en una punta se dibujan de una vez, y
+  // sin índice cada cuadro triplicaba los vértices.
+  assert.ok(g.index, "el vaso va sin índice");
+  assert.ok(g.index.count / 3 < 1300, `el vaso pesa ${g.index.count / 3} triángulos`);
+  // El canto del reborde, vivo: la tapa mira derecho para arriba.
+  assert.ok(deLaTapa.filter((v) => v.y > 0).every((v) => Math.abs(v.ny - 1) < 1e-6), "la tapa promedia su normal con el costado");
+  // El caché distingue la franja; la botella no lleva tapa aparte.
+  assert.notEqual(G.geometriaDeEtiqueta("revolucion", ancho, alto, ancho, perfil, false, false, 0.02), g);
+  assert.equal(G.geometriaDeEtiqueta("revolucion", 0.1, 0.3, 0.1, perfil, false, true).groups.length, 0);
+  // Y quien dibuja le pasa la franja de la foto y los dos materiales.
+  const dp = sinComentarios(leer(join(muebles, "ProductoDePrueba.tsx")));
+  assert.match(dp, /vaso \? p\.etiqueta!\.tapa\(\)\.franja : 0/);
+  const etiqueta = sinComentarios(leer(join(muebles, "etiqueta.ts")));
+  assert.match(etiqueta, /if \(envase === "revolucion" && !transparente\) \{\s*lista\.push\(materialConLuz\(envase, entorno, \{\s*map: et\.texturaDeTapa\(\)/,
+    "la tapa del vaso no tiene su material");
+});
+
+prueba("lo de atrás va con pocas facetas, y un mueble lleno tiene tope de triángulos", () => {
+  // La revisión de la tercera ronda: una góndola doble de 3,6 m con un vaso
+  // apilable eran 3.708 envases y 4,7 M de triángulos —sólo 1.260 al
+  // frente—. Una PC con video integrado que comparte pantalla giraba a tirones.
+  const tris = (g) => (g.index ? g.index.count : g.attributes.position.count) / 3;
+  const recto = Array.from({ length: 24 }, (_, k) => 0.8 + 0.2 * (k / 23));
+  const curvo = Array.from({ length: 24 }, (_, k) => (k < 14 ? 1 : k < 18 ? 1 - (k - 13) * 0.15 : 0.35));
+  const vasoAlto = G.geometriaDeEtiqueta("revolucion", 0.075, 0.09, 0.075, recto, false, false, 0.04);
+  const vasoBajo = G.geometriaDeEtiqueta("revolucion", 0.075, 0.09, 0.075, recto, false, false, 0.04, "bajo");
+  assert.notEqual(vasoBajo, vasoAlto, "el caché confunde el detalle");
+  assert.equal(vasoBajo.groups.length, 2, "el vaso de atrás perdió la tapa aparte");
+  assert.ok(tris(vasoBajo) <= 200, `el vaso de atrás pesa ${tris(vasoBajo)} triángulos`);
+  // Un vaso de perfil recto (un cono truncado) no necesita dieciséis filas.
+  assert.ok(tris(vasoAlto) <= 520, `el vaso recto del frente pesa ${tris(vasoAlto)}`);
+  const vasoCurvo = G.geometriaDeEtiqueta("revolucion", 0.075, 0.09, 0.075, curvo, false, false, 0.04);
+  const botAlta = G.geometriaDeEtiqueta("revolucion", 0.1, 0.31, 0.1, curvo, false, true);
+  const botBaja = G.geometriaDeEtiqueta("revolucion", 0.1, 0.31, 0.1, curvo, false, true, 0, "bajo");
+  assert.ok(tris(botBaja) <= 320, `la botella de atrás pesa ${tris(botBaja)}`);
+  // La botella de atrás llega hasta el pico como la del frente: arriba, el
+  // borde del pico, el labio y el centro de la tapa.
+  const radiosArriba = (g) => {
+    const p = g.attributes.position, r = new Set();
+    for (let i = 0; i < p.count; i++) {
+      if (Math.abs(p.getY(i) - 0.155) < 1e-6) r.add(Math.hypot(p.getX(i), p.getZ(i)).toFixed(5));
+    }
+    return r.size;
+  };
+  assert.equal(radiosArriba(botBaja), radiosArriba(botAlta), "la botella de atrás quedó sin pico");
+  // El tope, con la cuenta que dibuja: al frente el detalle alto, atrás el bajo.
+  const v = V.ventaDeTipo("gondola", 3.6, 0.9, 1.8, "double");
+  const vaso = { forma: "botella", ancho: 0.075, alto: 0.09, fondo: 0.075, apilable: true, pisosMaximos: 3 };
+  const r = F.unidadesDePrueba({ venta: v, empaque: vaso, donde: "todas", semilla: "x" });
+  const frente = r.unidades.filter((u) => u.prof === 0).length * v.caras.length;
+  const atras = r.unidades.filter((u) => u.prof > 0).length * v.caras.length;
+  assert.ok(frente + atras > 3000, "la góndola de 3,6 m ya no es el peor caso");
+  const conRecto = frente * tris(vasoAlto) + atras * tris(vasoBajo);
+  const conCurvo = frente * tris(vasoCurvo) + atras * tris(vasoBajo);
+  assert.ok(conRecto <= 1.2e6, `la góndola de 3,6 m con vasos rectos pesa ${(conRecto / 1e6).toFixed(2)} M de triángulos`);
+  assert.ok(conCurvo <= 2.2e6, `con vasos de perfil curvo pesa ${(conCurvo / 1e6).toFixed(2)} M`);
+  // Y quien dibuja usa la geometría baja para lo de atrás.
+  const dp = sinComentarios(leer(join(muebles, "ProductoDePrueba.tsx")));
+  assert.match(dp, /<Unidades\s*unidades=\{f\.atras\}\s*geometria=\{c\.geometriaAtras\}/, "lo de atrás se dibuja con el detalle del frente");
+  assert.match(dp, /const geometriaAtras = e\.envase === "revolucion" \? geometriaCon\("bajo"\) : geometria;/);
+  assert.match(dp, /atras: unidades\.filter\(\(u\) => u\.prof > 0\)/);
+});
+
+prueba("entrar y salir de Presentar no deja materiales ni texturas sin soltar", () => {
+  // Cada entrada y salida rehacía los materiales de cada mueble y, en cada
+  // nevera, una textura de alambre nueva: 20 neveras y diez entradas eran
+  // 200 texturas y ~1.800 materiales vivos en la GPU.
+  const nevera = sinComentarios(leer(join(muebles, "NeveraReal.tsx")));
+  const luz = sinComentarios(leer(join(muebles, "luzDeVenta.ts")));
+  assert.match(luz, /export function useSoltarMateriales[\s\S]{0,160}?\{\s*useEffect\(\(\) => \(\) => \{ for \(const x of Object\.values\(m\)\) x\?\.dispose\(\); \}, \[m\]\);/,
+    "los materiales viejos no se sueltan");
+  assert.match(nevera, /useSoltarMateriales\(m\);/, "la nevera no suelta sus materiales");
+  assert.match(piezas, /useSoltarMateriales\(m\);/, "la góndola y la punta no sueltan sus materiales");
+  assert.match(nevera, /const ya = alambres\.get\(varillas\);\s*if \(ya\) return ya;/, "cada nevera crea su textura de alambre");
+  assert.match(nevera, /alambre: luz && !ghost && multideck \?/, "la nevera de puertas arma la rejilla de alambre que no usa");
+});
+
+prueba("cada fila del producto apoya en una sombra de contacto", () => {
+  const dp = sinComentarios(leer(join(muebles, "ProductoDePrueba.tsx")));
+  // Dentro del grupo de la fila (se inclina con el entrepaño), bajo las
+  // unidades del frente y del piso de abajo.
+  assert.match(dp, /<TiraDeFila\s*unidades=\{f\.delFrente\}/, "la fila no lleva su sombra de contacto");
+  assert.match(dp, /delFrente: unidades\.filter\(\(u\) => u\.piso === 0 && u\.prof === 0\)/);
+  const i = dp.indexOf("<group key={f.fila} position={[0, f.apoyo, 0]} rotation={[f.giro, 0, 0]}>");
+  const j = dp.indexOf("</group>", i);
+  assert.ok(i > 0 && dp.slice(i, j).includes("<TiraDeFila"), "la sombra de la fila no es hija de la fila");
+  const etiqueta = sinComentarios(leer(join(muebles, "etiqueta.ts")));
+  const tira = etiqueta.slice(etiqueta.indexOf("export function tiraDeContacto"));
+  assert.match(tira, /depthWrite: false/);
+  assert.match(tira, /opacity: 0\.36/);
+});
+
+prueba("la lámina usa las tomas de venta, con fondo de sala, y deja la cámara donde estaba", () => {
+  const lamina = cuerpoDe("const exportarPropuesta = useCallback(", "const selectedSlot = selectedFix");
+  // «Hoy» y «Con …» desde la toma de frente con aire, y una tercera «De cerca».
+  const frente = lamina.indexOf('pedirToma(fix.id, cara, "frente", HOLGURA_DE_LAMINA)');
+  assert.ok(frente > 0 && frente < lamina.indexOf("setSinArte(true);"), "la lámina saca «Hoy» con la cámara que haya quedado");
+  assert.match(lamina, /pedirToma\(fix\.id, cara, "cerca"\)/, "la lámina no lleva la toma de cerca");
+  assert.match(lamina, /\{ titulo: "De cerca", dataUrl: deCerca \}/);
+  // Cada toma espera a que la escena la confirme: con dos cuadros fijos
+  // «Con Alpina» salía sin el producto.
+  assert.match(lamina, /await esperarEscena\(\(e\) => !e\.sinArte\);/, "«Con …» se saca antes de que el producto llegue a la escena");
+  assert.match(lamina, /await esperarEscena\(\(e\) => e\.toma === n\);/);
+  assert.match(editorCodigo, /estadoDeEscena\.current\.sinArte = sinArte;/);
+  assert.match(editorCodigo, /estadoDeEscena\.current\.toma = pedidoDeToma\.n;/);
+  // El fondo: el lienzo es transparente y el PNG salía con cielo blanco.
+  assert.match(lamina, /prepararToma\(dataUrl, aspecto, FONDO_DE_SALA\)/);
+  assert.match(editorCodigo, /style=\{\{ background:FONDO_DE_SALA,/, "la sala de la pantalla y la de la lámina no son la misma");
+  // La cámara vuelve.
+  assert.match(lamina, /finally \{[\s\S]*ctrl\.object\.position\.copy\(camaraDeAntes\.pos\);[\s\S]*ctrl\.target\.copy\(camaraDeAntes\.mira\);/,
+    "la lámina deja la cámara en la toma de cerca");
+});
+
+prueba("la etiqueta opaca sale del rgba del recorte, no del lienzo", () => {
+  // El canvas 2D guarda el color premultiplicado: releer un lienzo con alfa
+  // devuelve NEGRO en lo transparente, que es justo donde el recorte dejó el
+  // sangrado y el color de la marca. Así salían negras las tapas de las
+  // cajas y la base de las botellas.
+  const etiqueta = sinComentarios(leer(join(muebles, "etiqueta.ts")));
+  // Se lee UNA vez: la foto recién dibujada, sin alfa todavía.
+  // (La otra lectura es la tapa del vaso, un lienzo opaco recién dibujado.)
+  assert.deepEqual(etiqueta.match(/\w+\.getImageData\([^)]*\)/g), ["g.getImageData(0, 0, N, N)", "g.getImageData(0, 0, w, h)"],
+    "una textura relee un lienzo premultiplicado");
+  assert.match(etiqueta, /function dibujarTapa\([\s\S]*?g\.fillRect\(0, 0, N, N\);[\s\S]*?g\.getImageData\(0, 0, N, N\)/,
+    "la tapa relee un lienzo que no pintó entero");
+  // Todas las variantes salen del rgba del recorte, con el borde encogido.
+  assert.match(etiqueta, /const conBorde = \(\) => \(borde \?\?= erosionarYSangrar\(recorte, 2, 8\)\)/,
+    "las texturas no salen del rgba del recorte con el borde limpio");
+  assert.match(etiqueta, /texturaOpaca: \(\) => una\("opaca", \(\) => aplanar\(conBorde\(\)\)\)/);
+  assert.match(etiqueta, /texturaConAlfa: \(\) => una\("alfa", conBorde\)/);
+  // La botella encoge 4 px: con 2 quedaba un serrucho blanco en la base.
+  assert.match(etiqueta, /texturaDeBotella: \(\) => una\("botella", \(\) => aplanar\(llenarBotella\(erosionarYSangrar\(recorte, 4, 10\)\)\)\)/);
+  assert.match(etiqueta, /const r = rectificarCaja\(conBorde\(\)\);/, "la caja no endereza la foto en tres cuartos");
+});
+
+prueba("cada envase lleva su textura: la caja con costado liso, la bolsa con alfa", () => {
+  const etiqueta = sinComentarios(leer(join(muebles, "etiqueta.ts")));
+  const mat = etiqueta.slice(etiqueta.indexOf("export function materialDeEtiqueta("));
+  assert.match(mat, /const conAlfa = envase === "recorte" \|\| envase === "almohada";/,
+    "la bolsa no recorta la silueta de la foto");
+  assert.match(mat, /envase === "caja" \? et\.texturaDeCaja\(\)/, "la caja no usa el frente enderezado");
+  assert.match(mat, /transparente \? et\.texturaDeBotella\(\) : et\.texturaOpaca\(\)/);
+  // El costado de la caja: un color con degradé, NO el borde de la foto.
+  assert.match(mat, /new THREE\.Color\(et\.colorDeCostado\(\)\)/);
+  assert.match(mat, /\{ color, emissive: color, vertexColors: true \}/);
+  // La caja parada tiene los dos grupos; la lista sin grupos no dibuja nada.
+  const caja = G.geometriaDeEtiqueta("caja", 0.19, 0.27, 0.065);
+  assert.deepEqual(caja.groups.map((g) => [g.start, g.count, g.materialIndex]), [[0, 24, 1], [24, 12, 0]],
+    "la foto se estira otra vez sobre los costados de la caja");
+  assert.ok(caja.attributes.color, "el costado no se oscurece hacia atrás");
+  const dp = sinComentarios(leer(join(muebles, "ProductoDePrueba.tsx")));
+  assert.match(dp, /geometria\.groups\.length > 0 \? materiales : materiales\[0\]/);
+});
+
+prueba("el producto de prueba cuelga del mueble y gira con sus entrepaños", () => {
+  const dp = sinComentarios(leer(join(muebles, "ProductoDePrueba.tsx")));
+  assert.match(dp, /unidadesDePrueba\(/, "el producto de prueba acomoda por su cuenta");
+  assert.match(dp, /position=\{\[0, 0, c\.cara\.montaje\]\}/, "la cara no se cuelga de su montaje");
+  assert.match(dp, /rotation=\{\[0, c\.cara\.hacia === 1 \? Math\.PI : 0, 0\]\}/, "la cara B no se gira");
+  assert.match(dp, /position=\{\[0, f\.apoyo, 0\]\} rotation=\{\[f\.giro, 0, 0\]\}/,
+    "la fila no gira con su entrepaño");
+  assert.match(dp, /venta\.grupoGiro/, "el robatope no gira el producto con sus repisas");
+  assert.ok(!/Math\.(sin|cos)\(/.test(dp), "el producto de prueba replica la matemática de ubicación");
+  assert.ok(!/castShadow(?!=\{false\})/.test(dp), "el envase tira sombras que el mapa de la tienda no resuelve");
+});
+
+prueba("cada mueble con prueba la dibuja y le apaga el relleno donde va", () => {
+  const gon = cuerpoGondolaMesh;
+  assert.match(gon, /<ProductoDePrueba[\s\S]{0,120}venta=\{ventaGondola\}/, "la góndola no dibuja la prueba");
+  assert.match(gon, /\{!pinta && \(\s*<ProductoEnGondola[\s\S]{0,200}cubiertas=\{cubiertasDe\(/,
+    "la góndola dibuja el relleno debajo de la prueba");
+  const pun = cuerpoPuntaMesh;
+  assert.match(pun, /<ProductoDePrueba venta=\{ventaPunta\}/, "la punta no dibuja la prueba");
+  assert.match(pun, /\{!pinta && \(\s*<ProductoEnPunta[\s\S]{0,200}cubiertas=\{cubiertasDe\(/,
+    "la punta dibuja el relleno debajo de la prueba");
+  const rob = cuerpoDe("function RobatopeMesh(", "function RistraMesh(");
+  assert.match(rob, /<ProductoDePrueba venta=\{ventaRobatope\}/, "el robatope no dibuja la prueba");
+  assert.match(rob, /\{!pinta && !enPrueba && \(\s*<ProductoEnRepisas/, "el robatope dibuja la prueba y el relleno");
+  assert.match(cuerpoNeveraMesh, /<ProductoDePrueba venta=\{ventaNevera\}/, "la nevera no dibuja la prueba");
+});
+
+// «Arte o relleno, nunca las dos cosas», CORRIDO: la guarda de arriba sólo
+// buscaba el texto `cubiertas={cubiertasDe(`, y con `cubiertasDe` devolviendo
+// siempre [null, null] —o con ProductoEnMueble sin pasarle `cubiertas` a
+// `rellenoPorRubro`— seguía en verde mientras el relleno de Nutresa se
+// dibujaba debajo de los vasos de Alpina. Se compilan ProductoEnGondola y
+// ProductoEnPunta con un React mínimo (los componentes se llaman como
+// funciones) y se cuentan las instancias que dibujarían, cara por cara.
+const compiladoPM = await build({
+  stdin: {
+    contents: `export { ProductoEnGondola } from "./ProductoEnGondola"; export { ProductoEnPunta } from "./ProductoEnPunta";`,
+    resolveDir: join(raiz, muebles), loader: "ts",
+  },
+  bundle: true, write: false, format: "esm", platform: "node", jsx: "automatic", logLevel: "silent",
+  plugins: [{
+    name: "react-minimo",
+    setup(b) {
+      b.onResolve({ filter: /^react(\/jsx-runtime)?$/ }, (a) => ({ path: a.path, namespace: "react-minimo" }));
+      b.onLoad({ filter: /.*/, namespace: "react-minimo" }, (a) => ({
+        contents: a.path === "react"
+          ? "export const memo = (f) => f; export const useMemo = (f) => f(); export const useEffect = () => {};" +
+            "export const createContext = (v) => ({ v }); export const useContext = (c) => c.v;"
+          : "export const jsx = (type, props) => ({ type, props }); export const jsxs = jsx; export const Fragment = 'frag';",
+        loader: "js",
+      }));
+    },
+  }],
+});
+const PM = await import(
+  "data:text/javascript;base64," + Buffer.from(compiladoPM.outputFiles[0].text).toString("base64")
+);
+/** Las instancias que dibujaría un árbol: llama los componentes y, en cada
+ *  `instancedMesh`, su `ref` con un nodo falso que anota las matrices. */
+function instanciasDe(el) {
+  if (el == null || typeof el !== "object") return [];
+  if (Array.isArray(el)) return el.flatMap(instanciasDe);
+  if (typeof el.type === "function") return instanciasDe(el.type(el.props));
+  const propias = [];
+  if (el.type === "instancedMesh" && typeof el.props.ref === "function") {
+    el.props.ref({
+      setMatrixAt: (i, mat) => propias.push({ x: mat.elements[12], y: mat.elements[13], z: mat.elements[14] }),
+      instanceMatrix: {}, computeBoundingSphere() {},
+    });
+  }
+  return [...propias, ...instanciasDe(el.props?.children)];
+}
+
+prueba("arte o relleno, CORRIDO: la cara probada no lleva relleno y la otra sí", () => {
+  // cubiertasDe, de la pintura de la cara a lo que se tapa.
+  assert.deepEqual(F.cubiertasDe({ pruebaA: { donde: [1, 2] }, pruebaB: null }, false), [[1, 2], null]);
+  assert.deepEqual(F.cubiertasDe({ pruebaA: { donde: "todas" }, pruebaB: { donde: [0] } }, false), ["todas", [0]]);
+  assert.deepEqual(F.cubiertasDe({ pruebaA: { donde: [3] }, pruebaB: { donde: [0] } }, true), [[3], null], "el mural tapa una cara que no tiene");
+  assert.deepEqual(F.cubiertasDe(null, false), [null, null]);
+  // GON-01 con su cara A entera vendida a Nutresa (y la B también), probada
+  // con Alpina en «Toda la cara» de la A: en la A, cero relleno; en la B, el
+  // de siempre.
+  const slots = [
+    { id: "a", x: 0, w: 1, y: 0, h: 1, status: "occupied", brandCategory: "Galletas" },
+  ];
+  const base = { w: 1.2, d: 0.9, h: 1.8, esMural: false, slots };
+  const sinPrueba = instanciasDe(PM.ProductoEnGondola(base));
+  const conPrueba = instanciasDe(PM.ProductoEnGondola({ ...base, cubiertas: F.cubiertasDe({ pruebaA: { donde: "todas" } }, false) }));
+  const caraA = (l) => l.filter((p) => p.z < 0).length, caraB = (l) => l.filter((p) => p.z > 0).length;
+  assert.ok(caraA(sinPrueba) > 0 && caraB(sinPrueba) > 0, "sin prueba la góndola vendida no tiene relleno");
+  assert.equal(caraA(conPrueba), 0, "el relleno de Nutresa se dibuja debajo de los vasos de Alpina");
+  assert.equal(caraB(conPrueba), caraB(sinPrueba), "la prueba de la cara A le sacó el relleno a la B");
+  // Por entrepaño: sólo esos se apagan.
+  const filas = [...new Set(sinPrueba.filter((p) => p.z < 0).map((p) => p.y.toFixed(3)))].sort();
+  const dos = instanciasDe(PM.ProductoEnGondola({ ...base, cubiertas: F.cubiertasDe({ pruebaA: { donde: [1, 2] } }, false) }));
+  const filasDos = [...new Set(dos.filter((p) => p.z < 0).map((p) => p.y.toFixed(3)))].sort();
+  assert.equal(filasDos.length, filas.length - 2, "«Por entrepaño» no apaga justo los elegidos");
+  // La punta, igual (una sola cara).
+  const pBase = { w: 0.9, d: 0.4, h: 1.8, slots };
+  assert.ok(instanciasDe(PM.ProductoEnPunta(pBase)).length > 0);
+  assert.equal(instanciasDe(PM.ProductoEnPunta({ ...pBase, cubiertas: F.cubiertasDe({ pruebaA: { donde: "todas" } }, true) })).length, 0,
+    "la punta dibuja relleno debajo de la prueba");
+});
+
+// ── La prueba enchufada al editor (pasos 9 a 11) ────────────────────────────
+//
+// Lo que se afirma acá es lo que se pierde sin ruido: que la prueba no escriba
+// el plano, que le gane a la foto en su cara, que Presentar no le muestre a un
+// proveedor nada de los otros, y que la cámara de venta use la misma cuenta
+// que dibuja el producto.
+
+prueba("la prueba 3D le gana a la foto y al patrón en su cara, y sólo en ella", () => {
+  assert.match(editorCodigo,
+    /const TIPOS_CON_PRUEBA_3D = new Set<string>\(\["gondola", "punta", "nevera_refrescos", "robatope"\]\)/,
+    "cambió en qué muebles se para el producto de prueba");
+  const fp = cuerpoDe("const facePaintById = useMemo(", "const handleOrbitReady");
+  assert.match(fp, /const en3D = TIPOS_CON_PRUEBA_3D\.has\(type\)/, "facePaintById no pregunta si el mueble lleva prueba 3D");
+  assert.match(fp, /const pruebaA = en3D && arteA != null \? construirPrueba\(fix, "A", arteA\) : null/);
+  assert.match(fp, /const pruebaB = en3D && arteB != null \? construirPrueba\(fix, "B", arteB\) : null/);
+  assert.match(fp, /const front = pruebaA \? null : caraPintada\(arteA, fullCode, codeUC, fix\.brandCategory\)/,
+    "la cara probada sigue pintando la foto del espacio debajo del producto");
+  assert.match(fp, /const back = isDouble && !pruebaB\s*\? caraPintada\(arteB,/,
+    "la cara B probada sigue pintando la foto del espacio");
+  // En una pantalla privada la cara pinta SU arte o nada: ni el código del
+  // espacio (su foto es la marca del que hoy lo tiene) ni el rubro.
+  assert.match(fp, /\(privado\s*\? \(arte != null\s*\? resolveFaceMaterial\(arte, null, type, "",/,
+    "una pantalla privada puede caer a la foto del espacio, que es de otro proveedor");
+  // La foto que no cargó, o el arte que ya no está, no dejan la cara vacía:
+  // `construirPrueba` devuelve null y la cara cae a la lámina de siempre.
+  assert.match(fp, /if \(!arte\) return null;/, "un arte borrado deja la cara vacía");
+  assert.match(fp, /if \(!etiqueta && \(estado === "error" \|\| estado === "reintentando"\)\) return null;/,
+    "una foto que no cargó deja la cara vacía, sin producto ni lámina");
+  // En una pantalla privada, sólo las pruebas del que mira.
+  assert.match(fp, /const arteA = arteALaVista\(prueba\.get\(`\$\{fix\.id\}\|A`\), catalogo, privadoPara\);/,
+    "Presentar dibuja las pruebas de otros proveedores");
+  assert.match(fp, /const arteB = isDouble \? arteALaVista\(prueba\.get\(`\$\{fix\.id\}\|B`\), catalogo, privadoPara\) : null;/);
+  assert.match(fp, /const privado = privadoPara !== undefined;/);
+  assert.match(fp, /if \(front \|\| back \|\| pruebaA \|\| pruebaB\) map\.set\(fix\.id, \{ front, back, pruebaA, pruebaB \}\)/,
+    "un mueble con sólo prueba se queda sin pintar");
+  assert.match(fp, /marcarEnUso\(enUso\)/, "las etiquetas en prueba se pueden desalojar del caché");
+  assert.match(fp, /etiquetaDeArte\(clave, arteUrl\(arteId\), modo, notifyTexLoaded\)/);
+  // Sin `?? false`: hasta que la dueña toca «Mostrarla acostada», decide la
+  // ficha del arte (`ficha.acostado`).
+  assert.match(fp, /\{ acostado: como\?\.acostado \}/, "«acostada» no llega al envase");
+  assert.match(fp, /catalogo, comoSePrueba, privadoPara\]\)/, "el memo no se rehace al cambiar la prueba o quién mira");
+  assert.match(fp, /if \(sinArte\) return map;/, "el «Hoy» de la propuesta mostraría la prueba");
+});
+
+prueba("la pantalla que mira un proveedor muestra SÓLO lo suyo", () => {
+  // Dos pruebas de dos proveedores en la misma sesión: Alpina en la punta y
+  // Diana en el robatope. En Presentar para Diana se dibuja una sola.
+  const catalogo = [
+    { id: 1, supplier_id: 10, proveedor: "Alpina" },
+    { id: 4, supplier_id: 70, proveedor: "Arroz Diana" },
+  ];
+  const prueba_ = new Map([["PUN-01|A", 1], ["ROB-01|A", 4]]);
+  const vistas = (para) => [...prueba_.values()].map((id) => X.arteALaVista(id, catalogo, para)).filter((a) => a != null);
+  assert.deepEqual(vistas(70), [4], "en la pantalla de Diana se ve el producto de Alpina");
+  assert.deepEqual(vistas(10), [1]);
+  assert.deepEqual(vistas(undefined), [1, 4], "la pantalla de la dueña perdió las pruebas");
+  assert.deepEqual(vistas(null), [], "Presentar sin proveedor muestra pruebas de alguien");
+  assert.equal(X.arteALaVista(99, catalogo, 70), null, "un arte que no está en el catálogo se muestra");
+  // A quién se le presenta: el de la REUNIÓN primero. Con la reunión de
+  // Diana, un arrastre que empezó sobre la punta de Alpina la elige, y
+  // «Presentar» le pasaba la pantalla a Alpina delante de Diana.
+  assert.equal(X.proveedorParaPresentar({ prueba: prueba_, catalogo, muebleId: "PUN-01", proveedorDeReunion: "Arroz Diana" }), 70,
+    "con la reunión de Diana, «Presentar» muestra la punta de Alpina");
+  assert.equal(X.proveedorParaPresentar({ prueba: prueba_, catalogo, muebleId: "ROB-01", proveedorDeReunion: "Alpina" }), 10);
+  assert.equal(X.proveedorParaPresentar({ prueba: prueba_, catalogo, muebleId: "GON-02", proveedorDeReunion: "alpina " }), 10);
+  // Sin reunión, el del mueble elegido.
+  assert.equal(X.proveedorParaPresentar({ prueba: prueba_, catalogo, muebleId: "ROB-01", proveedorDeReunion: null }), 70);
+  // La prueba de otro en el mueble elegido se avisa (sin nombres).
+  assert.deepEqual(X.pruebaAjenaDelMueble(prueba_, catalogo, "PUN-01", 70), { fixtureId: "PUN-01", cara: "A", supplierId: 10 });
+  assert.equal(X.pruebaAjenaDelMueble(prueba_, catalogo, "ROB-01", 70), null);
+  // En la pantalla de la dueña con reunión fijada, sólo las de ese proveedor.
+  assert.deepEqual([...X.pruebasDeLaReunion(prueba_, catalogo, 70).keys()], ["ROB-01|A"],
+    "con la reunión de Diana el editor dibuja los vasos de Alpina");
+  assert.equal(X.pruebasDeLaReunion(prueba_, catalogo, null), prueba_, "sin reunión se pierden pruebas");
+  assert.equal(X.supplierPorNombre(" arroz DIANA", catalogo), 70);
+  assert.equal(X.supplierPorNombre("Nutresa", catalogo), null);
+  // Reunión es reunión aunque no quede ninguna prueba puesta.
+  assert.equal(X.hayReunion({ pruebas: 0, proveedorDeReunion: "Alpina" }), true,
+    "con la prueba quitada, el cartel vuelve a decir quién paga qué");
+  assert.equal(X.hayReunion({ pruebas: 0, proveedorDeReunion: null, eligiendo: true }), true);
+  assert.equal(X.hayReunion({ pruebas: 0, proveedorDeReunion: null }), false);
+  // Sin mueble ni reunión: con pruebas de DOS proveedores no se adivina…
+  assert.equal(X.proveedorParaPresentar({ prueba: prueba_, catalogo, muebleId: null, proveedorDeReunion: null }), null);
+  // …pero si todas son de uno, es a él (la punta de Alpina no puede salir
+  // vacía delante de Alpina porque la dueña apretó el botón de siempre).
+  assert.equal(X.proveedorParaPresentar({ prueba: new Map([["PUN-01|A", 1]]), catalogo, muebleId: null, proveedorDeReunion: null }), 10);
+  assert.equal(X.proveedorParaPresentar({ prueba: new Map(), catalogo, muebleId: null, proveedorDeReunion: null }), null);
+  // La última prueba puesta, para el aviso sin nombres.
+  assert.deepEqual(X.ultimaPrueba(prueba_, catalogo), { fixtureId: "ROB-01", cara: "A", supplierId: 70 });
+  assert.equal(X.ultimaPrueba(new Map(), catalogo), null);
+
+  // Y el editor lo usa en los tres lugares que ve el proveedor.
+  const mostrar = cuerpoDe("const mostrarAlProveedor = useCallback(", "const caraConPrueba");
+  assert.match(mostrar, /setProveedorEnPantalla\(catalogo\.find\(a => a\.id === arteId\)\?\.supplier_id \?\? null\)/,
+    "«Mostrar al proveedor» no fija quién mira");
+  assert.match(mostrar, /setProveedorEnPantalla\(proveedorParaPresentar\(\{/, "el botón «Presentar» no fija quién mira");
+  assert.match(editorCodigo, /const privadoPara: PrivadoPara = laminaPara !== undefined\s*\? laminaPara\s*: presentationMode \? proveedorEnPantalla : undefined;/);
+  assert.match(editorCodigo, /privadoPara=\{privadoPara\}/, "la escena no se entera de quién mira");
+  // La lámina: las DOS tomas con el filtro, puesto ANTES de la primera.
+  const lamina = cuerpoDe("const exportarPropuesta = useCallback(", "const selectedSlot = selectedFix");
+  const fija = lamina.indexOf("setLaminaPara(para);");
+  assert.ok(fija > 0 && fija < lamina.indexOf("setSinArte(true);"), "la lámina saca el «Hoy» sin el filtro del proveedor");
+  // Sin producto en prueba también es privada: para el del contrato o nadie.
+  assert.match(lamina, /const para = arte \? arte\.supplier_id : delContrato;\s*setLaminaPara\(para\);/,
+    "la lámina sin prueba lleva las de toda la sesión");
+  // Y la vista general sin mueble elegido, para el proveedor de la reunión.
+  assert.match(lamina, /if \(!fix \|\| !uf\) \{\s*setLaminaPara\(supplierDeReunion\);/, "el PNG sin selección sale con la pantalla de la dueña");
+  // En la caminata, se sale de la caminata ANTES de pedir las tomas.
+  const sale = lamina.indexOf("setFirstPerson(false);");
+  assert.ok(sale > 0 && sale < lamina.indexOf("pedirToma("), "«Propuesta» en la caminata saca las tomas desde la cámara de la caminata");
+  assert.match(lamina, /await esperarEscena\(\(e\) => !e\.primeraPersona\)/, "no espera a que la escena salga de la caminata");
+  assert.match(lamina, /finally \{[\s\S]*setLaminaPara\(undefined\);/, "la lámina deja el filtro puesto");
+  // El HUD sólo ofrece tomas de lo que se ve.
+  assert.match(editorCodigo, /arteALaVista\(prueba\.get\(`\$\{fix\.id\}\|\$\{cara\}`\), catalogo, privadoPara\) != null/);
+  // El botón «Presentar» con el mueble elegido probado es «Mostrar al proveedor».
+  const presentar = cuerpoDe("const alternarPresentar = useCallback(", "const caraVisible = ");
+  assert.match(presentar, /if \(cara\) \{ mostrarAlProveedor\(selectedId, cara\); return; \}/,
+    "«Presentar» con la punta probada la muestra vacía");
+  // El aviso de una prueba oculta no nombra a nadie.
+  const hud = editorCodigo.slice(editorCodigo.indexOf("data-hud-presentar"), editorCodigo.indexOf("data-prueba-oculta") + 400);
+  assert.match(hud, /pruebaOculta \? \(/, "Presentar sin proveedor no avisa la prueba oculta");
+  assert.ok(!/proveedor|supplierName|\.nombre/.test(hud.slice(hud.indexOf("pruebaOculta ? ("))), "el aviso nombra a un proveedor");
+  assert.match(editorCodigo, /: privadoPara === null \? ultimaPrueba\(prueba, catalogo\)\s*: privadoPara !== undefined \? pruebaAjenaDelMueble\(prueba, catalogo, selectedId, privadoPara\) : null;/);
+  // El botón «Presentar» sólo pasa la pantalla al dueño de la prueba elegida
+  // si es el de la reunión.
+  assert.match(presentar, /supplierDeReunion == null\s*\|\| catalogo\.find\(a => a\.id === id\)\?\.supplier_id === supplierDeReunion/,
+    "«Presentar» le muestra a Diana la punta de Alpina");
+  // La escena de la dueña recibe sólo las pruebas de la reunión.
+  assert.match(editorCodigo, /prueba=\{pruebaEnEscena\}/, "el editor dibuja las pruebas de otros proveedores en plena reunión");
+  assert.match(editorCodigo, /privadoPara !== undefined \? prueba : pruebasDeLaReunion\(prueba, catalogo, supplierDeReunion\)/);
+  // Y el cartel del mouse se vuelve discreto con la misma cuenta que el panel.
+  assert.match(editorCodigo, /const discreto = hayReunion\(\{ pruebas: prueba\.size, proveedorDeReunion \}\);/,
+    "el cartel del mouse nombra al proveedor con la reunión en curso");
+  // El selector: el nombre del grupo no tapa la prop (elegir no fijaba al
+  // proveedor de la reunión, y «Presentar» salía vacío).
+  const sel = cuerpoDe("function SelectorDeProducto(", "function FormularioDeArte(");
+  assert.ok(!/porProveedor\.map\(\(\[proveedor,/.test(sel), "el grupo del selector vuelve a llamarse `proveedor`");
+});
+
+prueba("con reunión en curso, el contrato de otro no se lee en el panel", () => {
+  const panel = cuerpoDe("function CommercialPanel(", "class CanvasErrorBoundary");
+  assert.match(panel, /const enReunion = hayReunion\(\{ pruebas: prueba\.size, proveedorDeReunion, eligiendo \}\);/);
+  // La prueba de otro proveedor en la cara elegida no se nombra.
+  const vista = cuerpoDe("function VistaProveedor(", "function FirstPersonControls(");
+  assert.match(vista, /const ajena = !!probando && deReunion != null && probando\.supplier_id !== deReunion;/);
+  const i0 = vista.indexOf("{ajena ? (");
+  const i1 = vista.indexOf(") : probando ? (", i0);
+  assert.ok(i0 > 0 && i1 > i0, "la prueba ajena no tiene versión discreta");
+  assert.ok(!/probando\.(nombre|proveedor)|arteUrl/.test(vista.slice(i0, i1)), "la prueba ajena se nombra o se muestra");
+  assert.match(vista, /\{probando && !ajena && \(\s*<button\s*onClick=\{\(\) => onMostrar/, "«Mostrar al proveedor» se ofrece con la prueba de otro");
+  assert.match(panel, /const contratoDiscreto = enReunion && !verContrato;/);
+  const i = panel.indexOf("fix.supplierName && contratoDiscreto ? (");
+  const j = panel.indexOf(") : fix.supplierName ? (", i);
+  assert.ok(i > 0 && j > i, "el bloque «Contratado» no tiene versión discreta");
+  const discreto = panel.slice(i, j);
+  assert.ok(!/supplierName\}|negotiatedValue|brandCategory/.test(discreto), "la versión discreta nombra al proveedor o su precio");
+  assert.match(discreto, /Ocupado hasta \$\{mesYAnio\(fix\.endDate\)\}/);
+  // El selector abierto también cuenta: su estado vive en el panel.
+  assert.match(panel, /eligiendo=\{eligiendo\}\s*setEligiendo=\{setEligiendo\}/);
+});
+
+prueba("probar y ajustar la prueba no escriben el plano", () => {
+  const probar = cuerpoDe("const probarProducto = useCallback(", "const ajustarPrueba = useCallback(");
+  const ajustar = cuerpoDe("const ajustarPrueba = useCallback(", "const [proveedorDeReunion");
+  for (const [nombre, cuerpo] of [["probarProducto", probar], ["ajustarPrueba", ajustar]]) {
+    assert.ok(!/setPlacedFixtures|pushToStore|commit\(/.test(cuerpo), `\`${nombre}\` escribe el layout`);
+  }
+  assert.match(probar, /\{ donde: "todas" \}/, "un producto nuevo no arranca en «Toda la cara»");
+  assert.ok(!/acostado: false/.test(probar), "un producto nuevo pisa la ficha «va acostado» con un `false`");
+  assert.match(probar, /if \(arteId == null\) siguiente\.delete\(`\$\{fixtureId\}\|\$\{cara\}`\);[\s\S]*if \(arteId == null\) siguiente\.delete/,
+    "quitar el producto deja el «cómo» colgado");
+  assert.match(ajustar, /new Map\(prev\)/, "ajustar muta el mapa y el memo no se entera");
+});
+
+prueba("los paneles de slot no salen en las capturas y se velan con la prueba", () => {
+  for (const [nombre, cuerpo] of [["GondolaMesh", cuerpoGondolaMesh], ["PuntaMesh", cuerpoPuntaMesh]]) {
+    assert.match(cuerpo, /userData=\{CHROME\}/, `los paneles de \`${nombre}\` salen en la lámina del proveedor`);
+    assert.match(cuerpo, /opacity=\{enPrueba \? \(isSel \? 0\.22 : isHov \? 0\.12 : 0\) : \(isSel \? 0\.94 : isHov \? 0\.80 : 0\.72\)\}/,
+      `los paneles de \`${nombre}\` tiñen el producto en prueba`);
+    assert.match(cuerpo, /emissiveIntensity=\{enPrueba \? 0 :/, `los paneles de \`${nombre}\` brillan sobre la prueba`);
+    assert.match(cuerpo, /\{enPrueba && \(\s*<ContornoDeSlot /, `los paneles de \`${nombre}\` desaparecen del todo con la prueba`);
+  }
+});
+
+prueba("Presentar: sin cromo, sin estado y sin nada de otros proveedores", () => {
+  assert.match(cuerpoEscena, /!selectedSlotId && !presentationMode && <SelectionBox/, "la caja de selección sale en Presentar");
+  assert.match(cuerpoEscena, /\{!presentationMode && \(\(\) => \{\s*const unifiedFix = unifiedById\.get\(fix\.id\);/,
+    "la insignia «sin contrato» sale en Presentar");
+  assert.match(cuerpoEscena,
+    /selectedId && !placingDef && !firstPerson && !presentationMode && \(\(\) => \{\s*const fix = placedFixtures\.find\(f => f\.id === selectedId\);\s*return fix \? \(\s*<FixtureTransformControls/,
+    "el gizmo sale en Presentar");
+  assert.match(cuerpoEscena, /neutro=\{privadoPara !== undefined\}/, "las tiras de estado salen en Presentar o en la lámina");
+  assert.match(editorCodigo, /const sc = neutro\s*\? COLOR_NEUTRO/, "`neutro` no apaga el color de estado");
+  assert.match(cuerpoEscena, /onSelectFixture\(fix\.id\);\s*if \(presentationMode\) return;\s*draggingId\.current=fix\.id;/,
+    "en Presentar un clic arrastra el mueble");
+  // La persona de 1,70 m es la escala: sigue en Presentar, como silueta
+  // plana parada EN EL PLANO de la cara que se muestra (adelantada, la
+  // perspectiva la agrandaba), y no en «De cerca».
+  const desde = cuerpoEscena.indexOf("{!firstPerson && (() => {");
+  const hasta = cuerpoEscena.indexOf("<primitive object={gridMinor} />", desde);
+  assert.ok(desde > 0 && hasta > desde, "no se encontró dónde se dibuja la persona");
+  const bloque = cuerpoEscena.slice(desde, hasta);
+  assert.match(bloque, /const pantallaDeVenta = presentationMode \|\| privadoPara !== undefined;/,
+    "la lámina sale con el muñeco del editor");
+  // En el editor también la silueta, en el plano de la cara: el muñeco de
+  // cápsulas quedaba en primer plano con «Encuadrar esta cara».
+  assert.ok(!/FiguraHumana/.test(editorCodigo), "volvió el muñeco de cápsulas");
+  // Al lado del mueble de la toma, no del último que eligió un arrastre.
+  assert.match(bloque, /const enVenta = pantallaDeVenta && pedidoDeToma \? pedidoDeToma\.fixtureId : null;/);
+  // Opaca, no un fantasma.
+  const silueta = cuerpoDe("function SiluetaDeEscala(", "const CHROME = ");
+  assert.match(silueta, /alphaTest=\{0\.5\}/, "la silueta es translúcida");
+  assert.ok(!/transparent|opacity=/.test(silueta), "la silueta es translúcida");
+  assert.match(bloque, /lugarDeLaFigura\(sel, muros, SEPARACION_EN_VENTA, \{ d: sel\.d, cara \}\)/,
+    "la persona no se para en el plano de la cara");
+  assert.match(bloque, /<SiluetaDeEscala /, "la persona desapareció de Presentar");
+  assert.match(bloque, /if \(toma\?\.toma === "cerca"\) return null;/, "la persona sale cortada en «De cerca»");
+  assert.match(editorCodigo, /const SEPARACION_EN_VENTA = 0\.3;/);
+  // El tooltip: nunca en Presentar, y sin proveedor ni $ mientras se prueba.
+  assert.match(editorCodigo, /\{hoveredFixtureId && !presentationMode && \(\(\) => \{/, "el tooltip sale en Presentar");
+  assert.match(editorCodigo, /const discreto = hayReunion\(\{ pruebas: prueba\.size, proveedorDeReunion \}\);/);
+  assert.match(editorCodigo, /\{!discreto && fix\.supplierName && /, "el tooltip nombra al proveedor del espacio en plena prueba");
+  assert.match(editorCodigo, /\{!discreto && fix\.negotiatedValue > 0 && /, "el tooltip dice cuánto paga otro");
+});
+
+prueba("el selector de productos no abre el catálogo entero en la reunión", () => {
+  const sel = cuerpoDe("function SelectorDeProducto(", "function FormularioDeArte(");
+  assert.match(sel, /if \(proveedor\) \{\s*return catalogo\.filter\(a => a\.proveedor === proveedor/,
+    "con el proveedor fijado se ven productos de otros");
+  assert.match(sel, /if \(q\.length < 3\) return \[\];/, "sin proveedor fijado, el selector lista todo");
+  assert.match(sel, /return catalogo\.filter\(a => a\.proveedor\.toLowerCase\(\)\.includes\(q\)\)/,
+    "la búsqueda sin proveedor encuentra por nombre de producto y muestra marcas de otros");
+  assert.match(sel, /for \(const a of filtrado\)/, "la grilla no sale de lo filtrado");
+  assert.match(sel, /if \(!proveedor\) onProveedor\(a\.proveedor\)/, "elegir un producto no fija al proveedor");
+  assert.match(sel, /Productos de \$\{proveedor\}/);
+  assert.match(sel, /Cambiar de proveedor/);
+  assert.match(sel, /proveedorInicial=\{proveedor\}/, "el alta no llega con el proveedor de la reunión");
+});
+
+prueba("el panel de la prueba dice la cuenta, lo que no entra y la foto en perspectiva", () => {
+  const panel = cuerpoDe("function PanelDePrueba(", "function VistaProveedor(");
+  assert.match(panel, /unidadesDePrueba\(\{ venta: ventaUsada, empaque, donde: como\.donde/, "el resumen no sale de la cuenta que dibuja");
+  // Las rejillas reacomodadas: las MISMAS que dibuja la nevera.
+  assert.match(panel, /rejillasParaProducto\(venta\.filas, empaque\.alto\)/);
+  assert.match(panel, /onAjustar\(\{ rejillas: true, acostado: false \}\)/, "acomodar rejillas deja la botella acostada");
+  assert.match(panel, /entrepanosDelEspacio\(slot, venta\.filas, venta\.franja\)/, "«vendido» no usa la regla del relleno");
+  assert.match(panel, /`No entra \$\{empaque\.acostado \? "acostada" : "parada"\}: \$\{enCm\(empaque\.alto\)\} cm en \$\{enCm\(maxLibre\)\} cm libres\.`/);
+  // Por el EMPAQUE y no por la sesión: con la ficha «va acostado» la sesión
+  // no dice nada y el botón tiene que ser «Volver a pararla».
+  assert.match(panel, /empaque\.envase === "revolucion" && !empaque\.acostado/, "«Mostrarla acostada» se ofrece a una caja");
+  assert.match(panel, /\{empaque\?\.acostado && \(/, "«Volver a pararla» no sigue a la ficha acostada");
+  // Y lo que no entra de fondo se dice con el fondo.
+  assert.match(panel, /No entra de fondo: \$\{enCm\(empaque\.fondo\)\} cm/, "el fondo que no entra se dice como ancho");
+  assert.match(panel, /empaque\?\.envase === "caja" && etiqueta && pareceEnPerspectiva\(etiqueta\.recorte\)/,
+    "el panel no avisa la caja fotografiada en tres cuartos");
+  // Sin nombres: el panel no lee de quién es el slot vendido.
+  assert.ok(!/supplierName|negotiatedValue/.test(panel), "el panel de la prueba nombra a otro proveedor o su precio");
+});
+
+prueba("«Mostrar al proveedor» abre Presentar con la toma de frente", () => {
+  const mostrar = cuerpoDe("const mostrarAlProveedor = useCallback(", "const caraConPrueba");
+  assert.match(mostrar, /setPresentationMode\(true\)/);
+  assert.match(mostrar, /setFirstPerson\(false\)/);
+  assert.match(mostrar, /pedirToma\(fixtureId, cara, "frente"\)/);
+  assert.ok(!/setPlacedFixtures/.test(mostrar), "mostrar escribe el plano");
+  const vista = cuerpoDe("function VistaProveedor(", "function FixtureTransformControls(");
+  assert.match(vista, /onClick=\{\(\) => onMostrar\(fix\.id, caraUsada\)\}/);
+  assert.match(editorCodigo,
+    /\(\[\["frente", "De frente"\], \["tres_cuartos", "Tres cuartos"\], \["cerca", "De cerca"\]\] as const\)/,
+    "faltan las tres tomas en el HUD de Presentar");
+});
+
+prueba("la cámara de venta encuadra con la cuenta de la prueba, dentro del pasillo", () => {
+  const toma = cuerpoDe("const tomaDeVenta = useCallback(", "function handleSceneDoubleClick");
+  assert.match(toma, /ventaDeTipo\(fix\.type, fix\.w, fix\.d, fix\.h, fix\.gondolaType\)/);
+  assert.match(toma, /focoDeLaPrueba\(venta, fix\.h, enCara \? \(como\?\.donde \?\? "todas"\) : "todas", enCara\?\.empaque \?\? null\)/,
+    "la cámara calcula sus alturas por su cuenta");
+  // «De cerca» con teleobjetivo, y el campo visual vuelve a 50° fuera de ella.
+  assert.match(toma, /const fov = toma === "cerca" \? FOV_DE_CERCA : FOV_DEL_EDITOR;/);
+  assert.match(toma, /if \(pedidoDeToma\?\.toma !== "cerca"\) ponerCampoVisual\(FOV_DEL_EDITOR\);/,
+    "el teleobjetivo de «De cerca» se queda puesto");
+  // «Encuadrar esta cara» sin vista guardada es la toma de frente, dentro del
+  // pasillo: el encuadre viejo miraba la cara B desde detrás de la vecina.
+  assert.match(toma, /if \(fix\) tomaDeVenta\(fix, enfoque3D\.cara, "frente"\);/, "«Encuadrar esta cara» mira desde detrás de la góndola de enfrente");
+  assert.match(toma, /const guardada = uf\.vista3D\?\.\[enfoque3D\.cara\];/, "la vista guardada dejó de mandar");
+  // La toma se borra al salir de Presentar, con un número que nunca vuelve.
+  assert.match(editorCodigo, /useEffect\(\(\) => \{ if \(!presentationMode\) setPedidoDeToma\(null\); \}, \[presentationMode\]\);/);
+  assert.match(editorCodigo, /const n = \+\+tomasPedidas\.current;/, "un pedido nuevo puede repetir un número ya atendido");
+  // El HUD no se pierde con un arrastre: cae al mueble de la última toma.
+  assert.match(editorCodigo, /const muebleDelHud = caraVisible\(selectedFix\) \? selectedFix\s*: caraVisible\(muebleDeLaToma\) \? muebleDeLaToma : null;/,
+    "un arrastre que elige otro mueble borra las tomas del HUD");
+  assert.match(toma, /murosDeCaminata\(placedFixtures\.filter\(\(f\) => f\.id !== fix\.id\)\)/,
+    "la cámara no mira los muebles de enfrente");
+  assert.match(toma, /aplicarVista\(vistaDeVenta\(/);
+  assert.match(toma, /tomaAtendida\.current = pedidoDeToma\.n/, "la misma toma se repite en cada render");
+  assert.match(cuerpoEscena, /distanciaMinima=\{presentationMode \|\| privadoPara !== undefined \? 0\.5 : 1\.2\}/,
+    "la órbita no deja acercarse a la toma «de cerca» (o empuja «Encuadrar esta cara» detrás de la góndola de enfrente)");
+  const camara = cuerpoDe("function CameraControls({", "function ScreenshotCapture(");
+  assert.match(camara, /ctrl\.minDistance = distanciaMinima;\s*ctrl\.update\(\);/,
+    "la distancia mínima no se aplica a los controles ya armados");
+});
+
+prueba("el foco de la cámara de venta sale de la misma cuenta que el producto", () => {
+  const v = V.ventaDeTipo("punta", 0.9, 0.4, 1.8);
+  const toda = F.focoDeLaPrueba(v, 1.8, "todas", VASO);
+  assert.equal(toda.yBajo, 0);
+  assert.equal(toda.yAlto, 1.8);
+  // Con la cara entera, el entrepaño con producto de centro más cerca de 1,3 m.
+  const r = F.unidadesDePrueba({ venta: v, empaque: VASO, donde: "todas", semilla: "x" });
+  const con = r.porFila.filter((f) => f.motivo === null);
+  const esperado = con.reduce((a, b) =>
+    Math.abs(b.apoyo + b.libre / 2 - 1.3) < Math.abs(a.apoyo + a.libre / 2 - 1.3) ? b : a);
+  assert.equal(toda.yEntrepano, esperado.apoyo + esperado.libre / 2);
+  assert.equal(toda.libreEntrepano, esperado.libre);
+  // Por entrepaño: del apoyo más bajo al techo más alto, con 5 cm de aire.
+  const dos = F.focoDeLaPrueba(v, 1.8, [0, 1], VASO);
+  assert.equal(enMetros(dos.yBajo), enMetros(v.filas.alturas[0] - 0.05));
+  assert.equal(enMetros(dos.yAlto), enMetros(v.filas.alturas[2] + 0.05));
+  // En la nevera, la botella de 30,5 cm sólo entra arriba: «de cerca» va a
+  // ese entrepaño aunque el de 1,2 m esté más a mano, porque ahí no hay nada.
+  const n = V.ventaDeTipo("nevera_refrescos", 1.2, 0.75, 1.8);
+  const alta = { ancho: 0.09, alto: 0.305, fondo: 0.09, forma: "caja" };
+  const fn = F.focoDeLaPrueba(n, 1.8, "todas", alta);
+  const ultima = n.filas.rows - 1;
+  assert.equal(enMetros(fn.yEntrepano), enMetros(n.filas.alturas[ultima] + (n.sobreApoyo ?? 0)
+    + (n.filas.alturas[ultima + 1] - n.filas.alturas[ultima]) / 2), "la toma de cerca mira un entrepaño vacío");
+  // Elegidos [0, 1] con la botella de 30 cm: la fila 1 no la admite.
+  const botella = { ancho: 0.09, alto: 0.30, fondo: 0.09, forma: "caja" };
+  const f01 = F.focoDeLaPrueba(n, 1.8, [0, 1], botella);
+  assert.equal(enMetros(f01.yEntrepano), enMetros(n.filas.alturas[0] + (n.sobreApoyo ?? 0) + 0.15));
+  // Sin empaque (la foto todavía carga) se encuadra lo elegido igual.
+  const sin = F.focoDeLaPrueba(v, 1.8, [2], null);
+  assert.equal(enMetros(sin.yEntrepano), enMetros(v.filas.alturas[2] + (v.filas.alturas[3] - v.filas.alturas[2]) / 2));
+});
+
+// ── La foto que no carga (etiqueta.ts), CORRIDA ─────────────────────────────
+//
+// Render despertando da 502, un token vencido 401: la etiqueta quedaba en
+// «error» para siempre y la cara de la punta, vacía hasta recargar la página.
+// Se compila etiqueta.ts con un fetch falso (la API y @react-three/fiber, que
+// no hacen falta para esto, se reemplazan) y se mira qué hace.
+const compiladoET = await build({
+  entryPoints: [join(raiz, muebles, "etiqueta.ts")],
+  bundle: true, write: false, format: "esm", platform: "node", logLevel: "silent",
+  plugins: [{
+    name: "sin-api",
+    setup(b) {
+      b.onResolve({ filter: /api\/catalogo$|^@react-three\/fiber$/ }, (a) => ({ path: a.path, namespace: "falso" }));
+      b.onLoad({ filter: /.*/, namespace: "falso" }, (a) => ({
+        contents: /catalogo/.test(a.path)
+          ? "export const arteUrl = (id) => `/api/catalogo/${id}/imagen`;"
+          : "export const useThree = () => ({});",
+        loader: "js",
+      }));
+    },
+  }],
+});
+const ET = await import(
+  "data:text/javascript;base64," + Buffer.from(compiladoET.outputFiles[0].text).toString("base64")
+);
+const fotoQueFalla = await (async () => {
+  const r = {};
+  const real = { fetch: globalThis.fetch, setTimeout: globalThis.setTimeout, now: Date.now, cib: globalThis.createImageBitmap };
+  const timers = [];
+  let pedidos = 0, bitmaps = 0, avisos = 0, ahora = 1_000_000;
+  const tick = () => new Promise((ok) => real.setTimeout(ok, 5));
+  try {
+    globalThis.fetch = async () => { pedidos++; return { ok: false, status: 502, blob: async () => ({}) }; };
+    globalThis.createImageBitmap = async () => { bitmaps++; throw new Error("no es una imagen"); };
+    globalThis.setTimeout = (f, ms) => { timers.push({ f, ms }); return 0; };
+    Date.now = () => ahora;
+    const avisar = () => { avisos++; };
+    r.primera = ET.etiquetaDeArte("k", "/foto", "auto", avisar);
+    r.cargando = ET.estadoDeEtiqueta("k");
+    await tick();
+    r.error = ET.estadoDeEtiqueta("k");
+    r.avisosAlFallar = avisos;
+    r.bitmaps = bitmaps;
+    // Pedirla de nuevo enseguida no la vuelve a bajar.
+    ET.etiquetaDeArte("k", "/foto", "auto", avisar);
+    r.pedidosSinReintento = pedidos;
+    // «Reintentar»: avisa a quien la esperaba, y al pedirla se vuelve a bajar.
+    ET.reintentarEtiqueta("k");
+    r.avisosAlReintentar = avisos;
+    ET.etiquetaDeArte("k", "/foto", "auto", avisar);
+    r.pedidosConReintento = pedidos;
+    r.reintentando = ET.estadoDeEtiqueta("k");
+    await tick();
+    // Vuelve a fallar; al avisar, la escena la pide otra vez (y queda esperando).
+    ET.etiquetaDeArte("k", "/foto", "auto", avisar);
+    // Y sola: el temporizador avisa pasado el rato, y la próxima vez se baja.
+    const t = timers.filter((x) => x.ms >= 5000).at(-1);
+    r.temporizador = t?.ms ?? null;
+    const antes = avisos;
+    ahora += t?.ms ?? 0;
+    t?.f();
+    r.avisoDelTemporizador = avisos - antes;
+    ET.etiquetaDeArte("k", "/foto", "auto", avisar);
+    r.pedidosSolos = pedidos;
+  } finally {
+    globalThis.fetch = real.fetch; globalThis.setTimeout = real.setTimeout; Date.now = real.now;
+    globalThis.createImageBitmap = real.cib;
+  }
+  return r;
+})();
+
+prueba("una foto que no carga se dice, se reintenta y no queda en el caché para siempre", () => {
+  const r = fotoQueFalla;
+  assert.equal(r.primera, null);
+  assert.equal(r.cargando, "cargando");
+  assert.equal(r.error, "error", "un 502 no queda como error: la cara no puede caer a la lámina");
+  assert.equal(r.avisosAlFallar, 1, "quien la pidió no se entera de que falló");
+  assert.equal(r.bitmaps, 0, "con un 502 se intentó leer el HTML del error como imagen (falta `res.ok`)");
+  assert.equal(r.pedidosSinReintento, 1);
+  assert.equal(r.avisosAlReintentar, 2, "«Reintentar» no avisa a quien la esperaba");
+  assert.equal(r.pedidosConReintento, 2, "«Reintentar» no vuelve a bajar la foto");
+  assert.equal(r.reintentando, "reintentando", "mientras se reintenta la cara parpadearía vacía");
+  assert.ok(r.temporizador >= 5000 && r.temporizador <= 60000, `sin reintento solo (${r.temporizador})`);
+  assert.equal(r.avisoDelTemporizador, 1, "pasado el rato no se avisa para volver a pedirla");
+  assert.equal(r.pedidosSolos, 3, "pasado el rato la foto no se vuelve a bajar");
+  // El panel lo dice y ofrece reintentar, y una recarga del catálogo que
+  // falla no vacía las caras probadas.
+  assert.match(editor, /onClick=\{\(\) => reintentarEtiqueta\(claveDeArte\(arte\.id, modo\)\)\}/, "el panel no ofrece «Reintentar»");
+  assert.ok(!/\.catch\(\(\) => setCatalogo\(\[\]\)\)/.test(editor), "una recarga fallida del catálogo vacía todas las caras probadas");
 });
 
 console.log(`\n${hechas} pruebas del mobiliario 3D`);

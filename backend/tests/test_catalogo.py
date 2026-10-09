@@ -216,3 +216,107 @@ def test_borrar_saca_el_producto_de_la_lista(client, admin):
     # Y la imagen deja de responder: el 3D cae al patrón de categoría.
     assert client.get(f"/api/catalogo/{arte}/imagen", headers=admin).status_code == 404
     assert client.delete(f"/api/catalogo/{arte}", headers=admin).status_code == 404
+
+
+# ─── La ficha del arte: forma y medidas del envase ────────────────────────────
+#
+# Es lo que decide la escala del producto en el 3D y cuántos frentes entran por
+# entrepaño. Vive en una tabla NUEVA (`supplier_asset_specs`), 1:1 con el arte,
+# porque `supplier_assets` no puede ganar columnas sin migración.
+
+FICHA_VASO = {
+    "forma": "vaso", "alto_mm": 90, "ancho_mm": 75, "fondo_mm": 75,
+    "apilable": True, "acostado": False, "fondo_foto": "auto",
+}
+
+
+def _fichas_en_la_base(arte_id=None):
+    """Cuenta directa en la base: SQLite no hace cumplir la clave foránea, así
+    que la API sola no alcanza para saber si quedó una ficha huérfana."""
+    from app.database import SessionLocal
+    from app.models.models import SupplierAssetSpec
+
+    db = SessionLocal()
+    try:
+        q = db.query(SupplierAssetSpec)
+        if arte_id is not None:
+            q = q.filter(SupplierAssetSpec.asset_id == arte_id)
+        return q.count()
+    finally:
+        db.close()
+
+
+def test_la_ficha_viaja_en_el_mismo_formulario_del_alta(client, admin):
+    prov = _proveedor(client, admin)
+    r = _subir(client, admin, prov, forma="vaso", alto_mm="90", apilable="true")
+    assert r.status_code == 201, r.text
+    ficha = r.json()["ficha"]
+    assert ficha["forma"] == "vaso" and ficha["alto_mm"] == 90 and ficha["apilable"] is True
+    # Lo que no se mandó queda en su valor por defecto.
+    assert ficha["ancho_mm"] is None and ficha["fondo_foto"] == "auto"
+    lista = client.get("/api/catalogo/", headers=admin).json()
+    assert lista[0]["ficha"]["alto_mm"] == 90
+
+
+def test_un_arte_sin_ficha_se_lista_con_ficha_nula(client, admin):
+    """Las artes de antes no tienen ficha y no están rotas: el 3D las estima."""
+    prov = _proveedor(client, admin)
+    assert _subir(client, admin, prov).status_code == 201
+    assert client.get("/api/catalogo/", headers=admin).json()[0]["ficha"] is None
+    assert _fichas_en_la_base() == 0
+
+
+def test_la_ficha_se_crea_y_despues_se_reemplaza(client, admin):
+    prov = _proveedor(client, admin)
+    arte = _subir(client, admin, prov).json()["id"]
+    r = client.put(f"/api/catalogo/{arte}/ficha", json=FICHA_VASO, headers=admin)
+    assert r.status_code == 200, r.text
+    assert r.json()["ficha"]["alto_mm"] == 90
+    assert r.json()["proveedor"] == "Alpina" and r.json()["id"] == arte
+
+    otra = {**FICHA_VASO, "alto_mm": 120, "fondo_foto": "quitar", "apilable": False}
+    r = client.put(f"/api/catalogo/{arte}/ficha", json=otra, headers=admin)
+    assert r.status_code == 200, r.text
+    assert r.json()["ficha"]["alto_mm"] == 120 and r.json()["ficha"]["fondo_foto"] == "quitar"
+    # Reemplaza: sigue habiendo UNA ficha para ese arte, no dos.
+    assert _fichas_en_la_base(arte) == 1
+    assert client.get("/api/catalogo/", headers=admin).json()[0]["ficha"]["alto_mm"] == 120
+
+
+def test_la_ficha_la_carga_sola_la_administracion(client, admin, worker):
+    prov = _proveedor(client, admin)
+    arte = _subir(client, admin, prov).json()["id"]
+    assert client.put(f"/api/catalogo/{arte}/ficha", json=FICHA_VASO, headers=worker).status_code == 403
+    assert client.put(f"/api/catalogo/{arte}/ficha", json=FICHA_VASO).status_code == 401
+    assert client.put("/api/catalogo/9999/ficha", json=FICHA_VASO, headers=admin).status_code == 404
+    # Y el worker tampoco la cuela por el alta.
+    assert _subir(client, worker, prov, forma="vaso", alto_mm="90").status_code == 403
+    assert _fichas_en_la_base() == 0
+
+
+def test_la_ficha_es_una_lista_cerrada_con_topes(client, admin):
+    prov = _proveedor(client, admin)
+    arte = _subir(client, admin, prov).json()["id"]
+    for malo in (
+        {**FICHA_VASO, "forma": "tubo"},
+        {**FICHA_VASO, "alto_mm": 0},
+        {**FICHA_VASO, "alto_mm": 5000},
+        {**FICHA_VASO, "fondo_foto": "x"},
+        {**FICHA_VASO, "color": "rojo"},
+    ):
+        r = client.put(f"/api/catalogo/{arte}/ficha", json=malo, headers=admin)
+        assert r.status_code == 422, (malo, r.text)
+    # En el alta también, y ANTES de guardar el arte: no queda un arte suelto.
+    for campos in ({"forma": "tubo"}, {"alto_mm": "0"}, {"alto_mm": "5000"}, {"fondo_foto": "x"}):
+        r = _subir(client, admin, prov, nombre="Otro", **campos)
+        assert r.status_code == 422, (campos, r.text)
+    assert [a["nombre"] for a in client.get("/api/catalogo/", headers=admin).json()] == ["Yogurt Griego 150g"]
+    assert _fichas_en_la_base() == 0
+
+
+def test_borrar_el_arte_borra_su_ficha(client, admin):
+    prov = _proveedor(client, admin)
+    arte = _subir(client, admin, prov, forma="caja", alto_mm="270").json()["id"]
+    assert _fichas_en_la_base(arte) == 1
+    assert client.delete(f"/api/catalogo/{arte}", headers=admin).status_code == 204
+    assert _fichas_en_la_base(arte) == 0

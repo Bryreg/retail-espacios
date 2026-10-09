@@ -11,9 +11,26 @@ import {
 } from "lucide-react";
 import { Html } from "@react-three/drei";
 import { GondolaReal } from "./muebles/GondolaReal";
-import { ProductoEnGondola } from "./muebles/ProductoEnGondola";
+import { ProductoEnGondola, ventaDeGondola } from "./muebles/ProductoEnGondola";
 import { PuntaReal } from "./muebles/PuntaReal";
-import { ProductoEnPunta } from "./muebles/ProductoEnPunta";
+import { ProductoEnPunta, ventaDePunta } from "./muebles/ProductoEnPunta";
+import { ProductoDePrueba } from "./muebles/ProductoDePrueba";
+import type { PruebaDeCara } from "./muebles/ProductoDePrueba";
+import {
+  cubiertasDe, entrepanosDelEspacio, focoDeLaPrueba, rejillasParaProducto, unidadesDePrueba, VENDIDO,
+} from "./muebles/frentes";
+import { ventaDeTipo } from "./muebles/venta";
+import {
+  arteALaVista, hayReunion, supplierPorNombre, proveedorParaPresentar, pruebaAjenaDelMueble, pruebasDeLaReunion,
+  ultimaPrueba,
+} from "./muebles/privacidad";
+import type { PrivadoPara } from "./muebles/privacidad";
+import {
+  claveDeArte, estadoDeEtiqueta, etiquetaDeArte, marcarEnUso, olvidarEtiquetas, reintentarEtiqueta,
+  useEntornoDeProducto, useEtiqueta,
+} from "./muebles/etiqueta";
+import { materialDeCenefa, materialDeCopete, olvidarCopetes } from "./muebles/pop";
+import { conLuzDeVenta, LuzDeVenta, useLuzDeVenta } from "./muebles/luzDeVenta";
 import { NeveraReal } from "./muebles/NeveraReal";
 import { ProductoAGranel } from "./muebles/ProductoAGranel";
 import { BateaReal, bocaDeBatea } from "./muebles/BateaReal";
@@ -24,13 +41,13 @@ import { ServicioClienteReal } from "./muebles/ServicioClienteReal";
 import { EstibaReal } from "./muebles/EstibaReal";
 import { bandejasDeMural } from "./muebles/ProductoEnMural";
 import { ProductoEnRepisas } from "./muebles/ProductoEnRepisas";
-import { colorDeRubro, empaqueQueEntra } from "./muebles/producto";
+import { colorDeRubro, empaqueDeArte, empaqueQueEntra } from "./muebles/producto";
 import { olvidarGeometrias } from "./muebles/perfiles";
 import {
-  COPETE, ESPESOR_ESPINA, ESTIBA, NEVERA, PANEL_FONDO, PARANTE, ZONA_DE_SLOTS,
+  COPETE, ESPESOR_ESPINA, ESTIBA, NEVERA, PANEL_FONDO, PARANTE, ROBATOPE, ZONA_DE_SLOTS,
   altoDeZonaDeSlots, altoDeZonaDeSlotsDePunta, altoUtilDeNevera,
-  bandejasDeStand, cotasDeEstiba, filasDeNevera, filasDeProducto, filasDePunta,
-  fondoPorCara,
+  bandejasDeStand, cotasDeEstiba, cotasDeRobatope, filasDeNevera, filasDeProducto, filasDePunta,
+  fondoPorCara, ventaDeNevera, ventaDeRobatope,
 } from "./muebles/medidas";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { useModalAbierto } from "../../tema";
@@ -42,7 +59,9 @@ import {
 } from "../../utils/nomenclatura";
 import type { RechazoDeNombre } from "../../utils/nomenclatura";
 import { fileUrl, getFaceImages } from "../../api/files";
-import { arteUrl, listarCatalogo, subirArte, type Arte } from "../../api/catalogo";
+import { arteUrl, guardarFicha, listarCatalogo, subirArte, type Arte } from "../../api/catalogo";
+import EditorDeFicha, { FICHA_VACIA, enCm, pareceEnPerspectiva } from "./EditorDeFicha";
+import type { FichaDeArte } from "./muebles/producto";
 import { getSuppliers } from "../../api/suppliers";
 import { findOrCreateSpace, updateSpaceStatus } from "../../api/spaces";
 import { describeError } from "../../api/client";
@@ -51,14 +70,14 @@ import { describeError } from "../../api/client";
 import {
   huella, limitesDePlanta, lugarDeLaFigura, murosDeCaminata, puntoDeEntrada, puntoLibreCerca, resolverPaso,
   TOLERANCIA_CONTACTO,
-  vistaGeneral, miradaSensata, vistaDeCara,
-  type Vista3D,
+  vistaGeneral, miradaSensata, vistaDeCara, vistaDeVenta, FOV_DE_CERCA,
+  type Vista3D, type TomaDeVenta,
   VEL_CAMINANDO, VEL_APURADA,
   type LimitesPlanta,
 } from "../../utils/planta";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 import MiniMapa, { type CamaraEnPlanta } from "../MiniMapa/MiniMapa";
-import { componerPropuesta, descargar, nombreDeArchivo } from "../../utils/propuesta";
+import { componerPropuesta, descargar, nombreDeArchivo, prepararToma } from "../../utils/propuesta";
 import { siguienteCodigo } from "../../utils/nomenclatura";
 
 // ─── Scene constants ──────────────────────────────────────────────────────────
@@ -72,6 +91,15 @@ const SNAP    = 0.05;   // matches FloorPlan2D's snapTo grid (5 cm)
 /** Caja de respaldo cuando la planta está vacía: no hay muebles de donde deducirla. */
 const PLANTA_NOMINAL = { minX: 0, maxX: STORE_W, minZ: 0, maxZ: STORE_D };
 const CAM_POS: [number, number, number] = [STORE_W / 2, 28, STORE_D + 8];
+/** El campo visual de siempre. Sólo la toma «De cerca» lo cambia, y lo
+ *  devuelve (`FOV_DE_CERCA`, en `utils/planta.ts`). */
+const FOV_DEL_EDITOR = 50;
+/** El color de la sala detrás del lienzo (que es transparente). La lámina
+ *  apoya cada captura sobre él: si no, el fondo salía blanco. */
+const FONDO_DE_SALA = "#e8e4dc";
+/** Cuánto aire lleva la toma «De frente» de la lámina: la franja del mueble
+ *  agrandada 1,35 veces, el mueble al ~65 % del alto del cuadro. */
+const HOLGURA_DE_LAMINA = 1.35;
 const CAM_TARGET: [number, number, number] = [STORE_W / 2, 0, STORE_D / 2];
 
 function snap(v: number) { return Math.round(v / SNAP) * SNAP; }
@@ -84,6 +112,14 @@ function computeDays(start: string, end: string): number {
   return Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86_400_000));
 }
 
+const MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+/** «2027-06-30» → «jun 2027». Se lee la fecha como texto y no con `Date`: la
+ *  medianoche UTC de un día 1 cae el mes anterior en la hora de Colombia. */
+function mesYAnio(fecha: string): string {
+  const m = /^(\d{4})-(\d{2})/.exec(fecha);
+  return m ? `${MESES_CORTOS[Number(m[2]) - 1] ?? ""} ${m[1]}`.trim() : fecha;
+}
+
 function euclidean(ax: number, az: number, bx: number, bz: number) {
   return Math.sqrt((ax-bx)**2+(az-bz)**2);
 }
@@ -93,12 +129,48 @@ function euclidean(ax: number, az: number, bx: number, bz: number) {
 // of the fixture mesh via a material array — never onto new positioned
 // geometry — so it inherits the fixture group's transform and cannot float.
 
-interface FacePaint {
+export interface FacePaint {
   /** Material for the fixture's FRONT face (this file's convention: -Z at rotY 0). */
   front: THREE.Material | null;
   /** Material for the BACK face (+Z) — only set for double gondolas (face B). */
   back:  THREE.Material | null;
+  /** El producto del proveedor que se está PROBANDO en cada cara, como envases
+   *  3D (`ProductoDePrueba`). Cuando hay prueba en una cara, su `front`/`back`
+   *  llega en null: la prueba le gana a la foto del espacio y al patrón, y la
+   *  lámina sólo dibuja la otra cara. */
+  pruebaA?: PruebaDeCara | null;
+  pruebaB?: PruebaDeCara | null;
 }
+
+/** CÓMO se prueba un producto en una cara: en qué entrepaños y si va
+ *  acostado. Estado de sesión, al lado de `prueba` y con la misma clave
+ *  (`${fixtureId}|A`); igual que ella, nunca va al layout. */
+type ComoSePrueba = {
+  donde: "todas" | number[];
+  /** `undefined` hasta que la dueña aprieta «Mostrarla acostada» o «Volver a
+   *  pararla»: mientras tanto decide la ficha del arte (`ficha.acostado`).
+   *  Con un `false` de arranque la ficha nunca se aplicaba. */
+  acostado?: boolean;
+  /** Las rejillas de la nevera reacomodadas para que el producto entre parado
+   *  en todas (`rejillasParaProducto`). Sólo en la sesión. */
+  rejillas?: boolean;
+  /** La marca del producto en el copete de la punta (`pop.ts`). Prendida si
+   *  no se dice nada; sólo vale con «Toda la cara». */
+  copete?: boolean;
+};
+
+/** Lo que la escena YA dibujó, para quien saca capturas (la lámina): el
+ *  lienzo del 3D es otra raíz de React, y un cambio de estado de afuera
+ *  tarda lo que tarda en llegar. Esperar «dos cuadros» no alcanzaba: con la
+ *  punta llena (360 vasos) la toma «Con Alpina» salía sin el producto, igual
+ *  a «Hoy», y la lámina quedaba con una sola imagen. */
+type EstadoDeEscena = { sinArte: boolean; privadoPara: PrivadoPara; toma: number; primeraPersona: boolean };
+
+/** Una toma de venta pedida para Presentar (o para la lámina). `n` cambia en
+ *  cada pedido, para que pedir dos veces la misma vuelva a encuadrar.
+ *  `holgura` agranda la franja que tiene que entrar: la lámina deja el
+ *  mueble al ~65 % del alto, con aire alrededor. */
+type PedidoDeToma = { fixtureId: string; cara: "A" | "B"; toma: TomaDeVenta; n: number; holgura?: number };
 
 /**
  * Build the 6-material array for a painted box.
@@ -379,6 +451,8 @@ const STATUS_COLORS: Record<SpaceStatus, string> = {
 // commercial colour language (green/red/amber) meaningful: every coloured mesh
 // in the scene is sellable space.
 const NON_RENTABLE_COLOR = "#64748b";
+/** El gris de chapa con que se pintan las tiras de estado en Presentar. */
+const COLOR_NEUTRO = "#8d9499";
 
 interface ShelfSlot {
   id:              string;
@@ -623,6 +697,11 @@ const GondolaMesh = memo(function GondolaMesh({
   const filas = useMemo(() => filasDeProducto(h, fondoCara), [h, fondoCara]);
 
   const pinta = !ghost && !!facePaint && !!(facePaint.front || facePaint.back);
+  // El producto del proveedor en prueba, como envases 3D parados en los
+  // entrepaños. Es otra cosa que la lámina: sale de `ventaDeGondola`, la misma
+  // cuenta que el relleno, y donde está la prueba no va relleno.
+  const enPrueba = !ghost && !!(facePaint?.pruebaA || facePaint?.pruebaB);
+  const ventaGondola = useMemo(() => ventaDeGondola(w, d, h, isWall), [w, d, h, isWall]);
 
   function renderSlotFace(faceSign: -1 | 1) {
     if (!slots || ghost || !onSlotClick) return null; // slots disabled → skip
@@ -639,18 +718,28 @@ const GondolaMesh = memo(function GondolaMesh({
         <mesh
           key={`${faceSign}|${slot.id}`}
           position={[cx, cy, panelZ]}
+          // Fuera de toda captura: el estado de cada espacio no va en la
+          // lámina que se le manda al proveedor.
+          userData={CHROME}
           onClick={e  => { e.stopPropagation(); onSlotClick?.(slot.id); }}
           onPointerOver={e => { e.stopPropagation(); onSlotHover?.(slot.id); }}
           onPointerOut={e  => { e.stopPropagation(); onSlotHover?.(null); }}
         >
           <boxGeometry args={[Math.max(0.01, sw), Math.max(0.01, sh), 0.016]} />
+          {/* Con producto en prueba, sólo el contorno (y un relleno apenas
+              al elegirlo o pasar el mouse): al 72 % tapaban el producto que
+              se está mostrando, y aun al 15 % lo teñían. Siguen clicables,
+              porque el raycast no mira la opacidad. */}
           <meshStandardMaterial
             color={sc} transparent
-            opacity={isSel ? 0.94 : isHov ? 0.80 : 0.72}
+            opacity={enPrueba ? (isSel ? 0.22 : isHov ? 0.12 : 0) : (isSel ? 0.94 : isHov ? 0.80 : 0.72)}
             emissive={sc}
-            emissiveIntensity={isSel ? 0.35 : isHov ? 0.18 : 0}
+            emissiveIntensity={enPrueba ? 0 : isSel ? 0.35 : isHov ? 0.18 : 0}
             depthWrite={false}
           />
+          {enPrueba && (
+            <ContornoDeSlot w={Math.max(0.01, sw)} h={Math.max(0.01, sh)} z={faceSign * 0.009} color={sc} />
+          )}
         </mesh>
       );
     });
@@ -667,6 +756,13 @@ const GondolaMesh = memo(function GondolaMesh({
       {!pinta && (
         <ProductoEnGondola
           w={w} d={d} h={h} esMural={isWall} slots={slots} ghost={ghost}
+          cubiertas={cubiertasDe(facePaint, isWall)}
+        />
+      )}
+      {enPrueba && (
+        <ProductoDePrueba
+          venta={ventaGondola}
+          pruebas={[facePaint?.pruebaA, isWall ? null : facePaint?.pruebaB]}
         />
       )}
 
@@ -691,6 +787,26 @@ const GondolaMesh = memo(function GondolaMesh({
     </group>
   );
 });
+
+/** El contorno de 1 px de un panel de slot. Con un producto en prueba el
+ *  panel no se rellena: el velo de color, aun tenue, teñía de verde menta el
+ *  mueble entero y el producto que se estaba mostrando. El contorno sigue
+ *  diciendo dónde está cada espacio, y el panel transparente sigue
+ *  recibiendo el clic (el raycast no mira la opacidad). */
+function ContornoDeSlot({ w, h, z, color }: { w: number; h: number; z: number; color: string }) {
+  const geometria = useMemo(() => {
+    const plano = new THREE.PlaneGeometry(w, h);
+    const g = new THREE.EdgesGeometry(plano);
+    plano.dispose();
+    return g;
+  }, [w, h]);
+  useEffect(() => () => geometria.dispose(), [geometria]);
+  return (
+    <lineSegments geometry={geometria} position={[0, 0, z]}>
+      <lineBasicMaterial color={color} transparent opacity={0.85} />
+    </lineSegments>
+  );
+}
 
 // ─── Mesh: Punta de Góndola ───────────────────────────────────────────────────
 
@@ -732,10 +848,22 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
   );
 
   const pinta = !ghost && !!facePaint?.front;
+  // El producto del proveedor en prueba, como envases 3D. Una sola cara.
+  const enPrueba = !ghost && !!facePaint?.pruebaA;
+  const ventaPunta = useMemo(() => ventaDePunta(w, d, h), [w, d, h]);
+  // La marca en el copete: sólo con la punta ENTERA probada (si se prueba un
+  // entrepaño, el copete no es de ese proveedor) y si no se apagó en el panel.
+  const entorno = useEntornoDeProducto();
+  const pa = facePaint?.pruebaA;
+  const conMarca = enPrueba && pa?.etiqueta && pa.donde === "todas" && pa.copete !== false;
+  const copete = conMarca && pa?.etiqueta
+    ? materialDeCopete(pa.etiqueta, w + COPETE.vuelo * 2 - 0.016, COPETE.alto - 0.016, entorno)
+    : undefined;
+  const cenefa = conMarca && pa?.etiqueta ? materialDeCenefa(pa.etiqueta, entorno) : undefined;
 
   return (
     <group>
-      <PuntaReal w={w} d={d} h={h} ghost={ghost} />
+      <PuntaReal w={w} d={d} h={h} ghost={ghost} copete={copete} cenefa={cenefa} />
 
       {/* El arte del proveedor, parado en el filo de cada entrepaño. La punta
           se cuelga ATRÁS —contra el corrido— y crece hacia el frente: con el
@@ -754,8 +882,10 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
       {/* El producto de los espacios vendidos. Cuando el proveedor subió su
           arte manda el arte: las dos no conviven sobre la misma cara. */}
       {!pinta && (
-        <ProductoEnPunta w={w} d={d} h={h} slots={slots} ghost={ghost} />
+        <ProductoEnPunta w={w} d={d} h={h} slots={slots} ghost={ghost}
+          cubiertas={cubiertasDe(facePaint, true)} />
       )}
+      {enPrueba && <ProductoDePrueba venta={ventaPunta} pruebas={[facePaint?.pruebaA]} />}
 
       {/* Slot panels (same as GondolaMesh pattern) — disabled when onSlotClick is absent */}
       {!ghost && !!onSlotClick && slots?.map(slot => {
@@ -768,14 +898,19 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
         const isHov = slot.id === hoveredSlotId;
         return (
           <mesh key={slot.id} position={[cx, cy, panelZ]}
+            userData={CHROME}
             onClick={e => { e.stopPropagation(); onSlotClick?.(slot.id); }}
             onPointerOver={e => { e.stopPropagation(); onSlotHover?.(slot.id); }}
             onPointerOut={e  => { e.stopPropagation(); onSlotHover?.(null); }}>
             <boxGeometry args={[Math.max(0.01, sw), Math.max(0.01, sh), 0.014]} />
+            {/* Con producto en prueba, el mismo contorno que en la góndola. */}
             <meshStandardMaterial color={sc} transparent
-              opacity={isSel ? 0.94 : isHov ? 0.80 : 0.72}
-              emissive={sc} emissiveIntensity={isSel ? 0.35 : isHov ? 0.18 : 0}
+              opacity={enPrueba ? (isSel ? 0.22 : isHov ? 0.12 : 0) : (isSel ? 0.94 : isHov ? 0.80 : 0.72)}
+              emissive={sc} emissiveIntensity={enPrueba ? 0 : isSel ? 0.35 : isHov ? 0.18 : 0}
               depthWrite={false} />
+            {enPrueba && (
+              <ContornoDeSlot w={Math.max(0.01, sw)} h={Math.max(0.01, sh)} z={-0.008} color={sc} />
+            )}
           </mesh>
         );
       })}
@@ -791,12 +926,25 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
 // que al colocarlo junto a la Punta forme una unidad coherente.
 // Dimensiones: w=0.30 (ancho panel), d=0.40 (= profundidad Punta → encaja ras)
 
+/** La chapa clara del robatope. En el editor, Lambert como siempre; en la
+ *  pantalla de venta, Standard con la misma luz que el producto
+ *  (`luzDeVenta.ts`): con Lambert sus caras de frente quedaban en la sombra
+ *  de la luz ambiente, al lado de una bolsa de arroz llena de luz. */
+function ChapaDeRobatope({ color, op, luz }: { color: string; op: number; luz: boolean }) {
+  return luz
+    ? <meshStandardMaterial color={color} metalness={0.04} roughness={0.75}
+        transparent={op < 1} opacity={op} {...conLuzDeVenta(true)} />
+    : <meshLambertMaterial color={color} transparent opacity={op} />;
+}
+
 function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;rubro?:string }) {
   const op      = ghost ? 0.42 : 1;
-  // Board layout mirrored by getPanelShelfSpan("robatope") — keep in sync.
-  const capH    = 0.055;                 // thin dark cap at top (no promotional topper)
-  const bodyH   = h - capH;
-  const nShelves = Math.max(2, Math.round(bodyH / 0.40));
+  // Las repisas salen de `cotasDeRobatope`, la MISMA cuenta que preguntan el
+  // pintado de caras (`getPanelShelfSpan`) y el producto de prueba. Antes
+  // estaban escritas acá y en el pintado, con un «manténganse iguales».
+  const cotas   = useMemo(() => cotasDeRobatope(w, d, h), [w, d, h]);
+  const capH    = ROBATOPE.capa;         // remate oscuro arriba, sin copete promocional
+  const bodyH   = cotas.cuerpo;
 
   // Mismo paleta de colores que PuntaMesh → coherencia visual garantizada
   const G_WHITE = "#efefed";
@@ -804,16 +952,21 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:num
   const G_BACK  = "#d8d8d5";
 
   const pinta = !ghost && !!facePaint?.front;
+  // El producto en prueba va adentro del mismo giro que las repisas.
+  const enPrueba = !ghost && !!facePaint?.pruebaA;
+  const ventaRobatope = useMemo(() => ventaDeRobatope(w, d, h), [w, d, h]);
   // La MISMA cuenta de entrepaños que usa el pintado de caras. Repetida acá,
   // la primera vez que se toque el mueble el arte queda a caballo entre dos.
   const span = getPanelShelfSpan("robatope", w, h, d);
+  // En la pantalla de venta, con la luz del producto (`luzDeVenta.ts`).
+  const luz = useLuzDeVenta();
 
   return (
     <group>
       {/* Back structural panel (faces the gondola aisle) — estructura, lisa */}
       <mesh position={[0, bodyH / 2, d * 0.40]} castShadow>
         <boxGeometry args={[w, bodyH, d * 0.20]} />
-        <meshLambertMaterial color={G_BACK} transparent opacity={op} />
+        <ChapaDeRobatope color={G_BACK} op={op} luz={luz} />
       </mesh>
 
       {/* El arte del proveedor, REBANADO POR ENTREPAÑO.
@@ -836,38 +989,48 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:num
       {([-1, 1] as const).map(side => (
         <mesh key={side} position={[side * (w / 2 - 0.025), bodyH / 2, 0]} castShadow>
           <boxGeometry args={[0.050, bodyH, d]} />
-          <meshStandardMaterial color={G_FRAME} metalness={0.18} roughness={0.70} transparent opacity={op} />
+          <meshStandardMaterial key={luz ? "venta" : "editor"} color={G_FRAME} metalness={0.18} roughness={0.70}
+            transparent opacity={op} {...conLuzDeVenta(luz)} />
         </mesh>
       ))}
 
       {/* Shelf boards + front price rails */}
-      {Array.from({ length: nShelves }, (_, i) => {
-        const sy = 0.12 + (i + 1) * (bodyH - 0.16) / (nShelves + 1);
+      {cotas.repisas.map((sy, i) => {
         return (
-          <group key={i} rotation={[-0.06, 0, 0]}>
+          <group key={i} rotation={[cotas.giro, 0, 0]}>
             <mesh position={[0, sy, 0]} castShadow>
-              <boxGeometry args={[w - 0.055, 0.022, d - 0.01]} />
-              <meshLambertMaterial color={G_WHITE} transparent opacity={op} />
+              <boxGeometry args={[cotas.anchoUtil, ROBATOPE.espesorRepisa, cotas.fondo]} />
+              <ChapaDeRobatope color={G_WHITE} op={op} luz={luz} />
             </mesh>
             <mesh position={[0, sy + 0.030, -(d / 2 - 0.008)]}>
               <boxGeometry args={[w - 0.06, 0.036, 0.007]} />
-              <meshLambertMaterial color="#b0b0ad" transparent opacity={op} />
+              <ChapaDeRobatope color="#b0b0ad" op={op} luz={luz} />
             </mesh>
           </group>
         );
       })}
 
-      {/* Thin dark cap at top — same dark trim as Punta topper frame */}
+      {/* El remate de arriba. Era casi negro (#2e2e2c) y en la toma de venta
+          se leía como un rectángulo negro que dominaba el cuadro (de frente
+          su canto no recibe la luz de arriba): un gris medio con un filo más
+          claro al frente, que lo lee como chapa plegada y no como un
+          agujero. */}
       <mesh position={[0, bodyH + capH / 2, 0]} castShadow>
         <boxGeometry args={[w + 0.08, capH, d + 0.04]} />
-        <meshStandardMaterial color="#2e2e2c" metalness={0.30} roughness={0.55} transparent opacity={op} />
+        <meshStandardMaterial key={luz ? "venta" : "editor"} color="#9a9b96" metalness={0.22} roughness={0.6}
+          transparent opacity={op} {...conLuzDeVenta(luz)} />
+      </mesh>
+      <mesh position={[0, bodyH + 0.006, -(d / 2 + 0.02)]}>
+        <boxGeometry args={[w + 0.08, 0.012, 0.004]} />
+        <meshStandardMaterial key={luz ? "venta" : "editor"} color="#c4c4bf" metalness={0.22} roughness={0.5}
+          transparent opacity={op} {...conLuzDeVenta(luz)} />
       </mesh>
 
       {/* Corner feet — same style as PuntaMesh */}
       {([-1, 1] as const).map(sx => (
         <mesh key={`ft${sx}`} position={[sx * (w / 2 - 0.06), 0.045, 0]} castShadow>
           <boxGeometry args={[0.10, 0.090, d * 0.60]} />
-          <meshLambertMaterial color={G_FRAME} transparent opacity={op} />
+          <ChapaDeRobatope color={G_FRAME} op={op} luz={luz} />
         </mesh>
       ))}
 
@@ -883,15 +1046,13 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:num
           rubro. Dibujando los dos, el arte quedaba de póster por delante y los
           estantes llenos por detrás — el mueble mostraba dos cosas distintas a
           la vez. */}
-      {!pinta && (
+      {enPrueba && <ProductoDePrueba venta={ventaRobatope} pruebas={[facePaint?.pruebaA]} />}
+      {!pinta && !enPrueba && (
         <ProductoEnRepisas
-          alturas={Array.from(
-            { length: nShelves },
-            (_, i) => 0.12 + (i + 1) * (bodyH - 0.16) / (nShelves + 1) + 0.011,
-          )}
+          alturas={cotas.apoyos}
           techo={bodyH}
-          ancho={w - 0.055} fondo={d - 0.01}
-          montaje={(d - 0.01) / 2} hacia={-1}
+          ancho={cotas.anchoUtil} fondo={cotas.fondo}
+          montaje={cotas.montaje} hacia={-1}
           rubro={rubro} ghost={ghost}
         />
       )}
@@ -1712,6 +1873,19 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:num
   const filas = useMemo(() => filasDeNevera(h, fondoInterior), [h, fondoInterior]);
 
   const pinta = !ghost && !!facePaint?.front;
+  // La nevera se vende entera: con el producto del proveedor en prueba, las
+  // botellas mudas se apagan en todo el mueble.
+  const enPrueba = !ghost && !!facePaint?.pruebaA;
+  const ventaNevera = useMemo(() => ventaDeNevera(w, d, h), [w, d, h]);
+  // La marca en el cabezote, como el copete de la punta: la nevera se vende
+  // entera, y el cartel de arriba en gris decía «maqueta» justo encima de
+  // las botellas del proveedor. Mismo dibujo honesto (`pop.ts`): el color de
+  // la marca y recortes del producto, sin texto.
+  const entorno = useEntornoDeProducto();
+  const pa = facePaint?.pruebaA;
+  const cabezote = enPrueba && pa?.etiqueta && pa.donde === "todas" && pa.copete !== false
+    ? materialDeCopete(pa.etiqueta, w - NEVERA.chapa * 2, NEVERA.copete * 0.62, entorno)
+    : undefined;
 
   return (
     <group>
@@ -1719,11 +1893,17 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:num
         w={w} d={d} h={h}
         statusColor={statusColor}
         ghost={ghost}
+        cabezote={cabezote}
         variante="multideck"
         // El relleno mudo se apaga cuando el proveedor subió su arte: lo que
         // se ve en el mueble tiene que ser SU producto, no uno inventado.
-        conRelleno={!pinta}
+        conRelleno={!pinta && !enPrueba}
+        // Las rejillas reacomodadas para el producto en prueba, si se pidió:
+        // el producto y las rejillas salen de las MISMAS alturas.
+        niveles={enPrueba && facePaint?.pruebaA?.filas
+          ? facePaint.pruebaA.filas.alturas.slice(0, -1) : undefined}
       />
+      {enPrueba && <ProductoDePrueba venta={ventaNevera} pruebas={[facePaint?.pruebaA]} />}
 
       {pinta && (
         <LaminaDeProductoPorFila
@@ -1871,6 +2051,10 @@ function ColumnaMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:numb
 interface FixtureMeshProps {
   fixture:         PlacedFixture;
   ghost?:          boolean;
+  /** Sin colores de estado (Presentar): las tiras verdes y rojas del
+   *  robatope, la nevera y el impulsador dicen qué está vendido, y eso no se
+   *  le muestra a un proveedor. */
+  neutro?:         boolean;
   facePaint?:      FacePaint | null;
   selectedSlotId?: string | null;
   hoveredSlotId?:  string | null;
@@ -1905,10 +2089,12 @@ function ServicioClienteMesh({ w, d, h, statusColor, ghost }: { w:number;d:numbe
  * de los defectos de forma sólo se ven poniendo el ojo a la altura del
  * producto. No lo usa nadie más: el editor lo llama desde acá adentro.
  */
-export function FixtureMesh({ fixture, ghost, facePaint, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: FixtureMeshProps) {
-  const sc = isRentable(fixture)
-    ? (STATUS_COLORS[fixture.status] ?? STATUS_COLORS.free)
-    : NON_RENTABLE_COLOR;
+export function FixtureMesh({ fixture, ghost, neutro = false, facePaint, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: FixtureMeshProps) {
+  const sc = neutro
+    ? COLOR_NEUTRO
+    : isRentable(fixture)
+      ? (STATUS_COLORS[fixture.status] ?? STATUS_COLORS.free)
+      : NON_RENTABLE_COLOR;
   const base = { w:fixture.w, d:fixture.d, h:fixture.h, statusColor:sc, ghost };
   switch (fixture.type) {
     case "gondola": return (
@@ -2099,39 +2285,108 @@ function StoreRoom({ fixtures, muros = false }: { fixtures: PlacedFixture[]; mur
  * No es chrome: sale en la captura para el proveedor, que es donde hace falta.
  */
 const ALTURA_PERSONA = 1.70;
+/** Cuánto se aparta la persona del canto del mueble (en el editor y en la
+ *  pantalla de venta). Va en el PLANO de la cara, así que no la tapa aunque
+ *  esté cerca; más lejos, la toma de un mueble angosto la cortaba contra el
+ *  borde del cuadro. */
+const SEPARACION_EN_VENTA = 0.3;
 
-function FiguraHumana({ x, z, rotY }: { x: number; z: number; rotY: number }) {
-  // Proporciones que suman exactamente 1,70: piernas 0→0,85, torso 0,85→1,50,
-  // cabeza 1,50→1,70.
-  const PIEL = "#8b9096";
+/** La silueta de la persona para la pantalla de venta, dibujada una vez.
+ *
+ *  Una figura de escala de arquitectura («scalie»): de frente, parada, con
+ *  los brazos pegados al cuerpo y las piernas apenas separadas. La primera
+ *  versión eran cajas redondeadas sueltas (brazos despegados del torso, un
+ *  maniquí de prueba de choque) y translúcida: un fantasma por el que se veía
+ *  el piso. Los trazos se superponen y se rellenan del mismo color, así que
+ *  la unión es una sola mancha limpia. */
+let texturaDeSilueta: THREE.CanvasTexture | null = null;
+function siluetaDePersona(): THREE.CanvasTexture {
+  if (texturaDeSilueta) return texturaDeSilueta;
+  const ALTO = 864, ANCHO = 256;
+  const m = ALTO / ALTURA_PERSONA;                         // px por metro
+  const X = (x: number) => ANCHO / 2 + x * m, Y = (y: number) => ALTO - y * m;
+  const c = document.createElement("canvas");
+  c.width = ANCHO; c.height = ALTO;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#ffffff";
+  /** Un polígono suave por puntos (x, y) en metros, cerrado con curvas. */
+  const forma = (pts: [number, number][]) => {
+    g.beginPath();
+    const n = pts.length;
+    const medio = (a: [number, number], b: [number, number]) => [(X(a[0]) + X(b[0])) / 2, (Y(a[1]) + Y(b[1])) / 2];
+    const [mx, my] = medio(pts[n - 1], pts[0]);
+    g.moveTo(mx, my);
+    for (let i = 0; i < n; i++) {
+      const p = pts[i], q = pts[(i + 1) % n];
+      const [qx, qy] = medio(p, q);
+      g.quadraticCurveTo(X(p[0]), Y(p[1]), qx, qy);
+    }
+    g.closePath();
+    g.fill();
+  };
+  // La cabeza y el cuello.
+  g.beginPath(); g.ellipse(X(0), Y(1.592), 0.074 * m, 0.098 * m, 0, 0, Math.PI * 2); g.fill();
+  forma([[-0.045, 1.43], [-0.04, 1.52], [0.04, 1.52], [0.045, 1.43]]);
+  // El torso: hombros redondeados, cintura, cadera.
+  forma([[-0.06, 1.475], [-0.175, 1.45], [-0.205, 1.38], [-0.19, 1.2], [-0.155, 1.06], [-0.17, 0.93],
+    [-0.15, 0.84], [0.15, 0.84], [0.17, 0.93], [0.155, 1.06], [0.19, 1.2], [0.205, 1.38], [0.175, 1.45], [0.06, 1.475]]);
+  // Los brazos, colgando pegados al torso hasta la mano.
+  for (const s of [-1, 1]) {
+    forma([[s * 0.17, 1.44], [s * 0.225, 1.4], [s * 0.24, 1.2], [s * 0.235, 1.0], [s * 0.225, 0.84],
+      [s * 0.205, 0.78], [s * 0.175, 0.8], [s * 0.172, 0.98], [s * 0.168, 1.25], [s * 0.15, 1.42]]);
+  }
+  // Las piernas, apenas separadas, y los pies.
+  for (const s of [-1, 1]) {
+    forma([[s * 0.008, 0.9], [s * 0.165, 0.92], [s * 0.15, 0.55], [s * 0.115, 0.12], [s * 0.125, 0.0],
+      [s * 0.035, 0.0], [s * 0.045, 0.12], [s * 0.03, 0.55], [s * 0.012, 0.8]]);
+  }
+  texturaDeSilueta = new THREE.CanvasTexture(c);
+  texturaDeSilueta.colorSpace = THREE.SRGBColorSpace;
+  texturaDeSilueta.anisotropy = 4;
+  return texturaDeSilueta;
+}
+
+/**
+ * La persona de 1,70 m en la pantalla de venta: una SILUETA plana, opaca y de
+ * un gris cálido, como las figuras de escala de un plano de arquitectura.
+ *
+ * La figura de cápsulas del editor era lo más «dibujo» de cada toma y lo
+ * primero que miraba el ojo; la primera silueta, translúcida, era un
+ * fantasma por el que se veían el piso y la pared. Opaca y más oscura que el
+ * piso (cerca del 60 % de su tono) da la escala sin competir con el
+ * producto. Si queda cortada por el borde del cuadro, no se dibuja: media
+ * persona no da escala, distrae.
+ */
+function SiluetaDeEscala({ x, z, rotY }: { x: number; z: number; rotY: number }) {
+  const grupo = useRef<THREE.Group>(null);
+  const esquinas = useMemo(() => [
+    new THREE.Vector3(-0.26, 0, 0), new THREE.Vector3(0.26, 0, 0),
+    new THREE.Vector3(-0.26, ALTURA_PERSONA, 0), new THREE.Vector3(0.26, ALTURA_PERSONA, 0),
+  ], []);
+  const v = useMemo(() => new THREE.Vector3(), []);
+  useFrame(({ camera }) => {
+    const g = grupo.current;
+    if (!g) return;
+    g.updateMatrixWorld();
+    g.visible = esquinas.every((e) => {
+      v.copy(e).applyMatrix4(g.matrixWorld).project(camera);
+      return v.z < 1 && Math.abs(v.x) <= 0.98 && Math.abs(v.y) <= 0.98;
+    });
+  });
   return (
-    <group position={[x, 0, z]} rotation={[0, rotY, 0]}>
-      {([-1, 1] as const).map((s) => (
-        <mesh key={`p${s}`} position={[s * 0.092, 0.425, 0]} castShadow>
-          <capsuleGeometry args={[0.085, 0.68, 4, 12]} />
-          <meshStandardMaterial color={PIEL} roughness={0.85} metalness={0.02} />
-        </mesh>
-      ))}
-      <mesh position={[0, 1.175, 0]} castShadow>
-        <capsuleGeometry args={[0.155, 0.34, 4, 16]} />
-        <meshStandardMaterial color={PIEL} roughness={0.85} metalness={0.02} />
-      </mesh>
-      {([-1, 1] as const).map((s) => (
-        <mesh key={`b${s}`} position={[s * 0.205, 1.18, 0]} castShadow>
-          <capsuleGeometry args={[0.052, 0.40, 4, 10]} />
-          <meshStandardMaterial color={PIEL} roughness={0.85} metalness={0.02} />
-        </mesh>
-      ))}
-      {/* La coronilla cae exactamente en ALTURA_PERSONA: si alguien toca una
-          proporción, que sea la altura la que mande y no al revés. */}
-      <mesh position={[0, ALTURA_PERSONA - 0.10, 0]} castShadow>
-        <sphereGeometry args={[0.10, 20, 16]} />
-        <meshStandardMaterial color={PIEL} roughness={0.85} metalness={0.02} />
+    <group ref={grupo} position={[x, 0, z]} rotation={[0, rotY, 0]}>
+      <mesh position={[0, ALTURA_PERSONA / 2, 0]}>
+        <planeGeometry args={[ALTURA_PERSONA * (256 / 864), ALTURA_PERSONA]} />
+        {/* Opaca: el borde con alphaTest y a la pasada opaca, que escribe
+            profundidad como cualquier mueble. */}
+        <meshBasicMaterial
+          map={siluetaDePersona()} color="#8c867e" alphaTest={0.5}
+          toneMapped={false} side={THREE.DoubleSide}
+        />
       </mesh>
     </group>
   );
 }
-
 
 // ─── Selection wireframe ──────────────────────────────────────────────────────
 
@@ -2152,9 +2407,12 @@ function SelectionBox({ w, d, h }: { w:number;d:number;h:number }) {
 function CameraControls({
   orbitRef,
   onReady,
+  distanciaMinima = 4,
 }: {
   orbitRef: React.MutableRefObject<ThreeOrbitControls|null>;
   onReady?: (ctrl: ThreeOrbitControls) => (() => void) | void;
+  /** Cuánto se puede acercar la órbita a su mira. */
+  distanciaMinima?: number;
 }) {
   const { camera, gl, invalidate } = useThree();
   useEffect(() => {
@@ -2181,6 +2439,16 @@ function CameraControls({
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Un efecto APARTE: los controles se arman una sola vez (dependencias
+  // vacías) y rearmarlos perdería la cámara. Al volver a 4 m, `update()` aleja
+  // la órbita sola hasta el mínimo.
+  useEffect(() => {
+    const ctrl = orbitRef.current;
+    if (!ctrl) return;
+    ctrl.minDistance = distanciaMinima;
+    ctrl.update();
+    invalidate();
+  }, [distanciaMinima, orbitRef, invalidate]);
   // No useFrame needed — OrbitControls fires 'change' on every user interaction
   // (already calls update() internally), and we invalidate from that event.
   return null;
@@ -2240,11 +2508,14 @@ const ETIQUETA_CLS = "mb-0.5 block text-[10px] uppercase tracking-widest text-da
  * proyecta mientras el proveedor decide.
  */
 function SelectorDeProducto({
-  catalogo, cargando, isAdmin, onElegir, onCerrar, onSubido,
+  catalogo, cargando, isAdmin, proveedor, onProveedor, onElegir, onCerrar, onSubido,
 }: {
   catalogo: Arte[];
   cargando: boolean;
   isAdmin: boolean;
+  /** El proveedor con el que se está reunido, o null si todavía no se eligió. */
+  proveedor: string | null;
+  onProveedor: (proveedor: string | null) => void;
   onElegir: (arteId: number) => void;
   onCerrar: () => void;
   onSubido: () => void;
@@ -2253,13 +2524,24 @@ function SelectorDeProducto({
   const [subiendo, setSubiendo] = useState(false);
   const [error, setError] = useState("");
   const [abrirCarga, setAbrirCarga] = useState(false);
+  /** El arte cuyas medidas se están corrigiendo, con la ficha en borrador. */
+  const [midiendo, setMidiendo] = useState<{ arte: Arte; ficha: FichaDeArte } | null>(null);
+  const [guardandoFicha, setGuardandoFicha] = useState(false);
 
+  // ── Privacidad: la pantalla se comparte ──────────────────────────────────
+  // El catálogo entero es la lista de clientes de la tienda: abrirlo delante
+  // de Alpina le mostraba los productos de Nutresa y de Colanta. Con el
+  // proveedor de la reunión fijado sólo salen los suyos; sin fijar, no sale
+  // nada hasta que se escriben tres letras de SU nombre.
+  const q = busca.trim().toLowerCase();
   const filtrado = useMemo(() => {
-    const q = busca.trim().toLowerCase();
-    if (!q) return catalogo;
-    return catalogo.filter(a =>
-      `${a.proveedor} ${a.nombre} ${a.categoria ?? ""}`.toLowerCase().includes(q));
-  }, [catalogo, busca]);
+    if (proveedor) {
+      return catalogo.filter(a => a.proveedor === proveedor && (!q ||
+        `${a.nombre} ${a.categoria ?? ""}`.toLowerCase().includes(q)));
+    }
+    if (q.length < 3) return [];
+    return catalogo.filter(a => a.proveedor.toLowerCase().includes(q));
+  }, [catalogo, proveedor, q]);
 
   // Agrupado por proveedor: es como se piensa el catálogo cuando se está
   // negociando con uno de ellos.
@@ -2290,14 +2572,25 @@ function SelectorDeProducto({
       >
         <div className="flex items-center gap-3 border-b border-dark-line px-4 py-3">
           <Package size={15} className="text-accent" />
-          <h3 className="text-sm font-semibold text-dark-ink-1">Probar un producto</h3>
+          <h3 className="text-sm font-semibold text-dark-ink-1" data-titulo-selector>
+            {proveedor ? `Productos de ${proveedor}` : "Probar un producto"}
+          </h3>
+          {proveedor && (
+            <button
+              onClick={() => { onProveedor(null); setBusca(""); }}
+              className="text-[11px] text-dark-ink-3 underline-offset-2 hover:text-dark-ink-1 hover:underline"
+            >
+              Cambiar de proveedor
+            </button>
+          )}
           <div className="relative ml-auto">
             <Search size={12} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-dark-ink-3" />
             <input
               autoFocus
               value={busca}
               onChange={e => setBusca(e.target.value)}
-              placeholder="Proveedor o producto"
+              placeholder={proveedor ? "Producto…" : "Escribí el proveedor…"}
+              aria-label={proveedor ? "Buscar un producto" : "Escribí el proveedor"}
               className="w-52 rounded border border-dark-line-2 bg-dark-bg py-1.5 pl-7 pr-2 text-xs text-dark-ink-1 placeholder:text-dark-ink-3 focus:border-accent focus:outline-none"
             />
           </div>
@@ -2317,38 +2610,72 @@ function SelectorDeProducto({
                 acá se la probás a cualquier mueble, en cualquier sede.
               </p>
             </div>
+          ) : !proveedor && q.length < 3 ? (
+            <p className="py-10 text-center text-xs text-dark-ink-3" data-sin-proveedor>
+              Escribí al menos tres letras del proveedor con el que estás reunido:
+              acá sólo aparecen sus productos.
+            </p>
           ) : porProveedor.length === 0 ? (
             <p className="py-10 text-center text-xs text-dark-ink-3">
-              Nada que coincida con «{busca}».
+              {proveedor && !q
+                ? `${proveedor} todavía no tiene productos cargados.`
+                : `Nada que coincida con «${busca}».`}
             </p>
           ) : (
-            porProveedor.map(([proveedor, artes]) => (
-              <div key={proveedor} className="mb-5 last:mb-0">
-                <p className={ETIQUETA_CLS}>{proveedor}</p>
+            // `deGrupo` y no `proveedor`: con el mismo nombre tapaba la prop, el
+            // `if (!proveedor)` de abajo leía el nombre del grupo (siempre
+            // lleno) y elegir un producto NUNCA fijaba el proveedor de la
+            // reunión — y «Presentar» sin mueble elegido mostraba la tienda
+            // sin ninguna prueba.
+            porProveedor.map(([deGrupo, artes]) => (
+              <div key={deGrupo} className="mb-5 last:mb-0">
+                <p className={ETIQUETA_CLS}>{deGrupo}</p>
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(116px,1fr))] gap-2.5">
                   {artes.map(a => (
-                    <button
+                    <div
                       key={a.id}
-                      onClick={() => onElegir(a.id)}
                       className="group overflow-hidden rounded-lg border border-dark-line-2 bg-dark-bg text-left transition-colors hover:border-accent"
                     >
-                      <div className="flex h-20 items-center justify-center bg-dark-surface-2 p-1.5">
-                        <img
-                          src={arteUrl(a.id)}
-                          alt={a.nombre}
-                          loading="lazy"
-                          className="max-h-full max-w-full object-contain"
-                        />
-                      </div>
-                      <div className="px-2 py-1.5">
-                        <p className="truncate text-[11px] font-semibold text-dark-ink-1" title={a.nombre}>
-                          {a.nombre}
-                        </p>
-                        {a.categoria && (
-                          <p className="truncate text-[10px] text-dark-ink-3">{a.categoria}</p>
+                      <button
+                        // Elegir un producto fija el proveedor de la reunión:
+                        // la próxima vez el selector abre sólo con los suyos.
+                        onClick={() => { if (!proveedor) onProveedor(a.proveedor); onElegir(a.id); }}
+                        className="block w-full text-left"
+                      >
+                        <div className="flex h-20 items-center justify-center bg-dark-surface-2 p-1.5">
+                          <img
+                            src={arteUrl(a.id)}
+                            alt={a.nombre}
+                            loading="lazy"
+                            className="max-h-full max-w-full object-contain"
+                          />
+                        </div>
+                        <div className="px-2 pt-1.5">
+                          <p className="truncate text-[11px] font-semibold text-dark-ink-1" title={a.nombre}>
+                            {a.nombre}
+                          </p>
+                          {/* «≈»: sin alto cargado, el 3D lo estima por el
+                              contenido o por el rubro. Se ve a escala, pero
+                              aproximada, y quien vende tiene que saberlo. */}
+                          <p className="truncate text-[10px] text-dark-ink-3">
+                            {a.ficha?.alto_mm
+                              ? `${(a.ficha.alto_mm / 10).toString().replace(".", ",")} cm`
+                              : "≈ medidas estimadas"}
+                            {a.categoria ? ` · ${a.categoria}` : ""}
+                          </p>
+                        </div>
+                      </button>
+                      <div className="flex justify-end px-2 pb-1.5">
+                        {isAdmin && (
+                          <button
+                            onClick={() => setMidiendo({ arte: a, ficha: a.ficha ?? FICHA_VACIA })}
+                            className="text-[10px] font-semibold text-dark-ink-3 hover:text-dark-ink-1"
+                          >
+                            Medidas
+                          </button>
                         )}
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -2356,10 +2683,57 @@ function SelectorDeProducto({
           )}
         </div>
 
-        {isAdmin && (
+        {/* Corregir las medidas de un arte ya cargado: es el camino de las que
+            se subieron antes de que existiera la ficha. */}
+        {isAdmin && midiendo && (
+          <div className="border-t border-dark-line px-4 py-3" data-medidas-de={midiendo.arte.id}>
+            <p className="mb-2 text-xs font-semibold text-dark-ink-1">
+              Medidas de {midiendo.arte.nombre}
+            </p>
+            <EditorDeFicha
+              imagen={arteUrl(midiendo.arte.id)}
+              ficha={midiendo.ficha}
+              nombre={midiendo.arte.nombre}
+              categoria={midiendo.arte.categoria}
+              onCambio={(f) => setMidiendo(m => (m ? { ...m, ficha: f } : m))}
+            />
+            {error && <p className="mt-1 text-[11px] text-danger">{error}</p>}
+            <div className="mt-2 flex justify-end gap-2">
+              <button onClick={() => { setMidiendo(null); setError(""); }} className="text-xs text-dark-ink-3 hover:text-dark-ink-1">
+                Cancelar
+              </button>
+              <button
+                disabled={guardandoFicha}
+                onClick={async () => {
+                  setGuardandoFicha(true);
+                  setError("");
+                  try {
+                    await guardarFicha(midiendo.arte.id, midiendo.ficha);
+                    setMidiendo(null);
+                    onSubido();
+                  } catch (e) {
+                    setError(describeError(e, "No se pudieron guardar las medidas."));
+                  } finally {
+                    setGuardandoFicha(false);
+                  }
+                }}
+                // Tinta y no amarillo: el amarillo del selector es «Guardar»
+                // del alta, y los dos no se ven nunca a la vez pero cuentan
+                // igual (`outputs/tema.md` §2: uno por pantalla).
+                className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-ink hover:opacity-90 disabled:opacity-50"
+              >
+                {guardandoFicha && <Loader2 size={12} className="animate-spin" />}
+                Guardar medidas
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isAdmin && !midiendo && (
           <div className="border-t border-dark-line px-4 py-3">
             {abrirCarga ? (
               <FormularioDeArte
+                proveedorInicial={proveedor}
                 subiendo={subiendo}
                 error={error}
                 onError={setError}
@@ -2388,8 +2762,10 @@ function SelectorDeProducto({
  *  es este: el proveedor pregunta cómo se vería su producto y no está cargado.
  *  Mandarlo a otro lado a subirlo termina la demostración. */
 function FormularioDeArte({
-  subiendo, error, onError, onSubiendo, onListo, onCancelar,
+  proveedorInicial, subiendo, error, onError, onSubiendo, onListo, onCancelar,
 }: {
+  /** El proveedor de la reunión: llega elegido. */
+  proveedorInicial?: string | null;
   subiendo: boolean;
   error: string;
   onError: (m: string) => void;
@@ -2400,13 +2776,27 @@ function FormularioDeArte({
   const [proveedores, setProveedores] = useState<{ id: number; name: string }[]>([]);
   const [supplierId, setSupplierId] = useState<number | "">("");
   const [nombre, setNombre] = useState("");
+  // El rubro va a `categoria`, una columna que ya existía y que la interfaz
+  // nunca llenaba. Sin ficha, es lo que permite estimar el envase.
+  const [rubro, setRubro] = useState("");
   const [archivo, setArchivo] = useState<File | null>(null);
+  const [ficha, setFicha] = useState<FichaDeArte>(FICHA_VACIA);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     getSuppliers()
-      .then(list => setProveedores(list.map(p => ({ id: p.id, name: p.name }))))
+      .then(list => {
+        const lista = list.map(p => ({ id: p.id, name: p.name }));
+        setProveedores(lista);
+        // Se sube el arte del proveedor con el que se está reunido: llega
+        // elegido, y elegir otro sigue a un clic.
+        const deLaReunion = proveedorInicial
+          ? lista.find(p => p.name.trim().toLowerCase() === proveedorInicial.trim().toLowerCase())
+          : undefined;
+        if (deLaReunion) setSupplierId(id => (id === "" ? deLaReunion.id : id));
+      })
       .catch(() => setProveedores([]));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const campo = "rounded border border-dark-line-2 bg-dark-bg px-2 py-1.5 text-xs text-dark-ink-1 placeholder:text-dark-ink-3 focus:border-accent focus:outline-none";
@@ -2416,12 +2806,19 @@ function FormularioDeArte({
     if (supplierId === "") { onError("Elegí de qué proveedor es."); return; }
     if (!nombre.trim())    { onError("Ponele nombre al producto: es lo que se elige de la lista."); return; }
     if (!archivo)          { onError("Falta la imagen del producto."); return; }
+    // El alto es lo que decide la escala y cuántos frentes entran: en un arte
+    // NUEVO no se adivina.
+    if (!ficha.alto_mm)    { onError("Poné el alto del envase en cm: con eso se calcula cuántos entran."); return; }
     onSubiendo(true);
     onError("");
     try {
-      await subirArte({ supplierId, nombre: nombre.trim(), archivo });
+      await subirArte({
+        supplierId, nombre: nombre.trim(), categoria: rubro.trim() || undefined, archivo, ficha,
+      });
       setNombre("");
+      setRubro("");
       setArchivo(null);
+      setFicha(FICHA_VACIA);
       onListo();
     } catch (e) {
       onError(describeError(e, "No se pudo subir el arte."));
@@ -2444,15 +2841,22 @@ function FormularioDeArte({
         <input
           value={nombre}
           onChange={e => setNombre(e.target.value)}
-          placeholder="Nombre del producto"
+          placeholder="Nombre del producto (con el contenido: 200 g, 1,5 L)"
           className={`${campo} flex-1 min-w-[10rem]`}
+        />
+        <input
+          value={rubro}
+          onChange={e => setRubro(e.target.value)}
+          placeholder="Rubro"
+          aria-label="Rubro"
+          className={`${campo} w-28`}
         />
         <input
           ref={fileRef}
           type="file"
           accept="image/jpeg,image/png,image/webp"
           className="hidden"
-          onChange={e => { setArchivo(e.target.files?.[0] ?? null); onError(""); }}
+          onChange={e => { setArchivo(e.target.files?.[0] ?? null); setFicha(FICHA_VACIA); onError(""); }}
         />
         <button
           onClick={() => fileRef.current?.click()}
@@ -2480,18 +2884,389 @@ function FormularioDeArte({
           Cancelar
         </button>
       </div>
+      {archivo && (
+        <EditorDeFicha
+          imagen={archivo}
+          ficha={ficha}
+          nombre={nombre}
+          categoria={rubro}
+          onCambio={setFicha}
+          altoObligatorio
+        />
+      )}
       {error && <p className="text-[11px] text-danger">{error}</p>}
       <p className="text-[10px] leading-relaxed text-dark-ink-3">
-        Una foto del empaque de frente, sin fondo si se puede (PNG con
-        transparencia). El 3D la repite sobre cada entrepaño del mueble, así que
-        una sola unidad basta — no hace falta una foto de la góndola llena.
+        Una foto del FRENTE del envase, derecha y sin perspectiva —con el costado
+        a la vista, en el 3D se ve doble lomo—, y su alto en centímetros: con el
+        alto se calcula cuántos entran por entrepaño. Mejor en PNG sin fondo; si
+        no, sobre fondo blanco parejo, que se quita solo. Una sola unidad basta.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Dónde va el producto que se está probando, y cuánto entra.
+ *
+ * Es lo que se negocia: «entran diez por entrepaño, tres de fondo». Sale de
+ * `unidadesDePrueba`, la MISMA cuenta que dibuja los envases en el 3D, así que
+ * lo que dice el panel es lo que se ve. Y cuando el producto no entra, lo dice
+ * con medidas en vez de achicarlo: «no entra parada: 33 cm en 31 cm libres».
+ *
+ * Los entrepaños vendidos a otros se marcan «vendido» SIN nombre ni precio: la
+ * pantalla puede estar compartida con un proveedor.
+ */
+/** «36 a 37,5 cm» o «36 cm»: lo libre entre rejillas, del menor al mayor. */
+function textoDeLibres(filas: { alturas: number[] }): string {
+  const libres = filas.alturas.slice(1).map((y, i) => y - filas.alturas[i]);
+  const min = Math.min(...libres), max = Math.max(...libres);
+  return enCm(min) === enCm(max) ? `${enCm(min)} cm` : `${enCm(min)} a ${enCm(max)} cm`;
+}
+
+function PanelDePrueba({
+  fix, cara, arte, como, onAjustar, isAdmin, onRecargarCatalogo,
+}: {
+  fix: PlacedFixture;
+  cara: "A" | "B";
+  arte: Arte;
+  como: ComoSePrueba;
+  onAjustar: (cambios: Partial<ComoSePrueba>) => void;
+  isAdmin: boolean;
+  onRecargarCatalogo: () => void;
+}) {
+  const venta = useMemo(
+    () => (TIPOS_CON_PRUEBA_3D.has(fix.type) ? ventaDeTipo(fix.type, fix.w, fix.d, fix.h, fix.gondolaType) : null),
+    [fix.type, fix.w, fix.d, fix.h, fix.gondolaType],
+  );
+  const modo = arte.ficha?.fondo_foto ?? "auto";
+  // La misma etiqueta que usa el 3D (mismo caché): de ahí salen el aspecto y
+  // el perfil con que se estima el envase cuando falta la ficha.
+  const etiqueta = useEtiqueta(venta ? arte.id : null, modo);
+  // Si la foto no cargó, se dice y se ofrece reintentar: «Preparando el
+  // producto…» para siempre no le dice a nadie qué hacer.
+  const estadoFoto = venta ? estadoDeEtiqueta(claveDeArte(arte.id, modo)) : null;
+  const [midiendo, setMidiendo] = useState<FichaDeArte | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState("");
+
+  const empaque = useMemo(
+    () => (etiqueta ? empaqueDeArte(arte, arte.ficha ?? null, etiqueta.recorte, { acostado: como.acostado }) : null),
+    [etiqueta, arte, como.acostado],
+  );
+  // En la nevera, las rejillas reacomodadas para que entre parado en todas
+  // (lo que hace el mercaderista con la de 2 L). `null` si no hace falta o
+  // si ni así entra. Es lo que se ofrece ANTES que acostarla.
+  const rejillas = useMemo(
+    () => (venta && empaque && !empaque.acostado && fix.type === "nevera_refrescos"
+      ? rejillasParaProducto(venta.filas, empaque.alto) : null),
+    [venta, empaque, fix.type],
+  );
+  const ventaUsada = useMemo(
+    () => (venta && como.rejillas && rejillas ? { ...venta, filas: rejillas } : venta),
+    [venta, como.rejillas, rejillas],
+  );
+  // Lo que entraría en cada entrepaño, elegido o no: es lo que ofrecen los
+  // chips. Y lo que se dibuja, con lo elegido.
+  const capacidad = useMemo(
+    () => (ventaUsada && empaque ? unidadesDePrueba({ venta: ventaUsada, empaque, donde: "todas", semilla: "panel" }) : null),
+    [ventaUsada, empaque],
+  );
+  const acomodo = useMemo(
+    () => (ventaUsada && empaque ? unidadesDePrueba({ venta: ventaUsada, empaque, donde: como.donde, semilla: "panel" }) : null),
+    [ventaUsada, empaque, como.donde],
+  );
+  // Los entrepaños con un espacio vendido encima, por la misma regla que el
+  // relleno por rubro (`entrepanosDelEspacio`).
+  const vendidos = useMemo(() => {
+    const s = new Set<number>();
+    if (!venta || venta.franja == null) return s;
+    for (const slot of fix.slots ?? []) {
+      if (!VENDIDO.has(slot.status)) continue;
+      for (const i of entrepanosDelEspacio(slot, venta.filas, venta.franja)) s.add(i);
+    }
+    return s;
+  }, [venta, fix.slots]);
+
+  // Los muebles sin entrepaños (vitrina, isla…) muestran la prueba como
+  // lámina: no hay dónde elegir.
+  if (!venta) return null;
+
+  const chip = (activo: boolean) =>
+    `flex-1 rounded px-1 py-1 text-[10.5px] font-semibold transition-colors ${
+      activo ? "bg-accent text-accent-ink" : "border border-dark-line-2 text-dark-ink-3 hover:text-dark-ink-1"
+    }`;
+  const porEntrepano = como.donde !== "todas";
+  const elegidos = como.donde === "todas" ? [] : como.donde;
+  const alternar = (i: number) => {
+    const ya = elegidos.includes(i);
+    const nuevos = ya ? elegidos.filter((x) => x !== i) : [...elegidos, i].sort((a, b) => a - b);
+    onAjustar({ donde: nuevos });
+  };
+  const filas = capacidad?.porFila ?? [];
+  const entran = filas.filter((f) => f.motivo !== "no-entra-alto" && f.frentes > 0);
+  const maxLibre = filas.reduce((m, f) => Math.max(m, f.libre), 0);
+  const conProducto = (acomodo?.porFila ?? []).filter((f) => f.motivo === null);
+  const frentesPorFila = conProducto.map((f) => f.frentes);
+  const minF = Math.min(...frentesPorFila), maxF = Math.max(...frentesPorFila);
+  const fondo = conProducto.reduce((m, f) => Math.max(m, f.fondoVisible), 0);
+  const pisos = conProducto.reduce((m, f) => Math.max(m, f.pisos), 0);
+  const aprox = empaque?.estimado || empaque?.anchoEstimado ? "≈ " : "";
+  const vendidosTapados = como.donde === "todas"
+    ? vendidos.size
+    : elegidos.filter((i) => vendidos.has(i)).length;
+
+  return (
+    <div className="mt-2 flex flex-col gap-1.5" data-panel-prueba data-cara={cara}>
+      <p className="text-[10px] uppercase tracking-widest text-dark-ink-3">Dónde va</p>
+      <div className="flex gap-1.5">
+        <button className={chip(!porEntrepano)} onClick={() => onAjustar({ donde: "todas" })}>
+          Toda la cara
+        </button>
+        <button
+          className={chip(porEntrepano)}
+          // Al pasar a «Por entrepaño» arranca con el que va a la altura de
+          // los ojos y entra: es el que se ofrece primero.
+          onClick={() => {
+            if (porEntrepano) return;
+            const ojos = entran.reduce<number | null>((m, f) =>
+              m == null || Math.abs(f.apoyo + f.libre / 2 - 1.3) < Math.abs(filas[m].apoyo + filas[m].libre / 2 - 1.3) ? f.fila : m, null);
+            onAjustar({ donde: ojos == null ? [] : [ojos] });
+          }}
+        >
+          Por entrepaño
+        </button>
+      </div>
+
+      {porEntrepano && (
+        // De arriba hacia abajo, como se ve el mueble; numerados desde el piso.
+        <div className="flex flex-col gap-1" data-chips-entrepano>
+          {[...filas].reverse().map((f) => {
+            const noEntra = f.motivo === "no-entra-alto" || f.motivo === "no-entra-fondo";
+            const activo = elegidos.includes(f.fila);
+            return (
+              <button
+                key={f.fila}
+                disabled={noEntra}
+                onClick={() => alternar(f.fila)}
+                data-entrepano={f.fila}
+                className={`flex items-center gap-2 rounded px-2 py-1 text-left text-[10.5px] transition-colors ${
+                  noEntra
+                    ? "cursor-not-allowed border border-dark-line/50 text-dark-ink-3 opacity-60"
+                    : activo
+                      ? "bg-accent text-accent-ink"
+                      : "border border-dark-line-2 text-dark-ink-2 hover:text-dark-ink-1"
+                }`}
+              >
+                <span className="w-3 font-mono font-bold">{f.fila + 1}</span>
+                <span className="flex-1">
+                  {f.motivo === "no-entra-fondo"
+                    ? `no entra de fondo: ${enCm(f.fondo)} cm`
+                    : noEntra ? `no entra: ${enCm(f.libre)} cm` : `${enCm(f.libre)} cm libres`}
+                </span>
+                {vendidos.has(f.fila) && (
+                  <span className={`text-[9.5px] font-semibold uppercase ${activo ? "" : "text-warning"}`}>vendido</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {vendidosTapados > 0 && (
+        <p className="text-[10.5px] leading-snug text-warning">
+          {como.donde === "todas"
+            ? `Esta cara tiene ${vendidosTapados} ${vendidosTapados === 1 ? "entrepaño vendido" : "entrepaños vendidos"}: la prueba los tapa.`
+            : `${vendidosTapados === 1 ? "Uno de los elegidos está vendido" : `${vendidosTapados} de los elegidos están vendidos`}: la prueba los tapa.`}
+        </p>
+      )}
+
+      {/* Las rejillas de la nevera: primero se ofrece SUBIRLAS (parada se
+          ve; acostada, en una nevera de gaseosas, casi no) y recién después
+          acostarla. Las dos son de la sesión. */}
+      {empaque && rejillas && !como.rejillas && (
+        <button
+          onClick={() => onAjustar({ rejillas: true, acostado: false })}
+          className="rounded border border-accent/60 px-2 py-1 text-left text-[11px] font-semibold text-dark-ink-1 hover:bg-accent/10"
+          data-acomodar-rejillas
+        >
+          Acomodar las rejillas para este producto
+          <span className="block text-[10px] font-normal text-dark-ink-3">
+            {rejillas.rows} rejillas con {textoDeLibres(rejillas)} libres: entra parada en todas
+          </span>
+        </button>
+      )}
+      {empaque && como.rejillas && rejillas && (
+        <div className="flex flex-col gap-0.5" data-rejillas-acomodadas>
+          <p className="text-[10.5px] leading-snug text-dark-ink-2">
+            Rejillas acomodadas para este producto: {rejillas.rows}, con {textoDeLibres(rejillas)} libres.
+            Es sólo para mostrar: el plano no cambia.
+          </p>
+          <button
+            onClick={() => onAjustar({ rejillas: false })}
+            className="self-start text-[10px] text-dark-ink-3 hover:text-dark-ink-1"
+          >
+            Volver a las rejillas de la nevera
+          </button>
+        </div>
+      )}
+
+      {!empaque ? (
+        estadoFoto === "error" || estadoFoto === "reintentando" ? (
+          <div className="flex flex-col gap-1" data-foto-fallo>
+            <p className="text-[10.5px] leading-snug text-warning">
+              No se pudo cargar la foto del producto: mientras tanto se ve la lámina de siempre.
+            </p>
+            <button
+              disabled={estadoFoto === "reintentando"}
+              onClick={() => reintentarEtiqueta(claveDeArte(arte.id, modo))}
+              className="self-start rounded border border-dark-line-2 px-2 py-1 text-[11px] font-semibold text-dark-ink-2 hover:text-dark-ink-1 disabled:opacity-60"
+            >
+              {estadoFoto === "reintentando" ? "Reintentando…" : "Reintentar"}
+            </button>
+          </div>
+        ) : (
+          <p className="text-[10.5px] text-dark-ink-3">Preparando el producto…</p>
+        )
+      ) : entran.length === 0 ? (
+        <div className="flex flex-col gap-1">
+          <p className="text-[11px] leading-snug text-dark-ink-1" data-no-entra>
+            {filas.every((f) => f.motivo === "no-entra-alto")
+              ? `No entra ${empaque.acostado ? "acostada" : "parada"}: ${enCm(empaque.alto)} cm en ${enCm(maxLibre)} cm libres.`
+              : filas.every((f) => f.motivo === "no-entra-alto" || f.motivo === "no-entra-fondo")
+                // El fondo aparte del ancho: un envase hondo en el robatope
+                // decía «no caben de ancho» y se buscaba el problema al revés.
+                ? `No entra de fondo: ${enCm(empaque.fondo)} cm en ${enCm(Math.max(...filas.map((f) => f.fondo)))} cm de entrepaño.`
+                : `No entra: ${enCm(empaque.ancho)} cm de ancho no caben en el entrepaño.`}
+          </p>
+          {empaque.envase === "revolucion" && !empaque.acostado && (
+            <button
+              onClick={() => onAjustar({ acostado: true, rejillas: false })}
+              className="rounded border border-dark-line-2 px-2 py-1 text-[11px] font-semibold text-dark-ink-2 hover:text-dark-ink-1"
+            >
+              Mostrarla acostada
+            </button>
+          )}
+        </div>
+      ) : conProducto.length === 0 ? (
+        <p className="text-[10.5px] text-dark-ink-3">Elegí al menos un entrepaño donde entre.</p>
+      ) : (
+        <>
+          <p className="text-[11px] leading-snug text-dark-ink-1" data-resumen-prueba>
+            {aprox}Entran {minF === maxF ? minF : `${minF} a ${maxF}`} por entrepaño
+            {fondo > 1 ? ` · ${fondo} de fondo` : ""}
+            {pisos > 1 ? ` · ${pisos} apilados` : ""}
+            {` · ${acomodo?.frentesALaVista ?? 0} de frente`}
+          </p>
+          {/* Los entrepaños donde no entra, con medidas: la de 1,5 L dejaba
+              las dos rejillas del medio vacías sin que nadie dijera por qué. */}
+          {como.donde === "todas" && filas.some((f) => f.motivo === "no-entra-alto") && (
+            <p className="text-[10.5px] leading-snug text-dark-ink-3" data-filas-sin-producto>
+              {(() => {
+                const sin = filas.filter((f) => f.motivo === "no-entra-alto");
+                const nombres = sin.map((f) => f.fila + 1).join(" y ");
+                const libre = Math.max(...sin.map((f) => f.libre));
+                return `${sin.length === 1 ? "El entrepaño" : "Los entrepaños"} ${nombres} ${sin.length === 1 ? "queda vacío" : "quedan vacíos"}: ${enCm(empaque.alto)} cm no entran en ${enCm(libre)} cm.`;
+              })()}
+            </p>
+          )}
+        </>
+      )}
+      {/* La foto de una caja en tres cuartos se ve en el 3D con «doble lomo»:
+          el costado de la foto pegado al frente de cada caja. Se avisa acá
+          también, que es donde se ve, y no sólo al cargarla. */}
+      {empaque?.envase === "caja" && etiqueta && pareceEnPerspectiva(etiqueta.recorte) && (
+        etiqueta.cajaEnderezada() ? (
+          // Se enderezó sola (`rectificarCaja`): el 3D ya no muestra el
+          // costado, pero la foto del frente siempre sale mejor.
+          <p className="text-[10.5px] leading-snug text-dark-ink-3" data-aviso-perspectiva>
+            La foto venía en tres cuartos: se enderezó el frente. Con la foto de frente sale más nítida.
+          </p>
+        ) : (
+          <p className="text-[10.5px] leading-snug text-warning" data-aviso-perspectiva>
+            La foto parece en perspectiva: subí la del frente.
+          </p>
+        )
+      )}
+      {empaque && (
+        <p className="text-[10px] leading-snug text-dark-ink-3">
+          {`${aprox}${enCm(empaque.alto)} × ${enCm(empaque.ancho)} cm`}
+          {empaque.estimado ? ` · medidas estimadas por ${empaque.de === "contenido" ? "el contenido" : "el rubro"}` : ""}
+          {empaque.anchoEstimado ? " · el ancho, estimado: la foto conserva su fondo (cargalo en Medidas)" : ""}
+        </p>
+      )}
+      {(fix.type === "punta" || fix.type === "nevera_refrescos") && empaque && (
+        <label className="flex items-center gap-1.5 text-[10.5px] text-dark-ink-2" data-copete-prueba>
+          <input
+            type="checkbox"
+            checked={como.copete !== false}
+            disabled={como.donde !== "todas"}
+            onChange={(e) => onAjustar({ copete: e.target.checked })}
+          />
+          Marca en el copete
+          {como.donde !== "todas" && <span className="text-dark-ink-3">(sólo con toda la cara)</span>}
+        </label>
+      )}
+      {empaque?.acostado && (
+        <button
+          onClick={() => onAjustar({ acostado: false, rejillas: false })}
+          className="self-start text-[10px] text-dark-ink-3 hover:text-dark-ink-1"
+        >
+          Volver a pararla
+        </button>
+      )}
+
+      {isAdmin && !midiendo && (
+        <button
+          onClick={() => { setMidiendo(arte.ficha ?? FICHA_VACIA); setError(""); }}
+          className="self-start text-[10px] font-semibold text-dark-ink-3 hover:text-dark-ink-1"
+        >
+          Medidas
+        </button>
+      )}
+      {isAdmin && midiendo && (
+        <div className="rounded border border-dark-line-2 p-2" data-medidas-panel>
+          <EditorDeFicha
+            imagen={arteUrl(arte.id)}
+            ficha={midiendo}
+            nombre={arte.nombre}
+            categoria={arte.categoria}
+            onCambio={setMidiendo}
+          />
+          {error && <p className="mt-1 text-[11px] text-danger">{error}</p>}
+          <div className="mt-2 flex justify-end gap-2">
+            <button onClick={() => setMidiendo(null)} className="text-[11px] text-dark-ink-3 hover:text-dark-ink-1">
+              Cancelar
+            </button>
+            <button
+              disabled={guardando}
+              onClick={async () => {
+                setGuardando(true);
+                setError("");
+                try {
+                  await guardarFicha(arte.id, midiendo);
+                  setMidiendo(null);
+                  onRecargarCatalogo();
+                } catch (e) {
+                  setError(describeError(e, "No se pudieron guardar las medidas."));
+                } finally {
+                  setGuardando(false);
+                }
+              }}
+              className="rounded border border-dark-line-2 px-2 py-1 text-[11px] font-semibold text-dark-ink-1 hover:border-accent"
+            >
+              {guardando ? "Guardando…" : "Guardar medidas"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function VistaProveedor({
   fix, enCaminata, catalogo, cargandoCatalogo, prueba, onProbar, onRecargarCatalogo,
+  comoSePrueba, onAjustarPrueba, proveedorDeReunion, onProveedorDeReunion, onMostrar,
+  eligiendo, setEligiendo,
 }: {
   fix: PlacedFixture;
   enCaminata: boolean;
@@ -2501,6 +3276,15 @@ function VistaProveedor({
   prueba: Map<string, number>;
   onProbar: (fixtureId: string, cara: "A" | "B", arteId: number | null) => void;
   onRecargarCatalogo: () => void;
+  comoSePrueba: Map<string, ComoSePrueba>;
+  onAjustarPrueba: (fixtureId: string, cara: "A" | "B", cambios: Partial<ComoSePrueba>) => void;
+  proveedorDeReunion: string | null;
+  onProveedorDeReunion: (proveedor: string | null) => void;
+  onMostrar: (fixtureId: string, cara: "A" | "B") => void;
+  /** El selector de productos abierto. Lo guarda el panel de afuera: con el
+   *  selector abierto, el bloque «Contratado» se vuelve discreto. */
+  eligiendo: boolean;
+  setEligiendo: (abierto: boolean) => void;
 }) {
   const camara3D      = useFixtureStore((s) => s.camera3D);
   const guardarVista  = useFixtureStore((s) => s.guardarVista3D);
@@ -2512,11 +3296,15 @@ function VistaProveedor({
   const uf     = unificados.find((f) => f.id === fix.id);
   const doble  = isDoubleGondola(fix);
   const [cara, setCara] = useState<"A" | "B">("A");
-  const [eligiendo, setEligiendo] = useState(false);
   const caraUsada = doble ? cara : "A";
   const guardada = uf?.vista3D?.[caraUsada];
   const probandoId = prueba.get(`${fix.id}|${caraUsada}`);
   const probando = probandoId != null ? catalogo.find(a => a.id === probandoId) : undefined;
+  // Con una reunión fijada, la prueba de OTRO proveedor en esta cara no se
+  // dibuja (`pruebasDeLaReunion`) y acá tampoco se nombra: la pantalla se
+  // está compartiendo. Se dice que hay una, y se puede quitar.
+  const deReunion = supplierPorNombre(proveedorDeReunion, catalogo);
+  const ajena = !!probando && deReunion != null && probando.supplier_id !== deReunion;
 
   if (!uf || !isRentable(fix)) return null;
 
@@ -2545,7 +3333,19 @@ function VistaProveedor({
           pone el producto y después se busca el ángulo desde donde se lo
           muestra, no al revés. */}
       <div className="mb-2 border-b border-dark-line/50 pb-2">
-        {probando ? (
+        {ajena ? (
+          <div className="flex items-start gap-2" data-prueba-ajena>
+            <p className="flex-1 text-[10.5px] leading-snug text-dark-ink-3">
+              En esta cara hay una prueba de otro proveedor: no se muestra mientras dura esta reunión.
+            </p>
+            <button
+              onClick={() => onProbar(fix.id, caraUsada, null)}
+              className="flex-shrink-0 text-[10px] font-semibold text-dark-ink-3 hover:text-dark-ink-1"
+            >
+              Quitarla
+            </button>
+          </div>
+        ) : probando ? (
           <div className="flex items-center gap-2">
             <img
               src={arteUrl(probando.id)}
@@ -2574,12 +3374,37 @@ function VistaProveedor({
             <Package size={12} /> Probar un producto
           </button>
         )}
+        {probando && !ajena && (
+          <PanelDePrueba
+            key={`${fix.id}|${caraUsada}|${probando.id}`}
+            fix={fix}
+            cara={caraUsada}
+            arte={probando}
+            como={comoSePrueba.get(`${fix.id}|${caraUsada}`) ?? { donde: "todas" }}
+            onAjustar={(cambios) => onAjustarPrueba(fix.id, caraUsada, cambios)}
+            isAdmin={isAdmin}
+            onRecargarCatalogo={onRecargarCatalogo}
+          />
+        )}
         {probando && (
           <button
             onClick={() => setEligiendo(true)}
             className="mt-1.5 w-full text-[10px] text-dark-ink-3 hover:text-dark-ink-1"
           >
-            Probar otro
+            {ajena ? "Probar un producto" : "Probar otro"}
+          </button>
+        )}
+        {/* El botón de la reunión: la pantalla de venta, limpia, con la toma
+            de frente de esta cara. */}
+        {probando && !ajena && (
+          <button
+            onClick={() => onMostrar(fix.id, caraUsada)}
+            // El botón principal del editor: el único amarillo de la
+            // pantalla (`outputs/tema.md` §2).
+            className="btn-principal mt-2 flex w-full items-center justify-center gap-1.5 rounded-md px-2 py-2 text-[12px]"
+            data-mostrar-al-proveedor
+          >
+            <Eye size={13} /> Mostrar al proveedor
           </button>
         )}
       </div>
@@ -2589,6 +3414,8 @@ function VistaProveedor({
           catalogo={catalogo}
           cargando={cargandoCatalogo}
           isAdmin={isAdmin}
+          proveedor={proveedorDeReunion}
+          onProveedor={onProveedorDeReunion}
           onElegir={(arteId) => { onProbar(fix.id, caraUsada, arteId); setEligiendo(false); }}
           onCerrar={() => setEligiendo(false)}
           onSubido={onRecargarCatalogo}
@@ -2610,7 +3437,11 @@ function VistaProveedor({
         ) : (
           <button
             onClick={() => guardarVista(fix.id, caraUsada, { ...camara3D })}
-            className="rounded-md bg-accent px-2 py-1.5 text-[11px] font-semibold text-accent-ink hover:opacity-90">
+            // Con un producto en prueba, el amarillo es «Mostrar al proveedor»:
+            // un solo botón principal por pantalla (`outputs/tema.md` §2).
+            className={probando
+              ? "rounded border border-dark-line-2 bg-dark-surface-2 px-2 py-1.5 text-[11px] font-semibold text-dark-ink-2 hover:text-dark-ink-1"
+              : "rounded-md bg-accent px-2 py-1.5 text-[11px] font-semibold text-accent-ink hover:opacity-90"}>
             {guardada ? "Reemplazar por la vista actual" : "Guardar esta vista"}
           </button>
         )}
@@ -2647,7 +3478,12 @@ function FixtureTransformControls({
   const groupRef = useRef<THREE.Group>(null);
   const ctrlRef  = useRef<TransformControls|null>(null);
 
-  useEffect(() => {
+  // `useLayoutEffect` y no `useEffect`: el desarme tiene que pasar en el mismo
+  // commit que saca el grupo de la escena. Con un efecto pasivo, «Mostrar al
+  // proveedor» (que esconde el gizmo sin soltar la selección) dejaba un cuadro
+  // con el ayudante dibujándose sobre un objeto ya fuera de la escena, y three
+  // lo grita por consola.
+  React.useLayoutEffect(() => {
     if (!groupRef.current) return;
     const ctrl = new TransformControls(camera, gl.domElement);
     ctrl.setMode('translate');
@@ -2970,6 +3806,15 @@ const TIPOS_CON_PRODUCTO = new Set<string>([
   "stand_frutas", "nevera_carnes", "nevera_vegetales", "isla_fria", "exhibicion",
 ]);
 
+/**
+ * Los muebles donde el producto de PRUEBA se para como envases 3D
+ * (`ProductoDePrueba`). Son los que venden por entrepaños y tienen su cuenta
+ * en `ventaDeTipo`: ahí el producto se apoya en la altura exacta de cada
+ * entrepaño. La vitrina, la ristra, los volcados, la cruz, el impulsador y la
+ * isla siguen con la lámina, como antes: no tienen entrepaños donde pararlo.
+ */
+const TIPOS_CON_PRUEBA_3D = new Set<string>(["gondola", "punta", "nevera_refrescos", "robatope"]);
+
 /** Lowercase + strip accents so "Lácteos" matches "lacteo". */
 function normalizeText(s: string): string {
   // NFD splits accented letters into base char + combining mark (U+0300..U+036F);
@@ -3254,13 +4099,10 @@ function getPanelShelfSpan(type: string, w: number, h: number, d: number): Panel
       return { panelW: w, panelH: altoDeCuerpo, rowBottom, rowPitch, rows };
     }
     case "robatope": {
-      // RobatopeMesh — same layout language as PuntaMesh: panel [w, bodyH],
-      // bodyH = h - capH (0.055). Boards: n = max(2, round(bodyH/0.40))
-      // centres at 0.12 + (i+1)·(bodyH-0.16)/(n+1), thickness 0.022 → rows = n.
-      const bodyH = h - 0.055;
-      const n     = Math.max(2, Math.round(bodyH / 0.40));
-      const pitch = (bodyH - 0.16) / (n + 1);
-      return { panelW: w, panelH: bodyH, rowBottom: 0.12 + pitch + 0.011, rowPitch: pitch, rows: n };
+      // La misma cuenta que dibuja las repisas (`cotasDeRobatope`): el panel
+      // es [w, cuerpo] y cada fila arranca en la cara de arriba de su tabla.
+      const c = cotasDeRobatope(w, d, h);
+      return { panelW: w, panelH: c.cuerpo, rowBottom: c.apoyos[0], rowPitch: c.paso, rows: c.n };
     }
     case "mueble": {
       // MuebleMesh — painted panel: inner back [w-0.036, doorH-0.036] whose
@@ -3646,11 +4488,26 @@ interface SceneProps {
    *  arte del catálogo. Se indexa por id de mueble y cara, y NO por código de
    *  espacio: el código se compone en tres lugares con reglas de prefijo y
    *  mayúsculas, y basta que una difiera para pintar el mueble equivocado. */
-  prueba:            Map<string, number>;
+  prueba:            ReadonlyMap<string, number>;
+  /** En qué entrepaños y si va acostado, por la misma clave que `prueba`. */
+  comoSePrueba:      Map<string, ComoSePrueba>;
+  /** El catálogo: de ahí salen la ficha y el modo de fondo de cada arte. */
+  catalogo:          Arte[];
+  /** La pantalla de venta: limpia y sin datos de otros proveedores. */
+  presentationMode:  boolean;
+  /** Para quién es lo que se dibuja (`muebles/privacidad.ts`): `undefined` en
+   *  la pantalla de la dueña; el `supplier_id` del que mira en Presentar y en
+   *  la lámina que se lleva. Ahí sólo se ve SU prueba, y ninguna foto,
+   *  patrón ni estado de nadie más. */
+  privadoPara:       PrivadoPara;
+  /** La toma de venta pedida desde «Mostrar al proveedor» o el HUD. */
+  pedidoDeToma:      PedidoDeToma | null;
   onCamaraFP:        (c: CamaraEnPlanta | null) => void;
   saltarA:           { x: number; z: number; n: number } | null;
   onHoverFixture:    (id: string|null, x: number, y: number) => void;
   fixtures:          import("../../types/fixtures").UnifiedFixture[];
+  /** Se escribe al confirmar cada cambio (ver `EstadoDeEscena`). */
+  estadoDeEscena:    React.MutableRefObject<EstadoDeEscena>;
 }
 
 function Scene({
@@ -3660,10 +4517,20 @@ function Scene({
   draggingId, orbitRef, onFloorMove, onFloorClick,
   onSelectFixture, setPlacedFixtures,
   screenshotReady, topViewReady, firstPerson, sinArte, prueba, onCamaraFP, saltarA,
-  onHoverFixture, fixtures,
+  onHoverFixture, fixtures, comoSePrueba, catalogo, presentationMode, pedidoDeToma, privadoPara,
+  estadoDeEscena,
 }: SceneProps) {
-  const { gl, camera, invalidate } = useThree();
-  const { setCamera3D } = useFixtureStore();
+  const { gl, camera, invalidate, size } = useThree();
+  // Con un selector, y no el store entero: cada movimiento de la órbita
+  // escribe la cámara en el store, y suscripta a TODO la escena se volvía a
+  // dibujar entera en cada paso de un arrastre (ver más abajo, en el editor).
+  const setCamera3D = useFixtureStore((s) => s.setCamera3D);
+  // Lo que ya está en el grafo de la escena: se escribe al confirmar.
+  React.useLayoutEffect(() => {
+    estadoDeEscena.current.sinArte = sinArte;
+    estadoDeEscena.current.privadoPara = privadoPara;
+    estadoDeEscena.current.primeraPersona = firstPerson;
+  });
 
   // Extensión real del local. De aquí salen la grilla, el piso que recibe
   // clics, la vista superior y los límites de la caminata en primera persona.
@@ -3704,6 +4571,40 @@ function Scene({
     // contra lo que se compara la marca puesta.
     if (sinArte) return map;
     const storeSede = useFixtureStore.getState().sede;
+    const enUso: string[] = [];
+    /** El producto de prueba de una cara: la etiqueta (la foto sin fondo, que
+     *  carga sola y avisa con `notifyTexLoaded`), el envase a escala y dónde
+     *  va. Mientras la foto carga, la cara se ve vacía un momento.
+     *
+     *  `null` si no se puede armar: el arte ya no está en el catálogo, o la
+     *  foto no cargó (Render despertando, token vencido, la red). Ahí la cara
+     *  cae a la lámina de siempre en vez de quedar vacía —sin producto, sin
+     *  foto, sin patrón y sin relleno— a mitad de una reunión; la etiqueta se
+     *  vuelve a pedir sola en un rato, o con «Reintentar» en el panel. */
+    const construirPrueba = (fix: PlacedFixture, cara: "A" | "B", arteId: number): PruebaDeCara | null => {
+      const fixId = fix.id;
+      const arte = catalogo.find((a) => a.id === arteId);
+      if (!arte) return null;
+      const modo = arte.ficha?.fondo_foto ?? "auto";
+      const clave = claveDeArte(arteId, modo);
+      enUso.push(clave);
+      const etiqueta = etiquetaDeArte(clave, arteUrl(arteId), modo, notifyTexLoaded);
+      const estado = estadoDeEtiqueta(clave);
+      if (!etiqueta && (estado === "error" || estado === "reintentando")) return null;
+      const como = comoSePrueba.get(`${fixId}|${cara}`);
+      const empaque = etiqueta
+        ? empaqueDeArte(arte, arte.ficha ?? null, etiqueta.recorte, { acostado: como?.acostado })
+        : null;
+      // Las rejillas de la nevera, reacomodadas para que entre parado: las
+      // dibuja la nevera y apoya el producto en ellas, con las MISMAS alturas.
+      const filas = como?.rejillas && empaque && !empaque.acostado && fix.type === "nevera_refrescos"
+        ? rejillasParaProducto(ventaDeNevera(fix.w, fix.d, fix.h).filas, empaque.alto) ?? undefined
+        : undefined;
+      return {
+        etiqueta, empaque, donde: como?.donde ?? "todas", semilla: `${fixId}|${cara}|${arteId}`, filas,
+        copete: como?.copete ?? true,
+      };
+    };
     for (const fix of placedFixtures) {
       const type = fix.type as string;
       if (!TIPOS_CON_PRODUCTO.has(type)) continue;
@@ -3731,24 +4632,47 @@ function Scene({
           ? fallback
           : primary;
       const isDouble = isDoubleGondola(fix) || type === "gondola_doble";
-      const front = resolveFaceMaterial(
-        prueba.get(`${fix.id}|A`) ?? null,
-        pickCode(fullCode, codeUC), type, fix.brandCategory, fix.label,
-        fix.w, fix.h, fix.d, faceImages, notifyTexLoaded,
-      );
-      const back = isDouble
-        ? resolveFaceMaterial(
-            prueba.get(`${fix.id}|B`) ?? null,
-            pickCode(`${fullCode}-B`, `${codeUC}-B`), type, uf?.faceB?.brandCategory ?? "", fix.label,
-            fix.w, fix.h, fix.d, faceImages, notifyTexLoaded,
-          )
+      const en3D = TIPOS_CON_PRUEBA_3D.has(type);
+      // En una pantalla que mira un proveedor, sólo SUS pruebas: las de otros
+      // proveedores de la misma sesión (la punta que se le ofreció a Alpina
+      // a la mañana) no se le muestran a Diana a la tarde.
+      const arteA = arteALaVista(prueba.get(`${fix.id}|A`), catalogo, privadoPara);
+      const arteB = isDouble ? arteALaVista(prueba.get(`${fix.id}|B`), catalogo, privadoPara) : null;
+      const privado = privadoPara !== undefined;
+      // La prueba en 3D le gana a todo en SU cara: ni la foto del espacio ni
+      // el patrón de categoría (ESTADO.md, «la prueba le gana a la foto»).
+      const pruebaA = en3D && arteA != null ? construirPrueba(fix, "A", arteA) : null;
+      const pruebaB = en3D && arteB != null ? construirPrueba(fix, "B", arteB) : null;
+      // En una pantalla privada (Presentar, la lámina), las caras SIN prueba
+      // del que mira no muestran nada de nadie: la foto del espacio y el
+      // patrón de categoría son las marcas de OTROS proveedores. Caen al
+      // relleno neutro por rubro, que no nombra a nadie. Y una cara CON su
+      // prueba que no se pudo armar (la foto no cargó) cae a la lámina de
+      // SU arte y a nada más: ni mientras carga se le muestra la foto del
+      // espacio, que es la marca del que hoy lo tiene.
+      const caraPintada = (
+        arte: number | null, codigo: string, codigoSolo: string, categoria: string,
+      ): THREE.Material | null => (privado
+        ? (arte != null
+          ? resolveFaceMaterial(arte, null, type, "", fix.label, fix.w, fix.h, fix.d, faceImages, notifyTexLoaded)
+          : null)
+        : resolveFaceMaterial(
+          arte, pickCode(codigo, codigoSolo), type, categoria, fix.label,
+          fix.w, fix.h, fix.d, faceImages, notifyTexLoaded,
+        ));
+      const front = pruebaA ? null : caraPintada(arteA, fullCode, codeUC, fix.brandCategory);
+      const back = isDouble && !pruebaB
+        ? caraPintada(arteB, `${fullCode}-B`, `${codeUC}-B`, uf?.faceB?.brandCategory ?? "")
         : null;
-      if (front || back) map.set(fix.id, { front, back });
+      if (front || back || pruebaA || pruebaB) map.set(fix.id, { front, back, pruebaA, pruebaB });
     }
+    // Lo que está en prueba no se desaloja del caché de etiquetas.
+    marcarEnUso(enUso);
     return map;
   // texVersion re-runs this memo when an async photo texture settles
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [placedFixtures, unifiedById, faceImages, texVersion, notifyTexLoaded, sinArte, prueba]);
+  }, [placedFixtures, unifiedById, faceImages, texVersion, notifyTexLoaded, sinArte, prueba,
+      catalogo, comoSePrueba, privadoPara]);
 
   // CHANGE 1 — Restore camera + wire persistence once OrbitControls are ready.
   // W1: Read camera3D from getState() at call time (not from closure) to avoid stale values.
@@ -3823,7 +4747,57 @@ function Scene({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camera, invalidate]);
 
-  // Encuadrar el espacio que se pidió desde la pantalla de sede.
+  /**
+   * La toma de venta de una cara: DENTRO del pasillo (`vistaDeVenta` mide
+   * cuánto hay libre con los mismos muros de la caminata), encuadrando lo que
+   * se está probando —la cara entera o los entrepaños elegidos, con la misma
+   * cuenta que los dibuja— o la cara entera si no hay prueba. Pone también el
+   * campo visual: «De cerca» va con teleobjetivo (`FOV_DE_CERCA`).
+   */
+  const tomaDeVenta = useCallback((fix: PlacedFixture, cara: "A" | "B", toma: TomaDeVenta, holgura = 1) => {
+    const venta0 = ventaDeTipo(fix.type, fix.w, fix.d, fix.h, fix.gondolaType);
+    const paint = facePaintById.get(fix.id);
+    const enCara = cara === "A" ? paint?.pruebaA : paint?.pruebaB;
+    // Con las rejillas reacomodadas, la toma encuadra ESAS alturas.
+    const venta = venta0 && enCara?.filas ? { ...venta0, filas: enCara.filas } : venta0;
+    const como = comoSePrueba.get(`${fix.id}|${cara}`);
+    const foco0 = venta
+      ? focoDeLaPrueba(venta, fix.h, enCara ? (como?.donde ?? "todas") : "todas", enCara?.empaque ?? null)
+      : { yBajo: 0, yAlto: fix.h };
+    // Con holgura, la misma franja agrandada alrededor de su centro.
+    const medio = (foco0.yBajo + foco0.yAlto) / 2, mitad = ((foco0.yAlto - foco0.yBajo) / 2) * holgura;
+    const foco = holgura === 1 ? foco0 : { ...foco0, yBajo: medio - mitad, yAlto: medio + mitad };
+    const obstaculos = murosDeCaminata(placedFixtures.filter((f) => f.id !== fix.id));
+    // La persona de 1,70 m se para al costado del mueble: el tres cuartos gira
+    // para el otro lado y no la pone en primer plano. En Presentar la silueta
+    // va siempre al lado del mueble de la toma, esté o no elegido.
+    const persona = fix.id === selectedId || presentationMode
+      ? lugarDeLaFigura(fix, obstaculos, SEPARACION_EN_VENTA, { d: fix.d, cara }) : null;
+    const fov = toma === "cerca" ? FOV_DE_CERCA : FOV_DEL_EDITOR;
+    ponerCampoVisual(fov);
+    aplicarVista(vistaDeVenta(
+      { cx: fix.x, cz: fix.z, w: fix.w, d: fix.d, h: fix.h, rotY: fix.rotY },
+      cara, toma, foco, obstaculos, limites, fov, size.width / Math.max(1, size.height),
+      persona ?? undefined,
+    ));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [facePaintById, comoSePrueba, placedFixtures, selectedId, presentationMode, limites, size, aplicarVista]);
+
+  /** El campo visual de la cámara. Sólo «De cerca» lo cambia; cualquier otra
+   *  toma, salir de Presentar o la vista superior lo devuelven a 50°. */
+  const ponerCampoVisual = useCallback((fov: number) => {
+    const cam = camera as THREE.PerspectiveCamera;
+    if (!cam.isPerspectiveCamera || cam.fov === fov) return;
+    cam.fov = fov;
+    cam.updateProjectionMatrix();
+    invalidate();
+  }, [camera, invalidate]);
+  useEffect(() => {
+    if (pedidoDeToma?.toma !== "cerca") ponerCampoVisual(FOV_DEL_EDITOR);
+  }, [pedidoDeToma, ponerCampoVisual]);
+
+  // Encuadrar el espacio que se pidió desde la pantalla de sede o con
+  // «Encuadrar esta cara».
   //
   // Se espera a estar fuera de la primera persona: al salir de la caminata su
   // limpieza también mueve la cámara, y las dos escrituras en el mismo commit
@@ -3838,8 +4812,32 @@ function Scene({
     if (!uf) return;   // todavía no cargó la sede — se reintenta al llegar
     enfoqueAtendido.current = enfoque3D.n;
     // La vista guardada manda: alguien la eligió a mano para este espacio.
-    aplicarVista(uf.vista3D?.[enfoque3D.cara] ?? vistaDeCara(uf, enfoque3D.cara));
+    const guardada = uf.vista3D?.[enfoque3D.cara];
+    if (guardada) { ponerCampoVisual(FOV_DEL_EDITOR); aplicarVista(guardada); return; }
+    // Si no, la MISMA toma «De frente» de la pantalla de venta: el encuadre
+    // viejo (`vistaDeCara`) no miraba vecinos y a la cara B de una góndola la
+    // encuadraba desde detrás de la de enfrente, con su lomo vacío tapando
+    // todo. `vistaDeCara` queda para lo que no está en el plano 3D.
+    const fix = placedFixtures.find((f) => f.id === enfoque3D.fixtureId);
+    if (fix) tomaDeVenta(fix, enfoque3D.cara, "frente");
+    else aplicarVista(vistaDeCara(uf, enfoque3D.cara));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enfoque3D, firstPerson, fixtures, aplicarVista]);
+
+  // La toma de venta pedida («Mostrar al proveedor» y el HUD de Presentar).
+  // Un corte, sin animación: por videollamada el movimiento se empasta y el
+  // proveedor ve una mancha.
+  const tomaAtendida = useRef<number>(-1);
+  useEffect(() => {
+    if (!pedidoDeToma || firstPerson) return;
+    if (tomaAtendida.current === pedidoDeToma.n) return;
+    const fix = placedFixtures.find((f) => f.id === pedidoDeToma.fixtureId);
+    if (!fix) return;
+    tomaAtendida.current = pedidoDeToma.n;
+    tomaDeVenta(fix, pedidoDeToma.cara, pedidoDeToma.toma, pedidoDeToma.holgura);
+    estadoDeEscena.current.toma = pedidoDeToma.n;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedidoDeToma, firstPerson, placedFixtures, aplicarVista]);
 
   // CHANGE 2B — Double-click to reset orbit pivot to clicked point
   function handleSceneDoubleClick(e: any) {
@@ -3896,7 +4894,12 @@ function Scene({
       {/* La luz principal y su cámara de sombras se cuelgan de la planta real:
           ancladas a STORE_W/STORE_D iluminaban una tienda que no existe y
           recortaban la sombra justo donde empieza la mitad izquierda de NAVE. */}
+      {/* El sesgo de la sombra: sin él, cada bandeja vacía se veía con rayas
+          diagonales y dientes claros (shadow acne), y en «Por entrepaño» —con
+          la mayoría de las bandejas vacías y la cámara de venta a un metro—
+          era lo que más se veía después del producto. */}
       <directionalLight position={[limites.cx,40,limites.cz]} intensity={1.6} castShadow
+        shadow-bias={-0.0005} shadow-normalBias={0.02}
         shadow-mapSize-width={1024} shadow-mapSize-height={1024}
         shadow-camera-near={0.5} shadow-camera-far={120}
         shadow-camera-left={-limites.w/2 - 4} shadow-camera-right={limites.w/2 + 4}
@@ -3909,14 +4912,29 @@ function Scene({
       {/* La persona, al lado del mueble elegido. En primera persona no va: la
           persona sos vos, y una segunda parada al lado del estante distrae. */}
       {!firstPerson && (() => {
-        const sel = placedFixtures.find((f) => f.id === selectedId);
+        // En Presentar, al lado del mueble que se está mostrando (el de la
+        // última toma): un arrastre que empieza sobre otro mueble lo elige,
+        // y la persona no tiene por qué saltar hasta él.
+        // También en la lámina (`privadoPara` definido): es la pantalla de
+        // venta que se lleva el proveedor.
+        const pantallaDeVenta = presentationMode || privadoPara !== undefined;
+        const enVenta = pantallaDeVenta && pedidoDeToma ? pedidoDeToma.fixtureId : null;
+        const sel = placedFixtures.find((f) => f.id === (enVenta ?? selectedId));
         if (!sel) return null;
         // Sin el propio mueble: su huella inflada cubre justo el costado donde
         // la figura tiene que pararse, y se bloquearía a sí misma.
-        const p = lugarDeLaFigura(sel, murosDeCaminata(
-          placedFixtures.filter((f) => f.id !== sel.id),
-        ));
-        return p ? <FiguraHumana x={p.x} z={p.z} rotY={p.rotY} /> : null;
+        const muros = murosDeCaminata(placedFixtures.filter((f) => f.id !== sel.id));
+        // La silueta, parada en el plano de la cara que se muestra —en el
+        // editor también: el muñeco de cápsulas, 35 cm por delante, quedaba en
+        // primer plano en cuanto «Encuadrar esta cara» pasó a ser la toma de
+        // frente, y se leía como un maniquí de prueba de choque—. En «De
+        // cerca» no va: el entrepaño llena el cuadro y la persona sólo
+        // aparecería cortada.
+        const toma = pantallaDeVenta && pedidoDeToma?.fixtureId === sel.id ? pedidoDeToma : null;
+        if (toma?.toma === "cerca") return null;
+        const cara = toma?.cara ?? (prueba.has(`${sel.id}|B`) && !prueba.has(`${sel.id}|A`) ? "B" : "A");
+        const p = lugarDeLaFigura(sel, muros, SEPARACION_EN_VENTA, { d: sel.d, cara });
+        return p ? <SiluetaDeEscala x={p.x} z={p.z} rotY={p.rotY} /> : null;
       })()}
       <primitive object={gridMinor} />
       <primitive object={gridMajor} />
@@ -3987,7 +5005,11 @@ function Scene({
         <meshBasicMaterial visible={false} side={THREE.DoubleSide} />
       </mesh>
 
-      {/* Placed fixtures */}
+      {/* Placed fixtures. En la pantalla de venta (Presentar y la lámina) los
+          muebles reciben la luz difusa del mismo cuarto que ilumina al
+          producto (`luzDeVenta.ts`): sin ella el envase brillaba como una
+          calcomanía sobre una maqueta grafito. */}
+      <LuzDeVenta.Provider value={privadoPara !== undefined}>
       {placedFixtures.map(fix => {
         /* Los espacios internos, que es lo que de verdad se vende de una
            góndola o de una punta: cada uno tiene su proveedor, su valor y su
@@ -3999,20 +5021,25 @@ function Scene({
            que nunca se dibujó, y la ocupación por espacio no se podía marcar
            desde el 3D. */
         const hasSlots = fix.type === "gondola" || fix.type === "punta";
-        const conEspacios = hasSlots && fix.id === selectedId && !placingDef && !firstPerson;
+        // En Presentar no van: los colores de estado dicen qué está vendido y
+        // qué no, y eso no es asunto del proveedor que mira.
+        const conEspacios = hasSlots && fix.id === selectedId && !placingDef && !firstPerson && !presentationMode;
         return (
           <group key={fix.id} position={[fix.x,0,fix.z]} rotation={[0,fix.rotY,0]}>
             <FixtureMesh
               fixture={fix}
+              neutro={privadoPara !== undefined}
               facePaint={facePaintById.get(fix.id) ?? null}
               selectedSlotId={conEspacios ? selectedSlotId : null}
               hoveredSlotId={conEspacios ? hoveredSlotId : null}
               onSlotClick={conEspacios ? (slotId) => onSelectSlot(fix.id, slotId) : undefined}
               onSlotHover={conEspacios ? setHoveredSlotId : undefined}
             />
-            {fix.id===selectedId && !selectedSlotId && <SelectionBox w={fix.w} d={fix.d} h={fix.h} />}
+            {fix.id===selectedId && !selectedSlotId && !presentationMode && <SelectionBox w={fix.w} d={fix.d} h={fix.h} />}
             {/* CHANGE 4 — Unauthorized placement badge (distance-gated + occluded) */}
-            {(() => {
+            {/* En Presentar no: «sin contrato» es un dato de la tienda, no
+                del proveedor que está mirando. */}
+            {!presentationMode && (() => {
               const unifiedFix = unifiedById.get(fix.id);
               if (!unifiedFix) return null;
               const isUnauthorized =
@@ -4030,6 +5057,10 @@ function Scene({
                 if (firstPerson) return;
                 e.stopPropagation();
                 onSelectFixture(fix.id);
+                // En Presentar se elige el mueble (las tomas del HUD son de
+                // ése) pero no se arrastra: un clic de más en plena reunión
+                // movería el plano de verdad.
+                if (presentationMode) return;
                 draggingId.current=fix.id;
                 if(orbitRef.current) orbitRef.current.enabled=false;
               }}
@@ -4076,6 +5107,7 @@ function Scene({
           </group>
         );
       })}
+      </LuzDeVenta.Provider>
 
       {/* MEJORA 2: Ghost with collision overlay — only when not in first-person */}
       {ghostFixture && !firstPerson && (
@@ -4097,7 +5129,7 @@ function Scene({
       )}
 
       {/* MEJORA 6: Transform gizmo — only when not first-person and not placing */}
-      {selectedId && !placingDef && !firstPerson && (() => {
+      {selectedId && !placingDef && !firstPerson && !presentationMode && (() => {
         const fix = placedFixtures.find(f => f.id === selectedId);
         return fix ? (
           <FixtureTransformControls
@@ -4127,7 +5159,15 @@ function Scene({
       {/* MEJORA 5: Screenshot capture */}
       <ScreenshotCapture onReady={screenshotReady} />
 
-      <CameraControls orbitRef={orbitRef} onReady={handleOrbitReady} />
+      {/* En Presentar (y mientras se sacan las tomas de la lámina) se deja
+          acercar a medio metro: la toma «de cerca» está a 0,6–1 m del
+          entrepaño, y con el mínimo de 4 m el primer giro de la rueda la
+          mandaba al fondo del pasillo. En el editor, 1,2 m: con 4, «Encuadrar
+          esta cara» —que es la toma «De frente», a 2 m de la cara— quedaba
+          empujada a 4 m por los controles, y en un pasillo de 2 m eso es
+          DETRÁS de la góndola de enfrente. */}
+      <CameraControls orbitRef={orbitRef} onReady={handleOrbitReady}
+        distanciaMinima={presentationMode || privadoPara !== undefined ? 0.5 : 1.2} />
     </>
   );
 }
@@ -4247,6 +5287,11 @@ interface CommercialPanelProps {
   cargandoCatalogo:  boolean;
   prueba:            Map<string, number>;
   onProbar:          (fixtureId: string, cara: "A" | "B", arteId: number | null) => void;
+  comoSePrueba:      Map<string, ComoSePrueba>;
+  onAjustarPrueba:   (fixtureId: string, cara: "A" | "B", cambios: Partial<ComoSePrueba>) => void;
+  proveedorDeReunion: string | null;
+  onProveedorDeReunion: (proveedor: string | null) => void;
+  onMostrar:         (fixtureId: string, cara: "A" | "B") => void;
   onRecargarCatalogo: () => void;
   selectedSlot:  ShelfSlot | null;
   onUpdate:      (id:string, u:Partial<PlacedFixture>) => void;
@@ -4269,12 +5314,26 @@ interface CommercialPanelProps {
 
 function CommercialPanel({
   fix, enCaminata, catalogo, cargandoCatalogo, prueba, onProbar, onRecargarCatalogo,
+  comoSePrueba, onAjustarPrueba, proveedorDeReunion, onProveedorDeReunion, onMostrar,
   selectedSlot, onUpdate, muebles, onRenombrar, onIntercambiar, onUpdateSlot,
   onRotate, onFlip, onDelete, onClose, onSlotClose,
 }: CommercialPanelProps) {
   const isAdmin = useAuthStore(selectIsAdmin);
   const u  = useCallback((up: Partial<PlacedFixture>) => onUpdate(fix.id, up), [fix.id, onUpdate]);
   const us = useCallback((up: Partial<ShelfSlot>) => selectedSlot && onUpdateSlot(fix.id, selectedSlot.id, up), [fix.id, selectedSlot, onUpdateSlot]);
+
+  // ── Lo contratado, discreto mientras hay reunión ──────────────────────────
+  // El selector pide tres letras del proveedor justamente porque se usa con
+  // la pantalla compartida; pero detrás seguía legible «Bimbo · $1.500.000 /
+  // mes · hasta 2027-06-30» mientras se le probaba la góndola a Kellogg's. Con
+  // una prueba puesta, un proveedor de reunión fijado o el selector abierto,
+  // el bloque dice sólo «Ocupado hasta jun 2027»; el detalle, con un clic.
+  const [eligiendo, setEligiendo] = useState(false);
+  const [verContrato, setVerContrato] = useState(false);
+  useEffect(() => { setVerContrato(false); }, [fix.id]);
+  const enReunion = hayReunion({ pruebas: prueba.size, proveedorDeReunion, eligiendo });
+  useEffect(() => { if (eligiendo) setVerContrato(false); }, [eligiendo]);
+  const contratoDiscreto = enReunion && !verContrato;
 
   const sm  = STATUS_META[fix.status];
   const def = FIXTURE_DEFS.find(d=>d.type===fix.type && (fix.type!=="gondola"||d.gondolaType===fix.gondolaType)) ?? FIXTURE_DEFS[0];
@@ -4629,9 +5688,21 @@ function CommercialPanel({
             periodo. Antes se podía llenar acá, en el plano 2D y en Sede: tres
             lugares para lo mismo, y los de acá creaban un contrato nuevo cada
             vez que se tocaba el botón en vez de editar el que había. */}
-        <div className="rounded-lg border border-dark-line/50 bg-dark-bg/60 p-3">
+        <div className="rounded-lg border border-dark-line/50 bg-dark-bg/60 p-3" data-contratado>
           <p className={labelCls}><Building2 size={9} className="inline mr-1"/>Contratado</p>
-          {fix.supplierName ? (
+          {fix.supplierName && contratoDiscreto ? (
+            <>
+              <p className="text-xs text-dark-ink-2" data-contrato-discreto>
+                {fix.endDate ? `Ocupado hasta ${mesYAnio(fix.endDate)}` : "Ocupado"}
+              </p>
+              <button
+                onClick={() => setVerContrato(true)}
+                className="mt-1 text-[10px] text-dark-ink-3 underline-offset-2 hover:text-dark-ink-1 hover:underline"
+              >
+                Ver contrato
+              </button>
+            </>
+          ) : fix.supplierName ? (
             <>
               <p className="text-sm font-semibold text-dark-ink-1">{fix.supplierName}</p>
               {fix.brandCategory && (
@@ -4676,6 +5747,13 @@ function CommercialPanel({
           prueba={prueba}
           onProbar={onProbar}
           onRecargarCatalogo={onRecargarCatalogo}
+          comoSePrueba={comoSePrueba}
+          onAjustarPrueba={onAjustarPrueba}
+          proveedorDeReunion={proveedorDeReunion}
+          onProveedorDeReunion={onProveedorDeReunion}
+          onMostrar={onMostrar}
+          eligiendo={eligiendo}
+          setEligiendo={setEligiendo}
         />
 
         <div>
@@ -4740,9 +5818,21 @@ export default function StoreEditor3D() {
   // Sin soltarlas al desmontar, entrar y salir del editor de varias sedes deja
   // una copia de cada mueble de cada sede en memoria de video.
   useEffect(() => olvidarGeometrias, []);
+  // Y las etiquetas del producto de prueba: texturas de hasta 1024 px.
+  useEffect(() => olvidarEtiquetas, []);
+  useEffect(() => olvidarCopetes, []);
 
   // ── Unified store (read once on mount; write on every change) ────────────────
-  const { setFixtures: pushToStore, setSede: pushSedeToStore, commit, undo, redo } = useFixtureStore();
+  // Selectores, y no el store entero: la órbita escribe la cámara en el store
+  // en cada paso de un arrastre, y suscripto a todo el editor se volvía a
+  // renderizar entero —panel, escena y cada mueble— veinte veces por giro.
+  // Cada vuelta le pedía a la escena un cuadro más (`invalidate` acumula), y
+  // en una máquina lenta un giro a mano encolaba medio minuto de cuadros.
+  const pushToStore = useFixtureStore((s) => s.setFixtures);
+  const pushSedeToStore = useFixtureStore((s) => s.setSede);
+  const commit = useFixtureStore((s) => s.commit);
+  const undo = useFixtureStore((s) => s.undo);
+  const redo = useFixtureStore((s) => s.redo);
   // Reactive subscription — re-renders when fixtures change (replaces getState() calls in JSX)
   const fixtures = useFixtureStore(selectFixtures);
 
@@ -4778,14 +5868,23 @@ export default function StoreEditor3D() {
   const [catalogo, setCatalogo] = useState<Arte[]>([]);
   const [cargandoCatalogo, setCargandoCatalogo] = useState(true);
 
+  // Si la recarga falla (después de «Guardar medidas», con Render
+  // despertando) se queda el catálogo que había: vaciarlo dejaba sin arte a
+  // todas las caras probadas a mitad de la reunión.
   const recargarCatalogo = useCallback(() => {
     setCargandoCatalogo(true);
     listarCatalogo()
       .then(setCatalogo)
-      .catch(() => setCatalogo([]))
+      .catch(() => { /* se queda el catálogo anterior */ })
       .finally(() => setCargandoCatalogo(false));
   }, []);
   useEffect(recargarCatalogo, [recargarCatalogo]);
+
+  // CÓMO se prueba, al lado y con la misma clave: en qué entrepaños y si va
+  // acostada. Es un mapa aparte y no un cambio de forma de `prueba` porque a
+  // ése lo leen la vista del proveedor, la lámina y los tipos de varios
+  // componentes. Tampoco va al layout.
+  const [comoSePrueba, setComoSePrueba] = useState<Map<string, ComoSePrueba>>(new Map());
 
   const probarProducto = useCallback(
     (fixtureId: string, cara: "A" | "B", arteId: number | null) => {
@@ -4797,9 +5896,75 @@ export default function StoreEditor3D() {
         else siguiente.set(`${fixtureId}|${cara}`, arteId);
         return siguiente;
       });
+      // Un producto nuevo arranca en «Toda la cara» y parado: es lo que se
+      // muestra primero, y siempre está a un clic.
+      setComoSePrueba(prev => {
+        const siguiente = new Map(prev);
+        if (arteId == null) siguiente.delete(`${fixtureId}|${cara}`);
+        else siguiente.set(`${fixtureId}|${cara}`, { donde: "todas" });
+        return siguiente;
+      });
     },
     [],
   );
+
+  const ajustarPrueba = useCallback(
+    (fixtureId: string, cara: "A" | "B", cambios: Partial<ComoSePrueba>) => {
+      setComoSePrueba(prev => {
+        const siguiente = new Map(prev);
+        const clave = `${fixtureId}|${cara}`;
+        siguiente.set(clave, { donde: "todas", ...prev.get(clave), ...cambios });
+        return siguiente;
+      });
+    },
+    [],
+  );
+
+  // El proveedor con el que se está reunido. Con él fijado, el selector de
+  // productos muestra SÓLO los suyos: la pantalla se comparte, y el catálogo
+  // entero es la lista de clientes de la tienda.
+  const [proveedorDeReunion, setProveedorDeReunion] = useState<string | null>(null);
+
+  // Para quién es la pantalla de venta (`muebles/privacidad.ts`). Lo fija
+  // «Mostrar al proveedor» con el dueño del producto que se va a encuadrar, o
+  // el botón «Presentar» con el del mueble elegido o el de la reunión. En
+  // Presentar se dibuja SÓLO lo suyo: la sesión acumula pruebas de varios
+  // proveedores, y el que mira no puede ver las de sus competidores.
+  const [proveedorEnPantalla, setProveedorEnPantalla] = useState<number | null>(null);
+  // Lo mismo para la lámina que se descarga, mientras se sacan sus dos tomas.
+  // `undefined` = no se está armando ninguna.
+  const [laminaPara, setLaminaPara] = useState<PrivadoPara>(undefined);
+  const privadoPara: PrivadoPara = laminaPara !== undefined
+    ? laminaPara
+    : presentationMode ? proveedorEnPantalla : undefined;
+  // En la pantalla de la DUEÑA, con una reunión fijada, se dibujan sólo las
+  // pruebas de ese proveedor (`pruebasDeLaReunion`): se comparte la pantalla
+  // sin haber apretado «Presentar», y le probaba el arroz a Diana con los
+  // vasos de Alpina de la mañana al lado. En Presentar y en la lámina ya
+  // filtra `privadoPara`.
+  const supplierDeReunion = useMemo(
+    () => supplierPorNombre(proveedorDeReunion, catalogo), [proveedorDeReunion, catalogo],
+  );
+  const pruebaEnEscena = useMemo(
+    () => (privadoPara !== undefined ? prueba : pruebasDeLaReunion(prueba, catalogo, supplierDeReunion)),
+    [privadoPara, prueba, catalogo, supplierDeReunion],
+  );
+
+  // La toma pedida para Presentar. `n` cambia en cada pedido para que pedir
+  // dos veces la misma vuelva a encuadrar.
+  const [pedidoDeToma, setPedidoDeToma] = useState<PedidoDeToma | null>(null);
+  // El número sale de un contador propio y no del pedido anterior: al salir
+  // de Presentar el pedido se borra (las tomas del HUD y la silueta son del
+  // mueble que se estaba mostrando), y un `n` que volviera a 1 lo saltearía
+  // la escena por «ya atendido».
+  const tomasPedidas = useRef(0);
+  const pedirToma = useCallback((fixtureId: string, cara: "A" | "B", toma: TomaDeVenta, holgura?: number) => {
+    const n = ++tomasPedidas.current;
+    setPedidoDeToma({ fixtureId, cara, toma, n, holgura });
+    return n;
+  }, []);
+  const estadoDeEscena = useRef<EstadoDeEscena>({ sinArte: false, privadoPara: undefined, toma: 0, primeraPersona: false });
+  useEffect(() => { if (!presentationMode) setPedidoDeToma(null); }, [presentationMode]);
 
   // MEJORA 8: First-person mode
   const [firstPerson, setFirstPerson] = useState(false);
@@ -5087,6 +6252,75 @@ export default function StoreEditor3D() {
   const selectedFix  = placedFixtures.find(f=>f.id===selectedId)??null;
   const isAdmin      = useAuthStore(selectIsAdmin);
 
+  /** «Mostrar al proveedor»: la pantalla de venta, limpia, con la toma de
+   *  frente de la cara que tiene el producto. */
+  const mostrarAlProveedor = useCallback((fixtureId: string, cara: "A" | "B") => {
+    // El que mira es el dueño de ESTE producto: lo demás que se haya probado
+    // en la sesión, de otros proveedores, no se dibuja.
+    const arteId = prueba.get(`${fixtureId}|${cara}`);
+    setProveedorEnPantalla(catalogo.find(a => a.id === arteId)?.supplier_id ?? null);
+    setSelectedSlotId(null);
+    setFirstPerson(false);
+    setPresentationMode(true);
+    pedirToma(fixtureId, cara, "frente");
+  }, [pedirToma, prueba, catalogo]);
+
+  /** El botón «Presentar» de la barra: sin pasar por «Mostrar al proveedor»
+   *  también hay que saber para quién es la pantalla.
+   *
+   *  Con el mueble elegido probado, es «Mostrar al proveedor»: la dueña
+   *  aprieta el botón de siempre en plena videollamada, y la punta de Alpina
+   *  no puede aparecer vacía delante de Alpina. Sin mueble elegido, la
+   *  cámara queda donde la dejó (encuadró lo que quería mostrar) y sólo se
+   *  decide para quién es la pantalla (`proveedorParaPresentar`). */
+  const alternarPresentar = useCallback(() => {
+    if (presentationMode) { setPresentationMode(false); return; }
+    if (selectedId) {
+      // Con una reunión fijada, sólo cuenta la prueba de ESE proveedor: un
+      // arrastre que empezó sobre la punta de Alpina la elige, y «Presentar»
+      // no puede pasarle la pantalla a Alpina en plena reunión con Diana.
+      const delQueMira = (c: "A" | "B") => {
+        const id = prueba.get(`${selectedId}|${c}`);
+        return id != null && (supplierDeReunion == null
+          || catalogo.find(a => a.id === id)?.supplier_id === supplierDeReunion);
+      };
+      const cara = delQueMira("A") ? "A" : delQueMira("B") ? "B" : null;
+      if (cara) { mostrarAlProveedor(selectedId, cara); return; }
+    }
+    setProveedorEnPantalla(proveedorParaPresentar({
+      prueba, catalogo, muebleId: selectedId, proveedorDeReunion,
+    }));
+    setPresentationMode(true);
+  }, [presentationMode, prueba, catalogo, selectedId, proveedorDeReunion, supplierDeReunion, mostrarAlProveedor]);
+
+  /** La cara con prueba de un mueble, A primero: es la que encuadran las
+   *  tomas del HUD de Presentar. Sólo una que el que mira pueda ver: con la
+   *  prueba de otro proveedor el HUD encuadraría un mueble vacío. */
+  const caraVisible = (fix: PlacedFixture | null): "A" | "B" | null => {
+    if (!fix) return null;
+    const ve = (cara: "A" | "B") =>
+      arteALaVista(prueba.get(`${fix.id}|${cara}`), catalogo, privadoPara) != null;
+    return ve("A") ? "A" : ve("B") ? "B" : null;
+  };
+  // El mueble de las tomas del HUD: el elegido si se ve su prueba; si no, el
+  // de la última toma pedida. Un arrastre para girar que empieza sobre otro
+  // mueble lo elige (o un clic en el piso suelta la selección), y antes eso
+  // borraba las tres tomas a mitad de la demo y dejaba sólo «Salir».
+  const muebleDeLaToma = presentationMode && pedidoDeToma
+    ? placedFixtures.find(f => f.id === pedidoDeToma.fixtureId) ?? null : null;
+  const muebleDelHud = caraVisible(selectedFix) ? selectedFix
+    : caraVisible(muebleDeLaToma) ? muebleDeLaToma : null;
+  const caraConPrueba = caraVisible(muebleDelHud);
+  // Presentar sin proveedor identificado no dibuja ninguna prueba. Si hay
+  // alguna puesta, se avisa SIN NOMBRES —la pantalla ya puede estar
+  // compartida— y se ofrece mostrar la última.
+  // Con un proveedor identificado, lo que se oculta es la prueba de OTRO en
+  // el mueble elegido (la punta de Alpina en la reunión de Diana): se ve
+  // vacía, y el aviso dice por qué sin decir de quién es.
+  const pruebaOculta = !presentationMode ? null
+    : privadoPara === null ? ultimaPrueba(prueba, catalogo)
+      : privadoPara !== undefined ? pruebaAjenaDelMueble(prueba, catalogo, selectedId, privadoPara) : null;
+
   /**
    * Baja la lámina para el proveedor.
    *
@@ -5101,12 +6335,30 @@ export default function StoreEditor3D() {
     if (!capturar || exportando) return;
     setExportando(true);
     const arteOriginal = sinArte;
+    let camaraDeAntes: { pos: THREE.Vector3; mira: THREE.Vector3 } | null = null;
+    // Entre toma y toma hay que dejar que React rearme los materiales y que
+    // el lienzo vuelva a dibujar.
+    const esperarCuadro = () =>
+      new Promise<void>(ok => requestAnimationFrame(() => requestAnimationFrame(() => ok())));
+    /** Hasta que la escena confirme lo pedido (`EstadoDeEscena`), con un
+     *  tope de ~4 s, y un cuadro más para que se dibuje. */
+    const esperarEscena = async (listo: (e: EstadoDeEscena) => boolean) => {
+      for (let i = 0; i < 240 && !listo(estadoDeEscena.current); i++) {
+        await new Promise<void>(ok => requestAnimationFrame(() => ok()));
+      }
+      await esperarCuadro();
+    };
     try {
       const fix = selectedFix;
       const uf  = fix ? fixtures.find(f => f.id === fix.id) : null;
 
-      // Sin mueble elegido: una sola toma de lo que se ve.
+      // Sin mueble elegido: una sola toma de lo que se ve, pero privada como
+      // Presentar —para el proveedor de la reunión, o para nadie—. Es un
+      // archivo que sale de la tienda: con la pantalla de la dueña llevaba
+      // las pruebas de toda la sesión y las fotos de las caras de otros.
       if (!fix || !uf) {
+        setLaminaPara(supplierDeReunion);
+        await esperarEscena((e) => e.privadoPara === supplierDeReunion);
         const blob = await componerPropuesta(
           [{ titulo: "Vista general", dataUrl: capturar() }],
           { sede, espacio: sede, mueble: "", proveedor: "", categoria: "",
@@ -5116,26 +6368,76 @@ export default function StoreEditor3D() {
         return;
       }
 
-      // Con mueble elegido: el par. Entre toma y toma hay que dejar que React
-      // rearme los materiales y que el lienzo vuelva a dibujar.
-      const esperarCuadro = () =>
-        new Promise<void>(ok => requestAnimationFrame(() => requestAnimationFrame(() => ok())));
-
-      setSinArte(true);
-      await esperarCuadro();
-      const antes = capturar();
-
-      setSinArte(false);
-      await esperarCuadro();
-      const despues = capturar();
+      // Las tomas de venta las atiende la órbita: en la caminata la escena
+      // no las encuadra («Hoy» y «Con …» salían desde la cámara de la
+      // caminata y «De cerca» igual a «Con …»), y al terminar la cámara
+      // «volvía» girando la de la caminata. Se sale de la caminata primero.
+      if (firstPerson) {
+        setFirstPerson(false);
+        await esperarEscena((e) => !e.primeraPersona);
+      }
 
       // Qué producto se está probando en este mueble. Cualquiera de las dos
-      // caras sirve: la lámina muestra la que quedó encuadrada.
+      // caras sirve: la lámina muestra la que quedó encuadrada. Con una
+      // reunión fijada, sólo un producto de ESE proveedor.
       const arte = (["A", "B"] as const)
         .map(c => prueba.get(`${fix.id}|${c}`))
         .filter((id): id is number => id != null)
         .map(id => catalogo.find(a => a.id === id))
+        .filter(a => !!a && (supplierDeReunion == null || a.supplier_id === supplierDeReunion))
         .find(Boolean);
+
+      // Con un producto en prueba, las tomas son las de la pantalla de venta
+      // y no la cámara que hubiera quedado: con el encuadre viejo la punta
+      // era el 15 % de cada imagen y los vasos, puntitos. «De frente» con
+      // aire alrededor (el mueble al ~65 % del alto) para «Hoy» y «Con …», y
+      // una tercera «De cerca», que es la que se lee. Al terminar la cámara
+      // vuelve a donde estaba.
+      const cara = arte
+        ? (prueba.get(`${fix.id}|A`) === arte.id ? "A" : prueba.get(`${fix.id}|B`) === arte.id ? "B" : null)
+        : null;
+      const conTomas = !!arte && !!cara && TIPOS_CON_PRUEBA_3D.has(fix.type);
+      const ctrl = orbitRef.current;
+      const cam = ctrl?.object as THREE.PerspectiveCamera | undefined;
+      camaraDeAntes = conTomas && ctrl && cam
+        ? { pos: cam.position.clone(), mira: ctrl.target.clone() } : null;
+      // El recorte de cada toma, con la forma del mueble (ver `prepararToma`).
+      const aspecto = conTomas
+        ? Math.max(0.75, Math.min(16 / 9, (fix.w / (fix.h * 1.12 * HOLGURA_DE_LAMINA)) * 1.3))
+        : 16 / 9;
+      const preparar = (dataUrl: string) => prepararToma(dataUrl, aspecto, FONDO_DE_SALA);
+
+      // Con una propuesta, las DOS tomas son privadas para su proveedor, como
+      // Presentar: ninguna foto, patrón ni prueba de otro. Sin esto «Con
+      // Alpina» traía el patrón de cajas de la góndola de al lado y «Hoy» no,
+      // y la diferencia entre las dos tenía que ser SÓLO el producto. La
+      // lámina es justo el archivo que el proveedor se lleva y reenvía.
+      //
+      // Sin producto en prueba, la lámina es para el que tiene el contrato
+      // (si tiene artes en el catálogo) o para nadie: tampoco ahí van las
+      // pruebas de la sesión ni las fotos de las caras vecinas.
+      const delContrato = supplierPorNombre(uf.supplierName, catalogo);
+      const para = arte ? arte.supplier_id : delContrato;
+      setLaminaPara(para);
+      if (conTomas && cara) {
+        const n = pedirToma(fix.id, cara, "frente", HOLGURA_DE_LAMINA);
+        await esperarEscena((e) => e.toma === n);
+      }
+
+      setSinArte(true);
+      await esperarEscena((e) => e.sinArte && e.privadoPara === para);
+      const antes = await preparar(capturar());
+
+      setSinArte(false);
+      await esperarEscena((e) => !e.sinArte);
+      const despues = await preparar(capturar());
+
+      let deCerca: string | null = null;
+      if (conTomas && cara) {
+        const n = pedirToma(fix.id, cara, "cerca");
+        await esperarEscena((e) => e.toma === n);
+        deCerca = await preparar(capturar());
+      }
 
       // Cuando se está PROPONIENDO un producto, el pie habla de esa propuesta y
       // no del contrato que hoy ocupa el espacio. Sin esto la lámina salía con
@@ -5171,6 +6473,7 @@ export default function StoreEditor3D() {
         ? [
             { titulo: "Hoy", dataUrl: antes },
             { titulo: arte ? `Con ${arte.proveedor}` : "Con la marca", dataUrl: despues },
+            ...(deCerca ? [{ titulo: "De cerca", dataUrl: deCerca }] : []),
           ]
         : [{ titulo: "El espacio hoy", dataUrl: despues }];
       const blob = await componerPropuesta(tomas, datos);
@@ -5179,10 +6482,22 @@ export default function StoreEditor3D() {
       // Sin alertas: el botón vuelve a su estado y se puede reintentar.
     } finally {
       setSinArte(arteOriginal);
+      setLaminaPara(undefined);
+      // La cámara vuelve a donde la dejó la dueña (y el campo visual a 50°,
+      // al soltar el pedido de toma).
+      if (camaraDeAntes) {
+        setPedidoDeToma(null);
+        const ctrl = orbitRef.current;
+        if (ctrl) {
+          ctrl.object.position.copy(camaraDeAntes.pos);
+          ctrl.target.copy(camaraDeAntes.mira);
+          ctrl.update();
+        }
+      }
       setExportando(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exportando, sinArte, selectedFix, fixtures, sede, isAdmin, prueba, catalogo]);
+  }, [exportando, sinArte, selectedFix, fixtures, sede, isAdmin, prueba, catalogo, pedirToma, supplierDeReunion, firstPerson]);
   const selectedSlot = selectedFix?.slots?.find(s=>s.id===selectedSlotId)??null;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -5360,7 +6675,7 @@ export default function StoreEditor3D() {
 
             {/* MEJORA 4: Presentation mode button */}
             <button
-              onClick={() => setPresentationMode(p => !p)}
+              onClick={alternarPresentar}
               title="Modo presentación"
               className={`flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] transition-all ${
                 presentationMode
@@ -5401,13 +6716,13 @@ export default function StoreEditor3D() {
 
         <CanvasErrorBoundary>
           <Canvas
-            camera={{ position:CAM_POS, fov:50, near:0.1, far:500 }}
+            camera={{ position:CAM_POS, fov:FOV_DEL_EDITOR, near:0.1, far:500 }}
             onCreated={({ camera })=>{ camera.lookAt(...CAM_TARGET); }}
             gl={{ antialias:true, preserveDrawingBuffer: true }}
             shadows={{ type: THREE.PCFSoftShadowMap }}
             frameloop="demand"
             dpr={[1, 1.5]}
-            style={{ background:"#e8e4dc", width:"100%", height:"100%" }}
+            style={{ background:FONDO_DE_SALA, width:"100%", height:"100%" }}
           >
             <Scene
               placedFixtures={placedFixtures}
@@ -5431,20 +6746,33 @@ export default function StoreEditor3D() {
               topViewReady={setTopViewFn}
               firstPerson={firstPerson}
               sinArte={sinArte}
-              prueba={prueba}
+              prueba={pruebaEnEscena}
+              comoSePrueba={comoSePrueba}
+              catalogo={catalogo}
+              presentationMode={presentationMode}
+              privadoPara={privadoPara}
+              pedidoDeToma={pedidoDeToma}
               onCamaraFP={setCamaraFP}
               saltarA={saltarA}
               onHoverFixture={onHoverFixture}
               fixtures={fixtures}
+              estadoDeEscena={estadoDeEscena}
             />
           </Canvas>
         </CanvasErrorBoundary>
 
         {/* MEJORA 9: Tooltip on hover */}
-        {hoveredFixtureId && (() => {
+        {/* En Presentar no hay tooltip: la pantalla la está mirando el
+            proveedor. Y fuera de Presentar, mientras se prueba un producto, no
+            dice de quién es el espacio ni cuánto paga: se puede estar
+            compartiendo la pantalla sin haber apretado «Presentar». */}
+        {hoveredFixtureId && !presentationMode && (() => {
           const fix = placedFixtures.find(f => f.id === hoveredFixtureId);
           if (!fix || fix.id === selectedId) return null;
           const sm = STATUS_META[fix.status];
+          // La misma cuenta que el panel (`hayReunion`): con la reunión fijada y
+          // la prueba recién quitada, el cartel volvía a decir quién paga qué.
+          const discreto = hayReunion({ pruebas: prueba.size, proveedorDeReunion });
           return (
             <div
               className="pointer-events-none absolute z-30 rounded-lg border border-dark-line bg-dark-surface/95 px-3 py-2 text-xs shadow-xl backdrop-blur-sm"
@@ -5452,8 +6780,8 @@ export default function StoreEditor3D() {
             >
               <p className="font-mono font-bold text-accent-200">{nombreDeMueble(fix)}</p>
               <p className="text-dark-ink-1">{fix.label}</p>
-              {fix.supplierName && <p className="text-dark-ink-2 mt-0.5">🏢 {fix.supplierName}</p>}
-              {fix.negotiatedValue > 0 && <p className="text-success mt-0.5">💵 ${fix.negotiatedValue}/mes</p>}
+              {!discreto && fix.supplierName && <p className="text-dark-ink-2 mt-0.5">🏢 {fix.supplierName}</p>}
+              {!discreto && fix.negotiatedValue > 0 && <p className="text-success mt-0.5">💵 ${fix.negotiatedValue}/mes</p>}
               <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${sm.bg} ${sm.text}`}>
                 {sm.label}
               </span>
@@ -5467,10 +6795,33 @@ export default function StoreEditor3D() {
             render, en los dos temas. Es la única familia de colores literales
             de Tailwind que queda fuera de la landing, y queda a propósito. */}
         {presentationMode && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 rounded-full border border-white/10 bg-black/40 px-4 py-2 backdrop-blur-sm">
-            <span className="text-xs text-white/60">Modo presentación</span>
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3 py-2 backdrop-blur-sm" data-hud-presentar>
+            {muebleDelHud && caraConPrueba ? (
+              /* Las tres tomas quietas de la cámara del vendedor. Un corte, sin
+                 animación: por videollamada el movimiento se empasta. */
+              ([["frente", "De frente"], ["tres_cuartos", "Tres cuartos"], ["cerca", "De cerca"]] as const).map(([toma, rotulo]) => (
+                <button key={toma}
+                  onClick={() => pedirToma(muebleDelHud.id, caraConPrueba, toma)}
+                  className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                    pedidoDeToma?.toma === toma && pedidoDeToma.fixtureId === muebleDelHud.id
+                      ? "bg-dark-ink-1 text-dark-bg" : "bg-dark-ink-1/10 text-dark-ink-1 hover:bg-dark-ink-1/20"}`}>
+                  {rotulo}
+                </button>
+              ))
+            ) : pruebaOculta ? (
+              <>
+                <span className="px-1 text-sm text-white/80" data-prueba-oculta>Hay una prueba que no se está mostrando</span>
+                <button
+                  onClick={() => mostrarAlProveedor(pruebaOculta.fixtureId, pruebaOculta.cara)}
+                  className="rounded-full bg-dark-ink-1 px-3.5 py-1.5 text-sm font-semibold text-dark-bg transition-colors">
+                  Mostrarla
+                </button>
+              </>
+            ) : (
+              <span className="px-1 text-sm text-white/70">Modo presentación</span>
+            )}
             <button onClick={() => setPresentationMode(false)}
-              className="rounded-full bg-dark-ink-1/10 px-3 py-1 text-xs text-white hover:bg-dark-ink-1/20 transition-colors">
+              className="rounded-full bg-dark-ink-1/10 px-3.5 py-1.5 text-sm font-semibold text-dark-ink-1 hover:bg-dark-ink-1/20 transition-colors">
               Salir
             </button>
           </div>
@@ -5526,6 +6877,11 @@ export default function StoreEditor3D() {
           cargandoCatalogo={cargandoCatalogo}
           prueba={prueba}
           onProbar={probarProducto}
+          comoSePrueba={comoSePrueba}
+          onAjustarPrueba={ajustarPrueba}
+          proveedorDeReunion={proveedorDeReunion}
+          onProveedorDeReunion={setProveedorDeReunion}
+          onMostrar={mostrarAlProveedor}
           onRecargarCatalogo={recargarCatalogo}
           selectedSlot={selectedSlot}
           onUpdate={updateFixture}

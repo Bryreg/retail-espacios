@@ -28,6 +28,7 @@ const {
   puntoDeEntrada, puntoLibreCerca, resolverPaso,
   ALTURA_PISABLE, VEL_CAMINANDO, VEL_APURADA, PASO_MAXIMO, RADIO_PERSONA,
   normalDeCara, vistaDeCara, lugarDeLaFigura,
+  distanciaLibre, vistaDeVenta, FOV_DE_CERCA,
 } = await import(pathToFileURL(salida).href);
 
 let hechas = 0;
@@ -319,6 +320,179 @@ prueba("la figura se para donde podría pararse una persona", () => {
   const p = lugarDeLaFigura({ x: 0, z: 0, w: 0.9, rotY: 0 }, muros);
   assert.ok(p, "quedaba la izquierda");
   assert.ok(!chocaEn(muros, p.x, p.z), "la plantó dentro de un mueble");
+});
+
+console.log("\nplanta · la cámara del vendedor");
+
+// La sede sembrada de las capturas: dos góndolas dobles con un pasillo de
+// 2 m entre las dos, las puntas en las cabeceras, el robatope y las neveras.
+const SEDE = [
+  { id: "GON-01", x: 6, z: 4, w: 3.6, d: 0.9, h: 1.8, rotY: 0 },
+  { id: "GON-02", x: 6, z: 6.9, w: 3.6, d: 0.9, h: 1.8, rotY: 0 },
+  { id: "PUN-01", x: 8, z: 4, w: 0.9, d: 0.4, h: 1.8, rotY: -Math.PI / 2 },
+  { id: "PUN-02", x: 8, z: 6.9, w: 0.9, d: 0.4, h: 1.8, rotY: -Math.PI / 2 },
+  { id: "PUN-03", x: 4, z: 4, w: 0.9, d: 0.4, h: 1.8, rotY: Math.PI / 2 },
+  { id: "ROB-01", x: 8, z: 4.6, w: 0.3, d: 0.4, h: 1.6, rotY: -Math.PI / 2 },
+  { id: "NEV-01", x: 11, z: 1.2, w: 1.2, d: 0.75, h: 1.8, rotY: Math.PI },
+  { id: "NEV-02", x: 12.25, z: 1.2, w: 1.2, d: 0.75, h: 1.8, rotY: Math.PI },
+];
+const LIMITES = limitesDePlanta(SEDE, 2.5);
+const otros = (id) => murosDeCaminata(SEDE.filter((f) => f.id !== id));
+const comoMueble = (f) => ({ cx: f.x, cz: f.z, w: f.w, d: f.d, h: f.h, rotY: f.rotY });
+const FOCO_ENTERO = { yBajo: 0, yAlto: 1.8, yEntrepano: 1.225, libreEntrepano: 0.3 };
+const polar = (v) => {
+  const dx = v.posX - v.targetX, dy = v.posY - v.targetY, dz = v.posZ - v.targetZ;
+  return Math.acos(dy / Math.hypot(dx, dy, dz));
+};
+
+prueba("la cara B de GON-01 se mira desde ADENTRO del pasillo, no detrás de GON-02", () => {
+  const g = SEDE[0];
+  for (const toma of ["frente", "tres_cuartos"]) {
+    const v = vistaDeVenta(comoMueble(g), "B", toma, FOCO_ENTERO, otros("GON-01"), LIMITES);
+    assert.ok(v.posZ > 4.45 && v.posZ < 6.45, `${toma}: la cámara quedó en z=${v.posZ.toFixed(2)}, fuera del pasillo`);
+    assert.ok(!chocaEn(otros("GON-01"), v.posX, v.posZ), `${toma}: la cámara quedó adentro de otro mueble`);
+  }
+  // Como era antes: el encuadre de la cara se paraba detrás de la vecina.
+  assert.ok(vistaDeCara(comoMueble(g), "B").posZ > 6.45, "la prueba ya no muestra el defecto que corrige");
+});
+
+prueba("«De cerca» queda a un brazo de la cara", () => {
+  for (const f of SEDE) {
+    for (const cara of f.id.startsWith("GON") ? ["A", "B"] : ["A"]) {
+      const v = vistaDeVenta(comoMueble(f), cara, "cerca", FOCO_ENTERO, otros(f.id), LIMITES);
+      const n = normalDeCara(f.rotY, cara);
+      const plano = (v.posX - f.x) * n.x + (v.posZ - f.z) * n.z - f.d / 2;
+      assert.ok(plano > 0 && plano <= 1.2 + 1e-9, `${f.id} ${cara}: «De cerca» a ${plano.toFixed(2)} m de la cara`);
+    }
+  }
+});
+
+prueba("ninguna toma cae fuera del rango de la órbita ni mira desde abajo", () => {
+  for (const f of SEDE) for (const rot of [0, 0.4, Math.PI / 2, 2.5, Math.PI]) {
+    for (const toma of ["frente", "tres_cuartos", "cerca"]) {
+      for (const foco of [FOCO_ENTERO, { yBajo: 1.3, yAlto: 1.75, yEntrepano: 1.5, libreEntrepano: 0.3 }]) {
+        const v = vistaDeVenta({ ...comoMueble(f), rotY: rot }, "A", toma, foco, otros(f.id), LIMITES);
+        const a = polar(v);
+        assert.ok(a >= Math.PI / 6 - 1e-9 && a <= Math.PI / 2.1 + 1e-9,
+          `${f.id} rot ${rot} ${toma}: ángulo polar ${(a * 180 / Math.PI).toFixed(1)}°`);
+        assert.ok(v.posY > v.targetY, `${f.id} ${toma}: la cámara mira desde abajo`);
+      }
+    }
+  }
+});
+
+prueba("sin nada enfrente, «De frente» se para a la distancia ideal", () => {
+  const sola = { cx: 0, cz: 0, w: 0.9, d: 0.4, h: 1.8, rotY: 0 };
+  const lejos = { minX: -50, maxX: 50, minZ: -50, maxZ: 50 };
+  const v = vistaDeVenta(sola, "A", "frente", FOCO_ENTERO, [], lejos);
+  const ideal = (1.8 * 1.12) / (2 * Math.tan((25 * Math.PI) / 180));
+  assert.ok(Math.abs(-v.posZ - (0.2 + ideal)) < 1e-9, `se paró a ${-v.posZ - 0.2} y no a ${ideal}`);
+  // Y el pasillo libre se mide desde la cara, con el cuerpo inflado.
+  assert.ok(Math.abs(distanciaLibre({ x: 0, z: 0 }, { x: 0, z: 1 }, murosDeCaminata([{ x: 0, z: 3, w: 1, d: 1, h: 1.8 }]), lejos) - (2.5 - 0.28 - 0.05)) < 0.051);
+});
+
+prueba("en la pantalla de venta la persona se para EN EL PLANO de la cara que se muestra", () => {
+  const f = { x: 0, z: 0, w: 0.3, rotY: 0 };
+  const editor = lugarDeLaFigura(f, []);
+  assert.ok(Math.abs(Math.abs(editor.x) - (0.15 + 0.45)) < 1e-9, "cambió dónde se para en el editor");
+  assert.ok(Math.abs(editor.z + 0.35) < 1e-9, "cambió dónde se para en el editor");
+  // Adelantada, la perspectiva la agrandaba (más alta que la punta de 1,80);
+  // del lado A, en la toma de la cara B quedaba detrás del mueble.
+  for (const rotY of [0, Math.PI / 2, -Math.PI / 2, 2.5]) {
+    for (const cara of ["A", "B"]) {
+      const m = { x: 3, z: -2, w: 0.9, rotY };
+      const p = lugarDeLaFigura(m, [], 0.3, { d: 0.4, cara });
+      const n = normalDeCara(rotY, cara);
+      const enNormal = (p.x - m.x) * n.x + (p.z - m.z) * n.z;
+      assert.ok(Math.abs(enNormal - 0.2) < 1e-9, `rot ${rotY} ${cara}: a ${enNormal.toFixed(3)} del centro, no en el plano de la cara`);
+      const alCostado = Math.hypot(p.x - m.x - n.x * 0.2, p.z - m.z - n.z * 0.2);
+      assert.ok(Math.abs(alCostado - (0.45 + 0.3)) < 1e-9, `rot ${rotY} ${cara}: no quedó al costado a 30 cm`);
+    }
+  }
+});
+
+prueba("el robatope arrimado a la punta tiene su pasillo", () => {
+  // La huella inflada de PUN-01 cubre el canto de ROB-01 —están pegados—:
+  // contándola, el pasillo medía cero y la toma de frente se pegaba a 90 cm,
+  // cortándole las repisas de arriba.
+  const rob = SEDE.find((f) => f.id === "ROB-01");
+  const n = normalDeCara(rob.rotY, "A");
+  const centro = { x: rob.x + n.x * rob.d / 2, z: rob.z + n.z * rob.d / 2 };
+  assert.ok(chocaEn(otros("ROB-01"), centro.x, centro.z), "la prueba ya no muestra el caso (la punta no rodea el canto)");
+  assert.ok(distanciaLibre(centro, n, otros("ROB-01"), LIMITES) > 2, "el pasillo del robatope sigue midiendo cero");
+  const foco = { yBajo: 0, yAlto: 1.6, yEntrepano: 0.9, libreEntrepano: 0.37 };
+  const v = vistaDeVenta(comoMueble(rob), "A", "frente", foco, otros("ROB-01"), LIMITES);
+  const dist = (v.posX - centro.x) * n.x + (v.posZ - centro.z) * n.z;
+  assert.ok(dist > 1.5, `la toma de frente del robatope quedó a ${dist.toFixed(2)} m`);
+});
+
+prueba("por entrepaño, «De frente» mira lo elegido de frente y no desde arriba", () => {
+  const sola = { cx: 0, cz: 0, w: 0.9, d: 0.4, h: 1.8, rotY: 0 };
+  const lejos = { minX: -50, maxX: 50, minZ: -50, maxZ: 50 };
+  const foco = { yBajo: 0.375, yAlto: 0.8, yEntrepano: 0.59, libreEntrepano: 0.33 };
+  const entero = vistaDeVenta(sola, "A", "frente", foco, [], lejos);
+  const elegido = vistaDeVenta(sola, "A", "frente", { ...foco, porEntrepano: true }, [], lejos);
+  assert.ok(entero.posY >= 1.2 - 1e-9, "la cara entera dejó de mirarse a la altura de un comprador");
+  const picado = Math.atan2(elegido.posY - elegido.targetY, Math.hypot(elegido.posX - elegido.targetX, elegido.posZ - elegido.targetZ));
+  assert.ok(picado <= (10 * Math.PI) / 180, `por entrepaño mira con ${(picado * 180 / Math.PI).toFixed(1)}° de picado`);
+  assert.ok(Math.abs(elegido.posX) < 1e-9 && Math.abs(elegido.targetY - 0.5875) < 1e-9, "no quedó centrada en lo elegido");
+});
+
+prueba("el tres cuartos no pone a la persona en primer plano", () => {
+  // Una punta sola en el medio del local: hay pasillo de los dos lados, así
+  // que el tres cuartos tiene que girar para el lado CONTRARIO a la persona.
+  const sola = { cx: 0, cz: 0, w: 0.9, d: 0.4, h: 1.8, rotY: 0 };
+  const lejos = { minX: -50, maxX: 50, minZ: -50, maxZ: 50 };
+  for (const lado of [1, -1]) {
+    const persona = { x: lado * (0.45 + 0.45), z: -0.35 };
+    const v = vistaDeVenta(sola, "A", "tres_cuartos", FOCO_ENTERO, [], lejos, 50, 16 / 9, persona);
+    assert.ok(Math.sign(v.posX) === -lado, `con la persona en x=${persona.x} la cámara giró a x=${v.posX.toFixed(2)}`);
+  }
+  // Si del otro lado no hay pasillo, queda del lado que hay: con una columna a
+  // medio metro de ese lado, la cámara del otro lado no tiene que pararse
+  // DETRÁS de la columna (su lugar no choca, pero la columna tapa el cuadro).
+  const pared = [{ minX: -3, maxX: -0.3, minZ: -3, maxZ: 3 }];
+  const v = vistaDeVenta(sola, "A", "tres_cuartos", FOCO_ENTERO, pared, lejos, 50, 16 / 9, { x: 0.9, z: -0.35 });
+  assert.ok(v.posX > 0, "giró contra la pared por esquivar a la persona");
+  const columna = [{ minX: -0.4, maxX: -0.25, minZ: -0.75, maxZ: -0.55 }];
+  const c = vistaDeVenta(sola, "A", "tres_cuartos", FOCO_ENTERO, columna, lejos, 50, 16 / 9, { x: 0.9, z: -0.35 });
+  assert.ok(c.posX > 0, `se paró detrás de la columna por esquivar a la persona (x=${c.posX.toFixed(2)})`);
+  // Sin punto a evitar, nada cambia: la toma «De frente» lo ignora siempre.
+  const f1 = vistaDeVenta(sola, "A", "frente", FOCO_ENTERO, [], lejos);
+  const f2 = vistaDeVenta(sola, "A", "frente", FOCO_ENTERO, [], lejos, 50, 16 / 9, { x: 0.9, z: -0.35 });
+  assert.deepEqual(f1, f2);
+});
+
+prueba("«De cerca» con teleobjetivo: el entrepaño llena el cuadro, de frente", () => {
+  // Con 50° la cámara se pegaba a 60 cm y miraba desde 1,6 m para abajo: un
+  // tercio del cuadro era metal y el copete, y dominaban las tapas.
+  assert.ok(FOV_DE_CERCA >= 30 && FOV_DE_CERCA <= 35, `campo visual de ${FOV_DE_CERCA}°`);
+  const sola = { cx: 0, cz: 0, w: 0.9, d: 0.4, h: 1.8, rotY: 0 };
+  const lejos = { minX: -50, maxX: 50, minZ: -50, maxZ: 50 };
+  const foco = { yBajo: 0, yAlto: 1.8, yEntrepano: 1.225, libreEntrepano: 0.3 };
+  const v = vistaDeVenta(sola, "A", "cerca", foco, [], lejos, FOV_DE_CERCA);
+  const dist = Math.hypot(v.posX - v.targetX, v.posZ - v.targetZ);
+  const visible = 2 * dist * Math.tan((FOV_DE_CERCA * Math.PI) / 360);
+  const llena = (0.3 + 0.06) / visible;
+  assert.ok(llena >= 0.7 && llena <= 0.8, `el entrepaño llena el ${(llena * 100).toFixed(0)} % del cuadro`);
+  // Casi a la altura del entrepaño: ni picado ni las tapas dominando.
+  const picado = Math.atan2(v.posY - v.targetY, dist);
+  assert.ok(picado <= (10 * Math.PI) / 180, `«De cerca» mira con ${(picado * 180 / Math.PI).toFixed(1)}° de picado`);
+  // Un mueble angosto (el robatope de 30 cm, una bolsa por repisa) encuadra
+  // dos repisas y media, no una sola con el costado del vecino.
+  const rob = { cx: 0, cz: 0, w: 0.3, d: 0.4, h: 1.6, rotY: 0 };
+  const r = vistaDeVenta(rob, "A", "cerca", { ...foco, libreEntrepano: 0.33 }, [], lejos, FOV_DE_CERCA);
+  const dr = Math.hypot(r.posX - r.targetX, r.posZ - r.targetZ);
+  const repisas = (2 * dr * Math.tan((FOV_DE_CERCA * Math.PI) / 360)) / 0.36;
+  assert.ok(repisas >= 2.4 && repisas <= 2.8, `el robatope de cerca muestra ${repisas.toFixed(1)} repisas`);
+  assert.ok(dr <= 1.8 + 1e-9);
+  // En la sede sembrada, «De cerca» sigue dentro del pasillo y en rango.
+  for (const f of SEDE) {
+    const w = vistaDeVenta(comoMueble(f), "A", "cerca", FOCO_ENTERO, otros(f.id), LIMITES, FOV_DE_CERCA);
+    assert.ok(!chocaEn(otros(f.id), w.posX, w.posZ), `${f.id}: «De cerca» se para adentro de otro mueble`);
+    const a = polar(w);
+    assert.ok(a >= Math.PI / 6 - 1e-9 && a <= Math.PI / 2.1 + 1e-9, `${f.id}: ángulo polar ${(a * 180 / Math.PI).toFixed(1)}°`);
+  }
 });
 
 console.log("\n" + hechas + " pruebas" + (process.exitCode ? " · CON FALLAS" : " · todo en orden") + "\n");

@@ -173,6 +173,32 @@ function cargar(dataUrl: string): Promise<HTMLImageElement> {
 }
 
 /**
+ * Prepara una captura del 3D para la lámina: la recorta al centro con el
+ * `aspecto` pedido (ancho / alto) y la apoya sobre `fondo`.
+ *
+ * - El fondo: el lienzo del editor es transparente y en pantalla se ve el
+ *   color de la sala (el `background` de su estilo). En el PNG ese
+ *   transparente salía BLANCO —un cielo blanco detrás del mueble— y la
+ *   lámina no se parecía a lo que se mostró en la reunión.
+ * - El recorte: la toma de venta deja el mueble centrado a lo ancho, y una
+ *   punta de 90 cm en un cuadro de 16:9 era el 15 % de cada imagen. Con
+ *   tres tomas lado a lado, el cuadro se angosta a la forma del mueble.
+ */
+export async function prepararToma(dataUrl: string, aspecto: number, fondo: string): Promise<string> {
+  const img = await cargar(dataUrl);
+  const alto = img.height;
+  const ancho = Math.min(img.width, Math.round(alto * aspecto));
+  const c = document.createElement("canvas");
+  c.width = ancho; c.height = alto;
+  const g = c.getContext("2d");
+  if (!g) throw new Error("el navegador no dio contexto 2D");
+  g.fillStyle = fondo;
+  g.fillRect(0, 0, ancho, alto);
+  g.drawImage(img, (img.width - ancho) / 2, 0, ancho, alto, 0, 0, ancho, alto);
+  return c.toDataURL("image/png");
+}
+
+/**
  * Arma la lámina y la devuelve como blob PNG.
  * `tomas` va en el orden en que se muestran: para el antes y después, primero
  * el espacio como está y después con la marca puesta.
