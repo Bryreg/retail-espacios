@@ -3,7 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.auth import require_admin, require_auth
 from app.database import get_db
-from app.models.models import Supplier, SpaceLease
+from app.models.models import Supplier, SpaceLease, SupplierAsset
 from app.schemas.spaces import SupplierCreate, SupplierOut, SupplierPublicOut
 
 # Every route requires a valid token; mutations additionally require admin.
@@ -115,6 +115,28 @@ def delete_supplier(supplier_id: int, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=409,
             detail=f"El proveedor tiene {active_count} contrato(s) activo(s). Cancelalos antes de eliminar.",
+        )
+    # Sus artes del catálogo (y la ficha de cada una) lo nombran por clave
+    # foránea: en Postgres el borrado se caía con un 500 (en SQLite, que no la
+    # hace cumplir, pasaba y dejaba artes huérfanas). No se borran solas: son
+    # el trabajo de cargar fotos y medidas, y se borran a propósito desde el
+    # catálogo.
+    artes = db.query(SupplierAsset).filter(SupplierAsset.supplier_id == supplier_id).count()
+    if artes:
+        raise HTTPException(
+            status_code=409,
+            detail=f"El proveedor tiene {artes} arte(s) en el catálogo: borralas antes de eliminarlo.",
+        )
+    # Lo mismo con el historial de contratos (los ya terminados también lo
+    # nombran): un 409 que se entiende en vez del 500 de la clave foránea.
+    historial = db.query(SpaceLease).filter(SpaceLease.supplier_id == supplier_id).count()
+    if historial:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"El proveedor tiene {historial} contrato(s) en el historial: "
+                "no se puede eliminar sin perder ese historial."
+            ),
         )
     db.delete(supplier)
     db.commit()

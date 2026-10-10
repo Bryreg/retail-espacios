@@ -137,4 +137,38 @@ prueba("el enlace firmado usa la misma víspera (routers/montaje.py)", () => {
   assert.match(fechas, /ZONA_DEL_NEGOCIO = timezone\(timedelta\(hours=-5\)/);
 });
 
+prueba("la limpieza de fotos vencidas usa esa misma víspera, importada y no copiada", () => {
+  // Qué reporte es de qué contrato decide qué foto se borra: si la limpieza
+  // tuviera su propia cuenta de la víspera, podría borrar la foto que el
+  // tablero le atribuye a un contrato vivo.
+  const limpieza = readFileSync(
+    join(raiz, "..", "backend", "app", "services", "fotos_vencidas.py"), "utf8");
+  assert.match(limpieza, /^from app\.routers\.montaje import _se_confirma_desde$/m);
+  assert.match(limpieza, /_se_confirma_desde\(self\.primero\)/);
+  assert.doesNotMatch(limpieza, /start_date - timedelta\(days=1\)/);
+});
+
+prueba("el enlace no dice que la foto quedó guardada cuando ya se borró", () => {
+  // La función pura, con la foto y sin ella: una regex sobre el fuente también
+  // pasaba con la condición invertida (`!reportado.file_id ?` la contiene).
+  assert.match(M.textoDelReporte({ estado: "montado", file_id: 7 }), /^La foto quedó guardada como prueba/);
+  for (const file_id of [null, undefined, 0]) {
+    const sin = M.textoDelReporte({ estado: "montado", file_id });
+    assert.doesNotMatch(sin, /guardada como prueba/, String(file_id));
+    assert.match(sin, /La foto ya no está guardada\.$/, String(file_id));
+  }
+  assert.match(M.textoDelReporte({ estado: "no_montado", file_id: null }), /motivo/);
+  // Y la pantalla la usa, sin una copia propia del texto.
+  const pantalla = fuente("src", "pages", "Montaje.tsx");
+  assert.match(pantalla, /\{textoDelReporte\(reportado\)\}/);
+  assert.doesNotMatch(pantalla, /La foto quedó guardada/);
+});
+
+prueba("sin la foto, el enlace no le echa la culpa al fin del contrato", () => {
+  // Un admin puede borrar la foto con el contrato en curso para que la
+  // repitan: «se borra cuando el contrato termina» sería falso.
+  const sin = M.textoDelReporte({ estado: "montado", file_id: null });
+  assert.doesNotMatch(sin, /contrato|termina/);
+});
+
 console.log(`\n${hechas} pruebas`);

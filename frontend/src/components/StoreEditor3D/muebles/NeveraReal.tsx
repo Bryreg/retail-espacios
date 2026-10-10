@@ -1,11 +1,14 @@
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo } from "react";
 import * as THREE from "three";
 import {
-  MURAL_VEGETALES, NEVERA, PORTA_PRECIOS,
+  MURAL_VEGETALES, NEVERA, PORTA_PRECIOS, SOBRE_REJILLA,
   altoUtilDeNevera, nivelesDeMural, nivelesDeNevera, puertasDeNevera,
 } from "./medidas";
 import { geometriaDeEmpaque, geometriaMarcoDePuerta, geometriaPortaPrecios } from "./perfiles";
 import { acomodar, EMPAQUES } from "./producto";
+import { BRILLO, conLuzDeVenta, K_ENTORNO_MUEBLE, useLuzDeVenta, useSoltarMateriales } from "./luzDeVenta";
+import { useAtenuacion } from "./atenuacion";
+import { useThree } from "@react-three/fiber";
 
 /**
  * Un mueble refrigerado de puerta de vidrio: la nevera de refrescos y la
@@ -65,6 +68,13 @@ export interface NeveraRealProps {
   /** Llena los entrepaños con envases mudos. Se apaga cuando el proveedor
    *  subió su arte: lo que se ve por el vidrio tiene que ser SU producto. */
   conRelleno?: boolean;
+  /** Las alturas de las rejillas, si se reacomodaron para el producto que se
+   *  está probando (`rejillasParaProducto`). Es de la sesión: el plano no se
+   *  toca. Sin esto, las de fábrica (`nivelesDeNevera`). */
+  niveles?: readonly number[];
+  /** La chapa del cabezote con la marca del producto en prueba (`pop.ts`),
+   *  como el copete de la punta. Sin esto, la chapa clara de siempre. */
+  cabezote?: THREE.Material;
 }
 
 /**
@@ -106,7 +116,7 @@ const RellenoDeNevera = memo(function RellenoDeNevera({
         // las de atrás quedan tapadas por su propio facing.
         fuera.push(m.clone().setPosition(
           desdeX + f * a.pasoX,
-          apoyo + e.alto / 2 + 0.005,
+          apoyo + e.alto / 2 + SOBRE_REJILLA,
           -fondo / 2 + e.fondo / 2 + 0.02,
         ));
       }
@@ -137,26 +147,63 @@ const RellenoDeNevera = memo(function RellenoDeNevera({
   );
 });
 
-function useMaterialesDeFrio(ghost: boolean, statusColor?: string) {
-  return useMemo(() => {
+/** La rejilla de alambre de la pantalla de venta: varillas claras de fondo a
+ *  frente sobre el hueco oscuro, una cada 2 cm, con las dos barras del canto.
+ *  Opaca a propósito: con `alphaTest` las varillas de 2 mm desaparecen en el
+ *  primer mipmap, y con transparencia hay que ordenar contra las botellas. */
+const alambres = new Map<number, THREE.CanvasTexture>();
+/** Una por cantidad de varillas, compartida entre neveras: antes cada nevera
+ *  creaba la suya (con mipmaps y anisotropía 8) cada vez que entraba a
+ *  Presentar, y no se soltaba nunca. */
+function texturaDeAlambre(anchoInterior: number): THREE.CanvasTexture {
+  const varillas = Math.max(4, Math.round(anchoInterior / 0.02));
+  const ya = alambres.get(varillas);
+  if (ya) return ya;
+  const c = document.createElement("canvas");
+  c.width = 32; c.height = 128;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#5d656e";
+  g.fillRect(0, 0, 32, 128);
+  g.fillStyle = "#e4e9ee";
+  g.fillRect(12, 0, 8, 128);
+  g.fillRect(0, 0, 32, 7);
+  g.fillRect(0, 121, 32, 7);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = THREE.RepeatWrapping;
+  t.repeat.set(varillas, 1);
+  t.anisotropy = 8;
+  alambres.set(varillas, t);
+  return t;
+}
+
+function useMaterialesDeFrio(
+  ghost: boolean, statusColor: string | undefined, luz: boolean, anchoInterior: number, multideck: boolean,
+) {
+  const m = useMemo(() => {
     const comun = { transparent: ghost, opacity: ghost ? 0.42 : 1 };
+    // En la pantalla de venta, con la luz del cuarto del producto
+    // (`luzDeVenta.ts`); cada material con el peso de su `envMapIntensity` de
+    // diseño y lo que toma del brillo de las luminarias (el aluminio y el
+    // alambre como la estructura de la góndola; la chapa como el pintado).
+    const venta = (base: number, brillo: number) => conLuzDeVenta(luz, K_ENTORNO_MUEBLE * base, brillo);
     return {
       /** La carrocería: panel aislado con terminación texturada, no espejo. */
       cuerpo: new THREE.MeshStandardMaterial({
         color: "#252d3a", metalness: 0.25, roughness: 0.62,
-        envMapIntensity: 0.5, ...comun,
+        envMapIntensity: 0.5, ...comun, ...venta(0.6, BRILLO.pintado),
       }),
       /** El interior, blanco y encendido. Es el contraste con la carrocería lo
        *  que hace que la nevera se distinga en un plano de muebles claros. */
       interior: new THREE.MeshStandardMaterial({
         color: "#eef6fb", metalness: 0, roughness: 0.85,
-        emissive: "#cfe8f5", emissiveIntensity: 0.22,
-        envMapIntensity: 0.3, ...comun,
+        emissive: "#cfe8f5", emissiveIntensity: EMISION_DE_FRIO.interior,
+        envMapIntensity: 0.3, ...comun, ...venta(0.8, BRILLO.panel),
       }),
       /** Los entrepaños: rejilla de alambre cromado. */
       rejilla: new THREE.MeshStandardMaterial({
         color: "#b9c2cb", metalness: 0.55, roughness: 0.35,
-        envMapIntensity: 0.7, ...comun,
+        envMapIntensity: 0.7, ...comun, ...venta(1, BRILLO.estructura),
       }),
       /** La cubeta de un mural de vegetales: plástico claro, mate, lavable.
        *  No es rejilla de alambre — sobre rejilla la fruta se marca. */
@@ -167,7 +214,7 @@ function useMaterialesDeFrio(ghost: boolean, statusColor?: string) {
       /** El marco de aluminio de la puerta. */
       marco: new THREE.MeshStandardMaterial({
         color: "#cdd3d8", metalness: 0.45, roughness: 0.34,
-        envMapIntensity: 0.9, ...comun,
+        envMapIntensity: 0.9, ...comun, ...venta(1, BRILLO.estructura),
       }),
       /** El vidrio. Casi transparente y muy liso: lo que se ve de él es el
        *  reflejo del entorno, no su color. `depthWrite` apagado para que no
@@ -179,7 +226,7 @@ function useMaterialesDeFrio(ghost: boolean, statusColor?: string) {
       }),
       /** La tira de LED bajo cada entrepaño. */
       luz: new THREE.MeshStandardMaterial({
-        color: "#e8f7ff", emissive: "#bfe8ff", emissiveIntensity: 0.85,
+        color: "#e8f7ff", emissive: "#bfe8ff", emissiveIntensity: EMISION_DE_FRIO.luz,
         transparent: true, opacity: 0.8,
       }),
       /** Lo que se ve por una rejilla o por una junta: sombra, no pieza. */
@@ -191,32 +238,147 @@ function useMaterialesDeFrio(ghost: boolean, statusColor?: string) {
        *  se lea como puerta. */
       manija: new THREE.MeshStandardMaterial({
         color: "#3b444f", metalness: 0.6, roughness: 0.3,
-        envMapIntensity: 1.1, ...comun,
+        envMapIntensity: 1.1, ...comun, ...venta(1, BRILLO.estructura),
       }),
       /** Los envases mudos de relleno. Un solo tono frío y sin marca: es una
        *  aproximación, y tiene que verse como tal. */
       relleno: new THREE.MeshStandardMaterial({
         color: "#8fa3b4", metalness: 0.05, roughness: 0.55,
-        envMapIntensity: 0.4, ...comun,
+        envMapIntensity: 0.4, ...comun, ...venta(0.8, BRILLO.relleno),
       }),
       estado: new THREE.MeshStandardMaterial({
         color: statusColor ?? "#64748b", metalness: 0.1, roughness: 0.6, ...comun,
       }),
+      /** Sólo en la pantalla de venta: la rejilla de alambre (las placas
+       *  macizas se leían como una caja de cajones) y el forro claro de los
+       *  costados, el techo y la bandeja de abajo. */
+      // Sólo el multideck de frente abierto: la nevera de puertas y el mural
+      // de vegetales no llevan alambre ni forro.
+      alambre: luz && !ghost && multideck ? new THREE.MeshStandardMaterial({
+        map: texturaDeAlambre(anchoInterior), metalness: 0.3, roughness: 0.4, ...venta(1, BRILLO.estructura),
+      }) : null,
+      forro: luz && !ghost && multideck ? new THREE.MeshStandardMaterial({
+        color: "#eef3f6", metalness: 0, roughness: 0.8,
+        emissive: "#dcebf3", emissiveIntensity: EMISION_DE_FRIO.forro, ...venta(0.9, BRILLO.panel),
+      }) : null,
     };
-  }, [ghost, statusColor]);
+  }, [ghost, statusColor, luz, anchoInterior, multideck]);
+  useSoltarMateriales(m);
+  // Un vecino del mueble que se muestra va con menos luz (`useAtenuacion`) y
+  // con el frío APAGADO (`apagarElFrio`). Es lo que hacía que NEV-02, libre y
+  // con botellas mudas, pesara lo mismo que la nevera que se vende (un 40 %
+  // del cuadro). Por efecto, sin rehacer ni recompilar los materiales.
+  // Sin la exposición del vecino (`EXPOSICION_DE_NEVERA_VECINA`): el frío
+  // apagado ya la deja un 60 % abajo, y con las dos las botellas mudas —que
+  // tienen que seguir leyéndose— desaparecían (luminancia 65 → 28).
+  const foco = useAtenuacion(Object.values(m), EXPOSICION_DE_NEVERA_VECINA);
+  const { invalidate } = useThree();
+  useEffect(() => {
+    apagarElFrio(m, !foco && luz);
+    invalidate();
+  }, [m, foco, luz, invalidate]);
+  return m;
+}
+
+/** La exposición de una nevera VECINA: toda. Lo que la apaga es su frío
+ *  (`apagarElFrio`, calibrado en la tanda 2: un 43 % abajo de la nevera que
+ *  se vende, con las botellas mudas a la vista). */
+export const EXPOSICION_DE_NEVERA_VECINA = 1;
+
+/** La emisión de diseño del frío: el forro de venta, el interior y las tiras
+ *  de LED (lo que la atenuación de un vecino baja y después repone). */
+export const EMISION_DE_FRIO = { forro: 0.12, interior: 0.22, luz: 0.85 } as const;
+
+/**
+ * Cuánto queda de cada cosa en una nevera VECINA con el frío apagado.
+ *
+ * Bajar sólo la luz de venta no alcanzaba: NEV-02 (blanca por dentro, con
+ * botellas mudas claras) seguía casi el doble de luminosa que la nevera que se
+ * vende, que tiene producto oscuro y marco negro (medido en gaseosa-4: 0,33
+ * contra 0,18 de luminancia relativa media). Adentro de una nevera la luz es la
+ * de sus LED; con ellos apagados, la cavidad sólo recibe lo que entra por el
+ * frente, de costado. Como la escena la ilumina igual que a un mueble abierto,
+ * el color de lo que está adentro —forro e interior, rejillas y botellas— se
+ * multiplica por esto: es la oclusión de la cavidad dicha barata, con
+ * uniformes (sin recompilar). El criterio: NEV-02 al menos un 20 % menos
+ * luminosa que la nevera que se vende, con las botellas mudas a la vista
+ * (quedan un poco más claras que la cavidad, así que se siguen leyendo).
+ * Medido en gaseosa-4 (NEV-01, la que se vende: 0,176 de luminancia relativa
+ * media, 83 de gris sRGB): con 0,4/0,55 sólo en forro y botellas NEV-02 quedaba
+ * en 0,19; con 0,2/0,45/0,35 en 0,126, pero con el mismo gris sRGB que NEV-01.
+ * Para que quede un 20 % abajo con las dos cuentas, también el filo —el
+ * aluminio de los porta-precios y del marco— baja a 0,4 (con 0,5 quedaba justo
+ * en el 20 % de gris): no es oclusión, es que el vecino no se lleve la luz del
+ * que se vende, como en un escenario. Con todo esto y `ATENUACION`, NEV-02
+ * queda en 0,07 (58 de gris), un 30 % abajo.
+ */
+export const FRIO_APAGADO = { cavidad: 0.12, rejilla: 0.35, relleno: 0.25, filo: 0.4, luz: 0.08 } as const;
+
+type MaterialDeFrio = THREE.MeshStandardMaterial | null | undefined;
+
+/** El color con que se creó un material: se guarda la primera vez para poder
+ *  volver a él (el foco va y viene sin rehacer materiales). */
+function colorDeDiseno(mat: THREE.MeshStandardMaterial): THREE.Color {
+  const ud = mat.userData as { colorDeDiseno?: THREE.Color };
+  if (!ud.colorDeDiseno) ud.colorDeDiseno = mat.color.clone();
+  return ud.colorDeDiseno;
+}
+
+/**
+ * Apaga (o vuelve a encender) el frío de una nevera: sin la emisión del forro
+ * ni la del interior, las tiras de LED casi apagadas y el color de la cavidad,
+ * de las rejillas y de las botellas multiplicado por `FRIO_APAGADO`. Con `apagado` en false
+ * deja todo como se diseñó. Exportada para la prueba.
+ */
+export function apagarElFrio(
+  m: {
+    forro?: MaterialDeFrio; alambre?: MaterialDeFrio;
+    interior: THREE.MeshStandardMaterial; rejilla: THREE.MeshStandardMaterial; marco: THREE.MeshStandardMaterial;
+    luz: THREE.MeshStandardMaterial; relleno: THREE.MeshStandardMaterial;
+  },
+  apagado: boolean,
+): void {
+  const tono = (mat: MaterialDeFrio, f: number) => {
+    if (mat) mat.color.copy(colorDeDiseno(mat)).multiplyScalar(apagado ? f : 1);
+  };
+  if (m.forro) m.forro.emissiveIntensity = apagado ? 0 : EMISION_DE_FRIO.forro;
+  m.interior.emissiveIntensity = apagado ? 0 : EMISION_DE_FRIO.interior;
+  m.luz.emissiveIntensity = EMISION_DE_FRIO.luz * (apagado ? FRIO_APAGADO.luz : 1);
+  tono(m.forro, FRIO_APAGADO.cavidad);
+  tono(m.interior, FRIO_APAGADO.cavidad);
+  tono(m.rejilla, FRIO_APAGADO.rejilla);
+  tono(m.alambre, FRIO_APAGADO.rejilla);
+  tono(m.relleno, FRIO_APAGADO.relleno);
+  tono(m.marco, FRIO_APAGADO.filo);
 }
 
 export const NeveraReal = memo(function NeveraReal({
   w, d, h, statusColor, ghost = false, variante = "multideck", conRelleno = true,
+  niveles: nivelesDePrueba, cabezote,
 }: NeveraRealProps) {
   const conPuertas = variante === "puertas";
   const esMural = variante === "vegetales";
-  const m = useMaterialesDeFrio(ghost, statusColor);
+  const luz = useLuzDeVenta();
+  const m = useMaterialesDeFrio(ghost, statusColor, luz, Math.max(0.1, w - NEVERA.chapa * 2), !conPuertas && !esMural);
+  // La marca del cabezote va SÓLO en la cara que mira al pasillo (−Z;
+  // BoxGeometry ordena +X, −X, +Y, −Y, +Z, −Z), como la chapa del copete de
+  // la punta. Con un material solo, la marca salía también en los cantos.
+  const chapaDelCabezote = useMemo(
+    () => (cabezote ? [m.interior, m.interior, m.interior, m.interior, m.interior, cabezote] : m.interior),
+    [cabezote, m.interior],
+  );
+  // En la pantalla de venta la nevera se ve como un mueble de bebidas
+  // encendido: forro claro, rejilla de alambre y la luz de la tienda sin
+  // sombras adentro. En el editor, como siempre.
+  const venta = !!m.forro;
 
   const util = altoUtilDeNevera(h);
   const yInterior = NEVERA.zocalo + util / 2;
+  const clavePrueba = nivelesDePrueba?.map((y) => y.toFixed(4)).join(",") ?? "";
   const niveles = useMemo(
-    () => (esMural ? nivelesDeMural(h) : nivelesDeNevera(h)), [h, esMural],
+    () => (esMural ? nivelesDeMural(h) : nivelesDePrueba ? [...nivelesDePrueba] : nivelesDeNevera(h)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [h, esMural, clavePrueba],
   );
   const cuantasPuertas = puertasDeNevera(w);
   const anchoDePuerta = w / cuantasPuertas;
@@ -285,19 +447,49 @@ export const NeveraReal = memo(function NeveraReal({
           planos se pelean el z-buffer y el copete sale rayado. */}
       <mesh
         position={[0, h - NEVERA.copete / 2, zFrente - 0.007]}
-        material={m.interior}
+        material={chapaDelCabezote}
       >
         <boxGeometry args={[w - NEVERA.chapa * 2, NEVERA.copete * 0.62, 0.012]} />
       </mesh>
 
-      {/* ── El interior iluminado ─────────────────────────────────────────*/}
+      {/* ── El interior iluminado ─────────────────────────────────────────
+          En la pantalla de venta, sin la sombra de la luz de la tienda: la
+          carrocería y el copete la recortaban en rectángulos a media anchura
+          sobre el fondo, y adentro de una nevera la luz es la del LED. */}
       <mesh
         position={[0, yInterior, d / 2 - NEVERA.chapa - 0.006]}
-        receiveShadow
+        receiveShadow={!venta}
         material={m.interior}
       >
         <boxGeometry args={[anchoInterior, util, 0.012]} />
       </mesh>
+      {m.forro && (
+        <>
+          {/* El forro de los costados: de frente se veía el azul de la
+              carrocería por dentro, y la nevera era una caja negra. */}
+          {([-1, 1] as const).map((sx) => (
+            <mesh
+              key={`forro${sx}`}
+              position={[sx * (anchoInterior / 2 - 0.002), yInterior, (NEVERA.fondoPuerta - NEVERA.chapa) / 2]}
+              material={m.forro!}
+            >
+              <boxGeometry args={[0.004, util, fondoInterior]} />
+            </mesh>
+          ))}
+          {/* El techo y la bandeja de abajo. */}
+          <mesh position={[0, NEVERA.zocalo + util - 0.002, (NEVERA.fondoPuerta - NEVERA.chapa) / 2]} material={m.forro}>
+            <boxGeometry args={[anchoInterior, 0.004, fondoInterior]} />
+          </mesh>
+          <mesh position={[0, NEVERA.zocalo + 0.002, (NEVERA.fondoPuerta - NEVERA.chapa) / 2]} material={m.forro}>
+            <boxGeometry args={[anchoInterior, 0.004, fondoInterior]} />
+          </mesh>
+          {/* La luminaria de arriba, detrás de la boca de aire: lo que hace
+              que el mueble se lea encendido desde el otro lado del pasillo. */}
+          <mesh position={[0, h - NEVERA.copete - 0.03, zFrente + 0.11]} material={m.luz}>
+            <boxGeometry args={[anchoInterior - 0.04, 0.012, 0.03]} />
+          </mesh>
+        </>
+      )}
 
       {/* ── Entrepaños de rejilla, con su tira de luz ─────────────────────*/}
       {niveles.map((y) => (
@@ -314,7 +506,7 @@ export const NeveraReal = memo(function NeveraReal({
             position={[0, y, NEVERA.chapa / 2]}
             rotation={[esMural ? MURAL_VEGETALES.caida : 0, 0, 0]}
           >
-            <mesh castShadow receiveShadow material={esMural ? m.cubeta : m.rejilla}>
+            <mesh castShadow receiveShadow material={esMural ? m.cubeta : (m.alambre ?? m.rejilla)}>
               <boxGeometry args={[
                 anchoInterior - 0.01, esMural ? 0.016 : 0.009, fondoInterior,
               ]} />
@@ -334,8 +526,8 @@ export const NeveraReal = memo(function NeveraReal({
           <mesh
             geometry={geometriaPortaPrecios(anchoInterior - 0.02, PORTA_PRECIOS.alto)}
             material={m.marco}
-            position={[0, y - PORTA_PRECIOS.alto / 2 - 0.005,
-                       zFrente + NEVERA.fondoPuerta + 0.012]}
+            position={[0, y - PORTA_PRECIOS.alto / 2 - NEVERA.portaBaja,
+                       zFrente + NEVERA.fondoPuerta + NEVERA.portaAdentro]}
             castShadow
           />
           {/* La tira de LED va bajo el filo del entrepaño, apuntando al

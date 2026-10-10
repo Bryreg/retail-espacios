@@ -263,7 +263,10 @@ class MountConfirmation(Base):
     motivo = Column(String, nullable=True)
     nota = Column(Text, nullable=True)
     # Foto en space_files. Opcional: un "no montado" no siempre tiene qué
-    # fotografiar.
+    # fotografiar. Y vuelve a NULL cuando la foto se borra —a mano
+    # (`routers/files.py::delete_file`) o cinco días después de que termina la
+    # cadena de contratos sin renovación (`services/fotos_vencidas.py`)—: el
+    # reporte queda, sin la foto.
     file_id = Column(Integer, ForeignKey("space_files.id"), nullable=True)
     # Quién reportó. Con cuenta propia lo pone el servidor —el nombre o el
     # correo de la sesión, desde el 2026-10-02—; por el enlace firmado, que no
@@ -278,7 +281,9 @@ class MountConfirmation(Base):
     # Se llena cuando se borra la sede. La fila no se elimina — es la prueba de
     # que algo se montó, y sirve meses después ante un reclamo — pero deja de
     # contar: una sede recreada con el mismo nombre vuelve a usar los mismos
-    # códigos, y sin esto heredaría los "montado" de la sede anterior.
+    # códigos, y sin esto heredaría los "montado" de la sede anterior. La foto
+    # de un montaje archivado tampoco la borra la limpieza de fotos vencidas:
+    # ante la duda, se conserva.
     archivado_en = Column(DateTime(timezone=True), nullable=True, index=True)
 
 
@@ -340,6 +345,11 @@ class LeaseFile(Base):
     ``create_all`` crea tablas que faltan pero nunca agrega columnas a una que
     ya existe, así que esto es de las cosas que sí se pueden hacer sin
     migración.
+
+    El histórico queda mientras dure la relación: cinco días después de que la
+    cadena de contratos (el contrato y sus renovaciones) termina sin
+    renovación, la limpieza del mantenimiento borra la planometría
+    (``services/fotos_vencidas.py``). Sólo las de kind ``planometria``.
     """
     __tablename__ = "lease_files"
 
@@ -394,6 +404,56 @@ class SupplierAsset(Base):
     size = Column(Integer, nullable=False)
     data = Column(LargeBinary, nullable=False)
     uploaded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class SupplierAssetSpec(Base):
+    """La ficha del arte: qué forma tiene el envase y cuánto mide.
+
+    Es lo que decide la ESCALA del producto en el 3D y cuántos frentes entran
+    por entrepaño, que es justamente la cuenta que se negocia. Sin dato propio,
+    la estimación por rubro se equivoca mucho —«yogur» cae en un tetra de 20 cm
+    contra los 9 cm de un vaso de 200 g— y una corrección hecha sólo en la
+    sesión se pierde en cada reunión. ``fondo_foto`` (auto / quitar / conservar)
+    es la única red cuando el recorte automático del fondo falla.
+
+    Tabla NUEVA a propósito, mismo patrón 1:1 que ``SpaceFace``:
+    ``supplier_assets`` no admite una columna nueva porque ``create_all`` crea
+    tablas que faltan pero nunca agrega columnas a una que ya existe (regla dura
+    del repo, sin migraciones). Por lo mismo, ``extra_json`` queda de reserva —
+    lateral, tapa, lo que venga—: una vez desplegada, ESTA tabla tampoco va a
+    poder ganar columnas.
+
+    ``forma`` y ``fondo_foto`` son String y no ``SAEnum``: en Postgres sumar un
+    valor a un enum es un ``ALTER TYPE``, que es una migración. La lista
+    cerrada la hace cumplir ``FichaIn`` en ``routers/catalogo.py``.
+
+    Un arte SIN fila acá no está roto: el navegador estima las medidas por el
+    contenido escrito en el nombre o por el rubro, y lo rotula «≈ estimado».
+    """
+    __tablename__ = "supplier_asset_specs"
+
+    asset_id = Column(Integer, ForeignKey("supplier_assets.id"), primary_key=True)
+    # auto | caja | botella | lata | vaso | frasco | bolsa | otro
+    forma = Column(String, nullable=False, default="auto")
+    alto_mm = Column(Integer, nullable=True)
+    ancho_mm = Column(Integer, nullable=True)
+    fondo_mm = Column(Integer, nullable=True)
+    apilable = Column(Boolean, nullable=False, default=False)
+    acostado = Column(Boolean, nullable=False, default=False)
+    # auto | quitar | conservar
+    fondo_foto = Column(String, nullable=False, default="auto")
+    # El precio al público, en pesos enteros, OPCIONAL: lo que dice el hablador
+    # del porta-precios en la pantalla de venta. Sin cargar, el hablador va sin
+    # cifra — el sistema nunca inventa un precio. Entró antes del primer
+    # despliegue de esta tabla (después ya no podría ganar la columna); en una
+    # base local creada desde la rama hace falta el ALTER que dice ESTADO.md.
+    precio_publico = Column(Integer, nullable=True)
+    extra_json = Column(Text, nullable=True)
+    actualizado_en = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
 
 class LoginAttempt(Base):

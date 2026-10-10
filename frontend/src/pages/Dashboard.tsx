@@ -1,7 +1,10 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText } from "lucide-react";
-import StoreEditor3D from "../components/StoreEditor3D/StoreEditor3D";
+// El editor 3D va en su propio pedazo y se baja al entrar al modo «store»:
+// importado de una, cada carga del tablero (KPIs, Supervisar, Vender) bajaba y
+// parseaba ~160 KB gzip del editor y de la prueba de producto que no usaba.
+const StoreEditor3D = lazy(() => import("../components/StoreEditor3D/StoreEditor3D"));
 import FloorPlan2D from "../components/FloorPlan2D/FloorPlan2D";
 import DashboardView from "./DashboardView";
 import MountView from "./MountView";
@@ -1322,7 +1325,13 @@ export default function Dashboard() {
 
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         {effectiveMode === "store" ? (
-          <StoreEditor3D />
+          <Suspense fallback={
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-3)", fontSize: 13 }}>
+              Abriendo el editor 3D…
+            </div>
+          }>
+            <StoreEditor3D />
+          </Suspense>
         ) : effectiveMode === "montaje" ? (
           <MountView initialCode={mountCode} onDone={() => setViewMode("kpis")} />
         ) : effectiveMode === "kpis" ? (

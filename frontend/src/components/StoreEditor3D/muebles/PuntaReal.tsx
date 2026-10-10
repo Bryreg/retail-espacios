@@ -1,9 +1,13 @@
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo } from "react";
+import * as THREE from "three";
 import {
-  COPETE, PANEL_FONDO, PARANTE, ZOCALO, nivelesDePunta, vanosDeCorrido,
+  COPETE, PANEL_FONDO, PARANTE, ZOCALO, nivelesDePunta, vanosDeCorrido, techoDeCara,
 } from "./medidas";
 import { geometriaMarcoDeCopete } from "./perfiles";
 import { CaraDeEstanteria, useMateriales } from "./piezas";
+import { useLuzDeVenta, useSoltarMateriales } from "./luzDeVenta";
+import { useAtenuacion } from "./atenuacion";
+import { EXPOSICION_DE_LA_CHAPA, materialDeCopeteDeTienda } from "./copeteDeTienda";
 
 /**
  * Una punta de góndola: el mueble que cierra el extremo de un corrido.
@@ -52,14 +56,41 @@ export interface PuntaRealProps {
   statusColor?: string;
   /** Previsualización al colocar: todo translúcido. */
   ghost?: boolean;
+  /** La cara impresa del copete con la marca del producto en prueba
+   *  (`pop.ts`). Sin esto, la chapa clara y neutra de siempre. */
+  copete?: THREE.Material;
+  /** La cenefa con el color de la marca (`materialDeCenefa`): tapa el hueco
+   *  entre el último entrepaño y el copete. Va junto con `copete`. */
+  cenefa?: THREE.Material;
+  /** Sólo en venta: los (entrepaño, vano) con habladores genéricos
+   *  (`tramosConRelleno`). */
+  habladores?: ReadonlySet<string> | null;
 }
 
 export const PuntaReal = memo(function PuntaReal({
-  w, d, h, statusColor, ghost = false,
+  w, d, h, statusColor, ghost = false, copete, cenefa, habladores,
 }: PuntaRealProps) {
   const materiales = useMateriales(ghost, statusColor);
+  // En la pantalla de venta, un copete SIN prueba lleva la chapa de la tienda
+  // (`materialDeCopeteDeTienda`): el blanco liso de siempre, enorme, se leía
+  // como un cartel sin terminar. En el editor, la chapa clara de siempre.
+  const venta = useLuzDeVenta();
+  // Uno por punta, memorizado y soltado con ella: una punta libre VECINA del
+  // mueble que se muestra se atenúa como el resto de su chapa.
+  const deTienda = useMemo(() => ({ chapa: !copete && venta && !ghost ? materialDeCopeteDeTienda() : null }),
+    [copete, venta, ghost]);
+  useSoltarMateriales(deTienda);
+  useAtenuacion([deTienda.chapa], EXPOSICION_DE_LA_CHAPA);
+  const impreso = copete ?? deTienda.chapa ?? undefined;
+  // La chapa impresa: lo impreso va SÓLO en la cara que mira al pasillo (−Z);
+  // los cantos siguen neutros. Dos grupos y no seis (`geometriaDeChapa`): un
+  // arreglo de seis materiales eran seis llamadas por copete.
+  const chapa = useMemo(
+    () => (impreso ? [materiales.precios, impreso] : materiales.precios),
+    [impreso, materiales.precios],
+  );
 
-  const altoDeCuerpo = Math.max(0.4, h - COPETE.alto);
+  const altoDeCuerpo = techoDeCara(h);
   const vanos = useMemo(() => vanosDeCorrido(w), [w]);
   const niveles = useMemo(() => nivelesDePunta(altoDeCuerpo), [altoDeCuerpo]);
 
@@ -69,6 +100,8 @@ export const PuntaReal = memo(function PuntaReal({
   const fondoBase = Math.max(0.05, d - ZOCALO.retranqueo);
 
   const anchoCopete = w + COPETE.vuelo * 2;
+  const geometriaChapa = useMemo(() => geometriaDeChapa(anchoCopete - 0.016, COPETE.alto - 0.016, 0.004), [anchoCopete]);
+  useEffect(() => () => geometriaChapa.dispose(), [geometriaChapa]);
   // El copete va CENTRADO en el fondo y apoyado sobre la tapa del cuerpo, no
   // colgado del filo de adelante. Montado al frente se lee como un cartel
   // suelto flotando por delante del mueble — se probó y se ve exactamente así.
@@ -99,6 +132,7 @@ export const PuntaReal = memo(function PuntaReal({
           niveles={niveles}
           materiales={materiales}
           conRemate={false}
+          habladores={habladores}
         />
       </group>
 
@@ -132,10 +166,21 @@ export const PuntaReal = memo(function PuntaReal({
         {/* La chapa impresa, hundida dentro del marco. Va clara y neutra: es
             del proveedor, y teñirla con el estado comercial la convertiría en
             un semáforo en el lugar donde va una marca. */}
-        <mesh position={[0, 0, -COPETE.fondo + 0.004]} castShadow material={materiales.precios}>
-          <boxGeometry args={[anchoCopete - 0.016, COPETE.alto - 0.016, 0.004]} />
-        </mesh>
+        <mesh position={[0, 0, -COPETE.fondo + 0.004]} castShadow geometry={geometriaChapa} material={chapa} />
       </group>
+
+      {/* ── La cenefa ─────────────────────────────────────────────────────
+          Sólo con la marca en el copete y si el hueco de arriba no sirve
+          para producto (menos de 12 cm): por delante de todo, del último
+          entrepaño —su porta-precios queda a la vista— hasta el copete. */}
+      {cenefa && altoDeCuerpo - niveles[niveles.length - 1] < 0.12 && (
+        <mesh
+          position={[0, (niveles[niveles.length - 1] + altoDeCuerpo) / 2 + 0.002, -d / 2 - 0.004]}
+          material={cenefa}
+        >
+          <boxGeometry args={[w, altoDeCuerpo - niveles[niveles.length - 1] - 0.004, 0.006]} />
+        </mesh>
+      )}
 
       {/* ── La barra de luz ───────────────────────────────────────────────
           Debajo del copete y apuntando al producto. En tienda es lo que hace
@@ -149,3 +194,17 @@ export const PuntaReal = memo(function PuntaReal({
     </group>
   );
 });
+
+/**
+ * La chapa del copete: una caja con DOS grupos, los cinco cantos (material 0)
+ * y la cara que mira al pasillo (−Z, material 1). `BoxGeometry` ordena +X,
+ * −X, +Y, −Y, +Z, −Z, seis índices cada una. Con un solo material se dibuja
+ * entera de una vez; con dos, en dos llamadas.
+ */
+export function geometriaDeChapa(ancho: number, alto: number, fondo: number): THREE.BoxGeometry {
+  const g = new THREE.BoxGeometry(ancho, alto, fondo);
+  g.clearGroups();
+  g.addGroup(0, 30, 0);
+  g.addGroup(30, 6, 1);
+  return g;
+}

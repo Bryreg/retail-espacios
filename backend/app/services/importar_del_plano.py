@@ -155,10 +155,9 @@ def _motivo(proveedor: str, desde: date | None, hasta: date | None) -> str | Non
     return None
 
 
-def revisar(db: Session) -> Importacion:
-    """Qué habría para importar. **No escribe una sola fila.**"""
-    salida = Importacion()
-
+def _caras_de_los_planos(db: Session):
+    """Cada cara que el JSON de algún plano da por vendida, leída del snapshot
+    crudo: ``(sede, corto, completo, cara, proveedor, desde, hasta)``."""
     for snap in db.query(LayoutSnapshot).all():
         sede = (snap.sede or "").strip().upper()
         try:
@@ -167,43 +166,64 @@ def revisar(db: Session) -> Importacion:
             continue
         if not isinstance(fixtures, list):
             continue
-
         for corto, cara in caras_vendidas(fixtures):
-            completo = _full_code(corto, sede)
             desde, hasta = _fecha(cara.get("startDate")), _fecha(cara.get("endDate"))
             proveedor = (cara.get("supplierName") or "").strip()
+            yield sede, corto, _full_code(corto, sede), cara, proveedor, desde, hasta
 
-            motivo = _motivo(proveedor, desde, hasta)
-            if motivo:
-                residuo = _es_residuo(cara, proveedor, desde, hasta)
-                salida.incompletos.append(Incompleto(
-                    espacio=completo, sede=sede, code=corto,
-                    proveedor=proveedor,
-                    desde=(cara.get("startDate") or ""),
-                    hasta=(cara.get("endDate") or ""),
-                    motivo=(
-                        "marcado «Ocupado» a mano en el plano, sin contrato detrás"
-                        if residuo else motivo
-                    ),
-                    marca=(cara.get("brandCategory") or "").strip(),
-                    valor=float(cara.get("negotiatedValue") or 0),
-                    residuo=residuo,
-                ))
-                continue
 
-            space = db.query(Space).filter(Space.code == completo).first()
-            if space and (space.active_lease or space.upcoming_lease):
-                salida.ya_estaban += 1
-                continue
+def contratos_en_el_plano(db: Session) -> list[tuple[str, str, date | None, date | None]]:
+    """TODOS los contratos que viven en el JSON de los planos, crudos:
+    ``(código completo, proveedor, desde, hasta)``. Sin los «Ocupado» puestos a
+    mano (residuo: ahí no hay contrato) y **sin** el filtro de ``revisar``, que
+    da uno por importado apenas el espacio tiene en la base CUALQUIER contrato
+    vivo o próximo, sin mirar de quién es ni sus fechas. Para la limpieza de
+    fotos (``services/fotos_vencidas.py``) eso no alcanza: la renovación que
+    vive sólo en el plano no puede quedar tapada por el contrato futuro de otro
+    proveedor."""
+    return [
+        (completo, proveedor, desde, hasta)
+        for _, _, completo, cara, proveedor, desde, hasta in _caras_de_los_planos(db)
+        if not _es_residuo(cara, proveedor, desde, hasta)
+    ]
 
-            salida.importables.append(ContratoDelPlano(
+
+def revisar(db: Session) -> Importacion:
+    """Qué habría para importar. **No escribe una sola fila.**"""
+    salida = Importacion()
+
+    for sede, corto, completo, cara, proveedor, desde, hasta in _caras_de_los_planos(db):
+        motivo = _motivo(proveedor, desde, hasta)
+        if motivo:
+            residuo = _es_residuo(cara, proveedor, desde, hasta)
+            salida.incompletos.append(Incompleto(
                 espacio=completo, sede=sede, code=corto,
                 proveedor=proveedor,
+                desde=(cara.get("startDate") or ""),
+                hasta=(cara.get("endDate") or ""),
+                motivo=(
+                    "marcado «Ocupado» a mano en el plano, sin contrato detrás"
+                    if residuo else motivo
+                ),
                 marca=(cara.get("brandCategory") or "").strip(),
-                desde=desde.isoformat(), hasta=hasta.isoformat(),
                 valor=float(cara.get("negotiatedValue") or 0),
-                observacion=(cara.get("observation") or "").strip(),
+                residuo=residuo,
             ))
+            continue
+
+        space = db.query(Space).filter(Space.code == completo).first()
+        if space and (space.active_lease or space.upcoming_lease):
+            salida.ya_estaban += 1
+            continue
+
+        salida.importables.append(ContratoDelPlano(
+            espacio=completo, sede=sede, code=corto,
+            proveedor=proveedor,
+            marca=(cara.get("brandCategory") or "").strip(),
+            desde=desde.isoformat(), hasta=hasta.isoformat(),
+            valor=float(cara.get("negotiatedValue") or 0),
+            observacion=(cara.get("observation") or "").strip(),
+        ))
 
     return salida
 

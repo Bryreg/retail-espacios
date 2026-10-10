@@ -336,6 +336,41 @@ def test_un_proveedor_que_ya_existe_no_avisa_de_nuevo(client, admin):
     assert fila["proveedor_nuevo"] is False
 
 
+def test_confirmar_reusa_el_proveedor_que_la_revision_reconocio(client, admin, monkeypatch):
+    """La revisión compara sin mayúsculas y no avisó «Proveedor nuevo» para
+    «Bic» porque ya existe «BIC»: confirmar no puede crear otro en silencio.
+    Dos proveedores para el mismo parten el historial, y la limpieza de fotos
+    tomaría la renovación por otro proveedor. La constancia va al correo del
+    que ya existía."""
+    import app.routers.bulk_leases as bulk
+
+    _plano(client, admin)
+    bic = client.post("/api/suppliers/find-or-create",
+                      json={"name": "BIC", "email": "trade@bic.co"}, headers=admin).json()
+    fila = _fila(proveedor="  Bic ")
+    assert _validar(client, admin, [fila]).json()["filas"][0]["proveedor_nuevo"] is False
+
+    enviados: list = []
+    monkeypatch.setattr(bulk, "correo_configurado", lambda: True)
+    monkeypatch.setattr(bulk, "send_mail_to_bg", lambda to, *a, **kw: enviados.append(list(to)))
+    cuerpo = _confirmar(client, admin, [fila]).json()
+    assert cuerpo["creados"] == 1
+
+    nombres = [s["name"] for s in client.get("/api/suppliers/", headers=admin).json()]
+    assert "Bic" not in nombres and nombres.count("BIC") == 1
+    from app.database import SessionLocal
+    from app.models.models import SpaceLease
+
+    db = SessionLocal()
+    try:
+        lease = db.get(SpaceLease, cuerpo["filas"][0]["lease_id"])
+        assert lease.supplier_id == bic["id"]
+    finally:
+        db.close()
+    assert cuerpo["avisos"]["proveedor"] == ["trade@bic.co"]
+    assert ["trade@bic.co"] in enviados
+
+
 # ─── Permisos y límites ───────────────────────────────────────────────────────
 
 def test_el_mercaderista_no_carga_planillas(client, admin, worker):

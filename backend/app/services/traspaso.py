@@ -64,7 +64,7 @@ TABLAS_DEL_CLIENTE = frozenset({
     "suppliers", "spaces", "space_leases", "layout_snapshots",
     "renumeracion_nombres", "app_config", "space_files", "space_faces",
     "mount_confirmations", "archived_spaces", "notification_logs",
-    "lease_files", "supplier_assets", "login_attempts", "audit_log",
+    "lease_files", "supplier_assets", "supplier_asset_specs", "login_attempts", "audit_log",
 })
 
 # Las que guardan archivos enteros: se copian de a pocas filas para no cargar

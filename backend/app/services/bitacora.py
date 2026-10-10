@@ -47,6 +47,12 @@ ACCIONES = {
     "contrato.importado": "Contratos importados del plano",
     "contrato.barrido": "Empezar de cero: contratos y planos limpiados",
     "copia.descarga": "Copia de seguridad descargada",
+    # La escribe el mantenimiento, sin usuario (sale «sistema · desconocida»):
+    # las fotos de montaje y las planometrías de contratos terminados hace más
+    # de 5 días sin renovación. No termina en «.baja» a propósito: es una tarea
+    # esperada y la pantalla pinta de rojo lo que termina así. Ver
+    # `services/fotos_vencidas.py`.
+    "archivo.vencido": "Fotos y planometrías vencidas, borradas",
 }
 
 # Lo que ya no puede pasar (2026-10-02) y por eso el filtro de la pantalla no lo

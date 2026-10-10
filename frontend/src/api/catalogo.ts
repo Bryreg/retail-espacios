@@ -1,5 +1,7 @@
 import client from "./client";
 import { useAuthStore } from "../store/authStore";
+// Sólo el TIPO: `producto.ts` sigue siendo puro y no arrastra la API.
+import type { FichaDeArte } from "../components/StoreEditor3D/muebles/producto";
 
 /**
  * El catálogo de artes de los proveedores.
@@ -21,6 +23,9 @@ export interface Arte {
   content_type: string;
   size: number;
   uploaded_at?: string | null;
+  /** Forma y medidas del envase, si alguien las cargó. Sin ficha, el 3D las
+   *  estima por el contenido o por el rubro y lo rotula «≈». */
+  ficha?: FichaDeArte | null;
 }
 
 export const listarCatalogo = (supplierId?: number): Promise<Arte[]> =>
@@ -37,16 +42,26 @@ export const subirArte = (input: {
   nombre: string;
   categoria?: string;
   archivo: File;
+  /** La ficha va en el MISMO formulario: el servidor la valida antes de leer
+   *  el archivo y la guarda en el mismo commit que el arte. */
+  ficha?: Partial<FichaDeArte>;
 }): Promise<Arte> => {
   const form = new FormData();
   form.append("supplier_id", String(input.supplierId));
   form.append("nombre", input.nombre);
   if (input.categoria) form.append("categoria", input.categoria);
+  for (const [campo, valor] of Object.entries(input.ficha ?? {})) {
+    if (valor !== null && valor !== undefined) form.append(campo, String(valor));
+  }
   form.append("file", input.archivo);
   return client
     .post<Arte>("/catalogo/", form, { timeout: TIMEOUT_SUBIDA })
     .then((r) => r.data);
 };
+
+/** Crea o reemplaza la ficha de un arte ya cargado. Sólo administración. */
+export const guardarFicha = (arteId: number, ficha: FichaDeArte): Promise<Arte> =>
+  client.put<Arte>(`/catalogo/${arteId}/ficha`, ficha).then((r) => r.data);
 
 export const borrarArte = (id: number): Promise<void> =>
   client.delete(`/catalogo/${id}`).then(() => undefined);

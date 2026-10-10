@@ -8,6 +8,7 @@ import FormularioMontaje, {
 import type { MountConfirmation } from "../api/mounts";
 import type { UnifiedFixture } from "../types/fixtures";
 import { nombreDeMueble } from "../utils/nomenclatura";
+import { textoDelReporte } from "../utils/montajeDelContrato";
 import { TemaToggle } from "../tema";
 
 /**
@@ -197,9 +198,11 @@ export default function Montaje() {
             </b>
           </div>
           <div style={{ fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
-            {reportado.estado === "montado"
-              ? "La foto quedó guardada como prueba de que la exhibición está armada."
-              : "Quedó registrado el motivo para que se pueda reclamar."}
+            {/* El reporte puede quedar sin la foto: la limpieza la borra
+                cinco días después de que el contrato termina sin renovación
+                (`services/fotos_vencidas.py`) y un admin la puede borrar para
+                que la repitan. `textoDelReporte` no dice la causa. */}
+            {textoDelReporte(reportado)}
             {reportado.reportado_por ? ` Lo reportó ${reportado.reportado_por}.` : ""}
           </div>
           <button

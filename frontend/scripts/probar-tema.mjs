@@ -661,4 +661,22 @@ prueba("el botón principal tiene contorno propio contra la tarjeta y contra el 
   assert.deepEqual(flojos, [], `el botón amarillo no tiene contorno:\n         ${flojos.join("\n         ")}`);
 });
 
+prueba("adentro del cajón oscuro el acento es claro también en el tema claro", () => {
+  // Una propiedad personalizada se resuelve donde se DECLARA y se hereda ya
+  // resuelta: `--accent-rgb: var(--ink-1-rgb)` en `:root` le pasaba al cajón
+  // la tinta casi negra del tema claro, aunque el cajón redefiniera
+  // `--ink-1-rgb`. «Cara A» o «Toda la cara» activos quedaban invisibles
+  // sobre la sala del editor 3D. El cajón tiene que volver a declararla.
+  const cajon = bloques(temaCss).filter((b) => /\[data-cajon-oscuro\]/.test(b.sel) && !/\s/.test(b.sel.trim()));
+  assert.ok(cajon.length > 0, "no se encontró el bloque [data-cajon-oscuro]");
+  const p = Object.assign({}, ...cajon.map((b) => props(b.cuerpo)));
+  assert.match(p["--accent-rgb"] ?? "", /var\(--ink-1-rgb\)/, "el cajón no redeclara --accent-rgb");
+  assert.match(p["--accent"] ?? "", /rgb\(var\(--accent-rgb\)\)/, "el cajón no redeclara --accent");
+  // Y se lee: la tinta clara del cajón sobre su superficie.
+  const tinta = p["--ink-1-rgb"].trim().split(/\s+/).map(Number);
+  const fondo = p["--surface-2-rgb"].trim().split(/\s+/).map(Number);
+  const c = contraste({ r: tinta[0], g: tinta[1], b: tinta[2], a: 1 }, { r: fondo[0], g: fondo[1], b: fondo[2], a: 1 });
+  assert.ok(c >= 3, `el acento activo da ${c.toFixed(2)}:1 sobre el cajón`);
+});
+
 console.log(`\n${hechas} pruebas del tema`);

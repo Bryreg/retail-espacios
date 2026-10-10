@@ -97,7 +97,9 @@ def escenario(client, admin, monkeypatch):
     """Galerías con datos de práctica, suspendida; Pepito con los reales."""
     from app.clientes import sesion_registro
     from app.database import engine as motor_principal
-    from app.models.models import AppConfig, Space, SpaceFile, SpaceLease, Supplier
+    from app.models.models import (
+        AppConfig, Space, SpaceFile, SpaceLease, Supplier, SupplierAsset, SupplierAssetSpec,
+    )
     from app.models.plataforma import SnapshotMetricas
     from sqlalchemy.orm import Session
 
@@ -139,6 +141,16 @@ def escenario(client, admin, monkeypatch):
                          monthly_rent=1_234_567, is_active=True))
         s.add(SpaceFile(space_id=espacio.id, filename="contrato.pdf", content_type="application/pdf",
                         size=5, data=b"%PDF-"))
+        # Un arte del catálogo con su ficha: la ficha vive en otra tabla
+        # (`supplier_asset_specs`) y tiene que viajar con el arte.
+        arte = SupplierAsset(supplier_id=prov.json()["id"], nombre="Yogur Real 200 g",
+                             categoria="Lácteos", filename="yogur.png", content_type="image/png",
+                             size=4, data=b"\x89PNG")
+        s.add(arte)
+        s.flush()
+        s.add(SupplierAssetSpec(asset_id=arte.id, forma="vaso", alto_mm=90, ancho_mm=75,
+                                fondo_mm=75, apilable=True, acostado=False, fondo_foto="auto",
+                                precio_publico=4900))
         s.merge(AppConfig(key="notify_emails", value="real@galerias.co"))
         s.commit()
     # Algo de práctica con archivo, para ver que se va.
@@ -208,6 +220,9 @@ def test_los_datos_de_pepito_pasan_a_galerias_identicos(client, escenario):
         if not clave.startswith("token_epoch_"):
             assert config[clave] == valor, clave
     assert config.get("generacion_datos")
+    # La ficha del arte viajó con su precio al público (el del hablador).
+    assert any(4900 in fila for fila in despues_principal["supplier_asset_specs"]), \
+        despues_principal["supplier_asset_specs"]
     # Y el origen quedó intacto, de respaldo.
     assert _contenido(escenario.motor_pepito) == antes_pepito
 

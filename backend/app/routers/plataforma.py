@@ -591,7 +591,7 @@ def archivar_cliente(slug: str, payload: MotivoIn, email: str = Depends(require_
 
 @router.post("/clientes/{slug}/reactivar")
 def reactivar_cliente(slug: str, payload: MotivoIn, email: str = Depends(require_operador)):
-    from app.clientes import nombre_ocupado
+    from app.clientes import _fila_a_cliente, nombre_ocupado, preparar_esquema
     from app.plataforma_metricas import periodo_actual
 
     _motivo_o_422(payload)
@@ -610,8 +610,18 @@ def reactivar_cliente(slug: str, payload: MotivoIn, email: str = Depends(require
         fila.activo = True
         reg.commit()
         resultado = _fila_de_consola(fila)
+        cliente = _fila_a_cliente(fila)
     finally:
         reg.close()
+
+    # Las tablas que se desplegaron mientras estaba archivado: el arranque sólo
+    # prepara a los activos, y sin esto el catálogo (`supplier_asset_specs`)
+    # daba 500 hasta el próximo reinicio. Si falla, la reactivación queda
+    # hecha igual y el próximo arranque lo vuelve a intentar.
+    try:
+        preparar_esquema(cliente)
+    except Exception:  # noqa: BLE001
+        log.exception("No se pudo preparar la base de %s al reactivarlo", cliente.slug)
 
     _olvidar_caches_de_consola()
     _anotar_consulta(email, "reactivacion", f"{resultado['slug']}:{periodo_actual()}")

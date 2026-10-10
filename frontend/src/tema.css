@@ -620,7 +620,15 @@ html[data-tema="oscuro"] {
   --ink-3-rgb: 120 138 148;   /* #788A94 — el mismo del oscuro: 4,50:1 sobre --surface-2 del cajón (verificador) */
   --ink-4-rgb: 110 129 144;   /* #6E8190 — 4,71:1 sobre --surface oscuro */
 
-  /* La tinta invertida: el acento es claro y lo que va encima es la sala. */
+  /* La tinta invertida: el acento es claro y lo que va encima es la sala.
+     `--accent-rgb` se vuelve a declarar ACÁ aunque en `:root` ya diga
+     `var(--ink-1-rgb)`: una propiedad personalizada se resuelve donde se
+     declara y lo que se hereda es el valor ya resuelto, así que sin esta
+     línea el cajón heredaba la tinta CASI NEGRA del tema claro y una
+     pestaña activa `bg-accent` («Cara A», «Toda la cara») quedaba invisible
+     sobre la sala. */
+  --accent-rgb:     var(--ink-1-rgb);
+  --accent:         rgb(var(--accent-rgb));
   --accent-ink-rgb: 4 7 10;   /* #04070A */
 
   /* El amarillo del botón principal de este cajón es el de modo oscuro, con su
