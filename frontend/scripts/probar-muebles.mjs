@@ -2901,6 +2901,11 @@ prueba("la sombra de las uniones: cuánto y dónde", () => {
   const enPantalla = (k, base) => srgb(aces(entrada(base) * k)) / base;
   assert.ok(1 - enPantalla(S.siguiente, 170) >= 0.12, `el segundo listón sale ${(100 * (1 - enPantalla(S.siguiente, 170))).toFixed(1)} % más oscuro`);
   assert.ok(1 - enPantalla(S.debajo, 170) >= 0.18);
+  // Y contra el panel a media altura DE VERDAD: entre dos entrepaños ningún
+  // listón queda limpio, el del medio es el tercero (medido en GON-02 de
+  // cerca: el segundo a 148 contra 161-170, un 10 %, con 0,74).
+  assert.ok(1 - enPantalla(S.siguiente / S.tercero, 165) >= 0.12,
+    `el segundo listón sale ${(100 * (1 - enPantalla(S.siguiente / S.tercero, 165))).toFixed(1)} % más oscuro que el tercero`);
   assert.ok(1 - enPantalla(a.fondo, 215) >= 0.10, `la unión sale ${(100 * (1 - enPantalla(a.fondo, 215))).toFixed(1)} % más oscura`);
 });
 
@@ -3927,9 +3932,42 @@ prueba("el hablador: el nombre sin cifras y el precio SÓLO si alguien lo cargó
   const gen = lienzoFalso();
   let escritos = 0;
   gen.fillText = () => { escritos++; };
-  H.pintarHabladoresGenericos(gen, 256, 32);
+  H.pintarHabladoresGenericos(gen, 256, 64);
   assert.equal(escritos, 0, "el hablador genérico escribe: se leería lo de otro proveedor");
   assert.ok(gen.rects.length >= 4, "el hablador genérico no dibuja la etiqueta");
+});
+
+prueba("el hablador genérico va en lo que se VE de la tira, no detrás del labio", () => {
+  // La ventana, medida sobre las geometrías puestas como las pone
+  // `CaraDeEstanteria`: la tira centrada en el plano de apoyo, en
+  // z = −(fondo + saliente); el entrepaño con su labio en z = −fondo.
+  const fondo = 0.4, alto = M.PORTA_PRECIOS.alto;
+  const ent = G.geometriaEntrepano(0.9, fondo).clone();
+  const tira = G.geometriaPortaPrecios(0.9, alto).clone();
+  tira.translate(0, -alto / 2, -(fondo + M.PORTA_PRECIOS.saliente));
+  // La cara de la tira (la que sube inclinada): sus vértices quedan DETRÁS
+  // del frente del labio, que la tapa de su borde de abajo para arriba.
+  const pe = ent.getAttribute("position"), pt = tira.getAttribute("position");
+  let frenteDelLabio = Infinity, bajoDelLabio = Infinity;
+  for (let i = 0; i < pe.count; i++) frenteDelLabio = Math.min(frenteDelLabio, pe.getZ(i));
+  for (let i = 0; i < pe.count; i++) if (pe.getZ(i) < frenteDelLabio + 0.003) bajoDelLabio = Math.min(bajoDelLabio, pe.getY(i));
+  let caraMasAdelante = -Infinity;
+  for (let i = 0; i < pt.count; i++) if (pt.getY(i) > bajoDelLabio + 1e-4) caraMasAdelante = Math.max(caraMasAdelante, -pt.getZ(i));
+  assert.ok(caraMasAdelante <= -frenteDelLabio + 1e-6, "la tira asoma por delante del labio: la ventana ya no es ésa");
+  const ventana = (bajoDelLabio + alto / 2) / alto;
+  assert.ok(Math.abs(ventana - H.VENTANA_DE_LA_TIRA) < 0.03, `se ve ${ventana.toFixed(3)} de la tira y la etiqueta cuenta ${H.VENTANA_DE_LA_TIRA.toFixed(3)}`);
+  // La etiqueta (todo lo que no es el fondo) cae entera en la ventana: en el
+  // lienzo, de la fila H·(1 − ventana) al borde de abajo.
+  for (const H_ of [32, 64]) {
+    const g = lienzoFalso();
+    H.pintarHabladoresGenericos(g, 256, H_);
+    const etiqueta = g.rects.slice(1);
+    assert.ok(etiqueta.some((r) => r.color === "#f2c230"), "el genérico sin franja amarilla");
+    for (const r of etiqueta) {
+      assert.ok(r.y >= H_ * (1 - ventana) - 0.5 && r.y + r.h <= H_ + 1e-9,
+        `con ${H_} filas, ${r.color} cae en las filas ${r.y}–${r.y + r.h}, fuera de lo que se ve (${(H_ * (1 - ventana)).toFixed(1)}–${H_})`);
+    }
+  }
 });
 
 prueba("un hablador de un arte ajeno no sale en una pantalla privada", () => {
@@ -4180,6 +4218,34 @@ prueba("la banda del relleno: clara en el medio, el borde abajo y arriba, y bara
     assert.ok(Math.abs(abajo - borde) < 1e-6 && Math.abs(arriba - borde) < 1e-6, `${forma}: la base o la tapa no llevan el borde`);
     // Es el envase más repetido de la tienda: la banda cuesta poco.
     assert.ok(tris(conBanda) <= tris(lisa) * (forma === "caja" ? 20 / 12 : 1.5), `${forma}: ${tris(lisa)} → ${tris(conBanda)} triángulos`);
+  }
+  // La caja, con la etiqueta de corte NETO en las dos caras grandes: en cada
+  // borde de la etiqueta hay vértices con los dos tonos a la misma altura (un
+  // degradé de la base al medio se leía como un bloque de un color).
+  const caja = G.geometriaDeEmpaque("caja", 0.1, 0.25, 0.07, false, true);
+  const p = caja.getAttribute("position"), c = caja.getAttribute("color"), n = caja.getAttribute("normal");
+  for (const [b, nombre] of [[G.BANDA_DE_ETIQUETA.caja[0], "abajo"], [G.BANDA_DE_ETIQUETA.caja[1], "arriba"]]) {
+    for (const sz of [1, -1]) {
+      const tonos = new Set();
+      for (let i = 0; i < p.count; i++) {
+        if (Math.abs(n.getZ(i) - sz) > 1e-6 || Math.abs((p.getY(i) + 0.125) / 0.25 - b) > 1e-6) continue;
+        tonos.add(c.getX(i).toFixed(3));
+      }
+      assert.deepEqual([...tonos].sort(), [clara, borde].map((k) => k.toFixed(3)).sort(),
+        `caja, cara ${sz > 0 ? "+" : "−"}Z: el borde ${nombre} de la etiqueta no es neto (${[...tonos]})`);
+    }
+  }
+  // Las normales salen hacia afuera (la caja es a mano, no un BoxGeometry).
+  for (let i = 0; i < p.count; i++) {
+    const d = p.getX(i) * n.getX(i) + p.getY(i) * n.getY(i) + p.getZ(i) * n.getZ(i);
+    assert.ok(d > 0, `caja: una normal mira hacia adentro en el vértice ${i}`);
+  }
+  for (let t = 0; t < p.count; t += 3) {
+    const v = (k) => [p.getX(t + k), p.getY(t + k), p.getZ(t + k)];
+    const [a, b, d] = [v(0), v(1), v(2)];
+    const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [d[0] - a[0], d[1] - a[1], d[2] - a[2]];
+    const cr = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+    assert.ok(cr[0] * n.getX(t) + cr[1] * n.getY(t) + cr[2] * n.getZ(t) > 0, `caja: el triángulo ${t / 3} está al revés`);
   }
 });
 

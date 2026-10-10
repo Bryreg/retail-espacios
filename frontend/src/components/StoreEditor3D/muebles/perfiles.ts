@@ -213,8 +213,15 @@ export function geometriaEntrepanoDeVenta(ancho: number, fondo: number): THREE.B
  *  (0,72 y 0,86, dos listones) no se veía: en las tomas desde 1,25 m el listón
  *  de justo debajo queda tapado por el labio y el porta-precios de los
  *  entrepaños bajos, el que se ve es el SEGUNDO, y con el tono de la escena
- *  (ACES) un 0,86 sale apenas un 7 % más oscuro en pantalla. */
-export const SOMBRA_DE_LISTON = { debajo: 0.62, siguiente: 0.74, tercero: 0.86, encima: 0.82 } as const;
+ *  (ACES) un 0,86 sale apenas un 7 % más oscuro en pantalla.
+ *
+ *  La segunda (0,62 / 0,74) tampoco alcanzaba, medida en la captura: entre
+ *  dos entrepaños de 33-37 cm NINGÚN listón queda limpio, así que «el panel a
+ *  media altura» es el tercero, no uno a 1,0. En GON-02 de cerca, el segundo
+ *  salía a 148 sRGB contra 161-170 del tercero: un 10 % más oscuro, y la
+ *  crítica pide 12. Con 0,64 contra 0,86 (y el de debajo, que casi no se ve,
+ *  a 0,55) la diferencia en pantalla pasa del 15 %. */
+export const SOMBRA_DE_LISTON = { debajo: 0.55, siguiente: 0.64, tercero: 0.86, encima: 0.82 } as const;
 export function sombraDeListon(y: number, altoDeLama: number, paso: number, niveles: readonly number[]): number {
   let k = 1;
   const arriba = y + altoDeLama / 2;  // el canto de arriba del listón
@@ -702,7 +709,51 @@ export function geometriaDeEmpaque(
  * oscura en la base y el hombro. Sin marca ni texto —sigue siendo relleno—,
  * pero el lineal deja de ser una pared de bloques de un color.
  */
-export const BANDA_DE_ETIQUETA = { clara: 1.12, borde: 0.94 } as const;
+export const BANDA_DE_ETIQUETA = {
+  /** 1,12 y 0,94 eran un degradé suave de la base al medio de la caja: en las
+   *  capturas de los vecinos (bolsa-5, PUN-02 de cerca) el relleno seguía
+   *  siendo una pared de bloques de un color. Con el corte neto y 1,3 contra
+   *  0,86, cada caja tiene su etiqueta. */
+  clara: 1.3,
+  borde: 0.86,
+  /** Dónde va la etiqueta de la caja, por alto relativo: como en una de
+   *  verdad, en el cuerpo y no pegada a la base. */
+  caja: [0.28, 0.72] as const,
+} as const;
+
+/**
+ * La caja del relleno con la etiqueta en las dos caras grandes (±Z: la que
+ * mira al pasillo en la cara A y en la B), de corte NETO: cada cara en tres
+ * franjas con sus propios vértices, así el color no se interpola entre la
+ * etiqueta y el borde. Los costados, la tapa y la base van con el borde.
+ * Son 20 triángulos, los mismos que la de dos tramos que reemplaza (la lisa
+ * tiene 12): es el envase más repetido de la tienda.
+ */
+function cajaConEtiqueta(ancho: number, alto: number, fondo: number): THREE.BufferGeometry {
+  const { clara, borde, caja: [b0, b1] } = BANDA_DE_ETIQUETA;
+  const x = ancho / 2, y = alto / 2, z = fondo / 2;
+  const pos: number[] = [], nor: number[] = [], col: number[] = [];
+  /** Un cuadrilátero (a, b, c, d en sentido antihorario visto desde afuera). */
+  const quad = (a: number[], b: number[], c: number[], d: number[], n: number[], k: number) => {
+    for (const p of [a, b, c, a, c, d]) { pos.push(p[0], p[1], p[2]); nor.push(n[0], n[1], n[2]); col.push(k, k, k); }
+  };
+  const alturas = [-y, -y + alto * b0, -y + alto * b1, y];
+  const tonos = [borde, clara, borde];
+  for (let i = 0; i < 3; i++) {
+    const y0 = alturas[i], y1 = alturas[i + 1];
+    quad([-x, y0, z], [x, y0, z], [x, y1, z], [-x, y1, z], [0, 0, 1], tonos[i]);      // +Z
+    quad([x, y0, -z], [-x, y0, -z], [-x, y1, -z], [x, y1, -z], [0, 0, -1], tonos[i]); // −Z
+  }
+  quad([x, -y, z], [x, -y, -z], [x, y, -z], [x, y, z], [1, 0, 0], borde);             // +X
+  quad([-x, -y, -z], [-x, -y, z], [-x, y, z], [-x, y, -z], [-1, 0, 0], borde);        // −X
+  quad([-x, y, z], [x, y, z], [x, y, -z], [-x, y, -z], [0, 1, 0], borde);             // tapa
+  quad([-x, -y, -z], [x, -y, -z], [x, -y, z], [-x, -y, z], [0, -1, 0], borde);        // base
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  return g;
+}
 
 /** El envase del relleno con la banda (venta). Mismas siluetas, con los
  *  vértices que hacen falta para que el color cambie en la banda. */
@@ -716,13 +767,10 @@ function conBandaDeEtiqueta(
   /** La banda, por altura relativa del envase (0 abajo, 1 arriba). */
   let banda: (f: number) => number = () => 1;
   if (forma === "caja") {
-    // Dos tramos de alto, no cuatro: el color va del borde (base y tapa) a la
-    // banda clara en el medio, interpolado. Con cuatro eran 36 triángulos por
-    // caja; con dos, 20 (la caja lisa tiene 12). Es el envase más repetido de
-    // la tienda: en bolsa-4 se dibujan 3.540 por cuadro, contando la sombra,
-    // y con cuatro tramos sumaban 127 K triángulos.
-    g = new THREE.BoxGeometry(ancho, alto, fondo, 1, 2, 1);
-    banda = (f) => (f < 0.01 || f > 0.99 ? borde : clara);
+    // La etiqueta en las caras grandes, con corte neto (`cajaConEtiqueta`).
+    // No más triángulos que la de dos tramos: en bolsa-4 se dibujan 1.770
+    // cajas del relleno por cuadro, y con cuatro tramos sumaban 127 K.
+    return cajaConEtiqueta(ancho, alto, fondo);
   } else if (forma === "botella" || forma === "lata") {
     // El mismo perfil de `geometriaDeEmpaque`, con dos puntos más en el
     // cuerpo: los bordes de la banda.

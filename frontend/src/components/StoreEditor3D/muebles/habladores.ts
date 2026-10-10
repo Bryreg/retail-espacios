@@ -25,6 +25,7 @@
  */
 import type { GrupoDeRelleno } from "./frentes";
 import type { Vano } from "./medidas";
+import { ENTREPANO, PORTA_PRECIOS } from "./medidas";
 
 /** El hablador: 6 × 2,6 cm, como uno de verdad sobre una tira de 3 cm. */
 export const HABLADOR = {
@@ -131,17 +132,34 @@ function recortarTexto(g: Lienzo2D, texto: string, maximo: number): string {
 export const TRAMO_GENERICO = 0.35;
 
 /**
+ * Lo que se VE de la tira de la góndola y la punta, como fracción de su alto
+ * desde el borde de abajo (la `v` de su UV). La tira va centrada en el plano
+ * de apoyo y montada detrás del labio del entrepaño (`CaraDeEstanteria`), que
+ * sube 3 cm desde 2 mm por debajo de ese plano: la mitad de arriba queda
+ * tapada, y a la vista sólo queda del borde de abajo hasta el espesor del
+ * entrepaño, ≈ 0,43. La primera versión centraba la etiqueta en la tira
+ * entera y en las capturas se veía sólo su mitad de abajo —una raya gris, sin
+ * la franja amarilla—: no se leía como un hablador.
+ */
+export const VENTANA_DE_LA_TIRA = (PORTA_PRECIOS.alto / 2 - ENTREPANO.espesor) / PORTA_PRECIOS.alto;
+
+/**
  * La textura de los habladores GENÉRICOS (lo vendido a otros): sobre el color
  * de la tira, una etiqueta por tramo de ~35 cm, blanca con la franja amarilla y
- * dos rayas grises. Sin texto — no llama a `fillText` —: desde la pantalla del
- * proveedor no se lee de quién es ni cuánto cuesta lo de al lado.
+ * dos rayas grises, dentro de lo que se ve de la tira (`VENTANA_DE_LA_TIRA`).
+ * Sin texto — no llama a `fillText` —: desde la pantalla del proveedor no se
+ * lee de quién es ni cuánto cuesta lo de al lado.
  */
 export function pintarHabladoresGenericos(g: Lienzo2D, W: number, H: number): void {
   g.fillStyle = "#f7f5ef";
   g.fillRect(0, 0, W, H);
   const ancho = Math.round(W * (HABLADOR.ancho / TRAMO_GENERICO));
-  const alto = Math.round(H * (HABLADOR.alto / 0.03));
-  const x = Math.round(W * 0.08), y = Math.round((H - alto) / 2);
+  // La ventana va de la fila `arriba` al borde de abajo del lienzo (el lienzo
+  // se sube con `flipY`: su fila 0 es la `v` = 1, el borde de arriba de la
+  // tira). La etiqueta la llena con un margen de un 8 %.
+  const ventana = H * VENTANA_DE_LA_TIRA, arriba = H - ventana;
+  const alto = Math.max(3, Math.round(ventana * 0.84));
+  const x = Math.round(W * 0.08), y = Math.round(arriba + (ventana - alto) / 2);
   g.fillStyle = "#ffffff";
   g.fillRect(x, y, ancho, alto);
   g.fillStyle = AMARILLO;

@@ -127,7 +127,9 @@ let genericos: THREE.CanvasTexture | null = null;
 function texturaDeHabladoresGenericos(): THREE.CanvasTexture {
   if (genericos) return genericos;
   const c = document.createElement("canvas");
-  c.width = 256; c.height = 32;
+  // 64 de alto: la etiqueta ocupa sólo lo que se ve de la tira (menos de la
+  // mitad, `VENTANA_DE_LA_TIRA`), y con 32 la franja amarilla eran 3 filas.
+  c.width = 256; c.height = 64;
   pintarHabladoresGenericos(c.getContext("2d")!, c.width, c.height);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
