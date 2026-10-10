@@ -943,10 +943,6 @@ export function ladosPorLibre(
   return libre(1) >= libre(-1) ? [1, -1] : [-1, 1];
 }
 
-/** La persona no se para más cerca de la cámara que esta fracción de la
- *  distancia al centro de la cara: más cerca, queda en primer plano. */
-export const CERCANIA_DE_LA_FIGURA = 0.8;
-
 /** Lo más que puede medir lo ocupado (con el cuerpo inflado) entre el canto
  *  y la persona: un exhibidor angosto, no otro mueble entero. */
 export const ANGOSTO_ENTRE_MEDIO = 0.7;
@@ -1067,33 +1063,20 @@ export function personaYTomaDeVenta(
   // entra, el otro. En tres cuartos la cámara gira hacia el lado con pasillo;
   // si ése es el de la persona, la tiene a un metro y le corta la cabeza, y
   // del otro lado del mueble entra entera y sin quedar en primer plano.
-  let lados = ladosPorLibre(mueble, cara, obstaculos, limites);
-  // En «Tres cuartos», el costado CONTRARIO a la cámara primero, y todas sus
-  // separaciones antes que las del otro: con la cámara girada hacia el
-  // costado libre (`vistaDeVenta`, que ya no gira hacia un vecino pegado), una
-  // persona de ese lado queda en primer plano, más alta que el mueble. Del
-  // otro lado, junto al vecino, se ve entera y a la escala del mueble. Si de
-  // ése no entra, queda la del lado de la cámara.
-  const enTresCuartos = toma === "tres_cuartos";
-  if (enTresCuartos) {
-    const sola = vistaDeVenta(mueble, cara, toma, foco, obstaculos, limites, fovGrados, aspecto);
-    const ex = { x: Math.cos(rotY), z: -Math.sin(rotY) };
-    const ladoDeLaCamara = (sola.posX - sola.targetX) * ex.x + (sola.posZ - sola.targetZ) * ex.z >= 0 ? 1 : -1;
-    lados = [ladoDeLaCamara === 1 ? -1 : 1, ladoDeLaCamara];
-  }
+  const lados = ladosPorLibre(mueble, cara, obstaculos, limites);
   // Sin otro mueble ENTERO entre el canto y la persona: a 1,2 m del robatope,
   // del lado de la punta pegada, quedaba parada más allá de la punta, junto a
   // otro mueble (y la toma «Tres cuartos», que ya no gira hacia el vecino
   // pegado, la elegía ahí). Se para hasta donde llega el piso de ese costado
   // (`alcanceDeLaFigura`): puede quedar más allá de un exhibidor angosto —el
   // robatope pegado a la punta, como alguien parado en el pasillo—, no más
-  // allá de una punta o una nevera.
+  // allá de una punta o una nevera. Es lo que deja a la persona de la punta
+  // del lado CONTRARIO a la cámara en «Tres cuartos»: con el piso libre a
+  // secas, el robatope la mandaba del lado de la cámara, en primer plano y
+  // más alta que el mueble.
   const alcance = { [1]: alcanceDeLaFigura(mueble, cara, 1, obstaculos, limites), [-1]: alcanceDeLaFigura(mueble, cara, -1, obstaculos, limites) };
   const lugares: { p: { x: number; z: number; rotY: number }; separacion: number }[] = [];
-  const pares = enTresCuartos
-    ? lados.flatMap((lado) => separaciones.map((separacion) => ({ lado, separacion })))
-    : separaciones.flatMap((separacion) => lados.map((lado) => ({ lado, separacion })));
-  for (const { separacion, lado } of pares) {
+  for (const separacion of separaciones) for (const lado of lados) {
     if (separacion > alcance[lado] + 1e-9) continue;
     const p = lugarDeLaFigura({ x: mueble.cx, z: mueble.cz, w: mueble.w, rotY }, obstaculos, separacion, { d: mueble.d, cara }, [lado]);
     if (!p) continue;
@@ -1122,12 +1105,7 @@ export function personaYTomaDeVenta(
     const [a, b] = [Math.min(...xs) - 0.02, Math.max(...xs) + 0.02];
     const [pa, pb] = [Math.min(...q.map((e) => e.x)), Math.max(...q.map((e) => e.x))];
     const alCostado = pb < a || pa > b;
-    // Y no en primer plano: a lo sumo un 20 % más cerca de la cámara que el
-    // centro de la cara (`CERCANIA_DE_LA_FIGURA`). Del lado de la cámara
-    // girada, más cerca, salía más alta que el mueble que se vende.
-    const delante = Math.hypot(vista.posX - p.x, vista.posZ - p.z)
-      < CERCANIA_DE_LA_FIGURA * Math.hypot(vista.posX - vista.targetX, vista.posZ - vista.targetZ);
-    return entra && alCostado && !delante ? { vista, persona: { ...p, separacion }, extremo: Math.max(...q.map((e) => Math.abs(e.x))) } : null;
+    return entra && alCostado ? { vista, persona: { ...p, separacion }, extremo: Math.max(...q.map((e) => Math.abs(e.x))) } : null;
   };
   // 1. La primera separación en que entra sin mover la toma más que para
   //    abrir el cuadro.

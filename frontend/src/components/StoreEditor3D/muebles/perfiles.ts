@@ -838,6 +838,10 @@ function conBandaDeEtiqueta(
   return g;
 }
 
+/** Dónde muestrea la base de la botella (alto relativo de la foto): en el
+ *  cuerpo, sobre el pie y bajo la etiqueta, donde se ve el líquido. */
+export const V_DE_LA_BASE = 0.18;
+
 /** Milímetros enteros: la firma del caché no puede depender del último bit. */
 const mm = (v: number) => Math.round(v * 1000);
 
@@ -894,6 +898,10 @@ function uvPlanar(g: THREE.BufferGeometry, ancho: number, alto: number): void {
  * foto va planar en las dos caras. «bajo» (lo de atrás de un entrepaño, que
  * en una góndola de bolsas son cientos) va con la mitad de filas y columnas.
  */
+/** Cuánto se oscurece el lomo de la bolsa en el costado (por color de
+ *  vértice): 0 en el medio del frente, esto en el canto. */
+export const LOMO_DE_BOLSA = 0.24;
+
 function almohada(ancho: number, alto: number, fondo: number, nivel: "alto" | "bajo" = "alto"): THREE.BufferGeometry {
   const NX = nivel === "alto" ? 20 : 10, NY = nivel === "alto" ? 20 : 10;
   const medio = fondo / 2;
@@ -908,6 +916,11 @@ function almohada(ancho: number, alto: number, fondo: number, nivel: "alto" | "b
     ? BASE + (1 - BASE) * Math.sin((Math.PI / 2) * (t / PANZA))
     : bSello + (1 - bSello) * Math.pow(Math.max(0, Math.cos((Math.PI / 2) * Math.min(1, (t - PANZA) / (alSello - PANZA)))), 0.8));
   const espesor = (s: number, t: number) => (t >= alSello ? MEDIO_SELLO : Math.max(MEDIO_SELLO, medio * A(s) * B(t)));
+  // El lomo, más oscuro hacia los costados (`LOMO_DE_BOLSA`): girada 60°, la
+  // bolsa de 6 cm mostraba un lomo de ~5 px del mismo tono que el frente y se
+  // seguía leyendo como cartulina. Es la luz que el plástico curvo pierde al
+  // alejarse del pasillo; el frente, en el medio, queda como la foto.
+  const lomo = (s: number) => 1 - LOMO_DE_BOLSA * (1 - (A(s) - e) / Math.max(1e-6, 1 - e));
   // Filas: parejas hasta el sello, una casi encima (el borde nítido del color
   // del sello) y el canto de arriba.
   const ts = [...Array.from({ length: NY + 1 }, (_, j) => (j / NY) * alSello), Math.min(1, alSello + 0.001), 1];
@@ -924,7 +937,7 @@ function almohada(ancho: number, alto: number, fondo: number, nivel: "alto" | "b
     return ts.map((t, j) => Array.from({ length: NX + 1 }, (_, i) => {
       const s = (i / NX) * 2 - 1;
       const x = (s * ancho) / 2;
-      return punto(x, (t - 0.5) * alto, lado * k * espesor(s, t), 0.5 - x / ancho, t, enSello(j) ? 1.08 : 1);
+      return punto(x, (t - 0.5) * alto, lado * k * espesor(s, t), 0.5 - x / ancho, t, enSello(j) ? 1.08 : lomo(s));
     }));
   });
   const [frente, dorso] = caras;
@@ -1178,17 +1191,24 @@ export function geometriaDeEtiqueta(
       const g = tornoConEspalda(puntos, LADOS, alto, nivel === "alto", (x) => uvPlanar(x, ancho * 1.06, alto));
       if (g.groups.length === 2) g.groups[1].materialIndex = 2;
       // Las tapas, de UN color: el del centro de la boca y, abajo, uno del
-      // cuerpo un poco arriba del pie (el 6 %): el borde de abajo de la foto
-      // es el hueco entre los lóbulos de la base de una botella, o sea fondo
-      // quitado, y la base acostada salía negra. Con la proyección plana, la
-      // tapa repetía la primera fila de la foto estirada: rayas sobre cada vaso.
+      // CUERPO (el 18 %, `V_DE_LA_BASE`), del color del líquido: el borde de
+      // abajo de la foto es el hueco entre los lóbulos de la base de una
+      // botella, o sea fondo quitado, y la base acostada salía negra; con el
+      // 6 % caía en los lóbulos, y acostada —la base mirando al pasillo— era
+      // un disco rosado y blanco que parecía un agujero. Con la proyección
+      // plana, la tapa repetía la primera fila de la foto estirada: rayas
+      // sobre cada vaso.
       const pos = g.attributes.position as THREE.BufferAttribute;
       const uv = g.attributes.uv as THREE.BufferAttribute;
       const rArriba = radio(1), rAbajo = radio(0);
       for (let i = 0; i < pos.count; i++) {
         const y = pos.getY(i), r = Math.hypot(pos.getX(i), pos.getZ(i));
         if (Math.abs(y - alto / 2) < 1e-6 && r < rArriba * 0.99) uv.setXY(i, 0.5, 0.985);
-        else if (Math.abs(y + alto / 2) < 1e-6 && r < rAbajo * 0.99) uv.setXY(i, 0.5, 0.06);
+        else if (Math.abs(y + alto / 2) < 1e-6 && r < rAbajo * 0.99) uv.setXY(i, 0.5, V_DE_LA_BASE);
+        // El anillo de afuera de la base (el canto del pie) también sube al
+        // cuerpo: con la `v` de la foto (0) muestreaba el borde de abajo, fondo
+        // quitado, y acostada era una cuña blanca en el disco de la base.
+        else if (Math.abs(y + alto / 2) < 1e-6) uv.setXY(i, uv.getX(i), V_DE_LA_BASE);
       }
       uv.needsUpdate = true;
       return g;

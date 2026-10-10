@@ -94,8 +94,9 @@ export const DISENOS = 4;
  *  desorden de lo que se repuso en tandas distintas. */
 export const VARIACION_EN_EL_BLOQUE = 0.04;
 
-/** El color (sRGB, 0–1) y el diseño de etiqueta de cada unidad del relleno. */
-export interface ColorDeRelleno { rgb: [number, number, number]; diseno: number }
+/** El color (sRGB, 0–1) y el diseño de etiqueta de cada unidad del relleno;
+ *  `producto` es el color de la paleta (su índice), sin la variación. */
+export interface ColorDeRelleno { rgb: [number, number, number]; diseno: number; producto: number }
 
 /**
  * El color y el diseño de etiqueta de cada posición de un grupo del relleno,
@@ -142,7 +143,7 @@ export function coloresDelRelleno(
       }
       const t = 1 + (azar() * 2 - 1) * VARIACION_EN_EL_BLOQUE;
       const [r, g, b] = paleta[color];
-      deX.set(x, { rgb: [r * t, g * t, b * t], diseno });
+      deX.set(x, { rgb: [r * t, g * t, b * t], diseno, producto: color });
       quedan--;
     });
     for (const i of indices) fuera[i] = deX.get(Math.round(posiciones[i].x * 1e4))!;

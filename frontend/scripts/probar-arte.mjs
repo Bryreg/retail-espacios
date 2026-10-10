@@ -544,6 +544,7 @@ prueba("una caja casi blanca con sellos negros no sale con los costados negros",
   // blancos» ganaba el negro de los sellos: la punta entera, bloques negros.
   const W = 120, H = 400;
   const img = { ancho: W, alto: H, rgba: foto(W, H, (x, y) => {
+    if (x < 9) return [30, 30, 32, 255];                                                 // sombra del canto de la foto
     if (y < 70) return x < 58 || x > 62 ? [38, 38, 40, 255] : [235, 236, 232, 255];   // sellos
     if (y < 150 && x < 50) return (x + y) % 3 ? [120, 98, 62, 255] : [96, 80, 50, 255];  // avena
     if (x > 104 && y > 180 && y < 330) return [150, 158, 190, 255];                     // lila
@@ -629,6 +630,31 @@ prueba("los hombros de la botella, claros apenas teñidos, también se llenan", 
   const [r, g] = px(l, 12, 60);
   assert.ok(r > g + 50, `el hombro sigue blanco: ${px(l, 12, 60)}`);
   assert.deepEqual(px(l, 40, 140), [225, 70, 140, 255], "se tiñó la etiqueta");
+});
+
+prueba("el cuello de la botella, gris de PET contra el estudio, se llena como el resto", () => {
+  // Las filas del cuello son PET gris medio (no claro, no líquido): contaban
+  // como ETIQUETA y quedaban con los brillos blancos de la foto; acostada, de
+  // cerca, eran manchas blancas dentadas alrededor del pico.
+  const W = 80, H = 300;
+  const b = { ancho: W, alto: H, rgba: foto(W, H, (x, y) => {
+    if (x < 10 || x > 69) return [255, 255, 255, 0];
+    if (y < 15) return [235, 110, 40, 255];                                              // tapa
+    if (y < 40) return x % 6 < 2 ? [245, 240, 236, 255] : [120, 118, 116, 255];          // cuello: gris con brillos
+    if (y < 110) return [232, 230, 226, 255];                                            // PET claro
+    if (y < 180) return x % 7 < 2 && y % 11 < 6 ? [248, 248, 248, 255] : [225, 70, 140, 255]; // etiqueta
+    return [140, 38, 40, 255];
+  }) };
+  const L = T.llenarBotella(b);
+  for (let y = 16; y < 40; y += 3) for (const x of [12, 30, 50]) {
+    const [r, g] = px(L, x, y);
+    assert.ok(r > g + 30, `el cuello sigue gris o blanco en (${x}, ${y}): ${px(L, x, y)}`);
+  }
+  assert.deepEqual(px(L, 40, 5), [235, 110, 40, 255], "se tiñó la tapa");
+  for (let y = 110; y < 180; y++) for (let x = 10; x < 70; x++) {
+    if (x % 7 < 2 && y % 11 < 6) assert.deepEqual(px(L, x, y), [248, 248, 248, 255], "se tiñó la letra de la etiqueta");
+  }
+  assert.ok(T.esGrisDePet(120, 118, 116) && !T.esGrisDePet(225, 70, 140) && !T.esGrisDePet(30, 30, 30) && !T.esGrisDePet(232, 230, 226));
 });
 
 /** Un vaso de frente: arriba el foil (lavanda) de punta a punta con el

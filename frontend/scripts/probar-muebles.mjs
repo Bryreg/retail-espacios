@@ -2215,10 +2215,16 @@ prueba("con un solo arte en una góndola entera: frente corrido (uno por vano y 
         assert.equal(falta.length, 1);
         assert.ok(r.unidades.some((u) => enVano(u) && u.prof === 1 && u.piso === 0 && col(u) === falta[0]),
           "un frente corrido sin la unidad de atrás: un hueco de punta a punta");
+        // La de atrás que queda a la vista va casi como las del frente (con el
+        // tono de una tapada, 12 niveles abajo, se leía como un hueco oscuro).
+        for (const u of r.unidades.filter((u) => enVano(u) && u.prof === 1 && col(u) === falta[0])) {
+          assert.ok(Math.abs(u.tono / F.TONO_DEL_CORRIDO - 1) <= 0.03 + 1e-9, `la de atrás a la vista va con tono ${u.tono.toFixed(3)}`);
+        }
       }
     }
   }
   assert.ok(corridos > 0, "con un solo arte en 3,6 m no hay ningún frente corrido: sigue siendo papel de colgadura");
+  assert.ok(F.TONO_DEL_CORRIDO >= 0.88 && F.TONO_DEL_CORRIDO <= 0.96 && F.TONO_DEL_CORRIDO > F.TONO_POR_FONDO[1]);
   // Nunca con una sola de fondo (sería un hueco al frente) ni con surtido.
   const unaDeFondo = F.unidadesDePrueba({ venta: v, empaque: CAJA_MUSLI, donde: "todas", semilla: "GON-01|B|1", profundidad: 1 });
   for (const f of unaDeFondo.porFila.filter((x) => x.motivo === null)) {
@@ -2348,6 +2354,16 @@ prueba("la botella torneada mira a −Z con el centro de la foto adelante", () =
   const tapa = vs.filter((v) => Math.abs(v.y - 0.165) < 1e-6 && Math.hypot(v.x, v.z) < 0.4 * 0.0525 * 0.99);
   assert.ok(tapa.length > 0, "la botella no tiene tapa");
   for (const v of tapa) assert.ok(Math.abs(v.u - 0.5) < 1e-6 && Math.abs(v.v - 0.985) < 1e-6, `tapa rayada: ${v.u},${v.v}`);
+  // La BASE, del color del cuerpo (el líquido), no del pie: con el 6 % caía en
+  // los lóbulos —fondo quitado— y acostada era un disco rosado y blanco.
+  const base = vs.filter((v) => Math.abs(v.y + 0.165) < 1e-6 && Math.hypot(v.x, v.z) < 0.0525 * 0.3);
+  assert.ok(base.length > 0, "la botella no tiene base");
+  for (const v of base) assert.ok(Math.abs(v.u - 0.5) < 1e-6 && Math.abs(v.v - G.V_DE_LA_BASE) < 1e-6, `base en ${v.u},${v.v}`);
+  // Y el anillo del canto del pie, también en el cuerpo (no en el borde de
+  // abajo de la foto, que es fondo quitado: una cuña blanca acostada).
+  const pie = vs.filter((v) => Math.abs(v.y + 0.165) < 1e-6);
+  assert.ok(pie.length > base.length && pie.every((v) => Math.abs(v.v - G.V_DE_LA_BASE) < 1e-6), "el canto del pie muestrea el borde de la foto");
+  assert.ok(G.V_DE_LA_BASE >= 0.12 && G.V_DE_LA_BASE <= 0.3, "la base muestrea fuera del cuerpo");
   // El costado del FRENTE no llega al borde exacto de la silueta (contorno y
   // sangrado). La espalda va con su propia uv, de 0 a 1 rodeando por detrás.
   assert.equal(g.groups.length, 2, "la botella del frente no lleva su espalda aparte");
@@ -2393,8 +2409,15 @@ prueba("la bolsa se para en su fuelle: lomo curvo, ~5 mm en los costados, sello 
   const anchoDelSello = Math.max(...sello.map((v) => v.z)) - Math.min(...sello.map((v) => v.z));
   assert.ok(anchoDelSello >= 0.0025 && anchoDelSello <= 0.0035, `el sello tiene ${(anchoDelSello * 1000).toFixed(1)} mm`);
   assert.ok(sello.every((v) => Math.abs(color.getX(v.i) - 1.08) < 1e-6), "el sello no es más claro");
+  // El cuerpo: como la foto en el medio del frente y el lomo más oscuro hacia
+  // los costados (`LOMO_DE_BOLSA`), sin pasar de ahí.
   const cuerpo = vs.map((v, i) => i).filter((i) => vs[i].y < H / 2 - 0.014);
-  assert.ok(cuerpo.every((i) => color.getX(i) === 1), "el cuerpo cambió de color");
+  const medioDelFrente = cuerpo.filter((i) => Math.abs(vs[i].x) < 1e-6);
+  assert.ok(medioDelFrente.length > 0 && medioDelFrente.every((i) => Math.abs(color.getX(i) - 1) < 1e-6), "el medio del frente cambió de color");
+  const canto = cuerpo.filter((i) => Math.abs(Math.abs(vs[i].x) - W / 2) < 1e-6);
+  assert.ok(canto.length > 0 && canto.every((i) => Math.abs(color.getX(i) - (1 - G.LOMO_DE_BOLSA)) < 1e-6), "el lomo de la bolsa no se oscurece en el canto");
+  assert.ok(cuerpo.every((i) => color.getX(i) <= 1 + 1e-6 && color.getX(i) >= 1 - G.LOMO_DE_BOLSA - 1e-6), "el cuerpo se sale del tono");
+  assert.ok(G.LOMO_DE_BOLSA >= 0.15 && G.LOMO_DE_BOLSA <= 0.35);
   // Debajo del sello ya hay bolsa: la aleta mide 1,2 cm, no media bolsa.
   assert.ok(centro.some((v) => v.y < H / 2 - 0.013 && v.y > H / 2 - 0.03 && -v.z > 0.0015 * 1.5), "el sello mide más de 1,2 cm");
   // Las normales hacia afuera: cada triángulo mira lejos del centro.
@@ -3900,12 +3923,12 @@ const PO = await import(
 
 /** Un contexto 2D falso que anota lo que se dibuja. */
 function pincelFalso() {
-  const r = { recortes: [], enteras: [], textos: 0, rellenos: 0 };
+  const r = { recortes: [], enteras: [], textos: 0, rellenos: 0, orden: [] };
   const degrade = () => ({ addColorStop() {} });
   const g = {
     fillStyle: null,
-    fillRect() { r.rellenos++; },
-    drawImage(...a) { (a.length === 9 ? r.recortes : r.enteras).push(a); },
+    fillRect(...a) { r.rellenos++; r.orden.push(["rect", ...a]); },
+    drawImage(...a) { (a.length === 9 ? r.recortes : r.enteras).push(a); r.orden.push(["img", ...a]); },
     createLinearGradient: degrade, createRadialGradient: degrade,
     fillText() { r.textos++; }, strokeText() { r.textos++; },
   };
@@ -3940,6 +3963,8 @@ prueba("el copete de un envase angosto y blanco: color de marca y abanico que ll
   for (const [a, b] of tramos) { if (b > hasta) { cubierto += b - Math.max(a, hasta); hasta = b; } }
   assert.ok(cubierto >= 0.4 * W, `los envases cubren ${((cubierto / W) * 100).toFixed(0)} % del cartel`);
   for (const [a, b] of tramos) assert.ok(a >= 0 && b <= W, `un envase se sale del cartel (${a.toFixed(0)}–${b.toFixed(0)})`);
+  // Nada en el vuelo de la izquierda (el 9 %): lo tapa un robatope pegado.
+  assert.ok(Math.min(...tramos.map(([a]) => a)) >= W * PO.MARGEN_DE_LA_FRANJA - 1e-6, "la franja del logo cae en el vuelo del copete");
   // El héroe, al 85–90 % del alto.
   const alto = Math.max(...r.enteras.map((a) => a[4]));
   assert.ok(alto >= 0.85 * H && alto <= 0.9 * H + 1e-6, `el héroe ocupa ${((alto / H) * 100).toFixed(0)} % del alto`);
@@ -3953,9 +3978,26 @@ prueba("el cabezote de la nevera es un aviso: un recorte grande de la etiqueta, 
   // del alto o más, y a lo sumo dos unidades enteras; nada de texto.
   const W = 1024, H = 77;
   const { g, r } = pincelFalso();
+  const paradas = [];
+  g.createLinearGradient = () => ({ addColorStop: (k, c) => paradas.push([k, c]) });
   PO.dibujarCartel(g, W, H, FUENTE, true);
+  // Retroiluminado: la chapa, más clara que el color de la marca (el rojo de
+  // Postobón tal cual, luminancia ~60, se leía como lámina oscura).
+  const lum = (h) => { const n = parseInt(h.slice(1), 16); return 0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255); };
+  assert.ok(lum(paradas[0][1]) > lum(FUENTE.recorte.colorDominante) + 20, `la chapa del cabezote (${paradas[0][1]}) no es más clara que la marca`);
   assert.equal(r.recortes.length, 1, `el cabezote lleva ${r.recortes.length} recortes de la etiqueta: una fila de miniaturas`);
-  assert.ok(r.enteras.length <= 2, `${r.enteras.length} unidades enteras`);
+  // Sin las botellitas de las puntas (1 cm a la distancia de la toma).
+  assert.equal(r.enteras.length, 0, `${r.enteras.length} unidades enteras en el cabezote`);
+  // Y sin canto duro: después del recorte, sus cuatro bordes se funden con el
+  // fondo (cuatro rellenos que caen sobre el borde del recorte).
+  {
+    const i = r.orden.findIndex((o) => o[0] === "img");
+    const [, , , , , , dx, dy, dw, dh] = r.orden[i];
+    const despues = r.orden.slice(i + 1).filter((o) => o[0] === "rect");
+    const toca = (x, y, w, h) => x <= dx + dw && x + w >= dx && y <= dy + dh && y + h >= dy;
+    assert.ok(despues.filter(([, x, y, w, h]) => toca(x, y, w, h)).length >= 4, "el recorte del cabezote queda con el canto duro");
+    for (const [, x, y, w, h] of despues) assert.ok(Math.min(w, h) <= Math.max(12, dh * 0.2) + 1e-6, "el fundido tapa el recorte");
+  }
   assert.equal(r.textos, 0, "el cabezote escribe texto que el proveedor no puso");
   const [, sx, sy, sw, sh, dx, dy, dw, dh] = r.recortes[0];
   assert.ok(dh >= 0.7 * H, `el recorte ocupa ${((dh / H) * 100).toFixed(0)} % del alto`);
@@ -4506,7 +4548,7 @@ prueba("el relleno de venta se lee como empaque: paleta apagada, bloques de 2 a 
     });
     for (const [k, t] of porTira) {
       const xs = [...t.keys()].map(Number).sort((a, b) => a - b);
-      const clave = (c) => `${c.diseno}|${c.rgb.map((x) => x.toFixed(1)).join(",")}`;
+      const clave = (c) => `${c.producto}|${c.diseno}`;
       // De 2 a 5 frentes seguidos del mismo producto (el último bloque de un
       // vano puede quedar más corto) y al menos 3 productos por entrepaño.
       const tiras = [];
@@ -4517,7 +4559,7 @@ prueba("el relleno de venta se lee como empaque: paleta apagada, bloques de 2 a 
       }
       tiras.push(largo);
       assert.ok(Math.max(...tiras) <= RV.BLOQUE.max, `${k}: un bloque de ${Math.max(...tiras)} frentes`);
-      if (xs.length >= 12) assert.ok(new Set(xs.map((x) => clave(t.get(x.toFixed(4))))).size >= 3, `${k}: menos de 3 productos en ${xs.length} frentes`);
+      if (xs.length >= 12) assert.ok(new Set(xs.map((x) => t.get(x.toFixed(4)).producto)).size >= 3, `${k}: menos de 3 colores en ${xs.length} frentes`);
     }
   }
   // La etiqueta: cuatro diseños, sin una letra.
@@ -4638,7 +4680,7 @@ prueba("la persona de venta sale de la toma (una sola cuenta); el editor conserv
   // Venta: gris claro, opaca (alphaTest, sin transparencia).
   assert.match(editorCodigo, /const GRIS_DE_SILUETA_EN_VENTA = "#b8b4ae";/, "la persona de venta no es el gris claro");
   const silueta = cuerpoDe("function SiluetaDeEscala(", "const CHROME = ");
-  assert.match(silueta, /color = GRIS_DE_SILUETA \}/, "la silueta sin color dejó de ser la del editor");
+  assert.match(silueta, /color = GRIS_DE_SILUETA, mirarCamara = false \}/, "la silueta sin color dejó de ser la del editor (o gira sola)");
   assert.match(silueta, /color=\{color\} alphaTest=\{0\.5\}/);
   assert.match(silueta, /const m = FIGURA_DE_ESCALA\.medioAncho;/, "la silueta mide otra figura que la que proyecta la toma");
   assert.match(editorCodigo, /const ALTURA_PERSONA = FIGURA_DE_ESCALA\.alto;/);
@@ -4646,9 +4688,20 @@ prueba("la persona de venta sale de la toma (una sola cuenta); el editor conserv
   // la metió entera, ninguna. En el editor, al costado a 30 cm y en su gris.
   const desde = cuerpoEscena.indexOf("{!firstPerson && (() => {");
   const bloque = cuerpoEscena.slice(desde, cuerpoEscena.indexOf("<primitive object={gridMinor} />", desde));
-  assert.match(bloque, /if \(toma && personaDeVenta\?\.fixtureId === sel\.id\) \{\s*const q = personaDeVenta\.persona;\s*return q \? <SiluetaDeEscala x=\{q\.x\} z=\{q\.z\} rotY=\{q\.rotY\} color=\{GRIS_DE_SILUETA_EN_VENTA\} \/> : null;/,
-    "la silueta de venta se recalcula aparte de la toma");
-  assert.match(bloque, /color=\{pantallaDeVenta \? GRIS_DE_SILUETA_EN_VENTA : GRIS_DE_SILUETA\}/, "el editor perdió su gris");
+  assert.match(bloque, /if \(toma && personaDeVenta\?\.fixtureId === sel\.id\) \{\s*const q = personaDeVenta\.persona;\s*return q \? <SiluetaDeEscala x=\{q\.x\} z=\{q\.z\} rotY=\{q\.rotY\} color=\{GRIS_DE_SILUETA_EN_VENTA\} mirarCamara \/> : null;/,
+    "la silueta de venta se recalcula aparte de la toma (o dejó de mirar a la cámara)");
+  assert.match(bloque, /color=\{pantallaDeVenta \? GRIS_DE_SILUETA_EN_VENTA : GRIS_DE_SILUETA\} mirarCamara=\{pantallaDeVenta\}/,
+    "el editor perdió su gris, o la silueta gira hacia la cámara también en el editor");
+  // Gira sólo la figura (sobre Y, hacia la cámara); lo que decide si entra en
+  // el cuadro siguen siendo las esquinas del grupo (las de la toma).
+  assert.match(silueta, /figura\.current\.rotation\.y = giroHaciaLaCamara\(x, z, camera\.position\.x, camera\.position\.z\) - rotY;/);
+  assert.match(silueta, /v\.copy\(e\)\.applyMatrix4\(g\.matrixWorld\)/, "la visibilidad dejó de medirse con las esquinas de la toma");
+  assert.match(editorCodigo, /export function giroHaciaLaCamara\(x: number, z: number, cx: number, cz: number\): number \{\s*return Math\.atan2\(cx - x, cz - z\);/);
+  // La cuenta: girado así, el +Z del plano apunta a la cámara.
+  for (const [x, z, cx, cz] of [[0, 0, 3, 4], [1, -2, -5, 0], [2, 2, 2, 9]]) {
+    const t = Math.atan2(cx - x, cz - z), d = Math.hypot(cx - x, cz - z);
+    assert.ok(Math.abs(Math.sin(t) - (cx - x) / d) < 1e-9 && Math.abs(Math.cos(t) - (cz - z) / d) < 1e-9);
+  }
   // La toma: en venta, frente y tres cuartos de la cara entera con
   // `personaYTomaDeVenta`; en el editor, la de siempre con la persona a 30 cm.
   const toma = cuerpoDe("const tomaDeVenta = useCallback(", "const ponerCampoVisual = useCallback(");

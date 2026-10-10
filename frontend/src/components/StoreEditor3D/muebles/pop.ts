@@ -16,8 +16,8 @@
  * en las puntas y dejaba el centro azul vacío, con una raya blanca que pasaba
  * por detrás de la base de los vasos: «una cosa sin terminar»—. En uno
  * apaisado (el cabezote de la nevera, 1,1 m × 9 cm), desde la ronda 2 de la
- * dueña, la misma receta: UN recorte grande de la franja de la etiqueta y,
- * si sobra aire, una unidad chica en cada punta; retroiluminado, como el
+ * dueña, la misma receta: UN recorte grande de la franja de la etiqueta,
+ * fundido con el fondo, sobre la chapa más clara; retroiluminado, como el
  * aviso luminoso de una nevera de marca (`dibujarCartel`). Sin la raya.
  *
  * Sólo con «Toda la cara» (el mueble entero es de ese proveedor) y sólo
@@ -40,6 +40,10 @@ const cache = new Map<string, Copete>();
 /** Un envase es «angosto» si su foto es más alta que el doble de su ancho:
  *  la caja de 1 L, una botella. Ahí el copete lleva el abanico. */
 export const ENVASE_ANGOSTO = 0.5;
+
+/** Dónde arranca la franja del logo en el copete (fracción del ancho): más
+ *  allá del vuelo, que tapa un mueble pegado. */
+export const MARGEN_DE_LA_FRANJA = 0.09;
 
 /** La franja del medio de la foto: la de un envase sin etiqueta localizada
  *  (caja, vaso), donde suele estar el logo. */
@@ -72,14 +76,19 @@ type Pincel = Pick<CanvasRenderingContext2D,
  *   foto repetida en mosaico —diez miniaturas iguales sobre rojo plano—; ahora
  *   UN recorte grande de la franja de la ETIQUETA (`franja`, leída del rgba),
  *   centrado al 80 % del alto, recortado al ancho de la silueta en esas filas
- *   (sin el PET de los costados), sobre el degradé con un halo claro detrás.
- *   Si el cartel es muy largo (W/H > 8) y hay aire, una unidad entera chica en
- *   cada punta. Sin texto: nada que el proveedor no haya puesto.
+ *   (sin el PET de los costados), sobre el degradé con un halo claro detrás,
+ *   con los bordes fundidos (sin canto duro). Sin texto: nada que el
+ *   proveedor no haya puesto.
  */
 export function dibujarCartel(
   g: Pincel, W: number, H: number, et: FuenteDeCartel, conFranja: boolean,
 ): void {
-  const base = colorDe(et);
+  // El cabezote (apaisado) es un aviso RETROILUMINADO: con el color de la
+  // marca tal cual (el rojo de Postobón, luminancia ~60) se leía como una
+  // lámina oscura con un sticker pegado. Va un 25 % más claro, como la chapa
+  // translúcida con la luz detrás.
+  const apaisado = W / H > 4.5;
+  const base = apaisado ? aclarar(colorDe(et), 0.25) : colorDe(et);
   // El degradé, en diagonal: del color de la marca a uno 18 % más claro.
   const gr = g.createLinearGradient(0, H, W, 0);
   gr.addColorStop(0, base);
@@ -124,6 +133,10 @@ export function dibujarCartel(
     let abanico = anchos[0] + 2 * (anchos[1] + anchos[2]) * (1 - solape);
     let x0 = W * 0.04, x1 = W - W * 0.04;
     if (W / H >= 2) {
+      // La franja arranca más adentro (el 9 % del ancho): los primeros
+      // 5 cm del copete son su vuelo sobre el costado, y el cabezote de un
+      // robatope pegado a la punta los tapa en la toma de frente.
+      x0 = W * MARGEN_DE_LA_FRANJA;
       const f = conFranja ? et.franja() : FRANJA_DEL_MEDIO;
       const sx = Math.round(f.x0 * p.width), sw = Math.max(1, Math.round((f.x1 - f.x0) * p.width));
       const sy = Math.round(f.desde * p.height), sh = Math.max(1, Math.round((f.hasta - f.desde) * p.height));
@@ -136,6 +149,9 @@ export function dibujarCartel(
       g.fillStyle = h;
       g.fillRect(0, 0, W, H);
       g.drawImage(p, sx, sy, sw, sh, cx - ancho / 2, (H - alto) / 2, ancho, alto);
+      // Sin canto duro (como el cabezote): el blanco de la caja de la Avena
+      // era un rectángulo pegado sobre el morado.
+      fundirBordes(g, cx - ancho / 2, (H - alto) / 2, ancho, alto, base, Math.max(2, Math.min(alto * 0.12, W * BORDE_FUNDIDO * 1.5)));
       x0 += ancho + W * 0.04;
     }
     // Que el abanico entre en lo que queda.
@@ -164,17 +180,42 @@ export function dibujarCartel(
   let ancho = (altura * sw) / sh;
   // Que entre: a lo sumo el 60 % del ancho del cartel.
   if (ancho > W * 0.6) { altura *= (W * 0.6) / ancho; ancho = W * 0.6; }
-  halo(Math.max(ancho * 0.8, H), 0.28);
-  g.drawImage(p, sx, sy, sw, sh, W / 2 - ancho / 2, (H - altura) / 2, ancho, altura);
-  // Una unidad entera chica en cada punta, si hay aire entre ella y el centro.
-  if (W / H > 8) {
-    const chica = H * 0.8, a = chica * aspecto, margen = H * 0.5;
-    const cx = margen + a / 2;
-    if (cx + a / 2 + margen < W / 2 - ancho / 2) {
-      pegar(cx, chica);
-      pegar(W - cx, chica);
-    }
+  halo(Math.max(ancho * 0.8, H), 0.34);
+  const dx = W / 2 - ancho / 2, dy = (H - altura) / 2;
+  g.drawImage(p, sx, sy, sw, sh, dx, dy, ancho, altura);
+  // Sin borde: el recorte se FUNDE con el fondo en sus cuatro lados (`BORDE_
+  // FUNDIDO` del ancho, 8–10 px en el cabezote de 1024). Con el canto duro, el
+  // rectángulo de la etiqueta se leía pegado encima de la chapa, como un
+  // sticker. Y sin las botellitas de las puntas (1 cm a la distancia de la
+  // toma, «stickers» otra vez): el aviso es la marca.
+  fundirBordes(g, dx, dy, ancho, altura, base, Math.max(2, Math.min(altura * 0.2, W * BORDE_FUNDIDO)));
+}
+
+/** Funde los cuatro bordes de un rectángulo pegado (`x, y, w, h`) con el
+ *  color del fondo, en `f` px: degradés del color opaco a transparente. */
+function fundirBordes(g: Pincel, x: number, y: number, w: number, h: number, color: string, f: number): void {
+  const lados: [number, number, number, number, number, number, number, number][] = [
+    [x, 0, x + f, 0, x, y, f, h],
+    [x + w, 0, x + w - f, 0, x + w - f, y, f, h],
+    [0, y, 0, y + f, x, y, w, f],
+    [0, y + h, 0, y + h - f, x, y + h - f, w, f],
+  ];
+  for (const [x0, y0, x1, y1, rx, ry, rw, rh] of lados) {
+    const gr = g.createLinearGradient(x0, y0, x1, y1);
+    gr.addColorStop(0, rgba(color, 1));
+    gr.addColorStop(1, rgba(color, 0));
+    g.fillStyle = gr;
+    g.fillRect(rx, ry, rw, rh);
   }
+}
+
+/** Cuánto del ancho del cabezote se funde el recorte en cada borde. */
+export const BORDE_FUNDIDO = 0.009;
+
+/** `#rrggbb` con alfa, para un degradé que se desvanece. */
+function rgba(hex: string, a: number): string {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return `rgba(${r},${g},${b},${a})`;
 }
 
 function dibujar(et: Etiqueta, ancho: number, alto: number, conFranja: boolean): HTMLCanvasElement {

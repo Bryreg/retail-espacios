@@ -2557,8 +2557,17 @@ function siluetaDePersona(): THREE.CanvasTexture {
  * producto. Si queda cortada por el borde del cuadro, no se dibuja: media
  * persona no da escala, distrae.
  */
-function SiluetaDeEscala({ x, z, rotY, color = GRIS_DE_SILUETA }: { x: number; z: number; rotY: number; color?: string }) {
+function SiluetaDeEscala({ x, z, rotY, color = GRIS_DE_SILUETA, mirarCamara = false }: {
+  x: number; z: number; rotY: number; color?: string;
+  /** En venta la silueta gira sobre su eje vertical hacia la cámara (como un
+   *  cartel de cartón que sigue a quien lo mira): la dueña gira a mano 25–35°
+   *  más que la toma en plena reunión, y de canto la figura plana era una
+   *  astilla gris. Lo que decide si entra en el cuadro siguen siendo las
+   *  esquinas de `rotY` (las de `personaYTomaDeVenta`). */
+  mirarCamara?: boolean;
+}) {
   const grupo = useRef<THREE.Group>(null);
+  const figura = useRef<THREE.Mesh>(null);
   // Las MISMAS esquinas que proyecta `personaYTomaDeVenta` para decidir si
   // entra (`FIGURA_DE_ESCALA`).
   const m = FIGURA_DE_ESCALA.medioAncho;
@@ -2575,10 +2584,12 @@ function SiluetaDeEscala({ x, z, rotY, color = GRIS_DE_SILUETA }: { x: number; z
       v.copy(e).applyMatrix4(g.matrixWorld).project(camera);
       return v.z < 1 && Math.abs(v.x) <= 0.98 && Math.abs(v.y) <= 0.98;
     });
+    // El plano mira a +Z: su giro en el mundo es el que apunta a la cámara.
+    if (mirarCamara && figura.current) figura.current.rotation.y = giroHaciaLaCamara(x, z, camera.position.x, camera.position.z) - rotY;
   });
   return (
     <group ref={grupo} position={[x, 0, z]} rotation={[0, rotY, 0]}>
-      <mesh position={[0, ALTURA_PERSONA / 2, 0]}>
+      <mesh ref={figura} position={[0, ALTURA_PERSONA / 2, 0]}>
         <planeGeometry args={[ALTURA_PERSONA * (256 / 864), ALTURA_PERSONA]} />
         {/* Opaca: el borde con alphaTest y a la pasada opaca, que escribe
             profundidad como cualquier mueble. */}
@@ -2589,6 +2600,12 @@ function SiluetaDeEscala({ x, z, rotY, color = GRIS_DE_SILUETA }: { x: number; z
       </mesh>
     </group>
   );
+}
+
+/** El giro (alrededor de Y) que deja un plano que mira a +Z, parado en
+ *  (x, z), de frente a una cámara en (cx, cz). Puro. */
+export function giroHaciaLaCamara(x: number, z: number, cx: number, cz: number): number {
+  return Math.atan2(cx - x, cz - z);
 }
 
 // ─── Selection wireframe ──────────────────────────────────────────────────────
@@ -5527,12 +5544,12 @@ function Scene({
         // encuadró—; si la toma no la pudo meter entera, ninguna.
         if (toma && personaDeVenta?.fixtureId === sel.id) {
           const q = personaDeVenta.persona;
-          return q ? <SiluetaDeEscala x={q.x} z={q.z} rotY={q.rotY} color={GRIS_DE_SILUETA_EN_VENTA} /> : null;
+          return q ? <SiluetaDeEscala x={q.x} z={q.z} rotY={q.rotY} color={GRIS_DE_SILUETA_EN_VENTA} mirarCamara /> : null;
         }
         const cara = toma?.cara ?? (prueba.has(`${sel.id}|B`) && !prueba.has(`${sel.id}|A`) ? "B" : "A");
         const p = lugarDeLaFigura(sel, muros, SEPARACION_EN_VENTA, { d: sel.d, cara });
         return p ? <SiluetaDeEscala x={p.x} z={p.z} rotY={p.rotY}
-          color={pantallaDeVenta ? GRIS_DE_SILUETA_EN_VENTA : GRIS_DE_SILUETA} /> : null;
+          color={pantallaDeVenta ? GRIS_DE_SILUETA_EN_VENTA : GRIS_DE_SILUETA} mirarCamara={pantallaDeVenta} /> : null;
       })()}
       {/* La grilla es del editor: en la pantalla de venta el piso es la
           baldosa de la tienda, sin las líneas de 1 m y 0,5 m. */}

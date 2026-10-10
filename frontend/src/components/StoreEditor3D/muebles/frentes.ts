@@ -377,6 +377,9 @@ const COLUMNA_CORRIDA = 0.22;
  *  - una de cada cuatro cajas gira ±1,5° (las demás ±0,9°, como siempre).
  *  Con surtido no hace falta: los bloques de cada producto ya lo rompen. */
 const FRENTE_CORRIDO = 0.35;
+/** El tono de la unidad que queda a la vista detrás de un frente corrido:
+ *  entre el del frente y el de una de atrás. */
+export const TONO_DEL_CORRIDO = 0.92;
 const CARA_LARGA = 1.2;
 /** La caja que más gira, y cada cuántas (una de cuatro). */
 const GIRO_DE_CAJA_SUELTA = 1.5;
@@ -629,7 +632,12 @@ export function unidadesDePrueba({
               : (e.fondo / 2) * (Math.cos(giro) - 1) + (eAncho.ancho / 2) * Math.abs(Math.sin(giro));
             const topeZ = Math.max(0, Math.min(0.003, (a.pasoZ - e.fondo) / 2 - ensanchaZ));
             const dx = entre(0.002), dz = Math.max(-topeZ, Math.min(topeZ, entre(0.003)));
-            const tono = TONO_POR_FONDO[Math.min(p, TONO_POR_FONDO.length - 1)] * (0.97 + azar() * 0.06);
+            // La de atrás de un frente corrido queda A LA VISTA, de frente al
+            // pasillo: recibe más luz que una tapada (`TONO_DEL_CORRIDO`). Con
+            // el tono de una de atrás (0,82) se leía como un hueco oscuro, 12
+            // niveles por debajo de sus vecinas.
+            const base = f === sinFrente && p === 1 ? TONO_DEL_CORRIDO : TONO_POR_FONDO[Math.min(p, TONO_POR_FONDO.length - 1)];
+            const tono = base * (0.97 + azar() * 0.06);
             if (hueco || (p === 0 && f === sinFrente)) continue;
             unidades.push({
               fila: i,

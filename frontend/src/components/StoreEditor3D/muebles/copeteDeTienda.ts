@@ -64,9 +64,11 @@ export function materialDeCopeteDeTienda(): THREE.MeshStandardMaterial {
   const textura = new THREE.CanvasTexture(c);
   textura.colorSpace = THREE.SRGBColorSpace;
   textura.anisotropy = 8;
+  // Impresión mate (`BRILLO.relleno`): con el brillo del porta-precios, el
+  // reflejo de las luminarias cruzaba el azul oscuro como sobre un vidrio.
   const material = new THREE.MeshStandardMaterial({
-    map: textura, metalness: 0, roughness: 0.6,
-    ...conLuzDeVenta(true, K_ENTORNO_MUEBLE, BRILLO.precios),
+    map: textura, metalness: 0, roughness: 0.8,
+    ...conLuzDeVenta(true, K_ENTORNO_MUEBLE, BRILLO.relleno),
   });
   copete = { textura, material };
   return material;

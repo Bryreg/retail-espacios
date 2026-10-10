@@ -32,7 +32,7 @@ const {
   ALTO_CIELO_RASO, LUMINARIA, luminariasDeTienda, direccionDeGondolas, ejesDeGrilla,
   proyectar, rayoDeVista, choqueEnElLocal, sombraDeHuellas, sombraEn, SOMBRA_AL_PIE,
   personaYTomaDeVenta, esquinasDeLaFigura, FIGURA_DE_ESCALA, SEPARACIONES_DE_LA_FIGURA,
-  LLENADO_DE_PAR, FRANJA_DEL_HUD, libreAlCostado, VECINO_PEGADO, alcanceDeLaFigura, ANGOSTO_ENTRE_MEDIO, CERCANIA_DE_LA_FIGURA,
+  LLENADO_DE_PAR, FRANJA_DEL_HUD, libreAlCostado, VECINO_PEGADO, alcanceDeLaFigura, ANGOSTO_ENTRE_MEDIO,
 } = await import(pathToFileURL(salida).href);
 
 // Lo que la cámara de venta toma de los muebles (la cuenta de la prueba y el
@@ -635,7 +635,7 @@ prueba("la persona se para al costado del mueble: nunca más allá de otro muebl
     assert.ok(persona.separacion <= alcance + 1e-9, `${id} ${t}: la persona a ${persona.separacion} m del canto, con piso sólo hasta ${alcance.toFixed(2)} m`);
     // Ni en primer plano: no más cerca de la cámara que el 80 % del centro de la cara.
     const dp = Math.hypot(vista.posX - persona.x, vista.posZ - persona.z), dc = Math.hypot(vista.posX - vista.targetX, vista.posZ - vista.targetZ);
-    assert.ok(dp >= CERCANIA_DE_LA_FIGURA * dc - 1e-9, `${id} ${t}: la persona a ${dp.toFixed(2)} m de la cámara, la cara a ${dc.toFixed(2)}: primer plano`);
+    assert.ok(dp >= 0.8 * dc - 1e-9, `${id} ${t}: la persona a ${dp.toFixed(2)} m de la cámara, la cara a ${dc.toFixed(2)}: primer plano`);
   }
   // Del robatope, del lado de la punta (0,9 m entre medio), nunca; de la
   // punta, del lado del robatope (0,3 m), sí.

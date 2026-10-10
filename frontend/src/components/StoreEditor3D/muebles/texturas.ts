@@ -359,7 +359,8 @@ export function claseDePixel(r: number, g: number, b: number, L: readonly number
 }
 
 /** Las filas que son ETIQUETA (o tapa): más del 40 % de lo opaco no es ni el
- *  líquido ni el claro del PET. Ésas no se tocan. */
+ *  líquido ni el claro del PET. Ésas no se tocan. El gris del PET del cuello
+ *  (`esGrisDePet`) no cuenta como etiqueta: el cuello no es tinta. */
 export function filasDeEtiqueta(img: Imagen, L: readonly number[]): boolean[] {
   const { ancho: w, alto: h, rgba } = img;
   const fuera: boolean[] = [];
@@ -369,11 +370,22 @@ export function filasDeEtiqueta(img: Imagen, L: readonly number[]): boolean[] {
       const i = (y * w + x) * 4;
       if (rgba[i + 3] < 128) continue;
       n++;
-      if (claseDePixel(rgba[i], rgba[i + 1], rgba[i + 2], L) === "otro") otros++;
+      const r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
+      if (claseDePixel(r, g, b, L) === "otro" && !esGrisDePet(r, g, b)) otros++;
     }
     fuera.push(n > 0 && otros > n * 0.4);
   }
   return fuera;
+}
+
+/** El PET del cuello visto contra el gris del estudio: un gris medio, sin
+ *  color (croma ≤ 30, luminancia entre 60 y 150). No es líquido ni el claro
+ *  del fondo ni tinta: con la clase «otro», las filas del cuello contaban como
+ *  ETIQUETA y quedaban tal cual, con los brillos blancos de la foto; acostada,
+ *  de cerca, eran manchas blancas dentadas alrededor del pico. */
+export function esGrisDePet(r: number, g: number, b: number): boolean {
+  const l = luminancia(r, g, b);
+  return Math.max(r, g, b) - Math.min(r, g, b) <= 30 && l >= 60 && l < 150;
 }
 
 /** Cuántos píxeles hay hasta lo transparente (alfa < 128), con la distancia
@@ -573,7 +585,10 @@ export function llenarBotella(img: Imagen): BotellaLlena {
       const r0 = rgba[i], g0 = rgba[i + 1], b0 = rgba[i + 2];
       const cerca = borde[y * w + x];
       const adentro = rgba[i + 3] >= 128;
-      const clase = adentro ? claseDePixel(r0, g0, b0, L) : "afuera";
+      // El gris del PET del cuello va como el claro: el líquido a su luz (una
+      // 2 L se llena hasta el cuello).
+      const clase0 = adentro ? claseDePixel(r0, g0, b0, L) : "afuera";
+      const clase = clase0 === "otro" && esGrisDePet(r0, g0, b0) ? "claro" : clase0;
       // Lo de afuera de la silueta es el sangrado del anillo claro: si el
       // torno queda un pelo más ancho que la foto es lo que se ve, así que
       // también va del color del líquido, oscuro como la pared.
