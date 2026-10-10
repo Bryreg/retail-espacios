@@ -3098,14 +3098,15 @@ prueba("la lámina usa las tomas de venta, con fondo de sala, y deja la cámara 
 prueba("la toma re-encuadra las rejillas que llegan tarde, sin pisar un giro a mano; la lámina dice la exhibición", () => {
   // Las automáticas existen recién con la foto: pedida antes, la toma
   // encuadraba las rejillas de fábrica y la 2 L quedaba cortada.
-  const efecto = cuerpoDe("const hecha = tomaHecha.current;", "function handleSceneDoubleClick");
-  assert.match(efecto, /const filas = filasDeLaToma\(pedidoDeToma\);\s*if \(filas === hecha\.filas\) return;/, "re-encuadra sin que cambien las filas");
+  // Desde Presentar a pantalla completa (tanda 3) es UN efecto con la clave
+  // del pedido, el tamaño y las filas: ver «la toma sigue al tamaño».
+  const efecto = cuerpoDe("const claveDeLaToma = pedidoDeToma", "function handleSceneDoubleClick");
+  assert.match(efecto, /const otrasFilas = !sinArte && filas !== hecha\.filas;/, "re-encuadra sin que cambien las filas (o con el «Hoy» de la lámina)");
+  assert.match(efecto, /if \(!otroTamano && !otrasFilas\) return;/, "re-encuadra sin que cambie nada");
   assert.match(efecto, /camera\.position\.distanceTo\(hecha\.pos\) < 1e-3/, "re-encuadra aunque la cámara se haya movido a mano");
   assert.match(efecto, /if \(!quieta\) return;/);
-  assert.match(efecto, /sinArte/, "el «Hoy» de la lámina re-encuadra y sale distinto de «Con …»");
-  assert.match(efecto, /\}, \[facePaintById, sinArte\]\);/, "no se entera cuando llegan las filas");
-  const toma = cuerpoDe("const tomaAtendida = useRef<number>(-1);", "const hecha = tomaHecha.current;");
-  assert.match(toma, /tomaDeVenta\(fix, pedidoDeToma\.cara, pedidoDeToma\.toma, pedidoDeToma\.holgura\);\s*recordarToma\(pedidoDeToma\);/,
+  assert.match(efecto, /\}, \[claveDeLaToma, firstPerson, sinArte, placedFixtures\]\);/, "no se entera cuando llegan las filas");
+  assert.match(efecto, /tomaDeVenta\(fix, pedidoDeToma\.cara, pedidoDeToma\.toma, pedidoDeToma\.holgura\);\s*recordarToma\(pedidoDeToma\);/,
     "la toma no recuerda qué filas encuadró");
   // La lámina: «Hoy» con las de fábrica, «Con …» con las acomodadas, y el pie
   // lo dice.
@@ -3465,7 +3466,7 @@ prueba("la pantalla que mira un proveedor muestra SÓLO lo suyo", () => {
     "«Presentar» le muestra a Diana la punta de Alpina");
   // La escena de la dueña recibe sólo las pruebas de la reunión.
   assert.match(editorCodigo, /prueba=\{pruebaEnEscena\}/, "el editor dibuja las pruebas de otros proveedores en plena reunión");
-  assert.match(editorCodigo, /privadoPara !== undefined \? prueba : pruebasDeLaReunion\(prueba, catalogo, supplierDeReunion\)/);
+  assert.match(editorCodigo, /privadoPara !== undefined \? prueba : pruebasDeLaReunion\(prueba, catalogo, supplierDeReunion, eligiendo\)/);
   // Y el cartel del mouse se vuelve discreto con la misma cuenta que el panel.
   assert.match(editorCodigo, /const discreto = hayReunion\(\{ pruebas: prueba\.size, proveedorDeReunion \}\);/,
     "el cartel del mouse nombra al proveedor con la reunión en curso");
@@ -3480,7 +3481,8 @@ prueba("con reunión en curso, el contrato de otro no se lee en el panel", () =>
   assert.match(panel, /const enReunion = hayReunion\(\{ pruebas: prueba\.size, proveedorDeReunion, eligiendo \}\);/);
   // La prueba de otro proveedor en la cara elegida no se nombra.
   const vista = cuerpoDe("function VistaProveedor(", "function FirstPersonControls(");
-  assert.match(vista, /const ajena = !!probando && deReunion != null && probando\.supplier_id !== deReunion;/);
+  // Y con el selector abierto sin proveedor tampoco se nombra (tanda 3).
+  assert.match(vista, /const ajena = !!probando && \(deReunion != null \? probando\.supplier_id !== deReunion : eligiendo\);/);
   const i0 = vista.indexOf("{ajena ? (");
   const i1 = vista.indexOf(") : probando ? (", i0);
   assert.ok(i0 > 0 && i1 > i0, "la prueba ajena no tiene versión discreta");
@@ -4282,6 +4284,98 @@ prueba("el relleno: un tono por unidad sembrado, sólo en venta; el editor, sin 
     assert.ok(p.colores.length > 0, "el relleno de venta va de un solo tono");
     assert.ok(p.material.vertexColors && p.geometria.getAttribute("color"), "vertexColors sin color de vértice: la malla sale negra");
   }
+});
+
+// ── Presentar a pantalla completa (tanda 3, paso 15) ────────────────────────
+
+prueba("Presentar ocupa la pantalla: contenedor fijo sin marco, pantalla completa en el clic, salida en un efecto", () => {
+  // Por videollamada se veía la barra de RECABRA y el lienzo con esquinas
+  // redondeadas. En Presentar el contenedor es `fixed inset-0`, sin
+  // `rounded` ni `border` (tapa la barra aunque el navegador niegue la
+  // pantalla completa); fuera, el de siempre.
+  const i = editorCodigo.indexOf("ref={contenedorRef}");
+  assert.ok(i > 0, "el contenedor del editor perdió su ref");
+  const contenedor = editorCodigo.slice(i, editorCodigo.indexOf(">", editorCodigo.indexOf("style={{minHeight:0}}", i)));
+  const [enPresentar, fuera] = contenedor.split(/"\s*:\s*"/);
+  assert.match(contenedor, /className=\{presentationMode\s*\?/, "el contenedor no cambia en Presentar");
+  assert.match(enPresentar, /fixed inset-0 z-\[60\]/, "en Presentar el contenedor no tapa la barra");
+  assert.ok(!/rounded|border/.test(enPresentar), "en Presentar el lienzo sigue con marco");
+  assert.match(fuera, /rounded-xl border border-dark-line/, "fuera de Presentar el editor perdió su marco");
+  // `requestFullscreen` sólo en el pedido, y el pedido DENTRO de los
+  // manejadores del clic (un efecto o un await pierden el gesto).
+  assert.equal((editorCodigo.match(/requestFullscreen\(/g) ?? []).length, 1, "requestFullscreen se llama desde otro lado");
+  const pedir = cuerpoDe("const pedirPantallaCompleta = useCallback(", "useEffect(");
+  assert.match(pedir, /el\.requestFullscreen\(\)\.catch\(/, "un rechazo de la pantalla completa queda sin atrapar");
+  assert.match(pedir, /document\.fullscreenElement/, "pide pantalla completa estando ya en pantalla completa");
+  const mostrar = cuerpoDe("const mostrarAlProveedor = useCallback(", "const alternarPresentar = useCallback(");
+  assert.match(mostrar, /setPresentationMode\(true\);\s*pedirPantallaCompleta\(\);/, "«Mostrar al proveedor» no pide la pantalla completa");
+  const presentar = cuerpoDe("const alternarPresentar = useCallback(", "const caraVisible = ");
+  assert.match(presentar, /setPresentationMode\(true\);\s*pedirPantallaCompleta\(\);/, "«Presentar» no pide la pantalla completa");
+  assert.ok(!/useEffect\([^]*?pedirPantallaCompleta\(\)/.test(cuerpoDe("const pedirPantallaCompleta = useCallback(", "const mostrarAlProveedor")),
+    "la pantalla completa se pide en un efecto (el navegador la niega sin gesto)");
+  // La salida: UN efecto sobre presentationMode (cubre «Salir», el botón,
+  // Esc, el desmontaje), y en ningún botón.
+  assert.equal((editorCodigo.match(/exitFullscreen\(/g) ?? []).length, 1, "exitFullscreen atado a un botón");
+  assert.match(editorCodigo,
+    /useEffect\(\(\) => \{\s*if \(!presentationMode\) return;\s*return \(\) => \{\s*if \(document\.fullscreenElement\) document\.exitFullscreen\(\)\.catch\(\(\) => \{\s*\}\);\s*\};\s*\}, \[presentationMode\]\);/,
+    "la salida de pantalla completa no va en un efecto sobre presentationMode");
+  // El Esc del navegador (fullscreenchange sin elemento) apaga Presentar.
+  assert.match(editorCodigo,
+    /const alCambiar = \(\) => \{ if \(!document\.fullscreenElement\) setPresentationMode\(false\); \};\s*document\.addEventListener\("fullscreenchange", alCambiar\);/,
+    "salir de pantalla completa con Esc deja Presentar prendido");
+});
+
+prueba("Esc sale de Presentar, salvo en primera persona o con el mouse capturado", () => {
+  const tecla = cuerpoDe('if(e.key==="Escape"){', 'if((e.key==="r"||e.key==="R")');
+  assert.match(tecla, /if \(presentationMode\) \{\s*if \(!firstPerson && !document\.pointerLockElement\) setPresentationMode\(false\);\s*return;\s*\}/,
+    "Esc no sale de Presentar, o sale en plena caminata");
+  // Y antes de soltar la selección: en Presentar Esc no deselecciona.
+  assert.ok(tecla.indexOf("if (presentationMode)") < tecla.indexOf("setSelectedId(null)"), "Esc en Presentar suelta el mueble elegido");
+  assert.match(editorCodigo, /\},\[placingDef,selectedId,u,undo,redo,presentationMode,firstPerson\]\);/, "el manejador de teclas lee un presentationMode viejo");
+});
+
+prueba("el HUD de Presentar se esconde a los 2 s y vuelve con el mouse, sin redibujar la escena", () => {
+  assert.match(editorCodigo, /const HUD_SE_ESCONDE_MS = 2000;/);
+  const hud = cuerpoDe("function HudQueSeEsconde(", "interface CommercialPanelProps");
+  assert.match(hud, /window\.setTimeout\(\(\) => setEscondido\(true\), HUD_SE_ESCONDE_MS\)/, "el HUD no se esconde solo");
+  assert.match(hud, /addEventListener\("mousemove", despertar/, "el HUD no vuelve al mover el mouse");
+  assert.match(hud, /addEventListener\("touchstart", despertar/, "el HUD no vuelve con un toque");
+  assert.match(hud, /escondido \? "pointer-events-none opacity-0" : "opacity-100"/, "escondido, el HUD sigue recibiendo clics");
+  assert.match(hud, /transition-opacity/);
+  assert.match(hud, /el\.style\.cursor = escondido \? "none" : "";/, "el cursor no se esconde con el HUD");
+  // El temporizador es estado de la píldora, no del editor: si no, cada vez
+  // que aparece o se esconde se re-renderiza la escena.
+  const editorFn = editorCodigo.slice(editorCodigo.indexOf("export default function StoreEditor3D("));
+  assert.ok(editorFn.length > 1000 && editorFn.length < editorCodigo.length, "no se encontró el editor");
+  assert.ok(!/HUD_SE_ESCONDE_MS|setEscondido/.test(editorFn), "el temporizador del HUD vive en el editor y re-renderiza la escena");
+  assert.match(editorCodigo, /\{presentationMode && \(\s*<HudQueSeEsconde contenedor=\{contenedorRef\}/, "Presentar sin el HUD que se esconde");
+});
+
+prueba("con el selector abierto y sin proveedor no se dibuja ninguna prueba; «Mostrarla» sólo sin nadie identificado", () => {
+  const catalogo = [
+    { id: 1, supplier_id: 10, proveedor: "Alpina" },
+    { id: 4, supplier_id: 70, proveedor: "Arroz Diana" },
+  ];
+  const pruebas = new Map([["PUN-01|A", 1], ["ROB-01|A", 4]]);
+  // «Cambiar de proveedor»: la reunión queda sin proveedor con el selector
+  // abierto, y el editor volvía a dibujar TODAS las pruebas.
+  assert.equal(X.pruebasDeLaReunion(pruebas, catalogo, null, true).size, 0, "con el selector abierto sin proveedor se dibujan las pruebas de todos");
+  assert.equal(X.pruebasDeLaReunion(pruebas, catalogo, null, true), X.pruebasDeLaReunion(new Map([["X|A", 4]]), catalogo, null, true),
+    "el vacío es un Map nuevo en cada render (el memo de la escena se rehace)");
+  assert.equal(X.pruebasDeLaReunion(pruebas, catalogo, null, false), pruebas, "sin selector ni reunión se pierden pruebas");
+  assert.deepEqual([...X.pruebasDeLaReunion(pruebas, catalogo, 70, true).keys()], ["ROB-01|A"], "con proveedor fijado el selector abierto esconde lo suyo");
+  // El editor: `eligiendo` sube del panel y llega a la cuenta.
+  assert.match(editorCodigo, /const \[eligiendo, setEligiendo\] = useState\(false\);\s*useEffect\(\(\) => \{ setEligiendo\(false\); \}, \[selectedId, presentationMode\]\);/,
+    "el selector abierto no llega a la escena, o queda abierto sin panel");
+  const panel = cuerpoDe("function CommercialPanel(", "class CanvasErrorBoundary");
+  assert.ok(!/useState\(false\);\s*const \[verContrato/.test(panel) && !/const \[eligiendo, setEligiendo\] = useState/.test(panel),
+    "el panel volvió a tener su propio `eligiendo`");
+  assert.match(editorCodigo, /eligiendo=\{eligiendo\}\s*setEligiendo=\{setEligiendo\}/, "el panel no recibe el selector del editor");
+  // «Mostrarla» sólo con `privadoPara` null: con un proveedor fijado, la
+  // prueba oculta es de OTRO y el botón le pasaba la pantalla.
+  const hud = editorCodigo.slice(editorCodigo.indexOf("data-prueba-oculta"), editorCodigo.indexOf("Mostrarla", editorCodigo.indexOf("data-prueba-oculta")) + 20);
+  assert.match(hud, /\{privadoPara === null && \(\s*<button\s*onClick=\{\(\) => mostrarAlProveedor\(pruebaOculta\.fixtureId, pruebaOculta\.cara\)\}/,
+    "«Mostrarla» se ofrece con la prueba de otro proveedor");
 });
 
 console.log(`\n${hechas} pruebas del mobiliario 3D`);

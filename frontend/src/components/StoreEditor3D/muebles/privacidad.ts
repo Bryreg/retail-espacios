@@ -149,6 +149,10 @@ export function hayReunion({ pruebas, proveedorDeReunion, eligiendo = false }: {
   return pruebas > 0 || proveedorDeReunion != null || eligiendo;
 }
 
+/** Ninguna prueba: una sola instancia, para que el memo de la escena no vea
+ *  un `Map` nuevo en cada render. */
+const SIN_PRUEBAS: ReadonlyMap<string, number> = new Map();
+
 /**
  * Las pruebas que se dibujan en la pantalla de la DUEÑA (el editor, fuera de
  * Presentar).
@@ -158,13 +162,21 @@ export function hayReunion({ pruebas, proveedorDeReunion, eligiendo = false }: {
  * panel y el cartel ya se vuelven discretos—, y le probaba el arroz a Diana
  * con los 345 vasos de Alpina de la mañana y su copete al lado. Las de los
  * otros no se borran: siguen en la sesión y vuelven al cambiar de proveedor.
+ *
+ * `eligiendo` (el selector de productos abierto) SIN proveedor: ninguna. Es
+ * el rato que deja «Cambiar de proveedor» —la reunión queda sin proveedor
+ * hasta elegir un producto del siguiente—, y en ese rato el editor volvía a
+ * dibujar las pruebas de TODOS detrás del velo del selector, con el
+ * proveedor nuevo ya mirando la pantalla. Lo mismo al abrir el selector por
+ * primera vez: todavía no se sabe a quién se le muestra.
  */
 export function pruebasDeLaReunion(
   prueba: ReadonlyMap<string, number>,
   catalogo: readonly ArteDeProveedor[],
   supplierDeReunion: number | null,
+  eligiendo = false,
 ): ReadonlyMap<string, number> {
-  if (supplierDeReunion == null) return prueba;
+  if (supplierDeReunion == null) return eligiendo && prueba.size > 0 ? SIN_PRUEBAS : prueba;
   const fuera = new Map<string, number>();
   for (const [clave, id] of prueba) {
     if (catalogo.find((a) => a.id === id)?.supplier_id === supplierDeReunion) fuera.set(clave, id);

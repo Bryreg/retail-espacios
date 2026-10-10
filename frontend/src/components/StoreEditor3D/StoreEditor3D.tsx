@@ -3708,8 +3708,12 @@ function VistaProveedor({
   // Con una reunión fijada, la prueba de OTRO proveedor en esta cara no se
   // dibuja (`pruebasDeLaReunion`) y acá tampoco se nombra: la pantalla se
   // está compartiendo. Se dice que hay una, y se puede quitar.
+  // Lo mismo con el selector abierto y SIN proveedor («Cambiar de
+  // proveedor»): la escena no dibuja ninguna prueba (`pruebasDeLaReunion`), y
+  // el panel detrás del velo seguía diciendo «Finesse yogurt fresa · Alpina»
+  // con el proveedor siguiente ya mirando.
   const deReunion = supplierPorNombre(proveedorDeReunion, catalogo);
-  const ajena = !!probando && deReunion != null && probando.supplier_id !== deReunion;
+  const ajena = !!probando && (deReunion != null ? probando.supplier_id !== deReunion : eligiendo);
 
   if (!uf || !isRentable(fix)) return null;
 
@@ -5304,54 +5308,63 @@ function Scene({
   // Un corte, sin animación: por videollamada el movimiento se empasta y el
   // proveedor ve una mancha.
   const tomaAtendida = useRef<number>(-1);
-  /** Lo que dejó la última toma: las filas que encuadró y dónde quedó la
-   *  cámara. Con eso se sabe si hay que re-encuadrar (abajo). */
-  const tomaHecha = useRef<{ n: number; filas: string; pos: THREE.Vector3; mira: THREE.Vector3 } | null>(null);
+  /** Lo que dejó la última toma: las filas que encuadró, el tamaño del
+   *  lienzo y dónde quedó la cámara. Con eso se sabe si hay que re-encuadrar
+   *  (abajo). */
+  const tomaHecha = useRef<{ n: number; filas: string; tamano: string; pos: THREE.Vector3; mira: THREE.Vector3 } | null>(null);
   const filasDeLaToma = (p: PedidoDeToma) => {
     const paint = facePaintById.get(p.fixtureId);
     return claveDeFilas((p.cara === "A" ? paint?.pruebaA : paint?.pruebaB)?.filas);
   };
+  const tamanoDelLienzo = `${size.width}x${size.height}`;
   const recordarToma = (p: PedidoDeToma) => {
     const mira = orbitRef.current?.target;
     tomaHecha.current = {
-      n: p.n, filas: filasDeLaToma(p),
+      n: p.n, filas: filasDeLaToma(p), tamano: tamanoDelLienzo,
       pos: camera.position.clone(), mira: mira ? mira.clone() : new THREE.Vector3(),
     };
   };
+  // Qué pide la toma: el número del pedido, el tamaño del lienzo y las filas
+  // de la cara. El efecto atiende cualquier cambio de esa clave:
+  //
+  // - un pedido NUEVO (`n`) siempre encuadra;
+  // - el TAMAÑO cambia al entrar a Presentar —el contenedor pasa a ocupar la
+  //   pantalla y después llega la pantalla completa—, y la toma se pidió en
+  //   el mismo clic, con el lienzo viejo: encuadrada para 1440 × 760 salía
+  //   corrida y con aire de más en 1920 × 1080;
+  // - las FILAS cambian cuando las rejillas automáticas de la nevera llegan
+  //   con la foto, después del primer encuadre: la 2 L quedaba cortada arriba.
+  //
+  // Los dos últimos re-encuadran SÓLO si la cámara sigue donde la dejó la
+  // toma (posición y mira a menos de 1 mm): un giro a mano de la dueña no se
+  // pisa porque se agrandó la ventana. Con `sinArte` (el «Hoy» de la lámina)
+  // las filas no se miran: vuelven a ser las de fábrica un momento y la toma
+  // de «Hoy» tiene que ser la MISMA que la de «Con …».
+  const claveDeLaToma = pedidoDeToma
+    ? `${pedidoDeToma.n}|${tamanoDelLienzo}|${filasDeLaToma(pedidoDeToma)}` : "";
   useEffect(() => {
     if (!pedidoDeToma || firstPerson) return;
-    if (tomaAtendida.current === pedidoDeToma.n) return;
     const fix = placedFixtures.find((f) => f.id === pedidoDeToma.fixtureId);
     if (!fix) return;
+    if (tomaAtendida.current === pedidoDeToma.n) {
+      const hecha = tomaHecha.current;
+      if (!hecha || hecha.n !== pedidoDeToma.n) return;
+      const filas = filasDeLaToma(pedidoDeToma);
+      const otroTamano = hecha.tamano !== tamanoDelLienzo;
+      const otrasFilas = !sinArte && filas !== hecha.filas;
+      if (!otroTamano && !otrasFilas) return;
+      const mira = orbitRef.current?.target;
+      const quieta = camera.position.distanceTo(hecha.pos) < 1e-3 && (!mira || mira.distanceTo(hecha.mira) < 1e-3);
+      hecha.tamano = tamanoDelLienzo;
+      if (!sinArte) hecha.filas = filas;
+      if (!quieta) return;
+    }
     tomaAtendida.current = pedidoDeToma.n;
     tomaDeVenta(fix, pedidoDeToma.cara, pedidoDeToma.toma, pedidoDeToma.holgura);
     recordarToma(pedidoDeToma);
     estadoDeEscena.current.toma = pedidoDeToma.n;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pedidoDeToma, firstPerson, placedFixtures, aplicarVista]);
-
-  // Las rejillas automáticas de la nevera existen recién con la foto cargada:
-  // la toma pedida antes encuadraba las de FÁBRICA, que después cambiaban, y
-  // la 2 L quedaba cortada arriba. Cuando cambian las filas de la cara de la
-  // toma se vuelve a encuadrar, pero SÓLO si la cámara sigue donde la dejó la
-  // toma: un giro a mano no se pisa. Con `sinArte` (el «Hoy» de la lámina)
-  // no se mira: las filas vuelven a ser las de fábrica un momento y la toma
-  // de «Hoy» tiene que ser la MISMA que la de «Con …».
-  useEffect(() => {
-    const hecha = tomaHecha.current;
-    if (!pedidoDeToma || firstPerson || sinArte || !hecha || hecha.n !== pedidoDeToma.n) return;
-    const filas = filasDeLaToma(pedidoDeToma);
-    if (filas === hecha.filas) return;
-    const mira = orbitRef.current?.target;
-    const quieta = camera.position.distanceTo(hecha.pos) < 1e-3 && (!mira || mira.distanceTo(hecha.mira) < 1e-3);
-    hecha.filas = filas;
-    if (!quieta) return;
-    const fix = placedFixtures.find((f) => f.id === pedidoDeToma.fixtureId);
-    if (!fix) return;
-    tomaDeVenta(fix, pedidoDeToma.cara, pedidoDeToma.toma, pedidoDeToma.holgura);
-    recordarToma(pedidoDeToma);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facePaintById, sinArte]);
+  }, [claveDeLaToma, firstPerson, sinArte, placedFixtures]);
 
   // CHANGE 2B — Double-click to reset orbit pivot to clicked point
   function handleSceneDoubleClick(e: any) {
@@ -5797,6 +5810,65 @@ function fixturesToStore(
   return [...exhibicion, ...updated];
 }
 
+// ─── El HUD de Presentar ──────────────────────────────────────────────────────
+
+/** Cuánto tarda el HUD de Presentar en esconderse sin mover el mouse. */
+const HUD_SE_ESCONDE_MS = 2000;
+
+/**
+ * La píldora de Presentar (De frente · Tres cuartos · De cerca · Salir), que
+ * se esconde sola.
+ *
+ * Quieta, tapaba el producto en las tomas «De cerca» —la fila de abajo de
+ * vasos, la base de la bolsa, la caja del medio— y por videollamada se leía
+ * como una app. A los `HUD_SE_ESCONDE_MS` sin mover el mouse se va (opacidad
+ * 0 y sin recibir clics, con transición), y el cursor con ella; vuelve con
+ * cualquier movimiento o un toque.
+ *
+ * El temporizador es estado de ESTE componente, no del editor: un cambio
+ * suyo re-renderiza sólo la píldora. Si viviera en el editor, cada vez que
+ * se esconde o aparece se re-renderizaría la escena entera, y en una PC sin
+ * placa de video eso es un cuadro de un segundo y medio.
+ */
+function HudQueSeEsconde({ contenedor, className, children }: {
+  contenedor: React.RefObject<HTMLElement>;
+  className: string;
+  children: React.ReactNode;
+}) {
+  const [escondido, setEscondido] = useState(false);
+  useEffect(() => {
+    let t = 0;
+    const despertar = () => {
+      // Mismo valor: React no re-renderiza.
+      setEscondido(false);
+      window.clearTimeout(t);
+      t = window.setTimeout(() => setEscondido(true), HUD_SE_ESCONDE_MS);
+    };
+    despertar();
+    window.addEventListener("mousemove", despertar, { passive: true });
+    window.addEventListener("touchstart", despertar, { passive: true });
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("mousemove", despertar);
+      window.removeEventListener("touchstart", despertar);
+    };
+  }, []);
+  // El cursor se esconde con el HUD. Directo en el estilo del contenedor, sin
+  // pasar por el render del editor (ver arriba).
+  useEffect(() => {
+    const el = contenedor.current;
+    if (!el) return;
+    el.style.cursor = escondido ? "none" : "";
+    return () => { el.style.cursor = ""; };
+  }, [escondido, contenedor]);
+  return (
+    <div data-hud-presentar data-hud-escondido={escondido || undefined}
+      className={`${className} transition-opacity duration-300 ${escondido ? "pointer-events-none opacity-0" : "opacity-100"}`}>
+      {children}
+    </div>
+  );
+}
+
 // ─── CommercialPanel ──────────────────────────────────────────────────────────
 
 interface CommercialPanelProps {
@@ -5813,6 +5885,10 @@ interface CommercialPanelProps {
   onProveedorDeReunion: (proveedor: string | null) => void;
   onMostrar:         (fixtureId: string, cara: "A" | "B") => void;
   onRecargarCatalogo: () => void;
+  /** El selector de productos abierto: vive en el editor porque la escena
+   *  también lo mira (`pruebasDeLaReunion`). */
+  eligiendo:         boolean;
+  setEligiendo:      (abierto: boolean) => void;
   selectedSlot:  ShelfSlot | null;
   onUpdate:      (id:string, u:Partial<PlacedFixture>) => void;
   /** Todo el plano de la sede: sin los demás muebles no se puede decir si el
@@ -5835,6 +5911,7 @@ interface CommercialPanelProps {
 function CommercialPanel({
   fix, enCaminata, catalogo, cargandoCatalogo, prueba, onProbar, onRecargarCatalogo,
   comoSePrueba, onAjustarPrueba, proveedorDeReunion, onProveedorDeReunion, onMostrar,
+  eligiendo, setEligiendo,
   selectedSlot, onUpdate, muebles, onRenombrar, onIntercambiar, onUpdateSlot,
   onRotate, onFlip, onDelete, onClose, onSlotClose,
 }: CommercialPanelProps) {
@@ -5848,7 +5925,6 @@ function CommercialPanel({
   // mes · hasta 2027-06-30» mientras se le probaba la góndola a Kellogg's. Con
   // una prueba puesta, un proveedor de reunión fijado o el selector abierto,
   // el bloque dice sólo «Ocupado hasta jun 2027»; el detalle, con un clic.
-  const [eligiendo, setEligiendo] = useState(false);
   const [verContrato, setVerContrato] = useState(false);
   useEffect(() => { setVerContrato(false); }, [fix.id]);
   const enReunion = hayReunion({ pruebas: prueba.size, proveedorDeReunion, eligiendo });
@@ -6374,6 +6450,42 @@ export default function StoreEditor3D() {
 
   // MEJORA 4: Presentation mode
   const [presentationMode, setPresentationMode] = useState(false);
+
+  // ── Presentar ocupa la pantalla entera ────────────────────────────────────
+  // Por videollamada se veía una app: la barra de RECABRA (Sede, Montajes,
+  // Plano, el usuario, «Sincronizado») arriba y el lienzo con su marco de
+  // esquinas redondeadas. En Presentar el contenedor pasa a `fixed inset-0`
+  // —tapa la barra aunque el navegador niegue la pantalla completa— y además
+  // se pide la pantalla completa del navegador.
+  const contenedorRef = useRef<HTMLDivElement>(null);
+  /** Pide la pantalla completa. Va DENTRO del manejador del clic: el
+   *  navegador sólo la da con un gesto del usuario, y después de un `await`
+   *  o en un efecto la niega. Si la niega queda el `fixed`, que ya tapa la
+   *  barra. */
+  const pedirPantallaCompleta = useCallback(() => {
+    const el = contenedorRef.current;
+    if (!el || document.fullscreenElement || typeof el.requestFullscreen !== "function") return;
+    el.requestFullscreen().catch(() => { /* la negó: queda el fixed */ });
+  }, []);
+  // La salida, en UN solo lugar: cualquier camino que apague Presentar
+  // («Salir», el botón de la barra, Esc, el desmontaje del editor) suelta la
+  // pantalla completa. Atarla a cada botón dejaba caminos sin cubrir.
+  useEffect(() => {
+    if (!presentationMode) return;
+    return () => {
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => { /* ya salió */ });
+    };
+  }, [presentationMode]);
+  // Y al revés: el Esc del navegador (o F11, o el aviso «Salir de pantalla
+  // completa») suelta la pantalla completa sin pasar por React; sin
+  // pantalla completa, Presentar se apaga. La salida desde un `fixed` sin
+  // pantalla completa quedaba a medias: el lienzo tapando la barra y nada
+  // para volver más que «Salir».
+  useEffect(() => {
+    const alCambiar = () => { if (!document.fullscreenElement) setPresentationMode(false); };
+    document.addEventListener("fullscreenchange", alCambiar);
+    return () => document.removeEventListener("fullscreenchange", alCambiar);
+  }, []);
   // Antes y después: apagar las artes muestra el espacio como está hoy, que es
   // contra lo que el proveedor compara su marca puesta.
   const [sinArte, setSinArte] = useState(false);
@@ -6465,9 +6577,17 @@ export default function StoreEditor3D() {
   const supplierDeReunion = useMemo(
     () => supplierPorNombre(proveedorDeReunion, catalogo), [proveedorDeReunion, catalogo],
   );
+  // El selector de productos abierto. Vivía adentro del panel, pero la
+  // escena también lo tiene que saber: con el selector abierto y sin
+  // proveedor (recién apretado «Cambiar de proveedor») no se dibuja ninguna
+  // prueba (`pruebasDeLaReunion`). Se cierra solo si el panel se va —otro
+  // mueble, ninguno, o Presentar—: el selector vive adentro del panel, y un
+  // `eligiendo` huérfano dejaría el editor sin pruebas.
+  const [eligiendo, setEligiendo] = useState(false);
+  useEffect(() => { setEligiendo(false); }, [selectedId, presentationMode]);
   const pruebaEnEscena = useMemo(
-    () => (privadoPara !== undefined ? prueba : pruebasDeLaReunion(prueba, catalogo, supplierDeReunion)),
-    [privadoPara, prueba, catalogo, supplierDeReunion],
+    () => (privadoPara !== undefined ? prueba : pruebasDeLaReunion(prueba, catalogo, supplierDeReunion, eligiendo)),
+    [privadoPara, prueba, catalogo, supplierDeReunion, eligiendo],
   );
 
   // La toma pedida para Presentar. `n` cambia en cada pedido para que pedir
@@ -6628,6 +6748,16 @@ export default function StoreEditor3D() {
         return;
       }
       if(e.key==="Escape"){
+        // En Presentar sin pantalla completa (el navegador la negó) Esc sale
+        // de Presentar, y nada más: la dueña vuelve a su panel con el mueble
+        // elegido. Con pantalla completa el Esc lo atiende el navegador
+        // (`fullscreenchange`). En primera persona, o con el mouse capturado,
+        // Esc suelta el mouse como siempre: sacar de Presentar a mitad de un
+        // recorrido sería otro gesto.
+        if (presentationMode) {
+          if (!firstPerson && !document.pointerLockElement) setPresentationMode(false);
+          return;
+        }
         setPlacingDef(null); setSelectedId(null); setSelectedSlotId(null);
         setFirstPerson(false);
       }
@@ -6648,7 +6778,7 @@ export default function StoreEditor3D() {
     }
     window.addEventListener("keydown",onKey);
     return ()=>window.removeEventListener("keydown",onKey);
-  },[placingDef,selectedId,u,undo,redo]);
+  },[placingDef,selectedId,u,undo,redo,presentationMode,firstPerson]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -6784,8 +6914,9 @@ export default function StoreEditor3D() {
     setSelectedSlotId(null);
     setFirstPerson(false);
     setPresentationMode(true);
+    pedirPantallaCompleta();
     pedirToma(fixtureId, cara, "frente");
-  }, [pedirToma, prueba, catalogo]);
+  }, [pedirToma, prueba, catalogo, pedirPantallaCompleta]);
 
   /** El botón «Presentar» de la barra: sin pasar por «Mostrar al proveedor»
    *  también hay que saber para quién es la pantalla.
@@ -6813,7 +6944,8 @@ export default function StoreEditor3D() {
       prueba, catalogo, muebleId: selectedId, proveedorDeReunion,
     }));
     setPresentationMode(true);
-  }, [presentationMode, prueba, catalogo, selectedId, proveedorDeReunion, supplierDeReunion, mostrarAlProveedor]);
+    pedirPantallaCompleta();
+  }, [presentationMode, prueba, catalogo, selectedId, proveedorDeReunion, supplierDeReunion, mostrarAlProveedor, pedirPantallaCompleta]);
 
   /** La cara con prueba de un mueble, A primero: es la que encuadran las
    *  tomas del HUD de Presentar. Sólo una que el que mira pueda ver: con la
@@ -7038,7 +7170,13 @@ export default function StoreEditor3D() {
        bloque del mismo nombre en `tema.css`). Adentro de esta marca la tinta
        se invierte, así que `bg-accent` es una pestaña CLARA sobre el panel
        oscuro y no un rectángulo negro invisible. */
-    <div data-cajon-oscuro className="flex flex-1 overflow-hidden rounded-xl border border-dark-line bg-dark-bg" style={{minHeight:0}}>
+    <div data-cajon-oscuro ref={contenedorRef} data-presentar={presentationMode || undefined}
+      className={presentationMode
+        /* Presentar: la pantalla entera, sin marco ni barra (ver
+           `pedirPantallaCompleta`). */
+        ? "fixed inset-0 z-[60] flex overflow-hidden bg-dark-bg"
+        : "flex flex-1 overflow-hidden rounded-xl border border-dark-line bg-dark-bg"}
+      style={{minHeight:0}}>
 
       {/* ── Left sidebar — hidden in presentation mode ── */}
       <div className={`flex w-52 flex-shrink-0 flex-col gap-3 overflow-y-auto border-r border-dark-line bg-dark-surface p-3 ${presentationMode ? 'hidden' : ''}`}>
@@ -7326,7 +7464,8 @@ export default function StoreEditor3D() {
             render, en los dos temas. Es la única familia de colores literales
             de Tailwind que queda fuera de la landing, y queda a propósito. */}
         {presentationMode && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3 py-2 backdrop-blur-sm" data-hud-presentar>
+          <HudQueSeEsconde contenedor={contenedorRef}
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3 py-2 backdrop-blur-sm">
             {muebleDelHud && caraConPrueba ? (
               /* Las tres tomas quietas de la cámara del vendedor. Un corte, sin
                  animación: por videollamada el movimiento se empasta. */
@@ -7342,11 +7481,17 @@ export default function StoreEditor3D() {
             ) : pruebaOculta ? (
               <>
                 <span className="px-1 text-sm text-white/80" data-prueba-oculta>Hay una prueba que no se está mostrando</span>
-                <button
-                  onClick={() => mostrarAlProveedor(pruebaOculta.fixtureId, pruebaOculta.cara)}
-                  className="rounded-full bg-dark-ink-1 px-3.5 py-1.5 text-sm font-semibold text-dark-bg transition-colors">
-                  Mostrarla
-                </button>
+                {/* «Mostrarla» sólo sin nadie identificado (`privadoPara`
+                    null). Con un proveedor fijado, la prueba oculta es de
+                    OTRO —la punta de Alpina en la reunión de Diana— y el
+                    botón le pasaba la pantalla a Alpina delante de Diana. */}
+                {privadoPara === null && (
+                  <button
+                    onClick={() => mostrarAlProveedor(pruebaOculta.fixtureId, pruebaOculta.cara)}
+                    className="rounded-full bg-dark-ink-1 px-3.5 py-1.5 text-sm font-semibold text-dark-bg transition-colors">
+                    Mostrarla
+                  </button>
+                )}
               </>
             ) : (
               <span className="px-1 text-sm text-white/70">Modo presentación</span>
@@ -7355,7 +7500,7 @@ export default function StoreEditor3D() {
               className="rounded-full bg-dark-ink-1/10 px-3.5 py-1.5 text-sm font-semibold text-dark-ink-1 hover:bg-dark-ink-1/20 transition-colors">
               Salir
             </button>
-          </div>
+          </HudQueSeEsconde>
         )}
 
         {/* MEJORA 8: First-person overlay instructions */}
@@ -7414,6 +7559,8 @@ export default function StoreEditor3D() {
           onProveedorDeReunion={setProveedorDeReunion}
           onMostrar={mostrarAlProveedor}
           onRecargarCatalogo={recargarCatalogo}
+          eligiendo={eligiendo}
+          setEligiendo={setEligiendo}
           selectedSlot={selectedSlot}
           onUpdate={updateFixture}
           muebles={placedFixtures}
