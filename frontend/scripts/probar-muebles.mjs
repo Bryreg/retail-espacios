@@ -2082,6 +2082,12 @@ prueba("«Acostarla sólo en la N»: acostada SÓLO donde parada no entra, y cab
   assert.match(ed, /data-acostar-solo onClick=\{\(\) => onAjustar\(\{ acostarDondeNoEntra: true \}\)\}/);
   // Y nunca al layout: es un campo de ComoSePrueba (la sesión).
   assert.match(ed, /type ComoSePrueba = \{[\s\S]*?acostarDondeNoEntra\?: boolean;[\s\S]*?\};/);
+  // «De fábrica» dice en la MISMA línea que parada no entra, con las medidas
+  // (la dueña lo buscaba en otro bloque).
+  const bloque = cuerpoDe("function BloqueDeRejillas(", "function useEtiquetas(");
+  const fabrica = bloque.slice(bloque.indexOf('{modo === "fabrica" && ('), bloque.indexOf('{modo === "manual" && ('));
+  assert.match(fabrica, /data-rejillas-texto>[\s\S]*Las \{fabrica\.rows\} de fábrica, como está la nevera hoy\.[\s\S]*const sin = libresDeFabrica\.filter\(\(l\) => l < alto\);[\s\S]*No entra parada: \{enCm\(alto\)\} cm en \{enCm\(max\)\} cm libres\.[\s\S]*<\/p>/,
+    "«De fábrica» no dice en su línea que parada no entra");
 });
 
 prueba("mover una rejilla: de a una ranura, con tope de 5 cm, la de abajo y el techo fijos", () => {

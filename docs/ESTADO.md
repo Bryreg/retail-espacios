@@ -1,7 +1,15 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-10 (la tercera crítica, cerrada: «Presentar» a pantalla
+Última actualización: 2026-10-10, tarde (la revisión de toda la rama y la tercera crítica
+de la demo: «Cambiar de proveedor» ya no suelta la reunión, «Terminar reunión», la lámina en
+reunión no sale para el contrato ajeno, el teclado y la salida de pantalla completa no tocan
+Presentar ni el plano, la ficha lee «9 cm» y bloquea lo ilegible; el relleno de lo vendido
+sin pictogramas, el cabezote legible, la línea del robatope —era el copete de la punta en el
+plano del parante—, la persona con huella, el vecino lavado y «Acostarla sólo en la N». Ver
+*2026-10-10 (tarde): la revisión de la rama y la tercera crítica de la demo*).
+
+Antes, 2026-10-10 (la tercera crítica, cerrada: «Presentar» a pantalla
 completa sin la barra ni el marco y con el HUD que se esconde solo —el navegador muestra
 unos segundos «Presioná Esc para salir», y el proveedor lo ve—; la persona entera del lado
 libre, de la misma cuenta que la toma, en gris claro; «De cerca» sin medio copete y el
@@ -262,10 +270,15 @@ crítica*. Y con una **reunión fijada** (el selector la fija al elegir un produ
 la reunión también fuera de Presentar: el editor dibuja sólo las pruebas de ese proveedor
 (`pruebasDeLaReunion`), «Presentar» es para él aunque esté elegido otro mueble, y el
 cartel del mouse y el panel callan nombres y precios con la misma cuenta (`hayReunion`).
-Ver *2026-10-09 (noche)*. Con el selector abierto y SIN proveedor («Cambiar de
-proveedor») no se dibuja ninguna prueba (`pruebasDeLaReunion(…, eligiendo)`), y en
-Presentar con un proveedor fijado la prueba oculta de otro se avisa sin nombres y sin
-«Mostrarla»: ese botón existe sólo con `privadoPara` nulo. Ver *2026-10-10*.
+Ver *2026-10-09 (noche)*. «Cambiar de proveedor» deja la reunión ABIERTA sin proveedor
+(`REUNION_SIN_PROVEEDOR`, un `""` que no es `null`): con el selector abierto o cerrado no se
+dibuja ninguna prueba, el panel las trata como ajenas y «Presentar» no adivina para quién;
+se sale eligiendo un producto o con «Terminar reunión». En reunión, la lámina de un mueble
+sin prueba de la reunión no sale para el contrato ajeno ni lleva sus datos
+(`laminaDelMueble`). Y con un proveedor en pantalla el HUD NUNCA avisa de la prueba de otro
+(«hay una prueba que no se está mostrando» le decía que esa punta se le ofrece a otro): a
+la dueña se le avisa antes de entrar; «Mostrarla» existe sólo con `privadoPara` nulo. Ver
+*2026-10-10* y *2026-10-10 (tarde)*.
 
 **La cuenta de los entrepaños se hace en un solo lugar.** `muebles/medidas.ts` es la
 fuente: `nivelesDeEntrepano` ubica las bandejas, `filasDeProducto` deriva de ahí las filas
@@ -4859,9 +4872,11 @@ pantalla completa. La pantalla completa se pide del contenedor **en el mismo cli
 (`pedirPantallaCompleta`, desde «Mostrar al proveedor» y «Presentar», con `catch`): un
 efecto o un `await` pierden el gesto del usuario y el navegador la niega. La salida es
 **un** efecto sobre `presentationMode` (su limpieza): cubre «Salir», el botón, Esc, el
-desmontaje y cualquier `setPresentationMode(false)`, sin repetirla en cada botón. Un
-`fullscreenchange` sin elemento a pantalla completa —el Esc del navegador— apaga
-Presentar. Sin pantalla completa, Esc sale de Presentar desde el manejador de teclas,
+desmontaje y cualquier `setPresentationMode(false)`, sin repetirla en cada botón. (Acá
+decía que un `fullscreenchange` sin elemento apagaba Presentar: ya NO —desde *2026-10-10
+(tarde)*—, porque Chrome saca de pantalla completa a la pestaña que deja de estar al frente
+y el Ctrl+Tab a Meet dejaba el editor a la vista; salir de la pantalla completa deja
+Presentar con su `fixed inset-0` y el HUD ofrece volver.) Sin pantalla completa, Esc sale de Presentar desde el manejador de teclas,
 **salvo** en primera persona o con el mouse capturado (`document.pointerLockElement`):
 ahí Esc suelta el mouse, como siempre.
 
@@ -5391,6 +5406,177 @@ repo; `r2b/demo-capturas.mjs` y `r2b/medir.mjs`, contra `r2-arreglo-1/final`):
 * **El costo** (`r2b/costo.mjs`): llamadas iguales o +2 por toma, salvo la góndola de
   Kellogg's de frente, que ahora entra entera (492 → 570, tope 700; +13 % de triángulos):
   más producto en el cuadro, no más costo por mueble. El cuadro entre 0,76 y 1,24 veces.
+
+### 2026-10-10 (tarde): la revisión de la rama y la tercera crítica de la demo
+
+Dos cosas en una vuelta: los hallazgos de la revisión de código de TODA la rama (todos
+los de gravedad alta y media, y los bajos que salían baratos) y lo que dejó la crítica de
+la demo después de `r2-arreglo-2` («casi»). La dueña estuvo de acuerdo con las exigencias
+del crítico visual. Las reglas de siempre: la prueba es de la sesión y nada va al layout,
+Vender y el mercaderista intactos, el editor como estaba, `frameloop` a demanda y sin
+pases. Commits: `7c1ae4b` (la revisión), `5cb01ab` y `cb8bf0a` (la crítica) y el de este
+cierre.
+
+#### La revisión de la rama
+
+**Privacidad y Presentar** (`privacidad.ts`, `StoreEditor3D.tsx`):
+
+* **«Cambiar de proveedor» deja la reunión ABIERTA sin proveedor** (`REUNION_SIN_PROVEEDOR`,
+  un `""` que no es `null`). Antes la dejaba en `null` —«no hay reunión»— y al cerrar el
+  selector sin elegir, el editor volvía a dibujar las pruebas de todos, el panel nombraba
+  la de Alpina con su foto y «Presentar» le daba la pantalla a Alpina delante de Diana.
+  Con el centinela no se dibuja ninguna prueba, el panel trata toda prueba como ajena y
+  `proveedorParaPresentar` no adivina (devuelve `null`).
+* **«Terminar reunión»** en la barra: la reunión no terminaba nunca (el tooltip y el
+  bloque «Contratado» escondían proveedor y valor en TODOS los muebles hasta recargar).
+  Pide confirmación si hay pruebas y las quita. Y las pruebas de un mueble borrado ya no
+  la sostienen (`pruebasDelPlano`): no hay panel desde donde quitarlas.
+* **La lámina de un mueble elegido, en reunión, no sale para el contrato ajeno**
+  (`laminaDelMueble`): sin prueba de la reunión es para el proveedor de la reunión (o
+  nadie) y el pie va sin proveedor, período ni valor del contrato de otro. Antes, en la
+  reunión de Diana con la punta de Alpina elegida, el lienzo compartido dibujaba los vasos
+  de Alpina durante las tomas y bajaba «…_Alpina.png» con su valor mensual.
+* **El HUD no le avisa al proveedor la prueba de otro**: «Hay una prueba que no se está
+  mostrando» encima de la punta vacía le decía que esa punta se le ofrece a otro. Con un
+  proveedor en pantalla el HUD dice «Modo presentación» a secas; a la dueña se le avisa
+  ANTES de entrar (el título del botón y el panel).
+* **Las tomas van a la cara pedida** (`caraDeLasTomas`): con Müsli en la A y Zucaritas en
+  la B, «De cerca» saltaba al otro lado de la góndola, y la lámina salía con la A.
+* **En Presentar el teclado sólo atiende Esc** (ni R, ni F, ni Retroceso, ni Ctrl+Z): la
+  selección no se ve en Presentar y una tecla sin querer giraba o borraba la punta delante
+  del proveedor, y quedaba escrito en el plano.
+* **Salir de la pantalla completa ya no apaga Presentar.** Chrome y Edge sacan de pantalla
+  completa a la pestaña que deja de estar al frente (Ctrl+Tab a Meet para apretar
+  «Compartir»), y eso apagaba Presentar: la pestaña compartida pasaba a mostrar el editor
+  con datos de otros proveedores. Filtrar por `visibilityState` no servía: el
+  `fullscreenchange` llega ANTES que el `visibilitychange`. Ahora Presentar sigue con su
+  `fixed inset-0` y el HUD ofrece «Pantalla completa»; un segundo Esc sale.
+
+**La ficha** (`EditorDeFicha.tsx`): lee «9 cm», «9cm», «90 mm» y «4,900» (coma con tres
+cifras es miles), dice en castellano y en cm lo que no se entiende o se sale de los topes
+(`TOPES_MM`, los mismos de `FichaIn`), y los dos «Guardar medidas» y el alta se BLOQUEAN
+mientras haya algo ilegible (`onValidez`). Antes lo ilegible viajaba como `null` y el PUT,
+que reemplaza la ficha entera, borraba un alto o un precio que estaban bien.
+
+**Geometría:** la bolsa acostada ya no sale negra (le faltaba el atributo `color` con un
+material de `vertexColors`: en three r184 eso vale 0); el hablador genérico de la cara B
+de una góndola doble ya no queda espejado (`tramosConRelleno` busca el vano con −x en las
+caras que se montan giradas); y el tablero carga el editor 3D perezoso (`React.lazy`): cada
+carga de KPIs o Supervisar bajaba ~160 KB gzip de la prueba de producto.
+
+**Backend:** reactivar un cliente crea las tablas que se desplegaron mientras estaba
+archivado (`preparar_esquema`, la misma del alta: el arranque sólo recorre los activos y el
+catálogo daba 500 hasta el próximo reinicio), y borrar un proveedor con artes o con
+historial de contratos contesta 409 con el porqué en vez del 500 de la clave foránea de
+Postgres (en SQLite pasaba y dejaba artes huérfanas).
+
+#### La tercera crítica de la demo
+
+**1. El relleno neutro deja de ser un pictograma** (alta; `rellenoDeVenta.ts`). Lo vendido
+a otros eran bloques de color con un óvalo casi negro de borde duro y una franja clara de
+corte neto que se leía como capa transparente: en «De cerca» del robatope, media pantalla
+de juguete al lado del arroz real. Ahora nada baja de `SOMBRA_MINIMA` (0,62 de la luz del
+envase), lo claro es papel a medias (`BLANCO_MAXIMO`), la ventana de la «foto» va en
+degradé, la caja lleva un degradé vertical leve (−8 % abajo) por color de vértice, y la
+textura se suaviza 3-4 px después de pintar (`suavizarPorCelda`, sin mezclar un diseño con
+el de al lado). En un vecino, el relleno conserva más luz que su mueble
+(`EXPOSICION_DEL_RELLENO_VECINO`): es mercadería con color, no un hueco. Cero llamadas nuevas.
+
+**2. El cabezote se lee como aviso** (media; `pop.ts`). La marca sale de la foto a
+resolución completa con un realce de nitidez de radio 1 (`realzar`), sobre un panel de
+esquinas redondeadas con filete blanco (no un halo); el papel de la foto se lleva al del
+panel columna por columna (`igualarFondoPorColumna`: la foto de un envase redondo se oscurece
+hacia los costados) y la letra clara queda BLANCA. Si al tope de ampliación no cubre el 40 %
+del ancho, la marca se repite una vez a cada lado al 30 % (`ECO_DE_LA_MARCA`): luz de
+fondo, no miniaturas.
+
+**3. La base de la 2 L acostada** (media; `perfiles.ts`). Todas las filas del pie suben al
+cuerpo con la `u` del mismo ángulo (con la proyección plana muestreaban el fondo quitado
+entre los lóbulos: la cuña rosada y blanca), y el disco va un 15 % más oscuro con los cinco
+lóbulos del pie petaloide por color de vértice.
+
+**4. La línea oscura del remate del robatope** (media). Era el costado del COPETE de la
+punta vecina: el robatope se arrima al costado de la punta, su remate (1,6 m) queda más
+alto que el cuerpo de ella (1,44 m), y el vuelo del copete (5 cm) se metía en el parante
+del robatope (5 cm) con la cara justo en el plano de la cara interior del parante. Los dos
+peleaban por el depth-buffer: una línea de 2-3 px que colgaba del remate hasta la tapa de
+la punta. La primera bisección (apagando remate, fondo, producto y parantes) la daba por un
+costado sin luz y le puso emisión al parante; no era eso —en la build de depuración la
+línea seguía con el color del VECINO de atrás, no del parante—. Ahora `COPETE.vuelo` es
+4,5 cm, medio centímetro adentro del parante (`ROBATOPE.parante`), y la emisión lateral se
+sacó. Medido en «De cerca» del robatope: la columna de la línea caía 131 niveles bajo el
+lateral; ahora 0. Lo vigila una prueba sobre la punta ARMADA (lo más afuera de sus mallas
+contra la cara interior de un robatope pegado).
+
+**5. La bolsa** (media; `perfiles.ts`): el lomo con el color dominante en degradé hacia el
+canto (no la foto estirada); el sello de 12 mm, un 15 % más claro y con tres rayas finas
+del termosellado (con 4 columnas: casi el costo de antes); y las de atrás 1-2 cm más bajas
+—asentadas— con otro giro. «De cerca» del robatope cierra el par de repisas a
+`LLENADO_DE_PAR` = 0,8 del alto en el plano de la mira (la crítica medía en la captura, de
+la bolsa de arriba al riel de abajo: 62 % con 0,7; pedía 65-75).
+
+**Los bajos:**
+
+* **La persona tiene huella y degradé** (`sombraDePersona`, `planoDeSilueta`): un óvalo
+  blando de 45 × 25 cm al 35 % bajo los pies, HIJO de la figura (gira y se esconde con
+  ella), translúcido y sin escribir profundidad; y la silueta un 9 % más oscura al pie por
+  color de vértice. El gris y la opacidad de arriba, los de siempre.
+* **La góndola libre ya no es un esqueleto de CAD** (`LAVADO_DEL_VECINO`, `luzDeVenta.ts`).
+  La exposición del vecino multiplica todo por igual y conserva el contraste: el panel de
+  fondo quedaba casi negro (55) bajo entrepaños claros de canto vivo (salto de 103). Ahora
+  el color final del vecino se mezcla un 30 % con un gris medio (0,2 lineal, calculado con
+  el tono ACES de la escena), proporcional a lo que se apaga (`lavadoPara`: la nevera
+  vecina, con exposición 1, no se lava; la chapa del copete libre, a medias). Un uniforme
+  más por material, el mismo programa. En «De cerca» girado 60°: panel de 55 a 86, salto
+  de 103 a 63 (pedía ≤ 60: el canto de arriba del entrepaño contra la sombra que tiene
+  debajo); el blanco apagado del robatope casi no cambia.
+* **«Acostarla sólo en la N»** (`filasSinAlto`, `ComoSePrueba.acostarDondeNoEntra`). A
+  mano, la 2 L dejaba vacío el entrepaño que no alcanza, y para el proveedor un hueco en el
+  medio de SU nevera es un quiebre de inventario. Junto al aviso, el botón la acuesta SÓLO
+  ahí (el mismo producto, acostado, con su propio «dónde»; `PruebaDeCara.acostada`); en
+  los demás sigue parada. Es un flag de la sesión, así que si se mueven las rejillas se
+  acuesta donde haga falta; «Dejarlo vacío» lo deshace. El resumen lo cuenta («· 3
+  acostadas en la 2 · 33 de frente»).
+* **«De fábrica» lo dice en su línea**: «Las 5 de fábrica, como está la nevera hoy. No
+  entra parada: 33 cm en 31 cm libres.».
+
+**Lo que no se hizo, y por qué:**
+
+* **El vidrio de la nevera de refrescos.** `nevera_refrescos` es, por su ficha del
+  catálogo, una vitrina multideck ABIERTA (la cortina de aire es lo que la hace leer como
+  mueble de frío); la de puertas de vidrio existe (`NeveraReal variante="puertas"`, la usa
+  la vitrina). Ponerle puerta sólo en venta haría que el editor y la pantalla del proveedor
+  mostraran muebles distintos, y si las neveras de la sede son de puerta es un dato del
+  mueble, no un efecto. Queda para decidir con la dueña: un tipo (o una opción del mueble)
+  «con puertas», no un vidrio pintado en venta.
+
+**Cómo se comprobó.** `tsc` limpio; `npm run probar` entero en 0 fallas (`probar-muebles`
+209, `probar-arte` 49, `probar-planta` 59); `build`; `pytest` (la rama tocó el backend):
+1.220 en verde, 7 xfail y 2 omitidas, salida 0.
+Las guardas nuevas se rompieron a propósito con `mutar.py` (respaldo y vuelta con `cp`,
+`git diff --stat` limpio): 16 de 16 cayeron (una primera mutación de la huella era
+equivalente —agregaba un grupo vacío— y se cambió por la que de verdad la saca de la
+figura).
+
+Medido sobre las capturas (`scratchpad/realismo/capturas/final2/`, nunca en el repo; el
+juego estándar de `capturar.mjs` contra el de la crítica, `critica-r3/`):
+
+* **El relleno** (bolsa-6, la góndola vendida de al lado): p5 de 24 a 70 (pedía ≥ 40); los
+  saltos de más de 25 niveles en 3 px, de 2,5 % a 0,5 % de las muestras (lo que queda es el
+  canto entre cajas).
+* **El cabezote** (gaseosa-4): la marca con p95 de 254 contra 223 del forro (era 215).
+* **La línea del robatope** (bolsa-6, x 1066-1086): de 131 niveles bajo el lateral a 0.
+* **La góndola libre** («De cerca» del robatope girado 60°): panel de 55 a 86, salto de 103
+  a 63.
+* **El costo** (`r3d/costo.mjs`, contra `r2-arreglo-2/costo-final2`): +1 llamada por toma
+  (la huella de la persona), los mismos triángulos salvo la bolsa (+210, el sello) y el
+  cuadro igual (entre 0,98 y 1,09 veces).
+
+El juego para la dueña: `final2/comparar-*.png` (antes —la build de e11540e, la lámina
+plana— y después con la MISMA cámara, de frente y de cerca, por mueble de la demo),
+`final2/demo/` (la demo por proveedor: rejillas automáticas, a mano, de fábrica y «Acostarla
+sólo en la 2»; el editor; las láminas; Presentar a pantalla completa) y `final2/estandar/`
+(el juego de la crítica, para medir contra él).
 
 ---
 
