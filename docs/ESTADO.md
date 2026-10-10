@@ -5230,6 +5230,170 @@ las mismas tomas que la crítica; `r2a/medir.mjs`):
 
 ---
 
+### 2026-10-10 (madrugada): la segunda crítica de la demo — que lo libre deje de competir
+
+La crítica de la demo después de la vuelta anterior (`capturas/r2-arreglo-1/`) dio «casi».
+Lo que quedaba: la toma estrella de Alpina rodeada de muebles vacíos a plena luz (el
+robatope libre MÁS claro que la punta vendida), las neveras solas contra un muro liso, el
+héroe del copete de la Avena mutilado («inesse»), un hilo blanco en cada botella de 2 L y
+un cabezote que no se leía luminoso. Las mismas reglas que siempre: todo de la sesión y de
+la pantalla de venta, nada al layout, Vender y el mercaderista intactos, el editor y
+`/taller` como estaban (`/taller`: 0 px de diferencia en sus ocho casos), `frameloop` a
+demanda y sin pases.
+
+**1. El vecino pierde exposición, no sólo la luz del cuarto** (`EXPOSICION_DEL_VECINO`,
+`luzDeVenta.ts`). La atenuación de la tanda 2 bajaba la luz del cuarto (× 0,55) y el brillo
+de las luminarias, pero una cara blanca que mira a la cámara recibe casi toda su luz de la
+direccional y la ambiente, que no se tocaban: el robatope libre pegado a la punta quedaba
+en 181 de luminancia media contra 156 de la punta, y la góndola libre de «Tres cuartos» a
+la par (154 contra 153). Ahora el parche de venta multiplica TODO lo que sale del material
+—`outgoingLight *= uExposicion`, justo antes de `opaque_fragment`, en el Lambert y en el
+Standard— por un uniforme más de cada material, que el mismo efecto de siempre
+(`atenuarUniformes`) pone en 0,38 sin foco y en 1 con foco; nada se rehace ni se
+recompila. Calibrado en la demo: con 0,62 el robatope quedaba a la par; con 0,45, un 15 %
+abajo (las caras de arriba de sus repisas, de frente a la direccional, se comen el tono);
+con 0,38, un 26 % abajo (122 contra 165) y la góndola libre un 38 % (102 contra 165). Dos
+excepciones con su propia exposición (el segundo argumento de `useAtenuacion`):
+
+* **La nevera vecina** va con 1 (`EXPOSICION_DE_NEVERA_VECINA`): ya se apaga con su frío
+  (`apagarElFrio`), y con las dos sus botellas mudas —que tienen que seguir leyéndose—
+  bajaban de 65 a 28.
+* **La chapa de la tienda** del copete de una punta libre va con 0,7
+  (`EXPOSICION_DE_LA_CHAPA`): con 0,38 el azul petróleo era una losa negra. Y pasó a ser un
+  material POR punta (`materialDeCopeteDeTienda`, con la textura compartida y el mismo
+  programa; cada punta lo memoriza y lo suelta): con uno solo para todas, o se atenuaban
+  todas o ninguna.
+
+Lo que la crítica pedía además para «Tres cuartos» de la punta —girar si la góndola libre
+pasaba del 20 % del cuadro— no hizo falta: medido con la caja proyectada y lo que tapa la
+punta, lo que se ve de GON-01 es el 8 % (la cota sin tapar, 19 %); pesaba por la luz, no
+por el área. Lo vigila `probar-planta` (a lo sumo 15 % visible).
+
+**2. El muro de venta tiene degradé y cenefa** (`sala.ts`). Un muro beige del mismo tono de
+arriba abajo «dice render de arquitectura», y la nevera contra él, «un electrodoméstico en
+un salón vacío».
+
+* **El degradé** (`DEGRADE_DEL_MURO`, `luzDelMuro`): más claro arriba, bajo las luminarias,
+  y un 26 % más oscuro (lineal) al pie, por color de vértice en franjas de 40 cm. El muro
+  pasó a `meshBasicMaterial` sin tono con el color que ya se veía en pantalla (#cfccc4, lo
+  que daba el Lambert con su `emissive`): con el `emissive` del Lambert el color de vértice
+  sólo tocaba la parte difusa y el degradé no se veía. En pantalla, de 211 arriba a 183
+  al pie.
+* **La cenefa perimetral** (`geometriaDeCenefa`, `CENEFA`): una faja de 35 cm a 2,45 m en
+  los cuatro muros, en paneles de 2,4 m que alternan dos tonos de la chapa de la tienda
+  (`COLOR_DE_TIENDA`), con un filete claro abajo y arriba. Una geometría, una llamada.
+  SIN texto y SIN colores por categoría: «bebidas frías» o «lácteos» es señalética, y la
+  nomenclatura por pasillo sigue siendo una conversación abierta con el dueño («Dónde
+  retomar», punto 1). Es la tienda, no un proveedor.
+
+**3. «De frente» con persona no abre el cuadro** (`personaYTomaDeVenta`, `utils/planta.ts`).
+La toma probaba la persona a 1,2 m y abría el cuadro hasta ella: la nevera de la demo
+ocupaba el 26 % del ancho y el resto era muro. Ahora primero busca la mayor separación en
+que la persona entra en la toma del mueble SIN abrirla —el mueble lleno de alto y ella por
+el borde— y sólo si ninguna entra abre el cuadro como antes. Con eso:
+
+* la toma con persona es del mueble ENTERO: del piso a lo más alto entre la cabeza y el
+  remate del mueble, con `AIRE_SOBRE_EL_MUEBLE` (6 cm) —con el foco del producto a secas,
+  el cabezote de la nevera quedaba a 3 % del borde—;
+* **con un vecino pegado de un costado** y lugar del otro, «De frente» se corre 18 cm
+  hacia el libre (`corridaPorVecino`, `DESCENTRADO_POR_VECINO`; la cámara con la mira):
+  centrada, la nevera vecina entraba entera en su mitad del cuadro (29 %); corrida, el
+  borde la corta (menos del 25 %) y el mueble sigue casi al centro. Sólo en la pantalla de
+  venta: «Encuadrar esta cara» del editor sigue centrado;
+* la persona no se superpone con la CAJA del mueble (las ocho esquinas, no las cuatro de la
+  cara) y deja `AIRE_DE_LA_FIGURA` (30 px) de aire: en «Tres cuartos» tapaba el costado de
+  NEV-01 que da a la cámara.
+
+**4. «De frente» de una cara larga abre el campo visual** (`fovParaLaCara`). Una góndola de
+3,6 m frente a un pasillo de 2 m no entra con 50°: la lámina de Kellogg's cortaba el bloque
+de Müsli —el principal— y el de Zucaritas. En la pantalla de venta, «De frente» de la cara
+entera prueba la toma de verdad de 50° a 70° (`FOV_MAXIMO_DE_FRENTE`, unos 24 mm) hasta que
+las cuatro esquinas caen dentro del 96 % del cuadro, y con el campo abierto la cámara se
+para al fondo del pasillo (`alFondo`: con la cuenta de siempre se acercaba al abrirlo y la
+cara volvía a no entrar). Una nevera o una punta, que entran, quedan en 50°. Ahora la toma
+de Kellogg's muestra los tres bloques y el cielo raso con sus luminarias.
+
+**5. El héroe del copete de una caja es un envase entero** (`pop.ts`). La franja del logo a
+la izquierda del copete era, en una caja, la banda del medio de la foto de canto a canto:
+en la Avena el logo llega al borde de la foto y se comía la «f» de «finesse», borroso y con
+halo. Ahora la franja va sólo si es la etiqueta de verdad (la botella transparente) y sin
+ampliar la foto más de 1,5 veces (`AMPLIACION_MAXIMA`; si así queda en menos de la mitad del
+alto, no va); sin ella, el abanico lleva tres envases por lado —siete, como el copete del
+Finesse, que la crítica daba por bueno—. Para la reunión, la foto de la Avena se cambió por
+la caja de la DERECHA de la misma foto de Open Food Facts, que trae el frente entero (la
+«f» y el octógono «CONTIENE EDULCORANTES»), con su etiqueta de importación tapada por el
+fondo de la caja y la palabra «Avena» de la otra caja (`scratchpad/realismo/r2b/
+avena-compuesta.mjs`; dato de demo, nunca en el repo).
+
+**6. La botella sin hilo ni flecos** (`llenarBotella`, `texturas.ts`). El hilo blanco que
+bajaba del cuello a la base en cada 2 L era NUESTRO: el reflejo de 3 px al 30 % que se le
+pintaba. Ahora es una banda gaussiana suave a un cuarto del ancho (`REFLEJO_DEL_PET`,
+σ = 7 % de la fila, a lo sumo 10 % de blanco): la curva del plástico; el brillo lo pone la
+luz. Los flecos dentados eran PET con el fondo detrás teñido del rosa de la etiqueta y de
+la tapa ([177, 139, 141], croma 38) que quedaba como «otro», sin teñir, en el borde de
+arriba de la etiqueta y en el anillo del cuello: el gris del PET admite ahora hasta 55 de
+croma (`CROMA_DEL_PET`; la tinta tiene más: el rosa 155, la tapa 195). Y las primeras tres
+filas de la etiqueta, si son mayormente claras (`CANTO_CLARO`, 40 %: el canto del papel
+con el fondo detrás), toman el color de la etiqueta de abajo; la letra blanca que arranca
+al ras cubre menos y no se toca. Medido en «De cerca» de Postobón: columnas con una línea
+de 40 niveles sobre el cuerpo en la mitad de las filas, de 8 a 0.
+
+**7. El cabezote se lee luminoso** (`dibujarCartel`, rama apaisada). Era una banda rosa
+salmón plana (el rojo mezclado con gris, 120 de luminancia con 6 de rango) con un recorte
+del 8 % del ancho. Ahora: el color de la marca SATURADO (`saturar`: saturación ≥ 0,62 y
+luminosidad entre 0,36 y 0,5; un gris queda gris), en degradé VERTICAL más claro arriba (en
+diagonal, en un cartel de 13 a 1, no se veía); detrás de la marca, el panel del papel de
+la etiqueta —su propio fondo, `FranjaDeEtiqueta.fondo`, el promedio de lo que no es letra
+en el 40 % del medio de la banda, saturado y claro—, de al menos el 40 % del ancho con las
+puntas fundidas (`PANEL_DEL_CABEZOTE`; no es un dibujo nuevo: es la etiqueta estirada
+detrás de su marca); el recorte al 78 % del alto sin ampliar la foto más de 1,5 veces; el
+lienzo a 2048 (a 1024 salía pixelado en la lámina); y más emisión
+(`EMISION_RETROILUMINADA`, 2,4 veces la de lo impreso): el blanco de la marca, 226 contra
+223 del forro. Chapa: 95 de media con 59 de rango.
+
+**Los bajos que se atendieron:**
+
+* **La variación sembrada en cualquier cara** (`unidadesDePrueba`): una de cada cuatro cajas
+  del frente gira hasta 1,5° también en la punta (eran «44 cajas de Avena en fila
+  perfecta»); el vaso —todo envase torneado— gira como una botella (con ±0,9° los 39
+  Finesse miraban todos al frente); y una de cada seis columnas queda un poco ADELANTADA
+  (`COLUMNA_ADELANTADA`, `ADELANTO`: 3-4 mm, dentro del centímetro de retiro al frente). El
+  frente corrido sigue siendo sólo de las caras largas con un arte.
+* **La persona sin tapar el mueble** en «Tres cuartos» (ver 3).
+* **El relleno cercano** en «De cerca» girado: con la exposición del vecino ya va apagado.
+
+**Lo que no se hizo, y por qué:**
+
+* **El brillo en los parantes de la punta**: una cara vertical de frente a la cámara refleja
+  el piso o el muro, no las luminarias, y una franja que se mueva con el azimut sería un
+  efecto pintado que no sale de la tienda que se dibuja. Queda pendiente con un criterio
+  propio.
+* **El cielo raso en la lámina de la nevera**: con el muro de atrás a 2,5 m, el borde de
+  arriba de la toma lo toca antes del techo (ver la medida de la tanda 2); la cenefa nueva
+  es lo que se ve arriba.
+
+**Cómo se comprobó.** `tsc` limpio; `npm run probar` entero en 0 fallas (`probar-muebles`
+195, `probar-arte` 48, `probar-planta` 59); `build`. El backend no cambió (no hizo falta
+`pytest`). Cada guarda nueva se rompió a propósito con `mutar.py` (respaldo y vuelta con
+`cp`, `git diff --stat` limpio): 36 de 36 cayeron, después de endurecer las cinco que
+sobrevivían la primera vuelta (el canto de prueba no era fila de etiqueta, la foto de
+prueba era chica para que el tope de ampliación mordiera, y la columna adelantada se medía
+contra el entrepaño de otra fila). Una mutación más resultó equivalente y se descartó
+(limitar la búsqueda del campo visual a 50° cae en el máximo igual).
+
+Medido sobre las capturas (`scratchpad/realismo/capturas/r2-arreglo-2/final/`, nunca en el
+repo; `r2b/demo-capturas.mjs` y `r2b/medir.mjs`, contra `r2-arreglo-1/final`):
+
+* **Los vecinos**: el robatope junto a la punta, de 16 % MÁS claro a 26 % más oscuro; la
+  góndola libre de «Tres cuartos», de a la par a 38 % más oscura; NEV-02, 45 % (era 46 %).
+* **La botella**: 0 columnas con hilo (eran 8).
+* **El cabezote**: marca 226 contra forro 223 (era 220); chapa con 59 de rango (era 7).
+* **El costo** (`r2b/costo.mjs`): llamadas iguales o +2 por toma, salvo la góndola de
+  Kellogg's de frente, que ahora entra entera (492 → 570, tope 700; +13 % de triángulos):
+  más producto en el cuadro, no más costo por mueble. El cuadro entre 0,76 y 1,24 veces.
+
+---
+
 ## El producto estaba pintado al fondo del mueble
 
 Al ver la primera góndola vestida en producción saltó lo que ninguna prueba
