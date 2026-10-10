@@ -619,9 +619,10 @@ prueba("el copete no se tiñe con el estado comercial", () => {
   assert.ok(desde > 0, "no se encontró la chapa impresa del copete");
   const tramo = puntaCodigo.slice(desde);
   assert.ok(!/statusColor/.test(tramo), "el copete quedó teñido con el estado del mueble");
-  // La marca del producto en prueba va sólo en la cara que mira al pasillo.
-  assert.match(tramo, /materiales\.precios, copete\] : materiales\.precios/);
-  assert.match(tramo, /material=\{chapa\}/);
+  // La marca del producto en prueba —o la chapa de la tienda en venta— va
+  // sólo en la cara que mira al pasillo (el grupo 1 de `geometriaDeChapa`).
+  assert.match(tramo, /impreso \? \[materiales\.precios, impreso\] : materiales\.precios/);
+  assert.match(tramo, /geometry=\{geometriaChapa\} material=\{chapa\}/);
 });
 
 prueba("la marca del copete sale sólo del arte en prueba, sin texto inventado", () => {
@@ -2290,6 +2291,13 @@ const compiladoLV = await build({
 const LV = await import(
   "data:text/javascript;base64," + Buffer.from(compiladoLV.outputFiles[0].text).toString("base64")
 );
+const compiladoRV = await build({
+  entryPoints: [join(raiz, muebles, "rellenoDeVenta.ts")],
+  bundle: true, write: false, format: "esm", platform: "node", logLevel: "silent",
+});
+const RV = await import(
+  "data:text/javascript;base64," + Buffer.from(compiladoRV.outputFiles[0].text).toString("base64")
+);
 
 /** Los vértices de una geometría con su posición, normal y uv. */
 function vertices(g) {
@@ -2556,6 +2564,10 @@ function lienzoFalso() {
     fillRect(x, y, w, h) { this.rects.push({ x, y, w, h, color: this.fillStyle }); },
     strokeRect() {}, measureText: (t) => ({ width: t.length * 7 }),
     fillText(t) { this.textos.push(String(t)); },
+    // Las formas de la etiqueta del relleno de venta: se anotan como un
+    // relleno más.
+    beginPath() {}, ellipse() {}, arc() {}, fill() { this.rects.push({ color: this.fillStyle, forma: true }); },
+    createLinearGradient: () => ({ addColorStop() {} }), createRadialGradient: () => ({ addColorStop() {} }),
   };
   return g;
 }
@@ -2932,6 +2944,11 @@ prueba("el piso de venta: sombra al pie y reflejo con la grilla compartida, sól
   assert.match(sala, /const pisoDeVenta = useMemo\(\(\) => \{\s*if \(!venta\) return null;/, "el parche del piso no es sólo de venta");
   assert.match(sala, /material\.onBeforeCompile = parcheDelPiso\(uniformes\);/);
   assert.match(sala, /<meshLambertMaterial map=\{piso\} \/>/, "el piso del editor dejó de ser el de siempre");
+  // La sombra dura de la direccional (en serrucho, 15–25 cm fuera de la base)
+  // no cae en el piso de venta; el del editor la sigue recibiendo.
+  assert.match(sala, /receiveShadow=\{false\} material=\{pisoDeVenta\.material\}/, "el piso de venta recibe la sombra en serrucho");
+  assert.match(sala, /position=\{\[cx,0,cz\] as V3\} receiveShadow>\s*<planeGeometry args=\{\[fw,fd\]\} \/>\s*<meshLambertMaterial map=\{piso\} \/>/,
+    "el piso del editor dejó de recibir sombras");
   // Los uniformes de la grilla son los COMPARTIDOS, nunca una lista.
   const p = { fragmentShader: THREE_.ShaderLib.lambert.fragmentShader, uniforms: {} };
   const propios = { uSombraPiso: { value: null }, uSombraCaja: { value: new THREE_.Vector4() } };
@@ -3900,6 +3917,37 @@ const FUENTE = {
   franja: () => ({ desde: 0.37, hasta: 0.6, x0: 0.125, x1: 0.875 }),
 };
 
+prueba("el copete de un envase angosto y blanco: color de marca y abanico que llena el cartel", () => {
+  // La Avena Finesse de Alpina: caja de 1 L (angosta) casi blanca. Con la
+  // receta del vaso eran tres cajas chicas sobre un degradé BLANCO (el
+  // dominante de la foto): una pizarra con stickers. Ahora el fondo sale del
+  // color de la marca y van cinco en abanico más la franja del logo.
+  const AVENA = { lienzo: { width: 90, height: 300 }, recorte: { colorDominante: "#d5dbd7" },
+    franja: () => ({ desde: 0.34, hasta: 0.66, x0: 0, x1: 1 }), colorDeMarca: () => "#292b61" };
+  const W = 1024, H = 358;   // la punta de 0,9 m: 0,984 × 0,344 m
+  const paradas = [];
+  const { g, r } = pincelFalso();
+  g.createLinearGradient = () => ({ addColorStop: (k, c) => paradas.push([k, c]) });
+  PO.dibujarCartel(g, W, H, AVENA, false);
+  assert.equal(paradas[0]?.[1], "#292b61", `el degradé del copete arranca en ${paradas[0]?.[1]}, no en el color de la marca`);
+  assert.equal(r.enteras.length, 5, `${r.enteras.length} unidades en el copete`);
+  assert.equal(r.recortes.length, 1, "falta la franja del logo");
+  assert.equal(r.textos, 0);
+  // Los envases (y la franja) ocupan al menos el 40 % del ancho, y nada se sale.
+  const tramos = [...r.enteras.map((a) => [a[1], a[1] + a[3]]), ...r.recortes.map((a) => [a[5], a[5] + a[7]])]
+    .sort((a, b) => a[0] - b[0]);
+  let cubierto = 0, hasta = -Infinity;
+  for (const [a, b] of tramos) { if (b > hasta) { cubierto += b - Math.max(a, hasta); hasta = b; } }
+  assert.ok(cubierto >= 0.4 * W, `los envases cubren ${((cubierto / W) * 100).toFixed(0)} % del cartel`);
+  for (const [a, b] of tramos) assert.ok(a >= 0 && b <= W, `un envase se sale del cartel (${a.toFixed(0)}–${b.toFixed(0)})`);
+  // El héroe, al 85–90 % del alto.
+  const alto = Math.max(...r.enteras.map((a) => a[4]));
+  assert.ok(alto >= 0.85 * H && alto <= 0.9 * H + 1e-6, `el héroe ocupa ${((alto / H) * 100).toFixed(0)} % del alto`);
+  // Sin `colorDeMarca` (una fuente vieja), el dominante.
+  assert.equal(PO.colorDe({ recorte: { colorDominante: "#c81e1e" } }), "#c81e1e");
+  assert.equal(PO.colorDe(AVENA), "#292b61");
+});
+
 prueba("el cabezote de la nevera es un aviso: un recorte grande de la etiqueta, retroiluminado y sólo al frente", () => {
   // Apaisado (1,16 m × 8,7 cm → 1024 × 77): UN recorte de la franja, al 70 %
   // del alto o más, y a lo sumo dos unidades enteras; nada de texto.
@@ -3920,9 +3968,11 @@ prueba("el cabezote de la nevera es un aviso: un recorte grande de la etiqueta, 
   const sinFranja = pincelFalso();
   PO.dibujarCartel(sinFranja.g, W, H, FUENTE, false);
   assert.equal(sinFranja.r.recortes[0][2], Math.round(0.34 * 300));
-  // El copete de la punta (casi cuadrado) sigue con su héroe y sus dos chicos.
+  // El copete de la punta (casi cuadrado) con un envase ancho (el vaso)
+  // sigue con su héroe y sus dos chicos.
+  const VASO = { ...FUENTE, lienzo: { width: 240, height: 300 } };
   const copete = pincelFalso();
-  PO.dibujarCartel(copete.g, 1024, 400, FUENTE, false);
+  PO.dibujarCartel(copete.g, 1024, 400, VASO, false);
   assert.equal(copete.r.recortes.length, 0);
   assert.equal(copete.r.enteras.length, 3);
   // La clave del caché distingue el retroiluminado y la franja: el copete de
@@ -3959,13 +4009,48 @@ const H = await import(
   "data:text/javascript;base64," + Buffer.from(compiladoH.outputFiles[0].text).toString("base64")
 );
 const MV = await conReactMinimo(`
-  export { GondolaReal } from "./GondolaReal"; export { PuntaReal } from "./PuntaReal";
+  export { GondolaReal } from "./GondolaReal"; export { PuntaReal, geometriaDeChapa } from "./PuntaReal";
+  export { materialDeCopeteDeTienda, pintarCopeteDeTienda, COLOR_DE_TIENDA } from "./copeteDeTienda";
   export { NeveraReal, apagarElFrio, FRIO_APAGADO, EMISION_DE_FRIO } from "./NeveraReal";
   export { ProductoEnGondola } from "./ProductoEnGondola";
   export { useHabladoresDeRelleno } from "./ProductoEnMueble";
   export { LuzDeVenta, FocoDeVenta, ATENUACION, uniformesDe } from "./luzDeVenta";
   export { efectos } from "react";
 `);
+
+prueba("el copete de una punta libre en venta lleva la chapa de la tienda, sin texto; en el editor, la de siempre", () => {
+  // Los copetes blancos lisos de las puntas libres se leían como carteles sin
+  // terminar. En venta va la chapa de la tienda (degradé, faja y filetes, sin
+  // texto: el rubro de un contrato puede traer la marca de otro proveedor).
+  assert.match(puntaCodigo, /const impreso = copete \?\? \(venta && !ghost \? materialDeCopeteDeTienda\(\) : undefined\);/,
+    "la punta libre en venta no lleva la chapa de la tienda");
+  const g = lienzoFalso();
+  MV.pintarCopeteDeTienda(g, 512, 192);
+  assert.equal(g.textos.length, 0, "el copete de la tienda escribe texto");
+  // No es un blanco liso: lleva color y más de un tono.
+  const colores = new Set(g.rects.map((r) => (typeof r.color === "string" ? r.color : "degradé")));
+  assert.ok(colores.size >= 3, `el copete de la tienda es liso (${[...colores]})`);
+  const n = parseInt(MV.COLOR_DE_TIENDA.slice(1), 16);
+  const L = 0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255);
+  assert.ok(L < 160, "el color de la tienda es casi blanco");
+  // La chapa: dos grupos, los cantos y la cara del pasillo (−Z).
+  const ch = MV.geometriaDeChapa(1, 0.3, 0.004);
+  assert.deepEqual(ch.groups.map((x) => [x.start, x.count, x.materialIndex]), [[0, 30, 0], [30, 6, 1]]);
+  const idx = ch.index, nor = ch.getAttribute("normal");
+  for (let i = 30; i < 36; i++) assert.ok(nor.getZ(idx.getX(i)) < -0.99, "el grupo impreso no es la cara −Z");
+  // Ejecutada: en el editor la chapa es UN material (el de siempre); en venta,
+  // los cantos y la chapa de la tienda; con prueba, la marca y no la tienda.
+  const chapaDe = (arbol) => piezasDe(arbol).find((p) => p.tipo === "mesh" && p.geometria?.type === "BoxGeometry"
+    && p.geometria.groups.length === 2 && p.geometria.groups[1].start === 30);
+  const editor = chapaDe(MV.PuntaReal({ w: 0.9, d: 0.4, h: 1.8 }));
+  assert.ok(editor && !Array.isArray(editor.material), "en el editor la chapa dejó de ser la de siempre");
+  const venta = enVenta(true, () => chapaDe(MV.PuntaReal({ w: 0.9, d: 0.4, h: 1.8 })));
+  assert.ok(Array.isArray(venta.material) && venta.material.length === 2, "en venta la punta libre no lleva la chapa de la tienda");
+  assert.equal(venta.material[1], MV.materialDeCopeteDeTienda(), "en venta la cara del pasillo no es la chapa de la tienda");
+  const marca = { marca: true };
+  const conPrueba = enVenta(true, () => chapaDe(MV.PuntaReal({ w: 0.9, d: 0.4, h: 1.8, copete: marca })));
+  assert.equal(conPrueba.material[1], marca, "con prueba el copete no lleva la marca");
+});
 
 /** Las mallas de un árbol, cada una con su matriz en coordenadas del mueble
  *  (la composición de `position` y `rotation` de cada grupo hasta ella). */
@@ -4375,6 +4460,80 @@ prueba("el relleno: un tono por unidad sembrado, sólo en venta; el editor, sin 
   for (const p of venta_) {
     assert.ok(p.colores.length > 0, "el relleno de venta va de un solo tono");
     assert.ok(p.material.vertexColors && p.geometria.getAttribute("color"), "vertexColors sin color de vértice: la malla sale negra");
+    // El rojo lleva el diseño de la etiqueta adentro (`colorConDiseno`).
+    for (const r of p.colores) {
+      const d = Math.floor(r / 2);
+      assert.ok(d >= 0 && d < RV.DISENOS && r - 2 * d >= 0 && r - 2 * d <= 1, `rojo por instancia ${r}: no decodifica`);
+    }
+    assert.equal(p.material.customProgramCacheKey(), RV.CLAVE_DE_RELLENO, "el relleno de venta comparte programa con los muebles");
+    assert.equal(p.material.color.getHexString(), "ffffff", "en venta el color va por instancia y el material es blanco");
+    assert.ok(p.geometria.getAttribute("uv"), "el envase de venta no tiene uv para la etiqueta");
+  }
+});
+
+prueba("el relleno de venta se lee como empaque: paleta apagada, bloques de 2 a 5 y etiqueta sin texto", () => {
+  // La crítica: bloques de un color plano y saturado por rubro, «fichas de
+  // LEGO». Ahora, por rubro, cinco colores apagados y en bloques.
+  for (const [familia, paleta] of Object.entries(RV.PALETAS)) {
+    assert.ok(paleta.length >= 4, `${familia}: paleta de ${paleta.length}`);
+    for (const h of paleta) {
+      const n = parseInt(h.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255];
+      const sat = (Math.max(...c) - Math.min(...c)) / Math.max(...c);
+      assert.ok(sat <= RV.SATURACION_MAXIMA + 1e-9, `${familia}: ${h} con saturación ${sat.toFixed(2)}`);
+    }
+  }
+  assert.equal(RV.paletaDeRubro("Aseo hogar"), RV.PALETAS.aseo);
+  assert.equal(RV.paletaDeRubro("Enlatados"), RV.PALETAS.enlatados);
+  assert.equal(RV.paletaDeRubro("Galletas"), RV.PALETAS.galletas);
+  assert.equal(RV.paletaDeRubro("lo que sea"), RV.PALETAS.otros);
+  // Los bloques, sobre el relleno de verdad de una góndola con galletas.
+  const v = V.ventaDeTipo("gondola", 3.6, 0.9, 1.8);
+  const slots = [{ id: "S1", x: 0, w: 1, y: 0, h: 1, status: "occupied", brandCategory: "Galletas" }];
+  const grupos = F.rellenoPorRubro({ anchoTotal: 3.6, filas: v.filas, vanos: v.vanos, caras: v.caras, franja: v.franja ?? 0, slots, cubiertas: [null, null] });
+  assert.ok(grupos.length > 0 && grupos[0].rubro === "Galletas", "el grupo del relleno no lleva su rubro");
+  for (const g of grupos) {
+    const cs = RV.coloresDelRelleno(g.posiciones, g.rubro, "GON-02|a");
+    assert.equal(cs.length, g.posiciones.length);
+    assert.deepEqual(cs, RV.coloresDelRelleno(g.posiciones, g.rubro, "GON-02|a"), "los bloques cambian de un cuadro a otro");
+    const porTira = new Map();
+    g.posiciones.forEach((p, i) => {
+      const k = `${p.cara}|${p.fila}`;
+      if (!porTira.has(k)) porTira.set(k, new Map());
+      const t = porTira.get(k), x = p.x.toFixed(4);
+      // Lo de atrás lleva el color de su frente.
+      if (t.has(x)) assert.deepEqual(t.get(x), cs[i], "una unidad de atrás no lleva el color de su frente");
+      else t.set(x, cs[i]);
+    });
+    for (const [k, t] of porTira) {
+      const xs = [...t.keys()].map(Number).sort((a, b) => a - b);
+      const clave = (c) => `${c.diseno}|${c.rgb.map((x) => x.toFixed(1)).join(",")}`;
+      // De 2 a 5 frentes seguidos del mismo producto (el último bloque de un
+      // vano puede quedar más corto) y al menos 3 productos por entrepaño.
+      const tiras = [];
+      let actual = null, largo = 0;
+      for (const x of xs) {
+        const c = clave(t.get(x.toFixed(4)));
+        if (c === actual) largo++; else { if (actual) tiras.push(largo); actual = c; largo = 1; }
+      }
+      tiras.push(largo);
+      assert.ok(Math.max(...tiras) <= RV.BLOQUE.max, `${k}: un bloque de ${Math.max(...tiras)} frentes`);
+      if (xs.length >= 12) assert.ok(new Set(xs.map((x) => clave(t.get(x.toFixed(4))))).size >= 3, `${k}: menos de 3 productos en ${xs.length} frentes`);
+    }
+  }
+  // La etiqueta: cuatro diseños, sin una letra.
+  const g = lienzoFalso();
+  RV.pintarEtiquetaDeRelleno(g, 512, 128);
+  assert.equal(g.textos.length, 0, "la etiqueta del relleno escribe texto");
+  assert.ok(g.rects.length > 20, "la etiqueta del relleno es lisa");
+  // El parche encuentra sus trozos en los shaders de three 0.184, y decodifica.
+  const sh = { vertexShader: THREE_.ShaderLib.physical.vertexShader, fragmentShader: THREE_.ShaderLib.physical.fragmentShader, uniforms: {} };
+  RV.parcheDeRellenoDeVenta(null)(sh);
+  assert.match(sh.vertexShader, /float disenoEt = floor\( instanceColor\.r \* 0\.5 \);/, "el parche no decodifica el diseño");
+  assert.match(sh.fragmentShader, /texture2D\( uEtiquetaRelleno, vEtiquetaRelleno \)/, "el parche no lee la etiqueta");
+  assert.ok("uEtiquetaRelleno" in sh.uniforms);
+  for (const [r, d] of [[0.3, 0], [0.7, 2], [0.0, 3], [1.0, 1]]) {
+    const [e] = RV.colorConDiseno([r, 0.5, 0.5], d);
+    assert.equal(Math.floor(e * 0.5), d); assert.ok(Math.abs(e - 2 * Math.floor(e * 0.5) - r) < 1e-9);
   }
 });
 

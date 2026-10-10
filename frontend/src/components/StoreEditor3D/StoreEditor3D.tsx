@@ -2369,8 +2369,18 @@ function StoreRoom({ limites, muebles, venta, primeraPersona }: {
   type V3 = [number, number, number];
   return (
     <group>
+      {/* El piso de venta NO recibe la sombra de la direccional. Con el mapa
+          de 1024 para toda la sede (un texel de ~4 cm) y la luz a plomo del
+          centro, cada mueble lejos del centro tiraba al costado una sombra
+          dura, en diagonal y con el borde en serrucho, que salía 15–25 cm de
+          la base: con un cielo raso de luminarias difusas no hay sombras así,
+          y era «mancha sucia» en cada toma con la base a la vista. El pie del
+          mueble lo oscurece la sombra de las huellas (`sombraDeHuellas`),
+          blanda y pegada a la base. Es el único material que lo cambia: es
+          propio de la venta (se compila al entrar), así que ningún otro
+          programa se recompila; el editor sigue con la sombra de siempre. */}
       {pisoDeVenta ? (
-        <mesh rotation={[-Math.PI/2,0,0]} position={[cx,0,cz] as V3} receiveShadow material={pisoDeVenta.material}>
+        <mesh rotation={[-Math.PI/2,0,0]} position={[cx,0,cz] as V3} receiveShadow={false} material={pisoDeVenta.material}>
           <planeGeometry args={[fw,fd]} />
         </mesh>
       ) : (

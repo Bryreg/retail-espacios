@@ -536,6 +536,50 @@ prueba("el costado de la caja es un color del borde, sin los blancos", () => {
   assert.ok(parseInt(b.slice(1, 3), 16) > 220, `una caja blanca dio un costado ${b}`);
 });
 
+prueba("una caja casi blanca con sellos negros no sale con los costados negros", () => {
+  // La Avena Finesse de Alpina, sintética: cartón blanco con sombra de foto,
+  // dos octógonos negros de advertencia arriba que tocan los dos costados,
+  // la foto de la avena (café) arriba a la izquierda, letra negra suelta y
+  // una banda lila en el canto derecho. Con «el dominante del borde, sin los
+  // blancos» ganaba el negro de los sellos: la punta entera, bloques negros.
+  const W = 120, H = 400;
+  const img = { ancho: W, alto: H, rgba: foto(W, H, (x, y) => {
+    if (y < 70) return x < 58 || x > 62 ? [38, 38, 40, 255] : [235, 236, 232, 255];   // sellos
+    if (y < 150 && x < 50) return (x + y) % 3 ? [120, 98, 62, 255] : [96, 80, 50, 255];  // avena
+    if (x > 104 && y > 180 && y < 330) return [150, 158, 190, 255];                     // lila
+    if (y % 23 < 3 && x % 7 < 4) return [25, 25, 30, 255];                              // letra
+    return [228 - (x % 5), 232 - (y % 4), 228, 255];                                     // cartón
+  }) };
+  const c = T.colorDeCostado(img);
+  const n = parseInt(c.slice(1), 16), L = 0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255);
+  assert.ok(L >= 170, `una caja casi blanca dio el costado ${c} (luminancia ${L.toFixed(0)}): ganaron los sellos`);
+  // Y una caja oscura conserva su oscuro (el café de Choco Krispis), aunque
+  // tenga un sello negro arriba a la derecha.
+  const cafe = { ancho: W, alto: H, rgba: foto(W, H, (x, y) =>
+    (y < 90 && x > 70 ? [20, 20, 22, 255] : (x + y) % 4 ? [78, 46, 40, 255] : [66, 40, 34, 255])) };
+  const k = T.colorDeCostado(cafe), m = parseInt(k.slice(1), 16);
+  assert.ok((m >> 16) > 55 && (m >> 16) < 100 && (m & 255) < 60, `la caja café dio el costado ${k}`);
+});
+
+prueba("el color de la marca de un envase blanco es el de su logo, no el blanco ni la foto", () => {
+  // La Avena Finesse: cartón blanco (dominante), la foto de la avena (café,
+  // 14 %, saturación ~0,45) y el morado de Alpina (logo y banda, 10 %,
+  // saturación ~0,6). El copete sale del morado.
+  const W = 100, H = 300;
+  const img = { ancho: W, alto: H, rgba: foto(W, H, (x, y) => {
+    if (y < 42 && x < 100) return (x + y) % 2 ? [139, 112, 70, 255] : [118, 94, 56, 255];   // avena, 14 %
+    if (y >= 150 && y < 180) return [41, 42, 104, 255];                                    // logo, 10 %
+    return [212, 216, 213, 255];                                                            // cartón
+  }) };
+  const m = parseInt(T.colorDeMarca(img, "#d5dbd7").slice(1), 16);
+  assert.ok((m & 255) > (m >> 16) + 40 && (m & 255) < 140, `la marca salió ${T.colorDeMarca(img, "#d5dbd7")}: no es el morado del logo`);
+  // Un dominante que ya es color de marca se respeta (el rojo de Postobón).
+  assert.equal(T.colorDeMarca(img, "#872527"), "#872527");
+  // Un envase blanco y gris, sin ningún grupo de color: el dominante, sin inventar.
+  const gris = { ancho: 50, alto: 50, rgba: foto(50, 50, (x) => (x < 10 ? [60, 60, 62, 255] : [220, 220, 222, 255])) };
+  assert.equal(T.colorDeMarca(gris, "#dcdcde"), "#dcdcde");
+});
+
 /** Una gaseosa de frente: tapa naranja arriba, PET claro (el fondo visto a
  *  través), la etiqueta rosa con letra blanca y el líquido rojo abajo. */
 function botella(liquido = [140, 38, 40]) {

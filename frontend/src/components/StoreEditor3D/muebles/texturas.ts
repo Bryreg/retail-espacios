@@ -16,7 +16,9 @@
  *   abajo quiebran— y se endereza la cara grande a un rectángulo.
  * - **El costado de la caja** (`colorDeCostado`): tomaba la última columna de
  *   la foto estirada y salían rayas rojas y blancas, como una textura rota.
- *   Ahora es UN color: el dominante de la franja del borde, sin los blancos.
+ *   Ahora es UN color: el de mayor área en los costados del frente, blancos
+ *   incluidos (sin los blancos, una caja blanca salía con el negro de sus
+ *   sellos de advertencia).
  * - **La botella transparente** (`llenarBotella`): por el PET de la foto se
  *   ve el blanco del estudio, y en el 3D la botella salía lechosa, como
  *   kumis. Se tiñe ese tramo con el color del líquido, que se lee abajo.
@@ -118,47 +120,95 @@ export function aplanar(img: Imagen): Imagen {
 // ─── El costado de la caja ───────────────────────────────────────────────────
 
 /**
- * El color del costado y la tapa de una caja: el más presente en la franja
- * del borde del frente (el 8 % de cada lado), sin casi-blancos ni casi-negros.
+ * El color del costado y la tapa de una caja: el de MAYOR ÁREA en las
+ * columnas de los costados del frente (del 3 al 9 % de cada lado), blancos
+ * incluidos.
  *
  * Una caja de cartón impreso suele seguir en el costado con el color del
  * borde del frente; lo que NO hace es repetir la última columna de píxeles de
  * la foto, que es lo que se veía: rayas estiradas, rojo y blanco.
+ *
+ * La receta anterior tomaba «el dominante de la franja del borde, sin los
+ * blancos». En un envase casi todo blanco —la Avena Finesse de Alpina, la
+ * leche— lo único que quedaba en esa franja eran los octógonos negros de
+ * advertencia y la foto de la avena: la punta entera salió con los costados y
+ * las tapas NEGROS, bloques negros con una calcomanía blanca adelante. Ahora:
+ *
+ * - **Sólo los costados, no la franja de arriba**: ahí están los sellos de
+ *   advertencia, que en Colombia van arriba del frente.
+ * - **Sin la banda del canto** (el 3 % de cada lado): la foto de la caja ya
+ *   viene con `oscurecerCantos` y su borde es contorno y sangrado.
+ * - **Los blancos cuentan**: el costado de una caja blanca es blanco.
+ * - **En una etiqueta clara, nada oscuro** (luminosidad < 25 %): un sello, un
+ *   texto negro o la sombra del borde de la foto no son el color del cartón.
+ *   En una etiqueta oscura (el café de Choco Krispis) el oscuro sí es el color.
+ * - **El de mayor área, con su grupo**: la cubeta más poblada (8 niveles por
+ *   canal) y, alrededor de su color, todo lo que está a menos de 32 niveles,
+ *   promediado dos veces. Con cubetas finas el color de una foto real (con
+ *   sombra y grano) se reparte y gana un sello liso.
  */
-export function colorDeCostado(img: Imagen, franja = 0.08): string {
+export function colorDeCostado(img: Imagen, franja = 0.06, canto = 0.03): string {
   const { ancho: w, alto: h, rgba } = img;
-  const bx = Math.max(1, Math.round(w * franja)), by = Math.max(1, Math.round(h * franja));
-  const cubetas = new Map<number, { n: number; r: number; g: number; b: number }>();
-  let claros = { n: 0, r: 0, g: 0, b: 0 };
+  const luz = (r: number, g: number, b: number) => (Math.max(r, g, b) + Math.min(r, g, b)) / 2;
+  // ¿Etiqueta clara? La mediana de la luminosidad de todo lo opaco.
+  const hist = new Uint32Array(256);
+  let opacos = 0;
+  for (let i = 0; i < w * h; i++) {
+    if (rgba[i * 4 + 3] < 200) continue;
+    hist[luz(rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2]) | 0]++;
+    opacos++;
+  }
+  let mediana = 0;
+  for (let v = 0, acc = 0; v < 256; v++) { acc += hist[v]; if (acc * 2 >= opacos) { mediana = v; break; } }
+  const clara = mediana >= ETIQUETA_CLARA;
+  const x0 = Math.min(w - 1, Math.round(w * canto));
+  const x1 = Math.max(x0 + 1, Math.min(Math.ceil(w / 2), Math.round(w * (canto + franja))));
+  const px: number[] = [];
   for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (x >= bx && x < w - bx && y >= by && y < h - by) continue;
-      const i = (y * w + x) * 4;
-      if (rgba[i + 3] < 200) continue;
-      const r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
-      const mx = Math.max(r, g, b);
-      if (mx < 30) continue;
-      if (esClaroNeutro(r, g, b)) { claros = { n: claros.n + 1, r: claros.r + r, g: claros.g + g, b: claros.b + b }; continue; }
-      const k = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
-      const e = cubetas.get(k) ?? { n: 0, r: 0, g: 0, b: 0 };
-      e.n++; e.r += r; e.g += g; e.b += b;
-      cubetas.set(k, e);
+    for (let x = x0; x < x1; x++) {
+      for (const xx of x === w - 1 - x ? [x] : [x, w - 1 - x]) {
+        const i = (y * w + xx) * 4;
+        if (rgba[i + 3] < 200) continue;
+        const r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
+        if (clara && luz(r, g, b) < OSCURO_EN_CLARA) continue;
+        px.push(r, g, b);
+      }
     }
   }
-  let mejor: { n: number; r: number; g: number; b: number } | null = null;
-  for (const k of [...cubetas.keys()].sort((a, b) => a - b)) {
-    const e = cubetas.get(k)!;
-    if (!mejor || e.n > mejor.n) mejor = e;
+  const n = px.length / 3;
+  if (!n) return "#bdbab4";
+  const cubetas = new Map<number, number>();
+  for (let k = 0; k < n; k++) {
+    const c = ((px[3 * k] >> 5) << 6) | ((px[3 * k + 1] >> 5) << 3) | (px[3 * k + 2] >> 5);
+    cubetas.set(c, (cubetas.get(c) ?? 0) + 1);
   }
-  // Un borde casi todo blanco (una caja blanca) da un costado blanco, no el
-  // color de una letra suelta.
-  let total = 0;
-  for (const e of cubetas.values()) total += e.n;
-  if (!mejor || claros.n > total * 2) {
-    return claros.n ? hex(claros.r / claros.n, claros.g / claros.n, claros.b / claros.n) : "#bdbab4";
+  let mejor = -1, cuantos = -1;
+  for (const c of [...cubetas.keys()].sort((a, b) => a - b)) {
+    const m = cubetas.get(c)!;
+    if (m > cuantos) { cuantos = m; mejor = c; }
   }
-  return hex(mejor.r / mejor.n, mejor.g / mejor.n, mejor.b / mejor.n);
+  let centro = [((mejor >> 6) & 7) * 32 + 16, ((mejor >> 3) & 7) * 32 + 16, (mejor & 7) * 32 + 16];
+  for (let vuelta = 0; vuelta < 2; vuelta++) {
+    const s = [0, 0, 0];
+    let m = 0;
+    for (let k = 0; k < n; k++) {
+      const d = (px[3 * k] - centro[0]) ** 2 + (px[3 * k + 1] - centro[1]) ** 2 + (px[3 * k + 2] - centro[2]) ** 2;
+      if (d > RADIO_DEL_GRUPO ** 2) continue;
+      s[0] += px[3 * k]; s[1] += px[3 * k + 1]; s[2] += px[3 * k + 2]; m++;
+    }
+    if (!m) break;
+    centro = s.map((v) => v / m);
+  }
+  return hex(centro[0], centro[1], centro[2]);
 }
+
+/** Una etiqueta es «clara» si la mitad de lo opaco tiene luminosidad ≥ 150. */
+const ETIQUETA_CLARA = 150;
+/** Luminosidad (HSL, 0–255) por debajo de la cual, en una etiqueta clara, un
+ *  píxel es sello, letra o sombra y no el color del cartón: el 25 %. */
+const OSCURO_EN_CLARA = 64;
+/** Distancia RGB del grupo del color de mayor área. */
+const RADIO_DEL_GRUPO = 32;
 
 // ─── La caja fotografiada en tres cuartos ────────────────────────────────────
 
@@ -800,6 +850,84 @@ export function oscurecerCantos(img: Imagen, frac = 0.025, k = 0.38): Imagen {
   return { rgba: p, ancho: w, alto: h };
 }
 
+// ─── El color de la marca (el copete y su cenefa) ───────────────────────────
+
+/**
+ * El color de la MARCA para el cartel del copete y la cenefa: el dominante de
+ * la foto si ya es un color de marca, y si no —un envase casi blanco— el
+ * grupo de color más fuerte de la etiqueta.
+ *
+ * El copete se arma con un degradé del color dominante y recortes del
+ * producto (`pop.ts`). Con el Finesse fresa (vaso morado) funcionaba; con la
+ * Avena Finesse en caja blanca el dominante era el blanco del cartón, y el
+ * copete quedó blanco sobre blanco: una pizarra con tres stickers, sin color
+ * de marca. En un envase claro el color de la marca es el del logo y las
+ * bandas: aquí, el morado de Alpina.
+ *
+ * - El dominante sirve si tiene color (saturación ≥ 0,2) y no es claro
+ *   (luminosidad < 72 %).
+ * - Si no, entre los píxeles con color (saturación ≥ 0,3, luminosidad entre
+ *   12 y 85 %) se agrupan por TONO en 18 sectores de 20°, cada uno sumado con
+ *   sus dos vecinos (un color que cae en el borde de dos sectores no se
+ *   parte); entre los que ocupan al menos el 6 % de lo opaco gana el MÁS
+ *   SATURADO. Por área ganaba la foto de la avena (café, 14 %) y no el morado
+ *   del logo y la banda (10 %, pero de saturación 0,59 contra 0,45): la tinta
+ *   de una marca es más pura que la foto de un alimento. La marca es el promedio de los píxeles a ±30° de su centro (los
+ *   tres sectores que sumó).
+ * - Sin ningún grupo así (un envase blanco y gris), el dominante: no se
+ *   inventa un color.
+ */
+export function colorDeMarca(img: Imagen, dominante: string): string {
+  const valido = /^#[0-9a-f]{6}$/i.test(dominante);
+  if (valido) {
+    const [r, g, b] = rgbDe(dominante);
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    if ((mx ? (mx - mn) / mx : 0) >= 0.2 && (mx + mn) / 510 < 0.72) return dominante;
+  }
+  const { rgba } = img;
+  const SECTORES = 18;
+  const area = new Float64Array(SECTORES), saturacion = new Float64Array(SECTORES);
+  let opacos = 0;
+  const tonoDe = (r: number, g: number, b: number, mx: number, mn: number) => {
+    const d = mx - mn;
+    const t = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return ((t * 60) + 360) % 360;
+  };
+  for (let i = 0; i < rgba.length; i += 4) {
+    if (rgba[i + 3] < 200) continue;
+    opacos++;
+    const r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    const sat = mx ? (mx - mn) / mx : 0, luz = (mx + mn) / 510;
+    if (sat < 0.3 || luz < 0.12 || luz > 0.85) continue;
+    const k = Math.floor(tonoDe(r, g, b, mx, mn) / (360 / SECTORES)) % SECTORES;
+    area[k]++; saturacion[k] += sat;
+  }
+  if (!opacos) return valido ? dominante : "#808080";
+  let mejor = -1, masSaturado = 0;
+  for (let k = 0; k < SECTORES; k++) {
+    const vec = [(k + SECTORES - 1) % SECTORES, k, (k + 1) % SECTORES];
+    const a = vec.reduce((s, j) => s + area[j], 0);
+    if (a / opacos < 0.06) continue;
+    const st = vec.reduce((s, j) => s + saturacion[j], 0) / a;
+    if (st > masSaturado) { masSaturado = st; mejor = k; }
+  }
+  if (mejor < 0) return valido ? dominante : "#808080";
+  const centro = (mejor + 0.5) * (360 / SECTORES);
+  let n = 0, sr = 0, sg = 0, sb = 0;
+  for (let i = 0; i < rgba.length; i += 4) {
+    if (rgba[i + 3] < 200) continue;
+    const r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    const sat = mx ? (mx - mn) / mx : 0, luz = (mx + mn) / 510;
+    if (sat < 0.3 || luz < 0.12 || luz > 0.85) continue;
+    const dt = Math.abs(((tonoDe(r, g, b, mx, mn) - centro + 540) % 360) - 180);
+    if (dt > 30) continue;
+    n++; sr += r; sg += g; sb += b;
+  }
+  return n ? hex(sr / n, sg / n, sb / n) : (valido ? dominante : "#808080");
+}
+
 // ─── Los cantos de la bolsa ──────────────────────────────────────────────────
 
 /**
@@ -893,6 +1021,7 @@ export const RECETAS = {
     return espaldaDeEtiqueta(llena, L ? filasDeEtiqueta(llena, L) : undefined);
   },
   franja: (recorte: Imagen): FranjaDeEtiqueta => franjaDeEtiqueta(recorte, liquidoDe(recorte)),
+  marca: (recorte: Imagen & { colorDominante: string }): string => colorDeMarca(recorte, recorte.colorDominante),
 } as const;
 
 /** Los pasos de `variantesDeLaFoto`, en orden: el camino troceado cede el

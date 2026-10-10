@@ -734,10 +734,17 @@ export const BANDA_DE_ETIQUETA = {
 function cajaConEtiqueta(ancho: number, alto: number, fondo: number): THREE.BufferGeometry {
   const { clara, borde, caja: [b0, b1] } = BANDA_DE_ETIQUETA;
   const x = ancho / 2, y = alto / 2, z = fondo / 2;
-  const pos: number[] = [], nor: number[] = [], col: number[] = [];
-  /** Un cuadrilátero (a, b, c, d en sentido antihorario visto desde afuera). */
+  const pos: number[] = [], nor: number[] = [], col: number[] = [], uv: number[] = [];
+  /** Un cuadrilátero (a, b, c, d en sentido antihorario visto desde afuera).
+   *  La `uv` de la etiqueta pintada del relleno de venta (`rellenoDeVenta`):
+   *  en las dos caras grandes, de izquierda a derecha vistas desde afuera y
+   *  de abajo arriba; en los costados, la tapa y la base, lo liso. */
   const quad = (a: number[], b: number[], c: number[], d: number[], n: number[], k: number) => {
-    for (const p of [a, b, c, a, c, d]) { pos.push(p[0], p[1], p[2]); nor.push(n[0], n[1], n[2]); col.push(k, k, k); }
+    for (const p of [a, b, c, a, c, d]) {
+      pos.push(p[0], p[1], p[2]); nor.push(n[0], n[1], n[2]); col.push(k, k, k);
+      if (Math.abs(n[2]) > 0.5) uv.push(0.5 + (n[2] > 0 ? p[0] : -p[0]) / ancho, uvDeEtiqueta(0.5 + p[1] / alto));
+      else uv.push(0.5, UV_LISO);
+    }
   };
   const alturas = [-y, -y + alto * b0, -y + alto * b1, y];
   const tonos = [borde, clara, borde];
@@ -754,8 +761,16 @@ function cajaConEtiqueta(ancho: number, alto: number, fondo: number): THREE.Buff
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
   g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
   return g;
 }
+
+/** La `v` de la etiqueta del relleno de venta para una altura relativa del
+ *  envase (0 abajo, 1 arriba): el diseño ocupa del 5 % al 100 % de la
+ *  textura; abajo queda lo liso (`UV_LISO`). */
+const uvDeEtiqueta = (f: number) => 0.06 + 0.94 * Math.min(1, Math.max(0, f));
+/** La `v` de lo liso de la etiqueta: costados, tapa, base, cuello. */
+const UV_LISO = 0.02;
 
 /** El envase del relleno con la banda (venta). Mismas siluetas, con los
  *  vértices que hacen falta para que el color cambie en la banda. */
@@ -768,6 +783,8 @@ function conBandaDeEtiqueta(
   let g: THREE.BufferGeometry;
   /** La banda, por altura relativa del envase (0 abajo, 1 arriba). */
   let banda: (f: number) => number = () => 1;
+  /** Dónde va la etiqueta pintada en un envase torneado (alto relativo). */
+  let faja: readonly [number, number] | null = null;
   if (forma === "caja") {
     // La etiqueta en las caras grandes, con corte neto (`cajaConEtiqueta`).
     // No más triángulos que la de dos tramos: en bolsa-4 se dibujan 1.770
@@ -785,6 +802,7 @@ function conBandaDeEtiqueta(
     g.translate(0, -alto / 2, 0);
     g.computeVertexNormals();
     banda = (f) => (f >= b0 - 1e-6 && f <= b1 + 1e-6 ? clara : borde);
+    faja = [b0, b1];
   } else {
     g = geometriaDeEmpaque(forma, ancho, alto, fondo).clone();
   }
@@ -797,6 +815,26 @@ function conBandaDeEtiqueta(
     color[i * 3] = color[i * 3 + 1] = color[i * 3 + 2] = k;
   }
   g.setAttribute("color", new THREE.BufferAttribute(color, 3));
+  // La etiqueta pintada del relleno de venta (`rellenoDeVenta`). La botella
+  // y la lata, alrededor (la `u` del torno, que ya resuelve la costura) y
+  // sólo en su faja: la banda de etiqueta (`b0`–`b1`) ocupa el diseño entero;
+  // el pie, el hombro y el cuello, lo liso. La bolsa, de frente, en el
+  // cuerpo. La fruta y la bandeja no llevan etiqueta.
+  const uvLathe = g.getAttribute("uv") as THREE.BufferAttribute | undefined;
+  const uv = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    const f = (pos.getY(i) - min.y) / Math.max(1e-9, max.y - min.y);
+    let u = 0.5, v = UV_LISO;
+    if ((forma === "botella" || forma === "lata") && uvLathe && faja) {
+      const [b0, b1] = faja;
+      if (f >= b0 - 1e-6 && f <= b1 + 1e-6) { u = uvLathe.getX(i); v = uvDeEtiqueta((f - b0) / (b1 - b0)); }
+    } else if (forma === "bolsa") {
+      u = 0.5 - pos.getX(i) / Math.max(1e-9, ancho);
+      if (f >= 0.12 && f <= 0.88) v = uvDeEtiqueta((f - 0.12) / 0.76);
+    }
+    uv[i * 2] = u; uv[i * 2 + 1] = v;
+  }
+  g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
   return g;
 }
 

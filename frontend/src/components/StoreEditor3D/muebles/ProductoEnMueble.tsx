@@ -4,7 +4,8 @@ import type { VendidoEntero } from "./frentes";
 import type { FilasDeProducto, Vano } from "./medidas";
 import type { FormaDeEmpaque } from "./producto";
 import { geometriaDeEmpaque } from "./perfiles";
-import { claveDeCubiertas, rellenoPorRubro, tonosDelRelleno } from "./frentes";
+import { claveDeCubiertas, rellenoPorRubro } from "./frentes";
+import { CLAVE_DE_RELLENO, colorConDiseno, coloresDelRelleno, parcheDeRellenoDeVenta, texturaDeEtiquetaDeRelleno } from "./rellenoDeVenta";
 import type { Cubiertas, SlotDeProducto } from "./frentes";
 import { BRILLO, conLuzDeVenta, K_ENTORNO_MUEBLE, useLuzDeVenta } from "./luzDeVenta";
 import { tramosConRelleno } from "./habladores";
@@ -97,6 +98,11 @@ export interface ProductoEnMuebleProps {
 interface Pieza {
   clave: string;
   color: string;
+  /** El rubro del contrato: la paleta del relleno de venta. */
+  rubro?: string;
+  /** Dónde va cada unidad (cara, entrepaño, x): los bloques del relleno de
+   *  venta (`coloresDelRelleno`). En el orden de `matrices`. */
+  lugares: { cara: number; fila: number; x: number }[];
   ancho: number; alto: number; fondo: number;
   forma: FormaDeEmpaque;
   acostado?: boolean;
@@ -119,6 +125,8 @@ export const ProductoEnMueble = memo(function ProductoEnMueble({
       .map((g) => ({
         clave: g.clave,
         color: g.color,
+        rubro: g.rubro,
+        lugares: g.posiciones.map((p) => ({ cara: p.cara, fila: p.fila, x: p.x })),
         ancho: g.empaque.ancho, alto: g.empaque.alto, fondo: g.empaque.fondo,
         forma: g.empaque.forma, acostado: g.empaque.acostado,
         matrices: g.posiciones.map((p) => m.clone().setPosition(p.x, p.y, p.z)),
@@ -142,22 +150,27 @@ export const ProductoEnMueble = memo(function ProductoEnMueble({
 function InstanciasDeEmpaque({ pieza, semilla }: { pieza: Pieza; semilla: string }) {
   // En la pantalla de venta, con la luz del cuarto del producto y del mueble
   // (`luzDeVenta.ts`): el relleno neutro de los slots vendidos a otros no
-  // puede quedar en sombra al lado de un mueble iluminado. Y con variación:
-  // la banda de la etiqueta por color de vértice (`conBanda`) y un tono por
-  // unidad (`tonosDelRelleno`). En el editor, la geometría y el material de
-  // siempre, sin color por instancia.
+  // puede quedar en sombra al lado de un mueble iluminado. Y que se lea como
+  // EMPAQUE (`rellenoDeVenta.ts`): un color apagado por «producto», en bloques
+  // de 2 a 5 frentes, con una etiqueta pintada sin texto; color y diseño van
+  // en el color por instancia, sin llamadas nuevas. En el editor, la
+  // geometría y el material de siempre, sin color por instancia.
   const luz = useLuzDeVenta();
   const geometria = useMemo(
     () => geometriaDeEmpaque(pieza.forma, pieza.ancho, pieza.alto, pieza.fondo, pieza.acostado, luz),
     [pieza.forma, pieza.ancho, pieza.alto, pieza.fondo, pieza.acostado, luz],
   );
-  const tonos = useMemo(
-    () => (luz ? tonosDelRelleno(semilla, pieza.matrices.length) : null),
-    [luz, semilla, pieza.matrices.length],
+  const colores = useMemo(
+    () => (luz ? coloresDelRelleno(pieza.lugares, pieza.rubro, semilla) : null),
+    [luz, pieza.lugares, pieza.rubro, semilla],
   );
-  const material = useMemo(
-    () => new THREE.MeshStandardMaterial({
-      color: pieza.color,
+  const material = useMemo(() => {
+    const venta = conLuzDeVenta(luz, K_ENTORNO_MUEBLE * 0.8, BRILLO.relleno);
+    const etiqueta = luz ? parcheDeRellenoDeVenta(texturaDeEtiquetaDeRelleno()) : null;
+    return new THREE.MeshStandardMaterial({
+      // En venta el color es el de cada unidad (por instancia); el material,
+      // blanco. En el editor, el color del rubro de siempre.
+      color: luz ? "#ffffff" : pieza.color,
       // Cartón y plástico impreso: mate, nada de metal. Un envase brillante
       // devuelve el reflejo del entorno y todo el lineal se lee como vidrio.
       metalness: 0,
@@ -167,10 +180,18 @@ function InstanciasDeEmpaque({ pieza, semilla }: { pieza: Pieza; semilla: string
       // es que cada rubro sea un bloque de color distinto.
       envMapIntensity: 0.25,
       ...(luz ? { vertexColors: true } : {}),
-      ...conLuzDeVenta(luz, K_ENTORNO_MUEBLE * 0.8, BRILLO.relleno),
-    }),
-    [pieza.color, luz],
-  );
+      ...venta,
+      ...(etiqueta && venta.onBeforeCompile ? {
+        // Primero la luz de venta (el fragment), después la etiqueta (el
+        // vertex y el color): son trozos distintos del shader.
+        onBeforeCompile: (s: Parameters<NonNullable<typeof venta.onBeforeCompile>>[0] & { vertexShader?: string }) => {
+          venta.onBeforeCompile!(s);
+          etiqueta(s);
+        },
+        customProgramCacheKey: () => CLAVE_DE_RELLENO,
+      } : {}),
+    });
+  }, [pieza.color, luz]);
   // Cada entrada y salida de Presentar rehace el material: el viejo se suelta.
   useEffect(() => () => material.dispose(), [material]);
   // En un vecino del mueble que se muestra, con menos luz.
@@ -180,7 +201,7 @@ function InstanciasDeEmpaque({ pieza, semilla }: { pieza: Pieza; semilla: string
     <instancedMesh
       // Con y sin color por instancia son mallas distintas: un
       // `instanceColor` puesto no se saca, y el editor vuelve al de siempre.
-      key={tonos ? "venta" : "editor"}
+      key={colores ? "venta" : "editor"}
       args={[geometria, material, pieza.matrices.length]}
       // En venta no tira sombra, como el producto de prueba: el mapa de
       // 1.024 px de toda la tienda no resuelve un envase, y la pasada de
@@ -192,9 +213,15 @@ function InstanciasDeEmpaque({ pieza, semilla }: { pieza: Pieza; semilla: string
         if (!nodo) return;
         pieza.matrices.forEach((mat, i) => nodo.setMatrixAt(i, mat));
         nodo.instanceMatrix.needsUpdate = true;
-        if (tonos) {
+        if (colores) {
+          // sRGB → el espacio de trabajo (lineal), y el diseño de la etiqueta
+          // adentro del rojo (`colorConDiseno`).
           const c = new THREE.Color();
-          tonos.forEach(([r, g, b], i) => nodo.setColorAt(i, c.setRGB(r, g, b)));
+          colores.forEach(({ rgb, diseno }, i) => {
+            c.setRGB(rgb[0], rgb[1], rgb[2], THREE.SRGBColorSpace);
+            const [r, g, b] = colorConDiseno([c.r, c.g, c.b], diseno);
+            nodo.setColorAt(i, c.setRGB(r, g, b));
+          });
           if (nodo.instanceColor) nodo.instanceColor.needsUpdate = true;
         }
         nodo.computeBoundingSphere();

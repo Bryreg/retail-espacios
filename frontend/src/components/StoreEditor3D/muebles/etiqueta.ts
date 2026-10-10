@@ -116,6 +116,10 @@ export interface Etiqueta {
    *  releer el lienzo devuelve NEGRO en lo transparente—, la primera vez que
    *  alguien la pide (el cabezote de la nevera). */
   franja(): FranjaDeEtiqueta;
+  /** El color de la marca para el copete y la cenefa (`colorDeMarca`): el
+   *  dominante, o en un envase casi blanco el de su logo. Del `rgba`, la
+   *  primera vez que alguien lo pide. */
+  colorDeMarca(): string;
 }
 
 /** «reintentando» es «cargando» después de un error: quien dibuja la trata
@@ -334,6 +338,7 @@ export function etiquetaDeArte(
       let llena: BotellaLlena | null = ya_.llena ?? null;
       const conLiquido = () => (llena ??= RECETAS.llena(recorte));
       let franja: FranjaDeEtiqueta | null = ya_.franja ?? null;
+      let marca: string | null = null;
       let lienzo: HTMLCanvasElement | null = null;
       const texturas: Record<string, THREE.CanvasTexture> = {};
       const una = (k: string, hacer: () => Imagen) => (texturas[k] ??= textura(lienzoDe(hacer()), e));
@@ -358,6 +363,7 @@ export function etiquetaDeArte(
         texturaDeTapa: () => (texturas.tapa ??= textura(dibujarTapa(tapa()), e)),
         cajaEnderezada: () => { frente(); return enderezada; },
         franja: () => (franja ??= RECETAS.franja(recorte)),
+        colorDeMarca: () => (marca ??= RECETAS.marca(recorte)),
       };
       entradaDe.set(e.etiqueta, e);
       e.estado = "lista";

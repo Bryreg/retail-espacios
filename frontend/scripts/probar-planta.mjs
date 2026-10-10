@@ -32,7 +32,7 @@ const {
   ALTO_CIELO_RASO, LUMINARIA, luminariasDeTienda, direccionDeGondolas, ejesDeGrilla,
   proyectar, rayoDeVista, choqueEnElLocal, sombraDeHuellas, sombraEn, SOMBRA_AL_PIE,
   personaYTomaDeVenta, esquinasDeLaFigura, FIGURA_DE_ESCALA, SEPARACIONES_DE_LA_FIGURA,
-  LLENADO_DE_PAR, FRANJA_DEL_HUD,
+  LLENADO_DE_PAR, FRANJA_DEL_HUD, libreAlCostado, VECINO_PEGADO, alcanceDeLaFigura, ANGOSTO_ENTRE_MEDIO, CERCANIA_DE_LA_FIGURA,
 } = await import(pathToFileURL(salida).href);
 
 // Lo que la cámara de venta toma de los muebles (la cuenta de la prueba y el
@@ -566,6 +566,86 @@ prueba("la persona sale ENTERA en De frente y Tres cuartos de PUN-01, NEV-01 y R
   assert.deepEqual([...SEPARACIONES_DE_LA_FIGURA], [1.2, 1.1, 1.0, 0.8, 0.6, 0.45, 0.3]);
   // La figura es la de la silueta: 1,70 m.
   assert.equal(FIGURA_DE_ESCALA.alto, 1.7);
+});
+
+/** La fracción del cuadro que ocupa la caja de un mueble de la sede: el casco
+ *  convexo de sus ocho esquinas proyectadas, recortado al cuadro. Una cota
+ *  (no cuenta lo que tapa otro mueble), suficiente para comparar. */
+function areaEnCuadro(v, f, asp = 16 / 9) {
+  const c = Math.cos(f.rotY), s = Math.sin(f.rotY), pts = [];
+  for (const a of [-1, 1]) for (const b of [-1, 1]) for (const y of [0, f.h]) {
+    const lx = a * f.w / 2, lz = b * f.d / 2;
+    const q = proyectar(v, 50, asp, { x: f.x + lx * c + lz * s, y, z: f.z - lx * s + lz * c });
+    if (q.profundidad > 0) pts.push([q.x, q.y]);
+  }
+  if (pts.length < 3) return 0;
+  pts.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+  const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lo = [], up = [];
+  for (const p of pts) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+  for (const p of [...pts].reverse()) { while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
+  let poly = lo.slice(0, -1).concat(up.slice(0, -1));
+  for (const [ax, sg] of [[0, 1], [0, -1], [1, 1], [1, -1]]) {
+    const dentro = (p) => sg * p[ax] <= 1;
+    const out = [];
+    for (let i = 0; i < poly.length; i++) {
+      const A = poly[i], B = poly[(i + 1) % poly.length];
+      if (dentro(A)) out.push(A);
+      if (dentro(A) !== dentro(B)) { const t = (sg - A[ax]) / (B[ax] - A[ax]); out.push([A[0] + t * (B[0] - A[0]), A[1] + t * (B[1] - A[1])]); }
+    }
+    poly = out;
+    if (!poly.length) return 0;
+  }
+  let ar = 0;
+  for (let i = 0; i < poly.length; i++) { const A = poly[i], B = poly[(i + 1) % poly.length]; ar += A[0] * B[1] - B[0] * A[1]; }
+  return Math.abs(ar) / 8;
+}
+
+prueba("«Tres cuartos» gira hacia el costado libre: el vecino pegado no queda en primer plano", () => {
+  // NEV-01 y NEV-02 van pegadas: girando hacia NEV-02 (para esquivar a la
+  // persona, parada del lado libre), la vecina —libre, con sus botellas
+  // mudas— ocupaba casi la mitad del cuadro y la nevera vendida quedaba chica
+  // y al fondo. Lo mismo el robatope contra la punta.
+  for (const [id, vecino, libre] of [["NEV-01", "NEV-02", (v, f) => v.posX < f.x], ["ROB-01", "PUN-01", (v, f) => v.posZ > f.z],
+    ["NEV-02", "NEV-01", (v, f) => v.posX > f.x]]) {
+    const f = SEDE.find((x) => x.id === id), g = SEDE.find((x) => x.id === vecino);
+    for (const r of [tomaConPersona(id, "tres_cuartos"), { vista: vistaDeVenta(comoMueble(f), "A", "tres_cuartos", { yBajo: 0, yAlto: f.h }, otros(id), LIMITES) }]) {
+      assert.ok(libre(r.vista, f), `${id}: «Tres cuartos» giró hacia ${vecino} (cámara en ${r.vista.posX.toFixed(2)}, ${r.vista.posZ.toFixed(2)})`);
+      const av = areaEnCuadro(r.vista, g), am = areaEnCuadro(r.vista, f);
+      assert.ok(av <= 0.2, `${id}: ${vecino} ocupa ${(av * 100).toFixed(0)} % del cuadro en «Tres cuartos»`);
+      if (id.startsWith("NEV")) assert.ok(av < am, `${id}: la vecina (${(av * 100).toFixed(0)} %) pesa más que la nevera (${(am * 100).toFixed(0)} %)`);
+    }
+  }
+  // Sin vecino pegado (una punta sola), sigue esquivando a la persona: lo
+  // prueba «el tres cuartos no pone a la persona en primer plano».
+  assert.ok(VECINO_PEGADO >= 0.6 && VECINO_PEGADO <= 1.2);
+});
+
+prueba("la persona se para al costado del mueble: nunca más allá de otro mueble entero, ni en primer plano", () => {
+  // A 1,2 m del canto del robatope, del lado de la punta, quedaba más allá de
+  // la punta, junto a otro mueble: la escala era la de otro mueble. Más allá
+  // de un exhibidor angosto (el robatope pegado a la punta) sí: es alguien
+  // parado en el pasillo.
+  for (const id of ["PUN-01", "ROB-01", "NEV-01", "NEV-02"]) for (const t of ["frente", "tres_cuartos"]) {
+    const { f, persona, vista } = tomaConPersona(id, t);
+    if (!persona) continue;
+    const ex = { x: Math.cos(f.rotY), z: -Math.sin(f.rotY) };
+    const lado = (persona.x - f.x) * ex.x + (persona.z - f.z) * ex.z > 0 ? 1 : -1;
+    const alcance = alcanceDeLaFigura(comoMueble(f), "A", lado, otros(id), LIMITES);
+    assert.ok(persona.separacion <= alcance + 1e-9, `${id} ${t}: la persona a ${persona.separacion} m del canto, con piso sólo hasta ${alcance.toFixed(2)} m`);
+    // Ni en primer plano: no más cerca de la cámara que el 80 % del centro de la cara.
+    const dp = Math.hypot(vista.posX - persona.x, vista.posZ - persona.z), dc = Math.hypot(vista.posX - vista.targetX, vista.posZ - vista.targetZ);
+    assert.ok(dp >= CERCANIA_DE_LA_FIGURA * dc - 1e-9, `${id} ${t}: la persona a ${dp.toFixed(2)} m de la cámara, la cara a ${dc.toFixed(2)}: primer plano`);
+  }
+  // Del robatope, del lado de la punta (0,9 m entre medio), nunca; de la
+  // punta, del lado del robatope (0,3 m), sí.
+  const rob = SEDE.find((x) => x.id === "ROB-01"), pun = SEDE.find((x) => x.id === "PUN-01");
+  assert.ok(alcanceDeLaFigura(comoMueble(rob), "A", -1, otros("ROB-01"), LIMITES) < 0.3, "el robatope deja pararse más allá de la punta");
+  assert.ok(alcanceDeLaFigura(comoMueble(pun), "A", 1, otros("PUN-01"), LIMITES) >= 1.2, "la punta no deja pararse más allá del robatope");
+  assert.ok(ANGOSTO_ENTRE_MEDIO >= 0.5 && ANGOSTO_ENTRE_MEDIO <= 0.9);
+  // En «Tres cuartos» de la punta, la persona del lado CONTRARIO a la cámara.
+  const { vista, persona } = tomaConPersona("PUN-01", "tres_cuartos");
+  assert.ok(persona && Math.sign(persona.z - pun.z) !== Math.sign(vista.posZ - pun.z), "en «Tres cuartos» la persona quedó del lado de la cámara habiendo lugar del otro");
 });
 
 prueba("sin lugar para la persona entera, la toma de siempre y sin persona", () => {

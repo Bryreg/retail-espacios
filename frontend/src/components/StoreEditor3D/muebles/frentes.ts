@@ -151,6 +151,9 @@ export interface GrupoDeRelleno {
   /** Una clave por empaque y color: cada grupo es UNA llamada de dibujo. */
   clave: string;
   color: string;
+  /** El rubro del contrato (texto libre): elige la paleta del relleno de
+   *  venta (`paletaDeRubro`). Nunca se dibuja. */
+  rubro?: string;
   empaque: Empaque;
   posiciones: PosicionDeRelleno[];
 }
@@ -255,7 +258,7 @@ export function rellenoPorRubro({
           acomodo.filas, vendidoEntero && vendidoEntero.hondo !== false ? PROFUNDIDAD_DE_MUEBLE_ENTERO : PROFUNDIDAD_VISIBLE,
         );
 
-        const grupo = porClave.get(clave) ?? { clave, color, empaque: e, posiciones: [] };
+        const grupo = porClave.get(clave) ?? { clave, color, rubro: slot.brandCategory, empaque: e, posiciones: [] };
         if (!porClave.has(clave)) porClave.set(clave, grupo);
 
         caras.forEach((cara, c) => {
@@ -435,7 +438,7 @@ export function bloquesDeSurtido(vanos: readonly Vano[], n: number): TramoDeSurt
 /** Un generador sembrado (mulberry32): el mismo mueble se ve igual siempre.
  *  Al azar, el producto se reacomodaría solo cada vez que se mueve la cámara
  *  —el plano titila entero— y nadie puede señalar nada. */
-function azarDe(semilla: number): () => number {
+export function azarDe(semilla: number): () => number {
   let a = semilla >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) | 0;

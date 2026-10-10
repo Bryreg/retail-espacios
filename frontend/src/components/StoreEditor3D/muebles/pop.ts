@@ -29,12 +29,21 @@
 import * as THREE from "three";
 import type { Etiqueta } from "./etiqueta";
 import { materialImpreso } from "./etiqueta";
+import { olvidarCopeteDeTienda } from "./copeteDeTienda";
 
 interface Copete { textura: THREE.CanvasTexture; material: THREE.MeshStandardMaterial }
 
 /** Pocos: hay una punta probada a la vez, a lo sumo un par. */
 const MAXIMO = 8;
 const cache = new Map<string, Copete>();
+
+/** Un envase es «angosto» si su foto es más alta que el doble de su ancho:
+ *  la caja de 1 L, una botella. Ahí el copete lleva el abanico. */
+export const ENVASE_ANGOSTO = 0.5;
+
+/** La franja del medio de la foto: la de un envase sin etiqueta localizada
+ *  (caja, vaso), donde suele estar el logo. */
+const FRANJA_DEL_MEDIO = { desde: 0.34, hasta: 0.66, x0: 0, x1: 1 };
 
 /** Un color `#rrggbb` aclarado una fracción hacia el blanco. */
 function aclarar(hex: string, k: number): string {
@@ -45,7 +54,7 @@ function aclarar(hex: string, k: number): string {
 
 /** Lo que necesita el dibujo de un cartel: la foto con alfa y dónde está la
  *  etiqueta en ella. `Etiqueta` lo cumple; las pruebas pasan uno falso. */
-type FuenteDeCartel = Pick<Etiqueta, "lienzo" | "recorte" | "franja">;
+type FuenteDeCartel = Pick<Etiqueta, "lienzo" | "recorte" | "franja"> & Partial<Pick<Etiqueta, "colorDeMarca">>;
 
 /** Un contexto 2D: el del lienzo, o uno falso en `probar-muebles`. */
 type Pincel = Pick<CanvasRenderingContext2D,
@@ -54,8 +63,10 @@ type Pincel = Pick<CanvasRenderingContext2D,
 /**
  * El dibujo del cartel, sobre un contexto 2D de W × H.
  *
- * - Casi cuadrado (el copete de la punta): el héroe al centro con dos más
- *   chicos arrimados.
+ * - Casi cuadrado (el copete de la punta), con un envase ancho (el vaso): el
+ *   héroe al centro con dos más chicos arrimados. Con uno ANGOSTO (la caja
+ *   de 1 L, una botella; `ENVASE_ANGOSTO`): el héroe con dos por lado en
+ *   abanico y, si el cartel es apaisado, la franja del logo a la izquierda.
  * - Apaisado (el cabezote de la nevera, 1,1 m × 9 cm): la receta del copete,
  *   no la de una plancha de stickers. Antes iba la franja del medio de la
  *   foto repetida en mosaico —diez miniaturas iguales sobre rojo plano—; ahora
@@ -81,27 +92,72 @@ export function dibujarCartel(
     const a = altura * aspecto;
     g.drawImage(p, cx - a / 2, (H - altura) / 2, a, altura);
   };
-  const halo = (radio: number, k: number) => {
-    const h = g.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, radio);
+  const halo = (radio: number, k: number, cx = W / 2) => {
+    const h = g.createRadialGradient(cx, H / 2, 0, cx, H / 2, radio);
     h.addColorStop(0, `rgba(255,255,255,${k})`);
     h.addColorStop(1, "rgba(255,255,255,0)");
     g.fillStyle = h;
     g.fillRect(0, 0, W, H);
   };
   if (W / H <= 4.5) {
-    // El héroe al centro, sobre un halo claro que lo despega del fondo, y dos
-    // más chicos arrimados a sus costados.
-    const heroe = H * 0.9, chico = H * 0.66;
-    halo(heroe * 0.75, 0.22);
-    const paso = (heroe * aspecto) / 2 + (chico * aspecto) / 2 + W * 0.02;
-    pegar(W / 2 - paso, chico);
-    pegar(W / 2 + paso, chico);
-    pegar(W / 2, heroe);
+    if (aspecto >= ENVASE_ANGOSTO) {
+      // Un envase ancho (el vaso): el héroe al centro, sobre un halo claro que
+      // lo despega del fondo, y dos más chicos arrimados a sus costados.
+      const heroe = H * 0.9, chico = H * 0.66;
+      halo(heroe * 0.75, 0.22);
+      const paso = (heroe * aspecto) / 2 + (chico * aspecto) / 2 + W * 0.02;
+      pegar(W / 2 - paso, chico);
+      pegar(W / 2 + paso, chico);
+      pegar(W / 2, heroe);
+      return;
+    }
+    // Un envase ANGOSTO (la caja de 1 L de la Avena, una botella): con la
+    // receta del vaso, tres cajas de 7 cm ocupaban la cuarta parte del cartel
+    // y el resto era fondo liso, «una pizarra con stickers». Va el héroe con
+    // DOS unidades por lado en abanico (cada una un poco más chica y apenas
+    // detrás de la de adentro) y, si el cartel es apaisado, la franja de la
+    // etiqueta (el logo) recortada a la izquierda, grande, como en el
+    // cabezote. Sin texto: la franja es la foto del proveedor.
+    const tamanos = [0.9, 0.78, 0.66].map((k) => H * k);
+    const anchos = tamanos.map((t) => t * aspecto);
+    const solape = 0.1;
+    let abanico = anchos[0] + 2 * (anchos[1] + anchos[2]) * (1 - solape);
+    let x0 = W * 0.04, x1 = W - W * 0.04;
+    if (W / H >= 2) {
+      const f = conFranja ? et.franja() : FRANJA_DEL_MEDIO;
+      const sx = Math.round(f.x0 * p.width), sw = Math.max(1, Math.round((f.x1 - f.x0) * p.width));
+      const sy = Math.round(f.desde * p.height), sh = Math.max(1, Math.round((f.hasta - f.desde) * p.height));
+      let alto = H * 0.8, ancho = (alto * sw) / sh;
+      if (ancho > W * 0.34) { alto *= (W * 0.34) / ancho; ancho = W * 0.34; }
+      const cx = x0 + ancho / 2;
+      const h = g.createRadialGradient(cx, H / 2, 0, cx, H / 2, Math.max(ancho, alto) * 0.75);
+      h.addColorStop(0, "rgba(255,255,255,0.24)");
+      h.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = h;
+      g.fillRect(0, 0, W, H);
+      g.drawImage(p, sx, sy, sw, sh, cx - ancho / 2, (H - alto) / 2, ancho, alto);
+      x0 += ancho + W * 0.04;
+    }
+    // Que el abanico entre en lo que queda.
+    const k = Math.min(1, (x1 - x0) / abanico);
+    abanico *= k;
+    const centro = (x0 + x1) / 2;
+    halo(tamanos[0] * 0.75 * k, 0.22, centro);
+    const pegarEn = (cx: number, t: number) => {
+      const altura = t * k, a = altura * aspecto;
+      g.drawImage(p, cx - a / 2, (H - altura) / 2, a, altura);
+    };
+    // De afuera hacia adentro: la de adentro tapa el borde de la de afuera.
+    const d1 = (anchos[0] / 2 + anchos[1] / 2 * (1 - 2 * solape)) * k;
+    const d2 = d1 + (anchos[1] / 2 + anchos[2] / 2 * (1 - 2 * solape)) * k;
+    for (const s of [-1, 1]) pegarEn(centro + s * d2, tamanos[2]);
+    for (const s of [-1, 1]) pegarEn(centro + s * d1, tamanos[1]);
+    pegarEn(centro, tamanos[0]);
     return;
   }
   // Apaisado. La franja: la de la etiqueta si el envase la tiene (la botella
   // transparente) o la del medio de la foto.
-  const f = conFranja ? et.franja() : { desde: 0.34, hasta: 0.66, x0: 0, x1: 1 };
+  const f = conFranja ? et.franja() : FRANJA_DEL_MEDIO;
   const sx = Math.round(f.x0 * p.width), sw = Math.max(1, Math.round((f.x1 - f.x0) * p.width));
   const sy = Math.round(f.desde * p.height), sh = Math.max(1, Math.round((f.hasta - f.desde) * p.height));
   let altura = H * 0.8;
@@ -129,8 +185,13 @@ function dibujar(et: Etiqueta, ancho: number, alto: number, conFranja: boolean):
   return c;
 }
 
-/** El color de la marca: el dominante de la foto, o un gris si no hay. */
-function colorDe(et: Pick<Etiqueta, "recorte">): string {
+/** El color de la marca: el de la etiqueta (`colorDeMarca`: el dominante, o
+ *  en un envase casi blanco el de su logo), o el dominante de la foto, o un
+ *  gris si no hay. Con el dominante a secas, la Avena en caja blanca daba un
+ *  copete blanco sobre blanco. */
+export function colorDe(et: Pick<Etiqueta, "recorte"> & Partial<Pick<Etiqueta, "colorDeMarca">>): string {
+  const marca = et.colorDeMarca?.();
+  if (marca && /^#[0-9a-f]{6}$/i.test(marca)) return marca;
   return /^#[0-9a-f]{6}$/i.test(et.recorte.colorDominante) ? et.recorte.colorDominante : "#808080";
 }
 
@@ -211,4 +272,5 @@ export function materialDeCenefa(et: Etiqueta, entorno: THREE.Texture | null): T
 export function olvidarCopetes(): void {
   for (const v of cache.values()) { v.textura.dispose(); v.material.dispose(); }
   cache.clear();
+  olvidarCopeteDeTienda();
 }
