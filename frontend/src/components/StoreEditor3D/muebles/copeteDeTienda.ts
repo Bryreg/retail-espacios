@@ -51,33 +51,49 @@ export function pintarCopeteDeTienda(g: Pincel, W: number, H: number): void {
   g.fillRect(W * 0.06, H * 0.14, W * 0.18, H * 0.02);
 }
 
-let copete: { textura: THREE.CanvasTexture; material: THREE.MeshStandardMaterial } | null = null;
+/** La exposición de la chapa de la tienda en una punta VECINA: más que la
+ *  del resto del mueble (`EXPOSICION_DEL_VECINO`). Con la misma, el azul
+ *  petróleo atenuado quedaba como una losa negra sobre la punta libre, más
+ *  pesada que encendida. */
+export const EXPOSICION_DE_LA_CHAPA = 0.7;
 
-/** El material de la chapa de la tienda: UNO para todas las puntas libres de
- *  la sesión, con la luz de los muebles de venta (es chapa del mueble, como el
- *  porta-precios). Sólo se pide en venta. */
-export function materialDeCopeteDeTienda(): THREE.MeshStandardMaterial {
-  if (copete) return copete.material;
+let textura: THREE.CanvasTexture | null = null;
+
+/** La textura de la chapa de la tienda: UNA para todas las puntas libres de
+ *  la sesión. */
+function texturaDeTienda(): THREE.CanvasTexture {
+  if (textura) return textura;
   const c = document.createElement("canvas");
   c.width = 512; c.height = 192;
   pintarCopeteDeTienda(c.getContext("2d")!, c.width, c.height);
-  const textura = new THREE.CanvasTexture(c);
+  textura = new THREE.CanvasTexture(c);
   textura.colorSpace = THREE.SRGBColorSpace;
   textura.anisotropy = 8;
-  // Impresión mate (`BRILLO.relleno`): con el brillo del porta-precios, el
-  // reflejo de las luminarias cruzaba el azul oscuro como sobre un vidrio.
-  const material = new THREE.MeshStandardMaterial({
-    map: textura, metalness: 0, roughness: 0.8,
-    ...conLuzDeVenta(true, K_ENTORNO_MUEBLE, BRILLO.relleno),
-  });
-  copete = { textura, material };
-  return material;
+  return textura;
 }
 
-/** Suelta la chapa de la tienda (con los copetes, al desmontar el editor). */
+/** Un material de la chapa de la tienda, con la luz de los muebles de venta
+ *  (es chapa del mueble, como el porta-precios). Sólo se pide en venta.
+ *
+ *  Uno NUEVO por punta (con la textura compartida y el mismo programa): cada
+ *  punta tiene sus uniformes de venta, y una punta VECINA del mueble que se
+ *  muestra se atenúa sola (`useAtenuacion`). Con un material para todas, la
+ *  chapa de la punta libre de al lado quedaba encendida —un cartel azul
+ *  brillante junto al producto— o se apagaba la de todas. Quien lo pide lo
+ *  memoriza y lo suelta (`Material.dispose` no suelta el `map`). */
+export function materialDeCopeteDeTienda(): THREE.MeshStandardMaterial {
+  // Impresión mate (`BRILLO.relleno`): con el brillo del porta-precios, el
+  // reflejo de las luminarias cruzaba el azul oscuro como sobre un vidrio.
+  return new THREE.MeshStandardMaterial({
+    map: texturaDeTienda(), metalness: 0, roughness: 0.8,
+    ...conLuzDeVenta(true, K_ENTORNO_MUEBLE, BRILLO.relleno),
+  });
+}
+
+/** Suelta la textura de la chapa de la tienda (con los copetes, al desmontar
+ *  el editor). Los materiales los suelta cada punta. */
 export function olvidarCopeteDeTienda(): void {
-  if (!copete) return;
-  copete.textura.dispose();
-  copete.material.dispose();
-  copete = null;
+  if (!textura) return;
+  textura.dispose();
+  textura = null;
 }

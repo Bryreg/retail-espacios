@@ -5,8 +5,9 @@ import {
 } from "./medidas";
 import { geometriaMarcoDeCopete } from "./perfiles";
 import { CaraDeEstanteria, useMateriales } from "./piezas";
-import { useLuzDeVenta } from "./luzDeVenta";
-import { materialDeCopeteDeTienda } from "./copeteDeTienda";
+import { useLuzDeVenta, useSoltarMateriales } from "./luzDeVenta";
+import { useAtenuacion } from "./atenuacion";
+import { EXPOSICION_DE_LA_CHAPA, materialDeCopeteDeTienda } from "./copeteDeTienda";
 
 /**
  * Una punta de góndola: el mueble que cierra el extremo de un corrido.
@@ -74,7 +75,13 @@ export const PuntaReal = memo(function PuntaReal({
   // (`materialDeCopeteDeTienda`): el blanco liso de siempre, enorme, se leía
   // como un cartel sin terminar. En el editor, la chapa clara de siempre.
   const venta = useLuzDeVenta();
-  const impreso = copete ?? (venta && !ghost ? materialDeCopeteDeTienda() : undefined);
+  // Uno por punta, memorizado y soltado con ella: una punta libre VECINA del
+  // mueble que se muestra se atenúa como el resto de su chapa.
+  const deTienda = useMemo(() => ({ chapa: !copete && venta && !ghost ? materialDeCopeteDeTienda() : null }),
+    [copete, venta, ghost]);
+  useSoltarMateriales(deTienda);
+  useAtenuacion([deTienda.chapa], EXPOSICION_DE_LA_CHAPA);
+  const impreso = copete ?? deTienda.chapa ?? undefined;
   // La chapa impresa: lo impreso va SÓLO en la cara que mira al pasillo (−Z);
   // los cantos siguen neutros. Dos grupos y no seis (`geometriaDeChapa`): un
   // arreglo de seis materiales eran seis llamadas por copete.

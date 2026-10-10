@@ -66,6 +66,29 @@ export const useLuzDeVenta = (): boolean => useContext(LuzDeVenta);
 export const FocoDeVenta = createContext<boolean>(true);
 
 /**
+ * Cuánto de TODA su luz conserva un vecino en la pantalla de venta: lo que
+ * multiplica el color final de sus materiales (`uExposicion`), con la luz de
+ * la escena incluida.
+ *
+ * La crítica de la demo (ronda 2): con la sola atenuación de la luz del
+ * cuarto, el robatope libre pegado a la punta de Alpina —una torre blanca con
+ * cuatro repisas vacías— quedaba MÁS claro que la punta vendida (luminancia
+ * media 180 contra 156), y la góndola libre de la que la punta es cabecera
+ * pesaba lo mismo que ella (156 contra 153): la direccional y la ambiente, que
+ * no se atenuaban, son casi toda la luz de una cara blanca que mira a la
+ * cámara. Con la exposición, el vecino entero pierde luz —el blanco sigue
+ * siendo blanco, más en sombra— y lo libre sigue vacío: sólo deja de competir.
+ *
+ * Medido en la demo (luminancia media de la caja de cada mueble): con 0,62 el
+ * robatope quedaba a la par de la punta (154 contra 155); con 0,45, un 15 %
+ * abajo —las caras de arriba de sus repisas, que miran a la direccional, se
+ * comen el tono—; con 0,38, 121 contra 155 (un 22 % abajo) y la góndola libre
+ * de «Tres cuartos» 102 contra 150 (un 32 %). Más abajo el vecino se lee como
+ * un hueco apagado en la tienda.
+ */
+export const EXPOSICION_DEL_VECINO = 0.38;
+
+/**
  * Cuánto pierde un vecino: la luz del cuarto y el brillo de las luminarias.
  *
  * El criterio: el mueble de al lado al menos un 20 % menos luminoso que el que
@@ -77,7 +100,7 @@ export const FocoDeVenta = createContext<boolean>(true);
  * además apaga su frío (`apagarElFrio` en `NeveraReal`): con la luz sola no
  * llegaba.
  */
-export const ATENUACION = { luz: 0.55, brillo: 0.5 } as const;
+export const ATENUACION = { luz: 0.55, brillo: 0.5, exposicion: EXPOSICION_DEL_VECINO } as const;
 
 /** Los uniformes de venta de un material (o de las props de uno declarativo),
  *  si los tiene. */
@@ -86,13 +109,17 @@ export function uniformesDe(x: { userData?: { luzDeVenta?: UniformesDeVenta } } 
 }
 
 /** Pone la intensidad y el brillo de cada material según el foco: los de
- *  diseño con foco, × `ATENUACION` sin él. Devuelve cuántos tocó. */
-export function atenuarUniformes(lista: readonly (UniformesDeVenta | undefined)[], foco: boolean): number {
+ *  diseño con foco, × `ATENUACION` sin él (la exposición, la que se pase: la
+ *  nevera se apaga con su frío y lleva la suya). Devuelve cuántos tocó. */
+export function atenuarUniformes(
+  lista: readonly (UniformesDeVenta | undefined)[], foco: boolean, exposicion: number = ATENUACION.exposicion,
+): number {
   let n = 0;
   for (const u of lista) {
     if (!u) continue;
     u.uLuzVenta.value = u.base.luz * (foco ? 1 : ATENUACION.luz);
     u.uBrillo.value = u.base.brillo * (foco ? 1 : ATENUACION.brillo);
+    u.uExposicion.value = foco ? 1 : exposicion;
     n++;
   }
   return n;
@@ -321,6 +348,9 @@ float tiendaReflejo( vec3 p, vec3 r, float rugosidad ) {
 export interface UniformesDeVenta {
   uLuzVenta: { value: number };
   uBrillo: { value: number };
+  /** Lo que multiplica el color final (1 con foco; `EXPOSICION_DEL_VECINO`
+   *  en un vecino). */
+  uExposicion: { value: number };
   base: { luz: number; brillo: number };
 }
 
@@ -338,12 +368,19 @@ export interface UniformesDeVenta {
  *  (lo vigila `probar-muebles`). */
 export function parcheDeLuzDeVenta(u: UniformesDeVenta) {
   const trozo = "#include <emissivemap_fragment>";
+  const trozoFinal = "#include <opaque_fragment>";
   return (shader: { fragmentShader: string; uniforms?: Record<string, unknown> }) => {
     if (!shader.fragmentShader.includes(trozo) || !shader.fragmentShader.includes("void main() {")) return;
-    if (shader.uniforms) Object.assign(shader.uniforms, UNIFORMES_DE_TIENDA, { uLuzVenta: u.uLuzVenta, uBrillo: u.uBrillo });
+    if (shader.uniforms) Object.assign(shader.uniforms, UNIFORMES_DE_TIENDA, { uLuzVenta: u.uLuzVenta, uBrillo: u.uBrillo, uExposicion: u.uExposicion });
     shader.fragmentShader = shader.fragmentShader
+      // La exposición del vecino: TODO lo que sale (la luz de la escena, la
+      // del cuarto y el brillo), antes del tono. Si three cambia el nombre
+      // del trozo, el vecino queda sin esta parte (lo vigila probar-muebles).
+      .replace(trozoFinal, `outgoingLight *= uExposicion;
+	${trozoFinal}`)
       .replace("void main() {", `uniform float uLuzVenta;
 uniform float uBrillo;
+uniform float uExposicion;
 ${GLSL_DE_TIENDA}
 void main() {`)
       .replace(trozo, `${trozo}
@@ -471,7 +508,7 @@ export function conLuzDeVenta(
 } {
   if (!venta) return {};
   const u: UniformesDeVenta = {
-    uLuzVenta: { value: intensidad }, uBrillo: { value: brillo }, base: { luz: intensidad, brillo },
+    uLuzVenta: { value: intensidad }, uBrillo: { value: brillo }, uExposicion: { value: 1 }, base: { luz: intensidad, brillo },
   };
   return { onBeforeCompile: parcheDeLuzDeVenta(u), customProgramCacheKey: () => CLAVE_DE_VENTA, userData: { luzDeVenta: u } };
 }

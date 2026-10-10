@@ -40,7 +40,9 @@ import {
 } from "./muebles/luzDeVenta";
 import { useAtenuacion } from "./muebles/atenuacion";
 import type { UniformesDelPiso } from "./muebles/luzDeVenta";
-import { geometriaDeCieloRaso, geometriaDeMurosDeVenta } from "./muebles/sala";
+import {
+  COLOR_DEL_MURO_DE_VENTA, geometriaDeCenefa, geometriaDeCieloRaso, geometriaDeMurosConDegradado, geometriaDeMurosDeVenta,
+} from "./muebles/sala";
 import { NeveraReal } from "./muebles/NeveraReal";
 import { ProductoAGranel } from "./muebles/ProductoAGranel";
 import { BateaReal, bocaDeBatea } from "./muebles/BateaReal";
@@ -2313,8 +2315,9 @@ function StoreRoom({ limites, muebles, venta, primeraPersona }: {
 
   const planos = venta && !primeraPersona;
   const geometrias = useMemo(() => planos ? {
-    muros: geometriaDeMurosDeVenta(limites, ALTO_CIELO_RASO),
+    muros: geometriaDeMurosConDegradado(limites, ALTO_CIELO_RASO),
     zocalos: geometriaDeMurosDeVenta(limites, ZOCALO_DE_MURO, 0.012),
+    cenefa: geometriaDeCenefa(limites),
     cielo: geometriaDeCieloRaso(limites),
     tira: new THREE.PlaneGeometry(LUMINARIA.largo, LUMINARIA.ancho).rotateX(Math.PI / 2),
   } : null,
@@ -2439,8 +2442,18 @@ function StoreRoom({ limites, muebles, venta, primeraPersona }: {
           raso), que sin él quedaría negro. */}
       {geometrias && (
         <>
+          {/* El muro con su degradé (`luzDelMuro`): más claro arriba, bajo
+              las luminarias, y más oscuro hacia el zócalo. Sin luz de la
+              escena (que a un muro le da de canto): el color de siempre en la
+              pantalla —#cfccc4, lo que daba el Lambert con su emissive— por
+              el color de vértice. */}
           <mesh geometry={geometrias.muros} castShadow={false} receiveShadow={false}>
-            <meshLambertMaterial color="#efeae0" emissive="#a8a294" side={THREE.FrontSide} />
+            <meshBasicMaterial color={COLOR_DEL_MURO_DE_VENTA} vertexColors toneMapped={false} side={THREE.FrontSide} />
+          </mesh>
+          {/* La cenefa perimetral (`geometriaDeCenefa`): paneles de la chapa
+              de la tienda, sin texto. */}
+          <mesh geometry={geometrias.cenefa} castShadow={false} receiveShadow={false}>
+            <meshBasicMaterial vertexColors toneMapped={false} side={THREE.FrontSide} />
           </mesh>
           <mesh geometry={geometrias.zocalos} castShadow={false} receiveShadow={false}>
             <meshLambertMaterial color="#b9b2a3" emissive="#6e695d" side={THREE.FrontSide} />

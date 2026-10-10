@@ -32,7 +32,8 @@ const {
   ALTO_CIELO_RASO, LUMINARIA, luminariasDeTienda, direccionDeGondolas, ejesDeGrilla,
   proyectar, rayoDeVista, choqueEnElLocal, sombraDeHuellas, sombraEn, SOMBRA_AL_PIE,
   personaYTomaDeVenta, esquinasDeLaFigura, FIGURA_DE_ESCALA, SEPARACIONES_DE_LA_FIGURA,
-  LLENADO_DE_PAR, FRANJA_DEL_HUD, libreAlCostado, VECINO_PEGADO, alcanceDeLaFigura, ANGOSTO_ENTRE_MEDIO,
+  LLENADO_DE_PAR, FRANJA_DEL_HUD, libreAlCostado, VECINO_PEGADO, alcanceDeLaFigura, ANGOSTO_ENTRE_MEDIO, AIRE_DE_LA_FIGURA,
+  corridaPorVecino, DESCENTRADO_POR_VECINO,
 } = await import(pathToFileURL(salida).href);
 
 // Lo que la cámara de venta toma de los muebles (la cuenta de la prueba y el
@@ -552,17 +553,53 @@ prueba("la persona sale ENTERA en De frente y Tres cuartos de PUN-01, NEV-01 y R
       // Del lado libre: el robatope está pegado a PUN-01 (z menor), la nevera a NEV-02 (x mayor).
       if (id === "ROB-01") assert.ok(persona.z > f.z, "la persona del robatope quedó del lado de la punta");
       if (id === "NEV-01") assert.ok(persona.x < f.x, "la persona de la nevera quedó del lado de NEV-02");
-      // Al costado: su rango en el cuadro no se mete en el de la cara.
-      const [a, b] = caraEnCuadro(vista, f, 50, aspecto);
+      // Al costado: su rango en el cuadro no se mete en el de la CAJA del
+      // mueble (el costado que da a la cámara también), con 30 px de aire.
+      const c = Math.cos(f.rotY), sn = Math.sin(f.rotY);
+      const xs = [-1, 1].flatMap((a) => [-1, 1].flatMap((b) => [0, f.h].map((y) => proyectar(vista, 50, aspecto,
+        { x: f.x + a * f.w / 2 * c + b * f.d / 2 * sn, y, z: f.z - a * f.w / 2 * sn + b * f.d / 2 * c }).x)));
+      const [a, b] = [Math.min(...xs) - AIRE_DE_LA_FIGURA, Math.max(...xs) + AIRE_DE_LA_FIGURA];
       const [pa, pb] = [Math.min(...q.map((e) => e.x)), Math.max(...q.map((e) => e.x))];
       assert.ok(pb < a || pa > b, `${id} ${t}: la persona tapa el mueble (${pa.toFixed(2)}…${pb.toFixed(2)} contra ${a.toFixed(2)}…${b.toFixed(2)})`);
-      // El centro del cuadro sigue en el mueble: se abre, no se corre.
+      assert.ok(AIRE_DE_LA_FIGURA >= 0.03, "menos de 30 px de aire");
+      // El centro del cuadro sigue en el mueble: se abre, no se corre; salvo
+      // «De frente» con un vecino pegado, que se corre `DESCENTRADO_POR_VECINO`
+      // hacia el costado libre (la cámara con la mira).
       const n = normalDeCara(f.rotY, "A");
-      assert.ok(Math.hypot(vista.targetX - (f.x + n.x * f.d / 2), vista.targetZ - (f.z + n.z * f.d / 2)) < 1e-9, `${id} ${t}: la toma se descentró del mueble`);
+      const corrida = t === "frente" ? corridaPorVecino(comoMueble(f), "A", otros(id), LIMITES) : null;
+      const cx = f.x + n.x * f.d / 2 + (corrida?.x ?? 0), cz = f.z + n.z * f.d / 2 + (corrida?.z ?? 0);
+      assert.ok(Math.hypot(vista.targetX - cx, vista.targetZ - cz) < 1e-9, `${id} ${t}: la toma se descentró del mueble`);
     }
   }
-  // Holgada primero: con lugar, a 1,2 m (pegada a 30 cm competía con el mueble).
-  assert.equal(tomaConPersona("PUN-01", "frente").persona.separacion, SEPARACIONES_DE_LA_FIGURA[0]);
+  // «De frente» no abre el cuadro por la persona: el mueble lleno de alto, y
+  // ella por el borde, a la mayor separación que entra así (pegada a 30 cm
+  // competía con el mueble). Abriéndolo hasta una persona a 1,2 m, la nevera
+  // ocupaba el 26 % del ancho y el resto era muro.
+  for (const id of ["PUN-01", "NEV-01", "ROB-01"]) {
+    const { f, vista, persona } = tomaConPersona(id, "frente");
+    const sin = vistaDeVenta(comoMueble(f), "A", "frente", { yBajo: 0, yAlto: Math.max(f.h + 0.06, 1.75) }, otros(id), LIMITES, 50, 16 / 9,
+      undefined, undefined, corridaPorVecino(comoMueble(f), "A", otros(id), LIMITES));
+    assert.deepEqual(vista, sin, `${id}: «De frente» abrió el cuadro por la persona`);
+    assert.ok(persona.separacion >= 0.6, `${id}: la persona pegada al mueble (${persona.separacion} m)`);
+    const mayores = SEPARACIONES_DE_LA_FIGURA.filter((x) => x > persona.separacion);
+    // Su costado, en el eje X local del mueble.
+    const lado = (persona.x - f.x) * Math.cos(f.rotY) - (persona.z - f.z) * Math.sin(f.rotY) >= 0 ? 1 : -1;
+    for (const sep of mayores) {
+      const p = lugarDeLaFigura({ x: f.x, z: f.z, w: f.w, rotY: f.rotY }, otros(id), sep, { d: f.d, cara: "A" }, [lado]);
+      if (!p) continue;
+      const q = esquinasDeLaFigura(p).map((e) => proyectar(vista, 50, 16 / 9, e));
+      assert.ok(q.some((e) => Math.abs(e.x) > 0.98 || Math.abs(e.y) > 0.98), `${id}: a ${sep} m también entraba sin abrir el cuadro`);
+    }
+  }
+  // La nevera de frente llena el alto del cuadro (con su aire) y la vecina
+  // no pasa del 25 %.
+  {
+    const { f, vista } = tomaConPersona("NEV-01", "frente");
+    const ys = [0, f.h].map((y) => proyectar(vista, 50, 16 / 9, { x: f.x, y, z: f.z - f.d / 2 * Math.cos(f.rotY) }).y);
+    assert.ok(Math.abs(ys[1] - ys[0]) / 2 >= 0.8, `la nevera llena el ${(Math.abs(ys[1] - ys[0]) * 50).toFixed(0)} % del alto`);
+    const vecina = visibleEnCuadro(vista, f, SEDE.find((x) => x.id === "NEV-02"));
+    assert.ok(vecina <= 0.25, `NEV-02 se ve en el ${(vecina * 100).toFixed(0)} % del cuadro de NEV-01`);
+  }
   assert.deepEqual([...SEPARACIONES_DE_LA_FIGURA], [1.2, 1.1, 1.0, 0.8, 0.6, 0.45, 0.3]);
   // La figura es la de la silueta: 1,70 m.
   assert.equal(FIGURA_DE_ESCALA.alto, 1.7);
@@ -619,6 +656,80 @@ prueba("«Tres cuartos» gira hacia el costado libre: el vecino pegado no queda 
   // Sin vecino pegado (una punta sola), sigue esquivando a la persona: lo
   // prueba «el tres cuartos no pone a la persona en primer plano».
   assert.ok(VECINO_PEGADO >= 0.6 && VECINO_PEGADO <= 1.2);
+});
+
+/** Lo que se VE de un vecino en el cuadro: los puntos de una grilla de
+ *  96 × 54 que caen en el casco de su caja y no en el del mueble que se
+ *  muestra (que está delante). */
+function visibleEnCuadro(v, f, g, asp = 16 / 9) {
+  const casco = (m) => {
+    const c = Math.cos(m.rotY), s = Math.sin(m.rotY), pts = [];
+    for (const a of [-1, 1]) for (const b of [-1, 1]) for (const y of [0, m.h]) {
+      const q = proyectar(v, 50, asp, { x: m.x + a * m.w / 2 * c + b * m.d / 2 * s, y, z: m.z - a * m.w / 2 * s + b * m.d / 2 * c });
+      if (q.profundidad > 0) pts.push([q.x, q.y]);
+    }
+    pts.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+    const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lo = [], up = [];
+    for (const p of pts) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+    for (const p of [...pts].reverse()) { while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
+    return lo.slice(0, -1).concat(up.slice(0, -1));
+  };
+  const adentro = (poly, x, y) => poly.length >= 3 && poly.every((A, i) => {
+    const B = poly[(i + 1) % poly.length];
+    return (B[0] - A[0]) * (y - A[1]) - (B[1] - A[1]) * (x - A[0]) >= 0;
+  });
+  const pm = casco(f), pv = casco(g);
+  let n = 0;
+  for (let i = 0; i < 96; i++) for (let j = 0; j < 54; j++) {
+    const x = -1 + (i + 0.5) / 48, y = -1 + (j + 0.5) / 27;
+    if (adentro(pv, x, y) && !adentro(pm, x, y)) n++;
+  }
+  return n / (96 * 54);
+}
+
+prueba("«De frente» se corre hacia el costado libre cuando hay un vecino pegado, y sólo entonces", () => {
+  // NEV-01 tiene a NEV-02 pegada del lado de x mayor: se corre hacia x menor,
+  // 18 cm, y la vecina queda cortada por el borde.
+  const nev = SEDE.find((x) => x.id === "NEV-01");
+  const c = corridaPorVecino(comoMueble(nev), "A", otros("NEV-01"), LIMITES);
+  assert.ok(c && c.x < 0 && Math.abs(Math.hypot(c.x, c.z) - DESCENTRADO_POR_VECINO) < 1e-9, `corrida ${JSON.stringify(c)}`);
+  assert.ok(DESCENTRADO_POR_VECINO > 0.1 && DESCENTRADO_POR_VECINO <= 0.25, "más de 25 cm ya no es «de frente»");
+  // Una nevera suelta, sin vecinos: centrada.
+  const sola = { cx: 0, cz: 0, w: 1.2, d: 0.75, h: 1.8, rotY: Math.PI };
+  const lim = { minX: -5, maxX: 5, minZ: -5, maxZ: 5 };
+  assert.equal(corridaPorVecino(sola, "A", [], lim), null);
+  // Encerrada de los dos lados: tampoco (no hay costado libre adonde correrse).
+  const muros = murosDeCaminata([{ x: -1.25, z: 0, w: 1.2, d: 0.75, h: 1.8, rotY: Math.PI }, { x: 1.25, z: 0, w: 1.2, d: 0.75, h: 1.8, rotY: Math.PI }]);
+  assert.equal(corridaPorVecino(sola, "A", muros, lim), null);
+  // Por entrepaño, nunca (mira lo elegido de frente); y el editor (sin
+  // corrida), centrado como siempre.
+  const n = normalDeCara(nev.rotY, "A");
+  const centrada = (v) => Math.hypot(v.targetX - (nev.x + n.x * nev.d / 2), v.targetZ - (nev.z + n.z * nev.d / 2)) < 1e-9;
+  assert.ok(centrada(vistaDeVenta(comoMueble(nev), "A", "frente", { yBajo: 0.5, yAlto: 0.9, porEntrepano: true }, otros("NEV-01"), LIMITES, 50, 16 / 9, undefined, undefined, c)), "por entrepaño se corrió");
+  assert.ok(centrada(vistaDeVenta(comoMueble(nev), "A", "frente", { yBajo: 0, yAlto: 1.8 }, otros("NEV-01"), LIMITES)), "el editor se corrió");
+  // La de venta, sí.
+  assert.ok(!centrada(tomaConPersona("NEV-01", "frente").vista), "la toma de venta de NEV-01 no se corrió");
+});
+
+prueba("en «Tres cuartos» de la punta la góndola libre de la que es cabecera no se come el cuadro", () => {
+  // La crítica de la demo (ronda 2): la góndola libre de la derecha pesaba lo
+  // mismo que la punta vendida. Lo que la hacía pesar era la LUZ (ahora se
+  // atenúa: `EXPOSICION_DEL_VECINO`); de área, lo que se ve de ella es poco.
+  // Que siga así: lo visible de GON-01 a lo sumo el 15 % del cuadro, y la
+  // cota sin tapar a lo sumo el 20 %.
+  for (const aspecto of [16 / 9, 4 / 3]) {
+    const { f, vista } = tomaConPersona("PUN-01", "tres_cuartos", aspecto);
+    const gon = SEDE.find((x) => x.id === "GON-01");
+    const vis = visibleEnCuadro(vista, f, gon, aspecto), cota = areaEnCuadro(vista, gon, aspecto);
+    assert.ok(vis <= 0.15, `GON-01 se ve en el ${(vis * 100).toFixed(0)} % del cuadro (${aspecto.toFixed(2)})`);
+    assert.ok(cota <= 0.2 + 1e-9 || aspecto !== 16 / 9, `la caja de GON-01 cubre el ${(cota * 100).toFixed(0)} % del cuadro`);
+    // Ningún otro vecino pesa más que la punta.
+    const am = visibleEnCuadro(vista, { ...f, x: 1e6 }, f, aspecto);
+    for (const g of SEDE.filter((x) => x.id !== "PUN-01")) {
+      assert.ok(visibleEnCuadro(vista, f, g, aspecto) < am, `${g.id} pesa más que la punta en «Tres cuartos»`);
+    }
+  }
 });
 
 prueba("la persona se para al costado del mueble: nunca más allá de otro mueble entero, ni en primer plano", () => {

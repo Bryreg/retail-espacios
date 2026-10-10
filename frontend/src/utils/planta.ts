@@ -761,6 +761,7 @@ export function vistaDeVenta(
   aspecto = 16 / 9,
   evitar?: { x: number; z: number },
   incluir?: readonly { x: number; y?: number; z: number }[],
+  corrida?: { x: number; z: number } | null,
 ): Vista3D {
   const n = normalDeCara(mueble.rotY ?? 0, cara);
   const centro = { x: mueble.cx + (n.x * mueble.d) / 2, z: mueble.cz + (n.z * mueble.d) / 2 };
@@ -848,7 +849,13 @@ export function vistaDeVenta(
   // la atención. La cara entera, desde la altura de un comprador.
   const yCamara = foco.porEntrepano ? mira + 0.12 : Math.min(1.6, Math.max(1.2, mira + 0.35));
   const frente = conAltura({ x: centro.x + n.x * dist, z: centro.z + n.z * dist }, mira, yCamara);
-  if (toma === "frente") return frente;
+  if (toma === "frente") {
+    // Con `corrida` (la pantalla de venta con un vecino pegado,
+    // `corridaPorVecino`), la toma se corre hacia el costado libre: la
+    // cámara y la mira, juntas.
+    const c = foco.porEntrepano ? null : corrida;
+    return c ? { ...frente, posX: frente.posX + c.x, posZ: frente.posZ + c.z, targetX: frente.targetX + c.x, targetZ: frente.targetZ + c.z } : frente;
+  }
 
   // Tres cuartos: el mismo punto girado alrededor de la mira, del lado con
   // más pasillo. Se acerca si de ese lado hay menos lugar que de frente.
@@ -930,6 +937,13 @@ export const SEPARACIONES_DE_LA_FIGURA = [1.2, 1.1, 1.0, 0.8, 0.6, 0.45, 0.3] as
  *  con aire. */
 const ALTO_CON_PERSONA = 1.75;
 
+/** Lo que se deja arriba del mueble en la toma con persona. */
+export const AIRE_SOBRE_EL_MUEBLE = 0.06;
+
+/** El aire mínimo entre la persona y la caja del mueble en el cuadro (de
+ *  −1 a 1): 0,032 son 30 px en un cuadro de 1920. */
+export const AIRE_DE_LA_FIGURA = 0.032;
+
 /** Cuánto piso libre hay al costado de cada canto de la cara, hacia afuera y
  *  en su plano (de a 5 cm, hasta 3 m; cuenta cualquier mueble, también el que
  *  toca el canto), y los lados en ese orden: el más libre primero. */
@@ -980,6 +994,34 @@ export function alcanceDeLaFigura(
 /** Un mueble a menos de esto de un canto de la cara es un VECINO PEGADO: la
  *  toma «Tres cuartos» no gira hacia él (`vistaDeVenta`). */
 export const VECINO_PEGADO = 1.0;
+
+/** Cuánto se corre «De frente» hacia el costado libre cuando hay un vecino
+ *  pegado del otro. */
+export const DESCENTRADO_POR_VECINO = 0.18;
+
+/**
+ * La corrida de la toma «De frente» (en el mundo), o `null`.
+ *
+ * Con el mueble lleno de alto y centrado, una nevera de 1,2 m en un cuadro
+ * 16:9 deja 1,2 m de cada lado: si la vecina está pegada, entra ENTERA en
+ * uno de ellos (el 29 % del cuadro, con sus botellas mudas) y del otro queda
+ * muro. Corrida 18 cm hacia el costado libre —el mueble sigue casi al centro,
+ * un 5 % corrido—, la vecina queda cortada por el borde (menos del 25 %) y
+ * la persona entra por el otro. Sólo si de un lado hay un vecino a menos de
+ * `VECINO_PEGADO` y del otro al menos eso libre.
+ */
+export function corridaPorVecino(
+  mueble: { cx: number; cz: number; w: number; d: number; rotY?: number },
+  cara: "A" | "B",
+  obstaculos: Caja[],
+  limites: Caja,
+): { x: number; z: number } | null {
+  const izq = libreAlCostado(mueble, cara, -1, obstaculos, limites);
+  const der = libreAlCostado(mueble, cara, 1, obstaculos, limites);
+  if (Math.min(izq, der) >= VECINO_PEGADO || Math.max(izq, der) < VECINO_PEGADO) return null;
+  const lado = der > izq ? 1 : -1, rotY = mueble.rotY ?? 0;
+  return { x: Math.cos(rotY) * lado * DESCENTRADO_POR_VECINO, z: -Math.sin(rotY) * lado * DESCENTRADO_POR_VECINO };
+}
 
 /** El piso libre al costado de un canto de la cara (`lado`, en el eje X local
  *  del mueble), hacia afuera y en su plano: de a 5 cm, hasta 3 m. */
@@ -1054,7 +1096,17 @@ export function personaYTomaDeVenta(
   separaciones: readonly number[] = SEPARACIONES_DE_LA_FIGURA,
 ): { vista: Vista3D; persona: { x: number; z: number; rotY: number; separacion: number } | null; extremo: number } {
   const rotY = mueble.rotY ?? 0;
-  const conPersona: FocoDeVenta = { ...foco, yAlto: Math.max(foco.yAlto, ALTO_CON_PERSONA) };
+  // Con la persona en el cuadro, la toma es del mueble ENTERO: del piso (sus
+  // pies) a lo más alto entre su cabeza y el remate del mueble, con aire. Con
+  // el foco del producto a secas, la nevera de la demo salía con el cabezote
+  // pegado al borde de arriba (3 % de aire) y la cenefa del muro cortada.
+  const conPersona: FocoDeVenta = {
+    ...foco, yBajo: Math.min(foco.yBajo, 0), yAlto: Math.max(foco.yAlto, ALTO_CON_PERSONA, mueble.h + AIRE_SOBRE_EL_MUEBLE),
+  };
+  // En la pantalla de venta, «De frente» con un vecino pegado se corre hacia
+  // el costado libre (`corridaPorVecino`). Sólo acá: el «Encuadrar esta cara»
+  // del editor sigue como siempre.
+  const corrida = toma === "frente" ? corridaPorVecino(mueble, cara, obstaculos, limites) : null;
   // El lado LIBRE primero: el que tiene más piso sin muebles al costado del
   // canto, en el plano de la cara. Pegada al robatope, la punta tiene un
   // costado ocupado; con el orden fijo de `lugarDeLaFigura` la persona
@@ -1087,26 +1139,41 @@ export function personaYTomaDeVenta(
     lugares.push({ p, separacion });
   }
   type Hallada = { vista: Vista3D; persona: { x: number; z: number; rotY: number; separacion: number }; extremo: number };
-  // Las cuatro esquinas de la cara: la persona no se superpone con ella en el
-  // cuadro (con 2 % de aire). Girada, la toma la dejaba pegada al canto.
-  const n = normalDeCara(rotY, cara), t = { x: -n.z, z: n.x };
-  const cara4 = [-1, 1].flatMap((lado) => [0, mueble.h].map((y) => ({
-    x: mueble.cx + n.x * mueble.d / 2 + t.x * lado * mueble.w / 2, y, z: mueble.cz + n.z * mueble.d / 2 + t.z * lado * mueble.w / 2,
-  })));
-  const probar = ({ p, separacion }: (typeof lugares)[number], conAltura: boolean): Hallada | null => {
-    const esquinas = esquinasDeLaFigura(p);
-    // Sin la altura de las esquinas, la toma sólo abre el cuadro hasta la
-    // persona; con ella, en tres cuartos además se aleja hasta que entra.
-    const incluir = conAltura ? esquinas : esquinas.map(({ x, z }) => ({ x, z }));
-    const vista = vistaDeVenta(mueble, cara, toma, conPersona, obstaculos, limites, fovGrados, aspecto, p, incluir);
-    const q = esquinas.map((e) => proyectar(vista, fovGrados, aspecto, e));
+  // Las ocho esquinas de la CAJA del mueble: la persona no se superpone con
+  // ella en el cuadro, con `AIRE_DE_LA_FIGURA` de aire. Con las cuatro de la
+  // cara sola, en «Tres cuartos» la silueta tapaba el costado de la nevera
+  // que da a la cámara (40 px en la de Postobón): un recorte pegado delante.
+  const cos = Math.cos(rotY), sen = Math.sin(rotY);
+  const caja8 = [-1, 1].flatMap((a) => [-1, 1].flatMap((b) => [0, mueble.h].map((y) => ({
+    x: mueble.cx + a * mueble.w / 2 * cos + b * mueble.d / 2 * sen, y, z: mueble.cz - a * mueble.w / 2 * sen + b * mueble.d / 2 * cos,
+  }))));
+  const ver = (vista: Vista3D, { p, separacion }: (typeof lugares)[number]): Hallada | null => {
+    const q = esquinasDeLaFigura(p).map((e) => proyectar(vista, fovGrados, aspecto, e));
     const entra = q.every((e) => e.profundidad > 0 && Math.abs(e.x) <= 0.98 && Math.abs(e.y) <= 0.98);
-    const xs = cara4.map((e) => proyectar(vista, fovGrados, aspecto, e).x);
-    const [a, b] = [Math.min(...xs) - 0.02, Math.max(...xs) + 0.02];
+    const xs = caja8.map((e) => proyectar(vista, fovGrados, aspecto, e)).filter((e) => e.profundidad > 0).map((e) => e.x);
+    const [a, b] = [Math.min(...xs) - AIRE_DE_LA_FIGURA, Math.max(...xs) + AIRE_DE_LA_FIGURA];
     const [pa, pb] = [Math.min(...q.map((e) => e.x)), Math.max(...q.map((e) => e.x))];
     const alCostado = pb < a || pa > b;
     return entra && alCostado ? { vista, persona: { ...p, separacion }, extremo: Math.max(...q.map((e) => Math.abs(e.x))) } : null;
   };
+  const probar = (l: (typeof lugares)[number], conAltura: boolean): Hallada | null => {
+    const esquinas = esquinasDeLaFigura(l.p);
+    // Sin la altura de las esquinas, la toma sólo abre el cuadro hasta la
+    // persona; con ella, en tres cuartos además se aleja hasta que entra.
+    const incluir = conAltura ? esquinas : esquinas.map(({ x, z }) => ({ x, z }));
+    return ver(vistaDeVenta(mueble, cara, toma, conPersona, obstaculos, limites, fovGrados, aspecto, l.p, incluir, corrida), l);
+  };
+  // 0. La primera separación en que la persona entra en la toma del mueble
+  //    SIN abrir el cuadro: el mueble lleno de alto (su 12 % de aire) y la
+  //    persona por el borde. Abriendo el cuadro hasta una persona a 1,2 m,
+  //    la nevera de la demo ocupaba el 26 % del ancho y el resto era muro
+  //    —«dos neveras solas en un salón vacío»—; a 0,8 m entra sin achicarla.
+  const sinAbrir = vistaDeVenta(mueble, cara, toma, conPersona, obstaculos, limites, fovGrados, aspecto, lugares[0]?.p, undefined, corrida);
+  for (const l of lugares) {
+    if (toma === "tres_cuartos") break;
+    const h = ver(sinAbrir, l);
+    if (h) return h;
+  }
   // 1. La primera separación en que entra sin mover la toma más que para
   //    abrir el cuadro.
   for (const l of lugares) {
@@ -1122,5 +1189,5 @@ export function personaYTomaDeVenta(
     const h = probar(l, true);
     if (h && (!mejor || lejos(h.vista) < lejos(mejor.vista) - 1e-9)) mejor = h;
   }
-  return mejor ?? { vista: vistaDeVenta(mueble, cara, toma, foco, obstaculos, limites, fovGrados, aspecto), persona: null, extremo: 0 };
+  return mejor ?? { vista: vistaDeVenta(mueble, cara, toma, foco, obstaculos, limites, fovGrados, aspecto, undefined, undefined, corrida), persona: null, extremo: 0 };
 }

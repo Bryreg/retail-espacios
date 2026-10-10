@@ -268,7 +268,10 @@ function useMaterialesDeFrio(
   // con el frío APAGADO (`apagarElFrio`). Es lo que hacía que NEV-02, libre y
   // con botellas mudas, pesara lo mismo que la nevera que se vende (un 40 %
   // del cuadro). Por efecto, sin rehacer ni recompilar los materiales.
-  const foco = useAtenuacion(Object.values(m));
+  // Sin la exposición del vecino (`EXPOSICION_DE_NEVERA_VECINA`): el frío
+  // apagado ya la deja un 60 % abajo, y con las dos las botellas mudas —que
+  // tienen que seguir leyéndose— desaparecían (luminancia 65 → 28).
+  const foco = useAtenuacion(Object.values(m), EXPOSICION_DE_NEVERA_VECINA);
   const { invalidate } = useThree();
   useEffect(() => {
     apagarElFrio(m, !foco && luz);
@@ -276,6 +279,11 @@ function useMaterialesDeFrio(
   }, [m, foco, luz, invalidate]);
   return m;
 }
+
+/** La exposición de una nevera VECINA: toda. Lo que la apaga es su frío
+ *  (`apagarElFrio`, calibrado en la tanda 2: un 43 % abajo de la nevera que
+ *  se vende, con las botellas mudas a la vista). */
+export const EXPOSICION_DE_NEVERA_VECINA = 1;
 
 /** La emisión de diseño del frío: el forro de venta, el interior y las tiras
  *  de LED (lo que la atenuación de un vecino baja y después repone). */

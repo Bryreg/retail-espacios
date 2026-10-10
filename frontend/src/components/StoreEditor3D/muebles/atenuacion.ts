@@ -1,6 +1,6 @@
 import { useContext, useEffect } from "react";
 import { useThree } from "@react-three/fiber";
-import { atenuarUniformes, FocoDeVenta, uniformesDe } from "./luzDeVenta";
+import { ATENUACION, atenuarUniformes, FocoDeVenta, uniformesDe } from "./luzDeVenta";
 import type { UniformesDeVenta } from "./luzDeVenta";
 
 /**
@@ -15,13 +15,14 @@ import type { UniformesDeVenta } from "./luzDeVenta";
  */
 export function useAtenuacion(
   fuentes: readonly ({ userData?: { luzDeVenta?: UniformesDeVenta } } | null | undefined)[],
+  exposicion: number = ATENUACION.exposicion,
 ): boolean {
   const foco = useContext(FocoDeVenta);
   const { invalidate } = useThree();
   useEffect(() => {
-    if (atenuarUniformes(fuentes.map(uniformesDe), foco) > 0) invalidate();
+    if (atenuarUniformes(fuentes.map(uniformesDe), foco, exposicion) > 0) invalidate();
   // Las fuentes son las de un memo (cambian cuando cambian los materiales).
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...fuentes, foco, invalidate]);
+  }, [...fuentes, foco, exposicion, invalidate]);
   return foco;
 }

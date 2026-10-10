@@ -2732,6 +2732,19 @@ prueba("el parche encuentra en los shaders de three 0.184 lo que usa", () => {
   assert.ok(f.indexOf("vec3 tiendaPosicion()") < f.indexOf("void main() {"));
   assert.ok(f.indexOf("#include <emissivemap_fragment>") < f.indexOf("tiendaReflejo( pDeVenta"));
   assert.match(f, /#ifdef USE_COLOR\s*float aoDeVenta = vColor\.r;/, "el brillo no se apaga en las uniones");
+  // La exposición del vecino multiplica TODO lo que sale (la luz de la
+  // escena también: sin ella el robatope libre quedaba más claro que la punta
+  // vendida), justo antes del trozo que escribe el color, en los dos.
+  for (const [nombre, sh] of [["standard", est], ["lambert", ShaderLib.lambert.fragmentShader]]) {
+    const x = { fragmentShader: sh, uniforms: {} };
+    LV.conLuzDeVenta(true).onBeforeCompile(x);
+    const t = x.fragmentShader;
+    assert.ok(t.indexOf("vec3 outgoingLight =") >= 0 && t.indexOf("vec3 outgoingLight =") < t.indexOf("outgoingLight *= uExposicion;"),
+      `${nombre}: la exposición no va después de armar outgoingLight`);
+    assert.ok(t.indexOf("outgoingLight *= uExposicion;") < t.indexOf("#include <opaque_fragment>"), `${nombre}: la exposición va después del color`);
+    assert.match(t, /uniform float uExposicion;[\s\S]*void main\(\) \{/, `${nombre}: sin el uniforme de la exposición`);
+    assert.equal(x.uniforms.uExposicion?.value, 1, `${nombre}: la exposición de diseño no es 1`);
+  }
   // El piso, sobre el Lambert de la baldosa.
   const p = { fragmentShader: ShaderLib.lambert.fragmentShader, uniforms: {} };
   LV.parcheDelPiso({ uSombraPiso: { value: null }, uSombraCaja: { value: new THREE_.Vector4() } }).onBeforeCompile ?? null;
@@ -2849,10 +2862,18 @@ prueba("la sala de venta: muros, zócalo, cielo raso y luminarias sólo en venta
   const sala = cuerpoDe("function StoreRoom(", "const ALTURA_PERSONA");
   assert.match(sala, /const planos = venta && !primeraPersona;/);
   assert.match(sala, /const geometrias = useMemo\(\(\) => planos \? \{/);
-  for (const nombre of ["muros", "zocalos", "cielo"]) {
+  for (const nombre of ["zocalos", "cielo"]) {
     assert.match(sala, new RegExp(`<mesh geometry=\\{geometrias\\.${nombre}\\} castShadow=\\{false\\} receiveShadow=\\{false\\}>\\s*<meshLambertMaterial[^>]*side=\\{THREE\\.FrontSide\\}`),
       `${nombre}: no es de una cara o arroja sombra`);
   }
+  // El muro (con su degradé) y la cenefa: color de vértice, sin luz ni tono
+  // (lo que se ve es el color pedido), de una cara y sin sombras.
+  for (const nombre of ["muros", "cenefa"]) {
+    assert.match(sala, new RegExp(`<mesh geometry=\\{geometrias\\.${nombre}\\} castShadow=\\{false\\} receiveShadow=\\{false\\}>\\s*<meshBasicMaterial[^>]*vertexColors toneMapped=\\{false\\} side=\\{THREE\\.FrontSide\\}`),
+      `${nombre}: no es de una cara, arroja sombra o pierde su color de vértice`);
+  }
+  assert.match(sala, /muros: geometriaDeMurosConDegradado\(limites, ALTO_CIELO_RASO\),/);
+  assert.match(sala, /cenefa: geometriaDeCenefa\(limites\),/);
   assert.match(sala, /args=\{\[geometrias\.tira, undefined, luminarias\.instancias\.length\]\}\s*castShadow=\{false\} receiveShadow=\{false\}/);
   assert.match(sala, /<meshBasicMaterial color="#ffffff" toneMapped=\{false\} side=\{THREE\.FrontSide\} \/>/);
   assert.match(sala, /\{primeraPersona && \(\[/, "los muros de la caminata ya no dependen de la primera persona");
@@ -2862,6 +2883,54 @@ prueba("la sala de venta: muros, zócalo, cielo raso y luminarias sólo en venta
   assert.match(cuerpoEscena, /<StoreRoom limites=\{limites\} muebles=\{placedFixtures\}\s*venta=\{privadoPara !== undefined\} primeraPersona=\{firstPerson\} \/>/);
   // Los uniformes de la tienda se actualizan con la planta.
   assert.match(sala, /if \(ponerTienda\(luminarias\.grilla, limites\)\) invalidate\(\);/);
+});
+
+prueba("el muro de venta tiene degradé y una cenefa perimetral sin texto, en paneles de la tienda", () => {
+  // La crítica de la demo (ronda 2): un muro beige del mismo tono de arriba
+  // abajo «dice render de arquitectura», y una nevera contra él parecía un
+  // electrodoméstico en un salón vacío.
+  const L = LIM_VENTA;
+  const muros = SA.geometriaDeMurosConDegradado(L, PL.ALTO_CIELO_RASO);
+  const pos = muros.getAttribute("position"), nor = muros.getAttribute("normal"), col = muros.getAttribute("color");
+  assert.ok(col && col.count === pos.count, "el muro no tiene color de vértice");
+  let arriba = 0, abajo = 1;
+  for (let i = 0; i < pos.count; i++) {
+    const hacia = { x: L.cx - pos.getX(i), z: L.cz - pos.getZ(i) };
+    assert.ok(nor.getX(i) * hacia.x + nor.getZ(i) * hacia.z > 0, "un muro con degradé mira hacia afuera");
+    const y = pos.getY(i), c = col.getX(i);
+    assert.ok(Math.abs(c - SA.luzDelMuro(y)) < 1e-6 && col.getY(i) === c && col.getZ(i) === c, "el color del muro no es el de su altura (o tiene tinte)");
+    if (y > PL.ALTO_CIELO_RASO - 1e-3) arriba = Math.max(arriba, c);
+    if (y < 1e-3) abajo = Math.min(abajo, c);
+  }
+  // Más claro arriba, bajo las luminarias, y al menos un 20 % más oscuro al
+  // pie (lineal), sin que el muro se vuelva gris oscuro.
+  assert.ok(arriba >= 1 && abajo <= 0.8 * arriba && abajo >= 0.6, `degradé de ${abajo.toFixed(2)} a ${arriba.toFixed(2)}`);
+  for (let y = 0; y < PL.ALTO_CIELO_RASO; y += 0.1) assert.ok(SA.luzDelMuro(y + 0.1) >= SA.luzDelMuro(y) - 1e-9, "el degradé no sube parejo");
+  // La cenefa: a la altura de cenefa, delante de su muro, mirando hacia
+  // adentro (y su triángulo de frente hacia ahí), con al menos dos tonos de
+  // la chapa de la tienda y los filetes claros.
+  const ce = SA.geometriaDeCenefa(L);
+  const cp = ce.getAttribute("position"), cn = ce.getAttribute("normal"), cc = ce.getAttribute("color");
+  assert.equal(cp.count % 3, 0);
+  const tonos = new Set();
+  for (let t = 0; t < cp.count; t += 3) {
+    const v = [0, 1, 2].map((k) => [cp.getX(t + k), cp.getY(t + k), cp.getZ(t + k)]);
+    const e1 = v[1].map((x, j) => x - v[0][j]), e2 = v[2].map((x, j) => x - v[0][j]);
+    const cara = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    const n = [cn.getX(t), cn.getY(t), cn.getZ(t)];
+    assert.ok(cara[0] * n[0] + cara[1] * n[1] + cara[2] * n[2] > 0, "un triángulo de la cenefa da la espalda a la tienda");
+    for (const [x, y, z] of v) {
+      assert.ok(y >= SA.CENEFA.desde - 1e-6 && y <= SA.CENEFA.desde + SA.CENEFA.alto + 1e-6, `la cenefa a ${y.toFixed(2)} m`);
+      const muro = n[0] > 0.5 ? x - L.minX : n[0] < -0.5 ? L.maxX - x : n[2] > 0.5 ? z - L.minZ : L.maxZ - z;
+      assert.ok(Math.abs(muro - SA.CENEFA.delante) < 1e-5, "la cenefa no va pegada delante de su muro");
+    }
+    tonos.add([cc.getX(t), cc.getY(t), cc.getZ(t)].map((x) => x.toFixed(3)).join(","));
+  }
+  assert.ok(tonos.size >= 3, `la cenefa es lisa (${tonos.size} tonos con los filetes)`);
+  // Por encima de las neveras y de las góndolas (1,8–2,1 m) y por debajo del
+  // cielo raso: se ve en la toma de la nevera, no tapa nada.
+  assert.ok(SA.CENEFA.desde >= 2.3 && SA.CENEFA.desde + SA.CENEFA.alto <= PL.ALTO_CIELO_RASO - 0.2);
+  assert.ok(SA.CENEFA.alto >= 0.3 && SA.CENEFA.alto <= 0.4, "la faja no mide lo de una cenefa");
 });
 
 prueba("la grilla del piso es del editor: en la pantalla de venta no se dibuja", () => {
@@ -4053,7 +4122,7 @@ const H = await import(
 const MV = await conReactMinimo(`
   export { GondolaReal } from "./GondolaReal"; export { PuntaReal, geometriaDeChapa } from "./PuntaReal";
   export { materialDeCopeteDeTienda, pintarCopeteDeTienda, COLOR_DE_TIENDA } from "./copeteDeTienda";
-  export { NeveraReal, apagarElFrio, FRIO_APAGADO, EMISION_DE_FRIO } from "./NeveraReal";
+  export { NeveraReal, apagarElFrio, FRIO_APAGADO, EMISION_DE_FRIO, EXPOSICION_DE_NEVERA_VECINA } from "./NeveraReal";
   export { ProductoEnGondola } from "./ProductoEnGondola";
   export { useHabladoresDeRelleno } from "./ProductoEnMueble";
   export { LuzDeVenta, FocoDeVenta, ATENUACION, uniformesDe } from "./luzDeVenta";
@@ -4064,8 +4133,8 @@ prueba("el copete de una punta libre en venta lleva la chapa de la tienda, sin t
   // Los copetes blancos lisos de las puntas libres se leían como carteles sin
   // terminar. En venta va la chapa de la tienda (degradé, faja y filetes, sin
   // texto: el rubro de un contrato puede traer la marca de otro proveedor).
-  assert.match(puntaCodigo, /const impreso = copete \?\? \(venta && !ghost \? materialDeCopeteDeTienda\(\) : undefined\);/,
-    "la punta libre en venta no lleva la chapa de la tienda");
+  assert.match(puntaCodigo, /const deTienda = useMemo\(\(\) => \(\{ chapa: !copete && venta && !ghost \? materialDeCopeteDeTienda\(\) : null \}\),\s*\[copete, venta, ghost\]\);\s*useSoltarMateriales\(deTienda\);\s*useAtenuacion\(\[deTienda\.chapa\], EXPOSICION_DE_LA_CHAPA\);\s*const impreso = copete \?\? deTienda\.chapa \?\? undefined;/,
+    "la punta libre en venta no lleva la chapa de la tienda (memorizada, soltada y atenuable)");
   const g = lienzoFalso();
   MV.pintarCopeteDeTienda(g, 512, 192);
   assert.equal(g.textos.length, 0, "el copete de la tienda escribe texto");
@@ -4088,7 +4157,14 @@ prueba("el copete de una punta libre en venta lleva la chapa de la tienda, sin t
   assert.ok(editor && !Array.isArray(editor.material), "en el editor la chapa dejó de ser la de siempre");
   const venta = enVenta(true, () => chapaDe(MV.PuntaReal({ w: 0.9, d: 0.4, h: 1.8 })));
   assert.ok(Array.isArray(venta.material) && venta.material.length === 2, "en venta la punta libre no lleva la chapa de la tienda");
-  assert.equal(venta.material[1], MV.materialDeCopeteDeTienda(), "en venta la cara del pasillo no es la chapa de la tienda");
+  const otra = enVenta(true, () => chapaDe(MV.PuntaReal({ w: 0.9, d: 0.4, h: 1.8 })));
+  const tienda = MV.materialDeCopeteDeTienda();
+  assert.equal(venta.material[1].map, tienda.map, "en venta la cara del pasillo no es la chapa de la tienda");
+  // Una por punta (la textura, compartida): cada una con SUS uniformes de
+  // venta, así la punta libre vecina se atenúa sola.
+  assert.notEqual(venta.material[1], otra.material[1], "dos puntas libres comparten el material de la chapa");
+  assert.ok(MV.uniformesDe(venta.material[1]) && MV.uniformesDe(venta.material[1]) !== MV.uniformesDe(otra.material[1]),
+    "la chapa de la tienda no tiene uniformes de venta propios");
   const marca = { marca: true };
   const conPrueba = enVenta(true, () => chapaDe(MV.PuntaReal({ w: 0.9, d: 0.4, h: 1.8, copete: marca })));
   assert.equal(conPrueba.material[1], marca, "con prueba el copete no lleva la marca");
@@ -4344,9 +4420,15 @@ prueba("un vecino se atenúa por uniformes; con foco nada cambia; la nevera veci
   assert.equal(LV.atenuarUniformes([u, undefined], false), 1);
   assert.ok(Math.abs(u.uLuzVenta.value - u.base.luz * LV.ATENUACION.luz) < 1e-12);
   assert.ok(Math.abs(u.uBrillo.value - u.base.brillo * LV.ATENUACION.brillo) < 1e-12);
+  assert.equal(u.uExposicion.value, LV.ATENUACION.exposicion, "el vecino conserva toda su luz (la de la escena pesa)");
   LV.atenuarUniformes([u], true);
   assert.equal(u.uLuzVenta.value, u.base.luz);
   assert.equal(u.uBrillo.value, u.base.brillo);
+  assert.equal(u.uExposicion.value, 1);
+  // Medido en la demo: con la luz del cuarto sola (× 0,55) el robatope libre
+  // quedaba un 15 % MÁS claro que la punta vendida; con 0,62 de exposición, a
+  // la par. Por debajo de 0,3 el vecino es un hueco apagado en la tienda.
+  assert.ok(LV.ATENUACION.exposicion >= 0.3 && LV.ATENUACION.exposicion <= 0.5, `exposición del vecino ${LV.ATENUACION.exposicion}`);
   assert.ok(LV.ATENUACION.luz < 1 && LV.ATENUACION.luz >= 0.4, "un vecino a oscuras ya no es una tienda");
   // La nevera ARMADA: se corren sus efectos y se miran sus materiales.
   const materialesDe = (foco) => enVenta(foco, () => {
@@ -4361,6 +4443,11 @@ prueba("un vecino se atenúa por uniformes; con foco nada cambia; la nevera veci
   assert.ok(conLuz(vecina).length >= 6, `la nevera de venta perdió la luz de venta (${conLuz(vecina).length} materiales)`);
   for (const x of conLuz(vecina)) assert.ok(Math.abs(x.uLuzVenta.value - x.base.luz * MV.ATENUACION.luz) < 1e-12, "un material de la vecina no se atenuó");
   for (const x of conLuz(conFoco)) assert.equal(x.uLuzVenta.value, x.base.luz, "con foco, la nevera se atenuó");
+  // La nevera vecina se apaga con su frío, no con la exposición: con las dos,
+  // las botellas mudas desaparecían.
+  assert.equal(MV.EXPOSICION_DE_NEVERA_VECINA, 1);
+  for (const x of conLuz(vecina)) assert.equal(x.uExposicion.value, MV.EXPOSICION_DE_NEVERA_VECINA, "la nevera vecina perdió exposición además del frío");
+  for (const x of conLuz(conFoco)) assert.equal(x.uExposicion.value, 1, "con foco, la nevera perdió exposición");
   assert.equal(forroDe(vecina).emissiveIntensity, 0, "el forro de la vecina sigue encendido");
   assert.equal(forroDe(conFoco).emissiveIntensity, MV.EMISION_DE_FRIO.forro);
   // apagarElFrio va y vuelve sin acumular: dos veces apagada es una.
@@ -4397,7 +4484,7 @@ prueba("el foco es un boolean aparte y ningún material se rehace por él; sin n
       assert.ok(!/\bfoco\b|FocoDeVenta/.test(llamada), `${a}: un useMemo depende del foco:\n${llamada.slice(0, 160)}`);
     }
   }
-  assert.match(sinComentarios(leer(join(muebles, "atenuacion.ts"))), /useEffect\(\(\) => \{\s*if \(atenuarUniformes\(fuentes\.map\(uniformesDe\), foco\) > 0\) invalidate\(\);/);
+  assert.match(sinComentarios(leer(join(muebles, "atenuacion.ts"))), /useEffect\(\(\) => \{\s*if \(atenuarUniformes\(fuentes\.map\(uniformesDe\), foco, exposicion\) > 0\) invalidate\(\);/);
   // Sin ningún foco (el editor, Presentar sin prueba ni toma): todos a full.
   assert.match(editorCodigo, /<FocoDeVenta\.Provider value=\{conFoco\.size === 0 \|\| conFoco\.has\(fix\.id\)\}>/);
   assert.match(editorCodigo, /const conFoco = useMemo\(\(\) => \{\s*const s = new Set<string>\(\);\s*if \(privadoPara === undefined\) return s;/,
