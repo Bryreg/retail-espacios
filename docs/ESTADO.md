@@ -3974,7 +3974,8 @@ caminata, así que la cara B de una góndola ya no se mira desde detrás de la d
 enfrente—, a la altura de un comprador y dentro del rango polar de la órbita. El foco
 sale de la misma cuenta que dibuja el producto (`focoDeLaPrueba`): «De cerca» va al
 entrepaño con producto más cerca de 1,3 m, nunca a uno vacío. El tres cuartos gira hacia
-el lado contrario a la persona, si ahí hay pasillo. Es un corte, sin animación: por
+el lado contrario a la persona, si ahí hay pasillo (desde «la crítica de la demo», con un
+vecino pegado gira hacia el costado libre: ver abajo). Es un corte, sin animación: por
 videollamada el movimiento se empasta. En Presentar la órbita deja acercarse a 0,5 m
 (`distanciaMinima`; fuera, 1,2 m desde la segunda crítica: con los 4 m de antes los
 controles empujaban «Encuadrar esta cara» detrás de la góndola de enfrente). «De cerca»
@@ -4084,7 +4085,9 @@ no es la misma textura para todas (`muebles/texturas.ts`, puro, ejecutado en
   x(u) = (x₀(1−u)h₁ + x₁u·h₀)/((1−u)h₁ + u·h₀)—; si no, se usa la foto como venía. Se
   acabó el «doble lomo» de la Müsli: cada caja tenía el frente y el panel nutricional.
 * **El costado de la caja es un color** (`colorDeCostado`: el dominante de la franja
-  del borde, sin blancos) con un degradé hacia atrás por color de vértice, en un SEGUNDO
+  del borde, sin blancos —desde «la crítica de la demo», el de mayor área en los costados,
+  blancos incluidos: sin ellos la Avena salía con el negro de sus sellos—) con un degradé
+  hacia atrás por color de vértice, en un SEGUNDO
   material de la misma malla (la caja parada tiene dos grupos). Con la última columna de
   la foto estirada salían rayas rojas y blancas, y en los vanos lejanos las cajas se
   leían como cartulinas de canto.
@@ -5042,11 +5045,10 @@ prueba), `final` (antes/después con la misma cámara contra e11540e y los `comp
 
 **Visto de paso, sin tocar:**
 
-* La tapa de la caja de la Avena sale casi negra: el color de la tapa se saca de la franja
-  de arriba de la foto, y ahí están los octógonos negros de advertencia. Se nota en «De
-  cerca».
-* La persona es una silueta plana parada en el plano de la cara: girada a mano 70° (y-giro70)
-  se ve de canto, como una astilla gris junto al mueble.
+* ~~La tapa de la caja de la Avena sale casi negra~~ — saldado (también los costados) en
+  «la crítica de la demo», abajo: `colorDeCostado` ya no descarta los blancos.
+* ~~La persona, girada a mano, se ve de canto~~ — saldado abajo: en venta gira hacia la
+  cámara.
 * GON-01 cara B, contra un pasillo de 2 m, no tiene lugar para la persona entera en
   ninguna toma de cara entera: sale sin persona, como manda la regla.
 
@@ -5059,6 +5061,172 @@ prueba), `final` (antes/después con la misma cámara contra e11540e y los `comp
 * **El tiempo del cuadro en swiftshader** (pendiente de la tanda 2): esta tanda no agregó
   geometría ni cuenta por píxel; ver *El costo*, arriba.
 * **El aviso «Presioná Esc para salir»**: es del navegador (ver 15).
+
+### 2026-10-10 (noche): la crítica de la demo — que lo de al lado también parezca tienda
+
+La dueña aceptó las exigencias del crítico visual sobre la demo de la tercera crítica
+(`capturas/critica-r1/`). Con el ambiente y Presentar resueltos, lo que delataba «es un
+dibujo» era otra cosa: las cajas blancas con costados negros, el relleno de los vecinos
+como fichas de LEGO, los copetes blancos lisos, la sombra en serrucho al pie de cada mueble
+y el «Tres cuartos» de la nevera mirando a la vecina. Todo sigue siendo de la sesión y sólo
+de la pantalla de venta: nada va al layout, Vender y el mercaderista no se tocaron, el
+editor y `/taller` se ven como antes, `frameloop="demand"` y sin pases.
+
+**1. El costado y la tapa de la caja ya no salen negros** (`colorDeCostado`, `texturas.ts`).
+La receta anterior tomaba «el dominante de la franja del borde, sin los blancos». En la
+Avena Finesse —cartón blanco— lo único que quedaba en esa franja eran los octógonos negros
+de advertencia y la foto de la avena: en «Tres cuartos» cada columna de la punta era un
+bloque negro con una calcomanía adelante, y en «De cerca» todas las tapas negras. Ahora es
+el color de MAYOR ÁREA en las columnas de los costados del frente (del 3 al 9 % de cada
+lado: sin la franja de arriba, donde van los sellos en Colombia, ni la banda del canto, que
+ya viene oscurecida), con los blancos contando; en una etiqueta clara no cuenta nada de
+luminosidad menor al 25 % (sello, letra, sombra del borde de la foto), en una oscura —el
+café de Choco Krispis— sí. La cubeta más poblada (8 niveles por canal) y su grupo a 32
+niveles, promediado dos veces: con cubetas finas el color de una foto real se reparte y gana
+un sello liso. En la Avena: #292925 → #989dac (el lila de su canto); en «Tres cuartos» lo casi
+negro de la cara bajó del 17,9 al 4,8 % y en «De cerca» las tapas pasaron de 90 a 177 de
+luminancia media.
+
+**2. El relleno de lo vendido a otros se lee como empaque** (`rellenoDeVenta.ts`, nuevo).
+La regla no cambia —sin marcas, sin texto, ilegible a distancia—. Lo que cambia, sólo en
+venta:
+
+* **Un color por «producto», en bloques**: cada rubro tiene una paleta de cinco colores
+  APAGADOS (`PALETAS`, saturación HSV ≤ 0,45: el aseo en blancos, celestes y verdes; los
+  enlatados en rojos y amarillos; las galletas en azules, rojos y dorados…), elegida por las
+  palabras del rubro como `rubroQueCasa`. El rubro es texto libre y puede traer una marca:
+  sólo elige colores, nunca se dibuja. A lo largo de cada entrepaño los frentes van en
+  bloques de 2 a 5 del mismo color y diseño (`coloresDelRelleno`, puro y sembrado), un
+  bloque no cruza un parante y lo de atrás lleva el color de su frente. En venta el rojo y
+  el verde están permitidos: el estado comercial no se dibuja ahí.
+* **Una etiqueta pintada sin texto**: cuatro diseños abstractos en UNA textura para toda la
+  tienda (`pintarEtiquetaDeRelleno`: banda clara con una mancha de «logo», ventana de
+  «foto», sello redondo, franjas; rayas grises de 2 px que de lejos se leen como letra y de
+  cerca no dicen nada). La textura es un dato: el rojo oscurece, el verde lleva a blanco.
+  Va por `uv` en la cara del pasillo de la caja, alrededor de la faja de la botella y la
+  lata, y de frente en la bolsa (`conBandaDeEtiqueta`).
+* **Cero llamadas nuevas**: el color va por instancia en la MISMA `InstancedMesh`, y el
+  diseño viaja ADENTRO del rojo del color por instancia (`colorConDiseno`: rojo + 2 ×
+  diseño, que el vertex shader decodifica con `floor(r / 2)`). Un atributo por instancia
+  obligaba a clonar la geometría, compartida por caché. El material de venta es blanco (el
+  color es el de cada unidad) y tiene su propio programa (`relleno-de-venta`), con la luz de
+  venta y la etiqueta encadenadas en `onBeforeCompile`.
+
+**3. El copete de la punta libre lleva la chapa de la tienda** (`copeteDeTienda.ts`, nuevo).
+Los copetes blancos lisos y enormes se leían como carteles sin terminar. En venta, una
+punta sin prueba lleva un azul petróleo apagado (`COLOR_DE_TIENDA`) en degradé, con una faja
+clara abajo y dos filetes: SIN texto —el sistema no tiene el color ni la señalética de la
+sede, y el rubro de un contrato puede traer la marca de otro proveedor—. La chapa del
+copete pasó a dos grupos (`geometriaDeChapa`: los cantos y la cara del pasillo), así que una
+punta libre suma UNA llamada, y la probada baja de seis a dos.
+
+**4. El copete de un envase blanco toma el color de su marca** (`colorDeMarca`, `pop.ts`).
+Con la Avena el dominante era el blanco del cartón: blanco sobre blanco, «una pizarra con
+stickers». Si el dominante no es un color de marca (saturación < 0,2 o luminosidad ≥ 72 %),
+la marca es el grupo de tono MÁS SATURADO que ocupe al menos el 6 % de la etiqueta (18
+sectores de 20° sumados con sus vecinos); por área ganaba la foto de la avena (14 %) y no
+el morado de Alpina (10 %, pero con saturación 0,59 contra 0,45). Sin ningún grupo así, el
+dominante: no se inventa un color. Con un envase ANGOSTO (`ENVASE_ANGOSTO`: la caja de 1 L,
+una botella) el copete lleva el héroe al 90 % del alto con dos unidades por lado en abanico
+y, a la izquierda, la franja del logo recortada grande —más allá del vuelo, que tapa un
+robatope pegado (`MARGEN_DE_LA_FRANJA`)—, con los bordes fundidos. El vaso conserva su
+receta. Medido en De frente: saturación del copete 0,05 → 0,32 y envases en el 62 % del
+ancho. La cenefa sale del mismo color.
+
+**5. Sin la sombra en serrucho.** three r184 cambia `PCFSoftShadowMap` por `PCFShadowMap` (lo
+avisa la consola): con un mapa de 1024 para toda la sede, cada mueble lejos del centro
+tiraba al costado una sombra dura, en diagonal y dentada, 15–25 cm fuera de la base. El piso
+de venta ya no recibe la sombra de la direccional (`receiveShadow={false}`; es un material
+propio de la venta, así que ningún otro programa se recompila); el pie lo oscurece la
+sombra de las huellas, blanda y pegada a la base: un 12,8 % más oscuro a 10 cm que a 1 m.
+Las sombras adentro del mueble (el entrepaño sobre el producto) siguen. El editor no cambia.
+
+**6. «Tres cuartos» gira hacia el costado libre** (`vistaDeVenta`, `utils/planta.ts`). Giraba
+hacia el lado contrario a la persona, y la persona se para del lado libre: en NEV-01 la
+cámara iba hacia NEV-02 y la vecina —libre, con sus botellas mudas— ocupaba casi la mitad del
+cuadro. Con un mueble a menos de `VECINO_PEGADO` (1 m) de un canto y más lugar del otro,
+gira hacia el otro, aunque ahí esté la persona. La persona se para hasta donde llega el piso
+de su costado (`alcanceDeLaFigura`): puede quedar más allá de un exhibidor angosto
+(`ANGOSTO_ENTRE_MEDIO`, 70 cm con el cuerpo: el robatope pegado a la punta), nunca más allá
+de otro mueble entero (antes, a 1,2 m del robatope del lado de la punta, quedaba parada más
+allá de la punta). Es lo que deja a la persona de la punta del lado CONTRARIO a la cámara en
+«Tres cuartos»: con el piso libre a secas, el robatope la mandaba del lado de la cámara, en
+primer plano y más alta que el mueble. En la sede de las pruebas la vecina de NEV-01 bajó de
+~34 % a ~12 % del cuadro (casco de su caja proyectada). Si no entra entera de ningún lado, la
+toma sale sin persona (el robatope de la demo en «Tres cuartos»).
+
+**7. Choco Krispis: la foto, no el código.** La crítica leyó una franja del costado con texto
+vertical a la izquierda del frente y el octógono cortado a la derecha, y lo atribuyó al
+enderezado. La columna «CEREAL DE ARROZ CUBIERTO…» está IMPRESA en el frente de la caja (se
+ve en la foto original, una caja en la mano); el octógono cortado era el recorte a mano de
+la tanda 3, que esquivaba los dedos. La foto de la demo se volvió a recortar hasta el canto
+(`scratchpad/realismo/r2a/choco.mjs`, nunca en el repo), con las uñas tapadas por el espejo
+de lo que tienen al lado. El «Recortar costado» a mano en la ficha no se hizo: no había un
+error de enderezado que corregir.
+
+**Los bajos que se atendieron:**
+
+* **La persona gira hacia la cámara** (sólo en venta): sobre su eje vertical, como un cartel
+  de cartón; girada a mano ya no es una astilla de canto. Lo que decide si entra en el cuadro
+  siguen siendo las esquinas de la toma.
+* **El cabezote**: la chapa un 25 % más clara (retroiluminada, el rojo de Postobón tal cual
+  era una lámina oscura), el recorte fundido con el fondo en sus cuatro bordes y sin las
+  botellitas de las puntas.
+* **La 2 L acostada**: el gris del PET del cuello contaba como etiqueta y quedaba con los
+  brillos blancos de la foto (manchas dentadas alrededor del pico); ahora va como el claro
+  —el líquido a su luz— (`esGrisDePet`). Y la base muestrea el cuerpo (`V_DE_LA_BASE`, el
+  18 %) y no los lóbulos del pie: era un disco rosado y blanco.
+* **La bolsa**: el lomo, más oscuro hacia los costados por color de vértice
+  (`LOMO_DE_BOLSA`, 24 %). No se engordó: 6 cm es lo que mide la bolsa de 1 kg.
+* **La caja «variada»** (con un solo arte): no era una caja adelantada, sino la de ATRÁS de
+  un frente corrido, que quedaba a la vista con el tono de una tapada (0,82) y se leía como
+  un hueco oscuro, 12 niveles por debajo de sus vecinas. Va con `TONO_DEL_CORRIDO` (0,92):
+  a la vista, de frente al pasillo, recibe más luz que una tapada. En kellogg-un-arte-4,
+  −5,6 niveles contra sus vecinas (tope 8).
+* El copete de la Avena: la franja del logo arranca después del vuelo
+  (`MARGEN_DE_LA_FRANJA`): en la toma de frente la tapaba el cabezote del robatope.
+* `capturar.mjs` del scratchpad mueve el mouse antes de tocar el HUD (que se esconde).
+
+**Lo que no se hizo, y por qué:**
+
+* **Rejillas de más cuando sobra alto** (el Finesse en cinco rejillas con aire): las
+  automáticas acomodan las rejillas que la nevera TIENE; agregar otras es comprar parrillas,
+  una decisión de la dueña, y la prueba no inventa rejillas (`repartirRejillas` acota a las
+  de fábrica). Sigue igual que en la tanda 1.
+* **Carteles colgantes y rótulos de sección**: dirían un pasillo o una categoría, y la
+  nomenclatura por pasillo es una conversación abierta con el dueño («Dónde retomar»,
+  punto 1). No se inventa señalética.
+
+**Cómo se comprobó.** `tsc` limpio; `npm run probar` entero en 0 fallas (`probar-muebles`
+193, `probar-arte` 47, `probar-planta` 56); `build`. El backend no cambió: no se corrió
+`pytest`. Cada guarda nueva se rompió a propósito con `mutar.py` (respaldo y vuelta con
+`cp`, `git diff --stat` limpio): 29 de 29 cayeron. Dos reglas de la persona en «Tres
+cuartos» —el costado contrario a la cámara primero y un tope de cercanía— sobrevivieron a
+su mutación: lo que de verdad decidía era `alcanceDeLaFigura` (con el piso libre estricto,
+el robatope mandaba a la persona del lado de la cámara), y del lado de la cámara la
+persona nunca pasa la primera vuelta de `personaYTomaDeVenta`. Se sacaron: eran código
+sin efecto. `/taller` es idéntico píxel a píxel a la tanda 3 en los ocho casos del relleno
+genérico (el relleno de venta no existe fuera de la venta).
+
+Medido sobre las capturas (`scratchpad/realismo/capturas/r2-arreglo-1/`, nunca en el
+repo; la demo de `srv/reiniciar.sh --demo`, `r2a/demo-capturas.mjs` y `r2a/mirar.mjs`, con
+las mismas tomas que la crítica; `r2a/medir.mjs`):
+
+* **La Avena**: lo casi negro de la cara de la punta en «Tres cuartos», del 17,9 al 4,8 %;
+  las tapas en «De cerca», de 90 a 177 de luminancia media (p10 154).
+* **El copete**: saturación media de 0,05 a 0,33; los envases y la franja cubren el 63 %
+  del ancho del cartel.
+* **El relleno**: en la toma del pasillo (t3-pasillo) la saturación media de lo que tiene
+  color bajó de 0,63 a 0,44, y lo de saturación mayor a 0,6, del 73 al 7 %. Tres colores o
+  más en cada entrepaño vendido.
+* **El copete libre**: desvío de 33 niveles (no es un liso).
+* **El piso**: a 10 cm de la base, un 12,8 % más oscuro que a 1 m, sin la sombra dentada.
+* **Choco Krispis**: el octógono completo («EXCESO EN AZÚCARES») y «180 g» en «De cerca».
+* **El costo** (`r2a/costo.mjs`, la copia de `t3/costo3.mjs`, contra la build de la tanda 3
+  con la misma base): llamadas como mucho 617 (tope 700; a lo sumo +6 en una toma: la chapa
+  de una punta libre suma una, la probada baja de seis a dos, y el relleno no suma
+  ninguna), triángulos iguales o menos (−11 % en el robatope en «Tres cuartos», que ahora
+  mira hacia el otro lado) y el cuadro entre 0,62 y 1,09 veces lo de la tanda 3.
 
 ---
 
