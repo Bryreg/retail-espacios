@@ -4006,7 +4006,7 @@ function pincelFalso() {
 const FUENTE = {
   lienzo: { width: 80, height: 300 },
   recorte: { colorDominante: "#c81e1e" },
-  franja: () => ({ desde: 0.37, hasta: 0.6, x0: 0.125, x1: 0.875 }),
+  franja: () => ({ desde: 0.37, hasta: 0.6, x0: 0.125, x1: 0.875, fondo: "#e1468c" }),
 };
 
 prueba("el copete de un envase angosto y blanco: color de marca y abanico que llena el cartel", () => {
@@ -4022,9 +4022,14 @@ prueba("el copete de un envase angosto y blanco: color de marca y abanico que ll
   g.createLinearGradient = () => ({ addColorStop: (k, c) => paradas.push([k, c]) });
   PO.dibujarCartel(g, W, H, AVENA, false);
   assert.equal(paradas[0]?.[1], "#292b61", `el degradé del copete arranca en ${paradas[0]?.[1]}, no en el color de la marca`);
-  assert.equal(r.enteras.length, 5, `${r.enteras.length} unidades en el copete`);
-  assert.equal(r.recortes.length, 1, "falta la franja del logo");
+  // Una CAJA: sin la franja del medio de la foto (en la Avena se comía la «f»
+  // de «finesse», que llega al borde de la foto, y salía borrosa y con halo):
+  // siete envases enteros en abanico, como el copete del Finesse.
+  assert.equal(r.enteras.length, 7, `${r.enteras.length} unidades en el copete`);
+  assert.equal(r.recortes.length, 0, "una caja lleva un recorte de su foto en el copete");
   assert.equal(r.textos, 0);
+  // Ninguna unidad ampliada más de 1,5 veces la foto.
+  for (const a of r.enteras) assert.ok(a[4] <= AVENA.lienzo.height * PO.AMPLIACION_MAXIMA + 1e-6, `una unidad del copete ampliada ${(a[4] / AVENA.lienzo.height).toFixed(2)} veces`);
   // Los envases (y la franja) ocupan al menos el 40 % del ancho, y nada se sale.
   const tramos = [...r.enteras.map((a) => [a[1], a[1] + a[3]]), ...r.recortes.map((a) => [a[5], a[5] + a[7]])]
     .sort((a, b) => a[0] - b[0]);
@@ -4033,7 +4038,19 @@ prueba("el copete de un envase angosto y blanco: color de marca y abanico que ll
   assert.ok(cubierto >= 0.4 * W, `los envases cubren ${((cubierto / W) * 100).toFixed(0)} % del cartel`);
   for (const [a, b] of tramos) assert.ok(a >= 0 && b <= W, `un envase se sale del cartel (${a.toFixed(0)}–${b.toFixed(0)})`);
   // Nada en el vuelo de la izquierda (el 9 %): lo tapa un robatope pegado.
-  assert.ok(Math.min(...tramos.map(([a]) => a)) >= W * PO.MARGEN_DE_LA_FRANJA - 1e-6, "la franja del logo cae en el vuelo del copete");
+  assert.ok(Math.min(...tramos.map(([a]) => a)) >= W * PO.MARGEN_DE_LA_FRANJA - 1e-6, "un envase cae en el vuelo del copete");
+  // Una BOTELLA (la franja es la etiqueta de verdad): el logo a la izquierda,
+  // si no hay que ampliarlo; con una foto chica, tampoco.
+  const BOTELLA = { ...AVENA, lienzo: { width: 270, height: 900 }, franja: () => ({ desde: 0.37, hasta: 0.6, x0: 0.125, x1: 0.875 }) };
+  const conLogo = pincelFalso();
+  PO.dibujarCartel(conLogo.g, W, H, BOTELLA, true);
+  assert.equal(conLogo.r.recortes.length, 1, "la botella perdió la franja del logo");
+  assert.equal(conLogo.r.enteras.length, 5);
+  const [, , , , sh, , , , dh] = conLogo.r.recortes[0];
+  assert.ok(dh / sh <= PO.AMPLIACION_MAXIMA + 1e-6, `la franja del logo ampliada ${(dh / sh).toFixed(2)} veces`);
+  const chica = pincelFalso();
+  PO.dibujarCartel(chica.g, W, H, { ...BOTELLA, lienzo: { width: 30, height: 100 } }, true);
+  assert.equal(chica.r.recortes.length, 0, "con una foto chica igual amplía la franja del logo");
   // El héroe, al 85–90 % del alto.
   const alto = Math.max(...r.enteras.map((a) => a[4]));
   assert.ok(alto >= 0.85 * H && alto <= 0.9 * H + 1e-6, `el héroe ocupa ${((alto / H) * 100).toFixed(0)} % del alto`);
@@ -4050,10 +4067,17 @@ prueba("el cabezote de la nevera es un aviso: un recorte grande de la etiqueta, 
   const paradas = [];
   g.createLinearGradient = () => ({ addColorStop: (k, c) => paradas.push([k, c]) });
   PO.dibujarCartel(g, W, H, FUENTE, true);
-  // Retroiluminado: la chapa, más clara que el color de la marca (el rojo de
-  // Postobón tal cual, luminancia ~60, se leía como lámina oscura).
+  // Retroiluminado: el degradé es VERTICAL, del color de la marca SATURADO
+  // abajo a uno más claro arriba (la luz detrás de la chapa). Mezclado con
+  // gris, el rojo de Postobón era un rosa salmón sucio; en diagonal, en un
+  // cartel de 13 a 1, el degradé no se veía.
   const lum = (h) => { const n = parseInt(h.slice(1), 16); return 0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255); };
-  assert.ok(lum(paradas[0][1]) > lum(FUENTE.recorte.colorDominante) + 20, `la chapa del cabezote (${paradas[0][1]}) no es más clara que la marca`);
+  const satHsv = (h) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); return (Math.max(...c) - Math.min(...c)) / Math.max(...c); };
+  const abajo = paradas.find(([k]) => k === 1)[1], arriba = paradas.find(([k]) => k === 0)[1];
+  assert.ok(satHsv(abajo) >= 0.6, `la chapa del cabezote (${abajo}) no es el color de la marca saturado`);
+  assert.ok(lum(arriba) > lum(abajo) + 25, `el degradé del cabezote no aclara hacia arriba (${abajo} → ${arriba})`);
+  assert.ok(satHsv(PO.saturar("#c08080")) > satHsv("#c08080") + 0.2, "saturar no satura un rosa sucio");
+  assert.equal(PO.saturar("#808080"), "#808080", "saturar le inventa un tono a un gris");
   assert.equal(r.recortes.length, 1, `el cabezote lleva ${r.recortes.length} recortes de la etiqueta: una fila de miniaturas`);
   // Sin las botellitas de las puntas (1 cm a la distancia de la toma).
   assert.equal(r.enteras.length, 0, `${r.enteras.length} unidades enteras en el cabezote`);
@@ -4069,7 +4093,16 @@ prueba("el cabezote de la nevera es un aviso: un recorte grande de la etiqueta, 
   }
   assert.equal(r.textos, 0, "el cabezote escribe texto que el proveedor no puso");
   const [, sx, sy, sw, sh, dx, dy, dw, dh] = r.recortes[0];
-  assert.ok(dh >= 0.7 * H, `el recorte ocupa ${((dh / H) * 100).toFixed(0)} % del alto`);
+  assert.ok(dh >= 0.7 * H && dh <= 0.8 * H + 1e-6, `el recorte ocupa ${((dh / H) * 100).toFixed(0)} % del alto`);
+  assert.ok(dh / sh <= PO.AMPLIACION_MAXIMA + 1e-6, `el recorte del cabezote ampliado ${(dh / sh).toFixed(2)} veces`);
+  // El panel de la etiqueta detrás de la marca: un relleno ANTES del recorte,
+  // centrado, de al menos el 35 % del ancho y a la altura del recorte.
+  {
+    const i = r.orden.findIndex((o) => o[0] === "img");
+    const panel = r.orden.slice(0, i).filter((o) => o[0] === "rect" && o[3] >= 0.35 * W && o[3] < W && Math.abs(o[4] - dh) < 1);
+    assert.equal(panel.length, 1, "el cabezote no lleva el panel de la etiqueta detrás de la marca");
+    assert.ok(Math.abs(panel[0][1] + panel[0][3] / 2 - W / 2) < 1, "el panel no va centrado");
+  }
   assert.ok(Math.abs(dx + dw / 2 - W / 2) < 1, "el recorte no va centrado");
   assert.ok(dy >= 0 && dy + dh <= H, "el recorte se sale del cartel");
   // La franja de la ETIQUETA y recortada a su silueta (sin el PET).
@@ -4095,7 +4128,9 @@ prueba("el cabezote de la nevera es un aviso: un recorte grande de la etiqueta, 
   assert.match(pop, /const clave = claveDeCopete\(et\.clave, ancho, alto, opciones\);/, "el caché no usa la clave con el retroiluminado");
   assert.match(pop, /materialImpreso\(textura, entorno, !!opciones\.retroiluminado\)/);
   const et = sinComentarios(leer(join(muebles, "etiqueta.ts")));
-  assert.match(et, /\.\.\.\(retroiluminado \? \{ emissiveIntensity: 2 \* K_EMISION \} : \{\}\)/, "el cabezote no se lee retroiluminado");
+  assert.match(et, /\.\.\.\(retroiluminado \? \{ emissiveIntensity: EMISION_RETROILUMINADA \* K_EMISION \} : \{\}\)/, "el cabezote no se lee retroiluminado");
+  assert.match(et, /export const EMISION_RETROILUMINADA = (\d+(?:\.\d+)?);/);
+  assert.ok(Number(et.match(/export const EMISION_RETROILUMINADA = (\d+(?:\.\d+)?);/)[1]) > 2, "el blanco del cabezote no pasa al del forro");
   // La nevera lo pide retroiluminado, con la franja de la etiqueta si es una
   // botella transparente.
   assert.match(cuerpoNeveraMesh, /retroiluminado: true, franja: !!pa\.empaque\?\.transparente,/);

@@ -378,15 +378,39 @@ export function filasDeEtiqueta(img: Imagen, L: readonly number[]): boolean[] {
   return fuera;
 }
 
-/** El PET del cuello visto contra el gris del estudio: un gris medio, sin
- *  color (croma ≤ 30, luminancia entre 60 y 150). No es líquido ni el claro
- *  del fondo ni tinta: con la clase «otro», las filas del cuello contaban como
- *  ETIQUETA y quedaban tal cual, con los brillos blancos de la foto; acostada,
- *  de cerca, eran manchas blancas dentadas alrededor del pico. */
+/** El PET del cuello visto contra el gris del estudio: un gris medio, de
+ *  poco color (croma ≤ `CROMA_DEL_PET`, luminancia entre 60 y 150). No es
+ *  líquido ni el claro del fondo ni tinta: con la clase «otro», las filas del
+ *  cuello contaban como ETIQUETA y quedaban tal cual, con los brillos blancos
+ *  de la foto; acostada, de cerca, eran manchas blancas dentadas alrededor del
+ *  pico. */
 export function esGrisDePet(r: number, g: number, b: number): boolean {
   const l = luminancia(r, g, b);
-  return Math.max(r, g, b) - Math.min(r, g, b) <= 30 && l >= 60 && l < 150;
+  return Math.max(r, g, b) - Math.min(r, g, b) <= CROMA_DEL_PET && l >= 60 && l < 150;
 }
+
+/** Cuánto color puede tener el gris del PET. Era 30: el PET del cuello y el
+ *  del borde de arriba de la etiqueta de la Manzana Postobón —el fondo visto a
+ *  través, teñido del rosa de la etiqueta y de la tapa: [177, 139, 141],
+ *  croma 38; [145, 116, 101], 44— quedaba como «otro», sin teñir, y de cerca
+ *  eran flecos blancos dentados sobre la etiqueta y alrededor del anillo del
+ *  cuello (la crítica de la demo, ronda 2). La tinta de una etiqueta tiene
+ *  más: el rosa [225, 70, 140] 155, la tapa naranja 195. */
+export const CROMA_DEL_PET = 55;
+
+/** El reflejo del PET que se le pinta a la botella llena: una banda vertical
+ *  SUAVE (gaussiana) a un cuarto del ancho de la silueta, de `ancho` (σ, en
+ *  fracción del ancho de la fila) y a lo sumo `pico` de blanco. Era una línea
+ *  de 3 px al 30 %: torneada, en cada botella de cerca un hilo blanco que
+ *  bajaba del cuello a la base, igual en todas —un rayón, un alambre—. El
+ *  brillo de verdad lo pone la luz; esto es la curva del plástico. */
+export const REFLEJO_DEL_PET = { donde: 0.25, ancho: 0.07, pico: 0.1 } as const;
+
+/** Las filas de arriba de la etiqueta que se limpian de su claro (el canto
+ *  de la etiqueta con el fondo detrás, dentado en la foto). */
+export const CANTO_DE_ETIQUETA = 3;
+/** Desde qué parte clara una fila del canto es canto y no letra. */
+export const CANTO_CLARO = 0.4;
 
 /** Cuántos píxeles hay hasta lo transparente (alfa < 128), con la distancia
  *  de chaflán 3-4 (casi euclídea), hasta `tope`. 0 = transparente. */
@@ -449,7 +473,13 @@ export function liquidoDe(img: Imagen): number[] | null {
 
 /** La franja de la ETIQUETA de un envase: qué filas (relativas al alto, desde
  *  arriba) y qué columnas (relativas al ancho) ocupa. */
-export interface FranjaDeEtiqueta { desde: number; hasta: number; x0: number; x1: number }
+export interface FranjaDeEtiqueta {
+  desde: number; hasta: number; x0: number; x1: number;
+  /** El fondo de la etiqueta en esa franja (`#rrggbb`): el color de los
+   *  costados de la banda, donde no hay letra. Lo usa el cabezote para el
+   *  panel detrás de la marca. `null` si no se pudo leer. */
+  fondo?: string | null;
+}
 
 /**
  * Dónde está la etiqueta en la foto: con un líquido, el tramo más largo de
@@ -516,7 +546,27 @@ export function franjaDeEtiqueta(img: Imagen, liquido: readonly number[] | null)
     for (let x = 0; x < w; x++) if (rgba[(y * w + x) * 4 + 3] >= 128) { if (x < x0) x0 = x; if (x > x1) x1 = x; }
   }
   if (x1 < x0) { x0 = 0; x1 = w - 1; }
-  return { desde: desde / h, hasta: hasta / h, x0: x0 / w, x1: (x1 + 1) / w };
+  return { desde: desde / h, hasta: hasta / h, x0: x0 / w, x1: (x1 + 1) / w, fondo: fondoDeFranja(img, desde, hasta, x0, x1) };
+}
+
+/** El color del fondo de una franja: el promedio de lo que NO es letra clara
+ *  (luminancia ≥ 170 y croma ≤ 60) en el 40 % del medio de la banda. Ni los
+ *  costados —en la foto de un envase redondo el canto está en sombra: en la
+ *  Manzana Postobón el «fondo» de los costados salía bordó— ni la cubeta más
+ *  poblada: el rosa de una etiqueta torneada es un degradé, se reparte en
+ *  muchas cubetas y ganaba una sombra pareja. `null` sin píxeles opacos. */
+function fondoDeFranja(img: Imagen, desde: number, hasta: number, x0: number, x1: number): string | null {
+  const { ancho: w, rgba } = img;
+  const n = x1 - x0 + 1;
+  let k = 0, r = 0, g = 0, b = 0;
+  for (let y = desde; y < hasta; y++) for (let x = x0 + Math.round(n * 0.3); x <= x0 + Math.round(n * 0.7); x++) {
+    const i = (y * w + x) * 4;
+    if (x < 0 || x >= w || rgba[i + 3] < 200) continue;
+    const R = rgba[i], G = rgba[i + 1], B = rgba[i + 2];
+    if (luminancia(R, G, B) >= 170 && Math.max(R, G, B) - Math.min(R, G, B) <= 60) continue;
+    k++; r += R; g += G; b += B;
+  }
+  return k ? hex(r / k, g / k, b / k) : null;
 }
 
 export interface BotellaLlena extends Imagen {
@@ -549,8 +599,10 @@ export interface BotellaLlena extends Imagen {
  * - En los 3 px del borde el líquido va un 20 % más oscuro (la pared del PET
  *   vista de canto), y lo de afuera de la silueta —el sangrado, que se ve si
  *   el torno queda un pelo más ancho que la foto— también.
- * - Un reflejo vertical de 3 px, al 30 % de blanco en el centro, a un cuarto
- *   del ancho de la silueta: el brillo que el anillo pretendía ser.
+ * - Un reflejo vertical suave (`REFLEJO_DEL_PET`, gaussiano, a lo sumo un
+ *   10 % de blanco) a un cuarto del ancho de la silueta: la curva del PET.
+ * - El canto de arriba de la etiqueta, sin su claro dentado
+ *   (`CANTO_DE_ETIQUETA`).
  * - El pie (el 8 % de abajo, donde los lóbulos de la base dejan ver el
  *   fondo) queda como antes: sus claros neutros se tiñen.
  * - El tinte conserva la luz de la foto (las burbujas): es el color del
@@ -576,10 +628,11 @@ export function llenarBotella(img: Imagen): BotellaLlena {
     let l = -1, r = -1;
     for (let x = 0; x < w; x++) if (rgba[(y * w + x) * 4 + 3] >= 128) { if (l < 0) l = x; r = x; }
     if (l < 0) continue;
-    // El reflejo del PET: una franja vertical de 3 px a un cuarto del ancho
-    // de la silueta, siempre del mismo lado (la luz de la tienda no se mueve
-    // con cada botella).
-    const xBrillo = l + (r - l) * 0.25;
+    // El reflejo del PET (`REFLEJO_DEL_PET`): una banda suave a un cuarto del
+    // ancho de la silueta, siempre del mismo lado (la luz de la tienda no se
+    // mueve con cada botella).
+    const xBrillo = l + (r - l) * REFLEJO_DEL_PET.donde;
+    const sigma = Math.max(1, (r - l) * REFLEJO_DEL_PET.ancho);
     for (let x = 0; x < w; x++) {
       const i = (y * w + x) * 4;
       const r0 = rgba[i], g0 = rgba[i + 1], b0 = rgba[i + 2];
@@ -594,8 +647,9 @@ export function llenarBotella(img: Imagen): BotellaLlena {
       // también va del color del líquido, oscuro como la pared.
       if (clase === "otro") continue;
       const oscuro = clase === "afuera" || cerca <= 3 ? 0.8 : 1;
-      const d = Math.abs(x - xBrillo);
-      const brillo = clase === "afuera" ? 0 : d <= 0.5 ? 0.3 : d <= 1.5 ? 0.15 : 0;
+      const d = (x - xBrillo) / sigma;
+      const suave = REFLEJO_DEL_PET.pico * Math.exp(-0.5 * d * d);
+      const brillo = clase === "afuera" || suave < 0.004 ? 0 : suave;
       if (clase === "liquido") {
         // El líquido de la foto se queda, con la pared y el reflejo encima.
         if (oscuro === 1 && brillo === 0) continue;
@@ -606,6 +660,37 @@ export function llenarBotella(img: Imagen): BotellaLlena {
       // o afuera: el líquido a la luz de ESE píxel, como siempre.
       const luz = clase === "afuera" ? 0.85 : luminancia(r0, g0, b0) / 235;
       tinte(i, Math.min(1.35, Math.max(0.4, luz)), oscuro, brillo);
+    }
+  }
+  // El canto de arriba de la etiqueta: en sus primeras `CANTO_DE_ETIQUETA`
+  // filas, lo claro (el borde del papel con el fondo detrás, un serrucho en
+  // la foto) toma el color de la etiqueta que tiene debajo en su columna. Sin
+  // esto, de cerca, una fila de flecos blancos sobre «MANZANA POSTOBÓN».
+  for (let y = 1; y < pie; y++) {
+    if (!etiqueta[y] || etiqueta[y - 1]) continue;
+    for (let k = 0; k < CANTO_DE_ETIQUETA && y + k < pie && etiqueta[y + k]; k++) {
+      const fila = y + k;
+      // Sólo una fila MAYORMENTE clara (el canto con el fondo: 46-56 % en la
+      // de Postobón): la letra blanca que arranca al ras de la etiqueta cubre
+      // menos, y la letra no se toca.
+      let opacos = 0, claros = 0;
+      for (let x = 0; x < w; x++) {
+        const i = (fila * w + x) * 4;
+        if (rgba[i + 3] < 128) continue;
+        opacos++;
+        if (claseDePixel(rgba[i], rgba[i + 1], rgba[i + 2], L) === "claro") claros++;
+      }
+      if (claros < opacos * CANTO_CLARO) continue;
+      for (let x = 0; x < w; x++) {
+        const i = (fila * w + x) * 4;
+        if (rgba[i + 3] < 128 || claseDePixel(rgba[i], rgba[i + 1], rgba[i + 2], L) !== "claro") continue;
+        for (let yy = fila + 1; yy <= Math.min(pie - 1, fila + 8); yy++) {
+          const j = (yy * w + x) * 4;
+          if (rgba[j + 3] < 128 || claseDePixel(rgba[j], rgba[j + 1], rgba[j + 2], L) === "claro") continue;
+          p[i] = rgba[j]; p[i + 1] = rgba[j + 1]; p[i + 2] = rgba[j + 2];
+          break;
+        }
+      }
     }
   }
   // El pie, como siempre: los lóbulos de la base dejan ver el fondo.

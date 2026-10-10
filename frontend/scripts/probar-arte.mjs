@@ -765,6 +765,48 @@ prueba("el hombro de la botella queda lleno: sin el anillo claro (p95 < 150)", (
   assert.ok(canto < centro, `el canto no se oscurece: ${canto} contra ${centro}`);
 });
 
+prueba("la botella llena no tiene un hilo blanco ni flecos sobre la etiqueta (la crítica de la demo)", () => {
+  // De cerca, cada 2 L tenía un hilo blanco de 1-2 px del cuello a la base
+  // —el reflejo de 3 px al 30 % que se le pintaba— y flecos blancos dentados
+  // en el borde de arriba de la etiqueta y en el anillo del cuello: el PET con
+  // el fondo detrás, teñido de rosa (croma 38-44), que quedaba como «otro».
+  const W = 120, H = 400;
+  const b = { ancho: W, alto: H, rgba: foto(W, H, (x, y) => {
+    const d = SEMI(y) - Math.abs(x + 0.5 - W / 2);
+    if (y < 4 || y > 395 || d < 0) return [255, 255, 255, 0];
+    if (y < 20) return [235, 110, 40, 255];                                              // tapa
+    if (y < 34) return x % 5 < 2 ? [161, 144, 137, 255] : [145, 116, 101, 255];          // anillo del cuello (PET teñido)
+    if (y >= 190 && y < 200) return x % 4 < 2 ? [177, 139, 141, 255] : [140, 38, 40, 255]; // flecos sobre la etiqueta
+    if (y >= 200 && y < 203) return x % 10 < 6 ? [240, 236, 238, 255] : [225, 70, 140, 255]; // el canto claro de la etiqueta
+    if (y >= 203 && y < 280) return x % 7 < 2 && y % 11 < 6 ? [248, 248, 248, 255] : [225, 70, 140, 255];
+    return [140, 38, 40, 255];
+  }) };
+  const l = T.llenarBotella(T.erosionarYSangrar(b, 4, 10));
+  const rojo = (q) => q[0] > q[1] + 40 && q[0] > q[2] + 40;
+  for (let y = 22; y < 34; y += 2) for (const x of [55, 60, 65]) assert.ok(rojo(px(l, x, y)), `el anillo del cuello quedó gris en (${x}, ${y}): ${px(l, x, y)}`);
+  for (let y = 190; y < 200; y++) for (let x = 30; x < 90; x++) {
+    assert.ok(lum(px(l, x, y)) < 120, `un fleco claro sobre la etiqueta en (${x}, ${y}): ${px(l, x, y)}`);
+  }
+  // El canto claro de arriba de la etiqueta (60 % de la fila) toma el rosa de
+  // abajo; la letra blanca de más abajo sigue intacta.
+  for (let x = 30; x < 90; x++) assert.ok(lum(px(l, x, 201)) < 150, `el canto de la etiqueta sigue claro en x=${x}: ${px(l, x, 201)}`);
+  for (let y = 210; y < 280; y++) for (let x = 40; x < 80; x++) {
+    if (x % 7 < 2 && y % 11 < 6) assert.deepEqual(px(l, x, y), [248, 248, 248, 255], "se tiñó la letra de la etiqueta");
+  }
+  // El reflejo del PET: una banda suave, no una línea. En cada fila del
+  // cuerpo, lo más claro a lo sumo 25 niveles sobre la mediana, y lo que pasa
+  // de la mitad de ese pico mide al menos 4 px de ancho.
+  for (let y = 300; y < 380; y += 7) {
+    const fila = [];
+    for (let x = 0; x < W; x++) if (b.rgba[(y * W + x) * 4 + 3] >= 128 && SEMI(y) - Math.abs(x + 0.5 - W / 2) > 6) fila.push(lum(px(l, x, y)));
+    const med = [...fila].sort((a, c) => a - c)[fila.length >> 1], pico = Math.max(...fila);
+    assert.ok(pico - med <= 25, `fila ${y}: un brillo de ${(pico - med).toFixed(0)} niveles sobre el cuerpo`);
+    if (pico - med >= 4) assert.ok(fila.filter((v) => v - med >= (pico - med) / 2).length >= 4, `fila ${y}: el reflejo es una línea`);
+  }
+  assert.ok(T.REFLEJO_DEL_PET.pico <= 0.15 && T.REFLEJO_DEL_PET.ancho >= 0.04, "el reflejo vuelve a ser un hilo");
+  assert.ok(T.esGrisDePet(177, 139, 141) && T.esGrisDePet(145, 116, 101), "el PET teñido de rosa no es PET");
+});
+
 prueba("la clasificación de la botella es por cromaticidad: el rosa no es líquido", () => {
   // Con la cubeta de tono, el líquido [140,38,40] y el rosa [225,70,140]
   // caían en la misma y la letra blanca de la etiqueta se teñía.
@@ -962,6 +1004,10 @@ prueba("la franja de la etiqueta cae en las filas rosas de la botella; sin líqu
   assert.ok(fm.desde * H >= 110 - 1 && fm.hasta * H <= 180 + 1, `la franja se sale de la etiqueta: ${fm.desde * H}–${fm.hasta * H}`);
   assert.ok(fm.desde * H <= 126 && fm.hasta * H >= 149, `la franja no toma la marca: ${fm.desde * H}–${fm.hasta * H}`);
   assert.ok((fm.hasta - fm.desde) * H < 60, "la franja no se acotó a la marca");
+  // El fondo de la franja (el panel del cabezote): el rosa de la etiqueta,
+  // no la letra blanca ni el líquido.
+  assert.equal(fm.fondo, "#e1468c", `el fondo de la franja salió ${fm.fondo}`);
+  assert.equal(T.franjaDeEtiqueta({ ancho: 4, alto: 4, rgba: new Uint8ClampedArray(64) }, null).fondo, null, "sin píxeles opacos inventó un fondo");
   // Sin líquido (un vaso, una caja), la del medio de siempre.
   const m = T.franjaDeEtiqueta(b, null);
   assert.ok(Math.abs(m.desde - 0.34) < 0.005 && Math.abs(m.hasta - 0.66) < 0.005);

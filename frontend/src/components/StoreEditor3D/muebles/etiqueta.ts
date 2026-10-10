@@ -748,16 +748,22 @@ function materialConLuz(
   return m;
 }
 
+/** Cuánto más emite una chapa retroiluminada (el cabezote de la nevera) que
+ *  una impresa. Con 2, el blanco de la marca quedaba a la par del forro de la
+ *  nevera (224 contra 223): no se leía con luz propia. */
+export const EMISION_RETROILUMINADA = 2.4;
+
 /** Un material impreso con la luz del producto (el copete de la punta, en
  *  `pop.ts`): lo mismo que la etiqueta, para que la marca de arriba y la del
  *  envase se vean del mismo color. `retroiluminado` (el cabezote de la
- *  nevera, que es un aviso luminoso): el doble de emisión, sólo en esa chapa. */
+ *  nevera, que es un aviso luminoso): `EMISION_RETROILUMINADA` veces la
+ *  emisión, sólo en esa chapa. */
 export function materialImpreso(
   map: THREE.Texture, entorno: THREE.Texture | null, retroiluminado = false,
 ): THREE.MeshStandardMaterial {
   return materialConLuz("caja", entorno, {
     map, emissive: new THREE.Color(1, 1, 1), emissiveMap: map,
-    ...(retroiluminado ? { emissiveIntensity: 2 * K_EMISION } : {}),
+    ...(retroiluminado ? { emissiveIntensity: EMISION_RETROILUMINADA * K_EMISION } : {}),
   });
 }
 
