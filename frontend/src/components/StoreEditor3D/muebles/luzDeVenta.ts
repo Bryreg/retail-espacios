@@ -102,6 +102,38 @@ export const EXPOSICION_DEL_VECINO = 0.38;
  */
 export const ATENUACION = { luz: 0.55, brillo: 0.5, exposicion: EXPOSICION_DEL_VECINO } as const;
 
+/**
+ * Cuánto se LAVA un vecino hacia un gris medio (`GRIS_DEL_LAVADO`), además de
+ * perder exposición: la fracción de la mezcla, con la exposición de siempre.
+ *
+ * La exposición multiplica todo por igual y conserva el contraste: el panel de
+ * fondo de una góndola libre —ya oscuro— quedaba casi negro (46-60 de
+ * luminancia) con los entrepaños claros de canto vivo encima (140): un salto
+ * de 80-90 niveles en un píxel, «un esqueleto de CAD» y no un mueble vacío
+ * (la crítica de la demo, ronda 3). Lo libre tiene que verse vacío, pero
+ * terminado. Con 0,3 hacia 0,2 lineal (calculado con el tono ACES de la
+ * escena): el panel sube a ~83 y el entrepaño queda en ~139, un salto de 55;
+ * un blanco apagado (122) casi no cambia, así que el vecino sigue igual de
+ * oscuro que antes en lo que pesa. Medido en «De cerca» del robatope girado
+ * 60°: con 0,25 el panel pasó de 55 a 81 pero el canto del entrepaño todavía
+ * saltaba 69 niveles; con 0,3, ver ESTADO.md.
+ *
+ * Proporcional a lo que se apaga (`lavadoPara`): la nevera vecina, que va con
+ * exposición 1 (se apaga con su frío), no se lava; la chapa del copete libre
+ * (0,7), a medias.
+ */
+export const LAVADO_DEL_VECINO = 0.3;
+/** El gris hacia el que se lava un vecino, en luz lineal (antes del tono). */
+export const GRIS_DEL_LAVADO = 0.2;
+
+/** El lavado que corresponde a una exposición de vecino: el de diseño con
+ *  `EXPOSICION_DEL_VECINO`, nada con exposición 1, y en proporción en el
+ *  medio. */
+export function lavadoPara(exposicion: number): number {
+  const k = (1 - exposicion) / (1 - EXPOSICION_DEL_VECINO);
+  return LAVADO_DEL_VECINO * Math.min(1, Math.max(0, k));
+}
+
 /** Los uniformes de venta de un material (o de las props de uno declarativo),
  *  si los tiene. */
 export function uniformesDe(x: { userData?: { luzDeVenta?: UniformesDeVenta } } | null | undefined): UniformesDeVenta | undefined {
@@ -120,6 +152,7 @@ export function atenuarUniformes(
     u.uLuzVenta.value = u.base.luz * (foco ? 1 : ATENUACION.luz);
     u.uBrillo.value = u.base.brillo * (foco ? 1 : ATENUACION.brillo);
     u.uExposicion.value = foco ? 1 : exposicion;
+    u.uLavado.value = foco ? 0 : lavadoPara(exposicion);
     n++;
   }
   return n;
@@ -351,6 +384,9 @@ export interface UniformesDeVenta {
   /** Lo que multiplica el color final (1 con foco; `EXPOSICION_DEL_VECINO`
    *  en un vecino). */
   uExposicion: { value: number };
+  /** Cuánto se mezcla el color final con `GRIS_DEL_LAVADO` (0 con foco;
+   *  `lavadoPara(exposición)` en un vecino). */
+  uLavado: { value: number };
   base: { luz: number; brillo: number };
 }
 
@@ -371,16 +407,20 @@ export function parcheDeLuzDeVenta(u: UniformesDeVenta) {
   const trozoFinal = "#include <opaque_fragment>";
   return (shader: { fragmentShader: string; uniforms?: Record<string, unknown> }) => {
     if (!shader.fragmentShader.includes(trozo) || !shader.fragmentShader.includes("void main() {")) return;
-    if (shader.uniforms) Object.assign(shader.uniforms, UNIFORMES_DE_TIENDA, { uLuzVenta: u.uLuzVenta, uBrillo: u.uBrillo, uExposicion: u.uExposicion });
+    if (shader.uniforms) Object.assign(shader.uniforms, UNIFORMES_DE_TIENDA, { uLuzVenta: u.uLuzVenta, uBrillo: u.uBrillo, uExposicion: u.uExposicion, uLavado: u.uLavado });
     shader.fragmentShader = shader.fragmentShader
       // La exposición del vecino: TODO lo que sale (la luz de la escena, la
-      // del cuarto y el brillo), antes del tono. Si three cambia el nombre
-      // del trozo, el vecino queda sin esta parte (lo vigila probar-muebles).
+      // del cuarto y el brillo), antes del tono; y el lavado hacia un gris
+      // medio (`LAVADO_DEL_VECINO`), que le baja el contraste. Si three
+      // cambia el nombre del trozo, el vecino queda sin esta parte (lo vigila
+      // probar-muebles).
       .replace(trozoFinal, `outgoingLight *= uExposicion;
+	outgoingLight = mix( outgoingLight, vec3( ${f4(GRIS_DEL_LAVADO)} ), uLavado );
 	${trozoFinal}`)
       .replace("void main() {", `uniform float uLuzVenta;
 uniform float uBrillo;
 uniform float uExposicion;
+uniform float uLavado;
 ${GLSL_DE_TIENDA}
 void main() {`)
       .replace(trozo, `${trozo}
@@ -508,7 +548,8 @@ export function conLuzDeVenta(
 } {
   if (!venta) return {};
   const u: UniformesDeVenta = {
-    uLuzVenta: { value: intensidad }, uBrillo: { value: brillo }, uExposicion: { value: 1 }, base: { luz: intensidad, brillo },
+    uLuzVenta: { value: intensidad }, uBrillo: { value: brillo }, uExposicion: { value: 1 }, uLavado: { value: 0 },
+    base: { luz: intensidad, brillo },
   };
   return { onBeforeCompile: parcheDeLuzDeVenta(u), customProgramCacheKey: () => CLAVE_DE_VENTA, userData: { luzDeVenta: u } };
 }

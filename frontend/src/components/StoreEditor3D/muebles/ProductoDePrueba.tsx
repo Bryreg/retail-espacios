@@ -69,6 +69,10 @@ export interface PruebaDeCara {
   /** Lo que dice el hablador del principal (`habladorALaVista`): el nombre
    *  sin cifras y el precio sólo si está cargado. Sin esto, sin hablador. */
   hablador?: ContenidoDelHablador | null;
+  /** «Acostarla sólo en la N»: el MISMO producto acostado en las filas donde
+   *  parado no entra (`filasSinAlto`); en las demás sigue parado. Sin
+   *  surtido. De la sesión, como todo esto. */
+  acostada?: { empaque: EmpaqueDeArte; filas: readonly number[] } | null;
 }
 
 /** Un producto más del surtido de una cara. */
@@ -159,7 +163,8 @@ export const ProductoDePrueba = memo(function ProductoDePrueba({
     p ? `${claveDeProducto(p)}|${claveDeDonde(p.donde)}|${
       p.filas?.alturas.map((y) => y.toFixed(4)).join(",") ?? "-"}|${
       (p.surtido ?? []).map(claveDeProducto).join("+")}|${
-      (p.tramos ?? []).map((t) => `${t.x0.toFixed(4)}:${t.x1.toFixed(4)}`).join(",")}` : "-",
+      (p.tramos ?? []).map((t) => `${t.x0.toFixed(4)}:${t.x1.toFixed(4)}`).join(",")}|${
+      p.acostada ? `${claveDeEmpaque(p.acostada.empaque)}@${p.acostada.filas.join(",")}` : "-"}` : "-",
   ).join("¦");
   const claveVenta = claveDeVenta(venta);
 
@@ -171,17 +176,25 @@ export const ProductoDePrueba = memo(function ProductoDePrueba({
       // El principal y, con surtido, los demás, cada uno en su tramo. Uno
       // cuya foto todavía carga no se dibuja, pero su tramo queda.
       const conSurtido = !!p.tramos && (p.surtido?.length ?? 0) > 0;
+      // «Acostarla sólo en la N»: el principal ACOSTADO, sólo en sus filas
+      // (las que parado no alcanza); va después del principal, que sigue
+      // dando las filas (`porFila`).
+      const acostada = !conSurtido && p.acostada && p.acostada.filas.length > 0 && !p.empaque.acostado
+        ? { etiqueta: p.etiqueta, empaque: p.acostada.empaque, semilla: `${p.semilla}|acostada`, hablador: p.hablador,
+          tramo: undefined, donde: p.acostada.filas }
+        : null;
       const productos = [
-        { etiqueta: p.etiqueta, empaque: p.empaque, semilla: p.semilla, hablador: p.hablador, tramo: conSurtido ? p.tramos![0] : undefined },
-        ...(conSurtido ? p.surtido!.map((x, k) => ({ ...x, tramo: p.tramos![k + 1] })) : []),
+        { etiqueta: p.etiqueta, empaque: p.empaque, semilla: p.semilla, hablador: p.hablador, tramo: conSurtido ? p.tramos![0] : undefined, donde: p.donde },
+        ...(conSurtido ? p.surtido!.map((x, k) => ({ ...x, tramo: p.tramos![k + 1], donde: p.donde })) : []),
+        ...(acostada ? [acostada] : []),
       ].filter((x): x is {
         etiqueta: Etiqueta; empaque: EmpaqueDeArte; semilla: string; hablador: ContenidoDelHablador | null | undefined;
-        tramo: TramoDeSurtido | undefined;
+        tramo: TramoDeSurtido | undefined; donde: PruebaDeCara["donde"];
       } => !!x.etiqueta && !!x.empaque && (!conSurtido || !!x.tramo));
       const cuentas = productos.map((x) => {
         const e = x.empaque;
         const r = unidadesDePrueba({
-          venta: ventaUsada, empaque: e, donde: p.donde, semilla: x.semilla, tramo: x.tramo, surtido: conSurtido,
+          venta: ventaUsada, empaque: e, donde: x.donde, semilla: x.semilla, tramo: x.tramo, surtido: conSurtido,
         });
         const vaso = e.envase === "revolucion" && !e.transparente;
         const geometriaCon = (detalle: "alto" | "bajo") => geometriaDeEtiqueta(

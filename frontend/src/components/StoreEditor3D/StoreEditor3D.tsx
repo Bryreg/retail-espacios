@@ -18,8 +18,8 @@ import { ProductoDePrueba } from "./muebles/ProductoDePrueba";
 import { useHabladoresDeRelleno } from "./muebles/ProductoEnMueble";
 import type { PruebaDeCara } from "./muebles/ProductoDePrueba";
 import {
-  ajusteDeRejillas, bloquesDeSurtido, claveDeFilas, cubiertasDe, entrepanosDelEspacio, focoDeLaPrueba, moverRejilla, rejillasDeLaPrueba,
-  rubroDeContratoEntero, unidadesDePrueba, VENDIDO,
+  ajusteDeRejillas, bloquesDeSurtido, claveDeFilas, cubiertasDe, entrepanosDelEspacio, filasSinAlto, focoDeLaPrueba, moverRejilla,
+  rejillasDeLaPrueba, rubroDeContratoEntero, unidadesDePrueba, VENDIDO,
 } from "./muebles/frentes";
 import type { AccionDeRejillas, EleccionDeRejillas, FilaDePrueba, RejillasDeLaPrueba } from "./muebles/frentes";
 import type { FilasDeProducto } from "./muebles/medidas";
@@ -36,8 +36,7 @@ import {
 import type { Etiqueta } from "./muebles/etiqueta";
 import { materialDeCenefa, materialDeCopete, olvidarCopetes } from "./muebles/pop";
 import {
-  BRILLO, conLuzDeVenta, FocoDeVenta, K_ENTORNO_MUEBLE, LuzDeVenta, parcheDelPiso, ponerTienda, useLuzDeVenta, usePropsDeLuzDeVenta,
-  useSoltarMateriales,
+  BRILLO, FocoDeVenta, K_ENTORNO_MUEBLE, LuzDeVenta, parcheDelPiso, ponerTienda, useLuzDeVenta, usePropsDeLuzDeVenta,
 } from "./muebles/luzDeVenta";
 import { useAtenuacion } from "./muebles/atenuacion";
 import type { UniformesDelPiso } from "./muebles/luzDeVenta";
@@ -178,6 +177,11 @@ type ComoSePrueba = {
    *  verticales por vano (`bloquesDeSurtido`). Sólo góndola y punta. Como
    *  todo lo de acá, de la sesión: no va al layout. */
   surtido?: number[];
+  /** «Acostarla sólo en la N»: con «Toda la cara», el producto parado va
+   *  ACOSTADO en los entrepaños donde parado no entra (`filasSinAlto`), en
+   *  vez de dejarlos vacíos. Se recalcula con las rejillas: si se mueven, se
+   *  acuesta donde haga falta. */
+  acostarDondeNoEntra?: boolean;
 };
 
 /** Lo que la escena YA dibujó, para quien saca capturas (la lámina): el
@@ -992,11 +996,6 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
  *  `conLuzDeVenta` en cada render, el material recibía uniformes nuevos en
  *  cada cuadro y los del programa compilado —los que atenúa un vecino—
  *  quedaban huérfanos. */
-/** La luz de rebote de los costados de un parante del robatope en la pantalla
- *  de venta (emisión, fracción de su gris): sin ella el costado que no mira a
- *  la luz de la tienda salía a 76 de luminancia junto al frente a 202. */
-export const LUZ_LATERAL_DEL_PARANTE = 0.55;
-
 function ChapaDeRobatope({ color, op, luz }: { color: string; op: number; luz: boolean }) {
   const venta = usePropsDeLuzDeVenta(luz, K_ENTORNO_MUEBLE, BRILLO.robatope);
   useAtenuacion([venta]);
@@ -1033,27 +1032,7 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:num
   const ventaParante = usePropsDeLuzDeVenta(luz, K_ENTORNO_MUEBLE, BRILLO.estructura);
   const ventaRemate = usePropsDeLuzDeVenta(luz, K_ENTORNO_MUEBLE, BRILLO.robatope);
   const ventaFilo = usePropsDeLuzDeVenta(luz, K_ENTORNO_MUEBLE, BRILLO.estructura);
-  // Los parantes en la pantalla de venta, con los COSTADOS (±X) iluminados
-  // aparte. La luz de la tienda viene de un lado: el costado interior del
-  // parante derecho no la recibe, y en «De cerca» —visto casi de canto, al
-  // lado del frente claro— era una línea oscura de 2-3 px colgando del
-  // remate («un cable suelto o una grieta», la crítica de la demo, ronda 3).
-  // Se encontró apagando piezas (remate, fondo, producto: la línea seguía;
-  // sin parantes, no). En una tienda con decenas de luminarias ese costado
-  // recibe luz de rebote: un tono de emisión del mismo gris la repone.
-  const parantesDeVenta = useMemo(() => {
-    if (!luz || ghost) return null;
-    const comun = { color: G_FRAME, metalness: 0.18, roughness: 0.70 };
-    const lateral = conLuzDeVenta(true, K_ENTORNO_MUEBLE, BRILLO.estructura);
-    return {
-      base: new THREE.MeshStandardMaterial({ ...comun, ...conLuzDeVenta(true, K_ENTORNO_MUEBLE, BRILLO.estructura) }),
-      lateral: new THREE.MeshStandardMaterial({
-        ...comun, emissive: new THREE.Color(G_FRAME), emissiveIntensity: LUZ_LATERAL_DEL_PARANTE, ...lateral,
-      }),
-    };
-  }, [luz, ghost]);
-  useSoltarMateriales(parantesDeVenta ?? {});
-  useAtenuacion([ventaParante, ventaRemate, ventaFilo, parantesDeVenta?.base, parantesDeVenta?.lateral]);
+  useAtenuacion([ventaParante, ventaRemate, ventaFilo]);
 
   return (
     <group>
@@ -1080,20 +1059,13 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:num
       )}
 
       {/* Left & right uprights — identical profile to PuntaMesh */}
-      {([-1, 1] as const).map(side => (luz && parantesDeVenta ? (
-        // En venta, los costados del parante con su luz lateral (ver
-        // `LUZ_LATERAL_DEL_PARANTE`): BoxGeometry ordena +X, −X, +Y, −Y, +Z, −Z.
-        <mesh key={side} position={[side * (w / 2 - 0.025), bodyH / 2, 0]} castShadow
-          material={[parantesDeVenta.lateral, parantesDeVenta.lateral, parantesDeVenta.base, parantesDeVenta.base, parantesDeVenta.base, parantesDeVenta.base]}>
-          <boxGeometry args={[0.050, bodyH, d]} />
-        </mesh>
-      ) : (
-        <mesh key={side} position={[side * (w / 2 - 0.025), bodyH / 2, 0]} castShadow>
-          <boxGeometry args={[0.050, bodyH, d]} />
+      {([-1, 1] as const).map(side => (
+        <mesh key={side} position={[side * (w / 2 - ROBATOPE.parante / 2), bodyH / 2, 0]} castShadow>
+          <boxGeometry args={[ROBATOPE.parante, bodyH, d]} />
           <meshStandardMaterial key={luz ? "venta" : "editor"} color={G_FRAME} metalness={0.18} roughness={0.70}
             transparent opacity={op} {...ventaParante} />
         </mesh>
-      )))}
+      ))}
 
       {/* Shelf boards + front price rails */}
       {cotas.repisas.map((sy, i) => {
@@ -2592,6 +2564,62 @@ function siluetaDePersona(): THREE.CanvasTexture {
   return texturaDeSilueta;
 }
 
+/** Cuánto más oscura va la silueta al pie que en la cabeza (color de
+ *  vértice): toda pareja era «de plano de arquitecto» al lado de muebles con
+ *  sombra al pie y piso con reflejo (la crítica de la demo, ronda 3). El gris
+ *  y la opacidad de siempre, arriba. */
+export const DEGRADE_DE_SILUETA = 0.09;
+/** La huella de sombra bajo los pies: un óvalo blando de 45 × 25 cm al 35 %.
+ *  Sin ella la figura flotaba a un centímetro del baldosín. */
+export const HUELLA_DE_PERSONA = { ancho: 0.45, fondo: 0.25, opacidad: 0.35 } as const;
+
+let geometriaDeSilueta: THREE.PlaneGeometry | null = null;
+/** El plano de la silueta con el degradé vertical en color de vértice (uno
+ *  para todas: la persona es una sola a la vez). */
+function planoDeSilueta(): THREE.PlaneGeometry {
+  if (geometriaDeSilueta) return geometriaDeSilueta;
+  const g = new THREE.PlaneGeometry(ALTURA_PERSONA * (256 / 864), ALTURA_PERSONA);
+  const pos = g.getAttribute("position");
+  const colores = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    // De 1 en la cabeza a 1 − DEGRADE en los pies.
+    const k = 1 - DEGRADE_DE_SILUETA * (0.5 - pos.getY(i) / ALTURA_PERSONA);
+    colores.set([k, k, k], i * 3);
+  }
+  g.setAttribute("color", new THREE.BufferAttribute(colores, 3));
+  geometriaDeSilueta = g;
+  return g;
+}
+
+let huellaDePersona: { geometria: THREE.PlaneGeometry; material: THREE.MeshBasicMaterial } | null = null;
+/** La huella de sombra de la persona: un plano acostado con un óvalo de
+ *  borde blando (textura de 64 px, armada una vez). Translúcida y sin escribir
+ *  profundidad: es una mancha en el piso, no un objeto. */
+function sombraDePersona() {
+  if (huellaDePersona) return huellaDePersona;
+  const N = 64;
+  const datos = new Uint8Array(N * N * 4);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const dx = (x + 0.5) / N * 2 - 1, dy = (y + 0.5) / N * 2 - 1;
+    const r2 = Math.min(1, dx * dx + dy * dy);
+    const k = (y * N + x) * 4;
+    datos[k] = datos[k + 1] = datos[k + 2] = 255;
+    datos[k + 3] = Math.round(255 * (1 - r2) * (1 - r2));
+  }
+  const textura = new THREE.DataTexture(datos, N, N, THREE.RGBAFormat);
+  textura.magFilter = THREE.LinearFilter;
+  textura.minFilter = THREE.LinearFilter;
+  textura.needsUpdate = true;
+  const geometria = new THREE.PlaneGeometry(HUELLA_DE_PERSONA.ancho, HUELLA_DE_PERSONA.fondo);
+  geometria.rotateX(-Math.PI / 2);
+  const material = new THREE.MeshBasicMaterial({
+    color: 0x000000, map: textura, transparent: true, opacity: HUELLA_DE_PERSONA.opacidad,
+    depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2,
+  });
+  huellaDePersona = { geometria, material };
+  return huellaDePersona;
+}
+
 /**
  * La persona de 1,70 m en la pantalla de venta: una SILUETA plana, opaca y de
  * un gris cálido, como las figuras de escala de un plano de arquitectura.
@@ -2636,14 +2664,18 @@ function SiluetaDeEscala({ x, z, rotY, color = GRIS_DE_SILUETA, mirarCamara = fa
   });
   return (
     <group ref={grupo} position={[x, 0, z]} rotation={[0, rotY, 0]}>
-      <mesh ref={figura} position={[0, ALTURA_PERSONA / 2, 0]}>
-        <planeGeometry args={[ALTURA_PERSONA * (256 / 864), ALTURA_PERSONA]} />
+      <mesh ref={figura} position={[0, ALTURA_PERSONA / 2, 0]} geometry={planoDeSilueta()}>
         {/* Opaca: el borde con alphaTest y a la pasada opaca, que escribe
-            profundidad como cualquier mueble. */}
+            profundidad como cualquier mueble. El degradé (más oscura al pie),
+            por color de vértice. */}
         <meshBasicMaterial
-          map={siluetaDePersona()} color={color} alphaTest={0.5}
+          map={siluetaDePersona()} color={color} alphaTest={0.5} vertexColors
           toneMapped={false} side={THREE.DoubleSide}
         />
+        {/* La huella de sombra, HIJA de la figura: gira con ella hacia la
+            cámara y se esconde con ella si la persona no entra entera. */}
+        <mesh position={[0, -ALTURA_PERSONA / 2 + 0.003, 0]} renderOrder={1}
+          geometry={sombraDePersona().geometria} material={sombraDePersona().material} />
       </mesh>
     </group>
   );
@@ -3273,8 +3305,18 @@ function BloqueDeRejillas({
         </p>
       )}
       {modo === "fabrica" && (
+        // En la MISMA línea, si parada no entra: el aviso quedaba más abajo, en
+        // otro bloque, y la dueña lo tenía que buscar (la crítica, ronda 3).
         <p className="text-[10.5px] leading-snug text-dark-ink-3" data-rejillas-texto>
           Las {fabrica.rows} de fábrica, como está la nevera hoy.
+          {(() => {
+            const sin = libresDeFabrica.filter((l) => l < alto);
+            if (sin.length === 0) return null;
+            const max = Math.max(...(sin.length === libresDeFabrica.length ? libresDeFabrica : sin));
+            return sin.length === libresDeFabrica.length
+              ? <span className="text-warning"> No entra parada: {enCm(alto)} cm en {enCm(max)} cm libres.</span>
+              : <span className="text-warning"> En {sin.length} de {libresDeFabrica.length} no entra parada: {enCm(alto)} cm en {enCm(max)} cm.</span>;
+          })()}
         </p>
       )}
       {modo === "manual" && (
@@ -3403,6 +3445,23 @@ function PanelDePrueba({
     () => (ventaUsada && empaque ? unidadesDePrueba({ venta: ventaUsada, empaque, donde: como.donde, semilla: "panel" }) : null),
     [ventaUsada, empaque, como.donde],
   );
+  // «Acostarla sólo en la N»: los entrepaños donde parada no entra, con la
+  // MISMA cuenta que dibuja (`filasSinAlto`, la usa `construirPrueba`), y lo
+  // que entra ahí acostada. Sólo un envase torneado parado, con la cara
+  // entera, sin surtido y si en algún entrepaño sí entra parado.
+  const acostadaSoloAhi = useMemo(() => {
+    if (!ventaUsada || !empaque || !etiqueta || empaque.acostado || empaque.envase !== "revolucion"
+      || como.donde !== "todas" || (como.surtido?.length ?? 0) > 0) return null;
+    const sin = filasSinAlto(ventaUsada.filas, empaque.alto);
+    if (sin.length === 0 || sin.length === ventaUsada.filas.rows) return null;
+    const acostado = empaqueDeArte(arte, arte.ficha ?? null, etiqueta.recorte, { acostado: true });
+    const r = unidadesDePrueba({ venta: ventaUsada, empaque: acostado, donde: sin, semilla: "panel" });
+    const enCadaUna = sin.map((i) => r.porFila[i]?.frentes ?? 0);
+    // Si acostada tampoco entra en alguno, no se ofrece: quedaría vacío igual.
+    if (enCadaUna.some((n) => n === 0)) return null;
+    return { filas: sin, nombres: sin.map((i) => i + 1).join(" y "), frentes: r.frentesALaVista, enCadaUna };
+  }, [ventaUsada, empaque, etiqueta, arte, como.donde, como.surtido]);
+  const acostadaActiva = !!como.acostarDondeNoEntra && !!acostadaSoloAhi;
   // Los entrepaños con un espacio vendido encima, por la misma regla que el
   // relleno por rubro (`entrepanosDelEspacio`). Se miran sobre las filas de
   // FÁBRICA y no sobre las rejillas acomodadas: en la nevera no importa,
@@ -3658,21 +3717,42 @@ function PanelDePrueba({
               {aprox}Entran {minF === maxF ? minF : `${minF} a ${maxF}`} por entrepaño
               {fondo > 1 ? ` · ${fondo} de fondo` : ""}
               {pisos > 1 ? ` · ${pisos} apilados` : ""}
-              {` · ${acomodo?.frentesALaVista ?? 0} de frente`}
+              {acostadaActiva && acostadaSoloAhi
+                ? ` · ${Math.min(...acostadaSoloAhi.enCadaUna)}${Math.min(...acostadaSoloAhi.enCadaUna) === Math.max(...acostadaSoloAhi.enCadaUna) ? "" : ` a ${Math.max(...acostadaSoloAhi.enCadaUna)}`} acostadas en ${acostadaSoloAhi.filas.length === 1 ? "la" : "las"} ${acostadaSoloAhi.nombres}`
+                : ""}
+              {` · ${(acomodo?.frentesALaVista ?? 0) + (acostadaActiva && acostadaSoloAhi ? acostadaSoloAhi.frentes : 0)} de frente`}
             </p>
           )}
           {/* Los entrepaños donde no entra, con medidas: la de 1,5 L dejaba
               las dos rejillas del medio vacías sin que nadie dijera por qué. */}
-          {como.donde === "todas" && filas.some((f) => f.motivo === "no-entra-alto") && (
-            <p className="text-[10.5px] leading-snug text-dark-ink-3" data-filas-sin-producto>
-              {(() => {
-                const sin = filas.filter((f) => f.motivo === "no-entra-alto");
-                const nombres = sin.map((f) => f.fila + 1).join(" y ");
-                const libre = Math.max(...sin.map((f) => f.libre));
-                return `${sin.length === 1 ? "El entrepaño" : "Los entrepaños"} ${nombres} ${sin.length === 1 ? "queda vacío" : "quedan vacíos"}: ${enCm(empaque.alto)} cm no entran en ${enCm(libre)} cm.`;
-              })()}
-            </p>
-          )}
+          {como.donde === "todas" && filas.some((f) => f.motivo === "no-entra-alto") && (() => {
+            const sin = filas.filter((f) => f.motivo === "no-entra-alto");
+            const nombres = sin.map((f) => f.fila + 1).join(" y ");
+            const libre = Math.max(...sin.map((f) => f.libre));
+            const uno = sin.length === 1;
+            return (
+              <div className="flex flex-col gap-1">
+                <p className="text-[10.5px] leading-snug text-dark-ink-3" data-filas-sin-producto>
+                  {acostadaActiva
+                    ? `En ${uno ? "el entrepaño" : "los entrepaños"} ${nombres} va acostada: ${enCm(empaque.alto)} cm no entran parados en ${enCm(libre)} cm.`
+                    : `${uno ? "El entrepaño" : "Los entrepaños"} ${nombres} ${uno ? "queda vacío" : "quedan vacíos"}: ${enCm(empaque.alto)} cm no entran en ${enCm(libre)} cm.`}
+                </p>
+                {/* Un hueco en el medio de SU nevera, para el proveedor, es un
+                    quiebre de inventario: se ofrece acostarla sólo ahí. */}
+                {acostadaSoloAhi && (acostadaActiva ? (
+                  <button data-dejar-vacio onClick={() => onAjustar({ acostarDondeNoEntra: false })}
+                    className="self-start text-[10px] text-dark-ink-3 hover:text-dark-ink-1">
+                    {uno ? "Dejarlo vacío" : "Dejarlos vacíos"}
+                  </button>
+                ) : (
+                  <button data-acostar-solo onClick={() => onAjustar({ acostarDondeNoEntra: true })}
+                    className="self-start rounded border border-dark-line-2 px-2 py-1 text-[11px] font-semibold text-dark-ink-2 hover:text-dark-ink-1">
+                    Acostarla sólo en {uno ? "la" : "las"} {nombres}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
         </>
       )}
       {/* La foto de una caja en tres cuartos se ve en el 3D con «doble lomo»:
@@ -5172,9 +5252,20 @@ function Scene({
           };
         });
       }
+      // «Acostarla sólo en la N»: el mismo producto acostado en las filas
+      // vigentes donde parado no entra; con la cara entera y sin surtido.
+      let acostada: PruebaDeCara["acostada"] = null;
+      if (como?.acostarDondeNoEntra && etiqueta && empaque && !empaque.acostado && empaque.envase === "revolucion"
+        && (como.donde ?? "todas") === "todas" && !surtido) {
+        const vigentes = filas ?? ventaDeTipo(fix.type, fix.w, fix.d, fix.h, fix.gondolaType)?.filas;
+        const sin = vigentes ? filasSinAlto(vigentes, empaque.alto) : [];
+        if (vigentes && sin.length > 0 && sin.length < vigentes.rows) {
+          acostada = { empaque: empaqueDeArte(arte, arte.ficha ?? null, etiqueta.recorte, { acostado: true }), filas: sin };
+        }
+      }
       return {
         etiqueta, empaque, donde: como?.donde ?? "todas", semilla: `${fixId}|${cara}|${arteId}`, filas,
-        copete: como?.copete ?? true,
+        copete: como?.copete ?? true, acostada,
         // El hablador: el nombre sin cifras y el precio SÓLO si está cargado
         // en la ficha; de un arte que esta pantalla no puede ver, ninguno.
         hablador: habladorALaVista(arte, catalogo, privadoPara),

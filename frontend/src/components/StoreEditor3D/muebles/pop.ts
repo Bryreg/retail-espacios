@@ -174,8 +174,9 @@ export function dibujarCartel(
     let x0 = W * 0.04, x1 = W - W * 0.04;
     if (conLogo) {
       // La franja arranca más adentro (el 9 % del ancho): los primeros
-      // 5 cm del copete son su vuelo sobre el costado, y el cabezote de un
-      // robatope pegado a la punta los tapa en la toma de frente.
+      // 4,5 cm del copete son su vuelo sobre el costado (`COPETE.vuelo`), y
+      // el remate de un robatope pegado a la punta los tapa en la toma de
+      // frente.
       x0 = W * MARGEN_DE_LA_FRANJA;
       const f = conLogo;
       const sx = Math.round(f.x0 * p.width), sw = Math.max(1, Math.round((f.x1 - f.x0) * p.width));

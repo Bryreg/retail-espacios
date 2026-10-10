@@ -367,8 +367,18 @@ export const COPETE = {
    *  una chapa con marco, no un cajón. */
   fondo: 0.055,
   /** Cuánto sobresale a cada lado del cuerpo. Ese vuelo es lo que hace que el
-   *  copete se lea como cartel y no como la tapa del mueble. */
-  vuelo: 0.05,
+   *  copete se lea como cartel y no como la tapa del mueble.
+   *
+   *  Un poco MENOS que el parante del robatope (`ROBATOPE.parante`, 5 cm): el
+   *  robatope se arrima al costado de la punta y su remate (1,6 m) queda más
+   *  alto que el cuerpo de ella (1,44 m), así que el vuelo del copete se mete
+   *  en el parante. Con 5 cm justos, el costado del copete caía en el MISMO
+   *  plano que la cara interior del parante y los dos peleaban por el
+   *  depth-buffer: en «De cerca» del robatope era una línea oscura de 2-3 px
+   *  colgando del remate hasta la tapa de la punta («un cable suelto o una
+   *  grieta», la crítica de la demo, ronda 3). Con 4,5 cm el costado queda
+   *  medio centímetro ADENTRO del parante, donde no se ve. */
+  vuelo: 0.045,
   /** Alto de la barra de luz que lo remata. */
   altoLuz: 0.05,
 } as const;
@@ -578,6 +588,9 @@ export function ventaDeNevera(w: number, d: number, h: number): VentaDeMueble {
 export const ROBATOPE = {
   /** El remate oscuro de arriba: no lleva copete. */
   capa: 0.055,
+  /** El ancho de cada parante (el costado del mueble). El vuelo del copete de
+   *  la punta tiene que ser menor: ver `COPETE.vuelo`. */
+  parante: 0.05,
   /** Separación a la que se apunta al repartir las repisas. */
   pasoObjetivo: 0.40,
   /** Dónde arranca el reparto, sobre las patas. */

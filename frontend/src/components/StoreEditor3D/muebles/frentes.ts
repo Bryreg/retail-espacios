@@ -699,6 +699,21 @@ export function unidadesDePrueba({
 export const HOLGURA_DE_REJILLA = 0.05;
 
 /**
+ * Las filas donde el producto PARADO no entra de alto: con la misma regla que
+ * `unidadesDePrueba` (`alto` > lo libre entre esta fila y la de arriba).
+ *
+ * Es lo que acuesta «Acostarla sólo en la N»: con las rejillas a mano, la de
+ * 2 L dejaba el entrepaño 2 vacío y, en la pantalla que mira el proveedor, una
+ * rejilla vacía en el medio de SU nevera es un quiebre de inventario (la
+ * crítica de la demo, ronda 3). Acostada sólo ahí, el resto sigue parado.
+ */
+export function filasSinAlto(filas: Pick<FilasDeProducto, "alturas" | "rows">, alto: number): number[] {
+  const fuera: number[] = [];
+  for (let i = 0; i < filas.rows; i++) if (alto > filas.alturas[i + 1] - filas.alturas[i]) fuera.push(i);
+  return fuera;
+}
+
+/**
  * Las rejillas de una nevera reacomodadas para que el producto entre PARADO
  * en todas — lo que hace el mercaderista cuando llega la gaseosa de 2 L.
  *

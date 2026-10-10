@@ -1925,7 +1925,9 @@ prueba("la nevera acomoda sus rejillas para el producto, sin inventar ninguna", 
   assert.match(nevera, /niveles=\{enPrueba && facePaint\?\.pruebaA\?\.filas\s*\? facePaint\.pruebaA\.filas\.alturas\.slice\(0, -1\) : undefined\}/);
   const dp = sinComentarios(leer(join(muebles, "ProductoDePrueba.tsx")));
   assert.match(dp, /const ventaUsada = p\.filas \? \{ \.\.\.venta, filas: p\.filas \} : venta;/);
-  assert.match(dp, /venta: ventaUsada, empaque: e, donde: p\.donde/);
+  // Cada producto con SU «dónde»: el de la cara, salvo la acostada de «Acostarla sólo en la N».
+  assert.match(dp, /venta: ventaUsada, empaque: e, donde: x\.donde/);
+  assert.match(dp, /semilla: p\.semilla, hablador: p\.hablador, tramo: conSurtido \? p\.tramos!\[0\] : undefined, donde: p\.donde \}/);
   // Y lo que se dibuja sale de `rejillasDeLaPrueba`, con lo elegido en la
   // sesión: ya no hay una segunda copia de la cuenta en el editor.
   const fp = cuerpoDe("const facePaintById = useMemo(", "const handleOrbitReady");
@@ -2046,6 +2048,40 @@ prueba("rejillas a mano: cuántas (1 a las de fábrica) y dónde no entra", () =
     assert.equal(fr.fondos.length, n);
     assert.equal(fr.giros.length, n);
   }
+});
+
+prueba("«Acostarla sólo en la N»: acostada SÓLO donde parada no entra, y cableada igual en el panel y en el 3D", () => {
+  // Con 4 a mano y la 2 subida dos ranuras, la 2 L deja vacío el entrepaño 2:
+  // en la pantalla del proveedor, un quiebre de inventario en SU nevera.
+  const m4 = F.rejillasDeLaPrueba(NEV, DOS_L, { cuantas: 4 });
+  const movida = F.moverRejilla(m4.filas, 1, 2);
+  const filas = F.rejillasDeLaPrueba(NEV, DOS_L, { cuantas: 4, alturas: movida.alturas.slice(0, -1) }).filas;
+  const sin = F.filasSinAlto(filas, DOS_L.alto);
+  assert.deepEqual(sin, [1], `las filas sin alto: ${sin}`);
+  // La misma regla que unidadesDePrueba: donde dice «no-entra-alto».
+  const parada = enTodas(filas, DOS_L);
+  assert.deepEqual(parada.porFila.filter((x) => x.motivo === "no-entra-alto").map((x) => x.fila), sin);
+  // Acostada ahí: entra, y SÓLO ahí; parada, en las otras tres.
+  const ACOSTADA = { ...DOS_L, ancho: 0.33, alto: 0.105, fondo: 0.105, acostado: true };
+  const r = F.unidadesDePrueba({ venta: conFilas(filas), empaque: ACOSTADA, donde: sin, semilla: "r|acostada" });
+  assert.ok(r.unidades.length > 0, "acostada no entra en el entrepaño 2");
+  assert.ok(r.unidades.every((u) => u.fila === 1), "la acostada se metió en otro entrepaño");
+  assert.ok(parada.unidades.every((u) => u.fila !== 1), "la parada se metió en el entrepaño que no le da");
+  // Fábrica: no entra en ninguna; automáticas: entra en todas (nada que acostar).
+  assert.equal(F.filasSinAlto(NEV.filas, DOS_L.alto).length, NEV.filas.rows);
+  assert.equal(F.filasSinAlto(F.rejillasDeLaPrueba(NEV, DOS_L, undefined).filas, DOS_L.alto).length, 0);
+  // Cableado: el 3D dibuja cada producto con SU «dónde» (la acostada con sus
+  // filas), y el editor arma la acostada con la misma cuenta que el panel.
+  const dp = sinComentarios(leer(join(muebles, "ProductoDePrueba.tsx")));
+  assert.match(dp, /semilla: `\$\{p\.semilla\}\|acostada`, hablador: p\.hablador,\s*tramo: undefined, donde: p\.acostada\.filas \}/);
+  assert.match(dp, /venta: ventaUsada, empaque: e, donde: x\.donde, semilla: x\.semilla/, "el 3D usa el «dónde» de la cara para todos");
+  assert.match(dp, /\$\{claveDeEmpaque\(p\.acostada\.empaque\)\}@\$\{p\.acostada\.filas\.join\(","\)\}/, "la acostada no cambia la clave del memo");
+  const ed = sinComentarios(editorCodigo);
+  assert.match(ed, /const sin = vigentes \? filasSinAlto\(vigentes, empaque\.alto\) : \[\];/, "el 3D acuesta con otra cuenta");
+  assert.match(ed, /const sin = filasSinAlto\(ventaUsada\.filas, empaque\.alto\);/, "el panel ofrece con otra cuenta");
+  assert.match(ed, /data-acostar-solo onClick=\{\(\) => onAjustar\(\{ acostarDondeNoEntra: true \}\)\}/);
+  // Y nunca al layout: es un campo de ComoSePrueba (la sesión).
+  assert.match(ed, /type ComoSePrueba = \{[\s\S]*?acostarDondeNoEntra\?: boolean;[\s\S]*?\};/);
 });
 
 prueba("mover una rejilla: de a una ranura, con tope de 5 cm, la de abajo y el techo fijos", () => {
@@ -2796,11 +2832,7 @@ prueba("la luz de venta es UN programa: intensidad y brillo son uniformes de cad
   // `conLuzDeVenta` en cada render los uniformes del programa quedaban
   // huérfanos.
   const cuerpoRobatope = cuerpoDe("function ChapaDeRobatope(", "function RistraMesh(");
-  // (Los parantes de venta arman sus materiales con `conLuzDeVenta` adentro
-  // de UN memo: estables, y soltados con `useSoltarMateriales`.)
-  const sinElMemo = cuerpoRobatope.replace(/const parantesDeVenta = useMemo\(\(\) => \{[\s\S]*?\}, \[luz, ghost\]\);/, "");
-  assert.ok(!/conLuzDeVenta\(/.test(sinElMemo), "el robatope arma la luz de venta en cada render");
-  assert.match(cuerpoRobatope, /useSoltarMateriales\(parantesDeVenta \?\? \{\}\);/, "los materiales de los parantes de venta no se sueltan");
+  assert.ok(!/conLuzDeVenta\(/.test(cuerpoRobatope), "el robatope arma la luz de venta en cada render");
   assert.match(cuerpoRobatope, /usePropsDeLuzDeVenta\(luz, K_ENTORNO_MUEBLE, BRILLO\.robatope\)/);
   assert.match(luz, /export function usePropsDeLuzDeVenta[\s\S]{0,200}useMemo\(\(\) => conLuzDeVenta\(venta, intensidad, brillo\), \[venta, intensidad, brillo\]\)/);
   // Ninguno de los que arman materiales los rehace por una intensidad: el
@@ -2850,6 +2882,12 @@ prueba("el parche encuentra en los shaders de three 0.184 lo que usa", () => {
     assert.ok(t.indexOf("outgoingLight *= uExposicion;") < t.indexOf("#include <opaque_fragment>"), `${nombre}: la exposición va después del color`);
     assert.match(t, /uniform float uExposicion;[\s\S]*void main\(\) \{/, `${nombre}: sin el uniforme de la exposición`);
     assert.equal(x.uniforms.uExposicion?.value, 1, `${nombre}: la exposición de diseño no es 1`);
+    // El lavado del vecino, DESPUÉS de la exposición y antes del color.
+    const lav = t.indexOf("outgoingLight = mix( outgoingLight, vec3( 0.2000 ), uLavado );");
+    assert.ok(lav > t.indexOf("outgoingLight *= uExposicion;") && lav < t.indexOf("#include <opaque_fragment>"),
+      `${nombre}: el lavado del vecino no va entre la exposición y el color`);
+    assert.match(t, /uniform float uLavado;[\s\S]*void main\(\) \{/, `${nombre}: sin el uniforme del lavado`);
+    assert.equal(x.uniforms.uLavado?.value, 0, `${nombre}: con foco el mueble se lava`);
   }
   // El piso, sobre el Lambert de la baldosa.
   const p = { fragmentShader: ShaderLib.lambert.fragmentShader, uniforms: {} };
@@ -4434,6 +4472,32 @@ prueba("el copete de una punta libre en venta lleva la chapa de la tienda, sin t
   assert.equal(conPrueba.material[1], marca, "con prueba el copete no lleva la marca");
 });
 
+prueba("el vuelo del copete queda adentro del parante de un robatope arrimado, no en su cara", () => {
+  // La línea oscura que colgaba del remate del robatope en «De cerca» (la
+  // crítica de la demo, ronda 3) era el costado del copete de la punta vecina
+  // en el MISMO plano que la cara interior del parante: depth-fighting. Se
+  // mide sobre la punta ARMADA: lo más afuera de sus mallas, contra la cara
+  // interior del parante de un robatope pegado a su costado.
+  const w = 0.9;
+  let afuera = -Infinity, copete = -Infinity;
+  for (const m of mallasDe(MV.PuntaReal({ w, d: 0.4, h: 1.8 }))) {
+    if (!m.geometria?.isBufferGeometry) continue;
+    m.geometria.computeBoundingBox();
+    const caja = m.geometria.boundingBox.clone().applyMatrix4(m.matriz);
+    afuera = Math.max(afuera, caja.max.x);
+    if (caja.min.y >= M.techoDeCara(1.8) - 1e-6) copete = Math.max(copete, caja.max.x);
+  }
+  const caraInterior = w / 2 + M.ROBATOPE.parante;
+  assert.ok(afuera <= caraInterior - 0.003,
+    `el costado de la punta llega a ${afuera.toFixed(4)} m y la cara interior del parante está en ${caraInterior.toFixed(4)}: pelean por el depth`);
+  // Y el copete sigue teniendo vuelo (lo que lo despega del cuerpo).
+  assert.ok(copete >= w / 2 + 0.03, `el copete perdió su vuelo (${copete.toFixed(4)})`);
+  // El robatope dibuja sus parantes con ESA medida.
+  const robatope = sinComentarios(cuerpoDe("function RobatopeMesh(", "function RistraMesh("));
+  assert.match(robatope, /position=\{\[side \* \(w \/ 2 - ROBATOPE\.parante \/ 2\), bodyH \/ 2, 0\]\}[^>]*>\s*<boxGeometry args=\{\[ROBATOPE\.parante, bodyH, d\]\} \/>/,
+    "los parantes del robatope no usan ROBATOPE.parante");
+});
+
 /** Las mallas de un árbol, cada una con su matriz en coordenadas del mueble
  *  (la composición de `position` y `rotation` de cada grupo hasta ella). */
 function mallasDe(el, padre = new THREE_.Matrix4(), fuera = []) {
@@ -4710,10 +4774,34 @@ prueba("un vecino se atenúa por uniformes; con foco nada cambia; la nevera veci
   assert.ok(Math.abs(u.uLuzVenta.value - u.base.luz * LV.ATENUACION.luz) < 1e-12);
   assert.ok(Math.abs(u.uBrillo.value - u.base.brillo * LV.ATENUACION.brillo) < 1e-12);
   assert.equal(u.uExposicion.value, LV.ATENUACION.exposicion, "el vecino conserva toda su luz (la de la escena pesa)");
+  // El lavado hacia el gris medio: sin él el panel de una góndola libre quedaba
+  // casi negro con los entrepaños claros de canto vivo («un esqueleto»).
+  assert.equal(u.uLavado.value, LV.LAVADO_DEL_VECINO, "el vecino no se lava");
   LV.atenuarUniformes([u], true);
   assert.equal(u.uLuzVenta.value, u.base.luz);
   assert.equal(u.uBrillo.value, u.base.brillo);
   assert.equal(u.uExposicion.value, 1);
+  assert.equal(u.uLavado.value, 0, "con foco el mueble sigue lavado");
+  // Proporcional a lo que se apaga: la nevera vecina (exposición 1) no se
+  // lava; la chapa del copete libre (0,7), a medias.
+  assert.equal(LV.lavadoPara(1), 0);
+  assert.equal(LV.lavadoPara(LV.EXPOSICION_DEL_VECINO), LV.LAVADO_DEL_VECINO);
+  assert.ok(LV.lavadoPara(0.7) > 0 && LV.lavadoPara(0.7) < LV.LAVADO_DEL_VECINO);
+  // La cuenta del tono (ACES de three, como el lienzo): el panel oscuro de una
+  // góndola libre (50 en pantalla) y su entrepaño claro (140), lavados, quedan
+  // a ≥ 70 y a ≤ 60 niveles de salto, el criterio de la crítica.
+  const tono = (l) => {
+    const v = l / 0.6, x = 0.59719 * v + 0.35458 * v + 0.04823 * v;
+    const r = (x * (x + 0.0245786) - 0.000090537) / (x * (0.983729 * x + 0.4329510) + 0.238081);
+    const o = Math.min(1, Math.max(0, (1.60475 - 0.53108 - 0.07367) * r));
+    return (o <= 0.0031308 ? 12.92 * o : 1.055 * o ** (1 / 2.4) - 0.055) * 255;
+  };
+  const deTono = (s) => { let a = 0, b = 20; for (let i = 0; i < 60; i++) { const m = (a + b) / 2; tono(m) < s ? (a = m) : (b = m); } return a; };
+  const lavar = (s) => tono(deTono(s) * (1 - LV.LAVADO_DEL_VECINO) + LV.GRIS_DEL_LAVADO * LV.LAVADO_DEL_VECINO);
+  assert.ok(lavar(50) >= 70, `el panel de la góndola libre queda en ${lavar(50).toFixed(0)}`);
+  assert.ok(lavar(140) - lavar(50) <= 61, `el salto panel→entrepaño queda en ${(lavar(140) - lavar(50)).toFixed(0)}`);
+  // Un blanco apagado casi no cambia: el vecino sigue igual de oscuro.
+  assert.ok(Math.abs(lavar(122) - 122) <= 6, `el robatope apagado se aclaró a ${lavar(122).toFixed(0)}`);
   // Medido en la demo: con la luz del cuarto sola (× 0,55) el robatope libre
   // quedaba un 15 % MÁS claro que la punta vendida; con 0,62 de exposición, a
   // la par. Por debajo de 0,3 el vecino es un hueco apagado en la tienda.
@@ -5416,6 +5504,46 @@ prueba("la silueta usa la MISMA regla del cuadro que la toma: media persona no s
 });
 
 
+
+prueba("la persona tiene huella de sombra y es más oscura al pie (ejecutado)", () => {
+  // Era lo único «de plano de arquitecto» que quedaba: un recorte gris que
+  // flotaba sobre el baldosín al lado de muebles con sombra al pie (la crítica
+  // de la demo, ronda 3). Los dos ayudantes del editor, compilados y CORRIDOS.
+  const desde = editor.indexOf("export const DEGRADE_DE_SILUETA");
+  const hasta = editor.indexOf("/**\n * La persona de 1,70 m en la pantalla de venta");
+  assert.ok(desde > 0 && hasta > desde, "no están los ayudantes de la persona");
+  const fuente = esbuildTransform(editor.slice(desde, hasta).replace(/export /g, ""));
+  const H = new Function("THREE", "ALTURA_PERSONA",
+    `${fuente}\nreturn { planoDeSilueta, sombraDePersona, DEGRADE_DE_SILUETA, HUELLA_DE_PERSONA };`)(THREE_, 1.7);
+  // El degradé: el gris de siempre arriba y entre 8 y 10 % más oscuro al pie.
+  const g = H.planoDeSilueta();
+  const pos = g.getAttribute("position"), col = g.getAttribute("color");
+  assert.ok(col, "la silueta no lleva color de vértice");
+  for (let i = 0; i < pos.count; i++) {
+    const arriba = pos.getY(i) > 0;
+    const k = col.getX(i);
+    if (arriba) assert.ok(Math.abs(k - 1) < 1e-6, "la cabeza dejó de tener el gris de siempre");
+    else assert.ok(k >= 0.9 - 1e-6 && k <= 0.92 + 1e-6, `el pie va a ${k}`);
+  }
+  assert.ok(H.DEGRADE_DE_SILUETA >= 0.08 && H.DEGRADE_DE_SILUETA <= 0.1);
+  // La huella: un óvalo acostado de 45 × 25 cm, al 35 %, translúcido y sin
+  // escribir profundidad, con el borde que se funde (alfa 0 en la esquina).
+  const h = H.sombraDePersona();
+  h.geometria.computeBoundingBox();
+  const t = h.geometria.boundingBox.getSize(new THREE_.Vector3());
+  assert.ok(Math.abs(t.x - 0.45) < 1e-6 && Math.abs(t.z - 0.25) < 1e-6 && t.y < 1e-6, "la huella no es un óvalo de 45 × 25 en el piso");
+  assert.equal(h.material.opacity, 0.35);
+  assert.ok(h.material.transparent && !h.material.depthWrite, "la huella escribe profundidad o es opaca");
+  const d = h.material.map.image.data, N = h.material.map.image.width;
+  assert.equal(d[3], 0, "la huella tiene borde duro");
+  const centro = ((N / 2) * N + N / 2) * 4 + 3;
+  assert.ok(d[centro] > 240, "la huella no es oscura en el centro");
+  // Y en la escena: la figura usa ese plano con color de vértice, y la huella
+  // es HIJA de la figura (gira y se esconde con ella).
+  const silueta = cuerpoDe("function SiluetaDeEscala(", "const CHROME = ");
+  assert.match(silueta, /<mesh ref=\{figura\} position=\{\[0, ALTURA_PERSONA \/ 2, 0\]\} geometry=\{planoDeSilueta\(\)\}>[\s\S]*?vertexColors[\s\S]*?<mesh position=\{\[0, -ALTURA_PERSONA \/ 2 \+ 0\.003, 0\]\}[^>]*geometry=\{sombraDePersona\(\)\.geometria\} material=\{sombraDePersona\(\)\.material\} \/>\s*<\/mesh>/,
+    "la huella no es hija de la figura (o la figura no lleva su degradé)");
+});
 
 prueba("el tablero no baja el editor 3D hasta entrar al modo «store»", () => {
   // Importado de una, cada carga del tablero (KPIs, Supervisar, Vender)
