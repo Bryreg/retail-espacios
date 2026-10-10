@@ -897,4 +897,198 @@ prueba("la franja de la etiqueta cae en las filas rosas de la botella; sin líqu
   assert.ok(Math.abs(m.desde - 0.34) < 0.005 && Math.abs(m.hasta - 0.66) < 0.005);
 });
 
+// ── El worker del recorte (tanda 3, paso 17) ────────────────────────────────
+
+console.log("\narte · el recorte fuera del hilo principal");
+
+/** Una foto «de estudio»: el producto sintético sobre fondo blanco. */
+const sobreBlanco = (img, m = 12) => {
+  const W = img.ancho + 2 * m, H = img.alto + 2 * m;
+  return { ancho: W, alto: H, rgba: foto(W, H, (x, y) => {
+    const ix = x - m, iy = y - m;
+    if (ix < 0 || iy < 0 || ix >= img.ancho || iy >= img.alto) return BLANCO;
+    const i = (iy * img.ancho + ix) * 4, a = img.rgba[i + 3] / 255;
+    return [0, 1, 2].map((k) => Math.round(img.rgba[i + k] * a + 255 * (1 - a)));
+  }) };
+};
+const caja_ = { ancho: 90, alto: 130, rgba: foto(90, 130, (x, y) => (y < 30 ? [200, 20, 40] : (x + y) % 6 ? [240, 220, 200] : [30, 60, 160])) };
+const bolsa_ = { ancho: 100, alto: 150, rgba: foto(100, 150, (x, y) => (y < 12 ? [230, 230, 230] : x % 9 < 3 ? [200, 30, 30] : [250, 250, 245])) };
+/** Las cinco formas, con la ficha que la decide. */
+const CASOS_DE_FORMA = [
+  ["caja", sobreBlanco(caja_), { arte: { nombre: "Cereal 400 g", categoria: "Cereales" }, ficha: { forma: "caja", alto_mm: 270 } }],
+  ["vaso", sobreBlanco(vaso()), { arte: { nombre: "Yogur fresa 150 g", categoria: "Lácteos" }, ficha: { forma: "vaso", alto_mm: 90 } }],
+  ["botella", sobreBlanco(botella()), { arte: { nombre: "Manzana 2 L", categoria: "Gaseosas" }, ficha: { forma: "botella", alto_mm: 330 } }],
+  ["bolsa", sobreBlanco(bolsa_), { arte: { nombre: "Arroz 1 kg", categoria: "Granos" }, ficha: { forma: "bolsa", alto_mm: 230 } }],
+  ["otro", sobreBlanco(caja_), { arte: { nombre: "Un exhibidor", categoria: "" }, ficha: { forma: "otro", alto_mm: 300 } }],
+];
+const mismosBytes = (a, b, que) => {
+  assert.ok(a && b, `${que}: falta una de las dos`);
+  assert.equal(a.ancho, b.ancho, `${que}: otro ancho`);
+  assert.equal(a.alto, b.alto, `${que}: otro alto`);
+  assert.ok(Buffer.compare(Buffer.from(a.rgba.buffer, a.rgba.byteOffset, a.rgba.byteLength),
+    Buffer.from(b.rgba.buffer, b.rgba.byteOffset, b.rgba.byteLength)) === 0, `${que}: los bytes no son los mismos`);
+};
+/** Lo que arma el hilo principal, receta por receta, escrito a mano (no con
+ *  RECETAS): si el worker usara otra cuenta, acá se ve. */
+function aMano(recorte, envase, transparente) {
+  const borde = T.erosionarYSangrar(recorte, 2, 8);
+  if (envase === "caja") {
+    const rc = T.rectificarCaja(borde);
+    const caja = T.oscurecerCantos(T.aplanar(rc ?? borde));
+    return { borde, caja, enderezada: !!rc, costado: T.colorDeCostado(caja) };
+  }
+  if (envase === "revolucion" && transparente) {
+    const llena = T.llenarBotella(T.erosionarYSangrar(recorte, 4, 10));
+    const L = llena.liquido ? [1, 3, 5].map((i) => parseInt(llena.liquido.slice(i, i + 2), 16)) : null;
+    return { llena, botella: T.aplanar(llena), espaldaLlena: T.espaldaDeEtiqueta(llena, L ? T.filasDeEtiqueta(llena, L) : undefined),
+      franja: T.franjaDeEtiqueta(recorte, T.liquidoDe(recorte)) };
+  }
+  if (envase === "revolucion") return { borde, opaca: T.aplanar(borde), tapa: T.tapaDeFoto(borde), espalda: T.espaldaDeEtiqueta(borde) };
+  if (envase === "almohada") return { borde, bolsa: T.tenirCantos(borde, recorte.colorDominante) };
+  return { borde };
+}
+const IMAGENES = ["borde", "caja", "opaca", "espalda", "bolsa", "llena", "botella", "espaldaLlena"];
+
+prueba("el worker y el hilo principal: el mismo recorte y las mismas variantes, byte a byte", () => {
+  const vistos = new Set();
+  for (const [forma, img, pista] of CASOS_DE_FORMA) {
+    const f = R.prepararFoto(img.rgba, img.ancho, img.alto, "auto", pista);
+    mismosBytes(f.recorte, R.recortarFondo(img.rgba, img.ancho, img.alto, "auto"), `${forma}: recorte`);
+    const e = P.empaqueDeArte(pista.arte, pista.ficha, f.recorte);
+    vistos.add(`${e.envase}${e.transparente ? "-llena" : ""}`);
+    const ref = aMano(f.recorte, e.envase, e.transparente);
+    // Exactamente las variantes que pide la forma, ni una más.
+    assert.deepEqual(Object.keys(f.variantes).sort(), Object.keys(ref).sort(), `${forma}: otras variantes que las que pide el envase`);
+    for (const k of IMAGENES) if (ref[k]) mismosBytes(f.variantes[k], ref[k], `${forma}: ${k}`);
+    for (const k of ["enderezada", "costado", "tapa", "franja"]) if (k in ref) assert.deepEqual(f.variantes[k], ref[k], `${forma}: ${k}`);
+    if (ref.llena) assert.equal(f.variantes.llena.liquido, ref.llena.liquido);
+    // Sin pista (la vista previa del alta), sólo el recorte.
+    assert.deepEqual(R.prepararFoto(img.rgba, img.ancho, img.alto, "auto", null).variantes, {});
+  }
+  assert.deepEqual([...vistos].sort(), ["almohada", "caja", "recorte", "revolucion", "revolucion-llena"], "la prueba no cubre todas las formas");
+});
+
+const troceado = await (async () => {
+  const out = [];
+  for (const [forma, img, pista] of CASOS_DE_FORMA) {
+    let cedidas = 0;
+    const t = await R.prepararFotoPorEtapas(img.rgba, img.ancho, img.alto, "auto", pista, async () => { cedidas++; });
+    out.push({ forma, img, pista, t, cedidas });
+  }
+  return out;
+})();
+prueba("el camino troceado: mismas variantes, y una cesión por etapa", () => {
+  for (const { forma, img, pista, t, cedidas } of troceado) {
+    const f = R.prepararFoto(img.rgba, img.ancho, img.alto, "auto", pista);
+    mismosBytes(t.recorte, f.recorte, `${forma}: recorte troceado`);
+    assert.deepEqual(Object.keys(t.variantes).sort(), Object.keys(f.variantes).sort(), forma);
+    for (const k of IMAGENES) if (f.variantes[k]) mismosBytes(t.variantes[k], f.variantes[k], `${forma}: ${k} troceado`);
+    const e = P.empaqueDeArte(pista.arte, pista.ficha, f.recorte);
+    const pasos = T.pasosDeVariantes(f.recorte, { envase: e.envase, transparente: e.transparente }, {}).length;
+    assert.equal(cedidas, pasos, `${forma}: cedió ${cedidas} veces en ${pasos} etapas`);
+    assert.ok(pasos >= 1);
+  }
+});
+
+prueba("los buffers que viajan del worker: todos, y ninguno dos veces", () => {
+  for (const [forma, img, pista] of CASOS_DE_FORMA) {
+    const f = R.prepararFoto(img.rgba, img.ancho, img.alto, "auto", pista);
+    const b = R.buffersDe(f);
+    assert.equal(new Set(b).size, b.length, `${forma}: un buffer repetido en la transferencia (DataCloneError)`);
+    const deberian = [f.recorte, ...IMAGENES.map((k) => f.variantes[k]).filter(Boolean)].map((x) => x.rgba.buffer);
+    for (const x of deberian) assert.ok(b.includes(x), `${forma}: un buffer se copia en vez de transferirse`);
+  }
+});
+
+// El cliente del worker (`prepararFoto.ts`), con un Worker falso: se crea en
+// el PRIMER uso, uno solo, y si falla se cae al camino troceado.
+const { mkdtempSync, writeFileSync: escribir } = await import("node:fs");
+const { tmpdir } = await import("node:os");
+const { pathToFileURL } = await import("node:url");
+const compiladoPF = await build({ entryPoints: [join(muebles, "prepararFoto.ts")], bundle: true, write: false, format: "esm", platform: "neutral" });
+const cargarPF = async () => {
+  // A un archivo y no a un data: URL: el worker se resuelve contra
+  // import.meta.url, y contra un data: URL no hay ruta relativa.
+  const f = join(mkdtempSync(join(tmpdir(), "pf-")), "prepararFoto.mjs");
+  escribir(f, compiladoPF.outputFiles[0].text);
+  return import(pathToFileURL(f).href);
+};
+const [, imgVaso, pistaVaso] = CASOS_DE_FORMA[1];
+const esperada = R.prepararFoto(imgVaso.rgba, imgVaso.ancho, imgVaso.alto, "auto", pistaVaso);
+const clienteDelWorker = await (async () => {
+  const r = { creados: 0, mensajes: [], opciones: [] };
+  const real = { W: globalThis.Worker, O: globalThis.OffscreenCanvas, cib: globalThis.createImageBitmap, doc: globalThis.document };
+  try {
+    let responder = "ok";
+    globalThis.OffscreenCanvas = class {};
+    globalThis.Worker = class {
+      constructor(url, opciones) { r.creados++; r.url = String(url); r.opciones.push(opciones); }
+      postMessage(m) {
+        r.mensajes.push(m);
+        queueMicrotask(() => this.onmessage({ data: responder === "ok" ? { id: m.id, ok: true, foto: esperada } : { id: m.id, ok: false, error: "x" } }));
+      }
+      terminate() {}
+    };
+    const PF = await cargarPF();
+    r.alImportar = r.creados;
+    const blob = { tipo: "blob" };
+    r.primera = await PF.prepararFotoDe(blob, "auto", pistaVaso);
+    r.segunda = await PF.prepararFotoDe(blob, "quitar", null, 512);
+    // Un error del worker cae al camino troceado (con el decodificador del
+    // hilo principal, falso acá), y da lo mismo que el worker.
+    responder = "error";
+    globalThis.createImageBitmap = async () => ({ width: imgVaso.ancho, height: imgVaso.alto, close() {} });
+    globalThis.document = { createElement: () => ({ getContext: () => ({ drawImage() {}, getImageData: () => ({ data: imgVaso.rgba }) }) }) };
+    r.caida = await PF.prepararFotoDe(blob, "auto", pistaVaso);
+    // Sin Worker (un navegador que no puede): directo al troceado, sin crear nada.
+    globalThis.Worker = undefined;
+    const PF2 = await cargarPF();
+    const antes = r.creados;
+    r.sinWorker = await PF2.prepararFotoDe(blob, "auto", pistaVaso);
+    r.creadosSinWorker = r.creados - antes;
+  } finally {
+    globalThis.Worker = real.W; globalThis.OffscreenCanvas = real.O;
+    globalThis.createImageBitmap = real.cib; globalThis.document = real.doc;
+  }
+  return r;
+})();
+
+prueba("el worker se crea en el primer uso, uno solo, de módulo; si falla, el camino troceado da lo mismo", () => {
+  const r = clienteDelWorker;
+  assert.equal(r.alImportar, 0, "el worker se crea al importar: rompe las pruebas en node");
+  assert.equal(r.creados, 1, `se crearon ${r.creados} workers`);
+  assert.equal(r.opciones[0]?.type, "module", "el worker no es de módulo");
+  assert.match(r.url, /recorte\.worker\.ts$/);
+  assert.equal(r.primera, esperada, "la respuesta del worker no es la que se usa");
+  assert.deepEqual({ ...r.mensajes[0], id: 0 }, { id: 0, blob: { tipo: "blob" }, modo: "auto", lado: 1024, pista: pistaVaso },
+    "al worker no le llega el Blob con el modo, el lado y la pista");
+  assert.equal(r.mensajes[1].lado, 512, "la vista previa del alta no pide 512 px");
+  assert.equal(r.mensajes[1].pista, null);
+  // Caído al troceado: los mismos bytes que el worker.
+  mismosBytes(r.caida.recorte, esperada.recorte, "recorte del camino troceado");
+  for (const k of IMAGENES) if (esperada.variantes[k]) mismosBytes(r.caida.variantes[k], esperada.variantes[k], `${k} del camino troceado`);
+  assert.equal(r.creadosSinWorker, 0);
+  mismosBytes(r.sinWorker.recorte, esperada.recorte, "recorte sin Worker");
+});
+
+prueba("el worker: Blob adentro, buffers transferidos afuera, y `self` sin la lib WebWorker", () => {
+  const w = readFileSync(join(muebles, "recorte.worker.ts"), "utf8").replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+  assert.match(w, /const foto = prepararFoto\(g\.getImageData\(0, 0, w, h\)\.data, w, h, modo, pista\);/, "el worker no corre la cuenta pura");
+  assert.match(w, /ambito\.postMessage\(\{ id, ok: true, foto \}, buffersDe\(foto\)\);/, "el worker copia los buffers en vez de transferirlos");
+  assert.match(w, /new OffscreenCanvas\(w, h\)/);
+  assert.match(w, /getContext\("2d", \{ willReadFrequently: true \}\)/);
+  assert.match(w, /await createImageBitmap\(blob\)/);
+  assert.ok(!/reference lib="webworker"/.test(w), "la lib WebWorker choca con la del DOM");
+  assert.match(w, /const ambito = self as unknown as AmbitoDelWorker;/);
+  // Ni etiqueta.ts ni prepararFoto.ts crean el worker al importarse.
+  const pf = readFileSync(join(muebles, "prepararFoto.ts"), "utf8");
+  const i = pf.indexOf("new Worker(");
+  assert.ok(i > pf.indexOf("function elWorker("), "el worker se crea fuera de `elWorker`");
+  assert.ok(!/new Worker\(/.test(readFileSync(join(muebles, "etiqueta.ts"), "utf8")), "etiqueta.ts crea su propio worker");
+  // La vista previa del alta usa el MISMO worker.
+  const ficha_ = readFileSync(join(raiz, "src", "components", "StoreEditor3D", "EditorDeFicha.tsx"), "utf8");
+  assert.match(ficha_, /return \(await prepararFotoDe\(blob, modo, null, lado\)\)\.recorte;/, "el alta recorta en el hilo principal");
+  assert.ok(!/recortarFondo\(/.test(ficha_), "el alta todavía llama a recortarFondo directo");
+});
+
 console.log(`\n${hechas} pruebas del arte del proveedor` + (process.exitCode ? " · CON FALLAS" : " · todo en orden") + "\n");

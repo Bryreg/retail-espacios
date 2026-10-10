@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { recortarFondo } from "./muebles/recorte";
 import type { Recorte } from "./muebles/recorte";
+import { prepararFotoDe } from "./muebles/prepararFoto";
 import { empaqueDeArte } from "./muebles/producto";
 import type { FichaDeArte, FormaDeFicha } from "./muebles/producto";
 
@@ -79,18 +79,18 @@ export function pareceEnPerspectiva(r: Pick<Recorte, "estado" | "relleno" | "sim
   return r.estado === "fondo-quitado" && (r.relleno < 0.94 || r.simetria > 0.05);
 }
 
-/** Baja una imagen a ≤ `lado` px y la recorta. Una vez por imagen y modo. */
+/** Baja una imagen a ≤ `lado` px y la recorta. Una vez por imagen y modo.
+ *  Con el MISMO worker que la etiqueta del 3D (`prepararFotoDe`): el alta de
+ *  un arte se hace con el proveedor mirando, y el recorte en el hilo
+ *  principal trababa la pantalla cada vez que se cambiaba «Quitar / Dejar». */
 async function recortarImagen(imagen: Blob | string, modo: FichaDeArte["fondo_foto"], lado = 512) {
-  const blob = typeof imagen === "string" ? await (await fetch(imagen)).blob() : imagen;
-  const bmp = await createImageBitmap(blob);
-  const k = Math.min(1, lado / Math.max(bmp.width, bmp.height));
-  const w = Math.max(2, Math.round(bmp.width * k)), h = Math.max(2, Math.round(bmp.height * k));
-  const c = document.createElement("canvas");
-  c.width = w; c.height = h;
-  const g = c.getContext("2d", { willReadFrequently: true })!;
-  g.drawImage(bmp, 0, 0, w, h);
-  bmp.close();
-  return recortarFondo(g.getImageData(0, 0, w, h).data, w, h, modo);
+  let blob: Blob;
+  if (typeof imagen === "string") {
+    const res = await fetch(imagen);
+    if (!res.ok) throw new Error(`la foto respondió ${res.status}`);
+    blob = await res.blob();
+  } else blob = imagen;
+  return (await prepararFotoDe(blob, modo, null, lado)).recorte;
 }
 
 export default function EditorDeFicha({

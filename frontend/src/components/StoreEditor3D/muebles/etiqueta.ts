@@ -30,9 +30,8 @@
 import { useState } from "react";
 import * as THREE from "three";
 import { useThree } from "@react-three/fiber";
-import { prepararFotoPorEtapas } from "./recorte";
 import type { FotoPreparada, ModoDeFondo, PistaDeEnvase, Recorte } from "./recorte";
-import type { PedidoAlWorker, RespuestaDelWorker } from "./recorte.worker";
+import { ceder, prepararFotoDe } from "./prepararFoto";
 import { RECETAS } from "./texturas";
 import type { BotellaLlena, FranjaDeEtiqueta } from "./texturas";
 import type { Imagen, TapaDeFoto } from "./texturas";
@@ -184,6 +183,9 @@ export function olvidarEtiquetas(): void {
   cache.clear();
   fallaron.clear();
   enUso = new Set();
+  // El lienzo se va con el editor: nada se precalienta en un contexto
+  // perdido, y el próximo lienzo vuelve a compilar lo suyo.
+  olvidarRenderer();
 }
 
 /** Un lienzo con los píxeles de una imagen. */
@@ -254,89 +256,6 @@ function textura(lienzo: HTMLCanvasElement, e: Entrada): THREE.CanvasTexture {
   t.minFilter = THREE.LinearMipmapLinearFilter;
   e.texturas.push(t);
   return t;
-}
-
-// ─── El recorte, fuera del hilo principal ─────────────────────────────────────
-
-/** El worker del recorte (`recorte.worker.ts`): `undefined` mientras nadie lo
- *  pidió, `null` si este navegador no puede (sin Worker u OffscreenCanvas, o
- *  el módulo no arrancó). Se crea en el PRIMER USO y no al importar: las
- *  pruebas importan este archivo en node, donde un `new Worker` al cargar las
- *  rompía. */
-let worker: Worker | null | undefined;
-let siguientePedido = 1;
-const pedidosAlWorker = new Map<number, (f: FotoPreparada | null) => void>();
-
-function elWorker(): Worker | null {
-  if (worker !== undefined) return worker;
-  try {
-    if (typeof Worker === "undefined" || typeof OffscreenCanvas === "undefined") return (worker = null);
-    const w = new Worker(new URL("./recorte.worker.ts", import.meta.url), { type: "module" });
-    w.onmessage = (e: MessageEvent<RespuestaDelWorker>) => {
-      const responder = pedidosAlWorker.get(e.data.id);
-      pedidosAlWorker.delete(e.data.id);
-      // Un error del worker (una foto que no decodifica ahí, un Safari sin
-      // contexto 2D en OffscreenCanvas) no es un error de la foto: cae al
-      // camino troceado, que decide.
-      responder?.(e.data.ok ? e.data.foto : null);
-    };
-    w.onerror = () => {
-      // El módulo no arrancó: lo pendiente y lo que venga va por el camino
-      // troceado.
-      worker = null;
-      for (const responder of pedidosAlWorker.values()) responder(null);
-      pedidosAlWorker.clear();
-      w.terminate();
-    };
-    return (worker = w);
-  } catch {
-    return (worker = null);
-  }
-}
-
-/** Recorte y variantes en el worker, o `null` si no hay worker o falló. */
-function prepararEnElWorker(
-  blob: Blob, modo: ModoDeFondo, lado: number, pista: PistaDeEnvase | null,
-): Promise<FotoPreparada | null> {
-  const w = elWorker();
-  if (!w) return Promise.resolve(null);
-  const id = siguientePedido++;
-  return new Promise((ok) => {
-    pedidosAlWorker.set(id, ok);
-    const pedido: PedidoAlWorker = { id, blob, modo, lado, pista };
-    w.postMessage(pedido);
-  });
-}
-
-/** Cede el hilo principal entre etapas del camino troceado: `scheduler.yield`
- *  donde existe y, si no (Safari, Firefox), un `setTimeout` de 0. */
-export function ceder(): Promise<void> {
-  const s = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
-  return s?.yield ? s.yield() : new Promise((ok) => setTimeout(ok, 0));
-}
-
-/**
- * Recorta una foto (Blob) reducida a ≤ `lado` px: en el worker si se puede;
- * si no, en el hilo principal partido en etapas (`prepararFotoPorEtapas`).
- * Lo usan la etiqueta (1024 px, con las variantes de su envase) y la vista
- * previa del alta (`EditorDeFicha`, 512 px, sólo el recorte).
- */
-export async function prepararFotoDe(
-  blob: Blob, modo: ModoDeFondo, pista: PistaDeEnvase | null, lado = 1024,
-): Promise<FotoPreparada> {
-  const enElWorker = await prepararEnElWorker(blob, modo, lado, pista);
-  if (enElWorker) return enElWorker;
-  const bmp = await createImageBitmap(blob);
-  const k = Math.min(1, lado / Math.max(bmp.width, bmp.height));
-  const w = Math.max(2, Math.round(bmp.width * k)), h = Math.max(2, Math.round(bmp.height * k));
-  const c = document.createElement("canvas");
-  c.width = w; c.height = h;
-  const g = c.getContext("2d", { willReadFrequently: true })!;
-  g.drawImage(bmp, 0, 0, w, h);
-  bmp.close();
-  const datos = g.getImageData(0, 0, w, h).data;
-  await ceder();
-  return prepararFotoPorEtapas(datos, w, h, modo, pista, ceder);
 }
 
 async function cargar(fuente: string | Blob, modo: ModoDeFondo, pista: PistaDeEnvase | null): Promise<FotoPreparada> {
@@ -443,7 +362,10 @@ export function etiquetaDeArte(
       entradaDe.set(e.etiqueta, e);
       e.estado = "lista";
       fallaron.delete(clave);
-      precalentar(e);
+      // Antes de avisarle a la escena: sus texturas en la GPU (y la GPU
+      // terminada). Si no, el cuadro que la dibuja por primera vez espera la
+      // subida entera, y ese cuadro es el del clic.
+      return calentar(e);
     })
     .catch(() => {
       e.estado = "error";
@@ -525,6 +447,16 @@ export function registrarRenderer(gl: THREE.WebGLRenderer, escena: THREE.Scene, 
   enReposo(() => { if (lienzoGl) compilarProgramas(lienzoGl); });
 }
 
+/** Suelta el lienzo registrado (lo llama `olvidarEtiquetas`, al desmontar el
+ *  editor): los programas y las texturas son de ESE contexto. */
+function olvidarRenderer(): void {
+  lienzoGl = null;
+  deSesion = false;
+  compilados.clear();
+  colaDePrecalentado = [];
+  precalentando = false;
+}
+
 /** Corre `f` en un rato libre: `requestIdleCallback` donde existe y, si no
  *  (Safari no lo tiene), un `setTimeout` de reserva. */
 export function enReposo(f: () => void): void {
@@ -547,39 +479,84 @@ function entornoDe(gl: THREE.WebGLRenderer): THREE.Texture {
   return t;
 }
 
-/** Los materiales del envase de una etiqueta lista, con sus texturas ya en la
- *  GPU, en un rato libre. Sin pista (no se sabe el arte) no se adivina. */
-function precalentar(e: Entrada): void {
-  if (!lienzoGl || !e.pista || !e.etiqueta) return;
-  const et = e.etiqueta, pista = e.pista;
-  enReposo(() => {
-    const l = lienzoGl;
-    if (!l || cache.get(et.clave) !== e || e.estado !== "lista") return;
-    const emp = empaqueDeArte(pista.arte, pista.ficha, et.recorte);
+/**
+ * Los materiales del envase de una etiqueta recién lista, con sus texturas
+ * subidas a la GPU, y una promesa que se cumple cuando la GPU terminó de
+ * subirlas (o a los 2 s). Sin lienzo o sin pista (no se sabe el arte) no se
+ * adivina: se cumple enseguida.
+ *
+ * Cada parte va en su propia tarea —armar los materiales, subir las texturas,
+ * esperar la GPU— y recién después se le avisa a la escena: medido, después
+ * del recorte lo que quedaba en el clic era la espera de la GPU (las
+ * texturas de 1024 px con sus mipmaps, en swiftshader), escondida en la
+ * primera consulta de un programa.
+ */
+async function calentar(e: Entrada): Promise<void> {
+  const l = lienzoGl;
+  if (!l || !e.pista || !e.etiqueta) return;
+  try {
+    const et = e.etiqueta;
+    const emp = empaqueDeArte(e.pista.arte, e.pista.ficha, et.recorte);
     const materiales = materialDeEtiqueta(et, emp.envase, entornoDe(l.gl), { transparente: emp.transparente });
+    await ceder();
     for (const m of materiales) for (const t of [m.map, m.emissiveMap]) if (t) l.gl.initTexture(t);
     compilarProgramas(l, materiales);
+    await esperarGpu(l.gl);
+  } catch {
+    /* lo que no se adelantó se hace al dibujar, como antes */
+  }
+}
+
+/** Se cumple cuando la GPU terminó lo que tiene encolado: un `fenceSync`
+ *  mirado de a 16 ms sin bloquear (`getSyncParameter` en Chrome contesta lo
+ *  último que sabe), con un tope. Sin WebGL 2, una tarea. */
+function esperarGpu(gl: THREE.WebGLRenderer, tope = 2000): Promise<void> {
+  const ctx = gl.getContext();
+  if (typeof WebGL2RenderingContext === "undefined" || !(ctx instanceof WebGL2RenderingContext)) return ceder();
+  const valla = ctx.fenceSync(ctx.SYNC_GPU_COMMANDS_COMPLETE, 0);
+  ctx.flush();
+  const t0 = performance.now();
+  return new Promise((ok) => {
+    const mirar = () => {
+      const lista = !valla || ctx.getSyncParameter(valla, ctx.SYNC_STATUS) === ctx.SIGNALED;
+      if (lista || performance.now() - t0 > tope) {
+        if (valla) ctx.deleteSync(valla);
+        ok();
+      } else setTimeout(mirar, 16);
+    };
+    setTimeout(mirar, 16);
   });
 }
 
-/** Los programas ya compilados (por la clave de three), para no pedir dos
- *  veces lo mismo. */
+/** Los materiales ya compilados, para no pedir dos veces lo mismo. */
 const compilados = new Set<string>();
 let deSesion = false;
 
 /**
- * Compila los programas de la etiqueta sin dibujar: una `InstancedMesh` con
- * color por instancia (como `ProductoDePrueba`) fuera de cuadro, compilada
- * contra las luces de la escena (`compileAsync(…, escena)`), que usa
- * `KHR_parallel_shader_compile` donde está. Sin materiales, una vez por
- * sesión: los del envase con una textura de 1 × 1 (el programa no depende de
- * la imagen) — la foto, el costado de la caja, la tapa y la bolsa —.
+ * Compila los programas de la etiqueta sin dibujar, en un rato libre.
+ *
+ * Medido con un perfil de CPU (ver «2026-10-10» en ESTADO.md): con el recorte
+ * en el worker, lo que quedaba en el cuadro del clic era la compilación —un
+ * `getProgramInfoLog` de 340-440 ms en swiftshader—, y no la del envase sino
+ * la del COPETE (el mismo material impreso, en una malla sin instancias:
+ * otro programa). Por eso, una vez por sesión, los dos: el envase en una
+ * `InstancedMesh` con color por instancia (como `ProductoDePrueba`) con las
+ * cuatro variantes (la foto, el costado de la caja, la tapa y la bolsa) y el
+ * impreso del copete y el cabezote en una malla común, con una textura de
+ * 1 × 1 (el programa no depende de la imagen). Fuera de cuadro y contra las
+ * luces de la escena (`compileAsync(…, escena)`, que usa
+ * `KHR_parallel_shader_compile` donde está). Y al terminar, en otro rato
+ * libre, la primera consulta de cada programa (`getUniforms`): en swiftshader
+ * el enlace no termina hasta que alguien pregunta, y esa espera también caía
+ * en el clic.
  */
 function compilarProgramas(
   l: NonNullable<typeof lienzoGl>, materiales?: THREE.Material[],
 ): void {
-  let lista = materiales;
-  if (!lista) {
+  type Pedido = { material: THREE.Material; instancias: boolean };
+  let lista: Pedido[];
+  if (materiales) lista = materiales.map((material) => ({ material, instancias: true }));
+  else {
     if (deSesion) return;
     deSesion = true;
     const px = new THREE.DataTexture(new Uint8Array([200, 200, 200, 255]), 1, 1);
@@ -594,25 +571,36 @@ function compilarProgramas(
         map: px, emissive: blanco, emissiveMap: px, alphaTest: 0.5, alphaToCoverage: true,
         side: THREE.DoubleSide, vertexColors: true,
       }),
-    ];
+    ].map((material) => ({ material, instancias: true }));
+    lista.push({ material: materialImpreso(px, entorno), instancias: false });
   }
-  const nuevos = lista.filter((m) => !compilados.has(m.uuid));
+  const nuevos = lista.filter((x) => !compilados.has(x.material.uuid));
   if (nuevos.length === 0) return;
   const geo = new THREE.BoxGeometry(0.01, 0.01, 0.01);
   geo.setAttribute("color", new THREE.Float32BufferAttribute(new Array(geo.attributes.position.count * 3).fill(1), 3));
   const escena = new THREE.Scene();
-  for (const m of nuevos) {
-    const malla = new THREE.InstancedMesh(geo, m, 1);
-    malla.setColorAt(0, new THREE.Color(1, 1, 1));
+  for (const { material, instancias } of nuevos) {
+    let malla: THREE.Mesh;
+    if (instancias) {
+      const im = new THREE.InstancedMesh(geo, material, 1);
+      im.setColorAt(0, new THREE.Color(1, 1, 1));
+      malla = im;
+    } else malla = new THREE.Mesh(geo, material);
     malla.position.set(0, -1000, 0);
     malla.frustumCulled = false;
     escena.add(malla);
-    compilados.add(m.uuid);
+    compilados.add(material.uuid);
   }
   l.gl.compileAsync(escena, l.camara, l.escena)
+    .then(() => enReposo(() => {
+      for (const { material } of nuevos) {
+        const programa = (l.gl.properties.get(material) as { currentProgram?: { getUniforms(): unknown } }).currentProgram;
+        try { programa?.getUniforms(); } catch { /* se consulta al dibujar, como antes */ }
+      }
+    }))
     .catch(() => { /* sin compilar: se compila al dibujar, como antes */ })
     .finally(() => {
-      for (const o of escena.children) (o as THREE.InstancedMesh).dispose();
+      for (const o of escena.children) if ((o as THREE.InstancedMesh).isInstancedMesh) (o as THREE.InstancedMesh).dispose();
       geo.dispose();
     });
 }

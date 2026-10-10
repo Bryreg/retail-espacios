@@ -3192,8 +3192,14 @@ prueba("la etiqueta opaca sale del rgba del recorte, no del lienzo", () => {
   const etiqueta = sinComentarios(leer(join(muebles, "etiqueta.ts")));
   // Se lee UNA vez: la foto recién dibujada, sin alfa todavía.
   // (La otra lectura es la tapa del vaso, un lienzo opaco recién dibujado.)
-  assert.deepEqual(etiqueta.match(/\w+\.getImageData\([^)]*\)/g), ["g.getImageData(0, 0, N, N)", "g.getImageData(0, 0, w, h)"],
+  // (Desde el paso 17 la foto se lee en `prepararFoto.ts` —o en el worker—,
+  // también una sola vez.)
+  assert.deepEqual(etiqueta.match(/\w+\.getImageData\([^)]*\)/g), ["g.getImageData(0, 0, N, N)"],
     "una textura relee un lienzo premultiplicado");
+  for (const f of ["prepararFoto.ts", "recorte.worker.ts"]) {
+    assert.deepEqual(sinComentarios(leer(join(muebles, f))).match(/\w+\.getImageData\([^)]*\)/g), ["g.getImageData(0, 0, w, h)"],
+      `${f} relee un lienzo premultiplicado`);
+  }
   assert.match(etiqueta, /function dibujarTapa\([\s\S]*?g\.fillRect\(0, 0, N, N\);[\s\S]*?g\.getImageData\(0, 0, N, N\)/,
     "la tapa relee un lienzo que no pintó entero");
   // Todas las variantes salen del rgba del recorte, con el borde encogido, y
@@ -3783,6 +3789,65 @@ prueba("una foto que no carga se dice, se reintenta y no queda en el caché para
   // falla no vacía las caras probadas.
   assert.match(editor, /onClick=\{\(\) => reintentarEtiqueta\(claveDeArte\(arte\.id, modo\)\)\}/, "el panel no ofrece «Reintentar»");
   assert.ok(!/\.catch\(\(\) => setCatalogo\(\[\]\)\)/.test(editor), "una recarga fallida del catálogo vacía todas las caras probadas");
+});
+
+// ── El precalentado (tanda 3, paso 17) ──────────────────────────────────────
+// Con el selector abierto y el proveedor fijado se piden de antemano las
+// etiquetas de sus artes: hasta PRECALENTAR_HASTA, de a una, sin pasar el
+// caché. Se corre con un fetch falso que falla enseguida (lo que importa es
+// cuántas se piden y cuándo).
+const precalentado = await (async () => {
+  const real = globalThis.fetch;
+  const r = { pedidos: [] };
+  try {
+    globalThis.fetch = async (url) => { r.pedidos.push(url); return { ok: false, status: 502, blob: async () => ({}) }; };
+    const artes = Array.from({ length: 9 }, (_, i) => ({ id: 900 + i, nombre: `Producto ${i}`, categoria: "Cereales", ficha: null }));
+    ET.precalentarEtiquetas(artes);
+    r.alPedir = r.pedidos.length;
+    // De a una: la siguiente sale en un rato libre (sin requestIdleCallback
+    // en node, el setTimeout de reserva).
+    for (let i = 0; i < 40 && r.pedidos.length < 9; i++) await new Promise((ok) => setTimeout(ok, 40));
+    r.total = r.pedidos.length;
+    ET.precalentarEtiquetas(artes);
+    await new Promise((ok) => setTimeout(ok, 120));
+    r.otraVez = r.pedidos.length - r.total;
+  } finally {
+    globalThis.fetch = real;
+  }
+  return r;
+})();
+
+prueba("el precalentado: hasta 6 etiquetas del proveedor, de a una, sin repetir", () => {
+  assert.equal(ET.PRECALENTAR_HASTA, 6);
+  assert.equal(precalentado.alPedir, 1, "el precalentado pide todas a la vez");
+  assert.equal(precalentado.total, 6, `se pidieron ${precalentado.total} etiquetas de 9`);
+  assert.equal(precalentado.otraVez, 0, "volver a abrir el selector vuelve a pedir lo que ya está");
+  const et = sinComentarios(leer(join(muebles, "etiqueta.ts")));
+  // Sin desalojar lo que está en uso, y nunca pasando el MAXIMO del caché.
+  assert.match(et, /if \(libres <= 0 \|\| cache\.size >= MAXIMO\) \{ colaDePrecalentado = \[\]; precalentando = false; return; \}/,
+    "el precalentado puede desalojar lo que se está mostrando");
+  // Las texturas se suben y el programa se compila en un rato libre.
+  assert.match(et, /for \(const m of materiales\) for \(const t of \[m\.map, m\.emissiveMap\]\) if \(t\) l\.gl\.initTexture\(t\);/,
+    "las texturas del envase se suben en el cuadro del clic");
+  // Y la escena se entera DESPUÉS de que la GPU las subió (`calentar`).
+  assert.match(et, /fallaron\.delete\(clave\);\s*return calentar\(e\);/, "la escena dibuja la etiqueta antes de subir sus texturas");
+  assert.match(et, /await esperarGpu\(l\.gl\);/);
+  assert.match(et, /ctx\.fenceSync\(ctx\.SYNC_GPU_COMMANDS_COMPLETE, 0\)/);
+  assert.match(et, /l\.gl\.compileAsync\(escena, l\.camara, l\.escena\)/, "el programa de la etiqueta se compila en el cuadro del clic");
+  assert.match(et, /const im = new THREE\.InstancedMesh\(geo, material, 1\);\s*im\.setColorAt\(0,/,
+    "la malla de compilar no lleva color por instancia: compila otro programa que el del producto");
+  // El copete y el cabezote: el impreso en una malla SIN instancias (otro programa).
+  assert.match(et, /lista\.push\(\{ material: materialImpreso\(px, entorno\), instancias: false \}\);/,
+    "el programa del copete se compila en el cuadro del clic");
+  assert.match(et, /programa\?\.getUniforms\(\);/, "la primera consulta del programa (la espera del enlace) cae en el clic");
+  // requestIdleCallback, con un setTimeout de reserva (Safari no lo tiene).
+  assert.match(et, /if \(ric\) ric\(f, \{ timeout: 1500 \}\);\s*else setTimeout\(f, 50\);/);
+  // Lo registra el lienzo y lo pide el selector abierto con el proveedor fijado.
+  assert.match(editorCodigo, /registrarRenderer\(gl, scene, camera\);/, "el lienzo no se registra para precalentar");
+  assert.match(editorCodigo, /if \(!eligiendo \|\| !proveedorDeReunion\) return;\s*precalentarEtiquetas\(catalogo\.filter\(\(a\) => a\.proveedor === proveedorDeReunion\)\);/,
+    "el selector abierto no precalienta los artes del proveedor");
+  // La tapa del vaso, en un lienzo de CPU: su getImageData era la tarea más larga.
+  assert.match(et, /function dibujarTapa\([\s\S]*?getContext\("2d", \{ willReadFrequently: true \}\)/, "la tapa del vaso relee un lienzo de la GPU");
 });
 
 // ── El cabezote de la nevera: un aviso luminoso, no una plancha de stickers ──
