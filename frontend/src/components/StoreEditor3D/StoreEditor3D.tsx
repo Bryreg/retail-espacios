@@ -31,7 +31,7 @@ import {
 import type { PrivadoPara } from "./muebles/privacidad";
 import {
   claveDeArte, estadoDeEtiqueta, etiquetaDeArte, marcarEnUso, olvidarEtiquetas, reintentarEtiqueta,
-  useEntornoDeProducto, useEtiqueta,
+  useEntornoDeProducto, useEtiqueta, precalentarEtiquetas, registrarRenderer,
 } from "./muebles/etiqueta";
 import type { Etiqueta } from "./muebles/etiqueta";
 import { materialDeCenefa, materialDeCopete, olvidarCopetes } from "./muebles/pop";
@@ -57,7 +57,7 @@ import {
   COPETE, ESPESOR_ESPINA, ESTIBA, NEVERA, PANEL_FONDO, PARANTE, ROBATOPE, ZONA_DE_SLOTS,
   altoDeZonaDeSlots, altoDeZonaDeSlotsDePunta, altoUtilDeNevera,
   bandejasDeStand, cotasDeEstiba, cotasDeRobatope, filasDeNevera, filasDeProducto, filasDePunta,
-  fondoPorCara, ventaDeNevera, ventaDeRobatope,
+  fondoPorCara, techoDeCara, ventaDeNevera, ventaDeRobatope,
 } from "./muebles/medidas";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { useModalAbierto } from "../../tema";
@@ -81,6 +81,7 @@ import {
   huella, limitesDePlanta, lugarDeLaFigura, murosDeCaminata, puntoDeEntrada, puntoLibreCerca, resolverPaso,
   TOLERANCIA_CONTACTO,
   vistaGeneral, miradaSensata, vistaDeCara, vistaDeVenta, FOV_DE_CERCA,
+  personaYTomaDeVenta, FIGURA_DE_ESCALA, SEPARACIONES_DE_LA_FIGURA,
   ALTO_CIELO_RASO, LUMINARIA, luminariasDeTienda, sombraDeHuellas,
   type Vista3D, type TomaDeVenta,
   VEL_CAMINANDO, VEL_APURADA,
@@ -186,6 +187,9 @@ type EstadoDeEscena = {
   /** Las caras (`${fixtureId}|${cara}`) cuya prueba se dibuja con OTRAS
    *  rejillas que las de fábrica: la lámina lo dice en el pie. */
   rejillasAcomodadas: string[];
+  /** El aspecto (ancho / alto) que necesita el recorte de la lámina para no
+   *  partir a la persona de escala de la última toma; 0 sin persona. */
+  aspectoConPersona: number;
 };
 
 /** Una toma de venta pedida para Presentar (o para la lámina). `n` cambia en
@@ -876,7 +880,7 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
   // clientes, así que su geometría queda clavada aunque el mueble haya
   // cambiado de forma entero.
 
-  const altoDeCuerpo = Math.max(0.4, h - COPETE.alto);
+  const altoDeCuerpo = techoDeCara(h);
   const fondoDeCara = Math.max(0.12, d - PANEL_FONDO.espesor);
 
   // Espacio de los slots. `altoDeZonaDeSlotsDePunta` NO es la misma cuenta que
@@ -2463,12 +2467,19 @@ function StoreRoom({ limites, muebles, venta, primeraPersona }: {
  *
  * No es chrome: sale en la captura para el proveedor, que es donde hace falta.
  */
-const ALTURA_PERSONA = 1.70;
-/** Cuánto se aparta la persona del canto del mueble (en el editor y en la
- *  pantalla de venta). Va en el PLANO de la cara, así que no la tapa aunque
- *  esté cerca; más lejos, la toma de un mueble angosto la cortaba contra el
- *  borde del cuadro. */
+const ALTURA_PERSONA = FIGURA_DE_ESCALA.alto;
+/** Cuánto se aparta la persona del canto del mueble en el EDITOR. Va en el
+ *  PLANO de la cara, así que no la tapa aunque esté cerca. En la pantalla de
+ *  venta la separación sale de la toma (`personaYTomaDeVenta`: de 1,2 m a
+ *  30 cm, la primera en que entra entera); ésta queda para el editor y para
+ *  Presentar sin toma. */
 const SEPARACION_EN_VENTA = 0.3;
+/** El gris de la silueta: en el editor, cálido y oscuro (se lee contra la
+ *  grilla); en la pantalla de venta, más claro, para que pese menos que el
+ *  mueble —la crítica: «tiene casi la masa visual del mueble y compite con el
+ *  producto»—. Opaca en los dos: la translúcida era un fantasma. */
+const GRIS_DE_SILUETA = "#8c867e";
+const GRIS_DE_SILUETA_EN_VENTA = "#b8b4ae";
 
 /** La silueta de la persona para la pantalla de venta, dibujada una vez.
  *
@@ -2536,12 +2547,15 @@ function siluetaDePersona(): THREE.CanvasTexture {
  * producto. Si queda cortada por el borde del cuadro, no se dibuja: media
  * persona no da escala, distrae.
  */
-function SiluetaDeEscala({ x, z, rotY }: { x: number; z: number; rotY: number }) {
+function SiluetaDeEscala({ x, z, rotY, color = GRIS_DE_SILUETA }: { x: number; z: number; rotY: number; color?: string }) {
   const grupo = useRef<THREE.Group>(null);
+  // Las MISMAS esquinas que proyecta `personaYTomaDeVenta` para decidir si
+  // entra (`FIGURA_DE_ESCALA`).
+  const m = FIGURA_DE_ESCALA.medioAncho;
   const esquinas = useMemo(() => [
-    new THREE.Vector3(-0.26, 0, 0), new THREE.Vector3(0.26, 0, 0),
-    new THREE.Vector3(-0.26, ALTURA_PERSONA, 0), new THREE.Vector3(0.26, ALTURA_PERSONA, 0),
-  ], []);
+    new THREE.Vector3(-m, 0, 0), new THREE.Vector3(m, 0, 0),
+    new THREE.Vector3(-m, ALTURA_PERSONA, 0), new THREE.Vector3(m, ALTURA_PERSONA, 0),
+  ], [m]);
   const v = useMemo(() => new THREE.Vector3(), []);
   useFrame(({ camera }) => {
     const g = grupo.current;
@@ -2559,7 +2573,7 @@ function SiluetaDeEscala({ x, z, rotY }: { x: number; z: number; rotY: number })
         {/* Opaca: el borde con alphaTest y a la pasada opaca, que escribe
             profundidad como cualquier mueble. */}
         <meshBasicMaterial
-          map={siluetaDePersona()} color="#8c867e" alphaTest={0.5}
+          map={siluetaDePersona()} color={color} alphaTest={0.5}
           toneMapped={false} side={THREE.DoubleSide}
         />
       </mesh>
@@ -3242,7 +3256,7 @@ function useEtiquetas(ids: readonly number[], catalogo: readonly Arte[]): (Etiqu
     const a = catalogo.find((x) => x.id === id);
     if (!a) return null;
     const modo = a.ficha?.fondo_foto ?? "auto";
-    return etiquetaDeArte(claveDeArte(id, modo), arteUrl(id), modo, avisar);
+    return etiquetaDeArte(claveDeArte(id, modo), arteUrl(id), modo, avisar, { arte: a, ficha: a.ficha ?? null });
   });
 }
 
@@ -3266,7 +3280,8 @@ function PanelDePrueba({
   const modo = arte.ficha?.fondo_foto ?? "auto";
   // La misma etiqueta que usa el 3D (mismo caché): de ahí salen el aspecto y
   // el perfil con que se estima el envase cuando falta la ficha.
-  const etiqueta = useEtiqueta(venta ? arte.id : null, modo);
+  // Con la pista del arte: el worker arma de una las variantes de su envase.
+  const etiqueta = useEtiqueta(venta ? arte.id : null, modo, { arte, ficha: arte.ficha ?? null });
   // Si la foto no cargó, se dice y se ofrece reintentar: «Preparando el
   // producto…» para siempre no le dice a nadie qué hacer.
   const estadoFoto = venta ? estadoDeEtiqueta(claveDeArte(arte.id, modo)) : null;
@@ -4519,7 +4534,7 @@ function getPanelShelfSpan(type: string, w: number, h: number, d: number): Panel
       // Una punta tiene tantas filas como entrepaños —y no una menos, como la
       // góndola— porque el techo de la fila de arriba es el COPETE: sobre el
       // entrepaño más alto de una punta también se vende.
-      const altoDeCuerpo = Math.max(0.4, h - COPETE.alto);
+      const altoDeCuerpo = techoDeCara(h);
       const { rowBottom, rowPitch, rows } = filasDePunta(
         altoDeCuerpo, Math.max(0.12, d - PANEL_FONDO.espesor),
       );
@@ -5015,7 +5030,9 @@ function Scene({
       const modo = arte.ficha?.fondo_foto ?? "auto";
       const clave = claveDeArte(arteId, modo);
       enUso.push(clave);
-      const etiqueta = etiquetaDeArte(clave, arteUrl(arteId), modo, notifyTexLoaded);
+      // Con la pista del arte (nombre, categoría y ficha): el worker del
+      // recorte sabe qué envase es y arma de una sus variantes.
+      const etiqueta = etiquetaDeArte(clave, arteUrl(arteId), modo, notifyTexLoaded, { arte, ficha: arte.ficha ?? null });
       const estado = estadoDeEtiqueta(clave);
       if (!etiqueta && (estado === "error" || estado === "reintentando")) return null;
       const como = comoSePrueba.get(`${fixId}|${cara}`);
@@ -5047,7 +5064,7 @@ function Scene({
           const modoOtro = otro.ficha?.fondo_foto ?? "auto";
           const claveOtro = claveDeArte(id, modoOtro);
           enUso.push(claveOtro);
-          const et = etiquetaDeArte(claveOtro, arteUrl(id), modoOtro, notifyTexLoaded);
+          const et = etiquetaDeArte(claveOtro, arteUrl(id), modoOtro, notifyTexLoaded, { arte: otro, ficha: otro.ficha ?? null });
           return {
             etiqueta: et,
             empaque: et ? empaqueDeArte(otro, otro.ficha ?? null, et.recorte, { acostado: como?.acostado }) : null,
@@ -5227,6 +5244,16 @@ function Scene({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camera, invalidate]);
 
+  /** Dónde se para la persona de escala en la pantalla de venta: la eligió la
+   *  toma (`personaYTomaDeVenta`) para el mueble de la toma, o `null` si
+   *  ninguna separación la deja entera en el cuadro. La silueta usa ÉSTA y no
+   *  una calculada aparte: con dos cuentas, la toma del robatope no la
+   *  encuadraba y la silueta se escondía. */
+  const [personaDeVenta, setPersonaDeVenta] = useState<{
+    fixtureId: string; persona: { x: number; z: number; rotY: number } | null;
+  } | null>(null);
+  useEffect(() => { if (privadoPara === undefined) setPersonaDeVenta(null); }, [privadoPara]);
+
   /**
    * La toma de venta de una cara: DENTRO del pasillo (`vistaDeVenta` mide
    * cuánto hay libre con los mismos muros de la caminata), encuadrando lo que
@@ -5248,20 +5275,46 @@ function Scene({
     const medio = (foco0.yBajo + foco0.yAlto) / 2, mitad = ((foco0.yAlto - foco0.yBajo) / 2) * holgura;
     const foco = holgura === 1 ? foco0 : { ...foco0, yBajo: medio - mitad, yAlto: medio + mitad };
     const obstaculos = murosDeCaminata(placedFixtures.filter((f) => f.id !== fix.id));
-    // La persona de 1,70 m se para al costado del mueble: el tres cuartos gira
-    // para el otro lado y no la pone en primer plano. En Presentar la silueta
-    // va siempre al lado del mueble de la toma, esté o no elegido.
-    const persona = fix.id === selectedId || presentationMode
-      ? lugarDeLaFigura(fix, obstaculos, SEPARACION_EN_VENTA, { d: fix.d, cara }) : null;
     const fov = toma === "cerca" ? FOV_DE_CERCA : FOV_DEL_EDITOR;
+    const aspecto = size.width / Math.max(1, size.height);
+    const mueble = { cx: fix.x, cz: fix.z, w: fix.w, d: fix.d, h: fix.h, rotY: fix.rotY };
+    // La punta: dónde empieza el copete, para que «De cerca» no lo corte por
+    // la mitad (`focoDeLaPrueba` mira entrepaños y no sabe del copete).
+    const focoConCopete = fix.type === "punta"
+      ? { ...foco, techoDeCara: techoDeCara(fix.h), altoDeCopete: COPETE.alto } : foco;
     ponerCampoVisual(fov);
+    // En la pantalla de venta (Presentar y la lámina), «De frente» y «Tres
+    // cuartos» de la cara entera salen con la persona de escala ENTERA en el
+    // cuadro: una sola cuenta para la toma y para dónde se para
+    // (`personaYTomaDeVenta`), y la escena la dibuja ahí. Por entrepaño y «De
+    // cerca» miran lo elegido de frente: sin persona.
+    const enVenta = presentationMode || privadoPara !== undefined;
+    estadoDeEscena.current.aspectoConPersona = 0;
+    if (enVenta && toma !== "cerca" && !foco.porEntrepano) {
+      // La lámina (venta fuera de Presentar) prueba primero la persona más
+      // pegada: cada toma se recorta a la forma del mueble.
+      const lamina = !presentationMode;
+      const { vista, persona, extremo } = personaYTomaDeVenta(
+        mueble, cara, toma, focoConCopete, obstaculos, limites, fov, aspecto,
+        lamina ? [...SEPARACIONES_DE_LA_FIGURA].reverse() : SEPARACIONES_DE_LA_FIGURA,
+      );
+      setPersonaDeVenta({ fixtureId: fix.id, persona });
+      if (persona) estadoDeEscena.current.aspectoConPersona = extremo * 1.04 * aspecto;
+      aplicarVista(vista);
+      return;
+    }
+    if (enVenta) setPersonaDeVenta({ fixtureId: fix.id, persona: null });
+    // En el editor, la de siempre: la persona de 1,70 m se para al costado del
+    // mueble elegido y el tres cuartos gira para el otro lado, sin ponerla en
+    // primer plano.
+    const persona = fix.id === selectedId
+      ? lugarDeLaFigura(fix, obstaculos, SEPARACION_EN_VENTA, { d: fix.d, cara }) : null;
     aplicarVista(vistaDeVenta(
-      { cx: fix.x, cz: fix.z, w: fix.w, d: fix.d, h: fix.h, rotY: fix.rotY },
-      cara, toma, foco, obstaculos, limites, fov, size.width / Math.max(1, size.height),
+      mueble, cara, toma, focoConCopete, obstaculos, limites, fov, aspecto,
       persona ?? undefined,
     ));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facePaintById, comoSePrueba, placedFixtures, selectedId, presentationMode, limites, size, aplicarVista]);
+  }, [facePaintById, comoSePrueba, placedFixtures, selectedId, presentationMode, privadoPara, limites, size, aplicarVista]);
 
   /** El campo visual de la cámara. Sólo «De cerca» lo cambia; cualquier otra
    *  toma, salir de Presentar o la vista superior lo devuelven a 50°. */
@@ -5460,9 +5513,16 @@ function Scene({
         // aparecería cortada.
         const toma = pantallaDeVenta && pedidoDeToma?.fixtureId === sel.id ? pedidoDeToma : null;
         if (toma?.toma === "cerca") return null;
+        // En venta, la persona que eligió la toma —la misma cuenta que la
+        // encuadró—; si la toma no la pudo meter entera, ninguna.
+        if (toma && personaDeVenta?.fixtureId === sel.id) {
+          const q = personaDeVenta.persona;
+          return q ? <SiluetaDeEscala x={q.x} z={q.z} rotY={q.rotY} color={GRIS_DE_SILUETA_EN_VENTA} /> : null;
+        }
         const cara = toma?.cara ?? (prueba.has(`${sel.id}|B`) && !prueba.has(`${sel.id}|A`) ? "B" : "A");
         const p = lugarDeLaFigura(sel, muros, SEPARACION_EN_VENTA, { d: sel.d, cara });
-        return p ? <SiluetaDeEscala x={p.x} z={p.z} rotY={p.rotY} /> : null;
+        return p ? <SiluetaDeEscala x={p.x} z={p.z} rotY={p.rotY}
+          color={pantallaDeVenta ? GRIS_DE_SILUETA_EN_VENTA : GRIS_DE_SILUETA} /> : null;
       })()}
       {/* La grilla es del editor: en la pantalla de venta el piso es la
           baldosa de la tienda, sin las líneas de 1 m y 0,5 m. */}
@@ -6585,6 +6645,13 @@ export default function StoreEditor3D() {
   // `eligiendo` huérfano dejaría el editor sin pruebas.
   const [eligiendo, setEligiendo] = useState(false);
   useEffect(() => { setEligiendo(false); }, [selectedId, presentationMode]);
+  // Con el selector abierto y el proveedor de la reunión fijado, sus artes
+  // (los únicos que el selector lista) se preparan de antemano: el recorte en
+  // el worker, las texturas en la GPU. Elegir uno ya no traba la pantalla.
+  useEffect(() => {
+    if (!eligiendo || !proveedorDeReunion) return;
+    precalentarEtiquetas(catalogo.filter((a) => a.proveedor === proveedorDeReunion));
+  }, [eligiendo, proveedorDeReunion, catalogo]);
   const pruebaEnEscena = useMemo(
     () => (privadoPara !== undefined ? prueba : pruebasDeLaReunion(prueba, catalogo, supplierDeReunion, eligiendo)),
     [privadoPara, prueba, catalogo, supplierDeReunion, eligiendo],
@@ -6605,6 +6672,7 @@ export default function StoreEditor3D() {
   }, []);
   const estadoDeEscena = useRef<EstadoDeEscena>({
     sinArte: false, privadoPara: undefined, toma: 0, primeraPersona: false, rejillasAcomodadas: [],
+    aspectoConPersona: 0,
   });
   useEffect(() => { if (!presentationMode) setPedidoDeToma(null); }, [presentationMode]);
 
@@ -7059,7 +7127,12 @@ export default function StoreEditor3D() {
       const aspecto = conTomas
         ? Math.max(0.75, Math.min(16 / 9, (fix.w / (fix.h * 1.12 * HOLGURA_DE_LAMINA)) * 1.3))
         : 16 / 9;
-      const preparar = (dataUrl: string) => prepararToma(dataUrl, aspecto, FONDO_DE_SALA);
+      // Las tres tomas van del mismo tamaño en la lámina (`componerPropuesta`
+      // las dibuja con el de la primera), así que el recorte es uno: el del
+      // mueble o, si la persona de escala queda más afuera, hasta ella (sin
+      // pasar del cuadro). Partida, no da escala.
+      let aspectoDeLamina = aspecto;
+      const preparar = (dataUrl: string) => prepararToma(dataUrl, aspectoDeLamina, FONDO_DE_SALA);
 
       // Con una propuesta, las DOS tomas son privadas para su proveedor, como
       // Presentar: ninguna foto, patrón ni prueba de otro. Sin esto «Con
@@ -7076,6 +7149,7 @@ export default function StoreEditor3D() {
       if (conTomas && cara) {
         const n = pedirToma(fix.id, cara, "frente", HOLGURA_DE_LAMINA);
         await esperarEscena((e) => e.toma === n);
+        aspectoDeLamina = Math.min(16 / 9, Math.max(aspecto, estadoDeEscena.current.aspectoConPersona));
       }
 
       setSinArte(true);
@@ -7386,7 +7460,13 @@ export default function StoreEditor3D() {
         <CanvasErrorBoundary>
           <Canvas
             camera={{ position:CAM_POS, fov:FOV_DEL_EDITOR, near:0.1, far:500 }}
-            onCreated={({ camera })=>{ camera.lookAt(...CAM_TARGET); }}
+            onCreated={({ camera, gl, scene })=>{
+              camera.lookAt(...CAM_TARGET);
+              // El lienzo, para adelantar en los ratos libres lo que costaba en
+              // el cuadro del clic: subir las texturas del envase y compilar su
+              // programa (`etiqueta.ts`, «El precalentado»).
+              registrarRenderer(gl, scene, camera);
+            }}
             gl={{ antialias:true, preserveDrawingBuffer: true }}
             shadows={{ type: THREE.PCFSoftShadowMap }}
             frameloop="demand"

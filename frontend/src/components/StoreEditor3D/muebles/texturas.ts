@@ -828,3 +828,104 @@ export function tenirCantos(img: Imagen, color: string, frac = 0.08, k = 0.75): 
   }
   return { rgba: p, ancho: w, alto: h };
 }
+
+// ─── Las variantes de una foto, de una vez ────────────────────────────────────
+
+/** Lo que pide de la foto la forma de envase (`empaqueDeArte`): con eso se
+ *  sabe qué variantes arma `variantesDeLaFoto`. */
+export interface PedidoDeVariantes {
+  envase: "caja" | "revolucion" | "almohada" | "recorte";
+  /** La botella de PET transparente (`llenarBotella`). */
+  transparente: boolean;
+}
+
+/** Las variantes ya armadas. Cada una es la MISMA, byte a byte, que la que
+ *  `etiqueta.ts` arma perezosa la primera vez que alguien la pide: salen de
+ *  las mismas recetas (`RECETAS`). Lo que no está se sigue armando perezoso. */
+export interface Variantes {
+  /** El borde encogido 2 px: la silueta con alfa (recorte plano). */
+  borde?: Imagen;
+  /** El frente de la caja, enderezado si venía en tres cuartos. */
+  caja?: Imagen;
+  enderezada?: boolean;
+  /** El color del costado de la caja. */
+  costado?: string;
+  /** Vaso o lata: el alfa aplanado, la tapa leída de la foto y la espalda. */
+  opaca?: Imagen;
+  tapa?: TapaDeFoto;
+  espalda?: Imagen;
+  /** La bolsa con los cantos del color del plástico. */
+  bolsa?: Imagen;
+  /** La botella llena, aplanada, su espalda y la franja de la etiqueta (el
+   *  cabezote de la nevera). */
+  llena?: BotellaLlena;
+  botella?: Imagen;
+  espaldaLlena?: Imagen;
+  franja?: FranjaDeEtiqueta;
+}
+
+/**
+ * Las recetas de cada variante, escritas UNA vez: `etiqueta.ts` las usa
+ * perezosas (cuando alguien pide la textura) y `variantesDeLaFoto` (el worker,
+ * o el camino troceado) las arma de una. Con dos copias, la del worker podía
+ * salir distinta de la del hilo principal sin que nadie lo notara.
+ */
+export const RECETAS = {
+  borde: (recorte: Imagen): Imagen => erosionarYSangrar(recorte, 2, 8),
+  caja: (borde: Imagen): { caja: Imagen; enderezada: boolean } => {
+    const r = rectificarCaja(borde);
+    // Los cantos en sombra: es lo que separa una caja de la de al lado.
+    return { caja: oscurecerCantos(aplanar(r ?? borde)), enderezada: !!r };
+  },
+  costado: (caja: Imagen): string => colorDeCostado(caja),
+  opaca: (borde: Imagen): Imagen => aplanar(borde),
+  tapa: (borde: Imagen): TapaDeFoto => tapaDeFoto(borde),
+  espalda: (borde: Imagen): Imagen => espaldaDeEtiqueta(borde),
+  bolsa: (borde: Imagen, colorDominante: string): Imagen => tenirCantos(borde, colorDominante),
+  // La botella, con 4 px de borde encogido y no 2: de cerca quedaba un
+  // serrucho blanco de 8–15 px en la base y el contorno de abajo.
+  llena: (recorte: Imagen): BotellaLlena => llenarBotella(erosionarYSangrar(recorte, 4, 10)),
+  botella: (llena: BotellaLlena): Imagen => aplanar(llena),
+  // La espalda de la botella lleva la tabla sólo sobre la etiqueta: sobre el
+  // líquido sería un parche blanco.
+  espaldaLlena: (llena: BotellaLlena): Imagen => {
+    const L = llena.liquido ? rgbDe(llena.liquido) : null;
+    return espaldaDeEtiqueta(llena, L ? filasDeEtiqueta(llena, L) : undefined);
+  },
+  franja: (recorte: Imagen): FranjaDeEtiqueta => franjaDeEtiqueta(recorte, liquidoDe(recorte)),
+} as const;
+
+/** Los pasos de `variantesDeLaFoto`, en orden: el camino troceado cede el
+ *  hilo entre uno y otro. */
+export function pasosDeVariantes(
+  recorte: Imagen & { colorDominante: string }, pedido: PedidoDeVariantes, v: Variantes,
+): (() => void)[] {
+  const borde = () => (v.borde ??= RECETAS.borde(recorte));
+  switch (pedido.envase) {
+    case "caja":
+      return [borde, () => { Object.assign(v, RECETAS.caja(v.borde!)); }, () => { v.costado = RECETAS.costado(v.caja!); }];
+    case "revolucion":
+      return pedido.transparente
+        ? [() => { v.llena = RECETAS.llena(recorte); }, () => { v.botella = RECETAS.botella(v.llena!); },
+          () => { v.espaldaLlena = RECETAS.espaldaLlena(v.llena!); }, () => { v.franja = RECETAS.franja(recorte); }]
+        : [borde, () => { v.opaca = RECETAS.opaca(v.borde!); }, () => { v.tapa = RECETAS.tapa(v.borde!); },
+          () => { v.espalda = RECETAS.espalda(v.borde!); }];
+    case "almohada":
+      return [borde, () => { v.bolsa = RECETAS.bolsa(v.borde!, recorte.colorDominante); }];
+    default:
+      return [borde];
+  }
+}
+
+/**
+ * Las variantes que pide una forma de envase, de una vez (puro). Es lo que
+ * corre el worker del recorte (`recorte.worker.ts`) después de quitar el
+ * fondo, para que el hilo principal no las arme en el render del clic.
+ */
+export function variantesDeLaFoto(
+  recorte: Imagen & { colorDominante: string }, pedido: PedidoDeVariantes,
+): Variantes {
+  const v: Variantes = {};
+  for (const paso of pasosDeVariantes(recorte, pedido, v)) paso();
+  return v;
+}

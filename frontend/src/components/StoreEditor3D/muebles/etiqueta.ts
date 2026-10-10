@@ -30,14 +30,13 @@
 import { useState } from "react";
 import * as THREE from "three";
 import { useThree } from "@react-three/fiber";
-import { recortarFondo } from "./recorte";
-import type { ModoDeFondo, Recorte } from "./recorte";
-import {
-  aplanar, colorDeCostado, erosionarYSangrar, espaldaDeEtiqueta, filasDeEtiqueta, franjaDeEtiqueta, liquidoDe,
-  llenarBotella, oscurecerCantos, rectificarCaja, tapaDeFoto, tenirCantos,
-} from "./texturas";
+import { prepararFotoPorEtapas } from "./recorte";
+import type { FotoPreparada, ModoDeFondo, PistaDeEnvase, Recorte } from "./recorte";
+import type { PedidoAlWorker, RespuestaDelWorker } from "./recorte.worker";
+import { RECETAS } from "./texturas";
 import type { BotellaLlena, FranjaDeEtiqueta } from "./texturas";
 import type { Imagen, TapaDeFoto } from "./texturas";
+import { empaqueDeArte } from "./producto";
 import type { FormaDeEnvase } from "./producto";
 import { arteUrl } from "../../../api/catalogo";
 import { HABLADOR, pintarHablador } from "./habladores";
@@ -127,6 +126,9 @@ export type EstadoDeEtiqueta = "cargando" | "lista" | "error" | "reintentando";
 
 interface Entrada {
   estado: "cargando" | "lista" | "error";
+  /** Lo que se sabe del arte para elegir las variantes de su envase (y
+   *  precalentar sus texturas). `undefined` si quien la pidió no lo dijo. */
+  pista?: PistaDeEnvase | null;
   /** Cuándo falló, para reintentar solo después de `REINTENTO_MS`. */
   fallo?: number;
   etiqueta?: Etiqueta;
@@ -205,7 +207,11 @@ function dibujarTapa(t: TapaDeFoto): HTMLCanvasElement {
   const N = 256;
   const c = document.createElement("canvas");
   c.width = c.height = N;
-  const g = c.getContext("2d")!;
+  // `willReadFrequently`: el lienzo vive en la CPU. Sin eso Chrome lo arma en
+  // la GPU y el `getImageData` del ruido de abajo la hace esperar entera: era
+  // la tarea más larga de elegir un producto (792 ms de 987 en swiftshader,
+  // medido con un perfil de CPU; ver «2026-10-10» en ESTADO.md).
+  const g = c.getContext("2d", { willReadFrequently: true })!;
   g.fillStyle = t.tapa;
   g.fillRect(0, 0, N, N);
   const radial = g.createRadialGradient(N * 0.44, N * 0.4, N * 0.04, N / 2, N / 2, N * 0.5);
@@ -250,27 +256,100 @@ function textura(lienzo: HTMLCanvasElement, e: Entrada): THREE.CanvasTexture {
   return t;
 }
 
-async function cargar(
-  fuente: string | Blob, modo: ModoDeFondo,
-): Promise<{ recorte: Recorte; lienzo: HTMLCanvasElement }> {
-  // Con `res.ok`: un 502 o un 401 traen un HTML o un JSON, y
-  // `createImageBitmap` fallaba sobre eso con un error que no decía nada.
-  let blob: Blob;
-  if (typeof fuente === "string") {
-    const res = await fetch(fuente);
-    if (!res.ok) throw new Error(`la foto respondió ${res.status}`);
-    blob = await res.blob();
-  } else blob = fuente;
+// ─── El recorte, fuera del hilo principal ─────────────────────────────────────
+
+/** El worker del recorte (`recorte.worker.ts`): `undefined` mientras nadie lo
+ *  pidió, `null` si este navegador no puede (sin Worker u OffscreenCanvas, o
+ *  el módulo no arrancó). Se crea en el PRIMER USO y no al importar: las
+ *  pruebas importan este archivo en node, donde un `new Worker` al cargar las
+ *  rompía. */
+let worker: Worker | null | undefined;
+let siguientePedido = 1;
+const pedidosAlWorker = new Map<number, (f: FotoPreparada | null) => void>();
+
+function elWorker(): Worker | null {
+  if (worker !== undefined) return worker;
+  try {
+    if (typeof Worker === "undefined" || typeof OffscreenCanvas === "undefined") return (worker = null);
+    const w = new Worker(new URL("./recorte.worker.ts", import.meta.url), { type: "module" });
+    w.onmessage = (e: MessageEvent<RespuestaDelWorker>) => {
+      const responder = pedidosAlWorker.get(e.data.id);
+      pedidosAlWorker.delete(e.data.id);
+      // Un error del worker (una foto que no decodifica ahí, un Safari sin
+      // contexto 2D en OffscreenCanvas) no es un error de la foto: cae al
+      // camino troceado, que decide.
+      responder?.(e.data.ok ? e.data.foto : null);
+    };
+    w.onerror = () => {
+      // El módulo no arrancó: lo pendiente y lo que venga va por el camino
+      // troceado.
+      worker = null;
+      for (const responder of pedidosAlWorker.values()) responder(null);
+      pedidosAlWorker.clear();
+      w.terminate();
+    };
+    return (worker = w);
+  } catch {
+    return (worker = null);
+  }
+}
+
+/** Recorte y variantes en el worker, o `null` si no hay worker o falló. */
+function prepararEnElWorker(
+  blob: Blob, modo: ModoDeFondo, lado: number, pista: PistaDeEnvase | null,
+): Promise<FotoPreparada | null> {
+  const w = elWorker();
+  if (!w) return Promise.resolve(null);
+  const id = siguientePedido++;
+  return new Promise((ok) => {
+    pedidosAlWorker.set(id, ok);
+    const pedido: PedidoAlWorker = { id, blob, modo, lado, pista };
+    w.postMessage(pedido);
+  });
+}
+
+/** Cede el hilo principal entre etapas del camino troceado: `scheduler.yield`
+ *  donde existe y, si no (Safari, Firefox), un `setTimeout` de 0. */
+export function ceder(): Promise<void> {
+  const s = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
+  return s?.yield ? s.yield() : new Promise((ok) => setTimeout(ok, 0));
+}
+
+/**
+ * Recorta una foto (Blob) reducida a ≤ `lado` px: en el worker si se puede;
+ * si no, en el hilo principal partido en etapas (`prepararFotoPorEtapas`).
+ * Lo usan la etiqueta (1024 px, con las variantes de su envase) y la vista
+ * previa del alta (`EditorDeFicha`, 512 px, sólo el recorte).
+ */
+export async function prepararFotoDe(
+  blob: Blob, modo: ModoDeFondo, pista: PistaDeEnvase | null, lado = 1024,
+): Promise<FotoPreparada> {
+  const enElWorker = await prepararEnElWorker(blob, modo, lado, pista);
+  if (enElWorker) return enElWorker;
   const bmp = await createImageBitmap(blob);
-  const k = Math.min(1, 1024 / Math.max(bmp.width, bmp.height));
+  const k = Math.min(1, lado / Math.max(bmp.width, bmp.height));
   const w = Math.max(2, Math.round(bmp.width * k)), h = Math.max(2, Math.round(bmp.height * k));
   const c = document.createElement("canvas");
   c.width = w; c.height = h;
   const g = c.getContext("2d", { willReadFrequently: true })!;
   g.drawImage(bmp, 0, 0, w, h);
   bmp.close();
-  const recorte = recortarFondo(g.getImageData(0, 0, w, h).data, w, h, modo);
-  return { recorte, lienzo: lienzoDe(recorte) };
+  const datos = g.getImageData(0, 0, w, h).data;
+  await ceder();
+  return prepararFotoPorEtapas(datos, w, h, modo, pista, ceder);
+}
+
+async function cargar(fuente: string | Blob, modo: ModoDeFondo, pista: PistaDeEnvase | null): Promise<FotoPreparada> {
+  // Con `res.ok`: un 502 o un 401 traen un HTML o un JSON, y
+  // `createImageBitmap` fallaba sobre eso con un error que no decía nada. El
+  // `fetch` se queda en el hilo principal (es asíncrono); al worker va el Blob.
+  let blob: Blob;
+  if (typeof fuente === "string") {
+    const res = await fetch(fuente);
+    if (!res.ok) throw new Error(`la foto respondió ${res.status}`);
+    blob = await res.blob();
+  } else blob = fuente;
+  return prepararFotoDe(blob, modo, pista);
 }
 
 /**
@@ -283,13 +362,14 @@ async function cargar(
  */
 export function etiquetaDeArte(
   clave: string, fuente: string | Blob, modo: ModoDeFondo, avisar: () => void,
+  pista?: PistaDeEnvase | null,
 ): Etiqueta | null {
   const ya = cache.get(clave);
   if (ya && ya.estado === "error" && Date.now() - (ya.fallo ?? 0) >= REINTENTO_MS) {
     // Pasó el rato: se vuelve a pedir, y quien esperaba se entera.
     cache.delete(clave);
     const esperaban = [...ya.esperando];
-    const nueva = etiquetaDeArte(clave, fuente, modo, avisar);
+    const nueva = etiquetaDeArte(clave, fuente, modo, avisar, pista ?? ya.pista);
     const entrada = cache.get(clave);
     if (entrada) esperaban.forEach((f) => entrada.esperando.add(f));
     return nueva;
@@ -306,39 +386,36 @@ export function etiquetaDeArte(
     ya.esperando.add(avisar);
     return null;
   }
-  const e: Entrada = { estado: "cargando", esperando: new Set([avisar]), texturas: [], materiales: new Map() };
+  const e: Entrada = { estado: "cargando", pista, esperando: new Set([avisar]), texturas: [], materiales: new Map() };
   cache.set(clave, e);
-  cargar(fuente, modo)
-    .then(({ recorte, lienzo }) => {
-      // Cada variante se arma la primera vez que alguien la pide: una caja no
-      // necesita la botella llena, ni un vaso el frente enderezado.
+  cargar(fuente, modo, pista ?? null)
+    .then(({ recorte, variantes: ya_ }) => {
+      // Las variantes que pide el envase llegan hechas del worker (`ya_`). Las
+      // demás —o todas, si la pidió alguien que no sabía el arte— se arman la
+      // primera vez que alguien las pide, con las MISMAS recetas (`RECETAS`):
+      // una caja no necesita la botella llena, ni un vaso el frente enderezado.
       //
       // Todas salen del `rgba` del recorte y NO releyendo el lienzo: el
       // canvas 2D guarda el color premultiplicado por el alfa, así que lo
       // transparente vuelve NEGRO al leerlo. Ahí están el sangrado y el color
       // de la marca: sin esto, la tapa de la caja y la base de la botella
       // salían negras.
-      let borde: Imagen | null = null;
-      const conBorde = () => (borde ??= erosionarYSangrar(recorte, 2, 8));
-      let caja: Imagen | null = null;
-      let enderezada = false;
+      let borde: Imagen | null = ya_.borde ?? null;
+      const conBorde = () => (borde ??= RECETAS.borde(recorte));
+      let caja: Imagen | null = ya_.caja ?? null;
+      let enderezada = ya_.enderezada ?? false;
       const frente = () => {
-        if (!caja) {
-          const r = rectificarCaja(conBorde());
-          enderezada = !!r;
-          // Los cantos en sombra: es lo que separa una caja de la de al lado
-          // (`oscurecerCantos`).
-          caja = oscurecerCantos(aplanar(r ?? conBorde()));
-        }
+        if (!caja) ({ caja, enderezada } = RECETAS.caja(conBorde()));
         return caja;
       };
-      let costado: string | null = null;
-      let deLaTapa: TapaDeFoto | null = null;
-      const tapa = () => (deLaTapa ??= tapaDeFoto(conBorde()));
+      let costado: string | null = ya_.costado ?? null;
+      let deLaTapa: TapaDeFoto | null = ya_.tapa ?? null;
+      const tapa = () => (deLaTapa ??= RECETAS.tapa(conBorde()));
       // La botella llena, con su alfa: de ella salen el frente y la espalda.
-      let llena: BotellaLlena | null = null;
-      const conLiquido = () => (llena ??= llenarBotella(erosionarYSangrar(recorte, 4, 10)));
-      let franja: FranjaDeEtiqueta | null = null;
+      let llena: BotellaLlena | null = ya_.llena ?? null;
+      const conLiquido = () => (llena ??= RECETAS.llena(recorte));
+      let franja: FranjaDeEtiqueta | null = ya_.franja ?? null;
+      let lienzo: HTMLCanvasElement | null = null;
       const texturas: Record<string, THREE.CanvasTexture> = {};
       const una = (k: string, hacer: () => Imagen) => (texturas[k] ??= textura(lienzoDe(hacer()), e));
       const { rgba: _rgba, ...metricas } = recorte;
@@ -346,32 +423,27 @@ export function etiquetaDeArte(
       e.etiqueta = {
         clave,
         recorte: metricas,
-        lienzo,
+        // Perezoso: sólo lo usan el copete y /taller, y armarlo es copiar el
+        // recorte entero a un lienzo.
+        get lienzo() { return (lienzo ??= lienzoDe(recorte)); },
         texturaConAlfa: () => una("alfa", conBorde),
-        texturaOpaca: () => una("opaca", () => aplanar(conBorde())),
-        texturaDeBolsa: () => una("bolsa", () => tenirCantos(conBorde(), recorte.colorDominante)),
+        texturaOpaca: () => una("opaca", () => ya_.opaca ?? RECETAS.opaca(conBorde())),
+        texturaDeBolsa: () => una("bolsa", () => ya_.bolsa ?? RECETAS.bolsa(conBorde(), recorte.colorDominante)),
         texturaDeCaja: () => una("caja", frente),
-        // La botella, con 4 px de borde encogido y no 2: de cerca quedaba un
-        // serrucho blanco de 8–15 px en la base y el contorno de abajo.
-        texturaDeBotella: () => una("botella", () => aplanar(conLiquido())),
-        // La espalda de la botella lleva la tabla sólo sobre la etiqueta: sobre
-        // el líquido sería un parche blanco.
+        texturaDeBotella: () => una("botella", () => ya_.botella ?? RECETAS.botella(conLiquido())),
         texturaDeEspalda: (transparente: boolean) => (transparente
-          ? una("espalda-llena", () => {
-            const b = conLiquido();
-            const L = b.liquido ? [1, 3, 5].map((i) => parseInt(b.liquido!.slice(i, i + 2), 16)) : null;
-            return espaldaDeEtiqueta(b, L ? filasDeEtiqueta(b, L) : undefined);
-          })
-          : una("espalda", () => espaldaDeEtiqueta(conBorde()))),
-        colorDeCostado: () => (costado ??= colorDeCostado(frente())),
+          ? una("espalda-llena", () => ya_.espaldaLlena ?? RECETAS.espaldaLlena(conLiquido()))
+          : una("espalda", () => ya_.espalda ?? RECETAS.espalda(conBorde()))),
+        colorDeCostado: () => (costado ??= RECETAS.costado(frente())),
         tapa,
         texturaDeTapa: () => (texturas.tapa ??= textura(dibujarTapa(tapa()), e)),
         cajaEnderezada: () => { frente(); return enderezada; },
-        franja: () => (franja ??= franjaDeEtiqueta(recorte, liquidoDe(recorte))),
+        franja: () => (franja ??= RECETAS.franja(recorte)),
       };
       entradaDe.set(e.etiqueta, e);
       e.estado = "lista";
       fallaron.delete(clave);
+      precalentar(e);
     })
     .catch(() => {
       e.estado = "error";
@@ -424,11 +496,163 @@ export const claveDeArte = (arteId: number | string, modo: ModoDeFondo) => `cata
  * La etiqueta para un panel FUERA del lienzo (el resumen «Entran 10 por
  * entrepaño»): se vuelve a dibujar cuando termina de cargar.
  */
-export function useEtiqueta(arteId: number | null | undefined, modo: ModoDeFondo): Etiqueta | null {
+export function useEtiqueta(
+  arteId: number | null | undefined, modo: ModoDeFondo, pista?: PistaDeEnvase | null,
+): Etiqueta | null {
   const [, setVersion] = useState(0);
   const [avisar] = useState(() => () => setVersion((v) => v + 1));
   if (arteId == null) return null;
-  return etiquetaDeArte(claveDeArte(arteId, modo), arteUrl(arteId), modo, avisar);
+  return etiquetaDeArte(claveDeArte(arteId, modo), arteUrl(arteId), modo, avisar, pista);
+}
+
+// ─── El precalentado ─────────────────────────────────────────────────────────
+//
+// Elegir un arte trababa el hilo principal: además del recorte (ahora en el
+// worker), en el cuadro del clic se armaban las texturas del envase, se
+// subían a la GPU y se compilaba el programa de la etiqueta. Con el lienzo
+// registrado (`registrarRenderer`, desde `onCreated`), eso se adelanta en los
+// ratos libres: cuando una etiqueta queda lista se arman sus materiales y se
+// suben sus texturas (`initTexture`), y una vez por sesión se compilan los
+// programas del envase con una malla fuera de cuadro (`compileAsync`). Con el
+// selector abierto y el proveedor de la reunión fijado, además se piden de
+// antemano las etiquetas de sus artes (`precalentarEtiquetas`).
+
+let lienzoGl: { gl: THREE.WebGLRenderer; escena: THREE.Scene; camara: THREE.Camera } | null = null;
+
+/** El lienzo del editor, para precalentar en él. Lo llama `onCreated`. */
+export function registrarRenderer(gl: THREE.WebGLRenderer, escena: THREE.Scene, camara: THREE.Camera): void {
+  lienzoGl = { gl, escena, camara };
+  enReposo(() => { if (lienzoGl) compilarProgramas(lienzoGl); });
+}
+
+/** Corre `f` en un rato libre: `requestIdleCallback` donde existe y, si no
+ *  (Safari no lo tiene), un `setTimeout` de reserva. */
+export function enReposo(f: () => void): void {
+  const ric = (globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+  if (ric) ric(f, { timeout: 1500 });
+  else setTimeout(f, 50);
+}
+
+/** El entorno del producto de un lienzo (el de `useEntornoDeProducto`). */
+function entornoDe(gl: THREE.WebGLRenderer): THREE.Texture {
+  let t = entornos.get(gl);
+  if (!t) {
+    const pmrem = new THREE.PMREMGenerator(gl);
+    const fuente = new EntornoDeTienda();
+    t = pmrem.fromScene(fuente, 0.04, 0.1, 100, { size: 64 }).texture;
+    fuente.soltar();
+    pmrem.dispose();
+    entornos.set(gl, t);
+  }
+  return t;
+}
+
+/** Los materiales del envase de una etiqueta lista, con sus texturas ya en la
+ *  GPU, en un rato libre. Sin pista (no se sabe el arte) no se adivina. */
+function precalentar(e: Entrada): void {
+  if (!lienzoGl || !e.pista || !e.etiqueta) return;
+  const et = e.etiqueta, pista = e.pista;
+  enReposo(() => {
+    const l = lienzoGl;
+    if (!l || cache.get(et.clave) !== e || e.estado !== "lista") return;
+    const emp = empaqueDeArte(pista.arte, pista.ficha, et.recorte);
+    const materiales = materialDeEtiqueta(et, emp.envase, entornoDe(l.gl), { transparente: emp.transparente });
+    for (const m of materiales) for (const t of [m.map, m.emissiveMap]) if (t) l.gl.initTexture(t);
+    compilarProgramas(l, materiales);
+  });
+}
+
+/** Los programas ya compilados (por la clave de three), para no pedir dos
+ *  veces lo mismo. */
+const compilados = new Set<string>();
+let deSesion = false;
+
+/**
+ * Compila los programas de la etiqueta sin dibujar: una `InstancedMesh` con
+ * color por instancia (como `ProductoDePrueba`) fuera de cuadro, compilada
+ * contra las luces de la escena (`compileAsync(…, escena)`), que usa
+ * `KHR_parallel_shader_compile` donde está. Sin materiales, una vez por
+ * sesión: los del envase con una textura de 1 × 1 (el programa no depende de
+ * la imagen) — la foto, el costado de la caja, la tapa y la bolsa —.
+ */
+function compilarProgramas(
+  l: NonNullable<typeof lienzoGl>, materiales?: THREE.Material[],
+): void {
+  let lista = materiales;
+  if (!lista) {
+    if (deSesion) return;
+    deSesion = true;
+    const px = new THREE.DataTexture(new Uint8Array([200, 200, 200, 255]), 1, 1);
+    px.needsUpdate = true;
+    const entorno = entornoDe(l.gl);
+    const blanco = new THREE.Color(1, 1, 1);
+    lista = [
+      materialConLuz("revolucion", entorno, { map: px, emissive: blanco, emissiveMap: px }),
+      materialConLuz("caja", entorno, { color: blanco, emissive: blanco, vertexColors: true }),
+      materialConLuz("revolucion", entorno, { map: px, color: blanco, metalness: 0.3, roughness: 0.45 }),
+      materialConLuz("almohada", entorno, {
+        map: px, emissive: blanco, emissiveMap: px, alphaTest: 0.5, alphaToCoverage: true,
+        side: THREE.DoubleSide, vertexColors: true,
+      }),
+    ];
+  }
+  const nuevos = lista.filter((m) => !compilados.has(m.uuid));
+  if (nuevos.length === 0) return;
+  const geo = new THREE.BoxGeometry(0.01, 0.01, 0.01);
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(new Array(geo.attributes.position.count * 3).fill(1), 3));
+  const escena = new THREE.Scene();
+  for (const m of nuevos) {
+    const malla = new THREE.InstancedMesh(geo, m, 1);
+    malla.setColorAt(0, new THREE.Color(1, 1, 1));
+    malla.position.set(0, -1000, 0);
+    malla.frustumCulled = false;
+    escena.add(malla);
+    compilados.add(m.uuid);
+  }
+  l.gl.compileAsync(escena, l.camara, l.escena)
+    .catch(() => { /* sin compilar: se compila al dibujar, como antes */ })
+    .finally(() => {
+      for (const o of escena.children) (o as THREE.InstancedMesh).dispose();
+      geo.dispose();
+    });
+}
+
+/** Cuántas etiquetas se piden de antemano al abrir el selector: las de los
+ *  artes del proveedor de la reunión, nunca más que esto ni pasando el
+ *  `MAXIMO` del caché, y sin desalojar lo que está en uso. */
+export const PRECALENTAR_HASTA = 6;
+let colaDePrecalentado: { clave: string; fuente: string; modo: ModoDeFondo; pista: PistaDeEnvase }[] = [];
+let precalentando = false;
+
+/**
+ * Pide de antemano las etiquetas de estos artes, en cola y de a una (el
+ * worker hace una por vez de todos modos). Lo que ya está en el caché se
+ * salta; si el caché está lleno de lo que se está usando, no se pide más.
+ */
+export function precalentarEtiquetas(
+  artes: readonly { id: number; nombre: string; categoria?: string | null; ficha?: (PistaDeEnvase["ficha"] & { fondo_foto?: ModoDeFondo }) | null }[],
+): void {
+  const nuevos = artes.slice(0, PRECALENTAR_HASTA).map((a) => {
+    const modo: ModoDeFondo = a.ficha?.fondo_foto ?? "auto";
+    return { clave: claveDeArte(a.id, modo), fuente: arteUrl(a.id), modo, pista: { arte: a, ficha: a.ficha ?? null } };
+  }).filter((x) => !cache.has(x.clave) && !colaDePrecalentado.some((y) => y.clave === x.clave));
+  colaDePrecalentado.push(...nuevos);
+  if (!precalentando) siguienteDeLaCola();
+}
+
+function siguienteDeLaCola(): void {
+  const x = colaDePrecalentado.shift();
+  if (!x) { precalentando = false; return; }
+  // Sin lugar libre en el caché (lo que hay está en uso), no se desaloja nada.
+  const libres = MAXIMO - [...cache.keys()].filter((k) => enUso.has(k)).length;
+  if (libres <= 0 || cache.size >= MAXIMO) { colaDePrecalentado = []; precalentando = false; return; }
+  precalentando = true;
+  if (cache.has(x.clave)) { siguienteDeLaCola(); return; }
+  etiquetaDeArte(x.clave, x.fuente, x.modo, () => {}, x.pista);
+  const e = cache.get(x.clave);
+  const seguir = () => enReposo(siguienteDeLaCola);
+  if (!e || e.estado !== "cargando") seguir();
+  else e.esperando.add(seguir);
 }
 
 // ─── El entorno del producto ─────────────────────────────────────────────────
@@ -475,16 +699,7 @@ const entornos = new WeakMap<THREE.WebGLRenderer, THREE.Texture>();
  *  se nota la diferencia. */
 export function useEntornoDeProducto(): THREE.Texture {
   const { gl } = useThree();
-  let t = entornos.get(gl);
-  if (!t) {
-    const pmrem = new THREE.PMREMGenerator(gl);
-    const fuente = new EntornoDeTienda();
-    t = pmrem.fromScene(fuente, 0.04, 0.1, 100, { size: 64 }).texture;
-    fuente.soltar();
-    pmrem.dispose();
-    entornos.set(gl, t);
-  }
-  return t;
+  return entornoDe(gl);
 }
 
 // ─── El material ──────────────────────────────────────────────────────────────

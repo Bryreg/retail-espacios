@@ -31,7 +31,25 @@ const {
   distanciaLibre, vistaDeVenta, FOV_DE_CERCA,
   ALTO_CIELO_RASO, LUMINARIA, luminariasDeTienda, direccionDeGondolas, ejesDeGrilla,
   proyectar, rayoDeVista, choqueEnElLocal, sombraDeHuellas, sombraEn, SOMBRA_AL_PIE,
+  personaYTomaDeVenta, esquinasDeLaFigura, FIGURA_DE_ESCALA, SEPARACIONES_DE_LA_FIGURA,
+  LLENADO_DE_PAR, FRANJA_DEL_HUD,
 } = await import(pathToFileURL(salida).href);
+
+// Lo que la cámara de venta toma de los muebles (la cuenta de la prueba y el
+// copete de la punta): `frentes.ts`, `medidas.ts` y `venta.ts`, compilados
+// igual que en probar-muebles (venta despacha a componentes de React).
+const deMuebles = async (archivo) => {
+  const { outputFiles: o } = await build({
+    entryPoints: [join(aqui, "..", "src", "components", "StoreEditor3D", "muebles", archivo)],
+    bundle: true, format: "esm", write: false, platform: "node", jsx: "automatic", logLevel: "silent",
+  });
+  const f = join(dirname(salida), archivo.replace(/\.tsx?$/, ".mjs"));
+  writeFileSync(f, o[0].text);
+  return import(pathToFileURL(f).href);
+};
+const FR = await deMuebles("frentes.ts");
+const MD = await deMuebles("medidas.ts");
+const VT = await deMuebles("venta.ts");
 
 let hechas = 0;
 const prueba = (nombre, fn) => {
@@ -497,6 +515,150 @@ prueba("«De cerca» con teleobjetivo: el entrepaño llena el cuadro, de frente"
   }
 });
 
+// ── Los encuadres de venta con la persona (tanda 3, paso 16) ──────────────────
+
+console.log("\nplanta · la persona entera en la toma, y «De cerca» sin medio copete");
+
+/** La toma de venta de un mueble de la sede, como la arma la escena. */
+const tomaConPersona = (id, t, aspecto = 16 / 9) => {
+  const f = SEDE.find((x) => x.id === id);
+  return { f, ...personaYTomaDeVenta(comoMueble(f), "A", t, { yBajo: 0, yAlto: f.h }, otros(id), LIMITES, 50, aspecto) };
+};
+/** El rango horizontal (−1…1) de la cara del mueble en el cuadro. */
+const caraEnCuadro = (vista, f, fov = 50, asp = 16 / 9) => {
+  const n = normalDeCara(f.rotY, "A"), t = { x: -n.z, z: n.x };
+  const xs = [];
+  for (const lado of [-1, 1]) for (const y of [0, f.h]) {
+    const p = { x: f.x + n.x * f.d / 2 + t.x * lado * f.w / 2, y, z: f.z + n.z * f.d / 2 + t.z * lado * f.w / 2 };
+    xs.push(proyectar(vista, fov, asp, p).x);
+  }
+  return [Math.min(...xs), Math.max(...xs)];
+};
+
+prueba("la persona sale ENTERA en De frente y Tres cuartos de PUN-01, NEV-01 y ROB-01, del lado libre y sin tapar el mueble", () => {
+  for (const id of ["PUN-01", "NEV-01", "ROB-01"]) for (const t of ["frente", "tres_cuartos"]) {
+    for (const aspecto of [16 / 9, 4 / 3]) {
+      const { f, vista, persona, extremo } = tomaConPersona(id, t, aspecto);
+      assert.ok(persona, `${id} ${t} (${aspecto.toFixed(2)}): la toma salió sin persona`);
+      // Las cuatro esquinas, con la MISMA cámara que encuadra.
+      const q = esquinasDeLaFigura(persona).map((e) => proyectar(vista, 50, aspecto, e));
+      for (const e of q) {
+        assert.ok(e.profundidad > 0 && Math.abs(e.x) <= 0.98 && Math.abs(e.y) <= 0.98,
+          `${id} ${t}: una esquina de la persona cae en (${e.x.toFixed(2)}, ${e.y.toFixed(2)})`);
+      }
+      assert.ok(Math.abs(extremo - Math.max(...q.map((e) => Math.abs(e.x)))) < 1e-9, "el extremo no es el de las esquinas");
+      // Donde podría pararse alguien, y dentro del local.
+      assert.ok(!chocaEn(otros(id), persona.x, persona.z), `${id} ${t}: la persona quedó adentro de otro mueble`);
+      // Del lado libre: el robatope está pegado a PUN-01 (z menor), la nevera a NEV-02 (x mayor).
+      if (id === "ROB-01") assert.ok(persona.z > f.z, "la persona del robatope quedó del lado de la punta");
+      if (id === "NEV-01") assert.ok(persona.x < f.x, "la persona de la nevera quedó del lado de NEV-02");
+      // Al costado: su rango en el cuadro no se mete en el de la cara.
+      const [a, b] = caraEnCuadro(vista, f, 50, aspecto);
+      const [pa, pb] = [Math.min(...q.map((e) => e.x)), Math.max(...q.map((e) => e.x))];
+      assert.ok(pb < a || pa > b, `${id} ${t}: la persona tapa el mueble (${pa.toFixed(2)}…${pb.toFixed(2)} contra ${a.toFixed(2)}…${b.toFixed(2)})`);
+      // El centro del cuadro sigue en el mueble: se abre, no se corre.
+      const n = normalDeCara(f.rotY, "A");
+      assert.ok(Math.hypot(vista.targetX - (f.x + n.x * f.d / 2), vista.targetZ - (f.z + n.z * f.d / 2)) < 1e-9, `${id} ${t}: la toma se descentró del mueble`);
+    }
+  }
+  // Holgada primero: con lugar, a 1,2 m (pegada a 30 cm competía con el mueble).
+  assert.equal(tomaConPersona("PUN-01", "frente").persona.separacion, SEPARACIONES_DE_LA_FIGURA[0]);
+  assert.deepEqual([...SEPARACIONES_DE_LA_FIGURA], [1.2, 1.1, 1.0, 0.8, 0.6, 0.45, 0.3]);
+  // La figura es la de la silueta: 1,70 m.
+  assert.equal(FIGURA_DE_ESCALA.alto, 1.7);
+});
+
+prueba("sin lugar para la persona entera, la toma de siempre y sin persona", () => {
+  // Un robatope en un pasillo de 1 m: ninguna separación la deja entera.
+  const rob = { cx: 0, cz: 0, w: 0.3, d: 0.4, h: 1.6, rotY: 0 };
+  const angosto = { minX: -0.6, maxX: 0.6, minZ: -1.4, maxZ: 0.4 };
+  const r = personaYTomaDeVenta(rob, "A", "frente", { yBajo: 0, yAlto: 1.6 }, [], angosto);
+  assert.equal(r.persona, null, "con media persona afuera igual la planta");
+  assert.deepEqual(r.vista, vistaDeVenta(rob, "A", "frente", { yBajo: 0, yAlto: 1.6 }, [], angosto), "sin persona no es la toma de siempre");
+  assert.equal(r.extremo, 0);
+  // El robatope de la sede, en cambio, la tiene entera (antes la toma
+  // cubría ~1,8 m centrado en 0,8 y la cabeza quedaba afuera).
+  const { vista, persona } = tomaConPersona("ROB-01", "frente");
+  const vieja = vistaDeVenta(comoMueble(SEDE.find((x) => x.id === "ROB-01")), "A", "frente", { yBajo: 0, yAlto: 1.6 }, otros("ROB-01"), LIMITES);
+  const cabeza = proyectar(vieja, 50, 16 / 9, { x: persona.x, y: 1.7, z: persona.z });
+  assert.ok(Math.abs(cabeza.x) > 0.98 || Math.abs(cabeza.y) > 0.98, "la prueba ya no muestra por qué el robatope salía sin persona");
+  assert.ok(vista.posY > 0);
+});
+
+/** El foco de «De cerca» de un mueble de catálogo con su empaque, como lo
+ *  arma la escena (con el copete de la punta). */
+const focoDeCerca = (tipo, f, empaque, donde = "todas") => {
+  const v = VT.ventaDeTipo(tipo, f.w, f.d, f.h);
+  const foco = FR.focoDeLaPrueba(v, f.h, donde, empaque);
+  return tipo === "punta" ? { ...foco, techoDeCara: MD.techoDeCara(f.h), altoDeCopete: MD.COPETE.alto } : foco;
+};
+/** La altura a la que el borde de arriba del cuadro corta el plano de la cara. */
+const bordeDeArriba = (vista, f, fov) => {
+  const n = normalDeCara(f.rotY, "A");
+  const c = { x: f.x + n.x * f.d / 2, z: f.z + n.z * f.d / 2 };
+  const dist = (vista.posX - c.x) * n.x + (vista.posZ - c.z) * n.z;
+  const r = rayoDeVista(vista, fov, 16 / 9, 0, 1);
+  return vista.posY + (r.y * dist) / -(r.x * n.x + r.z * n.z);
+};
+const VASO_ = { ancho: 0.075, alto: 0.09, fondo: 0.075, forma: "caja" };
+const CAJA_LECHE = { ancho: 0.07, alto: 0.2, fondo: 0.07, forma: "caja", envase: "caja" };
+const BOLSA_ARROZ = { ancho: 0.14, alto: 0.23, fondo: 0.06, forma: "bolsa", envase: "bolsa" };
+
+prueba("«De cerca» de la punta no corta el copete: el borde de arriba queda en la cenefa", () => {
+  const f = SEDE.find((x) => x.id === "PUN-01");
+  const techo = MD.techoDeCara(f.h);
+  assert.equal(techo, Math.max(0.4, f.h - MD.COPETE.alto), "techoDeCara no es el cuerpo de la punta");
+  for (const [empaque, donde] of [[VASO_, "todas"], [CAJA_LECHE, "todas"], [VASO_, [3]], [CAJA_LECHE, [2]]]) {
+    const foco = focoDeCerca("punta", f, empaque, donde);
+    const v = vistaDeVenta(comoMueble(f), "A", "cerca", foco, otros("PUN-01"), LIMITES, FOV_DE_CERCA);
+    const b = bordeDeArriba(v, f, FOV_DE_CERCA);
+    assert.ok(!(b > techo && b < techo + MD.COPETE.alto), `el borde de arriba corta el copete a ${b.toFixed(3)} m (copete de ${techo} a ${techo + MD.COPETE.alto})`);
+    // Y el entrepaño elegido sigue entero en el cuadro.
+    const y = (h) => proyectar(v, FOV_DE_CERCA, 16 / 9, { x: v.targetX, y: h, z: v.targetZ }).y;
+    assert.ok(y(foco.yEntrepano + foco.libreEntrepano / 2) <= 1 && y(foco.yEntrepano - foco.libreEntrepano / 2) >= -1, "el entrepaño elegido quedó cortado");
+  }
+  // Sin el copete en el foco, el borde caía en el copete: lo que se corrige.
+  const sin = { ...focoDeCerca("punta", f, VASO_) };
+  delete sin.techoDeCara; delete sin.altoDeCopete;
+  const b0 = bordeDeArriba(vistaDeVenta(comoMueble(f), "A", "cerca", sin, otros("PUN-01"), LIMITES, FOV_DE_CERCA), f, FOV_DE_CERCA);
+  assert.ok(b0 > techo && b0 < techo + MD.COPETE.alto, "la prueba ya no muestra el medio copete");
+});
+
+prueba("el robatope de cerca: dos repisas al 65-75 % del alto del cuadro", () => {
+  const f = SEDE.find((x) => x.id === "ROB-01");
+  const foco = focoDeCerca("robatope", f, BOLSA_ARROZ);
+  assert.equal(foco.parDeRepisas, true, "el robatope no encuadra un par de repisas");
+  const v = VT.ventaDeTipo("robatope", f.w, f.d, f.h);
+  // El par: dos repisas vecinas, con producto, de la de abajo al techo de la de arriba.
+  const apoyos = v.filas.alturas;
+  const i = apoyos.findIndex((a) => Math.abs(a - (foco.yEntrepano - foco.libreEntrepano / 2)) < 0.02);
+  assert.ok(i >= 0 && i + 2 < apoyos.length + 1, "el par no arranca en una repisa");
+  const vista = vistaDeVenta(comoMueble(f), "A", "cerca", foco, otros("ROB-01"), LIMITES, FOV_DE_CERCA);
+  const y = (h) => proyectar(vista, FOV_DE_CERCA, 16 / 9, { x: vista.targetX, y: h, z: vista.targetZ }).y;
+  const llena = (y(foco.yEntrepano + foco.libreEntrepano / 2) - y(foco.yEntrepano - foco.libreEntrepano / 2)) / 2;
+  assert.ok(llena >= 0.65 && llena <= 0.75, `las dos repisas llenan el ${(llena * 100).toFixed(0)} % del alto`);
+  assert.ok(Math.abs(LLENADO_DE_PAR - 0.7) < 1e-9);
+  // Un mueble ancho sigue con UN entrepaño.
+  assert.ok(!focoDeCerca("punta", SEDE.find((x) => x.id === "PUN-01"), VASO_).parDeRepisas, "la punta encuadra dos entrepaños");
+});
+
+prueba("en «De cerca» el producto del entrepaño elegido queda por encima de la franja del HUD", () => {
+  assert.ok(Math.abs(FRANJA_DEL_HUD * 1080 - 110) < 1e-9);
+  const linea = -1 + 2 * FRANJA_DEL_HUD;
+  const casos = [
+    ["PUN-01", "punta", VASO_], ["PUN-01", "punta", CAJA_LECHE], ["ROB-01", "robatope", BOLSA_ARROZ],
+    ["NEV-01", "nevera_refrescos", { ancho: 0.09, alto: 0.3, fondo: 0.09, forma: "botella" }],
+    ["GON-01", "gondola", { ancho: 0.19, alto: 0.27, fondo: 0.065, forma: "caja", envase: "caja" }],
+  ];
+  for (const [id, tipo, empaque] of casos) {
+    const f = SEDE.find((x) => x.id === id);
+    const foco = focoDeCerca(tipo, f, empaque);
+    const v = vistaDeVenta(comoMueble(f), "A", "cerca", foco, otros(id), LIMITES, FOV_DE_CERCA);
+    const pie = proyectar(v, FOV_DE_CERCA, 16 / 9, { x: v.targetX, y: foco.yEntrepano - foco.libreEntrepano / 2, z: v.targetZ }).y;
+    assert.ok(pie >= linea - 1e-6, `${id}: el pie del producto cae a ${(((1 - pie) / 2) * 1080).toFixed(0)} px, en la franja del HUD`);
+  }
+});
+
 // ── El cielo raso de la pantalla de venta ─────────────────────────────────────
 
 console.log("\nplanta · el cielo raso y sus luminarias");
@@ -604,11 +766,9 @@ prueba("proyectar y rayoDeVista son la misma cámara (ida y vuelta)", () => {
 });
 
 prueba("en las tomas de venta se ven el cielo raso y al menos dos luminarias", () => {
-  const toma = (id, t) => {
-    const f = SEDE.find((x) => x.id === id);
-    return vistaDeVenta(comoMueble(f), "A", t, { yBajo: 0, yAlto: f.h }, otros(id), LIMITES);
-  };
-  for (const [id, t] of [["PUN-01", "frente"], ["PUN-01", "tres_cuartos"], ["ROB-01", "tres_cuartos"]]) {
+  // La toma que arma la escena: con la persona de escala (paso 16).
+  const toma = (id, t) => tomaConPersona(id, t).vista;
+  for (const [id, t] of [["PUN-01", "frente"], ["PUN-01", "tres_cuartos"], ["ROB-01", "tres_cuartos"], ["ROB-01", "frente"]]) {
     const n = luminariasEnCuadro(toma(id, t), LIMITES, SEDE);
     assert.ok(n >= 2, `${id} ${t}: ${n} luminarias en el cuadro`);
   }

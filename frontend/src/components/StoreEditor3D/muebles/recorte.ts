@@ -28,6 +28,10 @@
  * come el cuerpo blanco de un vaso de yogur, y lo que lo devuelve es tomar como
  * producto todo lo que cae en el tramo de su fila O de su columna.
  */
+import { empaqueDeArte } from "./producto";
+import type { FichaDeArte } from "./producto";
+import { pasosDeVariantes, variantesDeLaFoto } from "./texturas";
+import type { PedidoDeVariantes, Variantes } from "./texturas";
 
 /** Qué se hizo con el fondo, para decirlo en el panel. */
 export type EstadoDelRecorte =
@@ -649,4 +653,75 @@ export function recortarFondo(
     colorDominante: colorDominanteDe(fuera),
     avisos,
   };
+}
+
+// ─── La foto entera, lista: recorte y variantes ───────────────────────────────
+
+/** Lo que hace falta para saber la forma del envase sin el recorte
+ *  (`empaqueDeArte`): el nombre, la categoría y la ficha del arte. */
+export interface PistaDeEnvase {
+  arte: { nombre: string; categoria?: string | null };
+  ficha: FichaDeArte | null;
+}
+
+/** El recorte y las variantes que pide su forma (`variantesDeLaFoto`). */
+export interface FotoPreparada {
+  recorte: Recorte;
+  variantes: Variantes;
+}
+
+/** El pedido de variantes de un arte, una vez quitado el fondo. */
+function pedidoDe(recorte: Recorte, pista: PistaDeEnvase): PedidoDeVariantes {
+  const e = empaqueDeArte(pista.arte, pista.ficha, recorte);
+  return { envase: e.envase, transparente: e.transparente };
+}
+
+/**
+ * Quita el fondo y arma las variantes que pide la forma (puro).
+ *
+ * Es lo que corre el worker del recorte (`recorte.worker.ts`): el recorte
+ * (~100 ms) y las variantes (otros 150-200 en una botella) se hacían en el
+ * hilo principal, el primero al cargar y las otras en el render del clic, y
+ * elegir un producto trababa la pantalla compartida medio segundo. Sin
+ * `pista` (la vista previa del alta, que no sabe todavía la ficha) sólo el
+ * recorte.
+ */
+export function prepararFoto(
+  rgba: Uint8ClampedArray, w: number, h: number, modo: ModoDeFondo, pista: PistaDeEnvase | null,
+): FotoPreparada {
+  const recorte = recortarFondo(rgba, w, h, modo);
+  return { recorte, variantes: pista ? variantesDeLaFoto(recorte, pedidoDe(recorte, pista)) : {} };
+}
+
+/**
+ * Lo mismo que `prepararFoto`, partido en etapas: entre una y otra se cede
+ * el hilo (`ceder`). Es el camino de los navegadores sin Worker u
+ * OffscreenCanvas: ninguna tarea dura el recorte entero más las variantes.
+ * Da los mismos bytes (lo vigila probar-arte).
+ */
+export async function prepararFotoPorEtapas(
+  rgba: Uint8ClampedArray, w: number, h: number, modo: ModoDeFondo, pista: PistaDeEnvase | null,
+  ceder: () => Promise<void>,
+): Promise<FotoPreparada> {
+  const recorte = recortarFondo(rgba, w, h, modo);
+  const variantes: Variantes = {};
+  if (pista) {
+    for (const paso of pasosDeVariantes(recorte, pedidoDe(recorte, pista), variantes)) {
+      await ceder();
+      paso();
+    }
+  }
+  return { recorte, variantes };
+}
+
+/** Los buffers de una foto preparada, sin repetir, para TRANSFERIRLOS del
+ *  worker al hilo principal sin copiarlos (un buffer repetido en la lista de
+ *  transferencia es un error). */
+export function buffersDe(f: FotoPreparada): ArrayBuffer[] {
+  const fuera = new Set<ArrayBuffer>();
+  const de = (x: { rgba: Uint8ClampedArray } | undefined) => { if (x) fuera.add(x.rgba.buffer as ArrayBuffer); };
+  de(f.recorte);
+  const v = f.variantes;
+  for (const x of [v.borde, v.caja, v.opaca, v.espalda, v.bolsa, v.llena, v.botella, v.espaldaLlena]) de(x);
+  return [...fuera];
 }

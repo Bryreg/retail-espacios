@@ -885,7 +885,17 @@ export interface FocoDeLaPrueba {
   libreEntrepano?: number;
   /** Se eligieron entrepaños (no la cara entera). */
   porEntrepano?: boolean;
+  /** `yEntrepano` y `libreEntrepano` son de un PAR de repisas (mueble
+   *  angosto: ver `MUEBLE_ANGOSTO`). */
+  parDeRepisas?: boolean;
 }
+
+/** Un vano más angosto que esto es un mueble de una columna (el robatope de
+ *  30 cm: una bolsa por repisa). Ahí «De cerca» encuadra DOS repisas: con una
+ *  sola, el producto era un 13 % del cuadro y el resto, el costado del
+ *  vecino; con dos y media, la bolsa ocupaba ~245 px y el resto era góndola
+ *  vacía y pared. */
+export const MUEBLE_ANGOSTO = 0.5;
 
 /**
  * La franja que encuadra la cámara de venta para una prueba.
@@ -930,6 +940,22 @@ export function focoDeLaPrueba(
   const lista = candidatas.length > 0 ? candidatas : elegidas;
   if (lista.length === 0) return { yBajo, yAlto, porEntrepano };
   const centro = (f: { apoyo: number; libre: number }) => f.apoyo + f.libre / 2;
+  // Un mueble angosto: el PAR de repisas vecinas con producto (las dos de
+  // `lista`) cuyo centro queda más cerca de la mirada. «Vecinas» es por
+  // número de fila: con una vacía en el medio, el par mostraría un hueco.
+  const angosto = venta.vanos.length > 0 && Math.max(...venta.vanos.map((v) => v.ancho)) < MUEBLE_ANGOSTO;
+  if (angosto) {
+    const pares: { apoyo: number; libre: number }[] = [];
+    for (const a of lista) {
+      const b = lista.find((f) => f.fila === a.fila + 1);
+      if (b) pares.push({ apoyo: a.apoyo, libre: b.apoyo + b.libre - a.apoyo });
+    }
+    if (pares.length > 0) {
+      const par = pares.reduce((a, b) =>
+        Math.abs(centro(b) - ALTURA_DE_LA_MIRADA) < Math.abs(centro(a) - ALTURA_DE_LA_MIRADA) ? b : a);
+      return { yBajo, yAlto, yEntrepano: centro(par), libreEntrepano: par.libre, porEntrepano, parDeRepisas: true };
+    }
+  }
   const cerca = lista.reduce((a, b) =>
     Math.abs(centro(b) - ALTURA_DE_LA_MIRADA) < Math.abs(centro(a) - ALTURA_DE_LA_MIRADA) ? b : a);
   return { yBajo, yAlto, yEntrepano: centro(cerca), libreEntrepano: cerca.libre, porEntrepano };

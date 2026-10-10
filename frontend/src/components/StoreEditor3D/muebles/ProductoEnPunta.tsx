@@ -1,6 +1,6 @@
 import { memo, useMemo } from "react";
 import {
-  COPETE, PANEL_FONDO, altoDeZonaDeSlotsDePunta, filasDePunta, vanosDeCorrido,
+  PANEL_FONDO, altoDeZonaDeSlotsDePunta, filasDePunta, vanosDeCorrido, techoDeCara,
 } from "./medidas";
 import type { VentaDeMueble } from "./medidas";
 import { ProductoEnMueble } from "./ProductoEnMueble";
@@ -22,7 +22,7 @@ import type { Cubiertas, VendidoEntero } from "./frentes";
  * `h` es el alto TOTAL, copete incluido.
  */
 export function ventaDePunta(w: number, d: number, h: number): VentaDeMueble {
-  const altoDeCuerpo = Math.max(0.4, h - COPETE.alto);
+  const altoDeCuerpo = techoDeCara(h);
   const fondoDeCara = Math.max(0.12, d - PANEL_FONDO.espesor);
   return {
     filas: filasDePunta(altoDeCuerpo, fondoDeCara),

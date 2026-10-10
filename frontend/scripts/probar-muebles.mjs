@@ -3088,7 +3088,7 @@ prueba("la lámina usa las tomas de venta, con fondo de sala, y deja la cámara 
   assert.match(editorCodigo, /estadoDeEscena\.current\.sinArte = sinArte;/);
   assert.match(editorCodigo, /estadoDeEscena\.current\.toma = pedidoDeToma\.n;/);
   // El fondo: el lienzo es transparente y el PNG salía con cielo blanco.
-  assert.match(lamina, /prepararToma\(dataUrl, aspecto, FONDO_DE_SALA\)/);
+  assert.match(lamina, /prepararToma\(dataUrl, aspectoDeLamina, FONDO_DE_SALA\)/);
   assert.match(editorCodigo, /style=\{\{ background:FONDO_DE_SALA,/, "la sala de la pantalla y la de la lámina no son la misma");
   // La cámara vuelve.
   assert.match(lamina, /finally \{[\s\S]*ctrl\.object\.position\.copy\(camaraDeAntes\.pos\);[\s\S]*ctrl\.target\.copy\(camaraDeAntes\.mira\);/,
@@ -3196,18 +3196,36 @@ prueba("la etiqueta opaca sale del rgba del recorte, no del lienzo", () => {
     "una textura relee un lienzo premultiplicado");
   assert.match(etiqueta, /function dibujarTapa\([\s\S]*?g\.fillRect\(0, 0, N, N\);[\s\S]*?g\.getImageData\(0, 0, N, N\)/,
     "la tapa relee un lienzo que no pintó entero");
-  // Todas las variantes salen del rgba del recorte, con el borde encogido.
-  assert.match(etiqueta, /const conBorde = \(\) => \(borde \?\?= erosionarYSangrar\(recorte, 2, 8\)\)/,
-    "las texturas no salen del rgba del recorte con el borde limpio");
-  assert.match(etiqueta, /texturaOpaca: \(\) => una\("opaca", \(\) => aplanar\(conBorde\(\)\)\)/);
-  assert.match(etiqueta, /texturaConAlfa: \(\) => una\("alfa", conBorde\)/);
+  // Todas las variantes salen del rgba del recorte, con el borde encogido, y
+  // con las recetas de `texturas.ts` (las mismas que corre el worker; ver
+  // probar-arte, «el worker y el hilo principal»).
+  const texturas = sinComentarios(leer(join(muebles, "texturas.ts")));
+  const receta = (n) => {
+    const i = texturas.indexOf(`  ${n}: (`, texturas.indexOf("export const RECETAS = {"));
+    assert.ok(i > 0, `falta la receta \`${n}\``);
+    // Hasta la receta siguiente (o el cierre de RECETAS): ni una más.
+    const resto = texturas.slice(i + 4);
+    const fin = resto.search(/\n  \w+: \(|\n\} as const/);
+    assert.ok(fin > 0, `no se encontró dónde termina la receta \`${n}\``);
+    return texturas.slice(i, i + 4 + fin);
+  };
+  assert.match(receta("borde"), /erosionarYSangrar\(recorte, 2, 8\)/, "las texturas no salen del rgba del recorte con el borde limpio");
+  assert.match(receta("opaca"), /aplanar\(borde\)/);
   // La botella encoge 4 px: con 2 quedaba un serrucho blanco en la base.
-  assert.match(etiqueta, /const conLiquido = \(\) => \(llena \?\?= llenarBotella\(erosionarYSangrar\(recorte, 4, 10\)\)\);/);
-  assert.match(etiqueta, /texturaDeBotella: \(\) => una\("botella", \(\) => aplanar\(conLiquido\(\)\)\)/);
+  assert.match(receta("llena"), /llenarBotella\(erosionarYSangrar\(recorte, 4, 10\)\)/);
+  assert.match(receta("botella"), /aplanar\(llena\)/);
   // La espalda sale de la MISMA botella llena (con su alfa) o del borde.
-  assert.match(etiqueta, /espaldaDeEtiqueta\(b, L \? filasDeEtiqueta\(b, L\) : undefined\)/);
-  assert.match(etiqueta, /una\("espalda", \(\) => espaldaDeEtiqueta\(conBorde\(\)\)\)/);
-  assert.match(etiqueta, /const r = rectificarCaja\(conBorde\(\)\);/, "la caja no endereza la foto en tres cuartos");
+  assert.match(receta("espaldaLlena"), /espaldaDeEtiqueta\(llena, L \? filasDeEtiqueta\(llena, L\) : undefined\)/);
+  assert.match(receta("espalda"), /espaldaDeEtiqueta\(borde\)/);
+  assert.match(receta("caja"), /const r = rectificarCaja\(borde\);/, "la caja no endereza la foto en tres cuartos");
+  // Y etiqueta.ts las usa (o toma las que llegaron hechas del worker).
+  assert.match(etiqueta, /const conBorde = \(\) => \(borde \?\?= RECETAS\.borde\(recorte\)\);/);
+  assert.match(etiqueta, /texturaOpaca: \(\) => una\("opaca", \(\) => ya_\.opaca \?\? RECETAS\.opaca\(conBorde\(\)\)\)/);
+  assert.match(etiqueta, /texturaConAlfa: \(\) => una\("alfa", conBorde\)/);
+  assert.match(etiqueta, /const conLiquido = \(\) => \(llena \?\?= RECETAS\.llena\(recorte\)\);/);
+  assert.match(etiqueta, /texturaDeBotella: \(\) => una\("botella", \(\) => ya_\.botella \?\? RECETAS\.botella\(conLiquido\(\)\)\)/);
+  assert.match(etiqueta, /una\("espalda-llena", \(\) => ya_\.espaldaLlena \?\? RECETAS\.espaldaLlena\(conLiquido\(\)\)\)/);
+  assert.match(etiqueta, /una\("espalda", \(\) => ya_\.espalda \?\? RECETAS\.espalda\(conBorde\(\)\)\)/);
 });
 
 prueba("cada envase lleva su textura: la caja con costado liso, la bolsa con alfa", () => {
@@ -3373,7 +3391,7 @@ prueba("la prueba 3D le gana a la foto y al patrón en su cara, y sólo en ella"
   assert.match(fp, /if \(front \|\| back \|\| pruebaA \|\| pruebaB\) map\.set\(fix\.id, \{ front, back, pruebaA, pruebaB \}\)/,
     "un mueble con sólo prueba se queda sin pintar");
   assert.match(fp, /marcarEnUso\(enUso\)/, "las etiquetas en prueba se pueden desalojar del caché");
-  assert.match(fp, /etiquetaDeArte\(clave, arteUrl\(arteId\), modo, notifyTexLoaded\)/);
+  assert.match(fp, /etiquetaDeArte\(clave, arteUrl\(arteId\), modo, notifyTexLoaded, \{ arte, ficha: arte\.ficha \?\? null \}\)/);
   // Sin `?? false`: hasta que la dueña toca «Mostrarla acostada», decide la
   // ficha del arte (`ficha.acostado`).
   assert.match(fp, /\{ acostado: como\?\.acostado \}/, "«acostada» no llega al envase");
@@ -4376,6 +4394,74 @@ prueba("con el selector abierto y sin proveedor no se dibuja ninguna prueba; «M
   const hud = editorCodigo.slice(editorCodigo.indexOf("data-prueba-oculta"), editorCodigo.indexOf("Mostrarla", editorCodigo.indexOf("data-prueba-oculta")) + 20);
   assert.match(hud, /\{privadoPara === null && \(\s*<button\s*onClick=\{\(\) => mostrarAlProveedor\(pruebaOculta\.fixtureId, pruebaOculta\.cara\)\}/,
     "«Mostrarla» se ofrece con la prueba de otro proveedor");
+});
+
+// ── Encuadres de venta (tanda 3, paso 16) ───────────────────────────────────
+
+prueba("la persona de venta sale de la toma (una sola cuenta); el editor conserva su gris y sus 30 cm", () => {
+  // El editor: #8c867e y 0,3 m, como siempre.
+  assert.match(editorCodigo, /const GRIS_DE_SILUETA = "#8c867e";/, "cambió el gris de la persona del editor");
+  assert.match(editorCodigo, /const SEPARACION_EN_VENTA = 0\.3;/, "cambió la separación de la persona del editor");
+  // Venta: gris claro, opaca (alphaTest, sin transparencia).
+  assert.match(editorCodigo, /const GRIS_DE_SILUETA_EN_VENTA = "#b8b4ae";/, "la persona de venta no es el gris claro");
+  const silueta = cuerpoDe("function SiluetaDeEscala(", "const CHROME = ");
+  assert.match(silueta, /color = GRIS_DE_SILUETA \}/, "la silueta sin color dejó de ser la del editor");
+  assert.match(silueta, /color=\{color\} alphaTest=\{0\.5\}/);
+  assert.match(silueta, /const m = FIGURA_DE_ESCALA\.medioAncho;/, "la silueta mide otra figura que la que proyecta la toma");
+  assert.match(editorCodigo, /const ALTURA_PERSONA = FIGURA_DE_ESCALA\.alto;/);
+  // Dónde se dibuja: en venta, la persona que eligió la toma; si la toma no
+  // la metió entera, ninguna. En el editor, al costado a 30 cm y en su gris.
+  const desde = cuerpoEscena.indexOf("{!firstPerson && (() => {");
+  const bloque = cuerpoEscena.slice(desde, cuerpoEscena.indexOf("<primitive object={gridMinor} />", desde));
+  assert.match(bloque, /if \(toma && personaDeVenta\?\.fixtureId === sel\.id\) \{\s*const q = personaDeVenta\.persona;\s*return q \? <SiluetaDeEscala x=\{q\.x\} z=\{q\.z\} rotY=\{q\.rotY\} color=\{GRIS_DE_SILUETA_EN_VENTA\} \/> : null;/,
+    "la silueta de venta se recalcula aparte de la toma");
+  assert.match(bloque, /color=\{pantallaDeVenta \? GRIS_DE_SILUETA_EN_VENTA : GRIS_DE_SILUETA\}/, "el editor perdió su gris");
+  // La toma: en venta, frente y tres cuartos de la cara entera con
+  // `personaYTomaDeVenta`; en el editor, la de siempre con la persona a 30 cm.
+  const toma = cuerpoDe("const tomaDeVenta = useCallback(", "const ponerCampoVisual = useCallback(");
+  assert.match(toma, /const enVenta = presentationMode \|\| privadoPara !== undefined;/);
+  assert.match(toma, /if \(enVenta && toma !== "cerca" && !foco\.porEntrepano\) \{\s*[^]*?personaYTomaDeVenta\(\s*mueble, cara, toma, focoConCopete,/,
+    "la toma de venta no encuadra a la persona");
+  assert.match(toma, /setPersonaDeVenta\(\{ fixtureId: fix\.id, persona \}\);/, "la toma no le pasa la persona a la escena");
+  assert.match(toma, /const persona = fix\.id === selectedId\s*\? lugarDeLaFigura\(fix, obstaculos, SEPARACION_EN_VENTA, \{ d: fix\.d, cara \}\) : null;/,
+    "el editor cambió dónde se para la persona");
+  assert.match(toma, /\}, \[facePaintById, comoSePrueba, placedFixtures, selectedId, presentationMode, privadoPara, limites, size, aplicarVista\]\);/,
+    "la toma no se entera de que es la lámina");
+  // La punta lleva su copete al foco, con la MISMA cuenta que el mueble.
+  assert.match(toma, /fix\.type === "punta"\s*\? \{ \.\.\.foco, techoDeCara: techoDeCara\(fix\.h\), altoDeCopete: COPETE\.alto \} : foco;/);
+  assert.equal((editorCodigo.match(/Math\.max\(0\.4, h - COPETE\.alto\)/g) ?? []).length, 0, "el cuerpo de la punta vuelve a calcularse aparte de techoDeCara");
+  for (const f of ["PuntaReal.tsx", "ProductoEnPunta.tsx"]) {
+    const t = sinComentarios(leer(join(muebles, f)));
+    assert.match(t, /const altoDeCuerpo = techoDeCara\(h\);/, `${f} calcula el cuerpo de la punta por su cuenta`);
+  }
+  // La lámina abre el recorte hasta la persona (las tres tomas, del mismo tamaño).
+  const lamina = cuerpoDe("const exportarPropuesta = useCallback(", "const selectedSlot = selectedFix");
+  assert.match(lamina, /aspectoDeLamina = Math\.min\(16 \/ 9, Math\.max\(aspecto, estadoDeEscena\.current\.aspectoConPersona\)\);/,
+    "la lámina parte a la persona con el recorte");
+});
+
+prueba("«De cerca» de un mueble angosto: el par de repisas vecinas con producto más cerca de 1,3 m", () => {
+  const BOLSA = { ancho: 0.14, alto: 0.23, fondo: 0.06, forma: "bolsa", envase: "bolsa" };
+  const v = V.ventaDeTipo("robatope", 0.3, 0.4, 1.6);
+  const foco = F.focoDeLaPrueba(v, 1.6, "todas", BOLSA);
+  assert.equal(foco.parDeRepisas, true);
+  const r = F.unidadesDePrueba({ venta: v, empaque: BOLSA, donde: "todas", semilla: "foco" });
+  const con = r.porFila.filter((f) => f.motivo === null);
+  // Todos los pares vecinos con producto; gana el de centro más cerca de 1,3 m.
+  const pares = con.flatMap((a) => {
+    const b = con.find((f) => f.fila === a.fila + 1);
+    return b ? [{ apoyo: a.apoyo, libre: b.apoyo + b.libre - a.apoyo }] : [];
+  });
+  assert.ok(pares.length >= 2, "la prueba no tiene pares para elegir");
+  const mejor = pares.reduce((a, b) => (Math.abs(b.apoyo + b.libre / 2 - 1.3) < Math.abs(a.apoyo + a.libre / 2 - 1.3) ? b : a));
+  assert.equal(enMetros(foco.yEntrepano), enMetros(mejor.apoyo + mejor.libre / 2));
+  assert.equal(enMetros(foco.libreEntrepano), enMetros(mejor.libre));
+  // Con una sola repisa elegida no hay par: la de siempre.
+  const una = F.focoDeLaPrueba(v, 1.6, [2], BOLSA);
+  assert.ok(!una.parDeRepisas, "con una repisa elegida encuadra dos");
+  // Un mueble ancho, nunca.
+  assert.ok(!F.focoDeLaPrueba(V.ventaDeTipo("punta", 0.9, 0.4, 1.8), 1.8, "todas", VASO).parDeRepisas);
+  assert.ok(F.MUEBLE_ANGOSTO === 0.5);
 });
 
 console.log(`\n${hechas} pruebas del mobiliario 3D`);

@@ -373,6 +373,20 @@ export const COPETE = {
   altoLuz: 0.05,
 } as const;
 
+/**
+ * Dónde termina la cara de una punta y empieza su copete: el alto del cuerpo,
+ * `h` total menos el cartel (nunca menos de 40 cm).
+ *
+ * Es UNA cuenta para el mueble que se dibuja (`PuntaMesh`, `PuntaReal`), el
+ * que vende (`ventaDePunta`) y la cámara de venta: «De cerca» no corta el
+ * copete por la mitad, y `focoDeLaPrueba` no sabe del copete (mira
+ * entrepaños). Con dos copias, un ajuste de un lado hacía que la toma
+ * cortara el cartel en otro lugar que el que se dibuja.
+ */
+export function techoDeCara(h: number): number {
+  return Math.max(0.4, h - COPETE.alto);
+}
+
 /** Los entrepaños de una punta, dentro de su cuerpo (sin el copete).
  *
  *  Terminan un poco antes del copete: el cartel necesita su aire o se lee

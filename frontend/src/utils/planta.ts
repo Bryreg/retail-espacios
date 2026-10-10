@@ -617,6 +617,7 @@ export function lugarDeLaFigura(
   muros: Caja[],
   separacion = 0.45,
   enLaCara?: { d: number; cara: "A" | "B" },
+  lados: readonly (1 | -1)[] = [1, -1],
 ): { x: number; z: number; rotY: number } | null {
   const cos = Math.cos(f.rotY), sen = Math.sin(f.rotY);
   const aMundo = (lx: number, lz: number) => ({
@@ -627,7 +628,7 @@ export function lugarDeLaFigura(
   const lz = enLaCara ? (enLaCara.cara === "A" ? -1 : 1) * (enLaCara.d / 2) : -0.35;
   // Mirando hacia el mismo lado que la cara: de frente a quien la mira.
   const rotY = enLaCara?.cara === "B" ? f.rotY + Math.PI : f.rotY;
-  for (const lado of [1, -1] as const) {
+  for (const lado of lados) {
     const p = aMundo(lado * (f.w / 2 + separacion), lz);
     if (!chocaEn(muros, p.x, p.z)) return { ...p, rotY };
   }
@@ -698,7 +699,25 @@ export interface FocoDeVenta {
   /** La prueba va en algunos entrepaños y no en la cara entera: la toma de
    *  frente los mira DE FRENTE, a su altura, y no desde 1,2 m para abajo. */
   porEntrepano?: boolean;
+  /** En un mueble angosto (el robatope: una bolsa por repisa) `yEntrepano` y
+   *  `libreEntrepano` son de un PAR de repisas (`focoDeLaPrueba`), y «De
+   *  cerca» las encuadra al `LLENADO_DE_PAR` del alto. */
+  parDeRepisas?: boolean;
+  /** Dónde termina la cara y empieza el copete (la punta; `techoDeCara` de
+   *  `medidas.ts`), y cuánto mide el copete. «De cerca» no corta el copete
+   *  por la mitad. */
+  techoDeCara?: number;
+  altoDeCopete?: number;
 }
+
+/** Qué parte del alto del cuadro llenan las dos repisas de «De cerca» en un
+ *  mueble angosto. */
+export const LLENADO_DE_PAR = 0.7;
+
+/** La franja de abajo del cuadro que puede tapar el HUD de Presentar (110 px
+ *  de 1080). En «De cerca» el producto del entrepaño elegido queda arriba de
+ *  ella: el HUD se esconde solo, pero vuelve con cualquier movimiento. */
+export const FRANJA_DEL_HUD = 110 / 1080;
 
 /** El ángulo polar de OrbitControls va de π/6 a π/2,1 (`CameraControls`): una
  *  cámara a la altura exacta de la mira queda FUERA y los controles la mueven
@@ -741,6 +760,7 @@ export function vistaDeVenta(
   fovGrados = 50,
   aspecto = 16 / 9,
   evitar?: { x: number; z: number },
+  incluir?: readonly { x: number; y?: number; z: number }[],
 ): Vista3D {
   const n = normalDeCara(mueble.rotY ?? 0, cara);
   const centro = { x: mueble.cx + (n.x * mueble.d) / 2, z: mueble.cz + (n.z * mueble.d) / 2 };
@@ -758,18 +778,69 @@ export function vistaDeVenta(
     const mira = foco.yEntrepano ?? (foco.yBajo + foco.yAlto) / 2;
     const alto = foco.libreEntrepano ?? 0.3;
     // Lo que tiene que entrar de alto: el entrepaño con su labio y el
-    // porta-precios (6 cm), al 75 % del cuadro; o dos repisas y media.
-    const visible = mueble.w < 0.5 ? (alto + 0.03) * 2.6 : (alto + 0.06) / LLENADO_DE_CERCA;
+    // porta-precios (6 cm), al 75 % del cuadro; en un mueble angosto, el par
+    // de repisas al 70 % (con dos repisas y media, la bolsa ocupaba ~245 px y
+    // el resto del cuadro era góndola vacía y pared).
+    const visible = foco.parDeRepisas ? alto / LLENADO_DE_PAR
+      : mueble.w < 0.5 ? (alto + 0.03) * 2.6 : (alto + 0.06) / LLENADO_DE_CERCA;
     const ideal = Math.min(1.8, Math.max(0.6, visible / (2 * Math.tan(mitadV))));
     const dist = Math.max(0.6, Math.min(ideal, libre || ideal));
-    return conAltura({ x: centro.x + n.x * dist, z: centro.z + n.z * dist }, mira, Math.min(1.65, mira + 0.1));
+    const pos = { x: centro.x + n.x * dist, z: centro.z + n.z * dist };
+    const yCamara = Math.min(1.65, mira + 0.1);
+    const conMira = (m: number) => conAltura(pos, m, yCamara);
+    const enCuadro = (m: number, y: number) =>
+      proyectar(conMira(m), fovGrados, aspecto, { x: centro.x, y, z: centro.z }).y;
+    // Dónde corta el borde de arriba del cuadro el plano de la cara.
+    const bordeDeArriba = (m: number) => {
+      const v = conMira(m);
+      const r = rayoDeVista(v, fovGrados, aspecto, 0, 1);
+      const haciaLaCara = -(r.x * n.x + r.z * n.z);
+      return haciaLaCara > 1e-6 ? v.posY + (r.y * dist) / haciaLaCara : Infinity;
+    };
+    /** La mira más alta, entre `desde` y 40 cm más abajo, que cumple `ok`
+     *  (bajar la mira sube el producto en el cuadro y baja el borde de
+     *  arriba). Si ninguna lo cumple, la más baja. */
+    const bajarHasta = (desde: number, ok: (m: number) => boolean) => {
+      if (ok(desde)) return desde;
+      let alta = desde, baja = desde - 0.4;
+      if (!ok(baja)) return baja;
+      for (let i = 0; i < 30; i++) {
+        const medio = (alta + baja) / 2;
+        if (ok(medio)) baja = medio; else alta = medio;
+      }
+      return baja;
+    };
+    let m = mira;
+    // El pie del producto, por encima de la franja del HUD; sin sacar del
+    // cuadro lo de arriba del entrepaño.
+    const pie = mira - alto / 2, techo = mira + alto / 2;
+    const lineaDelHud = -1 + 2 * FRANJA_DEL_HUD;
+    if (enCuadro(m, pie) < lineaDelHud) {
+      const bajada = bajarHasta(m, (x) => enCuadro(x, pie) >= lineaDelHud);
+      if (enCuadro(bajada, techo) <= 0.98) m = bajada;
+    }
+    // El copete de la punta: si el borde de arriba lo corta, la mira baja lo
+    // justo para que el borde quede en la cenefa. Medio vaso del copete
+    // colgando del borde del cuadro parecía un objeto colgado del techo.
+    if (foco.techoDeCara != null && foco.altoDeCopete != null) {
+      const piso = foco.techoDeCara, tope = foco.techoDeCara + foco.altoDeCopete;
+      const b = bordeDeArriba(m);
+      if (b > piso && b < tope) m = bajarHasta(m, (x) => bordeDeArriba(x) <= piso - 0.01);
+    }
+    return conMira(m);
   }
 
   const mira = (foco.yBajo + foco.yAlto) / 2;
   const altoFoco = Math.max(0.1, foco.yAlto - foco.yBajo);
+  // Lo que tiene que entrar de ancho, a cada lado del centro de la cara: el
+  // mueble y, con `incluir`, la persona de escala. El centro NO se corre: el
+  // cuadro se abre hasta ella sin descentrar el mueble que se vende.
+  const tangente = { x: -n.z, z: n.x };
+  const medioAncho = Math.max(mueble.w / 2,
+    ...(incluir ?? []).map((p) => Math.abs((p.x - centro.x) * tangente.x + (p.z - centro.z) * tangente.z)));
   const ideal = Math.max(
     (altoFoco * 1.12) / (2 * Math.tan(mitadV)),
-    (mueble.w * 1.1) / (2 * Math.tan(mitadH)),
+    (medioAncho * 2 * 1.1) / (2 * Math.tan(mitadH)),
   );
   const dist = Math.max(0.9, Math.min(ideal, libre));
   // Por entrepaño, casi perpendicular a lo elegido: desde 1,2 m un entrepaño
@@ -797,11 +868,182 @@ export function vistaDeVenta(
     const lejos = lados.reduce((a, b) => (haciaEvitar(b) < haciaEvitar(a) ? b : a));
     if (lejos.libre >= 0.9 && lados[0] !== lejos) lados.reverse();
   }
+  // Lo que hay que incluir con su altura (las esquinas de la persona): girada,
+  // la cámara puede quedar más cerca de ella que del mueble y cortarle la
+  // cabeza. Se aleja de a 5 cm, sin salir del pasillo de ese lado, hasta que
+  // entra; si no entra, queda donde iba (y quien llama prueba otra cosa).
+  const conAlto = (incluir ?? []).filter((p) => p.y != null);
+  const entra = (v: Vista3D) => conAlto.every((p) => {
+    const q = proyectar(v, fovGrados, aspecto, { x: p.x, y: p.y!, z: p.z });
+    return q.profundidad > 0 && Math.abs(q.x) <= 0.98 && Math.abs(q.y) <= 0.98;
+  });
   for (const { dir, libre: l } of lados) {
-    const d = Math.max(0.9, Math.min(dist, l));
-    const pos = { x: centro.x + dir.x * d, z: centro.z + dir.z * d };
-    const adentro = pos.x > limites.minX && pos.x < limites.maxX && pos.z > limites.minZ && pos.z < limites.maxZ;
-    if (adentro && !chocaEn(obstaculos, pos.x, pos.z)) return conAltura(pos, mira, yCamara);
+    const lugar = (d: number) => {
+      const pos = { x: centro.x + dir.x * d, z: centro.z + dir.z * d };
+      const adentro = pos.x > limites.minX && pos.x < limites.maxX && pos.z > limites.minZ && pos.z < limites.maxZ;
+      return adentro && !chocaEn(obstaculos, pos.x, pos.z) ? conAltura(pos, mira, yCamara) : null;
+    };
+    const d0 = Math.max(0.9, Math.min(dist, l));
+    const v0 = lugar(d0);
+    if (!v0) continue;
+    if (conAlto.length && !entra(v0)) {
+      for (let d = d0 + 0.05; d <= l + 1e-9; d += 0.05) {
+        const v = lugar(d);
+        if (v && entra(v)) return v;
+      }
+    }
+    return v0;
   }
   return frente;
+}
+
+// ─── La persona y la toma, con una sola cuenta ───────────────────────────────
+
+/** La figura de escala: el alto y medio ancho del plano que la dibuja
+ *  (`SiluetaDeEscala`). Las esquinas que se proyectan para saber si entra son
+ *  las de ESTE rectángulo. */
+export const FIGURA_DE_ESCALA = { alto: 1.7, medioAncho: 0.26 } as const;
+
+/** Las separaciones del canto que se prueban, de la más holgada a la más
+ *  pegada. A 1-1,2 m la persona se lee como alguien en el pasillo y no le
+ *  quita peso al mueble; pegada a 30 cm competía con él. */
+export const SEPARACIONES_DE_LA_FIGURA = [1.2, 1.1, 1.0, 0.8, 0.6, 0.45, 0.3] as const;
+
+/** Hasta dónde llega el foco con la persona en el cuadro: su cabeza (1,70)
+ *  con aire. */
+const ALTO_CON_PERSONA = 1.75;
+
+/** Cuánto piso libre hay al costado de cada canto de la cara, hacia afuera y
+ *  en su plano (de a 5 cm, hasta 3 m; cuenta cualquier mueble, también el que
+ *  toca el canto), y los lados en ese orden: el más libre primero. */
+export function ladosPorLibre(
+  mueble: { cx: number; cz: number; w: number; d: number; rotY?: number },
+  cara: "A" | "B",
+  obstaculos: Caja[],
+  limites: Caja,
+): (1 | -1)[] {
+  const rotY = mueble.rotY ?? 0;
+  const n = normalDeCara(rotY, cara);
+  // El eje X local del mueble en el mundo (el de `lugarDeLaFigura`).
+  const t = { x: Math.cos(rotY), z: -Math.sin(rotY) };
+  const libre = (lado: 1 | -1) => {
+    let l = 0;
+    for (let s = 0.05; s <= 3 + 1e-9; s += 0.05) {
+      const x = mueble.cx + n.x * (mueble.d / 2) + t.x * lado * (mueble.w / 2 + s);
+      const z = mueble.cz + n.z * (mueble.d / 2) + t.z * lado * (mueble.w / 2 + s);
+      if (x < limites.minX || x > limites.maxX || z < limites.minZ || z > limites.maxZ || chocaEn(obstaculos, x, z)) break;
+      l = s;
+    }
+    return l;
+  };
+  return libre(1) >= libre(-1) ? [1, -1] : [-1, 1];
+}
+
+/** Las cuatro esquinas de la figura parada en `p`, en el mundo. */
+export function esquinasDeLaFigura(p: { x: number; z: number; rotY: number }): { x: number; y: number; z: number }[] {
+  const c = Math.cos(p.rotY), s = Math.sin(p.rotY);
+  const fuera: { x: number; y: number; z: number }[] = [];
+  for (const lado of [-1, 1]) for (const y of [0, FIGURA_DE_ESCALA.alto]) {
+    // El eje X local de la figura, como en `lugarDeLaFigura`.
+    fuera.push({ x: p.x + lado * FIGURA_DE_ESCALA.medioAncho * c, y, z: p.z - lado * FIGURA_DE_ESCALA.medioAncho * s });
+  }
+  return fuera;
+}
+
+/**
+ * La toma de venta («De frente» o «Tres cuartos») CON la persona de escala
+ * entera adentro, o la de siempre sin persona.
+ *
+ * Antes la toma y la silueta se calculaban por separado: la toma encuadraba
+ * el mueble con un 12 % de aire y la silueta se paraba a 30 cm del canto y se
+ * escondía si una esquina quedaba fuera. En el robatope (1,6 m) el cuadro
+ * cubría ~1,8 m centrado en 0,8: la cabeza quedaba afuera y no salía nadie,
+ * y una bolsa de 23 cm no tenía contra qué medirse.
+ *
+ * Ahora es UNA cuenta: para cada separación (`SEPARACIONES_DE_LA_FIGURA`),
+ * `lugarDeLaFigura` busca dónde pararla —el lado libre primero—, la toma sube
+ * el foco hasta su cabeza y abre el cuadro hasta ella sin correr el centro
+ * del mueble (`incluir`), y se proyectan sus cuatro esquinas con esa MISMA
+ * cámara. La primera en que entran las cuatro (dentro de ±0,98) gana, y la
+ * escena dibuja la silueta ahí. Si en ninguna entra, la toma de siempre y sin
+ * persona: media persona no da escala, distrae.
+ *
+ * No se usa por entrepaño ni «De cerca»: esas tomas miran lo elegido de
+ * frente y de cerca, donde una persona entera no cabe.
+ *
+ * `separaciones` es el orden en que se prueban. La lámina las prueba de la
+ * más pegada a la más holgada: cada toma se recorta a la forma del mueble y
+ * una persona a 1,2 m obligaba a abrir el recorte hasta achicar el mueble.
+ * `extremo` es el |x| (−1…1) de la esquina de la figura más lejos del centro
+ * del cuadro: hasta ahí tiene que llegar el recorte para no partirla.
+ */
+export function personaYTomaDeVenta(
+  mueble: { cx: number; cz: number; w: number; d: number; h: number; rotY?: number },
+  cara: "A" | "B",
+  toma: "frente" | "tres_cuartos",
+  foco: FocoDeVenta,
+  obstaculos: Caja[],
+  limites: Caja,
+  fovGrados = 50,
+  aspecto = 16 / 9,
+  separaciones: readonly number[] = SEPARACIONES_DE_LA_FIGURA,
+): { vista: Vista3D; persona: { x: number; z: number; rotY: number; separacion: number } | null; extremo: number } {
+  const rotY = mueble.rotY ?? 0;
+  const conPersona: FocoDeVenta = { ...foco, yAlto: Math.max(foco.yAlto, ALTO_CON_PERSONA) };
+  // El lado LIBRE primero: el que tiene más piso sin muebles al costado del
+  // canto, en el plano de la cara. Pegada al robatope, la punta tiene un
+  // costado ocupado; con el orden fijo de `lugarDeLaFigura` la persona
+  // saltaba por encima del robatope y quedaba delante de la góndola vecina.
+  // Para cada separación, los dos lados: primero el libre, y si con él no
+  // entra, el otro. En tres cuartos la cámara gira hacia el lado con pasillo;
+  // si ése es el de la persona, la tiene a un metro y le corta la cabeza, y
+  // del otro lado del mueble entra entera y sin quedar en primer plano.
+  const lados = ladosPorLibre(mueble, cara, obstaculos, limites);
+  const lugares: { p: { x: number; z: number; rotY: number }; separacion: number }[] = [];
+  for (const separacion of separaciones) for (const lado of lados) {
+    const p = lugarDeLaFigura({ x: mueble.cx, z: mueble.cz, w: mueble.w, rotY }, obstaculos, separacion, { d: mueble.d, cara }, [lado]);
+    if (!p) continue;
+    // Dentro del local: a 1,2 m del canto, una punta contra el muro la
+    // paraba del otro lado de la pared.
+    if (p.x < limites.minX + RADIO_PERSONA || p.x > limites.maxX - RADIO_PERSONA
+      || p.z < limites.minZ + RADIO_PERSONA || p.z > limites.maxZ - RADIO_PERSONA) continue;
+    lugares.push({ p, separacion });
+  }
+  type Hallada = { vista: Vista3D; persona: { x: number; z: number; rotY: number; separacion: number }; extremo: number };
+  // Las cuatro esquinas de la cara: la persona no se superpone con ella en el
+  // cuadro (con 2 % de aire). Girada, la toma la dejaba pegada al canto.
+  const n = normalDeCara(rotY, cara), t = { x: -n.z, z: n.x };
+  const cara4 = [-1, 1].flatMap((lado) => [0, mueble.h].map((y) => ({
+    x: mueble.cx + n.x * mueble.d / 2 + t.x * lado * mueble.w / 2, y, z: mueble.cz + n.z * mueble.d / 2 + t.z * lado * mueble.w / 2,
+  })));
+  const probar = ({ p, separacion }: (typeof lugares)[number], conAltura: boolean): Hallada | null => {
+    const esquinas = esquinasDeLaFigura(p);
+    // Sin la altura de las esquinas, la toma sólo abre el cuadro hasta la
+    // persona; con ella, en tres cuartos además se aleja hasta que entra.
+    const incluir = conAltura ? esquinas : esquinas.map(({ x, z }) => ({ x, z }));
+    const vista = vistaDeVenta(mueble, cara, toma, conPersona, obstaculos, limites, fovGrados, aspecto, p, incluir);
+    const q = esquinas.map((e) => proyectar(vista, fovGrados, aspecto, e));
+    const entra = q.every((e) => e.profundidad > 0 && Math.abs(e.x) <= 0.98 && Math.abs(e.y) <= 0.98);
+    const xs = cara4.map((e) => proyectar(vista, fovGrados, aspecto, e).x);
+    const [a, b] = [Math.min(...xs) - 0.02, Math.max(...xs) + 0.02];
+    const [pa, pb] = [Math.min(...q.map((e) => e.x)), Math.max(...q.map((e) => e.x))];
+    const alCostado = pb < a || pa > b;
+    return entra && alCostado ? { vista, persona: { ...p, separacion }, extremo: Math.max(...q.map((e) => Math.abs(e.x))) } : null;
+  };
+  // 1. La primera separación en que entra sin mover la toma más que para
+  //    abrir el cuadro.
+  for (const l of lugares) {
+    const h = probar(l, false);
+    if (h) return h;
+  }
+  // 2. Si no, alejando la cámara (tres cuartos, del lado de la persona: le
+  //    cortaba la cabeza): la que queda MÁS CERCA del mueble, que es la que
+  //    lo deja más grande en el cuadro.
+  let mejor: Hallada | null = null;
+  const lejos = (v: Vista3D) => Math.hypot(v.posX - v.targetX, v.posZ - v.targetZ);
+  for (const l of lugares) {
+    const h = probar(l, true);
+    if (h && (!mejor || lejos(h.vista) < lejos(mejor.vista) - 1e-9)) mejor = h;
+  }
+  return mejor ?? { vista: vistaDeVenta(mueble, cara, toma, foco, obstaculos, limites, fovGrados, aspecto), persona: null, extremo: 0 };
 }

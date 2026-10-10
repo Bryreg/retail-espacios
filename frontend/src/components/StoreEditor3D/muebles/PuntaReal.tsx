@@ -1,7 +1,7 @@
 import { memo, useMemo } from "react";
 import type * as THREE from "three";
 import {
-  COPETE, PANEL_FONDO, PARANTE, ZOCALO, nivelesDePunta, vanosDeCorrido,
+  COPETE, PANEL_FONDO, PARANTE, ZOCALO, nivelesDePunta, vanosDeCorrido, techoDeCara,
 } from "./medidas";
 import { geometriaMarcoDeCopete } from "./perfiles";
 import { CaraDeEstanteria, useMateriales } from "./piezas";
@@ -76,7 +76,7 @@ export const PuntaReal = memo(function PuntaReal({
     [copete, materiales.precios],
   );
 
-  const altoDeCuerpo = Math.max(0.4, h - COPETE.alto);
+  const altoDeCuerpo = techoDeCara(h);
   const vanos = useMemo(() => vanosDeCorrido(w), [w]);
   const niveles = useMemo(() => nivelesDePunta(altoDeCuerpo), [altoDeCuerpo]);
 
