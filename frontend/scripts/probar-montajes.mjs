@@ -137,4 +137,21 @@ prueba("el enlace firmado usa la misma víspera (routers/montaje.py)", () => {
   assert.match(fechas, /ZONA_DEL_NEGOCIO = timezone\(timedelta\(hours=-5\)/);
 });
 
+prueba("la limpieza de fotos vencidas usa esa misma víspera, importada y no copiada", () => {
+  // Qué reporte es de qué contrato decide qué foto se borra: si la limpieza
+  // tuviera su propia cuenta de la víspera, podría borrar la foto que el
+  // tablero le atribuye a un contrato vivo.
+  const limpieza = readFileSync(
+    join(raiz, "..", "backend", "app", "services", "fotos_vencidas.py"), "utf8");
+  assert.match(limpieza, /^from app\.routers\.montaje import _se_confirma_desde$/m);
+  assert.match(limpieza, /_se_confirma_desde\(self\.primero\)/);
+  assert.doesNotMatch(limpieza, /start_date - timedelta\(days=1\)/);
+});
+
+prueba("el enlace no dice que la foto quedó guardada cuando ya se borró", () => {
+  const pantalla = fuente("src", "pages", "Montaje.tsx");
+  assert.match(pantalla, /reportado\.file_id\s*\?\s*"La foto quedó guardada como prueba/);
+  assert.match(pantalla, /La foto ya no está guardada/);
+});
+
 console.log(`\n${hechas} pruebas`);

@@ -263,7 +263,10 @@ class MountConfirmation(Base):
     motivo = Column(String, nullable=True)
     nota = Column(Text, nullable=True)
     # Foto en space_files. Opcional: un "no montado" no siempre tiene qué
-    # fotografiar.
+    # fotografiar. Y vuelve a NULL cuando la foto se borra —a mano
+    # (`routers/files.py::delete_file`) o cinco días después de que termina la
+    # cadena de contratos sin renovación (`services/fotos_vencidas.py`)—: el
+    # reporte queda, sin la foto.
     file_id = Column(Integer, ForeignKey("space_files.id"), nullable=True)
     # Quién reportó. Con cuenta propia lo pone el servidor —el nombre o el
     # correo de la sesión, desde el 2026-10-02—; por el enlace firmado, que no
@@ -278,7 +281,9 @@ class MountConfirmation(Base):
     # Se llena cuando se borra la sede. La fila no se elimina — es la prueba de
     # que algo se montó, y sirve meses después ante un reclamo — pero deja de
     # contar: una sede recreada con el mismo nombre vuelve a usar los mismos
-    # códigos, y sin esto heredaría los "montado" de la sede anterior.
+    # códigos, y sin esto heredaría los "montado" de la sede anterior. La foto
+    # de un montaje archivado tampoco la borra la limpieza de fotos vencidas:
+    # ante la duda, se conserva.
     archivado_en = Column(DateTime(timezone=True), nullable=True, index=True)
 
 
@@ -340,6 +345,11 @@ class LeaseFile(Base):
     ``create_all`` crea tablas que faltan pero nunca agrega columnas a una que
     ya existe, así que esto es de las cosas que sí se pueden hacer sin
     migración.
+
+    El histórico queda mientras dure la relación: cinco días después de que la
+    cadena de contratos (el contrato y sus renovaciones) termina sin
+    renovación, la limpieza del mantenimiento borra la planometría
+    (``services/fotos_vencidas.py``). Sólo las de kind ``planometria``.
     """
     __tablename__ = "lease_files"
 

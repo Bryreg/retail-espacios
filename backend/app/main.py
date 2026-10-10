@@ -107,34 +107,66 @@ REMINDER_INTERVAL_SECONDS = 12 * 60 * 60  # every 12 hours
 _stop_mantenimiento = threading.Event()
 
 
+def _deshacer(db) -> None:
+    """Rollback que no puede lanzar: se llama ya dentro de un `except`."""
+    try:
+        db.rollback()
+    except Exception:
+        pass
+
+
 def _run_lease_maintenance():
-    """Expire stale leases and send expiry reminders (runs in a worker thread).
+    """Vence contratos, manda recordatorios, purga la bitácora y borra las fotos
+    de los contratos terminados (corre en un hilo aparte).
 
     Recorre **todos los clientes**. Cada supermercado tiene su propia base, sus
     propios contratos y sus propios destinatarios de correo, así que el
     mantenimiento se hace una vez por cada uno. Si uno falla, los demás siguen:
     un problema en la base de un cliente no puede dejar sin recordatorios a los
     otros.
+
+    Dos bloques por cliente, cada uno con su try: un correo caído no frena la
+    limpieza de las fotos, y una limpieza que falla no deja sin recordatorios.
+    La limpieza va DESPUÉS de los vencimientos, sobre la base ya al día (igual
+    decide por fechas, no por `is_active`), y con `LIMPIAR_FOTOS_VENCIDAS`
+    apagado sólo ensaya: ver `services/fotos_vencidas.py`.
     """
     from app.clientes import listar, sesion_de
     from app.routers.spaces import expire_leases
+    from app.services import fotos_vencidas
     from app.services.bitacora import purgar
     from app.services.reminders import check_expiring_leases
 
     for cliente in listar():
         if _stop_mantenimiento.is_set():
             return
-        db = sesion_de(cliente)
+        db = None
         try:
-            expire_leases(db)
-            check_expiring_leases(db)
-            # La bitácora no puede crecer para siempre en una base de plan
-            # gratuito, y guardar más de lo necesario es su propio riesgo.
-            purgar(db)
+            # Adentro del try: un cliente cuya base ni abre no corta el recorrido.
+            db = sesion_de(cliente)
+            try:
+                expire_leases(db)
+                check_expiring_leases(db)
+                # La bitácora no puede crecer para siempre en una base de plan
+                # gratuito, y guardar más de lo necesario es su propio riesgo.
+                purgar(db)
+            except Exception:
+                logger.exception("Mantenimiento falló para el cliente %s", cliente.slug)
+                _deshacer(db)
+            if _stop_mantenimiento.is_set():
+                return
+            try:
+                plan = fotos_vencidas.limpiar_fotos_vencidas(db)
+                if not plan.vacio:
+                    logger.info("Fotos vencidas, cliente %s: %s", cliente.slug, plan.resumen())
+            except Exception:
+                logger.exception("La limpieza de fotos vencidas falló para el cliente %s", cliente.slug)
+                _deshacer(db)
         except Exception:
             logger.exception("Mantenimiento falló para el cliente %s", cliente.slug)
         finally:
-            db.close()
+            if db is not None:
+                db.close()
 
     # Cierre automático del mes (Fase 5): snapshotea el MES YA CERRADO si le
     # falta la fila a algún cliente, para que la serie de tendencia no dependa de

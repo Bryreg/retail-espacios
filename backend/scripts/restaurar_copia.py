@@ -26,6 +26,12 @@ ZIP; a cada uno se lo vuelve a invitar desde Configuración → Usuarios.
 ejemplo si no tiene ningún espacio, y con eso deja de estar vacía. En una base
 nueva, cargar la copia ANTES del primer arranque —o vaciar esos pasillos a mano—.
 
+**Con `LIMPIAR_FOTOS_VENCIDAS` apagado** (el valor por defecto): con el borrado
+prendido, la primera pasada del mantenimiento al levantar la app sobre la copia
+borraría las fotos de montaje y las planometrías de los contratos ya
+terminados, que puede ser justo lo que se vino a mirar. Para saber qué borraría,
+`python scripts/fotos_vencidas.py` (ensaya por defecto).
+
 La lógica no vive acá: está en `app/services/copia.py` (`restaurar`), probada de
 ida y vuelta en `tests/test_copia_de_seguridad.py`.
 """

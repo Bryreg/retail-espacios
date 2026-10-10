@@ -1,7 +1,14 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-10, tarde (la revisión de toda la rama y la tercera crítica
+Última actualización: 2026-10-10, noche (las fotos de montaje y las planometrías duran lo
+que dura el contrato y sus renovaciones: cinco días después de que termina la cadena sin
+renovación, la limpieza del mantenimiento las borra; el montaje queda, sin la foto. Está
+detrás de `LIMPIAR_FOTOS_VENCIDAS`, apagado: hasta prenderlo sólo ensaya, porque la
+política de datos publicada dice lo contrario. Ver *Las fotos duran lo que dura el
+contrato*).
+
+Antes, 2026-10-10, tarde (la revisión de toda la rama y la tercera crítica
 de la demo: «Cambiar de proveedor» ya no suelta la reunión, «Terminar reunión», la lámina en
 reunión no sale para el contrato ajeno, el teclado y la salida de pantalla completa no tocan
 Presentar ni el plano, la ficha lee «9 cm» y bloquea lo ilegible; el relleno de lo vendido
@@ -356,6 +363,18 @@ UTC, que son instantes y no días, y el mes de la consola de la plataforma
 `app.fechas.hoy` (importado como `hoy_en_colombia`), nunca contra `date.today()`, y
 `tests/test_hora_colombia.py` corre a las 9 p. m. de Colombia. Los scripts de
 consola también (`backend/scripts/auditar_desfase.py`).
+
+**De lo que guarda un supermercado, lo único que el sistema borra solo es la bitácora
+al año y las fotos de montaje y las planometrías de una cadena de contratos terminada
+hace más de cinco días.** (Aparte de los registros técnicos de vida corta, como los
+intentos fallidos del freno de ingreso.) Nada más se borra sin que alguien lo pida: ni un contrato, ni un montaje (pierde la foto,
+la fila queda), ni un documento del espacio, ni la cara del 3D, ni el arte del
+catálogo. Y **ante la duda, no se borra**: lo que no cierra —un espacio de una sede
+borrada, un código que no coincide, un contrato que vive sólo en el plano, fechas
+imposibles— se conserva y se cuenta. El borrado de fotos está detrás de
+`LIMPIAR_FOTOS_VENCIDAS`, apagado por defecto: apagado, la pasada sólo ensaya. Un
+borrado automático nuevo es una decisión escrita, no un efecto de un PR. Ver *Las
+fotos duran lo que dura el contrato*.
 
 **`frontend/public/` es público.** Todo lo que está ahí se sirve en la raíz del sitio,
 sin sesión. Ahí estuvieron el plano real de Galerías y 21 recortes hasta el
@@ -2857,8 +2876,11 @@ Detalles que se ganaron el lugar:
   PDF. El filtro compara contra una lista **cerrada** y nunca contra `image/*`: un SVG es
   una imagen para el navegador y un documento con scripts para todo lo demás, y esto se
   sirve inline desde el mismo origen que la app.
-- **El archivo no se borra al vencer el contrato.** Es la prueba que responde un reclamo
-  meses después, igual que la confirmación de montaje.
+- **El archivo dura lo que dura el contrato y sus renovaciones** (desde el 2026-10-10;
+  antes no se borraba nunca). Cinco días después de que el último contrato de la cadena
+  termina sin renovación, la limpieza del mantenimiento lo borra junto con las fotos de
+  montaje — con el interruptor `LIMPIAR_FOTOS_VENCIDAS` prendido. Ver *Las fotos duran
+  lo que dura el contrato*.
 
 ### Cancelar un contrato
 
@@ -2876,9 +2898,11 @@ sin tacharle el valor habría abierto por la ventana lo que la app cierra por la
 
 Al cancelar **ya no se escribe nada en el layout**: el contrato era una fila y ya no
 está, y el mapa se pinta de la base. (Hasta el cambio de *Una sola verdad para lo
-comercial*, acá había que parchear el JSON o el mueble seguía pintado como vendido.) La
-planometría y el reporte de montaje **no se borran**: son la prueba de lo que se acordó y
-de lo que se armó.
+comercial*, acá había que parchear el JSON o el mueble seguía pintado como vendido.) El
+reporte de montaje **no se borra nunca**. La planometría y la foto del montaje sí, pero no
+al cancelar: el contrato cancelado cuenta hasta su fecha de fin ORIGINAL —no hay columna de
+fecha de baja, y adivinarla borraría antes— y cinco días después, si no hubo renovación, se
+van con la limpieza de *Las fotos duran lo que dura el contrato*.
 
 ### Una sola verdad para lo comercial
 
@@ -3759,7 +3783,9 @@ Ahora las dos pantallas preguntan a `utils/montajeDelContrato.ts`
 contrato, a medianoche de Colombia, igual que el enlace. La hora del reporte sin
 huso (SQLite) se lee como UTC; el navegador la tomaría como hora local. Una
 renovación con el mismo proveedor también vuelve a pedir el reporte: es otro
-contrato, y la foto del anterior no prueba el período nuevo. `probar-montajes.mjs`
+contrato, y la foto del anterior no prueba el período nuevo. (Para GUARDAR las fotos, en
+cambio, la renovación sí es la misma cadena: las del período anterior se conservan
+mientras la cadena siga viva — ver *Las fotos duran lo que dura el contrato*.) `probar-montajes.mjs`
 prueba la función de verdad (con `esbuild`, el proceso en hora de Bogotá para que
 la hora sin huso muerda), vigila que las dos pantallas la usen y que
 `routers/montaje.py` siga diciendo la misma víspera: 8 mutaciones detectadas.
@@ -6435,6 +6461,221 @@ Lo que se descartó: un tablero de «en negociación / renovado / no renueva» c
 propuesto, totales partidos y plaquitas por renglón. Se construyó y se tiró. En una pantalla
 que ya tiene el plano, la lista de lo que se cae y la tabla de espacios, era una cuarta capa
 de información para sostener a mano un dato que el contrato nuevo ya deja escrito.
+
+## Las fotos duran lo que dura el contrato
+
+La dueña lo decidió el 2026-10-10: las fotos se guardan mientras dure el contrato; si se
+renueva, el plazo se alarga; si termina y no hay renovación, se borran para liberar
+espacio. Es lo que más pesa de cada base —una foto de montaje ronda los megas, se toma una
+por reporte y la foto de «montado» es obligatoria— y en Render la base es lo que se paga.
+Hasta acá nada se borraba nunca: la planometría y la foto eran «la prueba que responde un
+reclamo meses después». Ahora esa prueba vive lo que vive la relación con el proveedor en
+ese espacio, más cinco días.
+
+La lógica es una sola, `backend/app/services/fotos_vencidas.py`, y la corren el ciclo de
+mantenimiento (al arrancar y cada 12 horas, para todos los clientes activos) y el script de
+consola `backend/scripts/fotos_vencidas.py`.
+
+### Qué se borra y qué no
+
+Se borra la **foto de un montaje** —la fila de `space_files` con el prefijo `montaje--`
+que apunta un `mount_confirmations.file_id`— y la **planometría** del contrato
+(`lease_files`, kind `planometria`). El montaje **queda**, con quién, cuándo, montado o no,
+el motivo y la nota: pierde sólo la foto, igual que cuando un admin la borra a mano
+(`routers/files.py::delete_file`). No se toca el contrato, la bitácora, los PDF, Excel y
+CSV del espacio (son documentos), la cara designada del 3D (aunque tenga el prefijo:
+`space_faces` manda), el arte del catálogo (`supplier_assets`, que es del proveedor y lo
+reusa el 3D) ni el layout. Un archivo con el prefijo que ningún montaje apunta tampoco: el
+prefijo solo no prueba nada, cualquier admin puede subir `montaje--x.jpg`.
+
+### Qué es renovar
+
+En el sistema no existe como entidad: es **otro contrato del mismo espacio con el mismo
+proveedor**. El botón «Renovar» lo siembra arrancando el día después del fin, pero el botón
+desaparece apenas vence el contrato (`/spaces/comercial` sólo informa vigentes y
+próximos), así que la renovación tardía se carga a mano y suele dejar un hueco. Por eso:
+
+* **La cadena tolera hasta 60 días sin contrato** (`HUECO_DE_RENOVACION`, los mismos 60
+  con los que el tablero ofrece «Renovar»). Una renovación ya cargada que arranca el 15 en
+  vez del 1 sigue siendo renovación: el pedido de la dueña era «si se renueva, se alarga»,
+  no «si se renueva el día siguiente».
+* **Mismo espacio** es el mismo `space_id`: la renumeración cambia el código en la misma
+  fila, así que la regla no se entera. La cara B es otro espacio.
+* **Mismo proveedor** se mira con generosidad, porque juntar de más sólo conserva más: el
+  mismo `supplier_id`; o el mismo nombre sin tildes, puntos ni forma societaria
+  («Nutresa S.A.S.» = «NUTRESA» = «Grupo Nutresa», que es lo que crea la planilla cuando
+  alguien escribe distinto); o un nombre contenido en el otro con al menos 4 letras
+  («Alpina» y «Alpina Productos Alimenticios S.A. BIC»); o el mismo correo; o la misma
+  marca en el mismo espacio.
+* **Un contrato cancelado cuenta hasta su fin ORIGINAL.** Cancelar sólo apaga
+  `is_active`; no hay fecha de baja (la única huella es la línea `contrato.baja` de la
+  bitácora, que se purga al año), y adivinarla borraría antes. `is_active` no se mira para
+  nada: mandan las fechas, así que un cancelado y un vencido se tratan igual.
+
+### Cuándo
+
+Una cadena termina cuando su último eslabón termina sin renovación. Desde ese fin hay
+**5 días de gracia** (`DIAS_DE_GRACIA`, la única constante que hay que tocar para cambiar
+el plazo) y se borra en la primera pasada del sexto día, a la hora de Colombia. Un
+contrato que vence el 2026-10-31 conserva todo del 1 al 5 de noviembre y se borra en la
+primera pasada del 6; si el 4 se carga la renovación, la cadena sigue viva y el plazo pasa
+a ser el fin del contrato nuevo más cinco. Cuando ese último eslabón termina, se van las
+fotos y las planometrías **de toda la cadena**.
+
+### De qué contrato es una foto
+
+`mount_confirmations` no tiene columna de contrato (y no se agregan columnas), así que una
+foto se ata al **espacio** (`space_files.space_id`) y a la hora en que la recibió el
+servidor. Una cadena reclama las fotos de su espacio desde la medianoche de Colombia de la
+víspera de su primer arranque **menos 5 días** —el tablero de Montajes deja reportar un
+contrato «pendiente» antes de la víspera— hasta el último instante del quinto día después
+de su fin. La víspera es `routers/montaje.py::_se_confirma_desde`, importada y no copiada
+(`probar-montajes.mjs` lo vigila): qué reporte es de qué contrato es una regla sola.
+
+**Una foto se borra sólo si la reclama al menos una cadena y todas las que la reclaman, de
+cualquier proveedor, terminaron.** Eso cierra el caso que encontró el mapa del código:
+Nutresa firma noviembre y se cancela en septiembre; Alpina firma de octubre a diciembre. La
+foto de noviembre la reclaman las dos; Nutresa «termina» el 30 de noviembre, pero la foto
+se queda hasta que termine Alpina. En un relevo al día siguiente (Nutresa hasta el 31 de
+octubre, Alpina desde el 1.º), el 6 de noviembre se va lo de Nutresa anterior al 26 de
+octubre; lo del 26 en adelante —el desmontaje, el montaje adelantado de Alpina— se queda
+mientras viva Alpina.
+
+### Ante la duda, no se borra
+
+Lo que no cierra se conserva, y el plan lo cuenta por motivo (sale en el log y en el
+ensayo): el espacio de una sede borrada (`archived_spaces`), un montaje archivado, un
+`space_code` que no es el código del espacio de la foto, un montaje sin hora, un contrato
+del espacio con fechas imposibles (bloquea el espacio entero), **un contrato que vive sólo
+en el JSON del plano** (`importar_del_plano.revisar`: puede ser la renovación, y bloquea el
+espacio hasta que se importe desde Supervisar), la foto que ninguna cadena reclama (espacio
+sin contratos, reporte con el espacio libre), una planometría cuyo contrato no existe o de
+otro `kind`, y **una planometría subida después de que la cadena terminó**: el endpoint
+acepta contratos vencidos, y quien la cargó tarde quería dejarla. Una fecha como
+9999-12-31 (el «indefinido» de una planilla) hace que esa cadena no termine nunca, sin
+trabar al resto.
+
+### Desplegar no es borrar: el interruptor
+
+Render despliega `main` solo y la pasada corre al arrancar, así que sin freno el merge
+borraba en todos los clientes en ese mismo momento. Por eso **`LIMPIAR_FOTOS_VENCIDAS`
+está apagado por defecto**: apagado, la pasada calcula y deja en el log qué borraría
+(`Fotos vencidas, cliente galerias: se borrarían: N fotos, M planometrías, X MB ·
+conservadas: … · ensayo: LIMPIAR_FOTOS_VENCIDAS apagado`) y no escribe nada. Se prende
+con `LIMPIAR_FOTOS_VENCIDAS=1` en el panel de Render (no está en `render.yaml`, a
+propósito, igual que `LOGIN_LEGADO`). Antes de prenderlo:
+
+1. **La política de datos.** La que aceptan todos los usuarios dice en §6 «Fotos de
+   montaje y planometrías: no se borran al vencer el contrato» (las dos copias,
+   `docs/legal/` y `frontend/src/legal/`, atadas a `VERSION_POLITICA = "2026-09-v2"`).
+   Cambiarla —y decidir si sube la versión, que hace que el flujo de consentimiento se la
+   vuelva a pedir a todos— es de la dueña y del abogado, no del código; por eso este
+   cambio no la toca. Texto propuesto para §6: *«Fotos de montaje y planometrías: se
+   conservan mientras dure el contrato y sus renovaciones (otro contrato del mismo
+   proveedor sobre el mismo espacio que arranca a más tardar sesenta días después de que
+   termina el anterior). Cinco días después de que termina el último sin renovación, se
+   borran automáticamente. El registro del montaje (quién, cuándo, si quedó armado), el
+   contrato y los documentos del espacio no se borran.»* Y en el primer renglón de §6
+   («Datos de negocio (contratos, espacios, proveedores, montajes, planometrías)»), sacar
+   «planometrías».
+2. **La copia de seguridad** de cada supermercado, bajada desde Configuración: es la
+   única marcha atrás.
+3. **El ensayo**: restaurar esa copia en local (`scripts/restaurar_copia.py`) y correr
+   `python scripts/fotos_vencidas.py --hoy <día del despliegue>`. Lista por espacio la
+   cadena terminada, sus proveedores (ahí se ven los nombres que la regla juntó), las
+   fechas y cuántas fotos y planometrías, y aparte **las planometrías en PDF**: el
+   casillero acepta PDF, y si alguien adjuntó ahí el contrato firmado, se ve antes.
+
+Con el interruptor apagado, además, una copia restaurada en local no se borra sola al
+levantar la app, que es justo cuando se la está mirando.
+
+El script **ensaya por defecto**; `--borrar` hace lo mismo que la pasada y exige el
+interruptor prendido (si la pasada no tiene permiso, la consola tampoco). `--hoy` sólo vale
+para ensayar, y el servicio se niega a borrar con un `hoy` futuro: con el reloj adelantado
+daría por terminadas cadenas vigentes.
+
+### Cómo se borra
+
+Una transacción por cliente. Se leen sólo metadatos (ni un binario sale de la base para
+decidir, que en la instancia de 512 MB importa). Para borrar, en tandas de 500: se toman
+las filas con `SELECT … FOR UPDATE` (en Postgres; en SQLite no existe), se suelta el
+montaje (`file_id = NULL`, antes del DELETE: la clave foránea no tiene regla de borrado y
+Postgres no deja borrar el archivo con el montaje apuntándole), y `DELETE … RETURNING id,
+size` en bloque. **Lo que se anota es lo que se borró de verdad**: si dos pasadas corren a
+la vez —el hilo de arranque y la llamada de una prueba, o la instancia vieja y la nueva
+durante un despliegue—, la segunda espera, no encuentra nada y no anota. Si se borró algo,
+queda UNA línea en la bitácora, `archivo.vencido` («Fotos y planometrías vencidas,
+borradas»), con autor «sistema · desconocida» y detalle `2 fotos de montaje · 1
+planometría · 1,5 MB liberados para lo que se suba · contratos terminados hasta el
+2026-10-04`, sin nombres de proveedor. No termina en `.baja` a propósito: es una tarea
+esperada, y la pantalla pinta de rojo lo que termina así.
+
+En `_run_lease_maintenance` la limpieza va después de vencimientos, recordatorios y purga,
+**cada bloque con su try**: un correo caído no la frena, y una limpieza que falla (con su
+rollback) no deja sin recordatorios a nadie. `sesion_de` entró al try: un cliente cuya base
+ni abre no corta el recorrido.
+
+### Lo que se va a ver, y lo que no
+
+**El disco de Render no va a bajar de golpe.** Medido en un Postgres 16 descartable: el
+`bytea` va a la tabla TOAST, el DELETE no la achica, el autovacuum la limpia en un minuto
+y ese espacio lo reusa lo que se suba después. La base deja de crecer, pero
+`pg_database_size` sólo baja por la cola del archivo. No se hace `VACUUM FULL` (bloquea la
+tabla y la reescribe). Por eso la línea de la bitácora dice «liberados para lo que se
+suba» y no «liberados».
+
+En pantalla casi nada cambia, porque lo que se borra ya no se mostraba: la planometría de
+un contrato terminado no sale en ninguna pantalla, la cámara de «No se pudo montar» ya
+dependía de `file_id`, las listas de archivos muestran lo que hay y el 3D lee sólo
+`space_faces`. Lo único que mentía era el enlace de montaje, que decía «La foto quedó
+guardada como prueba» para un reporte cuya foto ya no está; ahora lo dice sólo con
+`file_id` (`Montaje.tsx`).
+
+### La primera pasada
+
+Al prender el interruptor, la primera pasada (al reiniciar el servicio) borra en cada
+cliente activo todo lo de las cadenas con fin hasta hoy − 6: los contratos de agosto y
+septiembre que no se renovaron, sus planometrías (cada copia de un contrato por lote por
+separado) y lo que haya de prueba con fechas pasadas. Las fotos y las planometrías existen
+desde el 2026-08-29, así que el acumulado es de semanas. El número exacto sólo lo da el
+ensayo contra una copia.
+
+### Lo que se acepta, escrito
+
+* **Una renovación cargada después del sexto día llega tarde**: las fotos ya no están, y
+  es irreversible por diseño. Que se guarde justo entre la lectura y el commit de una
+  pasada es una carrera que se acepta.
+* **Restaurar una copia vieja** trae de vuelta lo borrado; la pasada siguiente lo vuelve a
+  borrar si la cadena sigue terminada.
+* **Los clientes archivados no se recorren** (`listar()` los deja afuera): sus fotos
+  quedan hasta que se reactiven.
+* **No hay freno por reclamo abierto.** Si un proveedor discute el último período, la foto
+  se va igual a los cinco días. El freno que hay es global: apagar el interruptor. Uno por
+  espacio (una clave en `app_config` con los códigos en disputa, y un botón) queda como
+  pendiente si la dueña lo pide.
+* **Se descartó** que la cadena viva reclame desde 30 días antes de su arranque (para
+  cubrir un «no se pudo» reportado muy temprano por el tablero): con contratos mensuales
+  seguidos, cada contrato retendría el último mes del anterior, y según la regla del propio
+  sistema (`montajeDelContrato.ts`) un reporte de antes de la víspera no es del contrato que
+  entra.
+
+### Cómo se comprobó
+
+`tests/test_fotos_vencidas.py`: la regla pura (la gracia con el ejemplo de la dueña, la
+renovación contigua y con hueco, el proveedor escrito distinto, el correo y la marca, el
+cancelado superpuesto, el relevo, el reporte adelantado, los bordes a medianoche de
+Colombia con la hora sin huso de SQLite, el contrato por lote, cada motivo de duda, las
+fechas extremas), y contra la base: lo que se borra y lo que no, el montaje que queda sin
+foto, la bitácora, la idempotencia, el ensayo que no escribe, el interruptor, la fecha
+futura, el cancelado con fin futuro, la renovación tardía, el contrato que vive en el
+plano, la API después del borrado, el quinto y el sexto día de Colombia de punta a punta
+con el reloj movido, y el aislamiento entre clientes (la limpieza que falla, los
+vencimientos que fallan, la base rota). 17 mutaciones del servicio y del ciclo, todas
+detectadas, restauradas con `cp`. `probar-montajes.mjs` vigila la víspera importada y el
+texto del enlace (2 mutaciones más). Y contra un Postgres 16 descartable (apagado y borrado
+al terminar): sin el UPDATE previo el DELETE da `ForeignKeyViolation`; con él, el escenario
+completo pasa con la cara intacta, y dos pasadas a la vez sobre 40 espacios borran 80 fotos
+entre las dos y dejan una sola línea.
 
 ---
 

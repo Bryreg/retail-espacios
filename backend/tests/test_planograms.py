@@ -111,8 +111,11 @@ def test_cada_contrato_del_mismo_espacio_guarda_la_suya(client, admin):
     primera y el reclamo de la primera se quedaba sin prueba.
     """
     space_id = _espacio(client, admin)
+    # Alpina terminó hace 3 días: dentro de los 5 de gracia de la limpieza de
+    # fotos vencidas (`services/fotos_vencidas.py`), así que ninguna pasada del
+    # mantenimiento —la de arranque corre en paralelo— se lleva su planometría.
     uno = _contrato(client, admin, space_id, _proveedor(client, admin, "Alpina"),
-                    desde=HOY - timedelta(days=60), hasta=HOY - timedelta(days=31))
+                    desde=HOY - timedelta(days=32), hasta=HOY - timedelta(days=3))
     dos = _contrato(client, admin, space_id, _proveedor(client, admin, "Nutresa"),
                     desde=HOY - timedelta(days=1), hasta=HOY + timedelta(days=20))
 

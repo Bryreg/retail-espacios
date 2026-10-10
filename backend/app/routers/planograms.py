@@ -9,8 +9,10 @@ Tres lectores, tres necesidades distintas:
 · el **mercaderista** la abre al montar, y llega por el CÓDIGO del espacio (el
   enlace del correo no sabe de contratos), así que hay un endpoint que resuelve
   espacio → contrato vigente → planometría;
-· el **reclamo del proveedor**, meses después, que es la razón por la que el
-  archivo no se borra al vencer el contrato.
+· el **reclamo del proveedor**, mientras dure la relación: el archivo vive lo
+  que vive el contrato y sus renovaciones, y cinco días después de que la cadena
+  termina sin renovación lo borra la limpieza del mantenimiento
+  (``services/fotos_vencidas.py``, con ``LIMPIAR_FOTOS_VENCIDAS`` prendido).
 """
 
 from datetime import datetime
