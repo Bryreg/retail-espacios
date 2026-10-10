@@ -1,7 +1,15 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-09, noche (la revisión de código del producto en el 3D: una
+Última actualización: 2026-10-10 (el ambiente de la pantalla de venta: cielo raso a 3,2 m
+con luminarias, muros que cierran la sala, brillo de las luminarias en el acero, sombra en
+las uniones, piso que refleja y se oscurece al pie, habladores sin precios inventados
+—`precio_publico` opcional en `supplier_asset_specs`, ALTER para las bases locales de la
+rama—, vecinos atenuados y el mueble contratado entero con relleno. Antes, la tanda 1: la
+nevera que acomoda sola las rejillas, la botella, la bolsa, la espalda de los envases, el
+cabezote, el surtido y el aviso de frío. Ver *2026-10-09 (tanda 1)* y *(tanda 2)*).
+
+Antes, 2026-10-09, noche (la revisión de código del producto en el 3D: una
 foto con su fondo ya no infla el envase, «1.000 g» es un kilo, la foto que no carga cae a
 la lámina y se reintenta, la reunión manda en el cartel, en «Presentar» y en el editor, la
 caminata no rompe la lámina, y lo de atrás se dibuja con pocas facetas. Ver *2026-10-09
@@ -4562,6 +4570,245 @@ la nevera automática, de fábrica, a mano y con la 1,5 L; la botella de cerca; 
 70° y la bolsa a 60°; la góndola de Kellogg's con un arte y con el surtido (Müsli,
 Barbie y Zucaritas, fotos de Open Food Facts); el aviso de frío en la punta y su
 ausencia en la nevera.
+
+### 2026-10-09 (tanda 2): el ambiente — que el lugar se vea tan real como el envase
+
+La crítica de la tercera ronda lo dijo así: «un proveedor reconoce su producto, pero no
+reconoce un supermercado». El envase ya era creíble y el lugar no: muebles gris mate sin
+un brillo, uniones sin sombra, porta-precios vacíos, la mitad de arriba del cuadro con
+el color plano de la sala, un piso que no reflejaba nada y la nevera vecina pesando lo
+mismo que la que se vende. Seis pasos (9 a 14), **todos sólo en la pantalla de venta**
+(Presentar y la lámina): el editor y `/taller` quedan como estaban, salvo el piso, que
+ahora sigue los límites reales de la planta. Nada se guarda en el layout, sigue
+`frameloop="demand"` y no hay pases de posproceso.
+
+**9. Cielo raso a 3,2 m, luminarias, muros que cierran la sala.** Antes de construir
+nada se midió dónde corta la toma de venta (cámara a 1,25 m, borde de arriba del cuadro
+a ~15,8° sobre la horizontal): con un techo a 4,5 m no entraba **ninguna** fila de techo
+en las seis tomas de PUN-01, NEV-01 y ROB-01; a 3,2 m, la punta muestra 88 filas de
+frente y 127 de tres cuartos. Por eso es un cielo raso a 3,2 m (`ALTO_CIELO_RASO`), el de
+un supermercado mediano, con las luminarias **embutidas**: tiras de 2,4 × 0,2 m
+(`LUMINARIA`) en filas paralelas al eje largo de las góndolas (`direccionDeGondolas`:
+vota cada mueble alargado con su largo, así dos góndolas de 3,6 m le ganan a tres puntas),
+cada ~3 m y con al menos 20 cm entre tiras. El paso se ajusta para que la primera y la
+última queden a 0,5 m del muro, como las deja un luminotécnico: centradas con el paso
+fijo, en la sede de pruebas quedaba 1,3 m de techo sin luz contra cada muro y la toma
+en tres cuartos del robatope —que mira a una esquina— no veía ninguna. La cuenta es pura
+(`luminariasDeTienda` en `utils/planta.ts`) y devuelve, además de las instancias, los
+PARÁMETROS de la grilla (origen, paso, tamaño, giro): con eso el brillo del acero y el
+reflejo del piso saben en O(1) si en un punto del techo hay una tira, sin recorrer la
+lista. Los muros de venta son cuatro planos de una sola cara que miran hacia adentro
+(`muebles/sala.ts`), unidos en una geometría, y los zócalos en otra; el cielo raso mira
+abajo. Desde la órbita alejada o la vista superior no se dibujan, y la tienda se ve como
+una maqueta abierta en vez de una caja. En primera persona siguen las cajas de 4,5 m de
+la caminata y NO los planos (las dos cosas juntas se pisaban y titilaban). Ni techo ni
+muros tiran ni reciben sombra, y no suman luces: el mapa de sombras y la calibración de
+la escena no se tocan. Son 4 llamadas (cielo raso, luminarias en una `InstancedMesh`,
+muros, zócalos). En venta no se dibuja la grilla del piso.
+
+*Por qué se revisó «Techo no»* (ver *Muros, y sólo al caminar*): aquella decisión
+suponía un techo que tapa la direccional, que obliga a otra iluminación y que esconde el
+plano en la órbita. Éste no tira sombra (la direccional pasa), no agrega ninguna luz (no
+recompila nada), tiene una sola cara que mira abajo (desde arriba no existe) y sólo está
+en venta. Y a 3,2 m sí entra en cuadro. El «remate del muro» que quedaba sabido (*Lo que
+queda sabido*, más abajo) se resolvió así, sin tocar la luz.
+
+*StoreRoom con los límites reales.* El piso, sus bordes y los muros salían de una caja
+calculada SIN la rotación de los muebles (`f.x ± f.w/2`): con góndolas giradas 90° el
+muro quedaba corrido hasta (w − d)/2 ≈ 1,35 m respecto de la caminata, la cámara de
+venta y las luminarias. Ahora todo sale de `limites` (el mismo de la caminata y de
+`vistaDeVenta`). En el editor eso se ve: **el piso coincide con la grilla**. Es la única
+diferencia del editor además de los envases.
+
+*Los uniformes de la tienda son UNO.* `UNIFORMES_DE_TIENDA` (`luzDeVenta.ts`) guarda la
+altura del cielo raso, la grilla y los límites; `StoreRoom` los actualiza cuando cambia
+la planta (`ponerTienda`) y cada material de venta engancha esas MISMAS referencias en
+`shader.uniforms`. Mover un mueble no recompila nada.
+
+**10. La luz de venta: un programa, y el brillo de las luminarias en el acero.** La luz
+del cuarto se escribía DENTRO del shader, así que cada intensidad era un programa (había
+cuatro: 1,15, 0,69, 1,035 y 0,92). Ahora la intensidad y el brillo son uniformes de cada
+material (`uLuzVenta`, `uBrillo`, guardados en `material.userData.luzDeVenta`) y la
+clave de programa es una sola, `luz-de-venta`: three llama a `onBeforeCompile` por
+material aunque reuse el programa, así que cada material engancha los suyos. Los
+materiales DECLARATIVOS del robatope pasan por `usePropsDeLuzDeVenta`, un objeto estable:
+con `conLuzDeVenta` en cada render, R3F les ponía uniformes nuevos en cada cuadro y los
+del programa compilado —los que atenúa el paso 14— quedaban huérfanos.
+
+El brillo es un término más del mismo trozo de shader, sin muestrear ningún mapa (el
+PMREM en cada píxel de cada mueble hacía el cuadro 25 veces más caro). Con
+`vViewPosition`, `normal`, `viewMatrix` y `cameraPosition` se arman la posición y el
+rayo reflejado en el MUNDO; si sube, se corta con el plano del cielo raso y la grilla dice
+si ahí hay una tira (`floor` en el marco girado de la grilla, el borde suavizado con
+`fwidth` más la distancia por la rugosidad, para que una tira fina no titile); fuera de
+la planta, el muro; si baja, el piso. Fresnel de Schlick con F0 = 0,04 (la pintura
+electrostática es un dieléctrico), por `uBrillo` de cada pieza (`BRILLO`: pintado 0,35,
+estructura 0,45, porta-precios 0,25, panel 0,2, zócalo 0,3, relleno 0,15, robatope 0,3) y
+por la oclusión del paso 11. **Se prototipó primero en JS** (`brilloDeVenta`, el gemelo
+de la cuenta, con las mismas constantes que el GLSL —una guarda lo vigila—) con las
+cámaras de `vistaDeVenta` sobre el porta-precios y el parante de PUN-01. Ahí se vieron
+dos cosas que la fórmula del borrador (`pow(R·arriba, 8)` sobre dos colores) no daba:
+con el rayo espejo solo, una cara vertical vista desde 1,25 m refleja el PISO y nunca
+una luminaria (0,9 sRGB de brillo en el parante); y una tira de luz es casi cien veces
+más clara que el techo. El reflejo promedia dos rayos —el espejo y uno levantado
+`0,8 × rugosidad`, con peso 0,35— y la luminaria vale 48 (lineal) contra 0,55 del techo:
+con 3 el reflejo ensanchado de una tira de 20 cm no se despegaba del techo (6 sRGB), con
+120 lavaba el acero. Con la cámara por encima del cielo raso el reflejo se apaga (desde
+arriba el techo no se dibuja, y el piso mostraba manchas bajo luminarias invisibles).
+
+**11. La sombra de las uniones, sin mallas nuevas.** El panel de fondo ya era una
+`InstancedMesh` de listones: en venta cada listón recibe `setColorAt` según su distancia
+al entrepaño de arriba (`SOMBRA_DE_LISTON`) y three multiplica (`USE_COLOR`) sin cambiar
+de material. Los entrepaños llevan color de vértice (`geometriaEntrepanoDeVenta`): 0,64
+en la unión con el fondo hasta 7 cm (con 0,72 sobre 5 cm, desde 1,25 m era una raya de 1
+o 2 píxeles) y 0,85 a 3 cm de cada parante. Ese material (`pintadoAO`, con
+`vertexColors`) existe sólo en venta y sólo lo usan los entrepaños; la tapa de la punta,
+la espina y lo demás siguen con `pintado` —con `vertexColors` y sin atributo `color`
+saldrían negros, y una guarda recorre la escena del taller buscando ese caso—.
+
+*Lo que costó:* los valores salen de medir en la captura, no del albedo. El tono de la
+escena (ACES) achica la diferencia en los grises claros (un 0,86 sale apenas un 7 % más
+oscuro), y entre dos entrepaños de 33-37 cm NINGÚN listón queda limpio: «el panel a media
+altura» es el segundo listón, no uno a 1,0. En las tomas desde 1,25 m el de justo debajo
+lo tapan el labio y el porta-precios de los entrepaños bajos; con una cámara algo más
+alta (Presentar en GON-02) sí se ve, y con 0,62 / 0,74 la franja bajo el entrepaño salía
+a 148 sRGB contra ~160 del medio: un 8 %, y la crítica pide 12. Quedó `debajo` 0,48,
+`siguiente` 0,66, `tercero` 0,86 y `encima` (la unión con el entrepaño de abajo) 0,82.
+
+**12. El piso de venta: oscuro al pie y un reflejo tenue de las luminarias, en O(1).**
+El mismo Lambert de la baldosa, con un parche (`parcheDelPiso`); en el editor, el de
+siempre. (a) `sombraDeHuellas` (`utils/planta.ts`, pura) arma un mapa de 10 cm por píxel
+con las huellas de `huella()` —la misma de la caminata, con la rotación— difuminadas 30
+cm, y oscurece hasta un 30 % el color después de `map_fragment` (una sede de 40 × 30 m
+son 120 KB; se rehace sólo cuando cambia el plano). (b) El rayo reflejado se corta con
+el cielo raso y se evalúa contra la MISMA grilla con los uniformes compartidos: nunca se
+recorre una lista de luminarias en uniformes, que en una integrada podía pasarse del
+límite. Sólo cuenta la luminaria, como mucho el 12 % del blanco DE LA PANTALLA (se suma
+después del tono: sumado antes, en un piso claro, eran 5 sRGB), con el borde ensanchado
+por la distancia.
+
+**13. Habladores, y el precio al público OPCIONAL en la ficha.** En Éxito, Olímpica o
+Jumbo no hay un frente sin su etiqueta, y la tira blanca y lisa era, de cerca, la señal
+más clara de maqueta. Pero un hablador es justo donde un sistema de venta podría mentir.
+Tres reglas (`muebles/habladores.ts`, puro):
+
+* **Nunca se inventa un precio.** El hablador del producto en prueba lleva la cifra SÓLO
+  si alguien la cargó en la ficha; si no, en su lugar van dos barras grises. El nombre va
+  sin sus números («150 g» se lee como un precio desde el otro lado de la videollamada).
+  `contenidoDelHablador` da `precio: null` sin precio y una guarda dibuja con un contexto
+  2D falso y verifica que no se escribe ningún dígito.
+* **Lo de otros no se lee.** Lo vendido a otros lleva habladores GENÉRICOS: etiquetas
+  blancas con la franja amarilla y rayas grises, sin texto (no llama a `fillText`), con
+  CERO geometría —es la misma tira con una textura de módulo compartida
+  (`preciosConHabladores`), que repite una etiqueta cada 35 cm; para eso la UV de la cara
+  de la tira pasó a metros a lo ancho y 0-1 a lo alto (sin mapa no cambia nada)—. Van
+  sólo en los (vano, entrepaño) que el relleno cubre en un 80 % o más
+  (`tramosConRelleno`): un slot vendido de medio vano deja ese porta-precios liso, porque
+  si no la mitad libre tendría habladores. Lo libre, sin hablador.
+* **El de un arte ajeno no sale** en una pantalla privada (`habladorALaVista`, con la
+  misma privacidad que la prueba).
+
+El hablador de la prueba es una `InstancedMesh` de planos de 6 × 2,6 cm por (fila,
+producto), HIJA del grupo de la fila (se inclina con el entrepaño), uno en el borde
+izquierdo de cada bloque visto desde el pasillo y otro cada 60 cm, 1 mm delante de la
+caja REAL de la tira. Dónde está la tira lo dice una sola cuenta, `labioDeFila`
+(`medidas.ts`), con las constantes que usan los muebles (las de la nevera y el robatope
+pasaron a `NEVERA` y `ROBATOPE`). La textura es una por arte (256 × 112) y se suelta con
+su etiqueta.
+
+*Un detalle que sólo se vio en la captura:* la tira de la góndola y la punta va centrada
+en el plano de apoyo y montada DETRÁS del labio del entrepaño, que sube 3 cm: la mitad
+de arriba de la tira no se ve. El genérico centrado salía como una raya gris sin la
+franja amarilla. Ahora se dibuja en lo que se ve (`VENTANA_DE_LA_TIRA`, ≈ 0,43 del alto
+desde abajo, con el lienzo a 64 filas), y una guarda mide esa ventana sobre las
+geometrías puestas como las pone `CaraDeEstanteria`.
+
+*El precio en la base, ahora o nunca.* `supplier_asset_specs` es nueva en esta rama y no
+se desplegó: es la última oportunidad de una columna tipada. `precio_publico` (entero,
+pesos, nulo por defecto) con tope en la API (`ge=50, le=10_000_000`: 0 es un error y 20
+millones, un tipeo), en el alta por formulario y en `EditorDeFicha` como «Precio en
+góndola (opcional)», vacío por defecto. La tabla ya estaba en `TABLAS_DEL_CLIENTE` y la
+copia va por las columnas reales: la ficha con precio viaja en la copia y en el traspaso
+(pruebas en `test_catalogo`, `test_copia_de_seguridad` y `test_traspaso`). **Una base
+LOCAL creada desde esta rama antes de este cambio** tiene la tabla sin la columna, y
+`create_all` no agrega columnas: `GET /api/catalogo/` se cae con «no such column». Hay
+que correr una vez `ALTER TABLE supplier_asset_specs ADD COLUMN precio_publico INTEGER`
+(sólo si falta). Producción no tiene la tabla: nace con la columna.
+
+**14. Los vecinos dejan de competir; el relleno, con variación; el contratado entero,
+lleno.** Se atenúa sólo si algún mueble tiene FOCO —el de una prueba a la vista o el de
+la toma—; sin ninguno (Presentar sin proveedor) la tienda queda entera. El foco va en un
+contexto APARTE, `FocoDeVenta`, boolean y memoizado en el grupo de cada mueble:
+`LuzDeVenta` es dependencia de los `useMemo` de materiales de ~100 muebles, y un objeto
+nuevo en cada render los rehacía todos. La atenuación la escribe un efecto en los
+uniformes del paso 10 (`atenuarUniformes`) con `invalidate()`: no se recrea ni se
+recompila nada. `ATENUACION` es 0,55 de la luz y 0,5 del brillo, no el 0,75 del plan:
+medido en bolsa-4, con 0,75 la góndola de al lado quedaba sólo un 18 % abajo (la luz de
+la escena, que no se atenúa, pesa). La nevera vecina además apaga su frío
+(`apagarElFrio`: forro, interior y tiras), por efecto; sus botellas mudas siguen ahí, sólo
+dejan de competir. El relleno neutro lleva en venta un tono por unidad (±6 %, sembrado
+por mueble, `tonosDelRelleno`) y una etiqueta más clara por color de vértice; en la caja
+—el envase más repetido— la etiqueta es de corte NETO en las dos caras grandes (cada
+cara en tres franjas con sus propios vértices, 20 triángulos como la de antes): con el
+degradé suave de la primera versión el relleno seguía siendo una pared de bloques de un
+color. Y **el mueble contratado ENTERO con los slots libres** (la góndola de Bimbo de
+*Lo que no se hizo*, arriba) se ve en venta con el relleno de su rubro: es vendido, y lo
+vendido puede llevarlo; en el editor no cambia.
+
+**Medido sobre las capturas** (`scratchpad/realismo/capturas/r2-ambiente/`, nunca en el
+repo; `t2/medir-t2.mjs`, sin Chromium):
+
+* **Cielo raso:** en el tercio de arriba del cuadro, 4 luminarias en la punta de frente,
+  5 en tres cuartos, 3 en el robatope en tres cuartos y 2 en la nevera en tres cuartos
+  (de frente, en la nevera, la parte de arriba es el muro de atrás, como se esperaba). El
+  color plano de la sala (#e8e4dc) ocupa el **0 %** de todas las tomas de venta; en
+  despues-r2 era el 24-26 % de la punta y hasta el 28 % del robatope.
+* **Piso:** el reflejo de las luminarias deja manchas 13-14 sRGB por encima del piso de
+  alrededor en las tomas de tres cuartos (12 en la nevera; antes, 0). Junto a la base de
+  la punta el piso queda un 12 % más oscuro que a ~1 m (antes, 1,5 %).
+* **Uniones** (un vano vacío de GON-02, de cerca): la franja bajo el entrepaño a 129 sRGB
+  contra ~157 a media altura (18 % más oscura); la unión del entrepaño con el fondo a
+  175-179 contra 214 de su centro (16-18 %).
+* **Vecinos:** en la toma de la nevera, NEV-02 queda un 37 % menos luminosa que NEV-01,
+  con sus botellas mudas a la vista (antes era un 76 % MÁS clara); en la del robatope, la
+  góndola libre de al lado queda un 25 % por debajo (antes, un 2 %).
+* **Brillo del acero:** lo prueba el gemelo en JS con las cámaras de venta (una mancha de
+  luminaria 15 sRGB o más sobre el promedio de su pieza, que se corre entre frente y
+  tres cuartos). En la captura no encontré una medida que lo separe bien: el contraste
+  p95−p5 «sin el producto» que pedía la crítica (de ~25 a 50 o más) da, con mi máscara,
+  66-100 ya en despues-r2 y 97-120 ahora; el número de la crítica no se pudo reproducir.
+* **Titileo:** en un giro lento de 32 cuadros (`t2/giro2.mjs`, con video VP8 a 500 kbps),
+  los saltos de ida y vuelta de un bloque de 24 px fuera del piso son los mismos que con
+  la build de b58a759, sin brillos (1.178 contra 1.172); en el piso, 359 contra 305: son
+  los reflejos que se deslizan con la cámara. Mirados cuadro a cuadro, sin escalones.
+
+**El costo.** Un cuadro de cada toma en swiftshader a 1920 × 1080 (`t2/costo-tomas.mjs`: llamadas y
+triángulos de UN cuadro; el tiempo, hasta un `readPixels` que espera a la GPU —`gl.finish`
+no bloquea en Chrome—), contra la build de b58a759 sobre la misma base. **Llamadas**: como
+mucho 632 (la punta en tres cuartos; tope 700) y entre −1 % y +6 % por toma. **Triángulos**:
+la punta +2 % (263 K), la góndola y el robatope menos que antes; la nevera pasa de 78 K a
+160 K por las 40 botellas paradas de la tanda 1. **El cuadro** NO cumple el tope de 1,25
+veces: la punta tarda 1,29-1,40 veces lo de antes (1.450-1.865 ms), la góndola 1,22-1,32,
+el robatope 1,46-1,48 y la nevera 2,2-2,3 (ahí pesa la tanda 1). Con builds de prueba
+(archivo respaldado y restaurado con `cp`) se vio de dónde sale: sin el brillo del acero
+la punta baja a 1.274 ms y el robatope a 1.156 (−240/−280 ms); sin el parche del piso,
+−30 a −100; sin muros ni cielo raso, nada. Es cuenta por píxel, que en swiftshader (la CPU
+pinta) se paga entera y en cualquier placa integrada casi no; sigue `frameloop="demand"`
+y no hay pases. Si en la PC de la dueña se siente, la palanca es el segundo rayo del
+lóbulo o sacarle el brillo al relleno (queda anotado como pendiente).
+
+**Cómo se comprobó.** `tsc` limpio; `npm run probar` entero en 0 fallas
+(`probar-muebles` 183, `probar-arte` 39, `probar-planta` 49, `probar-propuesta` 20);
+`build`; backend `pytest -q -p no:warnings` completo: 1.218 pasan, 2 saltadas, 7 xfail
+(por el paso 13). Mutaciones con `mutar.py` (respaldo y vuelta con `cp`, `git diff --stat`
+limpio): 48, todas cayeron al final; dos sobrevivieron la primera vez —el brillo con el
+rayo espejo solo y una luminaria apenas más clara que el techo pasaban, porque el canto de
+una cara vista de lado refleja el techo liso y sube igual— y la prueba ahora exige una
+mancha DE LUMINARIA sobre el promedio de su pieza. Las bases `.db` del scratchpad ya
+tenían la columna. Capturas (`scratchpad/realismo/capturas/r2-ambiente/`): `final2` (los
+cuatro casos, editor y venta, y la vista superior), `vecinos-final2` (PUN-03 contratada
+entera, PUN-02 y GON-02 con slots vendidos, editor y Presentar sin proveedor), `control`
+(el precio sintético de 1.234, rotulado como dato de prueba), `giro-final` y `costo-*`.
 
 ---
 
