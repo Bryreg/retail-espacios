@@ -1950,13 +1950,16 @@ prueba("rejillas automáticas: la 2 L sale parada sin tocar nada, y la 1,5 L lle
   const dos = F.rejillasDeLaPrueba(NEV, DOS_L, undefined);
   assert.equal(dos.modo, "auto");
   assert.ok(dos.filas, "sin tocar nada, la 2 L queda en las de fábrica (vacía)");
-  // Cuatro rejillas, como la de 1,5 L: con 35 a 37,5 cm libres le sobran 2 cm
-  // arriba, el aire de la mano. Es el mismo resultado que daba «Acomodar».
-  assert.equal(dos.filas.rows, 4, `rejillas para la 2 L: ${dos.filas.rows}`);
-  assert.equal(dos.cuantas, 4);
+  // TRES rejillas (tanda 3): con el aire de la mano (5 cm, HOLGURA_DE_REJILLA)
+  // la 2 L no entra en cuatro; es lo que arma el mercaderista. Con 2 cm salían
+  // cuatro de 35 cm y la tapa rozaba la rejilla de arriba.
+  assert.equal(F.HOLGURA_DE_REJILLA, 0.05);
+  assert.equal(dos.filas.rows, 3, `rejillas para la 2 L: ${dos.filas.rows}`);
+  assert.equal(dos.cuantas, 3);
   const r2 = enTodas(dos.filas, DOS_L);
   assert.ok(r2.porFila.every((f) => f.motivo === null && f.frentes > 0), "alguna rejilla queda sin la 2 L parada");
-  assert.equal(r2.frentesALaVista, 40);
+  assert.ok(r2.porFila.every((f) => f.libre >= 0.33 + F.HOLGURA_DE_REJILLA - 1e-9), "a la 2 L no le queda el aire de la mano");
+  assert.equal(r2.frentesALaVista, 30);
   // La de 1,5 L: 33 de fábrica (las dos del medio vacías) → 4 × 11 = 44.
   assert.equal(enTodas(null, LITRO_Y_MEDIO).frentesALaVista, 33);
   const litro = F.rejillasDeLaPrueba(NEV, LITRO_Y_MEDIO, undefined);
@@ -1998,7 +2001,8 @@ prueba("rejillas: «De fábrica» se respeta y la acostada ignora la elección",
 });
 
 prueba("rejillas a mano: cuántas (1 a las de fábrica) y dónde no entra", () => {
-  // Con 4 la 2 L entra en todas (es lo que dan las automáticas).
+  // Con 4 a mano la 2 L entra en todas, justa (las automáticas dan 3: sin
+  // el aire de la mano).
   const m4 = F.rejillasDeLaPrueba(NEV, DOS_L, { cuantas: 4 });
   assert.equal(m4.modo, "manual");
   assert.equal(m4.filas.rows, 4);

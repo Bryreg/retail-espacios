@@ -653,8 +653,11 @@ export function unidadesDePrueba({
 // ─── Las rejillas de la nevera, para este producto ───────────────────────────
 
 /** Aire sobre el producto parado en una rejilla reacomodada: la mano que lo
- *  saca tiene que entrar. */
-const HOLGURA_DE_REJILLA = 0.02;
+ *  saca tiene que entrar, y para inclinar una botella y sacarla hace falta
+ *  más que un dedo. Con 2 cm la 2 L salía en CUATRO rejillas de 35 cm —le
+ *  rozaba la tapa a la de arriba— y no en las tres que arma un mercaderista;
+ *  con 5, tres (48 cm), y la de 1,5 L sigue en cuatro (4 × 11). */
+export const HOLGURA_DE_REJILLA = 0.05;
 
 /**
  * Las rejillas de una nevera reacomodadas para que el producto entre PARADO
