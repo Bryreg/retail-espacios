@@ -350,3 +350,33 @@ def test_borrar_el_arte_borra_su_ficha(client, admin):
     assert _fichas_en_la_base(arte) == 1
     assert client.delete(f"/api/catalogo/{arte}", headers=admin).status_code == 204
     assert _fichas_en_la_base(arte) == 0
+
+
+def test_un_proveedor_con_artes_no_se_borra_con_un_500(client, admin):
+    """``DELETE /api/suppliers/{id}`` con artes en el catálogo: en Postgres la
+    clave foránea (proveedor → artes → fichas) lo rechazaba con un 500, y en
+    SQLite —que no la hace cumplir— dejaba artes y fichas huérfanas. Ahora un
+    409 que se entiende, y no se toca nada."""
+    from app.database import SessionLocal
+    from app.models.models import Supplier, SupplierAsset
+
+    prov = _proveedor(client, admin)
+    arte = _subir(client, admin, prov, forma="caja", alto_mm="270").json()["id"]
+    r = client.delete(f"/api/suppliers/{prov}", headers=admin)
+    assert r.status_code == 409, r.text
+    assert "catálogo" in r.json()["detail"]
+    db = SessionLocal()
+    try:
+        assert db.query(Supplier).filter(Supplier.id == prov).count() == 1
+        assert db.query(SupplierAsset).filter(SupplierAsset.supplier_id == prov).count() == 1
+    finally:
+        db.close()
+    assert _fichas_en_la_base(arte) == 1
+
+    # Borradas sus artes, el proveedor se borra.
+    assert client.delete(f"/api/catalogo/{arte}", headers=admin).status_code == 204
+    assert client.delete(f"/api/suppliers/{prov}", headers=admin).status_code == 204
+    # Y uno sin nada, también.
+    otro = _proveedor(client, admin, "Nutresa")
+    assert client.delete(f"/api/suppliers/{otro}", headers=admin).status_code == 204
+

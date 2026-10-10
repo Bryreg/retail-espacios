@@ -25,8 +25,8 @@ import type { AccionDeRejillas, EleccionDeRejillas, FilaDePrueba, RejillasDeLaPr
 import type { FilasDeProducto } from "./muebles/medidas";
 import { ventaDeTipo } from "./muebles/venta";
 import {
-  arteALaVista, habladorALaVista, hayReunion, MAXIMO_DE_SURTIDO, supplierPorNombre, surtidoALaVista, proveedorParaPresentar, pruebaAjenaDelMueble, pruebasDeLaReunion,
-  ultimaPrueba,
+  arteALaVista, caraDeLasTomas, habladorALaVista, hayReunion, laminaDelMueble, MAXIMO_DE_SURTIDO, supplierPorNombre, surtidoALaVista,
+  proveedorParaPresentar, pruebaAjenaDelMueble, pruebasDelPlano, pruebasDeLaReunion, REUNION_SIN_PROVEEDOR, reunionFijada, ultimaPrueba,
 } from "./muebles/privacidad";
 import type { PrivadoPara } from "./muebles/privacidad";
 import {
@@ -83,7 +83,7 @@ import {
   huella, limitesDePlanta, lugarDeLaFigura, murosDeCaminata, puntoDeEntrada, puntoLibreCerca, resolverPaso,
   TOLERANCIA_CONTACTO,
   vistaGeneral, miradaSensata, vistaDeCara, vistaDeVenta, FOV_DE_CERCA,
-  personaYTomaDeVenta, FIGURA_DE_ESCALA, SEPARACIONES_DE_LA_FIGURA, fovParaLaCara,
+  personaYTomaDeVenta, FIGURA_DE_ESCALA, SEPARACIONES_DE_LA_FIGURA, fovParaLaCara, dentroDelCuadro,
   ALTO_CIELO_RASO, LUMINARIA, luminariasDeTienda, sombraDeHuellas,
   type Vista3D, type TomaDeVenta,
   VEL_CAMINANDO, VEL_APURADA,
@@ -2595,7 +2595,8 @@ function SiluetaDeEscala({ x, z, rotY, color = GRIS_DE_SILUETA, mirarCamara = fa
     g.updateMatrixWorld();
     g.visible = esquinas.every((e) => {
       v.copy(e).applyMatrix4(g.matrixWorld).project(camera);
-      return v.z < 1 && Math.abs(v.x) <= 0.98 && Math.abs(v.y) <= 0.98;
+      // La misma regla que la cuenta de la toma (`dentroDelCuadro`).
+      return dentroDelCuadro(v.x, v.y, v.z < 1);
     });
     // El plano mira a +Z: su giro en el mundo es el que apunta a la cámara.
     if (mirarCamara && figura.current) figura.current.rotation.y = giroHaciaLaCamara(x, z, camera.position.x, camera.position.z) - rotY;
@@ -2760,6 +2761,7 @@ function SelectorDeProducto({
   /** El arte cuyas medidas se están corrigiendo, con la ficha en borrador. */
   const [midiendo, setMidiendo] = useState<{ arte: Arte; ficha: FichaDeArte } | null>(null);
   const [guardandoFicha, setGuardandoFicha] = useState(false);
+  const [problemasDeFicha, setProblemasDeFicha] = useState<string[]>([]);
 
   // ── Privacidad: la pantalla se comparte ──────────────────────────────────
   // El catálogo entero es la lista de clientes de la tienda: abrirlo delante
@@ -2810,7 +2812,10 @@ function SelectorDeProducto({
           </h3>
           {proveedor && (
             <button
-              onClick={() => { onProveedor(null); setBusca(""); }}
+              // La reunión sigue, sin proveedor hasta elegir un producto del
+              // siguiente (`REUNION_SIN_PROVEEDOR`): con `null` se cerraba la
+              // reunión, y al cerrar el selector volvían las pruebas de todos.
+              onClick={() => { onProveedor(REUNION_SIN_PROVEEDOR); setBusca(""); }}
               className="text-[11px] text-dark-ink-3 underline-offset-2 hover:text-dark-ink-1 hover:underline"
             >
               Cambiar de proveedor
@@ -2934,6 +2939,7 @@ function SelectorDeProducto({
               nombre={midiendo.arte.nombre}
               categoria={midiendo.arte.categoria}
               onCambio={(f) => setMidiendo(m => (m ? { ...m, ficha: f } : m))}
+              onValidez={setProblemasDeFicha}
             />
             {error && <p className="mt-1 text-[11px] text-danger">{error}</p>}
             <div className="mt-2 flex justify-end gap-2">
@@ -2941,8 +2947,11 @@ function SelectorDeProducto({
                 Cancelar
               </button>
               <button
-                disabled={guardandoFicha}
+                // Con un campo que no se entiende no se guarda: viajaba como
+                // `null` y pisaba el valor que estaba (`onValidez`).
+                disabled={guardandoFicha || problemasDeFicha.length > 0}
                 onClick={async () => {
+                  if (problemasDeFicha.length > 0) return;
                   setGuardandoFicha(true);
                   setError("");
                   try {
@@ -3019,6 +3028,7 @@ function FormularioDeArte({
   const [rubro, setRubro] = useState("");
   const [archivo, setArchivo] = useState<File | null>(null);
   const [ficha, setFicha] = useState<FichaDeArte>(FICHA_VACIA);
+  const [problemasDeFicha, setProblemasDeFicha] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -3046,6 +3056,9 @@ function FormularioDeArte({
     if (!archivo)          { onError("Falta la imagen del producto."); return; }
     // El alto es lo que decide la escala y cuántos frentes entran: en un arte
     // NUEVO no se adivina.
+    // Un campo que no se entiende (o fuera de los topes) viajaba como `null`:
+    // el precio, el ancho o el fondo se perdían sin aviso.
+    if (problemasDeFicha.length > 0) { onError(problemasDeFicha[0]); return; }
     if (!ficha.alto_mm)    { onError("Poné el alto del envase en cm: con eso se calcula cuántos entran."); return; }
     onSubiendo(true);
     onError("");
@@ -3130,6 +3143,7 @@ function FormularioDeArte({
           categoria={rubro}
           onCambio={setFicha}
           altoObligatorio
+          onValidez={setProblemasDeFicha}
         />
       )}
       {error && <p className="text-[11px] text-danger">{error}</p>}
@@ -3327,6 +3341,7 @@ function PanelDePrueba({
   const estadoFoto = venta ? estadoDeEtiqueta(claveDeArte(arte.id, modo)) : null;
   const [midiendo, setMidiendo] = useState<FichaDeArte | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [problemasDeFicha, setProblemasDeFicha] = useState<string[]>([]);
   const [error, setError] = useState("");
 
   const empaque = useMemo(
@@ -3691,6 +3706,7 @@ function PanelDePrueba({
             nombre={arte.nombre}
             categoria={arte.categoria}
             onCambio={setMidiendo}
+            onValidez={setProblemasDeFicha}
           />
           {error && <p className="mt-1 text-[11px] text-danger">{error}</p>}
           <div className="mt-2 flex justify-end gap-2">
@@ -3698,8 +3714,10 @@ function PanelDePrueba({
               Cancelar
             </button>
             <button
-              disabled={guardando}
+              // Con un campo que no se entiende no se guarda (`onValidez`).
+              disabled={guardando || problemasDeFicha.length > 0}
               onClick={async () => {
+                if (problemasDeFicha.length > 0) return;
                 setGuardando(true);
                 setError("");
                 try {
@@ -3726,7 +3744,7 @@ function PanelDePrueba({
 function VistaProveedor({
   fix, enCaminata, catalogo, cargandoCatalogo, prueba, onProbar, onRecargarCatalogo,
   comoSePrueba, onAjustarPrueba, proveedorDeReunion, onProveedorDeReunion, onMostrar,
-  eligiendo, setEligiendo,
+  eligiendo, setEligiendo, onCara,
 }: {
   fix: PlacedFixture;
   enCaminata: boolean;
@@ -3745,6 +3763,9 @@ function VistaProveedor({
    *  selector abierto, el bloque «Contratado» se vuelve discreto. */
   eligiendo: boolean;
   setEligiendo: (abierto: boolean) => void;
+  /** La cara abierta en el panel: la lámina sale de ESA cara (con pruebas
+   *  en las dos de una góndola doble salía siempre la A). */
+  onCara?: (fixtureId: string, cara: "A" | "B") => void;
 }) {
   const camara3D      = useFixtureStore((s) => s.camera3D);
   const guardarVista  = useFixtureStore((s) => s.guardarVista3D);
@@ -3757,6 +3778,7 @@ function VistaProveedor({
   const doble  = isDoubleGondola(fix);
   const [cara, setCara] = useState<"A" | "B">("A");
   const caraUsada = doble ? cara : "A";
+  useEffect(() => { onCara?.(fix.id, caraUsada); }, [fix.id, caraUsada, onCara]);
   const guardada = uf?.vista3D?.[caraUsada];
   const probandoId = prueba.get(`${fix.id}|${caraUsada}`);
   const probando = probandoId != null ? catalogo.find(a => a.id === probandoId) : undefined;
@@ -3767,8 +3789,12 @@ function VistaProveedor({
   // proveedor»): la escena no dibuja ninguna prueba (`pruebasDeLaReunion`), y
   // el panel detrás del velo seguía diciendo «Finesse yogurt fresa · Alpina»
   // con el proveedor siguiente ya mirando.
+  // Y con la reunión abierta sin proveedor aunque el selector se cierre
+  // (`REUNION_SIN_PROVEEDOR`): toda prueba es de otro hasta elegir producto.
   const deReunion = supplierPorNombre(proveedorDeReunion, catalogo);
-  const ajena = !!probando && (deReunion != null ? probando.supplier_id !== deReunion : eligiendo);
+  const ajena = !!probando && (deReunion != null
+    ? probando.supplier_id !== deReunion
+    : eligiendo || reunionFijada(proveedorDeReunion));
 
   if (!uf || !isRentable(fix)) return null;
 
@@ -3800,7 +3826,7 @@ function VistaProveedor({
         {ajena ? (
           <div className="flex items-start gap-2" data-prueba-ajena>
             <p className="flex-1 text-[10.5px] leading-snug text-dark-ink-3">
-              En esta cara hay una prueba de otro proveedor: no se muestra mientras dura esta reunión.
+              En esta cara hay una prueba de otro proveedor: no se muestra mientras dura esta reunión, y en Presentar sale vacía.
             </p>
             <button
               onClick={() => onProbar(fix.id, caraUsada, null)}
@@ -5998,6 +6024,8 @@ interface CommercialPanelProps {
    *  también lo mira (`pruebasDeLaReunion`). */
   eligiendo:         boolean;
   setEligiendo:      (abierto: boolean) => void;
+  /** La cara abierta en «Vista para el proveedor» (ver `VistaProveedor`). */
+  onCara?:           (fixtureId: string, cara: "A" | "B") => void;
   selectedSlot:  ShelfSlot | null;
   onUpdate:      (id:string, u:Partial<PlacedFixture>) => void;
   /** Todo el plano de la sede: sin los demás muebles no se puede decir si el
@@ -6020,7 +6048,7 @@ interface CommercialPanelProps {
 function CommercialPanel({
   fix, enCaminata, catalogo, cargandoCatalogo, prueba, onProbar, onRecargarCatalogo,
   comoSePrueba, onAjustarPrueba, proveedorDeReunion, onProveedorDeReunion, onMostrar,
-  eligiendo, setEligiendo,
+  eligiendo, setEligiendo, onCara,
   selectedSlot, onUpdate, muebles, onRenombrar, onIntercambiar, onUpdateSlot,
   onRotate, onFlip, onDelete, onClose, onSlotClose,
 }: CommercialPanelProps) {
@@ -6459,6 +6487,7 @@ function CommercialPanel({
           onMostrar={onMostrar}
           eligiendo={eligiendo}
           setEligiendo={setEligiendo}
+          onCara={onCara}
         />
 
         <div>
@@ -6585,13 +6614,19 @@ export default function StoreEditor3D() {
       if (document.fullscreenElement) document.exitFullscreen().catch(() => { /* ya salió */ });
     };
   }, [presentationMode]);
-  // Y al revés: el Esc del navegador (o F11, o el aviso «Salir de pantalla
-  // completa») suelta la pantalla completa sin pasar por React; sin
-  // pantalla completa, Presentar se apaga. La salida desde un `fixed` sin
-  // pantalla completa quedaba a medias: el lienzo tapando la barra y nada
-  // para volver más que «Salir».
+  // Y al revés, salir de la pantalla completa NO apaga Presentar. Antes sí
+  // (un `fullscreenchange` sin elemento lo apagaba), pero Chrome y Edge sacan
+  // de pantalla completa a la pestaña que deja de estar al frente: la dueña
+  // en Presentar hacía Ctrl+Tab para ir a Meet a mirar al proveedor —o a
+  // apretar «Compartir», como aconseja ESTADO.md— y la pestaña compartida
+  // pasaba a mostrar el editor, con el panel y las fotos de las caras de
+  // otros proveedores. El `fixed inset-0` ya tapa la barra; el HUD ofrece
+  // volver a la pantalla completa, y un segundo Esc (que ahora sí llega a la
+  // página) sale de Presentar. Filtrar por `visibilityState` no alcanzaba:
+  // el `fullscreenchange` llega ANTES que el `visibilitychange`.
+  const [pantallaCompleta, setPantallaCompleta] = useState(false);
   useEffect(() => {
-    const alCambiar = () => { if (!document.fullscreenElement) setPresentationMode(false); };
+    const alCambiar = () => setPantallaCompleta(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", alCambiar);
     return () => document.removeEventListener("fullscreenchange", alCambiar);
   }, []);
@@ -6701,10 +6736,46 @@ export default function StoreEditor3D() {
     if (!eligiendo || !proveedorDeReunion) return;
     precalentarEtiquetas(catalogo.filter((a) => a.proveedor === proveedorDeReunion));
   }, [eligiendo, proveedorDeReunion, catalogo]);
+  // Las pruebas de los muebles que siguen en el plano (`pruebasDelPlano`): una
+  // prueba en un mueble borrado mantenía la reunión abierta para siempre y
+  // «Mostrarla» encuadraba un mueble que ya no existe.
+  const idsDelPlano = useMemo(() => new Set(placedFixtures.map(f => f.id)), [placedFixtures]);
+  const pruebaViva = useMemo(() => pruebasDelPlano(prueba, idsDelPlano), [prueba, idsDelPlano]);
+  const fijada = reunionFijada(proveedorDeReunion);
   const pruebaEnEscena = useMemo(
-    () => (privadoPara !== undefined ? prueba : pruebasDeLaReunion(prueba, catalogo, supplierDeReunion, eligiendo)),
-    [privadoPara, prueba, catalogo, supplierDeReunion, eligiendo],
+    () => (privadoPara !== undefined ? prueba : pruebasDeLaReunion(prueba, catalogo, supplierDeReunion, eligiendo, fijada)),
+    [privadoPara, prueba, catalogo, supplierDeReunion, eligiendo, fijada],
   );
+  // La reunión en curso, con la misma cuenta que el panel y el cartel.
+  const enReunion = hayReunion({ pruebas: pruebaViva.size, proveedorDeReunion, eligiendo });
+  /** «Terminar la reunión»: la reunión no terminaba nunca —el proveedor de la
+   *  reunión sólo volvía a `null` con un botón escondido en el selector—, y
+   *  hasta recargar el cartel y el bloque «Contratado» escondían los datos de
+   *  TODOS los contratos. Suelta al proveedor y quita las pruebas de la
+   *  sesión: la tienda vuelve a verse como está. Nada de esto estaba en el
+   *  plano, así que no hay nada que deshacer en el layout. */
+  const terminarReunion = useCallback(() => {
+    setProveedorDeReunion(null);
+    setPrueba(new Map());
+    setComoSePrueba(new Map());
+    setEligiendo(false);
+  }, []);
+  /** Al borrar un mueble se sueltan sus pruebas (no hay panel desde donde
+   *  quitarlas). */
+  const soltarPruebasDe = useCallback((fixtureId: string) => {
+    const fuera = <T,>(prev: Map<string, T>) => {
+      if (!prev.has(`${fixtureId}|A`) && !prev.has(`${fixtureId}|B`)) return prev;
+      const siguiente = new Map(prev);
+      siguiente.delete(`${fixtureId}|A`); siguiente.delete(`${fixtureId}|B`);
+      return siguiente;
+    };
+    setPrueba(fuera); setComoSePrueba(fuera);
+  }, []);
+  // La cara abierta en «Vista para el proveedor»: la lámina sale de ésa.
+  const caraDelPanel = useRef<{ fixtureId: string; cara: "A" | "B" } | null>(null);
+  const alCambiarCara = useCallback((fixtureId: string, cara: "A" | "B") => {
+    caraDelPanel.current = { fixtureId, cara };
+  }, []);
 
   // La toma pedida para Presentar. `n` cambia en cada pedido para que pedir
   // dos veces la misma vuelva a encuadrar.
@@ -6849,6 +6920,15 @@ export default function StoreEditor3D() {
     function onKey(e: KeyboardEvent){
       const tag=(e.target as HTMLElement).tagName.toLowerCase();
       if(tag==="input"||tag==="textarea"||tag==="select") return;
+      // En Presentar sólo se atiende Esc. La selección ya no se ve (sin caja,
+      // gizmo ni panel) y un clic elige el mueble que se muestra: una R, una
+      // F o un Retroceso sin querer giraba o borraba la punta delante del
+      // proveedor, y quedaba escrito en el plano. El arrastre ya estaba
+      // bloqueado por lo mismo; Ctrl+Z también se va: deshace el plano.
+      if (presentationMode) {
+        if (e.key === "Escape" && !firstPerson && !document.pointerLockElement) setPresentationMode(false);
+        return;
+      }
       // CHANGE 3 — Undo / Redo
       if(e.ctrlKey && e.key==="z" && !e.shiftKey){
         e.preventDefault();
@@ -6865,16 +6945,10 @@ export default function StoreEditor3D() {
         return;
       }
       if(e.key==="Escape"){
-        // En Presentar sin pantalla completa (el navegador la negó) Esc sale
-        // de Presentar, y nada más: la dueña vuelve a su panel con el mueble
-        // elegido. Con pantalla completa el Esc lo atiende el navegador
-        // (`fullscreenchange`). En primera persona, o con el mouse capturado,
-        // Esc suelta el mouse como siempre: sacar de Presentar a mitad de un
-        // recorrido sería otro gesto.
-        if (presentationMode) {
-          if (!firstPerson && !document.pointerLockElement) setPresentationMode(false);
-          return;
-        }
+        // (En Presentar, arriba: sin pantalla completa Esc sale de Presentar;
+        // con ella el primer Esc lo atiende el navegador y suelta sólo la
+        // pantalla completa. En primera persona, o con el mouse capturado,
+        // Esc suelta el mouse como siempre.)
         setPlacingDef(null); setSelectedId(null); setSelectedSlotId(null);
         setFirstPerson(false);
       }
@@ -6890,12 +6964,13 @@ export default function StoreEditor3D() {
       if((e.key==="Delete"||e.key==="Backspace")&&selectedId&&!placingDef){
         e.preventDefault();
         u(p=>p.filter(f=>f.id!==selectedId));
+        soltarPruebasDe(selectedId);
         setSelectedId(null); setSelectedSlotId(null);
       }
     }
     window.addEventListener("keydown",onKey);
     return ()=>window.removeEventListener("keydown",onKey);
-  },[placingDef,selectedId,u,undo,redo,presentationMode,firstPerson]);
+  },[placingDef,selectedId,u,undo,redo,presentationMode,firstPerson,soltarPruebasDe]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -6998,6 +7073,7 @@ export default function StoreEditor3D() {
   function deleteSelected(){
     if(!selectedId) return;
     u(p=>p.filter(f=>f.id!==selectedId));
+    soltarPruebasDe(selectedId);
     setSelectedId(null); setSelectedSlotId(null);
   }
   function handleSave(){
@@ -7049,20 +7125,22 @@ export default function StoreEditor3D() {
       // Con una reunión fijada, sólo cuenta la prueba de ESE proveedor: un
       // arrastre que empezó sobre la punta de Alpina la elige, y «Presentar»
       // no puede pasarle la pantalla a Alpina en plena reunión con Diana.
+      // Con la reunión abierta sin proveedor («Cambiar de proveedor»), la
+      // prueba de nadie.
       const delQueMira = (c: "A" | "B") => {
         const id = prueba.get(`${selectedId}|${c}`);
-        return id != null && (supplierDeReunion == null
+        return id != null && (!fijada
           || catalogo.find(a => a.id === id)?.supplier_id === supplierDeReunion);
       };
       const cara = delQueMira("A") ? "A" : delQueMira("B") ? "B" : null;
       if (cara) { mostrarAlProveedor(selectedId, cara); return; }
     }
     setProveedorEnPantalla(proveedorParaPresentar({
-      prueba, catalogo, muebleId: selectedId, proveedorDeReunion,
+      prueba: pruebaViva, catalogo, muebleId: selectedId, proveedorDeReunion,
     }));
     setPresentationMode(true);
     pedirPantallaCompleta();
-  }, [presentationMode, prueba, catalogo, selectedId, proveedorDeReunion, supplierDeReunion, mostrarAlProveedor, pedirPantallaCompleta]);
+  }, [presentationMode, prueba, pruebaViva, catalogo, selectedId, proveedorDeReunion, supplierDeReunion, fijada, mostrarAlProveedor, pedirPantallaCompleta]);
 
   /** La cara con prueba de un mueble, A primero: es la que encuadran las
    *  tomas del HUD de Presentar. Sólo una que el que mira pueda ver: con la
@@ -7081,16 +7159,25 @@ export default function StoreEditor3D() {
     ? placedFixtures.find(f => f.id === pedidoDeToma.fixtureId) ?? null : null;
   const muebleDelHud = caraVisible(selectedFix) ? selectedFix
     : caraVisible(muebleDeLaToma) ? muebleDeLaToma : null;
-  const caraConPrueba = caraVisible(muebleDelHud);
+  // La cara de la toma vigente si es de este mueble y se ve (`caraDeLasTomas`):
+  // con pruebas en las dos caras «De cerca» saltaba a la A.
+  const caraConPrueba = muebleDelHud
+    ? caraDeLasTomas(
+        (c) => arteALaVista(prueba.get(`${muebleDelHud.id}|${c}`), catalogo, privadoPara) != null,
+        pedidoDeToma?.fixtureId === muebleDelHud.id ? pedidoDeToma.cara : null,
+      )
+    : null;
   // Presentar sin proveedor identificado no dibuja ninguna prueba. Si hay
   // alguna puesta, se avisa SIN NOMBRES —la pantalla ya puede estar
   // compartida— y se ofrece mostrar la última.
-  // Con un proveedor identificado, lo que se oculta es la prueba de OTRO en
-  // el mueble elegido (la punta de Alpina en la reunión de Diana): se ve
-  // vacía, y el aviso dice por qué sin decir de quién es.
-  const pruebaOculta = !presentationMode ? null
-    : privadoPara === null ? ultimaPrueba(prueba, catalogo)
-      : privadoPara !== undefined ? pruebaAjenaDelMueble(prueba, catalogo, selectedId, privadoPara) : null;
+  // Con un proveedor identificado NO se avisa nada en el HUD: lo lee el
+  // proveedor, y «Hay una prueba que no se está mostrando» escrito sobre la
+  // punta vacía le decía que esa punta se le está ofreciendo a otro (la fuga
+  // que la primera crítica señaló). A la dueña se le avisa ANTES de entrar:
+  // en el panel y en el botón «Presentar» (`pruebaAjenaElegida`).
+  const pruebaOculta = presentationMode && privadoPara === null ? ultimaPrueba(pruebaViva, catalogo) : null;
+  const pruebaAjenaElegida = !presentationMode && fijada && selectedId
+    ? pruebaAjenaDelMueble(prueba, catalogo, selectedId, supplierDeReunion ?? -1) : null;
 
   /**
    * Baja la lámina para el proveedor.
@@ -7148,15 +7235,20 @@ export default function StoreEditor3D() {
         await esperarEscena((e) => !e.primeraPersona);
       }
 
-      // Qué producto se está probando en este mueble. Cualquiera de las dos
-      // caras sirve: la lámina muestra la que quedó encuadrada. Con una
-      // reunión fijada, sólo un producto de ESE proveedor.
-      const arte = (["A", "B"] as const)
-        .map(c => prueba.get(`${fix.id}|${c}`))
-        .filter((id): id is number => id != null)
-        .map(id => catalogo.find(a => a.id === id))
-        .filter(a => !!a && (supplierDeReunion == null || a.supplier_id === supplierDeReunion))
-        .find(Boolean);
+      // Qué producto se está probando en este mueble. Con una reunión fijada,
+      // sólo un producto de ESE proveedor (abierta sin proveedor, ninguno). La
+      // cara: la de la toma vigente o la abierta en el panel, si tiene uno; si
+      // no, A y después B (`caraDeLasTomas`). Con pruebas en las dos caras
+      // salía siempre la A aunque se estuviera hablando de la B.
+      const arteDeCara = (c: "A" | "B") => {
+        const id = prueba.get(`${fix.id}|${c}`);
+        const a = id != null ? catalogo.find(x => x.id === id) : undefined;
+        return a && (!fijada || a.supplier_id === supplierDeReunion) ? a : undefined;
+      };
+      const pedida = pedidoDeToma?.fixtureId === fix.id ? pedidoDeToma.cara
+        : caraDelPanel.current?.fixtureId === fix.id ? caraDelPanel.current.cara : null;
+      const caraDelArte = caraDeLasTomas((c) => !!arteDeCara(c), pedida);
+      const arte = caraDelArte ? arteDeCara(caraDelArte) : undefined;
 
       // Con un producto en prueba, las tomas son las de la pantalla de venta
       // y no la cámara que hubiera quedado: con el encuadre viejo la punta
@@ -7164,9 +7256,7 @@ export default function StoreEditor3D() {
       // aire alrededor (el mueble al ~65 % del alto) para «Hoy» y «Con …», y
       // una tercera «De cerca», que es la que se lee. Al terminar la cámara
       // vuelve a donde estaba.
-      const cara = arte
-        ? (prueba.get(`${fix.id}|A`) === arte.id ? "A" : prueba.get(`${fix.id}|B`) === arte.id ? "B" : null)
-        : null;
+      const cara = arte ? caraDelArte : null;
       const conTomas = !!arte && !!cara && TIPOS_CON_PRUEBA_3D.has(fix.type);
       const ctrl = orbitRef.current;
       const cam = ctrl?.object as THREE.PerspectiveCamera | undefined;
@@ -7191,9 +7281,14 @@ export default function StoreEditor3D() {
       //
       // Sin producto en prueba, la lámina es para el que tiene el contrato
       // (si tiene artes en el catálogo) o para nadie: tampoco ahí van las
-      // pruebas de la sesión ni las fotos de las caras vecinas.
-      const delContrato = supplierPorNombre(uf.supplierName, catalogo);
-      const para = arte ? arte.supplier_id : delContrato;
+      // pruebas de la sesión ni las fotos de las caras vecinas. Con una
+      // reunión en curso, para el de la reunión y sin los datos de un
+      // contrato ajeno (`laminaDelMueble`): en la reunión de Diana, con la
+      // punta de Alpina elegida, el lienzo compartido dibujaba los vasos de
+      // Alpina y bajaba «…_Alpina.png» con su valor mensual.
+      const { para, contratoALaVista } = laminaDelMueble({
+        arteSupplierId: arte?.supplier_id, contratoDe: uf.supplierName, proveedorDeReunion, catalogo,
+      });
       setLaminaPara(para);
       if (conTomas && cara) {
         const n = pedirToma(fix.id, cara, "frente", HOLGURA_DE_LAMINA);
@@ -7231,13 +7326,15 @@ export default function StoreEditor3D() {
       // contrato de al lado sería inventarlas. Se negocian en la reunión.
       const mismoProveedor =
         !!arte && (uf.supplierName ?? "").trim().toLowerCase() === arte.proveedor.trim().toLowerCase();
-      const proponiendo = !!arte && !mismoProveedor;
+      // Sin producto y con el contrato de otro en plena reunión, el pie va
+      // como en una propuesta: sin proveedor, rubro, período ni valor.
+      const proponiendo = (!!arte && !mismoProveedor) || !contratoALaVista;
 
       const datos = {
         sede,
         espacio: fullSpaceCode(uf.sede || sede, uf.code),
         mueble: uf.label || uf.code,
-        proveedor: arte ? arte.proveedor : (uf.supplierName ?? ""),
+        proveedor: arte ? arte.proveedor : contratoALaVista ? (uf.supplierName ?? "") : "",
         // Con surtido, los productos de la cara unidos por « · » (los del
         // mismo proveedor que se ven en las tomas); sin período ni valor.
         producto: arte
@@ -7283,7 +7380,7 @@ export default function StoreEditor3D() {
       setExportando(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exportando, sinArte, selectedFix, fixtures, sede, isAdmin, prueba, catalogo, pedirToma, supplierDeReunion, firstPerson, comoSePrueba]);
+  }, [exportando, sinArte, selectedFix, fixtures, sede, isAdmin, prueba, catalogo, pedirToma, supplierDeReunion, firstPerson, comoSePrueba, fijada, pedidoDeToma, proveedorDeReunion]);
   const selectedSlot = selectedFix?.slots?.find(s=>s.id===selectedSlotId)??null;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -7465,10 +7562,28 @@ export default function StoreEditor3D() {
               <Camera size={10}/> {exportando ? "Armando…" : selectedFix ? "Propuesta" : "PNG"}
             </button>
 
+            {/* «Terminar la reunión»: sin nombres (la pantalla puede estar
+                compartida). Vuelve a mostrar los contratos en el cartel y el
+                panel, y quita las pruebas de la sesión. */}
+            {enReunion && !presentationMode && (
+              <button
+                onClick={() => {
+                  if (pruebaViva.size === 0 || confirm(`¿Terminar la reunión? Se quitan ${pruebaViva.size === 1 ? "la prueba" : `las ${pruebaViva.size} pruebas`} de esta sesión.`)) terminarReunion();
+                }}
+                title="Quita las pruebas de la sesión y suelta al proveedor de la reunión"
+                data-terminar-reunion
+                className="flex items-center gap-1 rounded border border-dark-line-2 bg-dark-surface px-2 py-0.5 text-[10px] text-dark-ink-2 hover:bg-dark-surface-2 transition-colors">
+                <X size={10}/> Terminar reunión
+              </button>
+            )}
+
             {/* MEJORA 4: Presentation mode button */}
             <button
               onClick={alternarPresentar}
-              title="Modo presentación"
+              title={pruebaAjenaElegida
+                ? "Este mueble tiene una prueba de otro proveedor: en Presentar sale vacío"
+                : "Modo presentación"}
+              data-presentar-ajena={pruebaAjenaElegida ? "" : undefined}
               className={`flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] transition-all ${
                 presentationMode
                   ? 'border-accent/50 bg-accent/15 text-accent-200'
@@ -7570,7 +7685,7 @@ export default function StoreEditor3D() {
           const sm = STATUS_META[fix.status];
           // La misma cuenta que el panel (`hayReunion`): con la reunión fijada y
           // la prueba recién quitada, el cartel volvía a decir quién paga qué.
-          const discreto = hayReunion({ pruebas: prueba.size, proveedorDeReunion });
+          const discreto = enReunion;
           return (
             <div
               className="pointer-events-none absolute z-30 rounded-lg border border-dark-line bg-dark-surface/95 px-3 py-2 text-xs shadow-xl backdrop-blur-sm"
@@ -7602,7 +7717,7 @@ export default function StoreEditor3D() {
                 <button key={toma}
                   onClick={() => pedirToma(muebleDelHud.id, caraConPrueba, toma)}
                   className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-                    pedidoDeToma?.toma === toma && pedidoDeToma.fixtureId === muebleDelHud.id
+                    pedidoDeToma?.toma === toma && pedidoDeToma.fixtureId === muebleDelHud.id && pedidoDeToma.cara === caraConPrueba
                       ? "bg-dark-ink-1 text-dark-bg" : "bg-dark-ink-1/10 text-dark-ink-1 hover:bg-dark-ink-1/20"}`}>
                   {rotulo}
                 </button>
@@ -7624,6 +7739,15 @@ export default function StoreEditor3D() {
               </>
             ) : (
               <span className="px-1 text-sm text-white/70">Modo presentación</span>
+            )}
+            {/* Salir de la pantalla completa no apaga Presentar (ver
+                `pantallaCompleta`): se vuelve desde acá, con un clic, que es
+                el gesto que el navegador pide. */}
+            {!pantallaCompleta && typeof document !== "undefined" && document.fullscreenEnabled && (
+              <button onClick={pedirPantallaCompleta} data-volver-pantalla-completa
+                className="rounded-full bg-dark-ink-1/10 px-3.5 py-1.5 text-sm font-semibold text-dark-ink-1 hover:bg-dark-ink-1/20 transition-colors">
+                Pantalla completa
+              </button>
             )}
             <button onClick={() => setPresentationMode(false)}
               className="rounded-full bg-dark-ink-1/10 px-3.5 py-1.5 text-sm font-semibold text-dark-ink-1 hover:bg-dark-ink-1/20 transition-colors">
@@ -7680,7 +7804,7 @@ export default function StoreEditor3D() {
           enCaminata={firstPerson}
           catalogo={catalogo}
           cargandoCatalogo={cargandoCatalogo}
-          prueba={prueba}
+          prueba={pruebaViva as Map<string, number>}
           onProbar={probarProducto}
           comoSePrueba={comoSePrueba}
           onAjustarPrueba={ajustarPrueba}
@@ -7690,6 +7814,7 @@ export default function StoreEditor3D() {
           onRecargarCatalogo={recargarCatalogo}
           eligiendo={eligiendo}
           setEligiendo={setEligiendo}
+          onCara={alCambiarCara}
           selectedSlot={selectedSlot}
           onUpdate={updateFixture}
           muebles={placedFixtures}

@@ -902,7 +902,7 @@ export function vistaDeVenta(
   const conAlto = (incluir ?? []).filter((p) => p.y != null);
   const entra = (v: Vista3D) => conAlto.every((p) => {
     const q = proyectar(v, fovGrados, aspecto, { x: p.x, y: p.y!, z: p.z });
-    return q.profundidad > 0 && Math.abs(q.x) <= 0.98 && Math.abs(q.y) <= 0.98;
+    return dentroDelCuadro(q.x, q.y, q.profundidad > 0);
   });
   for (const { dir, libre: l } of lados) {
     const lugar = (d: number) => {
@@ -930,6 +930,20 @@ export function vistaDeVenta(
  *  (`SiluetaDeEscala`). Las esquinas que se proyectan para saber si entra son
  *  las de ESTE rectángulo. */
 export const FIGURA_DE_ESCALA = { alto: 1.7, medioAncho: 0.26 } as const;
+
+/** Hasta dónde del cuadro (en coordenadas normalizadas, ±1 el borde) cuenta
+ *  como «adentro» para la persona y lo que la toma tiene que incluir. */
+export const BORDE_DEL_CUADRO = 0.98;
+/**
+ * ¿Un punto proyectado cae dentro del cuadro? `x`, `y` en coordenadas
+ * normalizadas y `delante` si está delante de la cámara. Es la MISMA regla
+ * para la cuenta de la toma (`personaYTomaDeVenta`) y para la silueta que se
+ * dibuja (`SiluetaDeEscala`): media persona cortada por el borde no da escala,
+ * y si las dos cuentas no coincidieran la silueta saldría partida.
+ */
+export function dentroDelCuadro(x: number, y: number, delante: boolean): boolean {
+  return delante && Math.abs(x) <= BORDE_DEL_CUADRO && Math.abs(y) <= BORDE_DEL_CUADRO;
+}
 
 /** Las separaciones del canto que se prueban, de la más holgada a la más
  *  pegada. A 1-1,2 m la persona se lee como alguien en el pasillo y no le
@@ -1187,7 +1201,7 @@ export function personaYTomaDeVenta(
   }))));
   const ver = (vista: Vista3D, { p, separacion }: (typeof lugares)[number]): Hallada | null => {
     const q = esquinasDeLaFigura(p).map((e) => proyectar(vista, fovGrados, aspecto, e));
-    const entra = q.every((e) => e.profundidad > 0 && Math.abs(e.x) <= 0.98 && Math.abs(e.y) <= 0.98);
+    const entra = q.every((e) => dentroDelCuadro(e.x, e.y, e.profundidad > 0));
     const xs = caja8.map((e) => proyectar(vista, fovGrados, aspecto, e)).filter((e) => e.profundidad > 0).map((e) => e.x);
     const [a, b] = [Math.min(...xs) - AIRE_DE_LA_FIGURA, Math.max(...xs) + AIRE_DE_LA_FIGURA];
     const [pa, pb] = [Math.min(...q.map((e) => e.x)), Math.max(...q.map((e) => e.x))];

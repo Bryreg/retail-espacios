@@ -149,6 +149,56 @@ export function hayReunion({ pruebas, proveedorDeReunion, eligiendo = false }: {
   return pruebas > 0 || proveedorDeReunion != null || eligiendo;
 }
 
+/**
+ * La reunión sigue, pero todavía sin proveedor: es lo que deja «Cambiar de
+ * proveedor» en `proveedorDeReunion` (un `""`, que no es `null`).
+ *
+ * Antes ese botón lo dejaba en `null`, que es «no hay reunión»: en cuanto se
+ * cerraba el selector sin elegir un producto —para ir primero a otro
+ * mueble—, el editor volvía a dibujar las pruebas de TODOS, el panel volvía a
+ * nombrar la de Alpina con su foto y «Presentar» le pasaba la pantalla a
+ * Alpina delante de Diana. Con el centinela la reunión no se pierde: no se
+ * dibuja ninguna prueba (`pruebasDeLaReunion`), el panel trata toda prueba
+ * como ajena y Presentar no adivina a quién mostrarle (`proveedorParaPresentar`).
+ * Se sale eligiendo un producto (que fija al proveedor siguiente) o con
+ * «Terminar la reunión».
+ *
+ * Vacío y no un texto cualquiera: el selector, el título y el precalentado
+ * ya tratan un proveedor vacío como «sin proveedor», y `supplierPorNombre`
+ * no encuentra a nadie con ese nombre.
+ */
+export const REUNION_SIN_PROVEEDOR = "";
+
+/** ¿Hay una reunión fijada —con proveedor o abierta sin él—? */
+export function reunionFijada(proveedorDeReunion: string | null | undefined): boolean {
+  return proveedorDeReunion != null;
+}
+
+/**
+ * Las pruebas de los muebles que siguen en el plano.
+ *
+ * Una prueba vive en la sesión con la clave `${fixtureId}|cara`; si el mueble
+ * se borra (o es de otra sede), la entrada queda huérfana: no hay panel desde
+ * donde quitarla, mantenía la reunión abierta para siempre (`hayReunion`
+ * cuenta pruebas) y «Mostrarla» encuadraba un mueble que ya no existe. Se
+ * cuentan sólo las de muebles presentes; el mismo `Map` si no sobra ninguna.
+ */
+export function pruebasDelPlano<T>(
+  prueba: ReadonlyMap<string, T>,
+  enElPlano: ReadonlySet<string>,
+): ReadonlyMap<string, T> {
+  let sobra = false;
+  for (const clave of prueba.keys()) {
+    if (!enElPlano.has(clave.slice(0, clave.lastIndexOf("|")))) { sobra = true; break; }
+  }
+  if (!sobra) return prueba;
+  const fuera = new Map<string, T>();
+  for (const [clave, v] of prueba) {
+    if (enElPlano.has(clave.slice(0, clave.lastIndexOf("|")))) fuera.set(clave, v);
+  }
+  return fuera;
+}
+
 /** Ninguna prueba: una sola instancia, para que el memo de la escena no vea
  *  un `Map` nuevo en cada render. */
 const SIN_PRUEBAS: ReadonlyMap<string, number> = new Map();
@@ -169,14 +219,23 @@ const SIN_PRUEBAS: ReadonlyMap<string, number> = new Map();
  * dibujar las pruebas de TODOS detrás del velo del selector, con el
  * proveedor nuevo ya mirando la pantalla. Lo mismo al abrir el selector por
  * primera vez: todavía no se sabe a quién se le muestra.
+ *
+ * `fijada` (la reunión sigue aunque el selector se cierre): «Cambiar de
+ * proveedor» y cerrar el selector sin elegir volvía a dibujar las pruebas de
+ * todos. Ver `REUNION_SIN_PROVEEDOR`.
  */
 export function pruebasDeLaReunion(
   prueba: ReadonlyMap<string, number>,
   catalogo: readonly ArteDeProveedor[],
   supplierDeReunion: number | null,
   eligiendo = false,
+  fijada = false,
 ): ReadonlyMap<string, number> {
-  if (supplierDeReunion == null) return eligiendo && prueba.size > 0 ? SIN_PRUEBAS : prueba;
+  // Sin un proveedor que se pueda buscar: con el selector abierto, o con la
+  // reunión fijada (abierta sin proveedor —`REUNION_SIN_PROVEEDOR`— o con un
+  // proveedor que ya no tiene artes en el catálogo), ninguna. Sólo sin
+  // reunión de ninguna clase se dibujan todas.
+  if (supplierDeReunion == null) return (eligiendo || fijada) && prueba.size > 0 ? SIN_PRUEBAS : prueba;
   const fuera = new Map<string, number>();
   for (const [clave, id] of prueba) {
     if (catalogo.find((a) => a.id === id)?.supplier_id === supplierDeReunion) fuera.set(clave, id);
@@ -200,6 +259,9 @@ export function pruebasDeLaReunion(
  * 4. Si no, nadie (`null`): con pruebas de dos proveedores no se adivina a
  *    cuál se le muestra. Presentar avisa, sin nombres, que hay una prueba
  *    oculta (`ultimaPrueba`).
+ *
+ * Con la reunión abierta SIN proveedor (`REUNION_SIN_PROVEEDOR`) no se pasa
+ * de 1: nadie.
  */
 export function proveedorParaPresentar({
   prueba, catalogo, muebleId, proveedorDeReunion,
@@ -211,6 +273,10 @@ export function proveedorParaPresentar({
 }): number | null {
   const deReunion = supplierPorNombre(proveedorDeReunion, catalogo);
   if (deReunion != null) return deReunion;
+  // Reunión abierta sin proveedor («Cambiar de proveedor», o el de la reunión
+  // ya sin artes): no se adivina con los pasos 2 y 3. Todas las pruebas de la
+  // sesión eran de Alpina, y «Presentar» se las mostraba a Diana.
+  if (reunionFijada(proveedorDeReunion)) return null;
   if (muebleId) {
     for (const cara of ["A", "B"] as const) {
       const id = prueba.get(`${muebleId}|${cara}`);
@@ -249,8 +315,12 @@ export function ultimaPrueba(
 
 /**
  * La prueba de OTRO proveedor en el mueble elegido, o `null`: la pantalla es
- * de `privadoPara` y la cara se ve vacía. Es la que se avisa (sin nombres)
- * en Presentar, para que la dueña sepa por qué la punta salió pelada.
+ * de `privadoPara` y la cara se ve vacía.
+ *
+ * Se le avisa a la DUEÑA antes de entrar a Presentar (el título del botón y
+ * el panel), nunca en el HUD: el HUD lo lee el proveedor, y «hay una prueba
+ * que no se está mostrando» escrito sobre la punta vacía le decía que esa
+ * punta se le está ofreciendo a otro.
  */
 export function pruebaAjenaDelMueble(
   prueba: ReadonlyMap<string, number>,
@@ -265,4 +335,56 @@ export function pruebaAjenaDelMueble(
     if (arte && arte.supplier_id !== privadoPara) return { fixtureId: muebleId, cara, supplierId: arte.supplier_id };
   }
   return null;
+}
+
+/**
+ * Para quién es la lámina de un mueble elegido, y si su pie puede llevar los
+ * datos del contrato que hoy ocupa el espacio.
+ *
+ * - Con un producto en prueba (de la reunión, si hay una): para su proveedor.
+ * - Sin prueba y sin reunión: para el que tiene el contrato (si tiene artes),
+ *   con sus datos — es su espacio y su lámina.
+ * - Sin prueba y CON reunión: para el proveedor de la reunión (o nadie), y el
+ *   pie sin los datos de un contrato AJENO. Antes salía para el del contrato:
+ *   en la reunión de Diana, con la punta de Alpina elegida, el lienzo que
+ *   Diana miraba dibujaba los vasos de Alpina mientras se sacaban las tomas y
+ *   bajaba «…_Alpina.png» con «Proveedor: Alpina», sus fechas y su valor.
+ *   Si el contrato es del mismo proveedor de la reunión (una renovación), sus
+ *   datos van.
+ */
+export function laminaDelMueble({
+  arteSupplierId, contratoDe, proveedorDeReunion, catalogo,
+}: {
+  arteSupplierId: number | null | undefined;
+  /** `supplierName` del contrato vigente (vacío si el espacio está libre). */
+  contratoDe: string | null | undefined;
+  proveedorDeReunion: string | null | undefined;
+  catalogo: readonly ArteDeProveedor[];
+}): { para: number | null; contratoALaVista: boolean } {
+  const nombre = (t: string | null | undefined) => (t ?? "").trim().toLowerCase();
+  const delContrato = supplierPorNombre(contratoDe, catalogo);
+  if (!reunionFijada(proveedorDeReunion)) {
+    return { para: arteSupplierId ?? delContrato, contratoALaVista: true };
+  }
+  const deReunion = supplierPorNombre(proveedorDeReunion, catalogo);
+  const contratoDeLaReunion = !nombre(contratoDe)
+    || (!!nombre(proveedorDeReunion) && nombre(contratoDe) === nombre(proveedorDeReunion));
+  return { para: arteSupplierId ?? deReunion, contratoALaVista: contratoDeLaReunion };
+}
+
+/**
+ * La cara que encuadran las tomas (el HUD de Presentar y la lámina): la que
+ * se pidió, si se ve; si no, A y después B.
+ *
+ * Con pruebas del mismo proveedor en las dos caras de una góndola doble (Müsli
+ * en la A, Zucaritas en la B), «Mostrar al proveedor» encuadraba la B y «De
+ * cerca» saltaba al otro lado de la góndola, a otro producto; la lámina bajada
+ * mientras se hablaba de la B salía con la A.
+ */
+export function caraDeLasTomas(
+  ve: (cara: "A" | "B") => boolean,
+  pedida?: "A" | "B" | null,
+): "A" | "B" | null {
+  if (pedida && ve(pedida)) return pedida;
+  return ve("A") ? "A" : ve("B") ? "B" : null;
 }

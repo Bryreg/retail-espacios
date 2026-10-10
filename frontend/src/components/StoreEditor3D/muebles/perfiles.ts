@@ -1112,6 +1112,13 @@ export function geometriaDeEtiqueta(
         uv.setXY(i, u, 0.5 - pos.getX(i) / ancho);
       }
       uv.needsUpdate = true;
+      // Color de vértice en 1 (neutro), SIEMPRE: la bolsa acostada usa este
+      // mismo bloque y su material de la foto lleva `vertexColors` (el sello
+      // de la parada, `almohada`). Sin el atributo, three r184 multiplica por
+      // el (0,0,0) que WebGL da a un atributo que falta —la emisión también
+      // pasa por `vColor`— y cada bolsa acostada salía NEGRA: el arroz o el
+      // azúcar, que en Colombia se exhiben así.
+      g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(pos.count * 3).fill(1), 3));
       g.clearGroups();
       return g;
     }

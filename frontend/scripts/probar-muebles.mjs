@@ -391,7 +391,9 @@ prueba("el arte del proveedor le gana a la aproximación por rubro", () => {
 //
 // `producto.ts` son funciones puras sin DOM ni Three, así que se pueden correr.
 
-const { build } = await import("esbuild");
+const { build, transformSync } = await import("esbuild");
+/** Un trozo de TypeScript del editor sin los tipos, para correrlo con `new Function`. */
+const esbuildTransform = (codigo) => transformSync(codigo, { loader: "ts" }).code;
 const compilado = await build({
   entryPoints: [join(raiz, muebles, "producto.ts")],
   bundle: true, write: false, format: "esm", platform: "neutral",
@@ -2394,6 +2396,47 @@ prueba("la botella torneada mira a −Z con el centro de la foto adelante", () =
   assert.ok(costado.every((v) => v.u > 0.02 && v.u < 0.98), "el costado toma el contorno de la foto");
 });
 
+prueba("ningún envase sale negro: si su material lleva color de vértice, la geometría trae `color` (envase × acostado × detalle)", () => {
+  // `materialDeEtiqueta` (etiqueta.ts) prende `vertexColors` en la foto de la
+  // bolsa (índice 0: el sello) y en los cantos de la caja (índice 1). Un
+  // atributo que falta vale (0,0,0) en WebGL y three r184 lo multiplica por el
+  // color y por la emisión: la bolsa ACOSTADA salía negra entera.
+  const etiquetaCodigo = sinComentarios(leer(join(muebles, "etiqueta.ts")));
+  assert.match(etiquetaCodigo, /\.\.\.\(envase === "almohada" \? \{ vertexColors: true \} : \{\}\),/, "cambió qué material de la bolsa lleva color de vértice: actualizar esta tabla");
+  assert.match(etiquetaCodigo, /if \(envase === "caja"\) \{\s*const color = new THREE\.Color\(et\.colorDeCostado\(\)\);\s*lista\.push\(materialConLuz\(envase, entorno, \{ color, emissive: color, vertexColors: true \}\)\);/,
+    "cambió qué material de la caja lleva color de vértice: actualizar esta tabla");
+  const conColor = { caja: [1], almohada: [0], revolucion: [], recorte: [] };
+  const perfilBotella = Array.from({ length: 24 }, (_, i) => 0.6 + 0.4 * Math.sin((i / 23) * Math.PI));
+  const casos = [
+    ["caja", 0.11, 0.19, 0.07, undefined, false],
+    ["almohada", 0.14, 0.22, 0.06, undefined, false],
+    ["revolucion", 0.105, 0.33, 0.105, perfilBotella, true],
+    ["revolucion", 0.075, 0.09, 0.075, perfilBotella, false],
+    ["recorte", 0.1, 0.2, 0.05, undefined, false],
+  ];
+  let vistos = 0;
+  for (const [envase, w, h, d, perfil, botella] of casos) {
+    for (const acostado of [false, true]) {
+      for (const detalle of ["alto", "bajo"]) {
+        const g = G.geometriaDeEtiqueta(envase, w, h, d, perfil, acostado, botella, 0, detalle);
+        const usados = g.groups.length ? [...new Set(g.groups.map((x) => x.materialIndex))] : [0];
+        if (usados.some((m) => conColor[envase].includes(m))) {
+          vistos++;
+          const c = g.getAttribute("color");
+          assert.ok(c, `${envase}${acostado ? " acostado" : ""} (${detalle}) usa un material con color de vértice y no trae \`color\`: sale negro`);
+          assert.equal(c.count, g.getAttribute("position").count);
+          let minimo = Infinity;
+          for (let k = 0; k < c.array.length; k++) minimo = Math.min(minimo, c.array[k]);
+          assert.ok(minimo > 0.3, `${envase}${acostado ? " acostado" : ""} (${detalle}) trae un color de vértice casi negro (${minimo.toFixed(2)})`);
+        }
+      }
+    }
+  }
+  assert.ok(vistos >= 6, `la tabla no recorrió los casos con color de vértice (${vistos})`);
+  // La bolsa acostada, en concreto (el caso del hallazgo).
+  assert.ok(G.geometriaDeEtiqueta("almohada", 0.14, 0.22, 0.06, undefined, true).getAttribute("color"), "la bolsa acostada sale negra");
+});
+
 prueba("la bolsa se para en su fuelle: lomo curvo, ~5 mm en los costados, sello plano y más claro", () => {
   const W = 0.14, H = 0.23, D = 0.06;
   const g = G.geometriaDeEtiqueta("almohada", W, H, D);
@@ -2595,7 +2638,7 @@ function piezasDe(el, fuera = []) {
     const nodo = { colores: [], instanceMatrix: {}, instanceColor: null, setMatrixAt() {}, computeBoundingSphere() {},
       setColorAt(i, c) { this.colores.push(c.r); this.instanceColor = {}; } };
     el.props.ref?.(nodo);
-    fuera.push({ tipo: "instancias", geometria: el.props.args[0], material: el.props.args[1], colores: nodo.colores });
+    fuera.push({ tipo: "instancias", geometria: el.props.args[0], material: el.props.args[1], colores: nodo.colores, sombra: el.props.castShadow });
   }
   piezasDe(el.props?.children, fuera);
   return fuera;
@@ -3610,9 +3653,10 @@ prueba("la pantalla que mira un proveedor muestra SÓLO lo suyo", () => {
   const lamina = cuerpoDe("const exportarPropuesta = useCallback(", "const selectedSlot = selectedFix");
   const fija = lamina.indexOf("setLaminaPara(para);");
   assert.ok(fija > 0 && fija < lamina.indexOf("setSinArte(true);"), "la lámina saca el «Hoy» sin el filtro del proveedor");
-  // Sin producto en prueba también es privada: para el del contrato o nadie.
-  assert.match(lamina, /const para = arte \? arte\.supplier_id : delContrato;\s*setLaminaPara\(para\);/,
-    "la lámina sin prueba lleva las de toda la sesión");
+  // Sin producto en prueba también es privada: para el del contrato o nadie
+  // (y con reunión, para el de la reunión: `laminaDelMueble`, ejecutada abajo).
+  assert.match(lamina, /const \{ para, contratoALaVista \} = laminaDelMueble\(\{\s*arteSupplierId: arte\?\.supplier_id, contratoDe: uf\.supplierName, proveedorDeReunion, catalogo,\s*\}\);\s*setLaminaPara\(para\);/,
+    "la lámina sin prueba lleva las de toda la sesión, o la de un contrato ajeno en plena reunión");
   // Y la vista general sin mueble elegido, para el proveedor de la reunión.
   assert.match(lamina, /if \(!fix \|\| !uf\) \{\s*setLaminaPara\(supplierDeReunion\);/, "el PNG sin selección sale con la pantalla de la dueña");
   // En la caminata, se sale de la caminata ANTES de pedir las tomas.
@@ -3630,17 +3674,21 @@ prueba("la pantalla que mira un proveedor muestra SÓLO lo suyo", () => {
   const hud = editorCodigo.slice(editorCodigo.indexOf("data-hud-presentar"), editorCodigo.indexOf("data-prueba-oculta") + 400);
   assert.match(hud, /pruebaOculta \? \(/, "Presentar sin proveedor no avisa la prueba oculta");
   assert.ok(!/proveedor|supplierName|\.nombre/.test(hud.slice(hud.indexOf("pruebaOculta ? ("))), "el aviso nombra a un proveedor");
-  assert.match(editorCodigo, /: privadoPara === null \? ultimaPrueba\(prueba, catalogo\)\s*: privadoPara !== undefined \? pruebaAjenaDelMueble\(prueba, catalogo, selectedId, privadoPara\) : null;/);
+  // Sólo sin proveedor identificado: con uno, el HUD lo lee él (ver abajo).
+  assert.match(editorCodigo, /const pruebaOculta = presentationMode && privadoPara === null \? ultimaPrueba\(pruebaViva, catalogo\) : null;/,
+    "el HUD le avisa al proveedor identificado que el mueble tiene la prueba de otro");
   // El botón «Presentar» sólo pasa la pantalla al dueño de la prueba elegida
   // si es el de la reunión.
-  assert.match(presentar, /supplierDeReunion == null\s*\|\| catalogo\.find\(a => a\.id === id\)\?\.supplier_id === supplierDeReunion/,
+  assert.match(presentar, /!fijada\s*\|\| catalogo\.find\(a => a\.id === id\)\?\.supplier_id === supplierDeReunion/,
     "«Presentar» le muestra a Diana la punta de Alpina");
   // La escena de la dueña recibe sólo las pruebas de la reunión.
   assert.match(editorCodigo, /prueba=\{pruebaEnEscena\}/, "el editor dibuja las pruebas de otros proveedores en plena reunión");
-  assert.match(editorCodigo, /privadoPara !== undefined \? prueba : pruebasDeLaReunion\(prueba, catalogo, supplierDeReunion, eligiendo\)/);
+  assert.match(editorCodigo, /privadoPara !== undefined \? prueba : pruebasDeLaReunion\(prueba, catalogo, supplierDeReunion, eligiendo, fijada\)/);
+  assert.match(editorCodigo, /const fijada = reunionFijada\(proveedorDeReunion\);/);
   // Y el cartel del mouse se vuelve discreto con la misma cuenta que el panel.
-  assert.match(editorCodigo, /const discreto = hayReunion\(\{ pruebas: prueba\.size, proveedorDeReunion \}\);/,
+  assert.match(editorCodigo, /const enReunion = hayReunion\(\{ pruebas: pruebaViva\.size, proveedorDeReunion, eligiendo \}\);/,
     "el cartel del mouse nombra al proveedor con la reunión en curso");
+  assert.match(editorCodigo, /const discreto = enReunion;/);
   // El selector: el nombre del grupo no tapa la prop (elegir no fijaba al
   // proveedor de la reunión, y «Presentar» salía vacío).
   const sel = cuerpoDe("function SelectorDeProducto(", "function FormularioDeArte(");
@@ -3653,7 +3701,8 @@ prueba("con reunión en curso, el contrato de otro no se lee en el panel", () =>
   // La prueba de otro proveedor en la cara elegida no se nombra.
   const vista = cuerpoDe("function VistaProveedor(", "function FirstPersonControls(");
   // Y con el selector abierto sin proveedor tampoco se nombra (tanda 3).
-  assert.match(vista, /const ajena = !!probando && \(deReunion != null \? probando\.supplier_id !== deReunion : eligiendo\);/);
+  // Y con la reunión abierta sin proveedor aunque el selector se cierre.
+  assert.match(vista, /const ajena = !!probando && \(deReunion != null\s*\? probando\.supplier_id !== deReunion\s*: eligiendo \|\| reunionFijada\(proveedorDeReunion\)\);/);
   const i0 = vista.indexOf("{ajena ? (");
   const i1 = vista.indexOf(") : probando ? (", i0);
   assert.ok(i0 > 0 && i1 > i0, "la prueba ajena no tiene versión discreta");
@@ -3670,11 +3719,34 @@ prueba("con reunión en curso, el contrato de otro no se lee en el panel", () =>
   assert.match(panel, /eligiendo=\{eligiendo\}\s*setEligiendo=\{setEligiendo\}/);
 });
 
-prueba("probar y ajustar la prueba no escriben el plano", () => {
+prueba("probar y ajustar la prueba no escriben el plano (ejecutado)", () => {
   const probar = cuerpoDe("const probarProducto = useCallback(", "const ajustarPrueba = useCallback(");
   const ajustar = cuerpoDe("const ajustarPrueba = useCallback(", "const [proveedorDeReunion");
+  // Se CORREN las dos funciones con sólo los dos estados de la sesión a mano
+  // (`setPrueba` y `setComoSePrueba`, cuyos updaters también se corren): un
+  // `updateFixture`, un `u(`, un `commit` o cualquier otro camino al plano es
+  // un nombre que no existe acá y la llamada revienta. La regex de antes
+  // buscaba tres nombres y un `updateFixture(…)` dentro del updater pasaba.
+  const correr = (cuerpo, args) => {
+    const i = cuerpo.indexOf("useCallback(") + "useCallback(".length;
+    const j = cuerpo.lastIndexOf(",\n    [],");
+    assert.ok(i > 20 && j > i, "no se encontró la función del useCallback");
+    const fuente = esbuildTransform(`const f = ${cuerpo.slice(i, j)};`);
+    const estados = { prueba: new Map([["X|A", 9]]), como: new Map([["X|A", { donde: [1] }]]) };
+    const setPrueba = (up) => { estados.prueba = typeof up === "function" ? up(estados.prueba) : up; };
+    const setComoSePrueba = (up) => { estados.como = typeof up === "function" ? up(estados.como) : up; };
+    new Function("setPrueba", "setComoSePrueba", `${fuente}\nf(...arguments[2]);`)(setPrueba, setComoSePrueba, args);
+    return estados;
+  };
+  const puesta = correr(probar, ["PUN-01", "A", 4]);
+  assert.equal(puesta.prueba.get("PUN-01|A"), 4);
+  assert.deepEqual(puesta.como.get("PUN-01|A"), { donde: "todas" });
+  const quitada = correr(probar, ["X", "A", null]);
+  assert.ok(!quitada.prueba.has("X|A") && !quitada.como.has("X|A"), "quitar el producto deja el «cómo» colgado");
+  const ajustada = correr(ajustar, ["X", "A", { acostado: true }]);
+  assert.deepEqual(ajustada.como.get("X|A"), { donde: [1], acostado: true });
   for (const [nombre, cuerpo] of [["probarProducto", probar], ["ajustarPrueba", ajustar]]) {
-    assert.ok(!/setPlacedFixtures|pushToStore|commit\(/.test(cuerpo), `\`${nombre}\` escribe el layout`);
+    assert.ok(!/setPlacedFixtures|pushToStore|commit\(|updateFixture\(|updateSlot\(|\bu\(|onUpdate\(|useFixtureStore/.test(cuerpo), `\`${nombre}\` escribe el layout`);
   }
   assert.match(probar, /\{ donde: "todas" \}/, "un producto nuevo no arranca en «Toda la cara»");
   assert.ok(!/acostado: false/.test(probar), "un producto nuevo pisa la ficha «va acostado» con un `false`");
@@ -3729,7 +3801,7 @@ prueba("Presentar: sin cromo, sin estado y sin nada de otros proveedores", () =>
   assert.match(editorCodigo, /const SEPARACION_EN_VENTA = 0\.3;/);
   // El tooltip: nunca en Presentar, y sin proveedor ni $ mientras se prueba.
   assert.match(editorCodigo, /\{hoveredFixtureId && !presentationMode && \(\(\) => \{/, "el tooltip sale en Presentar");
-  assert.match(editorCodigo, /const discreto = hayReunion\(\{ pruebas: prueba\.size, proveedorDeReunion \}\);/);
+  assert.match(editorCodigo, /const discreto = enReunion;/);
   assert.match(editorCodigo, /\{!discreto && fix\.supplierName && /, "el tooltip nombra al proveedor del espacio en plena prueba");
   assert.match(editorCodigo, /\{!discreto && fix\.negotiatedValue > 0 && /, "el tooltip dice cuánto paga otro");
 });
@@ -4400,7 +4472,7 @@ prueba("los habladores genéricos van donde el relleno cubre el vano: lo libre y
   const slots = [slot("S1", 0, 1, 0, 0.5, "Galletas"), slot("S2", 0, 0.5, 0.5, 0.5, "Aseo"), slot("S3", 0.5, 0.5, 0.5, 0.5)];
   const grupos = relleno(slots);
   const conRelleno = filasCon(grupos);
-  const tramos = H.tramosConRelleno(grupos, v.vanos, v.caras.length)[0];
+  const tramos = H.tramosConRelleno(grupos, v.vanos, v.caras)[0];
   const abajo = F.entrepanosDelEspacio(slots[0], v.filas, v.franja).filter((f) => conRelleno.has(f));
   const medio = F.entrepanosDelEspacio(slots[1], v.filas, v.franja).filter((f) => conRelleno.has(f));
   assert.ok(abajo.length > 0 && medio.length > 0, "sin relleno en los dos slots la prueba no prueba nada");
@@ -4409,20 +4481,45 @@ prueba("los habladores genéricos van donde el relleno cubre el vano: lo libre y
   // Ni con un poco más: un slot del 60 % deja libre un tercio de la tira, y
   // un vano lleno (93 % con el aire entre unidades) tiene que pasar.
   const sesenta = relleno([slots[0], slot("S2", 0, 0.6, 0.5, 0.5, "Aseo"), slot("S3", 0.6, 0.4, 0.5, 0.5)]);
-  const t60 = H.tramosConRelleno(sesenta, v.vanos, 1)[0];
+  const t60 = H.tramosConRelleno(sesenta, v.vanos, v.caras)[0];
   for (const f of medio) assert.ok(!t60.has(`${f}|0`), `el entrepaño ${f}, con el 60 % vendido, lleva hablador sobre lo libre`);
   assert.ok(H.COBERTURA_PARA_HABLADOR > 0.6 && H.COBERTURA_PARA_HABLADOR <= 0.9, `cobertura ${H.COBERTURA_PARA_HABLADOR}`);
   // Todo libre: ni relleno ni hablador.
   const libres = slots.map((s) => ({ ...s, status: "free", brandCategory: "" }));
-  assert.equal(H.tramosConRelleno(relleno(libres), v.vanos, 1)[0].size, 0, "lo libre lleva hablador");
+  assert.equal(H.tramosConRelleno(relleno(libres), v.vanos, v.caras)[0].size, 0, "lo libre lleva hablador");
   // Contratada entera: cada entrepaño con relleno lleva el suyo.
   const entera = relleno(libres, { rubro: "Panadería" });
   assert.ok(filasCon(entera).size >= 3, "la punta contratada entera no se rellena");
-  assert.deepEqual([...H.tramosConRelleno(entera, v.vanos, 1)[0]].sort(), [...filasCon(entera)].map((f) => `${f}|0`).sort());
+  assert.deepEqual([...H.tramosConRelleno(entera, v.vanos, v.caras)[0]].sort(), [...filasCon(entera)].map((f) => `${f}|0`).sort());
   // Y sólo en venta: en el editor la tira sigue con su color de estado.
   assert.equal(MV.useHabladoresDeRelleno(true, v, 0.9, slots, undefined, [null]), null, "el editor lleva habladores");
   const enLaVenta = enVenta(true, () => MV.useHabladoresDeRelleno(true, v, 0.9, slots, undefined, [null]));
   assert.deepEqual([...enLaVenta[0]].sort(), [...tramos].sort());
+});
+
+prueba("en la cara B de una góndola doble el hablador genérico cae sobre el relleno, no en el vano opuesto", () => {
+  // Un slot vendido asimétrico (x 0–0,33 de una góndola de 3,6 m con vanos en
+  // −1,2 / 0 / +1,2). El relleno de las dos caras va en coordenadas del
+  // mueble; la cara B la monta `GondolaReal` girada media vuelta. Se arma el
+  // mueble DE VERDAD con los habladores calculados y se mide dónde quedan
+  // las tiras con los genéricos, cara por cara.
+  const v = V.ventaDeTipo("gondola", 3.6, 0.9, 1.8, "double");
+  const slots = [{ id: "S", x: 0, w: 0.33, y: 0, h: 1, status: "occupied", brandCategory: "Galletas" }];
+  const grupos = F.rellenoPorRubro({ anchoTotal: 3.6, filas: v.filas, vanos: v.vanos, caras: v.caras, franja: v.franja ?? 0, slots, cubiertas: [null, null] });
+  const tramos = H.tramosConRelleno(grupos, v.vanos, v.caras);
+  assert.ok(tramos[0].size > 0 && tramos[1].size > 0, "sin habladores en las dos caras la prueba no prueba nada");
+  const rellenoDe = (c) => grupos.flatMap((g) => g.posiciones.filter((p) => p.cara === c).map((p) => p.x));
+  const tiras = enVenta(true, () => mallasDe(MV.GondolaReal({ w: 3.6, d: 0.9, h: 1.8, gondolaType: "double", habladores: tramos })))
+    .filter((m) => esTira(m.geometria) && m.material?.map);
+  assert.equal(tiras.length, tramos[0].size + tramos[1].size, "los genéricos no salen en tantas tiras como tramos");
+  for (const t of tiras) {
+    const centro = t.geometria.boundingBox.getCenter(new THREE_.Vector3()).applyMatrix4(t.matriz);
+    const cara = centro.z > 0 ? 1 : 0;
+    const xs = rellenoDe(cara);
+    const vano = v.vanos[0].ancho;
+    assert.ok(xs.some((x) => Math.abs(x - centro.x) <= vano / 2),
+      `cara ${cara === 1 ? "B" : "A"}: un hablador genérico en x ${centro.x.toFixed(2)} sin relleno debajo (el relleno está en ${Math.min(...xs).toFixed(2)}…${Math.max(...xs).toFixed(2)})`);
+  }
 });
 
 prueba("el hablador cuelga 1 mm delante de la tira REAL de su entrepaño, a su altura", () => {
@@ -4661,6 +4758,11 @@ prueba("el relleno: un tono por unidad sembrado, sólo en venta; el editor, sin 
     .filter((p) => p.tipo === "instancias");
   const editor_ = relleno(), venta_ = enVenta(false, relleno);
   assert.ok(editor_.length > 0 && venta_.length === editor_.length);
+  // La sombra: en el editor el relleno tira la suya (como siempre); en venta
+  // no (el mapa de toda la tienda no resuelve un envase, y la pasada de
+  // sombra lo dibujaba otra vez).
+  assert.ok(editor_.every((p) => p.sombra === true), "el relleno del editor dejó de tirar sombra");
+  assert.ok(venta_.every((p) => p.sombra === false), "el relleno de venta tira sombra: dibuja dos veces cada caja");
   for (const p of editor_) {
     assert.equal(p.colores.length, 0, "el relleno del editor lleva color por instancia");
     assert.ok(!p.material.vertexColors && !p.geometria.getAttribute("color"), "el relleno del editor cambió de geometría");
@@ -4778,19 +4880,69 @@ prueba("Presentar ocupa la pantalla: contenedor fijo sin marco, pantalla complet
   assert.match(editorCodigo,
     /useEffect\(\(\) => \{\s*if \(!presentationMode\) return;\s*return \(\) => \{\s*if \(document\.fullscreenElement\) document\.exitFullscreen\(\)\.catch\(\(\) => \{\s*\}\);\s*\};\s*\}, \[presentationMode\]\);/,
     "la salida de pantalla completa no va en un efecto sobre presentationMode");
-  // El Esc del navegador (fullscreenchange sin elemento) apaga Presentar.
-  assert.match(editorCodigo,
-    /const alCambiar = \(\) => \{ if \(!document\.fullscreenElement\) setPresentationMode\(false\); \};\s*document\.addEventListener\("fullscreenchange", alCambiar\);/,
-    "salir de pantalla completa con Esc deja Presentar prendido");
+  // Salir de la pantalla completa (Esc del navegador, o Chrome al pasar a
+  // otra pestaña con Ctrl+Tab) NO apaga Presentar: la pestaña compartida
+  // pasaba a mostrar el editor. Ningún `fullscreenchange` toca Presentar;
+  // sólo lleva la cuenta, y el HUD ofrece volver con un clic.
+  const oyentes = [...editorCodigo.matchAll(/addEventListener\("fullscreenchange", (\w+)\)/g)].map((m) => m[1]);
+  assert.ok(oyentes.length >= 1, "nadie escucha la salida de pantalla completa");
+  for (const nombre of oyentes) {
+    // El cuerpo entero del oyente: desde su `const` hasta donde se cuelga.
+    const desde = editorCodigo.indexOf(`const ${nombre} = `);
+    const hasta = editorCodigo.indexOf(`addEventListener("fullscreenchange", ${nombre})`, desde);
+    assert.ok(desde > 0 && hasta > desde, `no se encontró el oyente \`${nombre}\``);
+    assert.ok(!/setPresentationMode/.test(editorCodigo.slice(desde, hasta)),
+      "salir de pantalla completa apaga Presentar (Ctrl+Tab a Meet le mostraba el editor al proveedor)");
+  }
+  assert.match(editorCodigo, /setPantallaCompleta\(!!document\.fullscreenElement\)/);
+  assert.match(editorCodigo, /\{!pantallaCompleta && typeof document !== "undefined" && document\.fullscreenEnabled && \(\s*<button onClick=\{pedirPantallaCompleta\}/,
+    "fuera de pantalla completa el HUD no ofrece volver");
 });
 
-prueba("Esc sale de Presentar, salvo en primera persona o con el mouse capturado", () => {
-  const tecla = cuerpoDe('if(e.key==="Escape"){', 'if((e.key==="r"||e.key==="R")');
-  assert.match(tecla, /if \(presentationMode\) \{\s*if \(!firstPerson && !document\.pointerLockElement\) setPresentationMode\(false\);\s*return;\s*\}/,
-    "Esc no sale de Presentar, o sale en plena caminata");
-  // Y antes de soltar la selección: en Presentar Esc no deselecciona.
-  assert.ok(tecla.indexOf("if (presentationMode)") < tecla.indexOf("setSelectedId(null)"), "Esc en Presentar suelta el mueble elegido");
-  assert.match(editorCodigo, /\},\[placingDef,selectedId,u,undo,redo,presentationMode,firstPerson\]\);/, "el manejador de teclas lee un presentationMode viejo");
+prueba("en Presentar el teclado sólo atiende Esc: ni R, ni F, ni Retroceso, ni Ctrl+Z tocan el plano (ejecutado)", () => {
+  // El manejador de teclas del editor, compilado y CORRIDO con dependencias
+  // falsas. En Presentar la selección no se ve y un clic elige el mueble: una
+  // R o un Retroceso sin querer giraba o borraba la punta delante del
+  // proveedor, y quedaba escrito en el plano.
+  const i = editor.indexOf("function onKey(e: KeyboardEvent){");
+  const j = editor.indexOf('window.addEventListener("keydown",onKey);', i);
+  assert.ok(i > 0 && j > i, "no se encontró el manejador de teclas");
+  const fuente = esbuildTransform(editor.slice(i, j));
+  const correr = ({ presentationMode, firstPerson = false, selectedId = "PUN-01", placingDef = null, lockEl = null }, ev) => {
+    const llamadas = [];
+    const anota = (n) => (...a) => { llamadas.push(n); return a[0]; };
+    const deps = {
+      presentationMode, firstPerson, selectedId, placingDef,
+      undo: anota("undo"), redo: anota("redo"), u: anota("u"), soltarPruebasDe: anota("soltar"),
+      setPlacedFixtures: anota("setPlacedFixtures"), storeToFixtures: (x) => x, selectFixtures: (x) => x,
+      useFixtureStore: { getState: () => ({}) },
+      setPresentationMode: anota("setPresentationMode"), setGhostRotY: anota("setGhostRotY"),
+      setPlacingDef: anota("setPlacingDef"), setSelectedId: anota("setSelectedId"),
+      setSelectedSlotId: anota("setSelectedSlotId"), setFirstPerson: anota("setFirstPerson"),
+      document: { pointerLockElement: lockEl },
+    };
+    const onKey = new Function(...Object.keys(deps), `${fuente}\nreturn onKey;`)(...Object.values(deps));
+    onKey({ target: { tagName: "CANVAS" }, preventDefault() {}, shiftKey: false, ctrlKey: false, ...ev });
+    return llamadas;
+  };
+  const escriben = ["u", "undo", "redo", "soltar", "setPlacedFixtures", "setSelectedId"];
+  for (const ev of [{ key: "r" }, { key: "R" }, { key: "f" }, { key: "F" }, { key: "Delete" }, { key: "Backspace" },
+    { key: "z", ctrlKey: true }, { key: "y", ctrlKey: true }, { key: "z", ctrlKey: true, shiftKey: true }]) {
+    const hecho = correr({ presentationMode: true }, ev);
+    assert.ok(!hecho.some((n) => escriben.includes(n)), `en Presentar «${ev.ctrlKey ? "Ctrl+" : ""}${ev.key}» llama ${hecho.join(", ")}: toca el plano`);
+  }
+  // Esc sale de Presentar, salvo en primera persona o con el mouse capturado,
+  // y no suelta el mueble elegido.
+  assert.deepEqual(correr({ presentationMode: true }, { key: "Escape" }), ["setPresentationMode"], "Esc no sale de Presentar (o suelta el mueble)");
+  assert.deepEqual(correr({ presentationMode: true, firstPerson: true }, { key: "Escape" }), [], "Esc sale de Presentar en plena caminata");
+  assert.deepEqual(correr({ presentationMode: true, lockEl: {} }, { key: "Escape" }), [], "Esc sale de Presentar con el mouse capturado");
+  // Fuera de Presentar el editor sigue igual: R gira, Retroceso borra (y
+  // suelta las pruebas del mueble borrado), Ctrl+Z deshace.
+  assert.ok(correr({ presentationMode: false }, { key: "r" }).includes("u"), "fuera de Presentar R ya no gira");
+  const borra = correr({ presentationMode: false }, { key: "Backspace" });
+  assert.ok(borra.includes("u") && borra.includes("soltar"), "borrar un mueble deja sus pruebas huérfanas");
+  assert.ok(correr({ presentationMode: false }, { key: "z", ctrlKey: true }).includes("undo"));
+  assert.match(editorCodigo, /\},\[placingDef,selectedId,u,undo,redo,presentationMode,firstPerson,soltarPruebasDe\]\);/, "el manejador de teclas lee un presentationMode viejo");
 });
 
 prueba("el HUD de Presentar se esconde a los 2 s y vuelve con el mouse, sin redibujar la escena", () => {
@@ -4835,6 +4987,131 @@ prueba("con el selector abierto y sin proveedor no se dibuja ninguna prueba; «M
   const hud = editorCodigo.slice(editorCodigo.indexOf("data-prueba-oculta"), editorCodigo.indexOf("Mostrarla", editorCodigo.indexOf("data-prueba-oculta")) + 20);
   assert.match(hud, /\{privadoPara === null && \(\s*<button\s*onClick=\{\(\) => mostrarAlProveedor\(pruebaOculta\.fixtureId, pruebaOculta\.cara\)\}/,
     "«Mostrarla» se ofrece con la prueba de otro proveedor");
+});
+
+prueba("«Cambiar de proveedor» y cerrar el selector: la reunión sigue y no se muestra la prueba de nadie", () => {
+  // Reunión con Alpina (prueba del Finesse en PUN-01); entra Diana. «Cambiar
+  // de proveedor» dejaba la reunión en `null` y, al cerrar el selector sin
+  // elegir, la escena volvía a dibujar los vasos de Alpina, el panel los
+  // nombraba y «Presentar» se los mostraba a Diana.
+  const catalogo = [
+    { id: 1, supplier_id: 10, proveedor: "Alpina" },
+    { id: 4, supplier_id: 70, proveedor: "Arroz Diana" },
+  ];
+  const pruebas = new Map([["PUN-01|A", 1]]);
+  const r = X.REUNION_SIN_PROVEEDOR;
+  assert.equal(r, "", "el centinela dejó de ser el proveedor vacío que el selector ya entiende");
+  assert.equal(X.reunionFijada(r), true, "la reunión abierta sin proveedor no cuenta como reunión");
+  assert.equal(X.reunionFijada(null), false);
+  assert.equal(X.supplierPorNombre(r, catalogo), null);
+  assert.equal(X.hayReunion({ pruebas: 0, proveedorDeReunion: r }), true, "el cartel vuelve a nombrar contratos con la reunión abierta");
+  // Con el selector CERRADO (eligiendo false) y la reunión fijada sin proveedor: ninguna.
+  assert.equal(X.pruebasDeLaReunion(pruebas, catalogo, null, false, X.reunionFijada(r)).size, 0,
+    "con el selector cerrado vuelven las pruebas de todos");
+  // Y con un proveedor de reunión que ya no tiene artes en el catálogo, tampoco.
+  assert.equal(X.pruebasDeLaReunion(pruebas, catalogo, X.supplierPorNombre("Colanta", catalogo), false, true).size, 0);
+  // Sin reunión de ninguna clase, todas (la pantalla de la dueña de siempre).
+  assert.equal(X.pruebasDeLaReunion(pruebas, catalogo, null, false, false), pruebas);
+  // «Presentar» no adivina: todas las pruebas son de Alpina, y Diana mira.
+  assert.equal(X.proveedorParaPresentar({ prueba: pruebas, catalogo, muebleId: "ROB-01", proveedorDeReunion: r }), null,
+    "«Presentar» con la reunión abierta sin proveedor le muestra a Diana los vasos de Alpina");
+  assert.equal(X.proveedorParaPresentar({ prueba: pruebas, catalogo, muebleId: "PUN-01", proveedorDeReunion: r }), null);
+  assert.equal(X.proveedorParaPresentar({ prueba: pruebas, catalogo, muebleId: null, proveedorDeReunion: null }), 10);
+  // El editor: el botón usa el centinela y no `null`; elegir un producto lo fija.
+  const sel = cuerpoDe("function SelectorDeProducto(", "function FormularioDeArte(");
+  assert.match(sel, /onClick=\{\(\) => \{ onProveedor\(REUNION_SIN_PROVEEDOR\); setBusca\(""\); \}\}/, "«Cambiar de proveedor» cierra la reunión");
+  assert.ok(!/onProveedor\(null\)/.test(sel), "el selector vuelve a cerrar la reunión con null");
+  assert.match(sel, /if \(!proveedor\) onProveedor\(a\.proveedor\);/, "elegir un producto ya no fija al proveedor siguiente");
+});
+
+prueba("la reunión se termina, y las pruebas de un mueble borrado no la sostienen", () => {
+  const catalogo = [{ id: 1, supplier_id: 10, proveedor: "Alpina" }, { id: 4, supplier_id: 70, proveedor: "Arroz Diana" }];
+  const pruebas = new Map([["PUN-01|A", 1], ["ROB-01|A", 4]]);
+  // Las del plano: el mismo Map si están todos; sin las del mueble que no está.
+  assert.equal(X.pruebasDelPlano(pruebas, new Set(["PUN-01", "ROB-01", "GON-01"])), pruebas, "un Map nuevo en cada render rehace la escena");
+  const vivas = X.pruebasDelPlano(pruebas, new Set(["PUN-01", "GON-01"]));
+  assert.deepEqual([...vivas.keys()], ["PUN-01|A"], "la prueba de un mueble borrado sigue contando");
+  // Con eso «Mostrarla» no ofrece un mueble que ya no existe, ni lo cuenta la reunión.
+  assert.deepEqual(X.ultimaPrueba(vivas, catalogo), { fixtureId: "PUN-01", cara: "A", supplierId: 10 });
+  assert.equal(X.hayReunion({ pruebas: X.pruebasDelPlano(pruebas, new Set()).size, proveedorDeReunion: null }), false,
+    "pruebas huérfanas mantienen la reunión abierta para siempre");
+  // Un mueble con «|» en el código no se corta mal: la cara es lo último.
+  assert.equal(X.pruebasDelPlano(new Map([["A|B-1|A", 1]]), new Set(["A|B-1"])).size, 1);
+  // El editor usa las vivas para la reunión, el aviso y «Presentar», y tiene
+  // con qué terminarla (suelta al proveedor y quita las pruebas).
+  assert.match(editorCodigo, /const pruebaViva = useMemo\(\(\) => pruebasDelPlano\(prueba, idsDelPlano\), \[prueba, idsDelPlano\]\);/);
+  const terminar = cuerpoDe("const terminarReunion = useCallback(", "const soltarPruebasDe = useCallback(");
+  for (const paso of [/setProveedorDeReunion\(null\);/, /setPrueba\(new Map\(\)\);/, /setComoSePrueba\(new Map\(\)\);/]) {
+    assert.match(terminar, paso, "«Terminar la reunión» deja algo de la reunión puesto");
+  }
+  assert.ok(!/setPlacedFixtures|commit\(|\bu\(/.test(terminar), "terminar la reunión escribe el plano");
+  assert.match(editorCodigo, /\{enReunion && !presentationMode && \(\s*<button\s*onClick=\{\(\) => \{\s*if \(pruebaViva\.size === 0 \|\| confirm\(/,
+    "no hay botón para terminar la reunión");
+  const borrar = cuerpoDe("function deleteSelected(){", "function handleSave(){");
+  assert.match(borrar, /soltarPruebasDe\(selectedId\);/, "borrar el mueble deja sus pruebas");
+});
+
+prueba("la lámina de un mueble elegido en plena reunión es para la reunión, sin el contrato ajeno", () => {
+  const catalogo = [
+    { id: 1, supplier_id: 10, proveedor: "Alpina" },
+    { id: 4, supplier_id: 70, proveedor: "Arroz Diana" },
+  ];
+  // Reunión con Diana; PUN-01 elegida, contratada por Alpina, sin prueba de Diana.
+  assert.deepEqual(X.laminaDelMueble({ arteSupplierId: undefined, contratoDe: "Alpina", proveedorDeReunion: "Arroz Diana", catalogo }),
+    { para: 70, contratoALaVista: false }, "la lámina sale para Alpina con su contrato, delante de Diana");
+  // Con la reunión abierta sin proveedor, para nadie y sin el contrato.
+  assert.deepEqual(X.laminaDelMueble({ arteSupplierId: undefined, contratoDe: "Alpina", proveedorDeReunion: X.REUNION_SIN_PROVEEDOR, catalogo }),
+    { para: null, contratoALaVista: false });
+  // Una renovación (la reunión ES con el que tiene el contrato): sus datos van.
+  assert.deepEqual(X.laminaDelMueble({ arteSupplierId: undefined, contratoDe: " alpina", proveedorDeReunion: "Alpina", catalogo }),
+    { para: 10, contratoALaVista: true });
+  // Un espacio libre no tiene contrato que esconder.
+  assert.deepEqual(X.laminaDelMueble({ arteSupplierId: undefined, contratoDe: "", proveedorDeReunion: "Arroz Diana", catalogo }),
+    { para: 70, contratoALaVista: true });
+  // Sin reunión, como siempre: para el del contrato (o el de la prueba).
+  assert.deepEqual(X.laminaDelMueble({ arteSupplierId: undefined, contratoDe: "Alpina", proveedorDeReunion: null, catalogo }),
+    { para: 10, contratoALaVista: true });
+  assert.equal(X.laminaDelMueble({ arteSupplierId: 70, contratoDe: "Alpina", proveedorDeReunion: null, catalogo }).para, 70);
+  // El pie: sin el contrato a la vista va como una propuesta (sin proveedor,
+  // rubro, período ni valor).
+  const lamina = cuerpoDe("const exportarPropuesta = useCallback(", "const selectedSlot = selectedFix");
+  assert.match(lamina, /const proponiendo = \(!!arte && !mismoProveedor\) \|\| !contratoALaVista;/, "el pie lleva el contrato ajeno");
+  assert.match(lamina, /proveedor: arte \? arte\.proveedor : contratoALaVista \? \(uf\.supplierName \?\? ""\) : "",/, "el pie nombra al del contrato ajeno");
+  for (const campo of ["desde", "hasta", "valorMensual", "categoria"]) {
+    assert.match(lamina, new RegExp(`${campo}: proponiendo \\?`), `el pie lleva \`${campo}\` del contrato ajeno`);
+  }
+});
+
+prueba("las tomas siguen la cara pedida: el HUD y la lámina no saltan a la A", () => {
+  const ambas = () => true;
+  assert.equal(X.caraDeLasTomas(ambas, "B"), "B", "con pruebas en las dos caras «De cerca» salta a la A");
+  assert.equal(X.caraDeLasTomas(ambas, null), "A");
+  assert.equal(X.caraDeLasTomas((c) => c === "A", "B"), "A", "pide una cara que no se ve");
+  assert.equal(X.caraDeLasTomas((c) => c === "B", null), "B");
+  assert.equal(X.caraDeLasTomas(() => false, "A"), null);
+  // El HUD le pasa la cara del pedido vigente y resalta comparando la cara.
+  assert.match(editorCodigo, /pedidoDeToma\?\.fixtureId === muebleDelHud\.id \? pedidoDeToma\.cara : null,/);
+  assert.match(editorCodigo, /pedidoDeToma\?\.toma === toma && pedidoDeToma\.fixtureId === muebleDelHud\.id && pedidoDeToma\.cara === caraConPrueba/,
+    "el botón de la toma se resalta aunque la toma vigente sea de la otra cara");
+  // La lámina: la del pedido, o la abierta en el panel.
+  const lamina = cuerpoDe("const exportarPropuesta = useCallback(", "const selectedSlot = selectedFix");
+  assert.match(lamina, /const pedida = pedidoDeToma\?\.fixtureId === fix\.id \? pedidoDeToma\.cara\s*: caraDelPanel\.current\?\.fixtureId === fix\.id \? caraDelPanel\.current\.cara : null;/);
+  assert.match(lamina, /const caraDelArte = caraDeLasTomas\(\(c\) => !!arteDeCara\(c\), pedida\);/);
+  const vista = cuerpoDe("function VistaProveedor(", "function FirstPersonControls(");
+  assert.match(vista, /useEffect\(\(\) => \{ onCara\?\.\(fix\.id, caraUsada\); \}, \[fix\.id, caraUsada, onCara\]\);/, "el panel no avisa qué cara está abierta");
+});
+
+prueba("con un proveedor identificado el HUD no le avisa que el mueble tiene la prueba de otro; a la dueña sí, antes", () => {
+  // El HUD lo lee el proveedor: «Hay una prueba que no se está mostrando»
+  // sobre la punta vacía le decía que se le está ofreciendo a otro.
+  assert.match(editorCodigo, /const pruebaOculta = presentationMode && privadoPara === null \? ultimaPrueba\(pruebaViva, catalogo\) : null;/);
+  const hud = editorCodigo.slice(editorCodigo.indexOf("<HudQueSeEsconde contenedor"), editorCodigo.indexOf("</HudQueSeEsconde>"));
+  assert.ok(!/pruebaAjenaDelMueble|pruebaAjenaElegida/.test(hud), "el HUD vuelve a avisar la prueba ajena con un proveedor mirando");
+  // El aviso, antes de entrar: el botón «Presentar» y el panel.
+  assert.match(editorCodigo, /const pruebaAjenaElegida = !presentationMode && fijada && selectedId\s*\? pruebaAjenaDelMueble\(prueba, catalogo, selectedId, supplierDeReunion \?\? -1\) : null;/);
+  assert.match(editorCodigo, /title=\{pruebaAjenaElegida\s*\? "Este mueble tiene una prueba de otro proveedor: en Presentar sale vacío"/);
+  const vista = cuerpoDe("function VistaProveedor(", "function FirstPersonControls(");
+  assert.match(vista, /no se muestra mientras dura esta reunión, y en Presentar sale vacía\./);
 });
 
 // ── Encuadres de venta (tanda 3, paso 16) ───────────────────────────────────
@@ -4916,6 +5193,63 @@ prueba("«De cerca» de un mueble angosto: el par de repisas vecinas con product
   // Un mueble ancho, nunca.
   assert.ok(!F.focoDeLaPrueba(V.ventaDeTipo("punta", 0.9, 0.4, 1.8), 1.8, "todas", VASO).parDeRepisas);
   assert.ok(F.MUEBLE_ANGOSTO === 0.5);
+});
+
+prueba("al desmontarse el editor suelta lo que creó: geometrías, etiquetas, copetes y el lienzo registrado", () => {
+  // Sin estos efectos, entrar y salir del editor dejaba hasta 16 texturas de
+  // 1.024 px por etiqueta y el lienzo registrado apuntando a un contexto
+  // perdido (se seguía precalentando en él).
+  const editorFn = editorCodigo.slice(editorCodigo.indexOf("export default function StoreEditor3D("));
+  for (const olvidar of ["olvidarGeometrias", "olvidarEtiquetas", "olvidarCopetes"]) {
+    assert.match(editorFn.slice(0, 2000), new RegExp(`useEffect\\(\\(\\) => ${olvidar}, \\[\\]\\);`), `el editor ya no llama \`${olvidar}\` al desmontarse`);
+  }
+  // Y `olvidarEtiquetas` suelta el lienzo (corrido).
+  const ric = globalThis.requestIdleCallback;
+  globalThis.requestIdleCallback = () => 0;
+  try {
+    ET.registrarRenderer({}, {}, {});
+    assert.equal(ET.hayLienzoRegistrado(), true);
+    ET.olvidarEtiquetas();
+    assert.equal(ET.hayLienzoRegistrado(), false, "olvidar las etiquetas deja el lienzo registrado: se precalienta en un contexto perdido");
+  } finally {
+    if (ric === undefined) delete globalThis.requestIdleCallback; else globalThis.requestIdleCallback = ric;
+  }
+});
+
+prueba("la silueta usa la MISMA regla del cuadro que la toma: media persona no se dibuja", () => {
+  // La regla, corrida.
+  assert.equal(PL.dentroDelCuadro(0.5, -0.97, true), true);
+  assert.equal(PL.dentroDelCuadro(0.99, 0, true), false, "una esquina fuera del cuadro cuenta como adentro");
+  assert.equal(PL.dentroDelCuadro(0, 1.2, true), false);
+  assert.equal(PL.dentroDelCuadro(0, 0, false), false, "una esquina detrás de la cámara cuenta como adentro");
+  assert.equal(PL.BORDE_DEL_CUADRO, 0.98);
+  // Las esquinas de la silueta proyectadas como las proyecta la escena, con
+  // una cámara de verdad: de frente entra; corrida al borde, no.
+  const cam = new THREE_.PerspectiveCamera(50, 16 / 9, 0.1, 100);
+  cam.position.set(0, 1.25, 4); cam.lookAt(0, 1, 0); cam.updateMatrixWorld(); cam.updateProjectionMatrix();
+  const entra = (x) => [[-0.26, 0], [0.26, 0], [-0.26, 1.7], [0.26, 1.7]].every(([ex, ey]) => {
+    const v = new THREE_.Vector3(x + ex, ey, 0).project(cam);
+    return PL.dentroDelCuadro(v.x, v.y, v.z < 1);
+  });
+  assert.equal(entra(0), true);
+  assert.equal(entra(3.9), false, "media persona cortada por el borde se dibuja");
+  // La escena y la toma la usan las dos.
+  const silueta = cuerpoDe("function SiluetaDeEscala(", "const CHROME = ");
+  assert.match(silueta, /g\.visible = esquinas\.every\(\(e\) => \{\s*v\.copy\(e\)\.applyMatrix4\(g\.matrixWorld\)\.project\(camera\);\s*return dentroDelCuadro\(v\.x, v\.y, v\.z < 1\);\s*\}\);/,
+    "la silueta decide si se dibuja con otra regla (o siempre)");
+  const planta = sinComentarios(leer(join("src", "utils", "planta.ts")));
+  assert.match(planta, /const entra = q\.every\(\(e\) => dentroDelCuadro\(e\.x, e\.y, e\.profundidad > 0\)\);/, "la toma decide con otra regla que la silueta");
+});
+
+
+
+prueba("el tablero no baja el editor 3D hasta entrar al modo «store»", () => {
+  // Importado de una, cada carga del tablero (KPIs, Supervisar, Vender)
+  // bajaba y parseaba ~160 KB gzip del editor y de la prueba de producto.
+  const dash = sinComentarios(leer(join("src", "pages", "Dashboard.tsx")));
+  assert.ok(!/^import StoreEditor3D from/m.test(dash), "el tablero importa el editor 3D de una");
+  assert.match(dash, /const StoreEditor3D = lazy\(\(\) => import\("\.\.\/components\/StoreEditor3D\/StoreEditor3D"\)\);/);
+  assert.match(dash, /<Suspense fallback=\{[\s\S]{0,300}\}>\s*<StoreEditor3D \/>\s*<\/Suspense>/, "el editor perezoso sin Suspense rompe el tablero");
 });
 
 console.log(`\n${hechas} pruebas del mobiliario 3D`);

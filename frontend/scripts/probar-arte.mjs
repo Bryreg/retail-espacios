@@ -417,10 +417,10 @@ prueba("los campos de la ficha siguen a la ficha cuando cambia desde afuera", ()
   // reemplaza sin desmontar el editor: el «9» viejo quedaba escrito con la
   // ficha vacía (campo en rojo, «Poné el alto» con el campo lleno).
   const src = readFileSync(join(raiz, "src", "components", "StoreEditor3D", "EditorDeFicha.tsx"), "utf8");
-  assert.match(src, /useEffect\(\(\) => \{\s*setTextos\(\(t\) => \{[\s\S]{0,400}\}, \[ficha\.alto_mm, ficha\.ancho_mm, ficha\.fondo_mm\]\);/,
+  assert.match(src, /useEffect\(\(\) => \{\s*setTextos\(\(t\) => \{[\s\S]{0,700}\}, \[ficha\.alto_mm, ficha\.ancho_mm, ficha\.fondo_mm\]\);/,
     "los textos de la ficha no se sincronizan con la ficha");
   // Lo tecleado a medias no se pisa: «7,» ya vale lo mismo que la ficha.
-  assert.match(src, /const sigue = \(texto: string, mm: number \| null\) => \(aMm\(texto\) === mm \? texto : mmACm\(mm\)\);/);
+  assert.match(src, /const sigue = \(texto: string, mm: number \| null, c: "alto" \| "ancho" \| "fondo"\) =>\s*\(aMm\(texto, c\) === mm \? texto : mmACm\(mm\)\);/);
   // La foto con fondo pide el ancho; y «va acostado» se puede marcar.
   assert.match(src, /const pideAncho = !!estimado\?\.anchoEstimado;/);
   assert.match(src, /checked=\{ficha\.acostado\}/, "la ficha no tiene la casilla «va acostado»");
@@ -439,6 +439,53 @@ prueba("el precio al público: pesos enteros o nada, con los mismos topes que el
     "los topes del precio en la ficha y en el servidor no son los mismos");
   const src = readFileSync(join(raiz, "src", "components", "StoreEditor3D", "EditorDeFicha.tsx"), "utf8");
   assert.match(src, /cambiar\(\{ precio_publico: aPesos\(e\.target\.value\) \}\);/, "el campo del precio no guarda lo que se tecleó");
+});
+
+prueba("la ficha lee lo que se escribe («9 cm», «4,900») y lo que no entiende lo dice y no se guarda", () => {
+  // «9 cm» y «4,900» pasaban como null sin aviso, y «Guardar medidas» borraba
+  // el alto o el precio que estaban bien (el PUT reemplaza la ficha entera).
+  const m = (t, c = "alto") => ficha.leerMedida(t, c);
+  for (const [t, mm] of [["9", 90], ["9,5", 95], ["9.5", 95], ["9 cm", 90], ["9cm", 90], [" 9 CM ", 90], ["90 mm", 90], ["23,5", 235]]) {
+    assert.deepEqual(m(t), { valor: mm, error: null }, `«${t}»`);
+  }
+  assert.deepEqual(m(""), { valor: null, error: null }, "un campo vacío es un error");
+  for (const t of ["abc", "9 pulgadas", "-9", "0", "9,5,1", "nueve"]) {
+    const r = m(t);
+    assert.equal(r.valor, null, `«${t}» se leyó como ${r.valor}`);
+    assert.ok(r.error && /cm/.test(r.error), `«${t}» no dice qué pasa: ${r.error}`);
+  }
+  // Los topes del servidor, dichos en cm y en castellano: «160» pensando en mm.
+  const alto = m("160");
+  assert.equal(alto.valor, null);
+  assert.match(alto.error, /entre 1 y 150 cm/, `el tope del alto no se dice en cm: ${alto.error}`);
+  assert.match(m("0,5", "ancho").error ?? "", /entre 1 y 150 cm/, "un ancho de 5 mm pasa");
+  assert.deepEqual(m("0,5", "fondo"), { valor: 5, error: null }, "un fondo de 5 mm (el mínimo del servidor) no pasa");
+  assert.match(m("0,4", "fondo").error ?? "", /entre 0,5 y 150 cm/);
+  // Los topes de la ficha son los del servidor.
+  const back = readFileSync(join(raiz, "..", "backend", "app", "routers", "catalogo.py"), "utf8");
+  for (const [campo, [min, max]] of Object.entries(ficha.TOPES_MM)) {
+    assert.match(back, new RegExp(`${campo}_mm: Optional\\[int\\] = Field\\(None, ge=${min}, le=${max}\\)`), `los topes de \`${campo}\` no son los del servidor`);
+  }
+  // El precio: la coma con tres cifras es de miles.
+  for (const [t, pesos] of [["4,900", 4900], ["5,200", 5200], ["1,234,567", 1234567], ["4.900,00", 4900], ["4,900.00", 4900], ["4.900", 4900]]) {
+    assert.deepEqual(ficha.leerPrecio(t), { valor: pesos, error: null }, `«${t}»`);
+  }
+  for (const t of ["4.900.00", "4,900,00", "4,9", "abc"]) {
+    const r = ficha.leerPrecio(t);
+    assert.equal(r.valor, null, `«${t}» se leyó como ${r.valor}`);
+    assert.ok(r.error, `«${t}» no dice qué pasa`);
+  }
+  assert.match(ficha.leerPrecio("abc").error, /No se entiende el precio/);
+  assert.match(ficha.leerPrecio("20.000.000").error, /entre \$ 50 y \$ 10\.000\.000/);
+  // Y quien guarda se entera: los dos «Guardar medidas» y el alta se bloquean.
+  const src = readFileSync(join(raiz, "src", "components", "StoreEditor3D", "EditorDeFicha.tsx"), "utf8");
+  assert.match(src, /const problemas = \[errores\.alto, errores\.ancho, errores\.fondo, lecturaDelPrecio\.error\]/, "un campo no entra en los problemas");
+  assert.match(src, /avisar\.current\?\.\(claveDeProblemas \? claveDeProblemas\.split\("\|"\) : \[\]\);/, "la ficha no le avisa a quien guarda");
+  const ed = readFileSync(join(raiz, "src", "components", "StoreEditor3D", "StoreEditor3D.tsx"), "utf8");
+  assert.equal((ed.match(/onValidez=\{setProblemasDeFicha\}/g) ?? []).length, 3, "algún EditorDeFicha guarda sin saber si la ficha se lee");
+  assert.equal((ed.match(/disabled=\{guardando(?:Ficha)? \|\| problemasDeFicha\.length > 0\}/g) ?? []).length, 2, "algún «Guardar medidas» guarda una ficha ilegible");
+  assert.equal((ed.match(/if \(problemasDeFicha\.length > 0\) return;/g) ?? []).length, 2);
+  assert.match(ed, /if \(problemasDeFicha\.length > 0\) \{ onError\(problemasDeFicha\[0\]\); return; \}/, "el alta sube una ficha ilegible");
 });
 
 // ── La textura de cada envase (texturas.ts) ─────────────────────────────────

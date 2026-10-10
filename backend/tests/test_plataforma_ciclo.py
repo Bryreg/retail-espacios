@@ -173,6 +173,38 @@ def test_archivar_corta_el_acceso_y_lo_saca_de_la_vista_sin_borrar_nada(client, 
     assert _oauth(client, "uid-m", "medium@x.co").status_code == 200
 
 
+def test_reactivar_crea_las_tablas_que_se_desplegaron_mientras_estaba_archivado(client, operador):
+    """El arranque sólo prepara la base de los clientes ACTIVOS. Uno archivado
+    cuando se desplegó una tabla nueva (``supplier_asset_specs``) volvía sin
+    ella, y el catálogo daba 500 hasta el próximo reinicio."""
+    import sqlite3
+
+    from app.database import SQLALCHEMY_DATABASE_URL
+
+    cab = _fundar(client, "uid-m", "medium@x.co", "medium", "Medium")
+    assert client.get("/api/catalogo/", headers=cab).status_code == 200
+    _archivar(client, operador, "medium")
+
+    # La base como la de un cliente archivado antes del despliegue: sin la tabla.
+    carpeta = os.path.dirname(SQLALCHEMY_DATABASE_URL.replace("sqlite:///", "", 1))
+    base = os.path.join(carpeta, "recabra_medium.db")
+    cx = sqlite3.connect(base)
+    cx.execute("DROP TABLE supplier_asset_specs")
+    cx.commit()
+    cx.close()
+
+    r = client.post("/api/plataforma/clientes/medium/reactivar", json={"motivo": "volvió"}, headers=operador)
+    assert r.status_code == 200, r.text
+    cx = sqlite3.connect(base)
+    try:
+        tiene = cx.execute("select count(*) from sqlite_master where name='supplier_asset_specs'").fetchone()[0]
+    finally:
+        cx.close()
+    assert tiene == 1, "reactivar no crea las tablas que faltan"
+    tok = _oauth(client, "uid-m", "medium@x.co").json()["token"]
+    assert client.get("/api/catalogo/", headers=_cab(tok)).status_code == 200
+
+
 def test_reactivar_no_deja_dos_clientes_activos_con_el_mismo_nombre(client, operador):
     _fundar(client, "uid-b", "brayan@gmail.com", "pepito", "Pepito")
     _archivar(client, operador, "galerias")

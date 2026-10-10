@@ -216,13 +216,21 @@ export const COBERTURA_PARA_HABLADOR = 0.8;
  * `${entrepaño}|${vano}`.
  */
 export function tramosConRelleno(
-  grupos: readonly GrupoDeRelleno[], vanos: readonly Vano[], cuantasCaras: number,
+  grupos: readonly GrupoDeRelleno[], vanos: readonly Vano[], caras: readonly { hacia: 1 | -1 }[],
 ): Set<string>[] {
   const extremos = new Map<string, { desde: number; hasta: number }>();
   for (const g of grupos) {
     const a = g.empaque.ancho;
     for (const p of g.posiciones) {
-      const v = vanos.findIndex((vano) => Math.abs(p.x - vano.x) <= vano.ancho / 2 + 1e-6);
+      // El relleno está en coordenadas del MUEBLE (`ProductoEnMueble` dibuja las
+      // dos caras sin girar), pero el vano `vi` de la clave es el de la cara
+      // tal como la monta el mueble: la que mira a +Z (`hacia` 1) va girada
+      // media vuelta (`GondolaReal`), y su vano local `vi` queda en −x. Sin
+      // esto, en la cara B de una góndola doble el hablador caía en el vano
+      // OPUESTO al relleno: el porta-precios bajo lo vendido, liso, y el vano
+      // libre con habladores.
+      const x = caras[p.cara]?.hacia === 1 ? -p.x : p.x;
+      const v = vanos.findIndex((vano) => Math.abs(x - vano.x) <= vano.ancho / 2 + 1e-6);
       if (v < 0) continue;
       const k = `${p.cara}|${p.fila}|${v}`;
       const e = extremos.get(k);
@@ -230,7 +238,7 @@ export function tramosConRelleno(
       else extremos.set(k, { desde: p.x - a / 2, hasta: p.x + a / 2 });
     }
   }
-  const fuera = Array.from({ length: cuantasCaras }, () => new Set<string>());
+  const fuera = Array.from({ length: caras.length }, () => new Set<string>());
   for (const [k, e] of extremos) {
     const [c, fila, v] = k.split("|").map(Number);
     if ((e.hasta - e.desde) >= COBERTURA_PARA_HABLADOR * vanos[v].ancho) fuera[c]?.add(`${fila}|${v}`);

@@ -248,7 +248,7 @@ export function useHabladoresDeRelleno(
       anchoTotal, filas: venta.filas, vanos: venta.vanos, caras: venta.caras,
       franja: venta.franja ?? 0, slots, vendidoEntero, cubiertas,
     });
-    return tramosConRelleno(grupos, venta.vanos, venta.caras.length);
+    return tramosConRelleno(grupos, venta.vanos, venta.caras);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enVenta, conRelleno, venta, anchoTotal, slots, vendidoEntero, claveCubiertas]);
 }

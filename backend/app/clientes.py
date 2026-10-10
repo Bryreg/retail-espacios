@@ -331,6 +331,27 @@ class ErrorDeAlta(Exception):
     pass
 
 
+def preparar_esquema(cliente: Cliente) -> None:
+    """Las tablas que falten y la configuración por defecto, en la base del
+    cliente: lo que hace el arranque con cada cliente ACTIVO.
+
+    Lo usan el alta y la reactivación. Un cliente que estaba archivado cuando
+    se desplegó una tabla nueva no la recibió (el arranque sólo recorre los
+    activos): reactivado, cada pantalla que la tocaba —el catálogo con
+    `supplier_asset_specs`— daba 500 hasta el próximo reinicio. `create_all`
+    no toca lo que ya existe.
+    """
+    from app.auth import ensure_default_config
+
+    Base.metadata.create_all(bind=motor_de(cliente))
+    sesion = sesion_de(cliente)
+    try:
+        # `ensure_default_config` ya llama al arranque de las contraseñas.
+        ensure_default_config(sesion)
+    finally:
+        sesion.close()
+
+
 def crear_cliente(slug: str, nombre: str) -> Cliente:
     """Crea la base del supermercado nuevo y la deja lista para entrar.
 
@@ -339,7 +360,6 @@ def crear_cliente(slug: str, nombre: str) -> Cliente:
     supermercado sería peor que no darle nada: parece que el sistema ya sabe
     algo de su tienda cuando no sabe nada.
     """
-    from app.auth import ensure_default_config
     from app.models.models import ClienteRow
 
     slug = (slug or "").strip().lower()
@@ -374,14 +394,7 @@ def crear_cliente(slug: str, nombre: str) -> Cliente:
 
     # Las tablas, la configuración y la contraseña inicial, adentro de la base
     # nueva. Es exactamente lo que hace el arranque, pero para un cliente.
-    motor = motor_de(cliente)
-    Base.metadata.create_all(bind=motor)
-    sesion = sesion_de(cliente)
-    try:
-        # `ensure_default_config` ya llama al arranque de las contraseñas.
-        ensure_default_config(sesion)
-    finally:
-        sesion.close()
+    preparar_esquema(cliente)
 
     registro = sesion_registro()
     try:

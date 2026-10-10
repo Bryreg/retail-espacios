@@ -28,13 +28,38 @@ export const FICHA_VACIA: FichaDeArte = {
 /** Los topes del precio (los mismos que valida el servidor). */
 export const PRECIO_MINIMO = 50;
 export const PRECIO_MAXIMO = 10_000_000;
-/** Lo que se teclea como precio → pesos enteros, o null. Acá el punto separa
- *  los miles y no hay centavos: «4.900», «$ 4900» y «4 900» son 4.900. */
+
+/** Lo que se leyó de un campo: el valor (o null si está vacío) y, si no se
+ *  pudo leer o se sale de los topes, por qué. */
+export interface Lectura { valor: number | null; error: string | null }
+
+/**
+ * El precio que se teclea → pesos enteros.
+ *
+ * Acá el punto separa los miles, pero la coma también aparece así («4,900»,
+ * como lo escribe un teclado en inglés): una coma o un punto seguidos de
+ * grupos de EXACTAMENTE tres cifras son miles; con una o dos cifras al final,
+ * centavos, que se descartan («4900,00»). Antes «4,900» y «5,200» no se leían,
+ * pasaban como `null` sin aviso y «Guardar medidas» borraba el precio que ya
+ * estaba cargado.
+ */
+export function leerPrecio(texto: string): Lectura {
+  const t = texto.replace(/[$\s]/g, "");
+  if (!t) return { valor: null, error: null };
+  const m = t.match(/^(\d{1,3}(?:([.,])\d{3})(?:\2\d{3})*|\d+)(?:([.,])\d{1,2})?$/);
+  // El separador de centavos no puede ser el mismo que el de los miles.
+  if (!m || (m[2] && m[3] && m[2] === m[3])) {
+    return { valor: null, error: "No se entiende el precio: escribilo en pesos, por ejemplo 4.900." };
+  }
+  const n = Number(m[1].replace(/[.,]/g, ""));
+  if (n < PRECIO_MINIMO || n > PRECIO_MAXIMO) {
+    return { valor: null, error: `El precio va en pesos, entre $ ${PRECIO_MINIMO} y $ ${PRECIO_MAXIMO.toLocaleString("es-CO")}.` };
+  }
+  return { valor: n, error: null };
+}
+/** El precio en pesos, o null (vacío o ilegible: ver `leerPrecio`). */
 export function aPesos(texto: string): number | null {
-  const limpio = texto.replace(/[$\s.]/g, "").replace(/,\d{0,2}$/, "");
-  if (!/^\d+$/.test(limpio)) return null;
-  const n = Number(limpio);
-  return n >= PRECIO_MINIMO && n <= PRECIO_MAXIMO ? n : null;
+  return leerPrecio(texto).valor;
 }
 const pesosATexto = (n: number | null | undefined) => (n == null ? "" : n.toLocaleString("es-CO"));
 
@@ -49,11 +74,41 @@ const FONDOS: [FichaDeArte["fondo_foto"], string][] = [
 
 /** Centímetros con coma, como se escriben acá: 7,4. */
 export const enCm = (m: number) => (m * 100).toFixed(1).replace(".", ",").replace(",0", "");
-/** Lo que se teclea en cm → milímetros enteros, o null. */
-const aMm = (texto: string): number | null => {
-  const n = Number(texto.replace(",", ".").trim());
-  return texto.trim() && Number.isFinite(n) && n > 0 ? Math.round(n * 10) : null;
-};
+
+/** Los topes de cada medida en mm: los MISMOS que valida el servidor
+ *  (`FichaIn` en `routers/catalogo.py`). Repetidos acá para decirlo en cm y
+ *  en castellano: el 422 del servidor llegaba en inglés, sin el campo y en mm
+ *  («Input should be less than or equal to 1500» al escribir 160). */
+export const TOPES_MM = { alto: [10, 1500], ancho: [10, 1500], fondo: [5, 1500] } as const;
+const NOMBRE_DE_MEDIDA = { alto: "El alto", ancho: "El ancho", fondo: "El fondo" } as const;
+
+/**
+ * Lo que se teclea en un campo de medida → milímetros enteros.
+ *
+ * El campo es en cm, pero se escribe como se escribe: «9», «9,5», «9 cm»,
+ * «9cm» o «90 mm». Antes «9 cm» no se leía, pasaba como `null` sin ningún
+ * aviso y «Guardar medidas» borraba el alto que estaba bien: el yogur volvía a
+ * estimarse como un tetra de 20 cm. Si no se entiende o se sale de los topes,
+ * lo dice (y el guardado se bloquea: `onValidez`).
+ */
+export function leerMedida(texto: string, campo: "alto" | "ancho" | "fondo"): Lectura {
+  const t = texto.trim().toLowerCase();
+  if (!t) return { valor: null, error: null };
+  const m = t.match(/^(\d+(?:[.,]\d+)?)\s*(cm|mm)?$/);
+  const n = m ? Number(m[1].replace(",", ".")) : NaN;
+  if (!m || !Number.isFinite(n) || n <= 0) {
+    return { valor: null, error: `No se entiende «${texto.trim()}»: ${NOMBRE_DE_MEDIDA[campo].toLowerCase()} va en cm, por ejemplo 9,5.` };
+  }
+  const mm = Math.round(m[2] === "mm" ? n : n * 10);
+  const [min, max] = TOPES_MM[campo];
+  if (mm < min || mm > max) {
+    const cm = (x: number) => String(x / 10).replace(".", ",");
+    return { valor: null, error: `${NOMBRE_DE_MEDIDA[campo]} va entre ${cm(min)} y ${cm(max)} cm (escribiste ${cm(mm)} cm).` };
+  }
+  return { valor: mm, error: null };
+}
+/** Lo que se teclea en cm → milímetros enteros, o null (ver `leerMedida`). */
+const aMm = (texto: string, campo: "alto" | "ancho" | "fondo" = "alto"): number | null => leerMedida(texto, campo).valor;
 const mmACm = (mm: number | null) => (mm == null ? "" : String(mm / 10).replace(".", ","));
 
 /** El estado del recorte dicho en palabras, para quien no sabe qué es un alfa. */
@@ -94,7 +149,7 @@ async function recortarImagen(imagen: Blob | string, modo: FichaDeArte["fondo_fo
 }
 
 export default function EditorDeFicha({
-  imagen, ficha, nombre = "", categoria, onCambio, altoObligatorio = false,
+  imagen, ficha, nombre = "", categoria, onCambio, altoObligatorio = false, onValidez,
 }: {
   /** El archivo recién elegido, o la URL de un arte ya cargado. */
   imagen: Blob | string;
@@ -104,6 +159,11 @@ export default function EditorDeFicha({
   onCambio: (f: FichaDeArte) => void;
   /** En un arte NUEVO el alto es obligatorio: se marca el campo. */
   altoObligatorio?: boolean;
+  /** Lo que no se puede guardar así (un campo que no se entiende o fuera de
+   *  los topes), en palabras; vacío si la ficha está bien. Quien guarda lo
+   *  usa para bloquear el botón: antes un campo ilegible viajaba como `null`
+   *  y pisaba el valor que había. */
+  onValidez?: (problemas: string[]) => void;
 }) {
   const [recorte, setRecorte] = useState<Recorte | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -118,7 +178,8 @@ export default function EditorDeFicha({
   useEffect(() => {
     setTextoPrecio((t) => (aPesos(t) === (ficha.precio_publico ?? null) ? t : pesosATexto(ficha.precio_publico)));
   }, [ficha.precio_publico]);
-  const precioInvalido = textoPrecio.trim() !== "" && aPesos(textoPrecio) === null;
+  const lecturaDelPrecio = leerPrecio(textoPrecio);
+  const precioInvalido = lecturaDelPrecio.error != null;
   // Si la ficha cambia DESDE AFUERA —otra foto en el alta, que la vacía, o
   // «Medidas» de otro producto sin cerrar el editor—, los campos la siguen.
   // Antes quedaba el «9» viejo escrito con la ficha ya vacía: el campo en
@@ -126,9 +187,11 @@ export default function EditorDeFicha({
   // pisa: «7,» ya vale 7 cm, igual que la ficha.
   useEffect(() => {
     setTextos((t) => {
-      const sigue = (texto: string, mm: number | null) => (aMm(texto) === mm ? texto : mmACm(mm));
+      const sigue = (texto: string, mm: number | null, c: "alto" | "ancho" | "fondo") =>
+        (aMm(texto, c) === mm ? texto : mmACm(mm));
       const nuevo = {
-        alto: sigue(t.alto, ficha.alto_mm), ancho: sigue(t.ancho, ficha.ancho_mm), fondo: sigue(t.fondo, ficha.fondo_mm),
+        alto: sigue(t.alto, ficha.alto_mm, "alto"), ancho: sigue(t.ancho, ficha.ancho_mm, "ancho"),
+        fondo: sigue(t.fondo, ficha.fondo_mm, "fondo"),
       };
       return nuevo.alto === t.alto && nuevo.ancho === t.ancho && nuevo.fondo === t.fondo ? t : nuevo;
     });
@@ -162,8 +225,22 @@ export default function EditorDeFicha({
   const cambiar = (parcial: Partial<FichaDeArte>) => onCambio({ ...ficha, ...parcial });
   const medida = (campo: "alto" | "ancho" | "fondo", texto: string) => {
     setTextos((t) => ({ ...t, [campo]: texto }));
-    cambiar({ [`${campo}_mm`]: aMm(texto) } as Partial<FichaDeArte>);
+    cambiar({ [`${campo}_mm`]: aMm(texto, campo) } as Partial<FichaDeArte>);
   };
+  // Lo que no se puede guardar, campo por campo. Se le avisa a quien guarda
+  // sólo cuando cambia (el texto, no la referencia del arreglo).
+  const errores = {
+    alto: leerMedida(textos.alto, "alto").error,
+    ancho: leerMedida(textos.ancho, "ancho").error,
+    fondo: leerMedida(textos.fondo, "fondo").error,
+  };
+  const problemas = [errores.alto, errores.ancho, errores.fondo, lecturaDelPrecio.error].filter((e): e is string => !!e);
+  const claveDeProblemas = problemas.join("|");
+  const avisar = useRef(onValidez);
+  avisar.current = onValidez;
+  useEffect(() => {
+    avisar.current?.(claveDeProblemas ? claveDeProblemas.split("|") : []);
+  }, [claveDeProblemas]);
 
   const campo = "w-full rounded border border-dark-line-2 bg-dark-bg px-2 py-1 text-xs text-dark-ink-1 placeholder:text-dark-ink-3 focus:border-accent focus:outline-none";
   const chip = (activo: boolean) =>
@@ -171,7 +248,7 @@ export default function EditorDeFicha({
       activo ? "bg-accent text-accent-ink" : "border border-dark-line-2 text-dark-ink-2 hover:text-dark-ink-1"
     }`;
   const enPerspectiva = ficha.forma === "caja" && !!recorte && pareceEnPerspectiva(recorte);
-  const faltaAlto = altoObligatorio && !ficha.alto_mm;
+  const faltaAlto = altoObligatorio && !ficha.alto_mm && !errores.alto;
   // Con el fondo de la foto puesto, el ancho que sale de la foto puede traer
   // márgenes (`empaqueDeArte`, `anchoEstimado`): se pide.
   const pideAncho = !!estimado?.anchoEstimado;
@@ -232,7 +309,7 @@ export default function EditorDeFicha({
               inputMode="decimal"
               onChange={(e) => medida("alto", e.target.value)}
               placeholder={estimado ? `≈ ${enCm(estimado.alto)}` : "cm"}
-              className={`${campo} ${faltaAlto ? "border-danger" : ""}`}
+              className={`${campo} ${faltaAlto || errores.alto ? "border-danger" : ""}`}
               aria-label="Alto del envase en centímetros"
             />
           </label>
@@ -245,7 +322,7 @@ export default function EditorDeFicha({
               placeholder={estimado
                 ? `≈ ${enCm(estimado.ancho)} ${estimado.anchoEstimado ? "(estimado)" : "(sale de la foto)"}`
                 : "opcional"}
-              className={`${campo} ${pideAncho ? "border-warning" : ""}`}
+              className={`${campo} ${errores.ancho ? "border-danger" : pideAncho ? "border-warning" : ""}`}
               aria-label="Ancho del envase en centímetros"
             />
           </label>
@@ -256,7 +333,7 @@ export default function EditorDeFicha({
               inputMode="decimal"
               onChange={(e) => medida("fondo", e.target.value)}
               placeholder={estimado ? `≈ ${enCm(estimado.fondo)}` : "opcional"}
-              className={campo}
+              className={`${campo} ${errores.fondo ? "border-danger" : ""}`}
               aria-label="Fondo del envase en centímetros"
             />
           </label>
@@ -314,11 +391,11 @@ export default function EditorDeFicha({
             data-precio-publico
           />
         </label>
-        {precioInvalido && (
-          <p className="text-[11px] text-danger">
-            El precio va en pesos, entre $ {PRECIO_MINIMO} y $ {PRECIO_MAXIMO.toLocaleString("es-CO")}.
-          </p>
-        )}
+        {/* Lo que no se entiende o se sale de los topes, en castellano y en
+            cm, campo por campo (y el guardado queda bloqueado). */}
+        {problemas.map((p) => (
+          <p key={p} className="text-[11px] text-danger" data-problema-de-ficha>{p}</p>
+        ))}
 
         {faltaAlto && (
           <p className="text-[11px] text-danger">

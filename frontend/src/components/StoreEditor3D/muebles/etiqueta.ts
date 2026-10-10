@@ -453,6 +453,12 @@ export function registrarRenderer(gl: THREE.WebGLRenderer, escena: THREE.Scene, 
   enReposo(() => { if (lienzoGl) compilarProgramas(lienzoGl); });
 }
 
+/** ¿Hay un lienzo registrado para precalentar? (Lo mira una prueba: al
+ *  desmontar el editor tiene que quedar suelto.) */
+export function hayLienzoRegistrado(): boolean {
+  return lienzoGl != null;
+}
+
 /** Suelta el lienzo registrado (lo llama `olvidarEtiquetas`, al desmontar el
  *  editor): los programas y las texturas son de ESE contexto. */
 function olvidarRenderer(): void {
