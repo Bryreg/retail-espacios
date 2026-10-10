@@ -31,10 +31,13 @@ cargada, el plazo se alarga aunque arranque a mitad de mes.
 
 «El mismo proveedor» se mira con generosidad, porque juntar de más sólo
 conserva más: el mismo ``supplier_id``; o el mismo nombre sin tildes, sin
-puntos y sin la forma societaria («Nutresa S.A.S.» = «NUTRESA» = «Grupo
-Nutresa»), que es lo que crea la planilla cuando alguien escribe el nombre
-distinto; o un nombre contenido en el otro («Alpina» y «Alpina Productos
-Alimenticios»); o el mismo correo; o la misma marca en el mismo espacio.
+mayúsculas, sin puntos, sin posesivo y sin la forma societaria («Nutresa
+S.A.S.» = «NUTRESA» = «Grupo Nutresa», «Kellogg's» = «KELLOGG», «BIC» =
+«Bic»), que es lo que crea la planilla cuando alguien escribe el nombre
+distinto; o las palabras de un nombre contenidas en las del otro, por corto
+que sea («Alpina» y «Alpina Productos Alimenticios», «3M» y «3M Colombia»,
+«P&G» y «P&G Colombia Ltda»); o el mismo correo; o la misma marca en el
+mismo espacio.
 
 ── Cuándo ────────────────────────────────────────────────────────────────────
 
@@ -59,10 +62,16 @@ día después de su fin. La víspera es la de ``routers/montaje.py``
 (``_se_confirma_desde``), importada y no copiada: la regla de qué reporte cuenta
 para qué contrato tiene que ser una sola.
 
-Una foto se borra sólo si la reclama AL MENOS una cadena y TODAS las que la
+Una foto que reclama al menos una cadena se borra cuando TODAS las que la
 reclaman, de cualquier proveedor, terminaron. Eso cierra el caso feo: un
 contrato cancelado que se superpone en fechas con el vivo de otro proveedor no
 se lleva las fotos del vivo.
+
+Una foto que no reclama ninguna (el reporte adelantado de un contrato
+«pendiente» más allá de esos 5 días, o uno hecho con el espacio libre) no es
+prueba de ningún contrato —el tablero tampoco la cuenta—, pero puede ser de uno
+que arranca después: se borra cuando terminaron TODAS las cadenas del espacio y
+la foto misma tiene más de 5 días. En un espacio sin ningún contrato no se toca.
 
 ── Ante la duda, no se borra ─────────────────────────────────────────────────
 
@@ -70,14 +79,18 @@ Borrar no tiene vuelta atrás, así que todo lo que no cierra se conserva y se
 cuenta por motivo (``Plan.conservadas``): el espacio de una sede borrada, un
 montaje archivado, un código de montaje que no es el del espacio, una hora que
 falta, un contrato del espacio con fechas imposibles (bloquea el espacio
-entero), un contrato que vive sólo en el JSON del plano (bloquea el espacio
-hasta que se importe), la foto que ninguna cadena reclama, la planometría de un
-contrato que no existe o subida a propósito después de que la cadena terminó.
+entero), un contrato que vive sólo en el JSON del plano y no es la copia de uno
+de la base (bloquea el espacio mientras siga en el JSON: hasta que se importe,
+o hasta que alguien guarde el plano de esa sede, que borra esos campos), la
+foto de un espacio sin contratos, la planometría de un contrato que no existe
+o subida a propósito después de que la cadena terminó.
 
 ── El interruptor ────────────────────────────────────────────────────────────
 
 Con ``LIMPIAR_FOTOS_VENCIDAS`` apagado —el valor por defecto— la pasada del
-mantenimiento sólo ENSAYA: calcula y deja en el log lo que borraría. Se prende
+mantenimiento sólo ENSAYA: calcula y deja en el log lo que borraría —una
+línea por cliente y por pasada, también con cero, en WARNING porque nadie
+configura el logging y un INFO no llega al log de Render—. Se prende
 en el servicio de Render cuando la dueña y el abogado ajusten la política de
 datos publicada (hoy dice que estas fotos no se borran) y la copia de
 seguridad de cada supermercado esté bajada, que es la única marcha atrás. Y
@@ -311,14 +324,25 @@ def _codigo(c: Optional[str]) -> str:
 #: Formas societarias y relleno que no distinguen a un proveedor de otro.
 _SOCIETARIAS = {"SAS", "SA", "LTDA", "LIMITADA", "CIA", "BIC", "SENC", "SCA", "EU", "GRUPO"}
 
+#: Las únicas que se quitan también cuando abren el nombre («Grupo Nutresa»,
+#: «Cía. Nacional de Chocolates»). Las demás, al principio, SON el nombre:
+#: «Bic Colombia» es Bic, no «Colombia» —que se juntaría con cualquier
+#: «… de Colombia» del mismo espacio—.
+_SOCIETARIAS_AL_PRINCIPIO = {"GRUPO", "CIA"}
 
-def clave_de_nombre(nombre: Optional[str]) -> str:
-    """«Nutresa S.A.S.», «NUTRESA» y «Grupo Nutresa» dan lo mismo: «NUTRESA».
+#: El posesivo inglés («Kellogg's», «Hershey’s») y los apóstrofos sueltos
+#: («D'Onofrio»): se van ANTES de partir en palabras, o dejan una «S» suelta
+#: que ya no está contenida en «Kellogg de Colombia». El acento agudo suelto
+#: (´) también, porque NFKD lo vuelve un espacio.
+_POSESIVO = re.compile(r"[\'’‘´`]S\b", re.IGNORECASE)
+_APOSTROFO = re.compile(r"[\'’‘´`]")
 
-    Sin tildes, en mayúsculas, sólo letras y dígitos, con las siglas partidas
-    por puntos vueltas a juntar («S.A.S.» → SAS) y sin la forma societaria.
-    """
-    s = unicodedata.normalize("NFKD", nombre or "")
+
+def _palabras(nombre: Optional[str]) -> list:
+    """Sin tildes, en mayúsculas, sólo letras y dígitos, con las siglas partidas
+    por puntos vueltas a juntar («S.A.S.» → SAS, «P&G» → PYG)."""
+    s = _APOSTROFO.sub("", _POSESIVO.sub("", nombre or ""))
+    s = unicodedata.normalize("NFKD", s)
     s = "".join(c for c in s if not unicodedata.combining(c)).upper().replace("&", " Y ")
     crudos = re.findall(r"[A-Z0-9]+", s)
     tokens: list = []
@@ -329,22 +353,38 @@ def clave_de_nombre(nombre: Optional[str]) -> str:
         else:
             tokens.append(t)
             suelta = len(t) == 1
-    texto = re.sub(r"\bS EN C\b", "SENC", " ".join(tokens))
-    tokens = [t for t in texto.split() if t not in _SOCIETARIAS]
+    return re.sub(r"\bS EN C\b", "SENC", " ".join(tokens)).split()
+
+
+def clave_de_nombre(nombre: Optional[str]) -> str:
+    """«Nutresa S.A.S.», «NUTRESA» y «Grupo Nutresa» dan lo mismo: «NUTRESA».
+
+    Las palabras de ``_palabras`` sin la forma societaria —salvo la primera
+    palabra, que sólo se quita si es «Grupo» o «Cía.»: «BIC» y «Bic Colombia»
+    conservan su «BIC»—. Si no queda nada («Grupo», «Cía. S.A.S.»), el nombre
+    entero: un nombre nunca se ignora, porque ignorarlo separa y separar de más
+    borra.
+    """
+    todas = _palabras(nombre)
+    tokens = [
+        t for i, t in enumerate(todas)
+        if t not in (_SOCIETARIAS_AL_PRINCIPIO if i == 0 else _SOCIETARIAS)
+    ]
     while tokens and tokens[-1] == "Y":  # «Restrepo y Cía.» → «RESTREPO»
         tokens.pop()
-    return " ".join(tokens)
+    return " ".join(tokens or todas)
 
 
 def _mismo_nombre(a: str, b: str) -> bool:
-    """Igual, o uno contenido en el otro con al menos 4 letras: «ALPINA» y
-    «ALPINA PRODUCTOS ALIMENTICIOS»."""
+    """Igual, o las palabras de uno contenidas en las del otro: «ALPINA» y
+    «ALPINA PRODUCTOS ALIMENTICIOS», «3M» y «3M COLOMBIA». Sin mínimo de
+    letras: las palabras van enteras, y juntar de más sólo conserva más."""
     if not a or not b:
         return False
     if a == b:
         return True
-    corto, largo = (a, b) if len(a) <= len(b) else (b, a)
-    return len(corto) >= 4 and set(corto.split()) <= set(largo.split())
+    pa, pb = set(a.split()), set(b.split())
+    return pa <= pb or pb <= pa
 
 
 class _Uniones:
@@ -491,18 +531,24 @@ def que_se_borra(
     for f in fotos:
         try:
             motivo = _motivo_para_conservar_foto(f, bloqueados, codigos)
+            duenas: list = []
+            del_espacio = por_espacio.get(f.space_id, [])
+            if motivo is None and not del_espacio:
+                motivo = "espacio_sin_contratos"
             if motivo is None:
-                reclamantes_de_todas: list = []
                 for m in f.montajes:
                     t = _utc(m.confirmado_en)
-                    reclamantes = [c for c in por_espacio.get(f.space_id, []) if c.reclama(t)]
-                    if not reclamantes:
-                        motivo = "ninguna_cadena_la_reclama"
+                    reclamantes = [c for c in del_espacio if c.reclama(t)]
+                    if reclamantes:
+                        if any(not c.terminada(hoy) for c in reclamantes):
+                            motivo = "cadena_viva"
+                            break
+                        duenas.extend(reclamantes)
+                        continue
+                    motivo = _motivo_para_conservar_huerfana(t, del_espacio, hoy)
+                    if motivo is not None:
                         break
-                    if any(not c.terminada(hoy) for c in reclamantes):
-                        motivo = "cadena_viva"
-                        break
-                    reclamantes_de_todas.extend(reclamantes)
+                    duenas.append(_duena_de_huerfana(t, del_espacio))
             if motivo is not None:
                 plan.conservadas[motivo] += 1
                 continue
@@ -514,7 +560,7 @@ def que_se_borra(
         plan.bytes_fotos += int(f.size or 0)
         # Para el ensayo, la foto se le cuenta a la cadena que arrancó último
         # antes de ella: la misma que la reclamaría según el tablero.
-        anotar(max(reclamantes_de_todas, key=lambda c: c.desde), foto=1)
+        anotar(max(duenas, key=lambda c: c.desde), foto=1)
 
     # ── Planometrías
     for p in planometrias:
@@ -561,6 +607,35 @@ def que_se_borra(
     return plan
 
 
+def _motivo_para_conservar_huerfana(t: datetime, del_espacio: list, hoy: date) -> Optional[str]:
+    """Un reporte que ninguna cadena reclama: el adelantado de un contrato
+    «pendiente» (el tablero los lista y ``POST /mounts`` no mira la víspera) o
+    uno hecho con el espacio libre. No es prueba de ningún contrato —el tablero
+    no lo cuenta para ninguno— pero puede ser de uno que arranca después.
+
+    Se borra cuando terminaron TODAS las cadenas del espacio (las que
+    arrancaron antes ya terminaron solas: su ventana se cerró antes de la foto)
+    y la foto tiene más de ``DIAS_DE_GRACIA`` días, el mismo margen que tiene
+    una renovación para cargarse. ``None``: se borra.
+    """
+    if any(not c.terminada(hoy) for c in del_espacio):
+        return "cadena_viva"
+    corte = _sumar(t.astimezone(ZONA_DEL_NEGOCIO).date(), DIAS_DE_GRACIA + 1)
+    if corte is None or hoy < corte:
+        return "huerfana_reciente"
+    return None
+
+
+def _duena_de_huerfana(t: datetime, del_espacio: list) -> Cadena:
+    """A qué cadena se le cuenta en el ensayo: la primera que arrancó después
+    de la foto (para la que se adelantó el reporte) o, si no hay, la última de
+    antes."""
+    despues = [c for c in del_espacio if c.ventana()[0] is not None and c.ventana()[0] > t]
+    if despues:
+        return min(despues, key=lambda c: c.desde)
+    return max(del_espacio, key=lambda c: c.hasta)
+
+
 def _motivo_para_conservar_foto(f: Foto, bloqueados: dict, codigos: dict) -> Optional[str]:
     """Lo que hace que una foto ni se considere. ``None``: sigue la regla."""
     if f.es_cara:
@@ -584,13 +659,23 @@ def _motivo_para_conservar_foto(f: Foto, bloqueados: dict, codigos: dict) -> Opt
 
 # ─── Contra la base ──────────────────────────────────────────────────────────
 
+def _es_copia(c: Contrato, proveedor: str, desde: Optional[date], hasta: Optional[date]) -> bool:
+    """¿El contrato del plano es la copia de ``c``? Las mismas fechas y el
+    mismo proveedor (con la misma generosidad que las cadenas)."""
+    return (
+        desde is not None and hasta is not None
+        and c.start_date == desde and c.end_date == hasta
+        and _mismo_nombre(clave_de_nombre(c.proveedor), clave_de_nombre(proveedor))
+    )
+
+
 def _leer(db) -> dict:
     """Sólo metadatos: ningún binario sale de la base para decidir."""
     from app.models.models import (
         ArchivedSpace, LeaseFile, MountConfirmation, Space, SpaceFace, SpaceFile,
         SpaceLease, Supplier,
     )
-    from app.services.importar_del_plano import revisar
+    from app.services.importar_del_plano import contratos_en_el_plano
 
     contratos = [
         Contrato(
@@ -643,15 +728,25 @@ def _leer(db) -> dict:
     ]
 
     # Un contrato que vive sólo en el JSON del plano puede ser la renovación de
-    # una cadena de la base, u otro proveedor que reclamaría las fotos: hasta
-    # que se importe (Supervisar → «Contrato que sólo vive en el plano»), ese
-    # espacio no se toca.
+    # una cadena de la base, u otro proveedor que reclamaría las fotos: mientras
+    # siga en el JSON (hasta que se importe desde Supervisar → «Contrato que
+    # sólo vive en el plano», o hasta que alguien guarde el plano de esa sede,
+    # que borra esos campos), ese espacio no se toca. Se leen TODOS los del
+    # JSON, no sólo los que `revisar` ofrece importar: ésa da uno por importado
+    # si el espacio tiene cualquier contrato vivo o próximo, de quien sea. Lo
+    # único que no bloquea es la copia exacta de un contrato de la base (mismas
+    # fechas, el mismo proveedor), que es lo que el plano guardaba antes de que
+    # lo comercial viviera sólo en la base: no agrega nada a la cadena.
     por_codigo = {_codigo(code): sid for sid, code in codigos.items()}
-    importacion = revisar(db)
+    del_espacio: dict = {}
+    for c in contratos:
+        del_espacio.setdefault(c.space_id, []).append(c)
     en_el_plano = set()
-    for fila in list(importacion.importables) + [x for x in importacion.incompletos if not x.residuo]:
-        sid = por_codigo.get(_codigo(fila.espacio))
-        if sid is not None:
+    for codigo, proveedor, desde, hasta in contratos_en_el_plano(db):
+        sid = por_codigo.get(_codigo(codigo))
+        if sid is None:
+            continue  # el espacio no tiene fila: tampoco tiene fotos que cuidar
+        if not any(_es_copia(c, proveedor, desde, hasta) for c in del_espacio.get(sid, [])):
             en_el_plano.add(sid)
 
     return {

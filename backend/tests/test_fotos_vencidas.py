@@ -15,6 +15,7 @@ un mes) o en 2040 con el reloj movido: la pasada de arranque, que corre en un
 hilo en paralelo con la prueba, sólo ensaya mientras el interruptor esté
 apagado, que es como arranca toda prueba.
 """
+from contextlib import contextmanager
 from datetime import date, datetime, time, timedelta, timezone
 
 import pytest
@@ -144,8 +145,22 @@ def test_una_renovacion_ya_cargada_con_hueco_alarga_el_plazo_hasta_sesenta_dias(
     ("Grupo Nutresa", "NUTRESA S.A.", True),
     ("Alpina", "Alpina Productos Alimenticios S.A. BIC", True),
     ("Lácteos Colanta Ltda.", "LACTEOS COLANTA", True),
+    # Nombres cortos, posesivos y siglas que son forma societaria: la revisión
+    # adversarial encontró que separaban una renovación y la borraban.
+    ("3M", "3M Colombia S.A.S.", True),
+    ("P&G", "P&G Colombia Ltda", True),
+    ("Kellogg's", "Kellogg de Colombia S.A.", True),
+    ("Hershey's", "Hershey Colombia S.A.", True),
+    ("Kellogg´s", "KELLOGG", True),
+    ("BIC", "Bic", True),
+    ("BIC", "Bic Colombia", True),
+    # El largo ordena antes que el corto: la contención va en los dos sentidos.
+    ("Nutresa", "Comercializadora Nutresa", True),
+    # Sin mínimo de letras: puede ser otro proveedor, pero juntar de más sólo
+    # conserva más.
+    ("Sol", "Sol de Oriente", True),
     ("Nutresa", "Colombina", False),
-    ("Sol", "Sol de Oriente", False),  # menos de 4 letras no alcanza para contener
+    ("Bic Colombia", "Kellogg de Colombia", False),
 ])
 def test_el_mismo_proveedor_escrito_distinto_es_renovacion(fv, uno, otro, misma):
     """La planilla crea otro proveedor si el nombre no coincide exacto. Juntar
@@ -188,6 +203,21 @@ def test_la_clave_del_nombre(fv):
     assert fv.clave_de_nombre("Postobón") == "POSTOBON"
     assert fv.clave_de_nombre("") == ""
     assert fv.clave_de_nombre(None) == ""
+    # El posesivo y los apóstrofos se van antes de partir en palabras.
+    assert fv.clave_de_nombre("Kellogg's") == "KELLOGG"
+    assert fv.clave_de_nombre("Hershey’s S.A.S.") == "HERSHEY"
+    assert fv.clave_de_nombre("D'Onofrio") == fv.clave_de_nombre("Donofrio") == "DONOFRIO"
+    assert fv.clave_de_nombre("P&G Colombia Ltda") == "PYG COLOMBIA"
+    # Una forma societaria que abre el nombre ES el nombre (salvo «Grupo» y
+    # «Cía.»): si no, «Bic Colombia» sería «COLOMBIA» y se juntaría con
+    # cualquier «… de Colombia».
+    assert fv.clave_de_nombre("Bic Colombia") == "BIC COLOMBIA"
+    assert fv.clave_de_nombre("Cía. Nacional de Chocolates") == "NACIONAL DE CHOCOLATES"
+    # Si no queda nada, el nombre entero: nunca se ignora.
+    assert fv.clave_de_nombre("BIC") == fv.clave_de_nombre("Bic") == "BIC"
+    assert fv.clave_de_nombre("S.A.S.") == "SAS"
+    assert fv.clave_de_nombre("Grupo") == "GRUPO"
+    assert fv.clave_de_nombre("Cía. S.A.S.") == "CIA SAS"
 
 
 def test_un_cancelado_superpuesto_no_se_lleva_las_fotos_del_vivo(fv):
@@ -252,8 +282,15 @@ def test_un_reporte_adelantado_lo_protege_el_contrato_que_entra(fv):
 def test_los_bordes_horarios_son_medianoche_de_colombia(fv):
     """La ventana va desde la medianoche de Colombia de la víspera menos 5 días
     hasta el último instante del quinto día después del fin. La hora sin huso
-    (SQLite) es UTC: 04:59 UTC todavía es el día anterior en Colombia."""
-    contratos = [contrato(fv, 1, "2026-10-01", "2026-10-31")]
+    (SQLite) es UTC: 04:59 UTC todavía es el día anterior en Colombia.
+
+    El contrato de otro proveedor que arranca en enero sigue vivo: lo que la
+    cadena de octubre no reclama queda como huérfano, y un huérfano no se borra
+    mientras viva una cadena del espacio. Así el borde decide."""
+    contratos = [
+        contrato(fv, 1, "2026-10-01", "2026-10-31"),
+        contrato(fv, 2, "2027-01-01", "2027-01-31", proveedor=2),
+    ]
     fotos = [
         foto(fv, 1, medianoche("2026-09-25")),
         foto(fv, 2, medianoche("2026-09-25") - UN_MICRO),
@@ -264,7 +301,43 @@ def test_los_bordes_horarios_son_medianoche_de_colombia(fv):
     ]
     p = plan(fv, contratos, fotos, hoy="2026-11-06")
     assert sorted(p.fotos) == [1, 3, 6]
-    assert p.conservadas == {"ninguna_cadena_la_reclama": 3}
+    assert p.conservadas == {"cadena_viva": 3}
+
+
+def test_la_foto_que_ninguna_cadena_reclama_se_borra_cuando_termina_todo_el_espacio(fv):
+    """Un reporte adelantado: Alpina terminó el 31 de octubre, Nutresa arranca
+    el 1.º de diciembre y el mercaderista reportó el montaje de Nutresa desde el
+    tablero el 15 de noviembre. Ninguna ventana lo cubre, y no es prueba de
+    ningún contrato. Antes quedaba para siempre; ahora se va cuando termina
+    también Nutresa (el contrato para el que se adelantó)."""
+    contratos = [
+        contrato(fv, 1, "2026-10-01", "2026-10-31", proveedor=2),
+        contrato(fv, 2, "2026-12-01", "2026-12-31", proveedor=1),
+    ]
+    fotos = [foto(fv, 10, col("2026-11-15"))]
+    for hoy in ("2026-11-20", "2027-01-05"):
+        p = plan(fv, contratos, fotos, hoy=hoy)
+        assert p.fotos == [] and p.conservadas == {"cadena_viva": 1}, hoy
+    p = plan(fv, contratos, fotos, hoy="2027-01-06")
+    assert p.fotos == [10]
+    # En el ensayo se le cuenta al contrato para el que se adelantó.
+    assert [(t.proveedores, t.fotos) for t in p.terminadas] == [(("Nutresa",), 1)]
+
+
+def test_la_foto_huerfana_tiene_sus_cinco_dias_de_gracia(fv):
+    """Un reporte con el espacio libre (la última cadena terminó hace rato): se
+    conserva cinco días, el margen para cargar el contrato que vendría, y se
+    va en la primera pasada del sexto, a la fecha de Colombia de la foto."""
+    contratos = [contrato(fv, 1, "2026-08-01", "2026-08-31")]
+    # 03:00 UTC del 21 es todavía el 20 en Colombia.
+    fotos = [foto(fv, 10, datetime(2026, 10, 21, 3, 0, tzinfo=timezone.utc))]
+    p = plan(fv, contratos, fotos, hoy="2026-10-25")
+    assert p.fotos == [] and p.conservadas == {"huerfana_reciente": 1}
+    assert plan(fv, contratos, fotos, hoy="2026-10-26").fotos == [10]
+    # Si se carga un contrato que arranca después, lo protege mientras viva.
+    contratos.append(contrato(fv, 2, "2026-11-01", "2026-11-30", proveedor=2))
+    p = plan(fv, contratos, fotos, hoy="2026-10-26")
+    assert p.fotos == [] and p.conservadas == {"cadena_viva": 1}
 
 
 def test_la_vispera_es_la_del_enlace_de_montaje(fv):
@@ -312,7 +385,7 @@ def test_lo_que_no_cierra_se_conserva_y_se_cuenta_por_motivo(fv):
         foto(fv, 105, t, espacio=5),
         foto(fv, 106, t, espacio=6, es_cara=True),
         foto(fv, 107, t, espacio=7),  # espacio sin contratos
-        foto(fv, 108, col("2026-10-20"), espacio=8),  # después de la gracia, sin otro
+        foto(fv, 108, col("2026-10-20"), espacio=8),  # huérfana: terminó todo el espacio
         foto(fv, 109, None, espacio=9, montajes=(  # dos montajes, uno de la cadena viva
             fv.Montaje(confirmado_en=col("2026-10-10"), space_code=CODIGOS[9]),
             fv.Montaje(confirmado_en=col("2026-11-03"), space_code=CODIGOS[9]),
@@ -328,7 +401,7 @@ def test_lo_que_no_cierra_se_conserva_y_se_cuenta_por_motivo(fv):
         plano(fv, 213, 3, subida=col("2026-11-05", 23)),
     ]
     p = plan(fv, contratos, fotos, planos, hoy="2026-11-06", archivados={1}, en_el_plano={10})
-    assert p.fotos == [113]
+    assert sorted(p.fotos) == [108, 113]
     assert p.planometrias == [213]
     assert dict(p.conservadas) == {
         "espacio_archivado": 2,
@@ -337,7 +410,7 @@ def test_lo_que_no_cierra_se_conserva_y_se_cuenta_por_motivo(fv):
         "montaje_sin_hora": 1,
         "fechas_imposibles": 2,
         "cara_del_3d": 1,
-        "ninguna_cadena_la_reclama": 2,
+        "espacio_sin_contratos": 1,
         "cadena_viva": 1,
         "contrato_en_el_plano": 1,
         "no_es_planometria": 1,
@@ -603,6 +676,62 @@ def test_un_contrato_que_vive_solo_en_el_plano_bloquea_su_espacio(client, db, fv
     assert p.conservadas["contrato_en_el_plano"] == 3
 
 
+def _plano_con(db, proveedor, desde, hasta):
+    import json
+
+    from app.models.models import LayoutSnapshot
+
+    db.add(LayoutSnapshot(sede="NAVE", fixtures_json=json.dumps([{
+        "id": "f1", "code": "PUN-01", "type": "punta", "status": "occupied", "sede": "NAVE",
+        "supplierName": proveedor, "startDate": desde.isoformat(), "endDate": hasta.isoformat(),
+    }])))
+    db.commit()
+
+
+def test_la_renovacion_del_plano_bloquea_aunque_haya_otro_contrato_futuro_en_la_base(client, db, fv):
+    """`importar_del_plano.revisar` da el contrato del plano por importado si el
+    espacio tiene CUALQUIER contrato próximo en la base. Acá ése es de otro
+    proveedor y arranca en tres meses: la renovación de Alpina, que vive sólo
+    en el plano, tiene que seguir protegiendo lo de su cadena."""
+    from app.models.models import SpaceLease, Supplier
+
+    hoy = hoy_en_colombia()
+    fin = hoy - timedelta(days=30)
+    ids = _sembrar(db, fin=fin, extras=False)
+    nutresa = Supplier(name="Nutresa")
+    db.add(nutresa)
+    db.flush()
+    db.add(SpaceLease(space_id=ids["space"], supplier_id=nutresa.id, start_date=hoy + timedelta(days=90),
+                      end_date=hoy + timedelta(days=120), monthly_rent=1, is_active=True))
+    db.commit()
+    _plano_con(db, "Alpina", fin + timedelta(days=1), hoy + timedelta(days=60))
+
+    p = fv.limpiar_fotos_vencidas(db, ensayo=False)
+    assert p.vacio
+    assert p.conservadas["contrato_en_el_plano"] == 3
+
+
+def test_la_copia_de_un_contrato_de_la_base_en_el_plano_no_bloquea(client, db, fv):
+    """Antes de que lo comercial viviera sólo en la base, el plano guardaba una
+    copia de cada contrato. Esa copia —mismas fechas, el mismo proveedor— no
+    agrega nada a la cadena y no frena la limpieza."""
+    fin = hoy_en_colombia() - timedelta(days=30)
+    ids = _sembrar(db, fin=fin, extras=False)
+    _plano_con(db, "Nutresa", fin - timedelta(days=29), fin)
+    # Las mismas fechas con OTRO proveedor no es la copia: bloquea.
+    p = fv.limpiar_fotos_vencidas(db, ensayo=True)
+    assert p.vacio and p.conservadas["contrato_en_el_plano"] == 3
+
+    from app.models.models import LayoutSnapshot
+
+    db.query(LayoutSnapshot).delete()
+    db.commit()
+    _plano_con(db, "ALPINA S.A.", fin - timedelta(days=29), fin)
+    p = fv.limpiar_fotos_vencidas(db, ensayo=False)
+    assert sorted(p.fotos) == sorted([ids["montado"], ids["vacio"]])
+    assert p.planometrias == [ids["plano"]]
+
+
 def test_la_api_despues_del_borrado(client, admin, db, fv):
     ids = _sembrar(db, fin=hoy_en_colombia() - timedelta(days=30), extras=False)
     fv.limpiar_fotos_vencidas(db, ensayo=False)
@@ -656,6 +785,60 @@ def test_el_sexto_dia_de_colombia_se_borra_con_una_sola_linea(client, db, monkey
     assert db.get(SpaceFile, ids["montado"]) is None
     assert db.get(MountConfirmation, ids["m1"]).file_id is None
     assert len(_lineas(db)) == 1
+
+
+@contextmanager
+def _logging_de_produccion():
+    """El logging como queda bajo ``uvicorn app.main:app`` (el CMD del
+    Dockerfile): uvicorn aplica su ``LOGGING_CONFIG``, que configura sólo sus
+    propios loggers, y el raíz queda en WARNING y sin handlers. Lo que pytest le
+    cuelga al raíz se saca mientras dura, y todo vuelve como estaba."""
+    import logging
+    import logging.config
+
+    from uvicorn.config import LOGGING_CONFIG
+
+    raiz = logging.getLogger()
+    antes_raiz = (raiz.level, raiz.handlers[:])
+    antes = {}
+    for nombre in LOGGING_CONFIG["loggers"]:
+        lg = logging.getLogger(nombre)
+        antes[nombre] = (lg.level, lg.handlers[:], lg.propagate, lg.disabled)
+    raiz.handlers = []
+    raiz.setLevel(logging.WARNING)
+    logging.config.dictConfig(LOGGING_CONFIG)
+    try:
+        yield
+    finally:
+        raiz.setLevel(antes_raiz[0])
+        raiz.handlers = antes_raiz[1]
+        for nombre, (nivel, handlers, propaga, apagado) in antes.items():
+            lg = logging.getLogger(nombre)
+            lg.setLevel(nivel)
+            lg.handlers = handlers
+            lg.propagate = propaga
+            lg.disabled = apagado
+
+
+def test_la_linea_del_ensayo_sale_en_el_log_de_produccion(client, db, capsys, monkeypatch):
+    """ESTADO.md promete que, con el interruptor apagado, la pasada deja en el
+    log lo que borraría. Con un INFO no salía nunca en Render (nadie configura
+    el logging), y como sólo se escribía con algo para borrar, que faltara se
+    leía como «nada que borrar». Sale siempre, también con cero."""
+    from app.main import _run_lease_maintenance
+    from app.services.fotos_vencidas import INTERRUPTOR
+
+    monkeypatch.delenv(INTERRUPTOR, raising=False)
+    with _logging_de_produccion():
+        capsys.readouterr()
+        _run_lease_maintenance()
+        vacio = capsys.readouterr().err
+        _sembrar(db, fin=hoy_en_colombia() - timedelta(days=30), extras=False)
+        _run_lease_maintenance()
+        con_algo = capsys.readouterr().err
+    assert "Fotos vencidas, cliente" in vacio
+    assert "se borrarían: 0 fotos" in vacio and "LIMPIAR_FOTOS_VENCIDAS apagado" in vacio
+    assert "se borrarían: 2 fotos, 1 planometrías" in con_algo
 
 
 def _sembrar_en(slug, **kw):
@@ -739,9 +922,14 @@ def test_si_la_limpieza_de_un_cliente_falla_los_demas_se_limpian_y_el_resto_corr
     assert _en("acme", lambda s: s.query(AuditEntry).filter(AuditEntry.accion == "contrato.alta").count()) == 0
 
 
-def test_si_los_vencimientos_fallan_la_limpieza_corre_igual(client, monkeypatch):
+@pytest.mark.parametrize("falla", ["de_python", "de_la_base"])
+def test_si_los_vencimientos_fallan_la_limpieza_corre_igual(client, monkeypatch, falla):
+    """Una falla de Python deja la sesión limpia; una de la BASE —un flush que
+    viola una restricción— la deja con la transacción caída, y sin el rollback
+    entre los dos bloques la limpieza cae con ``PendingRollbackError`` (en
+    Postgres, ``InFailedSqlTransaction``). Las dos tienen que dejarla correr."""
     from app.main import _run_lease_maintenance
-    from app.models.models import SpaceFile
+    from app.models.models import Space, SpaceFile
     from app.routers import spaces
     from app.services import fotos_vencidas
 
@@ -750,6 +938,11 @@ def test_si_los_vencimientos_fallan_la_limpieza_corre_igual(client, monkeypatch)
     acme = _sembrar_en("acme", fin=hoy_en_colombia() - timedelta(days=30), extras=False)
 
     def explota(db):
+        if falla == "de_la_base":
+            # El código ya existe: IntegrityError en el flush.
+            db.add(Space(code="NAVE-PUN-01", svg_id="svg-repetido", name="x", zone="z",
+                         sede="NAVE", area_m2=1.0))
+            db.flush()
         raise RuntimeError("se cayó expire_leases")
 
     monkeypatch.setattr(spaces, "expire_leases", explota)

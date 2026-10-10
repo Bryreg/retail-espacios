@@ -493,6 +493,15 @@ def confirmar(
     filas = _revisar(db, lote)
     por_fila = {f.fila: f for f in filas}
     plano = PlanoIndexado(db)
+    #: El proveedor se busca igual que en la revisión: sin espacios y sin
+    #: mayúsculas. Si la revisión no avisó «Proveedor nuevo» porque ya existe
+    #: «BIC», confirmar no puede crear en silencio un «Bic» aparte: serían dos
+    #: proveedores para el mismo, con el historial partido, y la renovación ya
+    #: no se reconocería como tal (`services/fotos_vencidas.py`). Si ya hay dos
+    #: que sólo difieren en mayúsculas, gana el más viejo.
+    proveedores: dict[str, Supplier] = {}
+    for s in db.query(Supplier).order_by(Supplier.id).all():
+        proveedores.setdefault((s.name or "").strip().lower(), s)
 
     creados: list[FilaOut] = []
     for fila in lote.filas:
@@ -525,15 +534,12 @@ def confirmar(
             db.flush()
 
         nombre = (v.proveedor or "").strip()
-        supplier = (
-            db.query(Supplier)
-            .filter(Supplier.name == nombre)
-            .first()
-        )
+        supplier = proveedores.get(nombre.lower())
         if not supplier:
             supplier = Supplier(name=nombre, email=v.correo)
             db.add(supplier)
             db.flush()
+            proveedores[nombre.lower()] = supplier
         elif v.correo and not supplier.email:
             # Se completa el que falta y nunca se pisa el que ya está: la
             # planilla puede traer el correo del vendedor de turno.
@@ -665,7 +671,10 @@ def _avisar(
     # espacios recibe un correo con los seis, no seis correos.
     por_proveedor: dict[int, tuple[Supplier, list[FilaOut]]] = {}
     for c in creados:
-        supplier = db.query(Supplier).filter(Supplier.name == (c.proveedor or "")).first()
+        # Por el contrato que se acaba de crear, no por el nombre escrito en la
+        # fila: «Bic» se guardó con el proveedor «BIC» que ya existía.
+        lease = db.get(SpaceLease, c.lease_id) if c.lease_id else None
+        supplier = lease.supplier if lease else None
         if not supplier or not supplier.email:
             continue
         por_proveedor.setdefault(supplier.id, (supplier, []))[1].append(c)

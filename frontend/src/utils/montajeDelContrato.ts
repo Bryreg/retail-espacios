@@ -61,3 +61,20 @@ export function reporteDelContrato(
   if (corte === null) return lista[0];
   return lista.find((m) => instanteDe(m) >= corte);
 }
+
+/** Lo que el enlace de montaje dice de un reporte que ya se hizo.
+ *
+ *  «La foto quedó guardada como prueba» sólo con la foto de verdad: un reporte
+ *  «montado» puede quedar sin ella porque la limpieza la borró al terminar el
+ *  contrato sin renovación (`services/fotos_vencidas.py`) o porque un admin la
+ *  borró para que la repitan, con el contrato en curso. Por eso el texto sin
+ *  foto no dice la causa: decir «se borra cuando el contrato termina» con el
+ *  contrato vigente sería mentirle a quien la tiene que volver a sacar. */
+export function textoDelReporte(
+  reporte: Pick<MountConfirmation, "estado" | "file_id">,
+): string {
+  if (reporte.estado !== "montado") return "Quedó registrado el motivo para que se pueda reclamar.";
+  return reporte.file_id
+    ? "La foto quedó guardada como prueba de que la exhibición está armada."
+    : "Quedó registrado como montado. La foto ya no está guardada.";
+}

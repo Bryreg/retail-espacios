@@ -6,7 +6,12 @@ que dura el contrato y sus renovaciones: cinco días después de que termina la 
 renovación, la limpieza del mantenimiento las borra; el montaje queda, sin la foto. Está
 detrás de `LIMPIAR_FOTOS_VENCIDAS`, apagado: hasta prenderlo sólo ensaya, porque la
 política de datos publicada dice lo contrario. Ver *Las fotos duran lo que dura el
-contrato*).
+contrato*. La revisión adversarial de esa misma noche cerró siete hallazgos: el mismo
+proveedor escrito distinto —«3M», «Kellogg's», «BIC»— ya no parte una renovación, y la
+planilla ya no crea un «Bic» aparte de «BIC»; la línea del ensayo ahora sí llega al log de
+Render; la renovación que vive sólo en el plano bloquea aunque haya otro contrato futuro;
+las fotos que ningún contrato reclama ya no quedan para siempre; y el enlace de montaje ya
+no le echa la culpa de una foto borrada al fin del contrato).
 
 Antes, 2026-10-10, tarde (la revisión de toda la rama y la tercera crítica
 de la demo: «Cambiar de proveedor» ya no suelta la reunión, «Terminar reunión», la lámina en
@@ -2827,6 +2832,14 @@ montar.
 «Proveedor nuevo» se dice pero **no pinta la fila**. En una planilla de temporada casi todos
 lo son, y cuarenta filas en amarillo entrenan a la gente a ignorar el amarillo —que es el
 color reservado para lo que sí hay que mirar—.
+
+**El proveedor se reconoce sin mayúsculas ni espacios de más, en la revisión y al
+confirmar.** La revisión ya comparaba así, pero `confirmar` buscaba el nombre exacto: con
+«BIC» cargado, una fila «Bic» no avisaba «Proveedor nuevo» y al confirmar creaba en
+silencio un segundo proveedor. Eso parte el historial y hacía que la limpieza de fotos
+tomara la renovación por otro proveedor. Desde 2026-10-10 `confirmar` reusa el que la
+revisión reconoció (si ya hay dos que sólo difieren en mayúsculas, el más viejo), y la
+constancia va al proveedor del contrato creado, no al nombre escrito en la fila.
 
 **Los avisos van agrupados**: un correo al comercial con la tanda completa, uno al
 mercaderista con la lista a montar (sin valores) y una constancia por proveedor con todos
@@ -6502,11 +6515,19 @@ próximos), así que la renovación tardía se carga a mano y suele dejar un hue
 * **Mismo espacio** es el mismo `space_id`: la renumeración cambia el código en la misma
   fila, así que la regla no se entera. La cara B es otro espacio.
 * **Mismo proveedor** se mira con generosidad, porque juntar de más sólo conserva más: el
-  mismo `supplier_id`; o el mismo nombre sin tildes, puntos ni forma societaria
-  («Nutresa S.A.S.» = «NUTRESA» = «Grupo Nutresa», que es lo que crea la planilla cuando
-  alguien escribe distinto); o un nombre contenido en el otro con al menos 4 letras
-  («Alpina» y «Alpina Productos Alimenticios S.A. BIC»); o el mismo correo; o la misma
-  marca en el mismo espacio.
+  mismo `supplier_id`; o el mismo nombre sin tildes, mayúsculas, puntos, posesivo ni forma
+  societaria («Nutresa S.A.S.» = «NUTRESA» = «Grupo Nutresa», «Kellogg's» = «KELLOGG»,
+  «BIC» = «Bic»); o las palabras de un nombre contenidas en las del otro, **por corto que
+  sea** («Alpina» y «Alpina Productos Alimenticios S.A. BIC», «3M» y «3M Colombia S.A.S.»,
+  «P&G» y «P&G Colombia Ltda»); o el mismo correo; o la misma marca en el mismo espacio.
+  Detalles que la revisión adversarial encontró separando renovaciones: el posesivo
+  («'s», «’s», «´s») se quita antes de partir en palabras, o deja una «S» suelta. La forma
+  societaria que ABRE el nombre es el nombre —salvo «Grupo» y «Cía.»—: «Bic Colombia» es
+  «BIC COLOMBIA» y no «COLOMBIA» (que se juntaría con cualquier «… de Colombia»), y «BIC»
+  solo sigue siendo «BIC» (antes daba vacío y se ignoraba). Si no queda nada («Grupo»,
+  «Cía. S.A.S.»), cuenta el nombre entero: un nombre nunca se ignora. Y ya no hay mínimo
+  de 4 letras para contener: «Sol» y «Sol de Oriente» quedan juntos, y eso sólo conserva
+  más.
 * **Un contrato cancelado cuenta hasta su fin ORIGINAL.** Cancelar sólo apaga
   `is_active`; no hay fecha de baja (la única huella es la línea `contrato.baja` de la
   bitácora, que se purga al año), y adivinarla borraría antes. `is_active` no se mira para
@@ -6532,7 +6553,7 @@ contrato «pendiente» antes de la víspera— hasta el último instante del qui
 de su fin. La víspera es `routers/montaje.py::_se_confirma_desde`, importada y no copiada
 (`probar-montajes.mjs` lo vigila): qué reporte es de qué contrato es una regla sola.
 
-**Una foto se borra sólo si la reclama al menos una cadena y todas las que la reclaman, de
+**Una foto que reclama al menos una cadena se borra cuando todas las que la reclaman, de
 cualquier proveedor, terminaron.** Eso cierra el caso que encontró el mapa del código:
 Nutresa firma noviembre y se cancela en septiembre; Alpina firma de octubre a diciembre. La
 foto de noviembre la reclaman las dos; Nutresa «termina» el 30 de noviembre, pero la foto
@@ -6541,19 +6562,42 @@ octubre, Alpina desde el 1.º), el 6 de noviembre se va lo de Nutresa anterior a
 octubre; lo del 26 en adelante —el desmontaje, el montaje adelantado de Alpina— se queda
 mientras viva Alpina.
 
+**Una foto que no reclama ninguna cadena** —el reporte adelantado de un contrato
+«pendiente» más allá de esos cinco días (el tablero los lista sin tope y `POST /mounts` no
+mira la víspera), o uno hecho con el espacio libre— no es prueba de ningún contrato: el
+tablero tampoco la cuenta. Hasta la revisión adversarial quedaba **para siempre**, que es
+justo lo que la dueña quería liberar. Ahora se borra cuando terminaron **todas** las
+cadenas del espacio —por si era del contrato que arranca después; las de antes ya
+terminaron solas, porque su ventana se cerró antes de la foto— y la foto misma tiene más de
+cinco días (a la fecha de Colombia de la foto: el mismo margen para cargar el contrato que
+vendría). Ejemplo: Alpina hasta el 31 de octubre, Nutresa desde el 1.º de diciembre, y el
+montaje de Nutresa reportado el 15 de noviembre: se queda mientras viva Nutresa y se va el
+6 de enero. En un espacio sin ningún contrato no se toca.
+
 ### Ante la duda, no se borra
 
 Lo que no cierra se conserva, y el plan lo cuenta por motivo (sale en el log y en el
 ensayo): el espacio de una sede borrada (`archived_spaces`), un montaje archivado, un
 `space_code` que no es el código del espacio de la foto, un montaje sin hora, un contrato
 del espacio con fechas imposibles (bloquea el espacio entero), **un contrato que vive sólo
-en el JSON del plano** (`importar_del_plano.revisar`: puede ser la renovación, y bloquea el
-espacio hasta que se importe desde Supervisar), la foto que ninguna cadena reclama (espacio
-sin contratos, reporte con el espacio libre), una planometría cuyo contrato no existe o de
-otro `kind`, y **una planometría subida después de que la cadena terminó**: el endpoint
+en el JSON del plano** (puede ser la renovación), la foto de un espacio sin contratos, la
+foto huérfana de menos de cinco días (`huerfana_reciente`), una planometría cuyo contrato
+no existe o de otro `kind`, y **una planometría subida después de que la cadena terminó**: el endpoint
 acepta contratos vencidos, y quien la cargó tarde quería dejarla. Una fecha como
 9999-12-31 (el «indefinido» de una planilla) hace que esa cadena no termine nunca, sin
 trabar al resto.
+
+**El contrato del plano** se lee de TODAS las caras que el JSON da por vendidas
+(`importar_del_plano.contratos_en_el_plano`, sin los «Ocupado» puestos a mano), y no de lo
+que `revisar` ofrece importar: ésa da uno por importado apenas el espacio tiene en la base
+CUALQUIER contrato vivo o próximo, de quien sea, y la renovación de Alpina quedaba tapada
+por un contrato de Nutresa que arrancaba en tres meses. Lo único que no bloquea es la copia
+exacta de un contrato de la base —mismas fechas, el mismo proveedor—, que es lo que el
+plano guardaba antes de *Una sola verdad para lo comercial*: no agrega nada a la cadena.
+**El bloqueo dura mientras el contrato siga en el JSON**: se levanta al importarlo desde
+Supervisar y también, sin importar nada, cuando alguien guarda el plano de esa sede
+(`layout._sin_contrato` borra esos campos; eso ya pasaba y `importar_del_plano` lo
+documenta). Que el guardado importe antes de descartar queda como pendiente.
 
 ### Desplegar no es borrar: el interruptor
 
@@ -6561,7 +6605,12 @@ Render despliega `main` solo y la pasada corre al arrancar, así que sin freno e
 borraba en todos los clientes en ese mismo momento. Por eso **`LIMPIAR_FOTOS_VENCIDAS`
 está apagado por defecto**: apagado, la pasada calcula y deja en el log qué borraría
 (`Fotos vencidas, cliente galerias: se borrarían: N fotos, M planometrías, X MB ·
-conservadas: … · ensayo: LIMPIAR_FOTOS_VENCIDAS apagado`) y no escribe nada. Se prende
+conservadas: … · ensayo: LIMPIAR_FOTOS_VENCIDAS apagado`) y no escribe nada. La línea sale
+**en cada pasada y por cada cliente, también con cero**, y en **WARNING**: la app no
+configura el logging y uvicorn deja el logger raíz en WARNING, así que un INFO —como era
+al principio— no llegaba nunca al log de Render, y como sólo salía con algo para borrar,
+que faltara se leía como «nada que borrar» justo antes de prender el interruptor. Con el
+interruptor prendido sale igual, con «borradas:». Se prende
 con `LIMPIAR_FOTOS_VENCIDAS=1` en el panel de Render (no está en `render.yaml`, a
 propósito, igual que `LOGIN_LEGADO`). Antes de prenderlo:
 
@@ -6629,7 +6678,11 @@ un contrato terminado no sale en ninguna pantalla, la cámara de «No se pudo mo
 dependía de `file_id`, las listas de archivos muestran lo que hay y el 3D lee sólo
 `space_faces`. Lo único que mentía era el enlace de montaje, que decía «La foto quedó
 guardada como prueba» para un reporte cuya foto ya no está; ahora lo dice sólo con
-`file_id` (`Montaje.tsx`).
+`file_id`, y sin foto dice «Quedó registrado como montado. La foto ya no está guardada.»
+**sin la causa**: un admin también puede borrar la foto con el contrato en curso para que
+la repitan, y «se borra cuando el contrato termina» sería falso. El texto lo elige
+`textoDelReporte` (`utils/montajeDelContrato.ts`), que `probar-montajes.mjs` prueba con y
+sin foto (la regex sobre el fuente que había antes pasaba con la condición invertida).
 
 ### La primera pasada
 
@@ -6662,17 +6715,26 @@ ensayo contra una copia.
 ### Cómo se comprobó
 
 `tests/test_fotos_vencidas.py`: la regla pura (la gracia con el ejemplo de la dueña, la
-renovación contigua y con hueco, el proveedor escrito distinto, el correo y la marca, el
-cancelado superpuesto, el relevo, el reporte adelantado, los bordes a medianoche de
-Colombia con la hora sin huso de SQLite, el contrato por lote, cada motivo de duda, las
-fechas extremas), y contra la base: lo que se borra y lo que no, el montaje que queda sin
-foto, la bitácora, la idempotencia, el ensayo que no escribe, el interruptor, la fecha
-futura, el cancelado con fin futuro, la renovación tardía, el contrato que vive en el
-plano, la API después del borrado, el quinto y el sexto día de Colombia de punta a punta
-con el reloj movido, y el aislamiento entre clientes (la limpieza que falla, los
-vencimientos que fallan, la base rota). 17 mutaciones del servicio y del ciclo, todas
+renovación contigua y con hueco, el proveedor escrito distinto —con los pares de la
+revisión adversarial: «3M», «P&G», «Kellogg's», «Hershey's», «BIC»—, el correo y la marca,
+el cancelado superpuesto, el relevo, el reporte adelantado, la foto huérfana y sus cinco
+días, los bordes a medianoche de Colombia con la hora sin huso de SQLite, el contrato por
+lote, cada motivo de duda, las fechas extremas), y contra la base: lo que se borra y lo que
+no, el montaje que queda sin foto, la bitácora, la idempotencia, el ensayo que no escribe,
+el interruptor, la fecha futura, el cancelado con fin futuro, la renovación tardía, el
+contrato que vive en el plano (también con otro contrato futuro en la base, y la copia
+exacta que no bloquea), la API después del borrado, el quinto y el sexto día de Colombia de
+punta a punta con el reloj movido, la línea del ensayo en el log tal como queda bajo
+uvicorn (su `LOGGING_CONFIG`, el raíz sin handlers), y el aislamiento entre clientes (la
+limpieza que falla, los vencimientos que fallan —también con una falla de la BASE, un flush
+que viola una restricción, que sin el rollback entre los dos bloques tumba la limpieza—, la
+base rota). `tests/test_bulk_leases.py` prueba que la planilla reusa «BIC» para una fila
+«Bic» y le manda la constancia. 17 mutaciones del servicio y del ciclo, todas
 detectadas, restauradas con `cp`. `probar-montajes.mjs` vigila la víspera importada y el
-texto del enlace (2 mutaciones más). Y contra un Postgres 16 descartable (apagado y borrado
+texto del enlace (2 mutaciones más). La revisión adversarial sumó 19 mutaciones más
+—11 del servicio (los nombres, el contrato del plano, las huérfanas), 2 de la planilla, 2
+del log del ciclo, 1 del rollback entre bloques y 3 del texto del enlace—, todas detectadas
+y restauradas con `cp`. Y contra un Postgres 16 descartable (apagado y borrado
 al terminar): sin el UPDATE previo el DELETE da `ForeignKeyViolation`; con él, el escenario
 completo pasa con la cara intacta, y dos pasadas a la vez sobre 40 espacios borran 80 fotos
 entre las dos y dejan una sola línea.

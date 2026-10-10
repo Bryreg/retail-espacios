@@ -157,8 +157,12 @@ def _run_lease_maintenance():
                 return
             try:
                 plan = fotos_vencidas.limpiar_fotos_vencidas(db)
-                if not plan.vacio:
-                    logger.info("Fotos vencidas, cliente %s: %s", cliente.slug, plan.resumen())
+                # WARNING y no INFO, y SIEMPRE —también «0 fotos»—. La app no
+                # configura el logging y uvicorn deja el logger raíz en WARNING:
+                # un INFO no sale nunca en el log de Render. Y si la línea sólo
+                # saliera cuando hay algo, que falte se leería como «no hay nada
+                # que borrar» justo antes de prender el interruptor.
+                logger.warning("Fotos vencidas, cliente %s: %s", cliente.slug, plan.resumen())
             except Exception:
                 logger.exception("La limpieza de fotos vencidas falló para el cliente %s", cliente.slug)
                 _deshacer(db)

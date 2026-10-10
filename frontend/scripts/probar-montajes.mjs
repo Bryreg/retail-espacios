@@ -149,9 +149,26 @@ prueba("la limpieza de fotos vencidas usa esa misma víspera, importada y no cop
 });
 
 prueba("el enlace no dice que la foto quedó guardada cuando ya se borró", () => {
+  // La función pura, con la foto y sin ella: una regex sobre el fuente también
+  // pasaba con la condición invertida (`!reportado.file_id ?` la contiene).
+  assert.match(M.textoDelReporte({ estado: "montado", file_id: 7 }), /^La foto quedó guardada como prueba/);
+  for (const file_id of [null, undefined, 0]) {
+    const sin = M.textoDelReporte({ estado: "montado", file_id });
+    assert.doesNotMatch(sin, /guardada como prueba/, String(file_id));
+    assert.match(sin, /La foto ya no está guardada\.$/, String(file_id));
+  }
+  assert.match(M.textoDelReporte({ estado: "no_montado", file_id: null }), /motivo/);
+  // Y la pantalla la usa, sin una copia propia del texto.
   const pantalla = fuente("src", "pages", "Montaje.tsx");
-  assert.match(pantalla, /reportado\.file_id\s*\?\s*"La foto quedó guardada como prueba/);
-  assert.match(pantalla, /La foto ya no está guardada/);
+  assert.match(pantalla, /\{textoDelReporte\(reportado\)\}/);
+  assert.doesNotMatch(pantalla, /La foto quedó guardada/);
+});
+
+prueba("sin la foto, el enlace no le echa la culpa al fin del contrato", () => {
+  // Un admin puede borrar la foto con el contrato en curso para que la
+  // repitan: «se borra cuando el contrato termina» sería falso.
+  const sin = M.textoDelReporte({ estado: "montado", file_id: null });
+  assert.doesNotMatch(sin, /contrato|termina/);
 });
 
 console.log(`\n${hechas} pruebas`);
