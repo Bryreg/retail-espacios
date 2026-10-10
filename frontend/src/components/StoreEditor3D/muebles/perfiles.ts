@@ -217,11 +217,13 @@ export function geometriaEntrepanoDeVenta(ancho: number, fondo: number): THREE.B
  *
  *  La segunda (0,62 / 0,74) tampoco alcanzaba, medida en la captura: entre
  *  dos entrepaños de 33-37 cm NINGÚN listón queda limpio, así que «el panel a
- *  media altura» es el tercero, no uno a 1,0. En GON-02 de cerca, el segundo
- *  salía a 148 sRGB contra 161-170 del tercero: un 10 % más oscuro, y la
- *  crítica pide 12. Con 0,64 contra 0,86 (y el de debajo, que casi no se ve,
- *  a 0,55) la diferencia en pantalla pasa del 15 %. */
-export const SOMBRA_DE_LISTON = { debajo: 0.55, siguiente: 0.64, tercero: 0.86, encima: 0.82 } as const;
+ *  media altura» no está a 1,0 sino en el SEGUNDO listón. En GON-02 de cerca
+ *  (Presentar, cámara algo más alta que la de venta: ahí el de justo debajo
+ *  sí se ve) la franja bajo el entrepaño salía a 148 sRGB contra ~160 del
+ *  medio, un 8-10 %, y la crítica pide 12. Con 0,48 contra 0,66 el escalón
+ *  pasa del 14 % en pantalla, y el segundo sigue un 17 % por debajo de un
+ *  panel limpio para las tomas en que el primero queda tapado. */
+export const SOMBRA_DE_LISTON = { debajo: 0.48, siguiente: 0.66, tercero: 0.86, encima: 0.82 } as const;
 export function sombraDeListon(y: number, altoDeLama: number, paso: number, niveles: readonly number[]): number {
   let k = 1;
   const arriba = y + altoDeLama / 2;  // el canto de arriba del listón

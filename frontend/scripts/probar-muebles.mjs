@@ -2727,15 +2727,27 @@ prueba("el brillo de las luminarias en el acero, prototipado en JS con las cáma
   for (const toma of ["frente", "tres_cuartos"]) {
     const v = tomaDeVenta("PUN-01", toma);
     const camara = { x: v.posX, y: v.posY, z: v.posZ };
-    let max = { sube: -1 };
-    for (const pz of piezas) for (const q of pz.puntos) {
-      const b = LV.brilloDeVenta(q.n, camara, q.p, GRILLA_VENTA, LIM_VENTA, pz.rug);
-      const base = deLaPantalla(pz.base);
-      const sube = alaPantalla(base + pz.brillo * b.valor) - pz.base;
-      if (sube > max.sube) max = { sube, pieza: pz.pieza, p: q.p };
+    let max = { sube: -1 }, mancha = { sobreMedia: -1 };
+    for (const pz of piezas) {
+      const subas = pz.puntos.map((q) => {
+        const b = LV.brilloDeVenta(q.n, camara, q.p, GRILLA_VENTA, LIM_VENTA, pz.rug);
+        return { q, b, sube: alaPantalla(deLaPantalla(pz.base) + pz.brillo * b.valor) - pz.base };
+      });
+      const media = subas.reduce((a, x) => a + x.sube, 0) / subas.length;
+      for (const { q, b, sube } of subas) {
+        if (sube > max.sube) max = { sube, pieza: pz.pieza, p: q.p };
+        // La MANCHA de una luminaria: por encima del promedio de su pieza, no
+        // sólo de la base —el canto de una cara vista de lado refleja el
+        // techo liso y sube parejo—, y con una tira en el reflejo: la
+        // radiancia del techo, el muro o el piso no pasa de 0,6, y la de una
+        // luminaria vista a medias, de varias unidades.
+        if (b.radiancia > 1.5 && sube - media > mancha.sobreMedia) mancha = { sobreMedia: sube - media, pieza: pz.pieza, p: q.p, radiancia: b.radiancia };
+      }
     }
     assert.ok(max.sube >= 15, `${toma}: el brillo más fuerte sube ${max.sube.toFixed(1)} sRGB (${max.pieza})`);
-    mejor[toma] = max;
+    assert.ok(mancha.sobreMedia >= 15,
+      `${toma}: la mancha de una luminaria queda ${mancha.sobreMedia.toFixed(1)} sRGB sobre el promedio de su pieza (${mancha.pieza ?? "ninguna"})`);
+    mejor[toma] = mancha;
   }
   const d = Math.hypot(mejor.frente.p.x - mejor.tres_cuartos.p.x, mejor.frente.p.y - mejor.tres_cuartos.p.y, mejor.frente.p.z - mejor.tres_cuartos.p.z);
   assert.ok(d > 0.05, `el brillo no se corre entre la toma de frente y la de tres cuartos (${(d * 100).toFixed(1)} cm)`);
@@ -2902,10 +2914,12 @@ prueba("la sombra de las uniones: cuánto y dónde", () => {
   assert.ok(1 - enPantalla(S.siguiente, 170) >= 0.12, `el segundo listón sale ${(100 * (1 - enPantalla(S.siguiente, 170))).toFixed(1)} % más oscuro`);
   assert.ok(1 - enPantalla(S.debajo, 170) >= 0.18);
   // Y contra el panel a media altura DE VERDAD: entre dos entrepaños ningún
-  // listón queda limpio, el del medio es el tercero (medido en GON-02 de
-  // cerca: el segundo a 148 contra 161-170, un 10 %, con 0,74).
-  assert.ok(1 - enPantalla(S.siguiente / S.tercero, 165) >= 0.12,
-    `el segundo listón sale ${(100 * (1 - enPantalla(S.siguiente / S.tercero, 165))).toFixed(1)} % más oscuro que el tercero`);
+  // listón queda limpio y el del medio es el SEGUNDO. Cuando el de justo
+  // debajo se ve (una cámara algo más alta, como Presentar en GON-02), la
+  // franja bajo el entrepaño tiene que salir un 12 % más oscura que él
+  // (medido con 0,62 / 0,74: 148 contra ~160, un 8 %).
+  assert.ok(1 - enPantalla(S.debajo / S.siguiente, 160) >= 0.12,
+    `bajo el entrepaño sale ${(100 * (1 - enPantalla(S.debajo / S.siguiente, 160))).toFixed(1)} % más oscuro que a media altura`);
   assert.ok(1 - enPantalla(a.fondo, 215) >= 0.10, `la unión sale ${(100 * (1 - enPantalla(a.fondo, 215))).toFixed(1)} % más oscura`);
 });
 

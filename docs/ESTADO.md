@@ -4130,9 +4130,11 @@ quedan vacíos: 30 cm no entran en 27,5 cm»).
 
 * **El relleno neutro en los muebles contratados ENTEROS** (la góndola de Bimbo vacía en
   Presentar): el plan lo dejó fuera — el «Hoy» de un mueble contratado entero con los
-  slots libres se sigue viendo vacío.
+  slots libres se sigue viendo vacío. *(Hecho en la tanda 2, paso 14, sólo en venta.)*
 * **Brillo en el piso, luz cenital, techo**: son cambios globales de escena, fuera de
-  alcance por regla (la luz de la tienda está calibrada para los muebles).
+  alcance por regla (la luz de la tienda está calibrada para los muebles). *(La tanda 2
+  los hizo sin tocar esa luz y sólo en la pantalla de venta: cielo raso con luminarias,
+  brillo en el acero y reflejo en el piso; ver «2026-10-09 (tanda 2): el ambiente».)*
 * **Fondo de 4–5 unidades** en vez de 3: más instancias en swiftshader por algo que sólo
   se ve de costado. Queda en 3.
 * El yogur Finesse de la demo es refrigerado y va en una punta seca; para la demo se le
@@ -4761,7 +4763,10 @@ que es como se ven de verdad.
 **Techo no**, y es una decisión, no un olvido: taparía la única direccional
 fuerte y habría que rehacer la iluminación entera; escondería el plano en la
 vista orbital, obligando a mantener dos montajes de luz; y a 1,65 m de ojo con
-fov 50° casi no entra en cuadro.
+fov 50° casi no entra en cuadro. *(Revisado el 2026-10-09 para la pantalla de
+venta: un cielo raso a 3,2 m, de una sola cara, sin sombras ni luces, que el
+editor no dibuja; ver «2026-10-09 (tanda 2): el ambiente». En el editor y al
+caminar sigue sin techo.)*
 
 ### Una persona de 1,70 m
 
@@ -4789,7 +4794,8 @@ El remate del muro se ve desde lejos: sin techo, a más de unos metros el ojo
 pasa por encima de los 4,5 m y aparece el fondo del lienzo. Es una transición
 suave y no se lee como agujero, pero está. Subir el muro no lo resuelve —a 12 m
 de distancia el cuadro llega a 7 m de alto—; lo resuelve un techo, y el techo
-cuesta la iluminación.
+cuesta la iluminación. *(En la pantalla de venta lo resolvió el cielo raso de la
+tanda 2 sin costar la iluminación; al caminar sigue así.)*
 
 ---
 
