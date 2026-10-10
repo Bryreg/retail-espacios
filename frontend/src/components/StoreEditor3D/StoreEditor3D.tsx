@@ -83,7 +83,7 @@ import {
   huella, limitesDePlanta, lugarDeLaFigura, murosDeCaminata, puntoDeEntrada, puntoLibreCerca, resolverPaso,
   TOLERANCIA_CONTACTO,
   vistaGeneral, miradaSensata, vistaDeCara, vistaDeVenta, FOV_DE_CERCA,
-  personaYTomaDeVenta, FIGURA_DE_ESCALA, SEPARACIONES_DE_LA_FIGURA,
+  personaYTomaDeVenta, FIGURA_DE_ESCALA, SEPARACIONES_DE_LA_FIGURA, fovParaLaCara,
   ALTO_CIELO_RASO, LUMINARIA, luminariasDeTienda, sombraDeHuellas,
   type Vista3D, type TomaDeVenta,
   VEL_CAMINANDO, VEL_APURADA,
@@ -5315,20 +5315,29 @@ function Scene({
     const medio = (foco0.yBajo + foco0.yAlto) / 2, mitad = ((foco0.yAlto - foco0.yBajo) / 2) * holgura;
     const foco = holgura === 1 ? foco0 : { ...foco0, yBajo: medio - mitad, yAlto: medio + mitad };
     const obstaculos = murosDeCaminata(placedFixtures.filter((f) => f.id !== fix.id));
-    const fov = toma === "cerca" ? FOV_DE_CERCA : FOV_DEL_EDITOR;
     const aspecto = size.width / Math.max(1, size.height);
     const mueble = { cx: fix.x, cz: fix.z, w: fix.w, d: fix.d, h: fix.h, rotY: fix.rotY };
+    // En la pantalla de venta, «De frente» de la cara entera abre el campo
+    // visual lo justo para que la cara entre a lo ancho desde el pasillo
+    // (`fovParaLaCara`: una góndola de 3,6 m en un pasillo de 2 m). En el
+    // editor, los 50° de siempre.
+    const enVenta = presentationMode || privadoPara !== undefined;
+    const fov = toma === "cerca" ? FOV_DE_CERCA
+      : enVenta && toma === "frente" && !foco.porEntrepano ? fovParaLaCara(mueble, cara, obstaculos, limites, aspecto, FOV_DEL_EDITOR)
+        : FOV_DEL_EDITOR;
     // La punta: dónde empieza el copete, para que «De cerca» no lo corte por
     // la mitad (`focoDeLaPrueba` mira entrepaños y no sabe del copete).
-    const focoConCopete = fix.type === "punta"
-      ? { ...foco, techoDeCara: techoDeCara(fix.h), altoDeCopete: COPETE.alto } : foco;
+    const focoConCopete = {
+      ...(fix.type === "punta" ? { ...foco, techoDeCara: techoDeCara(fix.h), altoDeCopete: COPETE.alto } : foco),
+      // Con el campo visual abierto, desde el fondo del pasillo.
+      ...(fov > FOV_DEL_EDITOR && toma === "frente" ? { alFondo: true } : {}),
+    };
     ponerCampoVisual(fov);
     // En la pantalla de venta (Presentar y la lámina), «De frente» y «Tres
     // cuartos» de la cara entera salen con la persona de escala ENTERA en el
     // cuadro: una sola cuenta para la toma y para dónde se para
     // (`personaYTomaDeVenta`), y la escena la dibuja ahí. Por entrepaño y «De
     // cerca» miran lo elegido de frente: sin persona.
-    const enVenta = presentationMode || privadoPara !== undefined;
     estadoDeEscena.current.aspectoConPersona = 0;
     if (enVenta && toma !== "cerca" && !foco.porEntrepano) {
       // La lámina (venta fuera de Presentar) prueba primero la persona más

@@ -365,6 +365,11 @@ const HUECO_DE_ATRAS = 0.05;
 export const TONO_POR_FONDO = [1, 0.82, 0.68] as const;
 /** Probabilidad de que una columna quede corrida hacia adentro, y cuánto. */
 const COLUMNA_CORRIDA = 0.22;
+/** Probabilidad de que una columna (no corrida) quede un poco adelantada, y
+ *  cuánto como mucho: dentro del retiro al frente (`RETIRO_AL_FRENTE`, 1 cm)
+ *  con el ±3 mm de fondo del desorden encima. */
+export const COLUMNA_ADELANTADA = 1 / 6;
+export const ADELANTO = 0.004;
 /** Con UN solo arte en una cara de más de `CARA_LARGA` (una góndola entera),
  *  la crítica leyó «papel de colgadura»: 75 frentes del mismo Müsli, misma
  *  caja, misma altura, misma alineación. Lo que delata el clonado es la
@@ -563,7 +568,10 @@ export function unidadesDePrueba({
     // de al lado); una botella o una lata sí, y es lo que más delata un
     // lineal clonado: cuarenta etiquetas mirando exactamente al frente.
     // Acostada, en cambio, se la deja derecha: girarla la cruza en la rejilla.
-    const redondo = (e.forma === "botella" || e.forma === "lata") && !e.acostado;
+    // El vaso también (todo envase torneado, `redondaEnPlanta`): con ±0,9° los
+    // 39 Finesse de la nevera miraban todos exactamente al frente, «un patrón
+    // repetido» (la crítica de la demo, ronda 2).
+    const redondo = (e.forma === "botella" || e.forma === "lata" || redondaEnPlanta) && !e.acostado;
     const giroFrente = (redondo ? 5 : e.acostado ? 0.5 : 0.9) * GRADO;
     const giroAtras = (redondo ? 8 : e.acostado ? 0.5 : 2) * GRADO;
     // Para acomodar, la acostada ocupa un poco más (ver LUZ_DE_ACOSTADA).
@@ -612,12 +620,17 @@ export function unidadesDePrueba({
         // adentro entera, como la deja el comprador que se llevó la primera.
         // Entera, para que la de adelante no se meta en la de atrás.
         const corrida = azar() < COLUMNA_CORRIDA ? Math.min(libreAtras, 0.01 + azar() * 0.01) : 0;
+        // Y alguna, al revés, un poco ADELANTADA (la del frente, con su pila):
+        // la que acaban de poner. Dentro del retiro al frente, sin tocar el
+        // labio.
+        const adelantada = !corrida && azar() < COLUMNA_ADELANTADA ? ADELANTO * (0.75 + azar() * 0.25) : 0;
         for (let p = 0; p < fondoVisible; p++) {
           // Un hueco de reposición, sólo atrás y con toda su pila; nunca
           // detrás de un frente corrido (sería un hueco de punta a punta).
           const hueco = p > 0 && azar() < HUECO_DE_ATRAS && !(f === sinFrente && p === 1);
-          // Una de cada cuatro cajas, más girada (sólo en la cara variada).
-          const suelta = variado && !redondo && !e.acostado && p === 0 && azar() < CAJA_SUELTA;
+          // Una de cada cuatro cajas, más girada: en cualquier cara (en la
+          // punta, 44 cajas de Avena en fila perfecta se leían clonadas).
+          const suelta = !redondo && !e.acostado && p === 0 && azar() < CAJA_SUELTA;
           for (let piso = 0; piso < pisos; piso++) {
             const desdeElFilo = filas.fondos[i] - RETIRO_AL_FRENTE - e.fondo / 2 - p * a.pasoZ;
             // ±2 mm a lo ancho (la luz entre dos es de 4) y ±3 mm de fondo:
@@ -643,7 +656,7 @@ export function unidadesDePrueba({
               fila: i,
               x: desdeX + f * a.pasoX + Math.max(-tope, Math.min(tope, dx)),
               y: piso * e.alto + e.alto / 2 - hundir,
-              z: -(desdeElFilo - corrida + dz),
+              z: -(desdeElFilo - corrida + dz + (p === 0 ? adelantada : 0)),
               giroY: giro,
               tono,
               prof: p,

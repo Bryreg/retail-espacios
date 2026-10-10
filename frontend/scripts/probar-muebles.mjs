@@ -2266,10 +2266,31 @@ prueba("el desorden de la prueba es determinista y chico", () => {
     const f = Math.round((u.x - desde) / ac.pasoX);
     assert.ok(Math.abs(u.x - (desde + f * ac.pasoX)) <= 0.002 + 1e-12, `dx = ${u.x - (desde + f * ac.pasoX)}`);
     assert.ok(Math.abs(u.giroY) <= (2 * Math.PI) / 180 + 1e-12, `giro de ${(u.giroY * 180) / Math.PI}°`);
-    if (u.prof === 0) assert.ok(Math.abs(u.giroY) <= (0.9 * Math.PI) / 180 + 1e-12, "el frente gira más que lo de atrás");
+    if (u.prof === 0) assert.ok(Math.abs(u.giroY) <= (1.5 * Math.PI) / 180 + 1e-12, "el frente gira más de 1,5°");
     const base = F.TONO_POR_FONDO[Math.min(u.prof, 2)];
     assert.ok(u.tono <= base * 1.03 + 1e-12 && u.tono >= base * 0.97 - 1e-12, `tono ${u.tono} en la fila ${u.prof}`);
   }
+  // La punta también se varía (la crítica de la demo, ronda 2: «44 cajas de
+  // Avena en fila perfecta»): alguna caja del frente gira más de 1°, y alguna
+  // columna queda un poco ADELANTADA, sin salirse del entrepaño.
+  const frente = a.unidades.filter((u) => u.prof === 0);
+  assert.ok(frente.some((u) => Math.abs(u.giroY) > Math.PI / 180), "en la punta ninguna caja gira más de 1°");
+  // Cuánto se adelantó cada una contra donde va sin desorden (su entrepaño
+  // tiene su propio fondo): más de lo que da el desorden de fondo solo (3 mm).
+  const adelanto = frente.map((u) => -u.z - (v.filas.fondos[u.fila] - P.RETIRO_AL_FRENTE - VASO.fondo / 2));
+  assert.ok(adelanto.some((d) => d >= 0.0035), `en la punta ninguna columna queda adelantada (como mucho ${(Math.max(...adelanto) * 1000).toFixed(1)} mm)`);
+  for (const u of frente) {
+    const filo = v.filas.fondos[u.fila] - VASO.fondo / 2;
+    assert.ok(-u.z <= filo - 0.0005, `una unidad se sale por el frente del entrepaño (${(-u.z - filo).toFixed(4)} m)`);
+  }
+  assert.ok(F.ADELANTO + 0.003 < P.RETIRO_AL_FRENTE, "lo adelantado más el desorden pasa el retiro al frente");
+  assert.ok(F.COLUMNA_ADELANTADA > 0.1 && F.COLUMNA_ADELANTADA <= 0.2);
+  // Un vaso (envase torneado) gira como una botella: la etiqueta de cada uno
+  // mira un poco para otro lado (con ±0,9° los 39 Finesse eran un patrón).
+  const vasoTorneado = { ...VASO, envase: "revolucion" };
+  const nev = V.ventaDeTipo("nevera_refrescos", 1.2, 0.75, 1.8);
+  const vt = F.unidadesDePrueba({ venta: nev, empaque: vasoTorneado, donde: "todas", semilla: "NEV-02|A|1" });
+  assert.ok(vt.unidades.filter((u) => u.prof === 0).some((u) => Math.abs(u.giroY) > 2 * Math.PI / 180), "los vasos de la nevera miran todos al frente");
   // Lo de atrás se lee atrás: la segunda un 18 % y la tercera un 32 % más
   // oscuras (con un 12 % por fila la crítica midió las tapas de atrás casi
   // iguales a las del frente).
@@ -2931,6 +2952,14 @@ prueba("el muro de venta tiene degradé y una cenefa perimetral sin texto, en pa
   // cielo raso: se ve en la toma de la nevera, no tapa nada.
   assert.ok(SA.CENEFA.desde >= 2.3 && SA.CENEFA.desde + SA.CENEFA.alto <= PL.ALTO_CIELO_RASO - 0.2);
   assert.ok(SA.CENEFA.alto >= 0.3 && SA.CENEFA.alto <= 0.4, "la faja no mide lo de una cenefa");
+});
+
+prueba("el campo visual abierto de «De frente» es sólo de la pantalla de venta", () => {
+  const toma = cuerpoDe("const tomaDeVenta = useCallback(", "const ponerCampoVisual = useCallback(");
+  assert.match(toma, /const fov = toma === "cerca" \? FOV_DE_CERCA\s*: enVenta && toma === "frente" && !foco\.porEntrepano \? fovParaLaCara\(mueble, cara, obstaculos, limites, aspecto, FOV_DEL_EDITOR\)\s*: FOV_DEL_EDITOR;/,
+    "«De frente» abre el campo visual fuera de la venta o por entrepaño");
+  assert.match(toma, /const enVenta = presentationMode \|\| privadoPara !== undefined;/);
+  assert.match(toma, /ponerCampoVisual\(fov\);/);
 });
 
 prueba("la grilla del piso es del editor: en la pantalla de venta no se dibuja", () => {
@@ -3760,8 +3789,10 @@ prueba("la cámara de venta encuadra con la cuenta de la prueba, dentro del pasi
   assert.match(toma, /ventaDeTipo\(fix\.type, fix\.w, fix\.d, fix\.h, fix\.gondolaType\)/);
   assert.match(toma, /focoDeLaPrueba\(venta, fix\.h, enCara \? \(como\?\.donde \?\? "todas"\) : "todas", enCara\?\.empaque \?\? null\)/,
     "la cámara calcula sus alturas por su cuenta");
-  // «De cerca» con teleobjetivo, y el campo visual vuelve a 50° fuera de ella.
-  assert.match(toma, /const fov = toma === "cerca" \? FOV_DE_CERCA : FOV_DEL_EDITOR;/);
+  // «De cerca» con teleobjetivo, y el campo visual vuelve a 50° fuera de ella
+  // (salvo «De frente» de venta, que lo abre si la cara no entra: ver «el
+  // campo visual abierto…»).
+  assert.match(toma, /const fov = toma === "cerca" \? FOV_DE_CERCA\s*: enVenta && toma === "frente"/);
   assert.match(toma, /if \(pedidoDeToma\?\.toma !== "cerca"\) ponerCampoVisual\(FOV_DEL_EDITOR\);/,
     "el teleobjetivo de «De cerca» se queda puesto");
   // «Encuadrar esta cara» sin vista guardada es la toma de frente, dentro del
@@ -4014,7 +4045,9 @@ prueba("el copete de un envase angosto y blanco: color de marca y abanico que ll
   // receta del vaso eran tres cajas chicas sobre un degradé BLANCO (el
   // dominante de la foto): una pizarra con stickers. Ahora el fondo sale del
   // color de la marca y van cinco en abanico más la franja del logo.
-  const AVENA = { lienzo: { width: 90, height: 300 }, recorte: { colorDominante: "#d5dbd7" },
+  // La foto de la demo mide 330 × 1100: con la banda del medio a escala, la
+  // franja del logo cabría sin ampliar (es la foto, no el tamaño, lo que la saca).
+  const AVENA = { lienzo: { width: 330, height: 1100 }, recorte: { colorDominante: "#d5dbd7" },
     franja: () => ({ desde: 0.34, hasta: 0.66, x0: 0, x1: 1 }), colorDeMarca: () => "#292b61" };
   const W = 1024, H = 358;   // la punta de 0,9 m: 0,984 × 0,344 m
   const paradas = [];
@@ -4051,6 +4084,10 @@ prueba("el copete de un envase angosto y blanco: color de marca y abanico que ll
   const chica = pincelFalso();
   PO.dibujarCartel(chica.g, W, H, { ...BOTELLA, lienzo: { width: 30, height: 100 } }, true);
   assert.equal(chica.r.recortes.length, 0, "con una foto chica igual amplía la franja del logo");
+  // Con una foto chica, el abanico tampoco se amplía más de 1,5 veces.
+  const fotoChica = pincelFalso();
+  PO.dibujarCartel(fotoChica.g, W, H, { ...AVENA, lienzo: { width: 45, height: 150 } }, false);
+  for (const a of fotoChica.r.enteras) assert.ok(a[4] <= 150 * PO.AMPLIACION_MAXIMA + 1e-6, `una unidad de una foto chica ampliada ${(a[4] / 150).toFixed(2)} veces`);
   // El héroe, al 85–90 % del alto.
   const alto = Math.max(...r.enteras.map((a) => a[4]));
   assert.ok(alto >= 0.85 * H && alto <= 0.9 * H + 1e-6, `el héroe ocupa ${((alto / H) * 100).toFixed(0)} % del alto`);
@@ -4108,6 +4145,13 @@ prueba("el cabezote de la nevera es un aviso: un recorte grande de la etiqueta, 
   // La franja de la ETIQUETA y recortada a su silueta (sin el PET).
   assert.equal(sy, Math.round(0.37 * 300)); assert.equal(sh, Math.round(0.23 * 300));
   assert.equal(sx, 10); assert.equal(sw, 60);
+  // Con una foto chica, el recorte del cabezote no pasa de 1,5 veces la foto.
+  {
+    const chica = pincelFalso();
+    PO.dibujarCartel(chica.g, W, H, { ...FUENTE, lienzo: { width: 27, height: 100 } }, true);
+    const [, , , , shc, , , , dhc] = chica.r.recortes[0];
+    assert.ok(dhc / shc <= PO.AMPLIACION_MAXIMA + 1e-6, `el recorte de una foto chica ampliado ${(dhc / shc).toFixed(2)} veces`);
+  }
   // Sin franja (un vaso): la del medio, como antes.
   const sinFranja = pincelFalso();
   PO.dibujarCartel(sinFranja.g, W, H, FUENTE, false);
@@ -4836,7 +4880,9 @@ prueba("la persona de venta sale de la toma (una sola cuenta); el editor conserv
   assert.match(toma, /\}, \[facePaintById, comoSePrueba, placedFixtures, selectedId, presentationMode, privadoPara, limites, size, aplicarVista\]\);/,
     "la toma no se entera de que es la lámina");
   // La punta lleva su copete al foco, con la MISMA cuenta que el mueble.
-  assert.match(toma, /fix\.type === "punta"\s*\? \{ \.\.\.foco, techoDeCara: techoDeCara\(fix\.h\), altoDeCopete: COPETE\.alto \} : foco;/);
+  assert.match(toma, /fix\.type === "punta" \? \{ \.\.\.foco, techoDeCara: techoDeCara\(fix\.h\), altoDeCopete: COPETE\.alto \} : foco\),/);
+  // Con el campo visual abierto, «De frente» desde el fondo del pasillo.
+  assert.match(toma, /\.\.\.\(fov > FOV_DEL_EDITOR && toma === "frente" \? \{ alFondo: true \} : \{\}\),/);
   assert.equal((editorCodigo.match(/Math\.max\(0\.4, h - COPETE\.alto\)/g) ?? []).length, 0, "el cuerpo de la punta vuelve a calcularse aparte de techoDeCara");
   for (const f of ["PuntaReal.tsx", "ProductoEnPunta.tsx"]) {
     const t = sinComentarios(leer(join(muebles, f)));

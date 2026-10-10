@@ -777,7 +777,7 @@ prueba("la botella llena no tiene un hilo blanco ni flecos sobre la etiqueta (la
     if (y < 20) return [235, 110, 40, 255];                                              // tapa
     if (y < 34) return x % 5 < 2 ? [161, 144, 137, 255] : [145, 116, 101, 255];          // anillo del cuello (PET teñido)
     if (y >= 190 && y < 200) return x % 4 < 2 ? [177, 139, 141, 255] : [140, 38, 40, 255]; // flecos sobre la etiqueta
-    if (y >= 200 && y < 203) return x % 10 < 6 ? [240, 236, 238, 255] : [225, 70, 140, 255]; // el canto claro de la etiqueta
+    if (y >= 200 && y < 203) return x % 20 < 9 ? [240, 236, 238, 255] : [225, 70, 140, 255]; // el canto claro de la etiqueta (45 %: fila de etiqueta)
     if (y >= 203 && y < 280) return x % 7 < 2 && y % 11 < 6 ? [248, 248, 248, 255] : [225, 70, 140, 255];
     return [140, 38, 40, 255];
   }) };
@@ -787,8 +787,10 @@ prueba("la botella llena no tiene un hilo blanco ni flecos sobre la etiqueta (la
   for (let y = 190; y < 200; y++) for (let x = 30; x < 90; x++) {
     assert.ok(lum(px(l, x, y)) < 120, `un fleco claro sobre la etiqueta en (${x}, ${y}): ${px(l, x, y)}`);
   }
-  // El canto claro de arriba de la etiqueta (60 % de la fila) toma el rosa de
-  // abajo; la letra blanca de más abajo sigue intacta.
+  // El canto claro de arriba de la etiqueta (45 % de la fila: es fila de
+  // ETIQUETA, más del 40 % es tinta) toma el rosa de abajo; la letra blanca de
+  // más abajo sigue intacta.
+  assert.ok(T.filasDeEtiqueta(T.erosionarYSangrar(b, 4, 10), T.liquidoDe(T.erosionarYSangrar(b, 4, 10)))[201], "la prueba del canto no es una fila de etiqueta: no prueba nada");
   for (let x = 30; x < 90; x++) assert.ok(lum(px(l, x, 201)) < 150, `el canto de la etiqueta sigue claro en x=${x}: ${px(l, x, 201)}`);
   for (let y = 210; y < 280; y++) for (let x = 40; x < 80; x++) {
     if (x % 7 < 2 && y % 11 < 6) assert.deepEqual(px(l, x, y), [248, 248, 248, 255], "se tiñó la letra de la etiqueta");

@@ -708,6 +708,9 @@ export interface FocoDeVenta {
    *  por la mitad. */
   techoDeCara?: number;
   altoDeCopete?: number;
+  /** «De frente» desde tan atrás como deja el pasillo (con el campo visual
+   *  abierto de `fovParaLaCara`): más cerca, la cara larga no entra. */
+  alFondo?: boolean;
 }
 
 /** Qué parte del alto del cuadro llenan las dos repisas de «De cerca» en un
@@ -843,7 +846,7 @@ export function vistaDeVenta(
     (altoFoco * 1.12) / (2 * Math.tan(mitadV)),
     (medioAncho * 2 * 1.1) / (2 * Math.tan(mitadH)),
   );
-  const dist = Math.max(0.9, Math.min(ideal, libre));
+  const dist = Math.max(0.9, foco.alFondo ? libre : Math.min(ideal, libre));
   // Por entrepaño, casi perpendicular a lo elegido: desde 1,2 m un entrepaño
   // bajo se veía con 30° de picado y la bandeja vacía de arriba se llevaba
   // la atención. La cara entera, desde la altura de un comprador.
@@ -994,6 +997,41 @@ export function alcanceDeLaFigura(
 /** Un mueble a menos de esto de un canto de la cara es un VECINO PEGADO: la
  *  toma «Tres cuartos» no gira hacia él (`vistaDeVenta`). */
 export const VECINO_PEGADO = 1.0;
+
+/** El campo visual (vertical) más abierto que acepta «De frente» en la
+ *  pantalla de venta: unos 24 mm de una cámara de fotos, el de una toma de
+ *  pasillo. Más, y las cajas de los bordes se estiran. */
+export const FOV_MAXIMO_DE_FRENTE = 70;
+
+/**
+ * El campo visual de «De frente» para que la cara ENTERA entre a lo ancho
+ * (con un 10 % de aire) desde donde deja pararse el pasillo, o `base` si ya
+ * entra. Una góndola de 3,6 m frente a un pasillo de 2 m no entra con 50°:
+ * la lámina de Kellogg's cortaba el bloque de Müsli —el producto principal—
+ * y el de Zucaritas.
+ */
+export function fovParaLaCara(
+  mueble: { cx: number; cz: number; w: number; d: number; h: number; rotY?: number },
+  cara: "A" | "B",
+  obstaculos: Caja[],
+  limites: Caja,
+  aspecto = 16 / 9,
+  base = 50,
+): number {
+  // Con la toma de verdad (`vistaDeVenta`, la cara entera): la cámara mira un
+  // poco para abajo y las esquinas de arriba quedan más cerca que el centro,
+  // así que la cuenta plana con el pasillo dejaba la góndola justo en el borde.
+  // Las cuatro esquinas de la cara, dentro del 96 % del cuadro.
+  const n = normalDeCara(mueble.rotY ?? 0, cara), t = { x: -n.z, z: n.x };
+  const esquinas = [-1, 1].flatMap((lado) => [0, mueble.h].map((y) => ({
+    x: mueble.cx + (n.x * mueble.d) / 2 + t.x * lado * mueble.w / 2, y, z: mueble.cz + (n.z * mueble.d) / 2 + t.z * lado * mueble.w / 2,
+  })));
+  for (let fov = base; fov <= FOV_MAXIMO_DE_FRENTE; fov += 1) {
+    const v = vistaDeVenta(mueble, cara, "frente", { yBajo: 0, yAlto: mueble.h, alFondo: fov > base }, obstaculos, limites, fov, aspecto);
+    if (esquinas.every((e) => { const q = proyectar(v, fov, aspecto, e); return q.profundidad > 0 && Math.abs(q.x) <= 0.96; })) return fov;
+  }
+  return FOV_MAXIMO_DE_FRENTE;
+}
 
 /** Cuánto se corre «De frente» hacia el costado libre cuando hay un vecino
  *  pegado del otro. */

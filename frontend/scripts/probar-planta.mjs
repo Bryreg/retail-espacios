@@ -33,7 +33,7 @@ const {
   proyectar, rayoDeVista, choqueEnElLocal, sombraDeHuellas, sombraEn, SOMBRA_AL_PIE,
   personaYTomaDeVenta, esquinasDeLaFigura, FIGURA_DE_ESCALA, SEPARACIONES_DE_LA_FIGURA,
   LLENADO_DE_PAR, FRANJA_DEL_HUD, libreAlCostado, VECINO_PEGADO, alcanceDeLaFigura, ANGOSTO_ENTRE_MEDIO, AIRE_DE_LA_FIGURA,
-  corridaPorVecino, DESCENTRADO_POR_VECINO,
+  corridaPorVecino, DESCENTRADO_POR_VECINO, fovParaLaCara, FOV_MAXIMO_DE_FRENTE,
 } = await import(pathToFileURL(salida).href);
 
 // Lo que la cámara de venta toma de los muebles (la cuenta de la prueba y el
@@ -710,6 +710,30 @@ prueba("«De frente» se corre hacia el costado libre cuando hay un vecino pegad
   assert.ok(centrada(vistaDeVenta(comoMueble(nev), "A", "frente", { yBajo: 0, yAlto: 1.8 }, otros("NEV-01"), LIMITES)), "el editor se corrió");
   // La de venta, sí.
   assert.ok(!centrada(tomaConPersona("NEV-01", "frente").vista), "la toma de venta de NEV-01 no se corrió");
+});
+
+prueba("«De frente» de una góndola larga en un pasillo angosto abre el campo visual hasta que la cara entra", () => {
+  // GON-01 B (3,6 m) da a un pasillo de 2 m: con 50° la cámara no puede
+  // alejarse lo suficiente y la lámina de Kellogg's cortaba el bloque de Müsli.
+  const g = SEDE.find((x) => x.id === "GON-01");
+  const fov = fovParaLaCara(comoMueble(g), "B", otros("GON-01"), LIMITES);
+  assert.ok(fov > 50 && fov <= FOV_MAXIMO_DE_FRENTE, `fov ${fov.toFixed(1)}°`);
+  const v = vistaDeVenta(comoMueble(g), "B", "frente", { yBajo: 0, yAlto: g.h, alFondo: true }, otros("GON-01"), LIMITES, fov);
+  const n = normalDeCara(g.rotY, "B"), t = { x: -n.z, z: n.x };
+  for (const lado of [-1, 1]) for (const y of [0, g.h]) {
+    const q = proyectar(v, fov, 16 / 9, { x: g.x + n.x * g.d / 2 + t.x * lado * g.w / 2, y, z: g.z + n.z * g.d / 2 + t.z * lado * g.w / 2 });
+    assert.ok(Math.abs(q.x) <= 1 && Math.abs(q.y) <= 1, `una esquina de la cara queda afuera (${q.x.toFixed(2)}, ${q.y.toFixed(2)})`);
+  }
+  // Con 50° no entraba (si entrara, la prueba no probaría nada).
+  const v50 = vistaDeVenta(comoMueble(g), "B", "frente", { yBajo: 0, yAlto: g.h }, otros("GON-01"), LIMITES, 50);
+  const q50 = proyectar(v50, 50, 16 / 9, { x: g.x + n.x * g.d / 2 + t.x * g.w / 2, y: 0, z: g.z + n.z * g.d / 2 + t.z * g.w / 2 });
+  assert.ok(Math.abs(q50.x) > 1, "con 50° la góndola ya entraba");
+  // Un mueble que entra con 50° (la nevera, la punta) queda con 50°.
+  for (const id of ["NEV-01", "PUN-01"]) {
+    const f = SEDE.find((x) => x.id === id);
+    assert.equal(fovParaLaCara(comoMueble(f), "A", otros(id), LIMITES), 50, `${id} abrió el campo visual sin necesidad`);
+  }
+  assert.ok(FOV_MAXIMO_DE_FRENTE <= 75, "más de 75° estira las cajas de los bordes");
 });
 
 prueba("en «Tres cuartos» de la punta la góndola libre de la que es cabecera no se come el cuadro", () => {
