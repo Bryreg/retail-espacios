@@ -1022,12 +1022,13 @@ const clienteDelWorker = await (async () => {
     let responder = "ok";
     globalThis.OffscreenCanvas = class {};
     globalThis.Worker = class {
-      constructor(url, opciones) { r.creados++; r.url = String(url); r.opciones.push(opciones); }
+      constructor(url, opciones) { r.creados++; r.url = String(url); r.opciones.push(opciones); r.instancia = this; }
       postMessage(m) {
         r.mensajes.push(m);
+        if (responder === "nunca") return;  // el módulo no arrancó: no contesta
         queueMicrotask(() => this.onmessage({ data: responder === "ok" ? { id: m.id, ok: true, foto: esperada } : { id: m.id, ok: false, error: "x" } }));
       }
-      terminate() {}
+      terminate() { r.terminado = true; }
     };
     const PF = await cargarPF();
     r.alImportar = r.creados;
@@ -1040,6 +1041,18 @@ const clienteDelWorker = await (async () => {
     globalThis.createImageBitmap = async () => ({ width: imgVaso.ancho, height: imgVaso.alto, close() {} });
     globalThis.document = { createElement: () => ({ getContext: () => ({ drawImage() {}, getImageData: () => ({ data: imgVaso.rgba }) }) }) };
     r.caida = await PF.prepararFotoDe(blob, "auto", pistaVaso);
+    // El MÓDULO del worker no arranca (`onerror`, p. ej. una CSP sin
+    // worker-src): lo pendiente se contesta por el camino troceado, y a ese
+    // worker muerto no se le vuelve a mandar nada —si no, cada foto esperaría
+    // para siempre una respuesta que no llega—.
+    responder = "nunca";
+    const pendiente = PF.prepararFotoDe(blob, "auto", pistaVaso);
+    await Promise.resolve();
+    r.instancia.onerror?.({});
+    r.pendiente = await pendiente;
+    const mensajesAntes = r.mensajes.length;
+    r.despues = await PF.prepararFotoDe(blob, "auto", pistaVaso);
+    r.mensajesAlMuerto = r.mensajes.length - mensajesAntes;
     // Sin Worker (un navegador que no puede): directo al troceado, sin crear nada.
     globalThis.Worker = undefined;
     const PF2 = await cargarPF();
@@ -1067,6 +1080,12 @@ prueba("el worker se crea en el primer uso, uno solo, de módulo; si falla, el c
   // Caído al troceado: los mismos bytes que el worker.
   mismosBytes(r.caida.recorte, esperada.recorte, "recorte del camino troceado");
   for (const k of IMAGENES) if (esperada.variantes[k]) mismosBytes(r.caida.variantes[k], esperada.variantes[k], `${k} del camino troceado`);
+  // El módulo que no arranca: lo pendiente sale por el troceado, el worker se
+  // termina y lo que viene ya no se le manda.
+  mismosBytes(r.pendiente.recorte, esperada.recorte, "lo pendiente cuando el worker no arranca");
+  assert.equal(r.terminado, true, "el worker que no arrancó queda vivo");
+  assert.equal(r.mensajesAlMuerto, 0, "después del error se le sigue mandando al worker que no arrancó");
+  mismosBytes(r.despues.recorte, esperada.recorte, "después del error, por el camino troceado");
   assert.equal(r.creadosSinWorker, 0);
   mismosBytes(r.sinWorker.recorte, esperada.recorte, "recorte sin Worker");
 });

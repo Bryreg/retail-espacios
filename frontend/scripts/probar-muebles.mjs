@@ -3105,6 +3105,11 @@ prueba("la toma re-encuadra las rejillas que llegan tarde, sin pisar un giro a m
   // Desde Presentar a pantalla completa (tanda 3) es UN efecto con la clave
   // del pedido, el tamaño y las filas: ver «la toma sigue al tamaño».
   const efecto = cuerpoDe("const claveDeLaToma = pedidoDeToma", "function handleSceneDoubleClick");
+  // El tamaño: la clave lo lleva y un cambio de tamaño re-encuadra (si la
+  // cámara sigue donde la dejó la toma).
+  assert.match(editorCodigo, /const tamanoDelLienzo = `\$\{size\.width\}x\$\{size\.height\}`;/, "la toma no sabe el tamaño del lienzo");
+  assert.match(efecto, /\? `\$\{pedidoDeToma\.n\}\|\$\{tamanoDelLienzo\}\|\$\{filasDeLaToma\(pedidoDeToma\)\}`/, "la clave de la toma no lleva el tamaño ni las filas");
+  assert.match(efecto, /const otroTamano = hecha\.tamano !== tamanoDelLienzo;/, "la toma no sigue al tamaño del lienzo (pantalla completa, ventana)");
   assert.match(efecto, /const otrasFilas = !sinArte && filas !== hecha\.filas;/, "re-encuadra sin que cambien las filas (o con el «Hoy» de la lámina)");
   assert.match(efecto, /if \(!otroTamano && !otrasFilas\) return;/, "re-encuadra sin que cambie nada");
   assert.match(efecto, /camera\.position\.distanceTo\(hecha\.pos\) < 1e-3/, "re-encuadra aunque la cámara se haya movido a mano");
