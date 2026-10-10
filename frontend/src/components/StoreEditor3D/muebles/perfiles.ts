@@ -724,6 +724,18 @@ export const BANDA_DE_ETIQUETA = {
 } as const;
 
 /**
+ * La luz de la caja del relleno de venta por color de vértice: un degradé
+ * vertical leve, un 8 % más oscura abajo que arriba, como un envase de verdad
+ * bajo el entrepaño (la tapa recibe la luz, la base no).
+ *
+ * Antes la caja llevaba la banda de `BANDA_DE_ETIQUETA` de corte NETO (1,3 en
+ * el medio contra 0,86): con la etiqueta PINTADA encima (`rellenoDeVenta`) el
+ * corte cruzaba el «logo» y se leía como una imagen doble, y la franja clara
+ * como una capa semitransparente. La etiqueta ya la pone la textura.
+ */
+export const DEGRADE_DE_CAJA = { abajo: 0.96, arriba: 1.04 } as const;
+
+/**
  * La caja del relleno con la etiqueta en las dos caras grandes (±Z: la que
  * mira al pasillo en la cara A y en la B), de corte NETO: cada cara en tres
  * franjas con sus propios vértices, así el color no se interpola entre la
@@ -732,31 +744,36 @@ export const BANDA_DE_ETIQUETA = {
  * tiene 12): es el envase más repetido de la tienda.
  */
 function cajaConEtiqueta(ancho: number, alto: number, fondo: number): THREE.BufferGeometry {
-  const { clara, borde, caja: [b0, b1] } = BANDA_DE_ETIQUETA;
+  const { caja: [b0, b1] } = BANDA_DE_ETIQUETA;
+  const { abajo, arriba } = DEGRADE_DE_CAJA;
+  /** La luz a una altura (en metros, desde −alto/2). */
+  const luz = (yy: number) => abajo + (arriba - abajo) * Math.min(1, Math.max(0, yy / alto + 0.5));
   const x = ancho / 2, y = alto / 2, z = fondo / 2;
   const pos: number[] = [], nor: number[] = [], col: number[] = [], uv: number[] = [];
   /** Un cuadrilátero (a, b, c, d en sentido antihorario visto desde afuera).
    *  La `uv` de la etiqueta pintada del relleno de venta (`rellenoDeVenta`):
    *  en las dos caras grandes, de izquierda a derecha vistas desde afuera y
    *  de abajo arriba; en los costados, la tapa y la base, lo liso. */
-  const quad = (a: number[], b: number[], c: number[], d: number[], n: number[], k: number) => {
+  const quad = (a: number[], b: number[], c: number[], d: number[], n: number[]) => {
     for (const p of [a, b, c, a, c, d]) {
+      const k = luz(p[1]);
       pos.push(p[0], p[1], p[2]); nor.push(n[0], n[1], n[2]); col.push(k, k, k);
       if (Math.abs(n[2]) > 0.5) uv.push(0.5 + (n[2] > 0 ? p[0] : -p[0]) / ancho, uvDeEtiqueta(0.5 + p[1] / alto));
       else uv.push(0.5, UV_LISO);
     }
   };
+  // Las caras grandes siguen en tres franjas (20 triángulos, como antes): el
+  // degradé es lineal y sale igual, y la geometría no cambia de costo.
   const alturas = [-y, -y + alto * b0, -y + alto * b1, y];
-  const tonos = [borde, clara, borde];
   for (let i = 0; i < 3; i++) {
     const y0 = alturas[i], y1 = alturas[i + 1];
-    quad([-x, y0, z], [x, y0, z], [x, y1, z], [-x, y1, z], [0, 0, 1], tonos[i]);      // +Z
-    quad([x, y0, -z], [-x, y0, -z], [-x, y1, -z], [x, y1, -z], [0, 0, -1], tonos[i]); // −Z
+    quad([-x, y0, z], [x, y0, z], [x, y1, z], [-x, y1, z], [0, 0, 1]);      // +Z
+    quad([x, y0, -z], [-x, y0, -z], [-x, y1, -z], [x, y1, -z], [0, 0, -1]); // −Z
   }
-  quad([x, -y, z], [x, -y, -z], [x, y, -z], [x, y, z], [1, 0, 0], borde);             // +X
-  quad([-x, -y, -z], [-x, -y, z], [-x, y, z], [-x, y, -z], [-1, 0, 0], borde);        // −X
-  quad([-x, y, z], [x, y, z], [x, y, -z], [-x, y, -z], [0, 1, 0], borde);             // tapa
-  quad([-x, -y, -z], [x, -y, -z], [x, -y, z], [-x, -y, z], [0, -1, 0], borde);        // base
+  quad([x, -y, z], [x, -y, -z], [x, y, -z], [x, y, z], [1, 0, 0]);             // +X
+  quad([-x, -y, -z], [-x, -y, z], [-x, y, z], [-x, y, -z], [-1, 0, 0]);        // −X
+  quad([-x, y, z], [x, y, z], [x, y, -z], [-x, y, -z], [0, 1, 0]);             // tapa
+  quad([-x, -y, -z], [x, -y, -z], [x, -y, z], [-x, -y, z], [0, -1, 0]);        // base
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
@@ -842,6 +859,26 @@ function conBandaDeEtiqueta(
  *  cuerpo, sobre el pie y bajo la etiqueta, donde se ve el líquido. */
 export const V_DE_LA_BASE = 0.18;
 
+/** La luz de la base de una botella por color de vértice: el disco un 15 %
+ *  más oscuro (el centro del pie, hundido, todavía más) con cinco lóbulos que
+ *  alternan ±5 %, y las filas del pie un poco por debajo del cuerpo. */
+export const BASE_DE_BOTELLA = { centro: 0.78, disco: 0.85, lobulo: 0.05, lobulos: 5, pie: 0.94 } as const;
+
+/** El tono de un vértice del borde del disco de la base, por su ángulo. */
+export function lobuloDeLaBase(angulo: number): number {
+  const { disco, lobulo, lobulos } = BASE_DE_BOTELLA;
+  return disco + lobulo * Math.cos(lobulos * angulo);
+}
+
+/** Color de vértice en 1 (neutro) para una geometría que va con un material
+ *  de `vertexColors` y no necesita tono propio. */
+function colorNeutro(g: THREE.BufferGeometry): THREE.BufferGeometry {
+  if (!g.getAttribute("color")) {
+    g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(g.getAttribute("position").count * 3).fill(1), 3));
+  }
+  return g;
+}
+
 /** Milímetros enteros: la firma del caché no puede depender del último bit. */
 const mm = (v: number) => Math.round(v * 1000);
 
@@ -902,6 +939,11 @@ function uvPlanar(g: THREE.BufferGeometry, ancho: number, alto: number): void {
  *  vértice): 0 en el medio del frente, esto en el canto. */
 export const LOMO_DE_BOLSA = 0.24;
 
+/** El sello de arriba de la bolsa, por color de vértice: la banda un 15 % más
+ *  clara (`claro`) y tres rayas finas (`raya`) en `rayas` (fracción del alto
+ *  del sello), cada una de ±`ancho`. */
+export const SELLO_DE_BOLSA = { claro: 1.15, raya: 0.9, rayas: [0.28, 0.52, 0.76], ancho: 0.04 } as const;
+
 function almohada(ancho: number, alto: number, fondo: number, nivel: "alto" | "bajo" = "alto"): THREE.BufferGeometry {
   const NX = nivel === "alto" ? 20 : 10, NY = nivel === "alto" ? 20 : 10;
   const medio = fondo / 2;
@@ -922,8 +964,21 @@ function almohada(ancho: number, alto: number, fondo: number, nivel: "alto" | "b
   // alejarse del pasillo; el frente, en el medio, queda como la foto.
   const lomo = (s: number) => 1 - LOMO_DE_BOLSA * (1 - (A(s) - e) / Math.max(1e-6, 1 - e));
   // Filas: parejas hasta el sello, una casi encima (el borde nítido del color
-  // del sello) y el canto de arriba.
-  const ts = [...Array.from({ length: NY + 1 }, (_, j) => (j / NY) * alSello), Math.min(1, alSello + 0.001), 1];
+  // del sello) y, adentro del sello, las rayas del termosellado
+  // (`SELLO_DE_BOLSA`): la banda plana de 12 mm un 15 % más clara con tres
+  // rayas finas más oscuras. Con el sello en una sola banda lisa, arriba se
+  // veía un filo blanco de 1-2 px y no el sello de una bolsa de arroz. Lo de
+  // atrás («bajo») lleva la banda sin rayas.
+  const rayas = nivel === "alto" ? SELLO_DE_BOLSA.rayas : [];
+  const enElSello: { t: number; k: number }[] = [{ t: 0.001, k: SELLO_DE_BOLSA.claro }];
+  for (const r of rayas) {
+    enElSello.push({ t: r - SELLO_DE_BOLSA.ancho, k: SELLO_DE_BOLSA.claro }, { t: r, k: SELLO_DE_BOLSA.raya },
+      { t: r + SELLO_DE_BOLSA.ancho, k: SELLO_DE_BOLSA.claro });
+  }
+  enElSello.push({ t: 1, k: SELLO_DE_BOLSA.claro });
+  const ts = [...Array.from({ length: NY + 1 }, (_, j) => (j / NY) * alSello),
+    ...enElSello.map(({ t }) => Math.min(1, alSello + (1 - alSello) * t))];
+  const tonoDelSello = (j: number) => enElSello[j - (NY + 1)].k;
   const enSello = (j: number) => j >= NY + 1;
   const FILA = ts.length;
   const pos: number[] = [], uv: number[] = [], color: number[] = [], idx: number[] = [];
@@ -931,21 +986,44 @@ function almohada(ancho: number, alto: number, fondo: number, nivel: "alto" | "b
     pos.push(x, y, z); uv.push(u, v); color.push(c, c, c);
     return pos.length / 3 - 1;
   };
+  // El sello es PLANO: no necesita las columnas del cuerpo. Con las rayas
+  // (nueve filas) y las 20 columnas la bolsa del frente pasaba de 2.600
+  // triángulos; con 4 columnas el sello cuesta casi lo mismo que antes. El
+  // cuerpo y el sello se cosen con un abanico (`NX / NXS` columnas del cuerpo
+  // por cada una del sello), sobre la misma recta: sin rendijas.
+  const NXS = nivel === "alto" && NX % 4 === 0 ? 4 : NX;
   // Las dos caras: [cara][fila][columna] → índice de vértice.
   const caras = ([-1, 1] as const).map((lado) => {
     const k = lado < 0 ? 1 : 0.9;
-    return ts.map((t, j) => Array.from({ length: NX + 1 }, (_, i) => {
-      const s = (i / NX) * 2 - 1;
-      const x = (s * ancho) / 2;
-      return punto(x, (t - 0.5) * alto, lado * k * espesor(s, t), 0.5 - x / ancho, t, enSello(j) ? 1.08 : lomo(s));
-    }));
+    return ts.map((t, j) => {
+      const n = enSello(j) ? NXS : NX;
+      return Array.from({ length: n + 1 }, (_, i) => {
+        const s = (i / n) * 2 - 1;
+        const x = (s * ancho) / 2;
+        return punto(x, (t - 0.5) * alto, lado * k * espesor(s, t), 0.5 - x / ancho, t, enSello(j) ? tonoDelSello(j) : lomo(s));
+      });
+    });
   });
   const [frente, dorso] = caras;
   for (let j = 0; j < FILA - 1; j++) {
-    for (let i = 0; i < NX; i++) {
-      // El frente mira a −Z y el dorso a +Z: el orden de los vértices cambia.
-      idx.push(frente[j][i], frente[j + 1][i], frente[j][i + 1], frente[j][i + 1], frente[j + 1][i], frente[j + 1][i + 1]);
-      idx.push(dorso[j][i], dorso[j][i + 1], dorso[j + 1][i], dorso[j][i + 1], dorso[j + 1][i + 1], dorso[j + 1][i]);
+    const a = frente[j].length - 1, b = frente[j + 1].length - 1;
+    if (a === b) {
+      for (let i = 0; i < a; i++) {
+        // El frente mira a −Z y el dorso a +Z: el orden de los vértices cambia.
+        idx.push(frente[j][i], frente[j + 1][i], frente[j][i + 1], frente[j][i + 1], frente[j + 1][i], frente[j + 1][i + 1]);
+        idx.push(dorso[j][i], dorso[j][i + 1], dorso[j + 1][i], dorso[j][i + 1], dorso[j + 1][i + 1], dorso[j + 1][i]);
+      }
+      continue;
+    }
+    // La costura cuerpo → sello: cada columna del sello toma `a / b` del cuerpo.
+    const r = a / b;
+    for (let k = 0; k < b; k++) {
+      for (let i = k * r; i < (k + 1) * r; i++) {
+        idx.push(frente[j][i], frente[j + 1][k], frente[j][i + 1]);
+        idx.push(dorso[j][i], dorso[j][i + 1], dorso[j + 1][k]);
+      }
+      idx.push(frente[j][(k + 1) * r], frente[j + 1][k], frente[j + 1][k + 1]);
+      idx.push(dorso[j][(k + 1) * r], dorso[j + 1][k + 1], dorso[j + 1][k]);
     }
   }
   // Una tira entre las dos caras, con vértices propios y la uv un poco adentro.
@@ -954,8 +1032,9 @@ function almohada(ancho: number, alto: number, fondo: number, nivel: "alto" | "b
   );
   const coser = (a0: number, a1: number, b0: number, b1: number) => idx.push(a0, a1, b0, a1, b1, b0);
   // Los costados: +X (s = 1, u = 0) mira a +X; −X al revés.
+  const ultima = (fila: number[]) => fila[fila.length - 1];
   for (let j = 0; j < FILA - 1; j++) {
-    const der = [frente[j][NX], frente[j + 1][NX], dorso[j][NX], dorso[j + 1][NX]].map((v) => copia(v, 0.03));
+    const der = [ultima(frente[j]), ultima(frente[j + 1]), ultima(dorso[j]), ultima(dorso[j + 1])].map((v) => copia(v, 0.03));
     coser(der[0], der[1], der[2], der[3]);
     const izq = [frente[j][0], frente[j + 1][0], dorso[j][0], dorso[j + 1][0]].map((v) => copia(v, 0.97));
     coser(izq[1], izq[0], izq[3], izq[2]);
@@ -964,7 +1043,9 @@ function almohada(ancho: number, alto: number, fondo: number, nivel: "alto" | "b
   for (let i = 0; i < NX; i++) {
     const ab = [frente[0][i], frente[0][i + 1], dorso[0][i], dorso[0][i + 1]].map((v) => copia(v, undefined, 0.03));
     coser(ab[0], ab[1], ab[2], ab[3]);
-    const f = FILA - 1;
+  }
+  const f = FILA - 1;
+  for (let i = 0; i < frente[f].length - 1; i++) {
     const ar = [frente[f][i], frente[f][i + 1], dorso[f][i], dorso[f][i + 1]].map((v) => copia(v, undefined, 0.985));
     coser(ar[1], ar[0], ar[3], ar[2]);
   }
@@ -1159,7 +1240,10 @@ export function geometriaDeEtiqueta(
       return g;
     }
 
-    if (envase === "revolucion" && !botella) return vasoConTapa(ancho, alto, perfil, franjaDeTapa, nivel);
+    // El vaso y la lata, con color de vértice neutro: los materiales del
+    // envase torneado llevan `vertexColors` (por la base de la botella, abajo),
+    // y sin el atributo saldrían negros.
+    if (envase === "revolucion" && !botella) return colorNeutro(vasoConTapa(ancho, alto, perfil, franjaDeTapa, nivel));
 
     if (envase === "revolucion") {
       const { filas: FILAS, lados: LADOS } = DETALLE.botella[nivel];
@@ -1208,16 +1292,32 @@ export function geometriaDeEtiqueta(
       const pos = g.attributes.position as THREE.BufferAttribute;
       const uv = g.attributes.uv as THREE.BufferAttribute;
       const rArriba = radio(1), rAbajo = radio(0);
+      const color = new Float32Array(pos.count * 3).fill(1);
       for (let i = 0; i < pos.count; i++) {
         const y = pos.getY(i), r = Math.hypot(pos.getX(i), pos.getZ(i));
+        const f = (y + alto / 2) / alto;
         if (Math.abs(y - alto / 2) < 1e-6 && r < rArriba * 0.99) uv.setXY(i, 0.5, 0.985);
-        else if (Math.abs(y + alto / 2) < 1e-6 && r < rAbajo * 0.99) uv.setXY(i, 0.5, V_DE_LA_BASE);
-        // El anillo de afuera de la base (el canto del pie) también sube al
-        // cuerpo: con la `v` de la foto (0) muestreaba el borde de abajo, fondo
-        // quitado, y acostada era una cuña blanca en el disco de la base.
-        else if (Math.abs(y + alto / 2) < 1e-6) uv.setXY(i, uv.getX(i), V_DE_LA_BASE);
+        else if (Math.abs(y + alto / 2) < 1e-6 && r < rAbajo * 0.99) {
+          uv.setXY(i, 0.5, V_DE_LA_BASE);
+          // El disco de la base: un 15 % más oscuro y con los CINCO lóbulos
+          // del pie petaloide de una PET, por color de vértice (sin textura
+          // nueva). Liso, acostada la base que mira al pasillo era un plato
+          // de color con canto, «geometría rota».
+          const k = r < 1e-6 ? BASE_DE_BOTELLA.centro : lobuloDeLaBase(Math.atan2(pos.getZ(i), pos.getX(i)));
+          color[i * 3] = color[i * 3 + 1] = color[i * 3 + 2] = k;
+        } else if (botella && f < PIE + 1e-6) {
+          // Todas las filas del PIE redondeado (no sólo el anillo del piso)
+          // suben al cuerpo, con la `u` del mismo ángulo: con la proyección
+          // plana muestreaban el borde de abajo de la foto —el fondo quitado
+          // entre los lóbulos— y en la costura frente/espalda quedaba una cuña
+          // rosada y blanca pegada al disco.
+          uv.setXY(i, uv.getX(i), V_DE_LA_BASE);
+          const k = BASE_DE_BOTELLA.pie;
+          color[i * 3] = color[i * 3 + 1] = color[i * 3 + 2] = k;
+        } else if (Math.abs(y + alto / 2) < 1e-6) uv.setXY(i, uv.getX(i), V_DE_LA_BASE);
       }
       uv.needsUpdate = true;
+      g.setAttribute("color", new THREE.BufferAttribute(color, 3));
       return g;
     }
 

@@ -5,7 +5,9 @@ import type { FilasDeProducto, Vano } from "./medidas";
 import type { FormaDeEmpaque } from "./producto";
 import { geometriaDeEmpaque } from "./perfiles";
 import { claveDeCubiertas, rellenoPorRubro } from "./frentes";
-import { CLAVE_DE_RELLENO, colorConDiseno, coloresDelRelleno, parcheDeRellenoDeVenta, texturaDeEtiquetaDeRelleno } from "./rellenoDeVenta";
+import {
+  CLAVE_DE_RELLENO, colorConDiseno, coloresDelRelleno, EXPOSICION_DEL_RELLENO_VECINO, parcheDeRellenoDeVenta, texturaDeEtiquetaDeRelleno,
+} from "./rellenoDeVenta";
 import type { Cubiertas, SlotDeProducto } from "./frentes";
 import { BRILLO, conLuzDeVenta, K_ENTORNO_MUEBLE, useLuzDeVenta } from "./luzDeVenta";
 import { tramosConRelleno } from "./habladores";
@@ -194,8 +196,9 @@ function InstanciasDeEmpaque({ pieza, semilla }: { pieza: Pieza; semilla: string
   }, [pieza.color, luz]);
   // Cada entrada y salida de Presentar rehace el material: el viejo se suelta.
   useEffect(() => () => material.dispose(), [material]);
-  // En un vecino del mueble que se muestra, con menos luz.
-  useAtenuacion([material]);
+  // En un vecino del mueble que se muestra, con menos luz (un poco menos
+  // apagado que su mueble: ver `EXPOSICION_DEL_RELLENO_VECINO`).
+  useAtenuacion([material], EXPOSICION_DEL_RELLENO_VECINO);
 
   return (
     <instancedMesh

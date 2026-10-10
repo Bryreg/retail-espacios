@@ -321,11 +321,12 @@ function Unidades({ unidades, geometria, material, invalidate }: {
     const q = new THREE.Quaternion();
     const eje = new THREE.Vector3(0, 1, 0);
     const p = new THREE.Vector3();
-    const uno = new THREE.Vector3(1, 1, 1);
+    const escala = new THREE.Vector3(1, 1, 1);
     const color = new THREE.Color();
     unidades.forEach((u, i) => {
       q.setFromAxisAngle(eje, u.giroY);
-      m.setMatrixAt(i, matriz.compose(p.set(u.x, u.y, u.z), q, uno));
+      // La bolsa de atrás, asentada (`escalaY`): más baja, con la base donde iba.
+      m.setMatrixAt(i, matriz.compose(p.set(u.x, u.y, u.z), q, escala.set(1, u.escalaY ?? 1, 1)));
       m.setColorAt(i, color.setScalar(u.tono));
     });
     m.instanceMatrix.needsUpdate = true;

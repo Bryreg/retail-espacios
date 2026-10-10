@@ -1109,7 +1109,7 @@ function aMano(recorte, envase, transparente) {
       franja: T.franjaDeEtiqueta(recorte, T.liquidoDe(recorte)) };
   }
   if (envase === "revolucion") return { borde, opaca: T.aplanar(borde), tapa: T.tapaDeFoto(borde), espalda: T.espaldaDeEtiqueta(borde) };
-  if (envase === "almohada") return { borde, bolsa: T.tenirCantos(borde, recorte.colorDominante) };
+  if (envase === "almohada") return { borde, bolsa: T.tenirCantos(borde, recorte.colorDominante, T.CANTO_DE_BOLSA.frac, T.CANTO_DE_BOLSA.k, T.CANTO_DE_BOLSA.curva) };
   return { borde };
 }
 const IMAGENES = ["borde", "caja", "opaca", "espalda", "bolsa", "llena", "botella", "espaldaLlena"];

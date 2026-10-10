@@ -769,7 +769,11 @@ export function materialImpreso(
 ): THREE.MeshStandardMaterial {
   return materialConLuz("caja", entorno, {
     map, emissive: new THREE.Color(1, 1, 1), emissiveMap: map,
-    ...(retroiluminado ? { emissiveIntensity: EMISION_RETROILUMINADA * K_EMISION } : {}),
+    // Retroiluminado, sin el tono de la escena: con el tono neutro el blanco
+    // de la marca no pasaba del forro de la nevera (217 contra 219-231) y el
+    // aviso no se leía con luz propia. Sin tono, lo que pasa de 1 satura a
+    // blanco, como una chapa con la luz detrás.
+    ...(retroiluminado ? { emissiveIntensity: EMISION_RETROILUMINADA * K_EMISION, toneMapped: false } : {}),
   });
 }
 
@@ -818,7 +822,9 @@ export function materialDeEtiqueta(
     emissiveMap: map,
     ...(conAlfa ? { alphaTest: 0.5, alphaToCoverage: true, side: THREE.DoubleSide } : {}),
     // La bolsa: el sello un 8 % más claro, por color de vértice (`almohada`).
-    ...(envase === "almohada" ? { vertexColors: true } : {}),
+    // El envase torneado: la base de la botella, más oscura y con los cinco
+    // lóbulos del pie (`BASE_DE_BOTELLA`); el vaso y la lata, en 1.
+    ...(envase === "almohada" || envase === "revolucion" ? { vertexColors: true } : {}),
   });
   const lista = [foto];
   if (envase === "caja") {
@@ -833,12 +839,12 @@ export function materialDeEtiqueta(
     // aparte: el índice 1 no se usa, pero existe).
     lista.push(transparente ? foto : materialConLuz(envase, entorno, {
       map: et.texturaDeTapa(), color: new THREE.Color(0.8, 0.8, 0.8),
-      metalness: 0.3, roughness: 0.45,
+      metalness: 0.3, roughness: 0.45, vertexColors: true,
     }));
     // 2 · La espalda, con la misma luz que la foto.
     const espalda = et.texturaDeEspalda(transparente);
     lista.push(materialConLuz(envase, entorno, {
-      map: espalda, emissive: new THREE.Color(1, 1, 1), emissiveMap: espalda,
+      map: espalda, emissive: new THREE.Color(1, 1, 1), emissiveMap: espalda, vertexColors: true,
     }));
   }
   e?.materiales.set(clave, lista);

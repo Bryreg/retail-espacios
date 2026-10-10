@@ -1039,7 +1039,11 @@ export function colorDeMarca(img: Imagen, dominante: string): string {
  * costado se veía la foto corrida, como una cartulina doblada. En tienda el
  * canto de una bolsa es la costura, del color del plástico: el dominante.
  */
-export function tenirCantos(img: Imagen, color: string, frac = 0.08, k = 0.75): Imagen {
+/** Cuánto del costado de la foto de una bolsa se lleva al color del plástico
+ *  (fracción del ancho por lado), hasta cuánto en el canto y con qué curva. */
+export const CANTO_DE_BOLSA = { frac: 0.1, k: 0.95, curva: 0.6 } as const;
+
+export function tenirCantos(img: Imagen, color: string, frac = 0.08, k = 0.75, curva = 1.2): Imagen {
   const { ancho: w, alto: h } = img;
   if (!/^#[0-9a-f]{6}$/i.test(color)) return { ...img, rgba: new Uint8ClampedArray(img.rgba) };
   const [R, G, B] = rgbDe(color);
@@ -1048,7 +1052,7 @@ export function tenirCantos(img: Imagen, color: string, frac = 0.08, k = 0.75): 
   for (let x = 0; x < w; x++) {
     const d = Math.min(x, w - 1 - x);
     if (d >= banda) continue;
-    const f = k * (1 - d / banda) ** 1.2;
+    const f = k * (1 - d / banda) ** curva;
     for (let y = 0; y < h; y++) {
       const i = (y * w + x) * 4;
       p[i] += (R - p[i]) * f; p[i + 1] += (G - p[i + 1]) * f; p[i + 2] += (B - p[i + 2]) * f;
@@ -1109,7 +1113,13 @@ export const RECETAS = {
   opaca: (borde: Imagen): Imagen => aplanar(borde),
   tapa: (borde: Imagen): TapaDeFoto => tapaDeFoto(borde),
   espalda: (borde: Imagen): Imagen => espaldaDeEtiqueta(borde),
-  bolsa: (borde: Imagen, colorDominante: string): Imagen => tenirCantos(borde, colorDominante),
+  // El 10 % de cada lado, casi del todo y con una curva más llena: girada
+  // 60°, el lomo de la bolsa es esa franja, y con el 8 % al 75 % se leía la
+  // foto estirada (rojo, blanco y verde corridos a lo alto del costado; la
+  // crítica de la demo, ronda 3). El costado de una bolsa es el plástico, del
+  // color dominante, oscurecido hacia el canto por el color de vértice
+  // (`LOMO_DE_BOLSA`).
+  bolsa: (borde: Imagen, colorDominante: string): Imagen => tenirCantos(borde, colorDominante, CANTO_DE_BOLSA.frac, CANTO_DE_BOLSA.k, CANTO_DE_BOLSA.curva),
   // La botella, con 4 px de borde encogido y no 2: de cerca quedaba un
   // serrucho blanco de 8–15 px en la base y el contorno de abajo.
   llena: (recorte: Imagen): BotellaLlena => llenarBotella(erosionarYSangrar(recorte, 4, 10)),

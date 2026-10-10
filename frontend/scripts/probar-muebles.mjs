@@ -2402,10 +2402,12 @@ prueba("ningún envase sale negro: si su material lleva color de vértice, la ge
   // atributo que falta vale (0,0,0) en WebGL y three r184 lo multiplica por el
   // color y por la emisión: la bolsa ACOSTADA salía negra entera.
   const etiquetaCodigo = sinComentarios(leer(join(muebles, "etiqueta.ts")));
-  assert.match(etiquetaCodigo, /\.\.\.\(envase === "almohada" \? \{ vertexColors: true \} : \{\}\),/, "cambió qué material de la bolsa lleva color de vértice: actualizar esta tabla");
+  assert.match(etiquetaCodigo, /\.\.\.\(envase === "almohada" \|\| envase === "revolucion" \? \{ vertexColors: true \} : \{\}\),/, "cambió qué material de la bolsa o del torneado lleva color de vértice: actualizar esta tabla");
+  assert.match(etiquetaCodigo, /metalness: 0\.3, roughness: 0\.45, vertexColors: true,/, "la tapa del vaso dejó de llevar color de vértice: actualizar esta tabla");
+  assert.match(etiquetaCodigo, /emissiveMap: espalda, vertexColors: true,/, "la espalda dejó de llevar color de vértice: actualizar esta tabla");
   assert.match(etiquetaCodigo, /if \(envase === "caja"\) \{\s*const color = new THREE\.Color\(et\.colorDeCostado\(\)\);\s*lista\.push\(materialConLuz\(envase, entorno, \{ color, emissive: color, vertexColors: true \}\)\);/,
     "cambió qué material de la caja lleva color de vértice: actualizar esta tabla");
-  const conColor = { caja: [1], almohada: [0], revolucion: [], recorte: [] };
+  const conColor = { caja: [1], almohada: [0], revolucion: [0, 1, 2], recorte: [] };
   const perfilBotella = Array.from({ length: 24 }, (_, i) => 0.6 + 0.4 * Math.sin((i / 23) * Math.PI));
   const casos = [
     ["caja", 0.11, 0.19, 0.07, undefined, false],
@@ -2415,6 +2417,7 @@ prueba("ningún envase sale negro: si su material lleva color de vértice, la ge
     ["recorte", 0.1, 0.2, 0.05, undefined, false],
   ];
   let vistos = 0;
+  const vistosPorEnvase = {};
   for (const [envase, w, h, d, perfil, botella] of casos) {
     for (const acostado of [false, true]) {
       for (const detalle of ["alto", "bajo"]) {
@@ -2428,11 +2431,13 @@ prueba("ningún envase sale negro: si su material lleva color de vértice, la ge
           let minimo = Infinity;
           for (let k = 0; k < c.array.length; k++) minimo = Math.min(minimo, c.array[k]);
           assert.ok(minimo > 0.3, `${envase}${acostado ? " acostado" : ""} (${detalle}) trae un color de vértice casi negro (${minimo.toFixed(2)})`);
+          vistosPorEnvase[envase] = (vistosPorEnvase[envase] ?? 0) + 1;
         }
       }
     }
   }
-  assert.ok(vistos >= 6, `la tabla no recorrió los casos con color de vértice (${vistos})`);
+  assert.ok(vistos >= 14, `la tabla no recorrió los casos con color de vértice (${vistos})`);
+  assert.equal(vistosPorEnvase.revolucion, 8, "la botella y el vaso (parados y acostados, alto y bajo) no se recorrieron todos");
   // La bolsa acostada, en concreto (el caso del hallazgo).
   assert.ok(G.geometriaDeEtiqueta("almohada", 0.14, 0.22, 0.06, undefined, true).getAttribute("color"), "la bolsa acostada sale negra");
 });
@@ -2466,13 +2471,19 @@ prueba("la bolsa se para en su fuelle: lomo curvo, ~5 mm en los costados, sello 
     const medio = enX((lado * W) / 4).filter((v) => v.z < 0).map((v) => -v.z);
     assert.ok(Math.max(...medio) < maxZ * 0.97 && Math.max(...medio) > (total / 2) * 1.5, "el lomo no es una curva");
   }
-  // El sello: una aleta PLANA de 1,2 cm y 3 mm, más clara (1,08).
+  // El sello: una aleta PLANA de 1,2 cm y 3 mm, un 15 % más clara y con tres
+  // rayas finas más oscuras (el termosellado; la crítica de la demo, ronda 3).
   const sello = vs.map((v, i) => ({ ...v, i })).filter((v) => v.y >= H / 2 - 0.012 + 0.0011);
   assert.ok(sello.length > 0, "la bolsa no tiene sello");
   assert.ok(sello.every((v) => Math.abs(v.z) <= 0.0015 + 1e-6), "el sello no es plano");
   const anchoDelSello = Math.max(...sello.map((v) => v.z)) - Math.min(...sello.map((v) => v.z));
   assert.ok(anchoDelSello >= 0.0025 && anchoDelSello <= 0.0035, `el sello tiene ${(anchoDelSello * 1000).toFixed(1)} mm`);
-  assert.ok(sello.every((v) => Math.abs(color.getX(v.i) - 1.08) < 1e-6), "el sello no es más claro");
+  const tonos = sello.map((v) => color.getX(v.i));
+  assert.ok(tonos.filter((k) => Math.abs(k - G.SELLO_DE_BOLSA.claro) < 1e-6).length > tonos.length / 2 && G.SELLO_DE_BOLSA.claro >= 1.12,
+    "el sello no es más claro");
+  const alturasDeRaya = [...new Set(sello.filter((v) => Math.abs(color.getX(v.i) - G.SELLO_DE_BOLSA.raya) < 1e-6).map((v) => v.y.toFixed(4)))];
+  assert.equal(alturasDeRaya.length, 3, `el sello lleva ${alturasDeRaya.length} rayas (el termosellado lleva tres)`);
+  assert.ok(G.SELLO_DE_BOLSA.raya < 1 && G.SELLO_DE_BOLSA.raya < G.SELLO_DE_BOLSA.claro - 0.15, "las rayas del sello no se despegan");
   // El cuerpo: como la foto en el medio del frente y el lomo más oscuro hacia
   // los costados (`LOMO_DE_BOLSA`), sin pasar de ahí.
   const cuerpo = vs.map((v, i) => i).filter((i) => vs[i].y < H / 2 - 0.014);
@@ -2507,7 +2518,7 @@ prueba("la bolsa se para en su fuelle: lomo curvo, ~5 mm en los costados, sello 
   for (const v of recorte) assert.ok(Math.abs(v.u - (0.5 - v.x / 0.1)) < 1e-6, "el recorte salió espejado");
   // El material de la bolsa prende los colores de vértice, sólo para el sello.
   const etiqueta = sinComentarios(leer(join(muebles, "etiqueta.ts")));
-  assert.match(etiqueta, /\.\.\.\(envase === "almohada" \? \{ vertexColors: true \} : \{\}\)/);
+  assert.match(etiqueta, /\.\.\.\(envase === "almohada" \|\| envase === "revolucion" \? \{ vertexColors: true \} : \{\}\)/);
 });
 
 prueba("el respaldo de la góndola es una cara sola: desde el eje no se ve de canto (las líneas del copete)", () => {
@@ -2655,8 +2666,35 @@ function lienzoFalso() {
     // relleno más.
     beginPath() {}, ellipse() {}, arc() {}, fill() { this.rects.push({ color: this.fillStyle, forma: true }); },
     createLinearGradient: () => ({ addColorStop() {} }), createRadialGradient: () => ({ addColorStop() {} }),
+    getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }),
+    putImageData() {},
   };
   return g;
+}
+/** Un lienzo que PINTA de verdad (rectángulos y elipses llenas, color
+ *  «rgb(r,g,b)»), para medir la etiqueta del relleno píxel a píxel. */
+function lienzoRaster(W, H) {
+  const datos = new Uint8ClampedArray(W * H * 4);
+  let elipse = null;
+  const color = (c) => (c.match(/\d+/g) ?? [0, 0, 0]).map(Number);
+  const poner = (x, y, [r, g, b]) => { const i = (y * W + x) * 4; datos[i] = r; datos[i + 1] = g; datos[i + 2] = b; datos[i + 3] = 255; };
+  return {
+    datos, fillStyle: "",
+    fillRect(x, y, w, h) {
+      const c = color(this.fillStyle);
+      for (let yy = Math.max(0, Math.round(y)); yy < Math.min(H, Math.round(y + h)); yy++)
+        for (let xx = Math.max(0, Math.round(x)); xx < Math.min(W, Math.round(x + w)); xx++) poner(xx, yy, c);
+    },
+    beginPath() { elipse = null; },
+    ellipse(cx, cy, rx, ry) { elipse = { cx, cy, rx, ry }; },
+    fill() {
+      if (!elipse) return;
+      const c = color(this.fillStyle), { cx, cy, rx, ry } = elipse;
+      for (let yy = Math.max(0, Math.floor(cy - ry)); yy < Math.min(H, Math.ceil(cy + ry)); yy++)
+        for (let xx = Math.max(0, Math.floor(cx - rx)); xx < Math.min(W, Math.ceil(cx + rx)); xx++)
+          if (((xx + 0.5 - cx) / rx) ** 2 + ((yy + 0.5 - cy) / ry) ** 2 <= 1) poner(xx, yy, c);
+    },
+  };
 }
 // Los materiales de venta arman la textura de los habladores genéricos en un
 // lienzo: en node, uno falso.
@@ -2758,7 +2796,11 @@ prueba("la luz de venta es UN programa: intensidad y brillo son uniformes de cad
   // `conLuzDeVenta` en cada render los uniformes del programa quedaban
   // huérfanos.
   const cuerpoRobatope = cuerpoDe("function ChapaDeRobatope(", "function RistraMesh(");
-  assert.ok(!/conLuzDeVenta\(/.test(cuerpoRobatope), "el robatope arma la luz de venta en cada render");
+  // (Los parantes de venta arman sus materiales con `conLuzDeVenta` adentro
+  // de UN memo: estables, y soltados con `useSoltarMateriales`.)
+  const sinElMemo = cuerpoRobatope.replace(/const parantesDeVenta = useMemo\(\(\) => \{[\s\S]*?\}, \[luz, ghost\]\);/, "");
+  assert.ok(!/conLuzDeVenta\(/.test(sinElMemo), "el robatope arma la luz de venta en cada render");
+  assert.match(cuerpoRobatope, /useSoltarMateriales\(parantesDeVenta \?\? \{\}\);/, "los materiales de los parantes de venta no se sueltan");
   assert.match(cuerpoRobatope, /usePropsDeLuzDeVenta\(luz, K_ENTORNO_MUEBLE, BRILLO\.robatope\)/);
   assert.match(luz, /export function usePropsDeLuzDeVenta[\s\S]{0,200}useMemo\(\(\) => conLuzDeVenta\(venta, intensidad, brillo\), \[venta, intensidad, brillo\]\)/);
   // Ninguno de los que arman materiales los rehace por una intensidad: el
@@ -3361,7 +3403,8 @@ prueba("la espalda del torno: media vuelta por detrás, de +X a −X, con la v d
   assert.ok(de(frente).every((v) => v.z <= 1e-6), "el frente tiene vértices detrás");
   assert.ok(de(espalda).every((v) => v.z >= -1e-6), "la espalda tiene vértices adelante");
   // La uv de la espalda: 0 en +X, 0,5 atrás, 1 en −X; la v como el frente.
-  const lado = de(espalda).filter((v) => Math.abs(v.y) < 0.14 && Math.hypot(v.x, v.z) > 0.01);
+  // (Sin el pie redondeado, que sube al cuerpo: `V_DE_LA_BASE`.)
+  const lado = de(espalda).filter((v) => Math.abs(v.y) < 0.14 && (v.y + 0.15) / 0.3 > 0.07 + 1e-6 && Math.hypot(v.x, v.z) > 0.01);
   for (const v of lado) {
     const phi = Math.atan2(v.z, v.x);               // 0 en +X, π/2 en +Z, π en −X
     const esperado = Math.max(0, Math.min(1, (phi < -1e-6 ? phi + 2 * Math.PI : phi) / Math.PI));
@@ -4100,7 +4143,11 @@ function pincelFalso() {
   const g = {
     fillStyle: null,
     fillRect(...a) { r.rellenos++; r.orden.push(["rect", ...a]); },
-    drawImage(...a) { (a.length === 9 ? r.recortes : r.enteras).push(a); r.orden.push(["img", ...a]); },
+    drawImage(...a) {
+      // Los ecos de la marca (con `globalAlpha` < 1) van aparte de lo opaco.
+      if ((this.globalAlpha ?? 1) < 1) { (r.ecos ??= []).push([...a, this.globalAlpha]); r.orden.push(["eco", ...a]); return; }
+      (a.length === 9 ? r.recortes : r.enteras).push(a); r.orden.push(["img", ...a]);
+    },
     createLinearGradient: degrade, createRadialGradient: degrade,
     fillText() { r.textos++; }, strokeText() { r.textos++; },
   };
@@ -4190,8 +4237,8 @@ prueba("el cabezote de la nevera es un aviso: un recorte grande de la etiqueta, 
   assert.equal(r.recortes.length, 1, `el cabezote lleva ${r.recortes.length} recortes de la etiqueta: una fila de miniaturas`);
   // Sin las botellitas de las puntas (1 cm a la distancia de la toma).
   assert.equal(r.enteras.length, 0, `${r.enteras.length} unidades enteras en el cabezote`);
-  // Y sin canto duro: después del recorte, sus cuatro bordes se funden con el
-  // fondo (cuatro rellenos que caen sobre el borde del recorte).
+  // Y sin canto duro con el panel: después del recorte, sus cuatro bordes se
+  // funden (cuatro rellenos finos que caen sobre el borde del recorte).
   {
     const i = r.orden.findIndex((o) => o[0] === "img");
     const [, , , , , , dx, dy, dw, dh] = r.orden[i];
@@ -4204,19 +4251,84 @@ prueba("el cabezote de la nevera es un aviso: un recorte grande de la etiqueta, 
   const [, sx, sy, sw, sh, dx, dy, dw, dh] = r.recortes[0];
   assert.ok(dh >= 0.7 * H && dh <= 0.8 * H + 1e-6, `el recorte ocupa ${((dh / H) * 100).toFixed(0)} % del alto`);
   assert.ok(dh / sh <= PO.AMPLIACION_MAXIMA + 1e-6, `el recorte del cabezote ampliado ${(dh / sh).toFixed(2)} veces`);
-  // El panel de la etiqueta detrás de la marca: un relleno ANTES del recorte,
-  // centrado, de al menos el 35 % del ancho y a la altura del recorte.
+  // El panel de la etiqueta detrás de la marca (crítica de la demo, ronda 3:
+  // un rectángulo con borde, no un halo): un relleno ANTES del recorte,
+  // centrado, de al menos el 40 % del ancho, más alto que la marca y con su
+  // filete blanco (el trazo, con un pincel que trace).
   {
     const i = r.orden.findIndex((o) => o[0] === "img");
-    const panel = r.orden.slice(0, i).filter((o) => o[0] === "rect" && o[3] >= 0.35 * W && o[3] < W && Math.abs(o[4] - dh) < 1);
+    const panel = r.orden.slice(0, i).filter((o) => o[0] === "rect" && o[3] >= PO.PANEL_DEL_CABEZOTE.ancho * W - 1 && o[3] < W && o[4] > dh);
     assert.equal(panel.length, 1, "el cabezote no lleva el panel de la etiqueta detrás de la marca");
     assert.ok(Math.abs(panel[0][1] + panel[0][3] / 2 - W / 2) < 1, "el panel no va centrado");
+    assert.ok(Math.abs(panel[0][4] - PO.PANEL_DEL_CABEZOTE.alto * H) < 1, "el panel no tiene el alto del panel");
+    // Y la marca que no llega al 40 % del ancho lleva su eco a cada lado: dos
+    // recortes de la MISMA franja, al 30 %, simétricos y dentro del panel.
+    assert.ok(dw < PO.PANEL_DEL_CABEZOTE.ancho * W, "la prueba no cubre el caso del eco");
+    assert.equal(r.ecos?.length, 2, "la marca angosta no lleva su eco a los lados");
+    for (const e of r.ecos) {
+      assert.deepEqual(e.slice(1, 5), [sx, sy, sw, sh], "el eco no es la misma franja");
+      assert.equal(e[9], PO.ECO_DE_LA_MARCA);
+      assert.ok(e[5] >= panel[0][1] - 1 && e[5] + e[7] <= panel[0][1] + panel[0][3] + 1, "el eco se sale del panel");
+    }
+    assert.ok(Math.abs((r.ecos[0][5] + r.ecos[1][5] + r.ecos[0][7]) / 2 - W / 2) < 1, "los ecos no son simétricos");
+    // (El eco va después de la marca: se copia de la marca ya igualada.)
+    assert.ok(r.orden.findIndex((o) => o[0] === "eco") > i, "el eco no se copia de la marca igualada");
+    // Con un pincel que traza: el panel redondeado y el filete blanco.
+    const trazos = [];
+    const t = pincelFalso();
+    Object.assign(t.g, { beginPath() {}, moveTo() {}, arcTo() {}, closePath() {}, fill() { trazos.push(["fill", this.fillStyle]); },
+      stroke() { trazos.push(["stroke", this.strokeStyle, this.lineWidth]); } });
+    PO.dibujarCartel(t.g, W, H, FUENTE, true);
+    assert.ok(trazos.some(([k]) => k === "fill"), "el panel no se traza redondeado");
+    const filete = trazos.find(([k]) => k === "stroke");
+    assert.ok(filete && /255,255,255/.test(filete[1]) && filete[2] >= 2, "el panel no lleva el filete blanco que lo encuadra");
+  }
+  // La nitidez: un borde se realza (sobrepasa) y lo liso queda liso.
+  {
+    const w = 6, h = 1, d = new Uint8ClampedArray(w * h * 4);
+    for (let x = 0; x < w; x++) { const v = x < 3 ? 100 : 200; d.set([v, v, v, 255], x * 4); }
+    PO.realzar(d, w, h, PO.NITIDEZ_DE_LA_MARCA);
+    assert.ok(d[2 * 4] < 100 && d[3 * 4] > 200, `la marca no se realza en el borde (${d[8]}, ${d[12]})`);
+    assert.equal(d[0], 100, "lo liso cambió con la nitidez");
+    assert.equal(d[3], 255, "la nitidez tocó el alfa");
+    assert.ok(PO.NITIDEZ_DE_LA_MARCA > 0 && PO.NITIDEZ_DE_LA_MARCA <= 1);
   }
   assert.ok(Math.abs(dx + dw / 2 - W / 2) < 1, "el recorte no va centrado");
   assert.ok(dy >= 0 && dy + dh <= H, "el recorte se sale del cartel");
-  // La franja de la ETIQUETA y recortada a su silueta (sin el PET).
+  // La franja de la ETIQUETA y recortada a su silueta (sin el PET), sin el
+  // canto curvo de cada lado.
   assert.equal(sy, Math.round(0.37 * 300)); assert.equal(sh, Math.round(0.23 * 300));
-  assert.equal(sx, 10); assert.equal(sw, 60);
+  const c = PO.CANTO_DE_LA_ETIQUETA * 0.75;
+  assert.equal(sx, Math.round((0.125 + c) * 80)); assert.equal(sw, Math.round((0.75 - 2 * c) * 80));
+  assert.ok(PO.CANTO_DE_LA_ETIQUETA > 0 && PO.CANTO_DE_LA_ETIQUETA <= 0.1, "el canto se come la marca");
+  // El papel de la foto queda del color del panel; la letra blanca, blanca.
+  {
+    const d = new Uint8ClampedArray([156, 80, 99, 255, 255, 255, 255, 255]);
+    PO.igualarFondo(d, "#9c5063", "#e8487a");
+    assert.deepEqual([...d.slice(0, 3)], [0xe8, 0x48, 0x7a], "el papel no queda del color del panel");
+    const negro = new Uint8ClampedArray([0, 0, 0, 255, 78, 40, 50, 255]);
+    PO.igualarFondo(negro, "#9c5063", "#e8487a");
+    assert.deepEqual([...negro.slice(0, 3)], [0, 0, 0], "el negro dejó de ser negro");
+    assert.ok(negro[4] > 78 && negro[5] < 40, "una tinta oscura no sigue al papel");
+    // Por columna: una franja con la curva del envase (papel más oscuro en
+    // los cantos) queda pareja, del color del panel, y la letra, blanca.
+    const w = 20, h = 9, d2 = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const sombra = 1 - 0.4 * Math.abs(x - 9.5) / 9.5;
+      const letra = y === 4 && x > 4 && x < 15;
+      d2.set(letra ? [255, 255, 255, 255] : [156 * sombra, 80 * sombra, 99 * sombra, 255], (y * w + x) * 4);
+    }
+    PO.igualarFondoPorColumna(d2, w, h, "#e8487a");
+    const px = (x, y) => [...d2.slice((y * w + x) * 4, (y * w + x) * 4 + 3)];
+    for (const x of [0, 9, 19]) for (const [k, v] of px(x, 0).entries()) assert.ok(Math.abs(v - [0xe8, 0x48, 0x7a][k]) <= 12, `columna ${x}: el papel no queda del panel (${px(x, 0)})`);
+    assert.deepEqual(px(9, 4), [255, 255, 255], "la letra blanca dejó de ser blanca");
+    // La letra apagada del costado de la foto (rosa claro) también sale blanca.
+    const apagada = new Uint8ClampedArray([156, 80, 99, 255, 225, 190, 200, 255]);
+    PO.igualarFondo(apagada, "#9c5063", "#e8487a");
+    assert.deepEqual([...apagada.slice(4, 7)], [255, 255, 255], `la letra apagada del costado no sale blanca (${[...apagada.slice(4, 7)]})`);
+    assert.deepEqual([...d.slice(4, 7)], [255, 255, 255], "la letra blanca dejó de ser blanca");
+    assert.equal(d[3], 255);
+  }
   // Con una foto chica, el recorte del cabezote no pasa de 1,5 veces la foto.
   {
     const chica = pincelFalso();
@@ -4244,7 +4356,8 @@ prueba("el cabezote de la nevera es un aviso: un recorte grande de la etiqueta, 
   assert.match(pop, /const clave = claveDeCopete\(et\.clave, ancho, alto, opciones\);/, "el caché no usa la clave con el retroiluminado");
   assert.match(pop, /materialImpreso\(textura, entorno, !!opciones\.retroiluminado\)/);
   const et = sinComentarios(leer(join(muebles, "etiqueta.ts")));
-  assert.match(et, /\.\.\.\(retroiluminado \? \{ emissiveIntensity: EMISION_RETROILUMINADA \* K_EMISION \} : \{\}\)/, "el cabezote no se lee retroiluminado");
+  assert.match(et, /\.\.\.\(retroiluminado \? \{ emissiveIntensity: EMISION_RETROILUMINADA \* K_EMISION, toneMapped: false \} : \{\}\)/,
+    "el cabezote no se lee retroiluminado (o pasa por el tono de la escena y el blanco de la marca no le gana al forro)");
   assert.match(et, /export const EMISION_RETROILUMINADA = (\d+(?:\.\d+)?);/);
   assert.ok(Number(et.match(/export const EMISION_RETROILUMINADA = (\d+(?:\.\d+)?);/)[1]) > 2, "el blanco del cabezote no pasa al del forro");
   // La nevera lo pide retroiluminado, con la franja de la etiqueta si es una
@@ -4698,6 +4811,14 @@ prueba("la banda del relleno: clara en el medio, el borde abajo y arriba, y bara
   const tris = (g) => (g.index ? g.index.count : g.getAttribute("position").count) / 3;
   const { clara, borde } = G.BANDA_DE_ETIQUETA;
   for (const forma of ["caja", "botella", "lata"]) {
+    const conBanda0 = G.geometriaDeEmpaque(forma, 0.1, 0.25, 0.07, false, true);
+    if (forma === "caja") {
+      // La caja va con el degradé (abajo): acá sólo el costo y el caché.
+      const lisa0 = G.geometriaDeEmpaque(forma, 0.1, 0.25, 0.07, false);
+      assert.ok(!lisa0.getAttribute("color") && lisa0 !== conBanda0);
+      assert.ok(tris(conBanda0) <= tris(lisa0) * 20 / 12, `caja: ${tris(lisa0)} → ${tris(conBanda0)} triángulos`);
+      continue;
+    }
     const lisa = G.geometriaDeEmpaque(forma, 0.1, 0.25, 0.07, false);
     const conBanda = G.geometriaDeEmpaque(forma, 0.1, 0.25, 0.07, false, true);
     assert.ok(!lisa.getAttribute("color"), `${forma}: la del editor cambió`);
@@ -4717,22 +4838,22 @@ prueba("la banda del relleno: clara en el medio, el borde abajo y arriba, y bara
     // Es el envase más repetido de la tienda: la banda cuesta poco.
     assert.ok(tris(conBanda) <= tris(lisa) * (forma === "caja" ? 20 / 12 : 1.5), `${forma}: ${tris(lisa)} → ${tris(conBanda)} triángulos`);
   }
-  // La caja, con la etiqueta de corte NETO en las dos caras grandes: en cada
-  // borde de la etiqueta hay vértices con los dos tonos a la misma altura (un
-  // degradé de la base al medio se leía como un bloque de un color).
+  // La caja: la etiqueta la pinta la textura (`rellenoDeVenta`), y el color
+  // de vértice es un degradé vertical LEVE, sin cortes: con la banda neta de
+  // antes el borde cruzaba el «logo» pintado y se leía como imagen doble.
   const caja = G.geometriaDeEmpaque("caja", 0.1, 0.25, 0.07, false, true);
   const p = caja.getAttribute("position"), c = caja.getAttribute("color"), n = caja.getAttribute("normal");
-  for (const [b, nombre] of [[G.BANDA_DE_ETIQUETA.caja[0], "abajo"], [G.BANDA_DE_ETIQUETA.caja[1], "arriba"]]) {
-    for (const sz of [1, -1]) {
-      const tonos = new Set();
-      for (let i = 0; i < p.count; i++) {
-        if (Math.abs(n.getZ(i) - sz) > 1e-6 || Math.abs((p.getY(i) + 0.125) / 0.25 - b) > 1e-6) continue;
-        tonos.add(c.getX(i).toFixed(3));
-      }
-      assert.deepEqual([...tonos].sort(), [clara, borde].map((k) => k.toFixed(3)).sort(),
-        `caja, cara ${sz > 0 ? "+" : "−"}Z: el borde ${nombre} de la etiqueta no es neto (${[...tonos]})`);
-    }
+  const { abajo: kAbajo, arriba: kArriba } = G.DEGRADE_DE_CAJA;
+  assert.ok(Math.abs(kAbajo / kArriba - 0.92) < 0.015, `la base no es ~8 % más oscura que la tapa (${kAbajo} / ${kArriba})`);
+  const porAltura = new Map();
+  for (let i = 0; i < p.count; i++) {
+    const f = (p.getY(i) + 0.125) / 0.25, k = c.getX(i);
+    const esperado = kAbajo + (kArriba - kAbajo) * f;
+    assert.ok(Math.abs(k - esperado) < 1e-5, `caja: el color de vértice a ${(f * 100).toFixed(0)} % del alto es ${k}, no el degradé (${esperado.toFixed(3)})`);
+    const clave = f.toFixed(4);
+    porAltura.set(clave, [...(porAltura.get(clave) ?? []), k]);
   }
+  for (const [f, ks] of porAltura) assert.ok(Math.max(...ks) - Math.min(...ks) < 1e-6, `caja: un corte neto a ${f} del alto`);
   // Las normales salen hacia afuera (la caja es a mano, no un BoxGeometry).
   for (let i = 0; i < p.count; i++) {
     const d = p.getX(i) * n.getX(i) + p.getY(i) * n.getY(i) + p.getZ(i) * n.getZ(i);
@@ -4830,11 +4951,64 @@ prueba("el relleno de venta se lee como empaque: paleta apagada, bloques de 2 a 
       if (xs.length >= 12) assert.ok(new Set(xs.map((x) => t.get(x.toFixed(4)).producto)).size >= 3, `${k}: menos de 3 colores en ${xs.length} frentes`);
     }
   }
+  // Ningún color de paleta tan oscuro que en un vecino atenuado sea una
+  // mancha negra, y el relleno de un vecino un poco menos apagado que su mueble.
+  for (const color of Object.values(RV.PALETAS).flat()) {
+    const n = parseInt(color.slice(1), 16);
+    const luma = 0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255);
+    assert.ok(luma >= RV.LUMA_MINIMA, `${color}: luma ${luma.toFixed(0)}, en un vecino atenuado es casi negro`);
+  }
+  assert.ok(RV.EXPOSICION_DEL_RELLENO_VECINO > MV.ATENUACION.exposicion && RV.EXPOSICION_DEL_RELLENO_VECINO <= 0.6,
+    "el relleno de un vecino se apaga como su mueble (o no se apaga)");
+  assert.match(sinComentarios(leer(join(muebles, "ProductoEnMueble.tsx"))), /useAtenuacion\(\[material\], EXPOSICION_DEL_RELLENO_VECINO\);/);
   // La etiqueta: cuatro diseños, sin una letra.
   const g = lienzoFalso();
   RV.pintarEtiquetaDeRelleno(g, 512, 128);
   assert.equal(g.textos.length, 0, "la etiqueta del relleno escribe texto");
   assert.ok(g.rects.length > 20, "la etiqueta del relleno es lisa");
+  // Empaque desenfocado, no pictograma (crítica de la demo, ronda 3): se
+  // PINTA la etiqueta en un lienzo de verdad, se suaviza como la textura y se
+  // mide con cada color de las paletas, como se vería en el envase.
+  const W = 512, H = 128, r = lienzoRaster(W, H);
+  RV.pintarEtiquetaDeRelleno(r, W, H);
+  let minSombra = 255, maxBlanco = 0;
+  for (let i = 0; i < r.datos.length; i += 4) { minSombra = Math.min(minSombra, r.datos[i]); maxBlanco = Math.max(maxBlanco, r.datos[i + 1]); }
+  assert.ok(minSombra / 255 >= RV.SOMBRA_MINIMA - 0.005 && RV.SOMBRA_MINIMA >= 0.6, `algo de la etiqueta oscurece a ${(minSombra / 255).toFixed(2)}: un «logo» casi negro`);
+  assert.ok(maxBlanco / 255 <= RV.BLANCO_MAXIMO + 0.005 && RV.BLANCO_MAXIMO <= 0.6, `algo de la etiqueta se lleva a blanco ${(maxBlanco / 255).toFixed(2)}`);
+  const sinSuavizar = Uint8ClampedArray.from(r.datos);
+  RV.suavizarPorCelda(r.datos, W, H, RV.DISENOS);
+  const aSrgb = (l) => 255 * (l <= 0.0031308 ? 12.92 * l : 1.055 * l ** (1 / 2.4) - 0.055);
+  const aLineal = (c) => ((c / 255) <= 0.04045 ? c / 255 / 12.92 : (((c / 255) + 0.055) / 1.055) ** 2.4);
+  const nivel = (datos, x, y, base) => {
+    const i = (y * W + x) * 4, sombra = datos[i] / 255, blanco = datos[i + 1] / 255;
+    return aSrgb((base * (1 - blanco) + RV.BLANCO_DE_ETIQUETA * blanco) * sombra);
+  };
+  const saltoMaximo = (datos, base, paso) => {
+    let max = 0;
+    for (let y = 0; y < H * 0.95 - paso; y++) for (let x = 0; x < W; x++) {
+      const celda = Math.floor(x / (W / RV.DISENOS));
+      const a = nivel(datos, x, y, base);
+      if (x + paso < W && Math.floor((x + paso) / (W / RV.DISENOS)) === celda) max = Math.max(max, Math.abs(nivel(datos, x + paso, y, base) - a));
+      max = Math.max(max, Math.abs(nivel(datos, x, y + paso, base) - a));
+    }
+    return max;
+  };
+  for (const color of Object.values(RV.PALETAS).flat()) {
+    const n = parseInt(color.slice(1), 16);
+    const base = aLineal(0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255));
+    // Sin bordes duros: entre dos píxeles vecinos de la textura, a lo sumo
+    // 12 niveles; a 3 píxeles, a lo sumo 30 (la textura se ve a ~0,6 píxel de
+    // pantalla por píxel en «De cerca», y con la luz de venta y el vecino
+    // atenuado cada salto se achica a menos de la mitad).
+    assert.ok(saltoMaximo(r.datos, base, 1) <= 12, `${color}: un borde duro de ${saltoMaximo(r.datos, base, 1).toFixed(0)} niveles entre dos píxeles`);
+    assert.ok(saltoMaximo(r.datos, base, 3) <= 30, `${color}: ${saltoMaximo(r.datos, base, 3).toFixed(0)} niveles en 3 píxeles`);
+  }
+  // Y el suavizado es el que hace falta: sin él, los bordes son duros.
+  const base0 = aLineal(120);
+  assert.ok(saltoMaximo(sinSuavizar, base0, 1) > 20, "la prueba no ve los bordes duros de la etiqueta sin suavizar");
+  // La textura de verdad se suaviza y repinta lo liso de abajo.
+  const rel = sinComentarios(leer(join(muebles, "rellenoDeVenta.ts")));
+  assert.match(rel, /suavizarPorCelda\(img\.data, c\.width, c\.height, DISENOS\);\s*g\.putImageData\(img, 0, 0\);/, "la textura del relleno no se suaviza");
   // El parche encuentra sus trozos en los shaders de three 0.184, y decodifica.
   const sh = { vertexShader: THREE_.ShaderLib.physical.vertexShader, fragmentShader: THREE_.ShaderLib.physical.fragmentShader, uniforms: {} };
   RV.parcheDeRellenoDeVenta(null)(sh);
@@ -5250,6 +5424,36 @@ prueba("el tablero no baja el editor 3D hasta entrar al modo «store»", () => {
   assert.ok(!/^import StoreEditor3D from/m.test(dash), "el tablero importa el editor 3D de una");
   assert.match(dash, /const StoreEditor3D = lazy\(\(\) => import\("\.\.\/components\/StoreEditor3D\/StoreEditor3D"\)\);/);
   assert.match(dash, /<Suspense fallback=\{[\s\S]{0,300}\}>\s*<StoreEditor3D \/>\s*<\/Suspense>/, "el editor perezoso sin Suspense rompe el tablero");
+});
+
+
+prueba("la base de la 2 L acostada: el pie sube al cuerpo y el disco va más oscuro con cinco lóbulos", () => {
+  // La crítica: acostada, la base que mira al pasillo era un plato rojo con
+  // una cuña rosada y blanca (las filas del pie seguían con la proyección
+  // plana y muestreaban el borde de abajo de la foto: el fondo quitado).
+  const perfil = Array.from({ length: 64 }, (_, i) => 0.7 + 0.3 * Math.sin((i / 63) * Math.PI));
+  const g = G.geometriaDeEtiqueta("revolucion", 0.105, 0.33, 0.105, perfil, false, true);
+  const pos = g.getAttribute("position"), uv = g.getAttribute("uv"), c = g.getAttribute("color");
+  assert.ok(c, "la botella no trae color de vértice");
+  let enElPie = 0, disco = [], rPiso = 0;
+  for (let i = 0; i < pos.count; i++) if ((pos.getY(i) + 0.165) / 0.33 < 1e-6) rPiso = Math.max(rPiso, Math.hypot(pos.getX(i), pos.getZ(i)));
+  for (let i = 0; i < pos.count; i++) {
+    const f = (pos.getY(i) + 0.165) / 0.33;
+    if (f < 0.07 + 1e-6) {
+      enElPie++;
+      assert.ok(Math.abs(uv.getY(i) - G.V_DE_LA_BASE) < 1e-6, `una fila del pie (f=${f.toFixed(3)}) muestrea la v ${uv.getY(i).toFixed(3)} de la foto: el borde de abajo, sin fondo`);
+    }
+    if (f < 1e-6 && Math.hypot(pos.getX(i), pos.getZ(i)) < rPiso * 0.99) disco.push(c.getX(i));
+  }
+  assert.ok(enElPie > 20, `pocos vértices en el pie (${enElPie})`);
+  // El disco: más oscuro que el cuerpo (≤ 0,9) y con lóbulos (no un plato liso).
+  assert.ok(disco.length > 10 && Math.max(...disco) <= 0.91, `el disco de la base no es más oscuro (${Math.max(...disco).toFixed(2)})`);
+  assert.ok(Math.max(...disco) - Math.min(...disco) > 0.05, "el disco de la base es liso: sin los lóbulos del pie");
+  const lob = [0, 1, 2, 3, 4, 5].map((k) => G.lobuloDeLaBase((k * 2 * Math.PI) / 10));
+  assert.ok(lob[0] > lob[1] && lob[2] > lob[1] && lob[2] > lob[3], "los lóbulos no alternan: no son cinco");
+  // Acostada lleva lo mismo (es la de pie girada).
+  const ac = G.geometriaDeEtiqueta("revolucion", 0.105, 0.33, 0.105, perfil, true, true);
+  assert.ok(ac.getAttribute("color") && ac.getAttribute("color").count === ac.getAttribute("position").count);
 });
 
 console.log(`\n${hechas} pruebas del mobiliario 3D`);

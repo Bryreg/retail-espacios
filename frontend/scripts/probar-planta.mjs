@@ -839,7 +839,7 @@ prueba("«De cerca» de la punta no corta el copete: el borde de arriba queda en
   assert.ok(b0 > techo && b0 < techo + MD.COPETE.alto, "la prueba ya no muestra el medio copete");
 });
 
-prueba("el robatope de cerca: dos repisas al 65-75 % del alto del cuadro", () => {
+prueba("el robatope de cerca: dos repisas al 72-82 % del alto en el plano de la mira (68-70 % en la captura)", () => {
   const f = SEDE.find((x) => x.id === "ROB-01");
   const foco = focoDeCerca("robatope", f, BOLSA_ARROZ);
   assert.equal(foco.parDeRepisas, true, "el robatope no encuadra un par de repisas");
@@ -851,8 +851,10 @@ prueba("el robatope de cerca: dos repisas al 65-75 % del alto del cuadro", () =>
   const vista = vistaDeVenta(comoMueble(f), "A", "cerca", foco, otros("ROB-01"), LIMITES, FOV_DE_CERCA);
   const y = (h) => proyectar(vista, FOV_DE_CERCA, 16 / 9, { x: vista.targetX, y: h, z: vista.targetZ }).y;
   const llena = (y(foco.yEntrepano + foco.libreEntrepano / 2) - y(foco.yEntrepano - foco.libreEntrepano / 2)) / 2;
-  assert.ok(llena >= 0.65 && llena <= 0.75, `las dos repisas llenan el ${(llena * 100).toFixed(0)} % del alto`);
-  assert.ok(Math.abs(LLENADO_DE_PAR - 0.7) < 1e-9);
+  // En el plano de la mira 72-82 %: en la captura eso es el 68-70 % que pide
+  // la crítica (las repisas se inclinan y el producto queda adelante).
+  assert.ok(llena >= 0.72 && llena <= 0.82, `las dos repisas llenan el ${(llena * 100).toFixed(0)} % del alto`);
+  assert.ok(Math.abs(LLENADO_DE_PAR - 0.77) < 1e-9);
   // Un mueble ancho sigue con UN entrepaño.
   assert.ok(!focoDeCerca("punta", SEDE.find((x) => x.id === "PUN-01"), VASO_).parDeRepisas, "la punta encuadra dos entrepaños");
 });

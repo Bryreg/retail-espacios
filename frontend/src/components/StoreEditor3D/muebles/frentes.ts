@@ -336,7 +336,17 @@ export interface UnidadDePrueba {
   /** 0 = el frente; 1, 2… hacia el fondo. */
   prof: number;
   piso: number;
+  /** Escala vertical (1 si falta): las bolsas de atrás se ASIENTAN 1-2 cm
+   *  (`ASIENTO_DE_BOLSA`); la base sigue apoyada en el entrepaño. */
+  escalaY?: number;
 }
+
+/** Cuánto se asienta una bolsa de atrás (m, entre los dos valores): en
+ *  «Tres cuartos» las de atrás asomaban como copias exactas corridas, con
+ *  «ARROZ DIANA» repetido arriba de cada repisa —una imagen fantasma—. Con
+ *  el giro de ±2° de lo de atrás y su tono (`TONO_POR_FONDO`), quedan detrás
+ *  del frente como una bolsa que ya se acomodó. */
+export const ASIENTO_DE_BOLSA = [0.01, 0.02] as const;
 
 export interface PruebaAcomodada {
   porFila: FilaDePrueba[];
@@ -651,16 +661,21 @@ export function unidadesDePrueba({
             // niveles por debajo de sus vecinas.
             const base = f === sinFrente && p === 1 ? TONO_DEL_CORRIDO : TONO_POR_FONDO[Math.min(p, TONO_POR_FONDO.length - 1)];
             const tono = base * (0.97 + azar() * 0.06);
+            // Una bolsa de atrás, asentada (sólo la de abajo de una pila).
+            const asiento = e.forma === "bolsa" && p > 0 && piso === 0 && !e.acostado
+              ? ASIENTO_DE_BOLSA[0] + azar() * (ASIENTO_DE_BOLSA[1] - ASIENTO_DE_BOLSA[0]) : 0;
+            const escalaY = asiento > 0 ? Math.max(0.5, 1 - asiento / e.alto) : 1;
             if (hueco || (p === 0 && f === sinFrente)) continue;
             unidades.push({
               fila: i,
               x: desdeX + f * a.pasoX + Math.max(-tope, Math.min(tope, dx)),
-              y: piso * e.alto + e.alto / 2 - hundir,
+              y: piso * e.alto + (e.alto * escalaY) / 2 - hundir,
               z: -(desdeElFilo - corrida + dz + (p === 0 ? adelantada : 0)),
               giroY: giro,
               tono,
               prof: p,
               piso,
+              ...(escalaY < 1 ? { escalaY } : {}),
             });
           }
         }

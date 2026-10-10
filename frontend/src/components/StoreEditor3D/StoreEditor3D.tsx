@@ -36,7 +36,8 @@ import {
 import type { Etiqueta } from "./muebles/etiqueta";
 import { materialDeCenefa, materialDeCopete, olvidarCopetes } from "./muebles/pop";
 import {
-  BRILLO, FocoDeVenta, K_ENTORNO_MUEBLE, LuzDeVenta, parcheDelPiso, ponerTienda, useLuzDeVenta, usePropsDeLuzDeVenta,
+  BRILLO, conLuzDeVenta, FocoDeVenta, K_ENTORNO_MUEBLE, LuzDeVenta, parcheDelPiso, ponerTienda, useLuzDeVenta, usePropsDeLuzDeVenta,
+  useSoltarMateriales,
 } from "./muebles/luzDeVenta";
 import { useAtenuacion } from "./muebles/atenuacion";
 import type { UniformesDelPiso } from "./muebles/luzDeVenta";
@@ -991,6 +992,11 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
  *  `conLuzDeVenta` en cada render, el material recibía uniformes nuevos en
  *  cada cuadro y los del programa compilado —los que atenúa un vecino—
  *  quedaban huérfanos. */
+/** La luz de rebote de los costados de un parante del robatope en la pantalla
+ *  de venta (emisión, fracción de su gris): sin ella el costado que no mira a
+ *  la luz de la tienda salía a 76 de luminancia junto al frente a 202. */
+export const LUZ_LATERAL_DEL_PARANTE = 0.55;
+
 function ChapaDeRobatope({ color, op, luz }: { color: string; op: number; luz: boolean }) {
   const venta = usePropsDeLuzDeVenta(luz, K_ENTORNO_MUEBLE, BRILLO.robatope);
   useAtenuacion([venta]);
@@ -1027,7 +1033,27 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:num
   const ventaParante = usePropsDeLuzDeVenta(luz, K_ENTORNO_MUEBLE, BRILLO.estructura);
   const ventaRemate = usePropsDeLuzDeVenta(luz, K_ENTORNO_MUEBLE, BRILLO.robatope);
   const ventaFilo = usePropsDeLuzDeVenta(luz, K_ENTORNO_MUEBLE, BRILLO.estructura);
-  useAtenuacion([ventaParante, ventaRemate, ventaFilo]);
+  // Los parantes en la pantalla de venta, con los COSTADOS (±X) iluminados
+  // aparte. La luz de la tienda viene de un lado: el costado interior del
+  // parante derecho no la recibe, y en «De cerca» —visto casi de canto, al
+  // lado del frente claro— era una línea oscura de 2-3 px colgando del
+  // remate («un cable suelto o una grieta», la crítica de la demo, ronda 3).
+  // Se encontró apagando piezas (remate, fondo, producto: la línea seguía;
+  // sin parantes, no). En una tienda con decenas de luminarias ese costado
+  // recibe luz de rebote: un tono de emisión del mismo gris la repone.
+  const parantesDeVenta = useMemo(() => {
+    if (!luz || ghost) return null;
+    const comun = { color: G_FRAME, metalness: 0.18, roughness: 0.70 };
+    const lateral = conLuzDeVenta(true, K_ENTORNO_MUEBLE, BRILLO.estructura);
+    return {
+      base: new THREE.MeshStandardMaterial({ ...comun, ...conLuzDeVenta(true, K_ENTORNO_MUEBLE, BRILLO.estructura) }),
+      lateral: new THREE.MeshStandardMaterial({
+        ...comun, emissive: new THREE.Color(G_FRAME), emissiveIntensity: LUZ_LATERAL_DEL_PARANTE, ...lateral,
+      }),
+    };
+  }, [luz, ghost]);
+  useSoltarMateriales(parantesDeVenta ?? {});
+  useAtenuacion([ventaParante, ventaRemate, ventaFilo, parantesDeVenta?.base, parantesDeVenta?.lateral]);
 
   return (
     <group>
@@ -1054,13 +1080,20 @@ function RobatopeMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:num
       )}
 
       {/* Left & right uprights — identical profile to PuntaMesh */}
-      {([-1, 1] as const).map(side => (
+      {([-1, 1] as const).map(side => (luz && parantesDeVenta ? (
+        // En venta, los costados del parante con su luz lateral (ver
+        // `LUZ_LATERAL_DEL_PARANTE`): BoxGeometry ordena +X, −X, +Y, −Y, +Z, −Z.
+        <mesh key={side} position={[side * (w / 2 - 0.025), bodyH / 2, 0]} castShadow
+          material={[parantesDeVenta.lateral, parantesDeVenta.lateral, parantesDeVenta.base, parantesDeVenta.base, parantesDeVenta.base, parantesDeVenta.base]}>
+          <boxGeometry args={[0.050, bodyH, d]} />
+        </mesh>
+      ) : (
         <mesh key={side} position={[side * (w / 2 - 0.025), bodyH / 2, 0]} castShadow>
           <boxGeometry args={[0.050, bodyH, d]} />
           <meshStandardMaterial key={luz ? "venta" : "editor"} color={G_FRAME} metalness={0.18} roughness={0.70}
             transparent opacity={op} {...ventaParante} />
         </mesh>
-      ))}
+      )))}
 
       {/* Shelf boards + front price rails */}
       {cotas.repisas.map((sy, i) => {

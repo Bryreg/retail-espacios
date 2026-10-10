@@ -42,8 +42,8 @@ import { hashTexto } from "./producto";
  */
 export const PALETAS: Record<string, readonly string[]> = {
   aseo: ["#e6e9ec", "#9cc3d9", "#8fbfae", "#5d7fa8", "#b7a9cc"],
-  enlatados: ["#a8645d", "#c7ad6e", "#7d8a5a", "#56688a", "#e3dccd"],
-  galletas: ["#56709a", "#a86262", "#c4a86e", "#e5d8bd", "#6e5040"],
+  enlatados: ["#a8645d", "#c7ad6e", "#7d8a5a", "#5f7396", "#e3dccd"],
+  galletas: ["#56709a", "#a86262", "#c4a86e", "#e5d8bd", "#806252"],
   bebidas: ["#aa6560", "#5c8a66", "#c99870", "#6283a6", "#d1be7a"],
   lacteos: ["#e8ecef", "#6f8fb5", "#a9c6dd", "#b87575", "#dccb8a"],
   cereales: ["#cdb172", "#a86060", "#5f7aa0", "#7a9466", "#c89e72"],
@@ -55,6 +55,19 @@ export const PALETAS: Record<string, readonly string[]> = {
 
 /** Ninguna paleta pasa de esta saturación (HSV). */
 export const SATURACION_MAXIMA = 0.45;
+/** Ni de esta luminancia para abajo (luma sRGB, 0–255): en un vecino atenuado
+ *  el café de las galletas (#6e5040, 85) y el azul de los enlatados quedaban
+ *  como manchas casi negras —el p5 del relleno en 24—. */
+export const LUMA_MINIMA = 100;
+
+/**
+ * La exposición del relleno en un mueble VECINO (el que no se muestra). El
+ * mueble vecino va con `EXPOSICION_DEL_VECINO` (0,38) para que no compita;
+ * su producto con eso caía a casi negro en los colores oscuros. El relleno es
+ * mercadería vendida, con color: queda un poco más arriba que su mueble, que
+ * sigue siendo lo que se apaga.
+ */
+export const EXPOSICION_DEL_RELLENO_VECINO = 0.55;
 
 /** Qué palabras del rubro (el COMIENZO de cada una, sin tildes, como
  *  `rubroQueCasa`) llevan a qué paleta. El rubro es texto libre: puede traer
@@ -181,11 +194,31 @@ type Pincel = Pick<CanvasRenderingContext2D, "fillRect" | "beginPath" | "ellipse
  *
  * Sin texto: rayas grises de un par de píxeles que a la distancia del pasillo
  * se leen como letra impresa y de cerca no dicen nada.
+ *
+ * ## Empaque desenfocado, no pictograma (la crítica de la demo, ronda 3)
+ *
+ * La primera versión pintaba el «logo» y la «ventana» con 0,42–0,55 de luz y
+ * bordes duros: óvalos y rectángulos casi negros, y en la caja la banda clara
+ * con corte neto. En «De cerca» del robatope el relleno ocupaba media pantalla
+ * al lado del arroz real y se leía como un juguete. Ahora:
+ *
+ * - nada baja de `SOMBRA_MINIMA` (0,62) de la luz del envase: el «logo» es un
+ *   tono medio del mismo color, no un agujero;
+ * - lo claro es papel a medias (a lo sumo `BLANCO_MAXIMO` hacia el blanco) y
+ *   la franja del diseño 3 apenas se despega (+10 %);
+ * - la ventana de la «foto» va en degradé;
+ * - y todo se suaviza 3–4 px después de pintar (`suavizarPorCelda`, sólo en
+ *   la textura de verdad): de lejos se lee como un empaque fuera de foco.
  */
+export const SOMBRA_MINIMA = 0.62;
+/** Lo más que una zona clara de la etiqueta se lleva hacia el blanco. */
+export const BLANCO_MAXIMO = 0.5;
+
 export function pintarEtiquetaDeRelleno(g: Pincel, W: number, H: number): void {
   const celda = W / DISENOS;
   const pintar = (sombra: number, blanco: number) => {
-    const r = Math.round(sombra * 255), v = Math.round(blanco * 255);
+    const r = Math.round(Math.max(SOMBRA_MINIMA, sombra) * 255);
+    const v = Math.round(Math.min(BLANCO_MAXIMO, blanco) * 255);
     g.fillStyle = `rgb(${r},${v},${r})`;
   };
   // v (0 abajo, 1 arriba) → y del lienzo.
@@ -200,39 +233,102 @@ export function pintarEtiquetaDeRelleno(g: Pincel, W: number, H: number): void {
   const rayas = (d: number, u0: number, u1: number, vs: number[]) => {
     vs.forEach((v, i) => rect(d, u0, v, u1 - (i % 2) * 0.12, v + 0.018));
   };
+  /** Un rectángulo en degradé vertical (de `abajo` a `arriba` de blanco), en
+   *  franjas finas: el suavizado de después las funde. */
+  const degrade = (d: number, u0: number, v0: number, u1: number, v1: number, sombra: number, abajo: number, arriba: number) => {
+    const n = 8;
+    for (let i = 0; i < n; i++) {
+      pintar(sombra, abajo + ((arriba - abajo) * (i + 0.5)) / n);
+      rect(d, u0, v0 + ((v1 - v0) * i) / n, u1, v0 + ((v1 - v0) * (i + 1)) / n);
+    }
+  };
   // El fondo de todo: el color del envase, sin tocar.
   pintar(1, 0);
   g.fillRect(0, 0, W, H);
 
-  // 0 · Banda clara con el «logo» oscuro y rayas abajo.
-  pintar(1, 1); rect(0, 0, 0.36, 1, 0.66);
-  pintar(0.42, 0); elipse(0, 0.5, 0.51, 0.3, 0.085);
-  pintar(0.68, 0.35); rayas(0, 0.2, 0.8, [0.27, 0.21, 0.15]);
+  // 0 · Banda clara con el «logo» en un tono medio y rayas abajo.
+  pintar(1, 0.45); rect(0, 0, 0.36, 1, 0.66);
+  pintar(0.78, 0.22); elipse(0, 0.5, 0.51, 0.3, 0.085);
+  pintar(0.78, 0.3); rayas(0, 0.2, 0.8, [0.27, 0.21, 0.15]);
 
-  // 1 · Franja oscura arriba, «logo» claro y la ventana de la «foto».
-  pintar(0.55, 0); rect(1, 0, 0.86, 1, 0.97);
-  pintar(1, 1); elipse(1, 0.5, 0.71, 0.32, 0.07);
-  pintar(0.5, 1); rayas(1, 0.32, 0.68, [0.695]);
-  pintar(1, 1); rect(1, 0.14, 0.12, 0.86, 0.55);
-  pintar(0.8, 0.45); elipse(1, 0.42, 0.3, 0.2, 0.1);
-  pintar(0.88, 0.25); elipse(1, 0.62, 0.36, 0.16, 0.09);
+  // 1 · Franja más oscura arriba, «logo» claro y la ventana de la «foto», en
+  //     degradé (la de antes era un hueco negro con borde duro).
+  pintar(0.74, 0); rect(1, 0, 0.86, 1, 0.97);
+  pintar(1, 0.34); elipse(1, 0.5, 0.71, 0.32, 0.07);
+  pintar(0.76, 0.45); rayas(1, 0.32, 0.68, [0.695]);
+  degrade(1, 0.14, 0.12, 0.86, 0.55, 1, 0.2, 0.45);
+  pintar(0.86, 0.32); elipse(1, 0.42, 0.3, 0.2, 0.1);
+  pintar(0.92, 0.2); elipse(1, 0.62, 0.36, 0.16, 0.09);
 
   // 2 · Sello redondo claro con su aro, y una banda con rayas arriba.
-  pintar(1, 1); elipse(2, 0.5, 0.44, 0.34, 0.2);
-  pintar(0.6, 0.6); elipse(2, 0.5, 0.44, 0.22, 0.13);
-  pintar(1, 1); elipse(2, 0.5, 0.44, 0.15, 0.09);
-  pintar(1, 1); rect(2, 0, 0.76, 1, 0.92);
-  pintar(0.62, 1); rayas(2, 0.18, 0.82, [0.85, 0.8]);
+  pintar(1, 0.45); elipse(2, 0.5, 0.44, 0.34, 0.2);
+  pintar(0.8, 0.3); elipse(2, 0.5, 0.44, 0.22, 0.13);
+  pintar(1, 0.45); elipse(2, 0.5, 0.44, 0.15, 0.09);
+  pintar(1, 0.4); rect(2, 0, 0.76, 1, 0.92);
+  pintar(0.76, 0.45); rayas(2, 0.18, 0.82, [0.85, 0.8]);
 
-  // 3 · Franja clara a la izquierda, «logo» oscuro arriba y faja blanca abajo.
-  pintar(1, 0.35); rect(3, 0.06, 0.05, 0.3, 1);
-  pintar(0.45, 0); rect(3, 0.38, 0.7, 0.92, 0.84);
-  pintar(1, 1); rect(3, 0, 0.1, 1, 0.26);
-  pintar(0.62, 1); rayas(3, 0.36, 0.88, [0.19, 0.14]);
+  // 3 · Franja apenas más clara a la izquierda (+10 %: la de antes se leía
+  //     como una capa transparente), «logo» en tono medio arriba y faja clara
+  //     abajo.
+  pintar(1, 0.12); rect(3, 0.06, 0.05, 0.3, 1);
+  degrade(3, 0.38, 0.7, 0.92, 0.84, 0.7, 0.08, 0);
+  pintar(1, 0.45); rect(3, 0, 0.1, 1, 0.26);
+  pintar(0.76, 0.45); rayas(3, 0.36, 0.88, [0.19, 0.14]);
 
   // Lo liso de abajo, en todas las celdas: costados, tapa y base.
   pintar(1, 0);
   g.fillRect(0, y(0.05), W, 0.05 * H);
+}
+
+/** El suavizado de la etiqueta, en píxeles de la textura (radio de la caja, y
+ *  cuántas pasadas: tres cajas de radio 3 son casi una gaussiana de σ ≈ 3,5). */
+export const SUAVIZADO = { radio: 3, pasadas: 3 } as const;
+
+/**
+ * Suaviza la etiqueta pintada SIN mezclar un diseño con el de al lado: un
+ * desenfoque de caja separable, a lo ancho dentro de cada celda (los bordes
+ * de la celda se repiten) y a lo alto en toda la textura. Puro (RGBA, en el
+ * lugar): lo corre `probar-muebles` y mide que no queden saltos duros.
+ */
+export function suavizarPorCelda(
+  datos: Uint8ClampedArray, W: number, H: number, celdas: number,
+  radio: number = SUAVIZADO.radio, pasadas: number = SUAVIZADO.pasadas,
+): void {
+  const celda = W / celdas;
+  const tmp = new Float32Array(Math.max(W, H) * 4);
+  for (let p = 0; p < pasadas; p++) {
+    // A lo ancho, celda por celda.
+    for (let fila = 0; fila < H; fila++) {
+      for (let c = 0; c < celdas; c++) {
+        const x0 = Math.round(c * celda), x1 = Math.round((c + 1) * celda) - 1;
+        for (let x = x0; x <= x1; x++) {
+          for (let k = 0; k < 4; k++) {
+            let suma = 0;
+            for (let d = -radio; d <= radio; d++) {
+              const xx = Math.min(x1, Math.max(x0, x + d));
+              suma += datos[(fila * W + xx) * 4 + k];
+            }
+            tmp[x * 4 + k] = suma / (2 * radio + 1);
+          }
+        }
+      }
+      for (let x = 0; x < W; x++) for (let k = 0; k < 4; k++) datos[(fila * W + x) * 4 + k] = tmp[x * 4 + k];
+    }
+    // A lo alto.
+    for (let x = 0; x < W; x++) {
+      for (let fila = 0; fila < H; fila++) {
+        for (let k = 0; k < 4; k++) {
+          let suma = 0;
+          for (let d = -radio; d <= radio; d++) {
+            const ff = Math.min(H - 1, Math.max(0, fila + d));
+            suma += datos[(ff * W + x) * 4 + k];
+          }
+          tmp[fila * 4 + k] = suma / (2 * radio + 1);
+        }
+      }
+      for (let fila = 0; fila < H; fila++) for (let k = 0; k < 4; k++) datos[(fila * W + x) * 4 + k] = tmp[fila * 4 + k];
+    }
+  }
 }
 
 let texturaDeEtiqueta: THREE.CanvasTexture | null = null;
@@ -243,7 +339,15 @@ export function texturaDeEtiquetaDeRelleno(): THREE.CanvasTexture {
   if (texturaDeEtiqueta) return texturaDeEtiqueta;
   const c = document.createElement("canvas");
   c.width = 512; c.height = 128;
-  pintarEtiquetaDeRelleno(c.getContext("2d")!, c.width, c.height);
+  const g = c.getContext("2d", { willReadFrequently: true })!;
+  pintarEtiquetaDeRelleno(g, c.width, c.height);
+  // Suavizada; y lo liso de abajo (costados, tapa, base) se repinta liso,
+  // que el desenfoque lo manchaba con el diseño de arriba.
+  const img = g.getImageData(0, 0, c.width, c.height);
+  suavizarPorCelda(img.data, c.width, c.height, DISENOS);
+  g.putImageData(img, 0, 0);
+  g.fillStyle = "rgb(255,0,255)";
+  g.fillRect(0, c.height * 0.95, c.width, c.height * 0.05);
   const t = new THREE.CanvasTexture(c);
   // Es un dato (sombra y blanco), no un color: sin conversión de sRGB.
   t.colorSpace = THREE.NoColorSpace;
@@ -253,7 +357,7 @@ export function texturaDeEtiquetaDeRelleno(): THREE.CanvasTexture {
 }
 
 /** El blanco de la etiqueta del relleno (lineal): un papel, no un foco. */
-const BLANCO_DE_ETIQUETA = 0.78;
+export const BLANCO_DE_ETIQUETA = 0.78;
 
 /**
  * El parche del relleno de venta, que va DESPUÉS del de la luz de venta

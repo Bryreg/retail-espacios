@@ -715,7 +715,10 @@ export interface FocoDeVenta {
 
 /** Qué parte del alto del cuadro llenan las dos repisas de «De cerca» en un
  *  mueble angosto. */
-export const LLENADO_DE_PAR = 0.7;
+// 0,77 en el plano de la cara: medido en la captura, con 0,7 el par se veía
+// al 62 % del cuadro (las repisas se inclinan y el producto queda adelante
+// del plano de la mira); la crítica pide 68-70 %.
+export const LLENADO_DE_PAR = 0.77;
 
 /** La franja de abajo del cuadro que puede tapar el HUD de Presentar (110 px
  *  de 1080). En «De cerca» el producto del entrepaño elegido queda arriba de

@@ -82,9 +82,14 @@ export const AMPLIACION_MAXIMA = 1.5;
  *  etiqueta en ella. `Etiqueta` lo cumple; las pruebas pasan uno falso. */
 type FuenteDeCartel = Pick<Etiqueta, "lienzo" | "recorte" | "franja"> & Partial<Pick<Etiqueta, "colorDeMarca">>;
 
-/** Un contexto 2D: el del lienzo, o uno falso en `probar-muebles`. */
+/** Un contexto 2D: el del lienzo, o uno falso en `probar-muebles`. El
+ *  trazado y la lectura (el panel redondeado del cabezote, la nitidez de la
+ *  marca) son opcionales: el falso de las pruebas puede no tenerlos. */
 type Pincel = Pick<CanvasRenderingContext2D,
-  "fillRect" | "drawImage" | "createLinearGradient" | "createRadialGradient"> & { fillStyle: unknown };
+  "fillRect" | "drawImage" | "createLinearGradient" | "createRadialGradient"> & { fillStyle: unknown }
+  & Partial<Pick<CanvasRenderingContext2D,
+    "beginPath" | "moveTo" | "arcTo" | "closePath" | "fill" | "stroke" | "getImageData" | "putImageData">>
+  & { globalAlpha?: number; strokeStyle?: unknown; lineWidth?: number; canvas?: CanvasImageSource };
 
 /**
  * El dibujo del cartel, sobre un contexto 2D de W × H.
@@ -207,51 +212,193 @@ export function dibujarCartel(
     return;
   }
   // Apaisado: el cabezote retroiluminado. La franja: la de la etiqueta si el
-  // envase la tiene (la botella transparente) o la del medio de la foto.
+  // envase la tiene (la botella transparente) o la del medio de la foto, sin
+  // el `CANTO_DE_LA_ETIQUETA` de cada lado: ahí la foto de un envase redondo
+  // se oscurece con la curva y el recorte se leía como un rectángulo pegado.
   const f = conFranja ? et.franja() : FRANJA_DEL_MEDIO;
-  const sx = Math.round(f.x0 * p.width), sw = Math.max(1, Math.round((f.x1 - f.x0) * p.width));
+  const fx0 = f.x0 + (f.x1 - f.x0) * CANTO_DE_LA_ETIQUETA, fx1 = f.x1 - (f.x1 - f.x0) * CANTO_DE_LA_ETIQUETA;
+  const sx = Math.round(fx0 * p.width), sw = Math.max(1, Math.round((fx1 - fx0) * p.width));
   const sy = Math.round(f.desde * p.height), sh = Math.max(1, Math.round((f.hasta - f.desde) * p.height));
-  // Al 78 % del alto, sin ampliar la foto más de `AMPLIACION_MAXIMA` (en la
-  // lámina «De cerca» salía pixelado), y a lo sumo el 60 % del ancho.
-  let altura = Math.min(H * 0.78, sh * AMPLIACION_MAXIMA);
+  // La marca, al alto del PANEL (`PANEL_DEL_CABEZOTE.alto`) menos su margen,
+  // sin ampliar la foto más de `AMPLIACION_MAXIMA` y a lo sumo un tercio del
+  // ancho.
+  const altoPanel = H * PANEL_DEL_CABEZOTE.alto;
+  let altura = Math.min(altoPanel * 0.84, sh * AMPLIACION_MAXIMA);
   let ancho = (altura * sw) / sh;
-  if (ancho > W * 0.6) { altura *= (W * 0.6) / ancho; ancho = W * 0.6; }
-  halo(Math.max(ancho * 0.9, H * 1.2), 0.4);
-  // El PANEL de la etiqueta detrás de la marca: su propio fondo (el rosa de
-  // la etiqueta de Postobón, el blanco del vaso), de `PANEL_DEL_CABEZOTE` del
-  // ancho como mínimo, con las puntas fundidas. Solo, el recorte ocupaba el 8 %
-  // del aviso: «una calcomanía sobre una franja de color». No es un dibujo
-  // nuevo: es el papel de la etiqueta, estirado detrás de su marca.
-  // Con la luz detrás, como el resto de la chapa: el color del papel
-  // saturado y claro (en la foto, el rosa del centro de la etiqueta promedia
-  // #9c5063: sin luz, una banda bordó detrás de la marca).
+  if (ancho > W / 3) { altura *= W / 3 / ancho; ancho = W / 3; }
+  // El PANEL de la etiqueta detrás de la marca: el papel de la etiqueta (su
+  // propio fondo: el rosa de la de Postobón, el blanco del vaso), saturado y
+  // claro como el resto de la chapa con la luz detrás. Desde la crítica de la
+  // demo (ronda 3) es un RECTÁNGULO de esquinas redondeadas con un filete
+  // blanco que lo encuadra, no un halo: la mancha rosada difusa no se leía
+  // como aviso. Si la marca, al tope de la ampliación, no llega al
+  // `PANEL_DEL_CABEZOTE.ancho` del cabezote, se repite UNA vez a cada lado
+  // al `ECO_DE_LA_MARCA` de opacidad —luz de fondo, no miniaturas—, y el
+  // panel abarca las tres.
   const fondo0 = (f as { fondo?: string | null }).fondo ?? et.recorte.colorDominante;
   const fondo = /^#[0-9a-f]{6}$/i.test(fondo0) ? saturar(fondo0, 0.6, 0.5, 0.64) : fondo0;
-  const panel = /^#[0-9a-f]{6}$/i.test(fondo) && distancia(fondo, base) > 40 ? fondo : null;
-  const anchoPanel = Math.max(ancho, W * PANEL_DEL_CABEZOTE);
-  if (panel) {
-    const px0 = W / 2 - anchoPanel / 2, py = (H - altura) / 2;
-    const punta = Math.min(anchoPanel * 0.18, W * 0.06);
-    const gp = g.createLinearGradient(px0, 0, px0 + anchoPanel, 0);
-    gp.addColorStop(0, rgba(panel, 0));
-    gp.addColorStop(punta / anchoPanel, rgba(panel, 1));
-    gp.addColorStop(1 - punta / anchoPanel, rgba(panel, 1));
-    gp.addColorStop(1, rgba(panel, 0));
-    g.fillStyle = gp;
-    g.fillRect(px0, py, anchoPanel, altura);
+  const panel = /^#[0-9a-f]{6}$/i.test(fondo) && distancia(fondo, base) > 40 ? fondo : aclarar(base, 0.55);
+  const conEco = ancho < W * PANEL_DEL_CABEZOTE.ancho;
+  const paso = ancho * 1.08;
+  const anchoPanel = Math.min(W * 0.9, Math.max(W * PANEL_DEL_CABEZOTE.ancho, (conEco ? ancho + 2 * paso : ancho) + H * 0.5));
+  const px0 = W / 2 - anchoPanel / 2, py0 = (H - altoPanel) / 2;
+  const radio = altoPanel * 0.22;
+  const trazar = (x: number, y: number, w: number, h: number, r: number) => {
+    if (!g.beginPath || !g.moveTo || !g.arcTo || !g.closePath) return false;
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r);
+    g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r);
+    g.arcTo(x, y, x + w, y, r);
+    g.closePath();
+    return true;
+  };
+  g.fillStyle = panel;
+  if (trazar(px0, py0, anchoPanel, altoPanel, radio) && g.fill) g.fill();
+  else g.fillRect(px0, py0, anchoPanel, altoPanel);
+  // El filete blanco: el borde definido del panel.
+  const filete = Math.max(2, H * 0.03);
+  if (g.stroke && trazar(px0 + filete / 2, py0 + filete / 2, anchoPanel - filete, altoPanel - filete, radio - filete / 2)) {
+    g.strokeStyle = "rgba(255,255,255,0.92)";
+    g.lineWidth = filete;
+    g.stroke();
   }
-  const dx = W / 2 - ancho / 2, dy = (H - altura) / 2;
+  const dy = (H - altura) / 2;
+  const dx = W / 2 - ancho / 2;
   g.drawImage(p, sx, sy, sw, sh, dx, dy, ancho, altura);
-  // Sin borde: el recorte se FUNDE con lo que tiene detrás (el panel, o la
-  // chapa) en sus cuatro lados. Con el canto duro, el rectángulo de la
-  // etiqueta se leía pegado encima, como un sticker. Y sin las botellitas de
-  // las puntas: el aviso es la marca.
-  fundirBordes(g, dx, dy, ancho, altura, panel ?? base, Math.max(2, Math.min(altura * 0.2, W * BORDE_FUNDIDO)));
+  // El papel de la foto llevado al del panel (`igualarFondo`: la foto es más
+  // oscura que la chapa con la luz detrás, y el recorte se veía como un
+  // rectángulo bordó pegado) y nitidez leve (un realce de radio 1): la foto
+  // llega reducida y, filtrada al dibujarse, la marca se leía borrosa.
+  const fundido = Math.max(2, Math.min(altura * 0.12, W * BORDE_FUNDIDO));
+  const papel = (f as { fondo?: string | null }).fondo;
+  if (g.getImageData && g.putImageData) {
+    const x0 = Math.max(0, Math.floor(dx)), y0 = Math.max(0, Math.floor(dy));
+    const w = Math.min(W - x0, Math.ceil(ancho)), h = Math.min(H - y0, Math.ceil(altura));
+    if (w > 2 && h > 2) {
+      const img = g.getImageData(x0, y0, w, h);
+      // Columna por columna: el papel de la foto de un envase redondo se
+      // oscurece hacia los costados (la curva), y con un solo color de papel
+      // el recorte seguía siendo un rectángulo más oscuro en los cantos.
+      if (/^#[0-9a-f]{6}$/i.test(panel)) igualarFondoPorColumna(img.data, w, h, panel);
+      else if (papel && /^#[0-9a-f]{6}$/i.test(papel)) igualarFondo(img.data, papel, panel);
+      realzar(img.data, w, h, NITIDEZ_DE_LA_MARCA);
+      g.putImageData(img, x0, y0);
+    }
+  }
+  // El canto del recorte se funde con el panel, fino (el papel ya es el del
+  // panel), sin tocar la marca.
+  fundirBordes(g, dx, dy, ancho, altura, panel, fundido);
+  // El eco, a cada lado: copiado de la marca YA igualada (del propio lienzo),
+  // así su papel es el del panel y al 30 % sólo asoma la letra. Sin lienzo (el
+  // pincel de las pruebas), de la foto.
+  if (conEco) {
+    const alfa = g.globalAlpha ?? 1;
+    g.globalAlpha = ECO_DE_LA_MARCA;
+    for (const s of [-1, 1]) {
+      if (g.canvas) g.drawImage(g.canvas, dx, dy, ancho, altura, dx + s * paso, dy, ancho, altura);
+      else g.drawImage(p, sx, sy, sw, sh, dx + s * paso, dy, ancho, altura);
+    }
+    g.globalAlpha = alfa;
+  }
 }
 
-/** Qué parte del ancho del cabezote cubre, como mínimo, el panel de la
- *  etiqueta detrás de la marca. */
-export const PANEL_DEL_CABEZOTE = 0.4;
+/** Qué parte del ancho de la etiqueta se deja afuera de cada lado en el
+ *  cabezote: la curva de un envase redondo, más oscura en la foto. */
+export const CANTO_DE_LA_ETIQUETA = 0.06;
+
+/**
+ * Lleva el papel de un recorte (`papel`, el fondo de la etiqueta en la foto)
+ * al color del panel donde va pegado, canal por canal, con una curva: el
+ * negro queda negro, el papel pasa a ser el panel y la tinta clara (más allá
+ * de `LETRA_BLANCA_DESDE` del camino al blanco) queda BLANCA —la letra de la
+ * marca no se apaga aunque el panel tenga menos de un canal que el papel—.
+ * Entre esos puntos, lineal. RGBA en el lugar; el alfa no se toca.
+ */
+export function igualarFondo(datos: Uint8ClampedArray, papel: string, panel: string): void {
+  igualarConPapel(datos, 0, datos.length / 4, 1, [1, 3, 5].map((i) => parseInt(papel.slice(i, i + 2), 16)), panel);
+}
+
+/** Desde qué fracción del camino entre el papel y el blanco una tinta clara
+ *  cuenta como letra blanca: la foto de un envase redondo trae la marca más
+ *  apagada en el costado que se aleja de la luz («MANZANA» blanca a la
+ *  izquierda y rosa a la derecha), y en un aviso retroiluminado la letra es
+ *  pareja. */
+export const LETRA_BLANCA_DESDE = 0.55;
+
+/** La curva (negro → negro, papel → panel, letra clara → blanco) sobre `n`
+ *  píxeles desde `desde`, de `paso` en `paso`. */
+function igualarConPapel(datos: Uint8ClampedArray, desde: number, n: number, paso: number, papel: number[], panel: string): void {
+  const a = papel.map((v) => Math.min(254, Math.max(1, v)));
+  const b = [1, 3, 5].map((i) => parseInt(panel.slice(i, i + 2), 16));
+  const w = a.map((v) => v + LETRA_BLANCA_DESDE * (255 - v));
+  const curva = (c: number, k: number) => (c <= a[k] ? (c * b[k]) / a[k]
+    : c >= w[k] ? 255 : b[k] + ((c - a[k]) * (255 - b[k])) / (w[k] - a[k]));
+  for (let j = 0; j < n; j++) {
+    const i = (desde + j * paso) * 4;
+    for (let k = 0; k < 3; k++) datos[i + k] = curva(datos[i + k], k);
+  }
+}
+
+/**
+ * `igualarFondo` con el papel de CADA COLUMNA: la mediana de la columna (la
+ * mayoría de una franja de etiqueta es papel), suavizada a lo ancho para que
+ * no queden rayas. Lleva a la vez el color del papel y la sombra de la curva
+ * del envase al color del panel. RGBA (`w` × `h`) en el lugar.
+ */
+export function igualarFondoPorColumna(datos: Uint8ClampedArray, w: number, h: number, panel: string): void {
+  const medianas: number[][] = [];
+  const col = new Array<number>(h);
+  for (let x = 0; x < w; x++) {
+    const m: number[] = [];
+    for (let k = 0; k < 3; k++) {
+      for (let y = 0; y < h; y++) col[y] = datos[(y * w + x) * 4 + k];
+      col.sort((p, q) => p - q);
+      m.push(col[Math.floor(h / 2)]);
+    }
+    medianas.push(m);
+  }
+  const r = Math.max(1, Math.round(w / 40));
+  for (let x = 0; x < w; x++) {
+    const suave = [0, 0, 0];
+    let n = 0;
+    for (let d = -r; d <= r; d++) {
+      const xx = Math.min(w - 1, Math.max(0, x + d));
+      for (let k = 0; k < 3; k++) suave[k] += medianas[xx][k];
+      n++;
+    }
+    igualarConPapel(datos, x, h, w, suave.map((v) => v / n), panel);
+  }
+}
+
+/** El panel de la etiqueta del cabezote: el alto (fracción del cabezote) y
+ *  el ancho mínimo que tiene que cubrir la marca (si no, lleva su eco). */
+export const PANEL_DEL_CABEZOTE = { alto: 0.86, ancho: 0.4 } as const;
+/** La opacidad de la marca repetida a cada lado, como luz de fondo. */
+export const ECO_DE_LA_MARCA = 0.3;
+/** Cuánto realza los bordes de la marca la nitidez (0 = nada). */
+export const NITIDEZ_DE_LA_MARCA = 0.6;
+
+/**
+ * Un realce de nitidez (máscara de enfoque) de radio 1 sobre RGBA, en el
+ * lugar: cada píxel suma `cantidad` × (él − el promedio de su cruz). El alfa
+ * no se toca. Puro: lo corre `probar-muebles`.
+ */
+export function realzar(datos: Uint8ClampedArray, w: number, h: number, cantidad: number): void {
+  const orig = Uint8ClampedArray.from(datos);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      for (let k = 0; k < 3; k++) {
+        const c = orig[i + k];
+        const vecinos = (x > 0 ? orig[i - 4 + k] : c) + (x < w - 1 ? orig[i + 4 + k] : c)
+          + (y > 0 ? orig[i - w * 4 + k] : c) + (y < h - 1 ? orig[i + w * 4 + k] : c);
+        datos[i + k] = c + cantidad * (c - vecinos / 4);
+      }
+    }
+  }
+}
 
 /** La distancia entre dos colores `#rrggbb` (la mayor por canal). */
 function distancia(a: string, b: string): number {
