@@ -508,9 +508,33 @@ def test_alta_por_nombre_reusa_al_que_ya_existe(client, admin):
     assert _cuantos_proveedores() == antes
 
 
+def test_alta_por_nombre_de_uno_que_no_esta_pide_confirmarlo(client, admin):
+    """«Postobon» sin tilde no encuentra a «Postobón» (la regla del contrato
+    sólo saca mayúsculas y espacios), y subir un producto creaba un proveedor
+    duplicado en plena reunión. Sin `crear_proveedor`, un nombre que no está es
+    un 409 que se puede reconocer, no deja nada creado y no nombra a nadie."""
+    postobon = _proveedor(client, admin, "Postobón")
+    antes = _cuantos_proveedores()
+    r = _subir_por_nombre(client, admin, "Postobon", forma="botella", alto_mm="300")
+    assert r.status_code == 409, r.text
+    detalle = r.json()["detail"]
+    assert detalle["codigo"] == "proveedor_nuevo"
+    assert "Postobon" in detalle["mensaje"] and "Postobón" not in detalle["mensaje"]
+    assert _cuantos_proveedores() == antes
+    assert _por_nombre(client, admin, "Postobón") == []
+    # Con el nombre bien escrito, no hace falta confirmar nada.
+    bien = _subir_por_nombre(client, admin, "postobón", forma="botella", alto_mm="300")
+    assert bien.status_code == 201, bien.text
+    assert bien.json()["supplier_id"] == postobon
+    # Y con `crear_proveedor` en un nombre que SÍ está, se reusa: no duplica.
+    otra = _subir_por_nombre(client, admin, "POSTOBÓN", nombre="Otra", forma="botella", alto_mm="300", crear_proveedor="true")
+    assert otra.status_code == 201 and otra.json()["supplier_id"] == postobon
+    assert _cuantos_proveedores() == antes
+
+
 def test_alta_por_nombre_crea_uno_nuevo_y_despues_lo_reusa(client, admin):
     antes = _cuantos_proveedores()
-    r = _subir_por_nombre(client, admin, "  Lácteos del Valle  ", forma="caja", alto_mm="200")
+    r = _subir_por_nombre(client, admin, "  Lácteos del Valle  ", forma="caja", alto_mm="200", crear_proveedor="true")
     assert r.status_code == 201, r.text
     assert r.json()["proveedor"] == "Lácteos del Valle"   # recortado
     assert _cuantos_proveedores() == antes + 1
@@ -537,17 +561,18 @@ def test_alta_por_nombre_que_falla_no_deja_un_proveedor_suelto(client, admin):
     """Todo se valida ANTES de crear al proveedor, y el proveedor nuevo entra
     en el mismo commit que el arte: un alta rechazada no deja nada."""
     antes = _cuantos_proveedores()
+    nuevo = {"crear_proveedor": "true"}
     # No es una imagen.
-    r = _subir_por_nombre(client, admin, "Proveedor Nuevo SA", archivo=("x.svg", SVG, "image/svg+xml"))
+    r = _subir_por_nombre(client, admin, "Proveedor Nuevo SA", archivo=("x.svg", SVG, "image/svg+xml"), **nuevo)
     assert r.status_code == 422
     # La ficha no se entiende.
-    r = _subir_por_nombre(client, admin, "Proveedor Nuevo SA", forma="pelota")
+    r = _subir_por_nombre(client, admin, "Proveedor Nuevo SA", forma="pelota", **nuevo)
     assert r.status_code == 422
-    r = _subir_por_nombre(client, admin, "Proveedor Nuevo SA", alto_mm="3")
+    r = _subir_por_nombre(client, admin, "Proveedor Nuevo SA", alto_mm="3", **nuevo)
     assert r.status_code == 422
     # Sin nombre de producto, y vacío.
-    assert _subir_por_nombre(client, admin, "Proveedor Nuevo SA", nombre="  ").status_code == 422
-    assert _subir_por_nombre(client, admin, "Proveedor Nuevo SA", archivo=("x.jpg", b"", "image/jpeg")).status_code == 422
+    assert _subir_por_nombre(client, admin, "Proveedor Nuevo SA", nombre="  ", **nuevo).status_code == 422
+    assert _subir_por_nombre(client, admin, "Proveedor Nuevo SA", archivo=("x.jpg", b"", "image/jpeg"), **nuevo).status_code == 422
     assert _cuantos_proveedores() == antes
     assert _proveedores_llamados("Proveedor Nuevo SA") == []
 
@@ -577,7 +602,7 @@ def test_alta_por_nombre_y_despues_el_contrato_no_crea_otro_proveedor(client, ad
     r = client.put("/api/layout/NAVE", json={"fixtures": plano, "base_updated_at": None}, headers=admin)
     assert r.status_code == 200, r.text
 
-    subida = _subir_por_nombre(client, admin, "alpina s.a.", forma="vaso", alto_mm="90")
+    subida = _subir_por_nombre(client, admin, "alpina s.a.", forma="vaso", alto_mm="90", crear_proveedor="true")
     assert subida.status_code == 201, subida.text
     sid = subida.json()["supplier_id"]
     antes = _cuantos_proveedores()

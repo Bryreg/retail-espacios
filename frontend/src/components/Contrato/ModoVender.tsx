@@ -96,14 +96,12 @@ function Panel({ derecha, children }: { derecha?: React.ReactNode; children: Rea
  *  de partida real— y al lado se ve el desvío, así que bajar el precio es una
  *  decisión que se toma mirando cuánto se está bajando. */
 function Fila({
-  l, c, sePuedeQuitar, onResaltar, onVer3D,
+  l, c, sePuedeQuitar, onResaltar,
 }: {
   l: Contrato["lineas"][number];
   c: Contrato;
   sePuedeQuitar: boolean;
   onResaltar: (claves: string[] | null) => void;
-  /** Abre el visor 3D sobre ESTA cara, encima de la ficha. */
-  onVer3D?: () => void;
 }) {
   const clave = `${l.fixture.id}-${l.face}`;
   /* Dos renglones y ni uno más: la fila mide 46 px y la ficha tiene que cerrar
@@ -136,6 +134,15 @@ function Fila({
     : l.disponibilidad === "parcial" ? "Parte del periodo ya está vendida"
     : "Ya está vendido en el periodo";
 
+  /* Las repisas que el plano da por vendidas APARTE (los espacios internos
+     que se marcan en el Editor 3D). No tienen contrato en la base —viven sólo
+     en el JSON del layout—, así que el plano de Vender, que mira contratos,
+     da la cara por libre entera; y el 3D, que mira el layout, las pintaba
+     «vendidas» delante del proveedor. Se le dice a la dueña ACÁ, antes de la
+     reunión, sin nombres: es ella la que sabe si están vigentes. No bloquea
+     el guardado —el servidor no las conoce—. */
+  const repisasVendidas = (l.fixture.slots ?? []).filter((s) => s.status === "occupied" || s.status === "reserved").length;
+
   return (
     <div
       className="eitem"
@@ -143,11 +150,24 @@ function Fila({
       onMouseEnter={() => onResaltar([clave])}
       onMouseLeave={() => onResaltar(null)}
     >
-      <span className="cod">{l.visible}</span>
+      <span className="cod">
+        {l.visible}
+        {/* Debajo del código, y no en un renglón propio: la fila no crece
+            (con un renglón más, la ficha de tres espacios rodaba). El texto
+            entero va en el `title`. */}
+        {!choque && repisasVendidas > 0 && (
+          <span
+            className="repisas"
+            data-repisas-vendidas={repisasVendidas}
+            title={`${repisasVendidas === 1 ? "Un espacio interno de este mueble figura vendido" : `${repisasVendidas} espacios internos de este mueble figuran vendidos`} aparte en el plano (Editor 3D), sin contrato en la base. Vender ofrece la cara entera: revisá si siguen vigentes.`}
+          >
+            {repisasVendidas === 1 ? "1 repisa vendida" : `${repisasVendidas} repisas vendidas`}
+          </span>
+        )}
+      </span>
       <span className="d">
         <span title={l.fixture.label || l.fixture.code}>{rateTypeLabel(rateTypeOf(l.fixture))}</span>
         <span title={segunda}>{segunda}</span>
-        {choque && <span className="choque" role="alert">{choque}</span>}
       </span>
       {/* Una góndola doble son DOS espacios que se venden por separado, y las
           dos pueden ir en el mismo contrato: una marca que quiere el pasillo
@@ -177,24 +197,6 @@ function Fila({
             );
           })}
         </span>
-      )}
-      {/* «¿Y cómo queda?», sin salir del contrato: el 3D se abre ENCIMA de la
-          ficha, que sigue montada debajo con todo lo tecleado. Va en la fila y
-          no en el plano, porque en Vender tocar el plano suma o saca la cara
-          del contrato. De la familia de los interruptores A/B —borde fino,
-          mono, tinta—: nunca amarillo, que es de «Guardar contrato y avisar».
-          La exhibición no tiene 3D (`storeToFixtures` no la dibuja). */}
-      {onVer3D && l.fixture.type !== "exhibicion" && (
-        <button
-          type="button"
-          className="ver3d"
-          data-ver-3d={clave}
-          onClick={onVer3D}
-          aria-label={`Ver ${l.visible} en 3D`}
-          title="Ver cómo queda en 3D"
-        >
-          <Box size={12} aria-hidden /> 3D
-        </button>
       )}
       <span className={`m${l.monto > 0 ? "" : " falta"}`}>
         {/* El peso va como rótulo del campo y no adentro del texto: tecleado se
@@ -227,6 +229,12 @@ function Fila({
           ×
         </button>
       )}
+      {/* El choque va DEBAJO, a todo el ancho de la fila, y no en la columna
+          del tipo: ahí, angosta, salía con una palabra por renglón, la fila
+          pasaba de 150 a 255 px y empujaba Proveedor, fechas y «Guardar»
+          fuera del panel. (`.eitem` es flex con `wrap`; el aviso ocupa el
+          100 % y baja solo al renglón de abajo.) */}
+      {choque && <span className="aviso choque" role="alert">{choque}</span>}
     </div>
   );
 }
@@ -407,46 +415,86 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
      sede (se remonta), con «Empezar de nuevo» y al cambiar de proveedor. */
   const sesion = useSesionDeVenta(c.proveedor);
   const [en3D, setEn3D] = useState<CaraActiva | null>(null);
-  const abierta = useRef<CaraActiva | null>(null);
-  abierta.current = en3D;
   /** Las caras del contrato, como las lee el visor: dónde están y cómo se
-   *  llaman. Nada comercial cruza: ni valores, ni fechas, ni la tarifa. */
+   *  llaman. Nada comercial cruza: ni valores, ni fechas, ni la tarifa.
+   *
+   *  Sin las que chocan: una cara que ya está vendida en el periodo no se
+   *  puede guardar en este contrato, y mostrársela en 3D al proveedor era
+   *  ofrecerle un espacio que no se le puede vender. */
   const carasDelVisor = useMemo<CaraDelVisor[]>(() => c.lineas
     // La exhibición no tiene 3D (`storeToFixtures` no la dibuja): ni botón ni pestaña.
     .filter((l) => l.fixture.type !== "exhibicion")
+    .filter((l) => l.disponibilidad === "libre" && l.choqueServidor.length === 0)
     .map((l) => ({
-      fixtureId: l.fixture.id, face: l.face, visible: l.visible, tipo: rateTypeLabel(rateTypeOf(l.fixture)),
+      fixtureId: l.fixture.id, face: l.face, visible: l.visible, codigo: l.codigo,
+      tipo: rateTypeLabel(rateTypeOf(l.fixture)),
     })), [c.lineas]);
-  const abrir3D = (fixtureId: string, face: "A" | "B") => {
+  /** La que abre «Ver en 3D»: la última cara que se tocó en el plano (las
+   *  filas van en el orden en que se tocaron). Las otras quedan a un toque en
+   *  la chapa del visor. */
+  const caraParaVer = carasDelVisor[carasDelVisor.length - 1] ?? null;
+  const abrir3D = (cara: CaraActiva) => {
     onResaltar(null);
     // La pantalla completa se pide ACÁ, en el clic: después del `import` del
     // visor el navegador ya no la da (sólo la concede con un gesto). Sobre
     // todo el documento y no sobre el visor, que en el primer clic todavía
     // no existe. Si la niega, el visor igual tapa la app entera.
     if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
-    setEn3D({ fixtureId, face });
+    setEn3D({ fixtureId: cara.fixtureId, face: cara.face });
   };
-  /** Cerrar: soltar la pantalla completa y devolver el foco al botón «3D» de
-   *  la cara que se estaba mirando. La salida va acá y no en el desmontaje
-   *  del visor: StrictMode monta y desmonta dos veces en desarrollo y la
-   *  soltaría al abrir. */
+  /** Cerrar: soltar la pantalla completa y devolver el foco al botón «Ver en
+   *  3D». La salida va acá y no en el desmontaje del visor: StrictMode monta
+   *  y desmonta dos veces en desarrollo y la soltaría al abrir. */
   const cerrar3D = useCallback(() => {
-    const vista = abierta.current;
     setEn3D(null);
     if (document.fullscreenElement) document.exitFullscreen().catch(() => { /* ya salió */ });
-    if (vista) {
-      requestAnimationFrame(() => {
-        document.querySelector<HTMLElement>(`[data-ver-3d="${vista.fixtureId}-${vista.face}"]`)?.focus();
-      });
-    }
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>("[data-ver-3d]")?.focus();
+    });
   }, []);
   /** Correo, nota y planometría: opcionales, y ninguno se toca en la llamada
    *  típica. Cerrados, la ficha cierra con aire; abiertos, el cuerpo rueda y se
    *  ve que rueda. */
   const [masDatos, setMasDatos] = useState(false);
+  /** «Usarla como planometría», desde el visor: la lámina queda en el campo
+   *  de planometría de ESTE contrato (y se guarda con él), y el desplegable
+   *  se abre para que al volver se vea adjunta. Nunca el plano. */
+  const { setPlanometria } = c;
+  const adjuntarLamina = useCallback((archivo: File) => {
+    setPlanometria(archivo);
+    setMasDatos(true);
+  }, [setPlanometria]);
 
   return (
-    <Panel derecha={<span className="vpill">sin firmar</span>}>
+    <Panel
+      derecha={
+        <>
+          {/* «¿Y cómo queda?», sin salir del contrato: el 3D se abre ENCIMA
+              de la ficha, que sigue montada debajo con todo lo tecleado. UNO
+              solo, en la cabecera, y no uno por fila: en la fila le comía
+              50 px a la descripción —a 1366 la góndola desbordaba la
+              tarjeta— y el aviso de choque quedaba de una palabra por
+              renglón. Abre la última cara que se tocó en el plano; las otras,
+              desde la chapa del visor. No va en el plano porque en Vender
+              tocar el plano suma o saca la cara del contrato. De la familia
+              de los interruptores A/B —borde fino, mono, tinta—: nunca
+              amarillo, que es de «Guardar contrato y avisar». */}
+          {caraParaVer && (
+            <button
+              type="button"
+              className="ver3d"
+              data-ver-3d
+              onClick={() => abrir3D(caraParaVer)}
+              aria-label={`Ver ${caraParaVer.visible} en 3D`}
+              title={`Ver cómo queda ${caraParaVer.visible} en 3D`}
+            >
+              <Box size={12} aria-hidden /> Ver en 3D
+            </button>
+          )}
+          <span className="vpill">sin firmar</span>
+        </>
+      }
+    >
       <div className="cuerpo">
         <div className="espacios">
           {c.lineas.map((l) => (
@@ -455,7 +503,6 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
               l={l}
               c={c}
               onResaltar={onResaltar}
-              onVer3D={() => abrir3D(l.fixture.id, l.face)}
               /* Con un solo espacio no se ofrece quitarlo: dejaría un contrato
                  sin nada adentro, y para eso está «Empezar de nuevo». */
               sePuedeQuitar={c.lineas.length > 1}
@@ -679,6 +726,9 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
               onProveedor={c.setProveedor}
               sesion={sesion}
               onCerrar={cerrar3D}
+              sede={c.sede}
+              onPlanometria={adjuntarLamina}
+              hayPlanometria={!!c.planometria}
             />
           </Suspense>
         </LimiteDelVisor>

@@ -343,6 +343,9 @@ const COMPONENTES_VENDER = new Set([
   // (PIEZAS_DEL_VISOR) con las mismas guardas que el resto de Vender.
   "Canvas", "CanvasErrorBoundary", "Scene", "Lienzo", "HudQueSeEsconde", "PanelDePrueba",
   "EditorDeFicha", "SubirProducto", "Upload",
+  // Íconos del visor: «Ocultar ›» del cajón y los dos botones de la lámina
+  // («Bajar la propuesta», «Usarla como planometría»). Sólo dibujan un ícono.
+  "ChevronRight", "Download", "FileCheck",
 ]);
 /** `<X` sólo cuenta como etiqueta JSX si lo que hay delante NO es parte de un
  *  identificador: `Record<DisplayStatus>` y `Partial<FaceData>` son genéricos
@@ -671,6 +674,44 @@ prueba("el visor: sin amarillo propio, capa modal, y la letra de la escala", () 
   assert.deepEqual(tw, [], `cuerpos de Tailwind en el visor (van \`var(--t-*)\` en visor.css): ${tw.join(", ")}`);
 });
 
+prueba("el «Ver en 3D» va en la cabecera del contrato, no en cada fila, y el choque a todo el ancho", () => {
+  // En la fila le comía ~50 px a la descripción: a 1366 la góndola desbordaba
+  // la tarjeta y el choque salía con una palabra por renglón (la crítica).
+  const fila = (modoCodigo.match(/function Fila\([^]*?\n\}\n/) || [""])[0];
+  assert.ok(fila.length > 500, "no se encontró la fila del contrato");
+  assert.ok(!/data-ver-3d|ver3d/.test(fila), "la fila del contrato volvió a llevar el botón del 3D");
+  assert.equal((modoCodigo.match(/\sdata-ver-3d\b/g) || []).length, 1, "tiene que haber UN «Ver en 3D»");
+  assert.match(modoCodigo, /<Panel\s+derecha=\{[^]*?className="ver3d"[^]*?<span className="vpill">sin firmar<\/span>/,
+    "el «Ver en 3D» no está en la cabecera del panel, junto a «sin firmar»");
+  // El choque, fuera de la columna del tipo y a todo el ancho.
+  assert.ok(!/className="choque"/.test(fila), "el choque volvió a la columna angosta del tipo");
+  assert.match(fila, /className="aviso choque"/, "el choque no es un aviso de la fila");
+  assert.match(leer("src/vender.css"), /\.eitem > \.aviso \{\s*flex: 0 0 100%;/, "el aviso de la fila no ocupa todo el ancho");
+  // Las caras que chocan no van al visor: no se le muestra al proveedor un
+  // espacio que no se le puede vender.
+  assert.match(modoCodigo, /\.filter\(\(l\) => l\.disponibilidad === "libre" && l\.choqueServidor\.length === 0\)/,
+    "el visor recibe caras que ya están vendidas en el periodo");
+});
+
+prueba("la lámina del visor: del proveedor de los artes, sin período ni valor, y a la planometría de la FICHA", () => {
+  const datos = (visorCodigo.match(/const datos: DatosPropuesta = \{[^]*?\n\s*\};/) || [""])[0];
+  assert.ok(datos, "el visor no arma el pie de la lámina");
+  for (const [re, que] of [
+    [/\bvalorMensual: null,/, "sin valor: el visor no conoce el canon, y no se inventa"],
+    [/\bdesde: "",/, "sin «desde»: lo que se propone no está acordado"],
+    [/\bhasta: "",/, "sin «hasta»"],
+    [/\bproveedor: arte\.proveedor,/, "el proveedor sale del arte que se mira, no del contrato ni de otro"],
+    [/\bmueble: cara\.tipo,/, "el mueble por su tipo, no por su rótulo (texto libre)"],
+  ]) assert.match(datos, re, `el pie de la lámina: ${que}`);
+  assert.equal((visorCodigo.match(/\bcomponerPropuesta\(/g) || []).length, 1, "el visor compone la lámina en más de un lugar");
+  // La planometría: SÓLO el archivo de la lámina, y sólo al campo de la ficha.
+  const llamadas = [...visorCodigo.matchAll(/\bonPlanometria\(([^;]*)\);/g)].map((m) => m[1]);
+  assert.deepEqual(llamadas.map((x) => x.startsWith("new File([jpg.blob]")), [true], `onPlanometria recibe otra cosa: ${llamadas.join(" · ")}`);
+  assert.match(modoCodigo, /const adjuntarLamina = useCallback\(\(archivo: File\) => \{\s*setPlanometria\(archivo\);\s*setMasDatos\(true\);\s*\}, \[setPlanometria\]\);/,
+    "la lámina adjunta escribe algo más que el campo de planometría de la ficha");
+  assert.match(modoCodigo, /onPlanometria=\{adjuntarLamina\}/, "el visor no recibe el adjuntar de la ficha");
+});
+
 /* Las piezas del EDITOR que el visor dibuja adentro de Vender. No están en
    ARCHIVOS_VENDER (el editor entero pinta contratos y precios), así que se
    recortan y se les pasan las mismas guardas: lo que pintan, lo que piden y
@@ -717,6 +758,26 @@ prueba("las piezas del editor que se ven en Vender: ni datos ajenos, ni textos p
     for (const h of llamadasEn(txt, [...LLAMADAS_AJENAS, ...ESCRITURAS])) hits.push(nombre + h);
   }
   assert.deepEqual(hits, [], `\n         ${hits.join("\n         ")}`);
+});
+
+prueba("el visor no contradice a Vender: sin «la prueba los tapa», y el alta de un proveedor nuevo se confirma", () => {
+  // Las repisas vendidas aparte no tienen contrato: Vender ofrece la cara
+  // entera, y el panel le decía al proveedor «esta cara tiene 5 entrepaños
+  // vendidos». En el visor va `paraElProveedor`; el aviso, a la dueña, en la
+  // fila del contrato.
+  const tag = (visorCodigo.match(/<PanelDePrueba\b[^]*?\/>/) || [""])[0];
+  assert.match(tag, /\sparaElProveedor[\s/]/, "el panel «Cómo va» del visor no sabe que lo lee el proveedor");
+  const panel = recortarDelEditor("function PanelDePrueba(", "function VistaProveedor(");
+  assert.match(panel, /\{vendidosTapados > 0 && !paraElProveedor && \(/, "el aviso de entrepaños vendidos le llega al proveedor");
+  assert.match(modoCodigo, /data-repisas-vendidas=\{repisasVendidas\}/, "la fila no le avisa a la dueña de las repisas vendidas aparte");
+  // El alta por nombre no crea un proveedor sin preguntar: sólo con la
+  // confirmación del 409 (`esProveedorNuevo`).
+  assert.match(visorCodigo, /if \(esProveedorNuevo\(e\)\) setNombreNuevo\(true\);/, "el 409 del proveedor nuevo no se pregunta");
+  assert.equal((visorCodigo.match(/\benviar\(true\)/g) || []).length, 1, "el alta del proveedor nuevo se dispara desde otro lado que la confirmación");
+  assert.ok(!/\bcrearProveedor: true\b/.test(visorCodigo), "el visor da de alta proveedores sin preguntar");
+  // Y la órbita del visor no se mete en el mueble.
+  assert.match(visorCodigo, /ctrl\.minAzimuthAngle = frente - giro;\s*ctrl\.maxAzimuthAngle = frente \+ giro;\s*ctrl\.enablePan = false;/,
+    "la órbita del visor gira sin límites");
 });
 
 console.log("\nvender · código muerto");
@@ -1155,16 +1216,25 @@ if (!URL_VENDER) {
       }
       throw new Error(`no se pudo tocar «${texto}» en el HUD`);
     };
-    const abrirVisor = async (pg, fila = 0) => {
-      await pg.locator("[data-ver-3d]").nth(fila).click();
+    /** «Ver en 3D» está en la cabecera del contrato y abre la ÚLTIMA cara
+     *  tocada; si se pide otra, se salta con la chapa del visor. */
+    const abrirVisor = async (pg, cara = CARAS[0]) => {
+      await pg.locator("[data-ver-3d]").click();
       await visorListo(pg);
+      const activa = (await pg.locator(".visor-chapa-cod").textContent())?.trim();
+      if (cara && activa !== cara) {
+        const n = Number(await pg.locator(".visor-venta").getAttribute("data-toma-lista"));
+        await pg.locator(".visor-pestana", { hasText: cara }).click();
+        await pg.waitForFunction((m) => Number(document.querySelector(".visor-venta")?.getAttribute("data-toma-lista") || 0) > m, n, { timeout: 90000 });
+        await pg.waitForTimeout(800);
+      }
     };
     const cerrado = (pg) => pg.evaluate(() => ({
       visor: !!document.querySelector(".visor-venta"),
       inerte: document.getElementById("root")?.hasAttribute("inert") ?? null,
       modal: document.documentElement.hasAttribute("data-modal-abierto"),
       pantallaCompleta: !!document.fullscreenElement,
-      foco: document.activeElement?.getAttribute("data-ver-3d") ?? `(${document.activeElement?.tagName})`,
+      foco: document.activeElement?.hasAttribute("data-ver-3d") ? "Ver en 3D" : `(${document.activeElement?.tagName} ${document.activeElement?.className ?? ""})`,
       amarillos: [...document.querySelectorAll(".btn-principal")].filter((el) => {
         const r = el.getBoundingClientRect();
         if (r.width < 1 || r.height < 1) return false;
@@ -1187,7 +1257,9 @@ if (!URL_VENDER) {
     });
 
     // ── La hoja, con tres espacios y el contrato completo ──────────────
-    for (const c of CARAS) await tocar(pv, c);
+    // Al revés: «Ver en 3D» abre la ÚLTIMA cara tocada, y las pruebas miran
+    // la primera de la lista (la punta).
+    for (const c of [...CARAS].reverse()) await tocar(pv, c);
     const campos = pv.locator(".vender input.entrada");
     await campos.nth(0).fill(PROVEEDOR);
     await campos.nth(1).fill("Finesse");
@@ -1199,29 +1271,36 @@ if (!URL_VENDER) {
       const panel = ${PANEL};
       const r = panel.getBoundingClientRect();
       const acc = panel.querySelector(".acciones").getBoundingClientRect();
+      const cab = panel.querySelector("header").getBoundingClientRect();
+      const v = panel.querySelectorAll("[data-ver-3d]");
+      const vb = v[0]?.getBoundingClientRect();
       return {
         filas: [...panel.querySelectorAll(".eitem")].map((e) => {
-          const b = e.getBoundingClientRect(), cod = e.querySelector(".cod"), v = e.querySelector("[data-ver-3d]");
-          const vb = v ? v.getBoundingClientRect() : null;
-          return { cod: cod.textContent, alto: b.height, entero: cod.scrollWidth <= cod.clientWidth,
-            boton: !!vb && vb.left >= b.left && vb.right <= b.right && vb.top >= b.top && vb.bottom <= b.bottom && vb.right <= innerWidth };
+          const b = e.getBoundingClientRect(), cod = e.querySelector(".cod");
+          return { cod: cod.firstChild?.textContent?.trim(), alto: b.height, entero: cod.scrollWidth <= cod.clientWidth,
+            desborda: e.scrollWidth > e.clientWidth + 0.5, aviso: !!e.querySelector(".aviso") };
         }),
+        botones: v.length,
+        boton: !!vb && vb.left >= cab.left && vb.right <= cab.right && vb.top >= cab.top - 5 && vb.bottom <= cab.bottom + 5,
+        cabecera: cab.height,
         aire: r.bottom - acc.bottom,
         rueda: document.scrollingElement.scrollHeight > innerHeight + 1,
       };
     })()`);
     const botonClaro = await pv.evaluate(() => [...document.querySelectorAll("[data-ver-3d]")].map((b) => {
       const fondo = (el) => { for (let n = el; n; n = n.parentElement) { const c = getComputedStyle(n).backgroundColor; if (c && !/rgba\(0, 0, 0, 0\)|transparent/.test(c)) return c; } return "rgb(255,255,255)"; };
-      return { fg: getComputedStyle(b).color, bg: fondo(b), px: parseFloat(getComputedStyle(b).fontSize), peso: getComputedStyle(b).fontWeight, t: "3D", apagado: false };
+      return { fg: getComputedStyle(b).color, bg: fondo(b), px: parseFloat(getComputedStyle(b).fontSize), peso: getComputedStyle(b).fontWeight, t: "Ver en 3D", apagado: false };
     }));
-    prueba("navegador · visor: la hoja sigue cerrando con tres espacios, y cada fila con su «3D» a la vista", () => {
+    prueba("navegador · visor: la hoja sigue cerrando con tres espacios, y «Ver en 3D» en la cabecera", () => {
       assert.equal(hoja.filas.length, CARAS.length, `filas en el contrato: ${hoja.filas.map((f) => f.cod).join(", ")}`);
       const malas = [];
       for (const f of hoja.filas) {
-        if (f.alto > 46.5) malas.push(`${f.cod}: la fila mide ${f.alto.toFixed(1)} px (dos renglones son 46)`);
+        if (!f.aviso && f.alto > 46.5) malas.push(`${f.cod}: la fila mide ${f.alto.toFixed(1)} px (dos renglones son 46)`);
         if (!f.entero) malas.push(`${f.cod}: el código se corta`);
-        if (!f.boton) malas.push(`${f.cod}: el botón «3D» no está entero adentro de su fila`);
+        if (f.desborda) malas.push(`${f.cod}: la fila desborda su tarjeta`);
       }
+      if (hoja.botones !== 1) malas.push(`hay ${hoja.botones} «Ver en 3D» (tiene que haber uno, en la cabecera)`);
+      if (!hoja.boton) malas.push("«Ver en 3D» no está entero adentro de la cabecera del contrato");
       if (hoja.aire < 12) malas.push(`la ficha cierra con ${hoja.aire.toFixed(1)} px de aire (piso: 12)`);
       if (hoja.rueda) malas.push("la página rueda");
       assert.deepEqual(malas, [], `\n         ${malas.join("\n         ")}`);
@@ -1250,9 +1329,8 @@ if (!URL_VENDER) {
     });
 
     const almacenAntes = await almacen(pv);
-    const primeraClave = await pv.locator("[data-ver-3d]").first().getAttribute("data-ver-3d");
     const desde = pedidos.length;
-    await abrirVisor(pv, 0);
+    await abrirVisor(pv);
     await pv.waitForSelector(".visor-producto", { timeout: 60000 });
     await pv.locator(".visor-producto").first().click();
     await pv.waitForSelector(".visor-como", { timeout: 60000 });
@@ -1384,7 +1462,7 @@ if (!URL_VENDER) {
       return [...new Set(bajos)];
     };
     const medidasClaro = await contrasteDelVisor(pv);
-    prueba("navegador · visor: contraste del «3D» de la fila y de la chapa, el HUD y el cajón (claro)", () => {
+    prueba("navegador · visor: contraste de «Ver en 3D» y de la chapa, el HUD y el cajón (claro)", () => {
       assert.ok(medidasClaro.length > 10, `sólo ${medidasClaro.length} textos medidos en el visor`);
       const b = bajosDe([...botonClaro, ...medidasClaro]);
       assert.deepEqual(b, [], `${b.length} pares por debajo del piso:\n         ${b.slice(0, 20).join("\n         ")}`);
@@ -1394,11 +1472,13 @@ if (!URL_VENDER) {
     await pv.locator(".visor-volver").click();
     await pv.waitForTimeout(700);
     const trasBoton = { contrato: await contrato(pv), estado: await cerrado(pv) };
-    await abrirVisor(pv, 0);
+    await abrirVisor(pv);
     const sesion = await pv.evaluate(() => ({
       conProveedor: [...document.querySelectorAll(".visor-hud-boton")].map((b) => b.textContent.trim()),
     }));
-    await tocarHud(pv, "Producto");
+    // El cajón puede venir abierto: «Ver en 3D» abre la última cara tocada
+    // (sin producto, con el cajón abierto) y de ahí se saltó a la primera.
+    if (!(await pv.locator(".visor-cajon").count())) await tocarHud(pv, "Producto");
     await pv.waitForSelector(".visor-producto", { timeout: 30000 });
     const marcado = await pv.locator('.visor-producto[aria-pressed="true"]').count();
     await pv.locator(".visor-volver").focus();
@@ -1415,8 +1495,8 @@ if (!URL_VENDER) {
         assert.ok(!r.estado.pantallaCompleta, "la pantalla completa quedó puesta");
       });
     }
-    prueba("navegador · visor: el foco vuelve al botón «3D» de la fila", () => {
-      for (const r of [trasBoton, trasEsc]) assert.equal(r.estado.foco, primeraClave, `el foco quedó en ${r.estado.foco}`);
+    prueba("navegador · visor: el foco vuelve a «Ver en 3D»", () => {
+      for (const r of [trasBoton, trasEsc]) assert.equal(r.estado.foco, "Ver en 3D", `el foco quedó en ${r.estado.foco}`);
     });
     prueba("navegador · visor: al reabrir, la cara conserva su producto", () => {
       assert.ok(sesion.conProveedor.some((t) => mismo(t, `Con ${PROVEEDOR}`)), `el HUD no ofrece «Con ${PROVEEDOR}»: ${sesion.conProveedor.join(" · ")}`);
@@ -1432,7 +1512,7 @@ if (!URL_VENDER) {
       await pv.locator(".vender input.entrada").nth(0).fill(OTRO);
       await pv.waitForTimeout(500);
       const desdeOtro = pedidos.length;
-      await abrirVisor(pv, 0);
+      await abrirVisor(pv);
       await pv.waitForTimeout(2500);   // la lista del proveedor nuevo
       const conOtro = {
         cajon: await pv.locator(".visor-cajon").count(),
@@ -1446,7 +1526,7 @@ if (!URL_VENDER) {
       // Y de vuelta al primero: la prueba no reaparece, se olvidó al cambiar.
       await pv.locator(".vender input.entrada").nth(0).fill(PROVEEDOR);
       await pv.waitForTimeout(500);
-      await abrirVisor(pv, 0);
+      await abrirVisor(pv);
       await pv.waitForTimeout(2500);
       const deVuelta = { cajon: await pv.locator(".visor-cajon").count(), hud: await hudDelVisor(pv) };
       await pv.locator(".visor-volver").click();
@@ -1468,7 +1548,7 @@ if (!URL_VENDER) {
     await pv.locator(".vender input.entrada").nth(0).fill("");
     await pv.waitForTimeout(500);
     const desdeNadie = pedidos.length;
-    await abrirVisor(pv, 0);
+    await abrirVisor(pv);
     await pv.waitForTimeout(1500);
     const sinNadie = {
       pregunta: /¿Con qué proveedor estás armando este contrato\?/.test(await textoDelVisor(pv)),
@@ -1488,7 +1568,7 @@ if (!URL_VENDER) {
     await pv.waitForTimeout(500);
     let varianza = 0;
     for (let i = 0; i < 5; i++) {
-      await abrirVisor(pv, 0);
+      await abrirVisor(pv);
       if (i === 4) {
         await pv.waitForTimeout(1500);
         varianza = await pv.evaluate(() => new Promise((res) => {
@@ -1517,6 +1597,160 @@ if (!URL_VENDER) {
       assert.deepEqual(erroresDePagina, [], `errores de la página: ${erroresDePagina.join(" · ")}`);
     });
     });
+    // ── La fila en conflicto: el aviso a todo el ancho, y esa cara no va al 3D
+    await seccion("navegador · la fila en conflicto: el aviso a todo el ancho, y esa cara no va al 3D", async () => {
+      const CHOQUE = process.env.PROBAR_VENDER_CHOQUE ?? "PUN-01";
+      const cods = await pv.evaluate(() => [...document.querySelectorAll("text.p-cod")].map((n) => n.getAttribute("data-cod")));
+      if (!cods.includes(CHOQUE)) { aviso(`no está ${CHOQUE} en el plano (PROBAR_VENDER_CHOQUE): no se prueba la fila en conflicto`); return; }
+      await tocar(pv, CHOQUE);
+      await pv.mouse.move(5, 5);
+      await pv.waitForTimeout(1800);
+      const fila = await pv.evaluate((c) => {
+        const e = [...document.querySelectorAll(".eitem")].find((x) => x.querySelector(".cod")?.firstChild?.textContent?.trim() === c);
+        if (!e) return null;
+        const a = e.querySelector(".aviso.choque");
+        const r = e.getBoundingClientRect();
+        return {
+          alto: r.height, desborda: e.scrollWidth > e.clientWidth + 0.5,
+          aviso: a ? a.getBoundingClientRect().width / (r.width - 22) : 0,
+          boton: document.querySelector("[data-ver-3d]")?.getAttribute("aria-label") ?? "",
+        };
+      }, CHOQUE);
+      await pv.locator("[data-ver-3d]").click();
+      await visorListo(pv);
+      const enVisor = await pv.evaluate(() => [document.querySelector(".visor-chapa-cod")?.textContent,
+        ...[...document.querySelectorAll(".visor-pestana")].map((b) => b.textContent)].map((t) => (t ?? "").trim()));
+      await pv.locator(".visor-volver").click();
+      await pv.waitForTimeout(600);
+      await pv.locator(`.eitem .x[aria-label="Quitar ${CHOQUE} del contrato"]`).click();
+      await pv.waitForTimeout(600);
+      prueba("navegador · la fila en conflicto: el aviso a todo el ancho, y esa cara no va al 3D", () => {
+        assert.ok(fila, `${CHOQUE} no entró al contrato`);
+        if (fila.aviso === 0) { aviso(`${CHOQUE} no choca en el periodo de la base: no se mide el aviso`); return; }
+        assert.ok(fila.aviso >= 0.95, `el aviso de choque ocupa el ${(fila.aviso * 100).toFixed(0)} % de la fila (va a todo el ancho)`);
+        assert.ok(fila.alto <= 100, `la fila con el choque mide ${fila.alto.toFixed(0)} px (antes: 255 a 1440)`);
+        assert.ok(!fila.desborda, "la fila en conflicto desborda su tarjeta");
+        assert.ok(!fila.boton.includes(CHOQUE), `«Ver en 3D» abre ${CHOQUE}, que ya está vendida: ${fila.boton}`);
+        assert.ok(!enVisor.includes(CHOQUE), `el visor ofrece ${CHOQUE}, que no se puede vender: ${enVisor.join(", ")}`);
+      });
+    });
+
+    // ── Las repisas vendidas aparte: a la dueña en la fila; al proveedor, no
+    await seccion("navegador · visor: las repisas vendidas aparte se le avisan a la dueña y no se le contradicen al proveedor", async () => {
+      const conRepisas = await pv.evaluate(() => [...document.querySelectorAll(".eitem [data-repisas-vendidas]")]
+        .map((n) => n.closest(".eitem").querySelector(".cod").firstChild.textContent.trim()));
+      if (!conRepisas.length) { aviso("ninguna cara del contrato tiene repisas vendidas aparte en el plano: no se prueba"); return; }
+      const cara = conRepisas[0];
+      await abrirVisor(pv, cara);
+      await pv.waitForSelector(".visor-producto", { timeout: 60000 });
+      if (!(await pv.locator('.visor-producto[aria-pressed="true"]').count())) await pv.locator(".visor-producto").first().click();
+      await pv.waitForSelector("[data-panel-prueba]", { timeout: 60000 });
+      await pv.waitForTimeout(4000);
+      const todaLaCara = await textoDelVisor(pv);
+      await pv.locator("[data-panel-prueba] button", { hasText: "Por entrepaño" }).click();
+      await pv.waitForTimeout(1000);
+      const porEntrepano = await pv.evaluate(() => {
+        const v = document.querySelector(".visor-venta");
+        const sonda = document.createElement("span");
+        sonda.className = "text-warning";
+        v.appendChild(sonda);
+        const naranja = getComputedStyle(sonda).color;
+        sonda.remove();
+        const chips = [...v.querySelectorAll("[data-entrepano-vendido]")].map((n) => getComputedStyle(n).color);
+        return { texto: v.innerText, chips, naranja, tapados: v.querySelectorAll("[data-vendidos-tapados]").length };
+      });
+      await pv.locator(".visor-boton-linea", { hasText: "Quitar el producto" }).click();
+      await pv.locator(".visor-volver").click();
+      await pv.waitForTimeout(600);
+      prueba("navegador · visor: las repisas vendidas aparte se le avisan a la dueña y no se le contradicen al proveedor", () => {
+        assert.ok(!/los tapa/.test(todaLaCara), `con «Toda la cara» el visor dice que la prueba tapa entrepaños vendidos (${cara})`);
+        assert.ok(!/los tapa|elegidos est[aá] vendido/.test(porEntrepano.texto), "con «Por entrepaño» el visor avisa entrepaños vendidos");
+        assert.equal(porEntrepano.tapados, 0, "el aviso de entrepaños vendidos está en el DOM del visor");
+        const naranjas = porEntrepano.chips.filter((c) => c === porEntrepano.naranja);
+        assert.deepEqual(naranjas, [], "la marca «vendido» de los entrepaños va en naranja delante del proveedor");
+      });
+    });
+
+    // ── La lámina: se baja y se adjunta como planometría DEL CONTRATO ────
+    await seccion("navegador · visor: la lámina se baja y se adjunta como planometría de la ficha, sin escribir nada", async () => {
+      const antesL = await contrato(pv);
+      const almacenL0 = await almacen(pv);
+      await abrirVisor(pv);
+      await pv.waitForSelector(".visor-producto", { timeout: 60000 });
+      if (!(await pv.locator('.visor-producto[aria-pressed="true"]').count())) await pv.locator(".visor-producto").first().click();
+      await pv.waitForSelector("[data-bajar-lamina]", { timeout: 60000 });
+      await pv.waitForTimeout(4000);
+      const desdeLamina = pedidos.length;
+      const [descarga] = await Promise.all([
+        pv.waitForEvent("download", { timeout: 180000 }),
+        pv.locator("[data-bajar-lamina]").click(),
+      ]);
+      const nombre = descarga.suggestedFilename();
+      const bytes = readFileSync(await descarga.path());
+      await pv.waitForFunction(() => !document.querySelector("[data-bajar-lamina]")?.disabled, null, { timeout: 60000 });
+      await pv.locator("[data-lamina-planometria]").click();
+      const adjunta = await pv.waitForSelector("[data-lamina-adjunta]", { timeout: 180000 }).then(() => true).catch(() => false);
+      const textoL = await textoDelVisor(pv);
+      const escritos = pedidos.slice(desdeLamina).filter((x) => x.m !== "GET").map((x) => `${x.m} ${x.u.replace(ORIGEN, "")}`);
+      const almacenL1 = await almacen(pv);
+      await pv.locator(".visor-volver").click();
+      await pv.waitForTimeout(800);
+      const despuesL = await contrato(pv);
+      prueba("navegador · visor: la lámina se baja y se adjunta como planometría de la ficha, sin escribir nada", () => {
+        assert.match(nombre, /\.png$/, `la lámina bajó como ${nombre}`);
+        assert.ok(nombre.toLowerCase().includes(PROVEEDOR.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()), `la lámina no es la de ${PROVEEDOR}: ${nombre}`);
+        assert.equal(bytes.subarray(1, 4).toString("latin1"), "PNG", "la lámina no es un PNG");
+        assert.ok(bytes.length > 20_000, `la lámina pesa ${bytes.length} B: no trae las tomas`);
+        assert.ok(adjunta, "«Usarla como planometría» no confirmó");
+        assert.deepEqual(escritos, [], "armar la lámina escribió en el servidor");
+        assert.equal(almacenL1.camara, almacenL0.camara, "la lámina movió la cámara guardada del Editor 3D");
+        assert.equal(almacenL1.planos, almacenL0.planos, "la lámina tocó el plano guardado");
+        const salen = AJENOS.filter((n) => new RegExp(n, "i").test(textoL));
+        assert.deepEqual(salen, [], `con la lámina se lee: ${salen.join(", ")}`);
+        assert.match(despuesL.planometria, /\.jpg/, `la planometría de la ficha no es la lámina: «${despuesL.planometria}»`);
+        assert.deepEqual(despuesL.filas, antesL.filas, "adjuntar la lámina cambió las filas del contrato");
+      });
+    });
+
+    // ── El proveedor mal escrito: ni «no tiene productos» ni un alta muda ─
+    await seccion("navegador · visor: el proveedor sin tilde no dice «no tiene productos» ni da de alta sin preguntar", async () => {
+      const sinTilde = OTRO.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      if (sinTilde === OTRO) { aviso(`«${OTRO}» no tiene tildes: no se prueba el nombre mal escrito`); return; }
+      const contar = () => fetch(ORIGEN + "/api/suppliers/", { headers: { Authorization: "Bearer " + TOKEN } })
+        .then((r) => r.json()).then((l) => (Array.isArray(l) ? l.length : -1)).catch(() => -1);
+      // Una foto de verdad, del catálogo del primero (la ficha del envase la mide).
+      const unArte = [...idsDe(PROVEEDOR)][0];
+      const foto = Buffer.from(await fetch(`${ORIGEN}/api/catalogo/${unArte}/imagen?token=${encodeURIComponent(TOKEN)}`).then((r) => r.arrayBuffer()));
+      const antesN = await contar();
+      await pv.locator(".vender input.entrada").nth(0).fill(sinTilde);
+      await pv.waitForTimeout(600);
+      await abrirVisor(pv);
+      await pv.waitForSelector("[data-sin-productos]", { timeout: 30000 });
+      const texto = await textoDelVisor(pv);
+      await pv.locator(".visor-cajon-pie button", { hasText: "Subir un producto" }).click();
+      await pv.locator('[data-subir-producto] input[aria-label="Nombre del producto"]').fill("Prueba 2 L");
+      await pv.locator('[data-subir-producto] input[type="file"]').setInputFiles({ name: "prueba.jpg", mimeType: "image/jpeg", buffer: foto });
+      await pv.waitForSelector('input[aria-label="Alto del envase en centímetros"]', { timeout: 30000 });
+      await pv.locator('input[aria-label="Alto del envase en centímetros"]').fill("30");
+      await pv.waitForTimeout(1500);
+      await pv.locator("[data-subir-producto] .visor-boton", { hasText: "Subir" }).click();
+      const pregunta = await pv.waitForSelector("[data-proveedor-nuevo]", { timeout: 60000 }).then(() => true).catch(() => false);
+      const textoPregunta = await textoDelVisor(pv);
+      if (pregunta) await pv.locator("[data-proveedor-nuevo] button", { hasText: "Revisar el nombre" }).click();
+      const despuesN = await contar();
+      await pv.locator(".visor-volver").click();
+      await pv.waitForTimeout(500);
+      await pv.locator(".vender input.entrada").nth(0).fill(PROVEEDOR);
+      await pv.waitForTimeout(500);
+      prueba("navegador · visor: el proveedor sin tilde no dice «no tiene productos» ni da de alta sin preguntar", () => {
+        assert.ok(texto.includes(`No encontré productos a nombre de «${sinTilde}»`), "el cajón no dice que no encontró productos con ESE nombre");
+        assert.ok(!/todavía no tiene productos/.test(texto), "el cajón afirma que el proveedor no tiene productos");
+        assert.ok(pregunta, "subir con un nombre que no está no pidió confirmar el alta");
+        assert.equal(despuesN, antesN, "subir con un nombre que no está dio de alta un proveedor sin preguntar");
+        for (const t of [texto, textoPregunta]) assert.ok(!t.includes(OTRO), `el visor nombra a «${OTRO}» (un parecido es el nombre de otro)`);
+      });
+    });
+
     await cv.close();
 
     // ── Si el 3D no baja: se dice, y el contrato sigue ──────────────────
@@ -1531,7 +1765,7 @@ if (!URL_VENDER) {
       await pf.locator(".eitem .m input").first().fill("1500000");
       await pf.waitForTimeout(400);
       const antesFalla = await contrato(pf);
-      await pf.locator("[data-ver-3d]").first().click();
+      await pf.locator("[data-ver-3d]").click();
       const aviso3D = await pf.waitForSelector("text=No se pudo abrir el 3D", { timeout: 30000 }).then(() => true).catch(() => false);
       const sigue = await pf.evaluate(() => /Guardar contrato y avisar/.test(document.body.textContent || ""));
       await pf.locator(".visor-volver").click().catch(() => {});
@@ -1547,7 +1781,7 @@ if (!URL_VENDER) {
     });
 
     // ── El contraste del botón «3D» y del visor, en oscuro ───────────────
-    await seccion("navegador · visor: contraste del «3D» de la fila y del visor (oscuro)", async () => {
+    await seccion("navegador · visor: contraste de «Ver en 3D» y del visor (oscuro)", async () => {
       const { ctx: co, p: po } = await abrir("dark");
       await tocar(po, CARAS[0]);
       await po.locator(".vender input.entrada").nth(0).fill(PROVEEDOR);
@@ -1556,12 +1790,12 @@ if (!URL_VENDER) {
       const botonOscuro = await po.evaluate(() => {
         const b = document.querySelector("[data-ver-3d]");
         const fondo = (el) => { for (let n = el; n; n = n.parentElement) { const c = getComputedStyle(n).backgroundColor; if (c && !/rgba\(0, 0, 0, 0\)|transparent/.test(c)) return c; } return "rgb(255,255,255)"; };
-        return { fg: getComputedStyle(b).color, bg: fondo(b), px: parseFloat(getComputedStyle(b).fontSize), peso: "600", t: "3D", apagado: false };
+        return { fg: getComputedStyle(b).color, bg: fondo(b), px: parseFloat(getComputedStyle(b).fontSize), peso: "600", t: "Ver en 3D", apagado: false };
       });
-      await abrirVisor(po, 0);
+      await abrirVisor(po);
       await po.waitForTimeout(1500);
       const medidasOscuro = await contrasteDelVisor(po);
-      prueba("navegador · visor: contraste del «3D» de la fila y del visor (oscuro)", () => {
+      prueba("navegador · visor: contraste de «Ver en 3D» y del visor (oscuro)", () => {
         const b = bajosDe([botonOscuro, ...medidasOscuro]);
         assert.deepEqual(b, [], `${b.length} pares por debajo del piso:\n         ${b.slice(0, 20).join("\n         ")}`);
       });

@@ -59,7 +59,7 @@ import {
   COPETE, ESPESOR_ESPINA, ESTIBA, NEVERA, PANEL_FONDO, PARANTE, ROBATOPE, ZONA_DE_SLOTS,
   altoDeZonaDeSlots, altoDeZonaDeSlotsDePunta, altoUtilDeNevera,
   bandejasDeStand, cotasDeEstiba, cotasDeRobatope, filasDeNevera, filasDeProducto, filasDePunta,
-  fondoPorCara, techoDeCara, ventaDeNevera, ventaDeRobatope,
+  fondoPorCara, pisoDelCartelDePunta, techoDeCara, ventaDeNevera, ventaDeRobatope,
 } from "./muebles/medidas";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { useModalAbierto } from "../../tema";
@@ -113,7 +113,7 @@ export const FOV_DEL_EDITOR = 50;
 export const FONDO_DE_SALA = "#e8e4dc";
 /** Cuánto aire lleva la toma «De frente» de la lámina: la franja del mueble
  *  agrandada 1,35 veces, el mueble al ~65 % del alto del cuadro. */
-const HOLGURA_DE_LAMINA = 1.35;
+export const HOLGURA_DE_LAMINA = 1.35;
 export const CAM_TARGET: [number, number, number] = [STORE_W / 2, 0, STORE_D / 2];
 
 function snap(v: number) { return Math.round(v / SNAP) * SNAP; }
@@ -3390,7 +3390,7 @@ function useEtiquetas(ids: readonly number[], catalogo: readonly Arte[]): (Etiqu
 }
 
 export function PanelDePrueba({
-  fix, cara, arte, como, onAjustar, isAdmin, onRecargarCatalogo, catalogo,
+  fix, cara, arte, como, onAjustar, isAdmin, onRecargarCatalogo, catalogo, paraElProveedor = false,
 }: {
   fix: PlacedFixture;
   cara: "A" | "B";
@@ -3401,6 +3401,14 @@ export function PanelDePrueba({
   onRecargarCatalogo: () => void;
   /** Para ofrecer el surtido: los OTROS artes de este proveedor. */
   catalogo: Arte[];
+  /** El panel lo lee el PROVEEDOR (el visor de Vender). Las repisas que el
+   *  plano da por vendidas aparte no tienen contrato en la base, y Vender
+   *  —que mira contratos— le está ofreciendo la cara entera: decirle «esta
+   *  cara tiene 5 entrepaños vendidos: la prueba los tapa» es contradecir la
+   *  pantalla de al lado delante de él. Ahí no va el aviso, y la marca del
+   *  entrepaño, sólo en «Por entrepaño» y en tinta. A la dueña se le avisa
+   *  en la fila del contrato, antes de la reunión. */
+  paraElProveedor?: boolean;
 }) {
   const venta = useMemo(
     () => (TIPOS_CON_PRUEBA_3D.has(fix.type) ? ventaDeTipo(fix.type, fix.w, fix.d, fix.h, fix.gondolaType) : null),
@@ -3538,9 +3546,29 @@ export function PanelDePrueba({
   const conProducto = (acomodo?.porFila ?? []).filter((f) => f.motivo === null);
   const frentesPorFila = conProducto.map((f) => f.frentes);
   const minF = Math.min(...frentesPorFila), maxF = Math.max(...frentesPorFila);
-  const fondo = conProducto.reduce((m, f) => Math.max(m, f.fondoVisible), 0);
   const pisos = conProducto.reduce((m, f) => Math.max(m, f.pisos), 0);
   const aprox = empaque?.estimado || empaque?.anchoEstimado ? "≈ " : "";
+  // La cuenta que se negocia, en el orden en que se pregunta: cuántos de
+  // frente, cuántos de fondo, cuántos por entrepaño y cuántos en total.
+  // Decía «Entran 10 por entrepaño · 3 de fondo · 40 de frente»: el «por
+  // entrepaño» eran frentes y el «de frente» el total de frentes, y ante
+  // «¿cuántos me entran?» se leían 10 y 40 a la vez, sin las unidades. Y el
+  // fondo era el que se DIBUJA (hasta tres): el entrepaño de 45 cm lleva seis
+  // vasos de fondo (`fondoTotal`).
+  const fondoReal = conProducto.reduce((m, f) => Math.max(m, f.fondoTotal), 0);
+  const unidadesTotales = conProducto.reduce((t, f) => t + f.unidades, 0);
+  const frentesTotales = conProducto.reduce((t, f) => t + f.frentes, 0);
+  const parejo = conProducto.every((f) => f.frentes === minF && f.fondoTotal === fondoReal && f.pisos === pisos);
+  const enProfundidad = fondoReal > 1 || pisos > 1;
+  const textoDeLaCuenta = conProducto.length === 0 ? "" : [
+    `${minF === maxF ? minF : `${minF} a ${maxF}`} de frente`,
+    fondoReal > 1 ? ` × ${fondoReal} de fondo` : "",
+    pisos > 1 ? ` × ${pisos} apilados` : "",
+    conProducto.length === 1
+      ? `: ${unidadesTotales} ${unidadesTotales === 1 ? "unidad" : "unidades"}`
+      : `${enProfundidad && parejo ? ` = ${minF * fondoReal * pisos}` : ""} por entrepaño · ${conProducto.length} entrepaños: ${unidadesTotales} unidades`,
+    enProfundidad ? ` (${frentesTotales} ${frentesTotales === 1 ? "frente" : "frentes"})` : "",
+  ].join("");
   const vendidosTapados = como.donde === "todas"
     ? vendidos.size
     : elegidos.filter((i) => vendidos.has(i)).length;
@@ -3594,7 +3622,12 @@ export function PanelDePrueba({
                     : noEntra ? `no entra: ${enCm(f.libre)} cm` : `${enCm(f.libre)} cm libres`}
                 </span>
                 {vendidos.has(f.fila) && (
-                  <span className={`text-[9.5px] font-semibold uppercase ${activo ? "" : "text-warning"}`}>vendido</span>
+                  <span
+                    className={`text-[9.5px] font-semibold uppercase ${activo ? "" : paraElProveedor ? "text-dark-ink-3" : "text-warning"}`}
+                    data-entrepano-vendido
+                  >
+                    vendido
+                  </span>
                 )}
               </button>
             );
@@ -3602,8 +3635,8 @@ export function PanelDePrueba({
         </div>
       )}
 
-      {vendidosTapados > 0 && (
-        <p className="text-[10.5px] leading-snug text-warning">
+      {vendidosTapados > 0 && !paraElProveedor && (
+        <p className="text-[10.5px] leading-snug text-warning" data-vendidos-tapados>
           {como.donde === "todas"
             ? `Esta cara tiene ${vendidosTapados} ${vendidosTapados === 1 ? "entrepaño vendido" : "entrepaños vendidos"}: la prueba los tapa.`
             : `${vendidosTapados === 1 ? "Uno de los elegidos está vendido" : `${vendidosTapados} de los elegidos están vendidos`}: la prueba los tapa.`}
@@ -3714,13 +3747,10 @@ export function PanelDePrueba({
             </p>
           ) : (
             <p className="text-[11px] leading-snug text-dark-ink-1" data-resumen-prueba>
-              {aprox}Entran {minF === maxF ? minF : `${minF} a ${maxF}`} por entrepaño
-              {fondo > 1 ? ` · ${fondo} de fondo` : ""}
-              {pisos > 1 ? ` · ${pisos} apilados` : ""}
+              {aprox}{textoDeLaCuenta}
               {acostadaActiva && acostadaSoloAhi
-                ? ` · ${Math.min(...acostadaSoloAhi.enCadaUna)}${Math.min(...acostadaSoloAhi.enCadaUna) === Math.max(...acostadaSoloAhi.enCadaUna) ? "" : ` a ${Math.max(...acostadaSoloAhi.enCadaUna)}`} acostadas en ${acostadaSoloAhi.filas.length === 1 ? "la" : "las"} ${acostadaSoloAhi.nombres}`
+                ? ` · y ${Math.min(...acostadaSoloAhi.enCadaUna)}${Math.min(...acostadaSoloAhi.enCadaUna) === Math.max(...acostadaSoloAhi.enCadaUna) ? "" : ` a ${Math.max(...acostadaSoloAhi.enCadaUna)}`} de frente acostadas en ${acostadaSoloAhi.filas.length === 1 ? "la" : "las"} ${acostadaSoloAhi.nombres}`
                 : ""}
-              {` · ${(acomodo?.frentesALaVista ?? 0) + (acostadaActiva && acostadaSoloAhi ? acostadaSoloAhi.frentes : 0)} de frente`}
             </p>
           )}
           {/* Los entrepaños donde no entra, con medidas: la de 1,5 L dejaba
@@ -4421,7 +4451,7 @@ export const TIPOS_CON_PRUEBA_3D = new Set<string>(["gondola", "punta", "nevera_
 /** El renglón «Producto» de la lámina: el principal y, con surtido, los
  *  demás del mismo proveedor que se ven, unidos por « · » (`surtidoALaVista`
  *  con la misma pantalla que las tomas). */
-function nombresDeLaPrueba(
+export function nombresDeLaPrueba(
   arte: Arte, surtido: number[] | undefined, para: PrivadoPara, catalogo: readonly Arte[],
 ): string {
   const otros = surtidoALaVista(arte.id, surtido, catalogo, para)
@@ -4434,7 +4464,7 @@ function nombresDeLaPrueba(
  *  No en la nevera —las rejillas automáticas se acomodan a UN producto, y
  *  con alturas distintas los demás no entrarían— ni en el robatope, que
  *  tiene un solo vano de 30 cm. */
-const TIPOS_CON_SURTIDO = new Set<string>(["gondola", "punta"]);
+export const TIPOS_CON_SURTIDO = new Set<string>(["gondola", "punta"]);
 
 /** Lowercase + strip accents so "Lácteos" matches "lacteo". */
 function normalizeText(s: string): string {
@@ -5494,10 +5524,12 @@ export function Scene({
     const fov = toma === "cerca" ? FOV_DE_CERCA
       : enVenta && toma === "frente" && !foco.porEntrepano ? fovParaLaCara(mueble, cara, obstaculos, limites, aspecto, FOV_DEL_EDITOR)
         : FOV_DEL_EDITOR;
-    // La punta: dónde empieza el copete, para que «De cerca» no lo corte por
-    // la mitad (`focoDeLaPrueba` mira entrepaños y no sabe del copete).
+    // La punta: dónde empieza el cartel —el copete, o la cenefa que baja de
+    // él hasta el último entrepaño—, para que «De cerca» no lo corte por la
+    // mitad (`focoDeLaPrueba` mira entrepaños y no sabe del copete).
+    const pisoDelCartel = fix.type === "punta" ? pisoDelCartelDePunta(fix.h) : 0;
     const focoConCopete = {
-      ...(fix.type === "punta" ? { ...foco, techoDeCara: techoDeCara(fix.h), altoDeCopete: COPETE.alto } : foco),
+      ...(fix.type === "punta" ? { ...foco, techoDeCara: pisoDelCartel, altoDeCopete: fix.h - pisoDelCartel } : foco),
       // Con el campo visual abierto, desde el fondo del pasillo.
       ...(fov > FOV_DEL_EDITOR && toma === "frente" ? { alFondo: true } : {}),
     };

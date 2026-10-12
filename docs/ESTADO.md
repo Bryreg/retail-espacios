@@ -7187,10 +7187,11 @@ a la pestaña Editor 3D, y **cambiar de pestaña desmonta Vender**: se perdía e
 medio llenar. Ella le muestra la pantalla de SU PC al proveedor, en persona o por
 videollamada.
 
-**Cómo se usa.** Cada fila del panel «03 Contrato» trae, entre el tipo y el valor, un
-botón chico con un cubo y «3D» («Ver cómo queda en 3D»), de la familia de los
-interruptores A/B. Al tocarlo la pantalla pasa a pantalla completa y se abre el visor
-**encima de la ficha**: la sala de venta de «Presentar» (cielo raso, luminarias,
+**Cómo se usa.** La cabecera del panel «03 Contrato» trae, junto a «sin firmar», un
+botón chico con un cubo y «Ver en 3D», de la familia de los interruptores A/B. Aparece
+cuando se toca la primera cara en el plano y abre **la última cara tocada** (las demás,
+desde la chapa del visor). Al tocarlo la pantalla pasa a pantalla completa y se abre el
+visor **encima de la ficha**: la sala de venta de «Presentar» (cielo raso, luminarias,
 baldosa), la cámara «De frente» a ESA cara a la altura de un comprador y la persona de
 1,70 m al lado. Arriba a la izquierda la chapa («PUN-03 · Punta de góndola») con las
 otras caras del contrato para saltar; arriba a la derecha «Volver al contrato». A la
@@ -7203,12 +7204,15 @@ Presentar, que se esconde a los 2 s junto con el cursor: De frente · Tres cuart
 cerca (siempre, también sin producto) | Hoy · Con Alpina (con un producto a la vista) |
 Producto | Pantalla completa (si se perdió). El primer Esc suelta la pantalla completa; el
 segundo, o «Volver al contrato», cierra. La ficha queda exactamente como estaba y el foco
-vuelve al botón «3D» de esa fila.
+vuelve a «Ver en 3D». Debajo de «Cómo va», **«Para llevarse»**: «Bajar la propuesta» (la
+lámina del editor) y «Usarla como planometría» (la deja adjunta en el contrato).
 
 Sin proveedor escrito, el cajón pregunta «¿Con qué proveedor estás armando este
-contrato?» y lo que se teclea queda en el campo Proveedor de la ficha. Con un proveedor
-sin productos lo dice y ofrece **«Subir un producto»** (nombre, rubro, foto y la ficha
+contrato?» y lo que se teclea queda en el campo Proveedor de la ficha. Si con ese nombre
+no hay productos dice «No encontré productos a nombre de «X»» (no «X no tiene
+productos»: ver abajo) y ofrece **«Subir un producto»** (nombre, rubro, foto y la ficha
 con el alto obligatorio): queda a nombre del proveedor del contrato y probado en la cara.
+Si el nombre no es de nadie, pregunta antes de darlo de alta.
 
 **Por qué es un visor propio y no el editor montado encima** (las dos opciones se
 midieron contra el código, ver la spec de la tanda):
@@ -7245,10 +7249,12 @@ midieron contra el código, ver la spec de la tanda):
   o una lista vacía, **nunca el catálogo entero** (también con `?proveedor=` vacío). Sin
   el parámetro, como siempre: el Editor 3D lo sigue usando.
 - **«Subir un producto» va por nombre**: `POST /api/catalogo/` acepta `proveedor` en vez
-  de `supplier_id`. Todo se valida ANTES de tocar al proveedor; si no existe, se crea en
-  el MISMO commit que el arte (un alta rechazada no deja un proveedor suelto), y después
-  «Guardar contrato» lo encuentra por nombre y no crea otro. No se recorta el nombre (el
-  contrato busca el entero): más de 200 caracteres es un 422.
+  de `supplier_id`. Si el nombre no es de nadie contesta **409 `proveedor_nuevo`** y sólo
+  lo da de alta con `crear_proveedor` (la confirmación de la dueña en el visor). Todo se
+  valida ANTES de tocar al proveedor; el nuevo se crea en el MISMO commit que el arte
+  (un alta rechazada no deja un proveedor suelto), y después «Guardar contrato» lo
+  encuentra por nombre y no crea otro. No se recorta el nombre (el contrato busca el
+  entero): más de 200 caracteres es un 422.
 - **`privadoPara` es siempre un número o `null`**, nunca `undefined` (que es la pantalla
   de la dueña y deja pasar las pruebas de todos): el `supplier_id` de los artes que trajo
   el servidor, o nadie.
@@ -7302,14 +7308,13 @@ bajó—.
   entrepaño»), no el del período que se está negociando.
 - Envases 3D sólo en góndola, punta, nevera de refrescos y robatope
   (`TIPOS_CON_PRUEBA_3D`); en isla, batea o cruz el producto va como lámina sobre la cara,
-  sin «Cómo va»; la exhibición no tiene 3D (no hay botón).
+  sin «Cómo va»; la exhibición no tiene 3D (no entra al visor).
 - «Por entrepaño» es visual: el contrato de Vender es por cara.
-- La lámina «Propuesta» y «Usarla como planometría» siguen en el Editor 3D.
 - Cambiar de pestaña en la barra sigue perdiendo el contrato (con el visor abierto la
   barra queda tapada e `inert`).
-- A 1440 px de ancho la fila del contrato cede ~50 px al botón: el tipo se lee
-  «Punta …» y en una góndola doble (con A/B) no entra; el código, el valor y los dos
-  renglones no cambian. A 1920 se lee entero.
+- El cotejo del nombre del proveedor no ignora tildes ni apóstrofes («Postobon» no es
+  «Postobón»): es la regla del contrato (`bulk_leases`), y cambiarla en una sola punta
+  partiría al proveedor en dos. El visor lo dice y pregunta antes de dar de alta.
 
 **Cómo se comprueba.** `probar-vender` pasa de 12 a 20 pruebas estáticas: los archivos
 de la lista existen (un renombre falla), el visor ni NOMBRA un campo comercial, Vender no

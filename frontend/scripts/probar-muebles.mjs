@@ -646,8 +646,10 @@ prueba("la marca del copete sale sólo del arte en prueba, sin texto inventado",
   assert.ok(!/fillRect\(0, Math\.round\(H \* 0\.86\)/.test(pop), "volvió la raya blanca del copete");
   // La cenefa tapa SÓLO el hueco que no sirve para producto.
   const punta = sinComentarios(leer(join(muebles, "PuntaReal.tsx")));
-  assert.match(punta, /\{cenefa && altoDeCuerpo - niveles\[niveles\.length - 1\] < 0\.12 && \(/,
+  assert.match(punta, /\{cenefa && altoDeCuerpo - niveles\[niveles\.length - 1\] < HUECO_SIN_PRODUCTO && \(/,
     "la cenefa tapa un entrepaño donde entra producto");
+  assert.match(leer(join(muebles, "medidas.ts")), /export const HUECO_SIN_PRODUCTO = 0\.12;/,
+    "el hueco que tapa la cenefa dejó de ser de 12 cm");
   // El cabezote de la nevera, con la misma regla que el copete.
   assert.match(cuerpoDe("function NeveraRefrescosMesh(", "function StandFrutasMesh("),
     /const cabezote = enPrueba && pa\?\.etiqueta && pa\.donde === "todas" && pa\.copete !== false\s*\? materialDeCopete\(/);
@@ -5425,7 +5427,10 @@ prueba("la persona de venta sale de la toma (una sola cuenta); el editor conserv
   assert.match(toma, /\}, \[facePaintById, comoSePrueba, placedFixtures, selectedId, presentationMode, privadoPara, limites, size, aplicarVista\]\);/,
     "la toma no se entera de que es la lámina");
   // La punta lleva su copete al foco, con la MISMA cuenta que el mueble.
-  assert.match(toma, /fix\.type === "punta" \? \{ \.\.\.foco, techoDeCara: techoDeCara\(fix\.h\), altoDeCopete: COPETE\.alto \} : foco\),/);
+  // El cartel de la punta empieza donde empieza la cenefa (o el copete), con
+  // la misma cuenta que dibuja la cenefa (`pisoDelCartelDePunta`).
+  assert.match(toma, /const pisoDelCartel = fix\.type === "punta" \? pisoDelCartelDePunta\(fix\.h\) : 0;/);
+  assert.match(toma, /fix\.type === "punta" \? \{ \.\.\.foco, techoDeCara: pisoDelCartel, altoDeCopete: fix\.h - pisoDelCartel \} : foco\),/);
   // Con el campo visual abierto, «De frente» desde el fondo del pasillo.
   assert.match(toma, /\.\.\.\(fov > FOV_DEL_EDITOR && toma === "frente" \? \{ alFondo: true \} : \{\}\),/);
   assert.equal((editorCodigo.match(/Math\.max\(0\.4, h - COPETE\.alto\)/g) ?? []).length, 0, "el cuerpo de la punta vuelve a calcularse aparte de techoDeCara");

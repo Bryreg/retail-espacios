@@ -484,20 +484,37 @@ html[data-tema="oscuro"] .vender {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* El choque de fechas es la excepción a los dos renglones con puntos
-   suspensivos, y a propósito.
-   Vivía adentro del renglón de arriba, de tercero, después de la ubicación y
-   de la tarifa: con una ubicación larga quedaba pasado el corte y no se veía
-   nunca — se llegaba a tocar «Guardar» con un espacio ya vendido y el único
-   que avisaba era el servidor. Un aviso que compite por ancho con la
-   ubicación no es un aviso, así que acá SÍ se deja crecer la fila: pasa
-   cuando hay algo que mirar, que es cuando la fila puede permitírselo. */
-.eitem .d > span.choque {
+/* El aviso de la fila —el choque de fechas— es la excepción a los dos
+   renglones con puntos suspensivos, y a propósito.
+   El choque vivía adentro del renglón de arriba, de tercero, después de la
+   ubicación y de la tarifa: con una ubicación larga quedaba pasado el corte y
+   no se veía nunca — se llegaba a tocar «Guardar» con un espacio ya vendido y
+   el único que avisaba era el servidor. Después pasó a la columna del tipo,
+   y ahí, angosta, salía con una palabra por renglón (la fila de PUN-01 medía
+   255 px a 1440). Ahora va DEBAJO, a todo el ancho: la fila es flex con
+   `wrap` y el aviso ocupa el 100 %, así que baja solo. Crece la fila cuando
+   hay algo que mirar, que es cuando la fila puede permitírselo. */
+.eitem { flex-wrap: wrap; row-gap: 2px; }
+.eitem > .aviso {
+  flex: 0 0 100%;
   white-space: normal;
-  overflow: visible;
-  margin-top: 2px;
-  color: var(--danger);
+  font-size: var(--t-2xs);
+  line-height: 1.3;
   font-weight: 600;
+}
+.eitem > .aviso.choque { color: var(--danger); }
+/* Las repisas vendidas aparte, debajo del código: chica, en el color de
+   aviso, sin hacer crecer la fila (el texto entero va en el `title`). */
+.eitem .cod { display: flex; flex-direction: column; line-height: 1.15; }
+.eitem .cod > .repisas {
+  font-family: var(--f-text);
+  font-size: var(--t-3xs);
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1;
+  margin-top: 1px;
+  white-space: nowrap;
+  color: var(--warning);
 }
 /* El valor es un campo, pero se lee como la cifra de la fila: mono, tabular,
    700, alineado a la derecha. El borde sólo aparece cuando falta el dato. */
@@ -537,17 +554,21 @@ html[data-tema="oscuro"] .vender {
   border: 0; background: none; cursor: pointer;
 }
 .eitem .x:hover { color: var(--ocupado-txt); background: var(--ocupado-suave); }
-/* «3D»: abre el visor encima de la ficha (`VisorDeVenta`). De la familia de
-   los interruptores A/B —22 px de alto, borde fino, mono, tinta— y no del
-   amarillo: el amarillo de esta hoja es «Guardar contrato y avisar». No suma
-   renglón: entra en la fila de 46 px entre las letras y el valor. */
-.eitem .ver3d {
+/* «Ver en 3D»: abre el visor encima de la ficha (`VisorDeVenta`). Uno solo,
+   en la cabecera del panel 03, junto a «sin firmar». De la familia de los
+   interruptores A/B —borde fino, mono, tinta— y no del amarillo: el amarillo
+   de esta hoja es «Guardar contrato y avisar». Los márgenes negativos lo
+   dejan fuera de la cuenta del alto de la cabecera: con 22 px adentro de una
+   cabecera alineada por la base, el panel perdía los píxeles que le dan aire
+   a la ficha con tres espacios. */
+.vp > header .ver3d {
   height: 22px;
+  margin-block: -4px;
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 0 6px;
+  gap: 4px;
+  padding: 0 7px;
   border-radius: var(--r-xs);
   border: var(--hair) solid var(--line-strong);
   background: var(--surface);
@@ -555,10 +576,11 @@ html[data-tema="oscuro"] .vender {
   font-family: var(--f-mono);
   font-size: var(--t-2xs);
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
 }
-.eitem .ver3d:hover { color: var(--ink-1); border-color: var(--ink-1); }
-.eitem .ver3d:focus-visible { outline: 2px solid var(--ink-1); outline-offset: 1px; }
+.vp > header .ver3d:hover { color: var(--ink-1); border-color: var(--ink-1); }
+.vp > header .ver3d:focus-visible { outline: 2px solid var(--ink-1); outline-offset: 1px; }
 .vender .pista { margin: 6px 0 0; font-size: var(--t-2xs); color: var(--ink-3); }
 .vender .pista b { font-weight: 600; color: var(--ink-2); border-bottom: 1px solid var(--line-strong); }
 .corte { border: 0; border-top: 1px dashed var(--brd); margin: 8px 0 6px; }

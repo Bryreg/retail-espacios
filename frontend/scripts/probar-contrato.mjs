@@ -123,15 +123,18 @@ prueba("el aviso de choque NO vive adentro del texto que se trunca", () => {
 });
 
 prueba("el aviso se dibuja como elemento propio y se anuncia", () => {
-  assert.match(codigoVender, /className="choque"/, "no se dibuja el aviso de choque");
-  assert.match(codigoVender, /role="alert"/, "el aviso de choque no se anuncia a un lector de pantalla");
+  assert.match(codigoVender, /className="aviso choque" role="alert"/, "no se dibuja el aviso de choque, o no se anuncia a un lector de pantalla");
 });
 
-prueba("el aviso puede crecer: no hereda el corte de los dos renglones", () => {
-  const regla = css.match(/\.eitem \.d > span\.choque \{([\s\S]*?)\}/);
-  assert.ok(regla, "falta la regla de `.choque` en vender.css");
-  assert.match(regla[1], /white-space:\s*normal/, "`.choque` sigue en una sola línea");
-  assert.match(regla[1], /var\(--danger\)/, "`.choque` no usa el color de peligro del sistema");
+prueba("el aviso puede crecer, y a todo el ancho: no hereda el corte de los dos renglones", () => {
+  // Va DEBAJO de la fila (hijo de `.eitem`, que es flex con `wrap`) y no en
+  // la columna del tipo: ahí, angosta, salía una palabra por renglón.
+  const regla = css.match(/\.eitem > \.aviso \{([\s\S]*?)\}/);
+  assert.ok(regla, "falta la regla de `.aviso` en vender.css");
+  assert.match(regla[1], /flex:\s*0 0 100%/, "el aviso no ocupa todo el ancho de la fila");
+  assert.match(regla[1], /white-space:\s*normal/, "el aviso sigue en una sola línea");
+  assert.match(css, /\.eitem \{ flex-wrap: wrap;/, "la fila no deja bajar el aviso a su propio renglón");
+  assert.match(css, /\.eitem > \.aviso\.choque \{ color: var\(--danger\); \}/, "el choque no usa el color de peligro del sistema");
 });
 
 prueba("un espacio en choque impide guardar", () => {

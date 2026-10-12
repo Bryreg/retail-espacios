@@ -207,6 +207,9 @@ async def subir(
     # (la pantalla la mira uno de ellos).
     supplier_id: Optional[int] = Form(None),
     proveedor: Optional[str] = Form(None),
+    # Con `proveedor`: la dueña confirmó que el nombre es NUEVO y hay que darlo
+    # de alta. Sin esto, un nombre que no está da 409 (`proveedor_nuevo`).
+    crear_proveedor: Optional[bool] = Form(None),
     nombre: str = Form(...),
     categoria: Optional[str] = Form(None),
     file: UploadFile = File(...),
@@ -232,6 +235,25 @@ async def subir(
         raise HTTPException(status_code=422, detail="Falta el proveedor")
     elif len(nombre_del_proveedor) > LARGO_MAXIMO_DE_PROVEEDOR:
         raise HTTPException(status_code=422, detail="El nombre del proveedor es demasiado largo")
+    else:
+        duenio = _proveedor_por_nombre(db, nombre_del_proveedor)
+        # Un nombre que no está NO se da de alta solo. «Postobon» sin tilde o
+        # «Kelloggs» sin apóstrofe no encuentran a «Postobón» ni a «Kellogg's»
+        # (la regla es la del contrato: sin mayúsculas ni espacios de más,
+        # nada más), y subir un producto creaba un proveedor duplicado en
+        # plena reunión, antes de guardar el contrato. Se pregunta: el visor
+        # pide confirmarlo y vuelve con `crear_proveedor`. El aviso no nombra
+        # a nadie (no hay «¿quisiste decir…?»): la pantalla la mira un
+        # proveedor y un parecido sería el nombre de otro.
+        if duenio is None and not crear_proveedor:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "codigo": "proveedor_nuevo",
+                    "mensaje": f"No hay ningún proveedor «{nombre_del_proveedor}». "
+                               "Revisá cómo está escrito; si es nuevo, confirmá el alta.",
+                },
+            )
 
     # La ficha se valida ANTES de leer el archivo: no tiene sentido bajar cinco
     # megas para después rechazar una forma que no existe.
@@ -274,14 +296,12 @@ async def subir(
     if not data:
         raise HTTPException(status_code=422, detail="El archivo llegó vacío.")
 
-    # Recién ahora, con TODO validado, el proveedor por nombre: el que va a
-    # usar «Guardar contrato», o uno nuevo. Nuevo, entra en el MISMO commit que
-    # el arte —si algo falla después, no queda un proveedor suelto creado por
-    # una subida que no llegó—. Crearlo antes de guardar el contrato es una
-    # escritura adelantada, pero la misma que haría guardarlo: el contrato lo
-    # encuentra por nombre (`bulk_leases`) y no crea otro.
-    if duenio is None:
-        duenio = _proveedor_por_nombre(db, nombre_del_proveedor)
+    # Recién ahora, con TODO validado, el proveedor nuevo (ya confirmado: si
+    # no, el 409 de arriba). Entra en el MISMO commit que el arte —si algo
+    # falla después, no queda un proveedor suelto creado por una subida que no
+    # llegó—. Crearlo antes de guardar el contrato es una escritura
+    # adelantada, pero la misma que haría guardarlo: el contrato lo encuentra
+    # por nombre (`bulk_leases`) y no crea otro.
     if duenio is None:
         nuevo = Supplier(name=nombre_del_proveedor)
         db.add(nuevo)

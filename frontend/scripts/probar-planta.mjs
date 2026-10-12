@@ -33,7 +33,7 @@ const {
   proyectar, rayoDeVista, choqueEnElLocal, sombraDeHuellas, sombraEn, SOMBRA_AL_PIE,
   personaYTomaDeVenta, esquinasDeLaFigura, FIGURA_DE_ESCALA, SEPARACIONES_DE_LA_FIGURA,
   LLENADO_DE_PAR, FRANJA_DEL_HUD, libreAlCostado, VECINO_PEGADO, alcanceDeLaFigura, ANGOSTO_ENTRE_MEDIO, AIRE_DE_LA_FIGURA,
-  corridaPorVecino, DESCENTRADO_POR_VECINO, fovParaLaCara, FOV_MAXIMO_DE_FRENTE,
+  corridaPorVecino, DESCENTRADO_POR_VECINO, fovParaLaCara, FOV_MAXIMO_DE_FRENTE, AIRE_SOBRE_EL_ENTREPANO,
 } = await import(pathToFileURL(salida).href);
 
 // Lo que la cámara de venta toma de los muebles (la cuenta de la prueba y el
@@ -832,11 +832,47 @@ prueba("«De cerca» de la punta no corta el copete: el borde de arriba queda en
     const y = (h) => proyectar(v, FOV_DE_CERCA, 16 / 9, { x: v.targetX, y: h, z: v.targetZ }).y;
     assert.ok(y(foco.yEntrepano + foco.libreEntrepano / 2) <= 1 && y(foco.yEntrepano - foco.libreEntrepano / 2) >= -1, "el entrepaño elegido quedó cortado");
   }
-  // Sin el copete en el foco, el borde caía en el copete: lo que se corrige.
-  const sin = { ...focoDeCerca("punta", f, VASO_) };
-  delete sin.techoDeCara; delete sin.altoDeCopete;
-  const b0 = bordeDeArriba(vistaDeVenta(comoMueble(f), "A", "cerca", sin, otros("PUN-01"), LIMITES, FOV_DE_CERCA), f, FOV_DE_CERCA);
-  assert.ok(b0 > techo && b0 < techo + MD.COPETE.alto, "la prueba ya no muestra el medio copete");
+  // El cartel empieza en la CENEFA cuando el hueco de arriba no sirve para
+  // producto: la cenefa baja del copete hasta el último entrepaño, y con sólo
+  // el copete en la cuenta el borde caía en ella (la franja de color de la
+  // marca arriba del cuadro, con la chapa del visor encima).
+  const niveles = MD.nivelesDePunta(techo);
+  const ultimo = niveles[niveles.length - 1];
+  const piso = MD.pisoDelCartelDePunta(f.h);
+  assert.equal(piso, techo - ultimo < MD.HUECO_SIN_PRODUCTO ? ultimo : techo, "el piso del cartel no es la cenefa ni el copete");
+  for (const [empaque, donde] of [[VASO_, "todas"], [CAJA_LECHE, "todas"], [VASO_, [3]]]) {
+    const v0 = vistaDeVenta(comoMueble(f), "A", "cerca", focoDeCerca("punta", f, empaque, donde), otros("PUN-01"), LIMITES, FOV_DE_CERCA);
+    const foco = { ...focoDeCerca("punta", f, empaque, donde), techoDeCara: piso, altoDeCopete: f.h - piso };
+    const v = vistaDeVenta(comoMueble(f), "A", "cerca", foco, otros("PUN-01"), LIMITES, FOV_DE_CERCA);
+    const b = bordeDeArriba(v, f, FOV_DE_CERCA);
+    assert.ok(b <= piso - 0.009, `el borde de arriba corta la cenefa a ${b.toFixed(3)} m (cartel desde ${piso.toFixed(3)})`);
+    assert.ok(Number.isFinite(bordeDeArriba(v0, f, FOV_DE_CERCA)));
+  }
+});
+
+prueba("«De cerca» deja afuera lo de arriba del entrepaño elegido, sin cabecear", () => {
+  // Con el 75 % de llenado centrado quedaban 9 cm de la repisa de arriba: su
+  // producto cortado por la mitad, o en «Por entrepaño» una banda de cajas de
+  // relleno sobre lo que se vende (GON-02·B, la crítica de la revisión).
+  for (const [id, tipo, empaque, donde] of [
+    ["GON-02", "gondola", VASO_, "todas"], ["GON-02", "gondola", CAJA_LECHE, [2]], ["GON-02", "gondola", BOLSA_ARROZ, [1]],
+    ["GON-01", "gondola", CAJA_LECHE, [3]], ["PUN-03", "punta", VASO_, [1]],
+  ]) {
+    const f = SEDE.find((x) => x.id === id);
+    const foco = focoDeCerca(tipo, f, empaque, donde);
+    if (foco.yEntrepano == null) continue;
+    const v = vistaDeVenta(comoMueble(f), "A", "cerca", foco, otros(f.id), LIMITES, FOV_DE_CERCA);
+    const tope = foco.yEntrepano + foco.libreEntrepano / 2 + AIRE_SOBRE_EL_ENTREPANO;
+    const b = bordeDeArriba(v, f, FOV_DE_CERCA);
+    assert.ok(b <= tope + 1e-6, `${f.id}: el borde de arriba muestra ${((b - tope + AIRE_SOBRE_EL_ENTREPANO) * 100).toFixed(1)} cm sobre el entrepaño`);
+    // El entrepaño elegido, entero en el cuadro; y la cámara no cabecea: se
+    // bajó entera.
+    const y = (h) => proyectar(v, FOV_DE_CERCA, 16 / 9, { x: v.targetX, y: h, z: v.targetZ }).y;
+    assert.ok(y(foco.yEntrepano - foco.libreEntrepano / 2) >= -1, `${f.id}: el pie del entrepaño elegido quedó afuera`);
+    const dist = Math.hypot(v.posX - v.targetX, v.posZ - v.targetZ);
+    const picado = Math.atan2(v.posY - v.targetY, dist);
+    assert.ok(picado <= (10 * Math.PI) / 180, `${f.id}: «De cerca» mira con ${(picado * 180 / Math.PI).toFixed(1)}° de picado`);
+  }
 });
 
 prueba("el robatope de cerca: dos repisas al 75-85 % del alto en el plano de la mira (66-70 % en la captura)", () => {

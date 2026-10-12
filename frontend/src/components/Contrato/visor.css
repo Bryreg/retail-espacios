@@ -111,11 +111,17 @@
   border-bottom: var(--hair) solid rgb(var(--line-rgb));
 }
 .visor-cajon-cabeza h2 { margin: 0; font-family: var(--f-display); font-size: var(--t-base); font-weight: 600; }
+/* «Ocultar ›»: con palabra y flecha, no con una ×, que ya es de «Volver al
+   contrato». */
 .visor-cajon-cerrar {
-  width: 28px;
   height: 28px;
-  display: grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px 0 10px;
+  font-family: inherit;
+  font-size: var(--t-xs);
+  font-weight: 600;
   border-radius: var(--r-xs);
   border: var(--hair) solid rgb(var(--line-strong-rgb));
   background: transparent;
@@ -253,3 +259,15 @@
 .visor-subir { display: flex; flex-direction: column; gap: 8px; }
 .visor-subir-acciones { display: flex; gap: 8px; }
 .visor-ficha { padding: 8px; border-radius: var(--r-sm); border: var(--hair) solid rgb(var(--line-strong-rgb)); }
+
+/* «Para llevarse»: los dos botones de la lámina, uno por renglón si no entran. */
+.visor-lamina { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* La ficha del envase en el alta, dentro de un cajón de 360 px: el editor la
+   arma para su panel ancho (alto, ancho y fondo en tres columnas, «Fondo de la
+   foto» con sus botones en un renglón). Acá eso cortaba los placeholders
+   («≈ 7 (sa…») y partía «Fondo de la foto» en tres renglones. Dos columnas y
+   los botones del fondo debajo de su rótulo. */
+.visor-ficha .grid.grid-cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.visor-ficha .flex.flex-wrap > div { flex-wrap: wrap; row-gap: 4px; }
+.visor-ficha .flex.flex-wrap > div > span:first-child { flex: 0 0 100%; }

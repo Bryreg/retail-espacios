@@ -3,16 +3,17 @@ import { createPortal } from "react-dom";
 import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
 import type { OrbitControls as ControlesDeOrbita } from "three/examples/jsm/controls/OrbitControls.js";
-import { Box, Loader2, Search, Upload, X } from "lucide-react";
+import { Box, ChevronRight, Download, FileCheck, Loader2, Search, Upload, X } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 import { useModalAbierto } from "../../tema";
-import { arteUrl, listarDelProveedor, subirArteDelProveedor, type Arte } from "../../api/catalogo";
+import { arteUrl, esProveedorNuevo, listarDelProveedor, subirArteDelProveedor, type Arte } from "../../api/catalogo";
 import { describeError } from "../../api/client";
-import type { TomaDeVenta } from "../../utils/planta";
+import { normalDeCara, type TomaDeVenta } from "../../utils/planta";
+import { componerPropuesta, descargar, nombreDeArchivo, prepararToma, type DatosPropuesta } from "../../utils/propuesta";
 import {
-  CAM_POS, CAM_TARGET, CanvasErrorBoundary, FONDO_DE_SALA, FOV_DEL_EDITOR, HudQueSeEsconde, PanelDePrueba, Scene,
-  storeToFixtures, TIPOS_CON_PRODUCTO, TIPOS_CON_PRUEBA_3D,
+  CAM_POS, CAM_TARGET, CanvasErrorBoundary, FONDO_DE_SALA, FOV_DEL_EDITOR, HOLGURA_DE_LAMINA, HudQueSeEsconde,
+  nombresDeLaPrueba, PanelDePrueba, Scene, storeToFixtures, TIPOS_CON_PRODUCTO, TIPOS_CON_PRUEBA_3D, TIPOS_CON_SURTIDO,
   type ComoSePrueba, type EstadoDeEscena, type PedidoDeToma, type PlacedFixture,
 } from "../StoreEditor3D/StoreEditor3D";
 import EditorDeFicha, { FICHA_VACIA } from "../StoreEditor3D/EditorDeFicha";
@@ -67,6 +68,9 @@ export interface CaraDelVisor {
   face: "A" | "B";
   /** `PUN-03`, `GON-02·B`: como se lee en la ficha. */
   visible: string;
+  /** `PRINCIPAL-PUN-03`, `PRINCIPAL-GON-02-B`: el código completo, el que
+   *  encabeza la lámina. */
+  codigo: string;
   /** «Punta de góndola», «Góndola, por cara». */
   tipo: string;
 }
@@ -84,6 +88,14 @@ interface VisorDeVentaProps {
   onProveedor: (s: string) => void;
   sesion: SesionDeVenta;
   onCerrar: () => void;
+  /** La sede, para el pie de la lámina. */
+  sede: string;
+  /** Adjunta la lámina como planometría DEL CONTRATO (el campo de la ficha,
+   *  que sigue montada debajo). Nunca el plano. */
+  onPlanometria: (archivo: File) => void;
+  /** Si la ficha ya tiene una planometría: usar la lámina la reemplaza, y se
+   *  dice. */
+  hayPlanometria: boolean;
 }
 
 // ─── Constantes de la escena ─────────────────────────────────────────────────
@@ -97,7 +109,6 @@ interface VisorDeVentaProps {
 const SIN_UNIFICADOS: [] = [];
 const NADA = () => {};
 const NADA_CON_MUEBLES: React.Dispatch<React.SetStateAction<PlacedFixture[]>> = () => {};
-const NADA_CON_CAPTURA = (_fn: () => string) => {};
 const NADA_CON_VISTA = (_fn: () => void) => {};
 
 /** Las tres tomas del vendedor, en el orden del HUD. */
@@ -117,7 +128,7 @@ const claveDe = (c: CaraActiva) => `${c.fixtureId}|${c.face}`;
  * acá. Sólo lo redibuja lo que cambia lo que se ve.
  */
 const Lienzo = memo(function Lienzo({
-  muebles, privadoPara, sinArte, prueba, como, artes, pedido, estado,
+  muebles, privadoPara, sinArte, prueba, como, artes, pedido, estado, orbitRef, onCaptura,
 }: {
   muebles: PlacedFixture[];
   privadoPara: number | null;
@@ -127,8 +138,11 @@ const Lienzo = memo(function Lienzo({
   artes: Arte[];
   pedido: PedidoDeToma | null;
   estado: React.MutableRefObject<EstadoDeEscena>;
+  /** La órbita, en manos del visor: le pone los límites a cada toma. */
+  orbitRef: React.MutableRefObject<ControlesDeOrbita | null>;
+  /** Recibe la función que saca una captura del lienzo (la lámina). Estable. */
+  onCaptura: (fn: () => string) => void;
 }) {
-  const orbitRef = useRef<ControlesDeOrbita | null>(null);
   const draggingId = useRef<string | null>(null);
   return (
     <CanvasErrorBoundary>
@@ -169,7 +183,7 @@ const Lienzo = memo(function Lienzo({
           onSelectFixture={NADA}
           onSelectSlot={NADA}
           setPlacedFixtures={NADA_CON_MUEBLES}
-          screenshotReady={NADA_CON_CAPTURA}
+          screenshotReady={onCaptura}
           topViewReady={NADA_CON_VISTA}
           firstPerson={false}
           sinArte={sinArte}
@@ -192,11 +206,15 @@ const Lienzo = memo(function Lienzo({
 // ─── El visor ────────────────────────────────────────────────────────────────
 
 export default function VisorDeVenta({
-  caras, activa, onActiva, proveedor, onProveedor, sesion, onCerrar,
+  caras, activa, onActiva, proveedor, onProveedor, sesion, onCerrar, sede, onPlanometria, hayPlanometria,
 }: VisorDeVentaProps) {
   const raiz = useRef<HTMLDivElement>(null);
   const volver = useRef<HTMLButtonElement>(null);
   const isAdmin = useAuthStore(selectIsAdmin);
+  const orbitRef = useRef<ControlesDeOrbita | null>(null);
+  /** Saca una captura del lienzo (la arma la escena: `ScreenshotCapture`). */
+  const captura = useRef<(() => string) | null>(null);
+  const alTenerCaptura = useCallback((fn: () => string) => { captura.current = fn; }, []);
 
   // ── La capa ─────────────────────────────────────────────────────────────
   // Mientras está abierto, ÉL es la pantalla: el amarillo de la ficha de
@@ -249,6 +267,8 @@ export default function VisorDeVenta({
   const unificados = useFixtureStore(selectFixtures);
   const muebles = useMemo(() => sinDatosComerciales(storeToFixtures(unificados)), [unificados]);
   const mueble = muebles.find((f) => f.id === activa.fixtureId) ?? null;
+  const mueblesRef = useRef(muebles);
+  mueblesRef.current = muebles;
   const cara = caras.find((c) => c.fixtureId === activa.fixtureId && c.face === activa.face) ?? null;
   // Si la cara se fue —la sincronización trajo un plano sin ese mueble, o
   // salió del contrato— no hay nada que mostrar: se vuelve a la ficha.
@@ -316,9 +336,37 @@ export default function VisorDeVenta({
   // Un contador propio: pedir dos veces la misma toma vuelve a encuadrar.
   const [pedido, setPedido] = useState<PedidoDeToma | null>(null);
   const tomasPedidas = useRef(0);
-  const pedirToma = useCallback((fixtureId: string, face: "A" | "B", toma: TomaDeVenta) => {
+  const pedirToma = useCallback((fixtureId: string, face: "A" | "B", toma: TomaDeVenta, holgura?: number) => {
+    // Los límites de la órbita son de la cara de la toma anterior: con ellos
+    // puestos, la escena (`aplicarVista` → `update()`) recortaría la toma
+    // de otra cara. Se sueltan y se vuelven a poner cuando la toma llega.
+    const ctrl = orbitRef.current;
+    if (ctrl) { ctrl.minAzimuthAngle = -Infinity; ctrl.maxAzimuthAngle = Infinity; }
     const n = ++tomasPedidas.current;
-    setPedido({ fixtureId, cara: face, toma, n });
+    setPedido({ fixtureId, cara: face, toma, n, ...(holgura ? { holgura } : {}) });
+    return n;
+  }, []);
+  /**
+   * Hasta dónde se puede girar con el mouse: a lo sumo 65° a cada lado del
+   * frente de la cara, sin correr la mira y entre 0,6 y 7 m. Sin límites, un
+   * arrastre y una vuelta de rueda metían la cámara DENTRO del mueble —media
+   * pantalla de costado gris— con el proveedor mirando, y para volver había
+   * que encontrar una toma en un HUD que se esconde. (0,6 m es lo más cerca
+   * que llega «De cerca»: más, y la órbita la empujaría.) El doble clic
+   * vuelve a «De frente».
+   */
+  const limitarOrbita = useCallback((p: PedidoDeToma) => {
+    const ctrl = orbitRef.current;
+    const m = mueblesRef.current.find((f) => f.id === p.fixtureId);
+    if (!ctrl || !m) return;
+    const n = normalDeCara(m.rotY ?? 0, p.cara);
+    const frente = Math.atan2(n.x, n.z);
+    const giro = (65 * Math.PI) / 180;
+    ctrl.minAzimuthAngle = frente - giro;
+    ctrl.maxAzimuthAngle = frente + giro;
+    ctrl.enablePan = false;
+    ctrl.minDistance = 0.6;
+    ctrl.maxDistance = 7;
   }, []);
   // «De frente» al abrir y al cambiar de cara: es la primera impresión, a la
   // altura de un comprador, con la persona de escala al lado.
@@ -329,17 +377,20 @@ export default function VisorDeVenta({
     sinArte: false, privadoPara: null, toma: 0, primeraPersona: false, rejillasAcomodadas: [], aspectoConPersona: 0,
   });
   // La toma ya dibujada, marcada en la raíz para quien saca capturas (y para
-  // las pruebas de navegador): el lienzo es otra raíz de React.
+  // las pruebas de navegador): el lienzo es otra raíz de React. Y con la
+  // toma puesta, los límites de la órbita para esa cara.
+  const limitada = useRef(-1);
   useEffect(() => {
     const t = window.setInterval(() => {
       const el = raiz.current;
       if (!el) return;
       const lista = !!pedido && estado.current.toma === pedido.n;
+      if (lista && limitada.current !== pedido!.n) { limitada.current = pedido!.n; limitarOrbita(pedido!); }
       if (lista) el.setAttribute("data-toma-lista", String(pedido!.n));
       else el.removeAttribute("data-toma-lista");
     }, 120);
     return () => window.clearInterval(t);
-  }, [pedido]);
+  }, [pedido, limitarOrbita]);
 
   // «Hoy»: la misma cámara, sin el producto. Al cambiar de cara o de producto
   // vuelve a «Con …».
@@ -348,7 +399,15 @@ export default function VisorDeVenta({
 
   // ── El cajón de productos ───────────────────────────────────────────────
   // Se abre solo si la cara no tiene producto: es lo primero que hay que hacer.
+  // También al saltar desde la chapa a otra cara sin producto: con el cajón
+  // cerrado se veía el mueble vacío y había que buscar «Producto» en un HUD
+  // que se esconde a los 2 s.
   const [cajon, setCajon] = useState(() => !sesion.prueba.has(claveDe(activa)));
+  const pruebaRef = useRef(sesion.prueba);
+  pruebaRef.current = sesion.prueba;
+  useEffect(() => {
+    if (!pruebaRef.current.has(clave)) setCajon(true);
+  }, [clave]);
   // Se preguntó por el proveedor al abrir: el campo queda mientras se teclea
   // (si no, desaparecía con la primera letra).
   const [pidioProveedor] = useState(() => !proveedor.trim());
@@ -369,6 +428,132 @@ export default function VisorDeVenta({
   const quitar = () => {
     sesion.probar(activa.fixtureId, activa.face, null);
     pedirToma(activa.fixtureId, activa.face, "frente");
+  };
+
+  // ── La lámina: «Bajar la propuesta» y «Usarla como planometría» ────────
+  // La misma lámina del Editor 3D (`componerPropuesta`): «Hoy», «Con …» y «De
+  // cerca» desde las tomas de venta, con el pie del producto. Faltaba acá, y
+  // es el paso natural de la reunión: mandársela al proveedor o adjuntarla
+  // como planometría del contrato que se está armando —que antes obligaba a
+  // ir al Editor 3D y perder el contrato—. La escena ya es privada para el
+  // proveedor de los artes (`privadoPara`), así que en las tomas no sale nada
+  // de otro. El pie va SIN período ni valor: el visor no los conoce (nada
+  // comercial cruza desde la ficha) y lo que se está proponiendo todavía no
+  // está acordado. Y el mueble se nombra por su TIPO, no por su rótulo, que
+  // es texto libre de la dueña.
+  const [lamina, setLamina] = useState<"" | "bajando" | "adjuntando">("");
+  const [laminaLista, setLaminaLista] = useState<"" | "bajada" | "adjunta">("");
+  const [laminaFallo, setLaminaFallo] = useState("");
+  useEffect(() => { setLaminaLista(""); setLaminaFallo(""); }, [clave, arteDeLaCara?.id]);
+
+  const armarLamina = async (): Promise<{ blob: Blob; datos: DatosPropuesta; conComparacion: boolean } | null> => {
+    const capturar = captura.current;
+    const arte = arteDeLaCara;
+    if (!capturar || !arte || !mueble || !cara) return null;
+    // Entre toma y toma hay que dejar que React rearme los materiales y que el
+    // lienzo vuelva a dibujar (como `exportarPropuesta` del editor).
+    const esperarCuadro = () =>
+      new Promise<void>((ok) => requestAnimationFrame(() => requestAnimationFrame(() => ok())));
+    const esperarEscena = async (listo: (e: EstadoDeEscena) => boolean) => {
+      for (let i = 0; i < 240 && !listo(estado.current); i++) {
+        await new Promise<void>((ok) => requestAnimationFrame(() => ok()));
+      }
+      await esperarCuadro();
+    };
+    const conTomas = TIPOS_CON_PRUEBA_3D.has(mueble.type);
+    // El recorte de cada toma, con la forma del mueble (`prepararToma`).
+    const aspecto = conTomas
+      ? Math.max(0.75, Math.min(16 / 9, (mueble.w / (mueble.h * 1.12 * HOLGURA_DE_LAMINA)) * 1.3))
+      : 16 / 9;
+    let aspectoDeLamina = aspecto;
+    const preparar = (dataUrl: string) => prepararToma(dataUrl, aspectoDeLamina, FONDO_DE_SALA);
+    const sinArteAntes = sinArte;
+    try {
+      if (conTomas) {
+        const n = pedirToma(activa.fixtureId, activa.face, "frente", HOLGURA_DE_LAMINA);
+        await esperarEscena((e) => e.toma === n);
+        aspectoDeLamina = Math.min(16 / 9, Math.max(aspecto, estado.current.aspectoConPersona));
+      }
+      setSinArte(true);
+      await esperarEscena((e) => e.sinArte);
+      const antes = await preparar(capturar());
+      setSinArte(false);
+      await esperarEscena((e) => !e.sinArte);
+      const despues = await preparar(capturar());
+      const conRejillas = estado.current.rejillasAcomodadas.includes(clave);
+      let deCerca: string | null = null;
+      if (conTomas) {
+        const n = pedirToma(activa.fixtureId, activa.face, "cerca");
+        await esperarEscena((e) => e.toma === n);
+        deCerca = await preparar(capturar());
+      }
+      const datos: DatosPropuesta = {
+        sede,
+        espacio: cara.codigo,
+        mueble: cara.tipo,
+        proveedor: arte.proveedor,
+        producto: nombresDeLaPrueba(
+          arte, TIPOS_CON_SURTIDO.has(mueble.type) ? sesion.como.get(clave)?.surtido : undefined, privadoPara, artes,
+        ),
+        exhibicion: conRejillas ? "rejillas acomodadas para este producto" : undefined,
+        categoria: arte.categoria ?? "",
+        desde: "",
+        hasta: "",
+        valorMensual: null,
+      };
+      // Sin diferencia entre las dos (la foto todavía no cargó), una sola
+      // imagen: el mismo dibujo con «Hoy» y «Con …» le mentiría a quien la
+      // recibe.
+      const conComparacion = antes !== despues;
+      const tomas = conComparacion
+        ? [
+            { titulo: "Hoy", dataUrl: antes },
+            { titulo: `Con ${arte.proveedor}`, dataUrl: despues },
+            ...(deCerca ? [{ titulo: "De cerca", dataUrl: deCerca }] : []),
+          ]
+        : [{ titulo: "El espacio hoy", dataUrl: despues }];
+      return { blob: await componerPropuesta(tomas, datos), datos, conComparacion };
+    } finally {
+      // Como estaba: con el producto (o «Hoy», si estaba en «Hoy») y de frente.
+      setSinArte(sinArteAntes);
+      pedirToma(activa.fixtureId, activa.face, "frente");
+    }
+  };
+  const bajarLamina = async () => {
+    if (lamina) return;
+    setLamina("bajando");
+    setLaminaFallo("");
+    try {
+      const r = await armarLamina();
+      if (!r) return;
+      descargar(r.blob, nombreDeArchivo(r.datos, r.conComparacion));
+      setLaminaLista("bajada");
+    } catch {
+      setLaminaFallo("No se pudo armar la lámina. Probá de nuevo.");
+    } finally {
+      setLamina("");
+    }
+  };
+  /** La lámina, adjunta como planometría DEL CONTRATO: escribe el campo de la
+   *  ficha (que sigue montada debajo) y viaja con «Guardar contrato», como
+   *  la foto o el PDF que adjunta la dueña. En JPG: la planometría tiene un
+   *  tope de 10 MB y viaja por correo. Nunca toca el plano. */
+  const usarComoPlanometria = async () => {
+    if (lamina) return;
+    setLamina("adjuntando");
+    setLaminaFallo("");
+    try {
+      const r = await armarLamina();
+      if (!r) return;
+      const jpg = await aJpeg(r.blob);
+      const base = nombreDeArchivo(r.datos, r.conComparacion).replace(/\.png$/, "");
+      onPlanometria(new File([jpg.blob], `${base}.${jpg.extension}`, { type: jpg.blob.type }));
+      setLaminaLista("adjunta");
+    } catch {
+      setLaminaFallo("No se pudo armar la lámina. Probá de nuevo.");
+    } finally {
+      setLamina("");
+    }
   };
 
   const filtrados = useMemo(() => {
@@ -408,7 +593,9 @@ export default function VisorDeVenta({
     >
       <span tabIndex={0} data-centinela onFocus={alPrincipio} />
 
-      <div className="visor-escena">
+      {/* El doble clic vuelve a «De frente»: si un giro dejó la cámara en un
+          lugar raro, es lo primero que se hace sin buscar el HUD. */}
+      <div className="visor-escena" onDoubleClick={() => pedirToma(activa.fixtureId, activa.face, "frente")}>
         <Lienzo
           muebles={muebles}
           privadoPara={privadoPara}
@@ -418,6 +605,8 @@ export default function VisorDeVenta({
           artes={artes}
           pedido={pedido}
           estado={estado}
+          orbitRef={orbitRef}
+          onCaptura={alTenerCaptura}
         />
 
         {/* Qué se está mirando, y las otras caras del contrato a un toque. */}
@@ -493,8 +682,11 @@ export default function VisorDeVenta({
             <h2>
               {nombre && artes.length > 0 ? <>Productos de {proveedorDeLosArtes}</> : "Producto"}
             </h2>
-            <button type="button" className="visor-cajon-cerrar" onClick={() => setCajon(false)} aria-label="Cerrar el cajón de productos">
-              <X size={14} aria-hidden />
+            {/* «Ocultar», con una flecha y no con una ×: con el cajón abierto
+                convivían dos X —ésta y «× Volver al contrato»— y era fácil
+                cerrar el visor queriendo cerrar el cajón. */}
+            <button type="button" className="visor-cajon-cerrar" onClick={() => setCajon(false)} aria-label="Ocultar los productos">
+              Ocultar <ChevronRight size={14} aria-hidden />
             </button>
           </header>
 
@@ -522,7 +714,15 @@ export default function VisorDeVenta({
             ) : fallo ? (
               <p className="visor-aviso">{fallo}</p>
             ) : artes.length === 0 ? (
-              <p className="visor-aviso" data-sin-productos>{nombre} todavía no tiene productos cargados.</p>
+              // No «Postobon todavía no tiene productos»: con el nombre sin
+              // tilde o sin apóstrofe el servidor no encuentra a «Postobón»
+              // (la regla del contrato sólo saca mayúsculas y espacios), y
+              // decía que no tenía productos cuando tenía dos. Tampoco un
+              // «¿quisiste decir…?»: un parecido sería el nombre de otro.
+              <p className="visor-aviso" data-sin-productos>
+                No encontré productos a nombre de «{nombre}». Revisá cómo está escrito (tildes,
+                apóstrofes); si subís uno y el nombre no está, se da de alta como proveedor nuevo.
+              </p>
             ) : (
               <>
                 {artes.length > 4 && (
@@ -602,7 +802,34 @@ export default function VisorDeVenta({
                   isAdmin={isAdmin}
                   catalogo={artes}
                   onRecargarCatalogo={recargar}
+                  paraElProveedor
                 />
+              </section>
+            )}
+
+            {arteDeLaCara && !subiendo && (
+              <section className="visor-como" aria-label="La lámina">
+                <h3 className="visor-rotulo">Para llevarse</h3>
+                <p className="visor-nota">
+                  La lámina con «Hoy», «Con {proveedorDeLosArtes}»{conCuenta ? " y «De cerca»" : ""}, sin valores ni fechas.
+                </p>
+                <div className="visor-lamina">
+                  <button type="button" className="visor-boton-linea" onClick={bajarLamina} disabled={!!lamina} data-bajar-lamina>
+                    {lamina === "bajando" ? <Loader2 size={13} className="visor-gira" aria-hidden /> : <Download size={13} aria-hidden />}
+                    Bajar la propuesta
+                  </button>
+                  <button type="button" className="visor-boton-linea" onClick={usarComoPlanometria} disabled={!!lamina} data-lamina-planometria>
+                    {lamina === "adjuntando" ? <Loader2 size={13} className="visor-gira" aria-hidden /> : <FileCheck size={13} aria-hidden />}
+                    {hayPlanometria ? "Reemplazar la planometría" : "Usarla como planometría"}
+                  </button>
+                </div>
+                {laminaLista === "adjunta" && (
+                  <p className="visor-nota" role="status" data-lamina-adjunta>
+                    Quedó adjunta como planometría de este contrato: se guarda con él.
+                  </p>
+                )}
+                {laminaLista === "bajada" && <p className="visor-nota" role="status">La lámina se bajó.</p>}
+                {laminaFallo && <p className="visor-aviso" role="alert">{laminaFallo}</p>}
               </section>
             )}
           </div>
@@ -621,6 +848,30 @@ export default function VisorDeVenta({
     </div>,
     document.body,
   );
+}
+
+// ─── La lámina en JPG ────────────────────────────────────────────────────────
+
+/** La lámina (PNG) como JPG blanco de fondo, para la planometría: un PNG de
+ *  tres tomas pesa varios megas y la planometría viaja por correo. Si el
+ *  navegador no puede, queda en PNG. */
+async function aJpeg(png: Blob): Promise<{ blob: Blob; extension: "jpg" | "png" }> {
+  try {
+    const imagen = await createImageBitmap(png);
+    const c = document.createElement("canvas");
+    c.width = imagen.width;
+    c.height = imagen.height;
+    const g = c.getContext("2d");
+    if (!g) return { blob: png, extension: "png" };
+    g.fillStyle = "#ffffff";
+    g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(imagen, 0, 0);
+    imagen.close();
+    const jpg = await new Promise<Blob | null>((ok) => c.toBlob(ok, "image/jpeg", 0.9));
+    return jpg ? { blob: jpg, extension: "jpg" } : { blob: png, extension: "png" };
+  } catch {
+    return { blob: png, extension: "png" };
+  }
 }
 
 // ─── Subir un producto, a nombre del proveedor del contrato ─────────────────
@@ -645,9 +896,14 @@ function SubirProducto({ proveedor, onListo, onCancelar }: {
   const [problemas, setProblemas] = useState<string[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
+  /** El servidor no encontró a nadie con ese nombre: hay que confirmar el
+   *  alta (`crear_proveedor`). Se pregunta UNA vez, acá, y no se crea solo. */
+  const [nombreNuevo, setNombreNuevo] = useState(false);
   const archivoRef = useRef<HTMLInputElement>(null);
+  // Otro nombre en el contrato, otra pregunta.
+  useEffect(() => { setNombreNuevo(false); }, [proveedor]);
 
-  async function enviar() {
+  async function enviar(crearProveedor = false) {
     if (enviando) return;
     if (!nombre.trim()) { setError("Ponele nombre al producto: es lo que se elige de la lista."); return; }
     if (!archivo) { setError("Falta la foto del producto."); return; }
@@ -657,11 +913,12 @@ function SubirProducto({ proveedor, onListo, onCancelar }: {
     setError("");
     try {
       const nuevo = await subirArteDelProveedor({
-        proveedor, nombre: nombre.trim(), categoria: rubro.trim() || undefined, archivo, ficha,
+        proveedor, nombre: nombre.trim(), categoria: rubro.trim() || undefined, archivo, ficha, crearProveedor,
       });
       onListo(nuevo);
     } catch (e) {
-      setError(describeError(e, "No se pudo subir el producto."));
+      if (esProveedorNuevo(e)) setNombreNuevo(true);
+      else setError(describeError(e, "No se pudo subir el producto."));
     } finally {
       setEnviando(false);
     }
@@ -708,14 +965,31 @@ function SubirProducto({ proveedor, onListo, onCancelar }: {
         </div>
       )}
       {error && <p className="visor-aviso" role="alert">{error}</p>}
-      <div className="visor-subir-acciones">
-        {/* En tinta y no en amarillo: el amarillo de esta pantalla es el de la
-            ficha, y no se ve mientras el visor está abierto. */}
-        <button type="button" className="visor-boton" onClick={enviar} disabled={enviando}>
-          {enviando ? <><Loader2 size={13} className="visor-gira" aria-hidden /> Subiendo…</> : "Subir"}
-        </button>
-        <button type="button" className="visor-boton-linea" onClick={onCancelar} disabled={enviando}>Cancelar</button>
-      </div>
+      {nombreNuevo ? (
+        <div className="visor-aviso" role="alert" data-proveedor-nuevo>
+          <p style={{ margin: 0 }}>
+            No hay ningún proveedor «{proveedor}». Revisá cómo está escrito (tildes, apóstrofes): si
+            ya existe con otra forma, corregilo en el contrato. Si es nuevo, se da de alta con este nombre.
+          </p>
+          <div className="visor-subir-acciones" style={{ marginTop: 8 }}>
+            <button type="button" className="visor-boton" onClick={() => enviar(true)} disabled={enviando}>
+              {enviando ? <><Loader2 size={13} className="visor-gira" aria-hidden /> Subiendo…</> : "Es nuevo: darlo de alta"}
+            </button>
+            <button type="button" className="visor-boton-linea" onClick={() => setNombreNuevo(false)} disabled={enviando}>
+              Revisar el nombre
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="visor-subir-acciones">
+          {/* En tinta y no en amarillo: el amarillo de esta pantalla es el de
+              la ficha, y no se ve mientras el visor está abierto. */}
+          <button type="button" className="visor-boton" onClick={() => enviar()} disabled={enviando}>
+            {enviando ? <><Loader2 size={13} className="visor-gira" aria-hidden /> Subiendo…</> : "Subir"}
+          </button>
+          <button type="button" className="visor-boton-linea" onClick={onCancelar} disabled={enviando}>Cancelar</button>
+        </div>
+      )}
     </div>
   );
 }

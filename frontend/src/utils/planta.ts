@@ -713,6 +713,10 @@ export interface FocoDeVenta {
   alFondo?: boolean;
 }
 
+/** Cuánto de lo que está ARRIBA del entrepaño elegido entra en «De cerca»: la
+ *  tabla y el labio del entrepaño de arriba, y nada de su producto. */
+export const AIRE_SOBRE_EL_ENTREPANO = 0.02;
+
 /** Qué parte del alto del cuadro llenan las dos repisas de «De cerca» en un
  *  mueble angosto. */
 // 0,8 en el plano de la cara. La crítica mide en la captura de la bolsa de
@@ -796,7 +800,7 @@ export function vistaDeVenta(
     const ideal = Math.min(1.8, Math.max(0.6, visible / (2 * Math.tan(mitadV))));
     const dist = Math.max(0.6, Math.min(ideal, libre || ideal));
     const pos = { x: centro.x + n.x * dist, z: centro.z + n.z * dist };
-    const yCamara = Math.min(1.65, mira + 0.1);
+    let yCamara = Math.min(1.65, mira + 0.1);
     const conMira = (m: number) => conAltura(pos, m, yCamara);
     const enCuadro = (m: number, y: number) =>
       proyectar(conMira(m), fovGrados, aspecto, { x: centro.x, y, z: centro.z }).y;
@@ -828,6 +832,19 @@ export function vistaDeVenta(
     if (enCuadro(m, pie) < lineaDelHud) {
       const bajada = bajarHasta(m, (x) => enCuadro(x, pie) >= lineaDelHud);
       if (enCuadro(bajada, techo) <= 0.98) m = bajada;
+    }
+    // Lo de ARRIBA del entrepaño elegido, afuera: el borde de arriba no pasa
+    // del entrepaño de arriba (su tabla y su labio, 2 cm). Con el 75 % de
+    // llenado centrado quedaban 9 cm de la repisa de arriba —su producto
+    // cortado por la mitad, o en «Por entrepaño» una banda de cajas de
+    // relleno llamativas sobre lo que se está vendiendo—. Se BAJA la toma
+    // entera —cámara y mira juntas, sin cabecear: el picado sigue siendo el
+    // de un comprador—, y el producto sube en el cuadro (más lejos de la
+    // franja del HUD). Bajarla traslada el borde lo mismo que se baja.
+    // No en un mueble angosto: ahí la toma muestra dos repisas a propósito.
+    if (!foco.parDeRepisas && mueble.w >= 0.5 && foco.yEntrepano != null) {
+      const sobra = bordeDeArriba(m) - (techo + AIRE_SOBRE_EL_ENTREPANO);
+      if (sobra > 0) { m -= sobra; yCamara -= sobra; }
     }
     // El copete de la punta: si el borde de arriba lo corta, la mira baja lo
     // justo para que el borde quede en la cenefa. Medio vaso del copete
