@@ -219,7 +219,10 @@ Esto REEMPLAZA al modelo dual, que fue el mayor generador de bugs del proyecto �
 - **La única excepción son los `slots`** (el estado por repisa del editor 3D): no tienen
   contraparte en ninguna tabla, así que tienen UNA fuente —el JSON— y no pueden
   discrepar con nada. Su precio SÍ sigue viajando en el layout y sigue redactándose para
-  un mercaderista, así que `_restore_missing_slot_prices` lo rellena al guardar.
+  un mercaderista, así que `_restore_missing_slot_prices` lo rellena al guardar. Lo que
+  sí puede pasar es que el plano de Vender (contratos) dé libre una cara con repisas
+  vendidas aparte: la fila del contrato lo avisa («3 repisas vendidas») y el visor 3D no
+  se lo dice al proveedor (ver *Ver el diseño desde Vender*, la crítica).
 
 El código de espacio es `"SEDE-CODE"` en mayúsculas. La cara B de una góndola doble usa
 sufijo `-B`; los campos top-level del fixture son la Cara A y `fixture.faceB` es la B
@@ -7339,6 +7342,93 @@ entero en el visor, los muebles sin sanear, el `supplierName` que pasa, las foto
 caras y la órbita sin su puerta, el `import` estático, sin `LimiteDelVisor`, un
 `btn-principal` en el visor, la sesión que no se vacía y el servidor que con
 `?proveedor=` vacío devuelve todo.
+
+### 2026-10-12 (noche): lo que vio la crítica
+
+La revisión de la primera versión encontró que el botón rompía justo la pantalla que
+mira el proveedor, y cuatro cosas medias. Lo que se cambió, y por qué:
+
+- **Un solo «Ver en 3D», en la cabecera del panel 03, y no uno por fila.** El «3D» de la
+  fila le comía ~50 px a la columna del tipo: en una góndola doble (con A/B) la
+  descripción quedaba en 0 px, a 1366 la fila desbordaba la tarjeta (la × 7 px afuera) y
+  el aviso de choque salía con una palabra por renglón (la fila de PUN-01 medía 255 px a
+  1440 y empujaba Proveedor, fechas y «Guardar» fuera del panel). Ahora abre **la última
+  cara tocada** —es lo que pidió la dueña: «cuando se toca la cara»— y las demás quedan
+  en la chapa del visor. Las filas volvieron a la base: × y valor en la misma columna en
+  todas, sin desborde a 1366, 1440 ni 1920. El botón lleva márgenes negativos para no
+  sumarle alto a la cabecera (la ficha de tres espacios sigue cerrando con 12-13 px).
+- **El choque va debajo de la fila, a todo el ancho** (`.eitem` es flex con `wrap` y
+  `.aviso` ocupa el 100 %): la fila con choque mide 76 px a 1440 y 72 a 1366.
+- **Las caras que chocan no van al visor** (`carasDelVisor` filtra
+  `disponibilidad === "libre"` y sin `choqueServidor`): no se le muestra al proveedor un
+  espacio que no se le puede vender, y «Ver en 3D» nunca abre una de ésas.
+- **Las repisas vendidas aparte ya no se le dicen al proveedor.** Los `slots` del layout
+  (la única fuente de esos espacios internos, sin contrato en la base) marcaban vendidos
+  5 entrepaños de GON-02·B, y «Cómo va» decía «Esta cara tiene 5 entrepaños vendidos: la
+  prueba los tapa» mientras el plano de Vender —que mira contratos— ofrecía la cara
+  libre entera. `PanelDePrueba` recibe `paraElProveedor` en el visor: sin ese aviso, y la
+  marca «vendido» de «Por entrepaño» en tinta y no en naranja. **A la dueña se le avisa
+  en la fila**, debajo del código y sin que la fila crezca: «3 repisas vendidas», con el
+  texto entero en el `title`. No bloquea el guardado: el servidor no las conoce.
+- **«Para llevarse», en el cajón del visor:** «Bajar la propuesta» arma la misma lámina
+  del editor (`componerPropuesta`: «Hoy», «Con …» y «De cerca» desde las tomas de venta)
+  con la escena ya privada; el pie va con el proveedor y el producto del arte, el mueble
+  por su TIPO (no por su rótulo, texto libre) y **sin período ni valor**, que el visor no
+  conoce y que todavía no están acordados. «Usarla como planometría» la pasa a JPG (la
+  planometría viaja por correo y tiene tope de 10 MB) y la escribe en el campo de
+  planometría de la FICHA (`setPlanometria`), que se abre para que se vea adjunta; se
+  guarda con el contrato. Nunca toca el plano ni el servidor al armarla.
+- **El proveedor mal escrito.** Con «Postobon» sin tilde el servidor no encuentra a
+  «Postobón» (la regla del contrato sólo saca mayúsculas y espacios) y el cajón decía
+  «Postobon todavía no tiene productos cargados» —falso— y ofrecía subir uno, que creaba
+  un proveedor duplicado en plena reunión. Ahora dice «No encontré productos a nombre de
+  «Postobon». Revisá cómo está escrito…», y `POST /catalogo/` por nombre contesta **409
+  `proveedor_nuevo`** si el nombre no es de nadie: el visor pregunta («Es nuevo: darlo de
+  alta» / «Revisar el nombre») y sólo con `crear_proveedor` lo da de alta. Ningún texto
+  sugiere un nombre parecido: sería el nombre de otro. El cotejo sin tildes queda
+  afuera a propósito: habría que cambiarlo a la vez en `bulk_leases`, y es otra decisión.
+- **«De cerca» sin el cartel cortado.** El borde de arriba caía en la CENEFA (la franja
+  de la marca que baja del copete hasta el último entrepaño cuando el hueco no sirve
+  para producto): la toma sólo sabía del copete. `pisoDelCartelDePunta` (en
+  `medidas.ts`, la misma cuenta que dibuja la cenefa, con `HUECO_SIN_PRODUCTO`) es ahora
+  el piso del cartel. Y para todo mueble que no es angosto, el borde de arriba no pasa
+  del entrepaño de arriba (`AIRE_SOBRE_EL_ENTREPANO`, 2 cm: su tabla y su labio, nada de
+  su producto); por entrepaño se mira además 20 cm detrás de la cara
+  (`FONDO_QUE_ASOMA`), sin bajar del techo del entrepaño elegido. La toma se BAJA entera
+  (cámara y mira juntas), así que no cabecea: el picado sigue siendo de comprador. En
+  GON-02·B por entrepaño la banda de relleno de arriba pasó de ~175 px a ~40.
+- **Bajas:** el cajón se abre solo al saltar a una cara sin producto; la órbita no se
+  mete en el mueble (65° a cada lado del frente, sin correr la mira, 0,6 a 7 m) y el
+  doble clic vuelve a «De frente»; la × del cajón pasó a «Ocultar ›» (convivía con
+  «× Volver al contrato»); el alta acomoda la ficha del envase al cajón (la foto arriba,
+  el ancho a todo el ancho: ya no se cortan los placeholders); y la cuenta de «Cómo va»
+  dice las unidades: «10 de frente × 3 a 4 de fondo por entrepaño · 4 entrepaños: 150
+  unidades (40 frentes)» (el yogur en PUN-03; con todas las filas iguales, «= 40 por
+  entrepaño»), con el fondo que ENTRA (`fondoTotal`) y no el que se dibuja (hasta tres).
+  Antes decía «Entran 10 por entrepaño · 3 de fondo · 40 de frente», y se leían 10 y 40
+  a la vez.
+
+**Quedó sin hacer, escrito:** el relleno de los vecinos sigue con sus colores (no se
+pasó a gris en el visor: es la misma luz y el mismo relleno de Presentar, y tocarlo es
+tocar las dos pantallas); la isla con el producto como lámina embaldosada y el cabezote
+de la nevera con una imagen sintética siguen como en el editor; la columna COL-01 se ve
+igual que en el editor.
+
+**Cómo se comprobó.** `probar-vender` suma 3 estáticas (el botón en la cabecera y el
+choque a todo el ancho, la lámina sin período ni valor y sólo a la planometría de la
+ficha, el visor sin «la prueba los tapa» y con el alta confirmada y la órbita con
+límites) y 4 de navegador (la fila en conflicto, las repisas vendidas en «Toda la cara»
+y «Por entrepaño», la lámina bajada y adjunta sin escribir nada, el proveedor sin tilde
+con la confirmación y sin proveedor nuevo); las de navegador tocan las caras al revés,
+porque «Ver en 3D» abre la última. `probar-planta` suma 1 (el borde de arriba de «De
+cerca» no pasa del entrepaño de arriba, sin cabecear) y cambia la del copete (el piso
+del cartel es la cenefa); `probar-muebles`, las unidades con el fondo que entra;
+`probar-contrato`, el choque a todo el ancho; `test_catalogo.py`, el 409. Doce
+mutaciones, todas en rojo: el botón otra vez en la fila, las caras en conflicto al
+visor, «la prueba los tapa» al proveedor, la lámina con período, el alta sin confirmar
+(visor y servidor), la órbita sin límites, «De cerca» sin el aire, el cartel sin la
+cenefa, el choque en la columna angosta, la lámina a otro lado que la ficha y la cuenta
+sin el fondo.
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 

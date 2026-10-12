@@ -3556,13 +3556,14 @@ export function PanelDePrueba({
   // fondo era el que se DIBUJA (hasta tres): el entrepaño de 45 cm lleva seis
   // vasos de fondo (`fondoTotal`).
   const fondoReal = conProducto.reduce((m, f) => Math.max(m, f.fondoTotal), 0);
+  const fondoMinimo = conProducto.reduce((m, f) => Math.min(m, f.fondoTotal), Infinity);
   const unidadesTotales = conProducto.reduce((t, f) => t + f.unidades, 0);
   const frentesTotales = conProducto.reduce((t, f) => t + f.frentes, 0);
   const parejo = conProducto.every((f) => f.frentes === minF && f.fondoTotal === fondoReal && f.pisos === pisos);
   const enProfundidad = fondoReal > 1 || pisos > 1;
   const textoDeLaCuenta = conProducto.length === 0 ? "" : [
     `${minF === maxF ? minF : `${minF} a ${maxF}`} de frente`,
-    fondoReal > 1 ? ` × ${fondoReal} de fondo` : "",
+    fondoReal > 1 ? ` × ${fondoMinimo === fondoReal ? fondoReal : `${fondoMinimo} a ${fondoReal}`} de fondo` : "",
     pisos > 1 ? ` × ${pisos} apilados` : "",
     conProducto.length === 1
       ? `: ${unidadesTotales} ${unidadesTotales === 1 ? "unidad" : "unidades"}`

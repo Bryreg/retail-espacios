@@ -1754,6 +1754,15 @@ prueba("el vaso en la punta: diez por entrepaño y el hueco del copete vacío", 
   }
   // Tres de fondo, y la de adelante al filo.
   assert.ok(r.porFila.slice(0, 4).every((f) => f.fondoVisible === 3));
+  // Lo que ENTRA de fondo no es lo que se dibuja: «¿cuántos me entran?» se
+  // contesta con todo el entrepaño (`fondoTotal`), y las unidades son frentes
+  // × fondo × pisos con ese fondo. Con «3 de fondo» el panel contaba de menos.
+  for (const f of r.porFila.slice(0, 4)) {
+    assert.ok(f.fondoTotal >= f.fondoVisible, `la fila ${f.fila}: entran ${f.fondoTotal} de fondo y se dibujan ${f.fondoVisible}`);
+    assert.equal(f.unidades, f.frentes * f.fondoTotal * f.pisos, `la fila ${f.fila} no cuenta frentes × fondo × pisos`);
+  }
+  assert.equal(r.porFila[4].unidades, 0, "el hueco del copete cuenta unidades");
+  assert.ok(r.porFila.slice(0, 4).some((f) => f.fondoTotal > 3), "en la punta de 40 cm entran más de tres vasos de fondo");
 
   const dos = F.unidadesDePrueba({ venta: v, empaque: VASO, donde: [1, 2], semilla: "PUN-01|A|1" });
   assert.deepEqual([...new Set(dos.unidades.map((u) => u.fila))].sort(), [1, 2], "«Por entrepaño» llenó otros");

@@ -716,6 +716,10 @@ export interface FocoDeVenta {
 /** Cuánto de lo que está ARRIBA del entrepaño elegido entra en «De cerca»: la
  *  tabla y el labio del entrepaño de arriba, y nada de su producto. */
 export const AIRE_SOBRE_EL_ENTREPANO = 0.02;
+/** Hasta qué fondo detrás de la cara se mira, en «De cerca» por entrepaño,
+ *  que no asome la mercadería de la repisa de arriba (el relleno va de a dos
+ *  de fondo). */
+export const FONDO_QUE_ASOMA = 0.2;
 
 /** Qué parte del alto del cuadro llenan las dos repisas de «De cerca» en un
  *  mueble angosto. */
@@ -842,8 +846,25 @@ export function vistaDeVenta(
     // de un comprador—, y el producto sube en el cuadro (más lejos de la
     // franja del HUD). Bajarla traslada el borde lo mismo que se baja.
     // No en un mueble angosto: ahí la toma muestra dos repisas a propósito.
+    //
+    // Por entrepaño, además, lo que asoma DETRÁS del labio: la cámara mira un
+    // poco para arriba, así que el borde del cuadro sigue subiendo hacia el
+    // fondo, y por encima del labio de arriba se veía la mercadería de la
+    // repisa de arriba (una banda de cajas de relleno sobre la Avena de
+    // GON-02·B). Se mide a `FONDO_QUE_ASOMA` detrás de la cara —lo que ocupa
+    // el relleno, dos de fondo—, pero sin bajar el borde de la cara más allá
+    // del techo del entrepaño: el entrepaño elegido entra entero aunque el
+    // producto llegue justo (la 2 L en 30 cm).
     if (!foco.parDeRepisas && mueble.w >= 0.5 && foco.yEntrepano != null) {
-      const sobra = bordeDeArriba(m) - (techo + AIRE_SOBRE_EL_ENTREPANO);
+      const tope = techo + AIRE_SOBRE_EL_ENTREPANO;
+      let sobra = bordeDeArriba(m) - tope;
+      if (foco.porEntrepano) {
+        const v = conMira(m);
+        const r = rayoDeVista(v, fovGrados, aspecto, 0, 1);
+        const haciaLaCara = -(r.x * n.x + r.z * n.z);
+        const subida = haciaLaCara > 1e-6 && r.y > 0 ? (r.y * FONDO_QUE_ASOMA) / haciaLaCara : 0;
+        sobra = Math.max(sobra, Math.min(sobra + subida, bordeDeArriba(m) - (techo + 0.001)));
+      }
       if (sobra > 0) { m -= sobra; yCamara -= sobra; }
     }
     // El copete de la punta: si el borde de arriba lo corta, la mira baja lo
