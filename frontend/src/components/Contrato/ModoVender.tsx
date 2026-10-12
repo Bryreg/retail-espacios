@@ -1,12 +1,22 @@
-import { useState } from "react";
-import { AlertTriangle, Check, ImageUp, Loader2, Lock, X } from "lucide-react";
+import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { AlertTriangle, Box, Check, ImageUp, Loader2, Lock, X } from "lucide-react";
 import type { DateRange } from "../SeasonPicker/SeasonPicker";
 import { isRentable, rateTypeLabel, rateTypeOf, type UnifiedFixture } from "../../types/fixtures";
 import NotifyPreview from "../NotifyPreview";
+import { useModalAbierto } from "../../tema";
 import {
   fechaCorta, money, useContrato,
   type CaraElegida, type Contrato, type ResumenContrato, type SemillaContrato,
 } from "./Contrato";
+import { useSesionDeVenta } from "./sesionDeVenta";
+// Sólo los TIPOS: el visor (y con él three.js y la escena del editor) se baja
+// recién cuando se abre, por el `lazy` de abajo.
+import type { CaraActiva, CaraDelVisor } from "./VisorDeVenta";
+
+/** El visor 3D de Vender, perezoso. Entrar a Vender no baja three.js ni la
+ *  escena: quien sólo arma un contrato no paga ~350 KB gzip que no usa. */
+const VisorDeVenta = lazy(() => import("./VisorDeVenta"));
 
 /**
  * 03 · EL CONTRATO — la ficha de D, con lugar fijo en la hoja.
@@ -86,12 +96,14 @@ function Panel({ derecha, children }: { derecha?: React.ReactNode; children: Rea
  *  de partida real— y al lado se ve el desvío, así que bajar el precio es una
  *  decisión que se toma mirando cuánto se está bajando. */
 function Fila({
-  l, c, sePuedeQuitar, onResaltar,
+  l, c, sePuedeQuitar, onResaltar, onVer3D,
 }: {
   l: Contrato["lineas"][number];
   c: Contrato;
   sePuedeQuitar: boolean;
   onResaltar: (claves: string[] | null) => void;
+  /** Abre el visor 3D sobre ESTA cara, encima de la ficha. */
+  onVer3D?: () => void;
 }) {
   const clave = `${l.fixture.id}-${l.face}`;
   /* Dos renglones y ni uno más: la fila mide 46 px y la ficha tiene que cerrar
@@ -165,6 +177,24 @@ function Fila({
             );
           })}
         </span>
+      )}
+      {/* «¿Y cómo queda?», sin salir del contrato: el 3D se abre ENCIMA de la
+          ficha, que sigue montada debajo con todo lo tecleado. Va en la fila y
+          no en el plano, porque en Vender tocar el plano suma o saca la cara
+          del contrato. De la familia de los interruptores A/B —borde fino,
+          mono, tinta—: nunca amarillo, que es de «Guardar contrato y avisar».
+          La exhibición no tiene 3D (`storeToFixtures` no la dibuja). */}
+      {onVer3D && l.fixture.type !== "exhibicion" && (
+        <button
+          type="button"
+          className="ver3d"
+          data-ver-3d={clave}
+          onClick={onVer3D}
+          aria-label={`Ver ${l.visible} en 3D`}
+          title="Ver cómo queda en 3D"
+        >
+          <Box size={12} aria-hidden /> 3D
+        </button>
       )}
       <span className={`m${l.monto > 0 ? "" : " falta"}`}>
         {/* El peso va como rótulo del campo y no adentro del texto: tecleado se
@@ -369,6 +399,44 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
   } = props;
   const c = useContrato({ espacios, sede, rango, semilla, onQuitar, onCambiarCara, onGuardado });
   const guardando = c.estado === "guardando";
+
+  /* ── El 3D, encima de la ficha ──────────────────────────────────────────
+     La prueba de producto vive ACÁ y no en el visor: se abre y se cierra
+     muchas veces en una llamada, y al reabrir el yogur tiene que seguir en la
+     punta. Se olvida con la ficha: al guardar (la ficha se va), al cambiar de
+     sede (se remonta), con «Empezar de nuevo» y al cambiar de proveedor. */
+  const sesion = useSesionDeVenta(c.proveedor);
+  const [en3D, setEn3D] = useState<CaraActiva | null>(null);
+  const abierta = useRef<CaraActiva | null>(null);
+  abierta.current = en3D;
+  /** La cara abierta, como la lee el visor: dónde está y cómo se llama.
+   *  Nada comercial cruza: ni valores, ni fechas, ni la tarifa. */
+  const carasDelVisor = useMemo<CaraDelVisor[]>(() => c.lineas.map((l) => ({
+    fixtureId: l.fixture.id, face: l.face, visible: l.visible, tipo: rateTypeLabel(rateTypeOf(l.fixture)),
+  })), [c.lineas]);
+  const abrir3D = (fixtureId: string, face: "A" | "B") => {
+    onResaltar(null);
+    // La pantalla completa se pide ACÁ, en el clic: después del `import` del
+    // visor el navegador ya no la da (sólo la concede con un gesto). Sobre
+    // todo el documento y no sobre el visor, que en el primer clic todavía
+    // no existe. Si la niega, el visor igual tapa la app entera.
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
+    setEn3D({ fixtureId, face });
+  };
+  /** Cerrar: soltar la pantalla completa y devolver el foco al botón «3D» de
+   *  la cara que se estaba mirando. La salida va acá y no en el desmontaje
+   *  del visor: StrictMode monta y desmonta dos veces en desarrollo y la
+   *  soltaría al abrir. */
+  const cerrar3D = useCallback(() => {
+    const vista = abierta.current;
+    setEn3D(null);
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => { /* ya salió */ });
+    if (vista) {
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>(`[data-ver-3d="${vista.fixtureId}-${vista.face}"]`)?.focus();
+      });
+    }
+  }, []);
   /** Correo, nota y planometría: opcionales, y ninguno se toca en la llamada
    *  típica. Cerrados, la ficha cierra con aire; abiertos, el cuerpo rueda y se
    *  ve que rueda. */
@@ -384,6 +452,7 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
               l={l}
               c={c}
               onResaltar={onResaltar}
+              onVer3D={() => abrir3D(l.fixture.id, l.face)}
               /* Con un solo espacio no se ofrece quitarlo: dejaría un contrato
                  sin nada adentro, y para eso está «Empezar de nuevo». */
               sePuedeQuitar={c.lineas.length > 1}
@@ -584,13 +653,96 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
               ? <><Loader2 size={14} style={{ verticalAlign: "-2px", animation: "spin .9s linear infinite" }} /> Guardando…</>
               : "Guardar contrato y avisar"}
           </button>
-          <button className="btn2" type="button" onClick={onCancelar} disabled={guardando}>
+          <button
+            className="btn2"
+            type="button"
+            // La prueba del 3D se olvida con el contrato: «empezar de nuevo» no
+            // remonta la ficha (su clave es la sede), así que se vacía a mano.
+            onClick={() => { sesion.vaciar(); onCancelar(); }}
+            disabled={guardando}
+          >
             Empezar de nuevo
           </button>
         </div>
       </div>
+      {en3D && (
+        <LimiteDelVisor onCerrar={cerrar3D}>
+          <Suspense fallback={<AbriendoEl3D />}>
+            <VisorDeVenta
+              caras={carasDelVisor}
+              activa={en3D}
+              onActiva={setEn3D}
+              proveedor={c.proveedor}
+              onProveedor={c.setProveedor}
+              sesion={sesion}
+              onCerrar={cerrar3D}
+            />
+          </Suspense>
+        </LimiteDelVisor>
+      )}
     </Panel>
   );
+}
+
+// ─── Lo que rodea al visor 3D ────────────────────────────────────────────────
+
+/** Mientras el visor baja (la primera vez, uno a tres segundos): la pantalla ya
+ *  está en pantalla completa y algo tiene que decir qué pasa. */
+function AbriendoEl3D() {
+  return createPortal(
+    <div className="visor-venta visor-abriendo" data-cajon-oscuro role="status">
+      <Loader2 size={16} className="visor-gira" aria-hidden /> Abriendo el 3D…
+    </div>,
+    document.body,
+  );
+}
+
+/** El aviso de que el 3D no pudo abrir, con la misma capa que el visor: la
+ *  ficha queda debajo, intacta. */
+function FallaDelVisor({ onCerrar }: { onCerrar: () => void }) {
+  useModalAbierto();
+  const volver = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const app = document.getElementById("root");
+    app?.setAttribute("inert", "");
+    volver.current?.focus();
+    return () => app?.removeAttribute("inert");
+  }, []);
+  return createPortal(
+    <div className="visor-venta visor-falla" data-cajon-oscuro data-capa-modal role="alertdialog" aria-modal="true" aria-label="No se pudo abrir el 3D">
+      <p role="alert">
+        No se pudo abrir el 3D. El contrato sigue como estaba: guardalo y recargá la página para ver el 3D.
+      </p>
+      <button ref={volver} type="button" className="visor-volver" onClick={onCerrar}>
+        <X size={14} aria-hidden /> Volver al contrato
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
+/**
+ * Si el visor no puede abrir, se dice y la ficha queda como estaba.
+ *
+ * La app no tiene NINGÚN otro límite de errores: un `lazy` cuyo archivo no
+ * baja —Render redesplegó desde `main` y el nombre del archivo cambió, o se
+ * cortó la red— tira un error en el render, y sin esto React desmonta la
+ * aplicación entera. Con el proveedor mirando, eso era perder el contrato
+ * tecleado por querer ver el 3D.
+ */
+class LimiteDelVisor extends Component<{ onCerrar: () => void; children: React.ReactNode }, { fallo: boolean }> {
+  state = { fallo: false };
+  static getDerivedStateFromError() {
+    return { fallo: true };
+  }
+  componentDidCatch() {
+    // La pantalla completa se pidió para el 3D: sin 3D, se suelta.
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => { /* ya salió */ });
+  }
+  render() {
+    if (this.state.fallo) return <FallaDelVisor onCerrar={this.props.onCerrar} />;
+    return this.props.children;
+  }
 }
 
 // ─── ──────────────────────────────────────────────────────────────────────────

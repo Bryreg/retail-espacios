@@ -1,0 +1,255 @@
+/* ============================================================================
+   EL VISOR 3D DE VENDER — la chapa, el HUD y el cajón de productos.
+
+   Baja con el visor (lo importa `VisorDeVenta.tsx`, que es perezoso). La capa
+   y lo que tiene que verse aunque el visor no baje están en `src/vender.css`;
+   las reglas de allá valen acá: cajón oscuro, `rgb(var(--x-rgb))`, letra de
+   la escala `--t-*` sin un px a mano y ningún amarillo.
+   ========================================================================== */
+.visor-venta [data-centinela] { position: absolute; width: 1px; height: 1px; overflow: hidden; }
+.visor-escena { position: relative; flex: 1; min-width: 0; height: 100%; }
+
+/* Lo que flota sobre la escena: translúcido, para que la tienda siga
+   viéndose detrás, y con la tinta del cajón (14:1 sobre el fondo). */
+.visor-chapa,
+.visor-hud {
+  background: rgb(var(--surface-rgb) / .86);
+  border: var(--hair) solid rgb(var(--line-strong-rgb));
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.visor-chapa {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  max-width: calc(100% - 240px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  white-space: nowrap;
+}
+.visor-chapa-cod { font-family: var(--f-mono); font-weight: 700; font-size: var(--t-md); letter-spacing: -0.01em; }
+.visor-chapa-tipo { color: rgb(var(--ink-2-rgb)); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.visor-pestanas {
+  display: flex;
+  gap: 4px;
+  padding-left: 10px;
+  border-left: var(--hair) solid rgb(var(--line-strong-rgb));
+  flex: none;
+}
+.visor-pestana {
+  height: 26px;
+  padding: 0 8px;
+  border-radius: var(--r-xs);
+  border: var(--hair) solid rgb(var(--line-strong-rgb));
+  background: transparent;
+  color: rgb(var(--ink-2-rgb));
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 700;
+  cursor: pointer;
+}
+.visor-pestana:hover { color: rgb(var(--ink-1-rgb)); border-color: rgb(var(--ink-2-rgb)); }
+
+/* El HUD de las tomas: abajo al centro, en UNA línea, y se esconde a los 2 s
+   sin mover el mouse (`HudQueSeEsconde`, con el cursor). Escondido no recibe
+   clics, ni él ni sus botones. */
+.visor-hud {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.visor-hud[data-hud-escondido],
+.visor-hud[data-hud-escondido] * { pointer-events: none; }
+.visor-hud-grupo { display: flex; align-items: center; gap: 2px; }
+.visor-hud-grupo + .visor-hud-grupo { padding-left: 6px; border-left: var(--hair) solid rgb(var(--line-strong-rgb)); }
+.visor-hud-boton {
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: rgb(var(--ink-1-rgb));
+  font-family: inherit;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.visor-hud-boton:hover { background: rgb(var(--ink-1-rgb) / .1); }
+.visor-hud-boton[aria-pressed="true"] { background: rgb(var(--ink-1-rgb)); color: rgb(var(--surface-rgb)); }
+
+/* El cajón de productos: 360 px a la derecha. El lienzo se achica y la toma se
+   vuelve a encuadrar sola por el tamaño (la misma regla de Presentar). */
+.visor-cajon {
+  width: 360px;
+  flex: none;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: rgb(var(--surface-rgb));
+  border-left: var(--hair) solid rgb(var(--line-rgb));
+}
+.visor-cajon-cabeza {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: var(--hair) solid rgb(var(--line-rgb));
+}
+.visor-cajon-cabeza h2 { margin: 0; font-family: var(--f-display); font-size: var(--t-base); font-weight: 600; }
+.visor-cajon-cerrar {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-xs);
+  border: var(--hair) solid rgb(var(--line-strong-rgb));
+  background: transparent;
+  color: rgb(var(--ink-2-rgb));
+  cursor: pointer;
+  flex: none;
+}
+.visor-cajon-cerrar:hover { color: rgb(var(--ink-1-rgb)); }
+.visor-cajon-cuerpo {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.visor-cajon-pie { padding: 12px 16px; border-top: var(--hair) solid rgb(var(--line-rgb)); }
+.visor-campo { display: flex; flex-direction: column; gap: 6px; }
+.visor-rotulo { margin: 0; font-size: var(--t-xs); font-weight: 600; color: rgb(var(--ink-2-rgb)); letter-spacing: .01em; }
+.visor-entrada {
+  height: 34px;
+  padding: 0 10px;
+  border-radius: var(--r-sm);
+  border: var(--hair) solid rgb(var(--line-strong-rgb));
+  background: rgb(var(--surface-2-rgb));
+  color: rgb(var(--ink-1-rgb));
+  font-family: inherit;
+  font-size: var(--t-sm);
+  outline: none;
+}
+.visor-entrada::placeholder,
+.visor-buscador input::placeholder { color: rgb(var(--ink-3-rgb)); }
+.visor-entrada:focus { border-color: rgb(var(--ink-2-rgb)); }
+.visor-nota { margin: 0; font-size: var(--t-xs); line-height: 1.45; color: rgb(var(--ink-2-rgb)); }
+.visor-aviso {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  border: var(--hair) solid rgb(var(--line-strong-rgb));
+  background: rgb(var(--surface-2-rgb));
+  font-size: var(--t-sm);
+  line-height: 1.45;
+}
+.visor-buscador {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: var(--r-sm);
+  border: var(--hair) solid rgb(var(--line-strong-rgb));
+  background: rgb(var(--surface-2-rgb));
+  color: rgb(var(--ink-2-rgb));
+}
+.visor-buscador input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: rgb(var(--ink-1-rgb));
+  font-family: inherit;
+  font-size: var(--t-sm);
+}
+.visor-productos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.visor-productos > .visor-nota { grid-column: 1 / -1; }
+.visor-producto {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: var(--r-sm);
+  border: var(--hair) solid rgb(var(--line-strong-rgb));
+  background: rgb(var(--surface-2-rgb));
+  color: rgb(var(--ink-1-rgb));
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.visor-producto:hover { border-color: rgb(var(--ink-2-rgb)); }
+.visor-producto[aria-pressed="true"] { border-color: rgb(var(--ink-1-rgb)); box-shadow: inset 0 0 0 1px rgb(var(--ink-1-rgb)); cursor: default; }
+/* La foto sobre papel claro: las fotos de producto vienen con fondo blanco, y
+   sobre la sala oscura se leían como recortes pegados. */
+.visor-producto-foto {
+  aspect-ratio: 1;
+  border-radius: var(--r-xs);
+  background: rgb(var(--ink-1-rgb));
+  overflow: hidden;
+  display: block;
+}
+.visor-producto-foto img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.visor-producto-nombre {
+  font-size: var(--t-xs);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.visor-producto-puesto {
+  font-family: var(--f-mono);
+  font-size: var(--t-3xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: rgb(var(--ink-2-rgb));
+}
+.visor-boton-linea,
+.visor-boton {
+  align-self: flex-start;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  font-family: inherit;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.visor-boton-linea {
+  border: var(--hair) solid rgb(var(--line-strong-rgb));
+  background: transparent;
+  color: rgb(var(--ink-1-rgb));
+}
+.visor-boton-linea:hover { border-color: rgb(var(--ink-2-rgb)); }
+/* «Subir» en tinta: la acción del formulario, sin pedirle el amarillo a la
+   pantalla de atrás. */
+.visor-boton { border: 0; background: rgb(var(--ink-1-rgb)); color: rgb(var(--surface-rgb)); }
+.visor-boton:disabled,
+.visor-boton-linea:disabled { opacity: .6; cursor: default; }
+.visor-como { display: flex; flex-direction: column; gap: 4px; padding-top: 12px; border-top: var(--hair) solid rgb(var(--line-rgb)); }
+.visor-subir { display: flex; flex-direction: column; gap: 8px; }
+.visor-subir-acciones { display: flex; gap: 8px; }
+.visor-ficha { padding: 8px; border-radius: var(--r-sm); border: var(--hair) solid rgb(var(--line-strong-rgb)); }

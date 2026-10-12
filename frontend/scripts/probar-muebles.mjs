@@ -5590,4 +5590,95 @@ prueba("la base de la 2 L acostada: el pie sube al cuerpo y el disco va más osc
   assert.ok(ac.getAttribute("color") && ac.getAttribute("color").count === ac.getAttribute("position").count);
 });
 
+// ── El visor 3D de Vender: la misma escena, sin nada de nadie ───────────────
+//
+// Vender la mira el proveedor. El visor (`components/Contrato/VisorDeVenta.tsx`)
+// dibuja con la MISMA `Scene` del editor, con `soloVenta`, sobre muebles que
+// ya vienen sin datos comerciales (`sinDatosComerciales`). Las guardas de su
+// lado están en `probar-vender`; acá, las de la escena y las funciones puras.
+
+prueba("el visor de Vender: los muebles le llegan sin un solo dato comercial (ejecutado)", () => {
+  const slot = (id, x, status, extra = {}) => ({
+    id, x, y: 0.2, w: 0.5, h: 0.4, status,
+    supplierName: "NUTRESA", brandCategory: "Galletas", negotiatedValue: 4500000,
+    startDate: "2026-09-15", endDate: "2026-10-20", ...extra,
+  });
+  const entrada = [
+    {
+      id: "m-nutresa", code: "PUN-02", type: "punta", x: 8, z: 6.9, rotY: -1.57, w: 0.9, d: 0.4, h: 1.8,
+      label: "Punta Góndola", color: "#7c3aed", status: "occupied", rentable: true,
+      supplierName: "NUTRESA", brandCategory: "Galletas", negotiatedValue: 4500000,
+      startDate: "2026-09-15", endDate: "2026-10-20", observation: "pago atrasado",
+      slots: [slot("s1", 0, "occupied"), slot("s2", 0.5, "free", { supplierName: "NUTRESA S.A." })],
+      // Lo que el 3D no modela y un `UnifiedFixture` sí trae: no pasa.
+      faceB: { supplierName: "NUTRESA", negotiatedValue: 4500000 }, supplierEmail: "pagos@nutresa.example",
+    },
+    {
+      id: "m-libre", code: "GON-01", type: "gondola", gondolaType: "double", x: 6, z: 4, rotY: 0, w: 3.6, d: 0.9, h: 1.8,
+      label: "Góndola Doble", color: "#6366f1", status: "free",
+      supplierName: "", brandCategory: "", negotiatedValue: 0, startDate: "", endDate: "", observation: "",
+    },
+  ];
+  const copia = JSON.stringify(entrada);
+  const salida = X.sinDatosComerciales(entrada);
+  assert.equal(JSON.stringify(entrada), copia, "sinDatosComerciales mutó la entrada");
+  const json = JSON.stringify(salida);
+  for (const fuga of ["NUTRESA", "Nutresa", "Galletas", "4500000", "2026-", "atrasado", "pagos@", "faceB", "supplierEmail"]) {
+    assert.ok(!json.includes(fuga), `«${fuga}» llega al visor de Vender: ${json.slice(0, 200)}`);
+  }
+  // La geometría y el estado sí pasan: sin eso no hay tienda que mostrar.
+  const [a, b] = salida;
+  for (const k of ["id", "code", "type", "x", "z", "rotY", "w", "d", "h", "status", "rentable", "label", "color"]) {
+    assert.deepEqual(a[k], entrada[0][k], `\`${k}\` no pasó al visor`);
+  }
+  assert.equal(b.gondolaType, "double", "la góndola doble perdió su tipo");
+  assert.ok(!("slots" in b), "un mueble sin repisas ganó `slots`");
+  assert.equal(a.slots.length, 2);
+  a.slots.forEach((s, i) => {
+    const o = entrada[0].slots[i];
+    for (const k of ["id", "x", "y", "w", "h", "status"]) assert.equal(s[k], o[k], `la repisa perdió \`${k}\``);
+    assert.deepEqual([s.supplierName, s.brandCategory, s.negotiatedValue, s.startDate, s.endDate], ["", "", 0, "", ""]);
+  });
+  assert.deepEqual([a.supplierName, a.brandCategory, a.negotiatedValue, a.startDate, a.endDate, a.observation], ["", "", 0, "", "", ""]);
+});
+
+prueba("el visor de Vender: la prueba es de las caras del contrato y el proveedor se compara como al guardar (ejecutado)", () => {
+  const prueba = new Map([["m1|A", 1], ["m1|B", 2], ["m2|A", 3]]);
+  const fuera = X.pruebasDelContrato(prueba, [{ fixtureId: "m1", face: "A" }, { fixtureId: "m2", face: "A" }]);
+  assert.deepEqual([...fuera], [["m1|A", 1], ["m2|A", 3]], "una cara que salió del contrato sigue con su prueba en el 3D");
+  assert.equal(prueba.size, 3, "pruebasDelContrato borró la sesión");
+  assert.deepEqual([...X.pruebasDelContrato(prueba, [])], []);
+  assert.equal(X.normalizarProveedor("  POSTOBÓN "), "postobón");
+  assert.equal(X.normalizarProveedor("Alpina"), X.normalizarProveedor(" alpina  "));
+});
+
+prueba("la escena del visor (`soloVenta`): ni fotos de caras, ni cámara del editor, ni `enfoque3D`", () => {
+  // Las tres puertas, en el código de la escena (ver `SceneProps.soloVenta`).
+  assert.match(cuerpoEscena, /estadoDeEscena, soloVenta = false,\s*\}: SceneProps\)/, "`soloVenta` no arranca apagado");
+  assert.match(cuerpoEscena, /useState<Map<string, number> \| null>\(\(\) => \(soloVenta \? new Map\(\) : null\)\)/,
+    "en el visor la escena espera un índice de fotos que nunca pide");
+  const efecto = cuerpoEscena.match(/useEffect\(\(\) => \{([^]*?)getFaceImages\(\)/);
+  assert.ok(efecto, "no se encontró el efecto que pide las fotos de las caras");
+  assert.match(efecto[1], /^\s*if \(soloVenta\) return;\s*let alive = true;\s*$/,
+    "el visor de Vender pide /spaces/face-images: las marcas de los que ocupan los espacios");
+  assert.match(cuerpoEscena, /<CameraControls orbitRef=\{orbitRef\} onReady=\{soloVenta \? undefined : handleOrbitReady\}/,
+    "en el visor la órbita lee y escribe `camera3D` (la cámara del editor) en cada paso");
+  assert.equal((cuerpoEscena.match(/<CameraControls\b/g) || []).length, 1, "otra órbita en la escena");
+  const enfoque = cuerpoEscena.match(/const enfoque3D = useFixtureStore\(\(st\) => st\.enfoque3D\);[^]*?useEffect\(\(\) => \{\s*([^\n]*)/);
+  assert.ok(enfoque, "no se encontró el efecto de `enfoque3D`");
+  assert.match(enfoque[1], /^if \(soloVenta \|\| !enfoque3D \|\| firstPerson\) return;/, "el visor atiende `enfoque3D`");
+  // El editor no la prende: para él no cambió nada.
+  const enEditor = editorCodigo.slice(editorCodigo.indexOf("export default function StoreEditor3D("));
+  const sceneDelEditor = enEditor.match(/<Scene\b[^]*?\/>/);
+  assert.ok(sceneDelEditor, "no se encontró el `<Scene` del editor");
+  assert.ok(!/soloVenta/.test(sceneDelEditor[0]), "el editor le pasa `soloVenta` a su escena");
+  // Lo que el visor necesita, exportado (y nada de lo que escribe el plano).
+  for (const n of ["export function Scene(", "export function storeToFixtures(", "export function PanelDePrueba(",
+    "export function HudQueSeEsconde(", "export class CanvasErrorBoundary", "export const TIPOS_CON_PRUEBA_3D",
+    "export const TIPOS_CON_PRODUCTO", "export type ComoSePrueba", "export const CAM_POS", "export const FONDO_DE_SALA"]) {
+    assert.ok(editorCodigo.includes(n), `falta \`${n}\``);
+  }
+  assert.ok(!/export function fixturesToStore\(/.test(editorCodigo), "`fixturesToStore` se exporta: el visor podría escribir el plano");
+});
+
 console.log(`\n${hechas} pruebas del mobiliario 3D`);

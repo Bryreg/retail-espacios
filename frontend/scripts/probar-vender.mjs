@@ -97,7 +97,15 @@ const ARCHIVOS_VENDER = [
   "src/components/Contrato/Contrato.tsx",
   "src/components/Contrato/Planometria.tsx",
   "src/components/Libera/Libera.tsx",
+  // El visor 3D que se abre ENCIMA de la ficha (la fila de cada cara), y la
+  // prueba de producto que vive en la ficha. Se dibujan dentro de Vender: los
+  // mira el proveedor, así que pasan por todas las guardas de este archivo.
+  "src/components/Contrato/VisorDeVenta.tsx",
+  "src/components/Contrato/sesionDeVenta.ts",
 ];
+/** Los estilos que bajan con el visor (`VisorDeVenta.tsx` los importa): la
+ *  misma escala de letra y el mismo rótulo que `vender.css`. */
+const CSS_VENDER = ["src/vender.css", "src/components/Contrato/visor.css"];
 
 assert.ok(hay(VISTA), `no está ${VISTA}`);
 const vistaCruda = leer(VISTA);
@@ -202,6 +210,9 @@ function superficieVender() {
     for (const x of identificadores(t)) if (!vistos.has(x)) cola.push(x);
   }
   for (const f of ARCHIVOS_VENDER) {
+    // Un archivo que falta no se saltea en silencio: lo hace FALLAR la prueba
+    // «los archivos de Vender existen». Acá sólo se deja de leer para que el
+    // resto del archivo pueda decir qué más está mal.
     if (!hay(f)) continue;
     regiones.push({ archivo: f, desde: 0, texto: podar(sinComentarios(leer(f))) });
   }
@@ -213,6 +224,13 @@ if (process.env.PROBAR_VENDER_REGIONES && SUP) {
 }
 
 console.log("\nvender · la frontera (confidencialidad)");
+
+prueba("los archivos de Vender existen: un renombre falla, no se saltea", () => {
+  // Antes un archivo de la lista que no estaba (renombrado, movido) se
+  // salteaba sin decir nada, y sus guardas dejaban de correr con todo verde.
+  const faltan = [...ARCHIVOS_VENDER, ...CSS_VENDER].filter((f) => !hay(f));
+  assert.deepEqual(faltan, [], `no están: ${faltan.join(", ")}. Si se movieron, actualizá ARCHIVOS_VENDER / CSS_VENDER`);
+});
 
 prueba("el test sabe qué es Vender: la rama del ternario de modo está donde dice", () => {
   assert.ok(RAMA, `no se encontró \`modoEfectivo === "vender" ? (\` en ${VISTA}. `
@@ -301,18 +319,39 @@ prueba("ni un texto de ranking, canon, vencimiento ajeno o plata del periodo en 
    Supervisar cueste una línea de este archivo y una lectura, en vez de pasar
    sin que nadie lo mire. */
 const COMPONENTES_VENDER = new Set([
+  // La rama de Vender de `DashboardView`.
   "ModoVender", "Libera", "Card", "CardHeader", "IsoMap", "MapLegend",
   "ChipEspacio", "SeasonPicker", "Fragment", "Search", "X", "EmptyDashboard",
-  "CabezaContrato", "CamposContrato", "Planometria", "CancelarContrato",
+  "Planometria", "CancelarContrato",
+  // La ficha (`ModoVender.tsx`): sus piezas, los íconos y el aviso de a quién
+  // se le escribe (el personal de la sede, no otro proveedor).
+  "Panel", "Fila", "NoComercializable", "Cerrado", "Ficha", "NotifyPreview",
+  "Box", "Lock", "Check", "ImageUp", "AlertTriangle", "Loader2",
+  // Lo que rodea al visor 3D: el límite de errores, la espera y el aviso.
+  "LimiteDelVisor", "Suspense", "AbriendoEl3D", "FallaDelVisor", "VisorDeVenta",
+  // La planometría adjunta.
+  "ImageIcon", "FileText", "Trash2",
+  // El visor (`VisorDeVenta.tsx`). Las piezas del editor que usa —la escena,
+  // el panel «Cómo va», el HUD y la ficha del envase— se leen abajo
+  // (PIEZAS_DEL_VISOR) con las mismas guardas que el resto de Vender.
+  "Canvas", "CanvasErrorBoundary", "Scene", "Lienzo", "HudQueSeEsconde", "PanelDePrueba",
+  "EditorDeFicha", "SubirProducto", "Upload",
 ]);
+/** `<X` sólo cuenta como etiqueta JSX si lo que hay delante NO es parte de un
+ *  identificador: `Record<DisplayStatus>` y `Partial<FaceData>` son genéricos
+ *  de TypeScript, no componentes. */
+const etiquetasJsx = (texto) => new Set([...texto.matchAll(/(?:^|[^\w>])<\s*([A-Z][\w$]*)(?=[\s/>])/gm)].map((m) => m[1]));
 prueba("Vender no dibuja ningún componente fuera de la lista revisada", () => {
   if (!RAMA) throw new Error("sin rama de Vender");
-  // `<X` sólo cuenta como etiqueta JSX si lo que hay delante NO es parte de un
-  // identificador: `Record<DisplayStatus>` y `Partial<FaceData>` son genéricos
-  // de TypeScript, no componentes.
-  const usados = new Set([...podar(RAMA.texto).matchAll(/(?:^|[^\w>])<\s*([A-Z][\w$]*)(?=[\s/>])/gm)].map((m) => m[1]));
-  const nuevos = [...usados].filter((c) => !COMPONENTES_VENDER.has(c));
-  assert.deepEqual(nuevos, [], `componentes nuevos en la rama de Vender, sin revisar la frontera: ${nuevos.join(", ")}. `
+  // La rama de `DashboardView` Y cada archivo de Vender: un componente nuevo
+  // dibujado desde la ficha (o desde el visor) no pasaba por esta lista.
+  const fuentes = [["la rama de Vender", podar(RAMA.texto)],
+    ...ARCHIVOS_VENDER.filter(hay).map((f) => [f, sinComentarios(leer(f))])];
+  const nuevos = [];
+  for (const [donde, texto] of fuentes) {
+    for (const c of etiquetasJsx(texto)) if (!COMPONENTES_VENDER.has(c)) nuevos.push(`${c} (${donde})`);
+  }
+  assert.deepEqual(nuevos, [], `componentes nuevos en Vender, sin revisar la frontera: ${nuevos.join(", ")}. `
     + "Si de verdad van, agregalos a COMPONENTES_VENDER después de leer qué pintan.");
 });
 
@@ -395,7 +434,7 @@ const temaCss = hay("src/tema.css") ? leer("src/tema.css") : "";
 const ESCALA = new Map();
 for (const m of temaCss.matchAll(/--(t-[\w-]+)\s*:\s*([\d.]+)px/g)) ESCALA.set(Number(m[2]), "--" + m[1]);
 
-const ARCHIVOS_LETRA = [VISTA, ...ARCHIVOS_VENDER, "src/vender.css"].filter(hay);
+const ARCHIVOS_LETRA = [VISTA, ...ARCHIVOS_VENDER, ...CSS_VENDER].filter(hay);
 function literalesDeLetra() {
   const out = [];
   for (const f of ARCHIVOS_LETRA) {
@@ -457,7 +496,7 @@ prueba("el rótulo sobre el mueble no tiene caja de ancho fijo en px", () => {
     if (anchoFijo && Number(anchoFijo[1]) > 0) hits.push(`${VISTA}:${iso.desde + linea} — <rect> con ancho literal ${anchoFijo[1]}px`);
   }
   if (/textLength\s*=/.test(t)) hits.push(`${VISTA} (IsoMap) — textLength fija el ancho del rótulo`);
-  for (const f of ["src/vender.css", "src/index.css"].filter(hay)) {
+  for (const f of [...CSS_VENDER, "src/index.css"].filter(hay)) {
     sinComentarios(leer(f)).split("\n").forEach((l, k) => {
       if (/rotulo|\.rot\b|--lbl/.test(l) && /\b(?:width|min-width|max-width)\s*:\s*\d+(?:\.\d+)?px/.test(l)) {
         hits.push(`${f}:${k + 1} — ancho fijo en px sobre el rótulo: ${l.trim().slice(0, 90)}`);
@@ -482,6 +521,195 @@ prueba("el rótulo mide lo mismo en pantalla a todo acercamiento", () => {
     assert.ok(/font-size\s*:\s*var\(--lbl\)/.test(css),
       "`--lbl` se publica pero ningún `font-size: var(--lbl)` lo consume");
   }
+});
+
+console.log("\nvender · el visor 3D (encima de la ficha)");
+
+/* El visor (`VisorDeVenta.tsx`) dibuja la tienda con la MISMA escena del
+   editor. Esa escena sabe leer contratos, fotos de caras y la cámara del
+   editor; el visor tiene que llegarle sin nada de eso. Estas guardas leen el
+   CÓDIGO del visor: no alcanza con que no pinte un dato ajeno, no puede ni
+   nombrarlo. */
+const RUTA_VISOR = "src/components/Contrato/VisorDeVenta.tsx";
+const RUTA_SESION = "src/components/Contrato/sesionDeVenta.ts";
+const RUTA_MODO = "src/components/Contrato/ModoVender.tsx";
+const codigo = (f) => (hay(f) ? sinComentarios(leer(f)) : "");
+const visorCodigo = codigo(RUTA_VISOR);
+const sesionCodigo = codigo(RUTA_SESION);
+const modoCodigo = codigo(RUTA_MODO);
+
+/** Lo que el visor no puede pedir: la lista de proveedores, el catálogo
+ *  entero, las fotos de las caras (las marcas de los que ocupan los
+ *  espacios), el alta de un arte con proveedor elegido de una lista. */
+const LLAMADAS_AJENAS = [
+  [/\bgetSuppliers\s*\(/, "getSuppliers( — la lista de todos los proveedores"],
+  [/\bgetFaceImages\s*\(/, "getFaceImages( — las fotos de las caras de otros"],
+  [/\blistarCatalogo\s*\(/, "listarCatalogo( — el catálogo entero (va `listarDelProveedor`)"],
+  [/\bsubirArte\s*\(/, "subirArte( — el alta con proveedor de una lista (va `subirArteDelProveedor`)"],
+  [/["'`]\/suppliers/, "'/suppliers' — la lista de proveedores"],
+  [/face-images/, "'face-images' — las fotos de las caras de otros"],
+];
+/** Lo que el visor no puede escribir: el plano, el store, la cámara del
+ *  Editor 3D, el pedido que cambia de pestaña (y desmonta Vender), la sede. */
+const ESCRITURAS = [
+  [/\bpedirEnfoque3D\b/, "pedirEnfoque3D — cambia de pestaña y desmonta Vender: se pierde el contrato"],
+  [/\bsetCamera3D\b/, "setCamera3D — la cámara guardada del Editor 3D"],
+  [/\bguardarVista3D\b/, "guardarVista3D — escribe el layout"],
+  [/\bborrarVista3D\b/, "borrarVista3D — escribe el layout"],
+  [/\bcommit\s*\(/, "commit( — escribe el plano"],
+  [/\bsetFixtures\b/, "setFixtures — escribe el plano"],
+  [/\bfixturesToStore\b/, "fixturesToStore — arma el plano para escribirlo"],
+  [/\.getState\s*\(\s*\)/, ".getState() — una lectura del store fuera de un selector"],
+  [/\buseFixtureStore\s*\(\s*\)/, "useFixtureStore() sin selector — todo el store (y cada escritura redibuja)"],
+  [/\bsetSede\s*\(/, "setSede( — vacía el contrato y remonta la ficha"],
+];
+const llamadasEn = (texto, lista) => {
+  const out = [];
+  texto.split("\n").forEach((l, k) => { for (const [re, que] of lista) if (re.test(l)) out.push(`:${k + 1} — ${que}`); });
+  return out;
+};
+
+prueba("el visor no LEE datos comerciales: ni los nombra", () => {
+  const PROHIBIDOS = /\b(supplierName|supplierEmail|brandName|brandCategory|negotiatedValue|startDate|endDate|observation|faceB)\b/;
+  const hits = [];
+  for (const [f, txt] of [[RUTA_VISOR, visorCodigo], [RUTA_SESION, sesionCodigo]]) {
+    assert.ok(txt.length > 200, `no se pudo leer ${f}`);
+    txt.split("\n").forEach((l, k) => { const m = l.match(PROHIBIDOS); if (m) hits.push(`${f}:${k + 1} — ${m[1]}`); });
+  }
+  assert.deepEqual(hits, [], `el visor nombra campos del contrato de otro (los muebles tienen que llegar por \`sinDatosComerciales\`):\n         ${hits.join("\n         ")}`);
+});
+
+prueba("Vender pide SÓLO lo del proveedor del contrato: ni proveedores, ni catálogo entero, ni fotos de caras", () => {
+  const hits = [];
+  for (const f of ARCHIVOS_VENDER.filter(hay)) for (const h of llamadasEn(codigo(f), LLAMADAS_AJENAS)) hits.push(f + h);
+  assert.deepEqual(hits, [], `\n         ${hits.join("\n         ")}`);
+  assert.match(visorCodigo, /\blistarDelProveedor\(/, "el visor no pide el catálogo por el nombre del proveedor");
+});
+
+prueba("Vender no escribe nada desde el visor: ni plano, ni store, ni cámara del editor, ni enfoque3D, ni sede", () => {
+  const hits = [];
+  for (const f of ARCHIVOS_VENDER.filter(hay)) for (const h of llamadasEn(codigo(f), ESCRITURAS)) hits.push(f + h);
+  assert.deepEqual(hits, [], `\n         ${hits.join("\n         ")}`);
+  // La única lectura del store en el visor: los muebles de la sede.
+  const lecturas = [...visorCodigo.matchAll(/\buseFixtureStore\(([^)]*)\)/g)].map((m) => m[1].trim());
+  assert.deepEqual(lecturas, ["selectFixtures"], `el visor lee del store: ${lecturas.join(", ")}`);
+  assert.ok(!/useFixtureStore/.test(sesionCodigo), "la sesión de la prueba lee el store");
+});
+
+prueba("la escena del visor va en modo venta, con los muebles saneados y para alguien", () => {
+  const escenas = visorCodigo.match(/<Scene\b/g) || [];
+  assert.equal(escenas.length, 1, `el visor dibuja ${escenas.length} escenas`);
+  const tag = (visorCodigo.match(/<Scene\b[^]*?\/>/) || [""])[0];
+  for (const [re, que] of [
+    [/\n\s*soloVenta\s*\n|\ssoloVenta(?:=\{true\})?[\s/]/, "`soloVenta` (sin fotos de caras, sin la cámara del editor, sin enfoque3D)"],
+    [/\spresentationMode(?:=\{true\})?[\s/]/, "`presentationMode` (sin arrastre, sin paneles de slot ni insignias)"],
+    [/\sselectedId=\{null\}/, "`selectedId={null}` (sin caja de selección ni gizmo)"],
+    [/\sfixtures=\{SIN_UNIFICADOS\}/, "`fixtures={SIN_UNIFICADOS}` (ningún contrato llega a la escena)"],
+    [/\splacedFixtures=\{muebles\}/, "`placedFixtures={muebles}` (los saneados)"],
+  ]) assert.match(tag, re, `la escena del visor no lleva ${que}`);
+  assert.match(visorCodigo, /const SIN_UNIFICADOS(?:\s*:\s*\[\])?\s*=\s*\[\s*\];/, "`SIN_UNIFICADOS` no es una constante vacía");
+  assert.match(visorCodigo, /const muebles = useMemo\(\(\) => sinDatosComerciales\(storeToFixtures\(/,
+    "los muebles del visor no salen de `sinDatosComerciales(storeToFixtures(…))`");
+  assert.match(visorCodigo, /<Lienzo\b[^>]*\smuebles=\{muebles\}/, "el lienzo no recibe los muebles saneados");
+  // `privadoPara` siempre definido: `undefined` es la pantalla de la dueña y
+  // deja pasar las pruebas de todos (`privacidad.ts`).
+  assert.match(visorCodigo, /const privadoPara: number \| null = /, "`privadoPara` puede quedar `undefined`");
+  assert.match(visorCodigo, /privadoPara: number \| null;/, "el lienzo acepta un `privadoPara` indefinido");
+});
+
+prueba("Vender no baja el 3D al entrar: el visor entra SÓLO por el import perezoso", () => {
+  const archivos = [RUTA_MODO, "src/components/Contrato/Contrato.tsx", RUTA_SESION,
+    "src/components/Contrato/Planometria.tsx", "src/components/Libera/Libera.tsx", VISTA];
+  const hits = [];
+  for (const f of archivos) {
+    const txt = codigo(f);
+    assert.ok(txt.length > 100, `no se pudo leer ${f}`);
+    if (/from\s+["']three["']/.test(txt)) hits.push(`${f} — importa three`);
+    if (/@react-three/.test(txt)) hits.push(`${f} — importa @react-three`);
+    for (const m of txt.matchAll(/^\s*import\s+(type\s+)?([^;]*?)\s+from\s+["']([^"']+)["']/gm)) {
+      if (/StoreEditor3D\/|\.\/VisorDeVenta$/.test(m[3]) && !m[1]) hits.push(`${f} — \`import ${m[2].replace(/\s+/g, " ")} from "${m[3]}"\` no es \`import type\``);
+    }
+    for (const m of txt.matchAll(/^\s*import\s+["']([^"']+)["']/gm)) {
+      if (/StoreEditor3D|VisorDeVenta|three/.test(m[1])) hits.push(`${f} — \`import "${m[1]}"\``);
+    }
+  }
+  assert.deepEqual(hits, [], `\n         ${hits.join("\n         ")}`);
+  // La sesión usa `normalizarProveedor` de `utils/proveedor.ts`, que no
+  // importa nada: importada de `privacidad.ts` arrastraba medio 3D al paquete.
+  assert.ok(hay("src/utils/proveedor.ts") && !/^\s*import\b/m.test(codigo("src/utils/proveedor.ts")),
+    "`utils/proveedor.ts` importa algo: entra al paquete de Vender");
+  assert.match(modoCodigo, /const VisorDeVenta = lazy\(\(\) => import\("\.\/VisorDeVenta"\)\);/, "el visor no es perezoso");
+  // Cada `<VisorDeVenta` adentro de un `<Suspense` adentro de un `<LimiteDelVisor`.
+  const usos = [...modoCodigo.matchAll(/<VisorDeVenta\b/g)].map((m) => m.index);
+  assert.ok(usos.length >= 1, "ModoVender no dibuja el visor");
+  for (const i of usos) {
+    const antes = modoCodigo.slice(0, i);
+    const s = antes.lastIndexOf("<Suspense"), l = antes.lastIndexOf("<LimiteDelVisor");
+    assert.ok(s > l && l >= 0, "`<VisorDeVenta` no está adentro de `<Suspense` adentro de `<LimiteDelVisor`");
+    assert.ok(!antes.slice(s).includes("</Suspense>") && !antes.slice(l).includes("</LimiteDelVisor>"),
+      "`<VisorDeVenta` quedó afuera de su `<Suspense` o de su `<LimiteDelVisor`");
+  }
+  assert.match(modoCodigo, /class LimiteDelVisor extends Component[^]*?static getDerivedStateFromError\(/,
+    "`LimiteDelVisor` no ataja el error: un archivo que no baja desmonta la app y se pierde el contrato");
+});
+
+prueba("el visor: sin amarillo propio, capa modal, y la letra de la escala", () => {
+  assert.ok(!/btn-principal/.test(visorCodigo), "el visor pinta un `.btn-principal`: con la ficha atrás son dos amarillos");
+  assert.match(visorCodigo, /createPortal\(\s*<div\b[^>]*className="visor-venta"[^>]*\sdata-capa-modal\b/,
+    "la raíz del visor no marca `data-capa-modal`");
+  assert.match(visorCodigo, /\buseModalAbierto\(\)/, "el visor no apaga el amarillo de la ficha de atrás");
+  assert.match(visorCodigo, /const app = document\.getElementById\("root"\);\s*app\?\.setAttribute\("inert", ""\);/, "la app de atrás sigue recibiendo el Tab");
+  assert.match(visorCodigo, /return \(\) => app\?\.removeAttribute\("inert"\);/, "al cerrar, la app de atrás queda `inert`");
+  const tw = [...visorCodigo.matchAll(/\btext-\[\d[^\]]*\]|\btext-(?:xs|sm|base|lg|xl)\b/g)].map((m) => m[0]);
+  assert.deepEqual(tw, [], `cuerpos de Tailwind en el visor (van \`var(--t-*)\` en visor.css): ${tw.join(", ")}`);
+});
+
+/* Las piezas del EDITOR que el visor dibuja adentro de Vender. No están en
+   ARCHIVOS_VENDER (el editor entero pinta contratos y precios), así que se
+   recortan y se les pasan las mismas guardas: lo que pintan, lo que piden y
+   lo que escriben. La escala de letra NO: es el cajón del editor. */
+const editorCodigoV = codigo("src/components/StoreEditor3D/StoreEditor3D.tsx");
+const recortarDelEditor = (desde, hasta) => {
+  const i = editorCodigoV.indexOf(desde);
+  const j = editorCodigoV.indexOf(hasta, i + 1);
+  assert.ok(i > 0 && j > i, `no se encontró ${desde} … ${hasta} en StoreEditor3D.tsx: el recorte mediría otra cosa`);
+  return editorCodigoV.slice(i, j);
+};
+const PIEZAS_DEL_VISOR = [
+  ["PanelDePrueba", () => recortarDelEditor("function PanelDePrueba(", "function VistaProveedor(")],
+  ["BloqueDeRejillas", () => recortarDelEditor("function BloqueDeRejillas(", "function useEtiquetas(")],
+  ["HudQueSeEsconde", () => recortarDelEditor("function HudQueSeEsconde(", "interface CommercialPanelProps")],
+  ["EditorDeFicha", () => codigo("src/components/StoreEditor3D/EditorDeFicha.tsx")],
+];
+/** Un texto prohibido que se PINTA en una línea (la misma regla que arriba). */
+function textosProhibidosEn(l0) {
+  if (/^\s*\|\s*"/.test(l0) || /^\s*type\s+\w+\s*=/.test(l0)) return [];
+  const l = l0.replace(/[!=]==?\s*"[^"]*"/g, " ").replace(/"[^"]*"\s*[!=]==?/g, " ");
+  const cadenas = [...l.matchAll(/"([^"]{2,})"|'([^']{2,})'|`([^`]{2,})`/g)].map((m) => m[1] ?? m[2] ?? m[3]);
+  const jsx = l.replace(/<[^>]*>/g, " ").replace(/[{}]/g, " ");
+  const out = [];
+  for (const [re, que] of TEXTOS_PROHIBIDOS) if (cadenas.some((c) => re.test(c)) || re.test(jsx)) out.push(que);
+  return out;
+}
+
+prueba("las piezas del editor que se ven en Vender: ni datos ajenos, ni textos prohibidos, ni llamadas ajenas", () => {
+  const hits = [];
+  for (const [nombre, cortar] of PIEZAS_DEL_VISOR) {
+    const txt = cortar();
+    assert.ok(txt.length > 200, `la pieza ${nombre} salió vacía`);
+    txt.split("\n").forEach((l, k) => {
+      for (const [campo, que] of CAMPOS_AJENOS) for (const como of fugasDeCampo(l, campo)) hits.push(`${nombre}:${k + 1} — ${campo} ${como}; es ${que}`);
+      // `proveedor` también, sólo acá: el nombre que se pinta tiene que salir
+      // del arte que se está mirando (`arte.proveedor`, que el visor sólo
+      // recibe del catálogo del proveedor del contrato), nunca de otro lado.
+      for (const como of fugasDeCampo(l.replace(/\barte\.proveedor\b/g, "arte.suyo"), "proveedor")) {
+        hits.push(`${nombre}:${k + 1} — proveedor ${como}: el nombre que se pinta no sale del arte que se mira`);
+      }
+      for (const que of textosProhibidosEn(l)) hits.push(`${nombre}:${k + 1} — ${que}`);
+    });
+    for (const h of llamadasEn(txt, [...LLAMADAS_AJENAS, ...ESCRITURAS])) hits.push(nombre + h);
+  }
+  assert.deepEqual(hits, [], `\n         ${hits.join("\n         ")}`);
 });
 
 console.log("\nvender · código muerto");
