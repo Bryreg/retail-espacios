@@ -1,7 +1,13 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-10, noche (las fotos de montaje y las planometrías duran lo
+Última actualización: 2026-10-12 (el diseño se ve desde Vender: cada fila del contrato
+trae un botón «3D» que abre la tienda ENCIMA de la ficha —la misma sala de «Presentar»,
+con las tres tomas y el producto del proveedor del contrato— sin perder nada de lo
+tecleado. Los muebles le llegan sin datos comerciales, el catálogo se pide por el nombre
+del proveedor y la prueba no toca el plano. Ver *Ver el diseño desde Vender*).
+
+Antes, 2026-10-10, noche (las fotos de montaje y las planometrías duran lo
 que dura el contrato y sus renovaciones: cinco días después de que termina la cadena sin
 renovación, la limpieza del mantenimiento las borra; el montaje queda, sin la foto. Está
 detrás de `LIMPIAR_FOTOS_VENCIDAS`, apagado: hasta prenderlo sólo ensaya, porque la
@@ -290,7 +296,10 @@ sin prueba de la reunión no sale para el contrato ajeno ni lleva sus datos
 (`laminaDelMueble`). Y con un proveedor en pantalla el HUD NUNCA avisa de la prueba de otro
 («hay una prueba que no se está mostrando» le decía que esa punta se le ofrece a otro): a
 la dueña se le avisa antes de entrar; «Mostrarla» existe sólo con `privadoPara` nulo. Ver
-*2026-10-10* y *2026-10-10 (tarde)*.
+*2026-10-10* y *2026-10-10 (tarde)*. El visor 3D de **Vender** pasa por el mismo filtro con
+`privadoPara` SIEMPRE definido, y además los muebles le llegan sin un dato comercial
+(`sinDatosComerciales`) y el catálogo sólo con lo del proveedor del contrato
+(`GET /api/catalogo/?proveedor=`): ver *Ver el diseño desde Vender*.
 
 **La cuenta de los entrepaños se hace en un solo lugar.** `muebles/medidas.ts` es la
 fuente: `nivelesDeEntrepano` ubica las bandejas, `filasDeProducto` deriva de ahí las filas
@@ -3330,9 +3339,17 @@ qué está comprando.
 
 ### Ver la exhibición en 3D
 
-Un botón en la ficha del espacio —tanto en el formulario de negociación como en la
-ficha de detalle— lleva al Editor 3D **encuadrando ese espacio**. Antes había que
-entrar a mano y buscarlo entre 104 muebles.
+Un botón en la ficha de detalle de **Supervisar** lleva al Editor 3D **encuadrando ese
+espacio**. Antes había que entrar a mano y buscarlo entre 104 muebles.
+
+> **Corregido (2026-10-12).** Este párrafo decía que el botón estaba también «en el
+> formulario de negociación». Se fue de Vender en 31da515 (Fase 10, PR 2: la ficha de D
+> se reescribió en `ModoVender.tsx` y `CabezaContrato` se fue entera, con el botón
+> adentro) sin que nadie lo decidiera, y además ese camino no le sirve a Vender: el
+> pedido viaja por `enfoque3D`, que **cambia de pestaña** y desmonta la hoja, y se perdía
+> el contrato a medio llenar. Desde Vender el 3D se ve con su propio visor, encima de la
+> ficha: ver *Ver el diseño desde Vender*. Este botón queda sólo en Supervisar, que no
+> tiene contrato que perder.
 
 El pedido viaja por el store (`enfoque3D`) porque la pantalla de sede y el editor 3D
 son pestañas hermanas sin props entre ellas. Se identifica **por id de mueble y no
@@ -7160,6 +7177,163 @@ Lo que hay que saber para no deshacerlo sin querer:
 - **Los conteos se derivan.** La clave del plano, la columna «Libres · entran»
   y el pie de la tarifa son la misma cuenta mirada tres veces, y descuentan lo
   que ya entró al contrato. Ningún número escrito a mano.
+
+## Ver el diseño desde Vender (2026-10-12)
+
+El pedido de la dueña, después de ver el 3D realista: «para que sea realmente útil debe
+estar la opción de ver el diseño desde el módulo de Vender cuando se toca la cara del
+mueble a vender». Antes, para mostrarle al proveedor cómo queda su producto había que ir
+a la pestaña Editor 3D, y **cambiar de pestaña desmonta Vender**: se perdía el contrato a
+medio llenar. Ella le muestra la pantalla de SU PC al proveedor, en persona o por
+videollamada.
+
+**Cómo se usa.** Cada fila del panel «03 Contrato» trae, entre el tipo y el valor, un
+botón chico con un cubo y «3D» («Ver cómo queda en 3D»), de la familia de los
+interruptores A/B. Al tocarlo la pantalla pasa a pantalla completa y se abre el visor
+**encima de la ficha**: la sala de venta de «Presentar» (cielo raso, luminarias,
+baldosa), la cámara «De frente» a ESA cara a la altura de un comprador y la persona de
+1,70 m al lado. Arriba a la izquierda la chapa («PUN-03 · Punta de góndola») con las
+otras caras del contrato para saltar; arriba a la derecha «Volver al contrato». A la
+derecha, el cajón «Productos de Alpina» (el nombre sale del campo Proveedor del
+contrato), con un buscador si hay más de cuatro. Tocar un producto lo prueba en la cara
+y se vuelve a encuadrar; debajo, «Cómo va» —el mismo panel del editor: toda la cara o por
+entrepaño con los cm libres y «vendido» sin nombre, el surtido, acostada, el copete, las
+rejillas de la nevera, las medidas y «Entran N por entrepaño»—. Abajo flota el HUD de
+Presentar, que se esconde a los 2 s junto con el cursor: De frente · Tres cuartos · De
+cerca (siempre, también sin producto) | Hoy · Con Alpina (con un producto a la vista) |
+Producto | Pantalla completa (si se perdió). El primer Esc suelta la pantalla completa; el
+segundo, o «Volver al contrato», cierra. La ficha queda exactamente como estaba y el foco
+vuelve al botón «3D» de esa fila.
+
+Sin proveedor escrito, el cajón pregunta «¿Con qué proveedor estás armando este
+contrato?» y lo que se teclea queda en el campo Proveedor de la ficha. Con un proveedor
+sin productos lo dice y ofrece **«Subir un producto»** (nombre, rubro, foto y la ficha
+con el alto obligatorio): queda a nombre del proveedor del contrato y probado en la cara.
+
+**Por qué es un visor propio y no el editor montado encima** (las dos opciones se
+midieron contra el código, ver la spec de la tanda):
+
+- **El editor puede DESTRUIR datos, no sólo filtrarlos.** Su efecto de sincronización
+  hace `commit(fixturesToStore(placedFixtures…))` en cuanto cambian sus muebles: con
+  muebles saneados adentro, una sola puerta mal cerrada subía al servidor un plano sin
+  proveedor, valor ni fechas. El visor no tiene ni `commit`, ni `fixturesToStore`: lo que
+  no existe no se puede llamar.
+- **El visor usa la MISMA `Scene`**, exportada, con la prop `soloVenta`. Son tres
+  puertas y ni una más: (a) no pide `getFaceImages()` —las fotos de las caras son las
+  marcas de los que ocupan los espacios—; (b) la órbita no lee ni escribe `camera3D`
+  (`onReady={soloVenta ? undefined : handleOrbitReady}`): es la cámara guardada del Editor
+  3D, y escribirla en cada paso del giro además redibujaba la hoja de Vender entera
+  (`DashboardView` está suscripta al store completo); (c) no atiende `enfoque3D`. Todo lo
+  demás del editor ya se apaga con las props que pasa el visor: `selectedId={null}` (sin
+  caja, sin gizmo, sin paneles de slot), `fixtures={[]}` (sin insignias), `privadoPara`
+  definido (sin grilla, con la sala y la luz de venta), `presentationMode` (sin arrastre).
+  El editor no pasa `soloVenta`: para él no cambió nada.
+
+**Lo que el proveedor no puede ver, y cómo se garantiza:**
+
+- **Los muebles llegan sin un dato comercial**: `sinDatosComerciales` (en
+  `muebles/privacidad.ts`, puro) es una LISTA de lo que pasa —geometría, código,
+  etiqueta, color, estado— y deja en blanco proveedor, rubro, valor, fechas y
+  observación del mueble y de cada repisa. Un campo comercial que alguien sume mañana al
+  mueble no se cuela por omisión. Con el rubro vacío el relleno de los vecinos cae al
+  genérico: no se ve ni la categoría del que hoy ocupa el espacio.
+- **El catálogo se pide por el NOMBRE del proveedor del contrato**:
+  `GET /api/catalogo/?proveedor=`. El servidor lo resuelve con la regla de «Guardar
+  contrato» (`bulk_leases.confirmar`: sin espacios de más, sin mayúsculas, y con dos que
+  sólo difieren en mayúsculas gana el más viejo), cotejando **en Python** —el `lower()` de
+  SQLite sólo baja ASCII—. Con el parámetro presente la respuesta es la de ese proveedor
+  o una lista vacía, **nunca el catálogo entero** (también con `?proveedor=` vacío). Sin
+  el parámetro, como siempre: el Editor 3D lo sigue usando.
+- **«Subir un producto» va por nombre**: `POST /api/catalogo/` acepta `proveedor` en vez
+  de `supplier_id`. Todo se valida ANTES de tocar al proveedor; si no existe, se crea en
+  el MISMO commit que el arte (un alta rechazada no deja un proveedor suelto), y después
+  «Guardar contrato» lo encuentra por nombre y no crea otro. No se recorta el nombre (el
+  contrato busca el entero): más de 200 caracteres es un 422.
+- **`privadoPara` es siempre un número o `null`**, nunca `undefined` (que es la pantalla
+  de la dueña y deja pasar las pruebas de todos): el `supplier_id` de los artes que trajo
+  el servidor, o nadie.
+- **Las piezas del editor que se ven en Vender** —`PanelDePrueba`, `BloqueDeRejillas`,
+  `HudQueSeEsconde` y `EditorDeFicha`— pasan por las guardas de Vender (`probar-vender`,
+  `PIEZAS_DEL_VISOR`), y ahí también el campo `proveedor`: el nombre que se pinta sale del
+  arte que se mira.
+
+**La prueba es de la FICHA, no del layout** (`components/Contrato/sesionDeVenta.ts`): la
+misma forma que la sesión del editor (`${fixtureId}|cara` y `ComoSePrueba`), pero vive en
+la ficha del contrato, así que sobrevive a abrir y cerrar el visor —al reabrir el yogur
+sigue en la punta— y se olvida con ella: al guardar el contrato (la ficha se va), al
+cambiar de sede (se remonta), con «Empezar de nuevo» y **al cambiar el nombre del
+proveedor** (otra forma de escribir el mismo no cuenta). No escribe el plano, el store ni
+el servidor. El visor dibuja sólo las pruebas de las caras que siguen en el contrato
+(`pruebasDelContrato`).
+
+**Lo que hace que no se pierda nada:**
+
+- **Es una capa, no una pestaña**: un portal en `body` montado DESDE la ficha, que sigue
+  montada debajo. Nunca usa `enfoque3D`, `setSede` ni `camera3D`.
+- **`inert` en `#root`** mientras está abierto: sin eso el Tab caía en los campos del
+  contrato, tapados, y se escribía en ellos sin verlos. Dos centinelas devuelven el foco
+  al principio o al final del visor. `useModalAbierto()` y `data-capa-modal` apagan el
+  amarillo de la ficha: con el visor abierto no hay ninguno (el visor no tiene
+  `.btn-principal`; «Subir» va en tinta).
+- **La pantalla completa se pide en el clic** y sobre `document.documentElement`: después
+  del `import` el navegador ya no la da, y el visor todavía no existe en el primer clic.
+  Se suelta en `cerrar3D` y no en el desmontaje del visor (StrictMode la soltaría al
+  abrir). Si Ctrl+Tab a Meet la saca, el visor sigue tapando la app y el HUD la ofrece.
+- **`LimiteDelVisor`** (el único límite de errores de la app fuera del editor): si el
+  archivo del visor no baja —Render redesplegó y cambió el nombre, o se cortó la red— se
+  dice «No se pudo abrir el 3D. El contrato sigue como estaba: guardalo y recargá la
+  página para ver el 3D», y la ficha queda intacta. Sin él, `React.lazy` desmontaba la
+  aplicación entera con el contrato adentro.
+
+**Peso.** El visor se baja recién cuando se abre (`lazy(() => import("./VisorDeVenta"))`;
+sin precarga al pasar el mouse). Entrar a Vender no baja three.js ni la escena: el archivo
+de Vender creció 1,5 KB gzip (209 728 → 211 237 B con el gzip de Node), el CSS de entrada
+0,25 KB; el visor son 4,8 KB + 1,4 KB de CSS más el editor y three, que bajan al abrirlo.
+Dos cosas que costaron y conviene no repetir: `normalizarProveedor` vive en
+`utils/proveedor.ts`, que no importa nada (importada de `privacidad.ts`, el paquete de
+Vender arrastraba la privacidad, los habladores y las medidas: +6 KB); y los estilos del
+visor van en `components/Contrato/visor.css`, que baja con él —en `vender.css` queda sólo
+la capa, «Abriendo el 3D…» y el aviso de falla, que se ven justamente cuando el visor no
+bajó—.
+
+**Límites, escritos:**
+
+- El 3D muestra el estado de HOY (lo vendido y libre de hoy, los «vendido» de «Por
+  entrepaño»), no el del período que se está negociando.
+- Envases 3D sólo en góndola, punta, nevera de refrescos y robatope
+  (`TIPOS_CON_PRUEBA_3D`); en isla, batea o cruz el producto va como lámina sobre la cara,
+  sin «Cómo va»; la exhibición no tiene 3D (no hay botón).
+- «Por entrepaño» es visual: el contrato de Vender es por cara.
+- La lámina «Propuesta» y «Usarla como planometría» siguen en el Editor 3D.
+- Cambiar de pestaña en la barra sigue perdiendo el contrato (con el visor abierto la
+  barra queda tapada e `inert`).
+- A 1440 px de ancho la fila del contrato cede ~50 px al botón: el tipo se lee
+  «Punta …» y en una góndola doble (con A/B) no entra; el código, el valor y los dos
+  renglones no cambian. A 1920 se lee entero.
+
+**Cómo se comprueba.** `probar-vender` pasa de 12 a 20 pruebas estáticas: los archivos
+de la lista existen (un renombre falla), el visor ni NOMBRA un campo comercial, Vender no
+pide proveedores, catálogo entero ni fotos de caras, no escribe nada, la escena va en
+modo venta con los muebles saneados, el 3D entra SÓLO por el `lazy` y adentro de
+`Suspense` y `LimiteDelVisor`, sin amarillo propio y con `COMPONENTES_VENDER` cotejado
+contra el JSX de todos los archivos. Con `PROBAR_VENDER_URL` suma 16 de navegador sobre
+la app con WebGL (SwiftShader): nada del 3D antes de abrir y el archivo de Vender ≤ 3 KB
+más que la base (`PROBAR_VENDER_PESO_BASE`), ni un proveedor ajeno con el producto y
+«Cómo va» a la vista, a la red sólo lo del proveedor (listas con `proveedor=` y un único
+`supplier_id`, imágenes sólo suyas), la cámara del editor y el plano intactos después de
+girar, el amarillo apagado y el Tab adentro, volver con el botón y con Esc sin cambiar
+una coma del contrato (filas, valores, correo, nota, planometría), la sesión que se
+conserva al reabrir y se va al cambiar de proveedor, el archivo del visor cortado, cinco
+aperturas sin perder el contexto de WebGL y el contraste en claro y en oscuro.
+`probar-muebles` suma 3 (`sinDatosComerciales` y `pruebasDelContrato` ejecutadas, y las
+tres puertas de `soloVenta` en el código de la escena). `test_catalogo.py` suma 13 (el
+nombre con y sin mayúsculas, «POSTOBÓN», «NEVERAS DEL ÑUÑOA», `?proveedor=` vacío,
+«BIC»/«Bic», el alta por nombre que reusa, crea o falla sin dejar nada, y la cruzada con
+`/leases/bulk/confirmar`). Cada guarda nueva se rompió a propósito y cayó: el catálogo
+entero en el visor, los muebles sin sanear, el `supplierName` que pasa, las fotos de las
+caras y la órbita sin su puerta, el `import` estático, sin `LimiteDelVisor`, un
+`btn-principal` en el visor, la sesión que no se vacía y el servidor que con
+`?proveedor=` vacío devuelve todo.
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 

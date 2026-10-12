@@ -51,6 +51,12 @@
  *   PROBAR_VENDER_AJENOS      los DOS proveedores sembrados, separados por coma
  *   PROBAR_VENDER_CHROME      ruta al Chromium (por defecto el de /opt/pw-browsers)
  *   PROBAR_VENDER_PLAYWRIGHT  ruta a playwright-core si no está en node_modules
+ *   PROBAR_VENDER_PESO_BASE   gzip (de Node: `zlib.gzipSync`, nivel por defecto) del archivo
+ *                             de Vender en la línea base; el visor 3D no puede sumarle más de 3 KB
+ *   PROBAR_VENDER_PROVEEDOR   el proveedor del contrato del visor 3D (por defecto «Alpina»: con artes)
+ *   PROBAR_VENDER_PROVEEDOR_2 otro proveedor con artes (por defecto «Postobón»)
+ *   PROBAR_VENDER_CARAS       las caras del contrato del visor, como las rotula el plano
+ *                             (por defecto «PUN-03,GON-02·B,NEV-01»; la primera, libre en el periodo)
  *   PROBAR_VENDER_REGIONES    imprime qué entra en la superficie de Vender y por qué
  *                             (útil cuando una falla parece venir de un archivo ajeno)
  *
@@ -63,6 +69,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
+import { gzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 
 const aqui = dirname(fileURLToPath(import.meta.url));
@@ -769,12 +776,20 @@ if (!URL_VENDER) {
   }
   const CHROME = process.env.PROBAR_VENDER_CHROME
     ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
-  const nav = await chromium.launch({ executablePath: CHROME, args: ["--no-sandbox"] });
+  // WebGL por software: el visor 3D de Vender dibuja con three.js, y un
+  // Chromium sin placa de video no da contexto WebGL sin SwiftShader.
+  const nav = await chromium.launch({
+    executablePath: CHROME,
+    args: ["--no-sandbox", "--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
+  });
 
-  /** Abre Vender con sesión de administrador ya puesta en localStorage. */
-  async function abrir(colorScheme) {
+  /** Abre Vender con sesión de administrador ya puesta en localStorage.
+   *  `antes` corre con la página creada y antes de navegar (oyentes de red,
+   *  rutas cortadas). */
+  async function abrir(colorScheme, { antes } = {}) {
     const ctx = await nav.newContext({ viewport: { width: 1440, height: 900 }, colorScheme, reducedMotion: "reduce" });
     const p = await ctx.newPage();
+    if (antes) await antes(p, ctx);
     const errores = [];
     p.on("pageerror", (e) => errores.push(String(e).split("\n")[0]));
     p.on("console", (m) => { if (m.type() === "error") errores.push(m.text().split("\n")[0].slice(0, 160)); });
@@ -1054,6 +1069,506 @@ if (!URL_VENDER) {
     });
     if (modo === "oscuro") await s.ctx.close();
   }
+  /* ── El visor 3D, encima de la ficha ─────────────────────────────────
+     La dueña toca «3D» en la fila de una cara del contrato y la tienda se abre
+     ENCIMA de la ficha. Lo que se mide acá es lo que ningún grep ve: qué se
+     pide a la red, qué se escribe, qué texto queda en pantalla, y que al
+     volver el contrato esté exactamente como quedó. */
+  {
+    const PROVEEDOR = process.env.PROBAR_VENDER_PROVEEDOR ?? "Alpina";
+    const OTRO = process.env.PROBAR_VENDER_PROVEEDOR_2 ?? "Postobón";
+    const CARAS = (process.env.PROBAR_VENDER_CARAS ?? "PUN-03,GON-02·B,NEV-01").split(",").map((s) => s.trim()).filter(Boolean);
+    const TOKEN = process.env.PROBAR_VENDER_TOKEN ?? "";
+    const ORIGEN = new URL(URL_VENDER).origin;
+    const mismo = (a, b) => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+    // El catálogo ENTERO, pedido acá afuera con la sesión (no desde la
+    // página): de ahí sale de quién es cada arte.
+    const catalogo = await fetch(ORIGEN + "/api/catalogo/", { headers: { Authorization: "Bearer " + TOKEN } })
+      .then((r) => (r.ok ? r.json() : [])).catch(() => []);
+    const idsDe = (n) => new Set(catalogo.filter((a) => mismo(a.proveedor, n)).map((a) => a.id));
+    const supplierDe = (n) => catalogo.find((a) => mismo(a.proveedor, n))?.supplier_id ?? null;
+    const esLista = (u) => new URL(u).pathname === "/api/catalogo/";
+    const imagenDe = (u) => { const m = new URL(u).pathname.match(/^\/api\/catalogo\/(\d+)\/imagen$/); return m ? Number(m[1]) : null; };
+
+    const pedidos = [];
+    const listas = [];
+    const pesosVender = [];
+    const erroresDePagina = [];
+    const errores3D = [];
+    const { ctx: cv, p: pv } = await abrir("light", { antes: async (pg) => {
+      pg.on("request", (r) => pedidos.push({ m: r.method(), u: r.url() }));
+      pg.on("pageerror", (e) => erroresDePagina.push(String(e).split("\n")[0]));
+      pg.on("console", (m) => { if (m.type() === "error" && /WebGL|context/i.test(m.text())) errores3D.push(m.text().slice(0, 160)); });
+      pg.on("response", async (r) => {
+        try {
+          if (esLista(r.url()) && r.request().method() === "GET") listas.push({ u: r.url(), json: await r.json() });
+          else if (/\.js(\?|$)/.test(r.url())) {
+            const b = await r.body();
+            if (b.includes("Guardar contrato y avisar")) pesosVender.push(gzipSync(b).length);
+          }
+        } catch { /* una respuesta sin cuerpo */ }
+      });
+    } });
+
+    const tocar = async (pg, cod) => {
+      const r = await pg.evaluate((c) => {
+        const t = [...document.querySelectorAll("text.p-cod")].find((n) => n.getAttribute("data-cod") === c);
+        if (!t) return null;
+        const b = t.getBoundingClientRect();
+        return { x: b.x + b.width / 2, y: b.y + b.height / 2, w: b.width };
+      }, cod);
+      if (!r || r.w < 1) throw new Error(`no está el rótulo ${cod} en el plano (PROBAR_VENDER_CARAS)`);
+      await pg.mouse.click(r.x, r.y);
+      await pg.waitForTimeout(500);
+    };
+    const PANEL = `[...document.querySelectorAll(".vp")].find((s) => (s.querySelector("h2")?.textContent || "").trim() === "Contrato")`;
+    const contrato = (pg) => pg.evaluate(`(() => {
+      const panel = ${PANEL};
+      if (!panel) return null;
+      return {
+        filas: [...panel.querySelectorAll(".eitem")].map((e) => [e.querySelector(".cod")?.textContent, e.querySelector(".m input")?.value]),
+        campos: [...panel.querySelectorAll("input.entrada, textarea.entrada")].map((i) => i.value),
+        planometria: [...panel.querySelectorAll("div.entrada span")].map((s) => s.textContent).join("|"),
+      };
+    })()`);
+    const almacen = (pg) => pg.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem("retail-fixtures-v1") || "{}")?.state ?? {};
+      return { camara: JSON.stringify(s.camera3D ?? null), planos: JSON.stringify(s.fixturesBySede ?? null) };
+    });
+    const visorListo = async (pg) => {
+      await pg.waitForSelector(".visor-venta canvas", { timeout: 90000 });
+      await pg.waitForSelector(".visor-venta[data-toma-lista]", { timeout: 90000 });
+      await pg.waitForTimeout(800);
+    };
+    /** El HUD se esconde a los 2 s sin mover el mouse (y escondido no recibe
+     *  clics): se lo despierta, se espera a que esté a la vista y recién ahí
+     *  se toca. Con SwiftShader el hilo principal se traba mientras se
+     *  precalientan las etiquetas, y un intento solo a veces llegaba tarde. */
+    const tocarHud = async (pg, texto) => {
+      const caja = await pg.locator(".visor-escena").boundingBox();
+      for (let i = 0; i < 12; i++) {
+        await pg.mouse.move(caja.x + caja.width * (0.35 + 0.03 * i), caja.y + caja.height * 0.55);
+        const despierto = await pg.waitForFunction(() => !document.querySelector(".visor-hud")?.hasAttribute("data-hud-escondido"),
+          null, { timeout: 2000 }).then(() => true).catch(() => false);
+        if (!despierto) continue;
+        try { await pg.locator(".visor-hud-boton", { hasText: texto }).click({ timeout: 2000 }); return; } catch { /* se escondió en el medio */ }
+      }
+      throw new Error(`no se pudo tocar «${texto}» en el HUD`);
+    };
+    const abrirVisor = async (pg, fila = 0) => {
+      await pg.locator("[data-ver-3d]").nth(fila).click();
+      await visorListo(pg);
+    };
+    const cerrado = (pg) => pg.evaluate(() => ({
+      visor: !!document.querySelector(".visor-venta"),
+      inerte: document.getElementById("root")?.hasAttribute("inert") ?? null,
+      modal: document.documentElement.hasAttribute("data-modal-abierto"),
+      pantallaCompleta: !!document.fullscreenElement,
+      foco: document.activeElement?.getAttribute("data-ver-3d") ?? `(${document.activeElement?.tagName})`,
+      amarillos: [...document.querySelectorAll(".btn-principal")].filter((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.width < 1 || r.height < 1) return false;
+        const sonda = document.createElement("i");
+        sonda.style.background = "var(--signal)";
+        document.body.appendChild(sonda);
+        const amarillo = getComputedStyle(sonda).backgroundColor;
+        sonda.remove();
+        return getComputedStyle(el).backgroundColor === amarillo;
+      }).length,
+    }));
+    const textoDelVisor = (pg) => pg.evaluate(() => {
+      const v = document.querySelector(".visor-venta");
+      if (!v) return "";
+      const t = [v.innerText];
+      for (const n of v.querySelectorAll("[aria-label],[title],[placeholder],[alt]")) {
+        t.push(n.getAttribute("aria-label"), n.getAttribute("title"), n.getAttribute("placeholder"), n.getAttribute("alt"));
+      }
+      return t.filter(Boolean).join("\n");
+    });
+
+    // ── La hoja, con tres espacios y el contrato completo ──────────────
+    for (const c of CARAS) await tocar(pv, c);
+    const campos = pv.locator(".vender input.entrada");
+    await campos.nth(0).fill(PROVEEDOR);
+    await campos.nth(1).fill("Finesse");
+    const valores = pv.locator(".eitem .m input");
+    for (let i = 0; i < await valores.count(); i++) await valores.nth(i).fill(String(1_200_000 + i * 100_000));
+    await pv.mouse.move(5, 5);
+    await pv.waitForTimeout(900);
+    const hoja = await pv.evaluate(`(() => {
+      const panel = ${PANEL};
+      const r = panel.getBoundingClientRect();
+      const acc = panel.querySelector(".acciones").getBoundingClientRect();
+      return {
+        filas: [...panel.querySelectorAll(".eitem")].map((e) => {
+          const b = e.getBoundingClientRect(), cod = e.querySelector(".cod"), v = e.querySelector("[data-ver-3d]");
+          const vb = v ? v.getBoundingClientRect() : null;
+          return { cod: cod.textContent, alto: b.height, entero: cod.scrollWidth <= cod.clientWidth,
+            boton: !!vb && vb.left >= b.left && vb.right <= b.right && vb.top >= b.top && vb.bottom <= b.bottom && vb.right <= innerWidth };
+        }),
+        aire: r.bottom - acc.bottom,
+        rueda: document.scrollingElement.scrollHeight > innerHeight + 1,
+      };
+    })()`);
+    const botonClaro = await pv.evaluate(() => [...document.querySelectorAll("[data-ver-3d]")].map((b) => {
+      const fondo = (el) => { for (let n = el; n; n = n.parentElement) { const c = getComputedStyle(n).backgroundColor; if (c && !/rgba\(0, 0, 0, 0\)|transparent/.test(c)) return c; } return "rgb(255,255,255)"; };
+      return { fg: getComputedStyle(b).color, bg: fondo(b), px: parseFloat(getComputedStyle(b).fontSize), peso: getComputedStyle(b).fontWeight, t: "3D", apagado: false };
+    }));
+    prueba("navegador · visor: la hoja sigue cerrando con tres espacios, y cada fila con su «3D» a la vista", () => {
+      assert.equal(hoja.filas.length, CARAS.length, `filas en el contrato: ${hoja.filas.map((f) => f.cod).join(", ")}`);
+      const malas = [];
+      for (const f of hoja.filas) {
+        if (f.alto > 46.5) malas.push(`${f.cod}: la fila mide ${f.alto.toFixed(1)} px (dos renglones son 46)`);
+        if (!f.entero) malas.push(`${f.cod}: el código se corta`);
+        if (!f.boton) malas.push(`${f.cod}: el botón «3D» no está entero adentro de su fila`);
+      }
+      if (hoja.aire < 12) malas.push(`la ficha cierra con ${hoja.aire.toFixed(1)} px de aire (piso: 12)`);
+      if (hoja.rueda) malas.push("la página rueda");
+      assert.deepEqual(malas, [], `\n         ${malas.join("\n         ")}`);
+    });
+
+    // Lo opcional, que también tiene que sobrevivir al 3D.
+    await pv.locator("button", { hasText: "Correo, nota y planometría" }).click();
+    await pv.locator('.vender input[inputmode="email"]').fill("compras@proveedor.example");
+    await pv.locator(".vender textarea.entrada").fill("Probar la punta con el yogur");
+    await pv.locator('.vender input[type="file"]').setInputFiles({
+      name: "planometria-de-prueba.png", mimeType: "image/png",
+      buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64"),
+    });
+    await pv.waitForTimeout(400);
+    const antes = await contrato(pv);
+
+    prueba("navegador · visor: antes de abrirlo, Vender no bajó nada del 3D", () => {
+      const del3D = pedidos.filter((x) => /StoreEditor3D-|three\.module-|VisorDeVenta-/.test(x.u)).map((x) => x.u.replace(ORIGEN, ""));
+      assert.deepEqual(del3D, [], "Vender bajó el 3D al entrar");
+      assert.ok(pesosVender.length >= 1, "no se encontró el archivo de Vender entre lo que bajó la página");
+      const base = Number(process.env.PROBAR_VENDER_PESO_BASE || 0);
+      if (base > 0) {
+        assert.ok(pesosVender[0] - base <= 3072,
+          `el archivo de Vender pesa ${pesosVender[0]} B gzip: ${pesosVender[0] - base} B más que la base (${base}); el tope es 3 KB`);
+      } else aviso(`archivo de Vender: ${pesosVender[0]} B gzip (PROBAR_VENDER_PESO_BASE compara contra la línea base)`);
+    });
+
+    const almacenAntes = await almacen(pv);
+    const primeraClave = await pv.locator("[data-ver-3d]").first().getAttribute("data-ver-3d");
+    const desde = pedidos.length;
+    await abrirVisor(pv, 0);
+    await pv.waitForSelector(".visor-producto", { timeout: 60000 });
+    await pv.locator(".visor-producto").first().click();
+    await pv.waitForSelector(".visor-como", { timeout: 60000 });
+    await pv.waitForTimeout(6000);   // la etiqueta del envase (recorte en el worker)
+    const textoAbierto = await pv.evaluate(TEXTO_VISIBLE);
+
+    prueba("navegador · visor: ni proveedores ajenos ni textos prohibidos, con el producto y «Cómo va» a la vista", () => {
+      assert.ok(AJENOS.length >= 2, "sembrá DOS proveedores y pasalos en PROBAR_VENDER_AJENOS=A,B");
+      const salen = AJENOS.filter((n) => new RegExp(n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(textoAbierto));
+      assert.deepEqual(salen, [], `con el visor abierto se lee: ${salen.join(", ")}`);
+      const malos = TEXTOS_PROHIBIDOS.filter(([re]) => re.test(textoAbierto)).map(([, q]) => q);
+      assert.deepEqual(malos, [], `con el visor abierto aparece: ${malos.join(" · ")}`);
+    });
+
+    prueba("navegador · visor: a la red sólo va lo del proveedor del contrato", () => {
+      const desdeAbrir = pedidos.slice(desde);
+      const malos = [];
+      for (const x of pedidos) {
+        const ruta = new URL(x.u).pathname;
+        if (/^\/api\/suppliers/.test(ruta)) malos.push(`pidió ${ruta}: la lista de proveedores`);
+        if (/face-images/.test(ruta)) malos.push(`pidió ${ruta}: las fotos de las caras de otros`);
+      }
+      for (const x of desdeAbrir.filter((y) => esLista(y.u) && y.m === "GET")) {
+        const q = new URL(x.u).searchParams.get("proveedor");
+        if (!q || !q.trim()) malos.push(`pidió el catálogo sin proveedor: ${x.u.replace(ORIGEN, "")}`);
+      }
+      const suyo = supplierDe(PROVEEDOR);
+      assert.ok(suyo != null, `${PROVEEDOR} no tiene artes en el catálogo sembrado`);
+      for (const l of listas) {
+        const ids = [...new Set((l.json || []).map((a) => a.supplier_id))];
+        if (ids.length > 1 || (ids.length === 1 && ids[0] !== suyo)) malos.push(`la lista trajo artes de ${ids.join(", ")}: ${l.u.replace(ORIGEN, "")}`);
+      }
+      const propios = idsDe(PROVEEDOR);
+      for (const x of desdeAbrir) {
+        const id = imagenDe(x.u);
+        if (id != null && !propios.has(id)) malos.push(`pidió la imagen del arte ${id}, que no es de ${PROVEEDOR}`);
+      }
+      assert.ok(listas.length >= 1, "el visor no pidió el catálogo del proveedor");
+      assert.deepEqual([...new Set(malos)], [], `\n         ${[...new Set(malos)].join("\n         ")}`);
+    });
+
+    // Girar y acercar en el lienzo: la cámara es local.
+    const lienzo = await pv.locator(".visor-escena canvas").boundingBox();
+    await pv.mouse.move(lienzo.x + lienzo.width * 0.3, lienzo.y + lienzo.height * 0.5);
+    await pv.mouse.down();
+    await pv.mouse.move(lienzo.x + lienzo.width * 0.45, lienzo.y + lienzo.height * 0.45, { steps: 12 });
+    await pv.mouse.up();
+    for (let i = 0; i < 4; i++) { await pv.mouse.wheel(0, -120); await pv.waitForTimeout(80); }
+    await pv.waitForTimeout(800);
+    const almacenDespues = await almacen(pv);
+    const escritos = pedidos.slice(desde).filter((x) => x.m !== "GET"
+      && !(x.m === "POST" && esLista(x.u)) && !(x.m === "PUT" && /^\/api\/catalogo\/\d+\/ficha$/.test(new URL(x.u).pathname)));
+    const pestana = await pv.evaluate(() => ({
+      cajones: document.querySelectorAll("[data-cajon-oscuro]").length,
+      hoja: !!document.querySelector(".vender-hoja"),
+      boton: /Guardar contrato y avisar/.test(document.body.textContent || ""),
+    }));
+    prueba("navegador · visor: nada se escribe — ni la cámara del editor, ni el plano, ni otra pestaña", () => {
+      assert.equal(almacenDespues.camara, almacenAntes.camara, "girar en el visor movió la cámara guardada del Editor 3D");
+      assert.equal(almacenDespues.planos, almacenAntes.planos, "el visor tocó el plano guardado");
+      assert.deepEqual(escritos.map((x) => `${x.m} ${x.u.replace(ORIGEN, "")}`), [], "el visor escribió en el servidor");
+      assert.ok(pestana.hoja && pestana.boton, "Vender ya no está debajo del visor: cambió de pestaña");
+      assert.equal(pestana.cajones, 1, "hay otro cajón oscuro además del visor (¿el Editor 3D?)");
+    });
+
+    const foco = [];
+    await pv.locator(".visor-volver").focus();
+    for (let i = 0; i < 20; i++) {
+      await pv.keyboard.press("Tab");
+      foco.push(await pv.evaluate(() => !!document.activeElement?.closest(".visor-venta")));
+    }
+    const capa = await pv.evaluate(() => {
+      const sonda = document.createElement("i");
+      sonda.style.background = "var(--signal)";
+      document.body.appendChild(sonda);
+      const amarillo = getComputedStyle(sonda).backgroundColor;
+      sonda.remove();
+      const conAmarillo = [...document.querySelectorAll("body *")].filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && getComputedStyle(el).backgroundColor === amarillo;
+      }).map((el) => (el.textContent || el.tagName).trim().slice(0, 30));
+      return {
+        modal: document.documentElement.hasAttribute("data-modal-abierto"),
+        inerte: document.getElementById("root")?.hasAttribute("inert"),
+        conAmarillo,
+      };
+    });
+    prueba("navegador · visor: el amarillo de la ficha se apaga, la app de atrás queda inerte y el Tab no se escapa", () => {
+      assert.ok(capa.modal, "sin `data-modal-abierto`: el amarillo de la ficha sigue encendido detrás");
+      assert.deepEqual(capa.conAmarillo, [], `amarillo a la vista con el visor abierto: ${capa.conAmarillo.join(" · ")}`);
+      assert.ok(capa.inerte, "la app de atrás no está `inert`: el Tab cae en los campos del contrato");
+      assert.ok(foco.every(Boolean), `el Tab salió del visor en el paso ${foco.indexOf(false) + 1}`);
+    });
+
+    // El contraste del chrome del visor (chapa, HUD, cajón), con el HUD despierto.
+    const contrasteDelVisor = async (pg) => {
+      await pg.mouse.move(400, 400);
+      await pg.waitForTimeout(300);
+      return pg.evaluate(() => {
+        const out = [];
+        const fondoDe = (el) => {
+          for (let n = el; n; n = n.parentElement) {
+            const c = getComputedStyle(n).backgroundColor;
+            if (c && !/rgba\(0, 0, 0, 0\)|transparent/.test(c)) return c;
+          }
+          return getComputedStyle(document.body).backgroundColor;
+        };
+        for (const el of document.querySelectorAll(".visor-venta *")) {
+          if (el.children.length || el.closest("canvas")) continue;
+          const t = (el.textContent || "").trim();
+          if (t.length < 2) continue;
+          const cs = getComputedStyle(el);
+          const r = el.getBoundingClientRect();
+          if (r.width < 2 || r.height < 2 || cs.visibility === "hidden" || Number(cs.opacity) === 0) continue;
+          const apagado = !!el.closest("[disabled],[aria-disabled='true']") || Number(cs.opacity) < 1;
+          out.push({ t: t.slice(0, 30), fg: cs.color, bg: fondoDe(el), px: parseFloat(cs.fontSize), peso: cs.fontWeight, apagado });
+        }
+        return out;
+      });
+    };
+    const bajosDe = (medidas) => {
+      const bajos = [];
+      for (const m of medidas) {
+        if (m.apagado) continue;
+        const grande = m.px >= 24 || (m.px >= 18.66 && Number(m.peso) >= 700);
+        const r = razon(rgb(m.fg), rgb(m.bg));
+        if (r < (grande ? 3 : 4.5)) bajos.push(`«${m.t}» ${m.fg} sobre ${m.bg} a ${m.px}px: ${r.toFixed(2)}:1`);
+      }
+      return [...new Set(bajos)];
+    };
+    const medidasClaro = await contrasteDelVisor(pv);
+    prueba("navegador · visor: contraste del «3D» de la fila y de la chapa, el HUD y el cajón (claro)", () => {
+      assert.ok(medidasClaro.length > 10, `sólo ${medidasClaro.length} textos medidos en el visor`);
+      const b = bajosDe([...botonClaro, ...medidasClaro]);
+      assert.deepEqual(b, [], `${b.length} pares por debajo del piso:\n         ${b.slice(0, 20).join("\n         ")}`);
+    });
+
+    // ── Volver, dos veces: con el botón y con Esc ──────────────────────
+    await pv.locator(".visor-volver").click();
+    await pv.waitForTimeout(700);
+    const trasBoton = { contrato: await contrato(pv), estado: await cerrado(pv) };
+    await abrirVisor(pv, 0);
+    const sesion = await pv.evaluate(() => ({
+      conProveedor: [...document.querySelectorAll(".visor-hud-boton")].map((b) => b.textContent.trim()),
+    }));
+    await tocarHud(pv, "Producto");
+    await pv.waitForSelector(".visor-producto", { timeout: 30000 });
+    const marcado = await pv.locator('.visor-producto[aria-pressed="true"]').count();
+    await pv.locator(".visor-volver").focus();
+    await pv.keyboard.press("Escape");
+    await pv.waitForTimeout(700);
+    const trasEsc = { contrato: await contrato(pv), estado: await cerrado(pv) };
+    for (const [como, r] of [["con «Volver al contrato»", trasBoton], ["con Esc", trasEsc]]) {
+      prueba(`navegador · visor: cerrar ${como} deja el contrato exactamente como estaba`, () => {
+        assert.deepEqual(r.contrato, antes, "el contrato cambió al pasar por el 3D");
+        assert.ok(!r.estado.visor, "el visor quedó en pantalla");
+        assert.equal(r.estado.inerte, false, "la app quedó `inert`");
+        assert.ok(!r.estado.modal, "`data-modal-abierto` quedó puesto: el amarillo no vuelve");
+        assert.equal(r.estado.amarillos, 1, `${r.estado.amarillos} botones amarillos a la vista`);
+        assert.ok(!r.estado.pantallaCompleta, "la pantalla completa quedó puesta");
+      });
+    }
+    prueba("navegador · visor: el foco vuelve al botón «3D» de la fila", () => {
+      for (const r of [trasBoton, trasEsc]) assert.equal(r.estado.foco, primeraClave, `el foco quedó en ${r.estado.foco}`);
+    });
+    prueba("navegador · visor: al reabrir, la cara conserva su producto", () => {
+      assert.ok(sesion.conProveedor.some((t) => mismo(t, `Con ${PROVEEDOR}`)), `el HUD no ofrece «Con ${PROVEEDOR}»: ${sesion.conProveedor.join(" · ")}`);
+      assert.equal(marcado, 1, "el cajón no marca el producto puesto");
+    });
+
+    // ── Otro proveedor: la prueba se va, y sólo se piden SUS imágenes ───
+    // Una falla acá (un selector que no llega) se cuenta como FALLA de esta
+    // prueba y las de abajo siguen corriendo.
+    const seccion = async (nombre, fn) => { try { await fn(); } catch (e) { prueba(nombre, () => { throw e; }); } };
+    const hudDelVisor = (pg) => pg.evaluate(() => [...document.querySelectorAll(".visor-hud-boton")].map((b) => b.textContent.trim()));
+    await seccion("navegador · visor: cambiar de proveedor se lleva la prueba del anterior", async () => {
+      await pv.locator(".vender input.entrada").nth(0).fill(OTRO);
+      await pv.waitForTimeout(500);
+      const desdeOtro = pedidos.length;
+      await abrirVisor(pv, 0);
+      await pv.waitForTimeout(2500);   // la lista del proveedor nuevo
+      const conOtro = {
+        cajon: await pv.locator(".visor-cajon").count(),
+        texto: await textoDelVisor(pv),
+        marcados: await pv.locator('.visor-producto[aria-pressed="true"]').count(),
+        hud: await hudDelVisor(pv),
+        imagenes: pedidos.slice(desdeOtro).map((x) => imagenDe(x.u)).filter((id) => id != null),
+      };
+      await pv.locator(".visor-volver").click();
+      await pv.waitForTimeout(500);
+      // Y de vuelta al primero: la prueba no reaparece, se olvidó al cambiar.
+      await pv.locator(".vender input.entrada").nth(0).fill(PROVEEDOR);
+      await pv.waitForTimeout(500);
+      await abrirVisor(pv, 0);
+      await pv.waitForTimeout(2500);
+      const deVuelta = { cajon: await pv.locator(".visor-cajon").count(), hud: await hudDelVisor(pv) };
+      await pv.locator(".visor-volver").click();
+      await pv.waitForTimeout(500);
+      prueba("navegador · visor: cambiar de proveedor se lleva la prueba del anterior", () => {
+        assert.equal(conOtro.cajon, 1, `con ${OTRO} la cara no llega vacía (el cajón no se abre solo): la prueba del anterior sigue en la sesión`);
+        assert.equal(conOtro.marcados, 0, "la cara sigue con el producto del proveedor anterior");
+        assert.ok(!conOtro.hud.some((x) => /^Con /.test(x)), `el HUD ofrece «${conOtro.hud.find((x) => /^Con /.test(x))}» con ${OTRO}`);
+        assert.ok(!new RegExp(PROVEEDOR, "i").test(conOtro.texto), `«${PROVEEDOR}» se lee en el visor de ${OTRO}`);
+        const ajenas = conOtro.imagenes.filter((id) => !idsDe(OTRO).has(id));
+        assert.deepEqual(ajenas, [], `con ${OTRO} se pidieron imágenes de otros: ${ajenas.join(", ")}`);
+        assert.ok(deVuelta.cajon === 1 && !deVuelta.hud.some((x) => /^Con /.test(x)),
+          `volviendo a ${PROVEEDOR}, su prueba reapareció: no se olvidó al cambiar de proveedor`);
+      });
+    });
+
+    // ── Sin proveedor: se pregunta, y no se pide nada ───────────────────
+    await seccion("navegador · visor: sin proveedor, el cajón lo pregunta y no se pide ningún catálogo ni imagen", async () => {
+    await pv.locator(".vender input.entrada").nth(0).fill("");
+    await pv.waitForTimeout(500);
+    const desdeNadie = pedidos.length;
+    await abrirVisor(pv, 0);
+    await pv.waitForTimeout(1500);
+    const sinNadie = {
+      pregunta: /¿Con qué proveedor estás armando este contrato\?/.test(await textoDelVisor(pv)),
+      pedidos: pedidos.slice(desdeNadie).filter((x) => esLista(x.u) || imagenDe(x.u) != null).map((x) => x.u.replace(ORIGEN, "")),
+    };
+    await pv.locator(".visor-volver").click();
+    await pv.waitForTimeout(500);
+    prueba("navegador · visor: sin proveedor, el cajón lo pregunta y no se pide ningún catálogo ni imagen", () => {
+      assert.ok(sinNadie.pregunta, "el cajón no pregunta por el proveedor");
+      assert.deepEqual(sinNadie.pedidos, [], "sin proveedor se pidió el catálogo o una imagen");
+    });
+    });
+
+    // ── Abrir y cerrar cinco veces: sin contextos perdidos ni lienzo en blanco
+    await seccion("navegador · visor: abrir y cerrar cinco veces no pierde el contexto de WebGL ni deja el lienzo en blanco", async () => {
+    await pv.locator(".vender input.entrada").nth(0).fill(PROVEEDOR);
+    await pv.waitForTimeout(500);
+    let varianza = 0;
+    for (let i = 0; i < 5; i++) {
+      await abrirVisor(pv, 0);
+      if (i === 4) {
+        await pv.waitForTimeout(1500);
+        varianza = await pv.evaluate(() => new Promise((res) => {
+          const c = document.querySelector(".visor-escena canvas");
+          const img = new Image();
+          img.onload = () => {
+            const k = document.createElement("canvas");
+            k.width = 160; k.height = 90;
+            const g = k.getContext("2d");
+            g.drawImage(img, 0, 0, 160, 90);
+            const d = g.getImageData(0, 0, 160, 90).data;
+            let s = 0, s2 = 0, n = 0;
+            for (let j = 0; j < d.length; j += 4) { const y = (d[j] + d[j + 1] + d[j + 2]) / 3; s += y; s2 += y * y; n++; }
+            res(s2 / n - (s / n) ** 2);
+          };
+          img.onerror = () => res(0);
+          img.src = c.toDataURL("image/png");
+        }));
+      }
+      await pv.locator(".visor-volver").click();
+      await pv.waitForTimeout(600);
+    }
+    prueba("navegador · visor: abrir y cerrar cinco veces no pierde el contexto de WebGL ni deja el lienzo en blanco", () => {
+      assert.deepEqual(errores3D, [], `\n         ${errores3D.join("\n         ")}`);
+      assert.ok(varianza > 1, `el quinto lienzo salió plano (varianza ${varianza.toFixed(2)})`);
+      assert.deepEqual(erroresDePagina, [], `errores de la página: ${erroresDePagina.join(" · ")}`);
+    });
+    });
+    await cv.close();
+
+    // ── Si el 3D no baja: se dice, y el contrato sigue ──────────────────
+    await seccion("navegador · visor: si el archivo del 3D no baja, se avisa y el contrato queda intacto", async () => {
+      const caidas = [];
+      const { ctx: cf, p: pf } = await abrir("light", { antes: async (pg) => {
+        pg.on("pageerror", (e) => caidas.push(String(e).split("\n")[0]));
+        await pg.route("**/VisorDeVenta-*.js", (r) => r.abort());
+      } });
+      await tocar(pf, CARAS[0]);
+      await pf.locator(".vender input.entrada").nth(0).fill(PROVEEDOR);
+      await pf.locator(".eitem .m input").first().fill("1500000");
+      await pf.waitForTimeout(400);
+      const antesFalla = await contrato(pf);
+      await pf.locator("[data-ver-3d]").first().click();
+      const aviso3D = await pf.waitForSelector("text=No se pudo abrir el 3D", { timeout: 30000 }).then(() => true).catch(() => false);
+      const sigue = await pf.evaluate(() => /Guardar contrato y avisar/.test(document.body.textContent || ""));
+      await pf.locator(".visor-volver").click().catch(() => {});
+      await pf.waitForTimeout(500);
+      const despuesFalla = await contrato(pf);
+      prueba("navegador · visor: si el archivo del 3D no baja, se avisa y el contrato queda intacto", () => {
+        assert.ok(aviso3D, "no apareció «No se pudo abrir el 3D»");
+        assert.ok(sigue, "Vender se desmontó: no está «Guardar contrato y avisar»");
+        assert.deepEqual(despuesFalla, antesFalla, "el contrato cambió después de la falla");
+        assert.deepEqual(caidas, [], `la página se cayó: ${caidas.join(" · ")}`);
+      });
+      await cf.close();
+    });
+
+    // ── El contraste del botón «3D» y del visor, en oscuro ───────────────
+    await seccion("navegador · visor: contraste del «3D» de la fila y del visor (oscuro)", async () => {
+      const { ctx: co, p: po } = await abrir("dark");
+      await tocar(po, CARAS[0]);
+      await po.locator(".vender input.entrada").nth(0).fill(PROVEEDOR);
+      await po.mouse.move(5, 5);
+      await po.waitForTimeout(500);
+      const botonOscuro = await po.evaluate(() => {
+        const b = document.querySelector("[data-ver-3d]");
+        const fondo = (el) => { for (let n = el; n; n = n.parentElement) { const c = getComputedStyle(n).backgroundColor; if (c && !/rgba\(0, 0, 0, 0\)|transparent/.test(c)) return c; } return "rgb(255,255,255)"; };
+        return { fg: getComputedStyle(b).color, bg: fondo(b), px: parseFloat(getComputedStyle(b).fontSize), peso: "600", t: "3D", apagado: false };
+      });
+      await abrirVisor(po, 0);
+      await po.waitForTimeout(1500);
+      const medidasOscuro = await contrasteDelVisor(po);
+      prueba("navegador · visor: contraste del «3D» de la fila y del visor (oscuro)", () => {
+        const b = bajosDe([botonOscuro, ...medidasOscuro]);
+        assert.deepEqual(b, [], `${b.length} pares por debajo del piso:\n         ${b.slice(0, 20).join("\n         ")}`);
+      });
+      await co.close();
+    });
+  }
+
   await ctx.close();
   await nav.close();
 }

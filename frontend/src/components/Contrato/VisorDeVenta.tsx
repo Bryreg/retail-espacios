@@ -354,6 +354,11 @@ export default function VisorDeVenta({
   const [pidioProveedor] = useState(() => !proveedor.trim());
   const [busqueda, setBusqueda] = useState("");
   const [subiendo, setSubiendo] = useState(false);
+  // Al abrir el alta, se la trae a la vista una vez (el cuerpo del cajón rueda).
+  const formularioDeAlta = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (subiendo) formularioDeAlta.current?.scrollIntoView({ block: "start" });
+  }, [subiendo]);
 
   const elegir = (a: Arte) => {
     sesion.probar(activa.fixtureId, activa.face, a.id);
@@ -563,7 +568,29 @@ export default function VisorDeVenta({
                 nevera, las medidas y la cuenta que se negocia). Sólo en los
                 muebles con envases 3D; en una isla o una batea el producto va
                 como lámina sobre la cara. */}
-            {arteDeLaCara && conCuenta && (
+            {/* El alta va ADENTRO del cuerpo, que rueda: con la ficha del
+                envase abierta mide más de lo que entra en una pantalla de
+                768 px, y en el pie fijo «Subir» quedaba fuera de la vista. */}
+            {isAdmin && llevaProducto && nombre && subiendo && (
+              <section className="visor-como" aria-label="Subir un producto" ref={formularioDeAlta}>
+                <h3 className="visor-rotulo">Subir un producto</h3>
+                <SubirProducto
+                  proveedor={nombre}
+                  onListo={(nuevo) => {
+                    setSubiendo(false);
+                    // Ya, sin esperar la lista: es del proveedor del contrato
+                    // (el servidor lo resolvió por ese nombre), y queda probado
+                    // en la cara. La lista vuelve a pedirse para quedar al día.
+                    setArtes((prev) => (prev.some((a) => a.id === nuevo.id) ? prev : [...prev, nuevo]));
+                    recargar();
+                    elegir(nuevo);
+                  }}
+                  onCancelar={() => setSubiendo(false)}
+                />
+              </section>
+            )}
+
+            {arteDeLaCara && conCuenta && !subiendo && (
               <section className="visor-como" aria-label="Cómo va">
                 <h3 className="visor-rotulo">Cómo va</h3>
                 <PanelDePrueba
@@ -580,27 +607,11 @@ export default function VisorDeVenta({
             )}
           </div>
 
-          {isAdmin && llevaProducto && nombre && (
+          {isAdmin && llevaProducto && nombre && !subiendo && (
             <footer className="visor-cajon-pie">
-              {subiendo ? (
-                <SubirProducto
-                  proveedor={nombre}
-                  onListo={(nuevo) => {
-                    setSubiendo(false);
-                    // Ya, sin esperar la lista: es del proveedor del contrato
-                    // (el servidor lo resolvió por ese nombre), y queda probado
-                    // en la cara. La lista vuelve a pedirse para quedar al día.
-                    setArtes((prev) => (prev.some((a) => a.id === nuevo.id) ? prev : [...prev, nuevo]));
-                    recargar();
-                    elegir(nuevo);
-                  }}
-                  onCancelar={() => setSubiendo(false)}
-                />
-              ) : (
-                <button type="button" className="visor-boton-linea" onClick={() => setSubiendo(true)}>
-                  <Upload size={13} aria-hidden /> Subir un producto
-                </button>
-              )}
+              <button type="button" className="visor-boton-linea" onClick={() => setSubiendo(true)}>
+                <Upload size={13} aria-hidden /> Subir un producto
+              </button>
             </footer>
           )}
         </aside>

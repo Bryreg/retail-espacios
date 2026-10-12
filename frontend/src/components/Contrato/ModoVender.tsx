@@ -409,11 +409,14 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
   const [en3D, setEn3D] = useState<CaraActiva | null>(null);
   const abierta = useRef<CaraActiva | null>(null);
   abierta.current = en3D;
-  /** La cara abierta, como la lee el visor: dónde está y cómo se llama.
-   *  Nada comercial cruza: ni valores, ni fechas, ni la tarifa. */
-  const carasDelVisor = useMemo<CaraDelVisor[]>(() => c.lineas.map((l) => ({
-    fixtureId: l.fixture.id, face: l.face, visible: l.visible, tipo: rateTypeLabel(rateTypeOf(l.fixture)),
-  })), [c.lineas]);
+  /** Las caras del contrato, como las lee el visor: dónde están y cómo se
+   *  llaman. Nada comercial cruza: ni valores, ni fechas, ni la tarifa. */
+  const carasDelVisor = useMemo<CaraDelVisor[]>(() => c.lineas
+    // La exhibición no tiene 3D (`storeToFixtures` no la dibuja): ni botón ni pestaña.
+    .filter((l) => l.fixture.type !== "exhibicion")
+    .map((l) => ({
+      fixtureId: l.fixture.id, face: l.face, visible: l.visible, tipo: rateTypeLabel(rateTypeOf(l.fixture)),
+    })), [c.lineas]);
   const abrir3D = (fixtureId: string, face: "A" | "B") => {
     onResaltar(null);
     // La pantalla completa se pide ACÁ, en el clic: después del `import` del
