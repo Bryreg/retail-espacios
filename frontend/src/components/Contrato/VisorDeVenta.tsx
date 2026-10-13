@@ -726,6 +726,8 @@ export default function VisorDeVenta({
   const bajarLamina = async () => {
     if (lamina) return;
     setLamina("bajando");
+    // Lo que dijo la lámina anterior («La lámina se bajó») no es de ésta.
+    setLaminaLista("");
     setLaminaFallo("");
     try {
       const r = await armarLamina();
@@ -746,6 +748,7 @@ export default function VisorDeVenta({
   const usarComoPlanometria = async () => {
     if (lamina) return;
     setLamina("adjuntando");
+    setLaminaLista("");
     setLaminaFallo("");
     try {
       const r = await armarLamina();

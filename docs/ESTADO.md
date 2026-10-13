@@ -7615,7 +7615,8 @@ tres bajos:
   los productos y «Cómo va» quedan apagados, y una tapa sobre el lienzo frena la órbita.
   Antes, tocar otra cara a mitad dejaba el 3D en PUN-03 y la chapa en GON-02·B, y la
   confirmación no aparecía nunca. El `finally` repone la toma sólo si la cara es la misma.
-  Cerrar sí se puede: descarta lo armado.
+  Cerrar sí se puede: descarta lo armado. Y al empezar una lámina se borra lo que dijo la
+  anterior («La lámina se bajó» quedaba a la vista mientras se armaba la planometría).
 - **MEDIA — las guardas no miraban el camino del cajón.** Todas cambiaban el proveedor
   en la ficha con el visor cerrado. Ahora `probar-vender` cambia DESDE el cajón, letra por
   letra; con la lista del anterior demorada 6 s; en medio de una subida demorada (el alta
@@ -7640,16 +7641,21 @@ una sola planometría por contrato, «Por entrepaño» sin reencuadrar). El avis
 lámina quitada queda hasta que se adjunta otra planometría.
 
 **Peso.** Al entrar a Vender, contra el build de 6077160 con el gzip de Node: el archivo
-de Vender 209 728 → 212 007 B (+2,2 KB), el CSS de entrada +387 B, `propuesta` +149 B y
-el index +1 B: +2,8 KB en total, bajo el tope de 3 KB. El visor: 8,0 KB + 1,8 KB de CSS.
+de Vender 209 728 → 212 016 B (+2,2 KB), el CSS de entrada +387 B, `propuesta` +150 B y
+el index +11 B: +2,8 KB en total, bajo el tope de 3 KB. El visor: 8,0 KB + 1,8 KB de CSS.
 
 **Cómo se comprobó.** `probar-vender` suma 1 estática («lo que llega tarde no pisa lo
 vigente») y endurece tres (la lámina con el proveedor, el `finally` que mira la cara, el
 aviso sin «otro proveedor» y «Empezar de nuevo»), y 6 de navegador (las de arriba): 26
 estáticas y 64 con navegador contra el servidor local, todas verdes. Veintiuna mutaciones
 estáticas, todas en rojo (la de `vigente()` sin efecto salió verde la primera vez: se
-fijó su definición); y tres mutantes construidos y servidos para la parte de navegador
-(ver el resumen de la tanda).
+fijó su definición). Y tres mutantes CONSTRUIDOS y servidos, para ver que la parte de
+navegador también los agarra: la lista sin dueño ni vaciado más «Empezar de nuevo» con
+aviso (caen «letra por letra», la subida y «Empezar de nuevo»); sin descartar respuestas
+viejas más «cambiar» activo mientras sube (caen la respuesta tardía y la subida); la
+lámina que nunca se da por interrumpida (cae «cerrar a mitad»). Cada defensa doble (la
+lámina contra la ficha, la subida contra la lista atada a su nombre) se rompió sola en
+lo estático: en el navegador la otra mitad la sostiene, que es la idea.
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 
