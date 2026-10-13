@@ -55,8 +55,10 @@ TABLAS_DEL_REGISTRO = frozenset({
     "bitacora_plataforma", "snapshot_metricas", "solicitudes_supresion",
     "export_attempts",
     # El cobro de la suscripción (C1): lo que RECABRA le cobra a cada cliente.
-    # Es de la plataforma, no del supermercado: ni se copia ni se vacía.
+    # Es de la plataforma, no del supermercado: ni se copia ni se vacía. Y los
+    # correos de la escalera que ya salieron (C2).
     "suscripciones", "facturas_cobro", "pagos_cobro", "cambios_estado_cuenta",
+    "avisos_cobro",
 })
 
 # Las de NEGOCIO de un supermercado: lo que se copia. Incluye la configuración

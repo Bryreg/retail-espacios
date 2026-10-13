@@ -1,17 +1,51 @@
+import { useState } from "react";
 import { useAuthStore } from "../store/authStore";
+import MiSuscripcion from "./suscripcion/MiSuscripcion";
+import { useEstadoCuentaVivo } from "./suscripcion/useEstadoCuenta";
 
 /**
  * Pantalla de bloqueo a pantalla completa — reemplaza TODA la app cuando el
  * cliente de la sesión está `suspendido`.
  *
- * Sólo la ve el owner: es el único rol que llega tan lejos con la cuenta
- * suspendida — worker y admin (legado u oauth) reciben 402 en el login
- * mismo y nunca guardan sesión, así que `avisoCuenta.estado === "suspendido"`
- * en el store sólo puede venir de una sesión de owner. Sin navegación de
- * negocio: la única salida de acá es cerrar sesión.
+ * La ve CUALQUIER rol, no sólo la dueña: el login deja afuera a su gente con
+ * un 402, pero si la suspensión llega a mitad de sesión, el interceptor de
+ * `api/client.ts` marca `suspendido` para quien esté adentro. Por eso acá no
+ * hay un solo monto: la pantalla puede quedar abierta delante de un proveedor,
+ * en medio de Vender. La plata está detrás de un clic, «Ver suscripción», y
+ * ese botón existe sólo para la dueña (lo dice el servidor por la membresía,
+ * no el rol del token).
+ *
+ * Y se entera sola de que la cuenta volvió a estar al día (C2): consulta
+ * `GET /auth/estado-cuenta` al montarse, cada pocos minutos y con «Reintentar».
+ * Cuando el servidor dice «activo», el store limpia el aviso y `App.tsx` vuelve
+ * a montar la app, sin cerrar sesión.
  */
-export default function BloqueoCuenta({ motivo }: { motivo: string }) {
+export default function BloqueoCuenta({ motivo }: { motivo: string | null }) {
   const logout = useAuthStore((s) => s.logout);
+  const { revisar, revisando, duena, error } = useEstadoCuentaVivo();
+  const [verSuscripcion, setVerSuscripcion] = useState(false);
+
+  if (verSuscripcion && duena) {
+    return (
+      <div style={{ height: "100dvh", background: "var(--bg)", padding: "20px 16px", overflowY: "auto" }}>
+        <div
+          style={{
+            maxWidth: 560, margin: "0 auto",
+            background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--r-xl)",
+            padding: "18px 22px 22px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <h1 style={{ flex: 1, margin: 0, fontSize: 16, fontWeight: 700, color: "var(--ink-1)" }}>Suscripción</h1>
+            <button type="button" onClick={() => setVerSuscripcion(false)} style={botonSecundario}>
+              Volver
+            </button>
+          </div>
+          <MiSuscripcion />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -38,9 +72,26 @@ export default function BloqueoCuenta({ motivo }: { motivo: string }) {
           Cuenta suspendida
         </h1>
         <p style={{ margin: "10px 0 22px", fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
-          {motivo}
+          {motivo || "El servicio de este supermercado está suspendido. El dueño ve el motivo y cómo ponerse al día."}
         </p>
 
+        {duena && (
+          <button
+            type="button"
+            onClick={() => setVerSuscripcion(true)}
+            style={{ ...botonSecundario, width: "100%", height: 38, marginBottom: 8 }}
+          >
+            Ver suscripción
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => void revisar()}
+          disabled={revisando}
+          style={{ ...botonSecundario, width: "100%", height: 38, marginBottom: 8, opacity: revisando ? 0.6 : 1 }}
+        >
+          {revisando ? "Consultando…" : "Reintentar"}
+        </button>
         <button
           onClick={logout}
           style={{
@@ -54,7 +105,19 @@ export default function BloqueoCuenta({ motivo }: { motivo: string }) {
         >
           Cerrar sesión
         </button>
+        <p style={{ margin: "12px 0 0", fontSize: 11, color: "var(--ink-3)", lineHeight: 1.5 }}>
+          {error ?? "Cuando RECABRA reactive la cuenta, esta pantalla se levanta sola: se vuelve a consultar cada pocos minutos."}
+        </p>
       </div>
     </div>
   );
 }
+
+const botonSecundario = {
+  display: "flex", alignItems: "center", justifyContent: "center",
+  height: 30, padding: "0 12px",
+  borderRadius: "var(--r-md)",
+  background: "var(--surface)", color: "var(--ink-2)",
+  border: "1px solid var(--line)", cursor: "pointer",
+  fontSize: 12.5, fontWeight: 600, fontFamily: "inherit",
+} as const;

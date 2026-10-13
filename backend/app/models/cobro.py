@@ -1,6 +1,6 @@
-"""Cobro de la suscripción (C1): lo que RECABRA le cobra a cada supermercado.
+"""Cobro de la suscripción (C1 y C2): lo que RECABRA le cobra a cada supermercado.
 
-Cuatro tablas NUEVAS del registro (la base por defecto) — ``create_all()`` las
+Cinco tablas NUEVAS del registro (la base por defecto) — ``create_all()`` las
 crea sin migración, igual que ``estados_cliente``. Ninguna columna se agrega a
 una tabla que ya existía: la regla dura de siempre. Se leen y escriben SOLO con
 ``clientes.sesion_registro()`` y están clasificadas en ``TABLAS_DEL_REGISTRO``
@@ -44,6 +44,10 @@ UNIDADES_COBRO = ("supermercado_mes", "sede_mes")
 ESTADOS_FACTURA = ("borrador", "emitida", "pagada", "anulada")
 MEDIOS_PAGO = ("transferencia", "otro")
 ESTADOS_PAGO = ("aprobado", "anulado")
+# Los correos de la escalera (C2), en el orden en que llegan. `pago_recibido`
+# va aparte: no es un escalón, es la constancia de que se pagó.
+HITOS_DE_ATRASO = ("por_vencer", "vencida", "mas_7", "aviso_solo_lectura", "solo_lectura")
+HITO_PAGO_RECIBIDO = "pago_recibido"
 
 
 def _ahora() -> datetime:
@@ -224,3 +228,32 @@ class CambioEstadoCuenta(Base):
     motivo = Column(String, nullable=False)
     actor = Column(String, nullable=False)
     en = Column(DateTime(timezone=True), nullable=False, default=_ahora, index=True)
+
+
+class AvisoCobro(Base):
+    """Que un correo de cobranza no salga dos veces (C2).
+
+    Una fila por (factura, hito): el UNIQUE es lo que impide el duplicado, aun
+    con dos pasadas a la vez (la del arranque y la que dispara un pago). La fila
+    se escribe ANTES de mandar —es la reserva— y se borra si el envío falla, así
+    que un correo caído se reintenta en la pasada siguiente y uno que salió no
+    se repite nunca. Con el servicio dormido, la pasada que despierta se pone al
+    día mandando sólo el hito que corresponde hoy, no todos los atrasados.
+
+    ``destinatarios_n`` es un CONTEO: los correos no se guardan acá (salen de
+    las membresías de dueña y del correo de facturación en el momento de
+    mandar). Cuelga de la factura, que cuelga de la suscripción: al borrar el
+    cliente se conserva con ella, como constancia de que se avisó.
+    """
+
+    __tablename__ = "avisos_cobro"
+    __table_args__ = (
+        UniqueConstraint("factura_id", "hito", name="uq_aviso_cobro_factura_hito"),
+        {"sqlite_autoincrement": True},
+    )
+
+    id = Column(Integer, primary_key=True)
+    factura_id = Column(Integer, nullable=False, index=True)  # sin FK, como el pago
+    hito = Column(String, nullable=False)  # HITOS_DE_ATRASO | pago_recibido
+    enviado_en = Column(DateTime(timezone=True), nullable=False, default=_ahora)
+    destinatarios_n = Column(Integer, nullable=False, default=0)

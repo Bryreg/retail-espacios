@@ -19,8 +19,15 @@
        solo es LEVANTARLO, y sólo si ella marca la casilla al registrar el
        pago; ese cambio lo firma `sistema:cobranza`.
      · **«Correspondería»** es el estado que le tocaría al cliente por sus
-       facturas (sólo lectura a los N días de vencida, nunca suspendido). Hoy
-       sólo se muestra, al lado del real, para que la diferencia se vea.
+       facturas (sólo lectura a los N días de vencida, nunca suspendido), al
+       lado del real, para que la diferencia se vea. Desde C2 la escalera lo
+       APLICA sola a las suscripciones automáticas —si el interruptor
+       `COBRANZA_AUTOMATICA` del servidor está prendido; si no, sólo lo
+       ensaya— y nunca encima de un estado que puso una persona. La fila dice
+       cuál de las tres cosas pasa con cada diferencia.
+     · **«Correr cobranza (ensayo)»** muestra qué haría la escalera hoy, o el
+       día que se elija: a quién movería y qué avisos mandaría. Desde acá es
+       siempre un ensayo: no escribe ni manda nada.
 
    Plata y facturas son de la operadora: esta pantalla vive detrás de
    `/plataforma`, y el backend contesta 403 a cualquier otra cuenta.
@@ -35,6 +42,7 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { describeError } from "../../api/client";
 import {
   anularFactura,
+  correrCobranza,
   emitirFactura,
   getCobros,
   guardarSuscripcion,
@@ -47,6 +55,7 @@ import {
   type MedioPago,
   type ModoCobro,
   type PagoRegistrado,
+  type PlanCobranza,
   type SuscripcionPayload,
   type UnidadCobro,
 } from "../../api/plataforma";
@@ -69,6 +78,16 @@ const RAZON_TXT: Record<string, string> = {
   no_mejora: "con lo que debe, no le corresponde un estado mejor que el que tiene",
   sin_cambio: "ya estaba en el estado que corresponde",
   lo_puso_una_persona: "el estado lo puso una persona",
+};
+
+/** Los avisos de la escalera, dichos para la operadora. */
+const HITO_TXT: Record<string, string> = {
+  por_vencer: "recordatorio de vencimiento",
+  vencida: "aviso de vencida",
+  mas_7: "aviso de más de 7 días",
+  aviso_solo_lectura: "aviso formal de sólo lectura",
+  solo_lectura: "aviso de sólo lectura",
+  pago_recibido: "constancia de pago",
 };
 
 /** `"2026-10-13"` → `"2026-10"`: el período por defecto de una cuenta nueva. */
@@ -729,6 +748,91 @@ function FacturasDe({
   );
 }
 
+/** Qué pasa con la diferencia entre el estado real y el que correspondería.
+ *  La escalera nunca suspende y nunca toca un estado que no es «activo» y que
+ *  puso una persona (el `cambiado_por` que no empieza con `sistema:`). */
+function comoSeAplica(c: ClienteCartera, prendida: boolean): string {
+  if (c.suscripcion?.modo !== "automatico") return " (manual: no se aplica solo)";
+  if (!c.activo) return " (archivado: la escalera no lo mira)";
+  const deUnaPersona = !!c.cambiado_por && !c.cambiado_por.startsWith("sistema:") && c.estado !== "activo";
+  if (deUnaPersona) return " (lo puso una persona: la escalera no lo toca)";
+  return prendida ? " (automático: lo aplica la próxima pasada)" : " (automático, en ensayo: no se aplica)";
+}
+
+// ─── La escalera, en ensayo ────────────────────────────────────────────────
+
+/** «Correr cobranza (ensayo)»: lo que haría la escalera hoy, o el día que se
+ *  elija. Desde la consola es SIEMPRE un ensayo —aplicarla es cosa del
+ *  interruptor del servidor—, así que el botón no escribe ni manda nada. */
+function EnsayoCobranza({ hoy, prendida }: { hoy: string; prendida: boolean }) {
+  const [fecha, setFecha] = useState("");
+  const [plan, setPlan] = useState<PlanCobranza | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const correr = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      setPlan(await correrCobranza(fecha || null));
+    } catch (err) {
+      setError(describeError(err, "No se pudo ensayar la cobranza."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="plat-editor" style={{ marginBottom: "var(--s3)" }}>
+      <p className="plat-nota" style={{ margin: "0 0 var(--s2)" }}>
+        {prendida
+          ? "La escalera automática está PRENDIDA: cada 12 horas pasa a gracia y a sólo lectura las suscripciones automáticas con cuentas de cobro vencidas, y manda los avisos."
+          : "La escalera automática está apagada (COBRANZA_AUTOMATICA): cada 12 horas sólo ensaya y deja en el log lo que haría."}{" "}
+        Sólo toca suscripciones automáticas, nunca suspende y nunca cambia un estado que puso una persona.
+      </p>
+      <div className="linea">
+        <label className="campo corto">
+          <span>Para el día</span>
+          <input type="date" value={fecha} min={hoy} onChange={(e) => setFecha(e.target.value)} />
+        </label>
+        <button type="button" className="plat-btn mini" onClick={correr} disabled={busy}>
+          {busy ? "Ensayando…" : "Correr cobranza (ensayo)"}
+        </button>
+        {error && <span className="error">{error}</span>}
+      </div>
+      {plan && (
+        <div className="plat-nota" role="status">
+          <div>
+            {plan.clientes.length === 0
+              ? `El ${fechaCorta(plan.hoy)} no hay suscripciones automáticas que mirar.`
+              : `El ${fechaCorta(plan.hoy)}, la escalera haría esto:`}
+          </div>
+          {plan.clientes.map((c) => (
+            <div key={c.slug}>
+              <b>{c.nombre}</b>:{" "}
+              {c.movido
+                ? `pasaría de ${ESTADO_CUENTA_TXT[c.de] ?? c.de} a ${ESTADO_CUENTA_TXT[c.a] ?? c.a}`
+                : c.razon === "lo_puso_una_persona"
+                  ? `queda en ${ESTADO_CUENTA_TXT[c.a] ?? c.a}: lo puso una persona`
+                  : `sigue en ${ESTADO_CUENTA_TXT[c.a] ?? c.a}`}
+              {c.correos.length > 0 &&
+                " · " +
+                  c.correos
+                    .map((m) =>
+                      m.destinatarios > 0
+                        ? `${HITO_TXT[m.hito] ?? m.hito} de ${m.factura ?? "la cuenta de cobro"} (${plural(m.destinatarios, "destinatario", "destinatarios")})`
+                        : `${HITO_TXT[m.hito] ?? m.hito} de ${m.factura ?? "la cuenta de cobro"}: no hay a quién mandarlo`
+                    )
+                    .join(" · ")}
+            </div>
+          ))}
+          {plan.errores.length > 0 && <div className="error">Con error: {plan.errores.join(", ")}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── La cartera ────────────────────────────────────────────────────────────
 
 type Abierto = { slug: string; que: "suscripcion" | "factura" | "facturas" };
@@ -779,6 +883,7 @@ export function TablaCobros({
 
   return (
     <>
+      <EnsayoCobranza hoy={cartera.hoy} prendida={cartera.cobranza_automatica} />
       {aviso && (
         <p className="plat-nota" role="status">
           {aviso}
@@ -845,7 +950,7 @@ export function TablaCobros({
                       {difiere && c.estado_correspondiente && (
                         <div className="mut">
                           correspondería: {ESTADO_CUENTA_TXT[c.estado_correspondiente] ?? c.estado_correspondiente}
-                          {s?.modo === "manual" ? " (manual: no se aplica solo)" : ""}
+                          {comoSeAplica(c, cartera.cobranza_automatica)}
                         </div>
                       )}
                       {c.cambiado_por && <div className="mut cod">{c.cambiado_por}</div>}

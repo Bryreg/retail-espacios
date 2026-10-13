@@ -190,10 +190,12 @@ export default function App() {
     );
   }
 
-  // Fase 2 clientes: cliente `suspendido` — sólo un owner llega hasta acá con
-  // este aviso puesto (worker/admin reciben 402 en el login y nunca guardan
-  // sesión). Reemplaza TODA la app: nada de navegación de negocio hasta que
-  // un operador reactive el cliente.
+  // Fase 2 clientes: cliente `suspendido`. Al LOGIN sólo llega la dueña con
+  // este aviso (su gente recibe 402 y no guarda sesión), pero una suspensión a
+  // mitad de sesión la marca el interceptor para cualquier rol. Reemplaza TODA
+  // la app: nada de navegación de negocio hasta que un operador reactive el
+  // cliente — y `BloqueoCuenta` se entera solo cuando pasa (C2: consulta el
+  // estado en vivo), sin que nadie vuelva a entrar.
   if (avisoCuenta?.estado === "suspendido") {
     return <BloqueoCuenta motivo={avisoCuenta.motivo} />;
   }

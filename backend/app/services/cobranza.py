@@ -274,6 +274,7 @@ def mover_estado(
     mejorar_sobre_una_persona: bool = False,
     de_la_suscripcion: int | None = None,
     hoy: date | None = None,
+    ensayo: bool = False,
 ) -> dict:
     """El único camino que cambia ``estados_cliente``.
 
@@ -302,6 +303,12 @@ def mover_estado(
     qué no se movió: ``exento`` · ``otra_suscripcion`` · ``no_mejora`` ·
     ``sin_cambio`` · ``lo_puso_una_persona``). Levanta ``DatoInvalido`` (estado
     o motivo) y ``NoEncontrado`` (el cliente no existe).
+
+    Con ``ensayo`` (la escalera de C2 con ``COBRANZA_AUTOMATICA`` apagado, y
+    «Correr cobranza (ensayo)» de la consola) decide EXACTAMENTE igual —el
+    mismo cálculo, las mismas reglas, en la misma transacción— y no escribe
+    nada: devuelve lo que habría quedado, con ``ensayo: True``. Que el ensayo y
+    lo real pasen por el mismo código es lo que hace que el ensayo valga.
     """
     from app.clientes import sesion_registro
     from app.models.cobro import CambioEstadoCuenta, FacturaCobro, Suscripcion
@@ -322,54 +329,75 @@ def mover_estado(
     slug = (slug or "").strip().lower()
     dia = hoy or hoy_en_colombia()
 
-    reg = sesion_registro()
-    try:
-        if reg.query(ClienteRow.slug).filter(ClienteRow.slug == slug).first() is None:
-            raise NoEncontrado(CLIENTE_DESCONOCIDO)
-        sus = (
-            reg.query(Suscripcion).filter(Suscripcion.cliente_slug == slug)
-            .with_for_update().first()
-        )
-        fila = (
-            reg.query(EstadoCliente).filter(EstadoCliente.slug == slug)
-            .with_for_update().first()
-        )
-        antes = fila.estado if fila is not None else "activo"
+    # Dos intentos: si la cuenta no tenía fila de estado y otro camino la crea
+    # en el mismo instante (la pasada de la escalera y la que dispara un pago),
+    # `FOR UPDATE` no tiene qué bloquear —tampoco en Postgres— y el segundo
+    # INSERT choca con la llave. Se vuelve a leer y se decide de nuevo, sobre
+    # la fila que dejó el otro.
+    for intento in (1, 2):
+        reg = sesion_registro()
+        try:
+            if reg.query(ClienteRow.slug).filter(ClienteRow.slug == slug).first() is None:
+                raise NoEncontrado(CLIENTE_DESCONOCIDO)
+            sus = (
+                reg.query(Suscripcion).filter(Suscripcion.cliente_slug == slug)
+                .with_for_update().first()
+            )
+            fila = (
+                reg.query(EstadoCliente).filter(EstadoCliente.slug == slug)
+                .with_for_update().first()
+            )
+            antes = fila.estado if fila is not None else "activo"
 
-        if calcular:
-            if sus is None:
-                return _fila_estado(slug, fila, movido=False, de=antes, razon="exento")
-            if de_la_suscripcion is not None and sus.id != de_la_suscripcion:
-                return _fila_estado(slug, fila, movido=False, de=antes, razon="otra_suscripcion")
-            facturas = reg.query(FacturaCobro).filter(FacturaCobro.suscripcion_id == sus.id).all()
-            estado = estado_objetivo(sus, facturas, dia)
-            motivo = (motivo or "").strip() or motivo_del_sistema(estado, facturas, dia)
+            nuevo, texto = estado, motivo
+            if calcular:
+                if sus is None:
+                    return _fila_estado(slug, fila, movido=False, de=antes, razon="exento")
+                if de_la_suscripcion is not None and sus.id != de_la_suscripcion:
+                    return _fila_estado(slug, fila, movido=False, de=antes, razon="otra_suscripcion")
+                facturas = reg.query(FacturaCobro).filter(FacturaCobro.suscripcion_id == sus.id).all()
+                nuevo = estado_objetivo(sus, facturas, dia)
+                texto = (motivo or "").strip() or motivo_del_sistema(nuevo, facturas, dia)
 
-        razon = _por_que_no_se_mueve(
-            antes, estado, fila, actor,
-            solo_mejorar=solo_mejorar, mejorar_sobre_una_persona=mejorar_sobre_una_persona,
-        )
-        if razon is not None:
-            return _fila_estado(slug, fila, movido=False, de=antes, razon=razon)
+            razon = _por_que_no_se_mueve(
+                antes, nuevo, fila, actor,
+                solo_mejorar=solo_mejorar, mejorar_sobre_una_persona=mejorar_sobre_una_persona,
+            )
+            if razon is not None:
+                return _fila_estado(slug, fila, movido=False, de=antes, razon=razon)
+            if ensayo:
+                reg.rollback()  # suelta el FOR UPDATE: no se escribió nada
+                return {
+                    "slug": slug, "estado": nuevo, "motivo": texto,
+                    "cambiado_en": None, "cambiado_por": actor,
+                    "movido": True, "de": antes, "razon": None, "ensayo": True,
+                }
 
-        ahora = datetime.now(timezone.utc)
-        if fila is None:
-            fila = EstadoCliente(slug=slug, estado=estado, motivo=motivo, cambiado_en=ahora, cambiado_por=actor)
-            reg.add(fila)
-        else:
-            fila.estado = estado
-            fila.motivo = motivo
-            fila.cambiado_en = ahora
-            fila.cambiado_por = actor
-        reg.add(CambioEstadoCuenta(
-            cliente_slug=slug,
-            suscripcion_id=sus.id if sus is not None else None,
-            de=antes, a=estado, motivo=motivo, actor=actor, en=ahora,
-        ))
-        reg.commit()
-        resultado = _fila_estado(slug, fila, movido=True, de=antes, razon=None)
-    finally:
-        reg.close()
+            ahora = datetime.now(timezone.utc)
+            if fila is None:
+                fila = EstadoCliente(slug=slug, estado=nuevo, motivo=texto, cambiado_en=ahora, cambiado_por=actor)
+                reg.add(fila)
+            else:
+                fila.estado = nuevo
+                fila.motivo = texto
+                fila.cambiado_en = ahora
+                fila.cambiado_por = actor
+            reg.add(CambioEstadoCuenta(
+                cliente_slug=slug,
+                suscripcion_id=sus.id if sus is not None else None,
+                de=antes, a=nuevo, motivo=texto, actor=actor, en=ahora,
+            ))
+            try:
+                reg.commit()
+            except IntegrityError:
+                reg.rollback()
+                if intento == 2:
+                    raise
+                continue
+            resultado = _fila_estado(slug, fila, movido=True, de=antes, razon=None)
+            break
+        finally:
+            reg.close()
 
     _olvidar_caches(slug)
     return resultado
@@ -414,6 +442,21 @@ def _entero(valor, minimo: int, maximo: int, nombre: str) -> int:
     if not (minimo <= n <= maximo):
         raise DatoInvalido(f"{nombre} va de {_miles(minimo)} a {_miles(maximo)}.")
     return n
+
+
+def _datos_de_facturacion(datos: dict) -> dict:
+    """Razón social, NIT, correo de facturación y municipio, limpios. Los
+    valida igual la operadora (la suscripción entera) que la dueña del
+    supermercado (sólo esto, desde Configuración → Suscripción)."""
+    correo = _texto(datos.get("correo_facturacion"), 254, "El correo de facturación")
+    if correo is not None and (" " in correo or not re.fullmatch(r"[^@]+@[^@]+\.[^@]+", correo)):
+        raise DatoInvalido("El correo de facturación no parece un correo.")
+    return {
+        "razon_social": _texto(datos.get("razon_social"), 200, "La razón social"),
+        "nit": _texto(datos.get("nit"), 40, "El NIT"),
+        "correo_facturacion": correo,
+        "municipio": _texto(datos.get("municipio"), 100, "El municipio"),
+    }
 
 
 def _porcentaje(valor, nombre: str) -> float:
@@ -572,7 +615,11 @@ def cartera(hoy: date | None = None) -> dict:
             filas.append(fila)
     finally:
         reg.close()
-    return {"hoy": dia, "clientes": filas}
+    from app.services.cobranza_automatica import automatica_prendida
+
+    # Si la escalera aplica lo que «correspondería» o sólo lo ensaya: la consola
+    # lo dice al lado de cada diferencia, para que no se lea como una promesa.
+    return {"hoy": dia, "cobranza_automatica": automatica_prendida(), "clientes": filas}
 
 
 def guardar_suscripcion(slug: str, datos: dict, actor: str) -> dict:
@@ -593,9 +640,7 @@ def guardar_suscripcion(slug: str, datos: dict, actor: str) -> dict:
     unidad = (datos.get("unidad") or "supermercado_mes").strip().lower()
     if unidad not in UNIDADES_COBRO:
         raise DatoInvalido(f"Unidad inválida: debe ser una de {', '.join(UNIDADES_COBRO)}.")
-    correo = _texto(datos.get("correo_facturacion"), 254, "El correo de facturación")
-    if correo is not None and (" " in correo or not re.fullmatch(r"[^@]+@[^@]+\.[^@]+", correo)):
-        raise DatoInvalido("El correo de facturación no parece un correo.")
+    facturacion = _datos_de_facturacion(datos)
     limpio = {
         "modo": modo,
         "valor_cop": _entero(datos.get("valor_cop"), 1, 1_000_000_000, "El valor pactado"),
@@ -606,10 +651,7 @@ def guardar_suscripcion(slug: str, datos: dict, actor: str) -> dict:
         "dia_solo_lectura": _entero(datos.get("dia_solo_lectura", 30), 1, 365, "El día de sólo lectura"),
         "prorroga_hasta": datos.get("prorroga_hasta"),
         "contrato_ref": _texto(datos.get("contrato_ref"), 200, "La referencia del contrato"),
-        "razon_social": _texto(datos.get("razon_social"), 200, "La razón social"),
-        "nit": _texto(datos.get("nit"), 40, "El NIT"),
-        "correo_facturacion": correo,
-        "municipio": _texto(datos.get("municipio"), 100, "El municipio"),
+        **facturacion,
         "retefuente_pct": _porcentaje(datos.get("retefuente_pct"), "La retefuente"),
         "reteica_pct": _porcentaje(datos.get("reteica_pct"), "La reteICA"),
         "reteiva_pct": _porcentaje(datos.get("reteiva_pct"), "La reteIVA"),
@@ -912,3 +954,176 @@ def olvidar_cliente(reg, slug: str) -> None:
         CambioEstadoCuenta.cliente_slug == slug,
         CambioEstadoCuenta.suscripcion_id.is_(None),
     ).delete(synchronize_session=False)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Lo que ve la dueña del supermercado (C2)
+# ════════════════════════════════════════════════════════════════════════════
+#
+# Su sección «Suscripción» de Configuración, y lo que BloqueoCuenta le muestra
+# tras un clic cuando la cuenta está suspendida. Sólo la dueña: el router lo
+# pide con `require_owner` (la membresía `owner`, no el rol del token). Su gente
+# (admin no dueña, worker, mercaderista) no ve un monto jamás.
+#
+# Es lo mismo que la cartera de la consola, recortado a UN cliente y sin lo que
+# es de RECABRA: ni quién de RECABRA registró qué (correos de la operadora), ni
+# las notas de anulación o de disputa, ni la referencia del contrato.
+
+#: Cuántas cuentas de cobro, pagos y cambios de estado ve la dueña: un año.
+HISTORIAL_DE_LA_DUENA = 12
+
+
+def _quien_para_la_duena(actor: str | None) -> str:
+    """El actor de un cambio de estado, dicho para la dueña del supermercado:
+    el correo de la operadora no es suyo."""
+    return "automático" if es_del_sistema(actor) else "RECABRA"
+
+
+def _factura_para_la_duena(f, pagos, hoy: date) -> dict:
+    completo = _factura_dict(f, pagos, hoy)
+    return {
+        clave: completo[clave]
+        for clave in (
+            "id", "numero", "periodo", "emitida_el", "vence_el", "subtotal_cop", "iva_cop",
+            "total_cop", "retenciones_estimadas_cop", "neto_esperado_cop", "estado", "en_disputa",
+            "pagada_el", "abonado_cop", "saldo_cop", "vencida", "dias_atraso",
+        )
+    } | {"electronica": bool(f.cufe)}
+
+
+def mi_suscripcion(slug: str, *, hoy: date | None = None) -> dict:
+    """Todo lo que la dueña de ``slug`` necesita para saber qué debe y pagarlo.
+
+    · ``estado``: el de su cuenta, con el motivo (es la dueña: le corresponde).
+    · ``suscripcion``: lo pactado y sus datos de facturación (``None`` si el
+      cliente no tiene suscripción: está exento, no hay nada que pagar).
+    · ``proxima_factura``: la impaga que vence primero, con total, retenciones
+      estimadas y neto; y, si su cobro es automático, desde qué día la cuenta
+      pasaría a sólo lectura si sigue impaga.
+    · ``facturas``, ``pagos`` y ``cambios``: el último año.
+    · ``instrucciones_transferencia``: el texto de
+      ``COBRO_INSTRUCCIONES_TRANSFERENCIA`` (los datos bancarios viven en el
+      entorno, nunca en el repo), o ``None`` si no está configurado.
+    """
+    from sqlalchemy import or_
+
+    from app.clientes import sesion_registro
+    from app.models.cobro import CambioEstadoCuenta, FacturaCobro, PagoCobro, Suscripcion
+    from app.models.plataforma import EstadoCliente
+    from app.services.cobranza_automatica import fecha_de_solo_lectura, instrucciones_de_transferencia
+
+    dia = hoy or hoy_en_colombia()
+    slug = (slug or "").strip().lower()
+    reg = sesion_registro()
+    try:
+        fila = reg.query(EstadoCliente).filter(EstadoCliente.slug == slug).first()
+        sus = reg.query(Suscripcion).filter(Suscripcion.cliente_slug == slug).first()
+        facturas, pagos_por_factura = [], {}
+        if sus is not None:
+            facturas = reg.query(FacturaCobro).filter(FacturaCobro.suscripcion_id == sus.id).all()
+            pagos_por_factura = {f.id: [] for f in facturas}
+            if facturas:
+                for p in reg.query(PagoCobro).filter(PagoCobro.factura_id.in_(list(pagos_por_factura))).all():
+                    pagos_por_factura[p.factura_id].append(p)
+        # Su historia: la de esta suscripción, más los cambios de antes de que
+        # tuviera una (esos cuelgan del slug). Los de una suscripción ajena —la
+        # de un cliente borrado que tenía este mismo slug— no son suyos.
+        condicion = CambioEstadoCuenta.suscripcion_id.is_(None) & (CambioEstadoCuenta.cliente_slug == slug)
+        if sus is not None:
+            condicion = or_(condicion, CambioEstadoCuenta.suscripcion_id == sus.id)
+        cambios = (
+            reg.query(CambioEstadoCuenta).filter(condicion)
+            .order_by(CambioEstadoCuenta.en.desc(), CambioEstadoCuenta.id.desc())
+            .limit(HISTORIAL_DE_LA_DUENA * 2).all()
+        )
+
+        estado = {
+            "estado": fila.estado if fila is not None else "activo",
+            "motivo": fila.motivo if fila is not None and fila.estado != "activo" else None,
+            "cambiado_en": fila.cambiado_en if fila is not None else None,
+        }
+        cuerpo = {
+            "hoy": dia,
+            "estado": estado,
+            "suscripcion": None,
+            "proxima_factura": None,
+            "facturas": [],
+            "pagos": [],
+            "cambios": [
+                {"en": c.en, "de": c.de, "a": c.a, "motivo": c.motivo, "por": _quien_para_la_duena(c.actor)}
+                for c in cambios
+            ],
+            "instrucciones_transferencia": instrucciones_de_transferencia(),
+        }
+        if sus is None:
+            return cuerpo
+
+        cuerpo["suscripcion"] = {
+            clave: getattr(sus, clave)
+            for clave in (
+                "modo", "valor_cop", "unidad", "cantidad", "periodicidad_meses", "plazo_pago_dias",
+                "dia_solo_lectura", "prorroga_hasta", "razon_social", "nit", "correo_facturacion",
+                "municipio", "retefuente_pct", "reteica_pct", "reteiva_pct",
+            )
+        }
+        recientes = sorted(facturas, key=lambda f: (f.emitida_el or f.vence_el, f.id), reverse=True)
+        cuerpo["facturas"] = [
+            _factura_para_la_duena(f, pagos_por_factura[f.id], dia) for f in recientes[:HISTORIAL_DE_LA_DUENA]
+        ]
+        impagas = sorted((f for f in facturas if f.estado == "emitida"), key=lambda f: (f.vence_el, f.id))
+        if impagas:
+            proxima = _factura_para_la_duena(impagas[0], pagos_por_factura[impagas[0].id], dia)
+            proxima["solo_lectura_desde"] = (
+                fecha_de_solo_lectura(sus, impagas[0])
+                if sus.modo == "automatico" and not impagas[0].en_disputa else None
+            )
+            cuerpo["proxima_factura"] = proxima
+        numeros = {f.id: f.numero for f in facturas}
+        pagos = sorted(
+            (p for lista in pagos_por_factura.values() for p in lista if p.estado == "aprobado"),
+            key=lambda p: (p.recibido_el, p.id), reverse=True,
+        )
+        cuerpo["pagos"] = [
+            {
+                "recibido_el": p.recibido_el,
+                "factura_numero": numeros.get(p.factura_id),
+                "valor_recibido_cop": p.valor_recibido_cop,
+                "retenciones_cop": (p.retefuente_cop or 0) + (p.reteica_cop or 0) + (p.reteiva_cop or 0),
+                "certificado_recibido": bool(p.certificado_recibido),
+                "ref_externa": p.ref_externa,
+            }
+            for p in pagos[: HISTORIAL_DE_LA_DUENA * 2]
+        ]
+        return cuerpo
+    finally:
+        reg.close()
+
+
+def actualizar_facturacion(slug: str, datos: dict, actor: str) -> dict:
+    """La dueña corrige sus datos de facturación: razón social, NIT, correo de
+    facturación y municipio. Nada más de la suscripción —el precio, el plazo y
+    la escalera son lo pactado con RECABRA—, y valen para las cuentas de cobro
+    que se emitan desde ahora: las ya emitidas guardan la copia de su día.
+
+    Sin suscripción no hay datos que guardar (409)."""
+    from app.clientes import sesion_registro
+    from app.models.cobro import Suscripcion
+
+    limpio = _datos_de_facturacion(datos)
+    slug = (slug or "").strip().lower()
+    reg = sesion_registro()
+    try:
+        sus = reg.query(Suscripcion).filter(Suscripcion.cliente_slug == slug).with_for_update().first()
+        if sus is None:
+            raise Conflicto(
+                "Este supermercado no tiene una suscripción registrada en RECABRA: "
+                "no hay datos de facturación que guardar."
+            )
+        for campo, valor in limpio.items():
+            setattr(sus, campo, valor)
+        sus.actualizado_por = actor
+        sus.actualizado_en = datetime.now(timezone.utc)
+        reg.commit()
+        return dict(limpio)
+    finally:
+        reg.close()

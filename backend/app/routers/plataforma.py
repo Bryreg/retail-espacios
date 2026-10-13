@@ -52,7 +52,7 @@ ningún chequeo especial para el legado.
 import logging
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.auth import require_auth
@@ -254,6 +254,48 @@ def cartera_de_cobros(email: str = Depends(require_operador)):
     cuerpo = cartera()
     _anotar_consulta(email, "cobros", periodo_actual())
     return cuerpo
+
+
+@router.post("/cobranza/correr")
+def correr_cobranza(
+    ensayo: bool = True,
+    fecha: date | None = None,
+    email: str = Depends(require_operador),
+):
+    """«Correr cobranza»: la escalera de C2 ahora mismo, y lo que hizo —o, en
+    ensayo, lo que haría—: a quién movería de estado y qué correos mandaría
+    (hito y cuántos destinatarios, sin los correos).
+
+    **Ensayo por defecto** (``?ensayo=1``): calcula con el mismo código que lo
+    real y no escribe ni manda nada. ``?fecha=2026-11-15`` ensaya ese día
+    («¿qué pasa el 15 de noviembre?»). Aplicar (``?ensayo=0``) exige el
+    interruptor ``COBRANZA_AUTOMATICA`` prendido —es el único que decide si la
+    escalera corta, también desde acá— y la fecha de hoy (409 y 422).
+
+    Lee sólo el registro. **Deja línea en la bitácora** (``accion="cobranza"``):
+    barre a todos los clientes con suscripción automática, como ``/cobros``.
+    """
+    from app.plataforma_metricas import periodo_actual
+    from app.services import cobranza_automatica
+
+    if not ensayo and not cobranza_automatica.automatica_prendida():
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"La cobranza automática está apagada ({cobranza_automatica.INTERRUPTOR}): "
+                "desde acá sólo se puede ensayar."
+            ),
+        )
+    if not ensayo and fecha is not None:
+        raise HTTPException(status_code=422, detail="Con otra fecha sólo se puede ensayar.")
+    try:
+        plan = cobranza_automatica.correr(hoy=fecha, ensayo=ensayo)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    if not ensayo:
+        log.warning("%s", plan.resumen())
+    _anotar_consulta(email, cobranza_automatica.ACCION_BITACORA, periodo_actual())
+    return plan.como_dict()
 
 
 class PatchEstadoIn(BaseModel):
@@ -826,17 +868,51 @@ def emitir_factura(slug: str, payload: FacturaIn, email: str = Depends(require_o
 
 
 @router.post("/facturas/{factura_id}/pagos")
-def registrar_pago(factura_id: int, payload: PagoIn, email: str = Depends(require_operador)):
+def registrar_pago(
+    factura_id: int,
+    payload: PagoIn,
+    tareas: BackgroundTasks,
+    email: str = Depends(require_operador),
+):
     """Un pago manual contra una cuenta de cobro, con sus retenciones y la
     referencia del banco. Con ``levantar_estado``, si el cliente queda al día,
-    su estado de cuenta vuelve a lo que corresponde."""
+    su estado de cuenta vuelve a lo que corresponde.
+
+    Y si la suscripción es automática y la escalera está prendida (C2), corre
+    la escalera de ESE cliente apenas sale la respuesta: lo que puso el sistema
+    vuelve a activo sin esperar la pasada de las 12 horas, y sale la constancia
+    del pago por correo. En segundo plano, porque un correo puede tardar."""
     from app.plataforma_metricas import periodo_actual
     from app.services import cobranza
 
     cuerpo = _cobranza(lambda: cobranza.registrar_pago(factura_id, payload.model_dump(), email))
     slug = _slug_de_la_factura(factura_id)
     _anotar_consulta(email, "pago_manual", f"{slug}:{periodo_actual()}")
+    tareas.add_task(_escalera_tras_un_pago, cuerpo["factura"]["id"])
     return cuerpo
+
+
+def _escalera_tras_un_pago(factura_id: int) -> None:
+    """La escalera de la suscripción de esa factura, sólo si está prendida. No
+    propaga: la respuesta ya salió, y la pasada de las 12 horas lo retoma."""
+    from app.models.cobro import FacturaCobro
+    from app.services import cobranza_automatica
+
+    if not cobranza_automatica.automatica_prendida():
+        return
+    try:
+        reg = sesion_registro()
+        try:
+            fila = reg.query(FacturaCobro.suscripcion_id).filter(FacturaCobro.id == factura_id).first()
+        finally:
+            reg.close()
+        if fila is None:
+            return
+        plan = cobranza_automatica.correr(solo=fila[0])
+        if plan.pasos:
+            log.warning("Tras un pago: %s", plan.resumen())
+    except Exception:  # noqa: BLE001
+        log.exception("La escalera tras el pago de la cuenta de cobro %s falló", factura_id)
 
 
 @router.post("/facturas/{factura_id}/anular")

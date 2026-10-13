@@ -371,15 +371,16 @@ for (const p of AREA_TS) {
 if (escrituras.length === 0) ok("solo lectura: nadie escribe fuera del cajón operativo");
 else mal(`${escrituras.length} escrituras fuera del cajón operativo`, escrituras.join("\n         "));
 
-/* ── 1d · la plata de la plataforma no sale de la consola (C1) ─────────────
-   Lo que RECABRA le cobra a cada supermercado lo ve la operadora y, cuando
-   llegue su pantalla, la dueña de ese supermercado: su gente (admin no dueña,
-   worker, mercaderista) no ve un monto jamás. Hoy la única puerta es la
-   consola, así que ningún archivo fuera de `/plataforma` puede nombrar la
-   API de cobros. Y la casilla que levanta el estado tras un pago es una
-   opción EXPLÍCITA: arranca apagada. */
+/* ── 1d · la plata de la plataforma no sale de la consola (C1, C2) ────────
+   Lo que RECABRA le cobra a cada supermercado lo ve la operadora —acá, con
+   la cartera de TODOS— y la dueña de ESE supermercado, por su propia puerta
+   (`api/suscripcion.ts`, que vigila `probar-suspension.mjs`): su gente
+   (admin no dueña, worker, mercaderista) no ve un monto jamás. Ningún archivo
+   fuera de `/plataforma` puede nombrar la API de cobros de la consola, ni la
+   escalera («Correr cobranza»). Y la casilla que levanta el estado tras un
+   pago es una opción EXPLÍCITA: arranca apagada. */
 {
-  const API_COBROS = /\b(getCobros|guardarSuscripcion|emitirFactura|registrarPago|anularFactura|marcarDisputa|CarteraCobros|FacturaCobro|PagoCobro)\b/;
+  const API_COBROS = /\b(getCobros|guardarSuscripcion|emitirFactura|registrarPago|anularFactura|marcarDisputa|correrCobranza|CarteraCobros|FacturaCobro|PagoCobro|PlanCobranza)\b/;
   const fuera = [];
   const recorrerFront = (rel) => {
     for (const e of readdirSync(join(raiz, rel), { withFileTypes: true })) {

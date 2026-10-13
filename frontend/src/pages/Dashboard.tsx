@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText } from "lucide-react";
 // El editor 3D va en su propio pedazo y se baja al entrar al modo «store»:
@@ -10,6 +10,7 @@ import DashboardView from "./DashboardView";
 import MountView from "./MountView";
 import SyncStatus from "../components/SyncStatus/SyncStatus";
 import AvisoCuentaBanner from "../components/AvisoCuentaBanner";
+import MiSuscripcion from "../components/suscripcion/MiSuscripcion";
 import { soyOperador } from "../api/plataforma";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
 import {
@@ -749,6 +750,34 @@ function CopiaSection() {
   );
 }
 
+/** «Suscripción» (C2): lo que RECABRA le cobra a este supermercado —estado de
+ *  la cuenta, lo pactado, la próxima cuenta de cobro con retenciones y neto,
+ *  cómo transferir, el historial y los datos de facturación—.
+ *
+ *  Sólo la dueña, con el mismo filtro que la copia de seguridad: a un admin
+ *  invitado ni se le muestra, y si una sesión vieja sin rol la ve, el 403 del
+ *  backend lo dice. La plata vive acá y no en la franja de «pago pendiente»,
+ *  que se ve en Vender delante de los proveedores. */
+function SuscripcionSection({ enfocar }: { enfocar: boolean }) {
+  const rolCliente = useAuthStore((s) => s.rolCliente);
+  const ancla = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (enfocar) ancla.current?.scrollIntoView({ block: "start" });
+  }, [enfocar]);
+
+  if (rolCliente && rolCliente !== "owner") return null;
+
+  return (
+    <div ref={ancla} style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }}>
+      <div style={sectionLabelStyle}>Suscripción</div>
+      {/* Las secciones de arriba también cargan solas y la empujan: cuando
+          llegan sus datos, se vuelve a traer a la vista. */}
+      <MiSuscripcion alCargar={() => enfocar && ancla.current?.scrollIntoView({ block: "start" })} />
+    </div>
+  );
+}
+
 /** "Tus datos" (Fase 3, Ley 1581/2012): derechos del titular, propios de esta
  *  fase y en su propio archivo (`api/derechos.ts`) -- no comparten código con
  *  el resto de Configuración a propósito, porque su frontera es distinta: acá
@@ -852,7 +881,15 @@ function TusDatosSection() {
   );
 }
 
-function SettingsModal({ onClose }: { onClose: () => void }) {
+function SettingsModal({
+  onClose,
+  enfocar = null,
+}: {
+  onClose: () => void;
+  /** Abrir directo en una sección: la franja de «pago pendiente» abre acá la
+   *  suscripción. */
+  enfocar?: "suscripcion" | null;
+}) {
   // «Claves de acceso» vivía acá arriba y se fue (2026-10-01): desde la Fase 15
   // se entra sólo con Google o correo, y las claves compartidas por rol ya no
   // abrían nada desde la app — sólo una puerta del backend, que se apagó (ver
@@ -1019,6 +1056,8 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <ContactsSection sedes={sedes} />
+
+        <SuscripcionSection enfocar={enfocar === "suscripcion"} />
 
         <CopiaSection />
 
@@ -1266,6 +1305,7 @@ export default function Dashboard() {
   const mountCode = MOUNT_DEEP_LINK;
   const [viewMode, setViewMode] = useState<ViewMode>(mountCode ? "montaje" : "kpis");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [seccionConfig, setSeccionConfig] = useState<"suscripcion" | null>(null);
   const isAdmin = useAuthStore(selectIsAdmin);
   const role = useAuthStore((s) => s.role);
   const logout = useAuthStore((s) => s.logout);
@@ -1311,14 +1351,22 @@ export default function Dashboard() {
         background: "var(--bg)",
       }}
     >
-      <AvisoCuentaBanner />
+      <AvisoCuentaBanner
+        onVerSuscripcion={() => {
+          setSeccionConfig("suscripcion");
+          setSettingsOpen(true);
+        }}
+      />
 
       <Topbar
         viewMode={effectiveMode}
         setViewMode={setViewMode}
         isAdmin={isAdmin}
         operador={operador}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => {
+          setSeccionConfig(null);
+          setSettingsOpen(true);
+        }}
         onIrPlataforma={() => navigate("/plataforma")}
         onLogout={logout}
       />
@@ -1341,7 +1389,9 @@ export default function Dashboard() {
         )}
       </div>
 
-      {settingsOpen && isAdmin && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && isAdmin && (
+        <SettingsModal enfocar={seccionConfig} onClose={() => setSettingsOpen(false)} />
+      )}
     </div>
   );
 }

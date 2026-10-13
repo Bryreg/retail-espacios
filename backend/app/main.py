@@ -17,6 +17,7 @@ from app.routers import usuarios as usuarios_routes
 from app.routers import alta as alta_routes
 from app.routers import derechos as derechos_routes
 from app.routers import copia as copia_routes
+from app.routers import suscripcion as suscripcion_routes
 from app.routers import plataforma as plataforma_routes
 from app.models.models import Space, SpaceStatus
 from app.services.subidas import LimiteDeCuerpo
@@ -130,6 +131,10 @@ def _run_lease_maintenance():
     La limpieza va DESPUÉS de los vencimientos, sobre la base ya al día (igual
     decide por fechas, no por `is_active`), y con `LIMPIAR_FOTOS_VENCIDAS`
     apagado sólo ensaya: ver `services/fotos_vencidas.py`.
+
+    Después del recorrido, dos tareas de la plataforma, una vez por corrida y
+    cada una con su try: el cierre del mes de la serie de tendencia y la
+    escalera de cobranza (`COBRANZA_AUTOMATICA`, que apagado también ensaya).
     """
     from app.clientes import listar, sesion_de
     from app.routers.spaces import expire_leases
@@ -189,6 +194,25 @@ def _run_lease_maintenance():
         cerrar_mes_anterior()
     except Exception:
         logger.exception("El cierre mensual de la serie de tendencia falló")
+
+    # La escalera de cobranza (C2): sólo las suscripciones en modo automático de
+    # clientes activos —Galerías y todo cliente sin suscripción, nunca—, sólo
+    # hasta sólo lectura —suspender lo decide una persona— y sin pisar un estado
+    # que puso una persona. Como el cierre del mes, es de la PLATAFORMA y no de
+    # cada supermercado: una vez por corrida, sólo sobre el registro, en su
+    # propio try. Con `COBRANZA_AUTOMATICA` apagado —el valor por defecto— sólo
+    # ENSAYA: ni un estado ni un correo. Y deja SIEMPRE una línea WARNING de
+    # resumen, también con «0 cambios»: un INFO no llega al log de Render, y una
+    # línea que faltara se leería como «nada que hacer». Ver
+    # `services/cobranza_automatica.py`.
+    if _stop_mantenimiento.is_set():
+        return
+    from app.services import cobranza_automatica
+    try:
+        plan = cobranza_automatica.correr(parar=_stop_mantenimiento.is_set)
+        logger.warning("%s", plan.resumen())
+    except Exception:
+        logger.exception("La cobranza automática falló")
 
 
 # La vuelta de mantenimiento que está corriendo AHORA en el hilo de fondo, para
@@ -401,6 +425,10 @@ app.include_router(derechos_routes.router,   prefix="/api")
 # La copia de seguridad del dueño (`GET /clientes/mi-copia`). Mismo prefix y
 # mismo `require_owner` que los derechos, también ruta literal.
 app.include_router(copia_routes.router,      prefix="/api")
+# La suscripción vista por la dueña del supermercado (`/clientes/mi-suscripcion`,
+# C2): qué debe y cómo pagarlo. Mismo prefix y mismo `require_owner`, rutas
+# literales; exenta del corte por estado de cuenta en `clientes.py`.
+app.include_router(suscripcion_routes.router, prefix="/api")
 # Alta self-service (funda su cliente y nace owner) y panel del operador de
 # plataforma (estado de cuenta por cliente). Fase 2 -- las tablas nuevas ya
 # quedan registradas en Base.metadata porque `app/plataforma_estado.py` las

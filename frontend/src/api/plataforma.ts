@@ -215,6 +215,10 @@ export interface ClienteCartera {
 
 export interface CarteraCobros {
   hoy: string;
+  /** El interruptor `COBRANZA_AUTOMATICA` (C2): prendido, la escalera aplica
+   *  lo que «correspondería» a las suscripciones automáticas cada 12 horas;
+   *  apagado, sólo lo ensaya. */
+  cobranza_automatica: boolean;
   clientes: ClienteCartera[];
 }
 
@@ -304,6 +308,57 @@ export const anularFactura = (facturaId: number, motivo: string): Promise<Factur
 export const marcarDisputa = (facturaId: number, enDisputa: boolean, motivo: string): Promise<FacturaCobro> =>
   client
     .post<FacturaCobro>(`${rutaFactura(facturaId)}/disputa`, { motivo, en_disputa: enDisputa })
+    .then((r) => r.data);
+
+// ─── La escalera de cobranza (C2) ───────────────────────────────────────────
+//
+// Sólo suscripciones automáticas de clientes activos: activo hasta el día del
+// vencimiento, gracia desde el siguiente, sólo lectura a los `dia_solo_lectura`
+// días; nunca suspendido, y nunca encima de un estado que puso una persona.
+// «Correr cobranza» desde la consola es SIEMPRE un ensayo: calcula con el mismo
+// código que la pasada de las 12 horas y no escribe ni manda nada. Aplicarla
+// es cosa del interruptor del servidor.
+
+export type HitoCobranza =
+  | "por_vencer" | "vencida" | "mas_7" | "aviso_solo_lectura" | "solo_lectura" | "pago_recibido";
+
+export interface CorreoCobranza {
+  factura_id: number;
+  factura: string | null;
+  hito: HitoCobranza;
+  /** Cuántos: los correos no viajan. Dueñas activas + correo de facturación. */
+  destinatarios: number;
+  /** `null` en ensayo; `false` si no salió (o no había a quién). */
+  enviado: boolean | null;
+  nota: string | null;
+}
+
+export interface PasoCobranza {
+  slug: string;
+  nombre: string;
+  de: EstadoCuenta;
+  a: EstadoCuenta;
+  movido: boolean;
+  /** Por qué no se mueve: `sin_cambio`, `lo_puso_una_persona`… */
+  razon: string | null;
+  correos: CorreoCobranza[];
+}
+
+export interface PlanCobranza {
+  hoy: string;
+  ensayo: boolean;
+  interruptor: boolean;
+  clientes: PasoCobranza[];
+  errores: string[];
+  /** La misma línea que deja en el log de Render. */
+  resumen: string;
+}
+
+/** Ensaya la escalera para hoy o para `fecha` (`"YYYY-MM-DD"`): «¿qué pasa el
+ *  15 de noviembre?». No escribe ni manda nada. */
+export const correrCobranza = (fecha: string | null): Promise<PlanCobranza> =>
+  client
+    .post<PlanCobranza>("/plataforma/cobranza/correr", null, { params: fecha ? { ensayo: 1, fecha } : { ensayo: 1 } })
     .then((r) => r.data);
 
 // ─── Métricas del negocio (Fase 4 plataforma) ───────────────────────────────

@@ -600,6 +600,9 @@ def _accesos_del_cliente(reg, slug: str, desde_dt: datetime, hasta_dt: datetime)
       regla es que ninguna acción quede sin rama acá.
     * ``cobros`` (C1) -- la cartera de cobros barre a TODOS los clientes, como
       ``clientes``: alcanza siempre.
+    * ``cobranza`` (C2) -- «Correr cobranza» desde la consola (ensayo o de
+      verdad): recorre a todos los clientes con cobro automático, así que
+      alcanza siempre, como ``cobros``.
     * ``suscripcion``, ``factura``, ``pago_manual``, ``anulacion``, ``disputa``
       (C1) -- lo que la operadora registró de lo que le cobra a ESTE cliente,
       con ``periodo="<slug>:<YYYY-MM>"``. La línea dice qué se hizo, nunca el
@@ -628,7 +631,7 @@ def _accesos_del_cliente(reg, slug: str, desde_dt: datetime, hasta_dt: datetime)
     lineas = []
     for f in filas:
         periodo = f.periodo or ""
-        if f.accion in ("metricas", "adopcion", "clientes", "cobros"):
+        if f.accion in ("metricas", "adopcion", "clientes", "cobros", "cobranza"):
             alcanza = True
         elif f.accion == "tendencia":
             alcanza = periodo.startswith(f"{slug}:") or periodo.startswith(f"{CONSOLIDADO_SLUG}:")
