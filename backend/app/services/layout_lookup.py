@@ -21,6 +21,7 @@ import math
 from sqlalchemy.orm import Session
 
 from app.models.models import LayoutSnapshot
+from app.services import catalogo_muebles
 
 
 #: Los campos que describen un CONTRATO, no un mueble.
@@ -119,8 +120,11 @@ def find_fixture_by_space_code(db: Session, space_code: str) -> dict | None:
 #: viejos seguían aceptando un contrato por API. Mirando el tipo, esos planos
 #: quedan bien sin migrar una sola fila.
 #:
-#: Espeja ``NUNCA_ALQUILABLE`` de ``frontend/src/types/fixtures.ts``.
-NUNCA_ALQUILABLE = frozenset({"columna", "checkout", "servicio_cliente"})
+#: Son los tipos con ``alquilable: "nunca"`` del catálogo de muebles
+#: (``app/catalogo/muebles.json``, ver ``services/catalogo_muebles.py``): el
+#: mismo archivo del que sale ``NUNCA_ALQUILABLE`` de
+#: ``frontend/src/types/fixtures.ts``.
+NUNCA_ALQUILABLE: frozenset[str] = catalogo_muebles.NUNCA_ALQUILABLE
 
 
 def es_comercializable(fixture: dict) -> bool:
@@ -533,14 +537,10 @@ def ambiguedad_de_nombre(db: Session, sede: str, espacio: str) -> Ambiguedad | N
 # arriba del plano cuando toque el enlace.
 
 #: Muebles que sirven de referencia para alguien parado en la tienda. Son los
-#: que cualquiera ubica sin mirar un plano.
-_REFERENCIAS = {
-    "checkout": "las cajas",
-    "nevera_refrescos": "las neveras",
-    "nevera_carnes": "el mostrador de carnes",
-    "nevera_vegetales": "el mural de frutas y verduras",
-    "stand_frutas": "las frutas",
-}
+#: que cualquiera ubica sin mirar un plano. Salen de ``referencia`` en el
+#: catálogo de muebles: las mismas que el minimapa del frontend
+#: (``frontend/src/catalogo/minimapa.ts``) dibuja con etiqueta.
+_REFERENCIAS: dict[str, str] = catalogo_muebles.REFERENCIAS
 
 
 def _huella(fixture: dict) -> tuple[float, float]:

@@ -43,6 +43,7 @@ from app.routers.layout import reference_rates_raw
 from app.services.layout_lookup import (
     Ambiguedad, Colision, PlanoIndexado, es_comercializable, sin_prefijo_de_sede,
 )
+from app.services.catalogo_muebles import tipo_de_tarifa
 from app.services.renumeracion import Rastreador
 from app.schemas.spaces import AvisosContrato
 from app.services.contacts import recipients_for
@@ -173,7 +174,10 @@ def _se_pisan(a_desde: date, a_hasta: date, b_desde: date, b_hasta: date) -> boo
 
 
 def _tipo_de_tarifa(tipo: str) -> str:
-    return "gondola" if tipo in ("gondola_doble", "gondola_mural") else tipo
+    """La clave de tarifa de un tipo de mueble, del catálogo de muebles
+    (``services/catalogo_muebles.py``): las dos caras de una góndola comparten
+    la de ``gondola``."""
+    return tipo_de_tarifa(tipo)
 
 
 # ─── Los dos nombres de un mueble, dichos en castellano ───────────────────────

@@ -1559,6 +1559,12 @@ export function migrateFromLegacy(): void {
   } catch { /* ignore corrupt data */ }
 
   // ── Migrate from 2D editor (floor-plan-v1) ──────────────────────────────────
+  // Estas dos tablas se quedan escritas acá y NO salen del catálogo de muebles
+  // (`catalogo/muebles.json`), a propósito: reproducen con qué alto y color
+  // entraba un mueble del localStorage viejo del 2D, que es un dato del pasado.
+  // Por eso dicen otra cosa que el catálogo (la punta de 2,00, la vitrina de
+  // 2,10, el robatope verde): cambiarlas cambiaría lo que se recupera de esos
+  // navegadores, no los muebles que se creen desde ahora.
   const H_DEFAULTS: Record<string, number> = {
     gondola: 1.8, punta: 2.0, robatope: 1.6, ristra: 1.6,
     cross: 1.8, metro: 0.05, mueble: 2.1, exhibicion: 1.5,

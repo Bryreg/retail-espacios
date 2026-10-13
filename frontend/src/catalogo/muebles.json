@@ -1,0 +1,232 @@
+{
+  "version": 1,
+  "leeme": [
+    "El catálogo de los tipos de mueble: lo que es cada tipo para el editor 3D, el plano 2D, los informes, las tarifas y el servidor.",
+    "Hay dos copias idénticas byte a byte: frontend/src/catalogo/muebles.json y backend/app/catalogo/muebles.json (la imagen de Docker no lleva una carpeta compartida). Se edita una y se copia a la otra; tests/test_catalogo_muebles.py lo vigila.",
+    "Lo leen frontend/src/catalogo/catalogo.ts y backend/app/services/catalogo_muebles.py. Las medidas, el color y el rótulo sólo se usan al CREAR un mueble: un plano guardado no cambia si esto cambia.",
+    "Las claves de los tipos, los prefijos y las claves de tarifa no se cambian nunca: están guardados en los planos, en los códigos de espacio y en las tarifas de cada cliente.",
+    "probar-catalogo.mjs y test_catalogo_muebles.py comparan lo que sale de acá contra frontend/scripts/casos/catalogo-antes.json (lo que hacía el código antes del catálogo)."
+  ],
+  "prefijoDesconocido": "SPC",
+  "tipos": {
+    "gondola": {
+      "prefijo": "GON", "alquilable": "si", "tarifa": "gondola",
+      "informe": "góndola", "informePlural": "caras de góndola",
+      "categoria": "Góndolas", "grupo2D": "Góndolas",
+      "banderas": ["producto", "prueba3D", "surtido", "formaCorrida"],
+      "variantes": {
+        "double": {
+          "caras": 2, "rotuloEditor": "Góndola Doble",
+          "medidas": { "w": 0.90, "d": 0.90, "h": 1.80 }, "color": "#6366f1", "emoji": "📚",
+          "descripcion": "Módulo de estante central, doble cara"
+        },
+        "wall": {
+          "caras": 1, "rotuloEditor": "Góndola Mural",
+          "medidas": { "w": 1.00, "d": 0.40, "h": 1.90 }, "color": "#818cf8", "emoji": "🧱",
+          "descripcion": "Módulo de estante contra pared"
+        }
+      }
+    },
+    "punta": {
+      "prefijo": "PUN", "alquilable": "si", "tarifa": "punta",
+      "informe": "punta", "informePlural": "puntas de góndola",
+      "categoria": "Góndolas", "grupo2D": "Góndolas",
+      "banderas": ["producto", "prueba3D", "surtido"],
+      "rotuloEditor": "Punta Góndola",
+      "medidas": { "w": 0.90, "d": 0.40, "h": 1.80 }, "color": "#7c3aed", "emoji": "🏷️",
+      "descripcion": "Cabecera de góndola con topper promocional"
+    },
+    "robatope": {
+      "prefijo": "ROB", "alquilable": "si", "tarifa": "robatope",
+      "informe": "robatope", "informePlural": "robatopes",
+      "categoria": "Góndolas", "grupo2D": "Góndolas",
+      "banderas": ["producto", "prueba3D"],
+      "rotuloEditor": "Robatope",
+      "medidas": { "w": 0.30, "d": 0.40, "h": 1.60 }, "color": "#c0c0bc", "emoji": "🛡️",
+      "descripcion": "Panel lateral de protección — flanquea la Punta de Góndola"
+    },
+    "ristra": {
+      "prefijo": "RIS", "alquilable": "si", "tarifa": "ristra",
+      "informe": "ristra", "informePlural": "ristras",
+      "categoria": "Displays", "grupo2D": "Displays",
+      "banderas": ["producto"],
+      "rotuloEditor": "Ristra",
+      "medidas": { "w": 0.40, "d": 0.40, "h": 1.60 }, "color": "#d97706", "emoji": "🪝",
+      "descripcion": "Colgante de productos"
+    },
+    "cross": {
+      "prefijo": "CRS", "alquilable": "si", "tarifa": "cross",
+      "informe": "exhibición de piso", "informePlural": "exhibiciones de piso",
+      "categoria": "Displays", "grupo2D": "Displays",
+      "banderas": ["producto"],
+      "rotuloEditor": "Exhibidor Cruz",
+      "medidas": { "w": 0.80, "d": 0.80, "h": 1.80 }, "color": "#0891b2", "emoji": "➕",
+      "descripcion": "Display lateral cross-selling"
+    },
+    "metro": {
+      "prefijo": "MET", "alquilable": "no_por_defecto", "tarifa": "metro",
+      "informe": "zona libre", "informePlural": "zonas libres",
+      "categoria": "Zona libre", "grupo2D": "Infraestructura",
+      "banderas": [],
+      "rotuloEditor": "Zona Libre",
+      "medidas": { "w": 1.00, "d": 1.00, "h": 0.05 }, "color": "#64748b", "emoji": "⬜",
+      "descripcion": "Área de suelo demarcada"
+    },
+    "mueble": {
+      "prefijo": "MUE", "alquilable": "si", "tarifa": "mueble",
+      "informe": "vitrina", "informePlural": "vitrinas",
+      "categoria": "Muebles", "grupo2D": "Muebles",
+      "banderas": ["producto"],
+      "rotuloEditor": "Vitrina",
+      "medidas": { "w": 1.20, "d": 0.60, "h": 2.00 }, "color": "#475569", "emoji": "🗄️",
+      "descripcion": "Vitrina con puertas de vidrio"
+    },
+    "isla": {
+      "prefijo": "EXP", "alquilable": "si", "tarifa": "isla",
+      "informe": "isla", "informePlural": "islas",
+      "categoria": "Muebles", "grupo2D": "Muebles",
+      "banderas": ["producto"],
+      "rotuloEditor": "Exhib. de Piso",
+      "medidas": { "w": 1.20, "d": 0.80, "h": 1.40 }, "color": "#f59e0b", "emoji": "🏪",
+      "descripcion": "Exhibidor de piso con estantes y productos"
+    },
+    "impulsador": {
+      "prefijo": "IMP", "alquilable": "si", "tarifa": "impulsador",
+      "informe": "impulsador", "informePlural": "impulsadores",
+      "categoria": "Displays", "grupo2D": "Displays",
+      "banderas": ["producto"],
+      "rotuloEditor": "Impulsador Marca",
+      "medidas": { "w": 0.60, "d": 0.40, "h": 1.50 }, "color": "#e11d48", "emoji": "🏷️",
+      "descripcion": "Display compacto de impulso de marca"
+    },
+    "batea": {
+      "prefijo": "BAT", "alquilable": "si", "tarifa": "batea",
+      "informe": "batea", "informePlural": "bateas",
+      "categoria": "Muebles", "grupo2D": "Muebles",
+      "banderas": ["producto"],
+      "rotuloEditor": "Batea",
+      "medidas": { "w": 0.80, "d": 0.60, "h": 0.80 }, "color": "#84cc16", "emoji": "🧺",
+      "descripcion": "Canasto metálico con ruedas"
+    },
+    "isla_fria": {
+      "prefijo": "ISL", "alquilable": "si", "tarifa": "isla_fria",
+      "informe": "isla fría", "informePlural": "islas frías",
+      "categoria": "Refrigeración", "grupo2D": "Refrigeración",
+      "banderas": ["producto", "frio"],
+      "rotuloEditor": "Isla Helados/Cong.",
+      "medidas": { "w": 1.80, "d": 1.00, "h": 0.90 }, "color": "#e5e7eb", "emoji": "🍦",
+      "descripcion": "Isla abierta refrigerada con guarda de acrílico"
+    },
+    "nevera_carnes": {
+      "prefijo": "CAR", "alquilable": "si", "tarifa": "nevera_carnes",
+      "informe": "nevera de carnes", "informePlural": "neveras de carnes",
+      "categoria": "Refrigeración", "grupo2D": "Refrigeración",
+      "banderas": ["producto", "frio"],
+      "rotuloEditor": "Nevera Carnes",
+      "medidas": { "w": 2.00, "d": 0.90, "h": 1.05 }, "color": "#111827", "color2D": "#1e293b", "emoji": "🥩",
+      "descripcion": "Mostrador con vidrio curvo para carnes y deli",
+      "referencia": { "corto": "Carnes", "frase": "el mostrador de carnes" }
+    },
+    "nevera_vegetales": {
+      "prefijo": "VEG", "alquilable": "si", "tarifa": "nevera_vegetales",
+      "informe": "nevera de vegetales", "informePlural": "neveras de vegetales",
+      "categoria": "Refrigeración", "grupo2D": "Refrigeración",
+      "banderas": ["producto", "frio"],
+      "rotuloEditor": "Nevera Vegetales",
+      "medidas": { "w": 1.80, "d": 0.90, "h": 1.60 }, "color": "#1e293b", "emoji": "🥬",
+      "descripcion": "Mural refrigerado de frutas y verduras, con bandejas inclinadas",
+      "referencia": { "corto": "Vegetales", "frase": "el mural de frutas y verduras" }
+    },
+    "nevera_refrescos": {
+      "prefijo": "BEB", "alquilable": "si", "tarifa": "nevera_refrescos",
+      "informe": "nevera de bebidas", "informePlural": "neveras de bebidas",
+      "categoria": "Refrigeración", "grupo2D": "Refrigeración",
+      "banderas": ["producto", "prueba3D", "frio"],
+      "rotuloEditor": "Nevera Refrescos",
+      "medidas": { "w": 1.20, "d": 0.75, "h": 1.80 }, "color": "#1e293b", "emoji": "🥤",
+      "descripcion": "Vitrina multideck abierta para bebidas",
+      "referencia": { "corto": "Neveras", "frase": "las neveras" }
+    },
+    "stand_frutas": {
+      "prefijo": "FRU", "alquilable": "si", "tarifa": "stand_frutas",
+      "informe": "stand de frutas", "informePlural": "stands de frutas",
+      "categoria": "Frescos", "grupo2D": "Frescos",
+      "banderas": ["producto"],
+      "rotuloEditor": "Stand Frutas/Verd",
+      "medidas": { "w": 1.50, "d": 1.20, "h": 0.95 }, "color": "#84cc16", "emoji": "🍎",
+      "descripcion": "Cajón expositor de frutas y verduras",
+      "referencia": { "corto": "Frutas", "frase": "las frutas" }
+    },
+    "checkout": {
+      "prefijo": "CAJ", "alquilable": "nunca",
+      "grupo2D": "Servicio",
+      "banderas": [],
+      "rotuloEditor": "Checkout / Caja",
+      "medidas": { "w": 1.80, "d": 0.70, "h": 0.90 }, "color": "#8b5cf6", "emoji": "🛒",
+      "descripcion": "Caja registradora con cinta transportadora",
+      "referencia": { "corto": "Cajas", "frase": "las cajas" }
+    },
+    "servicio_cliente": {
+      "prefijo": "SAC", "alquilable": "nunca",
+      "grupo2D": "Servicio",
+      "banderas": [],
+      "rotuloEditor": "Servicio al Cliente",
+      "medidas": { "w": 1.60, "d": 0.70, "h": 1.10 }, "color": "#0ea5e9", "emoji": "💁",
+      "descripcion": "Mostrador de atención: devoluciones, reclamos e información"
+    },
+    "columna": {
+      "prefijo": "COL", "alquilable": "nunca",
+      "grupo2D": "Infraestructura",
+      "banderas": [],
+      "rotuloEditor": "Columna",
+      "medidas": { "w": 0.30, "d": 0.30, "h": 3.00 }, "color": "#94a3b8", "emoji": "🏛️",
+      "descripcion": "Columna estructural"
+    },
+    "exhibicion": {
+      "prefijo": "EXH", "alquilable": "si", "legado": true,
+      "banderas": ["producto"],
+      "medidas": { "h": 1.50 }, "color": "#ec4899"
+    }
+  },
+  "alias": {
+    "gondola_doble": { "tipo": "gondola", "variante": "double", "banderas": ["producto", "formaCorrida"] },
+    "gondola_mural": { "tipo": "gondola", "variante": "wall", "banderas": ["formaCorrida"] }
+  },
+  "tarifas": [
+    { "clave": "gondola", "rotulo": "Góndola, por cara" },
+    { "clave": "punta", "rotulo": "Punta de góndola" },
+    { "clave": "robatope", "rotulo": "Robatope" },
+    { "clave": "ristra", "rotulo": "Ristra" },
+    { "clave": "cross", "rotulo": "Exhibidor cruz" },
+    { "clave": "impulsador", "rotulo": "Impulsador de marca" },
+    { "clave": "mueble", "rotulo": "Vitrina" },
+    { "clave": "isla", "rotulo": "Estiba (exhibición de piso)" },
+    { "clave": "batea", "rotulo": "Batea" },
+    { "clave": "isla_fria", "rotulo": "Isla de congelados" },
+    { "clave": "nevera_carnes", "rotulo": "Nevera de carnes" },
+    { "clave": "nevera_vegetales", "rotulo": "Nevera de vegetales" },
+    { "clave": "nevera_refrescos", "rotulo": "Nevera de bebidas" },
+    { "clave": "stand_frutas", "rotulo": "Frutas y verduras" },
+    { "clave": "metro", "rotulo": "Zona libre" }
+  ],
+  "orden": {
+    "editor3D": [
+      "gondola:double", "gondola:wall", "punta",
+      "ristra", "cross",
+      "mueble", "isla", "impulsador", "batea",
+      "isla_fria", "nevera_carnes", "nevera_refrescos", "nevera_vegetales",
+      "stand_frutas", "checkout", "servicio_cliente",
+      "metro", "columna",
+      "robatope"
+    ],
+    "plano2D": [
+      "gondola_doble", "gondola_mural", "punta", "robatope",
+      "ristra", "cross", "impulsador",
+      "mueble", "isla", "batea",
+      "isla_fria", "nevera_carnes", "nevera_vegetales", "nevera_refrescos",
+      "stand_frutas", "checkout", "servicio_cliente",
+      "metro", "columna"
+    ],
+    "minimapa": ["checkout", "nevera_refrescos", "nevera_carnes", "nevera_vegetales", "stand_frutas"]
+  }
+}

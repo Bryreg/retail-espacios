@@ -76,21 +76,26 @@ def test_la_bandera_sigue_mandando_donde_el_tipo_no_decide():
 
 
 def test_la_lista_es_la_misma_que_la_del_frontend():
-    """Con dos listas, la pantalla ofrece lo que el servidor rechaza."""
+    """Con dos listas, la pantalla ofrece lo que el servidor rechaza.
+
+    Las dos salen del catálogo de muebles (``alquilable: "nunca"``), cada lado
+    de su copia; ``test_catalogo_muebles.py`` exige que las copias sean
+    idénticas. Acá se compara la lista del servidor con la copia que lee la
+    PANTALLA, y se mira que ``types/fixtures.ts`` la calcule de ahí.
+    """
     NUNCA_ALQUILABLE, _ = _reglas()
+    import json
     import re
     from pathlib import Path
 
-    ts = Path(__file__).resolve().parents[2] / "frontend" / "src" / "types" / "fixtures.ts"
-    texto = ts.read_text(encoding="utf-8")
-    bloque = re.search(
-        r"NUNCA_ALQUILABLE:\s*ReadonlySet<string>\s*=\s*new Set<FixType>\(\[(.*?)\]\)",
-        texto, re.S,
-    )
-    assert bloque, "el frontend perdió su lista de muebles no vendibles"
-    front = {
-        t.strip().strip('"').strip("'")
-        for t in bloque.group(1).split(",")
-        if t.strip() and not t.strip().startswith("//")
-    }
+    raiz = Path(__file__).resolve().parents[2]
+    catalogo = json.loads((raiz / "frontend/src/catalogo/muebles.json").read_text(encoding="utf-8"))
+    front = {tipo for tipo, d in catalogo["tipos"].items() if d["alquilable"] == "nunca"}
+    assert front, "el catálogo del frontend perdió los muebles no vendibles"
     assert front == set(NUNCA_ALQUILABLE)
+
+    texto = (raiz / "frontend" / "src" / "types" / "fixtures.ts").read_text(encoding="utf-8")
+    assert re.search(
+        r"NUNCA_ALQUILABLE:\s*ReadonlySet<string>\s*=\s*new Set<string>\(tiposQueSeAlquilan\(\"nunca\"\)\)",
+        texto,
+    ), "el frontend volvió a tener su propia lista de muebles no vendibles"

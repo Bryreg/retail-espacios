@@ -1,8 +1,17 @@
 """La parte de Python de la referencia del «antes» del catálogo de muebles.
 
-    cd frontend && node scripts/capturar-catalogo.mjs            # primero: tipos, plano y la parte ts
-    cd backend && python scripts/capturar_catalogo.py              # después: la parte python
-    cd backend && python scripts/capturar_catalogo.py --comprobar  # compara, sin escribir
+    cd frontend && node scripts/capturar-catalogo.mjs --reescribir   # primero: tipos, plano y la parte ts
+    cd backend && python scripts/capturar_catalogo.py --reescribir   # después: la parte python
+
+── Desde el catálogo único ──────────────────────────────────────────────────
+
+``frontend/scripts/casos/catalogo-antes.json`` se capturó del código de ANTES
+del catálogo único (el commit fafb301) y quedó fijo: es contra lo que se compara
+el de ahora. La comparación la hace ``tests/test_catalogo_muebles.py``, que
+importa de acá ``capturar`` y la corre sobre el código de hoy, con la lista
+escrita de lo que cambió a propósito. Por eso escribir pide ``--reescribir``, y
+sólo tiene sentido sobre un checkout del código de antes, para sumar a la
+referencia una consulta nueva.
 
 **Sólo llama funciones puras.** No lee ni escribe una fila: el plano es el
 sintético que dejó en el archivo ``frontend/scripts/capturar-catalogo.mjs``, y
@@ -34,17 +43,7 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
-# Antes de cualquier `import app…`: `app.database` arma el motor al importarse.
-os.environ["DATABASE_URL"] = "sqlite://"
-
 BACKEND = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(BACKEND))
-sys.path.insert(0, str(BACKEND / "scripts"))
-
-from app import plataforma_metricas  # noqa: E402
-from app.routers import bulk_leases  # noqa: E402
-from app.services import importar_del_plano, layout_lookup, renumeracion  # noqa: E402
-import auditar_desfase  # noqa: E402
 
 SALIDA = BACKEND.parent / "frontend" / "scripts" / "casos" / "catalogo-antes.json"
 
@@ -118,6 +117,18 @@ def a_json(v, nivel: int = 0) -> str:
 # ─── La captura ───────────────────────────────────────────────────────────────
 
 def capturar(tipos: list[str], sede: str, muebles: list[dict]) -> dict:
+    """La parte ``python`` de la referencia, calculada con el código de HOY.
+
+    Importa ``app`` recién acá adentro: corrido como programa, ``main`` ya
+    apuntó la base a una SQLite en memoria; desde las pruebas, ``app`` ya está
+    importado contra la base descartable de cada prueba y esto no toca el
+    entorno.
+    """
+    from app import plataforma_metricas
+    from app.routers import bulk_leases
+    from app.services import importar_del_plano, layout_lookup, renumeracion
+    from scripts import auditar_desfase
+
     tablas = {
         "PREFIJO_POR_TIPO": _tabla("app/services/renumeracion.py", dict(renumeracion.PREFIJO_POR_TIPO)),
         "PREFIJO_DESCONOCIDO": _tabla("app/services/renumeracion.py", renumeracion.PREFIJO_DESCONOCIDO),
@@ -183,7 +194,16 @@ def capturar(tipos: list[str], sede: str, muebles: list[dict]) -> dict:
 
 
 def main() -> int:
-    comprobar = "--comprobar" in sys.argv[1:]
+    if "--reescribir" not in sys.argv[1:]:
+        print("catalogo-antes.json es la referencia FIJA de antes del catálogo único: la compara\n"
+              "tests/test_catalogo_muebles.py. Para escribirla hace falta --reescribir, y sólo sobre\n"
+              "el código de antes.", file=sys.stderr)
+        return 2
+    # Antes de cualquier `import app…`: `app.database` arma el motor al
+    # importarse, y esto no tiene que tocar ni la base de desarrollo ni, corrido
+    # en Render, la de producción.
+    os.environ["DATABASE_URL"] = "sqlite://"
+    sys.path.insert(0, str(BACKEND))
     if not SALIDA.is_file():
         print(f"falta {SALIDA}: correr primero `node scripts/capturar-catalogo.mjs` en frontend", file=sys.stderr)
         return 1
@@ -193,15 +213,6 @@ def main() -> int:
         return 1
 
     nuevo = capturar(datos["tipos"], datos["plano"]["sede"], datos["plano"]["muebles"])
-
-    if comprobar:
-        if a_json(datos.get("python")) != a_json(nuevo):
-            print("  FALLA catalogo-antes.json no es lo que da el servidor hoy: cambió la parte python",
-                  file=sys.stderr)
-            return 1
-        print("  ok   catalogo-antes.json (parte python) es lo que da el servidor hoy")
-        return 0
-
     datos["python"] = nuevo
     SALIDA.write_text(a_json(datos) + "\n", encoding="utf-8")
     print(f"catalogo-antes.json: parte python con {len(nuevo['tablas'])} tablas, "

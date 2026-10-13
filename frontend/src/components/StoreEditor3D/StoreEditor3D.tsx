@@ -512,8 +512,9 @@ export type { PlacedFixture };
 
 // `FixtureDef` y `FIXTURE_DEFS` —el catálogo con que nace cada mueble: medidas,
 // color, emoji y prefijo— y los conjuntos `TIPOS_CON_*` viven en
-// `catalogo/editor3D.ts`, para que node los lea sin arrastrar el editor. Se
-// reexportan: `/taller` y el visor de Vender los siguen tomando de acá.
+// `catalogo/editor3D.ts`, calculados del catálogo de muebles
+// (`catalogo/muebles.json`). Se reexportan: `/taller` y el visor de Vender los
+// siguen tomando de acá.
 export { FIXTURE_DEFS, TIPOS_CON_PRODUCTO, TIPOS_CON_PRUEBA_3D, TIPOS_CON_SURTIDO };
 
 // Chip styling mirrors STATUS_COLORS: ocupado se lee rojo, igual que el mueble.

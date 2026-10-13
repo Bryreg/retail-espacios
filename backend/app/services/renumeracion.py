@@ -56,7 +56,8 @@ regla que hay que copiar, no inventar otra.
 
 4. **La numeración es por tipo.** Se recorre el plano UNA vez y cada prefijo
    lleva su propio contador: ``GON-01``, ``GON-02``… ``PUN-01``… El prefijo sale
-   de ``PREFIJO_POR_TIPO``, espejo de ``frontend/src/utils/nomenclatura.ts``.
+   de ``PREFIJO_POR_TIPO``, que sale del catálogo de muebles, igual que el de
+   ``frontend/src/utils/nomenclatura.ts``.
    Un solo recorrido para todos los tipos y no uno por tipo: la promesa es que
    caminando la tienda los números suban, y eso sólo vale si hay UN recorrido.
 
@@ -112,6 +113,7 @@ from app.models.models import (
     RenumeracionNombre,
     Space,
 )
+from app.services import catalogo_muebles
 from app.services.layout_lookup import (
     _full_code,
     _huella,
@@ -122,40 +124,19 @@ from app.services.layout_lookup import (
 
 # ─── El prefijo de cada tipo ──────────────────────────────────────────────────
 #
-# Espejo EXACTO de ``PREFIJO_POR_TIPO`` en ``frontend/src/utils/nomenclatura.ts``.
-# Si las dos tablas se separan, el sistema vuelve a mentir: el servidor
-# renumeraría un mueble a ``EXP-03`` y el editor, al agregar el siguiente,
-# seguiría la serie de otro prefijo. Hay una prueba que las compara carácter por
-# carácter contra el archivo del frontend, justamente para que no se separen.
+# Sale del catálogo de muebles (``app/catalogo/muebles.json``, ver
+# ``services/catalogo_muebles.py``), el mismo archivo del que sale
+# ``PREFIJO_POR_TIPO`` en ``frontend/src/utils/nomenclatura.ts``. Si los dos
+# lados se separan, el sistema vuelve a mentir: el servidor renumeraría un
+# mueble a ``EXP-03`` y el editor, al agregar el siguiente, seguiría la serie de
+# otro prefijo. Por eso ``tests/test_catalogo_muebles.py`` exige que las dos
+# copias del archivo sean idénticas y ``tests/test_renumeracion.py`` compara
+# esta tabla contra la copia que lee el editor.
 
-PREFIJO_POR_TIPO: dict[str, str] = {
-    # Nombres del modelo unificado / editor 3D
-    "gondola": "GON",
-    "punta": "PUN",
-    "robatope": "ROB",
-    "ristra": "RIS",
-    "cross": "CRS",
-    "metro": "MET",
-    "mueble": "MUE",
-    "isla": "EXP",
-    "impulsador": "IMP",
-    "batea": "BAT",
-    "isla_fria": "ISL",
-    "nevera_carnes": "CAR",
-    "nevera_vegetales": "VEG",
-    "nevera_refrescos": "BEB",
-    "stand_frutas": "FRU",
-    "checkout": "CAJ",
-    "servicio_cliente": "SAC",
-    "columna": "COL",
-    "exhibicion": "EXH",
-    # Nombres que sólo usa el plano 2D: la góndola se parte en dos tipos
-    "gondola_doble": "GON",
-    "gondola_mural": "GON",
-}
+PREFIJO_POR_TIPO: dict[str, str] = catalogo_muebles.PREFIJO_POR_TIPO
 
 #: Lo desconocido cae en SPC, como hace ``prefijoDe`` del frontend.
-PREFIJO_DESCONOCIDO = "SPC"
+PREFIJO_DESCONOCIDO: str = catalogo_muebles.PREFIJO_DESCONOCIDO
 
 #: Dos muebles a menos de esto sobre la coordenada perpendicular están en la
 #: misma banda. Es la tolerancia de ``detectarCorridas`` (``utils/pasillos.ts``),

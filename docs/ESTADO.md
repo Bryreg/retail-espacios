@@ -250,19 +250,59 @@ de los editores (sí a `sinDatosComerciales` si el visor de Vender lo necesita, 
 `_GEOMETRIA` de `routers/montaje.py` si el mercaderista lo necesita: esas son listas de
 lo que se DEJA pasar, a propósito).
 
-**Lo que hace hoy cada tipo de mueble está anotado.** Las tablas por tipo que vivían
-adentro de los componentes están, tal cual, en `frontend/src/catalogo/`: `FIXTURE_DEFS` y
-los `TIPOS_CON_*` del editor 3D (`editor3D.ts`; el editor los reexporta, y el orden de
-`FIXTURE_DEFS` importa porque `/taller` elige por posición), `CATALOG`, `H_DEFAULTS` y
-`COLOR_DEFAULTS` del plano 2D (`plano2D.ts`) y las referencias del minimapa
-(`minimapa.ts`). Las guardas las corren en vez de leerlas con una regex.
-`frontend/scripts/casos/catalogo-antes.json` es la referencia del catálogo único de
-muebles: las tablas del frontend y del servidor, y lo que calculan sobre un plano
-sintético con un mueble de cada tipo (más los legados). Lo escriben
-`frontend/scripts/capturar-catalogo.mjs` y después `backend/scripts/capturar_catalogo.py`,
-cada uno en su parte y los dos con `--comprobar`. Con el catálogo único, un plano viejo
-tiene que dar eso mismo; no se edita a mano, y si un cambio altera a propósito lo que hace
-un tipo, se recaptura en el mismo PR diciendo qué cambió.
+**Cada tipo de mueble está escrito UNA vez: el catálogo de muebles.** Es
+`frontend/src/catalogo/muebles.json`, y el servidor lee una copia idéntica byte a byte
+(`backend/app/catalogo/muebles.json`): la imagen de Docker lleva `backend/` y
+`frontend/dist`, no una carpeta compartida. **Se edita uno y se copia sobre el otro**;
+`tests/test_catalogo_muebles.py` y `probar-catalogo.mjs` fallan si difieren. Por tipo
+dice: prefijo, `alquilable` (`si` · `no_por_defecto` · `nunca`), clave de tarifa, rótulo de
+los editores, nombre de informe (singular y plural), categoría, grupo de la biblioteca
+2D, medidas, color (y `color2D` si el 2D nace con otro), emoji, descripción, referencia
+del minimapa y banderas (`producto`, `prueba3D`, `surtido`, `frio`, `formaCorrida`). La
+góndola tiene variantes (`double`/`wall`, con sus caras); `gondola_doble`/`gondola_mural`
+son `alias` con sus banderas escritas una por una; `exhibicion` es `legado`. Además:
+`tarifas` (clave y rótulo, en el orden de la pantalla) y `orden` (paleta del 3D, biblioteca
+del 2D, referencias del minimapa: los tres órdenes se ven).
+
+Las tablas de siempre se CALCULAN de ahí con el mismo nombre y en el mismo orden
+—`FIXTURE_DEFS` y `TIPOS_CON_*` (`catalogo/editor3D.ts`; `/taller` elige por posición),
+`CATALOG`/`H_DEFAULTS`/`COLOR_DEFAULTS` (`catalogo/plano2D.ts`), `REFERENCIAS`
+(`catalogo/minimapa.ts`), `NUNCA_ALQUILABLE`/`NON_RENTABLE_BY_DEFAULT`/`RATE_TYPES`/
+`CATEGORIA_DE_TIPO`/`rateTypeOf` (`types/fixtures.ts`), `PREFIJO_POR_TIPO`
+(`utils/nomenclatura.ts`), `MUEBLES_FRIOS`, `FORMAN_CORRIDA` y los nombres de
+`plataforma/formato.ts`; del lado del servidor `PREFIJO_POR_TIPO`, `NUNCA_ALQUILABLE`,
+`_REFERENCIAS` y los dos `_tipo_de_tarifa`, vía `app/services/catalogo_muebles.py`—, así
+que nadie que las usaba cambió. Quedan escritos a mano: los tipos de TypeScript
+(`FixType`, `FixType2D`, `GondolaType`; `probar-catalogo` exige que digan lo mismo que el
+archivo), la regla de las caras (`carasDe`/`caras_de`; el catálogo anota las caras de
+cada variante y las dos pruebas las comparan) y la paleta de la migración vieja de
+`localStorage` (`fixtureStore.ts`), que reproduce datos del pasado.
+
+**Las medidas, el color y el rótulo del catálogo sólo se usan al CREAR un mueble.** Lo
+guardado no cambia. Las claves de tipo, los prefijos y las claves de tarifa no se cambian
+nunca: están en los planos, en los códigos de espacio y en las tarifas de cada cliente.
+Ojo con `rotuloEditor`: el 2D lo estampa en `label` cada vez que abre el plano, así que
+cambiarlo SÍ cambia lo guardado.
+
+**Un plano viejo da lo mismo que antes, y eso se prueba.**
+`frontend/scripts/casos/catalogo-antes.json` es lo que hacía el código antes del catálogo
+(capturado de `fafb301` por `capturar-catalogo.mjs` y `backend/scripts/capturar_catalogo.py`)
+y quedó FIJO: escribirlo pide `--reescribir` y sólo tiene sentido sobre el código de antes.
+`probar-catalogo.mjs` corre la misma captura sobre el código de hoy y la compara entera;
+falla ante cualquier diferencia que no esté en su `CAMBIOS_INTENCIONALES`, que lista cada
+una con su porqué y su valor de antes. Los de este cambio, todos para muebles que se creen
+desde ahora o rótulos que no se guardan: el mostrador de carnes nace en el 2D con 0,90 de
+fondo (era 0,85, el 3D ya decía 0,90); el servicio al cliente nace en el 2D con 1,10 de alto
+y su color (no estaba y caía en 1,80 y el color de la góndola); se fue el color de
+`nevera_mural`, que no existe; los informes nombran «vitrina», «zona libre» e
+«impulsadores» (salían `mueble`, `metro` e «impulsadors»); y las tarifas `isla` y `cross`
+se rotulan «Estiba (exhibición de piso)» y «Exhibidor cruz» (decían «Isla» y «Exhibición
+de piso»). `probar-catalogo` además valida el archivo (prefijos únicos salvo alias, cada
+tipo con rótulos y tarifa o «nunca», medidas positivas, órdenes completos) y compila los
+módulos con un catálogo adulterado para comprobar que cada tabla cambia con él: una copia
+escrita a mano que hoy coincide no pasa. Del lado del servidor, `test_catalogo_muebles.py`
+compara la parte `python` de la referencia carácter por carácter (ningún cambio de este PR
+la toca) y que cada módulo tenga la tabla del catálogo y no una propia.
 
 **Lo que no está en el mapa comercial está LIBRE, y la fusión REEMPLAZA.** No hace falta
 pre-crear ningún `space`: la fila aparece cuando se vende. Y la fusión no rellena huecos
@@ -284,7 +324,8 @@ snapshot anterior — un plano que ya venía desfasado tiene que poder guardarse
 
 **No todo mueble del plano es espacio vendible.** La columna sostiene el techo; la
 caja registradora y el mostrador de servicio al cliente son puestos de trabajo de la
-tienda. Esos tres tipos están en `NUNCA_ALQUILABLE` —`frontend/src/types/fixtures.ts` y
+tienda. Esos tres tipos están en `NUNCA_ALQUILABLE` —`alquilable: "nunca"` en el
+catálogo de muebles, que leen `frontend/src/types/fixtures.ts` y
 `backend/app/services/layout_lookup.py`, y hay pruebas de los dos lados que verifican
 que las dos listas digan lo mismo— y no tienen tarifa, no suman a la disponibilidad de
 la sede y no aceptan contrato.

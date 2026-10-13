@@ -1,7 +1,21 @@
 /**
- * La referencia del «antes» del catálogo de muebles: qué hace HOY cada tipo.
- *   node scripts/capturar-catalogo.mjs              # escribe la parte de TS
- *   node scripts/capturar-catalogo.mjs --comprobar  # compara, sin escribir
+ * La referencia del «antes» del catálogo de muebles: qué hacía cada tipo.
+ *   node scripts/capturar-catalogo.mjs --reescribir   # escribe la parte de TS
+ *
+ * ── Desde el catálogo único ──────────────────────────────────────────────────
+ *
+ * `scripts/casos/catalogo-antes.json` se capturó del código de ANTES del
+ * catálogo único (el commit fafb301) y quedó fijo: es contra lo que se compara
+ * el de ahora. La comparación la hacen `scripts/probar-catalogo.mjs` (que
+ * importa de acá `capturarTS` y la corre sobre el código de hoy) y
+ * `backend/tests/test_catalogo_muebles.py`, cada uno con la lista escrita de lo
+ * que cambió a propósito.
+ *
+ * Por eso escribir pide `--reescribir`: corrido sobre el código de hoy, el
+ * archivo pasaría a decir «después» y la comparación ya no compararía nada (la
+ * lista de cambios intencionales deja de encontrar sus valores de antes y
+ * `probar-catalogo` falla). Sólo tiene sentido sobre un checkout del código de
+ * antes, para sumar a la referencia una consulta nueva.
  *
  * ── Para qué ─────────────────────────────────────────────────────────────────
  *
@@ -50,7 +64,8 @@ import { build } from "esbuild";
 const aqui = dirname(fileURLToPath(import.meta.url));
 const raiz = join(aqui, "..");
 const SALIDA = join(aqui, "casos", "catalogo-antes.json");
-const comprobar = process.argv.includes("--comprobar");
+const reescribir = process.argv.includes("--reescribir");
+const esElPrograma = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 
 /** Un módulo de `src`, compilado con esbuild y corrido acá mismo. */
 const cargar = async (rel, extra = {}) => {
@@ -120,13 +135,14 @@ const FIX_TYPE_2D = unionDe("convertir", "FixType2D");
  *  tablas se consultan con cada uno, para que quede anotado también qué
  *  hace cada una con lo que no tiene. */
 const DESCONOCIDO = "desconocido";
-const TIPOS = [...FIX_TYPE, ...FIX_TYPE_2D.filter((t) => !FIX_TYPE.includes(t)), DESCONOCIDO];
+export const TIPOS = [...FIX_TYPE, ...FIX_TYPE_2D.filter((t) => !FIX_TYPE.includes(t)), DESCONOCIDO];
 
 // ─── El plano sintético ───────────────────────────────────────────────────────
 
-const SEDE = "NAVE";
+export const SEDE = "NAVE";
 
-function armarPlano() {
+/** El plano sintético, armado con el código de hoy. */
+export function armarPlano() {
   const muebles = [];
   const poner = (nombre, m) => {
     const i = muebles.length;
@@ -184,112 +200,129 @@ function armarPlano() {
   return muebles;
 }
 
-const MUEBLES = armarPlano();
-
 // ─── Las tablas ───────────────────────────────────────────────────────────────
 
 const lista = (conjunto) => [...conjunto];
 const tabla = (clave, valor, nota) => ({ de: de(clave) + (nota ? ` (${nota})` : ""), valor });
 
-const tablas = {
-  FixType: tabla("fixtures", FIX_TYPE, "leído del texto: es un tipo"),
-  GondolaType: tabla("fixtures", GONDOLA_TYPE, "leído del texto: es un tipo"),
-  FixType2D: tabla("convertir", FIX_TYPE_2D, "leído del texto: es un tipo"),
-  NUNCA_ALQUILABLE: tabla("fixtures", lista(F.NUNCA_ALQUILABLE)),
-  NON_RENTABLE_BY_DEFAULT: tabla("fixtures", lista(F.NON_RENTABLE_BY_DEFAULT)),
-  RATE_TYPES: tabla("fixtures", F.RATE_TYPES),
-  CATEGORIA_DE_TIPO: tabla("fixtures", F.CATEGORIA_DE_TIPO),
-  PREFIJO_POR_TIPO: tabla("nomenclatura", N.PREFIJO_POR_TIPO),
-  FIXTURE_DEFS: tabla("editor3D", C3.FIXTURE_DEFS),
-  TIPOS_CON_PRODUCTO: tabla("editor3D", lista(C3.TIPOS_CON_PRODUCTO)),
-  TIPOS_CON_PRUEBA_3D: tabla("editor3D", lista(C3.TIPOS_CON_PRUEBA_3D)),
-  TIPOS_CON_SURTIDO: tabla("editor3D", lista(C3.TIPOS_CON_SURTIDO)),
-  CATALOG_2D: tabla("plano2D", C2.CATALOG),
-  H_DEFAULTS_2D: tabla("plano2D", C2.H_DEFAULTS),
-  COLOR_DEFAULTS_2D: tabla("plano2D", C2.COLOR_DEFAULTS),
-  COLOR_DEFAULTS_migracion: tabla("store", coloresDeLaMigracion(), "leído del texto: es local a la migración vieja de localStorage"),
-  MUEBLES_FRIOS: tabla("producto", lista(P.MUEBLES_FRIOS)),
-  FORMAN_CORRIDA: tabla("pasillos", lista(PAS.FORMAN_CORRIDA)),
-  REFERENCIAS_minimapa: tabla("minimapa", CM.REFERENCIAS),
-  nombres_de_informe: tabla("formato",
-    Object.fromEntries([...TIPOS, "fuera_del_plano"].map((t) => [t, { singular: FMT.tipoN(t), plural: FMT.tipoP(t, 2) }])),
-    "tipoN y tipoP: el diccionario no se exporta; lo que no está sale tal cual"),
-};
-
-// ─── Por tipo: lo que depende sólo del tipo ──────────────────────────────────
-
-const porTipo = Object.fromEntries(TIPOS.map((t) => {
-  const tarifa = F.rateTypeOf({ type: t });
-  return [t, {
-    prefijoDe: N.prefijoDe(t),
-    siguienteCodigo: N.siguienteCodigo(t, MUEBLES),
-    isRentable: F.isRentable({ type: t }),
-    naceNoComercializable: F.NON_RENTABLE_BY_DEFAULT.has(t),
-    carasDe: F.carasDe({ type: t }),
-    rateTypeOf: tarifa,
-    rateTypeLabel: F.rateTypeLabel(tarifa),
-    enRateTypes: F.RATE_TYPES.some((r) => r.type === tarifa),
-    categoriaDeTipo: F.categoriaDeTipo(t),
-    informe: { singular: FMT.tipoN(t), plural: FMT.tipoP(t, 2) },
-    frio: P.MUEBLES_FRIOS.has(t),
-    conProducto: C3.TIPOS_CON_PRODUCTO.has(t),
-    prueba3D: C3.TIPOS_CON_PRUEBA_3D.has(t),
-    surtido: C3.TIPOS_CON_SURTIDO.has(t),
-    formaCorrida: PAS.FORMAN_CORRIDA.has(t),
-    referenciaMinimapa: CM.REFERENCIAS[t] ?? null,
-  }];
-}));
-
-// ─── Por mueble del plano: lo que depende del mueble entero ──────────────────
-
-const CAT2D = { tipos: C2.CATALOG, altos: C2.H_DEFAULTS, colores: C2.COLOR_DEFAULTS };
-// Los `slots` por defecto viven en el editor (`defaultSlots`); acá no se miran.
-const CAT3D = { defs: C3.FIXTURE_DEFS, slotsPorDefecto: () => [] };
-
-const porMueble = Object.fromEntries(MUEBLES.map((f) => {
-  const en2D = CP.storeToItems([f], CAT2D)[0];
-  // Sin rótulo ni color guardados: el 3D los busca en `FIXTURE_DEFS`.
-  const en3D = CP.storeToFixtures([{ ...f, label: "", color: "" }], CAT3D)[0] ?? null;
-  return [f.id, {
-    isRentable: F.isRentable(f),
-    carasDe: F.carasDe(f),
-    isDoubleGondola: F.isDoubleGondola(f),
-    rateTypeOf: F.rateTypeOf(f),
-    fullSpaceCode: F.fullSpaceCode(f.sede, f.code),
-    ventaDeTipo: V.ventaDeTipo(f.type, f.w, f.d, f.h, f.gondolaType),
-    editor2D: { type: en2D.type, label: en2D.label, w: en2D.w, h: en2D.h },
-    editor3D: en3D && { type: en3D.type, gondolaType: en3D.gondolaType ?? null, label: en3D.label, color: en3D.color },
-  }];
-}));
-
-/** Un mueble NUEVO dibujado en el 2D, de cada tipo de su catálogo (y de la
- *  exhibición, que se dibuja sin catálogo): con qué alto, color y rótulo llega
- *  al store. Es donde pesan `H_DEFAULTS` y `COLOR_DEFAULTS`. */
-const naceEn2D = Object.fromEntries(FIX_TYPE_2D.map((t) => {
-  const c = C2.CATALOG.find((x) => x.type === t);
-  const item = {
-    id: `nuevo-${t}`, type: t, code: N.siguienteCodigo(t, []), label: c?.label ?? t,
-    x: 0, y: 0, w: c?.w ?? 1, h: c?.h ?? 1, rotY: 0, status: "free",
-    supplierName: "", brandCategory: "", negotiatedValue: 0, startDate: "", endDate: "", observation: "",
-    sede: SEDE,
+/**
+ * La parte `ts` de la referencia, calculada con el código de HOY sobre el plano
+ * que se le pase. La captura la corrió sobre su plano sintético;
+ * `probar-catalogo.mjs` la corre sobre el plano guardado en la referencia y
+ * compara.
+ */
+export function capturarTS(MUEBLES) {
+  const tablas = {
+    FixType: tabla("fixtures", FIX_TYPE, "leído del texto: es un tipo"),
+    GondolaType: tabla("fixtures", GONDOLA_TYPE, "leído del texto: es un tipo"),
+    FixType2D: tabla("convertir", FIX_TYPE_2D, "leído del texto: es un tipo"),
+    NUNCA_ALQUILABLE: tabla("fixtures", lista(F.NUNCA_ALQUILABLE)),
+    NON_RENTABLE_BY_DEFAULT: tabla("fixtures", lista(F.NON_RENTABLE_BY_DEFAULT)),
+    RATE_TYPES: tabla("fixtures", F.RATE_TYPES),
+    CATEGORIA_DE_TIPO: tabla("fixtures", F.CATEGORIA_DE_TIPO),
+    PREFIJO_POR_TIPO: tabla("nomenclatura", N.PREFIJO_POR_TIPO),
+    FIXTURE_DEFS: tabla("editor3D", C3.FIXTURE_DEFS),
+    TIPOS_CON_PRODUCTO: tabla("editor3D", lista(C3.TIPOS_CON_PRODUCTO)),
+    TIPOS_CON_PRUEBA_3D: tabla("editor3D", lista(C3.TIPOS_CON_PRUEBA_3D)),
+    TIPOS_CON_SURTIDO: tabla("editor3D", lista(C3.TIPOS_CON_SURTIDO)),
+    CATALOG_2D: tabla("plano2D", C2.CATALOG),
+    H_DEFAULTS_2D: tabla("plano2D", C2.H_DEFAULTS),
+    COLOR_DEFAULTS_2D: tabla("plano2D", C2.COLOR_DEFAULTS),
+    COLOR_DEFAULTS_migracion: tabla("store", coloresDeLaMigracion(), "leído del texto: es local a la migración vieja de localStorage"),
+    MUEBLES_FRIOS: tabla("producto", lista(P.MUEBLES_FRIOS)),
+    FORMAN_CORRIDA: tabla("pasillos", lista(PAS.FORMAN_CORRIDA)),
+    REFERENCIAS_minimapa: tabla("minimapa", CM.REFERENCIAS),
+    nombres_de_informe: tabla("formato",
+      Object.fromEntries([...TIPOS, "fuera_del_plano"].map((t) => [t, { singular: FMT.tipoN(t), plural: FMT.tipoP(t, 2) }])),
+      "tipoN y tipoP: el diccionario no se exporta; lo que no está sale tal cual"),
   };
-  const f = CP.itemsToStore([item], [], CAT2D)[0];
-  return [t, { type: f.type, gondolaType: f.gondolaType ?? null, label: f.label, w: f.w, d: f.d, h: f.h, color: f.color }];
-}));
 
-// ─── Medidas típicas ──────────────────────────────────────────────────────────
+  // ─── Por tipo: lo que depende sólo del tipo ──────────────────────────────────
 
-const medidas = {
-  de: de("medidas"),
-  nivelesDeEntrepano: [1.2, 1.35, 1.5, 1.6, 1.8, 1.9, 2.0, 2.2, 2.4, 2.6]
-    .map((alto) => ({ alto, niveles: M.nivelesDeEntrepano(alto) })),
-  vanosDeCorrido: [0.3, 0.6, 0.9, 1.0, 1.2, 1.25, 1.5, 1.8, 2.0, 2.5, 3.0, 3.6, 3.75, 5.0, 7.5]
-    .map((ancho) => ({ ancho, vanos: M.vanosDeCorrido(ancho) })),
-  puertasDeNevera: [0.6, 0.75, 0.9, 1.2, 1.445, 1.5, 1.8, 2.0, 2.07, 2.25, 2.5, 3.0]
-    .map((ancho) => ({ ancho, puertas: M.puertasDeNevera(ancho) })),
-  cotasDeCheckout: [[1.8, 0.7, 0.9], [1.2, 0.6, 0.85], [1.5, 0.6, 0.9], [2.0, 0.8, 0.95], [2.4, 0.9, 0.9], [3.0, 0.9, 1.0]]
-    .map(([w, d, h]) => ({ w, d, h, cotas: M.cotasDeCheckout(w, d, h) })),
-};
+  const porTipo = Object.fromEntries(TIPOS.map((t) => {
+    const tarifa = F.rateTypeOf({ type: t });
+    return [t, {
+      prefijoDe: N.prefijoDe(t),
+      siguienteCodigo: N.siguienteCodigo(t, MUEBLES),
+      isRentable: F.isRentable({ type: t }),
+      naceNoComercializable: F.NON_RENTABLE_BY_DEFAULT.has(t),
+      carasDe: F.carasDe({ type: t }),
+      rateTypeOf: tarifa,
+      rateTypeLabel: F.rateTypeLabel(tarifa),
+      enRateTypes: F.RATE_TYPES.some((r) => r.type === tarifa),
+      categoriaDeTipo: F.categoriaDeTipo(t),
+      informe: { singular: FMT.tipoN(t), plural: FMT.tipoP(t, 2) },
+      frio: P.MUEBLES_FRIOS.has(t),
+      conProducto: C3.TIPOS_CON_PRODUCTO.has(t),
+      prueba3D: C3.TIPOS_CON_PRUEBA_3D.has(t),
+      surtido: C3.TIPOS_CON_SURTIDO.has(t),
+      formaCorrida: PAS.FORMAN_CORRIDA.has(t),
+      referenciaMinimapa: CM.REFERENCIAS[t] ?? null,
+    }];
+  }));
+
+  // ─── Por mueble del plano: lo que depende del mueble entero ──────────────────
+
+  const CAT2D = { tipos: C2.CATALOG, altos: C2.H_DEFAULTS, colores: C2.COLOR_DEFAULTS };
+  // Los `slots` por defecto viven en el editor (`defaultSlots`); acá no se miran.
+  const CAT3D = { defs: C3.FIXTURE_DEFS, slotsPorDefecto: () => [] };
+
+  const porMueble = Object.fromEntries(MUEBLES.map((f) => {
+    const en2D = CP.storeToItems([f], CAT2D)[0];
+    // Sin rótulo ni color guardados: el 3D los busca en `FIXTURE_DEFS`.
+    const en3D = CP.storeToFixtures([{ ...f, label: "", color: "" }], CAT3D)[0] ?? null;
+    return [f.id, {
+      isRentable: F.isRentable(f),
+      carasDe: F.carasDe(f),
+      isDoubleGondola: F.isDoubleGondola(f),
+      rateTypeOf: F.rateTypeOf(f),
+      fullSpaceCode: F.fullSpaceCode(f.sede, f.code),
+      ventaDeTipo: V.ventaDeTipo(f.type, f.w, f.d, f.h, f.gondolaType),
+      editor2D: { type: en2D.type, label: en2D.label, w: en2D.w, h: en2D.h },
+      editor3D: en3D && { type: en3D.type, gondolaType: en3D.gondolaType ?? null, label: en3D.label, color: en3D.color },
+    }];
+  }));
+
+  /** Un mueble NUEVO dibujado en el 2D, de cada tipo de su catálogo (y de la
+   *  exhibición, que se dibuja sin catálogo): con qué alto, color y rótulo llega
+   *  al store. Es donde pesan `H_DEFAULTS` y `COLOR_DEFAULTS`. */
+  const naceEn2D = Object.fromEntries(FIX_TYPE_2D.map((t) => {
+    const c = C2.CATALOG.find((x) => x.type === t);
+    const item = {
+      id: `nuevo-${t}`, type: t, code: N.siguienteCodigo(t, []), label: c?.label ?? t,
+      x: 0, y: 0, w: c?.w ?? 1, h: c?.h ?? 1, rotY: 0, status: "free",
+      supplierName: "", brandCategory: "", negotiatedValue: 0, startDate: "", endDate: "", observation: "",
+      sede: SEDE,
+    };
+    const f = CP.itemsToStore([item], [], CAT2D)[0];
+    return [t, { type: f.type, gondolaType: f.gondolaType ?? null, label: f.label, w: f.w, d: f.d, h: f.h, color: f.color }];
+  }));
+
+  // ─── Medidas típicas ──────────────────────────────────────────────────────────
+
+  const medidas = {
+    de: de("medidas"),
+    nivelesDeEntrepano: [1.2, 1.35, 1.5, 1.6, 1.8, 1.9, 2.0, 2.2, 2.4, 2.6]
+      .map((alto) => ({ alto, niveles: M.nivelesDeEntrepano(alto) })),
+    vanosDeCorrido: [0.3, 0.6, 0.9, 1.0, 1.2, 1.25, 1.5, 1.8, 2.0, 2.5, 3.0, 3.6, 3.75, 5.0, 7.5]
+      .map((ancho) => ({ ancho, vanos: M.vanosDeCorrido(ancho) })),
+    puertasDeNevera: [0.6, 0.75, 0.9, 1.2, 1.445, 1.5, 1.8, 2.0, 2.07, 2.25, 2.5, 3.0]
+      .map((ancho) => ({ ancho, puertas: M.puertasDeNevera(ancho) })),
+    cotasDeCheckout: [[1.8, 0.7, 0.9], [1.2, 0.6, 0.85], [1.5, 0.6, 0.9], [2.0, 0.8, 0.95], [2.4, 0.9, 0.9], [3.0, 0.9, 1.0]]
+      .map(([w, d, h]) => ({ w, d, h, cotas: M.cotasDeCheckout(w, d, h) })),
+  };
+
+  const ts = {
+    fuente: "frontend/scripts/capturar-catalogo.mjs",
+    tablas,
+    por_tipo: porTipo,
+    por_mueble: porMueble,
+    nace_en_2D: tabla("convertir", naceEn2D, "itemsToStore con el catálogo del plano 2D"),
+    prefijoDesalineado: tabla("nomenclatura", N.prefijoDesalineado(MUEBLES)),
+    medidas,
+  };
+  return ts;
+}
 
 // ─── El archivo ───────────────────────────────────────────────────────────────
 
@@ -300,39 +333,23 @@ const LEEME = [
   "No se edita a mano: se vuelve a capturar.",
 ];
 
-const ts = {
-  fuente: "frontend/scripts/capturar-catalogo.mjs",
-  tablas,
-  por_tipo: porTipo,
-  por_mueble: porMueble,
-  nace_en_2D: tabla("convertir", naceEn2D, "itemsToStore con el catálogo del plano 2D"),
-  prefijoDesalineado: tabla("nomenclatura", N.prefijoDesalineado(MUEBLES)),
-  medidas,
-};
-
-const anterior = existsSync(SALIDA) ? JSON.parse(readFileSync(SALIDA, "utf8")) : {};
-const nuevo = {
-  leeme: LEEME,
-  tipos: TIPOS,
-  plano: { sede: SEDE, muebles: MUEBLES },
-  ts,
-  ...(anterior.python ? { python: anterior.python } : {}),
-};
-const texto = JSON.stringify(nuevo, null, 2) + "\n";
-
-if (comprobar) {
-  const distintas = ["leeme", "tipos", "plano", "ts"].filter(
-    (k) => JSON.stringify(anterior[k]) !== JSON.stringify(nuevo[k]),
-  );
-  if (distintas.length) {
-    console.error(`  FALLA catalogo-antes.json no es lo que da el código hoy: cambió ${distintas.join(", ")}`);
-    process.exitCode = 1;
-  } else {
-    console.log("  ok   catalogo-antes.json (parte ts) es lo que da el código hoy");
-  }
-} else {
-  writeFileSync(SALIDA, texto);
-  const n = Object.keys(tablas).length;
+if (esElPrograma && !reescribir) {
+  console.error("catalogo-antes.json es la referencia FIJA de antes del catálogo único: se compara con\n"
+    + "`npm run probar:catalogo`. Para escribirla hace falta `--reescribir`, y sólo sobre el código de antes.");
+  process.exitCode = 2;
+} else if (esElPrograma) {
+  const MUEBLES = armarPlano();
+  const ts = capturarTS(MUEBLES);
+  const anterior = existsSync(SALIDA) ? JSON.parse(readFileSync(SALIDA, "utf8")) : {};
+  const nuevo = {
+    leeme: LEEME,
+    tipos: TIPOS,
+    plano: { sede: SEDE, muebles: MUEBLES },
+    ts,
+    ...(anterior.python ? { python: anterior.python } : {}),
+  };
+  writeFileSync(SALIDA, JSON.stringify(nuevo, null, 2) + "\n");
+  const n = Object.keys(ts.tablas).length;
   console.log(`catalogo-antes.json: ${n} tablas, ${TIPOS.length} tipos, ${MUEBLES.length} muebles en el plano`
-    + (anterior.python ? " (la parte python se conservó)" : " — falta la parte python: correr backend/scripts/capturar_catalogo.py"));
+    + (anterior.python ? " (la parte python se conservó)" : " — falta la parte python: correr backend/scripts/capturar_catalogo.py --reescribir"));
 }

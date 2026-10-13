@@ -13,6 +13,9 @@
 
 import { dayNumber, inclusiveDays, parseISODate } from "./seasons";
 import type { Vista3D } from "../utils/planta";
+import {
+  CATALOGO_DE_MUEBLES, categoriasDeTipo, tarifaPorTipo, tiposQueSeAlquilan,
+} from "../catalogo/catalogo";
 
 export type SpaceStatus = "free" | "occupied" | "reserved" | "maintenance";
 
@@ -88,12 +91,12 @@ export function isDoubleGondola(f: { type?: string; gondolaType?: string | null 
  * los planos viejos seguían contando como espacio vendible, aparecían en «qué
  * queda por vender» y podían recibir un contrato. Mirando el tipo, esos planos
  * quedan bien sin migrar nada.
+ *
+ * Son los tipos con `alquilable: "nunca"` en el catálogo de muebles
+ * (`catalogo/muebles.json`): columna, caja y servicio al cliente. El servidor
+ * lee lo mismo de su copia (`backend/app/services/catalogo_muebles.py`).
  */
-export const NUNCA_ALQUILABLE: ReadonlySet<string> = new Set<FixType>([
-  "columna",
-  "checkout",
-  "servicio_cliente",
-]);
+export const NUNCA_ALQUILABLE: ReadonlySet<string> = new Set<string>(tiposQueSeAlquilan("nunca"));
 
 /** Fixture types that are infrastructure by nature — never rented to a supplier.
  *  Used as the default when a fixture is first created.
@@ -101,11 +104,11 @@ export const NUNCA_ALQUILABLE: ReadonlySet<string> = new Set<FixType>([
  *  Los de `NUNCA_ALQUILABLE` entran acá también, para que el mueble nazca con
  *  la bandera puesta y el dato guardado diga lo mismo que la regla. La `metro`
  *  —la zona libre— es el único que sí se puede dar vuelta a mano: un metro de
- *  piso SÍ se le alquila a una marca para que plante su stand. */
-export const NON_RENTABLE_BY_DEFAULT: ReadonlySet<string> = new Set<FixType>([
-  "metro",
-  ...NUNCA_ALQUILABLE,
-] as FixType[]);
+ *  piso SÍ se le alquila a una marca para que plante su stand. En el catálogo
+ *  es `alquilable: "no_por_defecto"`. */
+export const NON_RENTABLE_BY_DEFAULT: ReadonlySet<string> = new Set<string>(
+  tiposQueSeAlquilan("no_por_defecto", "nunca"),
+);
 
 /** True when the fixture can hold a commercial contract.
  *
@@ -175,11 +178,18 @@ export interface ReferenceRates {
   by_sede: Record<string, Record<string, number>>;
 }
 
+/** La clave de tarifa de cada tipo (y de los nombres viejos del 2D), del
+ *  catálogo de muebles. Un `Map` y no un objeto: un tipo escrito a mano en un
+ *  plano no puede caer en `toString` ni en `constructor`. */
+const TARIFA_POR_TIPO: ReadonlyMap<string, string> = new Map(Object.entries(tarifaPorTipo()));
+
 /** Rate-table key for a fixture. `negotiatedValue` is per face/contract, so
  *  double and wall gondolas (and the legacy 2D-only type names) share one
- *  per-face "gondola" rate instead of three diverging ones. */
+ *  per-face "gondola" rate instead of three diverging ones. Sale de `tarifa`
+ *  en el catálogo de muebles; lo que no tiene tarifa —lo que no se vende, un
+ *  tipo que el catálogo no conoce— contesta su propio tipo, como siempre. */
 export function rateTypeOf(f: { type: string }): string {
-  return f.type === "gondola_doble" || f.type === "gondola_mural" ? "gondola" : f.type;
+  return TARIFA_POR_TIPO.get(f.type) ?? f.type;
 }
 
 /** Effective reference for one sede + rate type, or null when none is set.
@@ -209,39 +219,22 @@ export function referenceRateFor(
  *  —columna, caja registradora, servicio al cliente— no llevan tarifa: ver
  *  `NUNCA_ALQUILABLE`. La caja estaba listada como «Cabecera de caja» y eso
  *  era ofrecer un precio por algo que no está a la venta. La zona libre sí
- *  queda: un metro de piso se le alquila a una marca para su stand. */
-export const RATE_TYPES: { type: string; label: string }[] = [
-  { type: "gondola",          label: "Góndola, por cara" },
-  { type: "punta",            label: "Punta de góndola" },
-  { type: "robatope",         label: "Robatope" },
-  { type: "ristra",           label: "Ristra" },
-  { type: "cross",            label: "Exhibición de piso" },
-  { type: "impulsador",       label: "Impulsador de marca" },
-  { type: "mueble",           label: "Vitrina" },
-  { type: "isla",             label: "Isla" },
-  { type: "batea",            label: "Batea" },
-  { type: "isla_fria",        label: "Isla de congelados" },
-  { type: "nevera_carnes",    label: "Nevera de carnes" },
-  { type: "nevera_vegetales", label: "Nevera de vegetales" },
-  { type: "nevera_refrescos", label: "Nevera de bebidas" },
-  { type: "stand_frutas",     label: "Frutas y verduras" },
-  { type: "metro",            label: "Zona libre" },
-];
+ *  queda: un metro de piso se le alquila a una marca para su stand.
+ *
+ *  Es `tarifas` del catálogo de muebles. Con él, dos rótulos dejaron de
+ *  cruzarse con los nombres de los muebles: la `isla` —que en los editores se
+ *  dibuja como la estiba de piso— decía «Isla», y es «Estiba (exhibición de
+ *  piso)»; la `cross` —el exhibidor en cruz— decía «Exhibición de piso», y es
+ *  «Exhibidor cruz». Las claves no cambiaron: son las de las tarifas guardadas. */
+export const RATE_TYPES: { type: string; label: string }[] =
+  CATALOGO_DE_MUEBLES.tarifas.map((t) => ({ type: t.clave, label: t.rotulo }));
 
 /** La familia comercial de cada tipo. Es el vocabulario que ya usa la
  *  biblioteca del plano (FloorPlan2D): góndolas, displays, muebles,
  *  refrigeración, frescos. Sirve para contestar «qué me queda por vender»
- *  agrupado, sin inventar un campo de zona que el mueble no tiene. */
-export const CATEGORIA_DE_TIPO: Record<string, string> = {
-  gondola: "Góndolas", punta: "Góndolas", robatope: "Góndolas",
-  ristra: "Displays", cross: "Displays", impulsador: "Displays",
-  mueble: "Muebles", isla: "Muebles", batea: "Muebles",
-  isla_fria: "Refrigeración", nevera_carnes: "Refrigeración",
-  nevera_vegetales: "Refrigeración",
-  nevera_refrescos: "Refrigeración",
-  stand_frutas: "Frescos",
-  metro: "Zona libre",
-};
+ *  agrupado, sin inventar un campo de zona que el mueble no tiene. Es
+ *  `categoria` en el catálogo de muebles; lo que no la tiene es «Otros». */
+export const CATEGORIA_DE_TIPO: Record<string, string> = categoriasDeTipo();
 
 export function categoriaDeTipo(type: string): string {
   return CATEGORIA_DE_TIPO[type] ?? "Otros";

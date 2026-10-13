@@ -414,9 +414,8 @@ const M = await import(
 
 // Las tablas por tipo que vivían adentro del editor 3D, del plano 2D y del
 // minimapa (`FIXTURE_DEFS`, `TIPOS_CON_*`, `CATALOG`, `REFERENCIAS`) están en
-// `src/catalogo/` desde que se sacaron para capturar la referencia del catálogo
-// (`scripts/casos/catalogo-antes.json`). Se corren: una regex sobre el texto
-// del componente ya no las encontraría.
+// `src/catalogo/`, calculadas del catálogo de muebles (`catalogo/muebles.json`).
+// Se corren: una regex sobre el texto del componente ya no las encontraría.
 const deCatalogo = async (archivo) => {
   const r = await build({
     entryPoints: [join(raiz, "src", "catalogo", archivo)],
@@ -427,6 +426,9 @@ const deCatalogo = async (archivo) => {
 const C3 = await deCatalogo("editor3D.ts");
 const C2 = await deCatalogo("plano2D.ts");
 const CM = await deCatalogo("minimapa.ts");
+// El catálogo de muebles: de ahí salen las tres de arriba (lo vigila
+// `probar-catalogo.mjs`).
+const CC = await deCatalogo("catalogo.ts");
 
 prueba("ninguna altura de mueble pierde su entrepaño de arriba", () => {
   // El último entrepaño cae JUSTO en el límite, y con `y <= hasta` a secas la
@@ -1464,15 +1466,15 @@ prueba("la bandeja gira sobre SÍ MISMA, no sobre el piso del mueble", () => {
 
 prueba("la nevera de vegetales está dada de alta en todo el sistema", () => {
   // Un tipo nuevo toca diez lugares. Si falta uno, el mueble se puede colocar
-  // y después no tiene código, o no aparece en el plano 2D.
-  const donde = [
-    ["types/fixtures.ts", "el tipo no existe"],
-    ["utils/nomenclatura.ts", "el mueble no tiene prefijo de código"],
-    ["components/plataforma/formato.ts", "no tiene nombre en los informes"],
-  ];
-  for (const [ruta, porque] of donde) {
-    assert.match(leer(join("src", ruta)), /nevera_vegetales/, `${ruta}: ${porque}`);
-  }
+  // y después no tiene código, o no aparece en el plano 2D. El prefijo, la
+  // tarifa y el nombre de los informes salen del catálogo de muebles
+  // (`catalogo/muebles.json`); el tipo de TypeScript sigue escrito a mano.
+  assert.match(leer(join("src", "types", "fixtures.ts")), /nevera_vegetales/, "types/fixtures.ts: el tipo no existe");
+  const veg = CC.CATALOGO_DE_MUEBLES.tipos.nevera_vegetales;
+  assert.ok(veg, "catalogo/muebles.json: el tipo no existe");
+  assert.equal(CC.prefijosPorTipo().nevera_vegetales, "VEG", "el mueble no tiene prefijo de código");
+  assert.ok(veg.informe && veg.informePlural, "no tiene nombre en los informes");
+  assert.ok(CC.tarifaPorTipo().nevera_vegetales, "no tiene tarifa de referencia");
   // El catálogo del plano 2D y las referencias del minimapa viven en
   // `src/catalogo/`; cada componente tiene que tomarlos de ahí.
   assert.ok(C2.CATALOG.some((c) => c.type === "nevera_vegetales"), "catalogo/plano2D.ts: no se puede colocar en el plano 2D");
@@ -2239,7 +2241,8 @@ prueba("surtido: cada producto llena SU bloque, en todos los entrepaños, y ning
   const fp = cuerpoDe("const facePaintById = useMemo(", "const handleOrbitReady");
   assert.match(fp, /TIPOS_CON_SURTIDO\.has\(fix\.type\)\s*\? surtidoALaVista\(arteId, como\?\.surtido, catalogo, privadoPara\)/);
   assert.match(fp, /bloquesDeSurtido\(venta\.vanos, delSurtido\.length \+ 1\)/);
-  assert.deepEqual([...C3.TIPOS_CON_SURTIDO], ["gondola", "punta"], "el surtido se ofrece en la nevera o el robatope");
+  // Es un conjunto (se consulta con `.has`): se compara sin orden.
+  assert.deepEqual(C3.TIPOS_CON_SURTIDO, new Set(["gondola", "punta"]), "el surtido se ofrece en la nevera o el robatope");
 });
 
 prueba("surtido: el copete, el cabezote, la toma y /taller siguen con el principal", () => {
@@ -3681,7 +3684,8 @@ prueba("arte o relleno, CORRIDO: la cara probada no lleva relleno y la otra sí"
 // que dibuja el producto.
 
 prueba("la prueba 3D le gana a la foto y al patrón en su cara, y sólo en ella", () => {
-  assert.deepEqual([...C3.TIPOS_CON_PRUEBA_3D], ["gondola", "punta", "nevera_refrescos", "robatope"],
+  // Es un conjunto (se consulta con `.has`): se compara sin orden.
+  assert.deepEqual(C3.TIPOS_CON_PRUEBA_3D, new Set(["gondola", "punta", "nevera_refrescos", "robatope"]),
     "cambió en qué muebles se para el producto de prueba");
   const fp = cuerpoDe("const facePaintById = useMemo(", "const handleOrbitReady");
   assert.match(fp, /const en3D = TIPOS_CON_PRUEBA_3D\.has\(type\)/, "facePaintById no pregunta si el mueble lleva prueba 3D");

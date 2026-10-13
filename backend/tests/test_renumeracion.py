@@ -274,24 +274,27 @@ def test_el_prefijo_es_el_mismo_que_usa_el_editor(client, admin):
     """Si las dos tablas se separan, el sistema vuelve a mentir.
 
     El servidor renumeraría un mueble a ``EXP-03`` y el editor, al agregar el
-    siguiente, seguiría la serie de otro prefijo. Se compara contra el archivo
-    del frontend, no contra una copia de memoria.
+    siguiente, seguiría la serie de otro prefijo. Las dos salen del catálogo de
+    muebles: el editor de ``frontend/src/catalogo/muebles.json`` y el servidor
+    de su copia. Se compara contra el archivo que lee el EDITOR, no contra una
+    copia de memoria, y se mira que el editor lo tome de ahí.
     """
     from app.services.renumeracion import PREFIJO_POR_TIPO
 
-    ts = Path(__file__).resolve().parents[2] / "frontend/src/utils/nomenclatura.ts"
-    texto = ts.read_text(encoding="utf-8")
-    # La declaración se busca con tolerancia —con anotación de tipo o sin ella,
-    # con `as const` o sin él— para que esta prueba falle cuando las TABLAS se
-    # separan y no cuando alguien reformatea el archivo.
-    bloque = re.search(r"PREFIJO_POR_TIPO[^=]*=\s*\{(.*?)\n\}", texto, re.S)
-    assert bloque, "no se encontró PREFIJO_POR_TIPO en utils/nomenclatura.ts"
-    del_frontend = dict(
-        re.findall(r'^\s*"?([\w_]+)"?:\s*"([A-Z]+)"\s*,', bloque.group(1), re.MULTILINE)
-    )
+    raiz = Path(__file__).resolve().parents[2]
+    catalogo = json.loads((raiz / "frontend/src/catalogo/muebles.json").read_text(encoding="utf-8"))
+    del_editor = {tipo: d["prefijo"] for tipo, d in catalogo["tipos"].items()}
+    for alias, a in catalogo["alias"].items():
+        del_editor[alias] = catalogo["tipos"][a["tipo"]]["prefijo"]
 
-    assert del_frontend, "no se pudo leer PREFIJO_POR_TIPO del frontend"
-    assert del_frontend == PREFIJO_POR_TIPO
+    assert del_editor, "no se pudieron leer los prefijos del catálogo del editor"
+    assert del_editor == PREFIJO_POR_TIPO
+
+    # El editor no tiene una tabla propia: la calcula del catálogo.
+    texto = (raiz / "frontend/src/utils/nomenclatura.ts").read_text(encoding="utf-8")
+    assert re.search(r"export const PREFIJO_POR_TIPO[^=]*=\s*prefijosPorTipo\(\);", texto), (
+        "utils/nomenclatura.ts volvió a tener su propia tabla de prefijos"
+    )
 
 
 # ─── Los invariantes ──────────────────────────────────────────────────────────

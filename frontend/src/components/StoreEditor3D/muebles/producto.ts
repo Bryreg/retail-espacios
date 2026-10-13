@@ -24,6 +24,7 @@
  * `medidas.ts`, están acá para poder corregirse en un solo lugar.
  */
 import type { EstadoDelRecorte } from "./recorte";
+import { tiposConBandera } from "../../../catalogo/catalogo";
 
 /** La silueta del envase. Es lo PRIMERO que el ojo clasifica —antes que el
  *  color y mucho antes que la etiqueta—, así que decide la geometría con la
@@ -222,8 +223,9 @@ function rubroQueCasa(rubro: string | undefined | null): Empaque | null {
 
 // ─── El frío ───────────────────────────────────────────────────────────────
 
-/** Los muebles de frío que existen en el editor (`FIXTURE_DEFS`). */
-export const MUEBLES_FRIOS = new Set<string>(["nevera_refrescos", "nevera_carnes", "isla_fria", "nevera_vegetales"]);
+/** Los muebles de frío que existen en el editor (`FIXTURE_DEFS`): la bandera
+ *  `frio` del catálogo de muebles (`catalogo/muebles.json`). */
+export const MUEBLES_FRIOS = new Set<string>(tiposConBandera("frio"));
 
 /** Lo que va en frío, comparado contra el COMIENZO de cada palabra (como
  *  `rubroQueCasa`): «yogur» caza «yogurt» y «yogures», «queso» caza «quesos». */

@@ -124,17 +124,27 @@ prueba("no se publica tarifa de lo que no se vende", () => {
 prueba("el frontend y el backend dicen lo MISMO", () => {
   // La pantalla decide qué se dibuja como vendible; el servidor decide qué se
   // puede guardar. Separadas, la pantalla ofrece lo que el servidor rechaza.
+  //
+  // Las dos listas salen del catálogo de muebles, cada lado de su copia
+  // (`frontend/src/catalogo/muebles.json` y `backend/app/catalogo/muebles.json`,
+  // idénticas: lo exigen `probar-catalogo.mjs` y `test_catalogo_muebles.py`).
+  // Acá se lee la copia del SERVIDOR y se la compara con lo que corre la
+  // pantalla, y se mira que el servidor tome su lista de ahí y no de una propia.
   const py = leer(join(repo, "backend", "app", "services", "layout_lookup.py"));
-  const m = /NUNCA_ALQUILABLE\s*=\s*frozenset\(\{([^}]*)\}\)/.exec(py);
-  assert.ok(m, "el backend perdió su lista de muebles no vendibles");
+  const catalogo = JSON.parse(leer(join(repo, "backend", "app", "catalogo", "muebles.json")));
   const backend = new Set(
-    m[1].split(",").map((s) => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean),
+    Object.entries(catalogo.tipos).filter(([, d]) => d.alquilable === "nunca").map(([t]) => t),
   );
   const frontend = new Set(F.NUNCA_ALQUILABLE);
   assert.deepEqual(
     [...backend].sort(), [...frontend].sort(),
     "las dos listas se separaron: la pantalla y el servidor no venden lo mismo",
   );
+  assert.match(py, /^NUNCA_ALQUILABLE[^=\n]*=\s*catalogo_muebles\.NUNCA_ALQUILABLE$/m,
+    "layout_lookup.py no toma `NUNCA_ALQUILABLE` del catálogo de muebles: volvió a tener su propia lista");
+  const servicio = leer(join(repo, "backend", "app", "services", "catalogo_muebles.py"));
+  assert.match(servicio, /NUNCA_ALQUILABLE[^=]*=\s*frozenset\(\s*tipo for tipo, d in TIPOS\.items\(\) if d\["alquilable"\] == "nunca"/,
+    "catalogo_muebles.py no calcula `NUNCA_ALQUILABLE` de `alquilable: \"nunca\"`");
   // Y el backend pregunta por el tipo antes que por la bandera.
   assert.match(py, /def es_comercializable/, "el backend perdió la regla unificada");
   assert.match(

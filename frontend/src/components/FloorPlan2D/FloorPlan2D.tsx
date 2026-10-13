@@ -49,7 +49,8 @@ type SpaceStatus = "free" | "occupied" | "reserved" | "maintenance";
 // `CATALOG` —los muebles que se pueden colocar en el plano: rótulo, ancho,
 // fondo, emoji, prefijo y familia—, y `H_DEFAULTS` y `COLOR_DEFAULTS` —el alto
 // y el color con que nace un mueble dibujado acá— viven en `catalogo/plano2D.ts`,
-// para que node los lea sin arrastrar el plano.
+// calculados del catálogo de muebles (`catalogo/muebles.json`): el plano y el
+// editor 3D crean el mismo mueble.
 
 // Status palette, shared with the Dashboard's occupancy map y con el editor 3D.
 //

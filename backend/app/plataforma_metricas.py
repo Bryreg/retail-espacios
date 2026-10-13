@@ -64,6 +64,7 @@ import unicodedata
 from collections import OrderedDict
 from datetime import date, datetime, timezone
 
+from app.services.catalogo_muebles import tipo_de_tarifa
 from app.services.layout_lookup import caras_de, es_comercializable
 
 log = logging.getLogger("recabra.plataforma.metricas")
@@ -275,10 +276,11 @@ def _caras_comercializables(fixtures: list, sede_snapshot: str) -> set[str]:
 # ``codigo_completo -> (SEDE, tipo)``.
 
 def _tipo_de_tarifa(tipo: str) -> str:
-    """Misma semántica que ``_tipo_de_tarifa`` de ``routers/bulk_leases.py``:
+    """La misma que ``_tipo_de_tarifa`` de ``routers/bulk_leases.py``, porque
+    las dos salen del catálogo de muebles (``services/catalogo_muebles.py``):
     las dos caras de una góndola (doble o mural) comparten tarifa, porque el
     valor negociado también es por cara."""
-    return "gondola" if tipo in ("gondola_doble", "gondola_mural") else tipo
+    return tipo_de_tarifa(tipo)
 
 
 def _mapa_tipos_de_sede(fixtures: list, sede_snapshot: str) -> dict[str, tuple[str, str]]:
