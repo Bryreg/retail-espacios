@@ -310,3 +310,30 @@
   cursor: pointer;
 }
 .visor-enlace:hover { color: rgb(var(--ink-1-rgb)); }
+
+/* Mientras se arma la lámina el visor queda QUIETO (`armando` en
+   `VisorDeVenta.tsx`): lo que cambiaría lo que se está fotografiando —otra
+   cara, otra toma, «Hoy», otro producto, otro proveedor, el cajón, la órbita—
+   no responde, y se ve apagado. `.visor-quieto` es un `fieldset` sin marco
+   que agrupa el proveedor, los productos y «Cómo va»: `disabled` apaga de una
+   todos sus controles, también los de `PanelDePrueba`. */
+.visor-quieto {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.visor-quieto:disabled { opacity: .55; }
+.visor-quieto:disabled * { cursor: default; }
+/* La órbita, quieta: tapa el lienzo (no la chapa ni el HUD, que vienen
+   después en el DOM). */
+.visor-tapa { position: absolute; inset: 0; cursor: progress; }
+.visor-hud-boton:disabled,
+.visor-pestana:disabled,
+.visor-cajon-cerrar:disabled { opacity: .5; cursor: default; }
+.visor-hud-boton:disabled:not([aria-pressed="true"]):hover { background: transparent; }
+.visor-pestana:disabled:hover { color: rgb(var(--ink-2-rgb)); border-color: rgb(var(--line-strong-rgb)); }
+.visor-enlace:disabled { text-decoration: none; cursor: default; }

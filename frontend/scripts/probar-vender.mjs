@@ -711,8 +711,10 @@ prueba("la lámina del visor: del proveedor de los artes, sin período ni valor,
   // La planometría: SÓLO el archivo de la lámina, y sólo al campo de la ficha.
   const llamadas = [...visorCodigo.matchAll(/\bonPlanometria\(([^;]*)\);/g)].map((m) => m[1]);
   assert.deepEqual(llamadas.map((x) => x.startsWith("new File([jpg.blob]")), [true], `onPlanometria recibe otra cosa: ${llamadas.join(" · ")}`);
-  assert.match(modoCodigo, /const adjuntarLamina = useCallback\(\(archivo: File, cara: string\) => \{\s*setPlanometria\(archivo\);\s*marcarLamina\(\{ archivo, cara \}\);\s*setMasDatos\(true\);\s*\}, \[setPlanometria, marcarLamina\]\);/,
-    "la lámina adjunta escribe algo más que el campo de planometría de la ficha (y la marca de la sesión)");
+  assert.match(modoCodigo, /const adjuntarLamina = useCallback\(\(archivo: File, cara: string, proveedor: string\) => \{\s*if \(normalizarProveedor\(proveedor\) !== normalizarProveedor\(proveedorVigente\.current\)\) return false;\s*setPlanometria\(archivo\);\s*marcarLamina\(\{ archivo, cara \}\);\s*setMasDatos\(true\);\s*return true;\s*\}, \[setPlanometria, marcarLamina\]\);/,
+    "la lámina adjunta escribe algo más que el campo de planometría de la ficha (y la marca de la sesión), o entra aunque el contrato ya sea de otro proveedor");
+  assert.match(modoCodigo, /const proveedorVigente = useRef\(c\.proveedor\);\s*proveedorVigente\.current = c\.proveedor;/,
+    "la ficha compara la lámina con el proveedor del render del clic, no con el vigente");
   assert.match(modoCodigo, /onPlanometria=\{adjuntarLamina\}/, "el visor no recibe el adjuntar de la ficha");
 });
 
@@ -731,6 +733,91 @@ prueba("la lámina adjunta se va con el proveedor: cambiarlo la saca de la plano
   assert.match(modoCodigo, /planometria=\{!c\.planometria \? null\s*: sesion\.lamina && c\.planometria === sesion\.lamina\.archivo \? \{ lamina: sesion\.lamina\.cara \} : "otra"\}/,
     "el visor no sabe de quién es la planometría que ya tiene el contrato");
   assert.ok(!/planometria\.name|planometria\?\.name/.test(visorCodigo), "el visor nombra el archivo de la planometría");
+  // El aviso de que se quitó, sin decir POR QUÉ: la ficha la mira el
+  // proveedor, y «era de otro proveedor» le contaba que el espacio se le
+  // estuvo ofreciendo a otro (la tercera crítica).
+  const quitada = (modoCodigo.match(/data-lamina-quitada>([^<]*)</) || [, ""])[1];
+  assert.ok(quitada.trim().length > 10, "no se encontró el aviso de la lámina quitada");
+  assert.ok(!/proveedor|otr[oa]s?\b/i.test(quitada), `el aviso de la lámina quitada sugiere otra negociación: «${quitada.trim()}»`);
+  // «Empezar de nuevo» saca la lámina él mismo, sin aviso.
+  assert.match(modoCodigo, /const empezarDeNuevo = \(\) => \{\s*if \(sesion\.lamina && c\.planometria === sesion\.lamina\.archivo\) setPlanometria\(null\);\s*setLaminaQuitada\(false\);\s*sesion\.vaciar\(\);\s*onCancelar\(\);\s*\};/,
+    "«Empezar de nuevo» deja el aviso de la lámina quitada en una ficha que empieza de cero");
+  assert.match(modoCodigo, /onClick=\{empezarDeNuevo\}/, "«Empezar de nuevo» no pasa por `empezarDeNuevo`");
+});
+
+prueba("lo que llega tarde no pisa lo vigente: el catálogo, la subida y la lámina", () => {
+  // El catálogo: otro nombre vacía la lista YA (si no, mientras llega la
+  // nueva, el cajón decía «Productos de Alpina» con «Postobón» escrito), y
+  // una respuesta vieja se descarta.
+  assert.match(visorCodigo, /useEffect\(\(\) => \{\s*setCatalogo\(CATALOGO_VACIO\);[^}]*?return traer\(nombreRef\.current, [^}]*\}, \[proveedorNormal, traer\]\);/,
+    "el efecto del proveedor no vacía la lista del anterior antes de pedir la del nuevo");
+  // Y la lista sabe de quién es: en el render con el nombre nuevo (antes de
+  // que corra el efecto) la del anterior ya no se muestra.
+  assert.match(visorCodigo, /setCatalogo\(\{ de: normalizarProveedor\(quien\), lista \}\);/, "la lista del catálogo no recuerda para qué nombre se pidió");
+  assert.match(visorCodigo, /const artes = catalogo\.de === proveedorNormal \? catalogo\.lista : SIN_ARTES;/,
+    "el visor muestra la lista del catálogo aunque sea de otro nombre");
+  assert.ok(!/useState<Arte\[\]>/.test(visorCodigo), "hay una lista de artes guardada sin el nombre de su proveedor");
+  assert.match(visorCodigo, /if \(mio !== pedidoDelCatalogo\.current\) return;/, "una respuesta vieja del catálogo pisa la del proveedor de ahora");
+  // Y el servidor recibe el nombre: el catálogo entero filtrado en el
+  // navegador es la lista de clientes de la tienda delante de uno de ellos.
+  const api = codigo("src/api/catalogo.ts");
+  const delProveedor = (api.match(/export const listarDelProveedor = [^]*?\n\};/) || [""])[0];
+  assert.match(delProveedor, /client\.get<Arte\[\]>\("\/catalogo\/", \{ params: \{ proveedor: n \} \}\)/,
+    "`listarDelProveedor` no le pide al servidor sólo el catálogo de ese nombre");
+  assert.ok(!/\.filter\(/.test(delProveedor), "`listarDelProveedor` filtra en el navegador: bajó más de lo que tenía que bajar");
+  // Lo que termina después de un `await` lee el nombre VIGENTE (un ref), no
+  // el del render del clic: «Subir» volvía a pedir el catálogo de Alpina con
+  // Postobón escrito, y le probaba el producto de Alpina a la cara.
+  assert.match(visorCodigo, /const nombreRef = useRef\(nombre\);\s*nombreRef\.current = nombre;/, "no hay un ref con el nombre vigente");
+  assert.match(visorCodigo, /const recargar = useCallback\(\(\) => \{ traer\(nombreRef\.current, 0\); \}, \[traer\]\);/,
+    "`recargar` pide el catálogo con el nombre del render en que se armó");
+  const alSubir = (visorCodigo.match(/const alSubir = \([^]*?\n {2}\};/) || [""])[0];
+  assert.ok(alSubir, "no se encontró `alSubir`");
+  assert.match(alSubir, /^[^]*?\{\s*if \(!vivo\.current\) return;/, "la subida que termina con el visor cerrado toca la ficha");
+  assert.match(alSubir, /if \(normalizarProveedor\(desde\.proveedor\) !== normalizarProveedor\(nombreRef\.current\)\) \{\s*recargar\(\);\s*return;\s*\}/,
+    "un producto subido a nombre del proveedor anterior entra a la lista o a la cara del nuevo");
+  assert.match(alSubir, /if \(desde\.cara === claveRef\.current\) elegir\(nuevo\);/, "el producto subido se prueba en otra cara que la del alta");
+  assert.match(visorCodigo, /<SubirProducto\b[^>]*\sonListo=\{alSubir\}/, "el alta no termina en `alSubir`");
+  assert.match(visorCodigo, /const desde = \{ proveedor, cara \};[^]*?onListo\(nuevo, desde\);/, "el alta no dice a nombre de quién y para qué cara se subió");
+  // Mientras sube, el proveedor no se cambia desde el cajón.
+  assert.match(visorCodigo, /className="visor-enlace" onClick=\{\(\) => setEditandoProveedor\(true\)\} disabled=\{enviandoAlta\}/,
+    "«cambiar» el proveedor sigue activo mientras se sube un producto");
+  assert.match(visorCodigo, /onEnviando=\{setEnviandoAlta\}/, "el visor no se entera de que un producto va camino al servidor");
+  // La lámina: atada a lo que se mostraba al empezar (cara, proveedor, visor
+  // abierto), mirada después de cada `await`, y con el visor quieto.
+  assert.match(visorCodigo, /useEffect\(\(\) => \{ vigencia\.current\+\+; \}, \[clave, proveedorNormal\]\);/, "la lámina no se entera de que cambió la cara o el proveedor");
+  assert.match(visorCodigo, /useEffect\(\(\) => \(\) => \{ vigencia\.current\+\+; \}, \[\]\);/, "la lámina no se entera de que se cerró el visor");
+  const arma = (visorCodigo.match(/const armarLamina = async[^]*?\n {2}\};/) || [""])[0];
+  assert.match(arma, /const mia = vigencia\.current;/, "la lámina no recuerda qué se mostraba al empezar");
+  assert.match(arma, /const sigue = \(\) => vigencia\.current === mia;\s*const vigente = \(\) => \{ if \(!sigue\(\)\) throw INTERRUMPIDA; \};/,
+    "`vigente()` no corta la lámina cuando cambió lo que se mostraba");
+  const vigentes = (arma.match(/\bvigente\(\);/g) || []).length;
+  assert.ok(vigentes >= 4, `la lámina mira si sigue vigente en ${vigentes} lugares (entre tomas, después de cada toma y del armado)`);
+  assert.match(arma, /const blob = await componerPropuesta\(tomas, datos\);\s*vigente\(\);/, "la lámina compuesta no se vuelve a mirar antes de devolverse");
+  assert.match(arma, /proveedor: quien, sigue/, "la lámina no dice con qué proveedor se armó");
+  const usar = (visorCodigo.match(/const usarComoPlanometria = async[^]*?\n {2}\};/) || [""])[0];
+  assert.match(usar, /const jpg = await aJpeg\(r\.blob\);[^]*?if \(!r\.sigue\(\)\) throw INTERRUMPIDA;[^]*?onPlanometria\(/,
+    "«Usarla como planometría» adjunta sin volver a mirar después del JPG");
+  assert.match(usar, /, r\.cara, r\.proveedor\);\s*if \(!adjunta\) throw INTERRUMPIDA;/, "la ficha no recibe el proveedor de la lámina, o el visor no se entera de que la rechazó");
+  const bajar = (visorCodigo.match(/const bajarLamina = async[^]*?\n {2}\};/) || [""])[0];
+  assert.match(bajar, /if \(!r\.sigue\(\)\) throw INTERRUMPIDA;\s*descargar\(/, "«Bajar la propuesta» baja una lámina interrumpida");
+  // Quieto mientras se arma: ni otra cara, ni otra toma, ni el cajón, ni el
+  // proveedor, ni otro producto, ni la órbita.
+  const pestana = (visorCodigo.match(/className="visor-pestana"[^]*?<\/button>/) || [""])[0];
+  assert.match(pestana, /\sdisabled=\{armando\}/, "la chapa deja saltar de cara mientras se arma la lámina");
+  const hud = (visorCodigo.match(/<HudQueSeEsconde\b[^]*?<\/HudQueSeEsconde>/) || [""])[0];
+  const botonesHud = (hud.match(/<button\b/g) || []).length;
+  const apagados = (hud.match(/disabled=\{armando\}/g) || []).length;
+  assert.ok(botonesHud >= 5 && apagados === botonesHud, `el HUD tiene ${botonesHud} botones y ${apagados} se apagan mientras se arma la lámina`);
+  const ocultar = (visorCodigo.match(/className="visor-cajon-cerrar"[^]*?<\/button>/) || [""])[0];
+  assert.match(ocultar, /\sdisabled=\{armando\}/, "«Ocultar» cambia el ancho del lienzo mientras se arma la lámina");
+  assert.match(visorCodigo, /<fieldset className="visor-quieto" disabled=\{armando\}/, "el proveedor, los productos y «Cómo va» siguen activos mientras se arma la lámina");
+  const quieto = (visorCodigo.match(/<fieldset className="visor-quieto"[^]*?<\/fieldset>/) || [""])[0];
+  for (const [re, que] of [[/data-proveedor-del-contrato/, "el proveedor"], [/className="visor-producto"/, "los productos"], [/<PanelDePrueba\b/, "«Cómo va»"]]) {
+    assert.match(quieto, re, `${que} no está adentro de lo que se apaga mientras se arma la lámina`);
+  }
+  assert.ok(!/aria-label="La lámina"/.test(quieto), "«Para llevarse» se apaga con lo demás: no se vería qué pasó");
+  assert.match(visorCodigo, /\{armando && <div className="visor-tapa"/, "la órbita se mueve mientras se arma la lámina");
 });
 
 prueba("el visor vende la cara entera, con lo ajeno en grises; la isla muestra el lugar; la lámina, sólo su cara", () => {
@@ -748,8 +835,12 @@ prueba("el visor vende la cara entera, con lo ajeno en grises; la isla muestra e
   const arma = (visorCodigo.match(/const armarLamina = async[^]*?\n {2}\};/) || [""])[0];
   assert.ok(arma, "no se encontró `armarLamina`");
   assert.match(arma, /setCongelado\(capturar\(\)\)[^]*setSoloLaCara\(clave\);\s*try \{/, "las tomas de la lámina se ven en pantalla, o con las pruebas de otras caras");
-  assert.match(arma, /finally \{[^]*setSoloLaCara\(null\);[^]*pedirToma\(activa\.fixtureId, activa\.face, tomaAntes\);[^]*setCongelado\(null\);/,
-    "después de la lámina no se vuelve a la toma de antes, o queda congelado");
+  assert.match(arma, /finally \{\s*(?:\/\/[^\n]*\s*)*setSoloLaCara\(null\);\s*setCongelado\(null\);/,
+    "después de la lámina quedan las pruebas filtradas o el cuadro congelado");
+  // La toma de antes, sólo si sigue siendo la misma cara: si no, el 3D
+  // quedaba en una cara y la chapa en otra (la crítica: saltar a mitad).
+  assert.match(arma, /if \(vivo\.current && claveRef\.current === clave\) \{\s*setSinArte\(sinArteAntes\);\s*pedirToma\(activa\.fixtureId, activa\.face, tomaAntes\);\s*\}/,
+    "después de la lámina no se vuelve a la toma de antes, o se repone aunque la cara haya cambiado");
   assert.match(visorCodigo, /prueba=\{pruebaDibujada\}/, "el lienzo no dibuja la prueba filtrada de la lámina");
 });
 
@@ -1783,7 +1874,8 @@ if (!URL_VENDER) {
         const panel = ${PANEL};
         const t = [panel.innerText];
         for (const n of panel.querySelectorAll("[title],[aria-label]")) t.push(n.getAttribute("title"), n.getAttribute("aria-label"));
-        return { texto: t.filter(Boolean).join("\\n"), quitada: !!panel.querySelector("[data-lamina-quitada]") };
+        const q = panel.querySelector("[data-lamina-quitada]");
+        return { texto: t.filter(Boolean).join("\\n"), quitada: !!q, quitadaTexto: q?.textContent ?? "" };
       })()`);
       await pv.locator(".vender input.entrada").nth(0).fill(PROVEEDOR);
       await pv.waitForTimeout(500);
@@ -1794,6 +1886,9 @@ if (!URL_VENDER) {
         assert.equal(conOtro.planometria, "", `con ${OTRO} el contrato sigue con la planometría «${conOtro.planometria}»`);
         assert.ok(!new RegExp(PROVEEDOR, "i").test(ficha.texto), `con ${OTRO}, la ficha nombra a ${PROVEEDOR}`);
         assert.ok(ficha.quitada, "la ficha no dice que se quitó la lámina del 3D");
+        // Y sin decir por qué: «era de otro proveedor» le contaba al que mira
+        // que ese espacio se le estuvo ofreciendo a otro.
+        assert.ok(!/proveedor|\botr[oa]s?\b/i.test(ficha.quitadaTexto), `el aviso de la lámina quitada sugiere otra negociación: «${ficha.quitadaTexto}»`);
         assert.equal(deVuelta.planometria, "", "volver al proveedor anterior trajo de vuelta su lámina");
       });
     });
@@ -1834,6 +1929,281 @@ if (!URL_VENDER) {
         assert.ok(pregunta, "subir con un nombre que no está no pidió confirmar el alta");
         assert.equal(despuesN, antesN, "subir con un nombre que no está dio de alta un proveedor sin preguntar");
         for (const t of [texto, textoPregunta]) assert.ok(!t.includes(OTRO), `el visor nombra a «${OTRO}» (un parecido es el nombre de otro)`);
+      });
+    });
+
+    /* ── Lo que llega tarde no pisa lo vigente (la tercera crítica) ─────────
+       Las carreras: el proveedor que se cambia DESDE EL CAJÓN mientras llega
+       una lista, mientras sube un producto o mientras se arma la lámina. Un
+       vigía (`MutationObserver`) mira el cajón y el HUD en cada cambio del
+       DOM, no cada tanto: un parpadeo de «Productos de Alpina» delante de
+       Postobón también es una fuga. */
+    const productosDe = (n) => catalogo.filter((a) => mismo(a.proveedor, n)).map((a) => a.nombre).filter((x) => x && x.length > 3);
+    const vigiar = (pg, prohibidos) => pg.evaluate((lista) => {
+      const bajos = lista.map((t) => t.toLowerCase());
+      window.__vigia = [];
+      const mirar = () => {
+        const v = document.querySelector(".visor-venta");
+        if (!v) return;
+        const partes = [
+          ["título del cajón", v.querySelector(".visor-cajon h2")?.textContent ?? ""],
+          ...[...v.querySelectorAll(".visor-producto-nombre")].map((n) => ["producto", n.textContent ?? ""]),
+          ...[...v.querySelectorAll(".visor-hud-boton")].map((n) => ["HUD", n.textContent ?? ""]),
+          ...[...v.querySelectorAll('[aria-label="Cómo va"], [aria-label="La lámina"]')].map((n) => ["panel", n.textContent ?? ""]),
+        ];
+        for (const [donde, t] of partes) {
+          const b = t.toLowerCase();
+          if (bajos.some((x) => b.includes(x))) window.__vigia.push(`${donde}: «${t.trim().slice(0, 70)}»`);
+        }
+      };
+      mirar();
+      window.__vigiaObs?.disconnect();
+      window.__vigiaObs = new MutationObserver(mirar);
+      window.__vigiaObs.observe(document.body, { subtree: true, childList: true, characterData: true });
+    }, prohibidos);
+    const leerVigia = (pg) => pg.evaluate(() => { window.__vigiaObs?.disconnect(); return [...new Set(window.__vigia || [])]; });
+    const tituloDelCajon = (pg) => pg.evaluate(() => document.querySelector(".visor-cajon h2")?.textContent?.trim() ?? "");
+    const conCajon = async (pg) => { if (!(await pg.locator(".visor-cajon").count())) await tocarHud(pg, "Producto"); };
+    const cambiarEnElCajon = async (pg, nombre) => {
+      await pg.locator("[data-proveedor-del-contrato] .visor-enlace").click();
+      const campo = pg.locator(".visor-cajon input.visor-entrada").first();
+      await campo.fill(nombre);
+      await campo.press("Enter");
+    };
+    const proveedorDeLaFicha = (pg, nombre) => pg.locator(".vender input.entrada").nth(0).fill(nombre);
+
+    await seccion("navegador · visor: cambiar el proveedor desde el cajón, letra por letra, no deja a la vista la lista del anterior", async () => {
+      await abrirVisor(pv);
+      await conCajon(pv);
+      await pv.waitForSelector(".visor-producto", { timeout: 60000 });
+      const alEmpezar = await tituloDelCajon(pv);
+      await pv.locator("[data-proveedor-del-contrato] .visor-enlace").click();
+      const campo = pv.locator(".visor-cajon input.visor-entrada").first();
+      await campo.click();
+      await campo.press("Control+A");
+      await campo.press("Backspace");
+      // Desde acá el contrato ya no es de PROVEEDOR: nada suyo puede verse.
+      await vigiar(pv, [PROVEEDOR, ...productosDe(PROVEEDOR)]);
+      for (const letra of OTRO) {
+        await pv.keyboard.type(letra);
+        await pv.waitForTimeout(250);
+      }
+      await campo.press("Enter");
+      await pv.waitForFunction((n) => (document.querySelector(".visor-cajon h2")?.textContent ?? "").toLowerCase().includes(n.toLowerCase()),
+        OTRO, { timeout: 20000 }).catch(() => {});
+      const vistos = await leerVigia(pv);
+      const alTerminar = await tituloDelCajon(pv);
+      await cambiarEnElCajon(pv, PROVEEDOR);
+      await pv.waitForTimeout(1500);
+      await pv.locator(".visor-volver").click();
+      await pv.waitForTimeout(600);
+      prueba("navegador · visor: cambiar el proveedor desde el cajón, letra por letra, no deja a la vista la lista del anterior", () => {
+        assert.ok(mismo(alEmpezar, `Productos de ${PROVEEDOR}`), `antes de cambiar el cajón no mostraba la lista de ${PROVEEDOR} («${alEmpezar}»): la prueba no mide nada`);
+        assert.ok(mismo(alTerminar, `Productos de ${OTRO}`), `al terminar de escribir, el cajón no llegó a la lista de ${OTRO} («${alTerminar}»)`);
+        assert.deepEqual(vistos, [], `mientras se escribía «${OTRO}» el visor mostró lo de ${PROVEEDOR}:\n         ${vistos.join("\n         ")}`);
+      });
+    });
+
+    await seccion("navegador · visor: la lista del proveedor anterior que llega tarde no pisa la del nuevo", async () => {
+      await proveedorDeLaFicha(pv, OTRO);
+      await pv.waitForTimeout(500);
+      await abrirVisor(pv);
+      await conCajon(pv);
+      await pv.waitForSelector(".visor-producto", { timeout: 60000 });
+      // La lista de PROVEEDOR tarda 6 s, como una red lenta.
+      const tarde = (u) => u.pathname === "/api/catalogo/" && mismo(u.searchParams.get("proveedor"), PROVEEDOR);
+      const demorar = async (r) => { await new Promise((ok) => setTimeout(ok, 6000)); await r.continue().catch(() => {}); };
+      await pv.route(tarde, demorar);
+      const desdeTarde = pedidos.length;
+      await cambiarEnElCajon(pv, PROVEEDOR);
+      await pv.waitForTimeout(1200);   // ya salió el pedido (espera 400 ms a que se deje de teclear)
+      const salio = pedidos.slice(desdeTarde).some((x) => esLista(x.u) && mismo(new URL(x.u).searchParams.get("proveedor"), PROVEEDOR));
+      await cambiarEnElCajon(pv, OTRO);
+      await vigiar(pv, [PROVEEDOR, ...productosDe(PROVEEDOR)]);
+      await pv.waitForTimeout(8000);   // la de PROVEEDOR llega en el medio
+      const vistos = await leerVigia(pv);
+      const alTerminar = await tituloDelCajon(pv);
+      await pv.unroute(tarde, demorar);
+      await pv.locator(".visor-volver").click();
+      await pv.waitForTimeout(600);
+      await proveedorDeLaFicha(pv, PROVEEDOR);
+      await pv.waitForTimeout(500);
+      prueba("navegador · visor: la lista del proveedor anterior que llega tarde no pisa la del nuevo", () => {
+        assert.ok(salio, `no salió el pedido de la lista de ${PROVEEDOR}: la prueba no mide nada`);
+        assert.ok(mismo(alTerminar, `Productos de ${OTRO}`), `el cajón terminó en «${alTerminar}» y no en la lista de ${OTRO}`);
+        assert.deepEqual(vistos, [], `la respuesta tardía de ${PROVEEDOR} pisó la lista de ${OTRO}:\n         ${vistos.join("\n         ")}`);
+      });
+    });
+
+    await seccion("navegador · visor: un producto que termina de subir después de cambiar de proveedor no entra al contrato del nuevo", async () => {
+      const NUEVO = "Kumis de la carrera (prueba)";
+      const unArte = [...idsDe(PROVEEDOR)][0];
+      const foto = Buffer.from(await fetch(`${ORIGEN}/api/catalogo/${unArte}/imagen?token=${encodeURIComponent(TOKEN)}`).then((r) => r.arrayBuffer()));
+      await abrirVisor(pv);
+      await conCajon(pv);
+      await pv.waitForSelector(".visor-producto", { timeout: 60000 });
+      await pv.locator(".visor-cajon-pie button", { hasText: "Subir un producto" }).click();
+      await pv.locator('[data-subir-producto] input[aria-label="Nombre del producto"]').fill(NUEVO);
+      await pv.locator('[data-subir-producto] input[type="file"]').setInputFiles({ name: "kumis.jpg", mimeType: "image/jpeg", buffer: foto });
+      await pv.waitForSelector('input[aria-label="Alto del envase en centímetros"]', { timeout: 30000 });
+      await pv.locator('input[aria-label="Alto del envase en centímetros"]').fill("12");
+      await pv.waitForTimeout(1500);
+      // La subida tarda 6 s, como una foto pesada en Render.
+      const alta = (u) => u.pathname === "/api/catalogo/";
+      const demorarAlta = async (r) => {
+        if (r.request().method() === "POST") await new Promise((ok) => setTimeout(ok, 6000));
+        await r.continue().catch(() => {});
+      };
+      await pv.route(alta, demorarAlta);
+      const respuesta = pv.waitForResponse((r) => alta(new URL(r.url())) && r.request().method() === "POST", { timeout: 60000 });
+      await pv.locator("[data-subir-producto] .visor-boton", { hasText: "Subir" }).click();
+      await pv.waitForTimeout(600);
+      const apagadoAlSubir = await pv.locator("[data-proveedor-del-contrato] .visor-enlace").isDisabled();
+      // El alta se va de la pantalla en medio del envío (se oculta el cajón) y
+      // el proveedor se cambia: es la puerta que queda abierta.
+      await pv.locator(".visor-cajon-cerrar").click();
+      await pv.waitForTimeout(400);
+      await tocarHud(pv, "Producto");
+      await pv.waitForSelector("[data-proveedor-del-contrato] .visor-enlace", { timeout: 10000 });
+      await cambiarEnElCajon(pv, OTRO);
+      const desdeOtro = pedidos.length;
+      await vigiar(pv, [PROVEEDOR, NUEVO, ...productosDe(PROVEEDOR)]);
+      const r = await respuesta.catch(() => null);
+      await pv.waitForTimeout(3500);
+      const vistos = await leerVigia(pv);
+      const alTerminar = await tituloDelCajon(pv);
+      const hud = await hudDelVisor(pv);
+      const imagenes = pedidos.slice(desdeOtro).map((x) => imagenDe(x.u)).filter((id) => id != null && !idsDe(OTRO).has(id));
+      await pv.unroute(alta, demorarAlta);
+      await pv.locator(".visor-volver").click();
+      await pv.waitForTimeout(600);
+      await proveedorDeLaFicha(pv, PROVEEDOR);
+      await pv.waitForTimeout(500);
+      prueba("navegador · visor: un producto que termina de subir después de cambiar de proveedor no entra al contrato del nuevo", () => {
+        assert.ok(r && r.ok(), `la subida no terminó bien (${r ? r.status() : "sin respuesta"}): la prueba no mide nada`);
+        assert.ok(apagadoAlSubir, "«cambiar» el proveedor sigue activo mientras sube el producto");
+        assert.ok(mismo(alTerminar, `Productos de ${OTRO}`), `al terminar la subida el cajón dice «${alTerminar}» y no «Productos de ${OTRO}»`);
+        assert.ok(!hud.some((x) => /^Con /.test(x)), `el HUD ofrece «${hud.find((x) => /^Con /.test(x))}»: el producto del anterior quedó probado en la cara`);
+        assert.deepEqual(vistos, [], `con ${OTRO} en el contrato, el visor mostró lo de ${PROVEEDOR}:\n         ${vistos.join("\n         ")}`);
+        assert.deepEqual(imagenes, [], `con ${OTRO} en el contrato se pidieron imágenes de otros: ${imagenes.join(", ")}`);
+      });
+    });
+
+    /** La ficha sin el aviso de «se quitó la lámina» que dejó una prueba de
+     *  arriba (queda hasta que se adjunta otra planometría): se adjunta un
+     *  archivo y se quita a mano, que es lo que lo apaga. */
+    const sinAvisoDeLamina = async (pg) => {
+      const desplegable = pg.locator("button", { hasText: "Correo, nota y planometría" });
+      if ((await desplegable.getAttribute("aria-expanded")) !== "true") await desplegable.click();
+      if (!(await pg.locator("[data-lamina-quitada]").count())) return;
+      await pg.locator('.vender input[type="file"]').setInputFiles({
+        name: "otra.png", mimeType: "image/png",
+        buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64"),
+      });
+      await pg.waitForTimeout(300);
+      await pg.locator('[aria-label="Quitar la planometría"]').click();
+      await pg.waitForTimeout(300);
+    };
+    /** El visor en PUN-03 con un producto puesto y «Para llevarse» a la vista. */
+    const conLamina = async (pg) => {
+      await abrirVisor(pg);
+      await conCajon(pg);
+      await pg.waitForSelector(".visor-producto", { timeout: 60000 });
+      if (!(await pg.locator('.visor-producto[aria-pressed="true"]').count())) await pg.locator(".visor-producto").first().click();
+      await pg.waitForSelector("[data-lamina-planometria]", { timeout: 60000 });
+      await pg.waitForTimeout(4000);
+    };
+    /** Cambia el proveedor de la ficha desde afuera de la pantalla: la ficha
+     *  está `inert` detrás del visor y el cajón apaga «cambiar» mientras se
+     *  arma la lámina, así que ningún gesto llega. Es lo que haría una puerta
+     *  nueva que alguien abra mañana; las dos defensas tienen que aguantarla. */
+    const proveedorPorDetras = (pg, nombre) => pg.evaluate(`(() => {
+      const panel = ${PANEL};
+      const inp = panel.querySelector("input.entrada");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(inp, ${JSON.stringify(nombre)});
+      inp.dispatchEvent(new Event("input", { bubbles: true }));
+      return inp.value;
+    })()`);
+
+    await seccion("navegador · visor: mientras se arma la lámina el visor queda quieto, y si cambia el proveedor no se adjunta", async () => {
+      await sinAvisoDeLamina(pv);
+      const antesQ = await contrato(pv);
+      await conLamina(pv);
+      await pv.locator("[data-lamina-planometria]").click();
+      await pv.waitForSelector("[data-armando]", { timeout: 30000 });
+      const quieto = await pv.evaluate(() => ({
+        pestanas: [...document.querySelectorAll(".visor-pestana")].map((b) => b.disabled),
+        hud: [...document.querySelectorAll(".visor-hud-boton")].map((b) => b.disabled),
+        ocultar: document.querySelector(".visor-cajon-cerrar")?.disabled ?? null,
+        cajon: document.querySelector("[data-visor-quieto]")?.disabled ?? null,
+        cambiar: document.querySelector("[data-proveedor-del-contrato] .visor-enlace")?.matches(":disabled") ?? null,
+        productos: [...document.querySelectorAll(".visor-producto")].map((b) => b.matches(":disabled")),
+      }));
+      const escrito = await proveedorPorDetras(pv, OTRO);
+      await pv.waitForSelector("[data-armando]", { state: "detached", timeout: 180000 });
+      await pv.waitForTimeout(800);
+      const visor = { adjunta: await pv.locator("[data-lamina-adjunta]").count(), texto: await textoDelVisor(pv) };
+      await pv.locator(".visor-volver").click();
+      await pv.waitForTimeout(800);
+      const despuesQ = await contrato(pv);
+      const fichaQ = await pv.evaluate(`(() => { const p = ${PANEL}; return { texto: p.innerText, quitada: !!p.querySelector("[data-lamina-quitada]") }; })()`);
+      await proveedorDeLaFicha(pv, PROVEEDOR);
+      await pv.waitForTimeout(500);
+      prueba("navegador · visor: mientras se arma la lámina el visor queda quieto, y si cambia el proveedor no se adjunta", () => {
+        const sueltos = [];
+        if (!quieto.pestanas.length || quieto.pestanas.some((d) => !d)) sueltos.push(`la chapa deja saltar de cara (${quieto.pestanas.join(",")})`);
+        if (!quieto.hud.length || quieto.hud.some((d) => !d)) sueltos.push(`el HUD sigue activo (${quieto.hud.join(",")})`);
+        if (quieto.ocultar !== true) sueltos.push("«Ocultar» sigue activo");
+        if (quieto.cajon !== true || quieto.cambiar !== true) sueltos.push("el proveedor del cajón se puede cambiar");
+        if (quieto.productos.some((d) => !d)) sueltos.push("se puede elegir otro producto");
+        assert.deepEqual(sueltos, [], `mientras se arma la lámina:\n         ${sueltos.join("\n         ")}`);
+        assert.ok(mismo(escrito, OTRO), "no se pudo cambiar el proveedor de la ficha: la prueba no mide nada");
+        assert.equal(antesQ.planometria, "", `la ficha ya tenía planometría («${antesQ.planometria}»): la prueba no mide nada`);
+        assert.equal(visor.adjunta, 0, "con el proveedor cambiado en el medio, el visor dice que la lámina quedó adjunta");
+        assert.equal(despuesQ.planometria, "", `el contrato de ${OTRO} quedó con la planometría «${despuesQ.planometria}»`);
+        assert.ok(!new RegExp(PROVEEDOR, "i").test(fichaQ.texto), `la ficha de ${OTRO} nombra a ${PROVEEDOR}`);
+        assert.ok(!fichaQ.quitada, "la ficha avisa que se quitó una lámina que nunca entró");
+      });
+    });
+
+    await seccion("navegador · visor: cerrar a mitad de la lámina no adjunta nada después", async () => {
+      await sinAvisoDeLamina(pv);
+      const antesC = await contrato(pv);
+      await conLamina(pv);
+      await pv.locator("[data-lamina-planometria]").click();
+      await pv.waitForSelector("[data-armando]", { timeout: 30000 });
+      await pv.waitForTimeout(1000);
+      await pv.locator(".visor-volver").click();
+      // Sin el arreglo, la lámina aparecía sola en la ficha unos 25 s después.
+      let despuesC = await contrato(pv);
+      for (let i = 0; i < 35 && !despuesC.planometria; i++) { await pv.waitForTimeout(1000); despuesC = await contrato(pv); }
+      const quitada = await pv.locator("[data-lamina-quitada]").count();
+      prueba("navegador · visor: cerrar a mitad de la lámina no adjunta nada después", () => {
+        assert.equal(antesC.planometria, "", `la ficha ya tenía planometría («${antesC.planometria}»): la prueba no mide nada`);
+        assert.equal(despuesC.planometria, "", `después de cerrar, la ficha recibió la planometría «${despuesC.planometria}» sin que nadie la pidiera`);
+        assert.equal(quitada, 0, "la ficha avisa que se quitó una lámina");
+        assert.deepEqual(erroresDePagina, [], `errores de la página: ${erroresDePagina.join(" · ")}`);
+      });
+    });
+
+    await seccion("navegador · visor: «Empezar de nuevo» con la lámina adjunta la saca sin avisar nada", async () => {
+      await conLamina(pv);
+      await pv.locator("[data-lamina-planometria]").click();
+      const adjunta = await pv.waitForSelector("[data-lamina-adjunta]", { timeout: 180000 }).then(() => true).catch(() => false);
+      await pv.locator(".visor-volver").click();
+      await pv.waitForTimeout(800);
+      const conL = await contrato(pv);
+      await pv.locator(".vender button", { hasText: "Empezar de nuevo" }).click();
+      await pv.waitForTimeout(600);
+      await tocar(pv, CARAS[0]);
+      await pv.waitForTimeout(600);
+      const deNuevo = await contrato(pv);
+      const quitada = await pv.locator("[data-lamina-quitada]").count();
+      prueba("navegador · visor: «Empezar de nuevo» con la lámina adjunta la saca sin avisar nada", () => {
+        assert.ok(adjunta && /\.jpg/.test(conL.planometria), `la lámina no quedó adjunta antes de empezar de nuevo («${conL.planometria}»): la prueba no mide nada`);
+        assert.equal(deNuevo.planometria, "", `después de «Empezar de nuevo» la ficha sigue con «${deNuevo.planometria}»`);
+        assert.equal(quitada, 0, "«Empezar de nuevo» deja el aviso de la lámina quitada");
+        assert.ok(mismo(deNuevo.campos[0], PROVEEDOR), `el proveedor quedó en «${deNuevo.campos[0]}»`);
       });
     });
 

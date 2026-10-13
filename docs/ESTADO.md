@@ -3342,17 +3342,27 @@ qué está comprando.
 
 ### Ver la exhibición en 3D
 
-Un botón en la ficha de detalle de **Supervisar** lleva al Editor 3D **encuadrando ese
-espacio**. Antes había que entrar a mano y buscarlo entre 104 muebles.
+Hay DOS puertas al 3D de un espacio, y no son la misma cosa:
 
-> **Corregido (2026-10-12).** Este párrafo decía que el botón estaba también «en el
-> formulario de negociación». Se fue de Vender en 31da515 (Fase 10, PR 2: la ficha de D
-> se reescribió en `ModoVender.tsx` y `CabezaContrato` se fue entera, con el botón
-> adentro) sin que nadie lo decidiera, y además ese camino no le sirve a Vender: el
-> pedido viaja por `enfoque3D`, que **cambia de pestaña** y desmonta la hoja, y se perdía
-> el contrato a medio llenar. Desde Vender el 3D se ve con su propio visor, encima de la
-> ficha: ver *Ver el diseño desde Vender*. Este botón queda sólo en Supervisar, que no
-> tiene contrato que perder.
+- **Desde Supervisar**, un botón en la ficha de detalle lleva al **Editor 3D**
+  encuadrando ese espacio (antes había que entrar a mano y buscarlo entre 104 muebles).
+  Es la pantalla de la dueña: el editor entero, con lo que se puede tocar y guardar.
+  Cambia de pestaña, y Supervisar no tiene contrato que perder.
+- **Desde Vender**, «Ver en 3D» en la cabecera del contrato abre el **visor de venta**
+  ENCIMA de la ficha, sin cambiar de pestaña: la misma escena de «Presentar», pero
+  privada para el proveedor del contrato, sin poder escribir nada, con la prueba de
+  producto en la ficha y la lámina sin período ni valor. Ver *Ver el diseño desde
+  Vender*.
+
+> **Corregido (2026-10-12, y otra vez el 13).** Este párrafo decía que el botón estaba
+> también «en el formulario de negociación». Se fue de Vender en 31da515 (Fase 10, PR 2:
+> la ficha de D se reescribió en `ModoVender.tsx` y `CabezaContrato` se fue entera, con
+> el botón adentro) sin que nadie lo decidiera, y además ese camino no le sirve a
+> Vender: el pedido viaja por `enfoque3D`, que **cambia de pestaña** y desmonta la hoja,
+> y se perdía el contrato a medio llenar. Lo que dice abajo del encuadre, del pedido por
+> el store y de la lámina («La lámina para el proveedor», con período y valor) es del
+> EDITOR; el visor de Vender no usa `enfoque3D` ni la cámara guardada, y su lámina va
+> sin plata.
 
 El pedido viaja por el store (`enfoque3D`) porque la pantalla de sede y el editor 3D
 son pestañas hermanas sin props entre ellas. Se identifica **por id de mueble y no
@@ -7219,6 +7229,10 @@ vuelve a «Ver en 3D». Debajo de «Cómo va», **«Para llevarse»**: «Bajar l
 lámina del editor) y «Usarla como planometría» (la deja adjunta en el contrato). Si el
 contrato ya tiene una, lo dice antes de reemplazarla: «la lámina de PUN-03 con Alpina», o
 «un archivo adjunto» sin nombrarlo (el nombre lo puso la dueña y puede ser de cualquiera).
+Mientras se arma (unos segundos; con SwiftShader, veinte) la pantalla queda en el cuadro
+de antes y el visor queda QUIETO: ni otra cara, ni otra toma, ni «Hoy», ni otro
+producto, ni otro proveedor, ni el cajón, ni la órbita. «Volver al contrato» sí, y
+descarta lo armado.
 
 Sin proveedor escrito, el cajón pregunta «¿Con qué proveedor estás armando este
 contrato?» y lo que se teclea queda en el campo Proveedor de la ficha; con el nombre
@@ -7227,7 +7241,9 @@ puesto, en vez de la pregunta (que es para la dueña y la lee el proveedor) va u
 no hay productos dice «No encontré productos a nombre de «X»» (no «X no tiene
 productos»: ver abajo) y ofrece **«Subir un producto»** (nombre, rubro, foto y la ficha
 con el alto obligatorio): queda a nombre del proveedor del contrato y probado en la cara.
-Si el nombre no es de nadie, pregunta antes de darlo de alta.
+Si el nombre no es de nadie, pregunta antes de darlo de alta. Mientras sube, «cambiar»
+queda apagado; y lo que vuelve se compara con lo vigente: si el proveedor ya es otro no
+entra, si la cara es otra va a la lista sin probarse.
 
 **Por qué es un visor propio y no el editor montado encima** (las dos opciones se
 midieron contra el código, ver la spec de la tanda):
@@ -7298,8 +7314,11 @@ proveedor** (otra forma de escribir el mismo no cuenta). No escribe el plano, el
 el servidor. **La lámina adjunta como planometría es de la prueba** (`sesion.lamina`: el
 archivo y la cara): cuando la prueba se olvida, si la planometría de la ficha sigue siendo
 esa lámina, sale del contrato (`ModoVender`, el efecto sobre `sesion.lamina`) y el campo
-dice «Se quitó la lámina del 3D: era de otro proveedor», sin nombrarlo. Un archivo que
-subió la dueña no se toca. El visor dibuja sólo las pruebas de las caras que siguen en el contrato
+dice «La lámina del 3D se quitó: si la querés, armala de nuevo con «Ver en 3D»», sin
+nombres y sin decir por qué (la ficha la mira el proveedor; ver «la tercera crítica»).
+«Empezar de nuevo» la saca él mismo y sin aviso. Un archivo que subió la dueña no se
+toca. Y entra sólo si es del proveedor que el contrato tiene AHORA: la lámina se arma en
+segundo plano y la ficha la rechaza si en el medio cambió (`adjuntarLamina`). El visor dibuja sólo las pruebas de las caras que siguen en el contrato
 (`pruebasDelContrato`).
 
 **Lo que hace que no se pierda nada:**
@@ -7477,8 +7496,9 @@ La segunda revisión encontró un defecto alto y cuatro medios. Lo que se cambi�
   a la vista en la ficha y, al guardar, la lámina con «PROVEEDOR Alpina» y su producto por
   correo y como guía del mercaderista. Ahora la lámina adjunta es de la prueba
   (`sesion.lamina`, que `vaciar()` olvida al cambiar de proveedor y con «Empezar de
-  nuevo»), y la ficha la saca del campo si sigue siendo ella: «Se quitó la lámina del 3D:
-  era de otro proveedor». «Para llevarse» dice de quién es la planometría que ya está.
+  nuevo»), y la ficha la saca del campo si sigue siendo ella, con un aviso. «Para
+  llevarse» dice de quién es la planometría que ya está. (El aviso decía «era de otro
+  proveedor»; el mismo día se le sacó el porqué: ver «la tercera crítica».)
 - **MEDIA — el visor contradecía la venta con las repisas vendidas aparte.** Los
   espacios internos son del MUEBLE (las dos caras) y viven sólo en el layout; GON-02·B,
   libre en Vender, salía en «Hoy» con un 60 % de relleno ajeno, cinco «VENDIDO» en «Por
@@ -7546,6 +7566,90 @@ cambiar de proveedor, `vaciar()` sin olvidar la lámina, los muebles del contrat
 neutra, el visor sin `RellenoNeutro`, pruebas y «De cerca» en la isla, la lámina con
 las pruebas de otras caras, el tope otra vez en 70°, la corrida desde el fondo del
 pasillo, por entrepaño con 50° y `fovParaLaCara` sin la franja.
+
+### 2026-10-13 (tarde): la tercera crítica — lo que llega tarde
+
+La tercera revisión se metió con el TIEMPO: todo lo que el visor hace en segundo plano
+—pedir una lista, subir un producto, armar la lámina— terminaba cuando la dueña ya podía
+haber cambiado el proveedor, la cara o cerrado el visor, y lo que llegaba pisaba lo
+vigente. La regla que quedó: **lo que corre después de un `await` se compara con lo
+VIGENTE, no con lo del render del clic** (la función que espera se armó en ese render y
+tiene adentro el nombre, la cara y las funciones de ese momento). Un alto, tres medios y
+tres bajos:
+
+- **ALTA — «Subir un producto» terminaba con lo de antes.** Con la subida demorada 6 s
+  (una foto pesada en Render): Alpina, «Subir», «cambiar» a Postobón mientras sube. Al
+  terminar, `recargar` —del render viejo— volvía a pedir el catálogo de Alpina, y como era
+  el último pedido el descarte de respuestas viejas lo daba por bueno: el cajón volvía a
+  «Productos de Alpina», el kumis quedaba probado en la punta con el copete de Alpina y
+  «Con Alpina» en el HUD, con «Proveedor: Postobón» escrito arriba. Ahora el nombre, la
+  cara y si el visor sigue abierto se leen de refs (`nombreRef`, `claveRef`, `vivo`);
+  `recargar` pide con el nombre de ahora; el alta devuelve a nombre de quién y para qué
+  cara se subió, y `alSubir` decide: visor cerrado → no toca la ficha; otro proveedor →
+  ni a la lista ni a la cara, sólo se pide la lista del nuevo; otra cara → a la lista,
+  sin probarlo. Y mientras el producto va camino al servidor, «cambiar» y el campo del
+  proveedor quedan apagados (`enviandoAlta`).
+- **La lista sabe de quién es** (`catalogo = { de, lista }` y `artes` derivado: sólo si
+  `de` es el proveedor de ahora). Vaciarla en el efecto del nombre no alcanzaba: el
+  efecto corre DESPUÉS del render con el nombre nuevo, y en ese render la lista era la
+  del anterior —un vigía con `MutationObserver` lo vio: «Productos de Alpina» con
+  «Postobón» escrito—. Con la lista atada a su nombre no hay render que la muestre con
+  otro, y una respuesta tardía para otro nombre no se ve aunque se colara. Otra forma de
+  escribir el mismo («alpina ») ni vacía ni vuelve a pedir.
+- **MEDIA — la lámina de un proveedor en el contrato de otro, otra vez.** «Usarla como
+  planometría» armaba en segundo plano y adjuntaba al final sin mirar. Cambiar de
+  proveedor en el medio adjuntaba la lámina de Alpina al contrato de Postobón —y la
+  marcaba como de la prueba nueva, así que el visor decía «la lámina de PUN-03 con
+  Postobón»—, salteando el arreglo de la segunda crítica. **MEDIA —** cerrar el visor en
+  el medio la adjuntaba sola unos 25 s después, con «De cerca» en blanco (tomas de un
+  lienzo que ya no existía), lista para salir por correo como guía del mercaderista.
+  Ahora la lámina queda atada a lo que se mostraba al empezar: `vigencia` sube al cambiar
+  de cara, de proveedor y al cerrar, y `armarLamina` la mira después de cada `await`
+  (entre tomas, después de cada toma, del armado; y quien la usa, después del JPG). Si se
+  movió, corta con `INTERRUMPIDA` y no adjunta ni baja nada; con el visor abierto dice
+  «La lámina no se terminó: cambió lo que se estaba mostrando». Segunda defensa: la ficha
+  recibe el proveedor con que se armó y la rechaza si el contrato ya es de otro
+  (`adjuntarLamina` contra `proveedorVigente`, un ref).
+- **El visor, quieto mientras se arma** (`armando`; era la baja del salto de cara): la
+  chapa, el HUD entero, «Ocultar», «Subir un producto» y un `fieldset` con el proveedor,
+  los productos y «Cómo va» quedan apagados, y una tapa sobre el lienzo frena la órbita.
+  Antes, tocar otra cara a mitad dejaba el 3D en PUN-03 y la chapa en GON-02·B, y la
+  confirmación no aparecía nunca. El `finally` repone la toma sólo si la cara es la misma.
+  Cerrar sí se puede: descarta lo armado.
+- **MEDIA — las guardas no miraban el camino del cajón.** Todas cambiaban el proveedor
+  en la ficha con el visor cerrado. Ahora `probar-vender` cambia DESDE el cajón, letra por
+  letra; con la lista del anterior demorada 6 s; en medio de una subida demorada (el alta
+  se va con «Ocultar», que es la puerta que queda abierta); a mitad de la lámina (por
+  detrás: la ficha está `inert` y el cajón apagado, así que se escribe el campo desde
+  afuera, como lo haría una puerta nueva); cierra a mitad de la lámina y espera 35 s; y
+  hace «Empezar de nuevo» con la lámina adjunta. El vigía mira el cajón y el HUD en cada
+  cambio del DOM, no cada tanto. En lo estático quedan fijos el vaciado de la lista, la
+  lista atada a su nombre, el descarte de respuestas viejas, que `listarDelProveedor` le
+  pida al servidor `params: { proveedor }` (y no filtre en el navegador), los refs, las
+  dos defensas de la lámina y todo lo que se apaga mientras se arma.
+- **Bajas:** el aviso «Se quitó la lámina del 3D: era de otro proveedor», en la ficha que
+  mira el proveedor, le contaba que ese espacio se le estuvo ofreciendo a otro (y con
+  sólo corregir cómo se escribe el mismo, era falso). Ahora dice «La lámina del 3D se
+  quitó: si la querés, armala de nuevo con «Ver en 3D»», sin por qué. «Empezar de nuevo»
+  saca la lámina él mismo y sin aviso (el efecto lo tomaba por un cambio de proveedor y
+  dejaba el aviso en una ficha que empezaba de cero).
+
+**Quedó sin hacer:** lo de la segunda crítica sigue igual (el cabezote de la nevera, la
+nevera libre con botellas genéricas, «De cerca» de la lámina sin centrar en la franja,
+una sola planometría por contrato, «Por entrepaño» sin reencuadrar). El aviso de la
+lámina quitada queda hasta que se adjunta otra planometría.
+
+**Peso.** Al entrar a Vender, contra el build de 6077160 con el gzip de Node: el archivo
+de Vender 209 728 → 212 007 B (+2,2 KB), el CSS de entrada +387 B, `propuesta` +149 B y
+el index +1 B: +2,8 KB en total, bajo el tope de 3 KB. El visor: 8,0 KB + 1,8 KB de CSS.
+
+**Cómo se comprobó.** `probar-vender` suma 1 estática («lo que llega tarde no pisa lo
+vigente») y endurece tres (la lámina con el proveedor, el `finally` que mira la cara, el
+aviso sin «otro proveedor» y «Empezar de nuevo»), y 6 de navegador (las de arriba): 26
+estáticas y 64 con navegador contra el servidor local, todas verdes. Veintiuna mutaciones
+estáticas, todas en rojo (la de `vigente()` sin efecto salió verde la primera vez: se
+fijó su definición); y tres mutantes construidos y servidos para la parte de navegador
+(ver el resumen de la tanda).
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 

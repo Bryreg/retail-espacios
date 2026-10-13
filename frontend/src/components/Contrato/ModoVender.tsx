@@ -10,6 +10,8 @@ import {
   type CaraElegida, type Contrato, type ResumenContrato, type SemillaContrato,
 } from "./Contrato";
 import { useSesionDeVenta } from "./sesionDeVenta";
+// De `utils/` (no importa nada): la ficha la usa al entrar.
+import { normalizarProveedor } from "../../utils/proveedor";
 // Sólo los TIPOS: el visor (y con él three.js y la escena del editor) se baja
 // recién cuando se abre, por el `lazy` de abajo.
 import type { CaraActiva, CaraDelVisor } from "./VisorDeVenta";
@@ -472,22 +474,36 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
   const [masDatos, setMasDatos] = useState(false);
   /** «Usarla como planometría», desde el visor: la lámina queda en el campo
    *  de planometría de ESTE contrato (y se guarda con él), y el desplegable
-   *  se abre para que al volver se vea adjunta. Nunca el plano. */
+   *  se abre para que al volver se vea adjunta. Nunca el plano.
+   *
+   *  Sólo si es del proveedor que el contrato tiene AHORA. La lámina se arma
+   *  en segundo plano durante varios segundos y llega acá después; si en el
+   *  medio el proveedor cambió, es la lámina del anterior —«PROVEEDOR Alpina»
+   *  y su producto— y no entra al contrato de Postobón, donde además el visor
+   *  la habría atribuido al nuevo. El proveedor vigente sale de un ref: la
+   *  función que llama el visor se armó en el render del clic. Es la segunda
+   *  defensa; la primera es que el visor descarta lo armado si cambió lo que
+   *  se mostraba (`vigencia`). */
   const { setPlanometria } = c;
   const { marcarLamina } = sesion;
-  const adjuntarLamina = useCallback((archivo: File, cara: string) => {
+  const proveedorVigente = useRef(c.proveedor);
+  proveedorVigente.current = c.proveedor;
+  const adjuntarLamina = useCallback((archivo: File, cara: string, proveedor: string) => {
+    if (normalizarProveedor(proveedor) !== normalizarProveedor(proveedorVigente.current)) return false;
     setPlanometria(archivo);
     marcarLamina({ archivo, cara });
     setMasDatos(true);
+    return true;
   }, [setPlanometria, marcarLamina]);
   /* La lámina adjunta es de la PRUEBA, y se va con ella. La prueba se olvida
-     al cambiar de proveedor y con «Empezar de nuevo» (`useSesionDeVenta`);
-     si en ese momento la planometría sigue siendo la lámina, sale del
-     contrato. Pasaba: con Alpina se adjuntaba la lámina, se escribía
-     «Postobón» y el contrato de Postobón se guardaba con la lámina de Alpina
-     —«PROVEEDOR Alpina» y su yogur—, que viaja por correo y es la guía con la
-     que el mercaderista arma la exhibición. Un archivo que subió la dueña no
-     se toca: no es del 3D. */
+     al cambiar de proveedor (`useSesionDeVenta`); si en ese momento la
+     planometría sigue siendo la lámina, sale del contrato. Pasaba: con Alpina
+     se adjuntaba la lámina, se escribía «Postobón» y el contrato de Postobón
+     se guardaba con la lámina de Alpina —«PROVEEDOR Alpina» y su yogur—, que
+     viaja por correo y es la guía con la que el mercaderista arma la
+     exhibición. Un archivo que subió la dueña no se toca: no es del 3D.
+     («Empezar de nuevo» también olvida la prueba, pero saca la lámina él
+     mismo y sin aviso: ver `empezarDeNuevo`.) */
   const laminaAntes = useRef(sesion.lamina);
   const [laminaQuitada, setLaminaQuitada] = useState(false);
   useEffect(() => {
@@ -499,6 +515,17 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sesion.lamina]);
+  /** «Empezar de nuevo»: la prueba del 3D se olvida con el contrato (la ficha
+   *  no se remonta: su clave es la sede). La lámina era de las caras que se
+   *  van, así que sale de la planometría ACÁ, en el mismo clic, y sin aviso:
+   *  con el efecto de arriba quedaba «se quitó la lámina» en una ficha que se
+   *  estaba empezando de cero, con el proveedor todavía escrito. */
+  const empezarDeNuevo = () => {
+    if (sesion.lamina && c.planometria === sesion.lamina.archivo) setPlanometria(null);
+    setLaminaQuitada(false);
+    sesion.vaciar();
+    onCancelar();
+  };
   // Otra planometría (un archivo de la dueña, o quitarla a mano): ya no es la
   // lámina, y el aviso de que se quitó tampoco hace falta.
   useEffect(() => {
@@ -673,9 +700,13 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
                 recibe una distinta cada temporada. */}
             <div className="campo">
               <span className="rotulo">Planometría · foto o PDF del proveedor</span>
-              {/* Sin nombre: el de la lámina quitada es el de otro proveedor. */}
+              {/* Sin nombres y sin decir POR QUÉ: esta ficha la mira el
+                  proveedor, y «era de otro proveedor» le contaba que ese
+                  espacio se le estuvo ofreciendo a otro (y con sólo corregir
+                  cómo se escribe el mismo, era falso). La dueña sabe qué
+                  cambió; lo que necesita es saber que tiene que rehacerla. */}
               {!c.planometria && laminaQuitada && (
-                <span className="nota-campo" data-lamina-quitada>Se quitó la lámina del 3D: era de otro proveedor.</span>
+                <span className="nota-campo" data-lamina-quitada>La lámina del 3D se quitó: si la querés, armala de nuevo con «Ver en 3D».</span>
               )}
               {c.planometria ? (
                 <div className="entrada" style={{ gap: 8 }}>
@@ -768,7 +799,7 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
             type="button"
             // La prueba del 3D se olvida con el contrato: «empezar de nuevo» no
             // remonta la ficha (su clave es la sede), así que se vacía a mano.
-            onClick={() => { sesion.vaciar(); onCancelar(); }}
+            onClick={empezarDeNuevo}
             disabled={guardando}
           >
             Empezar de nuevo

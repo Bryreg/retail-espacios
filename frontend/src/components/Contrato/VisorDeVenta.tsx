@@ -10,6 +10,7 @@ import { useModalAbierto } from "../../tema";
 import { arteUrl, esProveedorNuevo, listarDelProveedor, subirArteDelProveedor, type Arte } from "../../api/catalogo";
 import { describeError } from "../../api/client";
 import { normalDeCara, type TomaDeVenta } from "../../utils/planta";
+import { normalizarProveedor } from "../../utils/proveedor";
 import { componerPropuesta, descargar, nombreDeArchivo, prepararToma, type DatosPropuesta } from "../../utils/propuesta";
 import {
   CAM_POS, CAM_TARGET, CanvasErrorBoundary, FONDO_DE_SALA, FOV_DEL_EDITOR, HOLGURA_DE_LAMINA, HudQueSeEsconde,
@@ -94,8 +95,10 @@ interface VisorDeVentaProps {
   /** Adjunta la lámina como planometría DEL CONTRATO (el campo de la ficha,
    *  que sigue montada debajo). Nunca el plano. `cara` es la de la lámina
    *  (`GON-02·A`): la ficha la recuerda para decir de quién es, y la saca si
-   *  cambia el proveedor. */
-  onPlanometria: (archivo: File, cara: string) => void;
+   *  cambia el proveedor. `proveedor` es el nombre (normalizado) con que se
+   *  ARMÓ: si el contrato ya es de otro, la ficha no la adjunta y devuelve
+   *  `false`. */
+  onPlanometria: (archivo: File, cara: string, proveedor: string) => boolean;
   /** Lo que la ficha tiene como planometría: la lámina de una cara (armada
    *  acá, con el proveedor de ahora: si cambia, la ficha la saca), otro
    *  archivo, o nada. El otro archivo NO se nombra: su nombre lo puso quien
@@ -124,6 +127,16 @@ const TOMAS: readonly [TomaDeVenta, string][] = [["frente", "De frente"], ["tres
 const ESPERA_DEL_CATALOGO_MS = 400;
 
 const claveDe = (c: CaraActiva) => `${c.fixtureId}|${c.face}`;
+
+/** Sin catálogo: una constante, para que el `memo` del lienzo no vea una
+ *  lista «nueva» en cada render. */
+const SIN_ARTES: Arte[] = [];
+const CATALOGO_VACIO = { de: "", lista: SIN_ARTES };
+
+/** Lo que tira `armarLamina` cuando, entre toma y toma, cambió lo que se
+ *  estaba mostrando (se cerró el visor, otra cara, otro proveedor): la lámina
+ *  a medio armar ya no es de lo que está en pantalla y se descarta entera. */
+const INTERRUMPIDA = new Error("la lámina se interrumpió");
 
 // ─── La escena, en su propia pieza ───────────────────────────────────────────
 
@@ -295,11 +308,32 @@ export default function VisorDeVenta({
   }, [mueble, cara, onCerrar]);
 
   // ── El catálogo: SÓLO el del proveedor del contrato ─────────────────────
-  const [artes, setArtes] = useState<Arte[]>([]);
+  /** El catálogo que trajo el servidor, CON el nombre (normalizado) para el
+   *  que se pidió: una lista sabe de quién es (ver `artes`, abajo). */
+  const [catalogo, setCatalogo] = useState<{ de: string; lista: Arte[] }>(CATALOGO_VACIO);
   const [cargando, setCargando] = useState(false);
   const [fallo, setFallo] = useState("");
   const pedidoDelCatalogo = useRef(0);
   const nombre = proveedor.trim();
+  /** El nombre VIGENTE, para lo que termina después de un `await` (la subida
+   *  de un producto, la lámina). La función que espera se armó en el render
+   *  del clic y tiene adentro el nombre de ESE momento: «Subir» que terminaba
+   *  después de cambiar a Postobón volvía a pedir el catálogo de Alpina —el
+   *  último pedido, así que el descarte de respuestas viejas lo daba por
+   *  bueno— y dejaba el cajón con los productos de Alpina y su kumis probado
+   *  en la cara, con «Proveedor: Postobón» escrito arriba. */
+  const nombreRef = useRef(nombre);
+  nombreRef.current = nombre;
+  /** Como lo compara «Guardar contrato» (y el servidor): «alpina » y
+   *  «Alpina» son el mismo proveedor y la misma lista. */
+  const proveedorNormal = normalizarProveedor(nombre);
+  /** Si el visor sigue abierto: lo que termina después de cerrarlo (la subida,
+   *  la lámina) no toca la ficha, que sigue montada debajo. */
+  const vivo = useRef(true);
+  useEffect(() => {
+    vivo.current = true;
+    return () => { vivo.current = false; };
+  }, []);
   /** Con el nombre con que se abrió, la lista se pide YA; lo que se teclea
    *  después espera a que se deje de teclear. (No un «primera vez»: con
    *  StrictMode el efecto corre dos veces al montar y la segunda esperaba.) */
@@ -312,7 +346,7 @@ export default function VisorDeVenta({
       listarDelProveedor(quien)
         .then((lista) => {
           if (mio !== pedidoDelCatalogo.current) return;   // llegó una respuesta vieja
-          setArtes(lista);
+          setCatalogo({ de: normalizarProveedor(quien), lista });
           setFallo("");
           // El recorte y las texturas de SUS productos, de antemano: elegir
           // uno ya no traba la pantalla con el proveedor mirando.
@@ -324,13 +358,27 @@ export default function VisorDeVenta({
     return () => window.clearTimeout(t);
   }, []);
   useEffect(() => {
-    // Otro nombre, otra lista: la de antes se va YA. Si no, mientras llega la
-    // nueva el cajón seguía diciendo «Productos de Alpina» con «Postobón»
-    // escrito en el contrato.
-    setArtes([]);
-    return traer(nombre, nombre === nombreAlAbrir.current ? 0 : ESPERA_DEL_CATALOGO_MS);
-  }, [nombre, traer]);
-  const recargar = useCallback(() => { traer(nombre, 0); }, [nombre, traer]);
+    // Otro proveedor, otra lista: la de antes se va YA. Si no, mientras llega
+    // la nueva el cajón seguía diciendo «Productos de Alpina» con «Postobón»
+    // escrito en el contrato. (Otra forma de escribir el mismo no es otro: ni
+    // se vacía ni se vuelve a pedir.)
+    setCatalogo(CATALOGO_VACIO);
+    setFallo("");
+    const alAbrir = proveedorNormal === normalizarProveedor(nombreAlAbrir.current);
+    return traer(nombreRef.current, alAbrir ? 0 : ESPERA_DEL_CATALOGO_MS);
+  }, [proveedorNormal, traer]);
+  // Del ref y no del render: `PanelDePrueba` y la subida la llaman después de
+  // un `await`, y con el nombre del render del clic pedían la lista del
+  // proveedor anterior (ver `nombreRef`).
+  const recargar = useCallback(() => { traer(nombreRef.current, 0); }, [traer]);
+
+  /** Lo que se muestra: la lista SÓLO si es del proveedor de ahora. Vaciarla
+   *  en el efecto de arriba no alcanzaba: el efecto corre DESPUÉS del render
+   *  con el nombre nuevo, y en ese render —un cuadro, pero un cuadro con
+   *  «Productos de Alpina» y «Postobón» escrito— la lista era la del
+   *  anterior. Así, ni un render la muestra con otro nombre puesto, y una
+   *  respuesta que llega tarde para otro nombre no se ve aunque se colara. */
+  const artes = catalogo.de === proveedorNormal ? catalogo.lista : SIN_ARTES;
 
   /** Para quién es la pantalla: el dueño de los artes que trajo el servidor
    *  (todos del mismo proveedor), o NADIE. Nunca `undefined`, que es la
@@ -367,7 +415,20 @@ export default function VisorDeVenta({
     return id == null ? new Map<string, number>() : new Map([[soloLaCara, id]]);
   }, [pruebasEnEscena, soloLaCara]);
   const clave = claveDe(activa);
-  const arteDeLaCara = artes.find((a) => a.id === arteALaVista(pruebasEnEscena.get(clave), artes, privadoPara)) ?? null;
+  const claveRef = useRef(clave);
+  claveRef.current = clave;
+  /** Cuántas veces cambió lo que se muestra: sube al cambiar de cara, al
+   *  cambiar de proveedor y al cerrar el visor. La lámina se arma en segundo
+   *  plano durante varios segundos; si en el medio esto se mueve, lo armado
+   *  es de otra cosa y se tira (ver `armarLamina`). Sin esto, cerrar a mitad
+   *  del armado adjuntaba sola, 25 s después, una lámina con el panel «De
+   *  cerca» vacío —sacado de un lienzo que ya no existía—, y cambiar de
+   *  proveedor en el medio adjuntaba la lámina del anterior al contrato del
+   *  nuevo. */
+  const vigencia = useRef(0);
+  useEffect(() => { vigencia.current++; }, [clave, proveedorNormal]);
+  useEffect(() => () => { vigencia.current++; }, []);
+  const arteDeLaCara =artes.find((a) => a.id === arteALaVista(pruebasEnEscena.get(clave), artes, privadoPara)) ?? null;
 
   // ── Las tomas ───────────────────────────────────────────────────────────
   // Un contador propio: pedir dos veces la misma toma vuelve a encuadrar.
@@ -458,6 +519,10 @@ export default function VisorDeVenta({
   const [editandoProveedor, setEditandoProveedor] = useState(() => !proveedor.trim());
   const [busqueda, setBusqueda] = useState("");
   const [subiendo, setSubiendo] = useState(false);
+  /** El producto va camino al servidor: mientras tanto el proveedor no se
+   *  cambia desde el cajón («Queda a nombre de «Alpina»» es lo que se está
+   *  subiendo, y lo que vuelve es de Alpina). */
+  const [enviandoAlta, setEnviandoAlta] = useState(false);
   // Al abrir el alta, se la trae a la vista una vez (el cuerpo del cajón rueda).
   const formularioDeAlta = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -473,6 +538,33 @@ export default function VisorDeVenta({
   const quitar = () => {
     sesion.probar(activa.fixtureId, activa.face, null);
     pedirToma(activa.fixtureId, activa.face, "frente");
+  };
+  /**
+   * El producto que se acaba de subir. Llega después de un `await` largo (una
+   * foto pesada en Render tarda), y la función que lo recibe se armó en el
+   * render del clic: todo lo que hace lo compara con lo VIGENTE, no con lo de
+   * ese render.
+   * · El visor se cerró: el producto quedó en el catálogo de su proveedor y
+   *   nada más; la ficha, que sigue montada, no se toca.
+   * · Cambió el proveedor: el producto es del ANTERIOR. Ni a la lista, ni a la
+   *   cara; sólo se vuelve a pedir la lista del de ahora.
+   * · Cambió la cara (la chapa sigue activa mientras sube): a la lista, pero
+   *   no se prueba en una cara que la dueña no estaba mirando al subirlo.
+   */
+  const alSubir = (nuevo: Arte, desde: { proveedor: string; cara: string }) => {
+    if (!vivo.current) return;
+    setSubiendo(false);
+    if (normalizarProveedor(desde.proveedor) !== normalizarProveedor(nombreRef.current)) {
+      recargar();
+      return;
+    }
+    // Ya, sin esperar la lista: es del proveedor del contrato (el servidor lo
+    // resolvió por ese nombre). La lista vuelve a pedirse para quedar al día.
+    const de = normalizarProveedor(desde.proveedor);
+    setCatalogo((prev) => (prev.de !== de ? { de, lista: [nuevo] }
+      : prev.lista.some((a) => a.id === nuevo.id) ? prev : { de, lista: [...prev.lista, nuevo] }));
+    recargar();
+    if (desde.cara === claveRef.current) elegir(nuevo);
   };
 
   // ── La lámina: «Bajar la propuesta» y «Usarla como planometría» ────────
@@ -500,10 +592,30 @@ export default function VisorDeVenta({
     if (laminaLista || laminaFallo) confirmacion.current?.scrollIntoView({ block: "nearest" });
   }, [laminaLista, laminaFallo]);
 
-  const armarLamina = async (): Promise<{ blob: Blob; archivo: string; cara: string } | null> => {
+  /**
+   * Arma la lámina en segundo plano (unos segundos; en una máquina lenta, 20
+   * o más). Queda ATADA a lo que se mostraba al empezar: la cara, el
+   * proveedor y el visor abierto (`vigencia`). Después de cada `await` se
+   * mira si sigue siendo lo mismo, y si no, se corta con `INTERRUMPIDA`: ni
+   * una toma más de un lienzo que ya no existe, ni una lámina de Alpina en el
+   * contrato de Postobón. Mientras tanto la pantalla queda quieta y el visor
+   * no deja cambiar de cara, de toma ni de proveedor (`armando`); cerrar sí
+   * se puede, y descarta lo armado.
+   *
+   * Devuelve, además de la lámina, el proveedor (normalizado) con que se armó
+   * —la ficha la rechaza si el contrato ya es de otro— y `sigue()`, para
+   * volver a mirar después de los `await` de quien la usa.
+   */
+  const armarLamina = async (): Promise<{
+    blob: Blob; archivo: string; cara: string; proveedor: string; sigue: () => boolean;
+  } | null> => {
     const capturar = captura.current;
     const arte = arteDeLaCara;
     if (!capturar || !arte || !mueble || !cara) return null;
+    const mia = vigencia.current;
+    const quien = normalizarProveedor(nombreRef.current);
+    const sigue = () => vigencia.current === mia;
+    const vigente = () => { if (!sigue()) throw INTERRUMPIDA; };
     // Entre toma y toma hay que dejar que React rearme los materiales y que el
     // lienzo vuelva a dibujar (como `exportarPropuesta` del editor).
     const esperarCuadro = () =>
@@ -511,8 +623,10 @@ export default function VisorDeVenta({
     const esperarEscena = async (listo: (e: EstadoDeEscena) => boolean) => {
       for (let i = 0; i < 240 && !listo(estado.current); i++) {
         await new Promise<void>((ok) => requestAnimationFrame(() => ok()));
+        vigente();
       }
       await esperarCuadro();
+      vigente();
     };
     const conTomas = TIPOS_CON_PRUEBA_3D.has(mueble.type);
     // El recorte de cada toma, con la forma del mueble (`prepararToma`).
@@ -520,7 +634,11 @@ export default function VisorDeVenta({
       ? Math.max(0.75, Math.min(16 / 9, (mueble.w / (mueble.h * 1.12 * HOLGURA_DE_LAMINA)) * 1.3))
       : 16 / 9;
     let aspectoDeLamina = aspecto;
-    const preparar = (dataUrl: string) => prepararToma(dataUrl, aspectoDeLamina, FONDO_DE_SALA);
+    const preparar = async (dataUrl: string) => {
+      const toma = await prepararToma(dataUrl, aspectoDeLamina, FONDO_DE_SALA);
+      vigente();
+      return toma;
+    };
     const sinArteAntes = sinArte;
     // La toma que había elegido la dueña: al terminar se vuelve a ésa (y no
     // siempre a «De frente»).
@@ -580,15 +698,30 @@ export default function VisorDeVenta({
       // El archivo, con la sede y el código de la cara (la A con su letra,
       // como la B): `PRINCIPAL-GON-02-A_Alpina_antes-despues.png`.
       const archivo = nombreDeArchivo({ ...datos, espacio: `${sede}-${cara.visible}` }, conComparacion);
-      return { blob: await componerPropuesta(tomas, datos), archivo, cara: cara.visible };
+      const blob = await componerPropuesta(tomas, datos);
+      vigente();
+      return { blob, archivo, cara: cara.visible, proveedor: quien, sigue };
     } finally {
-      // Como estaba: con el producto (o «Hoy», si estaba en «Hoy»), con las
-      // pruebas de las otras caras, en la toma que había, y sin congelar.
-      setSinArte(sinArteAntes);
+      // Las pruebas de las otras caras de vuelta, y sin congelar.
       setSoloLaCara(null);
-      pedirToma(activa.fixtureId, activa.face, tomaAntes);
       setCongelado(null);
+      // Como estaba —con el producto (o «Hoy», si estaba en «Hoy») y en la
+      // toma que había—, sólo si sigue siendo la MISMA cara. Si cambió, la
+      // nueva ya pidió su «De frente»; reponer la toma de ésta dejaba el 3D
+      // en una cara y la chapa y el cajón hablando de otra.
+      if (vivo.current && claveRef.current === clave) {
+        setSinArte(sinArteAntes);
+        pedirToma(activa.fixtureId, activa.face, tomaAntes);
+      }
     }
+  };
+  /** Lo que se dice si la lámina se cortó (`INTERRUMPIDA`) con el visor
+   *  todavía abierto. Sin nombres: lo lee el proveedor. */
+  const alFallarLamina = (e: unknown) => {
+    if (!vivo.current) return;
+    setLaminaFallo(e === INTERRUMPIDA
+      ? "La lámina no se terminó: cambió lo que se estaba mostrando. Probá de nuevo."
+      : "No se pudo armar la lámina. Probá de nuevo.");
   };
   const bajarLamina = async () => {
     if (lamina) return;
@@ -597,10 +730,11 @@ export default function VisorDeVenta({
     try {
       const r = await armarLamina();
       if (!r) return;
+      if (!r.sigue()) throw INTERRUMPIDA;
       descargar(r.blob, r.archivo);
       setLaminaLista("bajada");
-    } catch {
-      setLaminaFallo("No se pudo armar la lámina. Probá de nuevo.");
+    } catch (e) {
+      alFallarLamina(e);
     } finally {
       setLamina("");
     }
@@ -617,15 +751,23 @@ export default function VisorDeVenta({
       const r = await armarLamina();
       if (!r) return;
       const jpg = await aJpeg(r.blob);
+      // El JPG también tarda: se vuelve a mirar antes de tocar la ficha.
+      if (!r.sigue()) throw INTERRUMPIDA;
       const base = r.archivo.replace(/\.png$/, "");
-      onPlanometria(new File([jpg.blob], `${base}.${jpg.extension}`, { type: jpg.blob.type }), r.cara);
+      const adjunta = onPlanometria(new File([jpg.blob], `${base}.${jpg.extension}`, { type: jpg.blob.type }), r.cara, r.proveedor);
+      if (!adjunta) throw INTERRUMPIDA;
       setLaminaLista("adjunta");
-    } catch {
-      setLaminaFallo("No se pudo armar la lámina. Probá de nuevo.");
+    } catch (e) {
+      alFallarLamina(e);
     } finally {
       setLamina("");
     }
   };
+  /** Mientras se arma la lámina, el visor queda quieto: ni otra cara, ni otra
+   *  toma, ni «Hoy», ni otro producto, ni otro proveedor, ni abrir o cerrar
+   *  el cajón (cambia el ancho del lienzo y con él la toma). Cada uno de esos
+   *  gestos, en el medio, cambiaba lo que se estaba fotografiando. */
+  const armando = lamina !== "";
 
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -666,7 +808,7 @@ export default function VisorDeVenta({
 
       {/* El doble clic vuelve a «De frente»: si un giro dejó la cámara en un
           lugar raro, es lo primero que se hace sin buscar el HUD. */}
-      <div className="visor-escena" onDoubleClick={() => pedirToma(activa.fixtureId, activa.face, "frente")}>
+      <div className="visor-escena" onDoubleClick={() => { if (!armando) pedirToma(activa.fixtureId, activa.face, "frente"); }}>
         <Lienzo
           muebles={muebles}
           privadoPara={privadoPara}
@@ -681,6 +823,9 @@ export default function VisorDeVenta({
         />
         {/* El cuadro de antes, quieto, mientras se arma la lámina. */}
         {congelado && <img className="visor-congelado" src={congelado} alt="" aria-hidden data-congelado />}
+        {/* Y la órbita, quieta: un arrastre o una vuelta de rueda entre
+            toma y toma movía la cámara de la lámina. */}
+        {armando && <div className="visor-tapa" aria-hidden data-armando />}
 
         {/* Qué se está mirando, y las otras caras del contrato a un toque. */}
         <div className="visor-chapa">
@@ -694,6 +839,7 @@ export default function VisorDeVenta({
                   type="button"
                   className="visor-pestana"
                   onClick={() => onActiva({ fixtureId: c.fixtureId, face: c.face })}
+                  disabled={armando}
                   title={`Ver ${c.visible}`}
                 >
                   {c.visible}
@@ -721,6 +867,7 @@ export default function VisorDeVenta({
                 className="visor-hud-boton"
                 aria-pressed={pedido?.toma === toma && pedido.fixtureId === activa.fixtureId && pedido.cara === activa.face}
                 onClick={() => pedirToma(activa.fixtureId, activa.face, toma)}
+                disabled={armando}
               >
                 {rotulo}
               </button>
@@ -728,22 +875,22 @@ export default function VisorDeVenta({
           </span>
           {arteDeLaCara && (
             <span className="visor-hud-grupo" role="group" aria-label="Antes y después">
-              <button type="button" className="visor-hud-boton" aria-pressed={sinArte} onClick={() => setSinArte(true)}>
+              <button type="button" className="visor-hud-boton" aria-pressed={sinArte} onClick={() => setSinArte(true)} disabled={armando}>
                 Hoy
               </button>
-              <button type="button" className="visor-hud-boton" aria-pressed={!sinArte} onClick={() => setSinArte(false)}>
+              <button type="button" className="visor-hud-boton" aria-pressed={!sinArte} onClick={() => setSinArte(false)} disabled={armando}>
                 Con {proveedorDeLosArtes}
               </button>
             </span>
           )}
           <span className="visor-hud-grupo">
-            <button type="button" className="visor-hud-boton" aria-pressed={cajon} aria-expanded={cajon} onClick={() => setCajon((v) => !v)}>
+            <button type="button" className="visor-hud-boton" aria-pressed={cajon} aria-expanded={cajon} onClick={() => setCajon((v) => !v)} disabled={armando}>
               <Box size={13} aria-hidden /> Producto
             </button>
           </span>
           {!pantallaCompleta && document.fullscreenEnabled && (
             <span className="visor-hud-grupo">
-              <button type="button" className="visor-hud-boton" onClick={pedirPantallaCompleta} data-volver-pantalla-completa>
+              <button type="button" className="visor-hud-boton" onClick={pedirPantallaCompleta} data-volver-pantalla-completa disabled={armando}>
                 Pantalla completa
               </button>
             </span>
@@ -760,12 +907,17 @@ export default function VisorDeVenta({
             {/* «Ocultar», con una flecha y no con una ×: con el cajón abierto
                 convivían dos X —ésta y «× Volver al contrato»— y era fácil
                 cerrar el visor queriendo cerrar el cajón. */}
-            <button type="button" className="visor-cajon-cerrar" onClick={() => setCajon(false)} aria-label="Ocultar los productos">
+            <button type="button" className="visor-cajon-cerrar" onClick={() => setCajon(false)} aria-label="Ocultar los productos" disabled={armando}>
               Ocultar <ChevronRight size={14} aria-hidden />
             </button>
           </header>
 
           <div className="visor-cajon-cuerpo">
+            {/* Todo lo que cambia lo que se fotografía —el proveedor, el
+                producto, «Cómo va»—, apagado mientras se arma la lámina
+                (`armando`). «Para llevarse» queda afuera: ahí está el botón
+                que gira y, al terminar, lo que pasó. */}
+            <fieldset className="visor-quieto" disabled={armando} data-visor-quieto>
             {editandoProveedor || !nombre ? (
               <label className="visor-campo">
                 <span className="visor-rotulo">
@@ -779,13 +931,16 @@ export default function VisorDeVenta({
                   onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
                   placeholder="Nombre del proveedor"
                   autoComplete="off"
+                  disabled={enviandoAlta}
                 />
                 <span className="visor-nota">Queda escrito en el contrato.</span>
               </label>
             ) : (
               <p className="visor-proveedor" data-proveedor-del-contrato>
                 <span>Proveedor: <b>{nombre}</b></span>
-                <button type="button" className="visor-enlace" onClick={() => setEditandoProveedor(true)}>cambiar</button>
+                {/* Mientras sube un producto, no: lo que vuelve es de este
+                    proveedor (ver `alSubir`). */}
+                <button type="button" className="visor-enlace" onClick={() => setEditandoProveedor(true)} disabled={enviandoAlta}>cambiar</button>
               </p>
             )}
 
@@ -869,15 +1024,9 @@ export default function VisorDeVenta({
                 <h3 className="visor-rotulo">Subir un producto</h3>
                 <SubirProducto
                   proveedor={nombre}
-                  onListo={(nuevo) => {
-                    setSubiendo(false);
-                    // Ya, sin esperar la lista: es del proveedor del contrato
-                    // (el servidor lo resolvió por ese nombre), y queda probado
-                    // en la cara. La lista vuelve a pedirse para quedar al día.
-                    setArtes((prev) => (prev.some((a) => a.id === nuevo.id) ? prev : [...prev, nuevo]));
-                    recargar();
-                    elegir(nuevo);
-                  }}
+                  cara={clave}
+                  onListo={alSubir}
+                  onEnviando={setEnviandoAlta}
                   onCancelar={() => setSubiendo(false)}
                 />
               </section>
@@ -899,6 +1048,7 @@ export default function VisorDeVenta({
                 />
               </section>
             )}
+            </fieldset>
 
             {arteDeLaCara && conCuenta && !subiendo && (
               <section className="visor-como" aria-label="La lámina">
@@ -939,7 +1089,7 @@ export default function VisorDeVenta({
 
           {isAdmin && conCuenta && nombre && !subiendo && (
             <footer className="visor-cajon-pie">
-              <button type="button" className="visor-boton-linea" onClick={() => setSubiendo(true)}>
+              <button type="button" className="visor-boton-linea" onClick={() => setSubiendo(true)} disabled={armando}>
                 <Upload size={13} aria-hidden /> Subir un producto
               </button>
             </footer>
@@ -987,9 +1137,17 @@ async function aJpeg(png: Blob): Promise<{ blob: Blob; extension: "jpg" | "png" 
  * de alta en el mismo commit—. El alto es obligatorio: decide la escala y
  * cuántos entran, que es lo que se negocia.
  */
-function SubirProducto({ proveedor, onListo, onCancelar }: {
+function SubirProducto({ proveedor, cara, onListo, onEnviando, onCancelar }: {
   proveedor: string;
-  onListo: (nuevo: Arte) => void;
+  /** La cara que se miraba al abrir el alta (`${fixtureId}|cara`). */
+  cara: string;
+  /** El producto subido, con el proveedor y la cara de cuando se tocó
+   *  «Subir»: lo que llega después del `await` se compara con lo vigente
+   *  (`alSubir`), no con lo de este render. */
+  onListo: (nuevo: Arte, desde: { proveedor: string; cara: string }) => void;
+  /** Avisa mientras el producto va camino al servidor (el visor apaga
+   *  «cambiar» el proveedor). */
+  onEnviando: (enviando: boolean) => void;
   onCancelar: () => void;
 }) {
   const [nombre, setNombre] = useState("");
@@ -1005,6 +1163,10 @@ function SubirProducto({ proveedor, onListo, onCancelar }: {
   const archivoRef = useRef<HTMLInputElement>(null);
   // Otro nombre en el contrato, otra pregunta.
   useEffect(() => { setNombreNuevo(false); }, [proveedor]);
+  useEffect(() => { onEnviando(enviando); }, [enviando, onEnviando]);
+  // Si el alta se va en medio del envío (se cerró el cajón o el visor), que
+  // «cambiar» no quede apagado.
+  useEffect(() => () => onEnviando(false), [onEnviando]);
 
   async function enviar(crearProveedor = false) {
     if (enviando) return;
@@ -1014,11 +1176,13 @@ function SubirProducto({ proveedor, onListo, onCancelar }: {
     if (!ficha.alto_mm) { setError("Poné el alto del envase en cm: con eso se calcula cuántos entran."); return; }
     setEnviando(true);
     setError("");
+    // Lo de ESTE momento: es a nombre de quién se sube y para qué cara.
+    const desde = { proveedor, cara };
     try {
       const nuevo = await subirArteDelProveedor({
         proveedor, nombre: nombre.trim(), categoria: rubro.trim() || undefined, archivo, ficha, crearProveedor,
       });
-      onListo(nuevo);
+      onListo(nuevo, desde);
     } catch (e) {
       if (esProveedorNuevo(e)) setNombreNuevo(true);
       else setError(describeError(e, "No se pudo subir el producto."));
