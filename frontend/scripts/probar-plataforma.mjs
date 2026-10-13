@@ -193,6 +193,7 @@ const PIEZAS = [
   "src/components/plataforma/cartera-datos.ts",
   "src/components/plataforma/cartera-cola.tsx",
   "src/components/plataforma/cartera-operativo.tsx",
+  "src/components/plataforma/cartera-cobros.tsx",
   "src/components/plataforma/sesion-datos.ts",
   "src/components/plataforma/sesion-piezas.tsx",
 ];
@@ -352,19 +353,53 @@ if (propsTarifa.length === 0) ok("ninguna prop `tarifa…` viaja entre component
 else mal(`${propsTarifa.length} props \`tarifa…\``, propsTarifa.join("\n         "));
 
 /* ── 1c · solo lectura ────────────────────────────────────────────────────
-   Todo es de lectura salvo el estado de cuenta y las supresiones, que viven
-   en su cajón operativo. Ninguna otra pieza del área puede escribir. */
-const ESCRIBEN_OK = ["src/components/plataforma/cartera-operativo.tsx"];
+   Todo es de lectura salvo el estado de cuenta, las supresiones y los cobros
+   (C1: suscripción, cuentas de cobro y pagos que registra la operadora), que
+   viven en el cajón operativo. Ninguna otra pieza del área puede escribir. */
+const ESCRIBEN_OK = [
+  "src/components/plataforma/cartera-operativo.tsx",
+  "src/components/plataforma/cartera-cobros.tsx",
+];
 const escrituras = [];
 for (const p of AREA_TS) {
   if (ESCRIBEN_OK.includes(p)) continue;
   sinComentarios(leer(p)).split("\n").forEach((l, i) => {
-    if (/\b(client\.(post|put|patch|delete)|patchEstadoCliente|atenderSupresion|fetch\([^)]*method)/.test(l))
+    if (/\b(client\.(post|put|patch|delete)|patchEstadoCliente|atenderSupresion|guardarSuscripcion|emitirFactura|registrarPago|anularFactura|marcarDisputa|fetch\([^)]*method)/.test(l))
       escrituras.push(`${p}:${i + 1}  ${l.trim().slice(0, 90)}`);
   });
 }
 if (escrituras.length === 0) ok("solo lectura: nadie escribe fuera del cajón operativo");
 else mal(`${escrituras.length} escrituras fuera del cajón operativo`, escrituras.join("\n         "));
+
+/* ── 1d · la plata de la plataforma no sale de la consola (C1) ─────────────
+   Lo que RECABRA le cobra a cada supermercado lo ve la operadora y, cuando
+   llegue su pantalla, la dueña de ese supermercado: su gente (admin no dueña,
+   worker, mercaderista) no ve un monto jamás. Hoy la única puerta es la
+   consola, así que ningún archivo fuera de `/plataforma` puede nombrar la
+   API de cobros. Y la casilla que levanta el estado tras un pago es una
+   opción EXPLÍCITA: arranca apagada. */
+{
+  const API_COBROS = /\b(getCobros|guardarSuscripcion|emitirFactura|registrarPago|anularFactura|marcarDisputa|CarteraCobros|FacturaCobro|PagoCobro)\b/;
+  const fuera = [];
+  const recorrerFront = (rel) => {
+    for (const e of readdirSync(join(raiz, rel), { withFileTypes: true })) {
+      const r = `${rel}/${e.name}`;
+      if (e.isDirectory()) recorrerFront(r);
+      else if (/\.tsx?$/.test(e.name) && r !== CONTRATO && !r.startsWith("src/components/plataforma/") && r !== "src/pages/Plataforma.tsx")
+        sinComentarios(leer(r)).split("\n").forEach((l, i) => {
+          if (API_COBROS.test(l)) fuera.push(`${r}:${i + 1}  ${l.trim().slice(0, 90)}`);
+        });
+    }
+  };
+  recorrerFront("src");
+  if (fuera.length === 0) ok("la API de cobros sólo la nombra la consola de la plataforma");
+  else mal(`${fuera.length} archivos fuera de la consola nombran la API de cobros`, fuera.join("\n         "));
+
+  const cobros = sinComentarios(leer("src/components/plataforma/cartera-cobros.tsx"));
+  if (/const \[levantar, setLevantar\] = useState\(false\)/.test(cobros) && /levantar_estado: levantar,/.test(cobros))
+    ok("«levantar el estado si queda al día» arranca apagada y viaja tal cual la marcó la operadora");
+  else mal("la casilla que levanta el estado tras un pago no arranca apagada (o no es la que viaja)");
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 2 · EL INFORME NO SABE DE LA CARTERA

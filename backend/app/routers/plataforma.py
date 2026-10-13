@@ -1,5 +1,11 @@
 """Panel de plataforma: quién es operador, el interruptor de estado y las métricas.
 
+Y desde C1 (2026-10-13), los COBROS: la suscripción de cada cliente, sus
+cuentas de cobro y los pagos que registra la operadora a mano (``/cobros``,
+``/clientes/{slug}/suscripcion``, ``/clientes/{slug}/facturas``,
+``/facturas/{id}/…``). Son del registro, como el estado de cuenta: lo que la
+plataforma le cobra a un cliente no vive en la base de ese cliente.
+
 Datos del registro, con TRES excepciones acotadas y declaradas: ``GET /metricas``
 (Fase 4), ``GET /clientes/{slug}/reporte`` (Fase 7, sólo el spread del mes en
 curso) y ``GET /clientes/{slug}/detalle`` (Fase 8). Los demás endpoints de
@@ -44,14 +50,14 @@ el login legado nunca trae ``request.state.actor_email`` (lo deja
 ningún chequeo especial para el legado.
 """
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.auth import require_auth
 from app.clientes import sesion_registro
-from app.plataforma_estado import ESTADOS_CUENTA, es_operador, invalidar_cache_estado
+from app.plataforma_estado import es_operador
 # Los defaults de `/tendencia` (Fase 5). Se importan del módulo que los define
 # para que el contrato del endpoint y el de la serie no se puedan separar.
 from app.plataforma_tendencia import CONSOLIDADO_SLUG, MESES_DEFAULT
@@ -215,6 +221,38 @@ def adopcion_del_negocio(email: str = Depends(require_operador)):
 
     cuerpo = calcular_adopcion()
     _anotar_consulta(email, "adopcion", cuerpo["periodo"])
+    return cuerpo
+
+
+# ─── Cobros: la cartera de la suscripción (C1) ─────────────────────────────
+#
+# Ruta LITERAL, declarada junto a las otras literales y ANTES de toda
+# paramétrica -- la regla dura de orden de rutas. Lee SÓLO el registro
+# (`suscripciones`, `facturas_cobro`, `pagos_cobro`, `estados_cliente`): lo
+# que la plataforma le cobra a cada cliente es de la plataforma, no de la base
+# de nadie. Las escrituras de la cartera (suscripción, factura, pago, anular,
+# disputa) van más abajo, después del ciclo de vida; la lógica vive entera en
+# `app/services/cobranza.py`.
+#
+# Plata y facturas son sólo para la operadora (este router) y, cuando llegue
+# su pantalla, para la dueña del supermercado: su gente no ve un monto jamás.
+
+@router.get("/cobros")
+def cartera_de_cobros(email: str = Depends(require_operador)):
+    """Una fila por cliente: modo, valor pactado, la próxima cuenta de cobro a
+    pagar, días de atraso, el estado de cuenta actual y el que le
+    correspondería, el último pago y sus facturas. Un cliente sin suscripción
+    sale ``exento``: sin deuda, sin facturas, fuera de la cobranza.
+
+    **Deja línea en la bitácora** (``accion="cobros"``): devuelve los datos de
+    facturación de cada cliente, que incluyen un correo. Como ``/clientes``,
+    barre a todos, así que alcanza el reporte de transparencia de todos.
+    """
+    from app.plataforma_metricas import periodo_actual
+    from app.services.cobranza import cartera
+
+    cuerpo = cartera()
+    _anotar_consulta(email, "cobros", periodo_actual())
     return cuerpo
 
 
@@ -392,57 +430,21 @@ def cambiar_estado_cliente(slug: str, payload: PatchEstadoIn, email: str = Depen
     También para ``estado == "activo"``: la fila queda como constancia de
     quién hizo el último cambio -- el interruptor de ``clientes.py`` la trata
     igual que una fila ausente, pero acá se ve.
+
+    El cuerpo vive en ``services/cobranza.mover_estado`` (C1), el único camino
+    que cambia ``estados_cliente``: valida igual, sube o crea la fila igual,
+    invalida el caché del estado y el de las métricas después del commit
+    (hallazgo M-1) y, además, deja la fila del cambio en
+    ``cambios_estado_cuenta``. La respuesta es la de siempre. Lo que pone una
+    persona acá, la cobranza automática no lo empeora jamás.
     """
-    from app.models.models import ClienteRow
-    from app.models.plataforma import EstadoCliente
+    from app.services.cobranza import ErrorDeCobranza, mover_estado
 
-    estado = (payload.estado or "").strip().lower()
-    if estado not in ESTADOS_CUENTA:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Estado inválido: debe ser uno de {', '.join(ESTADOS_CUENTA)}",
-        )
-    motivo = (payload.motivo or "").strip()
-    if not motivo:
-        raise HTTPException(status_code=422, detail="El motivo es obligatorio.")
-
-    slug = (slug or "").strip().lower()
-    reg = sesion_registro()
     try:
-        cliente = reg.query(ClienteRow).filter(ClienteRow.slug == slug).first()
-        if cliente is None:
-            raise HTTPException(status_code=404, detail="No hay un cliente con ese código.")
-
-        fila = reg.query(EstadoCliente).filter(EstadoCliente.slug == slug).first()
-        ahora = datetime.now(timezone.utc)
-        if fila is None:
-            fila = EstadoCliente(
-                slug=slug, estado=estado, motivo=motivo, cambiado_en=ahora, cambiado_por=email,
-            )
-            reg.add(fila)
-        else:
-            fila.estado = estado
-            fila.motivo = motivo
-            fila.cambiado_en = ahora
-            fila.cambiado_por = email
-        reg.commit()
-
-        resultado = {
-            "slug": fila.slug, "estado": fila.estado, "motivo": fila.motivo,
-            "cambiado_en": fila.cambiado_en, "cambiado_por": fila.cambiado_por,
-        }
-    finally:
-        reg.close()
-
-    # Tras el commit, no antes: si el commit fallara, el cache de un estado
-    # viejo no tendría por qué invalidarse.
-    invalidar_cache_estado(slug)
-    # Y el cache de MÉTRICAS también (hallazgo M-1): el estado_cuenta viaja
-    # adentro del JSON de métricas, y sin esto el propio operador veía el
-    # estado viejo en el panel hasta 5 minutos después de su propio PATCH.
-    from app.plataforma_metricas import limpiar_cache_metricas
-    limpiar_cache_metricas()
-    return resultado
+        fila = mover_estado(slug, payload.estado, payload.motivo, email)
+    except ErrorDeCobranza as e:
+        raise HTTPException(status_code=e.status, detail=str(e)) from e
+    return {clave: fila[clave] for clave in ("slug", "estado", "motivo", "cambiado_en", "cambiado_por")}
 
 
 # ─── El ciclo de vida de un cliente: renombrar, archivar, borrar ───────────
@@ -634,14 +636,17 @@ def borrar_cliente(slug: str, payload: BorrarIn, email: str = Depends(require_op
 
     **Qué se va**: la base `recabra_<slug>`, la fila de `clientes`, las
     membresías y las invitaciones de ese slug, su estado de cuenta, sus
-    fundaciones y sus fotos mensuales por cliente. Las cuatro primeras NO son
-    limpieza: un cliente nuevo que alguna vez tome el mismo slug heredaría
-    miembros, invitaciones pendientes y hasta una suspensión ajena.
+    fundaciones, sus fotos mensuales por cliente, su suscripción y su historial
+    de estados sin suscripción. Las cuatro primeras NO son limpieza: un cliente
+    nuevo que alguna vez tome el mismo slug heredaría miembros, invitaciones
+    pendientes y hasta una suspensión ajena.
 
     **Qué queda**: las cuentas de las personas (pueden estar en otros
     supermercados), sus consentimientos, las solicitudes de supresión (son
-    constancia legal), la bitácora de la plataforma y la fila CONSOLIDADA de
-    las fotos mensuales — la historia de la plataforma no se reescribe.
+    constancia legal), la bitácora de la plataforma, la fila CONSOLIDADA de
+    las fotos mensuales — la historia de la plataforma no se reescribe — y sus
+    cuentas de cobro y pagos (constancia contable), atados a una suscripción
+    que ya no existe: el que funde el mismo slug arranca sin deuda.
 
     La base se borra ANTES que las filas: si el `DROP` falla no se tocó nada, y
     si lo que falla es el registro, el cliente sigue archivado y el borrado se
@@ -653,6 +658,7 @@ def borrar_cliente(slug: str, payload: BorrarIn, email: str = Depends(require_op
     from app.models.plataforma import EstadoCliente, Fundacion, SnapshotMetricas
     from app.plataforma_estado import invalidar_cache_estado
     from app.plataforma_metricas import periodo_actual
+    from app.services.cobranza import olvidar_cliente as olvidar_cliente_en_cobranza
 
     reg = sesion_registro()
     try:
@@ -699,6 +705,10 @@ def borrar_cliente(slug: str, payload: BorrarIn, email: str = Depends(require_op
             (EstadoCliente, EstadoCliente.slug),
         ):
             reg.query(modelo).filter(columna == slug_real).delete(synchronize_session=False)
+        # Su suscripción y su historial de estados sin suscripción (C1). Las
+        # facturas y los pagos se quedan como constancia contable, colgados de
+        # una suscripción cuyo id no se vuelve a usar: nadie los hereda.
+        olvidar_cliente_en_cobranza(reg, slug_real)
         reg.delete(fila)
         reg.commit()
     finally:
@@ -710,6 +720,161 @@ def borrar_cliente(slug: str, payload: BorrarIn, email: str = Depends(require_op
     _olvidar_caches_de_consola()
     _anotar_consulta(email, "borrado", f"{slug_real}:{periodo_actual()}")
     return {"ok": True, "slug": slug_real}
+
+
+# ─── Cobros: la suscripción, las cuentas de cobro y los pagos (C1) ─────────
+#
+# Lo que la dueña decidió (2026-10-13): por ahora NO hay pasarela ni factura
+# electrónica emitida desde acá. La operadora registra la cuenta de cobro que ya
+# emitió (número y, si es electrónica, CUFE) y el pago que vio entrar en el
+# banco, con lo que el supermercado retuvo. Nada de esto corta el servicio: el
+# estado de cuenta lo sigue moviendo ella con el PATCH, y lo único que hace el
+# sistema es LEVANTARLO si ella lo pide al registrar el pago.
+#
+# Rutas paramétricas, declaradas después de todas las literales (la cartera,
+# `GET /cobros`, está arriba con las demás) y antes del reporte y el detalle,
+# que van al final. Cada escritura deja su línea en la bitácora con el slug
+# adelante (`"<slug>:<YYYY-MM>"`), como el ciclo de vida: el cliente la ve en
+# su reporte de transparencia, sin montos. La lógica vive en
+# `app/services/cobranza.py`; acá sólo se traduce el error al código HTTP.
+
+class SuscripcionIn(BaseModel):
+    modo: str = "manual"
+    valor_cop: int
+    unidad: str = "supermercado_mes"
+    cantidad: int = 1
+    periodicidad_meses: int = 1
+    plazo_pago_dias: int = 30
+    dia_solo_lectura: int = 30
+    prorroga_hasta: date | None = None
+    contrato_ref: str | None = None
+    razon_social: str | None = None
+    nit: str | None = None
+    correo_facturacion: str | None = None
+    municipio: str | None = None
+    retefuente_pct: float = 0.0
+    reteica_pct: float = 0.0
+    reteiva_pct: float = 0.0
+
+
+class FacturaIn(BaseModel):
+    periodo: str
+    numero: str
+    cufe: str | None = None
+    emitida_el: date | None = None
+    vence_el: date | None = None
+    # Sin subtotal, lo pactado por los meses del período.
+    subtotal_cop: int | None = None
+    iva_cop: int = 0
+
+
+class PagoIn(BaseModel):
+    medio: str = "transferencia"
+    valor_recibido_cop: int
+    retefuente_cop: int = 0
+    reteica_cop: int = 0
+    reteiva_cop: int = 0
+    certificado_recibido: bool = False
+    ref_externa: str
+    recibido_el: date | None = None
+    # La opción explícita: si con este pago queda al día, el estado de cuenta
+    # baja a lo que corresponde (lo firma `sistema:cobranza`). Apagada, el
+    # estado no se toca.
+    levantar_estado: bool = False
+
+
+class DisputaIn(BaseModel):
+    motivo: str
+    en_disputa: bool = True
+
+
+def _cobranza(hacer):
+    """Corre una operación de la cartera y traduce su error a HTTP: el texto es
+    para la operadora y va tal cual."""
+    from app.services.cobranza import ErrorDeCobranza
+
+    try:
+        return hacer()
+    except ErrorDeCobranza as e:
+        raise HTTPException(status_code=e.status, detail=str(e)) from e
+
+
+@router.put("/clientes/{slug}/suscripcion")
+def guardar_suscripcion(slug: str, payload: SuscripcionIn, email: str = Depends(require_operador)):
+    """Crea o reemplaza la suscripción del cliente: precio pactado, plazo,
+    escalera, datos de facturación y retenciones esperadas. Modo automático
+    sólo con la referencia del contrato (422) y nunca para el cliente de la
+    base principal (409)."""
+    from app.plataforma_metricas import periodo_actual
+    from app.services import cobranza
+
+    cuerpo = _cobranza(lambda: cobranza.guardar_suscripcion(slug, payload.model_dump(), email))
+    _anotar_consulta(email, "suscripcion", f"{(slug or '').strip().lower()}:{periodo_actual()}")
+    return cuerpo
+
+
+@router.post("/clientes/{slug}/facturas")
+def emitir_factura(slug: str, payload: FacturaIn, email: str = Depends(require_operador)):
+    """Registra una cuenta de cobro del cliente, ya emitida fuera de RECABRA.
+    Un cliente sin suscripción no recibe ninguna (409): está exento."""
+    from app.plataforma_metricas import periodo_actual
+    from app.services import cobranza
+
+    cuerpo = _cobranza(lambda: cobranza.emitir_factura(slug, payload.model_dump(), email))
+    _anotar_consulta(email, "factura", f"{(slug or '').strip().lower()}:{periodo_actual()}")
+    return cuerpo
+
+
+@router.post("/facturas/{factura_id}/pagos")
+def registrar_pago(factura_id: int, payload: PagoIn, email: str = Depends(require_operador)):
+    """Un pago manual contra una cuenta de cobro, con sus retenciones y la
+    referencia del banco. Con ``levantar_estado``, si el cliente queda al día,
+    su estado de cuenta vuelve a lo que corresponde."""
+    from app.plataforma_metricas import periodo_actual
+    from app.services import cobranza
+
+    cuerpo = _cobranza(lambda: cobranza.registrar_pago(factura_id, payload.model_dump(), email))
+    slug = _slug_de_la_factura(factura_id)
+    _anotar_consulta(email, "pago_manual", f"{slug}:{periodo_actual()}")
+    return cuerpo
+
+
+@router.post("/facturas/{factura_id}/anular")
+def anular_factura(factura_id: int, payload: MotivoIn, email: str = Depends(require_operador)):
+    """Anula una cuenta de cobro que salió mal, con motivo. El número queda
+    usado; el período queda libre para emitir la corregida."""
+    from app.plataforma_metricas import periodo_actual
+    from app.services import cobranza
+
+    cuerpo = _cobranza(lambda: cobranza.anular_factura(factura_id, payload.motivo, email))
+    _anotar_consulta(email, "anulacion", f"{_slug_de_la_factura(factura_id)}:{periodo_actual()}")
+    return cuerpo
+
+
+@router.post("/facturas/{factura_id}/disputa")
+def disputar_factura(factura_id: int, payload: DisputaIn, email: str = Depends(require_operador)):
+    """Pone o saca la marca de disputa, con motivo: lo que se discute no cuenta
+    para el atraso."""
+    from app.plataforma_metricas import periodo_actual
+    from app.services import cobranza
+
+    cuerpo = _cobranza(lambda: cobranza.marcar_disputa(factura_id, payload.en_disputa, payload.motivo, email))
+    _anotar_consulta(email, "disputa", f"{_slug_de_la_factura(factura_id)}:{periodo_actual()}")
+    return cuerpo
+
+
+def _slug_de_la_factura(factura_id: int) -> str:
+    """El slug al que la bitácora atribuye una acción sobre una factura: el que
+    tenía el cliente al emitirla. Sólo se llama después de que la operación
+    encontró la factura."""
+    from app.models.cobro import FacturaCobro
+
+    reg = sesion_registro()
+    try:
+        fila = reg.query(FacturaCobro.cliente_slug).filter(FacturaCobro.id == factura_id).first()
+        return fila[0] if fila is not None else ""
+    finally:
+        reg.close()
 
 
 # ─── Reporte de transparencia, para el operador (Fase 7, Parte B) ──────────

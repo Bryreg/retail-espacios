@@ -25,6 +25,12 @@ class EstadoCliente(Base):
 
     Una fila con estado "activo" también es activo: el PATCH del operador deja la
     fila puesta para conservar quién cambió qué por última vez.
+
+    Desde C1 (2026-10-13) la escribe un solo camino, ``services/cobranza.py``
+    (``mover_estado``), que además deja cada cambio en ``cambios_estado_cuenta``.
+    ``cambiado_por`` es el correo de la operadora o, cuando el sistema levanta
+    el estado tras un pago que ella registró, ``sistema:cobranza``: todo lo que
+    empieza con ``sistema:`` lo puso una máquina. Sin cambiar el esquema.
     """
 
     __tablename__ = "estados_cliente"
@@ -98,7 +104,10 @@ class BitacoraPlataforma(Base):
     # Código estable, como en `audit_log`: "metricas" | "tendencia" | "adopcion"
     # | "clientes" | "supresiones" | "reporte" | "detalle" | y, sobre un cliente
     # desde la consola (2026-09-23): "renombre" | "archivo" | "reactivacion" |
-    # "borrado" | "traspaso".
+    # "borrado" | "traspaso". La cobranza a mano (C1): "cobros" (la cartera,
+    # barre a todos) | "suscripcion" | "factura" | "pago_manual" | "anulacion" |
+    # "disputa". Toda acción nueva necesita su rama en
+    # `plataforma_reporte._accesos_del_cliente`.
     accion = Column(String, nullable=False, default="metricas")
     # El período consultado, "YYYY-MM". Es el QUÉ de la línea: sin él, saber
     # que alguien miró no dice qué miró.

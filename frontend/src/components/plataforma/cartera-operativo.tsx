@@ -30,6 +30,11 @@
    Galerías, así que salió; el código queda en `backend/app/services/traspaso.py`,
    sin botón ni ruta.
 
+   Desde C1 (2026-10-13) la tabla de estados dice también el MODO de cobro de
+   cada cliente —exento, manual o automático—, que sale de la cartera de
+   cobros (`cartera-cobros.tsx`). «Por» puede decir `sistema:cobranza`: es el
+   estado que el sistema levantó tras un pago que la operadora registró.
+
    El botón de confirmar va en TINTA, no en amarillo: el único amarillo de
    esta pantalla es la llamada #1 de la cola, y un cajón plegado no compite
    con ella.
@@ -262,6 +267,7 @@ function EditorCiclo({
 
 export function TablaEstados({
   clientes,
+  modos,
   error,
   abierto,
   onAbrir,
@@ -271,6 +277,9 @@ export function TablaEstados({
   enlaceReporte,
 }: {
   clientes: ClientePlataforma[] | null;
+  /** Slug → «exento» / «manual» / «automático», de la cartera de cobros (C1).
+   *  `null` mientras no llegó: la columna dice «—», no inventa un modo. */
+  modos: Map<string, string> | null;
   error: string | null;
   /** El slug en edición, o `null`. Lo maneja la página porque «Revisar la
    *  conexión» de la cola abre esta fila desde afuera. */
@@ -303,6 +312,7 @@ export function TablaEstados({
           <tr>
             <th>Cliente</th>
             <th>Estado</th>
+            <th>Modo</th>
             <th>Motivo</th>
             <th>Cambiado</th>
             <th>Por</th>
@@ -345,6 +355,7 @@ export function TablaEstados({
                 )}
               </td>
               <td>{ESTADO_CUENTA_TXT[c.estado] ?? c.estado}</td>
+              <td>{modos?.get(c.slug) ?? SIN_DATO}</td>
               <td>{c.motivo ?? SIN_DATO}</td>
               <td className="cod">{c.cambiado_en ? c.cambiado_en.slice(0, 10) : SIN_DATO}</td>
               <td className="cod">{c.cambiado_por ?? SIN_DATO}</td>

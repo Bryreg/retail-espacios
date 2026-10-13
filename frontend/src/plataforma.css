@@ -531,6 +531,24 @@ html[data-tema="oscuro"] .plat {
 .plat-peligro { color: var(--danger); }
 .plat-archivado > td > div:first-child { color: var(--ink-3); }
 
+/* ── Cobros (C1) ──────────────────────────────────────────────────────────
+   Los formularios de la cartera de cobros son muchos números seguidos: cada
+   campo lleva su rótulo arriba, porque un placeholder se borra al escribir y
+   deja a la operadora adivinando qué casilla era la reteICA.                */
+.plat-editor .campo { display: flex; flex-direction: column; gap: 3px; flex: 1 1 200px; min-width: 160px; }
+.plat-editor .campo.corto { flex: 0 1 150px; min-width: 120px; }
+.plat-editor .campo > span { font-size: var(--t-3xs); font-weight: 600; color: var(--ink-3); }
+.plat-editor .campo input,
+.plat-editor .campo select { min-width: 0; width: 100%; box-sizing: border-box; }
+.plat-editor .marca { display: inline-flex; gap: var(--s2); align-items: center; font-size: var(--t-2xs); color: var(--ink-2); }
+.plat-editor .marca input { flex: none; min-width: 0; }
+.plat-cobros-facturas { margin: var(--s2) 0 var(--s3); }
+/* Una cifra o una fecha partida en dos renglones («$» arriba, el número abajo)
+   se lee como dos datos. */
+.plat-cobros td.num,
+.plat-cobros-facturas td.num,
+.plat-cobros-facturas td.cod { white-space: nowrap; }
+
 /* ── Hallazgos y recomendaciones ───────────────────────────────────────────
    Cada recomendación es una ACCIÓN con su valor, no una descripción.        */
 .plat-hall { border-top: var(--hair) solid var(--line); padding-top: var(--s4); margin-top: var(--s4); }

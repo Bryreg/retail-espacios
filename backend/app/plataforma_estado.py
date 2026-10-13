@@ -16,6 +16,9 @@ import time
 # plataforma/alta) ya deja las tablas creadas en el arranque. No hay ciclo:
 # models/plataforma.py sólo importa app.database.
 from app.models import plataforma as _tablas  # noqa: F401
+# Las del cobro de la suscripción (C1), por la misma razón: la historia del
+# interruptor (`cambios_estado_cuenta`) vive al lado del interruptor.
+from app.models import cobro as _tablas_de_cobro  # noqa: F401
 
 ESTADOS_CUENTA = ("activo", "gracia", "solo_lectura", "suspendido")
 

@@ -4,7 +4,9 @@ import client from "./client";
 //
 // Shapes fijados por el contrato vinculante de la Fase 2
 // (features/clientes/outputs/equipo-fase-2.md §2.2 B/C/D). Sólo datos del
-// registro — nunca dinero ni datos de negocio de un cliente.
+// registro — nunca dinero ni datos de negocio de un cliente. La única plata
+// del registro es la que la plataforma le COBRA a cada cliente (C1, «Cobros»,
+// más abajo): la ve la operadora y nadie más.
 
 /** ¿Esta cuenta es operador de plataforma? El legado (token sin email)
  *  siempre da `false` — no hace falta filtrarlo antes de preguntar, el
@@ -92,6 +94,216 @@ export const reactivarCliente = (slug: string, motivo: string): Promise<ClienteD
 export const borrarCliente = (slug: string, confirmacion: string): Promise<{ ok: boolean; slug: string }> =>
   client
     .post<{ ok: boolean; slug: string }>(`${rutaCliente(slug)}/borrar`, { confirmacion })
+    .then((r) => r.data);
+
+// ─── Cobros: lo que RECABRA le cobra a cada supermercado (C1, 2026-10-13) ───
+//
+// La única plata de este módulo que es de la PLATAFORMA y no de un cliente: la
+// suscripción pactada, las cuentas de cobro que la operadora registra (número
+// y CUFE si es electrónica: RECABRA no emite nada ante la DIAN) y los pagos
+// que vio entrar en el banco, con lo que el supermercado retuvo. Todo vive en
+// el registro y sólo lo pide la operadora. Sin pasarela: la landing sigue
+// diciendo la verdad.
+//
+// Un cliente sin suscripción es EXENTO (Galerías): sin deuda y sin facturas.
+// Nada de acá corta el servicio; lo único que hace el backend solo es LEVANTAR
+// el estado de cuenta si la operadora lo pide al registrar el pago.
+// Plata en pesos enteros; fechas `"YYYY-MM-DD"` de Colombia.
+
+export type ModoCobro = "manual" | "automatico";
+export type UnidadCobro = "supermercado_mes" | "sede_mes";
+export type EstadoFactura = "borrador" | "emitida" | "pagada" | "anulada";
+export type MedioPago = "transferencia" | "otro";
+
+export interface SuscripcionCobro {
+  id: number;
+  modo: ModoCobro;
+  /** Lo pactado por unidad y por mes. */
+  valor_cop: number;
+  unidad: UnidadCobro;
+  cantidad: number;
+  periodicidad_meses: number;
+  plazo_pago_dias: number;
+  /** Días después del vencimiento en que corresponde sólo lectura. */
+  dia_solo_lectura: number;
+  prorroga_hasta: string | null;
+  /** Referencia del contrato o de los términos aceptados: sin ella no hay
+   *  modo automático. */
+  contrato_ref: string | null;
+  razon_social: string | null;
+  nit: string | null;
+  correo_facturacion: string | null;
+  municipio: string | null;
+  retefuente_pct: number;
+  reteica_pct: number;
+  /** En % del IVA. */
+  reteiva_pct: number;
+  actualizado_por: string;
+  actualizado_en: string;
+}
+
+export interface PagoCobro {
+  id: number;
+  medio: MedioPago;
+  valor_recibido_cop: number;
+  retefuente_cop: number;
+  reteica_cop: number;
+  reteiva_cop: number;
+  certificado_recibido: boolean;
+  /** La referencia del banco. No es única: una transferencia puede pagar
+   *  varias cuentas de cobro. */
+  ref_externa: string;
+  estado: "aprobado" | "anulado";
+  recibido_el: string;
+  /** El correo de la operadora que lo registró. */
+  registrado_por: string;
+}
+
+export interface FacturaCobro {
+  id: number;
+  numero: string | null;
+  cufe: string | null;
+  /** `"2026-11"` o `"2026-11..2027-01"`. */
+  periodo: string;
+  emitida_el: string | null;
+  vence_el: string;
+  subtotal_cop: number;
+  iva_cop: number;
+  total_cop: number;
+  retenciones_estimadas_cop: number;
+  neto_esperado_cop: number;
+  estado: EstadoFactura;
+  en_disputa: boolean;
+  motivo_disputa: string | null;
+  motivo_anulacion: string | null;
+  pagada_el: string | null;
+  /** Lo recibido más lo retenido, de los pagos aprobados. */
+  abonado_cop: number;
+  /** Lo que falta. Sólo una emitida debe algo. */
+  saldo_cop: number;
+  /** Emitida e impaga con el vencimiento ATRÁS: el día que vence, todavía no. */
+  vencida: boolean;
+  dias_atraso: number | null;
+  pagos: PagoCobro[];
+}
+
+export interface UltimoPagoCobro extends PagoCobro {
+  factura_id: number;
+  factura_numero: string | null;
+}
+
+export interface ClienteCartera {
+  slug: string;
+  nombre: string;
+  activo: boolean;
+  base_principal: boolean;
+  estado: EstadoCuenta;
+  cambiado_por: string | null;
+  /** Sin suscripción: fuera de la cobranza. No es «al día», es «fuera». */
+  exento: boolean;
+  suscripcion: SuscripcionCobro | null;
+  /** El estado que le correspondería por sus facturas (nunca «suspendido»).
+   *  `null` si es exento. Hoy sólo se muestra. */
+  estado_correspondiente: EstadoCuenta | null;
+  dias_atraso: number | null;
+  saldo_pendiente_cop: number | null;
+  /** La impaga que vence primero. */
+  proxima_factura: FacturaCobro | null;
+  ultimo_pago: UltimoPagoCobro | null;
+  facturas: FacturaCobro[];
+}
+
+export interface CarteraCobros {
+  hoy: string;
+  clientes: ClienteCartera[];
+}
+
+/** La cartera de cobros. **Nunca se guarda en localStorage**, igual que la
+ *  lista de clientes: son datos de facturación de toda la plataforma. */
+export const getCobros = (): Promise<CarteraCobros> =>
+  client.get<CarteraCobros>("/plataforma/cobros").then((r) => r.data);
+
+export interface SuscripcionPayload {
+  modo: ModoCobro;
+  valor_cop: number;
+  unidad: UnidadCobro;
+  cantidad: number;
+  periodicidad_meses: number;
+  plazo_pago_dias: number;
+  dia_solo_lectura: number;
+  prorroga_hasta: string | null;
+  contrato_ref: string | null;
+  razon_social: string | null;
+  nit: string | null;
+  correo_facturacion: string | null;
+  municipio: string | null;
+  retefuente_pct: number;
+  reteica_pct: number;
+  reteiva_pct: number;
+}
+
+export const guardarSuscripcion = (slug: string, payload: SuscripcionPayload): Promise<SuscripcionCobro> =>
+  client.put<SuscripcionCobro>(`${rutaCliente(slug)}/suscripcion`, payload).then((r) => r.data);
+
+export interface FacturaPayload {
+  periodo: string;
+  numero: string;
+  cufe: string | null;
+  emitida_el: string | null;
+  vence_el: string | null;
+  /** `null`: lo pactado por los meses del período. */
+  subtotal_cop: number | null;
+  iva_cop: number;
+}
+
+export const emitirFactura = (slug: string, payload: FacturaPayload): Promise<FacturaCobro> =>
+  client.post<FacturaCobro>(`${rutaCliente(slug)}/facturas`, payload).then((r) => r.data);
+
+export interface PagoPayload {
+  medio: MedioPago;
+  valor_recibido_cop: number;
+  retefuente_cop: number;
+  reteica_cop: number;
+  reteiva_cop: number;
+  certificado_recibido: boolean;
+  ref_externa: string;
+  recibido_el: string | null;
+  /** Si con este pago queda al día, el estado de cuenta baja a lo que
+   *  corresponde, firmado `sistema:cobranza`. Apagado, no se toca. */
+  levantar_estado: boolean;
+}
+
+/** Lo que pasó con el estado de cuenta tras un pago con `levantar_estado`. Si
+ *  no se movió, `razon` dice por qué (`no_mejora`, `exento`,
+ *  `lo_puso_una_persona`…). Sin cliente (se borró), sólo vienen `movido` y
+ *  `razon`. */
+export interface EstadoTrasPago {
+  movido: boolean;
+  razon: string | null;
+  estado?: EstadoCuenta;
+  motivo?: string | null;
+  cambiado_en?: string | null;
+  cambiado_por?: string | null;
+}
+
+export interface PagoRegistrado {
+  factura: FacturaCobro;
+  pago: PagoCobro;
+  /** `null` si no se pidió levantar el estado. */
+  estado_cuenta: EstadoTrasPago | null;
+}
+
+const rutaFactura = (id: number) => `/plataforma/facturas/${encodeURIComponent(String(id))}`;
+
+export const registrarPago = (facturaId: number, payload: PagoPayload): Promise<PagoRegistrado> =>
+  client.post<PagoRegistrado>(`${rutaFactura(facturaId)}/pagos`, payload).then((r) => r.data);
+
+export const anularFactura = (facturaId: number, motivo: string): Promise<FacturaCobro> =>
+  client.post<FacturaCobro>(`${rutaFactura(facturaId)}/anular`, { motivo }).then((r) => r.data);
+
+export const marcarDisputa = (facturaId: number, enDisputa: boolean, motivo: string): Promise<FacturaCobro> =>
+  client
+    .post<FacturaCobro>(`${rutaFactura(facturaId)}/disputa`, { motivo, en_disputa: enDisputa })
     .then((r) => r.data);
 
 // ─── Métricas del negocio (Fase 4 plataforma) ───────────────────────────────

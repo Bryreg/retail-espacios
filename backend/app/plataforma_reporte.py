@@ -598,6 +598,12 @@ def _accesos_del_cliente(reg, slug: str, desde_dt: datetime, hasta_dt: datetime)
       forma de ``periodo`` que ``detalle``. El borrado no llega a verse en
       ningún reporte (el cliente ya no existe), pero se declara igual: la
       regla es que ninguna acción quede sin rama acá.
+    * ``cobros`` (C1) -- la cartera de cobros barre a TODOS los clientes, como
+      ``clientes``: alcanza siempre.
+    * ``suscripcion``, ``factura``, ``pago_manual``, ``anulacion``, ``disputa``
+      (C1) -- lo que la operadora registró de lo que le cobra a ESTE cliente,
+      con ``periodo="<slug>:<YYYY-MM>"``. La línea dice qué se hizo, nunca el
+      monto.
 
     Cualquier acción que no esté en esa lista NO alcanza: una acción nueva sin
     su rama acá quedaría sin declarar en el reporte del titular, que es
@@ -622,7 +628,7 @@ def _accesos_del_cliente(reg, slug: str, desde_dt: datetime, hasta_dt: datetime)
     lineas = []
     for f in filas:
         periodo = f.periodo or ""
-        if f.accion in ("metricas", "adopcion", "clientes"):
+        if f.accion in ("metricas", "adopcion", "clientes", "cobros"):
             alcanza = True
         elif f.accion == "tendencia":
             alcanza = periodo.startswith(f"{slug}:") or periodo.startswith(f"{CONSOLIDADO_SLUG}:")
@@ -631,6 +637,10 @@ def _accesos_del_cliente(reg, slug: str, desde_dt: datetime, hasta_dt: datetime)
         elif f.accion == "reporte":
             alcanza = periodo.startswith(f"{slug}:")
         elif f.accion in ("renombre", "archivo", "reactivacion", "borrado", "traspaso"):
+            alcanza = periodo.startswith(f"{slug}:")
+        elif f.accion in ("suscripcion", "factura", "pago_manual", "anulacion", "disputa"):
+            # C1: la cobranza a mano. Mismo `periodo="<slug>:<YYYY-MM>"` que el
+            # ciclo de vida: lo que la operadora registró de ESTE cliente.
             alcanza = periodo.startswith(f"{slug}:")
         elif f.accion == "detalle":
             # Fase 8: `GET /api/plataforma/clientes/{slug}/detalle` anota

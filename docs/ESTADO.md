@@ -357,6 +357,9 @@ rechaza el cliente cuya base es la de `DATABASE_URL` —que además es el regist
 todos—. Y **borra membresías, invitaciones y estado de cuenta de ese slug**: no es
 limpieza, es seguridad — un cliente nuevo que tome el mismo slug heredaría miembros,
 invitaciones pendientes y una suspensión ajena. Ver *El ciclo de vida de un cliente*.
+Lo mismo con la cobranza (C1): se va su suscripción; sus cuentas de cobro y pagos
+se quedan de constancia, colgados de un id de suscripción que no se reutiliza, así
+que nadie hereda una deuda ajena (ver *Cobro de la suscripción*).
 
 **Toda tabla nueva se clasifica: de negocio o de registro.** `services/traspaso.py`
 tiene las dos listas (`TABLAS_DEL_CLIENTE`, `TABLAS_DEL_REGISTRO`). Pasar un cliente a
@@ -693,9 +696,11 @@ transparencia.
   intactos. Reactivar con un nombre que ya usa otro activo da 409.
 - **Borrar** (`POST /clientes/{slug}/borrar`, `{confirmacion: "<slug>"}`): ver la
   regla dura. Borra la base y, del registro, la fila del cliente, sus membresías,
-  invitaciones, estado de cuenta, fundaciones y fotos mensuales propias. Quedan las
-  cuentas de las personas, sus consentimientos, las solicitudes de supresión
-  (constancia legal), la bitácora y el consolidado mensual.
+  invitaciones, estado de cuenta, fundaciones, fotos mensuales propias, su
+  suscripción y su historial de estados sin suscripción. Quedan las cuentas de las
+  personas, sus consentimientos, las solicitudes de supresión (constancia legal),
+  la bitácora, el consolidado mensual y sus cuentas de cobro y pagos (constancia
+  contable, ver *Cobro de la suscripción*).
 - **`GET /clientes` dice `base_principal`**, para que la consola no ofrezca borrar
   el cliente de la instalación original.
 - **`unico()` ahora exige que ese único cliente sea el de siempre.** Resuelve las
@@ -785,6 +790,113 @@ las claves compartidas de `ADMIN_PASSWORD` / `WORKER_PASSWORD`, pero la única p
 que abrían —`POST /api/auth/login`— está apagada salvo `LOGIN_LEGADO=1` (ver
 *Identidad*, punto «Legado»). Y desde el 2026-10-02 ni eso: sin `LOGIN_LEGADO` no
 se las pone.
+
+### Cobro de la suscripción, a mano en la consola (C1, 2026-10-13)
+
+Lo que RECABRA le cobra a cada supermercado, registrado por la operadora en la
+consola (*Lo operativo → Cobros*). **No corta el servicio a nadie**: es la base
+sobre la que después corre la escalera automática (C2).
+
+**Lo que decidió la dueña, y manda sobre el plan de la pasarela:**
+
+- **Sin pasarela por ahora.** Ni Wompi, ni enlaces de pago, ni webhooks. La
+  landing sigue siendo cierta: transferencia contra cuenta de cobro, sin datos de
+  tarjeta.
+- **Sin DIAN.** El sistema registra «facturas o cuentas de cobro» genéricas
+  —número, CUFE si la factura es electrónica— que se emitieron FUERA de RECABRA.
+  El régimen lo ve ella con su contador.
+- **Si no paga: avisos y sólo lectura a los 30 días de vencida la factura**
+  (C2). **Nunca suspensión automática**: suspender lo decide ella con el PATCH de
+  siempre.
+- **Galerías, y todo cliente sin suscripción, queda exento**: la cobranza jamás
+  lo toca.
+
+**Cuatro tablas nuevas del registro** (`app/models/cobro.py`, en
+`TABLAS_DEL_REGISTRO`; ninguna columna nueva en tablas viejas):
+
+- `suscripciones` — una por cliente: modo `manual` | `automatico`, valor pactado
+  en pesos enteros, unidad (`supermercado_mes` | `sede_mes`) y cantidad,
+  periodicidad, plazo de pago, `dia_solo_lectura` (30), prórroga, `contrato_ref`,
+  datos de facturación y los porcentajes de retención esperados. **Sin fila =
+  exento**, igual que sin fila de estado = activo. El precio va acá: no hay
+  catálogo de planes.
+- `facturas_cobro` — período, número (único para siempre, también el de una
+  anulada), CUFE opcional, emisión, vencimiento, subtotal, IVA, total,
+  retenciones estimadas, neto esperado, estado (`borrador` | `emitida` |
+  `pagada` | `anulada`), marca de disputa, y una copia del nombre y el NIT al
+  emitir. Una sola **viva** por período y suscripción: el índice único es
+  parcial y deja afuera a las anuladas, porque anular la que salió mal y emitir
+  la corregida para el mismo mes es lo normal.
+- `pagos_cobro` — contra UNA factura: medio (`transferencia` | `otro`), recibido,
+  retefuente/reteICA/reteIVA, certificado recibido sí/no, referencia bancaria
+  (obligatoria y **no única**: una transferencia que paga dos cuentas de cobro se
+  registra en cada una con la misma referencia), fecha y quién lo registró.
+- `cambios_estado_cuenta` — el historial del interruptor: `estados_cliente`
+  guarda sólo el último cambio.
+
+**Todo cuelga de `suscripcion_id`, no del slug**, y ese id no se reutiliza nunca
+(`sqlite_autoincrement` en SQLite —sin él la fila borrada devolvía su id—, la
+secuencia en Postgres). Borrar un cliente borra su suscripción y su historial de
+estados SIN suscripción; las facturas, los pagos y el historial atado a la
+suscripción se conservan como constancia contable, y quien funde el mismo slug
+arranca exento y sin deuda.
+
+**Cuándo una factura está pagada**: lo recibido más las retenciones de los pagos
+aprobados cubre el total, con mil pesos de tolerancia por redondeo. Las
+retenciones cuentan aunque el certificado no haya llegado. **«Vencida»** no es un
+estado guardado: emitida, impaga y con `vence_el < hoy` (Colombia) — el día del
+vencimiento todavía está a tiempo. Una factura en disputa no cuenta para el
+atraso.
+
+**Un solo camino para el interruptor: `services/cobranza.mover_estado`.** El
+PATCH de la consola pasó a llamarlo y contesta lo mismo de siempre; además deja
+la fila en `cambios_estado_cuenta`. Sus reglas para una máquina (actor que
+empieza con `sistema:`): **nunca empeora un estado puesto por una persona** (sólo
+uno sin fila, «activo», o puesto por otra máquina); mejora uno puesto por una
+persona sólo si ella lo pidió; no reescribe un estado igual. Con
+`EL_QUE_CORRESPONDE` calcula el estado DENTRO de la misma transacción que lo
+escribe (suscripción y estado `FOR UPDATE` en Postgres). `estado_objetivo` es
+pura: activo · gracia desde el día siguiente al vencimiento · sólo lectura a los
+`dia_solo_lectura` días · no pasa de gracia con prórroga vigente · **nunca
+suspendido**. Hoy sólo se muestra («correspondería»).
+
+**Registrar un pago puede LEVANTAR el estado**, y sólo eso, sólo si la operadora
+marca «Si con este pago queda al día, levantar el estado de cuenta» (apagada por
+defecto): baja a lo que corresponde —activo si quedó al día—, nunca sube, y lo
+firma `sistema:cobranza` (el correo de ella queda en el pago). Así la escalera de
+C2 reconoce ese estado como suyo. **Los motivos que escribe el sistema no llevan
+montos**: le llegan a la dueña del supermercado y la franja se ve en Vender,
+delante de los proveedores.
+
+**Endpoints** (`/api/plataforma`, sólo operadora, todos al registro):
+`GET /cobros` (la cartera: modo, valor, próxima a pagar, atraso, estado actual y
+el que correspondería, último pago, facturas; exentos sin deuda),
+`PUT /clientes/{slug}/suscripcion` (automático exige `contrato_ref` → 422; el
+cliente de la base principal nunca es automático → 409),
+`POST /clientes/{slug}/facturas` (sin suscripción → 409),
+`POST /facturas/{id}/pagos`, `POST /facturas/{id}/anular` (con pagos → 409) y
+`POST /facturas/{id}/disputa`, con motivo. Bitácora del registro con códigos
+`cobros` (alcanza a todos, como `clientes`), `suscripcion`, `factura`,
+`pago_manual`, `anulacion` y `disputa` (`"<slug>:<YYYY-MM>"`), cada uno con su
+rama en `plataforma_reporte._accesos_del_cliente`: el cliente las ve en su
+reporte de transparencia, sin montos.
+
+**Pantalla**: cajón «Cobros» (`components/plataforma/cartera-cobros.tsx`) con la
+cartera y los formularios —suscripción, emitir, registrar pago con retenciones y
+referencia, anular, disputa— y columna «Modo» en la tabla de estados. Plata y
+facturas, sólo para la operadora: `probar-plataforma.mjs` (1d) falla si un
+archivo fuera de la consola nombra la API de cobros, y si la casilla de levantar
+deja de arrancar apagada. Recorrido en navegador sobre una base sembrada: cargar
+suscripción, emitir una vencida, sólo lectura a mano, pago con retenciones y
+«levantar» → activo firmado `sistema:cobranza`, sin errores de la app ni de la API.
+
+Pruebas: `tests/test_cobranza_consola.py` (23; cada una rota a propósito una vez
+y vista fallar).
+
+**Pendiente**: la escalera automática y los avisos por correo (C2); la pantalla
+de la dueña del supermercado; anular un pago mal cargado (hoy no hay vuelta
+atrás desde la consola); `services/traspaso.py` (sin ruta desde 2026-10-02) no
+mueve la suscripción del origen al principal.
 
 ### Compliance: Ley 1581, consentimiento y hardening (Fase 3 comercial)
 
@@ -8375,6 +8487,9 @@ endpoint, que es donde se sabe qué es lo guardado.
   operativo para siete tiendas vivas: se coordina, no se despliega de sorpresa.
 * **Pagos (fase 4).** Falta elegir proveedor —Stripe o MercadoPago para
   Colombia— y las llaves, que no viajan por chat: van en el panel de Render.
+  **Actualizado 2026-10-13**: Stripe no abre cuentas a empresas colombianas, y la
+  dueña decidió no integrar ninguna pasarela por ahora: el cobro se registra a
+  mano en la consola (ver *Cobro de la suscripción*).
 * **Dos avisos `moderate` de `react-router`** (open redirect). El arreglo es un
   salto de versión mayor; se dejó afuera a propósito de la fase 1.
 
