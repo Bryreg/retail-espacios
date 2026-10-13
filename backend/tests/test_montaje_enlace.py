@@ -238,6 +238,39 @@ def test_los_vecinos_viajan_sin_una_sola_palabra_comercial(client, admin):
         assert {"code", "cx", "cz", "w", "d", "type"} <= set(vecino)
 
 
+def test_los_vecinos_llegan_con_su_ficha_y_partes_solo_con_sus_numeros(client, admin):
+    """La mercaderista ve el mueble de verdad: los entrepaños, el módulo y las
+    puertas que guardó (es geometría). De `partes` pasan sus números
+    conocidos, uno por uno: lo que alguien le escriba adentro mañana, no."""
+    con_ficha = [
+        {**FIXTURES[0], "entrepanos": 4, "modulo": 0.45},
+        {**FIXTURES[1], "modelo": "base:gondola-central-200-m100", "entrepanos": 4, "modulo": 1.0},
+        FIXTURES[2],
+        {
+            "id": "f4", "code": "NEV-01", "sede": "NAVE", "type": "nevera_puertas",
+            "label": "Nevera de Puertas", "cx": 12, "cz": 2, "rotY": 0,
+            "w": 2.07, "d": 0.7, "h": 2.1, "color": "#1e293b",
+            "modelo": "base:nevera-3p-frigomaster",
+            "partes": {"puertas": 3, "proveedor": "Postobón", "valor": 2_500_000, "cedida": True},
+        },
+    ]
+    _plano(client, admin, fixtures=con_ficha)
+    _espacio(client, admin)
+    _contrato(client, admin, _espacio(client, admin), _proveedor(client, admin))
+    b = client.get("/api/montaje/mi-espacio", headers=_cab(_mount_token())).json()
+    vecinos = {v["code"]: v for v in b["vecinos"]}
+    assert (vecinos["PUN-04"]["entrepanos"], vecinos["PUN-04"]["modulo"]) == (4, 0.45)
+    g = vecinos["GON-09"]
+    assert (g["modelo"], g["entrepanos"], g["modulo"]) == ("base:gondola-central-200-m100", 4, 1.0)
+    n = vecinos["NEV-01"]
+    assert n["partes"] == {"puertas": 3}, f"`partes` llegó con más que sus números: {n['partes']}"
+    crudo = client.get("/api/montaje/mi-espacio", headers=_cab(_mount_token())).text
+    for fuga in ("Postob", "2500000", "cedida"):
+        assert fuga not in crudo.replace(" ", ""), f"«{fuga}» llegó a la mercaderista"
+    # Un mueble sin ficha no gana ninguna clave.
+    assert not ({"modelo", "entrepanos", "modulo", "partes"} & set(vecinos["CAJ-01"]))
+
+
 def test_el_proveedor_del_propio_espacio_si_llega_pero_nunca_la_plata(client, admin):
     """Tiene que saber qué exhibición va a armar; el valor no es asunto suyo."""
     _armado(client, admin)

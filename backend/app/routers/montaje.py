@@ -30,7 +30,7 @@ from app.fechas import ZONA_DEL_NEGOCIO, hoy
 from app.models.models import LayoutSnapshot, LeaseFile, MountConfirmation, Space, SpaceFile, SpaceLease
 from app.routers.mounts import MountOut, registrar_montaje
 from app.services.contratos import contrato_para_montar
-from app.services.layout_lookup import describe_location
+from app.services.layout_lookup import PARTES_GEOMETRICAS, describe_location
 
 router = APIRouter(prefix="/montaje", tags=["montaje"], dependencies=[Depends(require_montaje)])
 
@@ -40,9 +40,15 @@ KIND_PLANOMETRIA = "planometria"
 #: dibujar el plano que dice «queda acá». Nada de quién lo alquiló, por cuánto
 #: ni hasta cuándo. Es una lista blanca y no una negra a propósito: un campo
 #: comercial que se agregue mañana al layout no se filtra por olvido.
+#:
+#: Desde 2026-10-13 también la ficha del mueble (``modelo``, ``entrepanos``,
+#: ``modulo`` y, de ``partes``, sólo sus números conocidos): es geometría, la
+#: misma que ve el visor de Vender (``sinDatosComerciales``), y sin ella la
+#: mercaderista vería otro mueble que el que tiene que armar.
 _GEOMETRIA = {
     "id", "code", "nomenclatura", "type", "gondolaType", "label",
     "cx", "cz", "rotY", "w", "d", "h", "color", "sede", "rentable",
+    "modelo", "entrepanos", "modulo",
 }
 
 
@@ -124,7 +130,19 @@ def _fixtures(db: Session, sede: str) -> list[dict]:
 
 
 def _solo_geometria(fixture: dict) -> dict:
-    return {k: v for k, v in fixture.items() if k in _GEOMETRIA}
+    fuera = {k: v for k, v in fixture.items() if k in _GEOMETRIA}
+    # `partes` no pasa entera: es un objeto, y un objeto de la lista blanca se
+    # llevaría lo que le escriban adentro mañana. Pasan sus números
+    # conocidos, copiados uno por uno.
+    partes = fixture.get("partes")
+    if isinstance(partes, dict):
+        numeros = {
+            k: partes[k] for k in PARTES_GEOMETRICAS
+            if isinstance(partes.get(k), (int, float)) and not isinstance(partes.get(k), bool)
+        }
+        if numeros:
+            fuera["partes"] = numeros
+    return fuera
 
 
 def _sede_de(code: str, db: Session) -> str:

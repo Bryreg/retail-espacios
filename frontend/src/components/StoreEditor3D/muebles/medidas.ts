@@ -306,11 +306,13 @@ export function fondoPorCara(d: number, esMural: boolean): number {
 }
 
 /**
- * Lo que el mueble guardó de la ficha de su modelo y cambia cómo se dibuja:
- * los entrepaños y el ancho de módulo de una góndola, y las puertas de una
- * nevera de puertas. Todo opcional: lo que falta se cuenta como siempre
- * (`nivelesDeEntrepano`, `vanosDeCorrido`, `puertasDeNevera`), así que un
- * mueble de un plano viejo se dibuja igual que antes.
+ * Lo que el mueble guardó de la ficha de su modelo (o se escribió en el
+ * panel, «Entrepaños» y «Módulo») y cambia cómo se dibuja: los entrepaños y
+ * el ancho de módulo de una góndola o una punta, y las puertas de una nevera
+ * de puertas. Todo opcional: lo que falta se cuenta como siempre
+ * (`nivelesDeEntrepano`, `nivelesDePunta`, `vanosDeCorrido`,
+ * `puertasDeNevera`), así que un mueble de un plano viejo se dibuja igual que
+ * antes.
  *
  * Sale del mueble con `geometriaDe` y viaja junto con el tipo y las medidas a
  * quien pregunta dónde vende (`ventaDeTipo`) o cómo pintar su cara: si el
@@ -323,8 +325,11 @@ export interface GeometriaDeMueble {
   puertas?: number;
 }
 
-/** La geometría que guardó un mueble: sólo lo que tiene. */
-export function geometriaDe(f: { entrepanos?: number; modulo?: number; partes?: { puertas?: number } }): GeometriaDeMueble {
+/** La geometría que guardó un mueble: sólo lo que tiene. Un `null` (el panel
+ *  lo borró a propósito y todavía no se guardó) es no tenerlo. */
+export function geometriaDe(f: {
+  entrepanos?: number | null; modulo?: number | null; partes?: { puertas?: number } | null;
+}): GeometriaDeMueble {
   const g: GeometriaDeMueble = {};
   if (typeof f.entrepanos === "number") g.entrepanos = f.entrepanos;
   if (typeof f.modulo === "number") g.modulo = f.modulo;
@@ -472,9 +477,9 @@ export const HUECO_SIN_PRODUCTO = 0.12;
  * —una franja de color de la marca colgando arriba, con la chapa del visor
  * apoyada encima («el copete cortado por la mitad»)—.
  */
-export function pisoDelCartelDePunta(h: number): number {
+export function pisoDelCartelDePunta(h: number, entrepanos?: number): number {
   const techo = techoDeCara(h);
-  const niveles = nivelesDePunta(techo);
+  const niveles = nivelesDePunta(techo, entrepanos);
   const ultimo = niveles[niveles.length - 1];
   return ultimo != null && techo - ultimo < HUECO_SIN_PRODUCTO ? ultimo : techo;
 }
@@ -482,8 +487,15 @@ export function pisoDelCartelDePunta(h: number): number {
 /** Los entrepaños de una punta, dentro de su cuerpo (sin el copete).
  *
  *  Terminan un poco antes del copete: el cartel necesita su aire o se lee
- *  como un entrepaño más. */
-export function nivelesDePunta(altoDeCuerpo: number): number[] {
+ *  como un entrepaño más.
+ *
+ *  Con `entrepanos` —los que el mueble guardó, por cara y sin contar la base,
+ *  igual que en la góndola (`nivelesDeEntrepano`)— van la base y ESOS
+ *  entrepaños repartidos parejo, y sobre el de más arriba también se vende:
+ *  el techo de esa fila es el copete (`filasDePunta`). Sin el campo, la
+ *  cuenta de siempre. */
+export function nivelesDePunta(altoDeCuerpo: number, entrepanos?: number): number[] {
+  if (entrepanos !== undefined) return nivelesDeFicha(ZOCALO.alto, altoDeCuerpo - 0.06, entrepanos);
   return nivelesEntre(ZOCALO.alto, altoDeCuerpo - 0.06);
 }
 
@@ -495,8 +507,8 @@ export function nivelesDePunta(altoDeCuerpo: number): number[] {
  * tantas filas como entrepaños —sobre el de más arriba también se para
  * producto— y una góndola tiene una menos.
  */
-export function filasDePunta(altoDeCuerpo: number, fondoMaximo: number): FilasDeProducto {
-  const niveles = nivelesDePunta(altoDeCuerpo);
+export function filasDePunta(altoDeCuerpo: number, fondoMaximo: number, entrepanos?: number): FilasDeProducto {
+  const niveles = nivelesDePunta(altoDeCuerpo, entrepanos);
   if (niveles.length === 0) {
     return {
       rowBottom: ZOCALO.alto,

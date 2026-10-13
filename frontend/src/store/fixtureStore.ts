@@ -849,6 +849,11 @@ export const useFixtureStore = create<FixtureStore>()(
           // recorta al recibir, y esto lo recorta al mandar — así el JSON que
           // se guarda no vuelve a tener una segunda copia del contrato ni por
           // un guardado que quedó en cola desde antes del corte.
+          //
+          // La ficha del mueble (`CLAVES_DE_FICHA`) viaja como está, `null`
+          // incluido: `null` es «la borré a propósito» y el servidor la saca;
+          // una clave ausente, en cambio, la rellena con la guardada (así no
+          // la borra una pestaña de antes que no la conoce).
           const saved = await saveLayout(sede, sinComercial(fixtures), base);
           // The sede may have been deleted while this request was in flight.
           // Writing serverRev/dirty back would leave bookkeeping for a sede

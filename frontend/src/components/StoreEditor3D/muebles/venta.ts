@@ -11,9 +11,9 @@ import { ventaDePunta } from "./ProductoEnPunta";
  * entrepaños, la cámara que encuadra uno— pregunte lo mismo que el mueble y no
  * una copia. Devuelve `null` para los tipos que no venden por entrepaños.
  *
- * `geometria` es lo que el mueble guardó de la ficha de su modelo
- * (`geometriaDe`): los entrepaños y el módulo de la góndola y las puertas de
- * la nevera de puertas. Sin ella —un mueble de un plano viejo— da lo de
+ * `geometria` es lo que el mueble guardó de la ficha de su modelo o del
+ * panel (`geometriaDe`): los entrepaños y el módulo de la góndola y de la
+ * punta, y las puertas de la nevera de puertas. Sin ella —un mueble de un plano viejo— da lo de
  * siempre: el que pregunta tiene que pasar la MISMA que usa el dibujo, o el
  * producto queda parado donde no hay entrepaño.
  */
@@ -25,7 +25,7 @@ export function ventaDeTipo(
     case "gondola_doble":
       return ventaDeGondola(w, d, h, gondolaType === "wall", geometria);
     case "punta":
-      return ventaDePunta(w, d, h);
+      return ventaDePunta(w, d, h, geometria);
     case "nevera_refrescos":
       return ventaDeNevera(w, d, h);
     case "nevera_puertas":

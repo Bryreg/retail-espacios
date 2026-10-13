@@ -2,7 +2,7 @@ import { memo, useMemo } from "react";
 import {
   PANEL_FONDO, altoDeZonaDeSlotsDePunta, filasDePunta, vanosDeCorrido, techoDeCara,
 } from "./medidas";
-import type { VentaDeMueble } from "./medidas";
+import type { GeometriaDeMueble, VentaDeMueble } from "./medidas";
 import { ProductoEnMueble } from "./ProductoEnMueble";
 import type { SlotDeProducto } from "./ProductoEnMueble";
 import type { Cubiertas, VendidoEntero } from "./frentes";
@@ -20,13 +20,17 @@ import type { Cubiertas, VendidoEntero } from "./frentes";
  *    una menos: sobre el entrepaño más alto de una punta también se vende.
  *
  * `h` es el alto TOTAL, copete incluido.
+ *
+ * Con `geometria` (los entrepaños y el módulo que guardó la punta) las filas
+ * y los vanos son ésos, los mismos que dibuja `PuntaReal`; sin ella, la
+ * cuenta de siempre.
  */
-export function ventaDePunta(w: number, d: number, h: number): VentaDeMueble {
+export function ventaDePunta(w: number, d: number, h: number, geometria?: GeometriaDeMueble): VentaDeMueble {
   const altoDeCuerpo = techoDeCara(h);
   const fondoDeCara = Math.max(0.12, d - PANEL_FONDO.espesor);
   return {
-    filas: filasDePunta(altoDeCuerpo, fondoDeCara),
-    vanos: vanosDeCorrido(w),
+    filas: filasDePunta(altoDeCuerpo, fondoDeCara, geometria?.entrepanos),
+    vanos: vanosDeCorrido(w, geometria?.modulo),
     caras: [{ montaje: d / 2, hacia: -1 }],
     franja: altoDeZonaDeSlotsDePunta(altoDeCuerpo),
     altoDeCara: altoDeCuerpo,
@@ -36,12 +40,15 @@ export function ventaDePunta(w: number, d: number, h: number): VentaDeMueble {
 /** El producto de una punta de góndola: todo el trabajo lo hace
  *  `ProductoEnMueble`, y dónde vende lo dice `ventaDePunta`. */
 export const ProductoEnPunta = memo(function ProductoEnPunta({
-  w, d, h, slots, cubiertas, ghost = false, vendidoEntero, semilla,
+  w, d, h, slots, cubiertas, ghost = false, vendidoEntero, semilla, entrepanos, modulo,
 }: {
   w: number;
   d: number;
   /** Alto TOTAL, copete incluido. */
   h: number;
+  /** Lo que guardó la punta (ver `ventaDePunta`). */
+  entrepanos?: number;
+  modulo?: number;
   slots?: SlotDeProducto[];
   /** Lo que tapa la prueba del producto del proveedor, por cara: ahí no va
    *  relleno. Arte o relleno vale por (cara, entrepaño). */
@@ -53,7 +60,10 @@ export const ProductoEnPunta = memo(function ProductoEnPunta({
   /** El mueble (su id): siembra la variación del relleno en venta. */
   semilla?: string;
 }) {
-  const venta = useMemo(() => ventaDePunta(w, d, h), [w, d, h]);
+  const venta = useMemo(
+    () => ventaDePunta(w, d, h, { entrepanos, modulo }),
+    [w, d, h, entrepanos, modulo],
+  );
 
   return (
     <ProductoEnMueble

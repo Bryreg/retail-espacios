@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 from datetime import datetime, timezone
@@ -11,6 +12,7 @@ from app.services.bitacora import anotar
 from app.services.sede_archive import archive_sede_spaces, count_commercial_rows
 from app.services.layout_lookup import (
     CAMPOS_DE_CONTRATO,
+    CLAVES_DE_FICHA,
     choques_nuevos,
     contratos_que_quedarian_sin_mueble,
     normalizar,
@@ -203,6 +205,47 @@ def _restore_missing_slot_prices(incoming: list, stored: list) -> None:
             value = (entry.get("slots") or {}).get(slot.get("id"))
             if value is not None and "negotiatedValue" not in slot:
                 slot["negotiatedValue"] = value
+
+
+def _con_la_ficha_de_antes(incoming: list, stored: list) -> None:
+    """La ficha del mueble: lo ausente se conserva, el ``null`` se borra.
+
+    ``modelo``, ``partes``, ``entrepanos`` y ``modulo`` (``CLAVES_DE_FICHA``)
+    son claves que un editor abierto desde antes de que existieran no conoce:
+    hasta el 2026-10-13 la vuelta del plano 2D armaba el mueble con una lista
+    fija, y mover una góndola le borraba los entrepaños y el módulo que otra
+    pestaña le había puesto. Como ``_restore_missing_slot_prices``, se cuida en
+    el servidor, que es el único lugar por el que pasan todos los guardados:
+
+    - **ausente**, en un mueble cuyo ``id`` ya estaba en el plano guardado: se
+      rellena con lo guardado. Ausente es «no sé», no «no tiene»;
+    - ``null``: es el navegador de hoy diciendo «la borré a propósito» (el
+      panel la vació para volver a la cuenta de siempre). Se saca del JSON: un
+      ``null`` guardado no significaría nada y el próximo guardado viejo lo
+      confundiría con un valor;
+    - un **valor**: manda, como cualquier edición;
+    - un mueble **nuevo** (un ``id`` que el plano guardado no tiene) no hereda
+      nada de nadie, aunque se llame igual que uno borrado.
+
+    Un plano que no trae ninguna de estas claves y no las tenía guardadas se
+    guarda exactamente igual que antes. Sólo el primer nivel del mueble: la
+    ficha no vive en la cara B.
+    """
+    previos = {
+        f.get("id"): f for f in stored
+        if isinstance(f, dict) and f.get("id")
+    }
+    for fixture in incoming:
+        if not isinstance(fixture, dict):
+            continue
+        previo = previos.get(fixture.get("id")) if fixture.get("id") else None
+        for clave in CLAVES_DE_FICHA:
+            if clave in fixture:
+                if fixture[clave] is None:
+                    fixture.pop(clave)
+                continue
+            if previo is not None and previo.get(clave) is not None:
+                fixture[clave] = copy.deepcopy(previo[clave])
 
 
 # ─── El nombre viejo: se lee del registro, no del mueble ──────────────────────
@@ -748,6 +791,13 @@ def save_layout(sede: str, payload: LayoutIn, db: Session = Depends(get_db)):
             previous = json.loads(snap.fixtures_json or "[]")
         except (ValueError, TypeError):
             previous = []
+        if not isinstance(previous, list):
+            previous = []
+
+        # Una pestaña de antes no borra la ficha que escribió una de ahora; un
+        # `null` sí la borra. Antes de las guardas de abajo: miran el plano tal
+        # como va a quedar. Ver `CLAVES_DE_FICHA`.
+        _con_la_ficha_de_antes(fixtures, previous)
 
         # ── El guardarraíl que faltaba (fase 12, F7) ──────────────────────────
         #
@@ -837,6 +887,9 @@ def save_layout(sede: str, payload: LayoutIn, db: Session = Depends(get_db)):
         # SQLAlchemy would then skip the UPDATE and leave updated_at stale.
         snap.updated_at = datetime.now(timezone.utc)
     else:
+        # Primer guardado de la sede: nada que conservar, pero un `null` de la
+        # ficha tampoco se guarda.
+        _con_la_ficha_de_antes(fixtures, [])
         snap = LayoutSnapshot(sede=sede, fixtures_json=json.dumps(fixtures))
         db.add(snap)
     db.commit()

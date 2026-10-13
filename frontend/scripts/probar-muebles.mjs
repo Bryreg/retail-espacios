@@ -661,7 +661,8 @@ prueba("la marca del copete sale sólo del arte en prueba, sin texto inventado",
   assert.match(cuerpoPuntaMesh, /const copete = conMarca && pa\?\.etiqueta\s*\? materialDeCopete\(/);
   assert.match(cuerpoPuntaMesh, /const cenefa = conMarca && pa\?\.etiqueta \? materialDeCenefa\(/,
     "la cenefa va sin la marca en el copete");
-  assert.match(cuerpoPuntaMesh, /<PuntaReal w=\{w\} d=\{d\} h=\{h\} ghost=\{ghost\} copete=\{copete\} cenefa=\{cenefa\} habladores=\{habladores\} \/>/);
+  // (Y con los entrepaños y el módulo que guardó la punta: ver `probar-geometria`.)
+  assert.match(cuerpoPuntaMesh, /<PuntaReal w=\{w\} d=\{d\} h=\{h\} ghost=\{ghost\} copete=\{copete\} cenefa=\{cenefa\} habladores=\{habladores\}\s+entrepanos=\{entrepanos\} modulo=\{modulo\} \/>/);
   // Segunda ronda: un héroe al centro (no dos recortes en las puntas con el
   // centro vacío) y sin la raya blanca que cruzaba la base de los vasos.
   assert.match(pop, /pegar\(W \/ 2, heroe\)/, "el copete no lleva el producto al centro");
@@ -700,7 +701,10 @@ prueba("la nevera de refrescos es de frente ABIERTO", () => {
   assert.match(cuerpoNeveraMesh, /variante=\{conPuertas \? "puertas" : "multideck"\}/, "la nevera de refrescos se cerró con puertas");
   assert.match(editorCodigo, /case "nevera_refrescos": return <NeveraRefrescosMesh {2}\{\.\.\.base\} facePaint=\{facePaint\} \/>;/,
     "a la nevera de refrescos le llegan puertas");
-  assert.match(editorCodigo, /case "nevera_puertas": {3}return <NeveraRefrescosMesh {2}\{\.\.\.base\} facePaint=\{facePaint\} puertas=\{puertasDe\(fixture\.w, fixture\.partes\?\.puertas\)\} \/>;/,
+  // Las puertas, por `geometriaDe` (la misma puerta que la lámina y la
+  // cámara; un `partes: null` del store es no tenerlas).
+  assert.match(editorCodigo, /const geometria = geometriaDe\(fixture\);/, "`FixtureMesh` no lee la geometría por `geometriaDe`");
+  assert.match(editorCodigo, /case "nevera_puertas": {3}return <NeveraRefrescosMesh {2}\{\.\.\.base\} facePaint=\{facePaint\} puertas=\{puertasDe\(fixture\.w, geometria\.puertas\)\} \/>;/,
     "la nevera de puertas no se dibuja con las puertas de su ficha");
 });
 
@@ -5588,7 +5592,8 @@ prueba("la persona de venta sale de la toma (una sola cuenta); el editor conserv
   // La punta lleva su copete al foco, con la MISMA cuenta que el mueble.
   // El cartel de la punta empieza donde empieza la cenefa (o el copete), con
   // la misma cuenta que dibuja la cenefa (`pisoDelCartelDePunta`).
-  assert.match(toma, /const pisoDelCartel = fix\.type === "punta" \? pisoDelCartelDePunta\(fix\.h\) : 0;/);
+  // Con los entrepaños que guardó la punta: la cenefa baja hasta el último.
+  assert.match(toma, /const pisoDelCartel = fix\.type === "punta" \? pisoDelCartelDePunta\(fix\.h, geometriaDe\(fix\)\.entrepanos\) : 0;/);
   assert.match(toma, /fix\.type === "punta" \? \{ \.\.\.foco, techoDeCara: pisoDelCartel, altoDeCopete: fix\.h - pisoDelCartel \} : foco\),/);
   // Con el campo visual abierto, «De frente» desde el fondo del pasillo.
   assert.match(toma, /\.\.\.\(fov > FOV_DEL_EDITOR && toma === "frente" \? \{ alFondo: true \} : \{\}\),/);

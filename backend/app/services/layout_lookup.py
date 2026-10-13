@@ -49,6 +49,25 @@ CAMPOS_DE_CONTRATO = (
     "startDate", "endDate", "observation",
 )
 
+#: La ficha del mueble: de qué modelo nació y la geometría que guardó (de esa
+#: ficha o escrita en el panel: entrepaños y módulo de la góndola y la punta,
+#: puertas de la nevera de puertas). Es geometría, no comercio.
+#:
+#: Son claves NUEVAS del JSON del plano, y un editor abierto desde antes de que
+#: existieran no las conoce: al mover el mueble las perdía, y el guardado
+#: borraba en silencio lo que otra pestaña había escrito. Por eso ``PUT
+#: /layout`` las trata distinto de todo lo demás (``_con_la_ficha_de_antes`` en
+#: ``routers/layout.py``): una clave AUSENTE en un mueble que ya estaba se
+#: rellena con la guardada, y sólo un ``null`` explícito la borra —es como el
+#: navegador de hoy dice «volver a la cuenta de siempre»—. El mismo nombre y
+#: las mismas cuatro en ``CLAVES_DE_FICHA`` de ``utils/convertirPlano.ts``.
+CLAVES_DE_FICHA = ("modelo", "partes", "entrepanos", "modulo")
+
+#: De ``partes``, lo que es geometría y puede salir hacia quien no ve plata (la
+#: mercaderista, el visor de Vender): números conocidos, uno por uno. El
+#: espejo es ``sinDatosComerciales`` en ``muebles/privacidad.ts``.
+PARTES_GEOMETRICAS = ("puertas",)
+
 
 def _full_code(fixture_code: str, sede: str) -> str:
     """Rebuild the "SEDE-CODE" space code for one fixture.

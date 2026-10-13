@@ -39,7 +39,8 @@
       "rotuloEditor": "Punta Góndola",
       "medidas": { "w": 0.90, "d": 0.40, "h": 1.80 }, "color": "#7c3aed", "emoji": "🏷️",
       "descripcion": "Cabecera de góndola con topper promocional",
-      "rango": { "w": [0.5, 1.4], "d": [0.3, 0.7], "h": [1.2, 2.4] }
+      "rango": { "w": [0.5, 1.4], "d": [0.3, 0.7], "h": [1.2, 2.4] },
+      "geometria": { "entrepanos": [1, 6], "modulo": [0.4, 1.4] }
     },
     "robatope": {
       "prefijo": "ROB", "alquilable": "si", "tarifa": "robatope",

@@ -150,8 +150,8 @@ const TARIFA_POR_TIPO: ReadonlyMap<string, string> = new Map(Object.entries(tari
  *  con la de su ficha, que se busca por el `modelo` que guardó. Sin modelo, o
  *  con uno sin tarifa, la de su tipo, como siempre. El servidor pregunta lo
  *  mismo (`tarifa_del_mueble` en `services/catalogo_muebles.py`). */
-export function rateTypeOf(f: { type: string; modelo?: string }): string {
-  return tarifaDeModelo(f.modelo, f.type) ?? TARIFA_POR_TIPO.get(f.type) ?? f.type;
+export function rateTypeOf(f: { type: string; modelo?: string | null }): string {
+  return tarifaDeModelo(f.modelo ?? undefined, f.type) ?? TARIFA_POR_TIPO.get(f.type) ?? f.type;
 }
 
 /** Effective reference for one sede + rate type, or null when none is set.
@@ -457,17 +457,27 @@ export interface UnifiedFixture {
    *  no se mueve. Lo único que se sigue buscando por este id es la tarifa
    *  (`rateTypeOf`), y por eso ni el id ni la tarifa de un modelo cambian.
    *  Los editores no lo escriben nunca después de crearlo: lo conservan
-   *  (`utils/convertirPlano.ts`). */
-  modelo?: string;
-  /** Góndola: entrepaños por cara sin la base, de su ficha. Ausente: los que
-   *  entran al paso típico (`nivelesDeEntrepano`). */
-  entrepanos?: number;
-  /** Góndola: ancho de módulo de su ficha. Ausente: 1,25 (`vanosDeCorrido`). */
-  modulo?: number;
+   *  (`utils/convertirPlano.ts`).
+   *
+   *  En estas cuatro claves (`CLAVES_DE_FICHA`), `null` es BORRADO A
+   *  PROPÓSITO y vive sólo hasta el próximo guardado: el servidor lo saca del
+   *  JSON. AUSENTE es «no sé»: `PUT /layout` le rellena al mueble lo que
+   *  tenía guardado, porque así es como llega de una pestaña abierta desde
+   *  antes de que existieran (ver `_con_la_ficha_de_antes` en
+   *  `routers/layout.py`). Quien las lee para dibujar pasa por `fichaDe` o
+   *  `geometriaDe`, que tratan el `null` como ausente. */
+  modelo?: string | null;
+  /** Góndola y punta: entrepaños por cara sin la base, de su ficha o del
+   *  panel («Entrepaños»). Ausente: los que entran al paso típico
+   *  (`nivelesDeEntrepano`, `nivelesDePunta`). */
+  entrepanos?: number | null;
+  /** Góndola y punta: ancho de módulo, de su ficha o del panel («Módulo»).
+   *  Ausente: 1,25 (`vanosDeCorrido`). */
+  modulo?: number | null;
   /** Las partes del mueble que cuenta su ficha: las puertas de la nevera de
    *  puertas. Sólo sirven para DIBUJARLO —la nevera se vende entera—.
    *  Ausente: la cuenta de siempre (`puertasDeNevera`). */
-  partes?: PartesDeMueble;
+  partes?: PartesDeMueble | null;
 
   /** Cámara guardada para mostrarle este espacio a un proveedor, por cara.
    *

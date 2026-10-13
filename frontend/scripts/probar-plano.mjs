@@ -418,6 +418,31 @@ prueba("un mueble NUEVO nace con la ficha que trae del editor", () => {
   assert.ok(!("nace" in n2), "`nace` llegó al plano");
 });
 
+prueba("un null de la ficha (borrada a propósito en el panel) viaja hasta el guardado y al editor no le llega", () => {
+  // El panel vació «Entrepaños»: en el store queda `entrepanos: null` hasta
+  // el próximo guardado, que se lo dice así al servidor (ausente, el servidor
+  // la rellenaría con la guardada y el cambio no se guardaría nunca).
+  const g = plano().map((f) => (f.id === "g2" ? { ...f, ...FICHA, entrepanos: null, partes: null } : f));
+  // Al editor no le llega: `null` es no tenerla (un null dibujado sería UN
+  // entrepaño).
+  const g2 = P.storeToFixtures(g, CAT3D).find((f) => f.id === "g2");
+  assert.ok(!("entrepanos" in g2) && !("partes" in g2), "al 3D le llegó un null de la ficha");
+  assert.deepEqual([g2.modelo, g2.modulo], [FICHA.modelo, 1]);
+  assert.deepEqual(P.fichaDe({ modelo: null, entrepanos: null, modulo: null, partes: null }), {});
+  // La vuelta de los dos editores lo conserva (es del guardado).
+  const v3 = P.fixturesToStore(P.storeToFixtures(g, CAT3D), "NAVE", g).find((f) => f.id === "g2");
+  const v2 = P.itemsToStore(P.storeToItems(g, CAT2D), g, CAT2D).find((f) => f.id === "g2");
+  for (const [donde, v] of [["3D", v3], ["2D", v2]]) {
+    assert.ok("entrepanos" in v && v.entrepanos === null, `la vuelta del ${donde} perdió el null: el borrado no se guardaría`);
+    assert.ok("partes" in v && v.partes === null, `la vuelta del ${donde} perdió el null de \`partes\``);
+  }
+  // Un mueble con el modelo borrado no trae `nace` al 2D.
+  const sinModelo = plano().map((f) => (f.id === "g2" ? { ...f, modelo: null } : f));
+  assert.ok(!("nace" in P.storeToItems(sinModelo, CAT2D).find((i) => i.id === "g2")));
+  // Y las claves de la ficha son las cuatro que el servidor cuida.
+  assert.deepEqual([...P.CLAVES_DE_FICHA].sort(), ["entrepanos", "modelo", "modulo", "partes"]);
+});
+
 console.log("\nDe un editor al otro\n");
 
 prueba("2D → store → 3D → store → 2D → store: lo desconocido llega entero al final", () => {

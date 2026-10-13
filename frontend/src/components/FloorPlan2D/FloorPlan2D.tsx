@@ -24,6 +24,7 @@ import { revisarPlano, contratosConNombreAjeno, type ContratoDelPlano } from "..
 import { storeToItems, itemsToStore, type FixType2D, type PlacedItem2D } from "../../utils/convertirPlano";
 import { CATALOG, CATALOGO_2D, H_DEFAULTS, MODELOS_2D, type ModeloDelPlano } from "../../catalogo/plano2D";
 import { modeloPorId, nombreDeModelo } from "../../catalogo/catalogo";
+import { GeometriaDelMueble } from "../GeometriaDelMueble";
 import { TOLERANCIA_CONTACTO } from "../../utils/planta";
 import { buscarHuecoGrupo } from "../../utils/acomodar";
 import { detectarCorridas, pasilloPorMueble } from "../../utils/pasillos";
@@ -3985,6 +3986,16 @@ function AssignmentPanel({
                 onChange={(e) => onUpdate({ h: parseFloat(e.target.value) || 0.25 })} />
             </div>
           </div>
+        </Field>
+      )}
+
+      {/* Alto, entrepaños y módulo (góndola y punta). El plano no dibuja el
+          alto, pero acá es donde se arma la tienda: el mismo componente que el
+          Editor 3D, que escribe en el store después de revisar lo vendido
+          (`components/GeometriaDelMueble.tsx`). */}
+      {(item.type === "gondola_doble" || item.type === "gondola_mural" || item.type === "punta") && (
+        <Field label="Alto, entrepaños y módulo" icon="📏">
+          <GeometriaDelMueble id={item.id} puedeEditar={editMode && isAdmin} />
         </Field>
       )}
 

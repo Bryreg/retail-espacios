@@ -1,7 +1,18 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-13, tarde (muebles de Colombia: el catálogo tiene
+Última actualización: 2026-10-13, noche (lo que se puede editar del mueble y lo que no se
+puede perder: la góndola y la punta tienen «Alto», «Entrepaños» y «Módulo» en el panel del
+plano 2D y en el del Editor 3D —el mismo componente—, y la punta se dibuja, vende y
+encuadra con ellos como la góndola. **Lo vendido no se mueve sin aviso**: con una cara con
+contrato vivo o firmado, arte pintado o espacios internos vendidos, cambiar esos campos
+dice qué se mueve («cambian las filas del arte de esta cara») y espera «Cambiar igual»; con
+espacios internos vendidos la cantidad de entrepaños no cambia hasta liberarlos. **Una
+pestaña vieja no borra lo nuevo**: `PUT /layout` le rellena al mueble la ficha que llega
+ausente y sólo un `null` la borra. El visor de Vender y el enlace de la mercaderista ven el
+mueble real. Ver *Lo que se puede editar y lo que no se puede perder (2026-10-13)*).
+
+Antes, 2026-10-13, tarde (muebles de Colombia: el catálogo tiene
 **modelos** —fichas de muebles de verdad con la URL de su fuente y cuánto confiar en
 ellas, sin una sola imagen—: góndolas central y de pared por alto y módulo, puntas,
 estiba completa, media y cuarta, exhibidor de cartón, neveras de 1 a 4 puertas y el
@@ -116,8 +127,14 @@ internet y sin fotos propias. Lo que sigue, en orden:
 - ~~Que la referencia ignore los tipos que no conoce~~ y ~~los modelos de muebles de
   Colombia~~: hechos el 2026-10-13 (tarde), ver *Muebles de Colombia: modelos con su
   fuente*. Quedó abierto de ahí: los entrepaños de la PUNTA por ficha (sus modelos sólo
-  traen medidas), y si la paleta de la góndola —doce modelos por familia— se lee mejor
-  como una grilla alto × módulo.
+  traen medidas; la punta ya se dibuja con los que se escriban en el panel), y si la
+  paleta de la góndola —doce modelos por familia— se lee mejor como una grilla alto ×
+  módulo.
+- ~~Alto, entrepaños y módulo editables, sin mover lo vendido ni perderlos por una pestaña
+  vieja~~: hecho el 2026-10-13 (noche), ver *Lo que se puede editar y lo que no se puede
+  perder*. Quedó abierto: el aviso vive en el navegador (el servidor no frena un cambio de
+  geometría sobre una cara vendida), y las puertas de la nevera no se editan en el panel
+  (sólo dibujan: se edita cuando se venda por puerta).
 - **Fichas propias del cliente en el taller**: la dueña arma la ficha de un mueble suyo
   —medidas, puertas, la URL de la ficha técnica— y lo coloca. Es una tabla nueva
   (clasificada en `TABLAS_DEL_CLIENTE`), sin foto por ahora: ella dijo que no tiene.
@@ -318,11 +335,29 @@ se agrega uno: *Un solo catálogo de muebles (2026-10-13)*.
 **Un modelo se ESTAMPA, no se enlaza.** Los `modelos` del catálogo (fichas de muebles de
 verdad, con la URL de su fuente y su confiabilidad; nunca una imagen de terceros) se usan
 al COLOCAR: el mueble guarda sus medidas, su color, su `modelo` y su geometría
-(`entrepanos`, `modulo`, `partes`), y ningún editor la vuelve a escribir. Cambiar una ficha
+(`entrepanos`, `modulo`, `partes`), y la vuelta de ningún editor la vuelve a escribir: sólo
+el panel, a propósito («Alto», «Entrepaños», «Módulo»; ver abajo). Cambiar una ficha
 no mueve lo ya colocado. Lo único que se busca por el id es la tarifa propia del modelo
 (`rateTypeOf` ↔ `tarifa_del_mueble`), y por eso **el `id` y la `tarifa` de un modelo no se
 cambian nunca**, igual que las claves de los tipos. Un mueble sin `modelo` es el modelo
 base de su tipo y da exactamente lo de antes. Ver *Muebles de Colombia*.
+
+**Lo vendido no se mueve sin aviso.** El alto, los entrepaños y el módulo de una góndola o
+una punta deciden las filas del arte pintado, los entrepaños donde se para el producto y
+los módulos por los que se reparte. Con una cara vendida —contrato vivo o firmado para más
+adelante, arte pintado en la cara— o espacios internos vendidos, el panel no los cambia sin
+decir qué se mueve y sin un «Cambiar igual»; con espacios internos vendidos, la CANTIDAD de
+entrepaños no cambia hasta liberarlos. Una sola cuenta para los dos editores
+(`revisarCambioDeGeometria` en `utils/geometriaDelMueble.ts`), y el aviso no nombra a
+nadie. Ver *Lo que se puede editar y lo que no se puede perder*.
+
+**Una pestaña vieja no borra lo nuevo.** La ficha del mueble (`CLAVES_DE_FICHA`: `modelo`,
+`partes`, `entrepanos`, `modulo`) son claves que un editor de antes no conoce. `PUT
+/layout/{sede}` le rellena al mueble que ya estaba (mismo `id`) la que llega AUSENTE, y la
+borra sólo con un `null` explícito, que es como el navegador de hoy dice «la vacié a
+propósito» (`_con_la_ficha_de_antes`). Un mueble nuevo no hereda nada y un plano sin esas
+claves se guarda byte a byte igual. Una clave nueva de este tipo se suma a las DOS listas
+(`services/layout_lookup.py` y `utils/convertirPlano.ts`; pytest las compara).
 
 **Lo que no está en el mapa comercial está LIBRE, y la fusión REEMPLAZA.** No hace falta
 pre-crear ningún `space`: la fila aparece cuando se vende. Y la fusión no rellena huecos
@@ -7963,8 +7998,9 @@ el corrido en módulos de ese ancho (`vanosDeCorrido(w, modulo)`). La misma geom
 (`geometriaDe(f)`) la usan el dibujo (`GondolaReal`), el relleno, el producto de prueba
 (`ventaDeGondola`), la cámara de venta (`ventaDeTipo`) y la lámina (`getPanelShelfSpan`):
 si una la usara y otra no, el producto quedaría parado entre dos entrepaños. Sin los
-campos, la cuenta de siempre, idéntica. La punta todavía no: sus modelos traen sólo
-medidas.
+campos, la cuenta de siempre, idéntica. La punta no tiene entrepaños por ficha (sus modelos
+traen sólo medidas), pero desde la noche del mismo día se dibuja con los que se le escriban
+en el panel: ver *Lo que se puede editar y lo que no se puede perder*.
 
 **La tarifa por modelo.** La media estiba (`estiba_media`), el cuarto (`estiba_cuarta`) y el
 exhibidor de cartón (`exhibidor_carton`) se cobran aparte de su tipo: `rateTypeOf` mira
@@ -8002,6 +8038,119 @@ modelos armado al cargar (se llevaba el catálogo al worker del recorte), el pue
 `case`, el visor de Vender sin la ficha o con `partes` entero— y cada una hizo fallar su
 guarda. Mirados en `/taller` con un servidor local: la nevera de puertas de 1,40 (dos
 hojas) y de 2,07 (tres), y el puesto de impulso.
+
+## Lo que se puede editar y lo que no se puede perder (2026-10-13)
+
+Con los modelos (*Muebles de Colombia*) la góndola y la punta guardan su geometría:
+entrepaños y módulo. Faltaba poder escribirla —en Cañaveral no todas las góndolas van a ser
+las de la ficha— sin que eso moviera lo ya vendido, y sin que una pestaña abierta desde antes
+la borrara al mover el mueble. La crítica del plan lo marcó como el hallazgo alto: «el
+guardarraíl sólo compara códigos que desaparecen», y la regla de siempre es que el espacio
+vendido no cambia de lugar.
+
+**Los campos.** En el panel del plano 2D («Alto, entrepaños y módulo») y en el del Editor
+3D, para la góndola y la punta: «Alto (m)», «Entrepaños» (por cara, sin la base) y «Módulo
+(m)». Es UN componente, `components/GeometriaDelMueble.tsx`, con la cuenta en
+`utils/geometriaDelMueble.ts` (puro). Vacío es la cuenta de siempre (`nivelesDeEntrepano` /
+`nivelesDePunta` y `vanosDeCorrido` con 1,25), y el panel dice cuántos entrepaños y módulos
+se dibujan hoy; si el mueble nació de una ficha, sus valores van de sugerencia. Los límites
+son los del catálogo —`rango.h` y `geometria` del tipo; la punta ganó `geometria` en
+`muebles.json`: entrepaños de 1 a 6 y módulo de 0,40 a 1,40— y nunca más entrepaños que los
+que caben a 25 cm (`PASO_ENTRE_ENTREPANOS.minimo`): bajar el alto de una góndola con cinco
+entrepaños guardados pide bajar primero los entrepaños. Toda ficha del catálogo pasa esa
+validación (`probar-geometria`). Sólo un administrador los escribe (en el plano, en modo
+edición); los demás ven los números.
+
+**Se escribe en el store, no por la vuelta de un editor.** `conGeometria` escribe los tres
+campos en ESE mueble del store (el resto conserva su identidad) y los dos editores se
+resincronizan como con un deshacer; Ctrl+Z lo deshace. Vaciar un campo escribe `null`, no
+borra la clave: es «borrado a propósito» hasta el próximo guardado (ver abajo). `fichaDe` y
+`geometriaDe` tratan el `null` como ausente, así que a ningún dibujo le llega: un `null`
+dibujado sería una góndola con un solo entrepaño.
+
+**La punta, como la góndola.** Con `entrepanos` van la base y esos entrepaños, todos con
+producto, y la última fila llega hasta el copete; `modulo` parte el frente en vanos. La
+misma geometría la usan el dibujo (`PuntaReal`), el producto y el relleno
+(`ventaDePunta`, `ProductoEnPunta`), los habladores (salen de la misma venta), la lámina
+(`getPanelShelfSpan`) y la cámara de venta (`ventaDeTipo`, `pisoDelCartelDePunta`). Sin los
+campos, idéntica a antes.
+
+**Lo vendido no se mueve sin aviso.** Antes de escribir, `revisarCambioDeGeometria` mira:
+
+- por cara, un **contrato vivo o firmado** para más adelante (la fusión con la base pinta
+  «occupied» la cara con el que corre o, si no hay, con el próximo) y el **arte pintado**
+  (la imagen designada de la cara, que se alinea a los entrepaños; se pregunta en el
+  momento a `GET /spaces/face-images`). La planometría cuelga del contrato vigente o
+  próximo, así que una cara con planometría ya cuenta por su contrato;
+- del mueble, los **espacios internos vendidos** del Editor 3D (ocupados o reservados).
+
+Con algo de eso, cambiar el alto, los entrepaños o el módulo muestra un aviso que dice qué
+se mueve —«Cara A (contrato vivo o firmado): cambian las filas del arte de esta cara y el
+producto se para en otros entrepaños», «… se reparten en otros módulos», «con otro alto
+[los espacios internos] quedan en otro lugar del mueble»— y lo que se cambia («el alto, de
+1,80 a 2,20 m (los entrepaños pasan de 5 a 6)»), y escribe sólo con «Cambiar igual»;
+«Dejarlo como estaba» vuelve a lo guardado. Con espacios internos vendidos, la CANTIDAD de
+entrepaños no cambia hasta liberarlos —tampoco la que arrastra el alto cuando no hay
+entrepaños guardados—: cada uno cae sobre ciertos entrepaños (`entrepanosDelEspacio`) y con
+otros pasaría a ser otra cosa. Si la consulta del arte falla, se avisa igual (ante la duda,
+se pregunta). El aviso no nombra proveedor, marca, fechas ni plata: se lee con la pantalla
+compartida. Sin nada vendido, se escribe sin preguntar.
+
+**Una pestaña vieja no borra lo nuevo.** `PUT /api/layout/{sede}` (`_con_la_ficha_de_antes`
+en `routers/layout.py`), antes de las guardas, para `CLAVES_DE_FICHA` (`modelo`, `partes`,
+`entrepanos`, `modulo`):
+
+- **ausente** en un mueble cuyo `id` ya estaba en el plano guardado: se rellena con lo
+  guardado. Así llega de un editor de antes, que no conoce estas claves;
+- **`null`**: lo borra (el navegador de hoy vació el campo a propósito), y el `null` no se
+  guarda;
+- un **valor** manda; un mueble **nuevo** (otro `id`, aunque se llame igual que uno borrado)
+  no hereda nada; otra sede no presta la suya;
+- un plano sin ninguna de estas claves se guarda **byte a byte** como antes.
+
+Las dos listas de claves —`services/layout_lookup.py` y `utils/convertirPlano.ts`— las
+compara una prueba. Es el mismo patrón que `_restore_missing_slot_prices`.
+
+**El visor de Vender y la mercaderista ven el mueble real.** `sinDatosComerciales` ya dejaba
+pasar la ficha (`modelo`, `entrepanos`, `modulo` y de `partes` sólo las puertas);
+`_GEOMETRIA` de `routers/montaje.py` suma `modelo`, `entrepanos` y `modulo`, y de `partes`
+sólo sus números conocidos (`PARTES_GEOMETRICAS`), copiados uno por uno: un objeto en la
+lista blanca se llevaría lo que le escriban adentro mañana. `probar-vender` arma el mismo
+plano por el camino del editor y por el del visor
+(`sinRepisasVendidas(sinDatosComerciales(storeToFixtures(…)))`) y compara las filas y los
+vanos que cada uno le pide a `ventaDeTipo`: una góndola con ficha (4 entrepaños, módulo de
+1,00), una punta con 3 entrepaños y módulo de 0,45 y una nevera de 3 puertas de 2,30 de
+frente —la cuenta de siempre le daría 4—; y que no pase ni una clave comercial, tampoco
+colada en `partes`.
+
+**Cómo se comprobó.** `tsc` limpio; `npm run probar`, 840 verdes (con `probar-geometria`,
+nuevo: 20); `npm run build` limpio (el pedazo de entrada sigue en 340,7 kB);
+`import app.main` y pytest de catálogo, modelos, caras, renumeración, corte y ficha del
+layout (`test_layout_ficha.py`, nuevo), planilla, vendible, métricas y detalle de la
+plataforma, enlace de montaje y estado comercial: 235 verdes. 35 mutaciones —la punta que
+dibuja, vende, rellena, pone habladores, pinta la lámina o encuadra sin lo que guardó; el
+`FixtureMesh` que le pasa la ficha cruda a la góndola; el bloqueo de los espacios internos
+quitado o sin el alto que arrastra la cantidad; la cara B, el arte pintado, el contrato o
+la consulta fallida que no cuentan; el aviso sin «cambian las filas del arte»; vaciar que
+borra la clave; sin el paso mínimo; el componente que escribe sin revisar o con bloqueo; el
+2D sin los campos; `fichaDe` que deja pasar el `null`; `sinDatosComerciales` sin el módulo,
+sin las puertas o con `partes` entero; la punta sin sus límites en el catálogo; el
+servidor que no rellena, guarda el `null`, rellena por código, se olvida del primer
+guardado o pierde una clave; montaje sin los entrepaños, sin `partes` o con `partes`
+entero— y cada una hizo fallar su guarda (una 36.ª, sumar `partes` a `_GEOMETRIA`, no
+rompió nada: el filtro de `partes` igual manda). Mirado en el navegador contra un servidor
+local descartable: en el plano 2D, la góndola con contrato pidió confirmar con el texto de
+arriba y se cambió con «Cambiar igual»; la mural con un espacio interno vendido rechazó los
+entrepaños; una punta libre cambió sin preguntar; vaciar el campo dejó al servidor sin la
+clave. En el Editor 3D, la punta de 0,90 con módulo de 0,45 se dibujó en dos módulos, con
+la base y 2, 3 y 4 entrepaños según el panel.
+
+**Lo que queda.** El aviso vive en el navegador: un `PUT /layout` armado a mano podría
+cambiar la geometría de una cara vendida sin preguntar (el servidor sólo cuida que no se
+pierda). Las puertas de la nevera no se editan en el panel: sólo dibujan, y se editan cuando
+se venda por puerta. Los modelos de la punta siguen sin entrepaños por ficha (la de 1,30
+dice «tres y la base», pero su alto no trae copete y el nuestro sí). `/taller` no tiene los
+campos: se miran en el editor.
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 

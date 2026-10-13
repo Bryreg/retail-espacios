@@ -45,13 +45,22 @@ import type { PartesDeMueble } from "../catalogo/catalogo";
  *
  * Un mueble colocado desde un modelo del catálogo guarda la ficha que lo
  * estampó: `modelo`, `entrepanos`, `modulo` y `partes` (ver `FichaDelMueble`).
- * Ningún editor la EDITA: la vuelta no la escribe y se queda la guardada, así
- * que un cambio de la ficha en el catálogo no mueve lo ya colocado. La única
- * vez que se escribe es al NACER el mueble —uno sin guardado con ese `id`—, y
- * sale de lo que trae el mueble nuevo del editor: `nace` en el 2D, los campos
- * de la ficha en el 3D. El editor 3D además la lee para dibujar (las puertas
- * de la nevera, los entrepaños y el módulo de la góndola). Un mueble sin
- * ficha va y vuelve exactamente como antes.
+ * La vuelta de ningún editor la escribe: se queda la guardada, así que un
+ * cambio de la ficha en el catálogo no mueve lo ya colocado. Se escribe al
+ * NACER el mueble —uno sin guardado con ese `id`—, de lo que trae el mueble
+ * nuevo del editor (`nace` en el 2D, los campos de la ficha en el 3D), y
+ * cuando alguien escribe «Alto», «Entrepaños» o «Módulo» en el panel: eso va
+ * directo al store (`conGeometria` en `utils/geometriaDelMueble.ts`), después
+ * de revisar lo vendido, y los dos editores se resincronizan como con un
+ * deshacer. El editor 3D además la lee para dibujar (las puertas de la
+ * nevera, los entrepaños y el módulo de la góndola y de la punta). Un mueble
+ * sin ficha va y vuelve exactamente como antes.
+ *
+ * En el store, una clave de la ficha puede valer `null`: el panel la borró a
+ * propósito («volver a la cuenta de siempre») y el próximo guardado se lo
+ * dice así al servidor, que la saca. La vuelta la conserva como cualquier
+ * otra cosa del guardado, y `fichaDe` —lo que le llega a cada editor— la
+ * trata como ausente.
  *
  * ── Por qué está acá ─────────────────────────────────────────────────────────
  *
@@ -71,14 +80,25 @@ export interface FichaDelMueble {
   partes?: PartesDeMueble;
 }
 
+/** Las claves de la ficha. Son las que `PUT /layout` le rellena a un mueble
+ *  que llega sin ellas (una pestaña de antes no las conoce) y las únicas en
+ *  que un `null` significa «borrada a propósito» (ver `UnifiedFixture.modelo`
+ *  y `CLAVES_DE_FICHA` en `services/layout_lookup.py`, que dice lo mismo). */
+export const CLAVES_DE_FICHA = ["modelo", "partes", "entrepanos", "modulo"] as const;
+
+/** La ficha de un mueble del store: cada clave puede venir en `null`, que es
+ *  borrada a propósito (ver `UnifiedFixture.modelo`). */
+export type FichaGuardada = { [K in keyof FichaDelMueble]?: FichaDelMueble[K] | null };
+
 /** La ficha que guarda un mueble, sólo con lo que tiene: un mueble sin ficha
- *  da `{}`, y esparcirla no agrega ninguna clave. */
-export function fichaDe(f: FichaDelMueble): FichaDelMueble {
+ *  da `{}`, y esparcirla no agrega ninguna clave. Un `null` —el panel la
+ *  borró y todavía no se guardó— es no tenerla: al editor no le llega. */
+export function fichaDe(f: FichaGuardada): FichaDelMueble {
   const out: FichaDelMueble = {};
-  if (f.modelo !== undefined) out.modelo = f.modelo;
-  if (f.entrepanos !== undefined) out.entrepanos = f.entrepanos;
-  if (f.modulo !== undefined) out.modulo = f.modulo;
-  if (f.partes !== undefined) out.partes = { ...f.partes };
+  if (f.modelo != null) out.modelo = f.modelo;
+  if (f.entrepanos != null) out.entrepanos = f.entrepanos;
+  if (f.modulo != null) out.modulo = f.modulo;
+  if (f.partes != null) out.partes = { ...f.partes };
   return out;
 }
 
@@ -207,7 +227,7 @@ export function storeToItems(fixtures: UnifiedFixture[], catalogo: Catalogo2D): 
       rentable: f.rentable,
       // Sólo un mueble con modelo trae `nace`: el de un plano viejo sale como
       // siempre, sin la clave.
-      ...(f.modelo !== undefined ? { nace: { h: f.h, color: f.color, ...fichaDe(f) } } : {}),
+      ...(f.modelo != null ? { nace: { h: f.h, color: f.color, ...fichaDe(f) } } : {}),
     };
   });
 }

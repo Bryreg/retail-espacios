@@ -70,6 +70,7 @@ import {
 import { useModalAbierto } from "../../tema";
 import { FIXTURE_DEFS, PALETA_3D, TIPOS_CON_PRODUCTO, TIPOS_CON_PRUEBA_3D, TIPOS_CON_SURTIDO } from "../../catalogo/editor3D";
 import { modeloPorId, nombreDeModelo } from "../../catalogo/catalogo";
+import { GeometriaDelMueble } from "../GeometriaDelMueble";
 import type { FixtureDef } from "../../catalogo/editor3D";
 import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
@@ -837,9 +838,14 @@ interface PuntaMeshProps {
   /** Ver `GondolaMeshProps.rubroEntero`. */
   rubroEntero?:    string;
   semilla?:        string;
+  /** Lo que guardó la punta: entrepaños sin la base y ancho de módulo. Ver
+   *  `GondolaMeshProps.entrepanos`: el dibujo, el producto, los habladores y
+   *  la lámina preguntan con los mismos. */
+  entrepanos?:     number;
+  modulo?:         number;
 }
 
-function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover, rubroEntero, semilla }: PuntaMeshProps) {
+function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover, rubroEntero, semilla, entrepanos, modulo }: PuntaMeshProps) {
   // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
   // La punta es el espacio más caro de un supermercado: se ve de frente desde
   // todo el pasillo transversal y se negocia aparte del lineal. Estaba armada
@@ -862,13 +868,16 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
 
   // Las filas de producto salen de la misma cuenta que los entrepaños.
   const filas = useMemo(
-    () => filasDePunta(altoDeCuerpo, fondoDeCara), [altoDeCuerpo, fondoDeCara],
+    () => filasDePunta(altoDeCuerpo, fondoDeCara, entrepanos), [altoDeCuerpo, fondoDeCara, entrepanos],
   );
 
   const pinta = !ghost && !!facePaint?.front;
   // El producto del proveedor en prueba, como envases 3D. Una sola cara.
   const enPrueba = !ghost && !!facePaint?.pruebaA;
-  const ventaPunta = useMemo(() => ventaDePunta(w, d, h), [w, d, h]);
+  const ventaPunta = useMemo(
+    () => ventaDePunta(w, d, h, { entrepanos, modulo }),
+    [w, d, h, entrepanos, modulo],
+  );
   // Contratada entera con los slots libres: relleno neutro en venta.
   // Contratada entera: todas las filas, pero sólo las dos de adelante en
   // profundidad, como lo vendido por slot (`VendidoEntero.hondo`).
@@ -888,7 +897,8 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
 
   return (
     <group>
-      <PuntaReal w={w} d={d} h={h} ghost={ghost} copete={copete} cenefa={cenefa} habladores={habladores} />
+      <PuntaReal w={w} d={d} h={h} ghost={ghost} copete={copete} cenefa={cenefa} habladores={habladores}
+        entrepanos={entrepanos} modulo={modulo} />
 
       {/* El arte del proveedor, parado en el filo de cada entrepaño. La punta
           se cuelga ATRÁS —contra el corrido— y crece hacia el frente: con el
@@ -908,6 +918,7 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
           arte manda el arte: las dos no conviven sobre la misma cara. */}
       {!pinta && (
         <ProductoEnPunta w={w} d={d} h={h} slots={slots} ghost={ghost}
+          entrepanos={entrepanos} modulo={modulo}
           cubiertas={cubiertasDe(facePaint, true)} vendidoEntero={vendidoEntero} semilla={semilla} />
       )}
       {enPrueba && <ProductoDePrueba venta={ventaPunta} pruebas={[facePaint?.pruebaA]} tipo="punta" />}
@@ -2167,14 +2178,17 @@ export function FixtureMesh({ fixture, ghost, neutro = false, facePaint, selecte
       : NON_RENTABLE_COLOR;
   const base = { w:fixture.w, d:fixture.d, h:fixture.h, statusColor:sc, ghost };
   const rubroEntero = rubroDeContratoEntero(fixture, neutro);
+  // Lo que el mueble guardó (de su ficha o del panel), por la misma puerta
+  // que usan la lámina, el producto y la cámara (`geometriaDe`).
+  const geometria = geometriaDe(fixture);
   switch (fixture.type) {
     case "gondola": return (
       <GondolaMesh {...base}
         rubroEntero={rubroEntero}
         semilla={fixture.id}
         gondolaType={fixture.gondolaType ?? "double"}
-        entrepanos={fixture.entrepanos}
-        modulo={fixture.modulo}
+        entrepanos={geometria.entrepanos}
+        modulo={geometria.modulo}
         facePaint={facePaint}
         slots={fixture.slots}
         selectedSlotId={selectedSlotId}
@@ -2187,6 +2201,8 @@ export function FixtureMesh({ fixture, ghost, neutro = false, facePaint, selecte
       <PuntaMesh {...base}
         rubroEntero={rubroEntero}
         semilla={fixture.id}
+        entrepanos={geometria.entrepanos}
+        modulo={geometria.modulo}
         facePaint={facePaint}
         slots={fixture.slots}
         selectedSlotId={selectedSlotId}
@@ -2207,7 +2223,7 @@ export function FixtureMesh({ fixture, ghost, neutro = false, facePaint, selecte
     case "isla_fria":        return <IslaFriaMesh         {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "nevera_carnes":    return <NeveraCarnesMesh     {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "nevera_refrescos": return <NeveraRefrescosMesh  {...base} facePaint={facePaint} />;
-    case "nevera_puertas":   return <NeveraRefrescosMesh  {...base} facePaint={facePaint} puertas={puertasDe(fixture.w, fixture.partes?.puertas)} />;
+    case "nevera_puertas":   return <NeveraRefrescosMesh  {...base} facePaint={facePaint} puertas={puertasDe(fixture.w, geometria.puertas)} />;
     case "nevera_vegetales": return <NeveraVegetalesMesh   {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "stand_frutas":     return <StandFrutasMesh       {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "checkout":      return <CheckoutMesh       {...base} />;
@@ -4717,9 +4733,11 @@ function getPanelShelfSpan(type: string, w: number, h: number, d: number, geomet
       // Una punta tiene tantas filas como entrepaños —y no una menos, como la
       // góndola— porque el techo de la fila de arriba es el COPETE: sobre el
       // entrepaño más alto de una punta también se vende.
+      // Con los entrepaños que guardó la punta, los mismos que dibuja
+      // `PuntaReal`: si no, el arte queda a caballo entre dos.
       const altoDeCuerpo = techoDeCara(h);
       const { rowBottom, rowPitch, rows } = filasDePunta(
-        altoDeCuerpo, Math.max(0.12, d - PANEL_FONDO.espesor),
+        altoDeCuerpo, Math.max(0.12, d - PANEL_FONDO.espesor), geometria?.entrepanos,
       );
       return { panelW: w, panelH: altoDeCuerpo, rowBottom, rowPitch, rows };
     }
@@ -5514,7 +5532,7 @@ export function Scene({
     // La punta: dónde empieza el cartel —el copete, o la cenefa que baja de
     // él hasta el último entrepaño—, para que «De cerca» no lo corte por la
     // mitad (`focoDeLaPrueba` mira entrepaños y no sabe del copete).
-    const pisoDelCartel = fix.type === "punta" ? pisoDelCartelDePunta(fix.h) : 0;
+    const pisoDelCartel = fix.type === "punta" ? pisoDelCartelDePunta(fix.h, geometriaDe(fix).entrepanos) : 0;
     const focoConCopete = {
       ...(fix.type === "punta" ? { ...foco, techoDeCara: pisoDelCartel, altoDeCopete: fix.h - pisoDelCartel } : foco),
       // Con el campo visual abierto, desde el fondo del pasillo.
@@ -6591,6 +6609,13 @@ function CommercialPanel({
             onChange={e=>u({observation:e.target.value})} className={`${inputCls} resize-none`} />
         </div>
         </>)}
+
+        {/* Alto, entrepaños y módulo (góndola y punta). El mismo componente
+            que el plano 2D: escribe en el store después de revisar lo vendido
+            —con espacios internos vendidos no cambia la cantidad de
+            entrepaños; con una cara vendida, pregunta diciendo qué se mueve—.
+            Ver `components/GeometriaDelMueble.tsx`. */}
+        <GeometriaDelMueble id={fix.id} puedeEditar={isAdmin} />
 
         <div className="rounded-lg border border-dark-line/50 bg-dark-bg/60 p-2 font-mono text-[10px] text-dark-ink-3">
           <p>{fix.w.toFixed(1)} × {fix.d.toFixed(1)} × {fix.h.toFixed(1)} m</p>
