@@ -769,9 +769,12 @@ def borrar_cliente(slug: str, payload: BorrarIn, email: str = Depends(require_op
 # Lo que la dueña decidió (2026-10-13): por ahora NO hay pasarela ni factura
 # electrónica emitida desde acá. La operadora registra la cuenta de cobro que ya
 # emitió (número y, si es electrónica, CUFE) y el pago que vio entrar en el
-# banco, con lo que el supermercado retuvo. Nada de esto corta el servicio: el
-# estado de cuenta lo sigue moviendo ella con el PATCH, y lo único que hace el
-# sistema es LEVANTARLO si ella lo pide al registrar el pago.
+# banco, con lo que el supermercado retuvo. Nada de esto corta el servicio por
+# sí mismo: el estado de cuenta lo sigue moviendo ella con el PATCH, el sistema
+# lo LEVANTA si ella lo pide al registrar un pago que deja al día, y la escalera
+# de C2 (sólo con su interruptor prendido) vuelve a mirar al cliente después de
+# cada escritura de acá —pago, anulación, disputa, suscripción—, para que lo que
+# puso el sistema no quede colgado 12 horas.
 #
 # Rutas paramétricas, declaradas después de todas las literales (la cartera,
 # `GET /cobros`, está arriba con las demás) y antes del reporte y el detalle,
@@ -842,16 +845,26 @@ def _cobranza(hacer):
 
 
 @router.put("/clientes/{slug}/suscripcion")
-def guardar_suscripcion(slug: str, payload: SuscripcionIn, email: str = Depends(require_operador)):
+def guardar_suscripcion(
+    slug: str,
+    payload: SuscripcionIn,
+    tareas: BackgroundTasks,
+    email: str = Depends(require_operador),
+):
     """Crea o reemplaza la suscripción del cliente: precio pactado, plazo,
     escalera, datos de facturación y retenciones esperadas. Modo automático
-    sólo con la referencia del contrato (422) y nunca para el cliente de la
-    base principal (409)."""
+    sólo con la referencia del contrato (422), sólo lectura a los 30 días o
+    más (422), y ninguna suscripción para el cliente de la base principal, que
+    es exento (409).
+
+    Con la escalera prendida, la de ESE cliente corre apenas sale la respuesta:
+    una prórroga recién cargada lo devuelve a gracia sin esperar 12 horas."""
     from app.plataforma_metricas import periodo_actual
     from app.services import cobranza
 
     cuerpo = _cobranza(lambda: cobranza.guardar_suscripcion(slug, payload.model_dump(), email))
     _anotar_consulta(email, "suscripcion", f"{(slug or '').strip().lower()}:{periodo_actual()}")
+    tareas.add_task(_escalera_de_la_suscripcion, cuerpo["id"], "la suscripción")
     return cuerpo
 
 
@@ -888,13 +901,33 @@ def registrar_pago(
     cuerpo = _cobranza(lambda: cobranza.registrar_pago(factura_id, payload.model_dump(), email))
     slug = _slug_de_la_factura(factura_id)
     _anotar_consulta(email, "pago_manual", f"{slug}:{periodo_actual()}")
-    tareas.add_task(_escalera_tras_un_pago, cuerpo["factura"]["id"])
+    tareas.add_task(_escalera_de_la_factura, cuerpo["factura"]["id"], "un pago")
     return cuerpo
 
 
-def _escalera_tras_un_pago(factura_id: int) -> None:
-    """La escalera de la suscripción de esa factura, sólo si está prendida. No
-    propaga: la respuesta ya salió, y la pasada de las 12 horas lo retoma."""
+def _escalera_de_la_suscripcion(suscripcion_id: int, tras: str) -> None:
+    """La escalera de UNA suscripción, sólo si está prendida. No propaga: la
+    respuesta ya salió, y la pasada de las 12 horas lo retoma.
+
+    Corre después de cada escritura de la cartera (pago, anulación, disputa,
+    suscripción): anular la cuenta de cobro que causó el corte, ponerla en
+    disputa o dar una prórroga dejaba al cliente en sólo lectura hasta 12 horas,
+    y desde la consola no había cómo aplicarlo (revisión de C2). Lo que mueve
+    es lo que puso el sistema, con las reglas de siempre: nunca a una persona."""
+    from app.services import cobranza_automatica
+
+    if not cobranza_automatica.automatica_prendida():
+        return
+    try:
+        plan = cobranza_automatica.correr(solo=suscripcion_id)
+        if plan.pasos:
+            log.warning("Tras %s: %s", tras, plan.resumen())
+    except Exception:  # noqa: BLE001
+        log.exception("La escalera tras %s (suscripción %s) falló", tras, suscripcion_id)
+
+
+def _escalera_de_la_factura(factura_id: int, tras: str) -> None:
+    """``_escalera_de_la_suscripcion`` de la suscripción de esa cuenta de cobro."""
     from app.models.cobro import FacturaCobro
     from app.services import cobranza_automatica
 
@@ -906,49 +939,76 @@ def _escalera_tras_un_pago(factura_id: int) -> None:
             fila = reg.query(FacturaCobro.suscripcion_id).filter(FacturaCobro.id == factura_id).first()
         finally:
             reg.close()
-        if fila is None:
-            return
-        plan = cobranza_automatica.correr(solo=fila[0])
-        if plan.pasos:
-            log.warning("Tras un pago: %s", plan.resumen())
     except Exception:  # noqa: BLE001
-        log.exception("La escalera tras el pago de la cuenta de cobro %s falló", factura_id)
+        log.exception("La escalera tras %s (cuenta de cobro %s) falló", tras, factura_id)
+        return
+    if fila is not None:
+        _escalera_de_la_suscripcion(fila[0], tras)
 
 
 @router.post("/facturas/{factura_id}/anular")
-def anular_factura(factura_id: int, payload: MotivoIn, email: str = Depends(require_operador)):
+def anular_factura(
+    factura_id: int,
+    payload: MotivoIn,
+    tareas: BackgroundTasks,
+    email: str = Depends(require_operador),
+):
     """Anula una cuenta de cobro que salió mal, con motivo. El número queda
-    usado; el período queda libre para emitir la corregida."""
+    usado; el período queda libre para emitir la corregida. Con la escalera
+    prendida, la del cliente corre apenas sale la respuesta: si esa cuenta de
+    cobro era la del corte, el cliente no espera 12 horas."""
     from app.plataforma_metricas import periodo_actual
     from app.services import cobranza
 
     cuerpo = _cobranza(lambda: cobranza.anular_factura(factura_id, payload.motivo, email))
     _anotar_consulta(email, "anulacion", f"{_slug_de_la_factura(factura_id)}:{periodo_actual()}")
+    tareas.add_task(_escalera_de_la_factura, factura_id, "una anulación")
     return cuerpo
 
 
 @router.post("/facturas/{factura_id}/disputa")
-def disputar_factura(factura_id: int, payload: DisputaIn, email: str = Depends(require_operador)):
+def disputar_factura(
+    factura_id: int,
+    payload: DisputaIn,
+    tareas: BackgroundTasks,
+    email: str = Depends(require_operador),
+):
     """Pone o saca la marca de disputa, con motivo: lo que se discute no cuenta
-    para el atraso."""
+    para el atraso. Con la escalera prendida, la del cliente corre apenas sale
+    la respuesta, igual que tras un pago."""
     from app.plataforma_metricas import periodo_actual
     from app.services import cobranza
 
     cuerpo = _cobranza(lambda: cobranza.marcar_disputa(factura_id, payload.en_disputa, payload.motivo, email))
     _anotar_consulta(email, "disputa", f"{_slug_de_la_factura(factura_id)}:{periodo_actual()}")
+    tareas.add_task(_escalera_de_la_factura, factura_id, "una disputa")
     return cuerpo
 
 
 def _slug_de_la_factura(factura_id: int) -> str:
-    """El slug al que la bitácora atribuye una acción sobre una factura: el que
-    tenía el cliente al emitirla. Sólo se llama después de que la operación
-    encontró la factura."""
-    from app.models.cobro import FacturaCobro
+    """A quién atribuye la bitácora una acción sobre una factura: al slug de
+    su cliente, SÓLO si la factura es de la suscripción que ese slug tiene hoy.
+
+    Las facturas de un cliente borrado se quedan como constancia, y otro puede
+    fundar el mismo slug: anotar `factura.cliente_slug` metía en el reporte de
+    transparencia del nuevo titular la anulación o el pago de una relación
+    comercial ajena (revisión de C2). Una factura huérfana se anota como
+    ``#suscripcion-<id>``, que ningún slug puede tener adelante. Sólo se llama
+    después de que la operación encontró la factura."""
+    from app.models.cobro import FacturaCobro, Suscripcion
 
     reg = sesion_registro()
     try:
-        fila = reg.query(FacturaCobro.cliente_slug).filter(FacturaCobro.id == factura_id).first()
-        return fila[0] if fila is not None else ""
+        fila = (
+            reg.query(FacturaCobro.cliente_slug, FacturaCobro.suscripcion_id)
+            .filter(FacturaCobro.id == factura_id).first()
+        )
+        if fila is None:
+            return ""
+        vigente = reg.query(Suscripcion.id).filter(Suscripcion.cliente_slug == fila[0]).first()
+        if vigente is not None and vigente[0] == fila[1]:
+            return fila[0]
+        return f"#suscripcion-{fila[1]}"
     finally:
         reg.close()
 

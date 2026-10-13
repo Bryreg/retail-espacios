@@ -418,8 +418,9 @@ def test_el_pago_levanta_el_estado_solo_si_se_pide_y_lo_firma_el_sistema(client,
 
 def test_un_pago_nunca_empeora_el_estado(client, operadora):
     """El cliente está activo con una factura vencida hace 40 días (le
-    correspondería sólo lectura). Pagar OTRA con «levantar» no lo corta: esta
-    tanda no le corta el servicio a nadie."""
+    correspondería sólo lectura). Pagar OTRA con «levantar» no lo corta: un
+    pago nunca le corta el servicio a nadie (y no quedó al día, así que
+    tampoco hay nada que levantar)."""
     _suscribir(client, operadora, "consola", retefuente_pct=0, reteica_pct=0)
     _emitir(client, operadora, "consola", "2026-08", "CC-001", vence_hace=40)
     otra = _emitir(client, operadora, "consola", "2026-09", "CC-002", vence_hace=10)
@@ -460,17 +461,16 @@ def test_los_motivos_que_escribe_el_sistema_no_llevan_montos(client, operadora):
     """El motivo le llega a la dueña del supermercado y la franja se ve en
     Vender, delante de los proveedores: una fecha sí, un monto jamás."""
     from app.models.plataforma import EstadoCliente
-    from app.services.cobranza import motivo_del_sistema
+    from app.services.cobranza import ACTOR_SISTEMA, EL_QUE_CORRESPONDE, motivo_del_sistema, mover_estado
 
     _suscribir(client, operadora, "consola", valor_cop=2_345_678, retefuente_pct=0, reteica_pct=0)
     vieja = _emitir(client, operadora, "consola", "2026-07", "CC-001", vence_hace=50)
     _emitir(client, operadora, "consola", "2026-08", "CC-002", vence_hace=12)
-    _patch(client, operadora, "consola", "solo_lectura", "Dos meses impagos")
 
-    # Paga la vieja y pide levantar: queda en gracia por la otra.
-    r = _pagar(client, operadora, vieja["id"], valor_recibido_cop=2_345_678, levantar_estado=True)
-    assert r["estado_cuenta"]["movido"] is True
-    assert r["estado_cuenta"]["estado"] == "gracia"
+    # Paga la vieja y el sistema escribe lo que corresponde: gracia por la otra.
+    _pagar(client, operadora, vieja["id"], valor_recibido_cop=2_345_678)
+    r = mover_estado("consola", EL_QUE_CORRESPONDE, None, ACTOR_SISTEMA)
+    assert (r["movido"], r["estado"]) == (True, "gracia")
     (fila,) = _filas(EstadoCliente, EstadoCliente.slug == "consola")
     for motivo in (fila.motivo,) + tuple(
         motivo_del_sistema(e, [SimpleNamespace(estado="emitida", vence_el=date(2026, 9, 1), en_disputa=False,

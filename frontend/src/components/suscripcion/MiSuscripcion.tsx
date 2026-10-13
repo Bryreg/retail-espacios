@@ -139,7 +139,10 @@ function DatosDeFacturacion({ datos, alGuardar }: { datos: Datos; alGuardar: () 
       <input style={s.input} value={razon} onChange={(e) => setRazon(e.target.value)} />
       <label style={s.etiqueta}>NIT</label>
       <input style={{ ...s.input, fontFamily: "var(--font-mono)" }} value={nit} onChange={(e) => setNit(e.target.value)} />
-      <label style={s.etiqueta}>Correo de facturación (le llegan las cuentas de cobro y los avisos)</label>
+      <label style={s.etiqueta}>
+        Correo de facturación (le llegan los avisos con montos; si es el de alguien de tu equipo que no es dueño, no
+        se le mandan)
+      </label>
       <input style={s.input} type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} />
       <label style={s.etiqueta}>Municipio</label>
       <input style={s.input} value={municipio} onChange={(e) => setMunicipio(e.target.value)} />

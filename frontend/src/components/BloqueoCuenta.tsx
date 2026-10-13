@@ -15,12 +15,16 @@ import { useEstadoCuentaVivo } from "./suscripcion/useEstadoCuenta";
  * ese botón existe sólo para la dueña (lo dice el servidor por la membresía,
  * no el rol del token).
  *
+ * Tampoco el MOTIVO (revisión de C2): el que escribe la operadora es texto
+ * libre y puede llevar la deuda. La pantalla dice un texto fijo; el motivo lo
+ * lee la dueña en «Ver suscripción».
+ *
  * Y se entera sola de que la cuenta volvió a estar al día (C2): consulta
  * `GET /auth/estado-cuenta` al montarse, cada pocos minutos y con «Reintentar».
  * Cuando el servidor dice «activo», el store limpia el aviso y `App.tsx` vuelve
  * a montar la app, sin cerrar sesión.
  */
-export default function BloqueoCuenta({ motivo }: { motivo: string | null }) {
+export default function BloqueoCuenta() {
   const logout = useAuthStore((s) => s.logout);
   const { revisar, revisando, duena, error } = useEstadoCuentaVivo();
   const [verSuscripcion, setVerSuscripcion] = useState(false);
@@ -72,7 +76,9 @@ export default function BloqueoCuenta({ motivo }: { motivo: string | null }) {
           Cuenta suspendida
         </h1>
         <p style={{ margin: "10px 0 22px", fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
-          {motivo || "El servicio de este supermercado está suspendido. El dueño ve el motivo y cómo ponerse al día."}
+          {duena
+            ? "El servicio de este supermercado está suspendido. El motivo y cómo ponerse al día están en la suscripción."
+            : "El servicio de este supermercado está suspendido. El dueño ve el motivo y cómo ponerse al día."}
         </p>
 
         {duena && (

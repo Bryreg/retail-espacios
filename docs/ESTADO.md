@@ -1,7 +1,15 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-12 (el diseño se ve desde Vender: cada fila del contrato
+Última actualización: 2026-10-13 (el cobro de la suscripción: la operadora registra en la
+consola la suscripción, las cuentas de cobro y los pagos por transferencia —sin pasarela y
+sin emitir nada ante la DIAN—, y una escalera automática, apagada por defecto, avisa por
+correo y pasa a sólo lectura a los 30 días de vencida, nunca antes de 10 días después del
+aviso formal, y nunca suspende. La dueña del supermercado ve lo suyo en Configuración →
+Suscripción. Tres revisores la revisaron y lo que encontraron quedó arreglado. Ver *Cobro
+de la suscripción (2026-10-13)*).
+
+Antes, 2026-10-12 (el diseño se ve desde Vender: cada fila del contrato
 trae un botón «3D» que abre la tienda ENCIMA de la ficha —la misma sala de «Presentar»,
 con las tres tomas y el producto del proveedor del contrato— sin perder nada de lo
 tecleado. Los muebles le llegan sin datos comerciales, el catálogo se pide por el nombre
@@ -362,12 +370,18 @@ se quedan de constancia, colgados de un id de suscripción que no se reutiliza, 
 que nadie hereda una deuda ajena (ver *Cobro de la suscripción*).
 
 **La cobranza automática sólo pone sólo lectura, sólo a quien tiene suscripción
-automática, y nunca encima de una persona.** La escalera (`COBRANZA_AUTOMATICA`,
-apagada por defecto: sólo ensaya) nunca suspende —eso es del PATCH de la
-operadora—, nunca toca a un cliente sin suscripción o con suscripción manual
-(Galerías), nunca cambia un estado que no es «activo» y que puso una persona, y
-sus motivos no llevan montos. Todo cambio del interruptor pasa por
-`cobranza.mover_estado`. Ver *La escalera de cobranza*.
+automática, nunca sin aviso y nunca encima de una persona.** La escalera
+(`COBRANZA_AUTOMATICA`, apagada por defecto: sólo ensaya) nunca suspende —eso es del
+PATCH de la operadora—, nunca toca a un cliente sin suscripción o con suscripción
+manual, nunca a Galerías (ni la escalera ni el «levantar» de un pago le mueven el
+estado), nunca cambia un estado que no es «activo» y que puso una persona, y
+**nunca pasa a sólo lectura sin que el aviso formal por correo haya salido diez días
+antes** (sin correo entregado, la cuenta se queda en gracia). Sólo lectura es a los
+30 días de vencida o más, nunca menos (el PUT no acepta menos). Sus motivos no llevan
+montos, y la franja y la pantalla de bloqueo no muestran ni montos ni el motivo
+(texto libre de la operadora): eso está en «Ver suscripción», sólo para la dueña.
+Todo cambio del interruptor pasa por `cobranza.mover_estado`. Ver *Cobro de la
+suscripción (2026-10-13)*.
 
 **Toda tabla nueva se clasifica: de negocio o de registro.** `services/traspaso.py`
 tiene las dos listas (`TABLAS_DEL_CLIENTE`, `TABLAS_DEL_REGISTRO`). Pasar un cliente a
@@ -584,6 +598,9 @@ avisa sin cortar; `solo_lectura` deja GET y corta mutaciones de negocio con
 escrituras internas de un GET permitido, como `expire_leases()`, no se
 cortan); `suspendido` corta todo salvo el login del owner, que es el ÚNICO que
 ve el `motivo` escrito por el operador — su gente ve el estado, nunca la deuda.
+(Desde la revisión de C2 la dueña lo lee en «Ver suscripción»: la franja y la
+pantalla de bloqueo dicen un texto fijo, porque se ven en Vender y el motivo de la
+operadora es texto libre.)
 Los datos jamás se borran por estado. Desde C2, ver qué se debe y el estado en vivo tampoco se
 cortan (`_EXENTOS_PARA_PONERSE_AL_DIA`, ver *La escalera de cobranza*).
 
@@ -800,6 +817,188 @@ que abrían —`POST /api/auth/login`— está apagada salvo `LOGIN_LEGADO=1` (v
 *Identidad*, punto «Legado»). Y desde el 2026-10-02 ni eso: sin `LOGIN_LEGADO` no
 se las pone.
 
+### Cobro de la suscripción (2026-10-13)
+
+Cómo le cobra RECABRA a cada supermercado, para quien llega sin contexto. El detalle
+de cada pieza está en las dos secciones que siguen —*a mano en la consola (C1)* y *La
+escalera de cobranza (C2)*—; acá va el mapa, lo que cambió la revisión de las dos y
+lo que falta.
+
+**Lo que decidió la dueña, y manda sobre cualquier plan:**
+
+- **Sin pasarela por ahora.** Nada de Wompi, enlaces de pago, webhooks ni datos de
+  tarjeta: el supermercado paga por transferencia y la operadora registra el pago en
+  la consola. La landing sigue siendo cierta («no se usa pasarela ni se piden datos de
+  tarjeta»).
+- **Sin DIAN.** El sistema registra «facturas o cuentas de cobro» emitidas FUERA de
+  RECABRA: número y, si es factura electrónica, CUFE. El régimen lo ve ella con su
+  contador.
+- **Si no paga: avisos por correo y sólo lectura a los 30 días de vencida**, nunca
+  antes de 10 días después de que salió el aviso formal. **Nunca suspensión
+  automática**: suspender lo decide la operadora con el PATCH de siempre.
+- **Galerías, y todo cliente sin suscripción, exento**: la automatización jamás lo
+  toca.
+
+**Las tablas.** Cinco, nuevas, de la base registro (`app/models/cobro.py`), en
+`TABLAS_DEL_REGISTRO`, creadas por `create_all()` sin migración. Ninguna columna nueva
+en tablas viejas (tampoco en `estados_cliente`). Plata en pesos enteros `BigInteger`;
+todo cuelga de `suscripcion_id`, que no se reutiliza (`sqlite_autoincrement` en
+SQLite, la secuencia en Postgres), así que quien funda de nuevo un slug borrado no
+hereda nada.
+
+| Tabla | Qué guarda |
+|---|---|
+| `suscripciones` | Una por cliente: modo (`manual` · `automatico`), valor pactado por supermercado o por sede, plazo, `dia_solo_lectura` (30 o más), prórroga, referencia del contrato o de los términos aceptados (obligatoria para automático), datos de facturación y retenciones esperadas. Sin fila = exento. Se borra con el cliente. |
+| `facturas_cobro` | Cada cuenta de cobro registrada: período (un mes se cobra una sola vez), número único para siempre, CUFE opcional, vencimiento, total, retenciones estimadas, neto, estado, disputa y copia del nombre y el NIT. Se conserva al borrar el cliente (constancia contable). |
+| `pagos_cobro` | Cada pago contra UNA cuenta de cobro: recibido, retenciones, certificado, referencia bancaria (no única: una transferencia puede pagar varias) y quién lo registró. Se conserva. |
+| `cambios_estado_cuenta` | El historial del interruptor (`estados_cliente` guarda sólo el último), con quién lo hizo: un correo o `sistema:cobranza`. |
+| `avisos_cobro` | Un correo de la escalera por (cuenta de cobro, hito), una sola vez. La fila del aviso formal es la constancia de la que cuelga el corte. |
+
+**Quién ve qué.**
+
+| Quién | Qué ve | Dónde |
+|---|---|---|
+| La operadora (`OPERADOR_EMAILS`) | La cartera de todos: plata, cuentas de cobro, pagos, quién registró qué, el estado y el que correspondería | Consola → *Lo operativo* → cajón «Cobros» (`/api/plataforma/cobros` y compañía) |
+| La dueña del supermercado (membresía `owner`) | Lo suyo: estado con motivo, lo pactado, la próxima cuenta de cobro con total, retenciones y neto, desde cuándo pasaría a sólo lectura, el historial de un año y los datos para transferir (sólo si tiene suscripción) | Configuración → Suscripción, y «Ver suscripción» en la pantalla de bloqueo (`/api/clientes/mi-suscripcion`) · los correos |
+| El correo de facturación | Los correos con montos, en un envío propio (no ve el correo de las dueñas). Si es el de alguien de su gente, no se le manda | Correo |
+| Su gente (admin no dueña, worker, mercaderista) | El estado, sin motivo y sin un solo monto | La franja y la pantalla de bloqueo (`/api/auth/estado-cuenta`) |
+| Cualquiera delante de la pantalla (Vender) | Un texto fijo por estado: ni montos ni el motivo | La franja y la pantalla de bloqueo |
+| El cliente, en su reporte de transparencia | Que la operadora miró la cartera, registró su suscripción, una cuenta de cobro, un pago, una anulación o una disputa —sin montos—, y sólo desde que ESE cliente se fundó | `/api/clientes/mi-reporte-plataforma` |
+
+**La escalera** (`services/cobranza_automatica.py`; sólo suscripciones automáticas de
+clientes activos que no son la base principal; al arrancar, cada 12 horas y, con el
+interruptor prendido, apenas la operadora registra un pago, anula, pone en disputa o
+guarda la suscripción de ese cliente):
+
+| Días desde el vencimiento | Estado | Correo (a la dueña y a facturación) |
+|---|---|---|
+| −5 a 0 (el día que vence, todavía a tiempo; hora de Colombia) | activo | recordatorio |
+| 1 | gracia | «está vencida» |
+| 8 | gracia | «lleva N días vencida» |
+| 20 —diez antes del corte— o apenas se pueda si ya pasó | gracia | **aviso formal**: «desde el … pasa a sólo lectura» |
+| 30, y al menos 10 después de que salió el aviso formal | sólo lectura | «la cuenta está en sólo lectura» (una vez por corte) |
+| al ponerse al día | activo (sólo lo que puso el sistema) | constancia del pago |
+
+Nunca suspendido. Nunca pisa un estado que no es «activo» y que puso una persona (ni
+para arriba ni para abajo). Con prórroga vigente no pasa de gracia; una cuenta de
+cobro en disputa no cuenta. Si el correo no sale —SMTP caído, nadie a quién
+escribir—, la cuenta se queda en gracia y la línea del log lo dice («sin aviso formal
+entregado»). Los motivos que escribe no llevan montos.
+
+**El interruptor `COBRANZA_AUTOMATICA`**, en `render.yaml` con `sync: false`.
+**Apagado por defecto**: vacío, `0`, `false`, `no`, `off` o cualquier otra cosa → cada
+pasada sólo ENSAYA (calcula con el mismo código, no escribe un estado ni manda un
+correo) y deja una línea WARNING en el log con lo que haría. Prendido sólo con `1`,
+`true`, `si`/`sí` u `on`. Para prenderlo:
+
+1. Cargar `COBRO_INSTRUCCIONES_TRANSFERENCIA` (abajo) y revisar que el correo saliente
+   ande con el botón de prueba (ver *Configurar el envío* y *El botón de prueba ahora
+   sirve para probar*): sin correo no hay aviso formal, y sin aviso no hay corte.
+2. Mirar unos días la línea «Cobranza automática, ENSAYO …» del log de Render, y
+   «Correr cobranza (ensayo)» de la consola con las fechas que importen.
+3. Publicar la política y los términos revisados por el abogado (borradores en
+   `docs/legal/borradores/`) y tener, para cada suscripción automática, la referencia
+   del contrato firmado o de los términos aceptados (`contrato_ref`).
+4. En Render → el servicio → *Environment*: `COBRANZA_AUTOMATICA=1`. Render redespliega
+   y la pasada del arranque ya aplica.
+
+Para apagarlo, borrar la variable o ponerla en `0`: la pasada siguiente vuelve a
+ensayar. Lo que el sistema ya había puesto queda como está: se cambia con el PATCH, o
+se levanta al registrar un pago que deja al día con la casilla «levantar» marcada.
+
+**`COBRO_INSTRUCCIONES_TRANSFERENCIA`**, también con `sync: false`: el texto con los
+datos para transferir (banco, tipo y número de cuenta, titular, NIT), hasta 2.000
+caracteres. Nunca va en el repo. La ven la dueña de un supermercado CON suscripción
+(Configuración → Suscripción) y los correos de cobranza; sin la variable, dicen que se
+comuniquen con RECABRA.
+
+**Galerías** (el cliente de la base principal) es exenta. Nunca automática (409). Puede
+tener una suscripción manual sólo para que sus cuentas de cobro se vean en la cartera
+—Galerías paga hoy por cuenta de cobro—, pero ningún camino del sistema le mueve el
+estado: ni la escalera ni el «levantar» de un pago (`razon: "exento"`), y la cartera no
+le calcula «correspondería». **Por confirmar con la dueña**: si la quiere en la cartera
+con suscripción manual o sin fila.
+
+**La revisión (2026-10-13).** Tres revisores sobre C1 y C2 —seguridad y privacidad;
+la escalera y la plata; cobertura con mutaciones—. Lo que encontraron y quedó
+arreglado, con su prueba en `tests/test_cobranza_revision.py` (vista fallar contra el
+código de antes, o contra la mutación que el revisor dejó viva):
+
+- **Sólo lectura sin aviso** (alta): una deuda vieja al prender el interruptor, una
+  cuenta de cobro cargada tarde, el servicio dormido o el correo caído pasaban derecho a
+  sólo lectura sin un solo aviso. Ahora el corte exige el aviso formal ENTREGADO (su fila
+  en `avisos_cobro`) diez días antes, como mínimo; el cálculo vive en
+  `cobranza.estado_objetivo` y `mover_estado` lo lee en la misma transacción, así que el
+  ensayo dice lo mismo (para una fecha futura supone que el aviso sale el día que le
+  toca). Para una suscripción manual, «correspondería» sigue siendo la regla sin aviso:
+  es una indicación para la operadora.
+- **Retenciones con decimales ×10** (alta): el formulario leía «3.5» como 35. Pesos y
+  porcentajes se leen distinto (`formato.ts`), y la vista previa de una cuenta de cobro
+  sin subtotal cuenta los meses del período, como el backend.
+- **Un abono con «levantar»** bajaba la suspensión de una persona a un sólo lectura del
+  sistema: ahora «levantar» sólo levanta si el pago deja al día (`no_queda_al_dia`).
+- **El correo tras un abono** pedía el neto entero: ahora dice lo abonado y lo que falta.
+- **Anular, disputar o prorrogar** no volvían a mirar al cliente hasta la pasada de las
+  12 horas: con el interruptor prendido, la escalera de ese cliente corre enseguida.
+- **Plata en `Integer`**: en Postgres reventaba con 2.400 millones. Ahora `BigInteger`, y
+  lo calculado tiene el mismo tope (422) que lo escrito.
+- **Períodos superpuestos** se cobraban dos veces: un mes se cobra una sola vez (409), y
+  «2026-11..2026-11» se guarda «2026-11».
+- **Datos bancarios a cualquiera**: el alta es self-service, y la API los daba a toda
+  dueña aunque no tuviera suscripción. Ahora sólo con suscripción.
+- **La bitácora de cobros de un cliente borrado** le llegaba a quien fundara el mismo
+  slug, y una acción posterior sobre una factura huérfana se le atribuía. Ahora el reporte
+  sólo cuenta las líneas de cobro posteriores a la fundación, y la factura huérfana se
+  anota `#suscripcion-<id>`.
+- **El motivo libre de la operadora** salía en la franja y en el bloqueo, delante de
+  proveedores: ahora un texto fijo, el motivo detrás de «Ver suscripción», y la consola
+  avisa al escribirlo.
+- **Correos**: uno por destinatario, y el de facturación que es de su gente no recibe
+  montos. Con la cuenta ya en sólo lectura, ningún correo anuncia el corte (dicen que ya
+  está), y el «está en sólo lectura» sale una vez por corte.
+- **Sólo lectura a 1 día**: `dia_solo_lectura` aceptaba de 1 a 365. Ahora de 30 a 365.
+- **Galerías** se podía mover con un pago con «levantar»: ya no (ver arriba).
+- **La próxima cuenta de cobro de la dueña** era la más vieja aunque estuviera en
+  disputa: ahora la que cuenta para el atraso.
+- **Aplicar la escalera con otra fecha**: `correr()` aceptaba aplicar con el reloj
+  atrasado. Ahora sólo con la de hoy, en el servicio y en la consola.
+- **La consola pedía la cartera** al abrirse y tras cada PATCH, y cada pedido anota
+  «cobros» en el reporte de TODOS los clientes: ahora al abrir el cajón, y el PATCH la
+  actualiza en memoria. El reporte nombra cada acción (antes, «pago_manual» crudo).
+- **Textos que C2 había vuelto falsos** en la consola («nada de acá corta», «todavía
+  no»): ahora dicen lo que pasa según el interruptor.
+- **Pruebas que faltaban** (mutaciones que sobrevivían): el interruptor con `0`/`off`,
+  la constancia de pago para pagos viejos, el orden de los hitos, la frontera de las
+  exenciones probada en `_aplicar_estado`, y en pantalla: «Correr cobranza» manda
+  `ensayo: 1`, `duena` sale del servidor, el reloj llama a `revisar()`, y
+  `MiSuscripcion` sólo se monta en el bloqueo y en Configuración. La prueba de dos hilos
+  de la escalera se saltea fuera de SQLite: en Postgres el `FOR UPDATE` serializa antes
+  de la barrera, que es justo lo que protege.
+
+Verificado además contra un **Postgres 16** descartable: las tres suites de cobranza,
+74 pasan y 1 se saltea (la de dos hilos).
+
+**Lo que falta:**
+
+- **Pasarela**: la recomendada es **Wompi** (Plan Avanzado Agregador; enlace de pago por
+  el NETO de retenciones, PSE o Botón Bancolombia, webhook firmado), pero **la decisión
+  es de la dueña y está pendiente**. Nada integrado; si se integra, la landing deja de
+  ser cierta y hay que cambiarla en el mismo PR.
+- **Factura electrónica**: si RECABRA factura electrónicamente, y en qué régimen (SIMPLE,
+  SAS, persona natural), lo ve la dueña con su contador. Hoy sólo se registran número y
+  CUFE de lo que se emite afuera.
+- **Política de datos y términos del servicio**: borradores para el abogado en
+  `docs/legal/borradores/` (`politica-datos-cobro.md`, `terminos-servicio.md`). La
+  política publicada y `VERSION_POLITICA` NO se tocaron: publicarla es una versión
+  nueva y dispara el re-consentimiento. Va antes de prender el interruptor.
+- Anular un pago mal cargado (hoy no hay vuelta atrás desde la consola).
+- Pasar una suscripción de automática a manual no levanta lo que había puesto el
+  sistema: se baja con el PATCH.
+- Las líneas de ciclo de vida (archivo, borrado, renombre) de un slug borrado todavía
+  le llegan al reporte de quien lo funda de nuevo: es la deuda de antes de C1; las de
+  cobro ya no.
+- `services/traspaso.py` (sin ruta desde 2026-10-02) no mueve la suscripción.
+
 ### Cobro de la suscripción, a mano en la consola (C1, 2026-10-13)
 
 Lo que RECABRA le cobra a cada supermercado, registrado por la operadora en la
@@ -825,7 +1024,7 @@ sobre la que después corre la escalera automática (C2).
 
 - `suscripciones` — una por cliente: modo `manual` | `automatico`, valor pactado
   en pesos enteros, unidad (`supermercado_mes` | `sede_mes`) y cantidad,
-  periodicidad, plazo de pago, `dia_solo_lectura` (30), prórroga, `contrato_ref`,
+  periodicidad, plazo de pago, `dia_solo_lectura` (30 o más), prórroga, `contrato_ref`,
   datos de facturación y los porcentajes de retención esperados. **Sin fila =
   exento**, igual que sin fila de estado = activo. El precio va acá: no hay
   catálogo de planes.
@@ -835,7 +1034,9 @@ sobre la que después corre la escalera automática (C2).
   `pagada` | `anulada`), marca de disputa, y una copia del nombre y el NIT al
   emitir. Una sola **viva** por período y suscripción: el índice único es
   parcial y deja afuera a las anuladas, porque anular la que salió mal y emitir
-  la corregida para el mismo mes es lo normal.
+  la corregida para el mismo mes es lo normal. Desde la revisión, además, ningún
+  mes lo cubren dos vivas (409): antes «2026-11» y «2026-11..2026-12» entraban las
+  dos.
 - `pagos_cobro` — contra UNA factura: medio (`transferencia` | `otro`), recibido,
   retefuente/reteICA/reteIVA, certificado recibido sí/no, referencia bancaria
   (obligatoria y **no única**: una transferencia que paga dos cuentas de cobro se
@@ -866,8 +1067,9 @@ persona sólo si ella lo pidió; no reescribe un estado igual. Con
 `EL_QUE_CORRESPONDE` calcula el estado DENTRO de la misma transacción que lo
 escribe (suscripción y estado `FOR UPDATE` en Postgres). `estado_objetivo` es
 pura: activo · gracia desde el día siguiente al vencimiento · sólo lectura a los
-`dia_solo_lectura` días · no pasa de gracia con prórroga vigente · **nunca
-suspendido**. Se muestra («correspondería») y, desde C2, la escalera lo aplica a
+`dia_solo_lectura` días —para una suscripción automática, además, no antes de 10
+días después de que salió el aviso formal (revisión de C2)— · no pasa de gracia con
+prórroga vigente · **nunca suspendido**. Galerías nunca se mueve por acá. Se muestra («correspondería») y, desde C2, la escalera lo aplica a
 las suscripciones automáticas (ver la sección siguiente). Desde C2 también
 reintenta una vez si dos caminos crean la PRIMERA fila de estado a la vez (sin
 fila, `FOR UPDATE` no tiene qué bloquear, tampoco en Postgres), y tiene modo
@@ -875,8 +1077,10 @@ fila, `FOR UPDATE` no tiene qué bloquear, tampoco en Postgres), y tiene modo
 
 **Registrar un pago puede LEVANTAR el estado**, y sólo eso, sólo si la operadora
 marca «Si con este pago queda al día, levantar el estado de cuenta» (apagada por
-defecto): baja a lo que corresponde —activo si quedó al día—, nunca sube, y lo
-firma `sistema:cobranza` (el correo de ella queda en el pago). Así la escalera de
+defecto) y el pago deja al día: vuelve a activo, nunca sube, y lo firma
+`sistema:cobranza` (el correo de ella queda en el pago). Un abono que no deja al
+día no toca nada (`no_queda_al_dia`): antes bajaba a «lo que corresponde», y una
+suspensión puesta a mano se volvía un sólo lectura del sistema (revisión de C2). Así la escalera de
 C2 reconoce ese estado como suyo. **Los motivos que escribe el sistema no llevan
 montos**: le llegan a la dueña del supermercado y la franja se ve en Vender,
 delante de los proveedores.
@@ -884,15 +1088,17 @@ delante de los proveedores.
 **Endpoints** (`/api/plataforma`, sólo operadora, todos al registro):
 `GET /cobros` (la cartera: modo, valor, próxima a pagar, atraso, estado actual y
 el que correspondería, último pago, facturas; exentos sin deuda),
-`PUT /clientes/{slug}/suscripcion` (automático exige `contrato_ref` → 422; el
-cliente de la base principal nunca es automático → 409),
+`PUT /clientes/{slug}/suscripcion` (automático exige `contrato_ref` → 422;
+`dia_solo_lectura` menor que 30 → 422; el cliente de la base principal nunca es
+automático → 409),
 `POST /clientes/{slug}/facturas` (sin suscripción → 409),
 `POST /facturas/{id}/pagos`, `POST /facturas/{id}/anular` (con pagos → 409) y
 `POST /facturas/{id}/disputa`, con motivo. Bitácora del registro con códigos
 `cobros` (alcanza a todos, como `clientes`), `suscripcion`, `factura`,
 `pago_manual`, `anulacion` y `disputa` (`"<slug>:<YYYY-MM>"`), cada uno con su
 rama en `plataforma_reporte._accesos_del_cliente`: el cliente las ve en su
-reporte de transparencia, sin montos.
+reporte de transparencia, sin montos, y sólo las posteriores a su fundación (una
+acción sobre la factura de un cliente borrado se anota `#suscripcion-<id>`).
 
 **Pantalla**: cajón «Cobros» (`components/plataforma/cartera-cobros.tsx`) con la
 cartera y los formularios —suscripción, emitir, registrar pago con retenciones y
@@ -927,9 +1133,11 @@ el de la base principal— y para cada una llama a `cobranza.mover_estado(slug,
 EL_QUE_CORRESPONDE, actor="sistema:cobranza")`, que calcula y escribe en la
 misma transacción. Con `d` = días desde el vencimiento de la cuenta de cobro
 emitida, impaga y sin disputa más vieja: `d ≤ 0` activo · `1 ≤ d < 30` gracia ·
-`d ≥ 30` sólo lectura (el 30 es `dia_solo_lectura` de cada suscripción). El día
-del vencimiento todavía está a tiempo (fecha de Colombia). Con prórroga vigente
-no pasa de gracia.
+`d ≥ 30` sólo lectura (el 30 es `dia_solo_lectura` de cada suscripción, 30 o
+más), **y nunca antes de 10 días después de que salió el aviso formal** (revisión
+de C2: sin el correo entregado, la cuenta se queda en gracia). El día del
+vencimiento todavía está a tiempo (fecha de Colombia). Con prórroga vigente no
+pasa de gracia.
 
 **Nunca pisa a una persona.** Un estado que NO es «activo» y que puso alguien
 (`cambiado_por` sin `sistema:`) queda como está, para arriba y para abajo: si la
@@ -943,15 +1151,21 @@ lado de cada diferencia («automático: lo aplica la próxima pasada»).
 **Un pago registrado** con la suscripción automática y la escalera prendida
 corre la escalera de ESE cliente apenas sale la respuesta (en segundo plano): lo
 que puso el sistema vuelve a activo sin esperar 12 horas, y sale la constancia.
+Desde la revisión, lo mismo al anular una cuenta de cobro, ponerla o sacarla de
+disputa, y guardar la suscripción (una prórroga).
 
 **Los correos** (`avisos_cobro`, tabla nueva del registro, UNIQUE por factura e
 hito): `por_vencer` (desde 5 días antes), `vencida` (d=1), `mas_7` (d=8),
-`aviso_solo_lectura` (10 días antes del día de sólo lectura), `solo_lectura`
-(sólo si la cuenta quedó de verdad así) y `pago_recibido` (pagos registrados en
-los últimos 10 días). Sólo a las cuentas con membresía ACTIVA de dueña y al
-correo de facturación de la suscripción: nunca a su gente ni a la libreta de
-contactos por sede. Llevan número, total, retenciones estimadas, neto,
-vencimiento y los datos de `COBRO_INSTRUCCIONES_TRANSFERENCIA`. **Con el servicio
+`aviso_solo_lectura` (10 días antes del día de sólo lectura, o apenas se pueda si
+no salió a tiempo, y entonces corre el corte), `solo_lectura` (sólo si la cuenta
+quedó de verdad así por la escalera, una vez por corte) y `pago_recibido` (pagos
+registrados en los últimos 10 días). Sólo a las cuentas con membresía ACTIVA de
+dueña y al correo de facturación de la suscripción —salvo que sea el de alguien de
+su gente—, **un envío por destinatario**: nunca a su gente ni a la libreta de
+contactos por sede. Llevan número, total, retenciones estimadas, neto (tras un
+abono, lo abonado y lo que falta), vencimiento y los datos de
+`COBRO_INSTRUCCIONES_TRANSFERENCIA`. Con la cuenta ya en sólo lectura, ninguno
+anuncia el corte: dicen que ya está. **Con el servicio
 dormido se pone al día sin duplicar**: cada pasada manda sólo el hito que le
 toca HOY a cada cuenta de cobro (el que despierta 20 días tarde manda uno, no
 tres) y nunca uno anterior a otro que ya salió. La fila del hito se escribe
@@ -974,7 +1188,8 @@ correo: canaveral CC-001 vencida`. Sin montos ni correos en el log. Se prende co
 (`POST /api/plataforma/cobranza/correr?ensayo=1[&fecha=YYYY-MM-DD]`): qué haría
 hoy, o el día que se elija, a quién movería y qué avisos mandaría (hito y
 cuántos destinatarios, sin los correos). Desde la pantalla es siempre un ensayo;
-`?ensayo=0` exige el interruptor prendido (409) y la fecha de hoy (422).
+`?ensayo=0` exige el interruptor prendido (409) y la fecha de hoy (422), y
+`correr()` mismo rechaza aplicar con otra fecha, hacia adelante o hacia atrás.
 Bitácora `cobranza`, que alcanza a todos como `cobros`.
 
 **La dueña del supermercado** (membresía `owner`, `require_owner`):
@@ -982,7 +1197,7 @@ Bitácora `cobranza`, que alcanza a todos como `cobros`.
 cuenta de cobro con total, retenciones estimadas, neto, vencimiento y desde qué
 día pasaría a sólo lectura, el historial de un año de cuentas de cobro, pagos y
 cambios de estado (sin el correo de la operadora: «RECABRA» o «automático») y
-las instrucciones de transferencia— y `PUT /api/clientes/mi-suscripcion/
+las instrucciones de transferencia, sólo si tiene suscripción— y `PUT /api/clientes/mi-suscripcion/
 facturacion` (razón social, NIT, correo de facturación, municipio; valen para
 las cuentas de cobro que vengan). Su gente recibe 403. En pantalla, sección
 «Suscripción» de Configuración (`components/suscripcion/MiSuscripcion.tsx`), con
@@ -999,8 +1214,9 @@ del negocio.
 que dice el servidor va al store con `actualizarAvisoCuenta`, que también LIMPIA
 el aviso cuando la cuenta vuelve a estar al día. La franja está montada siempre
 en el tablero, así que también se entera de un paso a gracia a mitad de sesión
-(eso no da 402). **Ni la franja ni la pantalla de bloqueo muestran un monto**
-—se ven en Vender, delante de proveedores—: a la dueña le ofrecen «Ver
+(eso no da 402). **Ni la franja ni la pantalla de bloqueo muestran un monto, ni
+el motivo** (desde la revisión: el de la operadora es texto libre) —se ven en
+Vender, delante de proveedores—: a la dueña le ofrecen «Ver
 suscripción», que muestra la plata tras un clic (en la franja abre
 Configuración → Suscripción; en `BloqueoCuenta`, la misma vista dentro de la
 pantalla, que no tiene router). Y un 402 ya no pisa el motivo de verdad con el
@@ -1019,11 +1235,12 @@ la frontera de las exenciones). Cada una vista caer con una mutación.
 que pide el navegador, la consulta en vivo, «Reintentar», cero montos en la
 franja y el bloqueo, la plata tras un clic y sólo para la dueña).
 
-**Pendiente**: nada de esto corrió contra Postgres (la reserva del hito y el
-reintento de `mover_estado` se probaron en SQLite, con dos hilos); la factura
-electrónica y la pasarela siguen fuera, por decisión de la dueña; la política de
-datos todavía no declara el correo de facturación ni la finalidad «cobro del
-servicio» (va con el abogado, antes de prender el interruptor).
+**Pendiente**: la factura electrónica y la pasarela siguen fuera, por decisión de
+la dueña; la política de datos todavía no declara el correo de facturación ni la
+finalidad «cobro del servicio» (borrador para el abogado en
+`docs/legal/borradores/`, antes de prender el interruptor). La revisión corrió las
+suites de cobranza contra un Postgres 16 descartable (ver *Cobro de la suscripción
+(2026-10-13)*).
 
 ### Compliance: Ley 1581, consentimiento y hardening (Fase 3 comercial)
 
@@ -8615,11 +8832,11 @@ endpoint, que es donde se sabe qué es lo guardado.
 * **Cuentas de usuario.** La tabla `users` sí se puede crear sin migración, pero
   pasar de dos contraseñas compartidas a cuentas nominales es un cambio
   operativo para siete tiendas vivas: se coordina, no se despliega de sorpresa.
-* **Pagos (fase 4).** Falta elegir proveedor —Stripe o MercadoPago para
-  Colombia— y las llaves, que no viajan por chat: van en el panel de Render.
-  **Actualizado 2026-10-13**: Stripe no abre cuentas a empresas colombianas, y la
-  dueña decidió no integrar ninguna pasarela por ahora: el cobro se registra a
-  mano en la consola (ver *Cobro de la suscripción*).
+* **Pagos.** Sin pasarela, por decisión de la dueña (2026-10-13): el supermercado
+  paga por transferencia y la operadora registra el pago en la consola (ver *Cobro de
+  la suscripción (2026-10-13)*). Si algún día se integra una, la recomendada es
+  **Wompi** —Stripe no abre cuentas a empresas colombianas—, y la decisión es de ella.
+  Las llaves no viajan por chat: van en el panel de Render.
 * **Dos avisos `moderate` de `react-router`** (open redirect). El arreglo es un
   salto de versión mayor; se dejó afuera a propósito de la fase 1.
 

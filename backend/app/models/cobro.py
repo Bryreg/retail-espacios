@@ -15,9 +15,13 @@ seguridad del supermercado las saca.
 · Sin suscripción no hay cobranza. **Fila ausente en ``suscripciones`` = cliente
   exento** —Galerías y todo cliente que ya existe—, igual que fila ausente en
   ``estados_cliente`` = activo. Nada de lo de acá lo toca.
-· Plata en pesos enteros (``Integer``), nunca ``Float``: los porcentajes de
+· Plata en pesos enteros (``BigInteger``), nunca ``Float``: los porcentajes de
   retención sí son ``Float`` porque no son plata, son la tasa con la que se
-  ESTIMA la retención que el supermercado va a descontar.
+  ESTIMA la retención que el supermercado va a descontar. ``BigInteger`` y no
+  ``Integer`` (revisión de C1/C2): en Postgres ``Integer`` es de 4 bytes y se
+  pasa de 2.147.483.647 pesos —24 meses de 50 sedes a 2 millones ya lo
+  superan—, y el INSERT reventaba con un 500 en vez del 422 de la validación.
+  En SQLite no se notaba. Son tablas nuevas: ``create_all()`` las crea así.
 · Fechas de negocio en ``Date`` de Colombia (``app/fechas.py``); marcas de
   tiempo en UTC, como en el resto del registro.
 
@@ -34,7 +38,7 @@ que nunca retrocede.
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Boolean, Column, Date, DateTime, Float, Index, Integer, String, UniqueConstraint, text,
+    BigInteger, Boolean, Column, Date, DateTime, Float, Index, Integer, String, UniqueConstraint, text,
 )
 
 from app.database import Base
@@ -63,11 +67,14 @@ class Suscripcion(Base):
 
     ``modo``: ``manual`` = la operadora mueve el estado de cuenta con el PATCH de
     siempre; ``automatico`` = cuando se prenda la escalera (C2) la cuenta pasa
-    sola a sólo lectura ``dia_solo_lectura`` días después de vencida la factura.
+    sola a sólo lectura ``dia_solo_lectura`` días después de vencida la factura,
+    y nunca antes de 10 días después de que salió el aviso formal por correo.
     **Nunca a suspendido**: suspender lo decide una persona. Para pasar a
     automático hace falta ``contrato_ref`` —la referencia del contrato firmado o
     de los términos aceptados—, que es la base para cortar algo; sin ella el PUT
-    lo rechaza. El cliente de la base principal no pasa nunca a automático.
+    lo rechaza. El cliente de la base principal (Galerías) no pasa nunca a
+    automático, y con una manual —para ver sus cuentas de cobro en la cartera—
+    nada del sistema le mueve el estado.
     """
 
     __tablename__ = "suscripciones"
@@ -77,7 +84,7 @@ class Suscripcion(Base):
     cliente_slug = Column(String, nullable=False, unique=True)
     modo = Column(String, nullable=False, default="manual")  # manual | automatico
     # Lo pactado, en pesos enteros, por unidad y por mes.
-    valor_cop = Column(Integer, nullable=False)
+    valor_cop = Column(BigInteger, nullable=False)
     unidad = Column(String, nullable=False, default="supermercado_mes")  # supermercado_mes | sede_mes
     # Cuántas unidades: 1 si es por supermercado, las sedes si es por sede. Lo
     # escribe la operadora: contar sedes sería abrir la base del cliente.
@@ -85,8 +92,8 @@ class Suscripcion(Base):
     periodicidad_meses = Column(Integer, nullable=False, default=1)
     plazo_pago_dias = Column(Integer, nullable=False, default=30)
     # Días DESPUÉS del vencimiento en que corresponde sólo lectura (decisión de
-    # la dueña: 30). Vencida es `vence_el < hoy`: el día del vencimiento todavía
-    # está a tiempo.
+    # la dueña: 30, y es el piso: el PUT no acepta menos). Vencida es
+    # `vence_el < hoy`: el día del vencimiento todavía está a tiempo.
     dia_solo_lectura = Column(Integer, nullable=False, default=30)
     # Mientras `hoy <= prorroga_hasta`, lo que corresponde no pasa de gracia.
     prorroga_hasta = Column(Date, nullable=True)
@@ -153,11 +160,11 @@ class FacturaCobro(Base):
     cufe = Column(String, nullable=True)
     emitida_el = Column(Date, nullable=True)
     vence_el = Column(Date, nullable=False)
-    subtotal_cop = Column(Integer, nullable=False)
-    iva_cop = Column(Integer, nullable=False, default=0)
-    total_cop = Column(Integer, nullable=False)
-    retenciones_estimadas_cop = Column(Integer, nullable=False, default=0)
-    neto_esperado_cop = Column(Integer, nullable=False)
+    subtotal_cop = Column(BigInteger, nullable=False)
+    iva_cop = Column(BigInteger, nullable=False, default=0)
+    total_cop = Column(BigInteger, nullable=False)
+    retenciones_estimadas_cop = Column(BigInteger, nullable=False, default=0)
+    neto_esperado_cop = Column(BigInteger, nullable=False)
     estado = Column(String, nullable=False, default="emitida")  # borrador | emitida | pagada | anulada
     # En disputa no cuenta para el atraso: no se cobra lo que se está discutiendo.
     en_disputa = Column(Boolean, nullable=False, default=False)
@@ -189,10 +196,10 @@ class PagoCobro(Base):
     id = Column(Integer, primary_key=True)
     factura_id = Column(Integer, nullable=False, index=True)  # sin FK, como la factura
     medio = Column(String, nullable=False)  # transferencia | otro
-    valor_recibido_cop = Column(Integer, nullable=False)
-    retefuente_cop = Column(Integer, nullable=False, default=0)
-    reteica_cop = Column(Integer, nullable=False, default=0)
-    reteiva_cop = Column(Integer, nullable=False, default=0)
+    valor_recibido_cop = Column(BigInteger, nullable=False)
+    retefuente_cop = Column(BigInteger, nullable=False, default=0)
+    reteica_cop = Column(BigInteger, nullable=False, default=0)
+    reteiva_cop = Column(BigInteger, nullable=False, default=0)
     certificado_recibido = Column(Boolean, nullable=False, default=False)
     ref_externa = Column(String, nullable=False, index=True)
     estado = Column(String, nullable=False, default="aprobado")  # aprobado | anulado
@@ -244,6 +251,11 @@ class AvisoCobro(Base):
     las membresías de dueña y del correo de facturación en el momento de
     mandar). Cuelga de la factura, que cuelga de la suscripción: al borrar el
     cliente se conserva con ella, como constancia de que se avisó.
+
+    Y es la constancia de la que cuelga el corte (revisión de C2): la fila
+    ``aviso_solo_lectura`` dice que el aviso formal SALIÓ, y ``enviado_en``,
+    cuándo. Sin esa fila no hay sólo lectura, y con ella no antes de diez días
+    después (``cobranza.estado_objetivo``).
     """
 
     __tablename__ = "avisos_cobro"

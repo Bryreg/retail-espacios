@@ -13,25 +13,33 @@ Tres cosas viven acá, y las tres las usa la consola de la operadora
 
 2. **Las cuentas puras**: si una factura está saldada (``factura_saldada``),
    cuántos días de atraso hay (``dias_de_atraso``) y qué estado de cuenta le
-   CORRESPONDERÍA a un cliente según sus facturas (``estado_objetivo``). En esta
-   tanda ``estado_objetivo`` sólo se muestra en la consola, al lado del estado
-   real, y se usa para levantar el estado cuando un pago deja al cliente al día.
+   CORRESPONDERÍA a un cliente según sus facturas (``estado_objetivo``). Se
+   muestra en la consola al lado del estado real, se usa para levantar el
+   estado cuando un pago deja al cliente al día y, desde C2, la escalera
+   automática lo aplica (``services/cobranza_automatica.py``).
 
 3. **La cartera y sus formularios**: la suscripción de cada cliente, emitir una
    cuenta de cobro, registrar un pago, anularla o marcarla en disputa.
 
 ── Lo que decidió la dueña (2026-10-13) y esto respeta ──────────────────────
 
-· **Esta tanda no le corta el servicio a nadie.** Ningún camino de acá empeora
-  un estado: el único movimiento automático es LEVANTAR, y sólo si la operadora
-  lo pide al registrar el pago («levantar el estado si queda al día»).
+· **Lo de acá no le corta el servicio a nadie.** Ningún camino de este módulo
+  empeora un estado por su cuenta: lo único que hace solo es LEVANTARLO, y sólo
+  si la operadora lo pide al registrar el pago y el cliente queda AL DÍA
+  («levantar el estado si queda al día»). El que empeora es la escalera de C2,
+  y sólo con su interruptor prendido.
 · **Nunca suspensión automática.** ``estado_objetivo`` no devuelve
   ``suspendido`` jamás: lo más grave que corresponde por atraso es sólo
-  lectura, a los ``dia_solo_lectura`` días (30) de vencida la factura.
+  lectura, a los ``dia_solo_lectura`` días (30, el piso) de vencida la factura
+  y nunca antes de ``DIAS_AVISO_SOLO_LECTURA`` días después de que salió el
+  aviso formal por correo (revisión de C2: sin aviso entregado no hay corte).
   Suspender lo decide una persona con el PATCH de siempre.
-· **Sin suscripción no hay cobranza**: Galerías y todo cliente sin fila en
+· **Sin suscripción no hay cobranza**: todo cliente sin fila en
   ``suscripciones`` es EXENTO. No aparece con deuda, no se le emite nada y nada
-  de acá le mueve el estado.
+  de acá le mueve el estado. **Galerías** (el cliente de la base principal)
+  también es exento de todo lo automático aunque tenga una suscripción manual
+  —que sólo sirve para ver sus cuentas de cobro en la cartera—: ningún camino
+  del sistema le mueve el estado, ni la escalera ni el «levantar» de un pago.
 · **Al empeorar, el sistema nunca pisa a una persona.** Un estado puesto por la
   operadora sólo lo cambia el sistema para MEJORAR, y sólo cuando ella lo pidió.
   Lo firma ``sistema:cobranza``; el correo de ella queda en el pago
@@ -63,6 +71,18 @@ PREFIJO_SISTEMA = "sistema:"
 # Mil pesos de tolerancia: lo que el redondeo de una retención le puede quitar
 # a una transferencia que paga exacto.
 TOLERANCIA_COP = 1_000
+
+#: Con cuánta anticipación sale el aviso formal de sólo lectura, y cuántos días
+#: tienen que correr DESDE QUE SALIÓ antes de que la cuenta pase a sólo lectura.
+#: Sin aviso entregado no hay sólo lectura: ni con el interruptor recién
+#: prendido sobre una deuda vieja, ni con una cuenta de cobro cargada tarde, ni
+#: con el correo caído (revisión de C2, hallazgo alto).
+DIAS_AVISO_SOLO_LECTURA = 10
+#: El piso de ``dia_solo_lectura``: la dueña decidió «sólo lectura a los 30 días
+#: de vencida». Se puede dar más aire, no menos.
+DIA_SOLO_LECTURA_MINIMO = 30
+#: El tope de plata de una cuenta de cobro o de un pago: diez mil millones.
+TOPE_COP = 10_000_000_000
 
 # Qué tan grave es cada estado. Mejorar es bajar en esta escala.
 GRAVEDAD = {"activo": 0, "gracia": 1, "solo_lectura": 2, "suspendido": 3}
@@ -148,26 +168,104 @@ def dias_de_atraso(facturas, hoy: date) -> int | None:
     return max((hoy - f.vence_el).days for f in vencidas)
 
 
-def estado_objetivo(suscripcion, facturas, hoy: date) -> str:
+def fecha_de_solo_lectura(suscripcion, factura, avisada_el: date | None = None) -> date:
+    """El día en que esa cuenta de cobro, impaga, pone la cuenta en sólo
+    lectura. PURA.
+
+    ``dia_solo_lectura`` días después del vencimiento, o el día siguiente al
+    fin de la prórroga si termina después. Y, con ``avisada_el`` (el día en que
+    salió el aviso formal), nunca antes de ``DIAS_AVISO_SOLO_LECTURA`` días
+    después: un aviso que salió tarde corre la fecha. Para PREVER la fecha de
+    una cuenta de cobro cuyo aviso todavía no salió, se pasa ``avisada_el=hoy``
+    (lo más temprano que puede salir)."""
+    dia = factura.vence_el + timedelta(days=suscripcion.dia_solo_lectura)
+    prorroga = suscripcion.prorroga_hasta
+    if prorroga is not None and prorroga >= dia:
+        dia = prorroga + timedelta(days=1)
+    if avisada_el is not None:
+        dia = max(dia, avisada_el + timedelta(days=DIAS_AVISO_SOLO_LECTURA))
+    return dia
+
+
+def dia_del_aviso_formal(suscripcion, factura) -> date:
+    """El día en que le toca salir al aviso formal de sólo lectura: diez días
+    antes de la fecha de sólo lectura. PURA."""
+    return fecha_de_solo_lectura(suscripcion, factura) - timedelta(days=DIAS_AVISO_SOLO_LECTURA)
+
+
+def estado_objetivo(suscripcion, facturas, hoy: date, avisos: dict | None = None) -> str:
     """El estado de cuenta que le correspondería a un cliente con suscripción.
     PURA: no lee la base, no mira el estado actual ni quién lo puso.
 
     · sin facturas vencidas (o sólo en disputa) → ``activo``;
-    · vencida hace menos de ``dia_solo_lectura`` días → ``gracia``;
-    · vencida hace ``dia_solo_lectura`` días o más → ``solo_lectura``;
-    · con una prórroga vigente (``hoy <= prorroga_hasta``), no pasa de gracia.
+    · con alguna vencida → ``gracia``, salvo que una ya haya llegado a su
+      ``fecha_de_solo_lectura`` → ``solo_lectura``. Esa fecha es
+      ``dia_solo_lectura`` días después del vencimiento, se corre con una
+      prórroga vigente (con prórroga no se pasa de gracia) y —con ``avisos``—
+      exige el aviso formal entregado ``DIAS_AVISO_SOLO_LECTURA`` días antes.
+
+    ``avisos`` es ``factura_id → día en que salió su aviso formal``
+    (``avisos_formales``). Lo pasa todo lo que APLICA la escalera —una
+    suscripción automática—: sin aviso entregado no hay sólo lectura. ``None``
+    (una suscripción manual) es la regla sin aviso, la que la consola muestra
+    como «correspondería» para que la operadora decida a mano.
 
     **Nunca ``suspendido``**: suspender lo decide una persona.
     """
-    atraso = dias_de_atraso(facturas, hoy)
-    if atraso is None:
+    vencidas = [f for f in facturas if esta_vencida(f, hoy) and not f.en_disputa]
+    if not vencidas:
         return "activo"
-    if atraso < suscripcion.dia_solo_lectura:
-        return "gracia"
-    prorroga = suscripcion.prorroga_hasta
-    if prorroga is not None and hoy <= prorroga:
-        return "gracia"
-    return "solo_lectura"
+    for f in vencidas:
+        if avisos is None:
+            corte = fecha_de_solo_lectura(suscripcion, f)
+        else:
+            avisada = avisos.get(f.id)
+            if avisada is None:
+                continue  # sin aviso formal entregado, no hay sólo lectura
+            corte = fecha_de_solo_lectura(suscripcion, f, avisada)
+        if hoy >= corte:
+            return "solo_lectura"
+    return "gracia"
+
+
+def _como_utc(instante: datetime | None) -> datetime | None:
+    """SQLite devuelve las marcas sin zona; son UTC (así se escriben)."""
+    if instante is None:
+        return None
+    return instante if instante.tzinfo else instante.replace(tzinfo=timezone.utc)
+
+
+def avisos_formales(reg, suscripcion, facturas, hoy: date) -> dict:
+    """``factura_id → día (de Colombia) en que salió su aviso formal de sólo
+    lectura``, leído de ``avisos_cobro`` (la fila queda sólo si el correo
+    salió: si el envío falla, se borra).
+
+    Con ``hoy`` en el FUTURO —un ensayo de «¿qué pasa el 15-nov?»—, la cuenta de
+    cobro que todavía no tiene su aviso lo recibe el día que le toca (o hoy, si
+    ya le tocaba), como si la escalera corriera cada día hasta entonces: si no,
+    el ensayo diría «gracia» para siempre de toda cuenta cuyo aviso todavía no
+    salió."""
+    from app.fechas import ZONA_DEL_NEGOCIO
+    from app.models.cobro import AvisoCobro
+
+    ids = [f.id for f in facturas]
+    avisos: dict = {}
+    if ids:
+        for a in (
+            reg.query(AvisoCobro)
+            .filter(AvisoCobro.factura_id.in_(ids), AvisoCobro.hito == "aviso_solo_lectura")
+            .all()
+        ):
+            avisos[a.factura_id] = _como_utc(a.enviado_en).astimezone(ZONA_DEL_NEGOCIO).date()
+    real = hoy_en_colombia()
+    if hoy > real:
+        for f in facturas:
+            if f.id in avisos or f.estado != "emitida" or f.en_disputa or f.vence_el is None:
+                continue
+            previsto = max(dia_del_aviso_formal(suscripcion, f), real)
+            if previsto <= hoy:
+                avisos[f.id] = previsto
+    return avisos
 
 
 def motivo_del_sistema(estado: str, facturas, hoy: date) -> str:
@@ -203,8 +301,9 @@ def retenciones_estimadas(suscripcion, subtotal_cop: int, iva_cop: int) -> int:
     return _redondear(base)
 
 
-def meses_del_periodo(periodo: str) -> int:
-    """``2026-11`` → 1; ``2026-11..2027-01`` → 3. Levanta ``DatoInvalido``."""
+def rango_del_periodo(periodo: str) -> tuple[int, int]:
+    """``2026-11`` → ``(m, m)``; ``2026-11..2027-01`` → ``(desde, hasta)``, en
+    meses contados desde el año cero. Levanta ``DatoInvalido``."""
     m = _PERIODO.match((periodo or "").strip())
     if not m:
         raise DatoInvalido("El período va como 2026-11, o 2026-11..2027-01 si cubre varios meses.")
@@ -214,6 +313,22 @@ def meses_del_periodo(periodo: str) -> int:
         raise DatoInvalido("El período termina antes de empezar.")
     if hasta - desde >= 24:
         raise DatoInvalido("Un período puede cubrir hasta 24 meses.")
+    return desde, hasta
+
+
+def _mes(n: int) -> str:
+    return f"{(n - 1) // 12:04d}-{(n - 1) % 12 + 1:02d}"
+
+
+def periodo_normalizado(periodo: str) -> str:
+    """El período como se guarda: ``2026-11..2026-11`` es ``2026-11``."""
+    desde, hasta = rango_del_periodo(periodo)
+    return _mes(desde) if desde == hasta else f"{_mes(desde)}..{_mes(hasta)}"
+
+
+def meses_del_periodo(periodo: str) -> int:
+    """``2026-11`` → 1; ``2026-11..2027-01`` → 3. Levanta ``DatoInvalido``."""
+    desde, hasta = rango_del_periodo(periodo)
     return hasta - desde + 1
 
 
@@ -272,6 +387,7 @@ def mover_estado(
     *,
     solo_mejorar: bool = False,
     mejorar_sobre_una_persona: bool = False,
+    solo_a_activo: bool = False,
     de_la_suscripcion: int | None = None,
     hoy: date | None = None,
     ensayo: bool = False,
@@ -289,8 +405,14 @@ def mover_estado(
     misma transacción que escribe** y con la suscripción y el estado tomados con
     ``FOR UPDATE`` en Postgres. Si entre que alguien decidió levantar y esto
     corre entró otra factura o un pago, cuenta con lo de ahora, no con lo de
-    antes. Un cliente sin suscripción no se mueve (exento), y tampoco uno cuya
-    suscripción ya no es ``de_la_suscripcion`` (el slug lo tomó otro cliente).
+    antes. Para una suscripción automática el cálculo lee también los avisos
+    formales que salieron (``avisos_formales``): sin aviso entregado no hay
+    sólo lectura. Un cliente sin suscripción no se mueve (exento), tampoco el
+    de la base principal (Galerías, exento aunque alguien le hubiera cargado
+    una), ni uno cuya suscripción ya no es ``de_la_suscripcion`` (el slug lo
+    tomó otro cliente). Con ``solo_a_activo`` (levantar tras un pago) se mueve
+    sólo si lo que corresponde es ``activo``: un abono que no deja al día no
+    baja nada.
 
     Las reglas de máquina (``actor`` que empieza con ``sistema:``): nunca
     empeora un estado puesto por una persona; lo mejora sólo con
@@ -300,8 +422,8 @@ def mover_estado(
 
     Devuelve la fila como quedó (``slug``, ``estado``, ``motivo``,
     ``cambiado_en``, ``cambiado_por``) más ``movido``, ``de`` y ``razon`` (por
-    qué no se movió: ``exento`` · ``otra_suscripcion`` · ``no_mejora`` ·
-    ``sin_cambio`` · ``lo_puso_una_persona``). Levanta ``DatoInvalido`` (estado
+    qué no se movió: ``exento`` · ``otra_suscripcion`` · ``no_queda_al_dia`` ·
+    ``no_mejora`` · ``sin_cambio`` · ``lo_puso_una_persona``). Levanta ``DatoInvalido`` (estado
     o motivo) y ``NoEncontrado`` (el cliente no existe).
 
     Con ``ensayo`` (la escalera de C2 con ``COBRANZA_AUTOMATICA`` apagado, y
@@ -310,7 +432,7 @@ def mover_estado(
     nada: devuelve lo que habría quedado, con ``ensayo: True``. Que el ensayo y
     lo real pasen por el mismo código es lo que hace que el ensayo valga.
     """
-    from app.clientes import sesion_registro
+    from app.clientes import es_el_de_siempre, sesion_registro
     from app.models.cobro import CambioEstadoCuenta, FacturaCobro, Suscripcion
     from app.models.models import ClienteRow
     from app.models.plataforma import EstadoCliente
@@ -337,7 +459,8 @@ def mover_estado(
     for intento in (1, 2):
         reg = sesion_registro()
         try:
-            if reg.query(ClienteRow.slug).filter(ClienteRow.slug == slug).first() is None:
+            cliente = reg.query(ClienteRow).filter(ClienteRow.slug == slug).first()
+            if cliente is None:
                 raise NoEncontrado(CLIENTE_DESCONOCIDO)
             sus = (
                 reg.query(Suscripcion).filter(Suscripcion.cliente_slug == slug)
@@ -351,12 +474,15 @@ def mover_estado(
 
             nuevo, texto = estado, motivo
             if calcular:
-                if sus is None:
+                if sus is None or es_el_de_siempre(cliente):
                     return _fila_estado(slug, fila, movido=False, de=antes, razon="exento")
                 if de_la_suscripcion is not None and sus.id != de_la_suscripcion:
                     return _fila_estado(slug, fila, movido=False, de=antes, razon="otra_suscripcion")
                 facturas = reg.query(FacturaCobro).filter(FacturaCobro.suscripcion_id == sus.id).all()
-                nuevo = estado_objetivo(sus, facturas, dia)
+                avisos = avisos_formales(reg, sus, facturas, dia) if sus.modo == "automatico" else None
+                nuevo = estado_objetivo(sus, facturas, dia, avisos)
+                if solo_a_activo and nuevo != "activo":
+                    return _fila_estado(slug, fila, movido=False, de=antes, razon="no_queda_al_dia")
                 texto = (motivo or "").strip() or motivo_del_sistema(nuevo, facturas, dia)
 
             razon = _por_que_no_se_mueve(
@@ -404,12 +530,15 @@ def mover_estado(
 
 
 def levantar_si_corresponde(slug: str, *, de_la_suscripcion: int | None = None, hoy: date | None = None) -> dict:
-    """Después de un pago, si la operadora lo pidió: el estado baja a lo que
-    corresponde —``activo`` si quedó al día— y nunca sube. Lo firma
-    ``sistema:cobranza``, de modo que la escalera de C2 lo reconozca como suyo."""
+    """Después de un pago, si la operadora lo pidió: si el cliente quedó AL DÍA,
+    el estado vuelve a ``activo``; si no, no se toca (``no_queda_al_dia``). Es
+    lo que dice la casilla —«si con este pago queda al día»—: un abono parcial
+    no convierte la suspensión que puso ella en un sólo lectura del sistema
+    (revisión de C2). Nunca sube. Lo firma ``sistema:cobranza``, de modo que la
+    escalera de C2 lo reconozca como suyo."""
     return mover_estado(
         slug, EL_QUE_CORRESPONDE, None, ACTOR_SISTEMA,
-        solo_mejorar=True, mejorar_sobre_una_persona=True,
+        solo_mejorar=True, mejorar_sobre_una_persona=True, solo_a_activo=True,
         de_la_suscripcion=de_la_suscripcion, hoy=hoy,
     )
 
@@ -597,9 +726,15 @@ def cartera(hoy: date | None = None) -> dict:
                     (p, f) for f in propias for p in pagos_por_factura.get(f.id, []) if p.estado == "aprobado"
                 ]
                 ultimo = max(pagos, key=lambda pf: (pf[0].recibido_el, pf[0].id), default=None)
+                # Lo mismo que aplicaría la escalera: para una automática, sin
+                # aviso formal entregado no corresponde sólo lectura. Galerías
+                # no tiene «correspondería»: nada del sistema la mueve.
+                avisos = avisos_formales(reg, s, propias, dia) if s.modo == "automatico" else None
                 fila.update({
                     "suscripcion": _suscripcion_dict(s),
-                    "estado_correspondiente": estado_objetivo(s, propias, dia),
+                    "estado_correspondiente": (
+                        None if es_el_de_siempre(c) else estado_objetivo(s, propias, dia, avisos)
+                    ),
                     "dias_atraso": dias_de_atraso(propias, dia),
                     "saldo_pendiente_cop": sum(dicts[f.id]["saldo_cop"] for f in impagas),
                     "proxima_factura": dicts[impagas[0].id] if impagas else None,
@@ -627,9 +762,15 @@ def guardar_suscripcion(slug: str, datos: dict, actor: str) -> dict:
     que no viene vuelve a su valor por defecto, como en un PUT.
 
     Pasar a automático exige ``contrato_ref`` (422): es la base para restringir
-    una cuenta, y sin ella la escalera no tiene de dónde agarrarse. El cliente
-    de la base principal no pasa nunca a automático (409): la dueña lo dejó
-    fuera de la cobranza automática."""
+    una cuenta, y sin ella la escalera no tiene de dónde agarrarse.
+    ``dia_solo_lectura`` va de 30 a 365: la dueña decidió «sólo lectura a los
+    30 días»; se puede dar más aire, no menos (422).
+
+    El cliente de la base principal (Galerías) no pasa nunca a automático
+    (409): la dueña lo dejó EXENTO de la cobranza automática. Manual sí, para
+    que sus cuentas de cobro se vean en la cartera; pero ningún camino del
+    sistema le mueve el estado —ni la escalera ni el «levantar» de un pago— y la
+    cartera no le calcula «correspondería» (``mover_estado`` y ``cartera``)."""
     from app.clientes import es_el_de_siempre, sesion_registro
     from app.models.cobro import MODOS_COBRO, UNIDADES_COBRO, Suscripcion
     from app.models.models import ClienteRow
@@ -648,7 +789,10 @@ def guardar_suscripcion(slug: str, datos: dict, actor: str) -> dict:
         "cantidad": _entero(datos.get("cantidad", 1), 1, 10_000, "La cantidad"),
         "periodicidad_meses": _entero(datos.get("periodicidad_meses", 1), 1, 12, "La periodicidad"),
         "plazo_pago_dias": _entero(datos.get("plazo_pago_dias", 30), 0, 180, "El plazo de pago"),
-        "dia_solo_lectura": _entero(datos.get("dia_solo_lectura", 30), 1, 365, "El día de sólo lectura"),
+        "dia_solo_lectura": _entero(
+            datos.get("dia_solo_lectura", DIA_SOLO_LECTURA_MINIMO), DIA_SOLO_LECTURA_MINIMO, 365,
+            "El día de sólo lectura",
+        ),
         "prorroga_hasta": datos.get("prorroga_hasta"),
         "contrato_ref": _texto(datos.get("contrato_ref"), 200, "La referencia del contrato"),
         **facturacion,
@@ -701,14 +845,22 @@ def emitir_factura(slug: str, datos: dict, actor: str, *, hoy: date | None = Non
     vencimiento, si no viene, es la emisión más el plazo de pago. Las
     retenciones estimadas y el neto salen de los porcentajes de la suscripción.
     Nombre y NIT se COPIAN a la factura: es la constancia de a quién se le cobró.
+
+    Un mes se cobra una sola vez: ninguna cuenta de cobro viva de la misma
+    suscripción puede cubrir un mes de éste (409). Antes se comparaba el texto
+    del período, y «2026-11», «2026-11..2026-12» y «2026-11..2026-11» entraban
+    las tres (revisión de C2). El período se guarda normalizado
+    (``2026-11..2026-11`` → ``2026-11``), y el subtotal —escrito o calculado—
+    no pasa de ``TOPE_COP`` (422).
     """
     from app.clientes import sesion_registro
     from app.models.cobro import FacturaCobro, Suscripcion
     from app.models.models import ClienteRow
 
     dia = hoy or hoy_en_colombia()
-    periodo = (datos.get("periodo") or "").strip()
-    meses = meses_del_periodo(periodo)
+    periodo = periodo_normalizado(datos.get("periodo") or "")
+    desde, hasta = rango_del_periodo(periodo)
+    meses = hasta - desde + 1
     numero = _texto(datos.get("numero"), 40, "El número")
     if numero is None:
         raise DatoInvalido("El número de la cuenta de cobro es obligatorio.")
@@ -730,8 +882,13 @@ def emitir_factura(slug: str, datos: dict, actor: str, *, hoy: date | None = Non
             )
         if datos.get("subtotal_cop") is None:
             subtotal = sus.valor_cop * sus.cantidad * meses
+            if subtotal > TOPE_COP:
+                raise DatoInvalido(
+                    f"Lo pactado por {meses} meses da {_miles(subtotal)} pesos: pasa el tope de "
+                    f"{_miles(TOPE_COP)} de una cuenta de cobro. Partila en períodos más cortos."
+                )
         else:
-            subtotal = _entero(datos.get("subtotal_cop"), 0, 10_000_000_000, "El subtotal")
+            subtotal = _entero(datos.get("subtotal_cop"), 0, TOPE_COP, "El subtotal")
         total = subtotal + iva
         if total <= 0:
             raise DatoInvalido("Una cuenta de cobro por cero pesos no se registra.")
@@ -739,20 +896,23 @@ def emitir_factura(slug: str, datos: dict, actor: str, *, hoy: date | None = Non
         if vence_el < emitida_el:
             raise DatoInvalido("La cuenta de cobro no puede vencer antes de emitirse.")
 
-        viva = (
+        vivas = (
             reg.query(FacturaCobro)
-            .filter(
-                FacturaCobro.suscripcion_id == sus.id,
-                FacturaCobro.periodo == periodo,
-                FacturaCobro.estado != "anulada",
-            )
-            .first()
+            .filter(FacturaCobro.suscripcion_id == sus.id, FacturaCobro.estado != "anulada")
+            .order_by(FacturaCobro.id)
+            .all()
         )
-        if viva is not None:
-            raise Conflicto(
-                f"Ya hay una cuenta de cobro de {periodo} para este cliente ({viva.numero}). "
-                "Si salió mal, anulala primero."
-            )
+        for viva in vivas:
+            try:
+                otra_desde, otra_hasta = rango_del_periodo(viva.periodo)
+            except DatoInvalido:
+                continue
+            if otra_desde <= hasta and desde <= otra_hasta:
+                raise Conflicto(
+                    f"Ya hay una cuenta de cobro viva que cubre meses de {periodo} para este cliente "
+                    f"({viva.numero}, {viva.periodo}): un mes se cobra una sola vez. Si salió mal, "
+                    "anulala primero."
+                )
         if reg.query(FacturaCobro.id).filter(FacturaCobro.numero == numero).first() is not None:
             raise Conflicto(f"El número {numero} ya está usado: los números no se repiten, ni los de una anulada.")
 
@@ -799,9 +959,9 @@ def registrar_pago(factura_id: int, datos: dict, actor: str, *, hoy: date | None
     transferencia puede pagar varias cuentas de cobro, una parte en cada una).
 
     Si con esto la factura queda saldada, pasa a ``pagada``. Y si la operadora
-    marcó ``levantar_estado``, el estado de cuenta baja a lo que corresponde
-    —``activo`` si quedó al día— firmado por ``sistema:cobranza``; si no, el
-    estado no se toca.
+    marcó ``levantar_estado`` y el cliente quedó al día, el estado de cuenta
+    vuelve a ``activo`` firmado por ``sistema:cobranza``; si no quedó al día, o
+    no lo marcó, el estado no se toca.
     """
     from app.clientes import sesion_registro
     from app.models.cobro import MEDIOS_PAGO, FacturaCobro, PagoCobro
@@ -810,10 +970,10 @@ def registrar_pago(factura_id: int, datos: dict, actor: str, *, hoy: date | None
     medio = (datos.get("medio") or "transferencia").strip().lower()
     if medio not in MEDIOS_PAGO:
         raise DatoInvalido(f"Medio inválido: debe ser uno de {', '.join(MEDIOS_PAGO)}.")
-    recibido = _entero(datos.get("valor_recibido_cop"), 0, 10_000_000_000, "El valor recibido")
-    retefuente = _entero(datos.get("retefuente_cop") or 0, 0, 10_000_000_000, "La retefuente")
-    reteica = _entero(datos.get("reteica_cop") or 0, 0, 10_000_000_000, "La reteICA")
-    reteiva = _entero(datos.get("reteiva_cop") or 0, 0, 10_000_000_000, "La reteIVA")
+    recibido = _entero(datos.get("valor_recibido_cop"), 0, TOPE_COP, "El valor recibido")
+    retefuente = _entero(datos.get("retefuente_cop") or 0, 0, TOPE_COP, "La retefuente")
+    reteica = _entero(datos.get("reteica_cop") or 0, 0, TOPE_COP, "La reteICA")
+    reteiva = _entero(datos.get("reteiva_cop") or 0, 0, TOPE_COP, "La reteIVA")
     if recibido + retefuente + reteica + reteiva <= 0:
         raise DatoInvalido("Un pago por cero pesos no se registra.")
     ref = _texto(datos.get("ref_externa"), 120, "La referencia")
@@ -997,20 +1157,25 @@ def mi_suscripcion(slug: str, *, hoy: date | None = None) -> dict:
     · ``estado``: el de su cuenta, con el motivo (es la dueña: le corresponde).
     · ``suscripcion``: lo pactado y sus datos de facturación (``None`` si el
       cliente no tiene suscripción: está exento, no hay nada que pagar).
-    · ``proxima_factura``: la impaga que vence primero, con total, retenciones
-      estimadas y neto; y, si su cobro es automático, desde qué día la cuenta
-      pasaría a sólo lectura si sigue impaga.
+    · ``proxima_factura``: la impaga sin disputa que vence primero (la que
+      cuenta para el atraso; si todas están en disputa, la que vence primero),
+      con total, retenciones estimadas y neto; y, si su cobro es automático y
+      la escalera está prendida, desde qué día la cuenta pasaría a sólo
+      lectura si sigue impaga (corrida si el aviso formal todavía no salió).
     · ``facturas``, ``pagos`` y ``cambios``: el último año.
     · ``instrucciones_transferencia``: el texto de
       ``COBRO_INSTRUCCIONES_TRANSFERENCIA`` (los datos bancarios viven en el
-      entorno, nunca en el repo), o ``None`` si no está configurado.
+      entorno, nunca en el repo), o ``None`` si no está configurado. **Sólo
+      con suscripción**: el alta es self-service, y sin esto cualquiera que
+      fundara un supermercado se llevaba la cuenta bancaria de RECABRA con dos
+      pedidos (revisión de C2).
     """
     from sqlalchemy import or_
 
     from app.clientes import sesion_registro
     from app.models.cobro import CambioEstadoCuenta, FacturaCobro, PagoCobro, Suscripcion
     from app.models.plataforma import EstadoCliente
-    from app.services.cobranza_automatica import fecha_de_solo_lectura, instrucciones_de_transferencia
+    from app.services.cobranza_automatica import automatica_prendida, instrucciones_de_transferencia
 
     dia = hoy or hoy_en_colombia()
     slug = (slug or "").strip().lower()
@@ -1053,10 +1218,11 @@ def mi_suscripcion(slug: str, *, hoy: date | None = None) -> dict:
                 {"en": c.en, "de": c.de, "a": c.a, "motivo": c.motivo, "por": _quien_para_la_duena(c.actor)}
                 for c in cambios
             ],
-            "instrucciones_transferencia": instrucciones_de_transferencia(),
+            "instrucciones_transferencia": None,
         }
         if sus is None:
             return cuerpo
+        cuerpo["instrucciones_transferencia"] = instrucciones_de_transferencia()
 
         cuerpo["suscripcion"] = {
             clave: getattr(sus, clave)
@@ -1070,13 +1236,19 @@ def mi_suscripcion(slug: str, *, hoy: date | None = None) -> dict:
         cuerpo["facturas"] = [
             _factura_para_la_duena(f, pagos_por_factura[f.id], dia) for f in recientes[:HISTORIAL_DE_LA_DUENA]
         ]
-        impagas = sorted((f for f in facturas if f.estado == "emitida"), key=lambda f: (f.vence_el, f.id))
+        # La próxima es la que cuenta para el atraso: la impaga SIN disputa que
+        # vence primero. Si la más vieja está en disputa y otra no, mostrar la
+        # discutida escondía que la otra la va a dejar en sólo lectura.
+        impagas = sorted(
+            (f for f in facturas if f.estado == "emitida"), key=lambda f: (f.en_disputa, f.vence_el, f.id),
+        )
         if impagas:
-            proxima = _factura_para_la_duena(impagas[0], pagos_por_factura[impagas[0].id], dia)
-            proxima["solo_lectura_desde"] = (
-                fecha_de_solo_lectura(sus, impagas[0])
-                if sus.modo == "automatico" and not impagas[0].en_disputa else None
-            )
+            primera = impagas[0]
+            proxima = _factura_para_la_duena(primera, pagos_por_factura[primera.id], dia)
+            proxima["solo_lectura_desde"] = None
+            if sus.modo == "automatico" and automatica_prendida() and not primera.en_disputa:
+                avisada = avisos_formales(reg, sus, facturas, dia).get(primera.id)
+                proxima["solo_lectura_desde"] = fecha_de_solo_lectura(sus, primera, avisada or dia)
             cuerpo["proxima_factura"] = proxima
         numeros = {f.id: f.numero for f in facturas}
         pagos = sorted(

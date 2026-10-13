@@ -19,6 +19,15 @@ RECABRA le cobra a un cliente no vive en la base de ese cliente.
   ``d ≥ dia_solo_lectura`` sólo lectura. «Vencida» es ``vence_el < hoy`` con
   el hoy de Colombia: el día del vencimiento todavía está a tiempo. Con una
   prórroga vigente no pasa de gracia.
+· **Sin aviso formal entregado no hay sólo lectura** (revisión de C2, hallazgo
+  alto). El paso a sólo lectura exige que el correo ``aviso_solo_lectura`` de
+  esa cuenta de cobro haya SALIDO hace ``DIAS_AVISO_SOLO_LECTURA`` días o más
+  (su fila en ``avisos_cobro``, que sólo queda si el envío salió). Si no salió
+  a tiempo —el interruptor se prendió con una deuda vieja, la cuenta de cobro
+  se cargó tarde, el servicio estuvo dormido, el correo está caído o no hay a
+  quién escribirle—, la cuenta se queda en gracia, el aviso sale apenas se
+  pueda con la fecha corrida (hoy + 10) y el resumen del log lo dice. Antes,
+  todos esos casos pasaban derecho a sólo lectura sin un solo aviso.
 · **Nunca suspendido.** Suspender lo decide la operadora con el PATCH de
   siempre.
 · **Al empeorar, nunca pisa a una persona**: un estado que no es «activo» y
@@ -47,10 +56,10 @@ factura y hito):
 ``por_vencer``        desde 5 días antes del vencimiento hasta el día mismo
 ``vencida``           desde el día siguiente al vencimiento (``d = 1``)
 ``mas_7``             desde ``d = 8``
-``aviso_solo_lectura``10 días antes del día de sólo lectura (si esa fecha cae
-                      después del primer día de atraso; si no, el de
-                      ``vencida`` ya la dice)
-``solo_lectura``      el día que la cuenta queda de verdad en sólo lectura
+``aviso_solo_lectura``10 días antes del día de sólo lectura, o apenas se
+                      pueda si ya pasó esa fecha (y entonces el corte se corre)
+``solo_lectura``      el día que la cuenta queda de verdad en sólo lectura,
+                      una vez por corte (no uno por cada cuenta de cobro)
 ``pago_recibido``     la constancia, cuando la cuenta de cobro queda pagada
 ====================  ========================================================
 
@@ -59,7 +68,14 @@ manda sólo el hito que le corresponde HOY a cada cuenta de cobro —la que
 despierta 20 días tarde manda uno, no los tres atrasados— y nunca uno
 anterior a otro que ya salió. ``aviso_solo_lectura`` y ``solo_lectura`` no
 salen si un estado puesto por una persona frena la escalera (serían
-mentira), y ``solo_lectura`` sólo sale si la cuenta quedó de verdad así.
+mentira), ``solo_lectura`` sólo sale si la cuenta quedó de verdad así, y con la
+cuenta YA en sólo lectura ningún correo anuncia un corte futuro.
+
+Un correo por destinatario: el correo de facturación puede ser el de un
+contador de afuera, y no tiene por qué ver el correo personal de las dueñas. Y
+el correo de facturación que es de alguien de su gente (admin no dueña,
+worker) no recibe nada: la plata es sólo para la dueña. Después de un abono,
+el correo dice lo abonado y lo que falta, no el neto entero.
 
 ── El interruptor ────────────────────────────────────────────────────────────
 
@@ -86,6 +102,14 @@ from sqlalchemy.exc import IntegrityError
 
 from app.fechas import hoy as hoy_en_colombia
 from app.models.cobro import HITO_PAGO_RECIBIDO, HITOS_DE_ATRASO
+# La fecha de sólo lectura y el aviso formal viven con `estado_objetivo`: la
+# escalera y el estado tienen que contar igual.
+from app.services.cobranza import (  # noqa: F401  (se re-exportan)
+    DIAS_AVISO_SOLO_LECTURA,
+    abonado,
+    dia_del_aviso_formal,
+    fecha_de_solo_lectura,
+)
 
 log = logging.getLogger("recabra.cobranza_automatica")
 
@@ -98,8 +122,6 @@ VARIABLE_INSTRUCCIONES = "COBRO_INSTRUCCIONES_TRANSFERENCIA"
 
 #: Desde cuántos días antes del vencimiento sale el recordatorio.
 DIAS_POR_VENCER = 5
-#: Cuántos días antes del día de sólo lectura sale el aviso formal.
-DIAS_AVISO_SOLO_LECTURA = 10
 #: El atraso desde el que sale el segundo aviso.
 DIA_MAS_7 = 8
 #: Hasta cuántos días después de registrado el pago sale su constancia. Que no
@@ -128,21 +150,15 @@ def instrucciones_de_transferencia() -> Optional[str]:
 # Las cuentas puras
 # ════════════════════════════════════════════════════════════════════════════
 
-def fecha_de_solo_lectura(suscripcion, factura) -> date:
-    """El día en que esa cuenta de cobro, impaga, pone la cuenta en sólo
-    lectura: ``dia_solo_lectura`` días después del vencimiento, o el día
-    siguiente al fin de la prórroga si termina después. Es la misma cuenta que
-    ``cobranza.estado_objetivo``, dicha como fecha."""
-    dia = factura.vence_el + timedelta(days=suscripcion.dia_solo_lectura)
-    prorroga = suscripcion.prorroga_hasta
-    if prorroga is not None and prorroga >= dia:
-        dia = prorroga + timedelta(days=1)
-    return dia
-
-
-def hito_de_atraso(suscripcion, factura, hoy: date) -> Optional[str]:
+def hito_de_atraso(suscripcion, factura, hoy: date, avisada_el: Optional[date] = None) -> Optional[str]:
     """El correo que le corresponde HOY a una cuenta de cobro, o ``None``.
-    PURA. Sólo una emitida y sin disputa tiene hito de atraso."""
+    PURA. Sólo una emitida y sin disputa tiene hito de atraso.
+
+    ``avisada_el`` es el día en que salió su aviso formal (``None`` si no
+    salió). Sin aviso, desde el día que le toca —diez antes de la fecha de
+    sólo lectura— lo que corresponde es el aviso, por más atrasada que esté: el
+    corte nunca llega sin él. Con aviso, nada hasta el corte, que es
+    ``DIAS_AVISO_SOLO_LECTURA`` días después de que salió como mínimo."""
     if factura.estado != "emitida" or factura.en_disputa or factura.vence_el is None:
         return None
     atraso = (hoy - factura.vence_el).days
@@ -150,14 +166,9 @@ def hito_de_atraso(suscripcion, factura, hoy: date) -> Optional[str]:
         return None
     if atraso <= 0:
         return "por_vencer"
-    solo_lectura = fecha_de_solo_lectura(suscripcion, factura)
-    if hoy >= solo_lectura:
-        return "solo_lectura"
-    aviso = solo_lectura - timedelta(days=DIAS_AVISO_SOLO_LECTURA)
-    # Si el aviso cayera antes del primer día de atraso, el de «vencida» ya
-    # dice la fecha de sólo lectura: un aviso formal no puede llegar antes que
-    # el aviso de que venció.
-    if aviso > factura.vence_el + timedelta(days=1) and hoy >= aviso:
+    if avisada_el is not None:
+        return "solo_lectura" if hoy >= fecha_de_solo_lectura(suscripcion, factura, avisada_el) else None
+    if hoy >= dia_del_aviso_formal(suscripcion, factura):
         return "aviso_solo_lectura"
     if atraso >= DIA_MAS_7:
         return "mas_7"
@@ -263,6 +274,14 @@ class Plan:
         sin_destino = [p.slug for p, c in correos if c.destinatarios == 0]
         if sin_destino:
             partes.append("sin a quién escribir: " + ", ".join(sorted(set(sin_destino))))
+        # Sin el aviso formal entregado la cuenta no pasa a sólo lectura: que
+        # el log lo diga, para que nadie lea «gracia» como «todavía no toca».
+        sin_aviso = [p.slug for p, c in correos if c.hito == "aviso_solo_lectura" and c.enviado is False]
+        if sin_aviso:
+            partes.append(
+                "sin aviso formal entregado (no pasa a sólo lectura hasta que salga): "
+                + ", ".join(sorted(set(sin_aviso)))
+            )
         frenados = [p.slug for p in self.pasos if p.razon == "lo_puso_una_persona"]
         if frenados:
             partes.append("sin tocar (lo puso una persona): " + ", ".join(frenados))
@@ -317,22 +336,28 @@ def _suscripciones_automaticas(solo: Optional[int] = None) -> list[tuple[int, st
 
 def destinatarios(reg, suscripcion) -> list[str]:
     """Las dueñas con membresía activa del supermercado y el correo de
-    facturación. Nadie más."""
+    facturación. Nadie más.
+
+    El correo de facturación lo escriben la operadora o la dueña, y nada impedía
+    que fuera el de alguien de su gente: si es el de un miembro ACTIVO que no es
+    dueña (admin, worker…), no se le manda —la plata es sólo para la dueña—, y
+    la dueña lo recibe igual por su lado (revisión de C2)."""
     from app.models.identidad import Membresia, Usuario
     from app.services.mailer import clean_recipients
 
-    duenas = (
-        reg.query(Usuario.email)
+    miembros = (
+        reg.query(Usuario.email, Membresia.rol)
         .join(Membresia, Membresia.usuario_id == Usuario.id)
-        .filter(
-            Membresia.cliente_slug == suscripcion.cliente_slug,
-            Membresia.activo.is_(True),
-            Membresia.rol == "owner",
-        )
-        .order_by(Usuario.email)
+        .filter(Membresia.cliente_slug == suscripcion.cliente_slug, Membresia.activo.is_(True))
         .all()
     )
-    return clean_recipients([e for (e,) in duenas] + [suscripcion.correo_facturacion])
+    duenas = sorted(e for e, rol in miembros if e and rol == "owner")
+    su_gente = {e.strip().lower() for e, rol in miembros if e and rol != "owner"}
+    su_gente -= {d.strip().lower() for d in duenas}
+    facturacion = suscripcion.correo_facturacion
+    if facturacion and facturacion.strip().lower() in su_gente:
+        facturacion = None
+    return clean_recipients(duenas + [facturacion])
 
 
 def correr(
@@ -345,9 +370,10 @@ def correr(
     """Una pasada de la escalera. Devuelve el plan: lo hecho, o lo que se haría.
 
     ``ensayo=None`` hace lo que diga el interruptor; ``True`` nunca escribe ni
-    manda; ``False`` aplica. ``hoy`` sirve para ensayar el futuro («¿qué pasa el
-    15-nov?»): con una fecha futura sólo se puede ensayar, porque aplicar con el
-    reloj adelantado le cortaría a alguien una cuenta que hoy está a tiempo.
+    manda; ``False`` aplica. ``hoy`` sirve para ensayar otro día («¿qué pasa el
+    15-nov?»): con una fecha que no es hoy sólo se puede ensayar. Aplicar con el
+    reloj adelantado le cortaría a alguien una cuenta que hoy está a tiempo, y
+    con el reloj atrasado levantaría estados y mandaría avisos viejos.
     ``solo`` corre una sola suscripción (tras un pago). ``parar`` se mira entre
     suscripción y suscripción (el apagado de la app).
     """
@@ -355,10 +381,10 @@ def correr(
     dia = hoy or real
     if ensayo is None:
         ensayo = not automatica_prendida()
-    if not ensayo and dia > real:
+    if not ensayo and dia != real:
         raise ValueError(
-            f"Con una fecha futura ({dia.isoformat()}) sólo se puede ensayar: "
-            "aplicarla le cortaría a alguien una cuenta que hoy está a tiempo."
+            f"Con una fecha que no es hoy ({dia.isoformat()}) sólo se puede ensayar: aplicarla le "
+            "cortaría a alguien una cuenta que hoy está a tiempo, o le mandaría avisos viejos."
         )
     plan = Plan(hoy=dia, ensayo=ensayo)
     for suscripcion_id, slug, nombre in _suscripciones_automaticas(solo):
@@ -403,7 +429,7 @@ def _avisos(suscripcion_id: int, estado: dict, hoy: date, ensayo: bool) -> list[
     from app.clientes import sesion_registro
     from app.models.cobro import AvisoCobro, FacturaCobro, PagoCobro, Suscripcion
     from app.models.models import ClienteRow
-    from app.services.cobranza import es_del_sistema
+    from app.services.cobranza import avisos_formales, es_del_sistema
 
     reg = sesion_registro()
     try:
@@ -423,6 +449,8 @@ def _avisos(suscripcion_id: int, estado: dict, hoy: date, ensayo: bool) -> list[
                 ya[a.factura_id].add(a.hito)
             for p in reg.query(PagoCobro).filter(PagoCobro.factura_id.in_(ids)).all():
                 pagos[p.factura_id].append(p)
+        # Los mismos avisos formales con los que `mover_estado` decidió el estado.
+        avisadas = avisos_formales(reg, sus, facturas, hoy)
         para = destinatarios(reg, sus)
         reg.expunge_all()  # se leen después de cerrar la sesión
     finally:
@@ -434,22 +462,32 @@ def _avisos(suscripcion_id: int, estado: dict, hoy: date, ensayo: bool) -> list[
         bool(estado.get("cambiado_por")) and not es_del_sistema(estado["cambiado_por"])
         and estado["estado"] != "activo"
     )
+    # Con la cuenta YA en sólo lectura, ningún correo anuncia un corte que ya
+    # pasó, y el corte se avisa una vez, no una por cuenta de cobro: si alguna
+    # impaga ya llevó el «está en sólo lectura», éste es el mismo corte.
+    cortada = estado["estado"] == "solo_lectura"
+    anunciado = any("solo_lectura" in ya[f.id] for f in facturas if f.estado == "emitida")
     hace_poco = datetime.now(timezone.utc) - timedelta(days=DIAS_CONSTANCIA_DE_PAGO)
 
     pendientes: list[tuple] = []
     for f in facturas:
-        hito = hito_de_atraso(sus, f, hoy)
-        if hito is not None:
-            if hito == "aviso_solo_lectura" and frenada:
-                hito = None
-            elif hito == "solo_lectura" and estado["estado"] != "solo_lectura":
-                hito = None
+        hito = hito_de_atraso(sus, f, hoy, avisadas.get(f.id))
+        if hito == "aviso_solo_lectura" and frenada:
+            hito = None
+        elif hito == "aviso_solo_lectura" and cortada:
+            # El corte ya pasó: en vez de anunciarlo, el recordatorio de
+            # siempre, que dice que la cuenta ya está en sólo lectura.
+            hito = "mas_7" if (hoy - f.vence_el).days >= DIA_MAS_7 else "vencida"
+        elif hito == "solo_lectura" and (not cortada or frenada or anunciado):
+            hito = None  # sólo el corte que hizo la escalera, y una vez
         if hito is not None:
             anteriores = [h for h in ya[f.id] if h in HITOS_DE_ATRASO]
             if anteriores and max(_orden(h) for h in anteriores) >= _orden(hito):
                 hito = None  # ya salió éste, u otro más adelante
         if hito is not None:
             pendientes.append((f, hito))
+            if hito == "solo_lectura":
+                anunciado = True
         if f.estado == "pagada" and HITO_PAGO_RECIBIDO not in ya[f.id]:
             registrados = [_como_utc(p.creado_en) for p in pagos[f.id] if p.estado == "aprobado"]
             if registrados and max(registrados) >= hace_poco:
@@ -466,18 +504,27 @@ def _avisos(suscripcion_id: int, estado: dict, hoy: date, ensayo: bool) -> list[
             continue
         if ensayo:
             continue
-        correo.enviado, correo.nota = _mandar(sus, f, hito, nombre, hoy, para, frenada=frenada)
+        correo.enviado, correo.nota = _mandar(
+            sus, f, hito, nombre, hoy, para,
+            frenada=frenada, cortada=cortada, abonado_cop=abonado(pagos[f.id]),
+        )
     return correos
 
 
 def _mandar(
-    sus, factura, hito: str, nombre: str, hoy: date, para: list[str], *, frenada: bool,
+    sus, factura, hito: str, nombre: str, hoy: date, para: list[str], *,
+    frenada: bool, cortada: bool = False, abonado_cop: int = 0,
 ) -> tuple[Optional[bool], Optional[str]]:
     """Reserva el (factura, hito), manda, y suelta la reserva si no salió.
 
     La reserva va PRIMERO: con dos pasadas a la vez, la segunda choca con el
     UNIQUE y no manda. Si el envío falla, la fila se borra y la pasada
-    siguiente lo vuelve a intentar."""
+    siguiente lo vuelve a intentar.
+
+    Un envío por destinatario, para que nadie vea el correo de otro (el de
+    facturación puede ser un contador de afuera). Con que a uno le haya
+    llegado, el aviso cuenta como dado y la reserva se queda: reintentar
+    repetiría el correo a quien ya lo recibió. El que no salió queda en el log."""
     from app.clientes import sesion_registro
     from app.models.cobro import AvisoCobro
     from app.services import mailer
@@ -494,8 +541,17 @@ def _mandar(
         except IntegrityError:
             reg.rollback()
             return None, "ya_mandado"
-        asunto, cuerpo = mensaje(hito, sus, factura, nombre, hoy, frenada=frenada)
-        if mailer.send_mail_to(para, asunto, cuerpo):
+        asunto, cuerpo = mensaje(
+            hito, sus, factura, nombre, hoy, frenada=frenada, cortada=cortada, abonado_cop=abonado_cop,
+        )
+        fallidos = [d for d in para if not mailer.send_mail_to([d], asunto, cuerpo)]
+        if len(fallidos) < len(para):
+            if fallidos:
+                log.warning(
+                    "El correo de cobranza %s de la cuenta de cobro %s (%s) no le llegó a %d de %d destinatarios",
+                    hito, factura.numero or factura.id, sus.cliente_slug, len(fallidos), len(para),
+                )
+                return True, "parcial"
             return True, None
         reg.delete(reserva)
         reg.commit()
@@ -523,16 +579,23 @@ def _pesos(n: int) -> str:
     return "$ " + f"{int(n):,}".replace(",", ".")
 
 
-def mensaje(hito: str, sus, factura, nombre: str, hoy: date, *, frenada: bool = False) -> tuple[str, str]:
+def mensaje(
+    hito: str, sus, factura, nombre: str, hoy: date, *,
+    frenada: bool = False, cortada: bool = False, avisada_el: Optional[date] = None, abonado_cop: int = 0,
+) -> tuple[str, str]:
     """``(asunto, html)`` del correo de ``hito``. Todo lo que viene de la base o
     del entorno se escapa: el nombre del supermercado y las instrucciones los
     escribe una persona. Con la escalera ``frenada`` por un estado que puso una
     persona, el correo no anuncia una fecha de sólo lectura que no va a llegar
-    sola."""
+    sola; con la cuenta ya ``cortada``, dice que ya está en sólo lectura en vez
+    de anunciarlo. La fecha de sólo lectura es la de verdad: si el aviso formal
+    no salió todavía, no antes de diez días desde hoy. Con un abono
+    (``abonado_cop``), dice lo abonado y lo que falta: pedir el neto entero a
+    quien ya pagó una parte es pedirle que pague dos veces."""
     from app.services.mailer import app_base_url, html_shell
 
     numero = factura.numero or f"#{factura.id}"
-    solo_lectura = fecha_de_solo_lectura(sus, factura)
+    solo_lectura = fecha_de_solo_lectura(sus, factura, avisada_el or hoy)
     atraso = (hoy - factura.vence_el).days
     asuntos = {
         "por_vencer": f"RECABRA · {nombre}: la cuenta de cobro {numero} vence el {_fecha(factura.vence_el)}",
@@ -550,17 +613,30 @@ def mensaje(hito: str, sus, factura, nombre: str, hoy: date, *, frenada: bool = 
     ]
     if hito == HITO_PAGO_RECIBIDO:
         filas.append(("Pagada el", _fecha(factura.pagada_el) if factura.pagada_el else "—"))
+    elif abonado_cop > 0:
+        filas += [
+            ("Abonado", _pesos(abonado_cop)),
+            ("Falta por pagar", _pesos(max(factura.total_cop - abonado_cop, 0))),
+            ("Vence", _fecha(factura.vence_el)),
+        ]
     else:
         filas += [
             ("Retenciones estimadas", _pesos(factura.retenciones_estimadas_cop)),
             ("Neto a pagar", _pesos(factura.neto_esperado_cop)),
             ("Vence", _fecha(factura.vence_el)),
         ]
-    despues = (
-        "" if frenada else
-        f" Si sigue impaga, desde el {_fecha(solo_lectura)} la cuenta queda en sólo lectura: "
-        "se puede ver y consultar todo, pero no guardar cambios."
-    )
+    if frenada:
+        despues = ""
+    elif cortada:
+        despues = (
+            " La cuenta ya está en sólo lectura: se puede ver y consultar todo, pero no guardar "
+            "cambios hasta ponerse al día."
+        )
+    else:
+        despues = (
+            f" Si sigue impaga, desde el {_fecha(solo_lectura)} la cuenta queda en sólo lectura: "
+            "se puede ver y consultar todo, pero no guardar cambios."
+        )
     textos = {
         "por_vencer": "Le recordamos que esta cuenta de cobro vence pronto.",
         "vencida": "Esta cuenta de cobro venció y no tenemos registrado el pago." + despues,

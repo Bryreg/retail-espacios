@@ -466,7 +466,10 @@ export default function Plataforma() {
 
   // ── Cobros (C1): la cartera de la suscripción ───────────────────────────
   // La comparten dos cajones: el de cobros y la columna «Modo» de los estados.
-  const cobros = useCartera(operador === "si", recarga);
+  // Se pide recién al abrir el cajón de cobros, y una vez: cada pedido deja una
+  // línea en el reporte de transparencia de todos los clientes (revisión de C2).
+  const [cobrosPedidos, setCobrosPedidos] = useState(false);
+  const cobros = useCartera(operador === "si" && cobrosPedidos, recarga);
   const modos = useMemo(() => mapaDeModos(cobros.cartera), [cobros.cartera]);
 
   // ── Estado de la pantalla ───────────────────────────────────────────────
@@ -882,8 +885,9 @@ export default function Plataforma() {
                     onAbrir={setEditandoEstado}
                     onGuardado={(slug, patch) => {
                       setClientes((prev) => (prev ? prev.map((x) => (x.slug === slug ? { ...x, ...patch } : x)) : prev));
-                      // El estado también se lee en la cartera de cobros.
-                      cobros.recargar();
+                      // El estado también se lee en la cartera de cobros: se copia,
+                      // no se vuelve a pedir (cada pedido deja línea en la bitácora).
+                      cobros.actualizarEstado(slug, { estado: patch.estado, cambiado_por: patch.cambiado_por });
                     }}
                     onBorrado={(slug) => setClientes((prev) => (prev ? prev.filter((x) => x.slug !== slug) : prev))}
                     onCicloCambiado={() => setRecarga((n) => n + 1)}
@@ -900,7 +904,12 @@ export default function Plataforma() {
                   </p>
                 </div>
               </details>
-              <details className="plat-cajon">
+              <details
+                className="plat-cajon"
+                onToggle={(e) => {
+                  if ((e.currentTarget as HTMLDetailsElement).open) setCobrosPedidos(true);
+                }}
+              >
                 <summary>
                   Cobros
                   <span className="cuenta">
@@ -924,9 +933,10 @@ export default function Plataforma() {
                     retuvo. Un cliente sin suscripción queda <b>exento</b>: no tiene deuda y nada lo mueve.
                   </p>
                   <p className="plat-nota">
-                    Nada de acá corta el servicio. El estado de cuenta se cambia en el cajón de arriba; lo único que
-                    hace el sistema solo es levantarlo, si se marca al registrar el pago, y lo firma{" "}
-                    <span className="cod">sistema:cobranza</span>.
+                    {cobros.cartera?.cobranza_automatica
+                      ? "La escalera automática está prendida: a las suscripciones automáticas las pasa sola a gracia y a sólo lectura (diez días después del aviso formal, como mínimo), y levanta sola lo que puso ella cuando se ponen al día. Nunca suspende ni toca lo que puso una persona."
+                      : "Los formularios de acá no cortan el servicio, y la escalera automática está apagada: sólo ensaya. El estado de cuenta se cambia en el cajón de arriba; el sistema sólo lo levanta si se marca al registrar un pago que deja al día."}{" "}
+                    Lo que hace el sistema lo firma <span className="cod">sistema:cobranza</span>.
                   </p>
                 </div>
               </details>

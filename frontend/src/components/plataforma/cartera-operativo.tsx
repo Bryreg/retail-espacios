@@ -121,6 +121,10 @@ function EditorEstado({
           aria-label={`Motivo del cambio de estado de ${fila.nombre}`}
         />
       </div>
+      <p className="plat-nota" style={{ margin: "0 0 var(--s2)" }}>
+        El motivo lo lee la dueña del supermercado en su suscripción: sin montos ni datos de la deuda que no
+        quieras que vea quien esté al lado de ella.
+      </p>
       <div className="linea">
         <button type="button" className="plat-btn mini fuerte" onClick={guardar} disabled={busy}>
           {busy ? "Guardando…" : "Confirmar"}

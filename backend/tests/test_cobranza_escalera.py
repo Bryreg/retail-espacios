@@ -11,8 +11,13 @@ Lo que la dueña decidió y estas pruebas fijan (2026-10-13):
 * **Sin suscripción, o con suscripción manual, nunca se mueve** (Galerías).
 * **Con ``COBRANZA_AUTOMATICA`` apagado sólo ensaya**: ni un estado, ni un
   correo, y una línea WARNING en el log con lo que haría.
-* **Correos sin duplicar y sólo a las dueñas y al correo de facturación**; el
-  servicio que despierta tarde se pone al día con UN correo, no con todos.
+* **Correos sin duplicar y sólo a las dueñas y al correo de facturación**, un
+  envío por destinatario; el servicio que despierta tarde se pone al día con UN
+  correo, no con todos.
+* **Sin aviso formal entregado no hay sólo lectura** (revisión de C2): la
+  cuenta pasa a sólo lectura diez días después de que SALIÓ el aviso formal,
+  como mínimo. Las pruebas de la revisión están en
+  ``test_cobranza_revision.py``.
 * **La dueña del supermercado** lee su suscripción aun suspendida (y nada más
   del negocio); su gente recibe 403 y el estado sin motivo.
 
@@ -201,6 +206,13 @@ def _hitos(correos):
     return [re.search(r":\s(.*)$", c.asunto).group(1) for c in correos.enviados]
 
 
+def _a_la_duena(correos):
+    """Los envíos que le llegaron a la dueña: uno por aviso. Desde la revisión
+    de C2 cada destinatario recibe su propio envío (la dueña y tesorería, dos
+    envíos del mismo aviso), así que contar ``correos.enviados`` cuenta doble."""
+    return [c for c in correos.enviados if DUENA in c.para]
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # Los tramos
 # ════════════════════════════════════════════════════════════════════════════
@@ -229,13 +241,13 @@ def test_cada_tramo_de_la_escalera_y_nunca_suspendido(client, escena, correos, p
         (100, "solo_lectura", None),
     ]
     for d, estado, hito in esperado:
-        antes = len(correos.enviados)
+        antes = len(_a_la_duena(correos))
         plan = _correr(vence + timedelta(days=d))
         assert plan.ensayo is False
         assert _estado()[0] == estado, (d, _estado())
         nuevos = [c for _p, c in plan.correos if c.enviado]
         assert [c.hito for c in nuevos] == ([hito] if hito else []), (d, [c.hito for c in nuevos])
-        assert len(correos.enviados) == antes + (1 if hito else 0), d
+        assert len(_a_la_duena(correos)) == antes + (1 if hito else 0), d
 
     estado, por, motivo = _estado()
     assert por == "sistema:cobranza"
@@ -276,17 +288,17 @@ def test_el_servicio_que_despierta_20_dias_tarde_se_pone_al_dia_con_un_correo(cl
 
     _correr(vence + timedelta(days=20))
     assert _estado()[0] == "gracia"
-    assert len(correos.enviados) == 1
-    assert "pasa a sólo lectura" in correos.enviados[0].asunto
+    assert len(_a_la_duena(correos)) == 1
+    assert "pasa a sólo lectura" in _a_la_duena(correos)[0].asunto
 
     _correr(vence + timedelta(days=20))
     _correr(vence + timedelta(days=25))
-    assert len(correos.enviados) == 1
+    assert len(_a_la_duena(correos)) == 1
 
     _correr(vence + timedelta(days=45))
     assert _estado()[0] == "solo_lectura"
-    assert len(correos.enviados) == 2
-    assert "está en sólo lectura" in correos.enviados[1].asunto
+    assert len(_a_la_duena(correos)) == 2
+    assert "está en sólo lectura" in _a_la_duena(correos)[1].asunto
 
 
 def test_la_prorroga_no_deja_pasar_de_gracia_y_corre_el_aviso(client, escena, correos, prendida):
@@ -318,13 +330,13 @@ def test_el_estado_que_puso_una_persona_no_se_toca_ni_para_arriba_ni_para_abajo(
 
     _patch(client, escena.operadora, "gracia", "Lo hablé con la dueña: paga el 30")
     _correr(vence + timedelta(days=3))
-    (vencida,) = correos.enviados
+    (vencida,) = _a_la_duena(correos)
     assert "está vencida" in vencida.asunto
     assert "sólo lectura" not in vencida.html  # no anuncia lo que la escalera no va a hacer
     _correr(vence + timedelta(days=20))  # el aviso formal tampoco
     _correr(vence + timedelta(days=40))
     assert _estado()[:2] == ("gracia", OPERADORA)
-    assert len(correos.enviados) == 1
+    assert len(_a_la_duena(correos)) == 1
 
     _patch(client, escena.operadora, "suspendido", "Suspendida por decisión de RECABRA")
     _correr()
@@ -338,15 +350,18 @@ def test_el_estado_que_puso_una_persona_no_se_toca_ni_para_arriba_ni_para_abajo(
 
 
 def test_un_pago_devuelve_a_activo_lo_que_puso_el_sistema_y_manda_la_constancia(client, escena, correos, prendida):
-    """La escalera la dejó en sólo lectura. La operadora registra el pago SIN
-    marcar «levantar»: con la escalera prendida, la de ESE cliente corre apenas
-    sale la respuesta, la cuenta vuelve a activo firmada por el sistema y sale
-    la constancia del pago, una sola vez."""
+    """La escalera la dejó en sólo lectura —con la cuenta de cobro vencida hace
+    35 días, primero el aviso formal y diez días después el corte—. La
+    operadora registra el pago SIN marcar «levantar»: con la escalera prendida,
+    la de ESE cliente corre apenas sale la respuesta, la cuenta vuelve a activo
+    firmada por el sistema y sale la constancia del pago, una sola vez."""
     from app.models.cobro import CambioEstadoCuenta
 
     _suscribir(client, escena.operadora)
     f = _emitir(client, escena.operadora, hoy_en_colombia() - timedelta(days=35))
     _correr()
+    assert _estado()[:2] == ("gracia", "sistema:cobranza")  # sin aviso entregado, todavía no
+    _correr(hoy_en_colombia() + timedelta(days=10))
     assert _estado()[:2] == ("solo_lectura", "sistema:cobranza")
     assert client.get("/api/auth/estado-cuenta", headers=escena.trabajador).json()["estado"] == "solo_lectura"
 
@@ -359,10 +374,14 @@ def test_un_pago_devuelve_a_activo_lo_que_puso_el_sistema_y_manda_la_constancia(
     assert client.get("/api/auth/estado-cuenta", headers=escena.trabajador).json()["estado"] == "activo"
     assert "recibimos el pago" in correos.enviados[-1].asunto
     _correr()
-    assert sum("recibimos el pago" in c.asunto for c in correos.enviados) == 1
+    assert sum("recibimos el pago" in c.asunto for c in _a_la_duena(correos)) == 1
 
     cambios = [(c.de, c.a, c.actor) for c in _filas(CambioEstadoCuenta, CambioEstadoCuenta.cliente_slug == "acme")]
-    assert cambios == [("activo", "solo_lectura", "sistema:cobranza"), ("solo_lectura", "activo", "sistema:cobranza")]
+    assert cambios == [
+        ("activo", "gracia", "sistema:cobranza"),
+        ("gracia", "solo_lectura", "sistema:cobranza"),
+        ("solo_lectura", "activo", "sistema:cobranza"),
+    ]
 
 
 def test_sin_suscripcion_o_con_suscripcion_manual_nunca_se_mueve(client, escena, correos, prendida):
@@ -379,10 +398,11 @@ def test_sin_suscripcion_o_con_suscripcion_manual_nunca_se_mueve(client, escena,
     assert _filas(EstadoCliente) == [] and _filas(CambioEstadoCuenta) == [] and _filas(AvisoCobro) == []
     assert correos.enviados == []
 
-    # Automática, pero archivada: tampoco.
-    _suscribir(client, escena.operadora)
+    # Automática, pero archivada: tampoco (ni la pasada, ni la que dispara
+    # guardar la suscripción).
     r = client.post("/api/plataforma/clientes/acme/archivar", json={"motivo": "pausa"}, headers=escena.operadora)
     assert r.status_code == 200, r.text
+    _suscribir(client, escena.operadora)
     assert _correr().pasos == []
     assert _filas(EstadoCliente, EstadoCliente.slug == "acme") == []
 
@@ -446,9 +466,10 @@ def test_los_correos_van_solo_a_las_duenas_y_a_facturacion_y_no_se_duplican(clie
     _emitir(client, escena.operadora, hoy_en_colombia() - timedelta(days=2))
     _correr()
     _correr()
-    assert len(correos.enviados) == 1
-    assert sorted(correos.enviados[0].para) == sorted([DUENA, TESORERIA])
-    assert ADMIN not in correos.enviados[0].para and TRABAJADOR not in correos.enviados[0].para
+    # Un envío por destinatario: tesorería (que puede ser un contador de
+    # afuera) no ve el correo de la dueña, ni la dueña el de tesorería.
+    assert sorted(c.para for c in correos.enviados) == [[DUENA], [TESORERIA]]
+    assert len({c.asunto for c in correos.enviados}) == 1
 
 
 def test_dos_pasadas_a_la_vez_mandan_un_solo_correo_y_no_se_pisan(client, escena, correos, prendida, monkeypatch):
@@ -458,8 +479,19 @@ def test_dos_pasadas_a_la_vez_mandan_un_solo_correo_y_no_se_pisan(client, escena
     nada. Y las dos leen «ningún aviso mandado» antes de que ninguna reserve
     (otra barrera): el correo sale una sola vez porque la reserva del hito va
     antes del envío, y la segunda choca con el UNIQUE."""
+    import os
+
     from app.models.cobro import CambioEstadoCuenta
     from app.services import cobranza, cobranza_automatica, mailer
+
+    # Sólo SQLite (revisión de C2). En Postgres el `FOR UPDATE` de la
+    # suscripción deja pasar a UN hilo hasta el commit: el otro espera el lock y
+    # nunca llega a la barrera con él —que es justamente lo que protege la
+    # carrera—, así que la barrera vence y la prueba fallaría por eso. Contra
+    # Postgres la carrera la cubrió a mano la revisión (escalera contra PATCH,
+    # dos pagos a la vez, escalera contra pago): ver docs/ESTADO.md.
+    if not os.environ.get("DATABASE_URL", "").startswith("sqlite"):
+        pytest.skip("la barrera de dos hilos sólo vale en SQLite: en Postgres el FOR UPDATE ya serializa")
 
     _suscribir(client, escena.operadora)
     _emitir(client, escena.operadora, hoy_en_colombia() - timedelta(days=2))
@@ -487,7 +519,7 @@ def test_dos_pasadas_a_la_vez_mandan_un_solo_correo_y_no_se_pisan(client, escena
 
     def despacio(para, asunto, html):
         time.sleep(0.3)
-        lento.append(asunto)
+        lento.append((tuple(para), asunto))
         return True
 
     monkeypatch.setattr(mailer, "send_mail_to", despacio)
@@ -498,7 +530,8 @@ def test_dos_pasadas_a_la_vez_mandan_un_solo_correo_y_no_se_pisan(client, escena
     for h in hilos:
         h.join(30)
     assert len(planes) == 2 and all(p.errores == [] for p in planes), [p.errores for p in planes]
-    assert len(lento) == 1, lento
+    # Una vez a cada uno: la dueña y tesorería, cada una con su envío.
+    assert sorted(para for para, _asunto in lento) == [(DUENA,), (TESORERIA,)], lento
     assert [(c.de, c.a) for c in _filas(CambioEstadoCuenta)] == [("activo", "gracia")]
     assert sum(1 for p in planes for paso in p.pasos if paso.movido) == 1
 
@@ -514,7 +547,7 @@ def test_un_correo_que_no_sale_se_reintenta_en_la_pasada_siguiente(client, escen
     assert _filas(AvisoCobro) == []
     correos.estado["ok"] = True
     _correr()
-    assert len(correos.enviados) == 2 and len(_filas(AvisoCobro)) == 1
+    assert len(_a_la_duena(correos)) == 2 and len(_filas(AvisoCobro)) == 1
 
 
 def test_un_cliente_sin_a_quien_escribir_no_rompe_la_pasada(client, escena, correos, prendida):
@@ -538,22 +571,26 @@ def test_un_cliente_sin_a_quien_escribir_no_rompe_la_pasada(client, escena, corr
 
 
 def test_hito_de_atraso_es_puro_y_respeta_el_orden(client):
+    """Sin aviso formal entregado, lo que toca desde el día 20 es el aviso —por
+    más atrasada que esté—, nunca el corte. Con el aviso salido el día 20, el
+    corte llega el 30; salido el 25, el 35: diez días después, como mínimo."""
     from app.services.cobranza_automatica import hito_de_atraso
 
     vence = date(2026, 11, 15)
     sus = SimpleNamespace(dia_solo_lectura=30, prorroga_hasta=None)
     f = SimpleNamespace(estado="emitida", en_disputa=False, vence_el=vence)
-    por_dia = {d: hito_de_atraso(sus, f, vence + timedelta(days=d)) for d in range(-7, 40)}
+    por_dia = {d: hito_de_atraso(sus, f, vence + timedelta(days=d)) for d in range(-7, 60)}
     assert por_dia[-6] is None and por_dia[-5] == "por_vencer" and por_dia[0] == "por_vencer"
     assert por_dia[1] == por_dia[7] == "vencida"
     assert por_dia[8] == por_dia[19] == "mas_7"
-    assert por_dia[20] == por_dia[29] == "aviso_solo_lectura"
-    assert por_dia[30] == por_dia[39] == "solo_lectura"
-    # Con sólo lectura temprano, el aviso formal no llega antes que el de vencida.
-    corta = SimpleNamespace(dia_solo_lectura=10, prorroga_hasta=None)
-    assert [hito_de_atraso(corta, f, vence + timedelta(days=d)) for d in (1, 9, 10)] == [
-        "vencida", "mas_7", "solo_lectura",
-    ]
+    assert por_dia[20] == por_dia[29] == por_dia[59] == "aviso_solo_lectura"
+    assert "solo_lectura" not in por_dia.values()
+
+    def con_aviso(dia_del_aviso, d):
+        return hito_de_atraso(sus, f, vence + timedelta(days=d), vence + timedelta(days=dia_del_aviso))
+
+    assert [con_aviso(20, d) for d in (20, 29, 30, 45)] == [None, None, "solo_lectura", "solo_lectura"]
+    assert [con_aviso(25, d) for d in (30, 34, 35)] == [None, None, "solo_lectura"]
     for otra in (SimpleNamespace(estado="pagada", en_disputa=False, vence_el=vence),
                  SimpleNamespace(estado="emitida", en_disputa=True, vence_el=vence)):
         assert hito_de_atraso(sus, otra, vence + timedelta(days=40)) is None

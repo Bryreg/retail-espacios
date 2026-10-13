@@ -302,4 +302,59 @@ prueba("«Suscripción» en Configuración tiene el filtro de la copia de seguri
   assert.ok(/<SuscripcionSection /.test(dashboard), "«Suscripción» no está montada en Configuración");
 });
 
+// ─── La revisión de C2: el motivo, «duena» y el reloj ───────────────────────
+
+prueba("la franja y la pantalla de bloqueo no pintan el motivo (texto libre de la operadora)", () => {
+  // El que escribe el sistema no lleva montos, pero el de la operadora es texto
+  // libre: «Debe $1.234.567 de la CC-777» llegaba tal cual a Vender, delante de
+  // los proveedores. El motivo lo lee la dueña en «Ver suscripción».
+  for (const [nombre, src] of [["BloqueoCuenta", bloqueo], ["AvisoCuentaBanner", banner]]) {
+    const codigo = sinComentarios(src);
+    assert.ok(!/(\.|\{\s*)motivo\b/.test(codigo), `${nombre} pinta el motivo: va detrás de «Ver suscripción»`);
+  }
+  assert.ok(/<BloqueoCuenta \/>/.test(appTsx), "App.tsx le sigue pasando el motivo a BloqueoCuenta");
+});
+
+prueba("«duena» la dice el servidor, nunca la pantalla", () => {
+  // `setDuena(true)` le daría «Ver suscripción» a cualquier rol: el 403 del
+  // backend protege la plata, pero el botón le mentiría a la trabajadora.
+  const asignaciones = [...sinComentarios(vivo).matchAll(/setDuena\(([^)]*)\)/g)].map((m) => m[1].trim());
+  assert.ok(asignaciones.length >= 1, "useEstadoCuenta dejó de leer «duena» del servidor");
+  assert.deepEqual([...new Set(asignaciones)], ["r.duena"], "«duena» sólo sale de la respuesta de /auth/estado-cuenta");
+});
+
+prueba("el reloj vuelve a preguntar de verdad", () => {
+  // Un `setInterval` que no hace nada pasaba la guarda de arriba (que sólo
+  // busca el texto `setInterval(`): la pantalla de bloqueo no se levantaría
+  // nunca sola.
+  assert.ok(/setInterval\(\(\) => void revisar\(\), CONSULTA_ESTADO_MS\)/.test(sinComentarios(vivo)),
+    "el intervalo tiene que llamar a revisar() cada CONSULTA_ESTADO_MS");
+});
+
+prueba("la vista con la plata sólo se monta en el bloqueo y en Configuración", () => {
+  // MiSuscripcion pide la plata al montarse: montada en una vista que ve la
+  // trabajadora, el backend contesta 403, pero la pantalla ya no sería de la
+  // dueña. Sólo BloqueoCuenta (tras un clic, sólo la dueña) y el Dashboard
+  // (SuscripcionSection, con el filtro de la copia de seguridad).
+  const permitidos = ["src/components/BloqueoCuenta.tsx", "src/pages/Dashboard.tsx"];
+  const importan = [];
+  const recorrer = (rel) => {
+    for (const e of readdirSync(join(raiz, rel), { withFileTypes: true })) {
+      const r = `${rel}/${e.name}`;
+      if (e.isDirectory()) recorrer(r);
+      else if (/\.tsx?$/.test(e.name) && !r.startsWith("src/components/suscripcion/")) {
+        const src = sinComentarios(readFileSync(join(raiz, r), "utf8"));
+        if (/from\s+"[^"]*suscripcion\/MiSuscripcion"/.test(src)) importan.push(r);
+      }
+    }
+  };
+  recorrer("src");
+  assert.deepEqual(importan.sort(), permitidos, "MiSuscripcion se monta fuera del bloqueo y de Configuración");
+  const i = dashboard.indexOf("function SuscripcionSection(");
+  const seccion = dashboard.slice(i, dashboard.indexOf("\n}\n", i));
+  const usos = [...sinComentarios(dashboard).matchAll(/<MiSuscripcion\b/g)].length;
+  assert.equal(usos, 1, "Dashboard monta MiSuscripcion más de una vez");
+  assert.ok(/<MiSuscripcion\b/.test(seccion), "en el Dashboard, MiSuscripcion vive sólo en SuscripcionSection");
+});
+
 console.log(`\n${hechas} pruebas del corte por estado de cuenta`);

@@ -9,9 +9,12 @@ import { useEstadoCuentaVivo } from "./suscripcion/useEstadoCuenta";
  * estado reemplaza la pantalla entera (ver `BloqueoCuenta`), así que si
  * llegó hasta este componente ya no hay nada más que dibujar debajo.
  *
- * Se ve en Vender, delante de los proveedores: **nunca un monto**. El motivo
- * que escribe el sistema no lleva plata, y a la dueña se le ofrece «Ver
- * suscripción», que abre Configuración → Suscripción: la plata, tras un clic.
+ * Se ve en Vender, delante de los proveedores: **nunca un monto, y nunca el
+ * motivo**. El que escribe el sistema no lleva plata, pero el que escribe la
+ * operadora es texto libre y nada impide que diga «debe $1.234.567» (revisión
+ * de C2): por eso la franja dice un texto fijo por estado, y el motivo —con la
+ * plata— está en «Ver suscripción», que abre Configuración → Suscripción,
+ * sólo para la dueña y tras un clic.
  *
  * Está montado siempre en el tablero, aunque no dibuje nada, porque es el que
  * pregunta el estado de la cuenta en vivo (C2): así se entera de una cuenta que
@@ -24,8 +27,9 @@ export default function AvisoCuentaBanner({ onVerSuscripcion }: { onVerSuscripci
   if (!aviso || aviso.estado === "suspendido") return null;
 
   const soloLectura = aviso.estado === "solo_lectura";
-  const texto =
-    aviso.motivo ?? (duena ? null : "El dueño del supermercado ve el detalle y cómo ponerse al día.");
+  const texto = duena
+    ? "El detalle y cómo ponerse al día están en la suscripción."
+    : "El dueño del supermercado ve el detalle y cómo ponerse al día.";
 
   return (
     <div

@@ -197,7 +197,7 @@ export default function App() {
   // cliente — y `BloqueoCuenta` se entera solo cuando pasa (C2: consulta el
   // estado en vivo), sin que nadie vuelva a entrar.
   if (avisoCuenta?.estado === "suspendido") {
-    return <BloqueoCuenta motivo={avisoCuenta.motivo} />;
+    return <BloqueoCuenta />;
   }
 
   return (

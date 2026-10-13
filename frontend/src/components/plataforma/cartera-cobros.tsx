@@ -14,10 +14,12 @@
      · **Sin suscripción, exento.** Galerías y todo cliente sin suscripción no
        tiene deuda ni facturas: la fila lo dice con esa palabra, no con un
        «al día» que sería mentira.
-     · **Nada de acá corta el servicio.** El estado de cuenta lo sigue moviendo
-       ella con «Cambiar», en el cajón de al lado. Lo único que el sistema hace
-       solo es LEVANTARLO, y sólo si ella marca la casilla al registrar el
-       pago; ese cambio lo firma `sistema:cobranza`.
+     · **Los formularios de acá no cortan el servicio.** El estado de cuenta lo
+       sigue moviendo ella con «Cambiar», en el cajón de al lado; al registrar
+       un pago, el sistema lo LEVANTA sólo si ella marca la casilla y el pago
+       deja al día (lo firma `sistema:cobranza`). Lo que sí corta es la
+       escalera automática, con su interruptor prendido, y la pantalla lo dice
+       según cómo esté (revisión de C2).
      · **«Correspondería»** es el estado que le tocaría al cliente por sus
        facturas (sólo lectura a los N días de vencida, nunca suspendido), al
        lado del real, para que la diferencia se vea. Desde C2 la escalera lo
@@ -27,7 +29,11 @@
        cuál de las tres cosas pasa con cada diferencia.
      · **«Correr cobranza (ensayo)»** muestra qué haría la escalera hoy, o el
        día que se elija: a quién movería y qué avisos mandaría. Desde acá es
-       siempre un ensayo: no escribe ni manda nada.
+       siempre un ensayo: no escribe ni manda nada (`probar-plataforma.mjs`
+       falla si `correrCobranza` deja de mandar `ensayo: 1`).
+     · **Los números se leen como se escriben en Colombia**: pesos con punto
+       de miles, porcentajes con coma decimal —o punto: «3.5» es 3,5, no 35—
+       (`formato.ts`).
 
    Plata y facturas son de la operadora: esta pantalla vive detrás de
    `/plataforma`, y el backend contesta 403 a cualquier otra cuenta.
@@ -59,7 +65,17 @@ import {
   type SuscripcionPayload,
   type UnidadCobro,
 } from "../../api/plataforma";
-import { ESTADO_CUENTA_TXT, SIN_DATO, fechaCorta, plata, plural } from "./formato";
+import {
+  ESTADO_CUENTA_TXT,
+  SIN_DATO,
+  fechaCorta,
+  mesesDelPeriodo,
+  pesosEscritos,
+  plata,
+  plural,
+  porcentajeEscrito,
+  porcentajeParaEscribir,
+} from "./formato";
 
 const MODO_TXT: Record<ModoCobro, string> = { manual: "manual", automatico: "automático" };
 
@@ -72,7 +88,8 @@ const ESTADO_FACTURA_TXT: Record<FacturaCobro["estado"], string> = {
 
 /** Por qué un pago con «levantar» no movió el estado, dicho para la operadora. */
 const RAZON_TXT: Record<string, string> = {
-  exento: "el cliente no tiene suscripción",
+  exento: "el cliente no tiene suscripción, o es el de la base principal (nada del sistema lo mueve)",
+  no_queda_al_dia: "con este pago todavía no queda al día",
   otra_suscripcion: "la factura es de una suscripción anterior del cliente",
   sin_cliente: "el cliente ya no existe",
   no_mejora: "con lo que debe, no le corresponde un estado mejor que el que tiene",
@@ -93,21 +110,25 @@ const HITO_TXT: Record<string, string> = {
 /** `"2026-10-13"` → `"2026-10"`: el período por defecto de una cuenta nueva. */
 const mesDe = (fecha: string): string => fecha.slice(0, 7);
 
-/** Un número de un campo de texto: vacío o inválido es `null`, no 0. */
-const numero = (texto: string): number | null => {
-  const limpio = texto.replace(/\./g, "").replace(",", ".").trim();
-  if (!limpio) return null;
-  const n = Number(limpio);
-  return Number.isFinite(n) ? n : null;
-};
+/** Pesos de un campo de texto, redondeados; vacío o inválido es 0. Los
+ *  porcentajes NO pasan por acá: van con `porcentajeEscrito` (ver formato.ts). */
+const entero = (texto: string): number => Math.round(pesosEscritos(texto) ?? 0);
 
-const entero = (texto: string): number => Math.round(numero(texto) ?? 0);
+/** El piso de «sólo lectura a los N días»: lo decidió la dueña (el backend
+ *  contesta 422 con menos). */
+const DIA_SOLO_LECTURA_MINIMO = 30;
 
 // ─── Los datos ─────────────────────────────────────────────────────────────
 
 /** La cartera se pide UNA vez y la comparten dos cajones: éste y la columna
  *  «Modo» de los estados de cuenta. Se vuelve a pedir cuando la página cambia
- *  `recarga` (archivar, borrar…) o cuando una operación de acá lo pide. */
+ *  `recarga` (archivar, borrar…) o cuando una operación de acá lo pide.
+ *
+ *  `activa` lo prende la página recién cuando la operadora ABRE el cajón de
+ *  cobros (revisión de C2): cada `GET /cobros` deja una línea «cobros» en el
+ *  reporte de transparencia de TODOS los clientes, y pedirla al abrir la
+ *  consola, o después de cada cambio de estado, la anotaba sin que nadie la
+ *  mirara. Un cambio de estado se copia en memoria con `actualizarEstado`. */
 export function useCartera(activa: boolean, recarga: number) {
   const [cartera, setCartera] = useState<CarteraCobros | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -131,7 +152,14 @@ export function useCartera(activa: boolean, recarga: number) {
   }, [activa, recarga, vuelta]);
 
   const recargar = useCallback(() => setVuelta((n) => n + 1), []);
-  return { cartera, error, recargar };
+  const actualizarEstado = useCallback(
+    (slug: string, patch: Partial<Pick<ClienteCartera, "estado" | "cambiado_por">>) =>
+      setCartera((c) =>
+        c ? { ...c, clientes: c.clientes.map((x) => (x.slug === slug ? { ...x, ...patch } : x)) } : c
+      ),
+    []
+  );
+  return { cartera, error, recargar, actualizarEstado };
 }
 
 /** Slug → «exento» / «manual» / «automático», para la columna «Modo» de los
@@ -147,10 +175,13 @@ export function mapaDeModos(cartera: CarteraCobros | null): Map<string, string> 
 
 function EditorSuscripcion({
   fila,
+  prendida,
   onHecho,
   onCancelar,
 }: {
   fila: ClienteCartera;
+  /** El interruptor `COBRANZA_AUTOMATICA` del servidor. */
+  prendida: boolean;
   onHecho: () => void;
   onCancelar: () => void;
 }) {
@@ -168,20 +199,29 @@ function EditorSuscripcion({
   const [nit, setNit] = useState(s?.nit ?? "");
   const [correo, setCorreo] = useState(s?.correo_facturacion ?? "");
   const [municipio, setMunicipio] = useState(s?.municipio ?? "");
-  const [retefuente, setRetefuente] = useState(String(s?.retefuente_pct ?? 0));
-  const [reteica, setReteica] = useState(String(s?.reteica_pct ?? 0));
-  const [reteiva, setReteiva] = useState(String(s?.reteiva_pct ?? 0));
+  const [retefuente, setRetefuente] = useState(porcentajeParaEscribir(s?.retefuente_pct ?? 0));
+  const [reteica, setReteica] = useState(porcentajeParaEscribir(s?.reteica_pct ?? 0));
+  const [reteiva, setReteiva] = useState(porcentajeParaEscribir(s?.reteiva_pct ?? 0));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const guardar = async () => {
-    const valorCop = numero(valor);
+    const valorCop = pesosEscritos(valor);
     if (!valorCop || valorCop <= 0) {
       setError("El valor pactado es obligatorio.");
       return;
     }
     if (modo === "automatico" && !contrato.trim()) {
       setError("El modo automático necesita la referencia del contrato o de los términos aceptados.");
+      return;
+    }
+    if (entero(diaSoloLectura) < DIA_SOLO_LECTURA_MINIMO) {
+      setError(`Sólo lectura va a los ${DIA_SOLO_LECTURA_MINIMO} días de vencida o más: se puede dar más aire, no menos.`);
+      return;
+    }
+    const pcts = [porcentajeEscrito(retefuente), porcentajeEscrito(reteica), porcentajeEscrito(reteiva)];
+    if (pcts.some((p) => p === null || p > 100)) {
+      setError("Las retenciones van en porcentaje, de 0 a 100 (3,5 o 3.5 es tres y medio por ciento).");
       return;
     }
     const payload: SuscripcionPayload = {
@@ -198,17 +238,18 @@ function EditorSuscripcion({
       nit: nit.trim() || null,
       correo_facturacion: correo.trim() || null,
       municipio: municipio.trim() || null,
-      retefuente_pct: numero(retefuente) ?? 0,
-      reteica_pct: numero(reteica) ?? 0,
-      reteiva_pct: numero(reteiva) ?? 0,
+      retefuente_pct: porcentajeEscrito(retefuente) ?? 0,
+      reteica_pct: porcentajeEscrito(reteica) ?? 0,
+      reteiva_pct: porcentajeEscrito(reteiva) ?? 0,
     };
     const seguro = confirm(
       `¿${s ? "Guardar los cambios de" : "Cargar"} la suscripción de «${fila.nombre}» (${fila.slug})?\n\n` +
         `${plata(payload.valor_cop)} por ${unidad === "sede_mes" ? "sede" : "supermercado"} y por mes, ` +
         `modo ${MODO_TXT[modo]}.` +
         (modo === "automatico"
-          ? `\n\nCuando se prenda la cobranza automática, la cuenta va a pasar sola a sólo lectura ` +
-            `${payload.dia_solo_lectura} días después de vencida una cuenta de cobro. Nunca se suspende sola.`
+          ? `\n\n${prendida ? "Con la cobranza automática prendida" : "Cuando se prenda la cobranza automática"}, ` +
+            `la cuenta va a pasar sola a sólo lectura ${payload.dia_solo_lectura} días después de vencida una ` +
+            "cuenta de cobro, y nunca antes de 10 días después del aviso formal por correo. Nunca se suspende sola."
           : "\n\nManual: el estado de cuenta lo seguís moviendo vos.")
     );
     if (!seguro) return;
@@ -234,8 +275,11 @@ function EditorSuscripcion({
   return (
     <div className="plat-editor">
       <p className="plat-nota" style={{ margin: "0 0 var(--s2)" }}>
-        El precio que se pactó con este cliente. Manual: el estado de cuenta lo movés vos. Automático: cuando se prenda
-        la cobranza automática (todavía no), pasa solo a sólo lectura; nunca a suspendido.
+        El precio que se pactó con este cliente. Manual: el estado de cuenta lo movés vos. Automático:{" "}
+        {prendida
+          ? "la escalera está prendida y la pasa sola a sólo lectura"
+          : "cuando se prenda la escalera (hoy está apagada: sólo ensaya), pasa sola a sólo lectura"}{" "}
+        a los días que digas acá (30 o más) y diez días después del aviso formal como mínimo; nunca a suspendido.
       </p>
       <div className="linea">
         {campo(
@@ -271,7 +315,7 @@ function EditorSuscripcion({
       </div>
       <div className="linea">
         {campo("Plazo de pago (días)", <input type="text" inputMode="numeric" value={plazo} onChange={(e) => setPlazo(e.target.value)} />, true)}
-        {campo("Sólo lectura a los (días de vencida)", <input type="text" inputMode="numeric" value={diaSoloLectura} onChange={(e) => setDiaSoloLectura(e.target.value)} />, true)}
+        {campo("Sólo lectura a los (días de vencida, 30 o más)", <input type="text" inputMode="numeric" value={diaSoloLectura} onChange={(e) => setDiaSoloLectura(e.target.value)} />, true)}
         {campo("Prórroga hasta", <input type="date" value={prorroga} onChange={(e) => setProrroga(e.target.value)} />, true)}
         {campo("Contrato o términos aceptados", <input type="text" value={contrato} onChange={(e) => setContrato(e.target.value)} placeholder="Obligatorio para automático" />)}
       </div>
@@ -325,8 +369,11 @@ function EditorFactura({
 
   if (!s) return null;
   const pactado = s.valor_cop * s.cantidad;
-  const sub = numero(subtotal) ?? pactado;
-  const ivaN = numero(iva) ?? 0;
+  /* Sin subtotal, el backend cobra lo pactado por los MESES del período: la
+     vista previa y la confirmación tienen que decir lo mismo que va a quedar. */
+  const meses = mesesDelPeriodo(periodo) ?? 1;
+  const sub = pesosEscritos(subtotal) ?? pactado * meses;
+  const ivaN = pesosEscritos(iva) ?? 0;
   /* Una vista previa, con la misma cuenta que el backend (que es el que manda):
      retefuente y reteICA sobre el subtotal, reteIVA sobre el IVA. */
   const retenciones = Math.round((sub * (s.retefuente_pct + s.reteica_pct)) / 100 + (ivaN * s.reteiva_pct) / 100);
@@ -337,7 +384,8 @@ function EditorFactura({
       return;
     }
     const seguro = confirm(
-      `¿Registrar la cuenta de cobro ${numeroFactura.trim()} de «${fila.nombre}» por ${periodo}?\n\n` +
+      `¿Registrar la cuenta de cobro ${numeroFactura.trim()} de «${fila.nombre}» por ${periodo}` +
+        `${subtotal.trim() ? "" : ` (${plural(meses, "mes", "meses")} de lo pactado)`}?\n\n` +
         `Total ${plata(sub + ivaN)} · retenciones estimadas ${plata(retenciones)} · neto ${plata(sub + ivaN - retenciones)}.\n\n` +
         "RECABRA no la emite ante la DIAN: sólo la registra."
     );
@@ -403,7 +451,8 @@ function EditorFactura({
         </label>
       </div>
       <p className="plat-nota" style={{ margin: "var(--s2) 0" }}>
-        Sin subtotal, va lo pactado por los meses del período. Sin vencimiento, la emisión más {plural(s.plazo_pago_dias, "día", "días")}.
+        Sin subtotal, va lo pactado por los meses del período ({plural(meses, "mes", "meses")}). Sin vencimiento, la
+        emisión más {plural(s.plazo_pago_dias, "día", "días")}.
         Total {plata(sub + ivaN)} · retenciones estimadas {plata(retenciones)} · neto esperado {plata(sub + ivaN - retenciones)}.
       </p>
       <div className="linea">
@@ -425,12 +474,16 @@ function EditorPago({
   fila,
   factura,
   hoy,
+  escalera,
   onHecho,
   onCancelar,
 }: {
   fila: ClienteCartera;
   factura: FacturaCobro;
   hoy: string;
+  /** Suscripción automática con el interruptor prendido: tras el pago, la
+   *  escalera de este cliente corre sola (y sólo mueve lo que puso ella). */
+  escalera: boolean;
   onHecho: (r: PagoRegistrado) => void;
   onCancelar: () => void;
 }) {
@@ -462,7 +515,11 @@ function EditorPago({
       `¿Registrar un pago de «${fila.nombre}» contra ${factura.numero ?? "la cuenta de cobro"}?\n\n` +
         `Recibido ${plata(entero(recibido))} + retenciones ${plata(cubre - entero(recibido))} = ${plata(cubre)}.\n` +
         `Referencia: ${referencia.trim()}` +
-        (levantar ? "\n\nSi con esto queda al día, el estado de cuenta se levanta solo." : "\n\nEl estado de cuenta no se toca.")
+        (levantar
+          ? "\n\nSi con esto queda al día, el estado de cuenta se levanta solo. Si no queda al día, no se toca."
+          : escalera
+            ? "\n\nEl pago no toca el estado de cuenta; la escalera automática vuelve a mirar al cliente enseguida (sólo lo que puso ella)."
+            : "\n\nEl estado de cuenta no se toca.")
     );
     if (!seguro) return;
     setBusy(true);
@@ -632,11 +689,13 @@ function EditorMotivo({
 function FacturasDe({
   fila,
   hoy,
+  escalera,
   onCambio,
   onPago,
 }: {
   fila: ClienteCartera;
   hoy: string;
+  escalera: boolean;
   onCambio: () => void;
   onPago: (r: PagoRegistrado) => void;
 }) {
@@ -720,6 +779,7 @@ function FacturasDe({
                       fila={fila}
                       factura={f}
                       hoy={hoy}
+                      escalera={escalera}
                       onCancelar={() => setAbierta(null)}
                       onHecho={(r) => {
                         setAbierta(null);
@@ -752,6 +812,7 @@ function FacturasDe({
  *  La escalera nunca suspende y nunca toca un estado que no es «activo» y que
  *  puso una persona (el `cambiado_por` que no empieza con `sistema:`). */
 function comoSeAplica(c: ClienteCartera, prendida: boolean): string {
+  if (c.base_principal) return " (base principal: nada del sistema la mueve)";
   if (c.suscripcion?.modo !== "automatico") return " (manual: no se aplica solo)";
   if (!c.activo) return " (archivado: la escalera no lo mira)";
   const deUnaPersona = !!c.cambiado_por && !c.cambiado_por.startsWith("sistema:") && c.estado !== "activo";
@@ -864,7 +925,14 @@ export function TablaCobros({
     const factura = r.factura.numero ?? "la cuenta de cobro";
     const pagada = r.factura.estado === "pagada" ? `${factura} quedó pagada` : `${factura} sigue con saldo`;
     const ec = r.estado_cuenta;
-    if (ec === null) setAviso(`Pago registrado: ${pagada}. El estado de cuenta no se tocó.`);
+    const escalera = cartera.cobranza_automatica && fila.suscripcion?.modo === "automatico" && !fila.base_principal;
+    if (ec === null)
+      setAviso(
+        `Pago registrado: ${pagada}. ` +
+          (escalera
+            ? "El pago no tocó el estado de cuenta; la escalera automática vuelve a mirar al cliente enseguida."
+            : "El estado de cuenta no se tocó.")
+      );
     else if (ec.movido && ec.estado) {
       setAviso(`Pago registrado: ${pagada}. «${fila.nombre}» pasó a ${ESTADO_CUENTA_TXT[ec.estado] ?? ec.estado}.`);
       onEstadoMovido(fila.slug, {
@@ -991,6 +1059,7 @@ export function TablaCobros({
                         {abierto.que === "suscripcion" && (
                           <EditorSuscripcion
                             fila={c}
+                            prendida={cartera.cobranza_automatica}
                             onCancelar={() => setAbierto(null)}
                             onHecho={() => {
                               setAbierto(null);
@@ -1015,6 +1084,9 @@ export function TablaCobros({
                           <FacturasDe
                             fila={c}
                             hoy={cartera.hoy}
+                            escalera={
+                              cartera.cobranza_automatica && c.suscripcion?.modo === "automatico" && !c.base_principal
+                            }
                             onCambio={onCambio}
                             onPago={(r) => alPagar(c, r)}
                           />

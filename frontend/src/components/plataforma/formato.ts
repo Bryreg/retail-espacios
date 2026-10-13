@@ -22,6 +22,47 @@
 /** Lo que se escribe cuando la API no trajo el dato. Nunca un 0, nunca vacío. */
 export const SIN_DATO = "—";
 
+// ─── Y lo inverso: leer lo que la operadora escribe a mano (cobros, C1) ─────
+//
+// Dos lecturas DISTINTAS, porque el punto significa cosas distintas: en pesos
+// es separador de miles («1.234.567»), en un porcentaje es la coma decimal de
+// otro teclado («3.5»). Antes se leían con la misma función, que borraba todos
+// los puntos: una retefuente de 3,5 guardada volvía al formulario como «3.5» y
+// al guardar sin tocarla viajaba como 35 (revisión de C2).
+
+/** Pesos escritos a mano: «1.234.567», «1234567» o «1.234.567,40». Vacío o
+ *  inválido es `null`, no 0. */
+export function pesosEscritos(texto: string): number | null {
+  const limpio = texto.replace(/\./g, "").replace(",", ".").trim();
+  if (!limpio) return null;
+  const n = Number(limpio);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Un porcentaje escrito a mano: «3,5», «3.5» o «0,966». La coma y el punto
+ *  son los dos la coma decimal: ningún porcentaje lleva miles. Vacío o
+ *  inválido es `null`. */
+export function porcentajeEscrito(texto: string): number | null {
+  const limpio = texto.trim().replace(",", ".");
+  if (!limpio || !/^\d*(\.\d*)?$/.test(limpio) || limpio === ".") return null;
+  const n = Number(limpio);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Un porcentaje para el campo de texto: `3.5` → «3,5». */
+export const porcentajeParaEscribir = (n: number): string => String(n).replace(".", ",");
+
+/** Cuántos meses cubre un período de cuenta de cobro: «2026-11» → 1,
+ *  «2026-11..2027-01» → 3. La misma forma que valida el backend
+ *  (`cobranza.rango_del_periodo`); `null` si no la tiene. */
+export function mesesDelPeriodo(periodo: string): number | null {
+  const m = periodo.trim().match(/^(\d{4})-(0[1-9]|1[0-2])(?:\.\.(\d{4})-(0[1-9]|1[0-2]))?$/);
+  if (!m) return null;
+  const desde = Number(m[1]) * 12 + Number(m[2]);
+  const hasta = m[3] ? Number(m[3]) * 12 + Number(m[4]) : desde;
+  return hasta >= desde && hasta - desde < 24 ? hasta - desde + 1 : null;
+}
+
 type Cifra = number | null | undefined;
 
 const miles = (n: number): string =>
