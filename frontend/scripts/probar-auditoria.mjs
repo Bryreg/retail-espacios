@@ -264,31 +264,130 @@ prueba("`carasDe` contesta los casos que también corre el servidor", () => {
   for (const c of casos) assert.equal(isDoubleGondola(c.mueble), c.caras === 2, c.por);
 });
 
-prueba("la regla vive en DOS lugares, uno por lado, y en ningún otro", () => {
-  // Una comparación con "double" fuera de `carasDe` / `caras_de` es otra copia
-  // de la regla, y las copias se separan.
-  const raiz = join(aqui, "..", "..");
-  const copias = [];
-  const recorrer = (dir, ext) => {
+/* Lo que dice el código, sin comentarios ni docstrings: los comentarios de la
+   regla citan `"double"` al explicarla, y no son copias. */
+const enBlanco = (m) => m.replace(/[^\n]/g, " "); // conserva las líneas: el aviso dice `archivo:línea`
+const codigoTS = (t) => t.replace(/\/\*[\s\S]*?\*\//g, enBlanco).replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+const codigoPy = (t) => t.replace(/("""|''')[\s\S]*?\1/g, enBlanco).replace(/#.*$/gm, "");
+
+/** ¿Este `"double"` PREGUNTA algo? Se deja pasar sólo lo que no pregunta: un
+ *  tipo (`"double" | "wall"`), un valor que se asigna o se pasa (`= "double"`,
+ *  `value="double"`, `?? "double"`, `c ? … : "double"`, `{ gondolaType:
+ *  "double" }`) o el estado inicial de un `useState`. Todo lo demás —`===`,
+ *  `["double"].includes(…)`, `case "double":`, `in ("double", None)`, un
+ *  `Set`— es una comparación, y una comparación con "double" es la regla. */
+const pregunta = (antes, despues) => !(
+  /\|\s*$/.test(antes) || /^\s*\|/.test(despues)
+  || /(?<![=!<>])=\s*$/.test(antes)
+  || /\?\?\s*$/.test(antes)
+  || /(?<!\?)\?\s*$/.test(antes) || /(?<!:):\s*$/.test(antes)
+  || /useState(<[^>]*>)?\(\s*$/.test(antes)
+);
+
+const raizRepo = join(aqui, "..", "..");
+/** Cada archivo de código de los dos lados, con su texto sin comentarios. */
+const archivosDeCodigo = () => {
+  const out = [];
+  const recorrer = (dir, ext, limpiar) => {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
       const ruta = join(dir, e.name);
-      if (e.isDirectory()) { if (e.name !== "node_modules" && e.name !== "__pycache__") recorrer(ruta, ext); continue; }
+      if (e.isDirectory()) { if (e.name !== "node_modules" && e.name !== "__pycache__") recorrer(ruta, ext, limpiar); continue; }
       if (!ext.some((x) => e.name.endsWith(x))) continue;
-      readFileSync(ruta, "utf8").split("\n").forEach((l, k) => {
-        if (/[=!]==?\s*["']double["']|["']double["']\s*[=!]==?/.test(l)) copias.push(`${relative(raiz, ruta)}:${k + 1}`);
-      });
+      out.push({ rel: relative(raizRepo, ruta), codigo: limpiar(readFileSync(ruta, "utf8")) });
     }
   };
-  recorrer(join(raiz, "frontend", "src"), [".ts", ".tsx"]);
-  recorrer(join(raiz, "backend", "app"), [".py"]);
-  recorrer(join(raiz, "backend", "scripts"), [".py"]);
+  recorrer(join(raizRepo, "frontend", "src"), [".ts", ".tsx"], codigoTS);
+  recorrer(join(raizRepo, "backend", "app"), [".py"], codigoPy);
+  recorrer(join(raizRepo, "backend", "scripts"), [".py"], codigoPy);
+  return out;
+};
+
+/** Las líneas donde un `"double"` pregunta algo, como `archivo:línea`. */
+const comparacionesConDouble = (archivos) => {
+  const copias = [];
+  for (const { rel, codigo } of archivos) {
+    codigo.split("\n").forEach((l, k) => {
+      const enLaLinea = [...l.matchAll(/["']double["']/g)]
+        .some((m) => pregunta(l.slice(0, m.index), l.slice(m.index + m[0].length)));
+      if (enLaLinea) copias.push(`${rel}:${k + 1}`);
+    });
+  }
+  return copias;
+};
+
+prueba("la regla vive en DOS lugares, uno por lado, y en ningún otro", () => {
+  // Una comparación con "double" fuera de `carasDe` / `caras_de` es otra copia
+  // de la regla, y las copias se separan. Buscar sólo `=== "double"` no
+  // alcanzaba: `["double"].includes(f.gondolaType)` en DashboardView traía de
+  // vuelta la regla estricta —la que dejaba afuera la cara B de una góndola
+  // vieja sin `gondolaType`— y todas las guardas pasaban.
+  const copias = comparacionesConDouble(archivosDeCodigo());
   assert.deepEqual(copias.map((c) => c.replace(/:\d+$/, "")).sort(), [
     "backend/app/services/layout_lookup.py",
-    "frontend/src/types/fixtures.ts",
+    "frontend/src/types/espacio.ts",
   ], `copias de la regla de la cara B:\n         ${copias.join("\n         ")}`);
   const py = servidor.match(/def caras_de[\s\S]*?\n(?=\S)/);
   assert.ok(py, "no se encontró `caras_de` en layout_lookup.py");
   assert.match(py[0], /variante == "double"/, "la comparación de layout_lookup.py no es la de `caras_de`");
+});
+
+prueba("la guarda de la regla ve las copias escritas de otra forma", () => {
+  // Una guarda que deja pasar todo es peor que ninguna: cada forma de escribir
+  // la regla tiene que saltar, y lo que no pregunta nada tiene que pasar.
+  const ver = (rel, texto) => comparacionesConDouble([{ rel, codigo: rel.endsWith(".py") ? codigoPy(texto) : codigoTS(texto) }]);
+  const copias = [
+    'return f.gondolaType === "double";',
+    'return "double" !== f.gondolaType;',
+    'return ["double"].includes(f.gondolaType as string) || f.type === "gondola_doble";',
+    'switch (f.gondolaType) { case "double": return 2; }',
+    'const DOBLES = new Set(["double", undefined]);',
+    'if (f.gondolaType?.startsWith("double")) return 2;',
+    'const CARAS = { "double": 2, wall: 1 };',
+  ];
+  for (const c of copias) assert.equal(ver("x.ts", c).length, 1, `no ve la copia: ${c}`);
+  for (const c of ['return 2 if f.get("gondolaType") in ("double", None) else 1', 'CARAS = {"double": 2, "wall": 1}']) {
+    assert.equal(ver("x.py", c).length, 1, `no ve la copia: ${c}`);
+  }
+  const noPreguntan = [
+    'export type GondolaType = "double" | "wall";',
+    '  gondolaType = "double",',
+    '<GondolaReal gondolaType={isWall ? "wall" : "double"} />',
+    'gondolaType={fixture.gondolaType ?? "double"}',
+    'if (item.type === "gondola_doble") { type = "gondola"; gondolaType = "double"; }',
+    'const [tipo, setTipo] = useState<"double" | "wall">("double");',
+    '<option value="double">góndola doble</option>',
+    'const nueva = { type: "gondola", gondolaType: "double" };',
+    '// la regla vieja exigía `=== "double"` escrito',
+  ];
+  for (const c of noPreguntan) assert.deepEqual(ver("x.tsx", c), [], `confunde con una copia: ${c}`);
+  assert.deepEqual(ver("x.py", '"""Exigía ``== "double"`` escrito."""\nx = "double"'), [], "confunde un docstring con una copia");
+});
+
+prueba("quien pregunta por la cara B usa `carasDe` / `caras_de`, no una propia", () => {
+  // La otra forma de copiar la regla es con el mismo nombre: sacar
+  // `isDoubleGondola` del import de `types/fixtures` y definir una propia.
+  // Vive en `types/espacio.ts` y `types/fixtures.ts` la reexporta: se puede
+  // importar de cualquiera de los dos.
+  const mal = [];
+  for (const { rel, codigo } of archivosDeCodigo()) {
+    if (rel.endsWith(".py")) {
+      if (rel === "backend/app/services/layout_lookup.py") continue;
+      if (/^\s*def caras_de\b/m.test(codigo)) mal.push(`${rel}: define su propia \`caras_de\``);
+      const importa = [...codigo.matchAll(/from\s+app\.services\.layout_lookup\s+import\s+(\([^)]*\)|[^\n]*)/g)]
+        .some((m) => /\bcaras_de\b/.test(m[1]));
+      if (/(?<![.\w])caras_de\(/.test(codigo) && !importa) mal.push(`${rel}: llama a \`caras_de\` sin importarla de layout_lookup`);
+      continue;
+    }
+    if (rel === "frontend/src/types/espacio.ts") continue;
+    for (const nombre of ["carasDe", "isDoubleGondola"]) {
+      if (new RegExp(`\\b(?:function|const|let|var)\\s+${nombre}\\b`).test(codigo)) mal.push(`${rel}: define su propia \`${nombre}\``);
+      if (!new RegExp(`(?<![.\\w])${nombre}\\(`).test(codigo)) continue;
+      const importa = [...codigo.matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g)]
+        .some((m) => /(^|\/)types\/(fixtures|espacio)$/.test(m[2]) && new RegExp(`\\b${nombre}\\b`).test(m[1]));
+      if (!importa) mal.push(`${rel}: llama a \`${nombre}\` sin importarla de types/espacio o types/fixtures`);
+    }
+  }
+  assert.deepEqual(mal, []);
 });
 
 prueba("el servidor sigue armando el código con la sede", () => {

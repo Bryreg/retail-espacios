@@ -15,7 +15,8 @@ Lo que se vigila acá:
 * que lo que calcula el servidor sobre el plano sintético sea exactamente lo de
   antes del catálogo (la parte ``python`` de
   ``frontend/scripts/casos/catalogo-antes.json``);
-* que las tablas de cada módulo sean las del catálogo y no una copia;
+* que las tablas de cada módulo sean las del catálogo y no una copia, y que
+  cambien con él (se carga el módulo con un catálogo adulterado);
 * que el archivo sea válido para lo que el servidor lee de él.
 
 La parte del navegador la compara ``frontend/scripts/probar-catalogo.mjs``.
@@ -33,19 +34,34 @@ COPIA_DEL_FRONTEND = RAIZ / "frontend" / "src" / "catalogo" / "muebles.json"
 COPIA_DEL_SERVIDOR = RAIZ / "backend" / "app" / "catalogo" / "muebles.json"
 ANTES = RAIZ / "frontend" / "scripts" / "casos" / "catalogo-antes.json"
 
-#: Lo que el catálogo cambió A PROPÓSITO en la parte ``python`` de
-#: ``catalogo-antes.json``: ruta (claves separadas por punto) → (antes, ahora).
+#: Lo que cambió A PROPÓSITO en la parte ``python`` de ``catalogo-antes.json``:
+#: ruta (claves separadas por punto) → (antes, ahora). Todo lo demás tiene que
+#: dar igual, carácter por carácter.
 #:
 #: Los cambios intencionales del catálogo único —el fondo del mostrador de
 #: carnes y el alto y el color del servicio al cliente cuando nacen en el 2D, el
-#: color de ``nevera_mural``, los nombres de la vitrina, la zona libre y el
-#: impulsador en los informes y los rótulos de las tarifas de la isla y la
-#: cruz— están escritos en ``CAMBIOS_INTENCIONALES`` de
+#: color de ``nevera_mural``, los nombres de los informes y los rótulos de las
+#: tarifas de la isla y la cruz— están escritos en ``CAMBIOS_INTENCIONALES`` de
 #: ``frontend/scripts/probar-catalogo.mjs``, y todos son del navegador: ningún
 #: prefijo, ninguna clave de tarifa, ninguna referencia ni ninguna regla de qué
-#: se alquila cambió. Por eso acá la lista está vacía y la comparación es
-#: exacta. Un cambio futuro que toque al servidor se escribe acá, con su porqué.
-CAMBIOS_INTENCIONALES: dict[str, tuple] = {}
+#: se alquila cambió con el catálogo.
+#:
+#: El único de este lado es de la revisión del catálogo, no del catálogo:
+#: ``scripts/auditar_desfase.py`` preguntaba sólo por la bandera ``rentable``, y
+#: una caja de un plano viejo (``CAJ-02`` del plano sintético, sin la bandera)
+#: contaba como espacio ofrecido aunque la aplicación —``espacios_ofrecidos``,
+#: acá al lado, y la pantalla— no la ofrece. Ahora pregunta
+#: ``es_comercializable``, como todos.
+_AUDITORIA_ANTES = [
+    "BAT-01", "BEB-01", "CAJ-02", "CAR-01", "CRS-01", "EXH-01", "EXP-01", "FRU-01",
+    "GON-01", "GON-01-B", "GON-02", "GON-03", "GON-03-B", "GON-04", "GON-04-B", "GON-05",
+    "IMP-01", "ISL-01", "MET-02", "MUE-01", "PUN-01", "RIS-01", "ROB-01", "VEG-01",
+]
+CAMBIOS_INTENCIONALES: dict[str, tuple] = {
+    "plano.caras_del_plano_auditoria.valor": (
+        _AUDITORIA_ANTES, [c for c in _AUDITORIA_ANTES if c != "CAJ-02"],
+    ),
+}
 
 _AUSENTE = object()
 
@@ -145,7 +161,9 @@ def test_las_tablas_del_servidor_salen_del_catalogo(client, monkeypatch):
     from app.services import catalogo_muebles, layout_lookup, renumeracion
 
     assert renumeracion.PREFIJO_POR_TIPO is catalogo_muebles.PREFIJO_POR_TIPO
-    assert renumeracion.PREFIJO_DESCONOCIDO == catalogo_muebles.PREFIJO_DESCONOCIDO
+    # `is` y no `==`: un "SPC" escrito a mano en renumeracion.py es otro objeto
+    # que el que leyó el catálogo del JSON, aunque diga lo mismo.
+    assert renumeracion.PREFIJO_DESCONOCIDO is catalogo_muebles.PREFIJO_DESCONOCIDO
     assert layout_lookup.NUNCA_ALQUILABLE is catalogo_muebles.NUNCA_ALQUILABLE
     assert layout_lookup._REFERENCIAS is catalogo_muebles.REFERENCIAS
 
@@ -155,6 +173,73 @@ def test_las_tablas_del_servidor_salen_del_catalogo(client, monkeypatch):
     # Lo que no tiene tarifa contesta su propio tipo, como siempre.
     assert bulk_leases._tipo_de_tarifa("checkout") == "checkout"
     assert plataforma_metricas._tipo_de_tarifa("tipo_que_no_existe") == "tipo_que_no_existe"
+
+
+def _catalogo_muebles_con(tmp_path, catalogo: dict):
+    """Una copia de ``services/catalogo_muebles.py`` que lee ESE catálogo.
+
+    El módulo arma la ruta de su archivo desde ``__file__``
+    (``…/services/catalogo_muebles.py`` → ``…/catalogo/muebles.json``), así que
+    alcanza con ponerlo al lado de un catálogo adulterado y cargarlo con otro
+    nombre: el de la aplicación no se toca.
+    """
+    import importlib.util
+
+    from app.services import catalogo_muebles
+
+    (tmp_path / "services").mkdir()
+    (tmp_path / "catalogo").mkdir()
+    copia = tmp_path / "services" / "catalogo_muebles.py"
+    copia.write_text(Path(catalogo_muebles.__file__).read_text(encoding="utf-8"), encoding="utf-8")
+    (tmp_path / "catalogo" / "muebles.json").write_text(json.dumps(catalogo), encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("_catalogo_muebles_adulterado", copia)
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+def test_cada_tabla_del_servidor_cambia_cuando_cambia_el_catalogo(client, tmp_path):
+    """Lo que ``probar-catalogo.mjs`` hace con el navegador, de este lado.
+
+    La comparación contra la referencia no ve una tabla escrita a mano en
+    ``catalogo_muebles.py`` que HOY coincide: el literal sigue diciendo lo de
+    antes. Se nota recién cuando el catálogo cambia y el servidor se queda con
+    la copia —el minimapa dice «la línea de cajas» y el correo «las cajas»—.
+    Acá se carga el módulo con un catálogo adulterado y cada tabla tiene que
+    cambiar con él.
+    """
+    c = _catalogo()
+    c["tipos"]["punta"]["prefijo"] = "PNX"
+    c["tipos"]["gondola"]["prefijo"] = "GNX"
+    c["tipos"]["gondola"]["tarifa"] = "gondola_adulterada"
+    c["tipos"]["metro"]["alquilable"] = "nunca"
+    c["tipos"]["isla"]["tarifa"] = "estiba"
+    c["tipos"]["checkout"]["referencia"]["frase"] = "la línea de cajas"
+    c["tipos"]["punta"]["referencia"] = {"corto": "Puntas", "frase": "las puntas"}
+    c["orden"]["minimapa"] = ["punta", *c["orden"]["minimapa"]]
+    c["prefijoDesconocido"] = "ZZZ"
+
+    m = _catalogo_muebles_con(tmp_path, c)
+
+    assert m.RUTA == tmp_path / "catalogo" / "muebles.json"
+    assert m.PREFIJO_POR_TIPO["punta"] == "PNX", "PREFIJO_POR_TIPO no sale del catálogo"
+    assert m.PREFIJO_POR_TIPO["gondola_mural"] == "GNX", "los alias no siguen el prefijo de su tipo"
+    assert m.PREFIJO_DESCONOCIDO == "ZZZ", "PREFIJO_DESCONOCIDO no sale del catálogo"
+    assert "metro" in m.NUNCA_ALQUILABLE, "NUNCA_ALQUILABLE no sale del catálogo"
+    assert m.TARIFA_POR_TIPO["isla"] == "estiba", "TARIFA_POR_TIPO no sale del catálogo"
+    assert m.TARIFA_POR_TIPO["gondola_doble"] == "gondola_adulterada", "los alias no siguen la tarifa de su tipo"
+    assert m.tipo_de_tarifa("isla") == "estiba"
+    assert m.REFERENCIAS["checkout"] == "la línea de cajas", "REFERENCIAS no sale del catálogo"
+    assert list(m.REFERENCIAS)[0] == "punta", "REFERENCIAS no sigue `orden.minimapa`"
+
+    # Y con el catálogo de verdad da lo mismo que el módulo de la aplicación:
+    # la copia que se adultera es el mismo código.
+    from app.services import catalogo_muebles
+
+    (tmp_path / "real").mkdir()
+    real = _catalogo_muebles_con(tmp_path / "real", _catalogo())
+    for tabla in ("PREFIJO_POR_TIPO", "PREFIJO_DESCONOCIDO", "NUNCA_ALQUILABLE", "TARIFA_POR_TIPO", "REFERENCIAS"):
+        assert getattr(real, tabla) == getattr(catalogo_muebles, tabla), tabla
 
 
 def test_las_caras_del_catalogo_son_las_de_caras_de(client):

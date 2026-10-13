@@ -337,7 +337,15 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
                 # ninguna pista de por qué. No resuelve la fila —adivinar el
                 # mueble es el error que esta fase eliminó—, la explica.
                 pista = rastreador.pista(sede, tecleado)
-                if otras:
+                una_cara = plano.sin_cara_b(sede, tecleado)
+                if una_cara is not None:
+                    # El mueble existe; lo que no existe es su cara B. Decir
+                    # «no hay ningún mueble» manda a buscar un tipeo.
+                    errores.append(
+                        f"«{sin_prefijo_de_sede(una_cara.codigo, una_cara.sede)}» tiene una sola cara: "
+                        "no hay cara B que vender."
+                    )
+                elif otras:
                     # Un tipeo en la columna Sede mandaba el contrato a otro
                     # supermercado sin un aviso. Decir dónde sí está es la
                     # diferencia entre corregirlo y salir a buscar un error que

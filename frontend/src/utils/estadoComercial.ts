@@ -1,5 +1,7 @@
 import type { FaceData, UnifiedFixture } from "../types/fixtures";
-import { carasDe, fullSpaceCode } from "../types/fixtures";
+// De `types/espacio.ts` y no de `types/fixtures.ts`: esto viaja en lo primero
+// que baja la landing, y `types/fixtures.ts` arrastra el catálogo de muebles.
+import { carasDe, fullSpaceCode } from "../types/espacio";
 
 /**
  * Pegarle a cada mueble del plano lo que la BASE dice de él.

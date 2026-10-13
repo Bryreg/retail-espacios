@@ -21,8 +21,8 @@ import {
 } from "../../utils/nomenclatura";
 import type { RechazoDeNombre } from "../../utils/nomenclatura";
 import { revisarPlano, contratosConNombreAjeno, type ContratoDelPlano } from "../../utils/revision";
-import { storeToItems, itemsToStore, type Catalogo2D, type FixType2D, type PlacedItem2D } from "../../utils/convertirPlano";
-import { CATALOG, H_DEFAULTS, COLOR_DEFAULTS } from "../../catalogo/plano2D";
+import { storeToItems, itemsToStore, type FixType2D, type PlacedItem2D } from "../../utils/convertirPlano";
+import { CATALOG, CATALOGO_2D, H_DEFAULTS } from "../../catalogo/plano2D";
 import { TOLERANCIA_CONTACTO } from "../../utils/planta";
 import { buscarHuecoGrupo } from "../../utils/acomodar";
 import { detectarCorridas, pasilloPorMueble } from "../../utils/pasillos";
@@ -50,7 +50,9 @@ type SpaceStatus = "free" | "occupied" | "reserved" | "maintenance";
 // fondo, emoji, prefijo y familia—, y `H_DEFAULTS` y `COLOR_DEFAULTS` —el alto
 // y el color con que nace un mueble dibujado acá— viven en `catalogo/plano2D.ts`,
 // calculados del catálogo de muebles (`catalogo/muebles.json`): el plano y el
-// editor 3D crean el mismo mueble.
+// editor 3D crean el mismo mueble. Las conversiones reciben `CATALOGO_2D`, de
+// ahí mismo. Este componente no declara tablas propias: una copia vieja acá
+// pisaba las del catálogo sin que fallara nada (`probar-muebles.mjs` lo vigila).
 
 // Status palette, shared with the Dashboard's occupancy map y con el editor 3D.
 //
@@ -183,10 +185,6 @@ const STATUS_FILTER_CHIPS: { value: StatusFilter2D; label: string; color: string
 function rotationSteps(rotY?: number): number {
   return Math.round(((rotY ?? 0) % (2 * Math.PI)) / (Math.PI / 2)) % 4;
 }
-
-/** Lo que las conversiones de `utils/convertirPlano.ts` necesitan de este
- *  catálogo: el rótulo de cada tipo y el alto y el color con que nace. */
-const CATALOGO_2D: Catalogo2D = { tipos: CATALOG, altos: H_DEFAULTS, colores: COLOR_DEFAULTS };
 
 // ─── Smart alignment guides (PowerPoint-style) ───────────────────────────────
 

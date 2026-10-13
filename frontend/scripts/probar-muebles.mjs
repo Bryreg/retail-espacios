@@ -1487,6 +1487,51 @@ prueba("la nevera de vegetales está dada de alta en todo el sistema", () => {
   assert.ok(C3.FIXTURE_DEFS.some((d) => d.type === "nevera_vegetales" && d.code === "VEG"), "el mueble no tiene código de espacio");
 });
 
+prueba("cada editor crea muebles con las tablas de `src/catalogo/`, sin copias propias", () => {
+  // `probar-catalogo` corre las tablas de `src/catalogo/`, no las que usa cada
+  // componente. Una copia pegada en el componente las pisaba sin que fallara
+  // nada: con los altos viejos del 2D en FloorPlan2D, el servicio al cliente
+  // volvía a nacer de 1,80 m (y no de 1,10); con `slotsPorDefecto: () => []` en
+  // el 3D, las góndolas y las puntas sin repisas guardadas se quedaban sin
+  // repisas en el editor y en el visor de Vender, que dibuja con la misma
+  // conversión. tsc y todas las guardas pasaban en los dos casos.
+  const plano = sinComentarios(leer(join("src", "components", "FloorPlan2D", "FloorPlan2D.tsx")));
+  const imp2D = /import \{([^}]*)\} from "\.\.\/\.\.\/catalogo\/plano2D";/.exec(plano);
+  assert.ok(imp2D, "el plano 2D no importa de `catalogo/plano2D.ts`");
+  for (const n of ["CATALOG", "CATALOGO_2D", "H_DEFAULTS"]) {
+    assert.match(imp2D[1], new RegExp(`\\b${n}\\b`), `el plano 2D no toma \`${n}\` de \`catalogo/plano2D.ts\``);
+  }
+  const propias2D = [...plano.matchAll(/\b(?:const|let|var|function)\s+(CATALOG|CATALOGO_2D|H_DEFAULTS|COLOR_DEFAULTS)\b/g)];
+  assert.deepEqual(propias2D.map((m) => m[1]), [], "el plano 2D declara sus propias tablas de muebles");
+  // Toda conversión del 2D recibe ESE catálogo (`capturar-catalogo.mjs` crea
+  // un mueble de cada tipo con el mismo objeto, y `probar-catalogo` lo compara).
+  const conversiones2D = plano.match(/\b(?:storeToItems|itemsToStore)\(/g) ?? [];
+  const conCatalogo2D = plano.match(/,\s*CATALOGO_2D\s*\)/g) ?? [];
+  assert.ok(conversiones2D.length >= 4, "no se encontraron las conversiones del plano 2D");
+  assert.equal(conCatalogo2D.length, conversiones2D.length,
+    "alguna conversión del plano 2D no recibe `CATALOGO_2D` de `catalogo/plano2D.ts`");
+  assert.equal(C2.CATALOGO_2D.tipos, C2.CATALOG, "`CATALOGO_2D` no es el catálogo del plano");
+  assert.equal(C2.CATALOGO_2D.altos, C2.H_DEFAULTS, "`CATALOGO_2D` no usa los altos del catálogo");
+  assert.equal(C2.CATALOGO_2D.colores, C2.COLOR_DEFAULTS, "`CATALOGO_2D` no usa los colores del catálogo");
+
+  assert.match(editorCodigo, /import \{[^}]*\bFIXTURE_DEFS\b[^}]*\} from "\.\.\/\.\.\/catalogo\/editor3D";/,
+    "el editor 3D no toma `FIXTURE_DEFS` de `catalogo/editor3D.ts`");
+  const propias3D = [...editorCodigo.matchAll(/\b(?:const|let|var|function)\s+(FIXTURE_DEFS|TIPOS_CON_[A-Z0-9_]+)\b/g)];
+  assert.deepEqual(propias3D.map((m) => m[1]), [], "el editor 3D declara sus propias tablas de muebles");
+  assert.match(editorCodigo,
+    /const CATALOGO_3D: Catalogo3D = \{ defs: FIXTURE_DEFS, slotsPorDefecto: defaultSlots \};/,
+    "el 3D convierte con otro catálogo que `FIXTURE_DEFS` y `defaultSlots`: las góndolas sin repisas guardadas se quedan sin repisas");
+  const conversiones3D = editorCodigo.match(/\bdelStoreAl3D\(/g) ?? [];
+  assert.ok(conversiones3D.length >= 1, "no se encontró la conversión del 3D");
+  assert.equal((editorCodigo.match(/\bdelStoreAl3D\([^)]*,\s*CATALOGO_3D\)/g) ?? []).length, conversiones3D.length,
+    "alguna conversión del 3D no recibe `CATALOGO_3D`");
+  // Y `defaultSlots` sigue dando repisas a la góndola y a la punta.
+  const slots = cuerpoDe("function defaultSlots(", "function validatePlacement(");
+  assert.match(slots, /if \(fix\.type !== "gondola" && fix\.type !== "punta"\) return \[\];/,
+    "`defaultSlots` cambió a qué muebles les da repisas");
+  assert.match(slots, /Array\.from\(\{ length: cols \* rows \}/, "`defaultSlots` ya no arma la grilla de repisas");
+});
+
 prueba("la ristra NO lleva entrepaño", () => {
   // Una ristra es una TIRA: el producto CUELGA de una varilla por su troquel.
   // Tenía una placa horizontal del ancho del mueble en cada gancho, y eso la

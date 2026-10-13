@@ -1,4 +1,4 @@
-import type { FixType2D } from "../utils/convertirPlano";
+import type { Catalogo2D, FixType2D } from "../utils/convertirPlano";
 import { CATALOGO_DE_MUEBLES, formaDe, resolverTipo } from "./catalogo";
 
 /**
@@ -80,3 +80,12 @@ export const COLOR_DEFAULTS: Record<string, string> = Object.fromEntries([
   }),
   ...LEGADOS.map(({ t, forma }) => [t, forma.color2D ?? forma.color] as const),
 ].filter((par): par is readonly [string, string] => typeof par[1] === "string"));
+
+/** Lo que las conversiones de `utils/convertirPlano.ts` necesitan del plano 2D:
+ *  el rótulo de cada tipo y el alto y el color con que nace. Es EL objeto que
+ *  usa `FloorPlan2D.tsx` —vive acá y no en el componente para que
+ *  `capturar-catalogo.mjs` corra la creación de muebles con el mismo, y
+ *  `probar-muebles.mjs` exige que el componente no tenga tablas propias—: una
+ *  copia vieja de los altos en el componente deshacía en silencio, por ejemplo,
+ *  el alto con que nace el servicio al cliente. */
+export const CATALOGO_2D: Catalogo2D = { tipos: CATALOG, altos: H_DEFAULTS, colores: COLOR_DEFAULTS };

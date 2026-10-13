@@ -143,7 +143,7 @@ def es_comercializable(fixture: dict) -> bool:
 def caras_de(fixture: dict) -> int:
     """Cuántas caras vendibles tiene el mueble: 2 es la cara A y la ``-B``.
 
-    Espejo de ``carasDe`` en ``frontend/src/types/fixtures.ts``, y es LA
+    Espejo de ``carasDe`` en ``frontend/src/types/espacio.ts``, y es LA
     respuesta a «¿esta góndola tiene cara B?» de este lado: lo que el plano
     ofrece (``espacios_ofrecidos``, el guardarraíl de contratos vivos), la
     importación de contratos del plano, las métricas de la plataforma y
@@ -170,16 +170,51 @@ def caras_de(fixture: dict) -> int:
     return 2 if variante is None or variante == "double" else 1
 
 
+#: Lo que contesta ``motivo_para_no_vender``.
+NO_COMERCIALIZABLE = "no_comercializable"
+SIN_CARA_B = "sin_cara_b"
+
+
+def pide_cara_b_inexistente(fixture: dict, espacio: str) -> bool:
+    """¿El código pide la cara B de un mueble que tiene una sola?
+
+    ``espacios_ofrecidos`` no ofrece ``PUN-01-B`` ni la ``-B`` de una góndola
+    mural, pero la planilla y el contrato suelto le recortaban el sufijo a
+    cualquier mueble y la vendían igual; Supervisar la marcaba enseguida como
+    «Contrato sin mueble». La cara B existe cuando ``caras_de`` dice 2: es la
+    misma regla para ofrecer, para cuidar y para vender.
+    """
+    return normalizar(espacio).endswith("-B") and caras_de(fixture) != 2
+
+
+def motivo_para_no_vender(db: Session, space_code: str) -> str | None:
+    """Por qué no se le puede colgar un contrato a este código, o ``None``.
+
+    ``NO_COMERCIALIZABLE``: el mueble es operación de la tienda o está marcado
+    «no comercializable». ``SIN_CARA_B``: el código es la cara B de un mueble
+    de una sola cara (``pide_cara_b_inexistente``).
+
+    Falla abierto, como siempre: un código sin mueble —filas sembradas, un
+    mueble borrado del plano después del contrato— se puede vender.
+    """
+    fixture = find_fixture_by_space_code(db, space_code)
+    if fixture is None:
+        return None
+    if not es_comercializable(fixture):
+        return NO_COMERCIALIZABLE
+    if pide_cara_b_inexistente(fixture, space_code):
+        return SIN_CARA_B
+    return None
+
+
 def is_space_rentable(db: Session, space_code: str) -> bool:
     """Whether a contract may be attached to this space code.
 
     Fails open: a space with no matching fixture (seeded demo rows, fixtures
-    deleted from the plan after the contract existed) stays rentable.
+    deleted from the plan after the contract existed) stays rentable. Ver
+    ``motivo_para_no_vender``, que además dice por qué.
     """
-    fixture = find_fixture_by_space_code(db, space_code)
-    if fixture is None:
-        return True
-    return es_comercializable(fixture)
+    return motivo_para_no_vender(db, space_code) is None
 
 
 # ── El nombre que se DIBUJA, que no es la llave ───────────────────────────────
@@ -413,8 +448,25 @@ class PlanoIndexado:
                 propia = str(fixture.get("sede") or sede or "").strip()
                 completo = _full_code(raw, propia)
                 if buscado in (raw, completo):
+                    # La cara B de un mueble de una cara no existe: el plano
+                    # no la ofrece, y resolverla vendía un espacio que
+                    # Supervisar daba enseguida por «Contrato sin mueble».
+                    if sufijo and caras_de(fixture) != 2:
+                        continue
                     return FixtureResuelto(fixture, normalizar(propia), completo + sufijo)
         return None
+
+    def sin_cara_b(self, sede: str, espacio: str) -> FixtureResuelto | None:
+        """El mueble de una sola cara cuya ``-B`` pide el texto, o ``None``.
+
+        Para decir «PUN-01 tiene una sola cara» en vez de un «no hay ningún
+        mueble con ese código», que manda a buscar un tipeo que no está.
+        """
+        texto = normalizar(espacio)
+        if not texto.endswith("-B") or self.resolver(sede, texto) is not None:
+            return None
+        base = self.resolver(sede, _sin_cara_b(texto))
+        return base if base is not None and caras_de(base.fixture) != 2 else None
 
     def sedes_con_codigo(self, espacio: str) -> list[str]:
         """En qué sedes existe un mueble con ese código. Para poder decir «no

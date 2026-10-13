@@ -146,6 +146,22 @@ function validar(cat) {
   for (const t of tarifas.keys()) {
     si(Object.values(tipos).some((d) => d.tarifa === t), `la tarifa \`${t}\` no es de ningún tipo`);
   }
+  // Lo que dicen los informes tiene que llevar a la fila de Tarifas de ESE
+  // mueble. La sesión le dice a la dueña «dejar la tarifa cargada en
+  // <nombre de informe>» y ella busca esas palabras en Tarifas: si están en el
+  // rótulo de OTRO tipo y no en el suyo, carga la tarifa equivocada. Pasó:
+  // «exhibición de piso» era la cruz en los informes y la estiba en Tarifas, e
+  // «isla» llevaba a «Isla de congelados». Un nombre que no aparece en ningún
+  // rótulo («stand de frutas») no confunde a nadie.
+  for (const [t, d] of Object.entries(tipos)) {
+    for (const nombre of [d.informe, d.informePlural].filter(texto)) {
+      const n = nombre.toLowerCase();
+      const conEsasPalabras = (cat.tarifas ?? [])
+        .filter((x) => (x.rotulo ?? "").toLowerCase().includes(n)).map((x) => x.clave);
+      si(!conEsasPalabras.length || conEsasPalabras.includes(d.tarifa),
+        `${t}: los informes lo llaman «${nombre}» y en Tarifas eso es \`${conEsasPalabras.join("`, `")}\``);
+    }
+  }
 
   for (const [a, x] of Object.entries(cat.alias ?? {})) {
     si(!(a in tipos), `alias \`${a}\`: ya es un tipo`);
@@ -194,15 +210,21 @@ await prueba("la validación rechaza lo que tiene que rechazar", () => {
   // propósito un catálogo por cada regla y tiene que quejarse.
   const roto = (cambiar) => { const c = structuredClone(CATALOGO); cambiar(c); return validar(c); };
   const casos = [
-    ["un prefijo repetido", (c) => { c.tipos.punta.prefijo = "GON"; }, /ya es de gondola/],
+    // Cuál de los dos se queja depende del orden de las claves: cualquiera vale.
+    ["un prefijo repetido", (c) => { c.tipos.punta.prefijo = "GON"; }, /(gondola|punta): el prefijo GON ya es de (punta|gondola)/],
     ["un tipo que se vende sin tarifa", (c) => { delete c.tipos.batea.tarifa; }, /batea: se vende y no tiene una tarifa/],
     ["un tipo que no se vende con tarifa", (c) => { c.tipos.checkout.tarifa = "checkout"; }, /checkout: no se vende nunca y tiene tarifa/],
     ["un tipo que se vende sin nombre de informe", (c) => { delete c.tipos.ristra.informePlural; }, /ristra: se vende y los informes/],
     ["una medida en cero", (c) => { c.tipos.batea.medidas.h = 0; }, /batea: las medidas/],
     ["una medida negativa en una variante", (c) => { c.tipos.gondola.variantes.wall.medidas.d = -0.4; }, /gondola:wall: las medidas/],
-    ["un tipo fuera de la paleta del 3D", (c) => { c.orden.editor3D.pop(); }, /orden\.editor3D`: faltan robatope/],
+    ["un tipo fuera de la paleta del 3D", (c) => { c.orden.editor3D = c.orden.editor3D.filter((t) => t !== "robatope"); },
+      /orden\.editor3D`: faltan robatope/],
     ["un alias a una variante que no existe", (c) => { c.alias.gondola_mural.variante = "isla"; }, /gondola_mural`: no es una variante/],
     ["una clave mal escrita", (c) => { c.tipos.punta.prefjio = "PUN"; }, /clave desconocida `prefjio`/],
+    ["un nombre de informe que en Tarifas es otro mueble", (c) => { c.tipos.cross.informe = "exhibición de piso"; },
+      /cross: los informes lo llaman «exhibición de piso» y en Tarifas eso es `isla`/],
+    ["un nombre de informe que lleva a otra fila de Tarifas", (c) => { c.tipos.isla.informe = "isla"; },
+      /isla: los informes lo llaman «isla» y en Tarifas eso es `isla_fria`/],
   ];
   for (const [que, cambiar, motivo] of casos) {
     const mal = roto(cambiar);
@@ -281,6 +303,9 @@ await prueba("cada tabla cambia cuando cambia el catálogo", async () => {
   c.tipos.gondola.variantes.wall.medidas.h = 2.22;
   c.alias.gondola_mural.banderas.push("producto");
   c.prefijoDesconocido = "ZZZ";
+  // Al revés: lo primero pasa a ser lo que hoy es último, sea cual sea.
+  const ultimo3D = c.orden.editor3D.at(-1).split(":")[0];
+  const ultimo2D = c.orden.plano2D.at(-1);
   c.orden.editor3D.reverse();
   c.orden.plano2D.reverse();
   c.orden.minimapa = ["punta", ...c.orden.minimapa];
@@ -310,7 +335,7 @@ await prueba("cada tabla cambia cuando cambia el catálogo", async () => {
   assert.ok(Pa.MUEBLES_FRIOS.has("punta"), "MUEBLES_FRIOS no sale del catálogo");
   assert.ok(PASa.FORMAN_CORRIDA.has("punta"), "FORMAN_CORRIDA no sale del catálogo");
   // catalogo/editor3D.ts
-  assert.equal(C3a.FIXTURE_DEFS[0].type, "robatope", "FIXTURE_DEFS no sigue `orden.editor3D`");
+  assert.equal(C3a.FIXTURE_DEFS[0].type, ultimo3D, "FIXTURE_DEFS no sigue `orden.editor3D`");
   assert.deepEqual(C3a.FIXTURE_DEFS.find((d) => d.type === "punta"), {
     type: "punta", label: "Punta adulterada", w: 0.91, d: 0.41, h: 1.77,
     color: "#010203", emoji: "X", desc: "adulterada", code: "PNX",
@@ -320,7 +345,7 @@ await prueba("cada tabla cambia cuando cambia el catálogo", async () => {
   assert.ok(!C3a.TIPOS_CON_PRUEBA_3D.has("punta"), "TIPOS_CON_PRUEBA_3D no sale del catálogo");
   assert.ok(!C3a.TIPOS_CON_SURTIDO.has("punta"), "TIPOS_CON_SURTIDO no sale del catálogo");
   // catalogo/plano2D.ts
-  assert.equal(C2a.CATALOG[0].type, "columna", "CATALOG no sigue `orden.plano2D`");
+  assert.equal(C2a.CATALOG[0].type, ultimo2D, "CATALOG no sigue `orden.plano2D`");
   assert.deepEqual(C2a.CATALOG.find((x) => x.type === "punta"), {
     type: "punta", label: "Punta adulterada", w: 0.91, h: 0.41, emoji: "X", prefix: "PNX", category: "Grupo adulterado",
   }, "CATALOG no sale del catálogo");
@@ -333,6 +358,64 @@ await prueba("cada tabla cambia cuando cambia el catálogo", async () => {
   // catalogo/minimapa.ts
   assert.equal(Object.keys(CMa.REFERENCIAS)[0], "punta", "REFERENCIAS no sigue `orden.minimapa`");
   assert.deepEqual(CMa.REFERENCIAS.punta, { corto: "Puntas", frase: "las puntas" }, "REFERENCIAS no sale del catálogo");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 3b · EL CATÁLOGO VIAJA SÓLO DONDE SE USA
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** El grafo de lo que se baja: `src/main.tsx` empaquetado como lo parte el
+ *  build, con cada `import()` (las pantallas de adentro, `React.lazy`) en su
+ *  pedazo. Lo que no es código se reemplaza por nada. */
+const vacio = {
+  name: "vacio",
+  setup(b) {
+    b.onResolve({ filter: /\?(raw|worker|url|inline)$/ }, (a) => ({ path: a.path, namespace: "vacio" }));
+    b.onLoad({ filter: /.*/, namespace: "vacio" }, () => ({ contents: "export default ''", loader: "js" }));
+  },
+};
+const conCatalogo = (inputs) => Object.entries(inputs)
+  .some(([m, x]) => /catalogo[\\/]muebles\.json$/.test(m) && x.bytesInOutput > 0);
+
+await prueba("el catálogo no viaja en lo primero que baja la landing", async () => {
+  // El catálogo trae descripciones, emojis, medidas y rótulos que sólo usan los
+  // editores, que se cargan aparte. Entró en el pedazo de entrada —el que baja
+  // todo visitante anónimo, y lo que más pesa en el LCP de la landing— porque
+  // la fusión con la base (`estadoComercial.ts`, que va de entrada) le pedía
+  // `carasDe` y `fullSpaceCode` a `types/fixtures.ts`, que calcula sus tablas
+  // del catálogo. Ahora salen de `types/espacio.ts`, que no importa nada.
+  const r = await build({
+    entryPoints: [join(raiz, "src", "main.tsx")], bundle: true, write: false, splitting: true,
+    format: "esm", outdir: join(raiz, ".probar-catalogo"), metafile: true, logLevel: "silent", plugins: [vacio],
+    loader: { ".css": "empty", ".svg": "empty", ".png": "empty", ".jpg": "empty", ".webp": "empty", ".woff2": "empty", ".md": "text" },
+  });
+  const salidas = r.metafile.outputs;
+  const entrada = Object.keys(salidas).find((k) => salidas[k].entryPoint?.endsWith("src/main.tsx"));
+  assert.ok(entrada, "no se encontró la salida de `src/main.tsx`");
+  const deEntrada = new Set();
+  const seguir = (k) => {
+    if (deEntrada.has(k)) return;
+    deEntrada.add(k);
+    for (const i of salidas[k].imports) if (i.kind === "import-statement") seguir(i.path);
+  };
+  seguir(entrada);
+  const mal = [...deEntrada].filter((k) => conCatalogo(salidas[k].inputs));
+  assert.deepEqual(mal, [], "el catálogo de muebles entra en lo que se baja de entrada");
+  const tarde = Object.keys(salidas).filter((k) => !deEntrada.has(k));
+  assert.ok(tarde.some((k) => conCatalogo(salidas[k].inputs)), "el catálogo no aparece en ningún pedazo: la prueba no está mirando lo que cree");
+});
+
+await prueba("el catálogo no viaja en el worker del recorte", async () => {
+  // El worker importa `muebles/producto.ts` por `empaqueDeArte` y nunca mira el
+  // frío; `MUEBLES_FRIOS` lleva las marcas `@__PURE__` para que el empaquetador
+  // pueda dejar afuera la tabla y, con ella, el catálogo.
+  const r = await build({
+    entryPoints: [join(raiz, "src", "components", "StoreEditor3D", "muebles", "recorte.worker.ts")],
+    bundle: true, write: false, format: "esm", platform: "browser", metafile: true, logLevel: "silent",
+    outdir: join(raiz, ".probar-catalogo"), treeShaking: true,
+  });
+  const [salida] = Object.values(r.metafile.outputs);
+  assert.ok(!conCatalogo(salida.inputs), "el worker del recorte se lleva el catálogo de muebles");
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -393,6 +476,15 @@ const CAMBIOS_INTENCIONALES = [
       ["tablas.RATE_TYPES.valor[type=cross].label", "Exhibición de piso", "Exhibidor cruz"],
       ["por_tipo.isla.rateTypeLabel", "Isla", "Estiba (exhibición de piso)"],
       ["por_tipo.cross.rateTypeLabel", "Exhibición de piso", "Exhibidor cruz"],
+    ],
+  },
+  {
+    porque: "Los informes nombran la cruz y la estiba como Tarifas (plan §1.4.3: los nombres nuevos van en el rótulo, el informe y la tarifa). Con sólo las tarifas renombradas, «exhibición de piso» era la cruz en los informes y la estiba en Tarifas, y la sesión mandaba a cargar la tarifa en la fila de otro mueble; «isla» llevaba a «Isla de congelados».",
+    cambios: [
+      ["tablas.nombres_de_informe.valor.cross", { singular: "exhibición de piso", plural: "exhibiciones de piso" }, { singular: "exhibidor cruz", plural: "exhibidores cruz" }],
+      ["tablas.nombres_de_informe.valor.isla", { singular: "isla", plural: "islas" }, { singular: "estiba", plural: "estibas" }],
+      ["por_tipo.cross.informe", { singular: "exhibición de piso", plural: "exhibiciones de piso" }, { singular: "exhibidor cruz", plural: "exhibidores cruz" }],
+      ["por_tipo.isla.informe", { singular: "isla", plural: "islas" }, { singular: "estiba", plural: "estibas" }],
     ],
   },
 ];

@@ -56,7 +56,7 @@
     },
     "cross": {
       "prefijo": "CRS", "alquilable": "si", "tarifa": "cross",
-      "informe": "exhibición de piso", "informePlural": "exhibiciones de piso",
+      "informe": "exhibidor cruz", "informePlural": "exhibidores cruz",
       "categoria": "Displays", "grupo2D": "Displays",
       "banderas": ["producto"],
       "rotuloEditor": "Exhibidor Cruz",
@@ -83,7 +83,7 @@
     },
     "isla": {
       "prefijo": "EXP", "alquilable": "si", "tarifa": "isla",
-      "informe": "isla", "informePlural": "islas",
+      "informe": "estiba", "informePlural": "estibas",
       "categoria": "Muebles", "grupo2D": "Muebles",
       "banderas": ["producto"],
       "rotuloEditor": "Exhib. de Piso",

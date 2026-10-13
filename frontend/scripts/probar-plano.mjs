@@ -208,21 +208,50 @@ const esLaViejaMasLoAjeno = (nueva, vieja, guardado, donde) => {
   assert.deepEqual(sinIndefinidos(nueva), { ...tiradas, ...sinIndefinidos(vieja) }, donde);
 };
 
-/** Lo que hace la gente en el 2D: mover, girar, un mueble nuevo, borrar el nombre viejo. */
+/**
+ * Lo que hace la gente en el 2D: mover, girar, un mueble nuevo, volver a
+ * habilitar uno y deshabilitar otro, y —para que ningún campo que el 2D
+ * escribe pueda perderse sin que se note— cambiar TODOS los demás que sabe.
+ *
+ * La comparación «lo de antes, más lo que se tiraba» sólo ve un campo que la
+ * vuelta dejó de escribir si el editor le puso un valor DISTINTO del guardado:
+ * si no, lo guardado asoma por debajo con el mismo valor y la prueba pasa. Así
+ * se pudo borrar `rentable` de la vuelta sin que nada fallara, y una punta que
+ * la dueña volvía a habilitar regresaba «No comercializable» al guardar.
+ */
 const editar2D = (items) => {
   const out = copia(items);
   const g1 = out.find((i) => i.id === "g1"); g1.x += 1.5; g1.y -= 0.25;
+  Object.assign(g1, {
+    code: "GON-11", label: "Góndola del pasillo", status: "reserved", supplierName: "Colanta",
+    brandCategory: "Lácteos", negotiatedValue: 1_000_000, startDate: "2026-10-01",
+    endDate: "2026-12-31", observation: "cara A editada",
+    faceB: { ...g1.faceB, observation: "cara B editada" },
+  });
   const n1 = out.find((i) => i.id === "n1"); n1.rotY += Math.PI / 2; [n1.w, n1.h] = [n1.h, n1.w];
+  // Deshabilitar y volver a habilitar, como el panel del 2D: `rentable ? undefined : false`.
+  n1.rentable = false;
+  out.find((i) => i.id === "p1").rentable = undefined;
   out.push({ id: "punta-nueva", type: "punta", code: "PUN-02", label: "Punta Góndola", x: 3, y: 3,
     w: 0.9, h: 0.4, rotY: 0, ...libre, sede: "NAVE" });
   return out;
 };
 
-/** Lo mismo en el 3D. */
+/** Lo mismo en el 3D, con todo lo que el 3D escribe: medidas, rótulo, color,
+ *  tipo de góndola, repisas y la bandera, que el panel pone en `true`. */
 const editar3D = (fixtures) => {
   const out = copia(fixtures);
   const g2 = out.find((f) => f.id === "g2"); g2.x += 2; g2.z += 0.5;
-  const p1 = out.find((f) => f.id === "p1"); p1.rotY = 0;
+  const p1 = out.find((f) => f.id === "p1"); p1.rotY = 0; p1.rentable = true;
+  Object.assign(out.find((f) => f.id === "n1"), { h: 2.0, w: 1.5, d: 0.8, label: "Nevera de la entrada", color: "#334155" });
+  out.find((f) => f.id === "g3").gondolaType = "double";
+  const g1 = out.find((f) => f.id === "g1");
+  Object.assign(g1, {
+    code: "GON-11", status: "reserved", supplierName: "Colanta", brandCategory: "Lácteos",
+    negotiatedValue: 1_000_000, startDate: "2026-10-01", endDate: "2026-12-31", observation: "editada",
+    slots: g1.slots.map((s) => ({ ...s, status: "occupied", supplierName: "Alpina" })),
+  });
+  out.find((f) => f.id === "c1").rentable = undefined;
   out.push({ id: "gondola-nueva", code: "GON-04", type: "gondola", gondolaType: "double",
     slots: [], x: 10, z: 10, rotY: 0, w: 0.9, d: 0.9, h: 1.8, label: "Góndola Doble",
     color: "#6366f1", ...libre });
@@ -274,6 +303,19 @@ prueba("lo que el 2D sabe MANDA aunque valga undefined: no asoma lo guardado por
   assert.deepEqual(f.vista3D, VISTA, "lo que el 2D no conoce igual se queda");
 });
 
+prueba("VOLVER A HABILITAR UN MUEBLE EN EL 2D no deja asomar el «No comercializable» guardado", () => {
+  // El panel del 2D lo habilita con `rentable: undefined` (ausente es
+  // comercializable). Si la vuelta no escribe la bandera, el `false` guardado
+  // asoma por debajo y el mueble vuelve a «No comercializable» al guardar.
+  const g = plano();
+  const items = P.storeToItems(g, CAT2D);
+  items.find((i) => i.id === "p1").rentable = undefined;
+  items.find((i) => i.id === "n1").rentable = false;
+  const vuelta = P.itemsToStore(items, g, CAT2D);
+  assert.equal(vuelta.find((x) => x.id === "p1").rentable, undefined, "la punta habilitada volvió a no comercializable");
+  assert.equal(vuelta.find((x) => x.id === "n1").rentable, false, "la nevera deshabilitada quedó comercializable");
+});
+
 prueba("un mueble nuevo nace con el alto y el color del catálogo, sin nada ajeno", () => {
   const g = plano();
   const nuevo = P.itemsToStore(editar2D(P.storeToItems(g, CAT2D)), g, CAT2D).find((x) => x.id === "punta-nueva");
@@ -309,6 +351,17 @@ prueba("de vuelta al store: lo de antes, más lo que antes se tiraba, y nada má
   nueva.forEach((f, k) => esLaViejaMasLoAjeno(f, vieja[k], g.find((x) => x.id === f.id), f.id));
   // La exhibición, que el 3D no dibuja, vuelve primera y entera.
   assert.equal(nueva[0], g.find((x) => x.id === "x1"));
+});
+
+prueba("VOLVER A HABILITAR UN MUEBLE EN EL 3D no deja asomar el «No comercializable» guardado", () => {
+  // El panel del 3D escribe la bandera tal cual (`u({ rentable: value })`).
+  const g = plano();
+  const placed = P.storeToFixtures(g, CAT3D);
+  placed.find((f) => f.id === "p1").rentable = true;
+  placed.find((f) => f.id === "n1").rentable = false;
+  const vuelta = P.fixturesToStore(placed, "NAVE", g);
+  assert.equal(vuelta.find((x) => x.id === "p1").rentable, true, "la punta habilitada volvió a no comercializable");
+  assert.equal(vuelta.find((x) => x.id === "n1").rentable, false, "la nevera deshabilitada quedó comercializable");
 });
 
 prueba("un mueble nuevo del 3D no hereda nada de otro", () => {

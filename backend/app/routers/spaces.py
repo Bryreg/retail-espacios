@@ -15,7 +15,7 @@ from app.schemas.spaces import (
     SpaceFindOrCreate, AvisosContrato,
 )
 from app.services.contacts import recipients_for
-from app.services.layout_lookup import describe_location, is_space_rentable
+from app.services.layout_lookup import SIN_CARA_B, describe_location, motivo_para_no_vender
 from app.services.mailer import (
     app_base_url, format_cop, html_shell, send_mail_to_bg, correo_configurado,
 )
@@ -376,7 +376,18 @@ def create_lease(
     # The UI hides the contract form for infrastructure, but the rule belongs
     # here too: a stale tab or a direct API call must not create a lease on a
     # fixture the user marked as not for rent.
-    if not is_space_rentable(db, space.code):
+    motivo = motivo_para_no_vender(db, space.code)
+    if motivo == SIN_CARA_B:
+        # El plano no la ofrece: venderla dejaba un contrato que Supervisar
+        # daba enseguida por «Contrato sin mueble».
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"«{space.code}» no existe: ese mueble tiene una sola cara, "
+                "no hay cara B que vender."
+            ),
+        )
+    if motivo:
         raise HTTPException(
             status_code=409,
             detail=(

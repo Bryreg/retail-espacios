@@ -72,7 +72,7 @@ export interface FormaDeMueble {
 
 export interface VarianteDeMueble extends FormaDeMueble {
   /** Caras vendibles: 2 es la cara A y la `-B`. Tiene que decir lo mismo que
-   *  `carasDe` (`types/fixtures.ts`); `probar-catalogo.mjs` lo compara. */
+   *  `carasDe` (`types/espacio.ts`); `probar-catalogo.mjs` lo compara. */
   caras: 1 | 2;
 }
 

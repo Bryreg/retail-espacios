@@ -163,3 +163,69 @@ def test_el_auditor_de_consola_cuenta_la_cara_B_de_una_gondola_sin_gondolaType(c
 
     assert set(caras_del_plano([VIEJA])) == {"GON-60", "GON-60-B"}
     assert set(caras_del_plano([MURAL])) == {"GON-61"}
+
+
+# ─── Las puertas que crean contratos ──────────────────────────────────────────
+#
+# `espacios_ofrecidos` no ofrece la cara B de una punta ni de una mural, pero la
+# planilla y el contrato suelto le recortaban el `-B` a cualquier mueble y lo
+# vendían igual. Supervisar lo marcaba enseguida como «Contrato sin mueble»: un
+# aviso que la propia aplicación fabricaba.
+
+def _revisar(client, admin, *codigos):
+    r = client.post("/api/leases/bulk/validar", headers=admin, json={
+        "sede": "NAVE",
+        "filas": [{"fila": k + 1, "espacio": c, "sede": "NAVE", "proveedor": "MACA MANI",
+                   "valor": 200000, "desde": HOY.isoformat(),
+                   "hasta": (HOY + timedelta(days=30)).isoformat()}
+                  for k, c in enumerate(codigos)],
+    })
+    assert r.status_code == 200, r.text
+    return r.json()["filas"]
+
+
+def test_LA_PLANILLA_NO_VENDE_LA_CARA_B_DE_UN_MUEBLE_DE_UNA_CARA(client, admin):
+    assert _guardar(client, admin, [_mueble("PUN-01"), MURAL, VIEJA]).status_code == 200
+
+    filas = _revisar(client, admin, "PUN-01-B", "GON-61-B", "NAVE-GON-61-B", "GON-60-B", "PUN-01")
+    estados = {f["fila"]: f["estado"] for f in filas}
+    assert estados == {1: "error", 2: "error", 3: "error", 4: "ok", 5: "ok"}, filas
+    for f in filas[:3]:
+        assert any("una sola cara" in m for m in f["mensajes"]), f
+    # El aviso nombra el mueble que sí existe, no un «no hay ningún mueble».
+    assert any("«PUN-01»" in m for m in filas[0]["mensajes"]), filas[0]
+    assert not any("ningún mueble" in m for m in filas[0]["mensajes"]), filas[0]
+
+    r = client.post("/api/leases/bulk/confirmar", headers=admin, json={
+        "sede": "NAVE",
+        "filas": [{"fila": 1, "espacio": "PUN-01-B", "sede": "NAVE", "proveedor": "MACA MANI",
+                   "valor": 200000, "desde": HOY.isoformat(),
+                   "hasta": (HOY + timedelta(days=30)).isoformat()}],
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["filas"][0]["lease_id"] is None, r.text
+    assert r.json()["creados"] == 0
+
+
+def test_EL_CONTRATO_SUELTO_NO_VENDE_LA_CARA_B_DE_UN_MUEBLE_DE_UNA_CARA(client, admin):
+    assert _guardar(client, admin, [_mueble("PUN-01"), MURAL, VIEJA]).status_code == 200
+    proveedor = client.post("/api/suppliers/find-or-create", headers=admin,
+                            json={"name": "MACA MANI"}).json()["id"]
+
+    def contratar(codigo):
+        espacio = client.post("/api/spaces/find-or-create", headers=admin, json={
+            "code": codigo, "name": codigo, "zone": "punta", "sede": "NAVE", "area_m2": 1.0,
+        })
+        assert espacio.status_code in (200, 201), espacio.text
+        return client.post(f"/api/spaces/{espacio.json()['id']}/leases", headers=admin, json={
+            "supplier_id": proveedor, "start_date": HOY.isoformat(),
+            "end_date": (HOY + timedelta(days=30)).isoformat(), "monthly_rent": 200000,
+        })
+
+    for codigo in ("NAVE-PUN-01-B", "NAVE-GON-61-B"):
+        r = contratar(codigo)
+        assert r.status_code == 409, r.text
+        assert "una sola cara" in r.json()["detail"], r.text
+    # La cara B de una góndola doble —también la vieja, sin `gondolaType`— sí.
+    assert contratar("NAVE-GON-60-B").status_code == 201
+    assert contratar("NAVE-PUN-01").status_code == 201

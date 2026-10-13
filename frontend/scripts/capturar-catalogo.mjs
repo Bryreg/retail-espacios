@@ -263,7 +263,10 @@ export function capturarTS(MUEBLES) {
 
   // ─── Por mueble del plano: lo que depende del mueble entero ──────────────────
 
-  const CAT2D = { tipos: C2.CATALOG, altos: C2.H_DEFAULTS, colores: C2.COLOR_DEFAULTS };
+  // El MISMO objeto que usa el plano 2D (`CATALOGO_2D`). Antes de que existiera
+  // —el código sobre el que se capturó la referencia— se armaba acá con las
+  // mismas tres tablas.
+  const CAT2D = C2.CATALOGO_2D ?? { tipos: C2.CATALOG, altos: C2.H_DEFAULTS, colores: C2.COLOR_DEFAULTS };
   // Los `slots` por defecto viven en el editor (`defaultSlots`); acá no se miran.
   const CAT3D = { defs: C3.FIXTURE_DEFS, slotsPorDefecto: () => [] };
 
