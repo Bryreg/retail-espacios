@@ -1229,6 +1229,17 @@ if (!URL_VENDER) {
         await pg.waitForTimeout(800);
       }
     };
+    /** El amarillo vuelve con una transición, y al cerrar el visor el hilo
+     *  principal está ocupado soltando la memoria de video (SwiftShader): se
+     *  le dan hasta 3 s antes de contar. Si no vuelve, la prueba falla igual. */
+    const amarilloDeVuelta = (pg) => pg.waitForFunction(() => {
+      const sonda = document.createElement("i");
+      sonda.style.background = "var(--signal)";
+      document.body.appendChild(sonda);
+      const amarillo = getComputedStyle(sonda).backgroundColor;
+      sonda.remove();
+      return [...document.querySelectorAll(".btn-principal")].some((el) => getComputedStyle(el).backgroundColor === amarillo);
+    }, null, { timeout: 3000 }).catch(() => {});
     const cerrado = (pg) => pg.evaluate(() => ({
       visor: !!document.querySelector(".visor-venta"),
       inerte: document.getElementById("root")?.hasAttribute("inert") ?? null,
@@ -1471,6 +1482,7 @@ if (!URL_VENDER) {
     // ── Volver, dos veces: con el botón y con Esc ──────────────────────
     await pv.locator(".visor-volver").click();
     await pv.waitForTimeout(700);
+    await amarilloDeVuelta(pv);
     const trasBoton = { contrato: await contrato(pv), estado: await cerrado(pv) };
     await abrirVisor(pv);
     const sesion = await pv.evaluate(() => ({
@@ -1484,6 +1496,7 @@ if (!URL_VENDER) {
     await pv.locator(".visor-volver").focus();
     await pv.keyboard.press("Escape");
     await pv.waitForTimeout(700);
+    await amarilloDeVuelta(pv);
     const trasEsc = { contrato: await contrato(pv), estado: await cerrado(pv) };
     for (const [como, r] of [["con «Volver al contrato»", trasBoton], ["con Esc", trasEsc]]) {
       prueba(`navegador · visor: cerrar ${como} deja el contrato exactamente como estaba`, () => {

@@ -7414,13 +7414,20 @@ tocar las dos pantallas); la isla con el producto como lámina embaldosada y el 
 de la nevera con una imagen sintética siguen como en el editor; la columna COL-01 se ve
 igual que en el editor.
 
+**Peso.** Al entrar a Vender: el archivo de Vender 209 728 → 211 439 B gzip (+1,7 KB
+contra la línea base de 6077160), el CSS de entrada +336 B, el pedazo compartido
+`propuesta` (donde caen `frentes`/`medidas`) +125 B y el index +4 B: +2,2 KB en total,
+bajo el tope de 3 KB. El visor, que baja al abrirlo: 6,8 KB + 1,6 KB de CSS.
+
 **Cómo se comprobó.** `probar-vender` suma 3 estáticas (el botón en la cabecera y el
 choque a todo el ancho, la lámina sin período ni valor y sólo a la planometría de la
 ficha, el visor sin «la prueba los tapa» y con el alta confirmada y la órbita con
 límites) y 4 de navegador (la fila en conflicto, las repisas vendidas en «Toda la cara»
 y «Por entrepaño», la lámina bajada y adjunta sin escribir nada, el proveedor sin tilde
-con la confirmación y sin proveedor nuevo); las de navegador tocan las caras al revés,
-porque «Ver en 3D» abre la última. `probar-planta` suma 1 (el borde de arriba de «De
+con la confirmación y sin proveedor nuevo): 23 estáticas y 54 con navegador, todas
+verdes contra el servidor local. Las de navegador tocan las caras al revés, porque «Ver
+en 3D» abre la última, y antes de contar los amarillos al cerrar esperan la transición
+del botón (con SwiftShader el hilo principal está ocupado soltando la memoria de video). `probar-planta` suma 1 (el borde de arriba de «De
 cerca» no pasa del entrepaño de arriba, sin cabecear) y cambia la del copete (el piso
 del cartel es la cenefa); `probar-muebles`, las unidades con el fondo que entra;
 `probar-contrato`, el choque a todo el ancho; `test_catalogo.py`, el 409. Doce
