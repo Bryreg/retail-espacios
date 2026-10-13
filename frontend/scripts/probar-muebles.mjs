@@ -3096,8 +3096,10 @@ prueba("el muro de venta tiene degradé y una cenefa perimetral sin texto, en pa
 
 prueba("el campo visual abierto de «De frente» es sólo de la pantalla de venta", () => {
   const toma = cuerpoDe("const tomaDeVenta = useCallback(", "const ponerCampoVisual = useCallback(");
-  assert.match(toma, /const fov = toma === "cerca" \? FOV_DE_CERCA\s*: enVenta && toma === "frente" && !foco\.porEntrepano \? fovParaLaCara\(mueble, cara, obstaculos, limites, aspecto, FOV_DEL_EDITOR\)\s*: FOV_DEL_EDITOR;/,
-    "«De frente» abre el campo visual fuera de la venta o por entrepaño");
+  // Por entrepaño también (la franja elegida, de punta a punta): con 50° la
+  // cara de 3,6 m de un pasillo de 2 m salía sin los cantos.
+  assert.match(toma, /const fov = toma === "cerca" \? FOV_DE_CERCA\s*: enVenta && toma === "frente" \? fovParaLaCara\(mueble, cara, obstaculos, limites, aspecto, FOV_DEL_EDITOR, foco\.porEntrepano \? foco : undefined\)\s*: FOV_DEL_EDITOR;/,
+    "«De frente» abre el campo visual fuera de la venta, o por entrepaño mira otra franja");
   assert.match(toma, /const enVenta = presentationMode \|\| privadoPara !== undefined;/);
   assert.match(toma, /ponerCampoVisual\(fov\);/);
 });
@@ -5664,6 +5666,40 @@ prueba("el visor de Vender: la prueba es de las caras del contrato y el proveedo
   assert.deepEqual([...X.pruebasDelContrato(prueba, [])], []);
   assert.equal(X.normalizarProveedor("  POSTOBÓN "), "postobón");
   assert.equal(X.normalizarProveedor("Alpina"), X.normalizarProveedor(" alpina  "));
+});
+
+prueba("el visor de Vender vende la cara entera: los espacios internos del contrato, libres (ejecutado)", () => {
+  // GON-02·B, libre en Vender (que mira contratos), salía en el visor con el
+  // 60 % de relleno de «otros» y «vendido» en los cinco entrepaños: sus
+  // espacios internos viven sólo en el layout, sin contrato. En los muebles
+  // del contrato quedan libres; los vecinos, como están.
+  const conSlots = (id) => ({ id, slots: [
+    { id: `${id}-1`, x: 0, y: 0, w: 0.33, h: 0.5, status: "occupied" },
+    { id: `${id}-2`, x: 0.33, y: 0.5, w: 0.33, h: 0.5, status: "reserved" },
+    { id: `${id}-3`, x: 0.66, y: 0, w: 0.34, h: 1, status: "free" },
+  ] });
+  const entrada = [conSlots("GON-02"), conSlots("GON-01"), { id: "PUN-03" }];
+  const copia = JSON.stringify(entrada);
+  const salida = X.sinRepisasVendidas(entrada, new Set(["GON-02", "PUN-03"]));
+  assert.equal(JSON.stringify(entrada), copia, "sinRepisasVendidas mutó la entrada");
+  assert.deepEqual(salida[0].slots.map((s) => s.status), ["free", "free", "free"], "el mueble del contrato sigue con espacios vendidos");
+  assert.deepEqual(salida[0].slots.map(({ status, ...g }) => g), entrada[0].slots.map(({ status, ...g }) => g), "cambió la geometría de un espacio");
+  assert.equal(salida[1], entrada[1], "un vecino perdió sus espacios vendidos (o se copió sin necesidad)");
+  assert.equal(salida[2], entrada[2], "un mueble sin espacios internos cambió");
+  // Y con eso no hay relleno de «otros» ni entrepaños vendidos en la cara.
+  const v = V.ventaDeTipo("gondola", 3.6, 0.9, 1.8);
+  const relleno = (slots) => F.rellenoPorRubro({ anchoTotal: 3.6, filas: v.filas, vanos: v.vanos, caras: v.caras, franja: v.franja ?? 0, slots, cubiertas: [null, null] });
+  assert.ok(relleno(entrada[0].slots.map((s) => ({ ...s, brandCategory: "" }))).length > 0, "sin la función ya no había relleno: la prueba no prueba nada");
+  assert.deepEqual(relleno(salida[0].slots.map((s) => ({ ...s, brandCategory: "" }))), [], "la cara del contrato sigue con relleno de otros");
+  // El relleno del visor va en grises (`RellenoNeutro`): la paleta, sin color.
+  for (const h of RV.PALETAS.neutro) {
+    const n = parseInt(h.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255];
+    assert.ok((Math.max(...c) - Math.min(...c)) / Math.max(...c) <= 0.08, `${h}: la paleta neutra tiene color`);
+  }
+  assert.equal(RV.paletaDeRubro("lo que sea"), RV.PALETAS.otros, "la neutra se cuela en el editor por rubro");
+  const pem = sinComentarios(leer(join(muebles, "ProductoEnMueble.tsx")));
+  assert.match(pem, /const neutro = useContext\(RellenoNeutro\);/, "el relleno no lee `RellenoNeutro`");
+  assert.match(pem, /coloresDelRelleno\(pieza\.lugares, pieza\.rubro, semilla, neutro \? PALETAS\.neutro : undefined\)/, "el relleno del visor no usa la paleta neutra");
 });
 
 prueba("la escena del visor (`soloVenta`): ni fotos de caras, ni cámara del editor, ni `enfoque3D`", () => {

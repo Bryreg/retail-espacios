@@ -134,13 +134,16 @@ function Fila({
     : l.disponibilidad === "parcial" ? "Parte del periodo ya está vendida"
     : "Ya está vendido en el periodo";
 
-  /* Las repisas que el plano da por vendidas APARTE (los espacios internos
-     que se marcan en el Editor 3D). No tienen contrato en la base —viven sólo
-     en el JSON del layout—, así que el plano de Vender, que mira contratos,
-     da la cara por libre entera; y el 3D, que mira el layout, las pintaba
-     «vendidas» delante del proveedor. Se le dice a la dueña ACÁ, antes de la
-     reunión, sin nombres: es ella la que sabe si están vigentes. No bloquea
-     el guardado —el servidor no las conoce—. */
+  /* Los espacios internos que el plano da por vendidos APARTE (los que se
+     marcan en el Editor 3D). No tienen contrato en la base —viven sólo en el
+     JSON del layout—, así que el plano de Vender, que mira contratos, da la
+     cara por libre entera, y el visor 3D también: la muestra libre, sin ellos
+     (`sinRepisasVendidas`), porque es lo que se vende. Se le dice a la dueña
+     ACÁ, antes de la reunión, sin nombres: es ella la que sabe si siguen
+     vigentes. Con la MISMA palabra que el editor («espacios internos») y la
+     misma cuenta (uno por espacio, no por entrepaño), y que son del MUEBLE:
+     valen para las dos caras de una góndola doble. No bloquea el guardado
+     —el servidor no los conoce—. */
   const repisasVendidas = (l.fixture.slots ?? []).filter((s) => s.status === "occupied" || s.status === "reserved").length;
 
   return (
@@ -159,9 +162,9 @@ function Fila({
           <span
             className="repisas"
             data-repisas-vendidas={repisasVendidas}
-            title={`${repisasVendidas === 1 ? "Un espacio interno de este mueble figura vendido" : `${repisasVendidas} espacios internos de este mueble figuran vendidos`} aparte en el plano (Editor 3D), sin contrato en la base. Vender ofrece la cara entera: revisá si siguen vigentes.`}
+            title={`${repisasVendidas === 1 ? "Un espacio interno de este mueble figura vendido" : `${repisasVendidas} espacios internos de este mueble figuran vendidos`} aparte en el plano (Editor 3D), sin contrato en la base. Son del mueble, no de una cara: valen para las dos. Vender ofrece la cara entera, y el 3D se la muestra al proveedor libre, sin ellos: revisá si siguen vigentes antes de cerrar.`}
           >
-            {repisasVendidas === 1 ? "1 repisa vendida" : `${repisasVendidas} repisas vendidas`}
+            {repisasVendidas === 1 ? "1 interno vendido" : `${repisasVendidas} internos vendidos`}
           </span>
         )}
       </span>
@@ -433,6 +436,16 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
    *  filas van en el orden en que se tocaron). Las otras quedan a un toque en
    *  la chapa del visor. */
   const caraParaVer = carasDelVisor[carasDelVisor.length - 1] ?? null;
+  /** La última tocada, aunque no se pueda mostrar (tomada en estas fechas, o
+   *  la exhibición, que no tiene 3D): el botón dice qué abre en su lugar, o
+   *  por qué no abre nada. Antes «Ver en 3D» desaparecía sin decir nada, o
+   *  abría NEV-01 habiendo tocado PUN-01. */
+  const ultima = c.lineas[c.lineas.length - 1] ?? null;
+  const ultimaSeVe = !!ultima && !!caraParaVer && ultima.fixture.id === caraParaVer.fixtureId && ultima.face === caraParaVer.face;
+  /** «Tocá Ver en 3D…»: una pista la primera vez, mientras hay un solo
+   *  espacio y el visor no se abrió. Con el segundo espacio la ficha
+   *  necesita ese renglón. */
+  const [vio3D, setVio3D] = useState(false);
   const abrir3D = (cara: CaraActiva) => {
     onResaltar(null);
     // La pantalla completa se pide ACÁ, en el clic: después del `import` del
@@ -441,6 +454,7 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
     // no existe. Si la niega, el visor igual tapa la app entera.
     if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
     setEn3D({ fixtureId: cara.fixtureId, face: cara.face });
+    setVio3D(true);
   };
   /** Cerrar: soltar la pantalla completa y devolver el foco al botón «Ver en
    *  3D». La salida va acá y no en el desmontaje del visor: StrictMode monta
@@ -460,10 +474,38 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
    *  de planometría de ESTE contrato (y se guarda con él), y el desplegable
    *  se abre para que al volver se vea adjunta. Nunca el plano. */
   const { setPlanometria } = c;
-  const adjuntarLamina = useCallback((archivo: File) => {
+  const { marcarLamina } = sesion;
+  const adjuntarLamina = useCallback((archivo: File, cara: string) => {
     setPlanometria(archivo);
+    marcarLamina({ archivo, cara });
     setMasDatos(true);
-  }, [setPlanometria]);
+  }, [setPlanometria, marcarLamina]);
+  /* La lámina adjunta es de la PRUEBA, y se va con ella. La prueba se olvida
+     al cambiar de proveedor y con «Empezar de nuevo» (`useSesionDeVenta`);
+     si en ese momento la planometría sigue siendo la lámina, sale del
+     contrato. Pasaba: con Alpina se adjuntaba la lámina, se escribía
+     «Postobón» y el contrato de Postobón se guardaba con la lámina de Alpina
+     —«PROVEEDOR Alpina» y su yogur—, que viaja por correo y es la guía con la
+     que el mercaderista arma la exhibición. Un archivo que subió la dueña no
+     se toca: no es del 3D. */
+  const laminaAntes = useRef(sesion.lamina);
+  const [laminaQuitada, setLaminaQuitada] = useState(false);
+  useEffect(() => {
+    const antes = laminaAntes.current;
+    laminaAntes.current = sesion.lamina;
+    if (antes && !sesion.lamina && c.planometria === antes.archivo) {
+      setPlanometria(null);
+      setLaminaQuitada(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sesion.lamina]);
+  // Otra planometría (un archivo de la dueña, o quitarla a mano): ya no es la
+  // lámina, y el aviso de que se quitó tampoco hace falta.
+  useEffect(() => {
+    if (sesion.lamina && c.planometria !== sesion.lamina.archivo) marcarLamina(null);
+    if (c.planometria) setLaminaQuitada(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c.planometria]);
 
   return (
     <Panel
@@ -479,16 +521,25 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
               tocar el plano suma o saca la cara del contrato. De la familia
               de los interruptores A/B —borde fino, mono, tinta—: nunca
               amarillo, que es de «Guardar contrato y avisar». */}
-          {caraParaVer && (
+          {(caraParaVer || ultima) && (
             <button
               type="button"
               className="ver3d"
               data-ver-3d
-              onClick={() => abrir3D(caraParaVer)}
-              aria-label={`Ver ${caraParaVer.visible} en 3D`}
-              title={`Ver cómo queda ${caraParaVer.visible} en 3D`}
+              // Ninguna cara del contrato se puede mostrar: el botón queda, y
+              // dice por qué (antes desaparecía sin explicación). `aria-disabled`
+              // y no `disabled`: con `disabled` no se ve el `title`.
+              aria-disabled={caraParaVer ? undefined : "true"}
+              onClick={caraParaVer ? () => abrir3D(caraParaVer) : undefined}
+              aria-label={caraParaVer ? `Ver ${caraParaVer.visible} en 3D` : undefined}
+              title={!caraParaVer
+                ? `${ultima!.visible} no se muestra en 3D: ${porQueNoSeVe(ultima!)}.`
+                : ultimaSeVe
+                ? `Ver cómo queda ${caraParaVer.visible} en 3D`
+                : `${ultima!.visible} no se muestra en 3D (${porQueNoSeVe(ultima!)}): se abre ${caraParaVer.visible}.`}
             >
-              <Box size={12} aria-hidden /> Ver en 3D
+              {/* Si la última tocada no se puede mostrar, dice cuál abre. */}
+              <Box size={12} aria-hidden /> {caraParaVer && !ultimaSeVe ? `Ver ${caraParaVer.visible} en 3D` : "Ver en 3D"}
             </button>
           )}
           <span className="vpill">sin firmar</span>
@@ -528,6 +579,11 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
               ? c.falta
               : <>Agregá otro espacio <b>tocándolo en el plano</b></>}
           </p>
+        )}
+        {/* La primera vez que se toca una cara, dónde está el 3D: el botón
+            de la cabecera es chico y nada más en la ficha decía que existe. */}
+        {c.lineas.length === 1 && caraParaVer && !vio3D && (
+          <p className="pista" data-pista-3d>Tocá <b>Ver en 3D</b> para mostrarle cómo queda</p>
         )}
 
         <hr className="corte" />
@@ -617,6 +673,10 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
                 recibe una distinta cada temporada. */}
             <div className="campo">
               <span className="rotulo">Planometría · foto o PDF del proveedor</span>
+              {/* Sin nombre: el de la lámina quitada es el de otro proveedor. */}
+              {!c.planometria && laminaQuitada && (
+                <span className="nota-campo" data-lamina-quitada>Se quitó la lámina del 3D: era de otro proveedor.</span>
+              )}
               {c.planometria ? (
                 <div className="entrada" style={{ gap: 8 }}>
                   <ImageUp size={14} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
@@ -728,13 +788,19 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
               onCerrar={cerrar3D}
               sede={c.sede}
               onPlanometria={adjuntarLamina}
-              hayPlanometria={!!c.planometria}
+              planometria={!c.planometria ? null
+                : sesion.lamina && c.planometria === sesion.lamina.archivo ? { lamina: sesion.lamina.cara } : "otra"}
             />
           </Suspense>
         </LimiteDelVisor>
       )}
     </Panel>
   );
+}
+
+/** Por qué una cara del contrato no va al visor (ver `carasDelVisor`). */
+function porQueNoSeVe(l: Contrato["lineas"][number]): string {
+  return l.fixture.type === "exhibicion" ? "la exhibición no tiene 3D" : "está tomada en estas fechas";
 }
 
 // ─── Lo que rodea al visor 3D ────────────────────────────────────────────────

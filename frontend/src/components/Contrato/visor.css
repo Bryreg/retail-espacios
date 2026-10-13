@@ -134,7 +134,9 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 14px 16px;
+  /* Abajo, más aire que arriba: la última acción («Usarla como planometría»
+     y su confirmación) no queda pegada al borde del pie fijo. */
+  padding: 14px 16px 28px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -275,3 +277,36 @@
 .visor-ficha .grid.grid-cols-3 > label:nth-child(2) { grid-column: 1 / -1; }
 .visor-ficha .flex.flex-wrap > div { flex-wrap: wrap; row-gap: 4px; }
 .visor-ficha .flex.flex-wrap > div > span:first-child { flex: 0 0 100%; }
+
+/* El cuadro de antes, quieto, mientras se arma la lámina: tapa el lienzo (no
+   la chapa ni el HUD, que vienen después en el DOM). */
+.visor-congelado {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+/* «Proveedor: Alpina · cambiar»: con el nombre puesto, una línea y no la
+   pregunta, que es para la dueña. */
+.visor-proveedor {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--t-sm);
+  color: rgb(var(--ink-2-rgb));
+}
+.visor-proveedor b { color: rgb(var(--ink-1-rgb)); font-weight: 600; }
+.visor-enlace {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  font-size: var(--t-xs);
+  color: rgb(var(--ink-2-rgb));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.visor-enlace:hover { color: rgb(var(--ink-1-rgb)); }

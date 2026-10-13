@@ -487,6 +487,34 @@ export function sinDatosComerciales<T extends MuebleVendible>(muebles: readonly 
 }
 
 /**
+ * Los muebles del contrato con sus espacios internos LIBRES: lo que Vender
+ * vende es la cara entera.
+ *
+ * Los espacios internos (`slots`) viven sólo en el layout —se marcan en el
+ * Editor 3D, sin contrato en la base— y son del MUEBLE, no de una cara. El
+ * plano de Vender mira contratos y ofrece GON-02·B libre de punta a punta;
+ * el visor, que dibuja el layout, la mostraba con un 60 % de relleno de
+ * «otros» en «Hoy», «vendido» en los cinco entrepaños de «Por entrepaño» y
+ * una lámina con un entrepaño de Alpina en una cara llena de mercadería
+ * ajena. Al proveedor se le estaba diciendo que lo que se le vende ya está
+ * vendido. Con los espacios internos libres en los muebles de `ids`, el
+ * relleno de esas repisas y la marca «vendido» no salen (la misma regla de
+ * `VENDIDO`). A la dueña se le avisa en la fila del contrato.
+ *
+ * Pasa todo lo demás igual —la geometría de cada espacio y el estado del
+ * mueble, que dice si HOY lo ocupa otro entero— y no muta la entrada. Los
+ * vecinos (los que no están en `ids`) quedan como están.
+ */
+export function sinRepisasVendidas<T extends Pick<MuebleVendible, "id" | "slots">>(
+  muebles: readonly T[],
+  ids: ReadonlySet<string>,
+): T[] {
+  return muebles.map((m) => (ids.has(m.id) && m.slots?.length
+    ? ({ ...m, slots: m.slots.map((s) => ({ ...s, status: "free" })) } as T)
+    : m));
+}
+
+/**
  * Las pruebas de las caras que siguen en el contrato.
  *
  * La prueba del visor vive en la ficha del contrato con la clave del editor

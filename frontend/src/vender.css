@@ -568,21 +568,28 @@ html[data-tema="oscuro"] .vender {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 0 7px;
+  padding: 0 8px;
   border-radius: var(--r-xs);
   border: var(--hair) solid var(--line-strong);
-  background: var(--surface);
-  color: var(--ink-2);
-  font-family: var(--f-mono);
+  /* Letra de texto y un fondo de tinta suave: en mono, con el mismo borde y
+     el mismo tamaño, se confundía con la píldora «SIN FIRMAR» de al lado, y
+     es lo que pidió la dueña. Nunca amarillo. */
+  background: var(--bg);
+  color: var(--ink-1);
+  font-family: var(--f-text);
   font-size: var(--t-2xs);
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
 }
-.vp > header .ver3d:hover { color: var(--ink-1); border-color: var(--ink-1); }
+.vp > header .ver3d:hover { border-color: var(--ink-1); }
+.vp > header .ver3d[aria-disabled="true"] { cursor: not-allowed; background: var(--surface); color: var(--ink-2); }
+.vp > header .ver3d[aria-disabled="true"]:hover { border-color: var(--line-strong); }
 .vp > header .ver3d:focus-visible { outline: 2px solid var(--ink-1); outline-offset: 1px; }
 .vender .pista { margin: 6px 0 0; font-size: var(--t-2xs); color: var(--ink-3); }
 .vender .pista b { font-weight: 600; color: var(--ink-2); border-bottom: 1px solid var(--line-strong); }
+/* «Se quitó la lámina del 3D…», debajo del rótulo de la planometría. */
+.vender .nota-campo { display: block; margin: -1px 0 4px; font-size: var(--t-2xs); color: var(--ink-3); }
 .corte { border: 0; border-top: 1px dashed var(--brd); margin: 8px 0 6px; }
 .vender .campo { margin-bottom: 5px; }
 .vender .campo .rotulo { display: block; margin-bottom: 4px; }

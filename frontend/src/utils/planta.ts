@@ -1056,17 +1056,34 @@ export function alcanceDeLaFigura(
  *  toma «Tres cuartos» no gira hacia él (`vistaDeVenta`). */
 export const VECINO_PEGADO = 1.0;
 
-/** El campo visual (vertical) más abierto que acepta «De frente» en la
- *  pantalla de venta: unos 24 mm de una cámara de fotos, el de una toma de
- *  pasillo. Más, y las cajas de los bordes se estiran. */
-export const FOV_MAXIMO_DE_FRENTE = 70;
+/**
+ * El campo visual (vertical) más abierto que acepta «De frente» en la
+ * pantalla de venta.
+ *
+ * Era 70° (unos 24 mm de una cámara de fotos) y alcanzaba con la pantalla
+ * entera. En el visor de Vender el cajón de productos le saca 360 px al
+ * lienzo, y una góndola de 3,6 m frente a un pasillo de 2 m (GON-02·A) pedía
+ * 82° a 1920, 88° a 1366 y 93° a 1440 × 900: con el tope en 70 la cara salía
+ * cortada por los dos lados y se le mostraba al proveedor un espacio que no
+ * se ve entero. Un gran angular estira las cajas de los bordes; una cara
+ * cortada no deja ver lo que se vende. Es un estado de paso —mientras el
+ * cajón está abierto; cerrado, la misma cara entra con ~75°— y sólo se abre
+ * lo que hace falta (`fovParaLaCara` prueba de a un grado): un mueble que
+ * entra con 50° sigue con 50°.
+ */
+export const FOV_MAXIMO_DE_FRENTE = 95;
 
 /**
  * El campo visual de «De frente» para que la cara ENTERA entre a lo ancho
- * (con un 10 % de aire) desde donde deja pararse el pasillo, o `base` si ya
+ * (con un 4 % de aire) desde donde deja pararse el pasillo, o `base` si ya
  * entra. Una góndola de 3,6 m frente a un pasillo de 2 m no entra con 50°:
  * la lámina de Kellogg's cortaba el bloque de Müsli —el producto principal—
  * y el de Zucaritas.
+ *
+ * `foco` es la franja que mira la toma: la cara entera, o los entrepaños
+ * elegidos («Por entrepaño», que mira de frente y a su altura, y también
+ * tiene que mostrar la cara de punta a punta). Las esquinas que tienen que
+ * entrar son las de ESA franja.
  */
 export function fovParaLaCara(
   mueble: { cx: number; cz: number; w: number; d: number; h: number; rotY?: number },
@@ -1075,17 +1092,18 @@ export function fovParaLaCara(
   limites: Caja,
   aspecto = 16 / 9,
   base = 50,
+  foco: FocoDeVenta = { yBajo: 0, yAlto: mueble.h },
 ): number {
-  // Con la toma de verdad (`vistaDeVenta`, la cara entera): la cámara mira un
-  // poco para abajo y las esquinas de arriba quedan más cerca que el centro,
-  // así que la cuenta plana con el pasillo dejaba la góndola justo en el borde.
-  // Las cuatro esquinas de la cara, dentro del 96 % del cuadro.
+  // Con la toma de verdad (`vistaDeVenta`): la cámara mira un poco para
+  // abajo y las esquinas de arriba quedan más cerca que el centro, así que la
+  // cuenta plana con el pasillo dejaba la góndola justo en el borde. Las
+  // cuatro esquinas de la franja, dentro del 96 % del cuadro.
   const n = normalDeCara(mueble.rotY ?? 0, cara), t = { x: -n.z, z: n.x };
-  const esquinas = [-1, 1].flatMap((lado) => [0, mueble.h].map((y) => ({
+  const esquinas = [-1, 1].flatMap((lado) => [foco.yBajo, foco.yAlto].map((y) => ({
     x: mueble.cx + (n.x * mueble.d) / 2 + t.x * lado * mueble.w / 2, y, z: mueble.cz + (n.z * mueble.d) / 2 + t.z * lado * mueble.w / 2,
   })));
   for (let fov = base; fov <= FOV_MAXIMO_DE_FRENTE; fov += 1) {
-    const v = vistaDeVenta(mueble, cara, "frente", { yBajo: 0, yAlto: mueble.h, alFondo: fov > base }, obstaculos, limites, fov, aspecto);
+    const v = vistaDeVenta(mueble, cara, "frente", { ...foco, alFondo: fov > base }, obstaculos, limites, fov, aspecto);
     if (esquinas.every((e) => { const q = proyectar(v, fov, aspecto, e); return q.profundidad > 0 && Math.abs(q.x) <= 0.96; })) return fov;
   }
   return FOV_MAXIMO_DE_FRENTE;
@@ -1201,8 +1219,11 @@ export function personaYTomaDeVenta(
   };
   // En la pantalla de venta, «De frente» con un vecino pegado se corre hacia
   // el costado libre (`corridaPorVecino`). Sólo acá: el «Encuadrar esta cara»
-  // del editor sigue como siempre.
-  const corrida = toma === "frente" ? corridaPorVecino(mueble, cara, obstaculos, limites) : null;
+  // del editor sigue como siempre. Y no desde el fondo del pasillo
+  // (`alFondo`): ahí el campo visual se abrió JUSTO para que la cara entre de
+  // punta a punta, y correr la cámara 18 cm sacaba del cuadro el canto del
+  // otro lado (GON-02·A, con la punta pegada a la derecha).
+  const corrida = toma === "frente" && !foco.alFondo ? corridaPorVecino(mueble, cara, obstaculos, limites) : null;
   // El lado LIBRE primero: el que tiene más piso sin muebles al costado del
   // canto, en el plano de la cara. Pegada al robatope, la punta tiene un
   // costado ocupado; con el orden fijo de `lugarDeLaFigura` la persona

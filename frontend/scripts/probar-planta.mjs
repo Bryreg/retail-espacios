@@ -733,7 +733,65 @@ prueba("«De frente» de una góndola larga en un pasillo angosto abre el campo 
     const f = SEDE.find((x) => x.id === id);
     assert.equal(fovParaLaCara(comoMueble(f), "A", otros(id), LIMITES), 50, `${id} abrió el campo visual sin necesidad`);
   }
-  assert.ok(FOV_MAXIMO_DE_FRENTE <= 75, "más de 75° estira las cajas de los bordes");
+  // Sólo lo que hace falta: con un grado menos, la cara ya no entraba.
+  const menos = vistaDeVenta(comoMueble(g), "B", "frente", { yBajo: 0, yAlto: g.h, alFondo: fov - 1 > 50 }, otros("GON-01"), LIMITES, fov - 1);
+  const qm = [-1, 1].flatMap((lado) => [0, g.h].map((y) => proyectar(menos, fov - 1, 16 / 9,
+    { x: g.x + n.x * g.d / 2 + t.x * lado * g.w / 2, y, z: g.z + n.z * g.d / 2 + t.z * lado * g.w / 2 })));
+  assert.ok(qm.some((q) => Math.abs(q.x) > 0.96), `con ${fov - 1}° ya entraba: se abrió de más`);
+  assert.ok(FOV_MAXIMO_DE_FRENTE <= 95, "más de 95° ya no es un gran angular: es un ojo de pez");
+});
+
+prueba("«De frente» muestra la cara de punta a punta con el cajón del visor abierto y la punta pegada (GON-02·A)", () => {
+  // La crítica del visor de Vender: el cajón de productos le saca 360 px al
+  // lienzo (a 1366, 1006 × 768) y GON-02·A —3,6 m frente a un pasillo de
+  // 2 m, con PUN-02 pegada a la derecha— salía cortada por los DOS lados: el
+  // tope de 70° no alcanzaba y la corrida por el vecino (18 cm a la
+  // izquierda) sacaba además el canto izquierdo. Y la lámina, igual.
+  //
+  // La MISMA cuenta que la escena (`tomaDeVenta` en StoreEditor3D.tsx): el
+  // campo visual de `fovParaLaCara`, desde el fondo del pasillo si se abrió,
+  // y la toma con la persona; por entrepaño, la toma a secas. La lámina pide
+  // «De frente» con la franja agrandada (`HOLGURA_DE_LAMINA`, 1,35) y recorta
+  // cada toma al aspecto del mueble (`prepararToma`): lo que queda del ancho
+  // es `aspectoDeLamina / aspecto` del cuadro, centrado.
+  const g = SEDE.find((x) => x.id === "GON-02");
+  const n = normalDeCara(g.rotY, "A"), t = { x: -n.z, z: n.x };
+  const aspectoDeLamina = Math.max(0.75, Math.min(16 / 9, (g.w / (g.h * 1.12 * 1.35)) * 1.3));
+  for (const aspecto of [1006 / 768, 1560 / 1080, 1080 / 900, 16 / 9]) {
+    for (const [nombre, foco0, holgura] of [
+      ["la cara entera", { yBajo: 0, yAlto: g.h }, 1],
+      ["la lámina", { yBajo: 0, yAlto: g.h }, 1.35],
+      ["por entrepaño", { yBajo: 0.52, yAlto: 0.86, porEntrepano: true }, 1],
+    ]) {
+      const fov = fovParaLaCara(comoMueble(g), "A", otros("GON-02"), LIMITES, aspecto, 50, foco0.porEntrepano ? foco0 : undefined);
+      const medio = (foco0.yBajo + foco0.yAlto) / 2, mitad = ((foco0.yAlto - foco0.yBajo) / 2) * holgura;
+      const foco = { ...foco0, yBajo: medio - mitad, yAlto: medio + mitad, ...(fov > 50 ? { alFondo: true } : {}) };
+      const vista = foco0.porEntrepano
+        ? vistaDeVenta(comoMueble(g), "A", "frente", foco, otros("GON-02"), LIMITES, fov, aspecto)
+        : personaYTomaDeVenta(comoMueble(g), "A", "frente", foco, otros("GON-02"), LIMITES, fov, aspecto).vista;
+      const tope = nombre === "la lámina" ? Math.min(0.98, aspectoDeLamina / aspecto) : 0.98;
+      const cantos = (v, f) => [-1, 1].flatMap((lado) => [foco0.yBajo, foco0.yAlto].map((y) =>
+        proyectar(v, f, aspecto, { x: g.x + n.x * g.d / 2 + t.x * lado * g.w / 2, y, z: g.z + n.z * g.d / 2 + t.z * lado * g.w / 2 })));
+      cantos(vista, fov).forEach((q, i) => {
+        assert.ok(q.profundidad > 0 && Math.abs(q.x) <= tope + 1e-9,
+          `${nombre} (${aspecto.toFixed(2)}, ${fov}°): el canto ${i < 2 ? "izquierdo" : "derecho"} queda en x=${q.x.toFixed(2)} (tope ${tope.toFixed(2)})`);
+      });
+      // Y no más abierto de lo que hace falta para ESA franja: con un grado
+      // menos, la franja ya no entra (las esquinas de la cara entera piden
+      // más en «Por entrepaño», que mira de más cerca del piso).
+      if (fov > 50 && holgura === 1) {
+        const menos = vistaDeVenta(comoMueble(g), "A", "frente", { ...foco0, alFondo: fov - 1 > 50 }, otros("GON-02"), LIMITES, fov - 1, aspecto);
+        assert.ok(cantos(menos, fov - 1).some((q) => Math.abs(q.x) > 0.96), `${nombre} (${aspecto.toFixed(2)}): con ${fov - 1}° ya entraba`);
+      }
+    }
+  }
+  // Sin la crítica no probaría nada: con el tope viejo (70°) la cara no
+  // entraba con el cajón abierto.
+  const v70 = vistaDeVenta(comoMueble(g), "A", "frente", { yBajo: 0, yAlto: g.h, alFondo: true }, otros("GON-02"), LIMITES, 70, 1006 / 768);
+  const q70 = proyectar(v70, 70, 1006 / 768, { x: g.x + n.x * g.d / 2 + t.x * g.w / 2, y: g.h, z: g.z + n.z * g.d / 2 + t.z * g.w / 2 });
+  assert.ok(Math.abs(q70.x) > 1, "con 70° y el cajón abierto la cara ya entraba");
+  // La corrida por el vecino no va desde el fondo del pasillo (y sí con 50°).
+  assert.ok(corridaPorVecino(comoMueble(g), "A", otros("GON-02"), LIMITES), "GON-02·A no tiene vecino pegado: la prueba no prueba la corrida");
 });
 
 prueba("en «Tres cuartos» de la punta la góndola libre de la que es cabecera no se come el cuadro", () => {

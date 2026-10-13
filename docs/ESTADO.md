@@ -5385,7 +5385,10 @@ entera prueba la toma de verdad de 50° a 70° (`FOV_MAXIMO_DE_FRENTE`, unos 24 
 las cuatro esquinas caen dentro del 96 % del cuadro, y con el campo abierto la cámara se
 para al fondo del pasillo (`alFondo`: con la cuenta de siempre se acercaba al abrirlo y la
 cara volvía a no entrar). Una nevera o una punta, que entran, quedan en 50°. Ahora la toma
-de Kellogg's muestra los tres bloques y el cielo raso con sus luminarias.
+de Kellogg's muestra los tres bloques y el cielo raso con sus luminarias. (Desde el
+2026-10-13 el tope es 95°, también por entrepaño y sin la corrida por el vecino desde el
+fondo del pasillo: con el cajón del visor de Vender abierto la misma cara pedía hasta 93°.
+Ver «Ver el diseño desde Vender» → «la segunda crítica».)
 
 **5. El héroe del copete de una caja es un envase entero** (`pop.ts`). La franja del logo a
 la izquierda del copete era, en una caja, la banda del medio de la foto de canto a canto:
@@ -7191,9 +7194,14 @@ medio llenar. Ella le muestra la pantalla de SU PC al proveedor, en persona o po
 videollamada.
 
 **Cómo se usa.** La cabecera del panel «03 Contrato» trae, junto a «sin firmar», un
-botón chico con un cubo y «Ver en 3D», de la familia de los interruptores A/B. Aparece
-cuando se toca la primera cara en el plano y abre **la última cara tocada** (las demás,
-desde la chapa del visor). Al tocarlo la pantalla pasa a pantalla completa y se abre el
+botón chico con un cubo y «Ver en 3D», en letra de texto sobre el gris del papel (`--bg`)
+para que no se confunda con la píldora «SIN FIRMAR»; nunca amarillo. Aparece cuando se
+toca la primera cara en el plano —con una sola cara, la ficha suma «Tocá Ver en 3D para
+mostrarle cómo queda» hasta que se abre una vez— y abre **la última cara tocada** (las
+demás, desde la chapa del visor). Si la última no se puede mostrar (tomada en estas
+fechas, o la exhibición, que no tiene 3D), el botón dice cuál abre en su lugar («Ver
+PUN-03 en 3D»); si no se puede mostrar ninguna, queda apagado (`aria-disabled`, para que
+se vea el `title`) y el `title` dice por qué. Al tocarlo la pantalla pasa a pantalla completa y se abre el
 visor **encima de la ficha**: la sala de venta de «Presentar» (cielo raso, luminarias,
 baldosa), la cámara «De frente» a ESA cara a la altura de un comprador y la persona de
 1,70 m al lado. Arriba a la izquierda la chapa («PUN-03 · Punta de góndola») con las
@@ -7208,10 +7216,14 @@ cerca (siempre, también sin producto) | Hoy · Con Alpina (con un producto a la
 Producto | Pantalla completa (si se perdió). El primer Esc suelta la pantalla completa; el
 segundo, o «Volver al contrato», cierra. La ficha queda exactamente como estaba y el foco
 vuelve a «Ver en 3D». Debajo de «Cómo va», **«Para llevarse»**: «Bajar la propuesta» (la
-lámina del editor) y «Usarla como planometría» (la deja adjunta en el contrato).
+lámina del editor) y «Usarla como planometría» (la deja adjunta en el contrato). Si el
+contrato ya tiene una, lo dice antes de reemplazarla: «la lámina de PUN-03 con Alpina», o
+«un archivo adjunto» sin nombrarlo (el nombre lo puso la dueña y puede ser de cualquiera).
 
 Sin proveedor escrito, el cajón pregunta «¿Con qué proveedor estás armando este
-contrato?» y lo que se teclea queda en el campo Proveedor de la ficha. Si con ese nombre
+contrato?» y lo que se teclea queda en el campo Proveedor de la ficha; con el nombre
+puesto, en vez de la pregunta (que es para la dueña y la lee el proveedor) va una línea:
+«Proveedor: Alpina · cambiar». Si con ese nombre
 no hay productos dice «No encontré productos a nombre de «X»» (no «X no tiene
 productos»: ver abajo) y ofrece **«Subir un producto»** (nombre, rubro, foto y la ficha
 con el alto obligatorio): queda a nombre del proveedor del contrato y probado en la cara.
@@ -7244,6 +7256,17 @@ midieron contra el código, ver la spec de la tanda):
   observación del mueble y de cada repisa. Un campo comercial que alguien sume mañana al
   mueble no se cuela por omisión. Con el rubro vacío el relleno de los vecinos cae al
   genérico: no se ve ni la categoría del que hoy ocupa el espacio.
+- **Los muebles del contrato llegan con la cara entera a la venta** (`sinRepisasVendidas`,
+  puro, en `privacidad.ts`): sus espacios internos (`slots`, sólo del layout, sin
+  contrato) pasan como libres. Vender —que mira contratos— ofrece la cara entera, y el
+  visor la muestra así: ni relleno de «otros» en esas repisas, ni «vendido» en «Por
+  entrepaño», ni una lámina con un entrepaño del proveedor en una cara llena de ajenos.
+  Los vecinos quedan como están. A la dueña se le avisa en la fila.
+- **Lo ajeno, en grises** (`RellenoNeutro`, en `luzDeVenta.ts`): el visor lo pone
+  alrededor de la escena, ADENTRO del lienzo (otra raíz de React), y el relleno de lo
+  vendido a otros usa la paleta `neutro` en vez de la del rubro. El único color de la
+  pantalla es el del proveedor que mira. El editor no lo pone: Presentar sigue con su
+  paleta por rubro.
 - **El catálogo se pide por el NOMBRE del proveedor del contrato**:
   `GET /api/catalogo/?proveedor=`. El servidor lo resuelve con la regla de «Guardar
   contrato» (`bulk_leases.confirmar`: sin espacios de más, sin mayúsculas, y con dos que
@@ -7272,7 +7295,11 @@ la ficha del contrato, así que sobrevive a abrir y cerrar el visor —al reabri
 sigue en la punta— y se olvida con ella: al guardar el contrato (la ficha se va), al
 cambiar de sede (se remonta), con «Empezar de nuevo» y **al cambiar el nombre del
 proveedor** (otra forma de escribir el mismo no cuenta). No escribe el plano, el store ni
-el servidor. El visor dibuja sólo las pruebas de las caras que siguen en el contrato
+el servidor. **La lámina adjunta como planometría es de la prueba** (`sesion.lamina`: el
+archivo y la cara): cuando la prueba se olvida, si la planometría de la ficha sigue siendo
+esa lámina, sale del contrato (`ModoVender`, el efecto sobre `sesion.lamina`) y el campo
+dice «Se quitó la lámina del 3D: era de otro proveedor», sin nombrarlo. Un archivo que
+subió la dueña no se toca. El visor dibuja sólo las pruebas de las caras que siguen en el contrato
 (`pruebasDelContrato`).
 
 **Lo que hace que no se pierda nada:**
@@ -7307,11 +7334,12 @@ bajó—.
 
 **Límites, escritos:**
 
-- El 3D muestra el estado de HOY (lo vendido y libre de hoy, los «vendido» de «Por
-  entrepaño»), no el del período que se está negociando.
+- El 3D muestra el estado de HOY de los VECINOS (lo vendido y libre de hoy), no el del
+  período que se está negociando. Los muebles del contrato van con la cara entera libre.
 - Envases 3D sólo en góndola, punta, nevera de refrescos y robatope
-  (`TIPOS_CON_PRUEBA_3D`); en isla, batea o cruz el producto va como lámina sobre la cara,
-  sin «Cómo va»; la exhibición no tiene 3D (no entra al visor).
+  (`TIPOS_CON_PRUEBA_3D`); en isla, batea, cruz y los demás tipos el visor no prueba
+  producto: muestra el lugar («De frente» y «Tres cuartos», sin «De cerca» ni lámina) y el
+  cajón lo explica. La exhibición no tiene 3D (no entra al visor).
 - «Por entrepaño» es visual: el contrato de Vender es por cara.
 - Cambiar de pestaña en la barra sigue perdiendo el contrato (con el visor abierto la
   barra queda tapada e `inert`).
@@ -7369,7 +7397,9 @@ mira el proveedor, y cuatro cosas medias. Lo que se cambió, y por qué:
   libre entera. `PanelDePrueba` recibe `paraElProveedor` en el visor: sin ese aviso, y la
   marca «vendido» de «Por entrepaño» en tinta y no en naranja. **A la dueña se le avisa
   en la fila**, debajo del código y sin que la fila crezca: «3 repisas vendidas», con el
-  texto entero en el `title`. No bloquea el guardado: el servidor no las conoce.
+  texto entero en el `title`. No bloquea el guardado: el servidor no las conoce. (El
+  13-10 se fue más lejos: el visor ya no las dibuja ni las marca —`sinRepisasVendidas`— y
+  la fila dice «3 internos vendidos»; ver «la segunda crítica».)
 - **«Para llevarse», en el cajón del visor:** «Bajar la propuesta» arma la misma lámina
   del editor (`componerPropuesta`: «Hoy», «Con …» y «De cerca» desde las tomas de venta)
   con la escena ya privada; el pie va con el proveedor y el producto del arte, el mueble
@@ -7408,11 +7438,11 @@ mira el proveedor, y cuatro cosas medias. Lo que se cambió, y por qué:
   Antes decía «Entran 10 por entrepaño · 3 de fondo · 40 de frente», y se leían 10 y 40
   a la vez.
 
-**Quedó sin hacer, escrito:** el relleno de los vecinos sigue con sus colores (no se
-pasó a gris en el visor: es la misma luz y el mismo relleno de Presentar, y tocarlo es
-tocar las dos pantallas); la isla con el producto como lámina embaldosada y el cabezote
-de la nevera con una imagen sintética siguen como en el editor; la columna COL-01 se ve
-igual que en el editor.
+**Quedó sin hacer, escrito:** el relleno de los vecinos sigue con sus colores; la isla con
+el producto como lámina embaldosada y el cabezote de la nevera con una imagen sintética
+siguen como en el editor; la columna COL-01 se ve igual que en el editor. (El 13-10 se
+resolvieron los vecinos —grises en el visor—, la isla —sin producto en el visor— y la
+columna; el cabezote sigue igual. Ver abajo.)
 
 **Peso.** Al entrar a Vender: el archivo de Vender 209 728 → 211 439 B gzip (+1,7 KB
 contra la línea base de 6077160), el CSS de entrada +336 B, el pedazo compartido
@@ -7436,6 +7466,86 @@ visor, «la prueba los tapa» al proveedor, la lámina con período, el alta sin
 (visor y servidor), la órbita sin límites, «De cerca» sin el aire, el cartel sin la
 cenefa, el choque en la columna angosta, la lámina a otro lado que la ficha y la cuenta
 sin el fondo.
+
+### 2026-10-13: la segunda crítica
+
+La segunda revisión encontró un defecto alto y cuatro medios. Lo que se cambió:
+
+- **ALTA — la planometría de un proveedor quedaba en el contrato de otro.** Con Alpina se
+  hacía «Usarla como planometría», se escribía «Postobón» y la prueba se iba, pero el
+  contrato de Postobón seguía con `PRINCIPAL-GON-02-B_Alpina_antes-despues.jpg`: «Alpina»
+  a la vista en la ficha y, al guardar, la lámina con «PROVEEDOR Alpina» y su producto por
+  correo y como guía del mercaderista. Ahora la lámina adjunta es de la prueba
+  (`sesion.lamina`, que `vaciar()` olvida al cambiar de proveedor y con «Empezar de
+  nuevo»), y la ficha la saca del campo si sigue siendo ella: «Se quitó la lámina del 3D:
+  era de otro proveedor». «Para llevarse» dice de quién es la planometría que ya está.
+- **MEDIA — el visor contradecía la venta con las repisas vendidas aparte.** Los
+  espacios internos son del MUEBLE (las dos caras) y viven sólo en el layout; GON-02·B,
+  libre en Vender, salía en «Hoy» con un 60 % de relleno ajeno, cinco «VENDIDO» en «Por
+  entrepaño» (la fila decía 3) y la lámina con un entrepaño de Alpina en una cara llena
+  de otros. Ahora los muebles del contrato llegan al visor con esos espacios libres
+  (`sinRepisasVendidas`): la cara se ve entera a la venta. La fila de la dueña dice «3
+  internos vendidos» (la palabra del editor y la misma cuenta), y el `title` aclara que
+  son del mueble y valen para las dos caras, y que el 3D se la muestra libre.
+- **MEDIA — la isla no se podía mostrar.** El producto iba como un cartel plano
+  embaldosado, cinco veces su escala, cortado, y «Tres cuartos» dejaba ver que era una
+  pared. En los tipos sin envases el visor ya no prueba producto: «De frente» y «Tres
+  cuartos» del lugar, sin «De cerca» ni lámina, el cajón no se abre solo y explica «Isla:
+  el producto va en cajas o exhibidores que arma el proveedor…». Las pruebas de esas
+  caras tampoco se dibujan (`clavesDeCaras` filtra por `TIPOS_CON_PRUEBA_3D`).
+- **MEDIA — GON-02·A salía cortada por los dos lados.** 3,6 m frente a un pasillo de 2 m:
+  con el cajón abierto el lienzo es angosto (1080 × 900 a 1440; 1006 × 768 a 1366) y la
+  cara pedía 88-93° de campo visual, con el tope en 70; además la corrida por la punta
+  pegada (18 cm) sacaba el canto izquierdo. Ahora `FOV_MAXIMO_DE_FRENTE` es 95°, la
+  corrida no va desde el fondo del pasillo (`alFondo`) y «Por entrepaño» también abre el
+  campo (`fovParaLaCara` recibe la franja). Sólo se abre lo que hace falta: un grado
+  menos y la cara no entra (lo prueba `probar-planta`). Es un gran angular de paso:
+  cerrado el cajón, la misma cara entra con ~75°.
+- **MEDIA — en el robatope se veía el vecino.** La punta pegada, vendida a otro, se
+  llevaba el cuadro con sus bloques de colores, y en la lámina «Con Alpina» traía en
+  primer plano la Avena probada en la isla. Ahora lo ajeno va en grises en todo el visor
+  (`RellenoNeutro`, paleta `neutro`) y la lámina se arma con la prueba de SU cara sola
+  (`soloLaCara`): «Hoy» y «Con …» difieren sólo en lo que se vende. El encuadre del
+  robatope no se tocó (la persona da la escala de una bolsa de 23 cm).
+- **Bajas:** «Ver en 3D» en letra de texto sobre `--bg` (se confundía con «SIN FIRMAR»)
+  y la pista «Tocá Ver en 3D…» con la primera cara; el botón dice qué cara abre cuando la
+  última está tomada, y queda apagado con su porqué si no hay ninguna; la confirmación
+  de la lámina se trae a la vista (`scrollIntoView`) y el cuerpo del cajón deja 28 px
+  abajo; el título de la lámina es «GON-02·A · Góndola, por cara» con «SEDE PRINCIPAL»
+  debajo y el archivo `PRINCIPAL-GON-02-A_Alpina_…` (la A con su letra, como la B);
+  mientras se arma la lámina la pantalla queda congelada en el cuadro de antes
+  (`data-congelado`) y al terminar vuelve a la toma que había; con el proveedor puesto,
+  el cajón dice «Proveedor: Alpina · cambiar» en vez de la pregunta; y la columna, en la
+  pantalla de venta, va del piso al cielo raso con la luz de los muebles y sin capitel
+  (era una «chimenea» marrón detrás de la isla).
+
+**Quedó sin hacer:** el cabezote de la nevera sigue con el logo chico; una nevera libre
+sale en «Hoy» con botellas genéricas y una punta libre vacía (la regla de «Hoy» en un
+espacio libre no se unificó: es del editor); «De cerca» de la lámina no se centró en la
+franja del producto; sigue habiendo una sola planometría por contrato (adjuntar la de
+otra cara reemplaza la anterior, y el visor lo dice); «Por entrepaño» no vuelve a
+encuadrar al elegirlo.
+
+**Peso.** Al entrar a Vender, contra el build de 6077160 con el gzip de Node: el archivo
+de Vender 209 728 → 211 937 B (+2,2 KB), el CSS de entrada +387 B, `propuesta` +149 B y
+el index +3 B: +2,7 KB en total, bajo el tope de 3 KB. El visor: 7,5 KB + 1,7 KB de CSS.
+
+**Cómo se comprobó.** `probar-vender` suma 2 estáticas (la lámina se va con el
+proveedor; la cara entera, lo ajeno en grises, la isla sin producto y la lámina sólo con
+su cara y el cuadro quieto) y 1 de navegador (adjuntar con Alpina, escribir Postobón: la
+planometría queda vacía, la ficha no nombra a Alpina y dice que se quitó; volver a
+Alpina no la trae), y la de las repisas exige cero «vendido» en el visor;
+`COMPONENTES_VENDER` ahora también ve `<X.Provider>`. `probar-planta` suma 1 (GON-02·A
+de punta a punta con el cajón abierto a 1366, 1440 y 1920, en «De frente», en la lámina
+y por entrepaño, cada una con el campo mínimo para SU franja) y la de la góndola larga
+exige el campo mínimo. `probar-muebles` suma 1 (`sinRepisasVendidas` ejecutada y la
+paleta neutra). En total, 25 estáticas de Vender y 57 con navegador contra el servidor
+local, todas verdes. Trece mutaciones, todas en rojo: la planometría que no sale al
+cambiar de proveedor, `vaciar()` sin olvidar la lámina, los muebles del contrato sin
+`sinRepisasVendidas`, `sinRepisasVendidas` que no libera, el relleno sin la paleta
+neutra, el visor sin `RellenoNeutro`, pruebas y «De cerca» en la isla, la lámina con
+las pruebas de otras caras, el tope otra vez en 70°, la corrida desde el fondo del
+pasillo, por entrepaño con 50° y `fovParaLaCara` sin la franja.
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 

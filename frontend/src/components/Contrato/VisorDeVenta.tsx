@@ -18,7 +18,8 @@ import {
 } from "../StoreEditor3D/StoreEditor3D";
 import EditorDeFicha, { FICHA_VACIA } from "../StoreEditor3D/EditorDeFicha";
 import type { FichaDeArte } from "../StoreEditor3D/muebles/producto";
-import { arteALaVista, pruebasDelContrato, sinDatosComerciales } from "../StoreEditor3D/muebles/privacidad";
+import { arteALaVista, pruebasDelContrato, sinDatosComerciales, sinRepisasVendidas } from "../StoreEditor3D/muebles/privacidad";
+import { RellenoNeutro } from "../StoreEditor3D/muebles/luzDeVenta";
 import { olvidarEtiquetas, precalentarEtiquetas, registrarRenderer } from "../StoreEditor3D/muebles/etiqueta";
 import { olvidarGeometrias } from "../StoreEditor3D/muebles/perfiles";
 import { olvidarCopetes } from "../StoreEditor3D/muebles/pop";
@@ -91,11 +92,15 @@ interface VisorDeVentaProps {
   /** La sede, para el pie de la lámina. */
   sede: string;
   /** Adjunta la lámina como planometría DEL CONTRATO (el campo de la ficha,
-   *  que sigue montada debajo). Nunca el plano. */
-  onPlanometria: (archivo: File) => void;
-  /** Si la ficha ya tiene una planometría: usar la lámina la reemplaza, y se
-   *  dice. */
-  hayPlanometria: boolean;
+   *  que sigue montada debajo). Nunca el plano. `cara` es la de la lámina
+   *  (`GON-02·A`): la ficha la recuerda para decir de quién es, y la saca si
+   *  cambia el proveedor. */
+  onPlanometria: (archivo: File, cara: string) => void;
+  /** Lo que la ficha tiene como planometría: la lámina de una cara (armada
+   *  acá, con el proveedor de ahora: si cambia, la ficha la saca), otro
+   *  archivo, o nada. El otro archivo NO se nombra: su nombre lo puso quien
+   *  lo subió y puede ser el de cualquiera. */
+  planometria: { lamina: string } | "otra" | null;
 }
 
 // ─── Constantes de la escena ─────────────────────────────────────────────────
@@ -163,6 +168,10 @@ const Lienzo = memo(function Lienzo({
         dpr={[1, 1.5]}
         style={{ background: FONDO_DE_SALA, width: "100%", height: "100%" }}
       >
+        {/* Lo ajeno en grises (`RellenoNeutro`): el único color de la
+            pantalla es el del proveedor que mira. Adentro del lienzo, que es
+            otra raíz de React: la escena no se entera. */}
+        <RellenoNeutro.Provider value>
         <Scene
           soloVenta
           placedFixtures={muebles}
@@ -198,6 +207,7 @@ const Lienzo = memo(function Lienzo({
           onHoverFixture={NADA}
           estadoDeEscena={estado}
         />
+        </RellenoNeutro.Provider>
       </Canvas>
     </CanvasErrorBoundary>
   );
@@ -206,7 +216,7 @@ const Lienzo = memo(function Lienzo({
 // ─── El visor ────────────────────────────────────────────────────────────────
 
 export default function VisorDeVenta({
-  caras, activa, onActiva, proveedor, onProveedor, sesion, onCerrar, sede, onPlanometria, hayPlanometria,
+  caras, activa, onActiva, proveedor, onProveedor, sesion, onCerrar, sede, onPlanometria, planometria,
 }: VisorDeVentaProps) {
   const raiz = useRef<HTMLDivElement>(null);
   const volver = useRef<HTMLButtonElement>(null);
@@ -264,8 +274,16 @@ export default function VisorDeVenta({
   };
 
   // ── Los muebles: los de la sede, sin un solo dato comercial ─────────────
+  // Y los del contrato con la cara ENTERA a la venta (`sinRepisasVendidas`):
+  // los espacios internos que el plano da por vendidos aparte no tienen
+  // contrato, Vender los ofrece, y mostrárselos vendidos al proveedor era
+  // contradecir lo que se le vende. A la dueña se le avisa en la fila.
   const unificados = useFixtureStore(selectFixtures);
-  const muebles = useMemo(() => sinDatosComerciales(storeToFixtures(unificados)), [unificados]);
+  const idsDelContrato = caras.map((c) => c.fixtureId).join(",");
+  const muebles = useMemo(
+    () => sinRepisasVendidas(sinDatosComerciales(storeToFixtures(unificados)), new Set(idsDelContrato.split(","))),
+    [unificados, idsDelContrato],
+  );
   const mueble = muebles.find((f) => f.id === activa.fixtureId) ?? null;
   const mueblesRef = useRef(muebles);
   mueblesRef.current = muebles;
@@ -323,12 +341,31 @@ export default function VisorDeVenta({
   const proveedorDeLosArtes = artes[0]?.proveedor ?? "";
 
   // ── La prueba: la de la ficha, sólo de las caras del contrato ───────────
-  const clavesDeCaras = caras.map((c) => `${c.fixtureId}|${c.face}`).join(",");
+  // Y sólo donde el producto va en envases (`TIPOS_CON_PRUEBA_3D`): en una
+  // isla, una batea o una cruz iba como un cartel plano embaldosado, cada
+  // envase cinco veces su tamaño, y «Tres cuartos» dejaba ver que era una
+  // pared. Eso no se le puede mostrar a un cliente: ahí el visor muestra el
+  // lugar.
+  const clavesDeCaras = caras
+    .filter((c) => TIPOS_CON_PRUEBA_3D.has(muebles.find((m) => m.id === c.fixtureId)?.type ?? ""))
+    .map((c) => `${c.fixtureId}|${c.face}`).join(",");
   const pruebasEnEscena = useMemo(
-    () => pruebasDelContrato(sesion.prueba, caras),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    () => pruebasDelContrato(sesion.prueba, clavesDeCaras ? clavesDeCaras.split(",").map((k) => {
+      const [fixtureId, face] = k.split("|");
+      return { fixtureId, face: face as "A" | "B" };
+    }) : []),
     [sesion.prueba, clavesDeCaras],
   );
+  /** Mientras se arma la lámina, sólo la prueba de SU cara: en la del
+   *  robatope, «Con Alpina» traía en primer plano la Avena probada en la isla
+   *  de enfrente, que «Hoy» no tenía, y el antes y el después diferían en
+   *  algo que no era lo que se vende. */
+  const [soloLaCara, setSoloLaCara] = useState<string | null>(null);
+  const pruebaDibujada = useMemo(() => {
+    if (!soloLaCara) return pruebasEnEscena;
+    const id = pruebasEnEscena.get(soloLaCara);
+    return id == null ? new Map<string, number>() : new Map([[soloLaCara, id]]);
+  }, [pruebasEnEscena, soloLaCara]);
   const clave = claveDe(activa);
   const arteDeLaCara = artes.find((a) => a.id === arteALaVista(pruebasEnEscena.get(clave), artes, privadoPara)) ?? null;
 
@@ -402,15 +439,23 @@ export default function VisorDeVenta({
   // También al saltar desde la chapa a otra cara sin producto: con el cajón
   // cerrado se veía el mueble vacío y había que buscar «Producto» en un HUD
   // que se esconde a los 2 s.
-  const [cajon, setCajon] = useState(() => !sesion.prueba.has(claveDe(activa)));
+  // En una isla o una batea no hay producto que elegir (ver arriba): el
+  // cajón no se abre solo.
   const pruebaRef = useRef(sesion.prueba);
   pruebaRef.current = sesion.prueba;
+  const pideProducto = (c: CaraActiva) =>
+    TIPOS_CON_PRUEBA_3D.has(mueblesRef.current.find((m) => m.id === c.fixtureId)?.type ?? "") && !pruebaRef.current.has(claveDe(c));
+  const [cajon, setCajon] = useState(() => pideProducto(activa));
   useEffect(() => {
-    if (!pruebaRef.current.has(clave)) setCajon(true);
+    if (pideProducto(activa)) setCajon(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clave]);
-  // Se preguntó por el proveedor al abrir: el campo queda mientras se teclea
-  // (si no, desaparecía con la primera letra).
-  const [pidioProveedor] = useState(() => !proveedor.trim());
+  // El proveedor del contrato: sin nombre, el cajón lo pregunta (es una
+  // pregunta para la dueña); con nombre, una línea —«Proveedor: Alpina ·
+  // cambiar»— y no la pregunta, que el proveedor que mira no tiene por qué
+  // leer. El campo queda mientras se teclea (si no, desaparecía con la
+  // primera letra) y se pliega al salir de él.
+  const [editandoProveedor, setEditandoProveedor] = useState(() => !proveedor.trim());
   const [busqueda, setBusqueda] = useState("");
   const [subiendo, setSubiendo] = useState(false);
   // Al abrir el alta, se la trae a la vista una vez (el cuerpo del cajón rueda).
@@ -445,8 +490,17 @@ export default function VisorDeVenta({
   const [laminaLista, setLaminaLista] = useState<"" | "bajada" | "adjunta">("");
   const [laminaFallo, setLaminaFallo] = useState("");
   useEffect(() => { setLaminaLista(""); setLaminaFallo(""); }, [clave, arteDeLaCara?.id]);
+  /** El cuadro congelado mientras se arma la lámina (ver `armarLamina`). */
+  const [congelado, setCongelado] = useState<string | null>(null);
+  // La confirmación, a la vista: queda al pie del cuerpo del cajón, que rueda,
+  // y a 1440 × 900 caía debajo del borde —lo único que decía que se adjuntó
+  // era que el botón cambiaba de nombre—.
+  const confirmacion = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (laminaLista || laminaFallo) confirmacion.current?.scrollIntoView({ block: "nearest" });
+  }, [laminaLista, laminaFallo]);
 
-  const armarLamina = async (): Promise<{ blob: Blob; datos: DatosPropuesta; conComparacion: boolean } | null> => {
+  const armarLamina = async (): Promise<{ blob: Blob; archivo: string; cara: string } | null> => {
     const capturar = captura.current;
     const arte = arteDeLaCara;
     if (!capturar || !arte || !mueble || !cara) return null;
@@ -468,6 +522,14 @@ export default function VisorDeVenta({
     let aspectoDeLamina = aspecto;
     const preparar = (dataUrl: string) => prepararToma(dataUrl, aspectoDeLamina, FONDO_DE_SALA);
     const sinArteAntes = sinArte;
+    // La toma que había elegido la dueña: al terminar se vuelve a ésa (y no
+    // siempre a «De frente»).
+    const tomaAntes: TomaDeVenta = pedido && pedido.fixtureId === activa.fixtureId && pedido.cara === activa.face ? pedido.toma : "frente";
+    // Mientras se arman las tomas (unos segundos; en una máquina lenta, más)
+    // la pantalla se queda con el cuadro de ahora: el proveedor no ve la
+    // cámara saltar de toma en toma, ni otro encuadre con otros productos.
+    try { setCongelado(capturar()); } catch { /* sin cuadro: se ve el ir y venir */ }
+    setSoloLaCara(clave);
     try {
       if (conTomas) {
         const n = pedirToma(activa.fixtureId, activa.face, "frente", HOLGURA_DE_LAMINA);
@@ -487,9 +549,12 @@ export default function VisorDeVenta({
         await esperarEscena((e) => e.toma === n);
         deCerca = await preparar(capturar());
       }
+      // El título, como se lee en la ficha y con el tipo («GON-02·A ·
+      // Góndola, por cara»), y la sede debajo. Con el código interno salía
+      // «PRINCIPAL-GON-02-B» sobre «PRINCIPAL», y la cara A sin su letra.
       const datos: DatosPropuesta = {
-        sede,
-        espacio: cara.codigo,
+        sede: `Sede ${sede}`,
+        espacio: `${cara.visible} · ${cara.tipo}`,
         mueble: cara.tipo,
         proveedor: arte.proveedor,
         producto: nombresDeLaPrueba(
@@ -512,11 +577,17 @@ export default function VisorDeVenta({
             ...(deCerca ? [{ titulo: "De cerca", dataUrl: deCerca }] : []),
           ]
         : [{ titulo: "El espacio hoy", dataUrl: despues }];
-      return { blob: await componerPropuesta(tomas, datos), datos, conComparacion };
+      // El archivo, con la sede y el código de la cara (la A con su letra,
+      // como la B): `PRINCIPAL-GON-02-A_Alpina_antes-despues.png`.
+      const archivo = nombreDeArchivo({ ...datos, espacio: `${sede}-${cara.visible}` }, conComparacion);
+      return { blob: await componerPropuesta(tomas, datos), archivo, cara: cara.visible };
     } finally {
-      // Como estaba: con el producto (o «Hoy», si estaba en «Hoy») y de frente.
+      // Como estaba: con el producto (o «Hoy», si estaba en «Hoy»), con las
+      // pruebas de las otras caras, en la toma que había, y sin congelar.
       setSinArte(sinArteAntes);
-      pedirToma(activa.fixtureId, activa.face, "frente");
+      setSoloLaCara(null);
+      pedirToma(activa.fixtureId, activa.face, tomaAntes);
+      setCongelado(null);
     }
   };
   const bajarLamina = async () => {
@@ -526,7 +597,7 @@ export default function VisorDeVenta({
     try {
       const r = await armarLamina();
       if (!r) return;
-      descargar(r.blob, nombreDeArchivo(r.datos, r.conComparacion));
+      descargar(r.blob, r.archivo);
       setLaminaLista("bajada");
     } catch {
       setLaminaFallo("No se pudo armar la lámina. Probá de nuevo.");
@@ -546,8 +617,8 @@ export default function VisorDeVenta({
       const r = await armarLamina();
       if (!r) return;
       const jpg = await aJpeg(r.blob);
-      const base = nombreDeArchivo(r.datos, r.conComparacion).replace(/\.png$/, "");
-      onPlanometria(new File([jpg.blob], `${base}.${jpg.extension}`, { type: jpg.blob.type }));
+      const base = r.archivo.replace(/\.png$/, "");
+      onPlanometria(new File([jpg.blob], `${base}.${jpg.extension}`, { type: jpg.blob.type }), r.cara);
       setLaminaLista("adjunta");
     } catch {
       setLaminaFallo("No se pudo armar la lámina. Probá de nuevo.");
@@ -600,7 +671,7 @@ export default function VisorDeVenta({
           muebles={muebles}
           privadoPara={privadoPara}
           sinArte={sinArte}
-          prueba={pruebasEnEscena}
+          prueba={pruebaDibujada}
           como={sesion.como}
           artes={artes}
           pedido={pedido}
@@ -608,6 +679,8 @@ export default function VisorDeVenta({
           orbitRef={orbitRef}
           onCaptura={alTenerCaptura}
         />
+        {/* El cuadro de antes, quieto, mientras se arma la lámina. */}
+        {congelado && <img className="visor-congelado" src={congelado} alt="" aria-hidden data-congelado />}
 
         {/* Qué se está mirando, y las otras caras del contrato a un toque. */}
         <div className="visor-chapa">
@@ -639,7 +712,9 @@ export default function VisorDeVenta({
             —también sin producto: el espacio vacío se muestra igual—. */}
         <HudQueSeEsconde contenedor={raiz} className="visor-hud">
           <span className="visor-hud-grupo" role="group" aria-label="Tomas">
-            {TOMAS.map(([toma, rotulo]) => (
+            {/* «De cerca» mira entrepaños: sin envases (una isla, una
+                batea) no hay qué mirar de cerca. */}
+            {TOMAS.filter(([toma]) => conCuenta || toma !== "cerca").map(([toma, rotulo]) => (
               <button
                 key={toma}
                 type="button"
@@ -691,22 +766,40 @@ export default function VisorDeVenta({
           </header>
 
           <div className="visor-cajon-cuerpo">
-            {(pidioProveedor || !nombre) && (
+            {editandoProveedor || !nombre ? (
               <label className="visor-campo">
-                <span className="visor-rotulo">¿Con qué proveedor estás armando este contrato?</span>
+                <span className="visor-rotulo">
+                  {nombre ? "Proveedor del contrato" : "¿Con qué proveedor estás armando este contrato?"}
+                </span>
                 <input
                   className="visor-entrada"
                   value={proveedor}
-                  onChange={(e) => onProveedor(e.target.value)}
+                  onChange={(e) => { setEditandoProveedor(true); onProveedor(e.target.value); }}
+                  onBlur={(e) => { if (e.target.value.trim()) setEditandoProveedor(false); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
                   placeholder="Nombre del proveedor"
                   autoComplete="off"
                 />
                 <span className="visor-nota">Queda escrito en el contrato.</span>
               </label>
+            ) : (
+              <p className="visor-proveedor" data-proveedor-del-contrato>
+                <span>Proveedor: <b>{nombre}</b></span>
+                <button type="button" className="visor-enlace" onClick={() => setEditandoProveedor(true)}>cambiar</button>
+              </p>
             )}
 
             {!llevaProducto ? (
               <p className="visor-aviso">Este mueble no lleva producto en el 3D.</p>
+            ) : !conCuenta ? (
+              // Una isla, una batea, una cruz: el producto va en cajas o
+              // exhibidores que arma el proveedor, y como cartel plano
+              // embaldosado no se le podía mostrar a nadie. Se muestra el
+              // lugar: de frente y en tres cuartos.
+              <p className="visor-aviso" data-sin-envases>
+                {cara.tipo}: el producto va en cajas o exhibidores que arma el proveedor. El 3D muestra el
+                lugar y cómo se ve desde el pasillo, no el producto.
+              </p>
             ) : !nombre ? (
               <p className="visor-nota">Mientras tanto se puede mostrar el espacio vacío con las tres tomas.</p>
             ) : cargando && artes.length === 0 ? (
@@ -771,7 +864,7 @@ export default function VisorDeVenta({
             {/* El alta va ADENTRO del cuerpo, que rueda: con la ficha del
                 envase abierta mide más de lo que entra en una pantalla de
                 768 px, y en el pie fijo «Subir» quedaba fuera de la vista. */}
-            {isAdmin && llevaProducto && nombre && subiendo && (
+            {isAdmin && conCuenta && nombre && subiendo && (
               <section className="visor-como" aria-label="Subir un producto" ref={formularioDeAlta}>
                 <h3 className="visor-rotulo">Subir un producto</h3>
                 <SubirProducto
@@ -807,12 +900,23 @@ export default function VisorDeVenta({
               </section>
             )}
 
-            {arteDeLaCara && !subiendo && (
+            {arteDeLaCara && conCuenta && !subiendo && (
               <section className="visor-como" aria-label="La lámina">
                 <h3 className="visor-rotulo">Para llevarse</h3>
                 <p className="visor-nota">
-                  La lámina con «Hoy», «Con {proveedorDeLosArtes}»{conCuenta ? " y «De cerca»" : ""}, sin valores ni fechas.
+                  La lámina de {cara.visible} con «Hoy», «Con {proveedorDeLosArtes}» y «De cerca», sin valores ni fechas.
                 </p>
+                {/* De quién es la planometría que ya tiene el contrato, antes
+                    de reemplazarla. Una lámina de acá es siempre de este
+                    proveedor (la ficha la saca si cambia); un archivo que
+                    subió la dueña no se nombra. */}
+                {planometria && (
+                  <p className="visor-nota" data-planometria-actual>
+                    {planometria === "otra"
+                      ? "El contrato ya tiene una planometría (un archivo adjunto): usar la lámina la reemplaza."
+                      : `La planometría del contrato es la lámina de ${planometria.lamina} con ${proveedorDeLosArtes}.`}
+                  </p>
+                )}
                 <div className="visor-lamina">
                   <button type="button" className="visor-boton-linea" onClick={bajarLamina} disabled={!!lamina} data-bajar-lamina>
                     {lamina === "bajando" ? <Loader2 size={13} className="visor-gira" aria-hidden /> : <Download size={13} aria-hidden />}
@@ -820,21 +924,20 @@ export default function VisorDeVenta({
                   </button>
                   <button type="button" className="visor-boton-linea" onClick={usarComoPlanometria} disabled={!!lamina} data-lamina-planometria>
                     {lamina === "adjuntando" ? <Loader2 size={13} className="visor-gira" aria-hidden /> : <FileCheck size={13} aria-hidden />}
-                    {hayPlanometria ? "Reemplazar la planometría" : "Usarla como planometría"}
+                    {planometria ? "Reemplazar la planometría" : "Usarla como planometría"}
                   </button>
                 </div>
-                {laminaLista === "adjunta" && (
-                  <p className="visor-nota" role="status" data-lamina-adjunta>
-                    Quedó adjunta como planometría de este contrato: se guarda con él.
-                  </p>
-                )}
-                {laminaLista === "bajada" && <p className="visor-nota" role="status">La lámina se bajó.</p>}
-                {laminaFallo && <p className="visor-aviso" role="alert">{laminaFallo}</p>}
+                <p ref={confirmacion} className={laminaFallo ? "visor-aviso" : "visor-nota"} role={laminaFallo ? "alert" : "status"}
+                  data-lamina-adjunta={laminaLista === "adjunta" || undefined} hidden={!laminaLista && !laminaFallo}>
+                  {laminaFallo || (laminaLista === "adjunta"
+                    ? `Quedó adjunta como planometría de este contrato (${cara.visible}): se guarda con él.`
+                    : laminaLista === "bajada" ? "La lámina se bajó." : "")}
+                </p>
               </section>
             )}
           </div>
 
-          {isAdmin && llevaProducto && nombre && !subiendo && (
+          {isAdmin && conCuenta && nombre && !subiendo && (
             <footer className="visor-cajon-pie">
               <button type="button" className="visor-boton-linea" onClick={() => setSubiendo(true)}>
                 <Upload size={13} aria-hidden /> Subir un producto

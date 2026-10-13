@@ -2088,10 +2088,19 @@ function CheckoutMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:num
 // ─── Mesh: Columna ────────────────────────────────────────────────────────────
 
 function ColumnaMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
+  // En la pantalla de venta la columna es parte del LOCAL: va del piso al
+  // cielo raso, con la luz de venta de los muebles y sin el remate de arriba.
+  // Con la altura del plano (3 m, 20 cm por debajo del cielo raso), sin esa
+  // luz y con el capitel, se veía como una chimenea marrón parada en medio de
+  // la sala, detrás de la isla y encima de la góndola en la toma de PUN-03.
+  const luz = useLuzDeVenta();
+  const venta = usePropsDeLuzDeVenta(luz, K_ENTORNO_MUEBLE, BRILLO.pintado);
+  useAtenuacion([venta]);
+  const alto = luz ? Math.max(h, ALTO_CIELO_RASO) : h;
   const op      = ghost ? 0.42 : 1;
-  const plinthH = Math.min(h * 0.06, 0.18);
-  const capitalH = Math.min(h * 0.05, 0.15);
-  const shaftH   = h - plinthH - capitalH;
+  const plinthH = Math.min(alto * 0.06, 0.18);
+  const capitalH = luz ? 0 : Math.min(alto * 0.05, 0.15);
+  const shaftH   = alto - plinthH - capitalH;
   const overhang = 0.06;  // how much plinth/capital overhang the shaft
 
   return (
@@ -2099,20 +2108,22 @@ function ColumnaMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:numb
       {/* Plinth (base) */}
       <mesh position={[0, plinthH / 2, 0]} castShadow>
         <boxGeometry args={[w + overhang * 2, plinthH, d + overhang * 2]} />
-        <meshStandardMaterial color="#b8b5ae" metalness={0.10} roughness={0.70} transparent opacity={op} />
+        <meshStandardMaterial color="#b8b5ae" metalness={0.10} roughness={0.70} transparent opacity={op} {...venta} />
       </mesh>
 
       {/* Shaft */}
       <mesh position={[0, plinthH + shaftH / 2, 0]} castShadow>
         <boxGeometry args={[w, shaftH, d]} />
-        <meshStandardMaterial color="#d1cec8" metalness={0.08} roughness={0.75} transparent opacity={op} />
+        <meshStandardMaterial color="#d1cec8" metalness={0.08} roughness={0.75} transparent opacity={op} {...venta} />
       </mesh>
 
-      {/* Capital (top) */}
-      <mesh position={[0, plinthH + shaftH + capitalH / 2, 0]} castShadow>
-        <boxGeometry args={[w + overhang * 2, capitalH, d + overhang * 2]} />
-        <meshStandardMaterial color="#b8b5ae" metalness={0.10} roughness={0.70} transparent opacity={op} />
-      </mesh>
+      {/* Capital (top) — sólo en el editor */}
+      {capitalH > 0 && (
+        <mesh position={[0, plinthH + shaftH + capitalH / 2, 0]} castShadow>
+          <boxGeometry args={[w + overhang * 2, capitalH, d + overhang * 2]} />
+          <meshStandardMaterial color="#b8b5ae" metalness={0.10} roughness={0.70} transparent opacity={op} />
+        </mesh>
+      )}
 
       {/* Status indicator (subtle thin ring at base) */}
       <mesh position={[0, plinthH + 0.02, 0]}>
@@ -5517,13 +5528,15 @@ export function Scene({
     const obstaculos = murosDeCaminata(placedFixtures.filter((f) => f.id !== fix.id));
     const aspecto = size.width / Math.max(1, size.height);
     const mueble = { cx: fix.x, cz: fix.z, w: fix.w, d: fix.d, h: fix.h, rotY: fix.rotY };
-    // En la pantalla de venta, «De frente» de la cara entera abre el campo
-    // visual lo justo para que la cara entre a lo ancho desde el pasillo
-    // (`fovParaLaCara`: una góndola de 3,6 m en un pasillo de 2 m). En el
+    // En la pantalla de venta, «De frente» abre el campo visual lo justo para
+    // que la cara entre a lo ancho desde el pasillo (`fovParaLaCara`: una
+    // góndola de 3,6 m en un pasillo de 2 m). También por entrepaño: mira la
+    // franja elegida de frente y a su altura, pero de punta a punta —con 50°
+    // la Avena de GON-02·A por entrepaño salía sin los dos cantos—. En el
     // editor, los 50° de siempre.
     const enVenta = presentationMode || privadoPara !== undefined;
     const fov = toma === "cerca" ? FOV_DE_CERCA
-      : enVenta && toma === "frente" && !foco.porEntrepano ? fovParaLaCara(mueble, cara, obstaculos, limites, aspecto, FOV_DEL_EDITOR)
+      : enVenta && toma === "frente" ? fovParaLaCara(mueble, cara, obstaculos, limites, aspecto, FOV_DEL_EDITOR, foco.porEntrepano ? foco : undefined)
         : FOV_DEL_EDITOR;
     // La punta: dónde empieza el cartel —el copete, o la cenefa que baja de
     // él hasta el último entrepaño—, para que «De cerca» no lo corte por la

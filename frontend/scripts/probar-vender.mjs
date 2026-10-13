@@ -346,11 +346,15 @@ const COMPONENTES_VENDER = new Set([
   // Íconos del visor: «Ocultar ›» del cajón y los dos botones de la lámina
   // («Bajar la propuesta», «Usarla como planometría»). Sólo dibujan un ícono.
   "ChevronRight", "Download", "FileCheck",
+  // `<RellenoNeutro.Provider>` alrededor de la escena del visor: sólo pone en
+  // grises la mercadería de los demás (`luzDeVenta.ts`). No pinta nada.
+  "RellenoNeutro",
 ]);
 /** `<X` sólo cuenta como etiqueta JSX si lo que hay delante NO es parte de un
  *  identificador: `Record<DisplayStatus>` y `Partial<FaceData>` son genéricos
  *  de TypeScript, no componentes. */
-const etiquetasJsx = (texto) => new Set([...texto.matchAll(/(?:^|[^\w>])<\s*([A-Z][\w$]*)(?=[\s/>])/gm)].map((m) => m[1]));
+// También `<X.Provider>`: un contexto alrededor de algo es un componente más.
+const etiquetasJsx = (texto) => new Set([...texto.matchAll(/(?:^|[^\w>])<\s*([A-Z][\w$]*)(?=[\s/>.])/gm)].map((m) => m[1]));
 prueba("Vender no dibuja ningún componente fuera de la lista revisada", () => {
   if (!RAMA) throw new Error("sin rama de Vender");
   // La rama de `DashboardView` Y cada archivo de Vender: un componente nuevo
@@ -618,8 +622,8 @@ prueba("la escena del visor va en modo venta, con los muebles saneados y para al
     [/\splacedFixtures=\{muebles\}/, "`placedFixtures={muebles}` (los saneados)"],
   ]) assert.match(tag, re, `la escena del visor no lleva ${que}`);
   assert.match(visorCodigo, /const SIN_UNIFICADOS(?:\s*:\s*\[\])?\s*=\s*\[\s*\];/, "`SIN_UNIFICADOS` no es una constante vacía");
-  assert.match(visorCodigo, /const muebles = useMemo\(\(\) => sinDatosComerciales\(storeToFixtures\(/,
-    "los muebles del visor no salen de `sinDatosComerciales(storeToFixtures(…))`");
+  assert.match(visorCodigo, /const muebles = useMemo\(\s*\(\) => sinRepisasVendidas\(sinDatosComerciales\(storeToFixtures\(unificados\)\), /,
+    "los muebles del visor no salen de `sinRepisasVendidas(sinDatosComerciales(storeToFixtures(…)), …)`");
   assert.match(visorCodigo, /<Lienzo\b[^>]*\smuebles=\{muebles\}/, "el lienzo no recibe los muebles saneados");
   // `privadoPara` siempre definido: `undefined` es la pantalla de la dueña y
   // deja pasar las pruebas de todos (`privacidad.ts`).
@@ -707,9 +711,46 @@ prueba("la lámina del visor: del proveedor de los artes, sin período ni valor,
   // La planometría: SÓLO el archivo de la lámina, y sólo al campo de la ficha.
   const llamadas = [...visorCodigo.matchAll(/\bonPlanometria\(([^;]*)\);/g)].map((m) => m[1]);
   assert.deepEqual(llamadas.map((x) => x.startsWith("new File([jpg.blob]")), [true], `onPlanometria recibe otra cosa: ${llamadas.join(" · ")}`);
-  assert.match(modoCodigo, /const adjuntarLamina = useCallback\(\(archivo: File\) => \{\s*setPlanometria\(archivo\);\s*setMasDatos\(true\);\s*\}, \[setPlanometria\]\);/,
-    "la lámina adjunta escribe algo más que el campo de planometría de la ficha");
+  assert.match(modoCodigo, /const adjuntarLamina = useCallback\(\(archivo: File, cara: string\) => \{\s*setPlanometria\(archivo\);\s*marcarLamina\(\{ archivo, cara \}\);\s*setMasDatos\(true\);\s*\}, \[setPlanometria, marcarLamina\]\);/,
+    "la lámina adjunta escribe algo más que el campo de planometría de la ficha (y la marca de la sesión)");
   assert.match(modoCodigo, /onPlanometria=\{adjuntarLamina\}/, "el visor no recibe el adjuntar de la ficha");
+});
+
+prueba("la lámina adjunta se va con el proveedor: cambiarlo la saca de la planometría", () => {
+  // La crítica: con Alpina se adjuntaba la lámina, se escribía «Postobón» y el
+  // contrato de Postobón salía con la lámina de Alpina («PROVEEDOR Alpina» y
+  // su producto), que viaja por correo y guía al mercaderista.
+  assert.match(sesionCodigo, /const vaciar = useCallback\(\(\) => \{[^}]*marcarLamina\(null\);[^}]*\}, \[\]\);/,
+    "vaciar la sesión no olvida la lámina adjunta");
+  assert.match(sesionCodigo, /if \(ahora === anterior\.current\) return;\s*anterior\.current = ahora;\s*vaciar\(\);/,
+    "cambiar de proveedor no vacía la sesión");
+  assert.match(modoCodigo, /if \(antes && !sesion\.lamina && c\.planometria === antes\.archivo\) \{\s*setPlanometria\(null\);/,
+    "cuando la lámina se olvida, la planometría de la ficha sigue siendo la lámina del proveedor anterior");
+  // Y lo que el visor dice de la planometría: la lámina (de qué cara) u «otra»,
+  // sin el nombre del archivo, que puso la dueña y puede ser de cualquiera.
+  assert.match(modoCodigo, /planometria=\{!c\.planometria \? null\s*: sesion\.lamina && c\.planometria === sesion\.lamina\.archivo \? \{ lamina: sesion\.lamina\.cara \} : "otra"\}/,
+    "el visor no sabe de quién es la planometría que ya tiene el contrato");
+  assert.ok(!/planometria\.name|planometria\?\.name/.test(visorCodigo), "el visor nombra el archivo de la planometría");
+});
+
+prueba("el visor vende la cara entera, con lo ajeno en grises; la isla muestra el lugar; la lámina, sólo su cara", () => {
+  // Los espacios internos del plano (sin contrato) no van vendidos al visor.
+  assert.match(visorCodigo, /sinRepisasVendidas\(sinDatosComerciales\(storeToFixtures\(unificados\)\), new Set\(idsDelContrato\.split\(","\)\)\)/,
+    "los muebles del contrato llegan al visor con espacios internos vendidos");
+  // Lo ajeno en grises: el proveedor de `RellenoNeutro` envuelve la escena.
+  assert.match(visorCodigo, /<RellenoNeutro\.Provider value>\s*(?:\{\/\*[^]*?\*\/\}\s*)?<Scene\b/, "el relleno de los demás va con sus colores en el visor");
+  // Sin envases (isla, batea, cruz): ni producto, ni «De cerca», ni lámina.
+  assert.match(visorCodigo, /const clavesDeCaras = caras\s*\.filter\(\(c\) => TIPOS_CON_PRUEBA_3D\.has\(/, "el visor dibuja pruebas en muebles sin envases");
+  assert.match(visorCodigo, /TOMAS\.filter\(\(\[toma\]\) => conCuenta \|\| toma !== "cerca"\)/, "«De cerca» se ofrece en un mueble sin envases");
+  assert.match(visorCodigo, /\) : !conCuenta \? \(/, "el cajón ofrece productos en un mueble sin envases");
+  assert.match(visorCodigo, /\{arteDeLaCara && conCuenta && !subiendo && \(\s*<section className="visor-como" aria-label="La lámina">/, "la lámina se ofrece en un mueble sin envases");
+  // La lámina: sólo la prueba de su cara, con el cuadro quieto y de vuelta a la toma de antes.
+  const arma = (visorCodigo.match(/const armarLamina = async[^]*?\n {2}\};/) || [""])[0];
+  assert.ok(arma, "no se encontró `armarLamina`");
+  assert.match(arma, /setCongelado\(capturar\(\)\)[^]*setSoloLaCara\(clave\);\s*try \{/, "las tomas de la lámina se ven en pantalla, o con las pruebas de otras caras");
+  assert.match(arma, /finally \{[^]*setSoloLaCara\(null\);[^]*pedirToma\(activa\.fixtureId, activa\.face, tomaAntes\);[^]*setCongelado\(null\);/,
+    "después de la lámina no se vuelve a la toma de antes, o queda congelado");
+  assert.match(visorCodigo, /prueba=\{pruebaDibujada\}/, "el lienzo no dibuja la prueba filtrada de la lámina");
 });
 
 /* Las piezas del EDITOR que el visor dibuja adentro de Vender. No están en
@@ -1681,6 +1722,10 @@ if (!URL_VENDER) {
         assert.equal(porEntrepano.tapados, 0, "el aviso de entrepaños vendidos está en el DOM del visor");
         const naranjas = porEntrepano.chips.filter((c) => c === porEntrepano.naranja);
         assert.deepEqual(naranjas, [], "la marca «vendido» de los entrepaños va en naranja delante del proveedor");
+        // Y ni en gris: Vender vende la cara ENTERA (`sinRepisasVendidas`), y
+        // el visor la muestra así —la fila de la dueña cuenta 3 espacios y el
+        // visor marcaba 5 entrepaños, de las dos caras—.
+        assert.equal(porEntrepano.chips.length, 0, `el visor marca ${porEntrepano.chips.length} entrepaños vendidos en una cara que Vender ofrece entera`);
       });
     });
 
@@ -1722,6 +1767,34 @@ if (!URL_VENDER) {
         assert.deepEqual(salen, [], `con la lámina se lee: ${salen.join(", ")}`);
         assert.match(despuesL.planometria, /\.jpg/, `la planometría de la ficha no es la lámina: «${despuesL.planometria}»`);
         assert.deepEqual(despuesL.filas, antesL.filas, "adjuntar la lámina cambió las filas del contrato");
+      });
+    });
+
+    // ── La lámina adjunta se va con su proveedor ─────────────────────────
+    // La crítica: con Alpina se adjuntaba la lámina y se escribía «Postobón»;
+    // el contrato de Postobón salía con la lámina de Alpina y su nombre a la
+    // vista en la ficha.
+    await seccion("navegador · visor: cambiar de proveedor saca su lámina de la planometría, sin nombrarlo", async () => {
+      const conLamina = await contrato(pv);
+      await pv.locator(".vender input.entrada").nth(0).fill(OTRO);
+      await pv.waitForTimeout(700);
+      const conOtro = await contrato(pv);
+      const ficha = await pv.evaluate(`(() => {
+        const panel = ${PANEL};
+        const t = [panel.innerText];
+        for (const n of panel.querySelectorAll("[title],[aria-label]")) t.push(n.getAttribute("title"), n.getAttribute("aria-label"));
+        return { texto: t.filter(Boolean).join("\\n"), quitada: !!panel.querySelector("[data-lamina-quitada]") };
+      })()`);
+      await pv.locator(".vender input.entrada").nth(0).fill(PROVEEDOR);
+      await pv.waitForTimeout(500);
+      const deVuelta = await contrato(pv);
+      prueba("navegador · visor: cambiar de proveedor saca su lámina de la planometría, sin nombrarlo", () => {
+        const plano = (t) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        assert.ok(plano(conLamina.planometria).includes(plano(PROVEEDOR)), `antes de cambiar, la planometría no es la lámina de ${PROVEEDOR}: «${conLamina.planometria}»`);
+        assert.equal(conOtro.planometria, "", `con ${OTRO} el contrato sigue con la planometría «${conOtro.planometria}»`);
+        assert.ok(!new RegExp(PROVEEDOR, "i").test(ficha.texto), `con ${OTRO}, la ficha nombra a ${PROVEEDOR}`);
+        assert.ok(ficha.quitada, "la ficha no dice que se quitó la lámina del 3D");
+        assert.equal(deVuelta.planometria, "", "volver al proveedor anterior trajo de vuelta su lámina");
       });
     });
 
