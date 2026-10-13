@@ -26,6 +26,13 @@
  * tres listas de orden completas, y los tipos de TypeScript y `carasDe`
  * diciendo lo mismo que el catálogo. La copia del servidor tiene que ser
  * idéntica byte a byte (también lo exige `tests/test_catalogo_muebles.py`).
+ *
+ * Los MODELOS (las fichas de muebles de verdad) se validan con el esquema:
+ * id único y estable, tipo que existe, medidas dentro del rango de su familia,
+ * sólo la geometría que su tipo admite y dentro de su rango, tarifa propia con
+ * su fila y sus nombres de informe, y la fuente con su URL y su confiabilidad
+ * (nunca una imagen). La referencia compara sólo los tipos que conoce: los
+ * nuevos también pasan por acá.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -77,7 +84,23 @@ const CLAVES_DE_TIPO = new Set([
   "prefijo", "alquilable", "tarifa", "informe", "informePlural", "categoria", "grupo2D",
   "referencia", "banderas", "legado", "variantes",
   "rotuloEditor", "medidas", "color", "color2D", "emoji", "descripcion",
+  "rango", "geometria",
 ]);
+const CLAVES_DE_MODELO = new Set([
+  "id", "tipo", "variante", "nombre", "w", "d", "h", "entrepanos", "modulo", "partes", "color",
+  "tarifa", "informe", "informePlural", "fuente",
+]);
+const CONFIABILIDAD = ["ficha", "catalogo", "estimado"];
+/** La geometría que un modelo puede fijar: dónde vive en el modelo y si es un
+ *  número entero. `puertas` va en `partes`. */
+const GEOMETRIA = {
+  entrepanos: { leer: (m) => m.entrepanos, entero: true },
+  modulo: { leer: (m) => m.modulo, entero: false },
+  puertas: { leer: (m) => m.partes?.puertas, entero: true },
+};
+/** Una URL que es una imagen: el catálogo guarda medidas, nunca fotos de
+ *  terceros. */
+const ES_IMAGEN = /\.(jpe?g|png|webp|gif|avif|svg|bmp)(\?.*)?$/i;
 const CLAVES_DE_FORMA = new Set(["caras", "rotuloEditor", "medidas", "color", "color2D", "emoji", "descripcion"]);
 const COLOR = /^#[0-9a-f]{6}$/;
 const texto = (x) => typeof x === "string" && x.trim().length > 0;
@@ -91,7 +114,7 @@ function validar(cat) {
   si(Array.isArray(cat.leeme) && cat.leeme.every(texto), "`leeme` no es una lista de textos");
   si(/^[A-Z]{3}$/.test(cat.prefijoDesconocido ?? ""), "`prefijoDesconocido` no son tres mayúsculas");
   const tipos = cat.tipos ?? {};
-  const claves = new Set(["version", "leeme", "prefijoDesconocido", "tipos", "alias", "tarifas", "orden"]);
+  const claves = new Set(["version", "leeme", "prefijoDesconocido", "tipos", "alias", "tarifas", "modelos", "orden"]);
   for (const k of Object.keys(cat)) si(claves.has(k), `clave desconocida \`${k}\` en el catálogo`);
 
   const tarifas = new Map((cat.tarifas ?? []).map((t) => [t.clave, t]));
@@ -129,6 +152,15 @@ function validar(cat) {
       si(texto(d.informe) && texto(d.informePlural), `${t}: se vende y los informes no tienen cómo nombrarlo`);
       si(texto(d.categoria), `${t}: se vende y no tiene categoría`);
     }
+    const rangoValido = (r) => Array.isArray(r) && r.length === 2 && r.every((x) => typeof x === "number" && x > 0) && r[0] <= r[1];
+    if (d.rango !== undefined) {
+      si(Object.keys(d.rango).every((k) => ["w", "d", "h"].includes(k)) && ["w", "d", "h"].every((k) => rangoValido(d.rango[k])),
+        `${t}: \`rango\` tiene que tener w, d y h, cada uno [mínimo, máximo] positivos`);
+    }
+    if (d.geometria !== undefined) {
+      si(Object.entries(d.geometria).every(([k, r]) => k in GEOMETRIA && rangoValido(r)),
+        `${t}: \`geometria\` sólo admite ${Object.keys(GEOMETRIA).join(", ")}, cada uno [mínimo, máximo]`);
+    }
     if (d.legado) {
       si(d.tarifa === undefined && d.variantes === undefined, `${t}: un legado no tiene tarifa ni variantes`);
       si(d.medidas === undefined || Object.values(d.medidas).every(positivo), `${t}: medidas no positivas`);
@@ -143,8 +175,64 @@ function validar(cat) {
       forma(d, t, { conCaras: false });
     }
   }
+  const modelos = Array.isArray(cat.modelos) ? cat.modelos : [];
+  si(Array.isArray(cat.modelos), "`modelos` no es una lista");
   for (const t of tarifas.keys()) {
-    si(Object.values(tipos).some((d) => d.tarifa === t), `la tarifa \`${t}\` no es de ningún tipo`);
+    si(Object.values(tipos).some((d) => d.tarifa === t) || modelos.some((m) => m.tarifa === t),
+      `la tarifa \`${t}\` no es de ningún tipo ni de ningún modelo`);
+  }
+
+  // ── Los modelos ──
+  // El modelo base implícito de cada familia se llama `base:<tipo>` o
+  // `base:<alias>`: ningún modelo del archivo puede llamarse así.
+  const implicitos = new Set([...Object.keys(tipos), ...Object.keys(cat.alias ?? {})].map((t) => `base:${t}`));
+  const ids = new Set();
+  for (const [i, m] of modelos.entries()) {
+    const donde = `modelo ${m?.id ?? `#${i}`}`;
+    if (!m || typeof m !== "object") { mal.push(`${donde}: no es un objeto`); continue; }
+    for (const k of Object.keys(m)) si(CLAVES_DE_MODELO.has(k), `${donde}: clave desconocida \`${k}\``);
+    si(/^base:[a-z0-9]+(-[a-z0-9]+)*$/.test(m.id ?? ""), `${donde}: el id tiene que ser \`base:\` y palabras en minúscula con guiones`);
+    si(!ids.has(m.id), `${donde}: el id está repetido`);
+    ids.add(m.id);
+    si(!implicitos.has(m.id), `${donde}: el id es el del modelo base implícito de un tipo`);
+    const d = tipos[m.tipo];
+    si(!!d && !d.legado, `${donde}: el tipo \`${m.tipo}\` no existe`);
+    if (!d || d.legado) continue;
+    if (d.variantes) si(m.variante in d.variantes, `${donde}: \`variante\` tiene que ser una de ${Object.keys(d.variantes).join(", ")}`);
+    else si(m.variante === undefined, `${donde}: \`${m.tipo}\` no tiene variantes`);
+    si(texto(m.nombre), `${donde}: sin nombre`);
+    si(!!d.rango, `${donde}: su tipo no tiene \`rango\` contra el que medirlo`);
+    for (const k of ["w", "d", "h"]) {
+      const r = d.rango?.[k];
+      si(positivo(m[k]) && (!r || (m[k] >= r[0] && m[k] <= r[1])),
+        `${donde}: \`${k}\` = ${m[k]} está fuera del rango de su familia${r ? ` (${r[0]} a ${r[1]})` : ""}`);
+    }
+    for (const [campo, g] of Object.entries(GEOMETRIA)) {
+      const v = g.leer(m);
+      if (v === undefined) continue;
+      const r = d.geometria?.[campo];
+      si(!!r, `${donde}: \`${campo}\` no es geometría de \`${m.tipo}\``);
+      if (r) si(typeof v === "number" && (!g.entero || Number.isInteger(v)) && v >= r[0] && v <= r[1],
+        `${donde}: \`${campo}\` = ${v} está fuera de su rango (${r[0]} a ${r[1]})`);
+    }
+    if (m.partes !== undefined) {
+      si(m.partes && typeof m.partes === "object" && Object.keys(m.partes).every((k) => k === "puertas")
+        && Object.values(m.partes).every((v) => typeof v === "number"), `${donde}: \`partes\` sólo lleva números conocidos (puertas)`);
+    }
+    si(m.color === undefined || COLOR.test(m.color), `${donde}: color inválido`);
+    if (m.tarifa !== undefined) {
+      si(tarifas.has(m.tarifa), `${donde}: la tarifa \`${m.tarifa}\` no está en \`tarifas\``);
+      si(m.tarifa !== d.tarifa, `${donde}: la tarifa propia es la misma de su tipo: sacala`);
+      si(texto(m.informe) && texto(m.informePlural), `${donde}: tiene tarifa propia y los informes no tienen cómo nombrarla`);
+    } else {
+      si(m.informe === undefined && m.informePlural === undefined, `${donde}: nombres de informe sin tarifa propia`);
+    }
+    const f = m.fuente ?? {};
+    si(typeof f.url === "string" && /^https:\/\/[^\s]+$/.test(f.url), `${donde}: la fuente no tiene una URL https`);
+    si(!ES_IMAGEN.test(f.url ?? ""), `${donde}: la fuente es una imagen; se guarda la página de la ficha, nunca una foto`);
+    si(CONFIABILIDAD.includes(f.confiabilidad), `${donde}: la confiabilidad tiene que ser ficha, catalogo o estimado`);
+    si(texto(f.nota), `${donde}: la fuente no tiene nota`);
+    si(Object.keys(f).every((k) => ["url", "confiabilidad", "nota"].includes(k)), `${donde}: la fuente lleva sólo url, confiabilidad y nota`);
   }
   // Lo que dicen los informes tiene que llevar a la fila de Tarifas de ESE
   // mueble. La sesión le dice a la dueña «dejar la tarifa cargada en
@@ -153,7 +241,11 @@ function validar(cat) {
   // «exhibición de piso» era la cruz en los informes y la estiba en Tarifas, e
   // «isla» llevaba a «Isla de congelados». Un nombre que no aparece en ningún
   // rótulo («stand de frutas») no confunde a nadie.
-  for (const [t, d] of Object.entries(tipos)) {
+  const conNombre = [
+    ...Object.entries(tipos).map(([t, d]) => [t, d]),
+    ...modelos.filter((m) => m?.tarifa).map((m) => [`modelo ${m.id}`, m]),
+  ];
+  for (const [t, d] of conNombre) {
     for (const nombre of [d.informe, d.informePlural].filter(texto)) {
       const n = nombre.toLowerCase();
       const conEsasPalabras = (cat.tarifas ?? [])
@@ -225,6 +317,30 @@ await prueba("la validación rechaza lo que tiene que rechazar", () => {
       /cross: los informes lo llaman «exhibición de piso» y en Tarifas eso es `isla`/],
     ["un nombre de informe que lleva a otra fila de Tarifas", (c) => { c.tipos.isla.informe = "isla"; },
       /isla: los informes lo llaman «isla» y en Tarifas eso es `isla_fria`/],
+    // Los modelos.
+    ["dos modelos con el mismo id", (c) => { c.modelos[1].id = c.modelos[0].id; }, /el id está repetido/],
+    ["un modelo con el id del base implícito", (c) => { c.modelos.find((m) => m.tipo === "punta").id = "base:punta"; }, /el id es el del modelo base implícito/],
+    ["un id con otra forma", (c) => { c.modelos[0].id = "Góndola grande"; }, /el id tiene que ser `base:`/],
+    ["un modelo de un tipo que no existe", (c) => { c.modelos[0].tipo = "gondolita"; }, /el tipo `gondolita` no existe/],
+    ["un modelo de un tipo legado", (c) => { c.modelos[0].tipo = "exhibicion"; delete c.modelos[0].variante; }, /el tipo `exhibicion` no existe/],
+    ["una góndola sin variante", (c) => { delete c.modelos.find((m) => m.tipo === "gondola").variante; }, /`variante` tiene que ser/],
+    ["una medida fuera del rango de la familia", (c) => { c.modelos.find((m) => m.tipo === "nevera_puertas").h = 3.4; }, /`h` = 3.4 está fuera del rango/],
+    ["una medida en cero", (c) => { c.modelos[0].w = 0; }, /`w` = 0 está fuera del rango/],
+    ["geometría que el tipo no admite", (c) => { c.modelos.find((m) => m.tipo === "isla").entrepanos = 3; }, /`entrepanos` no es geometría de `isla`/],
+    ["puertas en una góndola", (c) => { c.modelos.find((m) => m.tipo === "gondola").partes = { puertas: 2 }; }, /`puertas` no es geometría de `gondola`/],
+    ["entrepaños fuera de rango", (c) => { c.modelos.find((m) => m.tipo === "gondola").entrepanos = 9; }, /`entrepanos` = 9 está fuera de su rango/],
+    ["puertas que no son enteras", (c) => { c.modelos.find((m) => m.tipo === "nevera_puertas").partes.puertas = 2.5; }, /`puertas` = 2.5 está fuera/],
+    ["algo comercial en las partes", (c) => { c.modelos.find((m) => m.tipo === "nevera_puertas").partes.proveedor = "Postobón"; }, /`partes` sólo lleva números/],
+    ["una tarifa de modelo sin fila", (c) => { c.modelos.find((m) => m.tarifa).tarifa = "estiba_octava"; }, /la tarifa `estiba_octava` no está en `tarifas`/],
+    ["una tarifa de modelo sin nombre de informe", (c) => { delete c.modelos.find((m) => m.tarifa).informePlural; }, /tiene tarifa propia y los informes/],
+    ["una tarifa de modelo que lleva a otra fila", (c) => { c.modelos.find((m) => m.tarifa === "estiba_media").informe = "cuarto de estiba"; },
+      /los informes lo llaman «cuarto de estiba» y en Tarifas eso es `estiba_cuarta`/],
+    ["una tarifa que no es de nadie", (c) => { c.tarifas.push({ clave: "huerfana", rotulo: "Huérfana" }); }, /la tarifa `huerfana` no es de ningún tipo ni de ningún modelo/],
+    ["una fuente sin URL https", (c) => { c.modelos[0].fuente.url = "http://ejemplo.co/ficha"; }, /la fuente no tiene una URL https/],
+    ["una fuente que es una imagen", (c) => { c.modelos[0].fuente.url = "https://ejemplo.co/gondola.JPG"; }, /la fuente es una imagen/],
+    ["una confiabilidad inventada", (c) => { c.modelos[0].fuente.confiabilidad = "segura"; }, /la confiabilidad tiene que ser/],
+    ["una foto en el modelo", (c) => { c.modelos[0].foto = "https://ejemplo.co/g.png"; }, /clave desconocida `foto`/],
+    ["un tipo con modelos y sin rango", (c) => { delete c.tipos.punta.rango; }, /su tipo no tiene `rango`/],
   ];
   for (const [que, cambiar, motivo] of casos) {
     const mal = roto(cambiar);
@@ -303,6 +419,13 @@ await prueba("cada tabla cambia cuando cambia el catálogo", async () => {
   c.tipos.gondola.variantes.wall.medidas.h = 2.22;
   c.alias.gondola_mural.banderas.push("producto");
   c.prefijoDesconocido = "ZZZ";
+  // Los modelos: una ficha con otras medidas y otras puertas, y una tarifa
+  // propia con otra clave y otro nombre.
+  const nev = c.modelos.find((m) => m.id === "base:nevera-3p-frigomaster");
+  Object.assign(nev, { w: 2.11, color: "#0d0e0f", partes: { puertas: 5 } });
+  const media = c.modelos.find((m) => m.id === "base:estiba-media");
+  Object.assign(media, { tarifa: "media_adulterada", informe: "medita", informePlural: "meditas" });
+  c.tarifas.push({ clave: "media_adulterada", rotulo: "Medita" });
   // Al revés: lo primero pasa a ser lo que hoy es último, sea cual sea.
   const ultimo3D = c.orden.editor3D.at(-1).split(":")[0];
   const ultimo2D = c.orden.plano2D.at(-1);
@@ -323,6 +446,8 @@ await prueba("cada tabla cambia cuando cambia el catálogo", async () => {
   assert.equal(Fa.rateTypeOf({ type: "gondola_mural" }), "gondola", "rateTypeOf perdió los alias");
   assert.ok(Fa.RATE_TYPES.some((t) => t.type === "estiba" && t.label === "Estiba adulterada"), "RATE_TYPES no sale del catálogo");
   assert.equal(Fa.CATEGORIA_DE_TIPO.punta, "Familia adulterada", "CATEGORIA_DE_TIPO no sale del catálogo");
+  assert.equal(Fa.rateTypeOf({ type: "isla", modelo: "base:estiba-media" }), "media_adulterada",
+    "la tarifa del modelo no sale del catálogo");
   // utils/nomenclatura.ts
   assert.equal(Na.PREFIJO_POR_TIPO.punta, "PNX", "PREFIJO_POR_TIPO no sale del catálogo");
   assert.equal(Na.siguienteCodigo("punta", []), "PNX-01");
@@ -331,6 +456,8 @@ await prueba("cada tabla cambia cuando cambia el catálogo", async () => {
   assert.equal(FMTa.tipoN("punta"), "puntica", "los nombres de los informes no salen del catálogo");
   assert.equal(FMTa.tipoP("punta", 2), "punticas");
   assert.equal(FMTa.tipoN("fuera_del_plano"), "fuera del plano", "se perdió `fuera_del_plano`");
+  assert.equal(FMTa.tipoN("media_adulterada"), "medita", "los nombres de las tarifas de los modelos no salen del catálogo");
+  assert.equal(FMTa.tipoP("media_adulterada", 3), "meditas");
   // muebles/producto.ts y utils/pasillos.ts
   assert.ok(Pa.MUEBLES_FRIOS.has("punta"), "MUEBLES_FRIOS no sale del catálogo");
   assert.ok(PASa.FORMAN_CORRIDA.has("punta"), "FORMAN_CORRIDA no sale del catálogo");
@@ -344,6 +471,9 @@ await prueba("cada tabla cambia cuando cambia el catálogo", async () => {
   assert.ok(C3a.TIPOS_CON_PRODUCTO.has("gondola_mural") && !C3a.TIPOS_CON_PRODUCTO.has("punta"), "TIPOS_CON_PRODUCTO no sale del catálogo");
   assert.ok(!C3a.TIPOS_CON_PRUEBA_3D.has("punta"), "TIPOS_CON_PRUEBA_3D no sale del catálogo");
   assert.ok(!C3a.TIPOS_CON_SURTIDO.has("punta"), "TIPOS_CON_SURTIDO no sale del catálogo");
+  const nev3D = C3a.PALETA_3D.find((f) => f.entrada === "nevera_puertas")?.modelos.find((m) => m.modelo === nev.id);
+  assert.ok(nev3D && nev3D.w === 2.11 && nev3D.color === "#0d0e0f" && nev3D.partes?.puertas === 5,
+    "la paleta del 3D no sale de los modelos del catálogo");
   // catalogo/plano2D.ts
   assert.equal(C2a.CATALOG[0].type, ultimo2D, "CATALOG no sigue `orden.plano2D`");
   assert.deepEqual(C2a.CATALOG.find((x) => x.type === "punta"), {
@@ -355,9 +485,160 @@ await prueba("cada tabla cambia cuando cambia el catálogo", async () => {
   assert.equal(C2a.COLOR_DEFAULTS.punta, "#010203", "COLOR_DEFAULTS no sale del catálogo");
   assert.equal(C2a.COLOR_DEFAULTS.nevera_carnes, "#0a0b0c", "COLOR_DEFAULTS no usa `color2D`");
   assert.equal(C2a.COLOR_DEFAULTS.exhibicion, "#abcdef", "COLOR_DEFAULTS no sigue al legado");
+  const nev2D = C2a.MODELOS_2D.nevera_puertas?.find((m) => m.id === nev.id);
+  assert.ok(nev2D && nev2D.w === 2.11 && nev2D.nace.color === "#0d0e0f" && nev2D.nace.partes?.puertas === 5,
+    "la biblioteca del 2D no sale de los modelos del catálogo");
   // catalogo/minimapa.ts
   assert.equal(Object.keys(CMa.REFERENCIAS)[0], "punta", "REFERENCIAS no sigue `orden.minimapa`");
   assert.deepEqual(CMa.REFERENCIAS.punta, { corto: "Puntas", frase: "las puntas" }, "REFERENCIAS no sale del catálogo");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 3a · LOS MODELOS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** La entrada de paleta de un modelo: `tipo:variante` en el 3D, y en el 2D el
+ *  alias de esa variante (`gondola_doble`). */
+const entrada3D = (m) => (m.variante ? `${m.tipo}:${m.variante}` : m.tipo);
+const entrada2D = (m) => (m.variante
+  ? Object.entries(CATALOGO.alias).find(([, x]) => x.tipo === m.tipo && x.variante === m.variante)[0]
+  : m.tipo);
+
+await prueba("las paletas listan cada modelo una vez, bajo su familia, después de su modelo base", async () => {
+  const [C3, C2] = await Promise.all(["src/catalogo/editor3D.ts", "src/catalogo/plano2D.ts"].map((r) => cargar(r)));
+  // El 3D: la familia es su modelo base, que es EL de `FIXTURE_DEFS` (mismo
+  // objeto y mismo orden: `/taller` elige por posición, y colocarlo es colocar
+  // el mueble como siempre).
+  assert.equal(C3.PALETA_3D.length, C3.FIXTURE_DEFS.length);
+  C3.PALETA_3D.forEach((f, i) => {
+    assert.deepEqual(f.base, C3.FIXTURE_DEFS[i], `${f.entrada}: el modelo base no es el de FIXTURE_DEFS`);
+    for (const k of ["modelo", "entrepanos", "modulo", "partes"]) assert.equal(f.base[k], undefined, `${f.entrada}: el modelo base estampa «${k}»`);
+  });
+  const en3D = C3.PALETA_3D.flatMap((f) => f.modelos.map((m) => [m.modelo, f.entrada, m, f.base]));
+  const en2D = Object.entries(C2.MODELOS_2D).flatMap(([t, ms]) => ms.map((m) => [m.id, t, m]));
+  const ids = CATALOGO.modelos.map((m) => m.id).sort();
+  assert.deepEqual(en3D.map((x) => x[0]).sort(), ids, "la paleta del 3D no tiene cada modelo una vez");
+  assert.deepEqual(en2D.map((x) => x[0]).sort(), ids, "la biblioteca del 2D no tiene cada modelo una vez");
+  for (const [id, entrada, def, base] of en3D) {
+    const m = CATALOGO.modelos.find((x) => x.id === id);
+    assert.equal(entrada, entrada3D(m), `${id}: está en la familia ${entrada} del 3D`);
+    // Con el rótulo y el emoji de su tipo (el 2D estampa el rótulo en `label`
+    // al abrir el plano: tiene que ser el de siempre), y las medidas, el
+    // color y la geometría de la ficha.
+    assert.deepEqual(
+      { label: def.label, emoji: def.emoji, type: def.type, gondolaType: def.gondolaType, code: def.code },
+      { label: base.label, emoji: base.emoji, type: base.type, gondolaType: base.gondolaType, code: base.code },
+      `${id}: no se coloca como su tipo`);
+    assert.deepEqual([def.w, def.d, def.h], [m.w, m.d, m.h], `${id}: no se coloca con las medidas de su ficha`);
+    assert.equal(def.color, m.color ?? base.color, `${id}: no nace con el color de su ficha o el de su tipo`);
+    assert.equal(def.entrepanos, m.entrepanos, id);
+    assert.equal(def.modulo, m.modulo, id);
+    assert.deepEqual(def.partes, m.partes, id);
+    assert.equal(def.estimado, m.fuente.confiabilidad === "estimado", `${id}: el «≈» no sigue a la confiabilidad`);
+  }
+  for (const [id, t, m2] of en2D) {
+    const m = CATALOGO.modelos.find((x) => x.id === id);
+    assert.equal(t, entrada2D(m), `${id}: está en la familia ${t} del 2D`);
+    assert.deepEqual([m2.w, m2.h, m2.nace.h], [m.w, m.d, m.h], `${id}: el 2D no lo dibuja con las medidas de su ficha`);
+    assert.equal(m2.nace.modelo, id);
+    assert.equal(m2.nace.color, m.color ?? C2.COLOR_DEFAULTS[t], `${id}: el 2D no lo hace nacer con su color`);
+    assert.equal(m2.nace.entrepanos, m.entrepanos, id);
+    assert.equal(m2.nace.modulo, m.modulo, id);
+    assert.deepEqual(m2.nace.partes, m.partes, id);
+  }
+});
+
+const libre = { status: "free", supplierName: "", brandCategory: "", negotiatedValue: 0, startDate: "", endDate: "", observation: "" };
+
+await prueba("colocar un modelo estampa su ficha, y cambiar la ficha no mueve lo ya colocado", async () => {
+  const [CP, C3, C2] = await Promise.all(["src/utils/convertirPlano.ts", "src/catalogo/editor3D.ts", "src/catalogo/plano2D.ts"].map((r) => cargar(r)));
+  const ID = "base:nevera-3p-frigomaster";
+  // El 3D: lo que arma `onFloorClick` con la entrada de la paleta.
+  const def = C3.PALETA_3D.find((f) => f.entrada === "nevera_puertas").modelos.find((m) => m.modelo === ID);
+  const colocado = {
+    id: "nev-1", code: "NEV-01", type: def.type, x: 3, z: 4, rotY: 0, w: def.w, d: def.d, h: def.h,
+    label: def.label, color: def.color, ...libre, ...CP.fichaDe(def),
+  };
+  const [f] = CP.fixturesToStore([colocado], "NAVE", []);
+  assert.deepEqual({ modelo: f.modelo, w: f.w, d: f.d, h: f.h, partes: f.partes },
+    { modelo: ID, w: 2.07, d: 0.7, h: 2.1, partes: { puertas: 3 } }, "el 3D no estampó la ficha");
+  assert.equal(f.label, "Nevera de Puertas", "el 3D no estampó el rótulo de su tipo");
+
+  // El 2D: lo que arma `placeItem` con el modelo de la biblioteca.
+  const m2 = C2.MODELOS_2D.gondola_doble.find((m) => m.id === "base:gondola-central-200-m100");
+  const item = { id: "g-1", type: "gondola_doble", code: "GON-01", label: "Góndola Doble", x: 0, y: 0,
+    w: m2.w, h: m2.h, rotY: 0, ...libre, sede: "NAVE", nace: m2.nace };
+  const [g] = CP.itemsToStore([item], [], C2.CATALOGO_2D);
+  assert.deepEqual(
+    { modelo: g.modelo, type: g.type, gondolaType: g.gondolaType, w: g.w, d: g.d, h: g.h, entrepanos: g.entrepanos, modulo: g.modulo },
+    { modelo: m2.id, type: "gondola", gondolaType: "double", w: 1, d: 1, h: 2, entrepanos: 4, modulo: 1 },
+    "el 2D no estampó la ficha");
+  assert.equal("nace" in g, false, "`nace` es del editor: no va al plano");
+  // Con guardado, `nace` no pisa nada: la ficha la manda lo guardado.
+  const otra = CP.itemsToStore([{ ...item, nace: { ...m2.nace, h: 1.5, modelo: "base:otra", entrepanos: 2 } }], [g], C2.CATALOGO_2D)[0];
+  assert.deepEqual([otra.h, otra.modelo, otra.entrepanos], [2, m2.id, 4], "con guardado, `nace` pisó la ficha");
+  // Un duplicado nace con la ficha del original.
+  const [vuelta] = CP.storeToItems([g], C2.CATALOGO_2D);
+  const dup = CP.itemsToStore([{ ...vuelta, id: "g-2", code: "GON-02" }], [g], C2.CATALOGO_2D)[0];
+  assert.deepEqual([dup.modelo, dup.h, dup.entrepanos, dup.modulo], [m2.id, 2, 4, 1], "el duplicado no nace con la ficha del original");
+  // Uno sin modelo no trae `nace` del store y nace como siempre.
+  const [sin] = CP.storeToItems([{ ...g, modelo: undefined, entrepanos: undefined, modulo: undefined }], C2.CATALOGO_2D);
+  assert.equal("nace" in sin, false, "un mueble sin modelo sale del store con `nace`");
+
+  // La ficha cambia en el catálogo: lo colocado va y vuelve por los dos
+  // editores tal como se guardó.
+  const c = structuredClone(CATALOGO);
+  Object.assign(c.modelos.find((m) => m.id === ID), { w: 2.5, h: 1.9, partes: { puertas: 4 } });
+  Object.assign(c.modelos.find((m) => m.id === m2.id), { h: 1.8, entrepanos: 3, modulo: 1.2 });
+  const [C3a, C2a] = await Promise.all([cargar("src/catalogo/editor3D.ts", c), cargar("src/catalogo/plano2D.ts", c)]);
+  const plano = [f, g];
+  const ficha = (x) => ({ w: x.w, d: x.d, h: x.h, modelo: x.modelo, entrepanos: x.entrepanos, modulo: x.modulo, partes: x.partes });
+  const tras3D = CP.fixturesToStore(CP.storeToFixtures(plano, { defs: C3a.FIXTURE_DEFS, slotsPorDefecto: () => [] }), "NAVE", plano);
+  const tras2D = CP.itemsToStore(CP.storeToItems(tras3D, C2a.CATALOGO_2D), tras3D, C2a.CATALOGO_2D);
+  for (const x of plano) {
+    assert.deepEqual(ficha(tras3D.find((y) => y.id === x.id)), ficha(x), `${x.id}: el 3D releyó la ficha`);
+    assert.deepEqual(ficha(tras2D.find((y) => y.id === x.id)), ficha(x), `${x.id}: el 2D releyó la ficha`);
+  }
+});
+
+await prueba("la tarifa sale del modelo del mueble si tiene una propia, y si no, la del tipo", async () => {
+  const [F2, FMT] = await Promise.all(["src/types/fixtures.ts", "src/components/plataforma/formato.ts"].map((r) => cargar(r)));
+  const casos = [
+    [{ type: "isla" }, "isla"],
+    [{ type: "isla", modelo: "base:estiba-completa" }, "isla"],
+    [{ type: "isla", modelo: "base:estiba-media" }, "estiba_media"],
+    [{ type: "isla", modelo: "base:estiba-cuarta" }, "estiba_cuarta"],
+    [{ type: "impulsador", modelo: "base:exhibidor-carton" }, "exhibidor_carton"],
+    [{ type: "nevera_puertas", modelo: "base:nevera-3p-frigomaster" }, "nevera_puertas"],
+    [{ type: "nevera_puertas" }, "nevera_puertas"],
+    [{ type: "puesto_impulso", modelo: "base:puesto-impulso-80" }, "puesto_impulso"],
+    [{ type: "gondola_mural", modelo: "base:gondola-pared-200-m120" }, "gondola"],
+    // Un id que no corresponde no le cambia la tarifa a nadie.
+    [{ type: "punta", modelo: "base:estiba-media" }, "punta"],
+    [{ type: "isla", modelo: "base:no-existe" }, "isla"],
+    [{ type: "isla", modelo: "constructor" }, "isla"],
+  ];
+  for (const [f, esperado] of casos) assert.equal(F2.rateTypeOf(f), esperado, JSON.stringify(f));
+  // Tarifas las muestra todas, con su rótulo, y los informes las nombran.
+  for (const [clave, rotulo] of [["nevera_puertas", "Nevera de puertas"], ["puesto_impulso", "Puesto de impulso"],
+    ["estiba_media", "Media estiba"], ["estiba_cuarta", "Cuarto de estiba"], ["exhibidor_carton", "Exhibidor de cartón"]]) {
+    assert.ok(F2.RATE_TYPES.some((r) => r.type === clave && r.label === rotulo), `Tarifas no muestra «${rotulo}»`);
+    assert.equal(F2.rateTypeLabel(clave), rotulo);
+    assert.notEqual(FMT.tipoN(clave), clave, `los informes dicen «${clave}» tal cual`);
+  }
+});
+
+await prueba("cada tipo tiene quién lo dibuja en el 3D", () => {
+  // Un tipo sin su `case` en `FixtureMesh` cae en el `default` y se dibuja
+  // como una estiba: el tipo nuevo «andaba» y se veía otro mueble.
+  const src = leer(join(raiz, "src", "components", "StoreEditor3D", "StoreEditor3D.tsx"));
+  const ini = src.indexOf("export function FixtureMesh(");
+  assert.ok(ini >= 0, "no se encontró FixtureMesh");
+  const cuerpo = src.slice(ini, src.indexOf("default:", ini));
+  for (const [t, d] of Object.entries(CATALOGO.tipos)) {
+    if (d.legado) continue;
+    assert.match(cuerpo, new RegExp(`case "${t}":`), `\`${t}\` no tiene su case en FixtureMesh`);
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -581,21 +862,147 @@ await prueba("la lista de cambios intencionales es fiel a la referencia", () => 
   }
 });
 
-await prueba("el plano sintético se arma igual que cuando se capturó", () => {
-  assert.deepEqual(TIPOS, ANTES.tipos, "los tipos que se consultan no son los de la referencia");
-  assert.deepEqual(JSON.parse(JSON.stringify(armarPlano())), ANTES.plano.muebles,
-    "el plano sintético cambió: las medidas, colores o rótulos con que nace un mueble del 3D no son los de antes");
-});
+// ─── Lo que la referencia no conoce ──────────────────────────────────────────
+//
+// La referencia anotó los tipos que existían al capturarla. Un tipo que se
+// suma después (la nevera de puertas, el puesto de impulso) aparece en las
+// tablas de hoy —en `FixType`, en la paleta, en los prefijos, en `por_tipo`—
+// y la comparación lo tomaba por un cambio de lo de antes, aunque ningún plano
+// viejo cambiara. Se compara entonces SÓLO lo de los tipos que la referencia
+// conoce, que tiene que seguir idéntico; los nuevos los valida el esquema
+// (`validar`, arriba) y las pruebas de abajo.
+//
+// Qué se saca está escrito tabla por tabla, y no se adivina: una tabla que se
+// sume a la captura sin clasificar acá hace fallar la prueba. Se saca sólo lo
+// que es de un tipo NUEVO —no lo que no estaba en esa tabla—: si la punta
+// entrara en `MUEBLES_FRIOS`, eso es un cambio de un tipo viejo y tiene que
+// verse.
 
-await prueba("un plano viejo da lo mismo que antes, salvo los cambios escritos", () => {
+/** Las tablas de la captura y cómo se les saca lo nuevo. */
+const LO_NUEVO_POR_TABLA = {
+  /** Listas de tipos. */
+  tipos: ["FixType", "FixType2D", "NUNCA_ALQUILABLE", "NON_RENTABLE_BY_DEFAULT", "TIPOS_CON_PRODUCTO",
+    "TIPOS_CON_PRUEBA_3D", "TIPOS_CON_SURTIDO", "MUEBLES_FRIOS", "FORMAN_CORRIDA"],
+  /** Diccionarios por tipo. */
+  porTipo: ["CATEGORIA_DE_TIPO", "PREFIJO_POR_TIPO", "H_DEFAULTS_2D", "COLOR_DEFAULTS_2D",
+    "REFERENCIAS_minimapa", "nombres_de_informe"],
+  /** Listas de filas con `type`. */
+  filas: ["FIXTURE_DEFS", "CATALOG_2D"],
+  /** Las filas de Tarifas: `type` es la clave de la tarifa. */
+  tarifas: ["RATE_TYPES"],
+  /** Las que no dependen de qué tipos hay: se comparan enteras. */
+  enteras: ["GondolaType", "COLOR_DEFAULTS_migracion"],
+};
+
+/** Los tipos (y alias) y las claves de tarifa del catálogo que la referencia
+ *  no conoce. */
+function loNuevoDe(cat) {
+  const tiposDeAntes = new Set(ANTES.tipos);
+  const tarifasDeAntes = new Set(ANTES.ts.tablas.RATE_TYPES.valor.map((r) => r.type));
+  return {
+    tipos: new Set([...Object.keys(cat.tipos), ...Object.keys(cat.alias)].filter((t) => !tiposDeAntes.has(t))),
+    tarifas: new Set(cat.tarifas.map((t) => t.clave).filter((k) => !tarifasDeAntes.has(k))),
+  };
+}
+
+/** La captura sin lo que es de un tipo o una tarifa nuevos. */
+function soloLoDeAntes(ts, nuevo) {
+  const out = structuredClone(ts);
+  const fuera = (t) => !nuevo.tipos.has(t);
+  const sinClaves = (o, quedan) => Object.fromEntries(Object.entries(o).filter(([k]) => quedan(k)));
+  for (const n of Object.keys(out.tablas)) {
+    const t = out.tablas[n];
+    if (LO_NUEVO_POR_TABLA.tipos.includes(n)) t.valor = t.valor.filter(fuera);
+    else if (LO_NUEVO_POR_TABLA.porTipo.includes(n)) t.valor = sinClaves(t.valor, fuera);
+    else if (LO_NUEVO_POR_TABLA.filas.includes(n)) t.valor = t.valor.filter((x) => fuera(x.type));
+    else if (LO_NUEVO_POR_TABLA.tarifas.includes(n)) t.valor = t.valor.filter((x) => !nuevo.tarifas.has(x.type));
+    else if (!LO_NUEVO_POR_TABLA.enteras.includes(n)) {
+      throw new Error(`la tabla \`${n}\` no dice cómo se le saca lo nuevo: sumala a LO_NUEVO_POR_TABLA`);
+    }
+  }
+  out.por_tipo = sinClaves(out.por_tipo, fuera);
+  out.nace_en_2D.valor = sinClaves(out.nace_en_2D.valor, fuera);
+  return out;
+}
+
+/** Lo que la referencia dice, con los cambios escritos ya aplicados. */
+function esperadoDeAntes() {
   const esperado = structuredClone(ANTES.ts);
   for (const { cambios } of CAMBIOS_INTENCIONALES) {
     for (const [ruta, , ahora] of cambios) escribirRuta(esperado, ruta, ahora);
   }
-  const ahora = JSON.parse(JSON.stringify(capturarTS(ANTES.plano.muebles)));
-  const difs = diferencias(sinOrden(esperado), sinOrden(ahora));
+  return esperado;
+}
+
+const listarDiferencias = (difs) => difs.slice(0, 15)
+  .map((d) => `${d.ruta}: antes ${mostrar(d.antes)} · ahora ${mostrar(d.ahora)}`).join("\n");
+
+await prueba("el plano sintético se arma igual que cuando se capturó (con los tipos de antes)", () => {
+  const nuevo = loNuevoDe(CATALOGO);
+  assert.deepEqual(TIPOS.filter((t) => !nuevo.tipos.has(t)), ANTES.tipos,
+    "los tipos de antes que se consultan no son los de la referencia: se perdió o se renombró uno");
+  assert.deepEqual(JSON.parse(JSON.stringify(armarPlano({ soloTipos: ANTES.tipos }))), ANTES.plano.muebles,
+    "el plano sintético cambió: las medidas, colores o rótulos con que nace un mueble del 3D no son los de antes");
+});
+
+await prueba("los tipos que la referencia no conoce son tipos del catálogo, completos", () => {
+  // Un tipo nuevo no se compara contra nada: tiene que estar entero en el
+  // catálogo (lo pide `validar`) y en los tipos de TypeScript, y no puede ser
+  // un tipo viejo con otro nombre.
+  const nuevo = loNuevoDe(CATALOGO);
+  for (const t of nuevo.tipos) {
+    assert.ok(TIPOS.includes(t), `${t}: está en el catálogo y no en \`FixType\` ni en \`FixType2D\``);
+    const d = CATALOGO.tipos[t];
+    assert.ok(d && !d.legado, `${t}: un tipo nuevo no puede ser legado ni un alias`);
+    assert.ok(!Object.values(ANTES.ts.tablas.PREFIJO_POR_TIPO.valor).includes(d.prefijo),
+      `${t}: usa el prefijo ${d.prefijo}, que ya era de un tipo de antes`);
+  }
+  for (const k of nuevo.tarifas) {
+    assert.ok(CATALOGO.tarifas.some((x) => x.clave === k), `la tarifa \`${k}\` no está en \`tarifas\``);
+  }
+});
+
+await prueba("un plano viejo da lo mismo que antes, salvo los cambios escritos", () => {
+  const ahora = soloLoDeAntes(JSON.parse(JSON.stringify(capturarTS(ANTES.plano.muebles))), loNuevoDe(CATALOGO));
+  const difs = diferencias(sinOrden(esperadoDeAntes()), sinOrden(ahora));
   assert.equal(difs.length, 0, `${difs.length} diferencia(s) que no están en CAMBIOS_INTENCIONALES:\n`
-    + difs.slice(0, 15).map((d) => `${d.ruta}: antes ${mostrar(d.antes)} · ahora ${mostrar(d.ahora)}`).join("\n"));
+    + listarDiferencias(difs));
+});
+
+await prueba("la comparación saca SÓLO lo nuevo: un cambio en un tipo de antes se sigue viendo", () => {
+  // Que sacar lo nuevo no se convierta en no mirar nada. Sobre la captura de
+  // hoy se inventa un tipo y una tarifa que aparecen en todas las tablas —eso
+  // no tiene que verse— y después se cambia, de a una, una cosa de un tipo de
+  // antes en cada clase de tabla —eso sí—.
+  const nuevo = loNuevoDe(CATALOGO);
+  const base = JSON.parse(JSON.stringify(capturarTS(ANTES.plano.muebles)));
+  const conInventado = structuredClone(base);
+  const tb = conInventado.tablas;
+  for (const n of LO_NUEVO_POR_TABLA.tipos) tb[n].valor.push("tipo_inventado");
+  for (const n of LO_NUEVO_POR_TABLA.porTipo) tb[n].valor.tipo_inventado = "algo";
+  for (const n of LO_NUEVO_POR_TABLA.filas) tb[n].valor.push({ ...tb[n].valor[0], type: "tipo_inventado" });
+  tb.RATE_TYPES.valor.push({ type: "tarifa_inventada", label: "Inventada" });
+  conInventado.por_tipo.tipo_inventado = conInventado.por_tipo.punta;
+  conInventado.nace_en_2D.valor.tipo_inventado = conInventado.nace_en_2D.valor.punta;
+  const conEso = { tipos: new Set([...nuevo.tipos, "tipo_inventado"]), tarifas: new Set([...nuevo.tarifas, "tarifa_inventada"]) };
+  assert.deepEqual(diferencias(sinOrden(esperadoDeAntes()), sinOrden(soloLoDeAntes(conInventado, conEso))), [],
+    "lo de un tipo nuevo se toma por un cambio de lo de antes");
+
+  const cambios = [
+    ["un prefijo de un tipo viejo", (x) => { x.tablas.PREFIJO_POR_TIPO.valor.punta = "PNX"; }],
+    ["un tipo viejo que pasa a ser frío", (x) => { x.tablas.MUEBLES_FRIOS.valor.push("punta"); }],
+    ["una medida con que nace un tipo viejo", (x) => { x.tablas.FIXTURE_DEFS.valor.find((d) => d.type === "batea").w = 0.81; }],
+    ["el rótulo de una tarifa vieja", (x) => { x.tablas.RATE_TYPES.valor.find((r) => r.type === "punta").label = "Punta"; }],
+    ["lo que contesta un tipo viejo", (x) => { x.por_tipo.isla.rateTypeOf = "estiba_media"; }],
+    ["con qué nace en el 2D un tipo viejo", (x) => { x.nace_en_2D.valor.batea.h = 0.81; }],
+    ["lo que calcula un mueble del plano viejo", (x) => { x.por_mueble[Object.keys(x.por_mueble)[0]].isRentable = false; }],
+  ];
+  for (const [que, cambiar] of cambios) {
+    const x = structuredClone(conInventado);
+    cambiar(x);
+    assert.ok(diferencias(sinOrden(esperadoDeAntes()), sinOrden(soloLoDeAntes(x, conEso))).length > 0,
+      `no se ve ${que}`);
+  }
 });
 
 console.log(`\n${hechas} pruebas del catálogo de muebles`);

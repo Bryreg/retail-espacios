@@ -2,6 +2,7 @@ import type {
   FaceData, FixType, GondolaType, ShelfSlot, SpaceStatus, UnifiedFixture,
 } from "../types/fixtures";
 import { isRotated90 } from "../types/fixtures";
+import type { PartesDeMueble } from "../catalogo/catalogo";
 
 /**
  * Del store a cada editor y de vuelta, sin perder nada en el camino.
@@ -40,6 +41,18 @@ import { isRotated90 } from "../types/fixtures";
  * adentro de su editor, incluido que el 2D reescribe el `label` con el rótulo
  * de su catálogo al abrir el plano.
  *
+ * ── La ficha del modelo ──────────────────────────────────────────────────────
+ *
+ * Un mueble colocado desde un modelo del catálogo guarda la ficha que lo
+ * estampó: `modelo`, `entrepanos`, `modulo` y `partes` (ver `FichaDelMueble`).
+ * Ningún editor la EDITA: la vuelta no la escribe y se queda la guardada, así
+ * que un cambio de la ficha en el catálogo no mueve lo ya colocado. La única
+ * vez que se escribe es al NACER el mueble —uno sin guardado con ese `id`—, y
+ * sale de lo que trae el mueble nuevo del editor: `nace` en el 2D, los campos
+ * de la ficha en el 3D. El editor 3D además la lee para dibujar (las puertas
+ * de la nevera, los entrepaños y el módulo de la góndola). Un mueble sin
+ * ficha va y vuelve exactamente como antes.
+ *
  * ── Por qué está acá ─────────────────────────────────────────────────────────
  *
  * Es puro: ni React, ni three, ni el store. Las tablas del catálogo que cada
@@ -47,6 +60,34 @@ import { isRotated90 } from "../types/fixtures";
  * 3D) entran por parámetro, así que `scripts/probar-plano.mjs` lo ejecuta tal
  * cual con esbuild.
  */
+
+// ─── La ficha del modelo ──────────────────────────────────────────────────────
+
+/** Lo que un mueble guarda de la ficha de su modelo. */
+export interface FichaDelMueble {
+  modelo?: string;
+  entrepanos?: number;
+  modulo?: number;
+  partes?: PartesDeMueble;
+}
+
+/** La ficha que guarda un mueble, sólo con lo que tiene: un mueble sin ficha
+ *  da `{}`, y esparcirla no agrega ninguna clave. */
+export function fichaDe(f: FichaDelMueble): FichaDelMueble {
+  const out: FichaDelMueble = {};
+  if (f.modelo !== undefined) out.modelo = f.modelo;
+  if (f.entrepanos !== undefined) out.entrepanos = f.entrepanos;
+  if (f.modulo !== undefined) out.modulo = f.modulo;
+  if (f.partes !== undefined) out.partes = { ...f.partes };
+  return out;
+}
+
+/** Con qué nace en el store un mueble que el 2D coloca desde un modelo: lo
+ *  que el 2D no dibuja (el alto, el color) y la ficha. */
+export interface NaceDeModelo extends FichaDelMueble {
+  h: number;
+  color: string;
+}
 
 // ─── El plano 2D ──────────────────────────────────────────────────────────────
 
@@ -62,11 +103,13 @@ export type FixType2D =
   | "cross"
   | "isla"
   | "impulsador"
+  | "puesto_impulso"
   | "batea"
   | "isla_fria"
   | "nevera_carnes"
   | "nevera_vegetales"
   | "nevera_refrescos"
+  | "nevera_puertas"
   | "stand_frutas"
   | "checkout"
   | "servicio_cliente"
@@ -104,6 +147,11 @@ export interface PlacedItem2D {
   faceB?: FaceData;
   /** False marks infrastructure that is never rented out. Undefined = rentable. */
   rentable?: boolean;
+  /** Con qué nace, si se colocó desde un modelo del catálogo: lo usa
+   *  `itemsToStore` sólo para un mueble NUEVO (sin guardado con ese `id`).
+   *  Del store vuelve con el modelo del mueble —el panel muestra su nombre y
+   *  un duplicado nace con la misma ficha—; de un mueble sin modelo, no está. */
+  nace?: NaceDeModelo;
 }
 
 /** Lo que las conversiones del 2D necesitan de su catálogo. Entra por
@@ -157,6 +205,9 @@ export function storeToItems(fixtures: UnifiedFixture[], catalogo: Catalogo2D): 
       nombreAnterior: f.nombreAnterior,
       faceB: f.faceB,
       rentable: f.rentable,
+      // Sólo un mueble con modelo trae `nace`: el de un plano viejo sale como
+      // siempre, sin la clave.
+      ...(f.modelo !== undefined ? { nace: { h: f.h, color: f.color, ...fichaDe(f) } } : {}),
     };
   });
 }
@@ -182,6 +233,9 @@ export function itemsToStore(
     else { type = item.type as FixType; }
 
     const guardado = porId.get(item.id);
+    // La ficha de un mueble NUEVO (el colocado desde un modelo, o el duplicado
+    // de uno): con guardado, manda lo guardado y `nace` no se mira.
+    const nace = guardado ? undefined : item.nace;
     // item.rotY tracks rotation (incremented by rotateItem); fall back to the saved value
     const rotY = item.rotY ?? guardado?.rotY ?? 0;
     const rot90 = isRotated90(rotY);
@@ -190,8 +244,8 @@ export function itemsToStore(
     const storeD = rot90 ? item.w : item.h;
     const loQueSabe: UnifiedFixture = {
       // Use the FixType2D key (item.type) for defaults so gondola_doble / gondola_mural are distinct
-      h:     guardado?.h     ?? catalogo.altos[item.type]   ?? 1.8,
-      color: guardado?.color ?? catalogo.colores[item.type] ?? "#6366f1",
+      h:     guardado?.h     ?? nace?.h     ?? catalogo.altos[item.type]   ?? 1.8,
+      color: guardado?.color ?? nace?.color ?? catalogo.colores[item.type] ?? "#6366f1",
       rotY,
       id: item.id,
       code: item.code,
@@ -215,7 +269,7 @@ export function itemsToStore(
       faceB: item.faceB,
       rentable: item.rentable,
     };
-    return { ...guardado, ...loQueSabe };
+    return { ...(guardado ?? (nace ? fichaDe(nace) : undefined)), ...loQueSabe };
   });
 }
 
@@ -241,6 +295,12 @@ export interface PlacedFixture {
   observation:     string;
   /** False marks infrastructure that is never rented out. Undefined = rentable. */
   rentable?:       boolean;
+  /** La ficha del modelo (ver `FichaDelMueble`): el 3D la lee para dibujar y
+   *  la estampa sólo en un mueble nuevo; nunca la reescribe. */
+  modelo?:         string;
+  entrepanos?:     number;
+  modulo?:         number;
+  partes?:         PartesDeMueble;
 }
 
 /** Lo que `storeToFixtures` necesita del catálogo del 3D: el rótulo y el color
@@ -288,6 +348,8 @@ export function storeToFixtures(unifiedList: UnifiedFixture[], catalogo: Catalog
         endDate:         f.endDate,
         observation:     f.observation,
         rentable:        f.rentable,
+        // Sólo lo que el mueble tiene: uno sin ficha sale como siempre.
+        ...fichaDe(f),
       };
     });
 }
@@ -336,7 +398,10 @@ export function fixturesToStore(
       slots:           f.slots,
       rentable:        f.rentable,
     };
-    return { ...porId.get(f.id), ...loQueSabe };
+    // La ficha no está en `loQueSabe`: la del guardado se queda como estaba.
+    // Un mueble NUEVO (sin guardado) nace con la que trae del editor.
+    const guardado = porId.get(f.id);
+    return { ...(guardado ?? fichaDe(f)), ...loQueSabe };
   });
 
   return [...exhibicion, ...updated];

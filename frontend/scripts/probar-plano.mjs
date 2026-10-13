@@ -374,6 +374,50 @@ prueba("un mueble nuevo del 3D no hereda nada de otro", () => {
   assert.equal(nuevo.sede, "NAVE");
 });
 
+console.log("\nLa ficha del modelo\n");
+
+const FICHA = { modelo: "base:gondola-central-200-m100", entrepanos: 4, modulo: 1 };
+
+prueba("la ficha la escribe sólo el mueble que NACE: ningún editor la reescribe", () => {
+  // Un mueble guardado con su ficha: la vuelta de cada editor la deja como
+  // estaba aunque lo que traiga el editor diga otra cosa.
+  const g = plano().map((f) => (f.id === "g2" ? { ...f, ...FICHA } : f));
+  const placed = P.storeToFixtures(g, CAT3D);
+  const g2 = placed.find((f) => f.id === "g2");
+  assert.deepEqual([g2.modelo, g2.entrepanos, g2.modulo], [FICHA.modelo, 4, 1], "el 3D no recibe la ficha para dibujarla");
+  Object.assign(g2, { modelo: "base:otro", entrepanos: 2, modulo: 1.25, x: g2.x + 1 });
+  const v3 = P.fixturesToStore(placed, "NAVE", g).find((f) => f.id === "g2");
+  assert.deepEqual([v3.modelo, v3.entrepanos, v3.modulo], [FICHA.modelo, 4, 1], "el 3D reescribió la ficha de un mueble guardado");
+  assert.equal(v3.cx, g[1].cx + 1, "lo que el 3D sí sabe no se escribió");
+  const items = P.storeToItems(g, CAT2D);
+  const i2 = items.find((i) => i.id === "g2");
+  assert.deepEqual(i2.nace, { h: 2.0, color: "#123456", ...FICHA }, "el 2D no trae la ficha del mueble (el panel la nombra)");
+  i2.nace = { ...i2.nace, modelo: "base:otro", h: 1.5 };
+  const v2 = P.itemsToStore(items, g, CAT2D).find((f) => f.id === "g2");
+  assert.deepEqual([v2.modelo, v2.h, v2.entrepanos], [FICHA.modelo, 2.0, 4], "el 2D reescribió la ficha de un mueble guardado");
+  assert.ok(!("nace" in v2), "`nace` llegó al plano");
+  // Los muebles sin ficha no la ganan en ninguna vuelta.
+  for (const f of P.itemsToStore(items, g, CAT2D).concat(P.fixturesToStore(placed, "NAVE", g))) {
+    if (f.id === "g2") continue;
+    for (const k of ["modelo", "entrepanos", "modulo", "partes", "nace"]) assert.ok(!(k in f), `${f.id} ganó \`${k}\``);
+  }
+});
+
+prueba("un mueble NUEVO nace con la ficha que trae del editor", () => {
+  const g = plano();
+  // El 3D: el que se colocó desde un modelo trae la ficha en el PlacedFixture.
+  const placed = editar3D(P.storeToFixtures(g, CAT3D));
+  Object.assign(placed.find((f) => f.id === "gondola-nueva"), FICHA, { partes: { puertas: 2 } });
+  const n3 = P.fixturesToStore(placed, "NAVE", g).find((f) => f.id === "gondola-nueva");
+  assert.deepEqual([n3.modelo, n3.entrepanos, n3.modulo, n3.partes], [FICHA.modelo, 4, 1, { puertas: 2 }]);
+  // El 2D: el que se colocó desde un modelo trae `nace`.
+  const items = editar2D(P.storeToItems(g, CAT2D));
+  items.find((i) => i.id === "punta-nueva").nace = { h: 2.0, color: "#abcdef", modelo: "base:punta-070-200" };
+  const n2 = P.itemsToStore(items, g, CAT2D).find((f) => f.id === "punta-nueva");
+  assert.deepEqual([n2.modelo, n2.h, n2.color], ["base:punta-070-200", 2.0, "#abcdef"], "el 2D no estampó la ficha");
+  assert.ok(!("nace" in n2), "`nace` llegó al plano");
+});
+
 console.log("\nDe un editor al otro\n");
 
 prueba("2D → store → 3D → store → 2D → store: lo desconocido llega entero al final", () => {

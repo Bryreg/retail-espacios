@@ -5,7 +5,9 @@
     "Hay dos copias idénticas byte a byte: frontend/src/catalogo/muebles.json y backend/app/catalogo/muebles.json (la imagen de Docker no lleva una carpeta compartida). Se edita una y se copia a la otra; tests/test_catalogo_muebles.py lo vigila.",
     "Lo leen frontend/src/catalogo/catalogo.ts y backend/app/services/catalogo_muebles.py. Las medidas, el color y el rótulo sólo se usan al CREAR un mueble: un plano guardado no cambia si esto cambia.",
     "Las claves de los tipos, los prefijos y las claves de tarifa no se cambian nunca: están guardados en los planos, en los códigos de espacio y en las tarifas de cada cliente.",
-    "probar-catalogo.mjs y test_catalogo_muebles.py comparan lo que sale de acá contra frontend/scripts/casos/catalogo-antes.json (lo que hacía el código antes del catálogo)."
+    "probar-catalogo.mjs y test_catalogo_muebles.py comparan lo que sale de acá contra frontend/scripts/casos/catalogo-antes.json (lo que hacía el código antes del catálogo). Comparan sólo los tipos que la referencia conoce: un tipo nuevo se valida contra el esquema.",
+    "`modelos` son las fichas de muebles de verdad (medidas de fabricantes, con la URL de la fuente y su confiabilidad: ficha, catalogo o estimado). Al colocar uno se ESTAMPAN en el mueble del plano sus medidas, su color, su `modelo` y su geometría (entrepanos, modulo, partes): lo guardado no se vuelve a leer de acá, así que cambiar una ficha no mueve lo ya colocado. Cada tipo tiene además su modelo base implícito, `base:<tipo>` (o `base:<alias>` en la góndola), que es colocarlo como siempre, sin `modelo`.",
+    "El `id` de un modelo y su `tarifa` no se cambian nunca: el mueble guarda el id, y la tarifa se busca por él. Ningún modelo copia imágenes de terceros: sólo medidas, dichas con palabras propias."
   ],
   "prefijoDesconocido": "SPC",
   "tipos": {
@@ -14,6 +16,8 @@
       "informe": "góndola", "informePlural": "caras de góndola",
       "categoria": "Góndolas", "grupo2D": "Góndolas",
       "banderas": ["producto", "prueba3D", "surtido", "formaCorrida"],
+      "rango": { "w": [0.6, 1.5], "d": [0.3, 1.2], "h": [1.2, 2.6] },
+      "geometria": { "entrepanos": [2, 6], "modulo": [0.6, 1.5] },
       "variantes": {
         "double": {
           "caras": 2, "rotuloEditor": "Góndola Doble",
@@ -34,7 +38,8 @@
       "banderas": ["producto", "prueba3D", "surtido"],
       "rotuloEditor": "Punta Góndola",
       "medidas": { "w": 0.90, "d": 0.40, "h": 1.80 }, "color": "#7c3aed", "emoji": "🏷️",
-      "descripcion": "Cabecera de góndola con topper promocional"
+      "descripcion": "Cabecera de góndola con topper promocional",
+      "rango": { "w": [0.5, 1.4], "d": [0.3, 0.7], "h": [1.2, 2.4] }
     },
     "robatope": {
       "prefijo": "ROB", "alquilable": "si", "tarifa": "robatope",
@@ -88,7 +93,8 @@
       "banderas": ["producto"],
       "rotuloEditor": "Exhib. de Piso",
       "medidas": { "w": 1.20, "d": 0.80, "h": 1.40 }, "color": "#f59e0b", "emoji": "🏪",
-      "descripcion": "Exhibidor de piso con estantes y productos"
+      "descripcion": "Exhibidor de piso con estantes y productos",
+      "rango": { "w": [0.4, 2.4], "d": [0.4, 2.0], "h": [0.3, 2.0] }
     },
     "impulsador": {
       "prefijo": "IMP", "alquilable": "si", "tarifa": "impulsador",
@@ -97,7 +103,18 @@
       "banderas": ["producto"],
       "rotuloEditor": "Impulsador Marca",
       "medidas": { "w": 0.60, "d": 0.40, "h": 1.50 }, "color": "#e11d48", "emoji": "🏷️",
-      "descripcion": "Display compacto de impulso de marca"
+      "descripcion": "Display compacto de impulso de marca",
+      "rango": { "w": [0.3, 1.2], "d": [0.25, 0.8], "h": [0.8, 2.2] }
+    },
+    "puesto_impulso": {
+      "prefijo": "PIM", "alquilable": "si", "tarifa": "puesto_impulso",
+      "informe": "puesto de impulso", "informePlural": "puestos de impulso",
+      "categoria": "Displays", "grupo2D": "Displays",
+      "banderas": ["producto"],
+      "rotuloEditor": "Puesto de Impulso",
+      "medidas": { "w": 0.80, "d": 0.40, "h": 2.00 }, "color": "#c026d3", "emoji": "🙋",
+      "descripcion": "Mostrador chico de promotora con cenefa alta: degustación e impulso de una marca",
+      "rango": { "w": [0.5, 1.6], "d": [0.3, 0.8], "h": [1.4, 2.4] }
     },
     "batea": {
       "prefijo": "BAT", "alquilable": "si", "tarifa": "batea",
@@ -146,6 +163,17 @@
       "medidas": { "w": 1.20, "d": 0.75, "h": 1.80 }, "color": "#1e293b", "emoji": "🥤",
       "descripcion": "Vitrina multideck abierta para bebidas",
       "referencia": { "corto": "Neveras", "frase": "las neveras" }
+    },
+    "nevera_puertas": {
+      "prefijo": "NEV", "alquilable": "si", "tarifa": "nevera_puertas",
+      "informe": "nevera de puertas", "informePlural": "neveras de puertas",
+      "categoria": "Refrigeración", "grupo2D": "Refrigeración",
+      "banderas": ["producto", "prueba3D", "frio"],
+      "rotuloEditor": "Nevera de Puertas",
+      "medidas": { "w": 1.40, "d": 0.74, "h": 2.10 }, "color": "#1e293b", "emoji": "🧊",
+      "descripcion": "Nevera vertical cerrada, con puertas de vidrio: se vende entera",
+      "rango": { "w": [0.6, 3.2], "d": [0.55, 0.9], "h": [1.7, 2.3] },
+      "geometria": { "puertas": [1, 6] }
     },
     "stand_frutas": {
       "prefijo": "FRU", "alquilable": "si", "tarifa": "stand_frutas",
@@ -199,31 +227,401 @@
     { "clave": "ristra", "rotulo": "Ristra" },
     { "clave": "cross", "rotulo": "Exhibidor cruz" },
     { "clave": "impulsador", "rotulo": "Impulsador de marca" },
+    { "clave": "exhibidor_carton", "rotulo": "Exhibidor de cartón" },
+    { "clave": "puesto_impulso", "rotulo": "Puesto de impulso" },
     { "clave": "mueble", "rotulo": "Vitrina" },
     { "clave": "isla", "rotulo": "Estiba (exhibición de piso)" },
+    { "clave": "estiba_media", "rotulo": "Media estiba" },
+    { "clave": "estiba_cuarta", "rotulo": "Cuarto de estiba" },
     { "clave": "batea", "rotulo": "Batea" },
     { "clave": "isla_fria", "rotulo": "Isla de congelados" },
     { "clave": "nevera_carnes", "rotulo": "Nevera de carnes" },
     { "clave": "nevera_vegetales", "rotulo": "Nevera de vegetales" },
     { "clave": "nevera_refrescos", "rotulo": "Nevera de bebidas" },
+    { "clave": "nevera_puertas", "rotulo": "Nevera de puertas" },
     { "clave": "stand_frutas", "rotulo": "Frutas y verduras" },
     { "clave": "metro", "rotulo": "Zona libre" }
+  ],
+  "modelos": [
+    {
+      "id": "base:gondola-central-150-m090", "tipo": "gondola", "variante": "double",
+      "nombre": "Góndola central 1,50 m · módulo 0,90",
+      "w": 0.90, "d": 0.70, "h": 1.50, "entrepanos": 3, "modulo": 0.90,
+      "fuente": {
+        "url": "https://algamar.com.co/soluciones-para-supermercados/gondolas/",
+        "confiabilidad": "estimado",
+        "nota": "No encontré publicada la central de 1,50 con módulo de 0,90. El módulo está dentro del rango que ofrecen los fabricantes colombianos (0,90 a 1,20); el fondo y los entrepaños son los de la central de alto parecido."
+      }
+    },
+    {
+      "id": "base:gondola-central-150-m100", "tipo": "gondola", "variante": "double",
+      "nombre": "Góndola central 1,50 m · módulo 1,00",
+      "w": 1.00, "d": 0.70, "h": 1.50, "entrepanos": 4, "modulo": 1.00,
+      "fuente": {
+        "url": "https://www.vialambre.com/supermercado/gondolas/",
+        "confiabilidad": "catalogo",
+        "nota": "Góndola central de 1,50 de alto con 0,97 de frente y 0,70 de fondo; el catálogo cuenta ocho entrepaños y dos bases, o sea cuatro entrepaños y la base por cara."
+      }
+    },
+    {
+      "id": "base:gondola-central-150-m120", "tipo": "gondola", "variante": "double",
+      "nombre": "Góndola central 1,50 m · módulo 1,20",
+      "w": 1.20, "d": 0.70, "h": 1.50, "entrepanos": 3, "modulo": 1.20,
+      "fuente": {
+        "url": "https://algamar.com.co/soluciones-para-supermercados/gondolas/",
+        "confiabilidad": "estimado",
+        "nota": "No encontré publicada la central de 1,50 con módulo de 1,20. El módulo está dentro del rango que ofrecen los fabricantes colombianos (0,90 a 1,20); el fondo y los entrepaños son los de la central de alto parecido."
+      }
+    },
+    {
+      "id": "base:gondola-central-160-m090", "tipo": "gondola", "variante": "double",
+      "nombre": "Góndola central 1,60 m · módulo 0,90",
+      "w": 0.90, "d": 0.80, "h": 1.60, "entrepanos": 3, "modulo": 0.90,
+      "fuente": {
+        "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
+        "confiabilidad": "ficha",
+        "nota": "La ficha ofrece la doble en 1,60, 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,60 u 0,80 (se toma 0,80). Entrepaños: la ficha da la base y 3 o 4; se toman 3 por cara."
+      }
+    },
+    {
+      "id": "base:gondola-central-160-m100", "tipo": "gondola", "variante": "double",
+      "nombre": "Góndola central 1,60 m · módulo 1,00",
+      "w": 1.00, "d": 0.80, "h": 1.60, "entrepanos": 3, "modulo": 1.00,
+      "fuente": {
+        "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
+        "confiabilidad": "ficha",
+        "nota": "La ficha ofrece la doble en 1,60, 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,60 u 0,80 (se toma 0,80). Entrepaños: la ficha da la base y 3 o 4; se toman 3 por cara."
+      }
+    },
+    {
+      "id": "base:gondola-central-160-m120", "tipo": "gondola", "variante": "double",
+      "nombre": "Góndola central 1,60 m · módulo 1,20",
+      "w": 1.20, "d": 0.80, "h": 1.60, "entrepanos": 3, "modulo": 1.20,
+      "fuente": {
+        "url": "https://algamar.com.co/soluciones-para-supermercados/gondolas/",
+        "confiabilidad": "estimado",
+        "nota": "No encontré publicada la central de 1,60 con módulo de 1,20. El módulo está dentro del rango que ofrecen los fabricantes colombianos (0,90 a 1,20); el fondo y los entrepaños son los de la central de alto parecido."
+      }
+    },
+    {
+      "id": "base:gondola-central-180-m090", "tipo": "gondola", "variante": "double",
+      "nombre": "Góndola central 1,80 m · módulo 0,90",
+      "w": 0.90, "d": 0.80, "h": 1.80, "entrepanos": 4, "modulo": 0.90,
+      "fuente": {
+        "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
+        "confiabilidad": "ficha",
+        "nota": "La ficha ofrece la doble en 1,60, 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,60 u 0,80 (se toma 0,80). Entrepaños: la ficha da la base y 3 o 4; se toman 4 por cara."
+      }
+    },
+    {
+      "id": "base:gondola-central-180-m100", "tipo": "gondola", "variante": "double",
+      "nombre": "Góndola central 1,80 m · módulo 1,00",
+      "w": 1.00, "d": 0.80, "h": 1.80, "entrepanos": 4, "modulo": 1.00,
+      "fuente": {
+        "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
+        "confiabilidad": "ficha",
+        "nota": "La ficha ofrece la doble en 1,60, 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,60 u 0,80 (se toma 0,80). Entrepaños: la ficha da la base y 3 o 4; se toman 4 por cara."
+      }
+    },
+    {
+      "id": "base:gondola-central-180-m120", "tipo": "gondola", "variante": "double",
+      "nombre": "Góndola central 1,80 m · módulo 1,20",
+      "w": 1.20, "d": 0.80, "h": 1.80, "entrepanos": 4, "modulo": 1.20,
+      "fuente": {
+        "url": "https://algamar.com.co/soluciones-para-supermercados/gondolas/",
+        "confiabilidad": "estimado",
+        "nota": "No encontré publicada la central de 1,80 con módulo de 1,20. El módulo está dentro del rango que ofrecen los fabricantes colombianos (0,90 a 1,20); el fondo y los entrepaños son los de la central de alto parecido."
+      }
+    },
+    {
+      "id": "base:gondola-central-200-m090", "tipo": "gondola", "variante": "double",
+      "nombre": "Góndola central 2,00 m · módulo 0,90",
+      "w": 0.90, "d": 0.80, "h": 2.00, "entrepanos": 4, "modulo": 0.90,
+      "fuente": {
+        "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
+        "confiabilidad": "ficha",
+        "nota": "La ficha ofrece la doble en 1,60, 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,60 u 0,80 (se toma 0,80). Entrepaños: la ficha da la base y 3 o 4; se toman 4 por cara."
+      }
+    },
+    {
+      "id": "base:gondola-central-200-m100", "tipo": "gondola", "variante": "double",
+      "nombre": "Góndola central 2,00 m · módulo 1,00",
+      "w": 1.00, "d": 1.00, "h": 2.00, "entrepanos": 4, "modulo": 1.00,
+      "fuente": {
+        "url": "https://www.vialambre.com/gondola-central-parmet-200x100x100-ref-21780/",
+        "confiabilidad": "ficha",
+        "nota": "Góndola central de 2,00 × 1,00 × 1,00 (alto, frente y fondo) con cuatro entrepaños y la base por cara."
+      }
+    },
+    {
+      "id": "base:gondola-central-200-m120", "tipo": "gondola", "variante": "double",
+      "nombre": "Góndola central 2,00 m · módulo 1,20",
+      "w": 1.20, "d": 0.75, "h": 2.00, "entrepanos": 4, "modulo": 1.20,
+      "fuente": {
+        "url": "https://dispromem.com/productos/gondolas-para-supermercado/",
+        "confiabilidad": "estimado",
+        "nota": "Alto de 2,00 y módulo de 1,20 de la ficha (cinco niveles: la base y cuatro graduables). La ficha no da el fondo de la central: 0,75 sale de dos entrepaños de 0,35 y la espina (Todo Metales JG lista entrepaños de 1,20 × 0,35)."
+      }
+    },
+    {
+      "id": "base:gondola-pared-150-m090", "tipo": "gondola", "variante": "wall",
+      "nombre": "Góndola de pared 1,50 m · módulo 0,90",
+      "w": 0.90, "d": 0.40, "h": 1.50, "entrepanos": 3, "modulo": 0.90,
+      "fuente": {
+        "url": "https://algamar.com.co/soluciones-para-supermercados/gondolas/",
+        "confiabilidad": "estimado",
+        "nota": "No encontré publicada la de pared de 1,50 con módulo de 0,90. El módulo está dentro del rango que ofrecen los fabricantes colombianos (0,90 a 1,20) y el fondo es el de la sencilla de GMC (0,40)."
+      }
+    },
+    {
+      "id": "base:gondola-pared-150-m100", "tipo": "gondola", "variante": "wall",
+      "nombre": "Góndola de pared 1,50 m · módulo 1,00",
+      "w": 1.00, "d": 0.40, "h": 1.50, "entrepanos": 3, "modulo": 1.00,
+      "fuente": {
+        "url": "https://algamar.com.co/soluciones-para-supermercados/gondolas/",
+        "confiabilidad": "estimado",
+        "nota": "No encontré publicada la de pared de 1,50 con módulo de 1,00. El módulo está dentro del rango que ofrecen los fabricantes colombianos (0,90 a 1,20) y el fondo es el de la sencilla de GMC (0,40)."
+      }
+    },
+    {
+      "id": "base:gondola-pared-150-m120", "tipo": "gondola", "variante": "wall",
+      "nombre": "Góndola de pared 1,50 m · módulo 1,20",
+      "w": 1.20, "d": 0.40, "h": 1.50, "entrepanos": 3, "modulo": 1.20,
+      "fuente": {
+        "url": "https://algamar.com.co/soluciones-para-supermercados/gondolas/",
+        "confiabilidad": "estimado",
+        "nota": "No encontré publicada la de pared de 1,50 con módulo de 1,20. El módulo está dentro del rango que ofrecen los fabricantes colombianos (0,90 a 1,20) y el fondo es el de la sencilla de GMC (0,40)."
+      }
+    },
+    {
+      "id": "base:gondola-pared-160-m090", "tipo": "gondola", "variante": "wall",
+      "nombre": "Góndola de pared 1,60 m · módulo 0,90",
+      "w": 0.90, "d": 0.40, "h": 1.60, "entrepanos": 3, "modulo": 0.90,
+      "fuente": {
+        "url": "https://exhivicol.com/tienda/supermercado/gondolas/",
+        "confiabilidad": "estimado",
+        "nota": "No encontré publicada la de pared de 1,60. La más cercana es la de 1,70 con 0,97 de frente y 0,37 de fondo y cuatro entrepaños; se toma el fondo de 0,40 de la sencilla de GMC y tres entrepaños por el alto."
+      }
+    },
+    {
+      "id": "base:gondola-pared-160-m100", "tipo": "gondola", "variante": "wall",
+      "nombre": "Góndola de pared 1,60 m · módulo 1,00",
+      "w": 1.00, "d": 0.40, "h": 1.60, "entrepanos": 3, "modulo": 1.00,
+      "fuente": {
+        "url": "https://exhivicol.com/tienda/supermercado/gondolas/",
+        "confiabilidad": "estimado",
+        "nota": "No encontré publicada la de pared de 1,60. La más cercana es la de 1,70 con 0,97 de frente y 0,37 de fondo y cuatro entrepaños; se toma el fondo de 0,40 de la sencilla de GMC y tres entrepaños por el alto."
+      }
+    },
+    {
+      "id": "base:gondola-pared-160-m120", "tipo": "gondola", "variante": "wall",
+      "nombre": "Góndola de pared 1,60 m · módulo 1,20",
+      "w": 1.20, "d": 0.40, "h": 1.60, "entrepanos": 3, "modulo": 1.20,
+      "fuente": {
+        "url": "https://exhivicol.com/tienda/supermercado/gondolas/",
+        "confiabilidad": "estimado",
+        "nota": "No encontré publicada la de pared de 1,60. La más cercana es la de 1,70 con 0,97 de frente y 0,37 de fondo y cuatro entrepaños; se toma el fondo de 0,40 de la sencilla de GMC y tres entrepaños por el alto."
+      }
+    },
+    {
+      "id": "base:gondola-pared-180-m090", "tipo": "gondola", "variante": "wall",
+      "nombre": "Góndola de pared 1,80 m · módulo 0,90",
+      "w": 0.90, "d": 0.40, "h": 1.80, "entrepanos": 4, "modulo": 0.90,
+      "fuente": {
+        "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
+        "confiabilidad": "ficha",
+        "nota": "La ficha ofrece la sencilla en 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,30 o 0,40 (se toma 0,40). Entrepaños: la base y cuatro."
+      }
+    },
+    {
+      "id": "base:gondola-pared-180-m100", "tipo": "gondola", "variante": "wall",
+      "nombre": "Góndola de pared 1,80 m · módulo 1,00",
+      "w": 1.00, "d": 0.40, "h": 1.80, "entrepanos": 4, "modulo": 1.00,
+      "fuente": {
+        "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
+        "confiabilidad": "ficha",
+        "nota": "La ficha ofrece la sencilla en 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,30 o 0,40 (se toma 0,40). Entrepaños: la base y cuatro."
+      }
+    },
+    {
+      "id": "base:gondola-pared-180-m120", "tipo": "gondola", "variante": "wall",
+      "nombre": "Góndola de pared 1,80 m · módulo 1,20",
+      "w": 1.20, "d": 0.40, "h": 1.80, "entrepanos": 4, "modulo": 1.20,
+      "fuente": {
+        "url": "https://algamar.com.co/soluciones-para-supermercados/gondolas/",
+        "confiabilidad": "estimado",
+        "nota": "No encontré publicada la de pared de 1,80 con módulo de 1,20. El módulo está dentro del rango que ofrecen los fabricantes colombianos (0,90 a 1,20) y el fondo es el de la sencilla de GMC (0,40)."
+      }
+    },
+    {
+      "id": "base:gondola-pared-200-m090", "tipo": "gondola", "variante": "wall",
+      "nombre": "Góndola de pared 2,00 m · módulo 0,90",
+      "w": 0.90, "d": 0.40, "h": 2.00, "entrepanos": 4, "modulo": 0.90,
+      "fuente": {
+        "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
+        "confiabilidad": "ficha",
+        "nota": "La ficha ofrece la sencilla en 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,30 o 0,40 (se toma 0,40). Entrepaños: la base y cuatro."
+      }
+    },
+    {
+      "id": "base:gondola-pared-200-m100", "tipo": "gondola", "variante": "wall",
+      "nombre": "Góndola de pared 2,00 m · módulo 1,00",
+      "w": 1.00, "d": 0.40, "h": 2.00, "entrepanos": 4, "modulo": 1.00,
+      "fuente": {
+        "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
+        "confiabilidad": "ficha",
+        "nota": "La ficha ofrece la sencilla en 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,30 o 0,40 (se toma 0,40). Entrepaños: la base y cuatro."
+      }
+    },
+    {
+      "id": "base:gondola-pared-200-m120", "tipo": "gondola", "variante": "wall",
+      "nombre": "Góndola de pared 2,00 m · módulo 1,20",
+      "w": 1.20, "d": 0.49, "h": 2.00, "entrepanos": 4, "modulo": 1.20,
+      "fuente": {
+        "url": "https://dispromem.com/productos/gondolas-para-supermercado/",
+        "confiabilidad": "ficha",
+        "nota": "Góndola de pared de 2,00 de alto, módulo de 1,20 y 0,49 de fondo; cinco niveles: la base y cuatro graduables."
+      }
+    },
+    {
+      "id": "base:punta-070-200", "tipo": "punta",
+      "nombre": "Punta 0,70 × 2,00 m",
+      "w": 0.70, "d": 0.37, "h": 2.00,
+      "fuente": {
+        "url": "https://www.vialambre.com/supermercado/gondolas/",
+        "confiabilidad": "catalogo",
+        "nota": "Puntera de 0,70 de frente, 2,00 de alto y 0,37 de fondo: cierra una central de 0,70 de fondo."
+      }
+    },
+    {
+      "id": "base:punta-070-150", "tipo": "punta",
+      "nombre": "Punta 0,70 × 1,50 m",
+      "w": 0.70, "d": 0.37, "h": 1.50,
+      "fuente": {
+        "url": "https://exhivicol.com/tienda/supermercado/gondolas/",
+        "confiabilidad": "catalogo",
+        "nota": "Puntera de 0,70 × 1,50 × 0,37 (frente, alto y fondo) con cuatro entrepaños; la misma medida está en el catálogo de Vialambre."
+      }
+    },
+    {
+      "id": "base:punta-070-130", "tipo": "punta",
+      "nombre": "Punta 0,70 × 1,30 m",
+      "w": 0.70, "d": 0.37, "h": 1.30,
+      "fuente": {
+        "url": "https://www.vialambre.com/supermercado/gondolas/",
+        "confiabilidad": "catalogo",
+        "nota": "Puntera de 0,70 × 1,30 × 0,37 con tres entrepaños y la base."
+      }
+    },
+    {
+      "id": "base:estiba-completa", "tipo": "isla",
+      "nombre": "Estiba completa 1,20 × 1,00",
+      "w": 1.20, "d": 1.00, "h": 1.40,
+      "fuente": {
+        "url": "https://www.forestalmaderero.com/articulos/item/venta-de-estibas-y-media-estibas.html",
+        "confiabilidad": "catalogo",
+        "nota": "La estiba de la NTC 4680 mide 1,20 × 1,00. El alto (1,40) es el de la torre de producto con que se exhibe: estimado."
+      }
+    },
+    {
+      "id": "base:estiba-media", "tipo": "isla",
+      "nombre": "Media estiba 1,00 × 0,60",
+      "w": 1.00, "d": 0.60, "h": 1.20,
+      "tarifa": "estiba_media", "informe": "media estiba", "informePlural": "medias estibas",
+      "fuente": {
+        "url": "https://www.forestalmaderero.com/articulos/item/venta-de-estibas-y-media-estibas.html",
+        "confiabilidad": "catalogo",
+        "nota": "La media estiba que se vende en Colombia mide 0,60 × 1,00: la mitad de la NTC 4680 por el lado largo. El alto (1,20) es el de la torre de producto: estimado."
+      }
+    },
+    {
+      "id": "base:estiba-cuarta", "tipo": "isla",
+      "nombre": "Cuarto de estiba 0,60 × 0,50",
+      "w": 0.60, "d": 0.50, "h": 1.00,
+      "tarifa": "estiba_cuarta", "informe": "cuarto de estiba", "informePlural": "cuartos de estiba",
+      "fuente": {
+        "url": "https://www.forestalmaderero.com/articulos/item/venta-de-estibas-y-media-estibas.html",
+        "confiabilidad": "estimado",
+        "nota": "No encontré el cuarto de estiba colombiano publicado: 0,60 × 0,50 es la mitad de la media (0,60 × 1,00) del mismo sistema. El cuarto europeo (0,60 × 0,40) es de otro sistema y no se mezcla."
+      }
+    },
+    {
+      "id": "base:exhibidor-carton", "tipo": "impulsador",
+      "nombre": "Exhibidor de cartón de la marca",
+      "w": 0.60, "d": 0.40, "h": 1.70, "color": "#b5835a",
+      "tarifa": "exhibidor_carton", "informe": "exhibidor de cartón", "informePlural": "exhibidores de cartón",
+      "fuente": {
+        "url": "https://imprentaperuana.com/material-pop-displays-publicitarios-lima/",
+        "confiabilidad": "estimado",
+        "nota": "Ningún fabricante colombiano publica medidas: el exhibidor de cartón se hace a medida. Base de 0,60 × 0,40 y 1,70 de alto con cabezote, dentro del rango de 1,50 a 1,85 que se ve en catálogos de la región."
+      }
+    },
+    {
+      "id": "base:nevera-1p-inducol", "tipo": "nevera_puertas",
+      "nombre": "Nevera de 1 puerta",
+      "w": 0.72, "d": 0.724, "h": 2.09, "partes": { "puertas": 1 },
+      "fuente": {
+        "url": "https://inducol.com.co/producto/vitrina-vertical-de-424litros-inducol-en-lamina-galvanizada/",
+        "confiabilidad": "ficha",
+        "nota": "Vitrina vertical de una puerta (VV-20DBL1PV): 0,72 de frente, 2,09 de alto y 0,724 de fondo, con cuatro repisas."
+      }
+    },
+    {
+      "id": "base:nevera-2p-inducol", "tipo": "nevera_puertas",
+      "nombre": "Nevera de 2 puertas",
+      "w": 1.445, "d": 0.74, "h": 2.10, "partes": { "puertas": 2 },
+      "fuente": {
+        "url": "https://inducol.com.co/producto/vitrina-vertical-de-1195-litros/",
+        "confiabilidad": "ficha",
+        "nota": "Vitrina vertical de dos puertas (VV-39DBL1PV): 1,445 de frente, 2,10 de alto y 0,74 de fondo, con ocho repisas."
+      }
+    },
+    {
+      "id": "base:nevera-3p-frigomaster", "tipo": "nevera_puertas",
+      "nombre": "Nevera de 3 puertas",
+      "w": 2.07, "d": 0.70, "h": 2.10, "partes": { "puertas": 3 },
+      "fuente": {
+        "url": "https://frigomaster.co/nevera-exhibidora-vertical-tres-puertas/",
+        "confiabilidad": "ficha",
+        "nota": "Nevera exhibidora vertical de tres puertas en acero inoxidable: 2,07 de frente, 2,10 de alto y 0,70 de fondo, puertas de 0,65 y cuatro repisas por puerta."
+      }
+    },
+    {
+      "id": "base:nevera-4p-frigomaster", "tipo": "nevera_puertas",
+      "nombre": "Nevera de 4 puertas",
+      "w": 2.72, "d": 0.75, "h": 2.10, "partes": { "puertas": 4 },
+      "fuente": {
+        "url": "https://frigomaster.co/nevera-exhibidora-vertical-cuatro-puertas/",
+        "confiabilidad": "ficha",
+        "nota": "Nevera exhibidora vertical de cuatro puertas en acero inoxidable: 2,72 de frente, 2,10 de alto y 0,75 de fondo, puertas de 0,65 y cuatro repisas por puerta."
+      }
+    },
+    {
+      "id": "base:puesto-impulso-80", "tipo": "puesto_impulso",
+      "nombre": "Puesto de impulso 0,80 × 0,40",
+      "w": 0.80, "d": 0.40, "h": 2.00,
+      "fuente": {
+        "url": "https://gruposrm.com/Tienda2/mesas-y-counters/64-expostads-counter-es-c8040.html",
+        "confiabilidad": "ficha",
+        "nota": "Counter de aluminio de 0,80 × 0,40 con la superficie a 1,00 y la cenefa hasta 2,00."
+      }
+    }
   ],
   "orden": {
     "editor3D": [
       "gondola:double", "gondola:wall", "punta",
       "ristra", "cross",
-      "mueble", "isla", "impulsador", "batea",
-      "isla_fria", "nevera_carnes", "nevera_refrescos", "nevera_vegetales",
+      "mueble", "isla", "impulsador", "puesto_impulso", "batea",
+      "isla_fria", "nevera_carnes", "nevera_refrescos", "nevera_puertas", "nevera_vegetales",
       "stand_frutas", "checkout", "servicio_cliente",
       "metro", "columna",
       "robatope"
     ],
     "plano2D": [
       "gondola_doble", "gondola_mural", "punta", "robatope",
-      "ristra", "cross", "impulsador",
+      "ristra", "cross", "impulsador", "puesto_impulso",
       "mueble", "isla", "batea",
-      "isla_fria", "nevera_carnes", "nevera_vegetales", "nevera_refrescos",
+      "isla_fria", "nevera_carnes", "nevera_vegetales", "nevera_refrescos", "nevera_puertas",
       "stand_frutas", "checkout", "servicio_cliente",
       "metro", "columna"
     ],

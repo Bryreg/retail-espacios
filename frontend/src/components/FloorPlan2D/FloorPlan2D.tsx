@@ -22,7 +22,8 @@ import {
 import type { RechazoDeNombre } from "../../utils/nomenclatura";
 import { revisarPlano, contratosConNombreAjeno, type ContratoDelPlano } from "../../utils/revision";
 import { storeToItems, itemsToStore, type FixType2D, type PlacedItem2D } from "../../utils/convertirPlano";
-import { CATALOG, CATALOGO_2D, H_DEFAULTS } from "../../catalogo/plano2D";
+import { CATALOG, CATALOGO_2D, H_DEFAULTS, MODELOS_2D, type ModeloDelPlano } from "../../catalogo/plano2D";
+import { modeloPorId, nombreDeModelo } from "../../catalogo/catalogo";
 import { TOLERANCIA_CONTACTO } from "../../utils/planta";
 import { buscarHuecoGrupo } from "../../utils/acomodar";
 import { detectarCorridas, pasilloPorMueble } from "../../utils/pasillos";
@@ -339,6 +340,11 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   const [editMode, setEditMode]       = useState(defaultEditMode);
   const [activeTool, setActiveTool]   = useState<"select" | "place" | "draw">("select");
   const [pendingType, setPendingType] = useState<FixType2D | null>(null);
+  /** El modelo del catálogo que se está por colocar (de la familia
+   *  `pendingType`), o null para el modelo base, que es colocarlo como
+   *  siempre. Se suelta junto con el tipo. */
+  const [pendingModelo, setPendingModelo] = useState<ModeloDelPlano | null>(null);
+  useEffect(() => { if (pendingType === null) setPendingModelo(null); }, [pendingType]);
   const [editingCodeId, setEditingCodeId] = useState<string | null>(null);
   const [editingCodeVal, setEditingCodeVal] = useState("");
   /** Por qué no se pudo poner ese nombre, y qué se puede hacer al respecto.
@@ -633,8 +639,13 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   // ── Place item ───────────────────────────────────────────────────────────────
 
   const placeItem = useCallback(
-    (type: FixType2D, x: number, y: number, w?: number, h?: number) => {
+    (type: FixType2D, x: number, y: number, w?: number, h?: number, modelo?: ModeloDelPlano | null) => {
       const def = CATALOG.find((c) => c.type === type)!;
+      // Desde un modelo: el ancho y el fondo de su ficha, y con qué nace en el
+      // store (alto, color, id y geometría: `nace`, que `itemsToStore` le
+      // estampa al mueble nuevo). El rótulo es el de su tipo, como siempre.
+      const ancho = w ?? modelo?.w ?? def.w;
+      const fondo = h ?? modelo?.h ?? def.h;
       setItems((prev) => {
         const code = nextCode(type, prev);
         const newItem: PlacedItem2D = {
@@ -642,10 +653,10 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           type,
           code,
           label: def.label,
-          x: snapTo(x - (w ?? def.w) / 2),
-          y: snapTo(y - (h ?? def.h) / 2),
-          w: w ?? def.w,
-          h: h ?? def.h,
+          x: snapTo(x - ancho / 2),
+          y: snapTo(y - fondo / 2),
+          w: ancho,
+          h: fondo,
           rotY: 0,
           status: "free",
           supplierName: "",
@@ -659,6 +670,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           // to sell. Everything else stays rentable (flag left absent) so the
           // saved payload keeps its historical shape.
           ...(NON_RENTABLE_BY_DEFAULT.has(type) ? { rentable: false } : {}),
+          ...(modelo ? { nace: modelo.nace } : {}),
         };
         // Reject placement if it would overlap an existing fixture
         if (hasCollision(newItem, prev)) return prev;
@@ -868,7 +880,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
 
     if (activeTool === "place" && pendingType !== null) {
       const pt = svgPoint(e);
-      placeItem(pendingType, pt.x, pt.y);
+      placeItem(pendingType, pt.x, pt.y, undefined, undefined, pendingModelo);
       return;
     }
 
@@ -1208,7 +1220,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   // el plano dibujaba uno solo y el otro quedaba mudo, así que quien miraba no
   // podía sospechar que había dos. La regla vive en `nomenclatura.ts`.
   const chocados = useMemo(() => nombresChocados(items), [items]);
-  const ghostDef = pendingType ? CATALOG.find((c) => c.type === pendingType) : null;
+  const ghostTipo = pendingType ? CATALOG.find((c) => c.type === pendingType) : null;
+  const ghostDef = ghostTipo && pendingModelo ? { ...ghostTipo, w: pendingModelo.w, h: pendingModelo.h } : ghostTipo;
 
   // Search + status filter matching (AND-combined); null set = no filter active
   const normalizedQuery = normalizeText(searchQuery.trim());
@@ -1371,7 +1384,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                 {defs.map((def) => {
                   const displayLabel = catalogLabels[def.type] ?? def.label;
                   const isEditingThis = editingCatalogType === def.type;
-                  const isActive = pendingType === def.type && activeTool === "place";
+                  const isActive = pendingType === def.type && activeTool === "place" && !pendingModelo;
+                  const modelos = MODELOS_2D[def.type] ?? [];
                   return (
                     <div
                       key={cat + def.type}
@@ -1382,7 +1396,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                       }}
                     >
                       <button
-                        onClick={() => { setActiveTool("place"); setPendingType(def.type); }}
+                        onClick={() => { setActiveTool("place"); setPendingType(def.type); setPendingModelo(null); }}
                         style={{
                           width: "100%", textAlign: "left",
                           padding: "6px 12px",
@@ -1459,6 +1473,39 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                         >
                           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         </button>
+                      )}
+                      {/* Los modelos de la familia: muebles de verdad, con las
+                          medidas de su ficha. Lo de arriba es el modelo base,
+                          que se coloca como siempre. «≈»: medidas deducidas. */}
+                      {modelos.length > 0 && (
+                        <details data-modelos-2d={def.type}
+                          open={(pendingType === def.type && !!pendingModelo) || undefined}
+                          style={{ padding: "0 12px 6px 44px" }}>
+                          <summary style={{ cursor: "pointer", fontSize: 10, color: "var(--ink-3)", userSelect: "none" }}>
+                            {modelos.length} {modelos.length === 1 ? "modelo" : "modelos"}
+                          </summary>
+                          {modelos.map((m) => {
+                            const activo = pendingModelo?.id === m.id && activeTool === "place";
+                            return (
+                              <button key={m.id} data-modelo={m.id}
+                                onClick={() => { setActiveTool("place"); setPendingType(def.type); setPendingModelo(m); }}
+                                style={{
+                                  width: "100%", textAlign: "left", display: "block",
+                                  padding: "3px 6px", marginTop: 2,
+                                  background: activo ? "var(--accent-50)" : "transparent",
+                                  border: "none", borderLeft: activo ? "2px solid var(--accent)" : "2px solid transparent",
+                                  cursor: "pointer", fontFamily: "inherit",
+                                }}>
+                                <span style={{ display: "block", fontSize: 11, color: "var(--ink-1)", lineHeight: 1.2 }}>
+                                  {m.estimado ? "≈ " : ""}{m.nombre}
+                                </span>
+                                <span style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--ink-4)" }}>
+                                  {m.w}×{m.h}×{m.nace.h}m
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </details>
                       )}
                     </div>
                   );
@@ -3513,6 +3560,7 @@ function AssignmentPanel({
   onClose: () => void;
 }) {
   const catDef = CATALOG.find((c) => c.type === item.type);
+  const modeloDelMueble = modeloPorId(item.nace?.modelo);
   const fullCode = `${item.sede || sede}-${item.code}`;
   const inp = "w-full bg-transparent border-b border-dark-line-2 text-dark-ink-1 text-sm py-1 focus:outline-none focus:border-accent placeholder:text-dark-ink-3";
   const sel = "w-full bg-dark-surface-2 border border-dark-line-2 text-dark-ink-1 text-sm rounded px-2 py-1.5 focus:outline-none focus:border-accent";
@@ -3642,6 +3690,15 @@ function AssignmentPanel({
           <p style={{ fontSize: 14, fontWeight: 600, color: "var(--dark-ink-1)" }}>
             {catDef?.emoji} {catDef?.label}
           </p>
+          {/* La ficha de la que nació, si nació de una: su nombre y, si sus
+              medidas son una deducción, «≈». */}
+          {modeloDelMueble && (
+            <p data-modelo={modeloDelMueble.id}
+              title={`${modeloDelMueble.fuente.nota}\nFuente (${modeloDelMueble.fuente.confiabilidad}): ${modeloDelMueble.fuente.url}`}
+              style={{ fontSize: 11, color: "var(--dark-ink-2)", marginTop: 2 }}>
+              {nombreDeModelo(modeloDelMueble)}
+            </p>
+          )}
           {/* Nadie dice «PUN-07» en una reunión: dice «la punta del pasillo 4».
               Sale de la geometría, así que mover el mueble lo actualiza solo. */}
           {pasillo !== undefined && (

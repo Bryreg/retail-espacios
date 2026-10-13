@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo } from "react";
 import * as THREE from "three";
 import {
   MURAL_VEGETALES, NEVERA, PORTA_PRECIOS, SOBRE_REJILLA,
-  altoUtilDeNevera, nivelesDeMural, nivelesDeNevera, puertasDeNevera,
+  altoUtilDeNevera, nivelesDeMural, nivelesDeNevera, puertasDe,
 } from "./medidas";
 import { geometriaDeEmpaque, geometriaMarcoDePuerta, geometriaPortaPrecios } from "./perfiles";
 import { acomodar, EMPAQUES } from "./producto";
@@ -75,6 +75,10 @@ export interface NeveraRealProps {
   /** La chapa del cabezote con la marca del producto en prueba (`pop.ts`),
    *  como el copete de la punta. Sin esto, la chapa clara de siempre. */
   cabezote?: THREE.Material;
+  /** Cuántas puertas tiene el frente, si el mueble lo guardó de su ficha
+   *  (`partes.puertas` de la nevera de puertas). Sin esto, las que pide el
+   *  ancho (`puertasDeNevera`). Sólo cuenta en la variante `puertas`. */
+  puertas?: number;
 }
 
 /**
@@ -354,7 +358,7 @@ export function apagarElFrio(
 
 export const NeveraReal = memo(function NeveraReal({
   w, d, h, statusColor, ghost = false, variante = "multideck", conRelleno = true,
-  niveles: nivelesDePrueba, cabezote,
+  niveles: nivelesDePrueba, cabezote, puertas,
 }: NeveraRealProps) {
   const conPuertas = variante === "puertas";
   const esMural = variante === "vegetales";
@@ -380,7 +384,7 @@ export const NeveraReal = memo(function NeveraReal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [h, esMural, clavePrueba],
   );
-  const cuantasPuertas = puertasDeNevera(w);
+  const cuantasPuertas = puertasDe(w, puertas);
   const anchoDePuerta = w / cuantasPuertas;
 
   // El interior, descontando la carrocería de los lados y del fondo.

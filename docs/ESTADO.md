@@ -1,7 +1,17 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-13 (un solo catálogo de muebles: cada tipo de mueble está
+Última actualización: 2026-10-13, tarde (muebles de Colombia: el catálogo tiene
+**modelos** —fichas de muebles de verdad con la URL de su fuente y cuánto confiar en
+ellas, sin una sola imagen—: góndolas central y de pared por alto y módulo, puntas,
+estiba completa, media y cuarta, exhibidor de cartón, neveras de 1 a 4 puertas y el
+puesto de impulso. Dos tipos nuevos, la **nevera de puertas** (`NEV`, se vende entera) y
+el **puesto de impulso** (`PIM`). Colocar un modelo estampa su ficha en el mueble y lo
+colocado no se vuelve a leer de ella; la media estiba, el cuarto y el exhibidor de cartón
+se cobran con su propia tarifa. La referencia del catálogo compara sólo los tipos que
+conoce. Ver *Muebles de Colombia: modelos con su fuente (2026-10-13)*).
+
+Antes, 2026-10-13 (un solo catálogo de muebles: cada tipo de mueble está
 escrito una vez, en `muebles.json`, con una copia idéntica para el servidor, y las tablas
 de siempre se calculan de ahí; un plano viejo da lo mismo que antes, comparado contra una
 referencia fija. Lo que el editor no conoce del mueble ya no se pierde al moverlo, y
@@ -103,18 +113,11 @@ El catálogo único (*Un solo catálogo de muebles*) es el cimiento para dibujar
 —o un supermercado parecido a Galerías— con muebles de allá, armado con datos de
 internet y sin fotos propias. Lo que sigue, en orden:
 
-- **Que la referencia ignore los tipos que no conoce.** Es el primer paso: hoy un tipo
-  nuevo hace fallar «el plano sintético se arma igual» y «un plano viejo da lo mismo»
-  (`probar-catalogo.mjs`, y lo mismo `test_catalogo_muebles.py`) aunque ningún plano
-  viejo cambie, porque la comparación toma sus filas por un cambio de lo de antes.
-- **Modelos de muebles de Colombia**, sobre las familias que ya existen: la estiba media
-  y la cuarta (hoy sólo está la completa, la `isla`; las medidas de media y cuarta no
-  coinciden entre la NTC 4680 y la estiba europea, así que van como «estimado» hasta
-  confirmarlas), la góndola por alto, entrepaños y módulo (allá se usan 0,90, 1,00 y
-  1,20, no el 1,25 de `ANCHO_MODULO_TIPICO`), la nevera de puertas vendida entera, el
-  exhibidor de cartón y el puesto de impulso. Cada modelo con la URL de su ficha y su
-  confiabilidad, sin copiar imágenes, y congelado en el mueble al crearlo (editar la
-  ficha no mueve lo ya colocado).
+- ~~Que la referencia ignore los tipos que no conoce~~ y ~~los modelos de muebles de
+  Colombia~~: hechos el 2026-10-13 (tarde), ver *Muebles de Colombia: modelos con su
+  fuente*. Quedó abierto de ahí: los entrepaños de la PUNTA por ficha (sus modelos sólo
+  traen medidas), y si la paleta de la góndola —doce modelos por familia— se lee mejor
+  como una grilla alto × módulo.
 - **Fichas propias del cliente en el taller**: la dueña arma la ficha de un mueble suyo
   —medidas, puertas, la URL de la ficha técnica— y lo coloca. Es una tabla nueva
   (clasificada en `TABLAS_DEL_CLIENTE`), sin foto por ahora: ella dijo que no tiene.
@@ -308,8 +311,18 @@ tarifas de cada cliente); las medidas, el color y el rótulo sólo se usan al CR
 mueble, salvo `rotuloEditor`, que el 2D estampa en `label` cada vez que abre el plano.
 **Un plano viejo da lo mismo que antes:** `frontend/scripts/casos/catalogo-antes.json` es
 una referencia FIJA y todo lo que cambie respecto de ella va escrito, con su porqué, en
-`CAMBIOS_INTENCIONALES`. Qué dice cada tipo, quién lo lee y cómo se agrega uno: *Un solo
-catálogo de muebles (2026-10-13)*.
+`CAMBIOS_INTENCIONALES`. Compara SÓLO los tipos y las tarifas que conoce: un tipo nuevo
+no se compara contra nada, lo valida el esquema. Qué dice cada tipo, quién lo lee y cómo
+se agrega uno: *Un solo catálogo de muebles (2026-10-13)*.
+
+**Un modelo se ESTAMPA, no se enlaza.** Los `modelos` del catálogo (fichas de muebles de
+verdad, con la URL de su fuente y su confiabilidad; nunca una imagen de terceros) se usan
+al COLOCAR: el mueble guarda sus medidas, su color, su `modelo` y su geometría
+(`entrepanos`, `modulo`, `partes`), y ningún editor la vuelve a escribir. Cambiar una ficha
+no mueve lo ya colocado. Lo único que se busca por el id es la tarifa propia del modelo
+(`rateTypeOf` ↔ `tarifa_del_mueble`), y por eso **el `id` y la `tarifa` de un modelo no se
+cambian nunca**, igual que las claves de los tipos. Un mueble sin `modelo` es el modelo
+base de su tipo y da exactamente lo de antes. Ver *Muebles de Colombia*.
 
 **Lo que no está en el mapa comercial está LIBRE, y la fusión REEMPLAZA.** No hace falta
 pre-crear ningún `space`: la fila aparece cuando se vende. Y la fusión no rellena huecos
@@ -7767,7 +7780,10 @@ otro), emoji, descripción, referencia del minimapa y banderas (`producto`, `pru
 `surtido`, `frio`, `formaCorrida`). La góndola tiene variantes (`double`/`wall`, con sus
 caras); `gondola_doble` y `gondola_mural` son `alias` del 2D; `exhibicion` es `legado`.
 Además están `tarifas` (clave y rótulo, en el orden de la pantalla) y `orden` (la paleta
-del 3D, la biblioteca del 2D y las referencias del minimapa).
+del 3D, la biblioteca del 2D y las referencias del minimapa). Desde *Muebles de Colombia*,
+también `modelos` (las fichas de muebles de verdad) y, en los tipos que tienen modelos,
+`rango` (entre qué medidas tiene que estar uno) y `geometria` (qué puede fijar: los
+entrepaños y el módulo de la góndola, las puertas de la nevera de puertas).
 
 **Quién lo lee.**
 
@@ -7783,7 +7799,9 @@ del 3D, la biblioteca del 2D y las referencias del minimapa).
   `FloorPlan2D` volvía a hacer nacer el servicio al cliente de 1,80 m sin que fallara nada.
 - **El servidor**, por `app/services/catalogo_muebles.py`, que lee sólo lo que necesita:
   `PREFIJO_POR_TIPO` (la renumeración), `NUNCA_ALQUILABLE` y `REFERENCIAS`
-  (`layout_lookup.py`) y la clave de tarifa (`bulk_leases.py`, `plataforma_metricas.py`).
+  (`layout_lookup.py`) y la clave de tarifa (`bulk_leases.py`, `plataforma_metricas.py`),
+  que desde *Muebles de Colombia* es la del mueble: `tarifa_del_mueble`, con la tarifa
+  propia de su modelo (`TARIFA_POR_MODELO`) si la tiene.
 - **Viaja sólo donde se usa.** No entra en lo primero que baja la landing: la fusión con
   la base (`utils/estadoComercial.ts`, que va de entrada) toma `carasDe` y `fullSpaceCode`
   de `types/espacio.ts`, que no importa nada; antes se las pedía a `types/fixtures.ts`, que
@@ -7806,9 +7824,14 @@ del 3D, la biblioteca del 2D y las referencias del minimapa).
    (`utils/convertirPlano.ts`): son tipos de TypeScript, no corren, y `probar-catalogo`
    exige que digan lo mismo que el archivo.
 5. Dibujarlo: un `case` en `FixtureMesh` (`StoreEditor3D.tsx`) y, si hace falta, en el 2D.
-6. Hoy además fallan «el plano sintético se arma igual» y «un plano viejo da lo mismo»: la
-   comparación contra la referencia toma las filas del tipo nuevo por un cambio de lo de
-   antes. Que las ignore es el primer paso de lo que sigue (ver *Dónde retomar*).
+   `probar-catalogo` falla si un tipo no tiene su `case` («cada tipo tiene quién lo dibuja
+   en el 3D»): sin él caía en el `default` y se dibujaba como una estiba.
+6. La referencia no lo compara: `probar-catalogo` y `test_catalogo_muebles.py` sacan de la
+   captura de hoy lo que es de un tipo o una tarifa que `catalogo-antes.json` no conoce,
+   tabla por tabla (`LO_NUEVO_POR_TABLA`; una tabla sin clasificar hace fallar la prueba),
+   y comparan el resto. Que eso no se convierta en no mirar nada lo vigila «la comparación
+   saca SÓLO lo nuevo»: un tipo inventado en todas las tablas no se ve, y un cambio de un
+   tipo viejo —un prefijo, una bandera, una medida, una tarifa— sí.
 
 **La referencia y los cambios intencionales.** `frontend/scripts/casos/catalogo-antes.json`
 es lo que hacía el código antes del catálogo, capturado de `fafb301` por
@@ -7857,7 +7880,7 @@ contrato suelto, que le recortaban el `-B` a cualquier mueble y vendían `PUN-01
 Ningún código de espacio, prefijo, clave de tarifa ni plano guardado cambió, y no hay
 migraciones ni columnas nuevas.
 
-**Verificación.** `tsc` limpio; `npm run probar` (29 guiones) y `npm run build` limpios
+**Verificación (del catálogo único).** `tsc` limpio; `npm run probar` (29 guiones) y `npm run build` limpios
 (35 pedazos; el catálogo, 8,7 kB, va en uno perezoso). pytest de los archivos que tocan
 esto: caras, auditoría de desfase, catálogo, planilla, vendible, renumeración, contrato
 sin mueble, nomenclatura de la planilla, correos de contrato, punta a punta, importación
@@ -7871,6 +7894,114 @@ ella cualquier campo: se mutaron los 27 que escriben las dos vueltas); las tabla
 servidor sin prueba contra el archivo; las tablas propias de los editores (los altos
 viejos en el 2D, `slotsPorDefecto` vacío en el 3D); la guarda de las caras, que sólo veía
 `=== "double"`, y el catálogo en el pedazo de entrada y en el worker.
+
+## Muebles de Colombia: modelos con su fuente (2026-10-13)
+
+El próximo cliente es un supermercado como Galerías o Cañaveral (Cali), y no hay fotos
+propias de sus muebles: todo sale de fichas de fabricantes encontradas en internet
+(la investigación «R3»). Sobre el catálogo único se sumaron **modelos** —fichas de
+muebles de verdad— y dos tipos nuevos. **Ninguna imagen de terceros entró al repo**: de
+cada fuente se guardan las medidas, una nota con palabras propias, la URL de la página y
+cuánto confiar (`ficha`: la página trae los datos explícitos; `catalogo`: salen del título
+o de un listado; `estimado`: una deducción, que en pantalla lleva «≈»).
+
+**Qué modelos hay** (`modelos` en `muebles.json`, 36):
+
+- **Góndola central y de pared** de 1,50, 1,60, 1,80 y 2,00 de alto con módulos de 0,90,
+  1,00 y 1,20 (24). Con ficha: GMC (la doble de 1,60 a 2,00 y la sencilla de 1,80 y 2,00,
+  módulos de 0,90 y 1,00), Vialambre (central 2,00 × 1,00 × 1,00, cuatro entrepaños y la
+  base) y Dispromem (pared de 2,00, módulo de 1,20, fondo 0,49). Vialambre 1,50 es de
+  catálogo; las combinaciones que nadie publica van «estimado». El ancho del modelo es UN
+  módulo: la góndola se estira en el plano y se parte en módulos de ese ancho.
+- **Punta** de 0,70 × 0,37 de 1,30, 1,50 y 2,00 (Vialambre, Exhivicol): cierra una central
+  de 0,70 de fondo.
+- **Estiba completa, media y cuarto.** Se eligió UN sistema, el colombiano: la completa es
+  la de la NTC 4680 (1,20 × 1,00), la media la que se vende acá (1,00 × 0,60) y el cuarto
+  es la mitad de la media (0,60 × 0,50), «estimado» porque nadie lo publica. El cuarto
+  europeo (0,60 × 0,40) es de otro sistema y no se mezcla. El alto de las tres es el de la
+  torre de producto con que se exhiben: estimado.
+- **Exhibidor de cartón de la marca** (0,60 × 0,40 × 1,70), sobre la familia del
+  impulsador: «estimado» (se fabrican a medida; el rango sale de catálogos de la región).
+- **Neveras de puertas**: de 1 y 2 puertas de Inducol y de 3 y 4 de Frigomaster, con ficha.
+- **Puesto de impulso** de 0,80 × 0,40 con la superficie a 1,00 y la cenefa hasta 2,00
+  (Grupo SRM, con ficha).
+
+**Dos tipos nuevos** (completos en las dos copias del catálogo, con su dibujo, su nombre de
+informe, su tarifa y su lugar en las paletas):
+
+- **`nevera_puertas`** (prefijo `NEV`; la de bebidas abierta sigue siendo `BEB`): la nevera
+  vertical cerrada. Se dibuja con `NeveraReal variante="puertas"`, que existía y ningún
+  mueble usaba. Las puertas salen de `partes.puertas` del mueble y, si falta, de la cuenta
+  de siempre (`puertasDe` / `puertasDeNevera`). Está entre los fríos y en la prueba 3D del
+  producto, con las mismas rejillas automáticas y el mismo cabezote que la abierta
+  (`esNeveraDeBebidas`), y el producto se para detrás del vidrio de cada hoja (un vano por
+  puerta). **Se vende ENTERA**: la cantidad de puertas sólo sirve para dibujarla; vender
+  por puerta espera a la dueña (ver *Lo que sigue de los muebles*). Tarifa «Nevera de
+  puertas».
+- **`puesto_impulso`** (prefijo `PIM`): el mostrador chico de la promotora, con la cenefa
+  sobre dos mástiles y aire entre la tapa y el cartel (`muebles/PuestoImpulsoReal.tsx`,
+  cotas en `PUESTO_IMPULSO` de `medidas.ts`). El arte del proveedor va impreso en el frente
+  del mostrador; no lleva producto inventado. Tarifa «Puesto de impulso».
+
+**Colocar un modelo ESTAMPA su ficha.** Las paletas del editor 3D (`PALETA_3D`) y del plano
+2D (`MODELOS_2D`) listan cada familia con su **modelo base** —el de siempre, `base:<tipo>`
+o `base:<alias>` en la góndola; colocarlo no escribe `modelo` y el mueble nace como antes—
+y, plegados debajo, sus modelos, con «≈» los estimados. Al colocar uno, el mueble guarda
+`w/d/h`, el color, `modelo` y su geometría (`entrepanos`, `modulo`, `partes`); el rótulo es
+el de su tipo, el mismo que el 2D estampa en `label` al abrir el plano. El panel de los dos
+editores nombra el modelo (y su fuente al pasar el mouse). Ningún editor vuelve a escribir
+la ficha: `utils/convertirPlano.ts` la escribe sólo cuando el mueble NACE —sin guardado con
+ese `id`: en el 3D de los campos del mueble nuevo, en el 2D de `nace`— y, con guardado,
+manda lo guardado. Un duplicado del 2D nace con la ficha del original. Si mañana cambia
+una ficha en `muebles.json`, lo ya colocado no se mueve (`probar-catalogo` lo comprueba con
+un catálogo adulterado).
+
+**La góndola se dibuja con su ficha.** `entrepanos` es lo que dice la ficha, por cara y sin
+la base, y todos llevan producto: «cuatro entrepaños y la base» son la base y cuatro, y el
+aire bajo el remate es la última fila (`nivelesDeFicha`, `filasDeProducto`). `modulo` parte
+el corrido en módulos de ese ancho (`vanosDeCorrido(w, modulo)`). La misma geometría
+(`geometriaDe(f)`) la usan el dibujo (`GondolaReal`), el relleno, el producto de prueba
+(`ventaDeGondola`), la cámara de venta (`ventaDeTipo`) y la lámina (`getPanelShelfSpan`):
+si una la usara y otra no, el producto quedaría parado entre dos entrepaños. Sin los
+campos, la cuenta de siempre, idéntica. La punta todavía no: sus modelos traen sólo
+medidas.
+
+**La tarifa por modelo.** La media estiba (`estiba_media`), el cuarto (`estiba_cuarta`) y el
+exhibidor de cartón (`exhibidor_carton`) se cobran aparte de su tipo: `rateTypeOf` mira
+primero la tarifa del modelo del mueble —sólo si el modelo es de su tipo— y si no la del
+tipo, como siempre; el servidor pregunta lo mismo (`tarifa_del_mueble` en
+`services/catalogo_muebles.py`), y lo usan la referencia de la planilla (`bulk_leases.py`)
+y el mapa de tipos de la plataforma (`plataforma_metricas._mapa_tipos_de_sede`, que alimenta
+el spread y el detalle por cliente). Las cinco tarifas nuevas salen solas en Tarifas, con
+su rótulo, y los informes las nombran («media estiba», «exhibidores de cartón»).
+
+**Vender.** `sinDatosComerciales` deja pasar la ficha —es geometría: sin ella, el visor le
+mostraría al proveedor otras puertas u otros entrepaños que los que se le venden—, y de
+`partes` sólo el número de puertas. Ni plata ni datos de otro proveedor.
+
+**Cómo se valida.** `probar-catalogo.mjs`: id único `base:…` que no pisa ningún base
+implícito, tipo que existe, variante en la góndola, medidas dentro del `rango` de su familia,
+sólo la geometría que su tipo admite (`geometria`) y dentro de su rango, tarifa propia con
+su fila y sus nombres de informe (que tienen que llevar a SU fila), y la fuente con URL
+https, nota, confiabilidad y nunca una imagen. Cada regla tiene su caso roto que tiene que
+quejarse. `tests/test_modelos_de_muebles.py`: lo mismo de lo que lee el servidor, la tarifa
+por modelo (unidad, planilla y plataforma), un mueble sin modelo que da lo de siempre, y
+los prefijos `NEV` y `PIM` vendiéndose enteros y por una cara.
+
+**Cómo se comprobó.** `tsc` limpio; `npm run probar`, 817 verdes; `npm run build` limpio
+(el pedazo de entrada sigue en 340,7 kB; el del catálogo, perezoso, pasó de 8,7 a 26 kB por
+las notas de los modelos); `import app.main` y pytest de catálogo, modelos, caras,
+renumeración, corte del layout, planilla, vendible, métricas y detalle de la plataforma,
+enlace de montaje y estado comercial: 225 verdes. 33 mutaciones —un tipo viejo que cambia
+de medida o de prefijo, el filtro de lo nuevo que se come la punta, un modelo fuera de
+rango, la validación sin el rango o sin la regla de imágenes, la paleta sin un modelo, los
+editores que no estampan o que reescriben la ficha, `rateTypeOf` y `tarifa_del_mueble` sin
+el modelo o sin mirar el tipo, la planilla y la plataforma con la tarifa del tipo, la
+nevera sin las puertas de su ficha, la góndola o su lámina sin sus entrepaños, el índice de
+modelos armado al cargar (se llevaba el catálogo al worker del recorte), el puesto sin su
+`case`, el visor de Vender sin la ficha o con `partes` entero— y cada una hizo fallar su
+guarda. Mirados en `/taller` con un servidor local: la nevera de puertas de 1,40 (dos
+hojas) y de 2,07 (tres), y el puesto de impulso.
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 

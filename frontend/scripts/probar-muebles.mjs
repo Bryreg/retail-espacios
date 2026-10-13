@@ -274,11 +274,15 @@ prueba("el entrepaño conserva el labio y el gancho", () => {
 prueba("el corrido se arma por módulos, con un parante en cada junta", () => {
   // Dos postes en las puntas y nada en el medio es lo que delata un corrido
   // largo: una góndola de 5 m son cuatro módulos, no un mueble de 5 m.
+  // Sin ficha, módulos de catálogo (1,25); con el módulo que la góndola
+  // guardó de su ficha (0,90, 1,00, 1,20 en Colombia), módulos de ése. Se
+  // ejecuta más abajo («la ficha del modelo…»).
   assert.match(
-    medidasCodigo, /Math\.round\(w \/ ANCHO_MODULO_TIPICO\)/,
+    medidasCodigo, /Math\.round\(w \/ \(modulo && modulo > 0 \? modulo : ANCHO_MODULO_TIPICO\)\)/,
     "el corrido dejó de partirse en módulos de ancho de catálogo",
   );
-  assert.match(gondolaCodigo, /vanosDeCorrido\(w\)/, "la góndola dejó de armarse por vanos");
+  assert.match(gondolaCodigo, /vanosDeCorrido\(w, modulo\)/, "la góndola dejó de armarse por vanos (o ignora su módulo)");
+  assert.match(gondolaCodigo, /nivelesDeEntrepano\(h, entrepanos\)/, "la góndola ignora los entrepaños de su ficha");
 });
 
 prueba("el fondo es de listones sobre respaldo, no una chapa lisa", () => {
@@ -689,8 +693,15 @@ prueba("el multideck tiene su cortina de aire", () => {
 });
 
 prueba("la nevera de refrescos es de frente ABIERTO", () => {
-  // Su ficha del catálogo dice «vitrina multideck abierta para bebidas».
-  assert.match(cuerpoNeveraMesh, /variante="multideck"/, "la nevera de refrescos se cerró con puertas");
+  // Su ficha del catálogo dice «vitrina multideck abierta para bebidas». El
+  // mismo mesh dibuja la nevera de PUERTAS (`nevera_puertas`), y sólo cuando
+  // le llegan sus puertas: la de refrescos no las recibe.
+  assert.match(cuerpoNeveraMesh, /const conPuertas = puertas !== undefined;/);
+  assert.match(cuerpoNeveraMesh, /variante=\{conPuertas \? "puertas" : "multideck"\}/, "la nevera de refrescos se cerró con puertas");
+  assert.match(editorCodigo, /case "nevera_refrescos": return <NeveraRefrescosMesh {2}\{\.\.\.base\} facePaint=\{facePaint\} \/>;/,
+    "a la nevera de refrescos le llegan puertas");
+  assert.match(editorCodigo, /case "nevera_puertas": {3}return <NeveraRefrescosMesh {2}\{\.\.\.base\} facePaint=\{facePaint\} puertas=\{puertasDe\(fixture\.w, fixture\.partes\?\.puertas\)\} \/>;/,
+    "la nevera de puertas no se dibuja con las puertas de su ficha");
 });
 
 prueba("el relleno mudo se apaga cuando entra el arte del proveedor", () => {
@@ -1603,7 +1614,7 @@ prueba("todo mueble que lee el arte del proveedor lo dibuja", () => {
   // Los meshes que reciben `facePaint` tienen que hacer algo con él: pintarlo
   // en una lámina, volcarlo sobre una superficie, o decidir con él si va el
   // producto genérico. Leerlo y descartarlo es el defecto.
-  const dibuja = /<LaminaDeProducto|<VolcadoDeProducto|<ProductoEn(Gondola|Punta|Mural|Repisas)|facePaint=\{/;
+  const dibuja = /<LaminaDeProducto|<VolcadoDeProducto|<ProductoEn(Gondola|Punta|Mural|Repisas)|facePaint=\{|frente=\{[^\n]*facePaint\?\.front/;
   const meshes = [...editorCodigo.matchAll(/function (\w+Mesh)\(/g)].map((m) => m[1]);
   assert.ok(meshes.length > 10, "no se encontraron los meshes del catálogo");
 
@@ -1978,6 +1989,71 @@ prueba("el vaso se apila de a tres y la botella parada gira como en la tienda", 
   }
 });
 
+prueba("la ficha del modelo: la góndola con sus entrepaños y su módulo, o los de siempre", () => {
+  // Sin ficha, la cuenta de siempre, idéntica.
+  for (const alto of [1.2, 1.5, 1.6, 1.8, 2.0, 2.4]) {
+    assert.deepEqual(M.nivelesDeEntrepano(alto, undefined), M.nivelesDeEntrepano(alto), `sin ficha cambió ${alto}`);
+    assert.deepEqual(M.filasDeProducto(alto, 0.44, undefined), M.filasDeProducto(alto, 0.44), `sin ficha cambió ${alto}`);
+  }
+  assert.deepEqual(M.vanosDeCorrido(5).map((v) => +v.x.toFixed(3)), [-1.875, -0.625, 0.625, 1.875],
+    "el corrido dejó de partirse en módulos de ancho de catálogo");
+  assert.deepEqual(M.vanosDeCorrido(5, undefined), M.vanosDeCorrido(5));
+  for (const t of ["gondola", "punta", "nevera_refrescos", "robatope"]) {
+    assert.deepEqual(V.ventaDeTipo(t, 2.4, 0.9, 1.8, "double", {}), V.ventaDeTipo(t, 2.4, 0.9, 1.8, "double"),
+      `${t}: una geometría vacía no da lo de siempre`);
+  }
+  // Con la ficha: «cuatro entrepaños y la base» son la base y cuatro, todos
+  // con producto (el aire bajo el remate es la última fila), y el módulo parte
+  // el corrido.
+  const niv = M.nivelesDeEntrepano(2.0, 4);
+  assert.equal(niv.length, 5, `la base y cuatro: ${niv}`);
+  assert.equal(niv[0], M.nivelesDeEntrepano(2.0)[0], "la base no apoya sobre el zócalo, como siempre");
+  const filas = M.filasDeProducto(2.0, 0.44, 4);
+  assert.equal(filas.rows, 5, "cada entrepaño de la ficha lleva su fila de producto");
+  assert.deepEqual(filas.alturas.slice(0, 5), niv, "las filas no se paran en los entrepaños que se dibujan");
+  assert.ok(Math.abs(filas.alturas[5] - (2.0 - 0.1)) < 1e-9, "la última fila no termina bajo el remate");
+  assert.equal(M.vanosDeCorrido(3.0, 1.0).length, 3, "el módulo de la ficha no parte el corrido");
+  assert.equal(M.vanosDeCorrido(3.6, 1.2).length, 3, "el módulo de la ficha no parte el corrido");
+  // Y la venta de la góndola (el producto de prueba, el relleno, la cámara)
+  // pregunta con la misma ficha.
+  const venta = V.ventaDeTipo("gondola", 3.0, 1.0, 2.0, "double", { entrepanos: 4, modulo: 1.0 });
+  assert.deepEqual(venta.filas, M.filasDeProducto(2.0, M.fondoPorCara(1.0, false), 4));
+  assert.equal(venta.vanos.length, 3);
+  // El pintado de la cara pregunta con la ficha (si no, el arte queda a
+  // caballo entre dos entrepaños).
+  const span = editorCodigo.slice(editorCodigo.indexOf("function getPanelShelfSpan"));
+  assert.match(span, /filasDeProducto\(h, fondoPorCara\(d, false\), geometria\?\.entrepanos\)/, "el pintado de la góndola ignora su ficha");
+  assert.match(editorCodigo, /fix\.w, fix\.h, fix\.d, faceImages, notifyTexLoaded, geometriaDe\(fix\)/, "la cara pintada no recibe la ficha del mueble");
+});
+
+prueba("la nevera de puertas dibuja las puertas de su ficha, o las de siempre", () => {
+  // `partes.puertas` del mueble manda; si falta, la cuenta de siempre. Las
+  // puertas sólo dicen cómo se ve y dónde se para el producto de prueba —un
+  // vano por hoja—: se vende entera.
+  assert.equal(M.puertasDe(2.07, 3), 3);
+  assert.equal(M.puertasDe(2.07, undefined), M.puertasDeNevera(2.07));
+  assert.equal(M.puertasDe(1.2, 0), M.puertasDeNevera(1.2), "cero puertas no es una ficha");
+  assert.match(neveraCodigo, /const cuantasPuertas = puertasDe\(w, puertas\);/, "NeveraReal no lee las puertas de la ficha");
+  const tres = V.ventaDeTipo("nevera_puertas", 2.07, 0.7, 2.1, undefined, { puertas: 3 });
+  assert.equal(tres.vanos.length, 3, "el producto no se reparte por puerta");
+  // Una ficha que dice otra cosa que la cuenta (1,60 pediría tres hojas): manda la ficha.
+  assert.equal(M.puertasDeNevera(1.6), 3);
+  assert.equal(V.ventaDeTipo("nevera_puertas", 1.6, 0.7, 2.1, undefined, { puertas: 2 }).vanos.length, 2,
+    "la venta de la nevera de puertas ignora las puertas de su ficha");
+  const sola = V.ventaDeTipo("nevera_puertas", 2.07, 0.7, 2.1);
+  assert.equal(sola.vanos.length, M.puertasDeNevera(2.07), "sin ficha, no son las puertas de siempre");
+  // Cada vano queda detrás del vidrio de su hoja: ninguno pisa un montante.
+  const hoja = 2.07 / 3;
+  tres.vanos.forEach((v, i) => {
+    const centro = -2.07 / 2 + hoja * (i + 0.5);
+    assert.ok(Math.abs(v.x - centro) < 1e-9 && v.ancho < hoja - 2 * M.NEVERA.marcoPuerta, `el vano ${i} pisa un marco`);
+  });
+  // La abierta sigue con UN vano y las mismas filas; la de puertas, las mismas filas.
+  assert.deepEqual(V.ventaDeTipo("nevera_refrescos", 1.2, 0.75, 1.8), M.ventaDeNevera(1.2, 0.75, 1.8));
+  assert.equal(M.ventaDeNevera(1.2, 0.75, 1.8).vanos.length, 1);
+  assert.deepEqual(tres.filas, M.ventaDeNevera(2.07, 0.7, 2.1).filas);
+});
+
 prueba("la nevera acomoda sus rejillas para el producto, sin inventar ninguna", () => {
   const v = V.ventaDeTipo("nevera_refrescos", 1.2, 0.75, 1.8);
   const libresDe = (f) => f.alturas.slice(1).map((y, i) => y - f.alturas[i]);
@@ -2011,7 +2087,9 @@ prueba("la nevera acomoda sus rejillas para el producto, sin inventar ninguna", 
   // Y lo que se dibuja sale de `rejillasDeLaPrueba`, con lo elegido en la
   // sesión: ya no hay una segunda copia de la cuenta en el editor.
   const fp = cuerpoDe("const facePaintById = useMemo(", "const handleOrbitReady");
-  assert.match(fp, /fix\.type === "nevera_refrescos"\s*\? rejillasDeLaPrueba\(ventaDeNevera\(fix\.w, fix\.d, fix\.h\), empaque, como\?\.rejillas\)\.filas/,
+  // Las dos neveras de bebidas (la abierta y la de puertas), con la venta de
+  // SU tipo y la geometría que guardó.
+  assert.match(fp, /esNeveraDeBebidas\(fix\.type\)\s*\? rejillasDeLaPrueba\(ventaDeTipo\(fix\.type, fix\.w, fix\.d, fix\.h, fix\.gondolaType, geometriaDe\(fix\)\)!, empaque, como\?\.rejillas\)\.filas/,
     "el dibujo no usa `rejillasDeLaPrueba` con la elección de la sesión");
   assert.ok(!/rejillasParaProducto/.test(editorCodigo), "el editor volvió a llamar la cuenta vieja por su lado");
 });
@@ -3730,7 +3808,7 @@ prueba("arte o relleno, CORRIDO: la cara probada no lleva relleno y la otra sí"
 
 prueba("la prueba 3D le gana a la foto y al patrón en su cara, y sólo en ella", () => {
   // Es un conjunto (se consulta con `.has`): se compara sin orden.
-  assert.deepEqual(C3.TIPOS_CON_PRUEBA_3D, new Set(["gondola", "punta", "nevera_refrescos", "robatope"]),
+  assert.deepEqual(C3.TIPOS_CON_PRUEBA_3D, new Set(["gondola", "punta", "nevera_refrescos", "nevera_puertas", "robatope"]),
     "cambió en qué muebles se para el producto de prueba");
   const fp = cuerpoDe("const facePaintById = useMemo(", "const handleOrbitReady");
   assert.match(fp, /const en3D = TIPOS_CON_PRUEBA_3D\.has\(type\)/, "facePaintById no pregunta si el mueble lleva prueba 3D");
@@ -4028,7 +4106,7 @@ prueba("«Mostrar al proveedor» abre Presentar con la toma de frente", () => {
 
 prueba("la cámara de venta encuadra con la cuenta de la prueba, dentro del pasillo", () => {
   const toma = cuerpoDe("const tomaDeVenta = useCallback(", "function handleSceneDoubleClick");
-  assert.match(toma, /ventaDeTipo\(fix\.type, fix\.w, fix\.d, fix\.h, fix\.gondolaType\)/);
+  assert.match(toma, /ventaDeTipo\(fix\.type, fix\.w, fix\.d, fix\.h, fix\.gondolaType, geometriaDe\(fix\)\)/);
   assert.match(toma, /focoDeLaPrueba\(venta, fix\.h, enCara \? \(como\?\.donde \?\? "todas"\) : "todas", enCara\?\.empaque \?\? null\)/,
     "la cámara calcula sus alturas por su cuenta");
   // «De cerca» con teleobjetivo, y el campo visual vuelve a 50° fuera de ella
@@ -5728,6 +5806,28 @@ prueba("el visor de Vender: los muebles le llegan sin un solo dato comercial (ej
   assert.deepEqual([a.supplierName, a.brandCategory, a.negotiatedValue, a.startDate, a.endDate, a.observation], ["", "", 0, "", "", ""]);
 });
 
+prueba("el visor de Vender: la ficha del modelo pasa (es geometría), y sólo con sus números (ejecutado)", () => {
+  // Sin la ficha, el visor le mostraría al proveedor una nevera con otras
+  // puertas o una góndola con otros entrepaños que las que se le venden.
+  const base = {
+    id: "nev", code: "NEV-01", type: "nevera_puertas", x: 1, z: 1, rotY: 0, w: 2.07, d: 0.7, h: 2.1,
+    label: "Nevera de Puertas", color: "#1e293b", status: "occupied",
+    supplierName: "POSTOBÓN", brandCategory: "Gaseosas", negotiatedValue: 2500000,
+    startDate: "2026-10-01", endDate: "2026-12-31", observation: "",
+  };
+  const [n] = X.sinDatosComerciales([{
+    ...base, modelo: "base:nevera-3p-frigomaster", entrepanos: 4, modulo: 1,
+    partes: { puertas: 3, proveedor: "POSTOBÓN", valor: 2500000 },
+  }]);
+  assert.deepEqual([n.modelo, n.entrepanos, n.modulo, n.partes], ["base:nevera-3p-frigomaster", 4, 1, { puertas: 3 }],
+    "la ficha del modelo no llega entera al visor");
+  assert.ok(!JSON.stringify(n).includes("POSTOBÓN") && !JSON.stringify(n).includes("2500000"),
+    "algo comercial colado en `partes` llega al visor");
+  // Un mueble sin ficha no gana ninguna clave.
+  const [v] = X.sinDatosComerciales([base]);
+  for (const k of ["modelo", "entrepanos", "modulo", "partes"]) assert.ok(!(k in v), `un mueble sin ficha ganó \`${k}\``);
+});
+
 prueba("el visor de Vender: la prueba es de las caras del contrato y el proveedor se compara como al guardar (ejecutado)", () => {
   const prueba = new Map([["m1|A", 1], ["m1|B", 2], ["m2|A", 3]]);
   const fuera = X.pruebasDelContrato(prueba, [{ fixtureId: "m1", face: "A" }, { fixtureId: "m2", face: "A" }]);
@@ -5801,7 +5901,7 @@ prueba("la escena del visor (`soloVenta`): ni fotos de caras, ni cámara del edi
   // Los `TIPOS_CON_*` viven en `catalogo/editor3D.ts`: el editor los toma de
   // ahí —no de una copia propia— y los reexporta para el visor.
   assert.match(editorCodigo,
-    /import \{ FIXTURE_DEFS, TIPOS_CON_PRODUCTO, TIPOS_CON_PRUEBA_3D, TIPOS_CON_SURTIDO \} from "\.\.\/\.\.\/catalogo\/editor3D";/,
+    /import \{ FIXTURE_DEFS, PALETA_3D, TIPOS_CON_PRODUCTO, TIPOS_CON_PRUEBA_3D, TIPOS_CON_SURTIDO \} from "\.\.\/\.\.\/catalogo\/editor3D";/,
     "el editor no toma sus tablas por tipo de `catalogo/editor3D.ts`");
   assert.match(editorCodigo, /export \{[^}]*\bTIPOS_CON_PRODUCTO\b[^}]*\bTIPOS_CON_PRUEBA_3D\b[^}]*\};/,
     "el editor no reexporta lo que el visor necesita");
