@@ -21,6 +21,7 @@ import math
 from sqlalchemy.orm import Session
 
 from app.models.models import LayoutSnapshot
+from app.services import catalogo_muebles
 
 
 #: Los campos que describen un CONTRATO, no un mueble.
@@ -119,8 +120,11 @@ def find_fixture_by_space_code(db: Session, space_code: str) -> dict | None:
 #: viejos seguían aceptando un contrato por API. Mirando el tipo, esos planos
 #: quedan bien sin migrar una sola fila.
 #:
-#: Espeja ``NUNCA_ALQUILABLE`` de ``frontend/src/types/fixtures.ts``.
-NUNCA_ALQUILABLE = frozenset({"columna", "checkout", "servicio_cliente"})
+#: Son los tipos con ``alquilable: "nunca"`` del catálogo de muebles
+#: (``app/catalogo/muebles.json``, ver ``services/catalogo_muebles.py``): el
+#: mismo archivo del que sale ``NUNCA_ALQUILABLE`` de
+#: ``frontend/src/types/fixtures.ts``.
+NUNCA_ALQUILABLE: frozenset[str] = catalogo_muebles.NUNCA_ALQUILABLE
 
 
 def es_comercializable(fixture: dict) -> bool:
@@ -136,16 +140,81 @@ def es_comercializable(fixture: dict) -> bool:
     return fixture.get("rentable") is not False
 
 
+def caras_de(fixture: dict) -> int:
+    """Cuántas caras vendibles tiene el mueble: 2 es la cara A y la ``-B``.
+
+    Espejo de ``carasDe`` en ``frontend/src/types/espacio.ts``, y es LA
+    respuesta a «¿esta góndola tiene cara B?» de este lado: lo que el plano
+    ofrece (``espacios_ofrecidos``, el guardarraíl de contratos vivos), la
+    importación de contratos del plano, las métricas de la plataforma y
+    ``scripts/auditar_desfase.py``.
+
+    Hubo dos reglas. Ésta exigía ``"double"`` escrito mientras Vender ofrecía
+    la cara B de una góndola sin ``gondolaType``: se vendía, pero borrar la
+    góndola no frenaba por ella y la auditoría la daba por contrato sin
+    mueble. Quedó la laxa, que es lo que dibujan los dos editores:
+
+    · ``gondola`` con ``gondolaType`` ``"double"`` o AUSENTE → 2;
+    · el tipo legado ``gondola_doble`` de los planos viejos del 2D → 2;
+    · cualquier otra cosa (``"wall"``, un mueble que no es góndola) → 1.
+
+    Ausente es ``None``, igual que ``??`` del frontend: un ``""`` escrito no
+    cuenta como ausente en ninguno de los dos lados.
+    """
+    tipo = fixture.get("type")
+    if tipo == "gondola_doble":
+        return 2
+    if tipo != "gondola":
+        return 1
+    variante = fixture.get("gondolaType")
+    return 2 if variante is None or variante == "double" else 1
+
+
+#: Lo que contesta ``motivo_para_no_vender``.
+NO_COMERCIALIZABLE = "no_comercializable"
+SIN_CARA_B = "sin_cara_b"
+
+
+def pide_cara_b_inexistente(fixture: dict, espacio: str) -> bool:
+    """¿El código pide la cara B de un mueble que tiene una sola?
+
+    ``espacios_ofrecidos`` no ofrece ``PUN-01-B`` ni la ``-B`` de una góndola
+    mural, pero la planilla y el contrato suelto le recortaban el sufijo a
+    cualquier mueble y la vendían igual; Supervisar la marcaba enseguida como
+    «Contrato sin mueble». La cara B existe cuando ``caras_de`` dice 2: es la
+    misma regla para ofrecer, para cuidar y para vender.
+    """
+    return normalizar(espacio).endswith("-B") and caras_de(fixture) != 2
+
+
+def motivo_para_no_vender(db: Session, space_code: str) -> str | None:
+    """Por qué no se le puede colgar un contrato a este código, o ``None``.
+
+    ``NO_COMERCIALIZABLE``: el mueble es operación de la tienda o está marcado
+    «no comercializable». ``SIN_CARA_B``: el código es la cara B de un mueble
+    de una sola cara (``pide_cara_b_inexistente``).
+
+    Falla abierto, como siempre: un código sin mueble —filas sembradas, un
+    mueble borrado del plano después del contrato— se puede vender.
+    """
+    fixture = find_fixture_by_space_code(db, space_code)
+    if fixture is None:
+        return None
+    if not es_comercializable(fixture):
+        return NO_COMERCIALIZABLE
+    if pide_cara_b_inexistente(fixture, space_code):
+        return SIN_CARA_B
+    return None
+
+
 def is_space_rentable(db: Session, space_code: str) -> bool:
     """Whether a contract may be attached to this space code.
 
     Fails open: a space with no matching fixture (seeded demo rows, fixtures
-    deleted from the plan after the contract existed) stays rentable.
+    deleted from the plan after the contract existed) stays rentable. Ver
+    ``motivo_para_no_vender``, que además dice por qué.
     """
-    fixture = find_fixture_by_space_code(db, space_code)
-    if fixture is None:
-        return True
-    return es_comercializable(fixture)
+    return motivo_para_no_vender(db, space_code) is None
 
 
 # ── El nombre que se DIBUJA, que no es la llave ───────────────────────────────
@@ -379,8 +448,25 @@ class PlanoIndexado:
                 propia = str(fixture.get("sede") or sede or "").strip()
                 completo = _full_code(raw, propia)
                 if buscado in (raw, completo):
+                    # La cara B de un mueble de una cara no existe: el plano
+                    # no la ofrece, y resolverla vendía un espacio que
+                    # Supervisar daba enseguida por «Contrato sin mueble».
+                    if sufijo and caras_de(fixture) != 2:
+                        continue
                     return FixtureResuelto(fixture, normalizar(propia), completo + sufijo)
         return None
+
+    def sin_cara_b(self, sede: str, espacio: str) -> FixtureResuelto | None:
+        """El mueble de una sola cara cuya ``-B`` pide el texto, o ``None``.
+
+        Para decir «PUN-01 tiene una sola cara» en vez de un «no hay ningún
+        mueble con ese código», que manda a buscar un tipeo que no está.
+        """
+        texto = normalizar(espacio)
+        if not texto.endswith("-B") or self.resolver(sede, texto) is not None:
+            return None
+        base = self.resolver(sede, _sin_cara_b(texto))
+        return base if base is not None and caras_de(base.fixture) != 2 else None
 
     def sedes_con_codigo(self, espacio: str) -> list[str]:
         """En qué sedes existe un mueble con ese código. Para poder decir «no
@@ -503,14 +589,10 @@ def ambiguedad_de_nombre(db: Session, sede: str, espacio: str) -> Ambiguedad | N
 # arriba del plano cuando toque el enlace.
 
 #: Muebles que sirven de referencia para alguien parado en la tienda. Son los
-#: que cualquiera ubica sin mirar un plano.
-_REFERENCIAS = {
-    "checkout": "las cajas",
-    "nevera_refrescos": "las neveras",
-    "nevera_carnes": "el mostrador de carnes",
-    "nevera_vegetales": "el mural de frutas y verduras",
-    "stand_frutas": "las frutas",
-}
+#: que cualquiera ubica sin mirar un plano. Salen de ``referencia`` en el
+#: catálogo de muebles: las mismas que el minimapa del frontend
+#: (``frontend/src/catalogo/minimapa.ts``) dibuja con etiqueta.
+_REFERENCIAS: dict[str, str] = catalogo_muebles.REFERENCIAS
 
 
 def _huella(fixture: dict) -> tuple[float, float]:
@@ -791,9 +873,9 @@ def choques_nuevos(previas: list[dict], nuevas: list[dict]) -> list[str]:
 def espacios_ofrecidos(fixtures: list[dict], sede: str) -> set[str]:
     """Los códigos COMPLETOS que este plano pone a la venta hoy.
 
-    Una góndola doble son dos espacios: ``NAVE-GON-60`` y ``NAVE-GON-60-B``.
-    Un mueble no comercializable NO está — y ése es justamente uno de los casos
-    que hay que encontrar.
+    Una góndola doble son dos espacios: ``NAVE-GON-60`` y ``NAVE-GON-60-B``
+    (``caras_de``). Un mueble no comercializable NO está — y ése es justamente
+    uno de los casos que hay que encontrar.
     """
     ofrecidos: set[str] = set()
     for fixture in fixtures:
@@ -804,7 +886,7 @@ def espacios_ofrecidos(fixtures: list[dict], sede: str) -> set[str]:
             continue
         completo = _full_code(code, sede)
         ofrecidos.add(completo)
-        if fixture.get("gondolaType") == "double" or fixture.get("type") == "gondola_doble":
+        if caras_de(fixture) == 2:
             ofrecidos.add(f"{completo}-B")
     return ofrecidos
 

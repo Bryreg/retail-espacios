@@ -43,6 +43,7 @@ from app.routers.layout import reference_rates_raw
 from app.services.layout_lookup import (
     Ambiguedad, Colision, PlanoIndexado, es_comercializable, sin_prefijo_de_sede,
 )
+from app.services.catalogo_muebles import tipo_de_tarifa
 from app.services.renumeracion import Rastreador
 from app.schemas.spaces import AvisosContrato
 from app.services.contacts import recipients_for
@@ -173,7 +174,10 @@ def _se_pisan(a_desde: date, a_hasta: date, b_desde: date, b_hasta: date) -> boo
 
 
 def _tipo_de_tarifa(tipo: str) -> str:
-    return "gondola" if tipo in ("gondola_doble", "gondola_mural") else tipo
+    """La clave de tarifa de un tipo de mueble, del catálogo de muebles
+    (``services/catalogo_muebles.py``): las dos caras de una góndola comparten
+    la de ``gondola``."""
+    return tipo_de_tarifa(tipo)
 
 
 # ─── Los dos nombres de un mueble, dichos en castellano ───────────────────────
@@ -333,7 +337,15 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
                 # ninguna pista de por qué. No resuelve la fila —adivinar el
                 # mueble es el error que esta fase eliminó—, la explica.
                 pista = rastreador.pista(sede, tecleado)
-                if otras:
+                una_cara = plano.sin_cara_b(sede, tecleado)
+                if una_cara is not None:
+                    # El mueble existe; lo que no existe es su cara B. Decir
+                    # «no hay ningún mueble» manda a buscar un tipeo.
+                    errores.append(
+                        f"«{sin_prefijo_de_sede(una_cara.codigo, una_cara.sede)}» tiene una sola cara: "
+                        "no hay cara B que vender."
+                    )
+                elif otras:
                     # Un tipeo en la columna Sede mandaba el contrato a otro
                     # supermercado sin un aviso. Decir dónde sí está es la
                     # diferencia entre corregirlo y salir a buscar un error que

@@ -64,7 +64,8 @@ import unicodedata
 from collections import OrderedDict
 from datetime import date, datetime, timezone
 
-from app.services.layout_lookup import es_comercializable
+from app.services.catalogo_muebles import tipo_de_tarifa
+from app.services.layout_lookup import caras_de, es_comercializable
 
 log = logging.getLogger("recabra.plataforma.metricas")
 
@@ -207,25 +208,15 @@ def _es_comercializable(fixture: dict) -> bool:
 
 
 def _es_gondola_doble(fixture: dict) -> bool:
-    """``isDoubleGondola`` **de ``DashboardView.tsx``**, que es la que cuenta caras.
+    """¿Tiene cara B? Delega en ``layout_lookup.caras_de``, la misma regla que
+    usan el guardarraíl del plano y el frontend (``carasDe``).
 
-    Dos criterios, unidos por un OR, exactamente como el frontend::
-
-        isDoubleGondolaShared(f) || (f.type as string) === "gondola_doble"
-
-    · ``type == "gondola"`` con ``gondolaType`` ``"double"`` **o ausente** — el
-      default indefinido es doble en los dos editores (``fixtures.ts``).
-    · el tipo **legado** ``"gondola_doble"``, que ``DashboardView.tsx`` conserva
-      a propósito para los layouts viejos ya persistidos: esos planos están en
-      las bases de los clientes y sus góndolas siguen siendo de dos caras. Sin
-      esta rama, un cliente antiguo aparecería con la mitad del inventario.
+    Incluye la góndola sin ``gondolaType`` y el tipo **legado**
+    ``"gondola_doble"``: esos planos están en las bases de los clientes y sus
+    góndolas siguen siendo de dos caras. Sin eso, un cliente antiguo aparecería
+    con la mitad del inventario.
     """
-    tipo = fixture.get("type")
-    if tipo == "gondola_doble":
-        return True
-    if tipo != "gondola":
-        return False
-    return (fixture.get("gondolaType") or "double") == "double"
+    return caras_de(fixture) == 2
 
 
 def _codigo_completo(sede: str, code: str) -> str:
@@ -285,10 +276,11 @@ def _caras_comercializables(fixtures: list, sede_snapshot: str) -> set[str]:
 # ``codigo_completo -> (SEDE, tipo)``.
 
 def _tipo_de_tarifa(tipo: str) -> str:
-    """Misma semántica que ``_tipo_de_tarifa`` de ``routers/bulk_leases.py``:
+    """La misma que ``_tipo_de_tarifa`` de ``routers/bulk_leases.py``, porque
+    las dos salen del catálogo de muebles (``services/catalogo_muebles.py``):
     las dos caras de una góndola (doble o mural) comparten tarifa, porque el
     valor negociado también es por cara."""
-    return "gondola" if tipo in ("gondola_doble", "gondola_mural") else tipo
+    return tipo_de_tarifa(tipo)
 
 
 def _mapa_tipos_de_sede(fixtures: list, sede_snapshot: str) -> dict[str, tuple[str, str]]:

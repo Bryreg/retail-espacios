@@ -1,0 +1,3902 @@
+{
+  "leeme": [
+    "La referencia del ANTES del catálogo único de muebles: qué hace hoy cada tipo, en el frontend y en el servidor.",
+    "La escriben frontend/scripts/capturar-catalogo.mjs (tipos, plano y la parte ts) y después backend/scripts/capturar_catalogo.py (la parte python, sobre el mismo plano).",
+    "Cada tabla dice de qué archivo salió. Con el catálogo único, un plano viejo tiene que dar exactamente esto salvo los desfases que se arreglen a propósito.",
+    "No se edita a mano: se vuelve a capturar."
+  ],
+  "tipos": [
+    "gondola",
+    "punta",
+    "robatope",
+    "ristra",
+    "cross",
+    "metro",
+    "mueble",
+    "isla",
+    "impulsador",
+    "batea",
+    "isla_fria",
+    "nevera_carnes",
+    "nevera_refrescos",
+    "nevera_vegetales",
+    "stand_frutas",
+    "checkout",
+    "servicio_cliente",
+    "columna",
+    "exhibicion",
+    "gondola_doble",
+    "gondola_mural",
+    "desconocido"
+  ],
+  "plano": {
+    "sede": "NAVE",
+    "muebles": [
+      {
+        "id": "sint-01-gondola-double",
+        "code": "GON-01",
+        "type": "gondola",
+        "gondolaType": "double",
+        "label": "Góndola Doble",
+        "cx": 2,
+        "cz": 2,
+        "rotY": 0,
+        "w": 0.9,
+        "d": 0.9,
+        "h": 1.8,
+        "color": "#6366f1",
+        "sede": "NAVE"
+      },
+      {
+        "id": "sint-02-gondola-wall",
+        "code": "GON-02",
+        "type": "gondola",
+        "gondolaType": "wall",
+        "label": "Góndola Mural",
+        "cx": 6,
+        "cz": 2,
+        "rotY": 0,
+        "w": 1,
+        "d": 0.4,
+        "h": 1.9,
+        "color": "#818cf8",
+        "sede": "NAVE"
+      },
+      {
+        "id": "sint-03-punta",
+        "code": "PUN-01",
+        "type": "punta",
+        "label": "Punta Góndola",
+        "cx": 10,
+        "cz": 2,
+        "rotY": 0,
+        "w": 0.9,
+        "d": 0.4,
+        "h": 1.8,
+        "color": "#7c3aed",
+        "sede": "NAVE"
+      },
+      {
+        "id": "sint-04-ristra",
+        "code": "RIS-01",
+        "type": "ristra",
+        "label": "Ristra",
+        "cx": 14,
+        "cz": 2,
+        "rotY": 0,
+        "w": 0.4,
+        "d": 0.4,
+        "h": 1.6,
+        "color": "#d97706",
+        "sede": "NAVE"
+      },
+      {
+        "id": "sint-05-cross",
+        "code": "CRS-01",
+        "type": "cross",
+        "label": "Exhibidor Cruz",
+        "cx": 18,
+        "cz": 2,
+        "rotY": 0,
+        "w": 0.8,
+        "d": 0.8,
+        "h": 1.8,
+        "color": "#0891b2",
+        "sede": "NAVE"
+      },
+      {
+        "id": "sint-06-mueble",
+        "code": "MUE-01",
+        "type": "mueble",
+        "label": "Vitrina",
+        "cx": 2,
+        "cz": 6,
+        "rotY": 0,
+        "w": 1.2,
+        "d": 0.6,
+        "h": 2,
+        "color": "#475569",
+        "sede": "NAVE"
+      },
+      {
+        "id": "sint-07-isla",
+        "code": "EXP-01",
+        "type": "isla",
+        "label": "Exhib. de Piso",
+        "cx": 6,
+        "cz": 6,
+        "rotY": 0,
+        "w": 1.2,
+        "d": 0.8,
+        "h": 1.4,
+        "color": "#f59e0b",
+        "sede": "NAVE"
+      },
+      {
+        "id": "sint-08-impulsador",
+        "code": "IMP-01",
+        "type": "impulsador",
+        "label": "Impulsador Marca",
+        "cx": 10,
+        "cz": 6,
+        "rotY": 0,
+        "w": 0.6,
+        "d": 0.4,
+        "h": 1.5,
+        "color": "#e11d48",
+        "sede": "NAVE"
+      },
+      {
+        "id": "sint-09-batea",
+        "code": "BAT-01",
+        "type": "batea",
+        "label": "Batea",
+        "cx": 14,
+        "cz": 6,
+        "rotY": 0,
+        "w": 0.8,
+        "d": 0.6,
+        "h": 0.8,
+        "color": "#84cc16",
+        "sede": "NAVE"
+      },
+      {
+        "id": "sint-10-isla_fria",
+        "code": "ISL-01",
+        "type": "isla_fria",
+        "label": "Isla Helados/Cong.",
+        "cx": 18,
+        "cz": 6,
+        "rotY": 0,
+        "w": 1.8,
+        "d": 1,
+        "h": 0.9,
+        "color": "#e5e7eb",
+        "sede": "NAVE"
+      },
+      {
+        "id": "sint-11-nevera_carnes",
+        "code": "CAR-01",
+        "type": "nevera_carnes",
+        "label": "Nevera Carnes",
+        "cx": 2,
+        "cz": 10,
+        "rotY": 0,
+        "w": 2,
+        "d": 0.9,
+        "h": 1.05,
+        "color": "#111827",
+        "sede": "NAVE"
+      },
+      {
+        "id": "sint-12-nevera_refrescos",
+        "code": "BEB-01",
+        "type": "nevera_refrescos",
+        "label": "Nevera Refrescos",
+        "cx": 6,
+        "cz": 10,
+        "rotY": 0,
+        "w": 1.2,
+        "d": 0.75,
+        "h": 1.8,
+        "color": "#1e293b",
+        "sede": "NAVE"
+      },
+      {
+        "id": "sint-13-nevera_vegetales",
+        "code": "VEG-01",
+        "type": "nevera_vegetales",
+        "label": "Nevera Vegetales",
+        "cx": 10,
+        "cz": 10,
+        "rotY": 0,
+        "w": 1.8,
+        "d": 0.9,
+        "h": 1.6,
+        "color": "#1e293b",
+        "sede": "NAVE"
+      },
+      {
+        "id": "sint-14-stand_frutas",
+        "code": "FRU-01",
+        "type": "stand_frutas",
+        "label": "Stand Frutas/Verd",
+        "cx": 14,
+        "cz": 10,
+        "rotY": 0,
+        "w": 1.5,
+        "d": 1.2,
+        "h": 0.95,
+        "color": "#84cc16",
+        "sede": "NAVE"
+      },
+      {
+        "id": "sint-15-checkout",
+        "code": "CAJ-01",
+        "type": "checkout",
+        "label": "Checkout / Caja",
+        "cx": 18,
+        "cz": 10,
+        "rotY": 0,
+        "w": 1.8,
+        "d": 0.7,
+        "h": 0.9,
+        "color": "#8b5cf6",
+        "sede": "NAVE",
+        "rentable": false
+      },
+      {
+        "id": "sint-16-servicio_cliente",
+        "code": "SAC-01",
+        "type": "servicio_cliente",
+        "label": "Servicio al Cliente",
+        "cx": 2,
+        "cz": 14,
+        "rotY": 0,
+        "w": 1.6,
+        "d": 0.7,
+        "h": 1.1,
+        "color": "#0ea5e9",
+        "sede": "NAVE",
+        "rentable": false
+      },
+      {
+        "id": "sint-17-metro",
+        "code": "MET-01",
+        "type": "metro",
+        "label": "Zona Libre",
+        "cx": 6,
+        "cz": 14,
+        "rotY": 0,
+        "w": 1,
+        "d": 1,
+        "h": 0.05,
+        "color": "#64748b",
+        "sede": "NAVE",
+        "rentable": false
+      },
+      {
+        "id": "sint-18-columna",
+        "code": "COL-01",
+        "type": "columna",
+        "label": "Columna",
+        "cx": 10,
+        "cz": 14,
+        "rotY": 0,
+        "w": 0.3,
+        "d": 0.3,
+        "h": 3,
+        "color": "#94a3b8",
+        "sede": "NAVE",
+        "rentable": false
+      },
+      {
+        "id": "sint-19-robatope",
+        "code": "ROB-01",
+        "type": "robatope",
+        "label": "Robatope",
+        "cx": 14,
+        "cz": 14,
+        "rotY": 0,
+        "w": 0.3,
+        "d": 0.4,
+        "h": 1.6,
+        "color": "#c0c0bc",
+        "sede": "NAVE"
+      },
+      {
+        "id": "sint-20-gondola-sin-gondolaType",
+        "code": "GON-03",
+        "type": "gondola",
+        "label": "Góndola Doble",
+        "cx": 18,
+        "cz": 14,
+        "rotY": 0,
+        "w": 0.9,
+        "d": 0.9,
+        "h": 1.8,
+        "color": "#6366f1",
+        "sede": "NAVE"
+      },
+      {
+        "id": "sint-21-gondola_doble-legado-2D",
+        "code": "GON-04",
+        "type": "gondola_doble",
+        "label": "Góndola Doble",
+        "cx": 2,
+        "cz": 18,
+        "rotY": 0,
+        "w": 0.9,
+        "d": 0.9,
+        "h": 1.8,
+        "color": "#6366f1",
+        "sede": "NAVE"
+      },
+      {
+        "id": "sint-22-gondola_mural-legado-2D",
+        "code": "GON-05",
+        "type": "gondola_mural",
+        "label": "Góndola Mural",
+        "cx": 6,
+        "cz": 18,
+        "rotY": 0,
+        "w": 1,
+        "d": 0.4,
+        "h": 1.9,
+        "color": "#818cf8",
+        "sede": "NAVE"
+      },
+      {
+        "id": "sint-23-exhibicion-legado",
+        "code": "EXH-01",
+        "type": "exhibicion",
+        "label": "Exhibición",
+        "cx": 10,
+        "cz": 18,
+        "rotY": 0,
+        "w": 1,
+        "d": 1,
+        "h": 1.5,
+        "color": "#ec4899",
+        "sede": "NAVE"
+      },
+      {
+        "id": "sint-24-metro-habilitado",
+        "code": "MET-02",
+        "type": "metro",
+        "label": "Zona Libre",
+        "cx": 14,
+        "cz": 18,
+        "rotY": 0,
+        "w": 1,
+        "d": 1,
+        "h": 0.05,
+        "color": "#64748b",
+        "sede": "NAVE",
+        "rentable": true
+      },
+      {
+        "id": "sint-25-checkout-con-bandera",
+        "code": "CAJ-02",
+        "type": "checkout",
+        "label": "Checkout / Caja",
+        "cx": 18,
+        "cz": 18,
+        "rotY": 0,
+        "w": 1.8,
+        "d": 0.7,
+        "h": 0.9,
+        "color": "#8b5cf6",
+        "sede": "NAVE",
+        "rentable": true
+      }
+    ]
+  },
+  "ts": {
+    "fuente": "frontend/scripts/capturar-catalogo.mjs",
+    "tablas": {
+      "FixType": {
+        "de": "frontend/src/types/fixtures.ts (leído del texto: es un tipo)",
+        "valor": [
+          "gondola",
+          "punta",
+          "robatope",
+          "ristra",
+          "cross",
+          "metro",
+          "mueble",
+          "isla",
+          "impulsador",
+          "batea",
+          "isla_fria",
+          "nevera_carnes",
+          "nevera_refrescos",
+          "nevera_vegetales",
+          "stand_frutas",
+          "checkout",
+          "servicio_cliente",
+          "columna",
+          "exhibicion"
+        ]
+      },
+      "GondolaType": {
+        "de": "frontend/src/types/fixtures.ts (leído del texto: es un tipo)",
+        "valor": [
+          "double",
+          "wall"
+        ]
+      },
+      "FixType2D": {
+        "de": "frontend/src/utils/convertirPlano.ts (leído del texto: es un tipo)",
+        "valor": [
+          "gondola_doble",
+          "gondola_mural",
+          "punta",
+          "robatope",
+          "metro",
+          "mueble",
+          "ristra",
+          "cross",
+          "isla",
+          "impulsador",
+          "batea",
+          "isla_fria",
+          "nevera_carnes",
+          "nevera_vegetales",
+          "nevera_refrescos",
+          "stand_frutas",
+          "checkout",
+          "servicio_cliente",
+          "columna",
+          "exhibicion"
+        ]
+      },
+      "NUNCA_ALQUILABLE": {
+        "de": "frontend/src/types/fixtures.ts",
+        "valor": [
+          "columna",
+          "checkout",
+          "servicio_cliente"
+        ]
+      },
+      "NON_RENTABLE_BY_DEFAULT": {
+        "de": "frontend/src/types/fixtures.ts",
+        "valor": [
+          "metro",
+          "columna",
+          "checkout",
+          "servicio_cliente"
+        ]
+      },
+      "RATE_TYPES": {
+        "de": "frontend/src/types/fixtures.ts",
+        "valor": [
+          {
+            "type": "gondola",
+            "label": "Góndola, por cara"
+          },
+          {
+            "type": "punta",
+            "label": "Punta de góndola"
+          },
+          {
+            "type": "robatope",
+            "label": "Robatope"
+          },
+          {
+            "type": "ristra",
+            "label": "Ristra"
+          },
+          {
+            "type": "cross",
+            "label": "Exhibición de piso"
+          },
+          {
+            "type": "impulsador",
+            "label": "Impulsador de marca"
+          },
+          {
+            "type": "mueble",
+            "label": "Vitrina"
+          },
+          {
+            "type": "isla",
+            "label": "Isla"
+          },
+          {
+            "type": "batea",
+            "label": "Batea"
+          },
+          {
+            "type": "isla_fria",
+            "label": "Isla de congelados"
+          },
+          {
+            "type": "nevera_carnes",
+            "label": "Nevera de carnes"
+          },
+          {
+            "type": "nevera_vegetales",
+            "label": "Nevera de vegetales"
+          },
+          {
+            "type": "nevera_refrescos",
+            "label": "Nevera de bebidas"
+          },
+          {
+            "type": "stand_frutas",
+            "label": "Frutas y verduras"
+          },
+          {
+            "type": "metro",
+            "label": "Zona libre"
+          }
+        ]
+      },
+      "CATEGORIA_DE_TIPO": {
+        "de": "frontend/src/types/fixtures.ts",
+        "valor": {
+          "gondola": "Góndolas",
+          "punta": "Góndolas",
+          "robatope": "Góndolas",
+          "ristra": "Displays",
+          "cross": "Displays",
+          "impulsador": "Displays",
+          "mueble": "Muebles",
+          "isla": "Muebles",
+          "batea": "Muebles",
+          "isla_fria": "Refrigeración",
+          "nevera_carnes": "Refrigeración",
+          "nevera_vegetales": "Refrigeración",
+          "nevera_refrescos": "Refrigeración",
+          "stand_frutas": "Frescos",
+          "metro": "Zona libre"
+        }
+      },
+      "PREFIJO_POR_TIPO": {
+        "de": "frontend/src/utils/nomenclatura.ts",
+        "valor": {
+          "gondola": "GON",
+          "punta": "PUN",
+          "robatope": "ROB",
+          "ristra": "RIS",
+          "cross": "CRS",
+          "metro": "MET",
+          "mueble": "MUE",
+          "isla": "EXP",
+          "impulsador": "IMP",
+          "batea": "BAT",
+          "isla_fria": "ISL",
+          "nevera_carnes": "CAR",
+          "nevera_vegetales": "VEG",
+          "nevera_refrescos": "BEB",
+          "stand_frutas": "FRU",
+          "checkout": "CAJ",
+          "servicio_cliente": "SAC",
+          "columna": "COL",
+          "exhibicion": "EXH",
+          "gondola_doble": "GON",
+          "gondola_mural": "GON"
+        }
+      },
+      "FIXTURE_DEFS": {
+        "de": "frontend/src/catalogo/editor3D.ts",
+        "valor": [
+          {
+            "type": "gondola",
+            "gondolaType": "double",
+            "label": "Góndola Doble",
+            "w": 0.9,
+            "d": 0.9,
+            "h": 1.8,
+            "color": "#6366f1",
+            "emoji": "📚",
+            "desc": "Módulo de estante central, doble cara",
+            "code": "GON"
+          },
+          {
+            "type": "gondola",
+            "gondolaType": "wall",
+            "label": "Góndola Mural",
+            "w": 1,
+            "d": 0.4,
+            "h": 1.9,
+            "color": "#818cf8",
+            "emoji": "🧱",
+            "desc": "Módulo de estante contra pared",
+            "code": "GON"
+          },
+          {
+            "type": "punta",
+            "label": "Punta Góndola",
+            "w": 0.9,
+            "d": 0.4,
+            "h": 1.8,
+            "color": "#7c3aed",
+            "emoji": "🏷️",
+            "desc": "Cabecera de góndola con topper promocional",
+            "code": "PUN"
+          },
+          {
+            "type": "ristra",
+            "label": "Ristra",
+            "w": 0.4,
+            "d": 0.4,
+            "h": 1.6,
+            "color": "#d97706",
+            "emoji": "🪝",
+            "desc": "Colgante de productos",
+            "code": "RIS"
+          },
+          {
+            "type": "cross",
+            "label": "Exhibidor Cruz",
+            "w": 0.8,
+            "d": 0.8,
+            "h": 1.8,
+            "color": "#0891b2",
+            "emoji": "➕",
+            "desc": "Display lateral cross-selling",
+            "code": "CRS"
+          },
+          {
+            "type": "mueble",
+            "label": "Vitrina",
+            "w": 1.2,
+            "d": 0.6,
+            "h": 2,
+            "color": "#475569",
+            "emoji": "🗄️",
+            "desc": "Vitrina con puertas de vidrio",
+            "code": "MUE"
+          },
+          {
+            "type": "isla",
+            "label": "Exhib. de Piso",
+            "w": 1.2,
+            "d": 0.8,
+            "h": 1.4,
+            "color": "#f59e0b",
+            "emoji": "🏪",
+            "desc": "Exhibidor de piso con estantes y productos",
+            "code": "EXP"
+          },
+          {
+            "type": "impulsador",
+            "label": "Impulsador Marca",
+            "w": 0.6,
+            "d": 0.4,
+            "h": 1.5,
+            "color": "#e11d48",
+            "emoji": "🏷️",
+            "desc": "Display compacto de impulso de marca",
+            "code": "IMP"
+          },
+          {
+            "type": "batea",
+            "label": "Batea",
+            "w": 0.8,
+            "d": 0.6,
+            "h": 0.8,
+            "color": "#84cc16",
+            "emoji": "🧺",
+            "desc": "Canasto metálico con ruedas",
+            "code": "BAT"
+          },
+          {
+            "type": "isla_fria",
+            "label": "Isla Helados/Cong.",
+            "w": 1.8,
+            "d": 1,
+            "h": 0.9,
+            "color": "#e5e7eb",
+            "emoji": "🍦",
+            "desc": "Isla abierta refrigerada con guarda de acrílico",
+            "code": "ISL"
+          },
+          {
+            "type": "nevera_carnes",
+            "label": "Nevera Carnes",
+            "w": 2,
+            "d": 0.9,
+            "h": 1.05,
+            "color": "#111827",
+            "emoji": "🥩",
+            "desc": "Mostrador con vidrio curvo para carnes y deli",
+            "code": "CAR"
+          },
+          {
+            "type": "nevera_refrescos",
+            "label": "Nevera Refrescos",
+            "w": 1.2,
+            "d": 0.75,
+            "h": 1.8,
+            "color": "#1e293b",
+            "emoji": "🥤",
+            "desc": "Vitrina multideck abierta para bebidas",
+            "code": "BEB"
+          },
+          {
+            "type": "nevera_vegetales",
+            "label": "Nevera Vegetales",
+            "w": 1.8,
+            "d": 0.9,
+            "h": 1.6,
+            "color": "#1e293b",
+            "emoji": "🥬",
+            "desc": "Mural refrigerado de frutas y verduras, con bandejas inclinadas",
+            "code": "VEG"
+          },
+          {
+            "type": "stand_frutas",
+            "label": "Stand Frutas/Verd",
+            "w": 1.5,
+            "d": 1.2,
+            "h": 0.95,
+            "color": "#84cc16",
+            "emoji": "🍎",
+            "desc": "Cajón expositor de frutas y verduras",
+            "code": "FRU"
+          },
+          {
+            "type": "checkout",
+            "label": "Checkout / Caja",
+            "w": 1.8,
+            "d": 0.7,
+            "h": 0.9,
+            "color": "#8b5cf6",
+            "emoji": "🛒",
+            "desc": "Caja registradora con cinta transportadora",
+            "code": "CAJ"
+          },
+          {
+            "type": "servicio_cliente",
+            "label": "Servicio al Cliente",
+            "w": 1.6,
+            "d": 0.7,
+            "h": 1.1,
+            "color": "#0ea5e9",
+            "emoji": "💁",
+            "desc": "Mostrador de atención: devoluciones, reclamos e información",
+            "code": "SAC"
+          },
+          {
+            "type": "metro",
+            "label": "Zona Libre",
+            "w": 1,
+            "d": 1,
+            "h": 0.05,
+            "color": "#64748b",
+            "emoji": "⬜",
+            "desc": "Área de suelo demarcada",
+            "code": "MET"
+          },
+          {
+            "type": "columna",
+            "label": "Columna",
+            "w": 0.3,
+            "d": 0.3,
+            "h": 3,
+            "color": "#94a3b8",
+            "emoji": "🏛️",
+            "desc": "Columna estructural",
+            "code": "COL"
+          },
+          {
+            "type": "robatope",
+            "label": "Robatope",
+            "w": 0.3,
+            "d": 0.4,
+            "h": 1.6,
+            "color": "#c0c0bc",
+            "emoji": "🛡️",
+            "desc": "Panel lateral de protección — flanquea la Punta de Góndola",
+            "code": "ROB"
+          }
+        ]
+      },
+      "TIPOS_CON_PRODUCTO": {
+        "de": "frontend/src/catalogo/editor3D.ts",
+        "valor": [
+          "gondola",
+          "gondola_doble",
+          "punta",
+          "robatope",
+          "mueble",
+          "nevera_refrescos",
+          "isla",
+          "batea",
+          "impulsador",
+          "ristra",
+          "cross",
+          "stand_frutas",
+          "nevera_carnes",
+          "nevera_vegetales",
+          "isla_fria",
+          "exhibicion"
+        ]
+      },
+      "TIPOS_CON_PRUEBA_3D": {
+        "de": "frontend/src/catalogo/editor3D.ts",
+        "valor": [
+          "gondola",
+          "punta",
+          "nevera_refrescos",
+          "robatope"
+        ]
+      },
+      "TIPOS_CON_SURTIDO": {
+        "de": "frontend/src/catalogo/editor3D.ts",
+        "valor": [
+          "gondola",
+          "punta"
+        ]
+      },
+      "CATALOG_2D": {
+        "de": "frontend/src/catalogo/plano2D.ts",
+        "valor": [
+          {
+            "type": "gondola_doble",
+            "label": "Góndola Doble",
+            "w": 0.9,
+            "h": 0.9,
+            "emoji": "📚",
+            "prefix": "GON",
+            "category": "Góndolas"
+          },
+          {
+            "type": "gondola_mural",
+            "label": "Góndola Mural",
+            "w": 1,
+            "h": 0.4,
+            "emoji": "🧱",
+            "prefix": "GON",
+            "category": "Góndolas"
+          },
+          {
+            "type": "punta",
+            "label": "Punta Góndola",
+            "w": 0.9,
+            "h": 0.4,
+            "emoji": "🏷️",
+            "prefix": "PUN",
+            "category": "Góndolas"
+          },
+          {
+            "type": "robatope",
+            "label": "Robatope",
+            "w": 0.3,
+            "h": 0.4,
+            "emoji": "🛡️",
+            "prefix": "ROB",
+            "category": "Góndolas"
+          },
+          {
+            "type": "ristra",
+            "label": "Ristra",
+            "w": 0.4,
+            "h": 0.4,
+            "emoji": "🪝",
+            "prefix": "RIS",
+            "category": "Displays"
+          },
+          {
+            "type": "cross",
+            "label": "Exhibidor Cruz",
+            "w": 0.8,
+            "h": 0.8,
+            "emoji": "➕",
+            "prefix": "CRS",
+            "category": "Displays"
+          },
+          {
+            "type": "impulsador",
+            "label": "Impulsador Marca",
+            "w": 0.6,
+            "h": 0.4,
+            "emoji": "🏷️",
+            "prefix": "IMP",
+            "category": "Displays"
+          },
+          {
+            "type": "mueble",
+            "label": "Vitrina",
+            "w": 1.2,
+            "h": 0.6,
+            "emoji": "🗄️",
+            "prefix": "MUE",
+            "category": "Muebles"
+          },
+          {
+            "type": "isla",
+            "label": "Exhib. de Piso",
+            "w": 1.2,
+            "h": 0.8,
+            "emoji": "🏪",
+            "prefix": "EXP",
+            "category": "Muebles"
+          },
+          {
+            "type": "batea",
+            "label": "Batea",
+            "w": 0.8,
+            "h": 0.6,
+            "emoji": "🧺",
+            "prefix": "BAT",
+            "category": "Muebles"
+          },
+          {
+            "type": "isla_fria",
+            "label": "Isla Helados/Cong.",
+            "w": 1.8,
+            "h": 1,
+            "emoji": "🍦",
+            "prefix": "ISL",
+            "category": "Refrigeración"
+          },
+          {
+            "type": "nevera_carnes",
+            "label": "Nevera Carnes",
+            "w": 2,
+            "h": 0.85,
+            "emoji": "🥩",
+            "prefix": "CAR",
+            "category": "Refrigeración"
+          },
+          {
+            "type": "nevera_vegetales",
+            "label": "Nevera Vegetales",
+            "w": 1.8,
+            "h": 0.9,
+            "emoji": "🥬",
+            "prefix": "VEG",
+            "category": "Refrigeración"
+          },
+          {
+            "type": "nevera_refrescos",
+            "label": "Nevera Refrescos",
+            "w": 1.2,
+            "h": 0.75,
+            "emoji": "🥤",
+            "prefix": "BEB",
+            "category": "Refrigeración"
+          },
+          {
+            "type": "stand_frutas",
+            "label": "Stand Frutas/Verd",
+            "w": 1.5,
+            "h": 1.2,
+            "emoji": "🍎",
+            "prefix": "FRU",
+            "category": "Frescos"
+          },
+          {
+            "type": "checkout",
+            "label": "Checkout / Caja",
+            "w": 1.8,
+            "h": 0.7,
+            "emoji": "🛒",
+            "prefix": "CAJ",
+            "category": "Servicio"
+          },
+          {
+            "type": "servicio_cliente",
+            "label": "Servicio al Cliente",
+            "w": 1.6,
+            "h": 0.7,
+            "emoji": "💁",
+            "prefix": "SAC",
+            "category": "Servicio"
+          },
+          {
+            "type": "metro",
+            "label": "Zona Libre",
+            "w": 1,
+            "h": 1,
+            "emoji": "⬜",
+            "prefix": "MET",
+            "category": "Infraestructura"
+          },
+          {
+            "type": "columna",
+            "label": "Columna",
+            "w": 0.3,
+            "h": 0.3,
+            "emoji": "🏛️",
+            "prefix": "COL",
+            "category": "Infraestructura"
+          }
+        ]
+      },
+      "H_DEFAULTS_2D": {
+        "de": "frontend/src/catalogo/plano2D.ts",
+        "valor": {
+          "gondola_doble": 1.8,
+          "gondola_mural": 1.9,
+          "punta": 1.8,
+          "robatope": 1.6,
+          "ristra": 1.6,
+          "cross": 1.8,
+          "metro": 0.05,
+          "mueble": 2,
+          "exhibicion": 1.5,
+          "isla": 1.4,
+          "impulsador": 1.5,
+          "batea": 0.8,
+          "isla_fria": 0.9,
+          "nevera_carnes": 1.05,
+          "nevera_refrescos": 1.8,
+          "nevera_vegetales": 1.6,
+          "stand_frutas": 0.95,
+          "checkout": 0.9,
+          "columna": 3
+        }
+      },
+      "COLOR_DEFAULTS_2D": {
+        "de": "frontend/src/catalogo/plano2D.ts",
+        "valor": {
+          "gondola_doble": "#6366f1",
+          "gondola_mural": "#818cf8",
+          "punta": "#7c3aed",
+          "robatope": "#c0c0bc",
+          "ristra": "#d97706",
+          "cross": "#0891b2",
+          "impulsador": "#e11d48",
+          "metro": "#64748b",
+          "mueble": "#475569",
+          "exhibicion": "#ec4899",
+          "isla": "#f59e0b",
+          "batea": "#84cc16",
+          "nevera_mural": "#06b6d4",
+          "isla_fria": "#e5e7eb",
+          "nevera_carnes": "#1e293b",
+          "nevera_refrescos": "#1e293b",
+          "nevera_vegetales": "#1e293b",
+          "stand_frutas": "#84cc16",
+          "checkout": "#8b5cf6",
+          "columna": "#94a3b8"
+        }
+      },
+      "COLOR_DEFAULTS_migracion": {
+        "de": "frontend/src/store/fixtureStore.ts (leído del texto: es local a la migración vieja de localStorage)",
+        "valor": {
+          "gondola": "#6366f1",
+          "punta": "#7c3aed",
+          "robatope": "#16a34a",
+          "ristra": "#d97706",
+          "cross": "#0891b2",
+          "metro": "#64748b",
+          "mueble": "#475569",
+          "exhibicion": "#ec4899"
+        }
+      },
+      "MUEBLES_FRIOS": {
+        "de": "frontend/src/components/StoreEditor3D/muebles/producto.ts",
+        "valor": [
+          "nevera_refrescos",
+          "nevera_carnes",
+          "isla_fria",
+          "nevera_vegetales"
+        ]
+      },
+      "FORMAN_CORRIDA": {
+        "de": "frontend/src/utils/pasillos.ts",
+        "valor": [
+          "gondola",
+          "gondola_doble",
+          "gondola_mural"
+        ]
+      },
+      "REFERENCIAS_minimapa": {
+        "de": "frontend/src/catalogo/minimapa.ts",
+        "valor": {
+          "checkout": {
+            "corto": "Cajas",
+            "frase": "las cajas"
+          },
+          "nevera_refrescos": {
+            "corto": "Neveras",
+            "frase": "las neveras"
+          },
+          "nevera_carnes": {
+            "corto": "Carnes",
+            "frase": "el mostrador de carnes"
+          },
+          "nevera_vegetales": {
+            "corto": "Vegetales",
+            "frase": "el mural de frutas y verduras"
+          },
+          "stand_frutas": {
+            "corto": "Frutas",
+            "frase": "las frutas"
+          }
+        }
+      },
+      "nombres_de_informe": {
+        "de": "frontend/src/components/plataforma/formato.ts (tipoN y tipoP: el diccionario no se exporta; lo que no está sale tal cual)",
+        "valor": {
+          "gondola": {
+            "singular": "góndola",
+            "plural": "caras de góndola"
+          },
+          "punta": {
+            "singular": "punta",
+            "plural": "puntas de góndola"
+          },
+          "robatope": {
+            "singular": "robatope",
+            "plural": "robatopes"
+          },
+          "ristra": {
+            "singular": "ristra",
+            "plural": "ristras"
+          },
+          "cross": {
+            "singular": "exhibición de piso",
+            "plural": "exhibiciones de piso"
+          },
+          "metro": {
+            "singular": "metro",
+            "plural": "metros"
+          },
+          "mueble": {
+            "singular": "mueble",
+            "plural": "muebles"
+          },
+          "isla": {
+            "singular": "isla",
+            "plural": "islas"
+          },
+          "impulsador": {
+            "singular": "impulsador",
+            "plural": "impulsadors"
+          },
+          "batea": {
+            "singular": "batea",
+            "plural": "bateas"
+          },
+          "isla_fria": {
+            "singular": "isla fría",
+            "plural": "islas frías"
+          },
+          "nevera_carnes": {
+            "singular": "nevera de carnes",
+            "plural": "neveras de carnes"
+          },
+          "nevera_refrescos": {
+            "singular": "nevera de bebidas",
+            "plural": "neveras de bebidas"
+          },
+          "nevera_vegetales": {
+            "singular": "nevera de vegetales",
+            "plural": "neveras de vegetales"
+          },
+          "stand_frutas": {
+            "singular": "stand de frutas",
+            "plural": "stands de frutas"
+          },
+          "checkout": {
+            "singular": "checkout",
+            "plural": "checkouts"
+          },
+          "servicio_cliente": {
+            "singular": "servicio_cliente",
+            "plural": "servicio_clientes"
+          },
+          "columna": {
+            "singular": "columna",
+            "plural": "columnas"
+          },
+          "exhibicion": {
+            "singular": "exhibicion",
+            "plural": "exhibicions"
+          },
+          "gondola_doble": {
+            "singular": "gondola_doble",
+            "plural": "gondola_dobles"
+          },
+          "gondola_mural": {
+            "singular": "gondola_mural",
+            "plural": "gondola_murals"
+          },
+          "desconocido": {
+            "singular": "desconocido",
+            "plural": "desconocidos"
+          },
+          "fuera_del_plano": {
+            "singular": "fuera del plano",
+            "plural": "fuera del planos"
+          }
+        }
+      }
+    },
+    "por_tipo": {
+      "gondola": {
+        "prefijoDe": "GON",
+        "siguienteCodigo": "GON-06",
+        "isRentable": true,
+        "naceNoComercializable": false,
+        "carasDe": 2,
+        "rateTypeOf": "gondola",
+        "rateTypeLabel": "Góndola, por cara",
+        "enRateTypes": true,
+        "categoriaDeTipo": "Góndolas",
+        "informe": {
+          "singular": "góndola",
+          "plural": "caras de góndola"
+        },
+        "frio": false,
+        "conProducto": true,
+        "prueba3D": true,
+        "surtido": true,
+        "formaCorrida": true,
+        "referenciaMinimapa": null
+      },
+      "punta": {
+        "prefijoDe": "PUN",
+        "siguienteCodigo": "PUN-02",
+        "isRentable": true,
+        "naceNoComercializable": false,
+        "carasDe": 1,
+        "rateTypeOf": "punta",
+        "rateTypeLabel": "Punta de góndola",
+        "enRateTypes": true,
+        "categoriaDeTipo": "Góndolas",
+        "informe": {
+          "singular": "punta",
+          "plural": "puntas de góndola"
+        },
+        "frio": false,
+        "conProducto": true,
+        "prueba3D": true,
+        "surtido": true,
+        "formaCorrida": false,
+        "referenciaMinimapa": null
+      },
+      "robatope": {
+        "prefijoDe": "ROB",
+        "siguienteCodigo": "ROB-02",
+        "isRentable": true,
+        "naceNoComercializable": false,
+        "carasDe": 1,
+        "rateTypeOf": "robatope",
+        "rateTypeLabel": "Robatope",
+        "enRateTypes": true,
+        "categoriaDeTipo": "Góndolas",
+        "informe": {
+          "singular": "robatope",
+          "plural": "robatopes"
+        },
+        "frio": false,
+        "conProducto": true,
+        "prueba3D": true,
+        "surtido": false,
+        "formaCorrida": false,
+        "referenciaMinimapa": null
+      },
+      "ristra": {
+        "prefijoDe": "RIS",
+        "siguienteCodigo": "RIS-02",
+        "isRentable": true,
+        "naceNoComercializable": false,
+        "carasDe": 1,
+        "rateTypeOf": "ristra",
+        "rateTypeLabel": "Ristra",
+        "enRateTypes": true,
+        "categoriaDeTipo": "Displays",
+        "informe": {
+          "singular": "ristra",
+          "plural": "ristras"
+        },
+        "frio": false,
+        "conProducto": true,
+        "prueba3D": false,
+        "surtido": false,
+        "formaCorrida": false,
+        "referenciaMinimapa": null
+      },
+      "cross": {
+        "prefijoDe": "CRS",
+        "siguienteCodigo": "CRS-02",
+        "isRentable": true,
+        "naceNoComercializable": false,
+        "carasDe": 1,
+        "rateTypeOf": "cross",
+        "rateTypeLabel": "Exhibición de piso",
+        "enRateTypes": true,
+        "categoriaDeTipo": "Displays",
+        "informe": {
+          "singular": "exhibición de piso",
+          "plural": "exhibiciones de piso"
+        },
+        "frio": false,
+        "conProducto": true,
+        "prueba3D": false,
+        "surtido": false,
+        "formaCorrida": false,
+        "referenciaMinimapa": null
+      },
+      "metro": {
+        "prefijoDe": "MET",
+        "siguienteCodigo": "MET-03",
+        "isRentable": true,
+        "naceNoComercializable": true,
+        "carasDe": 1,
+        "rateTypeOf": "metro",
+        "rateTypeLabel": "Zona libre",
+        "enRateTypes": true,
+        "categoriaDeTipo": "Zona libre",
+        "informe": {
+          "singular": "metro",
+          "plural": "metros"
+        },
+        "frio": false,
+        "conProducto": false,
+        "prueba3D": false,
+        "surtido": false,
+        "formaCorrida": false,
+        "referenciaMinimapa": null
+      },
+      "mueble": {
+        "prefijoDe": "MUE",
+        "siguienteCodigo": "MUE-02",
+        "isRentable": true,
+        "naceNoComercializable": false,
+        "carasDe": 1,
+        "rateTypeOf": "mueble",
+        "rateTypeLabel": "Vitrina",
+        "enRateTypes": true,
+        "categoriaDeTipo": "Muebles",
+        "informe": {
+          "singular": "mueble",
+          "plural": "muebles"
+        },
+        "frio": false,
+        "conProducto": true,
+        "prueba3D": false,
+        "surtido": false,
+        "formaCorrida": false,
+        "referenciaMinimapa": null
+      },
+      "isla": {
+        "prefijoDe": "EXP",
+        "siguienteCodigo": "EXP-02",
+        "isRentable": true,
+        "naceNoComercializable": false,
+        "carasDe": 1,
+        "rateTypeOf": "isla",
+        "rateTypeLabel": "Isla",
+        "enRateTypes": true,
+        "categoriaDeTipo": "Muebles",
+        "informe": {
+          "singular": "isla",
+          "plural": "islas"
+        },
+        "frio": false,
+        "conProducto": true,
+        "prueba3D": false,
+        "surtido": false,
+        "formaCorrida": false,
+        "referenciaMinimapa": null
+      },
+      "impulsador": {
+        "prefijoDe": "IMP",
+        "siguienteCodigo": "IMP-02",
+        "isRentable": true,
+        "naceNoComercializable": false,
+        "carasDe": 1,
+        "rateTypeOf": "impulsador",
+        "rateTypeLabel": "Impulsador de marca",
+        "enRateTypes": true,
+        "categoriaDeTipo": "Displays",
+        "informe": {
+          "singular": "impulsador",
+          "plural": "impulsadors"
+        },
+        "frio": false,
+        "conProducto": true,
+        "prueba3D": false,
+        "surtido": false,
+        "formaCorrida": false,
+        "referenciaMinimapa": null
+      },
+      "batea": {
+        "prefijoDe": "BAT",
+        "siguienteCodigo": "BAT-02",
+        "isRentable": true,
+        "naceNoComercializable": false,
+        "carasDe": 1,
+        "rateTypeOf": "batea",
+        "rateTypeLabel": "Batea",
+        "enRateTypes": true,
+        "categoriaDeTipo": "Muebles",
+        "informe": {
+          "singular": "batea",
+          "plural": "bateas"
+        },
+        "frio": false,
+        "conProducto": true,
+        "prueba3D": false,
+        "surtido": false,
+        "formaCorrida": false,
+        "referenciaMinimapa": null
+      },
+      "isla_fria": {
+        "prefijoDe": "ISL",
+        "siguienteCodigo": "ISL-02",
+        "isRentable": true,
+        "naceNoComercializable": false,
+        "carasDe": 1,
+        "rateTypeOf": "isla_fria",
+        "rateTypeLabel": "Isla de congelados",
+        "enRateTypes": true,
+        "categoriaDeTipo": "Refrigeración",
+        "informe": {
+          "singular": "isla fría",
+          "plural": "islas frías"
+        },
+        "frio": true,
+        "conProducto": true,
+        "prueba3D": false,
+        "surtido": false,
+        "formaCorrida": false,
+        "referenciaMinimapa": null
+      },
+      "nevera_carnes": {
+        "prefijoDe": "CAR",
+        "siguienteCodigo": "CAR-02",
+        "isRentable": true,
+        "naceNoComercializable": false,
+        "carasDe": 1,
+        "rateTypeOf": "nevera_carnes",
+        "rateTypeLabel": "Nevera de carnes",
+        "enRateTypes": true,
+        "categoriaDeTipo": "Refrigeración",
+        "informe": {
+          "singular": "nevera de carnes",
+          "plural": "neveras de carnes"
+        },
+        "frio": true,
+        "conProducto": true,
+        "prueba3D": false,
+        "surtido": false,
+        "formaCorrida": false,
+        "referenciaMinimapa": {
+          "corto": "Carnes",
+          "frase": "el mostrador de carnes"
+        }
+      },
+      "nevera_refrescos": {
+        "prefijoDe": "BEB",
+        "siguienteCodigo": "BEB-02",
+        "isRentable": true,
+        "naceNoComercializable": false,
+        "carasDe": 1,
+        "rateTypeOf": "nevera_refrescos",
+        "rateTypeLabel": "Nevera de bebidas",
+        "enRateTypes": true,
+        "categoriaDeTipo": "Refrigeración",
+        "informe": {
+          "singular": "nevera de bebidas",
+          "plural": "neveras de bebidas"
+        },
+        "frio": true,
+        "conProducto": true,
+        "prueba3D": true,
+        "surtido": false,
+        "formaCorrida": false,
+        "referenciaMinimapa": {
+          "corto": "Neveras",
+          "frase": "las neveras"
+        }
+      },
+      "nevera_vegetales": {
+        "prefijoDe": "VEG",
+        "siguienteCodigo": "VEG-02",
+        "isRentable": true,
+        "naceNoComercializable": false,
+        "carasDe": 1,
+        "rateTypeOf": "nevera_vegetales",
+        "rateTypeLabel": "Nevera de vegetales",
+        "enRateTypes": true,
+        "categoriaDeTipo": "Refrigeración",
+        "informe": {
+          "singular": "nevera de vegetales",
+          "plural": "neveras de vegetales"
+        },
+        "frio": true,
+        "conProducto": true,
+        "prueba3D": false,
+        "surtido": false,
+        "formaCorrida": false,
+        "referenciaMinimapa": {
+          "corto": "Vegetales",
+          "frase": "el mural de frutas y verduras"
+        }
+      },
+      "stand_frutas": {
+        "prefijoDe": "FRU",
+        "siguienteCodigo": "FRU-02",
+        "isRentable": true,
+        "naceNoComercializable": false,
+        "carasDe": 1,
+        "rateTypeOf": "stand_frutas",
+        "rateTypeLabel": "Frutas y verduras",
+        "enRateTypes": true,
+        "categoriaDeTipo": "Frescos",
+        "informe": {
+          "singular": "stand de frutas",
+          "plural": "stands de frutas"
+        },
+        "frio": false,
+        "conProducto": true,
+        "prueba3D": false,
+        "surtido": false,
+        "formaCorrida": false,
+        "referenciaMinimapa": {
+          "corto": "Frutas",
+          "frase": "las frutas"
+        }
+      },
+      "checkout": {
+        "prefijoDe": "CAJ",
+        "siguienteCodigo": "CAJ-03",
+        "isRentable": false,
+        "naceNoComercializable": true,
+        "carasDe": 1,
+        "rateTypeOf": "checkout",
+        "rateTypeLabel": "checkout",
+        "enRateTypes": false,
+        "categoriaDeTipo": "Otros",
+        "informe": {
+          "singular": "checkout",
+          "plural": "checkouts"
+        },
+        "frio": false,
+        "conProducto": false,
+        "prueba3D": false,
+        "surtido": false,
+        "formaCorrida": false,
+        "referenciaMinimapa": {
+          "corto": "Cajas",
+          "frase": "las cajas"
+        }
+      },
+      "servicio_cliente": {
+        "prefijoDe": "SAC",
+        "siguienteCodigo": "SAC-02",
+        "isRentable": false,
+        "naceNoComercializable": true,
+        "carasDe": 1,
+        "rateTypeOf": "servicio_cliente",
+        "rateTypeLabel": "servicio_cliente",
+        "enRateTypes": false,
+        "categoriaDeTipo": "Otros",
+        "informe": {
+          "singular": "servicio_cliente",
+          "plural": "servicio_clientes"
+        },
+        "frio": false,
+        "conProducto": false,
+        "prueba3D": false,
+        "surtido": false,
+        "formaCorrida": false,
+        "referenciaMinimapa": null
+      },
+      "columna": {
+        "prefijoDe": "COL",
+        "siguienteCodigo": "COL-02",
+        "isRentable": false,
+        "naceNoComercializable": true,
+        "carasDe": 1,
+        "rateTypeOf": "columna",
+        "rateTypeLabel": "columna",
+        "enRateTypes": false,
+        "categoriaDeTipo": "Otros",
+        "informe": {
+          "singular": "columna",
+          "plural": "columnas"
+        },
+        "frio": false,
+        "conProducto": false,
+        "prueba3D": false,
+        "surtido": false,
+        "formaCorrida": false,
+        "referenciaMinimapa": null
+      },
+      "exhibicion": {
+        "prefijoDe": "EXH",
+        "siguienteCodigo": "EXH-02",
+        "isRentable": true,
+        "naceNoComercializable": false,
+        "carasDe": 1,
+        "rateTypeOf": "exhibicion",
+        "rateTypeLabel": "exhibicion",
+        "enRateTypes": false,
+        "categoriaDeTipo": "Otros",
+        "informe": {
+          "singular": "exhibicion",
+          "plural": "exhibicions"
+        },
+        "frio": false,
+        "conProducto": true,
+        "prueba3D": false,
+        "surtido": false,
+        "formaCorrida": false,
+        "referenciaMinimapa": null
+      },
+      "gondola_doble": {
+        "prefijoDe": "GON",
+        "siguienteCodigo": "GON-06",
+        "isRentable": true,
+        "naceNoComercializable": false,
+        "carasDe": 2,
+        "rateTypeOf": "gondola",
+        "rateTypeLabel": "Góndola, por cara",
+        "enRateTypes": true,
+        "categoriaDeTipo": "Otros",
+        "informe": {
+          "singular": "gondola_doble",
+          "plural": "gondola_dobles"
+        },
+        "frio": false,
+        "conProducto": true,
+        "prueba3D": false,
+        "surtido": false,
+        "formaCorrida": true,
+        "referenciaMinimapa": null
+      },
+      "gondola_mural": {
+        "prefijoDe": "GON",
+        "siguienteCodigo": "GON-06",
+        "isRentable": true,
+        "naceNoComercializable": false,
+        "carasDe": 1,
+        "rateTypeOf": "gondola",
+        "rateTypeLabel": "Góndola, por cara",
+        "enRateTypes": true,
+        "categoriaDeTipo": "Otros",
+        "informe": {
+          "singular": "gondola_mural",
+          "plural": "gondola_murals"
+        },
+        "frio": false,
+        "conProducto": false,
+        "prueba3D": false,
+        "surtido": false,
+        "formaCorrida": true,
+        "referenciaMinimapa": null
+      },
+      "desconocido": {
+        "prefijoDe": "SPC",
+        "siguienteCodigo": "SPC-01",
+        "isRentable": true,
+        "naceNoComercializable": false,
+        "carasDe": 1,
+        "rateTypeOf": "desconocido",
+        "rateTypeLabel": "desconocido",
+        "enRateTypes": false,
+        "categoriaDeTipo": "Otros",
+        "informe": {
+          "singular": "desconocido",
+          "plural": "desconocidos"
+        },
+        "frio": false,
+        "conProducto": false,
+        "prueba3D": false,
+        "surtido": false,
+        "formaCorrida": false,
+        "referenciaMinimapa": null
+      }
+    },
+    "por_mueble": {
+      "sint-01-gondola-double": {
+        "isRentable": true,
+        "carasDe": 2,
+        "isDoubleGondola": true,
+        "rateTypeOf": "gondola",
+        "fullSpaceCode": "NAVE-GON-01",
+        "ventaDeTipo": {
+          "filas": {
+            "rowBottom": 0.125,
+            "alturas": [
+              0.125,
+              0.42500000000000004,
+              0.75,
+              1.075,
+              1.375,
+              1.7000000000000002
+            ],
+            "rowPitch": 0.31500000000000006,
+            "rows": 5,
+            "fondos": [
+              0.42,
+              0.42,
+              0.37,
+              0.37,
+              0.3
+            ],
+            "giros": [
+              0,
+              0,
+              0,
+              0,
+              -0.08726646259971647
+            ]
+          },
+          "vanos": [
+            {
+              "x": 0,
+              "ancho": 0.85
+            }
+          ],
+          "caras": [
+            {
+              "montaje": -0.01,
+              "hacia": -1
+            },
+            {
+              "montaje": 0.01,
+              "hacia": 1
+            }
+          ],
+          "franja": 1.66,
+          "altoDeCara": 1.8
+        },
+        "editor2D": {
+          "type": "gondola_doble",
+          "label": "Góndola Doble",
+          "w": 0.9,
+          "h": 0.9
+        },
+        "editor3D": {
+          "type": "gondola",
+          "gondolaType": "double",
+          "label": "Góndola Doble",
+          "color": "#6366f1"
+        }
+      },
+      "sint-02-gondola-wall": {
+        "isRentable": true,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "gondola",
+        "fullSpaceCode": "NAVE-GON-02",
+        "ventaDeTipo": {
+          "filas": {
+            "rowBottom": 0.125,
+            "alturas": [
+              0.125,
+              0.45,
+              0.8,
+              1.125,
+              1.475,
+              1.8
+            ],
+            "rowPitch": 0.335,
+            "rows": 5,
+            "fondos": [
+              0.37,
+              0.37,
+              0.37,
+              0.3,
+              0.3
+            ],
+            "giros": [
+              0,
+              0,
+              0,
+              0,
+              -0.08726646259971647
+            ]
+          },
+          "vanos": [
+            {
+              "x": 0,
+              "ancho": 0.95
+            }
+          ],
+          "caras": [
+            {
+              "montaje": -0.01,
+              "hacia": -1
+            }
+          ],
+          "franja": 1.7599999999999998,
+          "altoDeCara": 1.9
+        },
+        "editor2D": {
+          "type": "gondola_mural",
+          "label": "Góndola Mural",
+          "w": 1,
+          "h": 0.4
+        },
+        "editor3D": {
+          "type": "gondola",
+          "gondolaType": "wall",
+          "label": "Góndola Mural",
+          "color": "#818cf8"
+        }
+      },
+      "sint-03-punta": {
+        "isRentable": true,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "punta",
+        "fullSpaceCode": "NAVE-PUN-01",
+        "ventaDeTipo": {
+          "filas": {
+            "rowBottom": 0.125,
+            "alturas": [
+              0.125,
+              0.42500000000000004,
+              0.75,
+              1.075,
+              1.375,
+              1.44
+            ],
+            "rowPitch": 0.263,
+            "rows": 5,
+            "fondos": [
+              0.37,
+              0.37,
+              0.37,
+              0.3,
+              0.3
+            ],
+            "giros": [
+              0,
+              0,
+              0,
+              -0.08726646259971647,
+              -0.08726646259971647
+            ]
+          },
+          "vanos": [
+            {
+              "x": 0,
+              "ancho": 0.85
+            }
+          ],
+          "caras": [
+            {
+              "montaje": 0.2,
+              "hacia": -1
+            }
+          ],
+          "franja": 1.3599999999999999,
+          "altoDeCara": 1.44
+        },
+        "editor2D": {
+          "type": "punta",
+          "label": "Punta Góndola",
+          "w": 0.9,
+          "h": 0.4
+        },
+        "editor3D": {
+          "type": "punta",
+          "gondolaType": null,
+          "label": "Punta Góndola",
+          "color": "#7c3aed"
+        }
+      },
+      "sint-04-ristra": {
+        "isRentable": true,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "ristra",
+        "fullSpaceCode": "NAVE-RIS-01",
+        "ventaDeTipo": null,
+        "editor2D": {
+          "type": "ristra",
+          "label": "Ristra",
+          "w": 0.4,
+          "h": 0.4
+        },
+        "editor3D": {
+          "type": "ristra",
+          "gondolaType": null,
+          "label": "Ristra",
+          "color": "#d97706"
+        }
+      },
+      "sint-05-cross": {
+        "isRentable": true,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "cross",
+        "fullSpaceCode": "NAVE-CRS-01",
+        "ventaDeTipo": null,
+        "editor2D": {
+          "type": "cross",
+          "label": "Exhibidor Cruz",
+          "w": 0.8,
+          "h": 0.8
+        },
+        "editor3D": {
+          "type": "cross",
+          "gondolaType": null,
+          "label": "Exhibidor Cruz",
+          "color": "#0891b2"
+        }
+      },
+      "sint-06-mueble": {
+        "isRentable": true,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "mueble",
+        "fullSpaceCode": "NAVE-MUE-01",
+        "ventaDeTipo": null,
+        "editor2D": {
+          "type": "mueble",
+          "label": "Vitrina",
+          "w": 1.2,
+          "h": 0.6
+        },
+        "editor3D": {
+          "type": "mueble",
+          "gondolaType": null,
+          "label": "Vitrina",
+          "color": "#475569"
+        }
+      },
+      "sint-07-isla": {
+        "isRentable": true,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "isla",
+        "fullSpaceCode": "NAVE-EXP-01",
+        "ventaDeTipo": null,
+        "editor2D": {
+          "type": "isla",
+          "label": "Exhib. de Piso",
+          "w": 1.2,
+          "h": 0.8
+        },
+        "editor3D": {
+          "type": "isla",
+          "gondolaType": null,
+          "label": "Exhib. de Piso",
+          "color": "#f59e0b"
+        }
+      },
+      "sint-08-impulsador": {
+        "isRentable": true,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "impulsador",
+        "fullSpaceCode": "NAVE-IMP-01",
+        "ventaDeTipo": null,
+        "editor2D": {
+          "type": "impulsador",
+          "label": "Impulsador Marca",
+          "w": 0.6,
+          "h": 0.4
+        },
+        "editor3D": {
+          "type": "impulsador",
+          "gondolaType": null,
+          "label": "Impulsador Marca",
+          "color": "#e11d48"
+        }
+      },
+      "sint-09-batea": {
+        "isRentable": true,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "batea",
+        "fullSpaceCode": "NAVE-BAT-01",
+        "ventaDeTipo": null,
+        "editor2D": {
+          "type": "batea",
+          "label": "Batea",
+          "w": 0.8,
+          "h": 0.6
+        },
+        "editor3D": {
+          "type": "batea",
+          "gondolaType": null,
+          "label": "Batea",
+          "color": "#84cc16"
+        }
+      },
+      "sint-10-isla_fria": {
+        "isRentable": true,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "isla_fria",
+        "fullSpaceCode": "NAVE-ISL-01",
+        "ventaDeTipo": null,
+        "editor2D": {
+          "type": "isla_fria",
+          "label": "Isla Helados/Cong.",
+          "w": 1.8,
+          "h": 1
+        },
+        "editor3D": {
+          "type": "isla_fria",
+          "gondolaType": null,
+          "label": "Isla Helados/Cong.",
+          "color": "#e5e7eb"
+        }
+      },
+      "sint-11-nevera_carnes": {
+        "isRentable": true,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "nevera_carnes",
+        "fullSpaceCode": "NAVE-CAR-01",
+        "ventaDeTipo": null,
+        "editor2D": {
+          "type": "nevera_carnes",
+          "label": "Nevera Carnes",
+          "w": 2,
+          "h": 0.9
+        },
+        "editor3D": {
+          "type": "nevera_carnes",
+          "gondolaType": null,
+          "label": "Nevera Carnes",
+          "color": "#111827"
+        }
+      },
+      "sint-12-nevera_refrescos": {
+        "isRentable": true,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "nevera_refrescos",
+        "fullSpaceCode": "NAVE-BEB-01",
+        "ventaDeTipo": {
+          "filas": {
+            "rowBottom": 0.2,
+            "alturas": [
+              0.2,
+              0.5,
+              0.775,
+              1.05,
+              1.35,
+              1.6600000000000001
+            ],
+            "rowPitch": 0.29200000000000004,
+            "rows": 5,
+            "fondos": [
+              0.6869999999999999,
+              0.6869999999999999,
+              0.6869999999999999,
+              0.6869999999999999,
+              0.6869999999999999
+            ],
+            "giros": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "vanos": [
+            {
+              "x": 0,
+              "ancho": 1.0999999999999999
+            }
+          ],
+          "caras": [
+            {
+              "montaje": 0.361,
+              "hacia": -1
+            }
+          ],
+          "sobreApoyo": 0.005,
+          "altoDeCara": 1.8
+        },
+        "editor2D": {
+          "type": "nevera_refrescos",
+          "label": "Nevera Refrescos",
+          "w": 1.2,
+          "h": 0.75
+        },
+        "editor3D": {
+          "type": "nevera_refrescos",
+          "gondolaType": null,
+          "label": "Nevera Refrescos",
+          "color": "#1e293b"
+        }
+      },
+      "sint-13-nevera_vegetales": {
+        "isRentable": true,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "nevera_vegetales",
+        "fullSpaceCode": "NAVE-VEG-01",
+        "ventaDeTipo": null,
+        "editor2D": {
+          "type": "nevera_vegetales",
+          "label": "Nevera Vegetales",
+          "w": 1.8,
+          "h": 0.9
+        },
+        "editor3D": {
+          "type": "nevera_vegetales",
+          "gondolaType": null,
+          "label": "Nevera Vegetales",
+          "color": "#1e293b"
+        }
+      },
+      "sint-14-stand_frutas": {
+        "isRentable": true,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "stand_frutas",
+        "fullSpaceCode": "NAVE-FRU-01",
+        "ventaDeTipo": null,
+        "editor2D": {
+          "type": "stand_frutas",
+          "label": "Stand Frutas/Verd",
+          "w": 1.5,
+          "h": 1.2
+        },
+        "editor3D": {
+          "type": "stand_frutas",
+          "gondolaType": null,
+          "label": "Stand Frutas/Verd",
+          "color": "#84cc16"
+        }
+      },
+      "sint-15-checkout": {
+        "isRentable": false,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "checkout",
+        "fullSpaceCode": "NAVE-CAJ-01",
+        "ventaDeTipo": null,
+        "editor2D": {
+          "type": "checkout",
+          "label": "Checkout / Caja",
+          "w": 1.8,
+          "h": 0.7
+        },
+        "editor3D": {
+          "type": "checkout",
+          "gondolaType": null,
+          "label": "Checkout / Caja",
+          "color": "#8b5cf6"
+        }
+      },
+      "sint-16-servicio_cliente": {
+        "isRentable": false,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "servicio_cliente",
+        "fullSpaceCode": "NAVE-SAC-01",
+        "ventaDeTipo": null,
+        "editor2D": {
+          "type": "servicio_cliente",
+          "label": "Servicio al Cliente",
+          "w": 1.6,
+          "h": 0.7
+        },
+        "editor3D": {
+          "type": "servicio_cliente",
+          "gondolaType": null,
+          "label": "Servicio al Cliente",
+          "color": "#0ea5e9"
+        }
+      },
+      "sint-17-metro": {
+        "isRentable": false,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "metro",
+        "fullSpaceCode": "NAVE-MET-01",
+        "ventaDeTipo": null,
+        "editor2D": {
+          "type": "metro",
+          "label": "Zona Libre",
+          "w": 1,
+          "h": 1
+        },
+        "editor3D": {
+          "type": "metro",
+          "gondolaType": null,
+          "label": "Zona Libre",
+          "color": "#64748b"
+        }
+      },
+      "sint-18-columna": {
+        "isRentable": false,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "columna",
+        "fullSpaceCode": "NAVE-COL-01",
+        "ventaDeTipo": null,
+        "editor2D": {
+          "type": "columna",
+          "label": "Columna",
+          "w": 0.3,
+          "h": 0.3
+        },
+        "editor3D": {
+          "type": "columna",
+          "gondolaType": null,
+          "label": "Columna",
+          "color": "#94a3b8"
+        }
+      },
+      "sint-19-robatope": {
+        "isRentable": true,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "robatope",
+        "fullSpaceCode": "NAVE-ROB-01",
+        "ventaDeTipo": {
+          "filas": {
+            "rowBottom": 0.40800000000000003,
+            "alturas": [
+              0.40800000000000003,
+              0.685,
+              0.9620000000000002,
+              1.239,
+              1.5450000000000002
+            ],
+            "rowPitch": 0.277,
+            "rows": 4,
+            "fondos": [
+              0.39,
+              0.39,
+              0.39,
+              0.39
+            ],
+            "giros": [
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "vanos": [
+            {
+              "x": 0,
+              "ancho": 0.245
+            }
+          ],
+          "caras": [
+            {
+              "montaje": 0.195,
+              "hacia": -1
+            }
+          ],
+          "altoDeCara": 1.5450000000000002,
+          "grupoGiro": -0.06
+        },
+        "editor2D": {
+          "type": "robatope",
+          "label": "Robatope",
+          "w": 0.3,
+          "h": 0.4
+        },
+        "editor3D": {
+          "type": "robatope",
+          "gondolaType": null,
+          "label": "Robatope",
+          "color": "#c0c0bc"
+        }
+      },
+      "sint-20-gondola-sin-gondolaType": {
+        "isRentable": true,
+        "carasDe": 2,
+        "isDoubleGondola": true,
+        "rateTypeOf": "gondola",
+        "fullSpaceCode": "NAVE-GON-03",
+        "ventaDeTipo": {
+          "filas": {
+            "rowBottom": 0.125,
+            "alturas": [
+              0.125,
+              0.42500000000000004,
+              0.75,
+              1.075,
+              1.375,
+              1.7000000000000002
+            ],
+            "rowPitch": 0.31500000000000006,
+            "rows": 5,
+            "fondos": [
+              0.42,
+              0.42,
+              0.37,
+              0.37,
+              0.3
+            ],
+            "giros": [
+              0,
+              0,
+              0,
+              0,
+              -0.08726646259971647
+            ]
+          },
+          "vanos": [
+            {
+              "x": 0,
+              "ancho": 0.85
+            }
+          ],
+          "caras": [
+            {
+              "montaje": -0.01,
+              "hacia": -1
+            },
+            {
+              "montaje": 0.01,
+              "hacia": 1
+            }
+          ],
+          "franja": 1.66,
+          "altoDeCara": 1.8
+        },
+        "editor2D": {
+          "type": "gondola_doble",
+          "label": "Góndola Doble",
+          "w": 0.9,
+          "h": 0.9
+        },
+        "editor3D": {
+          "type": "gondola",
+          "gondolaType": null,
+          "label": "Góndola Doble",
+          "color": "#6366f1"
+        }
+      },
+      "sint-21-gondola_doble-legado-2D": {
+        "isRentable": true,
+        "carasDe": 2,
+        "isDoubleGondola": true,
+        "rateTypeOf": "gondola",
+        "fullSpaceCode": "NAVE-GON-04",
+        "ventaDeTipo": {
+          "filas": {
+            "rowBottom": 0.125,
+            "alturas": [
+              0.125,
+              0.42500000000000004,
+              0.75,
+              1.075,
+              1.375,
+              1.7000000000000002
+            ],
+            "rowPitch": 0.31500000000000006,
+            "rows": 5,
+            "fondos": [
+              0.42,
+              0.42,
+              0.37,
+              0.37,
+              0.3
+            ],
+            "giros": [
+              0,
+              0,
+              0,
+              0,
+              -0.08726646259971647
+            ]
+          },
+          "vanos": [
+            {
+              "x": 0,
+              "ancho": 0.85
+            }
+          ],
+          "caras": [
+            {
+              "montaje": -0.01,
+              "hacia": -1
+            },
+            {
+              "montaje": 0.01,
+              "hacia": 1
+            }
+          ],
+          "franja": 1.66,
+          "altoDeCara": 1.8
+        },
+        "editor2D": {
+          "type": "gondola_doble",
+          "label": "Góndola Doble",
+          "w": 0.9,
+          "h": 0.9
+        },
+        "editor3D": {
+          "type": "gondola_doble",
+          "gondolaType": null,
+          "label": "gondola_doble",
+          "color": "#6366f1"
+        }
+      },
+      "sint-22-gondola_mural-legado-2D": {
+        "isRentable": true,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "gondola",
+        "fullSpaceCode": "NAVE-GON-05",
+        "ventaDeTipo": null,
+        "editor2D": {
+          "type": "gondola_mural",
+          "label": "Góndola Mural",
+          "w": 1,
+          "h": 0.4
+        },
+        "editor3D": {
+          "type": "gondola_mural",
+          "gondolaType": null,
+          "label": "gondola_mural",
+          "color": "#6366f1"
+        }
+      },
+      "sint-23-exhibicion-legado": {
+        "isRentable": true,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "exhibicion",
+        "fullSpaceCode": "NAVE-EXH-01",
+        "ventaDeTipo": null,
+        "editor2D": {
+          "type": "exhibicion",
+          "label": "Exhibición",
+          "w": 1,
+          "h": 1
+        },
+        "editor3D": null
+      },
+      "sint-24-metro-habilitado": {
+        "isRentable": true,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "metro",
+        "fullSpaceCode": "NAVE-MET-02",
+        "ventaDeTipo": null,
+        "editor2D": {
+          "type": "metro",
+          "label": "Zona Libre",
+          "w": 1,
+          "h": 1
+        },
+        "editor3D": {
+          "type": "metro",
+          "gondolaType": null,
+          "label": "Zona Libre",
+          "color": "#64748b"
+        }
+      },
+      "sint-25-checkout-con-bandera": {
+        "isRentable": false,
+        "carasDe": 1,
+        "isDoubleGondola": false,
+        "rateTypeOf": "checkout",
+        "fullSpaceCode": "NAVE-CAJ-02",
+        "ventaDeTipo": null,
+        "editor2D": {
+          "type": "checkout",
+          "label": "Checkout / Caja",
+          "w": 1.8,
+          "h": 0.7
+        },
+        "editor3D": {
+          "type": "checkout",
+          "gondolaType": null,
+          "label": "Checkout / Caja",
+          "color": "#8b5cf6"
+        }
+      }
+    },
+    "nace_en_2D": {
+      "de": "frontend/src/utils/convertirPlano.ts (itemsToStore con el catálogo del plano 2D)",
+      "valor": {
+        "gondola_doble": {
+          "type": "gondola",
+          "gondolaType": "double",
+          "label": "Góndola Doble",
+          "w": 0.9,
+          "d": 0.9,
+          "h": 1.8,
+          "color": "#6366f1"
+        },
+        "gondola_mural": {
+          "type": "gondola",
+          "gondolaType": "wall",
+          "label": "Góndola Mural",
+          "w": 1,
+          "d": 0.4,
+          "h": 1.9,
+          "color": "#818cf8"
+        },
+        "punta": {
+          "type": "punta",
+          "gondolaType": null,
+          "label": "Punta Góndola",
+          "w": 0.9,
+          "d": 0.4,
+          "h": 1.8,
+          "color": "#7c3aed"
+        },
+        "robatope": {
+          "type": "robatope",
+          "gondolaType": null,
+          "label": "Robatope",
+          "w": 0.3,
+          "d": 0.4,
+          "h": 1.6,
+          "color": "#c0c0bc"
+        },
+        "metro": {
+          "type": "metro",
+          "gondolaType": null,
+          "label": "Zona Libre",
+          "w": 1,
+          "d": 1,
+          "h": 0.05,
+          "color": "#64748b"
+        },
+        "mueble": {
+          "type": "mueble",
+          "gondolaType": null,
+          "label": "Vitrina",
+          "w": 1.2,
+          "d": 0.6,
+          "h": 2,
+          "color": "#475569"
+        },
+        "ristra": {
+          "type": "ristra",
+          "gondolaType": null,
+          "label": "Ristra",
+          "w": 0.4,
+          "d": 0.4,
+          "h": 1.6,
+          "color": "#d97706"
+        },
+        "cross": {
+          "type": "cross",
+          "gondolaType": null,
+          "label": "Exhibidor Cruz",
+          "w": 0.8,
+          "d": 0.8,
+          "h": 1.8,
+          "color": "#0891b2"
+        },
+        "isla": {
+          "type": "isla",
+          "gondolaType": null,
+          "label": "Exhib. de Piso",
+          "w": 1.2,
+          "d": 0.8,
+          "h": 1.4,
+          "color": "#f59e0b"
+        },
+        "impulsador": {
+          "type": "impulsador",
+          "gondolaType": null,
+          "label": "Impulsador Marca",
+          "w": 0.6,
+          "d": 0.4,
+          "h": 1.5,
+          "color": "#e11d48"
+        },
+        "batea": {
+          "type": "batea",
+          "gondolaType": null,
+          "label": "Batea",
+          "w": 0.8,
+          "d": 0.6,
+          "h": 0.8,
+          "color": "#84cc16"
+        },
+        "isla_fria": {
+          "type": "isla_fria",
+          "gondolaType": null,
+          "label": "Isla Helados/Cong.",
+          "w": 1.8,
+          "d": 1,
+          "h": 0.9,
+          "color": "#e5e7eb"
+        },
+        "nevera_carnes": {
+          "type": "nevera_carnes",
+          "gondolaType": null,
+          "label": "Nevera Carnes",
+          "w": 2,
+          "d": 0.85,
+          "h": 1.05,
+          "color": "#1e293b"
+        },
+        "nevera_vegetales": {
+          "type": "nevera_vegetales",
+          "gondolaType": null,
+          "label": "Nevera Vegetales",
+          "w": 1.8,
+          "d": 0.9,
+          "h": 1.6,
+          "color": "#1e293b"
+        },
+        "nevera_refrescos": {
+          "type": "nevera_refrescos",
+          "gondolaType": null,
+          "label": "Nevera Refrescos",
+          "w": 1.2,
+          "d": 0.75,
+          "h": 1.8,
+          "color": "#1e293b"
+        },
+        "stand_frutas": {
+          "type": "stand_frutas",
+          "gondolaType": null,
+          "label": "Stand Frutas/Verd",
+          "w": 1.5,
+          "d": 1.2,
+          "h": 0.95,
+          "color": "#84cc16"
+        },
+        "checkout": {
+          "type": "checkout",
+          "gondolaType": null,
+          "label": "Checkout / Caja",
+          "w": 1.8,
+          "d": 0.7,
+          "h": 0.9,
+          "color": "#8b5cf6"
+        },
+        "servicio_cliente": {
+          "type": "servicio_cliente",
+          "gondolaType": null,
+          "label": "Servicio al Cliente",
+          "w": 1.6,
+          "d": 0.7,
+          "h": 1.8,
+          "color": "#6366f1"
+        },
+        "columna": {
+          "type": "columna",
+          "gondolaType": null,
+          "label": "Columna",
+          "w": 0.3,
+          "d": 0.3,
+          "h": 3,
+          "color": "#94a3b8"
+        },
+        "exhibicion": {
+          "type": "exhibicion",
+          "gondolaType": null,
+          "label": "exhibicion",
+          "w": 1,
+          "d": 1,
+          "h": 1.5,
+          "color": "#ec4899"
+        }
+      }
+    },
+    "prefijoDesalineado": {
+      "de": "frontend/src/utils/nomenclatura.ts",
+      "valor": []
+    },
+    "medidas": {
+      "de": "frontend/src/components/StoreEditor3D/muebles/medidas.ts",
+      "nivelesDeEntrepano": [
+        {
+          "alto": 1.2,
+          "niveles": [
+            0.125,
+            0.45,
+            0.775,
+            1.1
+          ]
+        },
+        {
+          "alto": 1.35,
+          "niveles": [
+            0.125,
+            0.5,
+            0.875,
+            1.25
+          ]
+        },
+        {
+          "alto": 1.5,
+          "niveles": [
+            0.125,
+            0.45,
+            0.75,
+            1.075,
+            1.4000000000000001
+          ]
+        },
+        {
+          "alto": 1.6,
+          "niveles": [
+            0.125,
+            0.47500000000000003,
+            0.8,
+            1.1500000000000001,
+            1.5
+          ]
+        },
+        {
+          "alto": 1.8,
+          "niveles": [
+            0.125,
+            0.42500000000000004,
+            0.75,
+            1.075,
+            1.375,
+            1.7000000000000002
+          ]
+        },
+        {
+          "alto": 1.9,
+          "niveles": [
+            0.125,
+            0.45,
+            0.8,
+            1.125,
+            1.475,
+            1.8
+          ]
+        },
+        {
+          "alto": 2,
+          "niveles": [
+            0.125,
+            0.47500000000000003,
+            0.8250000000000001,
+            1.2000000000000002,
+            1.55,
+            1.9000000000000001
+          ]
+        },
+        {
+          "alto": 2.2,
+          "niveles": [
+            0.125,
+            0.45,
+            0.775,
+            1.1,
+            1.4500000000000002,
+            1.7750000000000001,
+            2.1
+          ]
+        },
+        {
+          "alto": 2.4,
+          "niveles": [
+            0.125,
+            0.42500000000000004,
+            0.75,
+            1.05,
+            1.375,
+            1.675,
+            2,
+            2.3000000000000003
+          ]
+        },
+        {
+          "alto": 2.6,
+          "niveles": [
+            0.125,
+            0.45,
+            0.8,
+            1.1500000000000001,
+            1.475,
+            1.8250000000000002,
+            2.15,
+            2.5
+          ]
+        }
+      ],
+      "vanosDeCorrido": [
+        {
+          "ancho": 0.3,
+          "vanos": [
+            {
+              "x": 0,
+              "ancho": 0.25
+            }
+          ]
+        },
+        {
+          "ancho": 0.6,
+          "vanos": [
+            {
+              "x": 0,
+              "ancho": 0.5499999999999999
+            }
+          ]
+        },
+        {
+          "ancho": 0.9,
+          "vanos": [
+            {
+              "x": 0,
+              "ancho": 0.85
+            }
+          ]
+        },
+        {
+          "ancho": 1,
+          "vanos": [
+            {
+              "x": 0,
+              "ancho": 0.95
+            }
+          ]
+        },
+        {
+          "ancho": 1.2,
+          "vanos": [
+            {
+              "x": 0,
+              "ancho": 1.15
+            }
+          ]
+        },
+        {
+          "ancho": 1.25,
+          "vanos": [
+            {
+              "x": 0,
+              "ancho": 1.2
+            }
+          ]
+        },
+        {
+          "ancho": 1.5,
+          "vanos": [
+            {
+              "x": 0,
+              "ancho": 1.45
+            }
+          ]
+        },
+        {
+          "ancho": 1.8,
+          "vanos": [
+            {
+              "x": 0,
+              "ancho": 1.75
+            }
+          ]
+        },
+        {
+          "ancho": 2,
+          "vanos": [
+            {
+              "x": -0.5,
+              "ancho": 0.95
+            },
+            {
+              "x": 0.5,
+              "ancho": 0.95
+            }
+          ]
+        },
+        {
+          "ancho": 2.5,
+          "vanos": [
+            {
+              "x": -0.625,
+              "ancho": 1.2
+            },
+            {
+              "x": 0.625,
+              "ancho": 1.2
+            }
+          ]
+        },
+        {
+          "ancho": 3,
+          "vanos": [
+            {
+              "x": -0.75,
+              "ancho": 1.45
+            },
+            {
+              "x": 0.75,
+              "ancho": 1.45
+            }
+          ]
+        },
+        {
+          "ancho": 3.6,
+          "vanos": [
+            {
+              "x": -1.2000000000000002,
+              "ancho": 1.15
+            },
+            {
+              "x": -2.220446049250313e-16,
+              "ancho": 1.15
+            },
+            {
+              "x": 1.2,
+              "ancho": 1.15
+            }
+          ]
+        },
+        {
+          "ancho": 3.75,
+          "vanos": [
+            {
+              "x": -1.25,
+              "ancho": 1.2
+            },
+            {
+              "x": 0,
+              "ancho": 1.2
+            },
+            {
+              "x": 1.25,
+              "ancho": 1.2
+            }
+          ]
+        },
+        {
+          "ancho": 5,
+          "vanos": [
+            {
+              "x": -1.875,
+              "ancho": 1.2
+            },
+            {
+              "x": -0.625,
+              "ancho": 1.2
+            },
+            {
+              "x": 0.625,
+              "ancho": 1.2
+            },
+            {
+              "x": 1.875,
+              "ancho": 1.2
+            }
+          ]
+        },
+        {
+          "ancho": 7.5,
+          "vanos": [
+            {
+              "x": -3.125,
+              "ancho": 1.2
+            },
+            {
+              "x": -1.875,
+              "ancho": 1.2
+            },
+            {
+              "x": -0.625,
+              "ancho": 1.2
+            },
+            {
+              "x": 0.625,
+              "ancho": 1.2
+            },
+            {
+              "x": 1.875,
+              "ancho": 1.2
+            },
+            {
+              "x": 3.125,
+              "ancho": 1.2
+            }
+          ]
+        }
+      ],
+      "puertasDeNevera": [
+        {
+          "ancho": 0.6,
+          "puertas": 1
+        },
+        {
+          "ancho": 0.75,
+          "puertas": 1
+        },
+        {
+          "ancho": 0.9,
+          "puertas": 2
+        },
+        {
+          "ancho": 1.2,
+          "puertas": 2
+        },
+        {
+          "ancho": 1.445,
+          "puertas": 2
+        },
+        {
+          "ancho": 1.5,
+          "puertas": 2
+        },
+        {
+          "ancho": 1.8,
+          "puertas": 3
+        },
+        {
+          "ancho": 2,
+          "puertas": 3
+        },
+        {
+          "ancho": 2.07,
+          "puertas": 3
+        },
+        {
+          "ancho": 2.25,
+          "puertas": 3
+        },
+        {
+          "ancho": 2.5,
+          "puertas": 4
+        },
+        {
+          "ancho": 3,
+          "puertas": 4
+        }
+      ],
+      "cotasDeCheckout": [
+        {
+          "w": 1.8,
+          "d": 0.7,
+          "h": 0.9,
+          "cotas": {
+            "mesa": 0.9,
+            "cama": 0.868,
+            "largoDeMesa": 1.26,
+            "xDeMesa": -0.27,
+            "fondoDeMesa": 0.532,
+            "zDeMesa": 0.08400000000000002,
+            "largoDeAla": 0.54,
+            "xDeAla": 0.63,
+            "mesaDeAla": 0.9550000000000001,
+            "xDeConsola": 0.16999999999999998,
+            "zDeConsola": 0.18000000000000005,
+            "yConsola": 1.1,
+            "yPoste": 1.48,
+            "yPantalla": 1.56,
+            "yDeImpulso": [
+              0.175,
+              0.71
+            ]
+          }
+        },
+        {
+          "w": 1.2,
+          "d": 0.6,
+          "h": 0.85,
+          "cotas": {
+            "mesa": 0.85,
+            "cama": 0.818,
+            "largoDeMesa": 0.84,
+            "xDeMesa": -0.18,
+            "fondoDeMesa": 0.45599999999999996,
+            "zDeMesa": 0.07199999999999998,
+            "largoDeAla": 0.36,
+            "xDeAla": 0.42,
+            "mesaDeAla": 0.905,
+            "xDeConsola": 0.049999999999999996,
+            "zDeConsola": 0.12999999999999995,
+            "yConsola": 1.05,
+            "yPoste": 1.4300000000000002,
+            "yPantalla": 1.5100000000000002,
+            "yDeImpulso": [
+              0.175,
+              0.6599999999999999
+            ]
+          }
+        },
+        {
+          "w": 1.5,
+          "d": 0.6,
+          "h": 0.9,
+          "cotas": {
+            "mesa": 0.9,
+            "cama": 0.868,
+            "largoDeMesa": 1.05,
+            "xDeMesa": -0.22499999999999998,
+            "fondoDeMesa": 0.45599999999999996,
+            "zDeMesa": 0.07199999999999998,
+            "largoDeAla": 0.44999999999999996,
+            "xDeAla": 0.525,
+            "mesaDeAla": 0.9550000000000001,
+            "xDeConsola": 0.11000000000000004,
+            "zDeConsola": 0.12999999999999995,
+            "yConsola": 1.1,
+            "yPoste": 1.48,
+            "yPantalla": 1.56,
+            "yDeImpulso": [
+              0.175,
+              0.71
+            ]
+          }
+        },
+        {
+          "w": 2,
+          "d": 0.8,
+          "h": 0.95,
+          "cotas": {
+            "mesa": 0.95,
+            "cama": 0.9179999999999999,
+            "largoDeMesa": 1.4,
+            "xDeMesa": -0.30000000000000004,
+            "fondoDeMesa": 0.6080000000000001,
+            "zDeMesa": 0.09600000000000003,
+            "largoDeAla": 0.6,
+            "xDeAla": 0.7,
+            "mesaDeAla": 1.005,
+            "xDeConsola": 0.2099999999999999,
+            "zDeConsola": 0.23000000000000012,
+            "yConsola": 1.15,
+            "yPoste": 1.5299999999999998,
+            "yPantalla": 1.6099999999999999,
+            "yDeImpulso": [
+              0.175,
+              0.76
+            ]
+          }
+        },
+        {
+          "w": 2.4,
+          "d": 0.9,
+          "h": 0.9,
+          "cotas": {
+            "mesa": 0.9,
+            "cama": 0.868,
+            "largoDeMesa": 1.68,
+            "xDeMesa": -0.36,
+            "fondoDeMesa": 0.684,
+            "zDeMesa": 0.10800000000000001,
+            "largoDeAla": 0.72,
+            "xDeAla": 0.84,
+            "mesaDeAla": 0.9550000000000001,
+            "xDeConsola": 0.29,
+            "zDeConsola": 0.28,
+            "yConsola": 1.1,
+            "yPoste": 1.48,
+            "yPantalla": 1.56,
+            "yDeImpulso": [
+              0.175,
+              0.71
+            ]
+          }
+        },
+        {
+          "w": 3,
+          "d": 0.9,
+          "h": 1,
+          "cotas": {
+            "mesa": 1,
+            "cama": 0.968,
+            "largoDeMesa": 2.1,
+            "xDeMesa": -0.44999999999999996,
+            "fondoDeMesa": 0.684,
+            "zDeMesa": 0.10800000000000001,
+            "largoDeAla": 0.8999999999999999,
+            "xDeAla": 1.05,
+            "mesaDeAla": 1.055,
+            "xDeConsola": 0.4100000000000001,
+            "zDeConsola": 0.28,
+            "yConsola": 1.2,
+            "yPoste": 1.58,
+            "yPantalla": 1.6600000000000001,
+            "yDeImpulso": [
+              0.175,
+              0.81
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "python": {
+    "fuente": "backend/scripts/capturar_catalogo.py",
+    "tablas": {
+      "PREFIJO_POR_TIPO": {
+        "de": "backend/app/services/renumeracion.py",
+        "valor": {
+          "gondola": "GON",
+          "punta": "PUN",
+          "robatope": "ROB",
+          "ristra": "RIS",
+          "cross": "CRS",
+          "metro": "MET",
+          "mueble": "MUE",
+          "isla": "EXP",
+          "impulsador": "IMP",
+          "batea": "BAT",
+          "isla_fria": "ISL",
+          "nevera_carnes": "CAR",
+          "nevera_vegetales": "VEG",
+          "nevera_refrescos": "BEB",
+          "stand_frutas": "FRU",
+          "checkout": "CAJ",
+          "servicio_cliente": "SAC",
+          "columna": "COL",
+          "exhibicion": "EXH",
+          "gondola_doble": "GON",
+          "gondola_mural": "GON"
+        }
+      },
+      "PREFIJO_DESCONOCIDO": {
+        "de": "backend/app/services/renumeracion.py",
+        "valor": "SPC"
+      },
+      "NUNCA_ALQUILABLE": {
+        "de": "backend/app/services/layout_lookup.py (es un frozenset: ordenado)",
+        "valor": [
+          "checkout",
+          "columna",
+          "servicio_cliente"
+        ]
+      },
+      "_REFERENCIAS": {
+        "de": "backend/app/services/layout_lookup.py",
+        "valor": {
+          "checkout": "las cajas",
+          "nevera_refrescos": "las neveras",
+          "nevera_carnes": "el mostrador de carnes",
+          "nevera_vegetales": "el mural de frutas y verduras",
+          "stand_frutas": "las frutas"
+        }
+      }
+    },
+    "por_tipo": {
+      "gondola": {
+        "prefijo_de": "GON",
+        "es_comercializable": true,
+        "caras_de": 2,
+        "tipo_de_tarifa_bulk_leases": "gondola",
+        "tipo_de_tarifa_plataforma_metricas": "gondola",
+        "referencia": null
+      },
+      "punta": {
+        "prefijo_de": "PUN",
+        "es_comercializable": true,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "punta",
+        "tipo_de_tarifa_plataforma_metricas": "punta",
+        "referencia": null
+      },
+      "robatope": {
+        "prefijo_de": "ROB",
+        "es_comercializable": true,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "robatope",
+        "tipo_de_tarifa_plataforma_metricas": "robatope",
+        "referencia": null
+      },
+      "ristra": {
+        "prefijo_de": "RIS",
+        "es_comercializable": true,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "ristra",
+        "tipo_de_tarifa_plataforma_metricas": "ristra",
+        "referencia": null
+      },
+      "cross": {
+        "prefijo_de": "CRS",
+        "es_comercializable": true,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "cross",
+        "tipo_de_tarifa_plataforma_metricas": "cross",
+        "referencia": null
+      },
+      "metro": {
+        "prefijo_de": "MET",
+        "es_comercializable": true,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "metro",
+        "tipo_de_tarifa_plataforma_metricas": "metro",
+        "referencia": null
+      },
+      "mueble": {
+        "prefijo_de": "MUE",
+        "es_comercializable": true,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "mueble",
+        "tipo_de_tarifa_plataforma_metricas": "mueble",
+        "referencia": null
+      },
+      "isla": {
+        "prefijo_de": "EXP",
+        "es_comercializable": true,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "isla",
+        "tipo_de_tarifa_plataforma_metricas": "isla",
+        "referencia": null
+      },
+      "impulsador": {
+        "prefijo_de": "IMP",
+        "es_comercializable": true,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "impulsador",
+        "tipo_de_tarifa_plataforma_metricas": "impulsador",
+        "referencia": null
+      },
+      "batea": {
+        "prefijo_de": "BAT",
+        "es_comercializable": true,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "batea",
+        "tipo_de_tarifa_plataforma_metricas": "batea",
+        "referencia": null
+      },
+      "isla_fria": {
+        "prefijo_de": "ISL",
+        "es_comercializable": true,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "isla_fria",
+        "tipo_de_tarifa_plataforma_metricas": "isla_fria",
+        "referencia": null
+      },
+      "nevera_carnes": {
+        "prefijo_de": "CAR",
+        "es_comercializable": true,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "nevera_carnes",
+        "tipo_de_tarifa_plataforma_metricas": "nevera_carnes",
+        "referencia": "el mostrador de carnes"
+      },
+      "nevera_refrescos": {
+        "prefijo_de": "BEB",
+        "es_comercializable": true,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "nevera_refrescos",
+        "tipo_de_tarifa_plataforma_metricas": "nevera_refrescos",
+        "referencia": "las neveras"
+      },
+      "nevera_vegetales": {
+        "prefijo_de": "VEG",
+        "es_comercializable": true,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "nevera_vegetales",
+        "tipo_de_tarifa_plataforma_metricas": "nevera_vegetales",
+        "referencia": "el mural de frutas y verduras"
+      },
+      "stand_frutas": {
+        "prefijo_de": "FRU",
+        "es_comercializable": true,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "stand_frutas",
+        "tipo_de_tarifa_plataforma_metricas": "stand_frutas",
+        "referencia": "las frutas"
+      },
+      "checkout": {
+        "prefijo_de": "CAJ",
+        "es_comercializable": false,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "checkout",
+        "tipo_de_tarifa_plataforma_metricas": "checkout",
+        "referencia": "las cajas"
+      },
+      "servicio_cliente": {
+        "prefijo_de": "SAC",
+        "es_comercializable": false,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "servicio_cliente",
+        "tipo_de_tarifa_plataforma_metricas": "servicio_cliente",
+        "referencia": null
+      },
+      "columna": {
+        "prefijo_de": "COL",
+        "es_comercializable": false,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "columna",
+        "tipo_de_tarifa_plataforma_metricas": "columna",
+        "referencia": null
+      },
+      "exhibicion": {
+        "prefijo_de": "EXH",
+        "es_comercializable": true,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "exhibicion",
+        "tipo_de_tarifa_plataforma_metricas": "exhibicion",
+        "referencia": null
+      },
+      "gondola_doble": {
+        "prefijo_de": "GON",
+        "es_comercializable": true,
+        "caras_de": 2,
+        "tipo_de_tarifa_bulk_leases": "gondola",
+        "tipo_de_tarifa_plataforma_metricas": "gondola",
+        "referencia": null
+      },
+      "gondola_mural": {
+        "prefijo_de": "GON",
+        "es_comercializable": true,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "gondola",
+        "tipo_de_tarifa_plataforma_metricas": "gondola",
+        "referencia": null
+      },
+      "desconocido": {
+        "prefijo_de": "SPC",
+        "es_comercializable": true,
+        "caras_de": 1,
+        "tipo_de_tarifa_bulk_leases": "desconocido",
+        "tipo_de_tarifa_plataforma_metricas": "desconocido",
+        "referencia": null
+      }
+    },
+    "por_mueble": {
+      "sint-01-gondola-double": {
+        "es_comercializable": true,
+        "caras_de": 2,
+        "es_gondola_doble_plataforma": true
+      },
+      "sint-02-gondola-wall": {
+        "es_comercializable": true,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-03-punta": {
+        "es_comercializable": true,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-04-ristra": {
+        "es_comercializable": true,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-05-cross": {
+        "es_comercializable": true,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-06-mueble": {
+        "es_comercializable": true,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-07-isla": {
+        "es_comercializable": true,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-08-impulsador": {
+        "es_comercializable": true,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-09-batea": {
+        "es_comercializable": true,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-10-isla_fria": {
+        "es_comercializable": true,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-11-nevera_carnes": {
+        "es_comercializable": true,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-12-nevera_refrescos": {
+        "es_comercializable": true,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-13-nevera_vegetales": {
+        "es_comercializable": true,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-14-stand_frutas": {
+        "es_comercializable": true,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-15-checkout": {
+        "es_comercializable": false,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-16-servicio_cliente": {
+        "es_comercializable": false,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-17-metro": {
+        "es_comercializable": false,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-18-columna": {
+        "es_comercializable": false,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-19-robatope": {
+        "es_comercializable": true,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-20-gondola-sin-gondolaType": {
+        "es_comercializable": true,
+        "caras_de": 2,
+        "es_gondola_doble_plataforma": true
+      },
+      "sint-21-gondola_doble-legado-2D": {
+        "es_comercializable": true,
+        "caras_de": 2,
+        "es_gondola_doble_plataforma": true
+      },
+      "sint-22-gondola_mural-legado-2D": {
+        "es_comercializable": true,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-23-exhibicion-legado": {
+        "es_comercializable": true,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-24-metro-habilitado": {
+        "es_comercializable": true,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      },
+      "sint-25-checkout-con-bandera": {
+        "es_comercializable": false,
+        "caras_de": 1,
+        "es_gondola_doble_plataforma": false
+      }
+    },
+    "plano": {
+      "espacios_ofrecidos": {
+        "de": "backend/app/services/layout_lookup.py (ordenado)",
+        "valor": [
+          "NAVE-BAT-01",
+          "NAVE-BEB-01",
+          "NAVE-CAR-01",
+          "NAVE-CRS-01",
+          "NAVE-EXH-01",
+          "NAVE-EXP-01",
+          "NAVE-FRU-01",
+          "NAVE-GON-01",
+          "NAVE-GON-01-B",
+          "NAVE-GON-02",
+          "NAVE-GON-03",
+          "NAVE-GON-03-B",
+          "NAVE-GON-04",
+          "NAVE-GON-04-B",
+          "NAVE-GON-05",
+          "NAVE-IMP-01",
+          "NAVE-ISL-01",
+          "NAVE-MET-02",
+          "NAVE-MUE-01",
+          "NAVE-PUN-01",
+          "NAVE-RIS-01",
+          "NAVE-ROB-01",
+          "NAVE-VEG-01"
+        ]
+      },
+      "caras_comercializables": {
+        "de": "backend/app/plataforma_metricas.py (ordenado)",
+        "valor": [
+          "NAVE-BAT-01",
+          "NAVE-BEB-01",
+          "NAVE-CAR-01",
+          "NAVE-CRS-01",
+          "NAVE-EXH-01",
+          "NAVE-EXP-01",
+          "NAVE-FRU-01",
+          "NAVE-GON-01",
+          "NAVE-GON-01-B",
+          "NAVE-GON-02",
+          "NAVE-GON-03",
+          "NAVE-GON-03-B",
+          "NAVE-GON-04",
+          "NAVE-GON-04-B",
+          "NAVE-GON-05",
+          "NAVE-IMP-01",
+          "NAVE-ISL-01",
+          "NAVE-MET-02",
+          "NAVE-MUE-01",
+          "NAVE-PUN-01",
+          "NAVE-RIS-01",
+          "NAVE-ROB-01",
+          "NAVE-VEG-01"
+        ]
+      },
+      "mapa_tipos_de_sede": {
+        "de": "backend/app/plataforma_metricas.py (código → [sede, tipo de tarifa])",
+        "valor": {
+          "NAVE-BAT-01": [
+            "NAVE",
+            "batea"
+          ],
+          "NAVE-BEB-01": [
+            "NAVE",
+            "nevera_refrescos"
+          ],
+          "NAVE-CAR-01": [
+            "NAVE",
+            "nevera_carnes"
+          ],
+          "NAVE-CRS-01": [
+            "NAVE",
+            "cross"
+          ],
+          "NAVE-EXH-01": [
+            "NAVE",
+            "exhibicion"
+          ],
+          "NAVE-EXP-01": [
+            "NAVE",
+            "isla"
+          ],
+          "NAVE-FRU-01": [
+            "NAVE",
+            "stand_frutas"
+          ],
+          "NAVE-GON-01": [
+            "NAVE",
+            "gondola"
+          ],
+          "NAVE-GON-01-B": [
+            "NAVE",
+            "gondola"
+          ],
+          "NAVE-GON-02": [
+            "NAVE",
+            "gondola"
+          ],
+          "NAVE-GON-03": [
+            "NAVE",
+            "gondola"
+          ],
+          "NAVE-GON-03-B": [
+            "NAVE",
+            "gondola"
+          ],
+          "NAVE-GON-04": [
+            "NAVE",
+            "gondola"
+          ],
+          "NAVE-GON-04-B": [
+            "NAVE",
+            "gondola"
+          ],
+          "NAVE-GON-05": [
+            "NAVE",
+            "gondola"
+          ],
+          "NAVE-IMP-01": [
+            "NAVE",
+            "impulsador"
+          ],
+          "NAVE-ISL-01": [
+            "NAVE",
+            "isla_fria"
+          ],
+          "NAVE-MET-02": [
+            "NAVE",
+            "metro"
+          ],
+          "NAVE-MUE-01": [
+            "NAVE",
+            "mueble"
+          ],
+          "NAVE-PUN-01": [
+            "NAVE",
+            "punta"
+          ],
+          "NAVE-RIS-01": [
+            "NAVE",
+            "ristra"
+          ],
+          "NAVE-ROB-01": [
+            "NAVE",
+            "robatope"
+          ],
+          "NAVE-VEG-01": [
+            "NAVE",
+            "nevera_vegetales"
+          ]
+        }
+      },
+      "eje_de_recorrido": {
+        "de": "backend/app/services/renumeracion.py",
+        "valor": {
+          "eje": "x",
+          "motivo": "11 muebles alargados corren sobre X y 0 sobre Z: los pasillos van sobre X"
+        }
+      },
+      "codigos_nuevos": {
+        "de": "backend/app/services/renumeracion.py (la renumeración por recorrido)",
+        "valor": [
+          {
+            "id": "sint-01-gondola-double",
+            "banda": 1,
+            "codigo": "GON-01"
+          },
+          {
+            "id": "sint-02-gondola-wall",
+            "banda": 1,
+            "codigo": "GON-02"
+          },
+          {
+            "id": "sint-03-punta",
+            "banda": 1,
+            "codigo": "PUN-01"
+          },
+          {
+            "id": "sint-04-ristra",
+            "banda": 1,
+            "codigo": "RIS-01"
+          },
+          {
+            "id": "sint-05-cross",
+            "banda": 1,
+            "codigo": "CRS-01"
+          },
+          {
+            "id": "sint-06-mueble",
+            "banda": 2,
+            "codigo": "MUE-01"
+          },
+          {
+            "id": "sint-07-isla",
+            "banda": 2,
+            "codigo": "EXP-01"
+          },
+          {
+            "id": "sint-08-impulsador",
+            "banda": 2,
+            "codigo": "IMP-01"
+          },
+          {
+            "id": "sint-09-batea",
+            "banda": 2,
+            "codigo": "BAT-01"
+          },
+          {
+            "id": "sint-10-isla_fria",
+            "banda": 2,
+            "codigo": "ISL-01"
+          },
+          {
+            "id": "sint-11-nevera_carnes",
+            "banda": 3,
+            "codigo": "CAR-01"
+          },
+          {
+            "id": "sint-12-nevera_refrescos",
+            "banda": 3,
+            "codigo": "BEB-01"
+          },
+          {
+            "id": "sint-13-nevera_vegetales",
+            "banda": 3,
+            "codigo": "VEG-01"
+          },
+          {
+            "id": "sint-14-stand_frutas",
+            "banda": 3,
+            "codigo": "FRU-01"
+          },
+          {
+            "id": "sint-15-checkout",
+            "banda": 3,
+            "codigo": "CAJ-01"
+          },
+          {
+            "id": "sint-16-servicio_cliente",
+            "banda": 4,
+            "codigo": "SAC-01"
+          },
+          {
+            "id": "sint-17-metro",
+            "banda": 4,
+            "codigo": "MET-01"
+          },
+          {
+            "id": "sint-18-columna",
+            "banda": 4,
+            "codigo": "COL-01"
+          },
+          {
+            "id": "sint-19-robatope",
+            "banda": 4,
+            "codigo": "ROB-01"
+          },
+          {
+            "id": "sint-20-gondola-sin-gondolaType",
+            "banda": 4,
+            "codigo": "GON-03"
+          },
+          {
+            "id": "sint-21-gondola_doble-legado-2D",
+            "banda": 5,
+            "codigo": "GON-04"
+          },
+          {
+            "id": "sint-22-gondola_mural-legado-2D",
+            "banda": 5,
+            "codigo": "GON-05"
+          },
+          {
+            "id": "sint-23-exhibicion-legado",
+            "banda": 5,
+            "codigo": "EXH-01"
+          },
+          {
+            "id": "sint-24-metro-habilitado",
+            "banda": 5,
+            "codigo": "MET-02"
+          },
+          {
+            "id": "sint-25-checkout-con-bandera",
+            "banda": 5,
+            "codigo": "CAJ-02"
+          }
+        ]
+      },
+      "caras_vendidas_con_todo_ocupado": {
+        "de": "backend/app/services/importar_del_plano.py (status 'occupied' en la cara A y en faceB de cada mueble)",
+        "valor": [
+          "GON-01",
+          "GON-01-B",
+          "GON-02",
+          "PUN-01",
+          "RIS-01",
+          "CRS-01",
+          "MUE-01",
+          "EXP-01",
+          "IMP-01",
+          "BAT-01",
+          "ISL-01",
+          "CAR-01",
+          "BEB-01",
+          "VEG-01",
+          "FRU-01",
+          "ROB-01",
+          "GON-03",
+          "GON-03-B",
+          "GON-04",
+          "GON-04-B",
+          "GON-05",
+          "EXH-01",
+          "MET-02"
+        ]
+      },
+      "caras_del_plano_auditoria": {
+        "de": "backend/scripts/auditar_desfase.py (ordenado)",
+        "valor": [
+          "BAT-01",
+          "BEB-01",
+          "CAJ-02",
+          "CAR-01",
+          "CRS-01",
+          "EXH-01",
+          "EXP-01",
+          "FRU-01",
+          "GON-01",
+          "GON-01-B",
+          "GON-02",
+          "GON-03",
+          "GON-03-B",
+          "GON-04",
+          "GON-04-B",
+          "GON-05",
+          "IMP-01",
+          "ISL-01",
+          "MET-02",
+          "MUE-01",
+          "PUN-01",
+          "RIS-01",
+          "ROB-01",
+          "VEG-01"
+        ]
+      }
+    }
+  }
+}

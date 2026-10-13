@@ -128,7 +128,7 @@ prueba("minúsculas y espacios no esconden un contrato", () => {
 });
 
 prueba("LA CARA B ES UN ESPACIO APARTE: se vende sola", () => {
-  const g = mueble("GON-60", { gondolaType: "double" });
+  const g = mueble("GON-60", { type: "gondola", gondolaType: "double" });
   const [f] = fusionarEstadoComercial("NAVE", [g], {
     "NAVE-GON-60-B": vendido({ supplierName: "Fabuloso" }),
   });
@@ -139,7 +139,7 @@ prueba("LA CARA B ES UN ESPACIO APARTE: se vende sola", () => {
 
 prueba("la cara B conserva lo que NO es comercial", () => {
   const g = mueble("GON-60", {
-    gondolaType: "double",
+    type: "gondola", gondolaType: "double",
     faceB: { montajeEstado: "montado", montajeFoto: "b.jpg" },
   });
   const [f] = fusionarEstadoComercial("NAVE", [g], { "NAVE-GON-60-B": vendido() });
@@ -155,6 +155,21 @@ prueba("una góndola simple no inventa una cara B", () => {
   assert.equal(f.faceB, undefined);
 });
 
+prueba("una góndola SIN `gondolaType` también tiene cara B: la pinta vendida", () => {
+  // La regla es UNA (`carasDe`): Vender ofrece la cara B de una góndola vieja
+  // sin el campo, así que la fusión tiene que pintarla cuando se vende. Con la
+  // regla estricta de antes, el contrato existía y el plano la dejaba libre.
+  const g = mueble("GON-60", { type: "gondola" });
+  const [f] = fusionarEstadoComercial("NAVE", [g], { "NAVE-GON-60-B": vendido() });
+  assert.equal(f.faceB.status, "occupied");
+});
+
+prueba("una góndola MURAL no tiene cara B", () => {
+  const g = mueble("GON-60", { type: "gondola", gondolaType: "wall" });
+  const [f] = fusionarEstadoComercial("NAVE", [g], { "NAVE-GON-60-B": vendido() });
+  assert.equal(f.faceB, undefined);
+});
+
 prueba("gondola_doble por tipo también tiene cara B", () => {
   const g = mueble("GON-60", { type: "gondola_doble" });
   const [f] = fusionarEstadoComercial("NAVE", [g], { "NAVE-GON-60-B": vendido() });
@@ -163,7 +178,7 @@ prueba("gondola_doble por tipo también tiene cara B", () => {
 
 prueba("una cara B cancelada se limpia sin borrar el montaje", () => {
   const g = mueble("GON-60", {
-    gondolaType: "double",
+    type: "gondola", gondolaType: "double",
     faceB: { ...vendido(), montajeEstado: "montado" },
   });
   const [f] = fusionarEstadoComercial("NAVE", [g], {});
@@ -204,7 +219,7 @@ prueba("el mueble que no cambió conserva su identidad", () => {
 prueba("una góndola doble estrena su cara B aunque nadie la haya vendido", () => {
   // Misma razón: sin `faceB.status` la cara B se lee como invendible.
   const primera = fusionarEstadoComercial(
-    "NAVE", [mueble("GON-60", { gondolaType: "double" })], {},
+    "NAVE", [mueble("GON-60", { type: "gondola", gondolaType: "double" })], {},
   );
   assert.equal(primera[0].faceB.status, "free");
   assert.equal(fusionarEstadoComercial("NAVE", primera, {}), primera);

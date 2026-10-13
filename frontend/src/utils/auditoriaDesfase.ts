@@ -1,5 +1,5 @@
 import type { UnifiedFixture } from "../types/fixtures";
-import { fullSpaceCode, isRentable } from "../types/fixtures";
+import { carasDe, fullSpaceCode, isRentable } from "../types/fixtures";
 import type { EstadoPorEspacio } from "./estadoComercial";
 
 /**
@@ -58,8 +58,9 @@ const NORMALIZAR = (s: string) => s.trim().toUpperCase();
  * tiene que seguir siéndolo: si las dos listas se separan, el aviso de la
  * pantalla y el guardarraíl del servidor dejan de hablar del mismo conjunto.
  *
- * Una góndola doble son DOS espacios. Un mueble no comercializable no está —y
- * ése es justamente uno de los casos que hay que encontrar—.
+ * Una góndola doble son DOS espacios (`carasDe`, la misma regla que
+ * `caras_de` del servidor). Un mueble no comercializable no está —y ése es
+ * justamente uno de los casos que hay que encontrar—.
  */
 function espaciosOfrecidos(
   fixturesBySede: Record<string, UnifiedFixture[]>,
@@ -75,9 +76,7 @@ function espaciosOfrecidos(
       // dibuja muebles que no son de ésta.
       const completo = fullSpaceCode(normalizar(f.sede || clave), code);
       ofrecidos.add(completo);
-      if (f.gondolaType === "double" || (f.type as string) === "gondola_doble") {
-        ofrecidos.add(`${completo}-B`);
-      }
+      if (carasDe(f) === 2) ofrecidos.add(`${completo}-B`);
     }
   }
   return ofrecidos;

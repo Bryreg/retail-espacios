@@ -38,22 +38,29 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.database import SessionLocal  # noqa: E402
 from app.fechas import hoy as hoy_en_colombia  # noqa: E402
 from app.models.models import LayoutSnapshot, Space, SpaceLease  # noqa: E402
+from app.services.layout_lookup import caras_de, es_comercializable  # noqa: E402
 
 
 def caras_del_plano(fixtures: list[dict]) -> dict[str, dict]:
     """Los códigos CORTOS que el plano ofrece hoy, con lo que dice de cada uno.
 
-    Una góndola doble son dos espacios: ``GON-60`` y ``GON-60-B``. Un mueble
-    marcado no comercializable NO está acá: sale de la venta, y ése es
-    justamente uno de los casos que hay que encontrar.
+    Una góndola doble son dos espacios: ``GON-60`` y ``GON-60-B`` (``caras_de``,
+    la misma regla que la aplicación). Un mueble que no se alquila NO está acá:
+    sale de la venta, y ése es justamente uno de los casos que hay que
+    encontrar. Se pregunta con ``es_comercializable``, como ``espacios_ofrecidos``
+    y la pantalla: primero el TIPO (la caja, la columna y el servicio al cliente
+    nunca se alquilan, aunque un plano viejo no tenga la bandera) y después la
+    bandera. Mirando sólo la bandera, una caja de un plano viejo contaba como
+    espacio ofrecido y su contrato no salía acá aunque la pantalla sí lo diera
+    por «Contrato sin mueble».
     """
     caras: dict[str, dict] = {}
     for f in fixtures:
         code = (f.get("code") or "").strip().upper()
-        if not code or f.get("rentable") is False:
+        if not code or not es_comercializable(f):
             continue
         caras[code] = f
-        if f.get("gondolaType") == "double" or f.get("type") == "gondola_doble":
+        if caras_de(f) == 2:
             caras[f"{code}-B"] = f.get("faceB") or {}
     return caras
 

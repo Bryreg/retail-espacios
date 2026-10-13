@@ -12,7 +12,7 @@ import {
 import { ClipboardCheck, Keyboard, ListOrdered } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useFixtureStore, selectFixtures, selectHasPendingWork, normalizeSede, DEFAULT_SEDES } from "../../store/fixtureStore";
-import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types/fixtures";
+import type { UnifiedFixture, FaceData } from "../../types/fixtures";
 import { isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
 import {
   siguienteCodigo, nombreDeMueble, nombreAnterior, choqueDeNombre, textoDelChoque,
@@ -21,6 +21,8 @@ import {
 } from "../../utils/nomenclatura";
 import type { RechazoDeNombre } from "../../utils/nomenclatura";
 import { revisarPlano, contratosConNombreAjeno, type ContratoDelPlano } from "../../utils/revision";
+import { storeToItems, itemsToStore, type FixType2D, type PlacedItem2D } from "../../utils/convertirPlano";
+import { CATALOG, CATALOGO_2D, H_DEFAULTS } from "../../catalogo/plano2D";
 import { TOLERANCIA_CONTACTO } from "../../utils/planta";
 import { buscarHuecoGrupo } from "../../utils/acomodar";
 import { detectarCorridas, pasilloPorMueble } from "../../utils/pasillos";
@@ -38,100 +40,19 @@ const PX_PER_M = 40;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type FixType2D =
-  | "gondola_doble"
-  | "gondola_mural"
-  | "punta"
-  | "robatope"
-  | "metro"
-  | "mueble"
-  | "ristra"
-  | "cross"
-  | "isla"
-  | "impulsador"
-  | "batea"
-  | "isla_fria"
-  | "nevera_carnes"
-  | "nevera_vegetales"
-  | "nevera_refrescos"
-  | "stand_frutas"
-  | "checkout"
-  | "servicio_cliente"
-  | "columna"
-  | "exhibicion";   // legacy — kept for backward compat, not in catalog
-
 type SpaceStatus = "free" | "occupied" | "reserved" | "maintenance";
 
-interface PlacedItem2D {
-  id: string;
-  type: FixType2D;
-  code: string;
-  label: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  /** Mirrors UnifiedFixture.rotY so 2D and 3D stay in sync. */
-  rotY: number;
-  status: SpaceStatus;
-  supplierName: string;
-  brandCategory: string;
-  negotiatedValue: number;
-  startDate: string;
-  endDate: string;
-  observation: string;
-  sede: string;
-  /** El nombre VIEJO del mueble. Ya no es un nombre y nada lo dibuja: se
-   *  arrastra tal cual para que buscar por lo que dice la cartelería siga
-   *  encontrando el mueble y para que la reconciliación tenga contra qué
-   *  comparar. Ver `nombreAnterior` en `utils/nomenclatura.ts`. */
-  nomenclatura?: string;
-  /** Lo mismo, pero escrito por la renumeración del servidor: cómo se llamaba
-   *  este mueble antes de que le cambiaran el nombre. */
-  nombreAnterior?: string;
-  /** Face B commercial data (gondola_doble only); face A = top-level fields. */
-  faceB?: FaceData;
-  /** False marks infrastructure that is never rented out. Undefined = rentable. */
-  rentable?: boolean;
-}
+// `FixType2D` y `PlacedItem2D` —la forma con que este plano trabaja cada
+// mueble— viven en `utils/convertirPlano.ts`, junto con las conversiones desde
+// y hacia el store.
 
-// ─── Catalog ──────────────────────────────────────────────────────────────────
-
-const CATALOG: {
-  type: FixType2D;
-  label: string;
-  w: number;
-  h: number;      // depth (Z axis in 2D top-down; maps to UnifiedFixture.d)
-  emoji: string;
-  prefix: string;
-  category: string;
-}[] = [
-  // ── Góndolas ──────────────────────────────────────────────────────────
-  { type: "gondola_doble", label: "Góndola Doble",    w: 0.90, h: 0.90, emoji: "📚", prefix: "GON", category: "Góndolas" },
-  { type: "gondola_mural", label: "Góndola Mural",    w: 1.00, h: 0.40, emoji: "🧱", prefix: "GON", category: "Góndolas" },
-  { type: "punta",         label: "Punta Góndola",    w: 0.90, h: 0.40, emoji: "🏷️",  prefix: "PUN", category: "Góndolas" },
-  { type: "robatope",      label: "Robatope",          w: 0.30, h: 0.40, emoji: "🛡️", prefix: "ROB", category: "Góndolas" },
-  // ── Displays & Cross-selling ────────────────────────────────────────
-  { type: "ristra",        label: "Ristra",            w: 0.40, h: 0.40, emoji: "🪝",  prefix: "RIS", category: "Displays" },
-  { type: "cross",         label: "Exhibidor Cruz",    w: 0.80, h: 0.80, emoji: "➕", prefix: "CRS", category: "Displays" },
-  { type: "impulsador",   label: "Impulsador Marca",  w: 0.60, h: 0.40, emoji: "🏷️", prefix: "IMP", category: "Displays" },
-  // ── Muebles ───────────────────────────────────────────────────────────
-  { type: "mueble",        label: "Vitrina",           w: 1.20, h: 0.60, emoji: "🗄️", prefix: "MUE", category: "Muebles" },
-  { type: "isla",          label: "Exhib. de Piso",    w: 1.20, h: 0.80, emoji: "🏪", prefix: "EXP", category: "Muebles" },
-  { type: "batea",         label: "Batea",             w: 0.80, h: 0.60, emoji: "🧺", prefix: "BAT", category: "Muebles" },
-  // ── Refrigeración ─────────────────────────────────────────────────────
-  { type: "isla_fria",        label: "Isla Helados/Cong.", w: 1.80, h: 1.00, emoji: "🍦", prefix: "ISL", category: "Refrigeración" },
-  { type: "nevera_carnes",    label: "Nevera Carnes",      w: 2.00, h: 0.85, emoji: "🥩", prefix: "CAR", category: "Refrigeración" },
-  { type: "nevera_vegetales", label: "Nevera Vegetales",   w: 1.80, h: 0.90, emoji: "🥬", prefix: "VEG", category: "Refrigeración" },
-  { type: "nevera_refrescos", label: "Nevera Refrescos",   w: 1.20, h: 0.75, emoji: "🥤", prefix: "BEB", category: "Refrigeración" },
-  // ── Servicio ──────────────────────────────────────────────────────────
-  { type: "stand_frutas",  label: "Stand Frutas/Verd", w: 1.50, h: 1.20, emoji: "🍎", prefix: "FRU", category: "Frescos" },
-  { type: "checkout",      label: "Checkout / Caja",   w: 1.80, h: 0.70, emoji: "🛒", prefix: "CAJ", category: "Servicio" },
-  { type: "servicio_cliente", label: "Servicio al Cliente", w: 1.60, h: 0.70, emoji: "💁", prefix: "SAC", category: "Servicio" },
-  // ── Infraestructura ───────────────────────────────────────────────────
-  { type: "metro",         label: "Zona Libre",        w: 1.00, h: 1.00, emoji: "⬜", prefix: "MET", category: "Infraestructura" },
-  { type: "columna",       label: "Columna",           w: 0.30, h: 0.30, emoji: "🏛️", prefix: "COL", category: "Infraestructura" },
-];
+// `CATALOG` —los muebles que se pueden colocar en el plano: rótulo, ancho,
+// fondo, emoji, prefijo y familia—, y `H_DEFAULTS` y `COLOR_DEFAULTS` —el alto
+// y el color con que nace un mueble dibujado acá— viven en `catalogo/plano2D.ts`,
+// calculados del catálogo de muebles (`catalogo/muebles.json`): el plano y el
+// editor 3D crean el mismo mueble. Las conversiones reciben `CATALOGO_2D`, de
+// ahí mismo. Este componente no declara tablas propias: una copia vieja acá
+// pisaba las del catálogo sin que fallara nada (`probar-muebles.mjs` lo vigila).
 
 // Status palette, shared with the Dashboard's occupancy map y con el editor 3D.
 //
@@ -263,138 +184,6 @@ const STATUS_FILTER_CHIPS: { value: StatusFilter2D; label: string; color: string
 /** Quantize rotY to quarter-turn steps (0 = south, 1 = west, 2 = north, 3 = east). */
 function rotationSteps(rotY?: number): number {
   return Math.round(((rotY ?? 0) % (2 * Math.PI)) / (Math.PI / 2)) % 4;
-}
-
-/** 3D height defaults (used when promoting a 2D item to a UnifiedFixture).
- *  Keys match FixType2D so gondola_doble / gondola_mural can be distinguished. */
-const H_DEFAULTS: Record<string, number> = {
-  gondola_doble: 1.80, gondola_mural: 1.90,
-  punta: 1.80, robatope: 1.60, ristra: 1.60,
-  cross: 1.80, metro: 0.05, mueble: 2.00, exhibicion: 1.50,
-  isla: 1.40, impulsador: 1.50,
-  batea: 0.80, isla_fria: 0.90,
-  nevera_carnes: 1.05, nevera_refrescos: 1.80, nevera_vegetales: 1.60,
-  stand_frutas: 0.95, checkout: 0.90, columna: 3.00,
-};
-
-/* PENDIENTE DEL PR 2 (forma / dataviz). Estos veinte son un color por TIPO de
-   mueble —góndola, punta, ristra, nevera, caja— y quedan como estaban a
-   propósito. No son la terna de estado (esa ya salió a tokens arriba) sino una
-   paleta CATEGÓRICA de veinte entradas elegidas a ojo: no está validada contra
-   daltonismo, no está medida contra ninguna de las dos superficies, y en modo
-   oscuro varias son igual de brillantes entre sí. Cambiarlas es reelegir una
-   paleta de veinte con el validador en la mano, que es una decisión de diseño
-   y no un cambio de piel. Anotado en `features/diseno-interior/outputs/frontend.md`.
-   Además el color de cada mueble es dato guardado (`f.color`), así que moverlo
-   toca lo que ya está en la base, no sólo lo que se pinta. */
-const COLOR_DEFAULTS: Record<string, string> = {
-  gondola_doble: "#6366f1", gondola_mural: "#818cf8",
-  punta: "#7c3aed", robatope: "#c0c0bc",
-  ristra: "#d97706", cross: "#0891b2", impulsador: "#e11d48", metro: "#64748b",
-  mueble: "#475569", exhibicion: "#ec4899",
-  isla: "#f59e0b", batea: "#84cc16", nevera_mural: "#06b6d4",
-  isla_fria: "#e5e7eb", nevera_carnes: "#1e293b", nevera_refrescos: "#1e293b",
-  nevera_vegetales: "#1e293b",
-  stand_frutas: "#84cc16",
-  checkout: "#8b5cf6", columna: "#94a3b8",
-};
-
-/** Convert the unified store into the 2D internal array (run once on mount). */
-function storeToItems(fixtures: UnifiedFixture[]): PlacedItem2D[] {
-  return fixtures.map((f) => {
-    let type2D: FixType2D;
-    if (f.type === "gondola") {
-      // Same undefined-defaults-to-double rule as isDoubleGondola() in types/fixtures.
-      type2D = f.gondolaType === "wall" ? "gondola_mural" : "gondola_doble";
-    } else {
-      // All other types exist 1-to-1 in FixType2D (including new types + legacy exhibicion)
-      type2D = f.type as FixType2D;
-    }
-    const catDef = CATALOG.find((c) => c.type === type2D);
-    const rot90 = isRotated90(f.rotY ?? 0);
-    // Visual footprint in 2D — swap w/d when rotated 90° or 270°
-    const w2d = rot90 ? f.d : f.w;
-    const h2d = rot90 ? f.w : f.d;
-    return {
-      id: f.id,
-      type: type2D,
-      code: f.code,
-      label: catDef?.label ?? f.label,
-      x: f.cx - w2d / 2,
-      y: f.cz - h2d / 2,
-      w: w2d,
-      h: h2d,
-      rotY: f.rotY ?? 0,
-      status: f.status,
-      supplierName: f.supplierName,
-      brandCategory: f.brandCategory,
-      // Worker layout responses omit negotiatedValue — default to 0 locally.
-      negotiatedValue: f.negotiatedValue ?? 0,
-      startDate: f.startDate,
-      endDate: f.endDate,
-      observation: f.observation,
-      sede: f.sede,
-      nomenclatura: f.nomenclatura,
-      nombreAnterior: f.nombreAnterior,
-      faceB: f.faceB,
-      rentable: f.rentable,
-    };
-  });
-}
-
-/**
- * Convert the 2D internal array back to unified format for the store.
- * Preserves 3D-specific fields (h, color, slots, rotY) from the existing
- * store entry so the 3D editor doesn't lose its data on roundtrip.
- */
-function itemsToStore(
-  items: PlacedItem2D[],
-  existingStore: UnifiedFixture[],
-): UnifiedFixture[] {
-  const existingMap = new Map(existingStore.map((f) => [f.id, f]));
-  return items.map((item) => {
-    let type: FixType;
-    let gondolaType: GondolaType | undefined;
-    if (item.type === "gondola_doble")       { type = "gondola"; gondolaType = "double"; }
-    else if (item.type === "gondola_mural")  { type = "gondola"; gondolaType = "wall"; }
-    else { type = item.type as FixType; }
-
-    const existing = existingMap.get(item.id);
-    // item.rotY tracks rotation (incremented by rotateItem); fall back to existing store value
-    const rotY = item.rotY ?? existing?.rotY ?? 0;
-    const rot90 = isRotated90(rotY);
-    // Convert visual 2D dims back to canonical (unrotated) store dims
-    const storeW = rot90 ? item.h : item.w;
-    const storeD = rot90 ? item.w : item.h;
-    // Use the FixType2D key (item.type) for defaults so gondola_doble / gondola_mural are distinct
-    return {
-      h:     existing?.h     ?? H_DEFAULTS[item.type]     ?? 1.8,
-      color: existing?.color ?? COLOR_DEFAULTS[item.type] ?? "#6366f1",
-      slots: existing?.slots,
-      rotY,
-      id: item.id,
-      code: item.code,
-      type,
-      gondolaType,
-      label: item.label,
-      cx: item.x + item.w / 2,
-      cz: item.y + item.h / 2,
-      w: storeW,
-      d: storeD,
-      status: item.status,
-      sede: item.sede,
-      supplierName: item.supplierName,
-      brandCategory: item.brandCategory,
-      negotiatedValue: item.negotiatedValue,
-      startDate: item.startDate,
-      endDate: item.endDate,
-      observation: item.observation,
-      nomenclatura: item.nomenclatura,
-      nombreAnterior: item.nombreAnterior,
-      faceB: item.faceB,
-      rentable: item.rentable,
-    };
-  });
 }
 
 // ─── Smart alignment guides (PowerPoint-style) ───────────────────────────────
@@ -542,7 +331,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   // Same array object seeds the state AND the "came from the store" ref below,
   // so the first items→store effect recognises it as an echo and stays quiet.
   const initialItems = useMemo(
-    () => storeToItems(selectFixtures(useFixtureStore.getState())),
+    () => storeToItems(selectFixtures(useFixtureStore.getState()), CATALOGO_2D),
     [],
   );
   const [items, setItems]             = useState<PlacedItem2D[]>(initialItems);
@@ -642,7 +431,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     // update is the echo of our own commit and must not rebuild the canvas.
     if (lastCommittedRef.current === storeFixtures) return;
     // External change (undo/redo/server sync) — update canvas to match
-    const next = storeToItems(storeFixtures);
+    const next = storeToItems(storeFixtures, CATALOGO_2D);
     itemsFromStoreRef.current = next; // suppress the items→store echo
     setItems(next);
   }, [storeFixtures]);
@@ -658,7 +447,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     if (itemsFromStoreRef.current === items) return;
     const snapshot = selectFixtures(useFixtureStore.getState());
     const timer = setTimeout(() => {
-      const converted = itemsToStore(items, snapshot);
+      const converted = itemsToStore(items, snapshot, CATALOGO_2D);
       lastCommittedRef.current = converted;
       commit(converted);
     }, 16);
@@ -693,7 +482,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     pushSedeToStore(sede);
     // Re-init canvas from the new sede's saved fixtures (may be empty = blank canvas).
     const newFixtures = useFixtureStore.getState().fixturesBySede[sede] ?? [];
-    const next = storeToItems(newFixtures);
+    const next = storeToItems(newFixtures, CATALOGO_2D);
     itemsFromStoreRef.current = next;   // suppress the items→store echo
     setItems(next);
   }, [sede, pushSedeToStore]);

@@ -36,7 +36,7 @@ from app.fechas import hoy as hoy_en_colombia
 from app.models.models import (
     LayoutSnapshot, Space, SpaceLease, SpaceStatus, Supplier,
 )
-from app.services.layout_lookup import _full_code, es_comercializable
+from app.services.layout_lookup import _full_code, caras_de, es_comercializable
 
 
 @dataclass
@@ -93,11 +93,12 @@ class Importacion:
 def caras_vendidas(fixtures: list[dict]) -> list[tuple[str, dict]]:
     """Los espacios que el plano da por vendidos, con su contrato.
 
-    Una góndola doble son dos espacios: la cara A vive en el mueble y la B en
-    ``faceB``. Un mueble que no se alquila no cuenta — y se pregunta con
-    ``es_comercializable``, que mira primero el TIPO y después la bandera: una
-    caja registradora marcada «ocupada» en un plano viejo no es un contrato, y
-    crearle uno haría una fila que después la propia aplicación rechaza.
+    Una góndola doble son dos espacios (``caras_de``): la cara A vive en el
+    mueble y la B en ``faceB``. Un mueble que no se alquila no cuenta — y se
+    pregunta con ``es_comercializable``, que mira primero el TIPO y después la
+    bandera: una caja registradora marcada «ocupada» en un plano viejo no es un
+    contrato, y crearle uno haría una fila que después la propia aplicación
+    rechaza.
     """
     out: list[tuple[str, dict]] = []
     for f in fixtures:
@@ -108,7 +109,7 @@ def caras_vendidas(fixtures: list[dict]) -> list[tuple[str, dict]]:
             continue
         if (f.get("status") or "free") == "occupied":
             out.append((code, f))
-        if f.get("gondolaType") == "double" or f.get("type") == "gondola_doble":
+        if caras_de(f) == 2:
             b = f.get("faceB") or {}
             if (b.get("status") or "free") == "occupied":
                 out.append((f"{code}-B", b))

@@ -41,36 +41,22 @@
  * Es geometría de nombres: se prueba sin navegador (`npm run probar:nomenclatura`).
  */
 
-/** Prefijo por tipo. Cubre los nombres del 3D y los del 2D, que difieren. */
-export const PREFIJO_POR_TIPO: Record<string, string> = {
-  // Nombres del modelo unificado / editor 3D
-  gondola: "GON",
-  punta: "PUN",
-  robatope: "ROB",
-  ristra: "RIS",
-  cross: "CRS",
-  metro: "MET",
-  mueble: "MUE",
-  isla: "EXP",
-  impulsador: "IMP",
-  batea: "BAT",
-  isla_fria: "ISL",
-  nevera_carnes: "CAR",
-  nevera_vegetales: "VEG",
-  nevera_refrescos: "BEB",
-  stand_frutas: "FRU",
-  checkout: "CAJ",
-  servicio_cliente: "SAC",
-  columna: "COL",
-  exhibicion: "EXH",
-  // Nombres que sólo usa el plano 2D: la góndola se parte en dos tipos
-  gondola_doble: "GON",
-  gondola_mural: "GON",
-};
+import { CATALOGO_DE_MUEBLES, prefijosPorTipo } from "../catalogo/catalogo";
+
+/** Prefijo por tipo. Cubre los nombres del 3D y los del 2D, que difieren: el
+ *  plano 2D parte la góndola en `gondola_doble` y `gondola_mural`, y las dos son
+ *  `GON`.
+ *
+ *  Sale del catálogo de muebles (`catalogo/muebles.json`): `prefijo` de cada
+ *  tipo, y el de su tipo para los `alias` del 2D. El servidor lee los mismos de
+ *  su copia (`PREFIJO_POR_TIPO` en `backend/app/services/renumeracion.py`), y
+ *  `tests/test_renumeracion.py` los compara. Un prefijo no se cambia nunca: es
+ *  la mitad de cada código de espacio que ya existe. */
+export const PREFIJO_POR_TIPO: Record<string, string> = prefijosPorTipo();
 
 /** Prefijo de un mueble. Lo desconocido cae en SPC, como hacía el 2D. */
 export function prefijoDe(tipo: string): string {
-  return PREFIJO_POR_TIPO[tipo] ?? "SPC";
+  return PREFIJO_POR_TIPO[tipo] ?? CATALOGO_DE_MUEBLES.prefijoDesconocido;
 }
 
 /** Número que lleva un nombre, o null si no sigue el esquema `PRE-NN`. */

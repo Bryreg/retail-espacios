@@ -34,7 +34,7 @@ import {
   daysTakenInRange,
   footprint2D,
   fullSpaceCode,
-  isDoubleGondola as isDoubleGondolaShared,
+  isDoubleGondola,
   isRentable,
   rangeAvailability,
   rateTypeOf,
@@ -137,12 +137,6 @@ interface FaceEntry {
   startDate: string;
   endDate: string;
   observation: string;
-}
-
-/** Shared check (undefined gondolaType counts as double) + legacy
- *  "gondola_doble" type kept for old persisted layouts. */
-function isDoubleGondola(f: UnifiedFixture): boolean {
-  return isDoubleGondolaShared(f) || (f.type as string) === "gondola_doble";
 }
 
 const EMPTY_FACE: FaceData = {

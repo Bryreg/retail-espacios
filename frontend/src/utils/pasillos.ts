@@ -14,6 +14,7 @@
  */
 
 import { huella } from "./planta";
+import { tiposConBandera } from "../catalogo/catalogo";
 
 export interface MuebleParaPasillo {
   id: string;
@@ -41,8 +42,10 @@ export interface Corrida {
   ids: string[];
 }
 
-/** Los tipos que forman corrida. El resto se cuelga de la corrida más cercana. */
-const FORMAN_CORRIDA = new Set(["gondola", "gondola_doble", "gondola_mural"]);
+/** Los tipos que forman corrida. El resto se cuelga de la corrida más cercana.
+ *  Es la bandera `formaCorrida` del catálogo de muebles: la góndola y sus dos
+ *  nombres del plano 2D. Se exporta para que las guardas la lean. */
+export const FORMAN_CORRIDA = new Set<string>(tiposConBandera("formaCorrida"));
 
 /** Un mueble a menos de esto de una corrida se considera parte de ella. */
 export const ALCANCE_CORRIDA = 3.0; // m

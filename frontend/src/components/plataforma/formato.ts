@@ -19,6 +19,8 @@
       columna con `tabular-nums` el guion se lee como un tachado.
    ========================================================================== */
 
+import { nombresDeInforme } from "../../catalogo/catalogo";
+
 /** Lo que se escribe cuando la API no trajo el dato. Nunca un 0, nunca vacío. */
 export const SIN_DATO = "—";
 
@@ -176,27 +178,24 @@ export function diasEntre(desde: string, hasta: string): number | null {
 
 // ─── Nombres de tipo de espacio ────────────────────────────────────────────
 //
-// `tipo` viaja como slug del backend (`nevera_refrescos`). El diccionario es
-// el mismo del prototipo; un tipo que no esté acá se muestra tal cual llegó
-// (no se adivina, no se rompe).
+// `tipo` viaja como slug del backend (`nevera_refrescos`). Los nombres salen
+// del catálogo de muebles (`informe` e `informePlural` de cada tipo en
+// `catalogo/muebles.json`), más `fuera_del_plano`, que no es un mueble sino lo
+// que el servidor cuenta afuera de todo plano. Un tipo que no esté se muestra
+// tal cual llegó (no se adivina, no se rompe).
+//
+// Hasta que existió el catálogo faltaban la ristra, el impulsador, la vitrina
+// (`mueble`) y la zona libre (`metro`): los informes decían «muebles»,
+// «metros» e «impulsadors».
+
+const NOMBRES = nombresDeInforme();
 
 const TIPOS: Record<string, string> = {
-  gondola: "góndola", punta: "punta", nevera_refrescos: "nevera de bebidas",
-  isla: "isla", cross: "exhibición de piso", robatope: "robatope",
-  batea: "batea", fuera_del_plano: "fuera del plano",
-  stand_frutas: "stand de frutas", isla_fria: "isla fría",
-  nevera_carnes: "nevera de carnes",
-  nevera_vegetales: "nevera de vegetales",
+  ...NOMBRES.singular,
+  fuera_del_plano: "fuera del plano",
 };
 
-const TIPOS_PLURAL: Record<string, string> = {
-  gondola: "caras de góndola", punta: "puntas de góndola",
-  nevera_refrescos: "neveras de bebidas", isla: "islas",
-  cross: "exhibiciones de piso", robatope: "robatopes", batea: "bateas",
-  stand_frutas: "stands de frutas", isla_fria: "islas frías",
-  nevera_carnes: "neveras de carnes",
-  nevera_vegetales: "neveras de vegetales",
-};
+const TIPOS_PLURAL: Record<string, string> = NOMBRES.plural;
 
 export function tipoN(tipo: string): string {
   return TIPOS[tipo] ?? tipo;

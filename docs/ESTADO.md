@@ -1,13 +1,22 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-13 (el cobro de la suscripción: la operadora registra en la
+Última actualización: 2026-10-13, dos cosas el mismo día.
+
+El cobro de la suscripción: la operadora registra en la
 consola la suscripción, las cuentas de cobro y los pagos por transferencia —sin pasarela y
 sin emitir nada ante la DIAN—, y una escalera automática, apagada por defecto, avisa por
 correo y pasa a sólo lectura a los 30 días de vencida, nunca antes de 10 días después del
 aviso formal, y nunca suspende. La dueña del supermercado ve lo suyo en Configuración →
 Suscripción. Tres revisores la revisaron y lo que encontraron quedó arreglado. Ver *Cobro
-de la suscripción (2026-10-13)*).
+de la suscripción (2026-10-13)*.
+
+Un solo catálogo de muebles: cada tipo de mueble está
+escrito una vez, en `muebles.json`, con una copia idéntica para el servidor, y las tablas
+de siempre se calculan de ahí; un plano viejo da lo mismo que antes, comparado contra una
+referencia fija. Lo que el editor no conoce del mueble ya no se pierde al moverlo, y
+«¿tiene cara B?» tiene una sola respuesta, que ahora también consultan la planilla y el
+contrato suelto. Ver *Un solo catálogo de muebles (2026-10-13)*.
 
 Antes, 2026-10-12 (el diseño se ve desde Vender: cada fila del contrato
 trae un botón «3D» que abre la tienda ENCIMA de la ficha —la misma sala de «Presentar»,
@@ -98,6 +107,35 @@ marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
 
 ## Dónde retomar
 
+### Lo que sigue de los muebles (2026-10-13)
+
+El catálogo único (*Un solo catálogo de muebles*) es el cimiento para dibujar Cañaveral
+—o un supermercado parecido a Galerías— con muebles de allá, armado con datos de
+internet y sin fotos propias. Lo que sigue, en orden:
+
+- **Que la referencia ignore los tipos que no conoce.** Es el primer paso: hoy un tipo
+  nuevo hace fallar «el plano sintético se arma igual» y «un plano viejo da lo mismo»
+  (`probar-catalogo.mjs`, y lo mismo `test_catalogo_muebles.py`) aunque ningún plano
+  viejo cambie, porque la comparación toma sus filas por un cambio de lo de antes.
+- **Modelos de muebles de Colombia**, sobre las familias que ya existen: la estiba media
+  y la cuarta (hoy sólo está la completa, la `isla`; las medidas de media y cuarta no
+  coinciden entre la NTC 4680 y la estiba europea, así que van como «estimado» hasta
+  confirmarlas), la góndola por alto, entrepaños y módulo (allá se usan 0,90, 1,00 y
+  1,20, no el 1,25 de `ANCHO_MODULO_TIPICO`), la nevera de puertas vendida entera, el
+  exhibidor de cartón y el puesto de impulso. Cada modelo con la URL de su ficha y su
+  confiabilidad, sin copiar imágenes, y congelado en el mueble al crearlo (editar la
+  ficha no mueve lo ya colocado).
+- **Fichas propias del cliente en el taller**: la dueña arma la ficha de un mueble suyo
+  —medidas, puertas, la URL de la ficha técnica— y lo coloca. Es una tabla nueva
+  (clasificada en `TABLAS_DEL_CLIENTE`), sin foto por ahora: ella dijo que no tiene.
+- **La venta por partes espera la confirmación de la dueña.** Vender una puerta, un tramo
+  o la bahía de una caja, el copete o la cenefa como pieza aparte, o marcar soportes
+  cedidos a un operador, depende de cómo se cobra de verdad allá y de la forma del código
+  de la parte (`NEV-03-PU2`), que queda para siempre en contratos, correos y planillas.
+  Nada de eso se programa antes de que ella conteste.
+
+### Lo que quedó abierto el 2026-09-13
+
 Lo que quedó abierto al cerrar la sesión del 2026-09-13, en orden de lo que más
 conviene atacar primero. Nada de esto está empezado: son hilos, no trabajo a medias.
 
@@ -131,13 +169,14 @@ Tres cosas quedaron contestadas y conviene no volver a averiguarlas:
 
 ### 2. El 409 le pide al usuario algo que ya no puede hacer
 
-`backend/app/routers/spaces.py:297` rechaza un contrato sobre un mueble no
+`create_lease` (`backend/app/routers/spaces.py`) rechaza un contrato sobre un mueble no
 comercializable con: *«Cambiá su destino a "Comercializable" en el plano»*. Para una
 caja registradora o un mostrador de servicio eso es **imposible por diseño** — están en
 `NUNCA_ALQUILABLE` y el editor ni siquiera ofrece el botón. El mensaje tiene que
 distinguir los dos casos: «este mueble es operación de la tienda y nunca se alquila»
 contra «este mueble está marcado como no comercializable, cambialo en el plano».
-Defecto conocido, sin arreglar, chico.
+Defecto conocido, sin arreglar, chico: `motivo_para_no_vender` (`layout_lookup.py`) ya
+separa la cara B que no existe; falta separar ahí el tipo que nunca se alquila.
 
 ### 3. El fondo del robatope
 
@@ -233,8 +272,54 @@ Esto REEMPLAZA al modelo dual, que fue el mayor generador de bugs del proyecto �
   se lo dice al proveedor (ver *Ver el diseño desde Vender*, la crítica).
 
 El código de espacio es `"SEDE-CODE"` en mayúsculas. La cara B de una góndola doble usa
-sufijo `-B`; los campos top-level del fixture son la Cara A y `fixture.faceB` es la B
-(helper `isDoubleGondola`).
+sufijo `-B`; los campos top-level del fixture son la Cara A y `fixture.faceB` es la B.
+
+**«¿Tiene cara B?» tiene UNA respuesta:** `carasDe` en `frontend/src/types/espacio.ts`
+(`isDoubleGondola` es `carasDe(f) === 2`; `types/fixtures.ts` reexporta las dos) y su
+espejo `caras_de` en `backend/app/services/layout_lookup.py`. Es la regla laxa: `gondola`
+con `gondolaType` `"double"` o AUSENTE, o el tipo legado `gondola_doble`, son dos caras;
+`"wall"` y todo lo demás, una. La usan Vender, la fusión, «Contrato sin mueble»,
+Supervisar, el guardarraíl de `PUT /layout`, la importación del plano, las métricas,
+`scripts/auditar_desfase.py` y las dos puertas que crean contratos: la planilla
+(`PlanoIndexado.resolver` no resuelve la `-B` de un mueble de una cara, y la fila dice
+«tiene una sola cara») y el contrato suelto (`motivo_para_no_vender`, 409). Hubo dos
+reglas —la fusión, la auditoría y el servidor exigían `"double"` escrito— y una góndola
+vieja sin el campo vendía su cara B sin que el plano la pintara ni el guardarraíl la
+cuidara; y hasta el 2026-10-13 la planilla vendía `PUN-01-B`, que ningún plano ofrece.
+Los dos lados corren los mismos casos (`frontend/scripts/casos/caras.json`:
+`probar-auditoria.mjs` y `tests/test_caras.py`), y `probar-auditoria.mjs` falla si aparece
+otra comparación con `"double"` —escrita como sea: `===`, `["double"].includes(…)`,
+`case`, `in (…)`— fuera de esas dos funciones, o una `carasDe`/`isDoubleGondola`/`caras_de`
+propia. Para DIBUJAR, los editores siguen tratando como doble todo lo que no es `"wall"`.
+
+**Lo que el editor no conoce del mueble se conserva.** Las conversiones entre el store y
+cada editor viven en `frontend/src/utils/convertirPlano.ts` (puro, lo prueba
+`probar-plano.mjs`). La vuelta al store parte del mueble guardado con ese `id` y le
+escribe encima lo que el editor sabe: `{ ...guardado, ...loQueSabe }`. Antes armaban el
+mueble desde cero con una lista fija y el 2D borraba `vista3D` y el montaje de la cara A
+al mover cualquier cosa. Un campo nuevo del mueble no tiene que sumarse a ninguna lista
+de los editores (sí a `sinDatosComerciales` si el visor de Vender lo necesita, y a
+`_GEOMETRIA` de `routers/montaje.py` si el mercaderista lo necesita: esas son listas de
+lo que se DEJA pasar, a propósito). Lo que el editor sabe MANDA, también cuando vale
+`undefined`, y `probar-plano.mjs` edita en cada editor todos los campos que la vuelta
+escribe: comparando sólo lo movido se pudo borrar `rentable` de la vuelta sin que nada
+fallara, y una punta habilitada de nuevo volvía «No comercializable» al guardar.
+
+**Cada tipo de mueble está escrito UNA vez: el catálogo de muebles**
+(`frontend/src/catalogo/muebles.json`, con una copia idéntica byte a byte para el servidor
+en `backend/app/catalogo/muebles.json`: la imagen de Docker lleva `backend/` y
+`frontend/dist`, no una carpeta compartida). **Se edita uno y se copia sobre el otro**;
+`tests/test_catalogo_muebles.py` y `probar-catalogo.mjs` fallan si difieren. Las tablas de
+siempre se CALCULAN de ahí y ningún componente ni módulo del servidor tiene una copia
+propia: las guardas cargan los módulos con un catálogo adulterado, de los dos lados, y
+cada tabla tiene que cambiar con él. **Las claves de tipo, los prefijos y las claves de
+tarifa no se cambian nunca** (están en los planos, en los códigos de espacio y en las
+tarifas de cada cliente); las medidas, el color y el rótulo sólo se usan al CREAR un
+mueble, salvo `rotuloEditor`, que el 2D estampa en `label` cada vez que abre el plano.
+**Un plano viejo da lo mismo que antes:** `frontend/scripts/casos/catalogo-antes.json` es
+una referencia FIJA y todo lo que cambie respecto de ella va escrito, con su porqué, en
+`CAMBIOS_INTENCIONALES`. Qué dice cada tipo, quién lo lee y cómo se agrega uno: *Un solo
+catálogo de muebles (2026-10-13)*.
 
 **Lo que no está en el mapa comercial está LIBRE, y la fusión REEMPLAZA.** No hace falta
 pre-crear ningún `space`: la fila aparece cuando se vende. Y la fusión no rellena huecos
@@ -256,7 +341,8 @@ snapshot anterior — un plano que ya venía desfasado tiene que poder guardarse
 
 **No todo mueble del plano es espacio vendible.** La columna sostiene el techo; la
 caja registradora y el mostrador de servicio al cliente son puestos de trabajo de la
-tienda. Esos tres tipos están en `NUNCA_ALQUILABLE` —`frontend/src/types/fixtures.ts` y
+tienda. Esos tres tipos están en `NUNCA_ALQUILABLE` —`alquilable: "nunca"` en el
+catálogo de muebles, que leen `frontend/src/types/fixtures.ts` y
 `backend/app/services/layout_lookup.py`, y hay pruebas de los dos lados que verifican
 que las dos listas digan lo mismo— y no tienen tarifa, no suman a la disponibilidad de
 la sede y no aceptan contrato.
@@ -266,7 +352,10 @@ orden es lo que la hace funcionar: la bandera se estampa al CREAR el mueble, as�
 plano guardado antes de que existiera no la trae, y `rentable` ausente significa
 comercializable —tiene que significarlo, o esos planos se vaciarían—. Mirando sólo la
 bandera, todas las cajas de los planos viejos seguían aceptando contratos. Mirando el
-tipo primero, quedan bien sin migrar una sola fila.
+tipo primero, quedan bien sin migrar una sola fila. El auditor de consola
+(`scripts/auditar_desfase.py`) pregunta lo mismo, con `es_comercializable`, desde el
+2026-10-13: mirando sólo la bandera contaba como ofrecida una caja de un plano viejo, y
+su contrato no salía en el script aunque la pantalla lo diera por «Contrato sin mueble».
 
 La `metro` (zona libre) es distinta: nace no comercializable pero **se puede habilitar a
 mano**, porque un metro de piso sí se le alquila a una marca para su stand.
@@ -274,7 +363,8 @@ mano**, porque un metro de piso sí se le alquila a una marca para su stand.
 **Dentro del plano el código es corto; afuera lleva la sede.** `PUN-01` es nomenclatura
 de sede y se repite en las tres tiendas. Todo lo que salga del layout — la fila en
 `spaces`, el enlace del correo, el reporte de montaje — usa el código completo, que arma
-`fullSpaceCode(sede, code)` en `frontend/src/types/fixtures.ts`. Indexar por el código
+`fullSpaceCode(sede, code)` en `frontend/src/types/espacio.ts` (lo reexporta
+`types/fixtures.ts`). Indexar por el código
 corto es un bug silencioso: parece funcionar con una sola sede y con dos empieza a
 mezclar tiendas.
 
@@ -3851,9 +3941,11 @@ servidor y aparece en la laptop del que arma la propuesta. **Sin migración.**
 
 Dos cuidados:
 
-- `fixturesToStore` tiene que arrastrarla. El 3D no la modela, y sin esa línea
+- La vuelta de los editores al store tiene que arrastrarla. Ninguno la modela, y
   **mover un mueble borraba todos los encuadres de la sede** y le mandaba la pérdida
-  al servidor.
+  al servidor: primero en el 3D, que la arrastró con una línea, y hasta el
+  2026-10-13 en el plano 2D. Desde entonces las dos vueltas conservan todo lo que no
+  conocen (`utils/convertirPlano.ts`, ver *Reglas duras*).
 - Guardar y borrar escriben el layout pero **no entran al historial**: que Ctrl+Z
   deshaga un encuadre de cámara mezcla dos cosas que no tienen nada que ver.
 
@@ -8115,6 +8207,131 @@ viejas más «cambiar» activo mientras sube (caen la respuesta tardía y la sub
 lámina que nunca se da por interrumpida (cae «cerrar a mitad»). Cada defensa doble (la
 lámina contra la ficha, la subida contra la lista atada a su nombre) se rompió sola en
 lo estático: en el navegador la otra mitad la sostiene, que es la idea.
+
+## Un solo catálogo de muebles (2026-10-13)
+
+Cada tipo de mueble estaba escrito a mano en unas veintidós tablas —el catálogo del 3D y
+el del 2D, los altos y colores con que nace, los prefijos, las tarifas, lo que no se
+alquila, los nombres de los informes, las referencias del minimapa— y del lado del
+servidor en sus copias. Ya no decían lo mismo: el mostrador de carnes nacía con 0,85 de
+fondo en el plano y 0,90 en el 3D, el servicio al cliente dibujado en el plano nacía de
+1,80 m y los informes decían «mueble», «metro» e «impulsadors». Sumar un mueble —lo que
+hace falta para dibujar Cañaveral— era tocar diez lugares sin olvidarse de ninguno.
+
+**Dónde vive.** En `muebles.json`, en dos copias idénticas byte a byte:
+`frontend/src/catalogo/` y `backend/app/catalogo/`. Son dos porque la imagen de Docker
+lleva `backend/` y `frontend/dist`, no una carpeta compartida. Se edita una y se copia
+sobre la otra. Por tipo dice: prefijo, `alquilable` (`si` · `no_por_defecto` · `nunca`),
+clave de tarifa, rótulo de los editores, nombre de informe (singular y plural),
+categoría, grupo de la biblioteca del 2D, medidas, color (y `color2D` si el 2D nace con
+otro), emoji, descripción, referencia del minimapa y banderas (`producto`, `prueba3D`,
+`surtido`, `frio`, `formaCorrida`). La góndola tiene variantes (`double`/`wall`, con sus
+caras); `gondola_doble` y `gondola_mural` son `alias` del 2D; `exhibicion` es `legado`.
+Además están `tarifas` (clave y rótulo, en el orden de la pantalla) y `orden` (la paleta
+del 3D, la biblioteca del 2D y las referencias del minimapa).
+
+**Quién lo lee.**
+
+- **El navegador**, por `catalogo/catalogo.ts`. De ahí salen, con el nombre y el orden de
+  siempre, `FIXTURE_DEFS` y `TIPOS_CON_*` (`catalogo/editor3D.ts`; `/taller` elige por
+  posición), `CATALOG`, `H_DEFAULTS`, `COLOR_DEFAULTS` y `CATALOGO_2D`
+  (`catalogo/plano2D.ts`), `REFERENCIAS` (`catalogo/minimapa.ts`), `NUNCA_ALQUILABLE`,
+  `NON_RENTABLE_BY_DEFAULT`, `RATE_TYPES`, `CATEGORIA_DE_TIPO` y `rateTypeOf`
+  (`types/fixtures.ts`), `PREFIJO_POR_TIPO` (`utils/nomenclatura.ts`), `MUEBLES_FRIOS`,
+  `FORMAN_CORRIDA` y los nombres de `plataforma/formato.ts`. Los editores no tienen tablas
+  propias: el 2D convierte con `CATALOGO_2D` y el 3D con `CATALOGO_3D` (`FIXTURE_DEFS` y
+  `defaultSlots`), y `probar-muebles.mjs` lo exige. Una copia vieja de los altos pegada en
+  `FloorPlan2D` volvía a hacer nacer el servicio al cliente de 1,80 m sin que fallara nada.
+- **El servidor**, por `app/services/catalogo_muebles.py`, que lee sólo lo que necesita:
+  `PREFIJO_POR_TIPO` (la renumeración), `NUNCA_ALQUILABLE` y `REFERENCIAS`
+  (`layout_lookup.py`) y la clave de tarifa (`bulk_leases.py`, `plataforma_metricas.py`).
+- **Viaja sólo donde se usa.** No entra en lo primero que baja la landing: la fusión con
+  la base (`utils/estadoComercial.ts`, que va de entrada) toma `carasDe` y `fullSpaceCode`
+  de `types/espacio.ts`, que no importa nada; antes se las pedía a `types/fixtures.ts`, que
+  arrastraba el catálogo entero. Tampoco entra en el worker del recorte (`MUEBLES_FRIOS`
+  va marcado `@__PURE__`). `probar-catalogo.mjs` arma el grafo de `main.tsx` y del worker y
+  falla si vuelve. El pedazo de entrada quedó en 341 kB (109 kB comprimido), por debajo de
+  los 346 kB que pesaba antes del catálogo.
+
+**Cómo se agrega un tipo.**
+
+1. Una entrada en `tipos` de `frontend/src/catalogo/muebles.json`: un prefijo de tres
+   letras que nadie use, `alquilable` y, si se vende, `tarifa` (con su fila en `tarifas`),
+   `informe`, `informePlural` y `categoria`. El nombre de informe tiene que llevar a SU
+   fila de Tarifas: la sesión le dice a la dueña «dejar la tarifa cargada en …» y ella la
+   busca por esas palabras, así que la validación falla si aparece en el rótulo de la
+   tarifa de otro tipo y no en el suyo.
+2. Sumarlo a `orden.editor3D` y a `orden.plano2D` (y a `orden.minimapa` si es referencia).
+3. Copiar el archivo sobre `backend/app/catalogo/muebles.json`.
+4. Sumar la clave a `FixType` (`types/fixtures.ts`) y a `FixType2D`
+   (`utils/convertirPlano.ts`): son tipos de TypeScript, no corren, y `probar-catalogo`
+   exige que digan lo mismo que el archivo.
+5. Dibujarlo: un `case` en `FixtureMesh` (`StoreEditor3D.tsx`) y, si hace falta, en el 2D.
+6. Hoy además fallan «el plano sintético se arma igual» y «un plano viejo da lo mismo»: la
+   comparación contra la referencia toma las filas del tipo nuevo por un cambio de lo de
+   antes. Que las ignore es el primer paso de lo que sigue (ver *Dónde retomar*).
+
+**La referencia y los cambios intencionales.** `frontend/scripts/casos/catalogo-antes.json`
+es lo que hacía el código antes del catálogo, capturado de `fafb301` por
+`scripts/capturar-catalogo.mjs` y `backend/scripts/capturar_catalogo.py` sobre un plano
+sintético con un mueble de cada tipo y los legados (una góndola sin `gondolaType`,
+`gondola_doble`, `exhibicion`, una zona libre habilitada, una caja sin la bandera). Quedó
+FIJA: escribirla pide `--reescribir` y sólo tiene sentido sobre el código de antes.
+`probar-catalogo.mjs` y `tests/test_catalogo_muebles.py` corren la misma captura sobre el
+código de hoy y la comparan entera; cada diferencia tiene que estar en su
+`CAMBIOS_INTENCIONALES`, con su porqué y su valor de antes. Los que hay, todos para
+muebles que se creen desde ahora o textos que no se guardan:
+
+- el mostrador de carnes nace en el 2D con 0,90 de fondo (era 0,85; el 3D ya decía 0,90);
+- el servicio al cliente nace en el 2D con 1,10 de alto y su color (no estaba en las
+  tablas del 2D y caía en 1,80 y en el color de la góndola);
+- se fue el color de `nevera_mural`, un tipo que no existe;
+- los informes nombran «vitrina», «zona libre» e «impulsadores» (salían `mueble`, `metro`
+  e «impulsadors»);
+- la `isla` y la `cross` se llaman «Estiba (exhibición de piso)» y «Exhibidor cruz» en
+  Tarifas, y «estiba» y «exhibidor cruz» en los informes (decían «Isla» y «Exhibición de
+  piso»). Con sólo las tarifas renombradas, «exhibición de piso» era la cruz en los
+  informes y la estiba en Tarifas; la demo de la landing usa los mismos nombres;
+- del lado del servidor, uno de la revisión: `scripts/auditar_desfase.py` pregunta
+  `es_comercializable`, como la aplicación, y ya no cuenta como ofrecida una caja de un
+  plano viejo sin la bandera.
+
+Además, las dos pruebas cargan los módulos con un catálogo adulterado y cada tabla tiene
+que cambiar con él: una copia escrita a mano que hoy coincide con el archivo no pasa.
+
+**Lo que el editor no conoce, se conserva.** Las conversiones entre el store y cada editor
+viven en `utils/convertirPlano.ts`, y la vuelta parte del mueble guardado:
+`{ ...guardado, ...loQueSabe }`. Antes armaban el mueble con una lista fija, y el 2D
+borraba la vista 3D guardada para el proveedor y el montaje de la cara A al mover
+cualquier cosa. Lo que el editor sabe manda, también cuando vale `undefined`.
+`probar-plano.mjs` compara contra las funciones de antes y edita en cada editor todos los
+campos que la vuelta escribe.
+
+**Una sola regla de caras, la laxa.** `carasDe` (`types/espacio.ts`) y `caras_de`
+(`layout_lookup.py`): `gondola` con `gondolaType` `"double"` o ausente, o el legado
+`gondola_doble`, son dos caras; todo lo demás, una. Es lo que dibujan los dos editores y lo
+que ya ofrecía Vender; con la estricta, la cara B de una góndola vieja se vendía sin que el
+plano la pintara ni el guardarraíl la cuidara. En la revisión se sumaron la planilla y el
+contrato suelto, que le recortaban el `-B` a cualquier mueble y vendían `PUN-01-B` (ver
+*Reglas duras*).
+
+Ningún código de espacio, prefijo, clave de tarifa ni plano guardado cambió, y no hay
+migraciones ni columnas nuevas.
+
+**Verificación.** `tsc` limpio; `npm run probar` (29 guiones) y `npm run build` limpios
+(35 pedazos; el catálogo, 8,7 kB, va en uno perezoso). pytest de los archivos que tocan
+esto: caras, auditoría de desfase, catálogo, planilla, vendible, renumeración, contrato
+sin mueble, nomenclatura de la planilla, correos de contrato, punta a punta, importación
+del plano, estado comercial, métricas y detalle de la plataforma, enlace de montaje,
+endurecimiento y bitácora: 322 verdes. Tres revisiones de la rama dejaron diez hallazgos
+y quedaron cerrados con su prueba, rota a propósito antes del arreglo: los nombres de
+informe de la estiba y la cruz; la planilla y el contrato suelto que vendían la cara B de
+un mueble de una cara; el auditor de consola que contaba la caja de un plano viejo; la
+bandera `rentable` que la vuelta de los editores podía perder sin que nada fallara (y con
+ella cualquier campo: se mutaron los 27 que escriben las dos vueltas); las tablas del
+servidor sin prueba contra el archivo; las tablas propias de los editores (los altos
+viejos en el 2D, `slotsPorDefecto` vacío en el 3D); la guarda de las caras, que sólo veía
+`=== "double"`, y el catálogo en el pedazo de entrada y en el worker.
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 
