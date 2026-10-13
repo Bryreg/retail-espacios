@@ -250,6 +250,20 @@ de los editores (sí a `sinDatosComerciales` si el visor de Vender lo necesita, 
 `_GEOMETRIA` de `routers/montaje.py` si el mercaderista lo necesita: esas son listas de
 lo que se DEJA pasar, a propósito).
 
+**Lo que hace hoy cada tipo de mueble está anotado.** Las tablas por tipo que vivían
+adentro de los componentes están, tal cual, en `frontend/src/catalogo/`: `FIXTURE_DEFS` y
+los `TIPOS_CON_*` del editor 3D (`editor3D.ts`; el editor los reexporta, y el orden de
+`FIXTURE_DEFS` importa porque `/taller` elige por posición), `CATALOG`, `H_DEFAULTS` y
+`COLOR_DEFAULTS` del plano 2D (`plano2D.ts`) y las referencias del minimapa
+(`minimapa.ts`). Las guardas las corren en vez de leerlas con una regex.
+`frontend/scripts/casos/catalogo-antes.json` es la referencia del catálogo único de
+muebles: las tablas del frontend y del servidor, y lo que calculan sobre un plano
+sintético con un mueble de cada tipo (más los legados). Lo escriben
+`frontend/scripts/capturar-catalogo.mjs` y después `backend/scripts/capturar_catalogo.py`,
+cada uno en su parte y los dos con `--comprobar`. Con el catálogo único, un plano viejo
+tiene que dar eso mismo; no se edita a mano, y si un cambio altera a propósito lo que hace
+un tipo, se recaptura en el mismo PR diciendo qué cambió.
+
 **Lo que no está en el mapa comercial está LIBRE, y la fusión REEMPLAZA.** No hace falta
 pre-crear ningún `space`: la fila aparece cuando se vende. Y la fusión no rellena huecos
 —escribe los siete campos siempre—, porque rellenar dejaría un contrato cancelado pintado

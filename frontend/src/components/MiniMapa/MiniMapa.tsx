@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { footprint2D, isRentable, type UnifiedFixture } from "../../types/fixtures";
 import { nombreDeMueble } from "../../utils/nomenclatura";
+import { REFERENCIAS } from "../../catalogo/minimapa";
 
 /**
  * El plano de la tienda visto desde arriba, con UN mueble señalado.
@@ -19,15 +20,7 @@ import { nombreDeMueble } from "../../utils/nomenclatura";
 const GRIS_INFRA = "var(--resto-borde)";
 const GRIS_OTROS = "var(--resto)";
 
-/** Las cajas son la referencia que todo el mundo conoce, aunque nunca haya
- *  mirado un plano. Se dibujan aparte y con etiqueta. */
-const REFERENCIAS: Record<string, { corto: string; frase: string }> = {
-  checkout: { corto: "Cajas", frase: "las cajas" },
-  nevera_refrescos: { corto: "Neveras", frase: "las neveras" },
-  nevera_carnes: { corto: "Carnes", frase: "el mostrador de carnes" },
-  nevera_vegetales: { corto: "Vegetales", frase: "el mural de frutas y verduras" },
-  stand_frutas: { corto: "Frutas", frase: "las frutas" },
-};
+// Las referencias (cajas, neveras, frutas) viven en `catalogo/minimapa.ts`.
 
 /** Dónde está parado quien camina y hacia dónde mira. */
 export interface CamaraEnPlanta {

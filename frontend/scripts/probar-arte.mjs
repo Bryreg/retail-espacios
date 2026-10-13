@@ -19,13 +19,16 @@ const aqui = dirname(fileURLToPath(import.meta.url));
 const raiz = join(aqui, "..");
 const muebles = join(raiz, "src", "components", "StoreEditor3D", "muebles");
 
-const cargar = async (archivo) => {
-  const r = await build({ entryPoints: [join(muebles, archivo)], bundle: true, write: false, format: "esm", platform: "neutral" });
+const cargar = async (archivo, carpeta = muebles) => {
+  const r = await build({ entryPoints: [join(carpeta, archivo)], bundle: true, write: false, format: "esm", platform: "neutral" });
   return import("data:text/javascript;base64," + Buffer.from(r.outputFiles[0].text).toString("base64"));
 };
 const R = await cargar("recorte.ts");
 const P = await cargar("producto.ts");
 const T = await cargar("texturas.ts");
+// El catálogo del editor 3D (`FIXTURE_DEFS`), afuera del componente desde que
+// se sacó a `src/catalogo/editor3D.ts`: se corre, no se lee con una regex.
+const C3 = await cargar("editor3D.ts", join(raiz, "src", "catalogo"));
 
 let hechas = 0;
 const prueba = (n, fn) => {
@@ -346,8 +349,8 @@ prueba("el aviso de frío sale en la punta seca y no en la nevera", () => {
   assert.equal(P.avisoDeFrio("punta", "Lácteos", "Leche Alpina larga vida 1 L"), false);
   // Los muebles fríos son los que existen en el editor: si se renombra uno,
   // el aviso empezaría a salir en la nevera.
-  const fuente = readFileSync(join(raiz, "src", "components", "StoreEditor3D", "StoreEditor3D.tsx"), "utf8");
-  for (const frio of P.MUEBLES_FRIOS) assert.match(fuente, new RegExp(`type:\\s*"${frio}"`), `${frio} no es un mueble del editor`);
+  const delEditor = new Set(C3.FIXTURE_DEFS.map((d) => d.type));
+  for (const frio of P.MUEBLES_FRIOS) assert.ok(delEditor.has(frio), `${frio} no es un mueble del editor`);
 });
 
 prueba("el vaso de yogur sin ficha no se apila: sólo la ficha lo dice", () => {

@@ -41,8 +41,9 @@ export interface Corrida {
   ids: string[];
 }
 
-/** Los tipos que forman corrida. El resto se cuelga de la corrida más cercana. */
-const FORMAN_CORRIDA = new Set(["gondola", "gondola_doble", "gondola_mural"]);
+/** Los tipos que forman corrida. El resto se cuelga de la corrida más cercana.
+ *  Se exporta sólo para que `scripts/capturar-catalogo.mjs` la lea. */
+export const FORMAN_CORRIDA = new Set(["gondola", "gondola_doble", "gondola_mural"]);
 
 /** Un mueble a menos de esto de una corrida se considera parte de ella. */
 export const ALCANCE_CORRIDA = 3.0; // m

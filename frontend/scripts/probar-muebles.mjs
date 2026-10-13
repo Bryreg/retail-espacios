@@ -412,6 +412,22 @@ const M = await import(
   Buffer.from(compiladoM.outputFiles[0].text).toString("base64")
 );
 
+// Las tablas por tipo que vivían adentro del editor 3D, del plano 2D y del
+// minimapa (`FIXTURE_DEFS`, `TIPOS_CON_*`, `CATALOG`, `REFERENCIAS`) están en
+// `src/catalogo/` desde que se sacaron para capturar la referencia del catálogo
+// (`scripts/casos/catalogo-antes.json`). Se corren: una regex sobre el texto
+// del componente ya no las encontraría.
+const deCatalogo = async (archivo) => {
+  const r = await build({
+    entryPoints: [join(raiz, "src", "catalogo", archivo)],
+    bundle: true, write: false, format: "esm", platform: "neutral",
+  });
+  return import("data:text/javascript;base64," + Buffer.from(r.outputFiles[0].text).toString("base64"));
+};
+const C3 = await deCatalogo("editor3D.ts");
+const C2 = await deCatalogo("plano2D.ts");
+const CM = await deCatalogo("minimapa.ts");
+
 prueba("ninguna altura de mueble pierde su entrepaño de arriba", () => {
   // El último entrepaño cae JUSTO en el límite, y con `y <= hasta` a secas la
   // comparación la decide el último bit del flotante: una góndola de 1,80
@@ -1452,15 +1468,21 @@ prueba("la nevera de vegetales está dada de alta en todo el sistema", () => {
   const donde = [
     ["types/fixtures.ts", "el tipo no existe"],
     ["utils/nomenclatura.ts", "el mueble no tiene prefijo de código"],
-    ["components/FloorPlan2D/FloorPlan2D.tsx", "no se puede colocar en el plano 2D"],
-    ["components/MiniMapa/MiniMapa.tsx", "no tiene nombre en el minimapa"],
     ["components/plataforma/formato.ts", "no tiene nombre en los informes"],
   ];
   for (const [ruta, porque] of donde) {
     assert.match(leer(join("src", ruta)), /nevera_vegetales/, `${ruta}: ${porque}`);
   }
+  // El catálogo del plano 2D y las referencias del minimapa viven en
+  // `src/catalogo/`; cada componente tiene que tomarlos de ahí.
+  assert.ok(C2.CATALOG.some((c) => c.type === "nevera_vegetales"), "catalogo/plano2D.ts: no se puede colocar en el plano 2D");
+  assert.match(sinComentarios(leer(join("src", "components", "FloorPlan2D", "FloorPlan2D.tsx"))),
+    /import \{[^}]*\bCATALOG\b[^}]*\} from "\.\.\/\.\.\/catalogo\/plano2D";/, "el plano 2D no coloca desde `catalogo/plano2D.ts`");
+  assert.ok(CM.REFERENCIAS.nevera_vegetales, "catalogo/minimapa.ts: no tiene nombre en el minimapa");
+  assert.match(sinComentarios(leer(join("src", "components", "MiniMapa", "MiniMapa.tsx"))),
+    /import \{ REFERENCIAS \} from "\.\.\/\.\.\/catalogo\/minimapa";/, "el minimapa no nombra desde `catalogo/minimapa.ts`");
   assert.match(editorCodigo, /case "nevera_vegetales":/, "el editor 3D no sabe dibujarla");
-  assert.match(editorCodigo, /code:"VEG"/, "el mueble no tiene código de espacio");
+  assert.ok(C3.FIXTURE_DEFS.some((d) => d.type === "nevera_vegetales" && d.code === "VEG"), "el mueble no tiene código de espacio");
 });
 
 prueba("la ristra NO lleva entrepaño", () => {
@@ -2217,7 +2239,7 @@ prueba("surtido: cada producto llena SU bloque, en todos los entrepaños, y ning
   const fp = cuerpoDe("const facePaintById = useMemo(", "const handleOrbitReady");
   assert.match(fp, /TIPOS_CON_SURTIDO\.has\(fix\.type\)\s*\? surtidoALaVista\(arteId, como\?\.surtido, catalogo, privadoPara\)/);
   assert.match(fp, /bloquesDeSurtido\(venta\.vanos, delSurtido\.length \+ 1\)/);
-  assert.match(editorCodigo, /const TIPOS_CON_SURTIDO = new Set<string>\(\["gondola", "punta"\]\);/, "el surtido se ofrece en la nevera o el robatope");
+  assert.deepEqual([...C3.TIPOS_CON_SURTIDO], ["gondola", "punta"], "el surtido se ofrece en la nevera o el robatope");
 });
 
 prueba("surtido: el copete, el cabezote, la toma y /taller siguen con el principal", () => {
@@ -3659,8 +3681,7 @@ prueba("arte o relleno, CORRIDO: la cara probada no lleva relleno y la otra sí"
 // que dibuja el producto.
 
 prueba("la prueba 3D le gana a la foto y al patrón en su cara, y sólo en ella", () => {
-  assert.match(editorCodigo,
-    /const TIPOS_CON_PRUEBA_3D = new Set<string>\(\["gondola", "punta", "nevera_refrescos", "robatope"\]\)/,
+  assert.deepEqual([...C3.TIPOS_CON_PRUEBA_3D], ["gondola", "punta", "nevera_refrescos", "robatope"],
     "cambió en qué muebles se para el producto de prueba");
   const fp = cuerpoDe("const facePaintById = useMemo(", "const handleOrbitReady");
   assert.match(fp, /const en3D = TIPOS_CON_PRUEBA_3D\.has\(type\)/, "facePaintById no pregunta si el mueble lleva prueba 3D");
@@ -5724,9 +5745,19 @@ prueba("la escena del visor (`soloVenta`): ni fotos de caras, ni cámara del edi
   assert.ok(!/soloVenta/.test(sceneDelEditor[0]), "el editor le pasa `soloVenta` a su escena");
   // Lo que el visor necesita, exportado (y nada de lo que escribe el plano).
   for (const n of ["export function Scene(", "export function storeToFixtures(", "export function PanelDePrueba(",
-    "export function HudQueSeEsconde(", "export class CanvasErrorBoundary", "export const TIPOS_CON_PRUEBA_3D",
-    "export const TIPOS_CON_PRODUCTO", "export type ComoSePrueba", "export const CAM_POS", "export const FONDO_DE_SALA"]) {
+    "export function HudQueSeEsconde(", "export class CanvasErrorBoundary",
+    "export type ComoSePrueba", "export const CAM_POS", "export const FONDO_DE_SALA"]) {
     assert.ok(editorCodigo.includes(n), `falta \`${n}\``);
+  }
+  // Los `TIPOS_CON_*` viven en `catalogo/editor3D.ts`: el editor los toma de
+  // ahí —no de una copia propia— y los reexporta para el visor.
+  assert.match(editorCodigo,
+    /import \{ FIXTURE_DEFS, TIPOS_CON_PRODUCTO, TIPOS_CON_PRUEBA_3D, TIPOS_CON_SURTIDO \} from "\.\.\/\.\.\/catalogo\/editor3D";/,
+    "el editor no toma sus tablas por tipo de `catalogo/editor3D.ts`");
+  assert.match(editorCodigo, /export \{[^}]*\bTIPOS_CON_PRODUCTO\b[^}]*\bTIPOS_CON_PRUEBA_3D\b[^}]*\};/,
+    "el editor no reexporta lo que el visor necesita");
+  for (const n of ["TIPOS_CON_PRODUCTO", "TIPOS_CON_PRUEBA_3D", "TIPOS_CON_SURTIDO"]) {
+    assert.ok(C3[n] instanceof Set, `falta \`${n}\` en catalogo/editor3D.ts`);
   }
   assert.ok(!/export function fixturesToStore\(/.test(editorCodigo), "`fixturesToStore` se exporta: el visor podría escribir el plano");
   // Vive en `utils/convertirPlano.ts`; el editor la usa, pero no la reexporta.
