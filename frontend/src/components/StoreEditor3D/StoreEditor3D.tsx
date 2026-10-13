@@ -62,6 +62,9 @@ import {
   fondoPorCara, pisoDelCartelDePunta, techoDeCara, ventaDeNevera, ventaDeRobatope,
 } from "./muebles/medidas";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
+import {
+  fixturesToStore, storeToFixtures as delStoreAl3D, type Catalogo3D, type PlacedFixture,
+} from "../../utils/convertirPlano";
 import { useModalAbierto } from "../../tema";
 import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
@@ -512,27 +515,9 @@ interface FixtureDef {
   code:         string;
 }
 
-export interface PlacedFixture {
-  id:              string;
-  code:            string;
-  type:            FixType;
-  gondolaType?:    GondolaType;
-  slots?:          ShelfSlot[];
-  x: number; z: number;
-  rotY:            number;
-  w: number; d: number; h: number;
-  label:           string;
-  color:           string;
-  supplierName:    string;
-  brandCategory:   string;
-  status:          SpaceStatus;
-  negotiatedValue: number;
-  startDate:       string;
-  endDate:         string;
-  observation:     string;
-  /** False marks infrastructure that is never rented out. Undefined = rentable. */
-  rentable?:       boolean;
-}
+// `PlacedFixture` —la forma con que la escena trabaja cada mueble— vive en
+// `utils/convertirPlano.ts`, junto con las conversiones desde y hacia el store.
+export type { PlacedFixture };
 
 // ─── Fixture catalogue ────────────────────────────────────────────────────────
 
@@ -5359,7 +5344,7 @@ export function Scene({
         faceImages && !faceImages.has(primary) && faceImages.has(fallback)
           ? fallback
           : primary;
-      const isDouble = isDoubleGondola(fix) || type === "gondola_doble";
+      const isDouble = isDoubleGondola(fix);
       const en3D = TIPOS_CON_PRUEBA_3D.has(type);
       // En una pantalla que mira un proveedor, sólo SUS pruebas: las de otros
       // proveedores de la misma sesión (la punta que se le ofreció a Alpina
@@ -6037,105 +6022,21 @@ export function Scene({
 
 // ─── Store ↔ PlacedFixture adapters ──────────────────────────────────────────
 
+/** Lo que las conversiones de `utils/convertirPlano.ts` necesitan del catálogo
+ *  de este editor. */
+const CATALOGO_3D: Catalogo3D = { defs: FIXTURE_DEFS, slotsPorDefecto: defaultSlots };
+
 /**
  * Convert the unified store into the 3D internal array.
  * Filters out "exhibicion" fixtures (no 3D mesh representation).
+ *
+ * La conversión vive en `utils/convertirPlano.ts`; ésta le pone el catálogo
+ * del 3D. Se exporta porque el visor de Vender dibuja con ella. La vuelta,
+ * `fixturesToStore`, NO se exporta desde acá: arma el plano para escribirlo, y
+ * el visor no escribe.
  */
 export function storeToFixtures(unifiedList: UnifiedFixture[]): PlacedFixture[] {
-  return unifiedList
-    .filter((f) => f.type !== "exhibicion")
-    .map((f) => {
-      const type = f.type as FixType;
-      const def  = FIXTURE_DEFS.find(
-        (d) => d.type === type && (!f.gondolaType || d.gondolaType === f.gondolaType)
-      );
-      return {
-        id:              f.id,
-        code:            f.code,
-        type,
-        gondolaType:     f.gondolaType,
-        slots:           f.slots ?? defaultSlots({ type, w: f.w, h: f.h, code: f.code }),
-        x:               f.cx,
-        // Direct Z mapping — camera is on the north side (Z = STORE_D + 8),
-        // so small Z = far from camera = top of viewport, which already matches
-        // the 2D convention (small Y = top of canvas). No flip needed.
-        z:               f.cz,
-        rotY:            f.rotY,
-        w:               f.w,
-        d:               f.d,
-        h:               f.h,
-        label:           f.label || def?.label || type,
-        color:           f.color || def?.color || "#6366f1",
-        supplierName:    f.supplierName,
-        brandCategory:   f.brandCategory,
-        status:          f.status,
-        negotiatedValue: f.negotiatedValue,
-        startDate:       f.startDate,
-        endDate:         f.endDate,
-        observation:     f.observation,
-        rentable:        f.rentable,
-      };
-    });
-}
-
-/**
- * Convert the 3D internal array back to unified format.
- * Preserves "exhibicion" fixtures from the store (2D-only, invisible in 3D).
- */
-function fixturesToStore(
-  fixtures: PlacedFixture[],
-  sede: string,
-  existingStore: UnifiedFixture[],
-): UnifiedFixture[] {
-  // Keep 2D-only fixtures (exhibicion) so the 2D editor doesn't lose them
-  const exhibicion = existingStore.filter((f) => f.type === "exhibicion");
-
-  // PlacedFixture models only what the 3D scene needs. Any UnifiedFixture field
-  // the 3D editor does not know about (face B contracts, the old name kept for
-  // reconciliation) must be carried over from the store, otherwise simply
-  // opening this editor would blank it out for every fixture and push the loss
-  // to the server.
-  const existingMap = new Map(existingStore.map((f) => [f.id, f]));
-
-  const updated: UnifiedFixture[] = fixtures.map((f) => {
-    const existing = existingMap.get(f.id);
-    return {
-      id:              f.id,
-      code:            f.code,
-      type:            f.type,
-      gondolaType:     f.gondolaType,
-      label:           f.label,
-      cx:              f.x,
-      cz:              f.z, // direct mapping — no flip since camera moved to north side
-      rotY:            f.rotY,
-      w:               f.w,
-      d:               f.d,
-      h:               f.h,
-      color:           f.color,
-      status:          f.status,
-      sede,
-      supplierName:    f.supplierName,
-      brandCategory:   f.brandCategory,
-      negotiatedValue: f.negotiatedValue,
-      startDate:       f.startDate,
-      endDate:         f.endDate,
-      observation:     f.observation,
-      slots:           f.slots,
-      rentable:        f.rentable,
-      // ── Preserved from the store (not modelled in 3D) ──────────────────────
-      // El nombre VIEJO: nadie lo escribe ya, pero borrarlo dejaría sin fuente a
-      // la reconciliación de los contratos que se negociaron con ese nombre.
-      nomenclatura:    existing?.nomenclatura,
-      nombreAnterior:  existing?.nombreAnterior,
-      faceB:           existing?.faceB,
-      // Las vistas guardadas viven en el layout pero no las modela el 3D: sin
-      // esta línea, mover un mueble borraba todos los encuadres de la sede y
-      // le mandaba la pérdida al servidor.
-      vista3D:         existing?.vista3D,
-    };
-  });
-
-  return [...exhibicion, ...updated];
+  return delStoreAl3D(unifiedList, CATALOGO_3D);
 }
 
 // ─── El HUD de Presentar ──────────────────────────────────────────────────────

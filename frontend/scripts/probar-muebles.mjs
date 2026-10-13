@@ -5729,6 +5729,8 @@ prueba("la escena del visor (`soloVenta`): ni fotos de caras, ni cámara del edi
     assert.ok(editorCodigo.includes(n), `falta \`${n}\``);
   }
   assert.ok(!/export function fixturesToStore\(/.test(editorCodigo), "`fixturesToStore` se exporta: el visor podría escribir el plano");
+  // Vive en `utils/convertirPlano.ts`; el editor la usa, pero no la reexporta.
+  assert.ok(!/export\s*\{[^}]*\bfixturesToStore\b/.test(editorCodigo), "`fixturesToStore` se reexporta desde el editor");
 });
 
 console.log(`\n${hechas} pruebas del mobiliario 3D`);

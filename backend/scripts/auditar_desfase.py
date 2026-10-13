@@ -38,14 +38,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.database import SessionLocal  # noqa: E402
 from app.fechas import hoy as hoy_en_colombia  # noqa: E402
 from app.models.models import LayoutSnapshot, Space, SpaceLease  # noqa: E402
+from app.services.layout_lookup import caras_de  # noqa: E402
 
 
 def caras_del_plano(fixtures: list[dict]) -> dict[str, dict]:
     """Los códigos CORTOS que el plano ofrece hoy, con lo que dice de cada uno.
 
-    Una góndola doble son dos espacios: ``GON-60`` y ``GON-60-B``. Un mueble
-    marcado no comercializable NO está acá: sale de la venta, y ése es
-    justamente uno de los casos que hay que encontrar.
+    Una góndola doble son dos espacios: ``GON-60`` y ``GON-60-B`` (``caras_de``,
+    la misma regla que la aplicación). Un mueble marcado no comercializable NO
+    está acá: sale de la venta, y ése es justamente uno de los casos que hay
+    que encontrar.
     """
     caras: dict[str, dict] = {}
     for f in fixtures:
@@ -53,7 +55,7 @@ def caras_del_plano(fixtures: list[dict]) -> dict[str, dict]:
         if not code or f.get("rentable") is False:
             continue
         caras[code] = f
-        if f.get("gondolaType") == "double" or f.get("type") == "gondola_doble":
+        if caras_de(f) == 2:
             caras[f"{code}-B"] = f.get("faceB") or {}
     return caras
 

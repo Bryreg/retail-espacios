@@ -64,7 +64,7 @@ import unicodedata
 from collections import OrderedDict
 from datetime import date, datetime, timezone
 
-from app.services.layout_lookup import es_comercializable
+from app.services.layout_lookup import caras_de, es_comercializable
 
 log = logging.getLogger("recabra.plataforma.metricas")
 
@@ -207,25 +207,15 @@ def _es_comercializable(fixture: dict) -> bool:
 
 
 def _es_gondola_doble(fixture: dict) -> bool:
-    """``isDoubleGondola`` **de ``DashboardView.tsx``**, que es la que cuenta caras.
+    """¿Tiene cara B? Delega en ``layout_lookup.caras_de``, la misma regla que
+    usan el guardarraíl del plano y el frontend (``carasDe``).
 
-    Dos criterios, unidos por un OR, exactamente como el frontend::
-
-        isDoubleGondolaShared(f) || (f.type as string) === "gondola_doble"
-
-    · ``type == "gondola"`` con ``gondolaType`` ``"double"`` **o ausente** — el
-      default indefinido es doble en los dos editores (``fixtures.ts``).
-    · el tipo **legado** ``"gondola_doble"``, que ``DashboardView.tsx`` conserva
-      a propósito para los layouts viejos ya persistidos: esos planos están en
-      las bases de los clientes y sus góndolas siguen siendo de dos caras. Sin
-      esta rama, un cliente antiguo aparecería con la mitad del inventario.
+    Incluye la góndola sin ``gondolaType`` y el tipo **legado**
+    ``"gondola_doble"``: esos planos están en las bases de los clientes y sus
+    góndolas siguen siendo de dos caras. Sin eso, un cliente antiguo aparecería
+    con la mitad del inventario.
     """
-    tipo = fixture.get("type")
-    if tipo == "gondola_doble":
-        return True
-    if tipo != "gondola":
-        return False
-    return (fixture.get("gondolaType") or "double") == "double"
+    return caras_de(fixture) == 2
 
 
 def _codigo_completo(sede: str, code: str) -> str:

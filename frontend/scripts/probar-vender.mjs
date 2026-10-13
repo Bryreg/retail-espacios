@@ -573,6 +573,7 @@ const ESCRITURAS = [
   [/\bcommit\s*\(/, "commit( — escribe el plano"],
   [/\bsetFixtures\b/, "setFixtures — escribe el plano"],
   [/\bfixturesToStore\b/, "fixturesToStore — arma el plano para escribirlo"],
+  [/\bitemsToStore\b/, "itemsToStore — arma el plano para escribirlo (utils/convertirPlano.ts)"],
   [/\.getState\s*\(\s*\)/, ".getState() — una lectura del store fuera de un selector"],
   [/\buseFixtureStore\s*\(\s*\)/, "useFixtureStore() sin selector — todo el store (y cada escritura redibuja)"],
   [/\bsetSede\s*\(/, "setSede( — vacía el contrato y remonta la ficha"],

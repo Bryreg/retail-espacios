@@ -83,18 +83,26 @@ prueba("BORRAR EL MUEBLE deja el contrato a la vista", () => {
 });
 
 prueba("LA CARA B QUE DESAPARECE también", () => {
-  // Una góndola simple no ofrece cara B: pasarla de doble a simple borra un
+  // Una góndola mural no ofrece cara B: pasarla de doble a mural borra un
   // espacio vendible entero sin que nadie borre un mueble.
-  const simple = { "NAVE": [mueble("GON-60")] };
+  const simple = { "NAVE": [mueble("GON-60", { type: "gondola", gondolaType: "wall" })] };
   assert.equal(contratosSinMueble(simple, { "NAVE-GON-60-B": vendido() }).length, 1);
 });
 
 prueba("y una góndola doble SÍ ofrece las dos caras", () => {
-  const doble = { "NAVE": [mueble("GON-60", { gondolaType: "double" })] };
+  const doble = { "NAVE": [mueble("GON-60", { type: "gondola", gondolaType: "double" })] };
   assert.deepEqual(
     contratosSinMueble(doble, { "NAVE-GON-60": vendido(), "NAVE-GON-60-B": vendido() }),
     [],
   );
+});
+
+prueba("una góndola SIN `gondolaType` también ofrece la cara B", () => {
+  // La regla es una sola (`carasDe`): Vender ofrece esa cara B y la vende, así
+  // que su contrato NO es un fantasma. Con la regla estricta de antes, salía
+  // en «Para revisar» como contrato sin mueble.
+  const vieja = { "NAVE": [mueble("GON-60", { type: "gondola" })] };
+  assert.deepEqual(contratosSinMueble(vieja, { "NAVE-GON-60-B": vendido() }), []);
 });
 
 prueba("gondola_doble por tipo cuenta igual", () => {
@@ -210,7 +218,8 @@ prueba("la plata viaja tal como la mandó el servidor", () => {
 
    No se puede correr el Python desde acá, así que se afirma que las tres
    decisiones siguen escritas en los dos lados. Es poco, y es más que nada. */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { relative } from "node:path";
 const servidor = readFileSync(
   join(aqui, "..", "..", "backend", "app", "services", "layout_lookup.py"), "utf8",
 );
@@ -223,11 +232,63 @@ prueba("el servidor sigue saltándose lo no comercializable", () => {
     "comercializable volvería a poder sacarse del plano con un contrato vivo");
 });
 
-prueba("el servidor sigue contando la cara B como un espacio aparte", () => {
+prueba("el servidor sigue contando la cara B como un espacio aparte, con `caras_de`", () => {
   const m = servidor.match(/def espacios_ofrecidos[\s\S]*?\n    return ofrecidos/);
-  assert.match(m[0], /gondolaType"\) == "double" or fixture\.get\("type"\) == "gondola_doble"/,
-    "el servidor dejó de reconocer la góndola doble");
-  assert.match(m[0], /f"\{completo\}-B"/, "el servidor dejó de ofrecer la cara B");
+  assert.match(m[0], /if caras_de\(fixture\) == 2:\s*\n\s*ofrecidos\.add\(f"\{completo\}-B"\)/,
+    "el servidor dejó de preguntarle a `caras_de` si el mueble tiene cara B");
+});
+
+// ─── Una sola regla de caras ─────────────────────────────────────────────────
+
+/* «¿Esta góndola tiene cara B?» tuvo dos respuestas: Vender contaba como doble
+   la góndola sin `gondolaType` y la fusión, esta auditoría y el servidor
+   exigían `"double"` escrito. La cara B de una góndola vieja se vendía, el
+   plano no la pintaba vendida, borrar la góndola no frenaba y «Para revisar»
+   la daba por contrato sin mueble. Ahora la respuesta es `carasDe` acá y
+   `caras_de` en el servidor, y los dos corren los MISMOS casos
+   (`scripts/casos/caras.json`; el servidor, en `tests/test_caras.py`). */
+const { outputFiles: tipos } = await build({
+  entryPoints: [join(aqui, "..", "src", "types", "fixtures.ts")],
+  bundle: true, format: "esm", write: false, platform: "neutral",
+});
+const salidaTipos = join(dirname(salida), "t.mjs");
+writeFileSync(salidaTipos, tipos[0].text);
+const { carasDe, isDoubleGondola } = await import(pathToFileURL(salidaTipos).href);
+const { casos } = JSON.parse(readFileSync(join(aqui, "casos", "caras.json"), "utf8"));
+
+prueba("`carasDe` contesta los casos que también corre el servidor", () => {
+  assert.ok(casos.length >= 10, "faltan los casos compartidos");
+  const mal = casos.filter((c) => carasDe(c.mueble) !== c.caras)
+    .map((c) => `${c.por}: ${JSON.stringify(c.mueble)} → ${carasDe(c.mueble)}, se esperaba ${c.caras}`);
+  assert.deepEqual(mal, []);
+  for (const c of casos) assert.equal(isDoubleGondola(c.mueble), c.caras === 2, c.por);
+});
+
+prueba("la regla vive en DOS lugares, uno por lado, y en ningún otro", () => {
+  // Una comparación con "double" fuera de `carasDe` / `caras_de` es otra copia
+  // de la regla, y las copias se separan.
+  const raiz = join(aqui, "..", "..");
+  const copias = [];
+  const recorrer = (dir, ext) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const ruta = join(dir, e.name);
+      if (e.isDirectory()) { if (e.name !== "node_modules" && e.name !== "__pycache__") recorrer(ruta, ext); continue; }
+      if (!ext.some((x) => e.name.endsWith(x))) continue;
+      readFileSync(ruta, "utf8").split("\n").forEach((l, k) => {
+        if (/[=!]==?\s*["']double["']|["']double["']\s*[=!]==?/.test(l)) copias.push(`${relative(raiz, ruta)}:${k + 1}`);
+      });
+    }
+  };
+  recorrer(join(raiz, "frontend", "src"), [".ts", ".tsx"]);
+  recorrer(join(raiz, "backend", "app"), [".py"]);
+  recorrer(join(raiz, "backend", "scripts"), [".py"]);
+  assert.deepEqual(copias.map((c) => c.replace(/:\d+$/, "")).sort(), [
+    "backend/app/services/layout_lookup.py",
+    "frontend/src/types/fixtures.ts",
+  ], `copias de la regla de la cara B:\n         ${copias.join("\n         ")}`);
+  const py = servidor.match(/def caras_de[\s\S]*?\n(?=\S)/);
+  assert.ok(py, "no se encontró `caras_de` en layout_lookup.py");
+  assert.match(py[0], /variante == "double"/, "la comparación de layout_lookup.py no es la de `caras_de`");
 });
 
 prueba("el servidor sigue armando el código con la sede", () => {

@@ -136,6 +136,36 @@ def es_comercializable(fixture: dict) -> bool:
     return fixture.get("rentable") is not False
 
 
+def caras_de(fixture: dict) -> int:
+    """Cuántas caras vendibles tiene el mueble: 2 es la cara A y la ``-B``.
+
+    Espejo de ``carasDe`` en ``frontend/src/types/fixtures.ts``, y es LA
+    respuesta a «¿esta góndola tiene cara B?» de este lado: lo que el plano
+    ofrece (``espacios_ofrecidos``, el guardarraíl de contratos vivos), la
+    importación de contratos del plano, las métricas de la plataforma y
+    ``scripts/auditar_desfase.py``.
+
+    Hubo dos reglas. Ésta exigía ``"double"`` escrito mientras Vender ofrecía
+    la cara B de una góndola sin ``gondolaType``: se vendía, pero borrar la
+    góndola no frenaba por ella y la auditoría la daba por contrato sin
+    mueble. Quedó la laxa, que es lo que dibujan los dos editores:
+
+    · ``gondola`` con ``gondolaType`` ``"double"`` o AUSENTE → 2;
+    · el tipo legado ``gondola_doble`` de los planos viejos del 2D → 2;
+    · cualquier otra cosa (``"wall"``, un mueble que no es góndola) → 1.
+
+    Ausente es ``None``, igual que ``??`` del frontend: un ``""`` escrito no
+    cuenta como ausente en ninguno de los dos lados.
+    """
+    tipo = fixture.get("type")
+    if tipo == "gondola_doble":
+        return 2
+    if tipo != "gondola":
+        return 1
+    variante = fixture.get("gondolaType")
+    return 2 if variante is None or variante == "double" else 1
+
+
 def is_space_rentable(db: Session, space_code: str) -> bool:
     """Whether a contract may be attached to this space code.
 
@@ -791,9 +821,9 @@ def choques_nuevos(previas: list[dict], nuevas: list[dict]) -> list[str]:
 def espacios_ofrecidos(fixtures: list[dict], sede: str) -> set[str]:
     """Los códigos COMPLETOS que este plano pone a la venta hoy.
 
-    Una góndola doble son dos espacios: ``NAVE-GON-60`` y ``NAVE-GON-60-B``.
-    Un mueble no comercializable NO está — y ése es justamente uno de los casos
-    que hay que encontrar.
+    Una góndola doble son dos espacios: ``NAVE-GON-60`` y ``NAVE-GON-60-B``
+    (``caras_de``). Un mueble no comercializable NO está — y ése es justamente
+    uno de los casos que hay que encontrar.
     """
     ofrecidos: set[str] = set()
     for fixture in fixtures:
@@ -804,7 +834,7 @@ def espacios_ofrecidos(fixtures: list[dict], sede: str) -> set[str]:
             continue
         completo = _full_code(code, sede)
         ofrecidos.add(completo)
-        if fixture.get("gondolaType") == "double" or fixture.get("type") == "gondola_doble":
+        if caras_de(fixture) == 2:
             ofrecidos.add(f"{completo}-B")
     return ofrecidos
 

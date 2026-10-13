@@ -225,8 +225,30 @@ Esto REEMPLAZA al modelo dual, que fue el mayor generador de bugs del proyecto �
   se lo dice al proveedor (ver *Ver el diseño desde Vender*, la crítica).
 
 El código de espacio es `"SEDE-CODE"` en mayúsculas. La cara B de una góndola doble usa
-sufijo `-B`; los campos top-level del fixture son la Cara A y `fixture.faceB` es la B
-(helper `isDoubleGondola`).
+sufijo `-B`; los campos top-level del fixture son la Cara A y `fixture.faceB` es la B.
+
+**«¿Tiene cara B?» tiene UNA respuesta:** `carasDe` en `frontend/src/types/fixtures.ts`
+(`isDoubleGondola` es `carasDe(f) === 2`) y su espejo `caras_de` en
+`backend/app/services/layout_lookup.py`. Es la regla laxa: `gondola` con `gondolaType`
+`"double"` o AUSENTE, o el tipo legado `gondola_doble`, son dos caras; `"wall"` y todo lo
+demás, una. La usan Vender, la fusión, «Contrato sin mueble», Supervisar, el guardarraíl
+de `PUT /layout`, la importación del plano, las métricas y `scripts/auditar_desfase.py`.
+Hubo dos reglas —la fusión, la auditoría y el servidor exigían `"double"` escrito— y una
+góndola vieja sin el campo vendía su cara B sin que el plano la pintara ni el guardarraíl
+la cuidara. Los dos lados corren los mismos casos (`frontend/scripts/casos/caras.json`:
+`probar-auditoria.mjs` y `tests/test_caras.py`), y `probar-auditoria.mjs` falla si aparece
+otra comparación con `"double"` fuera de esas dos funciones. Para DIBUJAR, los editores
+siguen tratando como doble todo lo que no es `"wall"`.
+
+**Lo que el editor no conoce del mueble se conserva.** Las conversiones entre el store y
+cada editor viven en `frontend/src/utils/convertirPlano.ts` (puro, lo prueba
+`probar-plano.mjs`). La vuelta al store parte del mueble guardado con ese `id` y le
+escribe encima lo que el editor sabe: `{ ...guardado, ...loQueSabe }`. Antes armaban el
+mueble desde cero con una lista fija y el 2D borraba `vista3D` y el montaje de la cara A
+al mover cualquier cosa. Un campo nuevo del mueble no tiene que sumarse a ninguna lista
+de los editores (sí a `sinDatosComerciales` si el visor de Vender lo necesita, y a
+`_GEOMETRIA` de `routers/montaje.py` si el mercaderista lo necesita: esas son listas de
+lo que se DEJA pasar, a propósito).
 
 **Lo que no está en el mapa comercial está LIBRE, y la fusión REEMPLAZA.** No hace falta
 pre-crear ningún `space`: la fila aparece cuando se vende. Y la fusión no rellena huecos
@@ -3392,9 +3414,11 @@ servidor y aparece en la laptop del que arma la propuesta. **Sin migración.**
 
 Dos cuidados:
 
-- `fixturesToStore` tiene que arrastrarla. El 3D no la modela, y sin esa línea
+- La vuelta de los editores al store tiene que arrastrarla. Ninguno la modela, y
   **mover un mueble borraba todos los encuadres de la sede** y le mandaba la pérdida
-  al servidor.
+  al servidor: primero en el 3D, que la arrastró con una línea, y hasta el
+  2026-10-13 en el plano 2D. Desde entonces las dos vueltas conservan todo lo que no
+  conocen (`utils/convertirPlano.ts`, ver *Reglas duras*).
 - Guardar y borrar escriben el layout pero **no entran al historial**: que Ctrl+Z
   deshaga un encuadre de cámara mezcla dos cosas que no tienen nada que ver.
 

@@ -16,7 +16,7 @@
     "probar:renumerar": "node scripts/probar-renumerar.mjs",
     "probar:suspension": "node scripts/probar-suspension.mjs",
     "probar:contrato": "node scripts/probar-contrato.mjs",
-    "probar": "npm run probar:planta && npm run probar:propuesta && npm run probar:nomenclatura && npm run probar:pasillos && npm run probar:revision && npm run probar:planilla && npm run probar:renumerar && npm run probar:acomodar && npm run probar:landing && npm run probar:tema && npm run probar:vender && npm run probar:graficos && npm run probar:plataforma && npm run probar:suspension && npm run probar:contrato && npm run probar:sinmueble && npm run probar:comercial && npm run probar:auditoria && npm run probar:comercializable && npm run probar:muebles && npm run probar:arte && npm run probar:libera && npm run probar:camara && npm run probar:ingreso && npm run probar:traspaso && npm run probar:limpieza && npm run probar:montajes",
+    "probar": "npm run probar:planta && npm run probar:propuesta && npm run probar:nomenclatura && npm run probar:pasillos && npm run probar:revision && npm run probar:planilla && npm run probar:renumerar && npm run probar:acomodar && npm run probar:landing && npm run probar:tema && npm run probar:vender && npm run probar:graficos && npm run probar:plataforma && npm run probar:suspension && npm run probar:contrato && npm run probar:sinmueble && npm run probar:comercial && npm run probar:auditoria && npm run probar:comercializable && npm run probar:muebles && npm run probar:arte && npm run probar:libera && npm run probar:camara && npm run probar:ingreso && npm run probar:traspaso && npm run probar:limpieza && npm run probar:montajes && npm run probar:plano",
     "probar:acomodar": "node scripts/probar-acomodar.mjs",
     "probar:landing": "node scripts/probar-landing.mjs",
     "probar:tema": "node scripts/probar-tema.mjs",
@@ -34,7 +34,8 @@
     "probar:ingreso": "node scripts/probar-ingreso.mjs",
     "probar:traspaso": "node scripts/probar-traspaso.mjs",
     "probar:limpieza": "node scripts/probar-limpieza.mjs",
-    "probar:montajes": "node scripts/probar-montajes.mjs"
+    "probar:montajes": "node scripts/probar-montajes.mjs",
+    "probar:plano": "node scripts/probar-plano.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",

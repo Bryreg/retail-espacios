@@ -39,10 +39,37 @@ export type FixType =
 
 export type GondolaType = "double" | "wall";
 
-/** Shared double-gondola check — single source of truth for every editor/view.
- *  An undefined gondolaType defaults to "double" (matches both editors' behavior). */
-export function isDoubleGondola(f: { type: FixType; gondolaType?: GondolaType }): boolean {
-  return f.type === "gondola" && (f.gondolaType ?? "double") === "double";
+/**
+ * ¿Cuántas caras vendibles tiene el mueble? 2 es la cara A y la `-B`.
+ *
+ * Es LA respuesta a «¿esta góndola tiene cara B?», y la de todos: Vender, la
+ * fusión con la base, la auditoría de «Contrato sin mueble», Supervisar y, del
+ * lado del servidor, `caras_de` en `backend/app/services/layout_lookup.py`, que
+ * es su espejo y tiene que seguir siéndolo.
+ *
+ * Hubo dos reglas. Una —la de Vender y los editores— contaba como doble la
+ * góndola sin `gondolaType`; otra —la fusión, la auditoría, el guardarraíl del
+ * servidor y la importación— exigía `"double"` escrito. Con una góndola vieja
+ * sin el campo, Vender ofrecía la cara B y la vendía, pero el plano no la
+ * pintaba vendida, el servidor no la contaba como espacio (borrar la góndola
+ * no frenaba) y «Para revisar» la listaba como contrato sin mueble.
+ *
+ * Quedó la laxa, porque es lo que dibujan los dos editores y lo que ya ofrece
+ * Vender:
+ *  · `gondola` con `gondolaType` `"double"` o AUSENTE → 2;
+ *  · el tipo legado `gondola_doble` de los planos viejos del 2D → 2;
+ *  · cualquier otra cosa —`"wall"`, un mueble que no es góndola— → 1.
+ */
+export function carasDe(f: { type?: string; gondolaType?: string | null }): 1 | 2 {
+  if (f.type === "gondola_doble") return 2;
+  if (f.type !== "gondola") return 1;
+  return (f.gondolaType ?? "double") === "double" ? 2 : 1;
+}
+
+/** ¿Tiene cara B? Es `carasDe(f) === 2`, con el nombre que ya usan las
+ *  pantallas. */
+export function isDoubleGondola(f: { type?: string; gondolaType?: string | null }): boolean {
+  return carasDe(f) === 2;
 }
 
 /**
@@ -456,7 +483,7 @@ export interface UnifiedFixture {
   mountedAt?: string;
   mountedBy?: string;
 
-  /** Second face of a double gondola (type === "gondola" && gondolaType === "double").
+  /** Second face of a double gondola (`carasDe(f) === 2`).
    *  Top-level commercial fields represent face A; this holds face B. */
   faceB?: FaceData;
 

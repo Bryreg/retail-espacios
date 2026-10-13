@@ -1,0 +1,17 @@
+{
+  "que_es": "Casos de «¿cuántas caras vendibles tiene el mueble?». Los corren carasDe (frontend/src/types/fixtures.ts, en probar-auditoria.mjs) y caras_de (backend/app/services/layout_lookup.py, en tests/test_caras.py): si las dos reglas se separan, falla uno de los dos lados.",
+  "casos": [
+    { "por": "góndola doble escrita", "mueble": { "type": "gondola", "gondolaType": "double" }, "caras": 2 },
+    { "por": "góndola vieja SIN gondolaType: la que Vender ofrece con cara B", "mueble": { "type": "gondola" }, "caras": 2 },
+    { "por": "gondolaType nulo cuenta como ausente", "mueble": { "type": "gondola", "gondolaType": null }, "caras": 2 },
+    { "por": "góndola mural", "mueble": { "type": "gondola", "gondolaType": "wall" }, "caras": 1 },
+    { "por": "cualquier otro valor escrito no es doble", "mueble": { "type": "gondola", "gondolaType": "single" }, "caras": 1 },
+    { "por": "un texto vacío está escrito: no es ausente", "mueble": { "type": "gondola", "gondolaType": "" }, "caras": 1 },
+    { "por": "tipo legado gondola_doble de los planos viejos del 2D", "mueble": { "type": "gondola_doble" }, "caras": 2 },
+    { "por": "tipo legado gondola_mural", "mueble": { "type": "gondola_mural" }, "caras": 1 },
+    { "por": "una punta", "mueble": { "type": "punta" }, "caras": 1 },
+    { "por": "gondolaType en algo que no es góndola no lo vuelve doble", "mueble": { "type": "punta", "gondolaType": "double" }, "caras": 1 },
+    { "por": "una nevera", "mueble": { "type": "nevera_refrescos" }, "caras": 1 },
+    { "por": "un mueble sin tipo", "mueble": {}, "caras": 1 }
+  ]
+}
