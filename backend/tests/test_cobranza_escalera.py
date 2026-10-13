@@ -86,15 +86,9 @@ def _esperar_el_arranque():
     """El arranque de la app corre una pasada de mantenimiento en un hilo, que
     incluye la escalera. Se la espera, para que no se cruce con lo que la
     prueba siembra ni con el interruptor que la prueba prende."""
-    import app.main as main
+    from conftest import esperar_mantenimiento
 
-    limite = time.monotonic() + 5
-    while main._mantenimiento_en_vuelo is None and time.monotonic() < limite:
-        time.sleep(0.02)
-    limite = time.monotonic() + 60
-    while main._mantenimiento_en_vuelo is not None and not main._mantenimiento_en_vuelo.done():
-        assert time.monotonic() < limite, "la pasada de mantenimiento del arranque no terminó"
-        time.sleep(0.02)
+    esperar_mantenimiento()
 
 
 @pytest.fixture()

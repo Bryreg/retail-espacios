@@ -127,6 +127,32 @@ def client():
             pass
 
 
+def esperar_mantenimiento() -> None:
+    """Espera a que termine la pasada de mantenimiento que el arranque de la
+    app lanza en un hilo (vencimientos, recordatorios, cierre del mes, la
+    escalera de cobranza).
+
+    Ese hilo corre A LA PAR de la prueba. Con la máquina cargada termina tarde
+    y se cruza con lo que la prueba mide: el cierre del mes escribe snapshots
+    entre el «antes» y el «después» de un conteo, o importa un módulo mientras
+    la prueba recorre ``sys.modules`` («dictionary changed size during
+    iteration»). Así cayeron T-05 y T-08 de ``test_tendencia_ataques.py`` el
+    2026-10-13, con tres suites corriendo a la vez. Una prueba que cuenta lo que
+    la app escribe, o que toca ``sys.modules``, llama a esto primero.
+    """
+    import time
+
+    import app.main as main
+
+    limite = time.monotonic() + 5
+    while main._mantenimiento_en_vuelo is None and time.monotonic() < limite:
+        time.sleep(0.02)
+    limite = time.monotonic() + 60
+    while main._mantenimiento_en_vuelo is not None and not main._mantenimiento_en_vuelo.done():
+        assert time.monotonic() < limite, "la pasada de mantenimiento del arranque no terminó"
+        time.sleep(0.02)
+
+
 def _token(client, password: str) -> str:
     r = client.post("/api/auth/login", json={"password": password})
     assert r.status_code == 200, r.text
