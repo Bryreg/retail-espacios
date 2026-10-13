@@ -66,6 +66,20 @@ export const useLuzDeVenta = (): boolean => useContext(LuzDeVenta);
 export const FocoDeVenta = createContext<boolean>(true);
 
 /**
+ * `true` en el visor 3D de Vender: la mercadería de los demás (el relleno de
+ * lo vendido) va en GRISES, sin los colores por rubro.
+ *
+ * En «Presentar» del editor el relleno lleva una paleta apagada por rubro
+ * para que el pasillo parezca pasillo. En Vender eso le competía al producto
+ * que se vende: en el robatope de 30 cm la punta pegada, vendida a otro, se
+ * llevaba el cuadro con sus bloques rojos, verdes y amarillos y el yogur
+ * quedaba diminuto al lado. Con todo lo ajeno en grises, el único color de la
+ * pantalla es el del proveedor que mira. Lo pone el visor ALREDEDOR de la
+ * escena (adentro del lienzo): la escena no se entera, y el editor no cambia.
+ */
+export const RellenoNeutro = createContext<boolean>(false);
+
+/**
  * Cuánto de TODA su luz conserva un vecino en la pantalla de venta: lo que
  * multiplica el color final de sus materiales (`uExposicion`), con la luz de
  * la escena incluida.

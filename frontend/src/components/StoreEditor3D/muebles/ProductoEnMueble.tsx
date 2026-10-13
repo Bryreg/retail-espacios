@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo } from "react";
+import { memo, useContext, useEffect, useMemo } from "react";
 import * as THREE from "three";
 import type { VendidoEntero } from "./frentes";
 import type { FilasDeProducto, Vano } from "./medidas";
@@ -6,10 +6,10 @@ import type { FormaDeEmpaque } from "./producto";
 import { geometriaDeEmpaque } from "./perfiles";
 import { claveDeCubiertas, rellenoPorRubro } from "./frentes";
 import {
-  CLAVE_DE_RELLENO, colorConDiseno, coloresDelRelleno, EXPOSICION_DEL_RELLENO_VECINO, parcheDeRellenoDeVenta, texturaDeEtiquetaDeRelleno,
+  CLAVE_DE_RELLENO, colorConDiseno, coloresDelRelleno, EXPOSICION_DEL_RELLENO_VECINO, PALETAS, parcheDeRellenoDeVenta, texturaDeEtiquetaDeRelleno,
 } from "./rellenoDeVenta";
 import type { Cubiertas, SlotDeProducto } from "./frentes";
-import { BRILLO, conLuzDeVenta, K_ENTORNO_MUEBLE, useLuzDeVenta } from "./luzDeVenta";
+import { BRILLO, conLuzDeVenta, K_ENTORNO_MUEBLE, RellenoNeutro, useLuzDeVenta } from "./luzDeVenta";
 import { tramosConRelleno } from "./habladores";
 import { useAtenuacion } from "./atenuacion";
 import type { VentaDeMueble } from "./medidas";
@@ -162,9 +162,12 @@ function InstanciasDeEmpaque({ pieza, semilla }: { pieza: Pieza; semilla: string
     () => geometriaDeEmpaque(pieza.forma, pieza.ancho, pieza.alto, pieza.fondo, pieza.acostado, luz),
     [pieza.forma, pieza.ancho, pieza.alto, pieza.fondo, pieza.acostado, luz],
   );
+  // En el visor de Vender, todo lo ajeno en grises (`RellenoNeutro`): el
+  // único color de la pantalla es el del proveedor que mira.
+  const neutro = useContext(RellenoNeutro);
   const colores = useMemo(
-    () => (luz ? coloresDelRelleno(pieza.lugares, pieza.rubro, semilla) : null),
-    [luz, pieza.lugares, pieza.rubro, semilla],
+    () => (luz ? coloresDelRelleno(pieza.lugares, pieza.rubro, semilla, neutro ? PALETAS.neutro : undefined) : null),
+    [luz, pieza.lugares, pieza.rubro, semilla, neutro],
   );
   const material = useMemo(() => {
     const venta = conLuzDeVenta(luz, K_ENTORNO_MUEBLE * 0.8, BRILLO.relleno);

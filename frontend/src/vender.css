@@ -484,20 +484,37 @@ html[data-tema="oscuro"] .vender {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* El choque de fechas es la excepción a los dos renglones con puntos
-   suspensivos, y a propósito.
-   Vivía adentro del renglón de arriba, de tercero, después de la ubicación y
-   de la tarifa: con una ubicación larga quedaba pasado el corte y no se veía
-   nunca — se llegaba a tocar «Guardar» con un espacio ya vendido y el único
-   que avisaba era el servidor. Un aviso que compite por ancho con la
-   ubicación no es un aviso, así que acá SÍ se deja crecer la fila: pasa
-   cuando hay algo que mirar, que es cuando la fila puede permitírselo. */
-.eitem .d > span.choque {
+/* El aviso de la fila —el choque de fechas— es la excepción a los dos
+   renglones con puntos suspensivos, y a propósito.
+   El choque vivía adentro del renglón de arriba, de tercero, después de la
+   ubicación y de la tarifa: con una ubicación larga quedaba pasado el corte y
+   no se veía nunca — se llegaba a tocar «Guardar» con un espacio ya vendido y
+   el único que avisaba era el servidor. Después pasó a la columna del tipo,
+   y ahí, angosta, salía con una palabra por renglón (la fila de PUN-01 medía
+   255 px a 1440). Ahora va DEBAJO, a todo el ancho: la fila es flex con
+   `wrap` y el aviso ocupa el 100 %, así que baja solo. Crece la fila cuando
+   hay algo que mirar, que es cuando la fila puede permitírselo. */
+.eitem { flex-wrap: wrap; row-gap: 2px; }
+.eitem > .aviso {
+  flex: 0 0 100%;
   white-space: normal;
-  overflow: visible;
-  margin-top: 2px;
-  color: var(--danger);
+  font-size: var(--t-2xs);
+  line-height: 1.3;
   font-weight: 600;
+}
+.eitem > .aviso.choque { color: var(--danger); }
+/* Las repisas vendidas aparte, debajo del código: chica, en el color de
+   aviso, sin hacer crecer la fila (el texto entero va en el `title`). */
+.eitem .cod { display: flex; flex-direction: column; line-height: 1.15; }
+.eitem .cod > .repisas {
+  font-family: var(--f-text);
+  font-size: var(--t-3xs);
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1;
+  margin-top: 1px;
+  white-space: nowrap;
+  color: var(--warning);
 }
 /* El valor es un campo, pero se lee como la cifra de la fila: mono, tabular,
    700, alineado a la derecha. El borde sólo aparece cuando falta el dato. */
@@ -537,8 +554,42 @@ html[data-tema="oscuro"] .vender {
   border: 0; background: none; cursor: pointer;
 }
 .eitem .x:hover { color: var(--ocupado-txt); background: var(--ocupado-suave); }
+/* «Ver en 3D»: abre el visor encima de la ficha (`VisorDeVenta`). Uno solo,
+   en la cabecera del panel 03, junto a «sin firmar». De la familia de los
+   interruptores A/B —borde fino, mono, tinta— y no del amarillo: el amarillo
+   de esta hoja es «Guardar contrato y avisar». Los márgenes negativos lo
+   dejan fuera de la cuenta del alto de la cabecera: con 22 px adentro de una
+   cabecera alineada por la base, el panel perdía los píxeles que le dan aire
+   a la ficha con tres espacios. */
+.vp > header .ver3d {
+  height: 22px;
+  margin-block: -4px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border-radius: var(--r-xs);
+  border: var(--hair) solid var(--line-strong);
+  /* Letra de texto y un fondo de tinta suave: en mono, con el mismo borde y
+     el mismo tamaño, se confundía con la píldora «SIN FIRMAR» de al lado, y
+     es lo que pidió la dueña. Nunca amarillo. */
+  background: var(--bg);
+  color: var(--ink-1);
+  font-family: var(--f-text);
+  font-size: var(--t-2xs);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.vp > header .ver3d:hover { border-color: var(--ink-1); }
+.vp > header .ver3d[aria-disabled="true"] { cursor: not-allowed; background: var(--surface); color: var(--ink-2); }
+.vp > header .ver3d[aria-disabled="true"]:hover { border-color: var(--line-strong); }
+.vp > header .ver3d:focus-visible { outline: 2px solid var(--ink-1); outline-offset: 1px; }
 .vender .pista { margin: 6px 0 0; font-size: var(--t-2xs); color: var(--ink-3); }
 .vender .pista b { font-weight: 600; color: var(--ink-2); border-bottom: 1px solid var(--line-strong); }
+/* «Se quitó la lámina del 3D…», debajo del rótulo de la planometría. */
+.vender .nota-campo { display: block; margin: -1px 0 4px; font-size: var(--t-2xs); color: var(--ink-3); }
 .corte { border: 0; border-top: 1px dashed var(--brd); margin: 8px 0 6px; }
 .vender .campo { margin-bottom: 5px; }
 .vender .campo .rotulo { display: block; margin-bottom: 4px; }
@@ -795,3 +846,67 @@ html[data-tema="oscuro"] .vender {
   .vender .tabla .c2 { width: 52px; }
   .vender .tabla .c3 { width: 96px; }
 }
+
+
+/* ============================================================================
+   EL VISOR 3D DE VENDER — la capa (`components/Contrato/VisorDeVenta.tsx`)
+
+   Una capa sobre la hoja (un portal en `body`, por eso estas reglas NO
+   cuelgan de `.vender`). Es un «cajón oscuro» (`data-cajon-oscuro`), como el
+   editor: una sala en 3D con un marco claro alrededor pelea con lo que se
+   está mirando. Adentro del cajón los tokens SÓLIDOS (`--surface`, `--ink-1`…)
+   siguen siendo los del tema —se resolvieron en `:root`—; los que se
+   redeclaran son los CANALES (`--surface-rgb`…), así que acá se escribe
+   `rgb(var(--x-rgb))`. Letra de la escala `--t-*`, sin un solo px a mano, y
+   ningún amarillo: el de la pantalla es el de la ficha, y mientras el visor
+   está abierto no se ve.
+
+   Acá va SÓLO lo que tiene que estar al entrar a Vender: la capa, «Abriendo
+   el 3D…» y el aviso de que no pudo abrir —que se ve justamente cuando el
+   archivo del visor no bajó—. El resto (la chapa, el HUD, el cajón) está en
+   `components/Contrato/visor.css`, que baja con el visor: Vender no carga los
+   estilos de una pantalla que quizá no abre.
+   ========================================================================== */
+.visor-venta {
+  position: fixed;
+  inset: 0;
+  /* Por encima de los modales de la app (150 y 200) y por debajo del de
+     consentimiento (1000), que tiene que poder aparecer encima de todo. */
+  z-index: 300;
+  display: flex;
+  background: rgb(var(--surface-rgb));
+  color: rgb(var(--ink-1-rgb));
+  font-family: var(--f-text);
+  font-size: var(--t-sm);
+}
+.visor-venta :focus-visible { outline: 2px solid rgb(var(--ink-1-rgb)); outline-offset: 2px; }
+.visor-volver {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  border-radius: var(--r-md);
+  border: var(--hair) solid rgb(var(--line-strong-rgb));
+  background: rgb(var(--surface-rgb) / .86);
+  color: rgb(var(--ink-1-rgb));
+  font-family: inherit;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.visor-volver:hover { border-color: rgb(var(--ink-2-rgb)); }
+.visor-gira { animation: spin .9s linear infinite; vertical-align: -2px; }
+.visor-abriendo,
+.visor-falla {
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 16px;
+}
+.visor-abriendo { flex-direction: row; gap: 8px; color: rgb(var(--ink-2-rgb)); }
+.visor-falla p { margin: 0; max-width: 46ch; text-align: center; font-size: var(--t-base); line-height: 1.5; }
+.visor-falla .visor-volver { position: static; }

@@ -646,8 +646,10 @@ prueba("la marca del copete sale sólo del arte en prueba, sin texto inventado",
   assert.ok(!/fillRect\(0, Math\.round\(H \* 0\.86\)/.test(pop), "volvió la raya blanca del copete");
   // La cenefa tapa SÓLO el hueco que no sirve para producto.
   const punta = sinComentarios(leer(join(muebles, "PuntaReal.tsx")));
-  assert.match(punta, /\{cenefa && altoDeCuerpo - niveles\[niveles\.length - 1\] < 0\.12 && \(/,
+  assert.match(punta, /\{cenefa && altoDeCuerpo - niveles\[niveles\.length - 1\] < HUECO_SIN_PRODUCTO && \(/,
     "la cenefa tapa un entrepaño donde entra producto");
+  assert.match(leer(join(muebles, "medidas.ts")), /export const HUECO_SIN_PRODUCTO = 0\.12;/,
+    "el hueco que tapa la cenefa dejó de ser de 12 cm");
   // El cabezote de la nevera, con la misma regla que el copete.
   assert.match(cuerpoDe("function NeveraRefrescosMesh(", "function StandFrutasMesh("),
     /const cabezote = enPrueba && pa\?\.etiqueta && pa\.donde === "todas" && pa\.copete !== false\s*\? materialDeCopete\(/);
@@ -1752,6 +1754,15 @@ prueba("el vaso en la punta: diez por entrepaño y el hueco del copete vacío", 
   }
   // Tres de fondo, y la de adelante al filo.
   assert.ok(r.porFila.slice(0, 4).every((f) => f.fondoVisible === 3));
+  // Lo que ENTRA de fondo no es lo que se dibuja: «¿cuántos me entran?» se
+  // contesta con todo el entrepaño (`fondoTotal`), y las unidades son frentes
+  // × fondo × pisos con ese fondo. Con «3 de fondo» el panel contaba de menos.
+  for (const f of r.porFila.slice(0, 4)) {
+    assert.ok(f.fondoTotal >= f.fondoVisible, `la fila ${f.fila}: entran ${f.fondoTotal} de fondo y se dibujan ${f.fondoVisible}`);
+    assert.equal(f.unidades, f.frentes * f.fondoTotal * f.pisos, `la fila ${f.fila} no cuenta frentes × fondo × pisos`);
+  }
+  assert.equal(r.porFila[4].unidades, 0, "el hueco del copete cuenta unidades");
+  assert.ok(r.porFila.slice(0, 4).some((f) => f.fondoTotal > 3), "en la punta de 40 cm entran más de tres vasos de fondo");
 
   const dos = F.unidadesDePrueba({ venta: v, empaque: VASO, donde: [1, 2], semilla: "PUN-01|A|1" });
   assert.deepEqual([...new Set(dos.unidades.map((u) => u.fila))].sort(), [1, 2], "«Por entrepaño» llenó otros");
@@ -3085,8 +3096,10 @@ prueba("el muro de venta tiene degradé y una cenefa perimetral sin texto, en pa
 
 prueba("el campo visual abierto de «De frente» es sólo de la pantalla de venta", () => {
   const toma = cuerpoDe("const tomaDeVenta = useCallback(", "const ponerCampoVisual = useCallback(");
-  assert.match(toma, /const fov = toma === "cerca" \? FOV_DE_CERCA\s*: enVenta && toma === "frente" && !foco\.porEntrepano \? fovParaLaCara\(mueble, cara, obstaculos, limites, aspecto, FOV_DEL_EDITOR\)\s*: FOV_DEL_EDITOR;/,
-    "«De frente» abre el campo visual fuera de la venta o por entrepaño");
+  // Por entrepaño también (la franja elegida, de punta a punta): con 50° la
+  // cara de 3,6 m de un pasillo de 2 m salía sin los cantos.
+  assert.match(toma, /const fov = toma === "cerca" \? FOV_DE_CERCA\s*: enVenta && toma === "frente" \? fovParaLaCara\(mueble, cara, obstaculos, limites, aspecto, FOV_DEL_EDITOR, foco\.porEntrepano \? foco : undefined\)\s*: FOV_DEL_EDITOR;/,
+    "«De frente» abre el campo visual fuera de la venta, o por entrepaño mira otra franja");
   assert.match(toma, /const enVenta = presentationMode \|\| privadoPara !== undefined;/);
   assert.match(toma, /ponerCampoVisual\(fov\);/);
 });
@@ -5425,7 +5438,10 @@ prueba("la persona de venta sale de la toma (una sola cuenta); el editor conserv
   assert.match(toma, /\}, \[facePaintById, comoSePrueba, placedFixtures, selectedId, presentationMode, privadoPara, limites, size, aplicarVista\]\);/,
     "la toma no se entera de que es la lámina");
   // La punta lleva su copete al foco, con la MISMA cuenta que el mueble.
-  assert.match(toma, /fix\.type === "punta" \? \{ \.\.\.foco, techoDeCara: techoDeCara\(fix\.h\), altoDeCopete: COPETE\.alto \} : foco\),/);
+  // El cartel de la punta empieza donde empieza la cenefa (o el copete), con
+  // la misma cuenta que dibuja la cenefa (`pisoDelCartelDePunta`).
+  assert.match(toma, /const pisoDelCartel = fix\.type === "punta" \? pisoDelCartelDePunta\(fix\.h\) : 0;/);
+  assert.match(toma, /fix\.type === "punta" \? \{ \.\.\.foco, techoDeCara: pisoDelCartel, altoDeCopete: fix\.h - pisoDelCartel \} : foco\),/);
   // Con el campo visual abierto, «De frente» desde el fondo del pasillo.
   assert.match(toma, /\.\.\.\(fov > FOV_DEL_EDITOR && toma === "frente" \? \{ alFondo: true \} : \{\}\),/);
   assert.equal((editorCodigo.match(/Math\.max\(0\.4, h - COPETE\.alto\)/g) ?? []).length, 0, "el cuerpo de la punta vuelve a calcularse aparte de techoDeCara");
@@ -5588,6 +5604,131 @@ prueba("la base de la 2 L acostada: el pie sube al cuerpo y el disco va más osc
   // Acostada lleva lo mismo (es la de pie girada).
   const ac = G.geometriaDeEtiqueta("revolucion", 0.105, 0.33, 0.105, perfil, true, true);
   assert.ok(ac.getAttribute("color") && ac.getAttribute("color").count === ac.getAttribute("position").count);
+});
+
+// ── El visor 3D de Vender: la misma escena, sin nada de nadie ───────────────
+//
+// Vender la mira el proveedor. El visor (`components/Contrato/VisorDeVenta.tsx`)
+// dibuja con la MISMA `Scene` del editor, con `soloVenta`, sobre muebles que
+// ya vienen sin datos comerciales (`sinDatosComerciales`). Las guardas de su
+// lado están en `probar-vender`; acá, las de la escena y las funciones puras.
+
+prueba("el visor de Vender: los muebles le llegan sin un solo dato comercial (ejecutado)", () => {
+  const slot = (id, x, status, extra = {}) => ({
+    id, x, y: 0.2, w: 0.5, h: 0.4, status,
+    supplierName: "NUTRESA", brandCategory: "Galletas", negotiatedValue: 4500000,
+    startDate: "2026-09-15", endDate: "2026-10-20", ...extra,
+  });
+  const entrada = [
+    {
+      id: "m-nutresa", code: "PUN-02", type: "punta", x: 8, z: 6.9, rotY: -1.57, w: 0.9, d: 0.4, h: 1.8,
+      label: "Punta Góndola", color: "#7c3aed", status: "occupied", rentable: true,
+      supplierName: "NUTRESA", brandCategory: "Galletas", negotiatedValue: 4500000,
+      startDate: "2026-09-15", endDate: "2026-10-20", observation: "pago atrasado",
+      slots: [slot("s1", 0, "occupied"), slot("s2", 0.5, "free", { supplierName: "NUTRESA S.A." })],
+      // Lo que el 3D no modela y un `UnifiedFixture` sí trae: no pasa.
+      faceB: { supplierName: "NUTRESA", negotiatedValue: 4500000 }, supplierEmail: "pagos@nutresa.example",
+    },
+    {
+      id: "m-libre", code: "GON-01", type: "gondola", gondolaType: "double", x: 6, z: 4, rotY: 0, w: 3.6, d: 0.9, h: 1.8,
+      label: "Góndola Doble", color: "#6366f1", status: "free",
+      supplierName: "", brandCategory: "", negotiatedValue: 0, startDate: "", endDate: "", observation: "",
+    },
+  ];
+  const copia = JSON.stringify(entrada);
+  const salida = X.sinDatosComerciales(entrada);
+  assert.equal(JSON.stringify(entrada), copia, "sinDatosComerciales mutó la entrada");
+  const json = JSON.stringify(salida);
+  for (const fuga of ["NUTRESA", "Nutresa", "Galletas", "4500000", "2026-", "atrasado", "pagos@", "faceB", "supplierEmail"]) {
+    assert.ok(!json.includes(fuga), `«${fuga}» llega al visor de Vender: ${json.slice(0, 200)}`);
+  }
+  // La geometría y el estado sí pasan: sin eso no hay tienda que mostrar.
+  const [a, b] = salida;
+  for (const k of ["id", "code", "type", "x", "z", "rotY", "w", "d", "h", "status", "rentable", "label", "color"]) {
+    assert.deepEqual(a[k], entrada[0][k], `\`${k}\` no pasó al visor`);
+  }
+  assert.equal(b.gondolaType, "double", "la góndola doble perdió su tipo");
+  assert.ok(!("slots" in b), "un mueble sin repisas ganó `slots`");
+  assert.equal(a.slots.length, 2);
+  a.slots.forEach((s, i) => {
+    const o = entrada[0].slots[i];
+    for (const k of ["id", "x", "y", "w", "h", "status"]) assert.equal(s[k], o[k], `la repisa perdió \`${k}\``);
+    assert.deepEqual([s.supplierName, s.brandCategory, s.negotiatedValue, s.startDate, s.endDate], ["", "", 0, "", ""]);
+  });
+  assert.deepEqual([a.supplierName, a.brandCategory, a.negotiatedValue, a.startDate, a.endDate, a.observation], ["", "", 0, "", "", ""]);
+});
+
+prueba("el visor de Vender: la prueba es de las caras del contrato y el proveedor se compara como al guardar (ejecutado)", () => {
+  const prueba = new Map([["m1|A", 1], ["m1|B", 2], ["m2|A", 3]]);
+  const fuera = X.pruebasDelContrato(prueba, [{ fixtureId: "m1", face: "A" }, { fixtureId: "m2", face: "A" }]);
+  assert.deepEqual([...fuera], [["m1|A", 1], ["m2|A", 3]], "una cara que salió del contrato sigue con su prueba en el 3D");
+  assert.equal(prueba.size, 3, "pruebasDelContrato borró la sesión");
+  assert.deepEqual([...X.pruebasDelContrato(prueba, [])], []);
+  assert.equal(X.normalizarProveedor("  POSTOBÓN "), "postobón");
+  assert.equal(X.normalizarProveedor("Alpina"), X.normalizarProveedor(" alpina  "));
+});
+
+prueba("el visor de Vender vende la cara entera: los espacios internos del contrato, libres (ejecutado)", () => {
+  // GON-02·B, libre en Vender (que mira contratos), salía en el visor con el
+  // 60 % de relleno de «otros» y «vendido» en los cinco entrepaños: sus
+  // espacios internos viven sólo en el layout, sin contrato. En los muebles
+  // del contrato quedan libres; los vecinos, como están.
+  const conSlots = (id) => ({ id, slots: [
+    { id: `${id}-1`, x: 0, y: 0, w: 0.33, h: 0.5, status: "occupied" },
+    { id: `${id}-2`, x: 0.33, y: 0.5, w: 0.33, h: 0.5, status: "reserved" },
+    { id: `${id}-3`, x: 0.66, y: 0, w: 0.34, h: 1, status: "free" },
+  ] });
+  const entrada = [conSlots("GON-02"), conSlots("GON-01"), { id: "PUN-03" }];
+  const copia = JSON.stringify(entrada);
+  const salida = X.sinRepisasVendidas(entrada, new Set(["GON-02", "PUN-03"]));
+  assert.equal(JSON.stringify(entrada), copia, "sinRepisasVendidas mutó la entrada");
+  assert.deepEqual(salida[0].slots.map((s) => s.status), ["free", "free", "free"], "el mueble del contrato sigue con espacios vendidos");
+  assert.deepEqual(salida[0].slots.map(({ status, ...g }) => g), entrada[0].slots.map(({ status, ...g }) => g), "cambió la geometría de un espacio");
+  assert.equal(salida[1], entrada[1], "un vecino perdió sus espacios vendidos (o se copió sin necesidad)");
+  assert.equal(salida[2], entrada[2], "un mueble sin espacios internos cambió");
+  // Y con eso no hay relleno de «otros» ni entrepaños vendidos en la cara.
+  const v = V.ventaDeTipo("gondola", 3.6, 0.9, 1.8);
+  const relleno = (slots) => F.rellenoPorRubro({ anchoTotal: 3.6, filas: v.filas, vanos: v.vanos, caras: v.caras, franja: v.franja ?? 0, slots, cubiertas: [null, null] });
+  assert.ok(relleno(entrada[0].slots.map((s) => ({ ...s, brandCategory: "" }))).length > 0, "sin la función ya no había relleno: la prueba no prueba nada");
+  assert.deepEqual(relleno(salida[0].slots.map((s) => ({ ...s, brandCategory: "" }))), [], "la cara del contrato sigue con relleno de otros");
+  // El relleno del visor va en grises (`RellenoNeutro`): la paleta, sin color.
+  for (const h of RV.PALETAS.neutro) {
+    const n = parseInt(h.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255];
+    assert.ok((Math.max(...c) - Math.min(...c)) / Math.max(...c) <= 0.08, `${h}: la paleta neutra tiene color`);
+  }
+  assert.equal(RV.paletaDeRubro("lo que sea"), RV.PALETAS.otros, "la neutra se cuela en el editor por rubro");
+  const pem = sinComentarios(leer(join(muebles, "ProductoEnMueble.tsx")));
+  assert.match(pem, /const neutro = useContext\(RellenoNeutro\);/, "el relleno no lee `RellenoNeutro`");
+  assert.match(pem, /coloresDelRelleno\(pieza\.lugares, pieza\.rubro, semilla, neutro \? PALETAS\.neutro : undefined\)/, "el relleno del visor no usa la paleta neutra");
+});
+
+prueba("la escena del visor (`soloVenta`): ni fotos de caras, ni cámara del editor, ni `enfoque3D`", () => {
+  // Las tres puertas, en el código de la escena (ver `SceneProps.soloVenta`).
+  assert.match(cuerpoEscena, /estadoDeEscena, soloVenta = false,\s*\}: SceneProps\)/, "`soloVenta` no arranca apagado");
+  assert.match(cuerpoEscena, /useState<Map<string, number> \| null>\(\(\) => \(soloVenta \? new Map\(\) : null\)\)/,
+    "en el visor la escena espera un índice de fotos que nunca pide");
+  const efecto = cuerpoEscena.match(/useEffect\(\(\) => \{([^]*?)getFaceImages\(\)/);
+  assert.ok(efecto, "no se encontró el efecto que pide las fotos de las caras");
+  assert.match(efecto[1], /^\s*if \(soloVenta\) return;\s*let alive = true;\s*$/,
+    "el visor de Vender pide /spaces/face-images: las marcas de los que ocupan los espacios");
+  assert.match(cuerpoEscena, /<CameraControls orbitRef=\{orbitRef\} onReady=\{soloVenta \? undefined : handleOrbitReady\}/,
+    "en el visor la órbita lee y escribe `camera3D` (la cámara del editor) en cada paso");
+  assert.equal((cuerpoEscena.match(/<CameraControls\b/g) || []).length, 1, "otra órbita en la escena");
+  const enfoque = cuerpoEscena.match(/const enfoque3D = useFixtureStore\(\(st\) => st\.enfoque3D\);[^]*?useEffect\(\(\) => \{\s*([^\n]*)/);
+  assert.ok(enfoque, "no se encontró el efecto de `enfoque3D`");
+  assert.match(enfoque[1], /^if \(soloVenta \|\| !enfoque3D \|\| firstPerson\) return;/, "el visor atiende `enfoque3D`");
+  // El editor no la prende: para él no cambió nada.
+  const enEditor = editorCodigo.slice(editorCodigo.indexOf("export default function StoreEditor3D("));
+  const sceneDelEditor = enEditor.match(/<Scene\b[^]*?\/>/);
+  assert.ok(sceneDelEditor, "no se encontró el `<Scene` del editor");
+  assert.ok(!/soloVenta/.test(sceneDelEditor[0]), "el editor le pasa `soloVenta` a su escena");
+  // Lo que el visor necesita, exportado (y nada de lo que escribe el plano).
+  for (const n of ["export function Scene(", "export function storeToFixtures(", "export function PanelDePrueba(",
+    "export function HudQueSeEsconde(", "export class CanvasErrorBoundary", "export const TIPOS_CON_PRUEBA_3D",
+    "export const TIPOS_CON_PRODUCTO", "export type ComoSePrueba", "export const CAM_POS", "export const FONDO_DE_SALA"]) {
+    assert.ok(editorCodigo.includes(n), `falta \`${n}\``);
+  }
+  assert.ok(!/export function fixturesToStore\(/.test(editorCodigo), "`fixturesToStore` se exporta: el visor podría escribir el plano");
 });
 
 console.log(`\n${hechas} pruebas del mobiliario 3D`);

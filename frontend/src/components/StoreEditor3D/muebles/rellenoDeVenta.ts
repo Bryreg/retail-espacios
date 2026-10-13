@@ -51,6 +51,10 @@ export const PALETAS: Record<string, readonly string[]> = {
   panaderia: ["#ebe6dc", "#6a85ad", "#b06a66", "#d9c27e", "#8a6a52"],
   abarrotes: ["#e4ddd0", "#a86a5e", "#cbb478", "#6a80a3", "#7d9070"],
   otros: ["#6683a8", "#c4a974", "#7c9472", "#94606a", "#b8b6b0"],
+  // La del visor de Vender (`RellenoNeutro`): grises tibios y fríos, sin
+  // rubro. Lo ajeno se lee como empaque —bloques y etiqueta, igual que
+  // siempre— pero no le disputa el color al producto que se vende.
+  neutro: ["#d6d3cc", "#bebcb7", "#cdd0d2", "#b2b5b8", "#e2ded6"],
 };
 
 /** Ninguna paleta pasa de esta saturación (HSV). */
@@ -126,8 +130,10 @@ export function coloresDelRelleno(
   posiciones: readonly { cara: number; fila: number; x: number }[],
   rubro: string | null | undefined,
   semilla: string,
+  /** Otra paleta en vez de la del rubro (la `neutro` del visor de Vender). */
+  paletaFija?: readonly string[],
 ): ColorDeRelleno[] {
-  const paleta = paletaDeRubro(rubro).map(rgbDe);
+  const paleta = (paletaFija ?? paletaDeRubro(rubro)).map(rgbDe);
   const azar = azarDe(hashTexto(`bloques|${semilla}`));
   const fuera: ColorDeRelleno[] = new Array(posiciones.length);
   const porTira = new Map<string, number[]>();

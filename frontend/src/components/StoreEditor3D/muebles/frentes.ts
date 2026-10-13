@@ -317,6 +317,13 @@ export interface FilaDePrueba {
   frentes: number;
   /** Cuántas unidades se ven hacia el fondo detrás de cada frente. */
   fondoVisible: number;
+  /** Cuántas ENTRAN hacia el fondo: el 3D dibuja hasta tres (`fondoVisible`),
+   *  pero el entrepaño de 45 cm lleva seis vasos de fondo, y «¿cuántos me
+   *  entran?» se contesta con éste. */
+  fondoTotal: number;
+  /** Cuántas unidades entran en el entrepaño: frentes × fondo × pisos, vano
+   *  por vano (con `fondoTotal`, no con lo que se dibuja). */
+  unidades: number;
   /** Cuántas unidades apiladas, una sobre otra. */
   pisos: number;
   motivo: MotivoVacio;
@@ -557,7 +564,7 @@ export function unidadesDePrueba({
     const giro = filas.giros?.[i] ?? 0;
     const libre = filas.alturas[i + 1] - filas.alturas[i];
     const fila: FilaDePrueba = {
-      fila: i, apoyo, giro, libre, fondo: filas.fondos[i], frentes: 0, fondoVisible: 0, pisos: 0, motivo: null,
+      fila: i, apoyo, giro, libre, fondo: filas.fondos[i], frentes: 0, fondoVisible: 0, fondoTotal: 0, unidades: 0, pisos: 0, motivo: null,
     };
     porFila.push(fila);
 
@@ -610,6 +617,8 @@ export function unidadesDePrueba({
       const fondoVisible = Math.min(a.filas, profundidad);
       fila.frentes += a.frentes;
       fila.fondoVisible = Math.max(fila.fondoVisible, fondoVisible);
+      fila.fondoTotal = Math.max(fila.fondoTotal, a.filas);
+      fila.unidades += a.frentes * a.filas * pisos;
       fila.pisos = pisos;
       // Lo que no se eligió dice cuánto entraría, pero no se dibuja.
       if (!elegida) continue;

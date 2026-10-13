@@ -380,3 +380,244 @@ def test_un_proveedor_con_artes_no_se_borra_con_un_500(client, admin):
     otro = _proveedor(client, admin, "Nutresa")
     assert client.delete(f"/api/suppliers/{otro}", headers=admin).status_code == 204
 
+
+
+# ─── El catálogo por NOMBRE del proveedor (visor 3D de Vender) ───────────────
+#
+# Vender conoce el nombre que la dueña tecleó en el contrato, no el id, y la
+# pantalla la mira un proveedor: no puede bajar la lista de proveedores ni el
+# catálogo entero para buscarlo. `?proveedor=` lo resuelve en el servidor con
+# la MISMA regla que usa «Guardar contrato» (`bulk_leases.confirmar`): sin
+# espacios de más, sin mayúsculas, y si hay dos, gana el más viejo.
+
+def _por_nombre(client, headers, nombre):
+    r = client.get("/api/catalogo/", params={"proveedor": nombre}, headers=headers)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _subir_por_nombre(client, headers, proveedor, nombre="Yogurt Griego 150g",
+                      archivo=("yogurt.jpg", JPG, "image/jpeg"), **extra):
+    return client.post(
+        "/api/catalogo/",
+        data={"proveedor": proveedor, "nombre": nombre, **extra},
+        files={"file": archivo},
+        headers=headers,
+    )
+
+
+def _cuantos_proveedores():
+    from app.database import SessionLocal
+    from app.models.models import Supplier
+
+    db = SessionLocal()
+    try:
+        return db.query(Supplier).count()
+    finally:
+        db.close()
+
+
+def _proveedores_llamados(nombre):
+    from app.database import SessionLocal
+    from app.models.models import Supplier
+
+    db = SessionLocal()
+    try:
+        return [s for s in db.query(Supplier).all() if (s.name or "").strip().lower() == nombre.lower()]
+    finally:
+        db.close()
+
+
+def test_por_nombre_trae_solo_los_de_ese_proveedor(client, admin):
+    alpina = _proveedor(client, admin, "Alpina")
+    nutresa = _proveedor(client, admin, "Nutresa")
+    _subir(client, admin, alpina, nombre="Yogurt")
+    _subir(client, admin, alpina, nombre="Avena")
+    _subir(client, admin, nutresa, nombre="Galletas")
+    for pedido in ("alpina", " ALPINA ", "Alpina"):
+        lista = _por_nombre(client, admin, pedido)
+        assert sorted(a["nombre"] for a in lista) == ["Avena", "Yogurt"], pedido
+        assert {a["supplier_id"] for a in lista} == {alpina}
+
+
+def test_por_nombre_baja_tambien_lo_que_no_es_ascii(client, admin):
+    """El `lower()` de SQLite sólo baja ASCII: con `func.lower`, «POSTOBÓN» no
+    encontraba a «Postobón». El cotejo va en Python."""
+    postobon = _proveedor(client, admin, "Postobón")
+    _subir(client, admin, postobon, nombre="Manzana 2 L")
+    lista = _por_nombre(client, admin, "POSTOBÓN")
+    assert [a["nombre"] for a in lista] == ["Manzana 2 L"]
+    assert lista[0]["supplier_id"] == postobon
+    # Y al revés, que es donde SQL falla: guardado con la Ó mayúscula.
+    nevera = _proveedor(client, admin, "NEVERAS DEL ÑUÑOA")
+    _subir(client, admin, nevera, nombre="Cubeta")
+    assert [a["supplier_id"] for a in _por_nombre(client, admin, "neveras del ñuñoa")] == [nevera]
+
+
+def test_por_nombre_vacio_o_desconocido_no_trae_nada_nunca_todo(client, admin):
+    """Con el parámetro presente la respuesta es la de ESE proveedor o nada.
+    El catálogo entero es la lista de clientes de la tienda."""
+    prov = _proveedor(client, admin, "Alpina")
+    _subir(client, admin, prov)
+    assert _por_nombre(client, admin, "Colanta") == []
+    assert _por_nombre(client, admin, "") == []
+    assert _por_nombre(client, admin, "   ") == []
+    # Literal en la URL, sin pasar por `params`: `?proveedor=` a secas.
+    r = client.get("/api/catalogo/?proveedor=", headers=admin)
+    assert r.status_code == 200 and r.json() == []
+
+
+def test_por_nombre_con_dos_que_solo_difieren_en_mayusculas_gana_el_mas_viejo(client, admin):
+    """La regla de `bulk_leases`: el contrato con «bic» se escribe al más
+    viejo, así que el visor muestra los productos de ése y no los del otro."""
+    viejo = _proveedor(client, admin, "BIC")
+    nuevo = _proveedor(client, admin, "Bic")
+    assert viejo != nuevo
+    _subir(client, admin, viejo, nombre="Bolígrafo")
+    _subir(client, admin, nuevo, nombre="Encendedor")
+    lista = _por_nombre(client, admin, "bic")
+    assert [a["nombre"] for a in lista] == ["Bolígrafo"]
+
+
+def test_por_nombre_un_proveedor_sin_artes_da_lista_vacia(client, admin):
+    _proveedor(client, admin, "Colanta")
+    otro = _proveedor(client, admin, "Alpina")
+    _subir(client, admin, otro)
+    assert _por_nombre(client, admin, "Colanta") == []
+
+
+def test_sin_el_parametro_el_catalogo_sigue_igual(client, admin):
+    """El Editor 3D lo sigue pidiendo entero (la pantalla de la dueña)."""
+    a = _proveedor(client, admin, "Alpina")
+    b = _proveedor(client, admin, "Nutresa")
+    _subir(client, admin, a, nombre="Yogurt")
+    _subir(client, admin, b, nombre="Galletas")
+    lista = client.get("/api/catalogo/", headers=admin).json()
+    assert {x["nombre"] for x in lista} >= {"Yogurt", "Galletas"}
+    solo_b = client.get("/api/catalogo/", params={"supplier_id": b}, headers=admin).json()
+    assert [x["nombre"] for x in solo_b] == ["Galletas"]
+
+
+def test_alta_por_nombre_reusa_al_que_ya_existe(client, admin):
+    prov = _proveedor(client, admin, "Alpina")
+    antes = _cuantos_proveedores()
+    r = _subir_por_nombre(client, admin, "  ALPINA ", forma="vaso", alto_mm="90")
+    assert r.status_code == 201, r.text
+    assert r.json()["supplier_id"] == prov
+    assert r.json()["proveedor"] == "Alpina"
+    assert _cuantos_proveedores() == antes
+
+
+def test_alta_por_nombre_de_uno_que_no_esta_pide_confirmarlo(client, admin):
+    """«Postobon» sin tilde no encuentra a «Postobón» (la regla del contrato
+    sólo saca mayúsculas y espacios), y subir un producto creaba un proveedor
+    duplicado en plena reunión. Sin `crear_proveedor`, un nombre que no está es
+    un 409 que se puede reconocer, no deja nada creado y no nombra a nadie."""
+    postobon = _proveedor(client, admin, "Postobón")
+    antes = _cuantos_proveedores()
+    r = _subir_por_nombre(client, admin, "Postobon", forma="botella", alto_mm="300")
+    assert r.status_code == 409, r.text
+    detalle = r.json()["detail"]
+    assert detalle["codigo"] == "proveedor_nuevo"
+    assert "Postobon" in detalle["mensaje"] and "Postobón" not in detalle["mensaje"]
+    assert _cuantos_proveedores() == antes
+    assert _por_nombre(client, admin, "Postobón") == []
+    # Con el nombre bien escrito, no hace falta confirmar nada.
+    bien = _subir_por_nombre(client, admin, "postobón", forma="botella", alto_mm="300")
+    assert bien.status_code == 201, bien.text
+    assert bien.json()["supplier_id"] == postobon
+    # Y con `crear_proveedor` en un nombre que SÍ está, se reusa: no duplica.
+    otra = _subir_por_nombre(client, admin, "POSTOBÓN", nombre="Otra", forma="botella", alto_mm="300", crear_proveedor="true")
+    assert otra.status_code == 201 and otra.json()["supplier_id"] == postobon
+    assert _cuantos_proveedores() == antes
+
+
+def test_alta_por_nombre_crea_uno_nuevo_y_despues_lo_reusa(client, admin):
+    antes = _cuantos_proveedores()
+    r = _subir_por_nombre(client, admin, "  Lácteos del Valle  ", forma="caja", alto_mm="200", crear_proveedor="true")
+    assert r.status_code == 201, r.text
+    assert r.json()["proveedor"] == "Lácteos del Valle"   # recortado
+    assert _cuantos_proveedores() == antes + 1
+    r2 = _subir_por_nombre(client, admin, "LÁCTEOS DEL VALLE", nombre="Otro", forma="caja", alto_mm="200")
+    assert r2.status_code == 201, r2.text
+    assert r2.json()["supplier_id"] == r.json()["supplier_id"]
+    assert _cuantos_proveedores() == antes + 1
+
+
+def test_alta_por_nombre_la_hace_sola_la_administracion(client, admin, worker):
+    antes = _cuantos_proveedores()
+    assert _subir_por_nombre(client, worker, "Alpina").status_code == 403
+    assert _cuantos_proveedores() == antes
+
+
+def test_alta_sin_proveedor_ni_id_es_un_422(client, admin):
+    r = client.post("/api/catalogo/", data={"nombre": "x"},
+                    files={"file": ("x.jpg", JPG, "image/jpeg")}, headers=admin)
+    assert r.status_code == 422
+    assert _subir_por_nombre(client, admin, "   ").status_code == 422
+
+
+def test_alta_por_nombre_que_falla_no_deja_un_proveedor_suelto(client, admin):
+    """Todo se valida ANTES de crear al proveedor, y el proveedor nuevo entra
+    en el mismo commit que el arte: un alta rechazada no deja nada."""
+    antes = _cuantos_proveedores()
+    nuevo = {"crear_proveedor": "true"}
+    # No es una imagen.
+    r = _subir_por_nombre(client, admin, "Proveedor Nuevo SA", archivo=("x.svg", SVG, "image/svg+xml"), **nuevo)
+    assert r.status_code == 422
+    # La ficha no se entiende.
+    r = _subir_por_nombre(client, admin, "Proveedor Nuevo SA", forma="pelota", **nuevo)
+    assert r.status_code == 422
+    r = _subir_por_nombre(client, admin, "Proveedor Nuevo SA", alto_mm="3", **nuevo)
+    assert r.status_code == 422
+    # Sin nombre de producto, y vacío.
+    assert _subir_por_nombre(client, admin, "Proveedor Nuevo SA", nombre="  ", **nuevo).status_code == 422
+    assert _subir_por_nombre(client, admin, "Proveedor Nuevo SA", archivo=("x.jpg", b"", "image/jpeg"), **nuevo).status_code == 422
+    assert _cuantos_proveedores() == antes
+    assert _proveedores_llamados("Proveedor Nuevo SA") == []
+
+
+def test_alta_con_supplier_id_no_cambio(client, admin):
+    prov = _proveedor(client, admin, "Alpina")
+    r = _subir(client, admin, prov)
+    assert r.status_code == 201 and r.json()["supplier_id"] == prov
+    assert _subir(client, admin, 999_999).status_code == 404
+
+
+def test_alta_por_nombre_y_despues_el_contrato_no_crea_otro_proveedor(client, admin):
+    """Cruzada: el visor da de alta «alpina s.a.» al subir un producto, y al
+    guardar el contrato con «Alpina S.A.» la tanda lo encuentra. Un proveedor
+    por empresa, con el historial entero."""
+    from datetime import timedelta
+
+    from app.fechas import hoy as hoy_en_colombia
+
+    plano = [{
+        "id": "v1", "code": "PUN-09", "sede": "NAVE", "type": "punta",
+        "label": "Punta Góndola", "cx": 3, "cz": 8, "rotY": 0,
+        "w": 0.9, "d": 0.4, "h": 1.8, "color": "#6366f1", "status": "free",
+        "supplierName": "", "brandCategory": "", "negotiatedValue": 0,
+        "startDate": "", "endDate": "", "observation": "",
+    }]
+    r = client.put("/api/layout/NAVE", json={"fixtures": plano, "base_updated_at": None}, headers=admin)
+    assert r.status_code == 200, r.text
+
+    subida = _subir_por_nombre(client, admin, "alpina s.a.", forma="vaso", alto_mm="90", crear_proveedor="true")
+    assert subida.status_code == 201, subida.text
+    sid = subida.json()["supplier_id"]
+    antes = _cuantos_proveedores()
+
+    hoy = hoy_en_colombia()
+    fila = {
+        "fila": 1, "espacio": "PUN-09", "sede": "NAVE", "proveedor": "Alpina S.A.",
+        "valor": 1_000_000,
+        "desde": (hoy + timedelta(days=5)).isoformat(),
+        "hasta": (hoy + timedelta(days=35)).isoformat(),
+    }
+    r = client.post("/api/leases/bulk/confirmar", json={"sede": "NAVE", "filas": [fila]}, headers=admin)
+    assert r.status_code == 200, r.text
+    assert r.json()["creados"] == 1
+    assert _cuantos_proveedores() == antes
+    assert [s.id for s in _proveedores_llamados("alpina s.a.")] == [sid]
+    # Y el visor, con el nombre como quedó en el contrato, ve el producto.
+    assert [a["supplier_id"] for a in _por_nombre(client, admin, "Alpina S.A.")] == [sid]

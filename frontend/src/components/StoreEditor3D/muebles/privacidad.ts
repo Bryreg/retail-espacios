@@ -388,3 +388,154 @@ export function caraDeLasTomas(
   if (pedida && ve(pedida)) return pedida;
   return ve("A") ? "A" : ve("B") ? "B" : null;
 }
+
+// ─── El visor 3D de Vender ────────────────────────────────────────────────────
+//
+// Vender es una pantalla que mira el PROVEEDOR: la dueña gira el monitor o
+// comparte la pestaña. El visor que se abre desde la fila de una cara del
+// contrato (`components/Contrato/VisorDeVenta.tsx`) dibuja la tienda con la
+// misma escena del editor, pero los muebles que recibe ya vienen sin un solo
+// dato comercial: no alcanza con que la escena «no los pinte» —el relleno
+// neutro, por ejemplo, usa el rubro del contrato ajeno como color—; si el dato
+// no llega, no hay forma de que se cuele.
+
+/** Un espacio interno (repisa) del mueble, como lo modela el 3D. */
+export interface EspacioVendible {
+  id: string;
+  x: number; y: number; w: number; h: number;
+  status: string;
+  supplierName: string;
+  brandCategory: string;
+  negotiatedValue: number;
+  startDate: string;
+  endDate: string;
+}
+
+/** Lo que hace falta de un mueble del 3D para dibujarlo en el visor. */
+export interface MuebleVendible {
+  id: string;
+  code: string;
+  type: string;
+  gondolaType?: string;
+  slots?: readonly EspacioVendible[];
+  x: number; z: number; rotY: number;
+  w: number; d: number; h: number;
+  label: string;
+  color: string;
+  status: string;
+  supplierName: string;
+  brandCategory: string;
+  negotiatedValue: number;
+  startDate: string;
+  endDate: string;
+  observation: string;
+  rentable?: boolean;
+}
+
+/**
+ * Los muebles con lo comercial en blanco: proveedor, rubro, valor, fechas y
+ * observación, en el mueble y en cada repisa.
+ *
+ * Pasan la geometría, el código, la etiqueta, el color y el ESTADO (libre,
+ * ocupado…): Vender ya pinta la ocupación en el plano, así que el estado no
+ * dice nada nuevo; quién, cuánto y hasta cuándo, sí. Con el rubro vacío el
+ * relleno neutro y el del contrato entero (`rubroDeContratoEntero`) caen al
+ * gris genérico, sin la categoría del que hoy ocupa el espacio.
+ *
+ * Es una LISTA de lo que pasa, no una de lo que se borra: un campo comercial
+ * que alguien agregue mañana al mueble no se cuela por omisión. No muta la
+ * entrada.
+ */
+export function sinDatosComerciales<T extends MuebleVendible>(muebles: readonly T[]): T[] {
+  return muebles.map((m) => {
+    const limpio: MuebleVendible = {
+      id: m.id,
+      code: m.code,
+      type: m.type,
+      gondolaType: m.gondolaType,
+      x: m.x, z: m.z, rotY: m.rotY,
+      w: m.w, d: m.d, h: m.h,
+      label: m.label,
+      color: m.color,
+      status: m.status,
+      rentable: m.rentable,
+      supplierName: "",
+      brandCategory: "",
+      negotiatedValue: 0,
+      startDate: "",
+      endDate: "",
+      observation: "",
+      slots: m.slots?.map((s) => ({
+        id: s.id,
+        x: s.x, y: s.y, w: s.w, h: s.h,
+        status: s.status,
+        supplierName: "",
+        brandCategory: "",
+        negotiatedValue: 0,
+        startDate: "",
+        endDate: "",
+      })),
+    };
+    // Sin `slots` en la entrada, sin `slots` en la salida (y lo mismo con
+    // `gondolaType` y `rentable`): un `undefined` explícito no es lo mismo
+    // para quien pregunta con `in`.
+    if (m.slots === undefined) delete limpio.slots;
+    if (m.gondolaType === undefined) delete limpio.gondolaType;
+    if (m.rentable === undefined) delete limpio.rentable;
+    return limpio as T;
+  });
+}
+
+/**
+ * Los muebles del contrato con sus espacios internos LIBRES: lo que Vender
+ * vende es la cara entera.
+ *
+ * Los espacios internos (`slots`) viven sólo en el layout —se marcan en el
+ * Editor 3D, sin contrato en la base— y son del MUEBLE, no de una cara. El
+ * plano de Vender mira contratos y ofrece GON-02·B libre de punta a punta;
+ * el visor, que dibuja el layout, la mostraba con un 60 % de relleno de
+ * «otros» en «Hoy», «vendido» en los cinco entrepaños de «Por entrepaño» y
+ * una lámina con un entrepaño de Alpina en una cara llena de mercadería
+ * ajena. Al proveedor se le estaba diciendo que lo que se le vende ya está
+ * vendido. Con los espacios internos libres en los muebles de `ids`, el
+ * relleno de esas repisas y la marca «vendido» no salen (la misma regla de
+ * `VENDIDO`). A la dueña se le avisa en la fila del contrato.
+ *
+ * Pasa todo lo demás igual —la geometría de cada espacio y el estado del
+ * mueble, que dice si HOY lo ocupa otro entero— y no muta la entrada. Los
+ * vecinos (los que no están en `ids`) quedan como están.
+ */
+export function sinRepisasVendidas<T extends Pick<MuebleVendible, "id" | "slots">>(
+  muebles: readonly T[],
+  ids: ReadonlySet<string>,
+): T[] {
+  return muebles.map((m) => (ids.has(m.id) && m.slots?.length
+    ? ({ ...m, slots: m.slots.map((s) => ({ ...s, status: "free" })) } as T)
+    : m));
+}
+
+/**
+ * Las pruebas de las caras que siguen en el contrato.
+ *
+ * La prueba del visor vive en la ficha del contrato con la clave del editor
+ * (`${fixtureId}|cara`). Si la dueña saca una cara del contrato, su producto
+ * no tiene por qué seguir dibujado en el 3D: no es parte de lo que se está
+ * vendiendo. Se conserva en la sesión —si la vuelve a sumar, vuelve— pero no
+ * se muestra.
+ */
+export function pruebasDelContrato(
+  prueba: ReadonlyMap<string, number>,
+  caras: readonly { fixtureId: string; face: "A" | "B" }[],
+): Map<string, number> {
+  const enContrato = new Set(caras.map((c) => `${c.fixtureId}|${c.face}`));
+  const fuera = new Map<string, number>();
+  for (const [clave, id] of prueba) if (enContrato.has(clave)) fuera.set(clave, id);
+  return fuera;
+}
+
+/** El nombre del proveedor como lo compara «Guardar contrato»: sin espacios
+ *  de más y sin mayúsculas. Cambiar el proveedor de la ficha a otro nombre
+ *  (no a otra forma de escribir el mismo) vacía la prueba del visor. Vive en
+ *  `utils/proveedor.ts`, que no importa nada: la ficha de Vender la usa al
+ *  entrar sin arrastrar este archivo (ver ahí). */
+export { normalizarProveedor } from "../../../utils/proveedor";

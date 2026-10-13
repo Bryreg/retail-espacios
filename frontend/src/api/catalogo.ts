@@ -59,6 +59,61 @@ export const subirArte = (input: {
     .then((r) => r.data);
 };
 
+/**
+ * Los productos de UN proveedor, por el nombre que se tecleó en el contrato.
+ *
+ * Es el del visor 3D de Vender: esa pantalla la mira el proveedor, y no puede
+ * bajar el catálogo entero —la lista de clientes de la tienda— ni la de
+ * proveedores para buscar el suyo. El servidor resuelve el nombre con la misma
+ * regla que «Guardar contrato» (sin mayúsculas ni espacios de más; con dos
+ * iguales, el más viejo) y con el nombre vacío o desconocido contesta una
+ * lista vacía, nunca todo. Acá, con el nombre vacío ni se pregunta.
+ */
+export const listarDelProveedor = (nombre: string): Promise<Arte[]> => {
+  const n = nombre.trim();
+  if (!n) return Promise.resolve([]);
+  return client.get<Arte[]>("/catalogo/", { params: { proveedor: n } }).then((r) => r.data);
+};
+
+/**
+ * Sube un producto a nombre del proveedor del contrato (visor de Vender).
+ *
+ * Igual que `subirArte`, pero con el NOMBRE y no el id: el visor no conoce
+ * ids de proveedores ni puede listarlos. El servidor usa el que va a usar el
+ * contrato; si el nombre no está, contesta 409 (`esProveedorNuevo`) y sólo lo
+ * da de alta —en el mismo commit que el arte— con `crearProveedor`, que es la
+ * confirmación de la dueña: «Postobon» sin tilde no es «Postobón», y crearlo
+ * solo duplicaba al proveedor en plena reunión.
+ */
+export const subirArteDelProveedor = (input: {
+  proveedor: string;
+  nombre: string;
+  categoria?: string;
+  archivo: File;
+  ficha?: Partial<FichaDeArte>;
+  crearProveedor?: boolean;
+}): Promise<Arte> => {
+  const form = new FormData();
+  form.append("proveedor", input.proveedor);
+  if (input.crearProveedor) form.append("crear_proveedor", "true");
+  form.append("nombre", input.nombre);
+  if (input.categoria) form.append("categoria", input.categoria);
+  for (const [campo, valor] of Object.entries(input.ficha ?? {})) {
+    if (valor !== null && valor !== undefined) form.append(campo, String(valor));
+  }
+  form.append("file", input.archivo);
+  return client
+    .post<Arte>("/catalogo/", form, { timeout: TIMEOUT_SUBIDA })
+    .then((r) => r.data);
+};
+
+/** El 409 de `subirArteDelProveedor`: no hay ningún proveedor con ese nombre
+ *  y hay que confirmar el alta. */
+export function esProveedorNuevo(err: unknown): boolean {
+  const r = (err as { response?: { status?: number; data?: { detail?: { codigo?: unknown } } } })?.response;
+  return r?.status === 409 && r.data?.detail?.codigo === "proveedor_nuevo";
+}
+
 /** Crea o reemplaza la ficha de un arte ya cargado. Sólo administración. */
 export const guardarFicha = (arteId: number, ficha: FichaDeArte): Promise<Arte> =>
   client.put<Arte>(`/catalogo/${arteId}/ficha`, ficha).then((r) => r.data);

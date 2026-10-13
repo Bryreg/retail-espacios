@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo } from "react";
 import * as THREE from "three";
 import {
-  COPETE, PANEL_FONDO, PARANTE, ZOCALO, nivelesDePunta, vanosDeCorrido, techoDeCara,
+  COPETE, HUECO_SIN_PRODUCTO, PANEL_FONDO, PARANTE, ZOCALO, nivelesDePunta, vanosDeCorrido, techoDeCara,
 } from "./medidas";
 import { geometriaMarcoDeCopete } from "./perfiles";
 import { CaraDeEstanteria, useMateriales } from "./piezas";
@@ -173,7 +173,7 @@ export const PuntaReal = memo(function PuntaReal({
           Sólo con la marca en el copete y si el hueco de arriba no sirve
           para producto (menos de 12 cm): por delante de todo, del último
           entrepaño —su porta-precios queda a la vista— hasta el copete. */}
-      {cenefa && altoDeCuerpo - niveles[niveles.length - 1] < 0.12 && (
+      {cenefa && altoDeCuerpo - niveles[niveles.length - 1] < HUECO_SIN_PRODUCTO && (
         <mesh
           position={[0, (niveles[niveles.length - 1] + altoDeCuerpo) / 2 + 0.002, -d / 2 - 0.004]}
           material={cenefa}

@@ -713,6 +713,14 @@ export interface FocoDeVenta {
   alFondo?: boolean;
 }
 
+/** Cuánto de lo que está ARRIBA del entrepaño elegido entra en «De cerca»: la
+ *  tabla y el labio del entrepaño de arriba, y nada de su producto. */
+export const AIRE_SOBRE_EL_ENTREPANO = 0.02;
+/** Hasta qué fondo detrás de la cara se mira, en «De cerca» por entrepaño,
+ *  que no asome la mercadería de la repisa de arriba (el relleno va de a dos
+ *  de fondo). */
+export const FONDO_QUE_ASOMA = 0.2;
+
 /** Qué parte del alto del cuadro llenan las dos repisas de «De cerca» en un
  *  mueble angosto. */
 // 0,8 en el plano de la cara. La crítica mide en la captura de la bolsa de
@@ -796,7 +804,7 @@ export function vistaDeVenta(
     const ideal = Math.min(1.8, Math.max(0.6, visible / (2 * Math.tan(mitadV))));
     const dist = Math.max(0.6, Math.min(ideal, libre || ideal));
     const pos = { x: centro.x + n.x * dist, z: centro.z + n.z * dist };
-    const yCamara = Math.min(1.65, mira + 0.1);
+    let yCamara = Math.min(1.65, mira + 0.1);
     const conMira = (m: number) => conAltura(pos, m, yCamara);
     const enCuadro = (m: number, y: number) =>
       proyectar(conMira(m), fovGrados, aspecto, { x: centro.x, y, z: centro.z }).y;
@@ -828,6 +836,36 @@ export function vistaDeVenta(
     if (enCuadro(m, pie) < lineaDelHud) {
       const bajada = bajarHasta(m, (x) => enCuadro(x, pie) >= lineaDelHud);
       if (enCuadro(bajada, techo) <= 0.98) m = bajada;
+    }
+    // Lo de ARRIBA del entrepaño elegido, afuera: el borde de arriba no pasa
+    // del entrepaño de arriba (su tabla y su labio, 2 cm). Con el 75 % de
+    // llenado centrado quedaban 9 cm de la repisa de arriba —su producto
+    // cortado por la mitad, o en «Por entrepaño» una banda de cajas de
+    // relleno llamativas sobre lo que se está vendiendo—. Se BAJA la toma
+    // entera —cámara y mira juntas, sin cabecear: el picado sigue siendo el
+    // de un comprador—, y el producto sube en el cuadro (más lejos de la
+    // franja del HUD). Bajarla traslada el borde lo mismo que se baja.
+    // No en un mueble angosto: ahí la toma muestra dos repisas a propósito.
+    //
+    // Por entrepaño, además, lo que asoma DETRÁS del labio: la cámara mira un
+    // poco para arriba, así que el borde del cuadro sigue subiendo hacia el
+    // fondo, y por encima del labio de arriba se veía la mercadería de la
+    // repisa de arriba (una banda de cajas de relleno sobre la Avena de
+    // GON-02·B). Se mide a `FONDO_QUE_ASOMA` detrás de la cara —lo que ocupa
+    // el relleno, dos de fondo—, pero sin bajar el borde de la cara más allá
+    // del techo del entrepaño: el entrepaño elegido entra entero aunque el
+    // producto llegue justo (la 2 L en 30 cm).
+    if (!foco.parDeRepisas && mueble.w >= 0.5 && foco.yEntrepano != null) {
+      const tope = techo + AIRE_SOBRE_EL_ENTREPANO;
+      let sobra = bordeDeArriba(m) - tope;
+      if (foco.porEntrepano) {
+        const v = conMira(m);
+        const r = rayoDeVista(v, fovGrados, aspecto, 0, 1);
+        const haciaLaCara = -(r.x * n.x + r.z * n.z);
+        const subida = haciaLaCara > 1e-6 && r.y > 0 ? (r.y * FONDO_QUE_ASOMA) / haciaLaCara : 0;
+        sobra = Math.max(sobra, Math.min(sobra + subida, bordeDeArriba(m) - (techo + 0.001)));
+      }
+      if (sobra > 0) { m -= sobra; yCamara -= sobra; }
     }
     // El copete de la punta: si el borde de arriba lo corta, la mira baja lo
     // justo para que el borde quede en la cenefa. Medio vaso del copete
@@ -1018,17 +1056,34 @@ export function alcanceDeLaFigura(
  *  toma «Tres cuartos» no gira hacia él (`vistaDeVenta`). */
 export const VECINO_PEGADO = 1.0;
 
-/** El campo visual (vertical) más abierto que acepta «De frente» en la
- *  pantalla de venta: unos 24 mm de una cámara de fotos, el de una toma de
- *  pasillo. Más, y las cajas de los bordes se estiran. */
-export const FOV_MAXIMO_DE_FRENTE = 70;
+/**
+ * El campo visual (vertical) más abierto que acepta «De frente» en la
+ * pantalla de venta.
+ *
+ * Era 70° (unos 24 mm de una cámara de fotos) y alcanzaba con la pantalla
+ * entera. En el visor de Vender el cajón de productos le saca 360 px al
+ * lienzo, y una góndola de 3,6 m frente a un pasillo de 2 m (GON-02·A) pedía
+ * 82° a 1920, 88° a 1366 y 93° a 1440 × 900: con el tope en 70 la cara salía
+ * cortada por los dos lados y se le mostraba al proveedor un espacio que no
+ * se ve entero. Un gran angular estira las cajas de los bordes; una cara
+ * cortada no deja ver lo que se vende. Es un estado de paso —mientras el
+ * cajón está abierto; cerrado, la misma cara entra con ~75°— y sólo se abre
+ * lo que hace falta (`fovParaLaCara` prueba de a un grado): un mueble que
+ * entra con 50° sigue con 50°.
+ */
+export const FOV_MAXIMO_DE_FRENTE = 95;
 
 /**
  * El campo visual de «De frente» para que la cara ENTERA entre a lo ancho
- * (con un 10 % de aire) desde donde deja pararse el pasillo, o `base` si ya
+ * (con un 4 % de aire) desde donde deja pararse el pasillo, o `base` si ya
  * entra. Una góndola de 3,6 m frente a un pasillo de 2 m no entra con 50°:
  * la lámina de Kellogg's cortaba el bloque de Müsli —el producto principal—
  * y el de Zucaritas.
+ *
+ * `foco` es la franja que mira la toma: la cara entera, o los entrepaños
+ * elegidos («Por entrepaño», que mira de frente y a su altura, y también
+ * tiene que mostrar la cara de punta a punta). Las esquinas que tienen que
+ * entrar son las de ESA franja.
  */
 export function fovParaLaCara(
   mueble: { cx: number; cz: number; w: number; d: number; h: number; rotY?: number },
@@ -1037,17 +1092,18 @@ export function fovParaLaCara(
   limites: Caja,
   aspecto = 16 / 9,
   base = 50,
+  foco: FocoDeVenta = { yBajo: 0, yAlto: mueble.h },
 ): number {
-  // Con la toma de verdad (`vistaDeVenta`, la cara entera): la cámara mira un
-  // poco para abajo y las esquinas de arriba quedan más cerca que el centro,
-  // así que la cuenta plana con el pasillo dejaba la góndola justo en el borde.
-  // Las cuatro esquinas de la cara, dentro del 96 % del cuadro.
+  // Con la toma de verdad (`vistaDeVenta`): la cámara mira un poco para
+  // abajo y las esquinas de arriba quedan más cerca que el centro, así que la
+  // cuenta plana con el pasillo dejaba la góndola justo en el borde. Las
+  // cuatro esquinas de la franja, dentro del 96 % del cuadro.
   const n = normalDeCara(mueble.rotY ?? 0, cara), t = { x: -n.z, z: n.x };
-  const esquinas = [-1, 1].flatMap((lado) => [0, mueble.h].map((y) => ({
+  const esquinas = [-1, 1].flatMap((lado) => [foco.yBajo, foco.yAlto].map((y) => ({
     x: mueble.cx + (n.x * mueble.d) / 2 + t.x * lado * mueble.w / 2, y, z: mueble.cz + (n.z * mueble.d) / 2 + t.z * lado * mueble.w / 2,
   })));
   for (let fov = base; fov <= FOV_MAXIMO_DE_FRENTE; fov += 1) {
-    const v = vistaDeVenta(mueble, cara, "frente", { yBajo: 0, yAlto: mueble.h, alFondo: fov > base }, obstaculos, limites, fov, aspecto);
+    const v = vistaDeVenta(mueble, cara, "frente", { ...foco, alFondo: fov > base }, obstaculos, limites, fov, aspecto);
     if (esquinas.every((e) => { const q = proyectar(v, fov, aspecto, e); return q.profundidad > 0 && Math.abs(q.x) <= 0.96; })) return fov;
   }
   return FOV_MAXIMO_DE_FRENTE;
@@ -1163,8 +1219,11 @@ export function personaYTomaDeVenta(
   };
   // En la pantalla de venta, «De frente» con un vecino pegado se corre hacia
   // el costado libre (`corridaPorVecino`). Sólo acá: el «Encuadrar esta cara»
-  // del editor sigue como siempre.
-  const corrida = toma === "frente" ? corridaPorVecino(mueble, cara, obstaculos, limites) : null;
+  // del editor sigue como siempre. Y no desde el fondo del pasillo
+  // (`alFondo`): ahí el campo visual se abrió JUSTO para que la cara entre de
+  // punta a punta, y correr la cámara 18 cm sacaba del cuadro el canto del
+  // otro lado (GON-02·A, con la punta pegada a la derecha).
+  const corrida = toma === "frente" && !foco.alFondo ? corridaPorVecino(mueble, cara, obstaculos, limites) : null;
   // El lado LIBRE primero: el que tiene más piso sin muebles al costado del
   // canto, en el plano de la cara. Pegada al robatope, la punta tiene un
   // costado ocupado; con el orden fijo de `lugarDeLaFigura` la persona

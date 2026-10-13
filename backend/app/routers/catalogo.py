@@ -17,6 +17,7 @@ from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, defer
 
 from app.auth import require_admin, require_auth, require_auth_or_query_token
@@ -119,6 +120,34 @@ def _guardar_ficha(db: Session, arte_id: int, ficha: FichaIn) -> SupplierAssetSp
     return fila
 
 
+#: El nombre más largo que se acepta para dar de alta un proveedor desde el
+#: visor de Vender. No se recorta: «Guardar contrato» (``bulk_leases``) busca el
+#: nombre ENTERO, y un proveedor creado acá con el nombre cortado sería otro
+#: para el contrato —dos proveedores para el mismo, con el historial partido—.
+LARGO_MAXIMO_DE_PROVEEDOR = 200
+
+
+def _proveedor_por_nombre(db: Session, nombre: Optional[str]) -> Optional[Supplier]:
+    """El proveedor que va a usar «Guardar contrato» para ese nombre, o ``None``.
+
+    La regla es la de ``bulk_leases.confirmar``: sin espacios de más y sin
+    mayúsculas, y si hay dos que sólo difieren en mayúsculas («BIC» y «Bic»),
+    gana el más viejo. Así el visor de Vender muestra los productos del MISMO
+    proveedor al que después se le escribe el contrato.
+
+    El cotejo va en Python y no con ``func.lower`` de SQL a propósito: el
+    ``lower()`` de SQLite sólo baja ASCII, y «POSTOBÓN» no daría «postobón».
+    Son unos pocos proveedores por supermercado; recorrerlos no cuesta nada.
+    """
+    limpio = (nombre or "").strip().lower()
+    if not limpio:
+        return None
+    for s in db.query(Supplier).order_by(Supplier.id.asc()):
+        if (s.name or "").strip().lower() == limpio:
+            return s
+    return None
+
+
 def _error_de_ficha(e: ValidationError) -> HTTPException:
     # Sin la entrada ni el contexto: el contexto de pydantic puede traer
     # excepciones, que no se serializan.
@@ -129,13 +158,31 @@ def _error_de_ficha(e: ValidationError) -> HTTPException:
 
 
 @router.get("/", response_model=list[ArteOut], dependencies=[Depends(require_auth)])
-def listar(supplier_id: Optional[int] = None, db: Session = Depends(get_db)):
+def listar(
+    supplier_id: Optional[int] = None,
+    proveedor: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     """El catálogo entero, o el de un proveedor.
 
     Sin paginar: son unos pocos proveedores con un puñado de productos cada
     uno, y quien vende necesita la lista completa para elegir de un vistazo.
     El binario NUNCA viaja en el listado — son megas por fila.
+
+    ``?proveedor=`` es el del visor 3D de Vender, que conoce el NOMBRE que la
+    dueña tecleó en el contrato y no el id. Se resuelve con la misma regla que
+    usa «Guardar contrato» (``_proveedor_por_nombre``). Con el parámetro
+    presente —aunque venga vacío o con espacios— la respuesta es la de ESE
+    proveedor o una lista vacía, NUNCA el catálogo entero: el catálogo es la
+    lista de clientes de la tienda, y esa pantalla la está mirando un
+    proveedor. Bajar todo y filtrar en el navegador ya sería entregarlo.
     """
+    proveedor_id: Optional[int] = None
+    if proveedor is not None:
+        encontrado = _proveedor_por_nombre(db, proveedor)
+        if encontrado is None:
+            return []
+        proveedor_id = encontrado.id
     # La ficha viene en la MISMA consulta (outerjoin): una consulta por arte
     # para traer sus medidas sería un N+1 en la lista que se abre en la reunión.
     q = (
@@ -146,13 +193,23 @@ def listar(supplier_id: Optional[int] = None, db: Session = Depends(get_db)):
     )
     if supplier_id is not None:
         q = q.filter(SupplierAsset.supplier_id == supplier_id)
+    if proveedor_id is not None:
+        q = q.filter(SupplierAsset.supplier_id == proveedor_id)
     filas = q.order_by(Supplier.name.asc(), SupplierAsset.nombre.asc()).all()
     return [_salida(arte, nombre, ficha) for arte, nombre, ficha in filas]
 
 
 @router.post("/", response_model=ArteOut, status_code=201, dependencies=[Depends(require_admin)])
 async def subir(
-    supplier_id: int = Form(...),
+    # Uno de los dos. `supplier_id` es el camino del Editor 3D, que elige el
+    # proveedor de una lista. `proveedor` es el del visor de Vender, que sólo
+    # conoce el NOMBRE tecleado en el contrato y no puede listar proveedores
+    # (la pantalla la mira uno de ellos).
+    supplier_id: Optional[int] = Form(None),
+    proveedor: Optional[str] = Form(None),
+    # Con `proveedor`: la dueña confirmó que el nombre es NUEVO y hay que darlo
+    # de alta. Sin esto, un nombre que no está da 409 (`proveedor_nuevo`).
+    crear_proveedor: Optional[bool] = Form(None),
     nombre: str = Form(...),
     categoria: Optional[str] = Form(None),
     file: UploadFile = File(...),
@@ -168,9 +225,35 @@ async def subir(
     precio_publico: Optional[int] = Form(None),
     db: Session = Depends(get_db),
 ):
-    proveedor = db.query(Supplier).filter(Supplier.id == supplier_id).first()
-    if not proveedor:
-        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    nombre_del_proveedor = (proveedor or "").strip()
+    duenio: Optional[Supplier] = None
+    if supplier_id is not None:
+        duenio = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+        if not duenio:
+            raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    elif not nombre_del_proveedor:
+        raise HTTPException(status_code=422, detail="Falta el proveedor")
+    elif len(nombre_del_proveedor) > LARGO_MAXIMO_DE_PROVEEDOR:
+        raise HTTPException(status_code=422, detail="El nombre del proveedor es demasiado largo")
+    else:
+        duenio = _proveedor_por_nombre(db, nombre_del_proveedor)
+        # Un nombre que no está NO se da de alta solo. «Postobon» sin tilde o
+        # «Kelloggs» sin apóstrofe no encuentran a «Postobón» ni a «Kellogg's»
+        # (la regla es la del contrato: sin mayúsculas ni espacios de más,
+        # nada más), y subir un producto creaba un proveedor duplicado en
+        # plena reunión, antes de guardar el contrato. Se pregunta: el visor
+        # pide confirmarlo y vuelve con `crear_proveedor`. El aviso no nombra
+        # a nadie (no hay «¿quisiste decir…?»): la pantalla la mira un
+        # proveedor y un parecido sería el nombre de otro.
+        if duenio is None and not crear_proveedor:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "codigo": "proveedor_nuevo",
+                    "mensaje": f"No hay ningún proveedor «{nombre_del_proveedor}». "
+                               "Revisá cómo está escrito; si es nuevo, confirmá el alta.",
+                },
+            )
 
     # La ficha se valida ANTES de leer el archivo: no tiene sentido bajar cinco
     # megas para después rechazar una forma que no existe.
@@ -213,8 +296,28 @@ async def subir(
     if not data:
         raise HTTPException(status_code=422, detail="El archivo llegó vacío.")
 
+    # Recién ahora, con TODO validado, el proveedor nuevo (ya confirmado: si
+    # no, el 409 de arriba). Entra en el MISMO commit que el arte —si algo
+    # falla después, no queda un proveedor suelto creado por una subida que no
+    # llegó—. Crearlo antes de guardar el contrato es una escritura
+    # adelantada, pero la misma que haría guardarlo: el contrato lo encuentra
+    # por nombre (`bulk_leases`) y no crea otro.
+    if duenio is None:
+        nuevo = Supplier(name=nombre_del_proveedor)
+        db.add(nuevo)
+        try:
+            db.flush()
+            duenio = nuevo
+        except IntegrityError:
+            # Otra sesión lo creó entre la búsqueda y el alta (`name` es
+            # único): se usa ése, como `find_or_create` de `suppliers.py`.
+            db.rollback()
+            duenio = _proveedor_por_nombre(db, nombre_del_proveedor)
+            if duenio is None:
+                raise HTTPException(status_code=409, detail="No se pudo dar de alta al proveedor; probá de nuevo")
+
     fila = SupplierAsset(
-        supplier_id=supplier_id,
+        supplier_id=duenio.id,
         nombre=limpio[:120],
         categoria=(categoria or "").strip()[:80] or None,
         filename=(file.filename or "arte")[:200],
@@ -233,7 +336,7 @@ async def subir(
     db.refresh(fila)
     if spec is not None:
         db.refresh(spec)
-    return _salida(fila, proveedor.name, spec)
+    return _salida(fila, duenio.name, spec)
 
 
 @router.put("/{arte_id}/ficha", response_model=ArteOut, dependencies=[Depends(require_admin)])

@@ -397,6 +397,25 @@ export function techoDeCara(h: number): number {
   return Math.max(0.4, h - COPETE.alto);
 }
 
+/** Debajo de esto, el hueco entre el último entrepaño y el copete no sirve
+ *  para producto: lo tapa la cenefa del copete (`PuntaReal`). */
+export const HUECO_SIN_PRODUCTO = 0.12;
+
+/**
+ * Dónde empieza, de abajo, lo que se lee como CARTEL en una punta: el copete
+ * o, si el hueco de arriba no sirve para producto, la cenefa que baja del
+ * copete hasta el último entrepaño. «De cerca» no corta ninguno de los dos:
+ * con sólo el copete en la cuenta, el borde del cuadro caía en la cenefa
+ * —una franja de color de la marca colgando arriba, con la chapa del visor
+ * apoyada encima («el copete cortado por la mitad»)—.
+ */
+export function pisoDelCartelDePunta(h: number): number {
+  const techo = techoDeCara(h);
+  const niveles = nivelesDePunta(techo);
+  const ultimo = niveles[niveles.length - 1];
+  return ultimo != null && techo - ultimo < HUECO_SIN_PRODUCTO ? ultimo : techo;
+}
+
 /** Los entrepaños de una punta, dentro de su cuerpo (sin el copete).
  *
  *  Terminan un poco antes del copete: el cartel necesita su aire o se lee
