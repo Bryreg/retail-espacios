@@ -257,6 +257,7 @@ const BOTON: React.CSSProperties = {
  *  parte porque no hay ninguna otra parte a la que este enlace dé acceso. */
 function Marco({ espacio, children }: { espacio: EspacioMontaje; children: React.ReactNode }) {
   const quedan = espacio.vence ? diasHasta(espacio.vence) : Infinity;
+  const sufijoParte = espacio.parte ? `${espacio.parte.token}${espacio.parte.n ?? ""}` : null;
   return (
     <div
       style={{
@@ -282,12 +283,16 @@ function Marco({ espacio, children }: { espacio: EspacioMontaje; children: React
           <TemaToggle estilo={{ marginLeft: "auto" }} />
         </div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 3 }}>
+          {/* Con una parte, el código de su cara y la parte aparte: decía
+              «NEV-01-PU2 PU2», el sufijo dos veces. */}
           <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.02em" }}>
-            {nombreDeMueble({ code: espacio.corto })}
+            {nombreDeMueble({ code: sufijoParte && espacio.corto.toUpperCase().endsWith(`-${sufijoParte}`)
+              ? espacio.corto.slice(0, -(sufijoParte.length + 1))
+              : espacio.corto })}
           </span>
-          {espacio.parte && (
+          {sufijoParte && (
             <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-700)" }}>
-              {`${espacio.parte.token}${espacio.parte.n ?? ""}`}
+              {sufijoParte}
             </span>
           )}
           <span style={{ display: "inline-flex", alignItems: "center", gap: 3,

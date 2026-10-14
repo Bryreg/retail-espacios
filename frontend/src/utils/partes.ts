@@ -463,6 +463,30 @@ export function fraccionDeParte(cara: "A" | "B", k: number, n: number): [number,
   return [i / n, (i + 1) / n];
 }
 
+/**
+ * Dónde va, en planta, el punto rojo de cada división vendida a lo ancho
+ * (puertas, tramos), del mapa crudo de la base: a lo largo del mueble como
+ * fracción de su largo desde el centro (`a`, de −½ a ½, hacia +X del mueble)
+ * y de qué lado (`lado`: −1 el frente de la cara A, +1 el de la B). Con
+ * `fraccionDeParte`, la cuenta del mueble: el TR1 de la B cae a la izquierda
+ * de quien mira la B, que es la derecha del mueble. Los entrepaños (a lo alto)
+ * no tienen punto: en planta no se ven.
+ */
+export function puntosDePartesVendidas(
+  f: ConPartes & { code: string; sede?: string }, estado: EstadoPorEspacio, sede: string,
+): { cara: "A" | "B"; parte: ParteRef; a: number; lado: -1 | 1 }[] {
+  const div = divisionDe(f);
+  if (!div || claseDe(div.clase)?.eje !== "ancho") return [];
+  const completo = fullSpaceCode(f.sede || sede, f.code);
+  return partesDe(f)
+    .filter(({ cara, parte }) => esDivision(parte)
+      && estado[codigoDeParte(completo, cara, parte)]?.status === "occupied")
+    .map(({ cara, parte }) => {
+      const [t0, t1] = fraccionDeParte(cara, parte.n ?? 1, div.n);
+      return { cara, parte, a: (t0 + t1) / 2 - 0.5, lado: cara === "A" ? -1 : 1 };
+    });
+}
+
 /** Las juntas entre parte y parte a lo ancho (puertas, tramos), como
  *  fracciones del largo del mueble. Sin división a lo ancho, ninguna: los
  *  entrepaños se cuentan de abajo hacia arriba y no se ven desde arriba. */
@@ -476,6 +500,46 @@ export function juntasDePartes(f: ConPartes): number[] {
  *  entrepaño `EN k`: `EN1` es la base. */
 export function filaDeEntrepano(k: number): number {
   return k - 1;
+}
+
+/**
+ * Qué le marca el visor de Vender al proveedor en una cara del contrato, por
+ * los sufijos de sus renglones (`["PU2"]`, `["TR1", "TR3"]`, `["BI1"]`):
+ *
+ * · las divisiones a lo ancho (puertas, tramos), por el vano del dibujo DE LA
+ *   CARA (`vanoEnLaCara`: el producto de la B se dibuja girado);
+ * · los entrepaños, por su fila (`filaDeEntrepano`: el `EN1` es la base, la 0);
+ * · una pieza (la bahía de una caja), por el nicho del dibujo, que va de −X a
+ *   +X (`vanoDeParte` de la cara A: la BI1 mirando desde la fila es la de +X);
+ *   el forro, el 0.
+ *
+ * Vacío con la cara entera. `dePiezas` dice que es una pieza: no prueba
+ * producto, sólo se marca su lugar. Era una cuenta suelta en `ModoVender` y
+ * tres mutaciones que le mostraban al proveedor OTRA parte (el tramo de la B
+ * espejado, el entrepaño una fila más arriba, la bahía del otro lado) pasaban
+ * todas las pruebas: ahora la prueban `probar-partes` con la cámara de venta.
+ */
+export function marcasDelContrato(
+  f: ConPartes, cara: "A" | "B", sufijos: string[],
+): { vanos: number[]; filas: number[]; dePiezas: boolean } {
+  const div = divisionDe(f);
+  const piezas = piezasDe(f);
+  const partes = sufijos.map((x) => parteDeSufijo(x));
+  if (!div && piezas.length) {
+    const nBahias = piezas.filter((p) => p.clase === "bahias").length;
+    const vanos = partes.filter((p): p is ParteRef => !!p && esPieza(p))
+      .map((p) => (p.n === null ? 0 : vanoDeParte("A", p.n, nBahias)));
+    return { vanos, filas: [], dePiezas: true };
+  }
+  const n = div?.n ?? 0;
+  const delRenglon = partes.filter((p): p is ParteRef & { n: number } =>
+    !!p && p.n !== null && n > 0 && p.clase === div?.clase);
+  const porAlto = claseDe(div?.clase ?? "")?.eje === "alto";
+  return {
+    vanos: porAlto ? [] : delRenglon.map((p) => vanoEnLaCara(cara, p.n, n)),
+    filas: porAlto ? delRenglon.map((p) => filaDeEntrepano(p.n)) : [],
+    dePiezas: false,
+  };
 }
 
 // ─── La tarifa ───────────────────────────────────────────────────────────────
@@ -514,6 +578,58 @@ export function tarifaDeEspacio(
   return { valor: redondear(base / n), origen: "cara/n" };
 }
 
+/** La tarifa de referencia de una fila de Supervisar (una cara o una parte
+ *  vendida): la de ESA parte, nunca la del mueble entero. «Bajo la tarifa» y
+ *  la franja la preguntan por acá; pasarle `null` en vez de la parte listaba
+ *  cada puerta un 67 % por debajo de la referencia y nada fallaba. */
+export function tarifaDeLaFila(
+  rates: ReferenceRates | null, sede: string,
+  fila: { fixture: ConPartes & { modelo?: string | null; sede?: string }; parte?: ParteRef | null },
+): { valor: number | null; origen: OrigenDeTarifa } {
+  return tarifaDeEspacio(rates, fila.fixture.sede || sede, fila.fixture, fila.parte ?? null);
+}
+
+/** El índice de partes de un mapa de la base, uno por mapa: cada renglón de
+ *  Vender lo pide y el mapa cambia sólo cuando llega otro. */
+const INDICES = new WeakMap<EstadoPorEspacio, IndiceDePartes>();
+function indiceDe(estado: EstadoPorEspacio): IndiceDePartes {
+  let i = INDICES.get(estado);
+  if (!i) { i = indiceDePartes(estado); INDICES.set(estado, i); }
+  return i;
+}
+
+/**
+ * Lo comercial de un renglón del contrato en Vender: su código, la tarifa de
+ * referencia de ESE espacio (una puerta, la de su clase o la de la nevera ÷
+ * puertas) y si se puede vender en el periodo mirando lo que choca con él (la
+ * nevera entera para una puerta, las puertas para la entera), con el porqué.
+ * Sin partes es la cuenta de siempre: la de la cara.
+ *
+ * Arma el índice de partes del mismo mapa que recibe: armado aparte en la
+ * pantalla, un índice vacío dejaba el renglón de la nevera entera «libre» con
+ * puertas vendidas, y sólo el servidor lo frenaba al validar.
+ */
+export function comercialDelEspacio(
+  fixture: ConPartes & MuebleConEstado & { modelo?: string | null }, cara: "A" | "B", sufijo: string | null,
+  ctx: { rates: ReferenceRates | null; sede: string; estado: EstadoPorEspacio; desde: Date; hasta: Date },
+): {
+  parte: ParteRef | null; corto: string; codigo: string;
+  ref: number | null; origenRef: OrigenDeTarifa;
+  disponibilidad: RangeAvailability; porQue: "propio" | "entera" | "partes" | null;
+} {
+  const parte = sufijo ? parteDeSufijo(sufijo) : null;
+  const corto = codigoDeParte(fixture.code, cara, parte);
+  const sedeDe = fixture.sede || ctx.sede;
+  const tarifa = tarifaDeEspacio(ctx.rates, sedeDe, fixture, parte);
+  const indice = indiceDe(ctx.estado);
+  return {
+    parte, corto, codigo: fullSpaceCode(sedeDe, corto),
+    ref: tarifa.valor, origenRef: tarifa.origen,
+    disponibilidad: disponibilidadDeEspacio(fixture, cara, parte, ctx.estado, indice, ctx.sede, ctx.desde, ctx.hasta),
+    porQue: porQueNoEstaLibre(fixture, cara, parte, ctx.estado, indice, ctx.sede, ctx.desde, ctx.hasta),
+  };
+}
+
 /** ¿El nombre termina como el código de una parte o de la cara B? Un mueble
  *  no puede llamarse así: su código se confundiría con el de una parte. */
 export function terminaReservado(nombre: string): boolean {
@@ -547,6 +663,43 @@ export function partirClave(clave: string): { id: string; cara: "A" | "B"; parte
 /** Un espacio del contrato que se está armando: el mueble, la cara y, si es
  *  una parte, su sufijo (`PU2`). */
 export interface EnContrato { id: string; face: "A" | "B"; parte?: string }
+
+/**
+ * Tocar un mueble en el plano de Vender: lo suma al contrato o, tocado de
+ * nuevo, lo saca. Lo que no se vende vacía el contrato (la ficha explica por
+ * qué), como siempre.
+ *
+ * · Un mueble comercializable suma su CARA ENTERA (la que se tocó); las
+ *   partes se prenden en el renglón («Entera · PU1 · PU2…»).
+ * · Una caja o una columna, que nunca se venden enteras, suman su primera
+ *   PIEZA libre en el periodo (`libre`; si ninguna, la primera): la BI1, o la
+ *   que siga, o el forro. Nunca la caja entera, que el servidor rechaza.
+ */
+export function alTocarEnVender(
+  lista: EnContrato[], f: ConPartes & { id: string }, cara: "A" | "B", libre: (p: ParteRef) => boolean,
+): EnContrato[] {
+  if (!seVendeAlgo(f)) return [];
+  if (!isRentable(f)) {
+    const piezas = piezasDe(f);
+    const primera = piezas.find(libre) ?? piezas[0];
+    return lista.some((x) => x.id === f.id)
+      ? lista.filter((x) => x.id !== f.id)
+      : [...lista, { id: f.id, face: "A", parte: sufijoDeParte(primera) }];
+  }
+  return lista.some((x) => x.id === f.id && x.face === cara)
+    ? lista.filter((x) => !(x.id === f.id && x.face === cara))
+    : [...lista, { id: f.id, face: cara }];
+}
+
+/** Los interruptores de una cara en el renglón de Vender: «Entera» (`null`)
+ *  si el mueble se vende entero, y después cada parte de esa cara. Una caja o
+ *  una columna, que nunca se venden enteras, ofrecen sólo sus piezas («BI1 ·
+ *  BI2», sin «Entera»). Vacío si la cara no tiene partes: no hay nada que
+ *  elegir. */
+export function interruptoresDeLaCara(f: ConPartes, cara: "A" | "B"): (string | null)[] {
+  const partes = partesDe(f).filter((p) => p.cara === cara).map((p) => sufijoDeParte(p.parte));
+  return partes.length === 0 ? [] : [...(isRentable(f) ? [null] : []), ...partes];
+}
 
 const mismo = (a: EnContrato, b: EnContrato) =>
   a.id === b.id && a.face === b.face && (a.parte ?? null) === (b.parte ?? null);
@@ -700,10 +853,66 @@ export function partesVendidasDeLaCara(
   estado: EstadoPorEspacio, sede: string, desde: Date, hasta: Date,
 ): { vendidas: number; de: number; clase: string } | null {
   if (rangeAvailability(estadoDeEspacio(f, cara, null, estado, sede), desde, hasta) !== "libre") return null;
+  return divisionesVendidas(f, cara, estado, sede, desde, hasta);
+}
+
+/** Cuántas divisiones de la cara tienen días tomados en el periodo, sin mirar
+ *  la cara entera. `null` si ninguna. */
+function divisionesVendidas(
+  f: ConPartes & MuebleConEstado, cara: "A" | "B",
+  estado: EstadoPorEspacio, sede: string, desde: Date, hasta: Date,
+): { vendidas: number; de: number; clase: string } | null {
   const divisiones = partesDe(f).filter((p) => p.cara === cara && esDivision(p.parte));
   const vendidas = divisiones.filter(({ parte }) =>
     rangeAvailability(estadoDeEspacio(f, cara, parte, estado, sede), desde, hasta) !== "libre").length;
   return vendidas > 0 ? { vendidas, de: divisiones.length, clase: divisiones[0].parte.clase } : null;
+}
+
+/**
+ * Los días del periodo en que la CARA ENTERA se puede vender: ni ella ni nada
+ * de lo que choca con ella (una puerta, un tramo, un entrepaño) está tomado
+ * ese día —`disponibilidadDeEspacio` de la entera, día por día—. Sin partes
+ * es exactamente `primerDiaLibre` de Supervisar (los días de la cara).
+ *
+ * La revisión de la rama (2026-10-14): con la entera vendida del 15 al 20 y
+ * la puerta 2 del 21 en adelante, el plano y la lista de precios decían «libre
+ * 21 oct» —miraban sólo los días de la cara— y ese día la entera no se puede
+ * vender. «Cuándo se libera» ya lo contaba bien; ahora es la misma cuenta.
+ */
+export function diasLibresDeLaCara(
+  f: ConPartes & MuebleConEstado, cara: "A" | "B",
+  estado: EstadoPorEspacio, indice: IndiceDePartes, sede: string, desde: Date, hasta: Date,
+): Date[] {
+  const dia = 86_400_000;
+  const d0 = new Date(desde); d0.setHours(0, 0, 0, 0);
+  const fin = new Date(hasta); fin.setHours(0, 0, 0, 0);
+  const libres: Date[] = [];
+  for (let t = d0.getTime(); t <= fin.getTime(); t += dia) {
+    const d = new Date(t);
+    if (disponibilidadDeEspacio(f, cara, null, estado, indice, sede, d, d) === "libre") libres.push(d);
+  }
+  return libres;
+}
+
+/** Lo que dice una cara «parcial» en el rótulo del plano, el cartel del mouse
+ *  y la ficha de la lista de precios: el día en que se libera la ENTERA (con
+ *  cuántos días libres tiene) o, si la entera está libre todo el periodo o no
+ *  se libera en él, cuántas divisiones hay vendidas («1 de 3 puertas
+ *  vendida»: se vende otra parte, no la entera). `null` si no hay nada que
+ *  decir. Una cuenta, sin nombres ni plata. */
+export type ComoSeLibera = { porPartes: string; desde?: undefined; diasLibres?: undefined }
+  | { desde: Date; diasLibres: number; porPartes?: undefined };
+
+export function comoSeLiberaLaCara(
+  f: ConPartes & MuebleConEstado, cara: "A" | "B",
+  estado: EstadoPorEspacio, indice: IndiceDePartes, sede: string, desde: Date, hasta: Date,
+): ComoSeLibera | null {
+  const r = partesVendidasDeLaCara(f, cara, estado, sede, desde, hasta);
+  if (r) return { porPartes: textoDePartesVendidas(r) };
+  const libres = diasLibresDeLaCara(f, cara, estado, indice, sede, desde, hasta);
+  if (libres.length > 0) return { desde: libres[0], diasLibres: libres.length };
+  const vendidas = divisionesVendidas(f, cara, estado, sede, desde, hasta);
+  return vendidas ? { porPartes: textoDePartesVendidas(vendidas) } : null;
 }
 
 /** «1 de 3 puertas vendida», «2 de 5 entrepaños vendidos». */

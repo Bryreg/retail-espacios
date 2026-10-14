@@ -18,7 +18,7 @@ from app.services.contacts import recipients_for
 from app.services.candado import tomar_candados
 from app.services.layout_lookup import (
     NO_COMERCIALIZABLE, NUNCA_ALQUILABLE, SIN_CARA_B, como_se_venden_sus_piezas, contratos_que_chocan, describe_location,
-    find_fixture_by_space_code, frase_de_choque, por_que_no_se_vende,
+    find_fixture_by_space_code, forma_canonica, frase_de_choque, por_que_no_se_vende,
 )
 from app.services.partes import cantidad_de, partir_codigo, texto_para_montar
 from app.services.mailer import (
@@ -423,6 +423,21 @@ def create_lease(
     if motivo:
         # Una parte que el plano no ofrece: la frase de la compuerta dice qué hacer.
         raise HTTPException(status_code=409, detail=motivo[1])
+    # Un mueble que se vende por partes se reconoce por su código COMPLETO: la
+    # regla «entera o por partes, nunca las dos» compara códigos, y una puerta
+    # guardada como `NEV-03-PU2` (sin sede) o ` NAVE-NEV-03-PU2` (con un
+    # espacio) no la veía la nevera entera, ni la guarda de `PUT /layout`.
+    # La planilla y Vender ya lo arman así (`PlanoIndexado.resolver`).
+    canonico = forma_canonica(db, space.sede or "", space.code)
+    if canonico is not None and space.code != canonico:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Escribilo «{canonico}», con la sede y sin espacios: un mueble que se vende "
+                "por partes se reconoce por su código completo, y así nunca se vende entero "
+                "y por partes a la vez."
+            ),
+        )
 
     supplier = db.query(Supplier).filter(Supplier.id == payload.supplier_id).first()
     if not supplier:
@@ -431,7 +446,8 @@ def create_lease(
     # Reject if an active lease already overlaps the requested period: on this
     # space, and —vender por partes— on what it shares the fixture with (the
     # whole fridge for a door, its doors for the whole fridge).
-    choques = contratos_que_chocan(db, space.code, payload.start_date, payload.end_date, space_id=space.id)
+    choques = contratos_que_chocan(db, space.code, payload.start_date, payload.end_date, space_id=space.id,
+                                   sede=space.sede)
     if choques:
         overlapping, otro_space, _ = choques[0]
         if otro_space.id == space.id:

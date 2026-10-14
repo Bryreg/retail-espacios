@@ -198,6 +198,11 @@ def test_con_una_bahia_vendida_no_cambian_las_bahias(client, admin):
     d = r.json()["detail"]
     assert d["code"] == "partes_vendidas", d
     assert "de 2 a 3 bahías de impulso" in d["choques"][0] and "una bahía de impulso vendida" in d["choques"][0], d
+    assert "(contando la base)" not in d["choques"][0], d
+    # Y a una sola, en singular (decía «1 bahías de impulso»).
+    r = _guardar(client, admin, [_caja(bahias=1)])
+    assert r.status_code == 409, r.text
+    assert "de 2 a 1 bahía de impulso (" in r.json()["detail"]["choques"][0], r.text
     # Sacarlas deja la bahía vendida sin mueble: el de siempre.
     sin = _caja()
     sin["partes"] = {"bahias": None}

@@ -9,13 +9,12 @@ import { subirPlanometria } from "../../api/planograms";
 import { describeError } from "../../api/client";
 import type { AvisosContrato } from "../../types";
 import {
-  fullSpaceCode, isDoubleGondola, type RangeAvailability, type UnifiedFixture,
+  isDoubleGondola, type RangeAvailability, type UnifiedFixture,
 } from "../../types/fixtures";
 import { nombreDeMueble } from "../../utils/nomenclatura";
 import { valoresDeLista } from "../../utils/precioDeLista";
 import {
-  cantidadDe, codigoDeParte, codigoVisibleDe, disponibilidadDeEspacio, indiceDePartes, parteDeSufijo,
-  porQueNoEstaLibre, tarifaDeEspacio, textoDeParte, type OrigenDeTarifa,
+  cantidadDe, codigoVisibleDe, comercialDelEspacio, textoDeParte, type OrigenDeTarifa,
 } from "../../utils/partes";
 
 /**
@@ -172,7 +171,6 @@ export function useContrato({
   // nada a la nevera, y la entera choca con esa puerta. Va en las
   // dependencias de las líneas: una puerta vendida en otra sesión se ve acá.
   const estadoComercial = useFixtureStore((s) => s.estadoComercial);
-  const indicePartes = useMemo(() => indiceDePartes(estadoComercial), [estadoComercial]);
 
   // El periodo con el que abre. Se congela al montar a propósito: cambiar la
   // temporada de arriba no debe reescribirle las fechas a alguien que ya está
@@ -226,19 +224,19 @@ export function useContrato({
       // Vender por partes: `NEV-03-PU2` es la puerta 2 de `NEV-03`. Una parte
       // que el mueble ya no ofrece (alguien bajó las puertas en otra pestaña)
       // se lee igual por su código y el servidor la rechaza al validar.
-      const parte = sufijo ? parteDeSufijo(sufijo) : null;
-      const corto = codigoDeParte(fixture.code, face, parte);
-      const sedeDe = fixture.sede || sede;
-      const codigo = fullSpaceCode(sedeDe, corto);
-      const tarifa = tarifaDeEspacio(referenceRates, sedeDe, fixture, parte);
-      const ref = tarifa.valor;
+      // Lo comercial —el código, la tarifa de ESA parte y si se puede vender
+      // mirando lo que choca— es una cuenta pura, probada en `probar-partes`.
+      const { parte, corto, codigo, ref, origenRef, disponibilidad, porQue } = comercialDelEspacio(
+        fixture, face, sufijo ?? null,
+        { rates: referenceRates, sede, estado: estadoComercial, desde: f && t ? f : inicial.from, hasta: f && t ? t : inicial.to },
+      );
       const texto = valores[codigo] ?? "";
       const monto = Number(texto.replace(/[^\d]/g, "")) || 0;
       return {
         fixture, face, corto, codigo, ref,
         /** De dónde salió la referencia: la del mueble, la de la clase
          *  (`parte_puerta`) o la de la nevera dividida por sus puertas. */
-        origenRef: tarifa.origen as OrigenDeTarifa,
+        origenRef: origenRef as OrigenDeTarifa,
         /** `PU2`, si es una parte. */
         parte: parte ? sufijo!.toUpperCase() : null,
         /** «Puerta 2 de 3», si es una parte. */
@@ -256,20 +254,14 @@ export function useContrato({
         // Lo suyo y lo que choca con él (la nevera entera para una puerta, las
         // puertas para la entera), del mapa de la base. Sin partes es la misma
         // cuenta de siempre: la de la cara.
-        disponibilidad: disponibilidadDeEspacio(
-          fixture, face, parte, estadoComercial, indicePartes, sede,
-          f && t ? f : inicial.from, f && t ? t : inicial.to,
-        ) as RangeAvailability,
+        disponibilidad: disponibilidad as RangeAvailability,
         /** Si no está libre, por qué: lo suyo, la entera vendida (para una
          *  puerta) o puertas vendidas (para la entera). Sin nombres. */
-        porQue: porQueNoEstaLibre(
-          fixture, face, parte, estadoComercial, indicePartes, sede,
-          f && t ? f : inicial.from, f && t ? t : inicial.to,
-        ),
+        porQue,
       };
     });
   }, [espacios, valores, fixtures, referenceRates, sede, desde, hasta, fechasEnOrden, inicial, fichasPropias,
-    estadoComercial, indicePartes]);
+    estadoComercial]);
 
 
   /** Al entrar, cada espacio arranca con su tarifa de referencia escrita, y

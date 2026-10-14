@@ -225,7 +225,7 @@ def revisar(db: Session) -> Importacion:
         # base ya vendió una de sus partes (la puerta 2 de esa nevera), pasarlo
         # vendería la nevera entera y por puertas a la vez: se mira a mano.
         partes = [
-            (lease, otro, partido) for lease, otro, partido in contratos_que_chocan(db, completo, desde, hasta)
+            (lease, otro, partido) for lease, otro, partido in contratos_que_chocan(db, completo, desde, hasta, sede=sede)
             if partido.parte is not None
         ]
         if partes:

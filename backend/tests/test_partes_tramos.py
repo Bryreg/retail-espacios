@@ -291,7 +291,7 @@ def test_con_un_entrepano_vendido_no_cambian_los_entrepanos_y_el_alto_si(client,
     _vendido(client, admin, "GON-05-EN2")
     r = _guardar(client, admin, [_gondola(division="entrepanos", tramos=None, entrepanos=5)])
     assert r.status_code == 409 and r.json()["detail"]["code"] == "partes_vendidas", r.text
-    assert "de 5 a 6 entrepaños" in r.json()["detail"]["choques"][0], r.text
+    assert "de 5 a 6 entrepaños (contando la base)" in r.json()["detail"]["choques"][0], r.text
     # Vaciarlos deja de venderla por entrepaños: el EN2 desaparece.
     # (con `null`, que es como el navegador dice «ya no está»; ausente, el
     # servidor los rellena con los guardados)

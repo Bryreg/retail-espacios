@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.auth import get_config, require_admin, require_auth, set_config
 from app.database import get_db
@@ -452,7 +453,24 @@ def save_settings(payload: LayoutSettingsIn, db: Session = Depends(get_db)):
     set_config(db, SEDES_KEY, json.dumps(payload.sedes))
     set_config(db, CATALOG_LABELS_KEY, json.dumps(payload.catalog_labels))
     set_config(db, SETTINGS_UPDATED_KEY, now.isoformat())
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Dos «primeras publicaciones» a la vez —al entrar a una base vacía el
+        # navegador manda dos (el doble efecto de StrictMode)— leen las dos la
+        # base sin revisión e insertan las dos la misma clave: la segunda
+        # chocaba con `UNIQUE app_config.key` y salía un 500. Pierde como
+        # cualquier escritura vieja: 409, y el navegador relee la lista.
+        db.rollback()
+        actual = _stored_settings_revision(db)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "settings_conflict",
+                "message": "Otro equipo cambió la lista de sedes mientras editabas.",
+                "server_updated_at": actual.isoformat() if actual else None,
+            },
+        )
     return LayoutSettingsOut(
         sedes=payload.sedes,
         catalog_labels=payload.catalog_labels,

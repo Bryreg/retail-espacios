@@ -1179,7 +1179,9 @@ def contratos_que_quedarian_sin_mueble(
 
     frases = []
     for lease, space in vivos:
-        completo = (space.code or "").strip().upper()
+        # Por la forma completa: una fila guardada sin la sede (`NEV-03-PU3`)
+        # es el mismo espacio que el plano ofrece como `NAVE-NEV-03-PU3`.
+        completo = _full_code(sin_prefijo_de_sede(normalizar(space.code), sede), sede)
         if completo not in perdidos:
             continue
         # Se nombra por el código CORTO: es el que está en el plano y en la
@@ -1207,7 +1209,38 @@ def _escapar_like(texto: str) -> str:
     return texto.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def contratos_que_chocan(db: Session, codigo: str, desde, hasta, space_id: int | None = None) -> list[tuple]:
+def forma_canonica(db: Session, sede: str, codigo: str) -> str | None:
+    """El código con que se guarda el espacio de un mueble que se vende por
+    partes: con la sede del mueble, en mayúsculas y sin espacios
+    (``NAVE-NEV-03-PU2``, ``NAVE-NEV-03``), como lo arma la planilla
+    (``PlanoIndexado.resolver``).
+
+    ``None`` si el texto no es una parte ni la cara de un mueble del plano que
+    se vende por partes: ahí no se exige nada, como siempre (un espacio
+    sembrado sin sede, una cara de un mueble que se vende entero).
+
+    Para qué: la regla «entera o por partes, nunca las dos» compara CÓDIGOS
+    (``contratos_que_chocan``). El contrato suelto aceptaba ``NEV-03-PU2`` sin
+    sede, o con un espacio adelante, porque la compuerta resuelve el mueble por
+    el código pelado; pero la otra forma no veía ese contrato, y la nevera se
+    vendía entera a uno y por puertas a otro en las mismas fechas.
+    """
+    plano = PlanoIndexado(db)
+    sedes = [normalizar(sede)] if normalizar(sede) else []
+    sedes += [s for s in plano.sedes_con_codigo(codigo) if s not in sedes]
+    for s in sedes:
+        r = plano.resolver(s, codigo)
+        if r is None:
+            continue
+        f = r.fixture
+        if r.parte is not None or partes_de(f, caras_de(f), es_comercializable(f)):
+            return r.codigo
+        return None
+    return None
+
+
+def contratos_que_chocan(db: Session, codigo: str, desde, hasta, space_id: int | None = None,
+                         sede: str | None = None) -> list[tuple]:
     """Los contratos vivos (no cancelados) que no dejan vender ``codigo`` entre
     ``desde`` y ``hasta``, ambos inclusive: el del mismo espacio, el de la cara
     entera si es una puerta, y los de sus puertas si es la cara entera.
@@ -1217,13 +1250,29 @@ def contratos_que_chocan(db: Session, codigo: str, desde, hasta, space_id: int |
     con ``chocan``: la ``-B`` de la cara A no choca, ``GON-050`` no calza).
     ``space_id``: el espacio mismo, por su id, aunque su código esté guardado
     con otras mayúsculas (el contrato suelto preguntaba así).
+
+    Los códigos guardados se comparan sin mayúsculas ni espacios de los
+    costados, y con ``sede`` también en su forma corta —``NEV-03-PU2`` de una
+    fila de esa sede es ``NAVE-NEV-03-PU2``—: un contrato guardado con otra
+    escritura no puede quedar ciego a la regla «entera o por partes, nunca las
+    dos». El contrato suelto ya exige la forma completa (``forma_canonica``);
+    esto cuida las filas que ya estaban.
     """
-    from sqlalchemy import or_
+    from sqlalchemy import func, or_
     from app.models.models import Space, SpaceLease
 
-    codigo = normalizar(codigo)
+    s = normalizar(sede)
+
+    def completo(texto) -> str:
+        t = normalizar(texto)
+        return _full_code(sin_prefijo_de_sede(t, s), s) if s else t
+
+    codigo = completo(codigo)
     yo = partir_codigo(codigo)
     cara = yo.cara_entera
+    caras = {cara} | ({sin_prefijo_de_sede(cara, s)} if s else set())
+    codigos = {codigo} | ({sin_prefijo_de_sede(codigo, s)} if s else set())
+    guardado = func.upper(func.trim(Space.code))
     filas = (
         db.query(SpaceLease, Space)
         .join(Space, Space.id == SpaceLease.space_id)
@@ -1231,16 +1280,22 @@ def contratos_que_chocan(db: Session, codigo: str, desde, hasta, space_id: int |
             SpaceLease.is_active.is_(True),
             SpaceLease.start_date <= hasta,
             SpaceLease.end_date >= desde,
-            or_(Space.code == codigo, Space.code == cara,
-                Space.code.like(f"{_escapar_like(cara)}-%", escape="\\"),
+            or_(guardado.in_(sorted(codigos | caras)),
+                *[guardado.like(f"{_escapar_like(c)}-%", escape="\\") for c in sorted(caras)],
                 Space.id == (space_id if space_id is not None else -1)),
         )
         .all()
     )
     fuera = []
     for lease, space in filas:
-        otro = partir_codigo(space.code or "")
-        if space.id == space_id or normalizar(space.code) == codigo or chocan(yo, otro):
+        bruto = normalizar(space.code)
+        # La forma corta es de ESTA sede sólo si su fila lo dice (o no dice
+        # ninguna): `PUN-01` se repite en las tres tiendas.
+        if s and not bruto.startswith(f"{s}-") and normalizar(space.sede) not in ("", s) \
+                and space.id != space_id:
+            continue
+        otro = partir_codigo(completo(bruto))
+        if space.id == space_id or completo(bruto) == codigo or chocan(yo, otro):
             fuera.append((lease, space, otro))
     fuera.sort(key=lambda x: (x[0].start_date, x[0].id))
     return fuera
@@ -1348,9 +1403,12 @@ def partes_que_se_moverian(db: Session, sede: str, previas: list[dict], nuevas: 
     frases = []
     for lease, space in vivos:
         p = partir_codigo(space.code or "")
-        if p.parte is None or p.base not in cambiadas:
+        # Por la forma completa: una parte guardada sin la sede (`NEV-03-PU1`,
+        # de antes de que el contrato suelto la exigiera) también se mueve.
+        mueble = _full_code(sin_prefijo_de_sede(p.base, sede), sede)
+        if p.parte is None or mueble not in cambiadas:
             continue
-        fa, fd = cambiadas[p.base]
+        fa, fd = cambiadas[mueble]
         n_antes, n_despues = fa.get(p.parte.clase), fd.get(p.parte.clase)
         # Sólo lo que se ofrecía: una parte vendida sin que el plano la
         # ofreciera (un desfase de antes) no se mueve por darle lugar.
@@ -1359,8 +1417,15 @@ def partes_que_se_moverian(db: Session, sede: str, previas: list[dict], nuevas: 
         regla = CLASES_DE_PARTE[p.parte.clase]
         g = concordancia(p.parte.clase)
         corto_mueble = sin_prefijo_de_sede(p.base, sede)
+        def cuantas(n: int) -> str:
+            return f"{n} {regla['singular'] if n == 1 else regla['plural']}"
+
+        # Los entrepaños se cuentan con la base (el EN1): con 4 entrepaños en
+        # el panel se venden 5. Se dice, para que «de 5 a 4» no se lea como un
+        # error cuando el campo pasó de 4 a 3.
+        con_la_base = " (contando la base)" if regla.get("base") else ""
         cambio = (
-            f"no puede pasar de {n_antes} a {n_despues} {regla['plural']}" if n_despues is not None
+            f"no puede pasar de {n_antes} a {cuantas(n_despues)}{con_la_base}" if n_despues is not None
             else f"no puede quedarse sin {regla['plural']}" if es_pieza(p.parte)
             else f"no puede dejar de venderse por {regla['plural']}"
         )

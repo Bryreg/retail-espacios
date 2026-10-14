@@ -51,6 +51,7 @@ import {
 import {
   accionRec,
   claveRec,
+  contratosSobreElPlano,
   derivar,
   evidenciaRec,
   lista,
@@ -1099,7 +1100,13 @@ function Cap2({ ctx, fila }: { ctx: Contexto; fila: ClienteMetricas | null }) {
   const hallazgos: HallazgoArmado[] = [];
 
   // — Inventario por tipo: dónde está lo que no se vende ————————————————
-  const libresPorTipo = detalle.resumen_por_tipo.slice().sort((a, b) => b.libres - a.libres);
+  // Sólo los tipos de las CARAS: la frase dice «N de los M espacios», y las
+  // partes (puertas, tramos, bahías) no son espacios del universo —una nevera
+  // vendida entera no son «3 puertas libres»—. Van en el resumen por tipo.
+  const tiposDeCara = new Set(der.espacios.map((e) => e.tipo));
+  const libresPorTipo = detalle.resumen_por_tipo
+    .filter((r) => tiposDeCara.has(r.tipo))
+    .sort((a, b) => b.libres - a.libres);
   const peorTipo = libresPorTipo[0];
   const recEspacio = rec("espacio_libre");
   if (der.espacios.length > 0 && peorTipo) {
@@ -1691,7 +1698,9 @@ function Cap4({ detalle, der }: { detalle: DetalleClienteShape; der: Derivado })
     return true;
   };
   const espacios = der.espacios.filter(pasa);
-  const contratos = espacios.filter((e) => e.contrato !== null);
+  // Las partes y las piezas vendidas también son contratos sobre el plano:
+  // la tabla lista lo mismo que cuenta «N sobre el plano».
+  const contratos = contratosSobreElPlano(detalle).filter(pasa);
   const proveedores = detalle.proveedores.filter(
     (p) => (!q || p.nombre.toLowerCase().includes(q)) && (!sede || p.sedes.includes(sede)) && (!tipo || p.tipos.includes(tipo))
   );

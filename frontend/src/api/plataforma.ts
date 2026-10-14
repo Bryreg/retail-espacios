@@ -790,6 +790,20 @@ export interface ParteDetalle {
   contrato: ContratoEspacioDetalle;
 }
 
+/** Una PIEZA vendida (la bahía de impulso de una caja, el forro de una
+ *  columna): no cuelga de ninguna cara —la caja y la columna nunca son
+ *  espacios— y nunca cuenta en la ocupación. Sin la tarifa de su clase. */
+export interface PiezaDetalle {
+  /** `BI1`, `FO`. */
+  parte: string;
+  codigo: string;
+  codigo_corto: string;
+  sede: string;
+  /** La clase de la pieza (`parte_bahia`, `parte_forro`). */
+  tipo: string;
+  contrato: ContratoEspacioDetalle;
+}
+
 /** Resumen por tipo de espacio de ESTE cliente. `canon_promedio/minimo/maximo`
  *  son de los contratos VIGENTES de ese tipo -- `null` con cero contratos
  *  vigentes de ese tipo (no existe el promedio/mínimo/máximo de cero cosas).
@@ -918,6 +932,8 @@ export interface DetalleCliente {
   sedes_con_plano: number;
   sedes: SedeDetalle[];
   espacios: EspacioDetalle[];
+  /** Las piezas con contrato en el período. Ausente si no hay ninguna. */
+  piezas?: PiezaDetalle[];
   contratos_fuera_del_plano: number;
   resumen_por_tipo: ResumenTipoDetalle[];
   proveedores: ProveedorDetalle[];

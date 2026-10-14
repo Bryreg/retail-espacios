@@ -99,6 +99,67 @@ def test_el_contrato_suelto_y_el_plano_tambien_toman_el_candado(client, admin, m
     assert plano and claves_de_candado(plano[0]) == claves_de_candado(["NAVE-NEV-03"]), tomados
 
 
+def test_el_contrato_suelto_toma_el_candado_antes_de_revisar(client, admin, monkeypatch):
+    """Que lo tome no alcanza: tomado justo antes de escribir, dos sesiones
+    (la nevera entera y su puerta 2) pasan las dos la revisión."""
+    import app.routers.spaces as sp
+
+    r = client.put("/api/layout/NAVE", headers=admin, json={"fixtures": [NEVERA], "base_updated_at": None})
+    assert r.status_code == 200, r.text
+    pasos = []
+    tomar, compuerta, choques = sp.tomar_candados, sp.por_que_no_se_vende, sp.contratos_que_chocan
+    monkeypatch.setattr(sp, "tomar_candados", lambda db, c: (pasos.append("candado"), tomar(db, c))[1])
+    monkeypatch.setattr(sp, "por_que_no_se_vende",
+                        lambda *a, **kw: (pasos.append("compuerta"), compuerta(*a, **kw))[1])
+    monkeypatch.setattr(sp, "contratos_que_chocan",
+                        lambda *a, **kw: (pasos.append("choques"), choques(*a, **kw))[1])
+
+    s = client.post("/api/spaces/find-or-create", headers=admin,
+                    json={"code": "NAVE-NEV-03-PU2", "name": "x", "zone": "z", "sede": "NAVE", "area_m2": 1}).json()
+    sup = client.post("/api/suppliers/find-or-create", headers=admin, json={"name": "Postobón"}).json()
+    r = client.post(f"/api/spaces/{s['id']}/leases", headers=admin, json={
+        "supplier_id": sup["id"], "start_date": (HOY + timedelta(days=1)).isoformat(),
+        "end_date": (HOY + timedelta(days=9)).isoformat(), "monthly_rent": 1})
+    assert r.status_code == 201, r.text
+    assert pasos == ["candado", "compuerta", "choques"], pasos
+
+
+def test_la_importacion_del_plano_toma_los_candados_antes_de_la_revision_que_escribe(client, admin, monkeypatch):
+    """La importación de los contratos que viven en el plano: mira, toma el
+    candado de los muebles que va a escribir y vuelve a mirar. Entre la primera
+    mirada y la escritura alguien pudo vender una puerta de esa nevera."""
+    import json
+
+    import app.services.importar_del_plano as imp
+    from app.database import SessionLocal
+    from app.models.models import LayoutSnapshot
+    from app.services.candado import claves_de_candado
+
+    r = client.put("/api/layout/NAVE", headers=admin, json={"fixtures": [NEVERA, OTRA], "base_updated_at": None})
+    assert r.status_code == 200, r.text
+    db = SessionLocal()
+    try:
+        snap = db.query(LayoutSnapshot).filter(LayoutSnapshot.sede == "NAVE").one()
+        vendida = {**NEVERA, "status": "occupied", "supplierName": "Alpina", "negotiatedValue": 1,
+                   "startDate": (HOY + timedelta(days=1)).isoformat(),
+                   "endDate": (HOY + timedelta(days=30)).isoformat()}
+        snap.fixtures_json = json.dumps([vendida, OTRA])
+        db.commit()
+    finally:
+        db.close()
+
+    pasos = []
+    tomar, revisar = imp.tomar_candados, imp.revisar
+    monkeypatch.setattr(imp, "tomar_candados", lambda db, c: (pasos.append(("candado", sorted(c))), tomar(db, c))[1])
+    monkeypatch.setattr(imp, "revisar", lambda db: (pasos.append(("revisar", None)), revisar(db))[1])
+
+    r = client.post("/api/layout/importacion/aplicar", headers=admin)
+    assert r.status_code == 200, r.text
+    assert len(r.json()["importables"]) == 1, r.json()
+    assert [p for p, _ in pasos] == ["revisar", "candado", "revisar"], pasos
+    assert claves_de_candado(pasos[1][1]) == claves_de_candado(["NAVE-NEV-03"]), pasos
+
+
 # ─── La carrera, contra Postgres ──────────────────────────────────────────────
 
 PG = os.environ.get("DATABASE_URL_PG_PRUEBA", "")

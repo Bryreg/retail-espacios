@@ -74,10 +74,10 @@ import { espaciosSinMueble } from "../utils/espaciosSinMueble";
 import { contratosSinMueble, type ContratoSinMueble } from "../utils/auditoriaDesfase";
 import { repartirAnchos, type Columna as ColumnaTabla } from "../utils/anchosTabla";
 import {
-  alternarParte, cantidadDe, claseDe, claveDeEspacio, codigoDeParte, codigoVisibleDe, concordancia,
+  alTocarEnVender, alternarParte, cantidadDe, claseDe, claveDeEspacio, codigoDeParte, codigoVisibleDe, concordancia,
   disponibilidadDeCara, disponibilidadDeEspacio, divisionDe, esDivision, esPieza, estadoDeEspacio, indiceDePartes,
-  partesDe, partesVendidasDeLaCara, partirClave, partirCodigo, piezasDe, piezasDeLaFamilia, seVendeAlgo, sufijoDeParte,
-  tarifaDeEspacio, textoDeParte, textoDePartesVendidas, type EnContrato, type IndiceDePartes, type ParteRef,
+  partesDe, partirClave, partirCodigo, piezasDe, piezasDeLaFamilia, seVendeAlgo, sufijoDeParte,
+  tarifaDeLaFila, textoDeParte, comoSeLiberaLaCara, type ComoSeLibera, type EnContrato, type IndiceDePartes, type ParteRef,
 } from "../utils/partes";
 import type { EstadoPorEspacio } from "../utils/estadoComercial";
 import { partesConEstado } from "../utils/partesDelMueble";
@@ -733,6 +733,11 @@ interface IsoMapProps {
    *  vendida, «libre 14 oct» leía como que la nevera entera se libera hoy.
    *  `null` si la cara está parcial por sus días: ahí manda la fecha. */
   porPartes?: (f: UnifiedFixture, face: FaceEntry) => string | null;
+  /** Desde qué día se puede vender la cara ENTERA y cuántos días tiene libres
+   *  en el periodo, mirando lo que choca con ella (`comoSeLiberaLaCara`): con
+   *  la entera vendida hasta el 20 y la puerta 2 desde el 21, «libre 21 oct»
+   *  era falso. Sin esto, los días de la cara sola, como siempre. */
+  libreDesde?: (f: UnifiedFixture, face: FaceEntry) => { desde: Date; diasLibres: number } | undefined;
 }
 
 /** Un rótulo del plano: el código del espacio y, si se libera adentro del
@@ -837,7 +842,7 @@ type Gesto = "girar" | "mover" | "acercar" | "pellizco";
  *    tiembla y —peor— la medición del deschoque se hace contra la geometría
  *    del paso anterior.
  */
-function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, dispo, porPartes }: IsoMapProps) {
+function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, dispo, porPartes, libreDesde }: IsoMapProps) {
   /** La disponibilidad de una cara en el periodo: la combinada con sus
    *  partes si quien dibuja la sabe, y si no la de la cara sola. */
   const dispoDe = useCallback(
@@ -999,7 +1004,10 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
         const partes = porPartes?.(f, face) ?? null;
         if (partes) return partes;
         const total = inclusiveDays(range.from, range.to);
-        const taken = daysTakenInRange(face, range.from, range.to);
+        // Los días de la cara, como siempre (un «Reservado» toma el periodo
+        // entero), y con partes, también los que la entera no se puede vender.
+        const libre = libreDesde?.(f, face);
+        const taken = Math.max(daysTakenInRange(face, range.from, range.to), libre ? total - libre.diasLibres : 0);
         if (taken <= 0) return `libre los ${total} día${total === 1 ? "" : "s"}`;
         if (taken >= total) return "tomado";
         return `libre ${total - taken} de ${total} días`;
@@ -1047,7 +1055,7 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
 
     return { prisms, piso, anclas, e, unidad, base };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [planta, range, tema, vista, dispoDe, porPartes]);
+  }, [planta, range, tema, vista, dispoDe, porPartes, libreDesde]);
   /** El lienzo existe: los oyentes que se cuelgan de él esperan a esto. Sin
    *  muebles el componente no dibuja nada, y un efecto que corrió en ese
    *  momento no vuelve a correr cuando los muebles llegan. */
@@ -1074,7 +1082,9 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
       for (const entry of facesOf(f)) {
         const dispo = dispoDe(f, entry);
         const partes = dispo === "parcial" ? porPartes?.(f, entry) ?? null : null;
-        const desde = dispo === "parcial" && !partes ? primerDiaLibre(entry, range.from, range.to) : undefined;
+        const desde = dispo === "parcial" && !partes
+          ? (libreDesde ? libreDesde(f, entry)?.desde : primerDiaLibre(entry, range.from, range.to))
+          : undefined;
         salida.push({
           clave: `${f.id}-${entry.face}`,
           cod: doble ? `${nombre}·${entry.face}` : nombre,
@@ -1092,7 +1102,7 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
     // cede—, después lo que se libera (lleva fecha), lo libre y lo tomado: si
     // dos se pisan, el que cede es el que menos se está vendiendo.
     return salida.sort((a, b) => a.peso - b.peso || (a.cod < b.cod ? -1 : 1));
-  }, [fixtures, range, dispoDe, porPartes]);
+  }, [fixtures, range, dispoDe, porPartes, libreDesde]);
 
   // ── Del plano a la pantalla ──────────────────────────────────────────────
   //
@@ -3931,30 +3941,11 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     // había que ir a buscarla al renglón del contrato — el renglón sigue
     // teniendo sus dos interruptores, pero ya no es el único camino.
     if (modoEfectivo !== "vender" || !f) return;
-    if (!seVendeAlgo(f)) { setEnContrato([]); return; }
-    if (!isRentable(f)) {
-      // Una caja o una columna: nunca enteras. Tocarla suma su primera pieza
-      // libre en el periodo (la bahía 1 si está libre, si no la que siga; el
-      // forro); tocarla de nuevo saca todo lo de ese mueble. Las demás
-      // bahías se prenden en el renglón («BI1 · BI2»).
-      const piezas = piezasDe(f);
-      const libre = piezas.find((p) => !mapRange || disponibilidadDeEspacio(
-        f, "A", p, estadoComercial, indicePartes, sede, mapRange.from, mapRange.to) === "libre") ?? piezas[0];
-      setEnContrato((lista) =>
-        lista.some((x) => x.id === f.id)
-          ? lista.filter((x) => x.id !== f.id)
-          : [...lista, { id: f.id, face: "A", parte: sufijoDeParte(libre) }],
-      );
-      return;
-    }
-    // Vender por partes: tocar la nevera suma la ENTERA, como siempre; las
-    // puertas se prenden en el renglón («Entera · PU1 · PU2…»). Tocarla de
-    // nuevo saca todo lo de esa cara, entera o por puertas.
-    setEnContrato((lista) =>
-      lista.some((x) => x.id === f.id && x.face === cara)
-        ? lista.filter((x) => !(x.id === f.id && x.face === cara))
-        : [...lista, { id: f.id, face: cara }],
-    );
+    // Una caja o una columna (nunca enteras) suman su primera pieza libre en
+    // el periodo; lo demás, la cara que se tocó (`alTocarEnVender`, probada).
+    const libre = (p: ParteRef) => !mapRange || disponibilidadDeEspacio(
+      f, "A", p, estadoComercial, indicePartes, sede, mapRange.from, mapRange.to) === "libre";
+    setEnContrato((lista) => alTocarEnVender(lista, f, cara, libre));
   };
 
   /** «Sumar la BI1 de todas las cajas de la sede»: esa pieza de cada mueble de
@@ -4228,15 +4219,26 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       : "libre"),
     [mapRange, estadoComercial, indicePartes, sede],
   );
-  /** «1 de 3 puertas vendida»: el rótulo de una cara parcial POR SUS PARTES
-   *  (`partesVendidasDeLaCara`). `null` si lo parcial son sus días. */
+  /** Lo que dice una cara parcial: «1 de 3 puertas vendida» (POR SUS PARTES)
+   *  o desde qué día se vende ENTERA, mirando lo que choca con ella
+   *  (`comoSeLiberaLaCara`). Una sola cuenta para el rótulo del plano, el
+   *  cartel del mouse y la lista de precios. */
+  const comoSeLibera = useCallback(
+    (f: UnifiedFixture, face: FaceEntry): ComoSeLibera | null => (mapRange
+      ? comoSeLiberaLaCara(f, face.face, estadoComercial, indicePartes, sede, mapRange.from, mapRange.to)
+      : null),
+    [mapRange, estadoComercial, indicePartes, sede],
+  );
   const porPartesDeCara = useCallback(
-    (f: UnifiedFixture, face: FaceEntry): string | null => {
-      if (!mapRange) return null;
-      const r = partesVendidasDeLaCara(f, face.face, estadoComercial, sede, mapRange.from, mapRange.to);
-      return r ? textoDePartesVendidas(r) : null;
+    (f: UnifiedFixture, face: FaceEntry): string | null => comoSeLibera(f, face)?.porPartes ?? null,
+    [comoSeLibera],
+  );
+  const libreDesdeDeCara = useCallback(
+    (f: UnifiedFixture, face: FaceEntry) => {
+      const c = comoSeLibera(f, face);
+      return c?.desde ? { desde: c.desde, diasLibres: c.diasLibres } : undefined;
     },
-    [mapRange, estadoComercial, sede],
+    [comoSeLibera],
   );
   /** Las partes vendidas de un mueble, como filas propias (`partesConContrato`).
    *  Dependen del mapa crudo: vender una puerta no cambia `fixtures`. */
@@ -4356,10 +4358,10 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           }
           e.claves.push(clave);
         } else if (a === "parcial") {
-          const porPartes = porPartesDeCara(f, face);
+          const como = comoSeLibera(f, face);
           e.parciales.push({
             code: codigoVisible(face), fixture: f, face: face.face,
-            ...(porPartes ? { porPartes } : { desde: primerDiaLibre(face, mapRange.from, mapRange.to) }),
+            ...(como?.porPartes ? { porPartes: como.porPartes } : { desde: como?.desde }),
           });
           e.claves.push(clave);
         }
@@ -4370,7 +4372,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     });
     return [...acum].map(([cat, v]) => ({ cat, ...v }))
       .sort((a, b) => (b.tarifa ?? -1) - (a.tarifa ?? -1));
-  }, [fixtures, mapRange, referenceRates, sede, carasDelContrato, fichasPropias, dispoDeCara, porPartesDeCara]);
+  }, [fixtures, mapRange, referenceRates, sede, carasDelContrato, fichasPropias, dispoDeCara, comoSeLibera]);
 
   // ── KPI computation (per rentable face — doubles count as 2 units) ──
   // Buckets use displayStatus() so KPIs, Atención, map chips and table agree.
@@ -4479,7 +4481,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     faces.forEach((x, i) => {
       if ((phases[i] !== "vigente" && phases[i] !== "pendiente") || !(x.negotiatedValue > 0)) return;
       // La de una puerta es la de su clase o la de la nevera ÷ puertas.
-      const ref = tarifaDeEspacio(referenceRates, x.fixture.sede || sede, x.fixture, x.parte ?? null).valor;
+      const ref = tarifaDeLaFila(referenceRates, sede, x).valor;
       if (ref === null) return;
       const gapPct = Math.round((1 - x.negotiatedValue / ref) * 100);
       if (gapPct >= 1) belowReference.push({ ...x, ref, gapPct });
@@ -4584,8 +4586,8 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  que se cobra: para una cara libre es el único precio que existe. */
   const tarifaDe = useCallback(
     (e: FaceEntry): number | null =>
-      // Una puerta: la de su clase o la de la nevera ÷ puertas (`tarifaDeEspacio`).
-      tarifaDeEspacio(referenceRates, e.fixture.sede || sede, e.fixture, e.parte ?? null).valor,
+      // Una puerta: la de su clase o la de la nevera ÷ puertas (`tarifaDeLaFila`).
+      tarifaDeLaFila(referenceRates, sede, e).valor,
     [referenceRates, sede, fichasPropias],
   );
 
@@ -4753,6 +4755,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 range={mapRange}
                 dispo={dispoDeCara}
                 porPartes={porPartesDeCara}
+                libreDesde={libreDesdeDeCara}
               />
             )}
           </div>
@@ -4808,7 +4811,8 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           range={mapRange}
           resaltar={resaltarPlano}
           dispo={dispoDeCara}
-                porPartes={porPartesDeCara}
+          porPartes={porPartesDeCara}
+          libreDesde={libreDesdeDeCara}
         />
       </div>
     </section>

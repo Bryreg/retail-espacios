@@ -34,7 +34,7 @@ import { GeometriaDelMueble } from "../GeometriaDelMueble";
 import { PartesDelMueble } from "../PartesDelMueble";
 import { textoDeLoQueNuncaSeAlquila, vendePorPartes } from "../../utils/partesDelMueble";
 import {
-  claseDe, codigoDeParte, concordancia, divisionDe, esDivision, fraccionDeParte, juntasDePartes, partesDe, piezasDe,
+  codigoDeParte, concordancia, divisionDe, juntasDePartes, piezasDe, puntosDePartesVendidas,
   sufijoDeParte, vanoDeParte,
 } from "../../utils/partes";
 import { cotasDeCheckout, mesaDeImpulso, montantesDeImpulso, nichosDeImpulso } from "../StoreEditor3D/muebles/medidas";
@@ -1767,9 +1767,10 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                         y: cy - x * Math.sin(th) + z * Math.cos(th),
                       });
                       const noPtr = { style: { pointerEvents: "none" as const } };
-                      const completo = fullSpaceCode(f.sede || sede, f.code);
-                      const vendidas = partesDe(f).filter(({ cara, parte }) => esDivision(parte)
-                        && estadoCrudo[codigoDeParte(completo, cara, parte)]?.status === "occupied");
+                      // El punto de cada puerta o tramo vendido, con la cuenta de
+                      // la cara (`puntosDePartesVendidas`, probada): el TR1 de la
+                      // B cae a la izquierda de quien mira la B.
+                      const vendidas = puntosDePartesVendidas(f, estadoCrudo, sede);
                       return (
                         <g data-partes-en-planta={item.id}>
                           {juntas.map((t) => {
@@ -1779,10 +1780,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                             return <line key={`j${t}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
                               stroke="rgba(28,27,22,0.45)" strokeWidth={1 / zoom} strokeDasharray={`${3 / zoom},${2 / zoom}`} {...noPtr} />;
                           })}
-                          {claseDe(div.clase)?.eje === "ancho" && vendidas.map(({ cara, parte }) => {
-                            const [t0, t1] = fraccionDeParte(cara, parte.n ?? 1, div.n);
-                            const x = -largo / 2 + ((t0 + t1) / 2) * largo;
-                            const p = aPlano(x, (cara === "A" ? -1 : 1) * fondo * 0.3);
+                          {vendidas.map(({ cara, parte, a, lado }) => {
+                            const p = aPlano(a * largo, lado * fondo * 0.3);
                             return <circle key={`v${cara}${parte.n}`} cx={p.x} cy={p.y} r={Math.max(2, 3.2 / zoom)}
                               fill={STATUS_COLORS.occupied} {...noPtr}><title>{sufijoDeParte(parte)} vendid{concordancia(parte.clase).o}</title></circle>;
                           })}

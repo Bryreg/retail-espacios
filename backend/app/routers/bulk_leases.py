@@ -496,7 +496,7 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
                     break
 
         if not errores and desde and hasta and codigo:
-            choques = contratos_que_chocan(db, codigo, desde, hasta)
+            choques = contratos_que_chocan(db, codigo, desde, hasta, sede=out.sede)
             if choques:
                 lease, space, _otro = choques[0]
                 errores.append(frase_de_choque(codigo, space.code or "", lease))

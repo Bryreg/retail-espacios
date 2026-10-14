@@ -121,6 +121,16 @@ def test_en_la_misma_planilla_la_entera_y_una_puerta_chocan(client, admin):
                  _fila("NEV-03-PU3", fila=3, proveedor="Alpina"))
     assert f[0]["estado"] != "error" and f[2]["estado"] != "error", f
     assert f[1]["estado"] == "error" and "fila 1" in " ".join(f[1]["mensajes"]), f[1]
+    # Y al revés: la entera primero y la puerta después. La revisión contra la
+    # base no ve las filas de la misma tanda, que todavía no se escribieron.
+    f = _validar(client, admin, _fila("NEV-03", fila=1), _fila("NEV-03-PU2", fila=2, proveedor="Alpina"))
+    assert f[0]["estado"] != "error", f
+    assert f[1]["estado"] == "error" and "fila 1" in " ".join(f[1]["mensajes"]), f[1]
+    # Y `confirmar` escribe uno solo: la entera.
+    f = _confirmar(client, admin, _fila("NEV-03", fila=1), _fila("NEV-03-PU2", fila=2, proveedor="Alpina"))
+    assert [x["lease_id"] is not None for x in f] == [True, False], f
+    comercial = client.get("/api/spaces/comercial", headers=admin).json()
+    assert "NAVE-NEV-03" in comercial and "NAVE-NEV-03-PU2" not in comercial, sorted(comercial)
 
 
 # ─── La compuerta: lo que el plano no ofrece ──────────────────────────────────
@@ -221,6 +231,87 @@ def test_el_contrato_suelto_dice_lo_mismo(client, admin):
     assert r.status_code == 409 and "no hay PU4" in r.json()["detail"], r.text
 
 
+def test_el_contrato_suelto_de_una_parte_con_la_cara_vendida_entera(client, admin):
+    """La otra dirección: con la cara vendida ENTERA, ninguna de sus partes
+    entra por el contrato suelto —ni una puerta, ni un tramo, ni un
+    entrepaño—, y la frase no nombra a quien tiene la entera."""
+    mural = {**_mural("GON-08"), "partes": {"tramos": 3, "division": "tramos"}}
+    punta = {"id": "f-PUN-02", "code": "PUN-02", "sede": "NAVE", "type": "punta", "label": "Punta",
+             "cx": 12, "cz": 2, "rotY": 0, "w": 0.9, "d": 0.4, "h": 1.8, "color": "#6366f1",
+             "entrepanos": 3, "partes": {"division": "entrepanos"}}
+    _plano(client, admin, [_nevera(), mural, punta])
+    for cara in ("NEV-03", "GON-08", "PUN-02"):
+        _vendido(client, admin, cara, desde=1, hasta=30, proveedor="Coca-Cola")
+    for parte in ("NAVE-NEV-03-PU2", "NAVE-GON-08-TR1", "NAVE-PUN-02-EN1"):
+        r = _suelto(client, admin, parte, desde=5, hasta=10)
+        assert r.status_code == 409, (parte, r.text)
+        assert "vendida entera" in r.json()["detail"], (parte, r.text)
+        assert "Coca" not in r.json()["detail"]
+    # Fuera de esas fechas, sí.
+    assert _suelto(client, admin, "NAVE-NEV-03-PU2", desde=31, hasta=40).status_code == 201
+
+
+def test_el_contrato_suelto_exige_el_codigo_completo_de_lo_que_se_vende_por_partes(client, admin):
+    """La regla «entera o por partes» compara CÓDIGOS. El contrato suelto
+    aceptaba la puerta sin la sede (`NEV-03-PU2`) o con un espacio adelante, y
+    la nevera entera, escrita completa por la planilla, no la veía: se vendía
+    entera a uno y por puertas a otro en las mismas fechas. Ahora se pide la
+    forma completa, como la arma la planilla."""
+    caja = {"id": "c1", "code": "CAJ-01", "sede": "NAVE", "type": "checkout", "label": "Caja",
+            "cx": 1, "cz": 1, "rotY": 0, "w": 1.8, "d": 0.7, "h": 0.9, "color": "#8b5cf6",
+            "partes": {"bahias": 2}}
+    _plano(client, admin, [_nevera(), caja, _mural()])
+    for escrito, canonico in [("NEV-03-PU2", "NAVE-NEV-03-PU2"), (" NAVE-NEV-03-PU2", "NAVE-NEV-03-PU2"),
+                              ("nave-nev-03-pu3", "NAVE-NEV-03-PU3"), ("CAJ-01-BI1", "NAVE-CAJ-01-BI1"),
+                              ("NEV-03", "NAVE-NEV-03")]:
+        r = _suelto(client, admin, escrito)
+        assert r.status_code == 409, (escrito, r.text)
+        assert f"Escribilo «{canonico}»" in r.json()["detail"], (escrito, r.text)
+    assert client.get("/api/spaces/comercial", headers=admin).json() == {}
+    # Escrita completa, entra; y la entera, después, choca como siempre.
+    assert _suelto(client, admin, "NAVE-NEV-03-PU2").status_code == 201
+    assert _validar(client, admin, _fila("NEV-03", proveedor="Coca-Cola"))[0]["estado"] == "error"
+    # Un mueble que se vende entero sigue como siempre: sin exigir nada.
+    assert _suelto(client, admin, "GON-07").status_code == 201
+
+
+def _contrato_viejo(code, desde=1, hasta=30):
+    """Una fila de antes de que el contrato suelto exigiera el código completo:
+    escrita directo en la base, porque por la API ya no entra."""
+    from datetime import date
+    from app.database import SessionLocal
+    from app.models.models import Space, SpaceLease, Supplier
+    db = SessionLocal()
+    try:
+        sup = Supplier(name=f"Viejo {code}")
+        space = Space(code=code, svg_id=f"fix-{code}", name=code, zone="Z", sede="NAVE", area_m2=1)
+        db.add_all([sup, space])
+        db.flush()
+        db.add(SpaceLease(space_id=space.id, supplier_id=sup.id, monthly_rent=1,
+                          start_date=date.fromisoformat(_d(desde)), end_date=date.fromisoformat(_d(hasta))))
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_un_contrato_viejo_guardado_sin_la_sede_tambien_cuenta(client, admin):
+    """Lo que ya estaba escrito sin la sede: la nevera entera lo ve, y el
+    guardado del plano no mueve ni saca esa puerta sin avisar."""
+    _plano(client, admin, [_nevera()])
+    _contrato_viejo("NEV-03-PU1", desde=0)
+    f = _validar(client, admin, _fila("NEV-03", proveedor="Coca-Cola"))[0]
+    assert f["estado"] == "error" and "NEV-03-PU1" in " ".join(f["mensajes"]), f
+    # De 3 a 2 puertas la puerta 1 queda en otro lugar: 409, como con la completa.
+    r = client.put("/api/layout/NAVE", headers=admin,
+                   json={"fixtures": [_nevera(puertas=2)], "base_updated_at": None})
+    assert r.status_code == 409 and "partes_vendidas" in r.text, r.text
+    # Y con la puerta 3 vendida, bajar a 2 la saca del plano: `contratos_vivos`.
+    _contrato_viejo("NEV-03-PU3", desde=40, hasta=50)
+    r = client.put("/api/layout/NAVE", headers=admin,
+                   json={"fixtures": [_nevera(puertas=2)], "base_updated_at": None})
+    assert r.status_code == 409 and "contratos_vivos" in r.text and "NEV-03-PU3" in r.text, r.text
+
+
 def test_el_contrato_suelto_de_una_caja_dice_que_nunca_se_alquila(client, admin):
     caja = {"id": "c1", "code": "CAJ-01", "sede": "NAVE", "type": "checkout", "label": "Caja",
             "cx": 1, "cz": 1, "rotY": 0, "w": 1.8, "d": 0.7, "h": 0.9, "color": "#8b5cf6"}
@@ -303,3 +394,55 @@ def test_el_enlace_de_montaje_de_una_puerta_dice_cual_y_lleva_el_mueble(client, 
     c = client.get("/api/montaje/mi-espacio",
                    headers={"Authorization": f"Bearer {create_mount_token('NAVE-GON-07', days=30)}"}).json()
     assert c.get("parte") is None, c.get("parte")
+
+
+# ─── Renumerar ────────────────────────────────────────────────────────────────
+
+FOTO = {"foto": ("montaje.png", b"\x89PNG\r\n\x1a\n" + b"0" * 32, "image/png")}
+
+
+def test_renumerar_muda_la_parte_vendida_con_su_mueble(client, admin):
+    """Las dos neveras tienen los nombres corridos: la de la izquierda (cx=1)
+    se llama NEV-02 y renumerar la pasa a NEV-01, y a la otra al revés. Su
+    puerta 2 vendida tiene que ir con ELLA —el espacio, su `svg_id` y la
+    confirmación de montaje—: con la regla vieja (sólo `-B`) el contrato quedaba
+    colgado del código viejo, que después es la OTRA nevera, y el proveedor
+    montaba en la equivocada. Lo mismo con un tramo de la cara B de una
+    góndola."""
+    from app.database import SessionLocal
+    from app.models.models import MountConfirmation, Space
+
+    def nevera(cx, code):
+        return {**_nevera(code), "id": f"n{cx}", "cx": cx, "cz": 15.0}
+
+    def gondola(cx, code):
+        return {"id": f"g{cx}", "code": code, "sede": "NAVE", "type": "gondola", "gondolaType": "double",
+                "label": "Góndola", "cx": cx, "cz": 5.0, "rotY": 0, "w": 3, "d": 1.0, "h": 1.8,
+                "color": "#818cf8", "partes": {"tramos": 3, "division": "tramos"}}
+
+    _plano(client, admin, [nevera(1, "NEV-02"), nevera(3, "NEV-01"), gondola(1, "GON-02"), gondola(5, "GON-01")])
+    _vendido(client, admin, "NEV-02-PU2", desde=1, hasta=30)
+    _vendido(client, admin, "GON-02-B-TR2", desde=1, hasta=30, proveedor="Alpina")
+    for espacio in ("NAVE-NEV-02-PU2", "NAVE-GON-02-B-TR2"):
+        m = client.post("/api/mounts/", headers=admin,
+                        data={"space_code": espacio, "estado": "montado", "sede": "NAVE"}, files=FOTO)
+        assert m.status_code == 201, m.text
+
+    r = client.post("/api/layout/renumeracion/aplicar", json={"sedes": None}, headers=admin)
+    assert r.status_code == 200, r.text
+    codigos = {f["id"]: f["code"] for f in client.get("/api/layout/NAVE", headers=admin).json()["fixtures"]}
+    assert (codigos["n1"], codigos["g1"]) == ("NEV-01", "GON-01"), codigos
+
+    db = SessionLocal()
+    try:
+        espacios = {s.code: s for s in db.query(Space).all()}
+        montajes = {c.space_code for c in db.query(MountConfirmation).all()}
+    finally:
+        db.close()
+    assert {"NAVE-NEV-01-PU2", "NAVE-GON-01-B-TR2"} <= set(espacios), sorted(espacios)
+    assert "NAVE-NEV-02-PU2" not in espacios and "NAVE-GON-02-B-TR2" not in espacios, sorted(espacios)
+    assert "NAVE-NEV-01-PU2" in espacios["NAVE-NEV-01-PU2"].svg_id, espacios["NAVE-NEV-01-PU2"].svg_id
+    assert montajes == {"NAVE-NEV-01-PU2", "NAVE-GON-01-B-TR2"}, montajes
+    comercial = client.get("/api/spaces/comercial", headers=admin).json()
+    assert comercial["NAVE-NEV-01-PU2"]["supplierName"] == "Postobón"
+    assert comercial["NAVE-GON-01-B-TR2"]["supplierName"] == "Alpina"

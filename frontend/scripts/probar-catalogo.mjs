@@ -1367,15 +1367,17 @@ await prueba("quien pregunta la tarifa vuelve a preguntar cuando llegan las fich
   for (const a of archivos) {
     const t = sinComent(leer(a));
     // `tarifaDeEspacio` (vender por partes) pregunta `rateTypeOf` adentro: quien
-    // la llama desde un memo también depende de las fichas.
-    if (!/(rateTypeOf|tipoDelMueble|tarifaDeEspacio)\(/.test(t)) continue;
+    // la llama desde un memo también depende de las fichas. Y las que la
+    // llaman a ella (`tarifaDeLaFila` de Supervisar, `comercialDelEspacio`
+    // del renglón de Vender), lo mismo.
+    if (!/(rateTypeOf|tipoDelMueble|tarifaDeEspacio|tarifaDeLaFila|comercialDelEspacio)\(/.test(t)) continue;
     const rel = a.slice(raiz.length + 1);
     // Las funciones del archivo que la preguntan (en minúscula: los componentes
     // se vigilan por sus propios `useMemo`).
     const fns = [...t.matchAll(/\nfunction ([a-z]\w*)\(/g)]
-      .filter((m) => /(rateTypeOf|tipoDelMueble|tarifaDeEspacio)\(/.test(t.slice(m.index, t.indexOf("\n}\n", m.index))))
+      .filter((m) => /(rateTypeOf|tipoDelMueble|tarifaDeEspacio|tarifaDeLaFila|comercialDelEspacio)\(/.test(t.slice(m.index, t.indexOf("\n}\n", m.index))))
       .map((m) => m[1]);
-    const pregunta = new RegExp(`\\b(${["rateTypeOf", "tipoDelMueble", "tarifaDeEspacio", ...fns].join("|")})\\(`);
+    const pregunta = new RegExp(`\\b(${["rateTypeOf", "tipoDelMueble", "tarifaDeEspacio", "tarifaDeLaFila", "comercialDelEspacio", ...fns].join("|")})\\(`);
     for (const m of t.matchAll(/\b(useMemo|useCallback)(<[^>]*>)?\(/g)) {
       let i = m.index + m[0].length, prof = 1;
       while (prof > 0 && i < t.length) { if (t[i] === "(") prof++; else if (t[i] === ")") prof--; i++; }

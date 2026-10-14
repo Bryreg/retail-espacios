@@ -2,7 +2,7 @@ import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, use
 import { createPortal } from "react-dom";
 import { AlertTriangle, Box, Check, ImageUp, Loader2, Lock, X } from "lucide-react";
 import type { DateRange } from "../SeasonPicker/SeasonPicker";
-import { isRentable, type UnifiedFixture } from "../../types/fixtures";
+import type { UnifiedFixture } from "../../types/fixtures";
 import NotifyPreview from "../NotifyPreview";
 import { useModalAbierto } from "../../tema";
 import {
@@ -17,8 +17,8 @@ import { conNombrePropio, tipoDelMueble } from "../../catalogo/nombresPropios";
 // De `utils/` (no importa nada): la ficha la usa al entrar.
 import { normalizarProveedor } from "../../utils/proveedor";
 import {
-  claseDe, claveDeEspacio, codigoVisibleDe, concordancia, divisionDe, esPieza, filaDeEntrepano, parteDeSufijo, partesDe,
-  piezasDe, seVendeAlgo, sufijoDeParte, textoDeParte, vanoDeParte, vanoEnLaCara,
+  claseDe, claveDeEspacio, codigoVisibleDe, concordancia, divisionDe, esPieza, interruptoresDeLaCara, marcasDelContrato,
+  parteDeSufijo, partesDe, piezasDe, seVendeAlgo, sufijoDeParte, textoDeParte,
 } from "../../utils/partes";
 import { divisionSinFijar, piezasDeLaFamilia } from "../../utils/partesDelMueble";
 import { internosVendidosEnLaParte } from "../../utils/slotsDeLasPartes";
@@ -181,7 +181,7 @@ function Fila({
      o una columna (que nunca se venden enteras) ofrecen sólo sus piezas:
      «BI1 · BI2», sin «Entera». */
   const partesDeLaCara = partesDe(l.fixture).filter((p) => p.cara === l.face);
-  const seVendeEntera = isRentable(l.fixture);
+  const interruptores = interruptoresDeLaCara(l.fixture, l.face);
   const primeraDeLaCara = c.lineas.find((o) => o.fixture.id === l.fixture.id && o.face === l.face) === l;
   /* «Sumar la BI1 de todas las cajas de la sede (8)»: el contrato multiespacio
      de una marca que compra la misma bahía en toda la línea de cajas. Cuenta
@@ -307,10 +307,10 @@ function Fila({
           pasaba de 150 a 255 px y empujaba Proveedor, fechas y «Guardar»
           fuera del panel. (`.eitem` es flex con `wrap`; el aviso ocupa el
           100 % y baja solo al renglón de abajo.) */}
-      {primeraDeLaCara && partesDeLaCara.length > 0 && (
+      {primeraDeLaCara && interruptores.length > 0 && (
         <span className="partes" role="group" aria-label={`Cómo se vende ${codigoVisibleDe(l.fixture.code, l.face, l.doble, null)}`}
           data-partes-de={claveDeCara}>
-          {[...(seVendeEntera ? [null] : []), ...partesDeLaCara.map((p) => sufijoDeParte(p.parte))].map((suf) => {
+          {interruptores.map((suf) => {
             const puesta = c.lineas.some((o) => o.fixture.id === l.fixture.id && o.face === l.face && o.parte === suf);
             const parte = suf ? parteDeSufijo(suf) : null;
             const nombre = parte ? textoDeParte(parte, partesDeLaCara.length) : "Entera";
@@ -564,31 +564,13 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
       if (entera || sufijos.length === 0) {
         return { ...cara, visible: codigoVisibleDe(f.code, cara.face, c.lineas.find((l) => l.fixture.id === f.id)!.doble, null) };
       }
-      const div = divisionDe(f);
-      const piezas = piezasDe(f);
-      if (!div && piezas.length) {
-        // Una pieza (la bahía de una caja, el forro de una columna) no prueba
-        // producto: sólo se marca su lugar, por el nicho del dibujo (las
-        // bahías, de −X a +X: la BI1 mirando desde la fila es la de +X).
-        const nBahias = piezas.filter((p) => p.clase === "bahias").length;
-        const vanos = sufijos.map((s) => parteDeSufijo(s))
-          .filter((p) => p && esPieza(p))
-          .map((p) => (p!.n === null ? 0 : vanoDeParte("A", p!.n, nBahias)));
-        return {
-          ...cara,
-          visible: `${codigoVisibleDe(f.code, cara.face, false, null)}·${sufijos.join("·")}`,
-          codigo: codigos.join(", "),
-          ...(vanos.length ? { vanos } : {}),
-        };
-      }
-      const n = div?.n ?? 0;
-      const delRenglon = sufijos.map((s) => parteDeSufijo(s)).filter((p) => p && p.n !== null && n > 0 && p.clase === div?.clase);
-      const porAlto = claseDe(div?.clase ?? "")?.eje === "alto";
-      const vanos = porAlto ? [] : delRenglon.map((p) => vanoEnLaCara(cara.face, p!.n!, n));
-      const filas = porAlto ? delRenglon.map((p) => filaDeEntrepano(p!.n!)) : [];
+      // Las puertas, los tramos y las filas que van en el contrato, o el nicho
+      // de una pieza: `marcasDelContrato`, probada con la cámara de venta.
+      const { vanos, filas, dePiezas } = marcasDelContrato(f, cara.face, sufijos);
+      const doble = dePiezas ? false : c.lineas.find((l) => l.fixture.id === f.id)!.doble;
       return {
         ...cara,
-        visible: `${codigoVisibleDe(f.code, cara.face, c.lineas.find((l) => l.fixture.id === f.id)!.doble, null)}·${sufijos.join("·")}`,
+        visible: `${codigoVisibleDe(f.code, cara.face, doble, null)}·${sufijos.join("·")}`,
         codigo: codigos.join(", "),
         ...(vanos.length ? { vanos } : {}),
         ...(filas.length ? { filas } : {}),

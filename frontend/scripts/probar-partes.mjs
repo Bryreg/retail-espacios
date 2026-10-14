@@ -722,11 +722,13 @@ await prueba("el taller: la caja dice cuántas bahías vende y la columna si ven
  *  montan acá: se lee el código de lo que las piezas no pueden perder. */
 await prueba("Vender toca la caja, ofrece sus bahías sin «Entera» y el atajo de todas las cajas", () => {
   const dash = leer(join(raiz, "src", "pages", "DashboardView.tsx"));
-  assert.match(dash, /if \(!seVendeAlgo\(f\)\) \{ setEnContrato\(\[\]\); return; \}/, "Vender ya no deja tocar una caja con bahías");
-  assert.match(dash, /\[\.\.\.lista, \{ id: f\.id, face: "A", parte: sufijoDeParte\(libre\) \}\]/, "tocar la caja no suma su primera bahía libre");
+  // Tocar la caja y sus interruptores son cuentas puras desde la revisión de
+  // la rama (`alTocarEnVender`, `interruptoresDeLaCara`): las prueba, por lo
+  // que hacen, «la caja nunca se vende entera en Vender», más abajo.
+  assert.match(dash, /setEnContrato\(\(lista\) => alTocarEnVender\(lista, f, cara, libre\)\);/, "Vender ya no deja tocar una caja con bahías");
   assert.match(dash, /onSumarEnTodas=\{sumarEnTodas\}/, "el atajo de todas las cajas no llega a la ficha");
   const mv = leer(join(raiz, "src", "components", "Contrato", "ModoVender.tsx"));
-  assert.match(mv, /\[\.\.\.\(seVendeEntera \? \[null\] : \[\]\), \.\.\.partesDeLaCara/, "la caja ofrece «Entera»");
+  assert.match(mv, /\{interruptores\.map\(\(suf\) => \{/, "la caja ofrece «Entera»");
   assert.match(mv, /data-sumar-en-todas=\{piezaDelRenglon\}/, "falta «Sumar la BI1 de todas las cajas»");
   assert.match(mv, /!seVendeAlgo\(ultimo\)/, "la caja con bahías se explica como no comercializable");
   // Supervisar: las piezas de la caja son filas, y no cuentan en la ocupación.
@@ -984,11 +986,11 @@ await prueba("el plano y la lista de precios dicen «1 de 3 puertas vendida», n
   // Y el plano lo pide antes que la fecha (`porPartes`), en el rótulo, en el
   // cartel del mouse y en la ficha de la lista de precios.
   const dash = leer(join(raiz, "src", "pages", "DashboardView.tsx"));
-  assert.match(dash, /const partes = dispo === "parcial" \? porPartes\?\.\(f, entry\) \?\? null : null;\s*const desde = dispo === "parcial" && !partes \? primerDiaLibre/,
+  assert.match(dash, /const partes = dispo === "parcial" \? porPartes\?\.\(f, entry\) \?\? null : null;\s*const desde = dispo === "parcial" && !partes\s*\? \(libreDesde \? libreDesde\(f, entry\)\?\.desde : primerDiaLibre/,
     "el rótulo de una cara parcial por sus partes vuelve a decir «libre» y el día");
   assert.match(dash, /fecha: partes \?\? \(desde \?/, "el rótulo no dice las partes vendidas");
   assert.match(dash, /const partes = porPartes\?\.\(f, face\) \?\? null;\s*if \(partes\) return partes;/, "el cartel del mouse dice «libre los 31 días»");
-  assert.match(dash, /\.\.\.\(porPartes \? \{ porPartes \} : \{ desde: primerDiaLibre\(/, "la lista de precios vuelve a poner el día");
+  assert.match(dash, /\.\.\.\(como\?\.porPartes \? \{ porPartes: como\.porPartes \} : \{ desde: como\?\.desde \}\)/, "la lista de precios vuelve a poner el día");
   assert.equal((dash.match(/porPartes=\{porPartesDeCara\}/g) ?? []).length, 2, "Vender y Supervisar dibujan el plano con el mismo rótulo");
 });
 
@@ -1047,6 +1049,228 @@ await prueba("el visor cuenta las unidades de la puerta que se vende, no las de 
   // Y la cuenta pura: la puerta 2 de 3 entra un tercio de la nevera.
   const venta = P.ventaDeNevera(2.05, 0.74, 2.1, 3);
   assert.ok(venta.vanos.length === 3, `la nevera de 3 puertas tiene ${venta.vanos.length} vanos`);
+});
+
+console.log("partes · lo que encontró la revisión de la rama (2026-10-14)");
+
+await prueba("la entera vendida hasta el 20 y una puerta desde el 21: el plano no dice «libre 21 oct»", () => {
+  // Lo de la revisión: la cara está «parcial», tiene días propios, y el plano
+  // y la lista de precios decían el primer día libre DE LA CARA, cuando ese
+  // día la puerta 2 ya está vendida y la entera no se puede vender.
+  const estado = {
+    "NAVE-NEV-03": vendido("2026-10-15", "2026-10-20"),
+    "NAVE-NEV-03-PU2": vendido("2026-10-21", "2026-12-31"),
+  };
+  const ix = P.indiceDePartes(estado);
+  const desde = d("2026-10-15"), hasta = d("2026-11-15");
+  assert.equal(P.disponibilidadDeCara(nevera, "A", estado, ix, "NAVE", desde, hasta), "parcial");
+  assert.deepEqual(P.diasLibresDeLaCara(nevera, "A", estado, ix, "NAVE", desde, hasta), [], "la entera no se libera en el periodo");
+  // Lo que se puede vender son las otras puertas: lo dice la cuenta, no una fecha.
+  assert.deepEqual(P.comoSeLiberaLaCara(nevera, "A", estado, ix, "NAVE", desde, hasta), { porPartes: "1 de 3 puertas vendida" });
+  // Con un hueco (la puerta desde el 25), la entera se vende del 21 al 24.
+  const hueco = { ...estado, "NAVE-NEV-03-PU2": vendido("2026-10-25", "2026-12-31") };
+  const c = P.comoSeLiberaLaCara(nevera, "A", hueco, P.indiceDePartes(hueco), "NAVE", desde, hasta);
+  assert.equal(c.desde.getTime(), d("2026-10-21").getTime());
+  assert.equal(c.diasLibres, 4);
+  // Sin partes, lo de siempre: el primer día libre de la cara y sus días.
+  const sola = { "NAVE-NEV-03": vendido("2026-10-15", "2026-10-20") };
+  const s1 = P.comoSeLiberaLaCara(nevera, "A", sola, P.indiceDePartes(sola), "NAVE", desde, hasta);
+  assert.equal(s1.desde.getTime(), d("2026-10-21").getTime());
+  assert.equal(s1.diasLibres, 26);
+  // Con la cara libre y una puerta vendida, la cuenta de siempre.
+  const una = { "NAVE-NEV-03-PU2": vendido("2026-10-14", "2026-11-13") };
+  assert.deepEqual(P.comoSeLiberaLaCara(nevera, "A", una, P.indiceDePartes(una), "NAVE", desde, hasta), { porPartes: "1 de 3 puertas vendida" });
+  // Y el plano y la lista de precios lo piden por acá, en Vender y en Supervisar.
+  const dash = leer(join(raiz, "src", "pages", "DashboardView.tsx"));
+  assert.equal((dash.match(/libreDesde=\{libreDesdeDeCara\}/g) ?? []).length, 2, "un plano no recibe el día en que se libera la entera");
+  assert.match(dash, /comoSeLiberaLaCara\(f, face\.face, estadoComercial, indicePartes, sede, mapRange\.from, mapRange\.to\)/,
+    "el día en que se libera no mira el mapa de la base");
+  assert.match(dash, /const taken = Math\.max\(daysTakenInRange\(face, range\.from, range\.to\), libre \? total - libre\.diasLibres : 0\);/,
+    "el cartel del mouse cuenta sólo los días de la cara");
+});
+
+/** La proyección de un vano del dibujo de una cara sobre la derecha de la
+ *  cámara de venta de esa cara (la cuenta de «el tramo 1 queda a la izquierda»). */
+const enPantallaDe = (f, cara, vanos, i) => {
+  const v = P.vistaDeCara(f, cara);
+  const adelante = { x: v.targetX - v.posX, z: v.targetZ - v.posZ };
+  const derecha = { x: -adelante.z, z: adelante.x };
+  const xGrupo = vanos[i].x;
+  const x = cara === "B" ? -xGrupo : xGrupo;
+  const wx = f.cx + x * Math.cos(f.rotY);
+  const wz = f.cz - x * Math.sin(f.rotY);
+  return wx * derecha.x + wz * derecha.z;
+};
+
+await prueba("el visor de Vender marca la parte que se vende, no otra: tramos de las dos caras, entrepaños y bahías", () => {
+  // `marcasDelContrato` es lo que el visor le muestra al proveedor. Tres
+  // mutaciones (el tramo de la B espejado, el entrepaño una fila más arriba,
+  // la bahía del otro lado) pasaban todo: se prueba con la cámara de venta.
+  for (const rotY of [0, 0.7, Math.PI / 2, -1.1]) {
+    const f = { ...gondola(), cx: 3, cz: -2, rotY };
+    const n = 3;
+    const vanos = P.vanosDeCorrido(f.w, undefined, n);
+    for (const cara of ["A", "B"]) {
+      const x = [1, 2, 3].map((k) => {
+        const m = P.marcasDelContrato(f, cara, [`TR${k}`]);
+        assert.equal(m.vanos.length, 1);
+        assert.deepEqual(m.filas, []);
+        return enPantallaDe(f, cara, vanos, m.vanos[0]);
+      });
+      assert.ok(x[0] < x[1] && x[1] < x[2], `cara ${cara}, giro ${rotY}: el TR1 no es el de la izquierda (${x.map((v) => v.toFixed(2))})`);
+      // Y el contorno amarillo cae en el mismo lugar que el producto.
+      const m = P.marcasDelContrato(f, cara, ["TR1"]);
+      const [cont] = C.contornosDeLasPartes("gondola", f.w, f.d, f.h, "double", { tramos: n }, cara, m.vanos);
+      assert.ok(cara === "A" ? cont.cx > 1 : cont.cx < -1, `cara ${cara}: el contorno del TR1 en ${cont.cx}`);
+    }
+  }
+  // Los entrepaños, por su fila: el EN1 es la base, la 0.
+  const pun = { code: "PUN-02", type: "punta", entrepanos: 3, partes: { division: "entrepanos" } };
+  assert.deepEqual(P.marcasDelContrato(pun, "A", ["EN1"]), { vanos: [], filas: [0], dePiezas: false });
+  assert.deepEqual(P.marcasDelContrato(pun, "A", ["EN3", "EN1"]).filas, [2, 0]);
+  // La bahía 1, a la izquierda de quien hace la fila (+X: la del contorno de más a la derecha del mueble).
+  const bi1 = P.marcasDelContrato(caja(), "A", ["BI1"]);
+  const bi2 = P.marcasDelContrato(caja(), "A", ["BI2"]);
+  assert.equal(bi1.dePiezas, true);
+  const c1 = C.contornosDeLasPartes("checkout", 1.8, 0.7, 0.9, undefined, { bahias: 2 }, "A", bi1.vanos)[0];
+  const c2 = C.contornosDeLasPartes("checkout", 1.8, 0.7, 0.9, undefined, { bahias: 2 }, "A", bi2.vanos)[0];
+  assert.ok(c1.cx > c2.cx, `la BI1 en ${c1.cx}, la BI2 en ${c2.cx}`);
+  assert.deepEqual(P.marcasDelContrato(columna(), "A", ["FO"]), { vanos: [0], filas: [], dePiezas: true });
+  // La entera, sin marcas; y la pantalla las pide por acá.
+  assert.deepEqual(P.marcasDelContrato(nevera, "A", []), { vanos: [], filas: [], dePiezas: false });
+  const mv = leer(join(raiz, "src", "components", "Contrato", "ModoVender.tsx"));
+  assert.match(mv, /const \{ vanos, filas, dePiezas \} = marcasDelContrato\(f, cara\.face, sufijos\);/, "el visor arma las marcas a mano otra vez");
+});
+
+await prueba("el renglón de Vender y Supervisar cobran la tarifa de la puerta y ven las puertas vendidas", () => {
+  const rates = { default: { nevera_puertas: 900_000 }, by_sede: {} };
+  const pu2 = P.partirCodigo("X-PU2").parte;
+  assert.deepEqual(P.tarifaDeLaFila(rates, "NAVE", { fixture: nevera, parte: pu2 }), { valor: 300_000, origen: "cara/n" });
+  assert.deepEqual(P.tarifaDeLaFila(rates, "NAVE", { fixture: nevera }), { valor: 900_000, origen: "cara" });
+  const ctx = (estado) => ({ rates, sede: "NAVE", estado, desde: d("2026-10-15"), hasta: d("2026-11-15") });
+  const r = P.comercialDelEspacio(nevera, "A", "PU2", ctx({}));
+  assert.equal(r.codigo, "NAVE-NEV-03-PU2");
+  assert.deepEqual([r.ref, r.origenRef, r.disponibilidad, r.porQue], [300_000, "cara/n", "libre", null]);
+  // Con la puerta 2 vendida, el renglón de la ENTERA no está libre, por sus partes.
+  const estado = { "NAVE-NEV-03-PU2": vendido("2026-10-01", "2026-12-31") };
+  const entera = P.comercialDelEspacio(nevera, "A", null, ctx(estado));
+  assert.deepEqual([entera.ref, entera.disponibilidad, entera.porQue], [900_000, "tomado", "partes"]);
+  assert.equal(P.comercialDelEspacio(nevera, "A", "PU1", ctx(estado)).porQue, null, "otra puerta sí se vende");
+  // Las pantallas lo piden por acá, con el mapa de la base y la tarifa de la fila.
+  const contrato = leer(join(raiz, "src", "components", "Contrato", "Contrato.tsx"));
+  assert.match(contrato, /comercialDelEspacio\(\s*fixture, face, sufijo \?\? null,\s*\{ rates: referenceRates, sede, estado: estadoComercial,/,
+    "Vender arma lo comercial del renglón a mano otra vez");
+  const dash = leer(join(raiz, "src", "pages", "DashboardView.tsx"));
+  assert.match(dash, /const ref = tarifaDeLaFila\(referenceRates, sede, x\)\.valor;/, "«bajo la tarifa» no cobra la tarifa de la puerta");
+  assert.match(dash, /tarifaDeLaFila\(referenceRates, sede, e\)\.valor,/, "la franja no cobra la tarifa de la puerta");
+  assert.doesNotMatch(dash, /tarifaDeEspacio\(/, "Supervisar pregunta la tarifa sin la parte");
+});
+
+await prueba("la caja nunca se vende entera en Vender: ni al tocarla ni en su renglón", () => {
+  const libre = () => true;
+  // Tocar una caja suma su BI1 (o la primera libre), nunca la caja entera.
+  assert.deepEqual(P.alTocarEnVender([], caja(), "A", libre), [{ id: "c1", face: "A", parte: "BI1" }]);
+  assert.deepEqual(P.alTocarEnVender([], caja(), "B", (p) => p.n !== 1), [{ id: "c1", face: "A", parte: "BI2" }]);
+  // Tocarla de nuevo saca todo lo de esa caja.
+  assert.deepEqual(P.alTocarEnVender([{ id: "c1", face: "A", parte: "BI2" }], caja(), "A", libre), []);
+  // La columna forrada suma su forro; sin forro, no se vende nada: vacía el contrato.
+  assert.deepEqual(P.alTocarEnVender([], columna(), "A", libre), [{ id: "k1", face: "A", parte: "FO" }]);
+  assert.deepEqual(P.alTocarEnVender([{ id: "n1", face: "A" }], caja({ partes: {} }), "A", libre), []);
+  // Un mueble que se vende entero suma la cara que se tocó, como siempre.
+  assert.deepEqual(P.alTocarEnVender([], { ...gondola(), id: "g1" }, "B", libre), [{ id: "g1", face: "B" }]);
+  assert.deepEqual(P.alTocarEnVender([{ id: "g1", face: "B" }], { ...gondola(), id: "g1" }, "B", libre), []);
+  // El renglón: la caja ofrece sus bahías sin «Entera»; la nevera, «Entera» y sus puertas.
+  assert.deepEqual(P.interruptoresDeLaCara(caja(), "A"), ["BI1", "BI2"]);
+  assert.deepEqual(P.interruptoresDeLaCara(nevera, "A"), [null, "PU1", "PU2", "PU3"]);
+  assert.deepEqual(P.interruptoresDeLaCara({ code: "PUN-01", type: "punta" }, "A"), []);
+  const dash = leer(join(raiz, "src", "pages", "DashboardView.tsx"));
+  assert.match(dash, /setEnContrato\(\(lista\) => alTocarEnVender\(lista, f, cara, libre\)\);/, "tocar en Vender no pasa por `alTocarEnVender`");
+  const mv = leer(join(raiz, "src", "components", "Contrato", "ModoVender.tsx"));
+  assert.match(mv, /const interruptores = interruptoresDeLaCara\(l\.fixture, l\.face\);/, "el renglón arma sus interruptores a mano");
+  assert.match(mv, /\{interruptores\.map\(\(suf\) => \{/, "el renglón no dibuja los interruptores de la cara");
+});
+
+await prueba("el plano 2D pone el punto del tramo vendido de la cara B donde está", () => {
+  // Una góndola doble por tramos con el B-TR1 vendido: mirando la B (desde
+  // +Z), la izquierda es −X del mueble.
+  const g = gondola();
+  const estado = { "NAVE-GON-05-B-TR1": vendido("2026-10-14", "2026-11-13"), "NAVE-GON-05-TR1": vendido("2026-10-14", "2026-11-13") };
+  const puntos = P.puntosDePartesVendidas(g, estado, "NAVE");
+  const b = puntos.find((p) => p.cara === "B");
+  const a = puntos.find((p) => p.cara === "A");
+  assert.equal(b.lado, 1);
+  assert.equal(a.lado, -1);
+  const [t0, t1] = P.fraccionDeParte("B", 1, 3);
+  assert.ok(Math.abs(b.a - ((t0 + t1) / 2 - 0.5)) < 1e-9);
+  assert.ok(b.a < 0, `el B-TR1 en ${b.a}: tiene que caer en −X, a la izquierda de quien mira la B`);
+  assert.ok(a.a > 0, `el TR1 de la A en ${a.a}: tiene que caer en +X`);
+  // Los entrepaños no tienen punto en planta; sin nada vendido, ninguno.
+  assert.deepEqual(P.puntosDePartesVendidas({ ...g, partes: { division: "entrepanos" }, entrepanos: 3 }, estado, "NAVE"), []);
+  assert.deepEqual(P.puntosDePartesVendidas(g, {}, "NAVE"), []);
+  const plano = leer(join(raiz, "src", "components", "FloorPlan2D", "FloorPlan2D.tsx"));
+  assert.match(plano, /const vendidas = puntosDePartesVendidas\(f, estadoCrudo, sede\);/, "el plano ubica los puntos a mano");
+  assert.match(plano, /const p = aPlano\(a \* largo, lado \* fondo \* 0\.3\);/, "el plano no pone el punto donde dice la cuenta");
+});
+
+await prueba("el taller numera los tramos de la cara B de izquierda a derecha de quien la mira", () => {
+  const g = { type: "gondola", gondolaType: "double", w: 3.75, d: 0.9, h: 2.0, partes: { tramos: 3, division: "tramos" } };
+  const num = C.partesNumeradas(g);
+  assert.deepEqual(num.map((p) => p.etiqueta), ["TR1", "TR2", "TR3", "B·TR1", "B·TR2", "B·TR3"]);
+  const A = num.filter((p) => p.cara === "A"), B = num.filter((p) => p.cara === "B");
+  // Mirando la A (desde −Z) la izquierda es +X; mirando la B, −X.
+  assert.ok(A[0].contorno.cx > A[1].contorno.cx && A[1].contorno.cx > A[2].contorno.cx, A.map((p) => p.contorno.cx).join(", "));
+  assert.ok(B[0].contorno.cx < B[1].contorno.cx && B[1].contorno.cx < B[2].contorno.cx, B.map((p) => p.contorno.cx).join(", "));
+  // Y es el mismo contorno que marca el visor de Vender para el B-TR1.
+  const [delVisor] = C.contornosDeLasPartes("gondola", 3.75, 0.9, 2.0, "double", { tramos: 3 }, "B", [P.vanoEnLaCara("B", 1, 3)]);
+  assert.ok(Math.abs(B[0].contorno.cx - delVisor.cx) < 1e-9, `${B[0].contorno.cx} / ${delVisor.cx}`);
+});
+
+await prueba("la consola cuenta los contratos de las bahías y no elige «puertas» como lo más libre", async () => {
+  // El detalle por cliente: las piezas vendidas llegan en `piezas` (no cuelgan
+  // de ninguna cara) y «N · M sobre el plano + K fuera» tiene que cerrar.
+  const r = await build({
+    entryPoints: [join(raiz, "src", "components", "plataforma", "sesion-datos.ts")],
+    bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent",
+  });
+  const S = await import("data:text/javascript;base64," + Buffer.from(r.outputFiles[0].text).toString("base64"));
+  const contrato = (fin, canon) => ({ proveedor: "X", marca: null, canon_mensual: canon, inicio: "2026-09-01", fin,
+    dias_para_vencer: 30, arranca_en_periodo: true });
+  const detalle = {
+    cliente: { slug: "c", nombre: "C", estado_cuenta: "activo" }, periodo: "2026-09", desde: "2026-09-01",
+    hasta: "2026-09-30", generado_en: "", sedes_con_plano: 1, sedes: [],
+    espacios: [
+      { codigo: "NAVE-NEV-03", sede: "NAVE", codigo_corto: "NEV-03", cara: "A", tipo: "nevera_puertas", zona: null,
+        area_m2: null, estado: "ocupado", contrato: null,
+        partes: [{ parte: "PU2", codigo: "NAVE-NEV-03-PU2", codigo_corto: "NEV-03-PU2", contrato: contrato("2026-12-31", 300000) }] },
+      { codigo: "NAVE-PUN-01", sede: "NAVE", codigo_corto: "PUN-01", cara: "A", tipo: "punta", zona: null,
+        area_m2: null, estado: "ocupado", contrato: contrato("2026-12-31", 500000) },
+    ],
+    piezas: [{ parte: "BI1", codigo: "NAVE-CAJ-04-BI1", codigo_corto: "CAJ-04-BI1", sede: "NAVE", tipo: "parte_bahia",
+      contrato: contrato("2026-12-31", 150000) }],
+    contratos_fuera_del_plano: 0, resumen_por_tipo: [],
+    proveedores: [{ nombre: "X", espacios: 3, tipos: [], sedes: [], canon_total: 950000, canon_promedio: 0,
+      participacion_pct: 100, desde: null, contratos_por_vencer_60d: 0 }],
+    movimientos: [], benchmark_plataforma: {}, oportunidades: [], recomendaciones: [],
+  };
+  const der = S.derivar(detalle);
+  assert.equal(der.contratos, 3);
+  assert.equal(der.contratosEnPlano + detalle.contratos_fuera_del_plano, der.contratos, "la cuenta de contratos no cierra");
+  assert.deepEqual(S.contratosSobreElPlano(detalle).map((e) => e.codigo), ["NAVE-NEV-03-PU2", "NAVE-PUN-01", "NAVE-CAJ-04-BI1"]);
+  assert.equal(S.contratosSobreElPlano(detalle).find((e) => e.codigo === "NAVE-CAJ-04-BI1").tipo, "parte_bahia");
+  // Sin piezas, lo de antes.
+  const { piezas: _p, ...sinPiezas } = detalle;
+  assert.equal(S.derivar(sinPiezas).contratosEnPlano, 2);
+  const pag = leer(join(raiz, "src", "pages", "DetalleCliente.tsx"));
+  assert.match(pag, /const contratos = contratosSobreElPlano\(detalle\)\.filter\(pasa\);/, "la tabla de contratos no lista las partes ni las piezas");
+  assert.match(pag, /const tiposDeCara = new Set\(der\.espacios\.map\(\(e\) => e\.tipo\)\);\s*const libresPorTipo = detalle\.resumen_por_tipo\s*\.filter\(\(r\) => tiposDeCara\.has\(r\.tipo\)\)/,
+    "«Lo que no se vende es sobre todo…» puede elegir las puertas, que no son espacios");
+});
+
+await prueba("el enlace de montaje dice la cara y la parte una vez: «NEV-01 PU2», no «NEV-01-PU2 PU2»", () => {
+  const m = leer(join(raiz, "src", "pages", "Montaje.tsx"));
+  assert.match(m, /const sufijoParte = espacio\.parte \? `\$\{espacio\.parte\.token\}\$\{espacio\.parte\.n \?\? ""\}` : null;/,
+    "el encabezado no arma el sufijo de la parte");
+  assert.match(m, /espacio\.corto\.slice\(0, -\(sufijoParte\.length \+ 1\)\)/, "el encabezado repite el sufijo de la parte");
 });
 
 console.log(`\n${hechas} pruebas de vender por partes`);
