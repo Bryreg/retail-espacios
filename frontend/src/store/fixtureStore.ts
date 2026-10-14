@@ -129,6 +129,13 @@ const _inFlight = new Map<string, Promise<void>>();
 // contains them.
 const _removedSedes = new Set<string>();
 
+// Las familias a las que en esta sesión se les QUITÓ el nombre propio. Los
+// nombres viajan en el mismo valor que la lista de sedes, y el 409 los fusiona
+// «los del servidor, y encima los míos»: sin esto, un nombre recién borrado acá
+// volvía a aparecer desde la copia del servidor. Se restan al fusionar; una
+// familia que vuelve a recibir nombre sale de la lista.
+const _nombresQuitados = new Set<string>();
+
 // Sedes added (or renamed into) during this session, normalised. The mirror of
 // the set above, and needed for the same reason: when a settings write is
 // rejected and the two lists have to be merged, "NAVE is in my list" is
@@ -355,7 +362,10 @@ interface FixtureStore {
    *  refused, in which case NOTHING was removed locally either. */
   removeSede: (name: string) => Promise<{ ok: boolean; error?: string }>;
 
-  /** Override the display label for a catalog fixture type. */
+  /** El nombre propio de una familia de muebles (la clave es la de la
+   *  biblioteca del 2D). Vacío lo quita y vuelve el de RECABRA. Sólo
+   *  administración: se guarda con la lista de sedes. Cómo se lee en cada
+   *  pantalla: `catalogo/nombresPropios.ts`. */
   setCatalogLabel: (type: string, label: string) => void;
 
   /** Set one reference rate. `sede === null` edits the general rate; a value
@@ -432,6 +442,9 @@ export const selectHasPendingWork = (state: FixtureStore): boolean =>
  *  sus datos reemplazados (la generación, en `syncFromServer`). El servidor
  *  repuebla lo que de verdad corresponde. */
 function planosVacios(): Partial<FixtureStore> {
+  // Los nombres quitados eran de esos datos: con los de otro supermercado, una
+  // familia que acá se dejó sin nombre no tiene por qué perder el suyo allá.
+  _nombresQuitados.clear();
   return {
     fixturesBySede: {},
     sedes: DEFAULT_SEDES,
@@ -658,11 +671,17 @@ export const useFixtureStore = create<FixtureStore>()(
 
       setCatalogLabel: (type, label) =>
         set((state) => {
+          // Lo escribe administración, como las sedes: un trabajador no lo
+          // puede guardar (el PUT exige admin) y no tiene por qué verlo
+          // cambiar en su pantalla como si se hubiera guardado.
+          if (!canWrite()) return state;
           const next = { ...state.catalogLabels };
           if (label.trim()) {
             next[type] = label.trim();
+            _nombresQuitados.delete(type);
           } else {
             delete next[type];
+            _nombresQuitados.add(type);
           }
           scheduleSettingsSave();
           return { catalogLabels: next };
@@ -993,6 +1012,9 @@ export const useFixtureStore = create<FixtureStore>()(
               // Labels are display names: last writer wins per key, and ours is
               // the edit that just happened.
               const labels = { ...fresh.catalog_labels, ...local.catalogLabels };
+              // Menos los que se quitaron acá: «los suyos y encima los míos»
+              // no sabe que un nombre ausente en los míos es uno borrado.
+              for (const quitado of _nombresQuitados) delete labels[quitado];
               const saved = await saveLayoutSettings(
                 merged, labels, fresh.updated_at ?? null,
               );

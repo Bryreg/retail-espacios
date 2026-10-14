@@ -1,7 +1,17 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-14, más tarde (las **fichas propias de cada supermercado, en
+Última actualización: 2026-10-14, al final del día (el **nombre propio de cada familia de
+muebles**: cada supermercado le pone su nombre a cada familia —«mamut», «tope de góndola»,
+«exhibición especial»— en Configuración → «Cómo se llaman los muebles acá» (sólo
+administración: una fila por familia con el nombre de RECABRA y el de la tienda), y ese nombre
+sale en todas sus pantallas: la paleta y el panel del plano 2D y del Editor 3D, Vender (la
+lista, el visor y la lámina del proveedor), Supervisar, Estado por espacio, Montajes, Tarifas
+y el taller. La consola de la plataforma y los informes de asesoría siguen con el de RECABRA,
+para comparar supermercados. Sin nombre propio todo sale como antes, y nada se guarda en el
+plano. Ver *Cómo le dicen acá: el nombre propio de cada familia (2026-10-14)*).
+
+Antes, 2026-10-14, más tarde (las **fichas propias de cada supermercado, en
 pantalla**: el taller tiene la pestaña «Fichas», donde la dueña arma la ficha de un mueble suyo
 —familia, nombre, medidas en centímetros con el rango de su familia a la vista, puertas,
 entrepaños y módulo, tarifa y de dónde salió, sin foto— y lo ve girar con esa ficha mientras
@@ -200,6 +210,12 @@ sigue, en orden:
    Lo que queda de esto: mirar el flujo entero con la dueña (armar «Nevera Inducol 2 puertas»,
    colocarla, venderla) y la revisión adversarial de la rama; `/taller` sigue siendo sólo de
    administración, así que la dueña entra con su cuenta de dueña (que es admin).
+4. **El nombre propio de cada familia: HECHO** (2026-10-14). Configuración → «Cómo se llaman
+   los muebles acá», y lo dicen todas las pantallas del supermercado, no la consola: ver *Cómo
+   le dicen acá*. Lo que queda: el enlace de la mercaderista (`/?montar=…`, sin sesión) sigue
+   con el nombre de RECABRA, porque no lee la configuración; y cuando haya venta por puertas,
+   la fila de la puerta (`NEV-03-PU2`) tiene que decir el nombre propio de la nevera con
+   `tipoDelMueble`, como las caras.
 
 Quedó abierto, más chico, de lo hecho:
 
@@ -449,6 +465,18 @@ prefijo `cli:`. Como llegan después del primer dibujo, **todo `useMemo`/`useCal
 pregunta la tarifa (`rateTypeOf`, directo o por una función del archivo) lleva `fichasPropias`
 en sus dependencias** (`useFichasPropias()`); `probar-catalogo` recorre `src` y falla si falta.
 Ver *Fichas propias: la pantalla (2026-10-14)*.
+
+**El nombre propio de una familia es sólo lo que se lee.** Cada supermercado le pone su nombre
+a cada familia (`catalogLabels`, `layout_catalog_labels` en `app_config`, por la clave de la
+biblioteca del 2D) y sus pantallas lo dicen por `catalogo/nombresPropios.ts`: `conNombrePropio`
+para el nombre del mueble, `tipoDelMueble` para la columna «Tipo» (que reemplaza a
+`rateTypeLabel(rateTypeOf(f))`, que ninguna pantalla vuelve a escribir) y `nombreDeTarifa` para
+las filas de tarifa. **Nada de eso se guarda**: el `label` del mueble sigue siendo el rótulo de
+RECABRA, la fila de `spaces` se crea con él, ningún código ni tarifa cambia, y el servidor sólo
+lo guarda y lo devuelve (`test_nombres_propios.py` falla si otro módulo lo lee). **La consola y
+los informes de asesoría nunca lo usan**: comparan supermercados con el nombre de RECABRA
+(`probar-nombres.mjs` falla si una página de la plataforma llega a ese módulo o lee
+`catalogLabels`). El store no importa ese módulo (va de entrada y traería el catálogo).
 
 **Lo vendido no se mueve sin aviso.** El alto, los entrepaños y el módulo de una góndola o
 una punta deciden las filas del arte pintado, los entrepaños donde se para el producto y
@@ -9109,6 +9137,88 @@ de la rama. La tarifa propia de una ficha sólo puede ser una de las que ya tien
 (decisión del paso del servidor, a confirmar con ella). Un mueble con `cli:` de una ficha que
 esta sesión no pudo leer (sin red) se dibuja bien pero el panel no lo nombra y la tarifa es la
 del tipo hasta que se lean.
+
+### Cómo le dicen acá: el nombre propio de cada familia (2026-10-14)
+
+Cada supermercado le dice distinto a sus muebles: lo que RECABRA llama «Estiba (exhibición de
+piso)» en uno es el «mamut», la punta es el «tope de góndola», el impulsador es la «exhibición
+especial». Para que cada uno use RECABRA sin pedirnos un cambio, sus pantallas tienen que hablar
+como habla la tienda.
+
+**Lo que había.** Las «etiquetas del catálogo» (`catalogLabels` en el store, `catalog_labels` de
+`GET`/`PUT /api/layout/settings`, guardadas en `app_config` como `layout_catalog_labels`, en el
+mismo valor que la lista de sedes) existían desde antes, pero sólo las aplicaba la biblioteca del
+plano 2D, y se editaban con un lápiz que aparecía al pasar el mouse. En Vender, Supervisar, Estado
+por espacio, el panel de los editores y la lámina seguía saliendo el nombre de RECABRA. Se
+siguen guardando ahí (sin migración ni columnas: es un valor de `app_config`), por la clave de la
+biblioteca del 2D: la góndola tiene dos, `gondola_doble` y `gondola_mural`, porque la central y
+la de pared se llaman distinto.
+
+**Dónde se edita.** Configuración (sólo administración) → «Cómo se llaman los muebles acá»: una
+fila por familia de la biblioteca del 2D, con el emoji y el nombre de RECABRA a la izquierda y el
+de la tienda a la derecha (el de RECABRA de muestra). Se guarda al salir del campo, con el mismo
+debounce de la lista de sedes, sin botón, como Tarifas; Esc deshace lo escrito. Vacío, o igual
+al de RECABRA, deja la familia sin nombre propio (`nombreParaGuardar`); se corta en 80 letras
+—el largo del nombre de una ficha, `fichas.largoMaximo.nombre` de `muebles.json`—, contadas en
+letras de verdad. El lápiz de la biblioteca del 2D sigue y guarda por el mismo camino (ahora
+también deja vaciar). Lo cambia sólo administración (`setCatalogLabel` pregunta `canWrite`,
+como el `PUT`). Si otra estación guardó la lista de sedes en el medio (409), la fusión ya no
+resucita un nombre recién borrado (`_nombresQuitados`, que se olvida con los datos de otro
+supermercado).
+
+**Dónde se lee** (`catalogo/nombresPropios.ts`, puro salvo `rateTypeOf`):
+
+- `conNombrePropio(f, nombres, deSiempre)`: el nombre del mueble, o el texto que esa pantalla
+  mostraba antes, tal cual. Lo usan el encabezado del espacio en el plano de Sede y su panel de
+  detalle, el cartel del mouse, «Para revisar» de Supervisar, la paleta, el panel, el cartel y
+  «Colocando …» del Editor 3D, el panel del 2D, el aviso de lo que no se alquila en Vender,
+  Montajes, la familia del formulario de fichas del taller («mamut — Estiba»), el aviso «ese
+  nombre ya lo tiene otro mueble» de los dos editores y **la lámina del proveedor** («Mueble:
+  …»), del Editor 3D.
+- `tipoDelMueble(f, nombres)`: la columna «Tipo» —Estado por espacio, la lista de Vender, la
+  chapa del visor de Vender y su lámina, «Cuándo se libera»—. Es `rateTypeLabel(rateTypeOf(f))`
+  con el nombre propio encima, **salvo cuando el mueble tiene ficha con tarifa propia** (la media
+  estiba, el cuarto, el exhibidor de cartón, de RECABRA o propias): ahí dice su tarifa, que dice
+  más y es la fila de Tarifas que le pone precio. Pregunta la tarifa, así que los `useMemo` que
+  la llaman dependen de `fichasPropias` (la guarda de `probar-catalogo` la cuenta como
+  `rateTypeOf`) y de los nombres.
+- `nombreDeTarifa(clave, nombres)`: las filas por tarifa —«Tarifa de referencia» de Vender y
+  Tarifas—. Junta las familias de esa tarifa: la góndola son dos, y con sólo la central
+  nombrada dice «góndola de centro · Góndola Mural», sin ponerle a la de pared un nombre que no
+  es el suyo. Tarifas dice debajo «… en RECABRA», porque ése es el nombre por el que pregunta
+  quien la ayuda desde la consola.
+- La búsqueda del plano de Sede, de Estado por espacio y del 2D encuentra también por el
+  nombre propio (y sigue encontrando por el de RECABRA).
+
+**Dónde NO.** La consola de la plataforma y los informes de asesoría (`components/plataforma`,
+`Plataforma`, `ReportePlataforma`, `DetalleCliente`, `InformeCliente`) comparan supermercados y
+nombran con el catálogo (`nombresDeInforme`). Del lado del servidor, sólo `routers/layout.py`
+lee la clave, y el detalle, el reporte y las métricas de un cliente con nombres propios no los
+devuelven (`test_la_consola_no_usa_el_nombre_propio_del_supermercado`). Tampoco el enlace de la
+mercaderista (`/?montar=…`): no tiene sesión ni lee la configuración, y sigue con el de RECABRA.
+
+**Lo que no cambió.** Sin nombre propio, cada pantalla dice exactamente lo de antes: la guarda
+lo comprueba para cada tipo, variante, alias y modelo del catálogo y para las fichas propias de
+`casos/tarifas.json`. Nada se guarda en el plano: el `label` del mueble sigue siendo el rótulo de
+RECABRA (el 2D lo estampa al abrir), y `FilesSection` crea la fila de `spaces` con él. El
+servidor valida el largo (80 letras, a lo sumo 100 nombres, claves de hasta 60) y no valida las
+claves contra el catálogo: una clave vieja no puede trabar el guardado de la lista de sedes, que
+viaja en el mismo pedido. El pedazo de entrada pasó de 352,43 a 352,53 kB (la fusión del 409 en
+el store); el catálogo sigue afuera.
+
+**Cómo se comprobó.** `tsc` limpio; `npm run probar`: 32 guiones (con `probar-nombres`, nuevo,
+11 pruebas), 898 «ok» (eran 887); `npm run build` limpio. pytest de los nombres (5, nuevo),
+catálogo, modelos, ficha y corte del layout, traspaso, copia de seguridad, borrado de sedes y
+fichas propias: 101 verdes; planilla, métricas y detalle de la plataforma (con la prueba de la
+consola) y tendencia: 146 verdes y el salto de siempre; t22 verde. En Chromium contra un
+servidor local descartable: Configuración mostró las 21 familias; con «Congelador de puertas»,
+«Tope de góndola» y «Mamut» el servidor los guardó, Estado por espacio dejó de decir «Nevera de
+puertas», la biblioteca del 2D y la paleta del 3D dijeron los tres, y vaciar la punta la sacó
+del servidor. 32 mutaciones —cada función, cada pantalla vuelta al nombre de RECABRA, una
+dependencia quitada, la consola que importa el módulo, el store que lo importa, el 409 que
+resucita, el trabajador que escribe, la sección quitada, el largo en UTF-16 de los dos lados,
+el servidor sin topes, otro módulo que lee la clave y el detalle que la devuelve— y cada una
+hizo fallar su guarda.
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 

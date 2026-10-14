@@ -3,6 +3,7 @@ import { SlidersHorizontal, X } from "lucide-react";
 import { useFixtureStore } from "../../store/fixtureStore";
 import { RATE_TYPES, rateTypeLabel } from "../../types/fixtures";
 import { useModalAbierto } from "../../tema";
+import { nombreDeTarifa } from "../../catalogo/nombresPropios";
 
 /** Tariff editor (admin only). One general rate per fixture type plus an
  *  optional override for the sede being edited. Every keystroke goes through
@@ -11,6 +12,10 @@ import { useModalAbierto } from "../../tema";
 export default function RatesModal({ onClose }: { onClose: () => void }) {
   const rates = useFixtureStore((s) => s.referenceRates);
   const { sedes, sede, setReferenceRate, loadRates } = useFixtureStore();
+  // Cómo le dicen acá a cada familia (Configuración). La fila lo dice primero
+  // y, debajo, el nombre de RECABRA: es por el que pregunta quien la ayuda
+  // desde la consola, que compara supermercados con ese nombre.
+  const nombresPropios = useFixtureStore((s) => s.catalogLabels);
 
   // The dashboard's active sede is almost always the one being priced, so the
   // override column starts there; the selector switches it without closing.
@@ -164,6 +169,7 @@ export default function RatesModal({ onClose }: { onClose: () => void }) {
               </thead>
               <tbody>
                 {rows.map(({ type, label }) => {
+                  const dicho = nombreDeTarifa(type, nombresPropios);
                   const general = rates.default[type] ?? 0;
                   const override = rates.by_sede[editSede]?.[type] ?? 0;
                   return (
@@ -176,7 +182,12 @@ export default function RatesModal({ onClose }: { onClose: () => void }) {
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {label}
+                        {dicho}
+                        {dicho !== label && (
+                          <span data-nombre-recabra style={{ display: "block", fontSize: 10.5, color: "var(--ink-3)" }}>
+                            {label} en RECABRA
+                          </span>
+                        )}
                       </td>
                       <td style={{ padding: "5px 8px", borderTop: "1px solid var(--line-soft)" }}>
                         <input

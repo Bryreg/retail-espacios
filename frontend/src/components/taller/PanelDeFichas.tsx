@@ -11,6 +11,8 @@ import {
   guardarFicha, problemasDelFormulario, problemasDelServidor, rotuloDeTarifa, type FormularioDeFicha,
 } from "../../utils/formularioDeFicha";
 import { entrepanosQueEntran, TIPOS_CON_GEOMETRIA } from "../../utils/geometriaDelMueble";
+import { useFixtureStore } from "../../store/fixtureStore";
+import { conNombrePropio } from "../../catalogo/nombresPropios";
 
 /**
  * La pestaña «Fichas» del taller: la dueña arma la ficha de un mueble suyo
@@ -65,6 +67,8 @@ export function PanelDeFichas({
   onEditando: (clave: string | null) => void;
 }) {
   const propias = useFichasPropias();
+  // La familia como le dicen acá, delante de la de RECABRA («mamut — Estiba»).
+  const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   const vigentes = useMemo(() => propias.filter((m) => !m.retirado), [propias]);
   const retiradas = useMemo(() => propias.filter((m) => m.retirado), [propias]);
   const [delServidor, setDelServidor] = useState<ProblemaDeFicha[]>([]);
@@ -189,7 +193,10 @@ export function PanelDeFichas({
           Familia{!nueva && <span style={estilo.ayuda}>no cambia: retirala y armá otra</span>}
           <select value={form.entrada} disabled={!nueva} style={borde("entrada")} data-campo="entrada"
             onChange={(e) => { onForm({ ...formularioVacio(e.target.value), nombre: form.nombre, clave: form.clave, claveTocada: form.claveTocada, url: form.url, nota: form.nota, confiabilidad: form.confiabilidad }); setDelServidor([]); }}>
-            {FAMILIAS_DEL_FORMULARIO.map((f) => <option key={f.entrada} value={f.entrada}>{f.rotulo}</option>)}
+            {FAMILIAS_DEL_FORMULARIO.map((f) => {
+              const propio = conNombrePropio({ type: f.tipo, gondolaType: f.variante }, nombresPropios, "");
+              return <option key={f.entrada} value={f.entrada}>{propio ? `${propio} — ${f.rotulo}` : f.rotulo}</option>;
+            })}
           </select>
         </label>
         <Problemas campo="entrada" />

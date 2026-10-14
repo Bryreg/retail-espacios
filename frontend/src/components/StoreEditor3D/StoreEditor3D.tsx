@@ -70,6 +70,9 @@ import {
 import { useModalAbierto } from "../../tema";
 import { FIXTURE_DEFS, TIPOS_CON_PRODUCTO, TIPOS_CON_PRUEBA_3D, TIPOS_CON_SURTIDO, paletaConPropias } from "../../catalogo/editor3D";
 import { modeloPorId, nombreDeModelo, textoDeFuente } from "../../catalogo/catalogo";
+// Cómo le dice este supermercado a cada familia: la paleta, el panel, el cartel
+// del mouse y la lámina del proveedor (`catalogo/nombresPropios.ts`).
+import { conNombrePropio } from "../../catalogo/nombresPropios";
 import { useFichasPropias } from "../../store/fichasPropias";
 import { GeometriaDelMueble } from "../GeometriaDelMueble";
 import type { FixtureDef } from "../../catalogo/editor3D";
@@ -6301,6 +6304,7 @@ function CommercialPanel({
   // El nombre del modelo de una ficha propia llega cuando se leen las fichas
   // del supermercado: escucharlas vuelve a dibujar el panel.
   useFichasPropias();
+  const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   const u  = useCallback((up: Partial<PlacedFixture>) => onUpdate(fix.id, up), [fix.id, onUpdate]);
   const us = useCallback((up: Partial<ShelfSlot>) => selectedSlot && onUpdateSlot(fix.id, selectedSlot.id, up), [fix.id, selectedSlot, onUpdateSlot]);
 
@@ -6497,7 +6501,7 @@ function CommercialPanel({
           {def.emoji}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-bold text-dark-ink-1">{fix.label}</p>
+          <p className="truncate text-xs font-bold text-dark-ink-1">{conNombrePropio(fix, nombresPropios, fix.label)}</p>
           <p className="font-mono text-[10px] text-dark-ink-3">{nombreDeMueble(fix)}</p>
           {/* La ficha de la que nació, si nació de una: su nombre y, si sus
               medidas son una deducción, «≈». Lo guardado en el mueble no se
@@ -6559,7 +6563,7 @@ function CommercialPanel({
           {rechazo ? (
             <>
               <p className="mt-1 text-[11px] leading-snug text-danger">
-                No se guardó: {textoDelChoque(nombreBorrador, rechazo)} Sigue
+                No se guardó: {textoDelChoque(nombreBorrador, rechazo, (m) => conNombrePropio(m, nombresPropios, ""))} Sigue
                 llamándose «{fix.code}».
               </p>
               {rechazo.razon === "ocupado" && (
@@ -6578,7 +6582,7 @@ function CommercialPanel({
             </>
           ) : choqueEscrito ? (
             <p className="mt-1 text-[11px] leading-snug text-danger">
-              {textoDelChoque(nombreBorrador, choqueEscrito)}
+              {textoDelChoque(nombreBorrador, choqueEscrito, (m) => conNombrePropio(m, nombresPropios, ""))}
             </p>
           ) : (
             <p className="mt-1 text-[11px] leading-snug text-dark-ink-3">
@@ -6847,6 +6851,9 @@ export default function StoreEditor3D() {
   // entrada elegida se compara por identidad.
   const fichasPropias = useFichasPropias();
   const paleta = useMemo(() => paletaConPropias(fichasPropias), [fichasPropias]);
+  // El nombre propio de cada familia: la paleta lo dice en vez del de RECABRA,
+  // y también el cartel del mouse, el aviso de «Colocando» y la lámina.
+  const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   const [ghostX, setGhostX]                 = useState(STORE_W/2);
   const [ghostZ, setGhostZ]                 = useState(STORE_D/2);
   const [ghostRotY, setGhostRotY]           = useState(0);
@@ -7609,7 +7616,7 @@ export default function StoreEditor3D() {
       const datos = {
         sede,
         espacio: fullSpaceCode(uf.sede || sede, uf.code),
-        mueble: uf.label || uf.code,
+        mueble: conNombrePropio(uf, nombresPropios, uf.label || uf.code),
         proveedor: arte ? arte.proveedor : contratoALaVista ? (uf.supplierName ?? "") : "",
         // Con surtido, los productos de la cara unidos por « · » (los del
         // mismo proveedor que se ven en las tomas); sin período ni valor.
@@ -7656,7 +7663,7 @@ export default function StoreEditor3D() {
       setExportando(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exportando, sinArte, selectedFix, fixtures, sede, isAdmin, prueba, catalogo, pedirToma, supplierDeReunion, firstPerson, comoSePrueba, fijada, pedidoDeToma, proveedorDeReunion]);
+  }, [exportando, sinArte, selectedFix, fixtures, sede, isAdmin, prueba, catalogo, pedirToma, supplierDeReunion, firstPerson, comoSePrueba, fijada, pedidoDeToma, proveedorDeReunion, nombresPropios]);
   const selectedSlot = selectedFix?.slots?.find(s=>s.id===selectedSlotId)??null;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -7707,7 +7714,7 @@ export default function StoreEditor3D() {
                         : "border-dark-line-2 bg-dark-surface-2 text-dark-ink-2 hover:bg-dark-line hover:border-dark-line-2"}`}>
                     <span className="w-8 h-8 rounded-lg flex items-center justify-center text-lg bg-dark-line/50 flex-shrink-0">{def.emoji}</span>
                     <div className="min-w-0">
-                      <p className="truncate text-xs font-semibold text-dark-ink-1">{def.label}</p>
+                      <p className="truncate text-xs font-semibold text-dark-ink-1">{conNombrePropio(def, nombresPropios, def.label)}</p>
                       <p className="text-[10px] text-dark-ink-3">{def.w}×{def.d}×{def.h} m</p>
                     </div>
                     {active&&<span className="ml-auto h-2.5 w-2.5 flex-shrink-0 animate-pulse rounded-full bg-accent"/>}
@@ -7809,7 +7816,7 @@ export default function StoreEditor3D() {
               <span className="flex items-center gap-2 text-accent-200">
                 <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-accent flex-shrink-0"/>
                 Colocando <strong className="text-dark-ink-1">
-                  {placingDef.nombreModelo ? `${placingDef.estimado ? "≈ " : ""}${placingDef.nombreModelo}` : placingDef.label}
+                  {placingDef.nombreModelo ? `${placingDef.estimado ? "≈ " : ""}${placingDef.nombreModelo}` : conNombrePropio(placingDef, nombresPropios, placingDef.label)}
                 </strong>
                 <span className="text-accent/40">·</span>
                 <kbd className="rounded border border-dark-line-2 bg-dark-surface px-1 text-dark-ink-2">clic</kbd> ubicar ·
@@ -8003,7 +8010,7 @@ export default function StoreEditor3D() {
               style={{ left: tooltipPos.x + 12, top: tooltipPos.y - 8, transform: 'translateY(-100%)' }}
             >
               <p className="font-mono font-bold text-accent-200">{nombreDeMueble(fix)}</p>
-              <p className="text-dark-ink-1">{fix.label}</p>
+              <p className="text-dark-ink-1">{conNombrePropio(fix, nombresPropios, fix.label)}</p>
               {!discreto && fix.supplierName && <p className="text-dark-ink-2 mt-0.5">🏢 {fix.supplierName}</p>}
               {!discreto && fix.negotiatedValue > 0 && <p className="text-success mt-0.5">💵 ${fix.negotiatedValue}/mes</p>}
               <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${sm.bg} ${sm.text}`}>

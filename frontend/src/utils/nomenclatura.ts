@@ -317,10 +317,16 @@ export function intercambiarNombres<T extends MuebleNombrable>(
  * No lo nombra por su código —con un solo nombre, el código del otro es el
  * texto que la persona acaba de teclear, y repetírselo no le dice nada nuevo—
  * sino por lo que es: «otro Impulsador Marca de la sede».
+ *
+ * `rotuloDe` dice cómo se llama ese otro mueble en ESTA tienda (el nombre
+ * propio de su familia, `catalogo/nombresPropios.ts`); sin él, o si devuelve
+ * vacío, va su `label`, como siempre. Entra por parámetro para que este
+ * archivo siga sin importar el catálogo.
  */
 export function textoDelChoque<T extends MuebleNombrable>(
   nombre: string,
   rechazo: RechazoDeNombre<T>,
+  rotuloDe?: (mueble: T) => string,
 ): string {
   const n = normalizar(nombre);
   if (rechazo.razon === "vacio") {
@@ -329,7 +335,7 @@ export function textoDelChoque<T extends MuebleNombrable>(
       "la que viaja al contrato, al correo de montaje y a la lámina."
     );
   }
-  const quien = (rechazo.ocupa.label ?? "").trim();
+  const quien = ((rotuloDe ? rotuloDe(rechazo.ocupa) : "") || rechazo.ocupa.label || "").trim();
   return (
     `«${n}» ya lo tiene otro mueble de esta sede` +
     (quien ? ` (${quien})` : "") +

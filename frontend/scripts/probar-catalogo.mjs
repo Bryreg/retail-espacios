@@ -757,7 +757,10 @@ await prueba("quien pregunta la tarifa le pasa el MUEBLE, no sólo su tipo", () 
   // compila igual y pierde la tarifa propia: la ficha del contrato, «por debajo
   // de la referencia» y el agrupado del tablero comparaban la media estiba con
   // la estiba entera. Cada llamada recibe el mueble tal cual (un nombre o un
-  // camino como `x.fixture`), nunca un objeto armado ni su `.type`.
+  // camino como `x.fixture`), nunca un objeto armado ni su `.type`. Lo mismo
+  // `tipoDelMueble` (`catalogo/nombresPropios.ts`), que es como las pantallas
+  // dicen el tipo de una cara desde que cada supermercado le pone su nombre a
+  // cada familia: su primer argumento es el mueble.
   const archivos = [];
   const recorrer = (d) => {
     for (const n of readdirSync(d)) {
@@ -771,6 +774,10 @@ await prueba("quien pregunta la tarifa le pasa el MUEBLE, no sólo su tipo", () 
   for (const a of archivos) {
     const t = leer(a).replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, (m, p1) => p1);
     for (const m of t.matchAll(/rateTypeOf\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g)) {
+      if (t.slice(Math.max(0, m.index - 9), m.index) === "function ") continue;
+      llamadas.push([a.slice(raiz.length + 1), m[1].trim()]);
+    }
+    for (const m of t.matchAll(/tipoDelMueble\(([^,()]*(?:\([^()]*\)[^,()]*)*),/g)) {
       if (t.slice(Math.max(0, m.index - 9), m.index) === "function ") continue;
       llamadas.push([a.slice(raiz.length + 1), m[1].trim()]);
     }
@@ -1052,10 +1059,12 @@ await prueba("las fichas se leen una vez por sesión, se releen al guardar y no 
 
 await prueba("quien pregunta la tarifa vuelve a preguntar cuando llegan las fichas del supermercado", () => {
   // Las fichas propias llegan del servidor DESPUÉS del primer dibujo. Un
-  // `useMemo` que le pregunta la tarifa a `rateTypeOf` —directo, o por una
-  // función del mismo archivo— y no tiene `fichasPropias` en sus dependencias
-  // se queda con la tarifa del tipo hasta que cambie otra cosa: la media estiba
-  // propia se mostraba y se comparaba como estiba entera.
+  // `useMemo` que le pregunta la tarifa a `rateTypeOf` —directo, por una
+  // función del mismo archivo o por `tipoDelMueble` (`catalogo/nombresPropios.ts`,
+  // el tipo de la cara con el nombre propio de su familia)— y no tiene
+  // `fichasPropias` en sus dependencias se queda con la tarifa del tipo hasta
+  // que cambie otra cosa: la media estiba propia se mostraba y se comparaba
+  // como estiba entera.
   const archivos = [];
   const recorrer = (d) => {
     for (const n of readdirSync(d)) {
@@ -1070,14 +1079,14 @@ await prueba("quien pregunta la tarifa vuelve a preguntar cuando llegan las fich
   let memos = 0;
   for (const a of archivos) {
     const t = sinComent(leer(a));
-    if (!/rateTypeOf\(/.test(t)) continue;
+    if (!/(rateTypeOf|tipoDelMueble)\(/.test(t)) continue;
     const rel = a.slice(raiz.length + 1);
     // Las funciones del archivo que la preguntan (en minúscula: los componentes
     // se vigilan por sus propios `useMemo`).
     const fns = [...t.matchAll(/\nfunction ([a-z]\w*)\(/g)]
-      .filter((m) => /rateTypeOf\(/.test(t.slice(m.index, t.indexOf("\n}\n", m.index))))
+      .filter((m) => /(rateTypeOf|tipoDelMueble)\(/.test(t.slice(m.index, t.indexOf("\n}\n", m.index))))
       .map((m) => m[1]);
-    const pregunta = new RegExp(`\\b(${["rateTypeOf", ...fns].join("|")})\\(`);
+    const pregunta = new RegExp(`\\b(${["rateTypeOf", "tipoDelMueble", ...fns].join("|")})\\(`);
     for (const m of t.matchAll(/\b(useMemo|useCallback)(<[^>]*>)?\(/g)) {
       let i = m.index + m[0].length, prof = 1;
       while (prof > 0 && i < t.length) { if (t[i] === "(") prof++; else if (t[i] === ")") prof--; i++; }

@@ -2,7 +2,7 @@ import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, use
 import { createPortal } from "react-dom";
 import { AlertTriangle, Box, Check, ImageUp, Loader2, Lock, X } from "lucide-react";
 import type { DateRange } from "../SeasonPicker/SeasonPicker";
-import { isRentable, rateTypeLabel, rateTypeOf, type UnifiedFixture } from "../../types/fixtures";
+import { isRentable, type UnifiedFixture } from "../../types/fixtures";
 import NotifyPreview from "../NotifyPreview";
 import { useModalAbierto } from "../../tema";
 import {
@@ -11,6 +11,9 @@ import {
 } from "./Contrato";
 import { useSesionDeVenta } from "./sesionDeVenta";
 import { useFichasPropias } from "../../store/fichasPropias";
+import { useFixtureStore } from "../../store/fixtureStore";
+// Cómo le dice este supermercado a cada familia: la lista, el visor y la lámina.
+import { conNombrePropio, tipoDelMueble } from "../../catalogo/nombresPropios";
 // De `utils/` (no importa nada): la ficha la usa al entrar.
 import { normalizarProveedor } from "../../utils/proveedor";
 // Sólo los TIPOS: el visor (y con él three.js y la escena del editor) se baja
@@ -107,6 +110,7 @@ function Fila({
   onResaltar: (claves: string[] | null) => void;
 }) {
   const clave = `${l.fixture.id}-${l.face}`;
+  const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   /* Dos renglones y ni uno más: la fila mide 46 px y la ficha tiene que cerrar
      con tres espacios adentro. Arriba el TIPO —que es lo que se está
      vendiendo—, abajo dónde queda y lo único que hay que mirar del precio: el
@@ -172,7 +176,7 @@ function Fila({
         )}
       </span>
       <span className="d">
-        <span title={l.fixture.label || l.fixture.code}>{rateTypeLabel(rateTypeOf(l.fixture))}</span>
+        <span title={conNombrePropio(l.fixture, nombresPropios, l.fixture.label || l.fixture.code)}>{tipoDelMueble(l.fixture, nombresPropios)}</span>
         <span title={segunda}>{segunda}</span>
       </span>
       {/* Una góndola doble son DOS espacios que se venden por separado, y las
@@ -250,6 +254,7 @@ function Fila({
 /** Un mueble que no se alquila: una caja, una pared, la zona de frutas. Tocarlo
  *  en el mapa no puede abrir un contrato — no hay nada que vender ahí. */
 function NoComercializable({ fixture }: { fixture: UnifiedFixture }) {
+  const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   return (
     <div
       style={{
@@ -260,7 +265,7 @@ function NoComercializable({ fixture }: { fixture: UnifiedFixture }) {
     >
       <Lock size={16} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
       <span style={{ fontSize: "var(--t-2xs)", color: "var(--ink-2)", lineHeight: 1.4 }}>
-        <b>{fixture.label || fixture.code}</b> es parte del local: está marcado como
+        <b>{conNombrePropio(fixture, nombresPropios, fixture.label || fixture.code)}</b> es parte del local: está marcado como
         no comercializable y no admite contrato. Para alquilarlo, cambiá su
         destino desde el Plano.
       </span>
@@ -417,6 +422,9 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
   // tarifa de un mueble colocado desde una (`cli:…`). Llegan después del
   // primer dibujo, así que van en las dependencias de lo que la pregunta.
   const fichasPropias = useFichasPropias();
+  // El nombre propio de cada familia: el tipo de cada cara que ve el visor
+  // (la chapa) y que lleva la lámina del proveedor.
+  const nombresPropios = useFixtureStore((s) => s.catalogLabels);
 
   /* ── El 3D, encima de la ficha ──────────────────────────────────────────
      La prueba de producto vive ACÁ y no en el visor: se abre y se cierra
@@ -437,8 +445,8 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
     .filter((l) => l.disponibilidad === "libre" && l.choqueServidor.length === 0)
     .map((l) => ({
       fixtureId: l.fixture.id, face: l.face, visible: l.visible, codigo: l.codigo,
-      tipo: rateTypeLabel(rateTypeOf(l.fixture)),
-    })), [c.lineas, fichasPropias]);
+      tipo: tipoDelMueble(l.fixture, nombresPropios),
+    })), [c.lineas, fichasPropias, nombresPropios]);
   /** La que abre «Ver en 3D»: la última cara que se tocó en el plano (las
    *  filas van en el orden en que se tocaron). Las otras quedan a un toque en
    *  la chapa del visor. */

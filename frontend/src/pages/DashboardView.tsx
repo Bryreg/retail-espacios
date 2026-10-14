@@ -67,6 +67,7 @@ import { inclusiveDays, parseISODate, toISODate, upcomingSeasons } from "../type
    Quedan en la historia de `claude/retail-espacios-continue-jdn085`, que es
    donde hay que ir a buscarlas si el parte vuelve. */
 import { nombreDeMueble, nombreAnterior, nombresChocados, choqueDeRotulo } from "../utils/nomenclatura";
+import { conNombrePropio, nombreDeTarifa, tipoDelMueble, type NombresPropios } from "../catalogo/nombresPropios";
 import type { SemillaContrato } from "../components/Contrato/Contrato";
 import { fechaEnCurso } from "../utils/propuesta";
 import { espaciosSinMueble } from "../utils/espaciosSinMueble";
@@ -317,12 +318,17 @@ function normalizeText(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
-/** `q` must already be normalized. Checks face fields plus fixture identity. */
-function faceMatchesQuery(entry: FaceEntry, q: string): boolean {
+/** `q` must already be normalized. Checks face fields plus fixture identity.
+ *
+ *  Con `nombres` (el nombre propio de cada familia, `catalogLabels`) se
+ *  encuentra también por cómo le dicen acá: «mamut» lleva a las estibas. El
+ *  nombre de RECABRA sigue encontrando lo mismo que antes. */
+function faceMatchesQuery(entry: FaceEntry, q: string, nombres: NombresPropios): boolean {
   return [
     entry.brandCategory,
     entry.supplierName,
     entry.fixture.label,
+    conNombrePropio(entry.fixture, nombres, ""),
     // El nombre VIEJO del mueble. Ya no se dibuja en ningún lado, pero la
     // cartelería de la góndola y el papel del proveedor pueden seguir
     // diciéndolo: buscar por él tiene que llevar igual al mueble. Sale de
@@ -335,6 +341,7 @@ function faceMatchesQuery(entry: FaceEntry, q: string): boolean {
     // El TIPO —«punta», «impulsador»—: es la segunda columna de la tabla y la
     // pregunta más común que se le hace («¿qué impulsadores tengo libres?»).
     rateTypeLabel(rateTypeOf(entry.fixture)),
+    tipoDelMueble(entry.fixture, nombres),
   ].some((s) => s && normalizeText(s).includes(q));
 }
 
@@ -743,6 +750,8 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar }: Is
   const svgRef = useRef<SVGSVGElement>(null);
   const escenaRef = useRef<SVGGElement>(null);
   const [tip, setTip] = useState<{ x: number; y: number; title: string; sub: string } | null>(null);
+  /** El nombre propio de cada familia: lo dice el cartel del mouse. */
+  const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   /* La escena pinta con `temaActual()` adentro del memo: si el tema no es
      dependencia, tocar el sol/luna deja el plano con la terna del modo viejo
      hasta recargar (verificador, Fase 10). */
@@ -1464,7 +1473,7 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar }: Is
                 // The popover already describes this one — a tooltip on top of
                 // it would just be two cards saying the same thing.
                 if (selected) { setTip(null); return; }
-                handleMove(e, f.label || f.code, tooltipSub);
+                handleMove(e, conNombrePropio(f, nombresPropios, f.label || f.code), tooltipSub);
               }}
               onMouseLeave={() => setTip(null)}
               opacity={dimmed ? 0.18 : 1}
@@ -1888,6 +1897,7 @@ function FixturePopover({
   const rentable = isRentable(fixture);
   const faces = facesOf(fixture);
   const entry = faces[0];
+  const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   // Por el código COMPLETO, igual que el panel de detalle: `by-code` guarda
   // `NAVE-PUN-04`, y buscando `PUN-04` contestaba 404 siempre — el contador de
   // archivos decía "Sin archivos" aunque hubiera.
@@ -1930,7 +1940,7 @@ function FixturePopover({
       <div style={{ padding: "12px 14px 11px", borderBottom: "1px solid var(--line-soft)", display: "flex", alignItems: "flex-start", gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--ink-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {fixture.label || fixture.code}
+            {conNombrePropio(fixture, nombresPropios, fixture.label || fixture.code)}
           </div>
           <div
             style={{
@@ -2080,6 +2090,7 @@ function FixtureDetailCard({
   const { state, files } = useSpaceFiles(fullSpaceCode(fixture.sede, entry.code), rentable);
   const hasContract = rentable && entry.supplierName.trim().length > 0;
   const pedirEnfoque3D = useFixtureStore((s) => s.pedirEnfoque3D);
+  const nombresPropios = useFixtureStore((s) => s.catalogLabels);
 
   return (
     <Card style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
@@ -2098,7 +2109,7 @@ function FixtureDetailCard({
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink-1)", letterSpacing: "-0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {fixture.label || fixture.code}
+            {conNombrePropio(fixture, nombresPropios, fixture.label || fixture.code)}
           </div>
           <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--ink-3)", marginTop: 2 }}>
             {entry.code} · {fixture.sede}
@@ -2732,6 +2743,7 @@ function AtencionRow({
   onFoto?: () => void;
 }) {
   const [hover, setHover] = useState(false);
+  const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   return (
     <div
       data-fila-revisar
@@ -2788,7 +2800,7 @@ function AtencionRow({
             whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
           }}
         >
-          {entry.supplierName || entry.fixture.label || entry.fixture.code}
+          {entry.supplierName || conNombrePropio(entry.fixture, nombresPropios, entry.fixture.label || entry.fixture.code)}
         </span>
         <span style={{ flexShrink: 0, fontSize: 12, color: "var(--ink-3)", whiteSpace: "nowrap" }}>
           {dates}
@@ -3068,6 +3080,8 @@ function SpacesTable({
   // tarifa de un mueble colocado desde una (`cli:…`). Llegan después del
   // primer dibujo, así que van en las dependencias de lo que la pregunta.
   const fichasPropias = useFichasPropias();
+  // Cómo le dicen acá a cada familia: la columna «Tipo» y la búsqueda.
+  const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   // One row per rentable face — doubles expand to A + B, matching the KPIs.
   const rows = useMemo(
     () =>
@@ -3083,9 +3097,9 @@ function SpacesTable({
   const filtered = useMemo(() => {
     const q = normalizeText(query.trim());
     return rows.filter(
-      (e) => (!q || faceMatchesQuery(e, q)) && faceMatchesFilter(e, filter, sinMontar),
+      (e) => (!q || faceMatchesQuery(e, q, nombresPropios)) && faceMatchesFilter(e, filter, sinMontar),
     );
-  }, [rows, filter, query, sinMontar, fichasPropias]);
+  }, [rows, filter, query, sinMontar, fichasPropias, nombresPropios]);
 
   /* LOS ANCHOS, MEDIDOS.
      Proveedor no llevaba ancho y se quedaba con todo lo que sobraba: en una
@@ -3104,7 +3118,7 @@ function SpacesTable({
   const anchos = useMemo(() => {
     const familia = typeof document !== "undefined" ? getComputedStyle(document.body).fontFamily : "";
     const fuente = `400 12.5px ${familia || "sans-serif"}`;
-    const tipos = rows.map((e) => rateTypeLabel(rateTypeOf(e.fixture)));
+    const tipos = rows.map((e) => tipoDelMueble(e.fixture, nombresPropios));
     const nombres = rows.map((e) => (displayStatus(e) === "free" && e.supplierName
       ? `último: ${e.supplierName}` : e.supplierName));
     return {
@@ -3113,7 +3127,7 @@ function SpacesTable({
     };
   // `fuentes` vuelve a medir cuando llega la tipografía de la página.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, fuentes, fichasPropias]);
+  }, [rows, fuentes, fichasPropias, nombresPropios]);
 
   // Los anchos van en el `th` y no en el `td`: con `table-layout:fixed` el
   // navegador toma las medidas de la PRIMERA fila, que es la del encabezado.
@@ -3252,8 +3266,8 @@ function SpacesTable({
                     dejaba la columna sin contestar de qué clase de espacio se
                     trata —que es lo que se compara entre filas—. El nombre
                     completo queda al pasar por encima. */}
-                <td style={celda} title={entry.fixture.label || undefined}>
-                  {rateTypeLabel(rateTypeOf(entry.fixture))}
+                <td style={celda} title={conNombrePropio(entry.fixture, nombresPropios, entry.fixture.label) || undefined}>
+                  {tipoDelMueble(entry.fixture, nombresPropios)}
                 </td>
                 <td style={{ ...celda, color: libre ? "var(--ink-3)" : "var(--ink-1)" }}
                     title={entry.supplierName || undefined}>
@@ -3518,6 +3532,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const referenceRates = useFixtureStore((s) => s.referenceRates);
   const refrescarComercial = useFixtureStore((s) => s.refrescarComercial);
   const estadoComercial = useFixtureStore((s) => s.estadoComercial);
+  /** Cómo le dicen acá a cada familia (`catalogo/nombresPropios.ts`): lo usan
+   *  la búsqueda, la tarifa de referencia y «Cuándo se libera». */
+  const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   /** La auditoría de desfase, calculada en la pantalla.
    *
    *  Existe `backend/scripts/auditar_desfase.py`, que hace esto contra la base
@@ -3904,7 +3921,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     let count = 0;
     fixtures.forEach((f) => {
       const flags = commercialFacesOf(f).map((entry) => {
-        const ok = (!q || faceMatchesQuery(entry, q))
+        const ok = (!q || faceMatchesQuery(entry, q, nombresPropios))
           && faceMatchesFilter(entry, mapFilter);
         if (ok) count++;
         return ok;
@@ -3912,7 +3929,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       faceFlags.set(f.id, flags);
     });
     return { faceFlags, count };
-  }, [fixtures, mapQuery, mapFilter, fichasPropias]);
+  }, [fixtures, mapQuery, mapFilter, fichasPropias, nombresPropios]);
 
   // La lista de precios de la sede: qué familias hay, cuántas caras de cada una
   // están libres en el periodo, cuántas se liberan adentro, y a cuánto sale.
@@ -4215,9 +4232,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const visiblesEnTabla = useMemo(() => {
     const q = normalizeText(mapQuery.trim());
     return fixtures.flatMap(commercialFacesOf)
-      .filter((e) => (!q || faceMatchesQuery(e, q)) && faceMatchesFilter(e, mapFilter, sinMontarSet))
+      .filter((e) => (!q || faceMatchesQuery(e, q, nombresPropios)) && faceMatchesFilter(e, mapFilter, sinMontarSet))
       .length;
-  }, [fixtures, mapQuery, mapFilter, sinMontarSet, fichasPropias]);
+  }, [fixtures, mapQuery, mapFilter, sinMontarSet, fichasPropias, nombresPropios]);
 
   /** Cuántas caras contesta cada chip de la tabla. Un filtro que no puede
    *  devolver nada no se dibuja: es la misma regla que ya gobernaba el parte,
@@ -4356,7 +4373,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
         <Libera
           fixtures={fixtures}
           facesOf={commercialFacesOf}
-          tipoDe={(f) => rateTypeLabel(rateTypeOf(f))}
+          tipoDe={(f) => tipoDelMueble(f, nombresPropios)}
           desde={mapRange.from}
           hasta={mapRange.to}
           temporadas={temporadasDelPeriodo}
@@ -4411,7 +4428,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 onMouseEnter={() => destacar(claves)}
                 onMouseLeave={() => destacar(null)}
               >
-                <td>{rateTypeLabel(cat)}</td>
+                <td>{nombreDeTarifa(cat, nombresPropios)}</td>
                 <td className="der2 cif">
                   {libres.length === 0
                     ? <span className="cero">0</span>

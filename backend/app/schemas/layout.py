@@ -1,6 +1,17 @@
 from datetime import datetime
 from typing import Any
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.services.catalogo_muebles import REGLAS_DE_FICHA
+
+# El nombre propio de una familia de muebles («mamut», «tope de góndola») tiene
+# el largo del nombre de una ficha: lo lee el navegador del mismo `muebles.json`
+# (`LARGO_DEL_NOMBRE_PROPIO` en `catalogo/nombresPropios.ts`).
+LARGO_DEL_NOMBRE_PROPIO: int = REGLAS_DE_FICHA["largoMaximo"]["nombre"]
+# Las familias son ~20 (las de la biblioteca del plano 2D); el tope es holgado
+# para no rechazar una entrada vieja, y corto para que nadie guarde un libro.
+MAXIMO_DE_NOMBRES_PROPIOS = 100
+LARGO_DE_LA_FAMILIA = 60
 
 
 class LayoutIn(BaseModel):
@@ -47,11 +58,35 @@ class LayoutRevision(BaseModel):
 class LayoutSettingsIn(BaseModel):
     """Shared, non-fixture layout state that every workstation must agree on."""
     sedes: list[str] = Field(default=[], max_length=100)
+    # El nombre propio de cada familia de muebles en ESTE supermercado, por la
+    # clave de la biblioteca del 2D (`gondola_doble`, `punta`, `isla`…). Sólo
+    # se lee en las pantallas del supermercado; el servidor no lo usa para
+    # nada —ni la consola ni los informes de asesoría, que comparan clientes con
+    # el nombre de RECABRA— y no se valida contra el catálogo: una clave vieja
+    # no puede trabar el guardado de la lista de sedes, que viaja en el mismo
+    # pedido.
     catalog_labels: dict[str, str] = Field(default={})
     # Same optimistic-concurrency contract as LayoutIn: the revision this write
     # is based on. Absent means "overwrite unconditionally", which is what a
     # first-ever publish sends.
     base_updated_at: datetime | None = None
+
+    @field_validator("catalog_labels")
+    @classmethod
+    def _nombres_propios_cortos(cls, v: dict[str, str]) -> dict[str, str]:
+        """Lo que escribe la dueña sale en Vender y en la lámina que se lleva el
+        proveedor: un nombre, no un texto. Largo en letras de verdad (puntos de
+        código), como ``[...texto].length`` del navegador."""
+        if len(v) > MAXIMO_DE_NOMBRES_PROPIOS:
+            raise ValueError(f"hasta {MAXIMO_DE_NOMBRES_PROPIOS} nombres propios")
+        for familia, nombre in v.items():
+            if len(familia) > LARGO_DE_LA_FAMILIA:
+                raise ValueError("la clave de una familia es corta")
+            if len(nombre.strip()) > LARGO_DEL_NOMBRE_PROPIO:
+                raise ValueError(
+                    f"el nombre propio de «{familia}» tiene hasta {LARGO_DEL_NOMBRE_PROPIO} letras"
+                )
+        return v
 
 
 class LayoutSettingsOut(BaseModel):

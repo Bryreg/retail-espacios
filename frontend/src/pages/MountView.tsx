@@ -11,6 +11,9 @@ import FormularioMontaje, {
 } from "../components/Montaje/FormularioMontaje";
 import type { UnifiedFixture } from "../types/fixtures";
 import { nombreDeMueble } from "../utils/nomenclatura";
+// El tipo de cada espacio, como le dicen acá («tope de góndola»): la lista y el
+// formulario del montaje.
+import { conNombrePropio } from "../catalogo/nombresPropios";
 
 /** Una cara de un mueble que hay que montar, con lo que ordena la lista. */
 interface Pendiente extends EspacioAMontar {
@@ -61,6 +64,7 @@ export default function MountView({
   const fixturesBySede = useFixtureStore((s) => s.fixturesBySede);
   const sedes = useFixtureStore((s) => s.sedes);
   const activeSede = useFixtureStore((s) => s.sede);
+  const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   const fixtures = useFixtureStore(selectFixtures);
   /** El primer pull del servidor ya terminó — antes de eso no hay espacios. */
   const layoutListo = useFixtureStore((s) => s.lastSyncedAt) !== null;
@@ -126,7 +130,7 @@ export default function MountView({
           corto,
           fixtureCode: f.code,
           sede: (data.sede as string) || sede,
-          label: f.label || f.code,
+          label: conNombrePropio(f, nombresPropios, f.label || f.code),
           marca: (data.brandCategory as string) || "",
           proveedor: (data.supplierName as string) || "",
           desde: data.startDate ?? "",
@@ -142,7 +146,7 @@ export default function MountView({
     const tramo = (p: Pendiente) => (p.urgente ? 0 : p.viejo ? 2 : 1);
     out.sort((a, b) => tramo(a) - tramo(b) || a.desde.localeCompare(b.desde));
     return out;
-  }, [fixturesBySede, sedes, fixtures, activeSede, porCodigo]);
+  }, [fixturesBySede, sedes, fixtures, activeSede, porCodigo, nombresPropios]);
 
   // Enlace del correo: abrir directamente ese espacio.
   const [yaConfirmado, setYaConfirmado] = useState<MountConfirmation | null>(null);
@@ -168,7 +172,7 @@ export default function MountView({
           corto: caraB ? `${f.code}-B` : f.code,
           fixtureCode: f.code,
           sede: (data?.sede as string) || (f.sede as string) || sede,
-          label: f.label || f.code,
+          label: conNombrePropio(f, nombresPropios, f.label || f.code),
           marca: (data?.brandCategory as string) || "",
           proveedor: (data?.supplierName as string) || "",
           desde: data?.startDate ?? "",
@@ -179,7 +183,7 @@ export default function MountView({
       }
     }
     return null;
-  }, [yaConfirmado, fixturesBySede]);
+  }, [yaConfirmado, fixturesBySede, nombresPropios]);
   const abiertoPorEnlace = useRef(false);
   useEffect(() => {
     // Esperar a que el layout haya llegado del servidor. Sin esta condición el

@@ -25,6 +25,11 @@ import { storeToItems, itemsToStore, type FixType2D, type PlacedItem2D } from ".
 import { CATALOG, CATALOGO_2D, H_DEFAULTS, modelosDelPlanoConPropias, type ModeloDelPlano } from "../../catalogo/plano2D";
 import { modeloPorId, nombreDeModelo, textoDeFuente } from "../../catalogo/catalogo";
 import { useFichasPropias } from "../../store/fichasPropias";
+// Cómo le dice este supermercado a cada familia: la biblioteca, el panel y la
+// búsqueda (`catalogo/nombresPropios.ts`).
+import {
+  LARGO_DEL_NOMBRE_PROPIO, conNombrePropio, nombrePropio, nombreParaGuardar, type NombresPropios,
+} from "../../catalogo/nombresPropios";
 import { GeometriaDelMueble } from "../GeometriaDelMueble";
 import { TOLERANCIA_CONTACTO } from "../../utils/planta";
 import { buscarHuecoGrupo } from "../../utils/acomodar";
@@ -143,12 +148,14 @@ function matchesStatusFilter(item: PlacedItem2D, filter: StatusFilter2D): boolea
   });
 }
 
-/** True when the pre-normalized query matches any searchable field on either face. */
-function matchesQuery(item: PlacedItem2D, normalizedQuery: string): boolean {
+/** True when the pre-normalized query matches any searchable field on either face.
+ *  Con `nombres`, también por el nombre propio de la familia («mamut»). */
+function matchesQuery(item: PlacedItem2D, normalizedQuery: string, nombres: NombresPropios): boolean {
   if (!normalizedQuery) return true;
   const fields = [
     item.code,
     item.label,
+    conNombrePropio(item, nombres, ""),
     // El nombre VIEJO. Ya no se dibuja, pero el cartel de la góndola puede
     // seguir diciéndolo: buscar por él tiene que llevar igual al mueble. Y
     // tiene que seguir sirviendo DESPUÉS de renumerar, que es justo cuando la
@@ -1181,7 +1188,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     const rechazo = aplicarRenombre(editingCodeId, val);
     if (!rechazo) { cerrar(); return; }
     setAvisoDeNombre({
-      texto: textoDelChoque(val, rechazo),
+      texto: textoDelChoque(val, rechazo, (m) => conNombrePropio(m, catalogLabels, "")),
       // El intercambio se ofrece sólo cuando hay con quién: un nombre vacío no
       // se intercambia con nadie.
       intercambio: rechazo.razon === "ocupado" && item
@@ -1236,12 +1243,12 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     if (!filterActive) return null;
     const s = new Set<string>();
     for (const it of items) {
-      if (matchesQuery(it, normalizedQuery) && matchesStatusFilter(it, statusFilter)) {
+      if (matchesQuery(it, normalizedQuery, catalogLabels) && matchesStatusFilter(it, statusFilter)) {
         s.add(it.id);
       }
     }
     return s;
-  }, [items, normalizedQuery, statusFilter, filterActive]);
+  }, [items, normalizedQuery, statusFilter, filterActive, catalogLabels]);
 
   // Smart alignment guides — derived from the live drag/resize state so no
   // extra setState happens inside mousemove. Empty outside drag/resize (and
@@ -1388,7 +1395,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                   {cat}
                 </p>
                 {defs.map((def) => {
-                  const displayLabel = catalogLabels[def.type] ?? def.label;
+                  const displayLabel = nombrePropio(def.type, catalogLabels) ?? def.label;
                   const isEditingThis = editingCatalogType === def.type;
                   const isActive = pendingType === def.type && activeTool === "place" && !pendingModelo;
                   const modelos = modelosDelPlano[def.type] ?? [];
@@ -1435,14 +1442,16 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                                 color: "var(--ink-1)",
                               }}
                               value={editingCatalogVal}
+                              maxLength={LARGO_DEL_NOMBRE_PROPIO}
                               onClick={(e) => e.stopPropagation()}
                               onChange={(e) => setEditingCatalogVal(e.target.value)}
                               onBlur={() => {
-                                if (editingCatalogVal.trim()) setCatalogLabel(def.type, editingCatalogVal.trim());
+                                // Vacío, o el de RECABRA, deja la familia sin nombre propio.
+                                setCatalogLabel(def.type, nombreParaGuardar(def.type, editingCatalogVal));
                                 setEditingCatalogType(null);
                               }}
                               onKeyDown={(e) => {
-                                if (e.key === "Enter") { if (editingCatalogVal.trim()) setCatalogLabel(def.type, editingCatalogVal.trim()); setEditingCatalogType(null); }
+                                if (e.key === "Enter") { setCatalogLabel(def.type, nombreParaGuardar(def.type, editingCatalogVal)); setEditingCatalogType(null); }
                                 if (e.key === "Escape") setEditingCatalogType(null);
                                 e.stopPropagation();
                               }}
@@ -1473,7 +1482,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                             color: "var(--ink-4)",
                             transition: "opacity .12s",
                           }}
-                          title="Renombrar en catálogo"
+                          title="Cómo le dicen en esta tienda (vacío: el nombre de RECABRA). También en Configuración."
                           onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
                           onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-4)"; }}
                         >
@@ -3571,6 +3580,9 @@ function AssignmentPanel({
   // El nombre del modelo de una ficha propia llega cuando se leen las fichas
   // del supermercado: escucharlas vuelve a dibujar el panel.
   useFichasPropias();
+  // El nombre propio de la familia, en el encabezado. Lo que va a la base
+  // (`FilesSection`, que crea la fila de `spaces`) sigue con el de RECABRA.
+  const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   const modeloDelMueble = modeloPorId(item.nace?.modelo);
   const fullCode = `${item.sede || sede}-${item.code}`;
   const inp = "w-full bg-transparent border-b border-dark-line-2 text-dark-ink-1 text-sm py-1 focus:outline-none focus:border-accent placeholder:text-dark-ink-3";
@@ -3699,7 +3711,7 @@ function AssignmentPanel({
         <div>
           <p style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--dark-ink-3)", marginBottom: 2 }}>{activeCode}</p>
           <p style={{ fontSize: 14, fontWeight: 600, color: "var(--dark-ink-1)" }}>
-            {catDef?.emoji} {catDef?.label}
+            {catDef?.emoji} {conNombrePropio(item, nombresPropios, catDef?.label ?? "")}
           </p>
           {/* La ficha de la que nació, si nació de una: su nombre y, si sus
               medidas son una deducción, «≈». */}
@@ -3865,7 +3877,7 @@ function AssignmentPanel({
             {rechazo ? (
               <>
                 <p style={{ fontSize: 11, color: "var(--danger)", marginTop: 4, lineHeight: 1.45 }}>
-                  No se guardó: {textoDelChoque(nombreBorrador, rechazo)}
+                  No se guardó: {textoDelChoque(nombreBorrador, rechazo, (m) => conNombrePropio(m, nombresPropios, ""))}
                   {" "}Sigue llamándose «{item.code}».
                 </p>
                 {/* Renumerar una corrida es intercambiar nombres entre muebles
@@ -3896,7 +3908,7 @@ function AssignmentPanel({
               </>
             ) : choqueEscrito ? (
               <p style={{ fontSize: 11, color: "var(--danger)", marginTop: 4, lineHeight: 1.45 }}>
-                {textoDelChoque(nombreBorrador, choqueEscrito)}
+                {textoDelChoque(nombreBorrador, choqueEscrito, (m) => conNombrePropio(m, nombresPropios, ""))}
               </p>
             ) : (
               <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 4, lineHeight: 1.45 }}>
@@ -3908,7 +3920,7 @@ function AssignmentPanel({
             {!rechazo && !choqueEscrito && choqueGuardado && (
               <p style={{ fontSize: 11, color: "var(--warning)", marginTop: 4, lineHeight: 1.45 }}>
                 Ojo: otro mueble de esta sede también se llama «{normalizarNombre(item.code)}»
-                {choqueGuardado.label ? ` (${choqueGuardado.label})` : ""}. Renombrá
+                {choqueGuardado.label ? ` (${conNombrePropio(choqueGuardado, nombresPropios, choqueGuardado.label)})` : ""}. Renombrá
                 uno de los dos para que un contrato pueda decir a cuál va.
               </p>
             )}
@@ -3919,7 +3931,7 @@ function AssignmentPanel({
             {choqueGuardado && (
               <p style={{ fontSize: 11, color: "var(--warning)", marginTop: 4, lineHeight: 1.45 }}>
                 Ojo: otro mueble de esta sede también se llama «{normalizarNombre(item.code)}»
-                {choqueGuardado.label ? ` (${choqueGuardado.label})` : ""}.
+                {choqueGuardado.label ? ` (${conNombrePropio(choqueGuardado, nombresPropios, choqueGuardado.label)})` : ""}.
               </p>
             )}
           </>

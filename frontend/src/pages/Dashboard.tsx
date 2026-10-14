@@ -34,6 +34,10 @@ import { descargarMiExport, solicitarSupresion } from "../api/derechos";
 import { descargarCopia } from "../api/copia";
 import { useFixtureStore } from "../store/fixtureStore";
 import { TemaToggle, useModalAbierto } from "../tema";
+import {
+  LARGO_DEL_NOMBRE_PROPIO, familiasConNombre, nombrePropio, nombreParaGuardar,
+  type FamiliaConNombre,
+} from "../catalogo/nombresPropios";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -267,6 +271,85 @@ function ContactsSection({ sedes }: { sedes: string[] }) {
 
 /** `owner`/`admin`/`worker` → la palabra que la persona espera leer, no el
  *  nombre de la columna. */
+/** «Cómo se llaman los muebles acá» (sólo administración, como todo este
+ *  panel): una fila por familia, con el nombre de RECABRA y el de la tienda.
+ *
+ *  Es `catalogLabels`, que ya existía y sólo se editaba con el lápiz de la
+ *  biblioteca del Plano —escondido detrás de un hover, y sólo lo aplicaba esa
+ *  biblioteca—. Desde ahora el nombre propio sale en todas las pantallas del
+ *  supermercado (`catalogo/nombresPropios.ts`), así que se edita en un lugar
+ *  que se encuentra. Se guarda al salir del campo, con la lista de sedes (el
+ *  mismo `PUT /api/layout/settings`, y el mismo debounce), como las tarifas: no
+ *  hay botón de guardar. */
+function NombresDeMueblesSection() {
+  const nombres = useFixtureStore((s) => s.catalogLabels);
+  const setCatalogLabel = useFixtureStore((s) => s.setCatalogLabel);
+  const familias = familiasConNombre();
+  return (
+    <div data-seccion="nombres-de-muebles" style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }}>
+      <div style={sectionLabelStyle}>Cómo se llaman los muebles acá</div>
+      <p style={{ fontSize: 11.5, color: "var(--ink-2)", margin: "-4px 0 12px", lineHeight: 1.5 }}>
+        Si en la tienda a la estiba le dicen «mamut» o a la punta «tope de góndola», escribilo
+        al lado: sale así en Vender, Supervisar, Estado por espacio, Montajes, Tarifas, el
+        Plano, el Editor 3D y la lámina que se lleva el proveedor. Vacío, queda el de RECABRA.
+        Los informes de RECABRA siguen con el suyo, para poder comparar supermercados. Se
+        guarda al salir del campo; ningún mueble, código ni tarifa cambia.
+      </p>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.2fr)", gap: "6px 10px", alignItems: "center" }}>
+        <div style={{ ...fieldLabelStyle, marginBottom: 0 }}>En RECABRA</div>
+        <div style={{ ...fieldLabelStyle, marginBottom: 0 }}>Acá le dicen</div>
+        {familias.map((f) => (
+          <FilaDeNombre
+            key={f.clave}
+            familia={f}
+            guardado={nombrePropio(f.clave, nombres) ?? ""}
+            onGuardar={(texto) => setCatalogLabel(f.clave, nombreParaGuardar(f.clave, texto))}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FilaDeNombre({ familia, guardado, onGuardar }: {
+  familia: FamiliaConNombre;
+  guardado: string;
+  onGuardar: (texto: string) => void;
+}) {
+  const [borrador, setBorrador] = useState(guardado);
+  const [editando, setEditando] = useState(false);
+  // Lo que llega del servidor (otra estación lo cambió) entra mientras no se
+  // está escribiendo encima.
+  useEffect(() => { if (!editando) setBorrador(guardado); }, [guardado, editando]);
+  const id = `nombre-propio-${familia.clave}`;
+  return (
+    <>
+      <label htmlFor={id} style={{ fontSize: 12, color: "var(--ink-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <span aria-hidden style={{ marginRight: 6 }}>{familia.emoji}</span>{familia.rotulo}
+      </label>
+      <input
+        id={id}
+        data-familia={familia.clave}
+        type="text"
+        value={borrador}
+        maxLength={LARGO_DEL_NOMBRE_PROPIO}
+        placeholder={familia.rotulo}
+        onFocus={() => setEditando(true)}
+        onChange={(e) => setBorrador(e.target.value)}
+        onBlur={() => {
+          setEditando(false);
+          if (borrador.trim() !== guardado) onGuardar(borrador);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+          if (e.key === "Escape") { e.stopPropagation(); setBorrador(guardado); setEditando(false); }
+        }}
+        style={{ ...inputStyle, height: 30 }}
+      />
+    </>
+  );
+}
+
 function rolLabelUsuario(rol: Miembro["rol"]): string {
   if (rol === "owner") return "Dueño";
   if (rol === "admin") return "Administrador";
@@ -1056,6 +1139,8 @@ function SettingsModal({
         </div>
 
         <ContactsSection sedes={sedes} />
+
+        <NombresDeMueblesSection />
 
         <SuscripcionSection enfocar={enfocar === "suscripcion"} />
 
