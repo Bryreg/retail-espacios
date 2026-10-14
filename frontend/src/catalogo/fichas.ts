@@ -71,7 +71,7 @@ export function idDeFichaPropia(clave: string): string {
 
 const NOMBRE_DE_MEDIDA = { w: "el ancho", d: "el fondo", h: "el alto" } as const;
 const NOMBRE_DE_GEOMETRIA: Record<CampoDeGeometria, string> = {
-  entrepanos: "los entrepaños", modulo: "el módulo", puertas: "las puertas",
+  entrepanos: "los entrepaños", modulo: "el módulo", puertas: "las puertas", tramos: "los tramos",
   division: "cómo se vende por partes",
 };
 
@@ -140,10 +140,14 @@ export function problemasDeLaFicha(ficha: unknown, { nueva = true }: { nueva?: b
     let partes: unknown = ficha.partes;
     if (partes != null && !(objeto(partes)
       && Object.keys(partes).every((k) => propio(REGLAS.geometria, k) && REGLAS.geometria[k as CampoDeGeometria].enPartes))) {
-      no("partes", "las partes sólo llevan lo conocido (las puertas y cómo se vende)");
+      no("partes", "las partes sólo llevan lo conocido (las puertas, los tramos y cómo se vende)");
       partes = undefined;
     }
     const admite = familia.geometria ?? {};
+    // Las divisiones que se cuentan en el plano y no en la ficha (los tramos
+    // de una góndola: su ficha es un módulo), y los campos que las cuentan.
+    const enElPlano = familia.partes?.seCuentanEnElPlano ?? [];
+    const delPlano = new Set(enElPlano.map((c) => C.partes.clases[c]?.campo).filter(Boolean));
     for (const [campo, regla] of Object.entries(REGLAS.geometria) as [CampoDeGeometria, { enPartes: boolean; entero: boolean; valores?: string }][]) {
       const donde = regla.enPartes ? `partes.${campo}` : campo;
       const v = regla.enPartes ? (objeto(partes) ? partes[campo] : undefined) : ficha[campo];
@@ -155,14 +159,24 @@ export function problemasDeLaFicha(ficha: unknown, { nueva = true }: { nueva?: b
         if (valores.length === 0) no(donde, `la familia «${tipo}» se vende entera: no tiene partes`);
         else if (typeof v !== "string" || !valores.includes(v)) {
           no(donde, `se vende por ${valores.map((c) => clases[c]?.plural ?? c).join(" o por ")}`);
-        } else {
-          // Dividir pide saber en cuántas: sin la cuenta no hay partes.
+        } else if (!enElPlano.includes(v)) {
+          // Dividir pide saber en cuántas: sin la cuenta no hay partes. La
+          // cuenta vive en `partes` (las puertas, los tramos) o en la ficha
+          // (los entrepaños, con la base).
           const clase = clases[v];
-          const n = objeto(partes) ? partes[clase.campo] : undefined;
-          if (!(numero(n) && Number.isInteger(n) && n >= clase.minimo)) {
-            no(donde, `para venderla por ${clase.plural}, la ficha dice cuántas (${clase.minimo} o más)`);
+          const reglaDelCampo = REGLAS.geometria[clase.campo as CampoDeGeometria];
+          const n = reglaDelCampo?.enPartes ? (objeto(partes) ? partes[clase.campo] : undefined) : ficha[clase.campo];
+          const base = clase.base ? 1 : 0;
+          if (!(numero(n) && Number.isInteger(n) && n + base >= clase.minimo)) {
+            no(donde, `para venderla por ${clase.plural}, la ficha dice cuánt${clase.genero === "f" ? "a" : "o"}s `
+              + `(${clase.minimo - base} o más${base ? ", sin contar la base" : ""})`);
           }
         }
+        continue;
+      }
+      if (delPlano.has(campo)) {
+        no(donde, `en la ficha de «${tipo}» no van ${NOMBRE_DE_GEOMETRIA[campo]}: dependen del largo del corrido `
+          + "y se fijan en el plano, uno por módulo");
         continue;
       }
       const r = admite[campo];

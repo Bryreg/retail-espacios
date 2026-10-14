@@ -100,6 +100,14 @@ DIVISIONES_POR_TIPO: dict[str, tuple[str, ...]] = {
     for tipo, d in TIPOS.items() if (d.get("partes") or {}).get("divisiones")
 }
 
+#: Las divisiones cuya cantidad NO va en la ficha de esa familia, sino en el
+#: plano (``tipos[t].partes.seCuentanEnElPlano``): la ficha de una góndola es
+#: un módulo, y cuántos tramos tiene depende del largo del corrido.
+SE_CUENTAN_EN_EL_PLANO: dict[str, frozenset[str]] = {
+    tipo: frozenset((d.get("partes") or {}).get("seCuentanEnElPlano") or ())
+    for tipo, d in TIPOS.items() if (d.get("partes") or {}).get("seCuentanEnElPlano")
+}
+
 
 def tipo_de_tarifa(tipo: str) -> str:
     """La clave de tarifa de un tipo de mueble. Lo que no tiene tarifa —lo que
@@ -196,7 +204,7 @@ CAMPOS_DE_FUENTE: tuple[str, ...] = ("url", "nota", "confiabilidad")
 
 _NOMBRE_DE_MEDIDA = {"w": "el ancho", "d": "el fondo", "h": "el alto"}
 _NOMBRE_DE_GEOMETRIA = {"entrepanos": "los entrepaños", "modulo": "el módulo", "puertas": "las puertas",
-                        "division": "cómo se vende por partes"}
+                        "tramos": "los tramos", "division": "cómo se vende por partes"}
 
 #: Lo que puede vivir adentro de ``partes`` de un mueble o de una ficha, con su
 #: tipo: las claves de ``fichas.geometria`` que van en ``partes``. Es la lista
@@ -317,9 +325,13 @@ def problemas_de_la_ficha(ficha, *, nueva: bool = True) -> list[tuple[str, str]]
         if partes is not None and not (
             isinstance(partes, dict) and all(k in CAMPOS_DE_PARTES for k in partes)
         ):
-            mal.append(("partes", "las partes sólo llevan lo conocido (las puertas y cómo se vende)"))
+            mal.append(("partes", "las partes sólo llevan lo conocido (las puertas, los tramos y cómo se vende)"))
             partes = None
         admite = familia.get("geometria") or {}
+        en_el_plano = SE_CUENTAN_EN_EL_PLANO.get(tipo, frozenset())
+        #: Los campos que cuentan una división que se cuenta en el plano: no
+        #: van en la ficha (los tramos de una góndola).
+        del_plano = {CLASES_DE_PARTE[c]["campo"] for c in en_el_plano if c in CLASES_DE_PARTE}
         for campo, regla in REGLAS_DE_FICHA["geometria"].items():
             donde = f"partes.{campo}" if regla["enPartes"] else campo
             v = (partes or {}).get(campo) if regla["enPartes"] else ficha.get(campo)
@@ -333,13 +345,23 @@ def problemas_de_la_ficha(ficha, *, nueva: bool = True) -> list[tuple[str, str]]
                 elif not isinstance(v, str) or v not in valores:
                     mal.append((donde, "se vende por " + " o por ".join(
                         CLASES_DE_PARTE[c]["plural"] for c in valores)))
-                else:
-                    # Dividir pide saber en cuántas: sin la cuenta no hay partes.
+                elif v not in en_el_plano:
+                    # Dividir pide saber en cuántas: sin la cuenta no hay
+                    # partes. La cuenta vive en `partes` (las puertas, los
+                    # tramos) o en la ficha (los entrepaños, con la base).
                     clase = CLASES_DE_PARTE[v]
-                    n = (partes or {}).get(clase["campo"])
-                    if not (_numero(n) and float(n) == int(n) and n >= clase["minimo"]):
-                        mal.append((donde, f"para venderla por {clase['plural']}, la ficha dice cuántas "
-                                           f"({clase['minimo']} o más)"))
+                    regla_campo = REGLAS_DE_FICHA["geometria"][clase["campo"]]
+                    n = (partes or {}).get(clase["campo"]) if regla_campo["enPartes"] else ficha.get(clase["campo"])
+                    base = 1 if clase.get("base") else 0
+                    if not (_numero(n) and float(n) == int(n) and n + base >= clase["minimo"]):
+                        al_menos = clase["minimo"] - base
+                        sin_base = ", sin contar la base" if base else ""
+                        mal.append((donde, f"para venderla por {clase['plural']}, la ficha dice cuánt"
+                                           f"{'a' if clase.get('genero') == 'f' else 'o'}s ({al_menos} o más{sin_base})"))
+                continue
+            if campo in del_plano:
+                mal.append((donde, f"en la ficha de «{tipo}» no van {_NOMBRE_DE_GEOMETRIA[campo]}: dependen del "
+                                   "largo del corrido y se fijan en el plano, uno por módulo"))
                 continue
             r = admite.get(campo)
             if r is None:

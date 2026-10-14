@@ -88,18 +88,22 @@ export interface Medidas { w: number; d: number; h: number }
 export type Confiabilidad = "ficha" | "catalogo" | "estimado";
 
 /** Las partes de un mueble que cuenta su ficha: las puertas de la nevera de
- *  puertas (dibujan las hojas) y, desde vender por partes, `division`: si la
- *  cara se vende ADEMÁS por esas partes (`"puertas"`: entera o por puertas,
- *  `NEV-03-PU2`). Sin `division`, el mueble se vende entero, como siempre.
- *  Sólo números y una palabra de una lista cerrada: nunca lleva nada
- *  comercial. En el mueble del plano, un `null` adentro es «borrado a
- *  propósito» (como en la ficha: ver `UnifiedFixture.modelo`). */
-export interface PartesDeMueble { puertas?: number | null; division?: string | null }
+ *  puertas (dibujan las hojas), los tramos de un mural, una góndola o una
+ *  nevera abierta (dibujan los montantes y parten el corrido en tramos
+ *  iguales) y, desde vender por partes, `division`: si la cara se vende
+ *  ADEMÁS por esas partes (`"puertas"`: entera o por puertas, `NEV-03-PU2`;
+ *  `"tramos"`, `GON-05-B-TR2`; `"entrepanos"`, contados con los `entrepanos`
+ *  del mueble y la base, `PUN-02-EN1`). Sin `division`, el mueble se vende
+ *  entero, como siempre. Sólo números y una palabra de una lista cerrada:
+ *  nunca lleva nada comercial. En el mueble del plano, un `null` adentro es
+ *  «borrado a propósito» (como en la ficha: ver `UnifiedFixture.modelo`). */
+export interface PartesDeMueble { puertas?: number | null; tramos?: number | null; division?: string | null }
 
 /** La geometría que un modelo puede fijar, por tipo, con su rango: los
- *  entrepaños y el módulo de la góndola, las puertas de la nevera de puertas
- *  y cómo se vende por partes (`division`, de la lista de su familia). */
-export type CampoDeGeometria = "entrepanos" | "modulo" | "puertas" | "division";
+ *  entrepaños y el módulo de la góndola, las puertas de la nevera de puertas,
+ *  los tramos y cómo se vende por partes (`division`, de la lista de su
+ *  familia). */
+export type CampoDeGeometria = "entrepanos" | "modulo" | "puertas" | "tramos" | "division";
 
 /** Una clase de parte (`partes.clases` en `muebles.json`): la puerta de la
  *  nevera, y lo que venga. Ver `utils/partes.ts`. */
@@ -110,14 +114,20 @@ export interface ClaseDeParte {
   es: "division" | "pieza";
   /** Por dónde se cuentan: `ancho`, de izquierda a derecha mirando el frente. */
   eje: "ancho" | "alto" | null;
-  /** El campo de `partes` que dice cuántas hay. */
+  /** El campo que dice cuántas hay (uno de `fichas.geometria`: en `partes`
+   *  —las puertas, los tramos— o en el mueble —los entrepaños—). */
   campo: string;
+  /** La base cuenta como una más: los entrepaños son la base y los
+   *  `entrepanos` del mueble (`EN1` es la base). */
+  base?: boolean;
   /** Menos que esto no es dividir (una nevera de una puerta se vende entera). */
   minimo: number;
   /** Una por mueble y sin número (el forro, cuando llegue). */
   unico?: boolean;
   singular: string;
   plural: string;
+  /** Para decirla bien: «una puerta vendida», «un tramo vendido». */
+  genero: "f" | "m";
   /** La tarifa de referencia por clase (`parte_puerta`). Vacía: la de la cara
    *  dividida por la cantidad de partes. */
   tarifa: string;
@@ -205,7 +215,10 @@ export interface TipoDeMueble extends FormaDeMueble {
   /** Qué geometría puede fijar un modelo de este tipo, y entre qué valores. */
   geometria?: Partial<Record<CampoDeGeometria, [number, number]>>;
   /** De qué formas se puede vender por partes (`partes.clases`). */
-  partes?: { divisiones?: string[] };
+  /** Vender por partes: de qué formas se divide (`divisiones`) y cuáles se
+   *  cuentan en el plano y no en la ficha (`seCuentanEnElPlano`: los tramos
+   *  de una góndola, cuya ficha es un módulo). */
+  partes?: { divisiones?: string[]; seCuentanEnElPlano?: string[] };
 }
 
 /** Las reglas de una ficha (`fichas` en `muebles.json`). Ver `catalogo/fichas.ts`. */

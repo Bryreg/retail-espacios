@@ -2116,6 +2116,450 @@
    "mal": [
     "partes"
    ]
+  },
+  {
+   "nombre": "una góndola por tramos: la cantidad no va en la ficha (es un módulo), se fija en el plano",
+   "ficha": {
+    "clave": "gondola-gamma-100",
+    "tipo": "gondola",
+    "variante": "wall",
+    "nombre": "Góndola Gamma de pared 1,00",
+    "w": 1.0,
+    "d": 0.45,
+    "h": 2.0,
+    "entrepanos": 4,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "division": "tramos"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una góndola con la cantidad de tramos en la ficha: no va, depende del largo del corrido",
+   "ficha": {
+    "clave": "gondola-gamma-100",
+    "tipo": "gondola",
+    "variante": "wall",
+    "nombre": "Góndola Gamma de pared 1,00",
+    "w": 1.0,
+    "d": 0.45,
+    "h": 2.0,
+    "entrepanos": 4,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "tramos": 4,
+     "division": "tramos"
+    }
+   },
+   "mal": [
+    "partes.tramos"
+   ]
+  },
+  {
+   "nombre": "una góndola con tramos y sin decir cómo se vende: tampoco van",
+   "ficha": {
+    "clave": "gondola-gamma-100",
+    "tipo": "gondola",
+    "variante": "wall",
+    "nombre": "Góndola Gamma de pared 1,00",
+    "w": 1.0,
+    "d": 0.45,
+    "h": 2.0,
+    "entrepanos": 4,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "tramos": 4
+    }
+   },
+   "mal": [
+    "partes.tramos"
+   ]
+  },
+  {
+   "nombre": "una góndola por entrepaños, con sus entrepaños",
+   "ficha": {
+    "clave": "gondola-gamma-100",
+    "tipo": "gondola",
+    "variante": "wall",
+    "nombre": "Góndola Gamma de pared 1,00",
+    "w": 1.0,
+    "d": 0.45,
+    "h": 2.0,
+    "entrepanos": 4,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "division": "entrepanos"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "por entrepaños sin decir cuántos entrepaños tiene",
+   "ficha": {
+    "clave": "gondola-gamma-100",
+    "tipo": "gondola",
+    "variante": "wall",
+    "nombre": "Góndola Gamma de pared 1,00",
+    "w": 1.0,
+    "d": 0.45,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "division": "entrepanos"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "una góndola no se divide por puertas",
+   "ficha": {
+    "clave": "gondola-gamma-100",
+    "tipo": "gondola",
+    "variante": "wall",
+    "nombre": "Góndola Gamma de pared 1,00",
+    "w": 1.0,
+    "d": 0.45,
+    "h": 2.0,
+    "entrepanos": 4,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "division": "puertas"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "una punta por entrepaños, con un entrepaño y la base",
+   "ficha": {
+    "clave": "punta-gamma-70",
+    "tipo": "punta",
+    "nombre": "Punta Gamma 0,70",
+    "w": 0.7,
+    "d": 0.37,
+    "h": 1.8,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "entrepanos": 1,
+    "partes": {
+     "division": "entrepanos"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una punta no se divide por tramos",
+   "ficha": {
+    "clave": "punta-gamma-70",
+    "tipo": "punta",
+    "nombre": "Punta Gamma 0,70",
+    "w": 0.7,
+    "d": 0.37,
+    "h": 1.8,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "entrepanos": 3,
+    "partes": {
+     "division": "tramos"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "una punta no lleva tramos",
+   "ficha": {
+    "clave": "punta-gamma-70",
+    "tipo": "punta",
+    "nombre": "Punta Gamma 0,70",
+    "w": 0.7,
+    "d": 0.37,
+    "h": 1.8,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "tramos": 2
+    }
+   },
+   "mal": [
+    "partes.tramos"
+   ]
+  },
+  {
+   "nombre": "la nevera abierta (multideck) admite fichas, y por tramos con su cantidad",
+   "ficha": {
+    "clave": "multideck-250",
+    "tipo": "nevera_refrescos",
+    "nombre": "Multideck de bebidas 2,50",
+    "w": 2.5,
+    "d": 0.8,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "tramos": 2,
+     "division": "tramos"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "la nevera abierta por tramos sin decir cuántos",
+   "ficha": {
+    "clave": "multideck-250",
+    "tipo": "nevera_refrescos",
+    "nombre": "Multideck de bebidas 2,50",
+    "w": 2.5,
+    "d": 0.8,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "division": "tramos"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "la nevera abierta con un solo tramo: no es dividir",
+   "ficha": {
+    "clave": "multideck-250",
+    "tipo": "nevera_refrescos",
+    "nombre": "Multideck de bebidas 2,50",
+    "w": 2.5,
+    "d": 0.8,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "tramos": 1,
+     "division": "tramos"
+    }
+   },
+   "mal": [
+    "partes.division",
+    "partes.tramos"
+   ]
+  },
+  {
+   "nombre": "la nevera abierta con más tramos que los de su familia",
+   "ficha": {
+    "clave": "multideck-250",
+    "tipo": "nevera_refrescos",
+    "nombre": "Multideck de bebidas 2,50",
+    "w": 2.5,
+    "d": 0.8,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "tramos": 41
+    }
+   },
+   "mal": [
+    "partes.tramos"
+   ]
+  },
+  {
+   "nombre": "tramos que no son un entero",
+   "ficha": {
+    "clave": "multideck-250",
+    "tipo": "nevera_refrescos",
+    "nombre": "Multideck de bebidas 2,50",
+    "w": 2.5,
+    "d": 0.8,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "tramos": 2.5
+    }
+   },
+   "mal": [
+    "partes.tramos"
+   ]
+  },
+  {
+   "nombre": "la nevera abierta no se divide por entrepaños ni los lleva",
+   "ficha": {
+    "clave": "multideck-250",
+    "tipo": "nevera_refrescos",
+    "nombre": "Multideck de bebidas 2,50",
+    "w": 2.5,
+    "d": 0.8,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "entrepanos": 4,
+    "partes": {
+     "division": "entrepanos"
+    }
+   },
+   "mal": [
+    "entrepanos",
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "la nevera abierta sin cómo se vende: entera, como siempre",
+   "ficha": {
+    "clave": "multideck-250",
+    "tipo": "nevera_refrescos",
+    "nombre": "Multideck de bebidas 2,50",
+    "w": 2.5,
+    "d": 0.8,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "la nevera de vegetales admite fichas, y por tramos",
+   "ficha": {
+    "clave": "mural-vegetales-250",
+    "tipo": "nevera_vegetales",
+    "nombre": "Mural de vegetales 2,50",
+    "w": 2.5,
+    "d": 0.95,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "tramos": 3,
+     "division": "tramos"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "la nevera de vegetales fuera de su rango de ancho",
+   "ficha": {
+    "clave": "mural-vegetales-250",
+    "tipo": "nevera_vegetales",
+    "nombre": "Mural de vegetales 2,50",
+    "w": 5.0,
+    "d": 0.95,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "w"
+   ]
+  },
+  {
+   "nombre": "la nevera de vegetales no lleva puertas",
+   "ficha": {
+    "clave": "mural-vegetales-250",
+    "tipo": "nevera_vegetales",
+    "nombre": "Mural de vegetales 2,50",
+    "w": 2.5,
+    "d": 0.95,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "puertas": 2
+    }
+   },
+   "mal": [
+    "partes.puertas"
+   ]
+  },
+  {
+   "nombre": "una nevera de puertas no lleva tramos",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "puertas": 2,
+     "tramos": 2,
+     "division": "puertas"
+    }
+   },
+   "mal": [
+    "partes.tramos"
+   ]
   }
  ]
 }

@@ -1,7 +1,21 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-14, **vender por partes, paso 1: la nevera entera o por puertas**.
+Última actualización: 2026-10-14, **vender por partes, paso 2: tramos y entrepaños, y las fichas
+propias que ya vienen configuradas**. El mural, la góndola (central o de pared), la nevera abierta
+y la de vegetales se venden enteros o POR TRAMOS (`GON-05-B-TR2`, de izquierda a derecha mirando
+esa cara); la góndola y la punta, enteras o POR ENTREPAÑOS (`PUN-02-EN1` es la base, contando de
+abajo hacia arriba: con 4 entrepaños se venden 5). Un mueble se divide de UNA sola forma, elegida
+en el panel «Cómo se vende» del plano 2D y del Editor 3D —que ahora ofrece las formas de su
+familia— o, lo que pidió la dueña, **en la ficha propia del taller** («Cómo se vende»: la ficha
+de un multideck «por tramos, 2» se coloca y Vender ya ofrece `TR1 · TR2`). La tarifa de un tramo
+o un entrepaño es la de su clase por sede o, vacía, la de la cara ÷ partes. Con un tramo o un
+entrepaño vendido no cambian los tramos ni los entrepaños (409 `partes_vendidas`, y el panel lo
+frena antes). Los espacios internos del Editor 3D conviven: se avisan por parte, y en un mueble
+que se vende por partes no se marca uno nuevo como vendido. Ver *Vender por partes: tramos y
+entrepaños (P2, 2026-10-14)*.
+
+Antes, 2026-10-14, **vender por partes, paso 1: la nevera entera o por puertas**.
 En el panel del plano (2D y 3D) la nevera de puertas tiene «Cómo se vende: Entera · Entera o por
 puertas (N)»; elegida la segunda, Vender ofrece «Entera · PU1 · PU2…» y `NEV-03-PU2` es un espacio
 más (una fila de `spaces` con el código derivado, sin columnas nuevas): la planilla, el contrato
@@ -235,8 +249,14 @@ que todavía no puede es **venderlos como los vende él**. Lo que sigue, en orde
      se dejó para P2 a propósito—; el recorrido en el navegador con la dueña (vender la PU2,
      ver el plano «parcial», intentar la entera, bajar a 2 puertas y ver el 409); y la pregunta
      de si una nevera de UNA puerta se vende por puertas (hoy no: el mínimo es 2);
-   - **el mural por tramos** (`GON-12-TR3`): la misma regla que la puerta, sobre la góndola de
-     pared, el multideck y vegetales;
+   - ~~**el mural por tramos**~~ **hecho (P2, 2026-10-14)**, junto con **la góndola y la punta
+     por entrepaños** y **«Cómo se vende» en las fichas propias del taller**: ver *Vender por
+     partes: tramos y entrepaños*. Queda de ese paso: el recorrido en el navegador con la dueña
+     (un mural de lácteos en 3 tramos, una góndola por entrepaños con la base y el EN4 de la B
+     vendidos, un multideck colocado desde una ficha «por tramos»); y sus preguntas —si la base
+     es el entrepaño 1 y se vende, si «mural refrigerado» es el multideck, una tarifa de tramo
+     para todos o una por familia, y si los modelos de góndola de RECABRA tienen que nacer «por
+     entrepaños» (hoy nacen enteros: el panel o la ficha lo eligen)—;
    - **la bahía de la caja** (`CAJ-04-BI1`): la caja sigue sin venderse entera, su bahía sí, y
      eso reescribe la regla dura de `NUNCA_ALQUILABLE`. Falta que la dueña diga cuántas bahías
      por caja y si se venden de a una (decisión 4 del plan);
@@ -244,12 +264,14 @@ que todavía no puede es **venderlos como los vende él**. Lo que sigue, en orde
      entera. Va con los soportes cedidos a un operador (Marketmedios), que sacan de la venta
      columnas y pantallas enteras.
 
-   Lo que ya está listo para eso, desde P1: las clases de parte del catálogo
-   (`partes.clases`: token, eje, mínimo, tarifa, nombres) y la regla de `chocan` con clases
-   distintas en la misma cara (se pisan), el candado por mueble, la compuerta
-   (`motivo_para_no_vender_parte`), los nombres reservados (`TR`, `EN`, `BI`, `FO`, `CP`, `CN`,
-   `ST` ya no se pueden poner a un mueble nuevo) y las pantallas, que muestran cualquier clase.
-   Agregar el mural es sumar la clase `tramos` y la división a su familia, y dibujar dónde cae.
+   Lo que ya está listo para eso, desde P1 y P2: las clases de parte del catálogo
+   (`partes.clases`: token, eje, campo, base, género, mínimo, tarifa, nombres) y la regla de
+   `chocan` con clases distintas en la misma cara (se pisan), el candado por mueble, la
+   compuerta (`motivo_para_no_vender_parte`), los nombres reservados (`BI`, `FO`, `CP`, `CN`,
+   `ST` ya no se pueden poner a un mueble nuevo), el panel y la ficha que ofrecen las formas de
+   la familia, y las pantallas, que muestran cualquier clase y la dicen con su género. Las
+   bahías y el forro son PIEZAS (no dividen la cara): falta la clase `pieza` en `partesDe` y
+   reescribir la regla dura de `NUNCA_ALQUILABLE`.
 2. **El material de la cara** (copete, cenefa, stopper) como venta aparte (PR 5 del plan).
    **Espera una respuesta de la dueña**: si el copete de una cara se puede vender a otra marca
    que la de la cara. El plan recomienda que sí (es una pieza aparte, que Vender sugiere junto
@@ -440,7 +462,7 @@ Esto REEMPLAZA al modelo dual, que fue el mayor generador de bugs del proyecto �
 El código de espacio es `"SEDE-CODE"` en mayúsculas. La cara B de una góndola doble usa
 sufijo `-B`; los campos top-level del fixture son la Cara A y `fixture.faceB` es la B.
 **Una parte agrega su sufijo al final, después de la cara: `SEDE-CODE[-B]-PU<n>`**
-(`NAVE-NEV-03-PU2`, `NAVE-GON-05-B-TR2` cuando haya tramos). La relación entre la cara y sus
+(`NAVE-NEV-03-PU2`, `NAVE-GON-05-B-TR2`, `NAVE-PUN-02-EN1`). La relación entre la cara y sus
 partes se DEDUCE del código, sin columnas: `partirCodigo` (`utils/partes.ts`) y
 `partir_codigo` (`services/partes.py`) leen de derecha a izquierda —el último tramo es una
 parte si es el token de una clase que existe con su número; después, `-B` es la cara— y
@@ -552,7 +574,10 @@ nadie. Ver *Lo que se puede editar y lo que no se puede perder*. **Con una puert
 por puertas —la «puerta 2» pasaría a ser otra hoja—: el panel «Cómo se vende» lo frena sin
 nombrar a nadie (`revisarCambioDePartes` en `utils/partesDelMueble.ts`) y el servidor
 también (409 `partes_vendidas`); con la nevera vendida ENTERA, cambiar las puertas avisa con
-«Cambiar igual».
+«Cambiar igual». Lo mismo **con un tramo o un entrepaño vendido**: no cambian los tramos, ni
+la cantidad de entrepaños (que es la cantidad de partes: el «Entrepaños» del panel de
+geometría lo frena con `loVendidoDe(…, estado)`), ni la forma de dividir; el alto sí, con
+aviso. Estirar el mueble no frena: los tramos y las puertas se estiran parejo.
 
 **Una pestaña vieja no borra lo nuevo.** La ficha del mueble (`CLAVES_DE_FICHA`: `modelo`,
 `partes`, `entrepanos`, `modulo`) son claves que un editor de antes no conoce. `PUT
@@ -594,7 +619,9 @@ contesta 409 `partes_vendidas` (`partes_que_se_moverian`, por el `code` del mueb
 `GON-B`: 409 `nombre_reservado`, `nombres_reservados_nuevos`); un plano viejo con un nombre
 así se sigue guardando.
 
-**La nevera entera o por partes, nunca las dos.** Lo decide `chocan` (los dos lados, los
+**Entero o por partes, nunca las dos; y una sola forma de dividir.** Un mueble se divide por
+puertas, por tramos o por entrepaños, nunca por dos a la vez (`partes.division` es un solo
+valor; el panel y la ficha ofrecen las de su familia). Lo decide `chocan` (los dos lados, los
 mismos casos): el mismo espacio choca; la cara entera y una de sus divisiones, sí; dos
 divisiones de la misma clase, no (dos puertas conviven); de clases distintas en la misma cara,
 sí; una pieza sólo consigo misma. Lo aplican los CUATRO caminos que escriben contratos —la
@@ -9532,6 +9559,108 @@ de antes), `test_partes_venta.py` (los cuatro caminos, correos, tarifa, renovar)
 `test_layout_partes.py` (los tres 409 y la pestaña vieja) y `test_partes_concurrencia.py` (el
 orden del candado siempre; la carrera de dos hilos con
 `DATABASE_URL_PG_PRUEBA=postgresql://…`).
+
+### Vender por partes: tramos y entrepaños (P2, 2026-10-14)
+
+La dueña: el mural, la góndola, la nevera abierta (multideck) y la de vegetales se venden
+**enteros o por tramos**; la góndola y la punta, **enteras o por entrepaños** («cada repisa con
+proveedor y precio por entrepaño, pero siempre dejando la opción de vender toda la cara»). Y lo
+que pidió para este paso: **que los muebles que cada supermercado arma con sus fichas propias
+queden configurados para venderse por partes**. Es la maquinaria de P1 con dos clases más.
+
+**Las clases nuevas** (`muebles.json`, las dos copias idénticas):
+
+- `tramos`: token `TR`, a lo ancho (de izquierda a derecha mirando el frente de esa cara),
+  contado por `partes.tramos`, mínimo 2, tarifa `parte_tramo` («Tramo (cada uno)»). Lo admiten
+  `gondola` (central y de pared; `geometria.tramos` de 2 a 40), `nevera_refrescos` y
+  `nevera_vegetales`. El panel deja hasta un tramo cada 60 cm (el mural de refrigerados de NAVE
+  mide 26 m: 40 tramos).
+- `entrepanos`: token `EN`, de abajo hacia arriba, contado por el `entrepanos` del MUEBLE (no de
+  `partes`) **más la base** (`base: true`): con 4 entrepaños se venden 5, y **`EN1` es la base**
+  (la bandeja que se apoya en el zócalo, que también lleva producto). Sin entrepaños guardados no
+  hay cuenta: se vende entera, no se adivina por el alto. Lo admiten `gondola` y `punta`; tarifa
+  `parte_entrepano` («Entrepaño (cada uno)»).
+- Cada clase dice su `genero` para decirla bien («un tramo vendido», «una puerta vendida»).
+- `fichas.geometria` suma `tramos` (entero, en `partes`), así que la mercaderista y el visor de
+  Vender reciben los tramos tipados, como las puertas.
+- `seCuentanEnElPlano` (por tipo): la ficha de una góndola es UN MÓDULO, así que su cantidad de
+  tramos no va en la ficha (depende del largo del corrido). La ficha dice sólo «por tramos»; lo
+  colocado se vende entero hasta fijarlos en el panel del plano (un tramo por módulo). Vender
+  lo dice («fijalos en el plano») y la planilla también («no tiene fijado cuántos»).
+- `nevera_refrescos` y `nevera_vegetales` ganan `rango`: admiten fichas propias.
+
+**Una sola forma de dividir.** `partes.division` es un solo valor. Una góndola puede tener los
+tramos dibujados y venderse por entrepaños: los tramos sólo dibujan. La compuerta lo dice: un
+`TR2` de una góndola que se vende por entrepaños es «se vende por entrepaños: un mueble se divide
+de una sola forma»; un `TR1` de una punta, «no se vende por tramos». Y `chocan` sigue frenando
+un tramo y un entrepaño de la misma cara aunque los haya dejado una restauración.
+
+**Cómo se dibuja.**
+
+- Con `partes.tramos`, la góndola parte el corrido en ESOS tramos iguales, mande lo que mande el
+  módulo (`vanosDeCorrido(w, modulo, tramos)`): un tramo es siempre un vano, y estirar el corrido
+  estira los tramos sin cambiar cuál es cuál. El «Módulo» del panel queda quieto y dice el que
+  sale del ancho. La nevera abierta y la de vegetales dibujan un montante entre tramo y tramo
+  (`montantesDeTramos`) y venden un vano por tramo (`ventaDeNevera(…, tramos)`).
+- Los entrepaños son las filas de siempre (`filasDeProducto`, `filasDePunta`).
+- **El plano 2D** marca las juntas entre puertas o tramos (línea punteada a lo ancho) y un punto
+  rojo en el frente de cada parte vendida (del mapa crudo de la base), sin nombres.
+- **El visor de Vender**: un tramo es un vano del dibujo DE LA CARA (`vanoEnLaCara`, que es `n − k`
+  en las dos caras porque el producto de la B se dibuja girado media vuelta; `vanoDeParte` sigue
+  siendo la cuenta en el mueble, la del plano y los espacios internos). Un entrepaño es una fila
+  (`filaDeEntrepano`, la base es la 0): el producto en prueba va sólo en esas filas. Cada parte
+  vendida lleva su contorno en el amarillo de Vender (`muebles/contornos.ts`), fuera de la lámina.
+  `probar-partes` proyecta con la cámara de venta de las dos caras de una góndola girada.
+
+**El panel «Cómo se vende»** (`components/PartesDelMueble.tsx`, el mismo en el 2D y el 3D, y
+ahora en todas las familias que se dividen): «Entera · Entera o por tramos · Entera o por
+entrepaños». Elegir una forma escribe lo que se dibuja hoy (`cambioParaDividir`: los módulos del
+corrido, un tramo cada 1,25 m en la nevera abierta, y los entrepaños dibujados si no estaban
+guardados). Con una parte vendida de esa clase no cambia la forma ni la cantidad; con la cara
+vendida entera, avisa; con espacios internos vendidos, avisa que pueden caer encima.
+
+**Las fichas propias** (el taller, «Fichas»): la sección **«Cómo se vende»** ofrece las formas de
+su familia, y «Tramos» para la nevera abierta y la de vegetales. Una ficha por entrepaños tiene
+que decir sus entrepaños; una por tramos (que no sea góndola), cuántos. El servidor valida lo
+mismo (`problemas_de_la_ficha`, los casos de `casos/fichas.json`) y guarda la forma
+(`ficha_normalizada`). Colocada desde la paleta, la ficha se estampa con su forma y Vender la
+ofrece por partes sin tocar el panel. **Lo ya colocado no cambia** si se edita la ficha. Los
+modelos de RECABRA pueden llevar la forma (las neveras de 2, 3 y 4 puertas la traen desde P1);
+los de góndola nacen enteros a propósito: lo decide la dueña.
+
+**Los espacios internos del Editor 3D conviven** (`utils/slotsDeLasPartes.ts`): un espacio
+interno cae en un tramo por el ancho (con la numeración de la cara) y en un entrepaño por la
+regla del relleno (`entrepanosDelEspacio`). Vender avisa en el renglón de la parte los que caen
+en ESA parte («1 interno vendido en esta parte»); la planilla avisa los del mueble en las filas
+de una parte. Y en un mueble que se vende por tramos o entrepaños, el panel del espacio interno
+**no deja marcar uno nuevo como Ocupado o Reservado** (eso se vende en Vender, con contrato: si
+no, la misma repisa se vendía dos veces sin que el servidor lo viera); el que ya estaba se puede
+liberar, y si pisa una parte con contrato lo dice.
+
+**Lo demás es la maquinaria de P1, que ya era genérica**: Vender («Entera · TR1 · TR2…», el
+choque dicho con el género de la clase, la tarifa de la parte), Supervisar (la fila de cada
+parte, «Tramos vendidos: x de y» o «Partes vendidas» con varias clases, el detalle «Por tramos»
+con «Vender este tramo»), los correos, la mercaderista («Entrepaño 1 de 5, contando de abajo
+hacia arriba (el 1 es la base)»), el área de la fila (huella ÷ n para los tramos, 0 para un
+entrepaño), la consola, la auditoría y el guardado del plano (`partes_vendidas` con
+«de 5 a 6 entrepaños»). La hoja de ayuda de la planilla explica `-TR3`, `-EN1` y `-B-TR3`.
+
+**Decisiones de este paso**, para confirmar con la dueña: la base es el `EN1` y se vende; «mural
+refrigerado» es el multideck (`nevera_refrescos`); una sola tarifa de tramo para la góndola, el
+multideck y vegetales (si la carga, pisa a los tres; vacía, cada uno se parte de la suya); los
+modelos de góndola de RECABRA nacen enteros; la ocupación de Supervisar sigue contando caras.
+**Riesgo**: un mueble de un plano viejo que ya se llamara `GON-01-TR2` se resuelve a sí mismo,
+pero `chocan` lo lee como el tramo 2 de `GON-01`: antes de desplegar, correr
+`scripts/auditar_desfase.py` sobre los planos de producción («código que se lee como una parte»).
+
+**Cómo se prueba.** `npm run probar:partes` (los casos compartidos con tramos y entrepaños, la
+proyección de los tramos de las dos caras con el producto de la B girado, los tramos que parten
+el corrido, elegir la forma, los bloqueos, los espacios internos por parte, la disponibilidad, el
+contorno del visor y el formulario del taller); `probar-catalogo` (el esquema de las clases nuevas
+y su adulteración); del lado del servidor `tests/test_partes_tramos.py` (los caminos de venta con
+tramos y entrepaños, la forma única, la tarifa, el área, el guardado del plano, la pestaña vieja,
+los espacios internos, la mercaderista y la ficha propia configurada), `test_partes.py` y
+`test_fichas_propias.py` con los casos compartidos.
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 

@@ -27,7 +27,8 @@ export function ventaDeTipo(
     case "punta":
       return ventaDePunta(w, d, h, geometria);
     case "nevera_refrescos":
-      return ventaDeNevera(w, d, h);
+      // Abierta: un vano, o uno por tramo si se vende por tramos.
+      return ventaDeNevera(w, d, h, undefined, geometria?.tramos);
     case "nevera_puertas":
       // Se vende entera; las puertas sólo dicen dónde se para el producto:
       // un vano por hoja, detrás de su vidrio.
@@ -47,3 +48,4 @@ export function ventaDeTipo(
 export function esNeveraDeBebidas(type: string): boolean {
   return type === "nevera_refrescos" || type === "nevera_puertas";
 }
+

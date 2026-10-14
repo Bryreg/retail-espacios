@@ -31,6 +31,10 @@ import {
 export function GeometriaDelMueble({ id, puedeEditar }: { id: string; puedeEditar: boolean }) {
   const f = useFixtureStore((s) => selectFixtures(s).find((x) => x.id === id));
   const sede = useFixtureStore((s) => s.sede);
+  // El mapa CRUDO de la base: vender una parte (un entrepaño, un tramo) no
+  // cambia el mueble fusionado, y con un entrepaño vendido la cantidad de
+  // entrepaños no se toca.
+  const estado = useFixtureStore((s) => s.estadoComercial);
 
   const [alto, setAlto] = useState("");
   const [entrepanos, setEntrepanos] = useState("");
@@ -96,7 +100,7 @@ export function GeometriaDelMueble({ id, puedeEditar }: { id: string; puedeEdita
     } finally {
       setRevisando(false);
     }
-    const r = revisarCambioDeGeometria(f, cambio, loVendidoDe(f, sede, conArte));
+    const r = revisarCambioDeGeometria(f, cambio, loVendidoDe(f, sede, conArte, estado));
     if (r.bloqueo) { setProblema(r.bloqueo); volver(); return; }
     if (r.aviso) { setPendiente({ cambio, aviso: r.aviso }); return; }
     escribir(cambio);
@@ -139,8 +143,11 @@ export function GeometriaDelMueble({ id, puedeEditar }: { id: string; puedeEdita
         </label>
         <label>
           <span className={etiquetaCls}>Módulo (m)</span>
+          {/* Vendida por tramos, el corrido se parte en ESOS tramos iguales:
+              el módulo sale del ancho entre los tramos y no se escribe. */}
           <input type="number" step={0.05} min={lim.modulo[0]} max={lim.modulo[1]} className={inputCls}
-            value={modulo} disabled={!!pendiente || revisando}
+            value={vista.porTramos ? vista.anchoDeModulo.toFixed(2) : modulo} disabled={!!pendiente || revisando || vista.porTramos}
+            title={vista.porTramos ? "Se vende por tramos: el módulo sale del ancho y los tramos («Cómo se vende»)." : undefined}
             placeholder={ficha.modulo !== undefined ? String(ficha.modulo) : "auto"}
             onChange={(e) => setModulo(e.target.value)} onBlur={alSalir("modulo")} onKeyDown={conEnter} />
         </label>
@@ -149,7 +156,7 @@ export function GeometriaDelMueble({ id, puedeEditar }: { id: string; puedeEdita
         Se dibujan la base y {vista.entrepanos} {vista.entrepanos === 1 ? "entrepaño" : "entrepaños"} con producto
         {vista.techo ? ", más uno de techo sin producto" : ""}{vista.entrepanosGuardados ? "" : " (la cuenta de siempre)"},
         en {vista.modulos} {vista.modulos === 1 ? "módulo" : "módulos"} de {metros(vista.anchoDeModulo)} m
-        {vista.moduloGuardado ? "" : " (la cuenta de siempre)"}. Vacío: la cuenta de siempre.
+        {vista.porTramos ? " (los tramos en que se vende)" : vista.moduloGuardado ? "" : " (la cuenta de siempre)"}. Vacío: la cuenta de siempre.
         {(ficha.entrepanos !== undefined || ficha.modulo !== undefined) && (
           <> Su ficha dice {[
             ficha.entrepanos !== undefined ? `${ficha.entrepanos} entrepaños` : "",

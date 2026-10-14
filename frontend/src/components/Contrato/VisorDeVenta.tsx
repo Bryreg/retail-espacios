@@ -75,10 +75,14 @@ export interface CaraDelVisor {
   codigo: string;
   /** «Punta de góndola», «Góndola, por cara». */
   tipo: string;
-  /** Vender por partes: las puertas de esta cara que van en el contrato,
-   *  como vanos del DIBUJO (`vanoDeParte`). Se marcan y el producto en prueba
-   *  va sólo detrás de ellas. Sin esto, la cara entera. */
+  /** Vender por partes: las puertas o los tramos de esta cara que van en el
+   *  contrato, como vanos del DIBUJO DE LA CARA (`vanoEnLaCara`). Se marcan y
+   *  el producto en prueba va sólo en ellos. Sin esto, la cara entera. */
   vanos?: number[];
+  /** Vender por partes: los entrepaños de esta cara que van en el contrato,
+   *  como filas de producto (`filaDeEntrepano`: la base es la 0). El producto
+   *  en prueba va sólo en ellas. */
+  filas?: number[];
 }
 
 export interface CaraActiva { fixtureId: string; face: "A" | "B" }
@@ -150,10 +154,12 @@ const INTERRUMPIDA = new Error("la lámina se interrumpió");
  * acá. Sólo lo redibuja lo que cambia lo que se ve.
  */
 const Lienzo = memo(function Lienzo({
-  muebles, privadoPara, sinArte, prueba, como, artes, pedido, estado, orbitRef, onCaptura, vanos,
+  muebles, privadoPara, sinArte, prueba, como, artes, pedido, estado, orbitRef, onCaptura, vanos, filas,
 }: {
-  /** Vender por partes: las puertas que se venden, por cara. */
+  /** Vender por partes: las puertas o los tramos que se venden, por cara. */
   vanos: ReadonlyMap<string, readonly number[]>;
+  /** Vender por partes: los entrepaños que se venden, por cara. */
+  filas: ReadonlyMap<string, readonly number[]>;
   muebles: PlacedFixture[];
   privadoPara: number | null;
   sinArte: boolean;
@@ -226,6 +232,7 @@ const Lienzo = memo(function Lienzo({
           onHoverFixture={NADA}
           estadoDeEscena={estado}
           vanosALaVenta={vanos}
+          filasALaVenta={filas}
         />
         </RellenoNeutro.Provider>
       </Canvas>
@@ -316,6 +323,14 @@ export default function VisorDeVenta({
       return [k, v.split(",").map(Number)] as [string, number[]];
     }) : [],
   ), [firmaDeVanos]);
+  // Lo mismo con los entrepaños que se venden (las filas de producto).
+  const firmaDeFilas = caras.filter((c) => c.filas?.length).map((c) => `${c.fixtureId}|${c.face}:${c.filas!.join(",")}`).join(";");
+  const filas = useMemo(() => new Map<string, readonly number[]>(
+    firmaDeFilas ? firmaDeFilas.split(";").map((t) => {
+      const [k, v] = t.split(":");
+      return [k, v.split(",").map(Number)] as [string, number[]];
+    }) : [],
+  ), [firmaDeFilas]);
   const mueblesRef = useRef(muebles);
   mueblesRef.current = muebles;
   const cara = caras.find((c) => c.fixtureId === activa.fixtureId && c.face === activa.face) ?? null;
@@ -842,6 +857,7 @@ export default function VisorDeVenta({
           orbitRef={orbitRef}
           onCaptura={alTenerCaptura}
           vanos={vanos}
+          filas={filas}
         />
         {/* El cuadro de antes, quieto, mientras se arma la lámina. */}
         {congelado && <img className="visor-congelado" src={congelado} alt="" aria-hidden data-congelado />}

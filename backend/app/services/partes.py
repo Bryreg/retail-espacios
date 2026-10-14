@@ -1,10 +1,17 @@
-"""Vender por partes: la nevera entera, o por puertas.
+"""Vender por partes: la nevera entera o por puertas; el mural, la góndola, la
+nevera abierta o la de vegetales, enteros o por tramos; la góndola y la punta,
+enteras o por entrepaños.
 
 La dueña lo pidió así: **las marcas pagan la nevera entera o por puertas, pero
 nunca las dos en las mismas fechas; dos puertas distintas, sí.** Y eligió el
 código: ``NEV-03-PU2`` es la puerta 2 de la nevera ``NEV-03``, contando de
 izquierda a derecha mirando su frente. Ese código queda para siempre en
-contratos, correos, planillas y enlaces de montaje.
+contratos, correos, planillas y enlaces de montaje. Lo mismo para los tramos
+(``GON-05-B-TR2``: el tramo 2 de la cara B, de izquierda a derecha mirando esa
+cara) y los entrepaños (``PUN-02-EN1``: la base, contando de abajo hacia
+arriba): «cada repisa con proveedor y precio por entrepaño, pero siempre
+dejando la opción de vender toda la cara». Un mueble se divide de UNA sola
+forma.
 
 ── Una parte es un espacio más ──────────────────────────────────────────────
 
@@ -40,7 +47,7 @@ import re
 from dataclasses import dataclass
 
 from app.services.catalogo_muebles import (
-    CAMPOS_DE_PARTES, CLASES_DE_PARTE, DIVISIONES_POR_TIPO, RESERVADOS, TIPOS,
+    CAMPOS_DE_PARTES, CLASES_DE_PARTE, DIVISIONES_POR_TIPO, REGLAS_DE_FICHA, RESERVADOS, TIPOS,
     tarifa_del_mueble, tipo_base,
 )
 
@@ -180,23 +187,41 @@ def _entero(v) -> bool:
         return False
 
 
+def valor_del_campo(fixture: dict, campo: str):
+    """Lo que el mueble guardó en ese campo de la ficha: adentro de ``partes``
+    (las puertas, los tramos) o en el mueble (los entrepaños), según
+    ``fichas.geometria`` del catálogo."""
+    regla = REGLAS_DE_FICHA["geometria"].get(campo)
+    if regla is None:
+        return None
+    if regla["enPartes"]:
+        partes = fixture.get("partes")
+        return partes.get(campo) if isinstance(partes, dict) else None
+    return fixture.get(campo)
+
+
 def cantidad_de(fixture: dict, clase: str) -> int | None:
     """Cuántas partes de esa clase tiene la cara, o ``None`` si el mueble no lo
-    dice bien: un número entero, al menos el mínimo de la clase y dentro del
-    rango de su familia. No se recorta ni se adivina: lo que no cierra no se
-    vende por partes."""
+    dice bien: el campo que la cuenta es un número entero dentro del rango de
+    su familia, y con la base (los entrepaños) da al menos el mínimo de la
+    clase. No se recorta ni se adivina: lo que no cierra no se vende por
+    partes. Una góndola con 4 entrepaños guardados vende 5: la base (``EN1``)
+    y los 4 —los cinco llevan producto—; sin entrepaños guardados no hay
+    cuenta, y se vende entera."""
     regla = CLASES_DE_PARTE.get(clase)
-    partes = fixture.get("partes")
-    if regla is None or not isinstance(partes, dict):
+    if regla is None or not isinstance(fixture, dict):
         return None
-    v = partes.get(regla["campo"])
+    v = valor_del_campo(fixture, regla["campo"])
     if not _entero(v):
         return None
     n = int(v)
     rango = (TIPOS.get(tipo_base(str(fixture.get("type") or ""))) or {}).get("geometria", {}).get(regla["campo"])
-    if n < regla.get("minimo", 1) or (rango and not rango[0] <= n <= rango[1]):
+    if rango and not rango[0] <= n <= rango[1]:
         return None
-    return n
+    total = n + (1 if regla.get("base") else 0)
+    if total < regla.get("minimo", 1):
+        return None
+    return total
 
 
 def division_de(fixture: dict) -> tuple[str, int] | None:
@@ -265,6 +290,16 @@ def partes_tipadas(partes) -> dict:
 # ─── Cómo se dice ─────────────────────────────────────────────────────────────
 
 
+def concordancia(clase: str) -> dict[str, str]:
+    """Las palabras que concuerdan con la clase: «una puerta vendida, la otra,
+    esta», «un tramo vendido, el otro, este». Del catálogo (``genero``)."""
+    f = (CLASES_DE_PARTE.get(clase) or {}).get("genero") != "m"
+    return {
+        "un": "una" if f else "un", "el": "la" if f else "el", "los": "las" if f else "los",
+        "o": "a" if f else "o", "este": "esta" if f else "este",
+    }
+
+
 def texto_de_parte(parte: Parte, de: int | None = None) -> str:
     """``Puerta 2 de 3``: sin el «de» si no se sabe cuántas hay."""
     regla = CLASES_DE_PARTE[parte.clase]
@@ -275,11 +310,18 @@ def texto_de_parte(parte: Parte, de: int | None = None) -> str:
 
 
 def texto_para_montar(parte: Parte, de: int | None = None) -> str:
-    """Lo que lee la mercaderista: cuál es, contada desde dónde."""
+    """Lo que lee la mercaderista: cuál es, contada desde dónde. Los
+    entrepaños, de abajo hacia arriba y con la base como el 1: es la bandeja
+    que se apoya en el zócalo, y también lleva producto."""
     regla = CLASES_DE_PARTE[parte.clase]
     texto = texto_de_parte(parte, de)
-    if regla.get("eje") == "ancho" and parte.n is not None:
+    if parte.n is None:
+        return texto
+    if regla.get("eje") == "ancho":
         return f"{texto}, contando de izquierda a derecha mirando el frente"
+    if regla.get("eje") == "alto":
+        base = " (el 1 es la base)" if regla.get("base") else ""
+        return f"{texto}, contando de abajo hacia arriba{base}"
     return texto
 
 

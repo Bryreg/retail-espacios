@@ -164,8 +164,11 @@ export function PanelDeFichas({
         </div>
         <div style={{ fontSize: 10.5, color: "var(--ink-3)" }}>
           {NOMBRE_DE_TIPO(m.tipo, m.variante)} · {cmTexto(m.w)} × {cmTexto(m.d)} × {cmTexto(m.h)} cm
-          {m.partes?.puertas !== undefined ? ` · ${m.partes.puertas} ${m.partes.puertas === 1 ? "puerta" : "puertas"}` : ""}
+          {m.partes?.puertas != null ? ` · ${m.partes.puertas} ${m.partes.puertas === 1 ? "puerta" : "puertas"}` : ""}
+          {m.partes?.tramos != null ? ` · ${m.partes.tramos} tramos` : ""}
           {m.entrepanos !== undefined ? ` · ${m.entrepanos} entrepaños` : ""}
+          {typeof m.partes?.division === "string" && CATALOGO_DE_MUEBLES.partes.clases[m.partes.division]
+            ? ` · por ${CATALOGO_DE_MUEBLES.partes.clases[m.partes.division].plural}` : ""}
           {m.tarifa ? ` · tarifa ${rotuloDeTarifa(m.tarifa)}` : ""}
         </div>
       </div>
@@ -233,7 +236,8 @@ export function PanelDeFichas({
               </div>
             ))}
 
-            {(familia.geometria.entrepanos || familia.geometria.modulo || familia.geometria.puertas) && (
+            {(familia.geometria.entrepanos || familia.geometria.modulo || familia.geometria.puertas
+              || (familia.geometria.tramos && !familia.seCuentanEnElPlano.includes("tramos"))) && (
               <p style={{ ...estilo.titulo, marginTop: 14 }}>Cómo es por dentro</p>
             )}
             {familia.geometria.puertas && (
@@ -244,6 +248,16 @@ export function PanelDeFichas({
                     onChange={(e) => cambiar("puertas", e.target.value)} />
                 </label>
                 <Problemas campo="puertas" />
+              </>
+            )}
+            {familia.geometria.tramos && !familia.seCuentanEnElPlano.includes("tramos") && (
+              <>
+                <label style={estilo.etiqueta}>
+                  Tramos<span style={estilo.ayuda}>de {familia.geometria.tramos[0]} a {familia.geometria.tramos[1]}; un montante entre tramo y tramo; vacío: el frente corrido</span>
+                  <input inputMode="numeric" value={form.tramos} style={borde("tramos")} data-campo="tramos"
+                    onChange={(e) => cambiar("tramos", e.target.value)} />
+                </label>
+                <Problemas campo="tramos" />
               </>
             )}
             {familia.geometria.entrepanos && (
@@ -268,6 +282,46 @@ export function PanelDeFichas({
                     onChange={(e) => cambiar("moduloCm", e.target.value)} />
                 </label>
                 <Problemas campo="moduloCm" />
+              </>
+            )}
+
+            {/* Vender por partes: cómo se vende lo que se coloque desde esta
+                ficha. Lo ya colocado no cambia (se cambia en el panel del plano). */}
+            {familia.divisiones.length > 0 && (
+              <>
+                <p style={{ ...estilo.titulo, marginTop: 14 }}>Cómo se vende</p>
+                <label style={estilo.etiqueta}>
+                  Entero o por partes
+                  <span style={estilo.ayuda}>
+                    la cara entera siempre se vende; nunca en las mismas fechas que sus partes
+                  </span>
+                  <select value={form.division} style={borde("division")} data-campo="division"
+                    onChange={(e) => cambiar("division", e.target.value)}>
+                    <option value="">Entero, como siempre</option>
+                    {familia.divisiones.map((d) => {
+                      const c = CATALOGO_DE_MUEBLES.partes.clases[d];
+                      return <option key={d} value={d}>Entero o por {c?.plural ?? d}</option>;
+                    })}
+                  </select>
+                </label>
+                {form.division === "entrepanos" && (
+                  <p style={estilo.ayuda} data-ayuda-division>
+                    Se venden la base y los entrepaños de arriba (con 4 entrepaños, 5 partes: el EN1 es la base). La ficha
+                    tiene que decir cuántos entrepaños.
+                  </p>
+                )}
+                {form.division === "tramos" && familia.seCuentanEnElPlano.includes("tramos") && (
+                  <p style={estilo.ayuda} data-ayuda-division>
+                    Un tramo por módulo del corrido: cuántos, depende de cuánto se estire en el plano. Se fijan en el
+                    panel del plano («Cómo se vende»); hasta entonces se vende entera.
+                  </p>
+                )}
+                {form.division && form.division !== "entrepanos" && !familia.seCuentanEnElPlano.includes(form.division) && (
+                  <p style={estilo.ayuda} data-ayuda-division>
+                    Se cuentan de izquierda a derecha mirando el frente; la ficha tiene que decir cuántas (2 o más).
+                  </p>
+                )}
+                <Problemas campo="division" />
               </>
             )}
 

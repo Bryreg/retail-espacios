@@ -405,7 +405,7 @@ prueba("el componente NO escribe sin revisar: bloqueo no escribe, aviso espera �
   assert.deepEqual(llamadas.filter((l) => l !== "escribir(cambio: CambioDeGeometria)"), ["escribir(cambio)", "escribir(c)"],
     "el componente escribe en un lugar más que tras la revisión y tras «Cambiar igual»");
   const proponer = recorte(componente, "async function proponer(", "const alSalir");
-  const orden = ["problemaDelCambio(f, cambio)", "getFaceImages()", "revisarCambioDeGeometria(f, cambio, loVendidoDe(f, sede, conArte))",
+  const orden = ["problemaDelCambio(f, cambio)", "getFaceImages()", "revisarCambioDeGeometria(f, cambio, loVendidoDe(f, sede, conArte, estado))",
     "if (r.bloqueo) { setProblema(r.bloqueo); volver(); return; }",
     "if (r.aviso) { setPendiente({ cambio, aviso: r.aviso }); return; }", "escribir(cambio);"];
   let desde = 0;

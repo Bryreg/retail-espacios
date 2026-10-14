@@ -74,9 +74,9 @@ import { espaciosSinMueble } from "../utils/espaciosSinMueble";
 import { contratosSinMueble, type ContratoSinMueble } from "../utils/auditoriaDesfase";
 import { repartirAnchos, type Columna as ColumnaTabla } from "../utils/anchosTabla";
 import {
-  alternarParte, claveDeEspacio, codigoDeParte, codigoVisibleDe, disponibilidadDeCara, estadoDeEspacio,
-  indiceDePartes, partesDe, partirClave, partirCodigo, sufijoDeParte, tarifaDeEspacio, textoDeParte,
-  type EnContrato, type IndiceDePartes, type ParteRef,
+  alternarParte, claseDe, claveDeEspacio, codigoDeParte, codigoVisibleDe, concordancia, disponibilidadDeCara,
+  divisionDe, estadoDeEspacio, indiceDePartes, partesDe, partirClave, partirCodigo, sufijoDeParte, tarifaDeEspacio,
+  textoDeParte, type EnContrato, type IndiceDePartes, type ParteRef,
 } from "../utils/partes";
 import type { EstadoPorEspacio } from "../utils/estadoComercial";
 import { partesConEstado } from "../utils/partesDelMueble";
@@ -2001,6 +2001,10 @@ function FixturePopover({
     () => (rentable ? partesConEstado(fixture, estado, sedeActiva).filter((p) => !p.codigo.includes("-B-")) : []),
     [rentable, fixture, estado, sedeActiva],
   );
+  // De qué clase son (puertas, tramos, entrepaños), para decirlas bien.
+  const divisionDelPopover = divisionDe(fixture);
+  const claseDelPopover = divisionDelPopover ? claseDe(divisionDelPopover.clase) : undefined;
+  const generoDelPopover = divisionDelPopover ? concordancia(divisionDelPopover.clase).o : "a";
 
   const W = 296;
   // Alto estimado, sólo para no dejarlo colgando fuera del mapa. Creció con el
@@ -2089,15 +2093,15 @@ function FixturePopover({
         ) : (
           <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
             {rentable
-              ? puertas.some((p) => p.vendida)
-                ? "Entera, sin contrato: hay puertas vendidas."
+              ? puertas.some((p) => p.vendida) && claseDelPopover
+                ? `Entera, sin contrato: hay ${claseDelPopover.plural} vendid${generoDelPopover}s.`
                 : "Sin contrato activo — disponible para vender."
               : "Parte del local, no admite contrato."}
           </div>
         )}
         {puertas.length > 0 && (
           <div data-puertas-del-popover style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--ink-3)" }}>
-            {puertas.map((p) => `${p.sufijo} ${p.vendida ? "vendida" : "libre"}`).join(" · ")}
+            {puertas.map((p) => `${p.sufijo} ${p.vendida ? `vendid${generoDelPopover}` : "libre"}`).join(" · ")}
           </div>
         )}
 
@@ -2200,10 +2204,15 @@ function PartesDeLaCara({
   }, [fixture, face, estado, indice, sede]);
   if (filas.length === 0) return null;
   const n = partesDe(fixture).filter((p) => p.cara === face).length || null;
+  // De qué clase: la forma en que se vende hoy o, si dejó de venderse así,
+  // la de la primera parte con contrato.
+  const claseDeLaCara = divisionDe(fixture)?.clase ?? filas[0]?.parte?.clase ?? "puertas";
+  const reglaDeLaCara = claseDe(claseDeLaCara);
+  const g = concordancia(claseDeLaCara);
   return (
     <div data-partes-de-la-cara={`${fixture.id}-${face}`}>
       <div style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--ink-3)", marginBottom: 7 }}>
-        Por puertas
+        Por {reglaDeLaCara?.plural ?? "partes"}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {filas.map((e) => {
@@ -2237,7 +2246,7 @@ function PartesDeLaCara({
                   )}
                   {onVender && !conContrato && e.parte && (
                     <button onClick={() => onVender(sufijoDeParte(e.parte!))} style={botonDeParte(false)}>
-                      <Handshake size={12} /> Vender esta puerta
+                      <Handshake size={12} /> Vender {g.este} {reglaDeLaCara?.singular ?? "parte"}
                     </button>
                   )}
                 </div>
@@ -4312,8 +4321,14 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     const committed = porUnidad.filter((s) => s === "committed").length;
     const free      = porUnidad.filter((s) => s === "free").length;
     /** Las partes que se ofrecen y cuántas corren o están firmadas: «Puertas
-     *  vendidas: 2 de 9». Cero y cero si nadie vende por partes. */
+     *  vendidas: 2 de 9», «Tramos vendidos: 1 de 6»; con varias clases en la
+     *  sede, «Partes vendidas». Cero y cero si nadie vende por partes. */
     const partesOfrecidas = fixtures.filter(isRentable).reduce((t, f) => t + partesDe(f).length, 0);
+    const clasesOfrecidas = new Set(fixtures.filter(isRentable).flatMap((f) => partesDe(f).map((p) => p.parte.clase)));
+    const unaClase = clasesOfrecidas.size === 1 ? [...clasesOfrecidas][0] : null;
+    const rotuloPartes = unaClase && claseDe(unaClase)
+      ? `${claseDe(unaClase)!.plural.charAt(0).toUpperCase()}${claseDe(unaClase)!.plural.slice(1)} vendid${concordancia(unaClase).o}s`
+      : "Partes vendidas";
     const partesVendidas = partes.filter((p) => {
       const d = displayStatus(p);
       return d === "active" || d === "expiring" || d === "committed";
@@ -4381,7 +4396,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       rentableFixtures, nonRentable,
       expired, expiring, noContract,
       topSuppliers, belowReference,
-      partesOfrecidas, partesVendidas,
+      partesOfrecidas, partesVendidas, rotuloPartes,
       /** Las filas de la tabla: las caras y las partes vendidas. */
       filas: faces.length,
     };
@@ -5148,10 +5163,10 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 valor={`${kpis.occPct}%`}
                 notas={[
                   `${kpis.occupied} de ${kpis.total} caras`,
-                  // Vender por partes: cuántas puertas corren o están firmadas,
-                  // de las que se ofrecen. Sólo si alguien vende por puertas.
+                  // Vender por partes: cuántas partes corren o están firmadas,
+                  // de las que se ofrecen. Sólo si alguien vende por partes.
                   ...(kpis.partesOfrecidas > 0
-                    ? [`Puertas vendidas: ${kpis.partesVendidas} de ${kpis.partesOfrecidas}`] : []),
+                    ? [`${kpis.rotuloPartes}: ${kpis.partesVendidas} de ${kpis.partesOfrecidas}`] : []),
                 ]}
                 barra={kpis.occPct}
               />

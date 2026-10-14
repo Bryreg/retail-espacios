@@ -13,10 +13,18 @@ import { entrepanosQueEntran, TIPOS_CON_GEOMETRIA } from "./geometriaDelMueble";
  * La familia (sólo las que admiten fichas: las que tienen `rango` en el
  * catálogo; la góndola, central o de pared), el nombre, las medidas EN
  * CENTÍMETROS —como vienen en una ficha técnica—, la geometría de su familia
- * (puertas, entrepaños, módulo), la tarifa (la de su familia o una propia de
- * las que ya existen) y de dónde salió: la URL de la ficha, una nota en
- * palabras propias y cuánto confiar. Sin foto: la dueña no tiene fotos de sus
- * muebles, y la ficha no las admite.
+ * (puertas, tramos, entrepaños, módulo), CÓMO SE VENDE (entera, o entera o por
+ * puertas, tramos o entrepaños: lo que su familia admite), la tarifa (la de su
+ * familia o una propia de las que ya existen) y de dónde salió: la URL de la
+ * ficha, una nota en palabras propias y cuánto confiar. Sin foto: la dueña no
+ * tiene fotos de sus muebles, y la ficha no las admite.
+ *
+ * «Cómo se vende» es lo que la dueña pidió de las fichas propias: que el
+ * mueble que ella arma ya venga configurado para venderse por partes. Lo
+ * colocado desde la ficha se estampa con eso (`estampaDe`), y Vender lo
+ * ofrece entero o por partes sin tocar el panel. Los tramos de una góndola no
+ * van en la ficha (la ficha es un módulo, y cuántos tramos tiene depende del
+ * largo del corrido): se fijan en el panel del plano, uno por módulo.
  *
  * ── Se valida antes de mandar ────────────────────────────────────────────────
  *
@@ -43,6 +51,11 @@ export interface FormularioDeFicha {
   entrepanos: string;
   moduloCm: string;
   puertas: string;
+  /** Los tramos del frente (la nevera abierta, la de vegetales). */
+  tramos: string;
+  /** Cómo se vende: `""` entera; o la división (`puertas`, `tramos`,
+   *  `entrepanos`), de las que admite su familia. */
+  division: string;
   /** `""`: la tarifa de su familia. */
   tarifa: string;
   url: string;
@@ -58,7 +71,11 @@ export interface FamiliaDeFicha {
   rotulo: string;
   /** En metros, del catálogo. */
   rango: { w: [number, number]; d: [number, number]; h: [number, number] };
-  geometria: { entrepanos?: [number, number]; modulo?: [number, number]; puertas?: [number, number] };
+  geometria: { entrepanos?: [number, number]; modulo?: [number, number]; puertas?: [number, number]; tramos?: [number, number] };
+  /** Las formas en que se vende por partes (`partes.divisiones` de la
+   *  familia), y cuáles se cuentan en el plano y no en la ficha. */
+  divisiones: string[];
+  seCuentanEnElPlano: string[];
   /** La clave de la tarifa de su familia y las propias que puede elegir. */
   tarifa?: string;
   tarifasPropias: string[];
@@ -83,6 +100,8 @@ export const FAMILIAS_DEL_FORMULARIO: readonly FamiliaDeFicha[] = CATALOGO_DE_MU
     rotulo,
     rango: t.rango!,
     geometria: t.geometria ?? {},
+    divisiones: t.partes?.divisiones ?? [],
+    seCuentanEnElPlano: t.partes?.seCuentanEnElPlano ?? [],
     ...(t.tarifa ? { tarifa: t.tarifa } : {}),
     tarifasPropias: tarifasDeFicha(r.clave),
   }];
@@ -105,7 +124,7 @@ export function formularioVacio(entrada: string): FormularioDeFicha {
   return {
     entrada, nombre: "", clave: "", claveTocada: false,
     anchoCm: cm(medidas?.w), fondoCm: cm(medidas?.d), altoCm: cm(medidas?.h),
-    entrepanos: "", moduloCm: "", puertas: "",
+    entrepanos: "", moduloCm: "", puertas: "", tramos: "", division: "",
     tarifa: "", url: "", nota: "", confiabilidad: "",
   };
 }
@@ -118,7 +137,9 @@ export function formularioDe(m: ModeloPropio): FormularioDeFicha {
     anchoCm: cm(m.w), fondoCm: cm(m.d), altoCm: cm(m.h),
     entrepanos: m.entrepanos !== undefined ? String(m.entrepanos) : "",
     moduloCm: cm(m.modulo),
-    puertas: m.partes?.puertas !== undefined ? String(m.partes.puertas) : "",
+    puertas: m.partes?.puertas != null ? String(m.partes.puertas) : "",
+    tramos: m.partes?.tramos != null ? String(m.partes.tramos) : "",
+    division: typeof m.partes?.division === "string" ? m.partes.division : "",
     tarifa: m.tarifa ?? "",
     url: m.fuente.url ?? "", nota: m.fuente.nota ?? "",
     confiabilidad: m.fuente.confiabilidad,
@@ -162,6 +183,14 @@ export function fichaDelFormulario(f: FormularioDeFicha, { nueva = true }: { nue
   const entrepanos = geo.entrepanos ? numero(f.entrepanos) : undefined;
   const modulo = geo.modulo ? metrosDe(f.moduloCm) : undefined;
   const puertas = geo.puertas ? numero(f.puertas) : undefined;
+  // Los tramos que se cuentan en el plano (los de la góndola) no van.
+  const tramos = geo.tramos && !familia?.seCuentanEnElPlano.includes("tramos") ? numero(f.tramos) : undefined;
+  const division = f.division && familia?.divisiones.includes(f.division) ? f.division : undefined;
+  const partes = {
+    ...(puertas !== undefined ? { puertas } : {}),
+    ...(tramos !== undefined ? { tramos } : {}),
+    ...(division !== undefined ? { division } : {}),
+  };
   const url = f.url.trim();
   const nota = f.nota.trim();
   return {
@@ -172,7 +201,7 @@ export function fichaDelFormulario(f: FormularioDeFicha, { nueva = true }: { nue
     w: metrosDe(f.anchoCm), d: metrosDe(f.fondoCm), h: metrosDe(f.altoCm),
     ...(entrepanos !== undefined ? { entrepanos } : {}),
     ...(modulo !== undefined ? { modulo } : {}),
-    ...(puertas !== undefined ? { partes: { puertas } } : {}),
+    ...(Object.keys(partes).length ? { partes } : {}),
     ...(f.tarifa ? { tarifa: f.tarifa } : {}),
     fuente: {
       confiabilidad: f.confiabilidad,
@@ -233,6 +262,7 @@ export const CAMPO_DEL_FORMULARIO: Record<string, keyof FormularioDeFicha> = {
   clave: "clave", tipo: "entrada", variante: "entrada", nombre: "nombre",
   w: "anchoCm", d: "fondoCm", h: "altoCm",
   entrepanos: "entrepanos", modulo: "moduloCm", partes: "puertas", "partes.puertas": "puertas",
+  "partes.tramos": "tramos", "partes.division": "division",
   tarifa: "tarifa", fuente: "nota", "fuente.url": "url", "fuente.nota": "nota",
   "fuente.confiabilidad": "confiabilidad",
 };
@@ -352,6 +382,13 @@ export function fichaParaDibujar(f: FormularioDeFicha): ModeloPropio | null {
   const modulo = moduloM === undefined || Number.isNaN(moduloM) ? undefined
     : Math.min(geo.modulo![1], Math.max(geo.modulo![0], moduloM));
   const puertas = entero(f.puertas, geo.puertas);
+  const tramos = familia.seCuentanEnElPlano.includes("tramos") ? undefined : entero(f.tramos, geo.tramos);
+  const division = f.division && familia.divisiones.includes(f.division) ? f.division : undefined;
+  const partes = {
+    ...(puertas !== undefined ? { puertas } : {}),
+    ...(tramos !== undefined ? { tramos } : {}),
+    ...(division !== undefined ? { division } : {}),
+  };
   return {
     id: `${CATALOGO_DE_MUEBLES.fichas.prefijoPropio}${f.clave || "nueva"}`,
     clave: f.clave || "nueva",
@@ -361,7 +398,7 @@ export function fichaParaDibujar(f: FormularioDeFicha): ModeloPropio | null {
     w, d, h,
     ...(entrepanos !== undefined ? { entrepanos } : {}),
     ...(modulo !== undefined ? { modulo } : {}),
-    ...(puertas !== undefined ? { partes: { puertas } } : {}),
+    ...(Object.keys(partes).length ? { partes } : {}),
     ...(f.tarifa ? { tarifa: f.tarifa } : {}),
     fuente: { confiabilidad: f.confiabilidad || "estimado" },
     retirado: false,

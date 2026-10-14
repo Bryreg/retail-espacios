@@ -98,7 +98,7 @@ const CLAVES_DE_MODELO = new Set([
  *  nunca fotos de terceros) y los largos de los textos NO están acá: son las
  *  reglas de `fichas` del catálogo, las mismas que el servidor aplica a las
  *  fichas propias de cada supermercado. */
-const CAMPOS_DE_GEOMETRIA = ["entrepanos", "modulo", "puertas", "division"];
+const CAMPOS_DE_GEOMETRIA = ["entrepanos", "modulo", "puertas", "tramos", "division"];
 const reglasDeFicha = (cat) => {
   const r = cat.fichas ?? {};
   const geometria = Object.fromEntries(Object.entries(r.geometria ?? {}).map(([campo, g]) => [campo, {
@@ -165,7 +165,7 @@ function validar(cat) {
     && reservados.includes("B"), "`partes.reservados` son finales de una o dos mayúsculas, sin repetir, con la `B` de la cara B");
   const clases = pc.clases ?? {};
   const tokens = new Set();
-  const CLAVES_DE_CLASE = ["token", "es", "eje", "campo", "minimo", "unico", "singular", "plural", "tarifa", "informe", "informePlural"];
+  const CLAVES_DE_CLASE = ["token", "es", "eje", "campo", "base", "minimo", "unico", "singular", "plural", "genero", "tarifa", "informe", "informePlural"];
   for (const [clase, c] of Object.entries(clases)) {
     const donde = `parte ${clase}`;
     for (const k of Object.keys(c ?? {})) si(CLAVES_DE_CLASE.includes(k), `${donde}: clave desconocida \`${k}\``);
@@ -175,8 +175,12 @@ function validar(cat) {
     si(reservados.includes(c?.token), `${donde}: el token ${c?.token} no está entre los reservados`);
     si(["division", "pieza"].includes(c?.es), `${donde}: \`es\` es division o pieza`);
     si([null, "ancho", "alto"].includes(c?.eje), `${donde}: \`eje\` es ancho, alto o null`);
+    // El campo que la cuenta es un entero de la ficha: en `partes` (las
+    // puertas, los tramos) o en el mueble (los entrepaños, con la base).
     const regla = (cat.fichas?.geometria ?? {})[c?.campo];
-    si(!!regla && regla.enPartes && regla.entero, `${donde}: \`campo\` tiene que ser un entero de \`partes\` en \`fichas.geometria\``);
+    si(!!regla && regla.entero && !regla.valores, `${donde}: \`campo\` tiene que ser un entero de \`fichas.geometria\``);
+    si(c?.base === undefined || c.base === true, `${donde}: \`base\` es true o no va`);
+    si(c?.genero === "f" || c?.genero === "m", `${donde}: \`genero\` es f o m (para decirla bien: «una puerta», «un tramo»)`);
     si(Number.isInteger(c?.minimo) && c.minimo >= 1, `${donde}: \`minimo\` es un entero de 1 o más`);
     si(texto(c?.singular) && texto(c?.plural), `${donde}: sin singular o plural`);
     si(texto(c?.tarifa) && tarifas.has(c.tarifa), `${donde}: su tarifa no está en \`tarifas\``);
@@ -227,10 +231,14 @@ function validar(cat) {
       // Las divisiones de la familia: clases que dividen, contadas por un
       // campo que la familia tiene en su `geometria`.
       const divs = d.partes?.divisiones;
-      si(d.partes && Object.keys(d.partes).every((k) => k === "divisiones") && Array.isArray(divs) && divs.length > 0
+      si(d.partes && Object.keys(d.partes).every((k) => k === "divisiones" || k === "seCuentanEnElPlano") && Array.isArray(divs) && divs.length > 0
         && divs.every((x) => clases[x]?.es === "division" && d.geometria?.[clases[x].campo] !== undefined)
         && d.alquilable !== "nunca",
         `${t}: \`partes.divisiones\` son clases que dividen, contadas con un campo de su \`geometria\`, en un tipo que se vende`);
+      // Las que se cuentan en el plano (no en la ficha) son de las suyas.
+      const enElPlano = d.partes?.seCuentanEnElPlano;
+      si(enElPlano === undefined || (Array.isArray(enElPlano) && enElPlano.every((x) => divs?.includes(x))),
+        `${t}: \`partes.seCuentanEnElPlano\` son divisiones de la familia`);
     }
     if (d.legado) {
       si(d.tarifa === undefined && d.variantes === undefined, `${t}: un legado no tiene tarifa ni variantes`);
@@ -287,8 +295,12 @@ function validar(cat) {
         // Una palabra de la lista de su familia, y con su cuenta.
         const lista = d.partes?.[g.valores] ?? [];
         si(lista.includes(v), `${donde}: \`${campo}\` = ${JSON.stringify(v)} no es de la lista de \`${m.tipo}\``);
+        // La cuenta, donde vive (en `partes` o en el modelo) y con la base;
+        // la de una división que se cuenta en el plano no va en la ficha.
         const c = clases[v];
-        si(!c || (Number.isInteger(m.partes?.[c.campo]) && m.partes[c.campo] >= c.minimo),
+        const enElPlano = (d.partes?.seCuentanEnElPlano ?? []).includes(v);
+        const cuenta = c ? (GEOMETRIA[c.campo]?.leer(m)) : undefined;
+        si(!c || enElPlano || (Number.isInteger(cuenta) && cuenta + (c.base ? 1 : 0) >= c.minimo),
           `${donde}: se vende por ${c?.plural ?? v} y no dice cuántas (${c?.minimo ?? 2} o más)`);
         continue;
       }
@@ -445,7 +457,12 @@ await prueba("la validación rechaza lo que tiene que rechazar", () => {
     ["un token sin reservar", (c) => { c.partes.reservados = c.partes.reservados.filter((r) => r !== "PU"); }, /no está entre los reservados/],
     ["sin la B reservada", (c) => { c.partes.reservados = c.partes.reservados.filter((r) => r !== "B"); }, /con la `B` de la cara B/],
     ["una clase con una tarifa sin fila", (c) => { c.partes.clases.puertas.tarifa = "parte_inventada"; }, /su tarifa no está en `tarifas`/],
-    ["una clase contada con un campo que no es de `partes`", (c) => { c.partes.clases.puertas.campo = "entrepanos"; }, /`campo` tiene que ser un entero de `partes`/],
+    ["una clase contada con un campo que no es un entero de la ficha", (c) => { c.partes.clases.puertas.campo = "modulo"; }, /`campo` tiene que ser un entero de `fichas.geometria`/],
+    ["una clase contada con la palabra de cómo se vende", (c) => { c.partes.clases.tramos.campo = "division"; }, /`campo` tiene que ser un entero de `fichas.geometria`/],
+    ["una clase sin género", (c) => { delete c.partes.clases.tramos.genero; }, /parte tramos: `genero` es f o m/],
+    ["la base como un número", (c) => { c.partes.clases.entrepanos.base = 1; }, /parte entrepanos: `base` es true o no va/],
+    ["una división que se cuenta en el plano y no es de la familia", (c) => { c.tipos.gondola.partes.seCuentanEnElPlano = ["puertas"]; }, /`partes.seCuentanEnElPlano` son divisiones de la familia/],
+    ["un modelo por entrepaños sin entrepaños", (c) => { c.modelos.find((m) => m.tipo === "punta").partes = { division: "entrepanos" }; }, /se vende por entrepaños y no dice cuántas/],
     ["una familia que se divide en algo que no es una clase", (c) => { c.tipos.nevera_puertas.partes.divisiones = ["cajones"]; }, /`partes.divisiones` son clases que dividen/],
     ["una familia que nunca se vende, por partes", (c) => { c.tipos.checkout.partes = { divisiones: ["puertas"] }; c.tipos.checkout.geometria = { puertas: [1, 6] }; }, /`partes.divisiones` son clases que dividen/],
     ["la división como un rango de familia", (c) => { c.tipos.nevera_puertas.geometria.division = [1, 2]; }, /`geometria` sólo admite/],

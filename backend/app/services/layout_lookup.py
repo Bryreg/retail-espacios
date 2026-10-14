@@ -23,10 +23,12 @@ from sqlalchemy.orm import Session
 from app.models.models import LayoutSnapshot
 from app.services import catalogo_muebles
 from app.services.partes import (
-    CodigoPartido, Parte, chocan, codigo_de_parte, division_de, es_division,
+    CodigoPartido, Parte, chocan, codigo_de_parte, concordancia, division_de, es_division,
     firma_de_partes, partes_de, partir_codigo, termina_reservado, texto_de_parte,
 )
-from app.services.catalogo_muebles import CAMPOS_DE_PARTES, CLASES_DE_PARTE
+from app.services.catalogo_muebles import (
+    CAMPOS_DE_PARTES, CLASES_DE_PARTE, DIVISIONES_POR_TIPO, tipo_base,
+)
 
 
 #: Los campos que describen un CONTRATO, no un mueble.
@@ -237,7 +239,11 @@ def motivo_para_no_vender_parte(fixture: dict, partido: CodigoPartido) -> tuple[
 
     · la cara B de un mueble de una cara: no existe, entera ni por partes;
     · un mueble no comercializable: ni la cara ni sus partes;
-    · una puerta de una nevera que se vende entera, o con un número de más.
+    · una puerta de una nevera que se vende entera, o con un número de más;
+    · un tramo de una góndola que se vende por entrepaños (o al revés): un
+      mueble se divide de UNA sola forma;
+    · una división que el mueble eligió pero sin la cuenta fijada (la góndola
+      por tramos colocada desde una ficha, antes de fijarlos en el panel).
     """
     # Se nombra con el código que trae quien pregunta (la planilla y el
     # contrato suelto, el completo), como el resto de sus mensajes.
@@ -252,7 +258,27 @@ def motivo_para_no_vender_parte(fixture: dict, partido: CodigoPartido) -> tuple[
     regla = CLASES_DE_PARTE[parte.clase]
     if es_division(parte):
         div = division_de(fixture)
-        if div is None or div[0] != parte.clase:
+        admite = DIVISIONES_POR_TIPO.get(tipo_base(str(fixture.get("type") or "")), ())
+        pedida = (fixture.get("partes") or {}).get("division") if isinstance(fixture.get("partes"), dict) else None
+        if parte.clase not in admite:
+            # Su familia no se divide así (una punta por tramos).
+            formas = " o por ".join(CLASES_DE_PARTE[c]["plural"] for c in admite)
+            return PARTE_INEXISTENTE, (
+                f"«{corto}» no se vende por {regla['plural']}"
+                + (f": se vende entera o por {formas}." if formas else ": se vende entera.")
+            )
+        if div is not None and div[0] != parte.clase:
+            otra = CLASES_DE_PARTE[div[0]]
+            return PARTE_INEXISTENTE, (
+                f"«{corto}» se vende por {otra['plural']}: un mueble se divide de una sola forma, así "
+                f"que no hay {parte.sufijo}."
+            )
+        if div is None and pedida == parte.clase:
+            return PARTE_INEXISTENTE, (
+                f"«{corto}» se vende por {regla['plural']}, pero no tiene fijado cuánt"
+                f"{concordancia(parte.clase)['o']}s: fijalo en el panel del plano («Cómo se vende»)."
+            )
+        if div is None:
             return PARTE_INEXISTENTE, (
                 f"«{corto}» se vende entera: para venderla por {regla['plural']}, elegí "
                 f"«por {regla['plural']}» en el panel del plano."
@@ -1147,9 +1173,18 @@ def frase_de_choque(codigo: str, otro_codigo: str, lease) -> str:
         return f"«{otro_codigo}» está vendida entera {fechas}: en esas fechas no se vende por {regla['plural']}."
     if yo.parte is None and otro.parte is not None:
         regla = CLASES_DE_PARTE[otro.parte.clase]
+        g = concordancia(otro.parte.clase)
         return (
-            f"«{otro_codigo}» ({texto_de_parte(otro.parte).lower()}) está vendida {fechas}: en esas "
-            f"fechas «{codigo}» no se vende entera; las otras {regla['plural']}, sí."
+            f"«{otro_codigo}» ({texto_de_parte(otro.parte).lower()}) está vendid{g['o']} {fechas}: en esas "
+            f"fechas «{codigo}» no se vende entera; {g['los']} otr{g['o']}s {regla['plural']}, sí."
+        )
+    if otro.parte is not None:
+        # Dos divisiones de clases distintas de la misma cara: el tramo 2 y el
+        # entrepaño 3 comparten una repisa. Un mueble se divide de una forma.
+        g = concordancia(otro.parte.clase)
+        return (
+            f"«{otro_codigo}» ({texto_de_parte(otro.parte).lower()}) está vendid{g['o']} {fechas} y se pisa "
+            f"con «{codigo}»: un mueble se divide de una sola forma."
         )
     return f"«{otro_codigo}» está vendida {fechas} y se pisa con «{codigo}»."
 
@@ -1236,6 +1271,7 @@ def partes_que_se_moverian(db: Session, sede: str, previas: list[dict], nuevas: 
         if n_antes is None or n_antes == n_despues:
             continue
         regla = CLASES_DE_PARTE[p.parte.clase]
+        g = concordancia(p.parte.clase)
         corto_mueble = sin_prefijo_de_sede(p.base, sede)
         cambio = (
             f"no puede pasar de {n_antes} a {n_despues} {regla['plural']}" if n_despues is not None
@@ -1244,7 +1280,7 @@ def partes_que_se_moverian(db: Session, sede: str, previas: list[dict], nuevas: 
         quien = lease.supplier.name if lease.supplier else "sin proveedor"
         frases.append(
             f"«{sin_prefijo_de_sede(space.code or '', sede)}» tiene un contrato de {quien} hasta el "
-            f"{lease.end_date.isoformat()}: con una {regla['singular']} vendida, «{corto_mueble}» {cambio}"
-            f" (la {regla['singular']} vendida quedaría en otro lugar). Esperá a que termine o cancelalo primero."
+            f"{lease.end_date.isoformat()}: con {g['un']} {regla['singular']} vendid{g['o']}, «{corto_mueble}» {cambio}"
+            f" ({g['el']} {regla['singular']} vendid{g['o']} quedaría en otro lugar). Esperá a que termine o cancelalo primero."
         )
     return sorted(frases)

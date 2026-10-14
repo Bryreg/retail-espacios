@@ -323,17 +323,32 @@ export interface GeometriaDeMueble {
   entrepanos?: number;
   modulo?: number;
   puertas?: number;
+  /** Vender por partes: los tramos guardados (`partes.tramos`). En la góndola
+   *  parten el corrido en ESOS módulos iguales (un tramo es siempre un vano);
+   *  en la nevera abierta y la de vegetales ponen un montante entre tramo y
+   *  tramo. Ausentes, la cuenta de siempre. */
+  tramos?: number;
+}
+
+/** Los tramos con que se dibuja: un entero de 1 a 40 (`geometria.tramos` del
+ *  catálogo llega a 40). Lo demás —un texto, un 0, un número que haría
+ *  módulos de dos centímetros— no se dibuja: la cuenta de siempre. */
+export function tramosValidos(tramos: number | null | undefined): number | undefined {
+  return typeof tramos === "number" && Number.isInteger(tramos) && tramos >= 1 && tramos <= 40 ? tramos : undefined;
 }
 
 /** La geometría que guardó un mueble: sólo lo que tiene. Un `null` (el panel
  *  lo borró a propósito y todavía no se guardó) es no tenerlo. */
 export function geometriaDe(f: {
-  entrepanos?: number | null; modulo?: number | null; partes?: { puertas?: number | null } | null;
+  entrepanos?: number | null; modulo?: number | null;
+  partes?: { puertas?: number | null; tramos?: number | null } | null;
 }): GeometriaDeMueble {
   const g: GeometriaDeMueble = {};
   if (typeof f.entrepanos === "number") g.entrepanos = f.entrepanos;
   if (typeof f.modulo === "number") g.modulo = f.modulo;
   if (typeof f.partes?.puertas === "number") g.puertas = f.partes.puertas;
+  const tramos = tramosValidos(f.partes?.tramos);
+  if (tramos !== undefined) g.tramos = tramos;
   return g;
 }
 
@@ -355,11 +370,17 @@ export interface Vano {
  * componente que dibuja: si el producto la calculara por su lado, terminaría
  * apoyado sobre un parante.
  */
-export function vanosDeCorrido(w: number, modulo?: number): Vano[] {
+export function vanosDeCorrido(w: number, modulo?: number, tramos?: number): Vano[] {
   // Sin `modulo`, el de catálogo europeo (1,25). Con él —el ancho de módulo de
   // la ficha que el mueble guardó al colocarlo: en Colombia 0,90, 1,00 o
   // 1,20—, el corrido se parte en módulos de ESE ancho.
-  const cuantos = Math.max(1, Math.round(w / (modulo && modulo > 0 ? modulo : ANCHO_MODULO_TIPICO)));
+  //
+  // Con `tramos` (vender por partes: `partes.tramos` de la góndola), en ESOS
+  // tramos iguales, mande lo que mande el módulo: un tramo es siempre un vano,
+  // así el producto de prueba y el relleno se paran adentro, y estirar el
+  // corrido estira los tramos sin cambiar cuál es cuál.
+  const fijos = tramosValidos(tramos);
+  const cuantos = fijos ?? Math.max(1, Math.round(w / (modulo && modulo > 0 ? modulo : ANCHO_MODULO_TIPICO)));
   const anchoModulo = w / cuantos;
   const libre = Math.max(0.1, anchoModulo - PARANTE.ancho);
   return Array.from({ length: cuantos }, (_, i) => ({
@@ -670,6 +691,31 @@ export function filasDeNevera(alto: number, fondoMaximo: number): FilasDeProduct
   };
 }
 
+/** El montante entre tramo y tramo de una nevera abierta o un mural de
+ *  vegetales vendidos por tramos: una chapa vertical del zócalo al copete. */
+export const MONTANTE_DE_TRAMO = 0.03;
+
+/** Los vanos de una nevera abierta partida en `tramos` iguales, sobre su
+ *  ancho útil (`ancho`), descontando el montante de cada junta. */
+export function vanosDeTramos(ancho: number, tramos: number): Vano[] {
+  const n = Math.max(1, Math.round(tramos));
+  const paso = ancho / n;
+  return Array.from({ length: n }, (_, i) => ({
+    x: -ancho / 2 + paso * (i + 0.5),
+    ancho: Math.max(0.05, paso - (n > 1 ? MONTANTE_DE_TRAMO : 0)),
+  }));
+}
+
+/** Dónde va el montante de cada junta entre tramos (centro en X), sobre el
+ *  mismo ancho que `vanosDeTramos`: entre el vano `i` y el `i+1`. Sin tramos
+ *  (o con uno), ninguno. */
+export function montantesDeTramos(ancho: number, tramos: number | undefined): number[] {
+  const n = tramosValidos(tramos);
+  if (n === undefined || n < 2) return [];
+  const paso = ancho / n;
+  return Array.from({ length: n - 1 }, (_, i) => -ancho / 2 + paso * (i + 1));
+}
+
 /** Lo que el envase queda por encima del plano del entrepaño de la nevera: la
  *  rejilla es de alambre y lo que se apoya, se apoya en él. Estaba escrito a
  *  mano adentro del relleno mudo; ahora lo lee también el producto de prueba. */
@@ -679,16 +725,20 @@ export const SOBRE_REJILLA = 0.005;
  *  `NeveraReal`: el interior descuenta la chapa del fondo y la puerta, la
  *  rejilla va en `z = chapa/2` con ese fondo —así que su canto de atrás cae en
  *  `(d − fondoPuerta)/2`—, y el relleno usa el ancho interior menos 3 cm. */
-export function ventaDeNevera(w: number, d: number, h: number, puertas?: number): VentaDeMueble {
+export function ventaDeNevera(w: number, d: number, h: number, puertas?: number, tramos?: number): VentaDeMueble {
   const fondoInterior = Math.max(0.1, d - NEVERA.chapa - NEVERA.fondoPuerta);
+  const fijos = tramosValidos(tramos);
   return {
     filas: filasDeNevera(h, fondoInterior),
     // La de puertas: un vano por puerta, detrás del vidrio de cada hoja. Con
     // uno solo de punta a punta, el producto quedaba parado detrás de los
-    // montantes. La multideck es de frente abierto: un vano.
+    // montantes. La multideck es de frente abierto: un vano, o uno por tramo
+    // si se vende por tramos (con el montante entre uno y otro).
     vanos: puertas !== undefined
       ? vanosDePuertas(w, puertas)
-      : [{ x: 0, ancho: w - 2 * NEVERA.chapa - 0.03 }],
+      : fijos !== undefined && fijos > 1
+        ? vanosDeTramos(w - 2 * NEVERA.chapa - 0.03, fijos)
+        : [{ x: 0, ancho: w - 2 * NEVERA.chapa - 0.03 }],
     caras: [{ montaje: (d - NEVERA.fondoPuerta) / 2, hacia: -1 }],
     sobreApoyo: SOBRE_REJILLA,
     altoDeCara: h,

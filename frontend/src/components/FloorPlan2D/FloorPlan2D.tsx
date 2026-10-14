@@ -13,7 +13,7 @@ import { ClipboardCheck, Keyboard, ListOrdered } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useFixtureStore, selectFixtures, selectHasPendingWork, normalizeSede, DEFAULT_SEDES } from "../../store/fixtureStore";
 import type { UnifiedFixture, FaceData } from "../../types/fixtures";
-import { isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
+import { fullSpaceCode, isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
 import {
   siguienteCodigo, nombreDeMueble, nombreAnterior, choqueDeNombre, textoDelChoque,
   renombrar, intercambiarNombres, textoDelIntercambio, rotulosDelPlano, nombresChocados,
@@ -32,6 +32,10 @@ import {
 } from "../../catalogo/nombresPropios";
 import { GeometriaDelMueble } from "../GeometriaDelMueble";
 import { PartesDelMueble } from "../PartesDelMueble";
+import { divisionesDe } from "../../utils/partesDelMueble";
+import {
+  claseDe, codigoDeParte, concordancia, divisionDe, fraccionDeParte, juntasDePartes, partesDe, sufijoDeParte,
+} from "../../utils/partes";
 import { TOLERANCIA_CONTACTO } from "../../utils/planta";
 import { buscarHuecoGrupo } from "../../utils/acomodar";
 import { detectarCorridas, pasilloPorMueble } from "../../utils/pasillos";
@@ -446,6 +450,11 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   // ── Sync store → items (for undo/redo/syncFromServer) ────────────────────────
   // When the store changes from outside (undo, redo, server sync), update local items.
   const storeFixtures = useFixtureStore(selectFixtures);
+  // Vender por partes: el mueble del store (con su `partes`) por id, y el mapa
+  // CRUDO de la base: las juntas entre puertas o tramos y qué parte está
+  // vendida (vender una parte no cambia el mueble fusionado).
+  const muebleDelStore = useMemo(() => new Map(storeFixtures.map((f) => [f.id, f])), [storeFixtures]);
+  const estadoCrudo = useFixtureStore((s) => s.estadoComercial);
   useEffect(() => {
     // commit() stores the array by reference, so identity equality means this
     // update is the echo of our own commit and must not rebuild the canvas.
@@ -1726,6 +1735,51 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                       }
                       rx={4 / zoom}
                     />
+
+                    {/* Vender por partes: las juntas entre puertas o tramos, a lo
+                        ancho del mueble, y un punto en el frente de cada parte
+                        vendida (contrato vivo o firmado, del mapa crudo). Sin
+                        nombres: el plano lo mira quien lo arma. */}
+                    {(() => {
+                      const f = muebleDelStore.get(item.id);
+                      if (!f || !isRentable(item)) return null;
+                      const juntas = juntasDePartes(f);
+                      const div = divisionDe(f);
+                      if (!div) return null;
+                      // Del mueble (x a lo largo, z de fondo, centrado) al
+                      // plano: el giro de three.js sobre Y, en pasos de 90°.
+                      const th = rotationSteps(item.rotY) * Math.PI / 2;
+                      const cx = px + pw / 2;
+                      const cy = py + ph / 2;
+                      const largo = f.w * PX_PER_M;
+                      const fondo = f.d * PX_PER_M;
+                      const aPlano = (x: number, z: number) => ({
+                        x: cx + x * Math.cos(th) + z * Math.sin(th),
+                        y: cy - x * Math.sin(th) + z * Math.cos(th),
+                      });
+                      const noPtr = { style: { pointerEvents: "none" as const } };
+                      const completo = fullSpaceCode(f.sede || sede, f.code);
+                      const vendidas = partesDe(f).filter(({ cara, parte }) =>
+                        estadoCrudo[codigoDeParte(completo, cara, parte)]?.status === "occupied");
+                      return (
+                        <g data-partes-en-planta={item.id}>
+                          {juntas.map((t) => {
+                            const x = -largo / 2 + t * largo;
+                            const a = aPlano(x, -fondo / 2);
+                            const b = aPlano(x, fondo / 2);
+                            return <line key={`j${t}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                              stroke="rgba(28,27,22,0.45)" strokeWidth={1 / zoom} strokeDasharray={`${3 / zoom},${2 / zoom}`} {...noPtr} />;
+                          })}
+                          {claseDe(div.clase)?.eje === "ancho" && vendidas.map(({ cara, parte }) => {
+                            const [t0, t1] = fraccionDeParte(cara, parte.n ?? 1, div.n);
+                            const x = -largo / 2 + ((t0 + t1) / 2) * largo;
+                            const p = aPlano(x, (cara === "A" ? -1 : 1) * fondo * 0.3);
+                            return <circle key={`v${cara}${parte.n}`} cx={p.x} cy={p.y} r={Math.max(2, 3.2 / zoom)}
+                              fill={STATUS_COLORS.occupied} {...noPtr}><title>{sufijoDeParte(parte)} vendid{concordancia(parte.clase).o}</title></circle>;
+                          })}
+                        </g>
+                      );
+                    })()}
 
                     {/* Search/filter match highlight — accent outline + soft outer glow */}
                     {filterActive && isFilterMatch && (
@@ -4022,11 +4076,13 @@ function AssignmentPanel({
         </Field>
       )}
 
-      {/* Vender por partes: la nevera entera, o entera o por puertas. Fuera de
-          lo comercial del panel a propósito: es cómo ES el mueble, y el mismo
-          componente que el Editor 3D (`components/PartesDelMueble.tsx`). */}
-      {item.type === "nevera_puertas" && (
-        <Field label="Cómo se vende" icon="🚪">
+      {/* Vender por partes: la nevera entera o por puertas; el mural, la
+          góndola, la nevera abierta y la de vegetales, por tramos; la góndola
+          y la punta, por entrepaños. Fuera de lo comercial del panel a
+          propósito: es cómo ES el mueble, y el mismo componente que el Editor
+          3D (`components/PartesDelMueble.tsx`). */}
+      {divisionesDe(item.type).length > 0 && (
+        <Field label="Cómo se vende" icon="🧩">
           <PartesDelMueble id={item.id} puedeEditar={editMode && isAdmin} />
         </Field>
       )}

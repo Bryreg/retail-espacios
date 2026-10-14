@@ -1,9 +1,11 @@
 import { carasDe, fullSpaceCode } from "../types/espacio";
-import { modeloPorId, resolverTipo } from "../catalogo/catalogo";
+import { modeloPorId, resolverTipo, type PartesDeMueble } from "../catalogo/catalogo";
 import {
   PASO_ENTRE_ENTREPANOS, ZOCALO,
-  filasDePunta, filasDeProducto, nivelesDeEntrepano, techoDeCara, vanosDeCorrido,
+  filasDePunta, filasDeProducto, nivelesDeEntrepano, techoDeCara, tramosValidos, vanosDeCorrido,
 } from "../components/StoreEditor3D/muebles/medidas";
+import type { EstadoPorEspacio } from "./estadoComercial";
+import { claseDe, divisionDe } from "./partes";
 
 /**
  * Alto, entrepaños y módulo de una góndola o una punta: lo que el panel deja
@@ -63,6 +65,11 @@ export interface MuebleConGeometria {
   status?: string;
   faceB?: { status?: string } | null;
   slots?: readonly { status: string }[] | null;
+  /** Vender por partes: los tramos guardados parten el corrido (el módulo
+   *  sale del ancho), y la forma de dividir dice si los entrepaños son
+   *  partes que se venden. */
+  partes?: PartesDeMueble | null;
+  rentable?: boolean;
 }
 
 /** Un cambio pedido en el panel. `undefined`: ese campo no se toca. `null`:
@@ -140,14 +147,18 @@ export function geometriaALaVista(f: MuebleConGeometria): {
   modulos: number;
   anchoDeModulo: number;
   moduloGuardado: boolean;
+  /** Vender por partes: los módulos son los tramos guardados, y el módulo
+   *  sale del ancho entre los tramos (el campo no manda). */
+  porTramos: boolean;
 } {
   const entrepanos = typeof f.entrepanos === "number" ? f.entrepanos : undefined;
   const modulo = typeof f.modulo === "number" ? f.modulo : undefined;
+  const tramos = tramosValidos(f.partes?.tramos);
   // El fondo no cambia cuántas filas hay: se pide con uno cualquiera.
   const filas = f.type === "punta"
     ? filasDePunta(techoDeCara(f.h), 0.4, entrepanos)
     : filasDeProducto(f.h, 0.4, entrepanos);
-  const vanos = vanosDeCorrido(f.w, modulo);
+  const vanos = vanosDeCorrido(f.w, modulo, f.type === "punta" ? undefined : tramos);
   return {
     entrepanos: Math.max(0, filas.rows - 1),
     entrepanosGuardados: entrepanos !== undefined,
@@ -155,6 +166,7 @@ export function geometriaALaVista(f: MuebleConGeometria): {
     modulos: vanos.length,
     anchoDeModulo: f.w / vanos.length,
     moduloGuardado: modulo !== undefined,
+    porTramos: f.type !== "punta" && tramos !== undefined,
   };
 }
 
@@ -276,6 +288,10 @@ export interface LoVendido {
   slots: number;
   /** No se pudo saber qué caras tienen arte pintado (falló la consulta). */
   arteSinRevisar: boolean;
+  /** Vender por partes: las partes con contrato vivo o firmado (`EN2`,
+   *  `B-TR1`), del mapa crudo de la base: vender una parte no cambia el
+   *  mueble fusionado. Sin nombres. */
+  partes?: string[];
 }
 
 /**
@@ -288,8 +304,17 @@ export interface LoVendido {
  */
 export function loVendidoDe(
   f: MuebleConGeometria, sede: string, carasConArte: ReadonlySet<string> | null,
+  estado?: EstadoPorEspacio,
 ): LoVendido {
   const codigo = fullSpaceCode(f.sede || sede, f.code);
+  // Las partes vendidas de este mueble, por su código (`SEDE-GON-05-B-TR2`):
+  // dos letras y un número al final, con la cara B adelante si es de ella.
+  const partes = estado
+    ? Object.entries(estado)
+      .filter(([c, e]) => e.status === "occupied" && c.startsWith(`${codigo}-`)
+        && /^(?:B-)?[A-Z]{2}[1-9][0-9]?$/.test(c.slice(codigo.length + 1)))
+      .map(([c]) => c.slice(codigo.length + 1)).sort()
+    : [];
   const caras: CaraVendida[] = [];
   const estados: ["A" | "B", string | undefined][] = [["A", f.status]];
   if (carasDe(f) === 2) estados.push(["B", f.faceB?.status]);
@@ -299,7 +324,7 @@ export function loVendidoDe(
     if (contrato || arte) caras.push({ cara, contrato, arte });
   }
   const slots = (f.slots ?? []).filter((s) => SLOT_VENDIDO.has(s.status)).length;
-  return { caras, slots, arteSinRevisar: carasConArte === null };
+  return { caras, slots, arteSinRevisar: carasConArte === null, ...(partes.length ? { partes } : {}) };
 }
 
 // ─── La revisión ──────────────────────────────────────────────────────────────
@@ -333,6 +358,27 @@ export function revisarCambioDeGeometria(
   if (cambios.length === 0) return { cambios, bloqueo: null, aviso: null };
   const campos = new Set(cambios.map((c) => c.campo));
 
+  // Vender por partes: con la góndola o la punta vendida por entrepaños y
+  // uno vendido, la cantidad de entrepaños es la cantidad de partes —el
+  // «entrepaño 3» pasaría a ser otro—, y vaciarla deja de venderla por
+  // entrepaños. Lo frena también el servidor (409 `partes_vendidas`).
+  const division = divisionDe(f);
+  const partesVendidas = vendido.partes ?? [];
+  if (division) {
+    const regla = claseDe(division.clase)!;
+    const deLaClase = partesVendidas.filter((p) => p.replace(/^B-/, "").startsWith(regla.token));
+    const despues = divisionDe({ ...f, ...conCambio(cambio) });
+    if (deLaClase.length > 0 && (despues?.clase !== division.clase || despues.n !== division.n)) {
+      return {
+        cambios,
+        bloqueo: `${f.code} se vende por ${regla.plural} y ${deLaClase.length === 1 ? "uno está vendido" : `${deLaClase.length} están vendidos`} `
+          + `(contrato vivo o firmado): la cantidad de ${regla.plural} no cambia hasta que termine o se cancele su contrato, `
+          + "porque lo vendido quedaría en otro lugar. El alto sí se puede cambiar, con aviso.",
+        aviso: null,
+      };
+    }
+  }
+
   if (vendido.slots > 0 && cambiaLaCantidadDeEntrepanos(f, cambio)) {
     const porElAlto = !campos.has("entrepanos")
       ? ` Con ${metros(cambio.h ?? f.h)} m de alto pasaría de ${geometriaALaVista(f).entrepanos} a `
@@ -348,7 +394,7 @@ export function revisarCambioDeGeometria(
     };
   }
 
-  if (vendido.caras.length === 0 && vendido.slots === 0 && !vendido.arteSinRevisar) {
+  if (vendido.caras.length === 0 && vendido.slots === 0 && !vendido.arteSinRevisar && partesVendidas.length === 0) {
     return { cambios, bloqueo: null, aviso: null };
   }
 
@@ -369,6 +415,10 @@ export function revisarCambioDeGeometria(
       : campos.has("entrepanos")
         ? `Tiene ${cuantosInternos(vendido.slots)}: con los entrepaños a otra altura, el producto de su franja se para en otro lugar.`
         : `Tiene ${cuantosInternos(vendido.slots)}: el producto de su franja se reparte en otros módulos.`);
+  }
+  if (partesVendidas.length > 0) {
+    lineas.push(`Tiene partes vendidas (${partesVendidas.join(", ")}): `
+      + (filas ? "su producto se para a otra altura." : "su producto se reparte en otros módulos."));
   }
   if (vendido.arteSinRevisar) {
     lineas.push("No se pudo revisar si alguna cara tiene arte pintado: si lo tiene, cambian sus filas.");

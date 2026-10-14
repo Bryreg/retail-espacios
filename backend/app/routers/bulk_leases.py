@@ -48,7 +48,7 @@ from app.services.catalogo_muebles import CLASES_DE_PARTE, tipo_de_tarifa
 from app.services.candado import tomar_candados
 from app.services.fichas_propias import tarifas_propias
 from app.services.partes import (
-    cantidad_de, chocan, partir_codigo, referencia_de_espacio, texto_de_parte, texto_para_montar,
+    cantidad_de, chocan, es_division, partir_codigo, referencia_de_espacio, texto_de_parte, texto_para_montar,
 )
 from app.services.renumeracion import Rastreador
 from app.schemas.spaces import AvisosContrato
@@ -406,6 +406,24 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
                         n = cantidad_de(fixture, parte.clase)
                         out.nombre = f"{out.nombre} · {texto_de_parte(parte)}"
                         out.parte = texto_para_montar(parte, n)
+                        # Los espacios internos del Editor 3D (los slots) se
+                        # marcan vendidos en el plano, sin contrato: un tramo
+                        # o un entrepaño puede caer encima de uno. El servidor
+                        # no sabe en qué fila cae cada uno (eso lo dibuja el
+                        # navegador), así que dice lo del mueble. Se avisa, no
+                        # se frena: el espacio interno no tiene contrato que
+                        # lo respalde, y puede estar viejo.
+                        internos = sum(
+                            1 for s in (fixture.get("slots") or [])
+                            if isinstance(s, dict) and s.get("status") in ("occupied", "reserved")
+                        )
+                        if internos and es_division(parte):
+                            avisos.append(
+                                f"El mueble tiene {internos} espacio{'s' if internos != 1 else ''} interno"
+                                f"{'s' if internos != 1 else ''} marcado{'s' if internos != 1 else ''} vendido"
+                                f"{'s' if internos != 1 else ''} en el plano (Editor 3D), sin contrato: "
+                                "revisá que no caigan en lo que se vende."
+                            )
                     # El texto resolvió sin dudas, pero el MUEBLE puede tener un
                     # gemelo de nombre: es el residuo que dejaba abierta la doble
                     # venta. Quien mira la cajita rotulada «IMP-08» y escribe el

@@ -7,13 +7,18 @@ import {
 import { LIBRE, type EstadoComercial, type EstadoPorEspacio } from "./estadoComercial";
 
 /**
- * Vender por partes: la nevera entera, o por puertas.
+ * Vender por partes: la nevera entera o por puertas; el mural, la góndola, la
+ * nevera abierta o la de vegetales, enteros o por tramos; la góndola y la
+ * punta, enteras o por entrepaños.
  *
  * La dueña lo pidió así: **las marcas pagan la nevera entera o por puertas,
  * pero nunca las dos en las mismas fechas; dos puertas distintas, sí.** Y
  * eligió el código: `NEV-03-PU2` es la puerta 2 de la nevera `NEV-03`,
  * contando de izquierda a derecha mirando su frente. Queda para siempre en
- * contratos, correos, planillas y enlaces de montaje.
+ * contratos, correos, planillas y enlaces de montaje. Lo mismo con los tramos
+ * (`GON-05-B-TR2`, de izquierda a derecha mirando esa cara) y los entrepaños
+ * (`PUN-02-EN1` es la base, contando de abajo hacia arriba). Un mueble se
+ * divide de UNA sola forma, y la cara entera siempre se puede vender.
  *
  * Una parte es un espacio más: una fila de `spaces` con su código derivado y
  * un contrato como cualquier otro. La relación entre la cara y sus partes se
@@ -135,23 +140,41 @@ type ConPartes = {
   gondolaType?: string | null;
   rentable?: boolean;
   partes?: PartesDeMueble | null;
+  /** Los entrepaños guardados: cuentan los `EN` (con la base). */
+  entrepanos?: number | null;
 };
 
 const tipoBase = (tipo: string) => CATALOGO_DE_MUEBLES.alias[tipo]?.tipo ?? tipo;
 
-/** Cuántas partes de esa clase tiene la cara, o `null` si el mueble no lo dice
- *  bien: un entero, al menos el mínimo de la clase y dentro del rango de su
- *  familia. No se recorta ni se adivina. */
+/** Lo que el mueble guardó en ese campo de la ficha: adentro de `partes`
+ *  (las puertas, los tramos) o en el mueble (los entrepaños), según
+ *  `fichas.geometria` del catálogo. Es `valor_del_campo` del servidor. */
+export function valorDelCampo(f: ConPartes, campo: string): unknown {
+  const reglas = CATALOGO_DE_MUEBLES.fichas.geometria as Record<string, { enPartes: boolean } | undefined>;
+  const regla = Object.prototype.hasOwnProperty.call(reglas, campo) ? reglas[campo] : undefined;
+  if (!regla) return undefined;
+  if (regla.enPartes) {
+    const partes = f.partes as Record<string, unknown> | null | undefined;
+    return partes && typeof partes === "object" ? partes[campo] : undefined;
+  }
+  return (f as Record<string, unknown>)[campo];
+}
+
+/** Cuántas partes de esa clase tiene la cara, o `null` si el mueble no lo
+ *  dice bien: el campo que la cuenta es un entero dentro del rango de su
+ *  familia, y con la base (los entrepaños) da al menos el mínimo de la clase.
+ *  No se recorta ni se adivina: una góndola con 4 entrepaños guardados vende
+ *  5 (la base, `EN1`, y los 4); sin entrepaños guardados, entera. */
 export function cantidadDe(f: ConPartes, clase: string): number | null {
   const regla = claseDe(clase);
-  const partes = f.partes as Record<string, unknown> | null | undefined;
-  if (!regla || !partes || typeof partes !== "object") return null;
-  const v = partes[regla.campo];
+  if (!regla || !f) return null;
+  const v = valorDelCampo(f, regla.campo);
   if (typeof v !== "number" || !Number.isInteger(v)) return null;
   const tipo = CATALOGO_DE_MUEBLES.tipos[tipoBase(f.type)];
   const rango = (tipo?.geometria as Record<string, [number, number]> | undefined)?.[regla.campo];
-  if (v < regla.minimo || (rango && !(rango[0] <= v && v <= rango[1]))) return null;
-  return v;
+  if (rango && !(rango[0] <= v && v <= rango[1])) return null;
+  const total = v + (regla.base ? 1 : 0);
+  return total < regla.minimo ? null : total;
 }
 
 /** La forma en que se divide la cara y en cuántas, o `null` si se vende
@@ -215,6 +238,16 @@ export function partesTipadas(partes: unknown): PartesDeMueble | undefined {
 
 // ─── Cómo se dice ────────────────────────────────────────────────────────────
 
+/** Las palabras que concuerdan con la clase: «una puerta vendida, la otra,
+ *  esta», «un tramo vendido, el otro, este». Del catálogo (`genero`); es
+ *  `concordancia` del servidor. */
+export function concordancia(clase: string): { un: string; el: string; los: string; o: string; este: string } {
+  const f = claseDe(clase)?.genero !== "m";
+  return f
+    ? { un: "una", el: "la", los: "las", o: "a", este: "esta" }
+    : { un: "un", el: "el", los: "los", o: "o", este: "este" };
+}
+
 /** `Puerta 2 de 3`; sin el «de» si no se sabe cuántas hay. */
 export function textoDeParte(p: ParteRef, de?: number | null): string {
   const regla = claseDe(p.clase);
@@ -224,12 +257,16 @@ export function textoDeParte(p: ParteRef, de?: number | null): string {
   return `${nombre} ${p.n}${de ? ` de ${de}` : ""}`;
 }
 
-/** Lo que lee la mercaderista: cuál es, contada desde dónde. */
+/** Lo que lee la mercaderista: cuál es, contada desde dónde. Los entrepaños,
+ *  de abajo hacia arriba con la base como el 1. Es `texto_para_montar` del
+ *  servidor. */
 export function textoParaMontar(p: ParteRef, de?: number | null): string {
   const texto = textoDeParte(p, de);
-  return claseDe(p.clase)?.eje === "ancho" && p.n !== null
-    ? `${texto}, contando de izquierda a derecha mirando el frente`
-    : texto;
+  const regla = claseDe(p.clase);
+  if (p.n === null) return texto;
+  if (regla?.eje === "ancho") return `${texto}, contando de izquierda a derecha mirando el frente`;
+  if (regla?.eje === "alto") return `${texto}, contando de abajo hacia arriba${regla.base ? " (el 1 es la base)" : ""}`;
+  return texto;
 }
 
 /** Cómo se lee el código de un espacio en pantalla: `NEV-03·PU2`,
@@ -255,6 +292,44 @@ export function codigoVisibleDe(code: string, cara: "A" | "B", doble: boolean, p
  */
 export function vanoDeParte(cara: "A" | "B", k: number, n: number): number {
   return cara === "A" ? n - k : k - 1;
+}
+
+/**
+ * Qué vano del dibujo DE LA CARA es la parte `k` de `n`: el índice en los
+ * vanos con que se para el producto de esa cara (`unidadesDePrueba`).
+ *
+ * No es `vanoDeParte`: el producto de la cara B se dibuja en un grupo girado
+ * media vuelta (`ProductoDePrueba`, `hacia: 1`), así que en SU dibujo el
+ * frente también mira a −Z y la izquierda de quien la mira es +X, como en la
+ * A. En las dos caras es `n − k`; en el mueble, la B es la del espejo
+ * (`vanoDeParte`). `probar-partes` lo comprueba con la cámara de las dos.
+ */
+export function vanoEnLaCara(_cara: "A" | "B", k: number, n: number): number {
+  return n - k;
+}
+
+/** Dónde cae la parte `k` de `n` de esa cara a lo ancho del mueble, como
+ *  fracción de su largo medida desde −X (`[desde, hasta]`). Es la cuenta con
+ *  que el plano 2D marca las juntas y las partes vendidas, y con que se ve qué
+ *  espacio interno cae en qué tramo. */
+export function fraccionDeParte(cara: "A" | "B", k: number, n: number): [number, number] {
+  const i = vanoDeParte(cara, k, n);
+  return [i / n, (i + 1) / n];
+}
+
+/** Las juntas entre parte y parte a lo ancho (puertas, tramos), como
+ *  fracciones del largo del mueble. Sin división a lo ancho, ninguna: los
+ *  entrepaños se cuentan de abajo hacia arriba y no se ven desde arriba. */
+export function juntasDePartes(f: ConPartes): number[] {
+  const div = divisionDe(f);
+  if (!div || claseDe(div.clase)?.eje !== "ancho") return [];
+  return Array.from({ length: div.n - 1 }, (_, i) => (i + 1) / div.n);
+}
+
+/** La fila de producto (de abajo hacia arriba, la base es la 0) de un
+ *  entrepaño `EN k`: `EN1` es la base. */
+export function filaDeEntrepano(k: number): number {
+  return k - 1;
 }
 
 // ─── La tarifa ───────────────────────────────────────────────────────────────

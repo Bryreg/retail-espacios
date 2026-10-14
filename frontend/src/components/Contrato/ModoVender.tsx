@@ -17,9 +17,11 @@ import { conNombrePropio, tipoDelMueble } from "../../catalogo/nombresPropios";
 // De `utils/` (no importa nada): la ficha la usa al entrar.
 import { normalizarProveedor } from "../../utils/proveedor";
 import {
-  claseDe, claveDeEspacio, codigoVisibleDe, divisionDe, parteDeSufijo, partesDe, sufijoDeParte, textoDeParte,
-  vanoDeParte,
+  claseDe, claveDeEspacio, codigoVisibleDe, concordancia, divisionDe, filaDeEntrepano, parteDeSufijo, partesDe,
+  sufijoDeParte, textoDeParte, vanoEnLaCara,
 } from "../../utils/partes";
+import { divisionSinFijar } from "../../utils/partesDelMueble";
+import { internosVendidosEnLaParte } from "../../utils/slotsDeLasPartes";
 // Sólo los TIPOS: el visor (y con él three.js y la escena del editor) se baja
 // recién cuando se abre, por el `lazy` de abajo.
 import type { CaraActiva, CaraDelVisor } from "./VisorDeVenta";
@@ -126,9 +128,14 @@ function Fila({
      desvío contra la referencia, si lo hay. La referencia entera («referencia
      $1.200.000») era un tercer renglón para un número que ya está en la tabla
      de tarifa, a dos paneles de distancia. */
+  /* Vender por partes, pedido y sin fijar: la ficha dice «por tramos» pero
+     nadie fijó cuántos (la de una góndola no los trae). Se vende entera hasta
+     fijarlos en el panel del plano: se dice dónde. */
+  const sinFijar = !l.parte ? divisionSinFijar(l.fixture) : null;
   const segunda = [
-    // «Puerta 2 de 3»: qué parte de la nevera se vende.
+    // «Puerta 2 de 3», «Tramo 2 de 4»: qué parte del mueble se vende.
     l.textoParte,
+    sinFijar ? `por ${claseDe(sinFijar)?.plural ?? "partes"}: fijalos en el plano` : "",
     l.ubicacion,
     l.ref === null
       ? "sin tarifa de referencia"
@@ -149,14 +156,17 @@ function Fila({
      nombrar a nadie: ni de quién es la otra parte ni cuánto paga. */
   const division = divisionDe(l.fixture);
   const clase = division ? claseDe(division.clase) : undefined;
+  const g = division ? concordancia(division.clase) : null;
   const choque = l.choqueServidor.length > 0
     // Lo que dice la base gana: nombra las fechas del contrato que ya existe,
     // que es lo que hace falta para corregir las propias.
     ? l.choqueServidor.join(" ")
     : l.disponibilidad === "libre" ? null
     : l.porQue === "entera" ? "Ya está vendida entera en el periodo: no se vende por partes"
-    : l.porQue === "partes" && clase
-    ? `Hay ${clase.plural} vendidas en el periodo: se puede vender otra ${clase.singular}, no la entera`
+    : l.porQue === "partes" && clase && g && !l.parte
+    ? `Hay ${clase.plural} vendid${g.o}s en el periodo: se puede vender otr${g.o} ${clase.singular}, no la entera`
+    : l.porQue === "partes"
+    ? "Se pisa con otra parte vendida en el periodo: un mueble se divide de una sola forma"
     : l.disponibilidad === "parcial" ? "Parte del periodo ya está vendida"
     : "Ya está vendido en el periodo";
 
@@ -176,7 +186,14 @@ function Fila({
      misma cuenta (uno por espacio, no por entrepaño), y que son del MUEBLE:
      valen para las dos caras de una góndola doble. No bloquea el guardado
      —el servidor no los conoce—. */
-  const repisasVendidas = (l.fixture.slots ?? []).filter((s) => s.status === "occupied" || s.status === "reserved").length;
+  //
+  // Vendiendo una parte (un tramo, un entrepaño), se cuentan sólo los que
+  // caen en ESA parte (`slotsDeLasPartes.ts`): el renglón del tramo que los
+  // pisa lo dice, el del otro tramo no.
+  const parteDelRenglon = l.parte ? parteDeSufijo(l.parte) : null;
+  const repisasVendidas = parteDelRenglon
+    ? internosVendidosEnLaParte(l.fixture, l.face, parteDelRenglon)
+    : (l.fixture.slots ?? []).filter((s) => s.status === "occupied" || s.status === "reserved").length;
 
   return (
     <div
@@ -194,9 +211,11 @@ function Fila({
           <span
             className="repisas"
             data-repisas-vendidas={repisasVendidas}
-            title={`${repisasVendidas === 1 ? "Un espacio interno de este mueble figura vendido" : `${repisasVendidas} espacios internos de este mueble figuran vendidos`} aparte en el plano (Editor 3D), sin contrato en la base. Son del mueble, no de una cara: valen para las dos. Vender ofrece la cara entera, y el 3D se la muestra al proveedor libre, sin ellos: revisá si siguen vigentes antes de cerrar.`}
+            title={parteDelRenglon
+              ? `${repisasVendidas === 1 ? "Un espacio interno de este mueble figura vendido" : `${repisasVendidas} espacios internos de este mueble figuran vendidos`} aparte en el plano (Editor 3D), sin contrato en la base, y ${repisasVendidas === 1 ? "cae" : "caen"} en esta parte. Las partes se venden igual: revisá que no caigan encima de lo que se está vendiendo antes de cerrar.`
+              : `${repisasVendidas === 1 ? "Un espacio interno de este mueble figura vendido" : `${repisasVendidas} espacios internos de este mueble figuran vendidos`} aparte en el plano (Editor 3D), sin contrato en la base. Son del mueble, no de una cara: valen para las dos. Vender ofrece la cara entera, y el 3D se la muestra al proveedor libre, sin ellos: revisá si siguen vigentes antes de cerrar.`}
           >
-            {repisasVendidas === 1 ? "1 interno vendido" : `${repisasVendidas} internos vendidos`}
+            {repisasVendidas === 1 ? "1 interno vendido" : `${repisasVendidas} internos vendidos`}{parteDelRenglon ? " en esta parte" : ""}
           </span>
         )}
       </span>
@@ -487,10 +506,11 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
    *  puede guardar en este contrato, y mostrársela en 3D al proveedor era
    *  ofrecerle un espacio que no se le puede vender. */
   //
-  // El visor sigue siendo por CARA: las puertas de una nevera que van en el
-  // contrato son una sola cara del visor, con esas puertas marcadas (`vanos`,
-  // los del dibujo) y el producto sólo detrás de ellas. Con la entera, la cara
-  // entera, como siempre.
+  // El visor sigue siendo por CARA: las puertas de una nevera (o los tramos
+  // de un mural) que van en el contrato son una sola cara del visor, con esas
+  // partes marcadas (`vanos`, los del dibujo de la cara) y el producto sólo en
+  // ellas; los entrepaños, por sus filas (`filas`: el `EN1` es la base). Con
+  // la entera, la cara entera, como siempre.
   const carasDelVisor = useMemo<CaraDelVisor[]>(() => {
     const porCara = new Map<string, CaraDelVisor & { entera: boolean; sufijos: string[]; codigos: string[] }>();
     for (const l of c.lineas
@@ -510,14 +530,18 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
       if (entera || sufijos.length === 0) {
         return { ...cara, visible: codigoVisibleDe(f.code, cara.face, c.lineas.find((l) => l.fixture.id === f.id)!.doble, null) };
       }
-      const n = divisionDe(f)?.n ?? 0;
-      const vanos = sufijos.map((s) => parteDeSufijo(s)).filter((p) => p && p.n !== null && n > 0)
-        .map((p) => vanoDeParte(cara.face, p!.n!, n));
+      const div = divisionDe(f);
+      const n = div?.n ?? 0;
+      const delRenglon = sufijos.map((s) => parteDeSufijo(s)).filter((p) => p && p.n !== null && n > 0 && p.clase === div?.clase);
+      const porAlto = claseDe(div?.clase ?? "")?.eje === "alto";
+      const vanos = porAlto ? [] : delRenglon.map((p) => vanoEnLaCara(cara.face, p!.n!, n));
+      const filas = porAlto ? delRenglon.map((p) => filaDeEntrepano(p!.n!)) : [];
       return {
         ...cara,
         visible: `${codigoVisibleDe(f.code, cara.face, c.lineas.find((l) => l.fixture.id === f.id)!.doble, null)}·${sufijos.join("·")}`,
         codigo: codigos.join(", "),
         ...(vanos.length ? { vanos } : {}),
+        ...(filas.length ? { filas } : {}),
       };
     });
   }, [c.lineas, fichasPropias, nombresPropios]);

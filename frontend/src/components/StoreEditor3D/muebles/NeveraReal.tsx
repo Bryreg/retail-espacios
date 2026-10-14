@@ -1,8 +1,8 @@
 import { memo, useEffect, useMemo } from "react";
 import * as THREE from "three";
 import {
-  MURAL_VEGETALES, NEVERA, PORTA_PRECIOS, SOBRE_REJILLA,
-  altoUtilDeNevera, nivelesDeMural, nivelesDeNevera, puertasDe,
+  MONTANTE_DE_TRAMO, MURAL_VEGETALES, NEVERA, PORTA_PRECIOS, SOBRE_REJILLA,
+  altoUtilDeNevera, montantesDeTramos, nivelesDeMural, nivelesDeNevera, puertasDe,
 } from "./medidas";
 import { geometriaDeEmpaque, geometriaMarcoDePuerta, geometriaPortaPrecios } from "./perfiles";
 import { acomodar, EMPAQUES } from "./producto";
@@ -79,6 +79,11 @@ export interface NeveraRealProps {
    *  (`partes.puertas` de la nevera de puertas). Sin esto, las que pide el
    *  ancho (`puertasDeNevera`). Sólo cuenta en la variante `puertas`. */
   puertas?: number;
+  /** Vender por partes: en la nevera abierta y en el mural de vegetales, los
+   *  tramos en que se vende (`partes.tramos`): un montante vertical entre
+   *  tramo y tramo, del zócalo al copete, para que se vea dónde termina lo
+   *  de cada marca. Sin esto (o con uno), el frente corrido de siempre. */
+  tramos?: number;
   /** Vender por partes: las hojas (en el orden del dibujo, de −X a +X) que se
    *  están vendiendo. Su marco va en el color de la venta, para que el
    *  proveedor vea cuál es «su» puerta. Sin esto, todas iguales. */
@@ -366,7 +371,7 @@ export function apagarElFrio(
 
 export const NeveraReal = memo(function NeveraReal({
   w, d, h, statusColor, ghost = false, variante = "multideck", conRelleno = true,
-  niveles: nivelesDePrueba, cabezote, puertas, resaltadas,
+  niveles: nivelesDePrueba, cabezote, puertas, resaltadas, tramos,
 }: NeveraRealProps) {
   const conPuertas = variante === "puertas";
   const marcoResaltado = useMemo(
@@ -561,6 +566,22 @@ export const NeveraReal = memo(function NeveraReal({
             <boxGeometry args={[anchoInterior - 0.05, 0.006, 0.010]} />
           </mesh>
         </group>
+      ))}
+
+      {/* ── Los montantes de los tramos ───────────────────────────────────
+          Vendida por tramos, una chapa vertical entre tramo y tramo (las
+          mismas juntas que los vanos de `ventaDeNevera`), del zócalo al
+          copete y de fondo a fondo. Sin tramos, nada: el frente corrido. */}
+      {!conPuertas && montantesDeTramos(anchoInterior - 0.03, tramos).map((x) => (
+        <mesh
+          key={`tr${x.toFixed(3)}`}
+          position={[x, yInterior, (NEVERA.fondoPuerta - NEVERA.chapa) / 2]}
+          castShadow
+          receiveShadow
+          material={m.marco}
+        >
+          <boxGeometry args={[MONTANTE_DE_TRAMO, util, fondoInterior]} />
+        </mesh>
       ))}
 
       {/* ── El producto ───────────────────────────────────────────────────*/}

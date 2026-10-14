@@ -61,12 +61,15 @@ export interface GondolaRealProps {
   entrepanos?: number;
   /** Ancho de módulo de la ficha (0,90, 1,00, 1,20…). Ausente: 1,25. */
   modulo?: number;
+  /** Vender por partes: los tramos guardados (`partes.tramos`). Parten el
+   *  corrido en ESOS módulos iguales, mande lo que mande `modulo`. */
+  tramos?: number;
 }
 
 /* ── El mueble ─────────────────────────────────────────────────────────────*/
 
 export const GondolaReal = memo(function GondolaReal({
-  w, d, h, gondolaType = "double", statusColor, ghost = false, habladores, entrepanos, modulo,
+  w, d, h, gondolaType = "double", statusColor, ghost = false, habladores, entrepanos, modulo, tramos,
 }: GondolaRealProps) {
   const materiales = useMateriales(ghost, statusColor);
   const esMural = gondolaType === "wall";
@@ -78,7 +81,7 @@ export const GondolaReal = memo(function GondolaReal({
 
   /** El corrido se parte en módulos de ancho de catálogo. De acá salen los
    *  vanos —los paneles y entrepaños— y, de sus bordes, los parantes. */
-  const vanos = useMemo(() => vanosDeCorrido(w, modulo), [w, modulo]);
+  const vanos = useMemo(() => vanosDeCorrido(w, modulo, tramos), [w, modulo, tramos]);
   const niveles = useMemo(() => nivelesDeEntrepano(h, entrepanos), [h, entrepanos]);
 
   // La base es una sola pieza que abraza las dos caras, así que la monta el

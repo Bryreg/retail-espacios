@@ -361,6 +361,10 @@ function filasDeInstrucciones(sede: string): unknown[][] {
     ["COLUMNA", "QUÉ VA AHÍ"],
     ["Espacio", "El código tal como está en el plano: PUN-04, IMP-17."],
     ["", "La cara de atrás de una góndola doble lleva «-B»: GON-60-B."],
+    // Vender por partes: la parte va al final, después de la cara.
+    ["", "Una parte va al final: la puerta 2, NEV-03-PU2; el tramo 3, GON-05-TR3;"],
+    ["", "la base de una punta, PUN-02-EN1 (los entrepaños se cuentan desde abajo)."],
+    ["", "De la cara B, la B va antes que la parte: GON-05-B-TR3."],
     ["Sede", `Escrita igual que en el sistema: ${tienda}.`],
     ["", "Una misma planilla puede tener filas de tiendas distintas:"],
     ["", "cada fila va a la suya, no a la que tengas abierta."],

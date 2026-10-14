@@ -281,7 +281,7 @@ prueba("el corrido se arma por módulos, con un parante en cada junta", () => {
     medidasCodigo, /Math\.round\(w \/ \(modulo && modulo > 0 \? modulo : ANCHO_MODULO_TIPICO\)\)/,
     "el corrido dejó de partirse en módulos de ancho de catálogo",
   );
-  assert.match(gondolaCodigo, /vanosDeCorrido\(w, modulo\)/, "la góndola dejó de armarse por vanos (o ignora su módulo)");
+  assert.match(gondolaCodigo, /vanosDeCorrido\(w, modulo, tramos\)/, "la góndola dejó de armarse por vanos (o ignora su módulo o sus tramos)");
   assert.match(gondolaCodigo, /nivelesDeEntrepano\(h, entrepanos\)/, "la góndola ignora los entrepaños de su ficha");
 });
 
@@ -701,7 +701,9 @@ prueba("la nevera de refrescos es de frente ABIERTO", () => {
   // le llegan sus puertas: la de refrescos no las recibe.
   assert.match(cuerpoNeveraMesh, /const conPuertas = puertas !== undefined;/);
   assert.match(cuerpoNeveraMesh, /variante=\{conPuertas \? "puertas" : "multideck"\}/, "la nevera de refrescos se cerró con puertas");
-  assert.match(editorCodigo, /case "nevera_refrescos": return <NeveraRefrescosMesh {2}\{\.\.\.base\} facePaint=\{facePaint\} \/>;/,
+  // Le llegan sus tramos (vender por partes: un montante entre tramo y
+  // tramo), nunca puertas.
+  assert.match(editorCodigo, /case "nevera_refrescos": return <NeveraRefrescosMesh {2}\{\.\.\.base\} facePaint=\{facePaint\} tramos=\{geometria\.tramos\} \/>;/,
     "a la nevera de refrescos le llegan puertas");
   // Las puertas, por `geometriaDe` (la misma puerta que la lámina y la
   // cámara; un `partes: null` del store es no tenerlas).
@@ -2143,7 +2145,7 @@ prueba("la nevera de puertas dibuja las puertas de su ficha, o las de siempre", 
   // que se dibujan: si no, con 2,30 m y tres hojas se reparte en cuatro vanos
   // y uno queda detrás de un montante.
   const malla = cuerpoDe("function NeveraRefrescosMesh(", "function NeveraVegetalesMesh(");
-  assert.match(malla, /const ventaNevera = useMemo\(\(\) => ventaDeNevera\(w, d, h, puertas\), \[w, d, h, puertas\]\);/,
+  assert.match(malla, /const ventaNevera = useMemo\(\(\) => ventaDeNevera\(w, d, h, puertas, conPuertas \? undefined : tramos\), \[w, d, h, puertas, conPuertas, tramos\]\);/,
     "el producto en prueba de la nevera de puertas ignora las puertas de su ficha");
   assert.match(malla, /<ProductoDePrueba venta=\{ventaNevera\}/, "el producto en prueba de la nevera no usa esa venta");
   assert.match(malla, /puertas=\{puertas\}/, "la malla no le pasa las puertas al dibujo");
@@ -4028,14 +4030,15 @@ prueba("la prueba 3D le gana a la foto y al patrón en su cara, y sólo en ella"
   assert.match(fp, /const arteB = isDouble \? arteALaVista\(prueba\.get\(`\$\{fix\.id\}\|B`\), catalogo, privadoPara\) : null;/);
   assert.match(fp, /const privado = privadoPara !== undefined;/);
   // (Y uno con sólo puertas a la venta en el visor, para marcarlas.)
-  assert.match(fp, /if \(front \|\| back \|\| pruebaA \|\| pruebaB \|\| puertasA\) \{\s*map\.set\(fix\.id, \{ front, back, pruebaA, pruebaB, /,
+  // (Y uno con sólo partes a la venta en el visor, para marcarlas.)
+  assert.match(fp, /if \(front \|\| back \|\| pruebaA \|\| pruebaB \|\| puertasA \|\| contornos\.length\) \{\s*map\.set\(fix\.id, \{\s*front, back, pruebaA, pruebaB,/,
     "un mueble con sólo prueba se queda sin pintar");
   assert.match(fp, /marcarEnUso\(enUso\)/, "las etiquetas en prueba se pueden desalojar del caché");
   assert.match(fp, /etiquetaDeArte\(clave, arteUrl\(arteId\), modo, notifyTexLoaded, \{ arte, ficha: arte\.ficha \?\? null \}\)/);
   // Sin `?? false`: hasta que la dueña toca «Mostrarla acostada», decide la
   // ficha del arte (`ficha.acostado`).
   assert.match(fp, /\{ acostado: como\?\.acostado \}/, "«acostada» no llega al envase");
-  assert.match(fp, /catalogo, comoSePrueba, privadoPara, vanosALaVenta\]\)/, "el memo no se rehace al cambiar la prueba, quién mira o las puertas a la venta");
+  assert.match(fp, /catalogo, comoSePrueba, privadoPara, vanosALaVenta, filasALaVenta\]\)/, "el memo no se rehace al cambiar la prueba, quién mira o las partes a la venta");
   assert.match(fp, /if \(sinArte\) return map;/, "el «Hoy» de la propuesta mostraría la prueba");
 });
 
@@ -6071,7 +6074,7 @@ prueba("el visor de Vender vende la cara entera: los espacios internos del contr
 
 prueba("la escena del visor (`soloVenta`): ni fotos de caras, ni cámara del editor, ni `enfoque3D`", () => {
   // Las tres puertas, en el código de la escena (ver `SceneProps.soloVenta`).
-  assert.match(cuerpoEscena, /estadoDeEscena, soloVenta = false,(?: vanosALaVenta,)?\s*\}: SceneProps\)/, "`soloVenta` no arranca apagado");
+  assert.match(cuerpoEscena, /estadoDeEscena, soloVenta = false,(?: vanosALaVenta,)?(?: filasALaVenta,)?\s*\}: SceneProps\)/, "`soloVenta` no arranca apagado");
   assert.match(cuerpoEscena, /useState<Map<string, number> \| null>\(\(\) => \(soloVenta \? new Map\(\) : null\)\)/,
     "en el visor la escena espera un índice de fotos que nunca pide");
   const efecto = cuerpoEscena.match(/useEffect\(\(\) => \{([^]*?)getFaceImages\(\)/);

@@ -24,6 +24,7 @@ import {
 import type { AccionDeRejillas, EleccionDeRejillas, FilaDePrueba, RejillasDeLaPrueba } from "./muebles/frentes";
 import type { FilasDeProducto } from "./muebles/medidas";
 import { esNeveraDeBebidas, ventaDeTipo } from "./muebles/venta";
+import { contornosDeLasPartes, type ContornoDeParte } from "./muebles/contornos";
 import {
   arteALaVista, caraDeLasTomas, habladorALaVista, hayReunion, laminaDelMueble, MAXIMO_DE_SURTIDO, supplierPorNombre, surtidoALaVista,
   proveedorParaPresentar, pruebaAjenaDelMueble, pruebasDelPlano, pruebasDeLaReunion, REUNION_SIN_PROVEEDOR, reunionFijada, ultimaPrueba,
@@ -78,6 +79,8 @@ import { GeometriaDelMueble } from "../GeometriaDelMueble";
 import { PartesDelMueble } from "../PartesDelMueble";
 import type { FixtureDef } from "../../catalogo/editor3D";
 import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
+import { claseDe, codigoDeParte, codigoVisibleDe, divisionDe } from "../../utils/partes";
+import { partesQuePisa } from "../../utils/slotsDeLasPartes";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
 import {
   nombreDeMueble, renombrar, intercambiarNombres, choqueDeNombre,
@@ -171,6 +174,10 @@ export interface FacePaint {
   /** Vender por partes: las puertas de la cara A que se están vendiendo (los
    *  vanos del dibujo). La nevera las marca y la prueba va sólo detrás. */
   puertasA?: readonly number[];
+  /** Vender por partes, en el visor de Vender: el contorno de cada tramo o
+   *  entrepaño que se está vendiendo, en el frente de su cara
+   *  (`contornosDeLasPartes`). Fuera de la lámina, como el de los slots. */
+  contornos?: readonly ContornoDeParte[];
 }
 
 /** CÓMO se prueba un producto en una cara: en qué entrepaños y si va
@@ -668,6 +675,10 @@ interface GondolaMeshProps {
    *  producto y la lámina preguntan con los mismos. */
   entrepanos?:     number;
   modulo?:         number;
+  /** Vender por partes: los tramos guardados (`partes.tramos`), que parten el
+   *  corrido en tramos iguales. El dibujo, el producto y la lámina preguntan
+   *  con los mismos (`ventaDeGondola`). */
+  tramos?:         number;
 }
 
 const GondolaMesh = memo(function GondolaMesh({
@@ -675,7 +686,7 @@ const GondolaMesh = memo(function GondolaMesh({
   gondolaType = "double",
   facePaint,
   slots, selectedSlotId, hoveredSlotId,
-  onSlotClick, onSlotHover, rubroEntero, semilla, entrepanos, modulo,
+  onSlotClick, onSlotHover, rubroEntero, semilla, entrepanos, modulo, tramos,
 }: GondolaMeshProps) {
   const isWall = gondolaType === "wall";
 
@@ -708,8 +719,8 @@ const GondolaMesh = memo(function GondolaMesh({
   // cuenta que el relleno, y donde está la prueba no va relleno.
   const enPrueba = !ghost && !!(facePaint?.pruebaA || facePaint?.pruebaB);
   const ventaGondola = useMemo(
-    () => ventaDeGondola(w, d, h, isWall, { entrepanos, modulo }),
-    [w, d, h, isWall, entrepanos, modulo],
+    () => ventaDeGondola(w, d, h, isWall, { entrepanos, modulo, tramos }),
+    [w, d, h, isWall, entrepanos, modulo, tramos],
   );
   // Contratada entera con los slots libres (la góndola de Bimbo): en venta
   // se ve con el relleno neutro de su rubro, como cualquier cosa vendida.
@@ -767,7 +778,7 @@ const GondolaMesh = memo(function GondolaMesh({
   return (
     <group>
       <GondolaReal w={w} d={d} h={h} gondolaType={isWall ? "wall" : "double"} ghost={ghost} habladores={habladores ?? undefined}
-        entrepanos={entrepanos} modulo={modulo} />
+        entrepanos={entrepanos} modulo={modulo} tramos={tramos} />
 
       {/* El producto de los espacios vendidos, parado sobre los entrepaños.
           Cuando el proveedor subió su arte manda el arte: la lámina es
@@ -776,7 +787,7 @@ const GondolaMesh = memo(function GondolaMesh({
       {!pinta && (
         <ProductoEnGondola
           w={w} d={d} h={h} esMural={isWall} slots={slots} ghost={ghost}
-          entrepanos={entrepanos} modulo={modulo}
+          entrepanos={entrepanos} modulo={modulo} tramos={tramos}
           cubiertas={cubiertasDe(facePaint, isWall)}
           vendidoEntero={vendidoEntero}
           semilla={semilla}
@@ -2061,7 +2072,7 @@ function NeveraCarnesMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }:
   );
 }
 
-function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint, puertas }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;puertas?:number }) {
+function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint, puertas, tramos }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;puertas?:number;tramos?:number }) {
   // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
   // Era una caja oscura con estantes y tiras de luz. Le faltaba lo que hace
   // que el ojo lea «mueble de frío»: en un multideck, la CORTINA DE AIRE —la
@@ -2086,7 +2097,8 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint, puertas }
   // La nevera se vende entera: con el producto del proveedor en prueba, las
   // botellas mudas se apagan en todo el mueble.
   const enPrueba = !ghost && !!facePaint?.pruebaA;
-  const ventaNevera = useMemo(() => ventaDeNevera(w, d, h, puertas), [w, d, h, puertas]);
+  // Abierta y vendida por tramos: un vano por tramo, con su montante.
+  const ventaNevera = useMemo(() => ventaDeNevera(w, d, h, puertas, conPuertas ? undefined : tramos), [w, d, h, puertas, conPuertas, tramos]);
   // La marca en el cabezote, como el copete de la punta: la nevera se vende
   // entera, y el cartel de arriba en gris decía «maqueta» justo encima de
   // las botellas del proveedor. Mismo dibujo honesto (`pop.ts`): el color de
@@ -2112,6 +2124,7 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint, puertas }
         cabezote={cabezote}
         variante={conPuertas ? "puertas" : "multideck"}
         puertas={puertas}
+        tramos={conPuertas ? undefined : tramos}
         resaltadas={conPuertas ? facePaint?.puertasA : undefined}
         // El relleno mudo se apaga cuando el proveedor subió su arte: lo que
         // se ve en el mueble tiene que ser SU producto, no uno inventado.
@@ -2150,7 +2163,7 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint, puertas }
  * encima es fruta suelta, que rueda y hay que verla desde arriba; con estantes
  * planos el mueble se lee como una estantería con cosas apoyadas.
  */
-function NeveraVegetalesMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
+function NeveraVegetalesMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro, tramos }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string;tramos?:number }) {
   return (
     <group>
       <NeveraReal
@@ -2159,6 +2172,8 @@ function NeveraVegetalesMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro
         ghost={ghost}
         variante="vegetales"
         conRelleno={false}
+        // Vendido por tramos: un montante entre tramo y tramo.
+        tramos={tramos}
       />
       {/* Cada bandeja se llena con el MISMO componente que la batea y el cajón
           de frutas: con el arte del proveedor si lo subió, y con producto
@@ -2318,6 +2333,10 @@ function ServicioClienteMesh({ w, d, h, statusColor, ghost }: { w:number;d:numbe
  * de los defectos de forma sólo se ven poniendo el ojo a la altura del
  * producto. No lo usa nadie más: el editor lo llama desde acá adentro.
  */
+/** El contorno de la parte que se vende en el visor de Vender: el amarillo
+ *  del botón de Vender, el mismo del marco de la puerta vendida. */
+const COLOR_DE_LA_PARTE_VENDIDA = "#f2b705";
+
 export function FixtureMesh({ fixture, ghost, neutro = false, facePaint, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: FixtureMeshProps) {
   const sc = neutro
     ? COLOR_NEUTRO
@@ -2329,7 +2348,7 @@ export function FixtureMesh({ fixture, ghost, neutro = false, facePaint, selecte
   // Lo que el mueble guardó (de su ficha o del panel), por la misma puerta
   // que usan la lámina, el producto y la cámara (`geometriaDe`).
   const geometria = geometriaDe(fixture);
-  switch (fixture.type) {
+  const cuerpo = (() => { switch (fixture.type) {
     case "gondola": return (
       <GondolaMesh {...base}
         rubroEntero={rubroEntero}
@@ -2337,6 +2356,7 @@ export function FixtureMesh({ fixture, ghost, neutro = false, facePaint, selecte
         gondolaType={fixture.gondolaType ?? "double"}
         entrepanos={geometria.entrepanos}
         modulo={geometria.modulo}
+        tramos={geometria.tramos}
         facePaint={facePaint}
         slots={fixture.slots}
         selectedSlotId={selectedSlotId}
@@ -2374,15 +2394,30 @@ export function FixtureMesh({ fixture, ghost, neutro = false, facePaint, selecte
     case "batea":         return <BateaMesh          {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "isla_fria":        return <IslaFriaMesh         {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "nevera_carnes":    return <NeveraCarnesMesh     {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
-    case "nevera_refrescos": return <NeveraRefrescosMesh  {...base} facePaint={facePaint} />;
+    case "nevera_refrescos": return <NeveraRefrescosMesh  {...base} facePaint={facePaint} tramos={geometria.tramos} />;
     case "nevera_puertas":   return <NeveraRefrescosMesh  {...base} facePaint={facePaint} puertas={puertasDe(fixture.w, geometria.puertas)} />;
-    case "nevera_vegetales": return <NeveraVegetalesMesh   {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
+    case "nevera_vegetales": return <NeveraVegetalesMesh   {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} tramos={geometria.tramos} />;
     case "stand_frutas":     return <StandFrutasMesh       {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "checkout":      return <CheckoutMesh       {...base} />;
     case "servicio_cliente": return <ServicioClienteMesh {...base} />;
     case "columna":       return <ColumnaMesh        {...base} />;
     default:              return <IslaMesh           {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;  // legacy exhibicion + unknown
-  }
+  } })();
+  // Vender por partes, en el visor de Vender: el contorno de cada tramo o
+  // entrepaño que se vende, sobre el frente de su cara. Fuera de la lámina
+  // (`CHROME`), como el contorno de los slots.
+  const contornos = !ghost ? facePaint?.contornos : undefined;
+  if (!contornos?.length) return cuerpo;
+  return (
+    <group>
+      {cuerpo}
+      {contornos.map((c, i) => (
+        <group key={i} position={[c.cx, c.cy, c.z]} userData={CHROME}>
+          <ContornoDeSlot w={Math.max(0.01, c.ancho)} h={Math.max(0.01, c.alto)} z={0} color={COLOR_DE_LA_PARTE_VENDIDA} />
+        </group>
+      ))}
+    </group>
+  );
 }
 
 // ─── Store room ───────────────────────────────────────────────────────────────
@@ -5299,10 +5334,13 @@ interface SceneProps {
   comoSePrueba:      ReadonlyMap<string, ComoSePrueba>;
   /** El catálogo: de ahí salen la ficha y el modo de fondo de cada arte. */
   catalogo:          Arte[];
-  /** Vender por partes, en el visor de Vender: las puertas que se venden de
-   *  cada cara (`${fixtureId}|A` → vanos del dibujo). Se marcan y la prueba
-   *  va sólo detrás de ellas. Sin esto, las caras enteras. */
+  /** Vender por partes, en el visor de Vender: las puertas o los tramos que
+   *  se venden de cada cara (`${fixtureId}|A` → vanos del dibujo de la cara).
+   *  Se marcan y la prueba va sólo en ellos. Sin esto, las caras enteras. */
   vanosALaVenta?:    ReadonlyMap<string, readonly number[]>;
+  /** Vender por partes: los entrepaños que se venden de cada cara, como
+   *  filas de producto (la base es la 0). La prueba va sólo en ellas. */
+  filasALaVenta?:    ReadonlyMap<string, readonly number[]>;
   /** La pantalla de venta: limpia y sin datos de otros proveedores. */
   presentationMode:  boolean;
   /** Para quién es lo que se dibuja (`muebles/privacidad.ts`): `undefined` en
@@ -5343,7 +5381,7 @@ export function Scene({
   onSelectFixture, setPlacedFixtures,
   screenshotReady, topViewReady, firstPerson, sinArte, prueba, onCamaraFP, saltarA,
   onHoverFixture, fixtures, comoSePrueba, catalogo, presentationMode, pedidoDeToma, privadoPara,
-  estadoDeEscena, soloVenta = false, vanosALaVenta,
+  estadoDeEscena, soloVenta = false, vanosALaVenta, filasALaVenta,
 }: SceneProps) {
   const { gl, camera, invalidate, size } = useThree();
   // Con un selector, y no el store entero: cada movimiento de la órbita
@@ -5472,8 +5510,17 @@ export function Scene({
         }
       }
       const vanos = vanosALaVenta?.get(`${fixId}|${cara}`);
+      // Vendiendo entrepaños sueltos, el producto va sólo en ESAS filas (las
+      // que eligió quien prueba, si alguna es de ellas; si no, todas las del
+      // contrato): las otras no se le venden a este proveedor.
+      const filasDeLaParte = filasALaVenta?.get(`${fixId}|${cara}`);
+      const elegidas = como?.donde && como.donde !== "todas" ? como.donde : null;
+      const donde: PruebaDeCara["donde"] = filasDeLaParte && filasDeLaParte.length
+        ? (elegidas && elegidas.some((i) => filasDeLaParte.includes(i))
+          ? elegidas.filter((i) => filasDeLaParte.includes(i)) : [...filasDeLaParte])
+        : como?.donde ?? "todas";
       return {
-        etiqueta, empaque, donde: como?.donde ?? "todas", semilla: `${fixId}|${cara}|${arteId}`, filas,
+        etiqueta, empaque, donde, semilla: `${fixId}|${cara}|${arteId}`, filas,
         copete: como?.copete ?? true, acostada,
         ...(vanos && vanos.length ? { vanos } : {}),
         // El hablador: el nombre sin cifras y el precio SÓLO si está cargado
@@ -5542,8 +5589,18 @@ export function Scene({
         ? caraPintada(arteB, `${fullCode}-B`, `${codeUC}-B`, uf?.faceB?.brandCategory ?? "")
         : null;
       const puertasA = vanosALaVenta?.get(`${fix.id}|A`);
-      if (front || back || pruebaA || pruebaB || puertasA) {
-        map.set(fix.id, { front, back, pruebaA, pruebaB, ...(puertasA && puertasA.length ? { puertasA } : {}) });
+      // El contorno de los tramos y entrepaños que se venden (la nevera de
+      // puertas ya marca el marco de sus hojas).
+      const contornos = type === "nevera_puertas" ? [] : (["A", "B"] as const).flatMap((c) => contornosDeLasPartes(
+        type, fix.w, fix.d, fix.h, fix.gondolaType, geometriaDe(fix), c,
+        vanosALaVenta?.get(`${fix.id}|${c}`), filasALaVenta?.get(`${fix.id}|${c}`),
+      ));
+      if (front || back || pruebaA || pruebaB || puertasA || contornos.length) {
+        map.set(fix.id, {
+          front, back, pruebaA, pruebaB,
+          ...(puertasA && puertasA.length ? { puertasA } : {}),
+          ...(contornos.length ? { contornos } : {}),
+        });
       }
     }
     // Lo que está en prueba no se desaloja del caché de etiquetas.
@@ -5552,7 +5609,7 @@ export function Scene({
   // texVersion re-runs this memo when an async photo texture settles
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [placedFixtures, unifiedById, faceImages, texVersion, notifyTexLoaded, sinArte, prueba,
-      catalogo, comoSePrueba, privadoPara, vanosALaVenta]);
+      catalogo, comoSePrueba, privadoPara, vanosALaVenta, filasALaVenta]);
   // El foco de la pantalla de venta: los muebles con una prueba a la vista y
   // el de la toma. Los demás —los vecinos— se atenúan para no competir con lo
   // que se vende; sin ninguno (Presentar sin proveedor ni toma), nadie. En el
@@ -6317,6 +6374,11 @@ function CommercialPanel({
   onRotate, onFlip, onDelete, onClose, onSlotClose,
 }: CommercialPanelProps) {
   const isAdmin = useAuthStore(selectIsAdmin);
+  // Vender por partes: el mapa CRUDO de la base (vender un tramo no cambia el
+  // mueble fusionado) para avisar si un espacio interno cae en un tramo o un
+  // entrepaño con contrato.
+  const estadoCrudo = useFixtureStore((s) => s.estadoComercial);
+  const sedeDelPanel = useFixtureStore((s) => s.sede);
   // El nombre del modelo de una ficha propia llega cuando se leen las fichas
   // del supermercado: escucharlas vuelve a dibujar el panel.
   useFichasPropias();
@@ -6406,6 +6468,20 @@ function CommercialPanel({
   }
 
   if (selectedSlot) {
+    // Vender por partes: un mueble que se vende por tramos o por entrepaños
+    // vende lo suyo con contrato, en Vender. Un espacio interno marcado
+    // vendido acá no tiene contrato, y la misma repisa se podría vender dos
+    // veces sin que el servidor lo vea: en ese mueble no se marca uno NUEVO
+    // como vendido (el que ya estaba marcado se puede liberar, y se avisa).
+    const divisionDelMueble = divisionDe(fix);
+    const porPartes = !!divisionDelMueble && (divisionDelMueble.clase === "tramos" || divisionDelMueble.clase === "entrepanos");
+    const claseDelMueble = divisionDelMueble ? claseDe(divisionDelMueble.clase) : undefined;
+    const pisaConContrato = porPartes
+      ? partesQuePisa(fix, selectedSlot, isDoubleGondola(fix) ? ["A", "B"] : ["A"])
+        .filter(({ cara, parte }) => estadoCrudo[fullSpaceCode(sedeDelPanel, codigoDeParte(fix.code, cara, parte))]?.status === "occupied")
+        .map(({ cara, parte }) => codigoVisibleDe("", cara, isDoubleGondola(fix), parte).replace(/^·/, ""))
+      : [];
+    const noSeMarcaVendido = porPartes && selectedSlot.status === "free";
     const slotSm   = STATUS_META[selectedSlot.status];
     const slotDays = computeDays(selectedSlot.startDate, selectedSlot.endDate);
     const slotStatusBorder = selectedSlot.status === "occupied" ? "border-l-4 border-danger" : selectedSlot.status === "reserved" ? "border-l-4 border-warning" : "border-l-4 border-accent";
@@ -6435,9 +6511,20 @@ function CommercialPanel({
             <select value={selectedSlot.status} onChange={e=>handleSlotStatusChange(e.target.value as SpaceStatus)}
               className={`w-full rounded border ${slotSelectBorder} bg-dark-bg px-2 py-1 text-xs text-dark-ink-1 focus:outline-none`}>
               <option value="free">Disponible</option>
-              <option value="occupied">Ocupado</option>
-              <option value="reserved">Reservado</option>
+              <option value="occupied" disabled={noSeMarcaVendido}>Ocupado</option>
+              <option value="reserved" disabled={noSeMarcaVendido}>Reservado</option>
             </select>
+            {porPartes && claseDelMueble && (
+              <p className="mt-1 text-[10px] leading-snug text-dark-ink-3" data-slot-por-partes>
+                Este mueble se vende por {claseDelMueble.plural}: lo que se vende de él va con contrato, en Vender.
+                {noSeMarcaVendido ? " Un espacio interno nuevo no se marca vendido acá." : " Éste ya estaba marcado: se puede liberar."}
+              </p>
+            )}
+            {pisaConContrato.length > 0 && (
+              <p className="mt-1 text-[10px] leading-snug text-warning" data-slot-pisa-parte>
+                Cae en {pisaConContrato.join(", ")}, que {pisaConContrato.length === 1 ? "tiene" : "tienen"} contrato.
+              </p>
+            )}
           </div>
 
           <div>
@@ -6445,7 +6532,9 @@ function CommercialPanel({
             <input type="text" value={selectedSlot.supplierName} placeholder="Nombre del proveedor"
               onChange={e => {
                 us({ supplierName: e.target.value });
-                if (e.target.value && selectedSlot.status==="free")
+                // Escribir un proveedor lo marcaba ocupado; en un mueble que
+                // se vende por partes, no (se vende en Vender).
+                if (e.target.value && selectedSlot.status==="free" && !noSeMarcaVendido)
                   us({ status:"occupied", supplierName: e.target.value });
               }} className={inputCls} />
           </div>
