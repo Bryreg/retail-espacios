@@ -41,15 +41,22 @@ KIND_PLANOMETRIA = "planometria"
 #: ni hasta cuándo. Es una lista blanca y no una negra a propósito: un campo
 #: comercial que se agregue mañana al layout no se filtra por olvido.
 #:
-#: Desde 2026-10-13 también la ficha del mueble (``modelo``, ``entrepanos``,
-#: ``modulo`` y, de ``partes``, sólo sus números conocidos): es geometría, la
-#: misma que ve el visor de Vender (``sinDatosComerciales``), y sin ella la
-#: mercaderista vería otro mueble que el que tiene que armar.
+#: Desde 2026-10-13 también la ficha del mueble: es geometría, la misma que ve
+#: el visor de Vender (``sinDatosComerciales``), y sin ella la mercaderista
+#: vería otro mueble que el que tiene que armar. NO está en esta lista: la
+#: copia ``_solo_geometria`` clave por clave y con su tipo (``modelo`` sólo si
+#: es texto, ``entrepanos`` y ``modulo`` sólo si son números, de ``partes``
+#: sólo sus números conocidos). ``PUT /layout`` recibe el mueble sin tipar, y
+#: una clave de la lista blanca se llevaría lo que le escriban adentro mañana
+#: —un objeto con plata, un texto con un proveedor—.
 _GEOMETRIA = {
     "id", "code", "nomenclatura", "type", "gondolaType", "label",
     "cx", "cz", "rotY", "w", "d", "h", "color", "sede", "rentable",
-    "modelo", "entrepanos", "modulo",
 }
+
+
+def _es_numero(v: object) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
@@ -131,15 +138,20 @@ def _fixtures(db: Session, sede: str) -> list[dict]:
 
 def _solo_geometria(fixture: dict) -> dict:
     fuera = {k: v for k, v in fixture.items() if k in _GEOMETRIA}
+    # La ficha, con su tipo: el mismo criterio que `sinDatosComerciales` en
+    # el navegador. Un `modelo` que no es texto o unos entrepaños que no son
+    # un número no son una ficha, y no salen.
+    if isinstance(fixture.get("modelo"), str):
+        fuera["modelo"] = fixture["modelo"]
+    for clave in ("entrepanos", "modulo"):
+        if _es_numero(fixture.get(clave)):
+            fuera[clave] = fixture[clave]
     # `partes` no pasa entera: es un objeto, y un objeto de la lista blanca se
     # llevaría lo que le escriban adentro mañana. Pasan sus números
     # conocidos, copiados uno por uno.
     partes = fixture.get("partes")
     if isinstance(partes, dict):
-        numeros = {
-            k: partes[k] for k in PARTES_GEOMETRICAS
-            if isinstance(partes.get(k), (int, float)) and not isinstance(partes.get(k), bool)
-        }
+        numeros = {k: partes[k] for k in PARTES_GEOMETRICAS if _es_numero(partes.get(k))}
         if numeros:
             fuera["partes"] = numeros
     return fuera

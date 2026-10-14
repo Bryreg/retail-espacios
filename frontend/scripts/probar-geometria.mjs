@@ -49,6 +49,7 @@ const G = await cargar("src/utils/geometriaDelMueble.ts");
 const M = await cargar("src/components/StoreEditor3D/muebles/medidas.ts");
 const V = await cargar("src/components/StoreEditor3D/muebles/venta.ts", { platform: "node", jsx: "automatic" });
 const C = await cargar("src/catalogo/catalogo.ts");
+const componente = sinComentarios(leer("src/components/GeometriaDelMueble.tsx"));
 
 let hechas = 0;
 const prueba = (n, fn) => {
@@ -153,16 +154,18 @@ prueba("CON ESPACIOS INTERNOS VENDIDOS no se cambia la cantidad de entrepaños",
     assert.ok(r.bloqueo, `con un interno «${estado}» se cambiaron los entrepaños`);
     assert.match(r.bloqueo, /no se puede cambiar la cantidad de entrepaños hasta liberarlos/);
     assert.equal(r.aviso, null);
-    // Vaciarlo (volver a la cuenta de siempre) también es cambiarla.
-    assert.ok(revisar(f, { entrepanos: null }).bloqueo, "vaciar los entrepaños pasó con internos vendidos");
+    // Vaciarlo (volver a la cuenta de siempre) también es cambiarla, si la
+    // cuenta de siempre da otra cantidad (con 1,80 da 4).
+    const tres = gondola({ slots: slots(estado, "free"), entrepanos: 3 });
+    assert.ok(revisar(tres, { entrepanos: null }).bloqueo, "vaciar los entrepaños pasó con internos vendidos");
   }
   // Sin entrepaños guardados, el alto decide cuántos entran: un alto que suma
   // uno es cambiar la cantidad.
   const auto = gondola({ slots: slots("occupied") });
-  assert.equal(G.geometriaALaVista(auto).entrepanos, 5);
+  assert.equal(G.geometriaALaVista(auto).entrepanos, 4);
   const r = revisar(auto, { h: 2.2 });
   assert.ok(r.bloqueo, "un alto que suma un entrepaño pasó con internos vendidos");
-  assert.match(r.bloqueo, /pasaría de 5 a 6 entrepaños/);
+  assert.match(r.bloqueo, /pasaría de 4 a 5 entrepaños/);
   // Un alto que no cambia la cantidad, o el módulo: con aviso, no bloqueo.
   const alto = revisar(auto, { h: 2.0 });
   assert.equal(alto.bloqueo, null);
@@ -173,6 +176,31 @@ prueba("CON ESPACIOS INTERNOS VENDIDOS no se cambia la cantidad de entrepaños",
   assert.ok(modulo.aviso, "con internos vendidos se cambió el módulo sin preguntar");
   // Los libres no cuentan.
   assert.equal(revisar(gondola({ slots: slots("free", "free") }), { entrepanos: 4 }).aviso, null);
+});
+
+prueba("LA MISMA UNIDAD: el número que el panel sugiere da las mismas filas de producto (ejecutado)", () => {
+  // El panel dice «auto (N)»; escribir esa N no puede cambiar las filas del
+  // arte. Antes la góndola contaba el techo: decía 5 y el 5 tecleado daba 6.
+  for (const [tipo, h, d] of [["gondola", 1.5, 0.9], ["gondola", 1.8, 0.9], ["gondola", 2.0, 0.9], ["gondola", 2.4, 0.9], ["punta", 1.6, 0.4], ["punta", 2.0, 0.4]]) {
+    const f = tipo === "punta" ? punta({ h, d }) : gondola({ h, d });
+    const n = G.geometriaALaVista(f).entrepanos;
+    const filas = (e) => V.ventaDeTipo(tipo, f.w, d, h, tipo === "gondola" ? "double" : undefined, e === undefined ? {} : { entrepanos: e }).filas.rows;
+    assert.equal(filas(n), filas(undefined), `${tipo} de ${h}: el panel sugiere ${n} y tecleándolo cambian las filas de producto`);
+    // Con la cara vendida, el aviso no dice «de 4 a 4» como si nada cambiara:
+    // dice que se reparten parejo, y no bloquea por cantidad con internos vendidos.
+    const r = revisar({ ...f, ...CONTRATO }, { entrepanos: n });
+    assert.ok(r.aviso, `${tipo} de ${h}: repartir los entrepaños de una cara vendida no avisó`);
+    assert.match(texto(r), new RegExp(`los mismos ${n}, repartidos parejo`));
+    assert.ok(!new RegExp(`de ${n} a ${n}\\b`).test(texto(r)), `el aviso dice «de ${n} a ${n}»`);
+    assert.equal(revisar({ ...f, slots: slots("occupied") }, { entrepanos: n }).bloqueo, null,
+      `${tipo} de ${h}: la misma cantidad se bloqueó como si cambiara`);
+  }
+  // Un número distinto sí cambia la cantidad, y lo dice desde la cuenta de siempre.
+  const t = texto(revisar(gondola(CONTRATO), { entrepanos: 5 }));
+  assert.match(t, /los entrepaños, de 4 \(la cuenta de siempre\) a 5/);
+  assert.ok(revisar(gondola({ slots: slots("occupied") }), { entrepanos: 5 }).bloqueo);
+  // Los campos del panel dicen el techo, para que nadie lo cuente.
+  assert.match(componente, /vista\.techo \? ", más uno de techo sin producto" : ""/);
 });
 
 prueba("el aviso no nombra a nadie: ni proveedor, ni marca, ni fechas, ni plata", () => {
@@ -264,14 +292,18 @@ prueba("escribir toca sólo los tres campos de ese mueble", () => {
 });
 
 prueba("lo que se dibuja hoy: lo guardado, o la cuenta de siempre (y null es la cuenta de siempre)", () => {
+  // Sin guardar, la góndola dibuja la base, los que llevan producto y uno de
+  // techo arriba: el techo no se cuenta (ver «la misma unidad», abajo).
   assert.deepEqual(
-    [G.geometriaALaVista(gondola()).entrepanos, G.geometriaALaVista(gondola()).entrepanosGuardados],
-    [M.nivelesDeEntrepano(1.8).length - 1, false]);
-  assert.equal(G.geometriaALaVista(gondola({ entrepanos: null })).entrepanos, M.nivelesDeEntrepano(1.8).length - 1);
+    [G.geometriaALaVista(gondola()).entrepanos, G.geometriaALaVista(gondola()).entrepanosGuardados, G.geometriaALaVista(gondola()).techo],
+    [M.nivelesDeEntrepano(1.8).length - 2, false, true]);
+  assert.equal(G.geometriaALaVista(gondola({ entrepanos: null })).entrepanos, M.nivelesDeEntrepano(1.8).length - 2);
+  assert.equal(G.geometriaALaVista(gondola({ entrepanos: 3 })).techo, false);
   assert.deepEqual([G.geometriaALaVista(gondola({ entrepanos: 3 })).entrepanos, G.geometriaALaVista(gondola({ entrepanos: 3 })).entrepanosGuardados], [3, true]);
   const v = G.geometriaALaVista(gondola({ modulo: 1.0 }));
   assert.deepEqual([v.modulos, v.anchoDeModulo], [3, 1.0]);
   assert.equal(G.geometriaALaVista(punta()).entrepanos, M.nivelesDePunta(M.techoDeCara(1.8)).length - 1);
+  assert.equal(G.geometriaALaVista(punta()).techo, false, "la punta no tiene techo: el de su última fila es el copete");
   // La sugerencia es la ficha del modelo.
   assert.deepEqual(G.fichaSugerida(gondola({ modelo: "base:gondola-central-200-m100" })),
     { h: 2.0, entrepanos: 4, modulo: 1.0 });
@@ -346,7 +378,6 @@ prueba("la punta se DIBUJA con lo que guardó: estructura, producto, relleno, ha
 // 5 · LOS DOS PANELES, EL MISMO COMPONENTE, Y NO ESCRIBE SIN REVISAR
 // ═════════════════════════════════════════════════════════════════════════════
 
-const componente = sinComentarios(leer("src/components/GeometriaDelMueble.tsx"));
 const plano2D = sinComentarios(leer("src/components/FloorPlan2D/FloorPlan2D.tsx"));
 
 prueba("el plano 2D y el Editor 3D muestran «Alto», «Entrepaños» y «Módulo» con el mismo componente", () => {
@@ -390,6 +421,125 @@ prueba("el componente NO escribe sin revisar: bloqueo no escribe, aviso espera �
   assert.match(componente, /Dejarlo como estaba/);
   // Vaciar un campo es null.
   assert.match(componente, /if \(crudo === ""\) return \{ \[campo\]: null \};/, "vaciar un campo no lo pide como null");
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 6 · LO QUE SE DESHACE SE GUARDA (el store de verdad, con la red de mentira)
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// `PUT /layout` rellena la ficha que llega AUSENTE con la guardada y la borra
+// sólo con un `null`. Deshacer un «Entrepaños» escrito sobre una góndola que no
+// tenía la clave reponía el arreglo de antes, con la clave ausente: el editor
+// dibujaba la cuenta de siempre y la base se quedaba con lo deshecho. Esto
+// corre el store de verdad (`commit`, `undo`, `redo`, `pushSede`) con la red
+// cambiada por una que anota el cuerpo de cada `PUT`.
+
+const GP = await cargar("src/utils/guardadoDelPlano.ts");
+// El `persist` del store guarda en `window.localStorage`: uno de mentira.
+globalThis.window ??= globalThis;
+globalThis.localStorage ??= { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+const cuerpos = [];
+globalThis.__cuerposDelPut = cuerpos;
+const redDeMentira = {
+  name: "red-de-mentira",
+  setup(b) {
+    b.onResolve({ filter: /(\/api\/layout|\/api\/spaces|\/authStore)$/ }, (a) => ({ path: a.path, namespace: "mentira" }));
+    b.onLoad({ filter: /.*/, namespace: "mentira" }, (a) => {
+      if (a.path.endsWith("authStore")) {
+        return { loader: "js", contents: "export const useAuthStore = { getState: () => ({ token: 't', role: 'admin' }) };" };
+      }
+      if (a.path.endsWith("spaces")) return { loader: "js", contents: "export const fetchEstadoComercial = async () => ({});" };
+      return {
+        loader: "js",
+        contents: `
+          const nada = async () => ({});
+          export const deleteLayout = nada, fetchAllLayouts = async () => [], fetchLayoutSettings = nada,
+            fetchReferenceRates = nada, fetchRevisions = async () => [], fetchSeasonWindows = nada,
+            saveLayoutSettings = nada, saveReferenceRates = nada, saveSeasonWindows = nada;
+          export async function saveLayout(sede, fixtures, base) {
+            globalThis.__cuerposDelPut.push(JSON.stringify({ sede, fixtures, base_updated_at: base }));
+            return { sede, fixtures, updated_at: "rev-" + globalThis.__cuerposDelPut.length };
+          }`,
+      };
+    });
+  },
+};
+const S = await cargar("src/store/fixtureStore.ts", { platform: "node", plugins: [redDeMentira] });
+
+{
+  const st = S.useFixtureStore;
+  /** Lo que sale en el próximo `PUT` de NAVE: el mueble `id`, como JSON. */
+  const guardar = async (id) => {
+    const antes = cuerpos.length;
+    await st.getState().pushSede("NAVE");
+    assert.equal(cuerpos.length, antes + 1, "el store no mandó el plano");
+    const cuerpo = JSON.parse(cuerpos[cuerpos.length - 1]);
+    return { crudo: JSON.stringify(cuerpo.fixtures.find((f) => f.id === id)), mueble: cuerpo.fixtures.find((f) => f.id === id) };
+  };
+  const arrancar = (plano) => st.setState({
+    sede: "NAVE", sedes: ["NAVE"], fixturesBySede: { NAVE: plano }, serverRev: { NAVE: "rev-0" },
+    conflicts: {}, dirty: {}, rechazos: {}, past: [], future: [],
+  });
+  const escribir = (id, cambio) => st.getState().commit(G.conGeometria(S.selectFixtures(st.getState()), id, cambio));
+  const asincronas = [
+    ["DESHACER «Entrepaños» y «Módulo» en un mueble que no los tenía manda null, no la clave ausente", async () => {
+      const vieja = gondola({ id: "g-vieja", ...CONTRATO });
+      const otra = gondola({ id: "g-otra", code: "GON-04" });
+      arrancar([vieja, otra]);
+      escribir("g-vieja", { entrepanos: 4, modulo: 1.0 });
+      const tras = await guardar("g-vieja");
+      assert.deepEqual([tras.mueble.entrepanos, tras.mueble.modulo], [4, 1.0], "el panel no se guardó");
+      assert.ok(!("status" in tras.mueble) && !("supplierName" in tras.mueble), "lo comercial viajó en el PUT");
+      st.getState().undo();
+      const deshecho = await guardar("g-vieja");
+      assert.match(deshecho.crudo, /"entrepanos":null/,
+        "el deshacer mandó los entrepaños ausentes: el servidor rellena lo guardado y la base se queda con lo deshecho");
+      assert.match(deshecho.crudo, /"modulo":null/, "el deshacer mandó el módulo ausente");
+      assert.ok(!/"modelo"|"partes"/.test(deshecho.crudo), "el deshacer inventó claves que el mueble nunca tuvo");
+      const enElStore = S.selectFixtures(st.getState());
+      assert.equal(G.geometriaALaVista(enElStore[0]).entrepanosGuardados, false, "tras deshacer no volvió la cuenta de siempre");
+      assert.equal(enElStore[1], otra, "el deshacer le cambió la identidad a un mueble que no tenía nada que decir");
+      // Rehacer vuelve a escribir lo deshecho.
+      st.getState().redo();
+      assert.deepEqual([(await guardar("g-vieja")).mueble.entrepanos, (await guardar("g-vieja")).mueble.modulo], [4, 1.0], "rehacer no se guardó");
+    }],
+    ["deshacer un VACIADO vuelve a mandar el valor, y vaciar viaja null hasta el servidor", async () => {
+      arrancar([gondola({ id: "g-ficha", entrepanos: 4, modulo: 1.0, modelo: "base:gondola-central-200-m100" })]);
+      escribir("g-ficha", { entrepanos: null });
+      const vaciado = await guardar("g-ficha");
+      assert.match(vaciado.crudo, /"entrepanos":null/, "el guardado sacó el null: el servidor rellena y vaciar no se guarda nunca");
+      assert.equal(vaciado.mueble.modelo, "base:gondola-central-200-m100");
+      st.getState().undo();
+      assert.equal((await guardar("g-ficha")).mueble.entrepanos, 4, "deshacer el vaciado no volvió a mandar los 4");
+    }],
+  ];
+  for (const [nombre, fn] of asincronas) {
+    try { await fn(); hechas++; console.log("  ok   " + nombre); }
+    catch (e) { console.error("  FALLA " + nombre + "\n         " + e.message); process.exitCode = 1; }
+  }
+}
+
+prueba("deshacer Y rehacer reponen el plano con la ficha que se va dicha con null, y el PUT lleva sinComercial", () => {
+  const store = sinComentarios(leer("src/store/fixtureStore.ts"));
+  assert.match(store, /const prev = conFichaQuitada\(state\.past\[state\.past\.length - 1\], current\);/, "deshacer repone la ficha ausente");
+  assert.match(store, /const next = conFichaQuitada\(state\.future\[0\], current\);/, "rehacer repone la ficha ausente");
+  assert.match(store, /await saveLayout\(sede, sinComercial\(fixtures\), base\)/, "el PUT no manda el plano por `sinComercial`");
+  assert.match(store, /import \{ conFichaQuitada, sinComercial \} from "\.\.\/utils\/guardadoDelPlano";/);
+});
+
+prueba("conFichaQuitada y sinComercial, solos: el null de la ficha llega al cuerpo del PUT", () => {
+  const actual = [{ id: "a", type: "gondola", entrepanos: 4, partes: { puertas: 2 } }, { id: "b", type: "gondola" }];
+  const repuesto = [{ id: "a", type: "gondola" }, actual[1], { id: "c", type: "punta" }];
+  const r = GP.conFichaQuitada(repuesto, actual);
+  assert.deepEqual(r[0], { id: "a", type: "gondola", entrepanos: null, partes: null });
+  assert.equal(r[1], actual[1]);
+  assert.equal(r[2], repuesto[2], "un mueble que no está ahora no tiene nada que decir");
+  assert.equal(repuesto[0].entrepanos, undefined, "conFichaQuitada mutó el historial");
+  assert.equal(GP.conFichaQuitada(actual, actual), actual, "sin nada que decir no vuelve el mismo arreglo");
+  const cuerpo = JSON.stringify(GP.sinComercial([{ id: "a", type: "gondola", entrepanos: null, partes: null, modulo: 1, ...CONTRATO }]));
+  assert.match(cuerpo, /"entrepanos":null/);
+  assert.match(cuerpo, /"partes":null/);
+  for (const campo of GP.CAMPOS_DE_CONTRATO) assert.ok(!cuerpo.includes(`"${campo}"`), `\`${campo}\` viajó en el PUT`);
 });
 
 console.log(`\n${hechas} pruebas de geometría del mueble`);

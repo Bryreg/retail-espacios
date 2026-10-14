@@ -168,7 +168,17 @@ export interface GrupoDeRelleno {
  * cinco, la góndola de Bimbo eran 1.635 cajas en el cuadro de bolsa-4, tres
  * de cada cinco tapadas por su propio frente.
  */
-export interface VendidoEntero { rubro?: string; hondo?: boolean }
+export interface VendidoEntero {
+  rubro?: string;
+  /** `false`: dos filas hacia el fondo. Ausente o `true`: cinco
+   *  (`PROFUNDIDAD_DE_MUEBLE_ENTERO`), lo de siempre. `"todo"`: hasta el fondo
+   *  —las filas que entren—, que es como viene cargada una ESTIBA de verdad:
+   *  con cinco, la de 1,20 × 1,00 mostraba más de media tarima vacía desde
+   *  arriba. Sólo la piden las estibas colocadas desde un modelo del catálogo
+   *  (`IslaMesh`): una sin modelo, de un plano de antes, se sigue dibujando
+   *  igual. */
+  hondo?: boolean | "todo";
+}
 
 export interface EntradaDeRelleno {
   /** Ancho total del mueble, para pasar los slots de fracción a metros. */
@@ -254,7 +264,7 @@ export function rellenoPorRubro({
         // se mira desde todos lados y está contratado completo. Con dos
         // filas, un exhibidor de 80 cm de fondo muestra siete centímetros de
         // producto y setenta de estante vacío.
-        const fondos = Math.min(
+        const fondos = vendidoEntero?.hondo === "todo" ? acomodo.filas : Math.min(
           acomodo.filas, vendidoEntero && vendidoEntero.hondo !== false ? PROFUNDIDAD_DE_MUEBLE_ENTERO : PROFUNDIDAD_VISIBLE,
         );
 

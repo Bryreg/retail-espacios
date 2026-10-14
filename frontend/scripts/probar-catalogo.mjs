@@ -35,7 +35,7 @@
  * nuevos también pasan por acá.
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -234,6 +234,22 @@ function validar(cat) {
     si(texto(f.nota), `${donde}: la fuente no tiene nota`);
     si(Object.keys(f).every((k) => ["url", "confiabilidad", "nota"].includes(k)), `${donde}: la fuente lleva sólo url, confiabilidad y nota`);
   }
+  // En una familia, el ALTO decide cuántos entrepaños van; el módulo, no (es
+  // el ancho de cada tramo). Dos góndolas de la misma variante y el mismo alto
+  // con otra cantidad de entrepaños son una ficha mal copiada: pasó con las
+  // centrales estimadas de 1,50, que decían tomar los entrepaños de la de alto
+  // parecido (cuatro y la base) y tenían tres.
+  const porAlto = new Map();
+  for (const m of modelos) {
+    if (!m || m.entrepanos === undefined) continue;
+    const k = `${m.tipo}:${m.variante ?? ""}:${m.h}`;
+    porAlto.set(k, [...(porAlto.get(k) ?? []), m]);
+  }
+  for (const [k, ms] of porAlto) {
+    const cuantos = new Set(ms.map((m) => m.entrepanos));
+    si(cuantos.size === 1, `${k}: los modelos del mismo alto tienen distintos entrepaños (${ms.map((m) => `${m.id}: ${m.entrepanos}`).join(", ")})`);
+  }
+
   // Lo que dicen los informes tiene que llevar a la fila de Tarifas de ESE
   // mueble. La sesión le dice a la dueña «dejar la tarifa cargada en
   // <nombre de informe>» y ella busca esas palabras en Tarifas: si están en el
@@ -329,6 +345,8 @@ await prueba("la validación rechaza lo que tiene que rechazar", () => {
     ["geometría que el tipo no admite", (c) => { c.modelos.find((m) => m.tipo === "isla").entrepanos = 3; }, /`entrepanos` no es geometría de `isla`/],
     ["puertas en una góndola", (c) => { c.modelos.find((m) => m.tipo === "gondola").partes = { puertas: 2 }; }, /`puertas` no es geometría de `gondola`/],
     ["entrepaños fuera de rango", (c) => { c.modelos.find((m) => m.tipo === "gondola").entrepanos = 9; }, /`entrepanos` = 9 está fuera de su rango/],
+    ["otros entrepaños en el mismo alto", (c) => { c.modelos.find((m) => m.id === "base:gondola-central-150-m120").entrepanos = 3; },
+      /gondola:double:1\.5: los modelos del mismo alto tienen distintos entrepaños/],
     ["puertas que no son enteras", (c) => { c.modelos.find((m) => m.tipo === "nevera_puertas").partes.puertas = 2.5; }, /`puertas` = 2.5 está fuera/],
     ["algo comercial en las partes", (c) => { c.modelos.find((m) => m.tipo === "nevera_puertas").partes.proveedor = "Postobón"; }, /`partes` sólo lleva números/],
     ["una tarifa de modelo sin fila", (c) => { c.modelos.find((m) => m.tarifa).tarifa = "estiba_octava"; }, /la tarifa `estiba_octava` no está en `tarifas`/],
@@ -585,6 +603,36 @@ await prueba("colocar un modelo estampa su ficha, y cambiar la ficha no mueve lo
   const [sin] = CP.storeToItems([{ ...g, modelo: undefined, entrepanos: undefined, modulo: undefined }], C2.CATALOGO_2D);
   assert.equal("nace" in sin, false, "un mueble sin modelo sale del store con `nace`");
 
+  // Y lo de arriba es lo que arman los editores DE VERDAD: las líneas que
+  // estampan la ficha al colocar (si se pierden, una media estiba colocada
+  // desde la paleta se guarda sin `modelo` y la planilla la compara con la
+  // tarifa de la estiba entera; la nevera de 4 puertas, sin `partes`).
+  const sinComent = (t) => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, (m, p1) => p1);
+  const ed3D = sinComent(leer(join(raiz, "src", "components", "StoreEditor3D", "StoreEditor3D.tsx")));
+  const ed2D = sinComent(leer(join(raiz, "src", "components", "FloorPlan2D", "FloorPlan2D.tsx")));
+  const entre = (t, desde, hasta) => {
+    const i = t.indexOf(desde);
+    assert.ok(i >= 0, `no se encontró \`${desde}\``);
+    const j = t.indexOf(hasta, i + desde.length);
+    assert.ok(j > i, `no se encontró \`${hasta}\` después de \`${desde}\``);
+    return t.slice(i, j + hasta.length);
+  };
+  const clic3D = entre(ed3D, "function onFloorClick(", "u(prev=>[...prev,newFix]);");
+  assert.match(entre(clic3D, "const newFix: PlacedFixture = {", "};"), /\.\.\.fichaDe\(placingDef\),\s*\};$/,
+    "el Editor 3D coloca sin estampar la ficha del modelo (`...fichaDe(placingDef)` en `newFix`)");
+  assert.match(entre(ed3D, "const ghostFixture: PlacedFixture | null = placingDef ? {", "} : null;"), /\.\.\.fichaDe\(placingDef\),/,
+    "el fantasma del 3D no se ve con la ficha del modelo");
+  const coloca2D = entre(ed2D, "const placeItem = useCallback(", "[nextCode, sede]");
+  assert.match(entre(coloca2D, "const newItem: PlacedItem2D = {", "};"), /\.\.\.\(modelo \? \{ nace: modelo\.nace \} : \{\}\),\s*\};$/,
+    "el plano 2D coloca sin `nace` (la ficha del modelo no llega al store)");
+  assert.match(coloca2D, /const ancho = w \?\? modelo\?\.w \?\? def\.w;\s*const fondo = h \?\? modelo\?\.h \?\? def\.h;/,
+    "el plano 2D no coloca el modelo con las medidas de su ficha");
+  assert.match(ed2D, /placeItem\(pendingType, pt\.x, pt\.y, undefined, undefined, pendingModelo\);/,
+    "el clic del plano 2D no le pasa el modelo elegido a `placeItem`");
+  assert.match(ed2D, /onClick=\{\(\) => \{ setActiveTool\("place"\); setPendingType\(def\.type\); setPendingModelo\(m\); \}\}/,
+    "la biblioteca del 2D no elige el modelo");
+  assert.match(ed3D, /onClick=\{\(\)=>\{ setPlacingDef\(activo\?null:m\);/, "la paleta del 3D no coloca el modelo elegido");
+
   // La ficha cambia en el catálogo: lo colocado va y vuelve por los dos
   // editores tal como se guardó.
   const c = structuredClone(CATALOGO);
@@ -625,6 +673,66 @@ await prueba("la tarifa sale del modelo del mueble si tiene una propia, y si no,
     assert.ok(F2.RATE_TYPES.some((r) => r.type === clave && r.label === rotulo), `Tarifas no muestra «${rotulo}»`);
     assert.equal(F2.rateTypeLabel(clave), rotulo);
     assert.notEqual(FMT.tipoN(clave), clave, `los informes dicen «${clave}» tal cual`);
+  }
+});
+
+await prueba("un id de modelo que ya salió no desaparece ni cambia de tipo, variante o tarifa", () => {
+  // Lo colocado guarda el id: con él se buscan la tarifa propia y el nombre
+  // del modelo en el panel. La lista escrita (`casos/modelos-ids.json`, la
+  // misma que lee `test_modelos_de_muebles.py`) sólo admite sumar.
+  const comoHoy = (c) => Object.fromEntries(c.modelos.map((m) => [m.id, {
+    tipo: m.tipo, ...(m.variante ? { variante: m.variante } : {}), ...(m.tarifa ? { tarifa: m.tarifa } : {}),
+  }]));
+  const escritos = JSON.parse(leer(join(aqui, "casos", "modelos-ids.json"))).modelos;
+  const revisar = (c) => {
+    const hoy = comoHoy(c);
+    for (const [id, esperado] of Object.entries(escritos)) {
+      assert.ok(id in hoy, `el modelo «${id}» desapareció o se renombró: lo colocado con él pierde su nombre y su tarifa`);
+      assert.deepEqual(hoy[id], esperado, `«${id}» cambió de tipo, variante o tarifa`);
+    }
+    const nuevos = Object.keys(hoy).filter((id) => !(id in escritos));
+    assert.deepEqual(nuevos, [], `modelos nuevos sin sumar a casos/modelos-ids.json: ${nuevos}`);
+  };
+  revisar(CATALOGO);
+  // Y se queja: un id renombrado, uno que cambia de variante, uno sin anotar.
+  for (const [que, romper] of [
+    ["un id renombrado", (c) => { c.modelos.find((m) => m.id === "base:gondola-pared-150-m090").id = "base:gondola-pared-150-m095"; }],
+    ["otra variante", (c) => { c.modelos.find((m) => m.id === "base:gondola-pared-150-m090").variante = "double"; }],
+    ["una tarifa propia nueva", (c) => { c.modelos.find((m) => m.id === "base:nevera-1p-inducol").tarifa = "nevera_puertas"; }],
+  ]) {
+    const c = structuredClone(CATALOGO);
+    romper(c);
+    assert.throws(() => revisar(c), undefined, `${que} no se notó`);
+  }
+});
+
+await prueba("quien pregunta la tarifa le pasa el MUEBLE, no sólo su tipo", () => {
+  // `rateTypeOf` mira primero el `modelo` del mueble. Pasarle `{ type }`
+  // compila igual y pierde la tarifa propia: la ficha del contrato, «por debajo
+  // de la referencia» y el agrupado del tablero comparaban la media estiba con
+  // la estiba entera. Cada llamada recibe el mueble tal cual (un nombre o un
+  // camino como `x.fixture`), nunca un objeto armado ni su `.type`.
+  const archivos = [];
+  const recorrer = (d) => {
+    for (const n of readdirSync(d)) {
+      const p = join(d, n);
+      if (statSync(p).isDirectory()) recorrer(p);
+      else if (/\.(ts|tsx)$/.test(n)) archivos.push(p);
+    }
+  };
+  recorrer(join(raiz, "src"));
+  const llamadas = [];
+  for (const a of archivos) {
+    const t = leer(a).replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, (m, p1) => p1);
+    for (const m of t.matchAll(/rateTypeOf\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g)) {
+      if (t.slice(Math.max(0, m.index - 9), m.index) === "function ") continue;
+      llamadas.push([a.slice(raiz.length + 1), m[1].trim()]);
+    }
+  }
+  assert.ok(llamadas.length >= 10, `se esperaban las llamadas de Vender, el contrato y el tablero; hay ${llamadas.length}`);
+  for (const [a, arg] of llamadas) {
+    assert.match(arg, /^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)*$/, `${a}: \`rateTypeOf(${arg})\` no le pasa el mueble tal cual`);
+    assert.ok(!/\.(type|modelo)$/.test(arg), `${a}: \`rateTypeOf(${arg})\` le pasa un campo, no el mueble`);
   }
 });
 

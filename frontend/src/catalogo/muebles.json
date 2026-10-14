@@ -247,11 +247,11 @@
     {
       "id": "base:gondola-central-150-m090", "tipo": "gondola", "variante": "double",
       "nombre": "Góndola central 1,50 m · módulo 0,90",
-      "w": 0.90, "d": 0.70, "h": 1.50, "entrepanos": 3, "modulo": 0.90,
+      "w": 0.90, "d": 0.70, "h": 1.50, "entrepanos": 4, "modulo": 0.90,
       "fuente": {
         "url": "https://algamar.com.co/soluciones-para-supermercados/gondolas/",
         "confiabilidad": "estimado",
-        "nota": "No encontré publicada la central de 1,50 con módulo de 0,90. El módulo está dentro del rango que ofrecen los fabricantes colombianos (0,90 a 1,20); el fondo y los entrepaños son los de la central de alto parecido."
+        "nota": "No encontré publicada la central de 1,50 con módulo de 0,90. El módulo está dentro del rango que ofrecen los fabricantes colombianos (0,90 a 1,20); el fondo y los entrepaños (la base y cuatro por cara) son los de la central de Vialambre del mismo alto."
       }
     },
     {
@@ -261,17 +261,17 @@
       "fuente": {
         "url": "https://www.vialambre.com/supermercado/gondolas/",
         "confiabilidad": "catalogo",
-        "nota": "Góndola central de 1,50 de alto con 0,97 de frente y 0,70 de fondo; el catálogo cuenta ocho entrepaños y dos bases, o sea cuatro entrepaños y la base por cara."
+        "nota": "Góndola central de 1,50 de alto con 0,97 de frente y 0,70 de fondo (se guarda con el módulo de 1,00: el 0,97 es el módulo «97» del catálogo, redondeado); el catálogo cuenta ocho entrepaños y dos bases, o sea cuatro entrepaños y la base por cara."
       }
     },
     {
       "id": "base:gondola-central-150-m120", "tipo": "gondola", "variante": "double",
       "nombre": "Góndola central 1,50 m · módulo 1,20",
-      "w": 1.20, "d": 0.70, "h": 1.50, "entrepanos": 3, "modulo": 1.20,
+      "w": 1.20, "d": 0.70, "h": 1.50, "entrepanos": 4, "modulo": 1.20,
       "fuente": {
         "url": "https://algamar.com.co/soluciones-para-supermercados/gondolas/",
         "confiabilidad": "estimado",
-        "nota": "No encontré publicada la central de 1,50 con módulo de 1,20. El módulo está dentro del rango que ofrecen los fabricantes colombianos (0,90 a 1,20); el fondo y los entrepaños son los de la central de alto parecido."
+        "nota": "No encontré publicada la central de 1,50 con módulo de 1,20. El módulo está dentro del rango que ofrecen los fabricantes colombianos (0,90 a 1,20); el fondo y los entrepaños (la base y cuatro por cara) son los de la central de Vialambre del mismo alto."
       }
     },
     {
@@ -281,7 +281,7 @@
       "fuente": {
         "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
         "confiabilidad": "ficha",
-        "nota": "La ficha ofrece la doble en 1,60, 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,60 u 0,80 (se toma 0,80). Entrepaños: la ficha da la base y 3 o 4; se toman 3 por cara."
+        "nota": "La ficha ofrece la doble en 1,60, 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,60 u 0,80 (se toma 0,80). Entrepaños: la ficha de la doble no los da; se toman de la sencilla de GMC de 1,50 a 1,80 (la base y 3 o 4): 3 por cara. Son una estimación."
       }
     },
     {
@@ -291,7 +291,7 @@
       "fuente": {
         "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
         "confiabilidad": "ficha",
-        "nota": "La ficha ofrece la doble en 1,60, 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,60 u 0,80 (se toma 0,80). Entrepaños: la ficha da la base y 3 o 4; se toman 3 por cara."
+        "nota": "La ficha ofrece la doble en 1,60, 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,60 u 0,80 (se toma 0,80). Entrepaños: la ficha de la doble no los da; se toman de la sencilla de GMC de 1,50 a 1,80 (la base y 3 o 4): 3 por cara. Son una estimación."
       }
     },
     {
@@ -311,7 +311,7 @@
       "fuente": {
         "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
         "confiabilidad": "ficha",
-        "nota": "La ficha ofrece la doble en 1,60, 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,60 u 0,80 (se toma 0,80). Entrepaños: la ficha da la base y 3 o 4; se toman 4 por cara."
+        "nota": "La ficha ofrece la doble en 1,60, 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,60 u 0,80 (se toma 0,80). Entrepaños: la ficha de la doble no los da; se toman de la sencilla de GMC de 1,50 a 1,80 (la base y 3 o 4): 4 por cara. Son una estimación."
       }
     },
     {
@@ -321,7 +321,7 @@
       "fuente": {
         "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
         "confiabilidad": "ficha",
-        "nota": "La ficha ofrece la doble en 1,60, 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,60 u 0,80 (se toma 0,80). Entrepaños: la ficha da la base y 3 o 4; se toman 4 por cara."
+        "nota": "La ficha ofrece la doble en 1,60, 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,60 u 0,80 (se toma 0,80). Entrepaños: la ficha de la doble no los da; se toman de la sencilla de GMC de 1,50 a 1,80 (la base y 3 o 4): 4 por cara. Son una estimación."
       }
     },
     {
@@ -341,7 +341,7 @@
       "fuente": {
         "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
         "confiabilidad": "ficha",
-        "nota": "La ficha ofrece la doble en 1,60, 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,60 u 0,80 (se toma 0,80). Entrepaños: la ficha da la base y 3 o 4; se toman 4 por cara."
+        "nota": "La ficha ofrece la doble en 1,60, 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,60 u 0,80 (se toma 0,80). Entrepaños: la ficha de la doble no los da; se toman la base y cuatro por cara, como las góndolas de 2,00 de Vialambre e Industrias Cruz. Son una estimación."
       }
     },
     {
@@ -431,7 +431,7 @@
       "fuente": {
         "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
         "confiabilidad": "ficha",
-        "nota": "La ficha ofrece la sencilla en 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,30 o 0,40 (se toma 0,40). Entrepaños: la base y cuatro."
+        "nota": "La ficha ofrece la sencilla en 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,30 o 0,40 (se toma 0,40). Entrepaños: la ficha da la base y 3 o 4 para la sencilla de 1,50 a 1,80; se toman 4."
       }
     },
     {
@@ -441,7 +441,7 @@
       "fuente": {
         "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
         "confiabilidad": "ficha",
-        "nota": "La ficha ofrece la sencilla en 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,30 o 0,40 (se toma 0,40). Entrepaños: la base y cuatro."
+        "nota": "La ficha ofrece la sencilla en 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,30 o 0,40 (se toma 0,40). Entrepaños: la ficha da la base y 3 o 4 para la sencilla de 1,50 a 1,80; se toman 4."
       }
     },
     {
@@ -461,7 +461,7 @@
       "fuente": {
         "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
         "confiabilidad": "ficha",
-        "nota": "La ficha ofrece la sencilla en 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,30 o 0,40 (se toma 0,40). Entrepaños: la base y cuatro."
+        "nota": "La ficha ofrece la sencilla en 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,30 o 0,40 (se toma 0,40). Entrepaños: la ficha no los da para la de 2,00; se toman la base y cuatro, como las góndolas de 2,00 de Vialambre e Industrias Cruz. Son una estimación."
       }
     },
     {
@@ -471,7 +471,7 @@
       "fuente": {
         "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
         "confiabilidad": "ficha",
-        "nota": "La ficha ofrece la sencilla en 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,30 o 0,40 (se toma 0,40). Entrepaños: la base y cuatro."
+        "nota": "La ficha ofrece la sencilla en 1,80 y 2,00 de alto, con módulos de 0,90 y 1,00 y fondos de 0,30 o 0,40 (se toma 0,40). Entrepaños: la ficha no los da para la de 2,00; se toman la base y cuatro, como las góndolas de 2,00 de Vialambre e Industrias Cruz. Son una estimación."
       }
     },
     {

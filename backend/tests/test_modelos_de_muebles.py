@@ -93,6 +93,28 @@ def test_la_tarifa_propia_de_un_modelo_es_la_suya_y_no_cambia_de_tipo():
     assert not set(propias.values()) & de_tipos
 
 
+def test_un_id_de_modelo_que_ya_salio_no_desaparece_ni_cambia_de_tipo():
+    """El mueble colocado guarda el id: con él se busca la tarifa propia y el
+    nombre del modelo en el panel. La lista de los que ya salieron está escrita
+    aparte (``frontend/scripts/casos/modelos-ids.json``, la misma que lee
+    ``probar-catalogo``): un id no se borra, no se renombra y no cambia de tipo,
+    variante ni tarifa; uno nuevo se suma a la lista."""
+    escritos = json.loads((RAIZ / "frontend" / "scripts" / "casos" / "modelos-ids.json").read_text(encoding="utf-8"))["modelos"]
+    hoy = {}
+    for m in _catalogo()["modelos"]:
+        e = {"tipo": m["tipo"]}
+        if m.get("variante"):
+            e["variante"] = m["variante"]
+        if m.get("tarifa"):
+            e["tarifa"] = m["tarifa"]
+        hoy[m["id"]] = e
+    for id_, esperado in escritos.items():
+        assert id_ in hoy, f"el modelo «{id_}» desapareció (o se renombró): lo colocado con él pierde su nombre y su tarifa"
+        assert hoy[id_] == esperado, f"«{id_}» cambió: {esperado} → {hoy[id_]}"
+    nuevos = sorted(set(hoy) - set(escritos))
+    assert not nuevos, f"modelos nuevos sin sumar a casos/modelos-ids.json: {nuevos}"
+
+
 # ─── La tarifa del mueble ─────────────────────────────────────────────────────
 
 def test_la_tarifa_del_mueble_mira_primero_su_modelo(client):

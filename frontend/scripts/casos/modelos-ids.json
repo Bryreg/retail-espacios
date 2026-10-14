@@ -1,0 +1,146 @@
+{
+ "leeme": [
+  "Los ids de los modelos que ya salieron, con su tipo (y su variante y su tarifa propia, si la tienen).",
+  "Un mueble colocado guarda el id en `modelo`: con él se busca su tarifa propia y su nombre en el panel.",
+  "Por eso un id que está acá NO se borra, no se renombra y no cambia de tipo, variante ni tarifa.",
+  "Agregar un modelo pide sumar su id acá: probar-catalogo y test_modelos_de_muebles.py fallan si falta.",
+  "Las medidas, la nota y la fuente sí se corrigen: sólo se usan al colocar."
+ ],
+ "modelos": {
+  "base:gondola-central-150-m090": {
+   "tipo": "gondola",
+   "variante": "double"
+  },
+  "base:gondola-central-150-m100": {
+   "tipo": "gondola",
+   "variante": "double"
+  },
+  "base:gondola-central-150-m120": {
+   "tipo": "gondola",
+   "variante": "double"
+  },
+  "base:gondola-central-160-m090": {
+   "tipo": "gondola",
+   "variante": "double"
+  },
+  "base:gondola-central-160-m100": {
+   "tipo": "gondola",
+   "variante": "double"
+  },
+  "base:gondola-central-160-m120": {
+   "tipo": "gondola",
+   "variante": "double"
+  },
+  "base:gondola-central-180-m090": {
+   "tipo": "gondola",
+   "variante": "double"
+  },
+  "base:gondola-central-180-m100": {
+   "tipo": "gondola",
+   "variante": "double"
+  },
+  "base:gondola-central-180-m120": {
+   "tipo": "gondola",
+   "variante": "double"
+  },
+  "base:gondola-central-200-m090": {
+   "tipo": "gondola",
+   "variante": "double"
+  },
+  "base:gondola-central-200-m100": {
+   "tipo": "gondola",
+   "variante": "double"
+  },
+  "base:gondola-central-200-m120": {
+   "tipo": "gondola",
+   "variante": "double"
+  },
+  "base:gondola-pared-150-m090": {
+   "tipo": "gondola",
+   "variante": "wall"
+  },
+  "base:gondola-pared-150-m100": {
+   "tipo": "gondola",
+   "variante": "wall"
+  },
+  "base:gondola-pared-150-m120": {
+   "tipo": "gondola",
+   "variante": "wall"
+  },
+  "base:gondola-pared-160-m090": {
+   "tipo": "gondola",
+   "variante": "wall"
+  },
+  "base:gondola-pared-160-m100": {
+   "tipo": "gondola",
+   "variante": "wall"
+  },
+  "base:gondola-pared-160-m120": {
+   "tipo": "gondola",
+   "variante": "wall"
+  },
+  "base:gondola-pared-180-m090": {
+   "tipo": "gondola",
+   "variante": "wall"
+  },
+  "base:gondola-pared-180-m100": {
+   "tipo": "gondola",
+   "variante": "wall"
+  },
+  "base:gondola-pared-180-m120": {
+   "tipo": "gondola",
+   "variante": "wall"
+  },
+  "base:gondola-pared-200-m090": {
+   "tipo": "gondola",
+   "variante": "wall"
+  },
+  "base:gondola-pared-200-m100": {
+   "tipo": "gondola",
+   "variante": "wall"
+  },
+  "base:gondola-pared-200-m120": {
+   "tipo": "gondola",
+   "variante": "wall"
+  },
+  "base:punta-070-200": {
+   "tipo": "punta"
+  },
+  "base:punta-070-150": {
+   "tipo": "punta"
+  },
+  "base:punta-070-130": {
+   "tipo": "punta"
+  },
+  "base:estiba-completa": {
+   "tipo": "isla"
+  },
+  "base:estiba-media": {
+   "tipo": "isla",
+   "tarifa": "estiba_media"
+  },
+  "base:estiba-cuarta": {
+   "tipo": "isla",
+   "tarifa": "estiba_cuarta"
+  },
+  "base:exhibidor-carton": {
+   "tipo": "impulsador",
+   "tarifa": "exhibidor_carton"
+  },
+  "base:nevera-1p-inducol": {
+   "tipo": "nevera_puertas"
+  },
+  "base:nevera-2p-inducol": {
+   "tipo": "nevera_puertas"
+  },
+  "base:nevera-3p-frigomaster": {
+   "tipo": "nevera_puertas"
+  },
+  "base:nevera-4p-frigomaster": {
+   "tipo": "nevera_puertas"
+  },
+  "base:puesto-impulso-80": {
+   "tipo": "puesto_impulso"
+  }
+ }
+}

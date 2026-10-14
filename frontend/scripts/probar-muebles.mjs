@@ -912,7 +912,7 @@ prueba("el impulsador inclina cada bandeja sobre sí misma y su cartel no vuela"
   // de 1,12 m se iba 4 cm hacia atrás y el producto —que no gira— quedaba
   // volando delante del filo; y la cara blanca del cartel estaba en el filo
   // del mueble, 13 cm por delante de todo lo que podía sostenerla.
-  const imp = cuerpoDe("function ImpulsadorMesh(", "function PuestoImpulsoMesh(");
+  const imp = cuerpoDe("function ImpulsadorMesh(", "const MODELO_EXHIBIDOR_DE_CARTON");
   assert.match(imp, /<group key=\{si\} position=\{\[0, sy, 0\]\} rotation=\{\[0\.035, 0, 0\]\}>/,
     "la bandeja del impulsador volvió a girar desde el origen del mueble");
   assert.ok(!/position=\{\[0, sy/.test(imp.replace(/<group key=\{si\} position=\{\[0, sy, 0\]\}/, "")),
@@ -931,6 +931,34 @@ prueba("un mueble entero se llena también en profundidad", () => {
   // Con dos filas, un exhibidor de 80 cm de fondo muestra siete centímetros de
   // producto y setenta de estante vacío.
   assert.match(frentesCodigo, /PROFUNDIDAD_DE_MUEBLE_ENTERO/, "el mueble entero volvió a llenarse como una góndola");
+});
+
+prueba("el exhibidor de cartón tiene su dibujo: costados, fondo, bandejas y cabezote, sin la columna al medio", () => {
+  // Mirado en /taller (2026-10-14): con la forma del impulsador era una
+  // columna con bandejas en voladizo, y la columna atravesaba el producto de
+  // cada bandeja. Se dibuja aparte, sólo cuando el mueble nació del modelo.
+  const despacho = cuerpoDe("export function FixtureMesh(", "default:");
+  assert.match(despacho, /case "impulsador":\s*return fixture\.modelo === MODELO_EXHIBIDOR_DE_CARTON\s*\? <ExhibidorCartonMesh [^>]*\/>\s*: <ImpulsadorMesh /,
+    "el exhibidor de cartón no tiene su propio dibujo (o el impulsador de antes dejó de ser el de siempre)");
+  assert.match(editorCodigo, /const MODELO_EXHIBIDOR_DE_CARTON = "base:exhibidor-carton";/);
+  const modelo = JSON.parse(leer(join("src", "catalogo", "muebles.json"))).modelos.find((m) => m.id === "base:exhibidor-carton");
+  assert.equal(modelo?.tipo, "impulsador", "el id del exhibidor de cartón no es un modelo del impulsador");
+  const carton = cuerpoDe("function ExhibidorCartonMesh(", "function PuestoImpulsoMesh(");
+  // Las bandejas, el cabezote y el arte, de la MISMA cuenta que el impulsador:
+  // el arte del proveedor tiene que caer sobre cada bandeja.
+  assert.match(carton, /const span = getPanelShelfSpan\("impulsador", w, h, d\);/);
+  assert.match(carton, /const bandejas = Array\.from\(\{ length: span\.rows \+ 1 \}, \(_, i\) => baseH \+ i \* span\.rowPitch\);/);
+  // Sin columna: nada al medio que muerda el producto.
+  assert.ok(!/SPINE/.test(carton), "el exhibidor de cartón volvió a tener la columna del impulsador");
+  // Los dos costados y el fondo, del piso al tope.
+  assert.match(carton, /\[-1, 1\]\.map\(\(lado\) => \(\s*<mesh key=\{lado\} position=\{\[lado \* \(w \/ 2 - CARTON \/ 2\), h \/ 2, 0\]\}/, "faltan los costados");
+  assert.match(carton, /position=\{\[0, h \/ 2, d \/ 2 - CARTON \/ 2\]\}/, "falta el fondo");
+  // Bandejas planas (el cartón no se inclina) y el producto entre los costados.
+  assert.ok(!/rotation=\{\[0\.035/.test(carton), "las bandejas de cartón se inclinan como las del impulsador");
+  assert.match(carton, /<ProductoEnRepisas\s*alturas=\{bandejas\}\s*techo=\{h - topperH\}\s*ancho=\{anchoUtil - 0\.01\} fondo=\{fondoUtil\}\s*montaje=\{d \/ 2 - CARTON\}/,
+    "el producto del exhibidor de cartón no queda entre los costados y delante del fondo");
+  // El cabezote no pasa del alto (el del choque y el que se cobra).
+  assert.match(carton, /position=\{\[0, h - topperH \/ 2, -\(d \/ 2 - CARTON\)\]\} castShadow>\s*<boxGeometry args=\{\[anchoUtil, topperH, CARTON \* 2\]\} \/>/);
 });
 
 prueba("la ristra cuelga producto de sus ganchos", () => {
@@ -1780,6 +1808,40 @@ const V = await import(
   "data:text/javascript;base64," + Buffer.from(compiladoV.outputFiles[0].text).toString("base64")
 );
 
+prueba("la estiba colocada desde un modelo se carga hasta el fondo; la de antes, como siempre (ejecutado)", () => {
+  // Mirado en /taller (2026-10-14): con cinco filas hacia el fondo, la estiba
+  // completa de 1,20 × 1,00 mostraba más de media tarima vacía detrás de la
+  // torre, sobre todo desde arriba.
+  const c = M.cotasDeEstiba(1.2, 1.0, 1.4, 0.19);
+  const filas = { rowBottom: c.capas[0], alturas: [...c.capas, c.techo], rowPitch: c.paso, rows: c.capas.length,
+    fondos: c.capas.map(() => c.fondo) };
+  const entrada = (vendidoEntero) => ({ anchoTotal: c.ancho, filas, vanos: [{ x: 0, ancho: c.ancho }],
+    caras: [{ montaje: c.fondo / 2, hacia: -1 }], franja: c.techo, vendidoEntero });
+  const hondura = (g) => {
+    const zs = g.flatMap((x) => x.posiciones.map((p) => p.z));
+    return Math.max(...zs) - Math.min(...zs);
+  };
+  const deSiempre = F.rellenoPorRubro(entrada({ rubro: "Galletas" }));
+  const todo = F.rellenoPorRubro(entrada({ rubro: "Galletas", hondo: "todo" }));
+  const e = todo[0].empaque;
+  assert.ok(hondura(todo) + e.fondo >= c.fondo - 2 * e.fondo, `la torre llega a ${(hondura(todo) + e.fondo).toFixed(2)} m de ${c.fondo} m de tarima`);
+  assert.ok(hondura(deSiempre) + e.fondo < c.fondo / 2, "sin modelo la estiba cambió: tiene que seguir con las cinco filas de siempre");
+  // Cuántas cajas: las que entran, no más (es un InstancedMesh por empaque).
+  const n = todo.reduce((t, g) => t + g.posiciones.length, 0);
+  assert.ok(n < 2500, `la estiba completa pide ${n} cajas`);
+  // Lo pide sólo la estiba con modelo, por el mismo camino de siempre.
+  const despacho = cuerpoDe("export function FixtureMesh(", "const LADO_BALDOSA");
+  assert.match(despacho, /case "isla":\s*return <IslaMesh [^>]*hastaElFondo=\{typeof fixture\.modelo === "string"\} \/>/,
+    "la estiba colocada desde un modelo no se carga hasta el fondo");
+  assert.match(despacho, /default:\s*return <IslaMesh (?![^>]*hastaElFondo)[^>]*\/>/, "el exhibidor de antes (default) cambió");
+  const isla = cuerpoDe("function IslaMesh(", "function ImpulsadorMesh(");
+  assert.match(isla, /<ProductoEnRepisas[^>]*hastaElFondo=\{hastaElFondo\}/, "la estiba no le pasa el pedido al relleno");
+  const repisas = sinComentarios(leer(join(muebles, "ProductoEnRepisas.tsx")));
+  assert.match(repisas, /hastaElFondo \? \{ rubro, hondo: "todo" as const \} : \{ rubro \}/,
+    "el relleno de repisas no traduce «hasta el fondo»");
+  assert.match(repisas, /hastaElFondo = false/, "el relleno de repisas cambió para todos los muebles");
+});
+
 prueba("el relleno por rubro cuenta lo que entra, y cada cara lo suyo", () => {
   // Una góndola doble de catálogo con UN espacio vendido que toma la cara
   // entera. El total tiene que ser, entrepaño por entrepaño y vano por vano,
@@ -2049,6 +2111,22 @@ prueba("la ficha del modelo: la góndola con sus entrepaños y su módulo, o los
   const span = editorCodigo.slice(editorCodigo.indexOf("function getPanelShelfSpan"));
   assert.match(span, /filasDeProducto\(h, fondoPorCara\(d, false\), geometria\?\.entrepanos\)/, "el pintado de la góndola ignora su ficha");
   assert.match(editorCodigo, /fix\.w, fix\.h, fix\.d, faceImages, notifyTexLoaded, geometriaDe\(fix\)/, "la cara pintada no recibe la ficha del mueble");
+  // La lámina pintada fila por fila de `GondolaMesh` (la que se ve sobre los
+  // entrepaños) sale de las MISMAS filas, y no de la cuenta de siempre.
+  assert.match(cuerpoGondolaMesh, /const filas = useMemo\(\(\) => filasDeProducto\(h, fondoCara, entrepanos\), \[h, fondoCara, entrepanos\]\);/,
+    "la lámina de la góndola (`GondolaMesh`) ignora sus entrepaños: el arte queda a caballo entre dos");
+  assert.match(cuerpoGondolaMesh, /<LaminaDeProductoPorFila[^>]*filas=\{filas\}/, "la lámina de la góndola no usa esas filas");
+  // Toda venta que el editor le pide a `ventaDeTipo` por un mueble del plano
+  // lleva su ficha: el panel de la prueba, las rejillas, el surtido, «Acostarla
+  // sólo en la N» y la toma de venta. Sin ella, cuentan otros vanos y otras
+  // filas que las que se dibujan.
+  const llamadas = [...editorCodigo.matchAll(/ventaDeTipo\(fix\.type,[^;]*?\)\)?/g)].map((m) => m[0]);
+  assert.ok(llamadas.length >= 5, `se esperaban las cinco ventas del editor, hay ${llamadas.length}`);
+  for (const l of llamadas) {
+    assert.match(l, /^ventaDeTipo\(fix\.type, fix\.w, fix\.d, fix\.h, fix\.gondolaType, geometriaDe\(fix\)\)/, `una venta del editor sin la ficha: ${l}`);
+  }
+  assert.ok(!/ventaDeTipo\((?!fix\.type, fix\.w, fix\.d, fix\.h, fix\.gondolaType, geometriaDe\(fix\)\))/.test(editorCodigo),
+    "el editor pide una venta de otra forma que con el mueble y su ficha");
 });
 
 prueba("la nevera de puertas dibuja las puertas de su ficha, o las de siempre", () => {
@@ -2059,6 +2137,14 @@ prueba("la nevera de puertas dibuja las puertas de su ficha, o las de siempre", 
   assert.equal(M.puertasDe(2.07, undefined), M.puertasDeNevera(2.07));
   assert.equal(M.puertasDe(1.2, 0), M.puertasDeNevera(1.2), "cero puertas no es una ficha");
   assert.match(neveraCodigo, /const cuantasPuertas = puertasDe\(w, puertas\);/, "NeveraReal no lee las puertas de la ficha");
+  // El producto en prueba de la malla sale de una venta con las MISMAS puertas
+  // que se dibujan: si no, con 2,30 m y tres hojas se reparte en cuatro vanos
+  // y uno queda detrás de un montante.
+  const malla = cuerpoDe("function NeveraRefrescosMesh(", "function NeveraVegetalesMesh(");
+  assert.match(malla, /const ventaNevera = useMemo\(\(\) => ventaDeNevera\(w, d, h, puertas\), \[w, d, h, puertas\]\);/,
+    "el producto en prueba de la nevera de puertas ignora las puertas de su ficha");
+  assert.match(malla, /<ProductoDePrueba venta=\{ventaNevera\}/, "el producto en prueba de la nevera no usa esa venta");
+  assert.match(malla, /puertas=\{puertas\}/, "la malla no le pasa las puertas al dibujo");
   const tres = V.ventaDeTipo("nevera_puertas", 2.07, 0.7, 2.1, undefined, { puertas: 3 });
   assert.equal(tres.vanos.length, 3, "el producto no se reparte por puerta");
   // Una ficha que dice otra cosa que la cuenta (1,60 pediría tres hojas): manda la ficha.

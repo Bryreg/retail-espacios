@@ -1537,7 +1537,7 @@ function MuebleMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:num
 // Stepped promotional floor display — cardboard base boxes + product rows per level,
 // narrowing like stairs as it goes up. Front price card at bottom.
 
-function IslaMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
+function IslaMesh({ w, d, h, statusColor, ghost, facePaint, rubro, hastaElFondo = false }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string;hastaElFondo?:boolean }) {
   // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
   // Un «exhibidor de piso» no es un mueble: es una ESTIBA plantada en el
   // pasillo con la mercancía apilada encima. Lo confirma el propio catálogo —
@@ -1575,7 +1575,12 @@ function IslaMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;
       {/* La mercancía, apilada en capas sobre la cubierta de la tarima. Una
           estiba de promoción viene cargada hasta el filo, así que se apila al
           ras y no centrada con aire alrededor. El relleno mudo se apaga cuando
-          entra el arte del proveedor. */}
+          entra el arte del proveedor.
+          La estiba colocada desde un modelo (`hastaElFondo`) se carga hasta el
+          fondo de la tarima: con las cinco filas de siempre, la completa de
+          1,20 × 1,00 dejaba más de media tarima vacía detrás de la torre, y
+          desde arriba —como más se mira el plano— se veía una estiba a medio
+          cargar. La de un plano de antes, sin modelo, sigue igual. */}
       {!pinta && (
         <ProductoEnRepisas
           alturas={c.capas}
@@ -1583,6 +1588,7 @@ function IslaMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;
           ancho={c.ancho} fondo={c.fondo}
           montaje={c.fondo / 2} hacia={-1}
           rubro={rubro} ghost={ghost}
+          hastaElFondo={hastaElFondo}
         />
       )}
     </group>
@@ -1716,6 +1722,125 @@ function ImpulsadorMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:n
         />
       )}
 
+    </group>
+  );
+}
+
+// ─── Mesh: Exhibidor de cartón ────────────────────────────────────────────────
+
+/** El id del modelo «Exhibidor de cartón de la marca» (tipo `impulsador`).
+ *  Los ids de los modelos no cambian nunca (`scripts/casos/modelos-ids.json`). */
+const MODELO_EXHIBIDOR_DE_CARTON = "base:exhibidor-carton";
+
+/** Espesor de la plancha de cartón corrugado de los costados y el fondo. */
+const CARTON = 0.006;
+
+/**
+ * El exhibidor de cartón que manda la marca: una caja abierta al frente —dos
+ * costados, el fondo y el zócalo cerrado—, bandejas planas de borde a borde y
+ * el cabezote arriba.
+ *
+ * Hasta el 2026-10-14 se dibujaba con la forma del impulsador (`ImpulsadorMesh`):
+ * una columna al medio con bandejas en voladizo, sin costados ni fondo, que
+ * no se leía como cartón; y la columna atravesaba el producto de cada bandeja,
+ * que de frente se veía mordido al medio. Las bandejas, el cabezote y el arte
+ * salen de la MISMA cuenta que el impulsador (`getPanelShelfSpan`), así que el
+ * arte del proveedor y el relleno caen igual sobre cada bandeja; lo que cambia
+ * es el mueble alrededor. El cabezote ocupa los 24 cm de arriba del alto (R3
+ * dice unos 30): con más, cambiaría cuántas bandejas entran.
+ *
+ * Sólo se dibuja así el mueble colocado desde el modelo: un impulsador de un
+ * plano de antes sigue siendo el impulsador.
+ */
+function ExhibidorCartonMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;rubro?:string }) {
+  const op = ghost ? 0.42 : 1;
+  const CARA = "#f2ede3";      // cartón impreso de blanco, por fuera
+  const CANTO = "#d9c9a8";     // el corrugado que se ve en los cantos
+  const span = getPanelShelfSpan("impulsador", w, h, d);
+  const baseH = span.rowBottom - 0.009;
+  const topperH = h - span.panelH;
+  const bandejas = Array.from({ length: span.rows + 1 }, (_, i) => baseH + i * span.rowPitch);
+  const anchoUtil = Math.max(0.05, w - 2 * CARTON);
+  const fondoUtil = Math.max(0.05, d - CARTON);
+  const pinta = !ghost && !!facePaint?.front;
+
+  return (
+    <group>
+      {/* El arte del proveedor, rebanado por bandeja (la misma lámina que el
+          impulsador: el arte se arma con la misma cuenta). */}
+      {pinta && (
+        <LaminaDeProductoPorFila
+          ancho={span.panelW}
+          alto={span.panelH}
+          filas={{ rowBottom: span.rowBottom, rowPitch: span.rowPitch, rows: span.rows }}
+          fondos={Array.from({ length: span.rows }, () => d)}
+          montajeA={d / 2} haciaA={-1}
+          facePaint={facePaint}
+        />
+      )}
+
+      {/* Los dos costados, del piso al tope: el cabezote va encajado entre ellos. */}
+      {[-1, 1].map((lado) => (
+        <mesh key={lado} position={[lado * (w / 2 - CARTON / 2), h / 2, 0]} castShadow>
+          <boxGeometry args={[CARTON, h, d]} />
+          <meshStandardMaterial color={CARA} roughness={0.9} transparent opacity={op} />
+        </mesh>
+      ))}
+      {/* El fondo. */}
+      <mesh position={[0, h / 2, d / 2 - CARTON / 2]} castShadow>
+        <boxGeometry args={[anchoUtil, h, CARTON]} />
+        <meshStandardMaterial color={CARA} roughness={0.9} transparent opacity={op} />
+      </mesh>
+      {/* El zócalo: una caja cerrada hasta la primera bandeja, con la franja de
+          estado al frente (como el impulsador). */}
+      <mesh position={[0, baseH / 2, -CARTON / 2]} castShadow>
+        <boxGeometry args={[anchoUtil, baseH, fondoUtil]} />
+        <meshStandardMaterial color={CANTO} roughness={0.9} transparent opacity={op} />
+      </mesh>
+      <mesh position={[0, baseH * 0.5, -(d / 2 + 0.003)]}>
+        <boxGeometry args={[anchoUtil * 0.85, Math.min(0.03, baseH * 0.4), 0.005]} />
+        <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
+      </mesh>
+
+      {/* Las bandejas: planas y de costado a costado (el cartón no se inclina),
+          con el frente doblado hacia arriba como porta-precios. La de más
+          arriba es el techo de la última fila: sin frente. */}
+      {bandejas.map((y, i) => (
+        <group key={i} position={[0, y, -CARTON / 2]}>
+          <mesh position={[0, -0.006, 0]} castShadow>
+            <boxGeometry args={[anchoUtil, 0.012, fondoUtil]} />
+            <meshStandardMaterial color={CANTO} roughness={0.9} transparent opacity={op} />
+          </mesh>
+          {i < bandejas.length - 1 && (
+            <mesh position={[0, 0.025, -(fondoUtil / 2 - CARTON / 2)]}>
+              <boxGeometry args={[anchoUtil, 0.05, CARTON]} />
+              <meshStandardMaterial color={CARA} roughness={0.85} transparent opacity={op} />
+            </mesh>
+          )}
+        </group>
+      ))}
+
+      {/* El cabezote: el cartel de la marca, al frente y entre los costados.
+          Ocupa lo que el impulsador le deja a su cartel y termina en el alto. */}
+      <mesh position={[0, h - topperH / 2, -(d / 2 - CARTON)]} castShadow>
+        <boxGeometry args={[anchoUtil, topperH, CARTON * 2]} />
+        <meshStandardMaterial color={statusColor} roughness={0.7} transparent opacity={op} />
+      </mesh>
+      <mesh position={[0, h - topperH / 2, -(d / 2 + 0.0005)]}>
+        <boxGeometry args={[anchoUtil * 0.88, topperH * 0.7, 0.002]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.8} transparent opacity={0.9 * op} />
+      </mesh>
+
+      {/* El relleno por rubro, sobre las bandejas y entre los costados. */}
+      {!pinta && (
+        <ProductoEnRepisas
+          alturas={bandejas}
+          techo={h - topperH}
+          ancho={anchoUtil - 0.01} fondo={fondoUtil}
+          montaje={d / 2 - CARTON} hacia={-1}
+          rubro={rubro} ghost={ghost}
+        />
+      )}
     </group>
   );
 }
@@ -2228,8 +2353,12 @@ export function FixtureMesh({ fixture, ghost, neutro = false, facePaint, selecte
     case "cross":         return <CrossMesh          {...base} facePaint={facePaint} rubro={fixture.brandCategory} />;
     case "metro":         return <MetroMesh          {...base} />;
     case "mueble":        return <MuebleMesh         {...base} facePaint={facePaint} />;
-    case "isla":          return <IslaMesh           {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
-    case "impulsador":    return <ImpulsadorMesh     {...base} facePaint={facePaint} rubro={fixture.brandCategory} />;
+    // Una estiba o un exhibidor de cartón colocados desde un modelo tienen
+    // su propio dibujo; sin modelo —un plano de antes—, el de siempre.
+    case "isla":          return <IslaMesh           {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} hastaElFondo={typeof fixture.modelo === "string"} />;
+    case "impulsador":    return fixture.modelo === MODELO_EXHIBIDOR_DE_CARTON
+      ? <ExhibidorCartonMesh {...base} facePaint={facePaint} rubro={fixture.brandCategory} />
+      : <ImpulsadorMesh     {...base} facePaint={facePaint} rubro={fixture.brandCategory} />;
     case "puesto_impulso": return <PuestoImpulsoMesh {...base} facePaint={facePaint} />;
     case "batea":         return <BateaMesh          {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "isla_fria":        return <IslaFriaMesh         {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;

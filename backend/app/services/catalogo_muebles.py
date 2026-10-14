@@ -90,9 +90,10 @@ TARIFA_POR_MODELO: dict[str, tuple[str, str]] = {
 }
 
 
-def _tipo_base(tipo: str) -> str:
+def tipo_base(tipo: str) -> str:
     """El tipo de verdad de un tipo o de un alias del 2D
-    (``gondola_mural`` → ``gondola``)."""
+    (``gondola_mural`` → ``gondola``). Lo usan la tarifa por modelo y
+    ``PUT /layout``, que no le rellena a un mueble la ficha de otro tipo."""
     return ALIAS.get(tipo, {}).get("tipo", tipo)
 
 
@@ -105,6 +106,6 @@ def tarifa_del_mueble(fixture: dict) -> str:
     modelo = fixture.get("modelo")
     if isinstance(modelo, str):
         ficha = TARIFA_POR_MODELO.get(modelo)
-        if ficha and ficha[0] == _tipo_base(tipo):
+        if ficha and ficha[0] == tipo_base(tipo):
             return ficha[1]
     return tipo_de_tarifa(tipo)

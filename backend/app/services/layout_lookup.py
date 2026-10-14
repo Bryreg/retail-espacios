@@ -60,7 +60,7 @@ CAMPOS_DE_CONTRATO = (
 #: ``routers/layout.py``): una clave AUSENTE en un mueble que ya estaba se
 #: rellena con la guardada, y sólo un ``null`` explícito la borra —es como el
 #: navegador de hoy dice «volver a la cuenta de siempre»—. El mismo nombre y
-#: las mismas cuatro en ``CLAVES_DE_FICHA`` de ``utils/convertirPlano.ts``.
+#: las mismas cuatro en ``CLAVES_DE_FICHA`` de ``utils/guardadoDelPlano.ts``.
 CLAVES_DE_FICHA = ("modelo", "partes", "entrepanos", "modulo")
 
 #: De ``partes``, lo que es geometría y puede salir hacia quien no ve plata (la

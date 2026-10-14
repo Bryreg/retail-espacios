@@ -118,6 +118,39 @@ def test_UN_MUEBLE_NUEVO_NO_HEREDA_NADA(client, admin):
         assert clave not in fixtures["g2"], f"el mueble nuevo heredó «{clave}» del borrado"
 
 
+def test_UN_MUEBLE_DE_OTRO_TIPO_CON_EL_MISMO_ID_NO_HEREDA(client, admin):
+    """Una punta que llega con el id de una góndola guardada (un PUT armado a
+    mano, una importación) no se queda con la ficha de la góndola: sus 4
+    entrepaños entran en el rango de la punta y se dibujarían."""
+    _guardar(client, admin, [{**GONDOLA, **FICHA}])
+    punta = {**GONDOLA, "type": "punta", "gondolaType": None, "code": "PUN-01", "w": 1.0, "d": 0.6}
+    _guardar(client, admin, [punta])
+    p = _leer(client, admin)["g1"]
+    for clave in FICHA:
+        assert clave not in p, f"la punta heredó «{clave}» de la góndola con su mismo id"
+
+
+def test_el_alias_del_2d_es_el_mismo_tipo_y_si_hereda(client, admin):
+    """El tipo se compara por el de verdad: `gondola_doble` es `gondola`."""
+    _guardar(client, admin, [{**GONDOLA, **FICHA}])
+    _guardar(client, admin, [{**GONDOLA, "type": "gondola_doble"}])
+    g = _leer(client, admin)["g1"]
+    for clave, valor in FICHA.items():
+        assert g[clave] == valor, f"el alias del 2D perdió «{clave}»"
+
+
+def test_DESHACER_EL_PANEL_SE_GUARDA(client, admin):
+    """Lo que manda el navegador de hoy al deshacer un «Entrepaños» escrito
+    sobre una góndola que no lo tenía: `null` (ver `conFichaQuitada` en
+    `utils/guardadoDelPlano.ts`). La base queda sin la clave, como el editor."""
+    _guardar(client, admin, [dict(GONDOLA)])                                   # plano viejo
+    _guardar(client, admin, [{**GONDOLA, "entrepanos": 4, "modulo": 1.0}])     # el panel
+    _guardar(client, admin, [{**GONDOLA, "entrepanos": None, "modulo": None}])  # Ctrl+Z
+    g = _leer(client, admin)["g1"]
+    assert "entrepanos" not in g and "modulo" not in g, "el deshacer no se guardó"
+    assert _crudo() == json.dumps([GONDOLA]), "el plano no volvió a ser el de antes, byte a byte"
+
+
 def test_otra_sede_no_presta_su_ficha(client, admin):
     _guardar(client, admin, [{**GONDOLA, **FICHA}], sede="NAVE")
     _guardar(client, admin, [{**GONDOLA, "sede": "CENTRO"}], sede="CENTRO")
@@ -160,7 +193,7 @@ def test_las_claves_de_la_ficha_son_las_mismas_que_las_del_navegador():
 
     from app.services.layout_lookup import CLAVES_DE_FICHA
 
-    ts = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "utils" / "convertirPlano.ts").read_text(encoding="utf-8")
+    ts = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "utils" / "guardadoDelPlano.ts").read_text(encoding="utf-8")
     m = re.search(r"export const CLAVES_DE_FICHA = \[([^\]]*)\]", ts)
-    assert m, "no se encontró `CLAVES_DE_FICHA` en convertirPlano.ts"
+    assert m, "no se encontró `CLAVES_DE_FICHA` en guardadoDelPlano.ts"
     assert sorted(re.findall(r'"(\w+)"', m.group(1))) == sorted(CLAVES_DE_FICHA)

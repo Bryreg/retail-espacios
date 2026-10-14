@@ -44,10 +44,13 @@ export interface ProductoEnRepisasProps {
    *  ve libre. */
   rubro?: string;
   ghost?: boolean;
+  /** Llenar hasta el fondo, no las cinco filas de siempre: la estiba colocada
+   *  desde un modelo, que viene cargada entera (ver `VendidoEntero.hondo`). */
+  hastaElFondo?: boolean;
 }
 
 export const ProductoEnRepisas = memo(function ProductoEnRepisas({
-  alturas, techo, ancho, fondo, montaje, hacia, rubro, ghost = false,
+  alturas, techo, ancho, fondo, montaje, hacia, rubro, ghost = false, hastaElFondo = false,
 }: ProductoEnRepisasProps) {
   const filas = useMemo<FilasDeProducto>(() => {
     const usables = alturas.filter((y) => y < techo - 0.05);
@@ -66,6 +69,8 @@ export const ProductoEnRepisas = memo(function ProductoEnRepisas({
 
   const vanos = useMemo(() => [{ x: 0, ancho }], [ancho]);
   const caras = useMemo<CaraDeProducto[]>(() => [{ montaje, hacia }], [montaje, hacia]);
+  const vendidoEntero = useMemo(
+    () => (hastaElFondo ? { rubro, hondo: "todo" as const } : { rubro }), [rubro, hastaElFondo]);
 
   if (!rubro || filas.rows === 0) return null;
 
@@ -76,7 +81,7 @@ export const ProductoEnRepisas = memo(function ProductoEnRepisas({
       vanos={vanos}
       caras={caras}
       franja={techo}
-      vendidoEntero={{ rubro }}
+      vendidoEntero={vendidoEntero}
       ghost={ghost}
     />
   );

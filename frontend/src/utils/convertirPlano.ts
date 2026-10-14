@@ -3,6 +3,7 @@ import type {
 } from "../types/fixtures";
 import { isRotated90 } from "../types/fixtures";
 import type { PartesDeMueble } from "../catalogo/catalogo";
+import { CLAVES_DE_FICHA } from "./guardadoDelPlano";
 
 /**
  * Del store a cada editor y de vuelta, sin perder nada en el camino.
@@ -80,11 +81,11 @@ export interface FichaDelMueble {
   partes?: PartesDeMueble;
 }
 
-/** Las claves de la ficha. Son las que `PUT /layout` le rellena a un mueble
- *  que llega sin ellas (una pestaña de antes no las conoce) y las únicas en
- *  que un `null` significa «borrada a propósito» (ver `UnifiedFixture.modelo`
- *  y `CLAVES_DE_FICHA` en `services/layout_lookup.py`, que dice lo mismo). */
-export const CLAVES_DE_FICHA = ["modelo", "partes", "entrepanos", "modulo"] as const;
+/** Las claves de la ficha (`modelo`, `partes`, `entrepanos`, `modulo`): las
+ *  que `PUT /layout` le rellena a un mueble que llega sin ellas y las únicas
+ *  en que un `null` significa «borrada a propósito». Viven en
+ *  `utils/guardadoDelPlano.ts`, que también las usa el store al deshacer. */
+export { CLAVES_DE_FICHA };
 
 /** La ficha de un mueble del store: cada clave puede venir en `null`, que es
  *  borrada a propósito (ver `UnifiedFixture.modelo`). */

@@ -271,6 +271,30 @@ def test_los_vecinos_llegan_con_su_ficha_y_partes_solo_con_sus_numeros(client, a
     assert not ({"modelo", "entrepanos", "modulo", "partes"} & set(vecinos["CAJ-01"]))
 
 
+def test_la_ficha_que_no_es_ficha_no_llega_a_la_mercaderista(client, admin):
+    """`PUT /layout` recibe el mueble sin tipar. Un `modelo` que es un objeto,
+    unos entrepaños que son texto o un módulo con un proveedor adentro no son
+    geometría: no salen, igual que `partes` sale sólo con sus números (y que
+    `sinDatosComerciales` en el visor de Vender)."""
+    colados = [
+        {**FIXTURES[0], "modelo": {"proveedor": "Postobón", "valor": 2_500_000},
+         "entrepanos": {"negotiatedValue": 1}, "modulo": "Postobón 2.500.000"},
+        {**FIXTURES[1], "modelo": "base:gondola-central-200-m100", "entrepanos": True, "modulo": 1.0},
+        FIXTURES[2],
+    ]
+    _plano(client, admin, fixtures=colados)
+    _espacio(client, admin)
+    _contrato(client, admin, _espacio(client, admin), _proveedor(client, admin))
+    r = client.get("/api/montaje/mi-espacio", headers=_cab(_mount_token()))
+    vecinos = {v["code"]: v for v in r.json()["vecinos"]}
+    assert not ({"modelo", "entrepanos", "modulo"} & set(vecinos["PUN-04"])), vecinos["PUN-04"]
+    g = vecinos["GON-09"]
+    assert g["modelo"] == "base:gondola-central-200-m100" and g["modulo"] == 1.0
+    assert "entrepanos" not in g, "un booleano pasó como entrepaños"
+    for fuga in ("Postob", "2500000", "2.500.000", "negotiatedValue"):
+        assert fuga not in r.text.replace(" ", ""), f"«{fuga}» llegó a la mercaderista"
+
+
 def test_el_proveedor_del_propio_espacio_si_llega_pero_nunca_la_plata(client, admin):
     """Tiene que saber qué exhibición va a armar; el valor no es asunto suyo."""
     _armado(client, admin)

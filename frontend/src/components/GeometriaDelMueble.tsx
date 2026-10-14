@@ -59,7 +59,8 @@ export function GeometriaDelMueble({ id, puedeEditar }: { id: string; puedeEdita
   const lim = limitesDe(f.type);
 
   /** Escribe en el store, sobre el plano de AHORA (no el de cuando se abrió
-   *  el aviso). Entra al historial: Ctrl+Z lo deshace. */
+   *  el aviso). Entra al historial: Ctrl+Z lo deshace, y el deshacer se
+   *  guarda (lo que se va viaja `null`: `conFichaQuitada` en el store). */
   function escribir(cambio: CambioDeGeometria) {
     const st = useFixtureStore.getState();
     st.commit(conGeometria(selectFixtures(st), id, cambio));
@@ -114,7 +115,7 @@ export function GeometriaDelMueble({ id, puedeEditar }: { id: string; puedeEdita
   if (!puedeEditar) {
     return (
       <p className="text-xs text-dark-ink-2" data-geometria={f.id}>
-        {metros(f.h)} m · {vista.entrepanos} entrepaños y la base · {vista.modulos} {vista.modulos === 1 ? "módulo" : "módulos"} de {metros(vista.anchoDeModulo)} m
+        {metros(f.h)} m · la base y {vista.entrepanos} {vista.entrepanos === 1 ? "entrepaño" : "entrepaños"} con producto{vista.techo ? " (y el techo)" : ""} · {vista.modulos} {vista.modulos === 1 ? "módulo" : "módulos"} de {metros(vista.anchoDeModulo)} m
       </p>
     );
   }
@@ -145,7 +146,8 @@ export function GeometriaDelMueble({ id, puedeEditar }: { id: string; puedeEdita
         </label>
       </div>
       <p className="text-[10px] leading-snug text-dark-ink-3">
-        Se dibujan {vista.entrepanos} entrepaños y la base{vista.entrepanosGuardados ? "" : " (la cuenta de siempre)"},
+        Se dibujan la base y {vista.entrepanos} {vista.entrepanos === 1 ? "entrepaño" : "entrepaños"} con producto
+        {vista.techo ? ", más uno de techo sin producto" : ""}{vista.entrepanosGuardados ? "" : " (la cuenta de siempre)"},
         en {vista.modulos} {vista.modulos === 1 ? "módulo" : "módulos"} de {metros(vista.anchoDeModulo)} m
         {vista.moduloGuardado ? "" : " (la cuenta de siempre)"}. Vacío: la cuenta de siempre.
         {(ficha.entrepanos !== undefined || ficha.modulo !== undefined) && (

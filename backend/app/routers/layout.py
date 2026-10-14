@@ -9,6 +9,7 @@ from app.auth import get_config, require_admin, require_auth, set_config
 from app.database import get_db
 from app.models.models import LayoutSnapshot
 from app.services.bitacora import anotar
+from app.services.catalogo_muebles import tipo_base
 from app.services.sede_archive import archive_sede_spaces, count_commercial_rows
 from app.services.layout_lookup import (
     CAMPOS_DE_CONTRATO,
@@ -225,7 +226,12 @@ def _con_la_ficha_de_antes(incoming: list, stored: list) -> None:
       confundiría con un valor;
     - un **valor**: manda, como cualquier edición;
     - un mueble **nuevo** (un ``id`` que el plano guardado no tiene) no hereda
-      nada de nadie, aunque se llame igual que uno borrado.
+      nada de nadie, aunque se llame igual que uno borrado;
+    - un mueble de **otro tipo** con el ``id`` de uno guardado tampoco: la
+      ficha de una góndola no es la de una punta, aunque sus entrepaños entren
+      en el rango de la punta y se dibujaran con ellos. Se compara el tipo de
+      verdad (``tipo_base``: ``gondola_mural`` es ``gondola``), así que el 2D,
+      que guarda los alias, no pierde nada.
 
     Un plano que no trae ninguna de estas claves y no las tenía guardadas se
     guarda exactamente igual que antes. Sólo el primer nivel del mueble: la
@@ -239,6 +245,8 @@ def _con_la_ficha_de_antes(incoming: list, stored: list) -> None:
         if not isinstance(fixture, dict):
             continue
         previo = previos.get(fixture.get("id")) if fixture.get("id") else None
+        if previo is not None and tipo_base(str(previo.get("type") or "")) != tipo_base(str(fixture.get("type") or "")):
+            previo = None
         for clave in CLAVES_DE_FICHA:
             if clave in fixture:
                 if fixture[clave] is None:

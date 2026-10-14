@@ -2,7 +2,7 @@ import { carasDe, fullSpaceCode } from "../types/espacio";
 import { modeloPorId, resolverTipo } from "../catalogo/catalogo";
 import {
   PASO_ENTRE_ENTREPANOS, ZOCALO,
-  nivelesDeEntrepano, nivelesDePunta, techoDeCara, vanosDeCorrido,
+  filasDePunta, filasDeProducto, nivelesDeEntrepano, techoDeCara, vanosDeCorrido,
 } from "../components/StoreEditor3D/muebles/medidas";
 
 /**
@@ -116,12 +116,26 @@ export function entrepanosQueEntran(type: string, h: number): number {
 
 // ─── Lo que hay hoy ───────────────────────────────────────────────────────────
 
-/** Lo que se dibuja hoy: lo guardado o la cuenta de siempre. */
+/**
+ * Lo que se dibuja hoy: lo guardado o la cuenta de siempre.
+ *
+ * Los entrepaños se cuentan en la MISMA unidad en que se escriben: los que
+ * llevan producto sobre la base, que son las filas de producto menos una
+ * (`filasDeProducto` / `filasDePunta`, la cuenta que alinea el arte). En la
+ * góndola sin entrepaños guardados el de más arriba es TECHO —sobre él no se
+ * para nada— y no se cuenta: una de 1,80 dibuja la base, cuatro con producto
+ * y el techo, y el panel dice 4. Antes decía 5, y escribir el 5 que el propio
+ * panel sugería daba seis filas, con otras alturas, sobre una cara vendida.
+ * En la punta el techo de la última fila es el copete, así que no hay techo.
+ */
 export function geometriaALaVista(f: MuebleConGeometria): {
-  /** Entrepaños sobre la base que se dibujan. */
+  /** Entrepaños con producto sobre la base (filas de producto menos una). */
   entrepanos: number;
   /** ¿Son los guardados o la cuenta de siempre? */
   entrepanosGuardados: boolean;
+  /** ¿Hay arriba un entrepaño de techo, sin producto? (la góndola sin
+   *  entrepaños guardados). */
+  techo: boolean;
   /** Cuántos módulos y de qué ancho de verdad (el corrido se parte parejo). */
   modulos: number;
   anchoDeModulo: number;
@@ -129,13 +143,15 @@ export function geometriaALaVista(f: MuebleConGeometria): {
 } {
   const entrepanos = typeof f.entrepanos === "number" ? f.entrepanos : undefined;
   const modulo = typeof f.modulo === "number" ? f.modulo : undefined;
-  const niveles = f.type === "punta"
-    ? nivelesDePunta(techoDeCara(f.h), entrepanos)
-    : nivelesDeEntrepano(f.h, entrepanos);
+  // El fondo no cambia cuántas filas hay: se pide con uno cualquiera.
+  const filas = f.type === "punta"
+    ? filasDePunta(techoDeCara(f.h), 0.4, entrepanos)
+    : filasDeProducto(f.h, 0.4, entrepanos);
   const vanos = vanosDeCorrido(f.w, modulo);
   return {
-    entrepanos: Math.max(0, niveles.length - 1),
+    entrepanos: Math.max(0, filas.rows - 1),
     entrepanosGuardados: entrepanos !== undefined,
+    techo: f.type !== "punta" && entrepanos === undefined && nivelesDeEntrepano(f.h).length >= 2,
     modulos: vanos.length,
     anchoDeModulo: f.w / vanos.length,
     moduloGuardado: modulo !== undefined,
@@ -192,10 +208,12 @@ export interface CambioVisible {
   texto: string;
 }
 
-/** ¿Cambia cuántos entrepaños tiene el mueble? Lo guardado, o lo que se
- *  dibuja: sin entrepaños guardados, cambiar el alto puede sumar o sacar uno. */
+/** ¿Cambia cuántos entrepaños con producto tiene el mueble? Se compara lo
+ *  que se dibuja antes y después, en la unidad del panel: sin entrepaños
+ *  guardados, cambiar el alto puede sumar o sacar uno, y escribir el mismo
+ *  número que da la cuenta de siempre no cambia la cantidad (los reparte
+ *  parejo, que es otra cosa: eso avisa, no bloquea). */
 export function cambiaLaCantidadDeEntrepanos(f: MuebleConGeometria, cambio: CambioDeGeometria): boolean {
-  if (cambio.entrepanos !== undefined && (cambio.entrepanos ?? null) !== (f.entrepanos ?? null)) return true;
   return geometriaALaVista(f).entrepanos !== geometriaALaVista({ ...f, ...conCambio(cambio) }).entrepanos;
 }
 
@@ -213,11 +231,14 @@ export function queCambia(f: MuebleConGeometria, cambio: CambioDeGeometria): Cam
     fuera.push({ campo: "h", texto: `el alto, de ${metros(f.h)} a ${metros(cambio.h)} m${arrastra}` });
   }
   if (cambio.entrepanos !== undefined && (cambio.entrepanos ?? null) !== (f.entrepanos ?? null)) {
+    const de = antes.entrepanosGuardados ? `${antes.entrepanos}` : `${antes.entrepanos} (la cuenta de siempre)`;
     fuera.push({
       campo: "entrepanos",
       texto: cambio.entrepanos === null
         ? `los entrepaños, de ${antes.entrepanos} a la cuenta de siempre (${despues.entrepanos})`
-        : `los entrepaños, de ${antes.entrepanos} a ${cambio.entrepanos}`,
+        : despues.entrepanos === antes.entrepanos
+          ? `los entrepaños: los mismos ${antes.entrepanos}, repartidos parejo (eran la cuenta de siempre)`
+          : `los entrepaños, de ${de} a ${cambio.entrepanos}`,
     });
   }
   if (cambio.modulo !== undefined && (cambio.modulo ?? null) !== (f.modulo ?? null)) {
@@ -345,7 +366,9 @@ export function revisarCambioDeGeometria(
   if (vendido.slots > 0) {
     lineas.push(campos.has("h")
       ? `${vendido.slots === 1 ? "El espacio interno vendido se mide" : `Los ${vendido.slots} espacios internos vendidos se miden`} sobre el alto: con otro alto quedan en otro lugar del mueble.`
-      : `Tiene ${cuantosInternos(vendido.slots)}: el producto de su franja se reparte en otros módulos.`);
+      : campos.has("entrepanos")
+        ? `Tiene ${cuantosInternos(vendido.slots)}: con los entrepaños a otra altura, el producto de su franja se para en otro lugar.`
+        : `Tiene ${cuantosInternos(vendido.slots)}: el producto de su franja se reparte en otros módulos.`);
   }
   if (vendido.arteSinRevisar) {
     lineas.push("No se pudo revisar si alguna cara tiene arte pintado: si lo tiene, cambian sus filas.");
