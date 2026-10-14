@@ -1,7 +1,17 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-14, tarde (la revisión de la rama de los muebles de Colombia:
+Última actualización: 2026-10-14, noche (las **fichas propias de cada supermercado, del lado
+del servidor**: una tabla nueva, `modelos_mueble`, en la base de cada uno, con la API
+`/api/muebles/modelos` —la lee cualquier sesión, la escribe administración— para que la dueña
+arme sus muebles sin pedirnos un cambio: familia, nombre, medidas, la geometría de su familia y
+de dónde salieron, sin foto. Viajan en el plano como `cli:<clave>`, se validan con las MISMAS
+reglas que los modelos del catálogo —que ahora viven en `fichas` de `muebles.json` y corren los
+mismos casos en el navegador y en el servidor—, retirar no borra ni mueve nada colocado, y su
+tarifa propia llega a la planilla y a la consola con una consulta por pedido. Falta la pantalla
+(el taller y las paletas): ver *Fichas propias: el servidor (2026-10-14)*).
+
+Antes, 2026-10-14, tarde (la revisión de la rama de los muebles de Colombia:
 **deshacer un «Entrepaños» o un «Módulo» ahora se guarda** —el plano repuesto manda `null`
 donde antes mandaba la clave ausente y el servidor rellenaba lo deshecho—; el panel cuenta los
 entrepaños en la misma unidad en que se escriben (el «auto (5)» de la góndola de 1,80 eran 4
@@ -173,8 +183,14 @@ sigue, en orden:
    deja para después de las partes (PR 5) y que pide su propia respuesta de la dueña: si
    esas piezas se pueden vender a otra marca que la de la cara.
 3. **Fichas propias del cliente en el taller**: la dueña arma la ficha de un mueble suyo
-   —medidas, puertas, la URL de la ficha técnica— y lo coloca. Es una tabla nueva
-   (clasificada en `TABLAS_DEL_CLIENTE`), sin foto por ahora: ella dijo que no tiene.
+   —medidas, puertas, la URL de la ficha técnica— y lo coloca. **El servidor ya está**
+   (2026-10-14, *Fichas propias: el servidor*): la tabla `modelos_mueble`, la API
+   `/api/muebles/modelos` y la validación compartida (`catalogo/fichas.ts` ↔
+   `catalogo_muebles.problemas_de_la_ficha`). Falta la pantalla: la pestaña «Fichas» de
+   `/taller` (usa `problemasDeLaFicha` para marcar cada campo; los 422 traen `loc` por campo),
+   `api/muebles.ts`, las paletas del 2D y del 3D con las fichas vigentes (las retiradas no se
+   ofrecen pero se nombran en el panel), y `rateTypeOf` en el navegador resolviendo también
+   `cli:…` (hoy Tarifas y el tablero darían la del tipo). Sin foto: ella dijo que no tiene.
 
 Quedó abierto, más chico, de lo hecho:
 
@@ -412,7 +428,11 @@ por eso **el `id` y la `tarifa` de un modelo no se cambian nunca**, igual que la
 los tipos: los ids que ya salieron están escritos en `frontend/scripts/casos/modelos-ids.json`
 con su tipo, variante y tarifa, y `probar-catalogo` y `test_modelos_de_muebles.py` fallan si
 uno desaparece o cambia, o si aparece uno sin anotar. Un mueble sin `modelo` es el modelo
-base de su tipo y da exactamente lo de antes. Ver *Muebles de Colombia (2026-10-13)*.
+base de su tipo y da exactamente lo de antes. Ver *Muebles de Colombia (2026-10-13)*. **Las
+fichas propias de cada supermercado** (`cli:<clave>`, tabla `modelos_mueble`) siguen la misma
+regla: se estampan, la clave, la familia y la tarifa no cambian nunca (el `PUT` las rechaza),
+retirar es baja lógica y lo colocado no se mueve; y se validan con las mismas reglas que los
+modelos del catálogo (`fichas` en `muebles.json`). Ver *Fichas propias: el servidor (2026-10-14)*.
 
 **Lo vendido no se mueve sin aviso.** El alto, los entrepaños y el módulo de una góndola o
 una punta deciden las filas del arte pintado, los entrepaños donde se para el producto y
@@ -596,8 +616,10 @@ niegue a correr, y `tests/test_traspaso.py` falla hasta que alguien decide de qu
 lado está. La copia de seguridad sale de la misma lista: una tabla de negocio nueva
 entra sola a la copia, y dejarla afuera es una decisión escrita
 (`TABLAS_QUE_NO_SALEN` en `services/copia.py`). La última que entró así es
-`supplier_asset_specs` (la ficha del arte: forma y medidas del envase), de negocio, sin
-archivos propios: viaja en el traspaso y en la copia con su arte.
+`modelos_mueble` (las fichas propias de los muebles de cada supermercado, 2026-10-14), de
+negocio y sin archivos —una ficha no lleva foto—, con clave primaria entera: la copia arma las
+rutas de los archivos con la clave primaria, y la clave de texto de la ficha nunca llega a una
+ruta del ZIP. Antes, `supplier_asset_specs` (la ficha del arte).
 
 **La fecha del negocio es la de Colombia.** Render corre en UTC, cinco horas
 adelante: preguntando `date.today()`, desde las 7 p. m. el servidor vivía en el día
@@ -8888,6 +8910,81 @@ de antes hasta el fondo, «hasta el fondo» ignorado o sin traducir; el cartón 
 impulsador, con columna o con otra cuenta de bandejas; la central de 1,50 con 3; un id
 renombrado (de los dos lados); el servidor sin mirar el tipo o sin los alias; y montaje sin
 el tipo del modelo o de los entrepaños.
+
+### Fichas propias: el servidor (2026-10-14)
+
+La meta de la dueña: que cada supermercado —el próximo es uno como Galerías o Cañaveral—
+arme sus muebles **sin pedirnos un cambio**. Los modelos de RECABRA viven en `muebles.json` y
+cambian con un despliegue; los de cada supermercado viven en su base. Ella no tiene fotos de
+sus muebles, así que la ficha es sólo familia, nombre, medidas, la geometría de su familia y
+de dónde salió (URL, nota y confiabilidad `ficha`/`catalogo`/`estimado`). Este paso es el
+servidor; la pantalla (el taller y las paletas) es el que sigue (*Dónde retomar*).
+
+**La tabla.** `modelos_mueble` (`models/models.py`, `ModeloMueble`), en la base de CADA
+supermercado y clasificada en `TABLAS_DEL_CLIENTE`: viaja en el traspaso y en la copia de
+seguridad. `id` entero con `sqlite_autoincrement` (no se reutiliza); `clave` única,
+`^[a-z0-9-]{1,60}$`, que es lo que guarda el plano como `cli:<clave>` y no cambia nunca —una
+retirada conserva la suya: otra con la misma clave le cambiaría la tarifa a lo colocado—;
+`tipo` (la familia, String y no `SAEnum`), `nombre`, `datos_json` (variante, `w`/`d`/`h`,
+`entrepanos`, `modulo`, `partes.puertas`, tarifa, fuente), `retirado_en` (la baja lógica),
+`creado_en`, `actualizado_en` y `creado_por`. Casi todo va en el JSON porque, desplegada, esta
+tabla tampoco podrá ganar columnas. La clave primaria es el entero a propósito (la crítica del
+plan): la copia de seguridad arma las rutas de los archivos con la clave primaria, y una ficha
+no tiene archivos, así que sale sólo en `tablas/modelos_mueble.json`.
+
+**Una validación, la del catálogo, en los dos lados.** Las reglas que antes estaban escritas
+dentro de `probar-catalogo.mjs` —la confiabilidad, qué geometría puede fijar un modelo y dónde
+vive, qué URL es una imagen— y las nuevas —la clave, los largos máximos (nombre 80, URL 500,
+nota 600) y el prefijo `cli:`— viven ahora en `fichas` de `muebles.json`, que leen los dos
+lados. `problemas_de_la_ficha` (`services/catalogo_muebles.py`) y `problemasDeLaFicha`
+(`src/catalogo/fichas.ts`) dicen lo mismo: la familia existe y tiene `rango`; la variante si la
+tiene (la góndola); las medidas dentro del `rango`; sólo la geometría de su `geometria`, en
+rango y entera donde va; una tarifa propia sólo si es una de las de los modelos de su familia
+(la media o el cuarto de estiba, el exhibidor de cartón: las que Tarifas ya ofrece); la fuente
+con su confiabilidad y una URL http(s) que no sea una imagen, o una nota; ni foto ni nada que
+no sea de la ficha. Los dos corren los 85 casos de `frontend/scripts/casos/fichas.json`
+(`probar-fichas.mjs` y `tests/test_fichas_propias.py`), que comparan los CAMPOS con problemas,
+y los 36 modelos del catálogo pasan la validación de una ficha propia. Lo que NO valida el
+servidor: que los entrepaños quepan a 25 cm (`entrepanosQueEntran`, que depende de cotas del
+dibujo en `medidas.ts`); eso lo tendrá que marcar el formulario del taller.
+
+**La API** (`routers/muebles.py`, prefijo `/api/muebles`; `/api/catalogo` es el de las artes):
+`GET /modelos` para cualquier sesión del supermercado (no lleva plata: la tarifa es la clave de
+una fila, y quién la creó sólo lo ve administración), retiradas incluidas con `retirado: true`;
+`POST /modelos` y `PUT /modelos/{clave}` sólo administración, con 422 en la forma de FastAPI
+(`loc` por campo) y 409 si la clave ya existe, aunque esté retirada; `POST
+/modelos/{clave}/retirar` y `/reactivar`. El `PUT` reemplaza la ficha entera y rechaza cambiar
+la clave, la familia o la tarifa: lo colocado busca la tarifa por la clave y la compara con su
+tipo. Alta, cambio (con qué grupos cambiaron: nombre, medidas, geometría, fuente), retiro y
+reactivación van a la bitácora (`ficha_mueble.*`; retirar no termina en `.baja`: no borra).
+Las salidas tienen la misma forma que un modelo de `muebles.json`, para que las paletas las
+traten igual.
+
+**La tarifa de una ficha.** `tarifa_del_mueble(fixture, propios)` resuelve también `cli:…`, con
+la misma regla que los modelos base (sólo si la ficha es del tipo del mueble; un modelo del
+catálogo no puede ser pisado por una ficha). `propios` lo arma `fichas_propias.tarifas_propias`
+con UNA consulta —retiradas incluidas— y lo piden la planilla (`bulk_leases._revisar`, una vez
+por planilla) y la consola (`plataforma_metricas._numeros_del_layout`, una vez por cliente: de
+ahí salen las métricas, el spread y el detalle por cliente). Las pruebas cuentan las consultas.
+
+**Lo que no cambió.** Ningún plano: un mueble colocado con una ficha la tiene estampada y no se
+relee (cambiar o retirar la ficha no le toca nada; lo prueba `test_fichas_propias`). Ninguna
+tabla vieja ganó columnas (`test_t22` verde), ningún código de espacio ni id de modelo base.
+El pedazo de entrada del navegador es byte a byte el mismo: nadie importa todavía
+`catalogo/fichas.ts` y Rollup deja afuera `fichas` del JSON.
+
+**Cómo se comprobó.** `tsc` limpio; `npm run probar` (31 guiones, con `probar-fichas` nuevo)
+y `npm run build` limpios; `import app.main` y pytest de fichas propias (18, nuevo), catálogo,
+modelos, ficha y corte del layout, planilla, traspaso, copia de seguridad, bitácora,
+métricas, spread y detalle de la plataforma y tendencia (t22): 253 verdes y el salto de
+siempre. 37 mutaciones —el rango, la geometría, la clave con `match`, la URL de cualquier
+esquema, la imagen, la tarifa de otra familia, la foto, las reglas copiadas a mano (de los dos
+lados), el worker que crea, retira o ve el autor, la tarifa, la familia o la clave que se
+editan, retirar que borra o no anota, la clave retirada reutilizada, la tarifa sin las fichas,
+sin mirar el tipo o pisando al catálogo, la planilla y la consola que leen por fila o por
+plano o no leen, las retiradas sin tarifa, la tabla sin clasificar o fuera de la copia, ids
+reutilizados, las rutas fuera de orden, `in` en vez de `hasOwnProperty`, los largos en
+unidades UTF-16 y `probar-catalogo` sin las reglas— y cada una hizo fallar su guarda.
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 

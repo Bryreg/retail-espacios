@@ -119,6 +119,15 @@ def _llenar(client, cab):
     assert r.status_code == 200, r.text
     assert r.json()["ficha"]["precio_publico"] == 4900
 
+    # La ficha propia de un mueble (`modelos_mueble`), sin archivos: tiene que
+    # volver igual, con su JSON de medidas y fuente.
+    r = client.post("/api/muebles/modelos", headers=cab, json={
+        "clave": "nevera-2p", "tipo": "nevera_puertas", "nombre": "Nevera de 2 puertas",
+        "w": 1.445, "d": 0.74, "h": 2.1, "partes": {"puertas": 2},
+        "fuente": {"confiabilidad": "ficha", "url": "https://inducol.com.co/ficha/"},
+    })
+    assert r.status_code == 201, r.text
+
 
 def _bajar(client, cab):
     r = client.get("/api/clientes/mi-copia", headers=cab)
@@ -301,7 +310,7 @@ def test_ida_y_vuelta_deja_todo_igual(client, tmp_path):
         cuantas = restaurar(copia, destino)
         for nombre in ("spaces", "space_leases", "suppliers", "layout_snapshots", "space_files",
                        "lease_files", "supplier_assets", "supplier_asset_specs",
-                       "mount_confirmations", "audit_log"):
+                       "mount_confirmations", "audit_log", "modelos_mueble"):
             assert cuantas.get(nombre), f"la prueba no llenó {nombre}"
 
         for tabla in tablas_de_la_copia():

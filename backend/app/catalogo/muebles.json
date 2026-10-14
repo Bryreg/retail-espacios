@@ -608,6 +608,22 @@
       }
     }
   ],
+  "fichas": {
+    "leeme": [
+      "Las reglas de una ficha de mueble, escritas una vez para los dos lados: las leen probar-catalogo.mjs (los modelos de este archivo), src/catalogo/fichas.ts (el navegador) y app/services/catalogo_muebles.py (el servidor, que valida las fichas propias de cada supermercado antes de guardarlas en modelos_mueble). frontend/scripts/casos/fichas.json tiene los casos que corren los dos lados.",
+      "Una familia admite fichas si tiene `rango`, y una ficha fija sólo la geometría de su `geometria`. Una ficha propia viaja en el plano como `cli:<clave>`: la clave no cambia nunca, como el id de un modelo de este archivo. Una ficha no lleva foto: sólo medidas y de dónde salieron."
+    ],
+    "prefijoPropio": "cli:",
+    "clave": "^[a-z0-9-]{1,60}$",
+    "confiabilidad": ["ficha", "catalogo", "estimado"],
+    "geometria": {
+      "entrepanos": { "enPartes": false, "entero": true },
+      "modulo": { "enPartes": false, "entero": false },
+      "puertas": { "enPartes": true, "entero": true }
+    },
+    "fuenteQueEsImagen": "\\.(jpe?g|png|webp|gif|avif|svg|bmp)(\\?.*)?$",
+    "largoMaximo": { "nombre": 80, "url": 500, "nota": 600 }
+  },
   "orden": {
     "editor3D": [
       "gondola:double", "gondola:wall", "punta",

@@ -32,7 +32,10 @@
  * sólo la geometría que su tipo admite y dentro de su rango, tarifa propia con
  * su fila y sus nombres de informe, y la fuente con su URL y su confiabilidad
  * (nunca una imagen). La referencia compara sólo los tipos que conoce: los
- * nuevos también pasan por acá.
+ * nuevos también pasan por acá. La confiabilidad, la geometría que puede fijar
+ * un modelo, lo que es una imagen y los largos de los textos son las reglas de
+ * `fichas` en el mismo archivo: las mismas con que el servidor valida las
+ * fichas propias de cada supermercado (`probar-fichas.mjs`).
  */
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -90,17 +93,22 @@ const CLAVES_DE_MODELO = new Set([
   "id", "tipo", "variante", "nombre", "w", "d", "h", "entrepanos", "modulo", "partes", "color",
   "tarifa", "informe", "informePlural", "fuente",
 ]);
-const CONFIABILIDAD = ["ficha", "catalogo", "estimado"];
-/** La geometría que un modelo puede fijar: dónde vive en el modelo y si es un
- *  número entero. `puertas` va en `partes`. */
-const GEOMETRIA = {
-  entrepanos: { leer: (m) => m.entrepanos, entero: true },
-  modulo: { leer: (m) => m.modulo, entero: false },
-  puertas: { leer: (m) => m.partes?.puertas, entero: true },
+/** La geometría que un modelo puede fijar, dónde vive y si es un número
+ *  entero, la confiabilidad, lo que es una imagen (el catálogo guarda medidas,
+ *  nunca fotos de terceros) y los largos de los textos NO están acá: son las
+ *  reglas de `fichas` del catálogo, las mismas que el servidor aplica a las
+ *  fichas propias de cada supermercado. */
+const CAMPOS_DE_GEOMETRIA = ["entrepanos", "modulo", "puertas"];
+const reglasDeFicha = (cat) => {
+  const r = cat.fichas ?? {};
+  const geometria = Object.fromEntries(Object.entries(r.geometria ?? {}).map(([campo, g]) => [campo, {
+    leer: (m) => (g.enPartes ? m.partes?.[campo] : m[campo]), entero: g.entero === true,
+  }]));
+  let esImagen = /(?!)/;
+  try { esImagen = new RegExp(r.fuenteQueEsImagen, "i"); } catch { /* lo dice la validación de `fichas` */ }
+  return { confiabilidad: Array.isArray(r.confiabilidad) ? r.confiabilidad : [], geometria, esImagen, largo: r.largoMaximo ?? {} };
 };
-/** Una URL que es una imagen: el catálogo guarda medidas, nunca fotos de
- *  terceros. */
-const ES_IMAGEN = /\.(jpe?g|png|webp|gif|avif|svg|bmp)(\?.*)?$/i;
+const expresionValida = (x) => { try { new RegExp(x); return typeof x === "string" && x.length > 0; } catch { return false; } };
 const CLAVES_DE_FORMA = new Set(["caras", "rotuloEditor", "medidas", "color", "color2D", "emoji", "descripcion"]);
 const COLOR = /^#[0-9a-f]{6}$/;
 const texto = (x) => typeof x === "string" && x.trim().length > 0;
@@ -114,8 +122,28 @@ function validar(cat) {
   si(Array.isArray(cat.leeme) && cat.leeme.every(texto), "`leeme` no es una lista de textos");
   si(/^[A-Z]{3}$/.test(cat.prefijoDesconocido ?? ""), "`prefijoDesconocido` no son tres mayúsculas");
   const tipos = cat.tipos ?? {};
-  const claves = new Set(["version", "leeme", "prefijoDesconocido", "tipos", "alias", "tarifas", "modelos", "orden"]);
+  const claves = new Set(["version", "leeme", "prefijoDesconocido", "tipos", "alias", "tarifas", "modelos", "fichas", "orden"]);
   for (const k of Object.keys(cat)) si(claves.has(k), `clave desconocida \`${k}\` en el catálogo`);
+
+  // ── Las reglas de las fichas ──
+  const rf = cat.fichas ?? {};
+  for (const k of Object.keys(rf)) {
+    si(["leeme", "prefijoPropio", "clave", "confiabilidad", "geometria", "fuenteQueEsImagen", "largoMaximo"].includes(k),
+      `clave desconocida \`${k}\` en \`fichas\``);
+  }
+  si(Array.isArray(rf.leeme) && rf.leeme.every(texto), "`fichas.leeme` no es una lista de textos");
+  si(/^[a-z]+:$/.test(rf.prefijoPropio ?? "") && rf.prefijoPropio !== "base:", "`fichas.prefijoPropio` tiene que ser una palabra con dos puntos, y no `base:`");
+  si(expresionValida(rf.clave) && rf.clave.startsWith("^") && rf.clave.endsWith("$") && !new RegExp(rf.clave).test("a:b"),
+    "`fichas.clave` tiene que ser una expresión anclada que no deje pasar «:»");
+  si(Array.isArray(rf.confiabilidad) && rf.confiabilidad.length > 0 && rf.confiabilidad.every(texto),
+    "`fichas.confiabilidad` tiene que ser una lista de textos");
+  si(rf.geometria && Object.keys(rf.geometria).sort().join() === [...CAMPOS_DE_GEOMETRIA].sort().join()
+    && Object.values(rf.geometria).every((g) => typeof g?.enPartes === "boolean" && typeof g?.entero === "boolean"),
+    `\`fichas.geometria\` tiene que decir de ${CAMPOS_DE_GEOMETRIA.join(", ")} si va en \`partes\` y si es entero`);
+  si(expresionValida(rf.fuenteQueEsImagen), "`fichas.fuenteQueEsImagen` no es una expresión");
+  si(["nombre", "url", "nota"].every((k) => Number.isInteger(rf.largoMaximo?.[k]) && rf.largoMaximo[k] > 0),
+    "`fichas.largoMaximo` tiene que tener nombre, url y nota, enteros positivos");
+  const { confiabilidad: CONFIABILIDAD, geometria: GEOMETRIA, esImagen: ES_IMAGEN, largo: LARGO } = reglasDeFicha(cat);
 
   const tarifas = new Map((cat.tarifas ?? []).map((t) => [t.clave, t]));
   si((cat.tarifas ?? []).length === tarifas.size, "hay dos tarifas con la misma clave");
@@ -201,6 +229,7 @@ function validar(cat) {
     if (d.variantes) si(m.variante in d.variantes, `${donde}: \`variante\` tiene que ser una de ${Object.keys(d.variantes).join(", ")}`);
     else si(m.variante === undefined, `${donde}: \`${m.tipo}\` no tiene variantes`);
     si(texto(m.nombre), `${donde}: sin nombre`);
+    si(!texto(m.nombre) || [...m.nombre.trim()].length <= LARGO.nombre, `${donde}: el nombre tiene hasta ${LARGO.nombre} letras`);
     si(!!d.rango, `${donde}: su tipo no tiene \`rango\` contra el que medirlo`);
     for (const k of ["w", "d", "h"]) {
       const r = d.rango?.[k];
@@ -232,6 +261,8 @@ function validar(cat) {
     si(!ES_IMAGEN.test(f.url ?? ""), `${donde}: la fuente es una imagen; se guarda la página de la ficha, nunca una foto`);
     si(CONFIABILIDAD.includes(f.confiabilidad), `${donde}: la confiabilidad tiene que ser ficha, catalogo o estimado`);
     si(texto(f.nota), `${donde}: la fuente no tiene nota`);
+    si(!texto(f.nota) || [...f.nota.trim()].length <= LARGO.nota, `${donde}: la nota tiene hasta ${LARGO.nota} letras`);
+    si(typeof f.url !== "string" || [...f.url.trim()].length <= LARGO.url, `${donde}: la URL tiene hasta ${LARGO.url} letras`);
     si(Object.keys(f).every((k) => ["url", "confiabilidad", "nota"].includes(k)), `${donde}: la fuente lleva sólo url, confiabilidad y nota`);
   }
   // En una familia, el ALTO decide cuántos entrepaños van; el módulo, no (es
@@ -359,6 +390,21 @@ await prueba("la validación rechaza lo que tiene que rechazar", () => {
     ["una confiabilidad inventada", (c) => { c.modelos[0].fuente.confiabilidad = "segura"; }, /la confiabilidad tiene que ser/],
     ["una foto en el modelo", (c) => { c.modelos[0].foto = "https://ejemplo.co/g.png"; }, /clave desconocida `foto`/],
     ["un tipo con modelos y sin rango", (c) => { delete c.tipos.punta.rango; }, /su tipo no tiene `rango`/],
+    // Las reglas de las fichas: las mismas para los modelos de acá y para las
+    // fichas propias que valida el servidor.
+    ["la confiabilidad sale de las reglas de las fichas", (c) => { c.fichas.confiabilidad = ["ficha", "catalogo"]; },
+      /base:gondola-central-150-m090: la confiabilidad tiene que ser/],
+    ["lo que es una imagen sale de las reglas de las fichas", (c) => { c.fichas.fuenteQueEsImagen = "\\.co/"; }, /la fuente es una imagen/],
+    ["la geometría entera sale de las reglas de las fichas", (c) => {
+      c.fichas.geometria.modulo.entero = true; }, /`modulo` = 0\.9 está fuera de su rango/],
+    ["un nombre más largo que el de una ficha", (c) => { c.modelos[0].nombre = "x".repeat(81); }, /el nombre tiene hasta 80 letras/],
+    ["una nota más larga que la de una ficha", (c) => { c.modelos[0].fuente.nota = "x".repeat(601); }, /la nota tiene hasta 600 letras/],
+    ["las reglas de las fichas sin confiabilidad", (c) => { delete c.fichas.confiabilidad; }, /`fichas\.confiabilidad`/],
+    ["una clave de ficha que deja pasar los dos puntos", (c) => { c.fichas.clave = "^[a-z0-9:-]{1,60}$"; }, /`fichas\.clave`/],
+    ["una clave de ficha que no es una expresión", (c) => { c.fichas.clave = "^([a-z$"; }, /`fichas\.clave`/],
+    ["una geometría de ficha sin decir dónde vive", (c) => { delete c.fichas.geometria.puertas.enPartes; }, /`fichas\.geometria`/],
+    ["el prefijo propio igual al de los modelos", (c) => { c.fichas.prefijoPropio = "base:"; }, /`fichas\.prefijoPropio`/],
+    ["una regla de ficha mal escrita", (c) => { c.fichas.largoMaxmo = {}; }, /clave desconocida `largoMaxmo` en `fichas`/],
   ];
   for (const [que, cambiar, motivo] of casos) {
     const mal = roto(cambiar);

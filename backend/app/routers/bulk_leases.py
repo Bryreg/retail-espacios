@@ -44,6 +44,7 @@ from app.services.layout_lookup import (
     Ambiguedad, Colision, PlanoIndexado, es_comercializable, sin_prefijo_de_sede,
 )
 from app.services.catalogo_muebles import tarifa_del_mueble, tipo_de_tarifa
+from app.services.fichas_propias import tarifas_propias
 from app.services.renumeracion import Rastreador
 from app.schemas.spaces import AvisosContrato
 from app.services.contacts import recipients_for
@@ -264,6 +265,9 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
         )
 
     rates = reference_rates_raw(db)
+    #: Las tarifas de las fichas propias del supermercado (`cli:<clave>`),
+    #: leídas una sola vez: cada fila que resuelve un mueble pregunta la suya.
+    propios = tarifas_propias(db)
     #: Los muebles de todas las sedes, leídos una sola vez: cada fila pregunta
     #: tres cosas al plano y una planilla trae hasta trescientas.
     plano = PlanoIndexado(db)
@@ -386,8 +390,9 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
                         avisos.extend(_avisos_de_colision(colision))
                     ref = None
                     # La del modelo del mueble si tiene una propia (la media
-                    # estiba, el exhibidor de cartón), y si no la de su tipo.
-                    tipo = tarifa_del_mueble(fixture)
+                    # estiba, el exhibidor de cartón, una ficha propia del
+                    # supermercado), y si no la de su tipo.
+                    tipo = tarifa_del_mueble(fixture, propios)
                     if rates:
                         por_sede = (rates.get("by_sede") or {}).get(sede or "", {})
                         ref = por_sede.get(tipo)

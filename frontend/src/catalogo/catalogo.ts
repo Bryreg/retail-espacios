@@ -159,6 +159,21 @@ export interface TipoDeMueble extends FormaDeMueble {
   geometria?: Partial<Record<CampoDeGeometria, [number, number]>>;
 }
 
+/** Las reglas de una ficha (`fichas` en `muebles.json`). Ver `catalogo/fichas.ts`. */
+export interface ReglasDeFicha {
+  leeme: string[];
+  /** `cli:`: una ficha propia viaja en el plano como `cli:<clave>`. */
+  prefijoPropio: string;
+  /** La expresión que tiene que cumplir la clave de una ficha propia. */
+  clave: string;
+  confiabilidad: Confiabilidad[];
+  /** Dónde vive cada campo de geometría (en `partes` o suelto) y si es entero. */
+  geometria: Record<CampoDeGeometria, { enPartes: boolean; entero: boolean }>;
+  /** La URL de una fuente que es una imagen: nunca se guarda una foto. */
+  fuenteQueEsImagen: string;
+  largoMaximo: { nombre: number; url: number; nota: number };
+}
+
 /** Un nombre viejo del 2D que es un tipo con una variante fija. Las banderas
  *  van escritas una por una: así estaban en las tablas de antes. */
 export interface AliasDeMueble { tipo: string; variante: string; banderas: Bandera[] }
@@ -173,6 +188,10 @@ export interface CatalogoDeMuebles {
   tarifas: { clave: string; rotulo: string }[];
   /** Las fichas de muebles de verdad. Ver «Los modelos», arriba. */
   modelos: ModeloDeMueble[];
+  /** Las reglas de una ficha, las mismas para los modelos de este archivo y
+   *  para las fichas propias de cada supermercado: las lee `catalogo/fichas.ts`
+   *  y, del lado del servidor, `catalogo_muebles.py`. */
+  fichas: ReglasDeFicha;
   orden: {
     /** La paleta del editor 3D: `tipo` o `tipo:variante`. `/taller` elige por posición. */
     editor3D: string[];

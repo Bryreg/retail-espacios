@@ -283,10 +283,13 @@ def _tipo_de_tarifa(tipo: str) -> str:
     return tipo_de_tarifa(tipo)
 
 
-def _mapa_tipos_de_sede(fixtures: list, sede_snapshot: str) -> dict[str, tuple[str, str]]:
+def _mapa_tipos_de_sede(fixtures: list, sede_snapshot: str,
+                       propios: dict[str, tuple[str, str]] | None = None) -> dict[str, tuple[str, str]]:
     """``codigo_completo -> (SEDE, tipo)`` de los fixtures COMERCIALIZABLES de
     una sede. Espeja ``_caras_comercializables``: la cara ``-B`` de una
-    góndola doble entra con el MISMO tipo que la cara A."""
+    góndola doble entra con el MISMO tipo que la cara A. ``propios``: las
+    tarifas de las fichas propias del cliente (``fichas_propias.tarifas_propias``),
+    leídas una vez por cliente."""
     mapa: dict[str, tuple[str, str]] = {}
     for fixture in fixtures:
         if not isinstance(fixture, dict):
@@ -302,8 +305,9 @@ def _mapa_tipos_de_sede(fixtures: list, sede_snapshot: str) -> dict[str, tuple[s
             continue
         sede_uc = sede.strip().upper()
         # La del modelo si tiene una propia (la media estiba se cobra aparte
-        # de la estiba), y si no la de su tipo: la misma que `rateTypeOf`.
-        tipo = tarifa_del_mueble(fixture)
+        # de la estiba, y una ficha propia del cliente puede tener la suya), y
+        # si no la de su tipo: la misma que `rateTypeOf`.
+        tipo = tarifa_del_mueble(fixture, propios)
         mapa[completo] = (sede_uc, tipo)
         if _es_gondola_doble(fixture):
             mapa[f"{completo}-B"] = (sede_uc, tipo)
@@ -322,10 +326,14 @@ def _numeros_del_layout(db) -> tuple[int, set[str], dict[str, tuple[str, str]]]:
     pasada para no volver a abrir el plano por cada contrato.
     """
     from app.models.models import LayoutSnapshot
+    from app.services.fichas_propias import tarifas_propias
 
     sedes = 0
     caras: set[str] = set()
     mapa_tipos: dict[str, tuple[str, str]] = {}
+    # Las tarifas de las fichas propias del cliente, UNA consulta por cliente y
+    # no una por mueble: la consola recorre todos los planos de todos.
+    propios = tarifas_propias(db)
     for snap in db.query(LayoutSnapshot).all():
         try:
             fixtures = json.loads(snap.fixtures_json or "[]")
@@ -336,7 +344,7 @@ def _numeros_del_layout(db) -> tuple[int, set[str], dict[str, tuple[str, str]]]:
             continue
         sedes += 1
         caras |= _caras_comercializables(fixtures, snap.sede or "")
-        mapa_tipos.update(_mapa_tipos_de_sede(fixtures, snap.sede or ""))
+        mapa_tipos.update(_mapa_tipos_de_sede(fixtures, snap.sede or "", propios))
     return sedes, caras, mapa_tipos
 
 

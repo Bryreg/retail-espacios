@@ -70,6 +70,9 @@ TABLAS_DEL_CLIENTE = frozenset({
     "renumeracion_nombres", "app_config", "space_files", "space_faces",
     "mount_confirmations", "archived_spaces", "notification_logs",
     "lease_files", "supplier_assets", "supplier_asset_specs", "login_attempts", "audit_log",
+    # Las fichas propias de sus muebles (`cli:<clave>`): las colocan sus planos,
+    # que viajan con ellas. Sin archivos: una ficha no lleva foto.
+    "modelos_mueble",
 })
 
 # Las que guardan archivos enteros: se copian de a pocas filas para no cargar
