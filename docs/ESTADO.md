@@ -1,7 +1,15 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-14, al final del día (el **nombre propio de cada familia de
+Última actualización: 2026-10-14, cierre (el **recorrido de la dueña en el navegador**: armar
+«Nevera Inducol 2 puertas» en el taller, colocarla desde la paleta del plano y del Editor 3D,
+darle a su familia un nombre propio y verlo en el plano, el 3D y Vender, venderla, retirar la
+ficha y ver que lo colocado sigue igual, y el trabajador sin poder crear fichas. Anduvo de punta
+a punta; se arreglaron dos detalles que sólo se ven mirando: el pie del panel del 3D redondeaba
+las medidas al decímetro y la lista del taller decía «todavía no armaste ninguna» con todas
+retiradas. Ver *Fichas propias: el recorrido en el navegador (2026-10-14)*).
+
+Antes, 2026-10-14, al final del día (el **nombre propio de cada familia de
 muebles**: cada supermercado le pone su nombre a cada familia —«mamut», «tope de góndola»,
 «exhibición especial»— en Configuración → «Cómo se llaman los muebles acá» (sólo
 administración: una fila por familia con el nombre de RECABRA y el de la tienda), y ese nombre
@@ -207,9 +215,11 @@ sigue, en orden:
    propias: el servidor*) y la pantalla (*Fichas propias: la pantalla*): la pestaña «Fichas»
    de `/taller`, las paletas del 2D y del 3D con las fichas vigentes, el panel que las nombra
    (también retiradas) y `rateTypeOf` resolviendo `cli:…`. Sin foto: ella dijo que no tiene.
-   Lo que queda de esto: mirar el flujo entero con la dueña (armar «Nevera Inducol 2 puertas»,
-   colocarla, venderla) y la revisión adversarial de la rama; `/taller` sigue siendo sólo de
-   administración, así que la dueña entra con su cuenta de dueña (que es admin).
+   El flujo entero ya se recorrió en el navegador (armar «Nevera Inducol 2 puertas»,
+   colocarla, venderla, retirarla: *Fichas propias: el recorrido en el navegador*). Lo que
+   queda de esto: que la dueña lo haga ella misma con una ficha de verdad de Cañaveral, y la
+   revisión adversarial de la rama; `/taller` sigue siendo sólo de administración, así que la
+   dueña entra con su cuenta de dueña (que es admin).
 4. **El nombre propio de cada familia: HECHO** (2026-10-14). Configuración → «Cómo se llaman
    los muebles acá», y lo dicen todas las pantallas del supermercado, no la consola: ver *Cómo
    le dicen acá*. Lo que queda: el enlace de la mercaderista (`/?montar=…`, sin sesión) sigue
@@ -9132,7 +9142,8 @@ dos vigentes al final de su familia (la «Góndola Mural» con 13 modelos) y no 
 nevera colocada en el plano quedó con `modelo: "cli:nevera-inducol-2-puertas"` y el panel la
 nombró con su URL. 33 mutaciones, cada una hizo fallar su guarda (ver el commit).
 
-**Lo que queda.** El flujo entero con la dueña y sus fotos de trabajo, la revisión adversarial
+**Lo que queda.** Que la dueña haga el flujo ella misma (ya se recorrió en el navegador: ver
+*Fichas propias: el recorrido en el navegador*), la revisión adversarial
 de la rama. La tarifa propia de una ficha sólo puede ser una de las que ya tiene su familia
 (decisión del paso del servidor, a confirmar con ella). Un mueble con `cli:` de una ficha que
 esta sesión no pudo leer (sin red) se dibuja bien pero el panel no lo nombra y la tarifa es la
@@ -9219,6 +9230,52 @@ dependencia quitada, la consola que importa el módulo, el store que lo importa,
 resucita, el trabajador que escribe, la sección quitada, el largo en UTF-16 de los dos lados,
 el servidor sin topes, otro módulo que lee la clave y el detalle que la devuelve— y cada una
 hizo fallar su guarda.
+
+### Fichas propias: el recorrido en el navegador (2026-10-14)
+
+Lo que hace la dueña, de punta a punta, en Chromium contra un servidor local descartable
+(SQLite vacía, ingreso por clave sólo en esa máquina), con capturas fuera del repo:
+
+1. **El taller.** «Fichas» → Nevera de puertas, «Nevera Inducol 2 puertas» (la clave sale sola:
+   `nevera-inducol-2-puertas`), 144,5 × 74 × 210 cm, 2 puertas, la URL de la ficha de Inducol y
+   «Ficha técnica». Ningún problema antes de guardar; el mueble de la derecha es una nevera de
+   dos puertas con su cabezote y gira (dos fotos del lienzo a 3 s son distintas). Guardar hace
+   UN `POST` y dice «Ya está en la paleta del plano y del Editor 3D, debajo de su familia».
+2. **El plano.** La biblioteca muestra «5 modelos» en la nevera de puertas, la propia al final
+   (1.445×0.74×2.1 m). Colocada, el panel dice «Nevera de Puertas · Nevera Inducol 2 puertas»
+   con la fuente al pasar el mouse, y el servidor guarda `NEV-01` con
+   `modelo: "cli:nevera-inducol-2-puertas"`, 1,445 × 0,74 × 2,10 y `partes.puertas: 2`.
+3. **El Editor 3D.** La misma ficha en la paleta, colocada como `NEV-02`; vistas de frente, las
+   dos neveras tienen dos puertas, repisas y cabezote (la cámara del editor arranca mirando el
+   dorso, que es negro: no es un defecto de la ficha).
+4. **El nombre propio.** «Enfriador vertical» para la nevera de puertas en Configuración: lo
+   dicen la biblioteca y el panel del plano, la paleta del 3D, la Tarifa de referencia, la fila
+   del contrato en Vender y la chapa del visor 3D («NEV-01 Enfriador vertical»), y Estado por
+   espacio del trabajador.
+5. **Venderla.** Postobón, $350.000 al mes: el contrato se guarda por la planilla
+   (`/leases/bulk`) y Supervisar sólo pide lo de siempre (por vencer, sin montar); nada de
+   «contrato sin mueble en el plano».
+6. **Retirarla.** El taller pregunta y dice que lo colocado sigue igual. Después: la biblioteca
+   y la paleta vuelven a 4 modelos, el panel de los dos editores dice «Nevera Inducol 2 puertas
+   (retirada)», y `NEV-01`/`NEV-02` en el servidor son idénticos a antes de retirar (el
+   contrato de `NEV-01` sigue).
+7. **El trabajador.** `/taller` lo devuelve a `/`; crear, cambiar o reactivar una ficha con su
+   sesión da 403 («Se requiere rol de administrador»), leerlas da 200 sin `creado_por`, y
+   cambiar el nombre propio también da 403.
+
+**Lo que se arregló al mirar.** El pie del panel del Editor 3D decía «1.4 × 0.7 × 2.1 m» para
+la nevera de 144,5 × 74 cm (`toFixed(1)`), mientras la paleta y el panel del plano decían 1.445
+y 0.74: ahora dice las medidas al milímetro, sin ceros de más. Y con todas las fichas retiradas,
+«Tus fichas (0)» decía «Todavía no armaste ninguna»: ahora dice «Ninguna vigente: las retiradas
+están acá abajo». Las dos con su guarda en `probar-muebles`.
+
+**Ruido que se vio y no es de esto.** En desarrollo, el primer ingreso a una base vacía manda
+dos `PUT /layout/settings` (el doble efecto de `StrictMode`) y uno vuelve con 409; la fusión lo
+resuelve sola. Colocar en el 3D deja en la consola el aviso de React «Cannot update a component
+while rendering a different component»: `u()` escribe en el store adentro del actualizador de
+`setPlacedFixtures` (viene de #22). Una sesión de administración que no es la dueña recibe 403
+de `/clientes/mi-suscripcion` en cada carga y Configuración muestra en rojo «Solo el owner del
+cliente puede hacer esto» bajo Suscripción.
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 

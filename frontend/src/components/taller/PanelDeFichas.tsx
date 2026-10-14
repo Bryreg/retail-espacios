@@ -330,7 +330,11 @@ export function PanelDeFichas({
       <div style={estilo.seccion} data-lista-fichas>
         <p style={estilo.titulo}>Tus fichas ({vigentes.length})</p>
         {vigentes.length === 0 ? (
-          <p style={{ fontSize: 11.5, color: "var(--ink-3)", margin: 0 }}>Todavía no armaste ninguna.</p>
+          // Con todas retiradas sí armó alguna: «todavía no armaste ninguna»
+          // le decía que la que acababa de retirar no existía.
+          <p style={{ fontSize: 11.5, color: "var(--ink-3)", margin: 0 }}>
+            {retiradas.length > 0 ? "Ninguna vigente: las retiradas están acá abajo." : "Todavía no armaste ninguna."}
+          </p>
         ) : (
           <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>{vigentes.map((m) => <Fila key={m.clave} m={m} />)}</ul>
         )}

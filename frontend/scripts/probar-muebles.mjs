@@ -2555,6 +2555,20 @@ prueba("/taller «Fichas» dibuja la ficha que se escribe, con la misma entrada 
   assert.match(cuerpoEntre(panel, "const retirarOReactivar = async", "const Problemas = "), /await recargarFichasPropias\(\);/,
     "retirar o reactivar una ficha no la saca o la vuelve a las paletas");
   assert.ok(!/type="file"|FormData|[{,]\s*foto\s*:|["']foto["']|setFoto/.test(panel), "la ficha del taller pide una foto");
+  // Con todas retiradas, la dueña sí armó alguna: la lista no puede decirle
+  // que no (se vio en el recorrido del 2026-10-14).
+  assert.match(panel, /retiradas\.length > 0 \? "Ninguna vigente[^"]*" : "Todavía no armaste ninguna\."/,
+    "con todas sus fichas retiradas, el taller le dice que no armó ninguna");
+});
+
+prueba("el panel del Editor 3D dice las medidas de la ficha al milímetro, como la paleta y el plano", () => {
+  // La nevera de 144,5 × 74 cm que la dueña escribió en el taller salía en el
+  // pie del panel como «1.4 × 0.7 × 2.1 m» (`toFixed(1)`), mientras la paleta y
+  // el panel del plano decían 1.445 y 0.74.
+  assert.ok(!/fix\.[wdh]\.toFixed\([0-2]\)/.test(editorCodigo), "el panel del 3D redondea las medidas del mueble");
+  assert.match(editorCodigo, /<p>\{\+fix\.w\.toFixed\(3\)\} × \{\+fix\.d\.toFixed\(3\)\} × \{\+fix\.h\.toFixed\(3\)\} m<\/p>/,
+    "el panel del 3D no dice las medidas del mueble");
+  assert.deepEqual([1.445, 0.74, 2.1, 1.2000000000000002].map((x) => String(+x.toFixed(3))), ["1.445", "0.74", "2.1", "1.2"]);
 });
 
 prueba("frío: el selector marca lo refrigerado y el panel avisa en un mueble seco, sin bloquear", () => {

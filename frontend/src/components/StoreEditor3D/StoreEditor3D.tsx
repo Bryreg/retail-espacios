@@ -6767,7 +6767,11 @@ function CommercialPanel({
         <GeometriaDelMueble id={fix.id} puedeEditar={isAdmin} />
 
         <div className="rounded-lg border border-dark-line/50 bg-dark-bg/60 p-2 font-mono text-[10px] text-dark-ink-3">
-          <p>{fix.w.toFixed(1)} × {fix.d.toFixed(1)} × {fix.h.toFixed(1)} m</p>
+          {/* Las medidas al milímetro, como la paleta y el panel del plano: con
+              `toFixed(1)` la nevera de 144,5 × 74 cm de la ficha decía «1.4 ×
+              0.7», y quien acababa de escribirla en el taller veía otra. El
+              `+` quita los ceros de más y el ruido de coma flotante. */}
+          <p>{+fix.w.toFixed(3)} × {+fix.d.toFixed(3)} × {+fix.h.toFixed(3)} m</p>
           <p>pos ({fix.x.toFixed(1)}, {fix.z.toFixed(1)}) · {Math.round(((fix.rotY*180/Math.PI)%360+360)%360)}°</p>
           {fix.gondolaType && <p className="font-mono uppercase">{fix.gondolaType}</p>}
         </div>
